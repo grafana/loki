@@ -1,5 +1,17 @@
 ## Main
 
+## [0.11.1](https://github.com/grafana/loki/compare/operator/v0.11.0...operator/v0.11.1) (2026-08-20)
+
+
+### Features
+
+* **operator:** Allow custom certs to be used by the passthrough gateway tenancy ([#23896](https://github.com/grafana/loki/issues/23896)) ([abf69d1](https://github.com/grafana/loki/commit/abf69d149da664e2d373eab5db1aaf75229ebc7c))
+
+
+### Bug Fixes
+
+* **operator:** Remove BoltDB alerts, recording rules, and Grafana dashboards ([#23884](https://github.com/grafana/loki/issues/23884)) ([260115c](https://github.com/grafana/loki/commit/260115c3a0847f227e3080e0f43dd0b174515276))
+
 ## [0.11.0](https://github.com/grafana/loki/compare/operator/v0.10.2...operator/v0.11.0) (2026-08-18)
 
 
