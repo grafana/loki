@@ -92,9 +92,4 @@ tracing:
   enabled: false
 
 analytics:
- reporting_enabled: false
-
-ui:
-  enabled: true
-  goldfish:
-    enable: false
+  reporting_enabled: false
