@@ -21,7 +21,7 @@ Loki exposes the following observability data about itself:
 
 There are three primary components to monitoring Loki:
 
-1. [Kubernetes Monitoring Helm](https://github.com/grafana/k8s-monitoring-helm/): The Kubernetes Monitoring Helm chart provides a comprehensive monitoring solution for Kubernetes clusters. It also provides direct integrations for monitoring the full LGTM (Loki, Grafana, Tempo and Mimir) stack. To learn how to deploy the Kubernetes Monitoring Helm chart, refer to [deploy meta-monitoring](https://grafana.com/docs/loki/<LOKI_VERSION>/operations/meta-monitoring/deploy).
+1. [Kubernetes Monitoring Helm](https://github.com/grafana/k8s-monitoring-helm/): The Kubernetes Monitoring Helm chart provides a comprehensive monitoring solution for Kubernetes clusters. It also provides direct integrations for monitoring the full LGTM (Loki, Grafana, Tempo and Mimir) stack. To learn how to deploy the Kubernetes Monitoring Helm chart, refer to [deploy meta-monitoring](https://grafana.com/docs/loki/<LOKI_VERSION>/operations/meta-monitoring/deploy). That page covers the current chart 4.x line. If you need to stay on the maintained 3.8.x stable line instead, refer to [deploy meta-monitoring with chart version 3](https://grafana.com/docs/loki/<LOKI_VERSION>/operations/meta-monitoring/deploy-chart-v3).
 
 1. [Grafana Cloud account](https://grafana.com/products/cloud/) or a separate LGTM stack: The data collected from the Loki cluster can be sent to a Grafana Cloud account or a separate LGTM stack. We recommend using Grafana Cloud since it is Grafana Lab's responsibility to maintain the availability and performance of the Grafana Cloud services.
 

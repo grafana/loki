@@ -1,20 +1,20 @@
 ---
-title: Deploy Loki meta-monitoring
-menuTitle: Deploy Loki Meta Monitoring
-description: Describes how to deploy Meta Monitoring for Loki using the Kubernetes Monitoring Helm chart.
-weight: 100
+title: Deploy Loki meta-monitoring with chart version 3
+menuTitle: Deploy (chart v3)
+description: Describes how to deploy Meta Monitoring for Loki using version 3.8.x of the Kubernetes Monitoring Helm chart.
+weight: 200
 ---
 
-# Deploy Loki meta-monitoring
+# Deploy Loki meta-monitoring with chart version 3
 
-The primary method for collecting and monitoring a Loki cluster is to use the [Kubernetes Monitoring Helm](https://github.com/grafana/k8s-monitoring-helm/) chart. This chart provides a comprehensive monitoring solution for Kubernetes clusters and includes direct integrations for monitoring the full LGTM (Loki, Grafana, Tempo, and Mimir) stack. This procedure will walk you through deploying the Kubernetes Monitoring Helm chart to monitor your Loki cluster.
+The primary method for collecting and monitoring a Loki cluster is to use the [Kubernetes Monitoring Helm](https://github.com/grafana/k8s-monitoring-helm/) chart. This chart provides a comprehensive monitoring solution for Kubernetes clusters and includes direct integrations for monitoring the full LGTM (Loki, Grafana, Tempo, and Mimir) stack. This procedure will walk you through deploying version 3.8.x of the Kubernetes Monitoring Helm chart to monitor your Loki cluster.
 
 {{< admonition type="note" >}}
-We recommend running a production cluster of Loki in distributed mode using Kubernetes. This procedure assumes you have a running Kubernetes cluster and a running Loki deployment. There are other methods for deploying Loki, such as using Docker or VM installations. meta-monitoring is still possible when using these deployment methods but not covered in this procedure.
+This page covers chart version 3.8.x, which is a maintained stable release line. If you do not already have a reason to stay on chart 3.8.x, use [Deploy Loki meta-monitoring](https://grafana.com/docs/loki/<LOKI_VERSION>/operations/meta-monitoring/deploy/) instead, which covers the current chart 4.x line. For help moving from chart 3.x to 4.x, refer to the [Kubernetes Monitoring Helm chart migration guide](https://grafana.com/docs/grafana-cloud/monitor-infrastructure/kubernetes-monitoring/configuration/helm-chart-config/helm-chart/migrate-helm-chart/).
 {{< /admonition >}}
 
 {{< admonition type="note" >}}
-This page covers chart version 4.x, the current line. If you need to stay on the maintained 3.8.x stable line instead, use [Deploy Loki meta-monitoring with chart version 3](https://grafana.com/docs/loki/<LOKI_VERSION>/operations/meta-monitoring/deploy-chart-v3/).
+We recommend running a production cluster of Loki in distributed mode using Kubernetes. This procedure assumes you have a running Kubernetes cluster and a running Loki deployment. There are other methods for deploying Loki, such as using Docker or VM installations. meta-monitoring is still possible when using these deployment methods but not covered in this procedure.
 {{< /admonition >}}
 
 ## Prerequisites
@@ -94,17 +94,17 @@ For further information on how to configure these methods, see the [Kubernetes M
 
 Now that you have prepared your environment and collected the necessary credentials, you can deploy the Kubernetes Monitoring Helm chart to monitor your Loki cluster. To do this we need to copy a `values.yaml` file to our local machine and modify it to include the necessary configuration.
 
-1. Download the `values.yaml` file from the Kubernetes Monitoring Helm chart repository:
+1. Download the `values-chart-v3.yaml` file from the Kubernetes Monitoring Helm chart repository:
 
    ```bash
-   curl -O https://raw.githubusercontent.com/grafana/loki/main/production/helm/meta-monitoring/values.yaml
+   curl -O https://raw.githubusercontent.com/grafana/loki/main/production/helm/meta-monitoring/values-chart-v3.yaml
    ```
 
-1. Open the `values.yaml` file in a text editor of your choosing and add the Prometheus and Loki endpoints. Chart 4.x configures destinations as a map keyed by name, rather than a list:
+1. Open the `values-chart-v3.yaml` file in a text editor of your choosing and add the Prometheus and Loki endpoints.
 
    ```yaml
    destinations:
-     prometheus:
+     - name: prometheus
        type: prometheus
        url: https://<PROMETHEUS-ENDPOINT>/api/prom/push
        auth:
@@ -116,7 +116,7 @@ Now that you have prepared your environment and collected the necessary credenti
          name: metrics
          namespace: meta
 
-     loki:
+     - name: loki
        type: loki
        url: https://<LOKI-ENDPOINT>/loki/api/v1/push
        auth:
@@ -138,17 +138,7 @@ Now that you have prepared your environment and collected the necessary credenti
      name: loki-meta-monitoring-cluster
    ```
 
-1. Confirm that at least one collector is defined under `collectors:`. Chart 4.x requires this; the install fails if `collectors:` is empty or missing. The default `values.yaml` already defines the `alloy-singleton` collector that every feature in this file is assigned to:
-
-   ```yaml
-   collectors:
-     alloy-singleton:
-       presets: [singleton]
-   ```
-
-   If you add or rename a collector, update every `collector: alloy-singleton` reference in the file to match, or the install fails with an error naming the missing collector.
-
-1. The default values file assumes that you have deployed Loki in the `loki` namespace and will deploy the Kubernetes monitoring stack in the `meta` namespace. If you have deployed Loki in a different namespace, or the monitoring stack in a namespace other than `meta`, you will need to update several keys in `values.yaml`. There is no single `namespaces` key; namespace scoping is set independently for each feature:
+1. The default values file assumes that you have deployed Loki in the `loki` namespace and will deploy the Kubernetes monitoring stack in the `meta` namespace. If you have deployed Loki in a different namespace, or the monitoring stack in a namespace other than `meta`, you will need to update several keys in `values-chart-v3.yaml`. There is no single `namespaces` key; namespace scoping is set independently for each feature:
 
    | Key | Format | Purpose |
    | --- | --- | --- |
@@ -157,7 +147,7 @@ Now that you have prepared your environment and collected the necessary credenti
    | `clusterEvents.namespaces` | list | Namespace(s) to capture Kubernetes events from. |
    | `clusterMetrics.cadvisor.metricsTuning.includeNamespaces` | list | Namespace(s) to keep cadvisor metrics for. This is a metric filter, not a discovery scope. |
    | `clusterMetrics.kube-state-metrics.namespaces` | list, or comma-separated string | Namespace(s) to collect Kubernetes resource state from. |
-   | `podLogsViaKubernetesApi.namespaces` | list | Namespace(s) to collect pod logs from. |
+   | `podLogs.namespaces` | list | Namespace(s) to collect pod logs from. |
 
    For example, to add a namespace to the Loki discovery scope:
 
@@ -172,15 +162,15 @@ Now that you have prepared your environment and collected the necessary credenti
 
    Each of these keys defaults to an empty list, which means "collect from all namespaces". Removing a key restores that default for that feature only; it does not affect the other keys in this table.
 
-   Also note that `destinations.prometheus.secret.namespace` and `destinations.loki.secret.namespace` must match the namespace where you created the `metrics` and `logs` secrets, which is `meta` by default. Update them if you installed the monitoring stack into a different namespace.
+   Also note that `destinations[].secret.namespace` (used for both the `metrics` and `logs` destinations) must match the namespace where you created the `metrics` and `logs` secrets, which is `meta` by default. Update it if you installed the monitoring stack into a different namespace.
 
-1. Deploy the Kubernetes Monitoring Helm chart using the modified `values.yaml` file, pinning the chart to the 4.x line:
+1. Deploy the Kubernetes Monitoring Helm chart using the modified `values-chart-v3.yaml` file, pinning the chart to the 3.x line:
 
    ```bash
    helm install meta-loki grafana/k8s-monitoring \
     --namespace meta \
-    --version "^4" \
-    -f values.yaml
+    --version "^3" \
+    -f values-chart-v3.yaml
    ```
 
 1. Verify that the Kubernetes Monitoring Helm chart has been deployed successfully:
@@ -189,15 +179,14 @@ Now that you have prepared your environment and collected the necessary credenti
     kubectl get pods -n meta
     ```
 
-    You should see a list of pods running in the `meta` namespace, similar to the following. Exact pod names and counts depend on your cluster size and which features you have enabled:
+    You should see a list of pods running in the `meta` namespace.
 
     ```console
-    NAME                                           READY   STATUS    RESTARTS ...
-    meta-loki-alloy-operator-7d8f9c6b5d-x2k9p      1/1     Running   0        ...
-    meta-loki-alloy-singleton-6d7f8d8b86-sg4wx     2/2     Running   0        ...
-    meta-loki-kube-state-metrics-64bdcfcbd-5snqz   1/1     Running   0        ...
-    meta-loki-node-exporter-855l5                  1/1     Running   0        ...
-    meta-loki-node-exporter-b976b                  1/1     Running   0        ...
+    NAME                                           READY   STATUS    RESTARTS ...        
+    meta-loki-alloy-singleton-6d7f8d8b86-sg4wx     2/2     Running   0        ...       
+    meta-loki-kube-state-metrics-64bdcfcbd-5snqz   1/1     Running   0        ...       
+    meta-loki-node-exporter-855l5                  1/1     Running   0        ...       
+    meta-loki-node-exporter-b976b                  1/1     Running   0        ...       
     meta-loki-node-exporter-vsm4s                  1/1     Running   0        ...
     ```
 

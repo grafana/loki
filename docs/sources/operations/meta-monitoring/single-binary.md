@@ -2,7 +2,7 @@
 title: Single binary meta-monitoring
 menuTitle: Single Binary Meta Monitoring
 description: Describes how to deploy Meta Monitoring for single binary
-weight: 100
+weight: 400
 ---
 
 # Single binary meta-monitoring

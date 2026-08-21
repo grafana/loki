@@ -1,8 +1,8 @@
 ---
-# This values file targets the k8s-monitoring Helm chart version 4.x, and is documented at:
-# https://grafana.com/docs/loki/latest/operations/meta-monitoring/deploy/
-# If you need to install an older, still-supported 3.8.x release of the chart, use
-# values-chart-v3.yaml instead.
+# This values file targets the k8s-monitoring Helm chart version 3.8.x (the "3.8-stable" branch),
+# and is documented at:
+# https://grafana.com/docs/loki/latest/operations/meta-monitoring/deploy-chart-v3/
+# If you are installing an unpinned or 4.x version of the chart, use values.yaml instead.
 
 # Sets the global scrape interval for Alloy components
 global:
@@ -16,7 +16,7 @@ cluster:
 # The credentials are stored in the secrets metrics and logs
 # Further authentication methods are supported, see the documentation (https://github.com/grafana/k8s-monitoring-helm/tree/main/charts/k8s-monitoring/docs/examples/auth)
 destinations:
-  prometheus:
+  - name: prometheus
     type: prometheus
     url: https://<PROMETHEUS-ENDPOINT>/api/prom/push
     auth:
@@ -24,11 +24,11 @@ destinations:
       usernameKey: username
       passwordKey: password
     secret:
-      create: false
-      name: metrics
-      namespace: meta
+        create: false
+        name: metrics
+        namespace: meta
 
-  loki:
+  - name: loki
     type: loki
     url: https://<LOKI-ENDPOINT>/loki/api/v1/push
     auth:
@@ -36,13 +36,13 @@ destinations:
       usernameKey: username
       passwordKey: password
     secret:
-      create: false
-      name: logs
-      namespace: meta
+        create: false
+        name: logs
+        namespace: meta
 
-# Components to be monitored by the meta-monitoring Helm chart.
+# Components to be monitored by the meta-monitoring Helm chart. 
 # Two integrations are being used:
-# - alloy: https://github.com/grafana/k8s-monitoring-helm/blob/main/charts/k8s-monitoring/charts/feature-integrations/docs/integrations/alloy.md
+# - alloy: https://github.com/grafana/k8s-monitoring-helm/blob/main/charts/k8s-monitoring/charts/feature-integrations/docs/integrations/alloy.md 
 # - loki: https://github.com/grafana/k8s-monitoring-helm/blob/main/charts/k8s-monitoring/charts/feature-integrations/docs/integrations/loki.md
 integrations:
   collector: alloy-singleton
@@ -70,7 +70,6 @@ integrations:
               tenant:
               org_id:
               user:
-
 # (Optional) Kubernetes events are captured as logs and are annotated with additional metadata to make them easier to search and filter.
 clusterEvents:
   enabled: true
@@ -78,7 +77,6 @@ clusterEvents:
   namespaces:
     - meta
     - loki
-
 # A collection of metric collectors that gather metrics from various sources in the cluster.
 # (Required) cadvisor - Used to collect Loki pod metrics. Cadvisor is automatically deployed.
 # kubelet - Kubernetes information on each node
@@ -113,57 +111,58 @@ clusterMetrics:
     metricsTuning:
       useDefaultAllowList: false
       includeMetrics: [(.+)]
-
-# node-exporter, windows-exporter, and kepler moved out of clusterMetrics in chart 4.x. Node metrics
-# are now configured under hostMetrics.linuxHosts; kepler and opencost are unused here and left
-# disabled by omission.
-hostMetrics:
-  enabled: true
-  collector: alloy-singleton
-  linuxHosts:
+  node-exporter:
     enabled: true
+    deploy: true
     metricsTuning:
       useIntegrationAllowList: true
-
-# Deploys the telemetry services this file relies on: kube-state-metrics (for clusterMetrics above)
-# and node-exporter (for hostMetrics.linuxHosts above).
-telemetryServices:
-  kube-state-metrics:
-    deploy: true
-  node-exporter:
-    deploy: true
+  windows-exporter:
+    enabled: false
+    deploy: false
+  kepler:
+    enabled: false
+    deploy: false
+  opencost:
+    enabled: false
+    deploy: false
 
 nodeLogs:
   enabled: false
 
-# Enable pod log collection for the cluster. Will collect logs from all pods in both the meta and loki namespace.
-#
-# chart 4.x replaced the single `podLogs` feature (and its `labelsToKeep` filter) with
-# `podLogsViaKubernetesApi`, `podLogsViaLoki`, and `podLogsViaOpenTelemetry`. This file keeps the
-# `kubernetesApi` gather method used previously.
-#
-# `namespace`, `pod`, `container`, and `job` are always attached as labels by this feature and do not
-# need to be listed here. `level`, `service_name`, and `cluster` come from log line processing and the
-# global cluster label, not from this section. `app` and `component` are copied here explicitly
-# because, unlike the labels above, they come from Kubernetes Pod labels rather than from Alloy's own
-# discovery metadata. Review this mapping if you rely on other Kubernetes Pod labels being present as
-# Loki labels.
-podLogsViaKubernetesApi:
+# Enable pod log collection for the cluster. Will collect logs from all pods in both the meta and loki namespace. 
+podLogs:
   enabled: true
   collector: alloy-singleton
+  labelsToKeep:
+    - app
+    - app_kubernetes_io_name
+    - component
+    - container
+    - job
+    - level
+    - namespace
+    - service_name
+    - cluster
+  gatherMethod: kubernetesApi
   namespaces:
     - meta
     - loki
-  labels:
-    app: app
-    app_kubernetes_io_name: app.kubernetes.io/name
-    component: app.kubernetes.io/component
   structuredMetadata:
-    # A null value here is skipped by the chart, so the label name must be repeated explicitly.
-    pod: pod
+    pod:
 
 # Collectors
 # The Alloy Singleton is a single instance of the Alloy Collector that is deployed in the cluster.
-collectors:
-  alloy-singleton:
-    presets: [singleton]
+alloy-singleton:
+  enabled: true
+
+alloy-metrics:
+  enabled: false
+
+alloy-logs:
+  enabled: false
+
+alloy-profiles:
+  enabled: false
+
+alloy-receiver:
+  enabled: false
