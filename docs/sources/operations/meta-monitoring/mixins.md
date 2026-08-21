@@ -4,13 +4,14 @@ menuTitle: Install Mixins
 description: Describes the Loki mixins, how to configure and install the dashboards, alerts, and recording rules.
 weight: 100
 ---
+
 # Install dashboards, alerts, and recording rules
 
 Loki is instrumented to expose metrics about itself via the `/metrics` endpoint, designed to be scraped by Prometheus. Each Loki release includes a mixin. The Loki mixin provides a set of Grafana dashboards, Prometheus recording rules and alerts for monitoring Loki.
 
 To set up monitoring using the mixin, you need to:
 
-1. Deploy the Kubernetes Monitoring Helm chart. Follow the instructions in the [Deploy Loki Meta-monitoring](https://grafana.com/docs/loki/latest/operations/meta-monitoring/deploy) documentation.
+1. Deploy the Kubernetes Monitoring Helm chart. Follow the instructions in the [Deploy Loki Meta-monitoring](https://grafana.com/docs/loki/<LOKI_VERSION>/operations/meta-monitoring/deploy) documentation.
 1. Be actively storing metrics from your Loki cluster in Grafana Cloud or a separate LGTM stack.
 
 This procedure assumes that you have set up Loki using the Helm chart.
@@ -26,10 +27,10 @@ After Loki metrics are scraped by the Kubernetes Monitoring Helm chart and store
 Each Loki release includes a mixin that includes:
 
 - Relevant dashboards for overseeing the health of Loki as a whole, as well as its individual Loki components
-- [Recording rules](https://grafana.com/docs/loki/latest/alert/#recording-rules) that compute metrics that are used in the dashboards
+- [Recording rules](https://grafana.com/docs/loki/<LOKI_VERSION>/alert/#recording-rules) that compute metrics that are used in the dashboards
 - Alerts that trigger when Loki generates metrics that are outside of normal parameters
 
-To install the mixins in Grafana and Mimir, the general steps are as follows:
+To install the mixins in Grafana and a Prometheus-compatible rules store, the general steps are as follows:
 
 1. Download the mixin dashboards from the Loki repository.
 
@@ -46,7 +47,13 @@ To install the mixins in Grafana and Mimir, the general steps are as follows:
    cd loki
    ```
 
-1. Once you have a local copy of the repository, navigate to the `production/loki-mixin-compiled` directory.
+1. Check out the tag that matches the version of Loki you are running, so that the dashboards, alerts, and recording rules match the metrics your Loki cluster exposes. For example, if you are running Loki 3.7.6:
+
+   ```bash
+   git checkout v3.7.6
+   ```
+
+1. Once you have a local copy of the repository at the matching version, navigate to the `production/loki-mixin-compiled` directory.
 
    ```bash
    cd production/loki-mixin-compiled
@@ -63,6 +70,12 @@ Use the instructions in the [README](https://github.com/grafana/loki/tree/main/p
 
 The `dashboards` directory includes the monitoring dashboards that can be installed into your Grafana instance.
 Refer to [Import a dashboard](https://grafana.com/docs/grafana/latest/dashboards/build-dashboards/import-dashboards/) in the Grafana documentation.
+
+{{< admonition type="note" >}}
+The dashboards and alerts expect your metrics to carry these labels: `cluster`, `namespace`, `job`, `container`, `pod`, and `instance`. The Kubernetes Monitoring Helm chart provides them, because it adds the cluster name as a global label and collects container and node metrics using cAdvisor, kube-state-metrics, and Node Exporter.
+
+If your setup uses different label names, or does not collect container and node metrics, some panels and alerts show no data until you relabel your metrics to match.
+{{< /admonition >}}
 
 {{< admonition type="tip" >}}
 Install all dashboards.
@@ -102,10 +115,8 @@ The rules and alerts need to be installed into a Prometheus instance, Mimir or a
 
 You can find the YAML files for alerts and rules in the following directories in the Loki repo:
 
-For microservices mode:
-
 * `production/loki-mixin-compiled/alerts.yaml` (Optional)
-* `production/loki-mixin-compiled/rules.yaml` (Required)
+* `production/loki-mixin-compiled/rules.yaml` (Required for some dashboard panels to show data)
 
 You use `mimirtool` to load the mixin alerts and rules definitions into a Prometheus instance, Mimir, or a Grafana Enterprise Metrics cluster. The following examples show how to load the mixin alerts and rules into a Grafana Cloud instance.
 
