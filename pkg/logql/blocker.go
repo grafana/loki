@@ -43,6 +43,9 @@ func (qb *queryBlocker) isBlocked(ctx context.Context, tenant string) bool {
 	logger := log.With(qb.logger, "user", tenant, "type", typ)
 
 	for _, b := range blocks {
+		if b == nil {
+			continue
+		}
 
 		if b.Hash > 0 {
 			if b.Hash == util.HashedQuery(query) {
