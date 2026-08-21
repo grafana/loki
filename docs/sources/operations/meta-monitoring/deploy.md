@@ -156,7 +156,7 @@ Now that you have prepared your environment and collected the necessary credenti
    | `integrations.alloy.instances[0].namespaces` | list | Namespace(s) to discover the monitoring stack's own Alloy collectors in. |
    | `clusterEvents.namespaces` | list | Namespace(s) to capture Kubernetes events from. |
    | `clusterMetrics.cadvisor.metricsTuning.includeNamespaces` | list | Namespace(s) to keep cadvisor metrics for. This is a metric filter, not a discovery scope. |
-   | `clusterMetrics.kube-state-metrics.namespaces` | list, or comma-separated string | Namespace(s) to collect Kubernetes resource state from. |
+   | `telemetryServices.kube-state-metrics.namespaces` | list, or comma-separated string | Namespace(s) to collect Kubernetes resource state from. In chart 4.x this key must be set under `telemetryServices`, not under `clusterMetrics`. |
    | `podLogsViaKubernetesApi.namespaces` | list | Namespace(s) to collect pod logs from. |
 
    For example, to add a namespace to the Loki discovery scope:

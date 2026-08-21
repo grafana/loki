@@ -109,7 +109,6 @@ clusterMetrics:
     enabled: false
   kube-state-metrics:
     enabled: true
-    namespaces: loki,meta
     metricsTuning:
       useDefaultAllowList: false
       includeMetrics: [(.+)]
@@ -130,6 +129,10 @@ hostMetrics:
 telemetryServices:
   kube-state-metrics:
     deploy: true
+    # In chart 4.x, kube-state-metrics is a dependency of the telemetry-services subchart, so this is
+    # where its namespace scope must be set. Setting clusterMetrics.kube-state-metrics.namespaces has
+    # no effect on 4.x, and kube-state-metrics would watch every namespace.
+    namespaces: loki,meta
   node-exporter:
     deploy: true
 
