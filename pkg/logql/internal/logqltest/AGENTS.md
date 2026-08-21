@@ -1,8 +1,8 @@
 # Working on the logqltest DSL
 
-This package defines the declarative test DSL for LogQL metric queries. For **writing** `.logqltest`
-scripts see [`testdata/AGENTS.md`](testdata/AGENTS.md); this file is about **changing the DSL
-itself**.
+This package defines the declarative test DSL for LogQL metric and log-selection queries. For
+**writing** `.logqltest` scripts see [`testdata/AGENTS.md`](testdata/AGENTS.md); this file is about
+**changing the DSL itself**.
 
 The DSL is described in four places that must stay in sync:
 

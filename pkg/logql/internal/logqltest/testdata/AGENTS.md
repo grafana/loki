@@ -138,8 +138,18 @@ only what they can't show, and prefer a trailing `# …` on the relevant line ov
   needs it — not per scenario.
 - Never restate the query; no line-by-line narration.
 
+## Log-selection scenarios
+
+A log-selection query (e.g. `{app="foo"} |= "bar"`) returns streams, not series — see README.md
+"Streams" expected results. The instant/range cross-check in the checklist above doesn't apply the
+same way: a log-selection `eval range` has no per-step matrix, just one window's worth of lines, so
+there's no "last step equals the instant" to size for. Instead cross-check by picking an `eval
+range` window and an `eval instant` time that should return the *same* lines (accounting for the
+default 30s look-back — see README.md "Log-selection window" for the exact boundary rule).
+
 ## Files
 
 One feature per file: `range_aggregations`, `vector_aggregations`, `binary_operations`,
-`functions` (`label_replace`, `vector`), `conversions`, … add more as coverage grows
-(`line_filters`, `label_filters`, `parsers`, `formatters`, …).
+`functions` (`label_replace`, `vector`), `conversions`, `log_selection` (stream selectors, line
+filters, as opposed to a metric aggregation), … add more as coverage grows (`line_filters`,
+`label_filters`, `parsers`, `formatters`, …).
