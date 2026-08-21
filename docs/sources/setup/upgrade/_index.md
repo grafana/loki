@@ -37,6 +37,22 @@ The output is incredibly verbose as it shows the entire internal config struct u
 
 ## Main / Unreleased
 
+### New Kafka configuration parameter: `sasl_mechanism`
+
+The Kafka configuration block has a new optional parameter `sasl_mechanism` to control which SASL authentication mechanism is used when connecting to Kafka brokers.
+
+Supported values: `PLAIN` (default), `SCRAM-SHA-256`, `SCRAM-SHA-512`.
+
+The default value is `PLAIN`, preserving full backwards compatibility with existing deployments. No action is required unless your broker requires SCRAM-SHA-256 or SCRAM-SHA-512 (for example, AWS MSK or Confluent Cloud with SCRAM-only authentication).
+
+```yaml
+kafka:
+  sasl_username: my-user
+  sasl_password: ${KAFKA_PASSWORD}
+  sasl_mechanism: SCRAM-SHA-256  # or SCRAM-SHA-512; defaults to PLAIN
+```
+
+Equivalently, use the CLI flag `-kafka.sasl-mechanism`.
 ### `frontend.encoding` default changed to `protobuf`
 
 The default value of `-frontend.encoding` / `frontend.encoding` changed from `json` to `protobuf`. This only affects the internal request/response encoding between the query-frontend, query-scheduler, and querier. Client-facing APIs are unchanged, and no persisted state uses this setting, so no data migration is required.
