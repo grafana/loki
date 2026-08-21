@@ -61,10 +61,11 @@ func TestFormatCoresAndRate(t *testing.T) {
 
 func TestShortDuration(t *testing.T) {
 	cases := map[time.Duration]string{
-		6 * time.Hour:    "6h",
-		5 * time.Minute:  "5m",
-		90 * time.Second: "90s",
-		time.Hour:        "1h",
+		6 * time.Hour:      "6h",
+		5 * time.Minute:    "5m",
+		90 * time.Second:   "1m30s",
+		time.Hour:          "1h",
+		1455 * time.Minute: "24h15m",
 	}
 	for d, want := range cases {
 		if got := shortDuration(d); got != want {

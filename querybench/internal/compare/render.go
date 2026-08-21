@@ -67,7 +67,7 @@ var columns = []column{
 func writeTable(sb *strings.Builder, a, b Input) {
 	order, aByKey, bByKey := alignQueries(a.Report, b.Report)
 
-	headers := append([]string{"Query type", "Query expression", "Query steps"}, columnHeaders()...)
+	headers := append([]string{"Query type", "Query name", "Query expression", "Query timerange", "Query steps"}, columnHeaders()...)
 	sb.WriteString("| " + strings.Join(headers, " | ") + " |\n")
 	sb.WriteString("|" + strings.Repeat(" --- |", len(headers)) + "\n")
 
@@ -80,7 +80,9 @@ func writeTable(sb *strings.Builder, a, b Input) {
 
 		cells := []string{
 			string(ref.Type),
+			mdEscape(ref.Name),
 			exprCell(ref),
+			timerangeCell(ref),
 			stepCell(ref),
 		}
 		for _, c := range columns {
@@ -175,11 +177,16 @@ func fromUint(pick func(m report.SystemStats) *uint64) func(q *report.Query) (fl
 	}
 }
 
-// exprCell renders the expression column: the expression plus the data window,
-// which distinguishes two range queries that share an expression but span
-// different windows.
+// exprCell renders the expression column as inline code.
 func exprCell(q *report.Query) string {
-	return "`" + mdEscape(q.Expr) + "`<br>window: " + shortDuration(dataWindow(q))
+	return "`" + mdEscape(q.Expr) + "`"
+}
+
+// timerangeCell renders the query's data time range: the span of data actually
+// read (the window plus the longest range vector). It distinguishes two queries
+// that share an expression but span different ranges.
+func timerangeCell(q *report.Query) string {
+	return shortDuration(dataWindow(q))
 }
 
 // stepCell renders the step column, blank for instant queries.

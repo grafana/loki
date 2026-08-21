@@ -98,12 +98,12 @@ func TestRender(t *testing.T) {
 		"- **chunks** — `a`: 2 runs/query, 2026-08-18T00:00:00Z .. 2026-08-19T00:00:00Z — chunks backend\n" +
 		"- **dataobj** — `b`: 4 runs/query, 2026-08-19T00:00:00Z .. 2026-08-20T00:00:00Z — dataobj backend\n" +
 		"\n" +
-		"| Query type | Query expression | Query steps | Min latency | 50p latency | Max latency | Processed bytes | Fetched bytes (object storage) | Fetched bytes (memcached) | Object storage requests | Querier CPU (s/query) | Querier peak CPU (cores) | Querier mem peak | Querier mem alloc |\n" +
-		"| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |\n" +
-		"| instant | `avg(i)`<br>window: 1h | – | 500 ms / 1.00 s (+100.0%) | 500 ms / 1.00 s (+100.0%) | 700 ms / 1.00 s (+42.9%) | 1 KB / 2 KB (+100.0%) | 2 KB / 2 KB (+0.0%) | 3 KB / 2 KB (-33.3%) | 100 / 200 (+100.0%) | 2.00 s / 3.00 s (+50.0%) | 2.00 / 3.00 (+50.0%) | 800 MB / 400 MB (-50.0%) | 1 KB/s / 2 KB/s (+100.0%) |\n" +
-		"| range | `sum(r)`<br>window: 6h | 5m | 1.00 s / 2.00 s (+100.0%) | 1.00 s / 2.00 s (+100.0%) | 3.00 s / 2.00 s (-33.3%) | 1 KB / 2 KB (+100.0%) | 2 KB / 2 KB (+0.0%) | 3 KB / 2 KB (-33.3%) | 50 / 100 (+100.0%) | 2.00 s / 3.00 s (+50.0%) | 2.00 / 3.00 (+50.0%) | 800 MB / 400 MB (-50.0%) | 1 KB/s / 2 KB/s (+100.0%) |\n" +
-		"| range | `sum(a)`<br>window: 1h | 1m | 1.00 s / – | 1.00 s / – | 1.00 s / – | 5 B / – | – / – | – / – | – / – | – / – | 1.00 / – | – / – | – / – |\n" +
-		"| range | `sum(b)`<br>window: 2h | 5m | – / 5.00 s | – / 5.00 s | – / 5.00 s | – / 10 B | – / – | – / – | – / – | – / – | – / 4.00 | – / – | – / – |\n" +
+		"| Query type | Query name | Query expression | Query timerange | Query steps | Min latency | 50p latency | Max latency | Processed bytes | Fetched bytes (object storage) | Fetched bytes (memcached) | Object storage requests | Querier CPU (s/query) | Querier peak CPU (cores) | Querier mem peak | Querier mem alloc |\n" +
+		"| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |\n" +
+		"| instant | avg(i) | `avg(i)` | 1h | – | 500 ms / 1.00 s (+100.0%) | 500 ms / 1.00 s (+100.0%) | 700 ms / 1.00 s (+42.9%) | 1 KB / 2 KB (+100.0%) | 2 KB / 2 KB (+0.0%) | 3 KB / 2 KB (-33.3%) | 100 / 200 (+100.0%) | 2.00 s / 3.00 s (+50.0%) | 2.00 / 3.00 (+50.0%) | 800 MB / 400 MB (-50.0%) | 1 KB/s / 2 KB/s (+100.0%) |\n" +
+		"| range | sum(r) | `sum(r)` | 6h | 5m | 1.00 s / 2.00 s (+100.0%) | 1.00 s / 2.00 s (+100.0%) | 3.00 s / 2.00 s (-33.3%) | 1 KB / 2 KB (+100.0%) | 2 KB / 2 KB (+0.0%) | 3 KB / 2 KB (-33.3%) | 50 / 100 (+100.0%) | 2.00 s / 3.00 s (+50.0%) | 2.00 / 3.00 (+50.0%) | 800 MB / 400 MB (-50.0%) | 1 KB/s / 2 KB/s (+100.0%) |\n" +
+		"| range | sum(a) | `sum(a)` | 1h | 1m | 1.00 s / – | 1.00 s / – | 1.00 s / – | 5 B / – | – / – | – / – | – / – | – / – | 1.00 / – | – / – | – / – |\n" +
+		"| range | sum(b) | `sum(b)` | 2h | 5m | – / 5.00 s | – / 5.00 s | – / 5.00 s | – / 10 B | – / – | – / – | – / – | – / – | – / 4.00 | – / – | – / – |\n" +
 		"\n" +
 		"Notes:\n" +
 		"\n" +

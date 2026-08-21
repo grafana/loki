@@ -75,19 +75,27 @@ func trimZeros(s string) string {
 	return s
 }
 
-// shortDuration renders a duration compactly, preferring whole hours, minutes or
-// seconds (e.g. 6h, 15m, 30s).
+// shortDuration renders a duration compactly as whole hours, minutes and
+// seconds, dropping any zero component (e.g. 6h, 15m, 30s, 24h15m). Sub-second
+// durations, which the tool does not produce for windows or steps, fall back to
+// the standard form.
 func shortDuration(d time.Duration) string {
-	switch {
-	case d == 0:
+	if d == 0 {
 		return "0s"
-	case d%time.Hour == 0:
-		return fmt.Sprintf("%dh", d/time.Hour)
-	case d%time.Minute == 0:
-		return fmt.Sprintf("%dm", d/time.Minute)
-	case d%time.Second == 0:
-		return fmt.Sprintf("%ds", d/time.Second)
-	default:
+	}
+	if d%time.Second != 0 {
 		return d.String()
 	}
+
+	var b strings.Builder
+	if h := d / time.Hour; h > 0 {
+		fmt.Fprintf(&b, "%dh", h)
+	}
+	if m := (d % time.Hour) / time.Minute; m > 0 {
+		fmt.Fprintf(&b, "%dm", m)
+	}
+	if s := (d % time.Minute) / time.Second; s > 0 {
+		fmt.Fprintf(&b, "%ds", s)
+	}
+	return b.String()
 }
