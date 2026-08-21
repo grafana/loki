@@ -2,7 +2,7 @@ package storage
 
 import (
 	"context"
-	"errors"
+	errs "errors"
 	"sort"
 	"time"
 
@@ -767,15 +767,15 @@ func fetchLazyChunks(ctx context.Context, s config.SchemaConfig, chunks []*LazyC
 		}(f, chunks)
 	}
 
-	var lastErr error
+	var errors []error
 	for i := 0; i < len(chksByFetcher); i++ {
 		if err := <-errChan; err != nil {
-			lastErr = err
+			errors = append(errors, err)
 		}
 	}
 
-	if lastErr != nil {
-		return lastErr
+	if len(errors) > 0 {
+		return errs.Join(errors...)
 	}
 
 	for _, c := range chunks {
