@@ -71,10 +71,6 @@ cloud.google.com/go/storage/internal/apiv2/storagepb
 # dario.cat/mergo v1.0.2
 ## explicit; go 1.13
 dario.cat/mergo
-# filippo.io/edwards25519 v1.2.0
-## explicit; go 1.24.0
-filippo.io/edwards25519
-filippo.io/edwards25519/field
 # github.com/Azure/azure-sdk-for-go/sdk/azcore v1.23.0
 ## explicit; go 1.25.0
 github.com/Azure/azure-sdk-for-go/sdk/azcore
@@ -827,9 +823,6 @@ github.com/go-playground/universal-translator
 # github.com/go-playground/validator/v10 v10.30.3
 ## explicit; go 1.25.0
 github.com/go-playground/validator/v10
-# github.com/go-sql-driver/mysql v1.10.0
-## explicit; go 1.24.0
-github.com/go-sql-driver/mysql
 # github.com/go-viper/mapstructure/v2 v2.5.0
 ## explicit; go 1.18
 github.com/go-viper/mapstructure/v2
@@ -1165,9 +1158,6 @@ github.com/mdlayher/socket
 # github.com/mdlayher/vsock v1.3.0
 ## explicit; go 1.25.0
 github.com/mdlayher/vsock
-# github.com/mfridman/interpolate v0.0.2
-## explicit; go 1.19
-github.com/mfridman/interpolate
 # github.com/miekg/dns v1.1.72
 ## explicit; go 1.24.0
 github.com/miekg/dns
@@ -1394,19 +1384,6 @@ github.com/pmezard/go-difflib/difflib
 # github.com/power-devops/perfstat v0.0.0-20260805114148-88456608a4f6
 ## explicit; go 1.14
 github.com/power-devops/perfstat
-# github.com/pressly/goose/v3 v3.27.3
-## explicit; go 1.25.7
-github.com/pressly/goose/v3
-github.com/pressly/goose/v3/database
-github.com/pressly/goose/v3/database/dialect
-github.com/pressly/goose/v3/internal/controller
-github.com/pressly/goose/v3/internal/dialects
-github.com/pressly/goose/v3/internal/gooseutil
-github.com/pressly/goose/v3/internal/legacystore
-github.com/pressly/goose/v3/internal/sqlparser
-github.com/pressly/goose/v3/lock
-github.com/pressly/goose/v3/lock/internal/store
-github.com/pressly/goose/v3/lock/internal/table
 # github.com/prometheus/alertmanager v0.33.1
 ## explicit; go 1.25.0
 github.com/prometheus/alertmanager/api/v2/models
@@ -1564,9 +1541,6 @@ github.com/segmentio/fasthash/fnv1a
 # github.com/sercand/kuberesolver/v6 v6.0.1
 ## explicit; go 1.22.0
 github.com/sercand/kuberesolver/v6
-# github.com/sethvargo/go-retry v0.4.0
-## explicit; go 1.25
-github.com/sethvargo/go-retry
 # github.com/shirou/gopsutil/v4 v4.26.7
 ## explicit; go 1.24.0
 github.com/shirou/gopsutil/v4/common
