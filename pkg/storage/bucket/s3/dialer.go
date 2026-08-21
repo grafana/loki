@@ -22,11 +22,7 @@ func instrumentedDialContextFunc(dial dialContextFunc, dialerName string) dialCo
 	tracked := newAddressTracker(dialerName).wrap(dial)
 	return conntrack.NewDialContextFunc(
 		conntrack.DialWithName(dialerName),
-		// Passed as an unnamed func type because go-conntrack takes its own
-		// named one, which dialContextFunc is not assignable to.
-		conntrack.DialWithDialContextFunc(func(ctx context.Context, network, address string) (net.Conn, error) {
-			return tracked(ctx, network, address)
-		}),
+		conntrack.DialWithDialContextFunc(tracked),
 	)
 }
 
@@ -43,9 +39,7 @@ func instrumentedDialContextFunc(dial dialContextFunc, dialerName string) dialCo
 type shufflingDialer struct {
 	dialer *net.Dialer
 
-	// dialContext makes the individual connection attempts. It defaults to
-	// dialer.DialContext and is swapped out to count attempts.
-	dialContext dialContextFunc
+	dialContext dialContextFunc // Next chained dialer function.
 
 	// lookupIPAddr and shuffle are hooks for tests. shuffle must permute addrs
 	// in place.

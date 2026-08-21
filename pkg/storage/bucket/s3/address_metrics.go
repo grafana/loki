@@ -62,7 +62,7 @@ func newAddressTracker(dialerName string) *addressTracker {
 // wrap returns dial with address tracking added. It must sit below any dialer
 // that walks several addresses per call, so that it sees the address actually
 // connected to rather than the hostname it started from.
-func (t *addressTracker) wrap(dial dialContextFunc) dialContextFunc {
+func (t *addressTracker) wrap(dial dialContextFunc) func(ctx context.Context, network, address string) (net.Conn, error) {
 	return func(ctx context.Context, network, address string) (net.Conn, error) {
 		conn, err := dial(ctx, network, address)
 		if err != nil {
