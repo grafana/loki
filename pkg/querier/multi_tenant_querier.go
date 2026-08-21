@@ -2,7 +2,6 @@ package querier
 
 import (
 	"context"
-	"fmt"
 	"sort"
 	"strings"
 
@@ -60,15 +59,14 @@ func (q *MultiTenantQuerier) SelectLogs(ctx context.Context, params logql.Select
 		return nil, err
 	}
 	matchedTenants, filteredMatchers := filterValuesByMatchers(defaultTenantLabel, tenantIDs, selector.Matchers()...)
-	params.Selector = replaceMatchers(selector, filteredMatchers).String()
+	updatedSelector := replaceMatchers(selector, filteredMatchers)
 
-	parsed, err := syntax.ParseLogSelector(params.Selector, true)
-	if err != nil {
-		return nil, fmt.Errorf("log selector is invalid after matcher update: %w", err)
-	}
+	// Update Plan with the modified AST directly (no string round-trip)
 	params.Plan = &plan.QueryPlan{
-		AST: parsed,
+		AST: updatedSelector,
 	}
+	// Keep Selector in sync for backward compatibility during version-skew rollout
+	params.Selector = updatedSelector.String()
 
 	// in case of multiple tenants, we need to filter the store chunks by tenant if they are provided
 	storeOverridesByTenant := make(map[string][]*logproto.ChunkRef)
@@ -108,11 +106,17 @@ func (q *MultiTenantQuerier) SelectSamples(ctx context.Context, params logql.Sel
 		return q.Querier.SelectSamples(ctx, params)
 	}
 
-	matchedTenants, updatedSelector, err := removeTenantSelector(params, tenantIDs)
+	matchedTenants, updatedExpr, err := removeTenantSelector(params, tenantIDs)
 	if err != nil {
 		return nil, err
 	}
-	params.Selector = updatedSelector.String()
+
+	// Update Plan with the modified AST directly (no string round-trip)
+	params.Plan = &plan.QueryPlan{
+		AST: updatedExpr,
+	}
+	// Keep Selector in sync for backward compatibility during version-skew rollout
+	params.Selector = updatedExpr.String()
 
 	// in case of multiple tenants, we need to filter the store chunks by tenant if they are provided
 	storeOverridesByTenant := make(map[string][]*logproto.ChunkRef)
