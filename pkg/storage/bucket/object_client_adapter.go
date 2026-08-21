@@ -30,7 +30,7 @@ type ObjectClientAdapter struct {
 	storeType string
 }
 
-func NewObjectClient(ctx context.Context, backend string, cfg ConfigWithNamedStores, component string, hedgingCfg hedging.Config, logger log.Logger) (*ObjectClientAdapter, error) {
+func NewObjectClient(ctx context.Context, backend string, cfg ConfigWithNamedStores, component string, hedgingCfg hedging.Config, maxParallel int, logger log.Logger) (*ObjectClientAdapter, error) {
 	var (
 		storeType = backend
 		storeCfg  = cfg.Config
@@ -44,7 +44,7 @@ func NewObjectClient(ctx context.Context, backend string, cfg ConfigWithNamedSto
 		}
 	}
 
-	bucket, err := NewClient(ctx, storeType, storeCfg, component, logger, nil)
+	bucket, err := NewClient(ctx, storeType, storeCfg, component, logger, maxParallel, nil)
 	if err != nil {
 		return nil, fmt.Errorf("create bucket: %w", err)
 	}
@@ -64,7 +64,7 @@ func NewObjectClient(ctx context.Context, backend string, cfg ConfigWithNamedSto
 			return hedgedRT
 		}
 
-		hedgedBucket, err = NewClient(ctx, storeType, storeCfg, component, logger, wrapHedged)
+		hedgedBucket, err = NewClient(ctx, storeType, storeCfg, component, logger, maxParallel, wrapHedged)
 		if err != nil {
 			return nil, fmt.Errorf("create hedged bucket: %w", err)
 		}

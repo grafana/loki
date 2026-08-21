@@ -224,7 +224,7 @@ func (cfg *Config) disableRetries(backend string) error {
 }
 
 // NewClient creates a new bucket client based on the configured backend
-func NewClient(ctx context.Context, backend string, cfg Config, name string, logger log.Logger, wrapRT func(http.RoundTripper) http.RoundTripper) (objstore.InstrumentedBucket, error) {
+func NewClient(ctx context.Context, backend string, cfg Config, name string, logger log.Logger, connectionPoolSize int, wrapRT func(http.RoundTripper) http.RoundTripper) (objstore.InstrumentedBucket, error) {
 	var (
 		client objstore.Bucket
 		err    error
@@ -242,7 +242,7 @@ func NewClient(ctx context.Context, backend string, cfg Config, name string, log
 	// TODO: add support for other backends that loki already supports
 	switch backend {
 	case S3:
-		client, err = s3.NewBucketClient(cfg.S3, name, logger, instrumentTransport())
+		client, err = s3.NewBucketClient(cfg.S3, name, connectionPoolSize, logger, instrumentTransport())
 	case GCS:
 		client, err = gcs.NewBucketClient(ctx, cfg.GCS, name, logger, instrumentTransport())
 	case Azure:

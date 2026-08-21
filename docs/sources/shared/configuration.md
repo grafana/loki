@@ -7186,12 +7186,12 @@ s3:
     # Maximum number of idle (keep-alive) connections across all hosts. 0 means
     # no limit.
     # CLI flag: -<prefix>.s3.max-idle-connections
-    [max_idle_connections: <int> | default = 150]
+    [max_idle_connections: <int> | default = 0]
 
-    # Maximum number of idle (keep-alive) connections to keep per-host. If 0, a
-    # built-in default value is used.
+    # Maximum number of idle (keep-alive) connections to keep per-host. If 0,
+    # defaults to a value based on expected parallelism.
     # CLI flag: -<prefix>.s3.max-idle-connections-per-host
-    [max_idle_connections_per_host: <int> | default = 150]
+    [max_idle_connections_per_host: <int> | default = 0]
 
     # Maximum number of connections per host. 0 means no limit.
     # CLI flag: -<prefix>.s3.max-connections-per-host
@@ -7407,12 +7407,12 @@ swift:
     # Maximum number of idle (keep-alive) connections across all hosts. 0 means
     # no limit.
     # CLI flag: -<prefix>.swift.max-idle-connections
-    [max_idle_connections: <int> | default = 150]
+    [max_idle_connections: <int> | default = 0]
 
-    # Maximum number of idle (keep-alive) connections to keep per-host. If 0, a
-    # built-in default value is used.
+    # Maximum number of idle (keep-alive) connections to keep per-host. If 0,
+    # defaults to a value based on expected parallelism.
     # CLI flag: -<prefix>.swift.max-idle-connections-per-host
-    [max_idle_connections_per_host: <int> | default = 150]
+    [max_idle_connections_per_host: <int> | default = 0]
 
     # Maximum number of connections per host. 0 means no limit.
     # CLI flag: -<prefix>.swift.max-connections-per-host
