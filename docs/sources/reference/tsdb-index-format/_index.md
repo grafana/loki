@@ -26,7 +26,7 @@ Loki reads and writes three versions. Which version is written depends on the sc
 | [v3](https://grafana.com/docs/loki/<LOKI_VERSION>/reference/tsdb-index-format/v3/)  | `v13`          | Chunk page markers, which allow paging through the chunks of a series.    | Active       |
 | [v4](https://grafana.com/docs/loki/<LOKI_VERSION>/reference/tsdb-index-format/v4/)  | `v14`          | Per-chunk ingestion timestamp, which allows retention based on ingestion. | Experimental |
 
-Readers reject any other version. All three versions are readable by the same Loki binary, so periods with different schema versions coexist and no data migration is required when you change the schema. To rewrite existing index files into another version, use the `tools/tsdb/migrate-versions` tool.
+The index decoder rejects any other version. All three versions are readable by the same Loki binary, so periods with different schema versions coexist and no data migration is required when you change the schema. To rewrite existing index files into another version, use the `tools/tsdb/migrate-versions` tool.
 
 ## Encoding conventions
 
