@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/go-kit/log"
+	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
 	"github.com/thanos-io/objstore"
 
@@ -85,6 +86,35 @@ func buildSourceLogObject(t *testing.T, bucket objstore.Bucket, path string, sor
 		AppendOrderedEnabled: true,
 		DataobjUseSortSchema: len(sortSchema) > 0,
 	}
+	buildSourceLogObjectWithConfig(t, bucket, path, cfg, sortSchema, byTenant)
+}
+
+// buildMultiSectionSourceLogObject builds a single log object that holds several
+// logs sections per tenant by cutting sections at a tiny TargetSectionSize while
+// keeping TargetObjectSize large enough to stay within one object. This lets a
+// test partition one object's sections across tasks.
+func buildMultiSectionSourceLogObject(t *testing.T, bucket objstore.Bucket, path string, sortSchema []string, byTenant map[string][]testStream) {
+	t.Helper()
+
+	cfg := logsobj.BuilderConfig{
+		BuilderBaseConfig: logsobj.BuilderBaseConfig{
+			TargetPageSize:            128,
+			MaxPageRows:               10000,
+			TargetObjectSize:          1 << 22, // 4 MiB: stays one object
+			TargetSectionSize:         256,     // tiny: forces many logs sections
+			BufferSize:                2048 * 8,
+			SectionStripeMergeLimit:   2,
+			EstimatedCompressionRatio: 8,
+		},
+		DataobjSortOrder:     "timestamp-desc",
+		AppendOrderedEnabled: true,
+		DataobjUseSortSchema: len(sortSchema) > 0,
+	}
+	buildSourceLogObjectWithConfig(t, bucket, path, cfg, sortSchema, byTenant)
+}
+
+func buildSourceLogObjectWithConfig(t *testing.T, bucket objstore.Bucket, path string, cfg logsobj.BuilderConfig, sortSchema []string, byTenant map[string][]testStream) {
+	t.Helper()
 
 	b, err := logsobj.NewBuilder(cfg, scratch.NewMemory(), logsobj.NewBuilderMetrics(), log.NewNopLogger(), sortSchemaOverrides(sortSchema))
 	require.NoError(t, err)
@@ -176,20 +206,28 @@ func TestCollectLogSources_ExcludesOtherTenants(t *testing.T) {
 		"other": {{labels: `{app="z"}`, entries: linesAt(base, 3)}},
 	})
 
+	// Reference tenant T's actual logs section index. Sections are ordered by
+	// natsorted tenant name, so "other" may precede "T"; a task's refs always
+	// name the tenant's own section indices, never another tenant's.
+	tIdxs := logsSectionIndexesForTenant(ctx, t, bucket, "multi", tenant)
+	require.NotEmpty(t, tIdxs)
+	refs := make([]*compactionv2pb.SectionRef, 0, len(tIdxs))
+	for _, idx := range tIdxs {
+		refs = append(refs, &compactionv2pb.SectionRef{ObjectPath: "multi", SectionIndex: int64(idx)})
+	}
+
 	c := newTestExecutorContext(t, bucket)
 	node := &physical.LogMerge{
 		Tenant:     tenant,
 		SortSchema: sortSchema,
-		Runs: []*compactionv2pb.RunRef{
-			{Sections: []*compactionv2pb.SectionRef{{ObjectPath: "multi"}}},
-		},
+		Runs:       []*compactionv2pb.RunRef{{Sections: refs}},
 	}
 
 	sources, err := c.collectLogSources(ctx, node)
 	require.NoError(t, err)
 	require.Len(t, sources, 1)
 
-	apps := make(map[string]bool)
+	apps := map[string]bool{}
 	for _, st := range sources[0].streams {
 		apps[st.Labels.Get("app")] = true
 	}
@@ -766,4 +804,332 @@ func TestExecuteLogMerge_ContentHashAndRecord(t *testing.T) {
 	// Read EOF to close the pipeline
 	_, err = pipeline.Read(ctx)
 	require.ErrorIs(t, err, io.EOF)
+}
+
+// appTS uniquely identifies a source record by its stream's app label and
+// nanosecond timestamp. The section-partition test builds records so every
+// (app, ts) pair is globally unique.
+type appTS struct {
+	app string
+	ts  int64
+}
+
+// logsSectionIndexesForTenant enumerates the SectionIndex values of a log
+// object's logs sections that belong to the tenant, using the same
+// Filter(logs.CheckSection) enumeration the index builder used to assign them.
+func logsSectionIndexesForTenant(ctx context.Context, t *testing.T, bucket objstore.Bucket, path, tenant string) []int {
+	t.Helper()
+	obj, err := dataobj.FromBucket(ctx, bucket, path, 0)
+	require.NoError(t, err)
+
+	var idxs []int
+	for i, sec := range obj.Sections().Filter(logs.CheckSection) {
+		if sec.Tenant == tenant {
+			idxs = append(idxs, i)
+		}
+	}
+	return idxs
+}
+
+// readLogObjectRecords returns the multiset of (app, ts) records a log object
+// holds for the tenant, resolving stream IDs to their app label.
+func readLogObjectRecords(ctx context.Context, t *testing.T, bucket objstore.Bucket, path, tenant string) map[appTS]int {
+	t.Helper()
+	obj, err := dataobj.FromBucket(ctx, bucket, path, 0)
+	require.NoError(t, err)
+
+	streamApp := make(map[int64]string)
+	for _, sec := range obj.Sections().Filter(streams.CheckSection) {
+		if sec.Tenant != tenant {
+			continue
+		}
+		ss, err := streams.Open(ctx, sec)
+		require.NoError(t, err)
+		for res := range streams.IterSection(ctx, ss) {
+			s, err := res.Value()
+			require.NoError(t, err)
+			streamApp[s.ID] = s.Labels.Get("app")
+		}
+	}
+
+	out := make(map[appTS]int)
+	for _, sec := range obj.Sections().Filter(logs.CheckSection) {
+		if sec.Tenant != tenant {
+			continue
+		}
+		ls, err := logs.Open(ctx, sec)
+		require.NoError(t, err)
+		for res := range logs.IterSection(ctx, ls) {
+			rec, err := res.Value()
+			require.NoError(t, err)
+			out[appTS{app: streamApp[rec.StreamID], ts: rec.Timestamp.UnixNano()}]++
+		}
+	}
+	return out
+}
+
+// TestDoLogObjectMerge_HonorsPerTaskSectionSelection asserts that when one
+// object's sections are partitioned across two tasks, each task merges only the
+// sections it was assigned: the two outputs are disjoint and their union equals
+// the whole source. Before the fix the executor merged every section for every
+// task, so both tasks produced identical outputs (overlap == whole).
+func TestDoLogObjectMerge_HonorsPerTaskSectionSelection(t *testing.T) {
+	ctx := context.Background()
+	dataBucket := objstore.NewInMemBucket()
+	indexBucket := objstore.NewInMemBucket()
+
+	const tenant = "T"
+	sortSchema := []string{"label:app"}
+
+	// One stream per app, each on its own day, so every (app, ts) pair is
+	// globally unique and records can be matched exactly across tasks.
+	baseDay := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	apps := []string{"a", "b", "c", "d", "e", "f", "g", "h"}
+	streamSet := make([]testStream, 0, len(apps))
+	for i, app := range apps {
+		streamSet = append(streamSet, testStream{
+			labels:  fmt.Sprintf(`{app=%q}`, app),
+			entries: wideLinesAt(baseDay.Add(time.Duration(i)*24*time.Hour), 6),
+		})
+	}
+	buildMultiSectionSourceLogObject(t, dataBucket, "obj", sortSchema, map[string][]testStream{
+		tenant: streamSet,
+	})
+
+	idxs := logsSectionIndexesForTenant(ctx, t, dataBucket, "obj", tenant)
+	require.GreaterOrEqual(t, len(idxs), 2, "test needs multiple logs sections to partition across tasks")
+
+	// Partition the sections into two disjoint groups.
+	var group1, group2 []int
+	for i, idx := range idxs {
+		if i%2 == 0 {
+			group1 = append(group1, idx)
+		} else {
+			group2 = append(group2, idx)
+		}
+	}
+	require.NotEmpty(t, group1)
+	require.NotEmpty(t, group2)
+
+	runFor := func(group []int) map[appTS]int {
+		refs := make([]*compactionv2pb.SectionRef, 0, len(group))
+		for _, idx := range group {
+			refs = append(refs, &compactionv2pb.SectionRef{ObjectPath: "obj", SectionIndex: int64(idx)})
+		}
+		c := newTestExecutorContext(t, indexBucket)
+		c.dataBucket = dataBucket
+		node := &physical.LogMerge{
+			Tenant:     tenant,
+			SortSchema: sortSchema,
+			Runs:       []*compactionv2pb.RunRef{{Sections: refs}},
+		}
+		arts, err := c.doLogObjectMerge(ctx, node)
+		require.NoError(t, err)
+		require.Len(t, arts, 1)
+
+		got := make(map[appTS]int)
+		for _, o := range readCompactedObjectsFromIndex(ctx, t, dataBucket, indexBucket, arts[0].Path, tenant) {
+			for _, r := range o.records {
+				got[appTS{app: r.app, ts: r.ts.UnixNano()}]++
+			}
+		}
+		return got
+	}
+
+	got1 := runFor(group1)
+	got2 := runFor(group2)
+
+	// No overlap: a source record must be merged by exactly one task.
+	for k := range got1 {
+		_, dup := got2[k]
+		require.False(t, dup, "record %+v produced by both tasks; sections were not partitioned", k)
+	}
+
+	// Union == whole: no record omitted or duplicated across the two tasks.
+	union := make(map[appTS]int, len(got1)+len(got2))
+	for k, v := range got1 {
+		union[k] += v
+	}
+	for k, v := range got2 {
+		union[k] += v
+	}
+	whole := readLogObjectRecords(ctx, t, dataBucket, "obj", tenant)
+	require.Equal(t, whole, union, "union of per-task outputs must equal the whole source")
+}
+
+// streamAgg is a per-output-stream aggregate read back from a compacted object's
+// streams section.
+type streamAgg struct {
+	app              string
+	rows             int
+	uncompressedSize int64
+	minTS, maxTS     time.Time
+}
+
+// readCompactedStreamAggs returns, for every compacted object referenced by the
+// index, the streams-section aggregate paired with the aggregate recomputed from
+// the logs records that object actually holds. Each element is one output stream.
+func readCompactedStreamAggs(ctx context.Context, t *testing.T, dataBucket, indexBucket objstore.Bucket, indexPath, tenant string) (declared, actual []streamAgg) {
+	t.Helper()
+
+	indexObj, err := dataobj.FromBucket(ctx, indexBucket, indexPath, 0)
+	require.NoError(t, err)
+
+	var logObjectPaths []string
+	seen := make(map[string]struct{})
+	for _, sec := range indexObj.Sections().Filter(postings.CheckSection) {
+		if sec.Tenant != tenant {
+			continue
+		}
+		ps, err := postings.Open(ctx, sec)
+		require.NoError(t, err)
+		reader := postings.NewReader(postings.ReaderOptions{Columns: ps.Columns()})
+		require.NoError(t, reader.Open(ctx))
+		rr := postings.NewRowReader(ctx, reader)
+		for rr.Next() {
+			row := rr.At()
+			if row.ObjectPath == "" {
+				continue
+			}
+			if _, dup := seen[row.ObjectPath]; dup {
+				continue
+			}
+			seen[row.ObjectPath] = struct{}{}
+			logObjectPaths = append(logObjectPaths, row.ObjectPath)
+		}
+		rr.Close()
+	}
+
+	for _, logPath := range logObjectPaths {
+		logObj, err := dataobj.FromBucket(ctx, dataBucket, logPath, 0)
+		require.NoError(t, err, "compacted log object must exist at %s", logPath)
+
+		type streamMeta struct {
+			app              string
+			rows             int
+			uncompressedSize int64
+			minTS, maxTS     time.Time
+		}
+		declaredByID := make(map[int64]streamMeta)
+		for _, sec := range logObj.Sections().Filter(streams.CheckSection) {
+			if sec.Tenant != tenant {
+				continue
+			}
+			ss, err := streams.Open(ctx, sec)
+			require.NoError(t, err)
+			for res := range streams.IterSection(ctx, ss) {
+				s, err := res.Value()
+				require.NoError(t, err)
+				declaredByID[s.ID] = streamMeta{
+					app:              s.Labels.Get("app"),
+					rows:             s.Rows,
+					uncompressedSize: s.UncompressedSize,
+					minTS:            s.MinTimestamp,
+					maxTS:            s.MaxTimestamp,
+				}
+			}
+		}
+
+		actualByID := make(map[int64]streamMeta)
+		for _, sec := range logObj.Sections().Filter(logs.CheckSection) {
+			if sec.Tenant != tenant {
+				continue
+			}
+			ls, err := logs.Open(ctx, sec)
+			require.NoError(t, err)
+			for res := range logs.IterSection(ctx, ls) {
+				rec, err := res.Value()
+				require.NoError(t, err)
+				m := actualByID[rec.StreamID]
+				size := int64(len(rec.Line))
+				rec.Metadata.Range(func(l labels.Label) { size += int64(len(l.Value)) })
+				m.uncompressedSize += size
+				m.rows++
+				if m.minTS.IsZero() || rec.Timestamp.Before(m.minTS) {
+					m.minTS = rec.Timestamp
+				}
+				if rec.Timestamp.After(m.maxTS) {
+					m.maxTS = rec.Timestamp
+				}
+				actualByID[rec.StreamID] = m
+			}
+		}
+
+		for id, d := range declaredByID {
+			a := actualByID[id]
+			declared = append(declared, streamAgg(d))
+			actual = append(actual, streamAgg{app: d.app, rows: a.rows, uncompressedSize: a.uncompressedSize, minTS: a.minTS, maxTS: a.maxTS})
+		}
+	}
+	return declared, actual
+}
+
+// TestDoLogObjectMerge_StreamMetadataMatchesMergedRecords asserts that when a
+// single stream is split across logs sections assigned to different tasks, each
+// task's streams section reports aggregates (rows, uncompressed size, timestamp
+// range) covering only the records that task actually merged, not the full
+// source stream. Copying the source aggregate verbatim inflates every task's
+// stream metadata to span data it never wrote.
+func TestDoLogObjectMerge_StreamMetadataMatchesMergedRecords(t *testing.T) {
+	ctx := context.Background()
+	dataBucket := objstore.NewInMemBucket()
+	indexBucket := objstore.NewInMemBucket()
+
+	const tenant = "T"
+	sortSchema := []string{"label:app"}
+
+	// A few streams, each with many wide records at distinct timestamps. With a
+	// tiny section size the records of a single app straddle section boundaries,
+	// so partitioning sections across tasks splits a stream across tasks.
+	baseDay := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	apps := []string{"a", "b", "c", "d"}
+	streamSet := make([]testStream, 0, len(apps))
+	for i, app := range apps {
+		streamSet = append(streamSet, testStream{
+			labels:  fmt.Sprintf(`{app=%q}`, app),
+			entries: wideLinesAt(baseDay.Add(time.Duration(i)*24*time.Hour), 12),
+		})
+	}
+	buildMultiSectionSourceLogObject(t, dataBucket, "obj", sortSchema, map[string][]testStream{
+		tenant: streamSet,
+	})
+
+	idxs := logsSectionIndexesForTenant(ctx, t, dataBucket, "obj", tenant)
+	require.GreaterOrEqual(t, len(idxs), 2, "test needs multiple logs sections to partition across tasks")
+
+	var group1, group2 []int
+	for i, idx := range idxs {
+		if i%2 == 0 {
+			group1 = append(group1, idx)
+		} else {
+			group2 = append(group2, idx)
+		}
+	}
+	require.NotEmpty(t, group1)
+	require.NotEmpty(t, group2)
+
+	checkGroup := func(group []int) {
+		refs := make([]*compactionv2pb.SectionRef, 0, len(group))
+		for _, idx := range group {
+			refs = append(refs, &compactionv2pb.SectionRef{ObjectPath: "obj", SectionIndex: int64(idx)})
+		}
+		c := newTestExecutorContext(t, indexBucket)
+		c.dataBucket = dataBucket
+		node := &physical.LogMerge{
+			Tenant:     tenant,
+			SortSchema: sortSchema,
+			Runs:       []*compactionv2pb.RunRef{{Sections: refs}},
+		}
+		arts, err := c.doLogObjectMerge(ctx, node)
+		require.NoError(t, err)
+		require.Len(t, arts, 1)
+
+		declared, actual := readCompactedStreamAggs(ctx, t, dataBucket, indexBucket, arts[0].Path, tenant)
+		require.NotEmpty(t, declared, "expected at least one output stream")
+		require.Equal(t, actual, declared,
+			"streams section metadata must match the records actually merged, not the full source stream")
+	}
+
+	checkGroup(group1)
+	checkGroup(group2)
 }
