@@ -4,6 +4,7 @@ import (
 	"net/http"
 
 	"github.com/go-kit/log"
+	conntrack "github.com/mwitkow/go-conntrack"
 	"github.com/prometheus/common/model"
 	"github.com/thanos-io/objstore"
 	"github.com/thanos-io/objstore/exthttp"
@@ -70,7 +71,13 @@ func newS3Config(cfg Config, name string) (s3.Config, error) {
 		if err != nil {
 			return s3.Config{}, err
 		}
-		dialFn := instrumentedDialContextFunc(transport.DialContext, "s3-"+name)
+		// AddressTracker counts distinct remote addresses.
+		tracked := newAddressTracker("s3-" + name).wrap(transport.DialContext)
+		// conntrack counts every connection attempted, established, failed and closed.
+		dialFn := conntrack.NewDialContextFunc(
+			conntrack.DialWithName("s3-"+name),
+			conntrack.DialWithDialContextFunc(tracked),
+		)
 		if cfg.ShuffleAddresses {
 			d := newShufflingDialer()
 			d.dialContext = dialFn

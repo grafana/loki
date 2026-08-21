@@ -6,25 +6,9 @@ import (
 	"math/rand/v2" // nosemgrep: math-random-used
 	"net"
 	"time"
-
-	conntrack "github.com/mwitkow/go-conntrack"
 )
 
 type dialContextFunc func(ctx context.Context, network, address string) (net.Conn, error)
-
-// instrumentedDialContextFunc adds metrics to dial:
-//
-//   - go-conntrack counts every connection attempted, established, failed and
-//     closed, under net_conntrack_dialer_conn_*_total{dialer_name="s3-<name>"}.
-//   - addressTracker counts how many distinct remote addresses those
-//     connections reached, under loki_s3_dialer_*_addresses{dialer_name=...}.
-func instrumentedDialContextFunc(dial dialContextFunc, dialerName string) dialContextFunc {
-	tracked := newAddressTracker(dialerName).wrap(dial)
-	return conntrack.NewDialContextFunc(
-		conntrack.DialWithName(dialerName),
-		conntrack.DialWithDialContextFunc(tracked),
-	)
-}
 
 // shufflingDialer spreads connections across all addresses returned from DNS.
 // Without this, every connection tends to land on the same IP.

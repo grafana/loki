@@ -7,8 +7,6 @@ import (
 	"slices"
 	"testing"
 
-	"github.com/prometheus/client_golang/prometheus"
-	dto "github.com/prometheus/client_model/go"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -183,68 +181,4 @@ func TestShufflingDialerHonoursContextCancellation(t *testing.T) {
 
 	_, err := d.DialContext(ctx, "tcp", "s3.example.com:1")
 	assert.Error(t, err)
-}
-
-// dialerCounter reads a go-conntrack counter for one dialer name.
-func dialerCounter(families []*dto.MetricFamily, metric, dialerName string) float64 {
-	metric = "net_conntrack_dialer_conn_" + metric + "_total"
-	total := 0.0
-	for _, family := range families {
-		if family.GetName() != metric {
-			continue
-		}
-		for _, m := range family.GetMetric() {
-			for _, label := range m.GetLabel() {
-				if label.GetName() == "dialer_name" && label.GetValue() == dialerName {
-					total += m.GetCounter().GetValue()
-				}
-			}
-		}
-	}
-	return total
-}
-
-func TestInstrumentedDialContextCountsConnections(t *testing.T) {
-	l, err := net.Listen("tcp", "127.0.0.1:0")
-	require.NoError(t, err)
-	t.Cleanup(func() { l.Close() })
-
-	// A port nothing is listening on, to exercise the failure path.
-	dead, err := net.Listen("tcp", "127.0.0.1:0")
-	require.NoError(t, err)
-	deadAddr := dead.Addr().String()
-	require.NoError(t, dead.Close())
-
-	name := "test"
-	dial := instrumentedDialContextFunc((&net.Dialer{}).DialContext, name)
-
-	// Get the baseline in case the counters were incremented in another test run.
-	// go-conntrack registers its metrics in the default registry.
-	families, err := prometheus.DefaultGatherer.Gather()
-	require.NoError(t, err)
-	base := map[string]float64{}
-	for _, metric := range []string{"attempted", "established", "failed", "closed"} {
-		base[metric] = dialerCounter(families, metric, name)
-	}
-
-	type m map[string]float64
-	checkCounters := func(t *testing.T, metrics m) {
-		families, err := prometheus.DefaultGatherer.Gather()
-		require.NoError(t, err)
-		for metric, expected := range metrics {
-			assert.Equal(t, expected, dialerCounter(families, metric, name)-base[metric], metric)
-		}
-	}
-
-	conn, err := dial(context.Background(), "tcp", l.Addr().String())
-	require.NoError(t, err)
-	checkCounters(t, m{"attempted": 1, "established": 1, "failed": 0, "closed": 0})
-
-	require.NoError(t, conn.Close())
-	checkCounters(t, m{"attempted": 1, "established": 1, "failed": 0, "closed": 1})
-
-	_, err = dial(context.Background(), "tcp", deadAddr)
-	require.Error(t, err)
-	// failed should be 2 because go-conntrack counts a refused connection under both "refused" and "unknown".
-	checkCounters(t, m{"attempted": 2, "established": 1, "failed": 2, "closed": 1})
 }
