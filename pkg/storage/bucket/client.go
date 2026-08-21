@@ -248,7 +248,7 @@ func NewClient(ctx context.Context, backend string, cfg Config, name string, log
 	case Azure:
 		client, err = azure.NewBucketClient(cfg.Azure, name, logger, instrumentTransport())
 	case Swift:
-		client, err = swift.NewBucketClient(cfg.Swift, name, logger, instrumentTransport())
+		client, err = swift.NewBucketClient(cfg.Swift, name, connectionPoolSize, logger, instrumentTransport())
 	case Filesystem:
 		client, err = filesystem.NewBucketClient(cfg.Filesystem)
 	case Alibaba:
