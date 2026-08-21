@@ -30,7 +30,7 @@ The index decoder rejects any other version. All three versions are readable by 
 
 ## Encoding conventions
 
-The following notation is used on the version pages:
+The following notations are used on the version pages:
 
 | Notation      | Meaning                                                                                |
 | ------------- | -------------------------------------------------------------------------------------- |
