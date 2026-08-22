@@ -65,13 +65,43 @@ func (r *ring[T]) die() {
 	}
 }
 
+// empty returns whether the ring currently holds no elements. Because an
+// element being processed stays in the ring until dropPeek removes it,
+// empty also means no worker goroutine is mid-element.
+func (r *ring[T]) empty() bool {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.l == 0
+}
+
 func (r *ring[T]) push(elem T) (first, dead bool) {
+	return r.doPush(elem, true)
+}
+
+// pushForce pushes even when the ring is at maxLen. The maxLen wait can only
+// be used by pushers that do not deadlock against the ring's worker: the
+// worker is the only goroutine that signals space (dropPeek), and a push
+// made while holding a client lock (purge/fail paths, storePartitionsUpdate,
+// recBuf failure paths) would park holding a lock the worker can need
+// through a user promise re-entering the client - the worker then waits on
+// the lock while the lock holder waits on the worker. Those internal pushers
+// force. Forcing does not unbound the ring: every record an internal push
+// carries was already admitted under the max-buffered-records accounting, so
+// forced volume is capped by that admission; only produce-entry failure
+// pushes (the unbounded source) take the blocking push.
+func (r *ring[T]) pushForce(elem T) (first, dead bool) {
+	return r.doPush(elem, false)
+}
+
+func (r *ring[T]) doPush(elem T, wait bool) (first, dead bool) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
 	// If a max length is set, block until there's space.
-	for r.maxLen > 0 && r.l >= r.maxLen && !r.dead {
-		r.cond.Wait()
+	if wait {
+		for r.maxLen > 0 && r.l >= r.maxLen && !r.dead {
+			r.cond.Wait()
+		}
 	}
 
 	if r.dead {
