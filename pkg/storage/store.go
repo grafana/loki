@@ -505,7 +505,9 @@ func (s *LokiStore) SelectSeries(ctx context.Context, req logql.SelectLogParams)
 
 	// The Loki parser doesn't allow for an empty label matcher but for the Series API
 	// we allow this to select all series in the time range.
-	if req.Selector == "" {
+	// Check both Selector (old signal) and Plan.AST (new signal) for backward compatibility
+	// during the migration period when callers may not yet populate Plan.
+	if req.Selector == "" || req.Plan == nil || req.Plan.AST == nil {
 		from, through = util.RoundToMilliseconds(req.Start, req.End)
 		nameLabelMatcher, err := labels.NewMatcher(labels.MatchEqual, model.MetricNameLabel, "logs")
 		if err != nil {
