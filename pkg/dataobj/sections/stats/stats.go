@@ -93,13 +93,13 @@ func CheckSection(section *dataobj.Section) bool {
 type Stat struct {
 	ObjectPath       string
 	SectionIndex     int64
+	ShardBucket      uint32
 	SortSchema       string
 	Labels           map[string]string // Label values keyed by sort schema key name
 	MinTimestamp     int64             // UnixNano
 	MaxTimestamp     int64             // UnixNano
 	RowCount         int64
 	UncompressedSize int64
-	ShardBucket      uint32
 }
 
 // SectionEncoder encodes a batch of sorted Stat rows into a columnar encoder.

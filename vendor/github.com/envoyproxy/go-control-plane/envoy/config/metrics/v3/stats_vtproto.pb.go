@@ -123,6 +123,16 @@ func (m *StatsConfig) MarshalToSizedBufferVTStrict(dAtA []byte) (int, error) {
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
 	}
+	if m.AllowDefaultTagOverrides != nil {
+		size, err := (*wrapperspb.BoolValue)(m.AllowDefaultTagOverrides).MarshalToSizedBufferVTStrict(dAtA[:i])
+		if err != nil {
+			return 0, err
+		}
+		i -= size
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		i--
+		dAtA[i] = 0x2a
+	}
 	if len(m.HistogramBucketSettings) > 0 {
 		for iNdEx := len(m.HistogramBucketSettings) - 1; iNdEx >= 0; iNdEx-- {
 			size, err := m.HistogramBucketSettings[iNdEx].MarshalToSizedBufferVTStrict(dAtA[:i])
@@ -757,6 +767,10 @@ func (m *StatsConfig) SizeVT() (n int) {
 			l = e.SizeVT()
 			n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
 		}
+	}
+	if m.AllowDefaultTagOverrides != nil {
+		l = (*wrapperspb.BoolValue)(m.AllowDefaultTagOverrides).SizeVT()
+		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
 	}
 	n += len(m.unknownFields)
 	return n

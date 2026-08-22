@@ -24,8 +24,9 @@ import (
 	compactionv2pb "github.com/grafana/loki/v3/pkg/dataobj/compaction/v2/proto"
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/postings"
-	stats "github.com/grafana/loki/v3/pkg/dataobj/sections/stats"
+	"github.com/grafana/loki/v3/pkg/dataobj/sections/stats"
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
+	"github.com/grafana/loki/v3/pkg/engine/internal/util/dag"
 	"github.com/grafana/loki/v3/pkg/engine/internal/workflow"
 )
 
@@ -67,6 +68,49 @@ func (f *fakeRunner) snapshot() []runCall {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	return append([]runCall(nil), f.calls...)
+}
+
+func (f *fakeRunner) assertUniqueObjects(t *testing.T) {
+	t.Helper()
+
+	// An object is one run: many sections of the same path may share a run,
+	// but that path must not appear in any other run or dispatched task.
+	seen := map[string]struct{}{}
+	for _, call := range f.calls {
+		root, err := call.plan.Root()
+		require.NoError(t, err)
+
+		err = call.plan.Graph().Walk(root, func(n physical.Node) error {
+			var runs []*compactionv2pb.RunRef
+			switch n := n.(type) {
+			case *physical.LogMerge:
+				runs = n.Runs
+			case *physical.IndexMerge:
+				runs = n.Runs
+			default:
+				return nil
+			}
+			for _, run := range runs {
+				if run == nil {
+					continue
+				}
+				runObjects := map[string]struct{}{}
+				for _, sectionRef := range run.Sections {
+					if sectionRef == nil {
+						continue
+					}
+					runObjects[sectionRef.ObjectPath] = struct{}{}
+				}
+				for obj := range runObjects {
+					_, exists := seen[obj]
+					require.False(t, exists, "object %q appears in more than one task", obj)
+					seen[obj] = struct{}{}
+				}
+			}
+			return nil
+		}, dag.PreOrderWalk)
+		require.NoError(t, err)
+	}
 }
 
 // fakeReplacer records each ReplaceIndexPointers invocation and returns
@@ -146,6 +190,29 @@ func newTestCoordinator(t *testing.T, bucket objstore.Bucket, runner *fakeRunner
 // fixedClock returns a clock function pinned to t.
 func fixedClock(t time.Time) func() time.Time { return func() time.Time { return t } }
 
+func sectionRefNames(refs []*compactionv2pb.SectionRef) []string {
+	names := make([]string, len(refs))
+	for i, ref := range refs {
+		names[i] = fmt.Sprintf("%s#%d", ref.ObjectPath, ref.SectionIndex)
+	}
+	return names
+}
+
+func mergeNodeRuns(t *testing.T, plan *physical.Plan) []*compactionv2pb.RunRef {
+	t.Helper()
+	root, err := plan.Root()
+	require.NoError(t, err)
+	switch n := root.(type) {
+	case *physical.LogMerge:
+		return n.Runs
+	case *physical.IndexMerge:
+		return n.Runs
+	default:
+		t.Fatalf("plan root is %T, want LogMerge or IndexMerge", root)
+		return nil
+	}
+}
+
 func buildOverlappingPostingsIndex(ctx context.Context, t *testing.T, bucket objstore.Bucket, tenant, path string) {
 	t.Helper()
 	buildIndexWithPostings(ctx, t, bucket, tenant, path, 1<<20, []postings.Row{
@@ -154,80 +221,28 @@ func buildOverlappingPostingsIndex(ctx context.Context, t *testing.T, bucket obj
 	})
 }
 
-// TestRunTenantCycle_RaceLossIsSuccess verifies the (swapped=false, err=nil)
-// path is treated as success: the cycle returns nil and the next cycle
-// re-plans against the post-swap ToC.
-func TestCompactTenant_RaceLossIsSuccess(t *testing.T) {
-	ctx := context.Background()
-	bucket := objstore.NewInMemBucket()
-	window := time.Date(2026, 5, 14, 0, 0, 0, 0, time.UTC).Truncate(metastore.MetastoreWindowSize)
-	buildOverlappingPostingsIndex(ctx, t, bucket, "acme", "indexes/aa/src-0")
-	buildOverlappingPostingsIndex(ctx, t, bucket, "acme", "indexes/bb/src-1")
-
-	writeToCWithIndexes(ctx, t, bucket, map[string][]testIndex{
-		"acme": {
-			{path: "indexes/aa/src-0", start: window.Add(1 * time.Hour), end: window.Add(2 * time.Hour)},
-			{path: "indexes/bb/src-1", start: window.Add(3 * time.Hour), end: window.Add(4 * time.Hour)},
-		},
-	})
-
-	runner := &fakeRunner{}
-	replacer := &fakeReplacer{swapped: false, err: nil}
-	c := newTestCoordinator(t, bucket, runner, replacer, fixedClock(window.Add(1*time.Hour)), newFakeLimits("acme"))
-
-	// compactTenant surfaces the tenant error directly (the phase wrapper is
-	// what swallows/logs it); assert on it via the lower API here.
-	indexes, err := loadTenantIndexes(ctx, bucket, window)
-	require.NoError(t, err)
-	_, runErr := c.compactTenant(ctx, "acme", window, indexes["acme"])
-	require.NoError(t, runErr)
-}
-
-// TestCompactTenant_HardSwapErrorPropagates verifies that a non-nil error
-// from ReplaceIndexPointers is returned by compactTenant (wrapped), so
-// callers can pin it. The phase wrapper logs and re-arms on such errors;
-// compactTenant itself surfaces the wrapped error.
-func TestCompactTenant_HardSwapErrorPropagates(t *testing.T) {
-	ctx := context.Background()
-	bucket := objstore.NewInMemBucket()
-	window := time.Date(2026, 5, 14, 0, 0, 0, 0, time.UTC).Truncate(metastore.MetastoreWindowSize)
-	buildOverlappingPostingsIndex(ctx, t, bucket, "acme", "indexes/aa/src-0")
-	buildOverlappingPostingsIndex(ctx, t, bucket, "acme", "indexes/bb/src-1")
-
-	writeToCWithIndexes(ctx, t, bucket, map[string][]testIndex{
-		"acme": {
-			{path: "indexes/aa/src-0", start: window.Add(1 * time.Hour), end: window.Add(2 * time.Hour)},
-			{path: "indexes/bb/src-1", start: window.Add(3 * time.Hour), end: window.Add(4 * time.Hour)},
-		},
-	})
-
-	swapErr := errors.New("bucket: temporary failure")
-	runner := &fakeRunner{}
-	replacer := &fakeReplacer{swapped: false, err: swapErr}
-	c := newTestCoordinator(t, bucket, runner, replacer, fixedClock(window.Add(1*time.Hour)), newFakeLimits("acme"))
-
-	indexes, err := loadTenantIndexes(ctx, bucket, window)
-	require.NoError(t, err)
-	_, runErr := c.compactTenant(ctx, "acme", window, indexes["acme"])
-	require.ErrorIs(t, runErr, swapErr)
-}
-
 func TestCompactTenantLogs_DispatchesLogMergePlans(t *testing.T) {
 	ctx := context.Background()
 	bucket := objstore.NewInMemBucket()
 	window := time.Date(2026, 5, 14, 0, 0, 0, 0, time.UTC).Truncate(metastore.MetastoreWindowSize)
 	convergedPath := "indexes/aa/converged"
 
-	// Same tuple, overlapping times -> 2 runs -> still dispatches after the
-	// terminal gate (total size 200 clears the test floor of 1).
+	// Two overlapping objects -> 2 runs. Each object's physical sections must
+	// stay together and ordered in the dispatched task.
 	buildIndexWithStats(ctx, t, bucket, "acme", convergedPath, []stats.Stat{
 		{ObjectPath: "logs/log-0", SectionIndex: 0, SortSchema: "label:service_name",
-			Labels: map[string]string{"service_name": "auth"}, MinTimestamp: 10, MaxTimestamp: 30, RowCount: 1, UncompressedSize: 100},
+			Labels: map[string]string{"service_name": "auth"}, MinTimestamp: 10, MaxTimestamp: 20, RowCount: 1, UncompressedSize: 50},
+		{ObjectPath: "logs/log-0", SectionIndex: 1, SortSchema: "label:service_name",
+			Labels: map[string]string{"service_name": "auth"}, MinTimestamp: 15, MaxTimestamp: 30, RowCount: 1, UncompressedSize: 50},
 		{ObjectPath: "logs/log-1", SectionIndex: 0, SortSchema: "label:service_name",
-			Labels: map[string]string{"service_name": "auth"}, MinTimestamp: 20, MaxTimestamp: 40, RowCount: 1, UncompressedSize: 100},
+			Labels: map[string]string{"service_name": "auth"}, MinTimestamp: 20, MaxTimestamp: 30, RowCount: 1, UncompressedSize: 50},
+		{ObjectPath: "logs/log-1", SectionIndex: 1, SortSchema: "label:service_name",
+			Labels: map[string]string{"service_name": "auth"}, MinTimestamp: 25, MaxTimestamp: 40, RowCount: 1, UncompressedSize: 50},
 	})
 
 	runner := &fakeRunner{}
+	defer runner.assertUniqueObjects(t)
+
 	replacer := &fakeReplacer{swapped: true}
 	c := newTestCoordinator(t, bucket, runner, replacer, fixedClock(window.Add(1*time.Hour)), newFakeLimits("acme"))
 
@@ -251,10 +266,51 @@ func TestCompactTenantLogs_DispatchesLogMergePlans(t *testing.T) {
 	node, ok := root.(*physical.LogMerge)
 	require.True(t, ok)
 	require.Equal(t, []string{"label:service_name"}, node.SortSchema)
+	require.Len(t, node.Runs, 2)
+	require.Equal(t, []string{"logs/log-0#0", "logs/log-0#1"}, sectionRefNames(node.Runs[0].Sections))
+	require.Equal(t, []string{"logs/log-1#0", "logs/log-1#1"}, sectionRefNames(node.Runs[1].Sections))
 
 	swaps := replacer.snapshot()
 	require.Len(t, swaps, 1, "log path now swaps the ToC after dispatch")
 	require.Equal(t, []string{convergedPath}, swaps[0].oldPaths)
+}
+
+func TestCompactTenant_DispatchesIndexMergePlans(t *testing.T) {
+	ctx := context.Background()
+	bucket := objstore.NewInMemBucket()
+	window := time.Date(2026, 5, 14, 0, 0, 0, 0, time.UTC).Truncate(metastore.MetastoreWindowSize)
+
+	// Two overlapping indexes, each with two physical sections. Sections of
+	// the same index must stay together and ordered in the dispatched task.
+	buildIndexWithPostingsSections(ctx, t, bucket, "acme", "indexes/a",
+		[]postings.Row{{Kind: postings.KindLabel, ObjectPath: "logs/a-0", ColumnName: "service", LabelValue: "a", MinTimestamp: 10, MaxTimestamp: 20}},
+		[]postings.Row{{Kind: postings.KindLabel, ObjectPath: "logs/a-1", ColumnName: "service", LabelValue: "z", MinTimestamp: 30, MaxTimestamp: 40}},
+	)
+	buildIndexWithPostingsSections(ctx, t, bucket, "acme", "indexes/b",
+		[]postings.Row{{Kind: postings.KindLabel, ObjectPath: "logs/b-0", ColumnName: "service", LabelValue: "a", MinTimestamp: 15, MaxTimestamp: 25}},
+		[]postings.Row{{Kind: postings.KindLabel, ObjectPath: "logs/b-1", ColumnName: "service", LabelValue: "z", MinTimestamp: 35, MaxTimestamp: 45}},
+	)
+
+	runner := &fakeRunner{}
+	defer runner.assertUniqueObjects(t)
+	replacer := &fakeReplacer{swapped: true}
+	c := newTestCoordinator(t, bucket, runner, replacer, fixedClock(window.Add(time.Hour)), newFakeLimits("acme"))
+
+	stats, err := c.compactTenant(ctx, "acme", window, []indexEntry{
+		{Path: "indexes/a", Start: window.Add(time.Hour), End: window.Add(2 * time.Hour)},
+		{Path: "indexes/b", Start: window.Add(time.Hour), End: window.Add(2 * time.Hour)},
+	})
+	require.NoError(t, err)
+	require.Equal(t, 1, stats.dispatched, "two runs -> one task -> one IndexMerge plan")
+
+	dispatches := runner.snapshot()
+	require.Len(t, dispatches, 1)
+	require.Equal(t, []string{"compaction", "index-merge"}, dispatches[0].opts.Actor)
+
+	runs := mergeNodeRuns(t, dispatches[0].plan)
+	require.Len(t, runs, 2)
+	require.Equal(t, []string{"indexes/a#0", "indexes/a#1"}, sectionRefNames(runs[0].Sections))
+	require.Equal(t, []string{"indexes/b#0", "indexes/b#1"}, sectionRefNames(runs[1].Sections))
 }
 
 func TestCompactTenantLogs_NoStatsRowsForTenantIsConverged(t *testing.T) {
@@ -271,6 +327,7 @@ func TestCompactTenantLogs_NoStatsRowsForTenantIsConverged(t *testing.T) {
 	})
 
 	runner := &fakeRunner{}
+	defer runner.assertUniqueObjects(t)
 	replacer := &fakeReplacer{}
 	c := newTestCoordinator(t, bucket, runner, replacer, fixedClock(window.Add(1*time.Hour)), newFakeLimits("acme"))
 
@@ -280,19 +337,23 @@ func TestCompactTenantLogs_NoStatsRowsForTenantIsConverged(t *testing.T) {
 	require.Empty(t, runner.snapshot())
 }
 
-func TestCompactTenantLogs_TerminalSingleRunSkips(t *testing.T) {
+func TestCompactTenantLogs_InternalObjectOverlapIsConverged(t *testing.T) {
 	ctx := context.Background()
 	bucket := objstore.NewInMemBucket()
 	window := time.Date(2026, 5, 14, 0, 0, 0, 0, time.UTC).Truncate(metastore.MetastoreWindowSize)
 	convergedPath := "indexes/aa/converged"
 
-	// Single stat row -> P=1 -> terminal regardless of size.
+	// Overlapping physical sections in one object are one planning unit and do
+	// not trigger a rewrite by themselves.
 	buildIndexWithStats(ctx, t, bucket, "acme", convergedPath, []stats.Stat{
 		{ObjectPath: "logs/log-0", SectionIndex: 0, SortSchema: "label:service_name",
-			Labels: map[string]string{"service_name": "auth"}, MinTimestamp: 10, MaxTimestamp: 20, RowCount: 1, UncompressedSize: 100},
+			Labels: map[string]string{"service_name": "auth"}, MinTimestamp: 10, MaxTimestamp: 30, RowCount: 1, UncompressedSize: 100},
+		{ObjectPath: "logs/log-0", SectionIndex: 1, SortSchema: "label:service_name",
+			Labels: map[string]string{"service_name": "auth"}, MinTimestamp: 20, MaxTimestamp: 40, RowCount: 1, UncompressedSize: 100},
 	})
 
 	runner := &fakeRunner{}
+	defer runner.assertUniqueObjects(t)
 	replacer := &fakeReplacer{swapped: true}
 	c := newTestCoordinator(t, bucket, runner, replacer, fixedClock(window.Add(1*time.Hour)), newFakeLimits("acme"))
 
@@ -319,6 +380,7 @@ func TestCompactTenantLogs_TouchingRunsAreConverged(t *testing.T) {
 	})
 
 	runner := &fakeRunner{}
+	defer runner.assertUniqueObjects(t)
 	replacer := &fakeReplacer{swapped: true}
 	c := newTestCoordinator(t, bucket, runner, replacer, fixedClock(window.Add(time.Hour)), newFakeLimits("acme"))
 
@@ -344,6 +406,7 @@ func TestCompactTenantLogs_TerminalBelowFloorSkips(t *testing.T) {
 	})
 
 	runner := &fakeRunner{}
+	defer runner.assertUniqueObjects(t)
 	replacer := &fakeReplacer{swapped: true}
 	c := newTestCoordinator(t, bucket, runner, replacer, fixedClock(window.Add(1*time.Hour)), newFakeLimits("acme"))
 	c.cfg.LogMinCompactionSize = 1 << 30 // 1GiB floor; 30 bytes is below it
@@ -369,97 +432,178 @@ func twoRunConvergedBucket(ctx context.Context, t *testing.T, tenant, path strin
 	return bucket
 }
 
-func TestCompactTenantLogs_SwapsToC(t *testing.T) {
-	ctx := context.Background()
-	window := time.Date(2026, 5, 14, 0, 0, 0, 0, time.UTC).Truncate(metastore.MetastoreWindowSize)
-	convergedPath := "indexes/aa/converged"
-	bucket := twoRunConvergedBucket(ctx, t, "acme", convergedPath)
-
-	runner := &fakeRunner{}
-	replacer := &fakeReplacer{swapped: true}
-	c := newTestCoordinator(t, bucket, runner, replacer, fixedClock(window.Add(1*time.Hour)), newFakeLimits("acme"))
-
-	entry := indexEntry{Path: convergedPath, Start: window.Add(1 * time.Hour), End: window.Add(2 * time.Hour)}
-	stats, err := c.compactTenantLogs(ctx, "acme", window, entry)
-
-	require.NoError(t, err)
-	require.NotZero(t, stats.added)
-	require.NotEmpty(t, runner.snapshot(), "non-terminal window dispatches plans")
-
-	calls := replacer.snapshot()
-	require.Len(t, calls, 1)
-	require.Equal(t, []string{convergedPath}, calls[0].oldPaths)
-	require.NotEmpty(t, calls[0].newEntries)
+func overlappingIndexesBucket(ctx context.Context, t *testing.T, window time.Time, tenant string, paths ...string) objstore.Bucket {
+	t.Helper()
+	if len(paths) == 0 {
+		paths = []string{"indexes/aa/src-0", "indexes/bb/src-1"}
+	}
+	bucket := objstore.NewInMemBucket()
+	entries := make([]testIndex, 0, len(paths))
+	for i, path := range paths {
+		buildOverlappingPostingsIndex(ctx, t, bucket, tenant, path)
+		entries = append(entries, testIndex{
+			path:  path,
+			start: window.Add(time.Duration(i+1) * time.Hour),
+			end:   window.Add(time.Duration(i+2) * time.Hour),
+		})
+	}
+	writeToCWithIndexes(ctx, t, bucket, map[string][]testIndex{tenant: entries})
+	return bucket
 }
 
-func TestCompactTenantLogs_SwapErrorFails(t *testing.T) {
-	ctx := context.Background()
+// TestCompactJobToCEdgeCases covers the shared post-plan contract of compactTenant
+// and compactTenantLogs: dispatch jobs, then swap / skip / fail the ToC.
+func TestCompactJobToCEdgeCases(t *testing.T) {
 	window := time.Date(2026, 5, 14, 0, 0, 0, 0, time.UTC).Truncate(metastore.MetastoreWindowSize)
-	convergedPath := "indexes/aa/converged"
-	bucket := twoRunConvergedBucket(ctx, t, "acme", convergedPath)
 
-	runner := &fakeRunner{}
-	replacer := &fakeReplacer{err: errors.New("boom")}
-	c := newTestCoordinator(t, bucket, runner, replacer, fixedClock(window.Add(1*time.Hour)), newFakeLimits("acme"))
+	type compactKind struct {
+		name string
+		seed func(ctx context.Context, t *testing.T, window time.Time) (objstore.Bucket, func(*coordinator) (compactionStats, error))
+	}
+	kinds := []compactKind{
+		{
+			name: "logs",
+			seed: func(ctx context.Context, t *testing.T, window time.Time) (objstore.Bucket, func(*coordinator) (compactionStats, error)) {
+				path := "indexes/aa/converged"
+				bucket := twoRunConvergedBucket(ctx, t, "acme", path)
+				entry := indexEntry{Path: path, Start: window.Add(time.Hour), End: window.Add(2 * time.Hour)}
+				return bucket, func(c *coordinator) (compactionStats, error) {
+					return c.compactTenantLogs(ctx, "acme", window, entry)
+				}
+			},
+		},
+		{
+			name: "index",
+			seed: func(ctx context.Context, t *testing.T, window time.Time) (objstore.Bucket, func(*coordinator) (compactionStats, error)) {
+				bucket := overlappingIndexesBucket(ctx, t, window, "acme")
+				return bucket, func(c *coordinator) (compactionStats, error) {
+					indexes, err := loadTenantIndexes(ctx, bucket, window)
+					require.NoError(t, err)
+					return c.compactTenant(ctx, "acme", window, indexes["acme"])
+				}
+			},
+		},
+	}
 
-	entry := indexEntry{Path: convergedPath, Start: window.Add(1 * time.Hour), End: window.Add(2 * time.Hour)}
-	_, err := c.compactTenantLogs(ctx, "acme", window, entry)
+	edges := []struct {
+		name       string
+		failOnCall int
+		swapped    bool
+		swapErr    error
+		dryRun     bool
+		wantErr    bool
+		wantSwap   bool
+		wantAdded  int
+	}{
+		{name: "swap_ok", swapped: true, wantSwap: true, wantAdded: 1},
+		{name: "swap_error", swapErr: errors.New("boom"), wantErr: true, wantSwap: true},
+		{name: "race_loss", swapped: false, wantSwap: true, wantAdded: 0},
+		{name: "dry_run", swapped: true, dryRun: true, wantAdded: 0},
+		{name: "job_failure", failOnCall: 1, swapped: true, wantErr: true},
+	}
 
-	require.Error(t, err)
+	for _, kind := range kinds {
+		for _, edge := range edges {
+			t.Run(kind.name+"/"+edge.name, func(t *testing.T) {
+				ctx := context.Background()
+				bucket, run := kind.seed(ctx, t, window)
+				runner := &fakeRunner{failOnCall: edge.failOnCall}
+				defer runner.assertUniqueObjects(t)
+				replacer := &fakeReplacer{swapped: edge.swapped, err: edge.swapErr}
+				c := newTestCoordinator(t, bucket, runner, replacer, fixedClock(window.Add(time.Hour)), newFakeLimits("acme"))
+				c.cfg.DryRun = edge.dryRun
+
+				stats, err := run(c)
+				if edge.wantErr {
+					require.Error(t, err)
+				} else {
+					require.NoError(t, err)
+				}
+				require.NotEmpty(t, runner.snapshot(), "jobs must be dispatched")
+
+				swaps := replacer.snapshot()
+				if edge.wantSwap {
+					require.Len(t, swaps, 1)
+					require.NotEmpty(t, swaps[0].newEntries)
+				} else {
+					require.Empty(t, swaps)
+				}
+				if !edge.wantErr {
+					require.Equal(t, edge.wantAdded, stats.added)
+				}
+			})
+		}
+	}
 }
 
-func TestCompactTenantLogs_SwapRaceLossConverged(t *testing.T) {
-	ctx := context.Background()
+// TestCompact_SplitsWhenRunsExceedK checks that multiple tasks are dispatched when the planning steps detect more Runs than allowed Runs per task (2)
+func TestCompact_SplitsWhenRunsExceedK(t *testing.T) {
 	window := time.Date(2026, 5, 14, 0, 0, 0, 0, time.UTC).Truncate(metastore.MetastoreWindowSize)
-	convergedPath := "indexes/aa/converged"
-	bucket := twoRunConvergedBucket(ctx, t, "acme", convergedPath)
 
-	runner := &fakeRunner{}
-	replacer := &fakeReplacer{swapped: false}
-	c := newTestCoordinator(t, bucket, runner, replacer, fixedClock(window.Add(1*time.Hour)), newFakeLimits("acme"))
+	t.Run("logs", func(t *testing.T) {
+		ctx := context.Background()
+		path := "indexes/aa/converged"
+		bucket := objstore.NewInMemBucket()
+		buildIndexWithStats(ctx, t, bucket, "acme", path, []stats.Stat{
+			{ObjectPath: "logs/log-0", SectionIndex: 0, SortSchema: "label:service_name",
+				Labels: map[string]string{"service_name": "auth"}, MinTimestamp: 10, MaxTimestamp: 30, RowCount: 1, UncompressedSize: 100},
+			{ObjectPath: "logs/log-1", SectionIndex: 0, SortSchema: "label:service_name",
+				Labels: map[string]string{"service_name": "auth"}, MinTimestamp: 20, MaxTimestamp: 40, RowCount: 1, UncompressedSize: 100},
+			{ObjectPath: "logs/log-2", SectionIndex: 0, SortSchema: "label:service_name",
+				Labels: map[string]string{"service_name": "auth"}, MinTimestamp: 25, MaxTimestamp: 50, RowCount: 1, UncompressedSize: 100},
+		})
 
-	entry := indexEntry{Path: convergedPath, Start: window.Add(1 * time.Hour), End: window.Add(2 * time.Hour)}
-	stats, err := c.compactTenantLogs(ctx, "acme", window, entry)
+		runner := &fakeRunner{}
+		defer runner.assertUniqueObjects(t)
+		replacer := &fakeReplacer{swapped: true}
+		c := newTestCoordinator(t, bucket, runner, replacer, fixedClock(window.Add(time.Hour)), newFakeLimits("acme"))
 
-	require.NoError(t, err)
-	require.Zero(t, stats.added)
+		stats, err := c.compactTenantLogs(ctx, "acme", window, indexEntry{
+			Path: path, Start: window.Add(time.Hour), End: window.Add(2 * time.Hour), UncompressedLogsSize: 300,
+		})
+		require.NoError(t, err)
+		require.Equal(t, 2, stats.dispatched, "3 overlapping runs with K=2 must split into 2 tasks")
+		require.Equal(t, 2, stats.added)
+
+		dispatches := runner.snapshot()
+		require.Len(t, dispatches, 2)
+		require.Equal(t, 3, countMergeObjects(t, dispatches))
+	})
+
+	t.Run("index", func(t *testing.T) {
+		ctx := context.Background()
+		bucket := overlappingIndexesBucket(ctx, t, window, "acme",
+			"indexes/aa/src-0", "indexes/bb/src-1", "indexes/cc/src-2")
+
+		runner := &fakeRunner{}
+		defer runner.assertUniqueObjects(t)
+		replacer := &fakeReplacer{swapped: true}
+		c := newTestCoordinator(t, bucket, runner, replacer, fixedClock(window.Add(time.Hour)), newFakeLimits("acme"))
+
+		indexes, err := loadTenantIndexes(ctx, bucket, window)
+		require.NoError(t, err)
+		stats, err := c.compactTenant(ctx, "acme", window, indexes["acme"])
+		require.NoError(t, err)
+		require.Equal(t, 2, stats.dispatched, "3 overlapping runs with K=2 must split into 2 tasks")
+		require.Equal(t, 2, stats.added)
+
+		dispatches := runner.snapshot()
+		require.Len(t, dispatches, 2)
+		require.Equal(t, 3, countMergeObjects(t, dispatches))
+	})
 }
 
-func TestCompactTenantLogs_DryRunSkipsSwap(t *testing.T) {
-	ctx := context.Background()
-	window := time.Date(2026, 5, 14, 0, 0, 0, 0, time.UTC).Truncate(metastore.MetastoreWindowSize)
-	convergedPath := "indexes/aa/converged"
-	bucket := twoRunConvergedBucket(ctx, t, "acme", convergedPath)
-
-	runner := &fakeRunner{}
-	replacer := &fakeReplacer{swapped: true}
-	c := newTestCoordinator(t, bucket, runner, replacer, fixedClock(window.Add(1*time.Hour)), newFakeLimits("acme"))
-	c.cfg.DryRun = true
-
-	entry := indexEntry{Path: convergedPath, Start: window.Add(1 * time.Hour), End: window.Add(2 * time.Hour)}
-	stats, err := c.compactTenantLogs(ctx, "acme", window, entry)
-
-	require.NoError(t, err)
-	require.Zero(t, stats.added)
-	require.NotEmpty(t, runner.snapshot(), "dry-run still dispatches")
-	require.Empty(t, replacer.snapshot(), "dry-run must not swap the ToC")
-}
-
-func TestCompactTenantLogs_PartialFailureNoSwap(t *testing.T) {
-	ctx := context.Background()
-	window := time.Date(2026, 5, 14, 0, 0, 0, 0, time.UTC).Truncate(metastore.MetastoreWindowSize)
-	convergedPath := "indexes/aa/converged"
-	bucket := twoRunConvergedBucket(ctx, t, "acme", convergedPath)
-
-	runner := &fakeRunner{failOnCall: 1}
-	replacer := &fakeReplacer{swapped: true}
-	c := newTestCoordinator(t, bucket, runner, replacer, fixedClock(window.Add(1*time.Hour)), newFakeLimits("acme"))
-
-	entry := indexEntry{Path: convergedPath, Start: window.Add(1 * time.Hour), End: window.Add(2 * time.Hour)}
-	_, err := c.compactTenantLogs(ctx, "acme", window, entry)
-
-	require.Error(t, err)
-	require.Empty(t, replacer.snapshot(), "partial failure must not swap the ToC")
+func countMergeObjects(t *testing.T, calls []runCall) int {
+	t.Helper()
+	objects := map[string]struct{}{}
+	for _, call := range calls {
+		for _, run := range mergeNodeRuns(t, call.plan) {
+			for _, section := range run.Sections {
+				objects[section.ObjectPath] = struct{}{}
+			}
+		}
+	}
+	return len(objects)
 }
 
 func TestCompactTenantLogs_DeterministicOutputPaths(t *testing.T) {
@@ -471,6 +615,7 @@ func TestCompactTenantLogs_DeterministicOutputPaths(t *testing.T) {
 	run := func() []metastore.TableOfContentsEntry {
 		bucket := twoRunConvergedBucket(ctx, t, "acme", convergedPath)
 		runner := &fakeRunner{}
+		defer runner.assertUniqueObjects(t)
 		replacer := &fakeReplacer{swapped: true}
 		c := newTestCoordinator(t, bucket, runner, replacer, fixedClock(window.Add(1*time.Hour)), newFakeLimits("acme"))
 		_, err := c.compactTenantLogs(ctx, "acme", window, entry)
@@ -507,6 +652,7 @@ func TestRunIndexMergePhase_SingleIndexIsNoWork(t *testing.T) {
 		"acme": {{path: "indexes/a", start: window.Add(time.Hour), end: window.Add(2 * time.Hour)}},
 	})
 	runner := &fakeRunner{}
+	defer runner.assertUniqueObjects(t)
 	replacer := &fakeReplacer{swapped: true}
 	c := newTestCoordinator(t, bucket, runner, replacer, fixedClock(window.Add(time.Hour)), newFakeLimits("acme"))
 
@@ -514,7 +660,7 @@ func TestRunIndexMergePhase_SingleIndexIsNoWork(t *testing.T) {
 	require.Empty(t, replacer.snapshot(), "no swap for a single-index window")
 }
 
-func TestRunIndexMergePhase_SingleIndexWithOverlappingSectionsSwaps(t *testing.T) {
+func TestRunIndexMergePhase_SingleIndexWithOverlappingSectionsIsNoWork(t *testing.T) {
 	ctx := context.Background()
 	window := imWindow()
 	bucket := objstore.NewInMemBucket()
@@ -536,10 +682,10 @@ func TestRunIndexMergePhase_SingleIndexWithOverlappingSectionsSwaps(t *testing.T
 	replacer := &fakeReplacer{swapped: true}
 	c := newTestCoordinator(t, bucket, &fakeRunner{}, replacer, fixedClock(window.Add(3*time.Hour)), newFakeLimits("acme"))
 
-	require.Equal(t, phaseOutcomeSwapped, c.runIndexMergePhase(ctx, "acme", window))
-	require.Len(t, replacer.snapshot(), 1)
-	require.Equal(t, 1.0, testutil.ToFloat64(c.metrics.unconsolidatedBacklog.WithLabelValues("acme")))
-	require.Equal(t, time.Hour.Seconds(), testutil.ToFloat64(c.metrics.oldestBacklogLogAgeSeconds.WithLabelValues("acme")))
+	require.Equal(t, phaseOutcomeNoWork, c.runIndexMergePhase(ctx, "acme", window))
+	require.Empty(t, replacer.snapshot(), "sections from one physical object are already converged")
+	require.Zero(t, testutil.ToFloat64(c.metrics.unconsolidatedBacklog.WithLabelValues("acme")))
+	require.Zero(t, testutil.ToFloat64(c.metrics.oldestBacklogLogAgeSeconds.WithLabelValues("acme")))
 }
 
 func TestCompactTenant_TouchingSectionsAreConverged(t *testing.T) {
@@ -553,6 +699,7 @@ func TestCompactTenant_TouchingSectionsAreConverged(t *testing.T) {
 	}
 
 	runner := &fakeRunner{}
+	defer runner.assertUniqueObjects(t)
 	replacer := &fakeReplacer{swapped: true}
 	c := newTestCoordinator(t, bucket, runner, replacer, fixedClock(window.Add(time.Hour)), newFakeLimits("acme"))
 	stats, err := c.compactTenant(ctx, "acme", window, []indexEntry{{Path: "indexes/a"}, {Path: "indexes/b"}})
@@ -583,6 +730,7 @@ func TestCompactTenant_PostingTimestampsDetectOverlap(t *testing.T) {
 	}
 
 	runner := &fakeRunner{}
+	defer runner.assertUniqueObjects(t)
 	replacer := &fakeReplacer{swapped: true}
 	c := newTestCoordinator(t, bucket, runner, replacer, fixedClock(window.Add(time.Hour)), newFakeLimits("acme"))
 	_, err := c.compactTenant(ctx, "acme", window, []indexEntry{
@@ -603,6 +751,7 @@ func TestCompactTenant_FailsOnIncompleteDiscovery(t *testing.T) {
 	buildOverlappingPostingsIndex(ctx, t, bucket, "acme", "indexes/a")
 
 	runner := &fakeRunner{}
+	defer runner.assertUniqueObjects(t)
 	replacer := &fakeReplacer{swapped: true}
 	c := newTestCoordinator(t, bucket, runner, replacer, fixedClock(window.Add(time.Hour)), newFakeLimits("acme"))
 	_, err := c.compactTenant(ctx, "acme", window, []indexEntry{{Path: "indexes/a"}, {Path: "indexes/missing"}})
@@ -634,6 +783,7 @@ func TestRunIndexMergePhase_MultiIndexSwaps(t *testing.T) {
 		},
 	})
 	runner := &fakeRunner{}
+	defer runner.assertUniqueObjects(t)
 	replacer := &fakeReplacer{swapped: true}
 	c := newTestCoordinator(t, bucket, runner, replacer, fixedClock(window.Add(time.Hour)), newFakeLimits("acme"))
 
@@ -682,6 +832,7 @@ func TestRunLogMergePhase_PerIndexSwaps(t *testing.T) {
 	window := imWindow()
 	bucket := logMergeBucket(ctx, t, window, "acme", []string{"indexes/a", "indexes/b"})
 	runner := &fakeRunner{}
+	defer runner.assertUniqueObjects(t)
 	replacer := &fakeReplacer{swapped: true}
 	c := newTestCoordinator(t, bucket, runner, replacer, fixedClock(window.Add(time.Hour)), newFakeLimits("acme"))
 
@@ -689,6 +840,25 @@ func TestRunLogMergePhase_PerIndexSwaps(t *testing.T) {
 	require.Len(t, replacer.snapshot(), 2, "one swap per index")
 	require.Positive(t, testutil.ToFloat64(c.metrics.indexesAddedTotal.WithLabelValues("acme")))
 	require.Positive(t, testutil.ToFloat64(c.metrics.tasksTotal.WithLabelValues("acme")))
+}
+
+// TestRunLogMergePhase_PartialIndexFailureRetries checks that a partial failure is recorded but retried so progress continues.
+func TestRunLogMergePhase_PartialIndexFailureRetries(t *testing.T) {
+	ctx := context.Background()
+	window := imWindow()
+	bucket := logMergeBucket(ctx, t, window, "acme", []string{"indexes/a", "indexes/b"})
+	runner := &fakeRunner{failOnCall: 1}
+	defer runner.assertUniqueObjects(t)
+	replacer := &fakeReplacer{swapped: true}
+	c := newTestCoordinator(t, bucket, runner, replacer, fixedClock(window.Add(time.Hour)), newFakeLimits("acme"))
+
+	require.Equal(t, phaseOutcomeError, c.runLogMergePhase(ctx, "acme", window),
+		"a mixed success+failure cycle must retry the phase rather than flip")
+	require.Len(t, runner.snapshot(), 2, "both indexes are attempted")
+	require.Len(t, replacer.snapshot(), 1, "the successful index still swaps")
+	require.Equal(t, 1.0, testutil.ToFloat64(c.metrics.tenantLogCyclesTotal.WithLabelValues("compacted", "acme")),
+		"partial progress is recorded as compacted, not failed")
+	require.Zero(t, testutil.ToFloat64(c.metrics.tenantLogCyclesTotal.WithLabelValues("failed", "acme")))
 }
 
 func TestRunLogMergePhase_CancelledMidIterationStops(t *testing.T) {
@@ -708,6 +878,7 @@ func TestRun_CancelDrainsGoroutines(t *testing.T) {
 	window := imWindow()
 	bucket := seededToC(ctx, t, window, "acme")
 	runner := &fakeRunner{}
+	defer runner.assertUniqueObjects(t)
 	replacer := &fakeReplacer{swapped: true}
 
 	c := newTestCoordinator(t, bucket, runner, replacer, fixedClock(window.Add(time.Hour)), newFakeLimits("acme"))
@@ -1566,6 +1737,51 @@ func TestRunTenantLoop_LogEnabledRunsBothPhases(t *testing.T) {
 	// is safe to assert. The loop starts on IndexMerge.
 	require.Equal(t, []string{"index-merge", "log-merge", "index-merge"}, phases[:3],
 		"log-enabled tenant flips between index-merge and log-merge")
+}
+
+func TestRunTenantLoop_RunsMultipleIndexMergesPerLogMerge(t *testing.T) {
+	window := imWindow()
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	bucket := logMergeBucket(ctx, t, window, "acme", []string{"a", "b"})
+	replacer := &fakeReplacer{swapped: true}
+	limits := newFakeLimits("acme")
+	limits.setLog("acme", true)
+	c := newTestCoordinator(t, bucket, &fakeRunner{}, replacer, fixedClock(window.Add(time.Hour)), limits)
+
+	var mu sync.Mutex
+	var phases []string
+	c.runPlan = func(_ context.Context, opts workflow.Options, _ *physical.Plan) (arrow.RecordBatch, error) {
+		mu.Lock()
+		phases = append(phases, opts.Actor[1])
+		if opts.Actor[1] == "log-merge" {
+			cancel()
+		}
+		mu.Unlock()
+		return v2.BuildResultRecord(memory.DefaultAllocator, []v2.ResultArtifact{{Path: "indexes/aa/bb"}}), nil
+	}
+
+	done := make(chan struct{})
+	go func() { c.runTenantLoop(ctx, "acme"); close(done) }()
+
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		cancel()
+		t.Fatal("tenant loop did not reach log merge")
+	}
+
+	mu.Lock()
+	defer mu.Unlock()
+	expectation := []string{}
+	for range indexMergeIterations {
+		expectation = append(expectation, "index-merge")
+	}
+	expectation = append(expectation, "log-merge")
+
+	// expect: index-merge, index-merge, index-merge, log-merge
+	require.Equal(t, expectation, phases)
 }
 
 // TestRunTenantLoop_DisablingLogMidRunStopsLogMerge verifies that turning off

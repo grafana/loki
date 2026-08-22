@@ -783,9 +783,6 @@ func (t *Loki) setupModuleManager() error {
 	mm.RegisterModule(IngesterGRPCInterceptors, t.initIngesterGRPCInterceptors, modules.UserInvisibleModule)
 	mm.RegisterModule(QueryFrontendTripperware, t.initQueryFrontendMiddleware, modules.UserInvisibleModule)
 	mm.RegisterModule(QueryFrontend, t.initQueryFrontend)
-	mm.RegisterModule(QueryEngine, t.initV2QueryEngine)
-	mm.RegisterModule(QueryEngineScheduler, t.initV2QueryEngineScheduler)
-	mm.RegisterModule(QueryEngineWorker, t.initV2QueryEngineWorker)
 	mm.RegisterModule(RulerStorage, t.initRulerStorage, modules.UserInvisibleModule)
 	mm.RegisterModule(Ruler, t.initRuler)
 	mm.RegisterModule(RuleEvaluator, t.initRuleEvaluator, modules.UserInvisibleModule)
@@ -806,16 +803,22 @@ func (t *Loki) setupModuleManager() error {
 	mm.RegisterModule(PatternIngesterTee, t.initPatternIngesterTee, modules.UserInvisibleModule)
 	mm.RegisterModule(PatternIngester, t.initPatternIngester)
 	mm.RegisterModule(PartitionRing, t.initPartitionRing, modules.UserInvisibleModule)
-	mm.RegisterModule(DataObjExplorer, t.initDataObjExplorer)
-	mm.RegisterModule(UIRing, t.initUIRing, modules.UserInvisibleModule)
+
 	mm.RegisterModule(UI, t.initUI)
-	mm.RegisterModule(DataObjConsumerRing, t.initDataObjConsumerRing)
-	mm.RegisterModule(DataObjConsumerPartitionRing, t.initDataObjConsumerPartitionRing)
-	mm.RegisterModule(DataObjConsumer, t.initDataObjConsumer)
-	mm.RegisterModule(DataObjIndexBuilder, t.initDataObjIndexBuilder)
-	mm.RegisterModule(DataObjCompactionPlanner, t.initDataObjCompactionPlanner)
-	mm.RegisterModule(DataObjCompactionWorker, t.initDataObjCompactionWorker)
-	mm.RegisterModule(ScratchStore, t.initScratchStore)
+	mm.RegisterModule(UIRing, t.initUIRing, modules.UserInvisibleModule)
+
+	// Thor related modules: keep targets invisible
+	mm.RegisterModule(DataObjConsumer, t.initDataObjConsumer, modules.UserInvisibleTargetableModule)
+	mm.RegisterModule(DataObjConsumerRing, t.initDataObjConsumerRing, modules.UserInvisibleModule)
+	mm.RegisterModule(DataObjConsumerPartitionRing, t.initDataObjConsumerPartitionRing, modules.UserInvisibleModule)
+	mm.RegisterModule(DataObjIndexBuilder, t.initDataObjIndexBuilder, modules.UserInvisibleTargetableModule)
+	mm.RegisterModule(DataObjCompactionPlanner, t.initDataObjCompactionPlanner, modules.UserInvisibleTargetableModule)
+	mm.RegisterModule(DataObjCompactionWorker, t.initDataObjCompactionWorker, modules.UserInvisibleTargetableModule)
+	mm.RegisterModule(DataObjExplorer, t.initDataObjExplorer, modules.UserInvisibleTargetableModule)
+	mm.RegisterModule(QueryEngine, t.initV2QueryEngine, modules.UserInvisibleTargetableModule)
+	mm.RegisterModule(QueryEngineScheduler, t.initV2QueryEngineScheduler, modules.UserInvisibleTargetableModule)
+	mm.RegisterModule(QueryEngineWorker, t.initV2QueryEngineWorker, modules.UserInvisibleTargetableModule)
+	mm.RegisterModule(ScratchStore, t.initScratchStore, modules.UserInvisibleModule)
 
 	mm.RegisterModule(All, nil)
 
@@ -826,7 +829,7 @@ func (t *Loki) setupModuleManager() error {
 		Overrides:                    {RuntimeConfig},
 		OverridesExporter:            {Overrides, Server, UIRing},
 		TenantConfigs:                {RuntimeConfig},
-		UI:                           {Server, MemberlistKV, UIRing},
+		UI:                           {UIRing},
 		UIRing:                       {Server, MemberlistKV},
 		Distributor:                  {Ring, Server, Overrides, TenantConfigs, PatternRingClient, PatternIngesterTee, Analytics, PartitionRing, DataObjConsumerRing, DataObjConsumerPartitionRing, IngestLimitsFrontendRing, UIRing},
 		IngestLimitsRing:             {RuntimeConfig, Server, MemberlistKV},
@@ -861,13 +864,13 @@ func (t *Loki) setupModuleManager() error {
 		DataObjExplorer:              {Server, UIRing},
 		DataObjConsumerRing:          {RuntimeConfig, Server, MemberlistKV},
 		DataObjConsumerPartitionRing: {MemberlistKV, Server, Ring},
-		DataObjConsumer:              {MemberlistKV, ScratchStore, PartitionRing, Server, UI, Overrides},
+		DataObjConsumer:              {MemberlistKV, ScratchStore, PartitionRing, Server, UIRing, Overrides},
 		DataObjIndexBuilder:          {ScratchStore, Server, UIRing},
 		DataObjCompactionPlanner:     {Server, UIRing, Overrides},
 		DataObjCompactionWorker:      {ScratchStore, Server, UIRing},
 		ScratchStore:                 {},
 
-		All: {QueryScheduler, QueryFrontend, Querier, Ingester, PatternIngester, Distributor, Ruler, Compactor, UI},
+		All: {QueryScheduler, QueryFrontend, Querier, Ingester, PatternIngester, Distributor, Ruler, Compactor},
 	}
 
 	if t.Cfg.IngestLimits.Enabled {

@@ -25,6 +25,8 @@ type labelPostingEntry struct {
 	MinTimestamp     int64
 	MaxTimestamp     int64
 	UncompressedSize int64
+	MinShardBucket   uint32
+	MaxShardBucket   uint32
 }
 
 // BitmapBytes returns the raw bytes of the bitmap trimmed to the logical size
@@ -76,19 +78,21 @@ func (a *labelAggregator) Observe(obs LabelObservation) {
 	entry, ok := a.entries[key]
 	if !ok {
 		entry = &labelPostingEntry{
-			ObjectPath:   obs.ObjectPath,
-			ShardBuckets: obs.ShardBuckets,
-			SectionIndex: obs.SectionIndex,
-			ColumnName:   obs.ColumnName,
-			LabelValue:   obs.LabelValue,
-			bitmap:       memory.NewBitmap(nil, 0),
-			MinTimestamp: tsNano,
-			MaxTimestamp: tsNano,
+			ObjectPath:     obs.ObjectPath,
+			ShardBuckets:   obs.ShardBuckets,
+			SectionIndex:   obs.SectionIndex,
+			ColumnName:     obs.ColumnName,
+			LabelValue:     obs.LabelValue,
+			bitmap:         memory.NewBitmap(nil, 0),
+			MinTimestamp:   tsNano,
+			MaxTimestamp:   tsNano,
+			MinShardBucket: obs.ShardBucket,
+			MaxShardBucket: obs.ShardBucket,
 		}
 		a.entries[key] = entry
 
-		// Track size for new entry: 6 int64 fields + string sizes
-		a.estimatedSize += 6*8 + len(obs.ObjectPath) + len(obs.ColumnName) + len(obs.LabelValue)
+		// Track size for new entry: 5 int64 fields + 2 uint32 fields encoded as int64 + string sizes
+		a.estimatedSize += 7*8 + len(obs.ObjectPath) + len(obs.ColumnName) + len(obs.LabelValue)
 	}
 
 	// Grow bitmap if needed and set the bit for this stream ID.
@@ -107,6 +111,12 @@ func (a *labelAggregator) Observe(obs LabelObservation) {
 	}
 	if tsNano > entry.MaxTimestamp {
 		entry.MaxTimestamp = tsNano
+	}
+	if obs.ShardBucket < entry.MinShardBucket {
+		entry.MinShardBucket = obs.ShardBucket
+	}
+	if obs.ShardBucket > entry.MaxShardBucket {
+		entry.MaxShardBucket = obs.ShardBucket
 	}
 	entry.UncompressedSize += obs.UncompressedSize
 }
@@ -130,6 +140,8 @@ func (a *labelAggregator) Entries() []LabelEntry {
 			MinTimestamp:     entry.MinTimestamp,
 			MaxTimestamp:     entry.MaxTimestamp,
 			UncompressedSize: entry.UncompressedSize,
+			MinShardBucket:   entry.MinShardBucket,
+			MaxShardBucket:   entry.MaxShardBucket,
 		})
 	}
 	return result

@@ -25,22 +25,31 @@ import (
 // hookReader hooks additional reader in the source stream. It is
 // useful for making progress bars. Second reader is appropriately
 // notified about the exact number of bytes read from the primary
-// source on each Read operation.
+// source on each Read operation. It deliberately implements neither
+// io.Seeker nor io.Closer: retry logic treats a seekable body as
+// rewindable, and executeMethod closes request bodies that implement
+// io.Closer — a caller-supplied reader must be shielded from both.
 type hookReader struct {
 	source io.Reader
 	hook   io.Reader
 }
 
+// hookReadSeeker extends hookReader with seeking support. It is
+// constructed only when the source implements io.Seeker, so a wrapped
+// reader exposes Seek if and only if it can actually rewind. This lets
+// retry logic disable retries for non-seekable bodies instead of
+// retrying over a drained reader.
+type hookReadSeeker struct {
+	hookReader
+	seeker io.Seeker
+}
+
 // Seek implements io.Seeker. Seeks source first, and if necessary
 // seeks hook if Seek method is appropriately found.
-func (hr *hookReader) Seek(offset int64, whence int) (n int64, err error) {
-	// Verify for source has embedded Seeker, use it.
-	sourceSeeker, ok := hr.source.(io.Seeker)
-	if ok {
-		n, err = sourceSeeker.Seek(offset, whence)
-		if err != nil {
-			return 0, err
-		}
+func (hr *hookReadSeeker) Seek(offset int64, whence int) (n int64, err error) {
+	n, err = hr.seeker.Seek(offset, whence)
+	if err != nil {
+		return 0, err
 	}
 
 	if hr.hook != nil {
@@ -53,7 +62,7 @@ func (hr *hookReader) Seek(offset int64, whence int) (n int64, err error) {
 				return 0, err
 			}
 			if n != m {
-				return 0, fmt.Errorf("hook seeker seeked %d bytes, expected source %d bytes", m, n)
+				return 0, fmt.Errorf("hook seeker sought to offset %d, expected source offset %d", m, n)
 			}
 		}
 	}
@@ -80,14 +89,13 @@ func (hr *hookReader) Read(b []byte) (n int, err error) {
 	return n, err
 }
 
-// newHook returns a io.ReadSeeker which implements hookReader that
-// reports the data read from the source to the hook.
+// newHook returns an io.Reader that reports the data read from the
+// source to the hook. The returned reader implements io.Seeker only
+// when the source does.
 func newHook(source, hook io.Reader) io.Reader {
-	if hook == nil {
-		return &hookReader{source: source}
+	hr := hookReader{source: source, hook: hook}
+	if seeker, ok := source.(io.Seeker); ok {
+		return &hookReadSeeker{hookReader: hr, seeker: seeker}
 	}
-	return &hookReader{
-		source: source,
-		hook:   hook,
-	}
+	return &hr
 }

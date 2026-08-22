@@ -246,9 +246,9 @@ func TestCollectLogSources_ReadsFromUnprefixedDataBucket(t *testing.T) {
 func newSmallObjectExecutorContext(t *testing.T, bucket objstore.Bucket) *Context {
 	t.Helper()
 	c := newTestExecutorContext(t, bucket)
-	c.indexobjCfg.TargetPageSize = 512
-	c.indexobjCfg.TargetObjectSize = 1000 // bytes; forces splitting
-	c.indexobjCfg.TargetSectionSize = 800
+	c.logsobjCfg.TargetPageSize = 512
+	c.logsobjCfg.TargetObjectSize = 1000 // bytes; forces splitting
+	c.logsobjCfg.TargetSectionSize = 800
 	return c
 }
 

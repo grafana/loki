@@ -10,6 +10,7 @@ import (
 	"encoding/binary"
 	"fmt"
 	"hash/crc32"
+	"os"
 
 	"github.com/pkg/errors"
 
@@ -20,20 +21,34 @@ import (
 // for a specific index-header file on local disk.
 type FilePoolDecbufFactory struct {
 	files *filepool.FilePool
+	// fileSize is the size of the file at path in bytes, cached here
+	// to avoid repeated stat calls.
+	// Index files are immutable once written, so this cannot go stale.
+	fileSize int64
 }
 
 func NewFilePoolDecbufFactory(
 	path string,
 	maxIdleFileHandles uint,
 	metrics *filepool.FilePoolMetrics,
-) *FilePoolDecbufFactory {
+) (*FilePoolDecbufFactory, error) {
+	fileInfo, err := os.Stat(path)
+	if err != nil {
+		return nil, errors.Wrap(err, "stat file for decbuf factory")
+	}
+
 	return &FilePoolDecbufFactory{
 		files: filepool.NewFilePool(
 			path,
 			maxIdleFileHandles,
 			metrics,
 		),
-	}
+		fileSize: fileInfo.Size(),
+	}, nil
+}
+
+func (df *FilePoolDecbufFactory) FileSize() int64 {
+	return df.fileSize
 }
 
 func (df *FilePoolDecbufFactory) NewDecbufAtChecked(_ context.Context, offset int, table *crc32.Table) Decbuf {
@@ -112,13 +127,7 @@ func (df *FilePoolDecbufFactory) NewRawDecbuf(_ context.Context) Decbuf {
 		}
 	}()
 
-	stat, err := f.Stat()
-	if err != nil {
-		return Decbuf{E: errors.Wrap(err, "stat file for decbuf")}
-	}
-
-	fileSize := stat.Size()
-	reader, err := NewFileReader(f, 0, int(fileSize), df.files)
+	reader, err := NewFileReader(f, 0, int(df.fileSize), df.files)
 	if err != nil {
 		return Decbuf{E: errors.Wrap(err, "file reader for decbuf")}
 	}
