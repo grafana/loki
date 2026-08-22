@@ -8,7 +8,6 @@ import (
 	s3cust "github.com/aws/aws-sdk-go-v2/service/s3/internal/customizations"
 	"github.com/aws/aws-sdk-go-v2/service/s3/types"
 	"github.com/aws/smithy-go/middleware"
-	smithyhttp "github.com/aws/smithy-go/transport/http"
 )
 
 // This operation is not supported for directory buckets.
@@ -146,9 +145,6 @@ func (c *Client) addOperationGetObjectTaggingMiddlewares(stack *middleware.Stack
 		return err
 	}
 
-	if err = addlegacyEndpointContextSetter(stack, options); err != nil {
-		return err
-	}
 	if err = addComputeContentLength(stack); err != nil {
 		return err
 	}
@@ -161,12 +157,6 @@ func (c *Client) addOperationGetObjectTaggingMiddlewares(stack *middleware.Stack
 	if err = addRecordResponseTiming(stack, options); err != nil {
 		return err
 	}
-	if err = smithyhttp.AddErrorCloseResponseBodyMiddleware(stack); err != nil {
-		return err
-	}
-	if err = smithyhttp.AddCloseResponseBodyMiddleware(stack); err != nil {
-		return err
-	}
 	if err = addPutBucketContextMiddleware(stack); err != nil {
 		return err
 	}
@@ -177,9 +167,6 @@ func (c *Client) addOperationGetObjectTaggingMiddlewares(stack *middleware.Stack
 		return err
 	}
 	if err = addOpGetObjectTaggingValidationMiddleware(stack); err != nil {
-		return err
-	}
-	if err = stack.Initialize.Add(newServiceMetadataMiddleware(options.Region, "GetObjectTagging"), middleware.Before); err != nil {
 		return err
 	}
 	if err = addMetadataRetrieverMiddleware(stack); err != nil {

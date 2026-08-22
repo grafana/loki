@@ -7,7 +7,6 @@ import (
 	"github.com/aws/aws-sdk-go-v2/aws/signer/v4"
 	s3cust "github.com/aws/aws-sdk-go-v2/service/s3/internal/customizations"
 	"github.com/aws/smithy-go/middleware"
-	smithyhttp "github.com/aws/smithy-go/transport/http"
 )
 
 // This operation is not supported for directory buckets.
@@ -121,9 +120,6 @@ func (c *Client) addOperationDeleteObjectTaggingMiddlewares(stack *middleware.St
 		return err
 	}
 
-	if err = addlegacyEndpointContextSetter(stack, options); err != nil {
-		return err
-	}
 	if err = addComputeContentLength(stack); err != nil {
 		return err
 	}
@@ -136,12 +132,6 @@ func (c *Client) addOperationDeleteObjectTaggingMiddlewares(stack *middleware.St
 	if err = addRecordResponseTiming(stack, options); err != nil {
 		return err
 	}
-	if err = smithyhttp.AddErrorCloseResponseBodyMiddleware(stack); err != nil {
-		return err
-	}
-	if err = smithyhttp.AddCloseResponseBodyMiddleware(stack); err != nil {
-		return err
-	}
 	if err = addPutBucketContextMiddleware(stack); err != nil {
 		return err
 	}
@@ -152,9 +142,6 @@ func (c *Client) addOperationDeleteObjectTaggingMiddlewares(stack *middleware.St
 		return err
 	}
 	if err = addOpDeleteObjectTaggingValidationMiddleware(stack); err != nil {
-		return err
-	}
-	if err = stack.Initialize.Add(newServiceMetadataMiddleware(options.Region, "DeleteObjectTagging"), middleware.Before); err != nil {
 		return err
 	}
 	if err = addMetadataRetrieverMiddleware(stack); err != nil {

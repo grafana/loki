@@ -11,7 +11,6 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/s3/types"
 	"github.com/aws/smithy-go/middleware"
 	smithytime "github.com/aws/smithy-go/time"
-	smithyhttp "github.com/aws/smithy-go/transport/http"
 	smithywaiter "github.com/aws/smithy-go/waiter"
 	"time"
 )
@@ -718,9 +717,6 @@ func (c *Client) addOperationHeadObjectMiddlewares(stack *middleware.Stack, opti
 		return err
 	}
 
-	if err = addlegacyEndpointContextSetter(stack, options); err != nil {
-		return err
-	}
 	if err = addComputeContentLength(stack); err != nil {
 		return err
 	}
@@ -733,12 +729,6 @@ func (c *Client) addOperationHeadObjectMiddlewares(stack *middleware.Stack, opti
 	if err = addRecordResponseTiming(stack, options); err != nil {
 		return err
 	}
-	if err = smithyhttp.AddErrorCloseResponseBodyMiddleware(stack); err != nil {
-		return err
-	}
-	if err = smithyhttp.AddCloseResponseBodyMiddleware(stack); err != nil {
-		return err
-	}
 	if err = addPutBucketContextMiddleware(stack); err != nil {
 		return err
 	}
@@ -749,9 +739,6 @@ func (c *Client) addOperationHeadObjectMiddlewares(stack *middleware.Stack, opti
 		return err
 	}
 	if err = addOpHeadObjectValidationMiddleware(stack); err != nil {
-		return err
-	}
-	if err = stack.Initialize.Add(newServiceMetadataMiddleware(options.Region, "HeadObject"), middleware.Before); err != nil {
 		return err
 	}
 	if err = addMetadataRetrieverMiddleware(stack); err != nil {

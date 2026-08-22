@@ -9,7 +9,6 @@ import (
 	s3cust "github.com/aws/aws-sdk-go-v2/service/s3/internal/customizations"
 	"github.com/aws/aws-sdk-go-v2/service/s3/types"
 	"github.com/aws/smithy-go/middleware"
-	smithyhttp "github.com/aws/smithy-go/transport/http"
 )
 
 // This operation is not supported for directory buckets or Amazon S3 on Outposts
@@ -251,9 +250,6 @@ func (c *Client) addOperationUpdateObjectEncryptionMiddlewares(stack *middleware
 		return err
 	}
 
-	if err = addlegacyEndpointContextSetter(stack, options); err != nil {
-		return err
-	}
 	if err = addComputeContentLength(stack); err != nil {
 		return err
 	}
@@ -264,12 +260,6 @@ func (c *Client) addOperationUpdateObjectEncryptionMiddlewares(stack *middleware
 		return err
 	}
 	if err = addRecordResponseTiming(stack, options); err != nil {
-		return err
-	}
-	if err = smithyhttp.AddErrorCloseResponseBodyMiddleware(stack); err != nil {
-		return err
-	}
-	if err = smithyhttp.AddCloseResponseBodyMiddleware(stack); err != nil {
 		return err
 	}
 	if err = addPutBucketContextMiddleware(stack); err != nil {
@@ -285,9 +275,6 @@ func (c *Client) addOperationUpdateObjectEncryptionMiddlewares(stack *middleware
 		return err
 	}
 	if err = addOpUpdateObjectEncryptionValidationMiddleware(stack); err != nil {
-		return err
-	}
-	if err = stack.Initialize.Add(newServiceMetadataMiddleware(options.Region, "UpdateObjectEncryption"), middleware.Before); err != nil {
 		return err
 	}
 	if err = addMetadataRetrieverMiddleware(stack); err != nil {

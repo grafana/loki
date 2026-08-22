@@ -8,7 +8,6 @@ import (
 	s3cust "github.com/aws/aws-sdk-go-v2/service/s3/internal/customizations"
 	"github.com/aws/smithy-go/middleware"
 	"github.com/aws/smithy-go/ptr"
-	smithyhttp "github.com/aws/smithy-go/transport/http"
 )
 
 //	We recommend that you delete your S3 Metadata configurations by using the V2 [DeleteBucketMetadataTableConfiguration]
@@ -106,9 +105,6 @@ func (c *Client) addOperationDeleteBucketMetadataTableConfigurationMiddlewares(s
 		return err
 	}
 
-	if err = addlegacyEndpointContextSetter(stack, options); err != nil {
-		return err
-	}
 	if err = addComputeContentLength(stack); err != nil {
 		return err
 	}
@@ -121,12 +117,6 @@ func (c *Client) addOperationDeleteBucketMetadataTableConfigurationMiddlewares(s
 	if err = addRecordResponseTiming(stack, options); err != nil {
 		return err
 	}
-	if err = smithyhttp.AddErrorCloseResponseBodyMiddleware(stack); err != nil {
-		return err
-	}
-	if err = smithyhttp.AddCloseResponseBodyMiddleware(stack); err != nil {
-		return err
-	}
 	if err = addPutBucketContextMiddleware(stack); err != nil {
 		return err
 	}
@@ -137,9 +127,6 @@ func (c *Client) addOperationDeleteBucketMetadataTableConfigurationMiddlewares(s
 		return err
 	}
 	if err = addOpDeleteBucketMetadataTableConfigurationValidationMiddleware(stack); err != nil {
-		return err
-	}
-	if err = stack.Initialize.Add(newServiceMetadataMiddleware(options.Region, "DeleteBucketMetadataTableConfiguration"), middleware.Before); err != nil {
 		return err
 	}
 	if err = addMetadataRetrieverMiddleware(stack); err != nil {

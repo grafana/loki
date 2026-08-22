@@ -8,7 +8,6 @@ import (
 	s3cust "github.com/aws/aws-sdk-go-v2/service/s3/internal/customizations"
 	"github.com/aws/aws-sdk-go-v2/service/s3/types"
 	"github.com/aws/smithy-go/middleware"
-	smithyhttp "github.com/aws/smithy-go/transport/http"
 )
 
 // Returns the attribute-based access control (ABAC) property of the general
@@ -71,9 +70,6 @@ func (c *Client) addOperationGetBucketAbacMiddlewares(stack *middleware.Stack, o
 		return err
 	}
 
-	if err = addlegacyEndpointContextSetter(stack, options); err != nil {
-		return err
-	}
 	if err = addComputeContentLength(stack); err != nil {
 		return err
 	}
@@ -86,12 +82,6 @@ func (c *Client) addOperationGetBucketAbacMiddlewares(stack *middleware.Stack, o
 	if err = addRecordResponseTiming(stack, options); err != nil {
 		return err
 	}
-	if err = smithyhttp.AddErrorCloseResponseBodyMiddleware(stack); err != nil {
-		return err
-	}
-	if err = smithyhttp.AddCloseResponseBodyMiddleware(stack); err != nil {
-		return err
-	}
 	if err = addPutBucketContextMiddleware(stack); err != nil {
 		return err
 	}
@@ -102,9 +92,6 @@ func (c *Client) addOperationGetBucketAbacMiddlewares(stack *middleware.Stack, o
 		return err
 	}
 	if err = addOpGetBucketAbacValidationMiddleware(stack); err != nil {
-		return err
-	}
-	if err = stack.Initialize.Add(newServiceMetadataMiddleware(options.Region, "GetBucketAbac"), middleware.Before); err != nil {
 		return err
 	}
 	if err = addMetadataRetrieverMiddleware(stack); err != nil {
