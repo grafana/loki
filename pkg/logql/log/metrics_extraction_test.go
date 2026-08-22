@@ -382,6 +382,7 @@ func TestNewDistinctValueSampleExtractorAllowsEmptyGroups(t *testing.T) {
 		Process(0, []byte("line"), labels.EmptyLabels())
 	require.True(t, ok)
 	require.Equal(t, xxhash.Sum64String("aa:bb"), math.Float64bits(sample.Value))
+	require.Equal(t, labels.EmptyLabels(), sample.Labels.Labels())
 }
 
 func mustSampleExtractor(ex SampleExtractor, err error) SampleExtractor {
