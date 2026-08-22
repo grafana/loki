@@ -177,6 +177,46 @@ func TestMultiTenantQuerier_SelectSamples(t *testing.T) {
 	}
 }
 
+// The downstream querier resolves deletes and clamps the time range on the request it
+// is handed, so every tenant needs its own copy.
+func TestMultiTenantQuerier_EachTenantGetsItsOwnRequest(t *testing.T) {
+	selector := `count_over_time({foo="bar"}[1m])`
+	original := &logproto.SampleQueryRequest{
+		Selector: selector,
+		Start:    time.Unix(0, 0),
+		End:      time.Unix(3600, 0),
+		Plan:     &plan.QueryPlan{AST: syntax.MustParseExpr(selector)},
+	}
+
+	var seen []*logproto.SampleQueryRequest
+	querier := newQuerierMock()
+	querier.On("SelectSamples", mock.Anything, mock.Anything).
+		Run(func(args mock.Arguments) {
+			params := args.Get(1).(logql.SelectSampleParams)
+			seen = append(seen, params.SampleQueryRequest)
+			// Mirror SingleTenantQuerier.SelectSamples, which writes both in place.
+			params.Deletes = append(params.Deletes, &logproto.Delete{Selector: `{app="deleted"}`})
+			params.Start = params.Start.Add(time.Minute)
+		}).
+		Return(func() iter.SampleIterator { return newSampleIterator() }, nil)
+
+	multiTenantQuerier := NewMultiTenantQuerier(querier, log.NewNopLogger())
+	ctx := user.InjectOrgID(context.Background(), "1|2")
+
+	it, err := multiTenantQuerier.SelectSamples(ctx, logql.SelectSampleParams{SampleQueryRequest: original})
+	require.NoError(t, err)
+	for it.Next() { //nolint:revive
+	}
+	require.NoError(t, it.Close())
+
+	require.Len(t, seen, 2)
+	require.NotSame(t, seen[0], seen[1], "both tenants were handed the same request")
+	require.Len(t, seen[0].Deletes, 1, "one tenant observed another tenant's deletes")
+	require.Len(t, seen[1].Deletes, 1, "one tenant observed another tenant's deletes")
+	require.Empty(t, original.Deletes, "downstream deletes leaked into the caller's request")
+	require.Equal(t, time.Unix(0, 0).UTC(), original.Start.UTC(), "downstream clamped the caller's request")
+}
+
 func TestMultiTenantQuerier_TenantFilter(t *testing.T) {
 	for _, tc := range []struct {
 		selector string
