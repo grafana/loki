@@ -178,8 +178,11 @@ func (i *TSDBIndex) forSeriesAndLabels(ctx context.Context, fpFilter index.Finge
 	defer func() { ChunkMetasPool.Put(chks) }()
 
 	return i.forPostings(ctx, fpFilter, from, through, matchers, func(p index.Postings) error {
+		scan := i.reader.NewSeriesScan()
+		defer scan.Close()
+
 		for p.Next() {
-			hash, err := i.reader.Series(p.At(), int64(from), int64(through), &ls, &chks)
+			hash, err := scan.Series(p.At(), int64(from), int64(through), &ls, &chks)
 			if err != nil {
 				return err
 			}
@@ -208,8 +211,11 @@ func (i *TSDBIndex) forSeriesNoLabels(ctx context.Context, fpFilter index.Finger
 	defer func() { ChunkMetasPool.Put(chks) }()
 
 	return i.forPostings(ctx, fpFilter, from, through, matchers, func(p index.Postings) error {
+		scan := i.reader.NewSeriesScan()
+		defer scan.Close()
+
 		for p.Next() {
-			hash, err := i.reader.Series(p.At(), int64(from), int64(through), nil, &chks)
+			hash, err := scan.Series(p.At(), int64(from), int64(through), nil, &chks)
 			if err != nil {
 				return err
 			}
@@ -353,8 +359,11 @@ func (i *TSDBIndex) Stats(ctx context.Context, _ string, from, through model.Tim
 			}
 		}
 
+		scan := i.reader.NewSeriesScan()
+		defer scan.Close()
+
 		for p.Next() {
-			fp, stats, err := i.reader.ChunkStats(p.At(), int64(from), int64(through), &ls, by)
+			fp, stats, err := scan.ChunkStats(p.At(), int64(from), int64(through), &ls, by)
 			if err != nil {
 				return err
 			}
@@ -439,8 +448,11 @@ func (i *TSDBIndex) Volume(
 
 	return i.forPostings(ctx, fpFilter, from, through, matchers, func(p index.Postings) error {
 		var ls labels.Labels
+		scan := i.reader.NewSeriesScan()
+		defer scan.Close()
+
 		for p.Next() {
-			fp, stats, err := i.reader.ChunkStats(p.At(), int64(from), int64(through), &ls, by)
+			fp, stats, err := scan.ChunkStats(p.At(), int64(from), int64(through), &ls, by)
 			if err != nil {
 				return fmt.Errorf("series volume: %w", err)
 			}
