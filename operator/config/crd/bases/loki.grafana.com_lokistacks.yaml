@@ -264,6 +264,18 @@ spec:
                               that will be returned for a query.
                             format: int32
                             type: integer
+                          maxQueryLength:
+                            description: |-
+                              MaxQueryLength is the maximum timespan covered by a single query (e.g. 721h, 90d, 2160h).
+                              Must be a valid Go duration or Loki duration string format.
+                            pattern: ^[0-9]+(s|m|h|d|w|y)$
+                            type: string
+                          maxQueryLookback:
+                            description: |-
+                              MaxQueryLookback is the maximum duration in the past from which queries can read data (e.g. 721h, 90d, 2160h).
+                              Must be a valid Go duration or Loki duration string format.
+                            pattern: ^[0-9]+(s|m|h|d|w|y)$
+                            type: string
                           maxQuerySeries:
                             description: |-
                               MaxQuerySeries defines the maximum of unique series
@@ -544,6 +556,18 @@ spec:
                                 that will be returned for a query.
                               format: int32
                               type: integer
+                            maxQueryLength:
+                              description: |-
+                                MaxQueryLength is the maximum timespan covered by a single query (e.g. 721h, 90d, 2160h).
+                                Must be a valid Go duration or Loki duration string format.
+                              pattern: ^[0-9]+(s|m|h|d|w|y)$
+                              type: string
+                            maxQueryLookback:
+                              description: |-
+                                MaxQueryLookback is the maximum duration in the past from which queries can read data (e.g. 721h, 90d, 2160h).
+                                Must be a valid Go duration or Loki duration string format.
+                              pattern: ^[0-9]+(s|m|h|d|w|y)$
+                              type: string
                             maxQuerySeries:
                               description: |-
                                 MaxQuerySeries defines the maximum of unique series
