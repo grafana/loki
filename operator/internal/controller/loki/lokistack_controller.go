@@ -235,7 +235,8 @@ func (r *LokiStackReconciler) buildController(bld k8s.Builder) error {
 		Watches(&corev1.Service{}, r.enqueueForObjectStorageServices(), createOrUpdatePred).
 		Watches(&corev1.Service{}, r.enqueueForAlertManagerServices(), createUpdateOrDeletePred).
 		Watches(&corev1.Secret{}, r.enqueueForStorageSecret(), createUpdateOrDeletePred).
-		Watches(&corev1.ConfigMap{}, r.enqueueForStorageCA(), createUpdateOrDeletePred)
+		Watches(&corev1.Secret{}, r.enqueueForCASecret(), createUpdateOrDeletePred).
+		Watches(&corev1.ConfigMap{}, r.enqueueForCAConfigMap(), createUpdateOrDeletePred)
 
 	if r.FeatureGates.LokiStackAlerts {
 		bld = bld.Owns(&monitoringv1.PrometheusRule{}, updateOrDeleteOnlyPred)
@@ -357,22 +358,21 @@ func (r *LokiStackReconciler) enqueueForStorageSecret() handler.EventHandler {
 	})
 }
 
-func (r *LokiStackReconciler) enqueueForStorageCA() handler.EventHandler {
+// enqueueForCAConfigMap enqueues a reconcile request for every LokiStack that
+// references the changed ConfigMap as a CA bundle for object storage TLS, gateway
+// TLS, or passthrough gateway TLS. Without this Watch, fixing such a ConfigMap
+// (e.g. adding a missing key) would never retrigger reconciliation on its own.
+func (r *LokiStackReconciler) enqueueForCAConfigMap() handler.EventHandler {
 	return handler.EnqueueRequestsFromMapFunc(func(ctx context.Context, obj client.Object) []reconcile.Request {
 		lokiStacks := &lokiv1.LokiStackList{}
 		if err := r.List(ctx, lokiStacks, client.InNamespace(obj.GetNamespace())); err != nil {
-			r.Log.Error(err, "Error listing LokiStack resources for storage CA update")
+			r.Log.Error(err, "Error listing LokiStack resources for CA config map update")
 			return nil
 		}
 
 		var requests []reconcile.Request
 		for _, stack := range lokiStacks.Items {
-			if stack.Spec.Storage.TLS == nil {
-				continue
-			}
-
-			storageTLS := stack.Spec.Storage.TLS
-			if obj.GetName() != storageTLS.CA {
+			if !stackReferencesCAConfigMap(&stack, obj.GetName()) {
 				continue
 			}
 
@@ -382,11 +382,100 @@ func (r *LokiStackReconciler) enqueueForStorageCA() handler.EventHandler {
 					Name:      stack.Name,
 				},
 			})
-			r.Log.Info("Enqueued request for LokiStack because of Storage CA resource change", "LokiStack", stack.Name, "ConfigMap", obj.GetName())
+			r.Log.Info("Enqueued request for LokiStack because of CA config map change", "LokiStack", stack.Name, "ConfigMap", obj.GetName())
 		}
 
 		return requests
 	})
+}
+
+// stackReferencesCAConfigMap reports whether stack references name as a ConfigMap
+// for object storage TLS, gateway TLS, or passthrough gateway TLS.
+func stackReferencesCAConfigMap(stack *lokiv1.LokiStack, name string) bool {
+	if stack.Spec.Storage.TLS != nil && stack.Spec.Storage.TLS.CA == name {
+		return true
+	}
+
+	tenants := stack.Spec.Tenants
+	if tenants == nil {
+		return false
+	}
+
+	if gw := tenants.Gateway; gw != nil && gw.TLS != nil {
+		if gw.TLS.CA != nil && gw.TLS.CA.ConfigMapName == name {
+			return true
+		}
+		if gw.TLS.Certificate != nil && gw.TLS.Certificate.ConfigMapName == name {
+			return true
+		}
+	}
+
+	if pt := tenants.Passthrough; pt != nil && pt.CA != nil && pt.CA.ConfigMapName == name {
+		return true
+	}
+
+	return false
+}
+
+// enqueueForCASecret enqueues a reconcile request for every LokiStack that
+// references the changed Secret as a CA bundle, certificate, or private key for
+// gateway TLS or passthrough gateway TLS. Object storage TLS only supports a
+// ConfigMap CA, so it has no Secret-based equivalent here. Without this Watch,
+// fixing such a Secret (e.g. adding a missing key) would never retrigger
+// reconciliation on its own.
+func (r *LokiStackReconciler) enqueueForCASecret() handler.EventHandler {
+	return handler.EnqueueRequestsFromMapFunc(func(ctx context.Context, obj client.Object) []reconcile.Request {
+		lokiStacks := &lokiv1.LokiStackList{}
+		if err := r.List(ctx, lokiStacks, client.InNamespace(obj.GetNamespace())); err != nil {
+			r.Log.Error(err, "Error listing LokiStack resources for CA secret update")
+			return nil
+		}
+
+		var requests []reconcile.Request
+		for _, stack := range lokiStacks.Items {
+			if !stackReferencesCASecret(&stack, obj.GetName()) {
+				continue
+			}
+
+			requests = append(requests, reconcile.Request{
+				NamespacedName: types.NamespacedName{
+					Namespace: stack.Namespace,
+					Name:      stack.Name,
+				},
+			})
+			r.Log.Info("Enqueued request for LokiStack because of CA secret change", "LokiStack", stack.Name, "Secret", obj.GetName())
+		}
+
+		return requests
+	})
+}
+
+// stackReferencesCASecret reports whether stack references name as a Secret for
+// gateway TLS (CA, certificate, or private key) or passthrough gateway TLS CA.
+func stackReferencesCASecret(stack *lokiv1.LokiStack, name string) bool {
+	tenants := stack.Spec.Tenants
+	if tenants == nil {
+		return false
+	}
+
+	if gw := tenants.Gateway; gw != nil && gw.TLS != nil {
+		tls := gw.TLS
+		if tls.CA != nil && tls.CA.SecretName == name {
+			return true
+		}
+		if tls.Certificate != nil && tls.Certificate.SecretName == name {
+			return true
+		}
+		if tls.PrivateKey != nil && tls.PrivateKey.SecretName == name {
+			return true
+		}
+	}
+
+	if pt := tenants.Passthrough; pt != nil && pt.CA != nil && pt.CA.SecretName == name {
+		return true
+	}
+
+	return false
 }
 
 func (r *LokiStackReconciler) enqueueForObjectStorageServices() handler.EventHandler {
