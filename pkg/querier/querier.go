@@ -14,17 +14,23 @@ import (
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/google/uuid"
+	"github.com/grafana/dskit/flagext"
 	"github.com/grafana/dskit/httpgrpc"
 	"github.com/grafana/dskit/tenant"
 	"github.com/pkg/errors"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
+	"github.com/thanos-io/objstore"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 	"golang.org/x/sync/errgroup"
 	"google.golang.org/grpc/health/grpc_health_v1"
 
+	"github.com/grafana/loki/v3/pkg/dataobj"
+	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
+	"github.com/grafana/loki/v3/pkg/engine"
 	"github.com/grafana/loki/v3/pkg/indexgateway"
 	"github.com/grafana/loki/v3/pkg/iter"
 	"github.com/grafana/loki/v3/pkg/loghttp"
@@ -38,6 +44,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/querier/pattern"
 	"github.com/grafana/loki/v3/pkg/querier/plan"
 	"github.com/grafana/loki/v3/pkg/storage/chunk"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/cache"
 	"github.com/grafana/loki/v3/pkg/storage/stores/index/seriesvolume"
 	"github.com/grafana/loki/v3/pkg/storage/stores/index/stats"
 	listutil "github.com/grafana/loki/v3/pkg/util"
@@ -62,8 +69,41 @@ type Config struct {
 	PerRequestLimitsEnabled   bool             `yaml:"per_request_limits_enabled"`
 	QueryPartitionIngesters   bool             `yaml:"query_partition_ingesters" category:"experimental"`
 
+	// DataObjectsShardBucketFilteringEnabled prunes data-object streams by their __shard_bucket__ column
+	// before decoding labels, for sharded stream-first metric queries. Has no effect unless the v1
+	// data-object reader is enabled.
+	DataObjectsShardBucketFilteringEnabled bool `yaml:"dataobjects_shard_bucket_filtering_enabled" category:"experimental"`
+
+	// DataObjectsSectionShardBucketPruningEnabled narrows data-object section resolution to the query
+	// shard's bucket range (postings flow only), so fewer streams are resolved and read. Independent of
+	// DataObjectsShardBucketFilteringEnabled. Has no effect unless the v1 data-object reader is enabled,
+	// and is ignored when resolution is offloaded to the index-gateway.
+	//
+	// Enable only against index objects written with per-stream shard-bucket postings: older index objects
+	// have zeroed min/max shard-bucket columns and would be pruned incorrectly (dropping streams).
+	DataObjectsSectionShardBucketPruningEnabled bool `yaml:"dataobjects_section_shard_bucket_pruning_enabled" category:"experimental"`
+
+	// DataObjectsSectionResolutionViaIndexGatewayEnabled resolves data-object sections through the
+	// index-gateway (per 12h window) instead of locally in the querier, removing the per-shard
+	// resolution redundancy. Falls back to local resolution when the gateway is unavailable.
+	DataObjectsSectionResolutionViaIndexGatewayEnabled bool `yaml:"dataobjects_section_resolution_via_index_gateway_enabled" category:"experimental"`
+
+	// DataObjectMetadataCacheEnabled caches each data object's immutable metadata prefix so the v1
+	// reader does not read it from object storage on every open. Requires the v1 data-object reader.
+	DataObjectMetadataCacheEnabled bool `yaml:"dataobject_metadata_cache_enabled" category:"experimental"`
+
+	// DataObjectMetadataCache configures the cache backend for DataObjectMetadataCacheEnabled.
+	DataObjectMetadataCache cache.Config `yaml:"dataobject_metadata_cache" category:"experimental"`
+
 	IngesterQueryStoreMaxLookback time.Duration `yaml:"-"`
 	QueryPatternIngestersWithin   time.Duration `yaml:"-"`
+
+	// Data-object availability window, mirrored from the query-engine config (query-engine.storage-*)
+	// so the v1 data-object reader and the v2 engine agree on where data objects live. Set
+	// programmatically, not via yaml.
+	DataObjectsStorageLag           time.Duration `yaml:"-"`
+	DataObjectsStorageStartDate     flagext.Time  `yaml:"-"`
+	DataObjectsStorageRetentionDays int64         `yaml:"-"`
 }
 
 // RegisterFlags register flags.
@@ -82,6 +122,11 @@ func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	f.BoolVar(&cfg.MultiTenantQueriesEnabled, prefix+"multi-tenant-queries-enabled", false, "When true, allow queries to span multiple tenants.")
 	f.BoolVar(&cfg.PerRequestLimitsEnabled, prefix+"per-request-limits-enabled", false, "When true, querier limits sent via a header are enforced.")
 	f.BoolVar(&cfg.QueryPartitionIngesters, prefix+"query-partition-ingesters", false, "When true, querier directs ingester queries to the partition-ingesters instead of the normal ingesters.")
+	f.BoolVar(&cfg.DataObjectsShardBucketFilteringEnabled, prefix+"dataobjects-shard-bucket-filtering-enabled", false, "When true, sharded stream-first metric queries prune data-object streams by their shard bucket before decoding labels. Has no effect unless the data-object reader is enabled.")
+	f.BoolVar(&cfg.DataObjectsSectionShardBucketPruningEnabled, prefix+"dataobjects-section-shard-bucket-pruning-enabled", false, "When true, sharded stream-first metric queries narrow data-object section resolution to the shard's bucket range using the index postings, so fewer streams are resolved and read. Has no effect unless the data-object reader is enabled, and is ignored when section resolution is offloaded to the index-gateway. Enable only against index objects written with per-stream shard-bucket postings; older index objects would be pruned incorrectly.")
+	f.BoolVar(&cfg.DataObjectsSectionResolutionViaIndexGatewayEnabled, prefix+"dataobjects-section-resolution-via-index-gateway-enabled", false, "When true, the querier resolves data-object sections through the index-gateway (per 12h window) instead of locally, removing the per-shard resolution redundancy. Falls back to local resolution when the gateway is unavailable. Requires the index-gateway to have -index-gateway.dataobject-sections.enabled=true.")
+	f.BoolVar(&cfg.DataObjectMetadataCacheEnabled, prefix+"dataobject-metadata-cache-enabled", false, "When true, cache each data object's metadata so the v1 data-object reader does not read it from object storage on every open. Has no effect unless the data-object reader is enabled.")
+	cfg.DataObjectMetadataCache.RegisterFlagsWithPrefix(prefix+"dataobject-metadata-cache.", "", f)
 }
 
 // Validate validates the config.
@@ -133,10 +178,16 @@ type SingleTenantQuerier struct {
 	patternQuerier  pattern.PatterQuerier
 	deleteGetter    deletion.DeleteGetter
 	logger          log.Logger
+
+	// dataObjStore serves stream-first metric queries from data objects over the data-object-available
+	// window. It is nil unless the experimental v1 data-object reader is enabled.
+	dataObjStore Store
 }
 
-// New makes a new Querier.
-func New(cfg Config, store Store, ingesterQuerier *IngesterQuerier, limits querier_limits.Limits, d deletion.DeleteGetter, logger log.Logger) (*SingleTenantQuerier, error) {
+// New makes a new Querier. When dataObjBucket and dataObjMetastore are both non-nil, eligible
+// stream-first metric queries read the data-object-available slice from data objects; pass nil for
+// both to disable that (the default).
+func New(cfg Config, store Store, ingesterQuerier *IngesterQuerier, limits querier_limits.Limits, d deletion.DeleteGetter, logger log.Logger, dataObjBucket objstore.Bucket, dataObjMetastore metastore.Metastore, dataObjSectionsClient DataObjSectionsGatewayClient, dataObjMetadataCache dataobj.MetadataCache, reg prometheus.Registerer) (*SingleTenantQuerier, error) {
 	q := &SingleTenantQuerier{
 		cfg:             cfg,
 		store:           store,
@@ -144,6 +195,10 @@ func New(cfg Config, store Store, ingesterQuerier *IngesterQuerier, limits queri
 		limits:          limits,
 		deleteGetter:    d,
 		logger:          logger,
+	}
+
+	if dataObjBucket != nil && dataObjMetastore != nil {
+		q.dataObjStore = NewDataObjSampleStore(store, dataObjBucket, dataObjMetastore, dataObjSectionsClient, cfg.DataObjectsShardBucketFilteringEnabled, cfg.DataObjectsSectionShardBucketPruningEnabled, logger, reg, WithDataObjMetadataCache(dataObjMetadataCache))
 	}
 
 	return q, nil
@@ -264,14 +319,100 @@ func (q *SingleTenantQuerier) SelectSamples(ctx context.Context, params logql.Se
 		params.Start = storeQueryInterval.start
 		params.End = storeQueryInterval.end
 
-		storeIter, err := q.store.SelectSamples(ctx, params)
+		storeIter, err := q.storeForSampleParams(params, ingesterQueryInterval != nil && !q.cfg.QueryStoreOnly).SelectSamples(ctx, params)
 		if err != nil {
 			return nil, err
 		}
 
 		iters = append(iters, storeIter)
 	}
-	return iter.NewMergeSampleIterator(ctx, iters), nil
+
+	// When stream-first ordering is requested, every source — the store and each ingester (via the
+	// order-preserving wire codec) — returns its samples stream-first, so they can feed the
+	// cross-source merge directly, without a re-sort here.
+	if params.Order == logproto.SAMPLE_ORDER_BY_STREAM {
+		return iter.NewStreamFirstMergeSampleIterator(ctx, iters), nil
+	}
+	return iter.NewTimestampFirstMergeSampleIterator(ctx, iters), nil
+}
+
+// storeForSampleParams picks the store for the store-side slice of a sample query. When the
+// data-object reader is enabled and the query is stream-first, it returns a per-query StoreCombiner
+// that serves the data-object-available window from data objects and the rest from the chunk store.
+// Otherwise it returns the plain chunk store.
+//
+// The chunk store is registered on both sides of the data-object window, so the combiner routes,
+// oldest to newest: chunks (before data objects existed), data objects (the available window), then
+// chunks again (data objects lag now, so the freshly-flushed slice stays on chunks). Any of the three
+// bands can be empty for a given query; the combiner only reads the bands the query overlaps.
+func (q *SingleTenantQuerier) storeForSampleParams(params logql.SelectSampleParams, ingesterQueried bool) Store {
+	// Stream-first is the only path a data-object source can feed; its output ordering matches the
+	// stream-first merge. Everything else stays on the chunk store.
+	if q.dataObjStore == nil || params.Order != logproto.SAMPLE_ORDER_BY_STREAM {
+		return q.store
+	}
+
+	// The data-object reader does not deduplicate, so it must never overlap the ingester query. That
+	// disjointness only holds under a bounded ingester/store split (IngesterQueryStoreMaxLookback set),
+	// which limits the ingester query to the recent window and the store side to everything strictly
+	// older. Without it, fall back to chunks.
+	if q.cfg.IngesterQueryStoreMaxLookback == 0 {
+		return q.store
+	}
+
+	// Reuse the query engine's window computation so v1 and v2 agree on where data objects live.
+	availability := engine.Config{
+		StorageLag:           q.cfg.DataObjectsStorageLag,
+		StorageStartDate:     q.cfg.DataObjectsStorageStartDate,
+		StorageRetentionDays: q.cfg.DataObjectsStorageRetentionDays,
+	}
+	dataobjStart, dataobjEnd := availability.ValidQueryRange()
+
+	dataobjStartTime := model.TimeFromUnixNano(dataobjStart.UnixNano())
+	dataobjEndTime := model.TimeFromUnixNano(dataobjEnd.UnixNano())
+
+	// params.End is the store-side end. When an ingester query abuts it (a recent query, under the
+	// bounded split), it is the store/ingester boundary and the boundary sample must fall to the chunk
+	// store, which deduplicates against the ingester (the data-object reader does not). When no ingester
+	// query abuts it (a historical query), it is the real query end and data objects serve up to it —
+	// carving the boundary to chunks there would pull a whole range-vector lookback of chunks for the
+	// final sample for no dedup benefit.
+	storeEnd := model.TimeFromUnixNano(params.End.UnixNano())
+	dataobjEndTime = dataobjBandEnd(dataobjEndTime, storeEnd, ingesterQueried)
+
+	// Without a configured start (no storage-start-date and no retention) we don't know how far back
+	// data objects go, so we can't route to them. An inverted or empty window is likewise unusable.
+	// Fall back to chunks.
+	if dataobjStartTime <= 0 || dataobjStartTime >= dataobjEndTime {
+		return q.store
+	}
+
+	return NewStoreCombiner([]StoreConfig{
+		{Store: q.store, From: 0}, // older-than-availability band
+		{Store: q.dataObjStore, From: dataobjStartTime},
+		{Store: q.store, From: dataobjEndTime + 1}, // recent band: data objects lag now
+	})
+}
+
+// dataobjBandEnd returns the inclusive upper bound of the data-object band for a store query ending at
+// storeEnd, given the data-object availability upper bound dataobjEnd.
+//
+// When data objects reach past storeEnd (dataobjEnd >= storeEnd) the boundary sample can be served by
+// either store, so ingesterQueried decides: if an ingester query abuts storeEnd, reserve the boundary
+// for the chunk store (storeEnd-1) so it deduplicates against the ingester; otherwise let data objects
+// serve up to storeEnd. Reserving the boundary for chunks when no ingester query abuts it would make
+// the chunk store read a whole range-vector lookback for the final sample for no benefit.
+//
+// When data objects stop before storeEnd (dataobjEnd < storeEnd), the recent slice genuinely lives on
+// chunks regardless, so the band ends at dataobjEnd.
+func dataobjBandEnd(dataobjEnd, storeEnd model.Time, ingesterQueried bool) model.Time {
+	if dataobjEnd < storeEnd {
+		return dataobjEnd
+	}
+	if ingesterQueried {
+		return storeEnd - 1
+	}
+	return storeEnd
 }
 
 func (q *SingleTenantQuerier) isWithinIngesterMaxLookbackPeriod(maxLookback time.Duration, queryEnd time.Time) bool {

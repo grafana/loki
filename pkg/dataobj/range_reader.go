@@ -31,6 +31,7 @@ type bucketRangeReader struct {
 }
 
 func (rr *bucketRangeReader) Size(ctx context.Context) (int64, error) {
+	xcap.RegionFromContext(ctx).Record(StatObjectRequestsAttributes.Observe(1))
 	attrs, err := rr.bucket.Attributes(ctx, rr.path)
 	if err != nil {
 		return 0, fmt.Errorf("reading attributes: %w", err)
@@ -39,6 +40,7 @@ func (rr *bucketRangeReader) Size(ctx context.Context) (int64, error) {
 }
 
 func (rr *bucketRangeReader) Read(ctx context.Context) (io.ReadCloser, error) {
+	xcap.RegionFromContext(ctx).Record(StatObjectRequestsGet.Observe(1))
 	rc, err := rr.bucket.Get(ctx, rr.path)
 	if err != nil {
 		return nil, err
@@ -47,6 +49,7 @@ func (rr *bucketRangeReader) Read(ctx context.Context) (io.ReadCloser, error) {
 }
 
 func (rr *bucketRangeReader) ReadRange(ctx context.Context, offset int64, length int64) (io.ReadCloser, error) {
+	xcap.RegionFromContext(ctx).Record(StatObjectRequestsGetRange.Observe(1))
 	rc, err := rr.bucket.GetRange(ctx, rr.path, offset, length)
 	if err != nil {
 		return nil, err

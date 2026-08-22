@@ -28,6 +28,19 @@ type ChunkFetcherProvider interface {
 }
 
 type ChunkFetcher interface {
+	// GetChunks returns the references of the chunks that match predicate and whose time range
+	// overlaps [from, through] for the given tenant.
+	//
+	// It returns references only, not chunk data: every returned chunk.Chunk has just its embedded
+	// ChunkRef populated — Fingerprint (the per-stream fingerprint), UserID, From, Through and
+	// Checksum — which is enough to group or sort chunks by stream and time without loading them.
+	// The Metric labels, Encoding and Data fields are left at their zero value; they are only filled
+	// once the chunk is loaded through the returned Fetcher (e.g. Fetcher.FetchChunks).
+	//
+	// Chunks are returned grouped, alongside a parallel slice of fetchers: the chunks in the i-th
+	// group must be loaded with the i-th fetcher (each period store contributes its own group and
+	// fetcher). When storeChunksOverride is non-nil its refs are used directly instead of querying
+	// the index, still filtered to [from, through].
 	GetChunks(
 		ctx context.Context,
 		userID string,

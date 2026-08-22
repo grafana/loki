@@ -24,10 +24,18 @@ type RowReader struct {
 	matchIDs   map[int64]struct{}
 	predicates []RowPredicate
 
+	// Column projection. When projected is false, every recognized column is read.
+	projected    bool
+	projTypes    map[ColumnType]struct{}
+	projMetadata map[string]struct{}
+
 	buf []dataset.Row
 
-	reader  *dataset.RowReader
-	columns []dataset.Column
+	reader *dataset.RowReader
+
+	// projSectionColumns are the projected logs columns, parallel to the dataset columns passed to the reader,
+	// and used to decode each row. They are the full recognized set when no projection is set.
+	projSectionColumns []*Column
 
 	symbols *symbolizer.Symbolizer
 }
@@ -94,6 +102,31 @@ func (r *RowReader) SetPredicates(p []RowPredicate) error {
 	return nil
 }
 
+// SetColumns restricts the reader to the given column types plus the named metadata columns; other
+// columns (notably the message column) are not read from object storage. The stream-ID column is always
+// read when a stream match is set, and the timestamp column when a time-range predicate is set, whether
+// or not they are listed here, so neither of those predicates silently reduces to "drop every row". A
+// pushed-down metadata predicate still needs its key projected explicitly. When SetColumns is not called,
+// all recognized columns are read.
+//
+// SetColumns may only be called before reading begins or after a call to [RowReader.Reset].
+func (r *RowReader) SetColumns(types []ColumnType, metadataNames []string) error {
+	if r.ready {
+		return fmt.Errorf("cannot change columns after reading has started")
+	}
+
+	r.projTypes = make(map[ColumnType]struct{}, len(types))
+	for _, t := range types {
+		r.projTypes[t] = struct{}{}
+	}
+	r.projMetadata = make(map[string]struct{}, len(metadataNames))
+	for _, n := range metadataNames {
+		r.projMetadata[n] = struct{}{}
+	}
+	r.projected = true
+	return nil
+}
+
 // Read reads up to the next len(s) records from the reader and stores them
 // into s. It returns the number of records read and any error encountered. At
 // the end of the logs section, Read returns 0, io.EOF.
@@ -117,7 +150,7 @@ func (r *RowReader) Read(ctx context.Context, s []Record) (int, error) {
 	}
 
 	for i := range r.buf[:n] {
-		err := DecodeRow(r.sec.Columns(), r.buf[i], &s[i], r.symbols)
+		err := DecodeRow(r.projSectionColumns, r.buf[i], &s[i], r.symbols)
 		if err != nil {
 			return i, fmt.Errorf("decoding record: %w", err)
 		}
@@ -142,24 +175,62 @@ func (r *RowReader) initReader(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("creating section dataset: %w", err)
 	}
-	columns := dset.Columns()
+
+	// datasetColumns and sectionColumns are parallel: datasetColumns[i] is the dataset column for the recognized
+	// logs column sectionColumns[i]. Decoding is positional, so the projected slices below must stay aligned
+	// and be passed to both the reader (RowReaderOptions.Columns) and DecodeRow.
+	datasetColumns := dset.Columns()
+	sectionColumns := r.sec.Columns()
+
+	projDatasetColumns := datasetColumns
+	projSectionColumns := sectionColumns
+	if r.projected {
+		// A pushed-down predicate reads its column directly, so that column must be projected. Include the
+		// stream-ID column whenever streams are matched and the timestamp column whenever a time-range
+		// predicate is set, even if the caller left them out of SetColumns; otherwise findDatasetColumn
+		// would miss the column and the predicate would reduce to FalsePredicate — dropping every row.
+		projTypes := maps.Clone(r.projTypes)
+		if len(r.matchIDs) > 0 {
+			projTypes[ColumnTypeStreamID] = struct{}{}
+		}
+		if predicatesNeedTimestamp(r.predicates) {
+			projTypes[ColumnTypeTimestamp] = struct{}{}
+		}
+
+		projDatasetColumns = make([]dataset.Column, 0, len(datasetColumns))
+		projSectionColumns = make([]*Column, 0, len(sectionColumns))
+		_, allMetadata := projTypes[ColumnTypeMetadata]
+		for i, lc := range sectionColumns {
+			keep := false
+			if lc.Type == ColumnTypeMetadata {
+				_, named := r.projMetadata[lc.Name]
+				keep = allMetadata || named
+			} else {
+				_, keep = projTypes[lc.Type]
+			}
+			if keep {
+				projDatasetColumns = append(projDatasetColumns, datasetColumns[i])
+				projSectionColumns = append(projSectionColumns, lc)
+			}
+		}
+	}
 
 	// r.predicate doesn't contain mappings of stream IDs; we need to build
 	// that as a separate predicate and AND them together.
 	var predicates []dataset.Predicate
-	if p := streamIDPredicate(maps.Keys(r.matchIDs), columns, r.sec.Columns()); p != nil {
+	if p := streamIDPredicate(maps.Keys(r.matchIDs), projDatasetColumns, projSectionColumns); p != nil {
 		predicates = append(predicates, p)
 	}
 
 	for _, predicate := range r.predicates {
-		if p := translateLogsPredicate(predicate, columns, r.sec.Columns()); p != nil {
+		if p := translateLogsPredicate(predicate, projDatasetColumns, projSectionColumns); p != nil {
 			predicates = append(predicates, p)
 		}
 	}
 
 	readerOpts := dataset.RowReaderOptions{
 		Dataset:           dset,
-		Columns:           columns,
+		Columns:           projDatasetColumns,
 		Predicates:        predicates,
 		PrefetchAllOnOpen: true,
 	}
@@ -179,7 +250,7 @@ func (r *RowReader) initReader(ctx context.Context) error {
 		r.symbols.Reset()
 	}
 
-	r.columns = columns
+	r.projSectionColumns = projSectionColumns
 	r.ready = true
 	return nil
 }
@@ -198,7 +269,10 @@ func (r *RowReader) Reset(sec *Section) {
 	clear(r.matchIDs)
 	r.predicates = nil
 
-	r.columns = nil
+	r.projected = false
+	clear(r.projTypes)
+	clear(r.projMetadata)
+	r.projSectionColumns = nil
 
 	if r.symbols != nil {
 		r.symbols.Reset()
@@ -236,11 +310,40 @@ func streamIDPredicate(ids iter.Seq[int64], columns []dataset.Column, columnDesc
 
 	return dataset.InPredicate{
 		Column: streamIDColumn,
-		Values: dataset.NewInt64ValueSet(values),
+		// A logs section sorts by stream_id, so this check sees long runs of the same
+		// value. The reader is single-threaded, so a memoized set can cache the
+		// previous result and turn most per-row checks into a comparison.
+		Values: dataset.NewMemoizedInt64ValueSet(values),
 	}
 }
 
-func translateLogsPredicate(p RowPredicate, dsetColumns []dataset.Column, actualColumns []*Column) dataset.Predicate {
+// predicatesNeedTimestamp reports whether any predicate in the trees filters on the timestamp column, so
+// the reader can project that column even when the caller omitted it from SetColumns.
+func predicatesNeedTimestamp(preds []RowPredicate) bool {
+	for _, p := range preds {
+		if predicateNeedsTimestamp(p) {
+			return true
+		}
+	}
+	return false
+}
+
+func predicateNeedsTimestamp(p RowPredicate) bool {
+	switch p := p.(type) {
+	case TimeRangeRowPredicate:
+		return true
+	case AndRowPredicate:
+		return predicateNeedsTimestamp(p.Left) || predicateNeedsTimestamp(p.Right)
+	case OrRowPredicate:
+		return predicateNeedsTimestamp(p.Left) || predicateNeedsTimestamp(p.Right)
+	case NotRowPredicate:
+		return predicateNeedsTimestamp(p.Inner)
+	default:
+		return false
+	}
+}
+
+func translateLogsPredicate(p RowPredicate, datasetColumns []dataset.Column, actualColumns []*Column) dataset.Predicate {
 	if p == nil {
 		return nil
 	}
@@ -248,23 +351,23 @@ func translateLogsPredicate(p RowPredicate, dsetColumns []dataset.Column, actual
 	switch p := p.(type) {
 	case AndRowPredicate:
 		return dataset.AndPredicate{
-			Left:  translateLogsPredicate(p.Left, dsetColumns, actualColumns),
-			Right: translateLogsPredicate(p.Right, dsetColumns, actualColumns),
+			Left:  translateLogsPredicate(p.Left, datasetColumns, actualColumns),
+			Right: translateLogsPredicate(p.Right, datasetColumns, actualColumns),
 		}
 
 	case OrRowPredicate:
 		return dataset.OrPredicate{
-			Left:  translateLogsPredicate(p.Left, dsetColumns, actualColumns),
-			Right: translateLogsPredicate(p.Right, dsetColumns, actualColumns),
+			Left:  translateLogsPredicate(p.Left, datasetColumns, actualColumns),
+			Right: translateLogsPredicate(p.Right, datasetColumns, actualColumns),
 		}
 
 	case NotRowPredicate:
 		return dataset.NotPredicate{
-			Inner: translateLogsPredicate(p.Inner, dsetColumns, actualColumns),
+			Inner: translateLogsPredicate(p.Inner, datasetColumns, actualColumns),
 		}
 
 	case TimeRangeRowPredicate:
-		timeColumn := findDatasetColumn(dsetColumns, actualColumns, func(col *Column) bool {
+		timeColumn := findDatasetColumn(datasetColumns, actualColumns, func(col *Column) bool {
 			return col.Type == ColumnTypeTimestamp
 		})
 		if timeColumn == nil {
@@ -273,7 +376,7 @@ func translateLogsPredicate(p RowPredicate, dsetColumns []dataset.Column, actual
 		return convertLogsTimePredicate(p, timeColumn)
 
 	case LogMessageFilterRowPredicate:
-		messageColumn := findDatasetColumn(dsetColumns, actualColumns, func(col *Column) bool {
+		messageColumn := findDatasetColumn(datasetColumns, actualColumns, func(col *Column) bool {
 			return col.Type == ColumnTypeMessage
 		})
 		if messageColumn == nil {
@@ -293,11 +396,13 @@ func translateLogsPredicate(p RowPredicate, dsetColumns []dataset.Column, actual
 		}
 
 	case MetadataMatcherRowPredicate:
-		metadataColumn := findDatasetColumn(dsetColumns, actualColumns, func(col *Column) bool {
+		metadataColumn := findDatasetColumn(datasetColumns, actualColumns, func(col *Column) bool {
 			return col.Type == ColumnTypeMetadata && col.Name == p.Key
 		})
 		if metadataColumn == nil {
-			return dataset.FalsePredicate{}
+			// The column is absent from this section, so every row reads as an empty value for the key:
+			// keep the whole section only when the empty value matches.
+			return constPredicate(p.Value == "")
 		}
 		return dataset.EqualPredicate{
 			Column: metadataColumn,
@@ -305,11 +410,13 @@ func translateLogsPredicate(p RowPredicate, dsetColumns []dataset.Column, actual
 		}
 
 	case MetadataFilterRowPredicate:
-		metadataColumn := findDatasetColumn(dsetColumns, actualColumns, func(col *Column) bool {
+		metadataColumn := findDatasetColumn(datasetColumns, actualColumns, func(col *Column) bool {
 			return col.Type == ColumnTypeMetadata && col.Name == p.Key
 		})
 		if metadataColumn == nil {
-			return dataset.FalsePredicate{}
+			// The column is absent from this section, so every row reads as an empty value for the key:
+			// keep the whole section only when the empty value matches.
+			return constPredicate(p.Keep(p.Key, ""))
 		}
 		return dataset.FuncPredicate{
 			Column: metadataColumn,
@@ -321,6 +428,15 @@ func translateLogsPredicate(p RowPredicate, dsetColumns []dataset.Column, actual
 	default:
 		panic(fmt.Sprintf("unsupported predicate type %T", p))
 	}
+}
+
+// constPredicate returns a predicate that keeps every row when keep is true and drops every row
+// otherwise. It reduces a metadata predicate whose column is absent from a section.
+func constPredicate(keep bool) dataset.Predicate {
+	if keep {
+		return dataset.TruePredicate{}
+	}
+	return dataset.FalsePredicate{}
 }
 
 func convertLogsTimePredicate(p TimeRangeRowPredicate, column dataset.Column) dataset.Predicate {

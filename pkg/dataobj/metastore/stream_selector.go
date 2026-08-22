@@ -28,9 +28,10 @@ type SectionStreams struct {
 // streamSelector evaluates a LogQL stream selector against one or more postings
 // sections via postings.Scanner
 type streamSelector struct {
-	matchers        []*labels.Matcher
-	equalPredicates []*labels.Matcher
-	start, end      time.Time
+	matchers         []*labels.Matcher
+	equalPredicates  []*labels.Matcher
+	start, end       time.Time
+	shardBucketRange *postings.ShardBucketRange // nil unless resolution-time shard-bucket pruning is on
 
 	compiledMatchers []postings.CompiledMatcher
 	compiledFilters  []postings.CompiledMatcher
@@ -39,14 +40,14 @@ type streamSelector struct {
 	opened           bool
 }
 
-func newStreamSelector(matchers, predicates []*labels.Matcher, start, end time.Time) *streamSelector {
+func newStreamSelector(matchers, predicates []*labels.Matcher, start, end time.Time, bucketRange *postings.ShardBucketRange) *streamSelector {
 	var eq []*labels.Matcher
 	for _, p := range predicates {
 		if p != nil && p.Type == labels.MatchEqual {
 			eq = append(eq, p)
 		}
 	}
-	return &streamSelector{matchers: matchers, equalPredicates: eq, start: start, end: end}
+	return &streamSelector{matchers: matchers, equalPredicates: eq, start: start, end: end, shardBucketRange: bucketRange}
 }
 
 func (s *streamSelector) open(ctx context.Context, sections []*postings.Section, maxConcurrency int) error {
@@ -94,6 +95,7 @@ func (s *streamSelector) open(ctx context.Context, sections []*postings.Section,
 				s.equalPredicates,
 				labelStats[i],
 				bloomStats[i],
+				s.shardBucketRange,
 			)
 			if err != nil {
 				return fmt.Errorf("creating postings scanner readers: %w", err)

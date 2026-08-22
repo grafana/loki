@@ -26,6 +26,8 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 
 	"github.com/grafana/loki/v3/pkg/distributor/clientpool"
 	"github.com/grafana/loki/v3/pkg/logproto"
@@ -270,6 +272,19 @@ func (s *GatewayClient) GetChunkRef(ctx context.Context, in *logproto.GetChunkRe
 	return resp, err
 }
 
+// ResolveDataObjectSections resolves data-object sections for a single 12h window. It routes with
+// affinity to the window (in addition to the tenant) so a window's requests reach the gateway that
+// caches it.
+func (s *GatewayClient) ResolveDataObjectSections(ctx context.Context, in *logproto.ResolveDataObjectSectionsRequest) (*logproto.ResolveDataObjectSectionsResponse, error) {
+	var resp *logproto.ResolveDataObjectSectionsResponse
+	err := s.poolDoConsistent(ctx, uint64(in.From), func(client logproto.IndexGatewayClient) error {
+		var err error
+		resp, err = client.ResolveDataObjectSections(ctx, in)
+		return err
+	})
+	return resp, err
+}
+
 func (s *GatewayClient) GetSeries(ctx context.Context, in *logproto.GetSeriesRequest) (*logproto.GetSeriesResponse, error) {
 	var (
 		resp *logproto.GetSeriesResponse
@@ -444,6 +459,80 @@ func (s *GatewayClient) poolDo(
 
 	s.retriesHistogram.WithLabelValues("failure").Observe(float64(errCount))
 	return lastErr
+}
+
+// poolDoConsistent is like poolDo but routes to the tenant's gateways by consistent hashing of
+// routingKey: the jump-hashed primary is tried first, then the remaining gateways as ordered
+// fallbacks. This gives per-window cache affinity so the resolution cache and singleflight collapse
+// a window's concurrent requests onto one gateway.
+func (s *GatewayClient) poolDoConsistent(ctx context.Context, routingKey uint64, callback func(client logproto.IndexGatewayClient) error) error {
+	userID, err := tenant.TenantID(ctx)
+	if err != nil {
+		return errors.Wrap(err, "index gateway client get tenant ID")
+	}
+	addrs, err := s.getServerAddresses(userID)
+	if err != nil {
+		return err
+	}
+	if len(addrs) == 0 {
+		return fmt.Errorf("no index gateway instances found for tenant %s", userID)
+	}
+
+	// Respect the tenant's gateway-capacity isolation, as poolDo does. In RingMode the subring from
+	// getServerAddresses already applies it; in SimpleMode apply the jump-hash capacity shard here.
+	if s.cfg.Mode == SimpleMode {
+		addrs = s.jumpHashShuffleSharding(userID, addrs)
+	}
+
+	ordered := consistentAddrsOrder(userID, routingKey, addrs)
+
+	var lastErr error
+	for _, addr := range ordered {
+		genericClient, err := s.pool.GetClientFor(addr)
+		if err != nil {
+			level.Error(s.logger).Log("msg", fmt.Sprintf("failed to get client for instance %s", addr), "err", err)
+			lastErr = err
+			continue
+		}
+		client := genericClient.(logproto.IndexGatewayClient)
+		if err := callback(client); err != nil {
+			lastErr = err
+			// Non-retryable errors are identical on every gateway (feature disabled, unaligned window),
+			// so retrying the whole set just wastes RPCs. Return immediately.
+			if code := status.Code(err); code == codes.Unimplemented || code == codes.InvalidArgument {
+				return err
+			}
+			// A cancelled or timed-out request fails the same way on every gateway. Return rather than
+			// retrying the whole set, which for a normal query cancellation would emit one warning per
+			// gateway and count as a resolution error.
+			if ctx.Err() != nil {
+				return err
+			}
+			level.Warn(s.logger).Log("msg", fmt.Sprintf("resolve data object sections failed for instance %s", addr), "err", err)
+			continue
+		}
+		return nil
+	}
+	return lastErr
+}
+
+// consistentAddrsOrder deterministically orders addrs so the jump-hashed primary for (userID,
+// routingKey) comes first, followed by the rest as fallbacks. Same inputs always yield the same
+// order, which gives a window (routingKey) affinity to one gateway while still allowing failover to
+// the others.
+func consistentAddrsOrder(userID string, routingKey uint64, addrs []string) []string {
+	if len(addrs) == 0 {
+		return addrs
+	}
+	sorted := append([]string(nil), addrs...)
+	slices.Sort(sorted)
+	seed := xxhash.Sum64String(userID) ^ routingKey
+	primary := int(jumphash.Hash(seed, len(sorted)))
+	ordered := make([]string, 0, len(sorted))
+	for i := range sorted {
+		ordered = append(ordered, sorted[(primary+i)%len(sorted)])
+	}
+	return ordered
 }
 
 // jumpHashShuffleSharding uses jump hash to consistently select a subset of index gateway instances for a tenant.

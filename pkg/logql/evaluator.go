@@ -18,6 +18,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	"github.com/grafana/loki/v3/pkg/logqlmodel"
+	logql_stats "github.com/grafana/loki/v3/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/v3/pkg/querier/plan"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/cache/resultscache"
 	"github.com/grafana/loki/v3/pkg/util"
@@ -282,17 +283,19 @@ func EvaluatorUnsupportedType(expr syntax.Expr, ev EvaluatorFactory) error {
 }
 
 type DefaultEvaluator struct {
-	maxLookBackPeriod         time.Duration
-	maxCountMinSketchHeapSize int
-	querier                   Querier
+	maxLookBackPeriod             time.Duration
+	maxCountMinSketchHeapSize     int
+	streamOrderedExecutionEnabled bool
+	querier                       Querier
 }
 
 // NewDefaultEvaluator constructs a DefaultEvaluator
-func NewDefaultEvaluator(querier Querier, maxLookBackPeriod time.Duration, maxCountMinSketchHeapSize int) *DefaultEvaluator {
+func NewDefaultEvaluator(querier Querier, maxLookBackPeriod time.Duration, maxCountMinSketchHeapSize int, streamOrderedExecutionEnabled bool) *DefaultEvaluator {
 	return &DefaultEvaluator{
-		querier:                   querier,
-		maxLookBackPeriod:         maxLookBackPeriod,
-		maxCountMinSketchHeapSize: maxCountMinSketchHeapSize,
+		querier:                       querier,
+		maxLookBackPeriod:             maxLookBackPeriod,
+		maxCountMinSketchHeapSize:     maxCountMinSketchHeapSize,
+		streamOrderedExecutionEnabled: streamOrderedExecutionEnabled,
 	}
 }
 
@@ -319,6 +322,17 @@ func (ev *DefaultEvaluator) NewIterator(ctx context.Context, expr syntax.LogSele
 	return ev.querier.SelectLogs(ctx, params)
 }
 
+// recordSampleOrderSubquery counts one range-aggregation sub-evaluation in the query stats under
+// the sample order it ran in.
+func recordSampleOrderSubquery(ctx context.Context, order logproto.SampleOrder) {
+	st := logql_stats.FromContext(ctx)
+	if order == logproto.SAMPLE_ORDER_BY_STREAM {
+		st.IncStreamFirstSubqueries()
+		return
+	}
+	st.IncTimestampFirstSubqueries()
+}
+
 func (ev *DefaultEvaluator) NewStepEvaluator(
 	ctx context.Context,
 	nextEvFactory SampleEvaluatorFactory,
@@ -330,7 +344,15 @@ func (ev *DefaultEvaluator) NewStepEvaluator(
 		if rangExpr, ok := e.Left.(*syntax.RangeAggregationExpr); ok && e.Operation == syntax.OpTypeSum {
 			// if range expression is wrapped with a vector expression
 			// we should send the vector expression for allowing reducing labels at the source.
+
+			// The stream-first evaluator folds each sample into per-(series, step) accumulators, so
+			// its result is independent of the order samples arrive in. Requesting per-stream order
+			// therefore only selects the stream-first read/merge path (per-stream store reads and
+			// the querier's cross-source dedup); it never changes the output.
+			sampleOrder := getSampleOrderForExpr(ev.streamOrderedExecutionEnabled, rangExpr)
+
 			nextEvFactory = SampleEvaluatorFunc(func(ctx context.Context, _ SampleEvaluatorFactory, _ syntax.SampleExpr, _ Params) (StepEvaluator, error) {
+				recordSampleOrderSubquery(ctx, sampleOrder)
 				it, err := ev.querier.SelectSamples(ctx, SelectSampleParams{
 					&logproto.SampleQueryRequest{
 						// extend startTs backwards by step
@@ -344,18 +366,26 @@ func (ev *DefaultEvaluator) NewStepEvaluator(
 							AST: expr,
 						},
 						StoreChunks: q.GetStoreChunks(),
+						Order:       sampleOrder,
 					},
 				})
 				if err != nil {
 					return nil, err
 				}
-				return newRangeAggEvaluator(iter.NewPeekingSampleIterator(it), rangExpr, q, rangExpr.Left.Offset)
+				return newRangeAggEvaluator(iter.NewPeekingSampleIterator(it), rangExpr, q, rangExpr.Left.Offset, sampleOrder)
 			})
 		}
 		return newVectorAggEvaluator(ctx, nextEvFactory, e, q, ev.maxCountMinSketchHeapSize)
 	case *CountMinSketchEvalExpr:
 		return NewCountMinSketchEvalStepEvaluator(ctx, nextEvFactory, e, q)
 	case *syntax.RangeAggregationExpr:
+		// The stream-first evaluator folds each sample into per-(series, step) accumulators, so its
+		// result is independent of the order samples arrive in. Requesting per-stream order therefore
+		// only selects the stream-first read/merge path (per-stream store reads and the querier's
+		// cross-source dedup); it never changes the output.
+		sampleOrder := getSampleOrderForExpr(ev.streamOrderedExecutionEnabled, e)
+		recordSampleOrderSubquery(ctx, sampleOrder)
+
 		it, err := ev.querier.SelectSamples(ctx, SelectSampleParams{
 			&logproto.SampleQueryRequest{
 				// extend startTs backwards by step
@@ -369,12 +399,13 @@ func (ev *DefaultEvaluator) NewStepEvaluator(
 					AST: expr,
 				},
 				StoreChunks: q.GetStoreChunks(),
+				Order:       sampleOrder,
 			},
 		})
 		if err != nil {
 			return nil, err
 		}
-		return newRangeAggEvaluator(iter.NewPeekingSampleIterator(it), e, q, e.Left.Offset)
+		return newRangeAggEvaluator(iter.NewPeekingSampleIterator(it), e, q, e.Left.Offset, sampleOrder)
 	case *syntax.BinOpExpr:
 		return newBinOpStepEvaluator(ctx, nextEvFactory, e, q)
 	case *syntax.LabelReplaceExpr:
@@ -664,6 +695,7 @@ func newRangeAggEvaluator(
 	expr *syntax.RangeAggregationExpr,
 	q Params,
 	o time.Duration,
+	sampleOrder logproto.SampleOrder,
 ) (StepEvaluator, error) {
 	switch expr.Operation {
 	case syntax.OpRangeTypeAbsent:
@@ -672,6 +704,7 @@ func newRangeAggEvaluator(
 			expr.Left.Interval.Nanoseconds(),
 			q.Step().Nanoseconds(),
 			q.Start().UnixNano(), q.End().UnixNano(), o.Nanoseconds(),
+			logproto.SAMPLE_ORDER_BY_TIMESTAMP,
 		)
 		if err != nil {
 			return nil, err
@@ -724,6 +757,7 @@ func newRangeAggEvaluator(
 			expr.Left.Interval.Nanoseconds(),
 			q.Step().Nanoseconds(),
 			q.Start().UnixNano(), q.End().UnixNano(), o.Nanoseconds(),
+			sampleOrder,
 		)
 		if err != nil {
 			return nil, err

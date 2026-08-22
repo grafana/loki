@@ -64,6 +64,9 @@ type Config struct {
 	// In case it isn't explicitly set, it follows the same behavior of the other rings (ex: using the common configuration
 	// section and the ingester configuration by default).
 	Ring ring.RingConfig `yaml:"ring,omitempty" doc:"description=Defines the ring to be used by the index gateway servers and clients in case the servers are configured to run in 'ring' mode. In case this isn't configured, this block supports inheriting configuration from the common ring section."`
+
+	// DataObjectSections configures the data-object section resolution API (ResolveDataObjectSections).
+	DataObjectSections DataObjectSectionsConfig `yaml:"dataobject_sections"`
 }
 
 // RegisterFlags register all IndexGatewayClientConfig flags and all the flags of its subconfigs but with a prefix (ex: shipper).
@@ -75,6 +78,8 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 		"index-gateway.ring.num-tokens",
 		"index-gateway.ring.replication-factor",
 	}
+	cfg.DataObjectSections.RegisterFlags(f)
+
 	cfg.Ring.RegisterFlagsWithPrefix("index-gateway.", "collectors/", f, skipFlags...)
 	f.IntVar(&cfg.Ring.NumTokens, "index-gateway.ring.num-tokens", NumTokens, fmt.Sprintf("IGNORED: Num tokens is fixed to %d", NumTokens))
 	// ReplicationFactor defines how many Index Gateway instances are assigned to each tenant.
@@ -89,5 +94,5 @@ func (cfg *Config) Validate() error {
 	if cfg.Ring.NumTokens != NumTokens {
 		return errors.New("Num tokens must not be changed as it will not take effect")
 	}
-	return nil
+	return cfg.DataObjectSections.Validate()
 }

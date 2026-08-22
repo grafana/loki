@@ -249,63 +249,275 @@ func (m *FPBounds) GetMax() github_com_prometheus_common_model.Fingerprint {
 	return 0
 }
 
+// ResolveDataObjectSectionsRequest asks the index-gateway to resolve the data-object sections
+// matching `matchers` within a single 12h UTC-aligned window [from, through). The window must be
+// aligned: `from` truncated to 12h UTC and `through == from + 12h`; otherwise the RPC fails.
+type ResolveDataObjectSectionsRequest struct {
+	From     github_com_prometheus_common_model.Time `protobuf:"varint,1,opt,name=from,proto3,customtype=github.com/prometheus/common/model.Time" json:"from"`
+	Through  github_com_prometheus_common_model.Time `protobuf:"varint,2,opt,name=through,proto3,customtype=github.com/prometheus/common/model.Time" json:"through"`
+	Matchers string                                  `protobuf:"bytes,3,opt,name=matchers,proto3" json:"matchers"`
+}
+
+func (m *ResolveDataObjectSectionsRequest) Reset()      { *m = ResolveDataObjectSectionsRequest{} }
+func (*ResolveDataObjectSectionsRequest) ProtoMessage() {}
+func (*ResolveDataObjectSectionsRequest) Descriptor() ([]byte, []int) {
+	return fileDescriptor_d27585148d0a52c8, []int{4}
+}
+func (m *ResolveDataObjectSectionsRequest) XXX_Unmarshal(b []byte) error {
+	return m.Unmarshal(b)
+}
+func (m *ResolveDataObjectSectionsRequest) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
+	if deterministic {
+		return xxx_messageInfo_ResolveDataObjectSectionsRequest.Marshal(b, m, deterministic)
+	} else {
+		b = b[:cap(b)]
+		n, err := m.MarshalToSizedBuffer(b)
+		if err != nil {
+			return nil, err
+		}
+		return b[:n], nil
+	}
+}
+func (m *ResolveDataObjectSectionsRequest) XXX_Merge(src proto.Message) {
+	xxx_messageInfo_ResolveDataObjectSectionsRequest.Merge(m, src)
+}
+func (m *ResolveDataObjectSectionsRequest) XXX_Size() int {
+	return m.Size()
+}
+func (m *ResolveDataObjectSectionsRequest) XXX_DiscardUnknown() {
+	xxx_messageInfo_ResolveDataObjectSectionsRequest.DiscardUnknown(m)
+}
+
+var xxx_messageInfo_ResolveDataObjectSectionsRequest proto.InternalMessageInfo
+
+func (m *ResolveDataObjectSectionsRequest) GetMatchers() string {
+	if m != nil {
+		return m.Matchers
+	}
+	return ""
+}
+
+type ResolveDataObjectSectionsResponse struct {
+	Objects []ResolvedDataObject `protobuf:"bytes,1,rep,name=objects,proto3" json:"objects"`
+}
+
+func (m *ResolveDataObjectSectionsResponse) Reset()      { *m = ResolveDataObjectSectionsResponse{} }
+func (*ResolveDataObjectSectionsResponse) ProtoMessage() {}
+func (*ResolveDataObjectSectionsResponse) Descriptor() ([]byte, []int) {
+	return fileDescriptor_d27585148d0a52c8, []int{5}
+}
+func (m *ResolveDataObjectSectionsResponse) XXX_Unmarshal(b []byte) error {
+	return m.Unmarshal(b)
+}
+func (m *ResolveDataObjectSectionsResponse) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
+	if deterministic {
+		return xxx_messageInfo_ResolveDataObjectSectionsResponse.Marshal(b, m, deterministic)
+	} else {
+		b = b[:cap(b)]
+		n, err := m.MarshalToSizedBuffer(b)
+		if err != nil {
+			return nil, err
+		}
+		return b[:n], nil
+	}
+}
+func (m *ResolveDataObjectSectionsResponse) XXX_Merge(src proto.Message) {
+	xxx_messageInfo_ResolveDataObjectSectionsResponse.Merge(m, src)
+}
+func (m *ResolveDataObjectSectionsResponse) XXX_Size() int {
+	return m.Size()
+}
+func (m *ResolveDataObjectSectionsResponse) XXX_DiscardUnknown() {
+	xxx_messageInfo_ResolveDataObjectSectionsResponse.DiscardUnknown(m)
+}
+
+var xxx_messageInfo_ResolveDataObjectSectionsResponse proto.InternalMessageInfo
+
+func (m *ResolveDataObjectSectionsResponse) GetObjects() []ResolvedDataObject {
+	if m != nil {
+		return m.Objects
+	}
+	return nil
+}
+
+// ResolvedDataObject is one data object and the matching sections within it.
+type ResolvedDataObject struct {
+	ObjectPath string                      `protobuf:"bytes,1,opt,name=objectPath,proto3" json:"objectPath"`
+	Sections   []ResolvedDataObjectSection `protobuf:"bytes,2,rep,name=sections,proto3" json:"sections"`
+}
+
+func (m *ResolvedDataObject) Reset()      { *m = ResolvedDataObject{} }
+func (*ResolvedDataObject) ProtoMessage() {}
+func (*ResolvedDataObject) Descriptor() ([]byte, []int) {
+	return fileDescriptor_d27585148d0a52c8, []int{6}
+}
+func (m *ResolvedDataObject) XXX_Unmarshal(b []byte) error {
+	return m.Unmarshal(b)
+}
+func (m *ResolvedDataObject) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
+	if deterministic {
+		return xxx_messageInfo_ResolvedDataObject.Marshal(b, m, deterministic)
+	} else {
+		b = b[:cap(b)]
+		n, err := m.MarshalToSizedBuffer(b)
+		if err != nil {
+			return nil, err
+		}
+		return b[:n], nil
+	}
+}
+func (m *ResolvedDataObject) XXX_Merge(src proto.Message) {
+	xxx_messageInfo_ResolvedDataObject.Merge(m, src)
+}
+func (m *ResolvedDataObject) XXX_Size() int {
+	return m.Size()
+}
+func (m *ResolvedDataObject) XXX_DiscardUnknown() {
+	xxx_messageInfo_ResolvedDataObject.DiscardUnknown(m)
+}
+
+var xxx_messageInfo_ResolvedDataObject proto.InternalMessageInfo
+
+func (m *ResolvedDataObject) GetObjectPath() string {
+	if m != nil {
+		return m.ObjectPath
+	}
+	return ""
+}
+
+func (m *ResolvedDataObject) GetSections() []ResolvedDataObjectSection {
+	if m != nil {
+		return m.Sections
+	}
+	return nil
+}
+
+// ResolvedDataObjectSection is one section and the source-object stream IDs matching the query.
+type ResolvedDataObjectSection struct {
+	SectionIdx int64   `protobuf:"varint,1,opt,name=sectionIdx,proto3" json:"sectionIdx"`
+	StreamIds  []int64 `protobuf:"varint,2,rep,packed,name=streamIds,proto3" json:"streamIds"`
+}
+
+func (m *ResolvedDataObjectSection) Reset()      { *m = ResolvedDataObjectSection{} }
+func (*ResolvedDataObjectSection) ProtoMessage() {}
+func (*ResolvedDataObjectSection) Descriptor() ([]byte, []int) {
+	return fileDescriptor_d27585148d0a52c8, []int{7}
+}
+func (m *ResolvedDataObjectSection) XXX_Unmarshal(b []byte) error {
+	return m.Unmarshal(b)
+}
+func (m *ResolvedDataObjectSection) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
+	if deterministic {
+		return xxx_messageInfo_ResolvedDataObjectSection.Marshal(b, m, deterministic)
+	} else {
+		b = b[:cap(b)]
+		n, err := m.MarshalToSizedBuffer(b)
+		if err != nil {
+			return nil, err
+		}
+		return b[:n], nil
+	}
+}
+func (m *ResolvedDataObjectSection) XXX_Merge(src proto.Message) {
+	xxx_messageInfo_ResolvedDataObjectSection.Merge(m, src)
+}
+func (m *ResolvedDataObjectSection) XXX_Size() int {
+	return m.Size()
+}
+func (m *ResolvedDataObjectSection) XXX_DiscardUnknown() {
+	xxx_messageInfo_ResolvedDataObjectSection.DiscardUnknown(m)
+}
+
+var xxx_messageInfo_ResolvedDataObjectSection proto.InternalMessageInfo
+
+func (m *ResolvedDataObjectSection) GetSectionIdx() int64 {
+	if m != nil {
+		return m.SectionIdx
+	}
+	return 0
+}
+
+func (m *ResolvedDataObjectSection) GetStreamIds() []int64 {
+	if m != nil {
+		return m.StreamIds
+	}
+	return nil
+}
+
 func init() {
 	proto.RegisterType((*ShardsRequest)(nil), "indexgatewaypb.ShardsRequest")
 	proto.RegisterType((*ShardsResponse)(nil), "indexgatewaypb.ShardsResponse")
 	proto.RegisterType((*Shard)(nil), "indexgatewaypb.Shard")
 	proto.RegisterType((*FPBounds)(nil), "indexgatewaypb.FPBounds")
+	proto.RegisterType((*ResolveDataObjectSectionsRequest)(nil), "indexgatewaypb.ResolveDataObjectSectionsRequest")
+	proto.RegisterType((*ResolveDataObjectSectionsResponse)(nil), "indexgatewaypb.ResolveDataObjectSectionsResponse")
+	proto.RegisterType((*ResolvedDataObject)(nil), "indexgatewaypb.ResolvedDataObject")
+	proto.RegisterType((*ResolvedDataObjectSection)(nil), "indexgatewaypb.ResolvedDataObjectSection")
 }
 
 func init() { proto.RegisterFile("pkg/logproto/indexgateway.proto", fileDescriptor_d27585148d0a52c8) }
 
 var fileDescriptor_d27585148d0a52c8 = []byte{
-	// 732 bytes of a gzipped FileDescriptorProto
-	0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0xff, 0x9c, 0x55, 0xbf, 0x4f, 0xdb, 0x4c,
-	0x18, 0xf6, 0x91, 0xc0, 0x07, 0x97, 0x0f, 0x86, 0xe3, 0xfb, 0x14, 0x2b, 0x14, 0x3b, 0xca, 0xd2,
-	0x74, 0xb1, 0x2b, 0x18, 0xaa, 0x56, 0x42, 0xa2, 0xae, 0x94, 0x08, 0x41, 0x11, 0x32, 0x88, 0xa1,
-	0x52, 0xab, 0x3a, 0xe1, 0x70, 0x2c, 0x6c, 0x5f, 0xb8, 0x3b, 0xb7, 0x61, 0xeb, 0xd8, 0xb1, 0x7f,
-	0x41, 0xa7, 0x0e, 0xfd, 0x2f, 0xba, 0x32, 0x32, 0xa2, 0x0e, 0x56, 0x31, 0x4b, 0x95, 0x89, 0xb9,
-	0x53, 0xe5, 0x3b, 0x3b, 0x98, 0x34, 0x54, 0xb4, 0x8b, 0xef, 0xee, 0x7d, 0x9e, 0xf7, 0x79, 0x7f,
-	0xdd, 0x25, 0x50, 0xef, 0x1f, 0xb9, 0xa6, 0x4f, 0xdc, 0x3e, 0x25, 0x9c, 0x98, 0x5e, 0x78, 0x80,
-	0x07, 0xae, 0xc3, 0xf1, 0x5b, 0xe7, 0xc4, 0x10, 0x26, 0xb4, 0x50, 0xb4, 0xf5, 0x3b, 0xb5, 0xff,
-	0x5c, 0xe2, 0x12, 0xc9, 0x4e, 0x77, 0x92, 0x55, 0x5b, 0xba, 0x21, 0x93, 0x6f, 0x32, 0xb0, 0x9e,
-	0x81, 0xc7, 0x7e, 0x40, 0x0e, 0xb0, 0x6f, 0x32, 0xee, 0x70, 0x26, 0xbf, 0x92, 0xd1, 0xf8, 0x38,
-	0x05, 0xe7, 0x77, 0x7b, 0x0e, 0x3d, 0x60, 0x36, 0x3e, 0x8e, 0x30, 0xe3, 0x68, 0x13, 0x96, 0x0f,
-	0x29, 0x09, 0x54, 0x50, 0x07, 0xcd, 0x92, 0xf5, 0xe8, 0x34, 0xd6, 0x95, 0xaf, 0xb1, 0x7e, 0xdf,
-	0xf5, 0x78, 0x2f, 0xea, 0x18, 0x5d, 0x12, 0x98, 0x7d, 0x4a, 0x02, 0xcc, 0x7b, 0x38, 0x62, 0x66,
-	0x97, 0x04, 0x01, 0x09, 0x4d, 0xa1, 0x6e, 0xec, 0x79, 0x01, 0x1e, 0xc6, 0xba, 0x70, 0xb7, 0xc5,
-	0x17, 0xed, 0xc1, 0x7f, 0x78, 0x8f, 0x92, 0xc8, 0xed, 0xa9, 0x53, 0x42, 0xef, 0xc9, 0x9f, 0xeb,
-	0xe5, 0x0a, 0x76, 0xbe, 0x41, 0x3a, 0x9c, 0x3e, 0x8e, 0x30, 0x3d, 0x51, 0x4b, 0x75, 0xd0, 0x9c,
-	0xb3, 0xe6, 0x86, 0xb1, 0x2e, 0x0d, 0xb6, 0x5c, 0xd0, 0x06, 0x5c, 0xe4, 0x0e, 0x75, 0x31, 0xb7,
-	0x4e, 0x38, 0x66, 0x3b, 0x98, 0x8a, 0x12, 0xd5, 0x72, 0x1d, 0x34, 0xcb, 0x56, 0x75, 0x18, 0xeb,
-	0x93, 0x60, 0x7b, 0x92, 0xb1, 0x91, 0x00, 0xb8, 0x90, 0x37, 0x88, 0xf5, 0x49, 0xc8, 0x30, 0x5a,
-	0x83, 0x33, 0x4c, 0x58, 0x54, 0x50, 0x2f, 0x35, 0x2b, 0x2b, 0xff, 0x1b, 0x37, 0x27, 0x65, 0x08,
-	0xbe, 0xb5, 0x90, 0x96, 0x3a, 0x8c, 0xf5, 0x8c, 0x6c, 0x67, 0x2b, 0x7a, 0x0a, 0x61, 0x3a, 0x01,
-	0x8f, 0x71, 0xaf, 0xcb, 0x44, 0x5b, 0x2a, 0x2b, 0xf3, 0x86, 0x1c, 0x8a, 0x8d, 0x59, 0xe4, 0x73,
-	0x0b, 0x65, 0xae, 0x05, 0xa2, 0x5d, 0xd8, 0xa3, 0x6d, 0x58, 0xe9, 0xf6, 0xa2, 0xf0, 0xa8, 0x4d,
-	0x49, 0xd4, 0x67, 0x6a, 0x49, 0xa4, 0x51, 0x35, 0x46, 0xd3, 0x7f, 0x96, 0x82, 0x36, 0x3e, 0x14,
-	0xb8, 0xb5, 0x98, 0xa9, 0x15, 0x7d, 0xec, 0xe2, 0xa1, 0xf1, 0x1e, 0xc0, 0x69, 0x91, 0x34, 0x5a,
-	0x87, 0x33, 0x1d, 0x12, 0x85, 0xa2, 0xb6, 0x34, 0x31, 0x75, 0xbc, 0xb6, 0xd6, 0x8e, 0x25, 0xf0,
-	0xeb, 0xf2, 0x24, 0xdf, 0xce, 0x56, 0xb4, 0x06, 0xa7, 0x45, 0x2d, 0x59, 0x65, 0xf7, 0xae, 0xb3,
-	0xda, 0x48, 0x95, 0x76, 0x53, 0x2c, 0x6f, 0xa5, 0x1c, 0x9d, 0xa0, 0xdb, 0x72, 0x69, 0x7c, 0x02,
-	0x70, 0x36, 0x8f, 0x81, 0x36, 0x61, 0x29, 0xf0, 0x42, 0x91, 0x4a, 0xd9, 0x7a, 0x3c, 0x8c, 0xf5,
-	0xf4, 0xf8, 0x23, 0xd6, 0x8d, 0x3b, 0xdc, 0x9e, 0x96, 0x17, 0xba, 0x98, 0xf6, 0xa9, 0x17, 0x72,
-	0x3b, 0x75, 0x13, 0x62, 0xce, 0x40, 0xa4, 0x95, 0x8b, 0x39, 0x83, 0xbf, 0x12, 0x73, 0x06, 0x2b,
-	0x5f, 0xca, 0xf0, 0x5f, 0x51, 0x4f, 0x5b, 0x76, 0x06, 0x6d, 0xc1, 0x4a, 0x1b, 0xf3, 0xbc, 0xf1,
-	0xa8, 0x50, 0x76, 0xc1, 0x9c, 0xbd, 0xb1, 0xda, 0xf2, 0x2d, 0xa8, 0xec, 0x4a, 0x43, 0x41, 0x2d,
-	0x38, 0xd7, 0xc6, 0x7c, 0x17, 0x53, 0x0f, 0x33, 0x54, 0xbb, 0xc1, 0x96, 0xc6, 0x5c, 0x69, 0x69,
-	0x22, 0x36, 0xd2, 0x79, 0x05, 0xab, 0x5b, 0x4e, 0x07, 0xfb, 0xdb, 0x4e, 0x80, 0x59, 0x8b, 0xd0,
-	0xe7, 0x98, 0x53, 0xaf, 0x9b, 0x9e, 0x50, 0xf3, 0xda, 0xf3, 0x16, 0x4a, 0x1e, 0xa3, 0x3a, 0xc6,
-	0x2c, 0xe8, 0xbf, 0x86, 0xaa, 0x30, 0xed, 0x3b, 0x7e, 0x34, 0x1e, 0xe0, 0xc1, 0x98, 0xdb, 0x04,
-	0xce, 0x1d, 0x22, 0xb4, 0xe1, 0x6c, 0x5a, 0x58, 0x7a, 0x37, 0xd0, 0xd2, 0xe4, 0xbb, 0x24, 0x35,
-	0x7e, 0x7b, 0xd1, 0x1a, 0x0a, 0x5a, 0x17, 0x2d, 0xdd, 0x27, 0x7e, 0x14, 0x60, 0x54, 0x08, 0x28,
-	0x2d, 0xb9, 0x8a, 0xfa, 0x2b, 0x30, 0x52, 0xd8, 0x92, 0x43, 0x91, 0xaf, 0x78, 0x79, 0xe2, 0xa3,
-	0x1f, 0x65, 0xa3, 0xdd, 0x06, 0x4b, 0xb5, 0x87, 0xc0, 0x7a, 0x79, 0x76, 0xa1, 0x29, 0xe7, 0x17,
-	0x9a, 0x72, 0x75, 0xa1, 0x81, 0x77, 0x89, 0x06, 0x3e, 0x27, 0x1a, 0x38, 0x4d, 0x34, 0x70, 0x96,
-	0x68, 0xe0, 0x5b, 0xa2, 0x81, 0xef, 0x89, 0xa6, 0x5c, 0x25, 0x1a, 0xf8, 0x70, 0xa9, 0x29, 0x67,
-	0x97, 0x9a, 0x72, 0x7e, 0xa9, 0x29, 0x2f, 0x8a, 0xbf, 0x9b, 0x2e, 0x75, 0x0e, 0x9d, 0xd0, 0x31,
-	0x7d, 0x72, 0xe4, 0x99, 0x6f, 0x56, 0xcd, 0xe2, 0x3f, 0x41, 0x67, 0x46, 0x2c, 0xab, 0x3f, 0x03,
-	0x00, 0x00, 0xff, 0xff, 0x49, 0xe6, 0x90, 0x91, 0x67, 0x06, 0x00, 0x00,
+	// 931 bytes of a gzipped FileDescriptorProto
+	0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0xff, 0xd4, 0x56, 0x41, 0x6f, 0x1b, 0x45,
+	0x14, 0xf6, 0xc4, 0x49, 0x1a, 0x4f, 0x9a, 0x80, 0xa6, 0xa0, 0x2c, 0x0e, 0xdd, 0x35, 0x7b, 0xc1,
+	0x15, 0x92, 0x5d, 0xd2, 0x03, 0x02, 0xa9, 0x52, 0x59, 0x50, 0xac, 0xa8, 0x69, 0x89, 0x26, 0x55,
+	0x91, 0x90, 0x40, 0x8c, 0xed, 0xc9, 0x7a, 0xc9, 0xee, 0x8e, 0x33, 0x33, 0x5b, 0x9c, 0x1b, 0xe2,
+	0xc4, 0x91, 0x3f, 0x00, 0x27, 0x0e, 0xfc, 0x10, 0x0e, 0x3d, 0xe6, 0x58, 0x71, 0x58, 0x11, 0xe7,
+	0x82, 0x7c, 0xa1, 0x67, 0x4e, 0x68, 0x67, 0x66, 0xd7, 0x1b, 0xc7, 0x2e, 0x2d, 0x37, 0x2e, 0x9e,
+	0x37, 0xef, 0x7d, 0xef, 0x9b, 0xef, 0xcd, 0xcc, 0x9b, 0x35, 0x74, 0x86, 0xc7, 0x7e, 0x3b, 0x64,
+	0xfe, 0x90, 0x33, 0xc9, 0xda, 0x41, 0xdc, 0xa7, 0x23, 0x9f, 0x48, 0xfa, 0x2d, 0x39, 0x6d, 0x29,
+	0x17, 0xda, 0x2c, 0xfb, 0x86, 0xdd, 0xfa, 0x1b, 0x3e, 0xf3, 0x99, 0x46, 0x67, 0x96, 0x46, 0xd5,
+	0xb7, 0x2f, 0xd1, 0xe4, 0x86, 0x09, 0x36, 0x4c, 0xf0, 0x24, 0x8c, 0x58, 0x9f, 0x86, 0x6d, 0x21,
+	0x89, 0x14, 0xfa, 0x57, 0x23, 0xdc, 0x9f, 0x97, 0xe0, 0xc6, 0xe1, 0x80, 0xf0, 0xbe, 0xc0, 0xf4,
+	0x24, 0xa1, 0x42, 0xa2, 0xfb, 0x70, 0xf9, 0x88, 0xb3, 0xc8, 0x02, 0x0d, 0xd0, 0xac, 0x7a, 0x1f,
+	0x3c, 0x4d, 0x9d, 0xca, 0xef, 0xa9, 0xf3, 0xae, 0x1f, 0xc8, 0x41, 0xd2, 0x6d, 0xf5, 0x58, 0xd4,
+	0x1e, 0x72, 0x16, 0x51, 0x39, 0xa0, 0x89, 0x68, 0xf7, 0x58, 0x14, 0xb1, 0xb8, 0xad, 0xd8, 0x5b,
+	0x8f, 0x82, 0x88, 0x4e, 0x52, 0x47, 0xa5, 0x63, 0xf5, 0x8b, 0x1e, 0xc1, 0x6b, 0x72, 0xc0, 0x59,
+	0xe2, 0x0f, 0xac, 0x25, 0xc5, 0xf7, 0xd1, 0xab, 0xf3, 0xe5, 0x0c, 0x38, 0x37, 0x90, 0x03, 0x57,
+	0x4e, 0x12, 0xca, 0x4f, 0xad, 0x6a, 0x03, 0x34, 0x6b, 0x5e, 0x6d, 0x92, 0x3a, 0xda, 0x81, 0xf5,
+	0x80, 0xf6, 0xe0, 0x0d, 0x49, 0xb8, 0x4f, 0xa5, 0x77, 0x2a, 0xa9, 0x38, 0xa0, 0x5c, 0x95, 0x68,
+	0x2d, 0x37, 0x40, 0x73, 0xd9, 0xdb, 0x9a, 0xa4, 0xce, 0xbc, 0x30, 0x9e, 0xe7, 0x74, 0xc7, 0x00,
+	0x6e, 0xe6, 0x1b, 0x24, 0x86, 0x2c, 0x16, 0x14, 0xdd, 0x85, 0xab, 0x42, 0x79, 0x2c, 0xd0, 0xa8,
+	0x36, 0xd7, 0x77, 0xde, 0x6c, 0x5d, 0x3e, 0xa9, 0x96, 0xc2, 0x7b, 0x9b, 0x59, 0xa9, 0x93, 0xd4,
+	0x31, 0x60, 0x6c, 0x46, 0xf4, 0x31, 0x84, 0xd9, 0x09, 0x04, 0x42, 0x06, 0x3d, 0xa1, 0xb6, 0x65,
+	0x7d, 0x67, 0xa3, 0xa5, 0x0f, 0x05, 0x53, 0x91, 0x84, 0xd2, 0x43, 0x26, 0xb5, 0x04, 0xc4, 0x25,
+	0x1b, 0x3d, 0x84, 0xeb, 0xbd, 0x41, 0x12, 0x1f, 0x77, 0x38, 0x4b, 0x86, 0xc2, 0xaa, 0x2a, 0x19,
+	0x5b, 0xad, 0xe2, 0xf4, 0x3f, 0xc9, 0x82, 0x98, 0x1e, 0xa9, 0xb8, 0x77, 0xc3, 0xb0, 0x95, 0x73,
+	0x70, 0x79, 0xe2, 0xfe, 0x00, 0xe0, 0x8a, 0x12, 0x8d, 0xee, 0xc1, 0xd5, 0x2e, 0x4b, 0x62, 0x55,
+	0x5b, 0x26, 0xcc, 0x9a, 0xad, 0x6d, 0xf7, 0xc0, 0x53, 0xf1, 0x69, 0x79, 0x1a, 0x8f, 0xcd, 0x88,
+	0xee, 0xc2, 0x15, 0x55, 0x8b, 0xa9, 0xec, 0xed, 0xa9, 0xaa, 0xbd, 0x8c, 0xe9, 0x30, 0x8b, 0xe5,
+	0x5b, 0xa9, 0x8f, 0x4e, 0xc1, 0xb1, 0x1e, 0xdc, 0x5f, 0x00, 0x5c, 0xcb, 0xd7, 0x40, 0xf7, 0x61,
+	0x35, 0x0a, 0x62, 0x25, 0x65, 0xd9, 0xfb, 0x70, 0x92, 0x3a, 0xd9, 0xf4, 0xef, 0xd4, 0x69, 0xbd,
+	0xc4, 0xed, 0xd9, 0x0d, 0x62, 0x9f, 0xf2, 0x21, 0x0f, 0x62, 0x89, 0xb3, 0x34, 0x45, 0x46, 0x46,
+	0x4a, 0x56, 0x4e, 0x46, 0x46, 0xff, 0x89, 0x8c, 0x8c, 0xdc, 0xbf, 0x00, 0x6c, 0x60, 0x2a, 0x58,
+	0xf8, 0x84, 0x7e, 0x4a, 0x24, 0xf9, 0xac, 0xfb, 0x0d, 0xed, 0xc9, 0x43, 0xda, 0x93, 0x01, 0x8b,
+	0xff, 0x4f, 0xad, 0xd4, 0x84, 0x6b, 0x11, 0x91, 0xbd, 0x01, 0xe5, 0xc2, 0x74, 0xd3, 0xf5, 0x49,
+	0xea, 0x14, 0x3e, 0x5c, 0x58, 0x2e, 0x87, 0xef, 0xbc, 0xa0, 0x60, 0xd3, 0x1a, 0x0f, 0xe0, 0x35,
+	0xa6, 0x22, 0x79, 0x6f, 0xb8, 0xb3, 0xf7, 0xc7, 0x70, 0xf4, 0xa7, 0x24, 0xde, 0x6b, 0xe6, 0x26,
+	0xe5, 0xa9, 0x38, 0x37, 0xdc, 0x9f, 0x00, 0x44, 0x57, 0x13, 0x50, 0x0b, 0x42, 0x8d, 0x38, 0x20,
+	0x72, 0xa0, 0x76, 0xb7, 0xe6, 0x6d, 0x66, 0xed, 0x32, 0xf5, 0xe2, 0x92, 0x8d, 0x3e, 0x87, 0x6b,
+	0xc2, 0x28, 0xb5, 0x96, 0x94, 0xac, 0x5b, 0xff, 0x2e, 0xcb, 0xd4, 0xe6, 0xbd, 0x6e, 0xd4, 0x15,
+	0x14, 0xb8, 0xb0, 0xdc, 0x11, 0x7c, 0x6b, 0x61, 0x62, 0xa6, 0xd2, 0x00, 0xf7, 0xfa, 0x23, 0x73,
+	0x07, 0x94, 0xca, 0xa9, 0x17, 0x97, 0x6c, 0xf4, 0x1e, 0xac, 0x09, 0xc9, 0x29, 0x89, 0xf6, 0xfa,
+	0x5a, 0x66, 0xd5, 0xdb, 0x98, 0xa4, 0xce, 0xd4, 0x89, 0xa7, 0xe6, 0xce, 0x6f, 0x2b, 0xf0, 0xba,
+	0xea, 0xa7, 0x8e, 0x2e, 0x01, 0xed, 0xc3, 0xf5, 0x0e, 0x95, 0x79, 0xe3, 0xa3, 0x52, 0xdb, 0x95,
+	0xdc, 0xe6, 0x62, 0xd6, 0x6f, 0x2e, 0x88, 0xea, 0x53, 0x74, 0x2b, 0x68, 0x17, 0xd6, 0x3a, 0x54,
+	0x1e, 0x52, 0x1e, 0x50, 0x81, 0xea, 0x97, 0xd0, 0xda, 0x99, 0x33, 0x6d, 0xcf, 0x8d, 0x15, 0x3c,
+	0x5f, 0xc1, 0xad, 0x7d, 0xd2, 0xa5, 0xe1, 0x43, 0x12, 0x51, 0xb1, 0xcb, 0xf8, 0x03, 0x2a, 0x79,
+	0xd0, 0xcb, 0x66, 0xa8, 0x39, 0xcd, 0x5c, 0x00, 0xc9, 0xd7, 0xd8, 0x9a, 0x41, 0x96, 0xf8, 0xbf,
+	0x86, 0x96, 0x72, 0x3d, 0x26, 0x61, 0x32, 0xbb, 0xc0, 0xad, 0x99, 0xb4, 0x39, 0x98, 0x97, 0x58,
+	0xa1, 0x03, 0xd7, 0xb2, 0xc2, 0xb2, 0xb7, 0x09, 0x6d, 0xcf, 0x7f, 0xcb, 0x34, 0xc7, 0x0b, 0x1f,
+	0x3a, 0xb7, 0x82, 0xee, 0xa9, 0x2d, 0x7d, 0xcc, 0xc2, 0x24, 0xa2, 0xa8, 0xb4, 0xa0, 0xf6, 0xe4,
+	0x2c, 0xd6, 0xd5, 0x40, 0xc1, 0xb0, 0xaf, 0x0f, 0x45, 0x7f, 0x45, 0x6e, 0xce, 0xfd, 0xe8, 0x14,
+	0x6a, 0xec, 0x45, 0x61, 0xcd, 0x76, 0x1b, 0xa0, 0xef, 0x41, 0x71, 0x79, 0xaf, 0x36, 0x34, 0xba,
+	0xbd, 0xa0, 0x41, 0x16, 0x3e, 0x76, 0xf5, 0xf7, 0x5f, 0x21, 0x23, 0x2f, 0xc9, 0xfb, 0xf2, 0xec,
+	0xdc, 0xae, 0x3c, 0x3b, 0xb7, 0x2b, 0xcf, 0xcf, 0x6d, 0xf0, 0xdd, 0xd8, 0x06, 0xbf, 0x8e, 0x6d,
+	0xf0, 0x74, 0x6c, 0x83, 0xb3, 0xb1, 0x0d, 0xfe, 0x18, 0xdb, 0xe0, 0xcf, 0xb1, 0x5d, 0x79, 0x3e,
+	0xb6, 0xc1, 0x8f, 0x17, 0x76, 0xe5, 0xec, 0xc2, 0xae, 0x3c, 0xbb, 0xb0, 0x2b, 0x5f, 0x94, 0x5f,
+	0x3c, 0x9f, 0x93, 0x23, 0x12, 0x93, 0x76, 0xc8, 0x8e, 0x83, 0xf6, 0x93, 0x3b, 0xed, 0xf2, 0xdf,
+	0xa1, 0xee, 0xaa, 0x1a, 0xee, 0xfc, 0x13, 0x00, 0x00, 0xff, 0xff, 0x12, 0x66, 0xd8, 0x24, 0x6c,
+	0x09, 0x00, 0x00,
 }
 
 func (this *ShardsRequest) Equal(that interface{}) bool {
@@ -435,6 +647,129 @@ func (this *FPBounds) Equal(that interface{}) bool {
 	}
 	return true
 }
+func (this *ResolveDataObjectSectionsRequest) Equal(that interface{}) bool {
+	if that == nil {
+		return this == nil
+	}
+
+	that1, ok := that.(*ResolveDataObjectSectionsRequest)
+	if !ok {
+		that2, ok := that.(ResolveDataObjectSectionsRequest)
+		if ok {
+			that1 = &that2
+		} else {
+			return false
+		}
+	}
+	if that1 == nil {
+		return this == nil
+	} else if this == nil {
+		return false
+	}
+	if !this.From.Equal(that1.From) {
+		return false
+	}
+	if !this.Through.Equal(that1.Through) {
+		return false
+	}
+	if this.Matchers != that1.Matchers {
+		return false
+	}
+	return true
+}
+func (this *ResolveDataObjectSectionsResponse) Equal(that interface{}) bool {
+	if that == nil {
+		return this == nil
+	}
+
+	that1, ok := that.(*ResolveDataObjectSectionsResponse)
+	if !ok {
+		that2, ok := that.(ResolveDataObjectSectionsResponse)
+		if ok {
+			that1 = &that2
+		} else {
+			return false
+		}
+	}
+	if that1 == nil {
+		return this == nil
+	} else if this == nil {
+		return false
+	}
+	if len(this.Objects) != len(that1.Objects) {
+		return false
+	}
+	for i := range this.Objects {
+		if !this.Objects[i].Equal(&that1.Objects[i]) {
+			return false
+		}
+	}
+	return true
+}
+func (this *ResolvedDataObject) Equal(that interface{}) bool {
+	if that == nil {
+		return this == nil
+	}
+
+	that1, ok := that.(*ResolvedDataObject)
+	if !ok {
+		that2, ok := that.(ResolvedDataObject)
+		if ok {
+			that1 = &that2
+		} else {
+			return false
+		}
+	}
+	if that1 == nil {
+		return this == nil
+	} else if this == nil {
+		return false
+	}
+	if this.ObjectPath != that1.ObjectPath {
+		return false
+	}
+	if len(this.Sections) != len(that1.Sections) {
+		return false
+	}
+	for i := range this.Sections {
+		if !this.Sections[i].Equal(&that1.Sections[i]) {
+			return false
+		}
+	}
+	return true
+}
+func (this *ResolvedDataObjectSection) Equal(that interface{}) bool {
+	if that == nil {
+		return this == nil
+	}
+
+	that1, ok := that.(*ResolvedDataObjectSection)
+	if !ok {
+		that2, ok := that.(ResolvedDataObjectSection)
+		if ok {
+			that1 = &that2
+		} else {
+			return false
+		}
+	}
+	if that1 == nil {
+		return this == nil
+	} else if this == nil {
+		return false
+	}
+	if this.SectionIdx != that1.SectionIdx {
+		return false
+	}
+	if len(this.StreamIds) != len(that1.StreamIds) {
+		return false
+	}
+	for i := range this.StreamIds {
+		if this.StreamIds[i] != that1.StreamIds[i] {
+			return false
+		}
+	}
+	return true
+}
 func (this *ShardsRequest) GoString() string {
 	if this == nil {
 		return "nil"
@@ -455,17 +790,17 @@ func (this *ShardsResponse) GoString() string {
 	s := make([]string, 0, 7)
 	s = append(s, "&logproto.ShardsResponse{")
 	if this.Shards != nil {
-		vs := make([]*Shard, len(this.Shards))
+		vs := make([]Shard, len(this.Shards))
 		for i := range vs {
-			vs[i] = &this.Shards[i]
+			vs[i] = this.Shards[i]
 		}
 		s = append(s, "Shards: "+fmt.Sprintf("%#v", vs)+",\n")
 	}
 	s = append(s, "Statistics: "+strings.Replace(this.Statistics.GoString(), `&`, ``, 1)+",\n")
 	if this.ChunkGroups != nil {
-		vs := make([]*ChunkRefGroup, len(this.ChunkGroups))
+		vs := make([]ChunkRefGroup, len(this.ChunkGroups))
 		for i := range vs {
-			vs[i] = &this.ChunkGroups[i]
+			vs[i] = this.ChunkGroups[i]
 		}
 		s = append(s, "ChunkGroups: "+fmt.Sprintf("%#v", vs)+",\n")
 	}
@@ -493,6 +828,62 @@ func (this *FPBounds) GoString() string {
 	s = append(s, "&logproto.FPBounds{")
 	s = append(s, "Min: "+fmt.Sprintf("%#v", this.Min)+",\n")
 	s = append(s, "Max: "+fmt.Sprintf("%#v", this.Max)+",\n")
+	s = append(s, "}")
+	return strings.Join(s, "")
+}
+func (this *ResolveDataObjectSectionsRequest) GoString() string {
+	if this == nil {
+		return "nil"
+	}
+	s := make([]string, 0, 7)
+	s = append(s, "&logproto.ResolveDataObjectSectionsRequest{")
+	s = append(s, "From: "+fmt.Sprintf("%#v", this.From)+",\n")
+	s = append(s, "Through: "+fmt.Sprintf("%#v", this.Through)+",\n")
+	s = append(s, "Matchers: "+fmt.Sprintf("%#v", this.Matchers)+",\n")
+	s = append(s, "}")
+	return strings.Join(s, "")
+}
+func (this *ResolveDataObjectSectionsResponse) GoString() string {
+	if this == nil {
+		return "nil"
+	}
+	s := make([]string, 0, 5)
+	s = append(s, "&logproto.ResolveDataObjectSectionsResponse{")
+	if this.Objects != nil {
+		vs := make([]ResolvedDataObject, len(this.Objects))
+		for i := range vs {
+			vs[i] = this.Objects[i]
+		}
+		s = append(s, "Objects: "+fmt.Sprintf("%#v", vs)+",\n")
+	}
+	s = append(s, "}")
+	return strings.Join(s, "")
+}
+func (this *ResolvedDataObject) GoString() string {
+	if this == nil {
+		return "nil"
+	}
+	s := make([]string, 0, 6)
+	s = append(s, "&logproto.ResolvedDataObject{")
+	s = append(s, "ObjectPath: "+fmt.Sprintf("%#v", this.ObjectPath)+",\n")
+	if this.Sections != nil {
+		vs := make([]ResolvedDataObjectSection, len(this.Sections))
+		for i := range vs {
+			vs[i] = this.Sections[i]
+		}
+		s = append(s, "Sections: "+fmt.Sprintf("%#v", vs)+",\n")
+	}
+	s = append(s, "}")
+	return strings.Join(s, "")
+}
+func (this *ResolvedDataObjectSection) GoString() string {
+	if this == nil {
+		return "nil"
+	}
+	s := make([]string, 0, 6)
+	s = append(s, "&logproto.ResolvedDataObjectSection{")
+	s = append(s, "SectionIdx: "+fmt.Sprintf("%#v", this.SectionIdx)+",\n")
+	s = append(s, "StreamIds: "+fmt.Sprintf("%#v", this.StreamIds)+",\n")
 	s = append(s, "}")
 	return strings.Join(s, "")
 }
@@ -531,6 +922,10 @@ type IndexGatewayClient interface {
 	// GetShards is an optimized implemented shard-planning implementation
 	// on the index gateway and not on the ingester.
 	GetShards(ctx context.Context, in *ShardsRequest, opts ...grpc.CallOption) (IndexGateway_GetShardsClient, error)
+	// ResolveDataObjectSections resolves the data-object sections, and their matching
+	// source-object stream IDs, for a single 12h UTC-aligned window and set of matchers.
+	// It is specific to data objects (distinct from the chunk-index RPCs above).
+	ResolveDataObjectSections(ctx context.Context, in *ResolveDataObjectSectionsRequest, opts ...grpc.CallOption) (*ResolveDataObjectSectionsResponse, error)
 }
 
 type indexGatewayClient struct {
@@ -627,6 +1022,15 @@ func (x *indexGatewayGetShardsClient) Recv() (*ShardsResponse, error) {
 	return m, nil
 }
 
+func (c *indexGatewayClient) ResolveDataObjectSections(ctx context.Context, in *ResolveDataObjectSectionsRequest, opts ...grpc.CallOption) (*ResolveDataObjectSectionsResponse, error) {
+	out := new(ResolveDataObjectSectionsResponse)
+	err := c.cc.Invoke(ctx, "/indexgatewaypb.IndexGateway/ResolveDataObjectSections", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // IndexGatewayServer is the server API for IndexGateway service.
 type IndexGatewayServer interface {
 	/// GetChunkRef returns chunk reference that match the provided label matchers
@@ -643,6 +1047,10 @@ type IndexGatewayServer interface {
 	// GetShards is an optimized implemented shard-planning implementation
 	// on the index gateway and not on the ingester.
 	GetShards(*ShardsRequest, IndexGateway_GetShardsServer) error
+	// ResolveDataObjectSections resolves the data-object sections, and their matching
+	// source-object stream IDs, for a single 12h UTC-aligned window and set of matchers.
+	// It is specific to data objects (distinct from the chunk-index RPCs above).
+	ResolveDataObjectSections(context.Context, *ResolveDataObjectSectionsRequest) (*ResolveDataObjectSectionsResponse, error)
 }
 
 // UnimplementedIndexGatewayServer can be embedded to have forward compatible implementations.
@@ -669,6 +1077,9 @@ func (*UnimplementedIndexGatewayServer) GetVolume(ctx context.Context, req *Volu
 }
 func (*UnimplementedIndexGatewayServer) GetShards(req *ShardsRequest, srv IndexGateway_GetShardsServer) error {
 	return status.Errorf(codes.Unimplemented, "method GetShards not implemented")
+}
+func (*UnimplementedIndexGatewayServer) ResolveDataObjectSections(ctx context.Context, req *ResolveDataObjectSectionsRequest) (*ResolveDataObjectSectionsResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method ResolveDataObjectSections not implemented")
 }
 
 func RegisterIndexGatewayServer(s *grpc.Server, srv IndexGatewayServer) {
@@ -804,6 +1215,24 @@ func (x *indexGatewayGetShardsServer) Send(m *ShardsResponse) error {
 	return x.ServerStream.SendMsg(m)
 }
 
+func _IndexGateway_ResolveDataObjectSections_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ResolveDataObjectSectionsRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(IndexGatewayServer).ResolveDataObjectSections(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/indexgatewaypb.IndexGateway/ResolveDataObjectSections",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(IndexGatewayServer).ResolveDataObjectSections(ctx, req.(*ResolveDataObjectSectionsRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 var _IndexGateway_serviceDesc = grpc.ServiceDesc{
 	ServiceName: "indexgatewaypb.IndexGateway",
 	HandlerType: (*IndexGatewayServer)(nil),
@@ -831,6 +1260,10 @@ var _IndexGateway_serviceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "GetVolume",
 			Handler:    _IndexGateway_GetVolume_Handler,
+		},
+		{
+			MethodName: "ResolveDataObjectSections",
+			Handler:    _IndexGateway_ResolveDataObjectSections_Handler,
 		},
 	},
 	Streams: []grpc.StreamDesc{
@@ -1027,6 +1460,174 @@ func (m *FPBounds) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	return len(dAtA) - i, nil
 }
 
+func (m *ResolveDataObjectSectionsRequest) Marshal() (dAtA []byte, err error) {
+	size := m.Size()
+	dAtA = make([]byte, size)
+	n, err := m.MarshalToSizedBuffer(dAtA[:size])
+	if err != nil {
+		return nil, err
+	}
+	return dAtA[:n], nil
+}
+
+func (m *ResolveDataObjectSectionsRequest) MarshalTo(dAtA []byte) (int, error) {
+	size := m.Size()
+	return m.MarshalToSizedBuffer(dAtA[:size])
+}
+
+func (m *ResolveDataObjectSectionsRequest) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	_ = i
+	var l int
+	_ = l
+	if len(m.Matchers) > 0 {
+		i -= len(m.Matchers)
+		copy(dAtA[i:], m.Matchers)
+		i = encodeVarintIndexgateway(dAtA, i, uint64(len(m.Matchers)))
+		i--
+		dAtA[i] = 0x1a
+	}
+	if m.Through != 0 {
+		i = encodeVarintIndexgateway(dAtA, i, uint64(m.Through))
+		i--
+		dAtA[i] = 0x10
+	}
+	if m.From != 0 {
+		i = encodeVarintIndexgateway(dAtA, i, uint64(m.From))
+		i--
+		dAtA[i] = 0x8
+	}
+	return len(dAtA) - i, nil
+}
+
+func (m *ResolveDataObjectSectionsResponse) Marshal() (dAtA []byte, err error) {
+	size := m.Size()
+	dAtA = make([]byte, size)
+	n, err := m.MarshalToSizedBuffer(dAtA[:size])
+	if err != nil {
+		return nil, err
+	}
+	return dAtA[:n], nil
+}
+
+func (m *ResolveDataObjectSectionsResponse) MarshalTo(dAtA []byte) (int, error) {
+	size := m.Size()
+	return m.MarshalToSizedBuffer(dAtA[:size])
+}
+
+func (m *ResolveDataObjectSectionsResponse) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	_ = i
+	var l int
+	_ = l
+	if len(m.Objects) > 0 {
+		for iNdEx := len(m.Objects) - 1; iNdEx >= 0; iNdEx-- {
+			{
+				size, err := m.Objects[iNdEx].MarshalToSizedBuffer(dAtA[:i])
+				if err != nil {
+					return 0, err
+				}
+				i -= size
+				i = encodeVarintIndexgateway(dAtA, i, uint64(size))
+			}
+			i--
+			dAtA[i] = 0xa
+		}
+	}
+	return len(dAtA) - i, nil
+}
+
+func (m *ResolvedDataObject) Marshal() (dAtA []byte, err error) {
+	size := m.Size()
+	dAtA = make([]byte, size)
+	n, err := m.MarshalToSizedBuffer(dAtA[:size])
+	if err != nil {
+		return nil, err
+	}
+	return dAtA[:n], nil
+}
+
+func (m *ResolvedDataObject) MarshalTo(dAtA []byte) (int, error) {
+	size := m.Size()
+	return m.MarshalToSizedBuffer(dAtA[:size])
+}
+
+func (m *ResolvedDataObject) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	_ = i
+	var l int
+	_ = l
+	if len(m.Sections) > 0 {
+		for iNdEx := len(m.Sections) - 1; iNdEx >= 0; iNdEx-- {
+			{
+				size, err := m.Sections[iNdEx].MarshalToSizedBuffer(dAtA[:i])
+				if err != nil {
+					return 0, err
+				}
+				i -= size
+				i = encodeVarintIndexgateway(dAtA, i, uint64(size))
+			}
+			i--
+			dAtA[i] = 0x12
+		}
+	}
+	if len(m.ObjectPath) > 0 {
+		i -= len(m.ObjectPath)
+		copy(dAtA[i:], m.ObjectPath)
+		i = encodeVarintIndexgateway(dAtA, i, uint64(len(m.ObjectPath)))
+		i--
+		dAtA[i] = 0xa
+	}
+	return len(dAtA) - i, nil
+}
+
+func (m *ResolvedDataObjectSection) Marshal() (dAtA []byte, err error) {
+	size := m.Size()
+	dAtA = make([]byte, size)
+	n, err := m.MarshalToSizedBuffer(dAtA[:size])
+	if err != nil {
+		return nil, err
+	}
+	return dAtA[:n], nil
+}
+
+func (m *ResolvedDataObjectSection) MarshalTo(dAtA []byte) (int, error) {
+	size := m.Size()
+	return m.MarshalToSizedBuffer(dAtA[:size])
+}
+
+func (m *ResolvedDataObjectSection) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	_ = i
+	var l int
+	_ = l
+	if len(m.StreamIds) > 0 {
+		dAtA5 := make([]byte, len(m.StreamIds)*10)
+		var j4 int
+		for _, num1 := range m.StreamIds {
+			num := uint64(num1)
+			for num >= 1<<7 {
+				dAtA5[j4] = uint8(uint64(num)&0x7f | 0x80)
+				num >>= 7
+				j4++
+			}
+			dAtA5[j4] = uint8(num)
+			j4++
+		}
+		i -= j4
+		copy(dAtA[i:], dAtA5[:j4])
+		i = encodeVarintIndexgateway(dAtA, i, uint64(j4))
+		i--
+		dAtA[i] = 0x12
+	}
+	if m.SectionIdx != 0 {
+		i = encodeVarintIndexgateway(dAtA, i, uint64(m.SectionIdx))
+		i--
+		dAtA[i] = 0x8
+	}
+	return len(dAtA) - i, nil
+}
+
 func encodeVarintIndexgateway(dAtA []byte, offset int, v uint64) int {
 	offset -= sovIndexgateway(v)
 	base := offset
@@ -1113,6 +1714,78 @@ func (m *FPBounds) Size() (n int) {
 	return n
 }
 
+func (m *ResolveDataObjectSectionsRequest) Size() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	if m.From != 0 {
+		n += 1 + sovIndexgateway(uint64(m.From))
+	}
+	if m.Through != 0 {
+		n += 1 + sovIndexgateway(uint64(m.Through))
+	}
+	l = len(m.Matchers)
+	if l > 0 {
+		n += 1 + l + sovIndexgateway(uint64(l))
+	}
+	return n
+}
+
+func (m *ResolveDataObjectSectionsResponse) Size() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	if len(m.Objects) > 0 {
+		for _, e := range m.Objects {
+			l = e.Size()
+			n += 1 + l + sovIndexgateway(uint64(l))
+		}
+	}
+	return n
+}
+
+func (m *ResolvedDataObject) Size() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	l = len(m.ObjectPath)
+	if l > 0 {
+		n += 1 + l + sovIndexgateway(uint64(l))
+	}
+	if len(m.Sections) > 0 {
+		for _, e := range m.Sections {
+			l = e.Size()
+			n += 1 + l + sovIndexgateway(uint64(l))
+		}
+	}
+	return n
+}
+
+func (m *ResolvedDataObjectSection) Size() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	if m.SectionIdx != 0 {
+		n += 1 + sovIndexgateway(uint64(m.SectionIdx))
+	}
+	if len(m.StreamIds) > 0 {
+		l = 0
+		for _, e := range m.StreamIds {
+			l += sovIndexgateway(uint64(e))
+		}
+		n += 1 + sovIndexgateway(uint64(l)) + l
+	}
+	return n
+}
+
 func sovIndexgateway(x uint64) (n int) {
 	return (math_bits.Len64(x|1) + 6) / 7
 }
@@ -1172,6 +1845,60 @@ func (this *FPBounds) String() string {
 	s := strings.Join([]string{`&FPBounds{`,
 		`Min:` + fmt.Sprintf("%v", this.Min) + `,`,
 		`Max:` + fmt.Sprintf("%v", this.Max) + `,`,
+		`}`,
+	}, "")
+	return s
+}
+func (this *ResolveDataObjectSectionsRequest) String() string {
+	if this == nil {
+		return "nil"
+	}
+	s := strings.Join([]string{`&ResolveDataObjectSectionsRequest{`,
+		`From:` + fmt.Sprintf("%v", this.From) + `,`,
+		`Through:` + fmt.Sprintf("%v", this.Through) + `,`,
+		`Matchers:` + fmt.Sprintf("%v", this.Matchers) + `,`,
+		`}`,
+	}, "")
+	return s
+}
+func (this *ResolveDataObjectSectionsResponse) String() string {
+	if this == nil {
+		return "nil"
+	}
+	repeatedStringForObjects := "[]ResolvedDataObject{"
+	for _, f := range this.Objects {
+		repeatedStringForObjects += strings.Replace(strings.Replace(f.String(), "ResolvedDataObject", "ResolvedDataObject", 1), `&`, ``, 1) + ","
+	}
+	repeatedStringForObjects += "}"
+	s := strings.Join([]string{`&ResolveDataObjectSectionsResponse{`,
+		`Objects:` + repeatedStringForObjects + `,`,
+		`}`,
+	}, "")
+	return s
+}
+func (this *ResolvedDataObject) String() string {
+	if this == nil {
+		return "nil"
+	}
+	repeatedStringForSections := "[]ResolvedDataObjectSection{"
+	for _, f := range this.Sections {
+		repeatedStringForSections += strings.Replace(strings.Replace(f.String(), "ResolvedDataObjectSection", "ResolvedDataObjectSection", 1), `&`, ``, 1) + ","
+	}
+	repeatedStringForSections += "}"
+	s := strings.Join([]string{`&ResolvedDataObject{`,
+		`ObjectPath:` + fmt.Sprintf("%v", this.ObjectPath) + `,`,
+		`Sections:` + repeatedStringForSections + `,`,
+		`}`,
+	}, "")
+	return s
+}
+func (this *ResolvedDataObjectSection) String() string {
+	if this == nil {
+		return "nil"
+	}
+	s := strings.Join([]string{`&ResolvedDataObjectSection{`,
+		`SectionIdx:` + fmt.Sprintf("%v", this.SectionIdx) + `,`,
+		`StreamIds:` + fmt.Sprintf("%v", this.StreamIds) + `,`,
 		`}`,
 	}, "")
 	return s
@@ -1308,10 +2035,7 @@ func (m *ShardsRequest) Unmarshal(dAtA []byte) error {
 			if err != nil {
 				return err
 			}
-			if skippy < 0 {
-				return ErrInvalidLengthIndexgateway
-			}
-			if (iNdEx + skippy) < 0 {
+			if (skippy < 0) || (iNdEx+skippy) < 0 {
 				return ErrInvalidLengthIndexgateway
 			}
 			if (iNdEx + skippy) > l {
@@ -1462,10 +2186,7 @@ func (m *ShardsResponse) Unmarshal(dAtA []byte) error {
 			if err != nil {
 				return err
 			}
-			if skippy < 0 {
-				return ErrInvalidLengthIndexgateway
-			}
-			if (iNdEx + skippy) < 0 {
+			if (skippy < 0) || (iNdEx+skippy) < 0 {
 				return ErrInvalidLengthIndexgateway
 			}
 			if (iNdEx + skippy) > l {
@@ -1584,10 +2305,7 @@ func (m *Shard) Unmarshal(dAtA []byte) error {
 			if err != nil {
 				return err
 			}
-			if skippy < 0 {
-				return ErrInvalidLengthIndexgateway
-			}
-			if (iNdEx + skippy) < 0 {
+			if (skippy < 0) || (iNdEx+skippy) < 0 {
 				return ErrInvalidLengthIndexgateway
 			}
 			if (iNdEx + skippy) > l {
@@ -1675,10 +2393,472 @@ func (m *FPBounds) Unmarshal(dAtA []byte) error {
 			if err != nil {
 				return err
 			}
-			if skippy < 0 {
+			if (skippy < 0) || (iNdEx+skippy) < 0 {
 				return ErrInvalidLengthIndexgateway
 			}
-			if (iNdEx + skippy) < 0 {
+			if (iNdEx + skippy) > l {
+				return io.ErrUnexpectedEOF
+			}
+			iNdEx += skippy
+		}
+	}
+
+	if iNdEx > l {
+		return io.ErrUnexpectedEOF
+	}
+	return nil
+}
+func (m *ResolveDataObjectSectionsRequest) Unmarshal(dAtA []byte) error {
+	l := len(dAtA)
+	iNdEx := 0
+	for iNdEx < l {
+		preIndex := iNdEx
+		var wire uint64
+		for shift := uint(0); ; shift += 7 {
+			if shift >= 64 {
+				return ErrIntOverflowIndexgateway
+			}
+			if iNdEx >= l {
+				return io.ErrUnexpectedEOF
+			}
+			b := dAtA[iNdEx]
+			iNdEx++
+			wire |= uint64(b&0x7F) << shift
+			if b < 0x80 {
+				break
+			}
+		}
+		fieldNum := int32(wire >> 3)
+		wireType := int(wire & 0x7)
+		if wireType == 4 {
+			return fmt.Errorf("proto: ResolveDataObjectSectionsRequest: wiretype end group for non-group")
+		}
+		if fieldNum <= 0 {
+			return fmt.Errorf("proto: ResolveDataObjectSectionsRequest: illegal tag %d (wire type %d)", fieldNum, wire)
+		}
+		switch fieldNum {
+		case 1:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field From", wireType)
+			}
+			m.From = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowIndexgateway
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.From |= github_com_prometheus_common_model.Time(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+		case 2:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Through", wireType)
+			}
+			m.Through = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowIndexgateway
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.Through |= github_com_prometheus_common_model.Time(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+		case 3:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Matchers", wireType)
+			}
+			var stringLen uint64
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowIndexgateway
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				stringLen |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			intStringLen := int(stringLen)
+			if intStringLen < 0 {
+				return ErrInvalidLengthIndexgateway
+			}
+			postIndex := iNdEx + intStringLen
+			if postIndex < 0 {
+				return ErrInvalidLengthIndexgateway
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.Matchers = string(dAtA[iNdEx:postIndex])
+			iNdEx = postIndex
+		default:
+			iNdEx = preIndex
+			skippy, err := skipIndexgateway(dAtA[iNdEx:])
+			if err != nil {
+				return err
+			}
+			if (skippy < 0) || (iNdEx+skippy) < 0 {
+				return ErrInvalidLengthIndexgateway
+			}
+			if (iNdEx + skippy) > l {
+				return io.ErrUnexpectedEOF
+			}
+			iNdEx += skippy
+		}
+	}
+
+	if iNdEx > l {
+		return io.ErrUnexpectedEOF
+	}
+	return nil
+}
+func (m *ResolveDataObjectSectionsResponse) Unmarshal(dAtA []byte) error {
+	l := len(dAtA)
+	iNdEx := 0
+	for iNdEx < l {
+		preIndex := iNdEx
+		var wire uint64
+		for shift := uint(0); ; shift += 7 {
+			if shift >= 64 {
+				return ErrIntOverflowIndexgateway
+			}
+			if iNdEx >= l {
+				return io.ErrUnexpectedEOF
+			}
+			b := dAtA[iNdEx]
+			iNdEx++
+			wire |= uint64(b&0x7F) << shift
+			if b < 0x80 {
+				break
+			}
+		}
+		fieldNum := int32(wire >> 3)
+		wireType := int(wire & 0x7)
+		if wireType == 4 {
+			return fmt.Errorf("proto: ResolveDataObjectSectionsResponse: wiretype end group for non-group")
+		}
+		if fieldNum <= 0 {
+			return fmt.Errorf("proto: ResolveDataObjectSectionsResponse: illegal tag %d (wire type %d)", fieldNum, wire)
+		}
+		switch fieldNum {
+		case 1:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Objects", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowIndexgateway
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return ErrInvalidLengthIndexgateway
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return ErrInvalidLengthIndexgateway
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.Objects = append(m.Objects, ResolvedDataObject{})
+			if err := m.Objects[len(m.Objects)-1].Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
+				return err
+			}
+			iNdEx = postIndex
+		default:
+			iNdEx = preIndex
+			skippy, err := skipIndexgateway(dAtA[iNdEx:])
+			if err != nil {
+				return err
+			}
+			if (skippy < 0) || (iNdEx+skippy) < 0 {
+				return ErrInvalidLengthIndexgateway
+			}
+			if (iNdEx + skippy) > l {
+				return io.ErrUnexpectedEOF
+			}
+			iNdEx += skippy
+		}
+	}
+
+	if iNdEx > l {
+		return io.ErrUnexpectedEOF
+	}
+	return nil
+}
+func (m *ResolvedDataObject) Unmarshal(dAtA []byte) error {
+	l := len(dAtA)
+	iNdEx := 0
+	for iNdEx < l {
+		preIndex := iNdEx
+		var wire uint64
+		for shift := uint(0); ; shift += 7 {
+			if shift >= 64 {
+				return ErrIntOverflowIndexgateway
+			}
+			if iNdEx >= l {
+				return io.ErrUnexpectedEOF
+			}
+			b := dAtA[iNdEx]
+			iNdEx++
+			wire |= uint64(b&0x7F) << shift
+			if b < 0x80 {
+				break
+			}
+		}
+		fieldNum := int32(wire >> 3)
+		wireType := int(wire & 0x7)
+		if wireType == 4 {
+			return fmt.Errorf("proto: ResolvedDataObject: wiretype end group for non-group")
+		}
+		if fieldNum <= 0 {
+			return fmt.Errorf("proto: ResolvedDataObject: illegal tag %d (wire type %d)", fieldNum, wire)
+		}
+		switch fieldNum {
+		case 1:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field ObjectPath", wireType)
+			}
+			var stringLen uint64
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowIndexgateway
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				stringLen |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			intStringLen := int(stringLen)
+			if intStringLen < 0 {
+				return ErrInvalidLengthIndexgateway
+			}
+			postIndex := iNdEx + intStringLen
+			if postIndex < 0 {
+				return ErrInvalidLengthIndexgateway
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.ObjectPath = string(dAtA[iNdEx:postIndex])
+			iNdEx = postIndex
+		case 2:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Sections", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowIndexgateway
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return ErrInvalidLengthIndexgateway
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return ErrInvalidLengthIndexgateway
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.Sections = append(m.Sections, ResolvedDataObjectSection{})
+			if err := m.Sections[len(m.Sections)-1].Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
+				return err
+			}
+			iNdEx = postIndex
+		default:
+			iNdEx = preIndex
+			skippy, err := skipIndexgateway(dAtA[iNdEx:])
+			if err != nil {
+				return err
+			}
+			if (skippy < 0) || (iNdEx+skippy) < 0 {
+				return ErrInvalidLengthIndexgateway
+			}
+			if (iNdEx + skippy) > l {
+				return io.ErrUnexpectedEOF
+			}
+			iNdEx += skippy
+		}
+	}
+
+	if iNdEx > l {
+		return io.ErrUnexpectedEOF
+	}
+	return nil
+}
+func (m *ResolvedDataObjectSection) Unmarshal(dAtA []byte) error {
+	l := len(dAtA)
+	iNdEx := 0
+	for iNdEx < l {
+		preIndex := iNdEx
+		var wire uint64
+		for shift := uint(0); ; shift += 7 {
+			if shift >= 64 {
+				return ErrIntOverflowIndexgateway
+			}
+			if iNdEx >= l {
+				return io.ErrUnexpectedEOF
+			}
+			b := dAtA[iNdEx]
+			iNdEx++
+			wire |= uint64(b&0x7F) << shift
+			if b < 0x80 {
+				break
+			}
+		}
+		fieldNum := int32(wire >> 3)
+		wireType := int(wire & 0x7)
+		if wireType == 4 {
+			return fmt.Errorf("proto: ResolvedDataObjectSection: wiretype end group for non-group")
+		}
+		if fieldNum <= 0 {
+			return fmt.Errorf("proto: ResolvedDataObjectSection: illegal tag %d (wire type %d)", fieldNum, wire)
+		}
+		switch fieldNum {
+		case 1:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field SectionIdx", wireType)
+			}
+			m.SectionIdx = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowIndexgateway
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.SectionIdx |= int64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+		case 2:
+			if wireType == 0 {
+				var v int64
+				for shift := uint(0); ; shift += 7 {
+					if shift >= 64 {
+						return ErrIntOverflowIndexgateway
+					}
+					if iNdEx >= l {
+						return io.ErrUnexpectedEOF
+					}
+					b := dAtA[iNdEx]
+					iNdEx++
+					v |= int64(b&0x7F) << shift
+					if b < 0x80 {
+						break
+					}
+				}
+				m.StreamIds = append(m.StreamIds, v)
+			} else if wireType == 2 {
+				var packedLen int
+				for shift := uint(0); ; shift += 7 {
+					if shift >= 64 {
+						return ErrIntOverflowIndexgateway
+					}
+					if iNdEx >= l {
+						return io.ErrUnexpectedEOF
+					}
+					b := dAtA[iNdEx]
+					iNdEx++
+					packedLen |= int(b&0x7F) << shift
+					if b < 0x80 {
+						break
+					}
+				}
+				if packedLen < 0 {
+					return ErrInvalidLengthIndexgateway
+				}
+				postIndex := iNdEx + packedLen
+				if postIndex < 0 {
+					return ErrInvalidLengthIndexgateway
+				}
+				if postIndex > l {
+					return io.ErrUnexpectedEOF
+				}
+				var elementCount int
+				var count int
+				for _, integer := range dAtA[iNdEx:postIndex] {
+					if integer < 128 {
+						count++
+					}
+				}
+				elementCount = count
+				if elementCount != 0 && len(m.StreamIds) == 0 {
+					m.StreamIds = make([]int64, 0, elementCount)
+				}
+				for iNdEx < postIndex {
+					var v int64
+					for shift := uint(0); ; shift += 7 {
+						if shift >= 64 {
+							return ErrIntOverflowIndexgateway
+						}
+						if iNdEx >= l {
+							return io.ErrUnexpectedEOF
+						}
+						b := dAtA[iNdEx]
+						iNdEx++
+						v |= int64(b&0x7F) << shift
+						if b < 0x80 {
+							break
+						}
+					}
+					m.StreamIds = append(m.StreamIds, v)
+				}
+			} else {
+				return fmt.Errorf("proto: wrong wireType = %d for field StreamIds", wireType)
+			}
+		default:
+			iNdEx = preIndex
+			skippy, err := skipIndexgateway(dAtA[iNdEx:])
+			if err != nil {
+				return err
+			}
+			if (skippy < 0) || (iNdEx+skippy) < 0 {
 				return ErrInvalidLengthIndexgateway
 			}
 			if (iNdEx + skippy) > l {
@@ -1696,6 +2876,7 @@ func (m *FPBounds) Unmarshal(dAtA []byte) error {
 func skipIndexgateway(dAtA []byte) (n int, err error) {
 	l := len(dAtA)
 	iNdEx := 0
+	depth := 0
 	for iNdEx < l {
 		var wire uint64
 		for shift := uint(0); ; shift += 7 {
@@ -1727,10 +2908,8 @@ func skipIndexgateway(dAtA []byte) (n int, err error) {
 					break
 				}
 			}
-			return iNdEx, nil
 		case 1:
 			iNdEx += 8
-			return iNdEx, nil
 		case 2:
 			var length int
 			for shift := uint(0); ; shift += 7 {
@@ -1751,55 +2930,30 @@ func skipIndexgateway(dAtA []byte) (n int, err error) {
 				return 0, ErrInvalidLengthIndexgateway
 			}
 			iNdEx += length
-			if iNdEx < 0 {
-				return 0, ErrInvalidLengthIndexgateway
-			}
-			return iNdEx, nil
 		case 3:
-			for {
-				var innerWire uint64
-				var start int = iNdEx
-				for shift := uint(0); ; shift += 7 {
-					if shift >= 64 {
-						return 0, ErrIntOverflowIndexgateway
-					}
-					if iNdEx >= l {
-						return 0, io.ErrUnexpectedEOF
-					}
-					b := dAtA[iNdEx]
-					iNdEx++
-					innerWire |= (uint64(b) & 0x7F) << shift
-					if b < 0x80 {
-						break
-					}
-				}
-				innerWireType := int(innerWire & 0x7)
-				if innerWireType == 4 {
-					break
-				}
-				next, err := skipIndexgateway(dAtA[start:])
-				if err != nil {
-					return 0, err
-				}
-				iNdEx = start + next
-				if iNdEx < 0 {
-					return 0, ErrInvalidLengthIndexgateway
-				}
-			}
-			return iNdEx, nil
+			depth++
 		case 4:
-			return iNdEx, nil
+			if depth == 0 {
+				return 0, ErrUnexpectedEndOfGroupIndexgateway
+			}
+			depth--
 		case 5:
 			iNdEx += 4
-			return iNdEx, nil
 		default:
 			return 0, fmt.Errorf("proto: illegal wireType %d", wireType)
 		}
+		if iNdEx < 0 {
+			return 0, ErrInvalidLengthIndexgateway
+		}
+		if depth == 0 {
+			return iNdEx, nil
+		}
 	}
-	panic("unreachable")
+	return 0, io.ErrUnexpectedEOF
 }
 
 var (
-	ErrInvalidLengthIndexgateway = fmt.Errorf("proto: negative length found during unmarshaling")
-	ErrIntOverflowIndexgateway   = fmt.Errorf("proto: integer overflow")
+	ErrInvalidLengthIndexgateway        = fmt.Errorf("proto: negative length found during unmarshaling")
+	ErrIntOverflowIndexgateway          = fmt.Errorf("proto: integer overflow")
+	ErrUnexpectedEndOfGroupIndexgateway = fmt.Errorf("proto: unexpected end of group")
 )

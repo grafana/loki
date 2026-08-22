@@ -231,10 +231,14 @@ type mockStore struct {
 	series       []logproto.SeriesIdentifier
 	stats        *stats.Stats
 	shards       *logproto.ShardsResponse
-	samples      []logproto.Sample
+	sampleSeries []logproto.Series // SelectSamples returns these, ordered per req.Order
 	labelValues  []string
 	labelNames   []string
 	volumeResult *logproto.VolumeResponse
+
+	// gotSampleStart and gotSampleEnd record the time range of the last SelectSamples call, so tests
+	// can assert how the StoreCombiner routes to each store.
+	gotSampleStart, gotSampleEnd time.Time
 }
 
 func (m *mockStore) SelectLogs(_ context.Context, req logql.SelectLogParams) (iter.EntryIterator, error) {
@@ -255,11 +259,19 @@ func (m *mockStore) GetShards(_ context.Context, _ string, _ model.Time, _ model
 	return m.shards, nil
 }
 
-func (m *mockStore) SelectSamples(_ context.Context, _ logql.SelectSampleParams) (iter.SampleIterator, error) {
-	return iter.NewSeriesIterator(logproto.Series{
-		Labels:  "",
-		Samples: m.samples,
-	}), nil
+func (m *mockStore) SelectSamples(ctx context.Context, req logql.SelectSampleParams) (iter.SampleIterator, error) {
+	if req.SampleQueryRequest != nil {
+		m.gotSampleStart, m.gotSampleEnd = req.Start, req.End
+	}
+	its := make([]iter.SampleIterator, 0, len(m.sampleSeries))
+	for _, s := range m.sampleSeries {
+		its = append(its, iter.NewSeriesIterator(s))
+	}
+	// Mimic a real store: return the samples in the order the request asked for.
+	if req.SampleQueryRequest != nil && req.Order == logproto.SAMPLE_ORDER_BY_STREAM {
+		return iter.NewStreamFirstMergeSampleIterator(ctx, its), nil
+	}
+	return iter.NewTimestampFirstMergeSampleIterator(ctx, its), nil
 }
 
 func (m *mockStore) LabelValuesForMetricName(_ context.Context, _ string, _ model.Time, _ model.Time, _ string, _ string, _ ...*labels.Matcher) ([]string, error) {
@@ -272,6 +284,35 @@ func (m *mockStore) LabelNamesForMetricName(_ context.Context, _ string, _ model
 
 func (m *mockStore) Volume(_ context.Context, _ string, _ model.Time, _ model.Time, _ int32, _ []string, _ string, _ ...*labels.Matcher) (*logproto.VolumeResponse, error) {
 	return m.volumeResult, nil
+}
+
+// TestStoreCombiner_SelectSamples_HalfOpenRanges pins that the combiner queries each store with a
+// half-open [Start, End) range and the ranges abut with no gap and no overlap: each store's End is the
+// next store's Start, the first store keeps the query's Start and the last keeps its End. A whole-
+// millisecond `through` split would drop a sample in the boundary millisecond, under-counting where two
+// stores meet.
+func TestStoreCombiner_SelectSamples_HalfOpenRanges(t *testing.T) {
+	older, middle, recent := &mockStore{}, &mockStore{}, &mockStore{}
+	sc := NewStoreCombiner([]StoreConfig{
+		{Store: older, From: model.Time(0)},
+		{Store: middle, From: model.Time(100)},
+		{Store: recent, From: model.Time(200)},
+	})
+
+	// Sub-millisecond Start and End prove the outer edges keep nanosecond precision (not truncated).
+	start := time.Unix(0, 250_000)   // 0.25ms
+	end := time.Unix(0, 300_400_000) // 300.4ms — spans all three stores
+	_, err := sc.SelectSamples(context.Background(), logql.SelectSampleParams{
+		SampleQueryRequest: &logproto.SampleQueryRequest{Start: start, End: end, Order: logproto.SAMPLE_ORDER_BY_STREAM},
+	})
+	require.NoError(t, err)
+
+	require.Equal(t, start, older.gotSampleStart, "first store keeps the query Start")
+	require.Equal(t, model.Time(100).Time(), older.gotSampleEnd, "store ends where the next begins")
+	require.Equal(t, model.Time(100).Time(), middle.gotSampleStart, "store starts where the previous ended")
+	require.Equal(t, model.Time(200).Time(), middle.gotSampleEnd)
+	require.Equal(t, model.Time(200).Time(), recent.gotSampleStart)
+	require.Equal(t, end, recent.gotSampleEnd, "last store keeps the query End")
 }
 
 func TestStoreCombiner_Merging(t *testing.T) {
@@ -388,13 +429,13 @@ func TestStoreCombiner_Merging(t *testing.T) {
 
 	t.Run("SelectSamples merges samples", func(t *testing.T) {
 		store1 := &mockStore{
-			samples: []logproto.Sample{
-				{Timestamp: time.Unix(1, 0).UnixNano(), Value: 1.0, Hash: 1},
+			sampleSeries: []logproto.Series{
+				{Samples: []logproto.Sample{{Timestamp: time.Unix(1, 0).UnixNano(), Value: 1.0, Hash: 1}}},
 			},
 		}
 		store2 := &mockStore{
-			samples: []logproto.Sample{
-				{Timestamp: time.Unix(2, 0).UnixNano(), Value: 2.0, Hash: 2},
+			sampleSeries: []logproto.Series{
+				{Samples: []logproto.Sample{{Timestamp: time.Unix(2, 0).UnixNano(), Value: 2.0, Hash: 2}}},
 			},
 		}
 
@@ -419,6 +460,54 @@ func TestStoreCombiner_Merging(t *testing.T) {
 		require.Len(t, samples, 2)
 		require.Equal(t, float64(1.0), samples[0].Value)
 		require.Equal(t, float64(2.0), samples[1].Value)
+	})
+
+	t.Run("SelectSamples honors stream order and dedups across stores", func(t *testing.T) {
+		// Two schema periods (two stores). Each returns stream-ordered samples with a stable
+		// per-stream hash; stream "c" is present in both (a replica duplicate). The combiner must
+		// merge stream-first — grouped by stream, duplicate collapsed — not reorder by timestamp.
+		hash := func(app string) uint64 { return labels.StableHash(labels.FromStrings("app", app)) }
+		mkSeries := func(app string, s ...logproto.Sample) logproto.Series {
+			return logproto.Series{Labels: `{app="` + app + `"}`, StreamHash: hash(app), Samples: s}
+		}
+
+		store1 := &mockStore{sampleSeries: []logproto.Series{
+			mkSeries("a", logproto.Sample{Timestamp: 1, Value: 1, Hash: 11}, logproto.Sample{Timestamp: 10, Value: 1, Hash: 110}),
+		}}
+		store2 := &mockStore{sampleSeries: []logproto.Series{
+			mkSeries("a", logproto.Sample{Timestamp: 1, Value: 1, Hash: 11}), // duplicate of store1's a@1
+			mkSeries("b", logproto.Sample{Timestamp: 5, Value: 1, Hash: 5}),
+		}}
+
+		sc := NewStoreCombiner([]StoreConfig{
+			{Store: store1, From: model.Time(0)},
+			{Store: store2, From: model.Time(2)},
+		})
+
+		it, err := sc.SelectSamples(context.Background(), logql.SelectSampleParams{
+			SampleQueryRequest: &logproto.SampleQueryRequest{
+				Start: time.Unix(0, 0),
+				End:   time.Unix(2, 0), // wide enough to select both store periods (model.Time is ms)
+				Order: logproto.SAMPLE_ORDER_BY_STREAM,
+			},
+		})
+		require.NoError(t, err)
+
+		type point struct {
+			hash uint64
+			ts   int64
+		}
+		var got []point
+		for it.Next() {
+			got = append(got, point{it.StreamHash(), it.At().Timestamp})
+		}
+		require.NoError(t, it.Err())
+		require.Less(t, hash("b"), hash("a"))
+		require.Equal(t, []point{
+			{hash("b"), 5},
+			{hash("a"), 1}, // a@1 deduped across stores
+			{hash("a"), 10},
+		}, got)
 	})
 
 	t.Run("LabelValuesForMetricName deduplicates values", func(t *testing.T) {

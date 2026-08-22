@@ -33,6 +33,8 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/thanos-io/objstore"
 
+	"github.com/grafana/loki/v3/pkg/dataobj"
+	"github.com/grafana/loki/v3/pkg/dataobj/metadatacache"
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
 
 	"github.com/grafana/loki/v3/pkg/analytics"
@@ -129,6 +131,7 @@ const (
 	RuleEvaluator                = "rule-evaluator"
 	Compactor                    = "compactor"
 	IndexGateway                 = "index-gateway"
+	IndexGatewayMetastore        = "index-gateway-metastore"
 	IndexGatewayRing             = "index-gateway-ring"
 	IndexGatewayInterceptors     = "index-gateway-interceptors"
 	BloomStore                   = "bloom-store"
@@ -537,6 +540,12 @@ func (t *Loki) initQuerier() (services.Service, error) {
 	// Use Pattern ingester RetainFor value to determine when to query pattern ingesters
 	t.Cfg.Querier.QueryPatternIngestersWithin = t.Cfg.Pattern.RetainFor
 
+	// Mirror the data-object availability window so the v1 data-object reader uses the same window as
+	// the v2 engine.
+	t.Cfg.Querier.DataObjectsStorageLag = t.Cfg.QueryEngine.StorageLag
+	t.Cfg.Querier.DataObjectsStorageStartDate = t.Cfg.QueryEngine.StorageStartDate
+	t.Cfg.Querier.DataObjectsStorageRetentionDays = t.Cfg.QueryEngine.StorageRetentionDays
+
 	// Querier worker's max concurrent must be the same as the querier setting
 	t.Cfg.Worker.MaxConcurrent = t.Cfg.Querier.MaxConcurrent
 	deleteStore, err := t.deleteRequestsClient("querier", t.Overrides)
@@ -544,10 +553,76 @@ func (t *Loki) initQuerier() (services.Service, error) {
 		return nil, err
 	}
 
-	t.Querier, err = querier.New(t.Cfg.Querier, t.Store, t.ingesterQuerier, t.Overrides, deleteStore, logger)
+	// The data-object bucket and metastore are needed by the v2 engine and, independently, by the v1
+	// engine's experimental data-object reader. Build them when either is enabled.
+	dataObjectsReader := t.Cfg.Querier.Engine.DataObjectsReaderEnabled
+	var (
+		store objstore.Bucket
+		ms    metastore.Metastore
+	)
+	if t.Cfg.QueryEngine.Enable || dataObjectsReader {
+		store, err = t.getDataObjBucket("dataobj-querier")
+		if err != nil {
+			return nil, err
+		}
+		ms = metastore.NewObjectMetastore(store, t.Cfg.DataObj.Metastore, logger, t.metastoreMetrics)
+	}
+
+	// The querier reads data objects only when the v1 reader is enabled; otherwise pass nil so it uses
+	// the chunk store exclusively.
+	var (
+		querierBucket    objstore.Bucket
+		querierMetastore metastore.Metastore
+	)
+	if dataObjectsReader {
+		querierBucket, querierMetastore = store, ms
+	}
+
+	// When enabled, resolve data-object sections through the index-gateway instead of locally.
+	var (
+		dataObjSectionsClient querier.DataObjSectionsGatewayClient
+		dataObjSectionsGWStop func()
+	)
+	if dataObjectsReader && t.Cfg.Querier.DataObjectsSectionResolutionViaIndexGatewayEnabled {
+		gwReg := prometheus.WrapRegistererWith(prometheus.Labels{"component": "dataobj-sections"}, prometheus.DefaultRegisterer)
+		gwClient, err := indexgateway.NewGatewayClient(t.Cfg.StorageConfig.TSDBShipperConfig.IndexGatewayClientConfig, gwReg, t.Overrides, logger, t.Cfg.MetricsNamespace)
+		if err != nil {
+			return nil, err
+		}
+		dataObjSectionsClient = gwClient
+		dataObjSectionsGWStop = gwClient.Stop
+	}
+
+	// Optional metadata cache for the v1 data-object reader: caches each object's immutable metadata
+	// prefix so opening it does not read the metadata from object storage on every open.
+	var (
+		dataObjMetadataCache     dataobj.MetadataCache
+		dataObjMetadataCacheStop func()
+	)
+	if dataObjectsReader && t.Cfg.Querier.DataObjectMetadataCacheEnabled {
+		if !cache.IsCacheConfigured(t.Cfg.Querier.DataObjectMetadataCache) {
+			level.Warn(logger).Log("msg", "data-object metadata cache enabled but no cache backend configured; it will do nothing")
+		}
+		// cache.New takes the plain registerer, like every other cache: it disambiguates its backend metrics
+		// (including shared dskit metrics such as dns_lookups_total) by the flag prefix. Wrapping it with a
+		// component label would add a label name those shared metrics lack elsewhere and panic on registration.
+		c, err := cache.New(t.Cfg.Querier.DataObjectMetadataCache, prometheus.DefaultRegisterer, logger, stats.CacheType("dataobj-metadata"), constants.Loki)
+		if err != nil {
+			return nil, err
+		}
+		// The metadatacache counters carry no prefix, so scope them by component: the index-gateway registers
+		// the same names, and an unscoped registration collides (panics) in single-binary mode.
+		mcReg := prometheus.WrapRegistererWith(prometheus.Labels{"component": "querier"}, prometheus.DefaultRegisterer)
+		mc := metadatacache.New(c, mcReg, logger)
+		dataObjMetadataCache = mc
+		dataObjMetadataCacheStop = mc.Stop
+	}
+
+	querierImpl, err := querier.New(t.Cfg.Querier, t.Store, t.ingesterQuerier, t.Overrides, deleteStore, logger, querierBucket, querierMetastore, dataObjSectionsClient, dataObjMetadataCache, prometheus.DefaultRegisterer)
 	if err != nil {
 		return nil, err
 	}
+	t.Querier = querierImpl
 
 	if t.Cfg.Pattern.Enabled {
 		patternQuerier, err := pattern.NewIngesterQuerier(t.Cfg.Pattern, t.PatternRingClient, t.Cfg.MetricsNamespace, prometheus.DefaultRegisterer, util_log.Logger)
@@ -580,18 +655,6 @@ func (t *Loki) initQuerier() (services.Service, error) {
 		t.HTTPAuthMiddleware,
 		serverutil.NewPrepopulateMiddleware(),
 		serverutil.ResponseJSONMiddleware(),
-	}
-
-	var (
-		store objstore.Bucket
-		ms    metastore.Metastore
-	)
-	if t.Cfg.QueryEngine.Enable {
-		store, err = t.getDataObjBucket("dataobj-querier")
-		if err != nil {
-			return nil, err
-		}
-		ms = metastore.NewObjectMetastore(store, t.Cfg.DataObj.Metastore, logger, t.metastoreMetrics)
 	}
 
 	t.querierAPI = querier.NewQuerierAPI(t.Cfg.Querier, t.Cfg.QueryEngine, ms, t.Querier, t.Overrides, store, prometheus.DefaultRegisterer, logger)
@@ -736,6 +799,12 @@ func (t *Loki) initQuerier() (services.Service, error) {
 
 	if svc != nil {
 		svc.AddListener(deleteRequestsStoreListener(deleteStore))
+		if dataObjSectionsGWStop != nil {
+			svc.AddListener(newStopListener(dataObjSectionsGWStop))
+		}
+		if dataObjMetadataCacheStop != nil {
+			svc.AddListener(newStopListener(dataObjMetadataCacheStop))
+		}
 	}
 	return svc, nil
 }
@@ -1919,6 +1988,102 @@ func (t *Loki) initIndexGateway() (services.Service, error) {
 	return gateway, nil
 }
 
+// initIndexGatewayMetastore builds the data-object metastore behind the index-gateway's section
+// resolution API, plugs in the section cache, and injects the metastore into the index-gateway config.
+//
+// The IndexGateway module depends on this one, so the metastore is ready before the gateway is built,
+// and the gateway (the cache's only user) stops before the returned service releases the cache. It is a
+// no-op when the API is disabled.
+func (t *Loki) initIndexGatewayMetastore() (services.Service, error) {
+	if !t.Cfg.IndexGateway.DataObjectSections.Enabled {
+		return nil, nil
+	}
+
+	logger := log.With(util_log.Logger, "component", "index-gateway-metastore")
+
+	bucket, err := t.getDataObjBucket("index-gateway")
+	if err != nil {
+		return nil, err
+	}
+
+	reg := prometheus.DefaultRegisterer
+	sectionsCache, err := cache.New(t.Cfg.IndexGateway.DataObjectSections.Cache, reg, logger, indexgateway.DataObjSectionsCacheType, constants.Loki)
+	if err != nil {
+		return nil, err
+	}
+
+	opts := []metastore.ObjectMetastoreOption{metastore.WithSectionsCache(metastore.NewSectionsCache(sectionsCache, reg, logger))}
+
+	// Optional metadata cache: caches each index object's immutable metadata prefix so section resolution
+	// does not read it from object storage on every open.
+	var metadataCacheStop func()
+	if t.Cfg.IndexGateway.DataObjectSections.MetadataCacheEnabled {
+		if !cache.IsCacheConfigured(t.Cfg.IndexGateway.DataObjectSections.MetadataCache) {
+			level.Warn(logger).Log("msg", "data-object metadata cache enabled but no cache backend configured; it will do nothing")
+		}
+		// cache.New takes the plain registerer, like every other cache: it disambiguates its backend metrics
+		// (including shared dskit metrics such as dns_lookups_total) by the flag prefix. Wrapping it with a
+		// component label would add a label name those shared metrics lack elsewhere and panic on registration.
+		c, err := cache.New(t.Cfg.IndexGateway.DataObjectSections.MetadataCache, reg, logger, stats.CacheType("dataobj-metadata"), constants.Loki)
+		if err != nil {
+			return nil, err
+		}
+		// The metadatacache counters carry no prefix, so scope them by component: the querier registers the
+		// same names, and an unscoped registration collides (panics) in single-binary mode.
+		mcReg := prometheus.WrapRegistererWith(prometheus.Labels{"component": "index-gateway"}, reg)
+		mc := metadatacache.New(c, mcReg, logger)
+		opts = append(opts, metastore.WithMetadataCache(mc))
+		metadataCacheStop = mc.Stop
+	}
+
+	// Optional ToC warmer. It shares the metastore config so it prefixes the bucket the same way.
+	var warmer *metastore.TableOfContentsWarmResolver
+	if wc := t.Cfg.IndexGateway.DataObjectSections.Warmer; wc.Enabled {
+		warmer, err = metastore.NewTableOfContentsWarmResolver(wc.TableOfContentsWarmResolverConfig, t.Cfg.DataObj.Metastore, bucket, reg, logger)
+		if err != nil {
+			return nil, err
+		}
+		opts = append(opts, metastore.WithTOCResolver(warmer))
+	}
+
+	t.Cfg.IndexGateway.DataObjectSections.Metastore = metastore.NewObjectMetastore(bucket, t.Cfg.DataObj.Metastore, logger, t.metastoreMetrics, opts...)
+
+	cacheStopper := services.NewIdleService(nil, func(_ error) error {
+		sectionsCache.Stop()
+		if metadataCacheStop != nil {
+			metadataCacheStop()
+		}
+		return nil
+	})
+	if warmer == nil {
+		return cacheStopper, nil
+	}
+
+	// Run the warmer (which stops its own cache) alongside the cache stopper as one service.
+	mgr, err := services.NewManager(warmer, cacheStopper)
+	if err != nil {
+		return nil, err
+	}
+	watcher := services.NewFailureWatcher()
+	return services.NewBasicService(
+		func(ctx context.Context) error {
+			watcher.WatchManager(mgr)
+			return services.StartManagerAndAwaitHealthy(ctx, mgr)
+		},
+		func(ctx context.Context) error {
+			select {
+			case <-ctx.Done():
+				return nil
+			case err := <-watcher.Chan():
+				return err
+			}
+		},
+		func(_ error) error {
+			return services.StopManagerAndAwaitStopped(context.Background(), mgr)
+		},
+	), nil
+}
+
 func (t *Loki) initIndexGatewayRing() (_ services.Service, err error) {
 	// Inherit ring listen port from gRPC config
 	t.Cfg.IndexGateway.Ring.ListenPort = t.Cfg.Server.GRPCListenPort
@@ -2563,7 +2728,7 @@ func (t *Loki) deleteRequestsClient(clientType string, limits limiter.CombinedLi
 }
 
 func (t *Loki) createRulerQueryEngine(logger log.Logger, deleteStore deletion.DeleteRequestsClient) (eng *logql.QueryEngine, err error) {
-	q, err := querier.New(t.Cfg.Querier, t.Store, t.ingesterQuerier, t.Overrides, deleteStore, logger)
+	q, err := querier.New(t.Cfg.Querier, t.Store, t.ingesterQuerier, t.Overrides, deleteStore, logger, nil, nil, nil, nil, nil)
 	if err != nil {
 		return nil, fmt.Errorf("could not create querier: %w", err)
 	}

@@ -1609,6 +1609,13 @@ dataobj:
     # CLI flag: -dataobj-metastore.read-postings-sections
     [read_postings_sections: <boolean> | default = false]
 
+    # Experimental: Bytes to prefetch from the head of each index object when
+    # resolving sections. A larger value serves the file and section metadata
+    # from one read instead of many small range reads. The effective minimum is
+    # 16KiB.
+    # CLI flag: -dataobj-metastore.index-read-prefetch-bytes
+    [index_read_prefetch_bytes: <int> | default = 262144]
+
   compaction:
     # Experimental: Enable dataobj compaction modules (planner and worker
     # targets when selected via -target).
@@ -2577,6 +2584,10 @@ The `cache_config` block configures the cache backend for a specific Loki compon
 - `frontend.label-results-cache`
 - `frontend.series-results-cache`
 - `frontend.volume-results-cache`
+- `index-gateway.dataobject-sections.cache`
+- `index-gateway.dataobject-sections.metadata-cache`
+- `index-gateway.dataobject-toc-warmer.cache`
+- `querier.dataobject-metadata-cache`
 - `query-engine.results-cache`
 - `query-engine.task-results-cache`
 - `store.chunks-cache`
@@ -4039,6 +4050,52 @@ ring:
   # Enable using a IPv6 instance address.
   # CLI flag: -index-gateway.ring.instance-enable-ipv6
   [instance_enable_ipv6: <boolean> | default = false]
+
+dataobject_sections:
+  # Enable the data-object section resolution API (ResolveDataObjectSections) on
+  # the index-gateway. Requires data-object storage to be configured.
+  # CLI flag: -index-gateway.dataobject-sections.enabled
+  [enabled: <boolean> | default = false]
+
+  # The cache_config block configures the cache backend for a specific Loki
+  # component.
+  # The CLI flags prefix for this block configuration is:
+  # index-gateway.dataobject-sections.cache
+  [cache: <cache_config>]
+
+  toc_warmer:
+    # Experimental: keep recent data-object Table-of-Contents windows warm in
+    # memory so section resolution serves them from memory instead of reading
+    # them from object storage on the query path.
+    # CLI flag: -index-gateway.dataobject-toc-warmer.enabled
+    [enabled: <boolean> | default = false]
+
+    # How far back from now to keep ToC windows warm.
+    # CLI flag: -index-gateway.dataobject-toc-warmer.warm-window
+    [warm_window: <duration> | default = 72h]
+
+    # How often to refresh the warm snapshot (jittered per instance). The warm
+    # cache TTL is derived from it.
+    # CLI flag: -index-gateway.dataobject-toc-warmer.refresh-interval
+    [refresh_interval: <duration> | default = 1m]
+
+    # The cache_config block configures the cache backend for a specific Loki
+    # component.
+    # The CLI flags prefix for this block configuration is:
+    # index-gateway.dataobject-toc-warmer.cache
+    [cache: <cache_config>]
+
+  # Cache each index object's metadata so section resolution does not read it
+  # from object storage on every open. Has no effect unless
+  # -index-gateway.dataobject-sections.enabled is set.
+  # CLI flag: -index-gateway.dataobject-sections.metadata-cache-enabled
+  [metadata_cache_enabled: <boolean> | default = false]
+
+  # The cache_config block configures the cache backend for a specific Loki
+  # component.
+  # The CLI flags prefix for this block configuration is:
+  # index-gateway.dataobject-sections.metadata-cache
+  [metadata_cache: <cache_config>]
 ```
 
 ### ingester
@@ -5544,6 +5601,17 @@ engine:
   # CLI flag: -querier.engine.max-count-min-sketch-heap-size
   [max_count_min_sketch_heap_size: <int> | default = 10000]
 
+  # When enabled, eligible metric queries process logs on a per-stream order
+  # (instead of a per-timestamp one).
+  # CLI flag: -querier.engine.stream-ordered-execution-enabled
+  [stream_ordered_execution_enabled: <boolean> | default = false]
+
+  # Experimental: When enabled, eligible stream-ordered metric queries read data
+  # objects (over the data-object-available window) instead of the chunk store.
+  # Requires stream-ordered-execution-enabled to take effect.
+  # CLI flag: -querier.engine.dataobjects-reader-enabled
+  [dataobjects_reader_enabled: <boolean> | default = false]
+
 # The maximum number of queries that can be simultaneously processed by the
 # querier.
 # CLI flag: -querier.max-concurrent
@@ -5571,6 +5639,41 @@ engine:
 # of the normal ingesters.
 # CLI flag: -querier.query-partition-ingesters
 [query_partition_ingesters: <boolean> | default = false]
+
+# When true, sharded stream-first metric queries prune data-object streams by
+# their shard bucket before decoding labels. Has no effect unless the
+# data-object reader is enabled.
+# CLI flag: -querier.dataobjects-shard-bucket-filtering-enabled
+[dataobjects_shard_bucket_filtering_enabled: <boolean> | default = false]
+
+# When true, sharded stream-first metric queries narrow data-object section
+# resolution to the shard's bucket range using the index postings, so fewer
+# streams are resolved and read. Has no effect unless the data-object reader is
+# enabled, and is ignored when section resolution is offloaded to the
+# index-gateway. Enable only against index objects written with per-stream
+# shard-bucket postings; older index objects would be pruned incorrectly.
+# CLI flag: -querier.dataobjects-section-shard-bucket-pruning-enabled
+[dataobjects_section_shard_bucket_pruning_enabled: <boolean> | default = false]
+
+# When true, the querier resolves data-object sections through the index-gateway
+# (per 12h window) instead of locally, removing the per-shard resolution
+# redundancy. Falls back to local resolution when the gateway is unavailable.
+# Requires the index-gateway to have
+# -index-gateway.dataobject-sections.enabled=true.
+# CLI flag: -querier.dataobjects-section-resolution-via-index-gateway-enabled
+[dataobjects_section_resolution_via_index_gateway_enabled: <boolean> | default = false]
+
+# When true, cache each data object's metadata so the v1 data-object reader does
+# not read it from object storage on every open. Has no effect unless the
+# data-object reader is enabled.
+# CLI flag: -querier.dataobject-metadata-cache-enabled
+[dataobject_metadata_cache_enabled: <boolean> | default = false]
+
+# The cache_config block configures the cache backend for a specific Loki
+# component.
+# The CLI flags prefix for this block configuration is:
+# querier.dataobject-metadata-cache
+[dataobject_metadata_cache: <cache_config>]
 ```
 
 ### query_range
@@ -7504,6 +7607,9 @@ The TLS configuration. The supported CLI flags `<prefix>` used to reference this
 - `frontend.series-results-cache.memcached`
 - `frontend.tail-tls-config`
 - `frontend.volume-results-cache.memcached`
+- `index-gateway.dataobject-sections.cache.memcached`
+- `index-gateway.dataobject-sections.metadata-cache.memcached`
+- `index-gateway.dataobject-toc-warmer.cache.memcached`
 - `index-gateway.ring.etcd`
 - `ingest-limits-frontend-client`
 - `ingest-limits-frontend.etcd`
@@ -7514,6 +7620,7 @@ The TLS configuration. The supported CLI flags `<prefix>` used to reference this
 - `memberlist`
 - `pattern-ingester.client`
 - `pattern-ingester.etcd`
+- `querier.dataobject-metadata-cache.memcached`
 - `querier.frontend-client`
 - `querier.frontend-grpc-client`
 - `querier.scheduler-grpc-client`

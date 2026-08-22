@@ -360,6 +360,24 @@ func TestSummaryMerge_EstimatedQueryBytesUsesMax(t *testing.T) {
 	require.Equal(t, int64(2048), s.EstimatedQueryBytes)
 }
 
+func TestStoreMerge_DataobjSectionsResolutionUsesMax(t *testing.T) {
+	a := Result{Querier: Querier{Store: Store{Dataobj: Dataobj{SectionsResolutionMaxTime: int64(5 * time.Millisecond)}}}}
+	a.Merge(Result{Querier: Querier{Store: Store{Dataobj: Dataobj{SectionsResolutionMaxTime: int64(8 * time.Millisecond)}}}})
+	require.Equal(t, 8*time.Millisecond, a.DataobjSectionsResolutionMaxTime())
+
+	// A smaller subquery time does not lower the max.
+	a.Merge(Result{Querier: Querier{Store: Store{Dataobj: Dataobj{SectionsResolutionMaxTime: int64(2 * time.Millisecond)}}}})
+	require.Equal(t, 8*time.Millisecond, a.DataobjSectionsResolutionMaxTime())
+}
+
+func TestRecordDataobjSectionsResolutionTime_KeepsMax(t *testing.T) {
+	statsCtx, ctx := NewContext(context.Background())
+	FromContext(ctx).RecordDataobjSectionsResolutionTime(5 * time.Millisecond)
+	FromContext(ctx).RecordDataobjSectionsResolutionTime(9 * time.Millisecond)
+	FromContext(ctx).RecordDataobjSectionsResolutionTime(2 * time.Millisecond)
+	require.Equal(t, 9*time.Millisecond, statsCtx.Result(0, 0, 0).DataobjSectionsResolutionMaxTime())
+}
+
 func TestReset(t *testing.T) {
 	statsCtx, ctx := NewContext(context.Background())
 	fakeIngesterQuery(ctx)
