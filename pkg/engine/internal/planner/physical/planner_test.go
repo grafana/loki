@@ -201,7 +201,7 @@ func TestPlanner_ConvertMaketable(t *testing.T) {
 
 func TestPlanner_Convert(t *testing.T) {
 	// Build a simple query plan:
-	// { app="users" } | age > 21
+	// { app="users" } | age > "21"
 	b := logical.NewBuilder(
 		&logical.MakeTable{
 			Selector: &logical.BinOp{
@@ -218,7 +218,7 @@ func TestPlanner_Convert(t *testing.T) {
 	).Select(
 		&logical.BinOp{
 			Left:  logical.NewColumnRef("age", types.ColumnTypeMetadata),
-			Right: logical.NewLiteral(int64(21)),
+			Right: logical.NewLiteral("21"),
 			Op:    types.BinaryOpGt,
 		},
 	).Select(
@@ -497,7 +497,7 @@ func TestPlanner_Convert_WithCastProjection(t *testing.T) {
 }
 
 func TestPlanner_Convert_RangeAggregations(t *testing.T) {
-	// logical plan for count_over_time({ app="users" } | age > 21[5m])
+	// logical plan for count_over_time({ app="users" } | age > "21"[5m])
 	b := logical.NewBuilder(
 		&logical.MakeTable{
 			Selector: &logical.BinOp{
@@ -510,7 +510,7 @@ func TestPlanner_Convert_RangeAggregations(t *testing.T) {
 	).Select(
 		&logical.BinOp{
 			Left:  logical.NewColumnRef("age", types.ColumnTypeMetadata),
-			Right: logical.NewLiteral(int64(21)),
+			Right: logical.NewLiteral("21"),
 			Op:    types.BinaryOpGt,
 		},
 	).Select(
@@ -551,7 +551,7 @@ func TestPlanner_Convert_RangeAggregations(t *testing.T) {
 }
 
 func TestPlanner_Convert_Rate(t *testing.T) {
-	// logical plan for rate({ app="users" } | age > 21[5m])
+	// logical plan for rate({ app="users" } | age > "21"[5m])
 	b := logical.NewBuilder(
 		&logical.MakeTable{
 			Selector: &logical.BinOp{
@@ -564,7 +564,7 @@ func TestPlanner_Convert_Rate(t *testing.T) {
 	).Select(
 		&logical.BinOp{
 			Left:  logical.NewColumnRef("age", types.ColumnTypeMetadata),
-			Right: logical.NewLiteral(int64(21)),
+			Right: logical.NewLiteral("21"),
 			Op:    types.BinaryOpGt,
 		},
 	).Select(
@@ -581,7 +581,7 @@ func TestPlanner_Convert_Rate(t *testing.T) {
 		0,             // Step
 		time.Minute*5, // Range
 	).BinOpRight(
-		types.BinaryOpDiv, logical.NewLiteral(int64(300)),
+		types.BinaryOpDiv, logical.NewLiteral(float64(300)),
 	)
 
 	logicalPlan, err := b.ToPlan()
@@ -620,7 +620,7 @@ func TestPlanner_BuildMathExpressions(t *testing.T) {
 	).Select(
 		&logical.BinOp{
 			Left:  logical.NewColumnRef("age", types.ColumnTypeMetadata),
-			Right: logical.NewLiteral(int64(21)),
+			Right: logical.NewLiteral("21"),
 			Op:    types.BinaryOpGt,
 		},
 	).Select(
@@ -637,11 +637,11 @@ func TestPlanner_BuildMathExpressions(t *testing.T) {
 		0,             // Step
 		time.Minute*5, // Range
 	).BinOpRight(
-		types.BinaryOpDiv, logical.NewLiteral(int64(300)),
+		types.BinaryOpDiv, logical.NewLiteral(float64(300)),
 	).BinOpRight(
-		types.BinaryOpMul, logical.NewLiteral(int64(40)),
+		types.BinaryOpMul, logical.NewLiteral(float64(40)),
 	).BinOpRight(
-		types.BinaryOpPow, logical.NewLiteral(int64(2)),
+		types.BinaryOpPow, logical.NewLiteral(float64(2)),
 	)
 
 	logicalPlan, err := b.ToPlan()
