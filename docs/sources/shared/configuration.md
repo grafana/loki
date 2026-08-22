@@ -483,7 +483,7 @@ ruler_storage:
   [<thanos_object_store_config>]
 
   # Backend storage to use. Supported backends are: local, s3, gcs, azure,
-  # swift, filesystem, alibabacloud, bos
+  # swift, filesystem, alibabacloud, bos, oci
   # CLI flag: -ruler-storage.backend
   [backend: <string> | default = "filesystem"]
 
@@ -5477,7 +5477,7 @@ The `period_config` block configures what index schemas should be used for from 
 [store: <string> | default = ""]
 
 # Which store to use for the chunks. Either aws (alias s3), azure, gcs,
-# alibabacloud, bos, cos, swift, filesystem, or a named_store (refer to
+# alibabacloud, bos, oci, cos, swift, filesystem, or a named_store (refer to
 # named_stores_config).
 [object_store: <string> | default = ""]
 
@@ -7475,6 +7475,62 @@ bos:
   # Baidu Cloud Engine (BCE) Secret Access Key.
   # CLI flag: -<prefix>.bos.secret-key
   [secret_key: <string> | default = ""]
+
+oci:
+  # OCI authentication provider: default, instance-principal, or
+  # oke-workload-identity.
+  # CLI flag: -<prefix>.oci.provider
+  [provider: <string> | default = ""]
+
+  # OCI Object Storage bucket name.
+  # CLI flag: -<prefix>.oci.bucket
+  [bucket: <string> | default = ""]
+
+  # OCI compartment OCID.
+  # CLI flag: -<prefix>.oci.compartment-ocid
+  [compartment_ocid: <string> | default = ""]
+
+  [tenancy_ocid: <string> | default = ""]
+
+  [user_ocid: <string> | default = ""]
+
+  # OCI region.
+  # CLI flag: -<prefix>.oci.region
+  [region: <string> | default = ""]
+
+  # OCI multipart upload part size.
+  # CLI flag: -<prefix>.oci.part-size
+  [part_size: <int> | default = 0]
+
+  # Maximum number of OCI request attempts. Zero uses the default of 10; set to
+  # 1 to disable retries.
+  # CLI flag: -<prefix>.oci.max-request-retries
+  [max_request_retries: <int> | default = 0]
+
+  # OCI request retry interval in seconds. Zero uses the default of 1 second.
+  # CLI flag: -<prefix>.oci.request-retry-interval
+  [request_retry_interval: <int> | default = 0]
+
+  http_config:
+    [idle_conn_timeout: <int>]
+
+    [response_header_timeout: <int>]
+
+    [insecure_skip_verify: <boolean>]
+
+    [tls_handshake_timeout: <int>]
+
+    [expect_continue_timeout: <int>]
+
+    [max_idle_conns: <int>]
+
+    [max_idle_conns_per_host: <int>]
+
+    [max_conns_per_host: <int>]
+
+    [disable_compression: <boolean>]
+
+    [client_timeout: <duration>]
 
 # Prefix for all objects stored in the backend storage. For simplicity, it may
 # only contain digits, English alphabet letters and dashes.

@@ -1,0 +1,40 @@
+# This is a complete configuration to deploy Loki backed by
+# Oracle Cloud Infrastructure Object Storage through the Thanos client.
+#
+# Loki authenticates using an OCI Instance Principal. Ensure the instance
+# or node has IAM permissions to read and write objects in the target bucket.
+
+auth_enabled: false
+
+server:
+  http_listen_port: 3100
+
+common:
+  ring:
+    instance_addr: 127.0.0.1
+    kvstore:
+      store: inmemory
+  replication_factor: 1
+  path_prefix: /loki
+
+schema_config:
+  configs:
+    - from: "2026-08-01"
+      store: tsdb
+      object_store: oci
+      schema: v13
+      index:
+        prefix: index_
+        period: 24h
+
+storage_config:
+  use_thanos_objstore: true
+  object_store:
+    oci:
+      provider: instance-principal
+      bucket: replace-by-your-bucket-name
+      region: replace-by-your-region
+
+  tsdb_shipper:
+    active_index_directory: /loki/index
+    cache_location: /loki/index_cache
