@@ -405,6 +405,8 @@ func (e *MergeLastOverTimeExpr) Walk(f syntax.WalkFn) {
 type CountMinSketchEvalExpr struct {
 	syntax.SampleExpr
 	downstreams []DownstreamSampleExpr
+	// operation is the user-facing operator that produced this sketch, e.g. approx_topk.
+	operation string
 }
 
 func (e CountMinSketchEvalExpr) String() string {
@@ -684,6 +686,10 @@ func (ev *DownstreamEvaluator) NewStepEvaluator(
 		}
 		return NewMergeLastOverTimeStepEvaluator(params, xs, e.offset, e.rangeInterval), nil
 	case *CountMinSketchEvalExpr:
+		if GetRangeType(params) != InstantType {
+			return nil, errInstantQueryOnly(e.operation)
+		}
+
 		queries := make([]DownstreamQuery, len(e.downstreams))
 
 		for i, d := range e.downstreams {

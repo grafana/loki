@@ -1,16 +1,18 @@
 package logql
 
 import (
+	"context"
 	"fmt"
 	"math/rand"
 	"testing"
-
-	"github.com/grafana/loki/v3/pkg/logproto"
+	"time"
 
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
 
+	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql/sketch"
+	"github.com/grafana/loki/v3/pkg/logql/syntax"
 )
 
 func TestHeapCountMinSketchVectorHeap(t *testing.T) {
@@ -116,3 +118,48 @@ func BenchmarkHeapCountMinSketchVectorAdd(b *testing.B) {
 		}
 	}
 }
+
+func TestErrInstantQueryOnlyUsesOperator(t *testing.T) {
+	rangeParams := LiteralParams{
+		start: time.Unix(0, 0),
+		end:   time.Unix(60, 0),
+		step:  time.Second,
+	}
+
+	t.Run("eval names the source operator", func(t *testing.T) {
+		for _, op := range []string{syntax.OpTypeApproxTopK, "approx_foo"} {
+			_, err := NewCountMinSketchEvalStepEvaluator(context.Background(), nil, &CountMinSketchEvalExpr{operation: op}, rangeParams)
+			require.EqualError(t, err, op+" is only supported on instant queries")
+		}
+	})
+
+	t.Run("join names the source operator", func(t *testing.T) {
+		_, err := JoinCountMinSketchVector(true, CountMinSketchVector{}, noopStepEvaluator{}, rangeParams, syntax.OpTypeApproxTopK)
+		require.EqualError(t, err, "approx_topk is only supported on instant queries")
+	})
+}
+
+func TestCountMinSketchOperation(t *testing.T) {
+	eval := &CountMinSketchEvalExpr{operation: syntax.OpTypeApproxTopK}
+	require.Equal(t, syntax.OpTypeApproxTopK, countMinSketchOperation(eval))
+
+	wrapped := &syntax.VectorAggregationExpr{
+		Operation: syntax.OpTypeTopK,
+		Grouping:  &syntax.Grouping{},
+		Left:      eval,
+	}
+	require.Equal(t, syntax.OpTypeApproxTopK, countMinSketchOperation(wrapped))
+
+	inner := &syntax.VectorAggregationExpr{
+		Operation: syntax.OpTypeCountMinSketch,
+		Grouping:  &syntax.Grouping{},
+	}
+	require.Equal(t, syntax.OpTypeCountMinSketch, countMinSketchOperation(inner))
+}
+
+type noopStepEvaluator struct{}
+
+func (noopStepEvaluator) Next() (bool, int64, StepResult) { return false, 0, nil }
+func (noopStepEvaluator) Close() error                    { return nil }
+func (noopStepEvaluator) Error() error                    { return nil }
+func (noopStepEvaluator) Explain(Node)                    {}
