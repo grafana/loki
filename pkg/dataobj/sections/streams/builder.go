@@ -229,17 +229,16 @@ func (b *Builder) getOrAddStream(streamLabels labels.Labels) *Stream {
 	return b.addStream(hash, streamLabels)
 }
 
-// ShardBucketFromFingerPrint returns the physical shard bucket for streamLabels.
+// ShardBucketFromHash returns the physical shard bucket for a stream fingerprint.
 // Buckets are 0-based in [0, ShardFactor).
-func ShardBucketFromFingerprint(fp uint64) uint32 {
-	return uint32(fp >> (64 - ShardBits))
+func ShardBucketFromHash(hash uint64) uint32 {
+	return uint32(hash >> (64 - ShardBits))
 }
 
 // ShardBucket returns the physical shard bucket for streamLabels.
 // Buckets are 0-based in [0, ShardFactor).
 func ShardBucket(streamLabels labels.Labels) uint32 {
-	fp := labels.StableHash(streamLabels)
-	return ShardBucketFromFingerprint(fp)
+	return ShardBucketFromHash(labels.StableHash(streamLabels))
 }
 
 func (b *Builder) addStream(hash uint64, streamLabels labels.Labels) *Stream {
@@ -251,7 +250,7 @@ func (b *Builder) addStream(hash uint64, streamLabels labels.Labels) *Stream {
 	newStream.Reset()
 	newStream.ID = b.lastID.Add(1)
 	newStream.Labels = streamLabels
-	newStream.ShardBucket = int64(ShardBucket(streamLabels))
+	newStream.ShardBucket = int64(ShardBucketFromHash(hash))
 
 	b.lookup[hash] = append(b.lookup[hash], newStream)
 	b.ordered = append(b.ordered, newStream)
