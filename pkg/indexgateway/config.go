@@ -3,6 +3,7 @@ package indexgateway
 import (
 	"flag"
 	"fmt"
+	"time"
 
 	"github.com/pkg/errors"
 
@@ -64,11 +65,19 @@ type Config struct {
 	// In case it isn't explicitly set, it follows the same behavior of the other rings (ex: using the common configuration
 	// section and the ingester configuration by default).
 	Ring ring.RingConfig `yaml:"ring,omitempty" doc:"description=Defines the ring to be used by the index gateway servers and clients in case the servers are configured to run in 'ring' mode. In case this isn't configured, this block supports inheriting configuration from the common ring section."`
+
+	// MaxConcurrent limits how many index gateway RPCs execute at once. Zero disables admission control.
+	MaxConcurrent int `yaml:"max_concurrent" category:"experimental"`
+
+	// MaxConcurrentQueueTimeout bounds how long a request waits for a free slot before rejection.
+	MaxConcurrentQueueTimeout time.Duration `yaml:"max_concurrent_queue_timeout" category:"experimental"`
 }
 
 // RegisterFlags register all IndexGatewayClientConfig flags and all the flags of its subconfigs but with a prefix (ex: shipper).
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.StringVar((*string)(&cfg.Mode), "index-gateway.mode", SimpleMode.String(), "Defines in which mode the index gateway server will operate (default to 'simple'). It supports two modes:\n- 'simple': an index gateway server instance is responsible for handling, storing and returning requests for all indices for all tenants.\n- 'ring': an index gateway server instance is responsible for a subset of tenants instead of all tenants.")
+	f.IntVar(&cfg.MaxConcurrent, "index-gateway.max-concurrent", 0, "Experimental: Maximum number of index gateway RPCs that can execute concurrently. When the limit is reached, additional requests wait up to -index-gateway.max-concurrent-queue-timeout for a free slot. If no slot becomes free in that time, the index gateway rejects the request with an HTTP 503 status. Clients retry the request against another index gateway replica. 0 disables admission control. A recommended starting value when enabling this setting is 200.")
+	f.DurationVar(&cfg.MaxConcurrentQueueTimeout, "index-gateway.max-concurrent-queue-timeout", 5*time.Second, "Experimental: Maximum time a request waits for a free slot when the index gateway is already executing -index-gateway.max-concurrent requests. If no slot becomes free in that time, the index gateway rejects the request. Bursts shorter than this timeout are absorbed without errors. Clients retry rejected requests against other replicas. When every replica is saturated, a request can wait up to this long per replica, so prefer a low value. 0 means requests wait indefinitely, bounded only by the request's own timeout. Only used when -index-gateway.max-concurrent is greater than 0.")
 
 	// Ring
 	skipFlags := []string{
@@ -88,6 +97,12 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 func (cfg *Config) Validate() error {
 	if cfg.Ring.NumTokens != NumTokens {
 		return errors.New("Num tokens must not be changed as it will not take effect")
+	}
+	if cfg.MaxConcurrent < 0 {
+		return errors.New("index gateway max concurrent must be greater than or equal to 0")
+	}
+	if cfg.MaxConcurrentQueueTimeout < 0 {
+		return errors.New("index gateway max concurrent queue timeout must be greater than or equal to 0")
 	}
 	return nil
 }
