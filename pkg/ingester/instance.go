@@ -271,9 +271,10 @@ func (i *instance) createStream(ctx context.Context, pushReqStream logproto.Stre
 
 	retentionHours := util.RetentionHours(i.tenantsRetention.RetentionPeriodFor(i.instanceID, labels))
 	policy := i.resolvePolicyForStream(ctx, labels)
+	bucket := i.limiter.streamCountBucket(i.instanceID, policy)
 
 	if record != nil {
-		err = i.streamCountLimiter.AssertNewStreamAllowed(i.instanceID, policy)
+		err = i.streamCountLimiter.AssertNewStreamAllowed(i.instanceID, bucket)
 	}
 
 	if err != nil {
@@ -290,6 +291,7 @@ func (i *instance) createStream(ctx context.Context, pushReqStream logproto.Stre
 	}
 
 	s := newStream(chunkfmt, headfmt, i.cfg, i.limiter.rateLimitStrategy, i.instanceID, fp, sortedLabels, i.streamRateCalculator, i.metrics, i.writeFailures, i.configs, retentionHours, policy)
+	s.streamCountBucket = bucket
 
 	// record will be nil when replaying the wal (we don't want to rewrite wal entries as we replay them).
 	if record != nil {
@@ -361,7 +363,7 @@ func (i *instance) onStreamCreated(s *stream) {
 	i.addTailersToNewStream(s)
 	streamsCountStats.Add(1)
 	// we count newly created stream as owned
-	i.ownedStreamsSvc.trackStreamOwnership(s.fp, true, s.policy)
+	i.ownedStreamsSvc.trackStreamOwnership(s.fp, true, s.streamCountBucket)
 	if i.configs.LogStreamCreation(i.instanceID) {
 		level.Debug(util_log.Logger).Log(
 			"msg", "successfully created stream",
@@ -384,6 +386,7 @@ func (i *instance) createStreamByFP(ctx context.Context, ls labels.Labels, fp mo
 	policy := i.resolvePolicyForStream(ctx, ls)
 
 	s := newStream(chunkfmt, headfmt, i.cfg, i.limiter.rateLimitStrategy, i.instanceID, fp, sortedLabels, i.streamRateCalculator, i.metrics, i.writeFailures, i.configs, retentionHours, policy)
+	s.streamCountBucket = i.limiter.streamCountBucket(i.instanceID, policy)
 
 	i.onStreamCreated(s)
 
@@ -429,7 +432,7 @@ func (i *instance) removeStream(s *stream) {
 		memoryStreams.WithLabelValues(i.instanceID).Dec()
 		memoryStreamsLabelsBytes.Sub(float64(len(s.labels.String())))
 		streamsCountStats.Add(-1)
-		i.ownedStreamsSvc.trackRemovedStream(s.fp, s.policy)
+		i.ownedStreamsSvc.trackRemovedStream(s.fp, s.streamCountBucket)
 	}
 }
 
@@ -1213,7 +1216,11 @@ func (i *instance) updateOwnedStreams(isOwnedStream func(*stream) (bool, error))
 				return false, err
 			}
 
-			i.ownedStreamsSvc.trackStreamOwnership(s.fp, ownedStream, s.policy)
+			// Re-resolve the bucket so that stream-count override changes made since the
+			// stream was created converge here (counts were just reset, so re-bucketing all
+			// streams is safe and keeps future trackRemovedStream calls symmetric).
+			s.streamCountBucket = i.limiter.streamCountBucket(i.instanceID, s.policy)
+			i.ownedStreamsSvc.trackStreamOwnership(s.fp, ownedStream, s.streamCountBucket)
 			return true, nil
 		})
 	})
