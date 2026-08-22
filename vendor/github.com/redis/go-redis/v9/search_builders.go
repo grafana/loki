@@ -313,6 +313,31 @@ func (b *AggregateBuilder) ReduceAs(fn SearchAggregator, alias string, args ...i
 	return b
 }
 
+// Collect adds a REDUCE COLLECT clause to the last step, which must be a
+// GROUPBY. The COLLECT options (FIELDS/DISTINCT/SORTBY/LIMIT/AS) are rendered
+// and the argument count is computed automatically; field and sort names are
+// normalized to a single "@" prefix. Set FTAggregateCollect.As to alias the
+// output column.
+//
+// If the last step is not a GROUPBY, or the options are invalid (no FIELDS
+// selector), Run returns the recorded error without issuing the command.
+// COLLECT requires Redis 8.8+ with unstable features enabled.
+func (b *AggregateBuilder) Collect(o FTAggregateCollect) *AggregateBuilder {
+	n := len(b.options.Steps)
+	if n == 0 || b.options.Steps[n-1].GroupBy == nil {
+		b.setErr(fmt.Errorf("FT.AGGREGATE: Collect must follow a GroupBy step"))
+		return b
+	}
+	reducer, err := NewCollectReducer(o)
+	if err != nil {
+		b.setErr(err)
+		return b
+	}
+	g := b.options.Steps[n-1].GroupBy
+	g.Reduce = append(g.Reduce, reducer)
+	return b
+}
+
 // SortBy adds SORTBY <field> ASC|DESC. Consecutive SortBy calls (with no
 // other step in between) are merged into a single SORTBY clause so fields
 // act as tiebreakers. A SortBy call after a non-SortBy step starts a new
