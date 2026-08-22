@@ -1,6 +1,6 @@
 /*
  * MinIO Go Library for Amazon S3 Compatible Cloud Storage
- * Copyright 2020 MinIO, Inc.
+ * Copyright 2026 MinIO, Inc.
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
@@ -18,13 +18,43 @@ package minio
 
 import (
 	"context"
+	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"net/url"
 	"strings"
 
+	"github.com/minio/minio-go/v7/pkg/policy"
 	"github.com/minio/minio-go/v7/pkg/s3utils"
 )
+
+// SetCannedBucketPolicy sets a canned (predefined) access policy on a bucket.
+// This is a convenience method that translates predefined access levels
+// (readonly, writeonly, readwrite) into the corresponding bucket policy.
+// If access is empty or results in no policy statements, the existing bucket policy will be removed.
+//
+// Parameters:
+//   - ctx: Context for request cancellation and timeout
+//   - bucketName: Name of the bucket
+//   - access: Canned access level (policy.BucketPolicyNone, policy.BucketPolicyReadOnly, policy.BucketPolicyWriteOnly, policy.BucketPolicyReadWrite)
+//
+// Returns an error if the operation fails.
+func (c *Client) SetCannedBucketPolicy(ctx context.Context, bucketName string, bucketPolicy policy.BucketPolicy) error {
+	if !bucketPolicy.IsValidBucketPolicy() {
+		return fmt.Errorf("invalid bucket policy %q", bucketPolicy)
+	}
+	p := policy.BucketAccessPolicy{Version: "2012-10-17"}
+	p.Statements = policy.SetPolicy(p.Statements, bucketPolicy, bucketName, "")
+	if len(p.Statements) == 0 {
+		return c.SetBucketPolicy(ctx, bucketName, "")
+	}
+	policyB, e := json.Marshal(p)
+	if e != nil {
+		return e
+	}
+	return c.SetBucketPolicy(ctx, bucketName, string(policyB))
+}
 
 // SetBucketPolicy sets the access permissions policy on an existing bucket.
 // The policy should be a valid JSON string that conforms to the IAM policy format.

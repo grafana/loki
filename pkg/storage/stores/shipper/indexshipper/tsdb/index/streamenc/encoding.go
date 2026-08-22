@@ -12,6 +12,7 @@ import (
 	"encoding/binary"
 	"fmt"
 	"hash/crc32"
+	"sync"
 
 	"github.com/dennwc/varint"
 	"github.com/pkg/errors"
@@ -21,6 +22,17 @@ var (
 	ErrInvalidSize     = errors.New("invalid size")
 	ErrInvalidChecksum = errors.New("invalid checksum")
 )
+
+// crc32ChunkSize is the chunk size used when streaming a Decbuf's contents through a CRC32 hash.
+const crc32ChunkSize = 1024 * 1024
+
+// crc32BufferPool holds reusable scratch buffers for CheckCrc32, saving allocations.
+var crc32BufferPool = sync.Pool{
+	New: func() any {
+		b := make([]byte, crc32ChunkSize)
+		return &b
+	},
+}
 
 // Decbuf provides safe methods to extract data from a big-endian binary data.
 // It the Prometheus encoding.Decbuf type, but for a generic BufReader rather than []byte.
@@ -47,11 +59,13 @@ func (d *Decbuf) CheckCrc32(castagnoliTable *crc32.Table) {
 
 	hash := crc32.New(castagnoliTable)
 	bytesToRead := d.r.Len() - 4
-	maxChunkSize := 1024 * 1024
-	rawBuf := make([]byte, maxChunkSize)
+
+	bufferPointer := crc32BufferPool.Get().(*[]byte)
+	defer crc32BufferPool.Put(bufferPointer)
+	rawBuf := *bufferPointer
 
 	for bytesToRead > 0 {
-		chunkSize := min(bytesToRead, maxChunkSize)
+		chunkSize := min(bytesToRead, crc32ChunkSize)
 		chunkBuf := rawBuf[0:chunkSize]
 
 		err := d.r.ReadInto(chunkBuf)
@@ -89,6 +103,16 @@ func (d *Decbuf) Skip(l int) {
 	}
 
 	d.E = d.r.Skip(l)
+}
+
+// ReadInto reads len(dst) bytes into dst, consuming them. If E is non-nil,
+// this method has no effect.
+func (d *Decbuf) ReadInto(dst []byte) {
+	if d.E != nil {
+		return
+	}
+
+	d.E = d.r.ReadInto(dst)
 }
 
 // SkipUvarintBytes advances the pointer of the underlying BufReader past the

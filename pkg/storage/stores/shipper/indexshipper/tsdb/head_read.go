@@ -52,10 +52,6 @@ func (h *headIndexReader) Close() error {
 	return nil
 }
 
-func (h *headIndexReader) Symbols() index.StringIter {
-	return h.head.postings.Symbols()
-}
-
 // LabelValues returns label values present in the head for the
 // specific label name that are within the time range mint to maxt.
 // If matchers are specified the returned result set is reduced

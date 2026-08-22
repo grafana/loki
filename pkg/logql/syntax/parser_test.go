@@ -1421,6 +1421,11 @@ var ParseTestCases = []struct {
 		},
 	},
 	{
+		// a numeric label filter literal the float parser rejects is a parse error, not a silent 0.
+		in:  `{app="foo"} | logfmt | status_code > 0x10`,
+		err: logqlmodel.NewParseError(`unable to parse literal as a float: strconv.ParseFloat: parsing "0x10": invalid syntax`, 0, 0),
+	},
+	{
 		in: `{app="foo"} |= "bar" | unpack | json | latency >= 250ms or ( status_code < 500 and status_code > 200)`,
 		exp: &PipelineExpr{
 			Left: newMatcherExpr([]*labels.Matcher{{Type: labels.MatchEqual, Name: "app", Value: "foo"}}),

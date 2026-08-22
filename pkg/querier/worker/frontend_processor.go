@@ -25,13 +25,14 @@ var (
 	}
 )
 
-func newFrontendProcessor(cfg Config, handler RequestHandler, log log.Logger, codec RequestCodec) processor {
+func newFrontendProcessor(cfg Config, handler RequestHandler, log log.Logger, metrics *Metrics, codec RequestCodec) processor {
 	return &frontendProcessor{
 		log:            log,
 		handler:        handler,
 		codec:          codec,
 		maxMessageSize: cfg.NewQueryFrontendGRPCClientConfig.MaxSendMsgSize,
 		querierID:      cfg.QuerierID,
+		metrics:        metrics,
 	}
 }
 
@@ -42,6 +43,7 @@ type frontendProcessor struct {
 	codec          RequestCodec
 	maxMessageSize int
 	querierID      string
+	metrics        *Metrics
 
 	log log.Logger
 }
@@ -119,6 +121,9 @@ func (fp *frontendProcessor) process(c frontendv1pb.Frontend_ProcessClient) erro
 }
 
 func (fp *frontendProcessor) runRequest(ctx context.Context, request *httpgrpc.HTTPRequest, statsEnabled bool, sendResponse func(response *httpgrpc.HTTPResponse, stats *querier_stats.Stats) error) {
+	fp.metrics.inflightRequests.Inc()
+	defer fp.metrics.inflightRequests.Dec()
+
 	ctx, queueSpan := tracer.Start(
 		httpgrpcutil.ExtractSpanFromHTTPRequest(ctx, request),
 		"frontend_processor_runRequest",

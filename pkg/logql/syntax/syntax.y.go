@@ -1570,37 +1570,37 @@ syntaxdefault:
 	case 144:
 		syntaxDollar = syntaxS[syntaxpt-3 : syntaxpt+1]
 		{
-			syntaxVAL.filterer = log.NewNumericLabelFilter(log.LabelFilterGreaterThan, syntaxDollar[1].str, syntaxDollar[3].literalExpr.Val)
+			syntaxVAL.filterer = mustNewNumericLabelFilter(log.LabelFilterGreaterThan, syntaxDollar[1].str, syntaxDollar[3].literalExpr)
 		}
 	case 145:
 		syntaxDollar = syntaxS[syntaxpt-3 : syntaxpt+1]
 		{
-			syntaxVAL.filterer = log.NewNumericLabelFilter(log.LabelFilterGreaterThanOrEqual, syntaxDollar[1].str, syntaxDollar[3].literalExpr.Val)
+			syntaxVAL.filterer = mustNewNumericLabelFilter(log.LabelFilterGreaterThanOrEqual, syntaxDollar[1].str, syntaxDollar[3].literalExpr)
 		}
 	case 146:
 		syntaxDollar = syntaxS[syntaxpt-3 : syntaxpt+1]
 		{
-			syntaxVAL.filterer = log.NewNumericLabelFilter(log.LabelFilterLesserThan, syntaxDollar[1].str, syntaxDollar[3].literalExpr.Val)
+			syntaxVAL.filterer = mustNewNumericLabelFilter(log.LabelFilterLesserThan, syntaxDollar[1].str, syntaxDollar[3].literalExpr)
 		}
 	case 147:
 		syntaxDollar = syntaxS[syntaxpt-3 : syntaxpt+1]
 		{
-			syntaxVAL.filterer = log.NewNumericLabelFilter(log.LabelFilterLesserThanOrEqual, syntaxDollar[1].str, syntaxDollar[3].literalExpr.Val)
+			syntaxVAL.filterer = mustNewNumericLabelFilter(log.LabelFilterLesserThanOrEqual, syntaxDollar[1].str, syntaxDollar[3].literalExpr)
 		}
 	case 148:
 		syntaxDollar = syntaxS[syntaxpt-3 : syntaxpt+1]
 		{
-			syntaxVAL.filterer = log.NewNumericLabelFilter(log.LabelFilterNotEqual, syntaxDollar[1].str, syntaxDollar[3].literalExpr.Val)
+			syntaxVAL.filterer = mustNewNumericLabelFilter(log.LabelFilterNotEqual, syntaxDollar[1].str, syntaxDollar[3].literalExpr)
 		}
 	case 149:
 		syntaxDollar = syntaxS[syntaxpt-3 : syntaxpt+1]
 		{
-			syntaxVAL.filterer = log.NewNumericLabelFilter(log.LabelFilterEqual, syntaxDollar[1].str, syntaxDollar[3].literalExpr.Val)
+			syntaxVAL.filterer = mustNewNumericLabelFilter(log.LabelFilterEqual, syntaxDollar[1].str, syntaxDollar[3].literalExpr)
 		}
 	case 150:
 		syntaxDollar = syntaxS[syntaxpt-3 : syntaxpt+1]
 		{
-			syntaxVAL.filterer = log.NewNumericLabelFilter(log.LabelFilterEqual, syntaxDollar[1].str, syntaxDollar[3].literalExpr.Val)
+			syntaxVAL.filterer = mustNewNumericLabelFilter(log.LabelFilterEqual, syntaxDollar[1].str, syntaxDollar[3].literalExpr)
 		}
 	case 151:
 		syntaxDollar = syntaxS[syntaxpt-1 : syntaxpt+1]
