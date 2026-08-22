@@ -114,8 +114,12 @@ type Config struct {
 	// DefaultPolicyStreamMappings contains the default policy stream mappings that are merged with per-tenant mappings.
 	DefaultPolicyStreamMappings validation.PolicyStreamMapping `yaml:"default_policy_stream_mappings" doc:"description=Default policy stream mappings that are merged with per-tenant mappings."`
 
-	KafkaEnabled              bool `yaml:"kafka_writes_enabled"`
-	IngesterEnabled           bool `yaml:"ingester_writes_enabled"`
+	KafkaEnabled    bool `yaml:"kafka_writes_enabled"`
+	IngesterEnabled bool `yaml:"ingester_writes_enabled"`
+	// ExtendWrites replaces a non-ACTIVE ingester in the write set (for example one
+	// that is LEAVING during a scale-down or rollout) with the next healthy ingester,
+	// so writes keep quorum while the ring changes.
+	ExtendWrites              bool `yaml:"extend_writes"`
 	IngestLimitsEnabled       bool `yaml:"ingest_limits_enabled"`
 	IngestLimitsDryRunEnabled bool `yaml:"ingest_limits_dry_run_enabled"`
 
@@ -140,6 +144,7 @@ func (cfg *Config) RegisterFlags(fs *flag.FlagSet) {
 	fs.IntVar(&cfg.PushWorkerCount, "distributor.push-worker-count", 256, "Number of workers to push batches to ingesters.")
 	fs.BoolVar(&cfg.KafkaEnabled, "distributor.kafka-writes-enabled", false, "Enable writes to Kafka during Push requests.")
 	fs.BoolVar(&cfg.IngesterEnabled, "distributor.ingester-writes-enabled", true, "Enable writes to Ingesters during Push requests. Defaults to true.")
+	fs.BoolVar(&cfg.ExtendWrites, "distributor.extend-writes", false, "Replace a non-ACTIVE ingester in the write set (for example one that is LEAVING during a scale-down or rollout) with the next healthy ingester so writes keep quorum. Defaults to false.")
 	fs.BoolVar(&cfg.IngestLimitsEnabled, "distributor.ingest-limits-enabled", false, "Enable checking limits against the ingest-limits service. Defaults to false.")
 	fs.BoolVar(&cfg.IngestLimitsDryRunEnabled, "distributor.ingest-limits-dry-run-enabled", false, "Enable dry-run mode where limits are checked the ingest-limits service, but not enforced. Defaults to false.")
 }
@@ -662,6 +667,16 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 	return d.pushWithResolver(ctx, req, newRequestScopedStreamResolver(tenantID, d.validator.Limits, d.logger), constants.Loki)
 }
 
+// writeRingOp picks the ring operation for the ingester write path. WriteNoExtend
+// drops a non-ACTIVE ingester from the write set without replacing it; Write pulls
+// in the next healthy ingester instead, so quorum survives ring changes.
+func writeRingOp(extendWrites bool) ring.Operation {
+	if extendWrites {
+		return ring.Write
+	}
+	return ring.WriteNoExtend
+}
+
 // Push a set of streams.
 // Can modify the input req parameter.
 // The returned error is the last one seen.
@@ -1022,8 +1037,9 @@ func (d *Distributor) pushWithResolver(ctx context.Context, req *logproto.PushRe
 			sp.AddEvent("started to query ingesters ring")
 			defer sp.AddEvent("finished to query ingesters ring")
 
+			writeOp := writeRingOp(d.cfg.ExtendWrites)
 			for i, stream := range streams {
-				replicationSet, err := d.ingestersRing.Get(stream.HashKey, ring.WriteNoExtend, descs[:0], nil, nil)
+				replicationSet, err := d.ingestersRing.Get(stream.HashKey, writeOp, descs[:0], nil, nil)
 				if err != nil {
 					return err
 				}
