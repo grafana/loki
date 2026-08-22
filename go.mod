@@ -94,7 +94,7 @@ require (
 
 require (
 	charm.land/bubbles/v2 v2.1.1
-	charm.land/bubbletea/v2 v2.0.8
+	charm.land/bubbletea/v2 v2.0.9
 	charm.land/lipgloss/v2 v2.0.6
 	github.com/DataDog/sketches-go v1.4.8
 	github.com/DmitriyVTitov/size v1.5.0
