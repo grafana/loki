@@ -929,18 +929,22 @@ func TestNewProjectPipeline_DuplicateColumnPanic(t *testing.T) {
 		record, err := pipeline.Read(ctx)
 		require.NoError(t, err)
 
+		// Parsed labels are first-writer-wins (as in v1, where a later parser
+		// stage skips keys already extracted by an earlier one): the
+		// pre-existing user/action values survive the re-parse, only the new
+		// timestamp key is added.
 		expectedRows := arrowtest.Rows{
 			{
 				"utf8.builtin.message":  `{"user":"alice","action":"login","timestamp":"2024-01-01"}`,
-				"utf8.parsed.action":    "login",
+				"utf8.parsed.action":    "logout", // from first parse
 				"utf8.parsed.timestamp": "2024-01-01",
-				"utf8.parsed.user":      "alice",
+				"utf8.parsed.user":      "bob", // from first parse
 			},
 			{
 				"utf8.builtin.message":  `{"action":"login","timestamp":"2024-01-01"}`,
-				"utf8.parsed.action":    "login",
+				"utf8.parsed.action":    "logout", // from first parse
 				"utf8.parsed.timestamp": "2024-01-01",
-				"utf8.parsed.user":      "bob", //from first parse
+				"utf8.parsed.user":      "bob", // from first parse
 			},
 		}
 

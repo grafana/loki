@@ -70,9 +70,7 @@ func newColumnCompatibilityPipeline(compat *physical.ColumnCompat, input Pipelin
 					collisionIdxs: collisionIdxs,
 					sourceIdx:     sourceFieldIndices[i],
 
-					// Indicates that there are no existing _extracted columns of lower priority found yet
-					lowerExtractedSourceIdx:      -1,
-					lowerExtractedDestinationIdx: -1,
+					existMovedByIdx: -1,
 				})
 			}
 		}
@@ -98,7 +96,7 @@ func newColumnCompatibilityPipeline(compat *physical.ColumnCompat, input Pipelin
 		newFields := make([]arrow.Field, 0, oldSchema.NumFields()+len(duplicates))
 		oldFieldToNewIdx := make(map[int]int, oldSchema.NumFields())
 		existingDestCols := make(map[string]*array.String, len(duplicates))
-		existingLowerPriorityDestCols := make(map[string]int, len(duplicates))
+		existingLowerPriorityDestCols := make(map[string][]int, len(duplicates))
 
 		for oldIdx, field := range oldSchema.Fields() {
 			ident, err := identCache.ParseFQN(field.Name)
@@ -117,8 +115,9 @@ func newColumnCompatibilityPipeline(compat *physical.ColumnCompat, input Pipelin
 				}
 
 				// Existing _extracted columns of lower priority (parsed > metadata > label)
-				// should be preserved and processed separately.
-				existingLowerPriorityDestCols[ident.ShortName()] = oldIdx
+				// should be preserved and processed separately. Multiple columns of
+				// different lower-priority types can share the same short name.
+				existingLowerPriorityDestCols[ident.ShortName()] = append(existingLowerPriorityDestCols[ident.ShortName()], oldIdx)
 			}
 
 			oldFieldToNewIdx[oldIdx] = len(newFields)
@@ -134,10 +133,21 @@ func newColumnCompatibilityPipeline(compat *physical.ColumnCompat, input Pipelin
 				return nil, err
 			}
 
-			if lowerIdx, ok := existingLowerPriorityDestCols[sourceIdent.ShortName()+extracted]; ok {
+			for _, lowerIdx := range existingLowerPriorityDestCols[sourceIdent.ShortName()+extracted] {
 				// Store old and new indices for lower priority _extracted columns
-				duplicates[i].lowerExtractedSourceIdx = lowerIdx
-				duplicates[i].lowerExtractedDestinationIdx = oldFieldToNewIdx[lowerIdx]
+				duplicates[i].lowerExtractedSourceIdxs = append(duplicates[i].lowerExtractedSourceIdxs, lowerIdx)
+				duplicates[i].lowerExtractedDestinationIdxs = append(duplicates[i].lowerExtractedDestinationIdxs, oldFieldToNewIdx[lowerIdx])
+			}
+
+			// An existing destination column can itself be the source of another
+			// duplicate (e.g. parsed.foo_extracted colliding with
+			// label.foo_extracted while parsed.foo collides with label.foo). In
+			// that case its value only remains in place on rows where the other
+			// duplicate does not move it away.
+			if existingDestCols[sourceIdent.ShortName()+extracted] != nil {
+				duplicates[i].existMovedByIdx = slices.IndexFunc(duplicates, func(d duplicateColumn) bool {
+					return d.name == sourceIdent.ShortName()+extracted
+				})
 			}
 
 			destinationIdent := semconv.NewIdentifier(sourceIdent.ShortName()+extracted, compat.Destination, sourceIdent.DataType())
@@ -155,122 +165,120 @@ func newColumnCompatibilityPipeline(compat *physical.ColumnCompat, input Pipelin
 
 		newSchemaColumns := make([]arrow.Array, newSchema.NumFields())
 
-		// Now, go through all fields of the old schema and append the rows to the new builder.
+		// Copy over all columns that are not modified by the collision handling:
+		// everything except duplicate sources, their lower-priority _extracted
+		// columns, and dropped existing _extracted columns (not in oldFieldToNewIdx).
 		for oldIdx := range oldSchema.NumFields() {
-			col := batch.Column(oldIdx)
-
-			duplicateIdx := slices.IndexFunc(duplicates, func(d duplicateColumn) bool { return d.lowerExtractedSourceIdx == oldIdx })
-			if duplicateIdx != -1 {
-				// Skip _extracted columns of lower priority because they will be processed together with duplicates sources
+			isHandledByDuplicate := slices.ContainsFunc(duplicates, func(d duplicateColumn) bool {
+				return d.sourceIdx == oldIdx || slices.Contains(d.lowerExtractedSourceIdxs, oldIdx)
+			})
+			if isHandledByDuplicate {
 				continue
 			}
+			if newIdx, ok := oldFieldToNewIdx[oldIdx]; ok {
+				newSchemaColumns[newIdx] = batch.Column(oldIdx)
+			}
+		}
 
-			duplicateIdx = slices.IndexFunc(duplicates, func(d duplicateColumn) bool { return d.sourceIdx == oldIdx })
+		// Resolve each duplicate: write the winning value into the destination
+		// (_extracted) column, keep or clear the source column, and null out
+		// lower-priority _extracted columns wherever the destination has a value
+		// (mirroring v1, where setting a parsed label deletes same-named
+		// stream/metadata labels).
+		for di := range duplicates {
+			duplicate := duplicates[di]
 
-			// If not a colliding column, just copy over the column data of the original record.
-			if duplicateIdx < 0 {
-				// Check if this column should be copied (not a skipped _extracted column)
-				if newIdx, ok := oldFieldToNewIdx[oldIdx]; ok {
-					newSchemaColumns[newIdx] = col
-				}
-				// If not in the map, it was skipped (existing _extracted column)
-				continue
+			sourceCol, ok := batch.Column(duplicate.sourceIdx).(*array.String)
+			if !ok {
+				panic("invalid source column type: only string columns can be checked for collisions")
 			}
 
-			// If the currently processed column is the source field for a colliding column,
-			// then write non-null values from source column into destination column.
-			// Also, "clear" the original column value by writing a NULL instead of the original value.
-			duplicate := duplicates[duplicateIdx]
 			collisionCols := make([]arrow.Array, len(duplicate.collisionIdxs))
 			for i, collIdx := range duplicate.collisionIdxs {
 				collisionCols[i] = batch.Column(collIdx)
 			}
 
-			// Get the new index for this source field
-			sourceNewIdx, ok := oldFieldToNewIdx[oldIdx]
-			if !ok {
-				panic("sourceNewIdx not foud")
+			destinationFieldBuilder := builder.Field(duplicate.destinationIdx).(*array.StringBuilder)
+
+			// The source column is dropped from the new schema when it is itself
+			// an existing destination recreated by another duplicate; that
+			// duplicate then owns writing the column.
+			var sourceFieldBuilder *array.StringBuilder
+			sourceNewIdx, writesSource := oldFieldToNewIdx[duplicate.sourceIdx]
+			if writesSource {
+				sourceFieldBuilder = builder.Field(sourceNewIdx).(*array.StringBuilder)
 			}
 
-			switch sourceFieldBuilder := builder.Field(sourceNewIdx).(type) {
-			case *array.StringBuilder:
-				destinationFieldBuilder := builder.Field(duplicate.destinationIdx).(*array.StringBuilder)
+			// Existing destination column (_extracted) in the input batch. This
+			// happens when multiple ColumnCompat nodes run sequentially (e.g.
+			// `| json | logfmt`) or when the parser extracted a literal
+			// `<name>_extracted` key. v1 semantics are first-writer-wins: an
+			// existing value is preserved over the newly moved source value.
+			existingDestCol := existingDestCols[duplicate.name+extracted]
+			var existMovedByCollisionCols []arrow.Array
+			if duplicate.existMovedByIdx != -1 {
+				movedBy := duplicates[duplicate.existMovedByIdx]
+				existMovedByCollisionCols = make([]arrow.Array, len(movedBy.collisionIdxs))
+				for i, collIdx := range movedBy.collisionIdxs {
+					existMovedByCollisionCols[i] = batch.Column(collIdx)
+				}
+			}
 
-				// Check if there's an existing destination column (_extracted) in the input batch
-				// This happens when multiple ColumnCompat nodes run sequentially (e.g., | json | logfmt |)
-				existingDestCol := existingDestCols[duplicate.name+extracted]
+			lowerDestFieldBuilders := make([]*array.StringBuilder, len(duplicate.lowerExtractedDestinationIdxs))
+			lowerDestCols := make([]*array.String, len(duplicate.lowerExtractedSourceIdxs))
+			for i := range duplicate.lowerExtractedSourceIdxs {
+				lowerDestFieldBuilders[i] = builder.Field(duplicate.lowerExtractedDestinationIdxs[i]).(*array.StringBuilder)
+				lowerDestCols[i] = batch.Column(duplicate.lowerExtractedSourceIdxs[i]).(*array.String)
+			}
 
-				var (
-					lowerDestFieldBuilder *array.StringBuilder
-					lowerDestCol          *array.String
-				)
+			for i := range int(batch.NumRows()) {
+				collides := !allColumnsNull(collisionCols, i)
+				sourceValid := !sourceCol.IsNull(i) && sourceCol.IsValid(i)
 
-				if duplicate.lowerExtractedDestinationIdx != -1 {
-					lowerDestFieldBuilder = builder.Field(duplicate.lowerExtractedDestinationIdx).(*array.StringBuilder)
-					lowerDestCol = batch.Column(duplicate.lowerExtractedSourceIdx).(*array.String)
+				existValid := existingDestCol != nil && !existingDestCol.IsNull(i)
+				if existValid && duplicate.existMovedByIdx != -1 && !allColumnsNull(existMovedByCollisionCols, i) {
+					// The existing value is moved to its own _extracted column by
+					// the other duplicate on this row, so it does not occupy the
+					// destination here.
+					existValid = false
 				}
 
-				for i := range int(batch.NumRows()) {
-					// Preserve existing values over adding null
-					if existingDestCol != nil && !existingDestCol.IsNull(i) {
-						existingVal := existingDestCol.Value(i)
-						if col.IsNull(i) || !col.IsValid(i) {
-							sourceFieldBuilder.AppendNull()             // append NULL to original column
-							destinationFieldBuilder.Append(existingVal) // append old value to _extracted column
-						} else {
-							if allColumnsNull(collisionCols, i) {
-								sourceFieldBuilder.Append(col.(*array.String).Value(i)) // append value to original column
-								destinationFieldBuilder.AppendNull()                    // append NULL to _extracted column
-							} else {
-								sourceFieldBuilder.AppendNull()                              // append NULL to original column
-								destinationFieldBuilder.Append(col.(*array.String).Value(i)) // append new value to _extracted column
-							}
-						}
-						if lowerDestFieldBuilder != nil {
-							lowerDestFieldBuilder.AppendNull() // append new value to the lower priority _extracted column
-						}
-					} else if col.IsNull(i) || !col.IsValid(i) {
-						sourceFieldBuilder.AppendNull()      // append NULL to original column
-						destinationFieldBuilder.AppendNull() // append NULL to _extracted column
-						if lowerDestFieldBuilder != nil {
-							// preserve the current value of the lower prioity _extracted column
-							if !lowerDestCol.IsNull(i) && lowerDestCol.IsValid(i) {
-								lowerDestFieldBuilder.Append(lowerDestCol.Value(i))
-							} else {
-								lowerDestFieldBuilder.AppendNull()
-							}
-						}
-					} else if allColumnsNull(collisionCols, i) {
-						// All collision columns are null for this row, keep value in source column
-						v := col.(*array.String).Value(i)
-						sourceFieldBuilder.Append(v)         // append value to original column
-						destinationFieldBuilder.AppendNull() // append NULL to _extracted column
-						if lowerDestFieldBuilder != nil {
-							// preserve the current value of the lower prioity _extracted column
-							if !lowerDestCol.IsNull(i) && lowerDestCol.IsValid(i) {
-								lowerDestFieldBuilder.Append(lowerDestCol.Value(i))
-							} else {
-								lowerDestFieldBuilder.AppendNull()
-							}
-						}
+				destSet := true
+				switch {
+				case existValid:
+					destinationFieldBuilder.Append(existingDestCol.Value(i))
+				case collides && sourceValid:
+					destinationFieldBuilder.Append(sourceCol.Value(i))
+				default:
+					destinationFieldBuilder.AppendNull()
+					destSet = false
+				}
+
+				if writesSource {
+					if !collides && sourceValid {
+						sourceFieldBuilder.Append(sourceCol.Value(i))
 					} else {
-						sourceFieldBuilder.AppendNull() // append NULL to original column
-						v := col.(*array.String).Value(i)
-						destinationFieldBuilder.Append(v) // append value to _extracted column
-						if lowerDestFieldBuilder != nil {
-							lowerDestFieldBuilder.AppendNull() // append new value to the lower priority _extracted column
-						}
+						sourceFieldBuilder.AppendNull()
 					}
 				}
 
-				newSchemaColumns[sourceNewIdx] = sourceFieldBuilder.NewArray()
-				newSchemaColumns[duplicate.destinationIdx] = destinationFieldBuilder.NewArray()
-
-				if lowerDestFieldBuilder != nil {
-					newSchemaColumns[duplicate.lowerExtractedDestinationIdx] = lowerDestFieldBuilder.NewArray()
+				for k, lowerBuilder := range lowerDestFieldBuilders {
+					if destSet {
+						lowerBuilder.AppendNull()
+					} else if !lowerDestCols[k].IsNull(i) && lowerDestCols[k].IsValid(i) {
+						lowerBuilder.Append(lowerDestCols[k].Value(i))
+					} else {
+						lowerBuilder.AppendNull()
+					}
 				}
-			default:
-				panic("invalid source column type: only string columns can be checked for collisions")
+			}
+
+			newSchemaColumns[duplicate.destinationIdx] = destinationFieldBuilder.NewArray()
+			if writesSource {
+				newSchemaColumns[sourceNewIdx] = sourceFieldBuilder.NewArray()
+			}
+			for i := range lowerDestFieldBuilders {
+				newSchemaColumns[duplicate.lowerExtractedDestinationIdxs[i]] = lowerDestFieldBuilders[i].NewArray()
 			}
 		}
 
@@ -303,8 +311,13 @@ type duplicateColumn struct {
 	sourceIdx int
 	// destinationIdx is the index of the destination column
 	destinationIdx int
-	// lowerExtractedDestinationIdx is the new index of the _extracted column with lower priority (from earlier compats)
-	lowerExtractedDestinationIdx int
-	// lowerExtractedSourceIdx is the old index of the _extracted column with lower priority (from earlier compats)
-	lowerExtractedSourceIdx int
+	// lowerExtractedDestinationIdxs are the new indices of _extracted columns
+	// with lower priority (from earlier compats or literal stream/metadata keys).
+	lowerExtractedDestinationIdxs []int
+	// lowerExtractedSourceIdxs are the old indices of _extracted columns with
+	// lower priority.
+	lowerExtractedSourceIdxs []int
+	// existMovedByIdx is the index (into the duplicates slice) of the duplicate
+	// whose source column is this duplicate's existing destination column, or -1.
+	existMovedByIdx int
 }
