@@ -13,6 +13,7 @@ import (
 	"github.com/prometheus/prometheus/storage/remote"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.uber.org/atomic"
 
 	"github.com/grafana/loki/v3/integration/client"
 	"github.com/grafana/loki/v3/integration/cluster"
@@ -120,7 +121,7 @@ func testRuleEval(t *testing.T, mode string, useThanosObjstore bool) {
 		fmt.Sprintf("-use-thanos-objstore=%v", useThanosObjstore),
 	)
 
-	rwHandler := func(called *bool, test func(w http.ResponseWriter, r *http.Request)) *httptest.Server {
+	rwHandler := func(called *atomic.Bool, test func(w http.ResponseWriter, r *http.Request)) *httptest.Server {
 		return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			if r.URL.Path != "/api/v1/write" {
 				t.Errorf("Expected to request '/api/v1/write', got: %s", r.URL.Path)
@@ -128,7 +129,7 @@ func testRuleEval(t *testing.T, mode string, useThanosObjstore bool) {
 
 			test(w, r)
 
-			*called = true
+			called.Store(true)
 
 			w.WriteHeader(http.StatusOK)
 		}))
@@ -148,7 +149,7 @@ func testRuleEval(t *testing.T, mode string, useThanosObjstore bool) {
 		require.Equal(t, wr.Timeseries[len(wr.Timeseries)-1].Samples[0].Value, float64(2))
 	}
 
-	var called bool
+	var called atomic.Bool
 	server1 := rwHandler(&called, expectedResults)
 	defer server1.Close()
 
@@ -207,6 +208,6 @@ groups:
 
 	// ensure that the remote-write receiver was called with the expected data
 	require.Eventually(t, func() bool {
-		return assert.ObjectsAreEqualValues(true, called)
+		return called.Load()
 	}, 30*time.Second, 100*time.Millisecond, "remote-write was not called")
 }
