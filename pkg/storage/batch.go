@@ -2,6 +2,7 @@ package storage
 
 import (
 	"context"
+	errs "errors"
 	"sort"
 	"time"
 
@@ -766,15 +767,15 @@ func fetchLazyChunks(ctx context.Context, s config.SchemaConfig, chunks []*LazyC
 		}(f, chunks)
 	}
 
-	var lastErr error
+	var errors []error
 	for i := 0; i < len(chksByFetcher); i++ {
 		if err := <-errChan; err != nil {
-			lastErr = err
+			errors = append(errors, err)
 		}
 	}
 
-	if lastErr != nil {
-		return lastErr
+	if len(errors) > 0 {
+		return errs.Join(errors...)
 	}
 
 	for _, c := range chunks {
@@ -786,9 +787,8 @@ func fetchLazyChunks(ctx context.Context, s config.SchemaConfig, chunks []*LazyC
 }
 
 func isInvalidChunkError(err error) bool {
-	err = errors.Cause(err)
 	if err, ok := err.(promql.ErrStorage); ok {
-		return err.Err == chunk.ErrInvalidChecksum || err.Err == chunkenc.ErrInvalidChecksum
+		return errors.Is(err.Err, chunk.ErrInvalidChecksum) || errors.Is(err.Err, chunkenc.ErrInvalidChecksum)
 	}
 	return false
 }

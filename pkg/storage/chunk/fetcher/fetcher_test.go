@@ -212,7 +212,7 @@ func Test(t *testing.T) {
 			assert.NoError(t, chunkClient.PutChunks(context.Background(), test.storeStart))
 
 			// Build fetcher
-			f, err := New(c1, c2, false, sc, chunkClient, test.handoff, test.skipQueryWriteback)
+			f, err := New(c1, c2, false, sc, chunkClient, test.handoff, test.skipQueryWriteback, false)
 			assert.NoError(t, err)
 
 			// Run the test
@@ -243,7 +243,7 @@ func TestFetchChunks_CacheDecodeIsNotLoggedAsDownloadFailure(t *testing.T) {
 	key := sc.ExternalKey(chunks[0].ChunkRef)
 	require.NoError(t, l1.Store(context.Background(), []string{key}, [][]byte{[]byte("not a chunk")}))
 
-	f, err := New(l1, l2, false, sc, chunkClient, 0, 0)
+	f, err := New(l1, l2, false, sc, chunkClient, 0, 0, false)
 	require.NoError(t, err)
 	t.Cleanup(f.Stop)
 
@@ -256,16 +256,18 @@ func TestFetchChunks_CacheDecodeIsNotLoggedAsDownloadFailure(t *testing.T) {
 	require.Empty(t, storageErrorCounterDeltas(t, beforeFailures))
 }
 
-func TestFetchChunks_RecordsSuppressedStorageErrors(t *testing.T) {
+func TestFetchChunks_HandlesStorageErrors(t *testing.T) {
 	storageErr := errors.New("storage failed")
 	tests := []struct {
 		name       string
 		client     *storageErrorClient
+		propagate  bool
 		wantReason string
 	}{
 		{name: "not found", client: &storageErrorClient{err: storageErr, notFound: true, retryable: true}, wantReason: storageErrorNotFound},
 		{name: "retryable", client: &storageErrorClient{err: storageErr, retryable: true}, wantReason: storageErrorRetryable},
 		{name: "other", client: &storageErrorClient{err: storageErr}, wantReason: storageErrorOther},
+		{name: "propagated", client: &storageErrorClient{err: storageErr}, propagate: true, wantReason: storageErrorOther},
 		{name: "retries exceeded", client: &storageErrorClient{err: congestion.RetriesExceeded}, wantReason: storageErrorRetryable},
 		{name: "canceled", client: &storageErrorClient{err: context.Canceled}},
 		{name: "deadline", client: &storageErrorClient{err: context.DeadlineExceeded}},
@@ -274,14 +276,18 @@ func TestFetchChunks_RecordsSuppressedStorageErrors(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			f, err := New(cache.NewMockCache(), cache.NewMockCache(), false, testSchemaConfig(), test.client, 0, 0)
+			f, err := New(cache.NewMockCache(), cache.NewMockCache(), false, testSchemaConfig(), test.client, 0, 0, test.propagate)
 			require.NoError(t, err)
 			t.Cleanup(f.Stop)
 
 			before := readStorageErrorCounters(t)
 			got, err := f.FetchChunks(context.Background(), makeChunks(time.Now(), c{time.Hour, 2 * time.Hour}))
 
-			require.NoError(t, err)
+			if test.propagate {
+				require.ErrorIs(t, err, storageErr)
+			} else {
+				require.NoError(t, err)
+			}
 			require.Empty(t, got)
 			if test.wantReason == "" {
 				require.Empty(t, storageErrorCounterDeltas(t, before))
@@ -410,7 +416,7 @@ func BenchmarkFetch(b *testing.B) {
 	_ = chunkClient.PutChunks(context.Background(), test.storeStart)
 
 	// Build fetcher
-	f, _ := New(c1, c2, false, sc, chunkClient, test.handoff, test.skipQueryWriteback)
+	f, _ := New(c1, c2, false, sc, chunkClient, test.handoff, test.skipQueryWriteback, false)
 
 	for i := 0; i < b.N; i++ {
 		_, err := f.FetchChunks(context.Background(), test.fetch)

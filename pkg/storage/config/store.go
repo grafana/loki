@@ -11,6 +11,7 @@ type ChunkStoreConfig struct {
 	ChunkCacheConfig            cache.Config  `yaml:"chunk_cache_config"`
 	ChunkCacheConfigL2          cache.Config  `yaml:"chunk_cache_config_l2"`
 	SkipQueryWritebackOlderThan time.Duration `yaml:"skip_query_writeback_cache_older_than"`
+	PropagateChunkFetchErrors   bool          `yaml:"propagate_chunk_fetch_errors" category:"experimental"`
 
 	L2ChunkCacheHandoff time.Duration `yaml:"l2_chunk_cache_handoff"`
 
@@ -35,6 +36,7 @@ func (cfg *ChunkStoreConfig) RegisterFlags(f *flag.FlagSet) {
 	f.DurationVar(&cfg.L2ChunkCacheHandoff, "store.chunks-cache-l2.handoff", 0, "Chunks will be handed off to the L2 cache after this duration. 0 to disable L2 cache.")
 	f.BoolVar(&cfg.chunkCacheStubs, "store.chunks-cache.cache-stubs", false, "If true, don't write the full chunk to cache, just a stub entry.")
 	f.DurationVar(&cfg.SkipQueryWritebackOlderThan, "store.skip-query-writeback-older-than", 0, "Chunks fetched from queriers before this duration will not be written to the cache. A value of 0 will write all chunks to the cache")
+	f.BoolVar(&cfg.PropagateChunkFetchErrors, "chunk-store.propagate-chunk-fetch-errors", false, "Experimental. Propagate chunk fetch errors to queries instead of returning incomplete results.")
 }
 
 func (cfg *ChunkStoreConfig) Validate() error {
