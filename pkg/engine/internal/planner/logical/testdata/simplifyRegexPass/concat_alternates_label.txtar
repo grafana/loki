@@ -1,0 +1,13 @@
+Alternates with a common literal prefix are factored into a concatenation by
+the regexp parser (bar|buzz becomes b(?:ar|uzz)). On a non-message column
+that shape must stay anchored.
+
+-- column --
+utf8.label.foo
+
+-- regex --
+bar|buzz
+
+-- expect --
+%1 = MATCH_RE label.foo "^(?:bar|buzz)$"
+RETURN %1
