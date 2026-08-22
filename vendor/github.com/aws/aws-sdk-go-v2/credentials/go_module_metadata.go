@@ -3,4 +3,4 @@
 package credentials
 
 // goModuleVersion is the tagged release for this module
-const goModuleVersion = "1.19.34"
+const goModuleVersion = "1.19.36"

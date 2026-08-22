@@ -135,9 +135,6 @@ func (c *Client) addOperationGetBucketLocationMiddlewares(stack *middleware.Stac
 		return err
 	}
 
-	if err = addlegacyEndpointContextSetter(stack, options); err != nil {
-		return err
-	}
 	if err = addComputeContentLength(stack); err != nil {
 		return err
 	}
@@ -148,12 +145,6 @@ func (c *Client) addOperationGetBucketLocationMiddlewares(stack *middleware.Stac
 		return err
 	}
 	if err = addRecordResponseTiming(stack, options); err != nil {
-		return err
-	}
-	if err = smithyhttp.AddErrorCloseResponseBodyMiddleware(stack); err != nil {
-		return err
-	}
-	if err = smithyhttp.AddCloseResponseBodyMiddleware(stack); err != nil {
 		return err
 	}
 	if err = swapDeserializerHelper(stack); err != nil {
@@ -169,9 +160,6 @@ func (c *Client) addOperationGetBucketLocationMiddlewares(stack *middleware.Stac
 		return err
 	}
 	if err = addOpGetBucketLocationValidationMiddleware(stack); err != nil {
-		return err
-	}
-	if err = stack.Initialize.Add(newServiceMetadataMiddleware(options.Region, "GetBucketLocation"), middleware.Before); err != nil {
 		return err
 	}
 	if err = addMetadataRetrieverMiddleware(stack); err != nil {
