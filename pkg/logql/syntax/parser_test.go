@@ -408,16 +408,31 @@ var ParseTestCases = []struct {
 		},
 	},
 	{
-		in:  `approx_count_distinct(mac, {foo="bar"}[1d])`,
-		err: logqlmodel.NewParseError("syntax error: unexpected $end, expecting by or without", 1, 44),
+		in: `approx_count_distinct(mac, {foo="bar"}[1d])`,
+		exp: &LabelAggregationExpr{
+			Operation: OpTypeApproxCountDistinct,
+			Label:     "mac",
+			Left: &LogRangeExpr{
+				Left:     newMatcherExpr([]*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")}),
+				Interval: 24 * time.Hour,
+			},
+		},
+	},
+	{
+		in: `approx_count_distinct(mac, {foo="bar"}[1d]) by ()`,
+		exp: &LabelAggregationExpr{
+			Operation: OpTypeApproxCountDistinct,
+			Label:     "mac",
+			Left: &LogRangeExpr{
+				Left:     newMatcherExpr([]*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")}),
+				Interval: 24 * time.Hour,
+			},
+			Grouping: &Grouping{Without: false, Groups: nil},
+		},
 	},
 	{
 		in:  `approx_count_distinct(mac, {foo="bar"}[1d]) without (version)`,
-		err: logqlmodel.NewParseError("approx_count_distinct requires grouping with by (<labels>)", 0, 0),
-	},
-	{
-		in:  `approx_count_distinct(mac, {foo="bar"}[1d]) by ()`,
-		err: logqlmodel.NewParseError("approx_count_distinct requires grouping with by (<labels>)", 0, 0),
+		err: logqlmodel.NewParseError("without is not supported for approx_count_distinct", 0, 0),
 	},
 	{
 		in:  `approx_count_distinct(mac, {foo="bar"}[1d]) by (mac)`,
@@ -3610,7 +3625,17 @@ func TestParseSampleExpr_equalityMatcher(t *testing.T) {
 			in: `1 + count_over_time({app=~".+"}[5m]) + count_over_time({app=~".+"}[5m]) + 1`,
 		},
 		{
+			in: `approx_count_distinct(mac, {foo="bar"}[1d])`,
+		},
+		{
+			in: `approx_count_distinct(mac, {foo="bar"}[1d]) by ()`,
+		},
+		{
 			in: `approx_count_distinct(mac, {foo="bar"}[1d]) by (version)`,
+		},
+		{
+			in:  `approx_count_distinct(mac, {}[1d])`,
+			err: logqlmodel.NewParseError(errAtleastOneEqualityMatcherRequired, 0, 0),
 		},
 		{
 			in:  `approx_count_distinct(mac, {}[1d]) by (version)`,

@@ -240,6 +240,7 @@ func (l *streamLabelSampleExtractor) BaseLabels() LabelsResult { return l.builde
 // NewDistinctValueSampleExtractor hashes the raw string value of a label or
 // extracted field into Sample.Value via xxhash64 / Float64frombits. Missing or
 // empty values are skipped. Output labels are restricted to the grouping set.
+// An empty groups slice is valid and means the query is ungrouped.
 func NewDistinctValueSampleExtractor(labelName string, stages []Stage, groups []string) (SampleExtractor, error) {
 	if labelName == "" {
 		return nil, errors.New("distinct value extractor requires a non-empty label name")

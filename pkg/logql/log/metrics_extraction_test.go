@@ -374,6 +374,16 @@ func TestNewDistinctValueSampleExtractorDoesNotMutateGroups(t *testing.T) {
 	require.Equal(t, []string{"version", "region"}, groups)
 }
 
+func TestNewDistinctValueSampleExtractorAllowsEmptyGroups(t *testing.T) {
+	ex, err := NewDistinctValueSampleExtractor("mac", nil, nil)
+	require.NoError(t, err)
+
+	sample, ok := ex.ForStream(labels.FromStrings("mac", "aa:bb", "version", "1")).
+		Process(0, []byte("line"), labels.EmptyLabels())
+	require.True(t, ok)
+	require.Equal(t, xxhash.Sum64String("aa:bb"), math.Float64bits(sample.Value))
+}
+
 func mustSampleExtractor(ex SampleExtractor, err error) SampleExtractor {
 	if err != nil {
 		panic(err)

@@ -99,6 +99,8 @@ func Test_Extractor(t *testing.T) {
 				"(.*):.*"
 			)
 			`,
+		`approx_count_distinct(mac, {job="mysql"}[10s])`,
+		`approx_count_distinct(mac, {job="mysql"}[10s]) by ()`,
 		`approx_count_distinct(mac, {job="mysql"}[10s]) by (version)`,
 	} {
 		t.Run(tc, func(t *testing.T) {

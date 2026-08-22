@@ -118,8 +118,8 @@ metricExpr:
     ;
 
 labelAggregationExpr:
-      labelAggOp OPEN_PARENTHESIS IDENTIFIER COMMA logRangeExpr CLOSE_PARENTHESIS grouping
-        { $$ = mustNewLabelAggregationExpr($1, $3, $7, $5) }
+      labelAggOp OPEN_PARENTHESIS IDENTIFIER COMMA logRangeExpr CLOSE_PARENTHESIS                        { $$ = mustNewLabelAggregationExpr($1, $3, nil, $5) }
+    | labelAggOp OPEN_PARENTHESIS IDENTIFIER COMMA logRangeExpr CLOSE_PARENTHESIS grouping               { $$ = mustNewLabelAggregationExpr($1, $3, $7, $5) }
     ;
 
 logRangeExpr:

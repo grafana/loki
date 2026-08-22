@@ -1549,12 +1549,14 @@ func (e *LabelAggregationExpr) validate() error {
 	if e.Left.Unwrap != nil {
 		return fmt.Errorf("unwrap is not supported for %s", e.Operation)
 	}
-	if e.Grouping == nil || e.Grouping.Without || len(e.Grouping.Groups) == 0 {
-		return fmt.Errorf("%s requires grouping with by (<labels>)", e.Operation)
+	if e.Grouping != nil && e.Grouping.Without {
+		return fmt.Errorf("without is not supported for %s", e.Operation)
 	}
-	for _, g := range e.Grouping.Groups {
-		if g == e.Label {
-			return fmt.Errorf("cannot group by the counted label %q", e.Label)
+	if e.Grouping != nil {
+		for _, g := range e.Grouping.Groups {
+			if g == e.Label {
+				return fmt.Errorf("cannot group by the counted label %q", e.Label)
+			}
 		}
 	}
 	return nil
