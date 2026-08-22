@@ -10,8 +10,8 @@ import (
 	"time"
 
 	"github.com/grafana/loki/v3/pkg/logqlmodel/metadata"
-	"github.com/grafana/loki/v3/pkg/querier/plan"
 	"github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase/definitions"
+	"github.com/grafana/loki/v3/pkg/querier/testutil"
 
 	"github.com/go-kit/log"
 	"github.com/grafana/dskit/user"
@@ -106,9 +106,7 @@ func TestEngine_LogsRateUnwrap(t *testing.T) {
 						Start:    time.Unix(30, 0),
 						End:      time.Unix(60, 0),
 						Selector: `rate({app="foo"} | unwrap foo[30s])`,
-						Plan: &plan.QueryPlan{
-							AST: syntax.MustParseExpr(`rate({app="foo"} | unwrap foo[30s])`),
-						},
+						Plan:     testutil.MustPlan(`rate({app="foo"} | unwrap foo[30s])`),
 					},
 				},
 			},
@@ -132,9 +130,7 @@ func TestEngine_LogsRateUnwrap(t *testing.T) {
 					Start:    time.Unix(30, 0),
 					End:      time.Unix(60, 0),
 					Selector: `rate({app="foo"} | unwrap foo[30s])`,
-					Plan: &plan.QueryPlan{
-						AST: syntax.MustParseExpr(`rate({app="foo"} | unwrap foo[30s])`),
-					},
+					Plan:     testutil.MustPlan(`rate({app="foo"} | unwrap foo[30s])`),
 				}},
 			},
 			// there are 15 samples (from 47 to 61) matched from the generated series
@@ -157,9 +153,7 @@ func TestEngine_LogsRateUnwrap(t *testing.T) {
 					Start:    time.Unix(30, 0),
 					End:      time.Unix(60, 0),
 					Selector: `rate_counter({app="foo"} | unwrap foo[30s])`,
-					Plan: &plan.QueryPlan{
-						AST: syntax.MustParseExpr(`rate_counter({app="foo"} | unwrap foo[30s])`),
-					},
+					Plan:     testutil.MustPlan(`rate_counter({app="foo"} | unwrap foo[30s])`),
 				}},
 			},
 			// there are 15 samples (from 47 to 61) matched from the generated series
@@ -177,7 +171,7 @@ func TestEngine_LogsRateUnwrap(t *testing.T) {
 				{newSeries(testSize, offset(46, incValue(1)), `{app="foo"}`)},
 			},
 			[]SelectSampleParams{
-				{&logproto.SampleQueryRequest{Start: time.Unix(30, 0), End: time.Unix(60, 0), Selector: `rate_counter({app="foo"} | unwrap foo[30s])`}},
+				{&logproto.SampleQueryRequest{Start: time.Unix(30, 0), End: time.Unix(60, 0), Selector: `rate_counter({app="foo"} | unwrap foo[30s])`, Plan: testutil.MustPlan(`rate_counter({app="foo"} | unwrap foo[30s])`)}},
 			},
 			// 15 samples match the window (30s, 60s]: t=46..60 with values 47..61, so the
 			// counter increases by 14 over a 14s sampled interval (avg 1s between samples).
@@ -232,7 +226,7 @@ func TestEngine_RangeQuery(t *testing.T) {
 				{newStream(testSize, identity, `{app="foo"}`)},
 			},
 			[]SelectLogParams{
-				{&logproto.QueryRequest{Direction: logproto.FORWARD, Start: time.Unix(0, 0), End: time.Unix(30, 0), Limit: 10, Selector: `{app="foo"}`}},
+				{&logproto.QueryRequest{Direction: logproto.FORWARD, Start: time.Unix(0, 0), End: time.Unix(30, 0), Limit: 10, Selector: `{app="foo"}`, Plan: testutil.MustPlan(`{app="foo"}`)}},
 			},
 			logqlmodel.Streams([]logproto.Stream{newStream(10, identity, `{app="foo"}`)}),
 		},
@@ -242,7 +236,7 @@ func TestEngine_RangeQuery(t *testing.T) {
 				{newStream(testSize, identity, `{app="food"}`)},
 			},
 			[]SelectLogParams{
-				{&logproto.QueryRequest{Direction: logproto.FORWARD, Start: time.Unix(0, 0), End: time.Unix(30, 0), Limit: 10, Selector: `{app="food"}`}},
+				{&logproto.QueryRequest{Direction: logproto.FORWARD, Start: time.Unix(0, 0), End: time.Unix(30, 0), Limit: 10, Selector: `{app="food"}`, Plan: testutil.MustPlan(`{app="food"}`)}},
 			},
 			logqlmodel.Streams([]logproto.Stream{newIntervalStream(10, 2*time.Second, identity, `{app="food"}`)}),
 		},
@@ -252,7 +246,7 @@ func TestEngine_RangeQuery(t *testing.T) {
 				{newBackwardStream(testSize, identity, `{app="fed"}`)},
 			},
 			[]SelectLogParams{
-				{&logproto.QueryRequest{Direction: logproto.BACKWARD, Start: time.Unix(0, 0), End: time.Unix(30, 0), Limit: 10, Selector: `{app="fed"}`}},
+				{&logproto.QueryRequest{Direction: logproto.BACKWARD, Start: time.Unix(0, 0), End: time.Unix(30, 0), Limit: 10, Selector: `{app="fed"}`, Plan: testutil.MustPlan(`{app="fed"}`)}},
 			},
 			logqlmodel.Streams([]logproto.Stream{newBackwardIntervalStream(testSize, 10, 2*time.Second, identity, `{app="fed"}`)}),
 		},
@@ -262,7 +256,7 @@ func TestEngine_RangeQuery(t *testing.T) {
 				{newStream(testSize, identity, `{app="bar"}`)},
 			},
 			[]SelectLogParams{
-				{&logproto.QueryRequest{Direction: logproto.BACKWARD, Start: time.Unix(0, 0), End: time.Unix(30, 0), Limit: 30, Selector: `{app="bar"}|="foo"|~".+bar"`}},
+				{&logproto.QueryRequest{Direction: logproto.BACKWARD, Start: time.Unix(0, 0), End: time.Unix(30, 0), Limit: 30, Selector: `{app="bar"}|="foo"|~".+bar"`, Plan: testutil.MustPlan(`{app="bar"}|="foo"|~".+bar"`)}},
 			},
 			logqlmodel.Streams([]logproto.Stream{newStream(30, identity, `{app="bar"}`)}),
 		},
@@ -272,7 +266,7 @@ func TestEngine_RangeQuery(t *testing.T) {
 				{newBackwardStream(testSize, identity, `{app="barf"}`)},
 			},
 			[]SelectLogParams{
-				{&logproto.QueryRequest{Direction: logproto.BACKWARD, Start: time.Unix(0, 0), End: time.Unix(30, 0), Limit: 30, Selector: `{app="barf"}|="foo"|~".+bar"`}},
+				{&logproto.QueryRequest{Direction: logproto.BACKWARD, Start: time.Unix(0, 0), End: time.Unix(30, 0), Limit: 30, Selector: `{app="barf"}|="foo"|~".+bar"`, Plan: testutil.MustPlan(`{app="barf"}|="foo"|~".+bar"`)}},
 			},
 			logqlmodel.Streams([]logproto.Stream{newBackwardIntervalStream(testSize, 30, 3*time.Second, identity, `{app="barf"}`)}),
 		},
@@ -772,9 +766,7 @@ func newQuerierRecorder(t *testing.T, data interface{}, params interface{}) *que
 	if streamsIn, ok := data.([][]logproto.Stream); ok {
 		if paramsIn, ok2 := params.([]SelectLogParams); ok2 {
 			for i, p := range paramsIn {
-				p.Plan = &plan.QueryPlan{
-					AST: syntax.MustParseExpr(p.Selector),
-				}
+				p.Plan = testutil.MustPlan(p.Selector)
 				streams[paramsID(p)] = streamsIn[i]
 			}
 		}
@@ -785,9 +777,7 @@ func newQuerierRecorder(t *testing.T, data interface{}, params interface{}) *que
 		if paramsIn, ok2 := params.([]SelectSampleParams); ok2 {
 			for i, p := range paramsIn {
 				if p.Plan == nil {
-					p.Plan = &plan.QueryPlan{
-						AST: syntax.MustParseExpr(p.Selector),
-					}
+					p.Plan = testutil.MustPlan(p.Selector)
 				}
 				series[paramsID(p)] = seriesIn[i]
 			}

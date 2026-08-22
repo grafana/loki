@@ -18,7 +18,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/v3/pkg/querier/astmapper"
-	"github.com/grafana/loki/v3/pkg/querier/plan"
+	"github.com/grafana/loki/v3/pkg/querier/testutil"
 	"github.com/grafana/loki/v3/pkg/storage/chunk"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/cache"
 	chunkclient "github.com/grafana/loki/v3/pkg/storage/chunk/client"
@@ -138,9 +138,7 @@ func newQuery(query string, start, end time.Time, shards []astmapper.ShardAnnota
 		End:       end,
 		Direction: logproto.FORWARD,
 		Deletes:   deletes,
-		Plan: &plan.QueryPlan{
-			AST: syntax.MustParseExpr(query),
-		},
+		Plan:      testutil.MustPlan(query),
 	}
 	for _, shard := range shards {
 		req.Shards = append(req.Shards, shard.String())
@@ -154,9 +152,7 @@ func newSampleQuery(query string, start, end time.Time, shards []astmapper.Shard
 		Start:    start,
 		End:      end,
 		Deletes:  deletes,
-		Plan: &plan.QueryPlan{
-			AST: syntax.MustParseExpr(query),
-		},
+		Plan:     testutil.MustPlan(query),
 	}
 	for _, shard := range shards {
 		req.Shards = append(req.Shards, shard.String())
