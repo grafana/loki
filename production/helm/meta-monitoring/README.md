@@ -6,6 +6,19 @@ This Helm chart provides comprehensive monitoring for Loki deployments in Kubern
 
 The Meta-monitoring chart collects metrics and logs from Loki deployments using Grafana Alloy (an OpenTelemetry Collector distribution) and sends them to your preferred observability backend. It's designed to work with the pre-compiled Loki mixins to provide dashboards and alerts specifically tailored for Loki monitoring.
 
+## Two values files, two chart versions
+
+This directory has two values files, because the k8s-monitoring Helm chart made breaking changes
+in its 4.0.0 release (the `destinations` and `collectors` formats changed, and log gathering was
+restructured). Both chart lines below are currently maintained upstream.
+
+- `values.yaml` targets **chart 4.x** (the current line; install with `--version ^4`).
+- `values-chart-v3.yaml` targets **chart 3.8.x** (a maintained stable line; install with
+  `--version ^3`).
+
+Always pin `--version` to match the values file you are using. Installing either file against an
+unpinned chart install can resolve to the wrong major version and fail.
+
 ## Prerequisites
 
 - [kubectl](https://kubernetes.io/docs/reference/kubectl/)
@@ -30,26 +43,50 @@ kubectl create secret generic logs --namespace meta \
   --from-literal=password='YOUR_LOKI_PASSWORD'
 ```
 
-2. Install the Helm chart:
+2. Install the Helm chart, using the values file that matches the chart version you are pinning to:
 
 ```bash
 helm repo add grafana https://grafana.github.io/helm-charts
+
+# Chart 4.x (current line)
 helm install meta-loki grafana/k8s-monitoring \
   --namespace meta \
+  --version "^4" \
   -f values.yaml
+
+# Chart 3.8.x (maintained stable line)
+helm install meta-loki grafana/k8s-monitoring \
+  --namespace meta \
+  --version "^3" \
+  -f values-chart-v3.yaml
 ```
 
 ## Configuration
 
-The default configuration is set up for Grafana Cloud, but you can direct it to your self-managed monitoring stack by modifying the destinations in `values.yaml`:
+The default configuration is set up for Grafana Cloud, but you can direct it to your self-managed monitoring stack by modifying the destinations in the values file you are using. The format differs between chart versions: 4.x uses a map keyed by destination name, while 3.8.x uses a list with a `name` field.
 
 ```yaml
+# values.yaml (chart 4.x)
+destinations:
+  prometheus:
+    type: prometheus
+    url: https://<PROMETHEUS-ENDPOINT>/api/prom/push
+    # Configure authentication as needed
+
+  loki:
+    type: loki
+    url: https://<LOKI-ENDPOINT>/loki/api/v1/push
+    # Configure authentication as needed
+```
+
+```yaml
+# values-chart-v3.yaml (chart 3.8.x)
 destinations:
   - name: prometheus
     type: prometheus
-    url:  https://<PROMETHEUS-ENDPOINT>/api/prom/push
+    url: https://<PROMETHEUS-ENDPOINT>/api/prom/push
     # Configure authentication as needed
-    
+
   - name: loki
     type: loki
     url: https://<LOKI-ENDPOINT>/loki/api/v1/push
