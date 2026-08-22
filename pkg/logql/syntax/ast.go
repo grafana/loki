@@ -1535,27 +1535,27 @@ func (e *LabelAggregationExpr) validate() error {
 	switch e.Operation {
 	case OpTypeApproxCountDistinct:
 	default:
-		return fmt.Errorf("unsupported label aggregation operation: %s", e.Operation)
+		return fmt.Errorf("unsupported label aggregation operation: %s()", e.Operation)
 	}
 	if e.Label == "" {
-		return fmt.Errorf("label aggregation requires a non-empty label name")
+		return fmt.Errorf("%s() requires a non-empty field name", e.Operation)
 	}
 	if e.Left == nil {
-		return fmt.Errorf("label aggregation requires a log range")
+		return fmt.Errorf("%s() requires a log query with a duration, for example {job=\"app\"}[1d]", e.Operation)
 	}
 	if e.Left.Interval <= 0 {
-		return fmt.Errorf("label aggregation requires a positive range duration")
+		return fmt.Errorf("%s() requires a positive duration, for example [1d]", e.Operation)
 	}
 	if e.Left.Unwrap != nil {
-		return fmt.Errorf("unwrap is not supported for %s", e.Operation)
+		return fmt.Errorf("unwrap is not supported for %s()", e.Operation)
 	}
 	if e.Grouping != nil && e.Grouping.Without {
-		return fmt.Errorf("without is not supported for %s", e.Operation)
+		return fmt.Errorf("without is not supported for %s()", e.Operation)
 	}
 	if e.Grouping != nil {
 		for _, g := range e.Grouping.Groups {
 			if g == e.Label {
-				return fmt.Errorf("cannot group by the counted label %q", e.Label)
+				return fmt.Errorf("%s() cannot group by the counted field %q", e.Operation, e.Label)
 			}
 		}
 	}
@@ -1621,7 +1621,7 @@ func (e *LabelAggregationExpr) Walk(f WalkFn) {
 func (e *LabelAggregationExpr) Accept(v RootVisitor) { v.VisitLabelAggregation(e) }
 
 // CountDistinctSketchExpr is an internal shard-child expression that returns
-// mergeable HyperLogLog sketches instead of numeric estimates.
+// mergeable HyperLogLog sketches. Shards must return sketches, not derived estimates
 type CountDistinctSketchExpr struct {
 	Left     *LogRangeExpr
 	Grouping *Grouping
@@ -1649,23 +1649,25 @@ func (e *CountDistinctSketchExpr) validate() error {
 		return e.err
 	}
 	if e.Label == "" {
-		return fmt.Errorf("count distinct sketch requires a non-empty label name")
+		return fmt.Errorf("%s() requires a non-empty field name", OpTypeCountDistinctSketch)
 	}
 	if e.Left == nil {
-		return fmt.Errorf("count distinct sketch requires a log range")
+		return fmt.Errorf("%s() requires a log query with a duration, for example {job=\"app\"}[1d]", OpTypeCountDistinctSketch)
 	}
 	if e.Left.Interval <= 0 {
-		return fmt.Errorf("count distinct sketch requires a positive range duration")
+		return fmt.Errorf("%s() requires a positive duration, for example [1d]", OpTypeCountDistinctSketch)
 	}
 	if e.Left.Unwrap != nil {
-		return fmt.Errorf("unwrap is not supported for %s", OpTypeCountDistinctSketch)
+		return fmt.Errorf("unwrap is not supported for %s()", OpTypeCountDistinctSketch)
 	}
-	if e.Grouping == nil || e.Grouping.Without || len(e.Grouping.Groups) == 0 {
-		return fmt.Errorf("%s requires grouping with by (<labels>)", OpTypeCountDistinctSketch)
+	if e.Grouping != nil && e.Grouping.Without {
+		return fmt.Errorf("without is not supported for %s()", OpTypeCountDistinctSketch)
 	}
-	for _, g := range e.Grouping.Groups {
-		if g == e.Label {
-			return fmt.Errorf("cannot group by the counted label %q", e.Label)
+	if e.Grouping != nil {
+		for _, g := range e.Grouping.Groups {
+			if g == e.Label {
+				return fmt.Errorf("%s() cannot group by the counted field %q", OpTypeCountDistinctSketch, e.Label)
+			}
 		}
 	}
 	return nil

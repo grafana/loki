@@ -432,15 +432,15 @@ var ParseTestCases = []struct {
 	},
 	{
 		in:  `approx_count_distinct(mac, {foo="bar"}[1d]) without (version)`,
-		err: logqlmodel.NewParseError("without is not supported for approx_count_distinct", 0, 0),
+		err: logqlmodel.NewParseError("without is not supported for approx_count_distinct()", 0, 0),
 	},
 	{
 		in:  `approx_count_distinct(mac, {foo="bar"}[1d]) by (mac)`,
-		err: logqlmodel.NewParseError(`cannot group by the counted label "mac"`, 0, 0),
+		err: logqlmodel.NewParseError(`approx_count_distinct() cannot group by the counted field "mac"`, 0, 0),
 	},
 	{
 		in:  `approx_count_distinct(mac, {foo="bar"} | unwrap bar [1d]) by (version)`,
-		err: logqlmodel.NewParseError("unwrap is not supported for approx_count_distinct", 0, 0),
+		err: logqlmodel.NewParseError("unwrap is not supported for approx_count_distinct()", 0, 0),
 	},
 	{
 		// Old split-parenthesis syntax is not supported.
