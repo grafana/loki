@@ -211,7 +211,7 @@ func validateSampleExpr(expr SampleExpr) error {
 		if e.err != nil {
 			return e.err
 		}
-		if err := e.validate(); err != nil {
+		if err := e.Validate(); err != nil {
 			return err
 		}
 		return validateSampleSelector(e)
@@ -219,7 +219,7 @@ func validateSampleExpr(expr SampleExpr) error {
 		if e.err != nil {
 			return e.err
 		}
-		if err := e.validate(); err != nil {
+		if err := e.Validate(); err != nil {
 			return err
 		}
 		return validateSampleSelector(e)

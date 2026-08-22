@@ -18,7 +18,7 @@ func (r RangeAggregationExpr) extractor(override *Grouping) (log.SampleExtractor
 	if r.err != nil {
 		return nil, r.err
 	}
-	if err := r.validate(); err != nil {
+	if err := r.Validate(); err != nil {
 		return nil, err
 	}
 
@@ -94,7 +94,7 @@ func (e *LabelAggregationExpr) Extractor() (log.SampleExtractor, error) {
 	if e.err != nil {
 		return nil, e.err
 	}
-	if err := e.validate(); err != nil {
+	if err := e.Validate(); err != nil {
 		return nil, err
 	}
 	return distinctValueExtractor(e.Label, e.Left, e.Grouping)
@@ -104,7 +104,7 @@ func (e *CountDistinctSketchExpr) Extractor() (log.SampleExtractor, error) {
 	if e.err != nil {
 		return nil, e.err
 	}
-	if err := e.validate(); err != nil {
+	if err := e.Validate(); err != nil {
 		return nil, err
 	}
 	return distinctValueExtractor(e.Label, e.Left, e.Grouping)

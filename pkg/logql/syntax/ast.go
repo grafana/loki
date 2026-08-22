@@ -1402,7 +1402,7 @@ func newRangeAggregationExpr(left *LogRangeExpr, operation string, gr *Grouping,
 		Grouping:  gr,
 		Params:    params,
 	}
-	if err := e.validate(); err != nil {
+	if err := e.Validate(); err != nil {
 		return &RangeAggregationExpr{err: logqlmodel.NewParseError(err.Error(), 0, 0)}
 	}
 	return e
@@ -1432,7 +1432,7 @@ func (e *RangeAggregationExpr) MatcherGroups() ([]MatcherRange, error) {
 	return nil, nil
 }
 
-func (e RangeAggregationExpr) validate() error {
+func (e RangeAggregationExpr) Validate() error {
 	if e.Grouping != nil {
 		switch e.Operation {
 		case OpRangeTypeAvg, OpRangeTypeStddev, OpRangeTypeStdvar, OpRangeTypeQuantile,
@@ -1459,10 +1459,6 @@ func (e RangeAggregationExpr) validate() error {
 	default:
 		return fmt.Errorf("invalid aggregation %s without unwrap", e.Operation)
 	}
-}
-
-func (e RangeAggregationExpr) Validate() error {
-	return e.validate()
 }
 
 // impls Stringer
@@ -1522,13 +1518,13 @@ func mustNewLabelAggregationExpr(operation, label string, gr *Grouping, left *Lo
 		Operation: operation,
 		Label:     label,
 	}
-	if err := e.validate(); err != nil {
+	if err := e.Validate(); err != nil {
 		return &LabelAggregationExpr{err: logqlmodel.NewParseError(err.Error(), 0, 0)}
 	}
 	return e
 }
 
-func (e *LabelAggregationExpr) validate() error {
+func (e *LabelAggregationExpr) Validate() error {
 	if e.err != nil {
 		return e.err
 	}
@@ -1560,11 +1556,6 @@ func (e *LabelAggregationExpr) validate() error {
 		}
 	}
 	return nil
-}
-
-// Validate reports whether the expression is well-formed.
-func (e *LabelAggregationExpr) Validate() error {
-	return e.validate()
 }
 
 func (e *LabelAggregationExpr) Selector() (LogSelectorExpr, error) {
@@ -1644,7 +1635,8 @@ func NewCountDistinctSketchFromLabelAggregation(e *LabelAggregationExpr) *CountD
 	return NewCountDistinctSketchExpr(e.Label, e.Left, e.Grouping)
 }
 
-func (e *CountDistinctSketchExpr) validate() error {
+// Validate reports whether the internal sketch expression is well-formed.
+func (e *CountDistinctSketchExpr) Validate() error {
 	if e.err != nil {
 		return e.err
 	}
@@ -1671,11 +1663,6 @@ func (e *CountDistinctSketchExpr) validate() error {
 		}
 	}
 	return nil
-}
-
-// Validate reports whether the internal sketch expression is well-formed.
-func (e *CountDistinctSketchExpr) Validate() error {
-	return e.validate()
 }
 
 func (e *CountDistinctSketchExpr) Selector() (LogSelectorExpr, error) {
