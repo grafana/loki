@@ -14,10 +14,7 @@ import (
 
 const maxRunLength uint64 = 1<<63 - 1 // 2^63-1
 
-// bitmapEncoder encodes and decodes bitmaps of unsigned numbers up to 64 bits
-// wide. To use bitmap with signed integers, callers should first encode the
-// integers using zig-zag encoding to minimize the number of bits needed for
-// negative values.
+// bitmapEncoder encodes and decodes bitmaps (one bit per value).
 //
 // Data is encoded with a hybrid of run-length encoding and bitpacking. Longer
 // sequences of the same value are encoded with run-length encoding, while
