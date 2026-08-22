@@ -57,6 +57,12 @@ The per-tenant setting `enable_multi_variant_queries` (`-limits.enable-multi-var
 
 The `row_shards` setting on a `schema_config` `period_config` has been removed. It configured a static query shard factor for legacy (non-TSDB) index types. TSDB, the only supported index type, resolves log and metric query sharding dynamically from index statistics and ignores `row_shards`; series queries continue to use the previous default factor of 16. Because schema config is parsed strictly, a leftover `row_shards:` key now fails config load. Remove the `row_shards` setting from every `period_config`; the `deprecated-config-checker` tool will flag it.
 
+### Tenant limits endpoint returns all fields by default
+
+The default value of `tenant_limits_allow_publish` (`-limits.tenant-limits-allow-publish`) is now empty, so `/config/tenant/v1/limits` and `/loki/api/v1/drilldown-limits` return the full effective per-tenant limits (including runtime overrides such as `ingestion_rate_mb`).
+
+Previously only a small allowlist of fields was published by default, which made the response look incomplete. To restore the previous restricted set of fields, set `tenant_limits_allow_publish` explicitly.
+
 ### TSDB schema v14
 
 Loki now supports the experimental TSDB storage schema `v14`. Schema v14 uses the
