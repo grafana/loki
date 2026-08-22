@@ -2,8 +2,12 @@ package syntax
 
 import (
 	"testing"
+	"time"
 
+	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
+
+	"github.com/grafana/loki/v3/pkg/logqlmodel"
 )
 
 func Test_Extractor(t *testing.T) {
@@ -95,6 +99,9 @@ func Test_Extractor(t *testing.T) {
 				"(.*):.*"
 			)
 			`,
+		`approx_count_distinct(mac, {job="mysql"}[10s])`,
+		`approx_count_distinct(mac, {job="mysql"}[10s]) by ()`,
+		`approx_count_distinct(mac, {job="mysql"}[10s]) by (version)`,
 	} {
 		t.Run(tc, func(t *testing.T) {
 			expr, err := ParseSampleExpr(tc)
@@ -145,4 +152,31 @@ func Test_Extractor_DoesNotMutateGroupingInPlace(t *testing.T) {
 	require.NoError(t, err)
 
 	require.Equal(t, []string{"c", "a"}, vecAgg.Grouping.Groups)
+}
+
+func TestLabelAggregationExtractorDoesNotMutateGrouping(t *testing.T) {
+	expr, err := ParseExpr(`approx_count_distinct(mac, {foo="bar"}[1d]) by (version, region)`)
+	require.NoError(t, err)
+	agg, ok := expr.(*LabelAggregationExpr)
+	require.True(t, ok)
+	require.Equal(t, []string{"version", "region"}, agg.Grouping.Groups)
+
+	_, err = agg.Extractor()
+	require.NoError(t, err)
+	require.Equal(t, []string{"version", "region"}, agg.Grouping.Groups)
+	require.Contains(t, agg.String(), "by (version,region)")
+}
+
+func TestCountDistinctSketchExprValidatesMatchers(t *testing.T) {
+	invalid := NewCountDistinctSketchExpr("mac", &LogRangeExpr{
+		Left:     newMatcherExpr(nil),
+		Interval: time.Hour,
+	}, &Grouping{Groups: []string{"version"}})
+	require.Equal(t, logqlmodel.NewParseError(errAtleastOneEqualityMatcherRequired, 0, 0), validateSampleExpr(invalid))
+
+	valid := NewCountDistinctSketchExpr("mac", &LogRangeExpr{
+		Left:     newMatcherExpr([]*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")}),
+		Interval: time.Hour,
+	}, &Grouping{Groups: []string{"version"}})
+	require.NoError(t, validateSampleExpr(valid))
 }

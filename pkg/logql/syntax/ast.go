@@ -45,6 +45,8 @@ func (MatchersExpr) isExpr()               {}
 func (PipelineExpr) isExpr()               {}
 func (RangeAggregationExpr) isExpr()       {}
 func (VectorAggregationExpr) isExpr()      {}
+func (LabelAggregationExpr) isExpr()       {}
+func (CountDistinctSketchExpr) isExpr()    {}
 func (LiteralExpr) isExpr()                {}
 func (VectorExpr) isExpr()                 {}
 func (LabelReplaceExpr) isExpr()           {}
@@ -94,11 +96,13 @@ type SampleExpr interface {
 	isSampleExpr()
 }
 
-func (RangeAggregationExpr) isSampleExpr()  {}
-func (VectorAggregationExpr) isSampleExpr() {}
-func (LiteralExpr) isSampleExpr()           {}
-func (VectorExpr) isSampleExpr()            {}
-func (LabelReplaceExpr) isSampleExpr()      {}
+func (RangeAggregationExpr) isSampleExpr()    {}
+func (VectorAggregationExpr) isSampleExpr()   {}
+func (LabelAggregationExpr) isSampleExpr()    {}
+func (CountDistinctSketchExpr) isSampleExpr() {}
+func (LiteralExpr) isSampleExpr()             {}
+func (VectorExpr) isSampleExpr()              {}
+func (LabelReplaceExpr) isSampleExpr()        {}
 
 // StageExpr is an expression defining a single step into a log pipeline
 type StageExpr interface {
@@ -1336,10 +1340,12 @@ const (
 	OpRangeTypeFirstWithTimestamp = "__first_over_time_ts__"
 	OpRangeTypeLastWithTimestamp  = "__last_over_time_ts__"
 
-	OpTypeCountMinSketch = "__count_min_sketch__"
+	OpTypeCountMinSketch      = "__count_min_sketch__"
+	OpTypeCountDistinctSketch = "__count_distinct_sketch__"
 
 	// probabilistic aggregations
-	OpTypeApproxTopK = "approx_topk"
+	OpTypeApproxTopK          = "approx_topk"
+	OpTypeApproxCountDistinct = "approx_count_distinct"
 )
 
 func IsComparisonOperator(op string) bool {
@@ -1396,7 +1402,7 @@ func newRangeAggregationExpr(left *LogRangeExpr, operation string, gr *Grouping,
 		Grouping:  gr,
 		Params:    params,
 	}
-	if err := e.validate(); err != nil {
+	if err := e.Validate(); err != nil {
 		return &RangeAggregationExpr{err: logqlmodel.NewParseError(err.Error(), 0, 0)}
 	}
 	return e
@@ -1426,7 +1432,7 @@ func (e *RangeAggregationExpr) MatcherGroups() ([]MatcherRange, error) {
 	return nil, nil
 }
 
-func (e RangeAggregationExpr) validate() error {
+func (e RangeAggregationExpr) Validate() error {
 	if e.Grouping != nil {
 		switch e.Operation {
 		case OpRangeTypeAvg, OpRangeTypeStddev, OpRangeTypeStdvar, OpRangeTypeQuantile,
@@ -1453,10 +1459,6 @@ func (e RangeAggregationExpr) validate() error {
 	default:
 		return fmt.Errorf("invalid aggregation %s without unwrap", e.Operation)
 	}
-}
-
-func (e RangeAggregationExpr) Validate() error {
-	return e.validate()
 }
 
 // impls Stringer
@@ -1498,6 +1500,223 @@ func (e *RangeAggregationExpr) Walk(f WalkFn) {
 }
 
 func (e *RangeAggregationExpr) Accept(v RootVisitor) { v.VisitRangeAggregation(e) }
+
+// LabelAggregationExpr approximates aggregations over distinct values of a
+// label or extracted field (for example approx_count_distinct).
+type LabelAggregationExpr struct {
+	Left      *LogRangeExpr
+	Grouping  *Grouping
+	Operation string
+	Label     string
+	err       error
+}
+
+func mustNewLabelAggregationExpr(operation, label string, gr *Grouping, left *LogRangeExpr) SampleExpr {
+	e := &LabelAggregationExpr{
+		Left:      left,
+		Grouping:  gr,
+		Operation: operation,
+		Label:     label,
+	}
+	if err := e.Validate(); err != nil {
+		return &LabelAggregationExpr{err: logqlmodel.NewParseError(err.Error(), 0, 0)}
+	}
+	return e
+}
+
+func (e *LabelAggregationExpr) Validate() error {
+	if e.err != nil {
+		return e.err
+	}
+	switch e.Operation {
+	case OpTypeApproxCountDistinct:
+	default:
+		return fmt.Errorf("unsupported label aggregation operation: %s()", e.Operation)
+	}
+	if e.Label == "" {
+		return fmt.Errorf("%s() requires a non-empty field name", e.Operation)
+	}
+	if e.Left == nil {
+		return fmt.Errorf("%s() requires a log query with a duration, for example {job=\"app\"}[1d]", e.Operation)
+	}
+	if e.Left.Interval <= 0 {
+		return fmt.Errorf("%s() requires a positive duration, for example [1d]", e.Operation)
+	}
+	if e.Left.Unwrap != nil {
+		return fmt.Errorf("unwrap is not supported for %s()", e.Operation)
+	}
+	if e.Grouping != nil && e.Grouping.Without {
+		return fmt.Errorf("without is not supported for %s()", e.Operation)
+	}
+	if e.Grouping != nil {
+		for _, g := range e.Grouping.Groups {
+			if g == e.Label {
+				return fmt.Errorf("%s() cannot group by the counted field %q", e.Operation, e.Label)
+			}
+		}
+	}
+	return nil
+}
+
+func (e *LabelAggregationExpr) Selector() (LogSelectorExpr, error) {
+	if e.err != nil {
+		return nil, e.err
+	}
+	return e.Left.Left, nil
+}
+
+func (e *LabelAggregationExpr) MatcherGroups() ([]MatcherRange, error) {
+	if e.err != nil {
+		return nil, e.err
+	}
+	xs := e.Left.Left.Matchers()
+	if len(xs) > 0 {
+		return []MatcherRange{
+			{
+				Matchers: xs,
+				Interval: e.Left.Interval,
+				Offset:   e.Left.Offset,
+			},
+		}, nil
+	}
+	return nil, nil
+}
+
+func (e *LabelAggregationExpr) String() string {
+	var sb strings.Builder
+	sb.WriteString(e.Operation)
+	sb.WriteString("(")
+	sb.WriteString(e.Label)
+	sb.WriteString(",")
+	sb.WriteString(e.Left.String())
+	sb.WriteString(")")
+	if e.Grouping != nil {
+		sb.WriteString(e.Grouping.String())
+	}
+	return sb.String()
+}
+
+func (e *LabelAggregationExpr) Shardable(topLevel bool) bool {
+	return shardableOps[e.Operation] && e.Left.Shardable(topLevel)
+}
+
+func (e *LabelAggregationExpr) Walk(f WalkFn) {
+	if !f(e) {
+		return
+	}
+	if e.Left != nil {
+		e.Left.Walk(f)
+	}
+}
+
+func (e *LabelAggregationExpr) Accept(v RootVisitor) { v.VisitLabelAggregation(e) }
+
+// CountDistinctSketchExpr is an internal shard-child expression that returns
+// mergeable HyperLogLog sketches. Shards must return sketches, not derived estimates
+type CountDistinctSketchExpr struct {
+	Left     *LogRangeExpr
+	Grouping *Grouping
+	Label    string
+	err      error
+}
+
+// NewCountDistinctSketchExpr builds an internal sketch-producing expression.
+func NewCountDistinctSketchExpr(label string, left *LogRangeExpr, gr *Grouping) *CountDistinctSketchExpr {
+	return &CountDistinctSketchExpr{
+		Left:     left,
+		Grouping: gr,
+		Label:    label,
+	}
+}
+
+// NewCountDistinctSketchFromLabelAggregation converts a public label
+// aggregation into its sketch-producing form for sharded evaluation.
+func NewCountDistinctSketchFromLabelAggregation(e *LabelAggregationExpr) *CountDistinctSketchExpr {
+	return NewCountDistinctSketchExpr(e.Label, e.Left, e.Grouping)
+}
+
+// Validate reports whether the internal sketch expression is well-formed.
+func (e *CountDistinctSketchExpr) Validate() error {
+	if e.err != nil {
+		return e.err
+	}
+	if e.Label == "" {
+		return fmt.Errorf("%s() requires a non-empty field name", OpTypeCountDistinctSketch)
+	}
+	if e.Left == nil {
+		return fmt.Errorf("%s() requires a log query with a duration, for example {job=\"app\"}[1d]", OpTypeCountDistinctSketch)
+	}
+	if e.Left.Interval <= 0 {
+		return fmt.Errorf("%s() requires a positive duration, for example [1d]", OpTypeCountDistinctSketch)
+	}
+	if e.Left.Unwrap != nil {
+		return fmt.Errorf("unwrap is not supported for %s()", OpTypeCountDistinctSketch)
+	}
+	if e.Grouping != nil && e.Grouping.Without {
+		return fmt.Errorf("without is not supported for %s()", OpTypeCountDistinctSketch)
+	}
+	if e.Grouping != nil {
+		for _, g := range e.Grouping.Groups {
+			if g == e.Label {
+				return fmt.Errorf("%s() cannot group by the counted field %q", OpTypeCountDistinctSketch, e.Label)
+			}
+		}
+	}
+	return nil
+}
+
+func (e *CountDistinctSketchExpr) Selector() (LogSelectorExpr, error) {
+	if e.err != nil {
+		return nil, e.err
+	}
+	return e.Left.Left, nil
+}
+
+func (e *CountDistinctSketchExpr) MatcherGroups() ([]MatcherRange, error) {
+	if e.err != nil {
+		return nil, e.err
+	}
+	xs := e.Left.Left.Matchers()
+	if len(xs) > 0 {
+		return []MatcherRange{
+			{
+				Matchers: xs,
+				Interval: e.Left.Interval,
+				Offset:   e.Left.Offset,
+			},
+		}, nil
+	}
+	return nil, nil
+}
+
+func (e *CountDistinctSketchExpr) String() string {
+	var sb strings.Builder
+	sb.WriteString(OpTypeCountDistinctSketch)
+	sb.WriteString("(")
+	sb.WriteString(e.Label)
+	sb.WriteString(",")
+	sb.WriteString(e.Left.String())
+	sb.WriteString(")")
+	if e.Grouping != nil {
+		sb.WriteString(e.Grouping.String())
+	}
+	return sb.String()
+}
+
+func (e *CountDistinctSketchExpr) Shardable(_ bool) bool {
+	return false
+}
+
+func (e *CountDistinctSketchExpr) Walk(f WalkFn) {
+	if !f(e) {
+		return
+	}
+	if e.Left != nil {
+		e.Left.Walk(f)
+	}
+}
+
+func (e *CountDistinctSketchExpr) Accept(v RootVisitor) { v.VisitCountDistinctSketch(e) }
 
 // Grouping struct represents the grouping by/without label(s) for vector aggregators and range vector aggregators.
 // The representation is as follows:
@@ -2311,7 +2530,8 @@ var shardableOps = map[string]bool{
 	OpTypeMax:   true,
 	OpTypeMin:   true,
 
-	OpTypeApproxTopK: true,
+	OpTypeApproxTopK:          true,
+	OpTypeApproxCountDistinct: true,
 
 	// range vector ops
 	OpRangeTypeAvg:       true,
@@ -2413,6 +2633,14 @@ func ReducesLabels(e Expr) (conflict bool) {
 			if groupingReducesLabels(expr.Grouping) {
 				conflict = true
 			}
+		case *LabelAggregationExpr:
+			if groupingReducesLabels(expr.Grouping) {
+				conflict = true
+			}
+		case *CountDistinctSketchExpr:
+			if groupingReducesLabels(expr.Grouping) {
+				conflict = true
+			}
 		// Technically, any parser that mutates labels could cause the query
 		// to be non-shardable _if_ the total (inherent+extracted) labels
 		// exist on two different shards, but this is incredibly unlikely
@@ -2488,6 +2716,10 @@ func HasNonAdditiveAggr(e Expr) (found bool) {
 				found = true
 				return false
 			}
+		case *LabelAggregationExpr, *CountDistinctSketchExpr:
+			// HLL estimates are non-additive across shards.
+			found = true
+			return false
 		}
 		return true
 	})

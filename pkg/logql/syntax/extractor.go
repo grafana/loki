@@ -18,7 +18,7 @@ func (r RangeAggregationExpr) extractor(override *Grouping) (log.SampleExtractor
 	if r.err != nil {
 		return nil, r.err
 	}
-	if err := r.validate(); err != nil {
+	if err := r.Validate(); err != nil {
 		return nil, err
 	}
 
@@ -88,4 +88,47 @@ func (r RangeAggregationExpr) extractor(override *Grouping) (log.SampleExtractor
 	default:
 		return nil, fmt.Errorf(UnsupportedErr, r.Operation)
 	}
+}
+
+func (e *LabelAggregationExpr) Extractor() (log.SampleExtractor, error) {
+	if e.err != nil {
+		return nil, e.err
+	}
+	if err := e.Validate(); err != nil {
+		return nil, err
+	}
+	return distinctValueExtractor(e.Label, e.Left, e.Grouping)
+}
+
+func (e *CountDistinctSketchExpr) Extractor() (log.SampleExtractor, error) {
+	if e.err != nil {
+		return nil, e.err
+	}
+	if err := e.Validate(); err != nil {
+		return nil, err
+	}
+	return distinctValueExtractor(e.Label, e.Left, e.Grouping)
+}
+
+func distinctValueExtractor(label string, left *LogRangeExpr, grouping *Grouping) (log.SampleExtractor, error) {
+	var groups []string
+	if grouping != nil {
+		groups = grouping.Groups
+	}
+	// We can't mutate the expression's groups in place (see Grouping.Groups doc), so we make
+	// our own copy and sort it.
+	sortedGroups := make([]string, len(groups))
+	copy(sortedGroups, groups)
+	sort.Strings(sortedGroups)
+
+	var stages []log.Stage
+	if p, ok := left.Left.(*PipelineExpr); ok {
+		st, err := p.MultiStages.stages()
+		if err != nil {
+			return nil, err
+		}
+		stages = st
+	}
+
+	return log.NewDistinctValueSampleExtractor(label, stages, sortedGroups)
 }
