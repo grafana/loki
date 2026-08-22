@@ -160,7 +160,7 @@ eval instant at 60s approx_topk(10, sum by (app, pod) (count_over_time({app=~"fo
   {app="foo", pod="a"} 6
 # approx_topk() is supported only for instant queries.
 eval range from 20s to 60s step 20s approx_topk(2, sum by (app, pod) (count_over_time({app=~"foo|bar"} |~".+bar" [1m])))
-  expect fail msg: approx_topk is only supported on instant queries
+  expect fail msg: approx_topk error: count min sketches are only supported on instant queries
 # approx_topk() forbids grouping (unlike topk).
 eval instant at 60s approx_topk(2, sum by (app, pod) (count_over_time({app=~"foo|bar"} |~".+bar" [1m]))) by (app)
   expect fail msg: grouping not allowed

@@ -687,7 +687,7 @@ func (ev *DownstreamEvaluator) NewStepEvaluator(
 		return NewMergeLastOverTimeStepEvaluator(params, xs, e.offset, e.rangeInterval), nil
 	case *CountMinSketchEvalExpr:
 		if GetRangeType(params) != InstantType {
-			return nil, errInstantQueryOnly(e.operation)
+			return nil, errCountMinSketchInstantOnly(e.operation)
 		}
 
 		queries := make([]DownstreamQuery, len(e.downstreams))

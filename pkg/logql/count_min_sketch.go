@@ -275,49 +275,25 @@ func (v *HeapCountMinSketchVector) Pop() any {
 }
 
 // JoinCountMinSketchVector joins the results from stepEvaluator into a CountMinSketchVector.
-func JoinCountMinSketchVector(_ bool, r StepResult, stepEvaluator StepEvaluator, params Params, op string) (promql_parser.Value, error) {
+func JoinCountMinSketchVector(_ bool, r StepResult, stepEvaluator StepEvaluator, params Params) (promql_parser.Value, error) {
 	vec := r.CountMinSketchVec()
 	if stepEvaluator.Error() != nil {
 		return nil, stepEvaluator.Error()
 	}
 
 	if GetRangeType(params) != InstantType {
-		return nil, errInstantQueryOnly(op)
+		return nil, errCountMinSketchInstantOnly("")
 	}
 
 	return vec, nil
 }
 
-// countMinSketchOperation returns the user-facing operator that produced a
-// count-min sketch, falling back to the inner aggregation name when unknown.
-func countMinSketchOperation(expr syntax.SampleExpr) string {
-	var op string
-	if expr == nil {
-		return ""
-	}
-	expr.Walk(func(e syntax.Expr) bool {
-		switch typed := e.(type) {
-		case *CountMinSketchEvalExpr:
-			if typed.operation != "" {
-				op = typed.operation
-				return false
-			}
-		case *syntax.VectorAggregationExpr:
-			if typed.Operation == syntax.OpTypeCountMinSketch || typed.Operation == syntax.OpTypeApproxTopK {
-				op = typed.Operation
-				return false
-			}
-		}
-		return true
-	})
-	return op
-}
-
-func errInstantQueryOnly(op string) error {
+func errCountMinSketchInstantOnly(op string) error {
+	const msg = "count min sketches are only supported on instant queries"
 	if op == "" {
-		return fmt.Errorf("this aggregation is only supported on instant queries")
+		return fmt.Errorf("%s", msg)
 	}
-	return fmt.Errorf("%s is only supported on instant queries", op)
+	return fmt.Errorf("%s error: %s", op, msg)
 }
 
 func newCountMinSketchVectorAggEvaluator(nextEvaluator StepEvaluator, expr *syntax.VectorAggregationExpr, maxLabels int) (*countMinSketchVectorAggEvaluator, error) {
@@ -430,7 +406,7 @@ type CountMinSketchEvalStepEvaluator struct {
 
 func NewCountMinSketchEvalStepEvaluator(ctx context.Context, nextEvFactory SampleEvaluatorFactory, expr *CountMinSketchEvalExpr, params Params) (*CountMinSketchEvalStepEvaluator, error) {
 	if GetRangeType(params) != InstantType {
-		return nil, errInstantQueryOnly(expr.operation)
+		return nil, errCountMinSketchInstantOnly(expr.operation)
 	}
 	return &CountMinSketchEvalStepEvaluator{
 		ctx:           ctx,
