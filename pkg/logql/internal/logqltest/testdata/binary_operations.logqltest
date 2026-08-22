@@ -69,6 +69,9 @@ eval instant at 60s 2 == bool 1
 # A literal cannot be a leg of a logical/set operator.
 eval instant at 60s 1 and 2
   expect fail msg: unexpected literal for left leg of logical/set binary operation
+# `bool` is not supported for arithmetic and logical/set operators.
+eval instant at 60s 1 + bool 2
+  expect fail msg: bool modifier can only be used on comparison operators
 
 # Scalar operators precedence and associativity.
 clear
@@ -156,6 +159,22 @@ eval instant at 60s count_over_time({app="foo"}[1m]) / 0
   {app="foo"} NaN
 eval instant at 60s count_over_time({app="foo"}[1m]) % 0
   {app="foo"} NaN
+# on()/ignoring() with labels are rejected next to a scalar operand.
+eval instant at 60s 1 + on (app) count_over_time({app="foo"}[1m])
+  expect fail msg: vector matching only allowed between instant vectors
+eval instant at 60s count_over_time({app="foo"}[1m]) + on (app) 1
+  expect fail msg: vector matching only allowed between instant vectors
+eval instant at 60s 1 + on (app) 1
+  expect fail msg: vector matching only allowed between instant vectors
+eval instant at 60s 1 + ignoring (app) 1
+  expect fail msg: vector matching only allowed between instant vectors
+# on()/ignoring() without labels is allowed next to a scalar operand.
+eval instant at 60s 1 + on () 1
+  2
+eval instant at 60s 1 + ignoring () 1
+  2
+eval instant at 60s count_over_time({app="foo"}[1m]) + on () group_left (baz) 1
+  {app="foo"} 7
 
 # Vector / scalar comparisons.
 #
@@ -234,6 +253,9 @@ eval instant at 60s 6 == bool count_over_time({app=~"foo|bar"}[1m])
 eval range from 60s to 180s step 30s 6 == bool count_over_time({app=~"foo|bar"}[1m])
   {app="foo"} 1 1 1 1 1
   {app="bar"} 0 0 0 0 0
+# on()/ignoring() with labels are rejected next to a scalar operand.
+eval instant at 60s count_over_time({app="foo"}[1m]) == on (app) 1
+  expect fail msg: vector matching only allowed between instant vectors
 
 # Vector / scalar arithmetic: ^ (power) edge cases.
 clear
@@ -283,29 +305,37 @@ load
   {app="bar"} "x" @ 0s [repeat every 20s for 10]
   {app="noise"} "noise" @ 0s [repeat every 10s for 19]
 
+# vector or vector
 eval instant at 60s rate({app="foo"}[1m]) or rate({app="bar"}[1m])
   {app="foo"} 0.1
   {app="bar"} 0.05
 eval range from 60s to 180s step 30s rate({app="foo"}[1m]) or rate({app="bar"}[1m])
   {app="foo"} 0.1 0.1 0.1 0.1 0.1
   {app="bar"} 0.05 0.05 0.05 0.05 0.05
-
+# vector or vector()
 eval instant at 60s rate({app="foo"}[1m]) or vector(0)
   {app="foo"} 0.1
   {} 0
 eval range from 60s to 180s step 30s rate({app="foo"}[1m]) or vector(0)
   {app="foo"} 0.1 0.1 0.1 0.1 0.1
   {} 0 0 0 0 0
-
+# vector and vector
 eval instant at 60s rate({app=~"foo|bar"}[1m]) and rate({app="bar"}[1m])
   {app="bar"} 0.05
 eval range from 60s to 180s step 30s rate({app=~"foo|bar"}[1m]) and rate({app="bar"}[1m])
   {app="bar"} 0.05 0.05 0.05 0.05 0.05
-
+# vector unless vector
 eval instant at 60s rate({app=~"foo|bar"}[1m]) unless rate({app="bar"}[1m])
   {app="foo"} 0.1
 eval range from 60s to 180s step 30s rate({app=~"foo|bar"}[1m]) unless rate({app="bar"}[1m])
   {app="foo"} 0.1 0.1 0.1 0.1 0.1
+# `bool` is not valid on logical/set operators.
+eval instant at 60s count_over_time({app="foo"}[1m]) or bool count_over_time({app="bar"}[1m])
+  expect fail msg: bool modifier can only be used on comparison operators
+eval instant at 60s count_over_time({app="foo"}[1m]) and bool count_over_time({app="bar"}[1m])
+  expect fail msg: bool modifier can only be used on comparison operators
+eval instant at 60s count_over_time({app="foo"}[1m]) unless bool count_over_time({app="bar"}[1m])
+  expect fail msg: bool modifier can only be used on comparison operators
 
 # Vector / vector arithmetic (matched on identical labels; foo is dropped, bar survives).
 eval instant at 60s rate({app=~"foo|bar"}[1m]) + rate({app="bar"}[1m])
@@ -341,6 +371,9 @@ eval instant at 60s count_over_time({app="bar"}[1m]) ^ count_over_time({app="bar
   {app="bar"} 27
 eval range from 60s to 180s step 30s count_over_time({app="bar"}[1m]) ^ count_over_time({app="bar"}[1m])
   {app="bar"} 27 27 27 27 27
+# `bool` is not valid on arithmetic operators.
+eval instant at 60s count_over_time({app="foo"}[1m]) + bool count_over_time({app="bar"}[1m])
+  expect fail msg: bool modifier can only be used on comparison operators
 
 # Vector / vector comparison. Bare foo vs bar never share labels → empty result.
 clear
@@ -743,6 +776,13 @@ eval instant at 60s sum by (app,machine) (count_over_time({app="foo"}[1m])) < on
 eval range from 60s to 180s step 30s sum by (app,machine) (count_over_time({app="foo"}[1m])) < on () group_left sum by (app) (count_over_time({app="foo"}[1m]))
   {app="foo", machine="fuzz"} 6 6 6 6 6
   {app="foo", machine="buzz"} 4 4 4 4 4
+# and/or/unless group_left are rejected.
+eval instant at 60s sum by (app,machine) (count_over_time({app="foo"}[1m])) and ignoring (machine) group_left sum by (app) (count_over_time({app="foo"}[1m]))
+  expect fail msg: no grouping allowed for "and" operation
+eval instant at 60s sum by (app,machine) (count_over_time({app="foo"}[1m])) or ignoring (machine) group_left sum by (app) (count_over_time({app="foo"}[1m]))
+  expect fail msg: no grouping allowed for "or" operation
+eval instant at 60s sum by (app,machine) (count_over_time({app="foo"}[1m])) unless ignoring (machine) group_left sum by (app) (count_over_time({app="foo"}[1m]))
+  expect fail msg: no grouping allowed for "unless" operation
 
 # group_left() without labels: duplicate series case.
 clear
@@ -771,6 +811,12 @@ eval instant at 60s sum by (app,machine) (count_over_time({app="foo"}[1m])) > bo
 eval range from 60s to 180s step 30s sum by (app,machine) (count_over_time({app="foo"}[1m])) > bool on (app) group_left (pool) sum by (app,pool) (count_over_time({app="foo"}[1m]))
   {app="foo", machine="fuzz", pool="foo"} 0 0 0 0 0
   {app="foo", machine="buzz", pool="foo"} 0 0 0 0 0
+# A label already used to match via on(...) can also appear in group_left(...). It is
+# guaranteed equal on both sides already, so including it again is a harmless no-op: the
+# output keeps its own value for that label instead of picking up a different one.
+eval instant at 60s sum by (app,machine) (count_over_time({app="foo"}[1m])) > bool on (app) group_left (app) sum by (app,pool) (count_over_time({app="foo"}[1m]))
+  {app="foo", machine="fuzz"} 0
+  {app="foo", machine="buzz"} 0
 # Each machine's own share of the app total.
 eval instant at 60s count_over_time({app="foo"}[1m]) / on (app) group_left sum by (app) (count_over_time({app="foo"}[1m]))
   {app="foo", machine="fuzz", pool="foo"} 0.6
@@ -791,6 +837,22 @@ eval instant at 60s sum by (app,machine,pool) (count_over_time({app="foo"}[1m]))
 eval range from 60s to 180s step 30s sum by (app,machine,pool) (count_over_time({app="foo"}[1m])) > bool on (app) group_left (pool) sum by (app) (count_over_time({app="foo"}[1m]))
   {app="foo", machine="fuzz"} 0 0 0 0 0
   {app="foo", machine="buzz"} 0 0 0 0 0
+
+# group_left() with labels: ignoring() the same grouped label.
+clear
+load
+  {app="foo", machine="fuzz"} "x" @ 0s [repeat every 10s for 19]
+  {app="foo", machine="buzz"} "x" @ 0s [repeat every 20s for 10]
+  {app="foo", org="acme"}     "x" @ 0s [repeat every 10s for 19]
+  {app="noise"}                "noise" @ 0s [repeat every 10s for 19]
+
+# A label excluded from matching via ignoring(...) can still be pulled in via group_left(...).
+eval instant at 60s sum by (app,machine) (count_over_time({app="foo", machine=~".+"}[1m])) / ignoring (machine,org) group_left (org) sum by (app,org) (count_over_time({app="foo", org=~".+"}[1m]))
+  {app="foo", machine="fuzz", org="acme"} 1
+  {app="foo", machine="buzz", org="acme"} 0.5
+eval range from 60s to 180s step 30s sum by (app,machine) (count_over_time({app="foo", machine=~".+"}[1m])) / ignoring (machine,org) group_left (org) sum by (app,org) (count_over_time({app="foo", org=~".+"}[1m]))
+  {app="foo", machine="fuzz", org="acme"} 1 1 1 1 1
+  {app="foo", machine="buzz", org="acme"} 0.5 0.5 0.5 0.5 0.5
 
 # group_left() with labels: collision case.
 #
@@ -848,6 +910,13 @@ eval instant at 60s sum by (app) (count_over_time({app="foo"}[1m])) > on () grou
 eval range from 60s to 180s step 30s sum by (app) (count_over_time({app="foo"}[1m])) > on () group_right sum by (app,machine) (count_over_time({app="foo"}[1m]))
   {app="foo", machine="fuzz"} 10 10 10 10 10
   {app="foo", machine="buzz"} 10 10 10 10 10
+# and/or/unless group_right are rejected.
+eval instant at 60s sum by (app) (count_over_time({app="foo"}[1m])) and ignoring (machine) group_right sum by (app,machine) (count_over_time({app="foo"}[1m]))
+  expect fail msg: no grouping allowed for "and" operation
+eval instant at 60s sum by (app) (count_over_time({app="foo"}[1m])) or ignoring (machine) group_right sum by (app,machine) (count_over_time({app="foo"}[1m]))
+  expect fail msg: no grouping allowed for "or" operation
+eval instant at 60s sum by (app) (count_over_time({app="foo"}[1m])) unless ignoring (machine) group_right sum by (app,machine) (count_over_time({app="foo"}[1m]))
+  expect fail msg: no grouping allowed for "unless" operation
 
 # group_right() without labels: duplicate series case.
 clear
@@ -876,6 +945,12 @@ eval instant at 60s sum by (app,pool) (count_over_time({app="foo"}[1m])) > bool 
 eval range from 60s to 180s step 30s sum by (app,pool) (count_over_time({app="foo"}[1m])) > bool on (app) group_right (pool) sum by (app,machine) (count_over_time({app="foo"}[1m]))
   {app="foo", machine="fuzz", pool="foo"} 1 1 1 1 1
   {app="foo", machine="buzz", pool="foo"} 1 1 1 1 1
+# A label already used to match via on(...) can also appear in group_right(...). It is
+# guaranteed equal on both sides already, so including it again is a harmless no-op: the
+# output keeps its own value for that label instead of picking up a different one.
+eval instant at 60s sum by (app,pool) (count_over_time({app="foo"}[1m])) > bool on (app) group_right (app) sum by (app,machine) (count_over_time({app="foo"}[1m]))
+  {app="foo", machine="fuzz"} 1
+  {app="foo", machine="buzz"} 1
 # Include-label deletion: the LHS lacks `pool` (aggregated away), so group_right(pool)
 # deletes it from the result rather than keeping the many side's own value.
 eval instant at 60s sum by (app) (count_over_time({app="foo"}[1m])) > bool on (app) group_right (pool) sum by (app,machine,pool) (count_over_time({app="foo"}[1m]))
@@ -884,6 +959,22 @@ eval instant at 60s sum by (app) (count_over_time({app="foo"}[1m])) > bool on (a
 eval range from 60s to 180s step 30s sum by (app) (count_over_time({app="foo"}[1m])) > bool on (app) group_right (pool) sum by (app,machine,pool) (count_over_time({app="foo"}[1m]))
   {app="foo", machine="fuzz"} 1 1 1 1 1
   {app="foo", machine="buzz"} 1 1 1 1 1
+
+# group_right() with labels: ignoring() the same grouped label.
+clear
+load
+  {app="foo", machine="fuzz"} "x" @ 0s [repeat every 10s for 19]
+  {app="foo", machine="buzz"} "x" @ 0s [repeat every 20s for 10]
+  {app="foo", org="acme"}     "x" @ 0s [repeat every 10s for 19]
+  {app="noise"}                "noise" @ 0s [repeat every 10s for 19]
+
+# A label excluded from matching via ignoring(...) can still be pulled in via group_right(...).
+eval instant at 60s sum by (app,org) (count_over_time({app="foo", org=~".+"}[1m])) / ignoring (machine,org) group_right (org) sum by (app,machine) (count_over_time({app="foo", machine=~".+"}[1m]))
+  {app="foo", machine="fuzz", org="acme"} 1
+  {app="foo", machine="buzz", org="acme"} 2
+eval range from 60s to 180s step 30s sum by (app,org) (count_over_time({app="foo", org=~".+"}[1m])) / ignoring (machine,org) group_right (org) sum by (app,machine) (count_over_time({app="foo", machine=~".+"}[1m]))
+  {app="foo", machine="fuzz", org="acme"} 1 1 1 1 1
+  {app="foo", machine="buzz", org="acme"} 2 2 2 2 2
 
 # group_right() with labels: collision case.
 #

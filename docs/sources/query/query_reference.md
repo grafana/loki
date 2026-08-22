@@ -200,7 +200,7 @@ The syntax:
 <vector expr> <bin-op> on(<labels>) group_left(<labels>) <vector expr>
 <vector expr> <bin-op> on(<labels>) group_right(<labels>) <vector expr>
 ```
-The label list provided with the group modifier contains additional labels from the "one"-side that are included in the result metrics. And a label should only appear in one of the lists specified by `on` and `group_x`. Every time series of the result vector must be uniquely identifiable.
+The label list provided with the group modifier contains additional labels from the "one"-side that are included in the result metrics. A label already listed in `on(...)` is redundant in `group_x(...)`, since matching on it already guarantees it holds the same value on both sides. Every time series of the result vector must be uniquely identifiable.
 Grouping modifiers can only be used for comparison and arithmetic. By default, the system matches `and`, `unless`, and `or` operations with all entries in the right vector.
 
 The following example returns the rates requests partitioned by `app` and `status` as a percentage of total requests.
