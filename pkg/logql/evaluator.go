@@ -376,9 +376,6 @@ func (ev *DefaultEvaluator) NewStepEvaluator(
 		}
 		return newRangeAggEvaluator(iter.NewPeekingSampleIterator(it), e, q, e.Left.Offset)
 	case *syntax.LabelAggregationExpr:
-		if GetRangeType(q) != InstantType {
-			return nil, fmt.Errorf("approx_count_distinct is only supported on instant queries")
-		}
 		it, err := ev.querier.SelectSamples(ctx, SelectSampleParams{
 			&logproto.SampleQueryRequest{
 				Start:    q.Start().Add(-e.Left.Interval).Add(-e.Left.Offset),
