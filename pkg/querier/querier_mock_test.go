@@ -376,6 +376,10 @@ func (s *storeMock) Stop() {
 type readRingMock struct {
 	replicationSet    ring.ReplicationSet
 	replicationFactor int
+	// zonesCount overrides the number of zones the ring reports. Leave at 0 to
+	// derive it from the instances in the replication set. Set it to mimic a ring
+	// whose replication set has had unhealthy zones filtered out.
+	zonesCount int
 }
 
 func newReadRingMock(ingesters []ring.InstanceDesc, maxErrors int) *readRingMock {
@@ -506,6 +510,12 @@ func (r *readRingMock) InstancesWithTokensInZoneCount(_ string) int {
 }
 
 func (r *readRingMock) ZonesCount() int {
+	if r.zonesCount > 0 {
+		return r.zonesCount
+	}
+	if n := countZones(r.replicationSet.Instances); n > 0 {
+		return n
+	}
 	return 1
 }
 

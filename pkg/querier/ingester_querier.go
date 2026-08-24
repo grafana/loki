@@ -2,7 +2,8 @@ package querier
 
 import (
 	"context"
-	"math/rand/v2"
+	"crypto/rand"
+	"math/big"
 	"net/http"
 	"slices"
 	"strings"
@@ -176,9 +177,7 @@ func ExtractPartitionContext(ctx context.Context) *PartitionContext {
 // evenly across the zones we fall back to.
 func preferredZoneSorter(preferredZones []string) ring.ZoneSorter {
 	return func(zones []string) []string {
-		rand.Shuffle(len(zones), func(i, j int) {
-			zones[i], zones[j] = zones[j], zones[i]
-		})
+		shuffleZones(zones)
 
 		if len(preferredZones) == 0 {
 			return zones
@@ -195,6 +194,21 @@ func preferredZoneSorter(preferredZones []string) ring.ZoneSorter {
 		}
 
 		return zones
+	}
+}
+
+// shuffleZones shuffles zones in place, using crypto/rand as the source of
+// randomness. If no randomness is available the current order is kept: the order
+// zones are queried in must never be a reason to fail a query.
+func shuffleZones(zones []string) {
+	for i := len(zones) - 1; i > 0; i-- {
+		n, err := rand.Int(rand.Reader, big.NewInt(int64(i+1)))
+		if err != nil {
+			return
+		}
+
+		j := int(n.Int64())
+		zones[i], zones[j] = zones[j], zones[i]
 	}
 }
 
@@ -235,10 +249,21 @@ func (q *IngesterQuerier) quorumConfigForZoneReads(replicationSet *ring.Replicat
 	}
 
 	if n := q.querierConfig.IngesterQueryZones; n > 0 {
-		zones := countZones(replicationSet.Instances)
+		// The completeness check below must use the number of zones registered in
+		// the ring, not the number left in the replication set. Zone-aware rings
+		// drop every instance of a zone that has any unhealthy instance, so a ring
+		// with more zones than replicas can present a replication set with few
+		// enough zones to look like it qualifies, when in fact no single zone holds
+		// a complete copy of the data.
+		ringZones := q.ring.ZonesCount()
+
+		// The quorum requirement is relative to the zones actually present in the
+		// replication set, since that is what dskit counts when deciding how many
+		// zones must succeed.
+		setZones := countZones(replicationSet.Instances)
 
 		switch {
-		case zones > q.ring.ReplicationFactor():
+		case ringZones > q.ring.ReplicationFactor():
 			// Querying fewer zones than the ring requires for quorum is only correct
 			// if every zone holds a complete copy of the data. Zone-aware replication
 			// places at most one replica per zone, so that only holds when there are
@@ -246,14 +271,14 @@ func (q *IngesterQuerier) quorumConfigForZoneReads(replicationSet *ring.Replicat
 			q.warnTooManyZones.Do(func() {
 				level.Warn(q.logger).Log(
 					"msg", "ignoring querier.ingester-query-zones because the ingester ring has more zones than the replication factor, so a single zone does not hold a complete copy of the data",
-					"zones", zones,
+					"zones", ringZones,
 					"replication_factor", q.ring.ReplicationFactor(),
 				)
 			})
-		case zones-n > replicationSet.MaxUnavailableZones:
+		case setZones-n > replicationSet.MaxUnavailableZones:
 			// Only ever loosen the ring's quorum requirement. Asking for more zones
 			// than the ring requires must not make queries more likely to fail.
-			replicationSet.MaxUnavailableZones = zones - n
+			replicationSet.MaxUnavailableZones = setZones - n
 		}
 	}
 
@@ -423,14 +448,18 @@ func (q *IngesterQuerier) TailDisconnectedIngesters(ctx context.Context, req *lo
 	// When reads are restricted to a subset of zones, only reconnect to ingesters in
 	// the zones we would query. Otherwise a long lived tail request would gradually
 	// connect to every ingester in the ring, defeating the zone restriction. Zones
-	// that already have a connected ingester are always allowed, so a zone we failed
-	// over to is not dropped again. If this leaves no allowed zone, every zone is
-	// considered, so tailing never stops reconnecting.
+	// that already have a connected ingester are also allowed, so a zone we failed
+	// over to is not dropped again.
+	//
+	// Only zones present in the replication set are considered: a preferred zone
+	// with no healthy ingester must not keep the tail from reconnecting to the zones
+	// that do have one. If that leaves no allowed zone, every zone is considered, so
+	// tailing never stops reconnecting.
 	var allowedZones []string
 	if q.zoneReadsEnabled() && replicationSet.ZoneAwarenessEnabled {
-		allowedZones = append(allowedZones, q.querierConfig.PreferAvailabilityZones...)
 		for _, ingester := range replicationSet.Instances {
-			if connected[ingester.Addr] && !slices.Contains(allowedZones, ingester.Zone) {
+			allowed := connected[ingester.Addr] || slices.Contains(q.querierConfig.PreferAvailabilityZones, ingester.Zone)
+			if allowed && !slices.Contains(allowedZones, ingester.Zone) {
 				allowedZones = append(allowedZones, ingester.Zone)
 			}
 		}

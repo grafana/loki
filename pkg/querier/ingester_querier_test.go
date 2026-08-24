@@ -846,11 +846,14 @@ func distinctZones(addrs []string, zoneByAddr map[string]string) []string {
 	return zones
 }
 
+// Note: the tests below deliberately do not call t.Parallel(). Constructing an
+// IngesterQuerier builds an ingester client pool, and clientpool.NewPool lazily
+// registers a package-level gauge without synchronisation, so two concurrent
+// constructions panic with a duplicate registration.
 func TestIngesterQuerier_zoneRestrictedReads(t *testing.T) {
-	t.Parallel()
-
 	for name, tc := range map[string]struct {
 		zones               []string
+		ringZonesCount      int
 		replicationFactor   int
 		maxUnavailableZones int
 		zoneAware           bool
@@ -907,6 +910,21 @@ func TestIngesterQuerier_zoneRestrictedReads(t *testing.T) {
 			expectZoneCount:     3,
 			expectZones:         []string{"A"},
 		},
+		"unhealthy zone hiding a wider topology falls back to ring quorum": {
+			// The ring has 4 zones but one of them is unhealthy, so
+			// GetReplicationSetForOperation drops it and returns only 3. The guard
+			// has to use the ring's zone count, otherwise this looks like a
+			// 3-zone/RF-3 ring where a single zone would be complete.
+			zones:               []string{"A", "B", "C"},
+			ringZonesCount:      4,
+			replicationFactor:   3,
+			maxUnavailableZones: 1,
+			zoneAware:           true,
+			preferredZones:      []string{"A"},
+			ingesterQueryZones:  1,
+			expectZoneCount:     2,
+			expectZones:         []string{"A"},
+		},
 		"zone awareness disabled queries every zone": {
 			zones:              []string{"A", "B", "C"},
 			replicationFactor:  3,
@@ -917,8 +935,6 @@ func TestIngesterQuerier_zoneRestrictedReads(t *testing.T) {
 		},
 	} {
 		t.Run(name, func(t *testing.T) {
-			t.Parallel()
-
 			ingesters, zoneByAddr := zonedIngesters(tc.zones...)
 
 			var ringMock *readRingMock
@@ -927,6 +943,7 @@ func TestIngesterQuerier_zoneRestrictedReads(t *testing.T) {
 			} else {
 				ringMock = newReadRingMock(ingesters, 0)
 			}
+			ringMock.zonesCount = tc.ringZonesCount
 
 			factory, queriedAddrs := newPerAddrClientFactory(func(_ string) *querierClientMock {
 				c := newQuerierClientMock()
@@ -968,8 +985,6 @@ func TestIngesterQuerier_zoneRestrictedReads(t *testing.T) {
 }
 
 func TestIngesterQuerier_zoneRestrictedReadsFallBackOnFailure(t *testing.T) {
-	t.Parallel()
-
 	ingesters, zoneByAddr := zonedIngesters("A", "B", "C")
 	ringMock := newZoneAwareReadRingMock(ingesters, 1, 3)
 
@@ -997,4 +1012,76 @@ func TestIngesterQuerier_zoneRestrictedReadsFallBackOnFailure(t *testing.T) {
 	queriedZones := distinctZones(queriedAddrs(), zoneByAddr)
 	require.Contains(t, queriedZones, "A", "the preferred zone should be tried first")
 	require.Len(t, queriedZones, 2, "exactly one zone should be used as fallback")
+}
+
+func TestIngesterQuerier_tailZoneRestrictedReconnects(t *testing.T) {
+	for name, tc := range map[string]struct {
+		// zones present in the ring, i.e. the zones that still have a healthy
+		// ingester.
+		zones          []string
+		preferredZones []string
+		connectedZones []string
+		expectZones    []string
+	}{
+		"reconnects only to the preferred zone": {
+			zones:          []string{"A", "B", "C"},
+			preferredZones: []string{"A"},
+			expectZones:    []string{"A"},
+		},
+		"keeps a zone that already has a connected ingester": {
+			zones:          []string{"A", "B", "C"},
+			preferredZones: []string{"A"},
+			connectedZones: []string{"B"},
+			expectZones:    []string{"A", "B"},
+		},
+		"reconnects to healthy zones when the preferred zone has no ingester left": {
+			// Zone A is preferred but entirely unhealthy, so the ring does not
+			// return it. Restricting reconnects to A would stall the tail.
+			zones:          []string{"B", "C"},
+			preferredZones: []string{"A"},
+			expectZones:    []string{"B", "C"},
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			ingesters, zoneByAddr := zonedIngesters(tc.zones...)
+			ringMock := newZoneAwareReadRingMock(ingesters, 1, 3)
+
+			// Connect the first ingester of each listed zone, leaving the second one
+			// disconnected so the zone still has something to reconnect to.
+			var connected []string
+			connectedZone := map[string]bool{}
+			for _, instance := range ingesters {
+				if slices.Contains(tc.connectedZones, instance.Zone) && !connectedZone[instance.Zone] {
+					connectedZone[instance.Zone] = true
+					connected = append(connected, instance.Addr)
+				}
+			}
+
+			ingesterClient := newQuerierClientMock()
+			ingesterClient.On("Tail", mock.Anything, mock.Anything, mock.Anything).Return(&mockQuerierTailClient{}, nil)
+
+			cfg := mockQuerierConfig()
+			cfg.PreferAvailabilityZones = tc.preferredZones
+			cfg.IngesterQueryZones = 1
+
+			ingesterQuerier, err := newTestIngesterQuerierWithConfig(cfg, ringMock, newIngesterClientMockFactory(ingesterClient))
+			require.NoError(t, err)
+
+			clients, err := ingesterQuerier.TailDisconnectedIngesters(context.Background(), &logproto.TailRequest{}, connected)
+			require.NoError(t, err)
+
+			reconnected := make([]string, 0, len(clients))
+			for addr := range clients {
+				reconnected = append(reconnected, addr)
+			}
+
+			require.NotEmpty(t, reconnected, "a live tail must keep reconnecting")
+			require.ElementsMatch(t, tc.expectZones, distinctZones(reconnected, zoneByAddr))
+
+			// Already connected ingesters are never handed back.
+			for _, addr := range connected {
+				require.NotContains(t, reconnected, addr)
+			}
+		})
+	}
 }
