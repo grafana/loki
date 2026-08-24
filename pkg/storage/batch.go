@@ -743,10 +743,6 @@ func fetchLazyChunks(ctx context.Context, s config.SchemaConfig, chunks []*LazyC
 				index[key] = chk
 			}
 			chks, err := fetcher.FetchChunks(ctx, chks)
-			if ctx.Err() != nil {
-				errChan <- nil
-				return
-			}
 			if err != nil {
 				level.Error(logger).Log("msg", "error fetching chunks", "err", err)
 				if isInvalidChunkError(err) {
@@ -757,6 +753,10 @@ func fetchLazyChunks(ctx context.Context, s config.SchemaConfig, chunks []*LazyC
 				errChan <- err
 				return
 
+			}
+			if ctx.Err() != nil {
+				errChan <- nil
+				return
 			}
 			// assign fetched chunk by key as FetchChunks doesn't guarantee the order.
 			for _, chk := range chks {
