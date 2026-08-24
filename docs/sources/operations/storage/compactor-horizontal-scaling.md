@@ -72,14 +72,7 @@ It uses `compactor_grpc_address` under the [common config](https://grafana.com/d
 When handling Deletion jobs, a worker downloads the listed chunks, applies the specified filters to rebuild them without the filtered lines, and then provides a comprehensive storage update as job execution response.
 The storage update details which chunks to delete from Object Storage and which newly created chunks to index.
 
-#### Compactor horizontal scaling sequence diagram
-
-The sequence diagram depicts Deletion Manifest Builder, Job Builder and Job Queue as separate entities than the Main Compactor to show how the components are interlinked.
-In reality, all three components run within the Main Compactor.
-
-{{< figure src="../compactor-HS-seq-diagram.png" alt="Compactor Horizontal Scaling Sequence Diagram">}}
-
-## Configure compactor horizontal scaling
+## Configure compactor mode
 
 The `horizontal_scaling_mode` configuration option in the compactor controls the enablement of horizontally scalable compactor deployment.
 It supports setting the following modes:
