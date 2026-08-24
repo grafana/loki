@@ -391,12 +391,7 @@ func (ev *DefaultEvaluator) NewStepEvaluator(
 		if err != nil {
 			return nil, err
 		}
-		eval, err := newCountDistinctStepEvaluator(iter.NewPeekingSampleIterator(it), q, e.Left.Interval, e.Left.Offset)
-		if err != nil {
-			_ = it.Close()
-			return nil, err
-		}
-		return eval, nil
+		return newCountDistinctStepEvaluator(iter.NewPeekingSampleIterator(it), q, e.Left.Interval, e.Left.Offset), nil
 	case *syntax.BinOpExpr:
 		return newBinOpStepEvaluator(ctx, nextEvFactory, e, q)
 	case *syntax.LabelReplaceExpr:

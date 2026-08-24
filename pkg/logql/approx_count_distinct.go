@@ -15,7 +15,7 @@ func newCountDistinctStepEvaluator(
 	it iter.PeekingSampleIterator,
 	params Params,
 	interval, offset time.Duration,
-) (StepEvaluator, error) {
+) StepEvaluator {
 	return &RangeVectorEvaluator{
 		iter: newCountDistinctIterator(
 			it,
@@ -25,7 +25,7 @@ func newCountDistinctStepEvaluator(
 			params.End().UnixNano(),
 			offset.Nanoseconds(),
 		),
-	}, nil
+	}
 }
 
 func newCountDistinctIterator(
