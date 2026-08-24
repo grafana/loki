@@ -84,10 +84,7 @@ func (d *shufflingDialer) DialContext(ctx context.Context, network, address stri
 	// Bound the total time the same way net.Dialer would have, then split what
 	// is left evenly across the attempts we have not made yet, so one
 	// black-holed address cannot consume the whole budget.
-	deadline := time.Now().Add(dialTimeout)
-	if d.dialer.Timeout > 0 {
-		deadline = time.Now().Add(d.dialer.Timeout)
-	}
+	deadline := time.Now().Add(d.dialer.Timeout)
 	if ctxDeadline, ok := ctx.Deadline(); ok && ctxDeadline.Before(deadline) {
 		deadline = ctxDeadline
 	}
