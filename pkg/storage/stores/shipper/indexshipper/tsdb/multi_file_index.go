@@ -18,6 +18,7 @@ import (
 
 type MultiIndex struct {
 	iter        IndexIter
+	filtererMu  sync.Mutex
 	filterer    chunk.RequestChunkFilterer
 	maxParallel int
 }
@@ -99,7 +100,16 @@ func (i *MultiIndex) Bounds() (model.Time, model.Time) {
 }
 
 func (i *MultiIndex) SetChunkFilterer(chunkFilter chunk.RequestChunkFilterer) {
+	i.filtererMu.Lock()
 	i.filterer = chunkFilter
+	i.filtererMu.Unlock()
+}
+
+func (i *MultiIndex) getFilterer() chunk.RequestChunkFilterer {
+	i.filtererMu.Lock()
+	f := i.filterer
+	i.filtererMu.Unlock()
+	return f
 }
 
 func (i *MultiIndex) Close() error {
@@ -118,12 +128,12 @@ func (i *MultiIndex) forMatchingIndices(ctx context.Context, from, through model
 	return i.iter.For(ctx, i.maxParallel, func(ctx context.Context, idx Index) error {
 		if Overlap(idx, queryBounds) {
 
-			if i.filterer != nil {
+			if f := i.getFilterer(); f != nil {
 				// TODO(owen-d): Find a nicer way
 				// to handle filterer passing. Doing it
 				// in the read path rather than during instantiation
 				// feels bad :(
-				idx.SetChunkFilterer(i.filterer)
+				idx.SetChunkFilterer(f)
 			}
 
 			return f(ctx, idx)

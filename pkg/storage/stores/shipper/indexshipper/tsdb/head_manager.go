@@ -110,7 +110,8 @@ type HeadManager struct {
 	shards                 int
 	activeHeads, prevHeads *tenantHeads
 
-	chunkFilter chunk.RequestChunkFilterer
+	chunkFilterMu sync.Mutex
+	chunkFilter   chunk.RequestChunkFilterer
 
 	Index
 
@@ -150,8 +151,8 @@ func NewHeadManager(name string, logger log.Logger, dir string, metrics *Metrics
 		}
 
 		idx := NewMultiIndex(IndexSlice(indices))
-		if m.chunkFilter != nil {
-			idx.SetChunkFilterer(m.chunkFilter)
+		if f := m.getChunkFilter(); f != nil {
+			idx.SetChunkFilterer(f)
 		}
 		return idx, nil
 	})
@@ -283,7 +284,16 @@ func (m *HeadManager) Stop() error {
 }
 
 func (m *HeadManager) SetChunkFilterer(chunkFilter chunk.RequestChunkFilterer) {
+	m.chunkFilterMu.Lock()
 	m.chunkFilter = chunkFilter
+	m.chunkFilterMu.Unlock()
+}
+
+func (m *HeadManager) getChunkFilter() chunk.RequestChunkFilterer {
+	m.chunkFilterMu.Lock()
+	f := m.chunkFilter
+	m.chunkFilterMu.Unlock()
+	return f
 }
 
 func (m *HeadManager) Append(userID string, ls labels.Labels, fprint uint64, chks index.ChunkMetas) error {
@@ -692,13 +702,14 @@ func parseWALPath(p string) (id WALIdentifier, ok bool) {
 type tenantHeads struct {
 	mint, maxt atomic.Int64 // easy lookup for Bounds() impl
 
-	start       time.Time
-	shards      int
-	locks       []sync.RWMutex
-	tenants     []map[string]*Head
-	log         log.Logger
-	chunkFilter chunk.RequestChunkFilterer
-	metrics     *Metrics
+	start         time.Time
+	shards        int
+	locks         []sync.RWMutex
+	tenants       []map[string]*Head
+	log           log.Logger
+	chunkFilterMu sync.Mutex
+	chunkFilter   chunk.RequestChunkFilterer
+	metrics       *Metrics
 }
 
 func newTenantHeads(start time.Time, shards int, metrics *Metrics, logger log.Logger) *tenantHeads {
@@ -784,7 +795,16 @@ func (t *tenantHeads) shardForTenant(userID string) uint64 {
 func (t *tenantHeads) Close() error { return nil }
 
 func (t *tenantHeads) SetChunkFilterer(chunkFilter chunk.RequestChunkFilterer) {
+	t.chunkFilterMu.Lock()
 	t.chunkFilter = chunkFilter
+	t.chunkFilterMu.Unlock()
+}
+
+func (t *tenantHeads) getChunkFilter() chunk.RequestChunkFilterer {
+	t.chunkFilterMu.Lock()
+	f := t.chunkFilter
+	t.chunkFilterMu.Unlock()
+	return f
 }
 
 func (t *tenantHeads) Bounds() (model.Time, model.Time) {
@@ -801,8 +821,8 @@ func (t *tenantHeads) tenantIndex(userID string, from, through model.Time) (idx 
 	}
 
 	idx = NewTSDBIndex(tenant.indexRange(int64(from), int64(through)))
-	if t.chunkFilter != nil {
-		idx.SetChunkFilterer(t.chunkFilter)
+	if f := t.getChunkFilter(); f != nil {
+		idx.SetChunkFilterer(f)
 	}
 	return idx, true
 
