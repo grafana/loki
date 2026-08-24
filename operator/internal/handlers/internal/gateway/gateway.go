@@ -48,7 +48,7 @@ func BuildOptions(ctx context.Context, log logr.Logger, k k8s.Client, stack *lok
 		}
 	}
 
-	if err = validateTLSConfig(ctx, k, stack); err != nil {
+	if err := validateTLSConfig(ctx, k, stack); err != nil {
 		return "", tenants, err
 	}
 
@@ -92,25 +92,4 @@ func BuildOptions(ctx context.Context, log logr.Logger, k k8s.Client, stack *lok
 	}
 
 	return baseDomain, tenants, nil
-}
-
-func validatePassthroughCA(ctx context.Context, k k8s.Client, httpEncryption bool, stack *lokiv1.LokiStack) error {
-	if !httpEncryption {
-		// TODO(JoaoBraveCoding): Discuss with @xperimental if this makes sense or if we should always require
-		// mTLS with the client
-		return nil // If HTTP encryption is not enabled, we do not require clients to provide a certificate
-	}
-
-	if stack.Spec.Tenants.Passthrough == nil || stack.Spec.Tenants.Passthrough.CA == nil {
-		return &status.DegradedError{
-			Message: "Invalid passthrough configuration: missing CA configuration",
-			Reason:  lokiv1.ReasonInvalidPassthroughConfiguration,
-			Requeue: false,
-		}
-	}
-	err := validateValueRef(ctx, k, fieldNameCA, stack.Namespace, passthroughCAValidationContext.description, stack.Spec.Tenants.Passthrough.CA)
-	if err := toDegradedError(err, fieldNameCA, passthroughCAValidationContext); err != nil {
-		return err
-	}
-	return nil // CEL rules on ValueReference handle the rest
 }
