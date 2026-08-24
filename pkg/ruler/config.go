@@ -92,15 +92,23 @@ func (c *RemoteWriteConfig) Clone() (*RemoteWriteConfig, error) {
 	}
 
 	// BasicAuth.Password has a type of Secret (github.com/prometheus/common/config/config.go),
-	// so when its value is marshaled it is obfuscated as "<secret>".
-	// Here we copy the original password into the cloned config.
+	// so when its value is marshaled it is obfuscated as "<secret>". Here we copy the original
+	// password into the cloned config. AzureADConfig.OAuth.ClientSecret is still a plain string
+	// in the Prometheus version vendored here, but downstream forks type it as Secret (e.g. to
+	// fix CVE-2026-42151), so it needs the same treatment.
 	if n.Client != nil && n.Client.HTTPClientConfig.BasicAuth != nil {
 		n.Client.HTTPClientConfig.BasicAuth.Password = c.Client.HTTPClientConfig.BasicAuth.Password
+	}
+	if n.Client != nil && n.Client.AzureADConfig != nil && n.Client.AzureADConfig.OAuth != nil {
+		n.Client.AzureADConfig.OAuth.ClientSecret = c.Client.AzureADConfig.OAuth.ClientSecret
 	}
 
 	for id := range n.Clients {
 		if n.Clients[id].HTTPClientConfig.BasicAuth != nil {
 			n.Clients[id].HTTPClientConfig.BasicAuth.Password = c.Clients[id].HTTPClientConfig.BasicAuth.Password
+		}
+		if n.Clients[id].AzureADConfig != nil && n.Clients[id].AzureADConfig.OAuth != nil {
+			n.Clients[id].AzureADConfig.OAuth.ClientSecret = c.Clients[id].AzureADConfig.OAuth.ClientSecret
 		}
 	}
 
