@@ -342,7 +342,7 @@ func TestLabelExtractorWithStages(t *testing.T) {
 }
 
 func TestDistinctValueSampleExtractor(t *testing.T) {
-	ex, err := NewDistinctValueSampleExtractor("mac", nil, []string{"version"})
+	ex, err := NewDistinctValueSampleExtractor("mac", nil, []string{"version"}, false, false)
 	require.NoError(t, err)
 
 	t.Run("hashes distinct values and groups labels", func(t *testing.T) {
@@ -369,20 +369,33 @@ func TestDistinctValueSampleExtractor(t *testing.T) {
 
 func TestNewDistinctValueSampleExtractorDoesNotMutateGroups(t *testing.T) {
 	groups := []string{"version", "region"}
-	_, err := NewDistinctValueSampleExtractor("mac", nil, groups)
+	_, err := NewDistinctValueSampleExtractor("mac", nil, groups, false, false)
 	require.NoError(t, err)
 	require.Equal(t, []string{"version", "region"}, groups)
 }
 
 func TestNewDistinctValueSampleExtractorAllowsEmptyGroups(t *testing.T) {
-	ex, err := NewDistinctValueSampleExtractor("mac", nil, nil)
-	require.NoError(t, err)
+	t.Run("keeps stream labels minus the counted field when grouping is omitted", func(t *testing.T) {
+		ex, err := NewDistinctValueSampleExtractor("mac", nil, []string{"mac"}, true, false)
+		require.NoError(t, err)
 
-	sample, ok := ex.ForStream(labels.FromStrings("mac", "aa:bb", "version", "1")).
-		Process(0, []byte("line"), labels.EmptyLabels())
-	require.True(t, ok)
-	require.Equal(t, xxhash.Sum64String("aa:bb"), math.Float64bits(sample.Value))
-	require.Equal(t, labels.EmptyLabels(), sample.Labels.Labels())
+		sample, ok := ex.ForStream(labels.FromStrings("mac", "aa:bb", "job", "devices", "version", "1")).
+			Process(0, []byte("line"), labels.EmptyLabels())
+		require.True(t, ok)
+		require.Equal(t, xxhash.Sum64String("aa:bb"), math.Float64bits(sample.Value))
+		require.Equal(t, labels.FromStrings("job", "devices", "version", "1"), sample.Labels.Labels())
+	})
+
+	t.Run("strips labels for by ()", func(t *testing.T) {
+		ex, err := NewDistinctValueSampleExtractor("mac", nil, nil, false, true)
+		require.NoError(t, err)
+
+		sample, ok := ex.ForStream(labels.FromStrings("mac", "aa:bb", "version", "1")).
+			Process(0, []byte("line"), labels.EmptyLabels())
+		require.True(t, ok)
+		require.Equal(t, xxhash.Sum64String("aa:bb"), math.Float64bits(sample.Value))
+		require.Equal(t, labels.EmptyLabels(), sample.Labels.Labels())
+	})
 }
 
 func mustSampleExtractor(ex SampleExtractor, err error) SampleExtractor {

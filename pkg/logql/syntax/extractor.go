@@ -111,8 +111,19 @@ func (e *CountDistinctSketchExpr) Extractor() (log.SampleExtractor, error) {
 }
 
 func distinctValueExtractor(label string, left *LogRangeExpr, grouping *Grouping) (log.SampleExtractor, error) {
-	var groups []string
-	if grouping != nil {
+	var (
+		groups   []string
+		without  bool
+		noLabels bool
+	)
+	switch {
+	case grouping == nil:
+		// Default grouping keeps stream labels, minus the counted field.
+		groups = []string{label}
+		without = true
+	case grouping.Singleton():
+		noLabels = true
+	default:
 		groups = grouping.Groups
 	}
 	// We can't mutate the expression's groups in place (see Grouping.Groups doc), so we make
@@ -130,5 +141,5 @@ func distinctValueExtractor(label string, left *LogRangeExpr, grouping *Grouping
 		stages = st
 	}
 
-	return log.NewDistinctValueSampleExtractor(label, stages, sortedGroups)
+	return log.NewDistinctValueSampleExtractor(label, stages, sortedGroups, without, noLabels)
 }

@@ -154,6 +154,38 @@ func Test_Extractor_DoesNotMutateGroupingInPlace(t *testing.T) {
 	require.Equal(t, []string{"c", "a"}, vecAgg.Grouping.Groups)
 }
 
+func TestLabelAggregationExtractorGrouping(t *testing.T) {
+	stream := labels.FromStrings("foo", "bar", "mac", "aa:bb", "version", "1")
+	tests := []struct {
+		query string
+		want  labels.Labels
+	}{
+		{
+			query: `approx_count_distinct(mac, {foo="bar"}[1d])`,
+			want:  labels.FromStrings("foo", "bar", "version", "1"),
+		},
+		{
+			query: `approx_count_distinct(mac, {foo="bar"}[1d]) by ()`,
+			want:  labels.EmptyLabels(),
+		},
+		{
+			query: `approx_count_distinct(mac, {foo="bar"}[1d]) by (version)`,
+			want:  labels.FromStrings("version", "1"),
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.query, func(t *testing.T) {
+			expr, err := ParseSampleExpr(tc.query)
+			require.NoError(t, err)
+			ex, err := expr.Extractor()
+			require.NoError(t, err)
+			sample, ok := ex.ForStream(stream).Process(0, []byte("line"), labels.EmptyLabels())
+			require.True(t, ok)
+			require.Equal(t, tc.want, sample.Labels.Labels())
+		})
+	}
+}
+
 func TestLabelAggregationExtractorDoesNotMutateGrouping(t *testing.T) {
 	expr, err := ParseExpr(`approx_count_distinct(mac, {foo="bar"}[1d]) by (version, region)`)
 	require.NoError(t, err)

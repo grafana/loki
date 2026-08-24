@@ -239,23 +239,25 @@ func (l *streamLabelSampleExtractor) BaseLabels() LabelsResult { return l.builde
 
 // NewDistinctValueSampleExtractor hashes the raw string value of a label or
 // extracted field into Sample.Value via xxhash64 / Float64frombits. Missing or
-// empty values are skipped. Output labels are restricted to the grouping set.
-// An empty groups slice is valid and means the query is ungrouped: samples
-// keep no labels so every stream contributes to one series.
-func NewDistinctValueSampleExtractor(labelName string, stages []Stage, groups []string) (SampleExtractor, error) {
+// empty values are skipped.
+//
+// Grouping matches range aggregations: without=true drops only those groups
+// (used when grouping is omitted, to keep stream labels minus the counted
+// field); noLabels=true is by () and emits one unlabeled series; otherwise
+// output labels are restricted to groups.
+func NewDistinctValueSampleExtractor(labelName string, stages []Stage, groups []string, without, noLabels bool) (SampleExtractor, error) {
 	if labelName == "" {
 		return nil, errors.New("distinct value extractor requires a non-empty label name")
 	}
 	sortedGroups := make([]string, len(groups))
 	copy(sortedGroups, groups)
 	sort.Strings(sortedGroups)
-	noLabels := len(sortedGroups) == 0
 	preStage := ReduceStages(stages)
-	hints := NewParserHint(preStage.RequiredLabelNames(), sortedGroups, false, noLabels, labelName, stages)
+	hints := NewParserHint(preStage.RequiredLabelNames(), sortedGroups, without, noLabels, labelName, stages)
 	return &distinctValueSampleExtractor{
 		preStage:         preStage,
 		labelName:        labelName,
-		baseBuilder:      NewBaseLabelsBuilderWithGrouping(sortedGroups, hints, false, noLabels),
+		baseBuilder:      NewBaseLabelsBuilderWithGrouping(sortedGroups, hints, without, noLabels),
 		streamExtractors: make(map[uint64]StreamSampleExtractor),
 	}, nil
 }

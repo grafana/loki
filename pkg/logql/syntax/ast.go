@@ -2727,15 +2727,10 @@ func HasNonAdditiveAggr(e Expr) (found bool) {
 }
 
 func groupingReducesLabels(grp *Grouping) bool {
-	if grp == nil {
+	if grp == nil || grp.Noop() {
 		return false
 	}
 
-	// both without(foo) and by (bar) have the potential
-	// to reduce labels
-	if len(grp.Groups) > 0 {
-		return true
-	}
-
-	return false
+	// by (foo), without (foo), and by () all reduce the label set.
+	return true
 }
