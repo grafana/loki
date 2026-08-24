@@ -139,7 +139,7 @@ func TestOrderAddrsInterleavesFamilies(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			assert.Equal(t, tc.want, d.orderAddrs(tc.network, tc.addrs))
+			assert.Equal(t, tc.want, d.selectAndShuffleAddrs(tc.network, tc.addrs))
 		})
 	}
 }

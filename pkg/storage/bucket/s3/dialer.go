@@ -62,7 +62,7 @@ func newShufflingDialer() *shufflingDialer {
 
 func (d *shufflingDialer) DialContext(ctx context.Context, network, address string) (net.Conn, error) {
 	host, port, err := net.SplitHostPort(address)
-	if err != nil {
+	if err != nil { // The address doesn't look the way expect - punt to Go's dialer.
 		return d.dialContext(ctx, network, address)
 	}
 
@@ -72,11 +72,11 @@ func (d *shufflingDialer) DialContext(ctx context.Context, network, address stri
 	}
 
 	addrs, err := d.lookupIPAddr(ctx, host)
-	if err != nil {
+	if err != nil { // DNS lookup failed - just report this to the caller.
 		return nil, err
 	}
 
-	addrs = d.orderAddrs(network, addrs)
+	addrs = d.selectAndShuffleAddrs(network, addrs)
 	if len(addrs) == 0 {
 		return d.dialContext(ctx, network, address)
 	}
@@ -117,13 +117,13 @@ func (d *shufflingDialer) DialContext(ctx context.Context, network, address stri
 	return nil, firstErr
 }
 
-// orderAddrs drops addresses the network does not permit, then shuffles within
+// selectAndShuffleAddrs drops addresses the network does not permit, then shuffles within
 // each address family and interleaves the two, leading with the family the
 // resolver returned first. LookupIPAddr applies RFC 6724 sorting, so the
 // preferred family leads - we only randomise which address within it gets used.
 //
 // The families are interleaved because shufflingDialer does not try v4 and v6 in parallel.
-func (d *shufflingDialer) orderAddrs(network string, addrs []net.IPAddr) []net.IPAddr {
+func (d *shufflingDialer) selectAndShuffleAddrs(network string, addrs []net.IPAddr) []net.IPAddr {
 	var v4, v6 []net.IPAddr
 	v6First := false
 
