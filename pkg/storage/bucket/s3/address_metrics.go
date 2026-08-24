@@ -46,15 +46,15 @@ type addressTracker struct {
 	distinct prometheus.Counter
 	// how many we are spread across right now, so we can see if
 	// shufflingDialer is working.
-	openGaug prometheus.Gauge
+	openGauge prometheus.Gauge
 }
 
 func newAddressTracker(dialerName string) *addressTracker {
 	return &addressTracker{
-		seen:     map[string]struct{}{},
-		open:     map[string]int{},
-		distinct: dialerDistinctAddresses.WithLabelValues(dialerName),
-		openGaug: dialerOpenAddresses.WithLabelValues(dialerName),
+		seen:      map[string]struct{}{},
+		open:      map[string]int{},
+		distinct:  dialerDistinctAddresses.WithLabelValues(dialerName),
+		openGauge: dialerOpenAddresses.WithLabelValues(dialerName),
 	}
 }
 
@@ -83,7 +83,7 @@ func (t *addressTracker) acquire(addr string) {
 
 	t.open[addr]++
 	if t.open[addr] == 1 {
-		t.openGaug.Inc()
+		t.openGauge.Inc()
 	}
 }
 
@@ -100,7 +100,7 @@ func (t *addressTracker) release(addr string) {
 		return
 	}
 	delete(t.open, addr)
-	t.openGaug.Dec()
+	t.openGauge.Dec()
 }
 
 // remoteIP is the address without its port.
