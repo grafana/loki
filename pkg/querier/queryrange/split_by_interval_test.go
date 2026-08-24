@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"runtime"
 	"strconv"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -1726,6 +1727,59 @@ func Test_seriesvolume_splitByInterval_Do(t *testing.T) {
 		})
 	})
 
+	t.Run("volumes rank after all splits, not pairwise", func(t *testing.T) {
+		// Pairwise MergeResponse applies Limit after each fold and can drop a
+		// name that later splits would have ranked in the top N.
+		next := queryrangebase.HandlerFunc(func(_ context.Context, r queryrangebase.Request) (queryrangebase.Response, error) {
+			from := r.(*logproto.VolumeRequest).From.Time().UTC()
+			var volumes []logproto.Volume
+			switch {
+			case from.Before(time.Unix(3600, 0).UTC()):
+				volumes = []logproto.Volume{
+					{Name: `{app="a"}`, Volume: 100},
+					{Name: `{app="b"}`, Volume: 90},
+				}
+			case from.Before(time.Unix(7200, 0).UTC()):
+				volumes = []logproto.Volume{
+					{Name: `{app="c"}`, Volume: 80},
+					{Name: `{app="d"}`, Volume: 70},
+				}
+			default:
+				volumes = []logproto.Volume{
+					{Name: `{app="b"}`, Volume: 80},
+					{Name: `{app="d"}`, Volume: 80},
+				}
+			}
+			return &VolumeResponse{
+				Response: &logproto.VolumeResponse{
+					Volumes: volumes,
+					Limit:   2,
+				},
+			}, nil
+		})
+
+		l := WithSplitByLimits(fakeLimits{maxQueryParallelism: 1}, time.Hour)
+		split := setup(next, l)
+		req := &logproto.VolumeRequest{
+			From:     model.TimeFromUnix(0),
+			Through:  model.TimeFromUnix(int64((3 * time.Hour) / time.Second)),
+			Matchers: "{}",
+			Limit:    2,
+		}
+
+		res, err := split.Do(ctx, req)
+		require.NoError(t, err)
+
+		got := res.(*VolumeResponse).Response
+		require.Equal(t, &logproto.VolumeResponse{
+			Volumes: []logproto.Volume{
+				{Name: `{app="b"}`, Volume: 170},
+				{Name: `{app="d"}`, Volume: 150},
+			},
+			Limit: 2,
+		}, got)
+	})
+
 	// This will never happen because we hardcode 24h spit by for this code path
 	// in the middleware. However, that split by is not validated here, so we either
 	// need to support this case or error.
@@ -1999,5 +2053,120 @@ func assertSplits(t *testing.T, want, splits []queryrangebase.Request) {
 			equal := assert.Equal(t, exp, act)
 			t.Logf("\t#%d [matches: %v]: expected %q/%q got %q/%q\n", j, equal, exp.GetStart(), exp.GetEnd(), act.GetStart(), act.GetEnd())
 		}
+	}
+}
+
+func foldResponses(resps []queryrangebase.Response) (queryrangebase.Response, error) {
+	var acc queryrangebase.Response
+	for _, r := range resps {
+		if acc == nil {
+			acc = r
+			continue
+		}
+		merged, err := DefaultCodec.MergeResponse(acc, r)
+		if err != nil {
+			return nil, err
+		}
+		acc = merged
+	}
+	return acc, nil
+}
+
+func makeLogSplitResponses(splits, streams, entriesPerStream int) []queryrangebase.Response {
+	line := strings.Repeat("x", 256)
+	resps := make([]queryrangebase.Response, splits)
+	for i := 0; i < splits; i++ {
+		result := make([]logproto.Stream, streams)
+		for s := 0; s < streams; s++ {
+			ents := make([]logproto.Entry, entriesPerStream)
+			for e := 0; e < entriesPerStream; e++ {
+				ents[e] = logproto.Entry{
+					Timestamp: time.Unix(int64(i*entriesPerStream+e), 0),
+					Line:      line,
+				}
+			}
+			result[s] = logproto.Stream{
+				Labels:  fmt.Sprintf(`{app="foo", stream="%d"}`, s),
+				Entries: ents,
+			}
+		}
+		resps[i] = &LokiResponse{
+			Status:    loghttp.QueryStatusSuccess,
+			Direction: logproto.FORWARD,
+			Limit:     uint32(splits * streams * entriesPerStream),
+			Version:   uint32(loghttp.VersionV1),
+			Data: LokiData{
+				ResultType: loghttp.ResultTypeStream,
+				Result:     result,
+			},
+		}
+	}
+	return resps
+}
+
+func makeMetricSplitResponses(splits, series, samples int) []queryrangebase.Response {
+	resps := make([]queryrangebase.Response, splits)
+	for i := 0; i < splits; i++ {
+		result := make([]queryrangebase.SampleStream, series)
+		for s := 0; s < series; s++ {
+			vals := make([]logproto.LegacySample, samples)
+			for p := 0; p < samples; p++ {
+				vals[p] = logproto.LegacySample{
+					TimestampMs: int64(i*samples+p) * 1000,
+					Value:       float64(p),
+				}
+			}
+			result[s] = queryrangebase.SampleStream{
+				Labels:  []logproto.LabelAdapter{{Name: "series", Value: strconv.Itoa(s)}},
+				Samples: vals,
+			}
+		}
+		resps[i] = &LokiPromResponse{
+			Response: &queryrangebase.PrometheusResponse{
+				Status: "success",
+				Data: queryrangebase.PrometheusData{
+					ResultType: model.ValMatrix.String(),
+					Result:     result,
+				},
+			},
+		}
+	}
+	return resps
+}
+
+func Benchmark_mergeSplits(b *testing.B) {
+	for _, tc := range []struct {
+		name  string
+		resps []queryrangebase.Response
+	}{
+		{"logs/splits=64/streams=8/entries=50", makeLogSplitResponses(64, 8, 50)},
+		{"logs/splits=256/streams=8/entries=50", makeLogSplitResponses(256, 8, 50)},
+		{"metrics/splits=64/series=20/samples=30", makeMetricSplitResponses(64, 20, 30)},
+		{"metrics/splits=256/series=20/samples=30", makeMetricSplitResponses(256, 20, 30)},
+	} {
+		b.Run(tc.name+"/all_at_once", func(b *testing.B) {
+			b.ReportAllocs()
+			for i := 0; i < b.N; i++ {
+				got, err := DefaultCodec.MergeResponse(tc.resps...)
+				if err != nil {
+					b.Fatal(err)
+				}
+				if got == nil {
+					b.Fatal("nil result")
+				}
+			}
+		})
+		b.Run(tc.name+"/incremental", func(b *testing.B) {
+			b.ReportAllocs()
+			for i := 0; i < b.N; i++ {
+				got, err := foldResponses(tc.resps)
+				if err != nil {
+					b.Fatal(err)
+				}
+				if got == nil {
+					b.Fatal("nil result")
+				}
+			}
+		})
 	}
 }

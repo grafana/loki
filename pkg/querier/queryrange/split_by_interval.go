@@ -83,6 +83,17 @@ func statisticsFromResponse(resp queryrangebase.Response) (stats.Result, bool) {
 	}
 }
 
+// topKMerge truncates to Limit on every MergeResponse call. Pairwise folding
+// can drop names that would rank in the final result after later splits.
+func topKMerge(resp queryrangebase.Response) bool {
+	switch resp.(type) {
+	case *VolumeResponse, *DetectedFieldsResponse:
+		return true
+	default:
+		return false
+	}
+}
+
 type SplitByMetrics struct {
 	splits prometheus.Histogram
 }
@@ -153,6 +164,7 @@ func (h *splitByInterval) Process(
 	// Fold splits as they complete so peak memory is the running merged
 	// result plus in-flight workers, not N decoded split bodies.
 	var acc queryrangebase.Response
+	var topK []queryrangebase.Response
 	var mergedStats stats.Result
 	ctx, cancel := context.WithCancelCause(ctx)
 	defer cancel(errors.New("split by interval process canceled"))
@@ -182,11 +194,13 @@ func (h *splitByInterval) Process(
 			// cancellation, and report the cause so a real failure wins over a
 			// generic cancellation.
 			joinPartialFromResponse(ctx, acc)
+			joinPartialFromResponses(ctx, topK)
 			return nil, context.Cause(ctx)
 		case data := <-x.ch:
 			if data.err != nil {
 				// Keep the usage of the intervals that completed before the failure.
 				joinPartialFromResponse(ctx, acc)
+				joinPartialFromResponses(ctx, topK)
 				// Cancel the siblings with this failure as the cause, so it is not
 				// lost behind a generic cancellation.
 				cancel(data.err)
@@ -195,6 +209,11 @@ func (h *splitByInterval) Process(
 
 			if s, ok := statisticsFromResponse(data.resp); ok {
 				mergedStats.MergeSplit(s)
+			}
+
+			if topKMerge(data.resp) {
+				topK = append(topK, data.resp)
+				continue
 			}
 
 			if acc == nil {
@@ -218,6 +237,15 @@ func (h *splitByInterval) Process(
 				}
 			}
 		}
+	}
+
+	if len(topK) > 0 {
+		merged, err := h.merger.MergeResponse(topK...)
+		if err != nil {
+			joinPartialFromResponses(ctx, topK)
+			return nil, err
+		}
+		return merged, nil
 	}
 
 	return acc, nil
