@@ -218,15 +218,15 @@ func amConfigFromURL(cfg *ruler_config.AlertManagerConfig, url *url.URL, apiVers
 	if cfg.Notifier.BasicAuth.IsEnabled() {
 		amConfig.HTTPClientConfig.BasicAuth = &config_util.BasicAuth{
 			Username: cfg.Notifier.BasicAuth.Username,
-			Password: config_util.Secret(cfg.Notifier.BasicAuth.Password.String()),
+			Password: config_util.Secret(cfg.Notifier.BasicAuth.Password),
 		}
 	}
 
 	if cfg.Notifier.HeaderAuth.IsEnabled() {
-		if cfg.Notifier.HeaderAuth.Credentials.String() != "" {
+		if cfg.Notifier.HeaderAuth.Credentials != "" {
 			amConfig.HTTPClientConfig.Authorization = &config_util.Authorization{
 				Type:        cfg.Notifier.HeaderAuth.Type,
-				Credentials: config_util.Secret(cfg.Notifier.HeaderAuth.Credentials.String()),
+				Credentials: config_util.Secret(cfg.Notifier.HeaderAuth.Credentials),
 			}
 		} else if cfg.Notifier.HeaderAuth.CredentialsFile != "" {
 			amConfig.HTTPClientConfig.Authorization = &config_util.Authorization{
