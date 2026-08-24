@@ -1,9 +1,10 @@
 ---
 title: Manage varying workloads at scale with autoscaling queriers
 menuTitle: Autoscaling queriers
-description: Describes how to use KEDA to autoscale the quantity of queriers for a microsevices mode Kubernetes deployment.
+description: Describes how to use KEDA to autoscale the quantity of queriers for a microservices mode Kubernetes deployment.
 weight: 
 ---
+
 # Manage varying workloads at scale with autoscaling queriers
 
 A microservices deployment of a Loki cluster that runs on Kubernetes typically handles a
@@ -46,6 +47,14 @@ A higher R-value helps avoid the autoscaler from modifying the number of replica
 In our experience, we have found that a Q of 0.75 and an R of 2 minutes work well.
 You can adjust these values according to your workload.
 
+`loki_query_scheduler_inflight_requests` only tracks a fixed set of quantiles: `0.5`, `0.75`, `0.8`, `0.9`, `0.95`, and `0.99`.
+If you query the metric with any other quantile value, Prometheus returns no data.
+Choose Q from this list.
+
+The metric already smooths its value over a 60 second sliding window before Prometheus scrapes it.
+Because of this, an R value below about one minute adds little extra smoothing.
+We recommend keeping R at one minute or higher.
+
 ## Cluster capacity planning
 
 To scale the Loki queries, you configure the following settings:
@@ -54,9 +63,14 @@ To scale the Loki queries, you configure the following settings:
 - The scale down stabilization period
 - The minimum and the maximum number of queriers
 
-Querier workers process queries from the queue. You can configure each Loki querier to run several workers.
+Querier workers process queries from the queue. You can configure each Loki querier to run several workers with the
+`-querier.max-concurrent` flag (`max_concurrent` in YAML configuration), which defaults to `4`.
 To reserve workforce headroom to address workload spikes, our recommendation is not to use more than 75% of the workers.
 For example, if you configure the Loki queriers to run 6 workers, set a threshold of `floor(0.75 * 6) = 4`.
+
+`-querier.max-concurrent` sets the total number of workers for a querier, but the querier splits that total across its connections to query-schedulers (or query-frontends).
+If the configured value is lower than the number of query-schedulers a querier connects to, each connection still gets at least one worker, so the real worker count can be higher than the configured value.
+Check the actual number with the `loki_querier_worker_concurrency` metric before you calculate the threshold.
 
 To determine the minimum number of queries that you should run, run at least one querier and determine the average
 number of inflight requests the system processes 75% of the time over seven days. The target utilization of the queries is 75%.
@@ -88,6 +102,15 @@ a stabilization window for scaling down.
 
 
 ### KEDA configuration
+
+If you deploy Loki with the Helm chart, you don't need to write your own `KEDA ScaledObject`.
+The chart can generate one for you through the `querier.kedaAutoscaling` values, which already default to a Prometheus trigger on `loki_query_scheduler_inflight_requests` with a Q of 0.75 and an R of 2 minutes.
+Set `querier.kedaAutoscaling.enabled` to `true`, then set `minReplicas` and `maxReplicas` for your workload.
+You also need to set `defaults.kedaAutoscaling.prometheusAddress` to the address of your Prometheus server, because it is empty by default and the trigger cannot query the metric without it.
+To replace the default trigger, set `querier.kedaAutoscaling.triggers`.
+Refer to [Helm chart values](https://grafana.com/docs/loki/<LOKI_VERSION>/setup/install/helm/reference/#querier) for the full list of values.
+
+If you don't use the Helm chart, or need a trigger the chart doesn't support, follow the example below to write your own `KEDA ScaledObject`.
 
 This [KEDA ScaledObject](https://keda.sh/docs/latest/concepts/scaling-deployments/) example configures autoscaling
 for the querier deployment in the `loki-cluster` namespace.
