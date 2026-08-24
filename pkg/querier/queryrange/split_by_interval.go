@@ -37,9 +37,34 @@ type packedResp struct {
 // a fan-out exits on a failure or a cancellation.
 func joinPartialFromResponses(ctx context.Context, responses []queryrangebase.Response) {
 	for _, r := range responses {
-		if s, ok := statisticsFromResponse(r); ok {
-			stats.JoinPartial(ctx, s)
-		}
+		joinPartialFromResponse(ctx, r)
+	}
+}
+
+// joinPartialFromResponse keeps the usage of an already-completed split when
+// a fan-out exits on a failure or a cancellation.
+func joinPartialFromResponse(ctx context.Context, resp queryrangebase.Response) {
+	if resp == nil {
+		return
+	}
+	if s, ok := statisticsFromResponse(resp); ok {
+		stats.JoinPartial(ctx, s)
+	}
+}
+
+// setResponseStats overwrites query statistics on response types that carry them.
+// Used after incremental MergeResponse, which treats the accumulator as a single
+// split and would undercount Summary.Splits.
+func setResponseStats(resp queryrangebase.Response, s stats.Result) {
+	switch r := resp.(type) {
+	case *LokiResponse:
+		r.Statistics = s
+	case *LokiPromResponse:
+		r.Statistics = s
+	case *LokiSeriesResponse:
+		r.Statistics = s
+	case *LokiLabelNamesResponse:
+		r.Statistics = s
 	}
 }
 
@@ -124,18 +149,18 @@ func (h *splitByInterval) Process(
 	threshold int64,
 	input []*lokiResult,
 	maxSeries int,
-) ([]queryrangebase.Response, error) {
-	var responses []queryrangebase.Response
+) (queryrangebase.Response, error) {
+	// Fold splits as they complete so peak memory is the running merged
+	// result plus in-flight workers, not N decoded split bodies.
+	var acc queryrangebase.Response
+	var mergedStats stats.Result
 	ctx, cancel := context.WithCancelCause(ctx)
 	defer cancel(errors.New("split by interval process canceled"))
 
 	ch := h.Feed(ctx, input)
 
 	// queries with 0 limits should not be exited early
-	var unlimited bool
-	if threshold == 0 {
-		unlimited = true
-	}
+	unlimited := threshold == 0
 
 	// Parallelism will be at least 1
 	p := max(parallelism, 1)
@@ -156,34 +181,46 @@ func (h *splitByInterval) Process(
 			// Keep the usage of the intervals that completed before the
 			// cancellation, and report the cause so a real failure wins over a
 			// generic cancellation.
-			joinPartialFromResponses(ctx, responses)
+			joinPartialFromResponse(ctx, acc)
 			return nil, context.Cause(ctx)
 		case data := <-x.ch:
 			if data.err != nil {
 				// Keep the usage of the intervals that completed before the failure.
-				joinPartialFromResponses(ctx, responses)
+				joinPartialFromResponse(ctx, acc)
 				// Cancel the siblings with this failure as the cause, so it is not
 				// lost behind a generic cancellation.
 				cancel(data.err)
 				return nil, data.err
 			}
 
-			responses = append(responses, data.resp)
+			if s, ok := statisticsFromResponse(data.resp); ok {
+				mergedStats.MergeSplit(s)
+			}
+
+			if acc == nil {
+				acc = data.resp
+			} else {
+				merged, err := h.merger.MergeResponse(acc, data.resp)
+				if err != nil {
+					joinPartialFromResponse(ctx, acc)
+					cancel(err)
+					return nil, err
+				}
+				acc = merged
+			}
+			setResponseStats(acc, mergedStats)
 
 			// see if we can exit early if a limit has been reached
 			if casted, ok := data.resp.(*LokiResponse); !unlimited && ok {
 				threshold -= casted.Count()
-
 				if threshold <= 0 {
-					return responses, nil
+					return acc, nil
 				}
-
 			}
-
 		}
 	}
 
-	return responses, nil
+	return acc, nil
 }
 
 func (h *splitByInterval) loop(ctx context.Context, ch <-chan *lokiResult, next queryrangebase.Handler) {
@@ -276,11 +313,7 @@ func (h *splitByInterval) Do(ctx context.Context, r queryrangebase.Request) (que
 	maxSeriesCapture := func(id string) int { return h.limits.MaxQuerySeries(ctx, id) }
 	maxSeries := validation.SmallestPositiveIntPerTenant(tenantIDs, maxSeriesCapture)
 	maxParallelism := MinWeightedParallelism(ctx, tenantIDs, h.configs, h.limits, model.Time(r.GetStart().UnixMilli()), model.Time(r.GetEnd().UnixMilli()))
-	resps, err := h.Process(ctx, maxParallelism, limit, input, maxSeries)
-	if err != nil {
-		return nil, err
-	}
-	return h.merger.MergeResponse(resps...)
+	return h.Process(ctx, maxParallelism, limit, input, maxSeries)
 }
 
 // maxRangeVectorAndOffsetDurationFromQueryString

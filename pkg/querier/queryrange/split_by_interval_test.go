@@ -1861,6 +1861,59 @@ func Test_ExitEarly(t *testing.T) {
 	require.Equal(t, expected, res)
 }
 
+func Test_splitByInterval_Do_manySplitsPreservesSplitStats(t *testing.T) {
+	// Pairwise MergeResponse treats the accumulator as one split, so Process
+	// restamps stats from the raw sub-responses. This would report Splits=2
+	// without that restamp.
+	const n = 8
+	ctx := user.InjectOrgID(context.Background(), "1")
+	next := queryrangebase.HandlerFunc(func(_ context.Context, r queryrangebase.Request) (queryrangebase.Response, error) {
+		return &LokiResponse{
+			Status:    loghttp.QueryStatusSuccess,
+			Direction: r.(*LokiRequest).Direction,
+			Limit:     r.(*LokiRequest).Limit,
+			Version:   uint32(loghttp.VersionV1),
+			Data: LokiData{
+				ResultType: loghttp.ResultTypeStream,
+				Result: []logproto.Stream{
+					{
+						Labels: `{foo="bar"}`,
+						Entries: []logproto.Entry{
+							{Timestamp: time.Unix(0, r.(*LokiRequest).StartTs.UnixNano()), Line: "line"},
+						},
+					},
+				},
+			},
+		}, nil
+	})
+
+	defSplitter := newDefaultSplitter(fakeLimits{}, nil)
+	l := WithSplitByLimits(fakeLimits{maxQueryParallelism: 1}, time.Hour)
+	split := SplitByIntervalMiddleware(
+		testSchemas,
+		l,
+		DefaultCodec,
+		defSplitter,
+		nilMetrics,
+	).Wrap(next)
+
+	req := &LokiRequest{
+		StartTs:   time.Unix(0, 0),
+		EndTs:     time.Unix(0, (time.Duration(n) * time.Hour).Nanoseconds()),
+		Query:     "",
+		Limit:     1000,
+		Step:      1,
+		Direction: logproto.FORWARD,
+		Path:      "/api/prom/query_range",
+	}
+
+	res, err := split.Do(ctx, req)
+	require.NoError(t, err)
+	got := res.(*LokiResponse)
+	require.Equal(t, int64(n), got.Statistics.Summary.Splits)
+	require.Len(t, got.Data.Result[0].Entries, n)
+}
+
 func Test_DoesntDeadlock(t *testing.T) {
 	n := 10
 
