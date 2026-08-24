@@ -3,6 +3,9 @@ package querier
 import (
 	"context"
 	"errors"
+	"fmt"
+	"slices"
+	"sort"
 	"sync"
 	"testing"
 	"time"
@@ -667,6 +670,19 @@ func newTestIngesterQuerier(readRingMock *readRingMock, ingesterClient *querierC
 	)
 }
 
+func newTestIngesterQuerierWithConfig(cfg Config, readRingMock *readRingMock, clientFactory client.PoolFactory) (*IngesterQuerier, error) {
+	return newIngesterQuerier(
+		cfg,
+		mockIngesterClientConfig(),
+		readRingMock,
+		nil,
+		func(string) int { return 0 },
+		clientFactory,
+		constants.Loki,
+		log.NewNopLogger(),
+	)
+}
+
 func newTestPartitionIngesterQuerier(clientFactory client.PoolFactory, instanceRing *readRingMock, partitionRing *ring.PartitionInstanceRing, tenantShards int) (*IngesterQuerier, error) {
 	return newIngesterQuerier(
 		mockQuerierConfig(),
@@ -711,4 +727,274 @@ func (c *mockQuerierTailClient) SendMsg(_ interface{}) error {
 
 func (c *mockQuerierTailClient) RecvMsg(_ interface{}) error {
 	return nil
+}
+
+func TestPreferredZoneSorter(t *testing.T) {
+	t.Parallel()
+
+	for name, tc := range map[string]struct {
+		preferred []string
+		zones     []string
+		// expectFirst is the set of zones expected to occupy the first
+		// len(expectFirst) positions, in any order.
+		expectFirst []string
+	}{
+		"no preferred zone keeps every zone": {
+			preferred:   nil,
+			zones:       []string{"A", "B", "C"},
+			expectFirst: nil,
+		},
+		"single preferred zone is sorted first": {
+			preferred:   []string{"A"},
+			zones:       []string{"A", "B", "C"},
+			expectFirst: []string{"A"},
+		},
+		"single preferred zone is sorted first regardless of input order": {
+			preferred:   []string{"C"},
+			zones:       []string{"A", "B", "C"},
+			expectFirst: []string{"C"},
+		},
+		"all preferred zones are sorted first": {
+			preferred:   []string{"A", "C"},
+			zones:       []string{"A", "B", "C"},
+			expectFirst: []string{"A", "C"},
+		},
+		"preferred zone missing from the ring is ignored": {
+			preferred:   []string{"D"},
+			zones:       []string{"A", "B", "C"},
+			expectFirst: nil,
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			// Run repeatedly: the sorter shuffles, so a single run can pass by chance.
+			for i := 0; i < 50; i++ {
+				sorted := preferredZoneSorter(tc.preferred)(slices.Clone(tc.zones))
+
+				require.ElementsMatch(t, tc.zones, sorted, "every zone must be retained")
+				if len(tc.expectFirst) > 0 {
+					require.ElementsMatch(t, tc.expectFirst, sorted[:len(tc.expectFirst)])
+				}
+			}
+		})
+	}
+}
+
+// zonedIngesters returns two ingesters per zone, and a lookup from address to zone.
+func zonedIngesters(zones ...string) ([]ring.InstanceDesc, map[string]string) {
+	instances := make([]ring.InstanceDesc, 0, len(zones)*2)
+	zoneByAddr := make(map[string]string, len(zones)*2)
+
+	for i, zone := range zones {
+		for j := 0; j < 2; j++ {
+			addr := fmt.Sprintf("%d.%d.%d.%d", i+1, i+1, i+1, j+1)
+			instances = append(instances, mockInstanceDescWithZone(addr, ring.ACTIVE, zone))
+			zoneByAddr[addr] = zone
+		}
+	}
+
+	return instances, zoneByAddr
+}
+
+// newPerAddrClientFactory returns a pool factory handing out one client per
+// address, along with a func returning the addresses a client was requested for.
+// The pool only creates a client for an ingester the querier actually queries, so
+// that set is exactly the set of queried ingesters.
+func newPerAddrClientFactory(setup func(addr string) *querierClientMock) (client.PoolFactory, func() []string) {
+	var (
+		mu      sync.Mutex
+		created = map[string]*querierClientMock{}
+	)
+
+	factory := client.PoolAddrFunc(func(addr string) (client.PoolClient, error) {
+		mu.Lock()
+		defer mu.Unlock()
+
+		if c, ok := created[addr]; ok {
+			return c, nil
+		}
+
+		c := setup(addr)
+		created[addr] = c
+		return c, nil
+	})
+
+	queriedAddrs := func() []string {
+		mu.Lock()
+		defer mu.Unlock()
+
+		addrs := make([]string, 0, len(created))
+		for addr := range created {
+			addrs = append(addrs, addr)
+		}
+		sort.Strings(addrs)
+		return addrs
+	}
+
+	return factory, queriedAddrs
+}
+
+func distinctZones(addrs []string, zoneByAddr map[string]string) []string {
+	zones := make([]string, 0, len(addrs))
+	for _, addr := range addrs {
+		if zone := zoneByAddr[addr]; !slices.Contains(zones, zone) {
+			zones = append(zones, zone)
+		}
+	}
+	sort.Strings(zones)
+	return zones
+}
+
+func TestIngesterQuerier_zoneRestrictedReads(t *testing.T) {
+	t.Parallel()
+
+	for name, tc := range map[string]struct {
+		zones               []string
+		replicationFactor   int
+		maxUnavailableZones int
+		zoneAware           bool
+		preferredZones      []string
+		ingesterQueryZones  int
+		expectZoneCount     int
+		expectZones         []string
+	}{
+		"unconfigured queries every zone": {
+			zones:               []string{"A", "B", "C"},
+			replicationFactor:   3,
+			maxUnavailableZones: 1,
+			zoneAware:           true,
+			expectZoneCount:     3,
+		},
+		"preferred zone only queries the zones needed for ring quorum": {
+			zones:               []string{"A", "B", "C"},
+			replicationFactor:   3,
+			maxUnavailableZones: 1,
+			zoneAware:           true,
+			preferredZones:      []string{"A"},
+			expectZoneCount:     2,
+			expectZones:         []string{"A"},
+		},
+		"one zone queries only the preferred zone": {
+			zones:               []string{"A", "B", "C"},
+			replicationFactor:   3,
+			maxUnavailableZones: 1,
+			zoneAware:           true,
+			preferredZones:      []string{"A"},
+			ingesterQueryZones:  1,
+			expectZoneCount:     1,
+			expectZones:         []string{"A"},
+		},
+		"two zones queries the preferred zone and one other": {
+			zones:               []string{"A", "B", "C"},
+			replicationFactor:   3,
+			maxUnavailableZones: 1,
+			zoneAware:           true,
+			preferredZones:      []string{"A"},
+			ingesterQueryZones:  2,
+			expectZoneCount:     2,
+			expectZones:         []string{"A"},
+		},
+		"more zones than replicas falls back to ring quorum": {
+			// With 4 zones and RF 3 a zone does not hold a complete copy of the
+			// data, so the restriction must be ignored.
+			zones:               []string{"A", "B", "C", "D"},
+			replicationFactor:   3,
+			maxUnavailableZones: 1,
+			zoneAware:           true,
+			preferredZones:      []string{"A"},
+			ingesterQueryZones:  1,
+			expectZoneCount:     3,
+			expectZones:         []string{"A"},
+		},
+		"zone awareness disabled queries every zone": {
+			zones:              []string{"A", "B", "C"},
+			replicationFactor:  3,
+			zoneAware:          false,
+			preferredZones:     []string{"A"},
+			ingesterQueryZones: 1,
+			expectZoneCount:    3,
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			ingesters, zoneByAddr := zonedIngesters(tc.zones...)
+
+			var ringMock *readRingMock
+			if tc.zoneAware {
+				ringMock = newZoneAwareReadRingMock(ingesters, tc.maxUnavailableZones, tc.replicationFactor)
+			} else {
+				ringMock = newReadRingMock(ingesters, 0)
+			}
+
+			factory, queriedAddrs := newPerAddrClientFactory(func(_ string) *querierClientMock {
+				c := newQuerierClientMock()
+				c.On("Label", mock.Anything, mock.Anything, mock.Anything).Return(new(logproto.LabelResponse), nil)
+				return c
+			})
+
+			cfg := mockQuerierConfig()
+			cfg.PreferAvailabilityZones = tc.preferredZones
+			cfg.IngesterQueryZones = tc.ingesterQueryZones
+
+			ingesterQuerier, err := newTestIngesterQuerierWithConfig(cfg, ringMock, factory)
+			require.NoError(t, err)
+
+			_, err = ingesterQuerier.Label(context.Background(), nil)
+			require.NoError(t, err)
+
+			// Zones beyond the ones needed are only started on failure, so wait for
+			// the expected count and then check no further zone gets queried.
+			require.Eventually(t, func() bool {
+				return len(distinctZones(queriedAddrs(), zoneByAddr)) >= tc.expectZoneCount
+			}, time.Second, time.Millisecond, "expected %d zones to be queried, got %v", tc.expectZoneCount, distinctZones(queriedAddrs(), zoneByAddr))
+
+			require.Never(t, func() bool {
+				return len(distinctZones(queriedAddrs(), zoneByAddr)) > tc.expectZoneCount
+			}, 100*time.Millisecond, 10*time.Millisecond, "no more than %d zones should be queried", tc.expectZoneCount)
+
+			queriedZones := distinctZones(queriedAddrs(), zoneByAddr)
+			require.Len(t, queriedZones, tc.expectZoneCount)
+			for _, zone := range tc.expectZones {
+				require.Contains(t, queriedZones, zone)
+			}
+
+			// Every ingester in a queried zone must be queried, as a zone only
+			// holds a complete copy of the data across all of its ingesters.
+			require.Len(t, queriedAddrs(), tc.expectZoneCount*2)
+		})
+	}
+}
+
+func TestIngesterQuerier_zoneRestrictedReadsFallBackOnFailure(t *testing.T) {
+	t.Parallel()
+
+	ingesters, zoneByAddr := zonedIngesters("A", "B", "C")
+	ringMock := newZoneAwareReadRingMock(ingesters, 1, 3)
+
+	// Every ingester in the preferred zone fails, so the querier has to fall back.
+	factory, queriedAddrs := newPerAddrClientFactory(func(addr string) *querierClientMock {
+		c := newQuerierClientMock()
+		if zoneByAddr[addr] == "A" {
+			c.On("Label", mock.Anything, mock.Anything, mock.Anything).Return(nil, errors.New("zone A is down"))
+		} else {
+			c.On("Label", mock.Anything, mock.Anything, mock.Anything).Return(new(logproto.LabelResponse), nil)
+		}
+		return c
+	})
+
+	cfg := mockQuerierConfig()
+	cfg.PreferAvailabilityZones = []string{"A"}
+	cfg.IngesterQueryZones = 1
+
+	ingesterQuerier, err := newTestIngesterQuerierWithConfig(cfg, ringMock, factory)
+	require.NoError(t, err)
+
+	_, err = ingesterQuerier.Label(context.Background(), nil)
+	require.NoError(t, err, "the query should succeed by falling back to another zone")
+
+	queriedZones := distinctZones(queriedAddrs(), zoneByAddr)
+	require.Contains(t, queriedZones, "A", "the preferred zone should be tried first")
+	require.Len(t, queriedZones, 2, "exactly one zone should be used as fallback")
 }
