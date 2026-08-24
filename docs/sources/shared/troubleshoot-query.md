@@ -897,6 +897,8 @@ These errors occur when queries are administratively blocked.
 
 The query matches a configured block rule. Administrators create tenant policies and rate limiting rules to block specific queries or query patterns to protect the cluster from expensive or problematic queries.
 
+Refer to [Block unwanted queries](https://grafana.com/docs/loki/<LOKI_VERSION>/operations/blocking-queries/) for details on how to configure and troubleshoot these policies.
+
 **Resolution:**
 
 * **Check with your Loki administrator** about blocked queries and to review policy settings.
@@ -1072,7 +1074,7 @@ Multi-tenancy is enabled but no tenant ID was provided in the request.
 
 - Enforced by: Loki API
 - Retryable: Yes (with tenant ID)
-- HTTP status: 400 Bad Request
+- HTTP status: 401 Unauthorized
 - Configurable per tenant: No
 
 ### Error: Authentication configuration conflict

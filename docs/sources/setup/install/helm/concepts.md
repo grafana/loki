@@ -18,11 +18,12 @@ This section describes the components installed by the Helm Chart.
 ## 3 methods of deployment
 
 The Loki chart supports three methods of deployment:
-- [Monolithic](../install-monolithic/) 
-- [Simple Scalable](../install-scalable/)
-- [Microservice](../install-microservices/)
 
-By default, the chart installs in [Monolithic](../install-monolithic/) mode (`deploymentMode: Monolithic`). For production at scale, we recommend deploying Loki in *microservices* (`deploymentMode: Distributed`) mode. To understand the differences between deployment methods, see the [Loki deployment modes](../../../../get-started/deployment-modes/) documentation.
+- [Monolithic](https://grafana.com/docs/loki/<LOKI_VERSION>/setup/install/helm/install-monolithic/)
+- [Simple Scalable](https://grafana.com/docs/loki/<LOKI_VERSION>/setup/install/helm/install-scalable/)
+- [Microservice](https://grafana.com/docs/loki/<LOKI_VERSION>/setup/install/helm/install-microservices/)
+
+By default, the chart installs in [Monolithic](https://grafana.com/docs/loki/<LOKI_VERSION>/setup/install/helm/install-monolithic/) mode (`deploymentMode: Monolithic`). For production at scale, we recommend deploying Loki in *microservices* (`deploymentMode: Distributed`) mode. To understand the differences between deployment methods, see the [Loki deployment modes](https://grafana.com/docs/loki/<LOKI_VERSION>/get-started/deployment-modes/) documentation.
 
 {{< admonition type="note" >}}
 Simple Scalable Deployment (SSD) mode is being deprecated. The timeline for the deprecation is to be determined (TBD), but will happen before Loki 4.0 is released.
@@ -30,7 +31,7 @@ Simple Scalable Deployment (SSD) mode is being deprecated. The timeline for the 
 
 ## Zone-aware replication
 
-When deploying in [microservices](../install-microservices/) mode, the chart enables **zone-aware replication** for ingesters by default (`ingester.zoneAwareReplication.enabled: true`). This creates three ingester StatefulSets (zone-a, zone-b, zone-c) and requires enabling the `rollout-operator` subchart (`rollout_operator.enabled: true`) for coordinated zone rollouts. Zone-aware replication allows multiple ingesters within a single zone to be shut down and restarted simultaneously during rollouts, while the remaining two zones guarantee at least one copy of the data.
+When deploying in [microservices](https://grafana.com/docs/loki/<LOKI_VERSION>/setup/install/helm/install-microservices/) mode, the chart enables **zone-aware replication** for ingesters by default (`ingester.zoneAwareReplication.enabled: true`). This creates three ingester StatefulSets (zone-a, zone-b, zone-c) and requires enabling the `rollout-operator` subchart (`rollout_operator.enabled: true`) for coordinated zone rollouts. Zone-aware replication allows multiple ingesters within a single zone to be shut down and restarted simultaneously during rollouts, while the remaining two zones guarantee at least one copy of the data.
 
 To disable zone-aware replication (for example, in a development or test environment):
 
@@ -39,6 +40,8 @@ ingester:
   zoneAwareReplication:
     enabled: false
 ```
+
+If you deploy Loki using the jsonnet ([ksonnet](https://github.com/grafana/loki/tree/main/production/ksonnet)) method instead of the Helm chart, refer to [Speed up ingester rollout using zone awareness](https://grafana.com/docs/loki/<LOKI_VERSION>/operations/zone-ingesters/), which describes the equivalent `multi_zone_ingester_*` jsonnet configuration.
 
 ## Pattern ingester
 
@@ -69,6 +72,7 @@ The **overrides exporter** (`overridesExporter`) is an optional component that e
 ## Bloom filters (experimental)
 
 The chart includes experimental support for **bloom filters** through three components:
+
 - `bloomGateway`: Serves bloom filter queries
 - `bloomPlanner`: Plans bloom filter build jobs
 - `bloomBuilder`: Builds bloom filters
@@ -78,12 +82,13 @@ All three are disabled by default (replicas set to 0). Enable bloom filters in t
 ## Monitoring Loki
 
 The Loki Helm chart includes built-in monitoring resources that can be enabled:
+
 - **ServiceMonitor** (`monitoring.serviceMonitor.enabled`): Creates Prometheus Operator ServiceMonitor resources for scraping Loki metrics.
 - **Recording rules** (`monitoring.rules.enabled`): Creates a PrometheusRule resource with loki-mixin recording rules.
 - **Alert rules** (`monitoring.alerts.enabled`): Creates a PrometheusRule resource with alerts such as `LokiRequestErrors`, `LokiRequestPanics`, and `LokiRequestLatency`.
 - **Dashboards** (`monitoring.dashboards.enabled`): Creates ConfigMaps containing Grafana dashboards for monitoring Loki.
 
-These built-in monitoring resources are disabled by default. For comprehensive cluster-wide observability, use the [Kubernetes monitoring Helm chart](https://github.com/grafana/k8s-monitoring-helm). See [Monitoring](../monitor-and-alert/) for details.
+These built-in monitoring resources are disabled by default. For comprehensive cluster-wide observability, use the [Kubernetes monitoring Helm chart](https://github.com/grafana/k8s-monitoring-helm). See [Monitoring](https://grafana.com/docs/loki/<LOKI_VERSION>/setup/install/helm/monitor-and-alert/) for details.
 
 {{< admonition type="note" >}}
 For comprehensive cluster-wide observability, Grafana Labs recommends the [Kubernetes monitoring Helm chart](https://github.com/grafana/k8s-monitoring-helm). The Loki chart still provides optional built-in Prometheus Operator resources under `monitoring.*`; only the former `monitoring.selfMonitoring` / Grafana Agent integration has been removed.
@@ -91,7 +96,7 @@ For comprehensive cluster-wide observability, Grafana Labs recommends the [Kuber
 
 ## Canary
 
-This chart installs the [Loki Canary app](../../../../operations/loki-canary/) by default. This is another tool to verify the Loki deployment is in a healthy state. It can be disabled by setting `lokiCanary.enabled=false`.
+This chart installs the [Loki Canary app](https://grafana.com/docs/loki/<LOKI_VERSION>/operations/loki-canary/) by default. This is another tool to verify the Loki deployment is in a healthy state. It can be disabled by setting `lokiCanary.enabled=false`.
 
 ## Gateway
 
@@ -104,4 +109,4 @@ If NetworkPolicies are enabled, they are more restrictive if the gateway is enab
 
 ## Caching
 
-By default, the chart deploys Memcached-based **chunks cache** (`chunksCache.enabled: true`) and **results cache** (`resultsCache.enabled: true`). To use an externally managed Memcached instead, disable the built-in caches and point `chunksCache.addresses` / `resultsCache.addresses` at your service. See [caching](../../../../operations/caching/) for tuning guidance.
+By default, the chart deploys Memcached-based **chunks cache** (`chunksCache.enabled: true`) and **results cache** (`resultsCache.enabled: true`). To use an externally managed Memcached instead, disable the built-in caches and point `chunksCache.addresses` / `resultsCache.addresses` at your service. See [caching](https://grafana.com/docs/loki/<LOKI_VERSION>/operations/caching/) for tuning guidance.

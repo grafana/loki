@@ -8,7 +8,7 @@ env:
   GAR_REPO_SLUG: "loki"
   GITHUB_APP: "loki-gh-app"
   IMAGE_PREFIX: "us-docker.pkg.dev/grafanalabs-global/dockerhub-loki-prod-mirror"
-  RELEASE_LIB_REF: "79fc5eab3e11751a7c18b9255202d81aaf031c86"
+  RELEASE_LIB_REF: "6cba58c3b7083631092af8e8fbaeb71a647fab93"
   RELEASE_REPO: "grafana/loki"
   SKIP_VALIDATION: false
   VERSIONING_STRATEGY: "always-bump-patch"
@@ -18,11 +18,11 @@ jobs:
       contents: "write"
       id-token: "write"
       pull-requests: "write"
-    uses: "grafana/loki-release/.github/workflows/check.yml@79fc5eab3e11751a7c18b9255202d81aaf031c86"
+    uses: "grafana/loki-release/.github/workflows/check.yml@6cba58c3b7083631092af8e8fbaeb71a647fab93"
     with:
       build_image: "golang:1.26.5"
       golang_ci_lint_version: "v2.10.1"
-      release_lib_ref: "79fc5eab3e11751a7c18b9255202d81aaf031c86"
+      release_lib_ref: "6cba58c3b7083631092af8e8fbaeb71a647fab93"
       skip_validation: false
   create-release-pr:
     needs:
@@ -69,7 +69,7 @@ jobs:
         echo "branch=${GITHUB_HEAD_REF:-${GITHUB_REF#refs/heads/}}" >> $GITHUB_OUTPUT
     - id: "get_github_app_token"
       name: "get github app token"
-      uses: "grafana/shared-workflows/actions/create-github-app-token@580590a644e82e79bb2598bdaba0be245a14dda0"
+      uses: "grafana/shared-workflows/actions/create-github-app-token@46f48da11e78ebdba7a8747ae456b11062fac83e"
       with:
         github_app: "${{ env.GITHUB_APP }}"
     - env:
@@ -1038,7 +1038,7 @@ jobs:
         echo "branch=${GITHUB_HEAD_REF:-${GITHUB_REF#refs/heads/}}" >> $GITHUB_OUTPUT
     - id: "get_github_app_token"
       name: "get github app token"
-      uses: "grafana/shared-workflows/actions/create-github-app-token@580590a644e82e79bb2598bdaba0be245a14dda0"
+      uses: "grafana/shared-workflows/actions/create-github-app-token@46f48da11e78ebdba7a8747ae456b11062fac83e"
       with:
         github_app: "${{ env.GITHUB_APP }}"
     - env:

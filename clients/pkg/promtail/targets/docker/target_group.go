@@ -7,9 +7,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/docker/docker/client"
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
+	"github.com/moby/moby/client"
 	"github.com/prometheus/common/config"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/discovery/targetgroup"
@@ -76,7 +76,6 @@ func (tg *targetGroup) addTarget(id string, discoveredLabels model.LabelSet) err
 
 		opts := []client.Opt{
 			client.WithHost(tg.host),
-			client.WithAPIVersionNegotiation(),
 		}
 
 		// There are other protocols than HTTP supported by the Docker daemon, like
@@ -99,7 +98,7 @@ func (tg *targetGroup) addTarget(id string, discoveredLabels model.LabelSet) err
 			)
 		}
 
-		tg.client, err = client.NewClientWithOpts(opts...)
+		tg.client, err = client.New(opts...)
 		if err != nil {
 			level.Error(tg.logger).Log("msg", "could not create new Docker client", "err", err)
 			return err

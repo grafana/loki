@@ -2,14 +2,33 @@ package framedstdcopy
 
 import (
 	"bytes"
+	"encoding/binary"
 	"errors"
 	"io"
 	"strings"
 	"sync"
 	"testing"
 
-	"github.com/docker/docker/pkg/stdcopy"
+	"github.com/moby/moby/api/pkg/stdcopy"
 )
+
+// stdWriter multiplexes writes into the 8-byte-header framing that
+// [stdcopy.StdCopy] demultiplexes. Upstream's NewStdWriter became internal to
+// moby, so the tests frame the payloads themselves.
+type stdWriter struct {
+	io.Writer
+	stream stdcopy.StdType
+}
+
+func (w stdWriter) Write(p []byte) (int, error) {
+	var header [8]byte
+	header[0] = byte(w.stream)
+	binary.BigEndian.PutUint32(header[4:], uint32(len(p)))
+	if _, err := w.Writer.Write(header[:]); err != nil {
+		return 0, err
+	}
+	return w.Writer.Write(p)
+}
 
 const (
 	tsPrefix                   string = "2024-03-14T15:32:05.358979323Z "
@@ -23,14 +42,14 @@ func timestamped(bytes []byte) []byte {
 
 func getSrcBuffer(stdOutFrames, stdErrFrames [][]byte) (buffer *bytes.Buffer, err error) {
 	buffer = new(bytes.Buffer)
-	dstOut := stdcopy.NewStdWriter(buffer, stdcopy.Stdout)
+	dstOut := stdWriter{buffer, stdcopy.Stdout}
 	for _, stdOutBytes := range stdOutFrames {
 		_, err = dstOut.Write(timestamped(stdOutBytes))
 		if err != nil {
 			return
 		}
 	}
-	dstErr := stdcopy.NewStdWriter(buffer, stdcopy.Stderr)
+	dstErr := stdWriter{buffer, stdcopy.Stderr}
 	for _, stdErrBytes := range stdErrFrames {
 		_, err = dstErr.Write(timestamped(stdErrBytes))
 		if err != nil {
@@ -248,7 +267,7 @@ func TestStdCopyReturnsErrorFromSystem(t *testing.T) {
 	}
 	// add in an error message on the Systemerr stream
 	systemErrBytes := []byte(strings.Repeat("S", unprefixedFramePayloadSize))
-	systemWriter := stdcopy.NewStdWriter(buffer, stdcopy.Systemerr)
+	systemWriter := stdWriter{buffer, stdcopy.Systemerr}
 	_, err = systemWriter.Write(systemErrBytes)
 	if err != nil {
 		t.Fatal(err)

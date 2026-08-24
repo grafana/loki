@@ -9,9 +9,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/docker/docker/api/types/container"
-	"github.com/docker/docker/client"
 	"github.com/go-kit/log"
+	"github.com/moby/moby/api/types/container"
+	"github.com/moby/moby/client"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/relabel"
@@ -46,10 +46,9 @@ func handlerForPath(t *testing.T, paths []urlContainToPath, tty bool) http.Handl
 		default:
 			w.Header().Set("Content-Type", "application/json")
 			info := container.InspectResponse{
-				ContainerJSONBase: &container.ContainerJSONBase{},
-				Mounts:            []container.MountPoint{},
-				Config:            &container.Config{Tty: tty},
-				NetworkSettings:   &container.NetworkSettings{},
+				Mounts:          []container.MountPoint{},
+				Config:          &container.Config{Tty: tty},
+				NetworkSettings: &container.NetworkSettings{},
 			}
 			err := json.NewEncoder(w).Encode(info)
 			require.NoError(t, err)
@@ -66,7 +65,7 @@ func Test_DockerTarget(t *testing.T) {
 	w := log.NewSyncWriter(os.Stderr)
 	logger := log.NewLogfmtLogger(w)
 	entryHandler := fake.New(func() {})
-	client, err := client.NewClientWithOpts(client.WithHost(ts.URL))
+	client, err := client.New(client.WithHost(ts.URL))
 	require.NoError(t, err)
 
 	ps, err := positions.New(logger, positions.Config{
@@ -131,7 +130,7 @@ func doTestPartial(t *testing.T, tty bool) {
 	w := log.NewSyncWriter(os.Stderr)
 	logger := log.NewLogfmtLogger(w)
 	entryHandler := fake.New(func() {})
-	client, err := client.NewClientWithOpts(client.WithHost(ts.URL))
+	client, err := client.New(client.WithHost(ts.URL))
 	require.NoError(t, err)
 
 	ps, err := positions.New(logger, positions.Config{

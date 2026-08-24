@@ -207,6 +207,10 @@ In this configuration, update `commonConfig.replication_factor` and `singleBinar
 
 ## Deploying the Helm chart for development and testing
 
+{{< admonition type="note" >}}
+If this is the first time you have deployed the Loki Helm chart since the move to the Community managed Helm chart, note that the URL for the chart has changed. For more information see the [Upgrade documentation](https://grafana.com/docs/loki/<LOKI_VERSION>/setup/upgrade/upgrade-to-6x/).
+{{< /admonition >}}
+
 1. Add the [Grafana Community chart repository](https://github.com/grafana-community/helm-charts) to Helm:
 
    ```bash
@@ -247,6 +251,10 @@ In this configuration, update `commonConfig.replication_factor` and `singleBinar
 ## Object Storage Configuration
 
 After testing Loki with MinIO, we recommend configuring Loki with an object storage provider. The following examples shows how to configure Loki with different object storage providers:
+
+{{< admonition type="note" >}}
+As of chart 18.3.0, `singleBinary.persistence.enableStatefulSetAutoDeletePVC` defaults to `false` (it defaulted to `true` before). This means the persistent volume claims (PVCs) for the single binary StatefulSet are retained, not automatically deleted, when the StatefulSet is deleted or scaled down. Set `singleBinary.persistence.enableStatefulSetAutoDeletePVC: true` in your values file to restore the old auto-delete behavior.
+{{< /admonition >}}
 
 {{< admonition type="caution" >}}
 When deploying Loki using S3 Storage **DO NOT** use the default bucket names;  `chunk`, `ruler` and `admin`. Choose a unique name for each bucket. For more information see the following [security update](https://grafana.com/blog/2024/06/27/grafana-security-update-grafana-loki-and-unintended-data-write-attempts-to-amazon-s3-buckets/). This caution does not apply when you are using MinIO. When using MinIO we recommend using the default bucket names.
@@ -443,13 +451,14 @@ To configure other storage providers, refer to the [Helm Chart Reference](https:
 ## Deploying the Loki Helm chart to a Production Environment
 
 {{< admonition type="note" >}}
-We are actively working on providing more guides for deploying Loki in production. 
+We are actively working on providing more guides for deploying Loki in production.
 {{< /admonition >}}
 
 We recommend running Loki at scale within a cloud environment like AWS, Azure, or GCP. The below guides will show you how to deploy a minimally viable production environment.
+
 - [Deploy Loki on AWS](https://grafana.com/docs/loki/<LOKI_VERSION>/setup/install/helm/deployment-guides/aws)
 
+## Next Steps
 
-## Next Steps 
 * Configure an agent to [send log data to Loki](/docs/loki/<LOKI_VERSION>/send-data/).
-* [Monitor the Loki deployment](/docs/loki/<LOKI_VERSION>/setup/install/helm/monitor-and-alert/), using the recommended Kubernetes monitoring Helm chart.
+* Monitor the Loki deployment using the [Meta Monitoring Helm chart](/docs/loki/<LOKI_VERSION>/setup/install/helm/monitor-and-alert/)
