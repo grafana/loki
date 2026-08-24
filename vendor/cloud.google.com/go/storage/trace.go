@@ -52,11 +52,9 @@ func traceAttributesFromContext(ctx context.Context) ([]attribute.KeyValue, bool
 }
 
 const (
-	storageOtelTracingDevVar         = "GO_STORAGE_DEV_OTEL_TRACING"
-	defaultTracerName                = "cloud.google.com/go/storage"
-	gcpClientRepo                    = "googleapis/google-cloud-go"
-	gcpClientArtifact                = "cloud.google.com/go/storage"
-	storageBucketMetadataDisabledVar = "GO_OTEL_BUCKETMETADATA_DISABLED"
+	defaultTracerName = "cloud.google.com/go/storage"
+	gcpClientRepo     = "googleapis/google-cloud-go"
+	gcpClientArtifact = "cloud.google.com/go/storage"
 )
 
 // isOTelTracingDevEnabled checks the development flag until experimental feature is launched.
@@ -108,6 +106,7 @@ func startSpanWithBucket(ctx context.Context, client *Client, bucket string, nam
 // If the context.Context provided in `ctx` contains a span then the newly-created
 // span will be a child of that span, otherwise it will be a root span.
 func startSpan(ctx context.Context, name string, opts ...trace.SpanStartOption) (context.Context, trace.Span) {
+	ctx = context.WithValue(ctx, apiMethodKey{}, name)
 	name = appendPackageName(name)
 	// TODO: Remove internalTrace upon experimental launch.
 	if !isOTelTracingDevEnabled() {
