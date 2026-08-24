@@ -2,7 +2,6 @@ package storage
 
 import (
 	"context"
-	errs "errors"
 	"sort"
 	"time"
 
@@ -24,6 +23,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/storage/chunk"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/fetcher"
 	"github.com/grafana/loki/v3/pkg/storage/config"
+	"github.com/grafana/loki/v3/pkg/util"
 	"github.com/grafana/loki/v3/pkg/util/constants"
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
 )
@@ -767,15 +767,15 @@ func fetchLazyChunks(ctx context.Context, s config.SchemaConfig, chunks []*LazyC
 		}(f, chunks)
 	}
 
-	var errors []error
+	var fetchErrs util.MultiError
 	for i := 0; i < len(chksByFetcher); i++ {
 		if err := <-errChan; err != nil {
-			errors = append(errors, err)
+			fetchErrs.Add(err)
 		}
 	}
 
-	if len(errors) > 0 {
-		return errs.Join(errors...)
+	if err := fetchErrs.Err(); err != nil {
+		return err
 	}
 
 	for _, c := range chunks {

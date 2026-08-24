@@ -19,6 +19,9 @@ import (
 	"github.com/grafana/loki/v3/pkg/logql"
 	"github.com/grafana/loki/v3/pkg/logql/log"
 	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
+	"github.com/grafana/loki/v3/pkg/storage/chunk"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/cache"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/fetcher"
 	"github.com/grafana/loki/v3/pkg/storage/config"
 	"github.com/grafana/loki/v3/pkg/util"
 )
@@ -1745,6 +1748,51 @@ func TestBatchCancel(t *testing.T) {
 	for it.Next() {
 	}
 	require.Equal(t, context.Canceled, it.Err())
+}
+
+func TestFetchLazyChunksReturnsMultiError(t *testing.T) {
+	schema := config.SchemaConfig{
+		Configs: []config.PeriodConfig{
+			{
+				From:   config.DayTime{Time: 0},
+				Schema: "v11",
+			},
+		},
+	}
+	storageErrs := []error{errors.New("first storage error"), errors.New("second storage error")}
+	chunks := make([]*LazyChunk, 0, len(storageErrs))
+	for i, storageErr := range storageErrs {
+		chunkFetcher, err := fetcher.New(cache.NewNoopCache(), cache.NewNoopCache(), false, schema, &errorChunkClient{err: storageErr}, 0, 0, true)
+		require.NoError(t, err)
+		t.Cleanup(chunkFetcher.Stop)
+
+		chunks = append(chunks, &LazyChunk{
+			Chunk: chunk.Chunk{
+				ChunkRef: logproto.ChunkRef{
+					UserID:      "user",
+					Fingerprint: uint64(i + 1),
+					From:        1,
+					Through:     2,
+				},
+			},
+			Fetcher: chunkFetcher,
+		})
+	}
+
+	err := fetchLazyChunks(context.Background(), schema, chunks)
+	multiErr, ok := err.(util.MultiError)
+	require.True(t, ok)
+	require.Len(t, multiErr, len(storageErrs))
+	require.ElementsMatch(t, storageErrs, []error(multiErr))
+}
+
+type errorChunkClient struct {
+	mockChunkStoreClient
+	err error
+}
+
+func (c *errorChunkClient) GetChunks(context.Context, []chunk.Chunk) ([]chunk.Chunk, error) {
+	return nil, c.err
 }
 
 var entry logproto.Entry
