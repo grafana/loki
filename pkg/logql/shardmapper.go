@@ -389,6 +389,7 @@ func (m ShardMapper) mapApproxTopk(expr *syntax.VectorAggregationExpr, forceNoSh
 	if shards == 0 || forceNoShard {
 		return &syntax.VectorAggregationExpr{
 			Left: &CountMinSketchEvalExpr{
+				operation: syntax.OpTypeApproxTopK,
 				downstreams: []DownstreamSampleExpr{{
 					SampleExpr: countMinSketchExpr,
 				}},
@@ -414,6 +415,7 @@ func (m ShardMapper) mapApproxTopk(expr *syntax.VectorAggregationExpr, forceNoSh
 	}
 
 	sharded := &CountMinSketchEvalExpr{
+		operation:   syntax.OpTypeApproxTopK,
 		downstreams: downstreams,
 	}
 
