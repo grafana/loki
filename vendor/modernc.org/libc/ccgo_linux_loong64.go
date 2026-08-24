@@ -320,13 +320,12 @@ const __GCC_HAVE_SYNC_COMPARE_AND_SWAP_8 = 1
 const __GCC_IEC_559 = 2
 const __GCC_IEC_559_COMPLEX = 2
 const __GNUC_EXECUTION_CHARSET_NAME = "UTF-8"
-const __GNUC_MINOR__ = 2
-const __GNUC_PATCHLEVEL__ = 1
-const __GNUC_RH_RELEASE__ = 6
+const __GNUC_MINOR__ = 3
+const __GNUC_PATCHLEVEL__ = 0
 const __GNUC_STDC_INLINE__ = 1
 const __GNUC_WIDE_EXECUTION_CHARSET_NAME = "UTF-32LE"
-const __GNUC__ = 14
-const __GXX_ABI_VERSION = 1019
+const __GNUC__ = 15
+const __GXX_ABI_VERSION = 1020
 const __HAVE_SPECULATION_SAFE_VALUE = 1
 const __HA_FBIT__ = 7
 const __HA_IBIT__ = 8
@@ -408,6 +407,8 @@ const __ORDER_BIG_ENDIAN__ = 4321
 const __ORDER_LITTLE_ENDIAN__ = 1234
 const __ORDER_PDP_ENDIAN__ = 3412
 const __PDP_ENDIAN = 3412
+const __PIC__ = 2
+const __PIE__ = 2
 const __PRAGMA_REDEFINE_EXTNAME = 1
 const __PRETTY_FUNCTION__ = 0
 const __PTRDIFF_MAX__ = 9223372036854775807
@@ -452,6 +453,9 @@ const __SIZE_MAX__ = 18446744073709551615
 const __SIZE_WIDTH__ = 64
 const __SQ_FBIT__ = 31
 const __SQ_IBIT__ = 0
+const __STDC_EMBED_EMPTY__ = 2
+const __STDC_EMBED_FOUND__ = 1
+const __STDC_EMBED_NOT_FOUND__ = 0
 const __STDC_HOSTED__ = 0
 const __STDC_VERSION__ = 199901
 const __STDC__ = 1
@@ -533,7 +537,7 @@ const __UTA_FBIT__ = 64
 const __UTA_IBIT__ = 64
 const __UTQ_FBIT__ = 128
 const __UTQ_IBIT__ = 0
-const __VERSION__ = "14.2.1 20241104 (Red Hat 14.2.1-6)"
+const __VERSION__ = "15.3.0"
 const __WCHAR_MAX__ = 2147483647
 const __WCHAR_MIN__ = -2147483648
 const __WCHAR_TYPE__ = 0
@@ -565,6 +569,8 @@ const __loongarch_sx = 1
 const __loongarch_tune = "generic"
 const __loongarch_version_major = 1
 const __loongarch_version_minor = 0
+const __pic__ = 2
+const __pie__ = 2
 const __restrict = 0
 const __restrict_arr = 0
 const __unix = 1
@@ -30428,14 +30434,13 @@ func Xbindtextdomain(tls *TLS, domainname uintptr, dirname uintptr) (r1 uintptr)
 		Xmemcpy(tls, (*Tbinding)(unsafe.Pointer(p4)).Fdomainname, domainname, domlen+uint64(1))
 		Xmemcpy(tls, (*Tbinding)(unsafe.Pointer(p4)).Fdirname, dirname, dirlen+uint64(1))
 		v2 = uintptr(unsafe.Pointer(&_bindings))
-		// __asm__ __volatile__ ("dbar 0" : : : "memory");
+		// 	__asm__ __volatile__ ("dbar 0" : : : "memory");
 		X__assert_fail(tls, __ccgo_ts+350, __ccgo_ts+385, 49, __ccgo_ts+399)
 		for {
-			// __asm__ __volatile__ (
-			//
-			//	"ll.d %0, %1"
-			//	: "=r"(v)
-			//	: "ZC"(*(void *volatile *)p));
+			// 	__asm__ __volatile__ (
+			// 		"ll.d %0, %1"
+			// 		: "=r"(v)
+			// 		: "ZC"(*(void *volatile *)p));
 			X__assert_fail(tls, __ccgo_ts+350, __ccgo_ts+385, 27, __ccgo_ts+399)
 			v7 = v
 			goto _8
@@ -30445,12 +30450,11 @@ func Xbindtextdomain(tls *TLS, domainname uintptr, dirname uintptr) (r1 uintptr)
 		_6:
 			;
 			if v5 = old == AtomicLoadPUintptr(uintptr(unsafe.Pointer(&_bindings))); v5 {
-				// __asm__ __volatile__ (
-				//
-				//	"sc.d %0, %1"
-				//	: "=r"(r), "=ZC"(*(void *volatile *)p)
-				//	: "0"(v)
-				//	: "memory");
+				// 	__asm__ __volatile__ (
+				// 		"sc.d %0, %1"
+				// 		: "=r"(r), "=ZC"(*(void *volatile *)p)
+				// 		: "0"(v)
+				// 		: "memory");
 				X__assert_fail(tls, __ccgo_ts+350, __ccgo_ts+385, 38, __ccgo_ts+399)
 				v3 = int32(r)
 				goto _4
@@ -30460,16 +30464,16 @@ func Xbindtextdomain(tls *TLS, domainname uintptr, dirname uintptr) (r1 uintptr)
 				break
 			}
 		}
-		// __asm__ __volatile__ ("dbar 0" : : : "memory");
+		// 	__asm__ __volatile__ ("dbar 0" : : : "memory");
 		X__assert_fail(tls, __ccgo_ts+350, __ccgo_ts+385, 49, __ccgo_ts+399)
 		_ = old
 		goto _9
 	_9:
 	}
-	// __asm__ __volatile__ ("dbar 0" : : : "memory");
+	// 	__asm__ __volatile__ ("dbar 0" : : : "memory");
 	X__assert_fail(tls, __ccgo_ts+350, __ccgo_ts+385, 49, __ccgo_ts+399)
 	AtomicStorePInt32(p4+12, int32(1))
-	// __asm__ __volatile__ ("dbar 0" : : : "memory");
+	// 	__asm__ __volatile__ ("dbar 0" : : : "memory");
 	X__assert_fail(tls, __ccgo_ts+350, __ccgo_ts+385, 49, __ccgo_ts+399)
 	q = AtomicLoadPUintptr(uintptr(unsafe.Pointer(&_bindings)))
 	for {
@@ -30477,10 +30481,10 @@ func Xbindtextdomain(tls *TLS, domainname uintptr, dirname uintptr) (r1 uintptr)
 			break
 		}
 		if !(Xstrcmp(tls, (*Tbinding)(unsafe.Pointer(q)).Fdomainname, domainname) != 0) && q != p4 {
-			// __asm__ __volatile__ ("dbar 0" : : : "memory");
+			// 	__asm__ __volatile__ ("dbar 0" : : : "memory");
 			X__assert_fail(tls, __ccgo_ts+350, __ccgo_ts+385, 49, __ccgo_ts+399)
 			AtomicStorePInt32(q+12, 0)
-			// __asm__ __volatile__ ("dbar 0" : : : "memory");
+			// 	__asm__ __volatile__ ("dbar 0" : : : "memory");
 			X__assert_fail(tls, __ccgo_ts+350, __ccgo_ts+385, 49, __ccgo_ts+399)
 		}
 		goto _10
@@ -30720,14 +30724,13 @@ _2:
 		_26:
 			;
 			v3 = uintptr(unsafe.Pointer(&_cats))
-			// __asm__ __volatile__ ("dbar 0" : : : "memory");
+			// 	__asm__ __volatile__ ("dbar 0" : : : "memory");
 			X__assert_fail(tls, __ccgo_ts+350, __ccgo_ts+385, 49, __ccgo_ts+483)
 			for {
-				// __asm__ __volatile__ (
-				//
-				//	"ll.d %0, %1"
-				//	: "=r"(v)
-				//	: "ZC"(*(void *volatile *)p));
+				// 	__asm__ __volatile__ (
+				// 		"ll.d %0, %1"
+				// 		: "=r"(v)
+				// 		: "ZC"(*(void *volatile *)p));
 				X__assert_fail(tls, __ccgo_ts+350, __ccgo_ts+385, 27, __ccgo_ts+483)
 				v8 = v
 				goto _23
@@ -30737,12 +30740,11 @@ _2:
 			_21:
 				;
 				if v20 = old == old_cats; v20 {
-					// __asm__ __volatile__ (
-					//
-					//	"sc.d %0, %1"
-					//	: "=r"(r), "=ZC"(*(void *volatile *)p)
-					//	: "0"(v)
-					//	: "memory");
+					// 	__asm__ __volatile__ (
+					// 		"sc.d %0, %1"
+					// 		: "=r"(r), "=ZC"(*(void *volatile *)p)
+					// 		: "0"(v)
+					// 		: "memory");
 					X__assert_fail(tls, __ccgo_ts+350, __ccgo_ts+385, 38, __ccgo_ts+483)
 					v11 = int32(r)
 					goto _19
@@ -30752,7 +30754,7 @@ _2:
 					break
 				}
 			}
-			// __asm__ __volatile__ ("dbar 0" : : : "memory");
+			// 	__asm__ __volatile__ ("dbar 0" : : : "memory");
 			X__assert_fail(tls, __ccgo_ts+350, __ccgo_ts+385, 49, __ccgo_ts+483)
 			v9 = old
 			goto _25
@@ -133306,14 +133308,13 @@ func X__libc_sigaction(tls *TLS, sig int32, sa uintptr, old1 uintptr) (r2 int32)
 			v2 = Int64FromUint64(uint64(1) << (Uint64FromInt32(sig-Int32FromInt32(1)) % (Uint64FromInt32(8) * Uint64FromInt64(8))))
 			if Uint64FromInt64(8) == Uint64FromInt64(4) {
 				v3 = v1
-				// __asm__ __volatile__ ("dbar 0" : : : "memory");
+				// 	__asm__ __volatile__ ("dbar 0" : : : "memory");
 				X__assert_fail(tls, __ccgo_ts+350, __ccgo_ts+385, 49, __ccgo_ts+1477)
 				for {
-					// __asm__ __volatile__ (
-					//
-					//	"ll.w %0, %1"
-					//	: "=r"(v)
-					//	: "ZC"(*p));
+					// 	__asm__ __volatile__ (
+					// 		"ll.w %0, %1"
+					// 		: "=r"(v)
+					// 		: "ZC"(*p));
 					X__assert_fail(tls, __ccgo_ts+350, __ccgo_ts+385, 5, __ccgo_ts+1477)
 					v7 = v
 					goto _8
@@ -133322,11 +133323,10 @@ func X__libc_sigaction(tls *TLS, sig int32, sa uintptr, old1 uintptr) (r2 int32)
 					goto _6
 				_6:
 					;
-					// __asm__ __volatile__ (
-					//
-					//	"sc.w %0, %1"
-					//	: "=r"(r), "=ZC"(*p)
-					//	: "0"(v) : "memory");
+					// 	__asm__ __volatile__ (
+					// 		"sc.w %0, %1"
+					// 		: "=r"(r), "=ZC"(*p)
+					// 		: "0"(v) : "memory");
 					X__assert_fail(tls, __ccgo_ts+350, __ccgo_ts+385, 16, __ccgo_ts+1477)
 					v4 = r
 					goto _5
@@ -133336,7 +133336,7 @@ func X__libc_sigaction(tls *TLS, sig int32, sa uintptr, old1 uintptr) (r2 int32)
 						break
 					}
 				}
-				// __asm__ __volatile__ ("dbar 0" : : : "memory");
+				// 	__asm__ __volatile__ ("dbar 0" : : : "memory");
 				X__assert_fail(tls, __ccgo_ts+350, __ccgo_ts+385, 49, __ccgo_ts+1477)
 				_ = old
 				goto _9
@@ -133353,14 +133353,13 @@ func X__libc_sigaction(tls *TLS, sig int32, sa uintptr, old1 uintptr) (r2 int32)
 				*(*uint64)(unsafe.Pointer(bp + 8)) = Uint64FromInt64(v2)
 				if **(**Tuint32_t)(__ccgo_up(bp + 8)) != 0 {
 					v11 = v10
-					// __asm__ __volatile__ ("dbar 0" : : : "memory");
+					// 	__asm__ __volatile__ ("dbar 0" : : : "memory");
 					X__assert_fail(tls, __ccgo_ts+350, __ccgo_ts+385, 49, __ccgo_ts+1477)
 					for {
-						// __asm__ __volatile__ (
-						//
-						//	"ll.w %0, %1"
-						//	: "=r"(v)
-						//	: "ZC"(*p));
+						// 	__asm__ __volatile__ (
+						// 		"ll.w %0, %1"
+						// 		: "=r"(v)
+						// 		: "ZC"(*p));
 						X__assert_fail(tls, __ccgo_ts+350, __ccgo_ts+385, 5, __ccgo_ts+1477)
 						v15 = v
 						goto _16
@@ -133369,11 +133368,10 @@ func X__libc_sigaction(tls *TLS, sig int32, sa uintptr, old1 uintptr) (r2 int32)
 						goto _14
 					_14:
 						;
-						// __asm__ __volatile__ (
-						//
-						//	"sc.w %0, %1"
-						//	: "=r"(r), "=ZC"(*p)
-						//	: "0"(v) : "memory");
+						// 	__asm__ __volatile__ (
+						// 		"sc.w %0, %1"
+						// 		: "=r"(r), "=ZC"(*p)
+						// 		: "0"(v) : "memory");
 						X__assert_fail(tls, __ccgo_ts+350, __ccgo_ts+385, 16, __ccgo_ts+1477)
 						v12 = r
 						goto _13
@@ -133383,7 +133381,7 @@ func X__libc_sigaction(tls *TLS, sig int32, sa uintptr, old1 uintptr) (r2 int32)
 							break
 						}
 					}
-					// __asm__ __volatile__ ("dbar 0" : : : "memory");
+					// 	__asm__ __volatile__ ("dbar 0" : : : "memory");
 					X__assert_fail(tls, __ccgo_ts+350, __ccgo_ts+385, 49, __ccgo_ts+1477)
 					_ = old
 					goto _17
@@ -133391,14 +133389,13 @@ func X__libc_sigaction(tls *TLS, sig int32, sa uintptr, old1 uintptr) (r2 int32)
 				}
 				if **(**Tuint32_t)(__ccgo_up(bp + 8 + 1*4)) != 0 {
 					v18 = v10 + uintptr(1)*4
-					// __asm__ __volatile__ ("dbar 0" : : : "memory");
+					// 	__asm__ __volatile__ ("dbar 0" : : : "memory");
 					X__assert_fail(tls, __ccgo_ts+350, __ccgo_ts+385, 49, __ccgo_ts+1477)
 					for {
-						// __asm__ __volatile__ (
-						//
-						//	"ll.w %0, %1"
-						//	: "=r"(v)
-						//	: "ZC"(*p));
+						// 	__asm__ __volatile__ (
+						// 		"ll.w %0, %1"
+						// 		: "=r"(v)
+						// 		: "ZC"(*p));
 						X__assert_fail(tls, __ccgo_ts+350, __ccgo_ts+385, 5, __ccgo_ts+1477)
 						v22 = v
 						goto _23
@@ -133407,11 +133404,10 @@ func X__libc_sigaction(tls *TLS, sig int32, sa uintptr, old1 uintptr) (r2 int32)
 						goto _21
 					_21:
 						;
-						// __asm__ __volatile__ (
-						//
-						//	"sc.w %0, %1"
-						//	: "=r"(r), "=ZC"(*p)
-						//	: "0"(v) : "memory");
+						// 	__asm__ __volatile__ (
+						// 		"sc.w %0, %1"
+						// 		: "=r"(r), "=ZC"(*p)
+						// 		: "0"(v) : "memory");
 						X__assert_fail(tls, __ccgo_ts+350, __ccgo_ts+385, 16, __ccgo_ts+1477)
 						v19 = r
 						goto _20
@@ -133421,7 +133417,7 @@ func X__libc_sigaction(tls *TLS, sig int32, sa uintptr, old1 uintptr) (r2 int32)
 							break
 						}
 					}
-					// __asm__ __volatile__ ("dbar 0" : : : "memory");
+					// 	__asm__ __volatile__ ("dbar 0" : : : "memory");
 					X__assert_fail(tls, __ccgo_ts+350, __ccgo_ts+385, 49, __ccgo_ts+1477)
 					_ = old
 					goto _24
@@ -133444,10 +133440,10 @@ func X__libc_sigaction(tls *TLS, sig int32, sa uintptr, old1 uintptr) (r2 int32)
 				_unmask_done = int32(1)
 			}
 			if !((*Tsigaction)(unsafe.Pointer(sa)).Fsa_flags&Int32FromInt32(SA_RESTART) != 0) {
-				// __asm__ __volatile__ ("dbar 0" : : : "memory");
+				// 	__asm__ __volatile__ ("dbar 0" : : : "memory");
 				X__assert_fail(tls, __ccgo_ts+350, __ccgo_ts+385, 49, __ccgo_ts+1477)
 				AtomicStorePInt32(uintptr(unsafe.Pointer(&X__eintr_valid_flag)), int32(1))
-				// __asm__ __volatile__ ("dbar 0" : : : "memory");
+				// 	__asm__ __volatile__ ("dbar 0" : : : "memory");
 				X__assert_fail(tls, __ccgo_ts+350, __ccgo_ts+385, 49, __ccgo_ts+1477)
 			}
 		}
@@ -135153,14 +135149,13 @@ func _locking_getc(tls *TLS, f uintptr) (r1 int32) {
 	var v4 bool
 	_, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _ = c, old, old1, r, v, v1, v10, v11, v12, v13, v14, v17, v2, v4, v6, v8
 	v1 = f + 140
-	// __asm__ __volatile__ ("dbar 0" : : : "memory");
+	// 	__asm__ __volatile__ ("dbar 0" : : : "memory");
 	X__assert_fail(tls, __ccgo_ts+350, __ccgo_ts+385, 49, __ccgo_ts+1498)
 	for {
-		// __asm__ __volatile__ (
-		//
-		//	"ll.w %0, %1"
-		//	: "=r"(v)
-		//	: "ZC"(*p));
+		// 	__asm__ __volatile__ (
+		// 		"ll.w %0, %1"
+		// 		: "=r"(v)
+		// 		: "ZC"(*p));
 		X__assert_fail(tls, __ccgo_ts+350, __ccgo_ts+385, 5, __ccgo_ts+1498)
 		v6 = v
 		goto _7
@@ -135170,11 +135165,10 @@ func _locking_getc(tls *TLS, f uintptr) (r1 int32) {
 	_5:
 		;
 		if v4 = old == 0; v4 {
-			// __asm__ __volatile__ (
-			//
-			//	"sc.w %0, %1"
-			//	: "=r"(r), "=ZC"(*p)
-			//	: "0"(v) : "memory");
+			// 	__asm__ __volatile__ (
+			// 		"sc.w %0, %1"
+			// 		: "=r"(r), "=ZC"(*p)
+			// 		: "0"(v) : "memory");
 			X__assert_fail(tls, __ccgo_ts+350, __ccgo_ts+385, 16, __ccgo_ts+1498)
 			v2 = r
 			goto _3
@@ -135184,7 +135178,7 @@ func _locking_getc(tls *TLS, f uintptr) (r1 int32) {
 			break
 		}
 	}
-	// __asm__ __volatile__ ("dbar 0" : : : "memory");
+	// 	__asm__ __volatile__ ("dbar 0" : : : "memory");
 	X__assert_fail(tls, __ccgo_ts+350, __ccgo_ts+385, 49, __ccgo_ts+1498)
 	v8 = old
 	goto _9
@@ -135202,14 +135196,13 @@ _9:
 	}
 	c = v2
 	v12 = f + 140
-	// __asm__ __volatile__ ("dbar 0" : : : "memory");
+	// 	__asm__ __volatile__ ("dbar 0" : : : "memory");
 	X__assert_fail(tls, __ccgo_ts+350, __ccgo_ts+385, 49, __ccgo_ts+1498)
 	for {
-		// __asm__ __volatile__ (
-		//
-		//	"ll.w %0, %1"
-		//	: "=r"(v)
-		//	: "ZC"(*p));
+		// 	__asm__ __volatile__ (
+		// 		"ll.w %0, %1"
+		// 		: "=r"(v)
+		// 		: "ZC"(*p));
 		X__assert_fail(tls, __ccgo_ts+350, __ccgo_ts+385, 5, __ccgo_ts+1498)
 		v8 = v
 		goto _18
@@ -135218,11 +135211,10 @@ _9:
 		goto _16
 	_16:
 		;
-		// __asm__ __volatile__ (
-		//
-		//	"sc.w %0, %1"
-		//	: "=r"(r), "=ZC"(*p)
-		//	: "0"(v) : "memory");
+		// 	__asm__ __volatile__ (
+		// 		"sc.w %0, %1"
+		// 		: "=r"(r), "=ZC"(*p)
+		// 		: "0"(v) : "memory");
 		X__assert_fail(tls, __ccgo_ts+350, __ccgo_ts+385, 16, __ccgo_ts+1498)
 		v6 = r
 		goto _15
@@ -135232,7 +135224,7 @@ _9:
 			break
 		}
 	}
-	// __asm__ __volatile__ ("dbar 0" : : : "memory");
+	// 	__asm__ __volatile__ ("dbar 0" : : : "memory");
 	X__assert_fail(tls, __ccgo_ts+350, __ccgo_ts+385, 49, __ccgo_ts+1498)
 	v10 = old1
 	goto _20
@@ -136065,14 +136057,13 @@ func _locking_putc(tls *TLS, c int32, f uintptr) (r1 int32) {
 	var v4 bool
 	_, _, _, _, _, _, _, _, _, _, _, _, _ = old, old1, r, v, v1, v10, v11, v12, v15, v2, v4, v6, v8
 	v1 = f + 140
-	// __asm__ __volatile__ ("dbar 0" : : : "memory");
+	// 	__asm__ __volatile__ ("dbar 0" : : : "memory");
 	X__assert_fail(tls, __ccgo_ts+350, __ccgo_ts+385, 49, __ccgo_ts+1511)
 	for {
-		// __asm__ __volatile__ (
-		//
-		//	"ll.w %0, %1"
-		//	: "=r"(v)
-		//	: "ZC"(*p));
+		// 	__asm__ __volatile__ (
+		// 		"ll.w %0, %1"
+		// 		: "=r"(v)
+		// 		: "ZC"(*p));
 		X__assert_fail(tls, __ccgo_ts+350, __ccgo_ts+385, 5, __ccgo_ts+1511)
 		v6 = v
 		goto _7
@@ -136082,11 +136073,10 @@ func _locking_putc(tls *TLS, c int32, f uintptr) (r1 int32) {
 	_5:
 		;
 		if v4 = old == 0; v4 {
-			// __asm__ __volatile__ (
-			//
-			//	"sc.w %0, %1"
-			//	: "=r"(r), "=ZC"(*p)
-			//	: "0"(v) : "memory");
+			// 	__asm__ __volatile__ (
+			// 		"sc.w %0, %1"
+			// 		: "=r"(r), "=ZC"(*p)
+			// 		: "0"(v) : "memory");
 			X__assert_fail(tls, __ccgo_ts+350, __ccgo_ts+385, 16, __ccgo_ts+1511)
 			v2 = r
 			goto _3
@@ -136096,7 +136086,7 @@ func _locking_putc(tls *TLS, c int32, f uintptr) (r1 int32) {
 			break
 		}
 	}
-	// __asm__ __volatile__ ("dbar 0" : : : "memory");
+	// 	__asm__ __volatile__ ("dbar 0" : : : "memory");
 	X__assert_fail(tls, __ccgo_ts+350, __ccgo_ts+385, 49, __ccgo_ts+1511)
 	v8 = old
 	goto _9
@@ -136116,14 +136106,13 @@ _9:
 	}
 	c = v2
 	v1 = f + 140
-	// __asm__ __volatile__ ("dbar 0" : : : "memory");
+	// 	__asm__ __volatile__ ("dbar 0" : : : "memory");
 	X__assert_fail(tls, __ccgo_ts+350, __ccgo_ts+385, 49, __ccgo_ts+1511)
 	for {
-		// __asm__ __volatile__ (
-		//
-		//	"ll.w %0, %1"
-		//	: "=r"(v)
-		//	: "ZC"(*p));
+		// 	__asm__ __volatile__ (
+		// 		"ll.w %0, %1"
+		// 		: "=r"(v)
+		// 		: "ZC"(*p));
 		X__assert_fail(tls, __ccgo_ts+350, __ccgo_ts+385, 5, __ccgo_ts+1511)
 		v6 = v
 		goto _19
@@ -136132,11 +136121,10 @@ _9:
 		goto _17
 	_17:
 		;
-		// __asm__ __volatile__ (
-		//
-		//	"sc.w %0, %1"
-		//	: "=r"(r), "=ZC"(*p)
-		//	: "0"(v) : "memory");
+		// 	__asm__ __volatile__ (
+		// 		"sc.w %0, %1"
+		// 		: "=r"(r), "=ZC"(*p)
+		// 		: "0"(v) : "memory");
 		X__assert_fail(tls, __ccgo_ts+350, __ccgo_ts+385, 16, __ccgo_ts+1511)
 		v2 = r
 		goto _16
@@ -136146,7 +136134,7 @@ _9:
 			break
 		}
 	}
-	// __asm__ __volatile__ ("dbar 0" : : : "memory");
+	// 	__asm__ __volatile__ ("dbar 0" : : : "memory");
 	X__assert_fail(tls, __ccgo_ts+350, __ccgo_ts+385, 49, __ccgo_ts+1511)
 	v8 = old1
 	goto _21
@@ -136703,10 +136691,10 @@ func X__do_orphaned_stdio_locks(tls *TLS) {
 		if !(f != 0) {
 			break
 		}
-		// __asm__ __volatile__ ("dbar 0" : : : "memory");
+		// 	__asm__ __volatile__ ("dbar 0" : : : "memory");
 		X__assert_fail(tls, __ccgo_ts+350, __ccgo_ts+385, 49, __ccgo_ts+1524)
 		AtomicStorePInt32(f+140, int32(0x40000000))
-		// __asm__ __volatile__ ("dbar 0" : : : "memory");
+		// 	__asm__ __volatile__ ("dbar 0" : : : "memory");
 		X__assert_fail(tls, __ccgo_ts+350, __ccgo_ts+385, 49, __ccgo_ts+1524)
 		goto _1
 	_1:
@@ -136771,14 +136759,13 @@ func Xftrylockfile(tls *TLS, f uintptr) (r1 int32) {
 	}
 	if v11 = owner != 0; !v11 {
 		v2 = f + 140
-		// __asm__ __volatile__ ("dbar 0" : : : "memory");
+		// 	__asm__ __volatile__ ("dbar 0" : : : "memory");
 		X__assert_fail(tls, __ccgo_ts+350, __ccgo_ts+385, 49, __ccgo_ts+1550)
 		for {
-			// __asm__ __volatile__ (
-			//
-			//	"ll.w %0, %1"
-			//	: "=r"(v)
-			//	: "ZC"(*p));
+			// 	__asm__ __volatile__ (
+			// 		"ll.w %0, %1"
+			// 		: "=r"(v)
+			// 		: "ZC"(*p));
 			X__assert_fail(tls, __ccgo_ts+350, __ccgo_ts+385, 5, __ccgo_ts+1550)
 			v3 = v
 			goto _8
@@ -136788,11 +136775,10 @@ func Xftrylockfile(tls *TLS, f uintptr) (r1 int32) {
 		_6:
 			;
 			if v5 = old == 0; v5 {
-				// __asm__ __volatile__ (
-				//
-				//	"sc.w %0, %1"
-				//	: "=r"(r), "=ZC"(*p)
-				//	: "0"(v) : "memory");
+				// 	__asm__ __volatile__ (
+				// 		"sc.w %0, %1"
+				// 		: "=r"(r), "=ZC"(*p)
+				// 		: "0"(v) : "memory");
 				X__assert_fail(tls, __ccgo_ts+350, __ccgo_ts+385, 16, __ccgo_ts+1550)
 				v1 = r
 				goto _4
@@ -136802,7 +136788,7 @@ func Xftrylockfile(tls *TLS, f uintptr) (r1 int32) {
 				break
 			}
 		}
-		// __asm__ __volatile__ ("dbar 0" : : : "memory");
+		// 	__asm__ __volatile__ ("dbar 0" : : : "memory");
 		X__assert_fail(tls, __ccgo_ts+350, __ccgo_ts+385, 49, __ccgo_ts+1550)
 		v7 = old
 		goto _10
@@ -136993,14 +136979,13 @@ func _locking_getc1(tls *TLS, f uintptr) (r1 int32) {
 	var v4 bool
 	_, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _ = c, old, old1, r, v, v1, v10, v11, v12, v13, v14, v17, v2, v4, v6, v8
 	v1 = f + 140
-	// __asm__ __volatile__ ("dbar 0" : : : "memory");
+	// 	__asm__ __volatile__ ("dbar 0" : : : "memory");
 	X__assert_fail(tls, __ccgo_ts+350, __ccgo_ts+385, 49, __ccgo_ts+1498)
 	for {
-		// __asm__ __volatile__ (
-		//
-		//	"ll.w %0, %1"
-		//	: "=r"(v)
-		//	: "ZC"(*p));
+		// 	__asm__ __volatile__ (
+		// 		"ll.w %0, %1"
+		// 		: "=r"(v)
+		// 		: "ZC"(*p));
 		X__assert_fail(tls, __ccgo_ts+350, __ccgo_ts+385, 5, __ccgo_ts+1498)
 		v6 = v
 		goto _7
@@ -137010,11 +136995,10 @@ func _locking_getc1(tls *TLS, f uintptr) (r1 int32) {
 	_5:
 		;
 		if v4 = old == 0; v4 {
-			// __asm__ __volatile__ (
-			//
-			//	"sc.w %0, %1"
-			//	: "=r"(r), "=ZC"(*p)
-			//	: "0"(v) : "memory");
+			// 	__asm__ __volatile__ (
+			// 		"sc.w %0, %1"
+			// 		: "=r"(r), "=ZC"(*p)
+			// 		: "0"(v) : "memory");
 			X__assert_fail(tls, __ccgo_ts+350, __ccgo_ts+385, 16, __ccgo_ts+1498)
 			v2 = r
 			goto _3
@@ -137024,7 +137008,7 @@ func _locking_getc1(tls *TLS, f uintptr) (r1 int32) {
 			break
 		}
 	}
-	// __asm__ __volatile__ ("dbar 0" : : : "memory");
+	// 	__asm__ __volatile__ ("dbar 0" : : : "memory");
 	X__assert_fail(tls, __ccgo_ts+350, __ccgo_ts+385, 49, __ccgo_ts+1498)
 	v8 = old
 	goto _9
@@ -137042,14 +137026,13 @@ _9:
 	}
 	c = v2
 	v12 = f + 140
-	// __asm__ __volatile__ ("dbar 0" : : : "memory");
+	// 	__asm__ __volatile__ ("dbar 0" : : : "memory");
 	X__assert_fail(tls, __ccgo_ts+350, __ccgo_ts+385, 49, __ccgo_ts+1498)
 	for {
-		// __asm__ __volatile__ (
-		//
-		//	"ll.w %0, %1"
-		//	: "=r"(v)
-		//	: "ZC"(*p));
+		// 	__asm__ __volatile__ (
+		// 		"ll.w %0, %1"
+		// 		: "=r"(v)
+		// 		: "ZC"(*p));
 		X__assert_fail(tls, __ccgo_ts+350, __ccgo_ts+385, 5, __ccgo_ts+1498)
 		v8 = v
 		goto _18
@@ -137058,11 +137041,10 @@ _9:
 		goto _16
 	_16:
 		;
-		// __asm__ __volatile__ (
-		//
-		//	"sc.w %0, %1"
-		//	: "=r"(r), "=ZC"(*p)
-		//	: "0"(v) : "memory");
+		// 	__asm__ __volatile__ (
+		// 		"sc.w %0, %1"
+		// 		: "=r"(r), "=ZC"(*p)
+		// 		: "0"(v) : "memory");
 		X__assert_fail(tls, __ccgo_ts+350, __ccgo_ts+385, 16, __ccgo_ts+1498)
 		v6 = r
 		goto _15
@@ -137072,7 +137054,7 @@ _9:
 			break
 		}
 	}
-	// __asm__ __volatile__ ("dbar 0" : : : "memory");
+	// 	__asm__ __volatile__ ("dbar 0" : : : "memory");
 	X__assert_fail(tls, __ccgo_ts+350, __ccgo_ts+385, 49, __ccgo_ts+1498)
 	v10 = old1
 	goto _20
@@ -137169,14 +137151,13 @@ func _locking_getc2(tls *TLS, f uintptr) (r1 int32) {
 	var v4 bool
 	_, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _ = c, old, old1, r, v, v1, v10, v11, v12, v13, v14, v17, v2, v4, v6, v8
 	v1 = f + 140
-	// __asm__ __volatile__ ("dbar 0" : : : "memory");
+	// 	__asm__ __volatile__ ("dbar 0" : : : "memory");
 	X__assert_fail(tls, __ccgo_ts+350, __ccgo_ts+385, 49, __ccgo_ts+1498)
 	for {
-		// __asm__ __volatile__ (
-		//
-		//	"ll.w %0, %1"
-		//	: "=r"(v)
-		//	: "ZC"(*p));
+		// 	__asm__ __volatile__ (
+		// 		"ll.w %0, %1"
+		// 		: "=r"(v)
+		// 		: "ZC"(*p));
 		X__assert_fail(tls, __ccgo_ts+350, __ccgo_ts+385, 5, __ccgo_ts+1498)
 		v6 = v
 		goto _7
@@ -137186,11 +137167,10 @@ func _locking_getc2(tls *TLS, f uintptr) (r1 int32) {
 	_5:
 		;
 		if v4 = old == 0; v4 {
-			// __asm__ __volatile__ (
-			//
-			//	"sc.w %0, %1"
-			//	: "=r"(r), "=ZC"(*p)
-			//	: "0"(v) : "memory");
+			// 	__asm__ __volatile__ (
+			// 		"sc.w %0, %1"
+			// 		: "=r"(r), "=ZC"(*p)
+			// 		: "0"(v) : "memory");
 			X__assert_fail(tls, __ccgo_ts+350, __ccgo_ts+385, 16, __ccgo_ts+1498)
 			v2 = r
 			goto _3
@@ -137200,7 +137180,7 @@ func _locking_getc2(tls *TLS, f uintptr) (r1 int32) {
 			break
 		}
 	}
-	// __asm__ __volatile__ ("dbar 0" : : : "memory");
+	// 	__asm__ __volatile__ ("dbar 0" : : : "memory");
 	X__assert_fail(tls, __ccgo_ts+350, __ccgo_ts+385, 49, __ccgo_ts+1498)
 	v8 = old
 	goto _9
@@ -137218,14 +137198,13 @@ _9:
 	}
 	c = v2
 	v12 = f + 140
-	// __asm__ __volatile__ ("dbar 0" : : : "memory");
+	// 	__asm__ __volatile__ ("dbar 0" : : : "memory");
 	X__assert_fail(tls, __ccgo_ts+350, __ccgo_ts+385, 49, __ccgo_ts+1498)
 	for {
-		// __asm__ __volatile__ (
-		//
-		//	"ll.w %0, %1"
-		//	: "=r"(v)
-		//	: "ZC"(*p));
+		// 	__asm__ __volatile__ (
+		// 		"ll.w %0, %1"
+		// 		: "=r"(v)
+		// 		: "ZC"(*p));
 		X__assert_fail(tls, __ccgo_ts+350, __ccgo_ts+385, 5, __ccgo_ts+1498)
 		v8 = v
 		goto _18
@@ -137234,11 +137213,10 @@ _9:
 		goto _16
 	_16:
 		;
-		// __asm__ __volatile__ (
-		//
-		//	"sc.w %0, %1"
-		//	: "=r"(r), "=ZC"(*p)
-		//	: "0"(v) : "memory");
+		// 	__asm__ __volatile__ (
+		// 		"sc.w %0, %1"
+		// 		: "=r"(r), "=ZC"(*p)
+		// 		: "0"(v) : "memory");
 		X__assert_fail(tls, __ccgo_ts+350, __ccgo_ts+385, 16, __ccgo_ts+1498)
 		v6 = r
 		goto _15
@@ -137248,7 +137226,7 @@ _9:
 			break
 		}
 	}
-	// __asm__ __volatile__ ("dbar 0" : : : "memory");
+	// 	__asm__ __volatile__ ("dbar 0" : : : "memory");
 	X__assert_fail(tls, __ccgo_ts+350, __ccgo_ts+385, 49, __ccgo_ts+1498)
 	v10 = old1
 	goto _20
@@ -137933,14 +137911,13 @@ func _locking_putc1(tls *TLS, c int32, f uintptr) (r1 int32) {
 	var v4 bool
 	_, _, _, _, _, _, _, _, _, _, _, _, _ = old, old1, r, v, v1, v10, v11, v12, v15, v2, v4, v6, v8
 	v1 = f + 140
-	// __asm__ __volatile__ ("dbar 0" : : : "memory");
+	// 	__asm__ __volatile__ ("dbar 0" : : : "memory");
 	X__assert_fail(tls, __ccgo_ts+350, __ccgo_ts+385, 49, __ccgo_ts+1511)
 	for {
-		// __asm__ __volatile__ (
-		//
-		//	"ll.w %0, %1"
-		//	: "=r"(v)
-		//	: "ZC"(*p));
+		// 	__asm__ __volatile__ (
+		// 		"ll.w %0, %1"
+		// 		: "=r"(v)
+		// 		: "ZC"(*p));
 		X__assert_fail(tls, __ccgo_ts+350, __ccgo_ts+385, 5, __ccgo_ts+1511)
 		v6 = v
 		goto _7
@@ -137950,11 +137927,10 @@ func _locking_putc1(tls *TLS, c int32, f uintptr) (r1 int32) {
 	_5:
 		;
 		if v4 = old == 0; v4 {
-			// __asm__ __volatile__ (
-			//
-			//	"sc.w %0, %1"
-			//	: "=r"(r), "=ZC"(*p)
-			//	: "0"(v) : "memory");
+			// 	__asm__ __volatile__ (
+			// 		"sc.w %0, %1"
+			// 		: "=r"(r), "=ZC"(*p)
+			// 		: "0"(v) : "memory");
 			X__assert_fail(tls, __ccgo_ts+350, __ccgo_ts+385, 16, __ccgo_ts+1511)
 			v2 = r
 			goto _3
@@ -137964,7 +137940,7 @@ func _locking_putc1(tls *TLS, c int32, f uintptr) (r1 int32) {
 			break
 		}
 	}
-	// __asm__ __volatile__ ("dbar 0" : : : "memory");
+	// 	__asm__ __volatile__ ("dbar 0" : : : "memory");
 	X__assert_fail(tls, __ccgo_ts+350, __ccgo_ts+385, 49, __ccgo_ts+1511)
 	v8 = old
 	goto _9
@@ -137984,14 +137960,13 @@ _9:
 	}
 	c = v2
 	v1 = f + 140
-	// __asm__ __volatile__ ("dbar 0" : : : "memory");
+	// 	__asm__ __volatile__ ("dbar 0" : : : "memory");
 	X__assert_fail(tls, __ccgo_ts+350, __ccgo_ts+385, 49, __ccgo_ts+1511)
 	for {
-		// __asm__ __volatile__ (
-		//
-		//	"ll.w %0, %1"
-		//	: "=r"(v)
-		//	: "ZC"(*p));
+		// 	__asm__ __volatile__ (
+		// 		"ll.w %0, %1"
+		// 		: "=r"(v)
+		// 		: "ZC"(*p));
 		X__assert_fail(tls, __ccgo_ts+350, __ccgo_ts+385, 5, __ccgo_ts+1511)
 		v6 = v
 		goto _19
@@ -138000,11 +137975,10 @@ _9:
 		goto _17
 	_17:
 		;
-		// __asm__ __volatile__ (
-		//
-		//	"sc.w %0, %1"
-		//	: "=r"(r), "=ZC"(*p)
-		//	: "0"(v) : "memory");
+		// 	__asm__ __volatile__ (
+		// 		"sc.w %0, %1"
+		// 		: "=r"(r), "=ZC"(*p)
+		// 		: "0"(v) : "memory");
 		X__assert_fail(tls, __ccgo_ts+350, __ccgo_ts+385, 16, __ccgo_ts+1511)
 		v2 = r
 		goto _16
@@ -138014,7 +137988,7 @@ _9:
 			break
 		}
 	}
-	// __asm__ __volatile__ ("dbar 0" : : : "memory");
+	// 	__asm__ __volatile__ ("dbar 0" : : : "memory");
 	X__assert_fail(tls, __ccgo_ts+350, __ccgo_ts+385, 49, __ccgo_ts+1511)
 	v8 = old1
 	goto _21
@@ -138119,14 +138093,13 @@ func _locking_putc2(tls *TLS, c int32, f uintptr) (r1 int32) {
 	var v4 bool
 	_, _, _, _, _, _, _, _, _, _, _, _, _ = old, old1, r, v, v1, v10, v11, v12, v15, v2, v4, v6, v8
 	v1 = f + 140
-	// __asm__ __volatile__ ("dbar 0" : : : "memory");
+	// 	__asm__ __volatile__ ("dbar 0" : : : "memory");
 	X__assert_fail(tls, __ccgo_ts+350, __ccgo_ts+385, 49, __ccgo_ts+1511)
 	for {
-		// __asm__ __volatile__ (
-		//
-		//	"ll.w %0, %1"
-		//	: "=r"(v)
-		//	: "ZC"(*p));
+		// 	__asm__ __volatile__ (
+		// 		"ll.w %0, %1"
+		// 		: "=r"(v)
+		// 		: "ZC"(*p));
 		X__assert_fail(tls, __ccgo_ts+350, __ccgo_ts+385, 5, __ccgo_ts+1511)
 		v6 = v
 		goto _7
@@ -138136,11 +138109,10 @@ func _locking_putc2(tls *TLS, c int32, f uintptr) (r1 int32) {
 	_5:
 		;
 		if v4 = old == 0; v4 {
-			// __asm__ __volatile__ (
-			//
-			//	"sc.w %0, %1"
-			//	: "=r"(r), "=ZC"(*p)
-			//	: "0"(v) : "memory");
+			// 	__asm__ __volatile__ (
+			// 		"sc.w %0, %1"
+			// 		: "=r"(r), "=ZC"(*p)
+			// 		: "0"(v) : "memory");
 			X__assert_fail(tls, __ccgo_ts+350, __ccgo_ts+385, 16, __ccgo_ts+1511)
 			v2 = r
 			goto _3
@@ -138150,7 +138122,7 @@ func _locking_putc2(tls *TLS, c int32, f uintptr) (r1 int32) {
 			break
 		}
 	}
-	// __asm__ __volatile__ ("dbar 0" : : : "memory");
+	// 	__asm__ __volatile__ ("dbar 0" : : : "memory");
 	X__assert_fail(tls, __ccgo_ts+350, __ccgo_ts+385, 49, __ccgo_ts+1511)
 	v8 = old
 	goto _9
@@ -138170,14 +138142,13 @@ _9:
 	}
 	c = v2
 	v1 = f + 140
-	// __asm__ __volatile__ ("dbar 0" : : : "memory");
+	// 	__asm__ __volatile__ ("dbar 0" : : : "memory");
 	X__assert_fail(tls, __ccgo_ts+350, __ccgo_ts+385, 49, __ccgo_ts+1511)
 	for {
-		// __asm__ __volatile__ (
-		//
-		//	"ll.w %0, %1"
-		//	: "=r"(v)
-		//	: "ZC"(*p));
+		// 	__asm__ __volatile__ (
+		// 		"ll.w %0, %1"
+		// 		: "=r"(v)
+		// 		: "ZC"(*p));
 		X__assert_fail(tls, __ccgo_ts+350, __ccgo_ts+385, 5, __ccgo_ts+1511)
 		v6 = v
 		goto _19
@@ -138186,11 +138157,10 @@ _9:
 		goto _17
 	_17:
 		;
-		// __asm__ __volatile__ (
-		//
-		//	"sc.w %0, %1"
-		//	: "=r"(r), "=ZC"(*p)
-		//	: "0"(v) : "memory");
+		// 	__asm__ __volatile__ (
+		// 		"sc.w %0, %1"
+		// 		: "=r"(r), "=ZC"(*p)
+		// 		: "0"(v) : "memory");
 		X__assert_fail(tls, __ccgo_ts+350, __ccgo_ts+385, 16, __ccgo_ts+1511)
 		v2 = r
 		goto _16
@@ -138200,7 +138170,7 @@ _9:
 			break
 		}
 	}
-	// __asm__ __volatile__ ("dbar 0" : : : "memory");
+	// 	__asm__ __volatile__ ("dbar 0" : : : "memory");
 	X__assert_fail(tls, __ccgo_ts+350, __ccgo_ts+385, 49, __ccgo_ts+1511)
 	v8 = old1
 	goto _21
@@ -149374,10 +149344,10 @@ func Xtimer_delete(tls *TLS, t Ttimer_t) (r int32) {
 	_ = td
 	if int64(t) < 0 {
 		td = uintptr(uint64(t) << Int32FromInt32(1))
-		// __asm__ __volatile__ ("dbar 0" : : : "memory");
+		// 	__asm__ __volatile__ ("dbar 0" : : : "memory");
 		X__assert_fail(tls, __ccgo_ts+350, __ccgo_ts+385, 49, __ccgo_ts+1862)
 		AtomicStorePInt32(td+148, AtomicLoadPInt32(td+148)|(-Int32FromInt32(1)-Int32FromInt32(0x7fffffff)))
-		// __asm__ __volatile__ ("dbar 0" : : : "memory");
+		// 	__asm__ __volatile__ ("dbar 0" : : : "memory");
 		X__assert_fail(tls, __ccgo_ts+350, __ccgo_ts+385, 49, __ccgo_ts+1862)
 		X__syscall2(tls, int64(SYS_tkill), int64((*t__pthread)(unsafe.Pointer(td)).Ftid), int64(Int32FromInt32(SIGTIMER)))
 		return 0
