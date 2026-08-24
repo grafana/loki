@@ -51,6 +51,23 @@ func TestApproxCountDistinctEval(t *testing.T) {
 		series  []seriesExpect
 	}{
 		{
+			name:    "instant default grouped",
+			query:   `approx_count_distinct(mac, {job="devices"} | logfmt [1m])`,
+			instant: true,
+			series: []seriesExpect{
+				{metric: labels.FromStrings("job", "devices", "version", "1"), instant: 2},
+				{metric: labels.FromStrings("job", "devices", "version", "2"), instant: 1},
+			},
+		},
+		{
+			name:    "instant ungrouped",
+			query:   `approx_count_distinct(mac, {job="devices"} | logfmt [1m]) by ()`,
+			instant: true,
+			series: []seriesExpect{
+				{metric: labels.EmptyLabels(), instant: 3},
+			},
+		},
+		{
 			name:    "instant grouped",
 			query:   `approx_count_distinct(mac, {job="devices"} | logfmt [1m]) by (version)`,
 			instant: true,
@@ -60,11 +77,20 @@ func TestApproxCountDistinctEval(t *testing.T) {
 			},
 		},
 		{
-			name:    "instant ungrouped",
+			name:    "range default grouped",
 			query:   `approx_count_distinct(mac, {job="devices"} | logfmt [1m])`,
-			instant: true,
+			instant: false,
 			series: []seriesExpect{
-				{metric: labels.EmptyLabels(), instant: 3},
+				{metric: labels.FromStrings("job", "devices", "version", "1"), rangeTs: []float64{2, 1, 1}},
+				{metric: labels.FromStrings("job", "devices", "version", "2"), rangeTs: []float64{1, 1}},
+			},
+		},
+		{
+			name:    "range ungrouped",
+			query:   `approx_count_distinct(mac, {job="devices"} | logfmt [1m]) by ()`,
+			instant: false,
+			series: []seriesExpect{
+				{metric: labels.EmptyLabels(), rangeTs: []float64{3, 2, 1}},
 			},
 		},
 		{
@@ -74,14 +100,6 @@ func TestApproxCountDistinctEval(t *testing.T) {
 			series: []seriesExpect{
 				{metric: labels.FromStrings("version", "1"), rangeTs: []float64{2, 1, 1}},
 				{metric: labels.FromStrings("version", "2"), rangeTs: []float64{1, 1}},
-			},
-		},
-		{
-			name:    "range ungrouped",
-			query:   `approx_count_distinct(mac, {job="devices"} | logfmt [1m])`,
-			instant: false,
-			series: []seriesExpect{
-				{metric: labels.EmptyLabels(), rangeTs: []float64{3, 2, 1}},
 			},
 		},
 	}
