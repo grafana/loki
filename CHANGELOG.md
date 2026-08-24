@@ -1,5 +1,24 @@
 # Changelog
 
+## [3.6.15](https://github.com/grafana/loki/compare/v3.6.14...v3.6.15) (2026-08-05)
+
+
+### Bug Fixes
+
+* **queryrange:** Preserve sketch in MergeLabels [release-3.6.x] ([#23771](https://github.com/grafana/loki/issues/23771)) ([20087cd](https://github.com/grafana/loki/commit/20087cd091329dc7184b51cfedf5ab330a21795e))
+
+## [3.6.14](https://github.com/grafana/loki/compare/v3.6.13...v3.6.14) (2026-08-04)
+
+
+### Bug Fixes
+
+* Backport WAL replay hang fix to release-3.6.x ([#21176](https://github.com/grafana/loki/issues/21176)) ([#23630](https://github.com/grafana/loki/issues/23630)) ([355e2f3](https://github.com/grafana/loki/commit/355e2f35dbcb56913f6fdac9a76def563299e68b))
+* **ci:** Backport deb/rpm packaging fix to release-3.6.x ([#23680](https://github.com/grafana/loki/issues/23680)) ([#23722](https://github.com/grafana/loki/issues/23722)) ([d7ee4de](https://github.com/grafana/loki/commit/d7ee4de3b8bd4015a50ad8e135a45a9513695230))
+* **security/UNKNOWN/cmd/chunks-inspect:** Update module github.com/klauspost/compress to v1.18.7 [SECURITY] (release-3.6.x) ([#23615](https://github.com/grafana/loki/issues/23615)) ([a6cc2e5](https://github.com/grafana/loki/commit/a6cc2e5b24f918109d05c0583cb498f83e44f1a6))
+* **security/UNKNOWN/cmd/dataobj-inspect:** Update module github.com/klauspost/compress to v1.18.7 [SECURITY] (release-3.6.x) ([#23616](https://github.com/grafana/loki/issues/23616)) ([a71c910](https://github.com/grafana/loki/commit/a71c91023d3d3b7eddb3652265bf2bd53ff0072b))
+* **security/UNKNOWN/operator:** Update module github.com/klauspost/compress to v1.18.7 [SECURITY] (release-3.6.x) ([#23618](https://github.com/grafana/loki/issues/23618)) ([59970a9](https://github.com/grafana/loki/commit/59970a9be7a439cb26063f2e49e0dc3fc7cec201))
+* **security/UNKNOWN/:** Update module github.com/klauspost/compress to v1.18.7 [SECURITY] (release-3.6.x) ([#23614](https://github.com/grafana/loki/issues/23614)) ([8308a12](https://github.com/grafana/loki/commit/8308a123582d6eea1c947566e0dcb30f3a6a422f))
+
 ## [3.6.13](https://github.com/grafana/loki/compare/v3.6.12...v3.6.13) (2026-07-23)
 
 

@@ -5,8 +5,9 @@ env:
   GAR_REPO_SLUG: "loki"
   GITHUB_APP: "loki-gh-app"
   IMAGE_PREFIX: "us-docker.pkg.dev/grafanalabs-global/dockerhub-loki-prod-mirror"
+  PLUGIN_IMAGE_PREFIX: "us-docker.pkg.dev/grafanalabs-global/dockerhub-loki-prod-mirror"
   PUBLISH_TO_GCS: false
-  RELEASE_LIB_REF: "00f0ddb8d0d0b5e53ee1bf87a6d8a2e007e6e501"
+  RELEASE_LIB_REF: "2a4930bb9e2087b22d41a7162ed87d27f4c499f4"
   RELEASE_REPO: "grafana/loki"
 jobs:
   createRelease:
@@ -49,7 +50,7 @@ jobs:
       run: "corepack enable"
     - id: "get_github_app_token"
       name: "get github app token"
-      uses: "grafana/shared-workflows/actions/create-github-app-token@580590a644e82e79bb2598bdaba0be245a14dda0"
+      uses: "grafana/shared-workflows/actions/create-github-app-token@46f48da11e78ebdba7a8747ae456b11062fac83e"
       with:
         github_app: "${{ env.GITHUB_APP }}"
     - name: "Login to GAR"
@@ -118,7 +119,7 @@ jobs:
         gh release upload --clobber $(echo $OUTPUTS_NAME | tr -d '"') dist/*
       working-directory: "release"
     - env:
-        path: "release/dist"
+        path: "dist"
       if: "${{ fromJSON(env.PUBLISH_TO_GCS) }}"
       name: "release artifacts"
       run: |
@@ -127,7 +128,7 @@ jobs:
           --project="grafanalabs-global" \
           --repository="generic-${{ env.GAR_REPO_SLUG }}-prod" \
           --location="us" \
-          --source-directory=${{ env.path }}, \
+          --source-directory=${{ env.path }} \
           --package=binaries \
           --version=${{ github.sha }}
       working-directory: "release"
@@ -154,7 +155,7 @@ jobs:
         echo "branch=${GITHUB_HEAD_REF:-${GITHUB_REF#refs/heads/}}" >> $GITHUB_OUTPUT
     - id: "get_github_app_token"
       name: "get github app token"
-      uses: "grafana/shared-workflows/actions/create-github-app-token@580590a644e82e79bb2598bdaba0be245a14dda0"
+      uses: "grafana/shared-workflows/actions/create-github-app-token@46f48da11e78ebdba7a8747ae456b11062fac83e"
       with:
         github_app: "${{ env.GITHUB_APP }}"
     - env:
@@ -270,7 +271,7 @@ jobs:
         repository: "${{ env.RELEASE_REPO }}"
     - id: "get_github_app_token"
       name: "get github app token"
-      uses: "grafana/shared-workflows/actions/create-github-app-token@580590a644e82e79bb2598bdaba0be245a14dda0"
+      uses: "grafana/shared-workflows/actions/create-github-app-token@46f48da11e78ebdba7a8747ae456b11062fac83e"
       with:
         github_app: "${{ env.GITHUB_APP }}"
     - env:

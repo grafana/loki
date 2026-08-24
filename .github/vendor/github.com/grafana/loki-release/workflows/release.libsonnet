@@ -175,12 +175,12 @@ local pullRequestFooter = 'Merging this PR will release the [artifacts](https://
                        --project="grafanalabs-global" \
                        --repository="generic-${{ env.GAR_REPO_SLUG }}-prod" \
                        --location="us" \
-                       --source-directory=${{ env.path }}, \
+                       --source-directory=${{ env.path }} \
                        --package=binaries \
                        --version=${{ github.sha }}
                    |||)
                    + step.withEnv({
-                     path: 'release/dist',
+                     path: 'dist',
                    }),
                  ])
                  + job.withOutputs({
@@ -191,9 +191,9 @@ local pullRequestFooter = 'Merging this PR will release the [artifacts](https://
                    exists: '${{ steps.check_release.outputs.exists }}',
                  }),
 
-  publishImages: function()
+  publishImages: function(needs=['createRelease'], sha='${{ needs.createRelease.outputs.sha }}', isLatest='${{ needs.createRelease.outputs.isLatest }}')
     job.new()
-    + job.withNeeds(['createRelease'])
+    + job.withNeeds(needs)
     + job.withPermissions({
       'id-token': 'write',
     })
@@ -206,7 +206,7 @@ local pullRequestFooter = 'Merging this PR will release the [artifacts](https://
         + step.with({ registry: 'us-docker.pkg.dev' }),
         step.new('download images')
         + step.withEnv({
-          SHA: '${{ needs.createRelease.outputs.sha }}',
+          SHA: sha,
         })
         + step.withRun(|||
           echo "downloading images to $(pwd)/images"
@@ -223,14 +223,14 @@ local pullRequestFooter = 'Merging this PR will release the [artifacts](https://
         + step.with({
           imageDir: 'images',
           imagePrefix: '${{ env.IMAGE_PREFIX }}',
-          isLatest: '${{ needs.createRelease.outputs.isLatest }}',
+          isLatest: isLatest,
         }),
       ]
     ),
 
-  publishDockerPlugins: function(path)
+  publishDockerPlugins: function(path, needs=['createRelease'], sha='${{ needs.createRelease.outputs.sha }}', isLatest='${{ needs.createRelease.outputs.isLatest }}')
     job.new()
-    + job.withNeeds(['createRelease'])
+    + job.withNeeds(needs)
     + job.withPermissions({
       'id-token': 'write',
     })
@@ -240,11 +240,11 @@ local pullRequestFooter = 'Merging this PR will release the [artifacts](https://
         common.fetchReleaseRepo,
         step.new('Set up QEMU', 'docker/setup-qemu-action@29109295f81e9208d7d86ff1c6c12d2833863392'),  // v3
         step.new('set up docker buildx', 'docker/setup-buildx-action@b5ca514318bd6ebac0fb2aedd5d36ec1b5c232a2'),  //v3
-        step.new('Login to DockerHub', 'grafana/shared-workflows/actions/dockerhub-login@ef3a62a3ca4c1a15505b4235a5a51493194da3c7'),  // v1.0.4
-        step.new('Login to GAR', 'grafana/shared-workflows/actions/login-to-gar@12c87e5aa323694c820c1ff3d8e47e8237e05136'),  // v1.0.2
+        step.new('Login to GAR', 'grafana/shared-workflows/actions/login-to-gar@12c87e5aa323694c820c1ff3d8e47e8237e05136')  // v1.0.2
+        + step.with({ registry: 'us-docker.pkg.dev' }),
         step.new('download and prepare plugins')
         + step.withEnv({
-          SHA: '${{ needs.createRelease.outputs.sha }}',
+          SHA: sha,
         })
         + step.withRun(|||
           echo "downloading plugins to $(pwd)/plugins"
@@ -258,14 +258,39 @@ local pullRequestFooter = 'Merging this PR will release the [artifacts](https://
             --destination=plugins/
           mkdir -p "release/%s"
         ||| % path),
+        step.new('start local registry for plugins')
+        + step.withRun(|||
+          set -euo pipefail
+          crane_version="v0.21.6"
+          curl -sSL "https://github.com/google/go-containerregistry/releases/download/${crane_version}/go-containerregistry_Linux_x86_64.tar.gz" \
+            | tar -xz crane
+          nohup ./crane registry serve --address localhost:5000 >crane-registry.log 2>&1 &
+          for _ in $(seq 1 30); do
+            curl -sf http://localhost:5000/v2/ >/dev/null && break
+            sleep 1
+          done
+          curl -sf http://localhost:5000/v2/ >/dev/null || { echo "local registry failed to start" >&2; cat crane-registry.log >&2 || true; exit 1; }
+        |||),
         step.new('publish docker driver', './lib/actions/push-images')
         + step.with({
           imageDir: 'plugins',
-          imagePrefix: '${{ env.IMAGE_PREFIX }}',
+          imagePrefix: 'localhost:5000',
           isPlugin: true,
           buildDir: 'release/%s' % path,
-          isLatest: '${{ needs.createRelease.outputs.isLatest }}',
+          isLatest: isLatest,
         }),
+        step.new('mirror plugins to GAR with crane')
+        + step.withRun(|||
+          set -euo pipefail
+          for repo in $(./crane catalog localhost:5000 --insecure); do
+            for tag in $(./crane ls "localhost:5000/${repo}" --insecure); do
+              layout="$(mktemp -d)"
+              echo "mirroring ${repo}:${tag} to ${PLUGIN_IMAGE_PREFIX}/${repo}:${tag}"
+              ./crane pull --insecure --format=oci "localhost:5000/${repo}:${tag}" "${layout}"
+              ./crane push "${layout}" "${PLUGIN_IMAGE_PREFIX}/${repo}:${tag}"
+            done
+          done
+        |||),
       ]
     ),
 

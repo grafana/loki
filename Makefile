@@ -74,7 +74,6 @@ QUERY_TEE_IMAGE        := $(IMAGE_PREFIX)/loki-query-tee:$(IMAGE_TAG)
 LOGCLI_IMAGE           := $(IMAGE_PREFIX)/logcli:$(IMAGE_TAG)
 PROMTAIL_IMAGE         := $(IMAGE_PREFIX)/promtail:$(IMAGE_TAG)
 LOGQL_ANALYZER_IMAGE   := $(IMAGE_PREFIX)/logql-analyzer:$(IMAGE_TAG)
-OPERATOR_IMAGE         := $(IMAGE_PREFIX)/loki-operator:$(IMAGE_TAG)
 
 # OCI (Docker) setup
 OCI_PLATFORMS  := --platform=linux/amd64,linux/arm64
@@ -146,7 +145,7 @@ DOCKER_IMAGE_DIRS := $(patsubst %/Dockerfile,%,$(DOCKERFILES))
 
 # We don't want find to scan inside a bunch of directories, to accelerate the
 # 'make: Entering directory '/src/loki' phase.
-DONT_FIND := -name tools -prune -o -name vendor -prune -o -name operator -prune -o -name .git -prune -o -name .cache -prune -o -name .pkg -prune -o
+DONT_FIND := -name tools -prune -o -name vendor -prune -o -name .git -prune -o -name .cache -prune -o -name .pkg -prune -o
 
 # Protobuf files
 PROTO_DEFS := $(shell find . $(DONT_FIND) -type f -name '*.proto' -print)
@@ -316,6 +315,15 @@ clients/cmd/promtail/promtail:
 clients/cmd/promtail/promtail-debug:
 	CGO_ENABLED=$(PROMTAIL_CGO) go build $(PROMTAIL_DEBUG_GO_FLAGS)$(PROMTAIL_GO_EXTRA_TAGS) -o $@ ./$(@D)
 
+##################
+# chunks-inspect #
+##################
+.PHONY: cmd/chunks-inspect/chunks-inspect
+chunks-inspect: cmd/chunks-inspect/chunks-inspect ## build chunks-inspect executable
+
+cmd/chunks-inspect/chunks-inspect:
+	CGO_ENABLED=0 go build $(GO_FLAGS) -o $@ ./cmd/chunks-inspect
+
 #########
 # Mixin #
 #########
@@ -434,6 +442,7 @@ clean: ## clean the generated files
 	rm -rf clients/cmd/fluent-bit/out_grafana_loki.h
 	rm -rf clients/cmd/fluent-bit/out_grafana_loki.so
 	rm -rf clients/cmd/promtail/promtail
+	rm -rf cmd/chunks-inspect/chunks-inspect
 	rm -rf cmd/logcli/logcli
 	rm -rf cmd/logql-analyzer/logql-analyzer
 	rm -rf cmd/loki-canary/loki-canary
@@ -671,10 +680,6 @@ ifneq (,$(findstring WIP,$(IMAGE_TAG)))
 	false;
 endif
 	DOCKER_BUILDKIT=1 docker buildx build $(OCI_PLATFORMS) $(OCI_BUILD_ARGS) $(OCI_PUSH_ARGS) -t $(BUILD_IMAGE) ./loki-build-image
-
-# Loki Operator
-loki-operator-image: ## build the operator docker image
-	$(OCI_BUILD) -t $(OPERATOR_IMAGE) -f operator/Dockerfile ./operator
 
 #################
 # Documentation #

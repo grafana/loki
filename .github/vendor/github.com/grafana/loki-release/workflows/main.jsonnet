@@ -91,6 +91,7 @@
     branches=['release-[0-9].[0-9].x', 'k[0-9]*'],
     buildArtifactsBucket='loki-build-artifacts',
     imagePrefix='grafana',
+    pluginImagePrefix=null,
     pluginBuildDir='release/plugin-tmp-dir',
     publishBucket='',
     publishToGCS=false,
@@ -102,6 +103,7 @@
                   ) {
     local githubApp = if releaseRepo == 'grafana/enterprise-logs' then 'enterprise-logs-app' else 'loki-gh-app',
     local garRepoSlug = if releaseRepo == 'grafana/enterprise-logs' then 'enterprise-logs' else 'loki',
+    local effectivePluginImagePrefix = if pluginImagePrefix != null then pluginImagePrefix else imagePrefix,
 
     name: 'create release',
     on: {
@@ -119,6 +121,7 @@
     env: {
       BUILD_ARTIFACTS_BUCKET: buildArtifactsBucket,
       IMAGE_PREFIX: imagePrefix,
+      PLUGIN_IMAGE_PREFIX: effectivePluginImagePrefix,
       RELEASE_LIB_REF: releaseLibRef,
       RELEASE_REPO: releaseRepo,
       GAR_REPO_SLUG: garRepoSlug,
