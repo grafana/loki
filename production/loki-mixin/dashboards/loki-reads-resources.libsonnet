@@ -16,7 +16,8 @@
   // Regex for the "type" label on the autoscaler metric, per component.
   // Follows the naming convention emitted by the loki-autoscaler exporter.
   local autoscaler_type = {
-    gateway: 'cortex_gateway(_internal)?',
+    cortex_gateway: 'cortex_gateway',
+    cortex_gateway_internal: 'cortex_gateway_internal',
     query_frontend: 'query-frontend',
     query_scheduler: 'query-scheduler',
     querier: 'querier',
@@ -167,17 +168,31 @@
       .addNamespace()
       .addTag()
 
-      // --- Gateway ---
+      // --- Cortex Gateway ---
       .addRowIf(
         $._config.internal_components,
         componentRow(
-          'Gateway',
-          $.containerCPUUsagePanel('CPU', 'cortex-gw(-internal)?'),
-          $.containerMemoryWorkingSetPanel('Memory (workingset)', 'cortex-gw(-internal)?'),
-          $.goHeapInUsePanel('Memory (go heap inuse)', 'cortex-gw(-internal)?'),
-          'container=~"cortex-gw(-internal)?"',
-          'container=~"cortex-gw(-internal)?"',
-          'gateway'
+          'Cortex Gateway',
+          $.containerCPUUsagePanel('CPU', 'cortex-gw'),
+          $.containerMemoryWorkingSetPanel('Memory (workingset)', 'cortex-gw'),
+          $.goHeapInUsePanel('Memory (go heap inuse)', 'cortex-gw'),
+          'container="cortex-gw"',
+          'container="cortex-gw"',
+          'cortex_gateway'
+        )
+      )
+
+      // --- Cortex Gateway Internal ---
+      .addRowIf(
+        $._config.internal_components,
+        componentRow(
+          'Cortex Gateway (Internal)',
+          $.containerCPUUsagePanel('CPU', 'cortex-gw-internal'),
+          $.containerMemoryWorkingSetPanel('Memory (workingset)', 'cortex-gw-internal'),
+          $.goHeapInUsePanel('Memory (go heap inuse)', 'cortex-gw-internal'),
+          'container="cortex-gw-internal"',
+          'container="cortex-gw-internal"',
+          'cortex_gateway_internal'
         )
       )
 
