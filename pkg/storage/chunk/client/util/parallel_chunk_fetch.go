@@ -6,9 +6,10 @@ import (
 
 	"github.com/go-kit/log/level"
 	"go.opentelemetry.io/otel"
-	attribute "go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/attribute"
 
 	"github.com/grafana/loki/v3/pkg/storage/chunk"
+	"github.com/grafana/loki/v3/pkg/util"
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
 )
 
@@ -59,21 +60,22 @@ func GetParallelChunks(ctx context.Context, maxParallel int, chunks []chunk.Chun
 	}
 
 	result := make([]chunk.Chunk, 0, len(chunks))
-	var lastErr error
+	var fetchErrs util.MultiError
 	for i := 0; i < len(chunks); i++ {
 		select {
 		case chunk := <-processedChunks:
 			result = append(result, chunk)
 		case err := <-errors:
-			lastErr = err
+			fetchErrs.Add(err)
 		}
 	}
 
 	sp.SetAttributes(attribute.Int("fetched", len(result)))
-	if lastErr != nil {
-		level.Error(util_log.Logger).Log("msg", "error fetching chunks", "err", lastErr)
+	fetchErr := fetchErrs.Err()
+	if fetchErr != nil {
+		level.Error(util_log.Logger).Log("msg", "error fetching chunks", "err", fetchErr)
 	}
 
 	// Return any chunks we did receive: a partial result may be useful
-	return result, lastErr
+	return result, fetchErr
 }
