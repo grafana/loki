@@ -72,6 +72,9 @@ func GetParallelChunks(ctx context.Context, maxParallel int, chunks []chunk.Chun
 
 	sp.SetAttributes(attribute.Int("fetched", len(result)))
 	fetchErr := fetchErrs.Err()
+	if len(fetchErrs) == 1 {
+		fetchErr = fetchErrs[0]
+	}
 	if fetchErr != nil {
 		level.Error(util_log.Logger).Log("msg", "error fetching chunks", "err", fetchErr)
 	}
