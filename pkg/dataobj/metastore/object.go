@@ -1,7 +1,6 @@
 package metastore
 
 import (
-	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -15,7 +14,6 @@ import (
 	"time"
 
 	"github.com/apache/arrow-go/v18/arrow"
-	"github.com/apache/arrow-go/v18/arrow/scalar"
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/tenant"
@@ -26,10 +24,10 @@ import (
 	"go.opentelemetry.io/otel"
 	"go.uber.org/atomic"
 	"golang.org/x/sync/errgroup"
+	"golang.org/x/sync/singleflight"
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore/multitenancy"
-	"github.com/grafana/loki/v3/pkg/dataobj/sections/indexpointers"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/pointers"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/postings"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
@@ -46,6 +44,10 @@ const (
 
 	// TocPrefix is the prefix under which ToC files are stored in the object storage.
 	TocPrefix = "tocs/"
+
+	// defaultSectionsResolveTimeout bounds one detached singleflight Sections resolution (see Sections).
+	// It only guards a stuck object-store call, so it is generous.
+	defaultSectionsResolveTimeout = 30 * time.Second
 )
 
 var tracer = otel.Tracer("pkg/dataobj/metastore")
@@ -53,10 +55,67 @@ var tracer = otel.Tracer("pkg/dataobj/metastore")
 // ObjectMetastore is a metastore that stores data objects in object storage.
 type ObjectMetastore struct {
 	readPostingsSections bool
+	prefetchBytes        int64
 	bucket               objstore.Bucket
 	parallelism          int
 	logger               log.Logger
 	metrics              *ObjectMetastoreMetrics
+
+	// sectionsCache caches Sections results; sectionsSingleFlight collapses concurrent identical
+	// resolutions onto one leader.
+	sectionsCache          SectionsCache
+	sectionsSingleFlight   singleflight.Group
+	sectionsResolveTimeout time.Duration
+
+	// tocResolver lists a window's index objects from its ToC. It is always set: the lazy (read-on-demand)
+	// resolver by default, or a warm resolver via WithTOCResolver.
+	tocResolver TableOfContentsResolver
+
+	// metadataCache, when set, serves each index object's metadata prefix so opening it does not read the
+	// metadata from object storage on every open. nil disables it.
+	metadataCache dataobj.MetadataCache
+}
+
+// objectMetastoreOptions holds the optional dependencies applied by ObjectMetastoreOption.
+type objectMetastoreOptions struct {
+	sectionsCache          SectionsCache
+	sectionsResolveTimeout time.Duration
+	tocResolver            TableOfContentsResolver
+	metadataCache          dataobj.MetadataCache
+}
+
+// ObjectMetastoreOption configures an ObjectMetastore at construction.
+type ObjectMetastoreOption func(*objectMetastoreOptions)
+
+// WithSectionsCache plugs a cache for Sections() results (see NewSectionsCache). Without it, or with a
+// nil cache, the metastore uses a no-op cache and recomputes on each call.
+func WithSectionsCache(c SectionsCache) ObjectMetastoreOption {
+	return func(o *objectMetastoreOptions) {
+		o.sectionsCache = c
+	}
+}
+
+// WithMetadataCache serves each index object's metadata prefix through cache, avoiding a per-open
+// object-storage read of the metadata. A nil cache disables it.
+func WithMetadataCache(c dataobj.MetadataCache) ObjectMetastoreOption {
+	return func(o *objectMetastoreOptions) {
+		o.metadataCache = c
+	}
+}
+
+// WithTOCResolver plugs a Table-of-Contents resolver (see TableOfContentsWarmResolver). Without it the
+// metastore uses TableOfContentsLazyResolver, which reads each ToC on demand.
+func WithTOCResolver(r TableOfContentsResolver) ObjectMetastoreOption {
+	return func(o *objectMetastoreOptions) {
+		o.tocResolver = r
+	}
+}
+
+// WithSectionsResolveTimeout overrides defaultSectionsResolveTimeout. A non-positive value keeps the default.
+func WithSectionsResolveTimeout(d time.Duration) ObjectMetastoreOption {
+	return func(o *objectMetastoreOptions) {
+		o.sectionsResolveTimeout = d
+	}
 }
 
 // SectionKey is a unique identifier for a section of a data object.
@@ -159,7 +218,7 @@ func IterTableOfContentsPaths(start, end time.Time) iter.Seq2[string, multitenan
 	}
 }
 
-func NewObjectMetastore(b objstore.Bucket, cfg Config, logger log.Logger, metrics *ObjectMetastoreMetrics) *ObjectMetastore {
+func NewObjectMetastore(b objstore.Bucket, cfg Config, logger log.Logger, metrics *ObjectMetastoreMetrics, opts ...ObjectMetastoreOption) *ObjectMetastore {
 	if logger == nil {
 		logger = log.NewNopLogger()
 	}
@@ -168,12 +227,37 @@ func NewObjectMetastore(b objstore.Bucket, cfg Config, logger log.Logger, metric
 		b = objstore.NewPrefixedBucket(b, cfg.IndexStoragePrefix)
 	}
 
+	var options objectMetastoreOptions
+	for _, opt := range opts {
+		opt(&options)
+	}
+
+	sectionsCache := options.sectionsCache
+	if sectionsCache == nil {
+		sectionsCache = noopSectionsCache{}
+	}
+
+	sectionsResolveTimeout := options.sectionsResolveTimeout
+	if sectionsResolveTimeout <= 0 {
+		sectionsResolveTimeout = defaultSectionsResolveTimeout
+	}
+
+	tocResolver := options.tocResolver
+	if tocResolver == nil {
+		tocResolver = NewTableOfContentsLazyResolver(b, logger)
+	}
+
 	store := &ObjectMetastore{
-		readPostingsSections: cfg.ReadPostingsSections,
-		bucket:               b,
-		parallelism:          64,
-		logger:               logger,
-		metrics:              metrics,
+		readPostingsSections:   cfg.ReadPostingsSections,
+		prefetchBytes:          int64(cfg.IndexReadPrefetchBytes),
+		bucket:                 b,
+		parallelism:            64,
+		logger:                 logger,
+		metrics:                metrics,
+		sectionsCache:          sectionsCache,
+		sectionsResolveTimeout: sectionsResolveTimeout,
+		tocResolver:            tocResolver,
+		metadataCache:          options.metadataCache,
 	}
 
 	return store
@@ -208,7 +292,7 @@ func (m *ObjectMetastore) streams(ctx context.Context, start, end time.Time, mat
 	}
 
 	// List objects from all stores concurrently
-	entries, err := m.listObjectsFromTables(ctx, tablePaths, start, end)
+	entries, err := m.tocResolver.GetIndexes(ctx, tablePaths, start, end)
 	if err != nil {
 		return nil, err
 	}
@@ -236,7 +320,7 @@ func (m *ObjectMetastore) DataObjects(ctx context.Context, start, end time.Time,
 	}
 
 	// List objects from all tables concurrently
-	entries, err := m.listObjectsFromTables(ctx, tablePaths, start, end)
+	entries, err := m.tocResolver.GetIndexes(ctx, tablePaths, start, end)
 	if err != nil {
 		return nil, err
 	}
@@ -352,33 +436,6 @@ func streamPredicateFromMatchers(start, end time.Time, matchers ...*labels.Match
 }
 
 // listObjectsFromTables concurrently lists objects from multiple metastore files
-func (m *ObjectMetastore) listObjectsFromTables(ctx context.Context, tablePaths []string, start, end time.Time) ([]IndexEntry, error) {
-	objects := make([][]IndexEntry, len(tablePaths))
-	g, ctx := errgroup.WithContext(ctx)
-
-	sStart := scalar.NewTimestampScalar(arrow.Timestamp(start.UnixNano()), arrow.FixedWidthTypes.Timestamp_ns)
-	sEnd := scalar.NewTimestampScalar(arrow.Timestamp(end.UnixNano()), arrow.FixedWidthTypes.Timestamp_ns)
-
-	for i, path := range tablePaths {
-		g.Go(func() error {
-			var err error
-			objects[i], err = m.listObjects(ctx, path, sStart, sEnd)
-			// If the metastore object is not found, it means it's outside of any existing window
-			// and we can safely ignore it.
-			if err != nil && !m.bucket.IsObjNotFoundErr(err) {
-				return fmt.Errorf("listing objects from metastore %s: %w", path, err)
-			}
-			return nil
-		})
-	}
-
-	if err := g.Wait(); err != nil {
-		return nil, err
-	}
-
-	return dedupeAndSortEntries(objects), nil
-}
-
 func (m *ObjectMetastore) listStreamsFromObjects(ctx context.Context, paths []string, predicate streams.RowPredicate) ([]*labels.Labels, error) {
 	mu := sync.Mutex{}
 	foundStreams := make(map[uint64][]*labels.Labels, 1024)
@@ -388,7 +445,7 @@ func (m *ObjectMetastore) listStreamsFromObjects(ctx context.Context, paths []st
 
 	for _, path := range paths {
 		g.Go(func() error {
-			object, err := dataobj.FromBucket(ctx, m.bucket, path, 0)
+			object, err := dataobj.FromBucket(ctx, m.bucket, path, 0, dataobj.WithMetadataCache(m.metadataCache))
 			if err != nil {
 				return fmt.Errorf("getting object from bucket: %w", err)
 			}
@@ -428,38 +485,6 @@ func addLabels(mtx *sync.Mutex, streams map[uint64][]*labels.Labels, newLabels *
 		}
 	}
 	streams[key] = append(streams[key], newLabels)
-}
-
-func (m *ObjectMetastore) listObjects(ctx context.Context, path string, sStart, sEnd *scalar.Timestamp) ([]IndexEntry, error) {
-	var buf bytes.Buffer
-	objectReader, err := m.bucket.Get(ctx, path)
-	if err != nil {
-		return nil, err
-	}
-	defer objectReader.Close()
-
-	n, err := buf.ReadFrom(objectReader)
-	if err != nil {
-		return nil, fmt.Errorf("reading metastore object: %w", err)
-	}
-	object, err := dataobj.FromReaderAt(bytes.NewReader(buf.Bytes()), n)
-	if err != nil {
-		return nil, fmt.Errorf("getting object from reader: %w", err)
-	}
-	var entries []IndexEntry
-
-	err = forEachIndexPointer(ctx, object, sStart, sEnd, func(indexPointer indexpointers.IndexPointer) {
-		entries = append(entries, IndexEntry{
-			Path:  indexPointer.Path,
-			Start: indexPointer.StartTs,
-			End:   indexPointer.EndTs,
-		})
-	})
-	if err != nil {
-		return nil, err
-	}
-
-	return entries, nil
 }
 
 func forEachStream(ctx context.Context, object *dataobj.Object, predicate streams.RowPredicate, f func(streams.Stream)) error {
@@ -541,10 +566,19 @@ func dedupeAndSortEntries(batches [][]IndexEntry) []IndexEntry {
 	return entries
 }
 
+// Sections resolves the data-object sections matching req. It lists the window's index objects once,
+// then resolves the matching sections. Concurrent identical resolutions collapse onto one singleflight
+// leader that consults the plugged cache first.
+//
+// The shared work runs on a context detached from the caller (context.WithoutCancel), so a caller that
+// cancels mid-flight does not cancel the resolution; waiters on live contexts still get the result.
+// Detaching drops the deadline, so sectionsResolveTimeout bounds a stuck object-store call.
 func (m *ObjectMetastore) Sections(ctx context.Context, req SectionsRequest) (SectionsResponse, error) {
 	ctx, span := xcap.StartSpan(ctx, tracer, "metastore.Sections")
 	defer span.End()
 
+	// resolvedSectionsTotalDuration times the whole call: listing indexes plus the cache lookup or
+	// resolution. Skipped on the no-index early return and on error, so only successful calls are timed.
 	sectionsTimer := prometheus.NewTimer(m.metrics.resolvedSectionsTotalDuration)
 
 	selector := streamPredicateFromMatchers(req.Start, req.End, req.Matchers...)
@@ -565,6 +599,38 @@ func (m *ObjectMetastore) Sections(ctx context.Context, req SectionsRequest) (Se
 		return SectionsResponse{}, nil
 	}
 
+	tenant, err := user.ExtractOrgID(ctx)
+	if err != nil {
+		return SectionsResponse{}, fmt.Errorf("extracting org ID: %w", err)
+	}
+
+	key := sectionsCacheKey(tenant, req, indexes.Indexes)
+	v, err, _ := m.sectionsSingleFlight.Do(key, func() (interface{}, error) {
+		sfCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), m.sectionsResolveTimeout)
+		defer cancel()
+
+		if cached, ok := m.sectionsCache.Get(sfCtx, tenant, req, indexes.Indexes); ok {
+			return cached, nil
+		}
+		sections, err := m.resolveSections(sfCtx, req, indexes)
+		if err != nil {
+			return nil, err
+		}
+		m.sectionsCache.Put(sfCtx, tenant, req, indexes.Indexes, sections)
+		return sections, nil
+	})
+	if err != nil {
+		return SectionsResponse{}, err
+	}
+	sectionsTimer.ObserveDuration()
+	return SectionsResponse{v.([]*DataobjSectionDescriptor)}, nil
+}
+
+// resolveSections reads every listed index object in parallel and returns the matching section
+// descriptors. It is the uncached inner half of Sections; indexes is the already-listed index set.
+func (m *ObjectMetastore) resolveSections(ctx context.Context, req SectionsRequest, indexes GetIndexesResponse) ([]*DataobjSectionDescriptor, error) {
+	start := time.Now()
+
 	var sections []*DataobjSectionDescriptor
 	sectionsMu := sync.Mutex{}
 	g, ctx := errgroup.WithContext(ctx)
@@ -576,6 +642,7 @@ func (m *ObjectMetastore) Sections(ctx context.Context, req SectionsRequest) (Se
 			readerResp, err := m.IndexSectionsReader(ctx, IndexSectionsReaderRequest{
 				IndexPath:       indexEntry.Path,
 				SectionsRequest: req,
+				PrefetchBytes:   m.prefetchBytes,
 			})
 			if err != nil {
 				return fmt.Errorf("get index sections reader: %w", err)
@@ -603,18 +670,22 @@ func (m *ObjectMetastore) Sections(ctx context.Context, req SectionsRequest) (Se
 	}
 
 	if err := g.Wait(); err != nil {
-		return SectionsResponse{}, err
+		return nil, err
 	}
 
-	ratio := float64(len(sections)) / float64(totalSections.Load())
-	m.metrics.streamFilterSections.Observe(float64(totalSections.Load()))
+	// Guard the divide: totalSections is 0 when no reader read any row, and NaN would poison the histogram.
+	total := totalSections.Load()
+	var ratio float64
+	if total > 0 {
+		ratio = float64(len(sections)) / float64(total)
+	}
+	m.metrics.streamFilterSections.Observe(float64(total))
 	m.metrics.resolvedSectionsTotal.Observe(float64(len(sections)))
 	m.metrics.resolvedSectionsRatio.Observe(ratio)
-	duration := sectionsTimer.ObserveDuration()
 
 	level.Debug(utillog.WithContext(ctx, m.logger)).Log(
 		"msg", "resolved sections",
-		"duration", duration,
+		"duration", time.Since(start),
 		"tables", len(indexes.TableOfContentsPaths),
 		"indexes", len(indexes.Indexes),
 		"sections", len(sections),
@@ -624,7 +695,7 @@ func (m *ObjectMetastore) Sections(ctx context.Context, req SectionsRequest) (Se
 		"end", req.End,
 	)
 
-	return SectionsResponse{sections}, nil
+	return sections, nil
 }
 
 func (m *ObjectMetastore) IndexSectionsReader(ctx context.Context, req IndexSectionsReaderRequest) (IndexSectionsReaderResponse, error) {
@@ -633,7 +704,7 @@ func (m *ObjectMetastore) IndexSectionsReader(ctx context.Context, req IndexSect
 		return IndexSectionsReaderResponse{}, fmt.Errorf("at least one selector is required")
 	}
 
-	idxObj, err := dataobj.FromBucket(ctx, m.bucket, req.IndexPath, req.PrefetchBytes)
+	idxObj, err := dataobj.FromBucket(ctx, m.bucket, req.IndexPath, req.PrefetchBytes, dataobj.WithMetadataCache(m.metadataCache))
 	if err != nil {
 		return IndexSectionsReaderResponse{}, fmt.Errorf("prepare obj %s: %w", req.IndexPath, err)
 	}
@@ -647,6 +718,11 @@ func (m *ObjectMetastore) IndexSectionsReader(ctx context.Context, req IndexSect
 	flow := flowStreams
 	if m.readPostingsSections && hasPostingsSection(idxObj, tenant) {
 		flow = flowPostings
+		// Only the postings flow can prune by shard bucket, so the range is honored here alone.
+		var bucketRange *postings.ShardBucketRange
+		if sb := req.SectionsRequest.ShardBucketRange; sb != nil {
+			bucketRange = &postings.ShardBucketRange{From: sb.From, To: sb.To}
+		}
 		reader = newPostingsIndexSectionsReader(
 			m.logger,
 			idxObj,
@@ -655,6 +731,7 @@ func (m *ObjectMetastore) IndexSectionsReader(ctx context.Context, req IndexSect
 			req.SectionsRequest.Matchers,
 			req.SectionsRequest.Predicates,
 			req.BatchSize,
+			bucketRange,
 		)
 	} else {
 		reader = newIndexSectionsReader(
@@ -687,6 +764,7 @@ func hasPostingsSection(obj *dataobj.Object, tenant string) bool {
 func (m *ObjectMetastore) GetIndexes(ctx context.Context, req GetIndexesRequest) (GetIndexesResponse, error) {
 	ctx, span := xcap.StartSpan(ctx, tracer, "metastore.GetIndexes")
 	defer span.End()
+	defer prometheus.NewTimer(m.metrics.getIndexesTotalDuration).ObserveDuration()
 
 	resp := GetIndexesResponse{}
 
@@ -710,7 +788,7 @@ func (m *ObjectMetastore) GetIndexes(ctx context.Context, req GetIndexesRequest)
 	}
 
 	// List index objects from all tables concurrently
-	indexEntries, err := m.listObjectsFromTables(ctx, resp.TableOfContentsPaths, req.Start, req.End)
+	indexEntries, err := m.tocResolver.GetIndexes(ctx, resp.TableOfContentsPaths, req.Start, req.End)
 	if err != nil {
 		return resp, err
 	}

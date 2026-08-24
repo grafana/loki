@@ -22,49 +22,145 @@ type decoder struct {
 	prefetchBytes int64
 
 	prefetchedRangeReader rangeReader
+
+	// metadataCache, when set, serves the metadata prefix (see fetchMetadataPrefix) so an open does not
+	// read the metadata from object storage. metadataKey identifies the object in the cache.
+	metadataCache MetadataCache
+	metadataKey   string
 }
 
 func (d *decoder) Metadata(ctx context.Context) (*filemd.Metadata, error) {
-	prefetchBytes := d.effectivePrefetchBytes()
+	// An empty key would collide every object onto one cache entry, so treat it as no cache.
+	if d.metadataCache != nil && d.metadataKey != "" {
+		return d.metadataViaCache(ctx)
+	}
+	return d.metadataDirect(ctx)
+}
 
-	// TODO(rfratto): If there was a Close method on [Object], we could use a
-	// pool here to reduce allocations and return it to the pool when the object
-	// is closed.
-	buf := make([]byte, prefetchBytes)
-
-	n, err := d.readFirstBytes(ctx, prefetchBytes, buf)
+// metadataDirect reads and decodes the file metadata straight from the range reader. It keeps the whole
+// prefetch buffer as the prefetched window, so an over-sized prefetch also serves the first data reads.
+func (d *decoder) metadataDirect(ctx context.Context) (*filemd.Metadata, error) {
+	md, buf, metadataSize, err := d.fetchAndDecodeMetadata(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("reading first %d bytes: %w", prefetchBytes, err)
+		return nil, err
+	}
+	d.setPrefetchedBytes(0, buf)
+	d.startOff = int64(8) + int64(metadataSize)
+	return md, nil
+}
+
+// metadataViaCache serves the metadata prefix from the cache (loading it on a miss), then decodes the
+// file metadata from it. The prefetched window is exactly the prefix, so section-metadata reads hit it
+// and only data reads go to object storage.
+//
+// A cached prefix that does not decode (truncated or corrupt) is not fatal: the read falls back to a
+// direct read from object storage, so a poisoned entry never fails queries. It is left to expire by TTL.
+func (d *decoder) metadataViaCache(ctx context.Context) (*filemd.Metadata, error) {
+	blob, err := d.metadataCache.GetMetadata(ctx, d.metadataKey, d.fetchMetadataPrefix)
+	if err != nil {
+		return nil, err
 	}
 
+	md, metadataSize, ok := d.decodeMetadataFromPrefix(blob)
+	if !ok {
+		// The cached prefix is unusable (truncated or corrupt); fall back to a direct read.
+		return d.metadataDirect(ctx)
+	}
+	d.setPrefetchedBytes(0, blob)
+	d.startOff = int64(8) + int64(metadataSize)
+	return md, nil
+}
+
+// decodeMetadataFromPrefix decodes the file metadata from a metadata prefix blob and returns the file metadata
+// size from the header (which the caller uses to compute startOff). ok is false when the blob is too
+// short or does not decode, so the caller can fall back.
+func (d *decoder) decodeMetadataFromPrefix(blob []byte) (md *filemd.Metadata, metadataSize uint64, ok bool) {
+	header, err := d.header(blob)
+	if err != nil || uint64(len(blob)) < header.MetadataSize+8 {
+		return nil, 0, false
+	}
+	md, err = decodeFileMetadata(bytes.NewReader(blob[8:]))
+	if err != nil {
+		return nil, 0, false
+	}
+	return md, header.MetadataSize, true
+}
+
+// fetchMetadataPrefix reads the contiguous [0, E) prefix that holds the header, the file metadata, and
+// every section's metadata region, where E is the offset of the first data region. Reading exactly this
+// prefix keeps the cached entry to the metadata alone.
+func (d *decoder) fetchMetadataPrefix(ctx context.Context) ([]byte, error) {
+	md, buf, metadataSize, err := d.fetchAndDecodeMetadata(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	// E = end of the last section metadata region = start of the first data region. Section metadata is
+	// written contiguously right after the file metadata (see encoder.Flush).
+	prefixEnd := int64(8) + int64(metadataSize)
+	for _, sec := range md.Sections {
+		prefixEnd += int64(sec.GetLayout().GetMetadata().GetLength())
+	}
+
+	// Return a right-sized copy, not a slice of buf. The copy is cached and kept as the prefetched window,
+	// so it outlives buf. A slice would pin buf's larger backing array.
+	if int64(len(buf)) >= prefixEnd {
+		return bytes.Clone(buf[:prefixEnd]), nil
+	}
+
+	// The metadata is larger than the prefetch window; read the exact prefix.
+	rc, err := d.rr.ReadRange(ctx, 0, prefixEnd)
+	if err != nil {
+		return nil, fmt.Errorf("reading metadata prefix: %w", err)
+	}
+	defer rc.Close()
+
+	prefix := make([]byte, prefixEnd)
+	if _, err := io.ReadFull(rc, prefix); err != nil {
+		return nil, fmt.Errorf("reading metadata prefix: %w", err)
+	}
+	return prefix, nil
+}
+
+// fetchAndDecodeMetadata reads the prefetch window from offset 0 and decodes the file metadata. It returns
+// the decoded metadata, the buffer it read (starting at offset 0, so callers can reuse it as the
+// prefetched window), and the file metadata size from the header.
+func (d *decoder) fetchAndDecodeMetadata(ctx context.Context) (*filemd.Metadata, []byte, uint64, error) {
+	prefetchBytes := d.effectivePrefetchBytes()
+
+	// A fresh buffer per call: [Object] has no Close, so there is no safe point to return a pooled buffer.
+	buf := make([]byte, prefetchBytes)
+	n, err := d.readFirstBytes(ctx, prefetchBytes, buf)
+	if err != nil {
+		return nil, nil, 0, fmt.Errorf("reading first %d bytes: %w", prefetchBytes, err)
+	}
 	buf = buf[:n]
 
 	header, err := d.header(buf)
 	if err != nil {
-		return nil, fmt.Errorf("reading header: %w", err)
+		return nil, nil, 0, fmt.Errorf("reading header: %w", err)
 	}
 
-	d.setPrefetchedBytes(0, buf)
-	d.startOff = int64(8) + int64(header.MetadataSize)
-
+	var md *filemd.Metadata
 	if header.MetadataSize+8 <= uint64(len(buf)) {
-		// Optimistic read was successful, so we can decode the metadata from
-		// the buffer.
-		rc := bytes.NewReader(buf[8:])
-		return decodeFileMetadata(rc)
+		// Optimistic read covered the file metadata; decode it from the buffer.
+		md, err = decodeFileMetadata(bytes.NewReader(buf[8:]))
+	} else {
+		// Optimistic read was too small; read the file metadata fully.
+		var rc io.ReadCloser
+		rc, err = d.rr.ReadRange(ctx, int64(8), int64(header.MetadataSize))
+		if err == nil {
+			br := bufpool.GetReader(rc)
+			md, err = decodeFileMetadata(br)
+			bufpool.PutReader(br)
+			_ = rc.Close()
+		}
 	}
-
-	// Optimistic read was too small, so we need to read the metadata fully.
-	rc, err := d.rr.ReadRange(ctx, int64(8), int64(header.MetadataSize))
 	if err != nil {
-		return nil, fmt.Errorf("getting metadata: %w", err)
+		return nil, nil, 0, fmt.Errorf("decoding file metadata: %w", err)
 	}
-	defer rc.Close()
 
-	br := bufpool.GetReader(rc)
-	defer bufpool.PutReader(br)
-
-	return decodeFileMetadata(br)
+	return md, buf, header.MetadataSize, nil
 }
 
 func (d *decoder) readFirstBytes(ctx context.Context, readSize int64, buf []byte) (int, error) {

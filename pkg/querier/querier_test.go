@@ -22,6 +22,7 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/compactor/deletion/deletionproto"
 	"github.com/grafana/loki/v3/pkg/ingester/client"
+	"github.com/grafana/loki/v3/pkg/iter"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
@@ -1172,7 +1173,7 @@ func newQuerier(cfg Config, clientCfg client.Config, clientFactory ring_client.P
 		return nil, err
 	}
 
-	return New(cfg, store, iq, limits, dg, log.NewNopLogger())
+	return New(cfg, store, iq, limits, dg, log.NewNopLogger(), nil, nil, nil, nil, nil)
 }
 
 func TestQuerier_DetectedLabels(t *testing.T) {
@@ -1566,4 +1567,136 @@ func BenchmarkQuerierDetectedLabels(b *testing.B) {
 		_, err := querier.DetectedLabels(ctx, &request)
 		assert.NoError(b, err)
 	}
+}
+
+// recordingSampleStore records the time range of every SelectSamples call. All other Store methods
+// are inherited from the embedded nil Store and must not be called by these tests.
+type recordingSampleStore struct {
+	Store
+	calls []timeRange
+}
+
+type timeRange struct{ start, end time.Time }
+
+func (r *recordingSampleStore) SelectSamples(_ context.Context, req logql.SelectSampleParams) (iter.SampleIterator, error) {
+	r.calls = append(r.calls, timeRange{start: req.Start, end: req.End})
+	return iter.NoopSampleIterator, nil
+}
+
+func TestQuerier_StoreForSampleParams(t *testing.T) {
+	ctx := context.Background()
+	now := time.Now()
+
+	sampleParams := func(order logproto.SampleOrder, start, end time.Time) logql.SelectSampleParams {
+		return logql.SelectSampleParams{SampleQueryRequest: &logproto.SampleQueryRequest{
+			Start: start, End: end, Order: order,
+		}}
+	}
+
+	// cfg makes the data-object window = [now-startAgo, now-lag] and enables the bounded ingester/store
+	// split (required for the data-object reader).
+	cfg := func(startAgo, lag time.Duration) Config {
+		return Config{
+			DataObjectsStorageStartDate:   flagext.Time(now.Add(-startAgo)),
+			DataObjectsStorageLag:         lag,
+			IngesterQueryStoreMaxLookback: time.Hour, // any non-zero: enables the bounded split
+		}
+	}
+
+	newQuerier := func(chunk, dataobj Store, c Config) *SingleTenantQuerier {
+		return &SingleTenantQuerier{store: chunk, dataObjStore: dataobj, cfg: c}
+	}
+	run := func(t *testing.T, q *SingleTenantQuerier, params logql.SelectSampleParams) {
+		t.Helper()
+		// Every scenario here ends well before now-maxLookback, so no ingester query abuts the store-side
+		// end (ingesterQueried=false).
+		_, err := q.storeForSampleParams(params, false).SelectSamples(ctx, params)
+		require.NoError(t, err)
+	}
+
+	t.Run("timestamp-first falls back to chunk store", func(t *testing.T) {
+		chunk, dataobj := &recordingSampleStore{}, &recordingSampleStore{}
+		q := newQuerier(chunk, dataobj, cfg(30*24*time.Hour, time.Hour))
+		run(t, q, sampleParams(logproto.SAMPLE_ORDER_BY_TIMESTAMP, now.Add(-6*time.Hour), now.Add(-3*time.Hour)))
+		require.Len(t, chunk.calls, 1)
+		require.Empty(t, dataobj.calls)
+	})
+
+	t.Run("no dataobj store falls back to chunk store", func(t *testing.T) {
+		chunk := &recordingSampleStore{}
+		q := newQuerier(chunk, nil, cfg(30*24*time.Hour, time.Hour))
+		run(t, q, sampleParams(logproto.SAMPLE_ORDER_BY_STREAM, now.Add(-6*time.Hour), now.Add(-3*time.Hour)))
+		require.Len(t, chunk.calls, 1)
+	})
+
+	t.Run("without a bounded split falls back to chunk store", func(t *testing.T) {
+		chunk, dataobj := &recordingSampleStore{}, &recordingSampleStore{}
+		c := cfg(30*24*time.Hour, time.Hour)
+		c.IngesterQueryStoreMaxLookback = 0 // no bounded split: data objects could overlap ingesters
+		q := newQuerier(chunk, dataobj, c)
+		run(t, q, sampleParams(logproto.SAMPLE_ORDER_BY_STREAM, now.Add(-6*time.Hour), now.Add(-3*time.Hour)))
+		require.Len(t, chunk.calls, 1)
+		require.Empty(t, dataobj.calls, "data objects must not be read without a bounded split")
+	})
+
+	t.Run("unconfigured start date falls back to chunk store", func(t *testing.T) {
+		chunk, dataobj := &recordingSampleStore{}, &recordingSampleStore{}
+		c := Config{DataObjectsStorageLag: time.Hour, IngesterQueryStoreMaxLookback: time.Hour}
+		q := newQuerier(chunk, dataobj, c)
+		run(t, q, sampleParams(logproto.SAMPLE_ORDER_BY_STREAM, now.Add(-6*time.Hour), now.Add(-3*time.Hour)))
+		require.Len(t, chunk.calls, 1)
+		require.Empty(t, dataobj.calls)
+	})
+
+	// assertDisjoint checks that data objects are read and no data-object read extends past the query's
+	// store-side end. For these historical queries the ingester query start is beyond the query end, so
+	// data objects may serve right up to the end (but never past it).
+	assertDisjoint := func(t *testing.T, dataobj *recordingSampleStore, end time.Time) {
+		t.Helper()
+		require.NotEmpty(t, dataobj.calls, "data objects should be read")
+		for _, c := range dataobj.calls {
+			require.False(t, c.end.After(end),
+				"data-object read end %s must not extend past the store-side end %s", c.end, end)
+		}
+	}
+
+	t.Run("historical in-window range is served entirely by data objects", func(t *testing.T) {
+		chunk, dataobj := &recordingSampleStore{}, &recordingSampleStore{}
+		q := newQuerier(chunk, dataobj, cfg(30*24*time.Hour, time.Hour))
+		start, end := now.Add(-6*time.Hour), now.Add(-3*time.Hour)
+		run(t, q, sampleParams(logproto.SAMPLE_ORDER_BY_STREAM, start, end))
+		assertDisjoint(t, dataobj, end)
+		require.Empty(t, chunk.calls, "a historical in-window query must not touch the chunk store")
+	})
+
+	t.Run("range older than the window is split between chunk and data objects", func(t *testing.T) {
+		chunk, dataobj := &recordingSampleStore{}, &recordingSampleStore{}
+		q := newQuerier(chunk, dataobj, cfg(10*time.Hour, time.Hour))
+		start, end := now.Add(-20*time.Hour), now.Add(-3*time.Hour)
+		run(t, q, sampleParams(logproto.SAMPLE_ORDER_BY_STREAM, start, end))
+		require.NotEmpty(t, chunk.calls, "chunk store serves the pre-availability slice")
+		assertDisjoint(t, dataobj, end)
+		// The oldest chunk read starts at the query start (nothing older is dropped).
+		require.Equal(t, start.UnixMilli(), oldestStart(chunk.calls).UnixMilli())
+	})
+
+	t.Run("both chunk bands: older-than-window and not-yet-available", func(t *testing.T) {
+		chunk, dataobj := &recordingSampleStore{}, &recordingSampleStore{}
+		// Window [now-10h, now-6h]: older than 10h and newer than 6h are chunk-only.
+		q := newQuerier(chunk, dataobj, cfg(10*time.Hour, 6*time.Hour))
+		start, end := now.Add(-20*time.Hour), now.Add(-2*time.Hour)
+		run(t, q, sampleParams(logproto.SAMPLE_ORDER_BY_STREAM, start, end))
+		require.GreaterOrEqual(t, len(chunk.calls), 2, "chunk store serves both the pre- and post-availability slices")
+		assertDisjoint(t, dataobj, end)
+	})
+}
+
+func oldestStart(calls []timeRange) time.Time {
+	oldest := calls[0].start
+	for _, c := range calls[1:] {
+		if c.start.Before(oldest) {
+			oldest = c.start
+		}
+	}
+	return oldest
 }

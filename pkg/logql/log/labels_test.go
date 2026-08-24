@@ -523,3 +523,28 @@ func BenchmarkLabelsBuilder_Add(b *testing.B) {
 		})
 	}
 }
+
+// collidingLabelPair returns two DISTINCT label sets that collide on labels.StableHash (xxhash64),
+// which is the key used by BaseLabelsBuilder's caches and by ForStream. The pair was found offline
+// with a Pollard's-rho search over labels.StableHash (O(1) memory, ~2^32 hashes). The StableHash
+// guard below fails loudly if the hash implementation ever changes, so the fixture is regenerated
+// instead of silently passing.
+func collidingLabelPair(t *testing.T) (labels.Labels, labels.Labels) {
+	t.Helper()
+	a := labels.FromStrings("cluster", "prod", "namespace", "team", "pod", "39ae2fcfd732c147")
+	b := labels.FromStrings("cluster", "prod", "namespace", "team", "pod", "f35246e8ca75a99b")
+	require.NotEqual(t, a.String(), b.String())
+	require.Equal(t, labels.StableHash(a), labels.StableHash(b), "collision fixture no longer collides on StableHash")
+	return a, b
+}
+
+// TestForLabels_HashCollisionKeepsResultsDistinct guards the BaseLabelsBuilder result cache directly.
+func TestForLabels_HashCollisionKeepsResultsDistinct(t *testing.T) {
+	a, b := collidingLabelPair(t)
+	bb := NewBaseLabelsBuilder()
+
+	ra := bb.ForLabels(a, bb.Hash(a)).currentResult
+	rb := bb.ForLabels(b, bb.Hash(b)).currentResult
+	require.True(t, labels.Equal(a, ra.Stream()), "ForLabels(A) must cache A's labels")
+	require.True(t, labels.Equal(b, rb.Stream()), "ForLabels(B) must not return A's colliding cached result")
+}

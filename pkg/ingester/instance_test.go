@@ -1100,6 +1100,99 @@ func Test_QuerySampleWithoutExtractor(t *testing.T) {
 	}
 }
 
+// Test_QuerySample_StreamOrder verifies the ingester honors SAMPLE_ORDER_BY_STREAM.
+func Test_QuerySample_StreamOrder(t *testing.T) {
+	instance := defaultInstance(t)
+
+	type sample struct {
+		hash   uint64
+		labels string
+		ts     int64
+	}
+
+	runQuery := func(t *testing.T, query string, order logproto.SampleOrder) []sample {
+		it, err := instance.QuerySample(t.Context(), logql.SelectSampleParams{
+			SampleQueryRequest: &logproto.SampleQueryRequest{
+				Selector: query,
+				Start:    time.Unix(0, 0),
+				End:      time.Unix(0, 110000000),
+				Order:    order,
+				Plan:     &plan.QueryPlan{AST: syntax.MustParseExpr(query)},
+			},
+		})
+		require.NoError(t, err)
+		defer it.Close()
+		var out []sample
+		for it.Next() {
+			out = append(out, sample{it.StreamHash(), it.Labels(), it.At().Timestamp})
+		}
+		require.NoError(t, it.Err())
+		return out
+	}
+
+	// assertStreamFirst checks stream-first ordering — streamHash non-decreasing, each stream
+	// contiguous, timestamps ascending within a stream — and returns the set of distinct hashes seen.
+	assertStreamFirst := func(t *testing.T, got []sample) map[uint64]bool {
+		seen := map[uint64]bool{}
+
+		for i, r := range got {
+			if i > 0 {
+				prev := got[i-1]
+				require.GreaterOrEqual(t, r.hash, prev.hash, "streamHash must be non-decreasing")
+				if r.hash == prev.hash {
+					require.Less(t, prev.ts, r.ts, "timestamps within a stream must be ascending")
+				} else {
+					require.Falsef(t, seen[r.hash], "stream %d must be contiguous, not revisited", r.hash)
+				}
+			}
+			seen[r.hash] = true
+		}
+
+		return seen
+	}
+
+	const ungrouped = `count_over_time({job="3"}[5m])`
+
+	t.Run("default order returns samples in global timestamp order", func(t *testing.T) {
+		got := runQuery(t, ungrouped, logproto.SAMPLE_ORDER_BY_TIMESTAMP)
+		require.Len(t, got, 10)
+		for i := 1; i < len(got); i++ {
+			require.LessOrEqual(t, got[i-1].ts, got[i].ts, "must be timestamp ascending")
+		}
+	})
+
+	t.Run("stream-first order groups each stream contiguously by its stable label hash", func(t *testing.T) {
+		byTimestamp := runQuery(t, ungrouped, logproto.SAMPLE_ORDER_BY_TIMESTAMP)
+		byStream := runQuery(t, ungrouped, logproto.SAMPLE_ORDER_BY_STREAM)
+
+		require.ElementsMatch(t, byTimestamp, byStream, "the two orderings must return the same samples")
+
+		seen := assertStreamFirst(t, byStream)
+
+		// The stream hash must be labels.StableHash of the stream's labels — the same identity the
+		// TSDB index gives the store's chunks, so ingester and store align on the merge.
+		workerHash := labels.StableHash(labels.FromStrings("host", "agent", "log_stream", "worker", "job", "3"))
+		dispatcherHash := labels.StableHash(labels.FromStrings("host", "agent", "log_stream", "dispatcher", "job", "3"))
+		require.Equal(t, map[uint64]bool{workerHash: true, dispatcherHash: true}, seen,
+			"stream hashes must equal labels.StableHash of each stream's labels")
+	})
+
+	t.Run("grouping query keeps distinct streams on distinct hashes despite identical reduced labels", func(t *testing.T) {
+		// `sum by (job)` pushes the grouping into the extractor, reducing both streams' labels to
+		// {job="3"} — they become label-identical but must keep distinct stream hashes (exposing the
+		// reduced hash instead of the stable stream hash would collapse them into one bucket).
+		got := runQuery(t, `sum by (job) (count_over_time({job="3"}[5m]))`, logproto.SAMPLE_ORDER_BY_STREAM)
+		require.Len(t, got, 10, "no sample dropped")
+
+		labelSet := map[string]bool{}
+		for _, r := range got {
+			labelSet[r.labels] = true
+		}
+		require.Len(t, labelSet, 1, "grouping must collapse both streams onto identical reduced labels")
+		require.Len(t, assertStreamFirst(t, got), 2, "distinct streams must keep distinct hashes despite the label collision")
+	})
+}
+
 type fakeLimits struct {
 	limits map[string]*validation.Limits
 }

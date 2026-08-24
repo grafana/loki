@@ -84,8 +84,356 @@ func (m *ObjectWrittenEvent) GetEarliestRecordTime() string {
 	return ""
 }
 
+// CachedSections is the value stored in the Sections resolution cache. It carries the resolution
+// inputs (matchers, predicates, window, and the listed index-object set) so a hash-key collision is
+// detected on read and treated as a miss rather than a wrong answer.
+type CachedSections struct {
+	Matchers   string                     `protobuf:"bytes,1,opt,name=matchers,proto3" json:"matchers,omitempty"`
+	Predicates string                     `protobuf:"bytes,2,opt,name=predicates,proto3" json:"predicates,omitempty"`
+	StartNanos int64                      `protobuf:"varint,3,opt,name=startNanos,proto3" json:"startNanos,omitempty"`
+	EndNanos   int64                      `protobuf:"varint,4,opt,name=endNanos,proto3" json:"endNanos,omitempty"`
+	Indexes    []*CachedIndexEntry        `protobuf:"bytes,5,rep,name=indexes,proto3" json:"indexes,omitempty"`
+	Sections   []*CachedSectionDescriptor `protobuf:"bytes,6,rep,name=sections,proto3" json:"sections,omitempty"`
+}
+
+func (m *CachedSections) Reset()      { *m = CachedSections{} }
+func (*CachedSections) ProtoMessage() {}
+func (*CachedSections) Descriptor() ([]byte, []int) {
+	return fileDescriptor_fdfd617758a99d3c, []int{1}
+}
+func (m *CachedSections) XXX_Unmarshal(b []byte) error {
+	return m.Unmarshal(b)
+}
+func (m *CachedSections) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
+	if deterministic {
+		return xxx_messageInfo_CachedSections.Marshal(b, m, deterministic)
+	} else {
+		b = b[:cap(b)]
+		n, err := m.MarshalToSizedBuffer(b)
+		if err != nil {
+			return nil, err
+		}
+		return b[:n], nil
+	}
+}
+func (m *CachedSections) XXX_Merge(src proto.Message) {
+	xxx_messageInfo_CachedSections.Merge(m, src)
+}
+func (m *CachedSections) XXX_Size() int {
+	return m.Size()
+}
+func (m *CachedSections) XXX_DiscardUnknown() {
+	xxx_messageInfo_CachedSections.DiscardUnknown(m)
+}
+
+var xxx_messageInfo_CachedSections proto.InternalMessageInfo
+
+func (m *CachedSections) GetMatchers() string {
+	if m != nil {
+		return m.Matchers
+	}
+	return ""
+}
+
+func (m *CachedSections) GetPredicates() string {
+	if m != nil {
+		return m.Predicates
+	}
+	return ""
+}
+
+func (m *CachedSections) GetStartNanos() int64 {
+	if m != nil {
+		return m.StartNanos
+	}
+	return 0
+}
+
+func (m *CachedSections) GetEndNanos() int64 {
+	if m != nil {
+		return m.EndNanos
+	}
+	return 0
+}
+
+func (m *CachedSections) GetIndexes() []*CachedIndexEntry {
+	if m != nil {
+		return m.Indexes
+	}
+	return nil
+}
+
+func (m *CachedSections) GetSections() []*CachedSectionDescriptor {
+	if m != nil {
+		return m.Sections
+	}
+	return nil
+}
+
+// CachedIndexEntry is one index object identity (path + covered time range) as stored in the cache.
+type CachedIndexEntry struct {
+	Path       string `protobuf:"bytes,1,opt,name=path,proto3" json:"path,omitempty"`
+	StartNanos int64  `protobuf:"varint,2,opt,name=startNanos,proto3" json:"startNanos,omitempty"`
+	EndNanos   int64  `protobuf:"varint,3,opt,name=endNanos,proto3" json:"endNanos,omitempty"`
+}
+
+func (m *CachedIndexEntry) Reset()      { *m = CachedIndexEntry{} }
+func (*CachedIndexEntry) ProtoMessage() {}
+func (*CachedIndexEntry) Descriptor() ([]byte, []int) {
+	return fileDescriptor_fdfd617758a99d3c, []int{2}
+}
+func (m *CachedIndexEntry) XXX_Unmarshal(b []byte) error {
+	return m.Unmarshal(b)
+}
+func (m *CachedIndexEntry) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
+	if deterministic {
+		return xxx_messageInfo_CachedIndexEntry.Marshal(b, m, deterministic)
+	} else {
+		b = b[:cap(b)]
+		n, err := m.MarshalToSizedBuffer(b)
+		if err != nil {
+			return nil, err
+		}
+		return b[:n], nil
+	}
+}
+func (m *CachedIndexEntry) XXX_Merge(src proto.Message) {
+	xxx_messageInfo_CachedIndexEntry.Merge(m, src)
+}
+func (m *CachedIndexEntry) XXX_Size() int {
+	return m.Size()
+}
+func (m *CachedIndexEntry) XXX_DiscardUnknown() {
+	xxx_messageInfo_CachedIndexEntry.DiscardUnknown(m)
+}
+
+var xxx_messageInfo_CachedIndexEntry proto.InternalMessageInfo
+
+func (m *CachedIndexEntry) GetPath() string {
+	if m != nil {
+		return m.Path
+	}
+	return ""
+}
+
+func (m *CachedIndexEntry) GetStartNanos() int64 {
+	if m != nil {
+		return m.StartNanos
+	}
+	return 0
+}
+
+func (m *CachedIndexEntry) GetEndNanos() int64 {
+	if m != nil {
+		return m.EndNanos
+	}
+	return 0
+}
+
+// CachedToC is one 12h Table-of-Contents window as stored in the warm cache: every tenant's index-object
+// entries for that window, unfiltered by time (the reader time-filters at query time).
+type CachedToC struct {
+	Tenants []*CachedToCTenant `protobuf:"bytes,1,rep,name=tenants,proto3" json:"tenants,omitempty"`
+}
+
+func (m *CachedToC) Reset()      { *m = CachedToC{} }
+func (*CachedToC) ProtoMessage() {}
+func (*CachedToC) Descriptor() ([]byte, []int) {
+	return fileDescriptor_fdfd617758a99d3c, []int{3}
+}
+func (m *CachedToC) XXX_Unmarshal(b []byte) error {
+	return m.Unmarshal(b)
+}
+func (m *CachedToC) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
+	if deterministic {
+		return xxx_messageInfo_CachedToC.Marshal(b, m, deterministic)
+	} else {
+		b = b[:cap(b)]
+		n, err := m.MarshalToSizedBuffer(b)
+		if err != nil {
+			return nil, err
+		}
+		return b[:n], nil
+	}
+}
+func (m *CachedToC) XXX_Merge(src proto.Message) {
+	xxx_messageInfo_CachedToC.Merge(m, src)
+}
+func (m *CachedToC) XXX_Size() int {
+	return m.Size()
+}
+func (m *CachedToC) XXX_DiscardUnknown() {
+	xxx_messageInfo_CachedToC.DiscardUnknown(m)
+}
+
+var xxx_messageInfo_CachedToC proto.InternalMessageInfo
+
+func (m *CachedToC) GetTenants() []*CachedToCTenant {
+	if m != nil {
+		return m.Tenants
+	}
+	return nil
+}
+
+type CachedToCTenant struct {
+	Tenant  string              `protobuf:"bytes,1,opt,name=tenant,proto3" json:"tenant,omitempty"`
+	Entries []*CachedIndexEntry `protobuf:"bytes,2,rep,name=entries,proto3" json:"entries,omitempty"`
+}
+
+func (m *CachedToCTenant) Reset()      { *m = CachedToCTenant{} }
+func (*CachedToCTenant) ProtoMessage() {}
+func (*CachedToCTenant) Descriptor() ([]byte, []int) {
+	return fileDescriptor_fdfd617758a99d3c, []int{4}
+}
+func (m *CachedToCTenant) XXX_Unmarshal(b []byte) error {
+	return m.Unmarshal(b)
+}
+func (m *CachedToCTenant) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
+	if deterministic {
+		return xxx_messageInfo_CachedToCTenant.Marshal(b, m, deterministic)
+	} else {
+		b = b[:cap(b)]
+		n, err := m.MarshalToSizedBuffer(b)
+		if err != nil {
+			return nil, err
+		}
+		return b[:n], nil
+	}
+}
+func (m *CachedToCTenant) XXX_Merge(src proto.Message) {
+	xxx_messageInfo_CachedToCTenant.Merge(m, src)
+}
+func (m *CachedToCTenant) XXX_Size() int {
+	return m.Size()
+}
+func (m *CachedToCTenant) XXX_DiscardUnknown() {
+	xxx_messageInfo_CachedToCTenant.DiscardUnknown(m)
+}
+
+var xxx_messageInfo_CachedToCTenant proto.InternalMessageInfo
+
+func (m *CachedToCTenant) GetTenant() string {
+	if m != nil {
+		return m.Tenant
+	}
+	return ""
+}
+
+func (m *CachedToCTenant) GetEntries() []*CachedIndexEntry {
+	if m != nil {
+		return m.Entries
+	}
+	return nil
+}
+
+// CachedSectionDescriptor mirrors every DataobjSectionDescriptor field so a cache hit reconstructs the
+// descriptor faithfully for every caller.
+type CachedSectionDescriptor struct {
+	ObjectPath          string   `protobuf:"bytes,1,opt,name=objectPath,proto3" json:"objectPath,omitempty"`
+	SectionIdx          int64    `protobuf:"varint,2,opt,name=sectionIdx,proto3" json:"sectionIdx,omitempty"`
+	StreamIds           []int64  `protobuf:"varint,3,rep,packed,name=streamIds,proto3" json:"streamIds,omitempty"`
+	RowCount            int64    `protobuf:"varint,4,opt,name=rowCount,proto3" json:"rowCount,omitempty"`
+	Size_               int64    `protobuf:"varint,5,opt,name=size,proto3" json:"size,omitempty"`
+	StartNanos          int64    `protobuf:"varint,6,opt,name=startNanos,proto3" json:"startNanos,omitempty"`
+	EndNanos            int64    `protobuf:"varint,7,opt,name=endNanos,proto3" json:"endNanos,omitempty"`
+	AmbiguousPredicates []string `protobuf:"bytes,8,rep,name=ambiguousPredicates,proto3" json:"ambiguousPredicates,omitempty"`
+}
+
+func (m *CachedSectionDescriptor) Reset()      { *m = CachedSectionDescriptor{} }
+func (*CachedSectionDescriptor) ProtoMessage() {}
+func (*CachedSectionDescriptor) Descriptor() ([]byte, []int) {
+	return fileDescriptor_fdfd617758a99d3c, []int{5}
+}
+func (m *CachedSectionDescriptor) XXX_Unmarshal(b []byte) error {
+	return m.Unmarshal(b)
+}
+func (m *CachedSectionDescriptor) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
+	if deterministic {
+		return xxx_messageInfo_CachedSectionDescriptor.Marshal(b, m, deterministic)
+	} else {
+		b = b[:cap(b)]
+		n, err := m.MarshalToSizedBuffer(b)
+		if err != nil {
+			return nil, err
+		}
+		return b[:n], nil
+	}
+}
+func (m *CachedSectionDescriptor) XXX_Merge(src proto.Message) {
+	xxx_messageInfo_CachedSectionDescriptor.Merge(m, src)
+}
+func (m *CachedSectionDescriptor) XXX_Size() int {
+	return m.Size()
+}
+func (m *CachedSectionDescriptor) XXX_DiscardUnknown() {
+	xxx_messageInfo_CachedSectionDescriptor.DiscardUnknown(m)
+}
+
+var xxx_messageInfo_CachedSectionDescriptor proto.InternalMessageInfo
+
+func (m *CachedSectionDescriptor) GetObjectPath() string {
+	if m != nil {
+		return m.ObjectPath
+	}
+	return ""
+}
+
+func (m *CachedSectionDescriptor) GetSectionIdx() int64 {
+	if m != nil {
+		return m.SectionIdx
+	}
+	return 0
+}
+
+func (m *CachedSectionDescriptor) GetStreamIds() []int64 {
+	if m != nil {
+		return m.StreamIds
+	}
+	return nil
+}
+
+func (m *CachedSectionDescriptor) GetRowCount() int64 {
+	if m != nil {
+		return m.RowCount
+	}
+	return 0
+}
+
+func (m *CachedSectionDescriptor) GetSize_() int64 {
+	if m != nil {
+		return m.Size_
+	}
+	return 0
+}
+
+func (m *CachedSectionDescriptor) GetStartNanos() int64 {
+	if m != nil {
+		return m.StartNanos
+	}
+	return 0
+}
+
+func (m *CachedSectionDescriptor) GetEndNanos() int64 {
+	if m != nil {
+		return m.EndNanos
+	}
+	return 0
+}
+
+func (m *CachedSectionDescriptor) GetAmbiguousPredicates() []string {
+	if m != nil {
+		return m.AmbiguousPredicates
+	}
+	return nil
+}
+
 func init() {
 	proto.RegisterType((*ObjectWrittenEvent)(nil), "dataobj.metastore.ObjectWrittenEvent")
+	proto.RegisterType((*CachedSections)(nil), "dataobj.metastore.CachedSections")
+	proto.RegisterType((*CachedIndexEntry)(nil), "dataobj.metastore.CachedIndexEntry")
+	proto.RegisterType((*CachedToC)(nil), "dataobj.metastore.CachedToC")
+	proto.RegisterType((*CachedToCTenant)(nil), "dataobj.metastore.CachedToCTenant")
+	proto.RegisterType((*CachedSectionDescriptor)(nil), "dataobj.metastore.CachedSectionDescriptor")
 }
 
 func init() {
@@ -93,23 +441,42 @@ func init() {
 }
 
 var fileDescriptor_fdfd617758a99d3c = []byte{
-	// 247 bytes of a gzipped FileDescriptorProto
-	0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0xff, 0x6c, 0x90, 0xb1, 0x4a, 0x03, 0x41,
-	0x14, 0x45, 0xe7, 0xc5, 0x20, 0x66, 0x2a, 0x9d, 0x2a, 0x85, 0x3c, 0x44, 0x10, 0xac, 0x76, 0x84,
-	0xfc, 0x81, 0x60, 0x63, 0xa3, 0x04, 0x41, 0xb0, 0x9b, 0xd9, 0xbc, 0x6c, 0x26, 0xc9, 0xee, 0x84,
-	0xc9, 0x33, 0xb6, 0x96, 0x96, 0x7e, 0x86, 0x9f, 0x62, 0xb9, 0x65, 0x4a, 0x77, 0xb6, 0xb1, 0xcc,
-	0x27, 0x08, 0x83, 0x18, 0x8b, 0xed, 0x2e, 0xe7, 0x9c, 0xea, 0xca, 0x8b, 0xd5, 0xa2, 0xd0, 0x13,
-	0xc3, 0xc6, 0xdb, 0xb9, 0x2e, 0x89, 0xcd, 0x9a, 0x7d, 0xa0, 0xfd, 0xca, 0x56, 0xc1, 0xb3, 0x57,
-	0x27, 0xbf, 0x49, 0xf6, 0x27, 0xce, 0xdf, 0x40, 0xaa, 0x3b, 0x3b, 0xa7, 0x9c, 0x1f, 0x83, 0x63,
-	0xa6, 0xea, 0x66, 0x43, 0x15, 0x2b, 0x94, 0xd2, 0x27, 0x7a, 0x6f, 0x78, 0x36, 0xec, 0x9d, 0xc1,
-	0xe5, 0x60, 0xfc, 0x8f, 0xa8, 0x53, 0x39, 0x78, 0x09, 0x8e, 0xe9, 0xc1, 0x95, 0x34, 0x3c, 0x48,
-	0x7a, 0x0f, 0x54, 0x26, 0x15, 0x99, 0xb0, 0x74, 0xb4, 0xe6, 0x31, 0xe5, 0x3e, 0x4c, 0x52, 0xd6,
-	0x4f, 0x59, 0x87, 0xb9, 0xed, 0x1f, 0xc1, 0x71, 0xef, 0x7a, 0x5a, 0x37, 0x28, 0xb6, 0x0d, 0x8a,
-	0x5d, 0x83, 0xf0, 0x1a, 0x11, 0x3e, 0x22, 0xc2, 0x67, 0x44, 0xa8, 0x23, 0xc2, 0x57, 0x44, 0xf8,
-	0x8e, 0x28, 0x76, 0x11, 0xe1, 0xbd, 0x45, 0x51, 0xb7, 0x28, 0xb6, 0x2d, 0x8a, 0xa7, 0xab, 0xc2,
-	0xf1, 0xec, 0xd9, 0x66, 0xb9, 0x2f, 0x75, 0x11, 0xcc, 0xd4, 0x54, 0x46, 0x2f, 0xfd, 0xc2, 0xe9,
-	0xcd, 0x48, 0x77, 0xbe, 0x62, 0x0f, 0xd3, 0x19, 0xa3, 0x9f, 0x00, 0x00, 0x00, 0xff, 0xff, 0x66,
-	0xed, 0x96, 0x1e, 0x35, 0x01, 0x00, 0x00,
+	// 556 bytes of a gzipped FileDescriptorProto
+	0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0xff, 0x8c, 0x54, 0xcf, 0x6f, 0xd3, 0x30,
+	0x14, 0xae, 0x9b, 0xae, 0x6b, 0x8d, 0x04, 0xc3, 0x48, 0x10, 0x21, 0x64, 0x4d, 0x41, 0x48, 0x15,
+	0x87, 0x64, 0x62, 0x57, 0xb8, 0x50, 0x86, 0x54, 0x0e, 0x30, 0x85, 0x4a, 0x48, 0xdc, 0x9c, 0xc4,
+	0x6b, 0xbd, 0x2d, 0x76, 0x65, 0xbf, 0x6e, 0x83, 0x13, 0x47, 0x6e, 0x70, 0xe1, 0x7f, 0xe0, 0x4f,
+	0xe1, 0xb8, 0xe3, 0x8e, 0x2c, 0xbb, 0x70, 0xdc, 0x9f, 0x80, 0xec, 0xa4, 0xe9, 0xc8, 0x7e, 0x88,
+	0x9b, 0xfd, 0x7d, 0xef, 0x4b, 0xbe, 0xf7, 0xbd, 0x27, 0xe3, 0x27, 0xb3, 0xbd, 0x49, 0x94, 0x31,
+	0x60, 0x2a, 0xd9, 0x8d, 0x72, 0x0e, 0xcc, 0x80, 0xd2, 0x7c, 0x79, 0x0a, 0x67, 0x5a, 0x81, 0x22,
+	0x77, 0xab, 0x92, 0xb0, 0x26, 0x82, 0xaf, 0x08, 0x93, 0x77, 0xc9, 0x2e, 0x4f, 0xe1, 0x83, 0x16,
+	0x00, 0x5c, 0x6e, 0x1d, 0x70, 0x09, 0x84, 0x62, 0xac, 0x1c, 0xba, 0xcd, 0x60, 0xea, 0xb7, 0xd7,
+	0xd1, 0xa0, 0x1f, 0x5f, 0x40, 0xc8, 0x23, 0xdc, 0x3f, 0xd4, 0x02, 0xf8, 0x58, 0xe4, 0xdc, 0xf7,
+	0x1c, 0xbd, 0x04, 0x48, 0x88, 0x09, 0x67, 0x7a, 0x5f, 0x70, 0x03, 0x31, 0x4f, 0x95, 0xce, 0x5c,
+	0x59, 0xc7, 0x95, 0x5d, 0xc1, 0xbc, 0xe9, 0xf4, 0xd0, 0x5a, 0x3b, 0xf8, 0xd6, 0xc6, 0xb7, 0x87,
+	0x2c, 0x9d, 0xf2, 0xec, 0x3d, 0x4f, 0x41, 0x28, 0x69, 0xc8, 0x43, 0xdc, 0xcb, 0x19, 0xa4, 0x53,
+	0xae, 0x8d, 0x8f, 0x9c, 0xbc, 0xbe, 0x5b, 0x8b, 0x33, 0xcd, 0x33, 0x91, 0x32, 0xe0, 0x66, 0x61,
+	0x71, 0x89, 0x58, 0xde, 0x00, 0xd3, 0xf0, 0x96, 0x49, 0x65, 0x9c, 0x47, 0x2f, 0xbe, 0x80, 0xd8,
+	0x6f, 0x73, 0x99, 0x95, 0x6c, 0xc7, 0xb1, 0xf5, 0x9d, 0xbc, 0xc0, 0xab, 0x42, 0x66, 0xfc, 0x88,
+	0x1b, 0x7f, 0x65, 0xdd, 0x1b, 0xdc, 0x7a, 0xf6, 0x38, 0xbc, 0x14, 0x5d, 0x58, 0x7a, 0x1d, 0xd9,
+	0xba, 0x2d, 0x09, 0xfa, 0x53, 0xbc, 0xd0, 0x90, 0xd7, 0xb8, 0x67, 0xaa, 0x16, 0xfc, 0xae, 0xd3,
+	0x3f, 0xbd, 0x56, 0x5f, 0xf5, 0xfa, 0x8a, 0x9b, 0x54, 0x8b, 0x19, 0x28, 0x1d, 0xd7, 0xda, 0x20,
+	0xc1, 0x6b, 0xcd, 0x9f, 0x10, 0x82, 0x3b, 0x33, 0x3b, 0x93, 0x32, 0x0e, 0x77, 0x6e, 0xb4, 0xda,
+	0xbe, 0xb1, 0x55, 0xef, 0xdf, 0x56, 0x83, 0x11, 0xee, 0x97, 0xff, 0x18, 0xab, 0x21, 0x79, 0x8e,
+	0x57, 0x81, 0x4b, 0x26, 0xc1, 0xc6, 0x6d, 0x7d, 0x07, 0xd7, 0xfa, 0x1e, 0xab, 0xe1, 0xd8, 0x95,
+	0xc6, 0x0b, 0x49, 0x30, 0xc5, 0x77, 0x1a, 0x1c, 0xb9, 0x8f, 0xbb, 0x25, 0x5b, 0xf9, 0xad, 0x6e,
+	0x36, 0x60, 0x2e, 0x41, 0x0b, 0x37, 0xb9, 0xff, 0x0f, 0xb8, 0xd2, 0x04, 0x3f, 0xda, 0xf8, 0xc1,
+	0x35, 0xf1, 0x35, 0x56, 0x17, 0x5d, 0x5a, 0x5d, 0x1b, 0x56, 0x29, 0x1a, 0x65, 0x47, 0x75, 0x58,
+	0x35, 0x62, 0x57, 0xdb, 0x80, 0xe6, 0x2c, 0x1f, 0x65, 0x36, 0x2d, 0x6f, 0xe0, 0xc5, 0x4b, 0xc0,
+	0x46, 0xa9, 0xd5, 0xe1, 0x50, 0xcd, 0x25, 0x2c, 0xb6, 0x66, 0x71, 0xb7, 0xa3, 0x31, 0xe2, 0x33,
+	0xf7, 0x57, 0x1c, 0xee, 0xce, 0x8d, 0xd1, 0x74, 0x6f, 0x1c, 0xcd, 0x6a, 0x63, 0x0b, 0x37, 0xf0,
+	0x3d, 0x96, 0x27, 0x62, 0x32, 0x57, 0x73, 0xb3, 0xbd, 0x5c, 0xf5, 0xde, 0xba, 0x37, 0xe8, 0xc7,
+	0x57, 0x51, 0x2f, 0x77, 0x8e, 0x4f, 0x69, 0xeb, 0xe4, 0x94, 0xb6, 0xce, 0x4f, 0x29, 0xfa, 0x52,
+	0x50, 0xf4, 0xb3, 0xa0, 0xe8, 0x57, 0x41, 0xd1, 0x71, 0x41, 0xd1, 0xef, 0x82, 0xa2, 0x3f, 0x05,
+	0x6d, 0x9d, 0x17, 0x14, 0x7d, 0x3f, 0xa3, 0xad, 0xe3, 0x33, 0xda, 0x3a, 0x39, 0xa3, 0xad, 0x8f,
+	0x1b, 0x13, 0x01, 0xd3, 0x79, 0x12, 0xa6, 0x2a, 0x8f, 0x26, 0x9a, 0xed, 0x30, 0xc9, 0xa2, 0x7d,
+	0xb5, 0x27, 0xa2, 0x83, 0xcd, 0xe8, 0xca, 0x87, 0x25, 0xe9, 0xba, 0xf7, 0x64, 0xf3, 0x6f, 0x00,
+	0x00, 0x00, 0xff, 0xff, 0xae, 0x35, 0xae, 0xf0, 0x78, 0x04, 0x00, 0x00,
 }
 
 func (this *ObjectWrittenEvent) Equal(that interface{}) bool {
@@ -142,6 +509,201 @@ func (this *ObjectWrittenEvent) Equal(that interface{}) bool {
 	}
 	return true
 }
+func (this *CachedSections) Equal(that interface{}) bool {
+	if that == nil {
+		return this == nil
+	}
+
+	that1, ok := that.(*CachedSections)
+	if !ok {
+		that2, ok := that.(CachedSections)
+		if ok {
+			that1 = &that2
+		} else {
+			return false
+		}
+	}
+	if that1 == nil {
+		return this == nil
+	} else if this == nil {
+		return false
+	}
+	if this.Matchers != that1.Matchers {
+		return false
+	}
+	if this.Predicates != that1.Predicates {
+		return false
+	}
+	if this.StartNanos != that1.StartNanos {
+		return false
+	}
+	if this.EndNanos != that1.EndNanos {
+		return false
+	}
+	if len(this.Indexes) != len(that1.Indexes) {
+		return false
+	}
+	for i := range this.Indexes {
+		if !this.Indexes[i].Equal(that1.Indexes[i]) {
+			return false
+		}
+	}
+	if len(this.Sections) != len(that1.Sections) {
+		return false
+	}
+	for i := range this.Sections {
+		if !this.Sections[i].Equal(that1.Sections[i]) {
+			return false
+		}
+	}
+	return true
+}
+func (this *CachedIndexEntry) Equal(that interface{}) bool {
+	if that == nil {
+		return this == nil
+	}
+
+	that1, ok := that.(*CachedIndexEntry)
+	if !ok {
+		that2, ok := that.(CachedIndexEntry)
+		if ok {
+			that1 = &that2
+		} else {
+			return false
+		}
+	}
+	if that1 == nil {
+		return this == nil
+	} else if this == nil {
+		return false
+	}
+	if this.Path != that1.Path {
+		return false
+	}
+	if this.StartNanos != that1.StartNanos {
+		return false
+	}
+	if this.EndNanos != that1.EndNanos {
+		return false
+	}
+	return true
+}
+func (this *CachedToC) Equal(that interface{}) bool {
+	if that == nil {
+		return this == nil
+	}
+
+	that1, ok := that.(*CachedToC)
+	if !ok {
+		that2, ok := that.(CachedToC)
+		if ok {
+			that1 = &that2
+		} else {
+			return false
+		}
+	}
+	if that1 == nil {
+		return this == nil
+	} else if this == nil {
+		return false
+	}
+	if len(this.Tenants) != len(that1.Tenants) {
+		return false
+	}
+	for i := range this.Tenants {
+		if !this.Tenants[i].Equal(that1.Tenants[i]) {
+			return false
+		}
+	}
+	return true
+}
+func (this *CachedToCTenant) Equal(that interface{}) bool {
+	if that == nil {
+		return this == nil
+	}
+
+	that1, ok := that.(*CachedToCTenant)
+	if !ok {
+		that2, ok := that.(CachedToCTenant)
+		if ok {
+			that1 = &that2
+		} else {
+			return false
+		}
+	}
+	if that1 == nil {
+		return this == nil
+	} else if this == nil {
+		return false
+	}
+	if this.Tenant != that1.Tenant {
+		return false
+	}
+	if len(this.Entries) != len(that1.Entries) {
+		return false
+	}
+	for i := range this.Entries {
+		if !this.Entries[i].Equal(that1.Entries[i]) {
+			return false
+		}
+	}
+	return true
+}
+func (this *CachedSectionDescriptor) Equal(that interface{}) bool {
+	if that == nil {
+		return this == nil
+	}
+
+	that1, ok := that.(*CachedSectionDescriptor)
+	if !ok {
+		that2, ok := that.(CachedSectionDescriptor)
+		if ok {
+			that1 = &that2
+		} else {
+			return false
+		}
+	}
+	if that1 == nil {
+		return this == nil
+	} else if this == nil {
+		return false
+	}
+	if this.ObjectPath != that1.ObjectPath {
+		return false
+	}
+	if this.SectionIdx != that1.SectionIdx {
+		return false
+	}
+	if len(this.StreamIds) != len(that1.StreamIds) {
+		return false
+	}
+	for i := range this.StreamIds {
+		if this.StreamIds[i] != that1.StreamIds[i] {
+			return false
+		}
+	}
+	if this.RowCount != that1.RowCount {
+		return false
+	}
+	if this.Size_ != that1.Size_ {
+		return false
+	}
+	if this.StartNanos != that1.StartNanos {
+		return false
+	}
+	if this.EndNanos != that1.EndNanos {
+		return false
+	}
+	if len(this.AmbiguousPredicates) != len(that1.AmbiguousPredicates) {
+		return false
+	}
+	for i := range this.AmbiguousPredicates {
+		if this.AmbiguousPredicates[i] != that1.AmbiguousPredicates[i] {
+			return false
+		}
+	}
+	return true
+}
 func (this *ObjectWrittenEvent) GoString() string {
 	if this == nil {
 		return "nil"
@@ -151,6 +713,79 @@ func (this *ObjectWrittenEvent) GoString() string {
 	s = append(s, "ObjectPath: "+fmt.Sprintf("%#v", this.ObjectPath)+",\n")
 	s = append(s, "WriteTime: "+fmt.Sprintf("%#v", this.WriteTime)+",\n")
 	s = append(s, "EarliestRecordTime: "+fmt.Sprintf("%#v", this.EarliestRecordTime)+",\n")
+	s = append(s, "}")
+	return strings.Join(s, "")
+}
+func (this *CachedSections) GoString() string {
+	if this == nil {
+		return "nil"
+	}
+	s := make([]string, 0, 10)
+	s = append(s, "&metastore.CachedSections{")
+	s = append(s, "Matchers: "+fmt.Sprintf("%#v", this.Matchers)+",\n")
+	s = append(s, "Predicates: "+fmt.Sprintf("%#v", this.Predicates)+",\n")
+	s = append(s, "StartNanos: "+fmt.Sprintf("%#v", this.StartNanos)+",\n")
+	s = append(s, "EndNanos: "+fmt.Sprintf("%#v", this.EndNanos)+",\n")
+	if this.Indexes != nil {
+		s = append(s, "Indexes: "+fmt.Sprintf("%#v", this.Indexes)+",\n")
+	}
+	if this.Sections != nil {
+		s = append(s, "Sections: "+fmt.Sprintf("%#v", this.Sections)+",\n")
+	}
+	s = append(s, "}")
+	return strings.Join(s, "")
+}
+func (this *CachedIndexEntry) GoString() string {
+	if this == nil {
+		return "nil"
+	}
+	s := make([]string, 0, 7)
+	s = append(s, "&metastore.CachedIndexEntry{")
+	s = append(s, "Path: "+fmt.Sprintf("%#v", this.Path)+",\n")
+	s = append(s, "StartNanos: "+fmt.Sprintf("%#v", this.StartNanos)+",\n")
+	s = append(s, "EndNanos: "+fmt.Sprintf("%#v", this.EndNanos)+",\n")
+	s = append(s, "}")
+	return strings.Join(s, "")
+}
+func (this *CachedToC) GoString() string {
+	if this == nil {
+		return "nil"
+	}
+	s := make([]string, 0, 5)
+	s = append(s, "&metastore.CachedToC{")
+	if this.Tenants != nil {
+		s = append(s, "Tenants: "+fmt.Sprintf("%#v", this.Tenants)+",\n")
+	}
+	s = append(s, "}")
+	return strings.Join(s, "")
+}
+func (this *CachedToCTenant) GoString() string {
+	if this == nil {
+		return "nil"
+	}
+	s := make([]string, 0, 6)
+	s = append(s, "&metastore.CachedToCTenant{")
+	s = append(s, "Tenant: "+fmt.Sprintf("%#v", this.Tenant)+",\n")
+	if this.Entries != nil {
+		s = append(s, "Entries: "+fmt.Sprintf("%#v", this.Entries)+",\n")
+	}
+	s = append(s, "}")
+	return strings.Join(s, "")
+}
+func (this *CachedSectionDescriptor) GoString() string {
+	if this == nil {
+		return "nil"
+	}
+	s := make([]string, 0, 12)
+	s = append(s, "&metastore.CachedSectionDescriptor{")
+	s = append(s, "ObjectPath: "+fmt.Sprintf("%#v", this.ObjectPath)+",\n")
+	s = append(s, "SectionIdx: "+fmt.Sprintf("%#v", this.SectionIdx)+",\n")
+	s = append(s, "StreamIds: "+fmt.Sprintf("%#v", this.StreamIds)+",\n")
+	s = append(s, "RowCount: "+fmt.Sprintf("%#v", this.RowCount)+",\n")
+	s = append(s, "Size_: "+fmt.Sprintf("%#v", this.Size_)+",\n")
+	s = append(s, "StartNanos: "+fmt.Sprintf("%#v", this.StartNanos)+",\n")
+	s = append(s, "EndNanos: "+fmt.Sprintf("%#v", this.EndNanos)+",\n")
+	s = append(s, "AmbiguousPredicates: "+fmt.Sprintf("%#v", this.AmbiguousPredicates)+",\n")
 	s = append(s, "}")
 	return strings.Join(s, "")
 }
@@ -206,6 +841,285 @@ func (m *ObjectWrittenEvent) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	return len(dAtA) - i, nil
 }
 
+func (m *CachedSections) Marshal() (dAtA []byte, err error) {
+	size := m.Size()
+	dAtA = make([]byte, size)
+	n, err := m.MarshalToSizedBuffer(dAtA[:size])
+	if err != nil {
+		return nil, err
+	}
+	return dAtA[:n], nil
+}
+
+func (m *CachedSections) MarshalTo(dAtA []byte) (int, error) {
+	size := m.Size()
+	return m.MarshalToSizedBuffer(dAtA[:size])
+}
+
+func (m *CachedSections) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	_ = i
+	var l int
+	_ = l
+	if len(m.Sections) > 0 {
+		for iNdEx := len(m.Sections) - 1; iNdEx >= 0; iNdEx-- {
+			{
+				size, err := m.Sections[iNdEx].MarshalToSizedBuffer(dAtA[:i])
+				if err != nil {
+					return 0, err
+				}
+				i -= size
+				i = encodeVarintMetastore(dAtA, i, uint64(size))
+			}
+			i--
+			dAtA[i] = 0x32
+		}
+	}
+	if len(m.Indexes) > 0 {
+		for iNdEx := len(m.Indexes) - 1; iNdEx >= 0; iNdEx-- {
+			{
+				size, err := m.Indexes[iNdEx].MarshalToSizedBuffer(dAtA[:i])
+				if err != nil {
+					return 0, err
+				}
+				i -= size
+				i = encodeVarintMetastore(dAtA, i, uint64(size))
+			}
+			i--
+			dAtA[i] = 0x2a
+		}
+	}
+	if m.EndNanos != 0 {
+		i = encodeVarintMetastore(dAtA, i, uint64(m.EndNanos))
+		i--
+		dAtA[i] = 0x20
+	}
+	if m.StartNanos != 0 {
+		i = encodeVarintMetastore(dAtA, i, uint64(m.StartNanos))
+		i--
+		dAtA[i] = 0x18
+	}
+	if len(m.Predicates) > 0 {
+		i -= len(m.Predicates)
+		copy(dAtA[i:], m.Predicates)
+		i = encodeVarintMetastore(dAtA, i, uint64(len(m.Predicates)))
+		i--
+		dAtA[i] = 0x12
+	}
+	if len(m.Matchers) > 0 {
+		i -= len(m.Matchers)
+		copy(dAtA[i:], m.Matchers)
+		i = encodeVarintMetastore(dAtA, i, uint64(len(m.Matchers)))
+		i--
+		dAtA[i] = 0xa
+	}
+	return len(dAtA) - i, nil
+}
+
+func (m *CachedIndexEntry) Marshal() (dAtA []byte, err error) {
+	size := m.Size()
+	dAtA = make([]byte, size)
+	n, err := m.MarshalToSizedBuffer(dAtA[:size])
+	if err != nil {
+		return nil, err
+	}
+	return dAtA[:n], nil
+}
+
+func (m *CachedIndexEntry) MarshalTo(dAtA []byte) (int, error) {
+	size := m.Size()
+	return m.MarshalToSizedBuffer(dAtA[:size])
+}
+
+func (m *CachedIndexEntry) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	_ = i
+	var l int
+	_ = l
+	if m.EndNanos != 0 {
+		i = encodeVarintMetastore(dAtA, i, uint64(m.EndNanos))
+		i--
+		dAtA[i] = 0x18
+	}
+	if m.StartNanos != 0 {
+		i = encodeVarintMetastore(dAtA, i, uint64(m.StartNanos))
+		i--
+		dAtA[i] = 0x10
+	}
+	if len(m.Path) > 0 {
+		i -= len(m.Path)
+		copy(dAtA[i:], m.Path)
+		i = encodeVarintMetastore(dAtA, i, uint64(len(m.Path)))
+		i--
+		dAtA[i] = 0xa
+	}
+	return len(dAtA) - i, nil
+}
+
+func (m *CachedToC) Marshal() (dAtA []byte, err error) {
+	size := m.Size()
+	dAtA = make([]byte, size)
+	n, err := m.MarshalToSizedBuffer(dAtA[:size])
+	if err != nil {
+		return nil, err
+	}
+	return dAtA[:n], nil
+}
+
+func (m *CachedToC) MarshalTo(dAtA []byte) (int, error) {
+	size := m.Size()
+	return m.MarshalToSizedBuffer(dAtA[:size])
+}
+
+func (m *CachedToC) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	_ = i
+	var l int
+	_ = l
+	if len(m.Tenants) > 0 {
+		for iNdEx := len(m.Tenants) - 1; iNdEx >= 0; iNdEx-- {
+			{
+				size, err := m.Tenants[iNdEx].MarshalToSizedBuffer(dAtA[:i])
+				if err != nil {
+					return 0, err
+				}
+				i -= size
+				i = encodeVarintMetastore(dAtA, i, uint64(size))
+			}
+			i--
+			dAtA[i] = 0xa
+		}
+	}
+	return len(dAtA) - i, nil
+}
+
+func (m *CachedToCTenant) Marshal() (dAtA []byte, err error) {
+	size := m.Size()
+	dAtA = make([]byte, size)
+	n, err := m.MarshalToSizedBuffer(dAtA[:size])
+	if err != nil {
+		return nil, err
+	}
+	return dAtA[:n], nil
+}
+
+func (m *CachedToCTenant) MarshalTo(dAtA []byte) (int, error) {
+	size := m.Size()
+	return m.MarshalToSizedBuffer(dAtA[:size])
+}
+
+func (m *CachedToCTenant) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	_ = i
+	var l int
+	_ = l
+	if len(m.Entries) > 0 {
+		for iNdEx := len(m.Entries) - 1; iNdEx >= 0; iNdEx-- {
+			{
+				size, err := m.Entries[iNdEx].MarshalToSizedBuffer(dAtA[:i])
+				if err != nil {
+					return 0, err
+				}
+				i -= size
+				i = encodeVarintMetastore(dAtA, i, uint64(size))
+			}
+			i--
+			dAtA[i] = 0x12
+		}
+	}
+	if len(m.Tenant) > 0 {
+		i -= len(m.Tenant)
+		copy(dAtA[i:], m.Tenant)
+		i = encodeVarintMetastore(dAtA, i, uint64(len(m.Tenant)))
+		i--
+		dAtA[i] = 0xa
+	}
+	return len(dAtA) - i, nil
+}
+
+func (m *CachedSectionDescriptor) Marshal() (dAtA []byte, err error) {
+	size := m.Size()
+	dAtA = make([]byte, size)
+	n, err := m.MarshalToSizedBuffer(dAtA[:size])
+	if err != nil {
+		return nil, err
+	}
+	return dAtA[:n], nil
+}
+
+func (m *CachedSectionDescriptor) MarshalTo(dAtA []byte) (int, error) {
+	size := m.Size()
+	return m.MarshalToSizedBuffer(dAtA[:size])
+}
+
+func (m *CachedSectionDescriptor) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	_ = i
+	var l int
+	_ = l
+	if len(m.AmbiguousPredicates) > 0 {
+		for iNdEx := len(m.AmbiguousPredicates) - 1; iNdEx >= 0; iNdEx-- {
+			i -= len(m.AmbiguousPredicates[iNdEx])
+			copy(dAtA[i:], m.AmbiguousPredicates[iNdEx])
+			i = encodeVarintMetastore(dAtA, i, uint64(len(m.AmbiguousPredicates[iNdEx])))
+			i--
+			dAtA[i] = 0x42
+		}
+	}
+	if m.EndNanos != 0 {
+		i = encodeVarintMetastore(dAtA, i, uint64(m.EndNanos))
+		i--
+		dAtA[i] = 0x38
+	}
+	if m.StartNanos != 0 {
+		i = encodeVarintMetastore(dAtA, i, uint64(m.StartNanos))
+		i--
+		dAtA[i] = 0x30
+	}
+	if m.Size_ != 0 {
+		i = encodeVarintMetastore(dAtA, i, uint64(m.Size_))
+		i--
+		dAtA[i] = 0x28
+	}
+	if m.RowCount != 0 {
+		i = encodeVarintMetastore(dAtA, i, uint64(m.RowCount))
+		i--
+		dAtA[i] = 0x20
+	}
+	if len(m.StreamIds) > 0 {
+		dAtA2 := make([]byte, len(m.StreamIds)*10)
+		var j1 int
+		for _, num1 := range m.StreamIds {
+			num := uint64(num1)
+			for num >= 1<<7 {
+				dAtA2[j1] = uint8(uint64(num)&0x7f | 0x80)
+				num >>= 7
+				j1++
+			}
+			dAtA2[j1] = uint8(num)
+			j1++
+		}
+		i -= j1
+		copy(dAtA[i:], dAtA2[:j1])
+		i = encodeVarintMetastore(dAtA, i, uint64(j1))
+		i--
+		dAtA[i] = 0x1a
+	}
+	if m.SectionIdx != 0 {
+		i = encodeVarintMetastore(dAtA, i, uint64(m.SectionIdx))
+		i--
+		dAtA[i] = 0x10
+	}
+	if len(m.ObjectPath) > 0 {
+		i -= len(m.ObjectPath)
+		copy(dAtA[i:], m.ObjectPath)
+		i = encodeVarintMetastore(dAtA, i, uint64(len(m.ObjectPath)))
+		i--
+		dAtA[i] = 0xa
+	}
+	return len(dAtA) - i, nil
+}
+
 func encodeVarintMetastore(dAtA []byte, offset int, v uint64) int {
 	offset -= sovMetastore(v)
 	base := offset
@@ -238,6 +1152,135 @@ func (m *ObjectWrittenEvent) Size() (n int) {
 	return n
 }
 
+func (m *CachedSections) Size() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	l = len(m.Matchers)
+	if l > 0 {
+		n += 1 + l + sovMetastore(uint64(l))
+	}
+	l = len(m.Predicates)
+	if l > 0 {
+		n += 1 + l + sovMetastore(uint64(l))
+	}
+	if m.StartNanos != 0 {
+		n += 1 + sovMetastore(uint64(m.StartNanos))
+	}
+	if m.EndNanos != 0 {
+		n += 1 + sovMetastore(uint64(m.EndNanos))
+	}
+	if len(m.Indexes) > 0 {
+		for _, e := range m.Indexes {
+			l = e.Size()
+			n += 1 + l + sovMetastore(uint64(l))
+		}
+	}
+	if len(m.Sections) > 0 {
+		for _, e := range m.Sections {
+			l = e.Size()
+			n += 1 + l + sovMetastore(uint64(l))
+		}
+	}
+	return n
+}
+
+func (m *CachedIndexEntry) Size() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	l = len(m.Path)
+	if l > 0 {
+		n += 1 + l + sovMetastore(uint64(l))
+	}
+	if m.StartNanos != 0 {
+		n += 1 + sovMetastore(uint64(m.StartNanos))
+	}
+	if m.EndNanos != 0 {
+		n += 1 + sovMetastore(uint64(m.EndNanos))
+	}
+	return n
+}
+
+func (m *CachedToC) Size() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	if len(m.Tenants) > 0 {
+		for _, e := range m.Tenants {
+			l = e.Size()
+			n += 1 + l + sovMetastore(uint64(l))
+		}
+	}
+	return n
+}
+
+func (m *CachedToCTenant) Size() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	l = len(m.Tenant)
+	if l > 0 {
+		n += 1 + l + sovMetastore(uint64(l))
+	}
+	if len(m.Entries) > 0 {
+		for _, e := range m.Entries {
+			l = e.Size()
+			n += 1 + l + sovMetastore(uint64(l))
+		}
+	}
+	return n
+}
+
+func (m *CachedSectionDescriptor) Size() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	l = len(m.ObjectPath)
+	if l > 0 {
+		n += 1 + l + sovMetastore(uint64(l))
+	}
+	if m.SectionIdx != 0 {
+		n += 1 + sovMetastore(uint64(m.SectionIdx))
+	}
+	if len(m.StreamIds) > 0 {
+		l = 0
+		for _, e := range m.StreamIds {
+			l += sovMetastore(uint64(e))
+		}
+		n += 1 + sovMetastore(uint64(l)) + l
+	}
+	if m.RowCount != 0 {
+		n += 1 + sovMetastore(uint64(m.RowCount))
+	}
+	if m.Size_ != 0 {
+		n += 1 + sovMetastore(uint64(m.Size_))
+	}
+	if m.StartNanos != 0 {
+		n += 1 + sovMetastore(uint64(m.StartNanos))
+	}
+	if m.EndNanos != 0 {
+		n += 1 + sovMetastore(uint64(m.EndNanos))
+	}
+	if len(m.AmbiguousPredicates) > 0 {
+		for _, s := range m.AmbiguousPredicates {
+			l = len(s)
+			n += 1 + l + sovMetastore(uint64(l))
+		}
+	}
+	return n
+}
+
 func sovMetastore(x uint64) (n int) {
 	return (math_bits.Len64(x|1) + 6) / 7
 }
@@ -252,6 +1295,91 @@ func (this *ObjectWrittenEvent) String() string {
 		`ObjectPath:` + fmt.Sprintf("%v", this.ObjectPath) + `,`,
 		`WriteTime:` + fmt.Sprintf("%v", this.WriteTime) + `,`,
 		`EarliestRecordTime:` + fmt.Sprintf("%v", this.EarliestRecordTime) + `,`,
+		`}`,
+	}, "")
+	return s
+}
+func (this *CachedSections) String() string {
+	if this == nil {
+		return "nil"
+	}
+	repeatedStringForIndexes := "[]*CachedIndexEntry{"
+	for _, f := range this.Indexes {
+		repeatedStringForIndexes += strings.Replace(f.String(), "CachedIndexEntry", "CachedIndexEntry", 1) + ","
+	}
+	repeatedStringForIndexes += "}"
+	repeatedStringForSections := "[]*CachedSectionDescriptor{"
+	for _, f := range this.Sections {
+		repeatedStringForSections += strings.Replace(f.String(), "CachedSectionDescriptor", "CachedSectionDescriptor", 1) + ","
+	}
+	repeatedStringForSections += "}"
+	s := strings.Join([]string{`&CachedSections{`,
+		`Matchers:` + fmt.Sprintf("%v", this.Matchers) + `,`,
+		`Predicates:` + fmt.Sprintf("%v", this.Predicates) + `,`,
+		`StartNanos:` + fmt.Sprintf("%v", this.StartNanos) + `,`,
+		`EndNanos:` + fmt.Sprintf("%v", this.EndNanos) + `,`,
+		`Indexes:` + repeatedStringForIndexes + `,`,
+		`Sections:` + repeatedStringForSections + `,`,
+		`}`,
+	}, "")
+	return s
+}
+func (this *CachedIndexEntry) String() string {
+	if this == nil {
+		return "nil"
+	}
+	s := strings.Join([]string{`&CachedIndexEntry{`,
+		`Path:` + fmt.Sprintf("%v", this.Path) + `,`,
+		`StartNanos:` + fmt.Sprintf("%v", this.StartNanos) + `,`,
+		`EndNanos:` + fmt.Sprintf("%v", this.EndNanos) + `,`,
+		`}`,
+	}, "")
+	return s
+}
+func (this *CachedToC) String() string {
+	if this == nil {
+		return "nil"
+	}
+	repeatedStringForTenants := "[]*CachedToCTenant{"
+	for _, f := range this.Tenants {
+		repeatedStringForTenants += strings.Replace(f.String(), "CachedToCTenant", "CachedToCTenant", 1) + ","
+	}
+	repeatedStringForTenants += "}"
+	s := strings.Join([]string{`&CachedToC{`,
+		`Tenants:` + repeatedStringForTenants + `,`,
+		`}`,
+	}, "")
+	return s
+}
+func (this *CachedToCTenant) String() string {
+	if this == nil {
+		return "nil"
+	}
+	repeatedStringForEntries := "[]*CachedIndexEntry{"
+	for _, f := range this.Entries {
+		repeatedStringForEntries += strings.Replace(f.String(), "CachedIndexEntry", "CachedIndexEntry", 1) + ","
+	}
+	repeatedStringForEntries += "}"
+	s := strings.Join([]string{`&CachedToCTenant{`,
+		`Tenant:` + fmt.Sprintf("%v", this.Tenant) + `,`,
+		`Entries:` + repeatedStringForEntries + `,`,
+		`}`,
+	}, "")
+	return s
+}
+func (this *CachedSectionDescriptor) String() string {
+	if this == nil {
+		return "nil"
+	}
+	s := strings.Join([]string{`&CachedSectionDescriptor{`,
+		`ObjectPath:` + fmt.Sprintf("%v", this.ObjectPath) + `,`,
+		`SectionIdx:` + fmt.Sprintf("%v", this.SectionIdx) + `,`,
+		`StreamIds:` + fmt.Sprintf("%v", this.StreamIds) + `,`,
+		`RowCount:` + fmt.Sprintf("%v", this.RowCount) + `,`,
+		`Size_:` + fmt.Sprintf("%v", this.Size_) + `,`,
+		`StartNanos:` + fmt.Sprintf("%v", this.StartNanos) + `,`,
+		`EndNanos:` + fmt.Sprintf("%v", this.EndNanos) + `,`,
+		`AmbiguousPredicates:` + fmt.Sprintf("%v", this.AmbiguousPredicates) + `,`,
 		`}`,
 	}, "")
 	return s
@@ -395,10 +1523,832 @@ func (m *ObjectWrittenEvent) Unmarshal(dAtA []byte) error {
 			if err != nil {
 				return err
 			}
-			if skippy < 0 {
+			if (skippy < 0) || (iNdEx+skippy) < 0 {
 				return ErrInvalidLengthMetastore
 			}
-			if (iNdEx + skippy) < 0 {
+			if (iNdEx + skippy) > l {
+				return io.ErrUnexpectedEOF
+			}
+			iNdEx += skippy
+		}
+	}
+
+	if iNdEx > l {
+		return io.ErrUnexpectedEOF
+	}
+	return nil
+}
+func (m *CachedSections) Unmarshal(dAtA []byte) error {
+	l := len(dAtA)
+	iNdEx := 0
+	for iNdEx < l {
+		preIndex := iNdEx
+		var wire uint64
+		for shift := uint(0); ; shift += 7 {
+			if shift >= 64 {
+				return ErrIntOverflowMetastore
+			}
+			if iNdEx >= l {
+				return io.ErrUnexpectedEOF
+			}
+			b := dAtA[iNdEx]
+			iNdEx++
+			wire |= uint64(b&0x7F) << shift
+			if b < 0x80 {
+				break
+			}
+		}
+		fieldNum := int32(wire >> 3)
+		wireType := int(wire & 0x7)
+		if wireType == 4 {
+			return fmt.Errorf("proto: CachedSections: wiretype end group for non-group")
+		}
+		if fieldNum <= 0 {
+			return fmt.Errorf("proto: CachedSections: illegal tag %d (wire type %d)", fieldNum, wire)
+		}
+		switch fieldNum {
+		case 1:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Matchers", wireType)
+			}
+			var stringLen uint64
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowMetastore
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				stringLen |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			intStringLen := int(stringLen)
+			if intStringLen < 0 {
+				return ErrInvalidLengthMetastore
+			}
+			postIndex := iNdEx + intStringLen
+			if postIndex < 0 {
+				return ErrInvalidLengthMetastore
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.Matchers = string(dAtA[iNdEx:postIndex])
+			iNdEx = postIndex
+		case 2:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Predicates", wireType)
+			}
+			var stringLen uint64
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowMetastore
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				stringLen |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			intStringLen := int(stringLen)
+			if intStringLen < 0 {
+				return ErrInvalidLengthMetastore
+			}
+			postIndex := iNdEx + intStringLen
+			if postIndex < 0 {
+				return ErrInvalidLengthMetastore
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.Predicates = string(dAtA[iNdEx:postIndex])
+			iNdEx = postIndex
+		case 3:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field StartNanos", wireType)
+			}
+			m.StartNanos = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowMetastore
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.StartNanos |= int64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+		case 4:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field EndNanos", wireType)
+			}
+			m.EndNanos = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowMetastore
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.EndNanos |= int64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+		case 5:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Indexes", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowMetastore
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return ErrInvalidLengthMetastore
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return ErrInvalidLengthMetastore
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.Indexes = append(m.Indexes, &CachedIndexEntry{})
+			if err := m.Indexes[len(m.Indexes)-1].Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
+				return err
+			}
+			iNdEx = postIndex
+		case 6:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Sections", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowMetastore
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return ErrInvalidLengthMetastore
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return ErrInvalidLengthMetastore
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.Sections = append(m.Sections, &CachedSectionDescriptor{})
+			if err := m.Sections[len(m.Sections)-1].Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
+				return err
+			}
+			iNdEx = postIndex
+		default:
+			iNdEx = preIndex
+			skippy, err := skipMetastore(dAtA[iNdEx:])
+			if err != nil {
+				return err
+			}
+			if (skippy < 0) || (iNdEx+skippy) < 0 {
+				return ErrInvalidLengthMetastore
+			}
+			if (iNdEx + skippy) > l {
+				return io.ErrUnexpectedEOF
+			}
+			iNdEx += skippy
+		}
+	}
+
+	if iNdEx > l {
+		return io.ErrUnexpectedEOF
+	}
+	return nil
+}
+func (m *CachedIndexEntry) Unmarshal(dAtA []byte) error {
+	l := len(dAtA)
+	iNdEx := 0
+	for iNdEx < l {
+		preIndex := iNdEx
+		var wire uint64
+		for shift := uint(0); ; shift += 7 {
+			if shift >= 64 {
+				return ErrIntOverflowMetastore
+			}
+			if iNdEx >= l {
+				return io.ErrUnexpectedEOF
+			}
+			b := dAtA[iNdEx]
+			iNdEx++
+			wire |= uint64(b&0x7F) << shift
+			if b < 0x80 {
+				break
+			}
+		}
+		fieldNum := int32(wire >> 3)
+		wireType := int(wire & 0x7)
+		if wireType == 4 {
+			return fmt.Errorf("proto: CachedIndexEntry: wiretype end group for non-group")
+		}
+		if fieldNum <= 0 {
+			return fmt.Errorf("proto: CachedIndexEntry: illegal tag %d (wire type %d)", fieldNum, wire)
+		}
+		switch fieldNum {
+		case 1:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Path", wireType)
+			}
+			var stringLen uint64
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowMetastore
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				stringLen |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			intStringLen := int(stringLen)
+			if intStringLen < 0 {
+				return ErrInvalidLengthMetastore
+			}
+			postIndex := iNdEx + intStringLen
+			if postIndex < 0 {
+				return ErrInvalidLengthMetastore
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.Path = string(dAtA[iNdEx:postIndex])
+			iNdEx = postIndex
+		case 2:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field StartNanos", wireType)
+			}
+			m.StartNanos = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowMetastore
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.StartNanos |= int64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+		case 3:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field EndNanos", wireType)
+			}
+			m.EndNanos = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowMetastore
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.EndNanos |= int64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+		default:
+			iNdEx = preIndex
+			skippy, err := skipMetastore(dAtA[iNdEx:])
+			if err != nil {
+				return err
+			}
+			if (skippy < 0) || (iNdEx+skippy) < 0 {
+				return ErrInvalidLengthMetastore
+			}
+			if (iNdEx + skippy) > l {
+				return io.ErrUnexpectedEOF
+			}
+			iNdEx += skippy
+		}
+	}
+
+	if iNdEx > l {
+		return io.ErrUnexpectedEOF
+	}
+	return nil
+}
+func (m *CachedToC) Unmarshal(dAtA []byte) error {
+	l := len(dAtA)
+	iNdEx := 0
+	for iNdEx < l {
+		preIndex := iNdEx
+		var wire uint64
+		for shift := uint(0); ; shift += 7 {
+			if shift >= 64 {
+				return ErrIntOverflowMetastore
+			}
+			if iNdEx >= l {
+				return io.ErrUnexpectedEOF
+			}
+			b := dAtA[iNdEx]
+			iNdEx++
+			wire |= uint64(b&0x7F) << shift
+			if b < 0x80 {
+				break
+			}
+		}
+		fieldNum := int32(wire >> 3)
+		wireType := int(wire & 0x7)
+		if wireType == 4 {
+			return fmt.Errorf("proto: CachedToC: wiretype end group for non-group")
+		}
+		if fieldNum <= 0 {
+			return fmt.Errorf("proto: CachedToC: illegal tag %d (wire type %d)", fieldNum, wire)
+		}
+		switch fieldNum {
+		case 1:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Tenants", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowMetastore
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return ErrInvalidLengthMetastore
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return ErrInvalidLengthMetastore
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.Tenants = append(m.Tenants, &CachedToCTenant{})
+			if err := m.Tenants[len(m.Tenants)-1].Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
+				return err
+			}
+			iNdEx = postIndex
+		default:
+			iNdEx = preIndex
+			skippy, err := skipMetastore(dAtA[iNdEx:])
+			if err != nil {
+				return err
+			}
+			if (skippy < 0) || (iNdEx+skippy) < 0 {
+				return ErrInvalidLengthMetastore
+			}
+			if (iNdEx + skippy) > l {
+				return io.ErrUnexpectedEOF
+			}
+			iNdEx += skippy
+		}
+	}
+
+	if iNdEx > l {
+		return io.ErrUnexpectedEOF
+	}
+	return nil
+}
+func (m *CachedToCTenant) Unmarshal(dAtA []byte) error {
+	l := len(dAtA)
+	iNdEx := 0
+	for iNdEx < l {
+		preIndex := iNdEx
+		var wire uint64
+		for shift := uint(0); ; shift += 7 {
+			if shift >= 64 {
+				return ErrIntOverflowMetastore
+			}
+			if iNdEx >= l {
+				return io.ErrUnexpectedEOF
+			}
+			b := dAtA[iNdEx]
+			iNdEx++
+			wire |= uint64(b&0x7F) << shift
+			if b < 0x80 {
+				break
+			}
+		}
+		fieldNum := int32(wire >> 3)
+		wireType := int(wire & 0x7)
+		if wireType == 4 {
+			return fmt.Errorf("proto: CachedToCTenant: wiretype end group for non-group")
+		}
+		if fieldNum <= 0 {
+			return fmt.Errorf("proto: CachedToCTenant: illegal tag %d (wire type %d)", fieldNum, wire)
+		}
+		switch fieldNum {
+		case 1:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Tenant", wireType)
+			}
+			var stringLen uint64
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowMetastore
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				stringLen |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			intStringLen := int(stringLen)
+			if intStringLen < 0 {
+				return ErrInvalidLengthMetastore
+			}
+			postIndex := iNdEx + intStringLen
+			if postIndex < 0 {
+				return ErrInvalidLengthMetastore
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.Tenant = string(dAtA[iNdEx:postIndex])
+			iNdEx = postIndex
+		case 2:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Entries", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowMetastore
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return ErrInvalidLengthMetastore
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return ErrInvalidLengthMetastore
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.Entries = append(m.Entries, &CachedIndexEntry{})
+			if err := m.Entries[len(m.Entries)-1].Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
+				return err
+			}
+			iNdEx = postIndex
+		default:
+			iNdEx = preIndex
+			skippy, err := skipMetastore(dAtA[iNdEx:])
+			if err != nil {
+				return err
+			}
+			if (skippy < 0) || (iNdEx+skippy) < 0 {
+				return ErrInvalidLengthMetastore
+			}
+			if (iNdEx + skippy) > l {
+				return io.ErrUnexpectedEOF
+			}
+			iNdEx += skippy
+		}
+	}
+
+	if iNdEx > l {
+		return io.ErrUnexpectedEOF
+	}
+	return nil
+}
+func (m *CachedSectionDescriptor) Unmarshal(dAtA []byte) error {
+	l := len(dAtA)
+	iNdEx := 0
+	for iNdEx < l {
+		preIndex := iNdEx
+		var wire uint64
+		for shift := uint(0); ; shift += 7 {
+			if shift >= 64 {
+				return ErrIntOverflowMetastore
+			}
+			if iNdEx >= l {
+				return io.ErrUnexpectedEOF
+			}
+			b := dAtA[iNdEx]
+			iNdEx++
+			wire |= uint64(b&0x7F) << shift
+			if b < 0x80 {
+				break
+			}
+		}
+		fieldNum := int32(wire >> 3)
+		wireType := int(wire & 0x7)
+		if wireType == 4 {
+			return fmt.Errorf("proto: CachedSectionDescriptor: wiretype end group for non-group")
+		}
+		if fieldNum <= 0 {
+			return fmt.Errorf("proto: CachedSectionDescriptor: illegal tag %d (wire type %d)", fieldNum, wire)
+		}
+		switch fieldNum {
+		case 1:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field ObjectPath", wireType)
+			}
+			var stringLen uint64
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowMetastore
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				stringLen |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			intStringLen := int(stringLen)
+			if intStringLen < 0 {
+				return ErrInvalidLengthMetastore
+			}
+			postIndex := iNdEx + intStringLen
+			if postIndex < 0 {
+				return ErrInvalidLengthMetastore
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.ObjectPath = string(dAtA[iNdEx:postIndex])
+			iNdEx = postIndex
+		case 2:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field SectionIdx", wireType)
+			}
+			m.SectionIdx = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowMetastore
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.SectionIdx |= int64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+		case 3:
+			if wireType == 0 {
+				var v int64
+				for shift := uint(0); ; shift += 7 {
+					if shift >= 64 {
+						return ErrIntOverflowMetastore
+					}
+					if iNdEx >= l {
+						return io.ErrUnexpectedEOF
+					}
+					b := dAtA[iNdEx]
+					iNdEx++
+					v |= int64(b&0x7F) << shift
+					if b < 0x80 {
+						break
+					}
+				}
+				m.StreamIds = append(m.StreamIds, v)
+			} else if wireType == 2 {
+				var packedLen int
+				for shift := uint(0); ; shift += 7 {
+					if shift >= 64 {
+						return ErrIntOverflowMetastore
+					}
+					if iNdEx >= l {
+						return io.ErrUnexpectedEOF
+					}
+					b := dAtA[iNdEx]
+					iNdEx++
+					packedLen |= int(b&0x7F) << shift
+					if b < 0x80 {
+						break
+					}
+				}
+				if packedLen < 0 {
+					return ErrInvalidLengthMetastore
+				}
+				postIndex := iNdEx + packedLen
+				if postIndex < 0 {
+					return ErrInvalidLengthMetastore
+				}
+				if postIndex > l {
+					return io.ErrUnexpectedEOF
+				}
+				var elementCount int
+				var count int
+				for _, integer := range dAtA[iNdEx:postIndex] {
+					if integer < 128 {
+						count++
+					}
+				}
+				elementCount = count
+				if elementCount != 0 && len(m.StreamIds) == 0 {
+					m.StreamIds = make([]int64, 0, elementCount)
+				}
+				for iNdEx < postIndex {
+					var v int64
+					for shift := uint(0); ; shift += 7 {
+						if shift >= 64 {
+							return ErrIntOverflowMetastore
+						}
+						if iNdEx >= l {
+							return io.ErrUnexpectedEOF
+						}
+						b := dAtA[iNdEx]
+						iNdEx++
+						v |= int64(b&0x7F) << shift
+						if b < 0x80 {
+							break
+						}
+					}
+					m.StreamIds = append(m.StreamIds, v)
+				}
+			} else {
+				return fmt.Errorf("proto: wrong wireType = %d for field StreamIds", wireType)
+			}
+		case 4:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field RowCount", wireType)
+			}
+			m.RowCount = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowMetastore
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.RowCount |= int64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+		case 5:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Size_", wireType)
+			}
+			m.Size_ = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowMetastore
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.Size_ |= int64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+		case 6:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field StartNanos", wireType)
+			}
+			m.StartNanos = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowMetastore
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.StartNanos |= int64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+		case 7:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field EndNanos", wireType)
+			}
+			m.EndNanos = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowMetastore
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.EndNanos |= int64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+		case 8:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field AmbiguousPredicates", wireType)
+			}
+			var stringLen uint64
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowMetastore
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				stringLen |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			intStringLen := int(stringLen)
+			if intStringLen < 0 {
+				return ErrInvalidLengthMetastore
+			}
+			postIndex := iNdEx + intStringLen
+			if postIndex < 0 {
+				return ErrInvalidLengthMetastore
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.AmbiguousPredicates = append(m.AmbiguousPredicates, string(dAtA[iNdEx:postIndex]))
+			iNdEx = postIndex
+		default:
+			iNdEx = preIndex
+			skippy, err := skipMetastore(dAtA[iNdEx:])
+			if err != nil {
+				return err
+			}
+			if (skippy < 0) || (iNdEx+skippy) < 0 {
 				return ErrInvalidLengthMetastore
 			}
 			if (iNdEx + skippy) > l {
@@ -416,6 +2366,7 @@ func (m *ObjectWrittenEvent) Unmarshal(dAtA []byte) error {
 func skipMetastore(dAtA []byte) (n int, err error) {
 	l := len(dAtA)
 	iNdEx := 0
+	depth := 0
 	for iNdEx < l {
 		var wire uint64
 		for shift := uint(0); ; shift += 7 {
@@ -447,10 +2398,8 @@ func skipMetastore(dAtA []byte) (n int, err error) {
 					break
 				}
 			}
-			return iNdEx, nil
 		case 1:
 			iNdEx += 8
-			return iNdEx, nil
 		case 2:
 			var length int
 			for shift := uint(0); ; shift += 7 {
@@ -471,55 +2420,30 @@ func skipMetastore(dAtA []byte) (n int, err error) {
 				return 0, ErrInvalidLengthMetastore
 			}
 			iNdEx += length
-			if iNdEx < 0 {
-				return 0, ErrInvalidLengthMetastore
-			}
-			return iNdEx, nil
 		case 3:
-			for {
-				var innerWire uint64
-				var start int = iNdEx
-				for shift := uint(0); ; shift += 7 {
-					if shift >= 64 {
-						return 0, ErrIntOverflowMetastore
-					}
-					if iNdEx >= l {
-						return 0, io.ErrUnexpectedEOF
-					}
-					b := dAtA[iNdEx]
-					iNdEx++
-					innerWire |= (uint64(b) & 0x7F) << shift
-					if b < 0x80 {
-						break
-					}
-				}
-				innerWireType := int(innerWire & 0x7)
-				if innerWireType == 4 {
-					break
-				}
-				next, err := skipMetastore(dAtA[start:])
-				if err != nil {
-					return 0, err
-				}
-				iNdEx = start + next
-				if iNdEx < 0 {
-					return 0, ErrInvalidLengthMetastore
-				}
-			}
-			return iNdEx, nil
+			depth++
 		case 4:
-			return iNdEx, nil
+			if depth == 0 {
+				return 0, ErrUnexpectedEndOfGroupMetastore
+			}
+			depth--
 		case 5:
 			iNdEx += 4
-			return iNdEx, nil
 		default:
 			return 0, fmt.Errorf("proto: illegal wireType %d", wireType)
 		}
+		if iNdEx < 0 {
+			return 0, ErrInvalidLengthMetastore
+		}
+		if depth == 0 {
+			return iNdEx, nil
+		}
 	}
-	panic("unreachable")
+	return 0, io.ErrUnexpectedEOF
 }
 
 var (
-	ErrInvalidLengthMetastore = fmt.Errorf("proto: negative length found during unmarshaling")
-	ErrIntOverflowMetastore   = fmt.Errorf("proto: integer overflow")
+	ErrInvalidLengthMetastore        = fmt.Errorf("proto: negative length found during unmarshaling")
+	ErrIntOverflowMetastore          = fmt.Errorf("proto: integer overflow")
+	ErrUnexpectedEndOfGroupMetastore = fmt.Errorf("proto: unexpected end of group")
 )

@@ -28,7 +28,15 @@ type SectionsRequest struct {
 	End        time.Time
 	Matchers   []*labels.Matcher
 	Predicates []*labels.Matcher
+
+	// ShardBucketRange, when non-nil, prunes resolved postings to those whose [min,max] shard-bucket range
+	// overlaps it. Honored only by the postings resolution flow; nil (the default) means no pruning.
+	ShardBucketRange *ShardBucketRange
 }
+
+// ShardBucketRange bounds a shard-bucket query. From and To are inclusive streams.ShardBucket values
+// (0..ShardFactor-1), From <= To. It is the metastore counterpart of postings.ShardBucketRange.
+type ShardBucketRange struct{ From, To uint32 }
 
 type SectionsResponse struct {
 	Sections []*DataobjSectionDescriptor

@@ -574,7 +574,7 @@ func mockStreamIterator(from int, quantity int) iter.EntryIterator {
 // where entries timestamp and line string are constructed as sequential numbers
 // starting at from
 func mockSampleIterator(client iter.QuerySampleClient) iter.SampleIterator {
-	return iter.NewSampleQueryClientIterator(client)
+	return iter.NewTimestampFirstSampleQueryClientIterator(client)
 }
 
 // mockStream return a stream with quantity entries, where entries timestamp and

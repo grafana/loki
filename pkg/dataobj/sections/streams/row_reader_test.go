@@ -3,7 +3,9 @@ package streams_test
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -60,6 +62,62 @@ func TestRowReader_AddLabelMatcher(t *testing.T) {
 	require.Equal(t, expect, actual)
 }
 
+func TestRowReader_ShardBucketRange(t *testing.T) {
+	// The reader must return exactly the streams whose bucket falls in [From, To], across single-bucket,
+	// multi-bucket, boundary-trimmed, and empty ranges. This checks row filtering; it does not exercise
+	// page pruning, since buildStreamsSection is not sorted by shard bucket.
+	all := []streams.Stream{
+		{1, unixTime(10), unixTime(15), 25, labels.FromStrings("cluster", "test", "app", "foo"), 2, shardForApp("foo")},
+		{2, unixTime(5), unixTime(20), 45, labels.FromStrings("cluster", "test", "app", "bar"), 2, shardForApp("bar")},
+		{3, unixTime(25), unixTime(30), 35, labels.FromStrings("cluster", "test", "app", "baz"), 2, shardForApp("baz")},
+	}
+	fb, bb, zb := uint64(shardForApp("foo")), uint64(shardForApp("bar")), uint64(shardForApp("baz"))
+	lo, hi := min(fb, bb, zb), max(fb, bb, zb)
+
+	// A bucket no stream occupies, for the empty-range case.
+	occupied := map[uint64]bool{fb: true, bb: true, zb: true}
+	var emptyBucket uint64
+	for b := uint64(0); ; b++ {
+		if !occupied[b] {
+			emptyBucket = b
+			break
+		}
+	}
+
+	cases := []struct {
+		name     string
+		from, to uint64
+	}{
+		{"single bucket", bb, bb},
+		{"span covering every bucket", lo, hi},
+		{"span trimmed at the top end", lo, hi - 1},
+		{"empty range matches nothing", emptyBucket, emptyBucket},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			var want []streams.Stream
+			for _, s := range all {
+				if uint64(s.ShardBucket) >= tc.from && uint64(s.ShardBucket) <= tc.to {
+					want = append(want, s)
+				}
+			}
+
+			sec := buildStreamsSection(t, 1, 0) // Many pages
+			r := streams.NewRowReader(sec)
+			require.NoError(t, r.SetPredicate(streams.ShardBucketRangeRowPredicate{From: tc.from, To: tc.to}))
+
+			actual, err := readAllStreams(context.Background(), r)
+			require.NoError(t, err)
+			if len(want) == 0 {
+				require.Empty(t, actual)
+			} else {
+				require.Equal(t, want, actual)
+			}
+		})
+	}
+}
+
 func TestRowReader_AddLabelFilter(t *testing.T) {
 	expect := []streams.Stream{
 		{2, unixTime(5), unixTime(20), 45, labels.FromStrings("cluster", "test", "app", "bar"), 2, shardForApp("bar")},
@@ -100,6 +158,137 @@ func TestRowReader_OpenNilSection(t *testing.T) {
 	n, err := r.Read(context.Background(), buf)
 	require.Zero(t, n)
 	require.ErrorIs(t, err, io.EOF)
+}
+
+func TestRowReader_MatchStreams(t *testing.T) {
+	// streamsTestdata has three streams: app=foo → ID 1, app=bar → ID 2, app=baz → ID 3.
+	sec := buildStreamsSection(t, 1, 0) // Many pages.
+
+	read := func(t *testing.T, setup func(r *streams.RowReader)) []int64 {
+		t.Helper()
+		r := streams.NewRowReader(sec)
+		setup(r)
+		got, err := readAllStreams(context.Background(), r)
+		require.NoError(t, err)
+		return idsOf(got)
+	}
+	match := func(ids ...int64) func(*streams.RowReader) {
+		return func(r *streams.RowReader) {
+			require.NoError(t, r.MatchStreams(slices.Values(ids)))
+		}
+	}
+
+	t.Run("subset", func(t *testing.T) {
+		require.ElementsMatch(t, []int64{1, 3}, read(t, match(1, 3)))
+	})
+	t.Run("all", func(t *testing.T) {
+		require.ElementsMatch(t, []int64{1, 2, 3}, read(t, match(1, 2, 3)))
+	})
+	t.Run("empty set is no filter", func(t *testing.T) {
+		require.ElementsMatch(t, []int64{1, 2, 3}, read(t, match()))
+	})
+	t.Run("no match returns nothing", func(t *testing.T) {
+		require.Empty(t, read(t, match(999)))
+	})
+	t.Run("cumulative across calls", func(t *testing.T) {
+		require.ElementsMatch(t, []int64{1, 3}, read(t, func(r *streams.RowReader) {
+			require.NoError(t, r.MatchStreams(slices.Values([]int64{1})))
+			require.NoError(t, r.MatchStreams(slices.Values([]int64{3})))
+		}))
+	})
+	t.Run("ANDed with a label predicate", func(t *testing.T) {
+		// app=bar is ID 2, so the intersection with {2,3} is {2}.
+		require.ElementsMatch(t, []int64{2}, read(t, func(r *streams.RowReader) {
+			require.NoError(t, r.MatchStreams(slices.Values([]int64{2, 3})))
+			require.NoError(t, r.SetPredicate(streams.LabelMatcherRowPredicate{Name: "app", Value: "bar"}))
+		}))
+	})
+	t.Run("after read returns an error", func(t *testing.T) {
+		r := streams.NewRowReader(sec)
+		require.NoError(t, r.Open(context.Background()))
+		require.ErrorContains(t, r.MatchStreams(slices.Values([]int64{1})), "cannot change matched streams after reading has started")
+	})
+}
+
+func idsOf(ss []streams.Stream) []int64 {
+	ids := make([]int64, len(ss))
+	for i, s := range ss {
+		ids[i] = s.ID
+	}
+	return ids
+}
+
+// BenchmarkRowReader_MatchStreams reads a single-page streams section (so there is no page pruning —
+// this isolates the per-row decode saving) while selecting a narrow (1 stream), wide (50%), and full
+// (100%) set of the section's stream IDs, plus a no-filter baseline. Recorded stream IDs are 1..N.
+func BenchmarkRowReader_MatchStreams(b *testing.B) {
+	const n = 2000
+	ctx := context.Background()
+	sec := buildBenchStreamsSection(b, n)
+
+	seq := func(count int) []int64 {
+		ids := make([]int64, count)
+		for i := range ids {
+			ids[i] = int64(i + 1)
+		}
+		return ids
+	}
+
+	run := func(b *testing.B, match []int64) {
+		b.Helper()
+		r := streams.NewRowReader(sec)
+		defer r.Close()
+		buf := make([]streams.Stream, 512)
+		b.ReportAllocs()
+		b.ResetTimer()
+		for i := 0; i < b.N; i++ {
+			r.Reset(sec)
+			if match != nil {
+				if err := r.MatchStreams(slices.Values(match)); err != nil {
+					b.Fatal(err)
+				}
+			}
+			if err := r.Open(ctx); err != nil {
+				b.Fatal(err)
+			}
+			for {
+				nn, err := r.Read(ctx, buf)
+				if err != nil && !errors.Is(err, io.EOF) {
+					b.Fatal(err)
+				}
+				if nn == 0 && errors.Is(err, io.EOF) {
+					break
+				}
+			}
+		}
+	}
+
+	b.Run("narrow_1", func(b *testing.B) { run(b, seq(1)) })
+	b.Run("wide_50pct", func(b *testing.B) { run(b, seq(n/2)) })
+	b.Run("all_100pct", func(b *testing.B) { run(b, seq(n)) })
+	b.Run("baseline_no_match", func(b *testing.B) { run(b, nil) })
+}
+
+// buildBenchStreamsSection builds a streams section with n distinct streams (IDs 1..n) in a single page
+// (a large page size keeps every column in one page).
+func buildBenchStreamsSection(b *testing.B, n int) *streams.Section {
+	b.Helper()
+
+	s := streams.NewBuilder(nil, 16<<20, 0) // large page size → single page
+	for i := 0; i < n; i++ {
+		s.Record(labels.FromStrings("app", "bench", "id", fmt.Sprintf("%06d", i)), unixTime(int64(i)), int64(i))
+	}
+
+	builder := dataobj.NewBuilder(nil)
+	require.NoError(b, builder.Append(s))
+
+	obj, closer, err := builder.Flush()
+	require.NoError(b, err)
+	b.Cleanup(func() { closer.Close() })
+
+	sec, err := streams.Open(context.Background(), obj.Sections()[0])
+	require.NoError(b, err)
+	return sec
 }
 
 func unixTime(sec int64) time.Time { return time.Unix(sec, 0) }

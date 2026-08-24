@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
@@ -93,6 +94,16 @@ func (sc *StoreCombiner) findStoresForTimeRange(from, through model.Time) []stor
 	return stores
 }
 
+func halfOpenTimeRangeForStore(i int, stores []storeWithRange, start, end time.Time) (time.Time, time.Time) {
+	if i > 0 {
+		start = stores[i].from.Time()
+	}
+	if i < len(stores)-1 {
+		end = stores[i+1].from.Time()
+	}
+	return start, end
+}
+
 type storeWithRange struct {
 	store         Store
 	from, through model.Time
@@ -110,11 +121,12 @@ func (sc *StoreCombiner) SelectSamples(ctx context.Context, req logql.SelectSamp
 		return stores[0].store.SelectSamples(ctx, req)
 	}
 
+	reqStart, reqEnd := req.Start, req.End
 	iters := make([]iter.SampleIterator, 0, len(stores))
-	for _, s := range stores {
+	for i, s := range stores {
 		reqCopy := req
-		reqCopy.Start = s.from.Time()
-		reqCopy.End = s.through.Time()
+		// Half-open, abutting stores so no sample is dropped or double-counted at a boundary.
+		reqCopy.Start, reqCopy.End = halfOpenTimeRangeForStore(i, stores, reqStart, reqEnd)
 
 		iter, err := s.store.SelectSamples(ctx, reqCopy)
 		if err != nil {
@@ -123,7 +135,11 @@ func (sc *StoreCombiner) SelectSamples(ctx context.Context, req logql.SelectSamp
 		iters = append(iters, iter)
 	}
 
-	return iter.NewMergeSampleIterator(ctx, iters), nil
+	// Preserve the requested sample order across stores.
+	if req.Order == logproto.SAMPLE_ORDER_BY_STREAM {
+		return iter.NewStreamFirstMergeSampleIterator(ctx, iters), nil
+	}
+	return iter.NewTimestampFirstMergeSampleIterator(ctx, iters), nil
 }
 
 // SelectLogs implements Store
@@ -138,11 +154,12 @@ func (sc *StoreCombiner) SelectLogs(ctx context.Context, req logql.SelectLogPara
 		return stores[0].store.SelectLogs(ctx, req)
 	}
 
+	reqStart, reqEnd := req.Start, req.End
 	iters := make([]iter.EntryIterator, 0, len(stores))
-	for _, s := range stores {
+	for i, s := range stores {
 		reqCopy := req
-		reqCopy.Start = s.from.Time()
-		reqCopy.End = s.through.Time()
+		// Half-open, abutting stores so no entry is dropped or double-counted at a boundary.
+		reqCopy.Start, reqCopy.End = halfOpenTimeRangeForStore(i, stores, reqStart, reqEnd)
 
 		iter, err := s.store.SelectLogs(ctx, reqCopy)
 		if err != nil {

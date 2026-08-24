@@ -302,6 +302,10 @@ func (s *Store) Merge(m Store) {
 	s.Dataobj.TotalPageDownloadTime += m.Dataobj.TotalPageDownloadTime
 	s.Dataobj.TotalRowsAvailable += m.Dataobj.TotalRowsAvailable
 	s.Dataobj.WireBytesTransferred += m.Dataobj.WireBytesTransferred
+	// Section resolution runs per subquery; the interesting figure is the slowest one, not their sum.
+	if m.Dataobj.SectionsResolutionMaxTime > s.Dataobj.SectionsResolutionMaxTime {
+		s.Dataobj.SectionsResolutionMaxTime = m.Dataobj.SectionsResolutionMaxTime
+	}
 	if m.QueryReferencedStructured {
 		s.QueryReferencedStructured = true
 	}
@@ -317,6 +321,8 @@ func (s *Store) ChunksDownloadDuration() time.Duration {
 func (s *Summary) Merge(m Summary) {
 	s.Splits += m.Splits
 	s.Shards += m.Shards
+	s.StreamFirstSubqueries += m.StreamFirstSubqueries
+	s.TimestampFirstSubqueries += m.TimestampFirstSubqueries
 	if m.EstimatedQueryBytes > s.EstimatedQueryBytes {
 		s.EstimatedQueryBytes = m.EstimatedQueryBytes
 	}
@@ -405,6 +411,11 @@ func ConvertSecondsToNanoseconds(seconds float64) time.Duration {
 
 func (r Result) ChunksDownloadTime() time.Duration {
 	return time.Duration(r.Querier.Store.ChunksDownloadTime + r.Ingester.Store.ChunksDownloadTime)
+}
+
+// DataobjSectionsResolutionMaxTime returns the slowest per-subquery data-object section resolution.
+func (r Result) DataobjSectionsResolutionMaxTime() time.Duration {
+	return time.Duration(r.Querier.Store.Dataobj.SectionsResolutionMaxTime)
 }
 
 func (r Result) ChunkRefsFetchTime() time.Duration {
@@ -624,6 +635,32 @@ func (c *Context) AddSplitQueries(num int64) {
 	atomic.AddInt64(&c.result.Summary.Splits, num)
 }
 
+// IncStreamFirstSubqueries and IncTimestampFirstSubqueries count range-aggregation sub-evaluations
+// by their sample execution order. The caller decides the order (this low-level package cannot
+// import logproto: logproto depends on stats). The counters are summed on merge, so a fully-merged
+// query's result reflects the mix of orders across all its shards and splits.
+func (c *Context) IncStreamFirstSubqueries() {
+	atomic.AddInt64(&c.result.Summary.StreamFirstSubqueries, 1)
+}
+
+func (c *Context) IncTimestampFirstSubqueries() {
+	atomic.AddInt64(&c.result.Summary.TimestampFirstSubqueries, 1)
+}
+
+// RecordDataobjSectionsResolutionTime records d as the section-resolution time for one subquery, keeping
+// the largest value seen. Results merge it as a max across subqueries.
+func (c *Context) RecordDataobjSectionsResolutionTime(d time.Duration) {
+	for {
+		old := atomic.LoadInt64(&c.store.Dataobj.SectionsResolutionMaxTime)
+		if int64(d) <= old {
+			return
+		}
+		if atomic.CompareAndSwapInt64(&c.store.Dataobj.SectionsResolutionMaxTime, old, int64(d)) {
+			return
+		}
+	}
+}
+
 func (c *Context) AddPrePredicateDecompressedRows(i int64) {
 	atomic.AddInt64(&c.store.Dataobj.PrePredicateDecompressedRows, i)
 }
@@ -774,6 +811,8 @@ func (s Summary) kvList() []any {
 		"Summary.PostFilterLines", s.TotalPostFilterLines,
 		"Summary.ExecTime", ConvertSecondsToNanoseconds(s.ExecTime),
 		"Summary.QueueTime", ConvertSecondsToNanoseconds(s.QueueTime),
+		"Summary.StreamFirstSubqueries", s.StreamFirstSubqueries,
+		"Summary.TimestampFirstSubqueries", s.TimestampFirstSubqueries,
 	}
 }
 

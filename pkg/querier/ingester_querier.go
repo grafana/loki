@@ -267,7 +267,13 @@ func (q *IngesterQuerier) SelectSample(ctx context.Context, params logql.SelectS
 
 	iterators := make([]iter.SampleIterator, len(resps))
 	for i := range resps {
-		iterators[i] = iter.NewSampleQueryClientIterator(resps[i].response.(logproto.Querier_QuerySampleClient))
+		client := resps[i].response.(logproto.Querier_QuerySampleClient)
+
+		if params.Order == logproto.SAMPLE_ORDER_BY_STREAM {
+			iterators[i] = iter.NewStreamFirstSampleQueryClientIterator(client)
+		} else {
+			iterators[i] = iter.NewTimestampFirstSampleQueryClientIterator(client)
+		}
 	}
 	return iterators, nil
 }

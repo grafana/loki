@@ -20,6 +20,8 @@ import (
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 
 	iter "github.com/grafana/loki/v3/pkg/iter/v2"
 	"github.com/grafana/loki/v3/pkg/logproto"
@@ -55,6 +57,9 @@ type Gateway struct {
 	bloomQuerier BloomQuerier
 	metrics      *Metrics
 
+	// dataObjSections serves ResolveDataObjectSections. It is nil when the feature is disabled.
+	dataObjSections *DataObjectSectionsResolver
+
 	cfg    Config
 	limits Limits
 	log    log.Logger
@@ -74,12 +79,44 @@ func NewIndexGateway(cfg Config, limits Limits, log log.Logger, r prometheus.Reg
 		metrics:      NewMetrics(r),
 	}
 
+	// Auto-create the data-object section resolver when enabled. The metastore is injected into the
+	// config by the module wiring (see initIndexGatewayMetastore), since building it needs a bucket the
+	// gateway itself cannot construct. That module also owns the section cache's lifecycle.
+	if cfg.DataObjectSections.Enabled {
+		if cfg.DataObjectSections.Metastore == nil {
+			// Enabled but no metastore is a wiring bug: without it the gateway would answer every RPC
+			// with Unimplemented and make queriers silently fall back. Fail startup instead.
+			return nil, fmt.Errorf("data-object section resolution is enabled but no metastore was injected")
+		}
+		g.dataObjSections = NewDataObjectSectionsResolver(cfg.DataObjectSections.Metastore, r, log)
+	}
+
 	g.Service = services.NewIdleService(nil, func(_ error) error {
 		g.indexQuerier.Stop()
 		return nil
 	})
 
 	return g, nil
+}
+
+// ResolveDataObjectSections resolves the data-object sections matching the request's matchers within
+// its single 12h UTC-aligned window. It returns codes.Unimplemented when the feature is disabled on
+// this index-gateway, so callers fall back to resolving sections themselves.
+func (g *Gateway) ResolveDataObjectSections(ctx context.Context, req *logproto.ResolveDataObjectSectionsRequest) (*logproto.ResolveDataObjectSectionsResponse, error) {
+	ctx, sp := tracer.Start(ctx, "indexgateway.ResolveDataObjectSections")
+	defer sp.End()
+
+	if g.dataObjSections == nil {
+		return nil, status.Error(codes.Unimplemented, "data object section resolution is not enabled on this index-gateway")
+	}
+
+	// Require a tenant before resolving so a missing org ID fails with a clear error here rather than
+	// deep inside the metastore. The metastore reads the tenant from ctx itself.
+	if _, err := tenant.TenantID(ctx); err != nil {
+		return nil, err
+	}
+
+	return g.dataObjSections.Resolve(ctx, req.From, req.Through, req.Matchers)
 }
 
 // indexSyncer is implemented by an index store that can trigger an on-demand
