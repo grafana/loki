@@ -3440,13 +3440,9 @@ ring:
 # CLI flag: -distributor.push-worker-count
 [push_worker_count: <int> | default = 256]
 
-# The maximum size of a received message.
-# CLI flag: -distributor.max-recv-msg-size
-[max_recv_msg_size: <int> | default = 104857600]
-
-# The maximum size of a decompressed message. Defaults to 50x max-recv-msg-size.
-# CLI flag: -distributor.max-decompressed-size
-[max_decompressed_size: <int> | default = 5242880000]
+# The maximum size of a Push request.
+# CLI flag: -distributor.max-push-size-bytes
+[max_push_size_bytes: <int> | default = 2147483647]
 
 # The maximum number of inflight bytes at a time. 0 means disabled.
 # CLI flag: -distributor.max-inflight-bytes
