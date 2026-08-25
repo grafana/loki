@@ -453,7 +453,7 @@ func (m *CountDistinctMatrixStepEvaluator) Next() (bool, int64, StepResult) {
 
 func (*CountDistinctMatrixStepEvaluator) Close() error { return nil }
 func (*CountDistinctMatrixStepEvaluator) Error() error { return nil }
-func (e *CountDistinctMatrixStepEvaluator) Explain(parent Node) {
+func (m *CountDistinctMatrixStepEvaluator) Explain(parent Node) {
 	parent.Child("CountDistinctMatrix")
 }
 
