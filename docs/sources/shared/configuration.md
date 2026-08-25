@@ -4039,6 +4039,27 @@ ring:
   # Enable using a IPv6 instance address.
   # CLI flag: -index-gateway.ring.instance-enable-ipv6
   [instance_enable_ipv6: <boolean> | default = false]
+
+# Experimental: Maximum number of index gateway RPCs that can execute
+# concurrently. When the limit is reached, additional requests wait up to
+# -index-gateway.max-concurrent-queue-timeout for a free slot. If no slot
+# becomes free in that time, the index gateway rejects the request with an HTTP
+# 503 status. Clients retry the request against another index gateway replica. 0
+# disables admission control. A recommended starting value when enabling this
+# setting is 200.
+# CLI flag: -index-gateway.max-concurrent
+[max_concurrent: <int> | default = 0]
+
+# Experimental: Maximum time a request waits for a free slot when the index
+# gateway is already executing -index-gateway.max-concurrent requests. If no
+# slot becomes free in that time, the index gateway rejects the request. Bursts
+# shorter than this timeout are absorbed without errors. Clients retry rejected
+# requests against other replicas. When every replica is saturated, a request
+# can wait up to this long per replica, so prefer a low value. 0 means requests
+# wait indefinitely, bounded only by the request's own timeout. Only used when
+# -index-gateway.max-concurrent is greater than 0.
+# CLI flag: -index-gateway.max-concurrent-queue-timeout
+[max_concurrent_queue_timeout: <duration> | default = 5s]
 ```
 
 ### ingester
