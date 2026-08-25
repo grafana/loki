@@ -132,10 +132,8 @@ func (h *splitByInterval) Process(
 	ch := h.Feed(ctx, input)
 
 	// queries with 0 limits should not be exited early
-	var unlimited bool
-	if threshold == 0 {
-		unlimited = true
-	}
+	limit := threshold
+	unlimited := threshold == 0
 
 	// Parallelism will be at least 1
 	p := max(parallelism, 1)
@@ -175,6 +173,18 @@ func (h *splitByInterval) Process(
 				threshold -= casted.Count()
 
 				if threshold <= 0 {
+					// Stop in-flight splits before compacting; merge can take
+					// long enough that the next interval would otherwise start.
+					cancel(errors.New("split by interval process canceled"))
+
+					// Each split still carries the original line limit, so holding
+					// every sub-response until a final merge is O(splits × limit).
+					// When the combined count exceeds the request limit, compact
+					// immediately so oversized splits can be GC'd.
+					if n, allLogs := lokiResponseCount(responses); allLogs && n > limit {
+						responses = []queryrangebase.Response{mergeLokiResponse(responses...)}
+					}
+
 					return responses, nil
 				}
 
@@ -280,7 +290,25 @@ func (h *splitByInterval) Do(ctx context.Context, r queryrangebase.Request) (que
 	if err != nil {
 		return nil, err
 	}
+	// A single response is already complete. Re-merging it would call
+	// MergeSplit once more and reset stats.Splits to 1, which is wrong when
+	// Process already compacted several interval responses into one.
+	if len(resps) == 1 {
+		return resps[0], nil
+	}
 	return h.merger.MergeResponse(resps...)
+}
+
+func lokiResponseCount(responses []queryrangebase.Response) (int64, bool) {
+	var n int64
+	for _, r := range responses {
+		lr, ok := r.(*LokiResponse)
+		if !ok {
+			return 0, false
+		}
+		n += lr.Count()
+	}
+	return n, true
 }
 
 // maxRangeVectorAndOffsetDurationFromQueryString
