@@ -936,6 +936,7 @@ func TestMapping(t *testing.T) {
 				Params:    3,
 				Operation: syntax.OpTypeTopK,
 				Left: &CountMinSketchEvalExpr{
+					operation: syntax.OpTypeApproxTopK,
 					downstreams: []DownstreamSampleExpr{
 						{
 							shard: NewPowerOfTwoShard(index.ShardAnnotation{
@@ -986,6 +987,7 @@ func TestMapping(t *testing.T) {
 				Params:    3,
 				Operation: syntax.OpTypeTopK,
 				Left: &CountMinSketchEvalExpr{
+					operation: syntax.OpTypeApproxTopK,
 					downstreams: []DownstreamSampleExpr{
 						{
 							shard: nil,
@@ -1020,6 +1022,7 @@ func TestMapping(t *testing.T) {
 			in: `approx_topk(3, topk(5, rate({foo="bar"}[5m])))`,
 			expr: &syntax.VectorAggregationExpr{
 				Left: &CountMinSketchEvalExpr{
+					operation: syntax.OpTypeApproxTopK,
 					downstreams: []DownstreamSampleExpr{{
 						SampleExpr: &syntax.VectorAggregationExpr{
 							Operation: syntax.OpTypeCountMinSketch,

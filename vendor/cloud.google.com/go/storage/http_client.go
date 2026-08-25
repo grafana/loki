@@ -35,11 +35,13 @@ import (
 	"cloud.google.com/go/internal/optional"
 	"github.com/google/uuid"
 	"github.com/googleapis/gax-go/v2/callctx"
+	"golang.org/x/oauth2/google"
 	"google.golang.org/api/googleapi"
 	"google.golang.org/api/iterator"
 	"google.golang.org/api/option"
 	"google.golang.org/api/option/internaloption"
 	raw "google.golang.org/api/storage/v1"
+	"google.golang.org/api/transport"
 	htransport "google.golang.org/api/transport/http"
 )
 
@@ -70,6 +72,7 @@ func newHTTPStorageClient(ctx context.Context, opts ...storageOption) (client st
 	config := newStorageConfig(o...)
 
 	var creds *auth.Credentials
+	var googleCreds *google.Credentials
 	// In general, it is recommended to use raw.NewService instead of htransport.NewClient
 	// since raw.NewService configures the correct default endpoints when initializing the
 	// internal http client. However, in our case, "NewRangeReader" in reader.go needs to
@@ -91,6 +94,9 @@ func newHTTPStorageClient(ctx context.Context, opts ...storageOption) (client st
 		if err == nil {
 			creds = c
 			o = append(o, option.WithAuthCredentials(creds))
+		} else if gc, err := transport.Creds(ctx, o...); err == nil {
+			googleCreds = gc
+			o = append(o, option.WithCredentials(googleCreds))
 		}
 	} else {
 		var hostURL *url.URL
@@ -118,18 +124,14 @@ func newHTTPStorageClient(ctx context.Context, opts ...storageOption) (client st
 	}
 	s.clientOption = o
 
-	// htransport selects the correct endpoint among WithEndpoint (user override), WithDefaultEndpointTemplate, and WithDefaultMTLSEndpoint.
-	hc, ep, err := htransport.NewClient(ctx, s.clientOption...)
-	if err != nil {
-		return nil, fmt.Errorf("dialing: %w", err)
-	}
-
 	var clientMetrics *clientMetrics
 	var metricsCleanup func()
 	if isOtelMetricsEnabled(&config) {
 		var project string
 		if creds != nil {
 			project, _ = creds.ProjectID(ctx)
+		} else if googleCreds != nil {
+			project = googleCreds.ProjectID
 		}
 		clientMetrics, metricsCleanup = initClientMetrics(ctx, project, &config)
 	}
@@ -139,6 +141,17 @@ func newHTTPStorageClient(ctx context.Context, opts ...storageOption) (client st
 				metricsCleanup()
 			}
 		}()
+	}
+
+	if clientMetrics != nil && creds != nil {
+		creds = wrapAuthCredentials(creds, clientMetrics)
+		s.clientOption = append(s.clientOption, option.WithAuthCredentials(creds))
+	}
+
+	// htransport selects the correct endpoint among WithEndpoint (user override), WithDefaultEndpointTemplate, and WithDefaultMTLSEndpoint.
+	hc, ep, err := htransport.NewClient(ctx, s.clientOption...)
+	if err != nil {
+		return nil, fmt.Errorf("dialing: %w", err)
 	}
 
 	// Clone the http.Client to avoid modifying the original one if it was provided by the user.
@@ -1030,6 +1043,7 @@ func (c *httpStorageClient) newRangeReaderXML(ctx context.Context, params *newRa
 			select {
 			case <-timer:
 				log.Printf("[%s] stalled read-req cancelled after %fs", requestID, stallTimeout.Seconds())
+				c.metrics.recordStallDuration(ctx, stallTimeout, "ReadObject", "http", stripPort(req.URL.Host))
 				cancel()
 				<-done
 				if res != nil && res.Body != nil {

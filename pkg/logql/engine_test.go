@@ -339,6 +339,10 @@ func (s *storeSampleResult) CountMinSketchVec() CountMinSketchVector {
 	return CountMinSketchVector{}
 }
 
+func (s *storeSampleResult) CountDistinctVec() CountDistinctVector {
+	return CountDistinctVector{}
+}
+
 type statsQuerier struct{}
 
 func (statsQuerier) SelectLogs(ctx context.Context, _ SelectLogParams) (iter.EntryIterator, error) {

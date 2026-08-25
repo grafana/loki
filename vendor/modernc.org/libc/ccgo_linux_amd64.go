@@ -24011,7 +24011,7 @@ func X__stack_chk_fail(tls *TLS) {
 	if __ccgo_strace {
 		trc("tls=%v, (%v:)", tls, origin(2))
 	}
-	// __asm__ __volatile__( "hlt" : : : "memory" );
+	// 	__asm__ __volatile__( "hlt" : : : "memory" );
 	X__assert_fail(tls, __ccgo_ts+212, __ccgo_ts+247, 108, __ccgo_ts+261)
 }
 
@@ -30664,19 +30664,17 @@ func Xbindtextdomain(tls *TLS, domainname uintptr, dirname uintptr) (r uintptr) 
 		Xmemcpy(tls, (*Tbinding)(unsafe.Pointer(p2)).Fdomainname, domainname, domlen+uint64(1))
 		Xmemcpy(tls, (*Tbinding)(unsafe.Pointer(p2)).Fdirname, dirname, dirlen+uint64(1))
 		v2 = AtomicLoadPUintptr(uintptr(unsafe.Pointer(&_bindings)))
-		// __asm__( "lock ; cmpxchg %3, %1"
-		//
-		//	: "=a"(t), "=m"(*(void *volatile *)p)
-		//	: "a"(t), "r"(s) : "memory" );
+		// 	__asm__( "lock ; cmpxchg %3, %1"
+		// 		: "=a"(t), "=m"(*(void *volatile *)p)
+		// 		: "a"(t), "r"(s) : "memory" );
 		X__assert_fail(tls, __ccgo_ts+212, __ccgo_ts+247, 13, __ccgo_ts+416)
 		_ = v2
 		goto _3
 	_3:
 	}
-	// __asm__ __volatile__(
-	//
-	//	"mov %1, %0 ; lock ; orl $0,(%%rsp)"
-	//	: "=m"(*p) : "r"(x) : "memory" );
+	// 	__asm__ __volatile__(
+	// 		"mov %1, %0 ; lock ; orl $0,(%%rsp)"
+	// 		: "=m"(*p) : "r"(x) : "memory" );
 	X__assert_fail(tls, __ccgo_ts+212, __ccgo_ts+247, 88, __ccgo_ts+416)
 	q = AtomicLoadPUintptr(uintptr(unsafe.Pointer(&_bindings)))
 	for {
@@ -30684,10 +30682,9 @@ func Xbindtextdomain(tls *TLS, domainname uintptr, dirname uintptr) (r uintptr) 
 			break
 		}
 		if !(Xstrcmp(tls, (*Tbinding)(unsafe.Pointer(q)).Fdomainname, domainname) != 0) && q != p2 {
-			// __asm__ __volatile__(
-			//
-			//	"mov %1, %0 ; lock ; orl $0,(%%rsp)"
-			//	: "=m"(*p) : "r"(x) : "memory" );
+			// 	__asm__ __volatile__(
+			// 		"mov %1, %0 ; lock ; orl $0,(%%rsp)"
+			// 		: "=m"(*p) : "r"(x) : "memory" );
 			X__assert_fail(tls, __ccgo_ts+212, __ccgo_ts+247, 88, __ccgo_ts+416)
 		}
 		goto _4
@@ -30925,10 +30922,9 @@ _2:
 		_20:
 			;
 			v3 = old_cats
-			// __asm__( "lock ; cmpxchg %3, %1"
-			//
-			//	: "=a"(t), "=m"(*(void *volatile *)p)
-			//	: "a"(t), "r"(s) : "memory" );
+			// 	__asm__( "lock ; cmpxchg %3, %1"
+			// 		: "=a"(t), "=m"(*(void *volatile *)p)
+			// 		: "a"(t), "r"(s) : "memory" );
 			X__assert_fail(tls, __ccgo_ts+212, __ccgo_ts+247, 13, __ccgo_ts+500)
 			v8 = v3
 			goto _19
@@ -104475,7 +104471,7 @@ func Xfma(tls *TLS, x1 float64, y float64, z float64) (r1 float64) {
 	if nonzero != 0 {
 		e = e + int32(64)
 		v1 = **(**Tuint64_t)(__ccgo_up(bp))
-		// __asm__( "bsr %1,%0 ; xor $63,%0" : "=r"(x) : "r"(x) );
+		// 	__asm__( "bsr %1,%0 ; xor $63,%0" : "=r"(x) : "r"(x) );
 		X__assert_fail(tls, __ccgo_ts+212, __ccgo_ts+247, 121, __ccgo_ts+583)
 		v2 = Int32FromUint64(v1)
 		goto _3
@@ -104486,7 +104482,7 @@ func Xfma(tls *TLS, x1 float64, y float64, z float64) (r1 float64) {
 	} else {
 		if **(**Tuint64_t)(__ccgo_up(bp + 8)) != 0 {
 			v1 = **(**Tuint64_t)(__ccgo_up(bp + 8))
-			// __asm__( "bsr %1,%0 ; xor $63,%0" : "=r"(x) : "r"(x) );
+			// 	__asm__( "bsr %1,%0 ; xor $63,%0" : "=r"(x) : "r"(x) );
 			X__assert_fail(tls, __ccgo_ts+212, __ccgo_ts+247, 121, __ccgo_ts+583)
 			v2 = Int32FromUint64(v1)
 			goto _6
@@ -112746,7 +112742,7 @@ func Xffsll(tls *TLS, i int64) (r int32) {
 	_, _, _ = v1, v2, v3
 	if i != 0 {
 		v2 = Uint64FromInt64(i)
-		// __asm__( "bsf %1,%0" : "=r"(x) : "r"(x) );
+		// 	__asm__( "bsf %1,%0" : "=r"(x) : "r"(x) );
 		X__assert_fail(tls, __ccgo_ts+212, __ccgo_ts+247, 114, __ccgo_ts+589)
 		v3 = Int32FromUint64(v2)
 		goto _4
@@ -133503,16 +133499,14 @@ func X__libc_sigaction(tls *TLS, sig int32, sa uintptr, old uintptr) (r1 int32) 
 			v1 = uintptr(unsafe.Pointer(&_handler_set)) + uintptr(Uint64FromInt32(sig-Int32FromInt32(1))/(Uint64FromInt32(8)*Uint64FromInt64(8)))*8
 			v2 = Int64FromUint64(uint64(1) << (Uint64FromInt32(sig-Int32FromInt32(1)) % (Uint64FromInt32(8) * Uint64FromInt64(8))))
 			if Uint64FromInt64(8) == Uint64FromInt64(4) {
-				// __asm__ __volatile__(
-				//
-				//	"lock ; or %1, %0"
-				//	: "=m"(*p) : "r"(v) : "memory" );
+				// 	__asm__ __volatile__(
+				// 		"lock ; or %1, %0"
+				// 		: "=m"(*p) : "r"(v) : "memory" );
 				X__assert_fail(tls, __ccgo_ts+212, __ccgo_ts+247, 48, __ccgo_ts+1504)
 			} else {
-				// __asm__ __volatile__(
-				//
-				//	"lock ; or %1, %0"
-				//	 : "=m"(*p) : "r"(v) : "memory" );
+				// 	__asm__ __volatile__(
+				// 		"lock ; or %1, %0"
+				// 		 : "=m"(*p) : "r"(v) : "memory" );
 				X__assert_fail(tls, __ccgo_ts+212, __ccgo_ts+247, 64, __ccgo_ts+1504)
 			}
 			/* If pthread_create has not yet been called,
@@ -133531,10 +133525,9 @@ func X__libc_sigaction(tls *TLS, sig int32, sa uintptr, old uintptr) (r1 int32) 
 				_unmask_done = int32(1)
 			}
 			if !((*Tsigaction)(unsafe.Pointer(sa)).Fsa_flags&Int32FromInt32(SA_RESTART) != 0) {
-				// __asm__ __volatile__(
-				//
-				//	"mov %1, %0 ; lock ; orl $0,(%%rsp)"
-				//	: "=m"(*p) : "r"(x) : "memory" );
+				// 	__asm__ __volatile__(
+				// 		"mov %1, %0 ; lock ; orl $0,(%%rsp)"
+				// 		: "=m"(*p) : "r"(x) : "memory" );
 				X__assert_fail(tls, __ccgo_ts+212, __ccgo_ts+247, 88, __ccgo_ts+1504)
 			}
 		}
@@ -135364,10 +135357,9 @@ func _locking_getc(tls *TLS, f uintptr) (r int32) {
 	var v10, v5, v6 uintptr
 	_, _, _, _, _, _, _, _, _ = c, v1, v10, v2, v4, v5, v6, v7, v8
 	v1 = 0
-	// __asm__ __volatile__ (
-	//
-	//	"lock ; cmpxchg %3, %1"
-	//	: "=a"(t), "=m"(*p) : "a"(t), "r"(s) : "memory" );
+	// 	__asm__ __volatile__ (
+	// 		"lock ; cmpxchg %3, %1"
+	// 		: "=a"(t), "=m"(*p) : "a"(t), "r"(s) : "memory" );
 	X__assert_fail(tls, __ccgo_ts+212, __ccgo_ts+247, 4, __ccgo_ts+1525)
 	v2 = v1
 	goto _3
@@ -135385,10 +135377,9 @@ _3:
 	}
 	c = v1
 	v2 = 0
-	// __asm__ __volatile__(
-	//
-	//	"xchg %0, %1"
-	//	: "=r"(v), "=m"(*p) : "0"(v) : "memory" );
+	// 	__asm__ __volatile__(
+	// 		"xchg %0, %1"
+	// 		: "=r"(v), "=m"(*p) : "0"(v) : "memory" );
 	X__assert_fail(tls, __ccgo_ts+212, __ccgo_ts+247, 22, __ccgo_ts+1525)
 	v4 = v2
 	goto _9
@@ -136220,10 +136211,9 @@ func _locking_putc(tls *TLS, c int32, f uintptr) (r int32) {
 	var v5 uint8
 	_, _, _, _, _, _, _ = v1, v2, v4, v5, v6, v7, v8
 	v1 = 0
-	// __asm__ __volatile__ (
-	//
-	//	"lock ; cmpxchg %3, %1"
-	//	: "=a"(t), "=m"(*p) : "a"(t), "r"(s) : "memory" );
+	// 	__asm__ __volatile__ (
+	// 		"lock ; cmpxchg %3, %1"
+	// 		: "=a"(t), "=m"(*p) : "a"(t), "r"(s) : "memory" );
 	X__assert_fail(tls, __ccgo_ts+212, __ccgo_ts+247, 4, __ccgo_ts+1538)
 	v2 = v1
 	goto _3
@@ -136243,10 +136233,9 @@ _3:
 	}
 	c = v1
 	v1 = 0
-	// __asm__ __volatile__(
-	//
-	//	"xchg %0, %1"
-	//	: "=r"(v), "=m"(*p) : "0"(v) : "memory" );
+	// 	__asm__ __volatile__(
+	// 		"xchg %0, %1"
+	// 		: "=r"(v), "=m"(*p) : "0"(v) : "memory" );
 	X__assert_fail(tls, __ccgo_ts+212, __ccgo_ts+247, 22, __ccgo_ts+1538)
 	v2 = v1
 	goto _10
@@ -136803,10 +136792,9 @@ func X__do_orphaned_stdio_locks(tls *TLS) {
 		if !(f != 0) {
 			break
 		}
-		// __asm__ __volatile__(
-		//
-		//	"mov %1, %0 ; lock ; orl $0,(%%rsp)"
-		//	: "=m"(*p) : "r"(x) : "memory" );
+		// 	__asm__ __volatile__(
+		// 		"mov %1, %0 ; lock ; orl $0,(%%rsp)"
+		// 		: "=m"(*p) : "r"(x) : "memory" );
 		X__assert_fail(tls, __ccgo_ts+212, __ccgo_ts+247, 88, __ccgo_ts+1551)
 		goto _1
 	_1:
@@ -136870,10 +136858,9 @@ func Xftrylockfile(tls *TLS, f uintptr) (r int32) {
 	}
 	if v5 = owner != 0; !v5 {
 		v1 = 0
-		// __asm__ __volatile__ (
-		//
-		//	"lock ; cmpxchg %3, %1"
-		//	: "=a"(t), "=m"(*p) : "a"(t), "r"(s) : "memory" );
+		// 	__asm__ __volatile__ (
+		// 		"lock ; cmpxchg %3, %1"
+		// 		: "=a"(t), "=m"(*p) : "a"(t), "r"(s) : "memory" );
 		X__assert_fail(tls, __ccgo_ts+212, __ccgo_ts+247, 4, __ccgo_ts+1577)
 		v2 = v1
 		goto _4
@@ -137063,10 +137050,9 @@ func _locking_getc1(tls *TLS, f uintptr) (r int32) {
 	var v10, v5, v6 uintptr
 	_, _, _, _, _, _, _, _, _ = c, v1, v10, v2, v4, v5, v6, v7, v8
 	v1 = 0
-	// __asm__ __volatile__ (
-	//
-	//	"lock ; cmpxchg %3, %1"
-	//	: "=a"(t), "=m"(*p) : "a"(t), "r"(s) : "memory" );
+	// 	__asm__ __volatile__ (
+	// 		"lock ; cmpxchg %3, %1"
+	// 		: "=a"(t), "=m"(*p) : "a"(t), "r"(s) : "memory" );
 	X__assert_fail(tls, __ccgo_ts+212, __ccgo_ts+247, 4, __ccgo_ts+1525)
 	v2 = v1
 	goto _3
@@ -137084,10 +137070,9 @@ _3:
 	}
 	c = v1
 	v2 = 0
-	// __asm__ __volatile__(
-	//
-	//	"xchg %0, %1"
-	//	: "=r"(v), "=m"(*p) : "0"(v) : "memory" );
+	// 	__asm__ __volatile__(
+	// 		"xchg %0, %1"
+	// 		: "=r"(v), "=m"(*p) : "0"(v) : "memory" );
 	X__assert_fail(tls, __ccgo_ts+212, __ccgo_ts+247, 22, __ccgo_ts+1525)
 	v4 = v2
 	goto _9
@@ -137183,10 +137168,9 @@ func _locking_getc2(tls *TLS, f uintptr) (r int32) {
 	var v10, v5, v6 uintptr
 	_, _, _, _, _, _, _, _, _ = c, v1, v10, v2, v4, v5, v6, v7, v8
 	v1 = 0
-	// __asm__ __volatile__ (
-	//
-	//	"lock ; cmpxchg %3, %1"
-	//	: "=a"(t), "=m"(*p) : "a"(t), "r"(s) : "memory" );
+	// 	__asm__ __volatile__ (
+	// 		"lock ; cmpxchg %3, %1"
+	// 		: "=a"(t), "=m"(*p) : "a"(t), "r"(s) : "memory" );
 	X__assert_fail(tls, __ccgo_ts+212, __ccgo_ts+247, 4, __ccgo_ts+1525)
 	v2 = v1
 	goto _3
@@ -137204,10 +137188,9 @@ _3:
 	}
 	c = v1
 	v2 = 0
-	// __asm__ __volatile__(
-	//
-	//	"xchg %0, %1"
-	//	: "=r"(v), "=m"(*p) : "0"(v) : "memory" );
+	// 	__asm__ __volatile__(
+	// 		"xchg %0, %1"
+	// 		: "=r"(v), "=m"(*p) : "0"(v) : "memory" );
 	X__assert_fail(tls, __ccgo_ts+212, __ccgo_ts+247, 22, __ccgo_ts+1525)
 	v4 = v2
 	goto _9
@@ -137891,10 +137874,9 @@ func _locking_putc1(tls *TLS, c int32, f uintptr) (r int32) {
 	var v5 uint8
 	_, _, _, _, _, _, _ = v1, v2, v4, v5, v6, v7, v8
 	v1 = 0
-	// __asm__ __volatile__ (
-	//
-	//	"lock ; cmpxchg %3, %1"
-	//	: "=a"(t), "=m"(*p) : "a"(t), "r"(s) : "memory" );
+	// 	__asm__ __volatile__ (
+	// 		"lock ; cmpxchg %3, %1"
+	// 		: "=a"(t), "=m"(*p) : "a"(t), "r"(s) : "memory" );
 	X__assert_fail(tls, __ccgo_ts+212, __ccgo_ts+247, 4, __ccgo_ts+1538)
 	v2 = v1
 	goto _3
@@ -137914,10 +137896,9 @@ _3:
 	}
 	c = v1
 	v1 = 0
-	// __asm__ __volatile__(
-	//
-	//	"xchg %0, %1"
-	//	: "=r"(v), "=m"(*p) : "0"(v) : "memory" );
+	// 	__asm__ __volatile__(
+	// 		"xchg %0, %1"
+	// 		: "=r"(v), "=m"(*p) : "0"(v) : "memory" );
 	X__assert_fail(tls, __ccgo_ts+212, __ccgo_ts+247, 22, __ccgo_ts+1538)
 	v2 = v1
 	goto _10
@@ -138021,10 +138002,9 @@ func _locking_putc2(tls *TLS, c int32, f uintptr) (r int32) {
 	var v5 uint8
 	_, _, _, _, _, _, _ = v1, v2, v4, v5, v6, v7, v8
 	v1 = 0
-	// __asm__ __volatile__ (
-	//
-	//	"lock ; cmpxchg %3, %1"
-	//	: "=a"(t), "=m"(*p) : "a"(t), "r"(s) : "memory" );
+	// 	__asm__ __volatile__ (
+	// 		"lock ; cmpxchg %3, %1"
+	// 		: "=a"(t), "=m"(*p) : "a"(t), "r"(s) : "memory" );
 	X__assert_fail(tls, __ccgo_ts+212, __ccgo_ts+247, 4, __ccgo_ts+1538)
 	v2 = v1
 	goto _3
@@ -138044,10 +138024,9 @@ _3:
 	}
 	c = v1
 	v1 = 0
-	// __asm__ __volatile__(
-	//
-	//	"xchg %0, %1"
-	//	: "=r"(v), "=m"(*p) : "0"(v) : "memory" );
+	// 	__asm__ __volatile__(
+	// 		"xchg %0, %1"
+	// 		: "=r"(v), "=m"(*p) : "0"(v) : "memory" );
 	X__assert_fail(tls, __ccgo_ts+212, __ccgo_ts+247, 22, __ccgo_ts+1538)
 	v2 = v1
 	goto _10
@@ -147861,7 +147840,7 @@ func X__asctime_r(tls *TLS, tm uintptr, buf uintptr) (r uintptr) {
 		 * application developers that they may not be so lucky
 		 * on other implementations (e.g. stack smashing..).
 		 */
-		// __asm__ __volatile__( "hlt" : : : "memory" );
+		// 	__asm__ __volatile__( "hlt" : : : "memory" );
 		X__assert_fail(tls, __ccgo_ts+212, __ccgo_ts+247, 108, __ccgo_ts+1817)
 	}
 	return buf
@@ -149213,10 +149192,9 @@ func Xtimer_delete(tls *TLS, t Ttimer_t) (r int32) {
 	_ = td
 	if int64(t) < 0 {
 		td = uintptr(uint64(t) << Int32FromInt32(1))
-		// __asm__ __volatile__(
-		//
-		//	"mov %1, %0 ; lock ; orl $0,(%%rsp)"
-		//	: "=m"(*p) : "r"(x) : "memory" );
+		// 	__asm__ __volatile__(
+		// 		"mov %1, %0 ; lock ; orl $0,(%%rsp)"
+		// 		: "=m"(*p) : "r"(x) : "memory" );
 		X__assert_fail(tls, __ccgo_ts+212, __ccgo_ts+247, 88, __ccgo_ts+1901)
 		X__syscall2(tls, int64(SYS_tkill), int64((*t__pthread)(unsafe.Pointer(td)).Ftid), int64(Int32FromInt32(SIGTIMER)))
 		return 0

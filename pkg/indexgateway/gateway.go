@@ -12,6 +12,7 @@ import (
 	"github.com/c2h5oh/datasize"
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
+	"github.com/grafana/dskit/gate"
 	"github.com/grafana/dskit/services"
 	"github.com/grafana/dskit/tenant"
 	"github.com/prometheus/client_golang/prometheus"
@@ -54,6 +55,7 @@ type Gateway struct {
 	indexQuerier IndexQuerier
 	bloomQuerier BloomQuerier
 	metrics      *Metrics
+	queryGate    gate.Gate
 
 	cfg    Config
 	limits Limits
@@ -72,6 +74,7 @@ func NewIndexGateway(cfg Config, limits Limits, log log.Logger, r prometheus.Reg
 		limits:       limits,
 		log:          log,
 		metrics:      NewMetrics(r),
+		queryGate:    newQueryGate(cfg, r),
 	}
 
 	g.Service = services.NewIdleService(nil, func(_ error) error {
@@ -157,6 +160,11 @@ func (g *Gateway) GetChunkRef(ctx context.Context, req *logproto.GetChunkRefRequ
 	if err != nil {
 		return nil, err
 	}
+
+	if err := g.queryGate.Start(ctx); err != nil {
+		return nil, mapGateError(err)
+	}
+	defer g.queryGate.Done()
 
 	predicate := chunk.NewPredicate(matchers, &req.Plan)
 	chunkRefsLookupStart := time.Now()
@@ -250,6 +258,12 @@ func (g *Gateway) GetSeries(ctx context.Context, req *logproto.GetSeriesRequest)
 	if err != nil {
 		return nil, err
 	}
+
+	if err := g.queryGate.Start(ctx); err != nil {
+		return nil, mapGateError(err)
+	}
+	defer g.queryGate.Done()
+
 	series, err := g.indexQuerier.GetSeries(ctx, instanceID, req.From, req.Through, matchers...)
 	if err != nil {
 		return nil, err
@@ -286,6 +300,12 @@ func (g *Gateway) LabelNamesForMetricName(ctx context.Context, req *logproto.Lab
 		}
 		matchers = matcherExpr.Mts
 	}
+
+	if err := g.queryGate.Start(ctx); err != nil {
+		return nil, mapGateError(err)
+	}
+	defer g.queryGate.Done()
+
 	names, err := g.indexQuerier.LabelNamesForMetricName(ctx, instanceID, req.From, req.Through, req.MetricName, matchers...)
 	if err != nil {
 		return nil, err
@@ -315,6 +335,12 @@ func (g *Gateway) LabelValuesForMetricName(ctx context.Context, req *logproto.La
 		}
 		matchers = matcherExpr.Mts
 	}
+
+	if err := g.queryGate.Start(ctx); err != nil {
+		return nil, mapGateError(err)
+	}
+	defer g.queryGate.Done()
+
 	names, err := g.indexQuerier.LabelValuesForMetricName(ctx, instanceID, req.From, req.Through, req.MetricName, req.LabelName, matchers...)
 	if err != nil {
 		return nil, err
@@ -334,6 +360,11 @@ func (g *Gateway) GetStats(ctx context.Context, req *logproto.IndexStatsRequest)
 		return nil, err
 	}
 
+	if err := g.queryGate.Start(ctx); err != nil {
+		return nil, mapGateError(err)
+	}
+	defer g.queryGate.Done()
+
 	return g.indexQuerier.Stats(ctx, instanceID, req.From, req.Through, matchers...)
 }
 
@@ -347,6 +378,11 @@ func (g *Gateway) GetVolume(ctx context.Context, req *logproto.VolumeRequest) (*
 	if err != nil && req.Matchers != seriesvolume.MatchAny {
 		return nil, err
 	}
+
+	if err := g.queryGate.Start(ctx); err != nil {
+		return nil, mapGateError(err)
+	}
+	defer g.queryGate.Done()
 
 	return g.indexQuerier.Volume(ctx, instanceID, req.From, req.Through, req.GetLimit(), req.TargetLabels, req.AggregateBy, matchers...)
 }
@@ -365,6 +401,11 @@ func (g *Gateway) GetShards(request *logproto.ShardsRequest, server logproto.Ind
 	if err != nil {
 		return err
 	}
+
+	if err := g.queryGate.Start(ctx); err != nil {
+		return mapGateError(err)
+	}
+	defer g.queryGate.Done()
 
 	ok := g.indexQuerier.HasChunkSizingInfo(request.From, request.Through)
 	if !ok {
@@ -430,27 +471,9 @@ func (g *Gateway) boundedShards(
 	g.metrics.preFilterChunks.WithLabelValues(routeShards).Observe(float64(ct))
 	g.metrics.postFilterChunks.WithLabelValues(routeShards).Observe(float64(ct))
 
-	resp := &logproto.ShardsResponse{}
-	if len(refs) == 0 {
-		// Edge case: if there are no chunks, we still need to return a single shard
-		resp.Shards = []logproto.Shard{
-			{
-				Bounds: logproto.FPBounds{Min: 0, Max: math.MaxUint64},
-				Stats:  &logproto.IndexStatsResponse{},
-			},
-		}
-	} else {
-		shards, chunkGrps, err := accumulateChunksToShards(req, refs)
-		if err != nil {
-			return err
-		}
-		resp.Shards = shards
-
-		// If the index gateway is configured to precompute chunks, we can return the chunk groups
-		// alongside the shards, otherwise discarding them
-		if g.limits.TSDBPrecomputeChunks(instanceID) {
-			resp.ChunkGroups = chunkGrps
-		}
+	resp, err := buildShardsResponse(req, refs, g.limits.TSDBPrecomputeChunks(instanceID))
+	if err != nil {
+		return err
 	}
 
 	sp.AddEvent("send shards response", trace.WithAttributes(
@@ -477,20 +500,55 @@ func (g *Gateway) boundedShards(
 		"end_delta", time.Since(req.Through.Time()).String(),
 	)
 
-	// Populate index statistics for metrics logging
-	resp.Statistics.Index.TotalChunks = int64(ct)
-	resp.Statistics.Index.PostFilterChunks = int64(ct)
-	// compute unique streams matched post-filtering
-	{
-		seen := make(map[model.Fingerprint]struct{}, 1024)
-		for _, ref := range refs {
-			seen[model.Fingerprint(ref.Fingerprint)] = struct{}{}
-		}
-		resp.Statistics.Index.TotalStreams = int64(len(seen))
-	}
 	resp.Statistics.Index.ShardsDuration = int64(time.Since(start))
 
 	return server.Send(resp)
+}
+
+// buildShardsResponse builds the response for a shards request from the chunk refs
+// resolved from the index. precomputeChunks controls whether the per-shard chunk
+// groups are returned alongside the shards.
+func buildShardsResponse(
+	req *logproto.ShardsRequest,
+	refs []logproto.ChunkRefWithSizingInfo,
+	precomputeChunks bool,
+) (*logproto.ShardsResponse, error) {
+	resp := &logproto.ShardsResponse{}
+
+	if len(refs) == 0 {
+		// Edge case: if there are no chunks, we still need to return a single shard
+		resp.Shards = []logproto.Shard{
+			{
+				Bounds: logproto.FPBounds{Min: 0, Max: math.MaxUint64},
+				Stats:  &logproto.IndexStatsResponse{},
+			},
+		}
+	} else {
+		shards, err := accumulateChunksToShards(req, refs)
+		if err != nil {
+			return nil, err
+		}
+		resp.Shards = shards
+
+		// If the index gateway is configured to precompute chunks, we can return the chunk groups
+		// alongside the shards, otherwise avoid calculating them.
+		if precomputeChunks {
+			resp.ChunkGroups = chunkGroupsForShards(shards, refs)
+		}
+	}
+
+	// Populate index statistics for metrics logging
+	ct := len(refs)
+	resp.Statistics.Index.TotalChunks = int64(ct)
+	resp.Statistics.Index.PostFilterChunks = int64(ct)
+	// compute unique streams matched post-filtering
+	seen := make(map[model.Fingerprint]struct{}, 1024)
+	for _, ref := range refs {
+		seen[model.Fingerprint(ref.Fingerprint)] = struct{}{}
+	}
+	resp.Statistics.Index.TotalStreams = int64(len(seen))
+
+	return resp, nil
 }
 
 // ExtractShardRequestMatchersAndAST extracts the matchers and AST from a query string.
@@ -527,7 +585,7 @@ func ExtractShardRequestMatchersAndAST(query string) (chunk.Predicate, error) {
 func accumulateChunksToShards(
 	req *logproto.ShardsRequest,
 	filtered []logproto.ChunkRefWithSizingInfo,
-) ([]logproto.Shard, []logproto.ChunkRefGroup, error) {
+) ([]logproto.Shard, error) {
 	// map for looking up post-filtered chunks in O(n) while iterating the index again for sizing info
 	filteredM := make(map[model.Fingerprint][]logproto.ChunkRefWithSizingInfo, 1024)
 	for _, ref := range filtered {
@@ -549,21 +607,29 @@ func accumulateChunksToShards(
 	}
 	sort.Sort(collectedSeries)
 
-	shards := collectedSeries.ShardsFor(req.TargetBytesPerShard)
+	return collectedSeries.ShardsFor(req.TargetBytesPerShard), nil
+}
+
+// chunkGroupsForShards buckets the given chunk refs into one group per shard.
+// It expects chunkRefs to be ordered by fingerprint.
+func chunkGroupsForShards(
+	shards []logproto.Shard,
+	chunkRefs []logproto.ChunkRefWithSizingInfo,
+) []logproto.ChunkRefGroup {
 	chkGrps := make([]logproto.ChunkRefGroup, 0, len(shards))
 	for _, s := range shards {
-		from := sort.Search(len(filtered), func(i int) bool {
-			return filtered[i].Fingerprint >= uint64(s.Bounds.Min)
+		from := sort.Search(len(chunkRefs), func(i int) bool {
+			return chunkRefs[i].Fingerprint >= uint64(s.Bounds.Min)
 		})
-		through := sort.Search(len(filtered), func(i int) bool {
-			return filtered[i].Fingerprint > uint64(s.Bounds.Max)
+		through := sort.Search(len(chunkRefs), func(i int) bool {
+			return chunkRefs[i].Fingerprint > uint64(s.Bounds.Max)
 		})
 		chkGrps = append(chkGrps, logproto.ChunkRefGroup{
-			Refs: refsWithSizingInfoToRefs(filtered[from:through]),
+			Refs: refsWithSizingInfoToRefs(chunkRefs[from:through]),
 		})
 	}
 
-	return shards, chkGrps, nil
+	return chkGrps
 }
 
 func refsWithSizingInfoToRefs(refsWithSizingInfo []logproto.ChunkRefWithSizingInfo) []*logproto.ChunkRef {

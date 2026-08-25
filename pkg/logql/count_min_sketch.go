@@ -48,6 +48,10 @@ func (v CountMinSketchVector) CountMinSketchVec() CountMinSketchVector {
 	return v
 }
 
+func (CountMinSketchVector) CountDistinctVec() CountDistinctVector {
+	return CountDistinctVector{}
+}
+
 func (v *CountMinSketchVector) Merge(right *CountMinSketchVector) (*CountMinSketchVector, error) {
 	// The underlying CMS implementation already merges the HLL sketches that are part of that structure.
 	err := v.F.Merge(right.F)
@@ -282,10 +286,18 @@ func JoinCountMinSketchVector(_ bool, r StepResult, stepEvaluator StepEvaluator,
 	}
 
 	if GetRangeType(params) != InstantType {
-		return nil, fmt.Errorf("count min sketches are only supported on instant queries")
+		return nil, errCountMinSketchInstantOnly("")
 	}
 
 	return vec, nil
+}
+
+func errCountMinSketchInstantOnly(op string) error {
+	const msg = "count min sketches are only supported on instant queries"
+	if op == "" {
+		return fmt.Errorf("%s", msg)
+	}
+	return fmt.Errorf("%s error: %s", op, msg)
 }
 
 func newCountMinSketchVectorAggEvaluator(nextEvaluator StepEvaluator, expr *syntax.VectorAggregationExpr, maxLabels int) (*countMinSketchVectorAggEvaluator, error) {
@@ -397,9 +409,8 @@ type CountMinSketchEvalStepEvaluator struct {
 }
 
 func NewCountMinSketchEvalStepEvaluator(ctx context.Context, nextEvFactory SampleEvaluatorFactory, expr *CountMinSketchEvalExpr, params Params) (*CountMinSketchEvalStepEvaluator, error) {
-	// The count-min sketch is only supported for instant queries.
 	if GetRangeType(params) != InstantType {
-		return nil, fmt.Errorf("count min sketches are only supported on instant queries")
+		return nil, errCountMinSketchInstantOnly(expr.operation)
 	}
 	return &CountMinSketchEvalStepEvaluator{
 		ctx:           ctx,

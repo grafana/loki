@@ -16,9 +16,18 @@ import (
 
 const pageSizeLog = 16
 
+// canCarve reports that unmap can release any page-aligned sub-range
+// of a mapping, so a large mapping can be carved into independently
+// releasable pageSize regions.
+const canCarve = true
+
 var (
 	osPageMask = osPageSize - 1
 	osPageSize = os.Getpagesize()
+
+	// mmapGranularity is the granularity mmap in this file actually maps
+	// at: exactly what was asked, rounded to OS pages.
+	mmapGranularity = osPageSize
 )
 
 func unmap(addr uintptr, size int) error {

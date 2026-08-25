@@ -1,5 +1,12 @@
 # Changes
 
+## [2.24.0](https://github.com/googleapis/gax-go/compare/v2.23.0...v2.24.0) (2026-08-20)
+
+
+### Features
+
+* **iterator:** remove build constraint ([#525](https://github.com/googleapis/gax-go/issues/525)) ([b3f4053](https://github.com/googleapis/gax-go/commit/b3f40539135c909c38030fda9b1a25503d576051))
+
 ## [2.23.0](https://github.com/googleapis/gax-go/compare/v2.22.0...v2.23.0) (2026-07-07)
 
 
