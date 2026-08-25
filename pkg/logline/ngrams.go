@@ -16,6 +16,15 @@ import (
 // both sources ignore them.
 type ExtractFunc func(n int, line string, structuredMetadata push.LabelsAdapter, labelValues []string, ngrams [][8]byte) [][8]byte
 
+// IsPackedTermKey reports whether an extracted key was packed into the full term
+// key width rather than being a plain text n-gram.
+//
+// Text n-grams only ever contain the transformed alphabet: space, '.', '0'-'9'
+// and 'A'-'Z'. Any byte below 0x20 (space) is therefore impossible in a text gram.
+func IsPackedTermKey(key [8]byte) bool {
+	return key[0] < 0x20
+}
+
 // TermKeyLengthForVersion returns the width, in bytes, of a term key in the
 // on-disk term dictionary for the given index version.
 //

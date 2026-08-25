@@ -26,6 +26,14 @@ func readerDictKey(term string) [v3.NgramLength]byte {
 	return key
 }
 
+// readerKey8 mirrors filterNgramsForShard, which copies the term into a
+// zero-valued [8]byte before hashing it.
+func readerKey8(term string) [8]byte {
+	var key [8]byte
+	copy(key[:], term)
+	return key
+}
+
 // TestExtractQueryNgrams_ResolvesToBuilderDictKeys is the invariant that makes
 // a lookup work at all: every term the query path derives must resolve, through
 // FindTerm's zero-padding, to a dictionary key the builder actually wrote, and
@@ -34,7 +42,8 @@ func readerDictKey(term string) [v3.NgramLength]byte {
 // It runs across every ngram length because the term key width is a property of
 // the format, not of ngram_length. The two are equal for v3 at the production
 // setting but not for an extractor that uses the full key, as v4 does for packed
-// numeric grams.
+// numeric grams. Text grams keep their ngram_length slice, so this also proves
+// widening packed keys left the text path untouched.
 func TestExtractQueryNgrams_ResolvesToBuilderDictKeys(t *testing.T) {
 	inputs := []string{
 		"level=info msg=hello",
@@ -63,8 +72,15 @@ func TestExtractQueryNgrams_ResolvesToBuilderDictKeys(t *testing.T) {
 
 					queried := map[[v3.NgramLength]byte]struct{}{}
 					for _, term := range terms {
-						require.Len(t, term, keyLength,
-							"terms must be sliced to the term key width, not ngram_length")
+						// A text gram keeps its ngram_length bytes. Only a packed
+						// key is widened, because only it carries value bytes past
+						// ngram_length.
+						wantWidth := n
+						if logline.IsPackedTermKey(readerKey8(term)) {
+							wantWidth = keyLength
+						}
+						require.Len(t, term, wantWidth,
+							"a packed term must be sliced to the term key width and a text term to ngram_length")
 						k := readerDictKey(term)
 						_, ok := built[k]
 						require.True(t, ok,

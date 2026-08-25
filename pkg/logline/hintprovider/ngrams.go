@@ -9,12 +9,12 @@ import (
 // ExtractQueryNgrams converts query text into sorted unique n-gram terms using
 // the extraction algorithm paired with indexVersion.
 //
-// Terms are sliced to the index's term key width rather than to ngramLength.
-// The key width is a property of the format: the builder stores the first
-// term-key-width bytes of each extracted key, and FindTerm zero-pads whatever it
-// is given back to that width. A term sliced any shorter therefore resolves to a
-// different key and misses, which matters for an extractor that fills the whole
-// key, as v4 does for packed numeric grams.
+// A text n-gram is sliced to ngramLength, unchanged. A packed key (v4 numeric
+// grams) is sliced to the index's full term key width instead, because it carries
+// value bytes where the text path leaves zeros: slicing one of those to a shorter
+// ngramLength would drop low value bytes, and both FindTerm and the shard filter
+// zero-pad what they are given, so the term would resolve to a different
+// dictionary key and to the wrong shard.
 //
 // Returns (nil, nil) when the query is too short to produce ngrams; returns a
 // non-nil error only when indexVersion is not a recognised version.
@@ -39,7 +39,11 @@ func ExtractQueryNgrams(query string, ngramLength int, indexVersion string) ([]s
 
 	terms := make([]string, 0, len(ngrams))
 	for _, key := range ngrams {
-		terms = append(terms, string(key[:keyLength]))
+		width := ngramLength
+		if logline.IsPackedTermKey(key) {
+			width = keyLength
+		}
+		terms = append(terms, string(key[:width]))
 	}
 	sort.Strings(terms)
 
