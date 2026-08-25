@@ -30,12 +30,12 @@ func NewStreamOrderKey(streamLabels labels.Labels, schemaLabels []string) (Strea
 // CompareStreamOrderKey compares stream keys by shard bucket, schema key,
 // stable hash, and full labels.
 func CompareStreamOrderKey(a, b StreamOrderKey) int {
-	if n := a.streamSort().Compare(b.streamSort()); n != 0 {
+	if n := a.sortingOrder().Compare(b.sortingOrder()); n != 0 {
 		return n
 	}
 	return labels.Compare(a.Labels, b.Labels)
 }
 
-func (k StreamOrderKey) streamSort() logs.StreamSort {
+func (k StreamOrderKey) sortingOrder() logs.StreamSort {
 	return logs.StreamSort{Shard: k.Shard, Key: k.SchemaKey, Hash: k.Hash}
 }

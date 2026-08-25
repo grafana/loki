@@ -533,7 +533,7 @@ func (b *Builder) CopyAndSort(ctx context.Context, obj *dataobj.Object) (*dataob
 			return nil, nil, err
 		}
 
-		iter, iterErr := sortedSchemaIter(ctx, sections, streamRemap)
+		logsIter, iterErr := sortedLogsIter(ctx, sections, streamRemap)
 		if iterErr != nil {
 			return nil, nil, fmt.Errorf("creating sort iterator: %w", iterErr)
 		}
@@ -551,7 +551,7 @@ func (b *Builder) CopyAndSort(ctx context.Context, obj *dataobj.Object) (*dataob
 		})
 		lb.SetTenant(tenant)
 
-		if err := b.drainLogsIter(ctx, iter, lb, tenant); err != nil {
+		if err := b.drainLogsIter(ctx, logsIter, lb, tenant); err != nil {
 			return nil, nil, err
 		}
 	}

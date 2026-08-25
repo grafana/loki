@@ -98,10 +98,6 @@ func reverseOrderIfEqual(res int) int {
 	return -1
 }
 
-// SortRecords sorts records in place by sortOrder. For SortSchemaASC each
-// record's ShardBucket, SortKey, and StreamHash must be set before calling.
-func SortRecords(records []Record, sortOrder SortOrder) { sortRecords(records, sortOrder) }
-
 func equalRecords(a, b Record) bool {
 	if a.StreamID != b.StreamID {
 		return false
