@@ -1,7 +1,7 @@
 // Copyright The OpenTelemetry Authors
 // SPDX-License-Identifier: Apache-2.0
 
-package autoexport // import "go.opentelemetry.io/contrib/exporters/autoexport"
+package autoexport
 
 import (
 	"context"
@@ -15,14 +15,14 @@ import (
 
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
-
-	prometheusbridge "go.opentelemetry.io/contrib/bridges/prometheus"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/exporters/otlp/otlpmetric/otlpmetricgrpc"
 	"go.opentelemetry.io/otel/exporters/otlp/otlpmetric/otlpmetrichttp"
 	promexporter "go.opentelemetry.io/otel/exporters/prometheus"
 	"go.opentelemetry.io/otel/exporters/stdout/stdoutmetric"
 	"go.opentelemetry.io/otel/sdk/metric"
+
+	prometheusbridge "go.opentelemetry.io/contrib/bridges/prometheus"
 )
 
 const otelExporterOTLPMetricsProtoEnvKey = "OTEL_EXPORTER_OTLP_METRICS_PROTOCOL"
@@ -154,7 +154,7 @@ func init() {
 		}
 		return metric.NewPeriodicReader(r, readerOpts...), nil
 	})
-	RegisterMetricReader("none", func(ctx context.Context) (metric.Reader, error) {
+	RegisterMetricReader("none", func(context.Context) (metric.Reader, error) {
 		return newNoopMetricReader(), nil
 	})
 	RegisterMetricReader("prometheus", func(ctx context.Context) (metric.Reader, error) {
@@ -171,6 +171,11 @@ func init() {
 			return nil, err
 		}
 		for _, producer := range producers {
+			if _, ok := producer.(myProducer); ok {
+				// Skip default prometheusbridge producer. Only add
+				// user-configured producers.
+				continue
+			}
 			exporterOpts = append(exporterOpts, promexporter.WithProducer(producer))
 		}
 
@@ -194,7 +199,7 @@ func init() {
 		host := getenv("OTEL_EXPORTER_PROMETHEUS_HOST", "localhost")
 		port := getenv("OTEL_EXPORTER_PROMETHEUS_PORT", "9464")
 		addr := host + ":" + port
-		lis, err := net.Listen("tcp", addr)
+		lis, err := (&net.ListenConfig{}).Listen(context.Background(), "tcp", addr)
 		if err != nil {
 			return nil, errors.Join(
 				fmt.Errorf("binding address %s for Prometheus exporter: %w", addr, err),
@@ -211,12 +216,16 @@ func init() {
 		return readerWithServer{lis.Addr(), reader, &server}, nil
 	})
 
-	RegisterMetricProducer("prometheus", func(ctx context.Context) (metric.Producer, error) {
-		return prometheusbridge.NewMetricProducer(), nil
+	RegisterMetricProducer("prometheus", func(context.Context) (metric.Producer, error) {
+		return myProducer{prometheusbridge.NewMetricProducer()}, nil
 	})
-	RegisterMetricProducer("none", func(ctx context.Context) (metric.Producer, error) {
+	RegisterMetricProducer("none", func(context.Context) (metric.Producer, error) {
 		return newNoopMetricProducer(), nil
 	})
+}
+
+type myProducer struct {
+	metric.Producer
 }
 
 type readerWithServer struct {
@@ -286,7 +295,7 @@ func (pr producerRegistry) create(ctx context.Context) ([]metric.Producer, error
 
 func dedupedMetricProducers(envValue string) []string {
 	producers := make(map[string]struct{})
-	for _, producer := range strings.Split(envValue, ",") {
+	for producer := range strings.SplitSeq(envValue, ",") {
 		producers[producer] = struct{}{}
 	}
 

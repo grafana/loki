@@ -8,6 +8,8 @@ import (
 	"time"
 
 	"github.com/grafana/dskit/middleware"
+
+	"github.com/grafana/loki/v3/pkg/util/constants"
 )
 
 // NOTE(kavi): Why new type?
@@ -38,7 +40,7 @@ func ExtractQueryTagsMiddleware() middleware.Interface {
 
 func ExtractQueryTagsFromHTTP(req *http.Request) string {
 	tags := req.Header.Get(string(QueryTagsHTTPHeader))
-	return safeQueryTags.ReplaceAllString(tags, "_")
+	return sanitizeQueryTags(tags)
 }
 
 func ExtractQueryTagsFromContext(ctx context.Context) string {
@@ -48,8 +50,21 @@ func ExtractQueryTagsFromContext(ctx context.Context) string {
 }
 
 func InjectQueryTags(ctx context.Context, tags string) context.Context {
-	tags = safeQueryTags.ReplaceAllString(tags, "_")
+	tags = sanitizeQueryTags(tags)
 	return context.WithValue(ctx, QueryTagsHTTPHeader, tags)
+}
+
+// AppendQueryTagsHeader sanitizes and appends tags to X-Query-Tags without
+// overwriting any existing tags already present on the header.
+func AppendQueryTagsHeader(header http.Header, tags string) {
+	tags = sanitizeQueryTags(tags)
+	existing := sanitizeQueryTags(header.Get(string(QueryTagsHTTPHeader)))
+	if existing == "" {
+		header.Set(string(QueryTagsHTTPHeader), tags)
+		return
+	}
+
+	header.Set(string(QueryTagsHTTPHeader), existing+","+tags)
 }
 
 func ExtractQueryMetricsMiddleware() middleware.Interface {
@@ -100,4 +115,32 @@ func TagsToKeyValues(queryTags string) []interface{} {
 	}
 
 	return res
+}
+
+func sanitizeQueryTags(tags string) string {
+	return safeQueryTags.ReplaceAllString(tags, "_")
+}
+
+// IsLogsDrilldownRequest checks if the request comes from Logs Drilldown by examining the X-Query-Tags header
+func IsLogsDrilldownRequest(ctx context.Context) bool {
+	tags := ExtractQueryTagsFromContext(ctx)
+	kvs := TagsToKeyValues(tags)
+
+	// KVs is an []interface{} of key value pairs, so iterate by keys
+	for i := 0; i < len(kvs); i += 2 {
+		current, ok := kvs[i].(string)
+		if !ok {
+			continue
+		}
+
+		next, ok := kvs[i+1].(string)
+		if !ok {
+			continue
+		}
+
+		if current == "source" && strings.EqualFold(next, constants.LogsDrilldownAppName) {
+			return true
+		}
+	}
+	return false
 }

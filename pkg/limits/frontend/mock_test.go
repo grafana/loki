@@ -2,7 +2,6 @@ package frontend
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"testing"
 
@@ -17,98 +16,83 @@ import (
 	"github.com/grafana/loki/v3/pkg/limits/proto"
 )
 
-// mockExceedsLimitsGatherer mocks an ExeceedsLimitsGatherer. It avoids having
-// to set up a mock ring to test the frontend.
-type mockExceedsLimitsGatherer struct {
+// mockLimitsClient mocks a limitsClient. It avoids having to set up a mock
+// ring to test the frontend.
+type mockLimitsClient struct {
 	t *testing.T
 
 	expectedExceedsLimitsRequest *proto.ExceedsLimitsRequest
-	exceedsLimitsResponses       []*proto.ExceedsLimitsResponse
+	exceedsLimitsResponse        *proto.ExceedsLimitsResponse
 	err                          error
 }
 
-func (m *mockExceedsLimitsGatherer) ExceedsLimits(_ context.Context, req *proto.ExceedsLimitsRequest) ([]*proto.ExceedsLimitsResponse, error) {
+func (m *mockLimitsClient) ExceedsLimits(_ context.Context, req *proto.ExceedsLimitsRequest) (*proto.ExceedsLimitsResponse, error) {
 	if expected := m.expectedExceedsLimitsRequest; expected != nil {
 		require.Equal(m.t, expected, req)
 	}
-	return m.exceedsLimitsResponses, m.err
+	return m.exceedsLimitsResponse, m.err
 }
 
-// mockIngestLimitsClient mocks proto.IngestLimitsClient.
-type mockIngestLimitsClient struct {
+func (m *mockLimitsClient) UpdateRates(_ context.Context, _ *proto.UpdateRatesRequest) (*proto.UpdateRatesResponse, error) {
+	// TODO(grobinson): Implement this method.
+	return nil, nil
+}
+
+// mockLimitsProtoClient mocks proto.IngestLimitsClient.
+type mockLimitsProtoClient struct {
 	proto.IngestLimitsClient
 	t *testing.T
 
-	// The complete set of expected requests over the lifetime of the client.
-	// We don't check the expected requests for GetAssignedPartitions as it
-	// has no fields. Instead, tests should check the number of requests
-	// received with [Finished].
-	expectedExceedsLimitsRequests []*proto.ExceedsLimitsRequest
-
-	// The complete set of mocked responses over the lifetime of the client.
-	// When a request is received, it consumes the next response (or error)
-	// until there are no more left. Aadditional requests fail with an error.
-	getAssignedPartitionsResponses    []*proto.GetAssignedPartitionsResponse
-	getAssignedPartitionsResponseErrs []error
-	exceedsLimitsResponses            []*proto.ExceedsLimitsResponse
-	exceedsLimitsResponseErrs         []error
+	expectedExceedsLimitsRequest     *proto.ExceedsLimitsRequest
+	getAssignedPartitionsResponse    *proto.GetAssignedPartitionsResponse
+	getAssignedPartitionsResponseErr error
+	exceedsLimitsResponse            *proto.ExceedsLimitsResponse
+	exceedsLimitsResponseErr         error
 
 	// The actual request counts.
-	numAssignedPartitionsRequests int
-	numExceedsLimitsRequests      int
+	numAssignedPartitionsRequests         int
+	expectedNumAssignedPartitionsRequests int
+	numExceedsLimitsRequests              int
+	expectedNumExceedsLimitsRequests      int
 }
 
-func (m *mockIngestLimitsClient) GetAssignedPartitions(_ context.Context, _ *proto.GetAssignedPartitionsRequest, _ ...grpc.CallOption) (*proto.GetAssignedPartitionsResponse, error) {
-	idx := m.numAssignedPartitionsRequests
-	// Check that we haven't received more requests than we have mocked
-	// responses.
-	if idx >= len(m.getAssignedPartitionsResponses) {
-		return nil, errors.New("unexpected GetAssignedPartitionsRequest")
-	}
+func (m *mockLimitsProtoClient) GetAssignedPartitions(_ context.Context, _ *proto.GetAssignedPartitionsRequest, _ ...grpc.CallOption) (*proto.GetAssignedPartitionsResponse, error) {
 	m.numAssignedPartitionsRequests++
-	if err := m.getAssignedPartitionsResponseErrs[idx]; err != nil {
+	if err := m.getAssignedPartitionsResponseErr; err != nil {
 		return nil, err
 	}
-	return m.getAssignedPartitionsResponses[idx], nil
+	return m.getAssignedPartitionsResponse, nil
 }
 
-func (m *mockIngestLimitsClient) ExceedsLimits(_ context.Context, req *proto.ExceedsLimitsRequest, _ ...grpc.CallOption) (*proto.ExceedsLimitsResponse, error) {
-	idx := m.numExceedsLimitsRequests
-	// Check that we haven't received more requests than we have mocked
-	// responses.
-	if idx >= len(m.exceedsLimitsResponses) {
-		return nil, errors.New("unexpected ExceedsLimitsRequest")
-	}
+func (m *mockLimitsProtoClient) ExceedsLimits(_ context.Context, req *proto.ExceedsLimitsRequest, _ ...grpc.CallOption) (*proto.ExceedsLimitsResponse, error) {
 	m.numExceedsLimitsRequests++
-	if len(m.expectedExceedsLimitsRequests) > 0 {
-		require.Equal(m.t, m.expectedExceedsLimitsRequests[idx], req)
-	}
-	if err := m.exceedsLimitsResponseErrs[idx]; err != nil {
+	require.Equal(m.t, m.expectedExceedsLimitsRequest, req)
+	if err := m.exceedsLimitsResponseErr; err != nil {
 		return nil, err
 	}
-	return m.exceedsLimitsResponses[idx], nil
+	return m.exceedsLimitsResponse, nil
 }
 
-func (m *mockIngestLimitsClient) Finished() {
-	require.Equal(m.t, len(m.getAssignedPartitionsResponses), m.numAssignedPartitionsRequests)
-	require.Equal(m.t, len(m.exceedsLimitsResponses), m.numExceedsLimitsRequests)
+func (m *mockLimitsProtoClient) Finished() {
+	require.Equal(m.t, m.expectedNumAssignedPartitionsRequests, m.numAssignedPartitionsRequests, "unexpected number of GetAssignedPartitions RPCs")
+	require.Equal(m.t, m.expectedNumExceedsLimitsRequests, m.numExceedsLimitsRequests, "unexpected number of number of ExceedsLimitsRequest RPCs")
 }
 
-func (m *mockIngestLimitsClient) Close() error {
+func (m *mockLimitsProtoClient) Close() error {
 	return nil
 }
 
-func (m *mockIngestLimitsClient) Check(_ context.Context, _ *grpc_health_v1.HealthCheckRequest, _ ...grpc.CallOption) (*grpc_health_v1.HealthCheckResponse, error) {
+func (m *mockLimitsProtoClient) Check(_ context.Context, _ *grpc_health_v1.HealthCheckRequest, _ ...grpc.CallOption) (*grpc_health_v1.HealthCheckResponse, error) {
 	return &grpc_health_v1.HealthCheckResponse{
 		Status: grpc_health_v1.HealthCheckResponse_SERVING,
 	}, nil
 }
 
-func (m *mockIngestLimitsClient) List(_ context.Context, _ *grpc_health_v1.HealthListRequest, _ ...grpc.CallOption) (*grpc_health_v1.HealthListResponse, error) {
+func (m *mockLimitsProtoClient) List(_ context.Context, _ *grpc_health_v1.HealthListRequest, _ ...grpc.CallOption) (*grpc_health_v1.HealthListResponse, error) {
 	return &grpc_health_v1.HealthListResponse{}, nil
 }
 
-func (m *mockIngestLimitsClient) Watch(_ context.Context, _ *grpc_health_v1.HealthCheckRequest, _ ...grpc.CallOption) (grpc_health_v1.Health_WatchClient, error) {
+func (m *mockLimitsProtoClient) Watch(_ context.Context, _ *grpc_health_v1.HealthCheckRequest, _ ...grpc.CallOption) (grpc_health_v1.Health_WatchClient, error) {
 	return nil, nil
 }
 
@@ -136,7 +120,7 @@ func (m *mockReadRing) GetAllHealthy(_ ring.Operation) (ring.ReplicationSet, err
 	return m.rs, nil
 }
 
-func newMockRingWithClientPool(_ *testing.T, name string, clients []*mockIngestLimitsClient, instances []ring.InstanceDesc) (ring.ReadRing, *ring_client.Pool) {
+func newMockRingWithClientPool(_ *testing.T, name string, clients []*mockLimitsProtoClient, instances []ring.InstanceDesc) (ring.ReadRing, *ring_client.Pool) {
 	// Set up the mock ring.
 	ring := &mockReadRing{
 		rs: ring.ReplicationSet{

@@ -1,7 +1,6 @@
 package manifests
 
 import (
-	"math/rand"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -12,7 +11,6 @@ import (
 
 	v1 "github.com/grafana/loki/operator/api/config/v1"
 	lokiv1 "github.com/grafana/loki/operator/api/loki/v1"
-	"github.com/grafana/loki/operator/internal/manifests/internal"
 	"github.com/grafana/loki/operator/internal/manifests/storage"
 )
 
@@ -106,56 +104,33 @@ func TestNewIngesterStatefulSet_SelectorMatchesLabels(t *testing.T) {
 }
 
 func TestBuildIngester_PodDisruptionBudget(t *testing.T) {
-	for _, tc := range []struct {
-		Name                 string
-		PDBMinAvailable      int
-		ExpectedMinAvailable int
-	}{
-		{
-			Name:                 "Small stack",
-			PDBMinAvailable:      1,
-			ExpectedMinAvailable: 1,
-		},
-		{
-			Name:                 "Medium stack",
-			PDBMinAvailable:      2,
-			ExpectedMinAvailable: 2,
-		},
-	} {
-		t.Run(tc.Name, func(t *testing.T) {
-			opts := Options{
-				Name:      "abcd",
-				Namespace: "efgh",
-				Gates:     v1.FeatureGates{},
-				ResourceRequirements: internal.ComponentResources{
-					Ingester: internal.ResourceRequirements{
-						PDBMinAvailable: tc.PDBMinAvailable,
-					},
+	opts := Options{
+		Name:      "abcd",
+		Namespace: "efgh",
+		Gates:     v1.FeatureGates{},
+		Stack: lokiv1.LokiStackSpec{
+			Size: lokiv1.SizeOneXExtraSmall,
+			Template: &lokiv1.LokiTemplateSpec{
+				Ingester: &lokiv1.LokiComponentSpec{
+					Replicas: 2,
 				},
-				Stack: lokiv1.LokiStackSpec{
-					Template: &lokiv1.LokiTemplateSpec{
-						Ingester: &lokiv1.LokiComponentSpec{
-							Replicas: rand.Int31(),
-						},
-					},
-					Tenants: &lokiv1.TenantsSpec{
-						Mode: lokiv1.OpenshiftLogging,
-					},
-				},
-			}
-			objs, err := BuildIngester(opts)
-			require.NoError(t, err)
-			require.Len(t, objs, 4)
-
-			pdb := objs[3].(*policyv1.PodDisruptionBudget)
-			require.NotNil(t, pdb)
-			require.Equal(t, "abcd-ingester", pdb.Name)
-			require.Equal(t, "efgh", pdb.Namespace)
-			require.NotNil(t, pdb.Spec.MinAvailable.IntVal)
-			require.Equal(t, int32(tc.ExpectedMinAvailable), pdb.Spec.MinAvailable.IntVal)
-			require.EqualValues(t, ComponentLabels(LabelIngesterComponent, opts.Name), pdb.Spec.Selector.MatchLabels)
-		})
+			},
+			Tenants: &lokiv1.TenantsSpec{
+				Mode: lokiv1.OpenshiftLogging,
+			},
+		},
 	}
+	objs, err := BuildIngester(opts)
+	require.NoError(t, err)
+	require.Len(t, objs, 4)
+
+	pdb := objs[3].(*policyv1.PodDisruptionBudget)
+	require.NotNil(t, pdb)
+	require.Equal(t, "abcd-ingester", pdb.Name)
+	require.Equal(t, "efgh", pdb.Namespace)
+	require.NotNil(t, pdb.Spec.MaxUnavailable.IntVal)
+	require.Equal(t, int32(1), pdb.Spec.MaxUnavailable.IntVal)
+	require.EqualValues(t, ComponentLabels(LabelIngesterComponent, opts.Name), pdb.Spec.Selector.MatchLabels)
 }
 
 func TestNewIngesterStatefulSet_TopologySpreadConstraints(t *testing.T) {
@@ -163,6 +138,7 @@ func TestNewIngesterStatefulSet_TopologySpreadConstraints(t *testing.T) {
 		Name:      "abcd",
 		Namespace: "efgh",
 		Stack: lokiv1.LokiStackSpec{
+			Size: lokiv1.SizeOneXDemo,
 			Template: &lokiv1.LokiTemplateSpec{
 				Ingester: &lokiv1.LokiComponentSpec{
 					Replicas: 1,

@@ -1,6 +1,7 @@
 package detected
 
 import (
+	"runtime"
 	"testing"
 
 	"github.com/axiomhq/hyperloglog"
@@ -88,6 +89,27 @@ func Test_MergeFields(t *testing.T) {
 		assert.Equal(t, logproto.DetectedFieldString, baz.Type)
 	})
 
+	t.Run("huge limit doesn't explode the heap", func(t *testing.T) {
+		runtime.GC()
+		var before runtime.MemStats
+		runtime.ReadMemStats(&before)
+
+		result, err := MergeFields(fields, 10000000)
+		require.NoError(t, err)
+
+		runtime.GC()
+		var after runtime.MemStats
+		runtime.ReadMemStats(&after)
+
+		delta := int64(after.TotalAlloc) - int64(before.TotalAlloc)
+		// 10 MB
+		if delta > 10*1024*1024 {
+			t.Fatalf("heap grew too much: %d MB", delta/1024/1024)
+		}
+
+		runtime.KeepAlive(result)
+	})
+
 	t.Run("returns up to limit number of fields", func(t *testing.T) {
 		lowLimit := uint32(1)
 		result, err := MergeFields(fields, lowLimit)
@@ -123,6 +145,28 @@ func Test_MergeValues(t *testing.T) {
 		require.NoError(t, err)
 		assert.Equal(t, 4, len(result))
 		assert.ElementsMatch(t, []string{"foo", "bar", "baz", "qux"}, result)
+	})
+
+	t.Run("huge limit doesn't explode the heap", func(t *testing.T) {
+		runtime.GC()
+		var before runtime.MemStats
+		runtime.ReadMemStats(&before)
+
+		values := []string{"foo", "bar", "baz", "qux"}
+		result, err := MergeValues(values, 1000000)
+		require.NoError(t, err)
+
+		runtime.GC()
+		var after runtime.MemStats
+		runtime.ReadMemStats(&after)
+
+		delta := int64(after.TotalAlloc) - int64(before.TotalAlloc)
+		// 10 MB
+		if delta > 10*1024*1024 {
+			t.Fatalf("heap grew too much: %d MB", delta/1024/1024)
+		}
+
+		runtime.KeepAlive(result)
 	})
 
 	t.Run("merges repeating values", func(t *testing.T) {

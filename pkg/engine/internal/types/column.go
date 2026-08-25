@@ -1,4 +1,4 @@
-package types
+package types //nolint:revive
 
 import (
 	"fmt"
@@ -16,8 +16,19 @@ const (
 	ColumnTypeLabel     // ColumnTypeLabel represents a column from a stream label.
 	ColumnTypeMetadata  // ColumnTypeMetadata represents a column from a log metadata.
 	ColumnTypeParsed    // ColumnTypeParsed represents a parsed column from a parser stage.
-	ColumnTypeAmbiguous // ColumnTypeAmbiguous represents a column that can either be a builtin, label, metadata, or parsed.
+	ColumnTypeAmbiguous // ColumnTypeAmbiguous represents a column that can either be a label, metadata, or parsed.
 	ColumnTypeGenerated // ColumnTypeGenerated represents a column that is generated from an expression or computation.
+)
+
+// Column type precedence for ambiguous column resolution (highest to lowest):
+// Generated > Parsed > Metadata > Label > Builtin
+const (
+	PrecedenceGenerated = iota // 0 - highest precedence
+
+	PrecedenceParsed   // 1
+	PrecedenceMetadata // 2
+	PrecedenceLabel    // 3
+	PrecedenceBuiltin  // 4 - lowest precedence
 )
 
 // Names of the builtin columns.
@@ -28,6 +39,25 @@ const (
 
 	MetadataKeyColumnType     = "column_type"
 	MetadataKeyColumnDataType = "column_datatype"
+)
+
+const (
+	ColumnFullNameTimestamp = "timestamp_ns.builtin.timestamp"
+)
+
+// Names of error columns
+const (
+	ColumnNameError        = "__error__"
+	ColumnNameErrorDetails = "__error_details__"
+)
+
+// Error types.
+const (
+	LogfmtParserErrorType     = "LogfmtParserErr"
+	LabelfmtParserErrorType   = "LabelfmtParserErr"
+	LinefmtParserErrorType    = "LinefmtParserErr"
+	JSONParserErrorType       = "JSONParserErr"
+	SampleExtractionErrorType = "SampleExtractionErr"
 )
 
 var ctNames = [7]string{"invalid", "builtin", "label", "metadata", "parsed", "ambiguous", "generated"}
@@ -54,6 +84,22 @@ func ColumnTypeFromString(ct string) ColumnType {
 		return ColumnTypeGenerated
 	default:
 		panic(fmt.Sprintf("invalid column type: %s", ct))
+	}
+}
+
+// ColumnTypePrecedence returns the precedence of the given [ColumnType].
+func ColumnTypePrecedence(ct ColumnType) int {
+	switch ct {
+	case ColumnTypeGenerated:
+		return PrecedenceGenerated
+	case ColumnTypeParsed:
+		return PrecedenceParsed
+	case ColumnTypeMetadata:
+		return PrecedenceMetadata
+	case ColumnTypeLabel:
+		return PrecedenceLabel
+	default:
+		return PrecedenceBuiltin // Default to lowest precedence
 	}
 }
 

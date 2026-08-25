@@ -63,7 +63,7 @@ func WrapRegistererWith(labels Labels, reg Registerer) Registerer {
 // metric names that are standardized across applications, as that would break
 // horizontal monitoring, for example the metrics provided by the Go collector
 // (see NewGoCollector) and the process collector (see NewProcessCollector). (In
-// fact, those metrics are already prefixed with “go_” or “process_”,
+// fact, those metrics are already prefixed with "go_" or "process_",
 // respectively.)
 //
 // Conflicts between Collectors registered through the original Registerer with
@@ -75,6 +75,40 @@ func WrapRegistererWithPrefix(prefix string, reg Registerer) Registerer {
 	return &wrappingRegisterer{
 		wrappedRegisterer: reg,
 		prefix:            prefix,
+	}
+}
+
+// WrapCollectorWith returns a Collector wrapping the provided Collector. The
+// wrapped Collector will add the provided Labels to all Metrics it collects (as
+// ConstLabels). The Metrics collected by the unmodified Collector must not
+// duplicate any of those labels.
+//
+// WrapCollectorWith can be useful to work with multiple instances of a third
+// party library that does not expose enough flexibility on the lifecycle of its
+// registered metrics.
+// For example, let's say you have a foo.New(reg Registerer) constructor that
+// registers metrics but never unregisters them, and you want to create multiple
+// instances of foo.Foo with different labels.
+// The way to achieve that, is to create a new Registry, pass it to foo.New,
+// then use WrapCollectorWith to wrap that Registry with the desired labels and
+// register that as a collector in your main Registry.
+// Then you can un-register the wrapped collector effectively un-registering the
+// metrics registered by foo.New.
+func WrapCollectorWith(labels Labels, c Collector) Collector {
+	return &wrappingCollector{
+		wrappedCollector: c,
+		labels:           labels,
+	}
+}
+
+// WrapCollectorWithPrefix returns a Collector wrapping the provided Collector. The
+// wrapped Collector will add the provided prefix to the name of all Metrics it collects.
+//
+// See the documentation of WrapCollectorWith for more details on the use case.
+func WrapCollectorWithPrefix(prefix string, c Collector) Collector {
+	return &wrappingCollector{
+		wrappedCollector: c,
+		prefix:           prefix,
 	}
 }
 
@@ -196,6 +230,7 @@ func wrapDesc(desc *Desc, prefix string, labels Labels) *Desc {
 			return &Desc{
 				fqName:          desc.fqName,
 				help:            desc.help,
+				unit:            desc.unit,
 				variableLabels:  desc.variableLabels,
 				constLabelPairs: desc.constLabelPairs,
 				err:             fmt.Errorf("attempted wrapping with already existing label name %q", ln),
@@ -204,8 +239,8 @@ func wrapDesc(desc *Desc, prefix string, labels Labels) *Desc {
 		constLabels[ln] = lv
 	}
 	// NewDesc will do remaining validations.
-	newDesc := V2.NewDesc(prefix+desc.fqName, desc.help, desc.variableLabels, constLabels)
-	// Propagate errors if there was any. This will override any errer
+	newDesc := V2.NewDesc(prefix+desc.fqName, desc.help, desc.variableLabels, constLabels, WithUnit(desc.unit))
+	// Propagate errors if there was any. This will override any error
 	// created by NewDesc above, i.e. earlier errors get precedence.
 	if desc.err != nil {
 		newDesc.err = desc.err

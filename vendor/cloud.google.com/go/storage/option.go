@@ -39,9 +39,13 @@ func init() {
 	// initialize experimental options
 	storageinternal.WithMetricExporter = withMetricExporter
 	storageinternal.WithMetricInterval = withMetricInterval
+	storageinternal.WithMeterProvider = withMeterProvider
 	storageinternal.WithReadStallTimeout = withReadStallTimeout
 	storageinternal.WithGRPCBidiReads = withGRPCBidiReads
 	storageinternal.WithZonalBucketAPIs = withZonalBucketAPIs
+	storageinternal.WithDirectConnectivityEnforced = withDirectConnectivityEnforced
+	storageinternal.WithOtelMetrics = withOtelMetrics
+	storageinternal.WithOtelDebugMetrics = withOtelDebugMetrics
 }
 
 // getDynamicReadReqIncreaseRateFromEnv returns the value set in the env variable.
@@ -79,12 +83,16 @@ type storageConfig struct {
 	useJSONforReads        bool
 	readAPIWasSet          bool
 	disableClientMetrics   bool
+	enableOtelMetrics      bool
+	enableOtelDebugMetrics bool
 	metricExporter         *metric.Exporter
 	metricInterval         time.Duration
+	meterProvider          *metric.MeterProvider
 	manualReader           *metric.ManualReader
 	readStallTimeoutConfig *experimental.ReadStallTimeoutConfig
 	grpcBidiReads          bool
 	grpcAppendableUploads  bool
+	grpcDirectPathEnforced bool
 }
 
 // newStorageConfig generates a new storageConfig with all the given
@@ -103,6 +111,18 @@ func newStorageConfig(opts ...option.ClientOption) storageConfig {
 type storageClientOption interface {
 	option.ClientOption
 	ApplyStorageOpt(*storageConfig)
+}
+
+func withDirectConnectivityEnforced() option.ClientOption {
+	return &withDirectPathEnforced{}
+}
+
+type withDirectPathEnforced struct {
+	internaloption.EmbeddableAdapter
+}
+
+func (w *withDirectPathEnforced) ApplyStorageOpt(c *storageConfig) {
+	c.grpcDirectPathEnforced = true
 }
 
 // WithJSONReads is an option that may be passed to [NewClient].
@@ -203,6 +223,20 @@ type withTestMetricReaderConfig struct {
 	metricReader *metric.ManualReader
 }
 
+type withMeterProviderConfig struct {
+	internaloption.EmbeddableAdapter
+	// meter provider override
+	meterProvider *metric.MeterProvider
+}
+
+func withMeterProvider(provider *metric.MeterProvider) option.ClientOption {
+	return &withMeterProviderConfig{meterProvider: provider}
+}
+
+func (w *withMeterProviderConfig) ApplyStorageOpt(c *storageConfig) {
+	c.meterProvider = w.meterProvider
+}
+
 func withTestMetricReader(ex *metric.ManualReader) option.ClientOption {
 	return &withTestMetricReaderConfig{metricReader: ex}
 }
@@ -269,4 +303,28 @@ func (w *withZonalBucketAPIsConfig) ApplyStorageOpt(config *storageConfig) {
 	// Use both appendable upload semantics and bidi reads.
 	config.grpcAppendableUploads = true
 	config.grpcBidiReads = true
+}
+
+func withOtelMetrics() option.ClientOption {
+	return &withOtelMetricsConfig{}
+}
+
+type withOtelMetricsConfig struct {
+	internaloption.EmbeddableAdapter
+}
+
+func (w *withOtelMetricsConfig) ApplyStorageOpt(c *storageConfig) {
+	c.enableOtelMetrics = true
+}
+
+func withOtelDebugMetrics() option.ClientOption {
+	return &withOtelDebugMetricsConfig{}
+}
+
+type withOtelDebugMetricsConfig struct {
+	internaloption.EmbeddableAdapter
+}
+
+func (w *withOtelDebugMetricsConfig) ApplyStorageOpt(c *storageConfig) {
+	c.enableOtelDebugMetrics = true
 }

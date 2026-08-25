@@ -1,24 +1,26 @@
 // Copyright The OpenTelemetry Authors
 // SPDX-License-Identifier: Apache-2.0
 
-package otelhttp // import "go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
+package otelhttp
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptrace"
 	"sync/atomic"
 	"time"
 
-	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp/internal/request"
-	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp/internal/semconv"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/propagation"
-
+	otelsemconv "go.opentelemetry.io/otel/semconv/v1.43.0"
 	"go.opentelemetry.io/otel/trace"
+
+	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp/internal/request"
+	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp/internal/semconv"
 )
 
 // Transport implements the http.RoundTripper interface and wraps
@@ -102,9 +104,7 @@ func (t *Transport) RoundTrip(r *http.Request) (*http.Response, error) {
 		}
 	}
 
-	opts := append([]trace.SpanStartOption{}, t.spanStartOptions...) // start with the configured options
-
-	ctx, span := tracer.Start(r.Context(), t.spanNameFormatter("", r), opts...)
+	ctx, span := tracer.Start(r.Context(), t.spanNameFormatter("", r), t.spanStartOptions...)
 
 	if t.clientTrace != nil {
 		ctx = httptrace.WithClientTrace(ctx, t.clientTrace(ctx))
@@ -117,60 +117,89 @@ func (t *Transport) RoundTrip(r *http.Request) (*http.Response, error) {
 
 	r = r.Clone(ctx) // According to RoundTripper spec, we shouldn't modify the origin request.
 
-	// if request body is nil or NoBody, we don't want to mutate the body as it
-	// will affect the identity of it in an unforeseeable way because we assert
-	// ReadCloser fulfills a certain interface and it is indeed nil or NoBody.
-	bw := request.NewBodyWrapper(r.Body, func(int64) {})
-	if r.Body != nil && r.Body != http.NoBody {
-		r.Body = bw
+	var lastBW *request.BodyWrapper // Records the last body wrapper. Can be nil.
+	maybeWrapBody := func(body io.ReadCloser) io.ReadCloser {
+		if body == nil || body == http.NoBody {
+			return body
+		}
+		bw := request.NewBodyWrapper(body, func(int64) {})
+		lastBW = bw
+		return bw
+	}
+	r.Body = maybeWrapBody(r.Body)
+	if r.GetBody != nil {
+		originalGetBody := r.GetBody
+		r.GetBody = func() (io.ReadCloser, error) {
+			b, err := originalGetBody()
+			if err != nil {
+				lastBW = nil // The underlying transport will fail to make a retry request, hence, record no data.
+				return nil, err
+			}
+			return maybeWrapBody(b), nil
+		}
 	}
 
 	span.SetAttributes(t.semconv.RequestTraceAttrs(r)...)
 	t.propagators.Inject(ctx, propagation.HeaderCarrier(r.Header))
 
 	res, err := t.rt.RoundTrip(r)
-	if err != nil {
-		// set error type attribute if the error is part of the predefined
-		// error types.
-		// otherwise, record it as an exception
-		if errType := t.semconv.ErrorType(err); errType.Valid() {
-			span.SetAttributes(errType)
-		} else {
-			span.RecordError(err)
-		}
+	if err == nil {
+		res, err = ensureResponseBody(t.rt, r, res)
+	}
 
+	// Record the metrics on error or no error.
+	statusCode := 0
+	if err == nil {
+		statusCode = res.StatusCode
+	}
+	var requestSize int64
+	if lastBW != nil {
+		requestSize = lastBW.BytesRead()
+	}
+	t.semconv.RecordMetrics(
+		ctx,
+		semconv.MetricData{
+			RequestSize:     requestSize,
+			RequestDuration: time.Since(requestStartTime),
+		},
+		t.semconv.MetricOptions(semconv.MetricAttributes{
+			Req:                  r,
+			Resp:                 res,
+			StatusCode:           statusCode,
+			Err:                  err,
+			AdditionalAttributes: append(labeler.Get(), t.metricAttributesFromRequest(r)...),
+		}),
+	)
+
+	if err != nil {
+		span.SetAttributes(otelsemconv.ErrorType(err))
 		span.SetStatus(codes.Error, err.Error())
 		span.End()
+
 		return res, err
 	}
 
-	// metrics
-	metricOpts := t.semconv.MetricOptions(semconv.MetricAttributes{
-		Req:                  r,
-		StatusCode:           res.StatusCode,
-		AdditionalAttributes: append(labeler.Get(), t.metricAttributesFromRequest(r)...),
-	})
-
-	// For handling response bytes we leverage a callback when the client reads the http response
-	readRecordFunc := func(n int64) {
-		t.semconv.RecordResponseSize(ctx, n, metricOpts)
-	}
-
+	readRecordFunc := func(int64) {}
+	res.Body = newWrappedBody(span, readRecordFunc, res.Body)
 	// traces
 	span.SetAttributes(t.semconv.ResponseTraceAttrs(res)...)
 	span.SetStatus(t.semconv.Status(res.StatusCode))
 
-	res.Body = newWrappedBody(span, readRecordFunc, res.Body)
-
-	// Use floating point division here for higher precision (instead of Millisecond method).
-	elapsedTime := float64(time.Since(requestStartTime)) / float64(time.Millisecond)
-
-	t.semconv.RecordMetrics(ctx, semconv.MetricData{
-		RequestSize: bw.BytesRead(),
-		ElapsedTime: elapsedTime,
-	}, metricOpts)
-
 	return res, nil
+}
+
+func ensureResponseBody(rt http.RoundTripper, r *http.Request, res *http.Response) (*http.Response, error) {
+	switch {
+	case res == nil:
+		return nil, fmt.Errorf("http: RoundTripper implementation (%T) returned a nil *Response with a nil error", rt)
+	case res.Body != nil:
+		return res, nil
+	case res.ContentLength > 0 && r.Method != http.MethodHead:
+		return nil, fmt.Errorf("http: RoundTripper implementation (%T) returned a *Response with content length %d but a nil Body", rt, res.ContentLength)
+	default:
+		res.Body = http.NoBody
+		return res, nil
+	}
 }
 
 func (t *Transport) metricAttributesFromRequest(r *http.Request) []attribute.KeyValue {
@@ -219,7 +248,7 @@ func (wb *wrappedBody) Write(p []byte) (int, error) {
 	// This will not panic given the guard in newWrappedBody.
 	n, err := wb.body.(io.Writer).Write(p)
 	if err != nil {
-		wb.span.RecordError(err)
+		wb.span.SetAttributes(otelsemconv.ErrorType(err))
 		wb.span.SetStatus(codes.Error, err.Error())
 	}
 	return n, err
@@ -237,7 +266,7 @@ func (wb *wrappedBody) Read(b []byte) (int, error) {
 		wb.recordBytesRead()
 		wb.span.End()
 	default:
-		wb.span.RecordError(err)
+		wb.span.SetAttributes(otelsemconv.ErrorType(err))
 		wb.span.SetStatus(codes.Error, err.Error())
 	}
 	return n, err

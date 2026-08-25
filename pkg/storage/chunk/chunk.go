@@ -44,6 +44,8 @@ type Chunk struct {
 	logproto.ChunkRef
 
 	Metric labels.Labels `json:"metric"`
+	// IngestedAt is the chunk's ingestion timestamp, when available.
+	IngestedAt model.Time `json:"ingestedAt"`
 
 	// We never use Delta encoding (the zero value), so if this entry is
 	// missing, we default to DoubleDelta.
@@ -214,11 +216,11 @@ func readOneHexPart(hex []byte) (part []byte, i int) {
 }
 
 func unsafeGetBytes(s string) []byte {
-	return unsafe.Slice(unsafe.StringData(s), len(s)) // #nosec G103 -- we know the string is not mutated
+	return unsafe.Slice(unsafe.StringData(s), len(s)) // #nosec G103 -- we know the string is not mutated -- nosemgrep: use-of-unsafe-block
 }
 
 func unsafeGetString(buf []byte) string {
-	return *((*string)(unsafe.Pointer(&buf))) // #nosec G103 -- we know the string is not mutated
+	return *((*string)(unsafe.Pointer(&buf))) // #nosec G103 -- we know the string is not mutated -- nosemgrep: use-of-unsafe-block
 }
 
 var writerPool = sync.Pool{
@@ -350,7 +352,7 @@ func (c *Chunk) Decode(decodeContext *DecodeContext, input []byte) error {
 	}
 	metadataRead := len(input) - r.Len()
 	// Older versions of Cortex included the initial length word; newer versions do not.
-	if !(metadataRead == int(metadataLen) || metadataRead == int(metadataLen)+4) {
+	if metadataRead != int(metadataLen) && metadataRead != int(metadataLen)+4 {
 		return errors.Wrapf(ErrMetadataLength, "expected %d, got %d", metadataLen, metadataRead)
 	}
 

@@ -1,0 +1,496 @@
+package wire
+
+import (
+	"context"
+	"errors"
+	"net"
+	"net/http"
+	"reflect"
+	"sync"
+	"time"
+
+	"github.com/go-kit/log"
+	"github.com/go-kit/log/level"
+	"go.uber.org/atomic"
+	"golang.org/x/sync/errgroup"
+
+	"github.com/grafana/loki/v3/pkg/engine/internal/metrictimer"
+)
+
+// Peer wraps a [Conn] into a synchronous API that acts as both a
+// server and a client.
+//
+// Callers must call [Peer.Serve] to run the peer.
+type Peer struct {
+	Logger  log.Logger
+	Metrics *Metrics
+	Conn    Conn    // Connection to use for communication.
+	Handler Handler // Handler for incoming messages from the remote peer.
+	Buffer  int     // Buffer size for incoming and outgoing messages.
+
+	done     chan struct{}        // Closed when the peer connection is closed.
+	incoming chan incomingMessage // Buffered queue of incoming messages.
+	outgoing chan outgoingFrame   // Buffered queue of outgoing frames.
+	initOnce sync.Once
+
+	requestID    atomic.Uint64
+	sentRequests sync.Map // map[uint64]*request
+	inflight     sync.Map // map[uint64]*inflightHandler
+}
+
+// errDiscarded is the cancel cause set on a handler's context by a DiscardFrame.
+var errDiscarded = errors.New("message discarded by remote peer")
+
+// inflightHandler tracks an in-flight incoming message; the incoming
+// counterpart to [request].
+type inflightHandler struct {
+	ctx    context.Context // Canceled with errDiscarded when the message is discarded.
+	cancel context.CancelCauseFunc
+}
+
+// outgoingFrame wraps a Frame queued for sending with the metadata needed to
+// attribute its time spent waiting in the outgoing queue.
+type outgoingFrame struct {
+	frame      Frame
+	sendMode   sendMode
+	enqueuedAt time.Time
+}
+
+// incomingMessage wraps a received MessageFrame with the time it was enqueued
+// so the incoming-queue wait can be measured.
+type incomingMessage struct {
+	frame      MessageFrame
+	enqueuedAt time.Time
+}
+
+// Handler is a function that handles a message received from the peer. The
+// local peer is passed as an argument to allow using the same Handler for
+// multiple Peers.
+//
+// Handlers are invoked in a dedicated goroutine. Slow handlers cause
+// backpressure on the connection.
+//
+// Once Handler returns, the sending peer will be informed about the
+// message delivery status. If Handler returns an error, the error
+// message will be sent to the peer.
+//
+// ctx is scoped to this message: it is canceled when Handler returns or when
+// the peer discards the message. Work that must outlive Handler must not use
+// it.
+type Handler func(ctx context.Context, peer *Peer, message Message) error
+
+// Serve runs the peer, blocking until the provided context is canceled.
+func (p *Peer) Serve(ctx context.Context) error {
+	p.lazyInit()
+	p.Conn.setMetrics(p.Metrics)
+
+	transport := p.Conn.transport()
+	p.Metrics.markActive(transport)
+	defer p.Metrics.markInactive(transport)
+
+	// Defer connection close here in Serve since Peer does not have an explicit Close method.
+	defer p.Conn.Close()
+
+	g, ctx := errgroup.WithContext(ctx)
+
+	g.Go(func() error { return p.recvMessages(ctx) })
+	g.Go(func() error { return p.handleIncoming(ctx) })
+	g.Go(func() error { return p.handleOutgoing(ctx) })
+
+	return g.Wait()
+}
+
+func (p *Peer) lazyInit() {
+	p.initOnce.Do(func() {
+		p.done = make(chan struct{})
+		p.incoming = make(chan incomingMessage, p.Buffer)
+		p.outgoing = make(chan outgoingFrame, p.Buffer)
+	})
+}
+
+func (p *Peer) recvMessages(ctx context.Context) error {
+	defer close(p.done)
+
+	for {
+		frame, err := p.Conn.Recv(ctx)
+		if err != nil {
+			if ctx.Err() != nil {
+				// Context got canceled; shut down
+				return nil
+			}
+			return err
+		}
+
+		p.Metrics.incFrameReceived(frame)
+
+		err = p.Metrics.timeFrameReceive(phaseRouteToQueue, p.Conn.transport(), frame, sendModeInternal, func() error {
+			return p.routeFrame(ctx, frame)
+		})
+		if err != nil {
+			return err
+		}
+	}
+}
+
+func (p *Peer) routeFrame(ctx context.Context, frame Frame) error {
+	switch frame := frame.(type) {
+	case MessageFrame:
+		// Register the in-flight entry before enqueueing so a DiscardFrame routed
+		// after it (in arrival order) can cancel the handler.
+		handlerCtx, cancel := context.WithCancelCause(ctx)
+		p.inflight.Store(frame.ID, &inflightHandler{ctx: handlerCtx, cancel: cancel})
+		return p.enqueueIncoming(ctx, frame)
+
+	case AckFrame:
+		// If there's still a listener for this request, inform them of
+		// the success.
+		val, found := p.sentRequests.Load(frame.ID)
+		if !found {
+			return nil
+		}
+		req := val.(*request)
+
+		select {
+		case req.result <- nil:
+		default:
+			level.Warn(p.Logger).Log("msg", "ignoring duplicate acknowledgement")
+		}
+
+	case NackFrame:
+		// If there's still a listener for this request, inform them of
+		// the error.
+		val, found := p.sentRequests.Load(frame.ID)
+		if !found {
+			return nil
+		}
+		req := val.(*request)
+
+		select {
+		case req.result <- frame.Error:
+		default:
+			level.Warn(p.Logger).Log("msg", "ignoring duplicate acknowledgement")
+		}
+
+	case DiscardFrame:
+		// Cancel the handler; an unknown ID already finished, so it's a no-op.
+		if v, ok := p.inflight.Load(frame.ID); ok {
+			v.(*inflightHandler).cancel(errDiscarded)
+		}
+
+	default:
+		level.Warn(p.Logger).Log("msg", "unknown frame type", "type", reflect.TypeOf(frame).String())
+	}
+	return nil
+}
+
+func (p *Peer) enqueueIncoming(ctx context.Context, frame MessageFrame) error {
+	queued := incomingMessage{frame: frame, enqueuedAt: time.Now()}
+	select {
+	case p.incoming <- queued:
+		p.noteFrameEnqueued(queueIncoming, frame, sendModeInternal)
+		return nil
+	case <-ctx.Done():
+		return nil
+	default:
+	}
+
+	done := p.noteQueueBlockedSender(queueIncoming, frame, sendModeInternal)
+	defer done()
+
+	select {
+	case p.incoming <- queued:
+		p.noteFrameEnqueued(queueIncoming, frame, sendModeInternal)
+		return nil
+	case <-ctx.Done():
+		return nil
+	}
+}
+
+func (p *Peer) handleIncoming(ctx context.Context) error {
+	for {
+		select {
+		case <-ctx.Done():
+			return nil
+		case <-p.done:
+			return nil // Closed connection.
+		case queued := <-p.incoming:
+			frame := p.dequeueIncoming(queued)
+			p.handleMessage(ctx, frame.ID, frame.Message)
+		}
+	}
+}
+
+// handleMessage runs id's handler under its per-message context (so a
+// DiscardFrame can cancel it) and releases the in-flight entry afterward.
+func (p *Peer) handleMessage(ctx context.Context, id uint64, message Message) {
+	if v, ok := p.inflight.Load(id); ok {
+		h := v.(*inflightHandler)
+		ctx = h.ctx
+		defer func() {
+			p.inflight.Delete(id)
+			h.cancel(nil)
+		}()
+	}
+	p.processMessage(ctx, id, message)
+}
+
+func (p *Peer) handleOutgoing(ctx context.Context) error {
+	for {
+		select {
+		case <-ctx.Done():
+			return nil
+		case <-p.done:
+			return nil // Closed connection.
+		case queued := <-p.outgoing:
+			frame, sendMode := p.dequeueOutgoing(queued)
+			if err := p.Conn.sendFrame(ctx, frame, sendMode); err != nil && ctx.Err() == nil {
+				level.Warn(p.Logger).Log("msg", "failed to send message", "error", err)
+				p.notifyError(frame, err)
+			}
+		}
+	}
+}
+
+func (p *Peer) dequeueIncoming(queued incomingMessage) MessageFrame {
+	p.noteFrameDequeued(queueIncoming, queued.frame, sendModeInternal, queued.enqueuedAt)
+	return queued.frame
+}
+
+func (p *Peer) dequeueOutgoing(queued outgoingFrame) (Frame, sendMode) {
+	p.noteFrameDequeued(queueOutgoing, queued.frame, queued.sendMode, queued.enqueuedAt)
+	return queued.frame, queued.sendMode
+}
+
+func (p *Peer) noteFrameEnqueued(queue queueName, frame Frame, sendMode sendMode) {
+	p.Metrics.incFrameQueued(queue, frame, sendMode)
+}
+
+func (p *Peer) noteFrameDequeued(queue queueName, frame Frame, sendMode sendMode, enqueuedAt time.Time) {
+	p.Metrics.decFrameQueued(queue, frame, sendMode)
+	p.Metrics.observeFrameQueueWait(queue, frame, sendMode, time.Since(enqueuedAt))
+}
+
+func (p *Peer) noteQueueBlockedSender(queue queueName, frame Frame, sendMode sendMode) func() {
+	return p.Metrics.noteQueueBlockedSender(queue, frame, sendMode)
+}
+
+// notifyError notifies any request listeners of a frame that an error occurred
+// during delivery.
+func (p *Peer) notifyError(frame Frame, err error) {
+	switch frame := frame.(type) {
+	case MessageFrame:
+		val, found := p.sentRequests.Load(frame.ID)
+		if !found {
+			return
+		}
+		req := val.(*request)
+
+		select {
+		case <-p.done: // Connection closed
+		case req.result <- err:
+		default:
+			level.Warn(p.Logger).Log("msg", "ignoring duplicate acknowledgement")
+		}
+
+	default:
+		// Other frame types don't have listeners (at the moment) so there's nobody
+		// to notify.
+	}
+}
+
+// processMessage handles a message received from the peer.
+func (p *Peer) processMessage(ctx context.Context, id uint64, message Message) {
+	messageType := "unknown"
+	if message != nil {
+		messageType = message.Kind().String()
+	}
+
+	timer := p.Metrics.startPeerHandler(messageType)
+	outcome := outcomeNack
+	defer func() { timer.Done(outcome) }()
+
+	// Drop a message discarded before the handler started.
+	if context.Cause(ctx) == errDiscarded {
+		outcome = outcomeDiscarded
+		return
+	}
+
+	if p.Handler == nil {
+		_ = p.enqueueFrame(ctx, NackFrame{ID: id, Error: Errorf(http.StatusNotImplemented, "not implemented")}, sendModeInternal)
+		return
+	}
+
+	err := p.Handler(ctx, p, message)
+
+	// Skip the response if the message was discarded while the handler ran. A
+	// discard racing in just after this check still acks, but that ack is ignored.
+	if context.Cause(ctx) == errDiscarded {
+		outcome = outcomeDiscarded
+		return
+	}
+
+	switch err {
+	case nil:
+		outcome = outcomeAck
+		// TODO(rfratto): What should we do if this fails? Logs? Metrics?
+		_ = p.enqueueFrame(ctx, AckFrame{ID: id}, sendModeInternal)
+	default:
+		// TODO(rfratto): What should we do if this fails? Logs? Metrics?
+		_ = p.enqueueFrame(ctx, NackFrame{ID: id, Error: convertError(err)}, sendModeInternal)
+	}
+}
+
+func convertError(err error) *Error {
+	var wireError *Error
+	if errors.As(err, &wireError) {
+		return wireError
+	}
+
+	return &Error{
+		Code:    http.StatusInternalServerError,
+		Message: err.Error(),
+	}
+}
+
+type request struct {
+	result chan error
+}
+
+// SendMessage sends a message to the remote peer. SendMessage blocks until the
+// provided context is canceled or the remote peer positively or negatively
+// acknowledges the message.
+//
+// [Peer.Serve] must be running when SendMessage is called, otherwise it blocks
+// until the context is canceled.
+func (p *Peer) SendMessage(ctx context.Context, message Message) error {
+	p.lazyInit()
+
+	reqID := p.requestID.Inc()
+	req := &request{
+		result: make(chan error, 1),
+	}
+	p.sentRequests.Store(reqID, req)
+	defer p.sentRequests.Delete(reqID)
+
+	roundtrip := p.Metrics.startMessageRoundtrip(message.Kind(), sendModeSync)
+	outcome := outcomeSendError
+	defer func() { roundtrip.Done(outcome) }()
+	p.Metrics.incMessageSent(message.Kind(), sendModeSync)
+
+	if err := p.enqueueFrame(ctx, MessageFrame{ID: reqID, Message: message}, sendModeSync); err != nil {
+		outcome = sendErrorOutcome(err)
+		return err
+	}
+
+	select {
+	case <-ctx.Done():
+		// Tell the remote peer we don't care about the result anymore.
+		p.queueDiscard(reqID)
+		outcome = contextOutcome(ctx)
+		return ctx.Err()
+	case <-p.done:
+		outcome = outcomeConnClosed
+		return ErrConnClosed
+	case err := <-req.result:
+		outcome = resultOutcome(err)
+		return err
+	}
+}
+
+// queueDiscard tells the remote peer to stop processing message id. It does not
+// block, and drops the discard if the outgoing queue is full.
+func (p *Peer) queueDiscard(id uint64) {
+	frame := DiscardFrame{ID: id}
+	queued := outgoingFrame{frame: frame, sendMode: sendModeInternal, enqueuedAt: time.Now()}
+	select {
+	case p.outgoing <- queued:
+		p.noteFrameEnqueued(queueOutgoing, frame, sendModeInternal)
+	default:
+		level.Debug(p.Logger).Log("msg", "dropping discard frame; outgoing queue full", "id", id)
+	}
+}
+
+// contextOutcome classifies a canceled context into a round-trip outcome.
+func contextOutcome(ctx context.Context) metrictimer.Outcome {
+	if errors.Is(ctx.Err(), context.DeadlineExceeded) {
+		return outcomeTimeout
+	}
+	return outcomeCanceled
+}
+
+// sendErrorOutcome classifies an enqueue error into a round-trip outcome.
+func sendErrorOutcome(err error) metrictimer.Outcome {
+	switch {
+	case errors.Is(err, ErrConnClosed):
+		return outcomeConnClosed
+	case errors.Is(err, context.DeadlineExceeded):
+		return outcomeTimeout
+	case errors.Is(err, context.Canceled):
+		return outcomeCanceled
+	default:
+		return outcomeSendError
+	}
+}
+
+// resultOutcome classifies the result delivered to a request into a round-trip
+// outcome. A nil result is an ack, a wire [*Error] is a nack from the remote
+// handler, and any other error is a local delivery failure.
+func resultOutcome(err error) metrictimer.Outcome {
+	if err == nil {
+		return outcomeAck
+	}
+	var wireErr *Error
+	if errors.As(err, &wireErr) {
+		return outcomeNack
+	}
+	return outcomeSendError
+}
+
+// SendMessageAsync sends a message to the remote peer asynchronously.
+// SendMessageAsync blocks until the message has been sent over the connection
+// but does not wait for an acknowledgement or response.
+//
+// [Peer.Serve] must be running before SendMessageAsync is called, otherwise it
+// blocks until the context is canceled.
+func (p *Peer) SendMessageAsync(ctx context.Context, message Message) error {
+	p.lazyInit()
+
+	reqID := p.requestID.Inc()
+	p.Metrics.incMessageSent(message.Kind(), sendModeAsync)
+	return p.enqueueFrame(ctx, MessageFrame{ID: reqID, Message: message}, sendModeAsync)
+}
+
+// enqueueFrame enqueues a frame to be sent to the remote peer. sendMode records
+// how the send was issued (sync|async|internal) for queue metrics.
+func (p *Peer) enqueueFrame(ctx context.Context, frame Frame, sendMode sendMode) error {
+	queued := outgoingFrame{frame: frame, sendMode: sendMode, enqueuedAt: time.Now()}
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-p.done:
+		return ErrConnClosed
+	case p.outgoing <- queued:
+		p.noteFrameEnqueued(queueOutgoing, frame, sendMode)
+		return nil
+	default:
+	}
+
+	done := p.noteQueueBlockedSender(queueOutgoing, frame, sendMode)
+	defer done()
+
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-p.done:
+		return ErrConnClosed
+	case p.outgoing <- queued:
+		p.noteFrameEnqueued(queueOutgoing, frame, sendMode)
+		return nil
+	}
+}
+
+// LocalAddr returns the address of the local peer.
+func (p *Peer) LocalAddr() net.Addr { return p.Conn.LocalAddr() }
+
+// RemoteAddr returns the address of the remote peer.
+func (p *Peer) RemoteAddr() net.Addr { return p.Conn.RemoteAddr() }

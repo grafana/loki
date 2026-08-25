@@ -4,10 +4,10 @@ import (
 	"fmt"
 	"io"
 
-	"github.com/charmbracelet/bubbles/key"
-	"github.com/charmbracelet/bubbles/list"
-	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
+	"charm.land/bubbles/v2/key"
+	"charm.land/bubbles/v2/list"
+	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 )
 
 // benchmarkItem represents a benchmark in the list
@@ -87,16 +87,15 @@ func NewListView(items []string) *ListView {
 	l := list.New(listItems, delegate, 0, 0)
 
 	// Customize list styles
-	styles := list.DefaultStyles()
+	styles := list.DefaultStyles(true)
 	styles.Title = styles.Title.
 		Foreground(lipgloss.Color("12")).
 		Bold(true).
 		Padding(0, 1)
 
-	styles.FilterPrompt = lipgloss.NewStyle().
+	styles.Filter.Focused.Prompt = lipgloss.NewStyle().
 		Foreground(lipgloss.Color("12"))
-	styles.FilterCursor = lipgloss.NewStyle().
-		Foreground(lipgloss.Color("12"))
+	styles.Filter.Cursor.Color = lipgloss.Color("12")
 
 	// Status bar style
 	styles.StatusBar = lipgloss.NewStyle().
@@ -105,7 +104,7 @@ func NewListView(items []string) *ListView {
 
 	// Help style - make it more visible with high contrast
 	styles.HelpStyle = lipgloss.NewStyle().
-		Foreground(lipgloss.AdaptiveColor{Light: "12", Dark: "12"}). // Bright blue for better visibility
+		Foreground(lipgloss.Color("12")).
 		Bold(true)
 
 	l.Styles = styles
@@ -171,7 +170,7 @@ func (m *ListView) Update(msg tea.Msg) (Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		m.list.SetSize(msg.Width, msg.Height)
-	case tea.KeyMsg:
+	case tea.KeyPressMsg:
 		// Handle filter mode differently
 		if m.list.FilterState() == list.Filtering {
 			switch msg.String() {
@@ -189,7 +188,7 @@ func (m *ListView) Update(msg tea.Msg) (Model, tea.Cmd) {
 		switch msg.String() {
 		case "q", "ctrl+c":
 			return m, tea.Quit
-		case " ":
+		case "space":
 			// Toggle selection of current item
 			item := m.list.SelectedItem().(benchmarkItem)
 			if _, exists := m.selected[item.name]; exists {

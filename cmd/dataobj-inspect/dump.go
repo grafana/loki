@@ -1,0 +1,300 @@
+package main
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"io"
+	"os"
+	"time"
+
+	"github.com/alecthomas/kingpin/v2"
+	"github.com/fatih/color"
+	"github.com/prometheus/prometheus/model/labels"
+
+	"github.com/grafana/loki/v3/pkg/dataobj"
+	"github.com/grafana/loki/v3/pkg/dataobj/sections/indexpointers"
+	"github.com/grafana/loki/v3/pkg/dataobj/sections/logs"
+	"github.com/grafana/loki/v3/pkg/dataobj/sections/pointers"
+	"github.com/grafana/loki/v3/pkg/dataobj/sections/postings"
+	"github.com/grafana/loki/v3/pkg/dataobj/sections/stats"
+	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
+)
+
+// dumpCommand dumps the contents of the data object.
+type dumpCommand struct {
+	files      *[]string
+	printLines *bool
+	tenant     *string
+	streamID   *int
+}
+
+func (cmd *dumpCommand) run(_ *kingpin.ParseContext) error {
+	for _, f := range *cmd.files {
+		cmd.dumpFile(f)
+	}
+	return nil
+}
+
+func (cmd *dumpCommand) dumpFile(name string) {
+	f, err := os.Open(name)
+	if err != nil {
+		exitWithErr(fmt.Errorf("failed to open file: %w", err))
+	}
+	defer func() { _ = f.Close() }()
+	fi, err := f.Stat()
+	if err != nil {
+		exitWithErr(fmt.Errorf("failed to read fileinfo: %w", err))
+	}
+	dataObj, err := dataobj.FromReaderAt(f, fi.Size())
+	if err != nil {
+		exitWithErr(fmt.Errorf("failed to read dataobj: %w", err))
+	}
+	for offset, sec := range dataObj.Sections() {
+		if *cmd.tenant != "" && sec.Tenant != *cmd.tenant {
+			continue
+		}
+		switch {
+		case indexpointers.CheckSection(sec):
+			cmd.dumpIndexPointersSection(context.TODO(), offset, sec)
+		case pointers.CheckSection(sec):
+			cmd.dumpPointersSection(context.TODO(), offset, sec)
+		case streams.CheckSection(sec):
+			cmd.dumpStreamsSection(context.TODO(), offset, sec)
+		case logs.CheckSection(sec):
+			cmd.dumpLogsSection(context.TODO(), offset, sec)
+		case postings.CheckSection(sec):
+			cmd.dumpPostingsSection(context.TODO(), offset, sec)
+		case stats.CheckSection(sec):
+			cmd.dumpStatsSection(context.TODO(), offset, sec)
+		default:
+			fmt.Printf("unknown section: %s\n", sec.Type)
+		}
+	}
+}
+
+func (cmd *dumpCommand) dumpIndexPointersSection(ctx context.Context, offset int, sec *dataobj.Section) {
+	indexPtrsSec, err := indexpointers.Open(ctx, sec)
+	if err != nil {
+		exitWithErr(err)
+	}
+	bold := color.New(color.Bold)
+	bold.Println("IndexPointers section:")
+	bold.Printf("\toffset: %d, tenant: %s\n", offset, sec.Tenant)
+
+	tmp := make([]indexpointers.IndexPointer, 512)
+	r := indexpointers.NewRowReader(indexPtrsSec)
+	defer r.Close()
+	if err = r.Open(ctx); err != nil {
+		exitWithErr(fmt.Errorf("failed to open row reader: %w", err))
+	}
+	for {
+		n, err := r.Read(ctx, tmp)
+		if err != nil && !errors.Is(err, io.EOF) {
+			exitWithErr(err)
+		}
+		if n == 0 && errors.Is(err, io.EOF) {
+			return
+		}
+		for _, s := range tmp[:n] {
+			bold.Printf("\t\tpath: %s, start: %s, end: %s\n", s.Path, s.StartTs.UTC().Format(time.RFC3339Nano), s.EndTs.UTC().Format(time.RFC3339Nano))
+		}
+	}
+}
+
+func (cmd *dumpCommand) dumpPointersSection(ctx context.Context, offset int, sec *dataobj.Section) {
+	pointersSec, err := pointers.Open(ctx, sec)
+	if err != nil {
+		exitWithErr(err)
+	}
+	bold := color.New(color.Bold)
+	bold.Println("Pointers section:")
+	bold.Printf("\toffset: %d, tenant: %s\n", offset, sec.Tenant)
+
+	tmp := make([]pointers.SectionPointer, 512)
+	r := pointers.NewRowReader(pointersSec)
+	defer r.Close()
+	if err = r.Open(ctx); err != nil {
+		exitWithErr(fmt.Errorf("failed to open row reader: %w", err))
+	}
+	for {
+		n, err := r.Read(ctx, tmp)
+		if err != nil && !errors.Is(err, io.EOF) {
+			exitWithErr(err)
+		}
+		if n == 0 && errors.Is(err, io.EOF) {
+			return
+		}
+		for _, s := range tmp[:n] {
+			switch s.PointerKind {
+			case pointers.PointerKindStreamIndex:
+				if *cmd.streamID != 0 && int64(*cmd.streamID) != s.StreamID {
+					continue
+				}
+				bold.Printf("\t\t[StreamIndex] path: %s, section: %d, streamID: %d, streamIDRef: %d, start: %s, end: %s, lines: %d, uncompressedSize: %d\n",
+					s.Path, s.Section, s.StreamID, s.StreamIDRef,
+					s.StartTs.UTC().Format(time.RFC3339Nano), s.EndTs.UTC().Format(time.RFC3339Nano),
+					s.LineCount, s.UncompressedSize)
+			case pointers.PointerKindColumnIndex:
+				if *cmd.streamID != 0 {
+					continue
+				}
+				bold.Printf("\t\t[ColumnIndex] path: %s, section: %d, columnIndex: %d, columnName: %s\n",
+					s.Path, s.Section, s.ColumnIndex, s.ColumnName)
+			default:
+				fmt.Printf("\t\tunknown pointer kind: %v\n", s.PointerKind)
+			}
+		}
+	}
+}
+
+func (cmd *dumpCommand) dumpStreamsSection(ctx context.Context, offset int, sec *dataobj.Section) {
+	streamsSec, err := streams.Open(ctx, sec)
+	if err != nil {
+		exitWithErr(err)
+	}
+	bold := color.New(color.Bold)
+	bold.Println("Streams section:")
+	bold.Printf("\toffset: %d, tenant: %s\n", offset, sec.Tenant)
+
+	tmp := make([]streams.Stream, 512)
+	r := streams.NewRowReader(streamsSec)
+	if err = r.Open(ctx); err != nil {
+		exitWithErr(fmt.Errorf("failed to open row reader: %w", err))
+	}
+	for {
+		n, err := r.Read(ctx, tmp)
+		if err != nil && !errors.Is(err, io.EOF) {
+			exitWithErr(err)
+		}
+		if n == 0 && errors.Is(err, io.EOF) {
+			return
+		}
+		for _, s := range tmp[:n] {
+			if *cmd.streamID != 0 && *cmd.streamID != int(s.ID) {
+				continue
+			}
+			bold.Printf("\t\tid: %d, labels:\n", s.ID)
+			s.Labels.Range(func(l labels.Label) {
+				fmt.Printf("\t\t\t%s=%s\n", l.Name, l.Value)
+			})
+		}
+	}
+}
+
+func (cmd *dumpCommand) dumpLogsSection(ctx context.Context, offset int, sec *dataobj.Section) {
+	logsSec, err := logs.Open(ctx, sec)
+	if err != nil {
+		exitWithErr(err)
+	}
+	bold := color.New(color.Bold)
+	bold.Println("Logs section:")
+	bold.Printf("\toffset: %d, tenant: %s\n", offset, sec.Tenant)
+	tmp := make([]logs.Record, 512)
+	r := logs.NewRowReader(logsSec)
+	if err = r.Open(ctx); err != nil {
+		exitWithErr(fmt.Errorf("failed to open row reader: %w", err))
+	}
+	for {
+		n, err := r.Read(ctx, tmp)
+		if err != nil && !errors.Is(err, io.EOF) {
+			exitWithErr(err)
+		}
+		if n == 0 && errors.Is(err, io.EOF) {
+			return
+		}
+		for _, r := range tmp[0:n] {
+			if *cmd.streamID != 0 && *cmd.streamID != int(r.StreamID) {
+				continue
+			}
+			bold.Printf("\t\tid: %d, timestamp: %s, metadata:\n", r.StreamID, r.Timestamp)
+			r.Metadata.Range(func(l labels.Label) {
+				fmt.Printf("\t\t\t%s=%s\n", l.Name, l.Value)
+			})
+			if *cmd.printLines && len(r.Line) > 0 {
+				bold.Printf("\t\t> ")
+				for pos, char := range string(r.Line) {
+					fmt.Printf("%c", char)
+					if pos > 0 && pos%100 == 0 {
+						bold.Printf("\n\t\t> ")
+					}
+				}
+				fmt.Println("")
+			}
+		}
+	}
+}
+
+func (cmd *dumpCommand) dumpPostingsSection(ctx context.Context, offset int, sec *dataobj.Section) {
+	postingsSec, err := postings.Open(ctx, sec)
+	if err != nil {
+		exitWithErr(err)
+	}
+	bold := color.New(color.Bold)
+	bold.Println("Postings section:")
+	bold.Printf("\toffset: %d, tenant: %s\n", offset, sec.Tenant)
+
+	reader := postings.NewReader(postings.ReaderOptions{Columns: postingsSec.Columns()})
+	if err := reader.Open(ctx); err != nil {
+		exitWithErr(err)
+	}
+	r := postings.NewRowReader(ctx, reader)
+	defer r.Close()
+	for r.Next() {
+		row := r.At()
+		switch row.Kind {
+		case postings.KindLabel:
+			bold.Printf("\t\t[Label] path: %s, section: %d, column: %s, value: %s, bitmap: %d bytes, uncompressedSize: %d, start: %s, end: %s\n",
+				row.ObjectPath, row.SectionIndex, row.ColumnName, row.LabelValue,
+				len(row.StreamIDBitmap), row.UncompressedSize,
+				time.Unix(0, row.MinTimestamp).UTC().Format(time.RFC3339Nano),
+				time.Unix(0, row.MaxTimestamp).UTC().Format(time.RFC3339Nano))
+		case postings.KindBloom:
+			bold.Printf("\t\t[Bloom] path: %s, section: %d, column: %s, bloom: %d bytes, bitmap: %d bytes, uncompressedSize: %d, start: %s, end: %s\n",
+				row.ObjectPath, row.SectionIndex, row.ColumnName,
+				len(row.BloomFilter), len(row.StreamIDBitmap), row.UncompressedSize,
+				time.Unix(0, row.MinTimestamp).UTC().Format(time.RFC3339Nano),
+				time.Unix(0, row.MaxTimestamp).UTC().Format(time.RFC3339Nano))
+		default:
+			fmt.Printf("\t\tunknown posting kind: %v\n", row.Kind)
+		}
+	}
+	if err := r.Err(); err != nil {
+		exitWithErr(err)
+	}
+}
+
+func (cmd *dumpCommand) dumpStatsSection(ctx context.Context, offset int, sec *dataobj.Section) {
+	statsSec, err := stats.Open(ctx, sec)
+	if err != nil {
+		exitWithErr(err)
+	}
+	bold := color.New(color.Bold)
+	bold.Println("Stats section:")
+	bold.Printf("\toffset: %d, tenant: %s\n", offset, sec.Tenant)
+
+	r := stats.NewRowReader(ctx, statsSec)
+	defer r.Close()
+	for r.Next() {
+		s := r.At()
+		bold.Printf("\t\tpath: %s, section: %d, sortSchema: %s, rows: %d, uncompressedSize: %d, start: %s, end: %s, labels:\n",
+			s.ObjectPath, s.SectionIndex, s.SortSchema, s.RowCount, s.UncompressedSize,
+			time.Unix(0, s.MinTimestamp).UTC().Format(time.RFC3339Nano),
+			time.Unix(0, s.MaxTimestamp).UTC().Format(time.RFC3339Nano))
+		for name, value := range s.Labels {
+			fmt.Printf("\t\t\t%s=%s\n", name, value)
+		}
+	}
+	if err := r.Err(); err != nil {
+		exitWithErr(err)
+	}
+}
+
+func addDumpCommand(app *kingpin.Application) {
+	cmd := &dumpCommand{}
+	dump := app.Command("dump", "Dump the contents of the data object.").Action(cmd.run)
+	cmd.printLines = dump.Flag("print-lines", "Prints the lines of each column.").Bool()
+	cmd.tenant = dump.Flag("tenant", "Which tenant to dump").String()
+	cmd.streamID = dump.Flag("stream", "Which stream ID to dump").Int()
+	cmd.files = dump.Arg("file", "The file to dump.").ExistingFiles()
+}

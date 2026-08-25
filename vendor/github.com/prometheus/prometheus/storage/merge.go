@@ -1,4 +1,4 @@
-// Copyright 2020 The Prometheus Authors
+// Copyright The Prometheus Authors
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
@@ -17,6 +17,7 @@ import (
 	"bytes"
 	"container/heap"
 	"context"
+	"errors"
 	"fmt"
 	"math"
 	"sync"
@@ -25,7 +26,6 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/tsdb/chunkenc"
 	"github.com/prometheus/prometheus/tsdb/chunks"
-	tsdb_errors "github.com/prometheus/prometheus/tsdb/errors"
 	"github.com/prometheus/prometheus/util/annotations"
 )
 
@@ -64,10 +64,8 @@ func NewMergeQuerier(primaries, secondaries []Querier, mergeFn VerticalSeriesMer
 		queriers = append(queriers, newSecondaryQuerierFrom(q))
 	}
 
-	concurrentSelect := false
-	if len(secondaries) > 0 {
-		concurrentSelect = true
-	}
+	concurrentSelect := len(secondaries) > 0
+
 	return &querierAdapter{&mergeGenericQuerier{
 		mergeFn:          (&seriesMergerAdapter{VerticalSeriesMergeFunc: mergeFn}).Merge,
 		queriers:         queriers,
@@ -111,10 +109,8 @@ func NewMergeChunkQuerier(primaries, secondaries []ChunkQuerier, mergeFn Vertica
 		queriers = append(queriers, newSecondaryQuerierFromChunk(q))
 	}
 
-	concurrentSelect := false
-	if len(secondaries) > 0 {
-		concurrentSelect = true
-	}
+	concurrentSelect := len(secondaries) > 0
+
 	return &chunkQuerierAdapter{&mergeGenericQuerier{
 		mergeFn:          (&chunkSeriesMergerAdapter{VerticalChunkSeriesMergeFunc: mergeFn}).Merge,
 		queriers:         queriers,
@@ -237,10 +233,7 @@ func (q *mergeGenericQuerier) mergeResults(lq labelGenericQueriers, hints *Label
 }
 
 func mergeStrings(a, b []string) []string {
-	maxl := len(a)
-	if len(b) > len(a) {
-		maxl = len(b)
-	}
+	maxl := max(len(b), len(a))
 	res := make([]string, 0, maxl*10/9)
 
 	for len(a) > 0 && len(b) > 0 {
@@ -276,13 +269,13 @@ func (q *mergeGenericQuerier) LabelNames(ctx context.Context, hints *LabelHints,
 
 // Close releases the resources of the generic querier.
 func (q *mergeGenericQuerier) Close() error {
-	errs := tsdb_errors.NewMulti()
+	var errs []error
 	for _, querier := range q.queriers {
 		if err := querier.Close(); err != nil {
-			errs.Add(err)
+			errs = append(errs, err)
 		}
 	}
-	return errs.Err()
+	return errors.Join(errs...)
 }
 
 func truncateToLimit(s []string, hints *LabelHints) []string {
@@ -444,11 +437,11 @@ func (h genericSeriesSetHeap) Less(i, j int) bool {
 	return labels.Compare(a, b) < 0
 }
 
-func (h *genericSeriesSetHeap) Push(x interface{}) {
+func (h *genericSeriesSetHeap) Push(x any) {
 	*h = append(*h, x.(genericSeriesSet))
 }
 
-func (h *genericSeriesSetHeap) Pop() interface{} {
+func (h *genericSeriesSetHeap) Pop() any {
 	old := *h
 	n := len(old)
 	x := old[n-1]
@@ -606,6 +599,13 @@ func (c *chainSampleIterator) AtT() int64 {
 	return c.curr.AtT()
 }
 
+func (c *chainSampleIterator) AtST() int64 {
+	if c.curr == nil {
+		panic("chainSampleIterator.AtST called before first .Next or after .Next returned false.")
+	}
+	return c.curr.AtST()
+}
+
 func (c *chainSampleIterator) Next() chunkenc.ValueType {
 	var (
 		currT           int64
@@ -686,11 +686,11 @@ func (c *chainSampleIterator) Next() chunkenc.ValueType {
 }
 
 func (c *chainSampleIterator) Err() error {
-	errs := tsdb_errors.NewMulti()
+	var errs []error
 	for _, iter := range c.iterators {
-		errs.Add(iter.Err())
+		errs = append(errs, iter.Err())
 	}
-	return errs.Err()
+	return errors.Join(errs...)
 }
 
 type samplesIteratorHeap []chunkenc.Iterator
@@ -702,11 +702,11 @@ func (h samplesIteratorHeap) Less(i, j int) bool {
 	return h[i].AtT() < h[j].AtT()
 }
 
-func (h *samplesIteratorHeap) Push(x interface{}) {
+func (h *samplesIteratorHeap) Push(x any) {
 	*h = append(*h, x.(chunkenc.Iterator))
 }
 
-func (h *samplesIteratorHeap) Pop() interface{} {
+func (h *samplesIteratorHeap) Pop() any {
 	old := *h
 	n := len(old)
 	x := old[n-1]
@@ -722,6 +722,15 @@ func (h *samplesIteratorHeap) Pop() interface{} {
 // NOTE: Use the returned merge function only when you see potentially overlapping series, as this introduces small a overhead
 // to handle overlaps between series.
 func NewCompactingChunkSeriesMerger(mergeFunc VerticalSeriesMergeFunc) VerticalChunkSeriesMergeFunc {
+	return NewCompactingChunkSeriesMergerWithFloatEncoding(mergeFunc, nil)
+}
+
+// NewCompactingChunkSeriesMergerWithFloatEncoding is like
+// NewCompactingChunkSeriesMerger, but chunks re-encoded while compacting overlaps
+// use the float encoding returned by floatEncoding. It is consulted once per merged
+// series, so it may be backed by runtime-reloadable configuration. Nil means EncXOR.
+// Samples carrying a start timestamp always use XOR2 regardless of floatEncoding.
+func NewCompactingChunkSeriesMergerWithFloatEncoding(mergeFunc VerticalSeriesMergeFunc, floatEncoding func() chunkenc.Encoding) VerticalChunkSeriesMergeFunc {
 	return func(series ...ChunkSeries) ChunkSeries {
 		if len(series) == 0 {
 			return nil
@@ -733,9 +742,14 @@ func NewCompactingChunkSeriesMerger(mergeFunc VerticalSeriesMergeFunc) VerticalC
 				for _, s := range series {
 					iterators = append(iterators, s.Iterator(nil))
 				}
+				enc := chunkenc.EncXOR
+				if floatEncoding != nil {
+					enc = floatEncoding()
+				}
 				return &compactChunkIterator{
-					mergeFunc: mergeFunc,
-					iterators: iterators,
+					mergeFunc:     mergeFunc,
+					iterators:     iterators,
+					floatEncoding: enc,
 				}
 			},
 		}
@@ -748,6 +762,9 @@ func NewCompactingChunkSeriesMerger(mergeFunc VerticalSeriesMergeFunc) VerticalC
 type compactChunkIterator struct {
 	mergeFunc VerticalSeriesMergeFunc
 	iterators []chunks.Iterator
+	// floatEncoding is the chunk encoding used for float samples when chunks are
+	// re-encoded because of overlaps.
+	floatEncoding chunkenc.Encoding
 
 	h chunkIteratorHeap
 
@@ -813,7 +830,7 @@ func (c *compactChunkIterator) Next() bool {
 	}
 
 	// Add last as it's not yet included in overlap. We operate on same series, so labels does not matter here.
-	iter = NewSeriesToChunkEncoder(c.mergeFunc(append(overlapping, newChunkToSeriesDecoder(labels.EmptyLabels(), c.curr))...)).Iterator(nil)
+	iter = NewSeriesToChunkEncoderWithFloatEncoding(c.mergeFunc(append(overlapping, newChunkToSeriesDecoder(labels.EmptyLabels(), c.curr))...), c.floatEncoding).Iterator(nil)
 	if !iter.Next() {
 		if c.err = iter.Err(); c.err != nil {
 			return false
@@ -828,12 +845,12 @@ func (c *compactChunkIterator) Next() bool {
 }
 
 func (c *compactChunkIterator) Err() error {
-	errs := tsdb_errors.NewMulti()
+	var errs []error
 	for _, iter := range c.iterators {
-		errs.Add(iter.Err())
+		errs = append(errs, iter.Err())
 	}
-	errs.Add(c.err)
-	return errs.Err()
+	errs = append(errs, c.err)
+	return errors.Join(errs...)
 }
 
 type chunkIteratorHeap []chunks.Iterator
@@ -850,11 +867,11 @@ func (h chunkIteratorHeap) Less(i, j int) bool {
 	return at.MinTime < bt.MinTime
 }
 
-func (h *chunkIteratorHeap) Push(x interface{}) {
+func (h *chunkIteratorHeap) Push(x any) {
 	*h = append(*h, x.(chunks.Iterator))
 }
 
-func (h *chunkIteratorHeap) Pop() interface{} {
+func (h *chunkIteratorHeap) Pop() any {
 	old := *h
 	n := len(old)
 	x := old[n-1]
@@ -911,9 +928,9 @@ func (c *concatenatingChunkIterator) Next() bool {
 }
 
 func (c *concatenatingChunkIterator) Err() error {
-	errs := tsdb_errors.NewMulti()
+	var errs []error
 	for _, iter := range c.iterators {
-		errs.Add(iter.Err())
+		errs = append(errs, iter.Err())
 	}
-	return errs.Err()
+	return errors.Join(errs...)
 }

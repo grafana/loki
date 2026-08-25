@@ -163,7 +163,7 @@ func (kvm keyValueMatcherTest) Matches(series labels.Labels, bloom filter.Checke
 
 	var (
 		combined    = fmt.Sprintf("%s=%s", kvm.matcher.Key, kvm.matcher.Value)
-		rawCombined = unsafe.Slice(unsafe.StringData(combined), len(combined)) // #nosec G103 -- we know the string is not mutated
+		rawCombined = unsafe.Slice(unsafe.StringData(combined), len(combined)) // #nosec G103 -- we know the string is not mutated -- nosemgrep: use-of-unsafe-block
 	)
 
 	return kvm.match(series, bloom, rawCombined)
@@ -182,14 +182,33 @@ func (kvm keyValueMatcherTest) MatchesWithPrefixBuf(series labels.Labels, bloom 
 func (kvm keyValueMatcherTest) match(series labels.Labels, bloom filter.Checker, combined []byte) bool {
 	// If we don't have the series labels, we cannot disambiguate which labels come from the series in which case
 	// we may filter out chunks for queries like `{env="prod"} | env="prod"` if env=prod is not structured metadata
-	if len(series) == 0 {
+	if series.IsEmpty() {
 		level.Warn(util_log.Logger).Log("msg", "series has no labels, cannot filter out chunks")
 		return true
 	}
 
-	// It's in the series if the key is set and has the same value.
-	// By checking val != "" we handle `{env="prod"} | user=""`.
 	val := series.Get(kvm.matcher.Key)
+
+	// LogQL: an absent label compares as the empty string, so `key=""` must
+	// match rows where the label is absent. The bloom is positive-only — it
+	// stores `key=value` tokens that were seen, never "this key is absent for
+	// all rows in this chunk." So when the filter value is "" and the key is
+	// not carried by the series labels, we can't disambiguate "no row had
+	// this key" (every row matches) from "every row had this key with a
+	// non-empty value" (no row matches). The safe action is to not prune —
+	// let the per-row label filter decide.
+	if kvm.matcher.Value == "" && val == "" {
+		return true
+	}
+
+	// inSeries is true iff the series labels actually carry this key with the
+	// filter's value — a real, non-empty series-label match. The val != ""
+	// guard keeps inSeries honest: series.Get returns "" both for absent keys
+	// and (rarely) for present-but-empty values, so without the guard we'd
+	// spuriously assert an "in-series match" for any key the series doesn't
+	// have whenever the filter value is also "". That absent-key/empty-filter
+	// case is handled by the escape hatch above; this line is strictly
+	// "key is a stream label with this exact non-empty value."
 	inSeries := val != "" && val == kvm.matcher.Value
 
 	inBloom := bloom.Test(combined)
@@ -199,7 +218,7 @@ func (kvm keyValueMatcherTest) match(series labels.Labels, bloom filter.Checker,
 // appendToBuf is the equivalent of append(buf[:prefixLen], str). len(buf) must
 // be greater than or equal to prefixLen+len(str) to avoid allocations.
 func appendToBuf(buf []byte, prefixLen int, str string) []byte {
-	rawString := unsafe.Slice(unsafe.StringData(str), len(str)) // #nosec G103 -- we know the string is not mutated
+	rawString := unsafe.Slice(unsafe.StringData(str), len(str)) // #nosec G103 -- we know the string is not mutated -- nosemgrep: use-of-unsafe-block
 	return append(buf[:prefixLen], rawString...)
 }
 
@@ -243,7 +262,7 @@ func (km keyMatcherTest) MatchesWithPrefixBuf(series labels.Labels, bloom filter
 func (km keyMatcherTest) match(series labels.Labels, bloom filter.Checker, key []byte) bool {
 	// If we don't have the series labels, we cannot disambiguate which labels come from the series in which case
 	// we may filter out chunks for queries like `{env="prod"} | env="prod"` if env=prod is not structured metadata
-	if len(series) == 0 {
+	if series.IsEmpty() {
 		level.Warn(util_log.Logger).Log("msg", "series has no labels, cannot filter out chunks")
 		return true
 	}

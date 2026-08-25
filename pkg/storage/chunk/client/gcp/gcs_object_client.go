@@ -14,7 +14,6 @@ import (
 	"github.com/grafana/dskit/flagext"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
-	"go.opentelemetry.io/otel"
 	"google.golang.org/api/googleapi"
 	"google.golang.org/api/iterator"
 	"google.golang.org/api/option"
@@ -25,8 +24,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client/hedging"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client/util"
 )
-
-var tracer = otel.Tracer("pkg/storage/chunk/client/gcp")
 
 type ClientFactory func(ctx context.Context, opts ...option.ClientOption) (*storage.Client, error)
 
@@ -287,8 +284,8 @@ func isContextErr(err error) bool {
 		errors.Is(err, context.Canceled)
 }
 
-// IsStorageTimeoutErr returns true if error means that object cannot be retrieved right now due to server-side timeouts.
-func IsStorageTimeoutErr(err error) bool {
+// isStorageTimeoutErr returns true if error means that object cannot be retrieved right now due to server-side timeouts.
+func isStorageTimeoutErr(err error) bool {
 	// TODO(dannyk): move these out to be generic
 	// context errors are all client-side
 	if isContextErr(err) {
@@ -323,8 +320,8 @@ func IsStorageTimeoutErr(err error) bool {
 	return false
 }
 
-// IsStorageThrottledErr returns true if error means that object cannot be retrieved right now due to throttling.
-func IsStorageThrottledErr(err error) bool {
+// isStorageThrottledErr returns true if error means that object cannot be retrieved right now due to throttling.
+func isStorageThrottledErr(err error) bool {
 	if gerr, ok := err.(*googleapi.Error); ok {
 		// https://cloud.google.com/storage/docs/retry-strategy
 		return gerr.Code == http.StatusTooManyRequests ||
@@ -334,14 +331,13 @@ func IsStorageThrottledErr(err error) bool {
 	return false
 }
 
-// IsRetryableErr returns true if the request failed due to some retryable server-side scenario
-func IsRetryableErr(err error) bool {
-	return IsStorageTimeoutErr(err) || IsStorageThrottledErr(err)
+func isRetryableErr(err error) bool {
+	return isStorageTimeoutErr(err) || isStorageThrottledErr(err)
 }
 
 // IsRetryableErr returns true if the request failed due to some retryable server-side scenario
 func (s *GCSObjectClient) IsRetryableErr(err error) bool {
-	return IsRetryableErr(err)
+	return isRetryableErr(err)
 }
 
 func gcsTransport(ctx context.Context, scope string, insecure bool, http2 bool, serviceAccount flagext.Secret) (http.RoundTripper, error) {
@@ -366,11 +362,11 @@ func gcsTransport(ctx context.Context, scope string, insecure bool, http2 bool, 
 	}
 	transportOptions := []option.ClientOption{option.WithScopes(scope)}
 	if insecure {
-		customTransport.TLSClientConfig = &tls.Config{InsecureSkipVerify: true} //#nosec G402 -- User has explicitly requested to disable TLS
+		customTransport.TLSClientConfig = &tls.Config{InsecureSkipVerify: true} //#nosec G402 -- User has explicitly requested to disable TLS -- nosemgrep: tls-with-insecure-cipher
 		transportOptions = append(transportOptions, option.WithoutAuthentication())
 	}
 	if serviceAccount.String() != "" {
-		transportOptions = append(transportOptions, option.WithCredentialsJSON([]byte(serviceAccount.String())))
+		transportOptions = append(transportOptions, option.WithAuthCredentialsJSON(option.ServiceAccount, []byte(serviceAccount.String())))
 	}
 	return google_http.NewTransport(ctx, customTransport, transportOptions...)
 }

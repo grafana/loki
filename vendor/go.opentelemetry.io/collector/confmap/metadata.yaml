@@ -2,6 +2,7 @@ type: confmap
 github_project: open-telemetry/opentelemetry-collector
 
 status:
+  disable_codecov_badge: true
   codeowners:
     active:
       - mx-psi
@@ -9,3 +10,10 @@ status:
   class: pkg
   stability:
     stable: [logs, metrics, traces]
+
+feature_gates:
+  - id: confmap.enableMergeAppendOption
+    description: "Combines lists when resolving configs from different sources. This feature gate will not be stabilized 'as is'; the current behavior will remain the default."
+    stage: alpha
+    from_version: 'v0.120.0'
+    reference_url: 'https://github.com/open-telemetry/opentelemetry-collector/issues/8754'

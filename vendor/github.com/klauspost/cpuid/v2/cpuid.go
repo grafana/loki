@@ -3,7 +3,7 @@
 // Package cpuid provides information about the CPU running the current program.
 //
 // CPU features are detected on startup, and kept for fast access through the life of the application.
-// Currently x86 / x64 (AMD64) as well as arm64 is supported.
+// Currently x86 / x64 (AMD64), arm64, and riscv64 are supported.
 //
 // You can access the CPU information by accessing the shared CPU variable of the cpuid library.
 //
@@ -17,6 +17,7 @@ import (
 	"math/bits"
 	"os"
 	"runtime"
+	"slices"
 	"strings"
 )
 
@@ -61,6 +62,13 @@ const (
 	SRE
 	Apple
 
+	// RISC-V vendors
+	SiFive
+	StarFive
+	THead
+	Andes
+	SpacemiT
+
 	lastVendor
 )
 
@@ -85,6 +93,7 @@ const (
 	AMXTILE                              // Tile architecture
 	AMXTF32                              // Tile architecture
 	AMXCOMPLEX                           // Matrix Multiplication of TF32 Tiles into Packed Single Precision Tile
+	AMXTRANSPOSE                         // Tile multiply where the first operand is transposed
 	APX_F                                // Intel APX
 	AVX                                  // AVX functions
 	AVX10                                // If set the Intel AVX10 Converged Vector ISA is supported
@@ -94,6 +103,7 @@ const (
 	AVX2                                 // AVX2 functions
 	AVX512BF16                           // AVX-512 BFLOAT16 Instructions
 	AVX512BITALG                         // AVX-512 Bit Algorithms
+	AVX512BMM                            // AVX-512 Bit Manipulation Instructions
 	AVX512BW                             // AVX-512 Byte and Word Instructions
 	AVX512CD                             // AVX-512 Conflict Detection Instructions
 	AVX512DQ                             // AVX-512 Doubleword and Quadword Instructions
@@ -138,6 +148,7 @@ const (
 	FMA4                                 // Bulldozer FMA4 functions
 	FP128                                // AMD: When set, the internal FP/SIMD execution datapath is no more than 128-bits wide
 	FP256                                // AMD: When set, the internal FP/SIMD execution datapath is no more than 256-bits wide
+	FRED                                 // Flexible Return and Event Delivery
 	FSRM                                 // Fast Short Rep Mov
 	FXSR                                 // FXSAVE, FXRESTOR instructions, CR4 bit 9
 	FXSROPT                              // FXSAVE/FXRSTOR optimizations
@@ -219,9 +230,12 @@ const (
 	SEV_SNP                              // AMD SEV Secure Nested Paging supported
 	SGX                                  // Software Guard Extensions
 	SGXLC                                // Software Guard Extensions Launch Control
+	SGXPQC                               // Software Guard Extensions 256-bit Encryption
 	SHA                                  // Intel SHA Extensions
 	SME                                  // AMD Secure Memory Encryption supported
 	SME_COHERENT                         // AMD Hardware cache coherency across encryption domains enforced
+	SM3_X86                              // SM3 instructions
+	SM4_X86                              // SM4 instructions
 	SPEC_CTRL_SSBD                       // Speculative Store Bypass Disable
 	SRBDS_CTRL                           // SRBDS mitigation MSR available
 	SRSO_MSR_FIX                         // Indicates that software may use MSR BP_CFG[BpSpecReduce] to mitigate SRSO.
@@ -252,6 +266,9 @@ const (
 	TLB_FLUSH_NESTED                     // AMD: Flushing includes all the nested translations for guest translations
 	TME                                  // Intel Total Memory Encryption. The following MSRs are supported: IA32_TME_CAPABILITY, IA32_TME_ACTIVATE, IA32_TME_EXCLUDE_MASK, and IA32_TME_EXCLUDE_BASE.
 	TOPEXT                               // TopologyExtensions: topology extensions support. Indicates support for CPUID Fn8000_001D_EAX_x[N:0]-CPUID Fn8000_001E_EDX.
+	TSA_L1_NO                            // AMD only: Not vulnerable to TSA-L1
+	TSA_SQ_NO                            // AM onlyD: Not vulnerable to TSA-SQ
+	TSA_VERW_CLEAR                       // If set, the memory form of the VERW instruction may be used to help mitigate TSA
 	TSCRATEMSR                           // MSR based TSC rate control. Indicates support for MSR TSC ratio MSRC000_0104
 	TSXLDTRK                             // Intel TSX Suspend Load Address Tracking
 	VAES                                 // Vector AES. AVX(512) versions requires additional checks.
@@ -283,7 +300,7 @@ const (
 	CRC32    // CRC32/CRC32C instructions
 	DCPOP    // Data cache clean to Point of Persistence (DC CVAP)
 	EVTSTRM  // Generic timer
-	FCMA     // Floatin point complex number addition and multiplication
+	FCMA     // Floating point complex number addition and multiplication
 	FHM      // FMLAL and FMLSL instructions
 	FP       // Single-precision and double-precision floating point
 	FPHP     // Half-precision floating point
@@ -301,6 +318,77 @@ const (
 	SM3      // SM3 instructions
 	SM4      // SM4 instructions
 	SVE      // Scalable Vector Extension
+	SVE2     // Scalable Vector Extension 2
+	SB       // Speculation barrier (SB instruction)
+	SSBS     // Speculative Store Bypass Safe (PSTATE.SSBS)
+	BTI      // Branch Target Identification
+	FLAGM2   // Condition flag manipulation version 2 (AXFLAG, XAFLAG)
+	FRINTTS  // Floating-point to integer rounding (FRINT32Z, FRINT64Z, etc)
+	DCPODP   // Data cache clean to Point of Deep Persistence (DC CVADP)
+	BF16     // BFloat16 instructions (BFDOT, BFMMLA, etc)
+	I8MM     // Int8 matrix multiplication (SMMLA, UMMLA, USMMLA)
+	WFXT     // WFE/WFI with timeout (WFET, WFIT)
+	MOPS     // Memory copy and set instructions (CPYF, SETP, etc)
+	HBC      // Hinted conditional branches (BC.cond)
+	CSSC     // Common short sequence compression (ABS, SMAX, UMAX, etc)
+
+	// PMU
+	PMU_FIXEDCOUNTER_CYCLES
+	PMU_FIXEDCOUNTER_REFCYCLES
+	PMU_FIXEDCOUNTER_INSTRUCTIONS
+	PMU_FIXEDCOUNTER_TOPDOWN_SLOTS
+
+	// RISC-V features
+	RV_IMA         // IMA base (Integer, Multiply, Atomic)
+	RV_C           // Compressed instructions
+	RV_F           // Single-precision FP
+	RV_D           // Double-precision FP
+	RV_V           // Vector extension (V)
+	RV_ZBA         // Address generation
+	RV_ZBB         // Basic bit manipulation
+	RV_ZBC         // Carry-less multiplication
+	RV_ZBS         // Single-bit manipulation
+	RV_ZICOND      // Integer conditional operations
+	RV_ZIHINTPAUSE // Pause hint
+	RV_ZICBOM      // Cache block management operations
+	RV_ZICBOZ      // Cache block zero
+	RV_ZICBOP      // Cache block prefetch
+	RV_ZFA         // Additional floating-point
+	RV_ZFH         // Half-precision FP
+	RV_ZFHMIN      // Minimal half-precision FP
+	RV_ZTSO        // Total store ordering
+	RV_ZACAS       // Atomic CAS
+	// Scalar cryptography
+	RV_ZBKB  // Bit-manipulation for crypto
+	RV_ZBKC  // Carry-less multiply for crypto
+	RV_ZBKX  // Crossbar permutations
+	RV_ZKND  // NIST Suite: AES decrypt
+	RV_ZKNE  // NIST Suite: AES encrypt
+	RV_ZKNH  // NIST Suite: SHA-2 (SHA-256/SHA-512)
+	RV_ZKSED // ShangMi Suite: SM4 block cipher
+	RV_ZKSH  // ShangMi Suite: SM3 hash
+	RV_ZKT   // Data-independent execution latency (Crypto)
+
+	// Scalar crypto suites (combined from individual extensions)
+	RV_ZKN // NIST Algorithm Suite (Zknd+Zkne+Zknh+Zbkb+Zbkc+Zbkx+Zkt)
+	RV_ZKS // ShangMi Algorithm Suite (Zksed+Zksh+Zbkb+Zbkc+Zbkx+Zkt)
+
+	// Vector cryptography
+	RV_ZVBB   // Vector Basic Bit-manipulation
+	RV_ZVBC   // Vector Carry-less multiply
+	RV_ZVKB   // Vector Bit-manipulation for crypto
+	RV_ZVKG   // Vector GCM/GMAC
+	RV_ZVKNED // NIST Suite: Vector AES encrypt+decrypt
+	RV_ZVKNHA // NIST Suite: Vector SHA-2 (SHA-256)
+	RV_ZVKNHB // NIST Suite: Vector SHA-2 (SHA-512)
+	RV_ZVKSED // ShangMi Suite: Vector SM4
+	RV_ZVKSH  // ShangMi Suite: Vector SM3 hash
+	RV_ZVKT   // Vector Data-independent execution latency
+
+	// Vector crypto suites (combined from individual extensions)
+	RV_ZVKNG // NIST Suite with GCM (Zvkned+Zvknhb+Zvkg+Zvkb+Zvkt)
+	RV_ZVKSG // ShangMi Suite with GCM (Zvksed+Zvksh+Zvkg+Zvkb+Zvkt)
+
 	// Keep it last. It automatically defines the size of []flagSet
 	lastID
 
@@ -333,9 +421,34 @@ type CPUInfo struct {
 	SGX              SGXSupport
 	AMDMemEncryption AMDMemEncryptionSupport
 	AVX10Level       uint8
+	PMU              PerformanceMonitoringInfo //  holds information about the PMU
 
 	maxFunc   uint32
 	maxExFunc uint32
+}
+
+// PerformanceMonitoringInfo holds information about CPU performance monitoring capabilities.
+// This is primarily populated from CPUID leaf 0xAh on x86
+type PerformanceMonitoringInfo struct {
+	// VersionID (x86 only): Version ID of architectural performance monitoring.
+	// A value of 0 means architectural performance monitoring is not supported or information is unavailable.
+	VersionID uint8
+	// NumGPPMC: Number of General-Purpose Performance Monitoring Counters per logical processor.
+	// On ARM, this is derived from PMCR_EL0.N (number of event counters).
+	NumGPCounters uint8
+	// GPPMCWidth: Bit width of General-Purpose Performance Monitoring Counters.
+	// On ARM, typically 64 for PMU event counters.
+	GPPMCWidth uint8
+	// NumFixedPMC: Number of Fixed-Function Performance Counters.
+	// Valid on x86 if VersionID > 1. On ARM, this typically includes at least the cycle counter (PMCCNTR_EL0).
+	NumFixedPMC uint8
+	// FixedPMCWidth: Bit width of Fixed-Function Performance Counters.
+	// Valid on x86 if VersionID > 1. On ARM, the cycle counter (PMCCNTR_EL0) is 64-bit.
+	FixedPMCWidth uint8
+	// Raw register output from CPUID leaf 0xAh.
+	RawEBX uint32
+	RawEAX uint32
+	RawEDX uint32
 }
 
 var cpuid func(op uint32) (eax, ebx, ecx, edx uint32)
@@ -380,8 +493,8 @@ func Detect() {
 		os.Exit(1)
 	}
 	if disableFlag != nil {
-		s := strings.Split(*disableFlag, ",")
-		for _, feat := range s {
+		s := strings.SplitSeq(*disableFlag, ",")
+		for feat := range s {
 			feat := ParseFeature(strings.TrimSpace(feat))
 			if feat != UNKNOWN {
 				CPU.featureSet.unset(feat)
@@ -432,12 +545,7 @@ func (c *CPUInfo) Has(id FeatureID) bool {
 
 // AnyOf returns whether the CPU supports one or more of the requested features.
 func (c CPUInfo) AnyOf(ids ...FeatureID) bool {
-	for _, id := range ids {
-		if c.featureSet.inSet(id) {
-			return true
-		}
-	}
-	return false
+	return slices.ContainsFunc(ids, c.featureSet.inSet)
 }
 
 // Features contains several features combined for a fast check using
@@ -457,12 +565,67 @@ func (c *CPUInfo) HasAll(f Features) bool {
 	return c.featureSet.hasSetP(f)
 }
 
+// HasOneOf returns whether the CPU supports one or more of the requested features.
+func (c *CPUInfo) HasOneOf(f Features) bool {
+	return c.featureSet.hasOneOf(f)
+}
+
 // https://en.wikipedia.org/wiki/X86-64#Microarchitecture_levels
 var oneOfLevel = CombineFeatures(SYSEE, SYSCALL)
 var level1Features = CombineFeatures(CMOV, CMPXCHG8, X87, FXSR, MMX, SSE, SSE2)
 var level2Features = CombineFeatures(CMOV, CMPXCHG8, X87, FXSR, MMX, SSE, SSE2, CX16, LAHF, POPCNT, SSE3, SSE4, SSE42, SSSE3)
 var level3Features = CombineFeatures(CMOV, CMPXCHG8, X87, FXSR, MMX, SSE, SSE2, CX16, LAHF, POPCNT, SSE3, SSE4, SSE42, SSSE3, AVX, AVX2, BMI1, BMI2, F16C, FMA3, LZCNT, MOVBE, OSXSAVE)
 var level4Features = CombineFeatures(CMOV, CMPXCHG8, X87, FXSR, MMX, SSE, SSE2, CX16, LAHF, POPCNT, SSE3, SSE4, SSE42, SSSE3, AVX, AVX2, BMI1, BMI2, F16C, FMA3, LZCNT, MOVBE, OSXSAVE, AVX512F, AVX512BW, AVX512CD, AVX512DQ, AVX512VL)
+
+// RV_CRYPTO_FEATS contains all RISC-V scalar cryptography instruction extensions (excludes Zkt since it is a timing guarantee, not a computational instruction).
+var RV_CRYPTO_FEATS = CombineFeatures(RV_ZBKB, RV_ZBKC, RV_ZBKX, RV_ZKND, RV_ZKNE, RV_ZKNH, RV_ZKSED, RV_ZKSH)
+
+// RV_VECTOR_CRYPTO_FEATS contains all RISC-V vector cryptography extensions.
+var RV_VECTOR_CRYPTO_FEATS = CombineFeatures(RV_ZVBB, RV_ZVBC, RV_ZVKB, RV_ZVKG, RV_ZVKNED, RV_ZVKNHA, RV_ZVKNHB, RV_ZVKSED, RV_ZVKSH)
+
+// RISC-V application profile feature sets.
+// https://github.com/riscv/riscv-profiles
+var rvProfile20Features = CombineFeatures(RV_IMA, RV_C, RV_F, RV_D)
+var rvProfile22Features = CombineFeatures(RV_IMA, RV_C, RV_F, RV_D, RV_ZBA, RV_ZBB, RV_ZBS, RV_ZFHMIN, RV_ZICBOM, RV_ZICBOP, RV_ZICBOZ, RV_ZIHINTPAUSE)
+var rvProfile23Features = CombineFeatures(RV_IMA, RV_C, RV_F, RV_D, RV_ZBA, RV_ZBB, RV_ZBS, RV_ZFHMIN, RV_ZICBOM, RV_ZICBOP, RV_ZICBOZ, RV_ZIHINTPAUSE, RV_V, RV_ZFA, RV_ZICOND, RV_ZVBB, RV_ZVKB)
+
+// RISC-V crypto suites — combined from individual extensions.
+var rvZKNFeatures = CombineFeatures(RV_ZKND, RV_ZKNE, RV_ZKNH, RV_ZBKB, RV_ZBKC, RV_ZBKX, RV_ZKT)
+var rvZKSFeatures = CombineFeatures(RV_ZKSED, RV_ZKSH, RV_ZBKB, RV_ZBKC, RV_ZBKX, RV_ZKT)
+var rvZVKNFeatures = CombineFeatures(RV_ZVKNED, RV_ZVKNHB, RV_ZVKG, RV_ZVKB, RV_ZVKT)
+var rvZVKSFeatures = CombineFeatures(RV_ZVKSED, RV_ZVKSH, RV_ZVKG, RV_ZVKB, RV_ZVKT)
+
+// ARM64 architecture levels. armV8Levels[m] is the cumulative set of mandatory
+// user-space instruction features added up to and including ARMv8.m that this
+// package can detect. EL1/system-only features (PAN, VHE, CSV2/CSV3, ECV, ...)
+// are excluded since they are irrelevant to user-space code generation, exactly
+// as X64Level ignores non-instruction features.
+//
+// FEAT_SSBS and FEAT_BTI, although mandatory from ARMv8.5, are intentionally NOT
+// required. Both are OS-policy-gated security features (speculative store bypass
+// safety and branch-target identification) that Go code generation never depends
+// on: their HWCAP/sysctl bits are set only when the OS or hypervisor enables the
+// protection, not purely from CPU capability, so they are routinely hidden even
+// on capable silicon (neither a Neoverse N2 Linux guest nor Apple Silicon reports
+// them). Requiring them would cap such CPUs at v8.4. Both are still detected and
+// reported through FeatureSet when present.
+// https://go.dev/wiki/MinimumRequirements#arm64
+var armV8Levels = [...]Features{
+	CombineFeatures(FP, ASIMD),                                                                                                                          // v8.0
+	CombineFeatures(FP, ASIMD, ATOMICS, CRC32, ASIMDRDM),                                                                                                // v8.1
+	CombineFeatures(FP, ASIMD, ATOMICS, CRC32, ASIMDRDM, DCPOP),                                                                                         // v8.2
+	CombineFeatures(FP, ASIMD, ATOMICS, CRC32, ASIMDRDM, DCPOP, JSCVT, FCMA, LRCPC),                                                                     // v8.3
+	CombineFeatures(FP, ASIMD, ATOMICS, CRC32, ASIMDRDM, DCPOP, JSCVT, FCMA, LRCPC, TS),                                                                 // v8.4
+	CombineFeatures(FP, ASIMD, ATOMICS, CRC32, ASIMDRDM, DCPOP, JSCVT, FCMA, LRCPC, TS, SB, FRINTTS, FLAGM2, DCPODP),                                    // v8.5
+	CombineFeatures(FP, ASIMD, ATOMICS, CRC32, ASIMDRDM, DCPOP, JSCVT, FCMA, LRCPC, TS, SB, FRINTTS, FLAGM2, DCPODP, BF16, I8MM),                        // v8.6
+	CombineFeatures(FP, ASIMD, ATOMICS, CRC32, ASIMDRDM, DCPOP, JSCVT, FCMA, LRCPC, TS, SB, FRINTTS, FLAGM2, DCPODP, BF16, I8MM, WFXT),                  // v8.7
+	CombineFeatures(FP, ASIMD, ATOMICS, CRC32, ASIMDRDM, DCPOP, JSCVT, FCMA, LRCPC, TS, SB, FRINTTS, FLAGM2, DCPODP, BF16, I8MM, WFXT, MOPS, HBC),       // v8.8
+	CombineFeatures(FP, ASIMD, ATOMICS, CRC32, ASIMDRDM, DCPOP, JSCVT, FCMA, LRCPC, TS, SB, FRINTTS, FLAGM2, DCPODP, BF16, I8MM, WFXT, MOPS, HBC, CSSC), // v8.9
+}
+
+// armCrypto matches the GOARM64 ",crypto" option: FEAT_AES, FEAT_PMULL,
+// FEAT_SHA1 and FEAT_SHA256.
+var armCrypto = CombineFeatures(AESARM, PMULL, SHA1, SHA2)
 
 // X64Level returns the microarchitecture level detected on the CPU.
 // If features are lacking or non x64 mode, 0 is returned.
@@ -484,6 +647,67 @@ func (c CPUInfo) X64Level() int {
 		return 1
 	}
 	return 0
+}
+
+// RVProfile returns the RISC-V application profile level.
+// 0 = unknown / base ISA only, 20 = RVA20, 22 = RVA22, 23 = RVA23.
+// Returns 0 on non-RISC-V architectures or if not detected.
+// https://github.com/riscv/riscv-profiles
+func (c CPUInfo) RVProfile() int {
+	switch {
+	case c.featureSet.hasSetP(rvProfile23Features):
+		return 23
+	case c.featureSet.hasSetP(rvProfile22Features):
+		return 22
+	case c.featureSet.hasSetP(rvProfile20Features):
+		return 20
+	default:
+		return 0
+	}
+}
+
+// ARM64Level returns the ARMv8/ARMv9 architecture version supported by the CPU
+// as (major, minor), e.g. 8, 4 for ARMv8.4-A or 9, 0 for ARMv9.0-A.
+// Only mandatory user-space instruction features are considered, so the result
+// is the highest level whose required instructions are all present.
+// Returns 0, 0 on non-arm64 CPUs or when feature detection was unavailable.
+func (c CPUInfo) ARM64Level() (major, minor int) {
+	if !c.featureSet.hasSetP(armV8Levels[0]) {
+		return 0, 0
+	}
+	m8 := 0
+	for m := len(armV8Levels) - 1; m >= 1; m-- {
+		if c.featureSet.hasSetP(armV8Levels[m]) {
+			m8 = m
+			break
+		}
+	}
+	// ARMv9.x mandates everything in ARMv8.(x+5) plus SVE2.
+	if m8 >= 5 && c.featureSet.inSet(SVE2) {
+		return 9, m8 - 5
+	}
+	return 8, m8
+}
+
+// GOARM64 returns a value usable as the GOARM64 build setting for the detected
+// CPU, e.g. "v8.4" or "v9.0,crypto". The ",crypto" suffix is appended when AES,
+// PMULL, SHA1 and SHA256 are all present; the ",lse" suffix is appended in the
+// rare case LSE is present without the rest of the ARMv8.1 feature set.
+// Returns "" on non-arm64 CPUs or when feature detection was unavailable.
+// See https://go.dev/wiki/MinimumRequirements#arm64
+func (c CPUInfo) GOARM64() string {
+	major, minor := c.ARM64Level()
+	if major == 0 {
+		return ""
+	}
+	v := fmt.Sprintf("v%d.%d", major, minor)
+	if major == 8 && minor == 0 && c.featureSet.inSet(ATOMICS) {
+		v += ",lse"
+	}
+	if c.featureSet.hasSetP(armCrypto) {
+		v += ",crypto"
+	}
+	return v
 }
 
 // Disable will disable one or several features.
@@ -732,7 +956,7 @@ func flagSetWith(feat ...FeatureID) flagSet {
 // Will return UNKNOWN if not found.
 func ParseFeature(s string) FeatureID {
 	s = strings.ToUpper(s)
-	for i := firstID; i < lastID; i++ {
+	for i := range lastID {
 		if i.String() == s {
 			return i
 		}
@@ -746,7 +970,7 @@ func (s flagSet) Strings() []string {
 		return []string{""}
 	}
 	r := make([]string, 0)
-	for i := firstID; i < lastID; i++ {
+	for i := range lastID {
 		if s.inSet(i) {
 			r = append(r, i.String())
 		}
@@ -767,7 +991,7 @@ func maxFunctionID() uint32 {
 func brandName() string {
 	if maxExtendedFunction() >= 0x80000004 {
 		v := make([]uint32, 0, 48)
-		for i := uint32(0); i < 3; i++ {
+		for i := range uint32(3) {
 			a, b, c, d := cpuid(0x80000002 + i)
 			v = append(v, a, b, c, d)
 		}
@@ -878,7 +1102,12 @@ func physicalCores() int {
 	v, _ := vendorID()
 	switch v {
 	case Intel:
-		return logicalCores() / threadsPerCore()
+		lc := logicalCores()
+		tpc := threadsPerCore()
+		if lc > 0 && tpc > 0 {
+			return lc / tpc
+		}
+		return 0
 	case AMD, Hygon:
 		lc := logicalCores()
 		tpc := threadsPerCore()
@@ -1031,7 +1260,7 @@ func (c *CPUInfo) cacheSize() {
 		// Hack: When we encounter the same entry 100 times we break.
 		nSame := 0
 		var last uint32
-		for i := uint32(0); i < math.MaxUint32; i++ {
+		for i := range uint32(math.MaxUint32) {
 			eax, ebx, ecx, _ := cpuidex(0x8000001D, i)
 
 			level := (eax >> 5) & 7
@@ -1279,10 +1508,13 @@ func support() flagSet {
 		// CPUID.(EAX=7, ECX=1).EAX
 		eax1, _, _, edx1 := cpuidex(7, 1)
 		fs.setIf(fs.inSet(AVX) && eax1&(1<<4) != 0, AVXVNNI)
+		fs.setIf(eax1&(1<<1) != 0, SM3_X86)
+		fs.setIf(eax1&(1<<2) != 0, SM4_X86)
 		fs.setIf(eax1&(1<<7) != 0, CMPCCXADD)
 		fs.setIf(eax1&(1<<10) != 0, MOVSB_ZL)
 		fs.setIf(eax1&(1<<11) != 0, STOSB_SHORT)
 		fs.setIf(eax1&(1<<12) != 0, CMPSB_SCADBS_SHORT)
+		fs.setIf(eax1&(1<<17) != 0, FRED)
 		fs.setIf(eax1&(1<<22) != 0, HRESET)
 		fs.setIf(eax1&(1<<23) != 0, AVXIFMA)
 		fs.setIf(eax1&(1<<26) != 0, LAM)
@@ -1290,6 +1522,7 @@ func support() flagSet {
 		// CPUID.(EAX=7, ECX=1).EDX
 		fs.setIf(edx1&(1<<4) != 0, AVXVNNIINT8)
 		fs.setIf(edx1&(1<<5) != 0, AVXNECONVERT)
+		fs.setIf(edx1&(1<<6) != 0, AMXTRANSPOSE)
 		fs.setIf(edx1&(1<<7) != 0, AMXTF32)
 		fs.setIf(edx1&(1<<8) != 0, AMXCOMPLEX)
 		fs.setIf(edx1&(1<<10) != 0, AVXVNNIINT16)
@@ -1347,6 +1580,11 @@ func support() flagSet {
 		fs.setIf(edx&(1<<4) != 0, BHI_CTRL)
 		fs.setIf(edx&(1<<5) != 0, MCDT_NO)
 
+		if fs.inSet(SGX) {
+			eax, _, _, _ := cpuidex(0x12, 0)
+			fs.setIf(eax&(1<<12) != 0, SGXPQC)
+		}
+
 		// Add keylocker features.
 		if fs.inSet(KEYLOCKER) && mfi >= 0x19 {
 			_, ebx, _, _ := cpuidex(0x19, 0)
@@ -1360,6 +1598,7 @@ func support() flagSet {
 			fs.setIf(ebx&(1<<17) != 0, AVX10_256)
 			fs.setIf(ebx&(1<<18) != 0, AVX10_512)
 		}
+
 	}
 
 	// Processor Extended State Enumeration Sub-leaf (EAX = 0DH, ECX = 1)
@@ -1503,12 +1742,29 @@ func support() flagSet {
 	}
 
 	if maxExtendedFunction() >= 0x80000021 && vend == AMD {
-		a, _, _, _ := cpuid(0x80000021)
+		a, _, c, _ := cpuid(0x80000021)
 		fs.setIf((a>>31)&1 == 1, SRSO_MSR_FIX)
 		fs.setIf((a>>30)&1 == 1, SRSO_USER_KERNEL_NO)
 		fs.setIf((a>>29)&1 == 1, SRSO_NO)
 		fs.setIf((a>>28)&1 == 1, IBPB_BRTYPE)
 		fs.setIf((a>>27)&1 == 1, SBPB)
+		fs.setIf((a>>23)&1 == 1, AVX512BMM)
+		fs.setIf((c>>1)&1 == 1, TSA_L1_NO)
+		fs.setIf((c>>2)&1 == 1, TSA_SQ_NO)
+		fs.setIf((a>>5)&1 == 1, TSA_VERW_CLEAR)
+	}
+	if vend == AMD {
+		if family < 0x19 {
+			// AMD CPUs that are older than Family 19h are not vulnerable to TSA but do not set TSA_L1_NO or TSA_SQ_NO.
+			// Source: https://www.amd.com/content/dam/amd/en/documents/resources/bulletin/technical-guidance-for-mitigating-transient-scheduler-attacks.pdf
+			fs.set(TSA_L1_NO)
+			fs.set(TSA_SQ_NO)
+		} else if family == 0x1a {
+			// AMD Family 1Ah models 00h-4Fh and 60h-7Fh are also not vulnerable to TSA but do not set TSA_L1_NO or TSA_SQ_NO.
+			// Future AMD CPUs will set these CPUID bits if appropriate. CPUs will be designed to set these CPUID bits if appropriate.
+			notVuln := model <= 0x4f || (model >= 0x60 && model <= 0x7f)
+			fs.setIf(notVuln, TSA_L1_NO, TSA_SQ_NO)
+		}
 	}
 
 	if mfi >= 0x20 {
@@ -1563,4 +1819,48 @@ func valAsString(values ...uint32) []byte {
 		}
 	}
 	return r
+}
+
+func parseLeaf0AH(c *CPUInfo, eax, ebx, edx uint32) (info PerformanceMonitoringInfo) {
+	info.VersionID = uint8(eax & 0xFF)
+	info.NumGPCounters = uint8((eax >> 8) & 0xFF)
+	info.GPPMCWidth = uint8((eax >> 16) & 0xFF)
+
+	info.RawEBX = ebx
+	info.RawEAX = eax
+	info.RawEDX = edx
+
+	if info.VersionID > 1 { // This information is only valid if VersionID > 1
+		info.NumFixedPMC = uint8(edx & 0x1F)          // Bits 4:0
+		info.FixedPMCWidth = uint8((edx >> 5) & 0xFF) // Bits 12:5
+	}
+	if info.VersionID > 0 {
+		// first 4 fixed events are always instructions retired, cycles, ref cycles and topdown slots
+		if ebx == 0x0 && info.NumFixedPMC == 3 {
+			c.featureSet.set(PMU_FIXEDCOUNTER_INSTRUCTIONS)
+			c.featureSet.set(PMU_FIXEDCOUNTER_CYCLES)
+			c.featureSet.set(PMU_FIXEDCOUNTER_REFCYCLES)
+		}
+		if ebx == 0x0 && info.NumFixedPMC == 4 {
+			c.featureSet.set(PMU_FIXEDCOUNTER_INSTRUCTIONS)
+			c.featureSet.set(PMU_FIXEDCOUNTER_CYCLES)
+			c.featureSet.set(PMU_FIXEDCOUNTER_REFCYCLES)
+			c.featureSet.set(PMU_FIXEDCOUNTER_TOPDOWN_SLOTS)
+		}
+		if ebx != 0x0 {
+			if ((ebx >> 0) & 1) == 0 {
+				c.featureSet.set(PMU_FIXEDCOUNTER_INSTRUCTIONS)
+			}
+			if ((ebx >> 1) & 1) == 0 {
+				c.featureSet.set(PMU_FIXEDCOUNTER_CYCLES)
+			}
+			if ((ebx >> 2) & 1) == 0 {
+				c.featureSet.set(PMU_FIXEDCOUNTER_REFCYCLES)
+			}
+			if ((ebx >> 3) & 1) == 0 {
+				c.featureSet.set(PMU_FIXEDCOUNTER_TOPDOWN_SLOTS)
+			}
+		}
+	}
+	return info
 }

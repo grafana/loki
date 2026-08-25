@@ -4,6 +4,7 @@ import (
 	"context"
 	"time"
 
+	"github.com/grafana/loki/v3/pkg/compactor/deletion/deletionproto"
 	"github.com/grafana/loki/v3/pkg/validation"
 )
 
@@ -27,14 +28,14 @@ func NewPerTenantDeleteRequestsClient(c DeleteRequestsClient, l Limits) DeleteRe
 	}
 }
 
-func (c *perTenantDeleteRequestsClient) GetAllDeleteRequestsForUser(ctx context.Context, userID string) ([]DeleteRequest, error) {
+func (c *perTenantDeleteRequestsClient) GetAllDeleteRequestsForUser(ctx context.Context, userID string, forQuerytimeFiltering bool, timeRange *TimeRange) ([]deletionproto.DeleteRequest, error) {
 	hasDelete, err := validDeletionLimit(c.limits, userID)
 	if err != nil {
 		return nil, err
 	}
 
 	if hasDelete {
-		return c.client.GetAllDeleteRequestsForUser(ctx, userID)
+		return c.client.GetAllDeleteRequestsForUser(ctx, userID, forQuerytimeFiltering, timeRange)
 	}
 	return nil, nil
 }

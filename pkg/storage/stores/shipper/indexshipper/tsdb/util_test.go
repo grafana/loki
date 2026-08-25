@@ -21,7 +21,7 @@ func BuildIndex(t testing.TB, dir string, cases []LoadableSeries) *TSDBFile {
 	b := NewBuilder(index.FormatV3)
 
 	for _, s := range cases {
-		b.AddSeries(s.Labels, model.Fingerprint(s.Labels.Hash()), s.Chunks)
+		b.AddSeries(s.Labels, model.Fingerprint(labels.StableHash(s.Labels)), s.Chunks)
 	}
 
 	dst, err := b.Build(context.Background(), dir, func(from, through model.Time, checksum uint32) Identifier {
@@ -35,7 +35,7 @@ func BuildIndex(t testing.TB, dir string, cases []LoadableSeries) *TSDBFile {
 	})
 	require.Nil(t, err)
 
-	idx, err := NewShippableTSDBFile(dst)
+	idx, err := NewShippableTSDBFile(dst, index.MmapOptions{})
 	require.Nil(t, err)
 	return idx
 }

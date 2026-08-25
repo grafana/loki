@@ -5,12 +5,14 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 	"testing"
 	"time"
 
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/require"
 
+	"github.com/grafana/loki/v3/pkg/compactor/deletion/deletionproto"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client/local"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/storage"
 )
@@ -52,11 +54,11 @@ func TestAllDeleteRequestsStoreTypes(t *testing.T) {
 			compareRequests(t, append(tc.user1Requests, tc.user2Requests...), deleteRequests)
 
 			// get user specific requests and see if they have expected values
-			user1Requests, err := tc.store.GetAllDeleteRequestsForUser(context.Background(), user1, false)
+			user1Requests, err := tc.store.GetAllDeleteRequestsForUser(context.Background(), user1, false, nil)
 			require.NoError(t, err)
 			compareRequests(t, tc.user1Requests, user1Requests)
 
-			user2Requests, err := tc.store.GetAllDeleteRequestsForUser(context.Background(), user2, false)
+			user2Requests, err := tc.store.GetAllDeleteRequestsForUser(context.Background(), user2, false, nil)
 			require.NoError(t, err)
 			compareRequests(t, tc.user2Requests, user2Requests)
 
@@ -81,12 +83,12 @@ func TestAllDeleteRequestsStoreTypes(t *testing.T) {
 
 			// update some of the delete requests for both the users to processed
 			for i := 0; i < len(tc.user1Requests); i++ {
-				var request DeleteRequest
+				var request deletionproto.DeleteRequest
 				if i%2 != 0 {
-					tc.user1Requests[i].Status = StatusProcessed
+					tc.user1Requests[i].Status = deletionproto.StatusProcessed
 					request = tc.user1Requests[i]
 				} else {
-					tc.user2Requests[i].Status = StatusProcessed
+					tc.user2Requests[i].Status = deletionproto.StatusProcessed
 					request = tc.user2Requests[i]
 				}
 
@@ -94,11 +96,11 @@ func TestAllDeleteRequestsStoreTypes(t *testing.T) {
 			}
 
 			// see if requests in the store have right values
-			user1Requests, err = tc.store.GetAllDeleteRequestsForUser(context.Background(), user1, false)
+			user1Requests, err = tc.store.GetAllDeleteRequestsForUser(context.Background(), user1, false, nil)
 			require.NoError(t, err)
 			compareRequests(t, tc.user1Requests, user1Requests)
 
-			user2Requests, err = tc.store.GetAllDeleteRequestsForUser(context.Background(), user2, false)
+			user2Requests, err = tc.store.GetAllDeleteRequestsForUser(context.Background(), user2, false, nil)
 			require.NoError(t, err)
 			compareRequests(t, tc.user2Requests, user2Requests)
 
@@ -112,15 +114,15 @@ func TestAllDeleteRequestsStoreTypes(t *testing.T) {
 			require.Equal(t, createGenNumber2, updateGenNumber2)
 
 			// delete the requests from the store updated previously
-			var remainingRequests []DeleteRequest
+			var remainingRequests []deletionproto.DeleteRequest
 			for i := 0; i < len(tc.user1Requests); i++ {
-				var request DeleteRequest
+				var request deletionproto.DeleteRequest
 				if i%2 != 0 {
-					tc.user1Requests[i].Status = StatusProcessed
+					tc.user1Requests[i].Status = deletionproto.StatusProcessed
 					request = tc.user1Requests[i]
 					remainingRequests = append(remainingRequests, tc.user2Requests[i])
 				} else {
-					tc.user2Requests[i].Status = StatusProcessed
+					tc.user2Requests[i].Status = deletionproto.StatusProcessed
 					request = tc.user2Requests[i]
 					remainingRequests = append(remainingRequests, tc.user1Requests[i])
 				}
@@ -140,6 +142,47 @@ func TestAllDeleteRequestsStoreTypes(t *testing.T) {
 			deleteGenNumber2, err := tc.store.GetCacheGenerationNumber(context.Background(), user2)
 			require.NoError(t, err)
 			require.NotEqual(t, updateGenNumber2, deleteGenNumber2)
+		})
+	}
+}
+
+func TestUpdateCacheGenerationNumberStoreTypes(t *testing.T) {
+	for _, storeType := range []DeleteRequestsStoreDBType{DeleteRequestsStoreDBTypeBoltDB, DeleteRequestsStoreDBTypeSQLite} {
+		t.Run(string(storeType), func(t *testing.T) {
+			tc := setupStoreType(t, storeType)
+			defer tc.store.Stop()
+
+			// no gen number exists for the user yet
+			before, err := tc.store.GetCacheGenerationNumber(context.Background(), user1)
+			require.NoError(t, err)
+			require.Empty(t, before)
+
+			require.NoError(t, tc.store.UpdateCacheGenerationNumber(context.Background(), user1))
+
+			after, err := tc.store.GetCacheGenerationNumber(context.Background(), user1)
+			require.NoError(t, err)
+			require.NotEmpty(t, after)
+
+			// bumping again should yield a different (greater) gen number
+			time.Sleep(time.Millisecond)
+			require.NoError(t, tc.store.UpdateCacheGenerationNumber(context.Background(), user1))
+
+			bumped, err := tc.store.GetCacheGenerationNumber(context.Background(), user1)
+			require.NoError(t, err)
+			require.NotEqual(t, after, bumped)
+
+			// the gen number is a unix nano timestamp; compare numerically so the
+			// assertion stays correct regardless of the string representation.
+			afterNum, err := strconv.ParseInt(after, 10, 64)
+			require.NoError(t, err)
+			bumpedNum, err := strconv.ParseInt(bumped, 10, 64)
+			require.NoError(t, err)
+			require.Greater(t, bumpedNum, afterNum)
+
+			// it should not affect other users
+			otherUser, err := tc.store.GetCacheGenerationNumber(context.Background(), user2)
+			require.NoError(t, err)
+			require.Empty(t, otherUser)
 		})
 	}
 }
@@ -173,8 +216,19 @@ func TestBatchCreateGetAllStoreTypes(t *testing.T) {
 				tc := setupStoreType(t, storeType)
 				defer tc.store.Stop()
 
-				reqID, err := tc.store.AddDeleteRequest(context.Background(), user1, `{foo="bar"}`, now.Add(-24*time.Hour), now, time.Hour)
+				deletionQuery := `{foo="bar"}`
+				reqID, err := tc.store.AddDeleteRequest(context.Background(), user1, deletionQuery, now.Add(-24*time.Hour), now, time.Hour)
 				require.NoError(t, err)
+
+				// GetAllDeleteRequestsForUser should list consolidated requests and not shards
+				consolidatedRequests, err := tc.store.GetAllDeleteRequestsForUser(context.Background(), user1, false, nil)
+				require.NoError(t, err)
+				require.Len(t, consolidatedRequests, 1)
+				require.Equal(t, consolidatedRequests[0].RequestID, reqID)
+				require.Equal(t, consolidatedRequests[0].StartTime, now.Add(-24*time.Hour))
+				require.Equal(t, consolidatedRequests[0].EndTime, now)
+				require.Equal(t, consolidatedRequests[0].Query, deletionQuery)
+				require.Equal(t, consolidatedRequests[0].Status, deletionproto.StatusReceived)
 
 				savedRequests, err := tc.store.GetUnprocessedShards(context.Background())
 				require.NoError(t, err)
@@ -191,6 +245,17 @@ func TestBatchCreateGetAllStoreTypes(t *testing.T) {
 				req, err := tc.store.GetDeleteRequest(context.Background(), user1, reqID)
 				require.NoError(t, err)
 				require.Equal(t, deleteRequestStatus(1, len(savedRequests)), req.Status)
+
+				// check that we get appropriate status in the consolidated request
+				consolidatedRequests, err = tc.store.GetAllDeleteRequestsForUser(context.Background(), user1, false, nil)
+				require.NoError(t, err)
+				require.Len(t, consolidatedRequests, 1)
+				require.Equal(t, consolidatedRequests[0].RequestID, reqID)
+				require.Equal(t, consolidatedRequests[0].StartTime, now.Add(-24*time.Hour))
+				require.Equal(t, consolidatedRequests[0].EndTime, now)
+				require.Equal(t, consolidatedRequests[0].Query, deletionQuery)
+				require.Equal(t, consolidatedRequests[0].Status, deleteRequestStatus(1, len(savedRequests)))
+
 			})
 
 			t.Run("deletes several delete requests", func(t *testing.T) {
@@ -295,9 +360,9 @@ func TestCopyData(t *testing.T) {
 		require.NoError(t, err)
 
 		// req1 should be processed, req2 should be partially processed and req3 should not have been processed at all
-		require.True(t, req1.Status == StatusProcessed)
-		require.True(t, req2.Status != StatusReceived && req2.Status != StatusProcessed)
-		require.True(t, req3.Status == StatusReceived)
+		require.True(t, req1.Status == deletionproto.StatusProcessed)
+		require.True(t, req2.Status != deletionproto.StatusReceived && req2.Status != deletionproto.StatusProcessed)
+		require.True(t, req3.Status == deletionproto.StatusReceived)
 	})
 
 	t.Run("verify unprocessed shards were copied", func(t *testing.T) {
@@ -431,7 +496,7 @@ func TestNewDeleteRequestsStoreTee(t *testing.T) {
 		reqsFromTee, err := storeTee.GetAllRequests(context.Background())
 		require.NoError(t, err)
 		require.Len(t, reqsFromTee, 1)
-		require.NotEqual(t, StatusReceived, reqsFromTee[0].Status)
+		require.NotEqual(t, deletionproto.StatusReceived, reqsFromTee[0].Status)
 
 		reqsFromPrimaryStore, err := storeTee.primaryStore.GetAllRequests(context.Background())
 		require.NoError(t, err)
@@ -456,15 +521,15 @@ func TestNewDeleteRequestsStoreTee(t *testing.T) {
 
 // resetSequenceNumInRequests resets sequence number in delete requests.
 // Since sequence number is only relevant for boltdb, it makes it easier to compare same requests from sqlite vs boltdb.
-func resetSequenceNumInRequests(reqs []DeleteRequest) {
+func resetSequenceNumInRequests(reqs []deletionproto.DeleteRequest) {
 	for i := range reqs {
 		reqs[i].SequenceNum = 0
 	}
 }
 
 type testContext struct {
-	user1Requests []DeleteRequest
-	user2Requests []DeleteRequest
+	user1Requests []deletionproto.DeleteRequest
+	user2Requests []deletionproto.DeleteRequest
 	store         DeleteRequestsStore
 }
 
@@ -473,19 +538,19 @@ func setupStoreType(t *testing.T, storeType DeleteRequestsStoreDBType) *testCont
 	tc := &testContext{}
 	// build some test requests to add to the store
 	for i := time.Duration(1); i <= 24; i++ {
-		tc.user1Requests = append(tc.user1Requests, DeleteRequest{
+		tc.user1Requests = append(tc.user1Requests, deletionproto.DeleteRequest{
 			UserID:    user1,
 			StartTime: now.Add(-i * time.Hour),
 			EndTime:   now.Add(-i * time.Hour).Add(30 * time.Minute),
 			Query:     fmt.Sprintf(`{foo="%d", user="%s"}`, i, user1),
-			Status:    StatusReceived,
+			Status:    deletionproto.StatusReceived,
 		})
-		tc.user2Requests = append(tc.user2Requests, DeleteRequest{
+		tc.user2Requests = append(tc.user2Requests, deletionproto.DeleteRequest{
 			UserID:    user2,
 			StartTime: now.Add(-i * time.Hour),
 			EndTime:   now.Add(-(i + 1) * time.Hour),
 			Query:     fmt.Sprintf(`{foo="%d", user="%s"}`, i, user2),
-			Status:    StatusReceived,
+			Status:    deletionproto.StatusReceived,
 		})
 	}
 
@@ -514,7 +579,8 @@ func setupStoreType(t *testing.T, storeType DeleteRequestsStoreDBType) *testCont
 }
 
 var (
-	now   = model.Now()
-	user1 = "user1"
-	user2 = "user2"
+	now     = model.Now()
+	user1   = "user1"
+	user2   = "user2"
+	user123 = "user123"
 )

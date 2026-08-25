@@ -4,7 +4,7 @@
 // Package tracetest is a testing helper package for the SDK. User can
 // configure no-op or in-memory exporters to verify different SDK behaviors or
 // custom instrumentation.
-package tracetest // import "go.opentelemetry.io/otel/sdk/trace/tracetest"
+package tracetest
 
 import (
 	"context"
@@ -25,10 +25,10 @@ func NewNoopExporter() *NoopExporter {
 type NoopExporter struct{}
 
 // ExportSpans handles export of spans by dropping them.
-func (nsb *NoopExporter) ExportSpans(context.Context, []trace.ReadOnlySpan) error { return nil }
+func (*NoopExporter) ExportSpans(context.Context, []trace.ReadOnlySpan) error { return nil }
 
 // Shutdown stops the exporter by doing nothing.
-func (nsb *NoopExporter) Shutdown(context.Context) error { return nil }
+func (*NoopExporter) Shutdown(context.Context) error { return nil }
 
 var _ trace.SpanExporter = (*InMemoryExporter)(nil)
 

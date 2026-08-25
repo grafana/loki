@@ -106,7 +106,7 @@ type GrpcMethodListMultiError []error
 
 // Error returns a concatenation of all the error messages it wraps.
 func (m GrpcMethodListMultiError) Error() string {
-	var msgs []string
+	msgs := make([]string, 0, len(m))
 	for _, err := range m {
 		msgs = append(msgs, err.Error())
 	}
@@ -228,7 +228,7 @@ type GrpcMethodList_ServiceMultiError []error
 
 // Error returns a concatenation of all the error messages it wraps.
 func (m GrpcMethodList_ServiceMultiError) Error() string {
-	var msgs []string
+	msgs := make([]string, 0, len(m))
 	for _, err := range m {
 		msgs = append(msgs, err.Error())
 	}

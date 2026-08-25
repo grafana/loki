@@ -37,4 +37,13 @@ const (
 	BytesPrefixSize     = 5
 	StringPrefixSize    = 5
 	ExtensionPrefixSize = 6
+
+	// We cannot determine the exact size of the marshalled bytes,
+	// so we assume 32 bytes
+	BinaryMarshalerSize = BytesPrefixSize + 32
+	BinaryAppenderSize
+	TextMarshalerBinSize
+	TextAppenderBinSize
+	TextMarshalerStringSize = StringPrefixSize + 32
+	TextAppenderStringSize
 )

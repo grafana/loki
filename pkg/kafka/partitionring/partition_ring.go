@@ -12,8 +12,6 @@ import (
 	"github.com/grafana/dskit/ring"
 )
 
-var ingesterIDRegexp = regexp.MustCompile("-([0-9]+)$")
-
 type Config struct {
 	KVStore kv.Config `yaml:"kvstore" doc:"description=The key-value store used to share the hash ring across multiple instances. This option needs be set on ingesters, distributors, queriers, and rulers when running in microservices mode."`
 
@@ -28,6 +26,11 @@ type Config struct {
 
 	// lifecyclerPollingInterval is the lifecycler polling interval. This setting is used to lower it in tests.
 	lifecyclerPollingInterval time.Duration
+
+	// ShuffleShardCacheSize is the size of the cache used for shuffle sharding.
+	// If zero or negative, an unbounded map-based cache is used.
+	// If positive, an LRU cache with the specified size is used.
+	ShuffleShardCacheSize int `yaml:"shuffle_shard_cache_size"`
 }
 
 // RegisterFlags adds the flags required to config this to the given FlagSet
@@ -39,6 +42,7 @@ func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	f.IntVar(&cfg.MinOwnersCount, prefix+"partition-ring.min-partition-owners-count", 1, "Minimum number of owners to wait before a PENDING partition gets switched to ACTIVE.")
 	f.DurationVar(&cfg.MinOwnersDuration, prefix+"partition-ring.min-partition-owners-duration", 10*time.Second, "How long the minimum number of owners are enforced before a PENDING partition gets switched to ACTIVE.")
 	f.DurationVar(&cfg.DeleteInactivePartitionAfter, prefix+"partition-ring.delete-inactive-partition-after", 13*time.Hour, "How long to wait before an INACTIVE partition is eligible for deletion. The partition is deleted only if it has been in INACTIVE state for at least the configured duration and it has no owners registered. A value of 0 disables partitions deletion.")
+	f.IntVar(&cfg.ShuffleShardCacheSize, prefix+"partition-ring.shuffle-shard-cache-size", 0, "Experimental: The size of the cache used for shuffle sharding. If zero or negative, an unbounded cache is used. If positive, an LRU cache with the specified size is used.")
 }
 
 func (cfg *Config) ToLifecyclerConfig(partitionID int32, instanceID string) ring.PartitionInstanceLifecyclerConfig {
@@ -52,22 +56,18 @@ func (cfg *Config) ToLifecyclerConfig(partitionID int32, instanceID string) ring
 	}
 }
 
-// ExtractIngesterPartitionID returns the partition ID owner the the given ingester.
-func ExtractIngesterPartitionID(ingesterID string) (int32, error) {
-	if strings.Contains(ingesterID, "local") || strings.HasSuffix(ingesterID, ".lan") {
+// ExtractPartitionID extracts the partition ID from the string.
+func ExtractPartitionID(s string) (int32, error) {
+	if strings.Contains(s, "local") || strings.HasSuffix(s, ".lan") {
 		return 0, nil
 	}
-
-	match := ingesterIDRegexp.FindStringSubmatch(ingesterID)
+	match := regexp.MustCompile("-([0-9]+)$").FindStringSubmatch(s)
 	if len(match) == 0 {
-		return 0, fmt.Errorf("ingester ID %s doesn't match regular expression %q", ingesterID, ingesterIDRegexp.String())
+		return 0, fmt.Errorf("%s does not contain a partition ID", s)
 	}
-
-	// Parse the ingester sequence number.
-	ingesterSeq, err := strconv.ParseInt(match[1], 10, 32)
+	partitionID, err := strconv.ParseInt(match[1], 10, 32)
 	if err != nil {
-		return 0, fmt.Errorf("no ingester sequence number in ingester ID %s", ingesterID)
+		return 0, fmt.Errorf("%s does not contain a partition ID", s)
 	}
-
-	return int32(ingesterSeq), nil
+	return int32(partitionID), nil
 }

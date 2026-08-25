@@ -19,13 +19,15 @@ import (
 	"fmt"
 	"hash/crc32"
 	"io"
-	"io/ioutil"
+	"log"
 	"net/http"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
-	"cloud.google.com/go/internal/trace"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/metric"
 )
 
 var crc32cTable = crc32.MakeTable(crc32.Castagnoli)
@@ -37,6 +39,7 @@ var crc32cTable = crc32.MakeTable(crc32.Castagnoli)
 // Each field is read-only.
 type ReaderObjectAttrs struct {
 	// Size is the length of the object's content.
+	// Size may be out of date for unfinalized objects.
 	Size int64
 
 	// StartOffset is the byte offset within the object
@@ -92,8 +95,8 @@ type ReaderObjectAttrs struct {
 // when calling [NewClient]. This ensures consistency with other client
 // operations, which all use JSON. JSON will become the default in a future
 // release.
-func (o *ObjectHandle) NewReader(ctx context.Context) (*Reader, error) {
-	return o.NewRangeReader(ctx, 0, -1)
+func (o *ObjectHandle) NewReader(ctx context.Context, opts ...ReaderOption) (*Reader, error) {
+	return o.NewRangeReader(ctx, 0, -1, opts...)
 }
 
 // NewRangeReader reads part of an object, reading at most length bytes
@@ -113,10 +116,11 @@ func (o *ObjectHandle) NewReader(ctx context.Context) (*Reader, error) {
 // when calling [NewClient]. This ensures consistency with other client
 // operations, which all use JSON. JSON will become the default in a future
 // release.
-func (o *ObjectHandle) NewRangeReader(ctx context.Context, offset, length int64) (r *Reader, err error) {
+func (o *ObjectHandle) NewRangeReader(ctx context.Context, offset, length int64, opts ...ReaderOption) (r *Reader, err error) {
 	// This span covers the life of the reader. It is closed via the context
 	// in Reader.Close.
-	ctx = trace.StartSpan(ctx, "cloud.google.com/go/storage.Object.Reader")
+	ctx, _ = startSpanWithBucket(ctx, o.c, o.bucket, "Object.Reader")
+	defer func() { endSpan(ctx, err) }()
 
 	if err := o.validate(); err != nil {
 		return nil, err
@@ -130,7 +134,7 @@ func (o *ObjectHandle) NewRangeReader(ctx context.Context, offset, length int64)
 		}
 	}
 
-	opts := makeStorageOpts(true, o.retry, o.userProject)
+	storageOpts := makeStorageOpts(true, o.retry, o.userProject)
 
 	params := &newRangeReaderParams{
 		bucket:         o.bucket,
@@ -143,18 +147,113 @@ func (o *ObjectHandle) NewRangeReader(ctx context.Context, offset, length int64)
 		readCompressed: o.readCompressed,
 		handle:         &o.readHandle,
 	}
+	for _, opt := range opts {
+		opt.apply(params)
+	}
 
-	r, err = o.c.tc.NewRangeReader(ctx, params, opts...)
+	r, err = o.c.tc.NewRangeReader(ctx, params, storageOpts...)
 
 	// Pass the context so that the span can be closed in Reader.Close, or close the
 	// span now if there is an error.
 	if err == nil {
 		r.ctx = ctx
-	} else {
-		trace.EndSpan(ctx, err)
 	}
 
 	return r, err
+}
+
+// ReaderOption is an option for NewReader or NewRangeReader.
+type ReaderOption interface {
+	apply(*newRangeReaderParams)
+}
+
+// MRDOption is an option for MultiRangeDownloader.
+type MRDOption interface {
+	apply(*newMultiRangeDownloaderParams)
+}
+
+type minConnections int
+
+func (c minConnections) apply(params *newMultiRangeDownloaderParams) {
+	params.minConnections = int(c)
+}
+
+// WithMinConnections returns an MRDOption which sets minimum connections
+// on the MRD to c. The call to NewMultiRangeDownloader will create one connection
+// and return with an MRD. The remaining connections will be created in the background
+// to avoid open latency.
+func WithMinConnections(c int) MRDOption {
+	return minConnections(c)
+}
+
+type maxConnections int
+
+func (c maxConnections) apply(params *newMultiRangeDownloaderParams) {
+	params.maxConnections = int(c)
+}
+
+// WithMaxConnections returns an MRDOption which sets maximum connections
+// on the MRD to c. The number of connections will not exceed this number.
+// The connections will range between minimum connections and maximum connections
+// based on the load.
+func WithMaxConnections(c int) MRDOption {
+	return maxConnections(c)
+}
+
+type targetPendingRanges int
+
+func (c targetPendingRanges) apply(params *newMultiRangeDownloaderParams) {
+	params.targetPendingRanges = int(c)
+}
+
+// WithTargetPendingRanges returns an MRDOption which sets target pending
+// ranges on the MRD to c. If number of connections in the MRD is less than
+// maximum connections, MRD will trigger creation of a new connection when
+// pending ranges on all existing streams exceed c.
+//
+// Note: A new connection can be triggered by either the pending byte threshold
+// (WithTargetPendingBytes) or the pending range threshold (WithTargetPendingRanges).
+func WithTargetPendingRanges(c int) MRDOption {
+	return targetPendingRanges(c)
+}
+
+type targetPendingBytes int
+
+func (c targetPendingBytes) apply(params *newMultiRangeDownloaderParams) {
+	params.targetPendingBytes = int(c)
+}
+
+// WithTargetPendingBytes returns an MRDOption that sets target pending
+// bytes on the MRD to c. If number of connections in the MRD is less than
+// maximum connections, MRD will trigger creation of a new connection when
+// outstanding bytes on all existing streams exceed c.
+//
+// Note: A new connection can be triggered by either the pending byte threshold
+// (WithTargetPendingBytes) or the pending range threshold (WithTargetPendingRanges).
+func WithTargetPendingBytes(c int) MRDOption {
+	return targetPendingBytes(c)
+}
+
+type disableMRDReadChecksum struct{}
+
+func (c disableMRDReadChecksum) apply(params *newMultiRangeDownloaderParams) {
+	params.disableMRDReadChecksum = true
+}
+
+// WithDisableMRDReadChecksum returns an MRDOption that disables read checksum validation for the MRD range downloads.
+func WithDisableMRDReadChecksum() MRDOption {
+	return disableMRDReadChecksum{}
+}
+
+type disableReaderChecksum struct{}
+
+func (c disableReaderChecksum) apply(params *newRangeReaderParams) {
+	params.disableCRCCheck = true
+}
+
+// WithDisableReaderChecksum returns a ReaderOption that disables read checksum validation.
+func WithDisableReaderChecksum() ReaderOption {
+	return disableReaderChecksum{}
 }
 
 // NewMultiRangeDownloader creates a multi-range reader for an object.
@@ -164,10 +263,19 @@ func (o *ObjectHandle) NewRangeReader(ctx context.Context, offset, length int64)
 // preview; please contact your account manager if interested. The option
 // [experimental.WithGRPCBidiReads] or [experimental.WithZonalBucketAPIs]
 // must be selected in order to use this API.
-func (o *ObjectHandle) NewMultiRangeDownloader(ctx context.Context) (mrd *MultiRangeDownloader, err error) {
-	// This span covers the life of the reader. It is closed via the context
-	// in Reader.Close.
-	ctx = trace.StartSpan(ctx, "cloud.google.com/go/storage.Object.MultiRangeDownloader")
+
+// NewMultiRangeDownloader creates a multi-range reader for an object.
+// Must be called on a gRPC client created using [NewGRPCClient].
+func (o *ObjectHandle) NewMultiRangeDownloader(ctx context.Context, opts ...MRDOption) (mrd *MultiRangeDownloader, err error) {
+	// This span covers the life of the MRD. It is closed via the context
+	// in MultiRangeDownloader.Close.
+	var spanCtx context.Context
+	spanCtx, _ = startSpanWithBucket(ctx, o.c, o.bucket, "Object.MultiRangeDownloader")
+	defer func() {
+		if err != nil {
+			endSpan(spanCtx, err)
+		}
+	}()
 
 	if err := o.validate(); err != nil {
 		return nil, err
@@ -178,7 +286,7 @@ func (o *ObjectHandle) NewMultiRangeDownloader(ctx context.Context) (mrd *MultiR
 		}
 	}
 
-	opts := makeStorageOpts(true, o.retry, o.userProject)
+	storageOpts := makeStorageOpts(true, o.retry, o.userProject)
 
 	params := &newMultiRangeDownloaderParams{
 		bucket:        o.bucket,
@@ -188,18 +296,15 @@ func (o *ObjectHandle) NewMultiRangeDownloader(ctx context.Context) (mrd *MultiR
 		object:        o.object,
 		handle:        &o.readHandle,
 	}
-
-	r, err := o.c.tc.NewMultiRangeDownloader(ctx, params, opts...)
-
-	// Pass the context so that the span can be closed in MultiRangeDownloader.Close(), or close the
-	// span now if there is an error.
-	if err == nil {
-		r.ctx = ctx
-	} else {
-		trace.EndSpan(ctx, err)
+	// Process configured options
+	for _, opt := range opts {
+		opt.apply(params)
 	}
-
-	return r, err
+	if params.minConnections > 1 || params.maxConnections > 1 {
+		spanCtx = addFeatureAttributes(spanCtx, featureMultistreamInMRD)
+	}
+	// This call will return the *MultiRangeDownloader with the .impl field set.
+	return o.c.tc.NewMultiRangeDownloader(spanCtx, params, storageOpts...)
 }
 
 // decompressiveTranscoding returns true if the request was served decompressed
@@ -260,7 +365,7 @@ func setConditionsHeaders(headers http.Header, conds *Conditions) error {
 	return nil
 }
 
-var emptyBody = ioutil.NopCloser(strings.NewReader(""))
+var emptyBody = io.NopCloser(strings.NewReader(""))
 
 // Reader reads a Cloud Storage object.
 // It implements io.Reader.
@@ -269,30 +374,61 @@ var emptyBody = ioutil.NopCloser(strings.NewReader(""))
 // the stored CRC, returning an error from Read if there is a mismatch. This integrity check
 // is skipped if transcoding occurs. See https://cloud.google.com/storage/docs/transcoding.
 type Reader struct {
+	// remain must be the first field in the struct to guarantee 64-bit
+	// alignment on 32-bit architectures for atomic operations.
+	remain    int64
+	bytesRead int64 // Cumulative bytes read for response size metric.
+
 	Attrs          ReaderObjectAttrs
 	objectMetadata *map[string]string
 
-	seen, remain, size int64
-	checkCRC           bool // Did we check the CRC? This is now only used by tests.
+	seen, size int64
+	checkCRC   bool // Did we check the CRC? This is now only used by tests.
 
-	reader io.ReadCloser
-	ctx    context.Context
-	mu     sync.Mutex
-	handle *ReadHandle
+	reader      io.ReadCloser
+	ctx         context.Context
+	mu          sync.Mutex
+	err         error // Persistent error encountered during Read or WriteTo.
+	handle      *ReadHandle
+	unfinalized bool
+
+	bucket string
+	object string
+
+	metricsState *metricsState
 }
 
 // Close closes the Reader. It must be called when done reading.
 func (r *Reader) Close() error {
+	if !r.unfinalized && !r.Attrs.Decompressed {
+		if rem := atomic.LoadInt64(&r.remain); rem < 0 {
+			log.Printf("storage: received %d more bytes than requested from GCS for bucket %q, object %q", -rem, r.bucket, r.object)
+		}
+	}
 	err := r.reader.Close()
-	trace.EndSpan(r.ctx, err)
+	r.mu.Lock()
+	if r.err != nil {
+		err = r.err
+	}
+	r.mu.Unlock()
+
+	if r.metricsState != nil {
+		if r.metricsState.metrics != nil {
+			if total := atomic.SwapInt64(&r.bytesRead, 0); total > 0 {
+				r.metricsState.metrics.responseBodySize.Record(r.ctx, total, metric.WithAttributes(attribute.String("rpc.method", "ReadObject")))
+			}
+		}
+		if r.metricsState.record != nil {
+			r.metricsState.record(err)
+		}
+	}
+	endSpan(r.ctx, err)
 	return err
 }
 
 func (r *Reader) Read(p []byte) (int, error) {
 	n, err := r.reader.Read(p)
-	if r.remain != -1 {
-		r.remain -= int64(n)
-	}
+	r.recordRead(int64(n), err)
 	return n, err
 }
 
@@ -302,15 +438,30 @@ func (r *Reader) WriteTo(w io.Writer) (int64, error) {
 	// This implicitly calls r.reader.WriteTo for gRPC only. JSON and XML don't have an
 	// implementation of WriteTo.
 	n, err := io.Copy(w, r.reader)
-	if r.remain != -1 {
-		r.remain -= int64(n)
-	}
+	r.recordRead(n, err)
 	return n, err
+}
+
+// recordRead updates remaining byte counts and metrics after a read operation,
+// and saves any persistent error encountered during Read or WriteTo.
+func (r *Reader) recordRead(n int64, err error) {
+	if !r.unfinalized && !r.Attrs.Decompressed {
+		atomic.AddInt64(&r.remain, -n)
+	}
+	if n > 0 {
+		atomic.AddInt64(&r.bytesRead, n)
+	}
+	if err != nil && err != io.EOF {
+		r.mu.Lock()
+		r.err = err
+		r.mu.Unlock()
+	}
 }
 
 // Size returns the size of the object in bytes.
 // The returned value is always the same and is not affected by
 // calls to Read or Close.
+// Size may be out of date for a Reader to an unfinalized object.
 //
 // Deprecated: use Reader.Attrs.Size.
 func (r *Reader) Size() int64 {
@@ -318,8 +469,16 @@ func (r *Reader) Size() int64 {
 }
 
 // Remain returns the number of bytes left to read, or -1 if unknown.
+// Unfinalized objects will return -1.
 func (r *Reader) Remain() int64 {
-	return r.remain
+	if r.unfinalized || r.Attrs.Decompressed {
+		return -1
+	}
+	rem := atomic.LoadInt64(&r.remain)
+	if rem < 0 {
+		return 0
+	}
+	return rem
 }
 
 // ContentType returns the content type of the object.
@@ -385,17 +544,9 @@ func (r *Reader) ReadHandle() ReadHandle {
 //
 // This API is currently in preview and is not yet available for general use.
 type MultiRangeDownloader struct {
-	Attrs  ReaderObjectAttrs
-	reader multiRangeDownloader
-	ctx    context.Context
-}
-
-type multiRangeDownloader interface {
-	add(output io.Writer, offset, limit int64, callback func(int64, int64, error))
-	wait()
-	close() error
-	getHandle() []byte
-	error() error
+	// Attrs is populated when NewMultiRangeDownloader returns.
+	Attrs ReaderObjectAttrs
+	impl  internalMultiRangeDownloader
 }
 
 // Add adds a new range to MultiRangeDownloader.
@@ -405,8 +556,11 @@ type multiRangeDownloader interface {
 //
 // A negative offset value will be interpreted as the number of bytes from the
 // end of the object to be returned. Requesting a negative offset with magnitude
-// larger than the size of the object will return the entire object. An offset
-// larger than the size of the object will result in an OutOfRange error.
+// larger than the size of the object will return the entire object.
+//
+// An offset larger than the size of the object returns an OutOfRange error via
+// the callback and enters a permanent error state. All subsequent calls to Close
+// will return this same error.
 //
 // A limit of zero indicates that there is no limit, and a negative limit will
 // cause an error.
@@ -419,18 +573,26 @@ type multiRangeDownloader interface {
 // of the read. Note that the length of the data read may be less than the
 // requested length if the end of the object is reached.
 func (mrd *MultiRangeDownloader) Add(output io.Writer, offset, length int64, callback func(int64, int64, error)) {
-	mrd.reader.add(output, offset, length, callback)
+	mrd.impl.add(output, offset, length, callback)
 }
 
 // Close the MultiRangeDownloader. It must be called when done reading.
 // Adding new ranges after this has been called will cause an error.
 //
-// This will immediately close the stream and can result in a
+// This will immediately close the streams and can result in a
 // "stream closed early" error if a response for a range is still not processed.
 // Call [MultiRangeDownloader.Wait] to avoid this error.
+//
+// If the downloader is in a permanent error state, this will return an error.
+//
+// This must not be called from the callback sent into Add command otherwise
+// it could lead to a deadlock.
 func (mrd *MultiRangeDownloader) Close() error {
-	err := mrd.reader.close()
-	trace.EndSpan(mrd.ctx, err)
+	err := mrd.impl.close(nil)
+	if state := metricsStateFromContext(mrd.impl.getSpanCtx()); state != nil && state.record != nil {
+		state.record(err)
+	}
+	endSpan(mrd.impl.getSpanCtx(), err)
 	return err
 }
 
@@ -438,18 +600,18 @@ func (mrd *MultiRangeDownloader) Close() error {
 // Adding new ranges after this has been called will cause an error.
 // Wait will wait for all callbacks to finish.
 func (mrd *MultiRangeDownloader) Wait() {
-	mrd.reader.wait()
+	mrd.impl.wait()
 }
 
 // GetHandle returns the read handle. This can be used to further speed up the
 // follow up read if the same object is read through a different stream.
 func (mrd *MultiRangeDownloader) GetHandle() []byte {
-	return mrd.reader.getHandle()
+	return mrd.impl.getHandle() // TODO: Consider plumbing context from caller
 }
 
 // Error returns an error if the MultiRangeDownloader is in a permanent failure
 // state. It returns a nil error if the MultiRangeDownloader is open and can be
 // used.
 func (mrd *MultiRangeDownloader) Error() error {
-	return mrd.reader.error()
+	return mrd.impl.getPermanentError()
 }

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"math"
+	"os"
 	"path"
 	"path/filepath"
 	"strings"
@@ -17,8 +18,10 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
 
+	"github.com/grafana/loki/v3/pkg/chunkenc"
 	"github.com/grafana/loki/v3/pkg/compactor"
 	"github.com/grafana/loki/v3/pkg/compactor/retention"
+	"github.com/grafana/loki/v3/pkg/compression"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/storage/chunk"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client"
@@ -27,6 +30,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/storage/config"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/storage"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/index"
+	lokiutil "github.com/grafana/loki/v3/pkg/util"
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
 )
 
@@ -84,7 +88,7 @@ func (m *mockIndexSet) GetSourceFile(indexFile storage.IndexFile) (string, error
 	decompress := storage.IsCompressedFile(indexFile.Name)
 	dst := filepath.Join(m.workingDir, indexFile.Name)
 	if decompress {
-		dst = strings.Trim(dst, ".gz")
+		dst = strings.TrimSuffix(dst, ".gz")
 	}
 
 	err := storage.DownloadFileFromStorage(dst, storage.IsCompressedFile(indexFile.Name),
@@ -188,7 +192,7 @@ func buildStream(lbls labels.Labels, chunks index.ChunkMetas, userLabel string) 
 	}
 	return stream{
 		labels: lbls,
-		fp:     model.Fingerprint(lbls.Hash()),
+		fp:     model.Fingerprint(labels.StableHash(lbls)),
 		chunks: chunks,
 	}
 }
@@ -211,6 +215,26 @@ func buildChunkMetas(from, to int64, span ...int64) index.ChunkMetas {
 	}
 
 	return chunkMetas
+}
+
+func withIngestedAt(chunkMetas index.ChunkMetas, ingestedAt int64) index.ChunkMetas {
+	out := make(index.ChunkMetas, len(chunkMetas))
+	copy(out, chunkMetas)
+
+	for i := range out {
+		out[i].IngestedAt = ingestedAt
+	}
+
+	return out
+}
+
+type recordingIndexWriter struct {
+	metas index.ChunkMetas
+}
+
+func (w *recordingIndexWriter) Append(_ string, _ labels.Labels, _ uint64, chks index.ChunkMetas) error {
+	w.metas = append(w.metas, chks...)
+	return nil
 }
 
 func buildUserID(i int) string {
@@ -630,9 +654,10 @@ func chunkMetasToRetentionChunk(schemaCfg config.SchemaConfig, userID string, lb
 	chunkEntries := make([]retention.Chunk, 0, len(chunkMetas))
 	for _, chunkMeta := range chunkMetas {
 		chunkEntries = append(chunkEntries, retention.Chunk{
-			ChunkID: schemaCfg.ExternalKey(chunkMetaToChunkRef(userID, chunkMeta, lbls)),
-			From:    chunkMeta.From(),
-			Through: chunkMeta.Through(),
+			ChunkID:    schemaCfg.ExternalKey(chunkMetaToChunkRef(userID, chunkMeta, lbls)),
+			From:       chunkMeta.From(),
+			Through:    chunkMeta.Through(),
+			IngestedAt: model.Time(chunkMeta.IngestedAt),
 		})
 	}
 
@@ -641,7 +666,7 @@ func chunkMetasToRetentionChunk(schemaCfg config.SchemaConfig, userID string, lb
 
 func chunkMetaToChunkRef(userID string, chunkMeta index.ChunkMeta, lbls labels.Labels) logproto.ChunkRef {
 	return logproto.ChunkRef{
-		Fingerprint: lbls.Hash(),
+		Fingerprint: labels.StableHash(lbls),
 		UserID:      userID,
 		From:        chunkMeta.From(),
 		Through:     chunkMeta.Through(),
@@ -734,7 +759,7 @@ func TestCompactedIndex(t *testing.T) {
 		"__name__ label should get dropped while indexing chunks": {
 			addChunks: []chunk.Chunk{
 				{
-					Metric:   labels.NewBuilder(testCtx.lbls1).Set(labels.MetricName, "log").Labels(),
+					Metric:   labels.NewBuilder(testCtx.lbls1).Set(model.MetricNameLabel, "log").Labels(),
 					ChunkRef: chunkMetaToChunkRef(testCtx.userID, buildChunkMetas(testCtx.shiftTableStart(11), testCtx.shiftTableStart(11))[0], testCtx.lbls1),
 					Data:     dummyChunkData{},
 				},
@@ -837,20 +862,50 @@ func TestCompactedIndex(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			compactedIndex := testCtx.buildCompactedIndex()
 
+			existingChunk := compactedIndex.builder.streams[testCtx.lbls1.String()].chunks[0]
+
+			// trying to remove a chunk for inexistent stream should return false for chunk existence
+			inexistentStream := testCtx.lbls1.MatchLabels(false, "a")
+			require.NotEqual(t, testCtx.lbls1.String(), inexistentStream.String())
+
+			chunkExisted, err := compactedIndex.RemoveChunk(
+				existingChunk.From(),
+				existingChunk.Through(),
+				[]byte(testCtx.userID),
+				inexistentStream,
+				testCtx.schemaCfg.ExternalKey(chunkMetaToChunkRef(testCtx.userID, existingChunk, testCtx.lbls1)),
+			)
+			require.NoError(t, err)
+			require.False(t, chunkExisted)
+
+			// trying to remove an inexistent chunk from an existing stream should return false for chunk existence
+			inexistentChunk := existingChunk
+			inexistentChunk.Checksum++
+			chunkExisted, err = compactedIndex.RemoveChunk(
+				inexistentChunk.From(),
+				inexistentChunk.Through(),
+				[]byte(testCtx.userID),
+				testCtx.lbls1,
+				testCtx.schemaCfg.ExternalKey(chunkMetaToChunkRef(testCtx.userID, inexistentChunk, testCtx.lbls1)),
+			)
+			require.NoError(t, err)
+			require.False(t, chunkExisted)
+
 			foundChunkEntries := map[string][]retention.Chunk{}
-			err := compactedIndex.ForEachSeries(context.Background(), func(series retention.Series) error {
+			err = compactedIndex.ForEachSeries(context.Background(), func(series retention.Series) error {
 				seriesIDStr := string(series.SeriesID())
 				foundChunkEntries[seriesIDStr] = append(foundChunkEntries[seriesIDStr], series.Chunks()...)
 				if chks, ok := tc.deleteChunks[string(series.SeriesID())]; ok {
 					for _, chk := range chks {
-						require.NoError(t, compactedIndex.RemoveChunk(chk.From, chk.Through, series.UserID(), series.Labels(), chk.ChunkID))
+						chunkExisted, err := compactedIndex.RemoveChunk(chk.From, chk.Through, series.UserID(), series.Labels(), chk.ChunkID)
+						require.NoError(t, err)
+						require.True(t, chunkExisted)
 					}
 				}
 
 				return nil
 			})
 			require.NoError(t, err)
-
 			require.Equal(t, testCtx.expectedChunkEntries, foundChunkEntries)
 
 			for _, lbls := range tc.deleteSeries {
@@ -858,7 +913,8 @@ func TestCompactedIndex(t *testing.T) {
 			}
 
 			for _, chk := range tc.addChunks {
-				_, err := compactedIndex.IndexChunk(chk)
+				approxKB := math.Round(float64(chk.Data.UncompressedSize()) / float64(1<<10))
+				_, err := compactedIndex.IndexChunk(chk.ChunkRef, chk.Metric, chk.IngestedAt, uint32(approxKB), uint32(chk.Data.Entries()))
 				require.NoError(t, err)
 			}
 
@@ -894,6 +950,115 @@ func TestIteratorContextCancelation(t *testing.T) {
 	})
 
 	require.ErrorIs(t, err, context.Canceled)
+}
+
+// TestCompactedIndexForEachSeriesPropagatesIngestedAt proves the passive
+// IngestedAt metadata read from a FormatV4 builder survives the in-memory
+// compaction read path. FormatV3 builders carry zero IngestedAt.
+func TestCompactedIndexForEachSeriesPropagatesIngestedAt(t *testing.T) {
+	for _, tc := range []struct {
+		name        string
+		indexFormat int
+		chunkMetas  index.ChunkMetas
+	}{
+		{
+			name:        "v3 leaves ingested at zero",
+			indexFormat: index.FormatV3,
+			chunkMetas:  buildChunkMetas(0, 0),
+		},
+		{
+			name:        "v4 propagates ingested at",
+			indexFormat: index.FormatV4,
+			chunkMetas:  withIngestedAt(buildChunkMetas(0, 0), 1234),
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			// Schema stays v13 (FormatV3) in Phase 1; the FormatV4 builder is
+			// driven directly via the index constant, not schema mapping.
+			periodConfig := config.PeriodConfig{
+				IndexTables: config.IndexPeriodicTableConfig{
+					PeriodicTableConfig: config.PeriodicTableConfig{Period: config.ObjectStorageIndexRequiredPeriod},
+				},
+				Schema: "v13",
+			}
+
+			builder := NewBuilder(tc.indexFormat)
+			lbls := mustParseLabels(`{foo="bar"}`)
+			stream := buildStream(lbls, tc.chunkMetas, "")
+			builder.AddSeries(stream.labels, stream.fp, stream.chunks)
+			builder.FinalizeChunks()
+
+			indexBuckets := IndexBuckets(model.Now(), model.Now(), []config.TableRange{periodConfig.GetIndexTableNumberRange(config.DayTime{Time: model.Now()})})
+			compactedIndex := newCompactedIndex(context.Background(), indexBuckets[0].Prefix, buildUserID(0), t.TempDir(), periodConfig, builder)
+
+			var got []retention.Chunk
+			err := compactedIndex.ForEachSeries(context.Background(), func(series retention.Series) error {
+				got = append(got, series.Chunks()...)
+				return nil
+			})
+			require.NoError(t, err)
+			require.Equal(t, chunkMetasToRetentionChunk(config.SchemaConfig{Configs: []config.PeriodConfig{periodConfig}}, buildUserID(0), lbls, tc.chunkMetas), got)
+		})
+	}
+}
+
+// TestFormatV4IndexReadThroughStoreAndCompactor proves a chunk's IngestedAt
+// survives the store writer, a FormatV4 index build, and the compacted-index
+// read path. The FormatV4 encoder is exercised directly (no schema v14 mapping
+// exists in Phase 1).
+func TestFormatV4IndexReadThroughStoreAndCompactor(t *testing.T) {
+	lbls := mustParseLabels(`{foo="bar"}`)
+	metric := labels.NewBuilder(lbls).Set(model.MetricNameLabel, "logs").Labels()
+	now := time.Now()
+	memChunk := chunkenc.NewMemChunk(chunkenc.ChunkFormatV4, compression.GZIP, chunkenc.UnorderedWithStructuredMetadataHeadBlockFmt, 256*1024, 1500*1024)
+	dup, err := memChunk.Append(&logproto.Entry{
+		Timestamp: now,
+		Line:      "a line",
+	})
+	require.False(t, dup)
+	require.NoError(t, err)
+	require.NoError(t, memChunk.Close())
+
+	firstTime, lastTime := lokiutil.RoundToMilliseconds(memChunk.Bounds())
+	flushedChunk := chunk.NewChunk("user-0", model.Fingerprint(labels.StableHash(metric)), metric, chunkenc.NewFacade(memChunk, 256*1024, 1500*1024), firstTime, lastTime)
+	flushedChunk.IngestedAt = model.TimeFromUnix(1234)
+
+	writer := &recordingIndexWriter{}
+	store := &store{indexWriter: writer}
+	require.NoError(t, store.IndexChunk(context.Background(), 0, 0, flushedChunk))
+	require.Len(t, writer.metas, 1)
+	require.Equal(t, int64(flushedChunk.IngestedAt), writer.metas[0].IngestedAt)
+
+	periodConfig := config.PeriodConfig{
+		IndexTables: config.IndexPeriodicTableConfig{
+			PeriodicTableConfig: config.PeriodicTableConfig{Period: config.ObjectStorageIndexRequiredPeriod},
+		},
+		Schema: "v13",
+	}
+
+	// Build a FormatV4 index directly so the encoder is exercised without a
+	// schema v14 mapping (which does not exist until Phase 2).
+	builder := NewBuilder(index.FormatV4)
+	builder.AddSeries(lbls, model.Fingerprint(labels.StableHash(lbls)), index.ChunkMetas{})
+	builder.FinalizeChunks()
+
+	indexBuckets := IndexBuckets(model.Now(), model.Now(), []config.TableRange{periodConfig.GetIndexTableNumberRange(config.DayTime{Time: model.Now()})})
+	compactedIndex := newCompactedIndex(context.Background(), indexBuckets[0].Prefix, flushedChunk.UserID, t.TempDir(), periodConfig, builder)
+
+	_, err = compactedIndex.IndexChunk(flushedChunk.ChunkRef, metric, flushedChunk.IngestedAt, writer.metas[0].KB, writer.metas[0].Entries)
+	require.NoError(t, err)
+
+	_, err = compactedIndex.ToIndexFile()
+	require.NoError(t, err)
+
+	var got []retention.Chunk
+	err = compactedIndex.ForEachSeries(context.Background(), func(series retention.Series) error {
+		got = append(got, series.Chunks()...)
+		return nil
+	})
+	require.NoError(t, err)
+	require.Len(t, got, 1)
+	require.Equal(t, flushedChunk.IngestedAt, got[0].IngestedAt)
 }
 
 type testContext struct {
@@ -965,4 +1130,136 @@ func (d dummyChunkData) UncompressedSize() int {
 
 func (d dummyChunkData) Entries() int {
 	return 1
+}
+
+// TestSetupBuilder_ManyFiles verifies that setupBuilder can handle processing
+// many files without running into resource exhaustion issues.
+func TestSetupBuilder_ManyFiles(t *testing.T) {
+	now := model.Now()
+	periodConfig := config.PeriodConfig{
+		IndexTables: config.IndexPeriodicTableConfig{
+			PeriodicTableConfig: config.PeriodicTableConfig{Period: config.ObjectStorageIndexRequiredPeriod}},
+		Schema: "v12",
+	}
+	indexBkts := IndexBuckets(now, now, []config.TableRange{periodConfig.GetIndexTableNumberRange(config.DayTime{Time: now})})
+	tableName := indexBkts[0]
+
+	tempDir := t.TempDir()
+	objectStoragePath := filepath.Join(tempDir, "objects")
+	tablePathInStorage := filepath.Join(objectStoragePath, tableName.Prefix)
+	tableWorkingDirectory := filepath.Join(tempDir, "working-dir", tableName.Prefix)
+
+	require.NoError(t, util.EnsureDirectory(objectStoragePath))
+	require.NoError(t, util.EnsureDirectory(tablePathInStorage))
+	require.NoError(t, util.EnsureDirectory(tableWorkingDirectory))
+
+	// Create a large number of files
+	numFiles := 100
+	indexFormat, err := periodConfig.TSDBFormat()
+	require.NoError(t, err)
+
+	// Create per-tenant index files in the user's directory
+	userTablePath := filepath.Join(tablePathInStorage, "user1")
+	require.NoError(t, util.EnsureDirectory(userTablePath))
+
+	lbls := mustParseLabels(`{foo="bar"}`)
+	for i := 0; i < numFiles; i++ {
+		streams := []stream{
+			buildStream(lbls, buildChunkMetas(int64(i*1000), int64(i*1000+100)), ""),
+		}
+		setupPerTenantIndex(t, indexFormat, streams, userTablePath, time.Unix(int64(i), 0))
+	}
+
+	objectClient, err := local.NewFSObjectClient(local.FSConfig{Directory: objectStoragePath})
+	require.NoError(t, err)
+
+	idxSet, err := newMockIndexSet("user1", tableName.Prefix, filepath.Join(tableWorkingDirectory, "user1"), objectClient)
+	require.NoError(t, err)
+
+	// This should complete without errors even with many files
+	// because files are closed immediately after processing
+	ctx := context.Background()
+	builder, err := setupBuilder(ctx, indexFormat, "user1", idxSet, []Index{})
+	require.NoError(t, err)
+	require.NotNil(t, builder)
+
+	// Verify builder has the expected data
+	builder.FinalizeChunks()
+	require.Greater(t, len(builder.streams), 0)
+}
+
+func TestCompactTable_ClosesFilesOnError(t *testing.T) {
+	now := model.Now()
+	periodConfig := config.PeriodConfig{
+		IndexTables: config.IndexPeriodicTableConfig{
+			PeriodicTableConfig: config.PeriodicTableConfig{Period: config.ObjectStorageIndexRequiredPeriod}},
+		Schema: "v12",
+	}
+	indexBkts := IndexBuckets(now, now, []config.TableRange{periodConfig.GetIndexTableNumberRange(config.DayTime{Time: now})})
+	tableName := indexBkts[0]
+	lbls := mustParseLabels(`{foo="bar", a="b"}`)
+
+	tempDir := t.TempDir()
+	objectStoragePath := filepath.Join(tempDir, objectsStorageDirName)
+	tablePathInStorage := filepath.Join(objectStoragePath, tableName.Prefix)
+	tableWorkingDirectory := filepath.Join(tempDir, workingDirName, tableName.Prefix)
+
+	require.NoError(t, util.EnsureDirectory(objectStoragePath))
+	require.NoError(t, util.EnsureDirectory(tablePathInStorage))
+	require.NoError(t, util.EnsureDirectory(tableWorkingDirectory))
+
+	indexFormat, err := periodConfig.TSDBFormat()
+	require.NoError(t, err)
+
+	// Create several valid multi-tenant index files.
+	for i := 0; i < 5; i++ {
+		userStreams := map[string][]stream{
+			"user_0": {buildStream(lbls, buildChunkMetas(int64(i*10), int64(i*10+5)), "")},
+			"user_1": {buildStream(lbls, buildChunkMetas(int64(i*10), int64(i*10+5)), "")},
+		}
+		setupMultiTenantIndex(t, indexFormat, userStreams, tablePathInStorage, time.Unix(int64(i), 0))
+	}
+
+	// Create a corrupt file with a valid multi-tenant TSDB filename.
+	// It will be downloaded successfully but OpenShippableTSDB will fail
+	// because the content is not a valid TSDB index.
+	corruptFilePath := filepath.Join(tablePathInStorage, "100-corrupt-node.tsdb")
+	require.NoError(t, os.WriteFile(corruptFilePath, []byte("invalid tsdb data"), 0o644))
+
+	objectClient, err := local.NewFSObjectClient(local.FSConfig{Directory: objectStoragePath})
+	require.NoError(t, err)
+
+	commonIndexSet, err := newMockIndexSet("", tableName.Prefix, tableWorkingDirectory, objectClient)
+	require.NoError(t, err)
+	require.Len(t, commonIndexSet.ListSourceFiles(), 6)
+
+	tc := newTableCompactor(
+		context.Background(),
+		commonIndexSet,
+		map[string]compactor.IndexSet{},
+		func(userID string) (compactor.IndexSet, error) {
+			return newMockIndexSet(userID, tableName.Prefix,
+				filepath.Join(tableWorkingDirectory, userID), objectClient)
+		},
+		periodConfig,
+	)
+
+	// CompactTable should return an error due to the corrupt file.
+	err = tc.CompactTable()
+	require.Error(t, err)
+
+	// Verify that all downloaded temp files in the working directory are cleaned up.
+	// Before the fix, the defer block was not registered on the error path,
+	// leaving downloaded files and open file descriptors behind.
+	entries, readErr := os.ReadDir(tableWorkingDirectory)
+	require.NoError(t, readErr)
+
+	var remainingTSDB []string
+	for _, e := range entries {
+		if !e.IsDir() && strings.HasSuffix(e.Name(), ".tsdb") {
+			remainingTSDB = append(remainingTSDB, e.Name())
+		}
+	}
+	require.Empty(t, remainingTSDB,
+		"expected all downloaded TSDB files to be cleaned up after error, but found: %v", remainingTSDB)
 }

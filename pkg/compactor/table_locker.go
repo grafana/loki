@@ -50,3 +50,11 @@ func (t *tableLocker) unlockTable(tableName string) {
 	}
 	delete(t.lockedTables, tableName)
 }
+
+func (t *tableLocker) isLocked(tableName string) bool {
+	t.lockedTablesMtx.Lock()
+	defer t.lockedTablesMtx.Unlock()
+
+	_, ok := t.lockedTables[tableName]
+	return ok
+}

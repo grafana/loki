@@ -1,0 +1,11 @@
+.vscode
+*.out
+*.sw?
+*.test
+
+# Claude Code session files
+.claude/
+CLAUDE.md
+
+# Test databases that shouldn't be committed
+*.mmdb

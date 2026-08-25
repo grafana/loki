@@ -19,6 +19,7 @@ package minio
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"io"
 	"mime/multipart"
@@ -27,7 +28,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/minio/minio-go/v7/internal/json"
 	"github.com/minio/minio-go/v7/pkg/encrypt"
 )
 
@@ -69,6 +69,8 @@ type PutObjectFanOutResponse struct {
 // stream multiple objects are written, defined via a list of PutObjectFanOutRequests. Each entry
 // in PutObjectFanOutRequest carries an object keyname and its relevant metadata if any. `Key` is
 // mandatory, rest of the other options in PutObjectFanOutRequest are optional.
+//
+// Deprecated: Use PutObject instead.
 func (c *Client) PutObjectFanOut(ctx context.Context, bucket string, fanOutData io.Reader, fanOutReq PutObjectFanOutRequest) ([]PutObjectFanOutResponse, error) {
 	if len(fanOutReq.Entries) == 0 {
 		return nil, errInvalidArgument("fan out requests cannot be empty")

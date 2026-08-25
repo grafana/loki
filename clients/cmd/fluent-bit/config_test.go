@@ -12,7 +12,7 @@ import (
 	"github.com/grafana/dskit/log"
 	"github.com/prometheus/common/model"
 
-	"github.com/grafana/loki/v3/clients/pkg/promtail/client"
+	"github.com/grafana/loki/v3/clients/pkg/util"
 
 	lokiflag "github.com/grafana/loki/v3/pkg/util/flagext"
 )
@@ -37,7 +37,7 @@ func Test_parseConfig(t *testing.T) {
 			map[string]string{},
 			&config{
 				lineFormat: jsonFormat,
-				clientConfig: client.Config{
+				clientConfig: util.Config{
 					URL:            mustParseURL("http://localhost:3100/loki/api/v1/push"),
 					BatchSize:      defaultClientCfg.BatchSize,
 					BatchWait:      defaultClientCfg.BatchWait,
@@ -68,7 +68,7 @@ func Test_parseConfig(t *testing.T) {
 			},
 			&config{
 				lineFormat: kvPairFormat,
-				clientConfig: client.Config{
+				clientConfig: util.Config{
 					URL:            mustParseURL("http://somewhere.com:3100/loki/api/v1/push"),
 					TenantID:       "my-tenant-id",
 					BatchSize:      100,
@@ -102,7 +102,7 @@ func Test_parseConfig(t *testing.T) {
 			},
 			&config{
 				lineFormat: kvPairFormat,
-				clientConfig: client.Config{
+				clientConfig: util.Config{
 					URL:            mustParseURL("http://somewhere.com:3100/loki/api/v1/push"),
 					TenantID:       "", // empty as not set in fluent-bit plugin config map
 					BatchSize:      100,

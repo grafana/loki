@@ -16,7 +16,11 @@ loki:
   querier:
     # Default is 4, if you have enough memory and CPU you can increase, reduce if OOMing
     max_concurrent: 4
-
+  storage:
+    bucketNames:
+      chunks: chunks
+      ruler: ruler
+      admin: admin
 #gateway:
 #  ingress:
 #    enabled: true

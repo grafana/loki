@@ -121,7 +121,7 @@ func (i *mergeEntryIterator) fillBuffer() {
 
 	// We support multiple entries with the same timestamp, and we want to
 	// preserve their original order.
-	// Entries with identical timestamp and line are removed as duplicates.
+	// Entries with identical timestamp, line, and metadata are removed as duplicates.
 	for {
 		next := i.tree.Winner()
 		entry := next.At()
@@ -132,14 +132,14 @@ func (i *mergeEntryIterator) fillBuffer() {
 		})
 		if len(i.buffer) > 1 &&
 			(i.buffer[0].streamHash != next.StreamHash() ||
-				!i.buffer[0].Entry.Timestamp.Equal(entry.Timestamp)) {
+				!i.buffer[0].Timestamp.Equal(entry.Timestamp)) {
 			break
 		}
 		previous := i.buffer[:len(i.buffer)-1]
 
 		var dupe bool
 		for _, t := range previous {
-			if t.Entry.Line == entry.Line {
+			if t.Equal(entry) {
 				i.stats.AddDuplicates(1)
 				dupe = true
 				break
@@ -271,7 +271,9 @@ func lessAscending(e1, e2 sortFields) bool {
 		// The underlying stream hash may not be available, such as when merging LokiResponses in the
 		// frontend which were sharded. Prefer to use the underlying stream hash when available,
 		// which is needed in deduping code, but defer to label sorting when it's not present.
-		if e1.streamHash == 0 {
+		// Also defer to label sorting when both hashes are equal (e.g. entries from the same base
+		// stream but with different structured metadata share the same base hash).
+		if e1.streamHash == 0 || e1.streamHash == e2.streamHash {
 			return e1.labels < e2.labels
 		}
 		return e1.streamHash < e2.streamHash
@@ -281,7 +283,7 @@ func lessAscending(e1, e2 sortFields) bool {
 
 func lessDescending(e1, e2 sortFields) bool {
 	if e1.timeNanos == e2.timeNanos {
-		if e1.streamHash == 0 {
+		if e1.streamHash == 0 || e1.streamHash == e2.streamHash {
 			return e1.labels < e2.labels
 		}
 		return e1.streamHash < e2.streamHash
@@ -368,7 +370,9 @@ func NewQueryClientIterator(client logproto.Querier_QueryClient, direction logpr
 func (i *queryClientIterator) Next() bool {
 	ctx := i.client.Context()
 	for i.curr == nil || !i.curr.Next() {
+		start := time.Now()
 		batch, err := i.client.Recv()
+		stats.FromContext(ctx).AddIngesterRecvWait(time.Since(start))
 		if err == io.EOF {
 			return false
 		} else if err != nil {
@@ -404,6 +408,7 @@ func (i *queryClientIterator) Close() error {
 type nonOverlappingIterator struct {
 	iterators []EntryIterator
 	curr      EntryIterator
+	err       error
 }
 
 // NewNonOverlappingIterator gives a chained iterator over a list of iterators.
@@ -415,15 +420,23 @@ func NewNonOverlappingIterator(iterators []EntryIterator) EntryIterator {
 
 func (i *nonOverlappingIterator) Next() bool {
 	for i.curr == nil || !i.curr.Next() {
-		if len(i.iterators) == 0 {
-			if i.curr != nil {
-				i.curr.Close()
-			}
-			return false
-		}
 		if i.curr != nil {
+			// The current iterator stopped. If it failed, surface the error and stop:
+			// any error fails the query, so advancing would hide the failure as normal
+			// exhaustion and read remaining streams whose data the query discards.
+			if err := i.curr.Err(); err != nil {
+				i.err = err
+				return false
+			}
+			// A close error here is a cleanup failure, not a read failure. Reporting it
+			// as a read failure would be inaccurate.
 			i.curr.Close()
 		}
+
+		if len(i.iterators) == 0 {
+			return false
+		}
+
 		i.curr, i.iterators = i.iterators[0], i.iterators[1:]
 	}
 
@@ -449,21 +462,27 @@ func (i *nonOverlappingIterator) StreamHash() uint64 {
 }
 
 func (i *nonOverlappingIterator) Err() error {
-	if i.curr == nil {
-		return nil
-	}
-	return i.curr.Err()
+	return i.err
 }
 
 func (i *nonOverlappingIterator) Close() error {
+	// Close every iterator and keep all errors: Add ignores nil, so a clean close
+	// still returns nil.
+	var errs util.MultiError
 	if i.curr != nil {
-		i.curr.Close()
+		// If curr already failed, some implementations return that same read error
+		// from Close too. It was already surfaced through Err, so closing here is
+		// cleanup only: do not report it a second time as a close error.
+		if err := i.curr.Close(); err != nil && i.err == nil {
+			errs.Add(err)
+		}
 	}
 	for _, iter := range i.iterators {
-		iter.Close()
+		errs.Add(iter.Close())
 	}
 	i.iterators = nil
-	return nil
+
+	return errs.Err()
 }
 
 type timeRangedIterator struct {
@@ -484,7 +503,7 @@ func NewTimeRangedIterator(it EntryIterator, mint, maxt time.Time) EntryIterator
 func (i *timeRangedIterator) Next() bool {
 	ok := i.EntryIterator.Next()
 	if !ok {
-		i.EntryIterator.Close()
+		i.Close()
 		return ok
 	}
 	ts := i.EntryIterator.At().Timestamp
@@ -504,7 +523,7 @@ func (i *timeRangedIterator) Next() bool {
 		}
 	}
 	if !ok {
-		i.EntryIterator.Close()
+		i.Close()
 	}
 	return ok
 }

@@ -17,6 +17,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	logcli_client "github.com/grafana/loki/v3/pkg/logcli/client"
 	"github.com/grafana/loki/v3/pkg/logcli/output"
 	"github.com/grafana/loki/v3/pkg/logcli/volume"
 	"github.com/grafana/loki/v3/pkg/loghttp"
@@ -492,6 +493,18 @@ func (t *testQueryClient) GetDetectedFields(
 	_ time.Duration,
 	_ bool,
 ) (*loghttp.DetectedFieldsResponse, error) {
+	panic("not implemented")
+}
+
+func (t *testQueryClient) CreateDeleteRequest(_ logcli_client.DeleteRequestParams, _ bool) error {
+	panic("not implemented")
+}
+
+func (t *testQueryClient) ListDeleteRequests(_ bool) ([]logcli_client.DeleteRequest, error) {
+	panic("not implemented")
+}
+
+func (t *testQueryClient) CancelDeleteRequest(_ string, _ bool, _ bool) error {
 	panic("not implemented")
 }
 

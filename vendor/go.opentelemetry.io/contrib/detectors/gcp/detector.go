@@ -1,19 +1,19 @@
 // Copyright The OpenTelemetry Authors
 // SPDX-License-Identifier: Apache-2.0
 
-package gcp // import "go.opentelemetry.io/contrib/detectors/gcp"
+package gcp
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strconv"
 
 	"cloud.google.com/go/compute/metadata"
 	"github.com/GoogleCloudPlatform/opentelemetry-operations-go/detectors/gcp"
-
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/sdk/resource"
-	semconv "go.opentelemetry.io/otel/semconv/v1.26.0"
+	semconv "go.opentelemetry.io/otel/semconv/v1.43.0"
 )
 
 // NewDetector returns a resource detector which detects resource attributes on:
@@ -32,7 +32,7 @@ type detector struct {
 
 // Detect detects associated resources when running on GCE, GKE, GAE,
 // Cloud Run, and Cloud functions.
-func (d *detector) Detect(ctx context.Context) (*resource.Resource, error) {
+func (d *detector) Detect(context.Context) (*resource.Resource, error) {
 	if !metadata.OnGCE() {
 		return nil, nil
 	}
@@ -84,8 +84,8 @@ func (d *detector) Detect(ctx context.Context) (*resource.Resource, error) {
 		b.add(semconv.HostTypeKey, d.detector.GCEHostType)
 		b.add(semconv.HostIDKey, d.detector.GCEHostID)
 		b.add(semconv.HostNameKey, d.detector.GCEHostName)
-		b.add(semconv.GCPGceInstanceNameKey, d.detector.GCEInstanceName)
-		b.add(semconv.GCPGceInstanceHostnameKey, d.detector.GCEInstanceHostname)
+		b.add(semconv.GCPGCEInstanceNameKey, d.detector.GCEInstanceName)
+		b.add(semconv.GCPGCEInstanceHostnameKey, d.detector.GCEInstanceHostname)
 	default:
 		// We don't support this platform yet, so just return with what we have
 	}
@@ -122,8 +122,11 @@ func (r *resourceBuilder) addInt(key attribute.Key, detect func() (string, error
 // zoneAndRegion functions are expected to return zone, region, err.
 func (r *resourceBuilder) addZoneAndRegion(detect func() (string, string, error)) {
 	if zone, region, err := detect(); err == nil {
-		r.attrs = append(r.attrs, semconv.CloudAvailabilityZone(zone))
-		r.attrs = append(r.attrs, semconv.CloudRegion(region))
+		r.attrs = append(
+			r.attrs,
+			semconv.CloudAvailabilityZone(zone),
+			semconv.CloudRegion(region),
+		)
 	} else {
 		r.errs = append(r.errs, err)
 	}
@@ -147,7 +150,7 @@ func (r *resourceBuilder) addZoneOrRegion(detect func() (string, gcp.LocationTyp
 func (r *resourceBuilder) build() (*resource.Resource, error) {
 	var err error
 	if len(r.errs) > 0 {
-		err = fmt.Errorf("%w: %s", resource.ErrPartialResource, r.errs)
+		err = fmt.Errorf("%w: %w", resource.ErrPartialResource, errors.Join(r.errs...))
 	}
 	return resource.NewWithAttributes(semconv.SchemaURL, r.attrs...), err
 }

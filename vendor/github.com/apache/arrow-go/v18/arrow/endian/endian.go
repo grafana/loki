@@ -17,9 +17,13 @@
 package endian
 
 import (
+	"encoding/binary"
+
 	"github.com/apache/arrow-go/v18/arrow/internal/debug"
 	"github.com/apache/arrow-go/v18/arrow/internal/flatbuf"
 )
+
+var Native = binary.NativeEndian
 
 type Endianness flatbuf.Endianness
 

@@ -1,7 +1,7 @@
 // Copyright The OpenTelemetry Authors
 // SPDX-License-Identifier: Apache-2.0
 
-package exemplar // import "go.opentelemetry.io/otel/sdk/metric/exemplar"
+package exemplar
 
 import (
 	"context"
@@ -10,36 +10,6 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 )
-
-// storage is an exemplar storage for [Reservoir] implementations.
-type storage struct {
-	// store are the measurements sampled.
-	//
-	// This does not use []metricdata.Exemplar because it potentially would
-	// require an allocation for trace and span IDs in the hot path of Offer.
-	store []measurement
-}
-
-func newStorage(n int) *storage {
-	return &storage{store: make([]measurement, n)}
-}
-
-// Collect returns all the held exemplars.
-//
-// The Reservoir state is preserved after this call.
-func (r *storage) Collect(dest *[]Exemplar) {
-	*dest = reset(*dest, len(r.store), len(r.store))
-	var n int
-	for _, m := range r.store {
-		if !m.valid {
-			continue
-		}
-
-		m.exemplar(&(*dest)[n])
-		n++
-	}
-	*dest = (*dest)[:n]
-}
 
 // measurement is a measurement made by a telemetry system.
 type measurement struct {
@@ -55,36 +25,40 @@ type measurement struct {
 	valid bool
 }
 
-// newMeasurement returns a new non-empty Measurement.
-func newMeasurement(ctx context.Context, ts time.Time, v Value, droppedAttr []attribute.KeyValue) measurement {
-	return measurement{
-		FilteredAttributes: droppedAttr,
-		Time:               ts,
-		Value:              v,
-		SpanContext:        trace.SpanContextFromContext(ctx),
-		valid:              true,
-	}
+func (m *measurement) store(ctx context.Context, ts time.Time, v Value, droppedAttr []attribute.KeyValue) {
+	m.FilteredAttributes = droppedAttr
+	m.Time = ts
+	m.Value = v
+	m.SpanContext = trace.SpanContextFromContext(ctx)
+	m.valid = true
 }
 
 // exemplar returns m as an [Exemplar].
-func (m measurement) exemplar(dest *Exemplar) {
+// returns true if it populated the exemplar.
+func (m *measurement) exemplar(dest *Exemplar) bool {
+	if !m.valid {
+		return false
+	}
+
 	dest.FilteredAttributes = m.FilteredAttributes
 	dest.Time = m.Time
 	dest.Value = m.Value
 
-	if m.SpanContext.HasTraceID() {
-		traceID := m.SpanContext.TraceID()
+	sc := m.SpanContext
+	if sc.HasTraceID() {
+		traceID := sc.TraceID()
 		dest.TraceID = traceID[:]
 	} else {
 		dest.TraceID = dest.TraceID[:0]
 	}
 
-	if m.SpanContext.HasSpanID() {
-		spanID := m.SpanContext.SpanID()
+	if sc.HasSpanID() {
+		spanID := sc.SpanID()
 		dest.SpanID = spanID[:]
 	} else {
 		dest.SpanID = dest.SpanID[:0]
 	}
+	return true
 }
 
 func reset[T any](s []T, length, capacity int) []T {

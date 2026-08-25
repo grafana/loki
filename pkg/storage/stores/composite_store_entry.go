@@ -200,6 +200,25 @@ func (c *storeEntry) HasForSeries(from, through model.Time) (sharding.ForSeries,
 	return c.indexReader.HasForSeries(from, through)
 }
 
+func (c *storeEntry) HasChunkSizingInfo(from, through model.Time) bool {
+	return c.indexReader.HasChunkSizingInfo(from, through)
+}
+
+func (c *storeEntry) GetChunkRefsWithSizingInfo(ctx context.Context, userID string, from, through model.Time, predicate chunk.Predicate) ([]logproto.ChunkRefWithSizingInfo, error) {
+	if ctx.Err() != nil {
+		return nil, ctx.Err()
+	}
+
+	shortcut, err := c.validateQueryTimeRange(ctx, userID, &from, &through)
+	if err != nil {
+		return nil, err
+	} else if shortcut {
+		return nil, nil
+	}
+
+	return c.indexReader.GetChunkRefsWithSizingInfo(ctx, userID, from, through, predicate)
+}
+
 func (c *storeEntry) validateQueryTimeRange(ctx context.Context, userID string, from *model.Time, through *model.Time) (bool, error) {
 	//nolint:ineffassign,staticcheck //Leaving ctx even though we don't currently use it, we want to make it available for when we might need it and hopefully will ensure us using the correct context at that time
 

@@ -69,9 +69,11 @@ var (
 	ModNt       = windows.NewLazySystemDLL("ntdll.dll")
 	ModPdh      = windows.NewLazySystemDLL("pdh.dll")
 	ModPsapi    = windows.NewLazySystemDLL("psapi.dll")
+	ModPowrProf = windows.NewLazySystemDLL("powrprof.dll")
 
 	ProcGetSystemTimes                   = Modkernel32.NewProc("GetSystemTimes")
 	ProcNtQuerySystemInformation         = ModNt.NewProc("NtQuerySystemInformation")
+	ProcNtQuerySystemInformationEx       = ModNt.NewProc("NtQuerySystemInformationEx")
 	ProcRtlGetNativeSystemInformation    = ModNt.NewProc("RtlGetNativeSystemInformation")
 	ProcRtlNtStatusToDosError            = ModNt.NewProc("RtlNtStatusToDosError")
 	ProcNtQueryInformationProcess        = ModNt.NewProc("NtQueryInformationProcess")

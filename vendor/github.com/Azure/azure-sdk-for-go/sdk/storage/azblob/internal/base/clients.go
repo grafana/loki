@@ -1,17 +1,15 @@
-//go:build go1.18
-// +build go1.18
-
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License. See License.txt in the project root for license information.
 
 package base
 
 import (
+	"strings"
+
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore"
 	"github.com/Azure/azure-sdk-for-go/sdk/storage/azblob/internal/exported"
 	"github.com/Azure/azure-sdk-for-go/sdk/storage/azblob/internal/generated"
 	"github.com/Azure/azure-sdk-for-go/sdk/storage/azblob/internal/shared"
-	"strings"
 )
 
 // ClientOptions contains the optional parameters when creating a Client.
@@ -22,6 +20,15 @@ type ClientOptions struct {
 	// Only has an effect when credential is of type TokenCredential. The value could be
 	// https://storage.azure.com/ (default) or https://<account>.blob.core.windows.net.
 	Audience string
+
+	// ExpectContinueBehavior configures the application of the HTTP "Expect: 100-continue"
+	// header on operations that include a request body. The default zero-value behavior
+	// conditionally applies the header for a short window after the service responds with a
+	// throttle/server-error status (429, 500, or 503).
+	//
+	// Setting the environment variable AZURE_STORAGE_DISABLE_EXPECT_CONTINUE_HEADER to a
+	// truthy value disables this behavior entirely, regardless of this setting.
+	ExpectContinueBehavior exported.ExpectContinueOptions
 }
 
 type Client[T any] struct {

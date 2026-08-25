@@ -188,3 +188,13 @@ topk(
 ```
 
 `__count_min_sketch__` is calculated for each shard and merged on the frontend. Then `eval_cms` iterates through the labels list and determines the count for each. Then `topk` selects the top items.
+
+## Result ordering
+
+Metric query results are not guaranteed to be returned in any particular order, unless the query uses `sort` or `sort_desc`, which order the elements by their sample value. Don't rely on the ordering of results in any other case.
+
+`sort` and `sort_desc` only affect the results of instant queries. The ordering of range query results is unspecified, even when the query uses `sort` or `sort_desc`.
+
+## Further resources
+
+- Watch: [How to turn logs into metrics with Grafana Loki](https://youtube.com/live/tKcnQ0Q2E-k) (Loki Community Call July 2025)

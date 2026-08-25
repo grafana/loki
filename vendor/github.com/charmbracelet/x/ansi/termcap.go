@@ -5,7 +5,7 @@ import (
 	"strings"
 )
 
-// RequestTermcap (XTGETTCAP) requests Termcap/Terminfo strings.
+// XTGETTCAP (RequestTermcap) requests Termcap/Terminfo strings.
 //
 //	DCS + q <Pt> ST
 //

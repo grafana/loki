@@ -22,6 +22,8 @@ import (
 	"math"
 	"math/big"
 	"math/bits"
+	"strconv"
+	"strings"
 	"unsafe"
 
 	"github.com/apache/arrow-go/v18/arrow/decimal128"
@@ -471,3 +473,107 @@ var (
 	_ Num[Decimal128] = Decimal128{}
 	_ Num[Decimal256] = Decimal256{}
 )
+
+type decComponents struct {
+	wholeDigits string
+	fractDigits string
+	exp         int32
+	sign        byte
+	hasExponent bool
+}
+
+func isSign(s byte) bool {
+	return s == '-' || s == '+'
+}
+
+func isDot(s byte) bool {
+	return s == '.'
+}
+
+func startsExponent(s byte) bool {
+	return s == 'e' || s == 'E'
+}
+
+func parseDigitsRun(s string) (digits, rest string) {
+	pos := strings.IndexFunc(s, func(r rune) bool {
+		return r < '0' || r > '9'
+	})
+	if pos == -1 {
+		return s, ""
+	}
+
+	return s[:pos], s[pos:]
+}
+
+func parseDecimalComponents(s string) (d decComponents, valid bool) {
+	if len(s) == 0 {
+		return
+	}
+
+	if isSign(s[0]) {
+		d.sign = s[0]
+		s = s[1:]
+	}
+
+	// first run of digits
+	d.wholeDigits, s = parseDigitsRun(s)
+	if len(s) == 0 {
+		return d, len(d.wholeDigits) > 0
+	}
+
+	if isDot(s[0]) {
+		s = s[1:]
+		// second run of digits
+		d.fractDigits, s = parseDigitsRun(s)
+	}
+
+	if len(d.wholeDigits) == 0 && len(d.fractDigits) == 0 {
+		// need at least some digits (whole or fractional)
+		return
+	}
+
+	if len(s) == 0 {
+		return d, true
+	}
+
+	// optional exponent
+	if startsExponent(s[0]) {
+		s = s[1:]
+		if len(s) > 0 && s[0] == '+' {
+			s = s[1:]
+		}
+		d.hasExponent = true
+		exp, err := strconv.Atoi(s)
+		if err != nil {
+			return d, false
+		}
+		d.exp = int32(exp)
+	}
+	return d, len(s) == 0
+}
+
+func PrecScaleFromString(s string) (prec, scale int32, err error) {
+	if len(s) == 0 {
+		return 0, 0, errors.New("empty string cannot be parsed as decimal")
+	}
+
+	// parse the string into components
+	d, valid := parseDecimalComponents(s)
+	if !valid {
+		return 0, 0, fmt.Errorf("the string '%s' is not a valid decimal number", s)
+	}
+
+	// remove leading zeros
+	digits := strings.TrimLeft(d.wholeDigits, "0")
+	significantDigits := len(d.fractDigits) + len(digits)
+	prec = int32(significantDigits)
+
+	if d.hasExponent {
+		adjustedExponent := d.exp
+		scale = -adjustedExponent + int32(len(d.fractDigits))
+	} else {
+		scale = int32(len(d.fractDigits))
+	}
+
+	return
+}

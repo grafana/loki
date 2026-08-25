@@ -1,10 +1,11 @@
 // Copyright The OpenTelemetry Authors
 // SPDX-License-Identifier: Apache-2.0
 
-package log // import "go.opentelemetry.io/otel/log"
+package log
 
 import (
 	"context"
+	"slices"
 
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/log/embedded"
@@ -30,12 +31,13 @@ type Logger interface {
 	// concurrently.
 	Emit(ctx context.Context, record Record)
 
-	// Enabled returns whether the Logger emits for the given context and
+	// Enabled reports whether the Logger emits for the given context and
 	// param.
 	//
 	// This is useful for users that want to know if a [Record]
 	// will be processed or dropped before they perform complex operations to
-	// construct the [Record].
+	// construct the [Record]. Callers should invoke Enabled before each call
+	// to [Logger.Emit] because the enabled state may change over time.
 	//
 	// The passed param is likely to be a partial record information being
 	// provided (e.g a param with only the Severity set).
@@ -73,10 +75,17 @@ type LoggerConfig struct {
 	attrs     attribute.Set
 }
 
+type experimentalOption interface {
+	Experimental()
+}
+
 // NewLoggerConfig returns a new [LoggerConfig] with all the options applied.
 func NewLoggerConfig(options ...LoggerOption) LoggerConfig {
 	var c LoggerConfig
 	for _, opt := range options {
+		if _, ok := opt.(experimentalOption); ok {
+			continue
+		}
 		c = opt.applyLogger(c)
 	}
 	return c
@@ -114,13 +123,52 @@ func WithInstrumentationVersion(version string) LoggerOption {
 	})
 }
 
+// mergeSets returns the union of keys between a and b. Any duplicate keys will
+// use the value associated with b.
+func mergeSets(a, b attribute.Set) attribute.Set {
+	// NewMergeIterator uses the first value for any duplicates.
+	iter := attribute.NewMergeIterator(&b, &a)
+	merged := make([]attribute.KeyValue, 0, a.Len()+b.Len())
+	for iter.Next() {
+		merged = append(merged, iter.Attribute())
+	}
+	return attribute.NewSet(merged...)
+}
+
 // WithInstrumentationAttributes returns a [LoggerOption] that sets the
 // instrumentation attributes of a [Logger].
 //
-// The passed attributes will be de-duplicated.
+// This is equivalent to calling WithInstrumentationAttributeSet with an
+// [attribute.Set] created from a clone of the passed attributes.
+// [WithInstrumentationAttributeSet] is recommended for more control.
+//
+// If multiple [WithInstrumentationAttributes] or [WithInstrumentationAttributeSet]
+// options are passed, the attributes will be merged together in the order
+// they are passed. Attributes with duplicate keys will use the last value passed.
 func WithInstrumentationAttributes(attr ...attribute.KeyValue) LoggerOption {
+	set := attribute.NewSet(slices.Clone(attr)...)
+	return WithInstrumentationAttributeSet(set)
+}
+
+// WithInstrumentationAttributeSet returns a [LoggerOption] that adds the
+// instrumentation attributes of a [Logger].
+//
+// If multiple [WithInstrumentationAttributes] or [WithInstrumentationAttributeSet]
+// options are passed, the attributes will be merged together in the order
+// they are passed. Attributes with duplicate keys will use the last value passed.
+func WithInstrumentationAttributeSet(set attribute.Set) LoggerOption {
+	if set.Len() == 0 {
+		return loggerOptionFunc(func(config LoggerConfig) LoggerConfig {
+			return config
+		})
+	}
+
 	return loggerOptionFunc(func(config LoggerConfig) LoggerConfig {
-		config.attrs = attribute.NewSet(attr...)
+		if config.attrs.Len() == 0 {
+			config.attrs = set
+		} else {
+			config.attrs = mergeSets(config.attrs, set)
+		}
 		return config
 	})
 }
@@ -136,5 +184,6 @@ func WithSchemaURL(schemaURL string) LoggerOption {
 
 // EnabledParameters represents payload for [Logger]'s Enabled method.
 type EnabledParameters struct {
-	Severity Severity
+	Severity  Severity
+	EventName string
 }

@@ -204,6 +204,10 @@ type S3API interface {
 	HeadObjectWithContext(aws.Context, *s3.HeadObjectInput, ...request.Option) (*s3.HeadObjectOutput, error)
 	HeadObjectRequest(*s3.HeadObjectInput) (*request.Request, *s3.HeadObjectOutput)
 
+	ListBucketReplicationFailures(*s3.ListBucketReplicationFailuresInput) (*s3.ListBucketReplicationFailuresOutput, error)
+	ListBucketReplicationFailuresWithContext(aws.Context, *s3.ListBucketReplicationFailuresInput, ...request.Option) (*s3.ListBucketReplicationFailuresOutput, error)
+	ListBucketReplicationFailuresRequest(*s3.ListBucketReplicationFailuresInput) (*request.Request, *s3.ListBucketReplicationFailuresOutput)
+
 	ListBuckets(*s3.ListBucketsInput) (*s3.ListBucketsOutput, error)
 	ListBucketsWithContext(aws.Context, *s3.ListBucketsInput, ...request.Option) (*s3.ListBucketsOutput, error)
 	ListBucketsRequest(*s3.ListBucketsInput) (*request.Request, *s3.ListBucketsOutput)
@@ -277,6 +281,10 @@ type S3API interface {
 	PutBucketReplication(*s3.PutBucketReplicationInput) (*s3.PutBucketReplicationOutput, error)
 	PutBucketReplicationWithContext(aws.Context, *s3.PutBucketReplicationInput, ...request.Option) (*s3.PutBucketReplicationOutput, error)
 	PutBucketReplicationRequest(*s3.PutBucketReplicationInput) (*request.Request, *s3.PutBucketReplicationOutput)
+
+	PutBucketReplicationReattempt(*s3.PutBucketReplicationReattemptInput) (*s3.PutBucketReplicationReattemptOutput, error)
+	PutBucketReplicationReattemptWithContext(aws.Context, *s3.PutBucketReplicationReattemptInput, ...request.Option) (*s3.PutBucketReplicationReattemptOutput, error)
+	PutBucketReplicationReattemptRequest(*s3.PutBucketReplicationReattemptInput) (*request.Request, *s3.PutBucketReplicationReattemptOutput)
 
 	PutBucketVersioning(*s3.PutBucketVersioningInput) (*s3.PutBucketVersioningOutput, error)
 	PutBucketVersioningWithContext(aws.Context, *s3.PutBucketVersioningInput, ...request.Option) (*s3.PutBucketVersioningOutput, error)

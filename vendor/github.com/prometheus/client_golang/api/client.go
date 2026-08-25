@@ -18,7 +18,6 @@ import (
 	"bytes"
 	"context"
 	"errors"
-	"io"
 	"net"
 	"net/http"
 	"net/url"
@@ -28,13 +27,18 @@ import (
 )
 
 // DefaultRoundTripper is used if no RoundTripper is set in Config.
+// refer https://github.com/golang/go/blob/master/src/net/http/transport.go#L46
 var DefaultRoundTripper http.RoundTripper = &http.Transport{
 	Proxy: http.ProxyFromEnvironment,
 	DialContext: (&net.Dialer{
 		Timeout:   30 * time.Second,
 		KeepAlive: 30 * time.Second,
 	}).DialContext,
-	TLSHandshakeTimeout: 10 * time.Second,
+	ForceAttemptHTTP2:     true,
+	MaxIdleConns:          100,
+	IdleConnTimeout:       90 * time.Second,
+	TLSHandshakeTimeout:   10 * time.Second,
+	ExpectContinueTimeout: 1 * time.Second,
 }
 
 // Config defines configuration parameters for a new client.
@@ -132,36 +136,26 @@ func (c *httpClient) Do(ctx context.Context, req *http.Request) (*http.Response,
 		req = req.WithContext(ctx)
 	}
 	resp, err := c.client.Do(req)
-	defer func() {
-		if resp != nil {
-			_, _ = io.Copy(io.Discard, resp.Body)
-			_ = resp.Body.Close()
-		}
-	}()
-
 	if err != nil {
 		return nil, nil, err
 	}
 
 	var body []byte
 	done := make(chan struct{})
+	var readErr error
 	go func() {
+		defer close(done)
 		var buf bytes.Buffer
-		// TODO(bwplotka): Add LimitReader for too long err messages (e.g. limit by 1KB)
-		_, err = buf.ReadFrom(resp.Body)
+		_, readErr = buf.ReadFrom(resp.Body)
 		body = buf.Bytes()
-		close(done)
 	}()
 
 	select {
 	case <-ctx.Done():
-		<-done
-		err = resp.Body.Close()
-		if err == nil {
-			err = ctx.Err()
-		}
+		resp.Body.Close()
+		return resp, nil, ctx.Err()
 	case <-done:
+		resp.Body.Close()
+		return resp, body, readErr
 	}
-
-	return resp, body, err
 }

@@ -34,6 +34,10 @@ A [list of clients](../../send-data/) can be found in the clients documentation.
 Requests sent to the query endpoints must use valid LogQL syntax. For more information, see the [LogQL](../../query/) section of the documentation.
 {{< /admonition >}}
 
+{{< admonition type="tip" >}}
+For Python examples of these endpoints, see [Query Loki with Python](../python-client-examples/).
+{{< /admonition >}}
+
 These HTTP endpoints are exposed by the `querier`, `query-frontend`, `read`, and `all` components:
 
 - [`GET /loki/api/v1/query`](#query-logs-at-a-single-point-in-time)
@@ -72,8 +76,16 @@ These HTTP endpoints are exposed by their respective component that is part of t
 These HTTP endpoints are exposed by the `ingester`, `write`, and `all` components for flushing chunks and/or shutting down.
 
 - [`POST /flush`](#flush-in-memory-chunks-to-backing-store)
+- [`POST /flush/tenant`](#flush-in-memory-chunks-and-index-for-a-tenant)
 - [`POST /ingester/prepare_shutdown`](#prepare-ingester-shutdown)
 - [`POST /ingester/shutdown`](#flush-in-memory-chunks-and-shut-down)
+
+### Index gateway endpoints
+
+These HTTP endpoints are exposed by the `index-gateway`, `backend`, and `all` components:
+
+- [`PUT /sync-indexes`](#sync-indexes-from-object-storage)
+- [`GET /sync-indexes`](#sync-indexes-from-object-storage)
 
 ### Rule endpoints
 
@@ -275,7 +287,7 @@ For information on how to configure Loki, refer to the [OTel Collector topic](ht
 
 <!-- vale Google.Will = NO -->
 {{< admonition type="note" >}}
-When configuring the OpenTelemetry Collector, you must use `endpoint: http://<loki-addr>:3100/otlp`, as the collector automatically completes the endpoint.  Entering the full endpoint will generate an error.
+When configuring the OpenTelemetry Collector, you must use `endpoint: http://<LOKI_ADDR>/otlp`, as the collector automatically completes the endpoint.  Entering the full endpoint will generate an error.
 {{< /admonition >}}
 <!-- vale Google.Will = YES -->
 
@@ -451,7 +463,7 @@ To query against your hosted log tenant in Grafana Cloud, use the **User** and *
 
 ```bash
 curl -u "User:$API_TOKEN" \
-  -G -s "<URL-PROVIDED-IN-LOKI-DATA-SOURCE-SETTINGS>/loki/api/v1/query" \
+  -G -s "<URL_PROVIDED_IN_LOKI_DATA_SOURCE_SETTINGS>/loki/api/v1/query" \
   --data-urlencode 'query=sum(rate({job="varlogs"}[10m])) by (level)' | jq
 ```
 
@@ -884,7 +896,7 @@ GET /loki/api/v1/index/volume_range
 ```
 
 {{< admonition type="note" >}}
-You must configure `volume_enabled: true` to enable this feature.
+This feature is controlled by `volume_enabled`, which defaults to `true`. Set it to `false` to disable it.
 {{< /admonition >}}
 
 The `/loki/api/v1/index/volume` and `/loki/api/v1/index/volume_range` endpoints can be used to query the index for volume information about label and label-value combinations. This is helpful in exploring the logs Loki has ingested to find high or low volume streams. The `volume` endpoint returns results for a single point in time, the time the query was processed. Each datapoint represents an aggregation of the matching label or series over the requested time period, returned in a Prometheus style vector response. The `volume_range` endoint returns a series of datapoints over a range of time, in Prometheus style matrix response, for each matching set of labels or series. The number of timestamps returned when querying `volume_range` will be determined by the provided `step` parameter and the requested time range.
@@ -901,7 +913,7 @@ URL query parameters:
 - `start=<nanosecond Unix epoch>`: Start timestamp. This parameter is required.
 - `end=<nanosecond Unix epoch>`: End timestamp. This parameter is required.
 - `limit`: How many metric series to return. The parameter is optional, the default is `100`.
-- `step`: Query resolution step width in `duration` format or float number of seconds. `duration` refers to Prometheus duration strings of the form `[0-9]+[smhdwy]`. For example, 5m refers to a duration of 5 minutes. Defaults to a dynamic value based on `start` and `end`. Only applies when querying the `volume_range` endpoint, which will always return a Prometheus style matrix response. This parameter is optional, and only applicable for `query_range`. The default step configured for range queries will be used when not provided.
+- `step`: Query resolution step width in `duration` format or float number of seconds. `duration` refers to Prometheus duration strings of the form `[0-9]+[smhdwy]`. For example, 5m refers to a duration of 5 minutes. Defaults to a dynamic value based on `start` and `end`. This parameter is optional, and only applicable when querying the `volume_range` endpoint, which will always return a Prometheus style matrix response. The default step configured for range queries will be used when not provided.
 - `targetLabels`: A comma separated list of labels to aggregate into. This parameter is optional. When not provided, volumes will be aggregated into the matching labels or label-value pairs.
 - `aggregateBy`: Whether to aggregate into labels or label-value pairs. This parameter is optional, the default is label-value pairs.
 
@@ -1007,6 +1019,144 @@ The result is a list of patterns detected in the logs, with the number of sample
 The pattern format is the same as the [LogQL](../../query/) pattern filter and parser and can be used in queries for filtering matching logs.
 Each sample is a tuple of timestamp (second) and count.
 
+## Detected fields
+
+```bash
+GET /loki/api/v1/detected_fields
+POST /loki/api/v1/detected_fields
+```
+
+The `/loki/api/v1/detected_fields` endpoint returns fields that Loki has detected in log lines matching the given stream selector, along with the inferred type, estimated cardinality, and the parser that was used to extract the field.
+This endpoint is useful for discovering the structure of your logs without running a full log query.
+
+URL query parameters:
+
+- `query`: The [LogQL](../../query/) stream selector to match. Example: `{app="myapp", environment="dev"}`. This parameter is required.
+- `start=<nanosecond Unix epoch>`: Start timestamp. This parameter is optional. If omitted, it defaults to `end - since`.
+- `end=<nanosecond Unix epoch>`: End timestamp. This parameter is optional. If omitted, it defaults to the current server time.
+- `since=<duration>`: Relative time range (for example, `1h`, `5m`). This parameter is optional and is used when `start` is omitted to compute `start = end - since`. If both `start` and `since` are omitted, `since` defaults to `1h`.
+- `step=<duration string or float number of seconds>`: Step between sample windows. This parameter is optional.
+- `line_limit=<integer>`: Maximum number of log lines to scan per shard. Defaults to 100. This parameter is optional.
+- `limit=<integer>`: Maximum number of fields to return. Defaults to 1000. The query parameter `field_limit` is also accepted as an alias for backwards compatibility. This parameter is optional.
+
+You can URL-encode these parameters directly in the request body by using the POST method and `Content-Type: application/x-www-form-urlencoded` header.
+
+Response format:
+
+```bash
+{
+  "fields": [
+    {
+      "label": <string>,
+      "type": <string|int|float|boolean|duration|bytes>,
+      "cardinality": <integer>,
+      "parsers": [<string>],
+      "jsonPath": <string, optional>,
+      "sketch": <object, optional>
+    }
+  ],
+  "limit": <integer>
+}
+```
+
+### Examples
+
+This example cURL command
+
+```bash
+curl -H 'X-Scope-OrgID: <TENANT_ID>' -G -s "http://localhost:3100/loki/api/v1/detected_fields" \
+  --data-urlencode 'query={app="myapp"}' \
+  --data-urlencode 'start=1609459200000000000' \
+  --data-urlencode 'end=1609462800000000000' | jq
+```
+
+gave this response:
+
+```json
+{
+  "fields": [
+    {
+      "label": "level",
+      "type": "string",
+      "cardinality": 3,
+      "parsers": ["logfmt"]
+    },
+    {
+      "label": "duration",
+      "type": "duration",
+      "cardinality": 152,
+      "parsers": ["logfmt"]
+    },
+    {
+      "label": "status",
+      "type": "int",
+      "cardinality": 5,
+      "parsers": ["logfmt"]
+    }
+  ],
+  "limit": 1000
+}
+```
+
+## Detected field values
+
+```bash
+GET /loki/api/v1/detected_field/{name}/values
+POST /loki/api/v1/detected_field/{name}/values
+```
+
+The `/loki/api/v1/detected_field/{name}/values` endpoint returns the values observed for a specific detected field matching the given stream selector.
+`{name}` is the name of the field to retrieve values for.
+
+URL query parameters:
+
+- `query`: The [LogQL](../../query/) stream selector to match. Example: `{app="myapp", environment="dev"}`. This parameter is required.
+- `start=<nanosecond Unix epoch>`: Start timestamp. This parameter is optional. If omitted, it defaults to `end - since`.
+- `end=<nanosecond Unix epoch>`: End timestamp. This parameter is optional. If omitted, it defaults to the current server time.
+- `since=<duration>`: Relative time range (for example, `1h`, `5m`). This parameter is optional and is used when `start` is omitted to compute `start = end - since`. If both `start` and `since` are omitted, `since` defaults to `1h`.
+- `step=<duration string or float number of seconds>`: Step between sample windows. This parameter is optional.
+- `line_limit=<integer>`: Maximum number of log lines to scan per shard. Defaults to 100. This parameter is optional.
+- `limit=<integer>`: Maximum number of values to return. Defaults to 1000. The query parameter `field_limit` is also accepted as an alias. This parameter is optional.
+
+You can URL-encode these parameters directly in the request body by using the POST method and `Content-Type: application/x-www-form-urlencoded` header.
+
+Response format:
+
+```bash
+{
+  "values": [
+    <string>,
+    ...
+  ],
+  "limit": <integer>
+}
+```
+
+### Examples
+
+This example cURL command
+
+```bash
+curl -H 'X-Scope-OrgID: <TENANT_ID>' -G -s "http://localhost:3100/loki/api/v1/detected_field/level/values" \
+  --data-urlencode 'query={app="myapp"}' \
+  --data-urlencode 'start=1609459200000000000' \
+  --data-urlencode 'end=1609462800000000000' | jq
+```
+
+gave this response:
+
+```json
+{
+  "values": [
+    "debug",
+    "info",
+    "warn",
+    "error"
+  ],
+  "limit": 1000
+}
+```
+
 ## Stream logs
 
 ```bash
@@ -1023,6 +1173,10 @@ It accepts the following query parameters in the URL:
 - `start`: The start time for the query as a nanosecond Unix epoch. Defaults to one hour ago.
 
 In microservices mode, `/loki/api/v1/tail` is exposed by the querier.
+
+{{< admonition type="note" >}}
+The `tail` endpoint is designed for near real-time observation of a log stream. The initial lookback from `start` to the current time is best-effort and isn't guaranteed to return every matching log line, so this endpoint isn't suitable for retrieving complete log history. To reliably retrieve a large or complete range of logs, make repeated calls to [`/loki/api/v1/query_range`](#query-logs-within-a-range-of-time).
+{{< /admonition >}}
 
 Response format (streamed):
 
@@ -1139,6 +1293,106 @@ backing store. Mainly used for local testing.
 
 In microservices mode, the `/flush` endpoint is exposed by the ingester.
 
+## Flush in-memory chunks and index for a tenant
+
+```bash
+POST /flush/tenant
+```
+
+`/flush/tenant` triggers a flush of the in-memory chunks held by an ingester for
+a single tenant, and then forces that ingester's in-memory index (the TSDB head)
+to be built and uploaded to the backing store. This makes the flushed chunks
+immediately referenceable, rather than waiting for the next periodic index
+rotation.
+
+Unlike `/flush`, this endpoint is tenant-scoped: the tenant is taken from the
+`X-Scope-OrgID` header (when running with multi-tenancy enabled). An optional
+`streams` parameter restricts the flush to the streams matching a log stream
+selector; when omitted, all of the tenant's in-memory streams are flushed.
+
+**URL query parameters:**
+
+- `streams=<selector>`:
+  Optional log stream selector that selects the streams to flush, for example `{app="foo"}`.
+  If omitted, all in-memory streams for the tenant are flushed.
+
+The flush is handled synchronously: the index is shipped only after the matching
+chunks have been flushed, so the request can be long-running. Set a generous
+client timeout when calling it.
+
+In microservices mode, the `/flush/tenant` endpoint is exposed by the ingester.
+
+## Sync indexes from object storage
+
+```bash
+PUT /sync-indexes
+GET /sync-indexes
+```
+
+`/sync-indexes` lets a caller force an index-gateway to refresh its object-storage
+listing cache and download any newly shipped index files on demand, instead of
+waiting for the periodic resync (which re-lists through a cache that can take up
+to a minute to expire). It is the second step of making a freshly flushed index
+queryable across read nodes:
+
+1. `POST /flush/tenant` on the ingester ships the new index to object storage.
+1. `PUT /sync-indexes` on the index-gateway downloads it.
+1. `POST /loki/api/v1/cache/generation_numbers/increase` on the compactor
+   invalidates any cached query results so the new data is reflected.
+
+This endpoint is not tenant-scoped; it refreshes the listing for all tables the
+index-gateway already tracks.
+
+A `PUT` request triggers a sync asynchronously and returns immediately:
+
+- `202 Accepted` if a new sync was started.
+- `409 Conflict` if a sync (manual or the periodic one) is already in progress, in
+  which case the request is a no-op.
+
+Because a `PUT` is a no-op while another sync is running, and a sync can be
+long-running on a gateway that tracks many tables, callers should not assume a
+single `PUT` ran the sync: re-issue the `PUT` until it is accepted, then poll
+`GET` until the sync completes.
+
+A `GET` request reports the sync status of each synced index as a JSON array, with
+one entry per index (the index-gateway runs an independent sync per schema period):
+
+```json
+[
+  {
+    "name": "s3_2024-04-01",
+    "in_progress": true,
+    "last_trigger": "manual",
+    "current_duration": "12s",
+    "last_duration": "1m30s"
+  },
+  {
+    "name": "s3_2024-10-01",
+    "in_progress": false,
+    "last_trigger": "periodic",
+    "last_duration": "5s"
+  },
+  {
+    "name": "s3_2025-04-01",
+    "in_progress": false,
+    "last_trigger": "never_triggered",
+    "last_duration": "0s"
+  }
+]
+```
+
+Each entry reports (durations are Go duration strings, e.g. `"1m30s"`):
+
+- `name`: identifies the index (the schema period's store name).
+- `in_progress`: whether a sync (manual or periodic) is currently running for this index.
+- `last_trigger`: what triggered the current or most recent sync — `manual` or `periodic`, or `never_triggered` if no sync has run yet.
+- `current_duration`: how long the in-progress sync has been running (present only when `in_progress` is `true`).
+- `last_duration`: how long the previous completed sync took (`"0s"` if none has completed yet).
+
+If the configured index store does not support on-demand syncing, both `PUT` and `GET` return `503 Service Unavailable`.
+
+In microservices mode, the `/sync-indexes` endpoint is exposed by the index-gateway.
+
 ## Prepare ingester shutdown
 
 ```bash
@@ -1206,7 +1460,7 @@ Displays a web page with the index gateway hash ring status, including the state
 The ruler API endpoints require to configure a backend object storage to store the recording rules and alerts. The ruler API uses the concept of a "namespace" when creating rule groups. This is a stand-in for the name of the rule file in Prometheus. Rule groups must be named uniquely within a namespace.
 
 {{< admonition type="note" >}}
-You must configure `enable_api: true` to enable this feature.
+This feature is controlled by `enable_api`, which defaults to `true`. Set it to `false` to disable it.
 {{< /admonition >}}
 
 ### Ruler ring status
@@ -1234,32 +1488,32 @@ List all rules configured for the authenticated tenant. This endpoint returns a 
   interval: <duration;optional>
   rules:
   - alert: <string>
-      expr: <string>
-      for: <duration>
-      annotations:
+    expr: <string>
+    for: <duration>
+    annotations:
       <annotation_name>: <string>
-      labels:
+    labels:
       <label_name>: <string>
 - name: <string>
   interval: <duration;optional>
   rules:
   - alert: <string>
-      expr: <string>
-      for: <duration>
-      annotations:
+    expr: <string>
+    for: <duration>
+    annotations:
       <annotation_name>: <string>
-      labels:
+    labels:
       <label_name>: <string>
 <namespace2>:
 - name: <string>
   interval: <duration;optional>
   rules:
   - alert: <string>
-      expr: <string>
-      for: <duration>
-      annotations:
+    expr: <string>
+    for: <duration>
+    annotations:
       <annotation_name>: <string>
-      labels:
+    labels:
       <label_name>: <string>
 ```
 
@@ -1382,9 +1636,9 @@ PUT /loki/api/v1/delete
 ```
 
 Create a new delete request for the authenticated tenant.
-The [log entry deletion](../../operations/storage/logs-deletion/) documentation has configuration details.
+The [log entry deletion](https://grafana.com/docs/loki/<LOKI_VERSION>/operations/storage/logs-deletion/) documentation has configuration details.
 
-Log entry deletion is supported _only_ when TSDB or BoltDB Shipper is configured for the index store.
+Log entry deletion is supported when the TSDB index is configured for the index store. It is also supported on the deprecated BoltDB Shipper index, but BoltDB Shipper is being removed in Loki 4.0, so new deployments should use TSDB.
 
 Query parameters:
 
@@ -1422,9 +1676,9 @@ GET /loki/api/v1/delete
 ```
 
 List the existing delete requests for the authenticated tenant.
-The [log entry deletion](../../operations/storage/logs-deletion/) documentation has configuration details.
+The [log entry deletion](https://grafana.com/docs/loki/<LOKI_VERSION>/operations/storage/logs-deletion/) documentation has configuration details.
 
-Log entry deletion is supported _only_ when TSDB or BoltDB Shipper is configured for the index store.
+Log entry deletion is supported when the TSDB index is configured for the index store. It is also supported on the deprecated BoltDB Shipper index, but BoltDB Shipper is being removed in Loki 4.0, so new deployments should use TSDB.
 
 List the existing delete requests using the following API:
 
@@ -1434,14 +1688,19 @@ GET /loki/api/v1/delete
 
 This endpoint returns both processed and unprocessed deletion requests. It does not list canceled requests, as those requests will have been removed from storage.
 
+Query parameters:
+
+- `start=<rfc3339 | unix_seconds_timestamp>`: Optional. A timestamp that identifies the start of the time range. Only deletion requests that overlap with this time range will be returned. Must be provided together with `end`.
+- `end=<rfc3339 | unix_seconds_timestamp>`: Optional. A timestamp that identifies the end of the time range. Only deletion requests that overlap with this time range will be returned. Must be provided together with `start`.
+
 #### Examples
 
 Example cURL command:
 
 ```bash
 curl -X GET \
-  <compactor_addr>/loki/api/v1/delete \
-  -H 'X-Scope-OrgID: <orgid>'
+  <COMPACTOR_ADDR>/loki/api/v1/delete \
+  -H 'X-Scope-OrgID: <ORG_ID>'
 ```
 
 The same example deletion request for Grafana Enterprise Logs uses Basic Authentication and specifies the tenant name as a user; `Tenant1` is the tenant name in this example. The password in this example is an access policy token that has been defined in the API_TOKEN environment variable. The token must be for an access policy with `logs:delete` scope for the tenant specified in the user field.
@@ -1449,7 +1708,7 @@ The same example deletion request for Grafana Enterprise Logs uses Basic Authent
 ```bash
 curl -u "Tenant1:$API_TOKEN" \
   -X GET \
-  <compactor_addr>/loki/api/v1/delete
+  <COMPACTOR_ADDR>/loki/api/v1/delete
 ```
 
 ### Request cancellation of a delete request
@@ -1459,11 +1718,11 @@ DELETE /loki/api/v1/delete
 ```
 
 Remove a delete request for the authenticated tenant.
-The [log entry deletion](../../operations/storage/logs-deletion/) documentation has configuration details.
+The [log entry deletion](https://grafana.com/docs/loki/<LOKI_VERSION>/operations/storage/logs-deletion/) documentation has configuration details.
 
 Loki allows cancellation of delete requests until the requests are picked up for processing. It is controlled by the `delete_request_cancel_period` YAML configuration or the equivalent command line option when invoking Loki. To cancel a delete request that has been picked up for processing or is partially complete, pass the `force=true` query parameter to the API.
 
-Log entry deletion is supported _only_ when TSDB or BoltDB Shipper is configured for the index store.
+Log entry deletion is supported when the TSDB index is configured for the index store. It is also supported on the deprecated BoltDB Shipper index, but BoltDB Shipper is being removed in Loki 4.0, so new deployments should use TSDB.
 
 Cancel a delete request using this compactor endpoint:
 
@@ -1487,8 +1746,8 @@ Example cURL command:
 
 ```bash
 curl -X DELETE \
-  '<compactor_addr>/loki/api/v1/delete?request_id=<request_id>' \
-  -H 'X-Scope-OrgID: <tenant-id>'
+  '<COMPACTOR_ADDR>/loki/api/v1/delete?request_id=<REQUEST_ID>' \
+  -H 'X-Scope-OrgID: <TENANT_ID>'
 ```
 
 The same example deletion cancellation request for Grafana Enterprise Logs uses Basic Authentication and specifies the tenant name as a user; `Tenant1` is the tenant name in this example. The password in this example is an access policy token that has been defined in the API_TOKEN environment variable. The token must be for an access policy with `logs:delete` scope for the tenant specified in the user field.
@@ -1496,7 +1755,7 @@ The same example deletion cancellation request for Grafana Enterprise Logs uses 
 ```bash
 curl -u "Tenant1:$API_TOKEN" \
   -X DELETE \
-  '<compactor_addr>/loki/api/v1/delete?request_id=<request_id>'
+  '<COMPACTOR_ADDR>/loki/api/v1/delete?request_id=<REQUEST_ID>'
 ```
 
 ## Format a LogQL query

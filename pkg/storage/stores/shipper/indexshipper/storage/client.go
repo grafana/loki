@@ -28,7 +28,7 @@ type CommonIndexClient interface {
 	DeleteFile(ctx context.Context, tableName, fileName string) error
 }
 
-// Client is used to manage boltdb index files in object storage, when using boltdb-shipper.
+// Client is used to manage TSDB index files in object storage, when using `tsdb`.
 type Client interface {
 	CommonIndexClient
 	UserIndexClient
@@ -37,6 +37,7 @@ type Client interface {
 	ListTables(ctx context.Context) ([]string, error)
 	RefreshIndexTableCache(ctx context.Context, tableName string)
 	IsFileNotFoundErr(err error) bool
+	IsRetryableErr(err error) bool
 	Stop()
 }
 
@@ -157,6 +158,10 @@ func (s *indexStorageClient) DeleteUserFile(ctx context.Context, tableName, user
 
 func (s *indexStorageClient) IsFileNotFoundErr(err error) bool {
 	return s.objectClient.IsObjectNotFoundErr(err)
+}
+
+func (s *indexStorageClient) IsRetryableErr(err error) bool {
+	return s.objectClient.IsRetryableErr(err)
 }
 
 func (s *indexStorageClient) Stop() {

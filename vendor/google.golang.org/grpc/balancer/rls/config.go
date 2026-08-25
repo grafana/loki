@@ -265,7 +265,7 @@ func parseRLSProto(rlsProto *rlspb.RouteLookupConfig) (*lbConfig, error) {
 		return nil, fmt.Errorf("rls: cache_size_bytes must be set to a non-zero value: %+v", rlsProto)
 	}
 	if cacheSizeBytes > maxCacheSize {
-		logger.Info("rls: cache_size_bytes %v is too large, setting it to: %v", cacheSizeBytes, maxCacheSize)
+		logger.Infof("rls: cache_size_bytes %v is too large, setting it to: %v", cacheSizeBytes, maxCacheSize)
 		cacheSizeBytes = maxCacheSize
 	}
 	return &lbConfig{

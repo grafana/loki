@@ -4,67 +4,38 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"reflect"
+	"slices"
 	"strings"
-	"time"
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
+	"github.com/grafana/dskit/flagext"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
-
-	"github.com/grafana/dskit/flagext"
+	yaml "go.yaml.in/yaml/v4"
 
 	"github.com/grafana/loki/v3/pkg/indexgateway"
 	"github.com/grafana/loki/v3/pkg/storage/bucket"
-	"github.com/grafana/loki/v3/pkg/storage/chunk/cache"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client/alibaba"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client/aws"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client/azure"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client/baidubce"
-	"github.com/grafana/loki/v3/pkg/storage/chunk/client/cassandra"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client/congestion"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client/gcp"
-	"github.com/grafana/loki/v3/pkg/storage/chunk/client/grpc"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client/hedging"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client/ibmcloud"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client/local"
-	"github.com/grafana/loki/v3/pkg/storage/chunk/client/noop"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client/openstack"
-	"github.com/grafana/loki/v3/pkg/storage/chunk/client/testutils"
 	"github.com/grafana/loki/v3/pkg/storage/config"
 	"github.com/grafana/loki/v3/pkg/storage/stores"
-	"github.com/grafana/loki/v3/pkg/storage/stores/series/index"
 	bloomshipperconfig "github.com/grafana/loki/v3/pkg/storage/stores/shipper/bloomshipper/config"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper"
-	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/boltdb"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/downloads"
 	"github.com/grafana/loki/v3/pkg/storage/types"
-	"github.com/grafana/loki/v3/pkg/util"
-	"github.com/grafana/loki/v3/pkg/util/constants"
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
 )
-
-var (
-	indexGatewayClient index.Client
-	// singleton for each period
-	boltdbIndexClientsWithShipper = make(map[config.DayTime]*boltdb.IndexClient)
-)
-
-// ResetBoltDBIndexClientsWithShipper allows to reset the singletons.
-// MUST ONLY BE USED IN TESTS
-func ResetBoltDBIndexClientsWithShipper() {
-	for _, client := range boltdbIndexClientsWithShipper {
-		client.Stop()
-	}
-
-	boltdbIndexClientsWithShipper = make(map[config.DayTime]*boltdb.IndexClient)
-
-	if indexGatewayClient != nil {
-		indexGatewayClient.Stop()
-		indexGatewayClient = nil
-	}
-}
 
 // StoreLimits helps get Limits specific to Queries for Stores
 type StoreLimits interface {
@@ -78,31 +49,35 @@ type StoreLimits interface {
 // register flags. To get around this we implement Unmarshaler interface that
 // assigns the defaults before calling unmarshal.
 
-// We cannot implement Unmarshaler directly on aws.StorageConfig or other stores
+// We cannot implement Unmarshaler directly on aws.S3Config or other stores
 // as it would end up overriding values set as part of ApplyDynamicConfig().
 // Note: we unmarshal a second time after applying dynamic configs
 //
 // Implementing the Unmarshaler for Named*StorageConfig types is fine as
 // we do not apply any dynamic config on them.
 
-type NamedAWSStorageConfig aws.StorageConfig
+type NamedAWSStorageConfig aws.S3Config
 
 // UnmarshalYAML implements the yaml.Unmarshaler interface.
-func (cfg *NamedAWSStorageConfig) UnmarshalYAML(unmarshal func(interface{}) error) error {
-	flagext.DefaultValues((*aws.StorageConfig)(cfg))
-	return unmarshal((*aws.StorageConfig)(cfg))
+func (cfg *NamedAWSStorageConfig) UnmarshalYAML(value *yaml.Node) error {
+	flagext.DefaultValues((*aws.S3Config)(cfg))
+	// We always want strict config parsing
+	// See https://github.com/yaml/go-yaml/issues/321 and https://github.com/yaml/go-yaml/pull/332
+	return value.Load((*aws.S3Config)(cfg), yaml.WithKnownFields(true))
 }
 
 func (cfg *NamedAWSStorageConfig) Validate() error {
-	return (*aws.StorageConfig)(cfg).Validate()
+	return (*aws.S3Config)(cfg).Validate()
 }
 
 type NamedBlobStorageConfig azure.BlobStorageConfig
 
 // UnmarshalYAML implements the yaml.Unmarshaler interface.
-func (cfg *NamedBlobStorageConfig) UnmarshalYAML(unmarshal func(interface{}) error) error {
+func (cfg *NamedBlobStorageConfig) UnmarshalYAML(value *yaml.Node) error {
 	flagext.DefaultValues((*azure.BlobStorageConfig)(cfg))
-	return unmarshal((*azure.BlobStorageConfig)(cfg))
+	// We always want strict config parsing
+	// See https://github.com/yaml/go-yaml/issues/321 and https://github.com/yaml/go-yaml/pull/332
+	return value.Load((*azure.BlobStorageConfig)(cfg), yaml.WithKnownFields(true))
 }
 
 func (cfg *NamedBlobStorageConfig) Validate() error {
@@ -112,41 +87,51 @@ func (cfg *NamedBlobStorageConfig) Validate() error {
 type NamedBOSStorageConfig baidubce.BOSStorageConfig
 
 // UnmarshalYAML implements the yaml.Unmarshaler interface.
-func (cfg *NamedBOSStorageConfig) UnmarshalYAML(unmarshal func(interface{}) error) error {
+func (cfg *NamedBOSStorageConfig) UnmarshalYAML(value *yaml.Node) error {
 	flagext.DefaultValues((*baidubce.BOSStorageConfig)(cfg))
-	return unmarshal((*baidubce.BOSStorageConfig)(cfg))
+	// We always want strict config parsing
+	// See https://github.com/yaml/go-yaml/issues/321 and https://github.com/yaml/go-yaml/pull/332
+	return value.Load((*baidubce.BOSStorageConfig)(cfg), yaml.WithKnownFields(true))
 }
 
 type NamedFSConfig local.FSConfig
 
 // UnmarshalYAML implements the yaml.Unmarshaler interface.
-func (cfg *NamedFSConfig) UnmarshalYAML(unmarshal func(interface{}) error) error {
+func (cfg *NamedFSConfig) UnmarshalYAML(value *yaml.Node) error {
 	flagext.DefaultValues((*local.FSConfig)(cfg))
-	return unmarshal((*local.FSConfig)(cfg))
+	// We always want strict config parsing
+	// See https://github.com/yaml/go-yaml/issues/321 and https://github.com/yaml/go-yaml/pull/332
+	return value.Load((*local.FSConfig)(cfg), yaml.WithKnownFields(true))
 }
 
 type NamedGCSConfig gcp.GCSConfig
 
 // UnmarshalYAML implements the yaml.Unmarshaler interface.
-func (cfg *NamedGCSConfig) UnmarshalYAML(unmarshal func(interface{}) error) error {
+func (cfg *NamedGCSConfig) UnmarshalYAML(value *yaml.Node) error {
 	flagext.DefaultValues((*gcp.GCSConfig)(cfg))
-	return unmarshal((*gcp.GCSConfig)(cfg))
+	// We always want strict config parsing
+	// See https://github.com/yaml/go-yaml/issues/321 and https://github.com/yaml/go-yaml/pull/332
+	return value.Load((*gcp.GCSConfig)(cfg), yaml.WithKnownFields(true))
 }
 
 type NamedOssConfig alibaba.OssConfig
 
 // UnmarshalYAML implements the yaml.Unmarshaler interface.
-func (cfg *NamedOssConfig) UnmarshalYAML(unmarshal func(interface{}) error) error {
+func (cfg *NamedOssConfig) UnmarshalYAML(value *yaml.Node) error {
 	flagext.DefaultValues((*alibaba.OssConfig)(cfg))
-	return unmarshal((*alibaba.OssConfig)(cfg))
+	// We always want strict config parsing
+	// See https://github.com/yaml/go-yaml/issues/321 and https://github.com/yaml/go-yaml/pull/332
+	return value.Load((*alibaba.OssConfig)(cfg), yaml.WithKnownFields(true))
 }
 
 type NamedSwiftConfig openstack.SwiftConfig
 
 // UnmarshalYAML implements the yaml.Unmarshaler interface.
-func (cfg *NamedSwiftConfig) UnmarshalYAML(unmarshal func(interface{}) error) error {
+func (cfg *NamedSwiftConfig) UnmarshalYAML(value *yaml.Node) error {
 	flagext.DefaultValues((*openstack.SwiftConfig)(cfg))
-	return unmarshal((*openstack.SwiftConfig)(cfg))
+	// We always want strict config parsing
+	// See https://github.com/yaml/go-yaml/issues/321 and https://github.com/yaml/go-yaml/pull/332
+	return value.Load((*openstack.SwiftConfig)(cfg), yaml.WithKnownFields(true))
 }
 
 func (cfg *NamedSwiftConfig) Validate() error {
@@ -156,9 +141,11 @@ func (cfg *NamedSwiftConfig) Validate() error {
 type NamedCOSConfig ibmcloud.COSConfig
 
 // UnmarshalYAML implements the yaml.Unmarshaler interface.
-func (cfg *NamedCOSConfig) UnmarshalYAML(unmarshal func(interface{}) error) error {
+func (cfg *NamedCOSConfig) UnmarshalYAML(value *yaml.Node) error {
 	flagext.DefaultValues((*ibmcloud.COSConfig)(cfg))
-	return unmarshal((*ibmcloud.COSConfig)(cfg))
+	// We always want strict config parsing
+	// See https://github.com/yaml/go-yaml/issues/321 and https://github.com/yaml/go-yaml/pull/332
+	return value.Load((*ibmcloud.COSConfig)(cfg), yaml.WithKnownFields(true))
 }
 
 // NamedStores helps configure additional object stores from a given storage provider
@@ -180,11 +167,7 @@ func (ns *NamedStores) populateStoreType() error {
 	ns.storeType = make(map[string]string)
 
 	checkForDuplicates := func(name string) error {
-		switch name {
-		case types.StorageTypeAWS, types.StorageTypeAWSDynamo, types.StorageTypeS3,
-			types.StorageTypeGCP, types.StorageTypeGCPColumnKey, types.StorageTypeBigTable, types.StorageTypeBigTableHashed, types.StorageTypeGCS,
-			types.StorageTypeAzure, types.StorageTypeBOS, types.StorageTypeSwift, types.StorageTypeCassandra,
-			types.StorageTypeFileSystem, types.StorageTypeInMemory, types.StorageTypeGrpc:
+		if slices.Contains(types.SupportedStorageTypes, name) {
 			return fmt.Errorf("named store %q should not match with the name of a predefined storage type", name)
 		}
 
@@ -267,6 +250,11 @@ func (ns *NamedStores) Validate() error {
 	return ns.populateStoreType()
 }
 
+func (ns *NamedStores) LookupStoreType(name string) (string, bool) {
+	st, ok := ns.storeType[name]
+	return st, ok
+}
+
 func (ns *NamedStores) Exists(name string) bool {
 	_, ok := ns.storeType[name]
 	return ok
@@ -274,68 +262,58 @@ func (ns *NamedStores) Exists(name string) bool {
 
 // Config chooses which storage client to use.
 type Config struct {
-	AlibabaStorageConfig   alibaba.OssConfig         `yaml:"alibabacloud"`
-	AWSStorageConfig       aws.StorageConfig         `yaml:"aws"`
-	AzureStorageConfig     azure.BlobStorageConfig   `yaml:"azure"`
-	BOSStorageConfig       baidubce.BOSStorageConfig `yaml:"bos"`
-	GCPStorageConfig       gcp.Config                `yaml:"bigtable" doc:"description=Deprecated: Configures storing indexes in Bigtable. Required fields only required when bigtable is defined in config."`
-	GCSConfig              gcp.GCSConfig             `yaml:"gcs" doc:"description=Configures storing chunks in GCS. Required fields only required when gcs is defined in config."`
-	CassandraStorageConfig cassandra.Config          `yaml:"cassandra" doc:"description=Deprecated: Configures storing chunks and/or the index in Cassandra."`
-	BoltDBConfig           local.BoltDBConfig        `yaml:"boltdb" doc:"description=Deprecated: Configures storing index in BoltDB. Required fields only required when boltdb is present in the configuration."`
-	FSConfig               local.FSConfig            `yaml:"filesystem" doc:"description=Configures storing the chunks on the local file system. Required fields only required when filesystem is present in the configuration."`
-	Swift                  openstack.SwiftConfig     `yaml:"swift"`
-	GrpcConfig             grpc.Config               `yaml:"grpc_store" doc:"deprecated"`
-	Hedging                hedging.Config            `yaml:"hedging"`
-	NamedStores            NamedStores               `yaml:"named_stores"`
-	COSConfig              ibmcloud.COSConfig        `yaml:"cos"`
-	IndexCacheValidity     time.Duration             `yaml:"index_cache_validity"`
-	CongestionControl      congestion.Config         `yaml:"congestion_control,omitempty"`
-	ObjectPrefix           string                    `yaml:"object_prefix" doc:"description=Experimental. Sets a constant prefix for all keys inserted into object storage. Example: loki/"`
+	AlibabaStorageConfig alibaba.OssConfig         `yaml:"alibabacloud"`
+	S3Config             aws.S3Config              `yaml:"aws"`
+	AzureStorageConfig   azure.BlobStorageConfig   `yaml:"azure"`
+	BOSStorageConfig     baidubce.BOSStorageConfig `yaml:"bos"`
+	GCSConfig            gcp.GCSConfig             `yaml:"gcs" doc:"description=Configures storing chunks in GCS. Required fields only required when gcs is defined in config."`
+	FSConfig             local.FSConfig            `yaml:"filesystem" doc:"description=Configures storing the chunks on the local file system. Required fields only required when filesystem is present in the configuration."`
+	Swift                openstack.SwiftConfig     `yaml:"swift"`
+	Hedging              hedging.Config            `yaml:"hedging"`
+	NamedStores          NamedStores               `yaml:"named_stores"`
+	COSConfig            ibmcloud.COSConfig        `yaml:"cos"`
+	CongestionControl    congestion.Config         `yaml:"congestion_control,omitempty"`
+	ObjectPrefix         string                    `yaml:"object_prefix" doc:"description=Experimental. Sets a constant prefix for all keys inserted into object storage. Example: loki/"`
 
-	IndexQueriesCacheConfig  cache.Config `yaml:"index_queries_cache_config"`
-	DisableBroadIndexQueries bool         `yaml:"disable_broad_index_queries"`
-	MaxParallelGetChunk      int          `yaml:"max_parallel_get_chunk"`
+	MaxParallelGetChunk int `yaml:"max_parallel_get_chunk"`
 
 	UseThanosObjstore bool                         `yaml:"use_thanos_objstore"`
 	ObjectStore       bucket.ConfigWithNamedStores `yaml:"object_store"`
 
-	MaxChunkBatchSize   int                       `yaml:"max_chunk_batch_size"`
-	BoltDBShipperConfig boltdb.IndexCfg           `yaml:"boltdb_shipper" doc:"description=Configures storing index in an Object Store (GCS/S3/Azure/Swift/COS/Filesystem) in the form of boltdb files. Required fields only required when boltdb-shipper is defined in config."`
-	TSDBShipperConfig   indexshipper.Config       `yaml:"tsdb_shipper" doc:"description=Configures storing index in an Object Store (GCS/S3/Azure/Swift/COS/Filesystem) in a prometheus TSDB-like format. Required fields only required when TSDB is defined in config."`
-	BloomShipperConfig  bloomshipperconfig.Config `yaml:"bloom_shipper" category:"experimental" doc:"description=Experimental: Configures the bloom shipper component, which contains the store abstraction to fetch bloom filters from and put them to object storage."`
+	MaxChunkBatchSize int `yaml:"max_chunk_batch_size"`
 
-	// Config for using AsyncStore when using async index stores like `boltdb-shipper`.
+	TSDBShipperConfig  indexshipper.Config       `yaml:"tsdb_shipper" doc:"description=Configures storing index in an Object Store (GCS/S3/Azure/Swift/COS/Filesystem) in a prometheus TSDB-like format. Required fields only required when TSDB is defined in config."`
+	BloomShipperConfig bloomshipperconfig.Config `yaml:"bloom_shipper" category:"experimental" doc:"description=Experimental: Configures the bloom shipper component, which contains the store abstraction to fetch bloom filters from and put them to object storage."`
+
+	// Config for using AsyncStore when using async index stores like `tsdb`.
 	// It is required for getting chunk ids of recently flushed chunks from the ingesters.
 	EnableAsyncStore bool          `yaml:"-"`
 	AsyncStoreConfig AsyncStoreCfg `yaml:"-"`
+
+	// ObjectClientDecorator, if set, wraps every ObjectClient after creation.
+	// This is intended for testing (e.g. injecting latency simulation).
+	ObjectClientDecorator func(client.ObjectClient) client.ObjectClient `yaml:"-"`
 }
 
 // RegisterFlags adds the flags required to configure this flag set.
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	cfg.AlibabaStorageConfig.RegisterFlags(f)
-	cfg.AWSStorageConfig.RegisterFlags(f)
+	cfg.S3Config.RegisterFlags(f)
 	cfg.AzureStorageConfig.RegisterFlags(f)
 	cfg.BOSStorageConfig.RegisterFlags(f)
 	cfg.COSConfig.RegisterFlags(f)
-	cfg.GCPStorageConfig.RegisterFlags(f)
 	cfg.GCSConfig.RegisterFlags(f)
-	cfg.CassandraStorageConfig.RegisterFlags(f)
-	cfg.BoltDBConfig.RegisterFlags(f)
 	cfg.FSConfig.RegisterFlags(f)
 	cfg.Swift.RegisterFlags(f)
-	cfg.GrpcConfig.RegisterFlags(f)
 	cfg.Hedging.RegisterFlagsWithPrefix("store.", f)
 	cfg.CongestionControl.RegisterFlagsWithPrefix("store.", f)
 
-	f.BoolVar(&cfg.UseThanosObjstore, "use-thanos-objstore", false, "Enables the use of thanos-io/objstore clients for connecting to object storage. When set to true, the configuration inside `storage_config.object_store` or `common.storage.object_store` block takes effect.")
+	f.BoolVar(&cfg.UseThanosObjstore, "use-thanos-objstore", true, "Enables the use of thanos-io/objstore clients for connecting to object storage. When set to true, the configuration inside `storage_config.object_store` or `common.storage.object_store` block takes effect.")
 	cfg.ObjectStore.RegisterFlagsWithPrefix("object-store.", f)
 
-	cfg.IndexQueriesCacheConfig.RegisterFlagsWithPrefix("store.index-cache-read.", "", f)
-	f.DurationVar(&cfg.IndexCacheValidity, "store.index-cache-validity", 5*time.Minute, "Cache validity for active index entries. Should be no higher than -ingester.max-chunk-idle.")
 	f.StringVar(&cfg.ObjectPrefix, "store.object-prefix", "", "The prefix to all keys inserted in object storage. Example: loki-instances/west/")
-	f.BoolVar(&cfg.DisableBroadIndexQueries, "store.disable-broad-index-queries", false, "Disable broad index queries which results in reduced cache usage and faster query performance at the expense of somewhat higher QPS on the index store.")
 	f.IntVar(&cfg.MaxParallelGetChunk, "store.max-parallel-get-chunk", 150, "Maximum number of parallel chunk reads.")
-	cfg.BoltDBShipperConfig.RegisterFlags(f)
+
 	f.IntVar(&cfg.MaxChunkBatchSize, "store.max-chunk-batch-size", 50, "The maximum number of chunks to fetch per batch.")
 	cfg.TSDBShipperConfig.RegisterFlagsWithPrefix("tsdb.", f)
 	cfg.BloomShipperConfig.RegisterFlagsWithPrefix("bloom.", f)
@@ -343,23 +321,14 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 
 // Validate config and returns error on failure
 func (cfg *Config) Validate() error {
-	if err := cfg.CassandraStorageConfig.Validate(); err != nil {
-		return errors.Wrap(err, "invalid Cassandra Storage config")
-	}
-	if err := cfg.GCPStorageConfig.Validate(); err != nil {
-		return errors.Wrap(err, "invalid GCP Storage Storage config")
-	}
 	if err := cfg.Swift.Validate(); err != nil {
 		return errors.Wrap(err, "invalid Swift Storage config")
 	}
 	if err := cfg.AzureStorageConfig.Validate(); err != nil {
 		return errors.Wrap(err, "invalid Azure Storage config")
 	}
-	if err := cfg.AWSStorageConfig.Validate(); err != nil {
+	if err := cfg.S3Config.Validate(); err != nil {
 		return errors.Wrap(err, "invalid AWS Storage config")
-	}
-	if err := cfg.BoltDBShipperConfig.Validate(); err != nil {
-		return errors.Wrap(err, "invalid boltdb-shipper config")
 	}
 	if err := cfg.TSDBShipperConfig.Validate(); err != nil {
 		return errors.Wrap(err, "invalid tsdb config")
@@ -374,260 +343,58 @@ func (cfg *Config) Validate() error {
 		return errors.Wrap(err, "invalid Alibaba Storage config")
 	}
 
+	if !cfg.UseThanosObjstore {
+		level.Warn(util_log.Logger).Log("msg", "the legacy object store clients are deprecated and their usage is not recommended any more. please migrate to thanos objstore based clients by setting `use_thanos_objstore: true`.")
+	}
+
 	return cfg.NamedStores.Validate()
 }
 
-// NewIndexClient creates a new index client of the desired type specified in the PeriodConfig
-func NewIndexClient(component string, periodCfg config.PeriodConfig, tableRange config.TableRange, cfg Config, schemaCfg config.SchemaConfig, limits StoreLimits, cm ClientMetrics, shardingStrategy indexgateway.ShardingStrategy, registerer prometheus.Registerer, logger log.Logger, metricsNamespace string) (index.Client, error) {
-
-	switch true {
-	case util.StringsContain(types.TestingStorageTypes, periodCfg.IndexType):
-		switch periodCfg.IndexType {
-		case types.StorageTypeInMemory:
-			store := testutils.NewMockStorage()
-			return store, nil
-		}
-
-	case util.StringsContain(types.SupportedIndexTypes, periodCfg.IndexType):
-		switch periodCfg.IndexType {
-		case types.BoltDBShipperType:
-			if shouldUseIndexGatewayClient(cfg.BoltDBShipperConfig.Config) {
-				if indexGatewayClient != nil {
-					return indexGatewayClient, nil
-				}
-
-				gateway, err := indexgateway.NewGatewayClient(cfg.BoltDBShipperConfig.IndexGatewayClientConfig, registerer, limits, logger, constants.Loki)
-				if err != nil {
-					return nil, err
-				}
-
-				indexGatewayClient = gateway
-				return gateway, nil
-			}
-
-			if client, ok := boltdbIndexClientsWithShipper[periodCfg.From]; ok {
-				return client, nil
-			}
-
-			objectClient, err := NewObjectClient(periodCfg.ObjectType, component, cfg, cm)
-			if err != nil {
-				return nil, err
-			}
-
-			var filterFn downloads.TenantFilter
-			if shardingStrategy != nil {
-				filterFn = shardingStrategy.FilterTenants
-			}
-			indexClient, err := boltdb.NewIndexClient(periodCfg.IndexTables.PathPrefix, cfg.BoltDBShipperConfig, objectClient, limits, filterFn, tableRange, registerer, logger)
-			if err != nil {
-				return nil, err
-			}
-
-			boltdbIndexClientsWithShipper[periodCfg.From] = indexClient
-			return indexClient, nil
-
-		case types.TSDBType:
-			// TODO(chaudum): Move TSDB index client creation into this code path
-			return nil, fmt.Errorf("code path not supported")
-		}
-
-	case util.StringsContain(types.DeprecatedIndexTypes, periodCfg.IndexType):
-		level.Warn(logger).Log("msg", fmt.Sprintf("%s is deprecated. Consider migrating to tsdb", periodCfg.IndexType))
-
-		switch periodCfg.IndexType {
-		case types.StorageTypeAWS, types.StorageTypeAWSDynamo:
-			if cfg.AWSStorageConfig.DynamoDB.URL == nil {
-				return nil, fmt.Errorf("Must set -dynamodb.url in aws mode")
-			}
-			path := strings.TrimPrefix(cfg.AWSStorageConfig.DynamoDB.URL.Path, "/")
-			if len(path) > 0 {
-				level.Warn(logger).Log("msg", "ignoring DynamoDB URL path", "path", path)
-			}
-			return aws.NewDynamoDBIndexClient(cfg.AWSStorageConfig.DynamoDBConfig, schemaCfg, registerer)
-
-		case types.StorageTypeGCP:
-			return gcp.NewStorageClientV1(context.Background(), cfg.GCPStorageConfig, schemaCfg)
-
-		case types.StorageTypeGCPColumnKey, types.StorageTypeBigTable:
-			return gcp.NewStorageClientColumnKey(context.Background(), cfg.GCPStorageConfig, schemaCfg)
-
-		case types.StorageTypeBigTableHashed:
-			cfg.GCPStorageConfig.DistributeKeys = true
-			return gcp.NewStorageClientColumnKey(context.Background(), cfg.GCPStorageConfig, schemaCfg)
-
-		case types.StorageTypeCassandra:
-			return cassandra.NewStorageClient(cfg.CassandraStorageConfig, schemaCfg, registerer)
-
-		case types.StorageTypeBoltDB:
-			return local.NewBoltDBIndexClient(cfg.BoltDBConfig)
-
-		case types.StorageTypeGrpc:
-			return grpc.NewStorageClient(cfg.GrpcConfig, schemaCfg)
-		}
-	}
-
-	return nil, fmt.Errorf("unrecognized index client type %s, choose one of: %s", periodCfg.IndexType, strings.Join(types.SupportedIndexTypes, ","))
-}
-
 // NewChunkClient makes a new chunk.Client of the desired types.
-func NewChunkClient(name, component string, cfg Config, schemaCfg config.SchemaConfig, cc congestion.Controller, registerer prometheus.Registerer, clientMetrics ClientMetrics, logger log.Logger) (client.Client, error) {
-	var storeType = name
+func NewChunkClient(name, component string, cfg Config, schemaCfg config.SchemaConfig, p config.PeriodConfig, registerer prometheus.Registerer, clientMetrics ClientMetrics, logger log.Logger) (client.Client, error) {
+	storeType := name
+	if st, ok := cfg.ObjectStore.NamedStores.LookupStoreType(name); cfg.UseThanosObjstore && ok {
+		storeType = st
+	} else if st, ok := cfg.NamedStores.LookupStoreType(name); !cfg.UseThanosObjstore && ok {
+		storeType = st
+	}
 
-	if cfg.UseThanosObjstore {
-		// Check if this is a named store and get its type
-		if st, ok := cfg.ObjectStore.NamedStores.LookupStoreType(name); ok {
-			storeType = st
+	ccCfg := cfg.CongestionControl
+	if cfg.UseThanosObjstore && congestionControlReplacesThanosRetries(ccCfg, storeType) {
+		if err := cfg.ObjectStore.DisableRetries(name); err != nil {
+			return nil, fmt.Errorf("disable object-store retries: %w", err)
 		}
+	}
 
-		var (
-			c   client.ObjectClient
-			err error
+	c, err := NewObjectClient(name, component, cfg, clientMetrics)
+	if err != nil {
+		return nil, err
+	}
+
+	if storeType == types.StorageTypeFileSystem {
+		return client.NewClientWithMaxParallel(c, client.FSEncoder, cfg.MaxParallelGetChunk, schemaCfg), nil
+	}
+
+	if ccCfg.Enabled {
+		cc := congestion.NewController(
+			ccCfg,
+			logger,
+			congestion.NewMetrics(fmt.Sprintf("%s-%s", name, p.From.String()), ccCfg),
 		)
-		c, err = NewObjectClient(name, component, cfg, clientMetrics)
-		if err != nil {
-			return nil, err
-		}
-
-		var encoder client.KeyEncoder
-		if storeType == bucket.Filesystem {
-			encoder = client.FSEncoder
-		} else if cfg.CongestionControl.Enabled {
-			// Apply congestion control wrapper for non-filesystem storage
-			c = cc.Wrap(c)
-		}
-
-		return client.NewClientWithMaxParallel(c, encoder, cfg.MaxParallelGetChunk, schemaCfg), nil
+		c = cc.Wrap(c)
 	}
-
-	// lookup storeType for named stores
-	if nsType, ok := cfg.NamedStores.storeType[name]; ok {
-		storeType = nsType
-	}
-
-	switch true {
-
-	case util.StringsContain(types.TestingStorageTypes, storeType):
-		switch storeType {
-		case types.StorageTypeInMemory:
-			c, err := NewObjectClient(name, component, cfg, clientMetrics)
-			if err != nil {
-				return nil, err
-			}
-			return client.NewClientWithMaxParallel(c, nil, 1, schemaCfg), nil
-		}
-
-	case util.StringsContain(types.SupportedStorageTypes, storeType):
-		switch storeType {
-		case types.StorageTypeFileSystem:
-			c, err := NewObjectClient(name, component, cfg, clientMetrics)
-			if err != nil {
-				return nil, err
-			}
-			return client.NewClientWithMaxParallel(c, client.FSEncoder, cfg.MaxParallelGetChunk, schemaCfg), nil
-
-		case types.StorageTypeAWS, types.StorageTypeS3, types.StorageTypeAzure, types.StorageTypeBOS, types.StorageTypeSwift, types.StorageTypeCOS, types.StorageTypeAlibabaCloud:
-			c, err := NewObjectClient(name, component, cfg, clientMetrics)
-			if err != nil {
-				return nil, err
-			}
-			if cfg.CongestionControl.Enabled {
-				c = cc.Wrap(c)
-			}
-			return client.NewClientWithMaxParallel(c, nil, cfg.MaxParallelGetChunk, schemaCfg), nil
-
-		case types.StorageTypeGCS:
-			c, err := NewObjectClient(name, component, cfg, clientMetrics)
-			if err != nil {
-				return nil, err
-			}
-			// TODO(dannyk): expand congestion control to all other object clients
-			// this switch statement can be simplified; all the branches like this one are alike
-			if cfg.CongestionControl.Enabled {
-				c = cc.Wrap(c)
-			}
-			return client.NewClientWithMaxParallel(c, nil, cfg.MaxParallelGetChunk, schemaCfg), nil
-
-		case types.StorageTypeNoop:
-			c, _ := noop.NewNoopObjectClient()
-			return client.NewClientWithMaxParallel(c, nil, cfg.MaxParallelGetChunk, schemaCfg), nil
-		}
-
-	case util.StringsContain(types.DeprecatedStorageTypes, storeType):
-		level.Warn(logger).Log("msg", fmt.Sprintf("%s is deprecated. Please use one of the supported object stores: %s", storeType, strings.Join(types.SupportedStorageTypes, ", ")))
-
-		switch storeType {
-		case types.StorageTypeAWSDynamo:
-			if cfg.AWSStorageConfig.DynamoDB.URL == nil {
-				return nil, fmt.Errorf("Must set -dynamodb.url in aws mode")
-			}
-			path := strings.TrimPrefix(cfg.AWSStorageConfig.DynamoDB.URL.Path, "/")
-			if len(path) > 0 {
-				level.Warn(logger).Log("msg", "ignoring DynamoDB URL path", "path", path)
-			}
-			return aws.NewDynamoDBChunkClient(cfg.AWSStorageConfig.DynamoDBConfig, schemaCfg, registerer)
-
-		case types.StorageTypeGCP, types.StorageTypeGCPColumnKey, types.StorageTypeBigTable, types.StorageTypeBigTableHashed:
-			return gcp.NewBigtableObjectClient(context.Background(), cfg.GCPStorageConfig, schemaCfg)
-
-		case types.StorageTypeCassandra:
-			return cassandra.NewObjectClient(cfg.CassandraStorageConfig, schemaCfg, registerer, cfg.MaxParallelGetChunk)
-
-		case types.StorageTypeGrpc:
-			return grpc.NewStorageClient(cfg.GrpcConfig, schemaCfg)
-		}
-	}
-
-	return nil, fmt.Errorf("unrecognized chunk client type %s, choose one of: %s", name, strings.Join(types.SupportedStorageTypes, ", "))
+	return client.NewClientWithMaxParallel(c, nil, cfg.MaxParallelGetChunk, schemaCfg), nil
 }
 
-// NewTableClient makes a new table client based on the configuration.
-func NewTableClient(name, component string, periodCfg config.PeriodConfig, cfg Config, cm ClientMetrics, registerer prometheus.Registerer, logger log.Logger) (index.TableClient, error) {
-	switch true {
-	case util.StringsContain(types.TestingStorageTypes, name):
-		switch name {
-		case types.StorageTypeInMemory:
-			return testutils.NewMockStorage(), nil
-		}
-
-	case util.StringsContain(types.SupportedIndexTypes, name):
-		objectClient, err := NewObjectClient(periodCfg.ObjectType, component, cfg, cm)
-		if err != nil {
-			return nil, err
-		}
-		return indexshipper.NewTableClient(objectClient, periodCfg.IndexTables.PathPrefix), nil
-
-	case util.StringsContain(types.DeprecatedIndexTypes, name):
-		switch name {
-		case types.StorageTypeAWS, types.StorageTypeAWSDynamo:
-			if cfg.AWSStorageConfig.DynamoDB.URL == nil {
-				return nil, fmt.Errorf("Must set -dynamodb.url in aws mode")
-			}
-			path := strings.TrimPrefix(cfg.AWSStorageConfig.DynamoDB.URL.Path, "/")
-			if len(path) > 0 {
-				level.Warn(logger).Log("msg", "ignoring DynamoDB URL path", "path", path)
-			}
-			return aws.NewDynamoDBTableClient(cfg.AWSStorageConfig.DynamoDBConfig, registerer)
-		case types.StorageTypeGCP, types.StorageTypeGCPColumnKey, types.StorageTypeBigTable, types.StorageTypeBigTableHashed:
-			return gcp.NewTableClient(context.Background(), cfg.GCPStorageConfig)
-		case types.StorageTypeCassandra:
-			return cassandra.NewTableClient(context.Background(), cfg.CassandraStorageConfig, registerer)
-		case types.StorageTypeBoltDB:
-			return local.NewTableClient(cfg.BoltDBConfig.Directory)
-		case types.StorageTypeGrpc:
-			return grpc.NewTableClient(cfg.GrpcConfig)
-		}
+func congestionControlReplacesThanosRetries(cfg congestion.Config, storeType string) bool {
+	if storeType != bucket.S3 && storeType != bucket.GCS {
+		return false
 	}
 
-	return nil, fmt.Errorf("unrecognized table client type %s, choose one of: %s", name, strings.Join(types.SupportedIndexTypes, ", "))
-}
-
-// NewBucketClient makes a new bucket client based on the configuration.
-func NewBucketClient(storageConfig Config) (index.BucketClient, error) {
-	if storageConfig.FSConfig.Directory != "" {
-		return local.NewFSObjectClient(storageConfig.FSConfig)
-	}
-
-	return nil, nil
+	return cfg.Enabled &&
+		strings.EqualFold(cfg.Controller.Strategy, congestion.StrategyAIMD) &&
+		strings.EqualFold(cfg.Retry.Strategy, congestion.RetryStrategyLimited) &&
+		cfg.Retry.Limit > 0
 }
 
 type ClientMetrics struct {
@@ -647,12 +414,26 @@ func (c *ClientMetrics) Unregister() {
 // NewObjectClient makes a new StorageClient with the prefix in the front.
 func NewObjectClient(name, component string, cfg Config, clientMetrics ClientMetrics) (client.ObjectClient, error) {
 	if cfg.UseThanosObjstore {
-		return bucket.NewObjectClient(context.Background(), name, cfg.ObjectStore, component, cfg.Hedging, false, util_log.Logger)
+		c, err := bucket.NewObjectClient(context.Background(), name, cfg.ObjectStore, component, cfg.Hedging, util_log.Logger)
+		if err != nil {
+			// See if the admin has forgotten to set up any config, e.g. because they didn't realize the default changed.
+			var blankConfig bucket.ConfigWithNamedStores
+			blankConfig.RegisterFlags(&flag.FlagSet{}) // Get defaults
+			blankConfig.NamedStores.Validate()         // Set `storeType` to empty map.
+			if reflect.DeepEqual(&cfg.ObjectStore, &blankConfig) {
+				return nil, fmt.Errorf("when use_thanos_objstore is true, config must be specified in the object_store section: %w", err)
+			}
+		}
+		return c, err
 	}
 
 	actual, err := internalNewObjectClient(name, cfg, clientMetrics)
 	if err != nil {
 		return nil, err
+	}
+
+	if cfg.ObjectClientDecorator != nil {
+		actual = cfg.ObjectClientDecorator(actual)
 	}
 
 	if cfg.ObjectPrefix == "" {
@@ -677,17 +458,15 @@ func internalNewObjectClient(storeName string, cfg Config, clientMetrics ClientM
 	}
 
 	switch storeType {
-	case types.StorageTypeInMemory:
-		return testutils.NewMockStorage(), nil
 
 	case types.StorageTypeAWS, types.StorageTypeS3:
-		s3Cfg := cfg.AWSStorageConfig.S3Config
+		s3Cfg := cfg.S3Config
 		if namedStore != "" {
 			awsCfg, ok := cfg.NamedStores.AWS[namedStore]
 			if !ok {
 				return nil, fmt.Errorf("Unrecognized named aws storage config %s", storeName)
 			}
-			s3Cfg = awsCfg.S3Config
+			s3Cfg = (aws.S3Config)(awsCfg)
 		}
 
 		if cfg.CongestionControl.Enabled {
@@ -783,6 +562,6 @@ func internalNewObjectClient(storeName string, cfg Config, clientMetrics ClientM
 		return ibmcloud.NewCOSObjectClient(cosCfg, cfg.Hedging)
 
 	default:
-		return nil, fmt.Errorf("Unrecognized storage client %v, choose one of: %v, %v, %v, %v, %v, %v, %v, %v, %v", storeName, types.StorageTypeAWS, types.StorageTypeS3, types.StorageTypeGCS, types.StorageTypeAzure, types.StorageTypeAlibabaCloud, types.StorageTypeSwift, types.StorageTypeBOS, types.StorageTypeCOS, types.StorageTypeFileSystem)
+		return nil, fmt.Errorf("Unrecognized storage client %s, choose one of: %s", storeName, strings.Join(types.SupportedStorageTypes, ", "))
 	}
 }

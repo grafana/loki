@@ -7,7 +7,8 @@ import (
 )
 
 func validateModes(stack *lokiv1.LokiStack) error {
-	if stack.Spec.Tenants.Mode == lokiv1.Static {
+	switch stack.Spec.Tenants.Mode {
+	case lokiv1.Static:
 		if stack.Spec.Tenants.Authentication == nil {
 			return kverrors.New("mandatory configuration - missing tenants' authentication configuration")
 		}
@@ -23,9 +24,7 @@ func validateModes(stack *lokiv1.LokiStack) error {
 		if stack.Spec.Tenants.Authorization != nil && stack.Spec.Tenants.Authorization.OPA != nil {
 			return kverrors.New("incompatible configuration - OPA URL not required for mode static")
 		}
-	}
-
-	if stack.Spec.Tenants.Mode == lokiv1.Dynamic {
+	case lokiv1.Dynamic:
 		if stack.Spec.Tenants.Authentication == nil {
 			return kverrors.New("mandatory configuration - missing tenants configuration")
 		}
@@ -41,9 +40,7 @@ func validateModes(stack *lokiv1.LokiStack) error {
 		if stack.Spec.Tenants.Authorization != nil && stack.Spec.Tenants.Authorization.RoleBindings != nil {
 			return kverrors.New("incompatible configuration - static roleBindings not required for mode dynamic")
 		}
-	}
-
-	if stack.Spec.Tenants.Mode == lokiv1.OpenshiftLogging || stack.Spec.Tenants.Mode == lokiv1.OpenshiftNetwork {
+	case lokiv1.OpenshiftLogging, lokiv1.OpenshiftNetwork, lokiv1.Passthrough:
 		if stack.Spec.Tenants.Authentication != nil {
 			return kverrors.New("incompatible configuration - custom tenants configuration not required")
 		}

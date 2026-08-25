@@ -1,0 +1,141 @@
+package postings
+
+import (
+	"fmt"
+	"time"
+
+	"github.com/prometheus/client_golang/prometheus"
+
+	"github.com/grafana/loki/v3/pkg/dataobj"
+)
+
+// Builder aggregates posting observations and builds bitmaps and bloom filters
+// incrementally. Call [Builder.Flush] to encode all accumulated data and write
+// a postings section to the provided [dataobj.SectionWriter].
+type Builder struct {
+	metrics *Metrics
+	tenant  string
+	labels  *labelAggregator
+	blooms  *bloomAggregator
+
+	encoder *postingsEncoder
+}
+
+// NewBuilder creates a new Builder.
+//
+// pageSizeHint and pageMaxRowCount control page splitting of the underlying
+// column builders (0 means use defaults). targetSectionSizeBytes is the uncompressed
+// size threshold in bytes at which Flush splits accumulated entries into multiple
+// sections; it must be > 0. metrics may be nil to disable instrumentation.
+func NewBuilder(metrics *Metrics, pageSizeHint, pageMaxRowCount, targetSectionSizeBytes int) *Builder {
+	return &Builder{
+		metrics: metrics,
+		labels:  newLabelAggregator(),
+		blooms:  newBloomAggregator(),
+		encoder: newPostingsEncoder(pageSizeHint, pageMaxRowCount, targetSectionSizeBytes),
+	}
+}
+
+// SetTenant sets the tenant for this builder.
+func (b *Builder) SetTenant(tenant string) { b.tenant = tenant }
+
+// Tenant returns the tenant for this builder.
+func (b *Builder) Tenant() string { return b.tenant }
+
+// TimeRange returns the minimum and maximum observation timestamp across all
+// observed label and bloom postings, as the union of the two aggregators. It
+// returns zero time.Time values when nothing has been observed.
+//
+// Call TimeRange before Flush: Flush resets the builder and clears the range.
+func (b *Builder) TimeRange() (time.Time, time.Time) {
+	lMin, lMax := b.labels.TimeRange()
+	bMin, bMax := b.blooms.TimeRange()
+
+	minTime := lMin
+	if minTime.IsZero() || (!bMin.IsZero() && bMin.Before(minTime)) {
+		minTime = bMin
+	}
+	maxTime := lMax
+	if maxTime.IsZero() || (!bMax.IsZero() && bMax.After(maxTime)) {
+		maxTime = bMax
+	}
+	return minTime, maxTime
+}
+
+// Type returns the [dataobj.SectionType] of the postings builder.
+func (b *Builder) Type() dataobj.SectionType { return sectionType }
+
+// PrepareBloomColumn initializes the bloom filter for a specific column. Must
+// be called before any ObserveBloomPosting calls for the given
+// (objectPath, sectionIndex, columnName) combination. shardBuckets is stored
+// on the entry immediately so a prepared-but-unobserved column still records
+// the object's shard factor.
+func (b *Builder) PrepareBloomColumn(objectPath string, sectionIndex int64, columnName string, estimatedCardinality uint, shardBuckets int64) {
+	b.blooms.PrepareColumn(objectPath, sectionIndex, columnName, estimatedCardinality, shardBuckets)
+}
+
+// ObserveLabelPosting records a label posting observation. Multiple
+// observations for the same (ObjectPath, SectionIndex, ColumnName, LabelValue)
+// key are aggregated into a single posting.
+func (b *Builder) ObserveLabelPosting(obs LabelObservation) {
+	b.labels.Observe(obs)
+}
+
+// ObserveBloomPosting records a bloom posting observation. Returns an error if
+// the column has not been prepared via PrepareBloomColumn.
+func (b *Builder) ObserveBloomPosting(obs BloomObservation) error {
+	return b.blooms.Observe(obs)
+}
+
+// BloomBytes returns the marshaled bloom filter bytes for a specific column.
+// Returns an error if the column has not been prepared.
+func (b *Builder) BloomBytes(objectPath string, sectionIndex int64, columnName string) ([]byte, error) {
+	return b.blooms.BloomBytes(objectPath, sectionIndex, columnName)
+}
+
+// EstimatedSize returns an estimate of the encoded size of the accumulated
+// data in bytes.
+func (b *Builder) EstimatedSize() int {
+	return b.labels.EstimatedSize() + b.blooms.EstimatedSize()
+}
+
+// Reset clears all accumulated data and resets the builder to a fresh state.
+func (b *Builder) Reset() {
+	b.labels.Reset()
+	b.blooms.Reset()
+}
+
+// Flush encodes all accumulated observations into the provided
+// [dataobj.SectionWriter] and returns the number of bytes written.
+//
+// After a successful flush, the builder is reset.
+func (b *Builder) Flush(w dataobj.SectionWriter) (int64, error) {
+	labelEntries := b.labels.Entries()
+	bloomEntries, err := b.blooms.Entries()
+	if err != nil {
+		return 0, fmt.Errorf("converting bloom entries: %w", err)
+	}
+
+	if len(labelEntries) == 0 && len(bloomEntries) == 0 {
+		return 0, nil
+	}
+
+	if b.metrics != nil {
+		timer := prometheus.NewTimer(b.metrics.encodeSeconds)
+		defer timer.ObserveDuration()
+	}
+
+	sortLabelEntries(labelEntries)
+	sortBloomEntries(bloomEntries)
+
+	nBloom, err := b.encoder.encodeBloomEntries(w, b.tenant, bloomEntries)
+	if err != nil {
+		return 0, err
+	}
+	nLabel, err := b.encoder.encodeLabelEntries(w, b.tenant, labelEntries)
+	if err != nil {
+		return 0, err
+	}
+	b.Reset()
+	return nBloom + nLabel, nil
+}

@@ -12,8 +12,6 @@ import (
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
-	"github.com/prometheus/common/sigv4"
-	"github.com/prometheus/prometheus/config"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/model/rulefmt"
 	"github.com/prometheus/prometheus/model/timestamp"
@@ -26,35 +24,28 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	ruler "github.com/grafana/loki/v3/pkg/ruler/base"
+	rulerconfig "github.com/grafana/loki/v3/pkg/ruler/config"
 	"github.com/grafana/loki/v3/pkg/ruler/rulespb"
-	rulerutil "github.com/grafana/loki/v3/pkg/ruler/util"
 	"github.com/grafana/loki/v3/pkg/util"
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
 )
+
+type RemoteWriteLimits interface {
+	RulerRemoteWriteDisabled(userID string) bool
+	RulerRemoteWriteConfig(userID string, id string) *rulerconfig.RemoteWriteConfig
+}
+
+type RemoteEvaluationLimits interface {
+	RulerRemoteEvaluationTimeout(userID string) time.Duration
+	RulerRemoteEvaluationMaxResponseSize(userID string) int64
+}
 
 // RulesLimits is the one function we need from limits.Overrides, and
 // is here to limit coupling.
 type RulesLimits interface {
 	ruler.RulesLimits
-
-	RulerRemoteWriteDisabled(userID string) bool
-	RulerRemoteWriteURL(userID string) string
-	RulerRemoteWriteTimeout(userID string) time.Duration
-	RulerRemoteWriteHeaders(userID string) map[string]string
-	RulerRemoteWriteRelabelConfigs(userID string) []*rulerutil.RelabelConfig
-	RulerRemoteWriteConfig(userID string, id string) *config.RemoteWriteConfig
-	RulerRemoteWriteQueueCapacity(userID string) int
-	RulerRemoteWriteQueueMinShards(userID string) int
-	RulerRemoteWriteQueueMaxShards(userID string) int
-	RulerRemoteWriteQueueMaxSamplesPerSend(userID string) int
-	RulerRemoteWriteQueueBatchSendDeadline(userID string) time.Duration
-	RulerRemoteWriteQueueMinBackoff(userID string) time.Duration
-	RulerRemoteWriteQueueMaxBackoff(userID string) time.Duration
-	RulerRemoteWriteQueueRetryOnRateLimit(userID string) bool
-	RulerRemoteWriteSigV4Config(userID string) *sigv4.SigV4Config
-
-	RulerRemoteEvaluationTimeout(userID string) time.Duration
-	RulerRemoteEvaluationMaxResponseSize(userID string) int64
+	RemoteWriteLimits
+	RemoteEvaluationLimits
 }
 
 // queryFunc returns a new query function using the rules.EngineQueryFunc function
@@ -270,13 +261,13 @@ func validateRule(r *rulefmt.Rule, groupName string) error {
 		if r.For != 0 {
 			return errors.Errorf("invalid field 'for' in recording rule")
 		}
-		if !model.IsValidLegacyMetricName(r.Record) {
+		if !model.LegacyValidation.IsValidMetricName(r.Record) {
 			return errors.Errorf("invalid recording rule name: %s", r.Record)
 		}
 	}
 
 	for k, v := range r.Labels {
-		if !model.LabelName(k).IsValidLegacy() || k == model.MetricNameLabel {
+		if !model.LegacyValidation.IsValidLabelName(k) || k == model.MetricNameLabel {
 			return errors.Errorf("invalid label name: %s", k)
 		}
 
@@ -286,7 +277,7 @@ func validateRule(r *rulefmt.Rule, groupName string) error {
 	}
 
 	for k := range r.Annotations {
-		if !model.LabelName(k).IsValidLegacy() {
+		if !model.LegacyValidation.IsValidLabelName(k) {
 			return errors.Errorf("invalid annotation name: %s", k)
 		}
 	}

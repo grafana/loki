@@ -54,11 +54,11 @@ const (
 )
 
 var (
-	huffDecoderPool = sync.Pool{New: func() interface{} {
+	huffDecoderPool = sync.Pool{New: func() any {
 		return &huff0.Scratch{}
 	}}
 
-	fseDecoderPool = sync.Pool{New: func() interface{} {
+	fseDecoderPool = sync.Pool{New: func() any {
 		return &fseDecoder{}
 	}}
 )
@@ -400,8 +400,9 @@ func (b *blockDec) decodeLiterals(in []byte, hist *history) (remain []byte, err 
 			}
 		}
 		var err error
-		// Use our out buffer.
-		huff.MaxDecodedSize = litRegenSize
+		// Decoder.Decompress* uses cap(dst) for the size limit. Do not write
+		// MaxDecodedSize on hist.huffTree: with a trained dictionary that
+		// pointer aliases the shared dict.litEnc and concurrent DecodeAll races.
 		if fourStreams {
 			literals, err = huff.Decoder().Decompress4X(b.literalBuf[:0:litRegenSize], literals)
 		} else {
@@ -553,7 +554,7 @@ func (b *blockDec) prepareSequences(in []byte, hist *history) (err error) {
 		if compMode&3 != 0 {
 			return errors.New("corrupt block: reserved bits not zero")
 		}
-		for i := uint(0); i < 3; i++ {
+		for i := range uint(3) {
 			mode := seqCompMode((compMode >> (6 - i*2)) & 3)
 			if debugDecoder {
 				println("Table", tableIndex(i), "is", mode)
@@ -673,10 +674,6 @@ func (b *blockDec) executeSequences(hist *history) error {
 	hbytes := hist.b
 	if len(hbytes) > hist.windowSize {
 		hbytes = hbytes[len(hbytes)-hist.windowSize:]
-		// We do not need history anymore.
-		if hist.dict != nil {
-			hist.dict.content = nil
-		}
 	}
 	hist.decoders.windowSize = hist.windowSize
 	hist.decoders.out = b.dst[:0]

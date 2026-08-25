@@ -30,9 +30,11 @@ type Log struct {
 }
 
 var AlwaysExcludedHeaders = map[string]bool{
-	"Cookie":        true,
-	"X-Csrf-Token":  true,
-	"Authorization": true,
+	"Cookie":         true,
+	"X-Csrf-Token":   true,
+	"Authorization":  true,
+	"X-Grafana-Id":   true,
+	"X-Access-Token": true,
 }
 
 func NewLogMiddleware(log log.Logger, logRequestHeaders bool, logRequestAtInfoLevel bool, sourceIPs *SourceIPExtractor, headersList []string) Log {
@@ -137,9 +139,9 @@ func (l Log) Wrap(next http.Handler) http.Handler {
 			}
 		default:
 			if l.LogRequestHeaders && headers != nil {
-				level.Warn(requestLog).Log("msg", dskit_log.LazySprintf("%s %s (%d) %s Response: %q ws: %v; %s", r.Method, uri, statusCode, time.Since(begin), buf.Bytes(), IsWSHandshakeRequest(r), headers))
+				level.Warn(requestLog).Log("msg", dskit_log.LazySprintf("%s %s (%d) %s Response: %s ws: %v; %s", r.Method, uri, statusCode, time.Since(begin), buf.Bytes(), IsWSHandshakeRequest(r), headers))
 			} else {
-				level.Warn(requestLog).Log("msg", dskit_log.LazySprintf("%s %s (%d) %s Response: %q", r.Method, uri, statusCode, time.Since(begin), buf.Bytes()))
+				level.Warn(requestLog).Log("msg", dskit_log.LazySprintf("%s %s (%d) %s Response: %s", r.Method, uri, statusCode, time.Since(begin), buf.Bytes()))
 			}
 		}
 	})

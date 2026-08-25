@@ -44,7 +44,10 @@ func NewFixedSizeBinaryData(data arrow.ArrayData) *FixedSizeBinary {
 
 // Value returns the fixed-size slice at index i. This value should not be mutated.
 func (a *FixedSizeBinary) Value(i int) []byte {
-	i += a.array.data.offset
+	if i < 0 || i >= a.Len() {
+		panic("arrow/array: index out of range")
+	}
+	i += a.data.offset
 	var (
 		bw  = int(a.bytewidth)
 		beg = i * bw

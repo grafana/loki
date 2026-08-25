@@ -14,8 +14,11 @@ import (
 
 var emptyStats = `"stats": {
 	"index": {
+		"bloomFilterTime": 0,
+		"chunkRefsLookupTime": 0,
 		"postFilterChunks": 0,
 		"totalChunks": 0,
+		"totalStreams": 0,
 		"shardsDuration": 0,
 		"usedBloomFilters": false
 	},
@@ -27,6 +30,7 @@ var emptyStats = `"stats": {
 			"totalChunksDownloaded": 0,
 			"chunkRefsFetchTime": 0,
 			"queryReferencedStructuredMetadata": false,
+			"queryUsedV2Engine": false,
 			"pipelineWrapperFilteredLines": 0,
 			"chunk" :{
 				"compressedBytes": 0,
@@ -51,7 +55,9 @@ var emptyStats = `"stats": {
 				"prePredicateDecompressedRows": 0,
 				"prePredicateDecompressedBytes": 0,
 				"prePredicateDecompressedStructuredMetadataBytes": 0,
-				"totalRowsAvailable": 0
+				"totalPageDownloadTime": 0,
+				"totalRowsAvailable": 0,
+				"wireBytesTransferred": 0
 			}
 		},
 		"totalBatches": 0,
@@ -60,6 +66,7 @@ var emptyStats = `"stats": {
 		"totalReached": 0
 	},
 	"querier": {
+		"querierExecTime": 0,
 		"store": {
 			"chunksDownloadTime": 0,
 			"congestionControlLatency": 0,
@@ -67,6 +74,7 @@ var emptyStats = `"stats": {
 			"totalChunksDownloaded": 0,
 			"chunkRefsFetchTime": 0,
 			"queryReferencedStructuredMetadata": false,
+			"queryUsedV2Engine": false,
 			"pipelineWrapperFilteredLines": 0,
 			"chunk" :{
 				"compressedBytes": 0,
@@ -91,7 +99,9 @@ var emptyStats = `"stats": {
 				"prePredicateDecompressedRows": 0,
 				"prePredicateDecompressedBytes": 0,
 				"prePredicateDecompressedStructuredMetadataBytes": 0,
-				"totalRowsAvailable": 0
+				"totalPageDownloadTime": 0,
+				"totalRowsAvailable": 0,
+				"wireBytesTransferred": 0
 			}
 		}
 	},
@@ -167,6 +177,26 @@ var emptyStats = `"stats": {
 			"queryLengthServed": 0
 		},
 		"result": {
+			"entriesFound": 0,
+			"entriesRequested": 0,
+			"entriesStored": 0,
+			"bytesReceived": 0,
+			"bytesSent": 0,
+			"requests": 0,
+			"downloadTime": 0,
+			"queryLengthServed": 0
+		},
+		"logResult": {
+			"entriesFound": 0,
+			"entriesRequested": 0,
+			"entriesStored": 0,
+			"bytesReceived": 0,
+			"bytesSent": 0,
+			"requests": 0,
+			"downloadTime": 0,
+			"queryLengthServed": 0
+		},
+		"taskResult": {
 			"entriesFound": 0,
 			"entriesRequested": 0,
 			"entriesStored": 0,

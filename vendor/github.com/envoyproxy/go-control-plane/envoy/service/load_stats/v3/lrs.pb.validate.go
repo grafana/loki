@@ -135,7 +135,7 @@ type LoadStatsRequestMultiError []error
 
 // Error returns a concatenation of all the error messages it wraps.
 func (m LoadStatsRequestMultiError) Error() string {
-	var msgs []string
+	msgs := make([]string, 0, len(m))
 	for _, err := range m {
 		msgs = append(msgs, err.Error())
 	}
@@ -268,7 +268,7 @@ type LoadStatsResponseMultiError []error
 
 // Error returns a concatenation of all the error messages it wraps.
 func (m LoadStatsResponseMultiError) Error() string {
-	var msgs []string
+	msgs := make([]string, 0, len(m))
 	for _, err := range m {
 		msgs = append(msgs, err.Error())
 	}

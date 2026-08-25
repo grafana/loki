@@ -10,7 +10,7 @@ weight: 100
 The primary method for collecting and monitoring a Loki cluster is to use the [Kubernetes Monitoring Helm](https://github.com/grafana/k8s-monitoring-helm/) chart. This chart provides a comprehensive monitoring solution for Kubernetes clusters and includes direct integrations for monitoring the full LGTM (Loki, Grafana, Tempo, and Mimir) stack. This procedure will walk you through deploying the Kubernetes Monitoring Helm chart to monitor your Loki cluster.
 
 {{< admonition type="note" >}}
-We recommend running a production cluster of Loki in distributed mode using Kubernetes. This procedure assumes you have a running Kubernetes cluster and a running Loki deployment. There are other methods for deploying Loki, such as using Docker or VM installations. meta-monitoring is still possible when using these deployment methods but not covered in this procedure.
+We recommend running a production cluster of Loki in distributed mode using Kubernetes. This procedure assumes you have a running Kubernetes cluster and a running Loki deployment. There are other methods for deploying Loki, such as using Docker or VM installations. meta-monitoring is still possible when using these deployment methods but not covered in this procedure. If you run Loki in monolithic mode outside of this Helm chart, refer to [Single binary meta-monitoring](https://grafana.com/docs/loki/<LOKI_VERSION>/operations/meta-monitoring/single-binary/) instead.
 {{< /admonition >}}
 
 ## Prerequisites
@@ -70,7 +70,7 @@ The Kubernetes Monitoring Helm chart requires a Grafana Cloud account or a separ
    ```bash
    kubectl create secret generic metrics -n meta \
     --from-literal=username=<PROMETHEUS-USER> \
-    --from-literal=password=<CLOUD-TOKEn>
+    --from-literal=password=<CLOUD-TOKEN>
 
    kubectl create secret generic logs -n meta \
     --from-literal=username=<LOKI-USER> \
@@ -93,7 +93,7 @@ Now that you have prepared your environment and collected the necessary credenti
 1. Download the `values.yaml` file from the Kubernetes Monitoring Helm chart repository:
 
    ```bash
-   curl -O https://raw.githubusercontent.com/grafana/loki/main/production/meta-monitoring/values.yaml
+   curl -O https://raw.githubusercontent.com/grafana/loki/main/production/helm/meta-monitoring/values.yaml
    ```
 
 1. Open the `values.yaml` file in a text editor of your choosing and add the Prometheus and Loki endpoints.
@@ -108,9 +108,9 @@ Now that you have prepared your environment and collected the necessary credenti
          usernameKey: username
          passwordKey: password
        secret:
-           create: false
-           name: metrics
-           namespace: meta
+         create: false
+         name: metrics
+         namespace: meta
 
      - name: loki
        type: loki
@@ -120,9 +120,9 @@ Now that you have prepared your environment and collected the necessary credenti
          usernameKey: username
          passwordKey: password
        secret:
-           create: false
-           name: logs
-           namespace: meta
+         create: false
+         name: logs
+         namespace: meta
 
    ```
 
@@ -130,8 +130,8 @@ Now that you have prepared your environment and collected the necessary credenti
 
    ```yaml
    # Global Label to be added to all telemetry data. Should reflect a recognizable name for the cluster.
-    cluster:
-        name: loki-meta-monitoring-cluster
+   cluster:
+     name: loki-meta-monitoring-cluster
    ```
 
 1. The default values file assumes that you have deployed Loki in the `loki` namespace and will deploy the Kubernetes monitoring stack in the `meta` namespace. If you have deployed Loki in a different namespace, you will need to update `namespaces` in the `values.yaml` file to match the namespace where Loki is deployed. Here is an example:

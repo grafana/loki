@@ -13,7 +13,7 @@ permissions:
 jobs:
   helm-diff:
     name: ${{ matrix.scenario.name }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-x64
     permissions:
       contents: "read"
       id-token: "write"
@@ -24,6 +24,9 @@ jobs:
         scenario:
           - name: Distributed Scenario
             values_file: default-distributed-values.yaml
+            use_k3d: true
+          - name: Single Binary Scenario
+            values_file: default-single-binary-values.yaml
             use_k3d: true
           - name: Default Values Scenario
             values_file: default-values.yaml
@@ -43,12 +46,12 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
         with:
           persist-credentials: false
 
       - name: Setup Helm
-        uses: azure/setup-helm@b9e51907a09c216f16ebe8536097933489208112 # v4
+        uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5.0.1
 
       - name: Add required Helm repositories
         run: |
@@ -64,7 +67,7 @@ jobs:
       - name: Setup Helm plugins
         if: ${{ matrix.scenario.use_k3d }}
         run: |
-          helm plugin install https://github.com/databus23/helm-diff
+          helm plugin install --verify=false https://github.com/databus23/helm-diff
 
       - name: Build helm dependencies
         run: |
@@ -92,7 +95,7 @@ jobs:
           cat helm_diff_output.txt >> formatted_diff_output.md
 
       - name: Upload diff output as artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         id: upload_diff
         with:
           name: ${{ matrix.scenario.name }}-diff-output
@@ -101,7 +104,7 @@ jobs:
 
   summary-diff-outputs:
     name: Summary Diffs
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-x64
     permissions:
       contents: "read"
       id-token: "write"
@@ -110,11 +113,11 @@ jobs:
     needs: [helm-diff]
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
         with:
           persist-credentials: false
 
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
 
       - name: Combine diff outputs
         run: |
@@ -134,12 +137,13 @@ jobs:
             echo "" >> formatted_diff_output.md
           done
 
+      - name: Truncate summary diff to 65535 characters
+        run: |
+          head -c 65535 formatted_diff_output.md > formatted_diff_output.truncated.md
+          mv formatted_diff_output.truncated.md formatted_diff_output.md
+
       - name: Post diff as PR comment
-        uses: marocchino/sticky-pull-request-comment@52423e01640425a022ef5fd42c6fb5f633a02728 # v2
-        with:
-          header: "Helm Diff Output - Summary"
-          skip_unchanged: true
-          hide_and_recreate: true
-          append: true
-          hide_classify: "OUTDATED"
-          path: formatted_diff_output.md
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh pr comment "${{ github.event.pull_request.number }}" --body-file formatted_diff_output.md

@@ -2,29 +2,35 @@
 title: Migrate to Thanos storage clients
 menuTitle: Migrate to Thanos storage clients
 description: Migration guide for moving from existing storage clients to Thanos storage clients.
-weight: 
+weight: 300
+keywords:
+  - migrate
+  - thanos
+  - storage
 ---
 # Migrate to Thanos storage clients
 
-Loki release 3.4 introduces new object storage clients based on the [Thanos Object Storage Client Go module](https://github.com/thanos-io/objstore).
+Loki has object storage clients based on the [Thanos Object Storage Client Go module](https://github.com/thanos-io/objstore). These clients were added in Loki 3.4.
 
 One of the reasons for making this change is to have a consistent storage configuration across Grafana Loki, Mimir and other telemetry databases from Grafana Labs. If you are already using Grafana Mimir or Pyroscope, you can reuse the storage configuration for setting up Loki.
 
-This is an opt-in feature with the Loki 3.4 release. In a future release, Thanos will become the default way of configuring storage and the existing storage clients will be deprecated.
+Loki 4.0 uses the Thanos-based clients by default, because the `use_thanos_objstore` setting defaults to `true`. The legacy storage clients are deprecated. Use this guide to convert your storage configuration to the new format. If you are not ready to migrate, set `use_thanos_objstore` to `false` to keep using the legacy clients.
+
+In Loki 3.4 and later 3.x releases, the Thanos-based clients are optional. To use them in those releases, set `use_thanos_objstore` to `true`.
 
 {{< admonition type="note" >}}
 The new storage configuration deviates from the existing format. The following sections describe the changes in detail for each provider.
 Refer to the [Thanos storage configuration reference](https://grafana.com/docs/loki/<LOKI_VERSION>/configure/#thanos_object_store_config) to view the complete list of supported storage providers and their configuration options.
 {{< /admonition >}}
 
-### Enable the new storage clients
+### Configure the new storage clients
 
-1. Enable Thanos storage clients by setting `use_thanos_objstore` to `true` in the `storage_config` section or by setting the `-use-thanos-objstore` flag to true. When enabled, configuration under `storage_config.object_store` takes effect instead of existing storage configurations.
+1. Configure your object storage under `storage_config.object_store`. When the Thanos-based clients are in use, Loki reads this section instead of the legacy storage configuration. In Loki 3.x, you must also set `use_thanos_objstore` to `true` in the `storage_config` section, or set the `-use-thanos-objstore` flag to `true`. The following examples set this option explicitly, which is also valid in Loki 4.0.
 
    ```yaml
    # Uses the new storage clients for connecting to gcs backend
    storage_config:
-     use_thanos_objstore: true # enable the new storage clients
+     use_thanos_objstore: true # use the Thanos-based storage clients
      object_store:
        gcs:
          bucket_name: "example-bucket"
@@ -34,7 +40,7 @@ Refer to the [Thanos storage configuration reference](https://grafana.com/docs/l
 
    ```yaml
    storage_config:
-      use_thanos_objstore: true # enable the new storage clients
+      use_thanos_objstore: true # use the Thanos-based storage clients
    common:
      storage:
        object_store:
@@ -46,7 +52,7 @@ Refer to the [Thanos storage configuration reference](https://grafana.com/docs/l
 
    ```yaml
    storage_config:
-      use_thanos_objstore: true # enable the new storage clients
+      use_thanos_objstore: true # use the Thanos-based storage clients
    ruler_storage:
       backend: gcs
       gcs:
@@ -58,7 +64,7 @@ Refer to the [Thanos storage configuration reference](https://grafana.com/docs/l
    ```yaml
    # Example configuration to prefix all objects with "prefix"
    storage_config:
-      use_thanos_objstore: true # enable the new storage clients
+      use_thanos_objstore: true # use the Thanos-based storage clients
       object_store:
          storage_prefix: "prefix"
    ```
@@ -194,7 +200,7 @@ When migrating from the existing [Azure](https://grafana.com/docs/loki/<LOKI_VER
 | `chunk_delimiter` | `chunk_delimiter` | No changes required |
 {{< /responsive-table >}}
 
-If you are using an authentication method other than storage account key or user-assigned managed identity, you'll have to pass the neccessary credetials using environment variables.
+If you are using an authentication method other than storage account key or user-assigned managed identity, you'll have to pass the necessary credentials using environment variables.
 For more details, refer to [Azure Identity Client Module for Go](https://pkg.go.dev/github.com/Azure/azure-sdk-for-go/sdk/azidentity).
 
 ### Filesystem Storage Migration

@@ -179,13 +179,12 @@ type callInfo struct {
 	// nameResolutionEventAdded is set when the resolver delay trace event
 	// is added. Prevents duplicate events, since it is reported per-attempt.
 	nameResolutionEventAdded atomic.Bool
+	// previousRPCAttempts holds the count of RPC attempts that have happened
+	// before current attempt. Transparent retries are excluded.
+	previousRPCAttempts atomic.Uint32
 }
 
 type callInfoKey struct{}
-
-func setCallInfo(ctx context.Context, ci *callInfo) context.Context {
-	return context.WithValue(ctx, callInfoKey{}, ci)
-}
 
 // getCallInfo returns the callInfo stored in the context, or nil
 // if there isn't one.
@@ -200,17 +199,39 @@ type rpcInfo struct {
 	ai *attemptInfo
 }
 
-type rpcInfoKey struct{}
+type clientRPCInfoKey struct{}
+type serverRPCInfoKey struct{}
 
-func setRPCInfo(ctx context.Context, ri *rpcInfo) context.Context {
-	return context.WithValue(ctx, rpcInfoKey{}, ri)
+// clientRPCInfo returns the rpcInfo stored in the context for client, or nil
+// if there isn't one.
+func clientRPCInfo(ctx context.Context) *rpcInfo {
+	ri, _ := ctx.Value(clientRPCInfoKey{}).(*rpcInfo)
+	return ri
 }
 
-// getRPCInfo returns the rpcInfo stored in the context, or nil
+// serverRPCInfo returns the rpcInfo stored in the context for server, or nil
 // if there isn't one.
-func getRPCInfo(ctx context.Context) *rpcInfo {
-	ri, _ := ctx.Value(rpcInfoKey{}).(*rpcInfo)
+func serverRPCInfo(ctx context.Context) *rpcInfo {
+	ri, _ := ctx.Value(serverRPCInfoKey{}).(*rpcInfo)
 	return ri
+}
+
+func getOrCreateClientRPCInfo(ctx context.Context) (context.Context, *rpcInfo) {
+	ri := clientRPCInfo(ctx)
+	if ri != nil {
+		return ctx, ri
+	}
+	ri = &rpcInfo{ai: &attemptInfo{}}
+	return context.WithValue(ctx, clientRPCInfoKey{}, ri), ri
+}
+
+func getOrCreateServerRPCInfo(ctx context.Context) (context.Context, *rpcInfo) {
+	ri := serverRPCInfo(ctx)
+	if ri != nil {
+		return ctx, ri
+	}
+	ri = &rpcInfo{ai: &attemptInfo{}}
+	return context.WithValue(ctx, serverRPCInfoKey{}, ri), ri
 }
 
 func removeLeadingSlash(mn string) string {
@@ -239,9 +260,8 @@ type attemptInfo struct {
 	// message counters for sent and received messages (used for
 	// generating message IDs), and the number of previous RPC attempts for the
 	// associated call.
-	countSentMsg        uint32
-	countRecvMsg        uint32
-	previousRPCAttempts uint32
+	countSentMsg uint32
+	countRecvMsg uint32
 }
 
 type clientMetrics struct {
@@ -276,6 +296,18 @@ func createInt64Counter(setOfMetrics map[string]bool, metricName string, meter o
 	if err != nil {
 		logger.Errorf("failed to register metric \"%v\", will not record: %v", metricName, err)
 		return noop.Int64Counter{}
+	}
+	return ret
+}
+
+func createInt64UpDownCounter(setOfMetrics map[string]bool, metricName string, meter otelmetric.Meter, options ...otelmetric.Int64UpDownCounterOption) otelmetric.Int64UpDownCounter {
+	if _, ok := setOfMetrics[metricName]; !ok {
+		return noop.Int64UpDownCounter{}
+	}
+	ret, err := meter.Int64UpDownCounter(string(metricName), options...)
+	if err != nil {
+		logger.Errorf("Failed to register metric \"%v\", will not record: %v", metricName, err)
+		return noop.Int64UpDownCounter{}
 	}
 	return ret
 }
@@ -328,6 +360,21 @@ func createInt64Gauge(setOfMetrics map[string]bool, metricName string, meter ote
 	return ret
 }
 
+// createInt64ObservableGauge initializes an OTel Int64ObservableGauge if the metric is enabled.
+func createInt64ObservableGauge(setOfMetrics map[string]bool, metricName string, meter otelmetric.Meter, options ...otelmetric.Int64ObservableGaugeOption) otelmetric.Int64ObservableGauge {
+	if _, ok := setOfMetrics[metricName]; !ok {
+		n, _ := noop.NewMeterProvider().Meter("noop").Int64ObservableGauge("noop")
+		return n
+	}
+	ret, err := meter.Int64ObservableGauge(metricName, options...)
+	if err != nil {
+		logger.Errorf("failed to register metric %q, will not record: %v", metricName, err)
+		n, _ := noop.NewMeterProvider().Meter("noop").Int64ObservableGauge("noop")
+		return n
+	}
+	return ret
+}
+
 func optionFromLabels(labelKeys []string, optionalLabelKeys []string, optionalLabels []string, labelVals ...string) otelmetric.MeasurementOption {
 	var attributes []otelattribute.KeyValue
 
@@ -350,21 +397,30 @@ func optionFromLabels(labelKeys []string, optionalLabelKeys []string, optionalLa
 // registryMetrics implements MetricsRecorder for the client and server stats
 // handlers.
 type registryMetrics struct {
-	intCounts   map[*estats.MetricDescriptor]otelmetric.Int64Counter
-	floatCounts map[*estats.MetricDescriptor]otelmetric.Float64Counter
-	intHistos   map[*estats.MetricDescriptor]otelmetric.Int64Histogram
-	floatHistos map[*estats.MetricDescriptor]otelmetric.Float64Histogram
-	intGauges   map[*estats.MetricDescriptor]otelmetric.Int64Gauge
+	internal.EnforceMetricsRecorderEmbedding
+	intCounts       map[*estats.MetricDescriptor]otelmetric.Int64Counter
+	floatCounts     map[*estats.MetricDescriptor]otelmetric.Float64Counter
+	intHistos       map[*estats.MetricDescriptor]otelmetric.Int64Histogram
+	floatHistos     map[*estats.MetricDescriptor]otelmetric.Float64Histogram
+	intGauges       map[*estats.MetricDescriptor]otelmetric.Int64Gauge
+	intUpDownCounts map[*estats.MetricDescriptor]otelmetric.Int64UpDownCounter
 
+	// Asynchronous (Observable) Instruments
+	intObservableGauges map[*estats.MetricDescriptor]otelmetric.Int64ObservableGauge
+
+	meter          otelmetric.Meter
 	optionalLabels []string
 }
 
 func (rm *registryMetrics) registerMetrics(metrics *stats.MetricSet, meter otelmetric.Meter) {
+	rm.meter = meter
 	rm.intCounts = make(map[*estats.MetricDescriptor]otelmetric.Int64Counter)
 	rm.floatCounts = make(map[*estats.MetricDescriptor]otelmetric.Float64Counter)
 	rm.intHistos = make(map[*estats.MetricDescriptor]otelmetric.Int64Histogram)
 	rm.floatHistos = make(map[*estats.MetricDescriptor]otelmetric.Float64Histogram)
 	rm.intGauges = make(map[*estats.MetricDescriptor]otelmetric.Int64Gauge)
+	rm.intUpDownCounts = make(map[*estats.MetricDescriptor]otelmetric.Int64UpDownCounter)
+	rm.intObservableGauges = make(map[*estats.MetricDescriptor]otelmetric.Int64ObservableGauge)
 
 	for metric := range metrics.Metrics() {
 		desc := estats.DescriptorForMetric(metric)
@@ -385,6 +441,10 @@ func (rm *registryMetrics) registerMetrics(metrics *stats.MetricSet, meter otelm
 			rm.floatHistos[desc] = createFloat64Histogram(metrics.Metrics(), desc.Name, meter, otelmetric.WithUnit(desc.Unit), otelmetric.WithDescription(desc.Description), otelmetric.WithExplicitBucketBoundaries(desc.Bounds...))
 		case estats.MetricTypeIntGauge:
 			rm.intGauges[desc] = createInt64Gauge(metrics.Metrics(), desc.Name, meter, otelmetric.WithUnit(desc.Unit), otelmetric.WithDescription(desc.Description))
+		case estats.MetricTypeIntUpDownCount:
+			rm.intUpDownCounts[desc] = createInt64UpDownCounter(metrics.Metrics(), desc.Name, meter, otelmetric.WithUnit(desc.Unit), otelmetric.WithDescription(desc.Description))
+		case estats.MetricTypeIntAsyncGauge:
+			rm.intObservableGauges[desc] = createInt64ObservableGauge(metrics.Metrics(), desc.Name, meter, otelmetric.WithUnit(desc.Unit), otelmetric.WithDescription(desc.Description))
 		}
 	}
 }
@@ -392,6 +452,14 @@ func (rm *registryMetrics) registerMetrics(metrics *stats.MetricSet, meter otelm
 func (rm *registryMetrics) RecordInt64Count(handle *estats.Int64CountHandle, incr int64, labels ...string) {
 	desc := handle.Descriptor()
 	if ic, ok := rm.intCounts[desc]; ok {
+		ao := optionFromLabels(desc.Labels, desc.OptionalLabels, rm.optionalLabels, labels...)
+		ic.Add(context.TODO(), incr, ao)
+	}
+}
+
+func (rm *registryMetrics) RecordInt64UpDownCount(handle *estats.Int64UpDownCountHandle, incr int64, labels ...string) {
+	desc := handle.Descriptor()
+	if ic, ok := rm.intUpDownCounts[desc]; ok {
 		ao := optionFromLabels(desc.Labels, desc.OptionalLabels, rm.optionalLabels, labels...)
 		ic.Add(context.TODO(), incr, ao)
 	}
@@ -429,6 +497,55 @@ func (rm *registryMetrics) RecordInt64Gauge(handle *estats.Int64GaugeHandle, inc
 	}
 }
 
+// RegisterAsyncReporter will register a callback with the underlying OpenTelemetry
+// Meter for the provided descriptors.
+//
+// It will map the provided descriptors to their corresponding OTel Observable
+// instruments. If no instruments match the descriptors, registration is
+// skipped.
+//
+// The returned cleanup function unregisters the callback from the Meter.
+// RegisterAsyncReporter registers a callback with the OpenTelemetry Meter.
+func (rm *registryMetrics) RegisterAsyncReporter(reporter estats.AsyncMetricReporter, metrics ...estats.AsyncMetric) func() {
+	observables := make([]otelmetric.Observable, 0, len(metrics))
+	observableMap := make(map[*estats.MetricDescriptor]otelmetric.Observable, len(metrics))
+
+	for _, m := range metrics {
+		d := m.Descriptor()
+		if inst, ok := rm.intObservableGauges[d]; ok {
+			observables = append(observables, inst)
+			observableMap[d] = inst
+		}
+	}
+
+	if len(observables) == 0 {
+		return func() {}
+	}
+
+	cbWrapper := func(_ context.Context, o otelmetric.Observer) error {
+		adapter := &observerAdapter{
+			observableMap:  observableMap,
+			optionalLabels: rm.optionalLabels,
+			delegate:       o,
+		}
+		reporter.Report(adapter)
+		return nil
+	}
+
+	reg, err := rm.meter.RegisterCallback(cbWrapper, observables...)
+	if err != nil {
+		logger.Warningf("grpc: failed to register callback for async metrics: %v", err)
+		return func() {}
+	}
+
+	return func() {
+		err = reg.Unregister()
+		if err != nil {
+			logger.Errorf("grpc: failed to unregister callback for async metrics: %v", err)
+		}
+	}
+}
+
 // Users of this component should use these bucket boundaries as part of their
 // SDK MeterProvider passed in. This component sends this as "advice" to the
 // API, which works, however this stability is not guaranteed, so for safety the
@@ -448,4 +565,28 @@ var (
 // This should only be invoked after init time.
 func DefaultMetrics() *stats.MetricSet {
 	return defaultPerCallMetrics.Join(estats.DefaultMetrics)
+}
+
+type observerAdapter struct {
+	observableMap  map[*estats.MetricDescriptor]otelmetric.Observable
+	optionalLabels []string
+	delegate       otelmetric.Observer
+}
+
+// RecordInt64AsyncGauge records the measurement alongside labels on the int
+// gauge associated with the provided handle.
+func (a *observerAdapter) RecordInt64AsyncGauge(handle *estats.Int64AsyncGaugeHandle, val int64, labels ...string) {
+	desc := handle.Descriptor()
+	observable, ok := a.observableMap[desc]
+	if !ok {
+		return
+	}
+
+	ao := optionFromLabels(desc.Labels, desc.OptionalLabels, a.optionalLabels, labels...)
+
+	switch obs := observable.(type) {
+	case otelmetric.Int64ObservableGauge:
+		a.delegate.ObserveInt64(obs, val, ao)
+	default:
+	}
 }

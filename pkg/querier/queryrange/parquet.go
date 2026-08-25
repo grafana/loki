@@ -87,7 +87,7 @@ func encodeLogsParquetTo(response *LokiResponse, w io.Writer) error {
 	writer := parquet.NewGenericWriter[LogStreamRowType](w, schema)
 
 	for _, stream := range response.Data.Result {
-		lbls, err := parser.ParseMetric(stream.Labels)
+		lbls, err := parser.NewParser(parser.Options{}).ParseMetric(stream.Labels)
 		if err != nil {
 			return err
 		}

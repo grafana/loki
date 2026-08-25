@@ -77,6 +77,8 @@ var defaultAWSConfigResolvers = []awsConfigResolver{
 
 	// Sets the DisableRequestCompression if present in env var or shared config profile
 	resolveDisableRequestCompression,
+	// Sets the DisableClockSkewCorrection if present in env var or shared config profile
+	resolveDisableClockSkewCorrection,
 
 	// Sets the RequestMinCompressSizeBytes if present in env var or shared config profile
 	resolveRequestMinCompressSizeBytes,
@@ -89,6 +91,15 @@ var defaultAWSConfigResolvers = []awsConfigResolver{
 
 	// Sets the ResponseChecksumValidation if present in env var or shared config profile
 	resolveResponseChecksumValidation,
+
+	resolveInterceptors,
+
+	resolveAuthSchemePreference,
+
+	// Sets the ServiceOptions if present in LoadOptions
+	resolveServiceOptions,
+
+	resolveRestrictFilePermissions,
 }
 
 // A Config represents a generic configuration value or set of values. This type
@@ -96,7 +107,7 @@ var defaultAWSConfigResolvers = []awsConfigResolver{
 //
 // General the Config type will use type assertion against the Provider interfaces
 // to extract specific data from the Config.
-type Config interface{}
+type Config any
 
 // A loader is used to load external configuration data and returns it as
 // a generic Config type.
@@ -163,8 +174,8 @@ func (cs configs) ResolveAWSConfig(ctx context.Context, resolvers []awsConfigRes
 
 // ResolveConfig calls the provide function passing slice of configuration sources.
 // This implements the aws.ConfigResolver interface.
-func (cs configs) ResolveConfig(f func(configs []interface{}) error) error {
-	var cfgs []interface{}
+func (cs configs) ResolveConfig(f func(configs []any) error) error {
+	var cfgs []any
 	for i := range cs {
 		cfgs = append(cfgs, cs[i])
 	}

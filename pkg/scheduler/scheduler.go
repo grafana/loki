@@ -246,9 +246,15 @@ func (s *Scheduler) FrontendLoop(frontend schedulerpb.SchedulerForFrontend_Front
 	defer s.frontendDisconnected(frontendAddress)
 
 	// Response to INIT. If scheduler is not running, we skip for-loop, send SHUTTING_DOWN and exit this method.
-	if s.State() == services.Running && s.shouldRun.Load() {
-		if err := frontend.Send(&schedulerpb.SchedulerToFrontend{Status: schedulerpb.OK}); err != nil {
-			return err
+	if s.State() == services.Running {
+		if s.shouldRun.Load() {
+			if err := frontend.Send(&schedulerpb.SchedulerToFrontend{Status: schedulerpb.OK}); err != nil {
+				return err
+			}
+		} else {
+			// Scheduler is "RUNNING" but should not run (yet)
+			level.Info(s.log).Log("msg", "scheduler is not in ReplicationSet, sending ERROR so frontend can try another scheduler", "frontend", frontendAddress)
+			return frontend.Send(&schedulerpb.SchedulerToFrontend{Status: schedulerpb.ERROR})
 		}
 	}
 

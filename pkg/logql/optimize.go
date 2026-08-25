@@ -39,6 +39,7 @@ func replaceApproxTopK(expr syntax.SampleExpr) {
 
 		vectorExpr.Operation = syntax.OpTypeTopK
 		vectorExpr.Left = &CountMinSketchEvalExpr{
+			operation: syntax.OpTypeApproxTopK,
 			SampleExpr: &syntax.VectorAggregationExpr{
 				Operation: syntax.OpTypeCountMinSketch,
 				Params:    0,

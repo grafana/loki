@@ -1,4 +1,4 @@
-// Copyright 2013 The Prometheus Authors
+// Copyright The Prometheus Authors
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
@@ -18,6 +18,7 @@ import (
 	"fmt"
 	"hash/fnv"
 	"net/url"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -32,6 +33,20 @@ import (
 	"github.com/prometheus/prometheus/model/value"
 	"github.com/prometheus/prometheus/storage"
 )
+
+// convertClassicHistogramsToNHCBLabel is the name of the label that holds whether
+// to convert classic histograms to native histograms with custom buckets when
+// scraping a target.
+const convertClassicHistogramsToNHCBLabel = "__convert_classic_histograms_to_nhcb__"
+
+// alwaysScrapeClassicHistogramsLabel is the name of the label that holds whether
+// to always scrape a classic histogram even if it is also exposed as a native
+// histogram when scraping a target.
+const alwaysScrapeClassicHistogramsLabel = "__always_scrape_classic_histograms__"
+
+// scrapeNativeHistogramsLabel is the name of the label that holds whether to
+// scrape native histograms when scraping a target.
+const scrapeNativeHistogramsLabel = "__scrape_native_histograms__"
 
 // TargetHealth describes the health state of a target.
 type TargetHealth string
@@ -144,7 +159,7 @@ func (t *Target) SetMetadataStore(s MetricMetadataStore) {
 func (t *Target) hash() uint64 {
 	h := fnv.New64a()
 
-	h.Write([]byte(fmt.Sprintf("%016d", t.labels.Hash())))
+	fmt.Fprintf(h, "%016d", t.labels.Hash())
 	h.Write([]byte(t.URL().String()))
 
 	return h.Sum64()
@@ -190,9 +205,9 @@ func (t *Target) LabelsRange(f func(l labels.Label)) {
 
 // DiscoveredLabels returns a copy of the target's labels before any processing.
 func (t *Target) DiscoveredLabels(lb *labels.Builder) labels.Labels {
-	t.mtx.Lock()
+	t.mtx.RLock()
 	cfg, tLabels, tgLabels := t.scrapeConfig, t.tLabels, t.tgLabels
-	t.mtx.Unlock()
+	t.mtx.RUnlock()
 	PopulateDiscoveredLabels(lb, cfg, tLabels, tgLabels)
 	return lb.Labels()
 }
@@ -208,9 +223,9 @@ func (t *Target) SetScrapeConfig(scrapeConfig *config.ScrapeConfig, tLabels, tgL
 
 // URL returns a copy of the target's URL.
 func (t *Target) URL() *url.URL {
-	t.mtx.Lock()
+	t.mtx.RLock()
 	configParams := t.scrapeConfig.Params
-	t.mtx.Unlock()
+	t.mtx.RUnlock()
 	params := url.Values{}
 
 	for k, v := range configParams {
@@ -306,6 +321,23 @@ func (t *Target) intervalAndTimeout(defaultInterval, defaultDuration time.Durati
 	return time.Duration(interval), time.Duration(timeout), nil
 }
 
+// boolLabel returns the boolean value of the target label named name, falling
+// back to def when the label is unset or its value does not parse as a boolean.
+func (t *Target) boolLabel(name string, def bool) bool {
+	t.mtx.RLock()
+	defer t.mtx.RUnlock()
+
+	v := t.labels.Get(name)
+	if v == "" {
+		return def
+	}
+	b, err := strconv.ParseBool(v)
+	if err != nil {
+		return def
+	}
+	return b
+}
+
 // GetValue gets a label value from the entire label set.
 func (t *Target) GetValue(name string) string {
 	return t.labels.Get(name)
@@ -332,13 +364,31 @@ type limitAppender struct {
 }
 
 func (app *limitAppender) Append(ref storage.SeriesRef, lset labels.Labels, t int64, v float64) (storage.SeriesRef, error) {
-	if !value.IsStaleNaN(v) {
+	// Bypass sample_limit checks only if we have a staleness marker for a known series (ref value is non-zero).
+	// This ensures that if a series is already in TSDB then we always write the marker.
+	if ref == 0 || !value.IsStaleNaN(v) {
 		app.i++
 		if app.i > app.limit {
 			return 0, errSampleLimit
 		}
 	}
 	ref, err := app.Appender.Append(ref, lset, t, v)
+	if err != nil {
+		return 0, err
+	}
+	return ref, nil
+}
+
+func (app *limitAppender) AppendHistogram(ref storage.SeriesRef, lset labels.Labels, t int64, h *histogram.Histogram, fh *histogram.FloatHistogram) (storage.SeriesRef, error) {
+	// Bypass sample_limit checks only if we have a staleness marker for a known series (ref value is non-zero).
+	// This ensures that if a series is already in TSDB then we always write the marker.
+	if ref == 0 || (h != nil && !value.IsStaleNaN(h.Sum)) || (fh != nil && !value.IsStaleNaN(fh.Sum)) {
+		app.i++
+		if app.i > app.limit {
+			return 0, errSampleLimit
+		}
+	}
+	ref, err := app.Appender.AppendHistogram(ref, lset, t, h, fh)
 	if err != nil {
 		return 0, err
 	}
@@ -363,7 +413,7 @@ func (app *timeLimitAppender) Append(ref storage.SeriesRef, lset labels.Labels, 
 	return ref, nil
 }
 
-// bucketLimitAppender limits the number of total appended samples in a batch.
+// bucketLimitAppender limits the number of buckets in appended native histograms, reducing histogram resolution or returning errBucketLimit when the limit is exceeded.
 type bucketLimitAppender struct {
 	storage.Appender
 
@@ -371,6 +421,7 @@ type bucketLimitAppender struct {
 }
 
 func (app *bucketLimitAppender) AppendHistogram(ref storage.SeriesRef, lset labels.Labels, t int64, h *histogram.Histogram, fh *histogram.FloatHistogram) (storage.SeriesRef, error) {
+	var err error
 	if h != nil {
 		// Return with an early error if the histogram has too many buckets and the
 		// schema is not exponential, in which case we can't reduce the resolution.
@@ -381,7 +432,9 @@ func (app *bucketLimitAppender) AppendHistogram(ref storage.SeriesRef, lset labe
 			if h.Schema <= histogram.ExponentialSchemaMin {
 				return 0, errBucketLimit
 			}
-			h = h.ReduceResolution(h.Schema - 1)
+			if err = h.ReduceResolution(h.Schema - 1); err != nil {
+				return 0, err
+			}
 		}
 	}
 	if fh != nil {
@@ -394,11 +447,12 @@ func (app *bucketLimitAppender) AppendHistogram(ref storage.SeriesRef, lset labe
 			if fh.Schema <= histogram.ExponentialSchemaMin {
 				return 0, errBucketLimit
 			}
-			fh = fh.ReduceResolution(fh.Schema - 1)
+			if err = fh.ReduceResolution(fh.Schema - 1); err != nil {
+				return 0, err
+			}
 		}
 	}
-	ref, err := app.Appender.AppendHistogram(ref, lset, t, h, fh)
-	if err != nil {
+	if ref, err = app.Appender.AppendHistogram(ref, lset, t, h, fh); err != nil {
 		return 0, err
 	}
 	return ref, nil
@@ -411,21 +465,124 @@ type maxSchemaAppender struct {
 }
 
 func (app *maxSchemaAppender) AppendHistogram(ref storage.SeriesRef, lset labels.Labels, t int64, h *histogram.Histogram, fh *histogram.FloatHistogram) (storage.SeriesRef, error) {
+	var err error
 	if h != nil {
-		if histogram.IsExponentialSchema(h.Schema) && h.Schema > app.maxSchema {
-			h = h.ReduceResolution(app.maxSchema)
+		if histogram.IsExponentialSchemaReserved(h.Schema) && h.Schema > app.maxSchema {
+			if err = h.ReduceResolution(app.maxSchema); err != nil {
+				return 0, err
+			}
 		}
 	}
 	if fh != nil {
-		if histogram.IsExponentialSchema(fh.Schema) && fh.Schema > app.maxSchema {
-			fh = fh.ReduceResolution(app.maxSchema)
+		if histogram.IsExponentialSchemaReserved(fh.Schema) && fh.Schema > app.maxSchema {
+			if err = fh.ReduceResolution(app.maxSchema); err != nil {
+				return 0, err
+			}
 		}
 	}
-	ref, err := app.Appender.AppendHistogram(ref, lset, t, h, fh)
-	if err != nil {
+	if ref, err = app.Appender.AppendHistogram(ref, lset, t, h, fh); err != nil {
 		return 0, err
 	}
 	return ref, nil
+}
+
+// limitAppenderV2 limits the number of total appended samples in a batch.
+type limitAppenderV2 struct {
+	storage.AppenderV2
+
+	limit int
+	i     int
+}
+
+func (app *limitAppenderV2) Append(ref storage.SeriesRef, ls labels.Labels, st, t int64, v float64, h *histogram.Histogram, fh *histogram.FloatHistogram, opts storage.AOptions) (storage.SeriesRef, error) {
+	// Bypass sample_limit checks only if we have a staleness marker for a known series (ref value is non-zero).
+	// This ensures that if a series is already in TSDB then we always write the marker.
+	if ref == 0 || !value.IsStaleNaN(v) {
+		app.i++
+		if app.i > app.limit {
+			return 0, errSampleLimit
+		}
+	}
+	return app.AppenderV2.Append(ref, ls, st, t, v, h, fh, opts)
+}
+
+type timeLimitAppenderV2 struct {
+	storage.AppenderV2
+
+	maxTime int64
+}
+
+func (app *timeLimitAppenderV2) Append(ref storage.SeriesRef, ls labels.Labels, st, t int64, v float64, h *histogram.Histogram, fh *histogram.FloatHistogram, opts storage.AOptions) (storage.SeriesRef, error) {
+	if t > app.maxTime {
+		return 0, storage.ErrOutOfBounds
+	}
+
+	return app.AppenderV2.Append(ref, ls, st, t, v, h, fh, opts)
+}
+
+// bucketLimitAppenderV2 limits the number of buckets in appended native histograms, reducing histogram resolution or returning errBucketLimit when the limit is exceeded.
+type bucketLimitAppenderV2 struct {
+	storage.AppenderV2
+
+	limit int
+}
+
+func (app *bucketLimitAppenderV2) Append(ref storage.SeriesRef, ls labels.Labels, st, t int64, v float64, h *histogram.Histogram, fh *histogram.FloatHistogram, opts storage.AOptions) (_ storage.SeriesRef, err error) {
+	if h != nil {
+		// Return with an early error if the histogram has too many buckets and the
+		// schema is not exponential, in which case we can't reduce the resolution.
+		if len(h.PositiveBuckets)+len(h.NegativeBuckets) > app.limit && !histogram.IsExponentialSchema(h.Schema) {
+			return 0, errBucketLimit
+		}
+		for len(h.PositiveBuckets)+len(h.NegativeBuckets) > app.limit {
+			if h.Schema <= histogram.ExponentialSchemaMin {
+				return 0, errBucketLimit
+			}
+			if err = h.ReduceResolution(h.Schema - 1); err != nil {
+				return 0, err
+			}
+		}
+	}
+	if fh != nil {
+		// Return with an early error if the histogram has too many buckets and the
+		// schema is not exponential, in which case we can't reduce the resolution.
+		if len(fh.PositiveBuckets)+len(fh.NegativeBuckets) > app.limit && !histogram.IsExponentialSchema(fh.Schema) {
+			return 0, errBucketLimit
+		}
+		for len(fh.PositiveBuckets)+len(fh.NegativeBuckets) > app.limit {
+			if fh.Schema <= histogram.ExponentialSchemaMin {
+				return 0, errBucketLimit
+			}
+			if err = fh.ReduceResolution(fh.Schema - 1); err != nil {
+				return 0, err
+			}
+		}
+	}
+	return app.AppenderV2.Append(ref, ls, st, t, v, h, fh, opts)
+}
+
+type maxSchemaAppenderV2 struct {
+	storage.AppenderV2
+
+	maxSchema int32
+}
+
+func (app *maxSchemaAppenderV2) Append(ref storage.SeriesRef, ls labels.Labels, st, t int64, v float64, h *histogram.Histogram, fh *histogram.FloatHistogram, opts storage.AOptions) (_ storage.SeriesRef, err error) {
+	if h != nil {
+		if histogram.IsExponentialSchemaReserved(h.Schema) && h.Schema > app.maxSchema {
+			if err = h.ReduceResolution(app.maxSchema); err != nil {
+				return 0, err
+			}
+		}
+	}
+	if fh != nil {
+		if histogram.IsExponentialSchemaReserved(fh.Schema) && fh.Schema > app.maxSchema {
+			if err = fh.ReduceResolution(app.maxSchema); err != nil {
+				return 0, err
+			}
+		}
+	}
+	return app.AppenderV2.Append(ref, ls, st, t, v, h, fh, opts)
 }
 
 // PopulateDiscoveredLabels sets base labels on lb from target and group labels and scrape configuration, before relabeling.
@@ -448,6 +605,9 @@ func PopulateDiscoveredLabels(lb *labels.Builder, cfg *config.ScrapeConfig, tLab
 		{Name: model.ScrapeTimeoutLabel, Value: cfg.ScrapeTimeout.String()},
 		{Name: model.MetricsPathLabel, Value: cfg.MetricsPath},
 		{Name: model.SchemeLabel, Value: cfg.Scheme},
+		{Name: convertClassicHistogramsToNHCBLabel, Value: strconv.FormatBool(cfg.ConvertClassicHistogramsToNHCBEnabled())},
+		{Name: alwaysScrapeClassicHistogramsLabel, Value: strconv.FormatBool(cfg.AlwaysScrapeClassicHistogramsEnabled())},
+		{Name: scrapeNativeHistogramsLabel, Value: strconv.FormatBool(cfg.ScrapeNativeHistogramsEnabled())},
 	}
 
 	for _, l := range scrapeLabels {
@@ -504,6 +664,18 @@ func PopulateLabels(lb *labels.Builder, cfg *config.ScrapeConfig, tLabels, tgLab
 
 	if timeoutDuration > intervalDuration {
 		return labels.EmptyLabels(), fmt.Errorf("scrape timeout cannot be greater than scrape interval (%q > %q)", timeout, interval)
+	}
+
+	for _, l := range []struct{ name, desc string }{
+		{convertClassicHistogramsToNHCBLabel, "convert classic histograms to nhcb"},
+		{alwaysScrapeClassicHistogramsLabel, "always scrape classic histograms"},
+		{scrapeNativeHistogramsLabel, "scrape native histograms"},
+	} {
+		if v := lb.Get(l.name); v != "" {
+			if _, err := strconv.ParseBool(v); err != nil {
+				return labels.EmptyLabels(), fmt.Errorf("error parsing %s: %w", l.desc, err)
+			}
+		}
 	}
 
 	// Meta labels are deleted after relabelling. Other internal labels propagate to

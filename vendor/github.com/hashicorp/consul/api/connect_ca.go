@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/mitchellh/mapstructure"
+	"github.com/go-viper/mapstructure/v2"
 )
 
 // CAConfig is the structure for the Connect CA configuration.
@@ -102,6 +102,17 @@ type CARoot struct {
 	// state store, tests should be written to verify that multiple roots
 	// cannot be active.
 	Active bool
+
+	// NotBefore is the certificate's validity start time.
+	NotBefore *time.Time `json:",omitempty"`
+
+	// NotAfter is the certificate's expiry time.
+	NotAfter *time.Time `json:",omitempty"`
+
+	// DaysRemaining is the number of days until the certificate expires.
+	// This is a computed field based on NotAfter and the current time.
+	// Negative values indicate the certificate has already expired.
+	DaysRemaining *int `json:",omitempty"`
 
 	CreateIndex uint64
 	ModifyIndex uint64

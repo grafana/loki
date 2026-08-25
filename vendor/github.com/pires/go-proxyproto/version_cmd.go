@@ -33,7 +33,8 @@ func (pvc ProtocolVersionAndCommand) IsProxy() bool {
 
 // IsUnspec returns true if the command is unspecified, false otherwise.
 func (pvc ProtocolVersionAndCommand) IsUnspec() bool {
-	return !(pvc.IsLocal() || pvc.IsProxy())
+	// Must be LOCAL or PROXY.
+	return !pvc.IsLocal() && !pvc.IsProxy()
 }
 
 func (pvc ProtocolVersionAndCommand) toByte() byte {

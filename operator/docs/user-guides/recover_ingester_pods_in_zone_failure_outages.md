@@ -3,7 +3,7 @@ title: "Recovery Procedure for Loki Availability Zone Failures"
 description: "Recovery Procedure for Loki Availability Zone Failures"
 lead: ""
 date: 2023-07-25T08:48:45+00:00
-lastmod: 2023-07-25T08:48:45+00:00
+lastmod: 2025-07-02T08:48:45+00:00
 draft: false
 images: []
 menu:
@@ -31,19 +31,22 @@ This document outlines steps that can be taken to recover stateful Loki pods whe
     apiVersion: loki.grafana.com/v1
     kind: LokiStack
     metadata:
-    name: lokistack-dev
+      name: lokistack-dev
     spec:
-    size: 1x.small
-    storage:
-      secret:
-        name: test
-      type: s3
-    storageClassName: gp3-csi
-    replication:
-      factor: 2
-      zones:
-      - topologyKey: topology.kubernetes.io/zone
-        maxSkew: 1
+      size: 1x.small
+      storage:
+        schemas:
+        - version: v12
+          effectiveDate: "2022-06-01"
+        secret:
+          name: test
+        type: s3
+      storageClassName: gp3-csi
+      replication:
+        factor: 2
+        zones:
+        - topologyKey: topology.kubernetes.io/zone
+          maxSkew: 1
     ```
 
 ## Steps

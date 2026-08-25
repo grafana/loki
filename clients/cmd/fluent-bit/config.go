@@ -8,21 +8,20 @@ import (
 	"strings"
 	"time"
 
-	"github.com/grafana/dskit/flagext"
+	dskit_flagext "github.com/grafana/dskit/flagext"
 	"github.com/grafana/dskit/log"
 	"github.com/prometheus/common/model"
 
-	"github.com/grafana/loki/v3/clients/pkg/logentry/logql"
-	"github.com/grafana/loki/v3/clients/pkg/promtail/client"
-
-	lokiflag "github.com/grafana/loki/v3/pkg/util/flagext"
+	"github.com/grafana/loki/v3/clients/pkg/util"
+	"github.com/grafana/loki/v3/pkg/logql/syntax"
+	"github.com/grafana/loki/v3/pkg/util/flagext"
 )
 
-var defaultClientCfg = client.Config{}
+var defaultClientCfg = util.Config{}
 
 func init() {
 	// Init everything with default values.
-	flagext.RegisterFlags(&defaultClientCfg)
+	dskit_flagext.RegisterFlags(&defaultClientCfg)
 }
 
 type ConfigGetter interface {
@@ -42,7 +41,7 @@ const (
 )
 
 type config struct {
-	clientConfig         client.Config
+	clientConfig         util.Config
 	bufferConfig         bufferConfig
 	logLevel             log.Level
 	autoKubernetesLabels bool
@@ -53,6 +52,23 @@ type config struct {
 	labelMap             map[string]interface{}
 }
 
+// externalLabelsFromFluentBitLabelsOption parses the fluent-bit plugin Labels option
+// (LogQL stream selector) into ExternalLabels. Empty labels uses the default {job="fluent-bit"}.
+func externalLabelsFromFluentBitLabelsOption(labels string) (flagext.LabelSet, error) {
+	if labels == "" {
+		labels = `{job="fluent-bit"}`
+	}
+	matchers, err := syntax.ParseMatchers(labels, true)
+	if err != nil {
+		return flagext.LabelSet{}, err
+	}
+	labelSet := make(model.LabelSet)
+	for _, m := range matchers {
+		labelSet[model.LabelName(m.Name)] = model.LabelValue(m.Value)
+	}
+	return flagext.LabelSet{LabelSet: labelSet}, nil
+}
+
 func parseConfig(cfg ConfigGetter) (*config, error) {
 	res := &config{}
 
@@ -60,7 +76,7 @@ func parseConfig(cfg ConfigGetter) (*config, error) {
 	res.bufferConfig = defaultBufferConfig
 
 	url := cfg.Get("URL")
-	var clientURL flagext.URLValue
+	var clientURL dskit_flagext.URLValue
 	if url == "" {
 		url = "http://localhost:3100/loki/api/v1/push"
 	}
@@ -133,19 +149,11 @@ func parseConfig(cfg ConfigGetter) (*config, error) {
 		res.clientConfig.BackoffConfig.MaxRetries = maxRetriesValue
 	}
 
-	labels := cfg.Get("Labels")
-	if labels == "" {
-		labels = `{job="fluent-bit"}`
-	}
-	matchers, err := logql.ParseMatchers(labels)
+	extLabels, err := externalLabelsFromFluentBitLabelsOption(cfg.Get("Labels"))
 	if err != nil {
 		return nil, err
 	}
-	labelSet := make(model.LabelSet)
-	for _, m := range matchers {
-		labelSet[model.LabelName(m.Name)] = model.LabelValue(m.Value)
-	}
-	res.clientConfig.ExternalLabels = lokiflag.LabelSet{LabelSet: labelSet}
+	res.clientConfig.ExternalLabels = extLabels
 
 	logLevel := cfg.Get("LogLevel")
 	if logLevel == "" {

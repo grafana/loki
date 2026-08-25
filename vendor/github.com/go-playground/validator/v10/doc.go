@@ -52,6 +52,40 @@ Custom Validation functions can be added. Example:
 	// NOTES: using the same tag name as an existing function
 	//        will overwrite the existing one
 
+# Valuer Interface
+
+Custom types can implement the Valuer interface to return the value that should
+be validated. This is useful when a type wraps another value and you want
+validation to run against the unwrapped value.
+
+	type Nullable[T any] struct {
+		Data T
+	}
+
+	func (n Nullable[T]) ValidatorValue() any {
+		return n.Data
+	}
+
+	type Config struct {
+		Name string `validate:"required"`
+	}
+
+	type Record struct {
+		Config Nullable[Config] `validate:"required"`
+	}
+
+	r := Record{
+		Config: Nullable[Config]{
+			Data: Config{Name: "validator"},
+		},
+	}
+
+	err := validate.Struct(r)
+
+The library also supports types like sql/driver.Valuer using
+RegisterCustomTypeFunc. See _examples/valuer/main.go and
+_examples/custom/main.go for both approaches.
+
 # Cross-Field Validation
 
 Cross-Field Validation can be done via the following tags:
@@ -150,6 +184,12 @@ so the above will become excludesall=0x7C
 		Field `validate:"excludesall=0x7C"` // GOOD! Use the UTF-8 hex representation.
 	}
 
+# Build tags
+
+The library provides a build tag for build size optimizations. If you are not using
+`validateFn` you can add the `validator_novalidatefn` build tag to enabled better dead
+code elimination. With this build tag, any usage of `validateFn` tags will panic.
+
 # Baked In Validators and Tags
 
 Here is a list of the current built in validators:
@@ -188,7 +228,7 @@ Same as structonly tag except that any struct level validations will not run.
 
 # Omit Empty
 
-Allows conditional validation, for example if a field is not set with
+Allows conditional validation, for example, if a field is not set with
 a value (Determined by the "required" validator) then other validation
 such as min or max won't run, but if a value is set validation will run.
 
@@ -200,6 +240,15 @@ Allows to skip the validation if the value is nil (same as omitempty, but
 only for the nil-values).
 
 	Usage: omitnil
+
+# Omit Zero
+
+Allows to skip the validation if the value is a zero value.
+For pointers, it checks if the pointer is nil or the underlying value is a zero value.
+For slices and maps, it checks if the value is nil or empty.
+Otherwise, behaves the same as omitempty.
+
+	Usage: omitzero
 
 # Dive
 
@@ -264,6 +313,7 @@ The field under validation must be present and not empty only if all
 the other specified fields are equal to the value following the specified
 field. For strings ensures value is not "". For slices, maps, pointers,
 interfaces, channels and functions ensures the value is not nil. For structs ensures value is not the zero value.
+Using the same field name multiple times in the parameters will result in a panic at runtime.
 
 	Usage: required_if
 
@@ -501,6 +551,24 @@ Works the same as oneof but is case insensitive and therefore only accepts strin
 
 	Usage: oneofci=red green
 	       oneofci='red green' 'blue yellow'
+
+# None Of
+
+For strings, ints, and uints, noneof will ensure that the value is not one of
+the values in the parameter. The parameter should be a list of values separated by whitespace.
+Values may be strings or numbers. To inversely match strings with spaces in them, include the target string between single quotes.
+Kind of like an 'enum'.
+
+	Usage: noneof=red green
+	       noneof='red green' 'blue yellow'
+		   noneof=5 7 9
+
+
+# None Of Case Insensitive
+Works the same as noneof but is case insensitive and therefore only accepts strings.
+
+	Usage: noneofci=red green
+	       noneofci='red green' 'blue yellow'
 
 # Greater Than
 
@@ -756,17 +824,43 @@ in a field of the struct specified via a parameter.
 	// For slices of struct:
 	Usage: unique=field
 
+# ValidateFn
+
+This validates that an object responds to a method that can return error or bool.
+By default it expects an interface `Validate() error` and check that the method
+does not return an error. Other methods can be specified using two signatures:
+If the method returns an error, it check if the return value is nil.
+If the method returns a boolean, it checks if the value is true.
+
+	// to use the default method Validate() error
+	Usage: validateFn
+
+	// to use the custom method IsValid() bool (or error)
+	Usage: validateFn=IsValid
+
 # Alpha Only
 
 This validates that a string value contains ASCII alpha characters only
 
 	Usage: alpha
 
+# Alpha Space
+
+This validates that a string value contains ASCII alpha characters and spaces only
+
+	Usage: alphaspace
+
 # Alphanumeric
 
 This validates that a string value contains ASCII alphanumeric characters only
 
 	Usage: alphanum
+
+# Alphanumeric Space
+
+This validates that a string value contains ASCII alphanumeric characters and spaces only
+
+	Usage: alphanumspace
 
 # Alpha Unicode
 
@@ -850,6 +944,12 @@ This validates that a string value contains a valid hsla color
 
 	Usage: hsla
 
+# CMYK String
+
+This validates that a string value contains a valid cmyk color
+
+	Usage: cmyk
+
 # E.164 Phone Number String
 
 This validates that a string value contains a valid E.164 Phone number
@@ -892,6 +992,16 @@ the file exists on the machine and is an image.
 This is done using os.Stat and github.com/gabriel-vasile/mimetype
 
 	Usage: image
+
+# MIME type path
+
+This validates that a string value contains a valid file path and that
+the file exists on the machine and matches the provided MIME type in the
+form type/subtype or type/*.
+This is done using os.Stat and github.com/gabriel-vasile/mimetype
+
+	Usage: mimetype=image/png
+	Usage: mimetype=image/*
 
 # File Path
 
@@ -1134,7 +1244,7 @@ This validates that a string value contains a valid longitude.
 
 	Usage: longitude
 
-# Employeer Identification Number EIN
+# Employer Identification Number EIN
 
 This validates that a string value contains a valid U.S. Employer Identification Number.
 
@@ -1242,6 +1352,15 @@ This validates that a string value contains a valid Unix Address.
 
 	Usage: unix_addr
 
+# Unix Domain Socket Exists
+
+This validates that a Unix domain socket file exists at the specified path.
+It checks both filesystem-based sockets and Linux abstract sockets (prefixed with @).
+For filesystem sockets, it verifies the path exists and is a socket file.
+For abstract sockets on Linux, it checks /proc/net/unix.
+
+	Usage: uds_exists
+
 # Media Access Control Address MAC
 
 This validates that a string value contains a valid MAC Address.
@@ -1316,6 +1435,12 @@ can be used to validate fields typically passed to sockets and connections.
 
 	Usage: hostname_port
 
+# Port
+
+This validates that the value falls within the valid port number range of 1 to 65,535.
+
+	Usage: port
+
 # Datetime
 
 This validates that a string value is a valid datetime based on the supplied datetime format.
@@ -1351,12 +1476,27 @@ More information on https://pkg.go.dev/golang.org/x/text/language
 
 	Usage: bcp47_language_tag
 
-BIC (SWIFT code)
+# BCP 47 Strict Language Tag
 
-This validates that a string value is a valid Business Identifier Code (SWIFT code), defined in ISO 9362.
-More information on https://www.iso.org/standard/60390.html
+This validates that a string value is a valid BCP 47 language tag strictly following RFC 5646 rules,
+unlike language.Parse which also accepts Unicode extensions.
+see https://www.rfc-editor.org/rfc/bcp/bcp47.txt
+
+	Usage: bcp47_strict_language_tag
+
+BIC (SWIFT code - 2022 standard)
+
+This validates that a string value is a valid Business Identifier Code (SWIFT code), defined in ISO 9362:2022.
+More information on https://www.iso.org/standard/84108.html
 
 	Usage: bic
+
+BIC (SWIFT code - 2014 standard)
+
+This validates that a string value is a valid Business Identifier Code (SWIFT code), defined in ISO 9362:2014.
+More information on https://www.iso.org/standard/60390.html
+
+	Usage: bic_iso_9362_2014
 
 # RFC 1035 label
 
@@ -1492,7 +1632,7 @@ This package panics when bad input is provided, this is by design, bad code like
 that should not make it to production.
 
 	type Test struct {
-		TestField string `validate:"nonexistantfunction=1"`
+		TestField string `validate:"nonexistentfunction=1"`
 	}
 
 	t := &Test{

@@ -16,11 +16,30 @@ const (
 	_HOST_NAME_MAX  = _MAXHOSTNAMELEN - 1
 	_LOGIN_NAME_MAX = _MAXLOGNAME
 	_SYMLOOP_MAX    = _MAXSYMLINKS
+
+	// _PTHREAD_STACK_MIN changed in macOS 14
+	_PTHREAD_STACK_MIN_LT_MACOS14 = 0x2000
+	_PTHREAD_STACK_MIN_GE_MACOS14 = 0x4000
 )
 
 var uname struct {
 	sync.Once
 	macOSMajor int
+}
+
+func getMacOSMajor() int {
+	uname.Once.Do(func() {
+		var u unix.Utsname
+		err := unix.Uname(&u)
+		if err != nil {
+			return
+		}
+		rel := unix.ByteSliceToString(u.Release[:])
+		ver := strings.Split(rel, ".")
+		maj, _ := strconv.Atoi(ver[0])
+		uname.macOSMajor = maj
+	})
+	return uname.macOSMajor
 }
 
 // sysconf implements sysconf(4) as in the Darwin libc (derived from the FreeBSD
@@ -67,7 +86,7 @@ func sysconf(name int) (int64, error) {
 		if err := unix.Getrlimit(unix.RLIMIT_NOFILE, &rlim); err != nil {
 			return -1, nil
 		}
-		if rlim.Cur > unix.RLIM_INFINITY {
+		if rlim.Cur == unix.RLIM_INFINITY {
 			return -1, nil
 		}
 		if rlim.Cur > _LONG_MAX {
@@ -91,7 +110,10 @@ func sysconf(name int) (int64, error) {
 	case SC_THREAD_PRIO_PROTECT:
 		return _POSIX_THREAD_PRIO_PROTECT, nil
 	case SC_THREAD_STACK_MIN:
-		return _PTHREAD_STACK_MIN, nil
+		if getMacOSMajor() < 23 {
+			return _PTHREAD_STACK_MIN_LT_MACOS14, nil
+		}
+		return _PTHREAD_STACK_MIN_GE_MACOS14, nil
 	case SC_THREAD_THREADS_MAX:
 		return -1, nil
 	case SC_TIMER_MAX:
@@ -140,18 +162,7 @@ func sysconf(name int) (int64, error) {
 		}
 		return _POSIX_SEMAPHORES, nil
 	case SC_SPAWN:
-		uname.Once.Do(func() {
-			var u unix.Utsname
-			err := unix.Uname(&u)
-			if err != nil {
-				return
-			}
-			rel := unix.ByteSliceToString(u.Release[:])
-			ver := strings.Split(rel, ".")
-			maj, _ := strconv.Atoi(ver[0])
-			uname.macOSMajor = maj
-		})
-		if uname.macOSMajor < 22 {
+		if getMacOSMajor() < 22 {
 			return -1, nil
 		}
 		// macOS 13 (Ventura) and later
@@ -285,7 +296,10 @@ func sysconf(name int) (int64, error) {
 		return _XOPEN_XCU_VERSION, nil
 
 	case SC_PHYS_PAGES:
-		return sysctl64("hw.memsize") / int64(unix.Getpagesize()), nil
+		if mem := sysctl64("hw.memsize"); mem >= 0 {
+			return mem / int64(unix.Getpagesize()), nil
+		}
+		return -1, nil
 	case SC_NPROCESSORS_CONF:
 		fallthrough
 	case SC_NPROCESSORS_ONLN:

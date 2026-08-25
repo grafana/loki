@@ -71,7 +71,7 @@ func TestPipelineWithMissingKey_Timestamp(t *testing.T) {
 	Debug = true
 	_ = processEntries(pl, newEntry(nil, nil, testTimestampLogLineWithMissingKey, time.Now()))
 
-	expectedLog := fmt.Sprintf("level=debug msg=\"%s\" err=\"Can't convert <nil> to string\" type=null", ErrTimestampConversionFailed)
+	expectedLog := fmt.Sprintf("level=debug msg=\"%s\" err=\"can't convert <nil> to string\" type=null", ErrTimestampConversionFailed)
 	if !(strings.Contains(buf.String(), expectedLog)) {
 		t.Errorf("\nexpected: %s\n+actual: %s", expectedLog, buf.String())
 	}

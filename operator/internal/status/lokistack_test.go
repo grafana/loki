@@ -274,7 +274,65 @@ func TestGenerateWarningCondition_WhenStorageSchemaIsOld(t *testing.T) {
 	for _, tc := range tt {
 		t.Run(tc.desc, func(t *testing.T) {
 			t.Parallel()
-			condition := generateWarnings(tc.schemas)
+			lokiStack := &lokiv1.LokiStack{
+				Spec: lokiv1.LokiStackSpec{
+					Size: lokiv1.SizeOneXPico,
+					Storage: lokiv1.ObjectStorageSpec{
+						Schemas: tc.schemas,
+					},
+				},
+			}
+			condition := generateWarnings(lokiStack)
+			require.Equal(t, condition, tc.wantCondition)
+		})
+	}
+}
+
+func TestGenerateWarningCondition_WhenIngesterReplicasLessThanReplicationFactor(t *testing.T) {
+	tt := []struct {
+		desc          string
+		replicas      int
+		wantCondition []metav1.Condition
+	}{
+		{
+			desc:          "replicas > replication factor",
+			replicas:      3,
+			wantCondition: []metav1.Condition{},
+		},
+		{
+			desc:     "replicas <= replication factor",
+			replicas: 1,
+			wantCondition: []metav1.Condition{
+				{
+					Type:    string(lokiv1.ConditionWarning),
+					Reason:  string(lokiv1.ReasonInsufficientIngesterReplicas),
+					Message: "The ingester replicas (1) are less than or equal to the replication factor (2). Which causes log ingestion to stop when ingester pods get restarted.",
+				},
+			},
+		},
+	}
+	for _, tc := range tt {
+		t.Run(tc.desc, func(t *testing.T) {
+			t.Parallel()
+			lokiStack := &lokiv1.LokiStack{
+				Spec: lokiv1.LokiStackSpec{
+					Size: lokiv1.SizeOneXPico,
+					Storage: lokiv1.ObjectStorageSpec{
+						Schemas: []lokiv1.ObjectStorageSchema{
+							{
+								Version:       lokiv1.ObjectStorageSchemaV13,
+								EffectiveDate: "2020-10-11",
+							},
+						},
+					},
+					Template: &lokiv1.LokiTemplateSpec{
+						Ingester: &lokiv1.LokiComponentSpec{
+							Replicas: int32(tc.replicas),
+						},
+					},
+				},
+			}
+			condition := generateWarnings(lokiStack)
 			require.Equal(t, condition, tc.wantCondition)
 		})
 	}

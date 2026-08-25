@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"math"
-	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -81,7 +80,7 @@ func New(cfg Config, logger log.Logger, reg prometheus.Registerer) (*Generator, 
 		ring.GetPartitionRingCodec(),
 	}
 
-	provider := dns.NewProvider(logger, reg, dns.GolangResolverType)
+	provider := dns.NewProvider(dns.GolangResolverType, 0, logger, reg)
 	cfg.MemberlistKV.AdvertiseAddr, err = netutil.GetFirstAddressOf(cfg.LifecyclerConfig.InfNames, logger, false)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get instance address: %w", err)
@@ -325,16 +324,17 @@ func generateStreamsForTenant(tenantID string, streamsPerTenant int, streamLabel
 		labelsStr := fmt.Sprintf("{%s}", strings.Join(labelValues, ","))
 
 		// Parse the labels to get the hash
-		lbs := labels.FromMap(map[string]string{})
+		builder := labels.NewScratchBuilder(len(streamLabels))
 		for j, label := range streamLabels {
-			lbs = append(lbs, labels.Label{Name: label, Value: fmt.Sprintf("%s-%d-%d", label, i, j)})
+			builder.Add(label, fmt.Sprintf("%s-%d-%d", label, i, j))
 		}
-		sort.Sort(lbs)
+		builder.Sort()
+		lbs := builder.Labels()
 
 		// Create the stream with multiple entries
 		stream := logproto.Stream{
 			Labels:  labelsStr,
-			Hash:    lbs.Hash(),
+			Hash:    labels.StableHash(lbs),
 			Entries: make([]logproto.Entry, 0, entriesPerStream),
 		}
 

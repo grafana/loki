@@ -1,4 +1,4 @@
-<style name="paraiso-dark">
+<style name="paraiso-dark" counterpart="paraiso-light">
   <entry type="Error" style="#ef6155"/>
   <entry type="Background" style="bg:#2f1e2e"/>
   <entry type="Keyword" style="#815ba4"/>

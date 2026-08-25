@@ -1,8 +1,8 @@
 ---
 title: How is native OTLP endpoint different from Loki Exporter
-menuTitle:  Native OTLP endpoint vs Loki Exporter
+menuTitle: Native OTLP endpoint vs Loki Exporter
 description: Native OTLP endpoint vs Loki Exporter
-weight:  251
+weight: 251
 ---
 
 # How is native OTLP endpoint different from Loki Exporter
@@ -10,6 +10,11 @@ weight:  251
 ## Introduction
 
 OpenTelemetry (OTel) is quickly becoming an industry standard with increasing adoption. Prior to the Loki 3.0 release, there was no native support for ingesting OTel logs to Loki, which led to creation of the [LokiExporter](https://github.com/open-telemetry/opentelemetry-collector-contrib/blob/main/exporter/lokiexporter/README.md). While the LokiExporter got the job done of ingesting OTel logs to Loki, it did not provide a native user experience, and the querying experience was not optimal. As part of our effort to improve user experience with OTel, we added native OTel log ingestion support to Loki with 3.0 release.
+
+{{< admonition type="note" >}}
+The native OTLP endpoint is the recommended way to send logs to Loki. Grafana Labs is working to migrate existing customers from Loki Exporter to the native OTLP endpoint.
+For Cloud users, Adaptive Logs may not produce meaningful patterns if OTel logs are sent to the Cloud Logs endpoint. They must be sent to the OTLP endpoint.
+{{< /admonition >}}
 
 ## What has changed?
 
@@ -94,7 +99,7 @@ Taking the above-ingested log line, let us look at how the querying experience w
 - Ingested with LokiExporter: `sum(count_over_time({job="dev/auth"} |= "user logged in" | json[1h])) by (email)`
 - Ingested with Loki’s native OTel endpoint: `sum(count_over_time({service_name="auth", service_namespace="dev"} |= "user logged in"[1h])) by (email)`
 
-## Benefits of switching from LokiExporter to native OTel endpoint:
+## Benefits of switching from LokiExporter to native OTel endpoint
 
 - **Future improvements:** There is an ongoing discussion on deprecating LokiExporter, which would stop receiving future enhancements. Loki’s native OTel endpoint represents the future of our product, and all future development and enhancements will be focused there. Upgrading to the native endpoint will ensure you benefit from the latest enhancements and the best possible user experience.
 - **Simplified client config:** LokiExporter requires setting hints for managing stream labels, which defeats the purpose of choosing OTel in the first place since you can’t switch from one OTel-compatible storage to another without having to reconfigure your clients. With Loki’s native OTel endpoint, there is no added complexity in setting hints for your client to manage the labels.

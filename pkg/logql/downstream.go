@@ -332,6 +332,9 @@ type MergeFirstOverTimeExpr struct {
 	syntax.SampleExpr
 	downstreams []DownstreamSampleExpr
 	offset      time.Duration
+
+	// rangeInterval is the range vector's own interval, e.g. the 1m in first_over_time(...[1m]).
+	rangeInterval time.Duration
 }
 
 func (e MergeFirstOverTimeExpr) String() string {
@@ -366,6 +369,9 @@ type MergeLastOverTimeExpr struct {
 	syntax.SampleExpr
 	downstreams []DownstreamSampleExpr
 	offset      time.Duration
+
+	// rangeInterval is the range vector's own interval, e.g. the 1m in last_over_time(...[1m]).
+	rangeInterval time.Duration
 }
 
 func (e MergeLastOverTimeExpr) String() string {
@@ -399,6 +405,8 @@ func (e *MergeLastOverTimeExpr) Walk(f syntax.WalkFn) {
 type CountMinSketchEvalExpr struct {
 	syntax.SampleExpr
 	downstreams []DownstreamSampleExpr
+	// operation is the user-facing operator that produced this sketch, e.g. approx_topk.
+	operation string
 }
 
 func (e CountMinSketchEvalExpr) String() string {
@@ -468,6 +476,10 @@ type DownstreamEvaluator struct {
 func (ev DownstreamEvaluator) Downstream(ctx context.Context, queries []DownstreamQuery, acc Accumulator) ([]logqlmodel.Result, error) {
 	results, err := ev.Downstreamer.Downstream(ctx, queries, acc)
 	if err != nil {
+		// Keep the usage of the shards that completed before the failure.
+		for _, res := range results {
+			stats.JoinPartial(ctx, res.Statistics)
+		}
 		return nil, err
 	}
 
@@ -543,8 +555,8 @@ func (ev *DownstreamEvaluator) NewStepEvaluator(
 		for cur != nil {
 			qry := DownstreamQuery{
 				Params: ParamsWithExpressionOverride{
-					Params:             ParamOverridesFromShard(params, cur.DownstreamSampleExpr.shard),
-					ExpressionOverride: cur.DownstreamSampleExpr.SampleExpr,
+					Params:             ParamOverridesFromShard(params, cur.shard),
+					ExpressionOverride: cur.SampleExpr,
 				},
 			}
 			queries = append(queries, qry)
@@ -637,7 +649,7 @@ func (ev *DownstreamEvaluator) NewStepEvaluator(
 			}
 		}
 
-		return NewMergeFirstOverTimeStepEvaluator(params, xs, e.offset), nil
+		return NewMergeFirstOverTimeStepEvaluator(params, xs, e.offset, e.rangeInterval), nil
 	case *MergeLastOverTimeExpr:
 		queries := make([]DownstreamQuery, len(e.downstreams))
 
@@ -672,8 +684,12 @@ func (ev *DownstreamEvaluator) NewStepEvaluator(
 				return nil, fmt.Errorf("unexpected type (%s) uncoercible to StepEvaluator", data.Type())
 			}
 		}
-		return NewMergeLastOverTimeStepEvaluator(params, xs, e.offset), nil
+		return NewMergeLastOverTimeStepEvaluator(params, xs, e.offset, e.rangeInterval), nil
 	case *CountMinSketchEvalExpr:
+		if GetRangeType(params) != InstantType {
+			return nil, errCountMinSketchInstantOnly(e.operation)
+		}
+
 		queries := make([]DownstreamQuery, len(e.downstreams))
 
 		for i, d := range e.downstreams {
@@ -712,15 +728,6 @@ func (ev *DownstreamEvaluator) NewStepEvaluator(
 	}
 }
 
-func (ev *DownstreamEvaluator) NewVariantsStepEvaluator(
-	_ context.Context,
-	_ syntax.VariantsExpr,
-	_ Params,
-) (StepEvaluator, error) {
-	// TODO(twhitney): does the downstream evaluator need to handle variants?
-	return nil, errors.New("NewVariantStepEvaluator hasn't been implemented on DownstreamEvaluator")
-}
-
 // NewIterator returns the iter.EntryIterator for a given LogSelectorExpr
 func (ev *DownstreamEvaluator) NewIterator(
 	ctx context.Context,
@@ -748,8 +755,8 @@ func (ev *DownstreamEvaluator) NewIterator(
 		for cur != nil {
 			qry := DownstreamQuery{
 				Params: ParamsWithExpressionOverride{
-					Params:             ParamOverridesFromShard(params, cur.DownstreamLogSelectorExpr.shard),
-					ExpressionOverride: cur.DownstreamLogSelectorExpr.LogSelectorExpr,
+					Params:             ParamOverridesFromShard(params, cur.shard),
+					ExpressionOverride: cur.LogSelectorExpr,
 				},
 			}
 			queries = append(queries, qry)

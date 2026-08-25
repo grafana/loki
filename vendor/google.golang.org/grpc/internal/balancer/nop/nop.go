@@ -60,3 +60,6 @@ func (b *bal) UpdateSubConnState(_ balancer.SubConn, _ balancer.SubConnState) {}
 
 // Close is a no-op.
 func (b *bal) Close() {}
+
+// ExitIdle is a no-op.
+func (b *bal) ExitIdle() {}

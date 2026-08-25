@@ -1,5 +1,126 @@
 # Release History
 
+## 1.14.0 (2026-06-15)
+
+### Breaking Changes
+
+> These changes affect only code written against a beta version such as v1.14.0-beta.3
+- Removed `WorkloadIdentityCredentialOptions.EnableAzureProxy`.
+  It will return in v1.15.0-beta.1
+
+### Bugs Fixed
+
+- `AzureDeveloperCLICredential` improved reporting of error messages returned from `azd`
+
+### Other Changes
+
+- Returned `azidentity` errors include links to the troubleshooting guide when appropriate
+- This module now requires a minimum Go version of 1.25
+- Upgraded dependencies
+
+## 1.14.0-beta.3 (2026-02-10)
+
+### Breaking Changes
+
+> These changes affect only code written against a beta version such as v1.14.0-beta.2
+- Renamed `WorkloadIdentityCredentialOptions.EnableAzureTokenProxy` to `EnableAzureProxy`
+
+### Other Changes
+
+- Removed extraneous JSON from `AzureDeveloperCLICredential` errors
+
+## 1.14.0-beta.2 (2025-11-10)
+
+### Breaking Changes
+
+> These changes affect only code written against a beta version such as v1.13.0-beta.1
+- `WorkloadIdentityCredential` identity binding mode is disabled by default. To enable it, set
+  `WorkloadIdentityCredentialOptions.EnableAzureTokenProxy` to `true`
+- Removed identity binding mode support from `DefaultAzureCredential`. To use this feature, use
+  `WorkloadIdentityCredential` directly instead and set
+  `WorkloadIdentityCredentialOptions.EnableAzureTokenProxy` to `true`
+
+### Bugs Fixed
+
+- `AzureCLICredential` quoted arguments incorrectly on Windows
+
+## 1.13.1 (2025-11-10)
+
+### Bugs Fixed
+
+- `AzureCLICredential` quoted arguments incorrectly on Windows
+
+## 1.14.0-beta.1 (2025-10-07)
+
+### Features Added
+
+- Restored the `WorkloadIdentityCredential` identity binding mode support removed in v1.13.0
+
+## 1.13.0 (2025-10-07)
+
+### Features Added
+
+- Added `AzurePowerShellCredential`, which authenticates as the identity logged in to Azure PowerShell
+  (thanks [ArmaanMcleod](https://github.com/ArmaanMcleod))
+- When `AZURE_TOKEN_CREDENTIALS` is set to `ManagedIdentityCredential`, `DefaultAzureCredential` behaves the same as
+  does `ManagedIdentityCredential` when used directly. It doesn't apply special retry configuration or attempt to
+  determine whether IMDS is available. ([#25265](https://github.com/Azure/azure-sdk-for-go/issues/25265))
+
+### Breaking Changes
+
+* Removed the `WorkloadIdentityCredential` support for identity binding mode added in v1.13.0-beta.1.
+  It will return in v1.14.0-beta.1
+
+## 1.13.0-beta.1 (2025-09-17)
+
+### Features Added
+
+- Added `AzurePowerShellCredential`, which authenticates as the identity logged in to Azure PowerShell
+  (thanks [ArmaanMcleod](https://github.com/ArmaanMcleod))
+- `WorkloadIdentityCredential` supports identity binding mode ([#25056](https://github.com/Azure/azure-sdk-for-go/issues/25056))
+
+## 1.12.0 (2025-09-16)
+
+### Features Added
+- Added `DefaultAzureCredentialOptions.RequireAzureTokenCredentials`. `NewDefaultAzureCredential` returns an
+  error when this option is true and the environment variable `AZURE_TOKEN_CREDENTIALS` has no value.
+
+### Other Changes
+- `AzureDeveloperCLICredential` no longer hangs when AZD_DEBUG is set
+- `GetToken` methods of `AzureCLICredential` and `AzureDeveloperCLICredential` return an error when
+  `TokenRequestOptions.Claims` has a value because these credentials can't acquire a token in that
+  case. The error messages describe the action required to get a token.
+
+## 1.11.0 (2025-08-05)
+
+### Other Changes
+- `DefaultAzureCredential` tries its next credential when a dev tool credential such as
+  `AzureCLICredential` returns an error
+
+## 1.11.0-beta.1 (2025-07-15)
+
+### Features Added
+- `DefaultAzureCredential` allows selecting one of its credential types by name via environment variable
+  `AZURE_TOKEN_CREDENTIALS`. It will use only the selected type at runtime. For example, set
+  `AZURE_TOKEN_CREDENTIALS=WorkloadIdentityCredential` to have `DefaultAzureCredential` use only
+  `WorkloadIdentityCredential`.
+
+### Other Changes
+- By default, `ManagedIdentityCredential` retries IMDS requests for a maximum of ~70 seconds as recommended
+  in IMDS documentation. In previous versions, it would stop retrying after ~54 seconds by default.
+
+## 1.10.1 (2025-06-10)
+
+### Bugs Fixed
+- `AzureCLICredential` and `AzureDeveloperCLICredential` could wait indefinitely for subprocess output
+
+## 1.10.0 (2025-05-14)
+
+### Features Added
+- `DefaultAzureCredential` reads environment variable `AZURE_TOKEN_CREDENTIALS` to enable a subset of its credentials:
+  - `dev` selects `AzureCLICredential` and `AzureDeveloperCLICredential`
+  - `prod` selects `EnvironmentCredential`, `WorkloadIdentityCredential` and `ManagedIdentityCredential`
+
 ## 1.9.0 (2025-04-08)
 
 ### Features Added

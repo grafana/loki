@@ -202,10 +202,10 @@ type (
 )
 
 func init() {
-	var systemInfo systemInfo
+	var sInfo systemInfo
 
-	procGetNativeSystemInfo.Call(uintptr(unsafe.Pointer(&systemInfo)))
-	processorArchitecture = uint(systemInfo.wProcessorArchitecture)
+	procGetNativeSystemInfo.Call(uintptr(unsafe.Pointer(&sInfo)))
+	processorArchitecture = uint(sInfo.wProcessorArchitecture)
 
 	// enable SeDebugPrivilege https://github.com/midstar/proci/blob/6ec79f57b90ba3d9efa2a7b16ef9c9369d4be875/proci_windows.go#L80-L119
 	handle, err := syscall.GetCurrentProcess()
@@ -324,6 +324,9 @@ func (p *Process) NameWithContext(ctx context.Context) (string, error) {
 	if p.Pid == 0 {
 		return "System Idle Process", nil
 	}
+	if p.name != "" {
+		return p.name, nil
+	}
 	if p.Pid == 4 {
 		return "System", nil
 	}
@@ -333,10 +336,12 @@ func (p *Process) NameWithContext(ctx context.Context) (string, error) {
 		return "", fmt.Errorf("could not get Name: %w", err)
 	}
 
-	return filepath.Base(exe), nil
+	name := filepath.Base(exe)
+	p.name = name
+	return name, nil
 }
 
-func (p *Process) TgidWithContext(_ context.Context) (int32, error) {
+func (*Process) TgidWithContext(_ context.Context) (int32, error) {
 	return 0, common.ErrNotImplementedError
 }
 
@@ -456,11 +461,11 @@ func (p *Process) CwdWithContext(_ context.Context) (string, error) {
 	return "", nil
 }
 
-func (p *Process) StatusWithContext(_ context.Context) ([]string, error) {
+func (*Process) StatusWithContext(_ context.Context) ([]string, error) {
 	return []string{""}, common.ErrNotImplementedError
 }
 
-func (p *Process) ForegroundWithContext(_ context.Context) (bool, error) {
+func (*Process) ForegroundWithContext(_ context.Context) (bool, error) {
 	return false, common.ErrNotImplementedError
 }
 
@@ -487,19 +492,19 @@ func (p *Process) UsernameWithContext(_ context.Context) (string, error) {
 	return domain + "\\" + user, err
 }
 
-func (p *Process) UidsWithContext(_ context.Context) ([]uint32, error) {
+func (*Process) UidsWithContext(_ context.Context) ([]uint32, error) {
 	return nil, common.ErrNotImplementedError
 }
 
-func (p *Process) GidsWithContext(_ context.Context) ([]uint32, error) {
+func (*Process) GidsWithContext(_ context.Context) ([]uint32, error) {
 	return nil, common.ErrNotImplementedError
 }
 
-func (p *Process) GroupsWithContext(_ context.Context) ([]uint32, error) {
+func (*Process) GroupsWithContext(_ context.Context) ([]uint32, error) {
 	return nil, common.ErrNotImplementedError
 }
 
-func (p *Process) TerminalWithContext(_ context.Context) (string, error) {
+func (*Process) TerminalWithContext(_ context.Context) (string, error) {
 	return "", common.ErrNotImplementedError
 }
 
@@ -532,15 +537,15 @@ func (p *Process) NiceWithContext(_ context.Context) (int32, error) {
 	return priority, nil
 }
 
-func (p *Process) IOniceWithContext(_ context.Context) (int32, error) {
+func (*Process) IOniceWithContext(_ context.Context) (int32, error) {
 	return 0, common.ErrNotImplementedError
 }
 
-func (p *Process) RlimitWithContext(_ context.Context) ([]RlimitStat, error) {
+func (*Process) RlimitWithContext(_ context.Context) ([]RlimitStat, error) {
 	return nil, common.ErrNotImplementedError
 }
 
-func (p *Process) RlimitUsageWithContext(_ context.Context, _ bool) ([]RlimitStat, error) {
+func (*Process) RlimitUsageWithContext(_ context.Context, _ bool) ([]RlimitStat, error) {
 	return nil, common.ErrNotImplementedError
 }
 
@@ -550,22 +555,22 @@ func (p *Process) IOCountersWithContext(_ context.Context) (*IOCountersStat, err
 		return nil, err
 	}
 	defer windows.CloseHandle(c)
-	var ioCounters ioCounters
-	ret, _, err := procGetProcessIoCounters.Call(uintptr(c), uintptr(unsafe.Pointer(&ioCounters)))
+	var counters ioCounters
+	ret, _, err := procGetProcessIoCounters.Call(uintptr(c), uintptr(unsafe.Pointer(&counters)))
 	if ret == 0 {
 		return nil, err
 	}
 	stats := &IOCountersStat{
-		ReadCount:  ioCounters.ReadOperationCount,
-		ReadBytes:  ioCounters.ReadTransferCount,
-		WriteCount: ioCounters.WriteOperationCount,
-		WriteBytes: ioCounters.WriteTransferCount,
+		ReadCount:  counters.ReadOperationCount,
+		ReadBytes:  counters.ReadTransferCount,
+		WriteCount: counters.WriteOperationCount,
+		WriteBytes: counters.WriteTransferCount,
 	}
 
 	return stats, nil
 }
 
-func (p *Process) NumCtxSwitchesWithContext(_ context.Context) (*NumCtxSwitchesStat, error) {
+func (*Process) NumCtxSwitchesWithContext(_ context.Context) (*NumCtxSwitchesStat, error) {
 	return nil, common.ErrNotImplementedError
 }
 
@@ -598,10 +603,12 @@ func (p *Process) NumThreadsWithContext(_ context.Context) (int32, error) {
 		p.setPpid(ppid)
 	}
 
+	p.numThreads = ret
+
 	return ret, nil
 }
 
-func (p *Process) ThreadsWithContext(_ context.Context) (map[int32]*cpu.TimesStat, error) {
+func (*Process) ThreadsWithContext(_ context.Context) (map[int32]*cpu.TimesStat, error) {
 	return nil, common.ErrNotImplementedError
 }
 
@@ -629,7 +636,7 @@ func (p *Process) TimesWithContext(_ context.Context) (*cpu.TimesStat, error) {
 	}, nil
 }
 
-func (p *Process) CPUAffinityWithContext(_ context.Context) ([]int32, error) {
+func (*Process) CPUAffinityWithContext(_ context.Context) ([]int32, error) {
 	return nil, common.ErrNotImplementedError
 }
 
@@ -647,7 +654,7 @@ func (p *Process) MemoryInfoWithContext(_ context.Context) (*MemoryInfoStat, err
 	return ret, nil
 }
 
-func (p *Process) MemoryInfoExWithContext(_ context.Context) (*MemoryInfoExStat, error) {
+func (*Process) MemoryInfoExWithContext(_ context.Context) (*MemoryInfoExStat, error) {
 	return nil, common.ErrNotImplementedError
 }
 
@@ -699,6 +706,7 @@ func (p *Process) OpenFilesWithContext(ctx context.Context) ([]OpenFilesStat, er
 	if err != nil {
 		return nil, err
 	}
+	defer windows.CloseHandle(process)
 
 	buffer := make([]byte, 1024)
 	var size uint32
@@ -747,9 +755,10 @@ func (p *Process) OpenFilesWithContext(ctx context.Context) ([]OpenFilesStat, er
 		}
 
 		var fileName string
-		ch := make(chan struct{})
+		ch := make(chan struct{}, 1)
 
 		go func() {
+			defer close(ch)
 			var buf [syscall.MAX_LONG_PATH]uint16
 			n, err := windows.GetFinalPathNameByHandle(windows.Handle(file), &buf[0], syscall.MAX_LONG_PATH, 0)
 			if err != nil {
@@ -788,15 +797,15 @@ func (p *Process) ConnectionsWithContext(ctx context.Context) ([]net.ConnectionS
 	return net.ConnectionsPidWithContext(ctx, "all", p.Pid)
 }
 
-func (p *Process) ConnectionsMaxWithContext(_ context.Context, _ int) ([]net.ConnectionStat, error) {
+func (*Process) ConnectionsMaxWithContext(_ context.Context, _ int) ([]net.ConnectionStat, error) {
 	return nil, common.ErrNotImplementedError
 }
 
-func (p *Process) MemoryMapsWithContext(_ context.Context, _ bool) (*[]MemoryMapsStat, error) {
+func (*Process) MemoryMapsWithContext(_ context.Context, _ bool) (*[]MemoryMapsStat, error) {
 	return nil, common.ErrNotImplementedError
 }
 
-func (p *Process) SendSignalWithContext(_ context.Context, _ syscall.Signal) error {
+func (*Process) SendSignalWithContext(_ context.Context, _ syscall.Signal) error {
 	return common.ErrNotImplementedError
 }
 
@@ -882,7 +891,8 @@ func getFromSnapProcess(pid int32) (int32, int32, string, error) { //nolint:unpa
 	defer windows.CloseHandle(snap)
 	var pe32 windows.ProcessEntry32
 	pe32.Size = uint32(unsafe.Sizeof(pe32))
-	if err = windows.Process32First(snap, &pe32); err != nil {
+	err = windows.Process32First(snap, &pe32)
+	if err != nil {
 		return 0, 0, "", err
 	}
 	for {
@@ -897,6 +907,32 @@ func getFromSnapProcess(pid int32) (int32, int32, string, error) { //nolint:unpa
 	return 0, 0, "", fmt.Errorf("couldn't find pid: %d", pid)
 }
 
+func buildSnapProcessMap() (map[uint32]windows.ProcessEntry32, error) {
+	snap, err := windows.CreateToolhelp32Snapshot(windows.TH32CS_SNAPPROCESS, 0)
+	if err != nil {
+		return nil, err
+	}
+	defer windows.CloseHandle(snap)
+
+	var pe32 windows.ProcessEntry32
+	pe32.Size = uint32(unsafe.Sizeof(pe32))
+	if err := windows.Process32First(snap, &pe32); err != nil {
+		return nil, err
+	}
+
+	snapMap := make(map[uint32]windows.ProcessEntry32)
+	for {
+		snapMap[pe32.ProcessID] = pe32
+		if err := windows.Process32Next(snap, &pe32); err != nil {
+			if errors.Is(err, windows.ERROR_NO_MORE_FILES) {
+				break
+			}
+			return nil, err
+		}
+	}
+	return snapMap, nil
+}
+
 func ProcessesWithContext(ctx context.Context) ([]*Process, error) {
 	out := []*Process{}
 
@@ -905,11 +941,25 @@ func ProcessesWithContext(ctx context.Context) ([]*Process, error) {
 		return out, fmt.Errorf("could not get Processes %w", err)
 	}
 
+	// Note: The PID enumeration and snapshot creation are separate calls
+	// and may not be perfectly consistent due to timing.
+	snapMap, err := buildSnapProcessMap()
+	if err != nil {
+		return out, fmt.Errorf("could not build process snapshot: %w", err)
+	}
+
 	for _, pid := range pids {
 		p, err := NewProcessWithContext(ctx, pid)
 		if err != nil {
 			continue
 		}
+
+		if entry, ok := snapMap[uint32(pid)]; ok {
+			p.name = windows.UTF16ToString(entry.ExeFile[:])
+			p.setPpid(int32(entry.ParentProcessID))
+			p.numThreads = int32(entry.Threads)
+		}
+
 		out = append(out, p)
 	}
 
@@ -955,7 +1005,7 @@ func getProcessMemoryInfo(h windows.Handle, mem *PROCESS_MEMORY_COUNTERS) (err e
 			err = syscall.EINVAL
 		}
 	}
-	return
+	return err
 }
 
 type SYSTEM_TIMES struct { //nolint:revive //FIXME

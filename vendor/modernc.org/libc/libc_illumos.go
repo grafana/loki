@@ -12,6 +12,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+
 	// "runtime/debug"
 	"time"
 	"unsafe"
@@ -26,6 +27,7 @@ import (
 	"modernc.org/libc/limits"
 	"modernc.org/libc/netdb"
 	"modernc.org/libc/netinet/in"
+
 	// "modernc.org/libc/signal"
 	"modernc.org/libc/stdio"
 	"modernc.org/libc/sys/socket"
@@ -54,6 +56,8 @@ type (
 )
 
 type file uintptr
+
+type Tsize_t = types.Size_t
 
 func (f file) fd() int32 {
 	panic(todo(""))
@@ -1205,11 +1209,15 @@ func Xdlsym(t *TLS, handle, symbol uintptr) uintptr {
 }
 
 // void perror(const char *s);
-func Xperror(t *TLS, s uintptr) {
+func Xperror(tls *TLS, msg uintptr) {
 	if __ccgo_strace {
-		trc("t=%v s=%v, (%v:)", t, s, origin(2))
+		trc("tls=%v msg=%v, (%v:)", tls, msg, origin(2))
 	}
-	panic(todo(""))
+	if msg != 0 && *(*int8)(unsafe.Pointer(msg)) != 0 {
+		fmt.Fprintf(os.Stderr, "%s: ", GoString(msg))
+	}
+	errstr := Xstrerror(tls, *(*int32)(unsafe.Pointer(X__errno_location(tls))))
+	fmt.Fprintf(os.Stderr, "%s\n", GoString(errstr))
 }
 
 // int pclose(FILE *stream);
@@ -2099,6 +2107,13 @@ func (s *byteScanner) UnreadByte() error {
 func Xclock_gettime(t *TLS, clk_id int32, tp uintptr) int32 {
 	if __ccgo_strace {
 		trc("t=%v clk_id=%v tp=%v, (%v:)", t, clk_id, tp, origin(2))
+	}
+	panic(todo(""))
+}
+
+func Xgmtime_r(tls *TLS, t uintptr, tm uintptr) (r uintptr) {
+	if __ccgo_strace {
+		trc("tls=%v t=%v tm=%v, (%v:)", tls, t, tm, origin(2))
 	}
 	panic(todo(""))
 }

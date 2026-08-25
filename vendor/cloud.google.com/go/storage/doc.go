@@ -274,14 +274,42 @@ To generate the signature, you must have:
 
 # Errors
 
-Errors returned by this client are often of the type [googleapi.Error].
-These errors can be introspected for more information by using [errors.As]
-with the richer [googleapi.Error] type. For example:
+Errors returned by this client are often of the type [github.com/googleapis/gax-go/v2/apierror].
+The [apierror.APIError] type can wrap a [google.golang.org/grpc/status.Status]
+if gRPC was used, or a [google.golang.org/api/googleapi.Error] if HTTP/REST was used.
+You might also encounter [googleapi.Error] directly from HTTP operations.
+These types of errors can be inspected for more information by using [errors.As]
+to access the specific underlying error types and retrieve detailed information,
+including HTTP or gRPC status codes. For example:
 
+	// APIErrors often wrap a googleapi.Error (for JSON and XML calls) or a status.Status (for gRPC calls)
+	var ae *apierror.APIError
+	if ok := errors.As(err, &ae); ok {
+		// ae.HTTPCode() is the HTTP status code.
+		// ae.GRPCStatus().Code() is the gRPC status code
+		log.Printf("APIError: HTTPCode: %d, GRPCStatusCode: %s", ae.HTTPCode(), ae.GRPCStatus().Code())
+
+		if ae.GRPCStatus().Code() == codes.Unavailable {
+			// ... handle gRPC unavailable ...
+		}
+	}
+
+	// This allows a user to get more information directly from googleapi.Errors (for JSON/XML calls)
 	var e *googleapi.Error
 	if ok := errors.As(err, &e); ok {
-		  if e.Code == 409 { ... }
+		// e.Code is the HTTP status code.
+		// e.Message is the error message.
+		// e.Body is the raw response body.
+		// e.Header contains the HTTP response headers.
+		log.Printf("HTTP Code: %d, Message: %s", e.Code, e.Message)
+
+		if e.Code == 409 {
+			// ... handle conflict ...
+		}
 	}
+
+This library may also return other errors that are not wrapped as [apierror.APIError]. For
+example, errors with authentication may return [cloud.google.com/go/auth.Error].
 
 # Retrying failed requests
 
@@ -336,7 +364,7 @@ to add a [custom audit logging] header:
 This package includes support for the [Cloud Storage gRPC API]. This
 implementation uses gRPC rather than the default JSON & XML APIs
 to make requests to Cloud Storage. All methods on the [Client] support
-the gRPC API, with the exception of [GetServiceAccount], [Notification],
+the gRPC API, with the exception of the [Client.ServiceAccount], [Notification],
 and [HMACKey] methods.
 
 The Cloud Storage gRPC API is generally available.
@@ -351,7 +379,7 @@ To create a client which will use gRPC, use the alternate constructor:
 	// Use client as usual.
 
 One major advantage of the gRPC API is that it can use [Direct Connectivity],
-enabling requests to skip some proxy steps and reducing responce latency.
+enabling requests to skip some proxy steps and reducing response latency.
 Requirements to use Direct Connectivity include:
 
   - Your application must be running inside Google Cloud.
@@ -362,7 +390,10 @@ Requirements to use Direct Connectivity include:
   - Your client must use service account authentication.
 
 Additional requirements for Direct Connectivity are documented in the
-[Cloud Storage gRPC docs].
+[Cloud Storage gRPC docs]. If all requirements are met, the client will
+use Direct Connectivity by default without requiring any client options
+or environment variables. To disable Direct Connectivity, you can set
+the environment variable GOOGLE_CLOUD_DISABLE_DIRECT_PATH=true.
 
 Dependencies for the gRPC API may slightly increase the size of binaries for
 applications depending on this package. If you are not using gRPC, you can use
@@ -375,6 +406,64 @@ Cloud Monitoring by default. More information is available in the
 roles which must be enabled in order to do the export successfully. To
 disable this export, you can use the [WithDisabledClientMetrics] client
 option.
+
+To disable OpenTelemetry bucket metadata in traces, you can set the
+environment variable GO_OTEL_BUCKETMETADATA_DISABLED=true.
+
+The client automatically computes and sends CRC32C checksums for uploads using [Writer],
+providing an additional layer of data integrity validation with a slight CPU overhead.
+
+Note: With a chunk size of 0 (no buffering) in JSON uploads, an auto-calculated checksum mismatch
+returns an error but may leave corrupt data on the server, requiring manual cleanup. This risk does not
+apply to single-shot uploads when user-provided checksum is provided.
+
+Automatic checksumming can be disabled using [Writer.DisableAutoChecksum].
+
+# Read checksumming
+
+By default, the client automatically computes and validates CRC32C checksums for reads
+when downloading an entire object, providing an additional layer of data integrity
+validation with a slight CPU overhead.
+
+For gRPC clients, read checksumming is also performed for partial reads (range requests)
+by validating the checksum of each individual data chunk returned by the server.
+
+Automatic read checksumming can be disabled using the [WithDisableReaderChecksum] option
+for a normal reader (both gRPC and JSON), or the [WithDisableMRDReadChecksum] option
+for the multi-range downloader (gRPC only).
+
+# Parallel Uploads
+
+The parallel upload feature splits a large object into multiple parts and uploads them
+in parallel. It is supported exclusively for gRPC clients. If used with a JSON
+client, the configuration is ignored and a standard upload is performed.
+
+Parallel uploads can yield higher throughput when uploading large objects.
+However, there are several things which must be kept in mind when choosing to
+use this strategy:
+  - Performing parallel uploads may incur additional costs. Class A
+    operations are performed to create each part. If a storage
+    class other than STANDARD is used, early deletion fees apply to deletion of
+    the parts.
+  - The service account/credentials used to perform the parallel
+    upload require `storage.objects.delete` in order to clean up the temporary
+    part objects.
+  - A failed upload can leave part objects behind
+    which will count as storage usage, and you will be billed for it.
+    Upon completion or failure of a parallel upload, the Writer makes a
+    best-effort attempt to clean up any temporary parts created. However, if the
+    program crashes there is no means for the client to perform the cleanup.
+    Temporary parts have the prefix: "gcs-go-sdk-pu-tmp". It is recommended to
+    set appropriate bucket lifecycle policies to reliably clean up any leftover
+    objects to avoid unnecessary storage costs.
+  - Using parallel uploads is not a one-size-fits-all solution.
+    They introduce overhead that is only offset when uploading
+    sufficiently large objects. The optimal threshold depends on many
+    factors; therefore, you should experiment with your specific
+    workload to determine if parallel uploads provide a benefit.
+
+**Note:** This feature is currently experimental and its API surface may change
+in future releases. It is not yet recommended for production use.
 
 # Storage Control API
 

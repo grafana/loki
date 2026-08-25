@@ -276,7 +276,7 @@ func (ds DescribedLogDirs) Size() int64 {
 	return tot
 }
 
-// Error iterates over all directories and returns the first error encounted,
+// Error iterates over all directories and returns the first error encountered,
 // if any. This can be used to check if describing was entirely successful or
 // not.
 func (ds DescribedLogDirs) Error() error {
@@ -374,7 +374,7 @@ func (ds DescribedLogDirs) Each(fn func(DescribedLogDir)) {
 	}
 }
 
-// Each calls fn for each partition in any directory.
+// EachPartition calls fn for each partition in any directory.
 func (ds DescribedLogDirs) EachPartition(fn func(d DescribedLogDirPartition)) {
 	for _, d := range ds {
 		d.Topics.Each(fn)
@@ -394,7 +394,7 @@ func (ds DescribedLogDirs) EachError(fn func(DescribedLogDir)) {
 type DescribedLogDir struct {
 	Broker int32                 // Broker is the broker being described.
 	Dir    string                // Dir is the described directory.
-	Topics DescribedLogDirTopics // Partitions are the partitions in this directory.
+	Topics DescribedLogDirTopics // Topics contains the topics with partitions in this directory.
 	Err    error                 // Err is non-nil if this directory could not be described.
 }
 
@@ -549,7 +549,7 @@ func newDescribeLogDirsResp(node int32, resp *kmsg.DescribeLogDirsResponse) Desc
 	return ds
 }
 
-// DescribeAllLogDirs describes the log directores for every input topic
+// DescribeAllLogDirs describes the log directories for every input topic
 // partition on every broker. If the input set is nil, this describes all log
 // directories.
 //

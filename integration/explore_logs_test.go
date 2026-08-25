@@ -63,13 +63,13 @@ func Test_ExploreLogsApis(t *testing.T) {
 		tIngester = clu.AddComponent(
 			"ingester",
 			"-target=ingester",
-			"-boltdb.shipper.index-gateway-client.server-address="+tIndexGateway.GRPCURL(),
+			"-tsdb.shipper.index-gateway-client.server-address="+tIndexGateway.GRPCURL(),
 		)
 		tQueryScheduler = clu.AddComponent(
 			"query-scheduler",
 			"-target=query-scheduler",
 			"-query-scheduler.use-scheduler-ring=false",
-			"-boltdb.shipper.index-gateway-client.server-address="+tIndexGateway.GRPCURL(),
+			"-tsdb.shipper.index-gateway-client.server-address="+tIndexGateway.GRPCURL(),
 		)
 	)
 	require.NoError(t, clu.Run())
@@ -80,7 +80,7 @@ func Test_ExploreLogsApis(t *testing.T) {
 			"querier",
 			"-target=querier",
 			"-querier.scheduler-address="+tQueryScheduler.GRPCURL(),
-			"-boltdb.shipper.index-gateway-client.server-address="+tIndexGateway.GRPCURL(),
+			"-tsdb.shipper.index-gateway-client.server-address="+tIndexGateway.GRPCURL(),
 			"-common.compactor-address="+tCompactor.HTTPURL(),
 		)
 	)
@@ -92,7 +92,7 @@ func Test_ExploreLogsApis(t *testing.T) {
 			"query-frontend",
 			"-target=query-frontend",
 			"-frontend.scheduler-address="+tQueryScheduler.GRPCURL(),
-			"-boltdb.shipper.index-gateway-client.server-address="+tIndexGateway.GRPCURL(),
+			"-tsdb.shipper.index-gateway-client.server-address="+tIndexGateway.GRPCURL(),
 			"-common.compactor-address="+tCompactor.HTTPURL(),
 			"-querier.per-request-limits-enabled=true",
 			"-frontend.encoding=protobuf",

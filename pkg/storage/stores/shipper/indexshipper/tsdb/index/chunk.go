@@ -15,6 +15,21 @@ type ChunkMeta struct {
 
 	MinTime, MaxTime int64
 
+	// IngestedAt is the time the chunk was ingested into storage, stamped at flush
+	// time (not the time the original log lines were received). It is recorded only
+	// for backfilled chunks — those whose stream carries the __backfill__="true"
+	// label — and is zero for all other (live) chunks. In TSDB FormatV4 it is
+	// encoded as a day-precision delta against MaxTime, rounded up to the next UTC
+	// day boundary so retention measured from ingestion never expires a chunk early.
+	//
+	// It is also zero when the index version predates FormatV4 and does not carry
+	// this field.
+	//
+	// Example: MaxTime is 2026-01-10 14:30 UTC and the chunk was ingested on
+	// 2026-01-12 08:00 UTC. The ingestion time rounds up to 2026-01-13 00:00 UTC
+	// and MaxTime's day is 2026-01-10, so the stored delta is +3 days.
+	IngestedAt int64
+
 	// Bytes stored, rounded to nearest KB
 	KB uint32
 
@@ -138,6 +153,17 @@ func (c ChunkMetas) Add(chk ChunkMeta) ChunkMetas {
 // ToDo(Sandeep): See if we can do something about the assumption on sorted chunks.
 // Maybe always build ChunkMetas using Add method which should always keep the ChunkMetas deduped and sorted.
 func (c ChunkMetas) Drop(chk ChunkMeta) (ChunkMetas, bool) {
+	pos := c.chunkPos(chk)
+	if pos < 0 {
+		return c, false
+	}
+
+	return c[:pos+copy(c[pos:], c[pos+1:])], true
+}
+
+// chunkPos returns the position of the given ChunkMeta. It assumes existing ChunkMetas have already been sorted by using Finalize.
+// It returns -1 if the chunk doesn't exist.
+func (c ChunkMetas) chunkPos(chk ChunkMeta) int {
 	j := sort.Search(len(c), func(i int) bool {
 		ichk := c[i]
 		if ichk.MinTime != chk.MinTime {
@@ -152,10 +178,14 @@ func (c ChunkMetas) Drop(chk ChunkMeta) (ChunkMetas, bool) {
 	})
 
 	if j >= len(c) || c[j].Checksum != chk.Checksum || c[j].MinTime != chk.MinTime || c[j].MaxTime != chk.MaxTime {
-		return c, false
+		return -1
 	}
 
-	return c[:j+copy(c[j:], c[j+1:])], true
+	return j
+}
+
+func (c ChunkMetas) HasChunk(chk ChunkMeta) bool {
+	return c.chunkPos(chk) >= 0
 }
 
 // Some of these fields can realistically be 32bit, but

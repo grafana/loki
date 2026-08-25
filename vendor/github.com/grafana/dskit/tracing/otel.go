@@ -26,7 +26,7 @@ import (
 	"go.opentelemetry.io/otel/trace"
 
 	tracesdk "go.opentelemetry.io/otel/sdk/trace"
-	semconv "go.opentelemetry.io/otel/semconv/v1.26.0"
+	semconv "go.opentelemetry.io/otel/semconv/v1.43.0"
 )
 
 var tracer = otel.Tracer("dskit/tracing")
@@ -35,6 +35,11 @@ var tracer = otel.Tracer("dskit/tracing")
 // Refer to official OTel SDK configuration docs to see the available options.
 // https://opentelemetry.io/docs/languages/sdk-configuration/general/
 func NewOTelFromEnv(serviceName string, logger log.Logger, opts ...OTelOption) (io.Closer, error) {
+	if os.Getenv("OTEL_TRACES_EXPORTER") == "" && os.Getenv("OTEL_EXPORTER_OTLP_ENDPOINT") == "" && os.Getenv("OTEL_EXPORTER_OTLP_TRACES_ENDPOINT") == "" {
+		// No tracing is configured, so don't initialize the tracer as it would complain on every span about localhost:4718 not accepting traces.
+		return ioCloser(func() error { return nil }), nil
+	}
+
 	level.Info(logger).Log("msg", "initialising OpenTelemetry tracer")
 
 	exp, err := autoexport.NewSpanExporter(context.Background())
@@ -56,10 +61,12 @@ func NewOTelFromEnv(serviceName string, logger log.Logger, opts ...OTelOption) (
 		tracesdk.WithBatcher(exp),
 		tracesdk.WithResource(resource),
 	}
-	if jaegerRemoteSampler, ok, err := MaybeJaegerRemoteSamplerFromEnv(serviceName); err != nil {
+	if jaegerRemoteSampler, ok, err := maybeJaegerRemoteSamplerFromEnv(serviceName); err != nil {
 		return nil, fmt.Errorf("failed to create Jaeger remote sampler: %w", err)
 	} else if ok {
-		options = append(options, tracesdk.WithSampler(jaegerRemoteSampler))
+		options = append(options, tracesdk.WithSampler(&JaegerDebuggingSampler{jaegerRemoteSampler}))
+	} else {
+		options = append(options, tracesdk.WithSampler(&JaegerDebuggingSampler{otelSamplerFromEnv()}))
 	}
 	options = append(options, cfg.tracerProviderOptions...)
 
@@ -160,7 +167,7 @@ func NewResource(serviceName string, customAttributes []attribute.KeyValue) (*re
 	)
 }
 
-// MaybeJaegerRemoteSamplerFromEnv checks the environment variables to see
+// maybeJaegerRemoteSamplerFromEnv checks the environment variables to see
 // if `jaeger_remote` or `parentbased_jaeger_remote` sampler is configured through OTEL_TRACES_SAMPLER.
 //
 // This extends go.opentelemetry.io/otel/sdk/trace/sampler_env.go `samplerFromEnv()` with support for Jaeger remote samplers as per docs in:
@@ -169,11 +176,14 @@ func NewResource(serviceName string, customAttributes []attribute.KeyValue) (*re
 //
 // If the environment variable is set to "jaeger_remote" or "parentbased_jaeger_remote",
 // but `OTEL_TRACES_SAMPLER_ARG` is not in the correct format (according to the docs mentioned above), then an error is returned.
-func MaybeJaegerRemoteSamplerFromEnv(serviceName string) (tracesdk.Sampler, bool, error) {
-	samplerName, ok := os.LookupEnv("OTEL_TRACES_SAMPLER")
+//
+// When maybeJaegerRemoteSamplerFromEnv finds a supported Jaeger remote sampler OTEL_TRACES_SAMPLER value, it unsets that environment variable.
+func maybeJaegerRemoteSamplerFromEnv(serviceName string) (tracesdk.Sampler, bool, error) {
+	samplerName, ok := os.LookupEnv(tracesSamplerKey)
 	if !ok {
 		return nil, false, nil
 	}
+	samplerName = strings.ToLower(strings.TrimSpace(samplerName))
 	parentBased := false
 	switch samplerName {
 	case "jaeger_remote":
@@ -185,7 +195,11 @@ func MaybeJaegerRemoteSamplerFromEnv(serviceName string) (tracesdk.Sampler, bool
 		return nil, false, nil
 	}
 
-	args, ok := os.LookupEnv("OTEL_TRACES_SAMPLER_ARG")
+	// Unset the OTEL_TRACES_SAMPLER environment variable to the SDK's samplerFromEnv()
+	// function complaining about unknown sampler and logging confusing messages.
+	_ = os.Unsetenv(tracesSamplerKey)
+
+	args, ok := os.LookupEnv(tracesSamplerArgKey)
 	if !ok || args == "" {
 		return nil, false, fmt.Errorf("OTEL_TRACES_SAMPLER_ARG is not set for Jaeger remote sampler %s", samplerName)
 	}
@@ -254,6 +268,70 @@ type closableParentBasedSampler struct {
 
 func (c closableParentBasedSampler) Close() { c.closer.Close() }
 
+// Sampler name constants matching the OpenTelemetry specification.
+// Source: https://github.com/open-telemetry/opentelemetry-go/blob/main/sdk/trace/sampler_env.go#L48
+const (
+	tracesSamplerKey    = "OTEL_TRACES_SAMPLER"
+	tracesSamplerArgKey = "OTEL_TRACES_SAMPLER_ARG"
+
+	samplerAlwaysOn                = "always_on"
+	samplerAlwaysOff               = "always_off"
+	samplerTraceIDRatio            = "traceidratio"
+	samplerParentBasedAlwaysOn     = "parentbased_always_on"
+	samplerParentBasedAlwaysOff    = "parentbased_always_off"
+	samplerParentBasedTraceIDRatio = "parentbased_traceidratio"
+)
+
+// otelSamplerFromEnv reads the standard OTEL_TRACES_SAMPLER and OTEL_TRACES_SAMPLER_ARG
+// environment variables and returns the corresponding sampler.
+// If OTEL_TRACES_SAMPLER is unset or empty, defaults to ParentBased(AlwaysSample()).
+//
+// Supported values per the OpenTelemetry specification:
+//   - "always_on"                  → AlwaysSample
+//   - "always_off"                 → NeverSample
+//   - "traceidratio"               → TraceIDRatioBased(arg)
+//   - "parentbased_always_on"      → ParentBased(AlwaysSample)
+//   - "parentbased_always_off"     → ParentBased(NeverSample)
+//   - "parentbased_traceidratio"   → ParentBased(TraceIDRatioBased(arg))
+//
+// See https://opentelemetry.io/docs/languages/sdk-configuration/general/#otel_traces_sampler
+// Source: https://github.com/open-telemetry/opentelemetry-go/blob/main/sdk/trace/sampler_env.go#L48
+func otelSamplerFromEnv() tracesdk.Sampler {
+	samplerName := strings.ToLower(strings.TrimSpace(os.Getenv(tracesSamplerKey)))
+	samplerArg := strings.TrimSpace(os.Getenv(tracesSamplerArgKey))
+
+	switch samplerName {
+	case samplerAlwaysOn:
+		return tracesdk.AlwaysSample()
+	case samplerAlwaysOff:
+		return tracesdk.NeverSample()
+	case samplerTraceIDRatio:
+		return tracesdk.TraceIDRatioBased(parseRatioOrDefault(samplerArg, 1.0))
+	case samplerParentBasedAlwaysOn:
+		return tracesdk.ParentBased(tracesdk.AlwaysSample())
+	case samplerParentBasedAlwaysOff:
+		return tracesdk.ParentBased(tracesdk.NeverSample())
+	case samplerParentBasedTraceIDRatio:
+		return tracesdk.ParentBased(tracesdk.TraceIDRatioBased(parseRatioOrDefault(samplerArg, 1.0)))
+	default:
+		// Matches the upstream default when no sampler is configured.
+		return tracesdk.ParentBased(tracesdk.AlwaysSample())
+	}
+}
+
+// parseRatioOrDefault parses a float64 from s, clamped to [0, defaultVal].
+// Returns defaultVal if s is empty, unparseable, or out of range.
+func parseRatioOrDefault(s string, defaultVal float64) float64 {
+	if s == "" {
+		return defaultVal
+	}
+	v, err := strconv.ParseFloat(s, 64)
+	if err != nil || !(v >= 0 && v <= 1) {
+		return defaultVal
+	}
+	return v
+}
+
 // OTelPropagatorsFromEnv returns a slice of OpenTelemetry TextMapPropagators based on the OTEL_PROPAGATORS environment variable.
 // If the environment variable is not set, it defaults to using TraceContext, Baggage, and Jaeger propagators.
 // This implementation supports only `tracecontext`, `baggage`, and `jaeger` and `none` propagators.
@@ -266,6 +344,7 @@ func OTelPropagatorsFromEnv() []propagation.TextMapPropagator {
 			propagation.TraceContext{},
 			propagation.Baggage{},
 			jaegerpropagator.Jaeger{},
+			JaegerDebuggingPropagator{},
 		}
 	}
 
@@ -279,7 +358,7 @@ func OTelPropagatorsFromEnv() []propagation.TextMapPropagator {
 		case "baggage":
 			result = append(result, propagation.Baggage{})
 		case "jaeger":
-			result = append(result, jaegerpropagator.Jaeger{})
+			result = append(result, jaegerpropagator.Jaeger{}, JaegerDebuggingPropagator{})
 		case "none":
 			return nil
 		default:

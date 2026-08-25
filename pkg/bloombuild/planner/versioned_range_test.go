@@ -16,10 +16,6 @@ func Test_TsdbTokenRange(t *testing.T) {
 		version int
 		bounds  v1.FingerprintBounds
 	}
-	type exp struct {
-		added bool
-		err   bool
-	}
 	mk := func(version int, minVal, maxVal model.Fingerprint) addition {
 		return addition{version, v1.FingerprintBounds{Min: minVal, Max: maxVal}}
 	}

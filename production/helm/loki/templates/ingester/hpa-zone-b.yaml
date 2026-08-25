@@ -5,7 +5,7 @@ apiVersion: {{ $apiVersion }}
 kind: HorizontalPodAutoscaler
 metadata:
   name: {{ include "loki.ingesterFullname" . }}-zone-b
-  namespace: {{ .Release.Namespace }}
+  namespace: {{ include "loki.namespace" . }}
   labels:
     {{- include "loki.ingesterLabels" . | nindent 4 }}
 spec:

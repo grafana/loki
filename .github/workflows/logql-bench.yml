@@ -3,41 +3,46 @@ on:
   workflow_dispatch:
     inputs:
       ref:
-        description: 'Git ref to run benchmarks on'
+        description: "Git ref to run benchmarks on"
         required: false
-        default: 'main'
-        type: 'string'
+        default: "main"
+        type: "string"
       bench_chunks_v1:
-        description: 'Benchmark V1 chunk store'
+        description: "Benchmark V1 chunk store"
         required: false
         default: true
-        type: 'boolean'
-      bench_dataobj_v1:
-        description: 'Benchmark V1 data object store'
+        type: "boolean"
+      bench_dataobj_old_engine:
+        description: "Benchmark data object store with old engine"
         required: false
         default: true
-        type: 'boolean'
-      bench_dataobj_v2:
-        description: 'Benchmark V2 chunk store'
+        type: "boolean"
+      bench_dataobj_new_engine:
+        description: "Benchmark data object store with new engine"
         required: false
         default: false # Disabled by default due to less complete implementation
-        type: 'boolean'
+        type: "boolean"
+      instant_queries:
+        description: "Run benchmarks for Instant queries"
+        required: false
+        default: false
+        type: "boolean"
 permissions: {}
 jobs:
   generate-testdata:
     name: Generate test data
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-x64
     steps:
       - name: Checkout code
         id: checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
         with:
           ref: ${{ inputs.ref }}
 
       - name: Setup Go
-        uses: actions/setup-go@v4
+        uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
         with:
-          go-version: '1.24.3'
+          go-version: "1.26.6"
 
       # The metastore generates invalid filenames for Windows (with colons),
       # which get rejected by upload-artifact. We zip these files to avoid this
@@ -47,7 +52,7 @@ jobs:
         working-directory: ./pkg/logql/bench
 
       - name: Upload test data
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: logql-bench-testdata-${{ steps.checkout.outputs.commit }}
           path: ./pkg/logql/bench/data.zip
@@ -56,7 +61,7 @@ jobs:
   setup-matrix:
     name: Setup matrix
     needs: generate-testdata
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-x64
     outputs:
       matrix: ${{ steps.generate.outputs.matrix }}
     steps:
@@ -67,8 +72,8 @@ jobs:
 
           # Use explicit equality checks to avoid template injection.
           ${{ inputs.bench_chunks_v1 == true }} && STORES+=("chunk")
-          ${{ inputs.bench_dataobj_v1 == true }} && STORES+=("dataobj")
-          ${{ inputs.bench_dataobj_v2 == true }} && STORES+=("dataobj-engine")
+          ${{ inputs.bench_dataobj_old_engine == true }} && STORES+=("dataobj")
+          ${{ inputs.bench_dataobj_new_engine == true }} && STORES+=("dataobj-engine")
 
           MATRIX_JSON=$(jq -nc --arg stores "${STORES[*]}" '{"store": $stores | split(" ")}')
           echo "matrix=$MATRIX_JSON" >> "$GITHUB_OUTPUT"
@@ -83,12 +88,12 @@ jobs:
     steps:
       - name: Checkout code
         id: checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
         with:
           ref: ${{ inputs.ref }}
 
       - name: Download test data
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: logql-bench-testdata-${{ steps.checkout.outputs.commit }}
           path: ./pkg/logql/bench
@@ -98,17 +103,19 @@ jobs:
         working-directory: ./pkg/logql/bench
 
       - name: Setup Go
-        uses: actions/setup-go@v4
+        uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
         with:
-          go-version: '1.24.3'
+          go-version: "1.26.6"
 
       - name: Create results directory
         run: mkdir -p ./pkg/logql/bench/results
 
       - name: Run benchmarks
+        shell: bash # Use bash shell to propagate pipe failures
         run: |
           go test \
             -run=^$ -bench=LogQL/query=.+/kind=.+/store=${{ matrix.store }}$ \
+            ${{ inputs.instant_queries == true && '-range-type=instant' || '' }} \
             -count=10 -timeout=5h -benchmem \
             -cpuprofile=results/cpu.pprof \
             -memprofile=results/mem.pprof \
@@ -116,7 +123,7 @@ jobs:
         working-directory: ./pkg/logql/bench
 
       - name: Upload results
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         if: always() # Upload results even if one of the benchmark tests fails
         with:
           name: logql-bench-results-${{ matrix.store }}-${{ steps.checkout.outputs.commit }}

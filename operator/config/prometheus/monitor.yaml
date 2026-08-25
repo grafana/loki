@@ -7,6 +7,7 @@ metadata:
     name: loki-operator
   name: metrics-monitor
 spec:
+  serviceDiscoveryRole: EndpointSlice
   selector:
     matchLabels:
       app.kubernetes.io/name: loki-operator

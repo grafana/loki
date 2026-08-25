@@ -1,31 +1,46 @@
+// SPDX-FileCopyrightText: Copyright 2015-2025 go-swagger maintainers
+// SPDX-License-Identifier: Apache-2.0
+
 package analysis
 
 import (
-	"errors"
+	"encoding/json"
 
 	"github.com/go-openapi/spec"
 	"github.com/go-openapi/strfmt"
+	"github.com/go-openapi/swag/loading"
 )
 
-// SchemaOpts configures the schema analyzer
+// SchemaOpts configures the schema analyzer.
 type SchemaOpts struct {
 	Schema   *spec.Schema
-	Root     interface{}
+	Root     any
 	BasePath string
-	_        struct{}
+
+	// PathLoaderWithOptions injects the document loader (with loading options) used to resolve
+	// remote and relative $ref while analyzing a schema.
+	//
+	// Security: set this to a confined loader — for example one built with loading.WithRoot and
+	// loading.WithHTTPClient, or a restricted loader from go-openapi/loads — when the schema may
+	// derive from an untrusted source. Left nil, the spec package default (unsandboxed) loader is
+	// used.
+	PathLoaderWithOptions func(string, ...loading.Option) (json.RawMessage, error)
+
+	_ struct{}
 }
 
 // Schema analysis, will classify the schema according to known
 // patterns.
 func Schema(opts SchemaOpts) (*AnalyzedSchema, error) {
 	if opts.Schema == nil {
-		return nil, errors.New("no schema to analyze")
+		return nil, ErrNoSchema
 	}
 
 	a := &AnalyzedSchema{
-		schema:   opts.Schema,
-		root:     opts.Root,
-		basePath: opts.BasePath,
+		schema:                opts.Schema,
+		root:                  opts.Root,
+		basePath:              opts.BasePath,
+		pathLoaderWithOptions: opts.PathLoaderWithOptions,
 	}
 
 	a.initializeFlags()
@@ -51,11 +66,12 @@ func Schema(opts SchemaOpts) (*AnalyzedSchema, error) {
 	return a, nil
 }
 
-// AnalyzedSchema indicates what the schema represents
+// AnalyzedSchema indicates what the schema represents.
 type AnalyzedSchema struct {
-	schema   *spec.Schema
-	root     interface{}
-	basePath string
+	schema                *spec.Schema
+	root                  any
+	basePath              string
+	pathLoaderWithOptions func(string, ...loading.Option) (json.RawMessage, error)
 
 	hasProps           bool
 	hasAllOf           bool
@@ -77,7 +93,7 @@ type AnalyzedSchema struct {
 	IsEnum           bool
 }
 
-// Inherits copies value fields from other onto this schema
+// Inherits copies value fields from other onto this schema.
 func (a *AnalyzedSchema) inherits(other *AnalyzedSchema) {
 	if other == nil {
 		return
@@ -102,19 +118,32 @@ func (a *AnalyzedSchema) inherits(other *AnalyzedSchema) {
 	a.IsEnum = other.IsEnum
 }
 
+// subSchemaOpts builds SchemaOpts for a nested schema, propagating the root, base path and the
+// injected document loader so that confinement applies throughout the recursive analysis.
+func (a *AnalyzedSchema) subSchemaOpts(sch *spec.Schema) SchemaOpts {
+	return SchemaOpts{
+		Schema:                sch,
+		Root:                  a.root,
+		BasePath:              a.basePath,
+		PathLoaderWithOptions: a.pathLoaderWithOptions,
+	}
+}
+
+// expandOpts builds the spec expand options for this analysis, carrying the injected loader so
+// remote/relative $ref are resolved through it (rather than the unsandboxed package default).
+func (a *AnalyzedSchema) expandOpts() *spec.ExpandOptions {
+	return &spec.ExpandOptions{PathLoaderWithOptions: a.pathLoaderWithOptions}
+}
+
 func (a *AnalyzedSchema) inferFromRef() error {
 	if a.hasRef {
 		sch := new(spec.Schema)
 		sch.Ref = a.schema.Ref
-		err := spec.ExpandSchema(sch, a.root, nil)
+		err := spec.ExpandSchemaWithOptions(sch, a.root, nil, a.expandOpts())
 		if err != nil {
 			return err
 		}
-		rsch, err := Schema(SchemaOpts{
-			Schema:   sch,
-			Root:     a.root,
-			BasePath: a.basePath,
-		})
+		rsch, err := Schema(a.subSchemaOpts(sch))
 		if err != nil {
 			// NOTE(fredbi): currently the only cause for errors is
 			// unresolved ref. Since spec.ExpandSchema() expands the
@@ -158,11 +187,7 @@ func (a *AnalyzedSchema) inferMap() error {
 
 	// maps
 	if a.schema.AdditionalProperties.Schema != nil {
-		msch, err := Schema(SchemaOpts{
-			Schema:   a.schema.AdditionalProperties.Schema,
-			Root:     a.root,
-			BasePath: a.basePath,
-		})
+		msch, err := Schema(a.subSchemaOpts(a.schema.AdditionalProperties.Schema))
 		if err != nil {
 			return err
 		}
@@ -185,11 +210,7 @@ func (a *AnalyzedSchema) inferArray() error {
 	a.IsArray = a.isArrayType() && (a.schema.Items == nil || a.schema.Items.Schemas == nil)
 	if a.IsArray && a.hasItems {
 		if a.schema.Items.Schema != nil {
-			itsch, err := Schema(SchemaOpts{
-				Schema:   a.schema.Items.Schema,
-				Root:     a.root,
-				BasePath: a.basePath,
-			})
+			itsch, err := Schema(a.subSchemaOpts(a.schema.Items.Schema))
 			if err != nil {
 				return err
 			}

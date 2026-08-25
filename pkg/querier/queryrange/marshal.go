@@ -342,7 +342,16 @@ func (Codec) QueryRequestUnwrap(ctx context.Context, req *QueryRequest) (queryra
 		if err != nil {
 			return nil, ctx, err
 		}
-		ctx = querylimits.InjectQueryLimitsContext(ctx, *limits)
+		ctx = querylimits.InjectQueryLimitsIntoContext(ctx, *limits)
+	}
+
+	// Add limits context
+	if encodedLimitsCtx, ok := req.Metadata[querylimits.HTTPHeaderQueryLimitsContextKey]; ok {
+		limitsCtx, err := querylimits.UnmarshalQueryLimitsContext([]byte(encodedLimitsCtx))
+		if err != nil {
+			return nil, ctx, err
+		}
+		ctx = querylimits.InjectQueryLimitsContextIntoContext(ctx, *limitsCtx)
 	}
 
 	// Add query time
@@ -454,13 +463,23 @@ func (Codec) QueryRequestWrap(ctx context.Context, r queryrangebase.Request) (*Q
 	}
 
 	// Add limits
-	limits := querylimits.ExtractQueryLimitsContext(ctx)
+	limits := querylimits.ExtractQueryLimitsFromContext(ctx)
 	if limits != nil {
 		encodedLimits, err := querylimits.MarshalQueryLimits(limits)
 		if err != nil {
 			return nil, err
 		}
 		result.Metadata[querylimits.HTTPHeaderQueryLimitsKey] = string(encodedLimits)
+	}
+
+	// Add limits context
+	limitsCtx := querylimits.ExtractQueryLimitsContextFromContext(ctx)
+	if limitsCtx != nil {
+		encodedLimitsCtx, err := querylimits.MarshalQueryLimitsContext(limitsCtx)
+		if err != nil {
+			return nil, err
+		}
+		result.Metadata[querylimits.HTTPHeaderQueryLimitsContextKey] = string(encodedLimitsCtx)
 	}
 
 	// Add org ID

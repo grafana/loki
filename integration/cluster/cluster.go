@@ -21,12 +21,11 @@ import (
 	"github.com/grafana/dskit/multierror"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
-	"gopkg.in/yaml.v2"
+	"go.yaml.in/yaml/v4"
 
 	"github.com/grafana/loki/v3/integration/util"
 
 	"github.com/grafana/loki/v3/pkg/loki"
-	"github.com/grafana/loki/v3/pkg/storage"
 	"github.com/grafana/loki/v3/pkg/storage/config"
 	"github.com/grafana/loki/v3/pkg/util/cfg"
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
@@ -72,6 +71,12 @@ limits_config:
       - action: drop
         attributes: [email]
 
+# local rule storage is set by common.storage.filesystem.rules_directory
+# ruler_storage:
+#   backend: local
+#   local:
+#     directory: {{.sharedDataPath}}/rules
+
 storage_config:
   # Legacy config
   named_stores:
@@ -84,9 +89,6 @@ storage_config:
       filesystem:
         store-1:
           dir: {{.sharedDataPath}}/fs-store-1
-  boltdb_shipper:
-    active_index_directory: {{.dataPath}}/boltdb-index
-    cache_location: {{.dataPath}}/boltdb-cache
   tsdb_shipper:
     active_index_directory: {{.dataPath}}/tsdb-index
     cache_location: {{.dataPath}}/tsdb-cache
@@ -124,6 +126,9 @@ ruler:
       store: inmemory
   wal:
     dir: {{.sharedDataPath}}/ruler-wal
+  # local rule storage is set by common.storage.filesystem.rules_directory
+  # however, even if this is set, ruler_storage has precedence over ruler.storage 
+  # when storage.use_thanos_objstore is true, so keep it for testing purpose
   storage:
     type: local
     local:
@@ -183,7 +188,7 @@ func New(logLevel level.Value, opts ...func(*Cluster)) *Cluster {
 
 	overridesFile := filepath.Join(sharedPath, "loki-overrides.yaml")
 
-	err = os.WriteFile(overridesFile, []byte(`overrides:`), 0640) // #nosec G306 -- this is fencing off the "other" permissions
+	err = os.WriteFile(overridesFile, []byte(`overrides:`), 0640) // #nosec G306 -- this is fencing off the "other" permissions -- nosemgrep: incorrect-default-permissions
 	if err != nil {
 		panic(fmt.Errorf("error creating overrides file: %w", err))
 	}
@@ -233,8 +238,6 @@ func (c *Cluster) Restart() error {
 }
 
 func (c *Cluster) Cleanup() error {
-	// cleanup singleton boltdb shipper client instances
-	storage.ResetBoltDBIndexClientsWithShipper()
 	return c.stop(true)
 }
 
@@ -355,7 +358,7 @@ func (c *Component) writeConfig() error {
 		return fmt.Errorf("error getting merged config: %w", err)
 	}
 
-	if err := os.WriteFile(configFile.Name(), mergedConfig, 0640); err != nil { // #nosec G306 -- this is fencing off the "other" permissions
+	if err := os.WriteFile(configFile.Name(), mergedConfig, 0640); err != nil { // #nosec G306 -- this is fencing off the "other" permissions -- nosemgrep: incorrect-default-permissions
 		return fmt.Errorf("error writing config file: %w", err)
 	}
 
@@ -383,9 +386,9 @@ func (c *Component) MergedConfig() ([]byte, error) {
 	merger := util.NewYAMLMerger()
 	merger.AddFragment(sb.Bytes())
 
-	// default to using boltdb index
+	// default to using TSDB index
 	if len(c.cluster.periodCfgs) == 0 {
-		c.cluster.periodCfgs = []string{boltDBShipperSchemaConfigTemplate}
+		c.cluster.periodCfgs = []string{tsdbShipperSchemaConfigTemplate}
 	}
 
 	for _, periodCfg := range c.cluster.periodCfgs {
@@ -426,12 +429,9 @@ func (c *Component) run() error {
 
 	if err := cfg.DynamicUnmarshal(&config, append(
 		c.flags,
-		"-config.file",
-		c.configFile,
-		"-limits.per-user-override-config",
-		c.overridesFile,
-		"-limits.per-user-override-period",
-		"1s",
+		"-config.file", c.configFile,
+		"-runtime-config.file", c.overridesFile,
+		"-runtime-config.reload-period", "1s",
 	), flagset); err != nil {
 		return err
 	}
@@ -441,6 +441,9 @@ func (c *Component) run() error {
 	}
 
 	config.LimitsConfig.SetGlobalOTLPConfig(config.Distributor.OTLPConfig)
+	if err := config.LimitsConfig.SetDefaultPolicyStreamMapping(config.Distributor.DefaultPolicyStreamMappings); err != nil {
+		return err
+	}
 	var err error
 	c.loki, err = loki.New(config.Config)
 	if err != nil {
@@ -532,7 +535,7 @@ func (c *Component) SetTenantLimits(tenant string, limits validation.Limits) err
 		return err
 	}
 
-	return os.WriteFile(c.overridesFile, config, 0640) // #nosec G306 -- this is fencing off the "other" permissions
+	return os.WriteFile(c.overridesFile, config, 0640) // #nosec G306 -- this is fencing off the "other" permissions -- nosemgrep: incorrect-default-permissions
 }
 
 func (c *Component) GetTenantLimits(tenant string) validation.Limits {

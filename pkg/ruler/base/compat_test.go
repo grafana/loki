@@ -70,7 +70,7 @@ func TestPusherAppendable(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			ctx := context.Background()
 
-			lbls, err := parser.ParseMetric(tc.series)
+			lbls, err := parser.NewParser(parser.Options{}).ParseMetric(tc.series)
 			require.NoError(t, err)
 
 			pusher.response = &logproto.WriteResponse{}
@@ -125,7 +125,7 @@ func TestPusherErrors(t *testing.T) {
 
 			pa := NewPusherAppendable(pusher, "user-1", writes, failures)
 
-			lbls, err := parser.ParseMetric("foo_bar")
+			lbls, err := parser.NewParser(parser.Options{}).ParseMetric("foo_bar")
 			require.NoError(t, err)
 
 			a := pa.Appender(ctx)

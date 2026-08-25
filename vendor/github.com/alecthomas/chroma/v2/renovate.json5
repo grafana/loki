@@ -7,7 +7,9 @@
 		":semanticCommitScope(deps)",
 		"group:allNonMajor",
 		"schedule:earlyMondays", // Run once a week.
+		'helpers:pinGitHubActionDigests',
 	],
+	"postUpdateOptions": ["gomodTidy"],
 	"packageRules": [
 		{
 			"matchPackageNames": ["golangci-lint"],

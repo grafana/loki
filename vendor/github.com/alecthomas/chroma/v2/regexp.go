@@ -1,7 +1,9 @@
 package chroma
 
 import (
+	"encoding/json"
 	"fmt"
+	"maps"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -11,7 +13,7 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"github.com/dlclark/regexp2"
+	"github.com/dlclark/regexp2/v2"
 )
 
 // A Rule is the fundamental matching unit of the Regex lexer state machine.
@@ -69,9 +71,7 @@ func (r Rules) Clone() Rules {
 // Merge creates a clone of "r" then merges "rules" into the clone.
 func (r Rules) Merge(rules Rules) Rules {
 	out := r.Clone()
-	for k, v := range rules.Clone() {
-		out[k] = v
-	}
+	maps.Copy(out, rules.Clone())
 	return out
 }
 
@@ -135,9 +135,18 @@ func NewLexer(config *Config, rulesFunc func() Rules) (*RegexLexer, error) {
 }
 
 // Trace enables debug tracing.
+//
+// Deprecated: Use SetTracing instead.
 func (r *RegexLexer) Trace(trace bool) *RegexLexer {
 	r.trace = trace
 	return r
+}
+
+// SetTracing enables debug tracing.
+//
+// This complies with the [TracingLexer] interface.
+func (r *RegexLexer) SetTracing(trace bool) {
+	r.trace = trace
 }
 
 // A CompiledRule is a Rule with a pre-compiled regex.
@@ -167,24 +176,25 @@ type LexerState struct {
 	// Named Group matches.
 	NamedGroups map[string]string
 	// Custum context for mutators.
-	MutatorContext map[interface{}]interface{}
+	MutatorContext map[any]any
 	iteratorStack  []Iterator
 	options        *TokeniseOptions
 	newlineAdded   bool
 }
 
 // Set mutator context.
-func (l *LexerState) Set(key interface{}, value interface{}) {
+func (l *LexerState) Set(key any, value any) {
 	l.MutatorContext[key] = value
 }
 
 // Get mutator context.
-func (l *LexerState) Get(key interface{}) interface{} {
+func (l *LexerState) Get(key any) any {
 	return l.MutatorContext[key]
 }
 
 // Iterator returns the next Token from the lexer.
 func (l *LexerState) Iterator() Token { // nolint: gocognit
+	trace := json.NewEncoder(os.Stderr)
 	end := len(l.Text)
 	if l.newlineAdded {
 		end--
@@ -205,14 +215,33 @@ func (l *LexerState) Iterator() Token { // nolint: gocognit
 		}
 
 		l.State = l.Stack[len(l.Stack)-1]
-		if l.Lexer.trace {
-			fmt.Fprintf(os.Stderr, "%s: pos=%d, text=%q\n", l.State, l.Pos, string(l.Text[l.Pos:]))
-		}
 		selectedRule, ok := l.Rules[l.State]
 		if !ok {
 			panic("unknown state " + l.State)
 		}
+		var start time.Time
+		if l.Lexer.trace {
+			start = time.Now()
+		}
 		ruleIndex, rule, groups, namedGroups := matchRules(l.Text, l.Pos, selectedRule)
+		if l.Lexer.trace {
+			var length int
+			if groups != nil {
+				length = len(groups[0])
+			} else {
+				length = -1
+			}
+			_ = trace.Encode(Trace{ //nolint
+				Lexer:   l.Lexer.config.Name,
+				State:   l.State,
+				Rule:    ruleIndex,
+				Pattern: rule.Pattern,
+				Pos:     l.Pos,
+				Length:  length,
+				Elapsed: float64(time.Since(start)) / float64(time.Millisecond),
+			})
+			// fmt.Fprintf(os.Stderr, "%s: pos=%d, text=%q, elapsed=%s\n", l.State, l.Pos, string(l.Text[l.Pos:]), time.Since(start))
+		}
 		// No match.
 		if groups == nil {
 			// From Pygments :\
@@ -278,6 +307,7 @@ type RegexLexer struct {
 	rules          map[string][]*CompiledRule
 	fetchRulesFunc func() (Rules, error)
 	compileOnce    sync.Once
+	compileError   error
 }
 
 func (r *RegexLexer) String() string {
@@ -338,7 +368,7 @@ func (r *RegexLexer) maybeCompile() (err error) {
 					pattern = "(?" + rule.flags + ")" + pattern
 				}
 				pattern = `\G` + pattern
-				rule.Regexp, err = regexp2.Compile(pattern, 0)
+				rule.Regexp, err = regexp2.Compile(pattern)
 				if err != nil {
 					return fmt.Errorf("failed to compile rule %s.%d: %s", state, i, err)
 				}
@@ -363,6 +393,17 @@ restart:
 				//
 				// This sounds bad, but shouldn't be significant in practice.
 				goto restart
+			}
+		}
+	}
+	// Validate emitters
+	for state := range r.rules {
+		for i := range len(r.rules[state]) {
+			rule := r.rules[state][i]
+			if validate, ok := rule.Type.(ValidatingEmitter); ok {
+				if err := validate.ValidateEmitter(rule); err != nil {
+					return fmt.Errorf("%s: %s: %s: %w", r.config.Name, state, rule.Pattern, err)
+				}
 			}
 		}
 	}
@@ -405,8 +446,11 @@ func (r *RegexLexer) needRules() error {
 	var err error
 	if r.fetchRulesFunc != nil {
 		r.compileOnce.Do(func() {
-			err = r.fetchRules()
+			r.compileError = r.fetchRules()
 		})
+		if r.compileError != nil {
+			return r.compileError
+		}
 	}
 	if err := r.maybeCompile(); err != nil {
 		return err
@@ -439,7 +483,7 @@ func (r *RegexLexer) Tokenise(options *TokeniseOptions, text string) (Iterator, 
 		Text:           []rune(text),
 		Stack:          []string{options.State},
 		Rules:          r.rules,
-		MutatorContext: map[interface{}]interface{}{},
+		MutatorContext: map[any]any{},
 	}
 	return state.Iterator, nil
 }
@@ -456,7 +500,7 @@ func (r *RegexLexer) MustRules() Rules {
 func matchRules(text []rune, pos int, rules []*CompiledRule) (int, *CompiledRule, []string, map[string]string) {
 	for i, rule := range rules {
 		match, err := rule.Regexp.FindRunesMatchStartingAt(text, pos)
-		if match != nil && err == nil && match.Index == pos {
+		if match != nil && err == nil && match.RuneIndex == pos {
 			groups := []string{}
 			namedGroups := make(map[string]string)
 			for _, g := range match.Groups() {

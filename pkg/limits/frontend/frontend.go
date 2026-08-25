@@ -28,7 +28,7 @@ type Frontend struct {
 	services.Service
 	cfg                     Config
 	logger                  log.Logger
-	gatherer                exceedsLimitsGatherer
+	limitsClient            limitsClient
 	assignedPartitionsCache cache[string, *proto.GetAssignedPartitionsResponse]
 	subservices             *services.Manager
 	subservicesWatcher      *services.FailureWatcher
@@ -43,32 +43,9 @@ type Frontend struct {
 
 // New returns a new Frontend.
 func New(cfg Config, ringName string, limitsRing ring.ReadRing, logger log.Logger, reg prometheus.Registerer) (*Frontend, error) {
-	// Set up a client pool for the limits service. The frontend will use this
-	// to make RPCs that get the current stream usage to checks per-tenant limits.
-	clientPoolFactory := limits_client.NewPoolFactory(cfg.ClientConfig)
-	clientPool := limits_client.NewPool(
-		ringName,
-		cfg.ClientConfig.PoolConfig,
-		limitsRing,
-		clientPoolFactory,
-		logger,
-	)
-
-	// Set up the assigned partitions cache.
-	var assignedPartitionsCache cache[string, *proto.GetAssignedPartitionsResponse]
-	if cfg.AssignedPartitionsCacheTTL == 0 {
-		// When the TTL is 0, the cache is disabled.
-		assignedPartitionsCache = newNopCache[string, *proto.GetAssignedPartitionsResponse]()
-	} else {
-		assignedPartitionsCache = newTTLCache[string, *proto.GetAssignedPartitionsResponse](cfg.AssignedPartitionsCacheTTL)
-	}
-	gatherer := newRingGatherer(limitsRing, clientPool, cfg.NumPartitions, assignedPartitionsCache, logger, reg)
-
 	f := &Frontend{
-		cfg:                     cfg,
-		logger:                  logger,
-		gatherer:                gatherer,
-		assignedPartitionsCache: assignedPartitionsCache,
+		cfg:    cfg,
+		logger: logger,
 		streams: promauto.With(reg).NewCounter(
 			prometheus.CounterOpts{
 				Name: "loki_ingest_limits_frontend_streams_total",
@@ -88,7 +65,34 @@ func New(cfg Config, ringName string, limitsRing ring.ReadRing, logger log.Logge
 			},
 		),
 	}
-
+	// Set up a client pool for the limits service. The frontend will use this
+	// to make RPCs that get the current stream usage to checks per-tenant limits.
+	clientPoolFactory := limits_client.NewPoolFactory(cfg.ClientConfig)
+	clientPool := limits_client.NewPool(
+		ringName,
+		cfg.ClientConfig.PoolConfig,
+		limitsRing,
+		clientPoolFactory,
+		logger,
+	)
+	// Set up the assigned partitions cache.
+	if cfg.AssignedPartitionsCacheEnabled {
+		f.assignedPartitionsCache = newTTLCache[string, *proto.GetAssignedPartitionsResponse](cfg.AssignedPartitionsCacheTTL)
+	} else {
+		f.assignedPartitionsCache = newNopCache[string, *proto.GetAssignedPartitionsResponse]()
+	}
+	// Set up the limits client.
+	f.limitsClient = newRingLimitsClient(limitsRing, clientPool, cfg.NumPartitions, f.assignedPartitionsCache, logger, reg)
+	if cfg.AcceptedStreamsCacheEnabled {
+		f.limitsClient = newCacheLimitsClient(
+			newAcceptedStreamsCache(
+				cfg.AcceptedStreamsCacheTTL,
+				cfg.AcceptedStreamsCacheTTLJitter,
+				reg,
+			),
+			f.limitsClient,
+		)
+	}
 	lifecycler, err := ring.NewLifecycler(cfg.LifecyclerConfig, f, RingName, RingKey, true, logger, reg)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create %s lifecycler: %w", RingName, err)
@@ -97,30 +101,29 @@ func New(cfg Config, ringName string, limitsRing ring.ReadRing, logger log.Logge
 	// Watch the lifecycler.
 	f.lifecyclerWatcher = services.NewFailureWatcher()
 	f.lifecyclerWatcher.WatchService(f.lifecycler)
-
 	servs := []services.Service{lifecycler, clientPool}
 	mgr, err := services.NewManager(servs...)
 	if err != nil {
 		return nil, err
 	}
-
 	f.subservices = mgr
 	f.subservicesWatcher = services.NewFailureWatcher()
 	f.subservicesWatcher.WatchManager(f.subservices)
 	f.Service = services.NewBasicService(f.starting, f.running, f.stopping)
-
 	return f, nil
 }
 
 // ExceedsLimits implements proto.IngestLimitsFrontendClient.
 func (f *Frontend) ExceedsLimits(ctx context.Context, req *proto.ExceedsLimitsRequest) (*proto.ExceedsLimitsResponse, error) {
 	f.streams.Add(float64(len(req.Streams)))
-	results := make([]*proto.ExceedsLimitsResult, 0, len(req.Streams))
-	resps, err := f.gatherer.ExceedsLimits(ctx, req)
+	resp, err := f.limitsClient.ExceedsLimits(ctx, req)
 	if err != nil {
 		// If the entire call failed, then all streams failed.
+		resp = &proto.ExceedsLimitsResponse{
+			Results: make([]*proto.ExceedsLimitsResult, 0, len(req.Streams)),
+		}
 		for _, stream := range req.Streams {
-			results = append(results, &proto.ExceedsLimitsResult{
+			resp.Results = append(resp.Results, &proto.ExceedsLimitsResult{
 				StreamHash: stream.StreamHash,
 				Reason:     uint32(limits.ReasonFailed),
 			})
@@ -128,20 +131,34 @@ func (f *Frontend) ExceedsLimits(ctx context.Context, req *proto.ExceedsLimitsRe
 		f.streamsFailed.Add(float64(len(req.Streams)))
 		level.Error(f.logger).Log("msg", "failed to check request against limits", "err", err)
 	} else {
-		for _, resp := range resps {
-			for _, res := range resp.Results {
-				// Even if the call succeeded, some (or all) streams might
-				// still have failed.
-				if res.Reason == uint32(limits.ReasonFailed) {
-					f.streamsFailed.Inc()
-				} else {
-					f.streamsRejected.Inc()
-				}
+		for _, res := range resp.Results {
+			// Even if the call succeeded, some (or all) streams might still
+			// have failed.
+			if res.Reason == uint32(limits.ReasonFailed) {
+				f.streamsFailed.Inc()
+			} else {
+				f.streamsRejected.Inc()
 			}
-			results = append(results, resp.Results...)
 		}
 	}
-	return &proto.ExceedsLimitsResponse{Results: results}, nil
+	return resp, nil
+}
+
+func (f *Frontend) UpdateRates(ctx context.Context, req *proto.UpdateRatesRequest) (*proto.UpdateRatesResponse, error) {
+	resp, err := f.limitsClient.UpdateRates(ctx, req)
+	if err != nil {
+		// If the entire call failed, then all streams failed.
+		resp = &proto.UpdateRatesResponse{
+			Results: make([]*proto.UpdateRatesResult, 0, len(req.Streams)),
+		}
+		for _, stream := range req.Streams {
+			resp.Results = append(resp.Results, &proto.UpdateRatesResult{
+				StreamHash: stream.StreamHash,
+				Rate:       0,
+			})
+		}
+	}
+	return resp, nil
 }
 
 func (f *Frontend) CheckReady(ctx context.Context) error {

@@ -82,6 +82,7 @@ func (rt *serializeHTTPHandler) ServeHTTP(w http.ResponseWriter, r *http.Request
 		}
 		return
 	}
+	w.Header().Set("Content-Type", "application/json; charset=UTF-8")
 	version := loghttp.GetVersion(r.RequestURI)
 	encodingFlags := httpreq.ExtractEncodingFlags(r)
 	if err := encodeResponseJSONTo(version, response, w, encodingFlags); err != nil {

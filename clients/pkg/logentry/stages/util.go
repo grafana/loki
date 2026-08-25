@@ -190,6 +190,6 @@ func getString(unk interface{}) (string, error) {
 		}
 		return "false", nil
 	default:
-		return "", fmt.Errorf("Can't convert %v to string", unk)
+		return "", fmt.Errorf("can't convert %v to string", unk)
 	}
 }

@@ -37,6 +37,9 @@ type FixedSizeList struct {
 
 var _ ListLike = (*FixedSizeList)(nil)
 
+func (a *FixedSizeList) Validate() error     { return validateFixedSizeListArray(a) }
+func (a *FixedSizeList) ValidateFull() error { return validateFixedSizeListArray(a) }
+
 // NewFixedSizeListData returns a new List array value, from data.
 func NewFixedSizeListData(data arrow.ArrayData) *FixedSizeList {
 	a := &FixedSizeList{}
@@ -108,7 +111,7 @@ func (a *FixedSizeList) Len() int { return a.array.Len() }
 
 func (a *FixedSizeList) ValueOffsets(i int) (start, end int64) {
 	n := int64(a.n)
-	off := int64(a.array.data.offset)
+	off := int64(a.data.offset)
 	start, end = (off+int64(i))*n, (off+int64(i+1))*n
 	return
 }
@@ -177,7 +180,7 @@ func NewFixedSizeListBuilder(mem memory.Allocator, n int32, etype arrow.DataType
 		},
 		n,
 	}
-	fslb.baseListBuilder.builder.refCount.Add(1)
+	fslb.refCount.Add(1)
 	return fslb
 }
 
@@ -194,7 +197,7 @@ func NewFixedSizeListBuilderWithField(mem memory.Allocator, n int32, field arrow
 		n,
 	}
 
-	fslb.baseListBuilder.builder.refCount.Add(1)
+	fslb.refCount.Add(1)
 	return fslb
 }
 
@@ -254,7 +257,7 @@ func (b *FixedSizeListBuilder) AppendEmptyValues(n int) {
 
 func (b *FixedSizeListBuilder) AppendValues(valid []bool) {
 	b.Reserve(len(valid))
-	b.builder.unsafeAppendBoolsToBitmap(valid, len(valid))
+	b.unsafeAppendBoolsToBitmap(valid, len(valid))
 }
 
 func (b *FixedSizeListBuilder) unsafeAppendBoolToBitmap(isValid bool) {
@@ -273,7 +276,7 @@ func (b *FixedSizeListBuilder) init(capacity int) {
 // Reserve ensures there is enough space for appending n elements
 // by checking the capacity and calling Resize if necessary.
 func (b *FixedSizeListBuilder) Reserve(n int) {
-	b.builder.reserve(n, b.Resize)
+	b.reserve(n, b.Resize)
 }
 
 // Resize adjusts the space allocated by b to n elements. If n is greater than b.Cap(),
@@ -286,7 +289,7 @@ func (b *FixedSizeListBuilder) Resize(n int) {
 	if b.capacity == 0 {
 		b.init(n)
 	} else {
-		b.builder.resize(n, b.builder.init)
+		b.resize(n, b.builder.init)
 	}
 }
 
@@ -372,6 +375,7 @@ func (b *FixedSizeListBuilder) Unmarshal(dec *json.Decoder) error {
 
 func (b *FixedSizeListBuilder) UnmarshalJSON(data []byte) error {
 	dec := json.NewDecoder(bytes.NewReader(data))
+	dec.UseNumber()
 	t, err := dec.Token()
 	if err != nil {
 		return err

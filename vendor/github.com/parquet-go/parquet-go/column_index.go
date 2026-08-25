@@ -1,10 +1,10 @@
 package parquet
 
 import (
+	"github.com/parquet-go/bitpack/unsafecast"
 	"github.com/parquet-go/parquet-go/deprecated"
 	"github.com/parquet-go/parquet-go/encoding/plain"
 	"github.com/parquet-go/parquet-go/format"
-	"github.com/parquet-go/parquet-go/internal/unsafecast"
 )
 
 type ColumnIndex interface {
@@ -751,4 +751,24 @@ func boundaryOrderOf(minOrder, maxOrder int) format.BoundaryOrder {
 		}
 	}
 	return format.Unordered
+}
+
+type nullColumnIndexer struct {
+	baseColumnIndexer
+}
+
+func newNullColumnIndexer() *nullColumnIndexer {
+	return new(nullColumnIndexer)
+}
+
+func (i *nullColumnIndexer) Reset() {
+	i.reset()
+}
+
+func (i *nullColumnIndexer) IndexPage(numValues, numNulls int64, min, max Value) {
+	i.observe(numValues, numNulls)
+}
+
+func (i *nullColumnIndexer) ColumnIndex() format.ColumnIndex {
+	return i.columnIndex(nil, nil, 0, 0)
 }

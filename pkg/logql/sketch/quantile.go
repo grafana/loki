@@ -75,20 +75,20 @@ func (d *DDSketchQuantile) Merge(other QuantileSketch) (QuantileSketch, error) {
 
 func (d *DDSketchQuantile) ToProto() *logproto.QuantileSketch {
 	sketch := &logproto.QuantileSketch_Ddsketch{}
-	d.DDSketch.Encode(&sketch.Ddsketch, false)
+	d.Encode(&sketch.Ddsketch, false)
 	return &logproto.QuantileSketch{
 		Sketch: sketch,
 	}
 }
 
 func (d *DDSketchQuantile) Release() {
-	d.DDSketch.Clear()
+	d.Clear()
 	ddsketchPool.Put(d.DDSketch)
 }
 
 func DDSketchQuantileFromProto(buf []byte) (*DDSketchQuantile, error) {
 	sketch := NewDDSketch()
-	err := sketch.DDSketch.DecodeAndMergeWith(buf)
+	err := sketch.DecodeAndMergeWith(buf)
 	return sketch, err
 }
 

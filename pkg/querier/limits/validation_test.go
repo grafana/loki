@@ -11,6 +11,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/logql"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	"github.com/grafana/loki/v3/pkg/querier/plan"
+	"github.com/grafana/loki/v3/pkg/util/constants"
 	"github.com/grafana/loki/v3/pkg/util/httpreq"
 )
 
@@ -103,31 +104,31 @@ func TestValidateAggregatedMetricQuery(t *testing.T) {
 		{
 			desc:          "aggregated metric query from explore, no error",
 			req:           makeReqAndAST(`{__aggregated_metric__="service-name"}`),
-			queryTags:     "source=" + logsDrilldownAppName,
+			queryTags:     "source=" + constants.LogsDrilldownAppName,
 			expectedError: nil,
 		},
 		{
 			desc:          "query tags are case insensitive",
 			req:           makeReqAndAST(`{__aggregated_metric__="service-name"}`),
-			queryTags:     "Source=" + logsDrilldownAppName,
+			queryTags:     "Source=" + constants.LogsDrilldownAppName,
 			expectedError: nil,
 		},
 		{
 			desc:          "aggregated metric query from explore, multiple selectors, no error",
 			req:           makeReqAndAST(`{app="service-name", __aggregated_metric__="true"}`),
-			queryTags:     "source=" + logsDrilldownAppName,
+			queryTags:     "source=" + constants.LogsDrilldownAppName,
 			expectedError: nil,
 		},
 		{
 			desc:          "aggregated metric query from explore, multiple selectors, filter, no error",
 			req:           makeReqAndAST(`{app="service-name", __aggregated_metric__="true"} |= "test"`),
-			queryTags:     "source=" + logsDrilldownAppName,
+			queryTags:     "source=" + constants.LogsDrilldownAppName,
 			expectedError: nil,
 		},
 		{
 			desc:          "aggregated metrics metric query from explore, multiple selectors, filter, no error",
 			req:           makeReqAndAST(`sum by (service_name)(count_over_time({app="service-name", __aggregated_metric__="true"} |= "test" [5m]))`),
-			queryTags:     "source=" + logsDrilldownAppName,
+			queryTags:     "source=" + constants.LogsDrilldownAppName,
 			expectedError: nil,
 		},
 		{
@@ -158,31 +159,31 @@ func TestValidateAggregatedMetricQuery(t *testing.T) {
 		{
 			desc:          "pattern query from explore, no error",
 			req:           makeReqAndAST(`{__pattern__="service-name"}`),
-			queryTags:     "source=" + logsDrilldownAppName,
+			queryTags:     "source=" + constants.LogsDrilldownAppName,
 			expectedError: nil,
 		},
 		{
 			desc:          "pattern query tags are case insensitive",
 			req:           makeReqAndAST(`{__pattern__="service-name"}`),
-			queryTags:     "Source=" + logsDrilldownAppName,
+			queryTags:     "Source=" + constants.LogsDrilldownAppName,
 			expectedError: nil,
 		},
 		{
 			desc:          "pattern query from explore, multiple selectors, no error",
 			req:           makeReqAndAST(`{app="service-name", __pattern__="true"}`),
-			queryTags:     "source=" + logsDrilldownAppName,
+			queryTags:     "source=" + constants.LogsDrilldownAppName,
 			expectedError: nil,
 		},
 		{
 			desc:          "pattern query from explore, multiple selectors, filter, no error",
 			req:           makeReqAndAST(`{app="service-name", __pattern__="true"} |= "test"`),
-			queryTags:     "source=" + logsDrilldownAppName,
+			queryTags:     "source=" + constants.LogsDrilldownAppName,
 			expectedError: nil,
 		},
 		{
 			desc:          "pattern metric query from explore, multiple selectors, filter, no error",
 			req:           makeReqAndAST(`sum by (service_name)(count_over_time({app="service-name", __pattern__="true"} |= "test" [5m]))`),
-			queryTags:     "source=" + logsDrilldownAppName,
+			queryTags:     "source=" + constants.LogsDrilldownAppName,
 			expectedError: nil,
 		},
 		{

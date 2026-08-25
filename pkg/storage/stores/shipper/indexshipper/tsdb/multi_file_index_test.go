@@ -2,12 +2,14 @@ package tsdb
 
 import (
 	"context"
+	"sync"
 	"testing"
 
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
 
+	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/index"
 )
 
@@ -70,34 +72,42 @@ func TestMultiIndex(t *testing.T) {
 		refs, err := idx.GetChunkRefs(context.Background(), "fake", 2, 5, nil, nil, labels.MustNewMatcher(labels.MatchEqual, "foo", "bar"))
 		require.Nil(t, err)
 
-		expected := []ChunkRef{
+		expected := []logproto.ChunkRefWithSizingInfo{
 			{
-				User:        "fake",
-				Fingerprint: model.Fingerprint(mustParseLabels(`{foo="bar"}`).Hash()),
-				Start:       0,
-				End:         3,
-				Checksum:    0,
+				ChunkRef: logproto.ChunkRef{
+					UserID:      "fake",
+					Fingerprint: labels.StableHash(mustParseLabels(`{foo="bar"}`)),
+					From:        0,
+					Through:     3,
+					Checksum:    0,
+				},
 			},
 			{
-				User:        "fake",
-				Fingerprint: model.Fingerprint(mustParseLabels(`{foo="bar"}`).Hash()),
-				Start:       1,
-				End:         4,
-				Checksum:    1,
+				ChunkRef: logproto.ChunkRef{
+					UserID:      "fake",
+					Fingerprint: labels.StableHash(mustParseLabels(`{foo="bar"}`)),
+					From:        1,
+					Through:     4,
+					Checksum:    1,
+				},
 			},
 			{
-				User:        "fake",
-				Fingerprint: model.Fingerprint(mustParseLabels(`{foo="bar"}`).Hash()),
-				Start:       2,
-				End:         5,
-				Checksum:    2,
+				ChunkRef: logproto.ChunkRef{
+					UserID:      "fake",
+					Fingerprint: labels.StableHash(mustParseLabels(`{foo="bar"}`)),
+					From:        2,
+					Through:     5,
+					Checksum:    2,
+				},
 			},
 			{
-				User:        "fake",
-				Fingerprint: model.Fingerprint(mustParseLabels(`{foo="bar", bazz="buzz"}`).Hash()),
-				Start:       1,
-				End:         10,
-				Checksum:    3,
+				ChunkRef: logproto.ChunkRef{
+					UserID:      "fake",
+					Fingerprint: labels.StableHash(mustParseLabels(`{foo="bar", bazz="buzz"}`)),
+					From:        1,
+					Through:     10,
+					Checksum:    3,
+				},
 			},
 		}
 		require.Equal(t, expected, refs)
@@ -109,11 +119,11 @@ func TestMultiIndex(t *testing.T) {
 		expected := []Series{
 			{
 				Labels:      mustParseLabels(`{foo="bar"}`),
-				Fingerprint: model.Fingerprint(mustParseLabels(`{foo="bar"}`).Hash()),
+				Fingerprint: model.Fingerprint(labels.StableHash(mustParseLabels(`{foo="bar"}`))),
 			},
 			{
 				Labels:      mustParseLabels(`{foo="bar", bazz="buzz"}`),
-				Fingerprint: model.Fingerprint(mustParseLabels(`{foo="bar", bazz="buzz"}`).Hash()),
+				Fingerprint: model.Fingerprint(labels.StableHash(mustParseLabels(`{foo="bar", bazz="buzz"}`))),
 			},
 		}
 
@@ -153,4 +163,31 @@ func TestMultiIndex(t *testing.T) {
 
 		require.Equal(t, expected, xs)
 	})
+}
+
+// Concurrent queries stamp the same filterer onto shared child indexes.
+func TestMultiIndex_ConcurrentChunkFilterer(t *testing.T) {
+	dir := t.TempDir()
+	file := BuildIndex(t, dir, []LoadableSeries{
+		{
+			Labels: mustParseLabels(`{foo="bar"}`),
+			Chunks: []index.ChunkMeta{
+				{MinTime: 0, MaxTime: 10, Checksum: 1},
+			},
+		},
+	})
+	idx := NewMultiIndex(IndexSlice{file, file})
+	matcher := labels.MustNewMatcher(labels.MatchEqual, "foo", "bar")
+
+	var wg sync.WaitGroup
+	for i := 0; i < 32; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			idx.SetChunkFilterer(&filterAll{})
+			_, err := idx.GetChunkRefs(context.Background(), "fake", 0, 10, nil, nil, matcher)
+			require.NoError(t, err)
+		}()
+	}
+	wg.Wait()
 }

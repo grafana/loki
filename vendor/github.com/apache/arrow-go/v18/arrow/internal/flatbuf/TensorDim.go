@@ -22,9 +22,9 @@ import (
 	flatbuffers "github.com/google/flatbuffers/go"
 )
 
-// / ----------------------------------------------------------------------
-// / Data structures for dense tensors
-// / Shape data for a single axis in a tensor
+/// ----------------------------------------------------------------------
+/// Data structures for dense tensors
+/// Shape data for a single axis in a tensor
 type TensorDim struct {
 	_tab flatbuffers.Table
 }
@@ -36,6 +36,21 @@ func GetRootAsTensorDim(buf []byte, offset flatbuffers.UOffsetT) *TensorDim {
 	return x
 }
 
+func FinishTensorDimBuffer(builder *flatbuffers.Builder, offset flatbuffers.UOffsetT) {
+	builder.Finish(offset)
+}
+
+func GetSizePrefixedRootAsTensorDim(buf []byte, offset flatbuffers.UOffsetT) *TensorDim {
+	n := flatbuffers.GetUOffsetT(buf[offset+flatbuffers.SizeUint32:])
+	x := &TensorDim{}
+	x.Init(buf, n+offset+flatbuffers.SizeUint32)
+	return x
+}
+
+func FinishSizePrefixedTensorDimBuffer(builder *flatbuffers.Builder, offset flatbuffers.UOffsetT) {
+	builder.FinishSizePrefixed(offset)
+}
+
 func (rcv *TensorDim) Init(buf []byte, i flatbuffers.UOffsetT) {
 	rcv._tab.Bytes = buf
 	rcv._tab.Pos = i
@@ -45,7 +60,7 @@ func (rcv *TensorDim) Table() flatbuffers.Table {
 	return rcv._tab
 }
 
-// / Length of dimension
+/// Length of dimension
 func (rcv *TensorDim) Size() int64 {
 	o := flatbuffers.UOffsetT(rcv._tab.Offset(4))
 	if o != 0 {
@@ -54,12 +69,12 @@ func (rcv *TensorDim) Size() int64 {
 	return 0
 }
 
-// / Length of dimension
+/// Length of dimension
 func (rcv *TensorDim) MutateSize(n int64) bool {
 	return rcv._tab.MutateInt64Slot(4, n)
 }
 
-// / Name of the dimension, optional
+/// Name of the dimension, optional
 func (rcv *TensorDim) Name() []byte {
 	o := flatbuffers.UOffsetT(rcv._tab.Offset(6))
 	if o != 0 {
@@ -68,7 +83,7 @@ func (rcv *TensorDim) Name() []byte {
 	return nil
 }
 
-// / Name of the dimension, optional
+/// Name of the dimension, optional
 func TensorDimStart(builder *flatbuffers.Builder) {
 	builder.StartObject(2)
 }

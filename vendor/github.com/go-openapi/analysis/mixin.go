@@ -1,56 +1,76 @@
-// Copyright 2015 go-swagger maintainers
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//    http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// SPDX-FileCopyrightText: Copyright 2015-2025 go-swagger maintainers
+// SPDX-License-Identifier: Apache-2.0
 
 package analysis
 
 import (
 	"fmt"
 	"reflect"
+	"slices"
 
 	"github.com/go-openapi/spec"
 )
 
-// Mixin modifies the primary swagger spec by adding the paths and
-// definitions from the mixin specs. Top level parameters and
-// responses from the mixins are also carried over. Operation id
-// collisions are avoided by appending "Mixin<N>" but only if
-// needed.
+// Mixin merges one or more Swagger 2.0 documents into a primary document.
 //
-// The following parts of primary are subject to merge, filling empty details
-//   - Info
+// # Argument order and precedence
+//
+// The first argument is the primary spec, which Mixin modifies in place.
+// Subsequent arguments are mixins, listed in decreasing order of priority.
+// On any collision, the primary always wins; among mixins, the earliest one
+// wins.
+//
+// Example: given a primary spec with host "a.example.com" and a mixin with
+// host "b.example.com", the merged result keeps "a.example.com" (primary
+// wins, the mixin value is dropped). Given a primary without a host and a
+// mixin with host "b.example.com", the merged result uses "b.example.com"
+// (the mixin fills in the empty field on the primary).
+//
+// # What gets merged
+//
+// Top-level scalar fields on the primary are filled from the first mixin
+// that provides them, but only if the primary's value is the zero value:
+//
+//   - Info (including the nested Contact and License)
 //   - BasePath
 //   - Host
 //   - ExternalDocs
 //
-// Consider calling FixEmptyResponseDescriptions() on the modified primary
-// if you read them from storage and they are valid to start with.
+// Map and slice fields are merged entry by entry. This covers:
 //
-// Entries in "paths", "definitions", "parameters" and "responses" are
-// added to the primary in the order of the given mixins. If the entry
-// already exists in primary it is skipped with a warning message.
+//   - paths, definitions, parameters, responses
+//   - securityDefinitions, security, tags
+//   - top-level and Info extensions
 //
-// The count of skipped entries (from collisions) is returned so any
-// deviation from the number expected can flag a warning in your build
-// scripts. Carefully review the collisions before accepting them;
-// consider renaming things if possible.
+// Duplicate keys (or equal security requirements, or equal tag names) are
+// skipped with a warning; warnings are returned as a slice and intended to
+// be inspected by the caller (e.g. compared to an expected collision count
+// in build scripts).
 //
-// No key normalization takes place (paths, type defs,
-// etc). Ensure they are canonical if your downstream tools do
-// key normalization of any form.
+// Schemes, consumes and produces are merged as the union of distinct
+// values. Duplicates there are silently dropped, no warning is emitted.
 //
-// Merging schemes (http, https), and consumers/producers do not account for
-// collisions.
+// Operation id collisions are auto-resolved by appending "Mixin<N>" to the
+// mixin operation id (N is the mixin index), so the merged spec keeps
+// unique operation ids.
+//
+// # Notes and limitations
+//
+// Consider calling [FixEmptyResponseDescriptions] on the modified primary
+// if you read responses from storage and they are valid to start with.
+//
+// No key normalization takes place. Ensure paths, type names, etc. are
+// canonical if your downstream tools rely on normalized forms.
+//
+// YAML anchors (& / *) are resolved by the YAML parser before Mixin sees
+// the document, so they are not preserved in the merged output, and they
+// cannot be shared across input files. Use $ref for cross-file reuse. See
+// https://goswagger.io/go-swagger/faq/faq_swagger/#does-swagger-mixin-preserve-yaml-anchors
+//
+// The order of paths and definitions in the merged output is alphabetical:
+// the underlying spec model stores them as Go maps, which serialize with
+// sorted keys. Source-file order is not preserved. See
+// https://goswagger.io/go-swagger/faq/faq_swagger/#can-i-control-the-path-or-operation-order-in-swagger-mixin-output
 func Mixin(primary *spec.Swagger, mixins ...*spec.Swagger) []string {
 	skipped := make([]string, 0, len(mixins))
 	opIDs := getOpIDs(primary)
@@ -110,6 +130,7 @@ func pathItemOps(p spec.PathItem) []*spec.Operation {
 	rv = appendOp(rv, p.Post)
 	rv = appendOp(rv, p.Delete)
 	rv = appendOp(rv, p.Head)
+	rv = appendOp(rv, p.Options)
 	rv = appendOp(rv, p.Patch)
 
 	return rv
@@ -193,9 +214,9 @@ func mergePaths(primary *spec.Swagger, m *spec.Swagger, opIDs map[string]bool, m
 			// Swagger requires that operationIds be
 			// unique within a spec. If we find a
 			// collision we append "Mixin0" to the
-			// operatoinId we are adding, where 0 is mixin
+			// operationId we are adding, where 0 is mixin
 			// index.  We assume that operationIds with
-			// all the proivded specs are already unique.
+			// all the provided specs are already unique.
 			piops := pathItemOps(v)
 			for _, piop := range piops {
 				if opIDs[piop.ID] {
@@ -248,14 +269,7 @@ func mergeResponses(primary *spec.Swagger, m *spec.Swagger) (skipped []string) {
 
 func mergeConsumes(primary *spec.Swagger, m *spec.Swagger) []string {
 	for _, v := range m.Consumes {
-		found := false
-		for _, vv := range primary.Consumes {
-			if v == vv {
-				found = true
-
-				break
-			}
-		}
+		found := slices.Contains(primary.Consumes, v)
 
 		if found {
 			// no warning here: we just skip it
@@ -269,14 +283,7 @@ func mergeConsumes(primary *spec.Swagger, m *spec.Swagger) []string {
 
 func mergeProduces(primary *spec.Swagger, m *spec.Swagger) []string {
 	for _, v := range m.Produces {
-		found := false
-		for _, vv := range primary.Produces {
-			if v == vv {
-				found = true
-
-				break
-			}
-		}
+		found := slices.Contains(primary.Produces, v)
 
 		if found {
 			// no warning here: we just skip it
@@ -317,14 +324,7 @@ func mergeTags(primary *spec.Swagger, m *spec.Swagger) (skipped []string) {
 
 func mergeSchemes(primary *spec.Swagger, m *spec.Swagger) []string {
 	for _, v := range m.Schemes {
-		found := false
-		for _, vv := range primary.Schemes {
-			if v == vv {
-				found = true
-
-				break
-			}
-		}
+		found := slices.Contains(primary.Schemes, v)
 
 		if found {
 			// no warning here: we just skip it
@@ -359,7 +359,7 @@ func mergeSwaggerProps(primary *spec.Swagger, m *spec.Swagger) []string {
 
 	if primary.ExternalDocs == nil {
 		primary.ExternalDocs = m.ExternalDocs
-	} else if m != nil {
+	} else if m.ExternalDocs != nil {
 		skippedDocs = mergeExternalDocs(primary.ExternalDocs, m.ExternalDocs)
 		skipped = append(skipped, skippedDocs...)
 	}
@@ -391,7 +391,7 @@ func mergeInfo(primary *spec.Info, m *spec.Info) []string {
 	}
 
 	if primary.Title == "" {
-		primary.Description = m.Description
+		primary.Title = m.Title
 	}
 
 	if primary.TermsOfService == "" {
@@ -474,23 +474,23 @@ func initPrimary(primary *spec.Swagger) {
 	}
 
 	if primary.Security == nil {
-		primary.Security = make([]map[string][]string, 0, 10)
+		primary.Security = make([]map[string][]string, 0, allocSmallMap)
 	}
 
 	if primary.Produces == nil {
-		primary.Produces = make([]string, 0, 10)
+		primary.Produces = make([]string, 0, allocSmallMap)
 	}
 
 	if primary.Consumes == nil {
-		primary.Consumes = make([]string, 0, 10)
+		primary.Consumes = make([]string, 0, allocSmallMap)
 	}
 
 	if primary.Tags == nil {
-		primary.Tags = make([]spec.Tag, 0, 10)
+		primary.Tags = make([]spec.Tag, 0, allocSmallMap)
 	}
 
 	if primary.Schemes == nil {
-		primary.Schemes = make([]string, 0, 10)
+		primary.Schemes = make([]string, 0, allocSmallMap)
 	}
 
 	if primary.Paths == nil {

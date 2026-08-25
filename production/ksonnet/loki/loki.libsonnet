@@ -23,8 +23,10 @@
 // Index Gateway support
 (import 'index-gateway.libsonnet') +
 
-// BoltDB and TSDB Shipper support. Anything that modifies the compactor must be imported after this.
+// TSDB Shipper support.
+// Anything that modifies the compactor must be imported after this.
 (import 'shipper.libsonnet') +
+(import 'compactor.libsonnet') +
 
 // Multi-zone ingester related config
 (import 'multi-zone.libsonnet') +

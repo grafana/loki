@@ -1,16 +1,5 @@
-// Copyright 2015 go-swagger maintainers
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//    http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// SPDX-FileCopyrightText: Copyright 2015-2025 go-swagger maintainers
+// SPDX-License-Identifier: Apache-2.0
 
 package validate
 
@@ -22,21 +11,21 @@ import (
 )
 
 type formatValidator struct {
-	Path         string
+	Path         pathSegments
 	In           string
 	Format       string
 	KnownFormats strfmt.Registry
 	Options      *SchemaValidatorOptions
 }
 
-func newFormatValidator(path, in, format string, formats strfmt.Registry, opts *SchemaValidatorOptions) *formatValidator {
+func newFormatValidator(path pathSegments, in, format string, formats strfmt.Registry, opts *SchemaValidatorOptions) *formatValidator {
 	if opts == nil {
 		opts = new(SchemaValidatorOptions)
 	}
 
 	var f *formatValidator
 	if opts.recycleValidators {
-		f = pools.poolOfFormatValidators.BorrowValidator()
+		f = validatorPools.formatValidators.Borrow()
 	} else {
 		f = new(formatValidator)
 	}
@@ -50,11 +39,7 @@ func newFormatValidator(path, in, format string, formats strfmt.Registry, opts *
 	return f
 }
 
-func (f *formatValidator) SetPath(path string) {
-	f.Path = path
-}
-
-func (f *formatValidator) Applies(source interface{}, kind reflect.Kind) bool {
+func (f *formatValidator) Applies(source any, kind reflect.Kind) bool {
 	if source == nil || f.KnownFormats == nil {
 		return false
 	}
@@ -73,7 +58,7 @@ func (f *formatValidator) Applies(source interface{}, kind reflect.Kind) bool {
 	}
 }
 
-func (f *formatValidator) Validate(val interface{}) *Result {
+func (f *formatValidator) Validate(val any) *Result {
 	if f.Options.recycleValidators {
 		defer func() {
 			f.redeem()
@@ -82,18 +67,27 @@ func (f *formatValidator) Validate(val interface{}) *Result {
 
 	var result *Result
 	if f.Options.recycleResult {
-		result = pools.poolOfResults.BorrowResult()
+		result = validatorPools.results.Borrow()
 	} else {
 		result = new(Result)
 	}
 
-	if err := FormatOf(f.Path, f.In, f.Format, val.(string), f.KnownFormats); err != nil {
-		result.AddErrors(err)
+	str, ok := val.(string)
+	if !ok {
+		return result
+	}
+
+	if err := FormatOf(f.Path.dotted(), f.In, f.Format, str, f.KnownFormats); err != nil {
+		result.addErrorsAt(f.Path, err)
 	}
 
 	return result
 }
 
+func (f *formatValidator) setPath(path pathSegments) {
+	f.Path = path
+}
+
 func (f *formatValidator) redeem() {
-	pools.poolOfFormatValidators.RedeemValidator(f)
+	validatorPools.formatValidators.Redeem(f)
 }

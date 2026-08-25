@@ -18,9 +18,11 @@ import (
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client/util"
 	"github.com/grafana/loki/v3/pkg/storage/config"
+	indexstore "github.com/grafana/loki/v3/pkg/storage/stores/index"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/downloads"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/index"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/storage"
+	tsdbindex "github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/index"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/uploads"
 )
 
@@ -45,6 +47,27 @@ const (
 	UploadInterval = 1 * time.Minute
 )
 
+// IndexReaderMode selects the implementation used to read TSDB index files from disk.
+type IndexReaderMode string
+
+const (
+	// IndexReaderModeMmap memory-maps the index file.
+	// This is the historical default.
+	// Mmap page faults are invisible to the Go runtime, which causes a
+	// thread to be locked for the duration of the page fault.
+	IndexReaderModeMmap IndexReaderMode = "mmap"
+	// IndexReaderModeStream serves reads via schedulable file I/O so the
+	// runtime can observe blocking.
+	IndexReaderModeStream IndexReaderMode = "stream"
+)
+
+// DefaultIndexReaderMode is the mode used when none is configured.
+const DefaultIndexReaderMode = IndexReaderModeMmap
+
+// DefaultStreamingIndexMaxIdleFileHandles is the number of idle file handles
+// the stream reader keeps per index file when none is configured.
+const DefaultStreamingIndexMaxIdleFileHandles = tsdbindex.DefaultMaxIdleFileHandles
+
 type Index interface {
 	Close() error
 }
@@ -57,6 +80,13 @@ type IndexShipper interface {
 	// On the read path, it would iterate through the files if already downloaded else it would download and iterate through them.
 	ForEach(ctx context.Context, tableName, userID string, callback index.ForEachIndexCallback) error
 	ForEachConcurrent(ctx context.Context, tableName, userID string, callback index.ForEachIndexCallback) error
+	// FlushIndexes synchronously uploads any pending index files to object storage.
+	FlushIndexes(ctx context.Context) error
+	// TriggerSync starts a background sync (refreshing the list cache first) if
+	// none is already in progress. It returns true if a new sync was started.
+	TriggerSync() bool
+	// SyncStatus reports the current/last sync status.
+	SyncStatus() indexstore.SyncStatus
 	Stop()
 }
 
@@ -66,7 +96,14 @@ type Config struct {
 	CacheTTL                 time.Duration             `yaml:"cache_ttl"`
 	ResyncInterval           time.Duration             `yaml:"resync_interval"`
 	QueryReadyNumDays        int                       `yaml:"query_ready_num_days"`
+	DownloadTimeout          time.Duration             `yaml:"download_timeout"`
+	IndexReaderMode          IndexReaderMode           `yaml:"index_reader_mode" category:"experimental"`
 	IndexGatewayClientConfig indexgateway.ClientConfig `yaml:"index_gateway_client"`
+
+	StreamingIndexMaxIdleFileHandles uint `yaml:"streaming_index_max_idle_file_handles" category:"experimental"`
+
+	// Temporary experimental feature
+	ShadowIndexGatewayClientConfig indexgateway.ClientConfig `yaml:"shadow_index_gateway_client,omitempty" category:"experimental" doc:"hidden"`
 
 	IngesterName           string
 	Mode                   Mode
@@ -80,18 +117,47 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 // RegisterFlagsWithPrefix registers flags.
 func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	cfg.IndexGatewayClientConfig.RegisterFlagsWithPrefix(prefix+"shipper.index-gateway-client", f)
+	cfg.ShadowIndexGatewayClientConfig.RegisterFlagsWithPrefix(prefix+"shipper.shadow-index-gateway-client", f)
 
 	f.StringVar(&cfg.ActiveIndexDirectory, prefix+"shipper.active-index-directory", "", "Directory where ingesters would write index files which would then be uploaded by shipper to configured storage")
 	f.StringVar(&cfg.CacheLocation, prefix+"shipper.cache-location", "", "Cache location for restoring index files from storage for queries")
 	f.DurationVar(&cfg.CacheTTL, prefix+"shipper.cache-ttl", 24*time.Hour, "TTL for index files restored in cache for queries")
 	f.DurationVar(&cfg.ResyncInterval, prefix+"shipper.resync-interval", 5*time.Minute, "Resync downloaded files with the storage")
 	f.IntVar(&cfg.QueryReadyNumDays, prefix+"shipper.query-ready-num-days", 0, "Number of days of common index to be kept downloaded for queries. For per tenant index query readiness, use limits overrides config.")
+	f.DurationVar(&cfg.DownloadTimeout, prefix+"shipper.download-timeout", time.Minute, "Timeout for downloading a table's initial set of index files from object storage when serving a query. "+
+		"Raise this for tenants with large indexes when slow object-storage responses cause downloads to hit the deadline; lower it to fail queries faster when storage is degraded.")
+	f.StringVar((*string)(&cfg.IndexReaderMode), prefix+"shipper.index-reader-mode", string(DefaultIndexReaderMode),
+		"Experimental. Implementation used to read TSDB index files off disk. Supported values: mmap (memory-map the file, the historical default) or stream (experimental, not yet fully implemented).")
+	f.UintVar(&cfg.StreamingIndexMaxIdleFileHandles, prefix+"shipper.streaming-index-max-idle-file-handles", DefaultStreamingIndexMaxIdleFileHandles,
+		"Experimental. Number of idle file handles the stream index reader keeps open per index file. "+
+			"Only applies when -shipper.index-reader-mode=stream. "+
+			"Set to 0 to disable pooling.")
+}
+
+// IndexReaderOptions translates the flat, user-facing config into the reader options it describes.
+func (cfg *Config) IndexReaderOptions() (tsdbindex.ReaderOptions, error) {
+	switch cfg.IndexReaderMode {
+	case IndexReaderModeStream:
+		return tsdbindex.StreamOptions{MaxIdleFileHandles: cfg.StreamingIndexMaxIdleFileHandles}, nil
+	case IndexReaderModeMmap:
+		return tsdbindex.MmapOptions{}, nil
+	default:
+		return nil, fmt.Errorf("invalid shipper.index-reader-mode %q, must be one of mmap|stream", cfg.IndexReaderMode)
+	}
 }
 
 func (cfg *Config) Validate() error {
 	// set the default value for mode
 	if cfg.Mode == "" {
 		cfg.Mode = ModeReadWrite
+	}
+
+	if _, err := cfg.IndexReaderOptions(); err != nil {
+		return err
+	}
+
+	if cfg.DownloadTimeout <= 0 {
+		return fmt.Errorf("shipper.download-timeout must be greater than zero, got %s", cfg.DownloadTimeout)
 	}
 
 	return nil
@@ -112,7 +178,7 @@ func (cfg *Config) GetUniqueUploaderName() (string, error) {
 		if !os.IsNotExist(err) {
 			return "", err
 		}
-		if err := os.WriteFile(uploaderFilePath, []byte(uploader), 0640); err != nil { // #nosec G306 -- this is fencing off the "other" permissions
+		if err := os.WriteFile(uploaderFilePath, []byte(uploader), 0640); err != nil { // #nosec G306 -- this is fencing off the "other" permissions -- nosemgrep: incorrect-default-permissions
 			return "", err
 		}
 	} else {
@@ -190,6 +256,7 @@ func (s *indexShipper) init(prefix string, storageClient client.ObjectClient, li
 			SyncInterval:      s.cfg.ResyncInterval,
 			CacheTTL:          s.cfg.CacheTTL,
 			QueryReadyNumDays: s.cfg.QueryReadyNumDays,
+			DownloadTimeout:   s.cfg.DownloadTimeout,
 			Limits:            limits,
 		}
 		downloadsManager, err := downloads.NewTableManager(cfg, s.openIndexFileFunc, indexStorageClient, tenantFilter, tableRangeToHandle, reg, s.logger)
@@ -244,6 +311,27 @@ func (s *indexShipper) ForEachConcurrent(ctx context.Context, tableName, userID 
 	return g.Wait()
 }
 
+func (s *indexShipper) FlushIndexes(ctx context.Context) error {
+	if s.uploadsManager != nil {
+		return s.uploadsManager.UploadTables(ctx)
+	}
+	return nil
+}
+
+func (s *indexShipper) TriggerSync() bool {
+	if s.downloadsManager != nil {
+		return s.downloadsManager.TriggerSync()
+	}
+	return false
+}
+
+func (s *indexShipper) SyncStatus() indexstore.SyncStatus {
+	if s.downloadsManager != nil {
+		return s.downloadsManager.SyncStatus()
+	}
+	return indexstore.SyncStatus{}
+}
+
 func (s *indexShipper) Stop() {
 	s.stopOnce.Do(s.stop)
 }
@@ -267,4 +355,7 @@ func (Noop) ForEach(_ context.Context, _, _ string, _ index.ForEachIndexCallback
 func (Noop) ForEachConcurrent(_ context.Context, _, _ string, _ index.ForEachIndexCallback) error {
 	return nil
 }
-func (Noop) Stop() {}
+func (Noop) FlushIndexes(_ context.Context) error { return nil }
+func (Noop) TriggerSync() bool                    { return false }
+func (Noop) SyncStatus() indexstore.SyncStatus    { return indexstore.SyncStatus{} }
+func (Noop) Stop()                                {}

@@ -3,7 +3,7 @@ apiVersion: v1
 kind: Service
 metadata:
   name: {{ include "loki.gatewayFullname" . }}
-  namespace: {{ $.Release.Namespace }}
+  namespace: {{ include "loki.namespace" . }}
   labels:
     {{- include "loki.gatewayLabels" . | nindent 4 }}
     {{- with .Values.loki.serviceLabels }}
@@ -40,4 +40,7 @@ spec:
       protocol: TCP
   selector:
     {{- include "loki.gatewaySelectorLabels" . | nindent 4 }}
+{{- with .Values.gateway.service.trafficDistribution | default .Values.loki.service.trafficDistribution }}
+  trafficDistribution: {{ . }}
+{{- end }}
 {{- end }}

@@ -1,6 +1,12 @@
-# This file should contain a list fo deleted config options.
+# This file should contain a list of deleted config options.
 #
 # The syntax for this file is the same as the syntax for deprecated-config.yaml.
+
+legacy-read-mode: "Legacy read SSD mode is deprecated and will be eventually removed. Use the new read and backend targets."
+
+distributor:
+  max_recv_msg_size: "Replaced by max_push_size_bytes which includes both max_recv_msg_size and max_decompressed_size."
+  max_decompressed_size: "Replaced by max_push_size_bytes which includes both max_recv_msg_size and max_decompressed_size."
 
 ingester:
   max_transfer_retries: "Enable the ingester WAL and rely on new ingesters to replay the WAL."
@@ -19,14 +25,58 @@ frontend_worker:
 
 common:
   storage:
-    s3: &s3_deletes
+    s3:
       sse_encryption: "Encryption for all S3 buckets is now SSE-S3. Configure .sse field instead."
+    filesystem:
+      admin_api_directory: "Removed in 3.5.0. This field is no longer supported or recognized by Loki."
 
 ruler:
+  remote_write:
+    client: "Use clients instead."
   storage:
-    s3: *s3_deletes
+    s3:
+      sse_encryption: "Encryption for all S3 buckets is now SSE-S3. Configure .sse field instead."
+
+schema_config:
+  configs:
+    store:
+      _values:
+        [
+          "aws",
+          "aws-dynamo",
+          "gcp",
+          "gcp-columnkey",
+          "bigtable",
+          "bigtable-hashed",
+          "cassandra",
+          "grpc",
+        ]
+      _msg: "Use tsdb or boltdb-shipper instead."
+    object_store:
+      _values:
+        [
+          "aws-dynamo",
+          "gcp",
+          "gcp-columnkey",
+          "bigtable",
+          "bigtable-hashed",
+          "cassandra",
+          "grpc",
+        ]
+      _msg: "Use a different supported object storage instead."
+    chunks: "The chunks block is removed as it only configured chunk tables for removed legacy storage backends. TSDB stores chunks directly in object storage."
+    index:
+      tags: "The tags setting is removed as it only applied to managed tables of removed legacy storage backends."
+    row_shards: "The row_shards setting is removed. It configured a static query shard factor for removed legacy index types; TSDB resolves query sharding dynamically."
 
 storage_config:
+  bigtable: "Support for Bigtable is removed."
+  cassandra: "Support for Cassandra is removed."
+  boltdb: "Support for BoltDB is removed."
+  grpc_store: "Support for gRPC store is removed."
+  index_queries_cache_config: "Index read cache configuration is removed."
+  index_cache_validity: "Index cache validity is removed."
+  disable_broad_index_queries: "Broad index queries are removed along with the legacy index types."
   boltdb_shipper:
     shared_store: "object_store setting in the period_config will be used to configure the store for the index."
     shared_store_key_prefix: "Path prefix for storing the index can now be configured by setting path_prefix under index key in period_config."
@@ -34,8 +84,11 @@ storage_config:
   tsdb_shipper:
     shared_store: "object_store setting in the period_config will be used to configure the store for the index."
     shared_store_key_prefix: "Path prefix for storing the index can now be configured by setting path_prefix under index key in period_config."
-  aws: *s3_deletes
-  s3: *s3_deletes
+  aws:
+    sse_encryption: "Encryption for all S3 buckets is now SSE-S3. Configure .sse field instead."
+    dynamodb: "Support for DynamoDB is removed."
+  s3:
+    sse_encryption: "Encryption for all S3 buckets is now SSE-S3. Configure .sse field instead."
 
 compactor:
   deletion_mode: "Use global or per-tenant deletion_mode configuration from limits_config."
@@ -44,7 +97,28 @@ compactor:
 
 chunk_store_config:
   max_look_back_period: "Use global or per-tenant max_query_lookback configuration from limits_config."
+  write_dedupe_cache_config: "Write dedupe cache is removed along with deprecated index types."
+  cache_lookups_older_than: "Index entry caching is removed along with deprecated index types."
 
 limits_config:
+  unordered_writes: "This setting is removed."
   ruler_evaluation_delay_duration: "This setting is removed."
   enforce_metric_name: "This setting is removed."
+  allow_deletes: "This setting is removed."
+  ruler_enable_wal_replay: "This setting is removed. The ruler now always wipes its remote-write WAL on startup, so there is nothing to replay."
+  per_tenant_override_config: "This setting is removed in favor of runtime_config.file"
+  per_tenant_override_period: "This setting is removed in favor of runtime_config.period"
+  enable_multi_variant_queries: "This setting is removed. LogQL no longer supports variants() queries."
+  ruler_remote_write_url: "This setting is removed. Use ruler_remote_write_config instead."
+  ruler_remote_write_timeout: "This setting is removed. Use ruler_remote_write_config instead."
+  ruler_remote_write_headers: "This setting is removed. Use ruler_remote_write_config instead."
+  ruler_remote_write_relabel_configs: "This setting is removed. Use ruler_remote_write_config instead."
+  ruler_remote_write_queue_capacity: "This setting is removed. Use ruler_remote_write_config instead."
+  ruler_remote_write_queue_min_shards: "This setting is removed. Use ruler_remote_write_config instead."
+  ruler_remote_write_queue_max_shards: "This setting is removed. Use ruler_remote_write_config instead."
+  ruler_remote_write_queue_max_samples_per_send: "This setting is removed. Use ruler_remote_write_config instead."
+  ruler_remote_write_queue_batch_send_deadline: "This setting is removed. Use ruler_remote_write_config instead."
+  ruler_remote_write_queue_min_backoff: "This setting is removed. Use ruler_remote_write_config instead."
+  ruler_remote_write_queue_max_backoff: "This setting is removed. Use ruler_remote_write_config instead."
+  ruler_remote_write_queue_retry_on_ratelimit: "This setting is removed. Use ruler_remote_write_config instead."
+  ruler_remote_write_sigv4_config: "This setting is removed. Use ruler_remote_write_config instead."

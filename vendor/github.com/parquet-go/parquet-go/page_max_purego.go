@@ -2,89 +2,51 @@
 
 package parquet
 
-import "encoding/binary"
+import (
+	"encoding/binary"
+	"slices"
+)
 
-// -----------------------------------------------------------------------------
-// TODO: use generics versions of the these functions to reduce the amount of
-// code to maintain when we drop compatilibty with Go version older than 1.18.
-// -----------------------------------------------------------------------------
-
-func maxInt32(data []int32) (max int32) {
-	if len(data) > 0 {
-		max = data[0]
-
-		for _, value := range data {
-			if value > max {
-				max = value
-			}
-		}
+func maxInt32(data []int32) int32 {
+	if len(data) == 0 {
+		return 0
 	}
-	return max
+	return slices.Max(data)
 }
 
-func maxInt64(data []int64) (max int64) {
-	if len(data) > 0 {
-		max = data[0]
-
-		for _, value := range data {
-			if value > max {
-				max = value
-			}
-		}
+func maxInt64(data []int64) int64 {
+	if len(data) == 0 {
+		return 0
 	}
-	return max
+	return slices.Max(data)
 }
 
-func maxUint32(data []uint32) (max uint32) {
-	if len(data) > 0 {
-		max = data[0]
-
-		for _, value := range data {
-			if value > max {
-				max = value
-			}
-		}
+func maxUint32(data []uint32) uint32 {
+	if len(data) == 0 {
+		return 0
 	}
-	return max
+	return slices.Max(data)
 }
 
-func maxUint64(data []uint64) (max uint64) {
-	if len(data) > 0 {
-		max = data[0]
-
-		for _, value := range data {
-			if value > max {
-				max = value
-			}
-		}
+func maxUint64(data []uint64) uint64 {
+	if len(data) == 0 {
+		return 0
 	}
-	return max
+	return slices.Max(data)
 }
 
-func maxFloat32(data []float32) (max float32) {
-	if len(data) > 0 {
-		max = data[0]
-
-		for _, value := range data {
-			if value > max {
-				max = value
-			}
-		}
+func maxFloat32(data []float32) float32 {
+	if len(data) == 0 {
+		return 0
 	}
-	return max
+	return slices.Max(data)
 }
 
-func maxFloat64(data []float64) (max float64) {
-	if len(data) > 0 {
-		max = data[0]
-
-		for _, value := range data {
-			if value > max {
-				max = value
-			}
-		}
+func maxFloat64(data []float64) float64 {
+	if len(data) == 0 {
+		return 0
 	}
-	return max
+	return slices.Max(data)
 }
 
 func maxBE128(data [][16]byte) (min []byte) {

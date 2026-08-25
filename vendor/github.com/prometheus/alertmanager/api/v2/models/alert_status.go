@@ -48,7 +48,7 @@ type AlertStatus struct {
 
 	// state
 	// Required: true
-	// Enum: [unprocessed active suppressed]
+	// Enum: ["unprocessed","active","suppressed"]
 	State *string `json:"state"`
 }
 
@@ -105,7 +105,7 @@ func (m *AlertStatus) validateSilencedBy(formats strfmt.Registry) error {
 	return nil
 }
 
-var alertStatusTypeStatePropEnum []interface{}
+var alertStatusTypeStatePropEnum []any
 
 func init() {
 	var res []string

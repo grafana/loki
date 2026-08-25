@@ -1,4 +1,4 @@
-<style name="gruvbox">
+<style name="gruvbox" counterpart="gruvbox-light">
   <entry type="Background" style="noinherit #ebdbb2 bg:#282828"/>
   <entry type="Keyword" style="noinherit #fe8019"/>
   <entry type="KeywordType" style="noinherit #fabd2f"/>
@@ -11,6 +11,7 @@
   <entry type="NameFunction" style="#fabd2f"/>
   <entry type="NameLabel" style="noinherit #fb4934"/>
   <entry type="NameTag" style="noinherit #fb4934"/>
+  <entry type="NameNamespace" style="noinherit #b8bb26"/>
   <entry type="NameVariable" style="noinherit #ebdbb2"/>
   <entry type="LiteralString" style="noinherit #b8bb26"/>
   <entry type="LiteralStringSymbol" style="#83a598"/>

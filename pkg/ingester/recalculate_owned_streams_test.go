@@ -198,7 +198,11 @@ func newMockPartitionRingWithActivePartitions(activePartitions ...int32) *ring.P
 			State:          ring.OwnerActive,
 		}
 	}
-	return ring.NewPartitionRing(partitionRing)
+	r, err := ring.NewPartitionRing(partitionRing)
+	if err != nil {
+		panic(err)
+	}
+	return r
 }
 
 func Test_ownedStreamsPartitionStrategy_checkRingForChanges(t *testing.T) {
@@ -243,7 +247,7 @@ func createStream(t *testing.T, inst *instance, fingerprint int) *stream {
 	lbls := labels.FromStrings("mock", strconv.Itoa(fingerprint))
 
 	stream, _, err := inst.streams.LoadOrStoreNew(lbls.String(), func() (*stream, error) {
-		return inst.createStreamByFP(lbls, model.Fingerprint(fingerprint))
+		return inst.createStreamByFP(context.Background(), lbls, model.Fingerprint(fingerprint))
 	}, nil)
 	require.NoError(t, err)
 	return stream

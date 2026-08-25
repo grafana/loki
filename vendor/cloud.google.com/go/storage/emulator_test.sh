@@ -31,6 +31,7 @@ if [ "$minor_ver" -lt "$min_minor_ver" ]; then
     exit 0
 fi
 
+export DOCKER_API_VERSION=1.39
 export STORAGE_EMULATOR_HOST="http://localhost:9000"
 export STORAGE_EMULATOR_HOST_GRPC="localhost:8888"
 
@@ -66,6 +67,7 @@ function cleanup() {
     docker stop $CONTAINER_NAME
     unset STORAGE_EMULATOR_HOST;
     unset STORAGE_EMULATOR_HOST_GRPC;
+    unset DOCKER_API_VERSION
 }
 trap cleanup EXIT
 
@@ -89,5 +91,12 @@ then
 fi
 
 # Run tests
-
-go test -v -timeout 17m ./ ./dataflux -run="^Test(RetryConformance|.*Emulated)$" -short -race 2>&1 | tee -a sponge_log.log
+gotestsum --packages="./ ./dataflux" \
+    --junitfile sponge_log_emulator.xml \
+    --format standard-verbose \
+    -- \
+    -timeout 17m \
+    -run="^Test(RetryConformance|.*Emulated)$" \
+    -short \
+    -race \
+     2>&1 | tee -a sponge_log.log

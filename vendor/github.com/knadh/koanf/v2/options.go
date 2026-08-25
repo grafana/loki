@@ -2,7 +2,7 @@ package koanf
 
 // options contains options to modify the behavior of Koanf.Load.
 type options struct {
-	merge func(a, b map[string]interface{}) error
+	merge func(a, b map[string]any) error
 }
 
 // newOptions creates a new options instance.
@@ -26,7 +26,7 @@ func (o *options) apply(opts []Option) {
 // If unset, the default merge function is used.
 //
 // The merge function is expected to merge map src into dest (left to right).
-func WithMergeFunc(merge func(src, dest map[string]interface{}) error) Option {
+func WithMergeFunc(merge func(src, dest map[string]any) error) Option {
 	return func(o *options) {
 		o.merge = merge
 	}

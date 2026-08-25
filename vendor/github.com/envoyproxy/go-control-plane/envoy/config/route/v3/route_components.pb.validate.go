@@ -20,6 +20,8 @@ import (
 	"google.golang.org/protobuf/types/known/anypb"
 
 	v3 "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
+
+	v31 "github.com/envoyproxy/go-control-plane/envoy/type/v3"
 )
 
 // ensure the imports are used
@@ -38,6 +40,8 @@ var (
 	_ = sort.Sort
 
 	_ = v3.RoutingPriority(0)
+
+	_ = v31.RateLimitUnit(0)
 )
 
 // Validate checks the field values on VirtualHost with the rules defined in
@@ -583,6 +587,35 @@ func (m *VirtualHost) validate(all bool) error {
 		}
 	}
 
+	if all {
+		switch v := interface{}(m.GetRequestBodyBufferLimit()).(type) {
+		case interface{ ValidateAll() error }:
+			if err := v.ValidateAll(); err != nil {
+				errors = append(errors, VirtualHostValidationError{
+					field:  "RequestBodyBufferLimit",
+					reason: "embedded message failed validation",
+					cause:  err,
+				})
+			}
+		case interface{ Validate() error }:
+			if err := v.Validate(); err != nil {
+				errors = append(errors, VirtualHostValidationError{
+					field:  "RequestBodyBufferLimit",
+					reason: "embedded message failed validation",
+					cause:  err,
+				})
+			}
+		}
+	} else if v, ok := interface{}(m.GetRequestBodyBufferLimit()).(interface{ Validate() error }); ok {
+		if err := v.Validate(); err != nil {
+			return VirtualHostValidationError{
+				field:  "RequestBodyBufferLimit",
+				reason: "embedded message failed validation",
+				cause:  err,
+			}
+		}
+	}
+
 	for idx, item := range m.GetRequestMirrorPolicies() {
 		_, _ = idx, item
 
@@ -659,7 +692,7 @@ type VirtualHostMultiError []error
 
 // Error returns a concatenation of all the error messages it wraps.
 func (m VirtualHostMultiError) Error() string {
-	var msgs []string
+	msgs := make([]string, 0, len(m))
 	for _, err := range m {
 		msgs = append(msgs, err.Error())
 	}
@@ -793,7 +826,7 @@ type FilterActionMultiError []error
 
 // Error returns a concatenation of all the error messages it wraps.
 func (m FilterActionMultiError) Error() string {
-	var msgs []string
+	msgs := make([]string, 0, len(m))
 	for _, err := range m {
 		msgs = append(msgs, err.Error())
 	}
@@ -926,7 +959,7 @@ type RouteListMultiError []error
 
 // Error returns a concatenation of all the error messages it wraps.
 func (m RouteListMultiError) Error() string {
-	var msgs []string
+	msgs := make([]string, 0, len(m))
 	for _, err := range m {
 		msgs = append(msgs, err.Error())
 	}
@@ -1361,6 +1394,35 @@ func (m *Route) validate(all bool) error {
 
 	// no validation rules for StatPrefix
 
+	if all {
+		switch v := interface{}(m.GetRequestBodyBufferLimit()).(type) {
+		case interface{ ValidateAll() error }:
+			if err := v.ValidateAll(); err != nil {
+				errors = append(errors, RouteValidationError{
+					field:  "RequestBodyBufferLimit",
+					reason: "embedded message failed validation",
+					cause:  err,
+				})
+			}
+		case interface{ Validate() error }:
+			if err := v.Validate(); err != nil {
+				errors = append(errors, RouteValidationError{
+					field:  "RequestBodyBufferLimit",
+					reason: "embedded message failed validation",
+					cause:  err,
+				})
+			}
+		}
+	} else if v, ok := interface{}(m.GetRequestBodyBufferLimit()).(interface{ Validate() error }); ok {
+		if err := v.Validate(); err != nil {
+			return RouteValidationError{
+				field:  "RequestBodyBufferLimit",
+				reason: "embedded message failed validation",
+				cause:  err,
+			}
+		}
+	}
+
 	oneofActionPresent := false
 	switch v := m.Action.(type) {
 	case *Route_Route:
@@ -1600,7 +1662,7 @@ type RouteMultiError []error
 
 // Error returns a concatenation of all the error messages it wraps.
 func (m RouteMultiError) Error() string {
-	var msgs []string
+	msgs := make([]string, 0, len(m))
 	for _, err := range m {
 		msgs = append(msgs, err.Error())
 	}
@@ -1790,6 +1852,47 @@ func (m *WeightedCluster) validate(all bool) error {
 			errors = append(errors, err)
 		}
 
+	case *WeightedCluster_UseHashPolicy:
+		if v == nil {
+			err := WeightedClusterValidationError{
+				field:  "RandomValueSpecifier",
+				reason: "oneof value cannot be a typed-nil",
+			}
+			if !all {
+				return err
+			}
+			errors = append(errors, err)
+		}
+
+		if all {
+			switch v := interface{}(m.GetUseHashPolicy()).(type) {
+			case interface{ ValidateAll() error }:
+				if err := v.ValidateAll(); err != nil {
+					errors = append(errors, WeightedClusterValidationError{
+						field:  "UseHashPolicy",
+						reason: "embedded message failed validation",
+						cause:  err,
+					})
+				}
+			case interface{ Validate() error }:
+				if err := v.Validate(); err != nil {
+					errors = append(errors, WeightedClusterValidationError{
+						field:  "UseHashPolicy",
+						reason: "embedded message failed validation",
+						cause:  err,
+					})
+				}
+			}
+		} else if v, ok := interface{}(m.GetUseHashPolicy()).(interface{ Validate() error }); ok {
+			if err := v.Validate(); err != nil {
+				return WeightedClusterValidationError{
+					field:  "UseHashPolicy",
+					reason: "embedded message failed validation",
+					cause:  err,
+				}
+			}
+		}
+
 	default:
 		_ = v // ensures v is used
 	}
@@ -1808,7 +1911,7 @@ type WeightedClusterMultiError []error
 
 // Error returns a concatenation of all the error messages it wraps.
 func (m WeightedClusterMultiError) Error() string {
-	var msgs []string
+	msgs := make([]string, 0, len(m))
 	for _, err := range m {
 		msgs = append(msgs, err.Error())
 	}
@@ -1952,7 +2055,7 @@ type ClusterSpecifierPluginMultiError []error
 
 // Error returns a concatenation of all the error messages it wraps.
 func (m ClusterSpecifierPluginMultiError) Error() string {
-	var msgs []string
+	msgs := make([]string, 0, len(m))
 	for _, err := range m {
 		msgs = append(msgs, err.Error())
 	}
@@ -2166,6 +2269,40 @@ func (m *RouteMatch) validate(all bool) error {
 
 	}
 
+	for idx, item := range m.GetCookies() {
+		_, _ = idx, item
+
+		if all {
+			switch v := interface{}(item).(type) {
+			case interface{ ValidateAll() error }:
+				if err := v.ValidateAll(); err != nil {
+					errors = append(errors, RouteMatchValidationError{
+						field:  fmt.Sprintf("Cookies[%v]", idx),
+						reason: "embedded message failed validation",
+						cause:  err,
+					})
+				}
+			case interface{ Validate() error }:
+				if err := v.Validate(); err != nil {
+					errors = append(errors, RouteMatchValidationError{
+						field:  fmt.Sprintf("Cookies[%v]", idx),
+						reason: "embedded message failed validation",
+						cause:  err,
+					})
+				}
+			}
+		} else if v, ok := interface{}(item).(interface{ Validate() error }); ok {
+			if err := v.Validate(); err != nil {
+				return RouteMatchValidationError{
+					field:  fmt.Sprintf("Cookies[%v]", idx),
+					reason: "embedded message failed validation",
+					cause:  err,
+				}
+			}
+		}
+
+	}
+
 	if all {
 		switch v := interface{}(m.GetGrpc()).(type) {
 		case interface{ ValidateAll() error }:
@@ -2250,6 +2387,40 @@ func (m *RouteMatch) validate(all bool) error {
 			if err := v.Validate(); err != nil {
 				return RouteMatchValidationError{
 					field:  fmt.Sprintf("DynamicMetadata[%v]", idx),
+					reason: "embedded message failed validation",
+					cause:  err,
+				}
+			}
+		}
+
+	}
+
+	for idx, item := range m.GetFilterState() {
+		_, _ = idx, item
+
+		if all {
+			switch v := interface{}(item).(type) {
+			case interface{ ValidateAll() error }:
+				if err := v.ValidateAll(); err != nil {
+					errors = append(errors, RouteMatchValidationError{
+						field:  fmt.Sprintf("FilterState[%v]", idx),
+						reason: "embedded message failed validation",
+						cause:  err,
+					})
+				}
+			case interface{ Validate() error }:
+				if err := v.Validate(); err != nil {
+					errors = append(errors, RouteMatchValidationError{
+						field:  fmt.Sprintf("FilterState[%v]", idx),
+						reason: "embedded message failed validation",
+						cause:  err,
+					})
+				}
+			}
+		} else if v, ok := interface{}(item).(interface{ Validate() error }); ok {
+			if err := v.Validate(); err != nil {
+				return RouteMatchValidationError{
+					field:  fmt.Sprintf("FilterState[%v]", idx),
 					reason: "embedded message failed validation",
 					cause:  err,
 				}
@@ -2474,7 +2645,7 @@ type RouteMatchMultiError []error
 
 // Error returns a concatenation of all the error messages it wraps.
 func (m RouteMatchMultiError) Error() string {
-	var msgs []string
+	msgs := make([]string, 0, len(m))
 	for _, err := range m {
 		msgs = append(msgs, err.Error())
 	}
@@ -2779,7 +2950,7 @@ type CorsPolicyMultiError []error
 
 // Error returns a concatenation of all the error messages it wraps.
 func (m CorsPolicyMultiError) Error() string {
-	var msgs []string
+	msgs := make([]string, 0, len(m))
 	for _, err := range m {
 		msgs = append(msgs, err.Error())
 	}
@@ -2974,6 +3145,8 @@ func (m *RouteAction) validate(all bool) error {
 		}
 	}
 
+	// no validation rules for PathRewrite
+
 	// no validation rules for AppendXForwardedHost
 
 	if all {
@@ -3028,6 +3201,35 @@ func (m *RouteAction) validate(all bool) error {
 		if err := v.Validate(); err != nil {
 			return RouteActionValidationError{
 				field:  "IdleTimeout",
+				reason: "embedded message failed validation",
+				cause:  err,
+			}
+		}
+	}
+
+	if all {
+		switch v := interface{}(m.GetFlushTimeout()).(type) {
+		case interface{ ValidateAll() error }:
+			if err := v.ValidateAll(); err != nil {
+				errors = append(errors, RouteActionValidationError{
+					field:  "FlushTimeout",
+					reason: "embedded message failed validation",
+					cause:  err,
+				})
+			}
+		case interface{ Validate() error }:
+			if err := v.Validate(); err != nil {
+				errors = append(errors, RouteActionValidationError{
+					field:  "FlushTimeout",
+					reason: "embedded message failed validation",
+					cause:  err,
+				})
+			}
+		}
+	} else if v, ok := interface{}(m.GetFlushTimeout()).(interface{ Validate() error }); ok {
+		if err := v.Validate(); err != nil {
+			return RouteActionValidationError{
+				field:  "FlushTimeout",
 				reason: "embedded message failed validation",
 				cause:  err,
 			}
@@ -3802,6 +4004,18 @@ func (m *RouteAction) validate(all bool) error {
 			}
 		}
 
+	case *RouteAction_HostRewrite:
+		if v == nil {
+			err := RouteActionValidationError{
+				field:  "HostRewriteSpecifier",
+				reason: "oneof value cannot be a typed-nil",
+			}
+			if !all {
+				return err
+			}
+			errors = append(errors, err)
+		}
+		// no validation rules for HostRewrite
 	default:
 		_ = v // ensures v is used
 	}
@@ -3819,7 +4033,7 @@ type RouteActionMultiError []error
 
 // Error returns a concatenation of all the error messages it wraps.
 func (m RouteActionMultiError) Error() string {
-	var msgs []string
+	msgs := make([]string, 0, len(m))
 	for _, err := range m {
 		msgs = append(msgs, err.Error())
 	}
@@ -4227,6 +4441,8 @@ func (m *RetryPolicy) validate(all bool) error {
 
 	}
 
+	// no validation rules for RefreshClusterOnRetry
+
 	if len(errors) > 0 {
 		return RetryPolicyMultiError(errors)
 	}
@@ -4240,7 +4456,7 @@ type RetryPolicyMultiError []error
 
 // Error returns a concatenation of all the error messages it wraps.
 func (m RetryPolicyMultiError) Error() string {
-	var msgs []string
+	msgs := make([]string, 0, len(m))
 	for _, err := range m {
 		msgs = append(msgs, err.Error())
 	}
@@ -4385,7 +4601,7 @@ type HedgePolicyMultiError []error
 
 // Error returns a concatenation of all the error messages it wraps.
 func (m HedgePolicyMultiError) Error() string {
-	var msgs []string
+	msgs := make([]string, 0, len(m))
 	for _, err := range m {
 		msgs = append(msgs, err.Error())
 	}
@@ -4613,6 +4829,18 @@ func (m *RedirectAction) validate(all bool) error {
 			}
 		}
 
+	case *RedirectAction_PathRewrite:
+		if v == nil {
+			err := RedirectActionValidationError{
+				field:  "PathRewriteSpecifier",
+				reason: "oneof value cannot be a typed-nil",
+			}
+			if !all {
+				return err
+			}
+			errors = append(errors, err)
+		}
+		// no validation rules for PathRewrite
 	default:
 		_ = v // ensures v is used
 	}
@@ -4631,7 +4859,7 @@ type RedirectActionMultiError []error
 
 // Error returns a concatenation of all the error messages it wraps.
 func (m RedirectActionMultiError) Error() string {
-	var msgs []string
+	msgs := make([]string, 0, len(m))
 	for _, err := range m {
 		msgs = append(msgs, err.Error())
 	}
@@ -4763,6 +4991,35 @@ func (m *DirectResponseAction) validate(all bool) error {
 		}
 	}
 
+	if all {
+		switch v := interface{}(m.GetBodyFormat()).(type) {
+		case interface{ ValidateAll() error }:
+			if err := v.ValidateAll(); err != nil {
+				errors = append(errors, DirectResponseActionValidationError{
+					field:  "BodyFormat",
+					reason: "embedded message failed validation",
+					cause:  err,
+				})
+			}
+		case interface{ Validate() error }:
+			if err := v.Validate(); err != nil {
+				errors = append(errors, DirectResponseActionValidationError{
+					field:  "BodyFormat",
+					reason: "embedded message failed validation",
+					cause:  err,
+				})
+			}
+		}
+	} else if v, ok := interface{}(m.GetBodyFormat()).(interface{ Validate() error }); ok {
+		if err := v.Validate(); err != nil {
+			return DirectResponseActionValidationError{
+				field:  "BodyFormat",
+				reason: "embedded message failed validation",
+				cause:  err,
+			}
+		}
+	}
+
 	if len(errors) > 0 {
 		return DirectResponseActionMultiError(errors)
 	}
@@ -4777,7 +5034,7 @@ type DirectResponseActionMultiError []error
 
 // Error returns a concatenation of all the error messages it wraps.
 func (m DirectResponseActionMultiError) Error() string {
-	var msgs []string
+	msgs := make([]string, 0, len(m))
 	for _, err := range m {
 		msgs = append(msgs, err.Error())
 	}
@@ -4879,7 +5136,7 @@ type NonForwardingActionMultiError []error
 
 // Error returns a concatenation of all the error messages it wraps.
 func (m NonForwardingActionMultiError) Error() string {
-	var msgs []string
+	msgs := make([]string, 0, len(m))
 	for _, err := range m {
 		msgs = append(msgs, err.Error())
 	}
@@ -5020,7 +5277,7 @@ type DecoratorMultiError []error
 
 // Error returns a concatenation of all the error messages it wraps.
 func (m DecoratorMultiError) Error() string {
-	var msgs []string
+	msgs := make([]string, 0, len(m))
 	for _, err := range m {
 		msgs = append(msgs, err.Error())
 	}
@@ -5226,6 +5483,10 @@ func (m *Tracing) validate(all bool) error {
 
 	}
 
+	// no validation rules for Operation
+
+	// no validation rules for UpstreamOperation
+
 	if len(errors) > 0 {
 		return TracingMultiError(errors)
 	}
@@ -5239,7 +5500,7 @@ type TracingMultiError []error
 
 // Error returns a concatenation of all the error messages it wraps.
 func (m TracingMultiError) Error() string {
-	var msgs []string
+	msgs := make([]string, 0, len(m))
 	for _, err := range m {
 		msgs = append(msgs, err.Error())
 	}
@@ -5384,7 +5645,7 @@ type VirtualClusterMultiError []error
 
 // Error returns a concatenation of all the error messages it wraps.
 func (m VirtualClusterMultiError) Error() string {
-	var msgs []string
+	msgs := make([]string, 0, len(m))
 	for _, err := range m {
 		msgs = append(msgs, err.Error())
 	}
@@ -5592,6 +5853,8 @@ func (m *RateLimit) validate(all bool) error {
 
 	// no validation rules for ApplyOnStreamDone
 
+	// no validation rules for XRatelimitOption
+
 	if len(errors) > 0 {
 		return RateLimitMultiError(errors)
 	}
@@ -5605,7 +5868,7 @@ type RateLimitMultiError []error
 
 // Error returns a concatenation of all the error messages it wraps.
 func (m RateLimitMultiError) Error() string {
-	var msgs []string
+	msgs := make([]string, 0, len(m))
 	for _, err := range m {
 		msgs = append(msgs, err.Error())
 	}
@@ -5952,7 +6215,7 @@ type HeaderMatcherMultiError []error
 
 // Error returns a concatenation of all the error messages it wraps.
 func (m HeaderMatcherMultiError) Error() string {
-	var msgs []string
+	msgs := make([]string, 0, len(m))
 	for _, err := range m {
 		msgs = append(msgs, err.Error())
 	}
@@ -6145,7 +6408,7 @@ type QueryParameterMatcherMultiError []error
 
 // Error returns a concatenation of all the error messages it wraps.
 func (m QueryParameterMatcherMultiError) Error() string {
-	var msgs []string
+	msgs := make([]string, 0, len(m))
 	for _, err := range m {
 		msgs = append(msgs, err.Error())
 	}
@@ -6210,6 +6473,170 @@ var _ interface {
 	Cause() error
 	ErrorName() string
 } = QueryParameterMatcherValidationError{}
+
+// Validate checks the field values on CookieMatcher with the rules defined in
+// the proto definition for this message. If any rules are violated, the first
+// error encountered is returned, or nil if there are no violations.
+func (m *CookieMatcher) Validate() error {
+	return m.validate(false)
+}
+
+// ValidateAll checks the field values on CookieMatcher with the rules defined
+// in the proto definition for this message. If any rules are violated, the
+// result is a list of violation errors wrapped in CookieMatcherMultiError, or
+// nil if none found.
+func (m *CookieMatcher) ValidateAll() error {
+	return m.validate(true)
+}
+
+func (m *CookieMatcher) validate(all bool) error {
+	if m == nil {
+		return nil
+	}
+
+	var errors []error
+
+	if utf8.RuneCountInString(m.GetName()) < 1 {
+		err := CookieMatcherValidationError{
+			field:  "Name",
+			reason: "value length must be at least 1 runes",
+		}
+		if !all {
+			return err
+		}
+		errors = append(errors, err)
+	}
+
+	if len(m.GetName()) > 1024 {
+		err := CookieMatcherValidationError{
+			field:  "Name",
+			reason: "value length must be at most 1024 bytes",
+		}
+		if !all {
+			return err
+		}
+		errors = append(errors, err)
+	}
+
+	if m.GetStringMatch() == nil {
+		err := CookieMatcherValidationError{
+			field:  "StringMatch",
+			reason: "value is required",
+		}
+		if !all {
+			return err
+		}
+		errors = append(errors, err)
+	}
+
+	if all {
+		switch v := interface{}(m.GetStringMatch()).(type) {
+		case interface{ ValidateAll() error }:
+			if err := v.ValidateAll(); err != nil {
+				errors = append(errors, CookieMatcherValidationError{
+					field:  "StringMatch",
+					reason: "embedded message failed validation",
+					cause:  err,
+				})
+			}
+		case interface{ Validate() error }:
+			if err := v.Validate(); err != nil {
+				errors = append(errors, CookieMatcherValidationError{
+					field:  "StringMatch",
+					reason: "embedded message failed validation",
+					cause:  err,
+				})
+			}
+		}
+	} else if v, ok := interface{}(m.GetStringMatch()).(interface{ Validate() error }); ok {
+		if err := v.Validate(); err != nil {
+			return CookieMatcherValidationError{
+				field:  "StringMatch",
+				reason: "embedded message failed validation",
+				cause:  err,
+			}
+		}
+	}
+
+	// no validation rules for InvertMatch
+
+	if len(errors) > 0 {
+		return CookieMatcherMultiError(errors)
+	}
+
+	return nil
+}
+
+// CookieMatcherMultiError is an error wrapping multiple validation errors
+// returned by CookieMatcher.ValidateAll() if the designated constraints
+// aren't met.
+type CookieMatcherMultiError []error
+
+// Error returns a concatenation of all the error messages it wraps.
+func (m CookieMatcherMultiError) Error() string {
+	msgs := make([]string, 0, len(m))
+	for _, err := range m {
+		msgs = append(msgs, err.Error())
+	}
+	return strings.Join(msgs, "; ")
+}
+
+// AllErrors returns a list of validation violation errors.
+func (m CookieMatcherMultiError) AllErrors() []error { return m }
+
+// CookieMatcherValidationError is the validation error returned by
+// CookieMatcher.Validate if the designated constraints aren't met.
+type CookieMatcherValidationError struct {
+	field  string
+	reason string
+	cause  error
+	key    bool
+}
+
+// Field function returns field value.
+func (e CookieMatcherValidationError) Field() string { return e.field }
+
+// Reason function returns reason value.
+func (e CookieMatcherValidationError) Reason() string { return e.reason }
+
+// Cause function returns cause value.
+func (e CookieMatcherValidationError) Cause() error { return e.cause }
+
+// Key function returns key value.
+func (e CookieMatcherValidationError) Key() bool { return e.key }
+
+// ErrorName returns error name.
+func (e CookieMatcherValidationError) ErrorName() string { return "CookieMatcherValidationError" }
+
+// Error satisfies the builtin error interface
+func (e CookieMatcherValidationError) Error() string {
+	cause := ""
+	if e.cause != nil {
+		cause = fmt.Sprintf(" | caused by: %v", e.cause)
+	}
+
+	key := ""
+	if e.key {
+		key = "key for "
+	}
+
+	return fmt.Sprintf(
+		"invalid %sCookieMatcher.%s: %s%s",
+		key,
+		e.field,
+		e.reason,
+		cause)
+}
+
+var _ error = CookieMatcherValidationError{}
+
+var _ interface {
+	Field() string
+	Reason() string
+	Key() bool
+	Cause() error
+	ErrorName() string
+} = CookieMatcherValidationError{}
 
 // Validate checks the field values on InternalRedirectPolicy with the rules
 // defined in the proto definition for this message. If any rules are
@@ -6354,7 +6781,7 @@ type InternalRedirectPolicyMultiError []error
 
 // Error returns a concatenation of all the error messages it wraps.
 func (m InternalRedirectPolicyMultiError) Error() string {
-	var msgs []string
+	msgs := make([]string, 0, len(m))
 	for _, err := range m {
 		msgs = append(msgs, err.Error())
 	}
@@ -6490,7 +6917,7 @@ type FilterConfigMultiError []error
 
 // Error returns a concatenation of all the error messages it wraps.
 func (m FilterConfigMultiError) Error() string {
-	var msgs []string
+	msgs := make([]string, 0, len(m))
 	for _, err := range m {
 		msgs = append(msgs, err.Error())
 	}
@@ -6857,7 +7284,7 @@ type WeightedCluster_ClusterWeightMultiError []error
 
 // Error returns a concatenation of all the error messages it wraps.
 func (m WeightedCluster_ClusterWeightMultiError) Error() string {
-	var msgs []string
+	msgs := make([]string, 0, len(m))
 	for _, err := range m {
 		msgs = append(msgs, err.Error())
 	}
@@ -6970,7 +7397,7 @@ type RouteMatch_GrpcRouteMatchOptionsMultiError []error
 
 // Error returns a concatenation of all the error messages it wraps.
 func (m RouteMatch_GrpcRouteMatchOptionsMultiError) Error() string {
-	var msgs []string
+	msgs := make([]string, 0, len(m))
 	for _, err := range m {
 		msgs = append(msgs, err.Error())
 	}
@@ -7133,7 +7560,7 @@ type RouteMatch_TlsContextMatchOptionsMultiError []error
 
 // Error returns a concatenation of all the error messages it wraps.
 func (m RouteMatch_TlsContextMatchOptionsMultiError) Error() string {
-	var msgs []string
+	msgs := make([]string, 0, len(m))
 	for _, err := range m {
 		msgs = append(msgs, err.Error())
 	}
@@ -7236,7 +7663,7 @@ type RouteMatch_ConnectMatcherMultiError []error
 
 // Error returns a concatenation of all the error messages it wraps.
 func (m RouteMatch_ConnectMatcherMultiError) Error() string {
-	var msgs []string
+	msgs := make([]string, 0, len(m))
 	for _, err := range m {
 		msgs = append(msgs, err.Error())
 	}
@@ -7397,6 +7824,62 @@ func (m *RouteAction_RequestMirrorPolicy) validate(all bool) error {
 
 	// no validation rules for DisableShadowHostSuffixAppend
 
+	if len(m.GetRequestHeadersMutations()) > 1000 {
+		err := RouteAction_RequestMirrorPolicyValidationError{
+			field:  "RequestHeadersMutations",
+			reason: "value must contain no more than 1000 item(s)",
+		}
+		if !all {
+			return err
+		}
+		errors = append(errors, err)
+	}
+
+	for idx, item := range m.GetRequestHeadersMutations() {
+		_, _ = idx, item
+
+		if all {
+			switch v := interface{}(item).(type) {
+			case interface{ ValidateAll() error }:
+				if err := v.ValidateAll(); err != nil {
+					errors = append(errors, RouteAction_RequestMirrorPolicyValidationError{
+						field:  fmt.Sprintf("RequestHeadersMutations[%v]", idx),
+						reason: "embedded message failed validation",
+						cause:  err,
+					})
+				}
+			case interface{ Validate() error }:
+				if err := v.Validate(); err != nil {
+					errors = append(errors, RouteAction_RequestMirrorPolicyValidationError{
+						field:  fmt.Sprintf("RequestHeadersMutations[%v]", idx),
+						reason: "embedded message failed validation",
+						cause:  err,
+					})
+				}
+			}
+		} else if v, ok := interface{}(item).(interface{ Validate() error }); ok {
+			if err := v.Validate(); err != nil {
+				return RouteAction_RequestMirrorPolicyValidationError{
+					field:  fmt.Sprintf("RequestHeadersMutations[%v]", idx),
+					reason: "embedded message failed validation",
+					cause:  err,
+				}
+			}
+		}
+
+	}
+
+	if !_RouteAction_RequestMirrorPolicy_HostRewriteLiteral_Pattern.MatchString(m.GetHostRewriteLiteral()) {
+		err := RouteAction_RequestMirrorPolicyValidationError{
+			field:  "HostRewriteLiteral",
+			reason: "value does not match regex pattern \"^[^\\x00\\n\\r]*$\"",
+		}
+		if !all {
+			return err
+		}
+		errors = append(errors, err)
+	}
+
 	if len(errors) > 0 {
 		return RouteAction_RequestMirrorPolicyMultiError(errors)
 	}
@@ -7411,7 +7894,7 @@ type RouteAction_RequestMirrorPolicyMultiError []error
 
 // Error returns a concatenation of all the error messages it wraps.
 func (m RouteAction_RequestMirrorPolicyMultiError) Error() string {
-	var msgs []string
+	msgs := make([]string, 0, len(m))
 	for _, err := range m {
 		msgs = append(msgs, err.Error())
 	}
@@ -7479,6 +7962,8 @@ var _ interface {
 } = RouteAction_RequestMirrorPolicyValidationError{}
 
 var _RouteAction_RequestMirrorPolicy_ClusterHeader_Pattern = regexp.MustCompile("^[^\x00\n\r]*$")
+
+var _RouteAction_RequestMirrorPolicy_HostRewriteLiteral_Pattern = regexp.MustCompile("^[^\x00\n\r]*$")
 
 // Validate checks the field values on RouteAction_HashPolicy with the rules
 // defined in the proto definition for this message. If any rules are
@@ -7744,7 +8229,7 @@ type RouteAction_HashPolicyMultiError []error
 
 // Error returns a concatenation of all the error messages it wraps.
 func (m RouteAction_HashPolicyMultiError) Error() string {
-	var msgs []string
+	msgs := make([]string, 0, len(m))
 	for _, err := range m {
 		msgs = append(msgs, err.Error())
 	}
@@ -7926,7 +8411,7 @@ type RouteAction_UpgradeConfigMultiError []error
 
 // Error returns a concatenation of all the error messages it wraps.
 func (m RouteAction_UpgradeConfigMultiError) Error() string {
-	var msgs []string
+	msgs := make([]string, 0, len(m))
 	for _, err := range m {
 		msgs = append(msgs, err.Error())
 	}
@@ -8117,7 +8602,7 @@ type RouteAction_MaxStreamDurationMultiError []error
 
 // Error returns a concatenation of all the error messages it wraps.
 func (m RouteAction_MaxStreamDurationMultiError) Error() string {
-	var msgs []string
+	msgs := make([]string, 0, len(m))
 	for _, err := range m {
 		msgs = append(msgs, err.Error())
 	}
@@ -8271,7 +8756,7 @@ type RouteAction_HashPolicy_HeaderMultiError []error
 
 // Error returns a concatenation of all the error messages it wraps.
 func (m RouteAction_HashPolicy_HeaderMultiError) Error() string {
-	var msgs []string
+	msgs := make([]string, 0, len(m))
 	for _, err := range m {
 		msgs = append(msgs, err.Error())
 	}
@@ -8434,7 +8919,7 @@ type RouteAction_HashPolicy_CookieAttributeMultiError []error
 
 // Error returns a concatenation of all the error messages it wraps.
 func (m RouteAction_HashPolicy_CookieAttributeMultiError) Error() string {
-	var msgs []string
+	msgs := make([]string, 0, len(m))
 	for _, err := range m {
 		msgs = append(msgs, err.Error())
 	}
@@ -8617,7 +9102,7 @@ type RouteAction_HashPolicy_CookieMultiError []error
 
 // Error returns a concatenation of all the error messages it wraps.
 func (m RouteAction_HashPolicy_CookieMultiError) Error() string {
-	var msgs []string
+	msgs := make([]string, 0, len(m))
 	for _, err := range m {
 		msgs = append(msgs, err.Error())
 	}
@@ -8725,7 +9210,7 @@ type RouteAction_HashPolicy_ConnectionPropertiesMultiError []error
 
 // Error returns a concatenation of all the error messages it wraps.
 func (m RouteAction_HashPolicy_ConnectionPropertiesMultiError) Error() string {
-	var msgs []string
+	msgs := make([]string, 0, len(m))
 	for _, err := range m {
 		msgs = append(msgs, err.Error())
 	}
@@ -8841,7 +9326,7 @@ type RouteAction_HashPolicy_QueryParameterMultiError []error
 
 // Error returns a concatenation of all the error messages it wraps.
 func (m RouteAction_HashPolicy_QueryParameterMultiError) Error() string {
-	var msgs []string
+	msgs := make([]string, 0, len(m))
 	for _, err := range m {
 		msgs = append(msgs, err.Error())
 	}
@@ -8957,7 +9442,7 @@ type RouteAction_HashPolicy_FilterStateMultiError []error
 
 // Error returns a concatenation of all the error messages it wraps.
 func (m RouteAction_HashPolicy_FilterStateMultiError) Error() string {
-	var msgs []string
+	msgs := make([]string, 0, len(m))
 	for _, err := range m {
 		msgs = append(msgs, err.Error())
 	}
@@ -9094,7 +9579,7 @@ type RouteAction_UpgradeConfig_ConnectConfigMultiError []error
 
 // Error returns a concatenation of all the error messages it wraps.
 func (m RouteAction_UpgradeConfig_ConnectConfigMultiError) Error() string {
-	var msgs []string
+	msgs := make([]string, 0, len(m))
 	for _, err := range m {
 		msgs = append(msgs, err.Error())
 	}
@@ -9254,7 +9739,7 @@ type RetryPolicy_RetryPriorityMultiError []error
 
 // Error returns a concatenation of all the error messages it wraps.
 func (m RetryPolicy_RetryPriorityMultiError) Error() string {
-	var msgs []string
+	msgs := make([]string, 0, len(m))
 	for _, err := range m {
 		msgs = append(msgs, err.Error())
 	}
@@ -9413,7 +9898,7 @@ type RetryPolicy_RetryHostPredicateMultiError []error
 
 // Error returns a concatenation of all the error messages it wraps.
 func (m RetryPolicy_RetryHostPredicateMultiError) Error() string {
-	var msgs []string
+	msgs := make([]string, 0, len(m))
 	for _, err := range m {
 		msgs = append(msgs, err.Error())
 	}
@@ -9587,7 +10072,7 @@ type RetryPolicy_RetryBackOffMultiError []error
 
 // Error returns a concatenation of all the error messages it wraps.
 func (m RetryPolicy_RetryBackOffMultiError) Error() string {
-	var msgs []string
+	msgs := make([]string, 0, len(m))
 	for _, err := range m {
 		msgs = append(msgs, err.Error())
 	}
@@ -9722,7 +10207,7 @@ type RetryPolicy_ResetHeaderMultiError []error
 
 // Error returns a concatenation of all the error messages it wraps.
 func (m RetryPolicy_ResetHeaderMultiError) Error() string {
-	var msgs []string
+	msgs := make([]string, 0, len(m))
 	for _, err := range m {
 		msgs = append(msgs, err.Error())
 	}
@@ -9903,7 +10388,7 @@ type RetryPolicy_RateLimitedRetryBackOffMultiError []error
 
 // Error returns a concatenation of all the error messages it wraps.
 func (m RetryPolicy_RateLimitedRetryBackOffMultiError) Error() string {
-	var msgs []string
+	msgs := make([]string, 0, len(m))
 	for _, err := range m {
 		msgs = append(msgs, err.Error())
 	}
@@ -10498,6 +10983,48 @@ func (m *RateLimit_Action) validate(all bool) error {
 			}
 		}
 
+	case *RateLimit_Action_RemoteAddressMatch_:
+		if v == nil {
+			err := RateLimit_ActionValidationError{
+				field:  "ActionSpecifier",
+				reason: "oneof value cannot be a typed-nil",
+			}
+			if !all {
+				return err
+			}
+			errors = append(errors, err)
+		}
+		oneofActionSpecifierPresent = true
+
+		if all {
+			switch v := interface{}(m.GetRemoteAddressMatch()).(type) {
+			case interface{ ValidateAll() error }:
+				if err := v.ValidateAll(); err != nil {
+					errors = append(errors, RateLimit_ActionValidationError{
+						field:  "RemoteAddressMatch",
+						reason: "embedded message failed validation",
+						cause:  err,
+					})
+				}
+			case interface{ Validate() error }:
+				if err := v.Validate(); err != nil {
+					errors = append(errors, RateLimit_ActionValidationError{
+						field:  "RemoteAddressMatch",
+						reason: "embedded message failed validation",
+						cause:  err,
+					})
+				}
+			}
+		} else if v, ok := interface{}(m.GetRemoteAddressMatch()).(interface{ Validate() error }); ok {
+			if err := v.Validate(); err != nil {
+				return RateLimit_ActionValidationError{
+					field:  "RemoteAddressMatch",
+					reason: "embedded message failed validation",
+					cause:  err,
+				}
+			}
+		}
+
 	default:
 		_ = v // ensures v is used
 	}
@@ -10526,7 +11053,7 @@ type RateLimit_ActionMultiError []error
 
 // Error returns a concatenation of all the error messages it wraps.
 func (m RateLimit_ActionMultiError) Error() string {
-	var msgs []string
+	msgs := make([]string, 0, len(m))
 	for _, err := range m {
 		msgs = append(msgs, err.Error())
 	}
@@ -10656,6 +11183,48 @@ func (m *RateLimit_Override) validate(all bool) error {
 			}
 		}
 
+	case *RateLimit_Override_RateLimit:
+		if v == nil {
+			err := RateLimit_OverrideValidationError{
+				field:  "OverrideSpecifier",
+				reason: "oneof value cannot be a typed-nil",
+			}
+			if !all {
+				return err
+			}
+			errors = append(errors, err)
+		}
+		oneofOverrideSpecifierPresent = true
+
+		if all {
+			switch v := interface{}(m.GetRateLimit()).(type) {
+			case interface{ ValidateAll() error }:
+				if err := v.ValidateAll(); err != nil {
+					errors = append(errors, RateLimit_OverrideValidationError{
+						field:  "RateLimit",
+						reason: "embedded message failed validation",
+						cause:  err,
+					})
+				}
+			case interface{ Validate() error }:
+				if err := v.Validate(); err != nil {
+					errors = append(errors, RateLimit_OverrideValidationError{
+						field:  "RateLimit",
+						reason: "embedded message failed validation",
+						cause:  err,
+					})
+				}
+			}
+		} else if v, ok := interface{}(m.GetRateLimit()).(interface{ Validate() error }); ok {
+			if err := v.Validate(); err != nil {
+				return RateLimit_OverrideValidationError{
+					field:  "RateLimit",
+					reason: "embedded message failed validation",
+					cause:  err,
+				}
+			}
+		}
+
 	default:
 		_ = v // ensures v is used
 	}
@@ -10684,7 +11253,7 @@ type RateLimit_OverrideMultiError []error
 
 // Error returns a concatenation of all the error messages it wraps.
 func (m RateLimit_OverrideMultiError) Error() string {
-	var msgs []string
+	msgs := make([]string, 0, len(m))
 	for _, err := range m {
 		msgs = append(msgs, err.Error())
 	}
@@ -10813,6 +11382,8 @@ func (m *RateLimit_HitsAddend) validate(all bool) error {
 
 	}
 
+	// no validation rules for IsNegativeHits
+
 	if len(errors) > 0 {
 		return RateLimit_HitsAddendMultiError(errors)
 	}
@@ -10827,7 +11398,7 @@ type RateLimit_HitsAddendMultiError []error
 
 // Error returns a concatenation of all the error messages it wraps.
 func (m RateLimit_HitsAddendMultiError) Error() string {
-	var msgs []string
+	msgs := make([]string, 0, len(m))
 	for _, err := range m {
 		msgs = append(msgs, err.Error())
 	}
@@ -10929,7 +11500,7 @@ type RateLimit_Action_SourceClusterMultiError []error
 
 // Error returns a concatenation of all the error messages it wraps.
 func (m RateLimit_Action_SourceClusterMultiError) Error() string {
-	var msgs []string
+	msgs := make([]string, 0, len(m))
 	for _, err := range m {
 		msgs = append(msgs, err.Error())
 	}
@@ -11034,7 +11605,7 @@ type RateLimit_Action_DestinationClusterMultiError []error
 
 // Error returns a concatenation of all the error messages it wraps.
 func (m RateLimit_Action_DestinationClusterMultiError) Error() string {
-	var msgs []string
+	msgs := make([]string, 0, len(m))
 	for _, err := range m {
 		msgs = append(msgs, err.Error())
 	}
@@ -11172,7 +11743,7 @@ type RateLimit_Action_RequestHeadersMultiError []error
 
 // Error returns a concatenation of all the error messages it wraps.
 func (m RateLimit_Action_RequestHeadersMultiError) Error() string {
-	var msgs []string
+	msgs := make([]string, 0, len(m))
 	for _, err := range m {
 		msgs = append(msgs, err.Error())
 	}
@@ -11303,7 +11874,7 @@ type RateLimit_Action_QueryParametersMultiError []error
 
 // Error returns a concatenation of all the error messages it wraps.
 func (m RateLimit_Action_QueryParametersMultiError) Error() string {
-	var msgs []string
+	msgs := make([]string, 0, len(m))
 	for _, err := range m {
 		msgs = append(msgs, err.Error())
 	}
@@ -11406,7 +11977,7 @@ type RateLimit_Action_RemoteAddressMultiError []error
 
 // Error returns a concatenation of all the error messages it wraps.
 func (m RateLimit_Action_RemoteAddressMultiError) Error() string {
-	var msgs []string
+	msgs := make([]string, 0, len(m))
 	for _, err := range m {
 		msgs = append(msgs, err.Error())
 	}
@@ -11541,7 +12112,7 @@ type RateLimit_Action_MaskedRemoteAddressMultiError []error
 
 // Error returns a concatenation of all the error messages it wraps.
 func (m RateLimit_Action_MaskedRemoteAddressMultiError) Error() string {
-	var msgs []string
+	msgs := make([]string, 0, len(m))
 	for _, err := range m {
 		msgs = append(msgs, err.Error())
 	}
@@ -11641,6 +12212,8 @@ func (m *RateLimit_Action_GenericKey) validate(all bool) error {
 		errors = append(errors, err)
 	}
 
+	// no validation rules for DefaultValue
+
 	// no validation rules for DescriptorKey
 
 	if len(errors) > 0 {
@@ -11657,7 +12230,7 @@ type RateLimit_Action_GenericKeyMultiError []error
 
 // Error returns a concatenation of all the error messages it wraps.
 func (m RateLimit_Action_GenericKeyMultiError) Error() string {
-	var msgs []string
+	msgs := make([]string, 0, len(m))
 	for _, err := range m {
 		msgs = append(msgs, err.Error())
 	}
@@ -11747,8 +12320,6 @@ func (m *RateLimit_Action_HeaderValueMatch) validate(all bool) error {
 
 	var errors []error
 
-	// no validation rules for DescriptorKey
-
 	if utf8.RuneCountInString(m.GetDescriptorValue()) < 1 {
 		err := RateLimit_Action_HeaderValueMatchValidationError{
 			field:  "DescriptorValue",
@@ -11759,6 +12330,10 @@ func (m *RateLimit_Action_HeaderValueMatch) validate(all bool) error {
 		}
 		errors = append(errors, err)
 	}
+
+	// no validation rules for DefaultValue
+
+	// no validation rules for DescriptorKey
 
 	if all {
 		switch v := interface{}(m.GetExpectMatch()).(type) {
@@ -11849,7 +12424,7 @@ type RateLimit_Action_HeaderValueMatchMultiError []error
 
 // Error returns a concatenation of all the error messages it wraps.
 func (m RateLimit_Action_HeaderValueMatchMultiError) Error() string {
-	var msgs []string
+	msgs := make([]string, 0, len(m))
 	for _, err := range m {
 		msgs = append(msgs, err.Error())
 	}
@@ -12007,7 +12582,7 @@ type RateLimit_Action_DynamicMetaDataMultiError []error
 
 // Error returns a concatenation of all the error messages it wraps.
 func (m RateLimit_Action_DynamicMetaDataMultiError) Error() string {
-	var msgs []string
+	msgs := make([]string, 0, len(m))
 	for _, err := range m {
 		msgs = append(msgs, err.Error())
 	}
@@ -12176,7 +12751,7 @@ type RateLimit_Action_MetaDataMultiError []error
 
 // Error returns a concatenation of all the error messages it wraps.
 func (m RateLimit_Action_MetaDataMultiError) Error() string {
-	var msgs []string
+	msgs := make([]string, 0, len(m))
 	for _, err := range m {
 		msgs = append(msgs, err.Error())
 	}
@@ -12266,8 +12841,6 @@ func (m *RateLimit_Action_QueryParameterValueMatch) validate(all bool) error {
 
 	var errors []error
 
-	// no validation rules for DescriptorKey
-
 	if utf8.RuneCountInString(m.GetDescriptorValue()) < 1 {
 		err := RateLimit_Action_QueryParameterValueMatchValidationError{
 			field:  "DescriptorValue",
@@ -12278,6 +12851,10 @@ func (m *RateLimit_Action_QueryParameterValueMatch) validate(all bool) error {
 		}
 		errors = append(errors, err)
 	}
+
+	// no validation rules for DefaultValue
+
+	// no validation rules for DescriptorKey
 
 	if all {
 		switch v := interface{}(m.GetExpectMatch()).(type) {
@@ -12368,7 +12945,7 @@ type RateLimit_Action_QueryParameterValueMatchMultiError []error
 
 // Error returns a concatenation of all the error messages it wraps.
 func (m RateLimit_Action_QueryParameterValueMatchMultiError) Error() string {
-	var msgs []string
+	msgs := make([]string, 0, len(m))
 	for _, err := range m {
 		msgs = append(msgs, err.Error())
 	}
@@ -12434,6 +13011,166 @@ var _ interface {
 	Cause() error
 	ErrorName() string
 } = RateLimit_Action_QueryParameterValueMatchValidationError{}
+
+// Validate checks the field values on RateLimit_Action_RemoteAddressMatch with
+// the rules defined in the proto definition for this message. If any rules
+// are violated, the first error encountered is returned, or nil if there are
+// no violations.
+func (m *RateLimit_Action_RemoteAddressMatch) Validate() error {
+	return m.validate(false)
+}
+
+// ValidateAll checks the field values on RateLimit_Action_RemoteAddressMatch
+// with the rules defined in the proto definition for this message. If any
+// rules are violated, the result is a list of violation errors wrapped in
+// RateLimit_Action_RemoteAddressMatchMultiError, or nil if none found.
+func (m *RateLimit_Action_RemoteAddressMatch) ValidateAll() error {
+	return m.validate(true)
+}
+
+func (m *RateLimit_Action_RemoteAddressMatch) validate(all bool) error {
+	if m == nil {
+		return nil
+	}
+
+	var errors []error
+
+	if utf8.RuneCountInString(m.GetDescriptorValue()) < 1 {
+		err := RateLimit_Action_RemoteAddressMatchValidationError{
+			field:  "DescriptorValue",
+			reason: "value length must be at least 1 runes",
+		}
+		if !all {
+			return err
+		}
+		errors = append(errors, err)
+	}
+
+	// no validation rules for DescriptorKey
+
+	// no validation rules for DefaultValue
+
+	if m.GetAddressMatcher() == nil {
+		err := RateLimit_Action_RemoteAddressMatchValidationError{
+			field:  "AddressMatcher",
+			reason: "value is required",
+		}
+		if !all {
+			return err
+		}
+		errors = append(errors, err)
+	}
+
+	if all {
+		switch v := interface{}(m.GetAddressMatcher()).(type) {
+		case interface{ ValidateAll() error }:
+			if err := v.ValidateAll(); err != nil {
+				errors = append(errors, RateLimit_Action_RemoteAddressMatchValidationError{
+					field:  "AddressMatcher",
+					reason: "embedded message failed validation",
+					cause:  err,
+				})
+			}
+		case interface{ Validate() error }:
+			if err := v.Validate(); err != nil {
+				errors = append(errors, RateLimit_Action_RemoteAddressMatchValidationError{
+					field:  "AddressMatcher",
+					reason: "embedded message failed validation",
+					cause:  err,
+				})
+			}
+		}
+	} else if v, ok := interface{}(m.GetAddressMatcher()).(interface{ Validate() error }); ok {
+		if err := v.Validate(); err != nil {
+			return RateLimit_Action_RemoteAddressMatchValidationError{
+				field:  "AddressMatcher",
+				reason: "embedded message failed validation",
+				cause:  err,
+			}
+		}
+	}
+
+	if len(errors) > 0 {
+		return RateLimit_Action_RemoteAddressMatchMultiError(errors)
+	}
+
+	return nil
+}
+
+// RateLimit_Action_RemoteAddressMatchMultiError is an error wrapping multiple
+// validation errors returned by
+// RateLimit_Action_RemoteAddressMatch.ValidateAll() if the designated
+// constraints aren't met.
+type RateLimit_Action_RemoteAddressMatchMultiError []error
+
+// Error returns a concatenation of all the error messages it wraps.
+func (m RateLimit_Action_RemoteAddressMatchMultiError) Error() string {
+	msgs := make([]string, 0, len(m))
+	for _, err := range m {
+		msgs = append(msgs, err.Error())
+	}
+	return strings.Join(msgs, "; ")
+}
+
+// AllErrors returns a list of validation violation errors.
+func (m RateLimit_Action_RemoteAddressMatchMultiError) AllErrors() []error { return m }
+
+// RateLimit_Action_RemoteAddressMatchValidationError is the validation error
+// returned by RateLimit_Action_RemoteAddressMatch.Validate if the designated
+// constraints aren't met.
+type RateLimit_Action_RemoteAddressMatchValidationError struct {
+	field  string
+	reason string
+	cause  error
+	key    bool
+}
+
+// Field function returns field value.
+func (e RateLimit_Action_RemoteAddressMatchValidationError) Field() string { return e.field }
+
+// Reason function returns reason value.
+func (e RateLimit_Action_RemoteAddressMatchValidationError) Reason() string { return e.reason }
+
+// Cause function returns cause value.
+func (e RateLimit_Action_RemoteAddressMatchValidationError) Cause() error { return e.cause }
+
+// Key function returns key value.
+func (e RateLimit_Action_RemoteAddressMatchValidationError) Key() bool { return e.key }
+
+// ErrorName returns error name.
+func (e RateLimit_Action_RemoteAddressMatchValidationError) ErrorName() string {
+	return "RateLimit_Action_RemoteAddressMatchValidationError"
+}
+
+// Error satisfies the builtin error interface
+func (e RateLimit_Action_RemoteAddressMatchValidationError) Error() string {
+	cause := ""
+	if e.cause != nil {
+		cause = fmt.Sprintf(" | caused by: %v", e.cause)
+	}
+
+	key := ""
+	if e.key {
+		key = "key for "
+	}
+
+	return fmt.Sprintf(
+		"invalid %sRateLimit_Action_RemoteAddressMatch.%s: %s%s",
+		key,
+		e.field,
+		e.reason,
+		cause)
+}
+
+var _ error = RateLimit_Action_RemoteAddressMatchValidationError{}
+
+var _ interface {
+	Field() string
+	Reason() string
+	Key() bool
+	Cause() error
+	ErrorName() string
+} = RateLimit_Action_RemoteAddressMatchValidationError{}
 
 // Validate checks the field values on RateLimit_Override_DynamicMetadata with
 // the rules defined in the proto definition for this message. If any rules
@@ -12513,7 +13250,7 @@ type RateLimit_Override_DynamicMetadataMultiError []error
 
 // Error returns a concatenation of all the error messages it wraps.
 func (m RateLimit_Override_DynamicMetadataMultiError) Error() string {
-	var msgs []string
+	msgs := make([]string, 0, len(m))
 	for _, err := range m {
 		msgs = append(msgs, err.Error())
 	}
@@ -12579,3 +13316,112 @@ var _ interface {
 	Cause() error
 	ErrorName() string
 } = RateLimit_Override_DynamicMetadataValidationError{}
+
+// Validate checks the field values on RateLimit_Override_RateLimitOverride
+// with the rules defined in the proto definition for this message. If any
+// rules are violated, the first error encountered is returned, or nil if
+// there are no violations.
+func (m *RateLimit_Override_RateLimitOverride) Validate() error {
+	return m.validate(false)
+}
+
+// ValidateAll checks the field values on RateLimit_Override_RateLimitOverride
+// with the rules defined in the proto definition for this message. If any
+// rules are violated, the result is a list of violation errors wrapped in
+// RateLimit_Override_RateLimitOverrideMultiError, or nil if none found.
+func (m *RateLimit_Override_RateLimitOverride) ValidateAll() error {
+	return m.validate(true)
+}
+
+func (m *RateLimit_Override_RateLimitOverride) validate(all bool) error {
+	if m == nil {
+		return nil
+	}
+
+	var errors []error
+
+	// no validation rules for RequestsPerUnit
+
+	// no validation rules for Unit
+
+	if len(errors) > 0 {
+		return RateLimit_Override_RateLimitOverrideMultiError(errors)
+	}
+
+	return nil
+}
+
+// RateLimit_Override_RateLimitOverrideMultiError is an error wrapping multiple
+// validation errors returned by
+// RateLimit_Override_RateLimitOverride.ValidateAll() if the designated
+// constraints aren't met.
+type RateLimit_Override_RateLimitOverrideMultiError []error
+
+// Error returns a concatenation of all the error messages it wraps.
+func (m RateLimit_Override_RateLimitOverrideMultiError) Error() string {
+	msgs := make([]string, 0, len(m))
+	for _, err := range m {
+		msgs = append(msgs, err.Error())
+	}
+	return strings.Join(msgs, "; ")
+}
+
+// AllErrors returns a list of validation violation errors.
+func (m RateLimit_Override_RateLimitOverrideMultiError) AllErrors() []error { return m }
+
+// RateLimit_Override_RateLimitOverrideValidationError is the validation error
+// returned by RateLimit_Override_RateLimitOverride.Validate if the designated
+// constraints aren't met.
+type RateLimit_Override_RateLimitOverrideValidationError struct {
+	field  string
+	reason string
+	cause  error
+	key    bool
+}
+
+// Field function returns field value.
+func (e RateLimit_Override_RateLimitOverrideValidationError) Field() string { return e.field }
+
+// Reason function returns reason value.
+func (e RateLimit_Override_RateLimitOverrideValidationError) Reason() string { return e.reason }
+
+// Cause function returns cause value.
+func (e RateLimit_Override_RateLimitOverrideValidationError) Cause() error { return e.cause }
+
+// Key function returns key value.
+func (e RateLimit_Override_RateLimitOverrideValidationError) Key() bool { return e.key }
+
+// ErrorName returns error name.
+func (e RateLimit_Override_RateLimitOverrideValidationError) ErrorName() string {
+	return "RateLimit_Override_RateLimitOverrideValidationError"
+}
+
+// Error satisfies the builtin error interface
+func (e RateLimit_Override_RateLimitOverrideValidationError) Error() string {
+	cause := ""
+	if e.cause != nil {
+		cause = fmt.Sprintf(" | caused by: %v", e.cause)
+	}
+
+	key := ""
+	if e.key {
+		key = "key for "
+	}
+
+	return fmt.Sprintf(
+		"invalid %sRateLimit_Override_RateLimitOverride.%s: %s%s",
+		key,
+		e.field,
+		e.reason,
+		cause)
+}
+
+var _ error = RateLimit_Override_RateLimitOverrideValidationError{}
+
+var _ interface {
+	Field() string
+	Reason() string
+	Key() bool
+	Cause() error
+	ErrorName() string
+} = RateLimit_Override_RateLimitOverrideValidationError{}

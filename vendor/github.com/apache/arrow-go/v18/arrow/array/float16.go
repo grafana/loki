@@ -71,8 +71,8 @@ func (a *Float16) setData(data *Data) {
 	vals := data.buffers[1]
 	if vals != nil {
 		a.values = arrow.Float16Traits.CastFromBytes(vals.Bytes())
-		beg := a.array.data.offset
-		end := beg + a.array.data.length
+		beg := a.data.offset
+		end := beg + a.data.length
 		a.values = a.values[beg:end]
 	}
 }

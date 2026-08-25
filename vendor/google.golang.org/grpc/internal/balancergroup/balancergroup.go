@@ -106,15 +106,14 @@ func (sbc *subBalancerWrapper) startBalancer() {
 	}
 }
 
-// exitIdle invokes the sub-balancer's ExitIdle method. Returns a boolean
-// indicating whether or not the operation was completed.
-func (sbc *subBalancerWrapper) exitIdle() (complete bool) {
+// exitIdle invokes the ExitIdle method on the sub-balancer, a gracefulswitch
+// balancer.
+func (sbc *subBalancerWrapper) exitIdle() {
 	b := sbc.balancer
 	if b == nil {
-		return true
+		return
 	}
 	b.ExitIdle()
-	return true
 }
 
 func (sbc *subBalancerWrapper) updateClientConnState(s balancer.ClientConnState) error {
@@ -339,6 +338,16 @@ func (bg *BalancerGroup) Add(id string, builder balancer.Builder) {
 // closed after timeout. Cleanup work (closing sub-balancer and removing
 // subconns) will be done after timeout.
 func (bg *BalancerGroup) Remove(id string) {
+	bg.removeInternal(id, true)
+}
+
+// RemoveImmediately removes and closes the balancer with id from the group
+// immediately.
+func (bg *BalancerGroup) RemoveImmediately(id string) {
+	bg.removeInternal(id, false)
+}
+
+func (bg *BalancerGroup) removeInternal(id string, withCaching bool) {
 	bg.logger.Infof("Removing child policy for child %q", id)
 
 	bg.outgoingMu.Lock()
@@ -357,32 +366,40 @@ func (bg *BalancerGroup) Remove(id string) {
 	// Unconditionally remove the sub-balancer config from the map.
 	delete(bg.idToBalancerConfig, id)
 
-	if bg.deletedBalancerCache != nil {
-		if bg.logger.V(2) {
-			bg.logger.Infof("Adding child policy for child %q to the balancer cache", id)
-			bg.logger.Infof("Number of items remaining in the balancer cache: %d", bg.deletedBalancerCache.Len())
-		}
-
-		bg.deletedBalancerCache.Add(id, sbToRemove, func() {
+	if withCaching {
+		if bg.deletedBalancerCache != nil {
 			if bg.logger.V(2) {
-				bg.logger.Infof("Removing child policy for child %q from the balancer cache after timeout", id)
+				bg.logger.Infof("Adding child policy for child %q to the balancer cache", id)
+			}
+			bg.deletedBalancerCache.Add(id, sbToRemove, func() {
+				if bg.logger.V(2) {
+					bg.logger.Infof("Removing child policy for child %q from the balancer cache after timeout", id)
+					bg.logger.Infof("Number of items remaining in the balancer cache: %d", bg.deletedBalancerCache.Len())
+				}
+
+				// A sub-balancer evicted from the timeout cache needs to closed
+				// and its subConns need to removed, unconditionally. There is a
+				// possibility that a sub-balancer might be removed (thereby
+				// moving it to the cache) around the same time that the
+				// balancergroup is closed, and by the time we get here the
+				// balancergroup might be closed.  Check for `outgoingStarted ==
+				// true` at that point can lead to a leaked sub-balancer.
+				bg.outgoingMu.Lock()
+				sbToRemove.stopBalancer()
+				bg.outgoingMu.Unlock()
+				bg.cleanupSubConns(sbToRemove)
+			})
+			if bg.logger.V(2) {
 				bg.logger.Infof("Number of items remaining in the balancer cache: %d", bg.deletedBalancerCache.Len())
 			}
-
-			// A sub-balancer evicted from the timeout cache needs to closed
-			// and its subConns need to removed, unconditionally. There is a
-			// possibility that a sub-balancer might be removed (thereby
-			// moving it to the cache) around the same time that the
-			// balancergroup is closed, and by the time we get here the
-			// balancergroup might be closed.  Check for `outgoingStarted ==
-			// true` at that point can lead to a leaked sub-balancer.
-			bg.outgoingMu.Lock()
-			sbToRemove.stopBalancer()
 			bg.outgoingMu.Unlock()
-			bg.cleanupSubConns(sbToRemove)
-		})
-		bg.outgoingMu.Unlock()
-		return
+			return
+		}
+
+		// Fall through to remove the sub-balancer with immediate effect if we are not caching.
+		if bg.logger.V(2) {
+			bg.logger.Infof("Child policy for child %q was requested to be cached before eventual removal. No such cache exists. Removing right away.", id)
+		}
 	}
 
 	// Remove the sub-balancer with immediate effect if we are not caching.
@@ -407,20 +424,6 @@ func (bg *BalancerGroup) cleanupSubConns(config *subBalancerWrapper) {
 	for sc, b := range bg.scToSubBalancer {
 		if b == config {
 			delete(bg.scToSubBalancer, sc)
-		}
-	}
-}
-
-// connect attempts to connect to all subConns belonging to sb.
-func (bg *BalancerGroup) connect(sb *subBalancerWrapper) {
-	bg.incomingMu.Lock()
-	defer bg.incomingMu.Unlock()
-	if bg.incomingClosed {
-		return
-	}
-	for sc, b := range bg.scToSubBalancer {
-		if b == sb {
-			sc.Connect()
 		}
 	}
 }
@@ -496,7 +499,7 @@ func (bg *BalancerGroup) ResolverError(err error) {
 // from map. Delete sc from the map only when state changes to Shutdown. Since
 // it's just forwarding the action, there's no need for a removeSubConn()
 // wrapper function.
-func (bg *BalancerGroup) newSubConn(config *subBalancerWrapper, addrs []resolver.Address, opts balancer.NewSubConnOptions) (balancer.SubConn, error) {
+func (bg *BalancerGroup) newSubConn(sbw *subBalancerWrapper, addrs []resolver.Address, opts balancer.NewSubConnOptions) (balancer.SubConn, error) {
 	// NOTE: if balancer with id was already removed, this should also return
 	// error. But since we call balancer.stopBalancer when removing the balancer, this
 	// shouldn't happen.
@@ -508,12 +511,12 @@ func (bg *BalancerGroup) newSubConn(config *subBalancerWrapper, addrs []resolver
 	var sc balancer.SubConn
 	oldListener := opts.StateListener
 	opts.StateListener = func(state balancer.SubConnState) { bg.updateSubConnState(sc, state, oldListener) }
-	sc, err := bg.cc.NewSubConn(addrs, opts)
+	sc, err := sbw.ClientConn.NewSubConn(addrs, opts)
 	if err != nil {
 		bg.incomingMu.Unlock()
 		return nil, err
 	}
-	bg.scToSubBalancer[sc] = config
+	bg.scToSubBalancer[sc] = sbw
 	bg.incomingMu.Unlock()
 	return sc, nil
 }
@@ -575,9 +578,7 @@ func (bg *BalancerGroup) ExitIdle() {
 		return
 	}
 	for _, config := range bg.idToBalancerConfig {
-		if !config.exitIdle() {
-			bg.connect(config)
-		}
+		config.exitIdle()
 	}
 }
 
@@ -590,9 +591,7 @@ func (bg *BalancerGroup) ExitIdleOne(id string) {
 		return
 	}
 	if config := bg.idToBalancerConfig[id]; config != nil {
-		if !config.exitIdle() {
-			bg.connect(config)
-		}
+		config.exitIdle()
 	}
 }
 

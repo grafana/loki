@@ -27,7 +27,6 @@ type Options struct {
 
 // AzureStorageConfig for Azure storage config
 type AzureStorageConfig struct {
-	Env              string
 	Container        string
 	EndpointSuffix   string
 	Audience         string
@@ -50,6 +49,7 @@ type S3StorageConfig struct {
 	STS            bool
 	SSE            S3SSEConfig
 	ForcePathStyle bool
+	Insecure       bool
 }
 
 type S3SSEType string

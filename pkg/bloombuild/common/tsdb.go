@@ -1,4 +1,4 @@
-package common
+package common //nolint:revive
 
 import (
 	"context"
@@ -114,7 +114,7 @@ func (b *BloomTSDBStore) LoadTSDB(
 		return nil, errors.Wrap(err, "failed to read file")
 	}
 
-	reader, err := index.NewReader(index.RealByteSlice(buf))
+	reader, err := index.NewByteSliceReader(index.RealByteSlice(buf))
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to create index reader")
 	}
@@ -185,7 +185,7 @@ func NewTSDBStores(
 	}
 
 	for i, cfg := range schemaCfg.Configs {
-		if cfg.IndexType == types.TSDBType {
+		if cfg.IndexType == types.IndexTypeTSDB {
 			c, err := baseStore.NewObjectClient(cfg.ObjectType, component, storeCfg, clientMetrics)
 			if err != nil {
 				return nil, errors.Wrap(err, "failed to create object client")

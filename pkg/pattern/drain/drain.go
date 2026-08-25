@@ -26,18 +26,13 @@ import (
 	"math"
 	"strconv"
 	"strings"
+	"time"
 	"unicode"
 	"unsafe"
 
 	"github.com/hashicorp/golang-lru/v2/simplelru"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
-	"github.com/prometheus/prometheus/model/labels"
-
-	"github.com/grafana/loki/v3/pkg/loghttp/push"
-	"github.com/grafana/loki/v3/pkg/logproto"
-	"github.com/grafana/loki/v3/pkg/pattern/aggregation"
-	"github.com/grafana/loki/v3/pkg/util/constants"
 )
 
 type Config struct {
@@ -50,6 +45,8 @@ type Config struct {
 	ParamString          string
 	MaxEvictionRatio     float64
 	MaxAllowedLineLength int
+	MaxChunkAge          time.Duration
+	SampleInterval       time.Duration
 }
 
 type Limits interface {
@@ -88,14 +85,68 @@ func (c *LogClusterCache) Get(key int) *LogCluster {
 
 func createNode() *Node {
 	return &Node{
-		keyToChildNode: make(map[string]*Node),
-		clusterIDs:     make([]int, 0),
+		clusterIDs: make([]int, 0),
 	}
 }
 
+// nodeChild is a single edge of the prefix tree.
+type nodeChild struct {
+	key   string
+	child *Node
+}
+
 type Node struct {
-	keyToChildNode map[string]*Node
-	clusterIDs     []int
+	// children is scanned linearly instead of using a map because Config.MaxChildren
+	// caps the fan-out (15 by default) and the tree is overwhelmingly made of nodes
+	// with a single edge, where a map's header plus bucket array is pure overhead.
+	// The scan beats a map lookup up to about four children and stays within a few
+	// nanoseconds at the cap; only the root grows wider, holding one child per
+	// distinct token count. See BenchmarkNodeChildLookup_MapVsSlice.
+	children   []nodeChild
+	clusterIDs []int
+}
+
+// childIndex returns the position of key in n.children, or -1 when absent.
+func (n *Node) childIndex(key string) int {
+	for i := range n.children {
+		if n.children[i].key == key {
+			return i
+		}
+	}
+	return -1
+}
+
+// getChild reports the child stored under key, mirroring a map lookup.
+func (n *Node) getChild(key string) (*Node, bool) {
+	if i := n.childIndex(key); i >= 0 {
+		return n.children[i].child, true
+	}
+	return nil, false
+}
+
+// setChild inserts child under key, replacing any existing entry.
+func (n *Node) setChild(key string, child *Node) {
+	if i := n.childIndex(key); i >= 0 {
+		n.children[i].child = child
+		return
+	}
+	n.children = append(n.children, nodeChild{key: key, child: child})
+}
+
+// deleteChildAt removes the child at position i, keeping the remaining children
+// in insertion order.
+func (n *Node) deleteChildAt(i int) {
+	last := len(n.children) - 1
+	copy(n.children[i:], n.children[i+1:])
+	// Clear the vacated slot: the GC scans the whole backing array, so a stale
+	// entry would keep the removed subtree alive.
+	n.children[last] = nodeChild{}
+	n.children = n.children[:last]
+}
+
+// childCount reports how many edges leave n.
+func (n *Node) childCount() int {
+	return len(n.children)
 }
 
 func DefaultConfig() *Config {
@@ -141,10 +192,12 @@ func DefaultConfig() *Config {
 		MaxClusters:          300,
 		MaxEvictionRatio:     0.25,
 		MaxAllowedLineLength: 3000,
+		MaxChunkAge:          time.Hour,
+		SampleInterval:       10 * time.Second,
 	}
 }
 
-func New(tenantID string, config *Config, limits Limits, format string, writer aggregation.EntryWriter, metrics *Metrics) *Drain {
+func New(tenantID string, config *Config, limits Limits, format string, metrics *Metrics) *Drain {
 	if config.LogClusterDepth < 3 {
 		panic("depth argument must be at least 3")
 	}
@@ -155,7 +208,6 @@ func New(tenantID string, config *Config, limits Limits, format string, writer a
 		rootNode: createNode(),
 		metrics:  metrics,
 		format:   format,
-		writer:   writer,
 	}
 
 	limiter := newLimiter(config.MaxEvictionRatio)
@@ -203,14 +255,13 @@ type Drain struct {
 	state           interface{}
 	limiter         *limiter
 	pruning         bool
-	writer          aggregation.EntryWriter
 }
 
 func (d *Drain) Clusters() []*LogCluster {
 	return d.idToCluster.Values()
 }
 
-func (d *Drain) Train(lvl, content string, ts int64, lbls labels.Labels) *LogCluster {
+func (d *Drain) Train(content string, ts int64) *LogCluster {
 	if !d.limiter.Allow() {
 		return nil
 	}
@@ -223,10 +274,10 @@ func (d *Drain) Train(lvl, content string, ts int64, lbls labels.Labels) *LogClu
 		return nil
 	}
 
-	return d.train(lvl, d.tokens, d.state, ts, lbls)
+	return d.train(d.tokens, d.state, ts, int64(len(content)))
 }
 
-func (d *Drain) train(lvl string, tokens []string, state interface{}, ts int64, lbls labels.Labels) *LogCluster {
+func (d *Drain) train(tokens []string, state any, ts int64, contentSize int64) *LogCluster {
 	if len(tokens) < 4 {
 		if d.metrics != nil && d.metrics.LinesSkipped != nil {
 			d.metrics.LinesSkipped.WithLabelValues(TooFewTokens).Inc()
@@ -252,24 +303,17 @@ func (d *Drain) train(lvl string, tokens []string, state interface{}, ts int64, 
 		clusterID := d.clustersCounter
 		tokens, state = d.tokenizer.Clone(tokens, state)
 		matchCluster = &LogCluster{
-			Tokens:     tokens,
-			TokenState: state,
-			id:         clusterID,
-			Size:       1,
-			Stringer:   d.tokenizer.Join,
-			Chunks:     Chunks{},
+			Tokens:      tokens,
+			TokenState:  state,
+			id:          clusterID,
+			Size:        1,
+			Stringer:    d.tokenizer.Join,
+			Chunks:      Chunks{},
+			Volume:      contentSize,
+			SampleCount: 1,
 		}
 		modeTs := model.TimeFromUnixNano(ts)
-		previousSample := matchCluster.append(modeTs)
-		if previousSample != nil {
-			d.writePattern(
-				previousSample.Timestamp,
-				lbls,
-				matchCluster.String(),
-				previousSample.Value,
-				lvl,
-			)
-		}
+		matchCluster.append(modeTs, d.config.MaxChunkAge, d.config.SampleInterval)
 		d.idToCluster.Set(clusterID, matchCluster)
 		d.addSeqToPrefixTree(d.rootNode, matchCluster)
 		if d.metrics != nil {
@@ -277,50 +321,13 @@ func (d *Drain) train(lvl string, tokens []string, state interface{}, ts int64, 
 		}
 	} else {
 		matchCluster.Tokens = d.createTemplate(tokens, matchCluster.Tokens)
-		previousSample := matchCluster.append(model.TimeFromUnixNano(ts))
-		if previousSample != nil {
-			d.writePattern(
-				previousSample.Timestamp,
-				lbls,
-				matchCluster.String(),
-				previousSample.Value,
-				lvl,
-			)
-		}
+		matchCluster.append(model.TimeFromUnixNano(ts), d.config.MaxChunkAge, d.config.SampleInterval)
+		matchCluster.Volume += contentSize
+		matchCluster.SampleCount++
 		// Touch cluster to update its state in the cache.
 		d.idToCluster.Get(matchCluster.id)
 	}
 	return matchCluster
-}
-
-func (d *Drain) writePattern(
-	ts model.Time,
-	streamLbls labels.Labels,
-	pattern string,
-	count int64,
-	lvl string,
-) {
-	service := streamLbls.Get(push.LabelServiceName)
-	if service == "" {
-		service = push.ServiceUnknown
-	}
-
-	newLbls := labels.Labels{
-		labels.Label{Name: constants.PatternLabel, Value: service},
-	}
-
-	newStructuredMetadata := []logproto.LabelAdapter{
-		{Name: constants.LevelLabel, Value: lvl},
-	}
-
-	if d.writer != nil {
-		d.writer.WriteEntry(
-			ts.Time(),
-			aggregation.PatternEntry(ts.Time(), count, pattern, streamLbls),
-			newLbls,
-			newStructuredMetadata,
-		)
-	}
 }
 
 func deduplicatePlaceholders(line string, placeholder string) string {
@@ -353,10 +360,12 @@ func (d *Drain) Prune() {
 }
 
 func (d *Drain) pruneTree(node *Node) int {
-	for key, child := range node.keyToChildNode {
-		if d.pruneTree(child) == 0 {
-			delete(node.keyToChildNode, key)
+	for i := 0; i < node.childCount(); {
+		if d.pruneTree(node.children[i].child) == 0 {
+			node.deleteChildAt(i)
+			continue
 		}
+		i++
 	}
 
 	validClusterIDs := 0
@@ -366,7 +375,7 @@ func (d *Drain) pruneTree(node *Node) int {
 			validClusterIDs++
 		}
 	}
-	return len(node.keyToChildNode) + validClusterIDs
+	return node.childCount() + validClusterIDs
 }
 
 func (d *Drain) Delete(cluster *LogCluster) {
@@ -379,7 +388,7 @@ func (d *Drain) treeSearch(rootNode *Node, tokens []string, simTh float64, inclu
 	tokenCount := len(tokens)
 
 	// at first level, children are grouped by token (word) count
-	curNode, ok := rootNode.keyToChildNode[strconv.Itoa(tokenCount)]
+	curNode, ok := rootNode.getChild(strconv.Itoa(tokenCount))
 
 	// no template with same token count yet
 	if !ok {
@@ -404,10 +413,10 @@ func (d *Drain) treeSearch(rootNode *Node, tokens []string, simTh float64, inclu
 			break
 		}
 
-		keyToChildNode := curNode.keyToChildNode
-		curNode, ok = keyToChildNode[token]
+		parentNode := curNode
+		curNode, ok = parentNode.getChild(token)
 		if !ok { // no exact next token exist, try wildcard node
-			curNode, ok = keyToChildNode[d.config.ParamString]
+			curNode, ok = parentNode.getChild(d.config.ParamString)
 		}
 		if !ok { // no wildcard node exist
 			return nil
@@ -463,9 +472,10 @@ func (d *Drain) getSeqDistance(clusterTokens, tokens []string, includeParams boo
 		if len(token1) > 0 && token1[0] == 0 && token1 != token2 {
 			return 0, -1
 		}
-		if token1 == d.config.ParamString {
+		switch token1 {
+		case d.config.ParamString:
 			paramCount++
-		} else if token1 == token2 {
+		case token2:
 			simTokens++
 		}
 	}
@@ -480,10 +490,10 @@ func (d *Drain) addSeqToPrefixTree(rootNode *Node, cluster *LogCluster) {
 	tokenCount := len(cluster.Tokens)
 	tokenCountStr := strconv.Itoa(tokenCount)
 
-	firstLayerNode, ok := rootNode.keyToChildNode[tokenCountStr]
+	firstLayerNode, ok := rootNode.getChild(tokenCountStr)
 	if !ok {
 		firstLayerNode = createNode()
-		rootNode.keyToChildNode[tokenCountStr] = firstLayerNode
+		rootNode.setChild(tokenCountStr, firstLayerNode)
 	}
 	curNode := firstLayerNode
 
@@ -510,43 +520,47 @@ func (d *Drain) addSeqToPrefixTree(rootNode *Node, cluster *LogCluster) {
 		}
 
 		// if token not matched in this layer of existing tree.
-		if _, ok = curNode.keyToChildNode[token]; !ok {
+		tokenIdx := curNode.childIndex(token)
+		if tokenIdx < 0 {
+			// paramNode is nil when the wildcard child is absent, which mirrors the
+			// zero value a missing map lookup used to yield.
+			paramNode, hasParam := curNode.getChild(d.config.ParamString)
 			if !d.hasNumbers(token) {
 				// Numbers in token: Prioritize the param string path
-				if _, ok = curNode.keyToChildNode[d.config.ParamString]; ok {
-					if len(curNode.keyToChildNode) < d.config.MaxChildren {
+				if hasParam {
+					if curNode.childCount() < d.config.MaxChildren {
 						newNode := createNode()
-						curNode.keyToChildNode[token] = newNode
+						curNode.setChild(token, newNode)
 						curNode = newNode
 					} else {
-						curNode = curNode.keyToChildNode[d.config.ParamString]
+						curNode = paramNode
 					}
 				} else {
-					if len(curNode.keyToChildNode)+1 < d.config.MaxChildren {
+					if curNode.childCount()+1 < d.config.MaxChildren {
 						newNode := createNode()
-						curNode.keyToChildNode[token] = newNode
+						curNode.setChild(token, newNode)
 						curNode = newNode
-					} else if len(curNode.keyToChildNode)+1 == d.config.MaxChildren {
+					} else if curNode.childCount()+1 == d.config.MaxChildren {
 						newNode := createNode()
-						curNode.keyToChildNode[d.config.ParamString] = newNode
+						curNode.setChild(d.config.ParamString, newNode)
 						curNode = newNode
 					} else {
-						curNode = curNode.keyToChildNode[d.config.ParamString]
+						curNode = paramNode
 					}
 				}
 			} else {
 				// No numbers, use the key as-is to traverse
-				if _, ok = curNode.keyToChildNode[d.config.ParamString]; !ok {
+				if !hasParam {
 					newNode := createNode()
-					curNode.keyToChildNode[d.config.ParamString] = newNode
+					curNode.setChild(d.config.ParamString, newNode)
 					curNode = newNode
 				} else {
-					curNode = curNode.keyToChildNode[d.config.ParamString]
+					curNode = paramNode
 				}
 			}
 		} else {
 			// if the token is matched
-			curNode = curNode.keyToChildNode[token]
+			curNode = curNode.children[tokenIdx].child
 		}
 
 		currentDepth++
@@ -575,9 +589,9 @@ func (d *Drain) createTemplate(tokens, matchClusterTokens []string) []string {
 }
 
 func unsafeString(s []byte) string {
-	return unsafe.String(unsafe.SliceData(s), len(s)) // #nosec G103 -- we know the string is not mutated
+	return unsafe.String(unsafe.SliceData(s), len(s)) // #nosec G103 -- we know the string is not mutated -- nosemgrep: use-of-unsafe-block
 }
 
 func unsafeBytes(s string) []byte {
-	return unsafe.Slice(unsafe.StringData(s), len(s)) // #nosec G103 -- we know the string is not mutated
+	return unsafe.Slice(unsafe.StringData(s), len(s)) // #nosec G103 -- we know the string is not mutated -- nosemgrep: use-of-unsafe-block
 }

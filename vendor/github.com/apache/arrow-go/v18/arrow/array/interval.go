@@ -88,8 +88,8 @@ func (a *MonthInterval) setData(data *Data) {
 	vals := data.buffers[1]
 	if vals != nil {
 		a.values = arrow.MonthIntervalTraits.CastFromBytes(vals.Bytes())
-		beg := a.array.data.offset
-		end := beg + a.array.data.length
+		beg := a.data.offset
+		end := beg + a.data.length
 		a.values = a.values[beg:end]
 	}
 }
@@ -220,7 +220,7 @@ func (b *MonthIntervalBuilder) AppendValues(v []arrow.MonthInterval, valid []boo
 
 	b.Reserve(len(v))
 	arrow.MonthIntervalTraits.Copy(b.rawData[b.length:], v)
-	b.builder.unsafeAppendBoolsToBitmap(valid, len(v))
+	b.unsafeAppendBoolsToBitmap(valid, len(v))
 }
 
 func (b *MonthIntervalBuilder) init(capacity int) {
@@ -235,7 +235,7 @@ func (b *MonthIntervalBuilder) init(capacity int) {
 // Reserve ensures there is enough space for appending n elements
 // by checking the capacity and calling Resize if necessary.
 func (b *MonthIntervalBuilder) Reserve(n int) {
-	b.builder.reserve(n, b.Resize)
+	b.reserve(n, b.Resize)
 }
 
 // Resize adjusts the space allocated by b to n elements. If n is greater than b.Cap(),
@@ -249,7 +249,7 @@ func (b *MonthIntervalBuilder) Resize(n int) {
 	if b.capacity == 0 {
 		b.init(n)
 	} else {
-		b.builder.resize(nBuilder, b.init)
+		b.resize(nBuilder, b.init)
 		b.data.Resize(arrow.MonthIntervalTraits.BytesRequired(n))
 		b.rawData = arrow.MonthIntervalTraits.CastFromBytes(b.data.Bytes())
 	}
@@ -330,6 +330,7 @@ func (b *MonthIntervalBuilder) Unmarshal(dec *json.Decoder) error {
 // value that will be added to the builder.
 func (b *MonthIntervalBuilder) UnmarshalJSON(data []byte) error {
 	dec := json.NewDecoder(bytes.NewReader(data))
+	dec.UseNumber()
 	t, err := dec.Token()
 	if err != nil {
 		return err
@@ -392,8 +393,8 @@ func (a *DayTimeInterval) setData(data *Data) {
 	vals := data.buffers[1]
 	if vals != nil {
 		a.values = arrow.DayTimeIntervalTraits.CastFromBytes(vals.Bytes())
-		beg := a.array.data.offset
-		end := beg + a.array.data.length
+		beg := a.data.offset
+		end := beg + a.data.length
 		a.values = a.values[beg:end]
 	}
 }
@@ -522,7 +523,7 @@ func (b *DayTimeIntervalBuilder) AppendValues(v []arrow.DayTimeInterval, valid [
 
 	b.Reserve(len(v))
 	arrow.DayTimeIntervalTraits.Copy(b.rawData[b.length:], v)
-	b.builder.unsafeAppendBoolsToBitmap(valid, len(v))
+	b.unsafeAppendBoolsToBitmap(valid, len(v))
 }
 
 func (b *DayTimeIntervalBuilder) init(capacity int) {
@@ -537,7 +538,7 @@ func (b *DayTimeIntervalBuilder) init(capacity int) {
 // Reserve ensures there is enough space for appending n elements
 // by checking the capacity and calling Resize if necessary.
 func (b *DayTimeIntervalBuilder) Reserve(n int) {
-	b.builder.reserve(n, b.Resize)
+	b.reserve(n, b.Resize)
 }
 
 // Resize adjusts the space allocated by b to n elements. If n is greater than b.Cap(),
@@ -551,7 +552,7 @@ func (b *DayTimeIntervalBuilder) Resize(n int) {
 	if b.capacity == 0 {
 		b.init(n)
 	} else {
-		b.builder.resize(nBuilder, b.init)
+		b.resize(nBuilder, b.init)
 		b.data.Resize(arrow.DayTimeIntervalTraits.BytesRequired(n))
 		b.rawData = arrow.DayTimeIntervalTraits.CastFromBytes(b.data.Bytes())
 	}
@@ -631,6 +632,7 @@ func (b *DayTimeIntervalBuilder) Unmarshal(dec *json.Decoder) error {
 // with the values expected to be objects of the form {"days": #, "milliseconds": #}
 func (b *DayTimeIntervalBuilder) UnmarshalJSON(data []byte) error {
 	dec := json.NewDecoder(bytes.NewReader(data))
+	dec.UseNumber()
 	t, err := dec.Token()
 	if err != nil {
 		return err
@@ -695,8 +697,8 @@ func (a *MonthDayNanoInterval) setData(data *Data) {
 	vals := data.buffers[1]
 	if vals != nil {
 		a.values = arrow.MonthDayNanoIntervalTraits.CastFromBytes(vals.Bytes())
-		beg := a.array.data.offset
-		end := beg + a.array.data.length
+		beg := a.data.offset
+		end := beg + a.data.length
 		a.values = a.values[beg:end]
 	}
 }
@@ -827,7 +829,7 @@ func (b *MonthDayNanoIntervalBuilder) AppendValues(v []arrow.MonthDayNanoInterva
 
 	b.Reserve(len(v))
 	arrow.MonthDayNanoIntervalTraits.Copy(b.rawData[b.length:], v)
-	b.builder.unsafeAppendBoolsToBitmap(valid, len(v))
+	b.unsafeAppendBoolsToBitmap(valid, len(v))
 }
 
 func (b *MonthDayNanoIntervalBuilder) init(capacity int) {
@@ -842,7 +844,7 @@ func (b *MonthDayNanoIntervalBuilder) init(capacity int) {
 // Reserve ensures there is enough space for appending n elements
 // by checking the capacity and calling Resize if necessary.
 func (b *MonthDayNanoIntervalBuilder) Reserve(n int) {
-	b.builder.reserve(n, b.Resize)
+	b.reserve(n, b.Resize)
 }
 
 // Resize adjusts the space allocated by b to n elements. If n is greater than b.Cap(),
@@ -856,7 +858,7 @@ func (b *MonthDayNanoIntervalBuilder) Resize(n int) {
 	if b.capacity == 0 {
 		b.init(n)
 	} else {
-		b.builder.resize(nBuilder, b.init)
+		b.resize(nBuilder, b.init)
 		b.data.Resize(arrow.MonthDayNanoIntervalTraits.BytesRequired(n))
 		b.rawData = arrow.MonthDayNanoIntervalTraits.CastFromBytes(b.data.Bytes())
 	}
@@ -936,6 +938,7 @@ func (b *MonthDayNanoIntervalBuilder) Unmarshal(dec *json.Decoder) error {
 // {"months": #, "days": #, "nanoseconds": #}
 func (b *MonthDayNanoIntervalBuilder) UnmarshalJSON(data []byte) error {
 	dec := json.NewDecoder(bytes.NewReader(data))
+	dec.UseNumber()
 	t, err := dec.Token()
 	if err != nil {
 		return err

@@ -11,9 +11,9 @@ import (
 )
 
 var (
-	deltaHeapProfiler  = godeltaprof.NewHeapProfiler()
-	deltaBlockProfiler = godeltaprof.NewBlockProfiler()
-	deltaMutexProfiler = godeltaprof.NewMutexProfiler()
+	deltaHeapProfiler  = godeltaprof.NewHeapProfiler()  //nolint:gochecknoglobals
+	deltaBlockProfiler = godeltaprof.NewBlockProfiler() //nolint:gochecknoglobals
+	deltaMutexProfiler = godeltaprof.NewMutexProfiler() //nolint:gochecknoglobals
 )
 
 type deltaProfiler interface {

@@ -14,6 +14,7 @@ import (
 	smithybearer "github.com/aws/smithy-go/auth/bearer"
 	"github.com/aws/smithy-go/logging"
 	"github.com/aws/smithy-go/middleware"
+	smithyhttp "github.com/aws/smithy-go/transport/http"
 )
 
 // LoadOptionsFunc is a type alias for LoadOptions functional option
@@ -213,6 +214,9 @@ type LoadOptions struct {
 	// The inclusive min bytes of a request body that could be compressed
 	RequestMinCompressSizeBytes *int64
 
+	// Specifies whether SDK clock skew correction is disabled
+	DisableClockSkewCorrection *bool
+
 	// Whether S3 Express auth is disabled.
 	S3DisableExpressAuth *bool
 
@@ -228,6 +232,21 @@ type LoadOptions struct {
 	// Service endpoint override. This value is not necessarily final and is
 	// passed to the service's EndpointResolverV2 for further delegation.
 	BaseEndpoint string
+
+	// Registry of operation interceptors.
+	Interceptors smithyhttp.InterceptorRegistry
+
+	// Priority list of preferred auth scheme names (e.g. sigv4a).
+	AuthSchemePreference []string
+
+	// ServiceOptions provides service specific configuration options that will be applied
+	// when constructing clients for specific services. Each callback function receives the service ID
+	// and the service's Options struct, allowing for dynamic configuration based on the service.
+	ServiceOptions []func(string, any)
+
+	// Controls whether the SDK restricts file permissions on credential
+	// cache files it creates.
+	RestrictFilePermissions aws.RestrictFilePermissions
 }
 
 func (o LoadOptions) getDefaultsMode(ctx context.Context) (aws.DefaultsMode, bool, error) {
@@ -283,6 +302,14 @@ func (o LoadOptions) getDisableRequestCompression(ctx context.Context) (bool, bo
 	return *o.DisableRequestCompression, true, nil
 }
 
+// getDisableClockSkewCorrection returns DisableClockSkewCorrection from config's LoadOptions
+func (o LoadOptions) getDisableClockSkewCorrection(ctx context.Context) (bool, bool, error) {
+	if o.DisableClockSkewCorrection == nil {
+		return false, false, nil
+	}
+	return *o.DisableClockSkewCorrection, true, nil
+}
+
 // getRequestMinCompressSizeBytes returns RequestMinCompressSizeBytes from config's LoadOptions
 func (o LoadOptions) getRequestMinCompressSizeBytes(ctx context.Context) (int64, bool, error) {
 	if o.RequestMinCompressSizeBytes == nil {
@@ -305,6 +332,10 @@ func (o LoadOptions) getResponseChecksumValidation(ctx context.Context) (aws.Res
 
 func (o LoadOptions) getBaseEndpoint(context.Context) (string, bool, error) {
 	return o.BaseEndpoint, o.BaseEndpoint != "", nil
+}
+
+func (o LoadOptions) getServiceOptions(context.Context) ([]func(string, any), bool, error) {
+	return o.ServiceOptions, len(o.ServiceOptions) > 0, nil
 }
 
 // GetServiceBaseEndpoint satisfies (internal/configsources).ServiceBaseEndpointProvider.
@@ -345,6 +376,18 @@ func WithDisableRequestCompression(DisableRequestCompression *bool) LoadOptionsF
 			return nil
 		}
 		o.DisableRequestCompression = DisableRequestCompression
+		return nil
+	}
+}
+
+// WithDisableClockSkewCorrection is a helper function to construct functional
+// options that sets DisableClockSkewCorrection on config's LoadOptions.
+func WithDisableClockSkewCorrection(DisableClockSkewCorrection *bool) LoadOptionsFunc {
+	return func(o *LoadOptions) error {
+		if DisableClockSkewCorrection == nil {
+			return nil
+		}
+		o.DisableClockSkewCorrection = DisableClockSkewCorrection
 		return nil
 	}
 }
@@ -1204,6 +1247,148 @@ func WithS3DisableExpressAuth(v bool) LoadOptionsFunc {
 func WithBaseEndpoint(v string) LoadOptionsFunc {
 	return func(o *LoadOptions) error {
 		o.BaseEndpoint = v
+		return nil
+	}
+}
+
+// WithServiceOptions is a helper function to construct functional options
+// that sets ServiceOptions on config's LoadOptions.
+func WithServiceOptions(callbacks ...func(string, any)) LoadOptionsFunc {
+	return func(o *LoadOptions) error {
+		o.ServiceOptions = append(o.ServiceOptions, callbacks...)
+		return nil
+	}
+}
+
+// WithBeforeExecution adds the BeforeExecutionInterceptor to config.
+func WithBeforeExecution(i smithyhttp.BeforeExecutionInterceptor) LoadOptionsFunc {
+	return func(o *LoadOptions) error {
+		o.Interceptors.BeforeExecution = append(o.Interceptors.BeforeExecution, i)
+		return nil
+	}
+}
+
+// WithBeforeSerialization adds the BeforeSerializationInterceptor to config.
+func WithBeforeSerialization(i smithyhttp.BeforeSerializationInterceptor) LoadOptionsFunc {
+	return func(o *LoadOptions) error {
+		o.Interceptors.BeforeSerialization = append(o.Interceptors.BeforeSerialization, i)
+		return nil
+	}
+}
+
+// WithAfterSerialization adds the AfterSerializationInterceptor to config.
+func WithAfterSerialization(i smithyhttp.AfterSerializationInterceptor) LoadOptionsFunc {
+	return func(o *LoadOptions) error {
+		o.Interceptors.AfterSerialization = append(o.Interceptors.AfterSerialization, i)
+		return nil
+	}
+}
+
+// WithBeforeRetryLoop adds the BeforeRetryLoopInterceptor to config.
+func WithBeforeRetryLoop(i smithyhttp.BeforeRetryLoopInterceptor) LoadOptionsFunc {
+	return func(o *LoadOptions) error {
+		o.Interceptors.BeforeRetryLoop = append(o.Interceptors.BeforeRetryLoop, i)
+		return nil
+	}
+}
+
+// WithBeforeAttempt adds the BeforeAttemptInterceptor to config.
+func WithBeforeAttempt(i smithyhttp.BeforeAttemptInterceptor) LoadOptionsFunc {
+	return func(o *LoadOptions) error {
+		o.Interceptors.BeforeAttempt = append(o.Interceptors.BeforeAttempt, i)
+		return nil
+	}
+}
+
+// WithBeforeSigning adds the BeforeSigningInterceptor to config.
+func WithBeforeSigning(i smithyhttp.BeforeSigningInterceptor) LoadOptionsFunc {
+	return func(o *LoadOptions) error {
+		o.Interceptors.BeforeSigning = append(o.Interceptors.BeforeSigning, i)
+		return nil
+	}
+}
+
+// WithAfterSigning adds the AfterSigningInterceptor to config.
+func WithAfterSigning(i smithyhttp.AfterSigningInterceptor) LoadOptionsFunc {
+	return func(o *LoadOptions) error {
+		o.Interceptors.AfterSigning = append(o.Interceptors.AfterSigning, i)
+		return nil
+	}
+}
+
+// WithBeforeTransmit adds the BeforeTransmitInterceptor to config.
+func WithBeforeTransmit(i smithyhttp.BeforeTransmitInterceptor) LoadOptionsFunc {
+	return func(o *LoadOptions) error {
+		o.Interceptors.BeforeTransmit = append(o.Interceptors.BeforeTransmit, i)
+		return nil
+	}
+}
+
+// WithAfterTransmit adds the AfterTransmitInterceptor to config.
+func WithAfterTransmit(i smithyhttp.AfterTransmitInterceptor) LoadOptionsFunc {
+	return func(o *LoadOptions) error {
+		o.Interceptors.AfterTransmit = append(o.Interceptors.AfterTransmit, i)
+		return nil
+	}
+}
+
+// WithBeforeDeserialization adds the BeforeDeserializationInterceptor to config.
+func WithBeforeDeserialization(i smithyhttp.BeforeDeserializationInterceptor) LoadOptionsFunc {
+	return func(o *LoadOptions) error {
+		o.Interceptors.BeforeDeserialization = append(o.Interceptors.BeforeDeserialization, i)
+		return nil
+	}
+}
+
+// WithAfterDeserialization adds the AfterDeserializationInterceptor to config.
+func WithAfterDeserialization(i smithyhttp.AfterDeserializationInterceptor) LoadOptionsFunc {
+	return func(o *LoadOptions) error {
+		o.Interceptors.AfterDeserialization = append(o.Interceptors.AfterDeserialization, i)
+		return nil
+	}
+}
+
+// WithAfterAttempt adds the AfterAttemptInterceptor to config.
+func WithAfterAttempt(i smithyhttp.AfterAttemptInterceptor) LoadOptionsFunc {
+	return func(o *LoadOptions) error {
+		o.Interceptors.AfterAttempt = append(o.Interceptors.AfterAttempt, i)
+		return nil
+	}
+}
+
+// WithAfterExecution adds the AfterExecutionInterceptor to config.
+func WithAfterExecution(i smithyhttp.AfterExecutionInterceptor) LoadOptionsFunc {
+	return func(o *LoadOptions) error {
+		o.Interceptors.AfterExecution = append(o.Interceptors.AfterExecution, i)
+		return nil
+	}
+}
+
+// WithAuthSchemePreference sets the priority order of auth schemes on config.
+//
+// Schemes are expressed as names e.g. sigv4a or sigv4.
+func WithAuthSchemePreference(schemeIDs ...string) LoadOptionsFunc {
+	return func(o *LoadOptions) error {
+		o.AuthSchemePreference = schemeIDs
+		return nil
+	}
+}
+
+func (o LoadOptions) getAuthSchemePreference() ([]string, bool) {
+	if len(o.AuthSchemePreference) > 0 {
+		return o.AuthSchemePreference, true
+	}
+	return nil, false
+}
+
+func (o LoadOptions) getRestrictFilePermissions(context.Context) (aws.RestrictFilePermissions, bool, error) {
+	return o.RestrictFilePermissions, len(o.RestrictFilePermissions) > 0, nil
+}
+
+// WithRestrictFilePermissions sets the RestrictFilePermissions mode on config.
+func WithRestrictFilePermissions(m aws.RestrictFilePermissions) LoadOptionsFunc {
+	return func(o *LoadOptions) error {
+		o.RestrictFilePermissions = m
 		return nil
 	}
 }

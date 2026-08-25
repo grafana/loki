@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -12,6 +13,7 @@ import (
 	"time"
 
 	"github.com/twmb/franz-go/pkg/kerr"
+	"github.com/twmb/franz-go/pkg/kgo/internal/xsync"
 	"github.com/twmb/franz-go/pkg/kmsg"
 )
 
@@ -33,9 +35,9 @@ const atCommitted = -999
 // MarshalJSON implements json.Marshaler.
 func (o Offset) MarshalJSON() ([]byte, error) {
 	if o.relative == 0 {
-		return []byte(fmt.Sprintf(`{"At":%d,"Epoch":%d,"CurrentEpoch":%d}`, o.at, o.epoch, o.currentEpoch)), nil
+		return fmt.Appendf(nil, `{"At":%d,"Epoch":%d,"CurrentEpoch":%d}`, o.at, o.epoch, o.currentEpoch), nil
 	}
-	return []byte(fmt.Sprintf(`{"At":%d,"Relative":%d,"Epoch":%d,"CurrentEpoch":%d}`, o.at, o.relative, o.epoch, o.currentEpoch)), nil
+	return fmt.Appendf(nil, `{"At":%d,"Relative":%d,"Epoch":%d,"CurrentEpoch":%d}`, o.at, o.relative, o.epoch, o.currentEpoch), nil
 }
 
 // String returns the offset as a string; the purpose of this is for logs.
@@ -147,9 +149,9 @@ func (o Offset) Relative(n int64) Offset {
 	return o
 }
 
-// WithEpoch copies 'o' and returns an offset with the given epoch.  to use the
-// given epoch. This epoch is used for truncation detection; the default of -1
-// implies no truncation detection.
+// WithEpoch copies 'o' and returns an offset with the given epoch. This epoch
+// is used for truncation detection; the default of -1 implies no truncation
+// detection.
 func (o Offset) WithEpoch(e int32) Offset {
 	o.afterMilli = false
 	if e < 0 {
@@ -178,20 +180,21 @@ func (o Offset) At(at int64) Offset {
 }
 
 type consumer struct {
-	bufferedRecords atomicI64
-	bufferedBytes   atomicI64
+	bufferedRecords atomic.Int64
+	bufferedBytes   atomic.Int64
 
 	cl *Client
 
-	pausedMu sync.Mutex   // grabbed when updating paused
+	pausedMu xsync.Mutex  // grabbed when updating paused
 	paused   atomic.Value // loaded when issuing fetches
 
 	// mu is grabbed when
 	//  - polling fetches, for quickly draining sources / updating group uncommitted
 	//  - calling assignPartitions (group / direct updates)
-	mu sync.Mutex
+	mu xsync.Mutex
 	d  *directConsumer // if non-nil, we are consuming partitions directly
 	g  *groupConsumer  // if non-nil, we are consuming as a group member
+	s  *shareConsumer  // if non-nil, we are consuming as a share group member
 
 	// On metadata update, if the consumer is set (direct or group), the
 	// client begins a goroutine that updates the consumer kind's
@@ -208,22 +211,28 @@ type consumer struct {
 	// loop as little as necessary.
 	outstandingMetadataUpdates workLoop
 
+	// pollActive / pollWake implement strict-pull gating when
+	// MaxConcurrentFetches == 0. See manageFetchConcurrency for the full
+	// description of the protocol; this pair is the input side.
+	pollActive atomic.Bool
+	pollWake   chan struct{} // buffered(1); nil when maxConcurrentFetches != 0
+
 	// sessionChangeMu is grabbed when a session is stopped and held through
 	// when a session can be started again. The sole purpose is to block an
 	// assignment change running concurrently with a metadata update.
-	sessionChangeMu sync.Mutex
+	sessionChangeMu xsync.Mutex
 
 	session atomic.Value // *consumerSession
 	kill    atomic.Bool
 
 	usingCursors usedCursors
 
-	sourcesReadyMu          sync.Mutex
+	sourcesReadyMu          xsync.Mutex
 	sourcesReadyCond        *sync.Cond
 	sourcesReadyForDraining []*source
 	fakeReadyForDraining    []Fetch
 
-	pollWaitMu    sync.Mutex
+	pollWaitMu    xsync.Mutex
 	pollWaitC     *sync.Cond
 	pollWaitState uint64 // 0 == nothing, low 32 bits: # pollers, high 32: # waiting rebalances
 }
@@ -238,8 +247,10 @@ func (c *consumer) waitAndAddPoller() {
 	}
 	c.pollWaitMu.Lock()
 	defer c.pollWaitMu.Unlock()
-	for c.pollWaitState>>32 != 0 {
-		c.pollWaitC.Wait()
+	if c.pollWaitState&math.MaxUint32 == 0 {
+		for c.pollWaitState>>32 != 0 {
+			c.pollWaitC.Wait()
+		}
 	}
 	// Rebalance always takes priority, but if there are no active
 	// rebalances, our poll blocks rebalances.
@@ -269,13 +280,32 @@ func (c *consumer) allowRebalance() {
 }
 
 func (c *consumer) waitAndAddRebalance() {
+	c.waitAndAddRebalanceMaybeSignal(true)
+}
+
+// waitAndAddRebalanceSilent is waitAndAddRebalance without the
+// OnPartitionsCallbackBlocked signal. Used by LeaveGroup: the gate guards
+// assignPartitions invalidation rather than a user callback, so signaling
+// "your callback is blocked" would be misleading.
+func (c *consumer) waitAndAddRebalanceSilent() {
+	c.waitAndAddRebalanceMaybeSignal(false)
+}
+
+func (c *consumer) waitAndAddRebalanceMaybeSignal(signal bool) {
 	if !c.cl.cfg.blockRebalanceOnPoll {
 		return
 	}
+	var blockedCalled bool
 	c.pollWaitMu.Lock()
 	defer c.pollWaitMu.Unlock()
 	c.pollWaitState += 1 << 32
 	for c.pollWaitState&math.MaxUint32 != 0 {
+		if signal && !blockedCalled {
+			if c.cl.cfg.onBlocked != nil {
+				go c.cl.cfg.onBlocked(c.cl.ctx, c.cl)
+			}
+			blockedCalled = true
+		}
 		c.pollWaitC.Wait()
 	}
 }
@@ -324,12 +354,17 @@ func (c *consumer) init(cl *Client) {
 	c.paused.Store(make(pausedTopics))
 	c.sourcesReadyCond = sync.NewCond(&c.sourcesReadyMu)
 	c.pollWaitC = sync.NewCond(&c.pollWaitMu)
+	if cl.cfg.maxConcurrentFetches == 0 {
+		c.pollWake = make(chan struct{}, 1)
+	}
 
 	if len(cl.cfg.topics) > 0 || len(cl.cfg.partitions) > 0 {
 		defer cl.triggerUpdateMetadataNow("querying metadata for consumer initialization") // we definitely want to trigger a metadata update
 	}
 
-	if len(cl.cfg.group) == 0 {
+	if len(cl.cfg.shareGroup) > 0 {
+		c.initShare()
+	} else if len(cl.cfg.group) == 0 {
 		c.initDirect()
 	} else {
 		c.initGroup()
@@ -337,7 +372,7 @@ func (c *consumer) init(cl *Client) {
 }
 
 func (c *consumer) consuming() bool {
-	return c.g != nil || c.d != nil
+	return c.g != nil || c.d != nil || c.s != nil
 }
 
 // addSourceReadyForDraining tracks that a source needs its buffered fetch
@@ -381,7 +416,8 @@ func NewErrFetch(err error) Fetches {
 
 // PollFetches waits for fetches to be available, returning as soon as any
 // broker returns a fetch. If the context is nil, this function will return
-// immediately with any currently buffered records.
+// immediately with any currently buffered records. It is functionally
+// equivalent to calling PollRecords(ctx, 0).
 //
 // If the client is closed, a fake fetch will be injected that has no topic, a
 // partition of 0, and a partition error of ErrClientClosed. If the context is
@@ -401,9 +437,9 @@ func (cl *Client) PollFetches(ctx context.Context) Fetches {
 	return cl.PollRecords(ctx, 0)
 }
 
-// PollRecords waits for records to be available, returning as soon as any
-// broker returns records in a fetch. If the context is nil, this function will
-// return immediately with any currently buffered records.
+// PollRecords waits for fetches to be available, returning as soon as any
+// broker returns a fetch. If the context is nil, this function will return
+// immediately with any currently buffered fetches.
 //
 // If the client is closed, a fake fetch will be injected that has no topic, a
 // partition of -1, and a partition error of ErrClientClosed. If the context is
@@ -423,18 +459,50 @@ func (cl *Client) PollFetches(ctx context.Context) Fetches {
 // this by using BlockRebalanceOnPoll, but this comes with different tradeoffs.
 // See the documentation on BlockRebalanceOnPoll for more information.
 func (cl *Client) PollRecords(ctx context.Context, maxPollRecords int) Fetches {
+	cl.cfg.hooks.each(func(h Hook) {
+		if hh, ok := h.(HookPollStart); ok {
+			hh.OnPollStart(ctx)
+		}
+	})
+
 	if maxPollRecords == 0 {
 		maxPollRecords = -1
 	}
 	c := &cl.consumer
 
+	if c.pollWake != nil {
+		// Store before sending on pollWake: a successful send
+		// synchronizes-before the receive, so the reader's subsequent
+		// pollActive.Load observes this Store. If the send hits the
+		// default (buffer already full), ordering is irrelevant --
+		// manageFetchConcurrency reloads pollActive on its next event.
+		c.pollActive.Store(true)
+		select {
+		case c.pollWake <- struct{}{}:
+		default:
+		}
+		defer func() {
+			c.pollActive.Store(false)
+			select {
+			case c.pollWake <- struct{}{}:
+			default:
+			}
+		}()
+	}
+
+	if c.s != nil {
+		return c.s.poll(ctx, maxPollRecords)
+	}
+
 	c.g.undirtyUncommitted()
 
 	// If the user gave us a canceled context, we bail immediately after
-	// un-dirty-ing marked records.
+	// un-dirty-ing marked records. We still need to add a poller to block
+	// rebalances if configured, since we are returning a fetch.
 	if ctx != nil {
 		select {
 		case <-ctx.Done():
+			c.waitAndAddPoller()
 			return NewErrFetch(ctx.Err())
 		default:
 		}
@@ -540,9 +608,11 @@ func (cl *Client) PollRecords(ctx context.Context, maxPollRecords int) Fetches {
 	select {
 	case <-cl.ctx.Done():
 		exit()
+		c.waitAndAddPoller()
 		return NewErrFetch(ErrClientClosed)
 	case <-ctx.Done():
 		exit()
+		c.waitAndAddPoller()
 		return NewErrFetch(ctx.Err())
 	case <-done:
 	}
@@ -622,8 +692,8 @@ func (cl *Client) PauseFetchPartitions(topicPartitions map[string][]int32) map[s
 // paused. Resuming topics that are not currently paused is a per-topic no-op.
 // See the documentation on PauseFetchTopics for more details.
 func (cl *Client) ResumeFetchTopics(topics ...string) {
-	defer cl.allSinksAndSources(func(sns sinkAndSource) {
-		sns.source.maybeConsume()
+	defer cl.allSources(func(s *source) {
+		s.maybeConsume()
 	})
 
 	c := &cl.consumer
@@ -640,8 +710,8 @@ func (cl *Client) ResumeFetchTopics(topics ...string) {
 // per-topic no-op. See the documentation on PauseFetchPartitions for more
 // details.
 func (cl *Client) ResumeFetchPartitions(topicPartitions map[string][]int32) {
-	defer cl.allSinksAndSources(func(sns sinkAndSource) {
-		sns.source.maybeConsume()
+	defer cl.allSources(func(s *source) {
+		s.maybeConsume()
 	})
 
 	c := &cl.consumer
@@ -665,7 +735,7 @@ func (cl *Client) ResumeFetchPartitions(topicPartitions map[string][]int32) {
 // If using transactions, it is advised to just use a GroupTransactSession and
 // avoid this function entirely.
 //
-// If using group consuming, It is strongly recommended to use this function
+// If using group consuming, it is strongly recommended to use this function
 // outside of the context of a PollFetches loop and only when you know the
 // group is not revoked (i.e., block any concurrent revoke while issuing this
 // call) and to not use this concurrent with committing. Any other usage is
@@ -690,10 +760,10 @@ func (cl *Client) setOffsets(setOffsets map[string]map[int32]EpochOffset, log bo
 	var tps *topicsPartitions
 	switch {
 	case c.d != nil:
-		assigns = c.d.getSetAssigns(setOffsets)
+		assigns = c.d.applySetOffsets(setOffsets)
 		tps = c.d.tps
 	case c.g != nil:
-		assigns = c.g.getSetAssigns(setOffsets)
+		assigns = c.g.applySetOffsets(setOffsets)
 		tps = c.g.tps
 	}
 	if len(assigns) == 0 {
@@ -710,7 +780,15 @@ func (cl *Client) setOffsets(setOffsets map[string]map[int32]EpochOffset, log bo
 // that metadata does not load the tps we are changing. Basically, we ensure
 // everything w.r.t. consuming is at a stand still.
 func (c *consumer) purgeTopics(topics []string) {
-	if c.g == nil && c.d == nil {
+	if c.g == nil && c.d == nil && c.s == nil {
+		return
+	}
+
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	if c.s != nil {
+		c.s.purgeTopics(topics) // save a useless map alloc by doing this early, not in the block below
 		return
 	}
 
@@ -719,16 +797,19 @@ func (c *consumer) purgeTopics(topics []string) {
 		purgeAssignments[topic] = nil
 	}
 
-	c.waitAndAddRebalance()
-	defer c.unaddRebalance()
-
-	c.mu.Lock()
-	defer c.mu.Unlock()
-
-	// The difference for groups is we need to lock the group and there is
-	// a slight type difference in g.using vs d.using.
+	// assignPartitions removes the topics from 'tps', which removes them
+	// from FUTURE metadata requests meaning they will not be repopulated
+	// in the future. Any loaded tps is fine; metadata updates the topic
+	// pointers underneath -- metadata does not re-store the tps itself
+	// with any new topics that we just purged (except in the case of regex,
+	// which is impossible to permanently purge anyway).
+	//
+	// We are guarded from adding back to 'using' via the consumer mu;
+	// this cannot run concurrent with findNewAssignments. Thus, we first
+	// purge tps, then clear using, and once the lock releases, findNewAssignments
+	// will use the now-purged tps and will not add back to using.
 	if c.g != nil {
-		c.g.mu.Lock()
+		c.g.mu.Lock() // required when updating using
 		defer c.g.mu.Unlock()
 		c.assignPartitions(purgeAssignments, assignPurgeMatching, c.g.tps, fmt.Sprintf("purge of %v requested", topics))
 		for _, topic := range topics {
@@ -742,6 +823,7 @@ func (c *consumer) purgeTopics(topics []string) {
 			delete(c.d.using, topic)
 			delete(c.d.reSeen, topic)
 			delete(c.d.m, topic)
+			delete(c.d.ps, topic)
 		}
 	}
 }
@@ -767,6 +849,8 @@ func (cl *Client) AddConsumeTopics(topics ...string) {
 
 	if c.g != nil {
 		c.g.tps.storeTopics(topics)
+	} else if c.s != nil {
+		c.s.tps.storeTopics(topics)
 	} else {
 		c.d.tps.storeTopics(topics)
 		for _, topic := range topics {
@@ -776,7 +860,7 @@ func (cl *Client) AddConsumeTopics(topics ...string) {
 	cl.triggerUpdateMetadataNow("from AddConsumeTopics")
 }
 
-// GetConsumeTopics retrives a list of current topics being consumed.
+// GetConsumeTopics retrieves a list of current topics being consumed.
 func (cl *Client) GetConsumeTopics() []string {
 	c := &cl.consumer
 	if c.g == nil && c.d == nil {
@@ -786,6 +870,8 @@ func (cl *Client) GetConsumeTopics() []string {
 	var ok bool
 	if c.g != nil {
 		m, ok = c.g.tps.v.Load().(topicsPartitionsData)
+	} else if c.s != nil {
+		m, ok = c.s.tps.v.Load().(topicsPartitionsData)
 	} else {
 		m, ok = c.d.tps.v.Load().(topicsPartitionsData)
 	}
@@ -972,7 +1058,7 @@ func (c *consumer) assignPartitions(assignments map[string]map[int32]Offset, how
 	// The internal code can avoid giving an assign reason in cases where
 	// the caller logs itself immediately before assigning. We only log if
 	// there is a reason.
-	if len(why) > 0 {
+	if len(why) > 0 && c.cl.cfg.logger.Level() >= LogLevelInfo {
 		c.cl.cfg.logger.Log(LogLevelInfo, "assigning partitions",
 			"why", why,
 			"how", how,
@@ -1096,6 +1182,18 @@ func (c *consumer) assignPartitions(assignments map[string]map[int32]Offset, how
 
 	c.cl.cfg.logger.Log(LogLevelDebug, "assign requires loading offsets")
 
+	// We could have a prior handleListOrEpochResults finishing concurrent
+	// with a new assignment. We need to guard below, because list/epoch
+	// results can set offsets for loaded cursors.
+	//
+	// Example: I was just cooperatively assigned p1o10e3, and I issued an
+	// epoch request to validate data loss. I was then assigned p2o4e-1:
+	// there is no epoch to validate, so we immediately begin consuming
+	// at the offset. The epoch request returns and tries also using the
+	// cursor concurrently. We need to guard it.
+	session.listOrEpochMu.Lock()
+	defer session.listOrEpochMu.Unlock()
+
 	topics := tps.load()
 	for topic, partitions := range assignments {
 		topicPartitions := topics.loadTopic(topic) // should be non-nil
@@ -1118,7 +1216,7 @@ func (c *consumer) assignPartitions(assignments map[string]map[int32]Offset, how
 
 			// First, if the request is exact, get rid of the relative
 			// portion. We are modifying a copy of the offset, i.e. we
-			// are appropriately not modfying 'assignments' itself.
+			// are appropriately not modifying 'assignments' itself.
 			if offset.at >= 0 {
 				offset.at += offset.relative
 				if offset.at < 0 {
@@ -1196,10 +1294,12 @@ func (c *consumer) filterMetadataAllTopics(topics []string) []string {
 	defer rns.log(&c.cl.cfg)
 
 	var reSeen map[string]bool
-	if c.d != nil {
-		reSeen = c.d.reSeen
-	} else {
+	if c.g != nil {
 		reSeen = c.g.reSeen
+	} else if c.s != nil {
+		reSeen = c.s.reSeen
+	} else {
+		reSeen = c.d.reSeen
 	}
 
 	keep := topics[:0]
@@ -1210,6 +1310,14 @@ func (c *consumer) filterMetadataAllTopics(topics []string) []string {
 				if want = re.MatchString(topic); want {
 					rns.add(rawRe, topic)
 					break
+				}
+			}
+			if want {
+				for _, re := range c.cl.cfg.excludeTopics {
+					if re.MatchString(topic) {
+						want = false
+						break
+					}
 				}
 			}
 			if !want {
@@ -1247,6 +1355,8 @@ func (c *consumer) doOnMetadataUpdate() {
 				}
 			case c.g != nil:
 				c.g.findNewAssignments()
+			case c.s != nil:
+				c.s.maybeStartManage()
 			}
 
 			go c.loadSession().doOnMetadataUpdate()
@@ -1293,9 +1403,9 @@ func (o offsetLoad) MarshalJSON() ([]byte, error) {
 		return o.Offset.MarshalJSON()
 	}
 	if o.relative == 0 {
-		return []byte(fmt.Sprintf(`{"Replica":%d,"At":%d,"Epoch":%d,"CurrentEpoch":%d}`, o.replica, o.at, o.epoch, o.currentEpoch)), nil
+		return fmt.Appendf(nil, `{"Replica":%d,"At":%d,"Epoch":%d,"CurrentEpoch":%d}`, o.replica, o.at, o.epoch, o.currentEpoch), nil
 	}
-	return []byte(fmt.Sprintf(`{"Replica":%d,"At":%d,"Relative":%d,"Epoch":%d,"CurrentEpoch":%d}`, o.replica, o.at, o.relative, o.epoch, o.currentEpoch)), nil
+	return fmt.Appendf(nil, `{"Replica":%d,"At":%d,"Relative":%d,"Epoch":%d,"CurrentEpoch":%d}`, o.replica, o.at, o.relative, o.epoch, o.currentEpoch), nil
 }
 
 func (o offsetLoadMap) errToLoaded(err error) []loadedOffset {
@@ -1442,55 +1552,36 @@ func (l listOrEpochLoads) loadWithSessionNow(s *consumerSession, why string) boo
 	return false
 }
 
-// A consumer session is responsible for an era of fetching records for a set
-// of cursors. The set can be added to without killing an active session, but
-// it cannot be removed from. Removing any cursor from being consumed kills the
-// current consumer session and begins a new one.
-type consumerSession struct {
-	c *consumer
-
+// fetchManager controls fetch concurrency. Sources register their desire to
+// fetch, and the manager grants permission up to the configured limit. This
+// type is shared by consumerSession (regular consumers) and shareConsumer
+// (share groups).
+type fetchManager struct {
 	ctx    context.Context
 	cancel func()
 
-	// tps tracks the topics that were assigned in this session. We use
-	// this field to build and handle list offset / load epoch requests.
-	tps *topicsPartitions
+	// pollActive + pollWake are the consumer's strict-pull-mode state
+	// (MaxConcurrentFetches == 0). Both are nil otherwise. The atomic
+	// is the ground truth ("a poll is in progress"); the channel kicks
+	// the select loop to re-read it. See consumer.pollActive comment.
+	pollActive *atomic.Bool
+	pollWake   chan struct{}
 
-	// desireFetchCh is sized to the number of concurrent fetches we are
-	// configured to be able to send.
-	//
 	// We receive desires from sources, we reply when they can fetch, and
 	// they send back when they are done. Thus, three level chan.
-	desireFetchCh       chan chan chan struct{}
-	cancelFetchCh       chan chan chan struct{}
+	desireFetchCh       chan chan chan bool
+	cancelFetchCh       chan chan chan bool
 	allowedFetches      int
-	fetchManagerStarted atomicBool // atomic, once true, we start the fetch manager
-
-	// Workers signify the number of fetch and list / epoch goroutines that
-	// are currently running within the context of this consumer session.
-	// Stopping a session only returns once workers hits zero.
-	workersMu   sync.Mutex
-	workersCond *sync.Cond
-	workers     int
-
-	listOrEpochMu           sync.Mutex
-	listOrEpochLoadsWaiting listOrEpochLoads
-	listOrEpochMetaCh       chan struct{} // non-nil if Loads is non-nil, signalled on meta update
-	listOrEpochLoadsLoading listOrEpochLoads
+	fetchManagerStarted atomic.Bool // atomic, once true, we start the fetch manager
 }
 
-func (c *consumer) newConsumerSession(tps *topicsPartitions) *consumerSession {
-	if tps == nil || len(tps.load()) == 0 {
-		return noConsumerSession
-	}
-	ctx, cancel := context.WithCancel(c.cl.ctx)
-	session := &consumerSession{
-		c: c,
-
+func newFetchManager(ctx context.Context, cancel func(), pollActive *atomic.Bool, pollWake chan struct{}, maxConcurrentFetches int) fetchManager {
+	return fetchManager{
 		ctx:    ctx,
 		cancel: cancel,
 
-		tps: tps,
+		pollActive: pollActive,
+		pollWake:   pollWake,
 
 		// NOTE: This channel must be unbuffered. If it is buffered,
 		// then we can exit manageFetchConcurrency when we should not
@@ -1508,42 +1599,41 @@ func (c *consumer) newConsumerSession(tps *topicsPartitions) *consumerSession {
 		// tracks it in wantFetch.
 		//
 		// See #198.
-		desireFetchCh: make(chan chan chan struct{}),
+		desireFetchCh: make(chan chan chan bool),
 
-		cancelFetchCh:  make(chan chan chan struct{}, 4),
-		allowedFetches: c.cl.cfg.maxConcurrentFetches,
+		cancelFetchCh:  make(chan chan chan bool, 4),
+		allowedFetches: maxConcurrentFetches,
 	}
-	session.workersCond = sync.NewCond(&session.workersMu)
-	return session
 }
 
-func (s *consumerSession) desireFetch() chan chan chan struct{} {
-	if !s.fetchManagerStarted.Swap(true) {
-		go s.manageFetchConcurrency()
+func (fm *fetchManager) desireFetch() chan chan chan bool {
+	if !fm.fetchManagerStarted.Swap(true) {
+		go fm.manageFetchConcurrency()
 	}
-	return s.desireFetchCh
+	return fm.desireFetchCh
 }
 
-func (s *consumerSession) manageFetchConcurrency() {
+func (fm *fetchManager) manageFetchConcurrency() {
 	var (
 		activeFetches int
-		doneFetch     = make(chan struct{}, 20)
-		wantFetch     []chan chan struct{}
-
-		ctxCh    = s.ctx.Done()
-		wantQuit bool
+		doneFetch     = make(chan bool, 20)
+		wantFetch     []chan chan bool
+		pollAllowed   bool
+		ctxCh         = fm.ctx.Done()
+		wantQuit      bool
 	)
+
 	for {
 		select {
-		case register := <-s.desireFetchCh:
+		case register := <-fm.desireFetchCh:
 			wantFetch = append(wantFetch, register)
-		case cancel := <-s.cancelFetchCh:
+		case cancel := <-fm.cancelFetchCh:
 			var found bool
 			for i, want := range wantFetch {
 				if want == cancel {
-					_ = append(wantFetch[i:], wantFetch[i+1:]...)
-					wantFetch = wantFetch[:len(wantFetch)-1]
+					wantFetch = slices.Delete(wantFetch, i, i+1)
 					found = true
+					break
 				}
 			}
 			// If we did not find the channel, then we have already
@@ -1558,19 +1648,91 @@ func (s *consumerSession) manageFetchConcurrency() {
 		case <-ctxCh:
 			wantQuit = true
 			ctxCh = nil
+		case <-fm.pollWake:
+			// Wake only; the post-select Load below picks up
+			// the current pollActive value.
 		}
 
-		if len(wantFetch) > 0 && (activeFetches < s.allowedFetches || s.allowedFetches == 0) { // 0 means unbounded
+		// pollActive is the ground truth; re-read after every event,
+		// not only on the pollWake case. Two reasons the Load cannot
+		// move into the kick case:
+		//   1. newFetchManager may be constructed after PollRecords has
+		//      already run (pollActive==true, wake already consumed or
+		//      silently dropped into a full buffer). The first
+		//      iteration needs to observe pollActive=true without a
+		//      wake to unblock first.
+		//   2. pollActive can flip true => false between the wake's
+		//      buffer send and our Load. Re-reading on every event
+		//      (desireFetch, cancel, doneFetch, ctx) ensures we never
+		//      treat a stale "true" as authoritative for gating the
+		//      next fetch.
+		// Missed wakes (buffer-full default) are harmless because the
+		// next event triggers another Load.
+		if fm.pollActive != nil {
+			pollAllowed = fm.pollActive.Load()
+		}
+
+		if len(wantFetch) > 0 && (activeFetches < fm.allowedFetches || pollAllowed && activeFetches == 0 || fm.allowedFetches < 0) { // negative means unbounded
 			wantFetch[0] <- doneFetch
 			wantFetch = wantFetch[1:]
 			activeFetches++
 			continue
 		}
 
-		if wantQuit && activeFetches == 0 {
+		// We cannot return while sources are still registered in
+		// wantFetch: each of them is (or is about to be) blocked
+		// sending on cancelFetchCh, which only we drain. Returning
+		// early orphans those sends once the channel's small buffer
+		// fills; the sources then hold session workers forever and
+		// stopSession never finishes (consumer deadlock). Keep
+		// looping until every registered source has canceled.
+		if wantQuit && activeFetches == 0 && len(wantFetch) == 0 {
 			return
 		}
 	}
+}
+
+// A consumer session is responsible for an era of fetching records for a set
+// of cursors. The set can be added to without killing an active session, but
+// it cannot be removed from. Removing any cursor from being consumed kills the
+// current consumer session and begins a new one.
+type consumerSession struct {
+	c *consumer
+
+	// tps tracks the topics that were assigned in this session. We use
+	// this field to build and handle list offset / load epoch requests.
+	tps *topicsPartitions
+
+	fetchManager
+
+	// Workers signify the number of fetch and list / epoch goroutines that
+	// are currently running within the context of this consumer session.
+	// Stopping a session only returns once workers hits zero.
+	workersMu   xsync.Mutex
+	workersCond *sync.Cond
+	workers     int
+
+	// listOrEpochMu largely guards the below. It is a sub-mutex of the
+	// consumer mutex to guard one concurrent data access (see below in
+	// assignPartitions).
+	listOrEpochMu           xsync.Mutex
+	listOrEpochLoadsWaiting listOrEpochLoads
+	listOrEpochMetaCh       chan struct{} // non-nil if Loads is non-nil, signalled on meta update
+	listOrEpochLoadsLoading listOrEpochLoads
+}
+
+func (c *consumer) newConsumerSession(tps *topicsPartitions) *consumerSession {
+	if tps == nil || len(tps.load()) == 0 {
+		return noConsumerSession
+	}
+	ctx, cancel := context.WithCancel(c.cl.ctx)
+	session := &consumerSession{
+		c:            c,
+		tps:          tps,
+		fetchManager: newFetchManager(ctx, cancel, &c.pollActive, c.pollWake, c.cl.cfg.maxConcurrentFetches),
+	}
+	session.workersCond = sync.NewCond(&session.workersMu)
+	return session
 }
 
 func (s *consumerSession) incWorker() {
@@ -1669,8 +1831,8 @@ func (c *consumer) stopSession() (listOrEpochLoads, *topicsPartitions) {
 	// our num-fetches manager without worrying about a source trying to
 	// register itself.
 
-	c.cl.allSinksAndSources(func(sns sinkAndSource) {
-		sns.source.session.reset()
+	c.cl.allSources(func(s *source) {
+		s.session.reset()
 	})
 
 	// At this point, if we begin fetching anew, then the sources will not
@@ -1684,8 +1846,13 @@ func (c *consumer) stopSession() (listOrEpochLoads, *topicsPartitions) {
 	c.sourcesReadyForDraining = nil
 
 	// At this point, we have invalidated any buffered data from the prior
-	// session. We leave any fake things that were ready so that the user
-	// can act on errors. The session is dead.
+	// session. We deliberately leave c.fakeReadyForDraining so the user can
+	// still observe errors that happened in the dying session (data loss,
+	// list/epoch failures, no-committed-offset notices, etc.). A consequence
+	// is that the user's next poll may surface an error for a partition the
+	// new assignment does not include; callers that key off fake-fetch errors
+	// for committing must check current ownership before acting. The session
+	// is dead.
 
 	session.listOrEpochLoadsWaiting.mergeFrom(session.listOrEpochLoadsLoading)
 	return session.listOrEpochLoadsWaiting, session.tps
@@ -1713,11 +1880,11 @@ func (c *consumer) startNewSession(tps *topicsPartitions) *consumerSession {
 
 	c.sessionChangeMu.Unlock()
 
-	c.cl.allSinksAndSources(func(sns sinkAndSource) {
-		sns.source.maybeConsume()
+	c.cl.allSources(func(s *source) {
+		s.maybeConsume()
 	})
 
-	// At this point, any source that was not consuming becauase it saw the
+	// At this point, any source that was not consuming because it saw the
 	// session was stopped has been notified to potentially start consuming
 	// again. The session is alive.
 
@@ -1725,7 +1892,7 @@ func (c *consumer) startNewSession(tps *topicsPartitions) *consumerSession {
 }
 
 // This function is responsible for issuing ListOffsets or
-// OffsetForLeaderEpoch. These requests's responses  are only handled within
+// OffsetForLeaderEpoch. These requests's responses are only handled within
 // the context of a consumer session.
 func (s *consumerSession) listOrEpoch(waiting listOrEpochLoads, immediate bool, why string) {
 	defer s.decWorker()
@@ -1739,13 +1906,19 @@ func (s *consumerSession) listOrEpoch(waiting listOrEpochLoads, immediate bool, 
 		return
 	}
 
-	wait := true
-	if immediate {
-		s.c.cl.triggerUpdateMetadataNow(why)
-	} else {
-		wait = s.c.cl.triggerUpdateMetadata(false, why) // avoid trigger if within refresh interval
-	}
-
+	// We must set up listOrEpochMetaCh BEFORE triggering metadata. If we
+	// trigger first and set the channel second, there is a race where the
+	// metadata update completes and doOnMetadataUpdate checks for the
+	// channel before we create it, causing the signal to be lost. With the
+	// channel created first, doOnMetadataUpdate will always find the
+	// channel and signal it.
+	//
+	// Race without this ordering:
+	//   1. listOrEpoch: triggerUpdateMetadata -> sends trigger
+	//   2. listOrEpoch: goroutine descheduled under load
+	//   3. metadata loop: processes trigger, runs doOnMetadataUpdate
+	//   4. doOnMetadataUpdate: listOrEpochMetaCh is nil -> returns (signal lost)
+	//   5. listOrEpoch: resumes, creates listOrEpochMetaCh, waits forever
 	s.listOrEpochMu.Lock() // collapse any listOrEpochs that occur during meta update into one
 	if !s.listOrEpochLoadsWaiting.isEmpty() {
 		s.listOrEpochLoadsWaiting.mergeFrom(waiting)
@@ -1755,6 +1928,13 @@ func (s *consumerSession) listOrEpoch(waiting listOrEpochLoads, immediate bool, 
 	s.listOrEpochLoadsWaiting = waiting
 	s.listOrEpochMetaCh = make(chan struct{}, 1)
 	s.listOrEpochMu.Unlock()
+
+	wait := true
+	if immediate {
+		s.c.cl.triggerUpdateMetadataNow(why)
+	} else {
+		wait = s.c.cl.triggerUpdateMetadata(false, why) // avoid trigger if within refresh interval
+	}
 
 	if wait {
 		select {
@@ -1812,17 +1992,17 @@ func (s *consumerSession) listOrEpoch(waiting listOrEpochLoads, immediate bool, 
 		}
 	}()
 
+	// We must drain all results before returning so that the
+	// sub-goroutines complete within this worker's lifetime. If the
+	// session is stopped, the context cancellation propagates to each
+	// sub-goroutine's broker.waitResp, so they will finish quickly.
+	// Without draining, stopSession can return (having seen workers=0)
+	// and purgeTopics can modify tps while a sub-goroutine still
+	// references it.
 	for received != issued {
-		select {
-		case <-s.ctx.Done():
-			// If we return early, our session was canceled. We do
-			// not move loading list or epoch loads back to
-			// waiting; the session stopping manages that.
-			return
-		case loaded := <-results:
-			received++
-			reloads.mergeFrom(s.handleListOrEpochResults(loaded))
-		}
+		loaded := <-results
+		received++
+		reloads.mergeFrom(s.handleListOrEpochResults(loaded))
 	}
 }
 
@@ -1885,9 +2065,18 @@ func (s *consumerSession) handleListOrEpochResults(loaded loadedOffsets) (reload
 				tusing[load.partition] = EpochOffset{load.leaderEpoch, load.offset}
 			}
 
+			// Preserve lastConsumedTime (for AfterMilli fallback on
+			// subsequent OffsetOutOfRange) and hwm (for lag metrics)
+			// across validation loads. The cursor is currently
+			// unusable (we're about to allowUsable it), so reading
+			// the prior cursorOffset here is safe: no concurrent
+			// fetch observes useState=true yet.
+			prior := load.cursor.cursorOffset
 			load.cursor.setOffset(cursorOffset{
 				offset:            load.offset,
 				lastConsumedEpoch: load.leaderEpoch,
+				lastConsumedTime:  prior.lastConsumedTime,
+				hwm:               prior.hwm,
 			})
 			load.cursor.allowUsable()
 			s.c.usingCursors.use(load.cursor)
@@ -2031,6 +2220,9 @@ func (cl *Client) listOffsetsForBrokerLoad(ctx context.Context, broker *broker, 
 	kresp, err := broker.waitResp(ctx, req1)
 	wg.Wait()
 	if err != nil || err2 != nil {
+		if err == nil {
+			err = err2
+		}
 		results <- loaded.addAll(load.errToLoaded(err))
 		return
 	}
@@ -2285,7 +2477,7 @@ func (*Client) loadEpochsForBrokerLoad(ctx context.Context, broker *broker, load
 			offset := loadPart.at
 			var err error
 			if rPartition.EndOffset < offset {
-				err = &ErrDataLoss{topic, partition, offset, rPartition.EndOffset}
+				err = &ErrDataLoss{topic, partition, offset, loadPart.epoch, rPartition.EndOffset, rPartition.LeaderEpoch}
 				offset = rPartition.EndOffset
 			}
 
@@ -2352,12 +2544,12 @@ func (o offsetLoadMap) buildListReq(isolationLevel int8) (r1, r2 *kmsg.ListOffse
 	if createEnd {
 		r2 = kmsg.NewPtrListOffsetsRequest()
 		*r2 = *r1
-		r2.Topics = append([]kmsg.ListOffsetsRequestTopic(nil), r1.Topics...)
+		r2.Topics = slices.Clone(r1.Topics)
 		for i := range r1.Topics {
 			l := &r2.Topics[i]
 			r := &r1.Topics[i]
 			*l = *r
-			l.Partitions = append([]kmsg.ListOffsetsRequestTopicPartition(nil), r.Partitions...)
+			l.Partitions = slices.Clone(r.Partitions)
 			for i := range l.Partitions {
 				l.Partitions[i].Timestamp = -1
 			}

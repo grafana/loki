@@ -225,8 +225,9 @@ type ScanDumpCmd struct {
 func newScanDumpCmd(ctx context.Context, args ...interface{}) *ScanDumpCmd {
 	return &ScanDumpCmd{
 		baseCmd: baseCmd{
-			ctx:  ctx,
-			args: args,
+			ctx:     ctx,
+			args:    args,
+			cmdType: CmdTypeScanDump,
 		},
 	}
 }
@@ -270,6 +271,13 @@ func (cmd *ScanDumpCmd) readReply(rd *proto.Reader) (err error) {
 	return nil
 }
 
+func (cmd *ScanDumpCmd) Clone() Cmder {
+	return &ScanDumpCmd{
+		baseCmd: cmd.cloneBaseCmd(),
+		val:     cmd.val, // ScanDump is a simple struct, can be copied directly
+	}
+}
+
 // Returns information about a Bloom filter.
 // For more information - https://redis.io/commands/bf.info/
 func (c cmdable) BFInfo(ctx context.Context, key string) *BFInfoCmd {
@@ -296,8 +304,9 @@ type BFInfoCmd struct {
 func NewBFInfoCmd(ctx context.Context, args ...interface{}) *BFInfoCmd {
 	return &BFInfoCmd{
 		baseCmd: baseCmd{
-			ctx:  ctx,
-			args: args,
+			ctx:     ctx,
+			args:    args,
+			cmdType: CmdTypeBFInfo,
 		},
 	}
 }
@@ -386,6 +395,13 @@ func (cmd *BFInfoCmd) readReply(rd *proto.Reader) (err error) {
 
 	cmd.val = result
 	return nil
+}
+
+func (cmd *BFInfoCmd) Clone() Cmder {
+	return &BFInfoCmd{
+		baseCmd: cmd.cloneBaseCmd(),
+		val:     cmd.val, // BFInfo is a simple struct, can be copied directly
+	}
 }
 
 // BFInfoCapacity returns information about the capacity of a Bloom filter.
@@ -625,8 +641,9 @@ type CFInfoCmd struct {
 func NewCFInfoCmd(ctx context.Context, args ...interface{}) *CFInfoCmd {
 	return &CFInfoCmd{
 		baseCmd: baseCmd{
-			ctx:  ctx,
-			args: args,
+			ctx:     ctx,
+			args:    args,
+			cmdType: CmdTypeCFInfo,
 		},
 	}
 }
@@ -690,6 +707,13 @@ func (cmd *CFInfoCmd) readReply(rd *proto.Reader) (err error) {
 
 	cmd.val = result
 	return nil
+}
+
+func (cmd *CFInfoCmd) Clone() Cmder {
+	return &CFInfoCmd{
+		baseCmd: cmd.cloneBaseCmd(),
+		val:     cmd.val, // CFInfo is a simple struct, can be copied directly
+	}
 }
 
 // CFInfo returns information about a Cuckoo filter.
@@ -787,8 +811,9 @@ type CMSInfoCmd struct {
 func NewCMSInfoCmd(ctx context.Context, args ...interface{}) *CMSInfoCmd {
 	return &CMSInfoCmd{
 		baseCmd: baseCmd{
-			ctx:  ctx,
-			args: args,
+			ctx:     ctx,
+			args:    args,
+			cmdType: CmdTypeCMSInfo,
 		},
 	}
 }
@@ -841,6 +866,13 @@ func (cmd *CMSInfoCmd) readReply(rd *proto.Reader) (err error) {
 
 	cmd.val = result
 	return nil
+}
+
+func (cmd *CMSInfoCmd) Clone() Cmder {
+	return &CMSInfoCmd{
+		baseCmd: cmd.cloneBaseCmd(),
+		val:     cmd.val, // CMSInfo is a simple struct, can be copied directly
+	}
 }
 
 // CMSInfo returns information about a Count-Min Sketch filter.
@@ -980,8 +1012,9 @@ type TopKInfoCmd struct {
 func NewTopKInfoCmd(ctx context.Context, args ...interface{}) *TopKInfoCmd {
 	return &TopKInfoCmd{
 		baseCmd: baseCmd{
-			ctx:  ctx,
-			args: args,
+			ctx:     ctx,
+			args:    args,
+			cmdType: CmdTypeTopKInfo,
 		},
 	}
 }
@@ -1036,6 +1069,13 @@ func (cmd *TopKInfoCmd) readReply(rd *proto.Reader) (err error) {
 
 	cmd.val = result
 	return nil
+}
+
+func (cmd *TopKInfoCmd) Clone() Cmder {
+	return &TopKInfoCmd{
+		baseCmd: cmd.cloneBaseCmd(),
+		val:     cmd.val, // TopKInfo is a simple struct, can be copied directly
+	}
 }
 
 // TopKInfo returns information about a Top-K filter.
@@ -1116,17 +1156,13 @@ func (c cmdable) TopKListWithCount(ctx context.Context, key string) *MapStringIn
 // Returns OK on success or an error if the operation could not be completed.
 // For more information - https://redis.io/commands/tdigest.add/
 func (c cmdable) TDigestAdd(ctx context.Context, key string, elements ...float64) *StatusCmd {
-	args := make([]interface{}, 2, 2+len(elements))
+	args := make([]interface{}, 2+len(elements))
 	args[0] = "TDIGEST.ADD"
 	args[1] = key
 
-	// Convert floatSlice to []interface{}
-	interfaceSlice := make([]interface{}, len(elements))
 	for i, v := range elements {
-		interfaceSlice[i] = v
+		args[2+i] = v
 	}
-
-	args = append(args, interfaceSlice...)
 
 	cmd := NewStatusCmd(ctx, args...)
 	_ = c(ctx, cmd)
@@ -1138,17 +1174,13 @@ func (c cmdable) TDigestAdd(ctx context.Context, key string, elements ...float64
 // Returns an array of floats representing the values at the specified ranks or an error if the operation could not be completed.
 // For more information - https://redis.io/commands/tdigest.byrank/
 func (c cmdable) TDigestByRank(ctx context.Context, key string, rank ...uint64) *FloatSliceCmd {
-	args := make([]interface{}, 2, 2+len(rank))
+	args := make([]interface{}, 2+len(rank))
 	args[0] = "TDIGEST.BYRANK"
 	args[1] = key
 
-	// Convert uint slice to []interface{}
-	interfaceSlice := make([]interface{}, len(rank))
-	for i, v := range rank {
-		interfaceSlice[i] = v
+	for i, r := range rank {
+		args[2+i] = r
 	}
-
-	args = append(args, interfaceSlice...)
 
 	cmd := NewFloatSliceCmd(ctx, args...)
 	_ = c(ctx, cmd)
@@ -1160,17 +1192,13 @@ func (c cmdable) TDigestByRank(ctx context.Context, key string, rank ...uint64) 
 // Returns an array of floats representing the values at the specified ranks or an error if the operation could not be completed.
 // For more information - https://redis.io/commands/tdigest.byrevrank/
 func (c cmdable) TDigestByRevRank(ctx context.Context, key string, rank ...uint64) *FloatSliceCmd {
-	args := make([]interface{}, 2, 2+len(rank))
+	args := make([]interface{}, 2+len(rank))
 	args[0] = "TDIGEST.BYREVRANK"
 	args[1] = key
 
-	// Convert uint slice to []interface{}
-	interfaceSlice := make([]interface{}, len(rank))
-	for i, v := range rank {
-		interfaceSlice[i] = v
+	for i, r := range rank {
+		args[2+i] = r
 	}
-
-	args = append(args, interfaceSlice...)
 
 	cmd := NewFloatSliceCmd(ctx, args...)
 	_ = c(ctx, cmd)
@@ -1182,17 +1210,13 @@ func (c cmdable) TDigestByRevRank(ctx context.Context, key string, rank ...uint6
 // Returns an array of floats representing the CDF values for each element or an error if the operation could not be completed.
 // For more information - https://redis.io/commands/tdigest.cdf/
 func (c cmdable) TDigestCDF(ctx context.Context, key string, elements ...float64) *FloatSliceCmd {
-	args := make([]interface{}, 2, 2+len(elements))
+	args := make([]interface{}, 2+len(elements))
 	args[0] = "TDIGEST.CDF"
 	args[1] = key
 
-	// Convert floatSlice to []interface{}
-	interfaceSlice := make([]interface{}, len(elements))
 	for i, v := range elements {
-		interfaceSlice[i] = v
+		args[2+i] = v
 	}
-
-	args = append(args, interfaceSlice...)
 
 	cmd := NewFloatSliceCmd(ctx, args...)
 	_ = c(ctx, cmd)
@@ -1243,8 +1267,9 @@ type TDigestInfoCmd struct {
 func NewTDigestInfoCmd(ctx context.Context, args ...interface{}) *TDigestInfoCmd {
 	return &TDigestInfoCmd{
 		baseCmd: baseCmd{
-			ctx:  ctx,
-			args: args,
+			ctx:     ctx,
+			args:    args,
+			cmdType: CmdTypeTDigestInfo,
 		},
 	}
 }
@@ -1309,6 +1334,13 @@ func (cmd *TDigestInfoCmd) readReply(rd *proto.Reader) (err error) {
 
 	cmd.val = result
 	return nil
+}
+
+func (cmd *TDigestInfoCmd) Clone() Cmder {
+	return &TDigestInfoCmd{
+		baseCmd: cmd.cloneBaseCmd(),
+		val:     cmd.val, // TDigestInfo is a simple struct, can be copied directly
+	}
 }
 
 // TDigestInfo returns information about a t-Digest data structure.
@@ -1376,17 +1408,13 @@ func (c cmdable) TDigestMin(ctx context.Context, key string) *FloatCmd {
 // Returns an array of floats representing the quantile values for each element or an error if the operation could not be completed.
 // For more information - https://redis.io/commands/tdigest.quantile/
 func (c cmdable) TDigestQuantile(ctx context.Context, key string, elements ...float64) *FloatSliceCmd {
-	args := make([]interface{}, 2, 2+len(elements))
+	args := make([]interface{}, 2+len(elements))
 	args[0] = "TDIGEST.QUANTILE"
 	args[1] = key
 
-	// Convert floatSlice to []interface{}
-	interfaceSlice := make([]interface{}, len(elements))
 	for i, v := range elements {
-		interfaceSlice[i] = v
+		args[2+i] = v
 	}
-
-	args = append(args, interfaceSlice...)
 
 	cmd := NewFloatSliceCmd(ctx, args...)
 	_ = c(ctx, cmd)
@@ -1398,17 +1426,13 @@ func (c cmdable) TDigestQuantile(ctx context.Context, key string, elements ...fl
 // Returns an array of integers representing the rank values for each element or an error if the operation could not be completed.
 // For more information - https://redis.io/commands/tdigest.rank/
 func (c cmdable) TDigestRank(ctx context.Context, key string, values ...float64) *IntSliceCmd {
-	args := make([]interface{}, 2, 2+len(values))
+	args := make([]interface{}, 2+len(values))
 	args[0] = "TDIGEST.RANK"
 	args[1] = key
 
-	// Convert floatSlice to []interface{}
-	interfaceSlice := make([]interface{}, len(values))
 	for i, v := range values {
-		interfaceSlice[i] = v
+		args[i+2] = v
 	}
-
-	args = append(args, interfaceSlice...)
 
 	cmd := NewIntSliceCmd(ctx, args...)
 	_ = c(ctx, cmd)
@@ -1431,17 +1455,13 @@ func (c cmdable) TDigestReset(ctx context.Context, key string) *StatusCmd {
 // Returns an array of integers representing the reverse rank values for each element or an error if the operation could not be completed.
 // For more information - https://redis.io/commands/tdigest.revrank/
 func (c cmdable) TDigestRevRank(ctx context.Context, key string, values ...float64) *IntSliceCmd {
-	args := make([]interface{}, 2, 2+len(values))
+	args := make([]interface{}, 2+len(values))
 	args[0] = "TDIGEST.REVRANK"
 	args[1] = key
 
-	// Convert floatSlice to []interface{}
-	interfaceSlice := make([]interface{}, len(values))
 	for i, v := range values {
-		interfaceSlice[i] = v
+		args[2+i] = v
 	}
-
-	args = append(args, interfaceSlice...)
 
 	cmd := NewIntSliceCmd(ctx, args...)
 	_ = c(ctx, cmd)

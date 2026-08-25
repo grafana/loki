@@ -47,12 +47,9 @@ type FileClient struct {
 
 // NewFileClient returns the new instance of FileClient for the given `io.ReadCloser`
 func NewFileClient(r io.ReadCloser) *FileClient {
-	lbs := []labels.Label{
-		{
-			Name:  defaultLabelKey,
-			Value: defaultLabelValue,
-		},
-	}
+	lbs := labels.New(
+		labels.Label{Name: defaultLabelKey, Value: defaultLabelValue},
+	)
 
 	eng := logql.NewEngine(logql.EngineOpts{}, &querier{r: r, labels: lbs}, &limiter{n: defaultMetricSeriesLimit}, log.Logger)
 	return &FileClient{
@@ -155,8 +152,13 @@ func (f *FileClient) ListLabelNames(_ bool, _, _ time.Time) (*loghttp.LabelRespo
 }
 
 func (f *FileClient) ListLabelValues(name string, _ bool, _, _ time.Time) (*loghttp.LabelResponse, error) {
+	// f.labels is sorted, so a binary search returns the index at which name
+	// would be inserted. The label only exists when that index is in range and
+	// the element there is an exact match; sort.SearchStrings never returns a
+	// negative value, so the previous i < 0 check could never detect a missing
+	// label and would return a wrong value or panic with an out-of-range index.
 	i := sort.SearchStrings(f.labels, name)
-	if i < 0 {
+	if i >= len(f.labels) || f.labels[i] != name {
 		return &loghttp.LabelResponse{}, nil
 	}
 
@@ -217,6 +219,18 @@ func (f *FileClient) GetDetectedFields(
 	return nil, ErrNotSupported
 }
 
+func (f *FileClient) CreateDeleteRequest(_ DeleteRequestParams, _ bool) error {
+	return ErrNotSupported
+}
+
+func (f *FileClient) ListDeleteRequests(_ bool) ([]DeleteRequest, error) {
+	return nil, ErrNotSupported
+}
+
+func (f *FileClient) CancelDeleteRequest(_ string, _ bool, _ bool) error {
+	return ErrNotSupported
+}
+
 type limiter struct {
 	n int
 }
@@ -241,8 +255,12 @@ func (l *limiter) RequiredLabels(_ context.Context, _ string) []string {
 	return nil
 }
 
-func (l *limiter) EnableMultiVariantQueries(_ string) bool {
-	return false // Multi-variant queries disabled by default for file client
+func (l *limiter) DebugEngineTasks(_ string) bool {
+	return false // This setting for the v2 execution engine is unused in LogCLI
+}
+
+func (l *limiter) DebugEngineStreams(_ string) bool {
+	return false // This setting for the v2 execution engine is unused in LogCLI
 }
 
 type querier struct {
@@ -263,7 +281,7 @@ func (q *querier) SelectLogs(_ context.Context, params logql.SelectLogParams) (i
 }
 
 func (q *querier) SelectSamples(_ context.Context, _ logql.SelectSampleParams) (iter.SampleIterator, error) {
-	return nil, fmt.Errorf("Metrics Query: %w", ErrNotSupported)
+	return nil, fmt.Errorf("metrics Query: %w", ErrNotSupported)
 }
 
 func newFileIterator(

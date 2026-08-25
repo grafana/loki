@@ -105,7 +105,7 @@ type Int64RangeMatcherMultiError []error
 
 // Error returns a concatenation of all the error messages it wraps.
 func (m Int64RangeMatcherMultiError) Error() string {
-	var msgs []string
+	msgs := make([]string, 0, len(m))
 	for _, err := range m {
 		msgs = append(msgs, err.Error())
 	}
@@ -241,7 +241,7 @@ type Int32RangeMatcherMultiError []error
 
 // Error returns a concatenation of all the error messages it wraps.
 func (m Int32RangeMatcherMultiError) Error() string {
-	var msgs []string
+	msgs := make([]string, 0, len(m))
 	for _, err := range m {
 		msgs = append(msgs, err.Error())
 	}
@@ -377,7 +377,7 @@ type DoubleRangeMatcherMultiError []error
 
 // Error returns a concatenation of all the error messages it wraps.
 func (m DoubleRangeMatcherMultiError) Error() string {
-	var msgs []string
+	msgs := make([]string, 0, len(m))
 	for _, err := range m {
 		msgs = append(msgs, err.Error())
 	}
@@ -553,7 +553,7 @@ type Int64RangeMatcher_RangeMatcherMultiError []error
 
 // Error returns a concatenation of all the error messages it wraps.
 func (m Int64RangeMatcher_RangeMatcherMultiError) Error() string {
-	var msgs []string
+	msgs := make([]string, 0, len(m))
 	for _, err := range m {
 		msgs = append(msgs, err.Error())
 	}
@@ -730,7 +730,7 @@ type Int32RangeMatcher_RangeMatcherMultiError []error
 
 // Error returns a concatenation of all the error messages it wraps.
 func (m Int32RangeMatcher_RangeMatcherMultiError) Error() string {
-	var msgs []string
+	msgs := make([]string, 0, len(m))
 	for _, err := range m {
 		msgs = append(msgs, err.Error())
 	}
@@ -907,7 +907,7 @@ type DoubleRangeMatcher_RangeMatcherMultiError []error
 
 // Error returns a concatenation of all the error messages it wraps.
 func (m DoubleRangeMatcher_RangeMatcherMultiError) Error() string {
-	var msgs []string
+	msgs := make([]string, 0, len(m))
 	for _, err := range m {
 		msgs = append(msgs, err.Error())
 	}

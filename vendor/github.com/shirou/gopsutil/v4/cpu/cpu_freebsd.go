@@ -81,6 +81,9 @@ func TimesWithContext(_ context.Context, percpu bool) ([]TimesStat, error) {
 	if err != nil {
 		return nil, err
 	}
+	if len(buf) < int(unsafe.Sizeof(cpuTimes{})) {
+		return nil, fmt.Errorf("unexpected size: kern.cp_time, %d", len(buf))
+	}
 
 	times := (*cpuTimes)(unsafe.Pointer(&buf[0]))
 	return []TimesStat{*timeStat("cpu-total", times)}, nil
@@ -126,7 +129,11 @@ func InfoWithContext(_ context.Context) ([]InfoStat, error) {
 
 func parseDmesgBoot(fileName string) (InfoStat, int, error) {
 	c := InfoStat{}
-	lines, _ := common.ReadLines(fileName)
+	lines, err := common.ReadLines(fileName)
+	if err != nil {
+		return c, 0, fmt.Errorf("could not read %s: %w", fileName, err)
+	}
+
 	cpuNum := 1 // default cpu num is 1
 	for _, line := range lines {
 		if matches := cpuEnd.FindStringSubmatch(line); matches != nil {

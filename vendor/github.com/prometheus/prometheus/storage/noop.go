@@ -1,4 +1,4 @@
-// Copyright 2017 The Prometheus Authors
+// Copyright The Prometheus Authors
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
@@ -42,6 +42,16 @@ func (noopQuerier) LabelNames(context.Context, *LabelHints, ...*labels.Matcher) 
 func (noopQuerier) Close() error {
 	return nil
 }
+
+func (noopQuerier) SearchLabelNames(_ context.Context, _ *SearchHints, _ ...*labels.Matcher) SearchResultSet {
+	return nil
+}
+
+func (noopQuerier) SearchLabelValues(_ context.Context, _ string, _ *SearchHints, _ ...*labels.Matcher) SearchResultSet {
+	return nil
+}
+
+var _ Searcher = noopQuerier{}
 
 type noopChunkQuerier struct{}
 

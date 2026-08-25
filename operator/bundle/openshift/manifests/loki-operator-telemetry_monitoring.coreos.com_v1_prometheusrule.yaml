@@ -1,0 +1,99 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  labels:
+    app.kubernetes.io/instance: loki-operator-0.1.0
+    app.kubernetes.io/managed-by: operator-lifecycle-manager
+    app.kubernetes.io/name: loki-operator
+    app.kubernetes.io/part-of: cluster-logging
+    app.kubernetes.io/version: 0.1.0
+  name: loki-operator-telemetry
+spec:
+  groups:
+  - name: openshift_logging.telemetry
+    rules:
+    - expr: |
+        count(
+          lokistack_info
+        ) by (stack_namespace, size, tenancy_mode, object_storage_type, credential_mode, schema_version)
+      record: openshift_logging:lokistack_info:count
+    - expr: |
+        sum(
+          lokistack_component_replicas
+        ) by (stack_namespace, size, component)
+      record: openshift_logging:lokistack_component_replicas:sum
+    - expr: |
+        avg(
+          lokistack_global_ingestion_rate_limit_bytes
+        ) by (stack_namespace, size)
+      record: openshift_logging:lokistack_global_ingestion_rate_limit_bytes:avg
+    - expr: |
+        sum by (stack_namespace, size) (
+          label_replace(
+            label_replace(
+              rate(container_cpu_usage_seconds_total{container="loki-ingester"}[5m]),
+              "stack_name", "$1", "pod", "(.+)-ingester-.+"
+            ),
+            "stack_namespace", "$1", "namespace", "(.+)"
+          )
+          * on (stack_namespace) group_left(size)
+          lokistack_info
+        )
+      record: openshift_logging:lokistack_ingester_cpu_cores:sum
+    - expr: |
+        sum by (stack_namespace, size) (
+          label_replace(
+            label_replace(
+              container_memory_working_set_bytes{container="loki-ingester",pod=~".+-ingester-.+"},
+              "stack_name",
+              "$1",
+              "pod",
+              "(.+)-ingester-.+"
+            ),
+            "stack_namespace",
+            "$1",
+            "namespace",
+            "(.+)"
+          )
+          * on (stack_namespace) group_left(size)
+          lokistack_info
+        )
+      record: openshift_logging:lokistack_ingester_memory_working_set_bytes:sum
+    - expr: |
+        sum by (stack_namespace, size) (
+          label_replace(
+            label_replace(
+              rate(loki_distributor_bytes_received_total[5m]),
+              "stack_name",
+              "$1",
+              "pod",
+              "(.+)-distributor-.+"
+            ),
+            "stack_namespace",
+            "$1",
+            "namespace",
+            "(.+)"
+          )
+          * on (stack_namespace) group_left(size)
+          lokistack_info
+        )
+      record: openshift_logging:lokistack_ingestion_received_bytes_per_second:sum
+    - expr: |
+        sum by (stack_namespace, size, reason) (
+          label_replace(
+            label_replace(
+              rate(loki_discarded_bytes_total[5m]),
+              "stack_name",
+              "$1",
+              "pod",
+              "(.+)-distributor-.+"
+            ),
+            "stack_namespace",
+            "$1",
+            "namespace",
+            "(.+)"
+          )
+          * on (stack_namespace) group_left(size)
+          lokistack_info
+        )
+      record: openshift_logging:lokistack_ingestion_discarded_bytes_per_second:sum

@@ -20,8 +20,8 @@ package flatbuf
 
 import "strconv"
 
-// / ----------------------------------------------------------------------
-// / Endianness of the platform producing the data
+/// ----------------------------------------------------------------------
+/// Endianness of the platform producing the data
 type Endianness int16
 
 const (

@@ -2,10 +2,11 @@ package lexers
 
 import (
 	"regexp"
+	"slices"
 	"strings"
 	"unicode/utf8"
 
-	"github.com/dlclark/regexp2"
+	"github.com/dlclark/regexp2/v2"
 
 	. "github.com/alecthomas/chroma/v2" // nolint
 )
@@ -457,8 +458,7 @@ func rakuRules() Rules {
 				var podRegex *regexp2.Regexp
 				if tokenClass == rakuPod {
 					podRegex = regexp2.MustCompile(
-						state.NamedGroups[`ws`]+`=end`+`\s+`+regexp2.Escape(state.NamedGroups[`name`]),
-						0,
+						state.NamedGroups[`ws`] + `=end` + `\s+` + regexp2.Escape(state.NamedGroups[`name`]),
 					)
 				} else {
 					closingChars = []rune(strings.Repeat(string(closingChar), nChars))
@@ -477,7 +477,7 @@ func rakuRules() Rules {
 						match, err := podRegex.FindRunesMatchStartingAt(text, searchPos+nChars)
 						if err == nil {
 							closingChars = match.Runes()
-							nextClosePos = match.Index
+							nextClosePos = match.RuneIndex
 						} else {
 							nextClosePos = -1
 						}
@@ -1318,16 +1318,6 @@ func indexAt(str []rune, substr []rune, pos int) int {
 	return idx
 }
 
-// Tells if an array of string contains a string
-func contains(s []string, e string) bool {
-	for _, value := range s {
-		if value == e {
-			return true
-		}
-	}
-	return false
-}
-
 type rulePosition int
 
 const (
@@ -1608,8 +1598,7 @@ func quote(groups []string, state *LexerState) Iterator {
 	var tokenStates []string
 
 	// Set tokenStates based on adverbs
-	adverbs := strings.Split(adverbsStr, ":")
-	for _, adverb := range adverbs {
+	for adverb := range strings.SplitSeq(adverbsStr, ":") {
 		switch adverb {
 		case "c", "closure":
 			tokenStates = append(tokenStates, "Q-closure")
@@ -1625,15 +1614,15 @@ func quote(groups []string, state *LexerState) Iterator {
 	var tokenState string
 
 	switch {
-	case keyword == "qq" || contains(tokenStates, "qq"):
+	case keyword == "qq" || slices.Contains(tokenStates, "qq"):
 		tokenState = "qq"
-	case adverbsStr == "ww" || contains(tokenStates, "ww"):
+	case adverbsStr == "ww" || slices.Contains(tokenStates, "ww"):
 		tokenState = "ww"
-	case contains(tokenStates, "Q-closure") && contains(tokenStates, "Q-variable"):
+	case slices.Contains(tokenStates, "Q-closure") && slices.Contains(tokenStates, "Q-variable"):
 		tokenState = "qq"
-	case contains(tokenStates, "Q-closure"):
+	case slices.Contains(tokenStates, "Q-closure"):
 		tokenState = "Q-closure"
-	case contains(tokenStates, "Q-variable"):
+	case slices.Contains(tokenStates, "Q-variable"):
 		tokenState = "Q-variable"
 	default:
 		tokenState = "Q"

@@ -99,3 +99,21 @@ func Collect[V any](seq Seq[V]) ([]V, error) {
 	}
 	return vals, errors.Join(errs...)
 }
+
+type valueCompareFunc[T any] func(T, T) int
+
+func Compare[T any](a, b Result[T], cmp valueCompareFunc[T]) int {
+	var (
+		aVal, aErr = a.Value()
+		bVal, bErr = b.Value()
+	)
+
+	// Put errors first so we return errors early.
+	if aErr != nil {
+		return -1
+	} else if bErr != nil {
+		return 1
+	}
+
+	return cmp(aVal, bVal)
+}

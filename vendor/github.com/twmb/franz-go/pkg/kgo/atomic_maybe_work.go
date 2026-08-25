@@ -8,7 +8,7 @@ const (
 	stateContinueWorking
 )
 
-type workLoop struct{ state atomicU32 }
+type workLoop struct{ state atomic.Uint32 }
 
 // maybeBegin returns whether a work loop should begin.
 func (l *workLoop) maybeBegin() bool {

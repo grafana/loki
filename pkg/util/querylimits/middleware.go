@@ -32,7 +32,17 @@ func (l *queryLimitsMiddleware) Wrap(next http.Handler) http.Handler {
 		}
 
 		if limits != nil {
-			r = r.Clone(InjectQueryLimitsContext(r.Context(), *limits))
+			r = r.Clone(InjectQueryLimitsIntoContext(r.Context(), *limits))
+		}
+
+		limitsCtx, err := ExtractQueryLimitsContextHTTP(r)
+		if err != nil {
+			level.Warn(util_log.Logger).Log("msg", "could not extract query limits context from header", "err", err)
+			limitsCtx = nil
+		}
+
+		if limitsCtx != nil {
+			r = r.Clone(InjectQueryLimitsContextIntoContext(r.Context(), *limitsCtx))
 		}
 
 		next.ServeHTTP(w, r)

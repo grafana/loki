@@ -2,6 +2,7 @@ package parquet
 
 import (
 	"io"
+	"math"
 	"sort"
 
 	"github.com/parquet-go/parquet-go/deprecated"
@@ -225,19 +226,46 @@ func (p *rowBufferPage) NumNulls() int64 {
 }
 
 func (p *rowBufferPage) Bounds() (min, max Value, ok bool) {
+	var nanValue Value
+	hasNaN := false
+
 	p.scan(func(value Value) {
-		if !value.IsNull() {
-			switch {
-			case !ok:
-				min, max, ok = value, value, true
-			case p.typ.Compare(value, min) < 0:
-				min = value
-			case p.typ.Compare(value, max) > 0:
-				max = value
-			}
+		if value.IsNull() {
+			return
+		}
+		// NaN is excluded from min/max so that query engines can rely on
+		// statistics for predicate pushdown. See floatPage.Bounds for the
+		// full rationale.
+		if isNaN(value) {
+			nanValue = value
+			hasNaN = true
+			return
+		}
+		switch {
+		case !ok:
+			min, max, ok = value, value, true
+		case p.typ.Compare(value, min) < 0:
+			min = value
+		case p.typ.Compare(value, max) > 0:
+			max = value
 		}
 	})
+
+	if !ok && hasNaN {
+		min, max, ok = nanValue, nanValue, true
+	}
 	return min, max, ok
+}
+
+func isNaN(v Value) bool {
+	switch v.Kind() {
+	case Float:
+		return math.IsNaN(float64(v.Float()))
+	case Double:
+		return math.IsNaN(v.Double())
+	default:
+		return false
+	}
 }
 
 func (p *rowBufferPage) Size() int64 { return 0 }
@@ -245,7 +273,7 @@ func (p *rowBufferPage) Size() int64 { return 0 }
 func (p *rowBufferPage) Values() ValueReader {
 	return &rowBufferPageValueReader{
 		page:        p,
-		columnIndex: ^int16(p.column),
+		columnIndex: ^uint16(p.column),
 	}
 }
 
@@ -351,7 +379,7 @@ func (p *rowBufferPage) Data() encoding.Values {
 }
 
 func (p *rowBufferPage) scan(f func(Value)) {
-	columnIndex := ^int16(p.column)
+	columnIndex := ^uint16(p.column)
 
 	for _, row := range p.rows {
 		for _, value := range row {
@@ -374,7 +402,7 @@ type rowBufferPageValueReader struct {
 	page        *rowBufferPage
 	rowIndex    int
 	valueIndex  int
-	columnIndex int16
+	columnIndex uint16
 }
 
 func (r *rowBufferPageValueReader) ReadValues(values []Value) (n int, err error) {

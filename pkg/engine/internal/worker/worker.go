@@ -1,0 +1,706 @@
+// Package worker provides a mechanism to connect to the [scheduler] for
+// executing tasks.
+package worker
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"net"
+	"net/http"
+	"reflect"
+	"runtime"
+	"sync"
+	"time"
+
+	"github.com/go-kit/log"
+	"github.com/go-kit/log/level"
+	"github.com/grafana/dskit/backoff"
+	"github.com/grafana/dskit/services"
+	"github.com/oklog/ulid/v2"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/thanos-io/objstore"
+	"go.opentelemetry.io/otel/propagation"
+	"golang.org/x/sync/errgroup"
+
+	"github.com/grafana/loki/v3/pkg/dataobj/consumer/logsobj"
+	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
+	"github.com/grafana/loki/v3/pkg/engine/internal/executor"
+	"github.com/grafana/loki/v3/pkg/engine/internal/metrictimer"
+	"github.com/grafana/loki/v3/pkg/engine/internal/obslock"
+	"github.com/grafana/loki/v3/pkg/engine/internal/scheduler/wire"
+	"github.com/grafana/loki/v3/pkg/scratch"
+	"github.com/grafana/loki/v3/pkg/util/httpreq"
+)
+
+// Config holds configuration options for [Worker].
+type Config struct {
+	// Logger for optional log messages.
+	Logger log.Logger
+
+	// Metrics for the worker's wire connections.
+	WireMetrics *wire.Metrics
+
+	// Bucket to read stored data from.
+	Bucket objstore.Bucket
+
+	// DataBucket reads source log objects during LogMerge compaction. When the
+	// compaction wiring prefixes Bucket with the index-storage prefix, source
+	// log objects (stored at the unprefixed dataobj root) must be read through
+	// this bucket. Optional; nil falls back to Bucket.
+	DataBucket objstore.Bucket
+
+	// Metastore client to access indexes.
+	Metastore metastore.Metastore
+
+	// Dialer to establish connections to scheduler and remote workers.
+	Dialer wire.Dialer
+
+	// Listener for accepting connections from workers.
+	Listener wire.Listener
+
+	// SchedulerAddress is the address of the remote scheduler to connect to.
+	// SchedulerAddress is used when there is exactly one scheduler. Use
+	// SchedulerLookupAddress to discover multiple schedulers by DNS SRV lookup.
+	SchedulerAddress net.Addr
+
+	// SchedulerLookupAddress is the address of the remote scheduler to look up.
+	// Scheduler addresses are resolved using DNS SRV records at this address.
+	SchedulerLookupAddress string
+
+	// SchedulerLookupInterval is the frequency at which the worker will attempt
+	// to find new remote schedulers.
+	SchedulerLookupInterval time.Duration
+
+	// BatchSize specifies the maximum number of rows to retrieve in a single
+	// read call of a task pipeline, or to send in a single message to a peer (sink).
+	BatchSize int64
+
+	// PrefetchBytes controls the number of bytes prefetched when opening a
+	// data object in scan tasks.
+	PrefetchBytes int64
+
+	// NumThreads is the number of worker threads to spawn. The number of
+	// threads corresponds to the number of tasks that can be executed
+	// concurrently.
+	//
+	// If NumThreads is set to 0, NumThreads defaults to [runtime.GOMAXPROCS].
+	NumThreads int
+
+	// Absolute path of the endpoint where the frame handler is registered.
+	// Used for connecting to scheduler and other workers.
+	Endpoint string
+
+	// StreamFilterer is an optional filterer that can filter streams based on their labels.
+	// When set, streams are filtered before scanning.
+	StreamFilterer executor.RequestStreamFilterer `yaml:"-"`
+
+	// TaskCaches is an optional registry of backing caches for task results.
+	TaskCaches executor.TaskCacheRegistry
+
+	// ScratchStore is an optional scratch store for index merge operations.
+	// Required for compaction tasks; may be nil for query-only workers.
+	ScratchStore scratch.Store
+
+	// IndexobjCfg is the builder config for compacted index objects.
+	// Required for compaction tasks; may be nil for query-only workers.
+	IndexobjCfg logsobj.BuilderBaseConfig
+
+	// LogsobjCfg is the builder config for compacted log objects
+	// Required for compaction tasks; may be nil for query-only workers.
+	LogsobjCfg logsobj.BuilderBaseConfig
+
+	// IndexMergeObserver is used  by compaction to populate output-size
+	// histograms. Optional; nil disables observation.
+	IndexMergeObserver executor.IndexMergeObserver
+	LogMergeObserver   executor.LogMergeObserver
+}
+
+// Worker requests tasks from a set of [scheduler.Scheduler] instances and
+// executes them. Task results are forwarded along streams, which are received
+// by other [Worker] instances or the scheduler.
+type Worker struct {
+	config     Config
+	logger     log.Logger
+	numThreads int
+	taskCaches executor.TaskCacheRegistry
+
+	initOnce sync.Once
+	svc      services.Service
+
+	dialer   wire.Dialer
+	listener wire.Listener
+
+	resourcesMut obslock.RWMutex
+	sources      map[ulid.ULID]*streamSource
+	sinks        map[ulid.ULID]*streamSink
+	jobs         map[ulid.ULID]*threadJob
+
+	wireMetrics *wire.Metrics
+	metrics     *metrics
+	collector   *collector
+
+	// jobManager used to manage task assignments.
+	jobManager *jobManager
+}
+
+// New creates a new instance of a worker. Use [Worker.Service] to manage
+// the lifecycle of the returned worker.
+//
+// New returns an error if the provided config is invalid.
+func New(config Config) (*Worker, error) {
+	if config.Logger == nil {
+		config.Logger = log.NewNopLogger()
+	}
+	if config.Listener == nil {
+		return nil, errors.New("worker listener is required")
+	}
+	if config.Dialer == nil {
+		return nil, errors.New("dialer is required")
+	}
+	if config.SchedulerAddress == nil && config.SchedulerLookupAddress == "" {
+		return nil, errors.New("at least one of scheduler address or lookup address is required")
+	}
+
+	numThreads := config.NumThreads
+	if numThreads == 0 {
+		numThreads = runtime.GOMAXPROCS(0)
+	}
+
+	w := &Worker{
+		config:      config,
+		logger:      config.Logger,
+		wireMetrics: wire.NewMetrics(),
+		numThreads:  numThreads,
+		taskCaches:  config.TaskCaches,
+
+		dialer:   config.Dialer,
+		listener: config.Listener,
+
+		sources: make(map[ulid.ULID]*streamSource),
+		sinks:   make(map[ulid.ULID]*streamSink),
+		jobs:    make(map[ulid.ULID]*threadJob),
+
+		metrics:   newMetrics(),
+		collector: newCollector(),
+
+		jobManager: newJobManager(),
+	}
+	w.resourcesMut.Init("resourcesMut", w.metrics.lock)
+	return w, nil
+}
+
+// Service returns the service used to manage the lifecycle of the worker.
+func (w *Worker) Service() services.Service {
+	w.initOnce.Do(func() {
+		w.svc = services.NewBasicService(nil, w.run, nil)
+	})
+
+	return w.svc
+}
+
+// run starts the worker, running until the provided context is canceled.
+func (w *Worker) run(ctx context.Context) error {
+	threadsCtx, threadsCancel := context.WithCancel(context.Background())
+	defer threadsCancel()
+	threadsGroup, threadsCtx := errgroup.WithContext(threadsCtx)
+
+	// Spin up worker threads.
+	var threads []*thread
+	for i := range w.numThreads {
+		t := &thread{
+			BatchSize:      w.config.BatchSize,
+			PrefetchBytes:  w.config.PrefetchBytes,
+			Logger:         log.With(w.logger, "thread", i),
+			Bucket:         w.config.Bucket,
+			DataBucket:     w.config.DataBucket,
+			Metastore:      w.config.Metastore,
+			StreamFilterer: w.config.StreamFilterer,
+			TaskCaches:     w.taskCaches,
+			ScratchStore:   w.config.ScratchStore,
+			IndexobjCfg:    w.config.IndexobjCfg,
+			LogsobjCfg:     w.config.LogsobjCfg,
+
+			IndexMergeObserver: w.config.IndexMergeObserver,
+			LogMergeObserver:   w.config.LogMergeObserver,
+
+			Metrics:    w.metrics,
+			JobManager: w.jobManager,
+		}
+		threads = append(threads, t)
+
+		threadsGroup.Go(func() error { return t.Run(threadsCtx) })
+	}
+
+	w.collector.setThreads(threads)
+
+	// Spin up the listener for peer connections
+	peerConnectionsCtx, peerConnectionsCancel := context.WithCancel(context.Background())
+	defer peerConnectionsCancel()
+
+	go func() {
+		w.runAcceptLoop(peerConnectionsCtx)
+	}()
+
+	// Spin up the scheduler loop
+	schedulerCtx, schedulerCancel := context.WithCancel(context.Background())
+	defer schedulerCancel()
+
+	schedulerGroup := errgroup.Group{}
+	if w.config.SchedulerLookupAddress != "" {
+		disc, err := newSchedulerLookup(w.logger, w.config.SchedulerLookupAddress, w.config.SchedulerLookupInterval)
+		if err != nil {
+			return fmt.Errorf("creating scheduler lookup: %w", err)
+		}
+		schedulerGroup.Go(func() error {
+			return disc.Run(schedulerCtx, func(ctx context.Context, addr net.Addr) {
+				_ = w.schedulerLoop(ctx, addr)
+			})
+		})
+	}
+
+	if w.config.SchedulerAddress != nil {
+		level.Info(w.logger).Log("msg", "directly connecting to scheduler", "scheduler_addr", w.config.SchedulerAddress)
+		schedulerGroup.Go(func() error { return w.schedulerLoop(schedulerCtx, w.config.SchedulerAddress) })
+	}
+
+	// Wait for shutdown
+	<-ctx.Done()
+
+	// Signal all worker threads to stop. This will make them not to ask for new tasks, but continue processing current jobs.
+	threadsCancel()
+
+	// Wait for all worker threads to finish their current jobs.
+	err := threadsGroup.Wait()
+	if err != nil {
+		return err
+	}
+
+	// Stop scheduler loop
+	schedulerCancel()
+
+	// Wait for scheduler loop to finish
+	err = schedulerGroup.Wait()
+	if err != nil {
+		return err
+	}
+
+	// Close all peer connections
+	peerConnectionsCancel()
+
+	return nil
+}
+
+// runAcceptLoop handles incoming connections from peers. Incoming connections
+// are exclusively used to receive task results from other workers, or between
+// threads within this worker.
+func (w *Worker) runAcceptLoop(ctx context.Context) {
+	for {
+		conn, err := w.listener.Accept(ctx)
+		if err != nil && ctx.Err() != nil {
+			return
+		} else if err != nil {
+			level.Warn(w.logger).Log("msg", "failed to accept connection", "err", err)
+			continue
+		}
+
+		go w.handleConn(ctx, conn)
+	}
+}
+
+func (w *Worker) handleConn(ctx context.Context, conn wire.Conn) {
+	logger := log.With(w.logger, "remote_addr", conn.RemoteAddr())
+	level.Info(logger).Log("msg", "handling connection")
+
+	peer := &wire.Peer{
+		Logger:  logger,
+		Metrics: w.wireMetrics,
+		Conn:    conn,
+
+		// Allow for a backlog of 8 frames before backpressure is applied.
+		Buffer: 8,
+
+		Handler: func(ctx context.Context, _ *wire.Peer, msg wire.Message) (err error) {
+			phases := w.metrics.startHandler(msg.Kind())
+			defer func() { phases.Done(handlerOutcome(err)) }()
+
+			return w.handleDataMessage(ctx, msg, phases)
+		},
+	}
+
+	// Handle communication with the peer until the context is canceled or some
+	// error occurs.
+	err := peer.Serve(ctx)
+	if ctx.Err() != nil || errors.Is(err, wire.ErrConnClosed) {
+		level.Debug(logger).Log("msg", "connection closed")
+	} else if err != nil {
+		level.Warn(logger).Log("msg", "serve error", "err", err)
+	}
+}
+
+// schedulerLoop manages the lifecycle of a connection to a specific scheduler.
+func (w *Worker) schedulerLoop(ctx context.Context, addr net.Addr) error {
+	logger := log.With(w.logger, "remote_addr", addr)
+
+	bo := backoff.New(ctx, backoff.Config{
+		MinBackoff: 100 * time.Millisecond,
+		MaxBackoff: 1 * time.Second,
+		MaxRetries: 0, // Never stop retrying
+	})
+
+	for bo.Ongoing() {
+		conn, err := w.dial(ctx, addr)
+		if err != nil {
+			level.Warn(logger).Log("msg", "dial to scheduler failed, will retry after backoff", "err", err)
+			bo.Wait()
+			continue
+		}
+
+		// We only want to increase the backoff for failed dials rather than
+		// terminated connections, so we reset it as long as the dial succeeds.
+		bo.Reset()
+
+		err = w.handleSchedulerConn(ctx, logger, conn)
+		if ctx.Err() != nil {
+			level.Debug(logger).Log("msg", "context canceled. stopping scheduler loop")
+			break
+		} else if err != nil {
+			level.Warn(logger).Log("msg", "connection to scheduler closed; will reconnect after backoff", "err", err)
+			bo.Wait()
+			continue
+		}
+	}
+
+	return nil
+}
+
+// dial opens a connection to the given address.
+func (w *Worker) dial(ctx context.Context, addr net.Addr) (wire.Conn, error) {
+	return w.dialer.Dial(ctx, w.listener.Addr(), addr)
+}
+
+// handleSchedulerConn handles a single connection to a scheduler.
+func (w *Worker) handleSchedulerConn(ctx context.Context, logger log.Logger, conn wire.Conn) error {
+	level.Info(logger).Log("msg", "connected to scheduler")
+
+	// waitReady is used to signal that the scheduler should be told when
+	// there's a ready thread.
+	waitReady := make(chan struct{}, 1)
+
+	notifySchedulerOnReady := func() {
+		select {
+		case waitReady <- struct{}{}:
+		default:
+			// Already queued, nothing to do.
+		}
+	}
+
+	handleAssignment := func(peer *wire.Peer, msg wire.TaskAssignMessage) error {
+		job, err := w.newJob(ctx, peer, logger, msg)
+		if err != nil {
+			return err
+		}
+
+		// Time the handoff once into job_handoff_seconds; the handler no longer
+		// double-records it as a job_manager_send phase.
+		handoff, err := metrictimer.Time(func() error {
+			return w.jobManager.Send(ctx, job)
+		})
+		if err != nil {
+			outcome := outcomeNoReady429
+			if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+				outcome = outcomeCtxError
+			}
+			w.metrics.observeJobHandoff(outcome, handoff)
+			job.Close() // Clean up resources associated with the job.
+			notifySchedulerOnReady()
+			w.metrics.rejectedAssignmentsTotal.Inc()
+			return wire.Errorf(http.StatusTooManyRequests, "no threads available")
+		}
+		w.metrics.observeJobHandoff(outcomeSent, handoff)
+
+		w.metrics.tasksAssignedTotal.Inc()
+		return nil
+	}
+
+	peer := &wire.Peer{
+		Logger:  logger,
+		Metrics: w.wireMetrics,
+		Conn:    conn,
+
+		// Allow for a backlog of 128 frames before backpressure is applied.
+		Buffer: 128,
+
+		Handler: func(_ context.Context, peer *wire.Peer, msg wire.Message) (err error) {
+			phases := w.metrics.startHandler(msg.Kind())
+			defer func() { phases.Done(handlerOutcome(err)) }()
+
+			switch msg := msg.(type) {
+			case wire.TaskAssignMessage:
+				return handleAssignment(peer, msg)
+
+			case wire.TaskCancelMessage:
+				return w.handleCancelMessage(msg)
+
+			case wire.StreamBindMessage:
+				return w.handleBindMessage(msg)
+
+			case wire.StreamClosedMessage:
+				return w.handleStreamClosedMessage(msg)
+
+			default:
+				level.Warn(logger).Log("msg", "unsupported message type", "type", reflect.TypeOf(msg).String())
+				return wire.Errorf(http.StatusNotImplemented, "unsupported message type %T", msg)
+			}
+		},
+	}
+
+	g, ctx := errgroup.WithContext(ctx)
+	g.Go(func() error { return peer.Serve(ctx) })
+
+	// Perform a handshake with the scheduler. This must be done before
+	// launching the other worker message goroutines, as WorkerReady messages
+	// are rejected until a WorkerHello is acknowledged.
+	if err := peer.SendMessage(ctx, wire.WorkerHelloMessage{}); err != nil {
+		level.Error(logger).Log("msg", "failed to perform handshake with scheduler", "err", err)
+		return err
+	}
+	notifySchedulerOnReady()
+
+	g.Go(func() error {
+		for {
+			// Wait until this connection should announce that a worker thread is
+			// ready.
+			select {
+			case <-ctx.Done():
+				return nil
+			case <-waitReady:
+			}
+
+			// Wait for a thread to become ready for another job. Per-slot
+			// ready->filled latency is measured on the thread itself as
+			// slot_ready_wait_seconds.
+			if err := w.jobManager.WaitReady(ctx); err != nil {
+				return nil
+			}
+
+			// Notify the scheduler.
+			if err := peer.SendMessageAsync(ctx, wire.WorkerReadyMessage{}); err != nil {
+				level.Warn(logger).Log("msg", "failed to send ready message", "err", err)
+			}
+		}
+	})
+
+	// Wait for all worker goroutines to exit.
+	err := g.Wait()
+
+	level.Info(logger).Log("msg", "disconnected from scheduler", "err", err)
+	return err
+}
+
+// newJob creates a new job for the given assigned task. The job will have a
+// context bound to the provided ctx.
+//
+// newJob returns an error if there was a ULID collision for the job or any of
+// its streams.
+func (w *Worker) newJob(ctx context.Context, scheduler *wire.Peer, logger log.Logger, msg wire.TaskAssignMessage) (job *threadJob, err error) {
+	guard := w.resourcesMut.Lock("new_job")
+	defer guard.Unlock()
+
+	var (
+		sources = make(map[ulid.ULID]*streamSource)
+		sinks   = make(map[ulid.ULID]*streamSink)
+	)
+	defer func() {
+		if err == nil {
+			return
+		}
+
+		// If we happened to run into a ULID collision while creating the job,
+		// we want to clean up any streams we stored in the maps.
+		for sourceID := range sources {
+			delete(w.sources, sourceID)
+		}
+		for sinkID := range sinks {
+			delete(w.sinks, sinkID)
+		}
+	}()
+
+	if w.sources == nil {
+		w.sources = make(map[ulid.ULID]*streamSource)
+	}
+	if w.sinks == nil {
+		w.sinks = make(map[ulid.ULID]*streamSink)
+	}
+
+	closedSources := make(map[ulid.ULID]struct{}, len(msg.ClosedSourceIDs))
+	for _, id := range msg.ClosedSourceIDs {
+		closedSources[id] = struct{}{}
+	}
+
+	for _, taskSources := range msg.Task.Sources {
+		for _, taskSource := range taskSources {
+			source := new(streamSource)
+
+			// We keep all sources in the job for consistency, but it's possible
+			// that we got assigned a task with a stream that's already closed.
+			//
+			// To handle this, we immediately close the source before adding it
+			// to the job. This will ensure that the stream returns EOF
+			// immediately and doesn't block forever.
+			if _, closed := closedSources[taskSource.ULID]; closed {
+				source.Close()
+			}
+
+			if _, exist := w.sources[taskSource.ULID]; exist {
+				return nil, fmt.Errorf("source %s already exists", taskSource.ULID)
+			}
+
+			w.sources[taskSource.ULID] = source
+			sources[taskSource.ULID] = source
+		}
+	}
+
+	for _, taskSinks := range msg.Task.Sinks {
+		for _, taskSink := range taskSinks {
+			sink := &streamSink{
+				Logger:      log.With(logger, "stream", taskSink.ULID),
+				Metrics:     w.metrics,
+				WireMetrics: w.wireMetrics,
+				Stream:      taskSink,
+				TaskType:    taskTypeLabel(msg.Task),
+				Dialer:      w.dial,
+			}
+
+			if _, exist := w.sinks[taskSink.ULID]; exist {
+				return nil, fmt.Errorf("sink %s already exists", taskSink.ULID)
+			}
+
+			w.sinks[taskSink.ULID] = sink
+			sinks[taskSink.ULID] = sink
+		}
+	}
+
+	// Extract tracing context and bind it to the job's context.
+	var tc propagation.TraceContext
+	ctx = tc.Extract(ctx, propagation.HeaderCarrier(msg.Metadata))
+
+	// Inject all headers from task metadata into context.
+	// This restores headers that were stored by PropagateAllHeadersMiddleware
+	// and copied to task metadata by the scheduler.
+	ctx = httpreq.InjectAllHeaders(ctx, msg.Metadata)
+
+	ctx, cancel := context.WithCancel(ctx)
+
+	job = &threadJob{
+		Context: ctx,
+		Cancel:  cancel,
+
+		Scheduler: scheduler,
+		Task:      msg.Task,
+
+		Sources: sources,
+		Sinks:   sinks,
+
+		Close: func() {
+			guard := w.resourcesMut.Lock("close_job")
+			defer guard.Unlock()
+
+			for sourceID := range sources {
+				delete(w.sources, sourceID)
+			}
+			for sinkID := range sinks {
+				delete(w.sinks, sinkID)
+			}
+
+			delete(w.jobs, msg.Task.ULID)
+		},
+	}
+
+	if _, exist := w.jobs[msg.Task.ULID]; exist {
+		return nil, fmt.Errorf("job %s already exists", msg.Task.ULID)
+	}
+
+	w.jobs[msg.Task.ULID] = job
+	return job, nil
+}
+
+func (w *Worker) handleCancelMessage(msg wire.TaskCancelMessage) error {
+	guard := w.resourcesMut.RLock("handle_cancel")
+	job, found := w.jobs[msg.ID]
+	guard.RUnlock()
+
+	if !found {
+		return fmt.Errorf("task %s not found", msg.ID)
+	}
+
+	// Mark the job as interrupted before cancelling the context so we can
+	// differentiate between an expected cancellation an unexpected context
+	// cancellation (which results in a task failure).
+	job.interrupted.Store(true)
+	job.Cancel()
+	return nil
+}
+
+func (w *Worker) handleBindMessage(msg wire.StreamBindMessage) error {
+	guard := w.resourcesMut.RLock("handle_bind")
+	sink, found := w.sinks[msg.StreamID]
+	guard.RUnlock()
+
+	if !found {
+		return fmt.Errorf("stream %s not found", msg.StreamID)
+	}
+
+	err := sink.Bind(msg.Receiver)
+	return err
+}
+
+func (w *Worker) handleStreamClosedMessage(msg wire.StreamClosedMessage) error {
+	guard := w.resourcesMut.RLock("handle_stream_closed")
+	source, found := w.sources[msg.StreamID]
+	guard.RUnlock()
+
+	if !found {
+		return fmt.Errorf("stream %s not found", msg.StreamID)
+	}
+
+	source.Close()
+	return nil
+}
+
+func (w *Worker) handleDataMessage(ctx context.Context, msg wire.Message, phases *metrictimer.Timer) error {
+	streamData, ok := msg.(wire.StreamDataMessage)
+	if !ok {
+		return fmt.Errorf("unsupported message type %T", msg)
+	}
+
+	guard := w.resourcesMut.RLock("handle_stream_data")
+	source, found := w.sources[streamData.StreamID]
+	guard.RUnlock()
+
+	if !found {
+		return fmt.Errorf("stream %s not found for receiving data", streamData.StreamID)
+	}
+
+	return phases.Region(phaseSourceWriteWait, func() error {
+		return source.Write(ctx, streamData.Data)
+	})
+}
+
+// RegisterMetrics registers metrics about s to report to reg.
+func (w *Worker) RegisterMetrics(reg prometheus.Registerer) error {
+	var errs []error
+
+	errs = append(errs, reg.Register(w.collector))
+	errs = append(errs, w.metrics.Register(reg))
+	errs = append(errs, w.wireMetrics.Register(reg))
+
+	return errors.Join(errs...)
+}
+
+// UnregisterMetrics unregisters metrics about s from reg.
+func (w *Worker) UnregisterMetrics(reg prometheus.Registerer) {
+	reg.Unregister(w.collector)
+	w.metrics.Unregister(reg)
+	w.wireMetrics.Unregister(reg)
+}

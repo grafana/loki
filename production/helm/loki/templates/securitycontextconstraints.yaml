@@ -5,7 +5,7 @@ metadata:
   name: {{ include "loki.name" . }}
   labels:
     {{- include "loki.labels" . | nindent 4 }}
-allowHostDirVolumePlugin: false
+allowHostDirVolumePlugin: {{ .Values.rbac.sccAllowHostDirVolumePlugin }}
 allowHostIPC: false
 allowHostNetwork: false
 allowHostPID: false
@@ -33,7 +33,9 @@ volumes:
   - configMap
   - downwardAPI
   - emptyDir
+  {{- if .Values.rbac.sccAllowHostDirVolumePlugin }}
   - hostPath
+  {{- end }}
   - persistentVolumeClaim
   - projected
   - secret

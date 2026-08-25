@@ -74,13 +74,14 @@ kubectl create namespace meta && kubectl create namespace prod
 
 ## Add the Grafana Helm repository
 
-All three Helm charts (Loki, Grafana, and the Kubernetes Monitoring Helm) are available in the Grafana Helm repository. Add the Grafana Helm repository by running the following command:
+The Grafana and Kubernetes Monitoring Helm charts are available in the Grafana Helm repository. The Loki Helm chart is maintained separately in the Grafana Community Helm Charts repository. Add both Helm repositories by running the following commands:
 
 ```bash
 helm repo add grafana https://grafana.github.io/helm-charts && helm repo update
+helm repo add grafana-community https://grafana-community.github.io/helm-charts && helm repo update
 ```
 
-As well as adding the repo to your local helm list, you should also run `helm repo update` to ensure you have the latest version of the charts.
+As well as adding the repos to your local helm list, you should also run `helm repo update` to ensure you have the latest version of the charts.
 
 ## Clone the tutorial repository
 
@@ -114,14 +115,14 @@ To deploy Loki run the following command:
 
 <!-- INTERACTIVE ignore START -->
 ```bash
-helm install --values loki-values.yml loki grafana/loki -n meta
+helm install --values loki-values.yml loki grafana-community/loki -n meta
 ```
 <!-- INTERACTIVE ignore END -->
 
 {{< docs/ignore >}}
 
 ```bash
-helm install --values killercoda/loki-values.yml loki grafana/loki -n meta
+helm install --values killercoda/loki-values.yml loki grafana-community/loki -n meta
 ```
 {{< /docs/ignore >}}
 
@@ -148,17 +149,17 @@ As before, the command also includes a `values` file that specifies the configur
    ```yaml
     datasources:
       datasources.yaml:
-            apiVersion: 1
-            datasources:
-            - name: Loki
-              type: loki
-              access: proxy
-              orgId: 1
-              url: http://loki-gateway.meta.svc.cluster.local:80
-              basicAuth: false
-              isDefault: false
-              version: 1
-              editable: false
+        apiVersion: 1
+        datasources:
+        - name: Loki
+          type: loki
+          access: proxy
+          orgId: 1
+          url: http://loki-gateway.meta.svc.cluster.local:80
+          basicAuth: false
+          isDefault: false
+          version: 1
+          editable: false
    ```
   This configuration defines a data source named `Loki` that Grafana will use to query logs stored in Loki. The `url` attribute specifies the URL of the Loki gateway. The Loki gateway is a service that sits in front of the Loki API and provides a single endpoint for ingesting and querying logs. The URL is in the format `http://loki-gateway.<NAMESPACE>.svc.cluster.local:80`. The `loki-gateway` service is created by the Loki Helm chart and is used to query logs stored in Loki. **If you choose to deploy Loki in a different namespace or with a different name, you will need to update the `url` attribute accordingly.**
 
@@ -278,7 +279,7 @@ One of the first places you should visit is Logs Drilldown which lets you automa
 The Kubernetes Monitoring Helm chart deploys Grafana Alloy to collect and forward telemetry data from the Kubernetes cluster. The Helm chart is designed to abstract you away from creating an Alloy configuration file. However if you would like to understand the pipeline you can view the Alloy UI. To access the Alloy UI, you will need to port-forward the Alloy service to your local machine. To do this, run the following command:
 
 ```bash
-export POD_NAME=$(kubectl get pods --namespace meta -l "app.kubernetes.io/name=alloy-logs,app.kubernetes.io/instance=k8s" -o jsonpath="{.items[0].metadata.name}") && \
+export POD_NAME=$(kubectl get pods --namespace meta -l "app.kubernetes.io/name=alloy-logs,app.kubernetes.io/instance=k8s-alloy-logs" -o jsonpath="{.items[0].metadata.name}") && \
 kubectl --namespace meta port-forward $POD_NAME 12345 --address 0.0.0.0
 ```
 

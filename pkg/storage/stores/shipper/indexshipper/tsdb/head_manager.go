@@ -15,15 +15,20 @@ import (
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/pkg/errors"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/tsdb/chunks"
 	"github.com/prometheus/prometheus/tsdb/record"
+	"github.com/prometheus/prometheus/tsdb/wlog"
+	"github.com/prometheus/prometheus/util/compression"
 	"go.uber.org/atomic"
 
+	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/storage/chunk"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client/util"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/index"
+	util_log "github.com/grafana/loki/v3/pkg/util/log"
 	"github.com/grafana/loki/v3/pkg/util/wal"
 )
 
@@ -105,10 +110,16 @@ type HeadManager struct {
 	shards                 int
 	activeHeads, prevHeads *tenantHeads
 
+	chunkFilterMu sync.Mutex
+	chunkFilter   chunk.RequestChunkFilterer
+
 	Index
 
 	wg     sync.WaitGroup
 	cancel chan struct{}
+	// flush receives requests to force a rotate+build outside the periodic tick.
+	// It is handled on the loop goroutine so a forced flush never races a tick.
+	flush chan chan error
 }
 
 func NewHeadManager(name string, logger log.Logger, dir string, metrics *Metrics, tsdbManager TSDBManager) *HeadManager {
@@ -124,6 +135,7 @@ func NewHeadManager(name string, logger log.Logger, dir string, metrics *Metrics
 		shards: shards,
 
 		cancel: make(chan struct{}),
+		flush:  make(chan chan error),
 	}
 
 	m.Index = LazyIndex(func() (Index, error) {
@@ -138,7 +150,11 @@ func NewHeadManager(name string, logger log.Logger, dir string, metrics *Metrics
 			indices = append(indices, m.activeHeads)
 		}
 
-		return NewMultiIndex(IndexSlice(indices)), nil
+		idx := NewMultiIndex(IndexSlice(indices))
+		if f := m.getChunkFilter(); f != nil {
+			idx.SetChunkFilterer(f)
+		}
+		return idx, nil
 	})
 
 	return m
@@ -165,40 +181,41 @@ func (m *HeadManager) buildPrev() error {
 	return nil
 }
 
-// tick handles one iteration for `loop()`. It builds new heads,
-// cleans up previous heads, and performs rotations.
-func (m *HeadManager) tick(now time.Time) {
-	// retry tsdb build failures from previous run
+// rotateAndBuild runs one rotation cycle, shared by the periodic tick() and the
+// on-demand Flush(): it drains any pending previous-period build, rotates the
+// active head when either forced or a new period has started, then builds the
+// rotated-out head. The only difference between the periodic and forced paths is
+// whether rotation is gated on the period boundary. Must only be called from the
+// loop goroutine.
+func (m *HeadManager) rotateAndBuild(now time.Time, force bool) error {
+	// Retry tsdb build failures from a previous run before rotating; rotating
+	// without building prev would lose that period's index until restart.
 	if err := m.buildPrev(); err != nil {
-		level.Error(m.log).Log(
-			"msg", "failed building tsdb head",
-			"period", m.period.PeriodFor(m.prev.initialized),
-			"err", err,
-		)
-		// rotating head without building prev would result in loss of index for that period (until restart)
-		return
+		return errors.Wrap(err, "building pending prev tsdb head")
 	}
 
-	if activePeriod := m.period.PeriodFor(m.activeHeads.start); m.period.PeriodFor(now) > activePeriod {
+	if force || m.period.PeriodFor(now) > m.period.PeriodFor(m.activeHeads.start) {
 		if err := m.Rotate(now); err != nil {
 			m.metrics.headRotations.WithLabelValues(statusFailure).Inc()
-			level.Error(m.log).Log(
-				"msg", "failed rotating tsdb head",
-				"period", activePeriod,
-				"err", err,
-			)
-			return
+			return errors.Wrap(err, "rotating tsdb head")
 		}
 		m.metrics.headRotations.WithLabelValues(statusSuccess).Inc()
 	}
 
-	// build tsdb from rotated-out period
+	// Build tsdb from the rotated-out (now frozen) period.
 	if err := m.buildPrev(); err != nil {
-		level.Error(m.log).Log(
-			"msg", "failed building tsdb head",
-			"period", m.period.PeriodFor(m.prev.initialized),
-			"err", err,
-		)
+		return errors.Wrap(err, "building rotated-out tsdb head")
+	}
+
+	return nil
+}
+
+// tick handles one iteration for `loop()`. It builds new heads, cleans up
+// previous heads, and rotates when a new period has started. Errors are logged
+// and the loop continues.
+func (m *HeadManager) tick(now time.Time) {
+	if err := m.rotateAndBuild(now, false); err != nil {
+		level.Error(m.log).Log("msg", "failed to rotate/build tsdb head", "err", err)
 	}
 }
 
@@ -213,9 +230,32 @@ func (m *HeadManager) loop() {
 		case <-ticker.C:
 			now := time.Now()
 			m.tick(now)
+		case resp := <-m.flush:
+			resp <- m.rotateAndBuild(time.Now(), true)
 		case <-m.cancel:
 			return
 		}
+	}
+}
+
+// errHeadManagerStopped is returned by Flush when the loop has already stopped.
+var errHeadManagerStopped = errors.New("head manager is stopping")
+
+// Flush forces the active head to be rotated out and built into TSDB files
+// immediately, instead of waiting for the next periodic rotation. The work runs
+// on the manager's loop goroutine (serialized with the periodic tick), so it
+// never races a concurrent rotation.
+//
+// The freshly built TSDBs are handed to the index shipper but are not yet
+// uploaded to object storage; callers wanting them durable in object storage
+// must also force an upload (see (*store).FlushIndexes).
+func (m *HeadManager) Flush() error {
+	resp := make(chan error, 1)
+	select {
+	case m.flush <- resp:
+		return <-resp
+	case <-m.cancel:
+		return errHeadManagerStopped
 	}
 }
 
@@ -243,12 +283,25 @@ func (m *HeadManager) Stop() error {
 	return m.buildTSDBFromHead(m.activeHeads)
 }
 
+func (m *HeadManager) SetChunkFilterer(chunkFilter chunk.RequestChunkFilterer) {
+	m.chunkFilterMu.Lock()
+	m.chunkFilter = chunkFilter
+	m.chunkFilterMu.Unlock()
+}
+
+func (m *HeadManager) getChunkFilter() chunk.RequestChunkFilterer {
+	m.chunkFilterMu.Lock()
+	f := m.chunkFilter
+	m.chunkFilterMu.Unlock()
+	return f
+}
+
 func (m *HeadManager) Append(userID string, ls labels.Labels, fprint uint64, chks index.ChunkMetas) error {
 	// TSDB doesnt need the __name__="log" convention the old chunk store index used.
 	// We must create a copy of the labels here to avoid mutating the existing
 	// labels when writing across index buckets.
 	b := labels.NewBuilder(ls)
-	b.Del(labels.MetricName)
+	b.Del(model.MetricNameLabel)
 	ls = b.Labels()
 
 	m.mtx.RLock()
@@ -542,15 +595,15 @@ func legacyWalPath(parent string, t time.Time) string {
 
 // recoverHead recovers from all WALs belonging to some period
 // and inserts it into the active *tenantHeads
-func recoverHead(name, dir string, heads *tenantHeads, wals []WALIdentifier, legacy bool) error {
+func recoverHead(name, dir string, heads *tenantHeads, wals []WALIdentifier, legacy bool, logger log.Logger, repairsCounter *prometheus.CounterVec) error {
 	for _, id := range wals {
-		// use anonymous function for ease of cleanup
-		if err := func(id WALIdentifier) error {
-			walPath := walPath(name, dir, id.ts)
-			if legacy {
-				walPath = legacyWalPath(dir, id.ts)
-			}
+		walPath := walPath(name, dir, id.ts)
+		if legacy {
+			walPath = legacyWalPath(dir, id.ts)
+		}
 
+		// use anonymous function for ease of cleanup
+		if werr := func(walPath string) error {
 			reader, closer, err := wal.NewWalReader(walPath, -1)
 			if err != nil {
 				return err
@@ -573,7 +626,7 @@ func recoverHead(name, dir string, heads *tenantHeads, wals []WALIdentifier, leg
 				}
 
 				// labels are always written to the WAL before corresponding chunks
-				if len(rec.Series.Labels) > 0 {
+				if !rec.Series.Labels.IsEmpty() {
 					tenant, ok := seriesMap[rec.UserID]
 					if !ok {
 						tenant = make(map[uint64]*labelsWithFp)
@@ -599,14 +652,32 @@ func recoverHead(name, dir string, heads *tenantHeads, wals []WALIdentifier, leg
 			}
 			return reader.Err()
 
-		}(id); err != nil {
-			return errors.Wrap(
-				err,
-				"error recovering from TSDB WAL",
-			)
+		}(walPath); werr != nil {
+			// Try to repair the WAL if it's a corruption error.
+			var cerr *wlog.CorruptionErr
+			if !errors.As(werr, &cerr) {
+				return fmt.Errorf("error recovering head from TSDB WAL: %w", werr)
+			}
+
+			level.Error(logger).Log("msg", "error recovering from TSDB WAL, will try repairing", "error", werr)
+			if err := repairWAL(werr, walPath, logger); err != nil {
+				repairsCounter.WithLabelValues(statusFailure).Inc()
+				return fmt.Errorf("repairing WAL failed: %w", err)
+			}
+			repairsCounter.WithLabelValues(statusSuccess).Inc()
 		}
 	}
 	return nil
+}
+
+func repairWAL(walErr error, walPath string, logger log.Logger) error {
+	wl, err := wlog.New(util_log.SlogFromGoKit(logger), nil, walPath, compression.None)
+	if err != nil {
+		return fmt.Errorf("creating wlog for repair: %w", err)
+	}
+	defer wl.Close()
+
+	return wl.Repair(walErr)
 }
 
 type WALIdentifier struct {
@@ -631,13 +702,14 @@ func parseWALPath(p string) (id WALIdentifier, ok bool) {
 type tenantHeads struct {
 	mint, maxt atomic.Int64 // easy lookup for Bounds() impl
 
-	start       time.Time
-	shards      int
-	locks       []sync.RWMutex
-	tenants     []map[string]*Head
-	log         log.Logger
-	chunkFilter chunk.RequestChunkFilterer
-	metrics     *Metrics
+	start         time.Time
+	shards        int
+	locks         []sync.RWMutex
+	tenants       []map[string]*Head
+	log           log.Logger
+	chunkFilterMu sync.Mutex
+	chunkFilter   chunk.RequestChunkFilterer
+	metrics       *Metrics
 }
 
 func newTenantHeads(start time.Time, shards int, metrics *Metrics, logger log.Logger) *tenantHeads {
@@ -723,7 +795,16 @@ func (t *tenantHeads) shardForTenant(userID string) uint64 {
 func (t *tenantHeads) Close() error { return nil }
 
 func (t *tenantHeads) SetChunkFilterer(chunkFilter chunk.RequestChunkFilterer) {
+	t.chunkFilterMu.Lock()
 	t.chunkFilter = chunkFilter
+	t.chunkFilterMu.Unlock()
+}
+
+func (t *tenantHeads) getChunkFilter() chunk.RequestChunkFilterer {
+	t.chunkFilterMu.Lock()
+	f := t.chunkFilter
+	t.chunkFilterMu.Unlock()
+	return f
 }
 
 func (t *tenantHeads) Bounds() (model.Time, model.Time) {
@@ -740,14 +821,14 @@ func (t *tenantHeads) tenantIndex(userID string, from, through model.Time) (idx 
 	}
 
 	idx = NewTSDBIndex(tenant.indexRange(int64(from), int64(through)))
-	if t.chunkFilter != nil {
-		idx.SetChunkFilterer(t.chunkFilter)
+	if f := t.getChunkFilter(); f != nil {
+		idx.SetChunkFilterer(f)
 	}
 	return idx, true
 
 }
 
-func (t *tenantHeads) GetChunkRefs(ctx context.Context, userID string, from, through model.Time, _ []ChunkRef, fpFilter index.FingerprintFilter, matchers ...*labels.Matcher) ([]ChunkRef, error) {
+func (t *tenantHeads) GetChunkRefs(ctx context.Context, userID string, from, through model.Time, _ []logproto.ChunkRefWithSizingInfo, fpFilter index.FingerprintFilter, matchers ...*labels.Matcher) ([]logproto.ChunkRefWithSizingInfo, error) {
 	idx, ok := t.tenantIndex(userID, from, through)
 	if !ok {
 		return nil, nil
@@ -821,22 +902,26 @@ func (t *tenantHeads) forAll(fn func(user string, ls labels.Labels, fp uint64, c
 				return err
 			}
 
+			scan := idx.NewSeriesScan()
 			for ps.Next() {
 				var (
 					ls   labels.Labels
 					chks []index.ChunkMeta
 				)
 
-				fp, err := idx.Series(ps.At(), 0, math.MaxInt64, &ls, &chks)
+				fp, err := scan.Series(ps.At(), 0, math.MaxInt64, &ls, &chks)
 
 				if err != nil {
+					_ = scan.Close()
 					return errors.Wrapf(err, "iterating postings for tenant: %s", user)
 				}
 
 				if err := fn(user, ls, fp, chks); err != nil {
+					_ = scan.Close()
 					return err
 				}
 			}
+			_ = scan.Close()
 		}
 	}
 

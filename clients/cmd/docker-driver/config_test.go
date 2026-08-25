@@ -6,7 +6,7 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/docker/docker/daemon/logger"
+	"github.com/moby/moby/v2/daemon/logger"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/require"
@@ -67,13 +67,13 @@ var pipelineString = `
 `
 var pipeline = PipelineConfig{
 	PipelineStages: []interface{}{
-		map[interface{}]interface{}{
-			"regex": map[interface{}]interface{}{
+		map[string]interface{}{
+			"regex": map[string]interface{}{
 				"expression": "(level|lvl|severity)=(?P<level>\\w+)",
 			},
 		},
-		map[interface{}]interface{}{
-			"labels": map[interface{}]interface{}{
+		map[string]interface{}{
+			"labels": map[string]interface{}{
 				"level": nil,
 			},
 		},
@@ -87,7 +87,7 @@ func Test_parsePipeline(t *testing.T) {
 	}
 	defer os.Remove(f.Name())
 
-	_, err = f.Write([]byte(fmt.Sprintf("pipeline_stages:\n%s", pipelineString)))
+	_, err = fmt.Fprintf(f, "pipeline_stages:\n%s", pipelineString)
 	if err != nil {
 		t.Fatal(err)
 	}

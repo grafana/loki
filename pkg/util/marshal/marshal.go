@@ -16,7 +16,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logqlmodel"
 	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
-	indexStats "github.com/grafana/loki/v3/pkg/storage/stores/index/stats"
 	"github.com/grafana/loki/v3/pkg/util/httpreq"
 	marshal_legacy "github.com/grafana/loki/v3/pkg/util/marshal/legacy"
 )
@@ -40,7 +39,7 @@ func WriteResponseJSON(r *http.Request, v any, w http.ResponseWriter) error {
 		return marshal_legacy.WriteLabelResponseJSON(*result, w)
 	case *logproto.SeriesResponse:
 		return WriteSeriesResponseJSON(result.GetSeries(), w)
-	case *indexStats.Stats:
+	case *logproto.IndexStatsResponse:
 		return WriteIndexStatsResponseJSON(result, w)
 	case *logproto.VolumeResponse:
 		return WriteVolumeResponseJSON(result, w)
@@ -148,9 +147,9 @@ type seriesResponseAdapter struct {
 	Data   []map[string]string `json:"data"`
 }
 
-// WriteIndexStatsResponseJSON marshals a gatewaypb.Stats to JSON and then
+// WriteIndexStatsResponseJSON marshals an IndexStatsResponse to JSON and then
 // writes it to the provided io.Writer.
-func WriteIndexStatsResponseJSON(r *indexStats.Stats, w io.Writer) error {
+func WriteIndexStatsResponseJSON(r *logproto.IndexStatsResponse, w io.Writer) error {
 	s := jsoniter.ConfigFastest.BorrowStream(w)
 	defer jsoniter.ConfigFastest.ReturnStream(s)
 	s.WriteVal(r)

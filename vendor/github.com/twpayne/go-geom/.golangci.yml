@@ -1,0 +1,174 @@
+version: "2"
+run:
+  go: "1.22"
+linters:
+  enable:
+    - asasalint
+    - asciicheck
+    - bidichk
+    - bodyclose
+    - canonicalheader
+    - containedctx
+    - contextcheck
+    - copyloopvar
+    - decorder
+    - dogsled
+    - dupl
+    - dupword
+    - durationcheck
+    - err113
+    - errchkjson
+    - errorlint
+    - exptostd
+    - fatcontext
+    - forbidigo
+    - forcetypeassert
+    - ginkgolinter
+    - gocheckcompilerdirectives
+    - gochecknoinits
+    - gochecksumtype
+    - gocritic
+    - godot
+    - goheader
+    - gomoddirectives
+    - gomodguard
+    - goprintffuncname
+    - gosmopolitan
+    - grouper
+    - iface
+    - importas
+    - inamedparam
+    - interfacebloat
+    - intrange
+    - ireturn
+    - loggercheck
+    - makezero
+    - mirror
+    - misspell
+    - musttag
+    - nakedret
+    - nilerr
+    - nilnesserr
+    - nilnil
+    - noctx
+    - nolintlint
+    - nosprintfhostport
+    - perfsprint
+    - prealloc
+    - predeclared
+    - promlinter
+    - protogetter
+    - reassign
+    - recvcheck
+    - revive
+    - rowserrcheck
+    - sloglint
+    - spancheck
+    - sqlclosecheck
+    - staticcheck
+    - tagalign
+    - tagliatelle
+    - testableexamples
+    - testifylint
+    - thelper
+    - tparallel
+    - unconvert
+    - unparam
+    - usestdlibvars
+    - usetesting
+    - wastedassign
+    - whitespace
+    - zerologlint
+  disable:
+    - cyclop
+    - depguard
+    - errname
+    - exhaustive
+    - exhaustruct
+    - funlen
+    - gochecknoglobals
+    - gocognit
+    - goconst
+    - gocyclo
+    - godox
+    - gosec
+    - lll
+    - maintidx
+    - mnd
+    - nestif
+    - nlreturn
+    - nonamedreturns
+    - paralleltest
+    - testpackage
+    - varnamelen
+    - wrapcheck
+    - wsl
+  settings:
+    ireturn:
+      allow:
+        - error
+        - stdlib
+        - ^github\.com/twpayne/go-geom\.T$
+        - ^github\.com/twpayne/go-kml/v3\.Element$
+  exclusions:
+    generated: lax
+    presets:
+      - comments
+      - common-false-positives
+      - legacy
+      - std-error-handling
+    rules:
+      - linters:
+          - dupl
+          - scopelint
+        path: _test\.go
+      - linters:
+          - godot
+        path: ^bigxy/
+      - linters:
+          - gocritic
+        path: _example_test\.go$
+      - linters:
+          - godot
+        path: ^sorting/
+      - linters:
+          - godot
+        path: ^transform/
+      - linters:
+          - gocritic
+          - godot
+        path: ^xy/
+      - linters:
+          - godot
+        path: ^xyz/
+      - linters:
+          - err113
+        text: do not define dynamic errors, use wrapped static errors instead
+      - linters:
+          - forbidigo
+        path: ^internal/cmd/
+    paths:
+      - third_party$
+      - builtin$
+      - examples$
+formatters:
+  enable:
+    - gci
+    - gofmt
+    - gofumpt
+    - goimports
+  settings:
+    gci:
+      sections:
+        - standard
+        - default
+        - prefix(github.com/twpayne/go-geom)
+    goimports:
+      local-prefixes:
+        - github.com/twpayne/go-geom
+  exclusions:
+    generated: lax
+    paths:
+      - third_party$
+      - builtin$
+      - examples$

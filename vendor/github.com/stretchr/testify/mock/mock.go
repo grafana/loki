@@ -11,11 +11,11 @@ import (
 	"sync"
 	"time"
 
-	"github.com/davecgh/go-spew/spew"
-	"github.com/pmezard/go-difflib/difflib"
 	"github.com/stretchr/objx"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/internal/difflib"
+	"github.com/stretchr/testify/internal/spew"
 )
 
 // regex for GCCGO functions
@@ -208,9 +208,16 @@ func (c *Call) On(methodName string, arguments ...interface{}) *Call {
 	return c.Parent.On(methodName, arguments...)
 }
 
-// Unset removes a mock handler from being called.
+// Unset removes all mock handlers that satisfy the call instance arguments from being
+// called. Only supported on call instances with static input arguments.
 //
-//	test.On("func", mock.Anything).Unset()
+// For example, the only handler remaining after the following would be "MyMethod(2, 2)":
+//
+//	Mock.
+//	   On("MyMethod", 2, 2).Return(0).
+//	   On("MyMethod", 3, 3).Return(0).
+//	   On("MyMethod", Anything, Anything).Return(0)
+//	Mock.On("MyMethod", 3, 3).Unset()
 func (c *Call) Unset() *Call {
 	var unlockOnce sync.Once
 
@@ -331,7 +338,10 @@ func (m *Mock) TestData() objx.Map {
 	Setting expectations
 */
 
-// Test sets the test struct variable of the mock object
+// Test sets the [TestingT] on which errors will be reported, otherwise errors
+// will cause a panic.
+// Test should not be called on an object that is going to be used in a
+// goroutine other than the one running the test function.
 func (m *Mock) Test(t TestingT) {
 	m.mutex.Lock()
 	defer m.mutex.Unlock()
@@ -460,7 +470,7 @@ func callString(method string, arguments Arguments, includeArgumentValues bool) 
 
 // Called tells the mock object that a method has been called, and gets an array
 // of arguments to return.  Panics if the call is unexpected (i.e. not preceded by
-// appropriate .On .Return() calls)
+// appropriate [Mock.On] calls)
 // If Call.WaitFor is set, blocks until the channel is closed or receives a message.
 func (m *Mock) Called(arguments ...interface{}) Arguments {
 	// get the calling function's name
@@ -483,7 +493,7 @@ func (m *Mock) Called(arguments ...interface{}) Arguments {
 
 // MethodCalled tells the mock object that the given method has been called, and gets
 // an array of arguments to return. Panics if the call is unexpected (i.e. not preceded
-// by appropriate .On .Return() calls)
+// by appropriate [Mock.On] calls)
 // If Call.WaitFor is set, blocks until the channel is closed or receives a message.
 func (m *Mock) MethodCalled(methodName string, arguments ...interface{}) Arguments {
 	m.mutex.Lock()
@@ -494,14 +504,13 @@ func (m *Mock) MethodCalled(methodName string, arguments ...interface{}) Argumen
 		// expected call found, but it has already been called with repeatable times
 		if call != nil {
 			m.mutex.Unlock()
-			m.fail("\nassert: mock: The method has been called over %d times.\n\tEither do one more Mock.On(\"%s\").Return(...), or remove extra call.\n\tThis call was unexpected:\n\t\t%s\n\tat: %s", call.totalCalls, methodName, callString(methodName, arguments, true), assert.CallerInfo())
+			m.fail("\nassert: mock: The method has been called over %d times.\n\tEither do one more Mock.On(%#v).Return(...), or remove extra call.\n\tThis call was unexpected:\n\t\t%s\n\tat: %s", call.totalCalls, methodName, callString(methodName, arguments, true), assert.CallerInfo())
 		}
 		// we have to fail here - because we don't know what to do
 		// as the return arguments.  This is because:
 		//
 		//   a) this is a totally unexpected call to this method,
-		//   b) the arguments are not what was expected, or
-		//   c) the developer has forgotten to add an accompanying On...Return pair.
+		//   b) the arguments are not what was expected
 		closestCall, mismatch := m.findClosestCall(methodName, arguments...)
 		m.mutex.Unlock()
 
@@ -514,7 +523,7 @@ func (m *Mock) MethodCalled(methodName string, arguments ...interface{}) Argumen
 				assert.CallerInfo(),
 			)
 		} else {
-			m.fail("\nassert: mock: I don't know what to return because the method call was unexpected.\n\tEither do Mock.On(\"%s\").Return(...) first, or remove the %s() call.\n\tThis method was unexpected:\n\t\t%s\n\tat: %s", methodName, methodName, callString(methodName, arguments, true), assert.CallerInfo())
+			m.fail("\nassert: mock: I don't know what to return because the method call was unexpected.\n\tEither do Mock.On(%#v).Return(...) first, or remove the %s() call.\n\tThis method was unexpected:\n\t\t%s\n\tat: %s", methodName, methodName, callString(methodName, arguments, true), assert.CallerInfo())
 		}
 	}
 
@@ -585,7 +594,7 @@ type assertExpectationiser interface {
 	AssertExpectations(TestingT) bool
 }
 
-// AssertExpectationsForObjects asserts that everything specified with On and Return
+// AssertExpectationsForObjects asserts that everything specified with [Mock.On]
 // of the specified objects was in fact called as expected.
 //
 // Calls may have occurred in any order.
@@ -594,11 +603,12 @@ func AssertExpectationsForObjects(t TestingT, testObjects ...interface{}) bool {
 		h.Helper()
 	}
 	for _, obj := range testObjects {
-		if m, ok := obj.(*Mock); ok {
-			t.Logf("Deprecated mock.AssertExpectationsForObjects(myMock.Mock) use mock.AssertExpectationsForObjects(myMock)")
-			obj = m
+		m, ok := obj.(assertExpectationiser)
+		if !ok {
+			t.Errorf("Invalid test object type %T. Expected reference to a mock.Mock, eg: 'AssertExpectationsForObjects(t, myMock)' or 'AssertExpectationsForObjects(t, &myMock.Mock)'", obj)
+			continue
+
 		}
-		m := obj.(assertExpectationiser)
 		if !m.AssertExpectations(t) {
 			t.Logf("Expectations didn't match for Mock: %+v", reflect.TypeOf(m))
 			return false
@@ -607,7 +617,7 @@ func AssertExpectationsForObjects(t TestingT, testObjects ...interface{}) bool {
 	return true
 }
 
-// AssertExpectations asserts that everything specified with On and Return was
+// AssertExpectations asserts that everything specified with [Mock.On] was
 // in fact called as expected.  Calls may have occurred in any order.
 func (m *Mock) AssertExpectations(t TestingT) bool {
 	if s, ok := t.(interface{ Skipped() bool }); ok && s.Skipped() {
@@ -661,7 +671,7 @@ func (m *Mock) AssertNumberOfCalls(t TestingT, methodName string, expectedCalls 
 			actualCalls++
 		}
 	}
-	return assert.Equal(t, expectedCalls, actualCalls, fmt.Sprintf("Expected number of calls (%d) does not match the actual number of calls (%d).", expectedCalls, actualCalls))
+	return assert.Equal(t, expectedCalls, actualCalls, fmt.Sprintf("Expected number of calls (%d) of method %s does not match the actual number of calls (%d).", expectedCalls, methodName, actualCalls))
 }
 
 // AssertCalled asserts that the method was called.
@@ -702,8 +712,8 @@ func (m *Mock) AssertNotCalled(t TestingT, methodName string, arguments ...inter
 	return true
 }
 
-// IsMethodCallable checking that the method can be called
-// If the method was called more than `Repeatability` return false
+// IsMethodCallable returns true if given methodName and arguments have an
+// unsatisfied expected call registered in the Mock.
 func (m *Mock) IsMethodCallable(t TestingT, methodName string, arguments ...interface{}) bool {
 	if h, ok := t.(tHelper); ok {
 		h.Helper()
@@ -823,6 +833,10 @@ type IsTypeArgument struct {
 // For example:
 //
 //	args.Assert(t, IsType(""), IsType(0))
+//
+// Mock cannot match interface types because the contained type will be  passed
+// to both IsType and Mock.Called, for the zero value of all interfaces this
+// will be <nil> type.
 func IsType(t interface{}) *IsTypeArgument {
 	return &IsTypeArgument{t: reflect.TypeOf(t)}
 }
@@ -1002,7 +1016,7 @@ func (args Arguments) Diff(objects []interface{}) (string, int) {
 				actualT := reflect.TypeOf(actual)
 				if actualT != expected.t {
 					differences++
-					output = fmt.Sprintf("%s\t%d: FAIL:  type %s != type %s - %s\n", output, i, expected.t.Name(), actualT.Name(), actualFmt)
+					output = fmt.Sprintf("%s\t%d: FAIL:  type %s != type %s - %s\n", output, i, safeTypeName(expected.t), safeTypeName(actualT), actualFmt)
 				}
 			case *FunctionalOptionsArgument:
 				var name string
@@ -1129,6 +1143,15 @@ func (args Arguments) Bool(index int) bool {
 		panic(fmt.Sprintf("assert: arguments: Bool(%d) failed because object wasn't correct type: %v", index, args.Get(index)))
 	}
 	return s
+}
+
+// safeTypeName returns the reflect.Type's name without causing a panic.
+// If the provided reflect.Type is nil, it returns the placeholder string "<nil>"
+func safeTypeName(t reflect.Type) string {
+	if t == nil {
+		return "<nil>"
+	}
+	return t.Name()
 }
 
 func typeAndKind(v interface{}) (reflect.Type, reflect.Kind) {

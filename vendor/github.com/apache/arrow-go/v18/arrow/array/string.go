@@ -21,6 +21,7 @@ import (
 	"fmt"
 	"reflect"
 	"strings"
+	"unicode/utf8"
 	"unsafe"
 
 	"github.com/apache/arrow-go/v18/arrow"
@@ -56,7 +57,10 @@ func (a *String) Reset(data arrow.ArrayData) {
 
 // Value returns the slice at index i. This value should not be mutated.
 func (a *String) Value(i int) string {
-	i = i + a.array.data.offset
+	if i < 0 || i >= a.data.length {
+		panic("arrow/array: index out of range")
+	}
+	i = i + a.data.offset
 	return a.values[a.offsets[i]:a.offsets[i+1]]
 }
 
@@ -69,10 +73,10 @@ func (a *String) ValueStr(i int) string {
 
 // ValueOffset returns the offset of the value at index i.
 func (a *String) ValueOffset(i int) int {
-	if i < 0 || i >= a.array.data.length {
+	if i < 0 || i >= a.data.length {
 		panic("arrow/array: index out of range")
 	}
-	return int(a.offsets[i+a.array.data.offset])
+	return int(a.offsets[i+a.data.offset])
 }
 
 func (a *String) ValueOffset64(i int) int64 {
@@ -80,23 +84,23 @@ func (a *String) ValueOffset64(i int) int64 {
 }
 
 func (a *String) ValueLen(i int) int {
-	if i < 0 || i >= a.array.data.length {
+	if i < 0 || i >= a.data.length {
 		panic("arrow/array: index out of range")
 	}
-	beg := a.array.data.offset + i
+	beg := a.data.offset + i
 	return int(a.offsets[beg+1] - a.offsets[beg])
 }
 
 func (a *String) ValueOffsets() []int32 {
-	beg := a.array.data.offset
-	end := beg + a.array.data.length + 1
+	beg := a.data.offset
+	end := beg + a.data.length + 1
 	return a.offsets[beg:end]
 }
 
 func (a *String) ValueBytes() []byte {
-	beg := a.array.data.offset
-	end := beg + a.array.data.length
-	if a.array.data.buffers[2] != nil {
+	beg := a.data.offset
+	end := beg + a.data.length
+	if a.data.buffers[2] != nil {
 		return a.array.data.buffers[2].Bytes()[a.offsets[beg]:a.offsets[end]]
 	}
 	return nil
@@ -136,11 +140,11 @@ func (a *String) setData(data *Data) {
 		a.offsets = arrow.Int32Traits.CastFromBytes(offsets.Bytes())
 	}
 
-	if a.array.data.length < 1 {
+	if a.data.length < 1 {
 		return
 	}
 
-	expNumOffsets := a.array.data.offset + a.array.data.length + 1
+	expNumOffsets := a.data.offset + a.data.length + 1
 	if len(a.offsets) < expNumOffsets {
 		panic(fmt.Errorf("arrow/array: string offset buffer must have at least %d values", expNumOffsets))
 	}
@@ -167,6 +171,64 @@ func (a *String) MarshalJSON() ([]byte, error) {
 		}
 	}
 	return json.Marshal(vals)
+}
+
+// Validate performs a basic, O(1) consistency check on the array data.
+// It returns an error if:
+//   - The offset buffer is too small for the array length and offset
+//   - The last offset exceeds the data buffer length
+//
+// This is useful for detecting corrupted data from untrusted sources (e.g.
+// Arrow Flight / Flight SQL servers) before accessing values, which may
+// otherwise cause a runtime panic.
+func (a *String) Validate() error {
+	if a.data.length == 0 {
+		return nil
+	}
+	if a.data.buffers[1] == nil {
+		return fmt.Errorf("arrow/array: non-empty string array has no offsets buffer")
+	}
+	expNumOffsets := a.data.offset + a.data.length + 1
+	if len(a.offsets) < expNumOffsets {
+		return fmt.Errorf("arrow/array: string offset buffer must have at least %d values, got %d", expNumOffsets, len(a.offsets))
+	}
+	firstOffset := int(a.offsets[a.data.offset])
+	if firstOffset > len(a.values) {
+		return fmt.Errorf("arrow/array: string offset %d out of bounds of data buffer (length %d)", firstOffset, len(a.values))
+	}
+	lastOffset := int(a.offsets[expNumOffsets-1])
+	if lastOffset > len(a.values) {
+		return fmt.Errorf("arrow/array: string offset %d out of bounds of data buffer (length %d)", lastOffset, len(a.values))
+	}
+	return nil
+}
+
+// ValidateFull performs a full O(n) consistency check on the array data.
+// In addition to the checks performed by Validate, it also verifies that
+// all offsets are non-negative and monotonically non-decreasing.
+func (a *String) ValidateFull() error {
+	if err := a.Validate(); err != nil {
+		return err
+	}
+	if a.data.length == 0 {
+		return nil
+	}
+	offsets := a.offsets[a.data.offset : a.data.offset+a.data.length+1]
+	if offsets[0] < 0 {
+		return fmt.Errorf("arrow/array: string offset at index %d is negative: %d", a.data.offset, offsets[0])
+	}
+	for i := 1; i < len(offsets); i++ {
+		if offsets[i] < offsets[i-1] {
+			return fmt.Errorf("arrow/array: string offsets are not monotonically non-decreasing at index %d: %d < %d",
+				a.data.offset+i, offsets[i], offsets[i-1])
+		}
+		value := a.values[offsets[i-1]:offsets[i]]
+		if !utf8.ValidString(value) {
+			return fmt.Errorf("arrow/array: string at index %d is not valid utf8: %s", a.data.offset+i-1, value)
+		}
+	}
+
+	return nil
 }
 
 func arrayEqualString(left, right *String) bool {
@@ -203,7 +265,10 @@ func (a *LargeString) Reset(data arrow.ArrayData) {
 
 // Value returns the slice at index i. This value should not be mutated.
 func (a *LargeString) Value(i int) string {
-	i = i + a.array.data.offset
+	if i < 0 || i >= a.data.length {
+		panic("arrow/array: index out of range")
+	}
+	i = i + a.data.offset
 	return a.values[a.offsets[i]:a.offsets[i+1]]
 }
 
@@ -216,10 +281,10 @@ func (a *LargeString) ValueStr(i int) string {
 
 // ValueOffset returns the offset of the value at index i.
 func (a *LargeString) ValueOffset(i int) int64 {
-	if i < 0 || i > a.array.data.length {
+	if i < 0 || i > a.data.length {
 		panic("arrow/array: index out of range")
 	}
-	return a.offsets[i+a.array.data.offset]
+	return a.offsets[i+a.data.offset]
 }
 
 func (a *LargeString) ValueOffset64(i int) int64 {
@@ -227,23 +292,23 @@ func (a *LargeString) ValueOffset64(i int) int64 {
 }
 
 func (a *LargeString) ValueLen(i int) int {
-	if i < 0 || i >= a.array.data.length {
+	if i < 0 || i >= a.data.length {
 		panic("arrow/array: index out of range")
 	}
-	beg := a.array.data.offset + i
+	beg := a.data.offset + i
 	return int(a.offsets[beg+1] - a.offsets[beg])
 }
 
 func (a *LargeString) ValueOffsets() []int64 {
-	beg := a.array.data.offset
-	end := beg + a.array.data.length + 1
+	beg := a.data.offset
+	end := beg + a.data.length + 1
 	return a.offsets[beg:end]
 }
 
 func (a *LargeString) ValueBytes() []byte {
-	beg := a.array.data.offset
-	end := beg + a.array.data.length
-	if a.array.data.buffers[2] != nil {
+	beg := a.data.offset
+	end := beg + a.data.length
+	if a.data.buffers[2] != nil {
 		return a.array.data.buffers[2].Bytes()[a.offsets[beg]:a.offsets[end]]
 	}
 	return nil
@@ -283,11 +348,11 @@ func (a *LargeString) setData(data *Data) {
 		a.offsets = arrow.Int64Traits.CastFromBytes(offsets.Bytes())
 	}
 
-	if a.array.data.length < 1 {
+	if a.data.length < 1 {
 		return
 	}
 
-	expNumOffsets := a.array.data.offset + a.array.data.length + 1
+	expNumOffsets := a.data.offset + a.data.length + 1
 	if len(a.offsets) < expNumOffsets {
 		panic(fmt.Errorf("arrow/array: string offset buffer must have at least %d values", expNumOffsets))
 	}
@@ -310,6 +375,64 @@ func (a *LargeString) MarshalJSON() ([]byte, error) {
 		vals[i] = a.GetOneForMarshal(i)
 	}
 	return json.Marshal(vals)
+}
+
+// Validate performs a basic, O(1) consistency check on the array data.
+// It returns an error if:
+//   - The offset buffer is too small for the array length and offset
+//   - The last offset exceeds the data buffer length
+//
+// This is useful for detecting corrupted data from untrusted sources (e.g.
+// Arrow Flight / Flight SQL servers) before accessing values, which may
+// otherwise cause a runtime panic.
+func (a *LargeString) Validate() error {
+	if a.data.length == 0 {
+		return nil
+	}
+	if a.data.buffers[1] == nil {
+		return fmt.Errorf("arrow/array: non-empty large string array has no offsets buffer")
+	}
+	expNumOffsets := a.data.offset + a.data.length + 1
+	if len(a.offsets) < expNumOffsets {
+		return fmt.Errorf("arrow/array: large string offset buffer must have at least %d values, got %d", expNumOffsets, len(a.offsets))
+	}
+	firstOffset := int(a.offsets[a.data.offset])
+	if firstOffset > len(a.values) {
+		return fmt.Errorf("arrow/array: large string offset %d out of bounds of data buffer (length %d)", firstOffset, len(a.values))
+	}
+
+	lastOffset := int(a.offsets[expNumOffsets-1])
+	if lastOffset > len(a.values) {
+		return fmt.Errorf("arrow/array: large string offset %d out of bounds of data buffer (length %d)", lastOffset, len(a.values))
+	}
+	return nil
+}
+
+// ValidateFull performs a full O(n) consistency check on the array data.
+// In addition to the checks performed by Validate, it also verifies that
+// all offsets are non-negative and monotonically non-decreasing.
+func (a *LargeString) ValidateFull() error {
+	if err := a.Validate(); err != nil {
+		return err
+	}
+	if a.data.length == 0 {
+		return nil
+	}
+	offsets := a.offsets[a.data.offset : a.data.offset+a.data.length+1]
+	if offsets[0] < 0 {
+		return fmt.Errorf("arrow/array: large string offset at index %d is negative: %d", a.data.offset, offsets[0])
+	}
+	for i := 1; i < len(offsets); i++ {
+		if offsets[i] < offsets[i-1] {
+			return fmt.Errorf("arrow/array: large string offsets are not monotonically non-decreasing at index %d: %d < %d",
+				a.data.offset+i, offsets[i], offsets[i-1])
+		}
+		value := a.values[offsets[i-1]:offsets[i]]
+		if !utf8.ValidString(value) {
+			return fmt.Errorf("arrow/array: string at index %d is not valid utf8: %s", a.data.offset+i-1, value)
+		}
+	}
+	return nil
 }
 
 func arrayEqualLargeString(left, right *LargeString) bool {
@@ -356,10 +479,10 @@ func (a *StringView) setData(data *Data) {
 }
 
 func (a *StringView) ValueHeader(i int) *arrow.ViewHeader {
-	if i < 0 || i >= a.array.data.length {
+	if i < 0 || i >= a.data.length {
 		panic("arrow/array: index out of range")
 	}
-	return &a.values[a.array.data.offset+i]
+	return &a.values[a.data.offset+i]
 }
 
 func (a *StringView) Value(i int) string {
@@ -457,7 +580,7 @@ func (b *StringBuilder) Append(v string) {
 // in v are valid (not null). The valid slice must either be empty or be equal in length to v. If empty,
 // all values in v are appended and considered valid.
 func (b *StringBuilder) AppendValues(v []string, valid []bool) {
-	b.BinaryBuilder.AppendStringValues(v, valid)
+	b.AppendStringValues(v, valid)
 }
 
 // Value returns the string at index i.
@@ -512,6 +635,7 @@ func (b *StringBuilder) Unmarshal(dec *json.Decoder) error {
 
 func (b *StringBuilder) UnmarshalJSON(data []byte) error {
 	dec := json.NewDecoder(bytes.NewReader(data))
+	dec.UseNumber()
 	t, err := dec.Token()
 	if err != nil {
 		return err
@@ -550,7 +674,7 @@ func (b *LargeStringBuilder) Append(v string) {
 // in v are valid (not null). The valid slice must either be empty or be equal in length to v. If empty,
 // all values in v are appended and considered valid.
 func (b *LargeStringBuilder) AppendValues(v []string, valid []bool) {
-	b.BinaryBuilder.AppendStringValues(v, valid)
+	b.AppendStringValues(v, valid)
 }
 
 // Value returns the string at index i.
@@ -605,6 +729,7 @@ func (b *LargeStringBuilder) Unmarshal(dec *json.Decoder) error {
 
 func (b *LargeStringBuilder) UnmarshalJSON(data []byte) error {
 	dec := json.NewDecoder(bytes.NewReader(data))
+	dec.UseNumber()
 	t, err := dec.Token()
 	if err != nil {
 		return err
@@ -630,11 +755,11 @@ func NewStringViewBuilder(mem memory.Allocator) *StringViewBuilder {
 }
 
 func (b *StringViewBuilder) Append(v string) {
-	b.BinaryViewBuilder.AppendString(v)
+	b.AppendString(v)
 }
 
 func (b *StringViewBuilder) AppendValues(v []string, valid []bool) {
-	b.BinaryViewBuilder.AppendStringValues(v, valid)
+	b.AppendStringValues(v, valid)
 }
 
 func (b *StringViewBuilder) UnmarshalOne(dec *json.Decoder) error {
@@ -653,7 +778,7 @@ func (b *StringViewBuilder) UnmarshalOne(dec *json.Decoder) error {
 	default:
 		return &json.UnmarshalTypeError{
 			Value:  fmt.Sprint(t),
-			Type:   reflect.TypeOf([]byte{}),
+			Type:   reflect.TypeOf(string("")),
 			Offset: dec.InputOffset(),
 		}
 	}
@@ -671,13 +796,14 @@ func (b *StringViewBuilder) Unmarshal(dec *json.Decoder) error {
 
 func (b *StringViewBuilder) UnmarshalJSON(data []byte) error {
 	dec := json.NewDecoder(bytes.NewReader(data))
+	dec.UseNumber()
 	t, err := dec.Token()
 	if err != nil {
 		return err
 	}
 
 	if delim, ok := t.(json.Delim); !ok || delim != '[' {
-		return fmt.Errorf("binary view builder must unpack from json array, found %s", delim)
+		return fmt.Errorf("string view builder must unpack from json array, found %s", delim)
 	}
 
 	return b.Unmarshal(dec)

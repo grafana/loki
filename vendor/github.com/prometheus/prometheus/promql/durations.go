@@ -1,4 +1,4 @@
-// Copyright 2025 The Prometheus Authors
+// Copyright The Prometheus Authors
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
@@ -21,14 +21,26 @@ import (
 	"github.com/prometheus/prometheus/promql/parser"
 )
 
-// durationVisitor is a visitor that visits a duration expression and calculates the duration.
-type durationVisitor struct{}
+// durationVisitor is a visitor that calculates the actual value of
+// duration expressions in AST nodes. For example the query
+// "http_requests_total offset (1h / 2)" is represented in the AST
+// as a VectorSelector with OriginalOffset 0 and the duration expression
+// in OriginalOffsetExpr representing (1h / 2). This visitor evaluates
+// such duration expression, setting OriginalOffset to 30m.
+type durationVisitor struct {
+	step       time.Duration
+	queryRange time.Duration
+}
 
+// Visit finds any duration expressions in AST Nodes and modifies the Node to
+// store the concrete value. Note that parser.Walk does NOT traverse the
+// duration expressions such as OriginalOffsetExpr so we make our own recursive
+// call on those to evaluate the result.
 func (v *durationVisitor) Visit(node parser.Node, _ []parser.Node) (parser.Visitor, error) {
 	switch n := node.(type) {
 	case *parser.VectorSelector:
 		if n.OriginalOffsetExpr != nil {
-			duration, err := calculateDuration(n.OriginalOffsetExpr, true)
+			duration, err := v.calculateDuration(n.OriginalOffsetExpr, true)
 			if err != nil {
 				return nil, err
 			}
@@ -36,7 +48,7 @@ func (v *durationVisitor) Visit(node parser.Node, _ []parser.Node) (parser.Visit
 		}
 	case *parser.MatrixSelector:
 		if n.RangeExpr != nil {
-			duration, err := calculateDuration(n.RangeExpr, false)
+			duration, err := v.calculateDuration(n.RangeExpr, false)
 			if err != nil {
 				return nil, err
 			}
@@ -44,21 +56,21 @@ func (v *durationVisitor) Visit(node parser.Node, _ []parser.Node) (parser.Visit
 		}
 	case *parser.SubqueryExpr:
 		if n.OriginalOffsetExpr != nil {
-			duration, err := calculateDuration(n.OriginalOffsetExpr, true)
+			duration, err := v.calculateDuration(n.OriginalOffsetExpr, true)
 			if err != nil {
 				return nil, err
 			}
 			n.OriginalOffset = duration
 		}
 		if n.StepExpr != nil {
-			duration, err := calculateDuration(n.StepExpr, false)
+			duration, err := v.calculateDuration(n.StepExpr, false)
 			if err != nil {
 				return nil, err
 			}
 			n.Step = duration
 		}
 		if n.RangeExpr != nil {
-			duration, err := calculateDuration(n.RangeExpr, false)
+			duration, err := v.calculateDuration(n.RangeExpr, false)
 			if err != nil {
 				return nil, err
 			}
@@ -68,23 +80,35 @@ func (v *durationVisitor) Visit(node parser.Node, _ []parser.Node) (parser.Visit
 	return v, nil
 }
 
-// calculateDuration computes the duration from a duration expression.
-func calculateDuration(expr parser.Expr, allowedNegative bool) (time.Duration, error) {
-	duration, err := evaluateDurationExpr(expr)
+// calculateDuration returns the float value of a duration expression as
+// time.Duration or an error if the duration is invalid.
+func (v *durationVisitor) calculateDuration(expr parser.Expr, allowedNegative bool) (time.Duration, error) {
+	duration, err := v.evaluateDurationExpr(expr)
 	if err != nil {
 		return 0, err
+	}
+	// Reject NaN and infinities up front. NaN compares false against everything,
+	// so without this guard a NaN duration would slip past the bounds check
+	// below and produce an implementation-defined int64 in the time.Duration
+	// conversion at the end of this function.
+	if math.IsNaN(duration) || math.IsInf(duration, 0) {
+		return 0, fmt.Errorf("%d:%d: duration is NaN or infinite", expr.PositionRange().Start, expr.PositionRange().End)
 	}
 	if duration <= 0 && !allowedNegative {
 		return 0, fmt.Errorf("%d:%d: duration must be greater than 0", expr.PositionRange().Start, expr.PositionRange().End)
 	}
-	if duration > 1<<63-1 || duration < -1<<63 {
+	// duration is in seconds; the conversion below produces nanoseconds in an
+	// int64, so the safe input range is +/- math.MaxInt64 / 1e9 seconds. Match
+	// the bound used by the parser for duration literals (see
+	// offset_duration_expr in generated_parser.y).
+	if duration > 1<<63/1e9 || duration < -(1<<63)/1e9 {
 		return 0, fmt.Errorf("%d:%d: duration is out of range", expr.PositionRange().Start, expr.PositionRange().End)
 	}
 	return time.Duration(duration*1000) * time.Millisecond, nil
 }
 
 // evaluateDurationExpr recursively evaluates a duration expression to a float64 value.
-func evaluateDurationExpr(expr parser.Expr) (float64, error) {
+func (v *durationVisitor) evaluateDurationExpr(expr parser.Expr) (float64, error) {
 	switch n := expr.(type) {
 	case *parser.NumberLiteral:
 		return n.Val, nil
@@ -93,19 +117,33 @@ func evaluateDurationExpr(expr parser.Expr) (float64, error) {
 		var err error
 
 		if n.LHS != nil {
-			lhs, err = evaluateDurationExpr(n.LHS)
+			lhs, err = v.evaluateDurationExpr(n.LHS)
 			if err != nil {
 				return 0, err
 			}
 		}
 
-		rhs, err = evaluateDurationExpr(n.RHS)
-		if err != nil {
-			return 0, err
+		if n.RHS != nil {
+			rhs, err = v.evaluateDurationExpr(n.RHS)
+			if err != nil {
+				return 0, err
+			}
 		}
 
 		switch n.Op {
+		case parser.STEP:
+			return float64(v.step.Seconds()), nil
+		case parser.RANGE:
+			return float64(v.queryRange.Seconds()), nil
+		case parser.MIN_OF:
+			return math.Min(lhs, rhs), nil
+		case parser.MAX_OF:
+			return math.Max(lhs, rhs), nil
 		case parser.ADD:
+			if n.LHS == nil {
+				// Unary positive duration expression.
+				return rhs, nil
+			}
 			return lhs + rhs, nil
 		case parser.SUB:
 			if n.LHS == nil {

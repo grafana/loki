@@ -16,12 +16,9 @@ import (
 
 	"github.com/prometheus/client_golang/prometheus/testutil"
 
-	otlptranslate "github.com/prometheus/otlptranslator"
-
 	"github.com/c2h5oh/datasize"
 	"github.com/go-kit/log"
 	"github.com/grafana/dskit/flagext"
-	dskit_flagext "github.com/grafana/dskit/flagext"
 	"github.com/grafana/dskit/httpgrpc"
 	"github.com/grafana/dskit/kv"
 	"github.com/grafana/dskit/kv/consul"
@@ -31,6 +28,7 @@ import (
 	"github.com/grafana/dskit/user"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
+	"github.com/prometheus/otlptranslator"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -49,7 +47,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	"github.com/grafana/loki/v3/pkg/runtime"
 	"github.com/grafana/loki/v3/pkg/util/constants"
-	fe "github.com/grafana/loki/v3/pkg/util/flagext"
 	loki_flagext "github.com/grafana/loki/v3/pkg/util/flagext"
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
 	loki_net "github.com/grafana/loki/v3/pkg/util/net"
@@ -126,7 +123,7 @@ func TestDistributor(t *testing.T) {
 			flagext.DefaultValues(limits)
 			limits.IngestionRateMB = ingestionRateLimitMB
 			limits.IngestionBurstSizeMB = ingestionRateLimitMB
-			limits.MaxLineSize = fe.ByteSize(tc.maxLineSize)
+			limits.MaxLineSize = loki_flagext.ByteSize(tc.maxLineSize)
 
 			distributors, _ := prepare(t, 1, 5, limits, nil)
 
@@ -487,7 +484,7 @@ func Test_PushWithEnforcedLabels(t *testing.T) {
 	// enforced labels configured, but all labels are missing.
 	_, err := distributors[0].Push(ctx, req)
 	require.Error(t, err)
-	expectedErr := httpgrpc.Errorf(http.StatusBadRequest, validation.MissingEnforcedLabelsErrorMsg, "app,env", "test", "{foo=\"bar\"}")
+	expectedErr := httpgrpc.Errorf(http.StatusBadRequest, validation.MissingEnforcedLabelsErrorMsg, "app,env", "test", "{foo=\"bar\"}", "")
 	require.EqualError(t, err, expectedErr.Error())
 
 	// Verify metrics for discarded samples due to missing enforced labels
@@ -503,6 +500,8 @@ func Test_PushWithEnforcedLabels(t *testing.T) {
 	assert.Equal(t, float64(10000), testutil.ToFloat64(validation.DiscardedBytes))
 	assert.Equal(t, float64(100), testutil.ToFloat64(validation.DiscardedSamples))
 
+	// Make a new request, since Push may have modified req.
+	req = makeWriteRequestWithLabels(100, 100, []string{`{app="foo", env="prod"}`}, false, false, false)
 	// no enforced labels, so no errors.
 	limits.EnforcedLabels = []string{}
 	distributors, _ = prepare(t, 1, 3, limits, nil)
@@ -626,13 +625,14 @@ func TestDistributorPushToKafka(t *testing.T) {
 		kafkaWriter := &mockKafkaProducer{
 			failOnWrite: true,
 		}
-		distributors, _ := prepare(t, 1, 0, limits, nil)
+		distributors, _ := prepareButDontStart(t, 1, 0, limits, nil)
 		for _, d := range distributors {
 			d.cfg.KafkaEnabled = true
 			d.cfg.IngesterEnabled = false
 			d.cfg.KafkaConfig.ProducerMaxRecordSizeBytes = 1000
 			d.kafkaWriter = kafkaWriter
 		}
+		startAndWaitRunningDistributors(t, distributors)
 
 		request := makeWriteRequest(10, 64)
 		_, err := distributors[0].Push(ctx, request)
@@ -643,13 +643,14 @@ func TestDistributorPushToKafka(t *testing.T) {
 		kafkaWriter := &mockKafkaProducer{
 			failOnWrite: false,
 		}
-		distributors, _ := prepare(t, 1, 0, limits, nil)
+		distributors, _ := prepareButDontStart(t, 1, 0, limits, nil)
 		for _, d := range distributors {
 			d.cfg.KafkaEnabled = true
 			d.cfg.IngesterEnabled = false
 			d.cfg.KafkaConfig.ProducerMaxRecordSizeBytes = 1000
 			d.kafkaWriter = kafkaWriter
 		}
+		startAndWaitRunningDistributors(t, distributors)
 
 		request := makeWriteRequest(10, 64)
 		_, err := distributors[0].Push(ctx, request)
@@ -662,7 +663,7 @@ func TestDistributorPushToKafka(t *testing.T) {
 		kafkaWriter := &mockKafkaProducer{
 			failOnWrite: false,
 		}
-		distributors, ingesters := prepare(t, 1, 3, limits, nil)
+		distributors, ingesters := prepareButDontStart(t, 1, 3, limits, nil)
 		ingesters[0].succeedAfter = 5 * time.Millisecond
 		ingesters[1].succeedAfter = 10 * time.Millisecond
 		ingesters[2].succeedAfter = 15 * time.Millisecond
@@ -673,6 +674,7 @@ func TestDistributorPushToKafka(t *testing.T) {
 			d.cfg.KafkaConfig.ProducerMaxRecordSizeBytes = 1000
 			d.kafkaWriter = kafkaWriter
 		}
+		startAndWaitRunningDistributors(t, distributors)
 
 		request := makeWriteRequest(10, 64)
 		_, err := distributors[0].Push(ctx, request)
@@ -687,6 +689,70 @@ func TestDistributorPushToKafka(t *testing.T) {
 			defer ingesters[2].mu.Unlock()
 			return len(ingesters[2].pushed) == 1
 		}, time.Second, 10*time.Millisecond)
+	})
+
+	t.Run("with kafka, does shuffle sharding", func(t *testing.T) {
+		tests := map[string]struct {
+			numIngesters                int
+			shardSize                   int
+			expectedPartitionsShardedTo int
+		}{
+			"shardSize=0 -> shards to all partitions": {
+				numIngesters:                3,
+				shardSize:                   0,
+				expectedPartitionsShardedTo: 3,
+			},
+			"shardSize=1 -> shards to one partition": {
+				numIngesters:                3,
+				shardSize:                   1,
+				expectedPartitionsShardedTo: 1,
+			},
+			"shardSize=2 -> shards to two partitions": {
+				numIngesters:                3,
+				shardSize:                   2,
+				expectedPartitionsShardedTo: 2,
+			},
+		}
+		for name, test := range tests {
+			t.Run(name, func(t *testing.T) {
+				t.Parallel()
+				kafkaWriter := &mockKafkaProducer{
+					failOnWrite: false,
+				}
+				distributors, _ := prepareButDontStart(t, 1, test.numIngesters, limits, nil)
+				for _, d := range distributors {
+					d.cfg.KafkaEnabled = true
+					d.cfg.IngesterEnabled = false
+					d.cfg.KafkaConfig.ProducerMaxRecordSizeBytes = 1000
+					d.kafkaWriter = kafkaWriter
+
+					distributorLimits := &validation.Limits{}
+					flagext.DefaultValues(distributorLimits)
+					distributorLimits.IngestionPartitionsTenantShardSize = test.shardSize
+					overrides, err := validation.NewOverrides(*distributorLimits, nil)
+					require.NoError(t, err)
+					validator, err := NewValidator(overrides, nil)
+					require.NoError(t, err)
+					d.validator = validator
+				}
+				startAndWaitRunningDistributors(t, distributors)
+
+				for i := 0; i < 1000; i++ {
+					_, err := distributors[0].Push(ctx, makeWriteRequestWithLabels(
+						10, 64, []string{fmt.Sprintf(`{foo="%s"}`, strconv.Itoa(i))},
+						false, false, false))
+					require.NoError(t, err)
+				}
+
+				require.Greater(t, kafkaWriter.pushes, uint64(0))
+				partitionCounts := map[int32]uint32{}
+				for _, record := range kafkaWriter.records {
+					partitionID := record.Partition
+					partitionCounts[partitionID]++
+				}
+				require.Equal(t, test.expectedPartitionsShardedTo, len(partitionCounts))
+			})
+		}
 	})
 }
 
@@ -720,10 +786,33 @@ func Test_TruncateLogLines(t *testing.T) {
 		limits, ingester := setup()
 		distributors, _ := prepare(t, 1, 5, limits, func(_ string) (ring_client.PoolClient, error) { return ingester, nil })
 
+		// reset metrics in case they were set from a previous test.
+		validation.MutatedSamples.Reset()
+		validation.MutatedBytes.Reset()
+
 		_, err := distributors[0].Push(ctx, makeWriteRequest(1, 10))
 		require.NoError(t, err)
 		topVal := ingester.Peek()
 		require.Len(t, topVal.Streams[0].Entries[0].Line, 5)
+
+		// Truncation must be observable via the mutated_* metrics: 1 line of 10
+		// bytes truncated to 5 bytes => 1 sample, 5 bytes mutated.
+		assert.Equal(t, float64(1), testutil.ToFloat64(validation.MutatedSamples.WithLabelValues(validation.LineTooLong, "test")))
+		assert.Equal(t, float64(5), testutil.ToFloat64(validation.MutatedBytes.WithLabelValues(validation.LineTooLong, "test")))
+	})
+
+	t.Run("it truncates lines and adds suffix if configured", func(t *testing.T) {
+		limits, ingester := setup()
+		limits.MaxLineSize = 8
+		limits.MaxLineSizeTruncateIdentifier = "[...]"
+
+		distributors, _ := prepare(t, 1, 5, limits, func(_ string) (ring_client.PoolClient, error) { return ingester, nil })
+
+		_, err := distributors[0].Push(ctx, makeWriteRequest(1, 10))
+		require.NoError(t, err)
+		topVal := ingester.Peek()
+		require.Len(t, topVal.Streams[0].Entries[0].Line, int(limits.MaxLineSize))
+		require.Equal(t, "000[...]", topVal.Streams[0].Entries[0].Line)
 	})
 }
 
@@ -763,7 +852,7 @@ func TestStreamShard(t *testing.T) {
 	baseLabels := "{app='myapp'}"
 	lbs, err := syntax.ParseLabels(baseLabels)
 	require.NoError(t, err)
-	baseStream.Hash = lbs.Hash()
+	baseStream.Hash = labels.StableHash(lbs)
 	baseStream.Labels = lbs.String()
 
 	totalEntries := generateEntries(100)
@@ -844,13 +933,13 @@ func TestStreamShard(t *testing.T) {
 			require.NoError(t, err)
 
 			d := Distributor{
-				rateStore:        &fakeRateStore{pushRate: 1},
-				validator:        validator,
-				streamShardCount: prometheus.NewCounter(prometheus.CounterOpts{}),
-				shardTracker:     NewShardTracker(),
+				rateStore:    &fakeRateStore{pushRate: 1},
+				validator:    validator,
+				m:            newMetrics(prometheus.NewPedanticRegistry()),
+				shardTracker: NewShardTracker(),
 			}
 
-			derivedStreams := d.shardStream(baseStream, tc.streamSize, "fake")
+			derivedStreams := d.shardStream(baseStream, tc.streamSize, "fake", "", d.validator.ShardStreams("fake"))
 			require.Len(t, derivedStreams, tc.wantDerivedStreamSize)
 
 			for _, s := range derivedStreams {
@@ -858,7 +947,7 @@ func TestStreamShard(t *testing.T) {
 				lbls, err := syntax.ParseLabels(s.Stream.Labels)
 				require.NoError(t, err)
 
-				require.Equal(t, lbls.Hash(), s.Stream.Hash)
+				require.Equal(t, labels.StableHash(lbls), s.Stream.Hash)
 				require.Equal(t, lbls.String(), s.Stream.Labels)
 			}
 		})
@@ -871,7 +960,7 @@ func TestStreamShardAcrossCalls(t *testing.T) {
 	baseLabels := "{app='myapp'}"
 	lbs, err := syntax.ParseLabels(baseLabels)
 	require.NoError(t, err)
-	baseStream.Hash = lbs.Hash()
+	baseStream.Hash = labels.StableHash(lbs)
 	baseStream.Labels = lbs.String()
 	baseStream.Entries = generateEntries(2)
 
@@ -889,13 +978,13 @@ func TestStreamShardAcrossCalls(t *testing.T) {
 
 	t.Run("it generates 4 shards across 2 calls when calculated shards = 2 * entries per call", func(t *testing.T) {
 		d := Distributor{
-			rateStore:        &fakeRateStore{pushRate: 1},
-			validator:        validator,
-			streamShardCount: prometheus.NewCounter(prometheus.CounterOpts{}),
-			shardTracker:     NewShardTracker(),
+			rateStore:    &fakeRateStore{pushRate: 1},
+			validator:    validator,
+			m:            newMetrics(prometheus.NewPedanticRegistry()),
+			shardTracker: NewShardTracker(),
 		}
 
-		derivedStreams := d.shardStream(baseStream, streamRate, "fake")
+		derivedStreams := d.shardStream(baseStream, streamRate, "fake", "", d.validator.ShardStreams("fake"))
 		require.Len(t, derivedStreams, 2)
 
 		for i, s := range derivedStreams {
@@ -906,7 +995,7 @@ func TestStreamShardAcrossCalls(t *testing.T) {
 			require.Equal(t, lbls.Get(ingester.ShardLbName), fmt.Sprint(i))
 		}
 
-		derivedStreams = d.shardStream(baseStream, streamRate, "fake")
+		derivedStreams = d.shardStream(baseStream, streamRate, "fake", "", d.validator.ShardStreams("fake"))
 		require.Len(t, derivedStreams, 2)
 
 		for i, s := range derivedStreams {
@@ -1162,7 +1251,7 @@ func TestStreamShardByTime(t *testing.T) {
 			require.NoError(t, err)
 			stream := logproto.Stream{
 				Labels:  tc.labels,
-				Hash:    lbls.Hash(),
+				Hash:    labels.StableHash(lbls),
 				Entries: tc.entries,
 			}
 
@@ -1197,10 +1286,9 @@ func generateEntries(n int) []logproto.Entry {
 
 func BenchmarkShardStream(b *testing.B) {
 	stream := logproto.Stream{}
-	labels := "{app='myapp', job='fizzbuzz'}"
-	lbs, err := syntax.ParseLabels(labels)
+	lbs, err := syntax.ParseLabels("{app='myapp', job='fizzbuzz'}")
 	require.NoError(b, err)
-	stream.Hash = lbs.Hash()
+	stream.Hash = labels.StableHash(lbs)
 	stream.Labels = lbs.String()
 
 	allEntries := generateEntries(25000)
@@ -1219,9 +1307,9 @@ func BenchmarkShardStream(b *testing.B) {
 
 	distributorBuilder := func(shards int) *Distributor {
 		d := &Distributor{
-			validator:        validator,
-			streamShardCount: prometheus.NewCounter(prometheus.CounterOpts{}),
-			shardTracker:     NewShardTracker(),
+			validator:    validator,
+			m:            newMetrics(prometheus.NewPedanticRegistry()),
+			shardTracker: NewShardTracker(),
 			// streamSize is always zero, so number of shards will be dictated just by the rate returned from store.
 			rateStore: &fakeRateStore{rate: int64(desiredRate*shards - 1)},
 		}
@@ -1235,7 +1323,7 @@ func BenchmarkShardStream(b *testing.B) {
 
 		b.ResetTimer()
 		for n := 0; n < b.N; n++ {
-			d.shardStream(stream, 0, "fake") //nolint:errcheck
+			d.shardStream(stream, 0, "fake", "", d.validator.ShardStreams("fake")) //nolint:errcheck
 		}
 	})
 
@@ -1245,7 +1333,7 @@ func BenchmarkShardStream(b *testing.B) {
 
 		b.ResetTimer()
 		for n := 0; n < b.N; n++ {
-			d.shardStream(stream, 0, "fake") //nolint:errcheck
+			d.shardStream(stream, 0, "fake", "", d.validator.ShardStreams("fake")) //nolint:errcheck
 		}
 	})
 
@@ -1255,7 +1343,7 @@ func BenchmarkShardStream(b *testing.B) {
 
 		b.ResetTimer()
 		for n := 0; n < b.N; n++ {
-			d.shardStream(stream, 0, "fake") //nolint:errcheck
+			d.shardStream(stream, 0, "fake", "", d.validator.ShardStreams("fake")) //nolint:errcheck
 		}
 	})
 
@@ -1265,7 +1353,7 @@ func BenchmarkShardStream(b *testing.B) {
 
 		b.ResetTimer()
 		for n := 0; n < b.N; n++ {
-			d.shardStream(stream, 0, "fake") //nolint:errcheck
+			d.shardStream(stream, 0, "fake", "", d.validator.ShardStreams("fake")) //nolint:errcheck
 		}
 	})
 }
@@ -1281,7 +1369,7 @@ func Benchmark_SortLabelsOnPush(b *testing.B) {
 	for n := 0; n < b.N; n++ {
 		stream := request.Streams[0]
 		stream.Labels = `{buzz="f", a="b"}`
-		_, _, _, _, _, err := d.parseStreamLabels(vCtx, stream.Labels, stream, streamResolver)
+		_, _, _, _, _, err := d.parseStreamLabels(context.Background(), vCtx, stream.Labels, stream, streamResolver, constants.Loki)
 		if err != nil {
 			panic("parseStreamLabels fail,err:" + err.Error())
 		}
@@ -1321,9 +1409,9 @@ func TestParseStreamLabels(t *testing.T) {
 		vCtx := d.validator.getValidationContextForTime(testTime, "123")
 		streamResolver := newRequestScopedStreamResolver("123", d.validator.Limits, nil)
 		t.Run(tc.name, func(t *testing.T) {
-			lbs, lbsString, hash, _, _, err := d.parseStreamLabels(vCtx, tc.origLabels, logproto.Stream{
+			lbs, lbsString, hash, _, _, err := d.parseStreamLabels(context.Background(), vCtx, tc.origLabels, logproto.Stream{
 				Labels: tc.origLabels,
-			}, streamResolver)
+			}, streamResolver, constants.Loki)
 			if tc.expectedErr != nil {
 				require.Equal(t, tc.expectedErr, err)
 				return
@@ -1331,7 +1419,7 @@ func TestParseStreamLabels(t *testing.T) {
 			require.NoError(t, err)
 			require.Equal(t, tc.expectedLabels.String(), lbsString)
 			require.Equal(t, tc.expectedLabels, lbs)
-			require.Equal(t, tc.expectedLabels.Hash(), hash)
+			require.Equal(t, labels.StableHash(tc.expectedLabels), hash)
 		})
 	}
 }
@@ -1665,6 +1753,330 @@ func TestDistributor_PushIngestionRateLimiter(t *testing.T) {
 	}
 }
 
+func TestDistributor_PushIngestionRateLimitedByPolicy(t *testing.T) {
+	limits := &validation.Limits{}
+	flagext.DefaultValues(limits)
+	limits.IngestionRateStrategy = validation.LocalIngestionRateStrategy
+	// Generous tenant-wide limit so the tenant bucket never rejects in this test.
+	limits.IngestionRateMB = datasize.ByteSize(1000).MBytes()
+	limits.IngestionBurstSizeMB = datasize.ByteSize(1000).MBytes()
+	// {foo="bar"} resolves to the "finance" policy, which carries a strict ingestion rate
+	// override that must REPLACE the tenant limit for those streams.
+	limits.PolicyStreamMapping = validation.PolicyStreamMapping{
+		"finance": []*validation.PriorityStream{{Selector: `{foo="bar"}`, Priority: 1}},
+	}
+	limits.PolicyOverrideLimits = map[string]validation.PolicyOverridableLimits{
+		"finance": {
+			IngestionRateMB:      ptr(datasize.ByteSize(50).MBytes()),
+			IngestionBurstSizeMB: ptr(datasize.ByteSize(50).MBytes()),
+		},
+	}
+	// Validate populates the stream-selector matchers used by PolicyFor (the real config-load
+	// path does this); without it an empty matcher set would match every stream.
+	require.NoError(t, limits.Validate())
+
+	distributors, _ := prepare(t, 1, 5, limits, nil)
+
+	// A push under the "finance" policy exceeding its 50-byte budget is rejected against the
+	// per-policy limit (50), not the generous tenant limit.
+	resp, err := distributors[0].Push(ctx, makeWriteRequestWithLabels(1, 60, []string{`{foo="bar"}`}, false, false, false))
+	assert.Nil(t, resp)
+	assert.Equal(t, httpgrpc.Errorf(http.StatusTooManyRequests, validation.RateLimitedPolicyErrorMsg, "test", "finance", 50, 1, 60), err)
+
+	// A push with labels not matched to any policy uses the tenant-wide bucket and is allowed.
+	resp, err = distributors[0].Push(ctx, makeWriteRequestWithLabels(1, 60, []string{`{other="x"}`}, false, false, false))
+	assert.NoError(t, err)
+	assert.Equal(t, success, resp)
+}
+
+// TestDistributor_PushIngestionRateLimitPolicyAllOrNothing verifies that when a request mixes
+// streams from two policies and only one is over its limit, rejecting the request does NOT
+// consume tokens from the under-limit policy's bucket (the reservations are cancelled).
+func TestDistributor_PushIngestionRateLimitPolicyAllOrNothing(t *testing.T) {
+	limits := &validation.Limits{}
+	flagext.DefaultValues(limits)
+	limits.IngestionRateStrategy = validation.LocalIngestionRateStrategy
+	limits.IngestionRateMB = datasize.ByteSize(1000).MBytes()
+	limits.IngestionBurstSizeMB = datasize.ByteSize(1000).MBytes()
+	limits.PolicyStreamMapping = validation.PolicyStreamMapping{
+		"finance": []*validation.PriorityStream{{Selector: `{app="finance"}`, Priority: 1}},
+		"ops":     []*validation.PriorityStream{{Selector: `{app="ops"}`, Priority: 1}},
+	}
+	// Both policies get a 50-byte budget.
+	limits.PolicyOverrideLimits = map[string]validation.PolicyOverridableLimits{
+		"finance": {IngestionRateMB: ptr(datasize.ByteSize(50).MBytes()), IngestionBurstSizeMB: ptr(datasize.ByteSize(50).MBytes())},
+		"ops":     {IngestionRateMB: ptr(datasize.ByteSize(50).MBytes()), IngestionBurstSizeMB: ptr(datasize.ByteSize(50).MBytes())},
+	}
+	require.NoError(t, limits.Validate())
+
+	distributors, _ := prepare(t, 1, 5, limits, nil)
+
+	// Request mixes a finance stream that is over its 50-byte budget (60 bytes) with an ops
+	// stream that is under its budget (40 bytes). The whole request must be rejected because
+	// finance is over limit.
+	req := makeWriteRequestWithLabels(1, 60, []string{`{app="finance"}`}, false, false, false)
+	opsStreams := makeWriteRequestWithLabels(1, 40, []string{`{app="ops"}`}, false, false, false)
+	req.Streams = append(req.Streams, opsStreams.Streams...)
+
+	resp, err := distributors[0].Push(ctx, req)
+	assert.Nil(t, resp)
+	assert.Equal(t, httpgrpc.Errorf(http.StatusTooManyRequests, validation.RateLimitedPolicyErrorMsg, "test", "finance", 50, 1, 60), err)
+
+	// The ops bucket must NOT have been drained by the rejected request: a fresh ops push that
+	// fills its entire 50-byte budget still succeeds. (Without reservation cancellation, the
+	// earlier 40 bytes would have been consumed and this 50-byte push would be rate limited.)
+	resp, err = distributors[0].Push(ctx, makeWriteRequestWithLabels(1, 50, []string{`{app="ops"}`}, false, false, false))
+	assert.NoError(t, err)
+	assert.Equal(t, success, resp)
+}
+
+// TestDistributor_PushIngestionRateLimitMultiplePolicies verifies that when several policy
+// buckets are over their limit in the same request, the 429 error deterministically enumerates
+// all exceeded policies (sorted), regardless of map iteration order.
+func TestDistributor_PushIngestionRateLimitMultiplePolicies(t *testing.T) {
+	limits := &validation.Limits{}
+	flagext.DefaultValues(limits)
+	limits.IngestionRateStrategy = validation.LocalIngestionRateStrategy
+	limits.IngestionRateMB = datasize.ByteSize(1000).MBytes()
+	limits.IngestionBurstSizeMB = datasize.ByteSize(1000).MBytes()
+	limits.PolicyStreamMapping = validation.PolicyStreamMapping{
+		"finance": []*validation.PriorityStream{{Selector: `{app="finance"}`, Priority: 1}},
+		"ops":     []*validation.PriorityStream{{Selector: `{app="ops"}`, Priority: 1}},
+	}
+	// Both policies get a 50-byte budget; the request puts each well over (bytes > burst), so
+	// both reservations are rejected deterministically on every attempt.
+	limits.PolicyOverrideLimits = map[string]validation.PolicyOverridableLimits{
+		"finance": {IngestionRateMB: ptr(datasize.ByteSize(50).MBytes()), IngestionBurstSizeMB: ptr(datasize.ByteSize(50).MBytes())},
+		"ops":     {IngestionRateMB: ptr(datasize.ByteSize(50).MBytes()), IngestionBurstSizeMB: ptr(datasize.ByteSize(50).MBytes())},
+	}
+	require.NoError(t, limits.Validate())
+
+	distributors, _ := prepare(t, 1, 5, limits, nil)
+
+	req := makeWriteRequestWithLabels(1, 60, []string{`{app="finance"}`}, false, false, false)
+	opsStreams := makeWriteRequestWithLabels(1, 70, []string{`{app="ops"}`}, false, false, false)
+	req.Streams = append(req.Streams, opsStreams.Streams...)
+
+	// The error must enumerate both policies in sorted order (finance before ops), with each
+	// bucket's own limit/lines/bytes.
+	expectedDetail := `policy "finance" (limit: 50 bytes/sec) ingesting 1 lines totaling 60 bytes; ` +
+		`policy "ops" (limit: 50 bytes/sec) ingesting 1 lines totaling 70 bytes`
+	expectedErr := httpgrpc.Errorf(http.StatusTooManyRequests, validation.RateLimitedMultiErrorMsg, "test", expectedDetail)
+
+	// Push twice to demonstrate the message is deterministic (independent of map iteration order).
+	for i := 0; i < 2; i++ {
+		resp, err := distributors[0].Push(ctx, req)
+		assert.Nil(t, resp)
+		assert.Equal(t, expectedErr, err)
+	}
+}
+
+// TestDistributor_PushShardStreamsPolicyOverride verifies that a per-policy shard_streams
+// override is applied in the push path: a policy that enables time sharding gets its streams
+// split with a __time_shard__ label, while streams on the tenant default (time sharding off)
+// do not.
+func TestDistributor_PushShardStreamsPolicyOverride(t *testing.T) {
+	limits := &validation.Limits{}
+	flagext.DefaultValues(limits)
+	limits.RejectOldSamples = false // we push intentionally old logs to trigger time sharding
+	// Tenant default leaves time sharding off; the "foo" policy turns it on via an override.
+	limits.PolicyStreamMapping = validation.PolicyStreamMapping{
+		"foo": []*validation.PriorityStream{{Selector: `{app="foo"}`, Priority: 1}},
+	}
+	timeOn := true
+	limits.PolicyOverrideLimits = map[string]validation.PolicyOverridableLimits{
+		"foo": {ShardStreams: &validation.PerPolicyConfigOverride{TimeShardingEnabled: &timeOn}},
+	}
+	require.NoError(t, limits.Validate())
+
+	// prepare() builds distributors with ingester MaxChunkAge=2h → time-shard length 1h.
+	distributors, ingesters := prepare(t, 1, 3, limits, nil)
+
+	// Logs older than time_sharding_ignore_recent (40m default), spanning two 1h buckets.
+	old := time.Now().Add(-3 * time.Hour)
+	mkReq := func(lbls string) *logproto.PushRequest {
+		return &logproto.PushRequest{Streams: []logproto.Stream{{
+			Labels: lbls,
+			Entries: []logproto.Entry{
+				{Timestamp: old, Line: "a"},
+				{Timestamp: old.Add(time.Hour + time.Minute), Line: "b"},
+			},
+		}}}
+	}
+
+	_, err := distributors[0].Push(ctx, mkReq(`{app="foo"}`))
+	require.NoError(t, err)
+	_, err = distributors[0].Push(ctx, mkReq(`{app="other"}`))
+	require.NoError(t, err)
+
+	// The ingester writes are async (serviced by the distributor's ingester worker pool), so wait
+	// until both requests' streams have reached the ingesters before asserting.
+	streamPushed := func(app string) bool {
+		for i := range ingesters {
+			ingesters[i].mu.Lock()
+			for _, pr := range ingesters[i].pushed {
+				for _, st := range pr.Streams {
+					if strings.Contains(st.Labels, `app="`+app+`"`) {
+						ingesters[i].mu.Unlock()
+						return true
+					}
+				}
+			}
+			ingesters[i].mu.Unlock()
+		}
+		return false
+	}
+	require.Eventually(t, func() bool {
+		return streamPushed("foo") && streamPushed("other")
+	}, time.Second, 10*time.Millisecond, "expected both streams to reach the ingesters")
+
+	fooSharded, otherSharded := false, false
+	for i := range ingesters {
+		ingesters[i].mu.Lock()
+		for _, pr := range ingesters[i].pushed {
+			for _, st := range pr.Streams {
+				if !strings.Contains(st.Labels, "__time_shard__") {
+					continue
+				}
+				if strings.Contains(st.Labels, `app="foo"`) {
+					fooSharded = true
+				}
+				if strings.Contains(st.Labels, `app="other"`) {
+					otherSharded = true
+				}
+			}
+		}
+		ingesters[i].mu.Unlock()
+	}
+	require.True(t, fooSharded, "foo stream should be time-sharded via the per-policy override")
+	require.False(t, otherSharded, "non-foo stream should not be time-sharded (tenant default off)")
+}
+
+// TestDistributor_PushBackfillBypassesRejectOldSamples verifies that streams carrying the internal
+// backfill label skip the reject_old_samples validation (backfill data is old by definition), while
+// regular streams on the same tenant are still subject to it and the too-far-in-future check stays
+// in force for backfill streams.
+func TestDistributor_PushBackfillBypassesRejectOldSamples(t *testing.T) {
+	limits := &validation.Limits{}
+	flagext.DefaultValues(limits)
+	limits.RejectOldSamples = true
+	require.NoError(t, limits.RejectOldSamplesMaxAge.Set("24h"))
+	require.NoError(t, limits.Validate())
+
+	distributors, ingesters := prepare(t, 1, 3, limits, nil)
+
+	old := time.Now().Add(-48 * time.Hour)
+	backfillLbls := fmt.Sprintf(`{app="backfilled", %s="true", %s="shard-1"}`, constants.BackfillLabel, constants.BackfillShardLabel)
+	mkReq := func(lbls string, ts time.Time) *logproto.PushRequest {
+		return &logproto.PushRequest{Streams: []logproto.Stream{{
+			Labels:  lbls,
+			Entries: []logproto.Entry{{Timestamp: ts, Line: "a"}},
+		}}}
+	}
+
+	// A regular stream with an entry older than reject_old_samples_max_age is rejected.
+	_, err := distributors[0].Push(ctx, mkReq(`{app="regular"}`, old))
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "timestamp too old")
+
+	// A backfill stream with an entry too far in the future is still rejected.
+	_, err = distributors[0].Push(ctx, mkReq(backfillLbls, time.Now().Add(time.Hour)))
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "timestamp too new")
+
+	// The same old entry on a backfill stream is accepted and reaches the ingesters.
+	_, err = distributors[0].Push(ctx, mkReq(backfillLbls, old))
+	require.NoError(t, err)
+	require.Eventually(t, func() bool {
+		for i := range ingesters {
+			ingesters[i].mu.Lock()
+			for _, pr := range ingesters[i].pushed {
+				for _, st := range pr.Streams {
+					if strings.Contains(st.Labels, `app="backfilled"`) {
+						ingesters[i].mu.Unlock()
+						return true
+					}
+				}
+			}
+			ingesters[i].mu.Unlock()
+		}
+		return false
+	}, time.Second, 10*time.Millisecond, "expected the backfill stream to reach the ingesters")
+}
+
+// TestDistributor_PushBackfillDisablesTimeSharding verifies that streams carrying the internal
+// backfill label are not time-sharded by Loki even when time sharding is enabled, because backfill
+// workers implement time sharding on the client side (via constants.BackfillShardLabel). A regular
+// old stream on the same tenant is still time-sharded.
+func TestDistributor_PushBackfillDisablesTimeSharding(t *testing.T) {
+	limits := &validation.Limits{}
+	flagext.DefaultValues(limits)
+	limits.RejectOldSamples = false // we push intentionally old logs to trigger time sharding
+	limits.ShardStreams.TimeShardingEnabled = true
+	require.NoError(t, limits.Validate())
+
+	// prepare() builds distributors with ingester MaxChunkAge=2h → time-shard length 1h.
+	distributors, ingesters := prepare(t, 1, 3, limits, nil)
+
+	// Logs older than time_sharding_ignore_recent (40m default), spanning two 1h buckets.
+	old := time.Now().Add(-3 * time.Hour)
+	mkReq := func(lbls string) *logproto.PushRequest {
+		return &logproto.PushRequest{Streams: []logproto.Stream{{
+			Labels: lbls,
+			Entries: []logproto.Entry{
+				{Timestamp: old, Line: "a"},
+				{Timestamp: old.Add(time.Hour + time.Minute), Line: "b"},
+			},
+		}}}
+	}
+
+	// A regular old stream (should be time-sharded) and a backfill stream (should not).
+	_, err := distributors[0].Push(ctx, mkReq(`{app="regular"}`))
+	require.NoError(t, err)
+	_, err = distributors[0].Push(ctx, mkReq(fmt.Sprintf(`{app="backfilled", %s="true", %s="shard-1"}`, constants.BackfillLabel, constants.BackfillShardLabel)))
+	require.NoError(t, err)
+
+	streamPushed := func(app string) bool {
+		for i := range ingesters {
+			ingesters[i].mu.Lock()
+			for _, pr := range ingesters[i].pushed {
+				for _, st := range pr.Streams {
+					if strings.Contains(st.Labels, `app="`+app+`"`) {
+						ingesters[i].mu.Unlock()
+						return true
+					}
+				}
+			}
+			ingesters[i].mu.Unlock()
+		}
+		return false
+	}
+	require.Eventually(t, func() bool {
+		return streamPushed("regular") && streamPushed("backfilled")
+	}, time.Second, 10*time.Millisecond, "expected both streams to reach the ingesters")
+
+	regularSharded, backfilledSharded := false, false
+	for i := range ingesters {
+		ingesters[i].mu.Lock()
+		for _, pr := range ingesters[i].pushed {
+			for _, st := range pr.Streams {
+				if !strings.Contains(st.Labels, "__time_shard__") {
+					continue
+				}
+				if strings.Contains(st.Labels, `app="regular"`) {
+					regularSharded = true
+				}
+				if strings.Contains(st.Labels, `app="backfilled"`) {
+					backfilledSharded = true
+				}
+			}
+		}
+		ingesters[i].mu.Unlock()
+	}
+	require.True(t, regularSharded, "regular old stream should be time-sharded")
+	require.False(t, backfilledSharded, "backfill stream should not be time-sharded by Loki")
+}
+
 func TestDistributor_PushIngestionBlocked(t *testing.T) {
 	for _, tc := range []struct {
 		name               string
@@ -1761,7 +2173,7 @@ func TestDistributor_PushIngestionBlockedByPolicy(t *testing.T) {
 			policy:           "test-policy",
 			labels:           `{foo="bar"}`,
 			expectError:      true,
-			expectedErrorMsg: fmt.Sprintf(validation.BlockedIngestionPolicyErrorMsg, "test", now.Add(1*time.Hour).Format(time.RFC3339), defaultErrCode),
+			expectedErrorMsg: fmt.Sprintf(validation.BlockedIngestionPolicyErrorMsg, "test", "test-policy", now.Add(1*time.Hour).Format(time.RFC3339), defaultErrCode),
 			yes:              true,
 		},
 		{
@@ -1781,7 +2193,7 @@ func TestDistributor_PushIngestionBlockedByPolicy(t *testing.T) {
 			policy:           "test-policy",
 			labels:           `{foo="bar"}`,
 			expectError:      true,
-			expectedErrorMsg: fmt.Sprintf(validation.BlockedIngestionPolicyErrorMsg, "test", now.Add(1*time.Hour).Format(time.RFC3339), defaultErrCode),
+			expectedErrorMsg: fmt.Sprintf(validation.BlockedIngestionPolicyErrorMsg, "test", "test-policy", now.Add(1*time.Hour).Format(time.RFC3339), defaultErrCode),
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -1803,9 +2215,9 @@ func TestDistributor_PushIngestionBlockedByPolicy(t *testing.T) {
 
 			// Configure policy blocks
 			if tc.blockUntil != nil {
-				limits.BlockIngestionPolicyUntil = make(map[string]dskit_flagext.Time)
+				limits.BlockIngestionPolicyUntil = make(map[string]flagext.Time)
 				for policy, until := range tc.blockUntil {
-					limits.BlockIngestionPolicyUntil[policy] = dskit_flagext.Time(until)
+					limits.BlockIngestionPolicyUntil[policy] = flagext.Time(until)
 				}
 			}
 
@@ -1825,6 +2237,13 @@ func TestDistributor_PushIngestionBlockedByPolicy(t *testing.T) {
 }
 
 func prepare(t *testing.T, numDistributors, numIngesters int, limits *validation.Limits, factory func(addr string) (ring_client.PoolClient, error)) ([]*Distributor, []mockIngester) {
+	t.Helper()
+	distributors, ingesters := prepareButDontStart(t, numDistributors, numIngesters, limits, factory)
+	startAndWaitRunningDistributors(t, distributors)
+	return distributors, ingesters
+}
+
+func prepareButDontStart(t *testing.T, numDistributors, numIngesters int, limits *validation.Limits, factory func(addr string) (ring_client.PoolClient, error)) ([]*Distributor, []mockIngester) {
 	t.Helper()
 
 	ingesters := make([]mockIngester, numIngesters)
@@ -1869,23 +2288,27 @@ func prepare(t *testing.T, numDistributors, numIngesters int, limits *validation
 	require.NoError(t, err)
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), ingestersRing))
 
-	partitionRing := ring.NewPartitionRing(ring.PartitionRingDesc{
-		Partitions: map[int32]ring.PartitionDesc{
-			1: {
-				Id:             1,
-				Tokens:         []uint32{1},
-				State:          ring.PartitionActive,
-				StateTimestamp: time.Now().Unix(),
-			},
-		},
-		Owners: map[string]ring.OwnerDesc{
-			"test": {
-				OwnedPartition:   1,
-				State:            ring.OwnerActive,
-				UpdatedTimestamp: time.Now().Unix(),
-			},
-		},
+	partitions := map[int32]ring.PartitionDesc{}
+	owners := map[string]ring.OwnerDesc{}
+	numPartitions := max(1, numIngesters)
+	for i := 0; i < numPartitions; i++ {
+		partitions[int32(i)] = ring.PartitionDesc{
+			Id:             int32(i),
+			Tokens:         []uint32{uint32((math.MaxUint32 / numPartitions) * i)},
+			State:          ring.PartitionActive,
+			StateTimestamp: time.Now().Unix(),
+		}
+		owners[fmt.Sprintf("owner%d", i)] = ring.OwnerDesc{
+			OwnedPartition:   int32(i),
+			State:            ring.OwnerActive,
+			UpdatedTimestamp: time.Now().Unix(),
+		}
+	}
+	partitionRing, err := ring.NewPartitionRing(ring.PartitionRingDesc{
+		Partitions: partitions,
+		Owners:     owners,
 	})
+	require.NoError(t, err)
 	partitionRingReader := mockPartitionRingReader{
 		ring: partitionRing,
 	}
@@ -1927,16 +2350,9 @@ func prepare(t *testing.T, numDistributors, numIngesters int, limits *validation
 		ingesterConfig := ingester.Config{MaxChunkAge: 2 * time.Hour}
 		limitsFrontendCfg := limits_frontend_client.Config{}
 
-		d, err := New(distributorConfig, ingesterConfig, clientConfig, runtime.DefaultTenantConfigs(), ingestersRing, partitionRingReader, overrides, prometheus.NewPedanticRegistry(), constants.Loki, nil, nil, limitsFrontendCfg, limitsFrontendRing, 1, log.NewNopLogger())
+		d, err := New(distributorConfig, ingesterConfig, clientConfig, runtime.DefaultTenantConfigs(), ingestersRing, partitionRingReader, overrides, prometheus.NewPedanticRegistry(), constants.Loki, nil, nil, limitsFrontendCfg, limitsFrontendRing, 1, nil, nil, "", log.NewNopLogger())
 		require.NoError(t, err)
-		require.NoError(t, services.StartAndAwaitRunning(context.Background(), d))
 		distributors[i] = d
-	}
-
-	if distributors[0].distributorsLifecycler != nil {
-		test.Poll(t, time.Second, numDistributors, func() interface{} {
-			return distributors[0].HealthyInstancesCount()
-		})
 	}
 
 	t.Cleanup(func() {
@@ -1948,6 +2364,18 @@ func prepare(t *testing.T, numDistributors, numIngesters int, limits *validation
 	})
 
 	return distributors, ingesters
+}
+
+func startAndWaitRunningDistributors(t *testing.T, distributors []*Distributor) {
+	for _, d := range distributors {
+		require.NoError(t, services.StartAndAwaitRunning(context.Background(), d))
+	}
+
+	if distributors[0].distributorsLifecycler != nil {
+		test.Poll(t, time.Second, len(distributors), func() interface{} {
+			return distributors[0].HealthyInstancesCount()
+		})
+	}
 }
 
 func makeWriteRequestWithLabelsWithLevel(lines, size int, labels []string, level string) *logproto.PushRequest {
@@ -2025,18 +2453,30 @@ type mockKafkaProducer struct {
 func (m *mockKafkaProducer) ProduceSync(_ context.Context, records []*kgo.Record) kgo.ProduceResults {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	results := make(kgo.ProduceResults, 0, len(records))
 	if m.failOnWrite {
-		return kgo.ProduceResults{{Err: kgo.ErrRecordTimeout}}
+		// We must append a result for each record that has both the record and the
+		// error, as this is how it works in [kgo].
+		for _, record := range records {
+			results = append(results, kgo.ProduceResult{
+				Record: record,
+				Err:    kgo.ErrRecordTimeout,
+			})
+		}
+	} else {
+		m.pushes++
+		m.records = append(m.records, records...)
+		if m.recordsPerTopic == nil {
+			m.recordsPerTopic = make(map[string][]*kgo.Record)
+		}
+		for _, record := range records {
+			m.recordsPerTopic[record.Topic] = append(m.recordsPerTopic[record.Topic], record)
+			results = append(results, kgo.ProduceResult{
+				Record: record,
+			})
+		}
 	}
-	m.pushes++
-	m.records = append(m.records, records...)
-	if m.recordsPerTopic == nil {
-		m.recordsPerTopic = make(map[string][]*kgo.Record)
-	}
-	for _, r := range records {
-		m.recordsPerTopic[r.Topic] = append(m.recordsPerTopic[r.Topic], r)
-	}
-	return kgo.ProduceResults{{Err: nil}}
+	return results
 }
 
 func (m *mockKafkaProducer) Close() {}
@@ -2069,6 +2509,7 @@ func (i *mockIngester) Push(_ context.Context, in *logproto.PushRequest, _ ...gr
 		time.Sleep(i.succeedAfter)
 	}
 
+	labelNamer := otlptranslator.LabelNamer{}
 	i.mu.Lock()
 	defer i.mu.Unlock()
 	for _, s := range in.Streams {
@@ -2077,7 +2518,11 @@ func (i *mockIngester) Push(_ context.Context, in *logproto.PushRequest, _ ...gr
 				if strings.ContainsRune(sm.Value, utf8.RuneError) {
 					return nil, fmt.Errorf("sm value was not sanitized before being pushed to ignester, invalid utf 8 rune %d", utf8.RuneError)
 				}
-				if sm.Name != otlptranslate.NormalizeLabel(sm.Name) {
+				name, err := labelNamer.Build(sm.Name)
+				if err != nil {
+					return nil, err
+				}
+				if sm.Name != name {
 					return nil, fmt.Errorf("sm name was not sanitized before being sent to ingester, contained characters %s", sm.Name)
 
 				}
@@ -2123,11 +2568,30 @@ type mockTee struct {
 	tenant     string
 }
 
-func (mt *mockTee) Duplicate(tenant string, streams []KeyedStream) {
+func (mt *mockTee) Duplicate(_ context.Context, tenant string, streams []KeyedStream, _ *PushTracker) {
 	mt.mu.Lock()
 	defer mt.mu.Unlock()
 	mt.duplicated = append(mt.duplicated, streams)
 	mt.tenant = tenant
+}
+
+func (mt *mockTee) Register(_ context.Context, _ string, _ []KeyedStream, _ *PushTracker) {
+}
+
+// mockFailingTee is a mock tee that always fails with an error.
+type mockFailingTee struct {
+	err error
+}
+
+func (mt *mockFailingTee) Duplicate(_ context.Context, _ string, streams []KeyedStream, pushTracker *PushTracker) {
+	// Report failure for each stream
+	for range streams {
+		pushTracker.doneWithResult(mt.err)
+	}
+}
+
+func (mt *mockFailingTee) Register(_ context.Context, _ string, streams []KeyedStream, pushTracker *PushTracker) {
+	pushTracker.streamsPending.Add(int32(len(streams)))
 }
 
 func TestDistributorTee(t *testing.T) {
@@ -2183,6 +2647,32 @@ func TestDistributorTee(t *testing.T) {
 	}
 }
 
+func TestDistributorTeeFailure(t *testing.T) {
+	limits := &validation.Limits{}
+	flagext.DefaultValues(limits)
+	limits.RejectOldSamples = false
+	distributors, _ := prepare(t, 1, 3, limits, nil)
+
+	expectedErr := errors.New("tee failure")
+	tee := &mockFailingTee{err: expectedErr}
+	distributors[0].tee = tee
+
+	req := &logproto.PushRequest{
+		Streams: []logproto.Stream{
+			{
+				Labels: "{job=\"foo\"}",
+				Entries: []logproto.Entry{
+					{Timestamp: time.Unix(123456, 0), Line: "line 1"},
+				},
+			},
+		},
+	}
+
+	_, err := distributors[0].Push(ctx, req)
+	require.Error(t, err)
+	require.ErrorIs(t, err, expectedErr)
+}
+
 func TestDistributor_StructuredMetadataSanitization(t *testing.T) {
 	limits := &validation.Limits{}
 	flagext.DefaultValues(limits)
@@ -2221,7 +2711,7 @@ func TestDistributor_StructuredMetadataSanitization(t *testing.T) {
 		response, err := distributors[0].Push(ctx, &request)
 		require.NoError(t, err)
 		assert.Equal(t, tc.expectedResponse, response)
-		assert.Equal(t, tc.numSanitizations, testutil.ToFloat64(distributors[0].tenantPushSanitizedStructuredMetadata.WithLabelValues("test")))
+		assert.Equal(t, tc.numSanitizations, testutil.ToFloat64(distributors[0].m.tenantPushSanitizedStructuredMetadata.WithLabelValues("test", constants.Loki)))
 	}
 }
 
@@ -2321,10 +2811,10 @@ func TestRequestScopedStreamResolver(t *testing.T) {
 	retentionPeriod = resolver.RetentionPeriodFor(labels.FromStrings("env", "dev"))
 	require.Equal(t, 24*time.Hour, retentionPeriod)
 
-	policy := resolver.PolicyFor(labels.FromStrings("env", "prod"))
+	policy := resolver.PolicyFor(t.Context(), labels.FromStrings("env", "prod"))
 	require.Equal(t, "policy0", policy)
 
-	policy = resolver.PolicyFor(labels.FromStrings("env", "dev"))
+	policy = resolver.PolicyFor(t.Context(), labels.FromStrings("env", "dev"))
 	require.Empty(t, policy)
 
 	// We now modify the underlying limits to test that the resolver is not affected by changes to the limits
@@ -2363,10 +2853,10 @@ func TestRequestScopedStreamResolver(t *testing.T) {
 	retentionPeriod = resolver.RetentionPeriodFor(labels.FromStrings("env", "dev"))
 	require.Equal(t, 24*time.Hour, retentionPeriod)
 
-	policy = resolver.PolicyFor(labels.FromStrings("env", "prod"))
+	policy = resolver.PolicyFor(t.Context(), labels.FromStrings("env", "prod"))
 	require.Equal(t, "policy0", policy)
 
-	policy = resolver.PolicyFor(labels.FromStrings("env", "dev"))
+	policy = resolver.PolicyFor(t.Context(), labels.FromStrings("env", "dev"))
 	require.Empty(t, policy)
 
 	// But a new resolver should return the new values
@@ -2382,10 +2872,10 @@ func TestRequestScopedStreamResolver(t *testing.T) {
 	retentionPeriod = newResolver.RetentionPeriodFor(labels.FromStrings("env", "dev"))
 	require.Equal(t, 72*time.Hour, retentionPeriod)
 
-	policy = newResolver.PolicyFor(labels.FromStrings("env", "prod"))
+	policy = newResolver.PolicyFor(t.Context(), labels.FromStrings("env", "prod"))
 	require.Empty(t, policy)
 
-	policy = newResolver.PolicyFor(labels.FromStrings("env", "dev"))
+	policy = newResolver.PolicyFor(t.Context(), labels.FromStrings("env", "dev"))
 	require.Equal(t, "policy1", policy)
 }
 
@@ -2400,7 +2890,10 @@ func TestDistributor_PushIngestLimits(t *testing.T) {
 		expectedLimitsRequest     *limitsproto.ExceedsLimitsRequest
 		limitsResponse            *limitsproto.ExceedsLimitsResponse
 		limitsResponseErr         error
+		expectedResponse          *logproto.PushResponse
 		expectedErr               string
+		expectedDiscardedSamples  float64
+		expectedDiscardedBytes    float64
 	}{{
 		name:                "limits are not checked when disabled",
 		ingestLimitsEnabled: false,
@@ -2410,7 +2903,10 @@ func TestDistributor_PushIngestLimits(t *testing.T) {
 				Labels: "{foo=\"bar\"}",
 			}},
 		},
-		expectedLimitsCalls: 0,
+		expectedLimitsCalls:      0,
+		expectedResponse:         success,
+		expectedDiscardedSamples: 0,
+		expectedDiscardedBytes:   0,
 	}, {
 		name:                "limits are checked",
 		ingestLimitsEnabled: true,
@@ -2435,34 +2931,9 @@ func TestDistributor_PushIngestLimits(t *testing.T) {
 		limitsResponse: &limitsproto.ExceedsLimitsResponse{
 			Results: []*limitsproto.ExceedsLimitsResult{},
 		},
-	}, {
-		name:                "max stream limit is exceeded",
-		ingestLimitsEnabled: true,
-		tenant:              "test",
-		streams: logproto.PushRequest{
-			Streams: []logproto.Stream{{
-				Labels: "{foo=\"bar\"}",
-				Entries: []logproto.Entry{{
-					Timestamp: time.Now(),
-					Line:      "baz",
-				}},
-			}},
-		},
-		expectedLimitsCalls: 1,
-		expectedLimitsRequest: &limitsproto.ExceedsLimitsRequest{
-			Tenant: "test",
-			Streams: []*limitsproto.StreamMetadata{{
-				StreamHash: 0x90eb45def17f924,
-				TotalSize:  0x3,
-			}},
-		},
-		limitsResponse: &limitsproto.ExceedsLimitsResponse{
-			Results: []*limitsproto.ExceedsLimitsResult{{
-				StreamHash: 0x90eb45def17f924,
-				Reason:     uint32(limits.ReasonMaxStreams),
-			}},
-		},
-		expectedErr: "rpc error: code = Code(429) desc = request exceeded limits",
+		expectedResponse:         success,
+		expectedDiscardedSamples: 0,
+		expectedDiscardedBytes:   0,
 	}, {
 		name:                "one of two streams exceed max stream limit, request is accepted",
 		ingestLimitsEnabled: true,
@@ -2495,10 +2966,59 @@ func TestDistributor_PushIngestLimits(t *testing.T) {
 		},
 		limitsResponse: &limitsproto.ExceedsLimitsResponse{
 			Results: []*limitsproto.ExceedsLimitsResult{{
-				StreamHash: 1,
+				StreamHash: 0x90eb45def17f924,
 				Reason:     uint32(limits.ReasonMaxStreams),
 			}},
 		},
+		// Note: When some streams are rejected, validationErr is set and returned.
+		// The request will succeed (streams are written) but validationErr is returned.
+		expectedErr:              fmt.Sprintf("rpc error: code = Code(429) desc = %s", fmt.Sprintf(validation.StreamLimitErrorMsg, "{foo=\"bar\"}", "test")),
+		expectedResponse:         success, // Response is returned even when some streams are rejected
+		expectedDiscardedSamples: 1,       // 1 entry from "{foo=\"bar\"}" stream is discarded
+		expectedDiscardedBytes:   3,       // "baz" = 3 bytes
+	}, {
+		name:                "all streams exceed max stream limit, request is rejected",
+		ingestLimitsEnabled: true,
+		tenant:              "test",
+		streams: logproto.PushRequest{
+			Streams: []logproto.Stream{{
+				Labels: "{foo=\"bar\"}",
+				Entries: []logproto.Entry{{
+					Timestamp: time.Now(),
+					Line:      "baz",
+				}},
+			}, {
+				Labels: "{bar=\"baz\"}",
+				Entries: []logproto.Entry{{
+					Timestamp: time.Now(),
+					Line:      "qux",
+				}},
+			}},
+		},
+		expectedLimitsCalls: 1,
+		expectedLimitsRequest: &limitsproto.ExceedsLimitsRequest{
+			Tenant: "test",
+			Streams: []*limitsproto.StreamMetadata{{
+				StreamHash: 0x90eb45def17f924,
+				TotalSize:  0x3,
+			}, {
+				StreamHash: 0x11561609feba8cf6,
+				TotalSize:  0x3,
+			}},
+		},
+		limitsResponse: &limitsproto.ExceedsLimitsResponse{
+			Results: []*limitsproto.ExceedsLimitsResult{{
+				StreamHash: 0x90eb45def17f924,
+				Reason:     uint32(limits.ReasonMaxStreams),
+			}, {
+				StreamHash: 0x11561609feba8cf6,
+				Reason:     uint32(limits.ReasonMaxStreams),
+			}},
+		},
+		expectedErr:              fmt.Sprintf("rpc error: code = Code(429) desc = %s", fmt.Sprintf(validation.StreamLimitErrorMsg, "{foo=\"bar\"}", "test")),
+		expectedResponse:         nil, // Early return when all streams are rejected
+		expectedDiscardedSamples: 2,   // 2 entries (1 from each stream) are discarded
+		expectedDiscardedBytes:   6,   // "baz" (3 bytes) + "qux" (3 bytes) = 6 bytes
 	}, {
 		name:                      "dry-run does not enforce limits",
 		ingestLimitsEnabled:       true,
@@ -2527,6 +3047,9 @@ func TestDistributor_PushIngestLimits(t *testing.T) {
 				Reason:     uint32(limits.ReasonMaxStreams),
 			}},
 		},
+		expectedResponse:         success, // Dry-run doesn't enforce, so request succeeds
+		expectedDiscardedSamples: 0,       // Dry-run doesn't track discarded data
+		expectedDiscardedBytes:   0,
 	}, {
 		name:                "error checking limits",
 		ingestLimitsEnabled: true,
@@ -2548,23 +3071,30 @@ func TestDistributor_PushIngestLimits(t *testing.T) {
 				TotalSize:  0x3,
 			}},
 		},
-		limitsResponseErr: errors.New("failed to check limits"),
+		limitsResponseErr:        errors.New("failed to check limits"),
+		expectedResponse:         success, // When EnforceLimits returns error, request continues
+		expectedDiscardedSamples: 0,       // When EnforceLimits errors, streams are accepted
+		expectedDiscardedBytes:   0,
 	}}
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			limits := &validation.Limits{}
-			flagext.DefaultValues(limits)
-			distributors, _ := prepare(t, 1, 3, limits, nil)
+			// Reset metrics before each test
+			validation.DiscardedSamples.Reset()
+			validation.DiscardedBytes.Reset()
+
+			validationLimits := &validation.Limits{}
+			flagext.DefaultValues(validationLimits)
+			distributors, _ := prepare(t, 1, 3, validationLimits, nil)
 			d := distributors[0]
 			d.cfg.IngestLimitsEnabled = test.ingestLimitsEnabled
 			d.cfg.IngestLimitsDryRunEnabled = test.ingestLimitsDryRunEnabled
 
 			mockClient := mockIngestLimitsFrontendClient{
-				t:               t,
-				expectedRequest: test.expectedLimitsRequest,
-				response:        test.limitsResponse,
-				responseErr:     test.limitsResponseErr,
+				t:                            t,
+				expectedExceedsLimitsRequest: test.expectedLimitsRequest,
+				exceedsLimitsResponse:        test.limitsResponse,
+				exceedsLimitsResponseErr:     test.limitsResponseErr,
 			}
 			l := newIngestLimits(&mockClient, prometheus.NewRegistry())
 			d.ingestLimits = l
@@ -2573,12 +3103,50 @@ func TestDistributor_PushIngestLimits(t *testing.T) {
 			resp, err := d.Push(ctx, &test.streams)
 			if test.expectedErr != "" {
 				require.EqualError(t, err, test.expectedErr)
-				require.Nil(t, resp)
 			} else {
 				require.Nil(t, err)
-				require.Equal(t, success, resp)
+			}
+			if test.expectedResponse == nil {
+				require.Nil(t, resp)
+			} else {
+				require.Equal(t, test.expectedResponse, resp)
 			}
 			require.Equal(t, test.expectedLimitsCalls, mockClient.calls.Load())
+
+			// Note, the ToFloat64 panics if it doesn't find exactly one metric, if you are debugging a panic here
+			// you might need to check that both of these metrics were updated when the validation failure happened.
+			if test.expectedDiscardedSamples > 0 || test.expectedDiscardedBytes > 0 {
+				discardedSamples := testutil.ToFloat64(validation.DiscardedSamples)
+				discardedBytes := testutil.ToFloat64(validation.DiscardedBytes)
+
+				assert.Equal(t, test.expectedDiscardedSamples, discardedSamples, "DiscardedSamples should match expected value")
+				assert.Equal(t, test.expectedDiscardedBytes, discardedBytes, "DiscardedBytes should match expected value")
+			}
 		})
 	}
 }
+
+func TestDistributorMaxInflightBytesLimit(t *testing.T) {
+	validationLimits := &validation.Limits{}
+	flagext.DefaultValues(validationLimits)
+	distributors, _ := prepare(t, 1, 3, validationLimits, nil)
+	d := distributors[0]
+	req := &logproto.PushRequest{
+		Streams: []logproto.Stream{{
+			Labels: "{foo=\"bar\"}",
+			Entries: []logproto.Entry{{
+				Timestamp: time.Now(),
+				Line:      strings.Repeat("a", 1025),
+			}},
+		}},
+	}
+	_, err := d.Push(ctx, req)
+	require.NoError(t, err)
+	// Set the max inflight bytes to 1KB, the same request should be rejected.
+	d.cfg.MaxInflightBytes = 1024
+	_, err = d.Push(ctx, req)
+	require.ErrorIs(t, err, errServiceUnavailableMaxLoad)
+
+}
+
+func ptr[T any](v T) *T { return &v }

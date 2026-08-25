@@ -24,6 +24,11 @@ The value may additionally contain a port and a path.
 The value should not contain a query string or fragment.
 The configuration can be overridden by [WithEndpoint], [WithEndpointURL], [WithInsecure], and [WithURLPath] options.
 
+OTEL_EXPORTER_OTLP_INSECURE, OTEL_EXPORTER_OTLP_TRACES_INSECURE (default: "false") -
+setting "true" disables client transport security for the exporter's HTTP connection.
+OTEL_EXPORTER_OTLP_TRACES_INSECURE takes precedence over OTEL_EXPORTER_OTLP_INSECURE.
+The configuration can be overridden by [WithInsecure] and [WithTLSClientConfig] options.
+
 OTEL_EXPORTER_OTLP_HEADERS, OTEL_EXPORTER_OTLP_TRACES_HEADERS (default: none) -
 key-value pairs used as headers associated with HTTP requests.
 The value is expected to be represented in a format matching the [W3C Baggage HTTP Header Content Format],
@@ -60,4 +65,4 @@ The configuration can be overridden by [WithTLSClientConfig] option.
 
 [W3C Baggage HTTP Header Content Format]: https://www.w3.org/TR/baggage/#header-content
 */
-package otlptracehttp // import "go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp"
+package otlptracehttp

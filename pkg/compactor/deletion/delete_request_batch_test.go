@@ -9,6 +9,7 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
 
+	"github.com/grafana/loki/v3/pkg/compactor/deletion/deletionproto"
 	"github.com/grafana/loki/v3/pkg/compactor/retention"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	"github.com/grafana/loki/v3/pkg/util/filter"
@@ -34,7 +35,7 @@ func TestDeleteRequestBatch_Expired(t *testing.T) {
 
 	for _, tc := range []struct {
 		name                        string
-		deleteRequests              []DeleteRequest
+		deleteRequests              []deletionproto.DeleteRequest
 		expectedResp                resp
 		expectedDeletionRangeByUser map[string]model.Interval
 	}{
@@ -46,13 +47,13 @@ func TestDeleteRequestBatch_Expired(t *testing.T) {
 		},
 		{
 			name: "no relevant delete requests",
-			deleteRequests: []DeleteRequest{
+			deleteRequests: []deletionproto.DeleteRequest{
 				{
 					UserID:    "different-user",
 					Query:     lblFoo.String(),
 					StartTime: now.Add(-24 * time.Hour),
 					EndTime:   now,
-					Status:    StatusReceived,
+					Status:    deletionproto.StatusReceived,
 				},
 			},
 			expectedResp: resp{
@@ -67,13 +68,13 @@ func TestDeleteRequestBatch_Expired(t *testing.T) {
 		},
 		{
 			name: "no relevant delete requests",
-			deleteRequests: []DeleteRequest{
+			deleteRequests: []deletionproto.DeleteRequest{
 				{
 					UserID:    "different-user",
 					Query:     lblFoo.String(),
 					StartTime: now.Add(-24 * time.Hour),
 					EndTime:   now,
-					Status:    StatusReceived,
+					Status:    deletionproto.StatusReceived,
 				},
 			},
 			expectedResp: resp{
@@ -88,13 +89,13 @@ func TestDeleteRequestBatch_Expired(t *testing.T) {
 		},
 		{
 			name: "delete request not matching labels",
-			deleteRequests: []DeleteRequest{
+			deleteRequests: []deletionproto.DeleteRequest{
 				{
 					UserID:    testUserID,
 					Query:     `{fizz="buzz"}`,
 					StartTime: now.Add(-24 * time.Hour),
 					EndTime:   now,
-					Status:    StatusReceived,
+					Status:    deletionproto.StatusReceived,
 				},
 			},
 			expectedResp: resp{
@@ -109,13 +110,13 @@ func TestDeleteRequestBatch_Expired(t *testing.T) {
 		},
 		{
 			name: "whole chunk deleted by single request",
-			deleteRequests: []DeleteRequest{
+			deleteRequests: []deletionproto.DeleteRequest{
 				{
 					UserID:    testUserID,
 					Query:     lblFoo.String(),
 					StartTime: now.Add(-24 * time.Hour),
 					EndTime:   now,
-					Status:    StatusReceived,
+					Status:    deletionproto.StatusReceived,
 				},
 			},
 			expectedResp: resp{
@@ -130,13 +131,13 @@ func TestDeleteRequestBatch_Expired(t *testing.T) {
 		},
 		{
 			name: "whole chunk deleted by single request with line filters",
-			deleteRequests: []DeleteRequest{
+			deleteRequests: []deletionproto.DeleteRequest{
 				{
 					UserID:    testUserID,
 					Query:     streamSelectorWithLineFilters,
 					StartTime: now.Add(-24 * time.Hour),
 					EndTime:   now,
-					Status:    StatusReceived,
+					Status:    deletionproto.StatusReceived,
 				},
 			},
 			expectedResp: resp{
@@ -154,13 +155,13 @@ func TestDeleteRequestBatch_Expired(t *testing.T) {
 		},
 		{
 			name: "whole chunk deleted by single request with structured metadata filters",
-			deleteRequests: []DeleteRequest{
+			deleteRequests: []deletionproto.DeleteRequest{
 				{
 					UserID:    testUserID,
 					Query:     streamSelectorWithStructuredMetadataFilters,
 					StartTime: now.Add(-24 * time.Hour),
 					EndTime:   now,
-					Status:    StatusReceived,
+					Status:    deletionproto.StatusReceived,
 				},
 			},
 			expectedResp: resp{
@@ -178,13 +179,13 @@ func TestDeleteRequestBatch_Expired(t *testing.T) {
 		},
 		{
 			name: "whole chunk deleted by single request with line and structured metadata filters",
-			deleteRequests: []DeleteRequest{
+			deleteRequests: []deletionproto.DeleteRequest{
 				{
 					UserID:    testUserID,
 					Query:     streamSelectorWithLineAndStructuredMetadataFilters,
 					StartTime: now.Add(-24 * time.Hour),
 					EndTime:   now,
-					Status:    StatusReceived,
+					Status:    deletionproto.StatusReceived,
 				},
 			},
 			expectedResp: resp{
@@ -202,13 +203,13 @@ func TestDeleteRequestBatch_Expired(t *testing.T) {
 		},
 		{
 			name: "deleted interval out of range",
-			deleteRequests: []DeleteRequest{
+			deleteRequests: []deletionproto.DeleteRequest{
 				{
 					UserID:    testUserID,
 					Query:     lblFoo.String(),
 					StartTime: now.Add(-48 * time.Hour),
 					EndTime:   now.Add(-24 * time.Hour),
-					Status:    StatusReceived,
+					Status:    deletionproto.StatusReceived,
 				},
 			},
 			expectedResp: resp{
@@ -223,20 +224,20 @@ func TestDeleteRequestBatch_Expired(t *testing.T) {
 		},
 		{
 			name: "deleted interval out of range(with multiple user requests)",
-			deleteRequests: []DeleteRequest{
+			deleteRequests: []deletionproto.DeleteRequest{
 				{
 					UserID:    testUserID,
 					Query:     lblFoo.String(),
 					StartTime: now.Add(-48 * time.Hour),
 					EndTime:   now.Add(-24 * time.Hour),
-					Status:    StatusReceived,
+					Status:    deletionproto.StatusReceived,
 				},
 				{
 					UserID:    "different-user",
 					Query:     lblFoo.String(),
 					StartTime: now.Add(-24 * time.Hour),
 					EndTime:   now,
-					Status:    StatusReceived,
+					Status:    deletionproto.StatusReceived,
 				},
 			},
 			expectedResp: resp{
@@ -255,20 +256,20 @@ func TestDeleteRequestBatch_Expired(t *testing.T) {
 		},
 		{
 			name: "multiple delete requests with one deleting the whole chunk",
-			deleteRequests: []DeleteRequest{
+			deleteRequests: []deletionproto.DeleteRequest{
 				{
 					UserID:    testUserID,
 					Query:     lblFoo.String(),
 					StartTime: now.Add(-48 * time.Hour),
 					EndTime:   now.Add(-24 * time.Hour),
-					Status:    StatusReceived,
+					Status:    deletionproto.StatusReceived,
 				},
 				{
 					UserID:    testUserID,
 					Query:     lblFoo.String(),
 					StartTime: now.Add(-12 * time.Hour),
 					EndTime:   now,
-					Status:    StatusReceived,
+					Status:    deletionproto.StatusReceived,
 				},
 			},
 			expectedResp: resp{
@@ -283,20 +284,20 @@ func TestDeleteRequestBatch_Expired(t *testing.T) {
 		},
 		{
 			name: "multiple delete requests with line filters and one deleting the whole chunk",
-			deleteRequests: []DeleteRequest{
+			deleteRequests: []deletionproto.DeleteRequest{
 				{
 					UserID:    testUserID,
 					Query:     streamSelectorWithLineFilters,
 					StartTime: now.Add(-48 * time.Hour),
 					EndTime:   now.Add(-24 * time.Hour),
-					Status:    StatusReceived,
+					Status:    deletionproto.StatusReceived,
 				},
 				{
 					UserID:    testUserID,
 					Query:     streamSelectorWithLineFilters,
 					StartTime: now.Add(-12 * time.Hour),
 					EndTime:   now,
-					Status:    StatusReceived,
+					Status:    deletionproto.StatusReceived,
 				},
 			},
 			expectedResp: resp{
@@ -314,20 +315,20 @@ func TestDeleteRequestBatch_Expired(t *testing.T) {
 		},
 		{
 			name: "multiple delete requests with structured metadata filters and one deleting the whole chunk",
-			deleteRequests: []DeleteRequest{
+			deleteRequests: []deletionproto.DeleteRequest{
 				{
 					UserID:    testUserID,
 					Query:     streamSelectorWithStructuredMetadataFilters,
 					StartTime: now.Add(-48 * time.Hour),
 					EndTime:   now.Add(-24 * time.Hour),
-					Status:    StatusReceived,
+					Status:    deletionproto.StatusReceived,
 				},
 				{
 					UserID:    testUserID,
 					Query:     streamSelectorWithStructuredMetadataFilters,
 					StartTime: now.Add(-12 * time.Hour),
 					EndTime:   now,
-					Status:    StatusReceived,
+					Status:    deletionproto.StatusReceived,
 				},
 			},
 			expectedResp: resp{
@@ -345,34 +346,34 @@ func TestDeleteRequestBatch_Expired(t *testing.T) {
 		},
 		{
 			name: "multiple delete requests causing multiple holes",
-			deleteRequests: []DeleteRequest{
+			deleteRequests: []deletionproto.DeleteRequest{
 				{
 					UserID:    testUserID,
 					Query:     lblFoo.String(),
 					StartTime: now.Add(-13 * time.Hour),
 					EndTime:   now.Add(-11 * time.Hour),
-					Status:    StatusReceived,
+					Status:    deletionproto.StatusReceived,
 				},
 				{
 					UserID:    testUserID,
 					Query:     lblFoo.String(),
 					StartTime: now.Add(-10 * time.Hour),
 					EndTime:   now.Add(-8 * time.Hour),
-					Status:    StatusReceived,
+					Status:    deletionproto.StatusReceived,
 				},
 				{
 					UserID:    testUserID,
 					Query:     lblFoo.String(),
 					StartTime: now.Add(-6 * time.Hour),
 					EndTime:   now.Add(-5 * time.Hour),
-					Status:    StatusReceived,
+					Status:    deletionproto.StatusReceived,
 				},
 				{
 					UserID:    testUserID,
 					Query:     lblFoo.String(),
 					StartTime: now.Add(-2 * time.Hour),
 					EndTime:   now,
-					Status:    StatusReceived,
+					Status:    deletionproto.StatusReceived,
 				},
 			},
 			expectedResp: resp{
@@ -397,20 +398,20 @@ func TestDeleteRequestBatch_Expired(t *testing.T) {
 		},
 		{
 			name: "multiple overlapping requests deleting the whole chunk",
-			deleteRequests: []DeleteRequest{
+			deleteRequests: []deletionproto.DeleteRequest{
 				{
 					UserID:    testUserID,
 					Query:     lblFoo.String(),
 					StartTime: now.Add(-13 * time.Hour),
 					EndTime:   now.Add(-6 * time.Hour),
-					Status:    StatusReceived,
+					Status:    deletionproto.StatusReceived,
 				},
 				{
 					UserID:    testUserID,
 					Query:     lblFoo.String(),
 					StartTime: now.Add(-8 * time.Hour),
 					EndTime:   now,
-					Status:    StatusReceived,
+					Status:    deletionproto.StatusReceived,
 				},
 			},
 			expectedResp: resp{
@@ -428,20 +429,20 @@ func TestDeleteRequestBatch_Expired(t *testing.T) {
 		},
 		{
 			name: "multiple overlapping requests with line filters deleting the whole chunk",
-			deleteRequests: []DeleteRequest{
+			deleteRequests: []deletionproto.DeleteRequest{
 				{
 					UserID:    testUserID,
 					Query:     streamSelectorWithLineFilters,
 					StartTime: now.Add(-13 * time.Hour),
 					EndTime:   now.Add(-6 * time.Hour),
-					Status:    StatusReceived,
+					Status:    deletionproto.StatusReceived,
 				},
 				{
 					UserID:    testUserID,
 					Query:     streamSelectorWithLineFilters,
 					StartTime: now.Add(-8 * time.Hour),
 					EndTime:   now,
-					Status:    StatusReceived,
+					Status:    deletionproto.StatusReceived,
 				},
 			},
 			expectedResp: resp{
@@ -459,20 +460,20 @@ func TestDeleteRequestBatch_Expired(t *testing.T) {
 		},
 		{
 			name: "multiple overlapping requests with structured metadata filters deleting the whole chunk",
-			deleteRequests: []DeleteRequest{
+			deleteRequests: []deletionproto.DeleteRequest{
 				{
 					UserID:    testUserID,
 					Query:     streamSelectorWithStructuredMetadataFilters,
 					StartTime: now.Add(-13 * time.Hour),
 					EndTime:   now.Add(-6 * time.Hour),
-					Status:    StatusReceived,
+					Status:    deletionproto.StatusReceived,
 				},
 				{
 					UserID:    testUserID,
 					Query:     streamSelectorWithStructuredMetadataFilters,
 					StartTime: now.Add(-8 * time.Hour),
 					EndTime:   now,
-					Status:    StatusReceived,
+					Status:    deletionproto.StatusReceived,
 				},
 			},
 			expectedResp: resp{
@@ -490,27 +491,27 @@ func TestDeleteRequestBatch_Expired(t *testing.T) {
 		},
 		{
 			name: "multiple non-overlapping requests deleting the whole chunk",
-			deleteRequests: []DeleteRequest{
+			deleteRequests: []deletionproto.DeleteRequest{
 				{
 					UserID:    testUserID,
 					Query:     lblFoo.String(),
 					StartTime: now.Add(-12 * time.Hour),
 					EndTime:   now.Add(-6*time.Hour) - 1,
-					Status:    StatusReceived,
+					Status:    deletionproto.StatusReceived,
 				},
 				{
 					UserID:    testUserID,
 					Query:     lblFoo.String(),
 					StartTime: now.Add(-6 * time.Hour),
 					EndTime:   now.Add(-4*time.Hour) - 1,
-					Status:    StatusReceived,
+					Status:    deletionproto.StatusReceived,
 				},
 				{
 					UserID:    testUserID,
 					Query:     lblFoo.String(),
 					StartTime: now.Add(-4 * time.Hour),
 					EndTime:   now,
-					Status:    StatusReceived,
+					Status:    deletionproto.StatusReceived,
 				},
 			},
 			expectedResp: resp{
@@ -528,27 +529,27 @@ func TestDeleteRequestBatch_Expired(t *testing.T) {
 		},
 		{
 			name: "multiple non-overlapping requests with line filter deleting the whole chunk",
-			deleteRequests: []DeleteRequest{
+			deleteRequests: []deletionproto.DeleteRequest{
 				{
 					UserID:    testUserID,
 					Query:     streamSelectorWithLineFilters,
 					StartTime: now.Add(-12 * time.Hour),
 					EndTime:   now.Add(-6*time.Hour) - 1,
-					Status:    StatusReceived,
+					Status:    deletionproto.StatusReceived,
 				},
 				{
 					UserID:    testUserID,
 					Query:     streamSelectorWithLineFilters,
 					StartTime: now.Add(-6 * time.Hour),
 					EndTime:   now.Add(-4*time.Hour) - 1,
-					Status:    StatusReceived,
+					Status:    deletionproto.StatusReceived,
 				},
 				{
 					UserID:    testUserID,
 					Query:     streamSelectorWithLineFilters,
 					StartTime: now.Add(-4 * time.Hour),
 					EndTime:   now,
-					Status:    StatusReceived,
+					Status:    deletionproto.StatusReceived,
 				},
 			},
 			expectedResp: resp{
@@ -566,27 +567,27 @@ func TestDeleteRequestBatch_Expired(t *testing.T) {
 		},
 		{
 			name: "multiple non-overlapping requests with structured metadata filter deleting the whole chunk",
-			deleteRequests: []DeleteRequest{
+			deleteRequests: []deletionproto.DeleteRequest{
 				{
 					UserID:    testUserID,
 					Query:     streamSelectorWithStructuredMetadataFilters,
 					StartTime: now.Add(-12 * time.Hour),
 					EndTime:   now.Add(-6*time.Hour) - 1,
-					Status:    StatusReceived,
+					Status:    deletionproto.StatusReceived,
 				},
 				{
 					UserID:    testUserID,
 					Query:     streamSelectorWithStructuredMetadataFilters,
 					StartTime: now.Add(-6 * time.Hour),
 					EndTime:   now.Add(-4*time.Hour) - 1,
-					Status:    StatusReceived,
+					Status:    deletionproto.StatusReceived,
 				},
 				{
 					UserID:    testUserID,
 					Query:     streamSelectorWithStructuredMetadataFilters,
 					StartTime: now.Add(-4 * time.Hour),
 					EndTime:   now,
-					Status:    StatusReceived,
+					Status:    deletionproto.StatusReceived,
 				},
 			},
 			expectedResp: resp{
@@ -604,18 +605,21 @@ func TestDeleteRequestBatch_Expired(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			batch := newDeleteRequestBatch(newDeleteRequestsManagerMetrics(nil))
-			for _, req := range tc.deleteRequests {
-				batch.addDeleteRequest(&req)
+			metrics := newDeleteRequestsManagerMetrics(nil)
+			batch := newDeleteRequestBatch(metrics)
+			for i := range tc.deleteRequests {
+				req, err := newDeleteRequest(tc.deleteRequests[i], metrics.deletedLinesTotal)
+				require.NoError(t, err)
+				batch.addDeleteRequest(req)
 			}
 
 			for _, deleteRequests := range batch.deleteRequestsToProcess {
 				for _, dr := range deleteRequests.requests {
-					require.EqualValues(t, 0, dr.DeletedLines)
+					require.EqualValues(t, 0, dr.DeletedLines.Load())
 				}
 			}
 
-			isExpired, filterFunc := batch.expired([]byte(testUserID), chunkEntry, lblFoo, func(_ *DeleteRequest) bool {
+			isExpired, filterFunc := batch.expired([]byte(testUserID), chunkEntry, lblFoo, func(_ *deleteRequest) bool {
 				return false
 			})
 			require.Equal(t, tc.expectedResp.isExpired, isExpired)
@@ -665,9 +669,11 @@ func TestDeleteRequestBatch_IntervalMayHaveExpiredChunks(t *testing.T) {
 			name: "has delete requests for user",
 			deleteRequests: map[string]*userDeleteRequests{
 				"test-user": {
-					requests: []*DeleteRequest{
+					requests: []*deleteRequest{
 						{
-							UserID: "test-user",
+							DeleteRequest: deletionproto.DeleteRequest{
+								UserID: "test-user",
+							},
 						},
 					},
 				},
@@ -679,9 +685,11 @@ func TestDeleteRequestBatch_IntervalMayHaveExpiredChunks(t *testing.T) {
 			name: "has delete requests but not for user",
 			deleteRequests: map[string]*userDeleteRequests{
 				"other-user": {
-					requests: []*DeleteRequest{
+					requests: []*deleteRequest{
 						{
-							UserID: "other-user",
+							DeleteRequest: deletionproto.DeleteRequest{
+								UserID: "other-user",
+							},
 						},
 					},
 				},
@@ -693,9 +701,11 @@ func TestDeleteRequestBatch_IntervalMayHaveExpiredChunks(t *testing.T) {
 			name: "check for all users",
 			deleteRequests: map[string]*userDeleteRequests{
 				"test-user": {
-					requests: []*DeleteRequest{
+					requests: []*deleteRequest{
 						{
-							UserID: "test-user",
+							DeleteRequest: deletionproto.DeleteRequest{
+								UserID: "test-user",
+							},
 						},
 					},
 				},

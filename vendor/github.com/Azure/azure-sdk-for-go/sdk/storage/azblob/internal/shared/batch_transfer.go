@@ -1,6 +1,3 @@
-//go:build go1.18
-// +build go1.18
-
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License. See License.txt in the project root for license information.
 
@@ -44,7 +41,6 @@ func DoBatchTransfer(ctx context.Context, o *BatchTransferOptions) error {
 
 	// Create the goroutines that process each operation (in parallel).
 	for g := uint16(0); g < o.Concurrency; g++ {
-		//grIndex := g
 		go func() {
 			for f := range operationChannel {
 				err := f()

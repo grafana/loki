@@ -1,7 +1,7 @@
 // Copyright The OpenTelemetry Authors
 // SPDX-License-Identifier: Apache-2.0
 
-package otlploghttp // import "go.opentelemetry.io/otel/exporters/otlp/otlplog/otlploghttp"
+package otlploghttp
 
 import (
 	"crypto/tls"
@@ -23,11 +23,12 @@ import (
 
 // Default values.
 var (
-	defaultEndpoint                        = "localhost:4318"
-	defaultPath                            = "/v1/logs"
-	defaultTimeout                         = 10 * time.Second
-	defaultProxy    HTTPTransportProxyFunc = http.ProxyFromEnvironment
-	defaultRetryCfg                        = retry.DefaultConfig
+	defaultEndpoint                              = "localhost:4318"
+	defaultPath                                  = "/v1/logs"
+	defaultTimeout                               = 10 * time.Second
+	defaultMaxRequestSize                        = 64 * 1024 * 1024
+	defaultProxy          HTTPTransportProxyFunc = http.ProxyFromEnvironment
+	defaultRetryCfg                              = retry.DefaultConfig
 )
 
 // Environment variable keys.
@@ -36,7 +37,10 @@ var (
 		"OTEL_EXPORTER_OTLP_LOGS_ENDPOINT",
 		"OTEL_EXPORTER_OTLP_ENDPOINT",
 	}
-	envInsecure = envEndpoint
+	envInsecure = []string{
+		"OTEL_EXPORTER_OTLP_LOGS_INSECURE",
+		"OTEL_EXPORTER_OTLP_INSECURE",
+	}
 
 	// Split because these are parsed differently.
 	envPathSignal = []string{"OTEL_EXPORTER_OTLP_LOGS_ENDPOINT"}
@@ -86,16 +90,17 @@ type fnOpt func(config) config
 func (f fnOpt) applyHTTPOption(c config) config { return f(c) }
 
 type config struct {
-	endpoint    setting[string]
-	path        setting[string]
-	insecure    setting[bool]
-	tlsCfg      setting[*tls.Config]
-	headers     setting[map[string]string]
-	compression setting[Compression]
-	timeout     setting[time.Duration]
-	proxy       setting[HTTPTransportProxyFunc]
-	retryCfg    setting[retry.Config]
-	httpClient  *http.Client
+	endpoint       setting[string]
+	path           setting[string]
+	insecure       setting[bool]
+	tlsCfg         setting[*tls.Config]
+	headers        setting[map[string]string]
+	compression    setting[Compression]
+	maxRequestSize setting[int]
+	timeout        setting[time.Duration]
+	proxy          setting[HTTPTransportProxyFunc]
+	retryCfg       setting[retry.Config]
+	httpClient     *http.Client
 }
 
 func newConfig(options []Option) config {
@@ -114,6 +119,7 @@ func newConfig(options []Option) config {
 		fallback[string](defaultPath),
 	)
 	c.insecure = c.insecure.Resolve(
+		loadInsecureFromEnvEndpoint(envEndpoint),
 		getenv[bool](envInsecure, convInsecure),
 	)
 	c.tlsCfg = c.tlsCfg.Resolve(
@@ -128,6 +134,9 @@ func newConfig(options []Option) config {
 	c.timeout = c.timeout.Resolve(
 		getenv[time.Duration](envTimeout, convDuration),
 		fallback[time.Duration](defaultTimeout),
+	)
+	c.maxRequestSize = c.maxRequestSize.Resolve(
+		fallback[int](defaultMaxRequestSize),
 	)
 	c.proxy = c.proxy.Resolve(
 		fallback[HTTPTransportProxyFunc](defaultProxy),
@@ -185,7 +194,7 @@ func WithEndpointURL(rawURL string) Option {
 	return fnOpt(func(c config) config {
 		c.endpoint = newSetting(u.Host)
 		c.path = newSetting(u.Path)
-		c.insecure = newSetting(u.Scheme != "https")
+		c.insecure = insecureFromScheme(c.insecure, u.Scheme)
 		return c
 	})
 }
@@ -305,6 +314,19 @@ func WithHeaders(headers map[string]string) Option {
 func WithTimeout(duration time.Duration) Option {
 	return fnOpt(func(c config) config {
 		c.timeout = newSetting(duration)
+		return c
+	})
+}
+
+// WithMaxRequestSize sets the maximum size, in bytes, of a serialized export
+// request, before compression, that the exporter will send.
+//
+// If size is less than or equal to zero, no request-size limit is applied.
+// Disabling the limit is not recommended because it can lead to excessive
+// resource consumption or abuse.
+func WithMaxRequestSize(size int) Option {
+	return fnOpt(func(c config) config {
+		c.maxRequestSize = newSetting(size)
 		return c
 	})
 }
@@ -541,15 +563,52 @@ func convPath(s string) (string, error) {
 	return u.Path + "/v1/logs", nil
 }
 
-// convInsecure parses s as a URL string and returns if the connection should
-// use client transport security or not. If s is an invalid URL, false and an
-// error are returned.
+// convInsecure converts s from string to bool without case sensitivity.
+// If s is not valid returns error.
 func convInsecure(s string) (bool, error) {
-	u, err := url.Parse(s)
-	if err != nil {
-		return false, err
+	s = strings.ToLower(s)
+	if s != "true" && s != "false" {
+		return false, fmt.Errorf("can't convert %q to bool", s)
 	}
-	return u.Scheme != "https", nil
+
+	return s == "true", nil
+}
+
+// loadInsecureFromEnvEndpoint returns a resolver that fetches
+// insecure setting from envEndpoint is it possible.
+func loadInsecureFromEnvEndpoint(envEndpoint []string) resolver[bool] {
+	return func(s setting[bool]) setting[bool] {
+		if s.Set {
+			// Passed, valid, options have precedence.
+			return s
+		}
+
+		for _, key := range envEndpoint {
+			if vStr := os.Getenv(key); vStr != "" {
+				u, err := url.Parse(vStr)
+				if err != nil {
+					otel.Handle(fmt.Errorf("invalid %s value %s: %w", key, vStr, err))
+					continue
+				}
+
+				return insecureFromScheme(s, u.Scheme)
+			}
+		}
+		return s
+	}
+}
+
+// insecureFromScheme return setting if the connection should
+// use client transport security or not.
+// Empty scheme doesn't force insecure setting.
+func insecureFromScheme(prev setting[bool], scheme string) setting[bool] {
+	if scheme == "https" {
+		return newSetting(false)
+	} else if scheme != "" {
+		return newSetting(true)
+	}
+
+	return prev
 }
 
 // convHeaders converts the OTel environment variable header value s into a
@@ -558,7 +617,7 @@ func convInsecure(s string) (bool, error) {
 func convHeaders(s string) (map[string]string, error) {
 	out := make(map[string]string)
 	var err error
-	for _, header := range strings.Split(s, ",") {
+	for header := range strings.SplitSeq(s, ",") {
 		rawKey, rawVal, found := strings.Cut(header, "=")
 		if !found {
 			err = errors.Join(err, fmt.Errorf("invalid header: %s", header))

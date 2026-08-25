@@ -13,15 +13,7 @@ import (
 	"go.uber.org/multierr"
 	"go.uber.org/zap"
 
-	"go.opentelemetry.io/collector/featuregate"
-)
-
-var enableMergeAppendOption = featuregate.GlobalRegistry().MustRegister(
-	"confmap.enableMergeAppendOption",
-	featuregate.StageAlpha,
-	featuregate.WithRegisterFromVersion("v0.120.0"),
-	featuregate.WithRegisterDescription("Combines lists when resolving configs from different sources. This feature gate will not be stabilized 'as is'; the current behavior will remain the default."),
-	featuregate.WithRegisterReferenceURL("https://github.com/open-telemetry/opentelemetry-collector/issues/8754"),
+	"go.opentelemetry.io/collector/confmap/internal"
 )
 
 // follows drive-letter specification:
@@ -37,6 +29,10 @@ type Resolver struct {
 
 	closers []CloseFunc
 	watcher chan error
+
+	// unexpandedConfMap holds the merged configuration captured during the most
+	// recent Resolve call before provider/env-var references were expanded.
+	unexpandedConfMap map[string]any
 }
 
 // ResolverSettings are the settings to configure the behavior of the Resolver.
@@ -65,6 +61,9 @@ type ResolverSettings struct {
 	// ConverterSettings contains settings that will be passed to Converter
 	// factories when instantiating Converters.
 	ConverterSettings ConverterSettings
+
+	// prevent unkeyed literal initialization
+	_ struct{}
 }
 
 // NewResolver returns a new Resolver that resolves configuration from multiple URIs.
@@ -180,20 +179,19 @@ func (mr *Resolver) Resolve(ctx context.Context) (*Conf, error) {
 		if err != nil {
 			return nil, err
 		}
-		if enableMergeAppendOption.IsEnabled() {
-			// only use MergeAppend when enableMergeAppendOption featuregate is enabled.
-			err = retMap.mergeAppend(retCfgMap)
-		} else {
-			err = retMap.Merge(retCfgMap)
-		}
-		if err != nil {
+
+		if err := retMap.Merge(retCfgMap); err != nil {
 			return nil, err
 		}
 	}
 
+	// Capture the pre-expansion map (provider references intact) before expanding.
+	mr.unexpandedConfMap = retMap.ToStringMap()
+
 	cfgMap := make(map[string]any)
 	for _, k := range retMap.AllKeys() {
-		val, err := mr.expandValueRecursively(ctx, retMap.unsanitizedGet(k))
+		ug := internal.UnsanitizedGetter{Conf: retMap}
+		val, err := mr.expandValueRecursively(ctx, ug.UnsanitizedGet(k))
 		if err != nil {
 			return nil, err
 		}
@@ -211,11 +209,25 @@ func (mr *Resolver) Resolve(ctx context.Context) (*Conf, error) {
 	return retMap, nil
 }
 
+// UnexpandedConf returns a Conf built from the merged configuration as captured
+// by the most recent Resolve call, before provider and env-var references were
+// expanded (i.e. with ${env:FOO} syntax intact). Returns nil if Resolve has not
+// been called.
+//
+// Experimental: This method is experimental. Its behavior may change without backward
+// compatibility until this notice is removed.
+func (mr *Resolver) UnexpandedConf() *Conf {
+	if mr.unexpandedConfMap == nil {
+		return nil
+	}
+	return NewFromStringMap(mr.unexpandedConfMap)
+}
+
 func escapeDollarSigns(val any) any {
 	switch v := val.(type) {
 	case string:
 		return strings.ReplaceAll(v, "$$", "$")
-	case expandedValue:
+	case internal.ExpandedValue:
 		v.Original = strings.ReplaceAll(v.Original, "$$", "$")
 		v.Value = escapeDollarSigns(v.Value)
 		return v
@@ -252,13 +264,13 @@ func (mr *Resolver) Watch() <-chan error {
 //
 // Should never be called concurrently with itself or Get.
 func (mr *Resolver) Shutdown(ctx context.Context) error {
-	close(mr.watcher)
-
 	var errs error
 	errs = multierr.Append(errs, mr.closeIfNeeded(ctx))
 	for _, p := range mr.providers {
 		errs = multierr.Append(errs, p.Shutdown(ctx))
 	}
+
+	close(mr.watcher)
 
 	return errs
 }

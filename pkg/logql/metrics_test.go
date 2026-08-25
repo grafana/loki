@@ -10,6 +10,7 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/grafana/dskit/user"
+	"github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	tracesdk "go.opentelemetry.io/otel/sdk/trace"
@@ -82,11 +83,53 @@ func TestLogSlowQuery(t *testing.T) {
 	}, logqlmodel.Streams{logproto.Stream{Entries: make([]logproto.Entry, 10)}})
 	require.Regexp(t,
 		regexp.MustCompile(fmt.Sprintf(
-			`level=info org_id=foo traceID=%s sampled=true latency=slow query=".*" query_hash=.* query_type=filter range_type=range length=1h0m0s .*\n`,
+			`level=info org_id=foo traceID=%s sampled=true latency=slow user_agent= query=".*" query_hash=.* query_type=filter range_type=range length=1h0m0s .*\n`,
 			sp.SpanContext().TraceID(),
 		)),
 		buf.String())
 	util_log.Logger = log.NewNopLogger()
+}
+
+func TestRecordBytesProcessedTotal(t *testing.T) {
+	util_log.Logger = log.NewNopLogger()
+
+	params := LiteralParams{
+		queryString: `{foo="bar"} |= "buzz"`,
+		direction:   logproto.BACKWARD,
+		limit:       1000,
+		step:        time.Minute,
+		queryExpr:   syntax.MustParseExpr(`{foo="bar"} |= "buzz"`),
+	}
+	result := stats.Result{Summary: stats.Summary{TotalBytesProcessed: 100000}}
+
+	// Use a tenant unique to this test so we do not collide with the shared,
+	// package-level counter incremented by other tests.
+	const tenantID = "record-bytes-tenant"
+	ctx := user.InjectOrgID(context.Background(), tenantID)
+
+	now := time.Now()
+	params.start, params.end = now.Add(-1*time.Hour), now
+
+	counter := bytesProcessedTotal.WithLabelValues(tenantID)
+
+	RecordRangeAndInstantQueryMetrics(ctx, util_log.Logger, params, "200", result, nil)
+	require.Equal(t, float64(100000), testutil.ToFloat64(counter))
+
+	// A second query for the same tenant accumulates.
+	RecordRangeAndInstantQueryMetrics(ctx, util_log.Logger, params, "200", result, nil)
+	require.Equal(t, float64(200000), testutil.ToFloat64(counter))
+
+	// Federated multi-tenant queries divide the byte total evenly across tenants.
+	fedA, fedB := "record-bytes-fed-a", "record-bytes-fed-b"
+	fedCtx := user.InjectOrgID(context.Background(), fmt.Sprintf("%s|%s", fedA, fedB))
+	RecordRangeAndInstantQueryMetrics(fedCtx, util_log.Logger, params, "200", result, nil)
+	require.Equal(t, float64(50000), testutil.ToFloat64(bytesProcessedTotal.WithLabelValues(fedA)))
+	require.Equal(t, float64(50000), testutil.ToFloat64(bytesProcessedTotal.WithLabelValues(fedB)))
+
+	// When no tenant can be resolved from the context the metric is skipped rather
+	// than recorded under an empty tenant label (and must not panic).
+	RecordRangeAndInstantQueryMetrics(context.Background(), util_log.Logger, params, "200", result, nil)
+	require.Equal(t, float64(0), testutil.ToFloat64(bytesProcessedTotal.WithLabelValues("")))
 }
 
 func TestLogLabelsQuery(t *testing.T) {
@@ -117,7 +160,7 @@ func TestLogLabelsQuery(t *testing.T) {
 	})
 	require.Regexp(t,
 		fmt.Sprintf(
-			"level=info org_id=foo traceID=%s sampled=true latency=slow query_type=labels splits=0 start=.* end=.* start_delta=1h0m0.* end_delta=.* length=1h0m0s duration=25.25s status=200 label=foo query= query_hash=2166136261 total_entries=12 cache_label_results_req=2 cache_label_results_hit=1 cache_label_results_stored=1 cache_label_results_download_time=80ns cache_label_results_query_length_served=10ns\n",
+			"level=info org_id=foo traceID=%s sampled=true latency=slow query_type=labels user_agent= splits=0 start=.* end=.* start_delta=1h0m0.* end_delta=.* length=1h0m0s duration=25.25s status=200 label=foo query= query_hash=2166136261 total_entries=12 cache_label_results_req=2 cache_label_results_hit=1 cache_label_results_stored=1 cache_label_results_download_time=80ns cache_label_results_query_length_served=10ns\n",
 			sp.SpanContext().TraceID(),
 		),
 		buf.String())
@@ -152,7 +195,7 @@ func TestLogSeriesQuery(t *testing.T) {
 	})
 	require.Regexp(t,
 		fmt.Sprintf(
-			"level=info org_id=foo traceID=%s sampled=true latency=slow query_type=series splits=0 start=.* end=.* start_delta=1h0m0.* end_delta=.* length=1h0m0s duration=25.25s status=200 match=\"{container_name=.*\"}:{app=.*}\" query_hash=23523089 total_entries=10 cache_series_results_req=2 cache_series_results_hit=1 cache_series_results_stored=1 cache_series_results_download_time=80ns cache_series_results_query_length_served=10ns\n",
+			"level=info org_id=foo traceID=%s sampled=true latency=slow query_type=series user_agent= splits=0 start=.* end=.* start_delta=1h0m0.* end_delta=.* length=1h0m0s duration=25.25s status=200 match=\"{container_name=.*\"}:{app=.*}\" query_hash=23523089 total_entries=10 cache_series_results_req=2 cache_series_results_hit=1 cache_series_results_stored=1 cache_series_results_download_time=80ns cache_series_results_query_length_served=10ns\n",
 			sp.SpanContext().TraceID(),
 		),
 		buf.String())

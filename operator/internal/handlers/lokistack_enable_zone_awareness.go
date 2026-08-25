@@ -49,8 +49,8 @@ func AnnotatePodWithAvailabilityZone(ctx context.Context, log logr.Logger, c k8s
 		return nil
 	}
 
-	mergePatch, err := json.Marshal(map[string]interface{}{
-		"metadata": map[string]interface{}{
+	mergePatch, err := json.Marshal(map[string]any{
+		"metadata": map[string]any{
 			"annotations": map[string]string{
 				lokiv1.AnnotationAvailabilityZone: availabilityZone,
 			},

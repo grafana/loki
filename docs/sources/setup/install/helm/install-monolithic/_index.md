@@ -12,14 +12,28 @@ weight: 100
 
 This Helm Chart installation deploys Grafana Loki in [monolithic mode](https://grafana.com/docs/loki/<LOKI_VERSION>/get-started/deployment-modes/#monolithic-mode) within a Kubernetes cluster.
 
+{{< admonition type="note" >}}
+As of March 16, 2026, the Loki Helm Chart is being maintained by Grafana Champions and the Grafana Community in the [Grafana-community/helm-charts repository](https://github.com/grafana-community/helm-charts). Please open issues and pull requests for the chart against the Grafana-community repo.
+{{< /admonition >}}
+
+{{< admonition type="tip" >}}
+With the move to the Grafana-community repository, the chart numbering has changed. Major version updates signal breaking changes in the chart. For more information, refer to the [README](https://github.com/grafana-community/helm-charts/blob/main/charts/loki/README.md#upgrading).
+{{< /admonition >}}
+
+{{< admonition type="note" >}}
+As of community chart 12.0.0, `SingleBinary` was renamed to `Monolithic`. Set `deploymentMode: Monolithic` explicitly. The legacy value `SingleBinary` is still accepted but deprecated.
+{{< /admonition >}}
+
 ## Prerequisites
 
 - Helm 3 or above. See [Installing Helm](https://helm.sh/docs/intro/install/).
+- Kubernetes 1.25 or later.
 - A running Kubernetes cluster.
 
 ## Single Replica or Multiple Replicas
 
 There are two ways to deploy Loki in monolithic mode:
+
 1. **Single Replica**: Run Loki with a single replica. This mode is useful for testing and development or if you are planning to run Loki as a meta-monitoring system.
 2. **Multiple Replicas**: Run Loki with multiple replicas. This mode is useful for high availability. This mode is less economical than microservice mode, but it is simpler to operate. We recommend running at least three replicas for high availability.
 
@@ -28,16 +42,22 @@ Once you have selected how many replicas you would like to deploy, choose the ap
 ### Single Replica
 
 Deploying the Helm chart with a single replica deploys the following components:
+
 - Loki (1 replica)
 - Loki Canary (1 DaemonSet)
 - Loki Gateway (1 NGINX replica)
-- Loki Chunk and Result Cache (1 DaemonSet)
-- Minio (optional, if `minio.enabled=true`)
+- Chunks cache (1 StatefulSet)
+- Results cache (1 StatefulSet)
+- Minio (optional, deprecated — see warning below)
 
 Create the configuration file `values.yaml`:
 
 {{< admonition type="note" >}}
 You must specify `commonConfig.replication_factor: 1` if you are only using 1 replica, otherwise requests will fail.
+{{< /admonition >}}
+
+{{< admonition type="warning" >}}
+The built-in MinIO subchart is deprecated and will be removed on 2026-10-31. Setting `minio.enabled=true` without also setting `ignoreMinioDeprecation: true` causes chart rendering to fail with chart v17+. Use the workaround shown below only for temporary testing. For production, configure an external object storage backend instead.
 {{< /admonition >}}
 
 ```yaml
@@ -54,17 +74,18 @@ loki:
           prefix: loki_index_
           period: 24h
   pattern_ingester:
-      enabled: true
+    enabled: true
   limits_config:
     allow_structured_metadata: true
     volume_enabled: true
-  ruler:
+  rulerConfig:
     enable_api: true
 
+ignoreMinioDeprecation: true  # Temporary workaround – MinIO will be removed 2026-10-31
 minio:
   enabled: true
       
-deploymentMode: SingleBinary
+deploymentMode: Monolithic
 
 singleBinary:
   replicas: 1
@@ -91,27 +112,35 @@ compactor:
   replicas: 0
 indexGateway:
   replicas: 0
-bloomCompactor:
+bloomPlanner:
+  replicas: 0
+bloomBuilder:
   replicas: 0
 bloomGateway:
   replicas: 0
 ```
 
-In this configuration, we are deploying Loki with MinIO as the object storage. We recommend configuring object storage via cloud provider or pointing Loki at a MinIO cluster for production deployments.
+This configuration uses the built-in MinIO subchart for convenience, which is deprecated and will be removed on 2026-10-31. For production deployments, configure an external object storage provider such as AWS S3, GCS, or Azure Blob Storage.
 
 ### Multiple Replicas  
 
 Deploying the Helm chart with multiple replicas deploys the following components:
+
 - Loki (3 replicas)
 - Loki Canary (1 DaemonSet)
 - Loki Gateway (1 NGINX replica)
-- Loki Chunk and Result Cache (1 DaemonSet)
-- Minio (optional, if `minio.enabled=true`)
+- Chunks cache (1 StatefulSet)
+- Results cache (1 StatefulSet)
+- Minio (optional, deprecated — see warning below)
 
 Create the configuration file `values.yaml`:
 
 {{< admonition type="note" >}}
 If you set the `singleBinary.replicas` value to 2 or more, this chart configures Loki to run a *single binary* in a replicated, highly available mode. When running replicas of a single binary, you must configure object storage.
+{{< /admonition >}}
+
+{{< admonition type="warning" >}}
+The built-in MinIO subchart is deprecated and will be removed on 2026-10-31. Setting `minio.enabled=true` without also setting `ignoreMinioDeprecation: true` causes chart rendering to fail with chart v17+. Use the workaround shown below only for temporary testing. For production, configure an external object storage backend instead.
 {{< /admonition >}}
 
 ```yaml
@@ -128,17 +157,18 @@ loki:
           prefix: loki_index_
           period: 24h
   pattern_ingester:
-      enabled: true
+    enabled: true
   limits_config:
     allow_structured_metadata: true
     volume_enabled: true
-  ruler:
+  rulerConfig:
     enable_api: true
 
+ignoreMinioDeprecation: true  # Temporary workaround – MinIO will be removed 2026-10-31
 minio:
   enabled: true
       
-deploymentMode: SingleBinary
+deploymentMode: Monolithic
 
 singleBinary:
   replicas: 3
@@ -165,19 +195,26 @@ compactor:
   replicas: 0
 indexGateway:
   replicas: 0
-bloomCompactor:
+bloomPlanner:
+  replicas: 0
+bloomBuilder:
   replicas: 0
 bloomGateway:
   replicas: 0
 ```
-In this configuration, we need to make sure to update the `commonConfig.replication_factor` and `singleBinary.replicas` to the desired number of replicas. We are deploying Loki with MinIO as the object storage. We recommend configuring object storage via cloud provider or pointing Loki at a MinIO cluster for production deployments.
+
+In this configuration, update `commonConfig.replication_factor` and `singleBinary.replicas` to your desired number of replicas. This configuration uses the built-in MinIO subchart for convenience, which is deprecated and will be removed on 2026-10-31. For production deployments, configure an external object storage provider such as AWS S3, GCS, or Azure Blob Storage.
 
 ## Deploying the Helm chart for development and testing
 
-1. Add [Grafana's chart repository](https://github.com/grafana/helm-charts) to Helm:
+{{< admonition type="note" >}}
+If this is the first time you have deployed the Loki Helm chart since the move to the Community managed Helm chart, note that the URL for the chart has changed. For more information see the [Upgrade documentation](https://grafana.com/docs/loki/<LOKI_VERSION>/setup/upgrade/upgrade-to-6x/).
+{{< /admonition >}}
+
+1. Add the [Grafana Community chart repository](https://github.com/grafana-community/helm-charts) to Helm:
 
    ```bash
-   helm repo add grafana https://grafana.github.io/helm-charts
+   helm repo add grafana-community https://grafana-community.github.io/helm-charts
    ```
 
 1. Update the chart repository:
@@ -189,19 +226,24 @@ In this configuration, we need to make sure to update the `commonConfig.replicat
 1. Deploy Loki using the configuration file `values.yaml`:
 
    ```bash
-    helm install loki grafana/loki -f values.yaml
+    helm install loki grafana-community/loki -f values.yaml -n loki --create-namespace
     ```
+
 1. Install or upgrade the Loki deployment.
      - To install:
+
         ```bash
-       helm install --values values.yaml loki grafana/loki
+       helm install --values values.yaml loki grafana-community/loki -n loki --create-namespace
        ```
-    - To upgrade:
+
+     - To upgrade:
+
        ```bash
-       helm upgrade --values values.yaml loki grafana/loki
+       helm upgrade --values values.yaml loki grafana-community/loki -n loki
        ```
-       
+
 1. Verify that Loki is running:
+
     ```bash
     kubectl get pods -n loki
     ```
@@ -209,6 +251,10 @@ In this configuration, we need to make sure to update the `commonConfig.replicat
 ## Object Storage Configuration
 
 After testing Loki with MinIO, we recommend configuring Loki with an object storage provider. The following examples shows how to configure Loki with different object storage providers:
+
+{{< admonition type="note" >}}
+As of chart 18.3.0, `singleBinary.persistence.enableStatefulSetAutoDeletePVC` defaults to `false` (it defaulted to `true` before). This means the persistent volume claims (PVCs) for the single binary StatefulSet are retained, not automatically deleted, when the StatefulSet is deleted or scaled down. Set `singleBinary.persistence.enableStatefulSetAutoDeletePVC: true` in your values file to restore the old auto-delete behavior.
+{{< /admonition >}}
 
 {{< admonition type="caution" >}}
 When deploying Loki using S3 Storage **DO NOT** use the default bucket names;  `chunk`, `ruler` and `admin`. Choose a unique name for each bucket. For more information see the following [security update](https://grafana.com/blog/2024/06/27/grafana-security-update-grafana-loki-and-unintended-data-write-attempts-to-amazon-s3-buckets/). This caution does not apply when you are using MinIO. When using MinIO we recommend using the default bucket names.
@@ -235,7 +281,7 @@ loki:
       bucketnames: <Your AWS bucket for chunk, for exaxmple,  `aws-loki-dev-chunk`>
       s3forcepathstyle: false
   pattern_ingester:
-      enabled: true
+    enabled: true
   limits_config:
     allow_structured_metadata: true
     volume_enabled: true
@@ -244,9 +290,9 @@ loki:
   storage:
     type: s3
     bucketNames:
-        chunks: <Your AWS bucket for chunk, for example, `aws-loki-dev-chunk`>
-        ruler: <Your AWS bucket for ruler, for example, `aws-loki-dev-ruler`>
-        admin: <Your AWS bucket for admin, for example, `aws-loki-dev-admin`>
+      chunks: <Your AWS bucket for chunk, for example, `aws-loki-dev-chunk`>
+      ruler: <Your AWS bucket for ruler, for example, `aws-loki-dev-ruler`>
+      admin: <Your AWS bucket for admin, for example, `aws-loki-dev-admin`>
     s3:
       # s3 URL can be used to specify the endpoint, access key, secret key, and bucket name this works well for S3 compatible storages or are hosting Loki on-premises and want to use S3 as the storage backend. Either use the s3 URL or the individual fields below (AWS endpoint, region, secret).
       s3: s3://access_key:secret_access_key@custom_endpoint/bucket_name
@@ -271,7 +317,7 @@ loki:
 minio:
   enabled: false
 
-deploymentMode: SingleBinary
+deploymentMode: Monolithic
 
 singleBinary:
   replicas: 3
@@ -303,7 +349,9 @@ compactor:
   replicas: 0
 indexGateway:
   replicas: 0
-bloomCompactor:
+bloomPlanner:
+  replicas: 0
+bloomBuilder:
   replicas: 0
 bloomGateway:
   replicas: 0
@@ -355,12 +403,12 @@ loki:
 minio:
   enabled: false
 
-deploymentMode: SingleBinary
+deploymentMode: Monolithic
 
 singleBinary:
   replicas: 3
   persistence:
-    storageClass: gp2
+    storageClass: managed-csi
     accessModes:
       - ReadWriteOnce
     size: 30Gi
@@ -387,7 +435,9 @@ compactor:
   replicas: 0
 indexGateway:
   replicas: 0
-bloomCompactor:
+bloomPlanner:
+  replicas: 0
+bloomBuilder:
   replicas: 0
 bloomGateway:
   replicas: 0
@@ -395,22 +445,20 @@ bloomGateway:
 ```
   
 {{< /collapse >}}
-  
-
 
 To configure other storage providers, refer to the [Helm Chart Reference](https://grafana.com/docs/loki/<LOKI_VERSION>/setup/install/helm/reference/).
 
 ## Deploying the Loki Helm chart to a Production Environment
 
 {{< admonition type="note" >}}
-We are actively working on providing more guides for deploying Loki in production. 
+We are actively working on providing more guides for deploying Loki in production.
 {{< /admonition >}}
 
 We recommend running Loki at scale within a cloud environment like AWS, Azure, or GCP. The below guides will show you how to deploy a minimally viable production environment.
+
 - [Deploy Loki on AWS](https://grafana.com/docs/loki/<LOKI_VERSION>/setup/install/helm/deployment-guides/aws)
 
+## Next Steps
 
-## Next Steps 
 * Configure an agent to [send log data to Loki](/docs/loki/<LOKI_VERSION>/send-data/).
-* Monitor the Loki deployment using the [Meta Monitoring Helm chart](/docs/loki/<LOKI_VERSION>/setup/install/helm/monitor-and-alert/)
-
+* [Monitor the Loki deployment](/docs/loki/<LOKI_VERSION>/setup/install/helm/monitor-and-alert/), using the recommended Kubernetes monitoring Helm chart.

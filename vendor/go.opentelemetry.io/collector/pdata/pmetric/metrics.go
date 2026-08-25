@@ -3,46 +3,14 @@
 
 package pmetric // import "go.opentelemetry.io/collector/pdata/pmetric"
 
-import (
-	"go.opentelemetry.io/collector/pdata/internal"
-	otlpcollectormetrics "go.opentelemetry.io/collector/pdata/internal/data/protogen/collector/metrics/v1"
-)
-
-// Metrics is the top-level struct that is propagated through the metrics pipeline.
-// Use NewMetrics to create new instance, zero-initialized instance is not valid for use.
-type Metrics internal.Metrics
-
-func newMetrics(orig *otlpcollectormetrics.ExportMetricsServiceRequest) Metrics {
-	state := internal.StateMutable
-	return Metrics(internal.NewMetrics(orig, &state))
-}
-
-func (ms Metrics) getOrig() *otlpcollectormetrics.ExportMetricsServiceRequest {
-	return internal.GetOrigMetrics(internal.Metrics(ms))
-}
-
-func (ms Metrics) getState() *internal.State {
-	return internal.GetMetricsState(internal.Metrics(ms))
-}
-
-// NewMetrics creates a new Metrics struct.
-func NewMetrics() Metrics {
-	return newMetrics(&otlpcollectormetrics.ExportMetricsServiceRequest{})
+// MarkReadOnly marks the Metrics as shared so that no further modifications can be done on it.
+func (ms Metrics) MarkReadOnly() {
+	ms.getState().MarkReadOnly()
 }
 
 // IsReadOnly returns true if this Metrics instance is read-only.
 func (ms Metrics) IsReadOnly() bool {
-	return *ms.getState() == internal.StateReadOnly
-}
-
-// CopyTo copies the Metrics instance overriding the destination.
-func (ms Metrics) CopyTo(dest Metrics) {
-	ms.ResourceMetrics().CopyTo(dest.ResourceMetrics())
-}
-
-// ResourceMetrics returns the ResourceMetricsSlice associated with this Metrics.
-func (ms Metrics) ResourceMetrics() ResourceMetricsSlice {
-	return newResourceMetricsSlice(&ms.getOrig().ResourceMetrics, internal.GetMetricsState(internal.Metrics(ms)))
+	return ms.getState().IsReadOnly()
 }
 
 // MetricCount calculates the total number of metrics.
@@ -86,10 +54,5 @@ func (ms Metrics) DataPointCount() (dataPointCount int) {
 			}
 		}
 	}
-	return
-}
-
-// MarkReadOnly marks the Metrics as shared so that no further modifications can be done on it.
-func (ms Metrics) MarkReadOnly() {
-	internal.SetMetricsState(internal.Metrics(ms), internal.StateReadOnly)
+	return dataPointCount
 }

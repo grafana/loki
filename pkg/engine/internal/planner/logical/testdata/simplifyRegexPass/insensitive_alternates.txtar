@@ -1,0 +1,15 @@
+Case-insensitive alternates should simplify to case-insensitive matches with OR.
+
+-- column --
+utf8.builtin.message
+
+-- regex --
+(?i)error|fatal|warning
+
+-- expect --
+%1 = MATCH_STR_CASE_INSENSITIVE builtin.message "ERROR"
+%2 = MATCH_STR_CASE_INSENSITIVE builtin.message "FATAL"
+%3 = OR %1 %2
+%4 = MATCH_STR_CASE_INSENSITIVE builtin.message "WARNING"
+%5 = OR %3 %4
+RETURN %5

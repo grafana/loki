@@ -22,9 +22,9 @@ import (
 	flatbuffers "github.com/google/flatbuffers/go"
 )
 
-// / ----------------------------------------------------------------------
-// / user defined key value pairs to add custom metadata to arrow
-// / key namespacing is the responsibility of the user
+/// ----------------------------------------------------------------------
+/// user defined key value pairs to add custom metadata to arrow
+/// key namespacing is the responsibility of the user
 type KeyValue struct {
 	_tab flatbuffers.Table
 }
@@ -34,6 +34,21 @@ func GetRootAsKeyValue(buf []byte, offset flatbuffers.UOffsetT) *KeyValue {
 	x := &KeyValue{}
 	x.Init(buf, n+offset)
 	return x
+}
+
+func FinishKeyValueBuffer(builder *flatbuffers.Builder, offset flatbuffers.UOffsetT) {
+	builder.Finish(offset)
+}
+
+func GetSizePrefixedRootAsKeyValue(buf []byte, offset flatbuffers.UOffsetT) *KeyValue {
+	n := flatbuffers.GetUOffsetT(buf[offset+flatbuffers.SizeUint32:])
+	x := &KeyValue{}
+	x.Init(buf, n+offset+flatbuffers.SizeUint32)
+	return x
+}
+
+func FinishSizePrefixedKeyValueBuffer(builder *flatbuffers.Builder, offset flatbuffers.UOffsetT) {
+	builder.FinishSizePrefixed(offset)
 }
 
 func (rcv *KeyValue) Init(buf []byte, i flatbuffers.UOffsetT) {

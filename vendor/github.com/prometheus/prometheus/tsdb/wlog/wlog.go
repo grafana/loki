@@ -1,4 +1,4 @@
-// Copyright 2017 The Prometheus Authors
+// Copyright The Prometheus Authors
 
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -781,19 +781,19 @@ func (w *WL) log(rec []byte, final bool) error {
 }
 
 // LastSegmentAndOffset returns the last segment number of the WAL
-// and the offset in that file upto which the segment has been filled.
+// and the offset in that file up to which the segment has been filled.
 func (w *WL) LastSegmentAndOffset() (seg, offset int, err error) {
 	w.mtx.Lock()
 	defer w.mtx.Unlock()
 
 	_, seg, err = Segments(w.Dir())
 	if err != nil {
-		return
+		return seg, offset, err
 	}
 
 	offset = (w.donePages * pageSize) + w.page.alloc
 
-	return
+	return seg, offset, err
 }
 
 // Truncate drops all segments before i.
@@ -1028,7 +1028,7 @@ func (r *segmentBufReader) Read(b []byte) (n int, err error) {
 		return n + i, nil
 	}
 
-	// There is no more deta left in the curr segment and there are no more
+	// There is no more data left in the curr segment and there are no more
 	// segments left.  Return EOF.
 	if r.cur+1 >= len(r.segs) {
 		return n, io.EOF

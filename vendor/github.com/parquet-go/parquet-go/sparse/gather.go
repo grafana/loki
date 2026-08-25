@@ -1,6 +1,6 @@
 package sparse
 
-import "github.com/parquet-go/parquet-go/internal/unsafecast"
+import "github.com/parquet-go/bitpack/unsafecast"
 
 func GatherInt32(dst []int32, src Int32Array) int {
 	return GatherUint32(unsafecast.Slice[uint32](dst), src.Uint32Array())

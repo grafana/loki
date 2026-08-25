@@ -78,7 +78,7 @@ type OpCode struct {
 // notion, pairing up elements that appear uniquely in each sequence.
 // That, and the method here, appear to yield more intuitive difference
 // reports than does diff.  This method appears to be the least vulnerable
-// to synching up on blocks of "junk lines", though (like blank lines in
+// to syncing up on blocks of "junk lines", though (like blank lines in
 // ordinary text files, or maybe "<P>" lines in HTML files).  That may be
 // because this is the only method of the 3 that has a *concept* of
 // "junk" <wink>.
@@ -453,7 +453,7 @@ func (m *SequenceMatcher) GetGroupedOpCodes(n int) [][]OpCode {
 		}
 		group = append(group, OpCode{c.Tag, i1, i2, j1, j2})
 	}
-	if len(group) > 0 && !(len(group) == 1 && group[0].Tag == 'e') {
+	if len(group) > 0 && (len(group) != 1 || group[0].Tag != 'e') {
 		groups = append(groups, group)
 	}
 	return groups
@@ -567,8 +567,8 @@ type UnifiedDiff struct {
 func WriteUnifiedDiff(writer io.Writer, diff UnifiedDiff) error {
 	buf := bufio.NewWriter(writer)
 	defer buf.Flush()
-	wf := func(format string, args ...interface{}) error {
-		_, err := buf.WriteString(fmt.Sprintf(format, args...))
+	wf := func(format string, args ...any) error {
+		_, err := fmt.Fprintf(buf, format, args...)
 		return err
 	}
 	ws := func(s string) error {

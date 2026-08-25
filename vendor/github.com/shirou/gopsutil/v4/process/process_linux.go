@@ -194,7 +194,7 @@ func (p *Process) NiceWithContext(ctx context.Context) (int32, error) {
 	return nice, nil
 }
 
-func (p *Process) IOniceWithContext(_ context.Context) (int32, error) {
+func (*Process) IOniceWithContext(_ context.Context) (int32, error) {
 	return 0, common.ErrNotImplementedError
 }
 
@@ -310,7 +310,7 @@ func (p *Process) TimesWithContext(ctx context.Context) (*cpu.TimesStat, error) 
 	return cpuTimes, nil
 }
 
-func (p *Process) CPUAffinityWithContext(_ context.Context) ([]int32, error) {
+func (*Process) CPUAffinityWithContext(_ context.Context) ([]int32, error) {
 	return nil, common.ErrNotImplementedError
 }
 
@@ -346,10 +346,13 @@ func (p *Process) ChildrenWithContext(ctx context.Context) ([]*Process, error) {
 	ret := make([]*Process, 0, len(statFiles))
 	for _, statFile := range statFiles {
 		statContents, err := os.ReadFile(statFile)
-		if err != nil {
+		if err != nil || len(statContents) == 0 {
 			continue
 		}
 		fields := splitProcStat(statContents)
+		if len(fields) < 5 {
+			continue
+		}
 		pid, err := strconv.ParseInt(fields[1], 10, 32)
 		if err != nil {
 			continue
@@ -358,7 +361,7 @@ func (p *Process) ChildrenWithContext(ctx context.Context) ([]*Process, error) {
 		if err != nil {
 			continue
 		}
-		if int32(ppid) == p.Pid {
+		if ppid == int64(p.Pid) {
 			np, err := NewProcessWithContext(ctx, int32(pid))
 			if err != nil {
 				continue
@@ -372,15 +375,7 @@ func (p *Process) ChildrenWithContext(ctx context.Context) ([]*Process, error) {
 
 func (p *Process) OpenFilesWithContext(ctx context.Context) ([]OpenFilesStat, error) {
 	_, ofs, err := p.fillFromfdWithContext(ctx)
-	if err != nil {
-		return nil, err
-	}
-	ret := make([]OpenFilesStat, len(ofs))
-	for i, o := range ofs {
-		ret[i] = *o
-	}
-
-	return ret, nil
+	return ofs, err
 }
 
 func (p *Process) ConnectionsWithContext(ctx context.Context) ([]net.ConnectionStat, error) {
@@ -425,8 +420,7 @@ func (p *Process) MemoryMapsWithContext(ctx context.Context, grouped bool) (*[]M
 			if len(field) < 2 {
 				continue
 			}
-			v := strings.Trim(field[1], "kB") // remove last "kB"
-			v = strings.TrimSpace(v)
+			v := strings.TrimSpace(strings.TrimSuffix(field[1], " kB"))
 			t, err := strconv.ParseUint(v, 10, 64)
 			if err != nil {
 				return m, err
@@ -629,17 +623,17 @@ func (p *Process) fillFromfdListWithContext(ctx context.Context) (string, []stri
 }
 
 // Get num_fds from /proc/(pid)/fd
-func (p *Process) fillFromfdWithContext(ctx context.Context) (int32, []*OpenFilesStat, error) {
+func (p *Process) fillFromfdWithContext(ctx context.Context) (int32, []OpenFilesStat, error) {
 	statPath, fnames, err := p.fillFromfdListWithContext(ctx)
 	if err != nil {
 		return 0, nil, err
 	}
 	numFDs := int32(len(fnames))
 
-	var openfiles []*OpenFilesStat
+	openfiles := make([]OpenFilesStat, 0, numFDs)
 	for _, fd := range fnames {
 		fpath := filepath.Join(statPath, fd)
-		filepath, err := os.Readlink(fpath)
+		path, err := common.Readlink(fpath)
 		if err != nil {
 			continue
 		}
@@ -647,8 +641,8 @@ func (p *Process) fillFromfdWithContext(ctx context.Context) (int32, []*OpenFile
 		if err != nil {
 			return numFDs, openfiles, err
 		}
-		o := &OpenFilesStat{
-			Path: filepath,
+		o := OpenFilesStat{
+			Path: path,
 			Fd:   t,
 		}
 		openfiles = append(openfiles, o)
@@ -765,6 +759,9 @@ func (p *Process) fillFromStatmWithContext(ctx context.Context) (*MemoryInfoStat
 		return nil, nil, err
 	}
 	fields := strings.Split(string(contents), " ")
+	if len(fields) < 6 {
+		return nil, nil, fmt.Errorf("malformed statm file: expected at least 6 fields, got %d", len(fields))
+	}
 
 	vms, err := strconv.ParseUint(fields[0], 10, 64)
 	if err != nil {
@@ -870,6 +867,12 @@ func (p *Process) fillFromStatusWithContext(ctx context.Context) error {
 			// Ensure we have a copy and not reference into slice
 			p.name = string([]byte(p.name))
 		case "State":
+			if value == "" {
+				// Clear rather than leave a stale status from a previous
+				// parse, since Process objects can be reused across calls.
+				p.status = ""
+				continue
+			}
 			p.status = convertStatusChar(value[0:1])
 			// Ensure we have a copy and not reference into slice
 			p.status = string([]byte(p.status))
@@ -888,7 +891,7 @@ func (p *Process) fillFromStatusWithContext(ctx context.Context) error {
 		case "Uid":
 			p.uids = make([]uint32, 0, 4)
 			for _, i := range strings.Split(value, "\t") {
-				v, err := strconv.ParseInt(i, 10, 32)
+				v, err := strconv.ParseUint(i, 10, 32)
 				if err != nil {
 					return err
 				}
@@ -897,7 +900,7 @@ func (p *Process) fillFromStatusWithContext(ctx context.Context) error {
 		case "Gid":
 			p.gids = make([]uint32, 0, 4)
 			for _, i := range strings.Split(value, "\t") {
-				v, err := strconv.ParseInt(i, 10, 32)
+				v, err := strconv.ParseUint(i, 10, 32)
 				if err != nil {
 					return err
 				}
@@ -932,49 +935,49 @@ func (p *Process) fillFromStatusWithContext(ctx context.Context) error {
 			}
 			p.numCtxSwitches.Involuntary = v
 		case "VmRSS":
-			value := strings.Trim(value, " kB") // remove last "kB"
+			value = strings.TrimSpace(strings.TrimSuffix(value, " kB"))
 			v, err := strconv.ParseUint(value, 10, 64)
 			if err != nil {
 				return err
 			}
 			p.memInfo.RSS = v * 1024
 		case "VmSize":
-			value := strings.Trim(value, " kB") // remove last "kB"
+			value = strings.TrimSpace(strings.TrimSuffix(value, " kB"))
 			v, err := strconv.ParseUint(value, 10, 64)
 			if err != nil {
 				return err
 			}
 			p.memInfo.VMS = v * 1024
 		case "VmSwap":
-			value := strings.Trim(value, " kB") // remove last "kB"
+			value = strings.TrimSpace(strings.TrimSuffix(value, " kB"))
 			v, err := strconv.ParseUint(value, 10, 64)
 			if err != nil {
 				return err
 			}
 			p.memInfo.Swap = v * 1024
 		case "VmHWM":
-			value := strings.Trim(value, " kB") // remove last "kB"
+			value = strings.TrimSpace(strings.TrimSuffix(value, " kB"))
 			v, err := strconv.ParseUint(value, 10, 64)
 			if err != nil {
 				return err
 			}
 			p.memInfo.HWM = v * 1024
 		case "VmData":
-			value := strings.Trim(value, " kB") // remove last "kB"
+			value = strings.TrimSpace(strings.TrimSuffix(value, " kB"))
 			v, err := strconv.ParseUint(value, 10, 64)
 			if err != nil {
 				return err
 			}
 			p.memInfo.Data = v * 1024
 		case "VmStk":
-			value := strings.Trim(value, " kB") // remove last "kB"
+			value = strings.TrimSpace(strings.TrimSuffix(value, " kB"))
 			v, err := strconv.ParseUint(value, 10, 64)
 			if err != nil {
 				return err
 			}
 			p.memInfo.Stack = v * 1024
 		case "VmLck":
-			value := strings.Trim(value, " kB") // remove last "kB"
+			value = strings.TrimSpace(strings.TrimSuffix(value, " kB"))
 			v, err := strconv.ParseUint(value, 10, 64)
 			if err != nil {
 				return err
@@ -1046,11 +1049,17 @@ func (p *Process) fillFromTIDStatWithContext(ctx context.Context, tid int32) (ui
 	}
 
 	contents, err := os.ReadFile(statPath)
+	if err == nil && len(contents) == 0 {
+		err = fmt.Errorf("process %d: stat file is empty, process may have terminated", pid)
+	}
 	if err != nil {
 		return 0, 0, nil, 0, 0, 0, nil, err
 	}
 	// Indexing from one, as described in `man proc` about the file /proc/[pid]/stat
 	fields := splitProcStat(contents)
+	if len(fields) < 23 {
+		return 0, 0, nil, 0, 0, 0, nil, fmt.Errorf("malformed stat file: expected at least 23 fields, got %d", len(fields))
+	}
 
 	terminal, err := strconv.ParseUint(fields[7], 10, 64)
 	if err != nil {
@@ -1181,6 +1190,9 @@ func readPidsFromDir(path string) ([]int32, error) {
 		return nil, err
 	}
 	for _, fname := range fnames {
+		if !strictIntPtrn.MatchString(fname) {
+			continue
+		}
 		pid, err := strconv.ParseInt(fname, 10, 32)
 		if err != nil {
 			// if not numeric name, just skip
@@ -1195,6 +1207,12 @@ func readPidsFromDir(path string) ([]int32, error) {
 func splitProcStat(content []byte) []string {
 	nameStart := bytes.IndexByte(content, '(')
 	nameEnd := bytes.LastIndexByte(content, ')')
+	// Guard against a malformed/truncated stat file that is missing the
+	// parentheses around comm, which would otherwise cause the slice
+	// operations below to panic. Callers validate the field count.
+	if nameStart < 0 || nameEnd < nameStart || nameEnd+2 > len(content) {
+		return nil
+	}
 	restFields := strings.Fields(string(content[nameEnd+2:])) // +2 skip ') '
 	name := content[nameStart+1 : nameEnd]
 	pid := strings.TrimSpace(string(content[:nameStart]))

@@ -10,13 +10,13 @@ import (
 
 // AlterPartitionAssignmentsReq is the input for a request to alter partition
 // assignments. The keys are topics and partitions, and the final slice
-// corresponds to brokers that replicas will be assigneed to. If the brokers
+// corresponds to brokers that replicas will be assigned to. If the brokers
 // for a given partition are null, the request will *cancel* any active
 // reassignment for that partition.
 type AlterPartitionAssignmentsReq map[string]map[int32][]int32
 
 // Assign specifies brokers that a partition should be placed on. Using null
-// for the brokers cancels a pending reassignment of the parititon.
+// for the brokers cancels a pending reassignment of the partition.
 func (r *AlterPartitionAssignmentsReq) Assign(t string, p int32, brokers []int32) {
 	if *r == nil {
 		*r = make(map[string]map[int32][]int32)
@@ -81,15 +81,30 @@ func (rs AlterPartitionAssignmentsResponses) Error() error {
 	return nil
 }
 
+var forbidAlterRf = func() *string { s := "forbid_alter_rf"; return &s }()
+
+// ForbidAlterRf returns a context that ensures [AlterPartitionAssignments]
+// will not alter the replication factor of any topics. Requires Kafka 4.1+.
+func ForbidAlterRf(ctx context.Context) context.Context {
+	return context.WithValue(ctx, forbidAlterRf, forbidAlterRf)
+}
+
 // AlterPartitionAssignments alters partition assignments for the requested
-// partitions, returning an error if the response could not be issued or if
-// you do not have permissions.
+// partitions, returning an error if the response could not be issued or if you
+// do not have permissions.
+//
+// If you want to forbid replication factor changes and receive an error if a
+// request contains tries to alter any rf, you can use a context decorated with
+// [ForbidAlterRf] (requires Kafka 4.1+).
 func (cl *Client) AlterPartitionAssignments(ctx context.Context, req AlterPartitionAssignmentsReq) (AlterPartitionAssignmentsResponses, error) {
 	if len(req) == 0 {
 		return make(AlterPartitionAssignmentsResponses), nil
 	}
 
 	kreq := kmsg.NewPtrAlterPartitionAssignmentsRequest()
+	if ctx.Value(forbidAlterRf) != nil {
+		kreq.AllowReplicationFactorChange = false
+	}
 	kreq.TimeoutMillis = cl.timeoutMillis
 	for t, ps := range req {
 		rt := kmsg.NewAlterPartitionAssignmentsRequestTopic()
@@ -105,6 +120,9 @@ func (cl *Client) AlterPartitionAssignments(ctx context.Context, req AlterPartit
 
 	kresp, err := kreq.RequestWith(ctx, cl.cl)
 	if err != nil {
+		return nil, err
+	}
+	if err := maybeAuthErr(kresp.ErrorCode); err != nil {
 		return nil, err
 	}
 	if err = kerr.ErrorForCode(kresp.ErrorCode); err != nil {
@@ -184,6 +202,9 @@ func (cl *Client) ListPartitionReassignments(ctx context.Context, s TopicsSet) (
 
 	kresp, err := kreq.RequestWith(ctx, cl.cl)
 	if err != nil {
+		return nil, err
+	}
+	if err := maybeAuthErr(kresp.ErrorCode); err != nil {
 		return nil, err
 	}
 	if err = kerr.ErrorForCode(kresp.ErrorCode); err != nil {

@@ -118,11 +118,12 @@ func typeHeader(contentType string) textproto.MIMEHeader {
 //
 // After PrepareUpload has been called, media should no longer be used: the
 // media content should be accessed via one of the return values.
-func PrepareUpload(media io.Reader, chunkSize int) (r io.Reader, mb *MediaBuffer, singleChunk bool) {
+func PrepareUpload(media io.Reader, chunkSize int, enableAutoChecksum bool) (r io.Reader, mb *MediaBuffer, singleChunk bool) {
 	if chunkSize == 0 { // do not chunk
 		return media, nil, true
 	}
 	mb = NewMediaBuffer(media, chunkSize)
+	mb.enableAutoChecksum = enableAutoChecksum
 	_, _, _, err := mb.Chunk()
 	// If err is io.EOF, we can upload this in a single request. Otherwise, err is
 	// either nil or a non-EOF error. If it is the latter, then the next call to
@@ -159,7 +160,7 @@ func NewInfoFromMedia(r io.Reader, options []googleapi.MediaOption) *MediaInfo {
 	}
 	mi.chunkRetryDeadline = opts.ChunkRetryDeadline
 	mi.chunkTransferTimeout = opts.ChunkTransferTimeout
-	mi.media, mi.buffer, mi.singleChunk = PrepareUpload(r, opts.ChunkSize)
+	mi.media, mi.buffer, mi.singleChunk = PrepareUpload(r, opts.ChunkSize, opts.EnableAutoChecksum)
 	return mi
 }
 
@@ -195,6 +196,22 @@ func (mi *MediaInfo) UploadType() string {
 		return "multipart"
 	}
 	return "resumable"
+}
+
+// ChecksumEnabled returns if auto checksum is enabled in buffer.
+func (mi *MediaInfo) ChecksumEnabled() bool {
+	return mi.buffer != nil && mi.buffer.enableAutoChecksum
+}
+
+// GetAutoChecksum returns the computed auto checksum from buffer (if enabled).
+// Make sure whole data is written and read from the buffer before calling this
+// function to get correct checksum of the data.
+func (mi *MediaInfo) GetAutoChecksum() string {
+	if mi.buffer != nil &&
+		mi.buffer.enableAutoChecksum {
+		return encodeUint32(mi.buffer.fullObjectChecksum)
+	}
+	return ""
 }
 
 // UploadRequest sets up an HTTP request for media upload. It adds headers

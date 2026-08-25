@@ -1,7 +1,7 @@
 // Copyright The OpenTelemetry Authors
 // SPDX-License-Identifier: Apache-2.0
 
-package propagation // import "go.opentelemetry.io/otel/propagation"
+package propagation
 
 import (
 	"context"
@@ -20,7 +20,7 @@ type TextMapCarrier interface {
 	// must never be done outside of a new major release.
 
 	// Set stores the key-value pair.
-	Set(key string, value string)
+	Set(key, value string)
 	// DO NOT CHANGE: any modification will not be backwards compatible and
 	// must never be done outside of a new major release.
 
@@ -88,7 +88,7 @@ func (hc HeaderCarrier) Values(key string) []string {
 }
 
 // Set stores the key-value pair.
-func (hc HeaderCarrier) Set(key string, value string) {
+func (hc HeaderCarrier) Set(key, value string) {
 	http.Header(hc).Set(key, value)
 }
 

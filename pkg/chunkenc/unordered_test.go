@@ -92,6 +92,7 @@ func Test_Unordered_InsertRetrieval(t *testing.T) {
 		input, exp []entry
 		dir        logproto.Direction
 		hasDup     bool
+		forFormat  HeadBlockFmt
 	}{
 		{
 			desc: "simple forward",
@@ -132,6 +133,50 @@ func Test_Unordered_InsertRetrieval(t *testing.T) {
 			dir: logproto.BACKWARD,
 		},
 		{
+			desc: "different structured metadata forward",
+			input: []entry{
+				{0, "a", labels.EmptyLabels()}, {1, "b", labels.EmptyLabels()}, {0, "a", labels.FromStrings("a", "b")},
+			},
+			exp: []entry{
+				{0, "a", labels.FromStrings("a", "b")}, {0, "a", labels.EmptyLabels()}, {1, "b", labels.EmptyLabels()},
+			},
+			forFormat: UnorderedWithStructuredMetadataHeadBlockFmt,
+		},
+		{
+			desc: "different structured metadata backward",
+			input: []entry{
+				{0, "a", labels.EmptyLabels()}, {1, "b", labels.EmptyLabels()}, {0, "a", labels.FromStrings("a", "b")},
+			},
+			exp: []entry{
+				{1, "b", labels.EmptyLabels()}, {0, "a", labels.FromStrings("a", "b")}, {0, "a", labels.EmptyLabels()},
+			},
+			dir:       logproto.BACKWARD,
+			forFormat: UnorderedWithStructuredMetadataHeadBlockFmt,
+		},
+		{
+			desc: "different structured metadata forward",
+			input: []entry{
+				{0, "a", labels.EmptyLabels()}, {1, "b", labels.EmptyLabels()}, {0, "a", labels.FromStrings("a", "b")},
+			},
+			exp: []entry{
+				{0, "a", labels.EmptyLabels()}, {1, "b", labels.EmptyLabels()},
+			},
+			hasDup:    true,
+			forFormat: UnorderedHeadBlockFmt,
+		},
+		{
+			desc: "different structured metadata backward",
+			input: []entry{
+				{0, "a", labels.EmptyLabels()}, {1, "b", labels.EmptyLabels()}, {0, "a", labels.FromStrings("a", "b")},
+			},
+			exp: []entry{
+				{1, "b", labels.EmptyLabels()}, {0, "a", labels.EmptyLabels()},
+			},
+			dir:       logproto.BACKWARD,
+			hasDup:    true,
+			forFormat: UnorderedHeadBlockFmt,
+		},
+		{
 			desc: "ts collision forward",
 			input: []entry{
 				{0, "a", labels.FromStrings("a", "b")}, {0, "b", labels.FromStrings("a", "b")}, {1, "c", labels.EmptyLabels()},
@@ -141,6 +186,8 @@ func Test_Unordered_InsertRetrieval(t *testing.T) {
 			},
 		},
 		{
+			// For UnorderedHeadBlockFmt, structured metadata is stripped so both ts=0 entries share
+			// the same stream and are returned in reverse insertion order.
 			desc: "ts collision backward",
 			input: []entry{
 				{0, "a", labels.FromStrings("a", "b")}, {0, "b", labels.EmptyLabels()}, {1, "c", labels.EmptyLabels()},
@@ -148,12 +195,27 @@ func Test_Unordered_InsertRetrieval(t *testing.T) {
 			exp: []entry{
 				{1, "c", labels.EmptyLabels()}, {0, "b", labels.EmptyLabels()}, {0, "a", labels.FromStrings("a", "b")},
 			},
-			dir: logproto.BACKWARD,
+			dir:       logproto.BACKWARD,
+			forFormat: UnorderedHeadBlockFmt,
+		},
+		{
+			// For UnorderedWithStructuredMetadataHeadBlockFmt, the two ts=0 entries have different
+			// structured metadata so they end up in different streams. Tie-breaking by label string
+			// puts {a="b"} before {} (since 'a' < '}' in ASCII).
+			desc: "ts collision backward",
+			input: []entry{
+				{0, "a", labels.FromStrings("a", "b")}, {0, "b", labels.EmptyLabels()}, {1, "c", labels.EmptyLabels()},
+			},
+			exp: []entry{
+				{1, "c", labels.EmptyLabels()}, {0, "a", labels.FromStrings("a", "b")}, {0, "b", labels.EmptyLabels()},
+			},
+			dir:       logproto.BACKWARD,
+			forFormat: UnorderedWithStructuredMetadataHeadBlockFmt,
 		},
 		{
 			desc: "ts remove exact dupe forward",
 			input: []entry{
-				{0, "a", labels.EmptyLabels()}, {0, "b", labels.EmptyLabels()}, {1, "c", labels.EmptyLabels()}, {0, "b", labels.FromStrings("a", "b")},
+				{0, "a", labels.EmptyLabels()}, {0, "b", labels.EmptyLabels()}, {1, "c", labels.EmptyLabels()}, {0, "b", labels.EmptyLabels()},
 			},
 			exp: []entry{
 				{0, "a", labels.EmptyLabels()}, {0, "b", labels.EmptyLabels()}, {1, "c", labels.EmptyLabels()},
@@ -164,7 +226,7 @@ func Test_Unordered_InsertRetrieval(t *testing.T) {
 		{
 			desc: "ts remove exact dupe backward",
 			input: []entry{
-				{0, "a", labels.EmptyLabels()}, {0, "b", labels.EmptyLabels()}, {1, "c", labels.EmptyLabels()}, {0, "b", labels.FromStrings("a", "b")},
+				{0, "a", labels.EmptyLabels()}, {0, "b", labels.EmptyLabels()}, {1, "c", labels.EmptyLabels()}, {0, "b", labels.EmptyLabels()},
 			},
 			exp: []entry{
 				{1, "c", labels.EmptyLabels()}, {0, "b", labels.EmptyLabels()}, {0, "a", labels.EmptyLabels()},
@@ -178,38 +240,40 @@ func Test_Unordered_InsertRetrieval(t *testing.T) {
 				UnorderedHeadBlockFmt,
 				UnorderedWithStructuredMetadataHeadBlockFmt,
 			} {
-				t.Run(format.String(), func(t *testing.T) {
-					hb := newUnorderedHeadBlock(format, newSymbolizer())
-					dup := false
-					for _, e := range tc.input {
-						tmpdup, err := hb.Append(e.t, e.s, e.structuredMetadata)
-						if !dup { // only set dup if it's not already true
-							if tmpdup { // can't examine duplicates until we start getting all the data
-								dup = true
+				if tc.forFormat == 0 || tc.forFormat == format {
+					t.Run(format.String(), func(t *testing.T) {
+						hb := newUnorderedHeadBlock(format, newSymbolizer())
+						dup := false
+						for _, e := range tc.input {
+							tmpdup, err := hb.Append(e.t, e.s, e.structuredMetadata)
+							if !dup { // only set dup if it's not already true
+								if tmpdup { // can't examine duplicates until we start getting all the data
+									dup = true
+								}
+							}
+							require.Nil(t, err)
+						}
+						require.Equal(t, tc.hasDup, dup)
+
+						itr := hb.Iterator(
+							context.Background(),
+							tc.dir,
+							0,
+							math.MaxInt64,
+							noopStreamPipeline,
+						)
+
+						expected := make([]entry, len(tc.exp))
+						copy(expected, tc.exp)
+						if format < UnorderedWithStructuredMetadataHeadBlockFmt {
+							for i := range expected {
+								expected[i].structuredMetadata = labels.EmptyLabels()
 							}
 						}
-						require.Nil(t, err)
-					}
-					require.Equal(t, tc.hasDup, dup)
 
-					itr := hb.Iterator(
-						context.Background(),
-						tc.dir,
-						0,
-						math.MaxInt64,
-						noopStreamPipeline,
-					)
-
-					expected := make([]entry, len(tc.exp))
-					copy(expected, tc.exp)
-					if format < UnorderedWithStructuredMetadataHeadBlockFmt {
-						for i := range expected {
-							expected[i].structuredMetadata = labels.EmptyLabels()
-						}
-					}
-
-					iterEq(t, expected, itr)
-				})
+						iterEq(t, expected, itr)
+					})
+				}
 			}
 		})
 	}
@@ -290,6 +354,68 @@ func Test_UnorderedBoundedIter(t *testing.T) {
 					iterEq(t, expected, itr)
 				})
 			}
+		})
+	}
+}
+
+// TestHeadBlockSampleHashesMatchAcrossFormats ensures we generate the sample hash for the same
+// exact samples in every head block format.
+func TestHeadBlockSampleHashesMatchAcrossFormats(t *testing.T) {
+	streamLabels := labels.FromStrings("app", "foo")
+
+	collect := func(t *testing.T, hb HeadBlock, lbls labels.Labels) []logproto.Sample {
+		t.Helper()
+
+		extractor, err := getStreamExtractor(countQuery, lbls)
+		require.NoError(t, err)
+
+		it := hb.SampleIterator(context.Background(), 0, math.MaxInt64, extractor)
+		defer it.Close()
+
+		var got []logproto.Sample
+		for it.Next() {
+			got = append(got, it.At())
+		}
+		require.NoError(t, it.Err())
+
+		return got
+	}
+
+	// Build one block per format Loki can create, so a format added later is covered without
+	// touching this test.
+	require.NotEmpty(t, HeadBlockFmts)
+	blocks := make(map[HeadBlockFmt]HeadBlock, len(HeadBlockFmts))
+	for _, format := range HeadBlockFmts {
+		blocks[format] = format.NewBlock(newSymbolizer())
+	}
+
+	for i := 0; i < 10; i++ {
+		for _, hb := range blocks {
+			dup, err := hb.Append(int64(i), fmt.Sprintf("line %d", i), labels.EmptyLabels())
+			require.False(t, dup)
+			require.NoError(t, err)
+		}
+	}
+
+	// The newest format is the reference every other one has to match.
+	newest := blocks[HeadBlockFmts[len(HeadBlockFmts)-1]]
+	want := collect(t, newest, streamLabels)
+
+	// Pre-condition: the hash must cover both the line and the stream labels, so
+	// collecting the same lines under a second label set has to yield 20 distinct
+	// hashes. Cross-replica dedup keys on this hash, so a hash that ignored either
+	// input would silently drop one of two genuinely different samples.
+	require.Len(t, want, 10)
+	hashes := map[uint64]struct{}{}
+	for _, s := range append(want, collect(t, newest, labels.FromStrings("app", "bar"))...) {
+		hashes[s.Hash] = struct{}{}
+	}
+	require.Len(t, hashes, 2*len(want))
+
+	// Ensure all other formats return the same exact samples.
+	for _, format := range HeadBlockFmts {
+		t.Run(format.String(), func(t *testing.T) {
+			require.Equal(t, want, collect(t, blocks[format], streamLabels))
 		})
 	}
 }
@@ -480,9 +606,8 @@ func TestUnorderedChunkIterators(t *testing.T) {
 	backward, err := c.Iterator(context.Background(), time.Unix(0, 0), time.Unix(100, 0), logproto.BACKWARD, noopStreamPipeline)
 	require.Nil(t, err)
 
-	extractors, err := getMultiVariantExtractors(multiVariantCountOnlyQuery, labels.FromStrings("app", "foo"))
+	countExtractor, err := getStreamExtractor(countQuery, labels.FromStrings("app", "foo"))
 	require.NoError(t, err)
-	countExtractor := extractors[0]
 
 	smpl := c.SampleIterator(
 		context.Background(),
@@ -530,9 +655,8 @@ func BenchmarkUnorderedRead(b *testing.B) {
 		},
 	}
 
-	extractors, err := getMultiVariantExtractors(multiVariantCountOnlyQuery, labels.FromStrings("app", "foo"))
+	countExtractor, err := getStreamExtractor(countQuery, labels.FromStrings("app", "foo"))
 	require.NoError(b, err)
-	countExtractor := extractors[0]
 
 	b.Run("itr", func(b *testing.B) {
 		for _, tc := range tcs {
@@ -599,9 +723,8 @@ func TestUnorderedIteratorCountsAllEntries(t *testing.T) {
 	ct = 0
 	i = 0
 
-	extractors, err := getMultiVariantExtractors(multiVariantCountOnlyQuery, labels.FromStrings("app", "foo"))
+	countExtractor, err := getStreamExtractor(countQuery, labels.FromStrings("app", "foo"))
 	require.NoError(t, err)
-	countExtractor := extractors[0]
 	smpl := c.SampleIterator(
 		context.Background(),
 		time.Unix(0, 0),
@@ -754,8 +877,6 @@ func Test_HeadIteratorHash(t *testing.T) {
 	lbs := labels.FromStrings("foo", "bar")
 	countEx, err := log.NewLineSampleExtractor(log.CountExtractor, nil, nil, false, false)
 	require.NoError(t, err)
-	bytesEx, err := log.NewLineSampleExtractor(log.BytesExtractor, nil, nil, false, false)
-	require.NoError(t, err)
 
 	for name, b := range map[string]HeadBlock{
 		"unordered":                          newUnorderedHeadBlock(UnorderedHeadBlockFmt, newSymbolizer()),
@@ -769,40 +890,12 @@ func Test_HeadIteratorHash(t *testing.T) {
 			eit := b.Iterator(context.Background(), logproto.BACKWARD, 0, 2, log.NewNoopPipeline().ForStream(lbs))
 
 			for eit.Next() {
-				require.Equal(t, lbs.Hash(), eit.StreamHash())
+				require.Equal(t, labels.StableHash(lbs), eit.StreamHash())
 			}
 
 			sit := b.SampleIterator(context.TODO(), 0, 2, countEx.ForStream(lbs))
 			for sit.Next() {
-				require.Equal(t, lbs.Hash(), sit.StreamHash())
-			}
-		})
-
-		t.Run(fmt.Sprintf("%s SampleIterator with multiple extractors", name), func(t *testing.T) {
-			dup, err := b.Append(1, "bar", labels.FromStrings("bar", "foo"))
-			require.False(t, dup)
-			require.NoError(t, err)
-			eit := b.Iterator(
-				context.Background(),
-				logproto.BACKWARD,
-				0,
-				2,
-				log.NewNoopPipeline().ForStream(lbs),
-			)
-
-			for eit.Next() {
-				require.Equal(t, lbs.Hash(), eit.StreamHash())
-			}
-
-			sit := b.SampleIterator(
-				context.TODO(),
-				0,
-				2,
-				countEx.ForStream(lbs),
-				bytesEx.ForStream(lbs),
-			)
-			for sit.Next() {
-				require.Equal(t, lbs.Hash(), sit.StreamHash())
+				require.Equal(t, labels.StableHash(lbs), sit.StreamHash())
 			}
 		})
 	}

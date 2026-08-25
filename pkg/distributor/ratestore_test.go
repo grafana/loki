@@ -140,6 +140,27 @@ func TestRateStore(t *testing.T) {
 		requireRatesAndPushesEqual(t, 0, 0, tc.rateStore, "tenant 1", 0)
 	})
 
+	t.Run("it uses default sharding limits when overrides are empty", func(t *testing.T) {
+		tc := setupWithOverrides(&fakeOverrides{
+			enabled:      true,
+			tenantLimits: map[string]*validation.Limits{},
+		})
+		tc.ring.replicationSet = ring.ReplicationSet{
+			Instances: []ring.InstanceDesc{
+				{Addr: "ingester0"},
+			},
+		}
+
+		tc.clientPool.clients = map[string]client.PoolClient{
+			"ingester0": newRateClient([]*logproto.StreamRate{
+				{Tenant: "tenant 1", StreamHash: 1, StreamHashNoShard: 0, Rate: 25},
+			}),
+		}
+
+		require.NoError(t, tc.rateStore.instrumentedUpdateAllRates(context.Background()))
+		requireRatesAndPushesEqual(t, 25, 0, tc.rateStore, "tenant 1", 0)
+	})
+
 	t.Run("it clears the rate after an interval", func(t *testing.T) {
 		tc := setup(true)
 		tc.ring.replicationSet = ring.ReplicationSet{
@@ -335,10 +356,15 @@ func (c *fakeStreamDataClient) GetStreamRates(_ context.Context, _ *logproto.Str
 
 type fakeOverrides struct {
 	Limits
-	enabled bool
+	enabled      bool
+	tenantLimits map[string]*validation.Limits
 }
 
 func (c *fakeOverrides) AllByUserID() map[string]*validation.Limits {
+	if c.tenantLimits != nil {
+		return c.tenantLimits
+	}
+
 	return map[string]*validation.Limits{
 		"ingester0": {
 			ShardStreams: shardstreams.Config{
@@ -361,6 +387,10 @@ type testContext struct {
 }
 
 func setup(shardingEnabled bool) *testContext {
+	return setupWithOverrides(&fakeOverrides{enabled: shardingEnabled})
+}
+
+func setupWithOverrides(overrides *fakeOverrides) *testContext {
 	ring := newFakeRing()
 	cp := newFakeClientPool()
 	cfg := RateStoreConfig{MaxParallelism: 5, IngesterReqTimeout: time.Second, StreamRateUpdateInterval: 10 * time.Millisecond}
@@ -368,6 +398,6 @@ func setup(shardingEnabled bool) *testContext {
 	return &testContext{
 		ring:       ring,
 		clientPool: cp,
-		rateStore:  NewRateStore(cfg, ring, cp, &fakeOverrides{enabled: shardingEnabled}, nil),
+		rateStore:  NewRateStore(cfg, ring, cp, overrides, nil),
 	}
 }

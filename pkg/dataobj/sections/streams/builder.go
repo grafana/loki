@@ -3,7 +3,6 @@ package streams
 import (
 	"errors"
 	"fmt"
-	"sort"
 	"sync"
 	"time"
 
@@ -14,9 +13,19 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/dataset"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/datasetmd"
-	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/streamsmd"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/streamio"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/util/sliceclear"
+	"github.com/grafana/loki/v3/pkg/dataobj/sections/internal/columnar"
+)
+
+const (
+	// ShardBits is the number of high labels.StableHash(labels) bits that select a stream's shard bucket.
+	// Changing it is a storage-format break, not a tunable: the query side reads it to map shards to
+	// buckets, and the exact fast path trusts stored bucket values without re-verifying them, so a change
+	// would mis-read every object written with the old value.
+	ShardBits = 5
+	// ShardFactor is the number of physical shard buckets, 2^ShardBits.
+	ShardFactor = 1 << ShardBits
 )
 
 // A Stream is an individual stream within a data object.
@@ -34,16 +43,21 @@ type Stream struct {
 	UncompressedSize int64
 
 	// Labels of the stream.
-	Labels labels.Labels //
+	Labels labels.Labels
 
 	// Total number of log records in the stream.
 	Rows int
+
+	// ShardBucket is derived from the high bits of labels.StableHash(Labels).
+	// Valid buckets are in [0, ShardFactor).
+	ShardBucket int64
 }
 
 // Reset zeroes all values in the stream struct so it can be reused.
 func (s *Stream) Reset() {
 	s.ID = 0
-	s.Labels = nil
+	s.ShardBucket = 0
+	s.Labels = labels.EmptyLabels()
 	s.MinTimestamp = time.Time{}
 	s.MaxTimestamp = time.Time{}
 	s.UncompressedSize = 0
@@ -58,10 +72,15 @@ var streamPool = sync.Pool{
 
 // Builder builds a streams section.
 type Builder struct {
-	metrics  *Metrics
-	pageSize int
-	lastID   atomic.Int64
-	lookup   map[uint64][]*Stream
+	metrics      *Metrics
+	pageSize     int
+	pageRowCount int
+	lastID       atomic.Int64
+	lookup       map[uint64][]*Stream
+
+	// The optional tenant that owns the builder. If specified, the section
+	// must only contain streams owned by the tenant, and no other tenants.
+	tenant string
 
 	// Size of all label values across all streams; used for
 	// [Streams.EstimatedSize]. Resets on [Streams.Reset].
@@ -77,17 +96,25 @@ type Builder struct {
 
 // NewBuilder creates a new sterams section builder. The pageSize argument
 // specifies how large pages should be.
-func NewBuilder(metrics *Metrics, pageSize int) *Builder {
+func NewBuilder(metrics *Metrics, pageSize, pageRowCount int) *Builder {
 	if metrics == nil {
 		metrics = NewMetrics()
 	}
 	return &Builder{
-		metrics:  metrics,
-		pageSize: pageSize,
-		lookup:   make(map[uint64][]*Stream, 1024),
-		ordered:  make([]*Stream, 0, 1024),
+		metrics:      metrics,
+		pageSize:     pageSize,
+		pageRowCount: pageRowCount,
+		lookup:       make(map[uint64][]*Stream, 1024),
+		ordered:      make([]*Stream, 0, 1024),
 	}
 }
+
+// Tenant returns the optional tenant that owns the builder.
+func (b *Builder) Tenant() string { return b.tenant }
+
+// SetTenant sets the tenant that owns the builder. A builder can be made
+// multi-tenant by passing an empty string.
+func (b *Builder) SetTenant(tenant string) { b.tenant = tenant }
 
 // Type returns the [dataobj.SectionType] of the streams builder.
 func (b *Builder) Type() dataobj.SectionType { return sectionType }
@@ -133,6 +160,27 @@ func (b *Builder) observeRecord(ts time.Time) {
 	}
 }
 
+// AppendValue may only be used for copying streams from an existing section.
+func (b *Builder) AppendValue(val Stream) {
+	newStream := streamPool.Get().(*Stream)
+	newStream.Reset()
+
+	newStream.ID = val.ID
+	newStream.ShardBucket = val.ShardBucket
+	newStream.MinTimestamp, newStream.MaxTimestamp = val.MinTimestamp, val.MaxTimestamp
+	newStream.UncompressedSize = val.UncompressedSize
+	newStream.Labels = val.Labels
+	newStream.Rows = val.Rows
+
+	newStream.Labels.Range(func(l labels.Label) {
+		b.currentLabelsSize += len(l.Value)
+	})
+
+	hash := labels.StableHash(newStream.Labels)
+	b.lookup[hash] = append(b.lookup[hash], newStream)
+	b.ordered = append(b.ordered, newStream)
+}
+
 // EstimatedSize returns the estimated size of the Streams section in bytes.
 func (b *Builder) EstimatedSize() int {
 	// Since columns are only built when encoding, we can't use
@@ -147,24 +195,26 @@ func (b *Builder) EstimatedSize() int {
 	// 4. Assume (conservative) 2x compression ratio of all label values.
 
 	var (
-		idDeltaSize        = streamio.VarintSize(1)
-		timestampDeltaSize = streamio.VarintSize(int64(time.Second))
-		rowDeltaSize       = streamio.VarintSize(500)
+		idDeltaSize          = streamio.VarintSize(1)
+		shardBucketDeltaSize = streamio.VarintSize(1)
+		timestampDeltaSize   = streamio.VarintSize(int64(time.Second))
+		rowDeltaSize         = streamio.VarintSize(500)
 	)
 
 	var sizeEstimate int
 
-	sizeEstimate += len(b.ordered) * idDeltaSize        // ID
-	sizeEstimate += len(b.ordered) * timestampDeltaSize // Min timestamp
-	sizeEstimate += len(b.ordered) * timestampDeltaSize // Max timestamp
-	sizeEstimate += len(b.ordered) * rowDeltaSize       // Rows
-	sizeEstimate += b.currentLabelsSize / 2             // All labels (2x compression ratio)
+	sizeEstimate += len(b.ordered) * idDeltaSize          // ID
+	sizeEstimate += len(b.ordered) * shardBucketDeltaSize // Shard bucket
+	sizeEstimate += len(b.ordered) * timestampDeltaSize   // Min timestamp
+	sizeEstimate += len(b.ordered) * timestampDeltaSize   // Max timestamp
+	sizeEstimate += len(b.ordered) * rowDeltaSize         // Rows
+	sizeEstimate += b.currentLabelsSize / 2               // All labels (2x compression ratio)
 
 	return sizeEstimate
 }
 
 func (b *Builder) getOrAddStream(streamLabels labels.Labels) *Stream {
-	hash := streamLabels.Hash()
+	hash := labels.StableHash(streamLabels)
 	matches, ok := b.lookup[hash]
 	if !ok {
 		return b.addStream(hash, streamLabels)
@@ -179,19 +229,23 @@ func (b *Builder) getOrAddStream(streamLabels labels.Labels) *Stream {
 	return b.addStream(hash, streamLabels)
 }
 
-func (b *Builder) addStream(hash uint64, streamLabels labels.Labels) *Stream {
-	// Ensure streamLabels are sorted prior to adding to ensure consistent column
-	// ordering.
-	sort.Sort(streamLabels)
+// ShardBucket returns the physical shard bucket for streamLabels.
+// Buckets are 0-based in [0, ShardFactor).
+func ShardBucket(streamLabels labels.Labels) uint32 {
+	fp := labels.StableHash(streamLabels)
+	return uint32(fp >> (64 - ShardBits))
+}
 
-	for _, lbl := range streamLabels {
-		b.currentLabelsSize += len(lbl.Value)
-	}
+func (b *Builder) addStream(hash uint64, streamLabels labels.Labels) *Stream {
+	streamLabels.Range(func(l labels.Label) {
+		b.currentLabelsSize += len(l.Value)
+	})
 
 	newStream := streamPool.Get().(*Stream)
 	newStream.Reset()
 	newStream.ID = b.lastID.Add(1)
 	newStream.Labels = streamLabels
+	newStream.ShardBucket = int64(ShardBucket(streamLabels))
 
 	b.lookup[hash] = append(b.lookup[hash], newStream)
 	b.ordered = append(b.ordered, newStream)
@@ -202,7 +256,7 @@ func (b *Builder) addStream(hash uint64, streamLabels labels.Labels) *Stream {
 // StreamID returns the stream ID for the provided streamLabels. If the stream
 // has not been recorded, StreamID returns 0.
 func (b *Builder) StreamID(streamLabels labels.Labels) int64 {
-	hash := streamLabels.Hash()
+	hash := labels.StableHash(streamLabels)
 	matches, ok := b.lookup[hash]
 	if !ok {
 		return 0
@@ -224,20 +278,23 @@ func (b *Builder) Flush(w dataobj.SectionWriter) (n int64, err error) {
 	timer := prometheus.NewTimer(b.metrics.encodeSeconds)
 	defer timer.ObserveDuration()
 
-	var streamsEnc encoder
-	defer streamsEnc.Reset()
-	if err := b.encodeTo(&streamsEnc); err != nil {
+	var columnarEnc columnar.Encoder
+	defer columnarEnc.Reset()
+
+	if err := b.encodeTo(&columnarEnc); err != nil {
 		return 0, fmt.Errorf("building encoder: %w", err)
 	}
 
-	n, err = streamsEnc.Flush(w)
+	columnarEnc.SetTenant(b.tenant)
+
+	n, err = columnarEnc.Flush(w)
 	if err == nil {
 		b.Reset()
 	}
 	return n, err
 }
 
-func (b *Builder) encodeTo(enc *encoder) error {
+func (b *Builder) encodeTo(enc *columnar.Encoder) error {
 	// TODO(rfratto): handle one section becoming too large. This can happen when
 	// the number of columns is very wide. There are two approaches to handle
 	// this:
@@ -246,23 +303,27 @@ func (b *Builder) encodeTo(enc *encoder) error {
 	// 2. Move some columns into an aggregated column which holds multiple label
 	//    keys and values.
 
-	idBuilder, err := numberColumnBuilder(b.pageSize)
+	idBuilder, err := numberColumnBuilder(ColumnTypeStreamID, b.pageSize, b.pageRowCount)
 	if err != nil {
 		return fmt.Errorf("creating ID column: %w", err)
 	}
-	minTimestampBuilder, err := numberColumnBuilder(b.pageSize)
+	shardBucketBuilder, err := numberColumnBuilder(ColumnTypeShardBucket, b.pageSize, b.pageRowCount)
+	if err != nil {
+		return fmt.Errorf("creating shard bucket column: %w", err)
+	}
+	minTimestampBuilder, err := numberColumnBuilder(ColumnTypeMinTimestamp, b.pageSize, b.pageRowCount)
 	if err != nil {
 		return fmt.Errorf("creating minimum timestamp column: %w", err)
 	}
-	maxTimestampBuilder, err := numberColumnBuilder(b.pageSize)
+	maxTimestampBuilder, err := numberColumnBuilder(ColumnTypeMaxTimestamp, b.pageSize, b.pageRowCount)
 	if err != nil {
 		return fmt.Errorf("creating maximum timestamp column: %w", err)
 	}
-	rowsCountBuilder, err := numberColumnBuilder(b.pageSize)
+	rowsCountBuilder, err := numberColumnBuilder(ColumnTypeRows, b.pageSize, b.pageRowCount)
 	if err != nil {
 		return fmt.Errorf("creating rows column: %w", err)
 	}
-	uncompressedSizeBuilder, err := numberColumnBuilder(b.pageSize)
+	uncompressedSizeBuilder, err := numberColumnBuilder(ColumnTypeUncompressedSize, b.pageSize, b.pageRowCount)
 	if err != nil {
 		return fmt.Errorf("creating uncompressed size column: %w", err)
 	}
@@ -279,10 +340,14 @@ func (b *Builder) encodeTo(enc *encoder) error {
 		}
 
 		builder, err := dataset.NewColumnBuilder(name, dataset.BuilderOptions{
-			PageSizeHint: b.pageSize,
-			Value:        datasetmd.VALUE_TYPE_BYTE_ARRAY,
-			Encoding:     datasetmd.ENCODING_TYPE_PLAIN,
-			Compression:  datasetmd.COMPRESSION_TYPE_ZSTD,
+			PageSizeHint:    b.pageSize,
+			PageMaxRowCount: b.pageRowCount,
+			Type: dataset.ColumnType{
+				Physical: datasetmd.PHYSICAL_TYPE_BINARY,
+				Logical:  ColumnTypeLabel.String(),
+			},
+			Encoding:    datasetmd.ENCODING_TYPE_PLAIN,
+			Compression: datasetmd.COMPRESSION_TYPE_ZSTD,
 			Statistics: dataset.StatisticsOptions{
 				StoreRangeStats: true,
 			},
@@ -300,17 +365,22 @@ func (b *Builder) encodeTo(enc *encoder) error {
 	for i, stream := range b.ordered {
 		// Append only fails if the rows are out-of-order, which can't happen here.
 		_ = idBuilder.Append(i, dataset.Int64Value(stream.ID))
+		_ = shardBucketBuilder.Append(i, dataset.Int64Value(stream.ShardBucket))
 		_ = minTimestampBuilder.Append(i, dataset.Int64Value(stream.MinTimestamp.UnixNano()))
 		_ = maxTimestampBuilder.Append(i, dataset.Int64Value(stream.MaxTimestamp.UnixNano()))
 		_ = rowsCountBuilder.Append(i, dataset.Int64Value(int64(stream.Rows)))
 		_ = uncompressedSizeBuilder.Append(i, dataset.Int64Value(stream.UncompressedSize))
 
-		for _, label := range stream.Labels {
+		err := stream.Labels.Validate(func(label labels.Label) error {
 			builder, err := getLabelColumn(label.Name)
 			if err != nil {
 				return fmt.Errorf("getting label column: %w", err)
 			}
-			_ = builder.Append(i, dataset.ByteArrayValue([]byte(label.Value)))
+			_ = builder.Append(i, dataset.BinaryValue([]byte(label.Value)))
+			return nil
+		})
+		if err != nil {
+			return err
 		}
 	}
 
@@ -319,11 +389,11 @@ func (b *Builder) encodeTo(enc *encoder) error {
 	// encoding API.
 	{
 		var errs []error
-		errs = append(errs, encodeColumn(enc, streamsmd.COLUMN_TYPE_STREAM_ID, idBuilder))
-		errs = append(errs, encodeColumn(enc, streamsmd.COLUMN_TYPE_MIN_TIMESTAMP, minTimestampBuilder))
-		errs = append(errs, encodeColumn(enc, streamsmd.COLUMN_TYPE_MAX_TIMESTAMP, maxTimestampBuilder))
-		errs = append(errs, encodeColumn(enc, streamsmd.COLUMN_TYPE_ROWS, rowsCountBuilder))
-		errs = append(errs, encodeColumn(enc, streamsmd.COLUMN_TYPE_UNCOMPRESSED_SIZE, uncompressedSizeBuilder))
+		errs = append(errs, encodeColumn(enc, ColumnTypeStreamID, idBuilder))
+		errs = append(errs, encodeColumn(enc, ColumnTypeMinTimestamp, minTimestampBuilder))
+		errs = append(errs, encodeColumn(enc, ColumnTypeMaxTimestamp, maxTimestampBuilder))
+		errs = append(errs, encodeColumn(enc, ColumnTypeRows, rowsCountBuilder))
+		errs = append(errs, encodeColumn(enc, ColumnTypeUncompressedSize, uncompressedSizeBuilder))
 		if err := errors.Join(errs...); err != nil {
 			return fmt.Errorf("encoding columns: %w", err)
 		}
@@ -334,34 +404,42 @@ func (b *Builder) encodeTo(enc *encoder) error {
 		// of rows as the other columns (which is the number of streams).
 		labelBuilder.Backfill(len(b.ordered))
 
-		err := encodeColumn(enc, streamsmd.COLUMN_TYPE_LABEL, labelBuilder)
+		err := encodeColumn(enc, ColumnTypeLabel, labelBuilder)
 		if err != nil {
 			return fmt.Errorf("encoding label column: %w", err)
 		}
 	}
 
+	if err := encodeColumn(enc, ColumnTypeShardBucket, shardBucketBuilder); err != nil {
+		return fmt.Errorf("encoding shard bucket column: %w", err)
+	}
+
 	return nil
 }
 
-func numberColumnBuilder(pageSize int) (*dataset.ColumnBuilder, error) {
+func numberColumnBuilder(columnType ColumnType, pageSize, pageRowCount int) (*dataset.ColumnBuilder, error) {
 	return dataset.NewColumnBuilder("", dataset.BuilderOptions{
-		PageSizeHint: pageSize,
-		Value:        datasetmd.VALUE_TYPE_INT64,
-		Encoding:     datasetmd.ENCODING_TYPE_DELTA,
-		Compression:  datasetmd.COMPRESSION_TYPE_NONE,
+		PageSizeHint:    pageSize,
+		PageMaxRowCount: pageRowCount,
+		Type: dataset.ColumnType{
+			Physical: datasetmd.PHYSICAL_TYPE_INT64,
+			Logical:  columnType.String(),
+		},
+		Encoding:    datasetmd.ENCODING_TYPE_DELTA,
+		Compression: datasetmd.COMPRESSION_TYPE_NONE,
 		Statistics: dataset.StatisticsOptions{
 			StoreRangeStats: true,
 		},
 	})
 }
 
-func encodeColumn(enc *encoder, columnType streamsmd.ColumnType, builder *dataset.ColumnBuilder) error {
+func encodeColumn(enc *columnar.Encoder, columnType ColumnType, builder *dataset.ColumnBuilder) error {
 	column, err := builder.Flush()
 	if err != nil {
 		return fmt.Errorf("flushing %s column: %w", columnType, err)
 	}
 
-	columnEnc, err := enc.OpenColumn(columnType, &column.Info)
+	columnEnc, err := enc.OpenColumn(column.ColumnDesc())
 	if err != nil {
 		return fmt.Errorf("opening %s column encoder: %w", columnType, err)
 	}
@@ -370,6 +448,10 @@ func encodeColumn(enc *encoder, columnType streamsmd.ColumnType, builder *datase
 		// successfully committed.
 		_ = columnEnc.Discard()
 	}()
+	if len(column.Pages) == 0 {
+		// Column has no data; discard.
+		return nil
+	}
 
 	for _, page := range column.Pages {
 		err := columnEnc.AppendPage(page)
@@ -388,6 +470,7 @@ func (b *Builder) Reset() {
 		streamPool.Put(stream)
 	}
 	clear(b.lookup)
+	b.tenant = ""
 	b.ordered = sliceclear.Clear(b.ordered)
 	b.currentLabelsSize = 0
 	b.globalMinTimestamp = time.Time{}

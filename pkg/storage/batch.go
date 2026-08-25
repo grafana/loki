@@ -118,7 +118,7 @@ func newBatchChunkIterator(
 	// __name__ is not something we filter by because it's a constant in loki
 	// and only used for upstream compatibility; therefore remove it.
 	// The same applies to the sharding label which is injected by the cortex storage code.
-	matchers = removeMatchersByName(matchers, labels.MetricName, astmapper.ShardLabel)
+	matchers = removeMatchersByName(matchers, model.MetricNameLabel, astmapper.ShardLabel)
 	res := &batchChunkIterator{
 		batchSize:     batchSize,
 		schemas:       s,
@@ -420,7 +420,7 @@ func (it *logBatchIterator) buildIterators(chks map[model.Fingerprint][][]*LazyC
 	result := make([]iter.EntryIterator, 0, len(chks))
 	for _, chunks := range chks {
 		if len(chunks) != 0 && len(chunks[0]) != 0 {
-			streamPipeline := it.pipeline.ForStream(labels.NewBuilder(chunks[0][0].Chunk.Metric).Del(labels.MetricName).Labels())
+			streamPipeline := it.pipeline.ForStream(labels.NewBuilder(chunks[0][0].Chunk.Metric).Del(model.MetricNameLabel).Labels())
 			iterator, err := it.buildMergeIterator(chunks, from, through, streamPipeline, nextChunk)
 			if err != nil {
 				return nil, err
@@ -464,9 +464,9 @@ type sampleBatchIterator struct {
 	curr iter.SampleIterator
 	err  error
 
-	ctx        context.Context
-	cancel     context.CancelFunc
-	extractors []syntax.SampleExtractor
+	ctx       context.Context
+	cancel    context.CancelFunc
+	extractor syntax.SampleExtractor
 }
 
 func newSampleBatchIterator(
@@ -478,13 +478,13 @@ func newSampleBatchIterator(
 	matchers []*labels.Matcher,
 	start, end time.Time,
 	chunkFilterer chunk.Filterer,
-	extractors ...syntax.SampleExtractor,
+	extractor syntax.SampleExtractor,
 ) (iter.SampleIterator, error) {
 	ctx, cancel := context.WithCancel(ctx)
 	return &sampleBatchIterator{
-		extractors: extractors,
-		ctx:        ctx,
-		cancel:     cancel,
+		extractor: extractor,
+		ctx:       ctx,
+		cancel:    cancel,
 		batchChunkIterator: newBatchChunkIterator(
 			ctx,
 			schemas,
@@ -579,18 +579,12 @@ func (it *sampleBatchIterator) buildIterators(
 	result := make([]iter.SampleIterator, 0, len(chks))
 	for _, chunks := range chks {
 		if len(chunks) != 0 && len(chunks[0]) != 0 {
-			extractors := make([]log.StreamSampleExtractor, 0, len(it.extractors))
-			for _, extractor := range it.extractors {
-				extractors = append(
-					extractors,
-					extractor.ForStream(
-						labels.NewBuilder(chunks[0][0].Chunk.Metric).
-							Del(labels.MetricName).
-							Labels(),
-					),
-				)
-			}
-			iterator, err := it.buildHeapIterator(chunks, from, through, extractors, nextChunk)
+			streamExtractor := it.extractor.ForStream(
+				labels.NewBuilder(chunks[0][0].Chunk.Metric).
+					Del(model.MetricNameLabel).
+					Labels(),
+			)
+			iterator, err := it.buildHeapIterator(chunks, from, through, streamExtractor, nextChunk)
 			if err != nil {
 				return nil, err
 			}
@@ -604,7 +598,7 @@ func (it *sampleBatchIterator) buildIterators(
 func (it *sampleBatchIterator) buildHeapIterator(
 	chks [][]*LazyChunk,
 	from, through time.Time,
-	streamExtractors []log.StreamSampleExtractor,
+	streamExtractor log.StreamSampleExtractor,
 	nextChunk *LazyChunk,
 ) (iter.SampleIterator, error) {
 	result := make([]iter.SampleIterator, 0, len(chks))
@@ -615,7 +609,7 @@ func (it *sampleBatchIterator) buildHeapIterator(
 			if !chks[i][j].IsValid {
 				continue
 			}
-			iterator, err := chks[i][j].SampleIterator(it.ctx, from, through, nextChunk, streamExtractors...)
+			iterator, err := chks[i][j].SampleIterator(it.ctx, from, through, nextChunk, streamExtractor)
 			if err != nil {
 				return nil, err
 			}

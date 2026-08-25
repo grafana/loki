@@ -14,7 +14,7 @@ import (
 	"github.com/grafana/dskit/user"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
-	"gopkg.in/yaml.v2"
+	"go.yaml.in/yaml/v4"
 
 	"github.com/grafana/loki/v3/pkg/logcli/client"
 	"github.com/grafana/loki/v3/pkg/logcli/output"
@@ -468,8 +468,6 @@ func (q *Query) DoLocalQuery(out output.LogOutput, statistics bool, orgID string
 	if err != nil {
 		return err
 	}
-	conf.StorageConfig.BoltDBShipperConfig.Mode = indexshipper.ModeReadOnly
-	conf.StorageConfig.BoltDBShipperConfig.IndexGatewayClientConfig.Disabled = true
 	conf.StorageConfig.TSDBShipperConfig.Mode = indexshipper.ModeReadOnly
 	conf.StorageConfig.TSDBShipperConfig.IndexGatewayClientConfig.Disabled = true
 
@@ -568,7 +566,7 @@ func LoadSchemaUsingObjectClient(oc chunk.ObjectClient, name string) (*config.Sc
 	defer rdr.Close()
 
 	decoder := yaml.NewDecoder(rdr)
-	decoder.SetStrict(true)
+	decoder.KnownFields(true)
 	section := schemaConfigSection{}
 	err = decoder.Decode(&section)
 	if err != nil {

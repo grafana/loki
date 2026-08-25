@@ -1,12 +1,11 @@
 # Kafka tools
 
-This folder contains tools for testing promtail <-> kafka integration.
+This folder contains tools for testing Loki's Kafka integration.
 
 **Requirements:**
 
 - docker and docker-compose
 - make
-- go > 1.15 for consuming using code source of promtail
 
 ## Running kafka locally
 
@@ -77,37 +76,8 @@ Write a message and press Enter
 >
 ```
 
-## Consuming with promtail
+## Consuming with Grafana Alloy
 
-You can run promtail in `dry-run` mode and connect it to the local kafka to try out the integration.
+You can use [Grafana Alloy](https://grafana.com/docs/alloy/latest/) to consume from Kafka and send logs to Loki.
 
-Before doing so make sure the brokers list (`make print-broker`) is correctly configured in your promtail configuration file, see for example the [kafka example](../../clients/cmd/promtail/promtail-kafka.yaml).
-
-```bash
-go run ../../clients/cmd/promtail/main.go --dry-run --config.file ../../clients/cmd/promtail/promtail-kafka.yaml
-
-Clients configured:
-----------------------
-url: http://localhost:3100/loki/api/v1/push
-batchwait: 1s
-batchsize: 1048576
-follow_redirects: false
-backoff_config:
-  min_period: 500ms
-  max_period: 5m0s
-  max_retries: 10
-timeout: 10s
-tenant_id: ""
-
-level=info ts=2021-11-02T10:44:14.137894Z caller=server.go:260 http=[::]:9080 grpc=[::]:59237 msg="server listening on addresses"
-level=info ts=2021-11-02T10:44:14.138059Z caller=main.go:119 msg="Starting Promtail" version="(version=, branch=, revision=)"
-level=info ts=2021-11-02T10:44:14.139308Z caller=target_syncer.go:133 msg="new topics received" topics=[promtail]
-level=info ts=2021-11-02T10:44:14.139337Z caller=consumer.go:50 msg="starting consumer" topics=[promtail]
-level=info ts=2021-11-02T10:44:14.153164Z caller=consumer.go:92 msg="consuming topic" details="member_id=sarama-8cfa484d-2a04-458a-a0c0-4506c7a0969f generation_id=5 topic=promtail partition=1 initial_offset=12"
-level=info ts=2021-11-02T10:44:14.153673Z caller=consumer.go:92 msg="consuming topic" details="member_id=sarama-8cfa484d-2a04-458a-a0c0-4506c7a0969f generation_id=5 topic=promtail partition=0 initial_offset=13"
-level=info ts=2021-11-02T10:44:14.153927Z caller=consumer.go:92 msg="consuming topic" details="member_id=sarama-8cfa484d-2a04-458a-a0c0-4506c7a0969f generation_id=5 topic=promtail partition=2 initial_offset=10"
-
-2021-11-02T11:47:08.849115+0100{group="some_group", job="kafka", partition="1", topic="promtail"}       hello world !
-```
-
-> Alternatively you can use the binary or docker version of promtail.
+Make sure the brokers list (`make print-broker`) is correctly configured in your Alloy configuration file. Refer to the [Alloy documentation](https://grafana.com/docs/alloy/latest/reference/components/loki/loki.source.kafka/) for Kafka source configuration.

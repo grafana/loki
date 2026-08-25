@@ -55,7 +55,7 @@ type Chunk interface {
 	// Append returns true if the entry appended was a duplicate
 	Append(*logproto.Entry) (bool, error)
 	Iterator(ctx context.Context, mintT, maxtT time.Time, direction logproto.Direction, pipeline log.StreamPipeline) (iter.EntryIterator, error)
-	SampleIterator(ctx context.Context, from, through time.Time, extractor ...log.StreamSampleExtractor) iter.SampleIterator
+	SampleIterator(ctx context.Context, from, through time.Time, extractor log.StreamSampleExtractor) iter.SampleIterator
 	// Returns the list of blocks in the chunks.
 	Blocks(mintT, maxtT time.Time) []Block
 	// Size returns the number of entries in a chunk
@@ -69,7 +69,7 @@ type Chunk interface {
 	CompressedSize() int
 	Close() error
 	Encoding() compression.Codec
-	Rebound(start, end time.Time, filter filter.Func) (Chunk, error)
+	Rewrite(filter filter.Func) (Chunk, error)
 }
 
 // Block is a chunk block.
@@ -85,5 +85,5 @@ type Block interface {
 	// Iterator returns an entry iterator for the block.
 	Iterator(ctx context.Context, pipeline log.StreamPipeline) iter.EntryIterator
 	// SampleIterator returns a sample iterator for the block.
-	SampleIterator(ctx context.Context, extractor ...log.StreamSampleExtractor) iter.SampleIterator
+	SampleIterator(ctx context.Context, extractor log.StreamSampleExtractor) iter.SampleIterator
 }

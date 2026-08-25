@@ -9,9 +9,8 @@ import (
 )
 
 var NoLimits = &fakeLimits{
-	maxSeries:               math.MaxInt32,
-	timeout:                 time.Hour,
-	multiVariantQueryEnable: false, // Multi-variant queries disabled by default
+	maxSeries: math.MaxInt32,
+	timeout:   time.Hour,
 }
 
 // Limits allow the engine to fetch limits for a given users.
@@ -20,16 +19,22 @@ type Limits interface {
 	MaxQueryRange(ctx context.Context, userID string) time.Duration
 	QueryTimeout(context.Context, string) time.Duration
 	BlockedQueries(context.Context, string) []*validation.BlockedQuery
-	EnableMultiVariantQueries(string) bool
+
+	// v2 engine limits
+	DebugEngineTasks(string) bool
+	DebugEngineStreams(string) bool
 }
 
 type fakeLimits struct {
-	maxSeries               int
-	timeout                 time.Duration
-	blockedQueries          []*validation.BlockedQuery
-	rangeLimit              time.Duration
-	requiredLabels          []string
-	multiVariantQueryEnable bool
+	maxSeries      int
+	timeout        time.Duration
+	blockedQueries []*validation.BlockedQuery
+	rangeLimit     time.Duration
+	requiredLabels []string
+
+	// v2 engine limits
+	debugEngineTasks   bool
+	debugEngineStreams bool
 }
 
 func (f fakeLimits) MaxQuerySeries(_ context.Context, _ string) int {
@@ -52,6 +57,10 @@ func (f fakeLimits) RequiredLabels(_ context.Context, _ string) []string {
 	return f.requiredLabels
 }
 
-func (f fakeLimits) EnableMultiVariantQueries(_ string) bool {
-	return f.multiVariantQueryEnable
+func (f fakeLimits) DebugEngineTasks(_ string) bool {
+	return f.debugEngineTasks
+}
+
+func (f fakeLimits) DebugEngineStreams(_ string) bool {
+	return f.debugEngineStreams
 }

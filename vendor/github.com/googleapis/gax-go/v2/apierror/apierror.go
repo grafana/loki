@@ -38,6 +38,7 @@ package apierror
 import (
 	"errors"
 	"fmt"
+	"net/http"
 	"strings"
 
 	jsonerror "github.com/googleapis/gax-go/v2/apierror/internal/proto"
@@ -48,6 +49,39 @@ import (
 	"google.golang.org/protobuf/encoding/protojson"
 	"google.golang.org/protobuf/proto"
 )
+
+// canonicalMap maps HTTP codes to gRPC status code equivalents.
+var canonicalMap = map[int]codes.Code{
+	http.StatusOK:                           codes.OK,
+	http.StatusBadRequest:                   codes.InvalidArgument,
+	http.StatusForbidden:                    codes.PermissionDenied,
+	http.StatusNotFound:                     codes.NotFound,
+	http.StatusConflict:                     codes.Aborted,
+	http.StatusRequestedRangeNotSatisfiable: codes.OutOfRange,
+	http.StatusTooManyRequests:              codes.ResourceExhausted,
+	http.StatusGatewayTimeout:               codes.DeadlineExceeded,
+	http.StatusNotImplemented:               codes.Unimplemented,
+	http.StatusServiceUnavailable:           codes.Unavailable,
+	http.StatusUnauthorized:                 codes.Unauthenticated,
+}
+
+// toCode maps an http code to the most correct equivalent.
+func toCode(httpCode int) codes.Code {
+	if sCode, ok := canonicalMap[httpCode]; ok {
+		return sCode
+	}
+	switch {
+	case httpCode >= 200 && httpCode < 300:
+		return codes.OK
+
+	case httpCode >= 400 && httpCode < 500:
+		return codes.FailedPrecondition
+
+	case httpCode >= 500 && httpCode < 600:
+		return codes.Internal
+	}
+	return codes.Unknown
+}
 
 // ErrDetails holds the google/rpc/error_details.proto messages.
 type ErrDetails struct {
@@ -214,9 +248,25 @@ func (a *APIError) Error() string {
 	return strings.TrimSpace(fmt.Sprintf("%s\n%s", msg, a.details))
 }
 
+// Message returns the original, unformatted error message from the underlying
+// googleapi.Error or gRPC Status, without additional details or context.
+func (a *APIError) Message() string {
+	if a.httpErr != nil {
+		return a.httpErr.Message
+	} else if a.status != nil {
+		return a.status.Message()
+	}
+	return ""
+}
+
 // GRPCStatus extracts the underlying gRPC Status error.
 // This method is necessary to fulfill the interface
 // described in https://pkg.go.dev/google.golang.org/grpc/status#FromError.
+//
+// For errors that originated as an HTTP-based googleapi.Error, GRPCStatus()
+// returns a status that attempts to map from the original HTTP code to an
+// equivalent gRPC status code.  For use cases where you want to avoid this
+// behavior, error unwrapping can be used.
 func (a *APIError) GRPCStatus() *status.Status {
 	return a.status
 }
@@ -243,9 +293,9 @@ func (a *APIError) Metadata() map[string]string {
 // setDetailsFromError parses a Status error or a googleapi.Error
 // and sets status and details or httpErr and details, respectively.
 // It returns false if neither Status nor googleapi.Error can be parsed.
-// When err is a googleapi.Error, the status of the returned error will
-// be set to an Unknown error, rather than nil, since a nil code is
-// interpreted as OK in the gRPC status package.
+//
+// When err is a googleapi.Error, the status of the returned error will be
+// mapped to the closest equivalent gGRPC status code.
 func (a *APIError) setDetailsFromError(err error) bool {
 	st, isStatus := status.FromError(err)
 	var herr *googleapi.Error
@@ -258,7 +308,7 @@ func (a *APIError) setDetailsFromError(err error) bool {
 	case isHTTPErr:
 		a.httpErr = herr
 		a.details = parseHTTPDetails(herr)
-		a.status = status.New(codes.Unknown, herr.Message)
+		a.status = status.New(toCode(a.httpErr.Code), herr.Message)
 	default:
 		return false
 	}

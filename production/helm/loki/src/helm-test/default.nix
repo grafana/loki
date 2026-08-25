@@ -9,7 +9,7 @@ rec {
 
     buildPhase = ''
       runHook preBuild
-      go test --tags=helm_test -c -o $out/bin/helm-test ./production/helm/loki/src/helm-test
+      go test --tags=helm_test,slicelabels -c -o $out/bin/helm-test ./production/helm/loki/src/helm-test
       runHook postBuild
       '';
 

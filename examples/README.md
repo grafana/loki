@@ -1,15 +1,17 @@
-# Loki examples
+# Examples
 
-This directory contains examples and example configuration for Loki and Promtail.
+This directory contains Docker compose examples for how to deploy Loki.
 
-## Hosted logs in Grafana Cloud
+> [!WARNING]
+> These examples are meant for demonstration purposes only and are not meant to be deployed in production environments.
 
-You can use [Grafana Cloud](https://grafana.com/products/cloud/features/#cloud-logs) to avoid installing, maintaining, and scaling your own instance of Grafana Loki. The free forever plan includes 50GB of free logs. [Create an account to get started](https://grafana.com/auth/sign-up/create-user?pg=docs-loki&plcmt=in-text).
+> [!NOTE]
+> You can use [Grafana Cloud](https://grafana.com/products/cloud/features/#cloud-logs) to avoid installing, maintaining, and scaling your own instance of Grafana Loki. The free forever plan includes 50GB of free logs. [Create an account to get started](https://grafana.com/auth/sign-up/create-user?pg=docs-loki&plcmt=in-text).
 
-## Getting started with Loki
+## Contents
 
-Configuration files in the `getting-started` directory are used by the [Loki getting started guide](https://grafana.com/docs/loki/latest/get-started/).
+1. **`getting-started/`**
+   Example of a Loki monolithic deployment with Alloy, Grafana, and NGINX.
 
-## Sending logs from Heroku to Loki
-
-Configuration files in the `promtail-heroku` directory are used by the [Promtail and Heroku blogpost](https://grafana.com/blog/2022/09/19/how-to-easily-configure-grafana-loki-and-promtail-to-receive-logs-from-heroku/).
+1. **`ha-monolithic/`**
+   Example of a Loki highly available monolithic deployment with NGINX.

@@ -3,6 +3,9 @@ package loki
 import (
 	"context"
 	"errors"
+	"fmt"
+	"net/url"
+	"strings"
 	"time"
 
 	"github.com/go-logr/logr"
@@ -45,7 +48,7 @@ var (
 			// changes also on status changes. We want to omit reconciliation
 			// for status updates for now.
 			return (e.ObjectOld.GetGeneration() != e.ObjectNew.GetGeneration()) ||
-				cmp.Diff(e.ObjectOld.GetAnnotations(), e.ObjectNew.GetAnnotations()) != ""
+				!cmp.Equal(e.ObjectOld.GetAnnotations(), e.ObjectNew.GetAnnotations())
 		},
 		CreateFunc:  func(e event.CreateEvent) bool { return true },
 		DeleteFunc:  func(e event.DeleteEvent) bool { return false },
@@ -102,6 +105,16 @@ var (
 		DeleteFunc:  func(e event.DeleteEvent) bool { return true },
 		GenericFunc: func(e event.GenericEvent) bool { return false },
 	})
+	// createOrUpdatePred uses ResourceVersion for update detection instead of Generation,
+	// making it suitable for resources like Services that don't populate Generation.
+	createOrUpdatePred = builder.WithPredicates(predicate.Funcs{
+		UpdateFunc: func(e event.UpdateEvent) bool {
+			return e.ObjectOld.GetResourceVersion() != e.ObjectNew.GetResourceVersion()
+		},
+		CreateFunc:  func(e event.CreateEvent) bool { return true },
+		DeleteFunc:  func(e event.DeleteEvent) bool { return false },
+		GenericFunc: func(e event.GenericEvent) bool { return false },
+	})
 )
 
 // LokiStackReconciler reconciles a LokiStack object
@@ -124,11 +137,13 @@ type LokiStackReconciler struct {
 // +kubebuilder:rbac:groups=monitoring.coreos.com,resources=alertmanagers/api,verbs=create
 // +kubebuilder:rbac:urls=/api/v2/alerts,verbs=create
 // +kubebuilder:rbac:groups=coordination.k8s.io,resources=leases,verbs=get;create;update
-// +kubebuilder:rbac:groups=networking.k8s.io,resources=ingresses,verbs=get;list;watch;create;update
+// +kubebuilder:rbac:groups=networking.k8s.io,resources=ingresses,verbs=get;list;watch;create;update;delete
+// +kubebuilder:rbac:groups=networking.k8s.io,resources=networkpolicies,verbs=get;list;watch;create;update;delete
 // +kubebuilder:rbac:groups=policy,resources=poddisruptionbudgets,verbs=get;list;watch;create;update
-// +kubebuilder:rbac:groups=config.openshift.io,resources=dnses;apiservers;proxies,verbs=get;list;watch
+// +kubebuilder:rbac:groups=config.openshift.io,resources=dnses;apiservers;proxies;clusterversions,verbs=get;list;watch
 // +kubebuilder:rbac:groups=route.openshift.io,resources=routes,verbs=get;list;watch;create;update;delete
 // +kubebuilder:rbac:groups=cloudcredential.openshift.io,resources=credentialsrequests,verbs=get;list;watch;create;update;delete
+// +kubebuilder:rbac:groups=discovery.k8s.io,resources=endpointslices,verbs=get;list;watch
 
 // Reconcile is part of the main kubernetes reconciliation loop which aims to
 // move the current state of the cluster closer to the desired state.
@@ -150,15 +165,19 @@ func (r *LokiStackReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 	}
 
 	var degraded *status.DegradedError
-	credentialMode, err := r.updateResources(ctx, req)
+	statusInfo, err := r.updateResources(ctx, req)
 	switch {
 	case errors.As(err, &degraded):
 		// degraded errors are handled by status.Refresh below
+		if statusInfo == nil {
+			statusInfo = &status.LokiStackStatusInfo{}
+		}
+		statusInfo.DegradedError = degraded
 	case err != nil:
 		return ctrl.Result{}, err
 	}
 
-	err = status.Refresh(ctx, r.Client, req, time.Now(), credentialMode, degraded)
+	err = status.Refresh(ctx, r.Client, req, time.Now(), statusInfo)
 	if err != nil {
 		return ctrl.Result{}, err
 	}
@@ -172,25 +191,25 @@ func (r *LokiStackReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 	return ctrl.Result{}, nil
 }
 
-func (r *LokiStackReconciler) updateResources(ctx context.Context, req ctrl.Request) (lokiv1.CredentialMode, error) {
+func (r *LokiStackReconciler) updateResources(ctx context.Context, req ctrl.Request) (*status.LokiStackStatusInfo, error) {
 	if r.FeatureGates.BuiltInCertManagement.Enabled {
 		if err := handlers.CreateOrRotateCertificates(ctx, r.Log, req, r.Client, r.Scheme, r.FeatureGates); err != nil {
-			return "", err
+			return nil, err
 		}
 	}
 
 	if r.FeatureGates.OpenShift.TokenCCOAuthEnv {
 		if err := handlers.CreateUpdateDeleteCredentialsRequest(ctx, r.Log, r.Scheme, r.AuthConfig, r.Client, req); err != nil {
-			return "", err
+			return nil, err
 		}
 	}
 
-	credentialMode, err := handlers.CreateOrUpdateLokiStack(ctx, r.Log, req, r.Client, r.Scheme, r.FeatureGates)
+	statusInfo, err := handlers.CreateOrUpdateLokiStack(ctx, r.Log, req, r.Client, r.Scheme, r.FeatureGates)
 	if err != nil {
-		return "", err
+		return nil, err
 	}
 
-	return credentialMode, nil
+	return statusInfo, nil
 }
 
 // SetupWithManager sets up the controller with the Manager.
@@ -212,6 +231,8 @@ func (r *LokiStackReconciler) buildController(bld k8s.Builder) error {
 		Owns(&rbacv1.ClusterRoleBinding{}, updateOrDeleteOnlyPred).
 		Owns(&rbacv1.Role{}, updateOrDeleteOnlyPred).
 		Owns(&rbacv1.RoleBinding{}, updateOrDeleteOnlyPred).
+		Owns(&networkingv1.NetworkPolicy{}, updateOrDeleteOnlyPred).
+		Watches(&corev1.Service{}, r.enqueueForObjectStorageServices(), createOrUpdatePred).
 		Watches(&corev1.Service{}, r.enqueueForAlertManagerServices(), createUpdateOrDeletePred).
 		Watches(&corev1.Secret{}, r.enqueueForStorageSecret(), createUpdateOrDeletePred).
 		Watches(&corev1.ConfigMap{}, r.enqueueForStorageCA(), createUpdateOrDeletePred)
@@ -268,10 +289,10 @@ func statusDifferent(e event.UpdateEvent) bool {
 	switch old := e.ObjectOld.(type) {
 	case *appsv1.Deployment:
 		newObject := e.ObjectNew.(*appsv1.Deployment)
-		return cmp.Diff(old.Status, newObject.Status) != ""
+		return !cmp.Equal(old.Status, newObject.Status)
 	case *appsv1.StatefulSet:
 		newObject := e.ObjectNew.(*appsv1.StatefulSet)
-		return cmp.Diff(old.Status, newObject.Status) != ""
+		return !cmp.Equal(old.Status, newObject.Status)
 	default:
 		return false
 	}
@@ -362,6 +383,54 @@ func (r *LokiStackReconciler) enqueueForStorageCA() handler.EventHandler {
 				},
 			})
 			r.Log.Info("Enqueued request for LokiStack because of Storage CA resource change", "LokiStack", stack.Name, "ConfigMap", obj.GetName())
+		}
+
+		return requests
+	})
+}
+
+func (r *LokiStackReconciler) enqueueForObjectStorageServices() handler.EventHandler {
+	return handler.EnqueueRequestsFromMapFunc(func(ctx context.Context, obj client.Object) []reconcile.Request {
+		lokiStacks := &lokiv1.LokiStackList{}
+		if err := r.List(ctx, lokiStacks); err != nil {
+			r.Log.Error(err, "Error listing LokiStack resources for object storage service update")
+			return nil
+		}
+
+		var requests []reconcile.Request
+		for _, stack := range lokiStacks.Items {
+			if stack.Spec.NetworkPolicies == nil || stack.Spec.NetworkPolicies.RuleSet == lokiv1.NetworkPolicyRuleSetNone {
+				continue
+			}
+
+			secret := &corev1.Secret{}
+			key := client.ObjectKey{
+				Name:      stack.Spec.Storage.Secret.Name,
+				Namespace: stack.Namespace,
+			}
+			if err := r.Get(ctx, key, secret); err != nil {
+				continue
+			}
+
+			storageEndpoint := string(secret.Data["endpoint"])
+			if storageEndpoint == "" {
+				continue
+			}
+
+			storageURL, err := url.Parse(storageEndpoint)
+			if err != nil || storageURL.Hostname() == "" {
+				continue
+			}
+			svcHostname := fmt.Sprintf("%s.%s.svc", obj.GetName(), obj.GetNamespace())
+			if storageURL.Hostname() == svcHostname || strings.HasPrefix(storageURL.Hostname(), svcHostname+".") {
+				requests = append(requests, reconcile.Request{
+					NamespacedName: types.NamespacedName{
+						Namespace: stack.Namespace,
+						Name:      stack.Name,
+					},
+				})
+				r.Log.Info("Enqueued LokiStack for object storage Service resource change", "LokiStack", stack.Name, "Service", obj.GetName())
+			}
 		}
 
 		return requests

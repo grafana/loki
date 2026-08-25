@@ -13,32 +13,14 @@ is then compressed and stored in chunks in object stores such as S3 or GCS, or
 even locally on the filesystem. A small index and highly compressed chunks
 simplifies the operation and significantly lowers the cost of Loki.
 
-Loki 2.8 introduced TSDB as a new mode for the Single Store and is now the recommended way to persist data in Loki.
+Loki 2.8 introduced TSDB as a new mode for the Single Store and is now the recommended way to persist data in Loki. This type only requires one store, the object store, for both the index and chunks.
 More detailed information about TSDB can be found under the [manage section](https://grafana.com/docs/loki/<LOKI_VERSION>/operations/storage/tsdb/).
 
-Loki 2.0 introduced an index mechanism named 'boltdb-shipper' and is what we now call [Single Store](#single-store).
-This type only requires one store, the object store, for both the index and chunks.
-More detailed information about 'boltdb-shipper' can be found under the [manage section](https://grafana.com/docs/loki/<LOKI_VERSION>/operations/storage/boltdb-shipper/).
+## Single Store TSDB (recommended)
 
-Prior to Loki 2.0, chunks and index data were stored in separate backends:
-object storage (or filesystem) for chunk data and NoSQL/Key-Value databases for index data. These "multistore" backends have been deprecated, as noted below.
+Single Store refers to using object storage as the storage medium for both the Loki index as well as its data ("chunks"). There is one supported mode:
 
-You can find more detailed information about all of the storage options in the [manage section](https://grafana.com/docs/loki/<LOKI_VERSION>/operations/storage/).
-
-## Single Store
-
-Single Store refers to using object storage as the storage medium for both the Loki index as well as its data ("chunks"). There are two supported modes:
-
-### TSDB (recommended)
-
-Starting in Loki 2.8, the [TSDB index store](https://grafana.com/docs/loki/<LOKI_VERSION>/operations/storage/tsdb/) improves query performance, reduces TCO and has the same feature parity as "boltdb-shipper". TSDB is the recommended index store for Loki 2.8 and newer.
-
-### BoltDB (deprecated)
-
-Also known as "boltdb-shipper" during development (and is still the schema `store` name). The single store configurations for Loki utilize the chunk store for both chunks and the index, requiring just one store to run Loki. BoldDB is the recommended index store for Loki v2.0.0 through v2.7x.
-
-Performance is comparable to a dedicated index type while providing a much less expensive and less complicated deployment.
-When using Single Store, no extra [Chunk storage](#chunk-storage) and [Index storage](#index-storage) are necessary.
+Starting in Loki 2.8, the [TSDB index store](https://grafana.com/docs/loki/<LOKI_VERSION>/operations/storage/tsdb/) improves query performance, reduces TCO and has the same feature parity as the deprecated "boltdb-shipper". TSDB is the recommended index store for Loki 2.8 and newer.
 
 ### Supported storage backends
 
@@ -71,7 +53,7 @@ You can authenticate Blob Storage access by using a storage account name and key
 
 #### Baidu Object Storage (BOS)
 
-[BOS](https://intl.cloud.baidu.com/product/bos.html) is the Baidu CLoud hosted object storage.
+[BOS](https://intl.cloud.baidu.com/product/bos.html) is the Baidu Cloud hosted object storage.
 
 #### Alibaba Object Storage Service (OSS)
 
@@ -81,62 +63,19 @@ You can authenticate Blob Storage access by using a storage account name and key
 
 You may use any substitutable services, such as those that implement the S3 API like [MinIO](https://min.io/).
 
-### Cassandra (deprecated)
-
-Cassandra is a popular database and one of the possible chunk stores for Loki and is production safe.
-
-{{< admonition type="note" >}}
-This storage type for chunks is deprecated and may be removed in future major versions of Loki.
-{{< /admonition >}}
-
-## Index storage
-
-### Cassandra (deprecated)
-
-Cassandra can also be utilized for the index store and aside from the [boltdb-shipper](https://grafana.com/docs/loki/<LOKI_VERSION>/operations/storage/boltdb-shipper/), it's the only non-cloud offering that can be used for the index that's horizontally scalable and has configurable replication. It's a good candidate when you already run Cassandra, are running on-prem, or do not wish to use a managed cloud offering.
-
-{{< admonition type="note" >}}
-This storage type for indexes is deprecated and may be removed in future major versions of Loki.
-{{< /admonition >}}
-
-### BigTable (deprecated)
-
-Bigtable is a cloud database offered by Google. It is a good candidate for a managed index store if you're already using it (due to its heavy fixed costs) or wish to run in GCP.
-
-{{< admonition type="note" >}}
-This storage type for indexes is deprecated and may be removed in future major versions of Loki.
-{{< /admonition >}}
-
-### DynamoDB (deprecated)
-
-DynamoDB is a cloud database offered by AWS. It is a good candidate for a managed index store, especially if you're already running in AWS.
-
-{{< admonition type="note" >}}
-This storage type for indexes is deprecated and may be removed in future major versions of Loki.
-{{< /admonition >}}
-
-#### Rate limiting
-
-DynamoDB is susceptible to rate limiting, particularly due to overconsuming what is called [provisioned capacity](https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/HowItWorks.ReadWriteCapacityMode.html). This can be controlled via the [provisioning](#provisioning) configs in the table manager.
-
-### BoltDB (deprecated)
-
-BoltDB is an embedded database on disk. It is not replicated and thus cannot be used for high availability or clustered Loki deployments, but is commonly paired with a `filesystem` chunk store for proof of concept deployments, trying out Loki, and development. The [boltdb-shipper](https://grafana.com/docs/loki/<LOKI_VERSION>/operations/storage/boltdb-shipper/) aims to support clustered deployments using `boltdb` as an index.
-
-{{< admonition type="note" >}}
-This storage type for indexes is deprecated and may be removed in future major versions of Loki.
-{{< /admonition >}}
-
 ## Schema Config
 
 Loki aims to be backwards compatible and over the course of its development has had many internal changes that facilitate better and more efficient storage/querying. Loki allows incrementally upgrading to these new storage _schemas_ and can query across them transparently. This makes upgrading a breeze.
+
+For a more detailed reference on schema configuration, including required values and the recommended settings for new installs, refer to [Storage schema](https://grafana.com/docs/loki/<LOKI_VERSION>/operations/storage/schema/).
+
 For instance, this is what it looks like when migrating from BoltDB with v11 schema to TSDB with v13 schema starting 2023-07-01:
 
 ```yaml
 schema_config:
   configs:
     - from: 2019-07-01
-      store: boltdb
+      store: boltdb-shipper
       object_store: filesystem
       schema: v11
       index:
@@ -152,40 +91,6 @@ schema_config:
 ```
 
 For all data ingested before 2023-07-01, Loki used BoltDB with the v11 schema, and then switched after that point to the more effective TSDB with the v13 schema. This dramatically simplifies upgrading, ensuring it's simple to take advantage of new storage optimizations. These configs should be immutable for as long as you care about retention.
-
-## Table Manager (deprecated)
-
-One of the subcomponents in Loki is the `table-manager`. It is responsible for pre-creating and expiring index tables. This helps partition the writes and reads in Loki across a set of distinct indices in order to prevent unbounded growth.
-
-```yaml
-table_manager:
-  # The retention period must be a multiple of the index / chunks
-  # table "period" (see period_config).
-  retention_deletes_enabled: true
-  # This is 15 weeks retention, based on the 168h (1week) period durations used in the rest of the examples.
-  retention_period: 2520h
-```
-
-For more information, see the [table manager](https://grafana.com/docs/loki/<LOKI_VERSION>/operations/storage/tsdb/) documentation.
-
-### Provisioning
-
-In the case of AWS DynamoDB, you'll likely want to tune the provisioned throughput for your tables as well. This is to prevent your tables being rate limited on one hand and assuming unnecessary cost on the other. By default Loki uses a [provisioned capacity](https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/HowItWorks.ReadWriteCapacityMode.html) strategy for DynamoDB tables like so:
-
-```yaml
-table_manager:
-  index_tables_provisioning:
-    # Read/write throughput requirements for the current table
-    # (the table which would handle writes/reads for data timestamped at the current time)
-    provisioned_write_throughput: <int> | default = 3000
-    provisioned_read_throughput: <int> | default = 300
-
-    # Read/write throughput requirements for non-current tables
-    inactive_write_throughput: <int> | default = 1
-    inactive_read_throughput: <int> | Default = 300
-```
-
-Note, there are a few other DynamoDB provisioning options including DynamoDB autoscaling and on-demand capacity. See the [provisioning configuration](https://grafana.com/docs/loki/<LOKI_VERSION>/configure/#table_manager) in the `table_manager` block documentation for more information.
 
 ## Upgrading Schemas
 
@@ -218,33 +123,77 @@ It's that easy; you just created a new entry starting on the 20th.
 
 ## Retention
 
-With the exception of the `filesystem` chunk store, Loki will not delete old chunk stores. This is generally handled instead by configuring TTLs (time to live) in the chunk store of your choice (bucket lifecycles in S3/GCS, and TTLs in Cassandra). Neither will Loki currently delete old data when your local disk fills when using the `filesystem` chunk store -- deletion is only determined by retention duration.
+Loki manages retention through the Compactor when using TSDB. When retention is enabled, the Compactor identifies data that falls outside of the configured retention period, removes the corresponding index entries, and deletes the underlying chunk objects asynchronously.
 
-We're interested in adding targeted deletion in future Loki releases (think tenant or stream level granularity) and may include other strategies as well.
+For object storage backends (S3, GCS, Azure Blob) Loki no longer relies solely on external time to live (TTL) or bucket lifecycle rules; these may still be used as an additional safeguard, but Loki itself performs retention-driven deletion when configured.
+
+When using the filesystem chunk store, Loki does not delete data based on disk usage or free-space conditions. Deletion is determined only by the retention settings, and disk-full scenarios must be handled operationally outside of Loki.
+
+Loki also supports targeted deletion at the tenant or stream level.
 
 For more information, see the [retention configuration](https://grafana.com/docs/loki/<LOKI_VERSION>/operations/storage/retention/) documentation.
 
 ## Examples
 
-### Single machine/local development (boltdb+filesystem)
+{{< admonition type="note" >}}
+Loki uses the Thanos-based object storage clients by default, because the `use_thanos_objstore` setting defaults to `true`. With this default, Loki reads the configuration under `storage_config.object_store` and ignores the legacy client sections such as `storage_config.aws` or `storage_config.gcs`.
+
+Each example below shows the Thanos configuration first. The legacy configuration follows it for reference, because the legacy clients are deprecated. To keep using a legacy client, you must set `use_thanos_objstore: false`.
+
+To convert an existing configuration to the new format, refer to [Migrate to Thanos storage clients](https://grafana.com/docs/loki/<LOKI_VERSION>/setup/migrate/migrate-storage-clients/).
+{{< /admonition >}}
+
+### Single machine/local development (tsdb+filesystem)
 
 [The repo contains a working example](https://github.com/grafana/loki/blob/main/cmd/loki/loki-local-config.yaml), you may want to checkout a tag of the repo to make sure you get a compatible example.
 
 ### GCP deployment (GCS Single Store)
 
+Configuration using the [Thanos-based object store client](https://grafana.com/docs/loki/<LOKI_VERSION>/configure/examples/thanos-storage-configs/#gcs-example):
+
 ```yaml
 storage_config:
-  tsdb_shipper:
-    active_index_directory: /loki/index
-    cache_location: /loki/index_cache
-    cache_ttl: 24h # Can be increased for faster performance over longer query periods, uses more disk space
-  gcs:
-      bucket_name: <bucket>
-      service_account: |    
+  use_thanos_objstore: true
+  object_store:
+    gcs:
+      bucket_name: <BUCKET_NAME>
+      service_account: |
         {
           "type": "service_account",
           ...
         }
+  tsdb_shipper:
+    active_index_directory: /loki/index
+    cache_location: /loki/index_cache
+    cache_ttl: 24h # Can be increased for faster performance over longer query periods, uses more disk space
+
+schema_config:
+  configs:
+    - from: 2020-07-01
+      store: tsdb
+      object_store: gcs
+      schema: v13
+      index:
+        prefix: index_
+        period: 24h
+```
+
+The same deployment using the deprecated GCS client:
+
+```yaml
+storage_config:
+  use_thanos_objstore: false # required to use the deprecated client
+  tsdb_shipper:
+    active_index_directory: /loki/index
+    cache_location: /loki/index_cache
+    cache_ttl: 24h
+  gcs:
+    bucket_name: <BUCKET_NAME>
+    service_account: |
+      {
+        "type": "service_account",
+        ...
+      }
 
 schema_config:
   configs:
@@ -267,35 +216,84 @@ GCP recommends [Workload Identity Federation](https://cloud.google.com/iam/docs/
 
 ### AWS deployment (S3 Single Store)
 
+Configuration using the [Thanos-based object store client](https://grafana.com/docs/loki/<LOKI_VERSION>/configure/examples/thanos-storage-configs/#s3-example):
+
 ```yaml
 storage_config:
-   tsdb_shipper:
+  use_thanos_objstore: true
+  object_store:
+    s3:
+      bucket_name: <BUCKET_NAME>
+      # The endpoint is required. For AWS, use the regional S3 endpoint.
+      endpoint: s3.<REGION>.amazonaws.com
+      region: <REGION>
+      # You can either declare the access key and secret in the config or
+      # use environment variables AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY,
+      # which will be picked up by the AWS SDK.
+      access_key_id: <ACCESS_KEY_ID>
+      secret_access_key: <SECRET_ACCESS_KEY>
+  tsdb_shipper:
     active_index_directory: /loki/index
     cache_location: /loki/index_cache
     cache_ttl: 24h         # Can be increased for faster performance over longer query periods, uses more disk space
-  aws:
-    s3: s3://<access_key>:<uri-encoded-secret-access-key>@<region>
-    bucketnames: <bucket1,bucket2>
 
 schema_config:
   configs:
     - from: 2020-07-01
       store: tsdb
-      object_store: aws
+      object_store: s3
       schema: v13
       index:
         prefix: index_
         period: 24h
 ```
 
-If you don't wish to hard-code S3 credentials, you can also configure an EC2
-instance role by changing the `storage_config` section:
+The Thanos-based client supports one bucket only. If you previously used `bucketnames` with several buckets, you must consolidate to a single bucket.
+
+If you don't wish to hard-code S3 credentials, you can use an EC2 instance role instead. Leave `access_key_id` and `secret_access_key` unset. The client then looks for credentials in environment variables, in the AWS credentials file, and finally in the EC2 instance metadata:
 
 ```yaml
 storage_config:
+  use_thanos_objstore: true
+  object_store:
+    s3:
+      bucket_name: <BUCKET_NAME>
+      endpoint: s3.<REGION>.amazonaws.com
+      region: <REGION>
+```
+
+The same deployment using the deprecated S3 client:
+
+```yaml
+storage_config:
+  use_thanos_objstore: false # required to use the deprecated client
+  tsdb_shipper:
+    active_index_directory: /loki/index
+    cache_location: /loki/index_cache
+    cache_ttl: 24h
   aws:
-    s3: s3://region
-    bucketnames: <bucket1,bucket2>
+    s3: s3://<ACCESS_KEY>:<URI_ENCODED_SECRET_ACCESS_KEY>@<REGION>
+    bucketnames: <BUCKET_1>,<BUCKET_2>
+
+schema_config:
+  configs:
+    - from: 2020-07-01
+      store: tsdb
+      object_store: s3
+      schema: v13
+      index:
+        prefix: index_
+        period: 24h
+```
+
+To use an EC2 instance role with the deprecated client, change the `storage_config` section:
+
+```yaml
+storage_config:
+  use_thanos_objstore: false
+  aws:
+    s3: s3://<REGION>
+    bucketnames: <BUCKET_1>,<BUCKET_2>
 ```
 
 The role should have a policy with the following permissions attached.
@@ -309,7 +307,7 @@ The role should have a policy with the following permissions attached.
             "Effect": "Allow",
             "Principal": {
                 "AWS": [
-                    "arn:aws:iam::<account_ID>"
+                    "arn:aws:iam::<ACCOUNT_ID>"
                 ]
             },
             "Action": [
@@ -319,8 +317,8 @@ The role should have a policy with the following permissions attached.
                 "s3:DeleteObject"
             ],
             "Resource": [
-                "arn:aws:s3:::<bucket_name>",
-                "arn:aws:s3:::<bucket_name>/*"
+                "arn:aws:s3:::<BUCKET_NAME>",
+                "arn:aws:s3:::<BUCKET_NAME>/*"
             ]
         }
     ]
@@ -338,19 +336,19 @@ This guide assumes a provisioned EKS cluster.
 3. Export the AWS profile and region if not done so:
 
    ```bash
-   export AWS_PROFILE=<profile in ~/.aws/config>
-   export AWS_REGION=<region of EKS cluster>
+   export AWS_PROFILE=<AWS_PROFILE_NAME>
+   export AWS_REGION=<EKS_CLUSTER_REGION>
    ```
 
 4. Save the OIDC provider in an environment variable:
 
    ```bash
-   oidc_provider=$(aws eks describe-cluster --name <EKS cluster> --query "cluster.identity.oidc.issuer" --output text | sed -e "s/^https:\/\///")
+   oidc_provider=$(aws eks describe-cluster --name <EKS_CLUSTER_NAME> --query "cluster.identity.oidc.issuer" --output text | sed -e "s/^https:\/\///")
    ```
 
    See the [IAM OIDC provider guide](https://docs.aws.amazon.com/eks/latest/userguide/enable-iam-roles-for-service-accounts.html) for a guide for creating a provider.
 
-5. Apply the Terraform module `terraform -var region="$AWS_REGION" -var cluster_name=<EKS cluster> -var oidc_id="$oidc_provider"`
+5. Apply the Terraform module `terraform -var region="$AWS_REGION" -var cluster_name=<EKS_CLUSTER_NAME> -var oidc_id="$oidc_provider"`
 
    Note, the bucket name defaults to `loki-data` but can be changed via the
    `bucket_name` variable.
@@ -359,32 +357,73 @@ This guide assumes a provisioned EKS cluster.
 
 #### Using account name and key
 
+Configuration using the [Thanos-based object store client](https://grafana.com/docs/loki/<LOKI_VERSION>/configure/examples/thanos-storage-configs/#azure-example):
+
 ```yaml
 schema_config:
   configs:
-  - from: "2020-12-11"
-    index:
-      period: 24h
-      prefix: index_
-    object_store: azure
-    schema: v13
-    store: tsdb
+    - from: "2020-12-11"
+      index:
+        period: 24h
+        prefix: index_
+      object_store: azure
+      schema: v13
+      store: tsdb
 storage_config:
+  use_thanos_objstore: true
+  object_store:
+    azure:
+      # Your Azure storage account name
+      account_name: <ACCOUNT_NAME>
+      # See https://docs.microsoft.com/en-us/azure/storage/blobs/storage-blobs-introduction#containers
+      container_name: <CONTAINER_NAME>
+      # For the account key, see https://docs.microsoft.com/en-us/azure/storage/common/storage-account-keys-manage?tabs=azure-portal
+      # If you leave the account key unset, Loki uses an Azure managed identity instead.
+      account_key: <ACCOUNT_KEY>
+      # Set this to use a user assigned managed identity. If you leave it empty,
+      # Loki uses the system assigned identity.
+      user_assigned_id: <USER_ASSIGNED_IDENTITY_ID>
+      # Configure this if you use a private Azure cloud, such as Azure Stack Hub.
+      # Loki composes the storage URL as https://account_name.endpoint_suffix/container_name/blob_name
+      endpoint_suffix: <ENDPOINT_SUFFIX>
+      # If `connection_string` is set, the `account_name` and `endpoint_suffix` values are not used.
+      # Use this instead of `account_key` to authenticate with a SAS token, or to use the Azurite emulator.
+      connection_string: <CONNECTION_STRING>
+  tsdb_shipper:
+    active_index_directory: /loki/index
+    cache_location: /loki/index_cache
+    cache_ttl: 24h
+```
+
+The same deployment using the deprecated Azure Blob Storage client:
+
+```yaml
+schema_config:
+  configs:
+    - from: "2020-12-11"
+      index:
+        period: 24h
+        prefix: index_
+      object_store: azure
+      schema: v13
+      store: tsdb
+storage_config:
+  use_thanos_objstore: false # required to use the deprecated client
   azure:
     # Your Azure storage account name
-    account_name: <account-name>
+    account_name: <ACCOUNT_NAME>
     # For the account-key, see docs: https://docs.microsoft.com/en-us/azure/storage/common/storage-account-keys-manage?tabs=azure-portal
-    account_key: <account-key>
+    account_key: <ACCOUNT_KEY>
     # See https://docs.microsoft.com/en-us/azure/storage/blobs/storage-blobs-introduction#containers
-    container_name: <container-name>
-    use_managed_identity: <true|false>
+    container_name: <CONTAINER_NAME>
+    use_managed_identity: <TRUE|FALSE>
     # Providing a user assigned ID will override use_managed_identity
-    user_assigned_id: <user-assigned-identity-id>
+    user_assigned_id: <USER_ASSIGNED_IDENTITY_ID>
     request_timeout: 0
     # Configure this if you are using private azure cloud like azure stack hub and will use this endpoint suffix to compose container and blob storage URL. Ex: https://account_name.endpoint_suffix/container_name/blob_name
-    endpoint_suffix: <endpoint-suffix>
+    endpoint_suffix: <ENDPOINT_SUFFIX>
     # If `connection_string` is set, the values of `account_name` and `endpoint_suffix` values will not be used. Use this method over `account_key` if you need to authenticate via a SAS token. Or if you use the Azurite emulator.
-    connection_string: <connection-string>
+    connection_string: <CONNECTION_STRING>
   tsdb_shipper:
     active_index_directory: /loki/index
     cache_location: /loki/index_cache
@@ -395,27 +434,54 @@ storage_config:
 
 #### Using a service principal
 
+The [Thanos-based object store client](https://grafana.com/docs/loki/<LOKI_VERSION>/configure/examples/thanos-storage-configs/#azure-example) has no service principal settings in `storage_config`. Instead, pass the credentials in the standard environment variables read by the [Azure Identity Client Module for Go](https://pkg.go.dev/github.com/Azure/azure-sdk-for-go/sdk/azidentity), which are `AZURE_TENANT_ID`, `AZURE_CLIENT_ID`, and `AZURE_CLIENT_SECRET`. Leave `account_key` unset so that Loki uses those credentials. You must still set `account_name`, because Loki uses it to build the storage URL.
+
 ```yaml
 schema_config:
   configs:
-  - from: "2020-12-11"
-    index:
-      period: 24h
-      prefix: index_
-    object_store: azure
-    schema: v13
-    store: tsdb
+    - from: "2020-12-11"
+      index:
+        period: 24h
+        prefix: index_
+      object_store: azure
+      schema: v13
+      store: tsdb
 storage_config:
+  use_thanos_objstore: true
+  object_store:
+    azure:
+      account_name: <ACCOUNT_NAME>
+      container_name: <CONTAINER_NAME>
+  tsdb_shipper:
+    active_index_directory: /loki/index
+    cache_location: /loki/index_cache
+    cache_ttl: 24h
+```
+
+The same deployment using the deprecated Azure Blob Storage client:
+
+```yaml
+schema_config:
+  configs:
+    - from: "2020-12-11"
+      index:
+        period: 24h
+        prefix: index_
+      object_store: azure
+      schema: v13
+      store: tsdb
+storage_config:
+  use_thanos_objstore: false # required to use the deprecated client
   azure:
     use_service_principal: true
     # Azure tenant ID used to authenticate through Azure OAuth
-    tenant_id : <tenant-id>
+    tenant_id : <TENANT_ID>
     # Azure Service Principal ID
-    client_id: <client-id>
+    client_id: <CLIENT_ID>
     # Azure Service Principal secret key
-    client_secret: <client-secret>
+    client_secret: <CLIENT_SECRET>
     # See https://docs.microsoft.com/en-us/azure/storage/blobs/storage-blobs-introduction#containers
-    container_name: <container-name>
+    container_name: <CONTAINER_NAME>
     request_timeout: 0
   tsdb_shipper:
     active_index_directory: /loki/index
@@ -426,6 +492,12 @@ storage_config:
 ```
 
 ### IBM Deployment (COS Single Store)
+
+{{< admonition type="note" >}}
+The Thanos-based object store client does not support IBM COS. Because `use_thanos_objstore` defaults to `true`, you must set it to `false` to use COS. If you leave the default in place, Loki fails to start with the error `unrecognized object_store type cos`.
+
+For the list of backends that the Thanos-based client supports, refer to the [Thanos storage configuration reference](https://grafana.com/docs/loki/<LOKI_VERSION>/configure/#thanos_object_store_config).
+{{< /admonition >}}
 
 ```yaml
 schema_config:
@@ -439,65 +511,67 @@ schema_config:
       store: tsdb
 
 storage_config:
+  use_thanos_objstore: false # COS is not supported by the Thanos-based client
   tsdb_shipper:
-   active_index_directory: /loki/index
-   cache_location: /loki/index_cache
+    active_index_directory: /loki/index
+    cache_location: /loki/index_cache
   cos:
-    bucketnames: <bucket1, bucket2>
-    endpoint: <endpoint>
-    api_key: <api_key_to_authenticate_with_cos>
-    region: <region>
-    service_instance_id: <cos_service_instance_id>
-    auth_endpoint: <iam_endpoint_for_authentication>
-```
-
-### On premise deployment (Cassandra+Cassandra)
-
-{{< admonition type="note" >}}
-Cassandra as storage backend for chunks and indexes is deprecated.
-{{< /admonition >}}
-
-**Keeping this for posterity, but this is likely not a common config. Cassandra should work and could be faster in some situations but is likely much more expensive.**
-
-```yaml
-storage_config:
-  cassandra:
-    addresses: <comma-separated-IPs-or-hostnames>
-    keyspace: <keyspace>
-    auth: <true|false>
-    username: <username> # only applicable when auth=true
-    password: <password> # only applicable when auth=true
-
-schema_config:
-  configs:
-    - from: 2020-07-01
-      store: cassandra
-      object_store: cassandra
-      schema: v11
-      index:
-        prefix: index_
-        period: 168h
-      chunks:
-        prefix: chunk_
-        period: 168h
-
+    bucketnames: <BUCKET_1>, <BUCKET_2>
+    endpoint: <ENDPOINT>
+    api_key: <API_KEY_TO_AUTHENTICATE_WITH_COS>
+    region: <REGION>
+    service_instance_id: <COS_SERVICE_INSTANCE_ID>
+    auth_endpoint: <IAM_ENDPOINT_FOR_AUTHENTICATION>
 ```
 
 ### On premise deployment (MinIO Single Store)
 
-You configure MinIO by using the AWS config because MinIO implements the S3 API:
+You configure MinIO by using the S3 settings, because MinIO implements the S3 API.
+
+Configuration using the [Thanos-based object store client](https://grafana.com/docs/loki/<LOKI_VERSION>/configure/examples/thanos-storage-configs/#minio-s3-compatible-example):
 
 ```yaml
 storage_config:
-  aws:
-    # Note: use a fully qualified domain name (fqdn), like localhost.
-    # full example: http://loki:supersecret@localhost.:9000
-    s3: http<s>://<username>:<secret>@<fqdn>:<port>
-    s3forcepathstyle: true
+  use_thanos_objstore: true
+  object_store:
+    s3:
+      bucket_name: <BUCKET_NAME>
+      # Use a fully qualified domain name (fqdn), like localhost, without a scheme.
+      endpoint: <FQDN>:<PORT>
+      access_key_id: <USERNAME>
+      secret_access_key: <SECRET>
+      insecure: true            # set to false if MinIO is served over https
+      bucket_lookup_type: path  # MinIO's equivalent of s3forcepathstyle
   tsdb_shipper:
     active_index_directory: /loki/index
     cache_location: /loki/index_cache
     cache_ttl: 24h         # Can be increased for faster performance over longer query periods, uses more disk space
+
+schema_config:
+  configs:
+    - from: 2020-07-01
+      store: tsdb
+      object_store: s3
+      schema: v13
+      index:
+        prefix: index_
+        period: 24h
+```
+
+The same deployment using the deprecated S3 client:
+
+```yaml
+storage_config:
+  use_thanos_objstore: false # required to use the deprecated client
+  aws:
+    # Note: use a fully qualified domain name (fqdn), like localhost.
+    # full example: http://loki:supersecret@localhost.:9000
+    s3: http(s)://<USERNAME>:<SECRET>@<FQDN>:<PORT>
+    s3forcepathstyle: true
+  tsdb_shipper:
+    active_index_directory: /loki/index
+    cache_location: /loki/index_cache
+    cache_ttl: 24h
 
 schema_config:
   configs:

@@ -8,10 +8,10 @@ import (
 	"hash"
 	"hash/crc32"
 	"io"
+	"math"
 	"time"
 	"unsafe"
 
-	"github.com/cespare/xxhash/v2"
 	"github.com/go-kit/log/level"
 	"github.com/pkg/errors"
 	"github.com/prometheus/prometheus/model/labels"
@@ -36,11 +36,6 @@ const (
 
 	blocksPerChunk = 10
 	maxLineLength  = 1024 * 1024 * 1024
-
-	// defaultBlockSize is used for target block size when cutting partially deleted chunks from a delete request.
-	// This could wary from configured block size using `ingester.chunks-block-size` flag or equivalent yaml config resulting in
-	// different block size in the new chunk which should be fine.
-	defaultBlockSize = 256 * 1024
 
 	chunkMetasSectionIdx              = 1
 	chunkStructuredMetadataSectionIdx = 2
@@ -916,11 +911,31 @@ func (c *MemChunk) reorder() error {
 
 	// Otherwise, we need to rebuild the blocks
 	from, to := c.Bounds()
-	newC, err := c.Rebound(from, to, nil)
+
+	// The iterator we use is the same used for queries, when reordering we do not need to
+	// appy any kind of query pipeline processing, even though we use a NoopPipeline here,
+	// there is still a lot of label parsing and associated allocations that take place in the
+	// noop pipeline. So we bypass processing by using a context with the processing disabled hint.
+	// We add a millisecond to end time because the Chunk.Iterator considers end time to be non-inclusive.
+	ctx := processingDisabledContext(context.Background())
+	itr, err := c.Iterator(ctx, from, to.Add(time.Millisecond), logproto.FORWARD, log.NewNoopPipeline().ForStream(labels.Labels{}))
 	if err != nil {
 		return err
 	}
-	*c = *newC.(*MemChunk)
+
+	newChunk := NewMemChunk(c.format, c.Encoding(), c.headFmt, c.blockSize, c.targetSize)
+	for itr.Next() {
+		entry := itr.At()
+		if _, err := newChunk.Append(&entry); err != nil {
+			return err
+		}
+	}
+
+	if err := newChunk.Close(); err != nil {
+		return err
+	}
+
+	*c = *newChunk
 	return nil
 }
 
@@ -1069,9 +1084,9 @@ func (c *MemChunk) Iterator(ctx context.Context, mintT, maxtT time.Time, directi
 func (c *MemChunk) SampleIterator(
 	ctx context.Context,
 	from, through time.Time,
-	extractors ...log.StreamSampleExtractor,
+	extractor log.StreamSampleExtractor,
 ) iter.SampleIterator {
-	if len(extractors) == 0 {
+	if extractor == nil {
 		return iter.NoopSampleIterator
 	}
 	mint, maxt := from.UnixNano(), through.UnixNano()
@@ -1099,7 +1114,7 @@ func (c *MemChunk) SampleIterator(
 		lastMax = b.maxt
 		its = append(
 			its,
-			encBlock{c.encoding, c.format, c.symbolizer, b}.SampleIterator(ctx, extractors...),
+			encBlock{c.encoding, c.format, c.symbolizer, b}.SampleIterator(ctx, extractor),
 		)
 	}
 
@@ -1108,7 +1123,7 @@ func (c *MemChunk) SampleIterator(
 		if from < lastMax {
 			ordered = false
 		}
-		its = append(its, c.head.SampleIterator(ctx, mint, maxt, extractors...))
+		its = append(its, c.head.SampleIterator(ctx, mint, maxt, extractor))
 	}
 
 	var it iter.SampleIterator
@@ -1138,38 +1153,53 @@ func (c *MemChunk) Blocks(mintT, maxtT time.Time) []Block {
 	return blocks
 }
 
-// Rebound builds a smaller chunk with logs having timestamp from start and end(both inclusive)
-func (c *MemChunk) Rebound(start, end time.Time, filter filter.Func) (Chunk, error) {
-	// add a millisecond to end time because the Chunk.Iterator considers end time to be non-inclusive.
-	itr, err := c.Iterator(context.Background(), start, end.Add(time.Millisecond), logproto.FORWARD, log.NewNoopPipeline().ForStream(labels.Labels{}))
-	if err != nil {
-		return nil, err
-	}
+// Rewrite rewrites the chunk after filtering out lines based on response from filter.Func.
+// Filter.Func would be called for each log entry, and the ones for which it returns true would be removed.
+// The new chunk would have data in the same order as the original chunk.
+func (c *MemChunk) Rewrite(filter filter.Func) (Chunk, error) {
+	newChunk := NewMemChunk(c.format, c.Encoding(), c.headFmt, math.MaxInt, math.MaxInt)
 
-	var newChunk *MemChunk
-	// as close as possible, respect the block/target sizes specified. However,
-	// if the blockSize is not set, use reasonable defaults.
-	if c.blockSize > 0 {
-		newChunk = NewMemChunk(c.format, c.Encoding(), c.headFmt, c.blockSize, c.targetSize)
-	} else {
-		// Using defaultBlockSize for target block size.
-		// The alternative here could be going over all the blocks and using the size of the largest block as target block size but I(Sandeep) feel that it is not worth the complexity.
-		// For target chunk size I am using compressed size of original chunk since the newChunk should anyways be lower in size than that.
-		newChunk = NewMemChunk(c.format, c.Encoding(), c.headFmt, defaultBlockSize, c.CompressedSize())
-	}
+	// iterate through the entries block-by-block to avoid re-encoding unchanged blocks
+	for _, b := range c.blocks {
+		itr := newBufferedIterator(context.Background(), compression.GetReaderPool(c.encoding), b.b, c.format, c.symbolizer)
 
-	for itr.Next() {
-		entry := itr.At()
-		if filter != nil && filter(entry.Timestamp, entry.Line, logproto.FromLabelAdaptersToLabels(entry.StructuredMetadata)) {
-			continue
+		entriesRemoved := false
+		for itr.Next() {
+			timestamp := time.Unix(0, itr.currTs)
+			line := string(itr.currLine)
+			if filter != nil && filter(timestamp, line, itr.currStructuredMetadata) {
+				entriesRemoved = true
+				continue
+			}
+			entry := logproto.Entry{
+				Timestamp:          timestamp,
+				Line:               line,
+				StructuredMetadata: logproto.FromLabelsToLabelAdapters(itr.currStructuredMetadata),
+			}
+			if _, err := newChunk.Append(&entry); err != nil {
+				return nil, err
+			}
 		}
-		if _, err := newChunk.Append(&entry); err != nil {
+
+		if err := itr.Err(); err != nil {
 			return nil, err
+		}
+
+		if !entriesRemoved {
+			// no entries were removed so copy the existing block as is to save on the work of re-encoding it
+			newChunk.blocks = append(newChunk.blocks, b)
+			newChunk.cutBlockSize += len(b.b)
+
+			newChunk.head.Reset()
+		} else {
+			if err := newChunk.cut(); err != nil {
+				return nil, err
+			}
 		}
 	}
 
 	if newChunk.Size() == 0 {
-		return nil, chunk.ErrSliceNoDataInRange
+		return nil, chunk.ErrRewriteNoDataLeft
 	}
 
 	if err := newChunk.Close(); err != nil {
@@ -1199,7 +1229,7 @@ func (b encBlock) Iterator(ctx context.Context, pipeline log.StreamPipeline) ite
 
 func (b encBlock) SampleIterator(
 	ctx context.Context,
-	extractors ...log.StreamSampleExtractor,
+	extractor log.StreamSampleExtractor,
 ) iter.SampleIterator {
 	if len(b.b) == 0 {
 		return iter.NoopSampleIterator
@@ -1210,7 +1240,7 @@ func (b encBlock) SampleIterator(
 		b.b,
 		b.format,
 		b.symbolizer,
-		extractors...,
+		extractor,
 	)
 }
 
@@ -1297,13 +1327,13 @@ func (hb *headBlock) Iterator(ctx context.Context, direction logproto.Direction,
 }
 
 func unsafeGetBytes(s string) []byte {
-	return unsafe.Slice(unsafe.StringData(s), len(s)) // #nosec G103 -- we know the string is not mutated
+	return unsafe.Slice(unsafe.StringData(s), len(s)) // #nosec G103 -- we know the string is not mutated -- nosemgrep: use-of-unsafe-block
 }
 
 func (hb *headBlock) SampleIterator(
 	ctx context.Context,
 	mint, maxt int64,
-	extractors ...log.StreamSampleExtractor,
+	extractor log.StreamSampleExtractor,
 ) iter.SampleIterator {
 	if hb.IsEmpty() || (maxt < hb.mint || hb.maxt < mint) {
 		return iter.NoopSampleIterator
@@ -1313,46 +1343,37 @@ func (hb *headBlock) SampleIterator(
 	stats.AddHeadChunkLines(int64(len(hb.entries)))
 	series := map[string]*logproto.Series{}
 
+	var hasher util.SampleHasher
 	setQueryReferencedStructuredMetadata := false
 	for _, e := range hb.entries {
-		for _, extractor := range extractors {
-			stats.AddHeadChunkBytes(int64(len(e.s)))
-			samples, ok := extractor.ProcessString(e.t, e.s, e.structuredMetadata)
-			if !ok || len(samples) == 0 {
-				continue
-			}
-			var (
-				found bool
-				s     *logproto.Series
-			)
+		stats.AddHeadChunkBytes(int64(len(e.s)))
 
-			for _, sample := range samples {
-				value := sample.Value
-				lbls := sample.Labels
-
-				lblStr := lbls.String()
-				baseHash := extractor.BaseLabels().Hash()
-				if s, found = series[lblStr]; !found {
-					s = &logproto.Series{
-						Labels:     lblStr,
-						Samples:    SamplesPool.Get(len(hb.entries)).([]logproto.Sample)[:0],
-						StreamHash: baseHash,
-					}
-					series[lblStr] = s
-				}
-
-				s.Samples = append(s.Samples, logproto.Sample{
-					Timestamp: e.t,
-					Value:     value,
-					Hash:      xxhash.Sum64(unsafeGetBytes(e.s)),
-				})
-			}
-
-			if extractor.ReferencedStructuredMetadata() {
-				setQueryReferencedStructuredMetadata = true
-			}
+		sample, ok := extractor.ProcessString(e.t, e.s, e.structuredMetadata)
+		if !ok {
+			continue
 		}
 		stats.AddPostFilterLines(1)
+
+		lblStr := sample.Labels.String()
+		s, found := series[lblStr]
+		if !found {
+			s = &logproto.Series{
+				Labels:     lblStr,
+				Samples:    SamplesPool.Get(len(hb.entries)).([]logproto.Sample)[:0],
+				StreamHash: extractor.BaseLabels().Hash(),
+			}
+			series[lblStr] = s
+		}
+
+		s.Samples = append(s.Samples, logproto.Sample{
+			Timestamp: e.t,
+			Value:     sample.Value,
+			Hash:      hasher.Hash(lblStr, unsafeGetBytes(e.s)),
+		})
+
+		if extractor.ReferencedStructuredMetadata() {
+			setQueryReferencedStructuredMetadata = true
+		}
 	}
 
 	if setQueryReferencedStructuredMetadata {
@@ -1397,17 +1418,31 @@ type bufferedIterator struct {
 	closed bool
 }
 
+// processingDisabledKey is used to mark contexts where log line processing should be bypassed.
+type processingDisabledKey struct{}
+
+// processingDisabledContext returns a child context with processing disabled hint.
+func processingDisabledContext(parent context.Context) context.Context {
+	return context.WithValue(parent, processingDisabledKey{}, true)
+}
+
+// isProcessingDisabled returns true if the context carries the disable-processing hint.
+func isProcessingDisabled(ctx context.Context) bool {
+	v := ctx.Value(processingDisabledKey{})
+	disabled, _ := v.(bool)
+	return disabled
+}
+
 func newBufferedIterator(ctx context.Context, pool compression.ReaderPool, b []byte, format byte, symbolizer *symbolizer) *bufferedIterator {
 	stats := stats.FromContext(ctx)
 	stats.AddCompressedBytes(int64(len(b)))
 	return &bufferedIterator{
-		stats:                  stats,
-		origBytes:              b,
-		reader:                 nil, // will be initialized later
-		pool:                   pool,
-		format:                 format,
-		symbolizer:             symbolizer,
-		currStructuredMetadata: structuredMetadataPool.Get().(labels.Labels),
+		stats:      stats,
+		origBytes:  b,
+		reader:     nil, // will be initialized later
+		pool:       pool,
+		format:     format,
+		symbolizer: symbolizer,
 	}
 }
 
@@ -1622,8 +1657,12 @@ func (si *bufferedIterator) moveNext() (int64, []byte, labels.Labels, bool) {
 	si.stats.AddDecompressedStructuredMetadataBytes(decompressedStructuredMetadataBytes)
 	si.stats.AddDecompressedBytes(decompressedBytes + decompressedStructuredMetadataBytes)
 
-	labelsBuilder := log.NewBufferedLabelsBuilder(si.currStructuredMetadata)
-	return ts, si.buf[:lineSize], si.symbolizer.Lookup(si.symbolsBuf[:nSymbols], labelsBuilder), true
+	lbls, err := si.symbolizer.Lookup(si.symbolsBuf[:nSymbols], nil)
+	if err != nil {
+		si.err = fmt.Errorf("symbolizer lookup: %w", err)
+		return 0, nil, labels.EmptyLabels(), false
+	}
+	return ts, si.buf[:lineSize], lbls, true
 }
 
 func (si *bufferedIterator) Err() error { return si.err }
@@ -1653,7 +1692,6 @@ func (si *bufferedIterator) close() {
 	}
 
 	if !si.currStructuredMetadata.IsEmpty() {
-		structuredMetadataPool.Put(si.currStructuredMetadata) // nolint:staticcheck
 		si.currStructuredMetadata = labels.EmptyLabels()
 	}
 
@@ -1661,11 +1699,19 @@ func (si *bufferedIterator) close() {
 }
 
 func newEntryIterator(ctx context.Context, pool compression.ReaderPool, b []byte, pipeline log.StreamPipeline, format byte, symbolizer *symbolizer) iter.EntryIterator {
-	return &entryBufferedIterator{
+	skipProcessing := isProcessingDisabled(ctx)
+	e := &entryBufferedIterator{
 		bufferedIterator: newBufferedIterator(ctx, pool, b, format, symbolizer),
 		pipeline:         pipeline,
 		stats:            stats.FromContext(ctx),
+		skipProcessing:   skipProcessing,
 	}
+	// if processing is disabled the labels will not change.
+	if skipProcessing {
+		e.currLabels = pipeline.BaseLabels()
+	}
+	return e
+
 }
 
 type entryBufferedIterator struct {
@@ -1675,6 +1721,8 @@ type entryBufferedIterator struct {
 
 	cur        logproto.Entry
 	currLabels log.LabelsResult
+
+	skipProcessing bool
 }
 
 func (e *entryBufferedIterator) At() logproto.Entry {
@@ -1687,6 +1735,19 @@ func (e *entryBufferedIterator) StreamHash() uint64 { return e.pipeline.BaseLabe
 
 func (e *entryBufferedIterator) Next() bool {
 	for e.bufferedIterator.Next() {
+		// If processing is disabled via context, bypass processing
+		// this is used to skip processing when reordering chunks when they are flushed
+		if e.skipProcessing {
+			e.cur.Timestamp = time.Unix(0, e.currTs)
+			// E.Welch it's likely possible to avoid the copy here however
+			// there is always risk with unsafe copies and this bypass already goes
+			// a long way to reduce the work we used to do when processing
+			// structured meatdata in the previous NoOpPipeline
+			e.cur.Line = string(e.currLine)
+			e.cur.StructuredMetadata = logproto.FromLabelsToLabelAdapters(e.currStructuredMetadata)
+			return true
+		}
+
 		newLine, lbs, matches := e.pipeline.Process(e.currTs, e.currLine, e.currStructuredMetadata)
 		if !matches {
 			continue
@@ -1718,22 +1779,16 @@ func newSampleIterator(
 	b []byte,
 	format byte,
 	symbolizer *symbolizer,
-	extractors ...log.StreamSampleExtractor,
+	extractor log.StreamSampleExtractor,
 ) iter.SampleIterator {
-	if len(extractors) == 0 {
+	if extractor == nil {
 		return iter.NoopSampleIterator
-	}
-
-	if len(extractors) > 1 {
-		return newMultiExtractorSampleIterator(ctx, pool, b, format, symbolizer, extractors...)
 	}
 
 	return &sampleBufferedIterator{
 		bufferedIterator: newBufferedIterator(ctx, pool, b, format, symbolizer),
-		extractor:        extractors[0],
+		extractor:        extractor,
 		stats:            stats.FromContext(ctx),
-		curr:             []logproto.Sample{},
-		currLabels:       []log.LabelsResult{},
 	}
 }
 
@@ -1742,49 +1797,29 @@ type sampleBufferedIterator struct {
 
 	extractor log.StreamSampleExtractor
 	stats     *stats.Context
+	hasher    util.SampleHasher
 
-	curr       []logproto.Sample
-	currLabels []log.LabelsResult
+	curr       logproto.Sample
+	currLabels log.LabelsResult
 }
 
 func (e *sampleBufferedIterator) Next() bool {
-	// sample at e.curr[0] is the current sample
-	// since there is more than one sample, shift the remaining samples down by one
-	// to make e.curr[1] the new current sample
-	if len(e.curr) > 1 {
-		e.curr = e.curr[1:]
-		e.currLabels = e.currLabels[1:]
-
-		return true
-	}
-
-	// sample at e.curr[0] is the current sample
-	// since there is only one sample (the current one), we need to shift it out
-	// and clear the slice
-	if len(e.curr) == 1 {
-		e.curr = e.curr[:0]
-		e.currLabels = e.currLabels[:0]
-	}
-
 	for e.bufferedIterator.Next() {
-		e.stats.AddPostFilterLines(1)
-
-		samples, ok := e.extractor.Process(e.currTs, e.currLine, e.currStructuredMetadata)
-		if !ok || len(samples) == 0 {
+		sample, ok := e.extractor.Process(e.currTs, e.currLine, e.currStructuredMetadata)
+		if !ok {
 			continue
 		}
+		e.stats.AddPostFilterLines(1)
 
-		for _, sample := range samples {
-			e.currLabels = append(e.currLabels, sample.Labels)
-
-			// multilple samples from the same line can't have the same line hash or they will be deduplicated
-			// so they must have unique labels, which we'll use to create a unique line hash
-			lblString := sample.Labels.String()
-			e.curr = append(e.curr, logproto.Sample{
-				Timestamp: e.currTs,
-				Value:     sample.Value,
-				Hash:      util.UniqueSampleHash(lblString, e.currLine),
-			})
+		lblString := sample.Labels.String()
+		e.currLabels = sample.Labels
+		e.curr = logproto.Sample{
+			Timestamp: e.currTs,
+			Value:     sample.Value,
+			// Two entries in one stream can share a timestamp and a line but extract
+			// different labels. Without the labels in the hash, the merge iterator drops
+			// one as a duplicate.
+			Hash: e.hasher.Hash(lblString, e.currLine),
 		}
 
 		return true
@@ -1800,12 +1835,12 @@ func (e *sampleBufferedIterator) Close() error {
 	return e.bufferedIterator.Close()
 }
 
-func (e *sampleBufferedIterator) Labels() string { return e.currLabels[0].String() }
+func (e *sampleBufferedIterator) Labels() string { return e.currLabels.String() }
 
 func (e *sampleBufferedIterator) StreamHash() uint64 { return e.extractor.BaseLabels().Hash() }
 
 func (e *sampleBufferedIterator) At() logproto.Sample {
-	return e.curr[0]
+	return e.curr
 }
 
 // validateBlock validates block by doing following checks:

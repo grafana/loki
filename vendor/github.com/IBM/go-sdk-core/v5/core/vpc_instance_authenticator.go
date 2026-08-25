@@ -20,6 +20,8 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httputil"
+	"slices"
+	"strings"
 	"sync"
 	"time"
 
@@ -37,21 +39,39 @@ import (
 //	Authorization: Bearer <access-token>
 type VpcInstanceAuthenticator struct {
 	// [optional] The CRN of the linked trusted IAM profile to be used as the identity of the compute resource.
-	// At most one of IAMProfileCRN or IAMProfileID may be specified.  If neither one is specified, then
+	// At most one of IAMProfileCRN, IAMProfileID or IAMProfileName may be specified.  If neither one is specified, then
 	// the default IAM profile defined for the compute resource will be used.
 	// Default value: ""
 	IAMProfileCRN string
 
 	// [optional] The ID of the linked trusted IAM profile to be used when obtaining the IAM access token.
-	// At most one of IAMProfileCRN or IAMProfileID may be specified.  If neither one is specified, then
+	// At most one of IAMProfileCRN, IAMProfileID or IAMProfileName may be specified.  If neither one is specified, then
 	// the default IAM profile defined for the compute resource will be used.
 	// Default value: ""
 	IAMProfileID string
+
+	// [optional] The name of the linked trusted IAM profile to be used when obtaining the IAM access token.
+	// At most one of IAMProfileCRN, IAMProfileID or IAMProfileName may be specified.  If neither one is specified, then
+	// the default IAM profile defined for the compute resource will be used.
+	// Default value: ""
+	IAMProfileName string
 
 	// [optional] The VPC Instance Metadata Service's base endpoint URL.
 	// Default value: "http://169.254.169.254"
 	URL     string
 	urlInit sync.Once
+
+	// [optional] The VPC Instance Metadata Service version.
+	// Can be configured via code or environment variable.
+	// Default value: "2022-03-01"
+	ServiceVersion     string
+	serviceVersionInit sync.Once
+
+	// [optional] The lifetime (in seconds) of the instance identity token.
+	// Can only be configured via code (not from environment variables).
+	// Default value: 300
+	TokenLifetime     int
+	tokenLifetimeInit sync.Once
 
 	// [optional] The http.Client object used to interact with the VPC Instance Metadata Service API.
 	// If not specified by the user, a suitable default Client will be constructed.
@@ -70,13 +90,16 @@ type VpcInstanceAuthenticator struct {
 }
 
 const (
-	vpcauthDefaultIMSEndpoint             = "http://169.254.169.254"
-	vpcauthOperationPathCreateAccessToken = "/instance_identity/v1/token"
-	vpcauthOperationPathCreateIamToken    = "/instance_identity/v1/iam_token"
-	vpcauthMetadataFlavor                 = "ibm"
-	vpcauthMetadataServiceVersion         = "2022-03-01"
-	vpcauthInstanceIdentityTokenLifetime  = 300
-	vpcauthDefaultTimeout                 = time.Second * 30
+	vpcauthDefaultIMSEndpoint               = "http://169.254.169.254"
+	vpcauthOperationPathCreateAccessToken   = "/instance_identity/v1/token"
+	vpcauthOperationPathCreateIamToken      = "/instance_identity/v1/iam_token"
+	vpcauthOperationPathCreateAccessTokenV2 = "/identity/v1/token"
+	vpcauthOperationPathCreateIamTokenV2    = "/identity/v1/iam_tokens"
+	vpcauthMetadataFlavor                   = "ibm"
+	vpcauthMetadataServiceVersion           = "2022-03-01"
+	vpcauthMetadataServiceVersionV2         = "2025-08-26"
+	vpcauthInstanceIdentityTokenLifetime    = 300
+	vpcauthDefaultTimeout                   = time.Second * 30
 )
 
 // VpcInstanceAuthenticatorBuilder is used to construct an instance of the VpcInstanceAuthenticator
@@ -92,32 +115,50 @@ func NewVpcInstanceAuthenticatorBuilder() *VpcInstanceAuthenticatorBuilder {
 
 // SetIAMProfileCRN sets the IAMProfileCRN field in the builder.
 func (builder *VpcInstanceAuthenticatorBuilder) SetIAMProfileCRN(s string) *VpcInstanceAuthenticatorBuilder {
-	builder.VpcInstanceAuthenticator.IAMProfileCRN = s
+	builder.IAMProfileCRN = s
 	return builder
 }
 
 // SetIAMProfileID sets the IAMProfileID field in the builder.
 func (builder *VpcInstanceAuthenticatorBuilder) SetIAMProfileID(s string) *VpcInstanceAuthenticatorBuilder {
-	builder.VpcInstanceAuthenticator.IAMProfileID = s
+	builder.IAMProfileID = s
+	return builder
+}
+
+// SetIAMProfileName sets the IAMProfileName field in the builder.
+func (builder *VpcInstanceAuthenticatorBuilder) SetIAMProfileName(s string) *VpcInstanceAuthenticatorBuilder {
+	builder.IAMProfileName = s
 	return builder
 }
 
 // SetURL sets the URL field in the builder.
 func (builder *VpcInstanceAuthenticatorBuilder) SetURL(s string) *VpcInstanceAuthenticatorBuilder {
-	builder.VpcInstanceAuthenticator.URL = s
+	builder.URL = s
 	return builder
 }
 
 // SetClient sets the Client field in the builder.
 func (builder *VpcInstanceAuthenticatorBuilder) SetClient(client *http.Client) *VpcInstanceAuthenticatorBuilder {
-	builder.VpcInstanceAuthenticator.Client = client
+	builder.Client = client
+	return builder
+}
+
+// SetServiceVersion sets the ServiceVersion field in the builder.
+func (builder *VpcInstanceAuthenticatorBuilder) SetServiceVersion(s string) *VpcInstanceAuthenticatorBuilder {
+	builder.ServiceVersion = s
+	return builder
+}
+
+// SetTokenLifetime sets the TokenLifetime field in the builder.
+func (builder *VpcInstanceAuthenticatorBuilder) SetTokenLifetime(lifetime int) *VpcInstanceAuthenticatorBuilder {
+	builder.TokenLifetime = lifetime
 	return builder
 }
 
 // Build() returns a validated instance of the VpcInstanceAuthenticator with the config that was set in the builder.
 func (builder *VpcInstanceAuthenticatorBuilder) Build() (*VpcInstanceAuthenticator, error) {
 	// Make sure the config is valid.
-	err := builder.VpcInstanceAuthenticator.Validate()
+	err := builder.Validate()
 	if err != nil {
 		return nil, RepurposeSDKProblem(err, "validation-failed")
 	}
@@ -154,6 +195,42 @@ func (authenticator *VpcInstanceAuthenticator) url() string {
 	return authenticator.URL
 }
 
+// serviceVersion returns the authenticator's ServiceVersion property after potentially initializing it.
+func (authenticator *VpcInstanceAuthenticator) serviceVersion() string {
+	authenticator.serviceVersionInit.Do(func() {
+		if authenticator.ServiceVersion == "" {
+			authenticator.ServiceVersion = vpcauthMetadataServiceVersion
+		}
+	})
+	return authenticator.ServiceVersion
+}
+
+// tokenLifetime returns the authenticator's TokenLifetime property after potentially initializing it.
+func (authenticator *VpcInstanceAuthenticator) tokenLifetime() int {
+	authenticator.tokenLifetimeInit.Do(func() {
+		if authenticator.TokenLifetime == 0 {
+			authenticator.TokenLifetime = vpcauthInstanceIdentityTokenLifetime
+		}
+	})
+	return authenticator.TokenLifetime
+}
+
+// getCreateAccessTokenPath returns the operation path for creating an access token based on the service version.
+func (authenticator *VpcInstanceAuthenticator) getCreateAccessTokenPath() string {
+	if authenticator.serviceVersion() == vpcauthMetadataServiceVersionV2 {
+		return vpcauthOperationPathCreateAccessTokenV2
+	}
+	return vpcauthOperationPathCreateAccessToken
+}
+
+// getCreateIamTokenPath returns the operation path for creating an IAM token based on the service version.
+func (authenticator *VpcInstanceAuthenticator) getCreateIamTokenPath() string {
+	if authenticator.serviceVersion() == vpcauthMetadataServiceVersionV2 {
+		return vpcauthOperationPathCreateIamTokenV2
+	}
+	return vpcauthOperationPathCreateIamToken
+}
+
 // newVpcInstanceAuthenticatorFromMap constructs a new VpcInstanceAuthenticator instance from a map containing
 // configuration properties.
 func newVpcInstanceAuthenticatorFromMap(properties map[string]string) (authenticator *VpcInstanceAuthenticator, err error) {
@@ -165,7 +242,9 @@ func newVpcInstanceAuthenticatorFromMap(properties map[string]string) (authentic
 	authenticator, err = NewVpcInstanceAuthenticatorBuilder().
 		SetIAMProfileCRN(properties[PROPNAME_IAM_PROFILE_CRN]).
 		SetIAMProfileID(properties[PROPNAME_IAM_PROFILE_ID]).
+		SetIAMProfileName(properties[PROPNAME_IAM_PROFILE_NAME]).
 		SetURL(properties[PROPNAME_AUTH_URL]).
+		SetServiceVersion(properties[PROPNAME_VPC_IMS_VERSION]).
 		Build()
 
 	return
@@ -210,13 +289,30 @@ func (authenticator *VpcInstanceAuthenticator) setTokenData(tokenData *iamTokenD
 
 // Validate the authenticator's configuration.
 //
-// Ensures that one of IAMProfileName or IAMProfileID are specified, and the ClientId and ClientSecret pair are
-// mutually inclusive.
+// Ensures that at most one of IAMProfileCRN, IAMProfileID, or IAMProfileName is specified.
 func (authenticator *VpcInstanceAuthenticator) Validate() error {
-	// Check to make sure that at most one of IAMProfileCRN or IAMProfileID are specified.
-	if authenticator.IAMProfileCRN != "" && authenticator.IAMProfileID != "" {
-		err := fmt.Errorf(ERRORMSG_ATMOST_ONE_PROP_ERROR, "IAMProfileCRN", "IAMProfileID")
+	// Check to make sure that at most one of IAMProfileCRN, IAMProfileID, or IAMProfileName are specified.
+	counter := 0
+	if authenticator.IAMProfileCRN != "" {
+		counter++
+	}
+	if authenticator.IAMProfileID != "" {
+		counter++
+	}
+	if authenticator.IAMProfileName != "" {
+		counter++
+	}
+	if counter > 1 {
+		err := fmt.Errorf(ERRORMSG_ATMOST_ONE_PROP_ERROR, "IAMProfileCRN", "IAMProfileID", "IAMProfileName")
 		return SDKErrorf(err, "", "both-props", getComponentInfo())
+	}
+
+	vpcauthMetadataServiceSupportedVersions := []string{vpcauthMetadataServiceVersion, vpcauthMetadataServiceVersionV2}
+	serviceVersion := authenticator.serviceVersion()
+
+	if !slices.Contains(vpcauthMetadataServiceSupportedVersions, serviceVersion) {
+		err := fmt.Errorf(ERRORMSG_INVALID_SERVICE_VERSION, strings.Join(vpcauthMetadataServiceSupportedVersions, ", "))
+		return SDKErrorf(err, "", "invalid-service-version", getComponentInfo())
 	}
 
 	return nil
@@ -328,21 +424,23 @@ type vpcTokenResponse struct {
 // compute resource's instance identity token for an IAM access token that can be used
 // to authenticate outbound REST requests targeting IAM-secured services.
 func (authenticator *VpcInstanceAuthenticator) retrieveIamAccessToken(
-	instanceIdentityToken string) (iamTokenResponse *IamTokenServerResponse, err error) {
+	instanceIdentityToken string,
+) (iamTokenResponse *IamTokenServerResponse, err error) {
 	// Set up the request for the VPC "create_iam_token" operation.
 	builder := NewRequestBuilder(POST)
-	_, err = builder.ResolveRequestURL(authenticator.url(), vpcauthOperationPathCreateIamToken, nil)
+	_, err = builder.ResolveRequestURL(authenticator.url(), authenticator.getCreateIamTokenPath(), nil)
 	if err != nil {
 		err = authenticationErrorf(err, &DetailedResponse{}, "noop", getComponentInfo())
 		return
 	}
 
 	// Set the params and request body.
-	builder.AddQuery("version", vpcauthMetadataServiceVersion)
+	builder.AddQuery("version", authenticator.serviceVersion())
 	builder.AddHeader(CONTENT_TYPE, APPLICATION_JSON)
 	builder.AddHeader(Accept, APPLICATION_JSON)
 	builder.AddHeader(headerNameUserAgent, authenticator.getUserAgent())
 	builder.AddHeader("Authorization", "Bearer "+instanceIdentityToken)
+	builder.AddHeader("Metadata-Flavor", vpcauthMetadataFlavor)
 
 	// Next, construct the optional request body to specify the linked IAM profile.
 	// We previously verified that at most one of IBMProfileCRN or IAMProfileID was specified by the user,
@@ -354,6 +452,9 @@ func (authenticator *VpcInstanceAuthenticator) retrieveIamAccessToken(
 	}
 	if authenticator.IAMProfileID != "" {
 		requestBody = fmt.Sprintf(`{"trusted_profile": {"id": "%s"}}`, authenticator.IAMProfileID)
+	}
+	if authenticator.IAMProfileName != "" {
+		requestBody = fmt.Sprintf(`{"trusted_profile": {"name": "%s"}}`, authenticator.IAMProfileName)
 	}
 	if requestBody != "" {
 		_, _ = builder.SetBodyContentString(requestBody)
@@ -434,19 +535,19 @@ func (authenticator *VpcInstanceAuthenticator) retrieveIamAccessToken(
 func (authenticator *VpcInstanceAuthenticator) retrieveInstanceIdentityToken() (instanceIdentityToken string, err error) {
 	// Set up the request to invoke the "create_access_token" operation.
 	builder := NewRequestBuilder(PUT)
-	_, err = builder.ResolveRequestURL(authenticator.url(), vpcauthOperationPathCreateAccessToken, nil)
+	_, err = builder.ResolveRequestURL(authenticator.url(), authenticator.getCreateAccessTokenPath(), nil)
 	if err != nil {
 		err = authenticationErrorf(err, &DetailedResponse{}, "noop", getComponentInfo())
 		return
 	}
 
 	// Set the params and request body.
-	builder.AddQuery("version", vpcauthMetadataServiceVersion)
+	builder.AddQuery("version", authenticator.serviceVersion())
 	builder.AddHeader(CONTENT_TYPE, APPLICATION_JSON)
 	builder.AddHeader(Accept, APPLICATION_JSON)
 	builder.AddHeader("Metadata-Flavor", vpcauthMetadataFlavor)
 
-	requestBody := fmt.Sprintf(`{"expires_in": %d}`, vpcauthInstanceIdentityTokenLifetime)
+	requestBody := fmt.Sprintf(`{"expires_in": %d}`, authenticator.tokenLifetime())
 	_, _ = builder.SetBodyContentString(requestBody)
 
 	// Build the request.

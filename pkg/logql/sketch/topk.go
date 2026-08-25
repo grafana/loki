@@ -36,9 +36,6 @@ type Topk struct {
 	bf                  [][]bool
 	hll                 *hyperloglog.Sketch
 	expectedCardinality int
-
-	// save on allocs when converting from string event name to byte slice for hll insertion
-	eventBytes []byte
 }
 
 // get the correct sketch width based on the expected cardinality of the set
@@ -210,7 +207,7 @@ func (t *Topk) updateBF(removed, added string) {
 }
 
 func unsafeGetBytes(s string) []byte {
-	return unsafe.Slice(unsafe.StringData(s), len(s)) // #nosec G103 -- we know the string is not mutated
+	return unsafe.Slice(unsafe.StringData(s), len(s)) // #nosec G103 -- we know the string is not mutated -- nosemgrep: use-of-unsafe-block
 }
 
 // Observe is our sketch event observation function, which is a bit more complex than the original count min sketch + heap TopK

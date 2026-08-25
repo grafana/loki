@@ -30,6 +30,13 @@ import (
 )
 
 func (w *Writer) transformColToStringArr(typ arrow.DataType, col arrow.Array, stringsReplacer func(string) string) []string {
+	if w.customTypeConverter != nil {
+		result, handled := w.customTypeConverter(typ, col)
+		if handled {
+			return result
+		}
+	}
+
 	res := make([]string, col.Len())
 	switch typ.(type) {
 	case *arrow.BooleanType:

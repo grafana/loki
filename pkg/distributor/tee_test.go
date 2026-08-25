@@ -1,6 +1,7 @@
 package distributor
 
 import (
+	"context"
 	"testing"
 
 	"github.com/stretchr/testify/mock"
@@ -12,11 +13,16 @@ type mockedTee struct {
 	mock.Mock
 }
 
-func (m *mockedTee) Duplicate(tenant string, streams []KeyedStream) {
-	m.Called(tenant, streams)
+func (m *mockedTee) Duplicate(ctx context.Context, tenant string, streams []KeyedStream, pushTracker *PushTracker) {
+	m.Called(ctx, tenant, streams, pushTracker)
+}
+
+func (m *mockedTee) Register(ctx context.Context, tenant string, streams []KeyedStream, pushTracker *PushTracker) {
+	m.Called(ctx, tenant, streams, pushTracker)
 }
 
 func TestWrapTee(t *testing.T) {
+	ctx := t.Context()
 	tee1 := new(mockedTee)
 	tee2 := new(mockedTee)
 	tee3 := new(mockedTee)
@@ -26,21 +32,25 @@ func TestWrapTee(t *testing.T) {
 			Stream:  push.Stream{},
 		},
 	}
-	tee1.On("Duplicate", "1", streams).Once()
-	tee1.On("Duplicate", "2", streams).Once()
-	tee2.On("Duplicate", "2", streams).Once()
-	tee1.On("Duplicate", "3", streams).Once()
-	tee2.On("Duplicate", "3", streams).Once()
-	tee3.On("Duplicate", "3", streams).Once()
+	pushTracker := &PushTracker{
+		done: make(chan struct{}, 1),
+		err:  make(chan error, 1),
+	}
+	tee1.On("Duplicate", ctx, "1", streams, pushTracker).Once()
+	tee1.On("Duplicate", ctx, "2", streams, pushTracker).Once()
+	tee2.On("Duplicate", ctx, "2", streams, pushTracker).Once()
+	tee1.On("Duplicate", ctx, "3", streams, pushTracker).Once()
+	tee2.On("Duplicate", ctx, "3", streams, pushTracker).Once()
+	tee3.On("Duplicate", ctx, "3", streams, pushTracker).Once()
 
 	wrappedTee := WrapTee(nil, tee1)
-	wrappedTee.Duplicate("1", streams)
+	wrappedTee.Duplicate(ctx, "1", streams, pushTracker)
 
 	wrappedTee = WrapTee(wrappedTee, tee2)
-	wrappedTee.Duplicate("2", streams)
+	wrappedTee.Duplicate(ctx, "2", streams, pushTracker)
 
 	wrappedTee = WrapTee(wrappedTee, tee3)
-	wrappedTee.Duplicate("3", streams)
+	wrappedTee.Duplicate(ctx, "3", streams, pushTracker)
 
 	tee1.AssertExpectations(t)
 	tee2.AssertExpectations(t)

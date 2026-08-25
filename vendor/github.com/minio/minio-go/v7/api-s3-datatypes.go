@@ -94,9 +94,15 @@ type Version struct {
 	StorageClass string
 	VersionID    string `xml:"VersionId"`
 
-	// x-amz-meta-* headers stripped "x-amz-meta-" prefix containing the first value.
-	// Only returned by MinIO servers.
+	// UserMetadata contains the exact stored object metadata: x-amz-meta-*
+	// entries with their prefixed keys plus system entries such as
+	// content-type. Only returned by MinIO servers.
 	UserMetadata StringMap `json:"userMetadata,omitempty"`
+
+	// UserMetadataStripped is UserMetadata in the keyed form StatObject and
+	// GetObject return in ObjectInfo.UserMetadata. See
+	// ObjectInfo.UserMetadataStripped.
+	UserMetadataStripped StringMap `json:"userMetadataStripped,omitempty" xml:"-"`
 
 	// x-amz-tagging values in their k/v values.
 	// Only returned by MinIO servers.
@@ -113,6 +119,12 @@ type Version struct {
 	ChecksumSHA1      string `xml:",omitempty"`
 	ChecksumSHA256    string `xml:",omitempty"`
 	ChecksumCRC64NVME string `xml:",omitempty"`
+	ChecksumMD5       string `xml:",omitempty"`
+	ChecksumSHA512    string `xml:",omitempty"`
+	ChecksumXXHash64  string `xml:"ChecksumXXHASH64,omitempty"`
+	ChecksumXXHash3   string `xml:"ChecksumXXHASH3,omitempty"`
+	ChecksumXXHash128 string `xml:"ChecksumXXHASH128,omitempty"`
+	ChecksumAlgorithm string `xml:",omitempty"`
 	ChecksumType      string `xml:",omitempty"`
 
 	isDeleteMarker bool
@@ -274,6 +286,32 @@ type initiator struct {
 type copyObjectResult struct {
 	ETag         string
 	LastModified time.Time // time string format "2006-01-02T15:04:05.000Z"
+
+	// Checksum values returned in CopyObjectResult / CopyPartResult.
+	ChecksumCRC32     string `xml:"ChecksumCRC32,omitempty"`
+	ChecksumCRC32C    string `xml:"ChecksumCRC32C,omitempty"`
+	ChecksumSHA1      string `xml:"ChecksumSHA1,omitempty"`
+	ChecksumSHA256    string `xml:"ChecksumSHA256,omitempty"`
+	ChecksumCRC64NVME string `xml:",omitempty"`
+	ChecksumMD5       string `xml:",omitempty"`
+	ChecksumSHA512    string `xml:",omitempty"`
+	ChecksumXXHash64  string `xml:"ChecksumXXHASH64,omitempty"`
+	ChecksumXXHash3   string `xml:"ChecksumXXHASH3,omitempty"`
+	ChecksumXXHash128 string `xml:"ChecksumXXHASH128,omitempty"`
+}
+
+// setChecksums copies the copied part's checksums onto a CompletePart.
+func (r *copyObjectResult) setChecksums(p *CompletePart) {
+	p.ChecksumCRC32 = r.ChecksumCRC32
+	p.ChecksumCRC32C = r.ChecksumCRC32C
+	p.ChecksumSHA1 = r.ChecksumSHA1
+	p.ChecksumSHA256 = r.ChecksumSHA256
+	p.ChecksumCRC64NVME = r.ChecksumCRC64NVME
+	p.ChecksumMD5 = r.ChecksumMD5
+	p.ChecksumSHA512 = r.ChecksumSHA512
+	p.ChecksumXXHash64 = r.ChecksumXXHash64
+	p.ChecksumXXHash3 = r.ChecksumXXHash3
+	p.ChecksumXXHash128 = r.ChecksumXXHash128
 }
 
 // ObjectPart container for particular part of an object.
@@ -297,6 +335,11 @@ type ObjectPart struct {
 	ChecksumSHA1      string
 	ChecksumSHA256    string
 	ChecksumCRC64NVME string
+	ChecksumMD5       string
+	ChecksumSHA512    string
+	ChecksumXXHash64  string `xml:"ChecksumXXHASH64,omitempty"`
+	ChecksumXXHash3   string `xml:"ChecksumXXHASH3,omitempty"`
+	ChecksumXXHash128 string `xml:"ChecksumXXHASH128,omitempty"`
 }
 
 // Checksum will return the checksum for the given type.
@@ -313,6 +356,16 @@ func (c ObjectPart) Checksum(t ChecksumType) string {
 		return c.ChecksumSHA256
 	case t.Is(ChecksumCRC64NVME):
 		return c.ChecksumCRC64NVME
+	case t.Is(ChecksumMD5):
+		return c.ChecksumMD5
+	case t.Is(ChecksumSHA512):
+		return c.ChecksumSHA512
+	case t.Is(ChecksumXXHash64):
+		return c.ChecksumXXHash64
+	case t.Is(ChecksumXXHash3):
+		return c.ChecksumXXHash3
+	case t.Is(ChecksumXXHash128):
+		return c.ChecksumXXHash128
 	}
 	return ""
 }
@@ -382,6 +435,11 @@ type completeMultipartUploadResult struct {
 	ChecksumSHA1      string
 	ChecksumSHA256    string
 	ChecksumCRC64NVME string
+	ChecksumMD5       string
+	ChecksumSHA512    string
+	ChecksumXXHash64  string `xml:"ChecksumXXHASH64"`
+	ChecksumXXHash3   string `xml:"ChecksumXXHASH3"`
+	ChecksumXXHash128 string `xml:"ChecksumXXHASH128"`
 	ChecksumType      string
 }
 
@@ -398,6 +456,11 @@ type CompletePart struct {
 	ChecksumSHA1      string `xml:"ChecksumSHA1,omitempty"`
 	ChecksumSHA256    string `xml:"ChecksumSHA256,omitempty"`
 	ChecksumCRC64NVME string `xml:",omitempty"`
+	ChecksumMD5       string `xml:",omitempty"`
+	ChecksumSHA512    string `xml:",omitempty"`
+	ChecksumXXHash64  string `xml:"ChecksumXXHASH64,omitempty"`
+	ChecksumXXHash3   string `xml:"ChecksumXXHASH3,omitempty"`
+	ChecksumXXHash128 string `xml:"ChecksumXXHASH128,omitempty"`
 }
 
 // Checksum will return the checksum for the given type.
@@ -414,6 +477,16 @@ func (c CompletePart) Checksum(t ChecksumType) string {
 		return c.ChecksumSHA256
 	case t.Is(ChecksumCRC64NVME):
 		return c.ChecksumCRC64NVME
+	case t.Is(ChecksumMD5):
+		return c.ChecksumMD5
+	case t.Is(ChecksumSHA512):
+		return c.ChecksumSHA512
+	case t.Is(ChecksumXXHash64):
+		return c.ChecksumXXHash64
+	case t.Is(ChecksumXXHash3):
+		return c.ChecksumXXHash3
+	case t.Is(ChecksumXXHash128):
+		return c.ChecksumXXHash128
 	}
 	return ""
 }

@@ -55,7 +55,8 @@ func MergeFields(
 	fields []*logproto.DetectedField,
 	limit uint32,
 ) ([]*logproto.DetectedField, error) {
-	mergedFields := make(map[string]*UnmarshaledDetectedField, limit)
+	const maxMergedFieldsPreAlloc = 1000
+	mergedFields := make(map[string]*UnmarshaledDetectedField, min(maxMergedFieldsPreAlloc, limit))
 	foundFields := uint32(0)
 
 	for _, field := range fields {
@@ -86,7 +87,7 @@ func MergeFields(
 		}
 	}
 
-	result := make([]*logproto.DetectedField, 0, limit)
+	result := make([]*logproto.DetectedField, 0, len(mergedFields))
 	for _, field := range mergedFields {
 		detectedField := &logproto.DetectedField{
 			Label:       field.Label,
@@ -105,7 +106,8 @@ func MergeValues(
 	values []string,
 	limit uint32,
 ) ([]string, error) {
-	mergedValues := make(map[string]struct{}, limit)
+	const maxMergedValuesPreAlloc = 1000
+	mergedValues := make(map[string]struct{}, min(maxMergedValuesPreAlloc, limit))
 
 	for _, value := range values {
 		if value == "" {
@@ -119,7 +121,7 @@ func MergeValues(
 		mergedValues[value] = struct{}{}
 	}
 
-	result := make([]string, 0, limit)
+	result := make([]string, 0, len(mergedValues))
 	for value := range mergedValues {
 		result = append(result, value)
 	}

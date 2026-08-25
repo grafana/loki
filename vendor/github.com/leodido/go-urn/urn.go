@@ -8,7 +8,7 @@ import (
 
 const errInvalidURN = "invalid URN: %s"
 
-// URN represents an Uniform Resource Name.
+// URN represents a Uniform Resource Name.
 //
 // The general form represented is:
 //
@@ -32,7 +32,7 @@ type URN struct {
 
 // Normalize turns the receiving URN into its norm version.
 //
-// Which means: lowercase prefix, lowercase namespace identifier, and immutate namespace specific string chars (except <hex> tokens which are lowercased).
+// Which means: lowercase prefix, lowercase namespace identifier, and leave namespace-specific string chars unchanged (except <hex> tokens which are lowercased).
 func (u *URN) Normalize() *URN {
 	return &URN{
 		prefix: "urn",
@@ -82,10 +82,10 @@ func (u *URN) String() string {
 	return res
 }
 
-// Parse is responsible to create an URN instance from a byte array matching the correct URN syntax (RFC 2141).
+// Parse is responsible for creating a URN instance from a byte array matching the correct URN syntax (RFC 2141).
 func Parse(u []byte, options ...Option) (*URN, bool) {
 	urn, err := NewMachine(options...).Parse(u)
-	if err != nil {
+	if err != nil || urn == nil {
 		return nil, false
 	}
 

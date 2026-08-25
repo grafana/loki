@@ -44,9 +44,9 @@ func (e *Encoder) Encode(w io.Writer, m image.Image) error {
 				r, g, b, a := m.At(x, y).RGBA()
 				switch e.Format {
 				case RGBA:
-					w.Write([]byte{byte(r >> 8), byte(g >> 8), byte(b >> 8), byte(a >> 8)}) //nolint:errcheck
+					w.Write([]byte{byte(r >> 8), byte(g >> 8), byte(b >> 8), byte(a >> 8)}) //nolint:errcheck,gosec
 				case RGB:
-					w.Write([]byte{byte(r >> 8), byte(g >> 8), byte(b >> 8)}) //nolint:errcheck
+					w.Write([]byte{byte(r >> 8), byte(g >> 8), byte(b >> 8)}) //nolint:errcheck,gosec
 				}
 			}
 		}

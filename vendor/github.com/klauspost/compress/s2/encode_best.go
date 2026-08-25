@@ -23,12 +23,12 @@ func encodeBlockBest(dst, src []byte, dict *Dict) (d int) {
 	// Initialize the hash tables.
 	const (
 		// Long hash matches.
-		lTableBits    = 19
-		maxLTableSize = 1 << lTableBits
+		lTableBits    = bestLongTableBits
+		maxLTableSize = bestLongTableSize
 
 		// Short hash matches.
-		sTableBits    = 16
-		maxSTableSize = 1 << sTableBits
+		sTableBits    = bestShortTableBits
+		maxSTableSize = bestShortTableSize
 
 		inputMargin = 8 + 2
 
@@ -42,13 +42,12 @@ func encodeBlockBest(dst, src []byte, dict *Dict) (d int) {
 	if len(src) < minNonLiteralBlockSize {
 		return 0
 	}
-	sLimitDict := len(src) - inputMargin
-	if sLimitDict > MaxDictSrcOffset-inputMargin {
-		sLimitDict = MaxDictSrcOffset - inputMargin
-	}
+	sLimitDict := min(len(src)-inputMargin, MaxDictSrcOffset-inputMargin)
 
-	var lTable [maxLTableSize]uint64
-	var sTable [maxSTableSize]uint64
+	tbl := getBestTables()
+	lTable := &tbl.lTable
+	sTable := &tbl.sTable
+	defer bestTablePool.Put(tbl)
 
 	// Bail if we can't compress to at least this.
 	dstLimit := len(src) - 5
@@ -459,12 +458,12 @@ func encodeBlockBestSnappy(dst, src []byte) (d int) {
 	// Initialize the hash tables.
 	const (
 		// Long hash matches.
-		lTableBits    = 19
-		maxLTableSize = 1 << lTableBits
+		lTableBits    = bestLongTableBits
+		maxLTableSize = bestLongTableSize
 
 		// Short hash matches.
-		sTableBits    = 16
-		maxSTableSize = 1 << sTableBits
+		sTableBits    = bestShortTableBits
+		maxSTableSize = bestShortTableSize
 
 		inputMargin = 8 + 2
 	)
@@ -477,8 +476,10 @@ func encodeBlockBestSnappy(dst, src []byte) (d int) {
 		return 0
 	}
 
-	var lTable [maxLTableSize]uint64
-	var sTable [maxSTableSize]uint64
+	tbl := getBestTables()
+	lTable := &tbl.lTable
+	sTable := &tbl.sTable
+	defer bestTablePool.Put(tbl)
 
 	// Bail if we can't compress to at least this.
 	dstLimit := len(src) - 5

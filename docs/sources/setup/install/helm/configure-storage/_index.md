@@ -14,27 +14,59 @@ keywords:
 
 # Configure storage
 
-The [scalable](../install-scalable/) installation requires a managed object store such as AWS S3 or Google Cloud Storage or a self-hosted store such as Minio. The [single binary](../install-monolithic/) installation can use the filesystem for storage, but we recommend configuring object storage via cloud provider or pointing Loki at a MinIO cluster for production deployments.
+The [scalable](https://grafana.com/docs/loki/<LOKI_VERSION>/setup/install/helm/install-scalable/) installation requires a managed object store such as AWS S3 or Google Cloud Storage or a self-hosted store such as Minio. The [single binary](https://grafana.com/docs/loki/<LOKI_VERSION>/setup/install/helm/install-monolithic/) installation can use the filesystem for storage, but we recommend configuring object storage via cloud provider or pointing Loki at a MinIO cluster for production deployments.
 
-This guide assumes Loki will be installed in one of the modes above and that a `values.yaml ` has been created.
+This guide assumes Loki will be installed in one of the modes above and that a `values.yaml` has been created.
 
 **To use a managed object store:**
 
-1. In the `values.yaml` file, set the value for `storage.type` to `azure`, `gcs`, or `s3`.
+1. In the `values.yaml` file, set `loki.storage.type` to `azure`, `gcs`, or `s3`.
 
 1. Configure the storage client under `loki.storage.azure`, `loki.storage.gcs`, or `loki.storage.s3`.
 
+1. Set `loki.storage.bucketNames.chunks` and `loki.storage.bucketNames.ruler` to your bucket or container names.
+
+These values configure the legacy storage clients, which are deprecated. To use the Thanos-based clients instead, refer to the following section.
 
 **To install Minio alongside Loki:**
+
+{{< admonition type="warning" >}}
+The built-in MinIO subchart is deprecated and will be removed on 2026-10-31. Setting `minio.enabled=true` fails chart rendering with v17+ unless `ignoreMinioDeprecation: true` is also set. Grafana recommends configuring a dedicated external object storage backend instead of using the built-in MinIO subchart for new deployments.
+{{< /admonition >}}
 
 1. Change the configuration in `values.yaml`:
 
     - Enable Minio
 
     ```yaml
+    ignoreMinioDeprecation: true  # Temporary workaround – MinIO will be removed 2026-10-31
     minio:
       enabled: true
     ```
+
+**To use Thanos object store clients:**
+
+Loki 4.0 uses object storage clients based on the [Thanos Object Storage Client Go module](https://github.com/thanos-io/objstore) by default, and the legacy storage clients are deprecated. The Helm chart is an exception, because it sets `loki.storage.use_thanos_objstore` to `false`. To use the Thanos-based clients with the chart, you must set this value to `true` yourself.
+
+To convert an existing storage configuration to the new format, refer to [Migrate to Thanos storage clients](https://grafana.com/docs/loki/<LOKI_VERSION>/setup/migrate/migrate-storage-clients/).
+
+1. Enable the Thanos-based clients in `values.yaml`:
+
+   ```yaml
+   loki:
+     storage:
+       use_thanos_objstore: true
+       bucketNames:
+         chunks: <YOUR_CHUNKS_BUCKET>
+         ruler: <YOUR_RULER_BUCKET>
+       object_store:
+         type: s3  # Valid options: s3, gcs, azure
+         s3:
+           endpoint: <YOUR_ENDPOINT>
+           region: <YOUR_REGION>
+   ```
+
+1. Configure the storage client under `loki.storage.object_store.s3`, `loki.storage.object_store.gcs`, or `loki.storage.object_store.azure`.
 
 **To grant access to S3 via an IAM role without providing credentials:**
 
@@ -43,7 +75,7 @@ This guide assumes Loki will be installed in one of the modes above and that a `
 
 1. Add the IAM role annotation to the service account in `values.yaml`:
 
-   ```
+   ```yaml
    serviceAccount:
      annotations:
        "eks.amazonaws.com/role-arn": "arn:aws:iam::<account id>:role/<role name>"
@@ -51,7 +83,7 @@ This guide assumes Loki will be installed in one of the modes above and that a `
 
 1. Configure the storage:
 
-   ```
+   ```yaml
    loki:
      storage:
        type: "s3"
@@ -60,7 +92,7 @@ This guide assumes Loki will be installed in one of the modes above and that a `
        bucketNames:
          chunks: <bucket name>
          ruler: <bucket name>
-         admin: <bucket name>
+         admin: <bucket name>  #only needed for GEL installations
    ```
 
    Note that `endpoint`, `secretAccessKey` and `accessKeyId` have been omitted.

@@ -10,6 +10,7 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/require"
 
+	"github.com/grafana/loki/v3/pkg/compactor/deletion/deletionproto"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client/local"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/storage"
 )
@@ -49,11 +50,11 @@ func TestDeleteRequestsStoreBoltDB(t *testing.T) {
 	compareRequests(t, append(tc.user1Requests, tc.user2Requests...), deleteRequests)
 
 	// get user specific requests and see if they have expected values
-	user1Requests, err := tc.store.GetAllDeleteRequestsForUser(context.Background(), user1, false)
+	user1Requests, err := tc.store.GetAllDeleteRequestsForUser(context.Background(), user1, false, nil)
 	require.NoError(t, err)
 	compareRequests(t, tc.user1Requests, user1Requests)
 
-	user2Requests, err := tc.store.GetAllDeleteRequestsForUser(context.Background(), user2, false)
+	user2Requests, err := tc.store.GetAllDeleteRequestsForUser(context.Background(), user2, false, nil)
 	require.NoError(t, err)
 	compareRequests(t, tc.user2Requests, user2Requests)
 
@@ -78,12 +79,12 @@ func TestDeleteRequestsStoreBoltDB(t *testing.T) {
 
 	// update some of the delete requests for both the users to processed
 	for i := 0; i < len(tc.user1Requests); i++ {
-		var request DeleteRequest
+		var request deletionproto.DeleteRequest
 		if i%2 != 0 {
-			tc.user1Requests[i].Status = StatusProcessed
+			tc.user1Requests[i].Status = deletionproto.StatusProcessed
 			request = tc.user1Requests[i]
 		} else {
-			tc.user2Requests[i].Status = StatusProcessed
+			tc.user2Requests[i].Status = deletionproto.StatusProcessed
 			request = tc.user2Requests[i]
 		}
 
@@ -91,11 +92,11 @@ func TestDeleteRequestsStoreBoltDB(t *testing.T) {
 	}
 
 	// see if requests in the store have right values
-	user1Requests, err = tc.store.GetAllDeleteRequestsForUser(context.Background(), user1, false)
+	user1Requests, err = tc.store.GetAllDeleteRequestsForUser(context.Background(), user1, false, nil)
 	require.NoError(t, err)
 	compareRequests(t, tc.user1Requests, user1Requests)
 
-	user2Requests, err = tc.store.GetAllDeleteRequestsForUser(context.Background(), user2, false)
+	user2Requests, err = tc.store.GetAllDeleteRequestsForUser(context.Background(), user2, false, nil)
 	require.NoError(t, err)
 	compareRequests(t, tc.user2Requests, user2Requests)
 
@@ -109,15 +110,15 @@ func TestDeleteRequestsStoreBoltDB(t *testing.T) {
 	require.Equal(t, createGenNumber2, updateGenNumber2)
 
 	// delete the requests from the store updated previously
-	var remainingRequests []DeleteRequest
+	var remainingRequests []deletionproto.DeleteRequest
 	for i := 0; i < len(tc.user1Requests); i++ {
-		var request DeleteRequest
+		var request deletionproto.DeleteRequest
 		if i%2 != 0 {
-			tc.user1Requests[i].Status = StatusProcessed
+			tc.user1Requests[i].Status = deletionproto.StatusProcessed
 			request = tc.user1Requests[i]
 			remainingRequests = append(remainingRequests, tc.user2Requests[i])
 		} else {
-			tc.user2Requests[i].Status = StatusProcessed
+			tc.user2Requests[i].Status = deletionproto.StatusProcessed
 			request = tc.user2Requests[i]
 			remainingRequests = append(remainingRequests, tc.user1Requests[i])
 		}
@@ -180,7 +181,7 @@ func TestBatchCreateGetBoltDB(t *testing.T) {
 		results, err := tc.store.(*deleteRequestsStoreBoltDB).getDeleteRequestGroup(context.Background(), savedRequests[0].UserID, savedRequests[0].RequestID)
 		require.NoError(t, err)
 
-		require.Equal(t, StatusProcessed, results[1].Status)
+		require.Equal(t, deletionproto.StatusProcessed, results[1].Status)
 	})
 
 	t.Run("deletes several delete requests", func(t *testing.T) {
@@ -203,7 +204,7 @@ func TestDeleteRequestsStore_MergeShardedRequests(t *testing.T) {
 	for _, tc := range []struct {
 		name                   string
 		reqsToAdd              []storeAddReqDetails
-		shouldMarkProcessed    func(DeleteRequest) bool
+		shouldMarkProcessed    func(request deletionproto.DeleteRequest) bool
 		requestsShouldBeMerged bool
 	}{
 		{
@@ -220,7 +221,7 @@ func TestDeleteRequestsStore_MergeShardedRequests(t *testing.T) {
 					shardByInterval: time.Hour,
 				},
 			},
-			shouldMarkProcessed: func(_ DeleteRequest) bool {
+			shouldMarkProcessed: func(_ deletionproto.DeleteRequest) bool {
 				return false
 			},
 		},
@@ -235,7 +236,7 @@ func TestDeleteRequestsStore_MergeShardedRequests(t *testing.T) {
 					shardByInterval: time.Hour,
 				},
 			},
-			shouldMarkProcessed: func(request DeleteRequest) bool {
+			shouldMarkProcessed: func(request deletionproto.DeleteRequest) bool {
 				return request.SequenceNum%2 == 0
 			},
 		},
@@ -250,7 +251,7 @@ func TestDeleteRequestsStore_MergeShardedRequests(t *testing.T) {
 					shardByInterval: time.Hour,
 				},
 			},
-			shouldMarkProcessed: func(_ DeleteRequest) bool {
+			shouldMarkProcessed: func(_ deletionproto.DeleteRequest) bool {
 				return true
 			},
 			requestsShouldBeMerged: true,
@@ -273,7 +274,7 @@ func TestDeleteRequestsStore_MergeShardedRequests(t *testing.T) {
 					shardByInterval: time.Hour,
 				},
 			},
-			shouldMarkProcessed: func(request DeleteRequest) bool {
+			shouldMarkProcessed: func(request deletionproto.DeleteRequest) bool {
 				return request.UserID == user2
 			},
 		},
@@ -306,22 +307,22 @@ func TestDeleteRequestsStore_MergeShardedRequests(t *testing.T) {
 				require.NoError(t, ds.MarkShardAsProcessed(context.Background(), req))
 			}
 
-			inStoreReqs, err := ds.GetAllDeleteRequestsForUser(context.Background(), user1, false)
+			inStoreReqs, err := ds.GetAllDeleteRequestsForUser(context.Background(), user1, false, nil)
 			require.NoError(t, err)
 
 			require.NoError(t, ds.MergeShardedRequests(context.Background()))
-			inStoreReqsAfterMerging, err := ds.GetAllDeleteRequestsForUser(context.Background(), user1, false)
+			inStoreReqsAfterMerging, err := ds.GetAllDeleteRequestsForUser(context.Background(), user1, false, nil)
 			require.NoError(t, err)
 
 			if tc.requestsShouldBeMerged {
 				require.Len(t, inStoreReqsAfterMerging, 1)
-				require.True(t, requestsAreEqual(inStoreReqsAfterMerging[0], DeleteRequest{
+				require.True(t, requestsAreEqual(inStoreReqsAfterMerging[0], deletionproto.DeleteRequest{
 					RequestID: inStoreReqs[0].RequestID,
 					UserID:    user1,
 					Query:     tc.reqsToAdd[0].query,
 					StartTime: tc.reqsToAdd[0].startTime,
 					EndTime:   tc.reqsToAdd[len(tc.reqsToAdd)-1].endTime,
-					Status:    StatusProcessed,
+					Status:    deletionproto.StatusProcessed,
 				}))
 			} else {
 				require.Len(t, inStoreReqsAfterMerging, len(inStoreReqs))
@@ -331,7 +332,7 @@ func TestDeleteRequestsStore_MergeShardedRequests(t *testing.T) {
 	}
 }
 
-func compareRequests(t *testing.T, expected []DeleteRequest, actual []DeleteRequest) {
+func compareRequests(t *testing.T, expected []deletionproto.DeleteRequest, actual []deletionproto.DeleteRequest) {
 	require.Len(t, actual, len(expected))
 	sort.Slice(expected, func(i, j int) bool {
 		return expected[i].RequestID < expected[j].RequestID
@@ -342,4 +343,91 @@ func compareRequests(t *testing.T, expected []DeleteRequest, actual []DeleteRequ
 	for i, deleteRequest := range actual {
 		require.True(t, requestsAreEqual(expected[i], deleteRequest))
 	}
+}
+
+func TestGetAllDeleteRequestsForUser_ExactMatch(t *testing.T) {
+	tc := setupStoreType(t, DeleteRequestsStoreDBTypeBoltDB)
+	defer tc.store.Stop()
+
+	// add a delete request for user1
+	resp, err := tc.store.AddDeleteRequest(
+		context.Background(),
+		user1,
+		`{foo="bar"}`,
+		now.Add(-24*time.Hour),
+		now,
+		0,
+	)
+	require.NoError(t, err)
+
+	// add another delete request for a user with a similar prefix
+	resp2, err := tc.store.AddDeleteRequest(
+		context.Background(),
+		user123,
+		`{foo="bar"}`,
+		now.Add(-24*time.Hour),
+		now,
+		0,
+	)
+	require.NoError(t, err)
+
+	// fetch delete requests for "user1"
+	deleteRequests, err := tc.store.GetAllDeleteRequestsForUser(context.Background(), "user1", false, nil)
+	require.NoError(t, err)
+
+	// ensure only the request for "user1" is returned
+	require.Len(t, deleteRequests, 1)
+	require.Equal(t, "user1", deleteRequests[0].UserID)
+	require.Equal(t, resp, deleteRequests[0].RequestID)
+
+	// fetch delete requests for "user123"
+	deleteRequests, err = tc.store.GetAllDeleteRequestsForUser(context.Background(), "user123", false, nil)
+	require.NoError(t, err)
+
+	// ensure only the request for "user123" is returned
+	require.Len(t, deleteRequests, 1)
+	require.Equal(t, "user123", deleteRequests[0].UserID)
+	require.Equal(t, resp2, deleteRequests[0].RequestID)
+}
+
+func TestDeleteRequestsStoreBoltDB_TimeRangeFiltering(t *testing.T) {
+	tc := setupStoreType(t, DeleteRequestsStoreDBTypeBoltDB)
+	defer tc.store.Stop()
+
+	// add requests for user1 to the store
+	for i := 0; i < len(tc.user1Requests); i++ {
+		resp, err := tc.store.AddDeleteRequest(
+			context.Background(),
+			tc.user1Requests[i].UserID,
+			tc.user1Requests[i].Query,
+			tc.user1Requests[i].StartTime,
+			tc.user1Requests[i].EndTime,
+			0,
+		)
+		require.NoError(t, err)
+		tc.user1Requests[i].RequestID = resp
+	}
+
+	// Test time range filtering: query range should pick fully overlapping reqs, 1 left overlap, 1 right overlap
+	// Query range: -3.25h to -0.5h
+	// Should match:
+	//   - Request at -3h (index 2): left overlap
+	//   - Request at -2h (index 1): fully overlapping
+	//   - Request at -1h (index 0): right overlap
+	timeRange := &TimeRange{
+		Start: now.Add(-3*time.Hour - 15*time.Minute),
+		End:   now.Add(-30 * time.Minute),
+	}
+
+	requests, err := tc.store.GetAllDeleteRequestsForUser(context.Background(), user1, false, timeRange)
+	require.NoError(t, err)
+
+	require.Len(t, requests, 3)
+	requestIDs := make(map[string]bool)
+	for _, req := range requests {
+		requestIDs[req.RequestID] = true
+	}
+	require.True(t, requestIDs[tc.user1Requests[2].RequestID]) // -3h request
+	require.True(t, requestIDs[tc.user1Requests[1].RequestID]) // -2h request
+	require.True(t, requestIDs[tc.user1Requests[0].RequestID]) // -1h request
 }

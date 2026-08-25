@@ -10,7 +10,7 @@ import (
 
 	"github.com/prometheus/prometheus/model/rulefmt"
 	log "github.com/sirupsen/logrus"
-	yaml "gopkg.in/yaml.v3"
+	yaml "go.yaml.in/yaml/v3"
 
 	"github.com/grafana/loki/v3/pkg/ruler"
 )

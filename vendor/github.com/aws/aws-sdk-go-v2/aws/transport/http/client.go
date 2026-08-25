@@ -2,6 +2,7 @@ package http
 
 import (
 	"context"
+	"crypto/fips140"
 	"crypto/tls"
 	"net"
 	"net/http"
@@ -18,6 +19,7 @@ var (
 	// Default connection pool options
 	DefaultHTTPTransportMaxIdleConns        = 100
 	DefaultHTTPTransportMaxIdleConnsPerHost = 10
+	DefaultHTTPTransportMaxConnsPerHost     = 2048
 
 	// Default connection timeouts
 	DefaultHTTPTransportIdleConnTimeout       = 90 * time.Second
@@ -26,6 +28,19 @@ var (
 
 	// Default to TLS 1.2 for all HTTPS requests.
 	DefaultHTTPTransportTLSMinVersion uint16 = tls.VersionTLS12
+
+	// DefaultHTTPTransportTLSCurvePreferencesFIPS is the elliptic curve preference
+	// list applied to the default transport when the FIPS 140-3 module is active.
+	//
+	// Go's default preferences lead with X25519, which crypto/ecdh rejects under
+	// GODEBUG=fips140=only, failing every TLS handshake the SDK attempts. Only the
+	// NIST curves are FIPS-approved, so restricting to them keeps the default
+	// client usable in FIPS deployments.
+	DefaultHTTPTransportTLSCurvePreferencesFIPS = []tls.CurveID{
+		tls.CurveP256,
+		tls.CurveP384,
+		tls.CurveP521,
+	}
 )
 
 // Timeouts for net.Dialer's network connection.
@@ -177,6 +192,16 @@ func defaultDialer() *net.Dialer {
 	}
 }
 
+// defaultTLSCurvePreferences returns the curve preferences for the default
+// transport. Outside FIPS mode it returns nil so Go's own defaults apply,
+// preserving X25519 and the post-quantum X25519MLKEM768 hybrid.
+func defaultTLSCurvePreferences(fipsEnabled bool) []tls.CurveID {
+	if !fipsEnabled {
+		return nil
+	}
+	return DefaultHTTPTransportTLSCurvePreferencesFIPS
+}
+
 func defaultHTTPTransport() *http.Transport {
 	dialer := defaultDialer()
 
@@ -186,11 +211,13 @@ func defaultHTTPTransport() *http.Transport {
 		TLSHandshakeTimeout:   DefaultHTTPTransportTLSHandleshakeTimeout,
 		MaxIdleConns:          DefaultHTTPTransportMaxIdleConns,
 		MaxIdleConnsPerHost:   DefaultHTTPTransportMaxIdleConnsPerHost,
+		MaxConnsPerHost:       DefaultHTTPTransportMaxConnsPerHost,
 		IdleConnTimeout:       DefaultHTTPTransportIdleConnTimeout,
 		ExpectContinueTimeout: DefaultHTTPTransportExpectContinueTimeout,
 		ForceAttemptHTTP2:     true,
 		TLSClientConfig: &tls.Config{
-			MinVersion: DefaultHTTPTransportTLSMinVersion,
+			MinVersion:       DefaultHTTPTransportTLSMinVersion,
+			CurvePreferences: defaultTLSCurvePreferences(fips140.Enabled()),
 		},
 	}
 
@@ -298,6 +325,17 @@ func limitedRedirect(r *http.Request, via []*http.Request) error {
 	switch resp.StatusCode {
 	case 307, 308:
 		// Only allow 307 and 308 redirects as they preserve the method.
+
+		// If redirecting to a different host, remove X-Amz-Security-Token header
+		// to prevent credentials from being sent to a different host, similar to
+		// how Authorization header is handled by the HTTP client.
+		if len(via) > 0 {
+			lastRequest := via[len(via)-1]
+			if lastRequest.URL.Host != r.URL.Host {
+				r.Header.Del("X-Amz-Security-Token")
+			}
+		}
+
 		return nil
 	}
 

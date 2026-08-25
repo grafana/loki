@@ -5,6 +5,7 @@ import (
 	"crypto/x509"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"os"
 	"sync"
@@ -13,18 +14,17 @@ import (
 	"github.com/go-jose/go-jose/v4"
 	"github.com/spiffe/go-spiffe/v2/bundle/jwtbundle"
 	"github.com/spiffe/go-spiffe/v2/bundle/x509bundle"
+	"github.com/spiffe/go-spiffe/v2/exp/bundle/witbundle"
 	"github.com/spiffe/go-spiffe/v2/internal/jwtutil"
 	"github.com/spiffe/go-spiffe/v2/internal/x509util"
 	"github.com/spiffe/go-spiffe/v2/spiffeid"
-	"github.com/zeebo/errs"
 )
 
 const (
 	x509SVIDUse = "x509-svid"
 	jwtSVIDUse  = "jwt-svid"
+	witSVIDUse  = "wit-svid"
 )
-
-var spiffebundleErr = errs.Class("spiffebundle")
 
 type bundleDoc struct {
 	jose.JSONWebKeySet
@@ -43,6 +43,7 @@ type Bundle struct {
 	refreshHint     *time.Duration
 	sequenceNumber  *uint64
 	jwtAuthorities  map[string]crypto.PublicKey
+	witAuthorities  map[string]crypto.PublicKey
 	x509Authorities []*x509.Certificate
 }
 
@@ -51,6 +52,7 @@ func New(trustDomain spiffeid.TrustDomain) *Bundle {
 	return &Bundle{
 		trustDomain:    trustDomain,
 		jwtAuthorities: make(map[string]crypto.PublicKey),
+		witAuthorities: make(map[string]crypto.PublicKey),
 	}
 }
 
@@ -59,7 +61,7 @@ func New(trustDomain spiffeid.TrustDomain) *Bundle {
 func Load(trustDomain spiffeid.TrustDomain, path string) (*Bundle, error) {
 	bundleBytes, err := os.ReadFile(path)
 	if err != nil {
-		return nil, spiffebundleErr.New("unable to read SPIFFE bundle: %w", err)
+		return nil, wrapSpiffebundleErr(fmt.Errorf("unable to read SPIFFE bundle: %w", err))
 	}
 
 	return Parse(trustDomain, bundleBytes)
@@ -70,7 +72,7 @@ func Load(trustDomain spiffeid.TrustDomain, path string) (*Bundle, error) {
 func Read(trustDomain spiffeid.TrustDomain, r io.Reader) (*Bundle, error) {
 	b, err := io.ReadAll(r)
 	if err != nil {
-		return nil, spiffebundleErr.New("unable to read: %v", err)
+		return nil, wrapSpiffebundleErr(fmt.Errorf("unable to read: %v", err))
 	}
 
 	return Parse(trustDomain, b)
@@ -81,7 +83,7 @@ func Read(trustDomain spiffeid.TrustDomain, r io.Reader) (*Bundle, error) {
 func Parse(trustDomain spiffeid.TrustDomain, bundleBytes []byte) (*Bundle, error) {
 	jwks := &bundleDoc{}
 	if err := json.Unmarshal(bundleBytes, jwks); err != nil {
-		return nil, spiffebundleErr.New("unable to parse JWKS: %v", err)
+		return nil, wrapSpiffebundleErr(fmt.Errorf("unable to parse JWKS: %v", err))
 	}
 
 	bundle := New(trustDomain)
@@ -95,19 +97,23 @@ func Parse(trustDomain spiffeid.TrustDomain, bundleBytes []byte) (*Bundle, error
 	if jwks.Keys == nil {
 		// The parameter keys MUST be present.
 		// https://github.com/spiffe/spiffe/blob/main/standards/SPIFFE_Trust_Domain_and_Bundle.md#413-keys
-		return nil, spiffebundleErr.New("no authorities found")
+		return nil, wrapSpiffebundleErr(errors.New("no authorities found"))
 	}
 	for i, key := range jwks.Keys {
 		switch key.Use {
 		// Two SVID types are supported: x509-svid and jwt-svid.
 		case x509SVIDUse:
 			if len(key.Certificates) != 1 {
-				return nil, spiffebundleErr.New("expected a single certificate in %s entry %d; got %d", x509SVIDUse, i, len(key.Certificates))
+				return nil, wrapSpiffebundleErr(fmt.Errorf("expected a single certificate in %s entry %d; got %d", x509SVIDUse, i, len(key.Certificates)))
 			}
 			bundle.AddX509Authority(key.Certificates[0])
 		case jwtSVIDUse:
 			if err := bundle.AddJWTAuthority(key.KeyID, key.Key); err != nil {
-				return nil, spiffebundleErr.New("error adding authority %d of JWKS: %v", i, errors.Unwrap(err))
+				return nil, wrapSpiffebundleErr(fmt.Errorf("error adding authority %d of JWKS: %w", i, errors.Unwrap(err)))
+			}
+		case witSVIDUse:
+			if err := bundle.AddWITAuthority(key.KeyID, key.Key); err != nil {
+				return nil, wrapSpiffebundleErr(fmt.Errorf("error adding WIT authority %d of JWKS: %w", i, errors.Unwrap(err)))
 			}
 		}
 	}
@@ -142,6 +148,21 @@ func FromX509Authorities(trustDomain spiffeid.TrustDomain, x509Authorities []*x5
 func FromJWTAuthorities(trustDomain spiffeid.TrustDomain, jwtAuthorities map[string]crypto.PublicKey) *Bundle {
 	bundle := New(trustDomain)
 	bundle.jwtAuthorities = jwtutil.CopyJWTAuthorities(jwtAuthorities)
+	return bundle
+}
+
+// FromWITAuthorities creates a new bundle from WIT authorities.
+func FromWITAuthorities(trustDomain spiffeid.TrustDomain, witAuthorities map[string]crypto.PublicKey) *Bundle {
+	bundle := New(trustDomain)
+	bundle.witAuthorities = jwtutil.CopyJWTAuthorities(witAuthorities)
+	return bundle
+}
+
+// FromWITBundle creates a bundle from a WIT bundle.
+// The function panics in case of a nil WIT bundle.
+func FromWITBundle(witBundle *witbundle.Bundle) *Bundle {
+	bundle := New(witBundle.TrustDomain())
+	bundle.witAuthorities = witBundle.WITAuthorities()
 	return bundle
 }
 
@@ -239,7 +260,7 @@ func (b *Bundle) HasJWTAuthority(keyID string) bool {
 // under the given key ID, it is replaced. A key ID must be specified.
 func (b *Bundle) AddJWTAuthority(keyID string, jwtAuthority crypto.PublicKey) error {
 	if keyID == "" {
-		return spiffebundleErr.New("keyID cannot be empty")
+		return wrapSpiffebundleErr(errors.New("keyID cannot be empty"))
 	}
 
 	b.mtx.Lock()
@@ -265,12 +286,70 @@ func (b *Bundle) SetJWTAuthorities(jwtAuthorities map[string]crypto.PublicKey) {
 	b.jwtAuthorities = jwtutil.CopyJWTAuthorities(jwtAuthorities)
 }
 
-// Empty returns true if the bundle has no X.509 and JWT authorities.
+// WITAuthorities returns the WIT authorities in the bundle, keyed by key ID.
+func (b *Bundle) WITAuthorities() map[string]crypto.PublicKey {
+	b.mtx.RLock()
+	defer b.mtx.RUnlock()
+
+	return jwtutil.CopyJWTAuthorities(b.witAuthorities)
+}
+
+// FindWITAuthority finds the WIT authority with the given key ID from the bundle.
+// If the authority is found, it is returned and the boolean is true. Otherwise,
+// the returned value is nil and the boolean is false.
+func (b *Bundle) FindWITAuthority(keyID string) (crypto.PublicKey, bool) {
+	b.mtx.RLock()
+	defer b.mtx.RUnlock()
+
+	witAuthority, ok := b.witAuthorities[keyID]
+	return witAuthority, ok
+}
+
+// HasWITAuthority returns true if the bundle has a WIT authority with the given key ID.
+func (b *Bundle) HasWITAuthority(keyID string) bool {
+	b.mtx.RLock()
+	defer b.mtx.RUnlock()
+
+	_, ok := b.witAuthorities[keyID]
+	return ok
+}
+
+// AddWITAuthority adds a WIT authority to the bundle. If a WIT authority already exists
+// under the given key ID, it is replaced. A key ID must be specified.
+func (b *Bundle) AddWITAuthority(keyID string, witAuthority crypto.PublicKey) error {
+	if keyID == "" {
+		return wrapSpiffebundleErr(errors.New("keyID cannot be empty"))
+	}
+
+	b.mtx.Lock()
+	defer b.mtx.Unlock()
+
+	b.witAuthorities[keyID] = witAuthority
+	return nil
+}
+
+// RemoveWITAuthority removes the WIT authority identified by the key ID from the bundle.
+func (b *Bundle) RemoveWITAuthority(keyID string) {
+	b.mtx.Lock()
+	defer b.mtx.Unlock()
+
+	delete(b.witAuthorities, keyID)
+}
+
+// SetWITAuthorities sets the WIT authorities in the bundle.
+func (b *Bundle) SetWITAuthorities(witAuthorities map[string]crypto.PublicKey) {
+	b.mtx.Lock()
+	defer b.mtx.Unlock()
+
+	b.witAuthorities = jwtutil.CopyJWTAuthorities(witAuthorities)
+}
+
+// Empty returns true if the bundle has no X.509, JWT, or WIT authorities.
 func (b *Bundle) Empty() bool {
 	b.mtx.RLock()
 	defer b.mtx.RUnlock()
 
-	return len(b.x509Authorities) == 0 && len(b.jwtAuthorities) == 0
+	return len(b.x509Authorities) == 0 && len(b.jwtAuthorities) == 0 && len(b.witAuthorities) == 0
 }
 
 // RefreshHint returns the refresh hint. If the refresh hint is set in
@@ -361,6 +440,14 @@ func (b *Bundle) Marshal() ([]byte, error) {
 		})
 	}
 
+	for keyID, witAuthority := range b.witAuthorities {
+		jwks.Keys = append(jwks.Keys, jose.JSONWebKey{
+			Key:   witAuthority,
+			KeyID: keyID,
+			Use:   witSVIDUse,
+		})
+	}
+
 	return json.Marshal(jwks)
 }
 
@@ -375,6 +462,7 @@ func (b *Bundle) Clone() *Bundle {
 		sequenceNumber:  copySequenceNumber(b.sequenceNumber),
 		x509Authorities: x509util.CopyX509Authorities(b.x509Authorities),
 		jwtAuthorities:  jwtutil.CopyJWTAuthorities(b.jwtAuthorities),
+		witAuthorities:  jwtutil.CopyJWTAuthorities(b.witAuthorities),
 	}
 }
 
@@ -405,7 +493,7 @@ func (b *Bundle) GetBundleForTrustDomain(trustDomain spiffeid.TrustDomain) (*Bun
 	defer b.mtx.RUnlock()
 
 	if b.trustDomain != trustDomain {
-		return nil, spiffebundleErr.New("no SPIFFE bundle for trust domain %q", trustDomain)
+		return nil, wrapSpiffebundleErr(fmt.Errorf("no SPIFFE bundle for trust domain %q", trustDomain))
 	}
 
 	return b, nil
@@ -419,7 +507,7 @@ func (b *Bundle) GetX509BundleForTrustDomain(trustDomain spiffeid.TrustDomain) (
 	defer b.mtx.RUnlock()
 
 	if b.trustDomain != trustDomain {
-		return nil, spiffebundleErr.New("no X.509 bundle for trust domain %q", trustDomain)
+		return nil, wrapSpiffebundleErr(fmt.Errorf("no X.509 bundle for trust domain %q", trustDomain))
 	}
 
 	return b.X509Bundle(), nil
@@ -433,10 +521,32 @@ func (b *Bundle) GetJWTBundleForTrustDomain(trustDomain spiffeid.TrustDomain) (*
 	defer b.mtx.RUnlock()
 
 	if b.trustDomain != trustDomain {
-		return nil, spiffebundleErr.New("no JWT bundle for trust domain %q", trustDomain)
+		return nil, wrapSpiffebundleErr(fmt.Errorf("no JWT bundle for trust domain %q", trustDomain))
 	}
 
 	return b.JWTBundle(), nil
+}
+
+// WITBundle returns a WIT bundle containing the WIT authorities in the SPIFFE bundle.
+func (b *Bundle) WITBundle() *witbundle.Bundle {
+	b.mtx.RLock()
+	defer b.mtx.RUnlock()
+
+	return witbundle.FromWITAuthorities(b.trustDomain, b.witAuthorities)
+}
+
+// GetWITBundleForTrustDomain returns the WIT bundle of the given trust domain.
+// It implements the witbundle.Source interface. An error will be returned if
+// the trust domain does not match that of the bundle.
+func (b *Bundle) GetWITBundleForTrustDomain(trustDomain spiffeid.TrustDomain) (*witbundle.Bundle, error) {
+	b.mtx.RLock()
+	defer b.mtx.RUnlock()
+
+	if b.trustDomain != trustDomain {
+		return nil, wrapSpiffebundleErr(fmt.Errorf("no WIT bundle for trust domain %q", trustDomain))
+	}
+
+	return b.WITBundle(), nil
 }
 
 // Equal compares the bundle for equality against the given bundle.
@@ -449,6 +559,7 @@ func (b *Bundle) Equal(other *Bundle) bool {
 		refreshHintEqual(b.refreshHint, other.refreshHint) &&
 		sequenceNumberEqual(b.sequenceNumber, other.sequenceNumber) &&
 		jwtutil.JWTAuthoritiesEqual(b.jwtAuthorities, other.jwtAuthorities) &&
+		jwtutil.JWTAuthoritiesEqual(b.witAuthorities, other.witAuthorities) &&
 		x509util.CertsEqual(b.x509Authorities, other.x509Authorities)
 }
 
@@ -482,4 +593,8 @@ func copySequenceNumber(sequenceNumber *uint64) *uint64 {
 	}
 	copied := *sequenceNumber
 	return &copied
+}
+
+func wrapSpiffebundleErr(err error) error {
+	return fmt.Errorf("spiffebundle: %w", err)
 }

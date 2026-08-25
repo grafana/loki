@@ -220,12 +220,12 @@ func newSampleIterator() iter.SampleIterator {
 		iter.NewSeriesIterator(logproto.Series{
 			Labels:     labelFoo.String(),
 			Samples:    samples,
-			StreamHash: labelFoo.Hash(),
+			StreamHash: labels.StableHash(labelFoo),
 		}),
 		iter.NewSeriesIterator(logproto.Series{
 			Labels:     labelBar.String(),
 			Samples:    samples,
-			StreamHash: labelBar.Hash(),
+			StreamHash: labels.StableHash(labelBar),
 		}),
 	})
 }
@@ -704,6 +704,87 @@ func TestMultiTenantQuerier_DetectedLabels(t *testing.T) {
 				require.Equal(t, tc.expected[i].Label, resp.DetectedLabels[i].Label)
 				// Allow for some error in cardinality estimation due to HyperLogLog approximation
 				require.InDelta(t, tc.expected[i].Cardinality, resp.DetectedLabels[i].Cardinality, float64(tc.expected[i].Cardinality)*0.02)
+			}
+		})
+	}
+}
+
+func TestMultiTenantQuerierPatterns(t *testing.T) {
+	now := time.Now()
+
+	tests := []struct {
+		name              string
+		orgID             string
+		expectedCallCount int // number of times underlying Patterns should be called
+		expectedPatterns  []string
+	}{
+		{
+			name:              "single tenant",
+			orgID:             "tenant1",
+			expectedCallCount: 1,
+			expectedPatterns:  []string{"pattern1", "pattern2"},
+		},
+		{
+			name:              "multiple tenants",
+			orgID:             "tenant1|tenant2",
+			expectedCallCount: 2,
+			expectedPatterns:  []string{"pattern1", "pattern2"}, // merged from both tenants
+		},
+		{
+			name:              "three tenants",
+			orgID:             "tenant1|tenant2|tenant3",
+			expectedCallCount: 3,
+			expectedPatterns:  []string{"pattern1", "pattern2"},
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			querier := newQuerierMock()
+
+			// Mock the Patterns method to return a response
+			querier.On("Patterns", mock.Anything, mock.Anything).Return(&logproto.QueryPatternsResponse{
+				Series: []*logproto.PatternSeries{
+					{
+						Pattern: "pattern1",
+						Samples: []*logproto.PatternSample{
+							{Timestamp: 0, Value: 100},
+						},
+					},
+					{
+						Pattern: "pattern2",
+						Samples: []*logproto.PatternSample{
+							{Timestamp: 0, Value: 50},
+						},
+					},
+				},
+			}, nil)
+
+			multiTenantQuerier := NewMultiTenantQuerier(querier, log.NewNopLogger())
+			ctx := user.InjectOrgID(context.Background(), tc.orgID)
+
+			req := &logproto.QueryPatternsRequest{
+				Query: `{service_name="test"}`,
+				Start: now.Add(-1 * time.Hour),
+				End:   now,
+				Step:  time.Minute.Milliseconds(),
+			}
+
+			resp, err := multiTenantQuerier.Patterns(ctx, req)
+			require.NoError(t, err)
+			require.NotNil(t, resp)
+
+			// Verify the underlying Patterns was called the expected number of times
+			querier.AssertNumberOfCalls(t, "Patterns", tc.expectedCallCount)
+
+			// Verify we got the expected patterns
+			require.Len(t, resp.Series, len(tc.expectedPatterns))
+			foundPatterns := make(map[string]bool)
+			for _, series := range resp.Series {
+				foundPatterns[series.Pattern] = true
+			}
+			for _, expectedPattern := range tc.expectedPatterns {
+				require.True(t, foundPatterns[expectedPattern], "Expected pattern %s not found", expectedPattern)
 			}
 		})
 	}

@@ -6,7 +6,6 @@ import (
 	"net/http"
 	"strings"
 	"time"
-	"unsafe"
 
 	"github.com/c2h5oh/datasize"
 	"github.com/gorilla/mux"
@@ -20,14 +19,12 @@ import (
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	"github.com/grafana/loki/v3/pkg/logqlmodel"
 	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
-	"github.com/grafana/loki/v3/pkg/storage/stores/index/seriesvolume"
 	"github.com/grafana/loki/v3/pkg/util"
 )
 
 var (
 	errEndBeforeStart     = errors.New("end timestamp must not be before or equal to start time")
 	errZeroOrNegativeStep = errors.New("zero or negative query resolution step widths are not accepted. Try a positive integer")
-	errNegativeStep       = errors.New("negative query resolution step widths are not accepted. Try a positive integer")
 	errStepTooSmall       = errors.New("exceeded maximum resolution of 11,000 points per time series. Try increasing the value of the step parameter")
 	errNegativeInterval   = errors.New("interval must be >= 0")
 )
@@ -42,6 +39,17 @@ const (
 	// How much stack space to allocate for unescaping JSON strings; if a string longer
 	// than this needs to be escaped, it will result in a heap allocation
 	unescapeStackBufSize = 64
+)
+
+// Volume HTTP defaults and validation duplicated here so pkg/loghttp stays free of
+// pkg/storage/stores/index/seriesvolume (AGPL). Keep in sync with that package's
+// DefaultLimit, DefaultAggregateBy, and ValidateAggregateBy.
+const (
+	defaultVolumeLimit       = 100
+	defaultVolumeAggregateBy = "series"
+
+	volumeAggregateByLabels = "labels"
+	volumeAggregateBySeries = "series"
 )
 
 // QueryResponse represents the http json response to a Loki range and instant query
@@ -271,13 +279,25 @@ func (s Streams) ToProto() []logproto.Stream {
 	}
 	result := make([]logproto.Stream, 0, len(s))
 	for _, s := range s {
-		entries := *(*[]logproto.Entry)(unsafe.Pointer(&s.Entries)) // #nosec G103 -- we know the string is not mutated
 		result = append(result, logproto.Stream{
 			Labels:  s.Labels.String(),
-			Entries: entries,
+			Entries: protoEntries(s.Entries),
 		})
 	}
 	return result
+}
+
+func protoEntries(in []Entry) []logproto.Entry {
+	out := make([]logproto.Entry, 0, len(in))
+	for _, ent := range in {
+		out = append(out, logproto.Entry{
+			Timestamp:          ent.Timestamp,
+			Line:               ent.Line,
+			StructuredMetadata: logproto.FromLabelsToLabelAdapters(ent.StructuredMetadata),
+			Parsed:             logproto.FromLabelsToLabelAdapters(ent.Parsed),
+		})
+	}
+	return out
 }
 
 // Stream represents a log stream.  It includes a set of log entries and their labels.
@@ -557,10 +577,10 @@ func NewVolumeRangeQueryWithDefaults(matchers string) *logproto.VolumeRequest {
 		From:         from,
 		Through:      through,
 		Matchers:     matchers,
-		Limit:        seriesvolume.DefaultLimit,
+		Limit:        defaultVolumeLimit,
 		Step:         step,
 		TargetLabels: nil,
-		AggregateBy:  seriesvolume.DefaultAggregateBy,
+		AggregateBy:  defaultVolumeAggregateBy,
 	}
 }
 
@@ -710,13 +730,13 @@ func targetLabels(r *http.Request) []string {
 }
 
 func volumeLimit(r *http.Request) error {
-	l, err := parseInt(r.Form.Get("limit"), seriesvolume.DefaultLimit)
+	l, err := parseInt(r.Form.Get("limit"), defaultVolumeLimit)
 	if err != nil {
 		return err
 	}
 
 	if l == 0 {
-		r.Form.Set("limit", fmt.Sprint(seriesvolume.DefaultLimit))
+		r.Form.Set("limit", fmt.Sprint(defaultVolumeLimit))
 		return nil
 	}
 
@@ -727,13 +747,22 @@ func volumeLimit(r *http.Request) error {
 	return nil
 }
 
+func validateVolumeAggregateBy(aggregateBy string) bool {
+	switch aggregateBy {
+	case volumeAggregateByLabels, volumeAggregateBySeries:
+		return true
+	default:
+		return false
+	}
+}
+
 func volumeAggregateBy(r *http.Request) (string, error) {
 	l := r.Form.Get("aggregateBy")
 	if l == "" {
-		return seriesvolume.DefaultAggregateBy, nil
+		return defaultVolumeAggregateBy, nil
 	}
 
-	if seriesvolume.ValidateAggregateBy(l) {
+	if validateVolumeAggregateBy(l) {
 		return l, nil
 	}
 

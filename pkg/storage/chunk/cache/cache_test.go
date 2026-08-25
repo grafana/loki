@@ -45,10 +45,10 @@ func fillCache(t *testing.T, scfg config.SchemaConfig, cache cache.Cache) ([]str
 		c := chunk.NewChunk(
 			userID,
 			model.Fingerprint(1),
-			labels.Labels{
-				{Name: model.MetricNameLabel, Value: "foo"},
-				{Name: "bar", Value: "baz"},
-			},
+			labels.New(
+				labels.Label{Name: model.MetricNameLabel, Value: "foo"},
+				labels.Label{Name: "bar", Value: "baz"},
+			),
 			chunkenc.NewFacade(cs, 0, 0),
 			ts,
 			ts.Add(chunkLen),
@@ -125,9 +125,8 @@ func testChunkFetcher(t *testing.T, c cache.Cache, chunks []chunk.Chunk) {
 	s := config.SchemaConfig{
 		Configs: []config.PeriodConfig{
 			{
-				From:      config.DayTime{Time: 0},
-				Schema:    "v11",
-				RowShards: 16,
+				From:   config.DayTime{Time: 0},
+				Schema: "v11",
 			},
 		},
 	}
@@ -168,9 +167,8 @@ func testCache(t *testing.T, cache cache.Cache) {
 	s := config.SchemaConfig{
 		Configs: []config.PeriodConfig{
 			{
-				From:      config.DayTime{Time: 0},
-				Schema:    "v11",
-				RowShards: 16,
+				From:   config.DayTime{Time: 0},
+				Schema: "v11",
 			},
 		},
 	}

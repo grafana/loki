@@ -52,10 +52,10 @@ func NewBinaryData(data arrow.ArrayData) *Binary {
 
 // Value returns the slice at index i. This value should not be mutated.
 func (a *Binary) Value(i int) []byte {
-	if i < 0 || i >= a.array.data.length {
+	if i < 0 || i >= a.data.length {
 		panic("arrow/array: index out of range")
 	}
-	idx := a.array.data.offset + i
+	idx := a.data.offset + i
 	return a.valueBytes[a.valueOffsets[idx]:a.valueOffsets[idx+1]]
 }
 
@@ -75,10 +75,10 @@ func (a *Binary) ValueString(i int) string {
 }
 
 func (a *Binary) ValueOffset(i int) int {
-	if i < 0 || i >= a.array.data.length {
+	if i < 0 || i >= a.data.length {
 		panic("arrow/array: index out of range")
 	}
-	return int(a.valueOffsets[a.array.data.offset+i])
+	return int(a.valueOffsets[a.data.offset+i])
 }
 
 func (a *Binary) ValueOffset64(i int) int64 {
@@ -86,22 +86,22 @@ func (a *Binary) ValueOffset64(i int) int64 {
 }
 
 func (a *Binary) ValueLen(i int) int {
-	if i < 0 || i >= a.array.data.length {
+	if i < 0 || i >= a.data.length {
 		panic("arrow/array: index out of range")
 	}
-	beg := a.array.data.offset + i
+	beg := a.data.offset + i
 	return int(a.valueOffsets[beg+1] - a.valueOffsets[beg])
 }
 
 func (a *Binary) ValueOffsets() []int32 {
-	beg := a.array.data.offset
-	end := beg + a.array.data.length + 1
+	beg := a.data.offset
+	end := beg + a.data.length + 1
 	return a.valueOffsets[beg:end]
 }
 
 func (a *Binary) ValueBytes() []byte {
-	beg := a.array.data.offset
-	end := beg + a.array.data.length
+	beg := a.data.offset
+	end := beg + a.data.length
 	return a.valueBytes[a.valueOffsets[beg]:a.valueOffsets[end]]
 }
 
@@ -138,11 +138,11 @@ func (a *Binary) setData(data *Data) {
 		a.valueOffsets = arrow.Int32Traits.CastFromBytes(valueOffsets.Bytes())
 	}
 
-	if a.array.data.length < 1 {
+	if a.data.length < 1 {
 		return
 	}
 
-	expNumOffsets := a.array.data.offset + a.array.data.length + 1
+	expNumOffsets := a.data.offset + a.data.length + 1
 	if len(a.valueOffsets) < expNumOffsets {
 		panic(fmt.Errorf("arrow/array: binary offset buffer must have at least %d values", expNumOffsets))
 	}
@@ -167,6 +167,60 @@ func (a *Binary) MarshalJSON() ([]byte, error) {
 	// golang marshal standard says that []byte will be marshalled
 	// as a base64-encoded string
 	return json.Marshal(vals)
+}
+
+// Validate performs a basic, O(1) consistency check on the array data.
+// It returns an error if:
+//   - The offset buffer is too small for the array length and offset
+//   - The last offset exceeds the data buffer length
+//
+// This is useful for detecting corrupted data from untrusted sources (e.g.
+// Arrow Flight / Flight SQL servers) before accessing values, which may
+// otherwise cause a runtime panic.
+func (a *Binary) Validate() error {
+	if a.data.length == 0 {
+		return nil
+	}
+	if a.data.buffers[1] == nil {
+		return fmt.Errorf("arrow/array: non-empty binary array has no offsets buffer")
+	}
+	expNumOffsets := a.data.offset + a.data.length + 1
+	if len(a.valueOffsets) < expNumOffsets {
+		return fmt.Errorf("arrow/array: binary offset buffer must have at least %d values, got %d", expNumOffsets, len(a.valueOffsets))
+	}
+	firstOffset := int(a.valueOffsets[a.data.offset])
+	if firstOffset > len(a.valueBytes) {
+		return fmt.Errorf("arrow/array: binary offset %d out of bounds of data buffer (length %d)", firstOffset, len(a.valueBytes))
+	}
+
+	lastOffset := int(a.valueOffsets[expNumOffsets-1])
+	if lastOffset > len(a.valueBytes) {
+		return fmt.Errorf("arrow/array: binary offset %d out of bounds of data buffer (length %d)", lastOffset, len(a.valueBytes))
+	}
+	return nil
+}
+
+// ValidateFull performs a full O(n) consistency check on the array data.
+// In addition to the checks performed by Validate, it also verifies that
+// all offsets are non-negative and monotonically non-decreasing.
+func (a *Binary) ValidateFull() error {
+	if err := a.Validate(); err != nil {
+		return err
+	}
+	if a.data.length == 0 {
+		return nil
+	}
+	offsets := a.valueOffsets[a.data.offset : a.data.offset+a.data.length+1]
+	if offsets[0] < 0 {
+		return fmt.Errorf("arrow/array: binary offset at index %d is negative: %d", a.data.offset, offsets[0])
+	}
+	for i := 1; i < len(offsets); i++ {
+		if offsets[i] < offsets[i-1] {
+			return fmt.Errorf("arrow/array: binary offsets are not monotonically non-decreasing at index %d: %d < %d",
+				a.data.offset+i, offsets[i], offsets[i-1])
+		}
+	}
+	return nil
 }
 
 func arrayEqualBinary(left, right *Binary) bool {
@@ -195,10 +249,10 @@ func NewLargeBinaryData(data arrow.ArrayData) *LargeBinary {
 }
 
 func (a *LargeBinary) Value(i int) []byte {
-	if i < 0 || i >= a.array.data.length {
+	if i < 0 || i >= a.data.length {
 		panic("arrow/array: index out of range")
 	}
-	idx := a.array.data.offset + i
+	idx := a.data.offset + i
 	return a.valueBytes[a.valueOffsets[idx]:a.valueOffsets[idx+1]]
 }
 
@@ -215,10 +269,10 @@ func (a *LargeBinary) ValueString(i int) string {
 }
 
 func (a *LargeBinary) ValueOffset(i int) int64 {
-	if i < 0 || i >= a.array.data.length {
+	if i < 0 || i >= a.data.length {
 		panic("arrow/array: index out of range")
 	}
-	return a.valueOffsets[a.array.data.offset+i]
+	return a.valueOffsets[a.data.offset+i]
 }
 
 func (a *LargeBinary) ValueOffset64(i int) int64 {
@@ -226,22 +280,22 @@ func (a *LargeBinary) ValueOffset64(i int) int64 {
 }
 
 func (a *LargeBinary) ValueLen(i int) int {
-	if i < 0 || i >= a.array.data.length {
+	if i < 0 || i >= a.data.length {
 		panic("arrow/array: index out of range")
 	}
-	beg := a.array.data.offset + i
+	beg := a.data.offset + i
 	return int(a.valueOffsets[beg+1] - a.valueOffsets[beg])
 }
 
 func (a *LargeBinary) ValueOffsets() []int64 {
-	beg := a.array.data.offset
-	end := beg + a.array.data.length + 1
+	beg := a.data.offset
+	end := beg + a.data.length + 1
 	return a.valueOffsets[beg:end]
 }
 
 func (a *LargeBinary) ValueBytes() []byte {
-	beg := a.array.data.offset
-	end := beg + a.array.data.length
+	beg := a.data.offset
+	end := beg + a.data.length
 	return a.valueBytes[a.valueOffsets[beg]:a.valueOffsets[end]]
 }
 
@@ -278,11 +332,11 @@ func (a *LargeBinary) setData(data *Data) {
 		a.valueOffsets = arrow.Int64Traits.CastFromBytes(valueOffsets.Bytes())
 	}
 
-	if a.array.data.length < 1 {
+	if a.data.length < 1 {
 		return
 	}
 
-	expNumOffsets := a.array.data.offset + a.array.data.length + 1
+	expNumOffsets := a.data.offset + a.data.length + 1
 	if len(a.valueOffsets) < expNumOffsets {
 		panic(fmt.Errorf("arrow/array: large binary offset buffer must have at least %d values", expNumOffsets))
 	}
@@ -307,6 +361,60 @@ func (a *LargeBinary) MarshalJSON() ([]byte, error) {
 	// golang marshal standard says that []byte will be marshalled
 	// as a base64-encoded string
 	return json.Marshal(vals)
+}
+
+// Validate performs a basic, O(1) consistency check on the array data.
+// It returns an error if:
+//   - The offset buffer is too small for the array length and offset
+//   - The last offset exceeds the data buffer length
+//
+// This is useful for detecting corrupted data from untrusted sources (e.g.
+// Arrow Flight / Flight SQL servers) before accessing values, which may
+// otherwise cause a runtime panic.
+func (a *LargeBinary) Validate() error {
+	if a.data.length == 0 {
+		return nil
+	}
+	if a.data.buffers[1] == nil {
+		return fmt.Errorf("arrow/array: non-empty large binary array has no offsets buffer")
+	}
+	expNumOffsets := a.data.offset + a.data.length + 1
+	if len(a.valueOffsets) < expNumOffsets {
+		return fmt.Errorf("arrow/array: large binary offset buffer must have at least %d values, got %d", expNumOffsets, len(a.valueOffsets))
+	}
+	firstOffset := int(a.valueOffsets[a.data.offset])
+	if firstOffset > len(a.valueBytes) {
+		return fmt.Errorf("arrow/array: large binary offset %d out of bounds of data buffer (length %d)", firstOffset, len(a.valueBytes))
+	}
+
+	lastOffset := int(a.valueOffsets[expNumOffsets-1])
+	if lastOffset > len(a.valueBytes) {
+		return fmt.Errorf("arrow/array: large binary offset %d out of bounds of data buffer (length %d)", lastOffset, len(a.valueBytes))
+	}
+	return nil
+}
+
+// ValidateFull performs a full O(n) consistency check on the array data.
+// In addition to the checks performed by Validate, it also verifies that
+// all offsets are non-negative and monotonically non-decreasing.
+func (a *LargeBinary) ValidateFull() error {
+	if err := a.Validate(); err != nil {
+		return err
+	}
+	if a.data.length == 0 {
+		return nil
+	}
+	offsets := a.valueOffsets[a.data.offset : a.data.offset+a.data.length+1]
+	if offsets[0] < 0 {
+		return fmt.Errorf("arrow/array: large binary offset at index %d is negative: %d", a.data.offset, offsets[0])
+	}
+	for i := 1; i < len(offsets); i++ {
+		if offsets[i] < offsets[i-1] {
+			return fmt.Errorf("arrow/array: large binary offsets are not monotonically non-decreasing at index %d: %d < %d",
+				a.data.offset+i, offsets[i], offsets[i-1])
+		}
+	}
+	return nil
 }
 
 func arrayEqualLargeBinary(left, right *LargeBinary) bool {
@@ -353,10 +461,10 @@ func (a *BinaryView) setData(data *Data) {
 }
 
 func (a *BinaryView) ValueHeader(i int) *arrow.ViewHeader {
-	if i < 0 || i >= a.array.data.length {
+	if i < 0 || i >= a.data.length {
 		panic("arrow/array: index out of range")
 	}
-	return &a.values[a.array.data.offset+i]
+	return &a.values[a.data.offset+i]
 }
 
 func (a *BinaryView) Value(i int) []byte {

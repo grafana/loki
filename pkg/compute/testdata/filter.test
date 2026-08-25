@@ -1,0 +1,36 @@
+#
+# FILTER (compute.Filter)
+#
+# FILTER takes an array and a selection mask, returning only the rows where
+# the mask is true.
+#
+
+# Bool arrays
+FILTER  bool:[true false true false]  select:[true false true false]   -> bool:[true true]
+FILTER  bool:[true false true false]  select:[true true true true]     -> bool:[true false true false]
+FILTER  bool:[true false true false]  select:[false false false false] -> bool:[]
+FILTER  bool:[true false null true]   select:[true false true false]   -> bool:[true null]
+FILTER  bool:[null null null]         select:[true true true]          -> bool:[null null null]
+
+# Int32 arrays
+FILTER  int32:[1 2 3 4 5]     select:[true false true false true]  -> int32:[1 3 5]
+FILTER  int32:[10 20 30]      select:[false false false]           -> int32:[]
+FILTER  int32:[10 null 30]    select:[true true false]             -> int32:[10 null]
+
+# Int64 arrays
+FILTER  int64:[100 200 300]   select:[true false true]   -> int64:[100 300]
+FILTER  int64:[null 200 300]  select:[true true false]   -> int64:[null 200]
+
+# Uint32 arrays
+FILTER  uint32:[1 2 3]  select:[false true false]  -> uint32:[2]
+
+# Uint64 arrays
+FILTER  uint64:[10 20 30]  select:[true true false]  -> uint64:[10 20]
+
+# UTF8 arrays
+FILTER  utf8:["hello" "world" "foo"]  select:[true false true]   -> utf8:["hello" "foo"]
+FILTER  utf8:["a" "b" "c" "d"]       select:[false true true false]  -> utf8:["b" "c"]
+FILTER  utf8:[null "hello" "world"]   select:[true true false]   -> utf8:[null "hello"]
+
+# Null arrays
+FILTER  null:[null null null]  select:[true false true]  -> null:[null null]

@@ -12,6 +12,7 @@ import (
 	"go.uber.org/atomic"
 	"golang.org/x/time/rate"
 
+	"github.com/grafana/loki/v3/pkg/util/flagext"
 	"github.com/grafana/loki/v3/pkg/validation"
 )
 
@@ -137,12 +138,65 @@ func TestStreamCountLimiter_AssertNewStreamAllowed(t *testing.T) {
 			defaultCountSupplier := func() int {
 				return testData.streams
 			}
-			streamCountLimiter := newStreamCountLimiter("test", defaultCountSupplier, limiter, ownedStreamSvc)
-			actual := streamCountLimiter.AssertNewStreamAllowed("test")
+			streamCountLimiter := newStreamCountLimiter("test", defaultCountSupplier, limiter, ownedStreamSvc, false)
+			actual := streamCountLimiter.AssertNewStreamAllowed("test", noPolicy)
 
 			assert.Equal(t, testData.expected, actual)
 		})
 	}
+}
+
+func TestStreamCountLimiter_DelegateStreamLimits(t *testing.T) {
+	limits, err := validation.NewOverrides(validation.Limits{
+		MaxLocalStreamsPerUser:  100,
+		MaxGlobalStreamsPerUser: 1000,
+	}, nil)
+	require.NoError(t, err)
+
+	strategy := &fixedStrategy{localLimit: 100}
+	limiter := NewLimiter(limits, NilMetrics, strategy, &TenantBasedStrategy{limits: limits})
+	defaultCountSupplier := func() int {
+		return 200 // well above the limit
+	}
+	ownedStreamSvc := &ownedStreamService{
+		fixedLimit:       atomic.NewInt32(0),
+		ownedStreamCount: atomic.NewInt64(0),
+	}
+
+	scl := newStreamCountLimiter("test", defaultCountSupplier, limiter, ownedStreamSvc, true)
+	err = scl.AssertNewStreamAllowed("test", noPolicy)
+
+	assert.NoError(t, err, "stream count limit should be skipped when delegateStreamLimits is enabled")
+}
+
+func TestTenantBasedStrategy_PolicyRateLimit(t *testing.T) {
+	limits, err := validation.NewOverrides(validation.Limits{
+		PerStreamRateLimit:      flagext.ByteSize(10 * 1024),
+		PerStreamRateLimitBurst: flagext.ByteSize(20 * 1024),
+		PolicyOverrideLimits: map[string]validation.PolicyOverridableLimits{
+			"finance": {
+				PerStreamRateLimit:      ptr(flagext.ByteSize(100 * 1024)),
+				PerStreamRateLimitBurst: ptr(flagext.ByteSize(200 * 1024)),
+			},
+		},
+	}, nil)
+	require.NoError(t, err)
+
+	strategy := &TenantBasedStrategy{limits: limits}
+
+	tenantLimit := validation.RateLimit{Limit: rate.Limit(10 * 1024), Burst: 20 * 1024}
+	policyLimit := validation.RateLimit{Limit: rate.Limit(100 * 1024), Burst: 200 * 1024}
+
+	// No policy -> tenant per-stream rate limit.
+	assert.Equal(t, tenantLimit, strategy.RateLimit("test", noPolicy))
+	// Matching policy -> override (REPLACE).
+	assert.Equal(t, policyLimit, strategy.RateLimit("test", "finance"))
+	// Unknown policy -> tenant per-stream rate limit.
+	assert.Equal(t, tenantLimit, strategy.RateLimit("test", "unknown"))
+
+	// Disabled -> unlimited regardless of policy.
+	strategy.SetDisabled(true)
+	assert.Equal(t, validation.Unlimited, strategy.RateLimit("test", "finance"))
 }
 
 func TestLimiter_minNonZero(t *testing.T) {
@@ -326,7 +380,11 @@ func newMockPartitionRingWithPartitions(activeCount int, inactiveCount int) *rin
 			State:  ring.PartitionInactive,
 		}
 	}
-	return ring.NewPartitionRing(partitionRing)
+	r, err := ring.NewPartitionRing(partitionRing)
+	if err != nil {
+		panic(err)
+	}
+	return r
 }
 
 func TestConvertGlobalToLocalLimit_PartitionRing(t *testing.T) {
@@ -368,3 +426,137 @@ func TestConvertGlobalToLocalLimit_PartitionRing(t *testing.T) {
 		})
 	}
 }
+
+func TestLimiter_PolicyLimitsAndPrecedence(t *testing.T) {
+	// Create a comprehensive mock limits implementation
+	mockLimits := &mockLimits{
+		maxLocalStreams:  200,
+		maxGlobalStreams: 2000,
+		policyLimits: map[string]struct {
+			local  int
+			global int
+		}{
+			"finance": {local: 100, global: 1000},
+			"ops":     {local: 50, global: 500},
+		},
+	}
+
+	// Create a simple ring strategy for testing
+	ringStrategy := &mockRingStrategy{
+		healthyInstances:  2,
+		replicationFactor: 1,
+	}
+
+	limiter := &Limiter{
+		limits:       mockLimits,
+		ringStrategy: ringStrategy,
+	}
+
+	// Test 1: Limit calculation accuracy for different policies
+	t.Run("limit_calculation", func(t *testing.T) {
+		// Test with no policy - should use default limits
+		calculated, local, global, adjusted := limiter.GetStreamCountLimit("tenant1", noPolicy)
+		require.Equal(t, 200, local, "No policy should use default local limit")
+		require.Equal(t, 2000, global, "No policy should use default global limit")
+		require.Equal(t, 1000, adjusted, "Adjusted global limit should be 2000/2*1 = 1000")
+		require.Equal(t, 200, calculated, "Calculated limit should be min(200, 1000) = 200")
+
+		// Test with finance policy - should use policy-specific limits
+		calculated, local, global, adjusted = limiter.GetStreamCountLimit("tenant1", "finance")
+		require.Equal(t, 100, local, "Finance policy should use policy local limit")
+		require.Equal(t, 1000, global, "Finance policy should use policy global limit")
+		require.Equal(t, 500, adjusted, "Adjusted global limit should be 1000/2*1 = 500")
+		require.Equal(t, 100, calculated, "Calculated limit should be min(100, 500) = 100")
+
+		// Test with ops policy - should use policy-specific limits
+		calculated, local, global, adjusted = limiter.GetStreamCountLimit("tenant1", "ops")
+		require.Equal(t, 50, local, "Ops policy should use policy local limit")
+		require.Equal(t, 500, global, "Ops policy should use policy global limit")
+		require.Equal(t, 250, adjusted, "Adjusted global limit should be 500/2*1 = 250")
+		require.Equal(t, 50, calculated, "Calculated limit should be min(50, 250) = 50")
+
+		// Test with non-existent policy - should fall back to default limits
+		calculated, local, global, adjusted = limiter.GetStreamCountLimit("tenant1", "nonexistent")
+		require.Equal(t, 200, local, "Non-existent policy should use default local limit")
+		require.Equal(t, 2000, global, "Non-existent policy should use default global limit")
+		require.Equal(t, 1000, adjusted, "Adjusted global limit should be 2000/2*1 = 1000")
+		require.Equal(t, 200, calculated, "Calculated limit should be min(200, 1000) = 200")
+	})
+
+	// Test 2: Policy precedence over fixed limits
+	t.Run("policy_precedence", func(t *testing.T) {
+		// Create a stream count limiter with a fixed limit supplier that returns 150
+		fixedLimitSupplier := func() int { return 150 }
+		streamCountLimiter := &streamCountLimiter{
+			limiter: limiter,
+		}
+
+		// Test: No policy specified - fixed limit should be applied
+		// No-policy limit: min(200, 2000/2) = min(200, 1000) = 200
+		// Fixed limit: 150
+		// Expected: 200 (the higher of the two)
+		calculated, _, _, _ := streamCountLimiter.getCurrentLimit("tenant1", noPolicy, fixedLimitSupplier)
+		require.Equal(t, 200, calculated, "Without policy, should use the higher of calculated and fixed limits")
+
+		// Test: Policy specified - policy limit should take precedence over fixed limit
+		// Policy limit: min(100, 1000/2) = min(100, 500) = 100
+		// Fixed limit: 150 (should be ignored when policy is specified)
+		// Expected: 100 (policy limit takes precedence)
+		calculated, _, _, _ = streamCountLimiter.getCurrentLimit("tenant1", "finance", fixedLimitSupplier)
+		require.Equal(t, 100, calculated, "With policy, policy limit should take precedence over fixed limit")
+
+		// Test: Verify that policy limits are actually being enforced end-to-end
+		calculated, local, global, adjusted := streamCountLimiter.getCurrentLimit("tenant1", "finance", fixedLimitSupplier)
+		require.Equal(t, 100, local, "Policy local limit should be 100")
+		require.Equal(t, 1000, global, "Policy global limit should be 1000")
+		require.Equal(t, 500, adjusted, "Policy adjusted global limit should be 500")
+		require.Equal(t, 100, calculated, "Policy calculated limit should be 100")
+	})
+}
+
+// Mock implementations for testing
+type mockLimits struct {
+	Limits
+	maxLocalStreams  int
+	maxGlobalStreams int
+	policyLimits     map[string]struct {
+		local  int
+		global int
+	}
+}
+
+func (m *mockLimits) MaxLocalStreamsPerUser(_ string) int {
+	return m.maxLocalStreams
+}
+
+func (m *mockLimits) MaxGlobalStreamsPerUser(_ string) int {
+	return m.maxGlobalStreams
+}
+
+func (m *mockLimits) PolicyMaxLocalStreamsPerUser(_, policy string) (int, bool) {
+	if policyLimit, exists := m.policyLimits[policy]; exists {
+		return policyLimit.local, true
+	}
+	return 0, false
+}
+
+func (m *mockLimits) PolicyMaxGlobalStreamsPerUser(_, policy string) (int, bool) {
+	if policyLimit, exists := m.policyLimits[policy]; exists {
+		return policyLimit.global, true
+	}
+	return 0, false
+}
+
+type mockRingStrategy struct {
+	healthyInstances  int
+	replicationFactor int
+}
+
+func (m *mockRingStrategy) convertGlobalToLocalLimit(globalLimit int, _ string) int {
+	if globalLimit == 0 || m.replicationFactor == 0 {
+		return 0
+	}
+	return int(float64(globalLimit) / float64(m.healthyInstances) * float64(m.replicationFactor))
+}
+
+func ptr[T any](v T) *T { return &v }

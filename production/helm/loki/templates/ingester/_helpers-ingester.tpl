@@ -31,29 +31,35 @@ priorityClassName: {{ $pcn }}
 {{- end }}
 {{- end }}
 
-{{- define "loki.ingester.readinessProbe" -}}
-{{- with .Values.ingester.readinessProbe }}  
-readinessProbe:
-  {{- toYaml . | nindent 2 }}
-{{- else }}
-{{- with .Values.loki.readinessProbe }}
+{{/*
+ingester readiness probe
+*/}}
+{{- define "loki.ingester.readinessProbe" }}
+{{- with .Values.ingester.readinessProbe | default .Values.loki.readinessProbe }}
 readinessProbe:
   {{- toYaml . | nindent 2 }}
 {{- end }}
 {{- end }}
-{{- end -}}
 
-{{- define "loki.ingester.livenessProbe" -}}
-{{- with .Values.ingester.livenessProbe }}
-livenessProbe:
-  {{- toYaml . | nindent 2 }}
-{{- else }}
-{{- with .Values.loki.livenessProbe }}
+{{/*
+ingester liveness probe
+*/}}
+{{- define "loki.ingester.livenessProbe" }}
+{{- with .Values.ingester.livenessProbe | default .Values.loki.livenessProbe }}
 livenessProbe:
   {{- toYaml . | nindent 2 }}
 {{- end }}
 {{- end }}
-{{- end -}}
+
+{{/*
+ingester startup probe
+*/}}
+{{- define "loki.ingester.startupProbe" }}
+{{- with .Values.ingester.startupProbe | default .Values.loki.startupProbe }}
+startupProbe:
+  {{- toYaml . | nindent 2 }}
+{{- end }}
+{{- end }}
 
 {{/*
 expects global context

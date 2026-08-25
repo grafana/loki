@@ -8,7 +8,7 @@ import (
 )
 
 const (
-	dictShardBits = 6
+	dictShardBits = 7
 )
 
 type fastBase struct {
@@ -21,7 +21,7 @@ type fastBase struct {
 	crc         *xxhash.Digest
 	tmp         [8]byte
 	blk         *blockEnc
-	lastDictID  uint32
+	lastDict    *dict
 	lowMem      bool
 }
 
@@ -41,11 +41,9 @@ func (e *fastBase) AppendCRC(dst []byte) []byte {
 // or a window size small enough to contain the input size, if > 0.
 func (e *fastBase) WindowSize(size int64) int32 {
 	if size > 0 && size < int64(e.maxMatchOff) {
-		b := int32(1) << uint(bits.Len(uint(size)))
-		// Keep minimum window.
-		if b < 1024 {
-			b = 1024
-		}
+		b := max(
+			// Keep minimum window.
+			int32(1)<<uint(bits.Len(uint(size))), 1024)
 		return b
 	}
 	return e.maxMatchOff
@@ -128,6 +126,34 @@ func (e *fastBase) matchlen(s, t int32, src []byte) int32 {
 		}
 	}
 	return int32(matchLen(src[s:], src[t:]))
+}
+
+// resetBasePrefix resets the encoder state and loads prefix as initial history.
+// This is used for parallel job encoding where non-first jobs need overlap context.
+// Rep offsets are set to defaults [1,4,8] (invalidated, matching C behavior).
+func (e *fastBase) resetBasePrefix(prefix []byte) {
+	if e.blk == nil {
+		e.blk = &blockEnc{lowMem: e.lowMem}
+		e.blk.init()
+	} else {
+		e.blk.reset(nil)
+	}
+	e.blk.initNewEncode()
+	if e.crc == nil {
+		e.crc = xxhash.New()
+	} else {
+		e.crc.Reset()
+	}
+	e.blk.dictLitEnc = nil
+	e.ensureHist(len(prefix) + maxCompressedBlockSize)
+	// Bump cur so old table entries fall outside the window.
+	// When cur >= bufferReset, leave it; the first Encode call
+	// will shift/clear tables, preserving valid prefix entries.
+	if e.cur < e.bufferReset {
+		e.cur += e.maxMatchOff + int32(len(e.hist))
+	}
+	e.hist = e.hist[:0]
+	e.hist = append(e.hist, prefix...)
 }
 
 // Reset the encoding table.

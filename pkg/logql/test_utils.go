@@ -78,7 +78,7 @@ outer:
 		ls := mustParseLabels(stream.Labels)
 
 		// filter by shard if requested
-		if shard != nil && ls.Hash()%uint64(shard.Of) != uint64(shard.Shard) {
+		if shard != nil && labels.StableHash(ls)%uint64(shard.Of) != uint64(shard.Shard) {
 			continue
 		}
 
@@ -140,37 +140,32 @@ func processStream(in []logproto.Stream, pipeline log.Pipeline) []logproto.Strea
 	return streams
 }
 
-func processSeries(in []logproto.Stream, ex []log.SampleExtractor) ([]logproto.Series, error) {
+func processSeries(in []logproto.Stream, ex log.SampleExtractor) ([]logproto.Series, error) {
 	resBySeries := map[string]*logproto.Series{}
 
 	for _, stream := range in {
-		for _, extractor := range ex {
-			exs := extractor.ForStream(mustParseLabels(stream.Labels))
-			for _, e := range stream.Entries {
-
-				if samples, ok := exs.Process(e.Timestamp.UnixNano(), []byte(e.Line), labels.EmptyLabels()); ok {
-					for _, sample := range samples {
-						lbs := sample.Labels
-						f := sample.Value
-						var s *logproto.Series
-						var found bool
-						s, found = resBySeries[lbs.String()]
-						if !found {
-							s = &logproto.Series{
-								Labels:     lbs.String(),
-								StreamHash: exs.BaseLabels().Hash(),
-							}
-							resBySeries[lbs.String()] = s
-						}
-
-						s.Samples = append(s.Samples, logproto.Sample{
-							Timestamp: e.Timestamp.UnixNano(),
-							Value:     f,
-							Hash:      xxhash.Sum64([]byte(e.Line)),
-						})
-					}
-				}
+		exs := ex.ForStream(mustParseLabels(stream.Labels))
+		for _, e := range stream.Entries {
+			sample, ok := exs.Process(e.Timestamp.UnixNano(), []byte(e.Line), labels.EmptyLabels())
+			if !ok {
+				continue
 			}
+
+			lbs := sample.Labels.String()
+			s, found := resBySeries[lbs]
+			if !found {
+				s = &logproto.Series{
+					Labels:     lbs,
+					StreamHash: exs.BaseLabels().Hash(),
+				}
+				resBySeries[lbs] = s
+			}
+
+			s.Samples = append(s.Samples, logproto.Sample{
+				Timestamp: e.Timestamp.UnixNano(),
+				Value:     sample.Value,
+				Hash:      xxhash.Sum64([]byte(e.Line)),
+			})
 		}
 	}
 
@@ -193,7 +188,7 @@ func (q MockQuerier) SelectSamples(_ context.Context, req SelectSampleParams) (i
 		return nil, err
 	}
 
-	extractors, err := expr.Extractors()
+	extractor, err := expr.Extractor()
 	if err != nil {
 		return nil, err
 	}
@@ -215,7 +210,7 @@ outer:
 		ls := mustParseLabels(stream.Labels)
 
 		// filter by shard if requested
-		if shard != nil && ls.Hash()%uint64(shard.Of) != uint64(shard.Shard) {
+		if shard != nil && labels.StableHash(ls)%uint64(shard.Of) != uint64(shard.Shard) {
 			continue
 		}
 
@@ -227,7 +222,7 @@ outer:
 		matched = append(matched, stream)
 	}
 
-	filtered, err := processSeries(matched, extractors)
+	filtered, err := processSeries(matched, extractor)
 	if err != nil {
 		return nil, err
 	}
@@ -267,7 +262,7 @@ func (m MockDownstreamer) Downstream(ctx context.Context, queries []DownstreamQu
 // create nStreams of nEntries with labelNames each where each label value
 // with the exception of the "index" label is modulo'd into a shard
 func randomStreams(nStreams, nEntries, nShards int, labelNames []string, valueField bool) (streams []logproto.Stream) {
-	r := rand.New(rand.NewSource(42)) //#nosec G404 -- Generation of test data only, no need for a cryptographic PRNG
+	r := rand.New(rand.NewSource(42)) //#nosec G404 -- Generation of test data only, no need for a cryptographic PRNG -- nosemgrep: math-random-used
 	for i := 0; i < nStreams; i++ {
 		// labels
 		stream := logproto.Stream{}
@@ -276,10 +271,10 @@ func randomStreams(nStreams, nEntries, nShards int, labelNames []string, valueFi
 		for _, lName := range labelNames {
 			// I needed a way to hash something to uint64
 			// in order to get some form of random label distribution
-			shard := labels.New(append(ls, labels.Label{
+			shard := labels.StableHash(labels.New(append(ls, labels.Label{
 				Name:  lName,
 				Value: fmt.Sprintf("%d", i),
-			})...).Hash() % uint64(nShards)
+			})...)) % uint64(nShards)
 
 			ls = append(ls, labels.Label{
 				Name:  lName,
@@ -300,14 +295,14 @@ func randomStreams(nStreams, nEntries, nShards int, labelNames []string, valueFi
 
 		r := labels.New(ls...)
 		stream.Labels = r.String()
-		stream.Hash = r.Hash()
+		stream.Hash = labels.StableHash(r)
 		streams = append(streams, stream)
 	}
 	return streams
 }
 
 func mustParseLabels(s string) labels.Labels {
-	labels, err := promql_parser.ParseMetric(s)
+	labels, err := promql_parser.NewParser(promql_parser.Options{}).ParseMetric(s)
 	if err != nil {
 		logger.Fatalf("Failed to parse %s", s)
 	}

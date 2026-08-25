@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"github.com/go-kit/log"
-	"github.com/gogo/protobuf/types"
 	"github.com/grafana/dskit/flagext"
 	"github.com/grafana/dskit/user"
 	"github.com/prometheus/common/model"
@@ -33,12 +32,6 @@ var (
 		End:   time.UnixMilli(1536716898 * 1e3),
 		Step:  120 * 1e3,
 		Query: "sum(container_memory_rss) by (namespace)",
-	}
-	reqHeaders = []*PrometheusRequestHeader{
-		{
-			Name:   "Test-Header",
-			Values: []string{"test"},
-		},
 	}
 	noCacheRequest = &PrometheusRequest{
 		Path:           "/api/v1/query_range",
@@ -73,48 +66,6 @@ var (
 		},
 	}
 )
-
-func mkAPIResponse(start, end, step int64) *PrometheusResponse {
-	var samples []logproto.LegacySample
-	for i := start; i <= end; i += step {
-		samples = append(samples, logproto.LegacySample{
-			TimestampMs: i,
-			Value:       float64(i),
-		})
-	}
-
-	return &PrometheusResponse{
-		Status: StatusSuccess,
-		Data: PrometheusData{
-			ResultType: matrix,
-			Result: []SampleStream{
-				{
-					Labels: []logproto.LabelAdapter{
-						{Name: "foo", Value: "bar"},
-					},
-					Samples: samples,
-				},
-			},
-		},
-	}
-}
-
-func mkExtent(start, end int64) Extent {
-	return mkExtentWithStep(start, end, 10)
-}
-
-func mkExtentWithStep(start, end, step int64) Extent {
-	res := mkAPIResponse(start, end, step)
-	anyRes, err := types.MarshalAny(res)
-	if err != nil {
-		panic(err)
-	}
-	return Extent{
-		Start:    start,
-		End:      end,
-		Response: anyRes,
-	}
-}
 
 func TestShouldCache(t *testing.T) {
 	maxCacheTime := int64(150 * 1000)

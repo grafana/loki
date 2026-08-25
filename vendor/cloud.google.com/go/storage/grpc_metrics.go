@@ -53,7 +53,9 @@ type storageMonitoredResource struct {
 func (smr *storageMonitoredResource) exporter() (metric.Exporter, error) {
 	exporter, err := mexporter.New(
 		mexporter.WithProjectID(smr.project),
-		mexporter.WithMetricDescriptorTypeFormatter(metricFormatter),
+		mexporter.WithMetricDescriptorTypeFormatter(func(m metricdata.Metrics) string {
+			return formatMetricWithPrefix(m, metricPrefix)
+		}),
 		mexporter.WithCreateServiceTimeSeries(),
 		mexporter.WithMonitoredResourceDescription(monitoredResourceName, []string{"project_id", "location", "cloud_platform", "host_id", "instance_id", "api"}),
 	)
@@ -126,6 +128,7 @@ type metricsConfig struct {
 	project         string
 	interval        time.Duration
 	customExporter  *metric.Exporter
+	meterProvider   *metric.MeterProvider
 	manualReader    *metric.ManualReader // used by tests
 	disableExporter bool                 // used by tests disables exports
 	resourceOpts    []resource.Option    // used by tests
@@ -172,7 +175,10 @@ func newGRPCMetricContext(ctx context.Context, cfg metricsConfig) (*metricsConte
 		meterOpts = append(meterOpts, metric.WithReader(
 			metric.NewPeriodicReader(&exporterLogSuppressor{Exporter: exporter}, metric.WithInterval(interval))))
 	}
-	provider := metric.NewMeterProvider(meterOpts...)
+	provider := cfg.meterProvider
+	if provider == nil {
+		provider = metric.NewMeterProvider(meterOpts...)
+	}
 	mo := opentelemetry.MetricsOptions{
 		MeterProvider: provider,
 		Metrics: stats.NewMetrics(
@@ -276,8 +282,4 @@ func createHistogramView(name string, boundaries []float64) metric.View {
 		Name:        name,
 		Aggregation: metric.AggregationExplicitBucketHistogram{Boundaries: boundaries},
 	})
-}
-
-func metricFormatter(m metricdata.Metrics) string {
-	return metricPrefix + strings.ReplaceAll(string(m.Name), ".", "/")
 }

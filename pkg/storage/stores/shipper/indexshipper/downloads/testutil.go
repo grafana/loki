@@ -28,8 +28,8 @@ func (m *mockIndex) Path() string {
 	return m.File.Name()
 }
 
-func (m *mockIndex) Reader() (io.ReadSeeker, error) {
-	return m.File, nil
+func (m *mockIndex) Reader() (io.ReadSeekCloser, error) {
+	return os.Open(m.File.Name())
 }
 
 func setupIndexesAtPath(t *testing.T, userID, path string, start, end int) []string {
@@ -39,7 +39,7 @@ func setupIndexesAtPath(t *testing.T, userID, path string, start, end int) []str
 		fileName := buildIndexFilename(userID, start)
 		indexPath := filepath.Join(path, fileName)
 
-		require.NoError(t, os.WriteFile(indexPath, []byte(fileName), 0640)) // #nosec G306 -- this is fencing off the "other" permissions
+		require.NoError(t, os.WriteFile(indexPath, []byte(fileName), 0640)) // #nosec G306 -- this is fencing off the "other" permissions -- nosemgrep: incorrect-default-permissions
 		testIndexes = append(testIndexes, indexPath)
 	}
 

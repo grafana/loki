@@ -257,7 +257,7 @@ func (r *SnappyConverter) Convert(in io.Reader, w io.Writer) (int64, error) {
 			if !r.readFull(r.buf[:len(snappyMagicBody)], false) {
 				return written, r.err
 			}
-			for i := 0; i < len(snappyMagicBody); i++ {
+			for i := range len(snappyMagicBody) {
 				if r.buf[i] != snappyMagicBody[i] {
 					println("r.buf[i] != snappyMagicBody[i]", r.buf[i], snappyMagicBody[i], i)
 					r.err = ErrSnappyCorrupt
@@ -334,9 +334,10 @@ func decodeSnappy(blk *blockEnc, src []byte) error {
 
 				return errUnsupportedLiteralLength
 			}
-			//if length > snappyMaxBlockSize-d || uint32(length) > len(src)-s {
-			//	return ErrSnappyCorrupt
-			//}
+			if length > len(src)-s {
+				println("length > len(src)-s", length, len(src)-s)
+				return ErrSnappyCorrupt
+			}
 
 			blk.literals = append(blk.literals, src[s:s+length]...)
 			//println(length, "litLen")

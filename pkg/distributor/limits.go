@@ -6,6 +6,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/compactor/retention"
 	"github.com/grafana/loki/v3/pkg/distributor/shardstreams"
 	"github.com/grafana/loki/v3/pkg/loghttp/push"
+	"github.com/grafana/loki/v3/pkg/validation"
 )
 
 // Limits is an interface for distributor limits/related configs
@@ -13,6 +14,8 @@ type Limits interface {
 	retention.Limits
 	MaxLineSize(userID string) int
 	MaxLineSizeTruncate(userID string) bool
+	MaxLineSizeTruncateIdentifier(userID string) string
+
 	MaxLabelNamesPerSeries(userID string) int
 	MaxLabelNameLength(userID string) int
 	MaxLabelValueLength(userID string) int
@@ -46,4 +49,6 @@ type Limits interface {
 	IngestionPartitionsTenantShardSize(userID string) int
 
 	SimulatedPushLatency(userID string) time.Duration
+
+	validation.IngestionPolicyOverrideLimits
 }

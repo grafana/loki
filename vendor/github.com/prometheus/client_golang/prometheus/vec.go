@@ -79,7 +79,7 @@ func (m *MetricVec) DeleteLabelValues(lvs ...string) bool {
 		return false
 	}
 
-	return m.metricMap.deleteByHashWithLabelValues(h, lvs, m.curry)
+	return m.deleteByHashWithLabelValues(h, lvs, m.curry)
 }
 
 // Delete deletes the metric where the variable labels are the same as those
@@ -101,7 +101,7 @@ func (m *MetricVec) Delete(labels Labels) bool {
 		return false
 	}
 
-	return m.metricMap.deleteByHashWithLabels(h, labels, m.curry)
+	return m.deleteByHashWithLabels(h, labels, m.curry)
 }
 
 // DeletePartialMatch deletes all metrics where the variable labels contain all of those
@@ -114,7 +114,7 @@ func (m *MetricVec) DeletePartialMatch(labels Labels) int {
 	labels, closer := constrainLabels(m.desc, labels)
 	defer closer()
 
-	return m.metricMap.deleteByLabels(labels, m.curry)
+	return m.deleteByLabels(labels, m.curry)
 }
 
 // Without explicit forwarding of Describe, Collect, Reset, those methods won't
@@ -193,9 +193,11 @@ func (m *MetricVec) CurryWith(labels Labels) (*MetricVec, error) {
 //
 // Keeping the Metric for later use is possible (and should be considered if
 // performance is critical), but keep in mind that Reset, DeleteLabelValues and
-// Delete can be used to delete the Metric from the MetricVec. In that case, the
-// Metric will still exist, but it will not be exported anymore, even if a
-// Metric with the same label values is created later.
+// Delete can be used to delete the Metric from the MetricVec. In that case, if
+// you have previously kept a reference to that Metric, the Metric object still
+// exists and can be used, but it will not be exported anymore. If a Metric with
+// the same label values is created later, updates to the old Metric reference
+// will not be exported.
 //
 // An error is returned if the number of label values is not the same as the
 // number of variable labels in Desc (minus any curried labels).
@@ -216,7 +218,7 @@ func (m *MetricVec) GetMetricWithLabelValues(lvs ...string) (Metric, error) {
 		return nil, err
 	}
 
-	return m.metricMap.getOrCreateMetricWithLabelValues(h, lvs, m.curry), nil
+	return m.getOrCreateMetricWithLabelValues(h, lvs, m.curry), nil
 }
 
 // GetMetricWith returns the Metric for the given Labels map (the label names
@@ -244,7 +246,7 @@ func (m *MetricVec) GetMetricWith(labels Labels) (Metric, error) {
 		return nil, err
 	}
 
-	return m.metricMap.getOrCreateMetricWithLabels(h, labels, m.curry), nil
+	return m.getOrCreateMetricWithLabels(h, labels, m.curry), nil
 }
 
 func (m *MetricVec) hashLabelValues(vals []string) (uint64, error) {
@@ -657,7 +659,7 @@ func inlineLabelValues(lvs []string, curry []curriedLabelValue) []string {
 }
 
 var labelsPool = &sync.Pool{
-	New: func() interface{} {
+	New: func() any {
 		return make(Labels)
 	},
 }

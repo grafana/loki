@@ -157,7 +157,7 @@ func NewDecoder() (*Decoder, error) {
 func (d *Decoder) Decode(data []byte) (logproto.Stream, labels.Labels, error) {
 	d.stream.Entries = d.stream.Entries[:0]
 	if err := d.stream.Unmarshal(data); err != nil {
-		return logproto.Stream{}, nil, fmt.Errorf("failed to unmarshal stream: %w", err)
+		return logproto.Stream{}, labels.EmptyLabels(), fmt.Errorf("failed to unmarshal stream: %w", err)
 	}
 
 	var ls labels.Labels
@@ -167,7 +167,7 @@ func (d *Decoder) Decode(data []byte) (logproto.Stream, labels.Labels, error) {
 		var err error
 		ls, err = syntax.ParseLabels(d.stream.Labels)
 		if err != nil {
-			return logproto.Stream{}, nil, fmt.Errorf("failed to parse labels: %w", err)
+			return logproto.Stream{}, labels.EmptyLabels(), fmt.Errorf("failed to parse labels: %w", err)
 		}
 		d.cache.Add(d.stream.Labels, ls)
 	}

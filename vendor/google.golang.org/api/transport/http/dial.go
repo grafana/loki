@@ -108,6 +108,8 @@ func newClientNewAuth(ctx context.Context, base http.RoundTripper, ds *internal.
 	if ds.UserAgent != "" {
 		headers.Set("User-Agent", ds.UserAgent)
 	}
+	credsJSON, _ := ds.GetAuthCredentialsJSON()
+	credsFile, _ := ds.GetAuthCredentialsFile()
 	client, err := httptransport.NewClient(&httptransport.Options{
 		DisableTelemetry:      ds.TelemetryDisabled,
 		DisableAuthentication: ds.NoAuth,
@@ -120,8 +122,8 @@ func newClientNewAuth(ctx context.Context, base http.RoundTripper, ds *internal.
 		DetectOpts: &credentials.DetectOptions{
 			Scopes:          ds.Scopes,
 			Audience:        aud,
-			CredentialsFile: ds.CredentialsFile,
-			CredentialsJSON: ds.CredentialsJSON,
+			CredentialsFile: credsFile,
+			CredentialsJSON: credsJSON,
 			Logger:          ds.Logger,
 		},
 		InternalOptions: &httptransport.InternalOptions{
@@ -131,8 +133,9 @@ func newClientNewAuth(ctx context.Context, base http.RoundTripper, ds *internal.
 			DefaultMTLSEndpoint:     ds.DefaultMTLSEndpoint,
 			DefaultScopes:           ds.DefaultScopes,
 			SkipValidation:          skipValidation,
+			TelemetryAttributes:     ds.TelemetryAttributes,
 		},
-		UniverseDomain: ds.UniverseDomain,
+		UniverseDomain: ds.GetUniverseDomain(),
 		Logger:         ds.Logger,
 	})
 	if err != nil {

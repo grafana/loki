@@ -2,6 +2,7 @@ package syntax
 
 import (
 	"errors"
+	"strings"
 	"testing"
 	"time"
 
@@ -357,6 +358,16 @@ var ParseTestCases = []struct {
 		}, nil),
 	},
 	{
+		in: "{ foo = \"bar\" } | logfmt | msg =~ \"`.`\" ",
+		exp: newPipelineExpr(
+			newMatcherExpr([]*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")}),
+			MultiStageExpr{
+				newLogfmtParserExpr(nil),
+				newLabelFilterExpr(log.NewStringLabelFilter(mustNewMatcher(labels.MatchRegexp, "msg", "`.`"))),
+			},
+		),
+	},
+	{
 		in:  `unk({ foo = "bar" }[5m])`,
 		err: logqlmodel.NewParseError("syntax error: unexpected IDENTIFIER", 1, 1),
 	},
@@ -367,6 +378,78 @@ var ParseTestCases = []struct {
 	{
 		in:  `approx_topk(2, count_over_time({ foo = "bar" }[5h])) by (foo)`,
 		err: logqlmodel.NewParseError("grouping not allowed for approx_topk aggregation", 0, 0),
+	},
+	{
+		in: `approx_count_distinct(mac, {foo="bar"} | json [1d]) by (version)`,
+		exp: &LabelAggregationExpr{
+			Operation: OpTypeApproxCountDistinct,
+			Label:     "mac",
+			Left: &LogRangeExpr{
+				Left: newPipelineExpr(
+					newMatcherExpr([]*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")}),
+					MultiStageExpr{newLabelParserExpr(OpParserTypeJSON, "")},
+				),
+				Interval: 24 * time.Hour,
+			},
+			Grouping: &Grouping{Groups: []string{"version"}},
+		},
+	},
+	{
+		in: `approx_count_distinct(mac, {foo="bar"}[1h] offset 5m) by (version)`,
+		exp: &LabelAggregationExpr{
+			Operation: OpTypeApproxCountDistinct,
+			Label:     "mac",
+			Left: &LogRangeExpr{
+				Left:     newMatcherExpr([]*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")}),
+				Interval: time.Hour,
+				Offset:   5 * time.Minute,
+			},
+			Grouping: &Grouping{Groups: []string{"version"}},
+		},
+	},
+	{
+		in: `approx_count_distinct(mac, {foo="bar"}[1d])`,
+		exp: &LabelAggregationExpr{
+			Operation: OpTypeApproxCountDistinct,
+			Label:     "mac",
+			Left: &LogRangeExpr{
+				Left:     newMatcherExpr([]*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")}),
+				Interval: 24 * time.Hour,
+			},
+		},
+	},
+	{
+		in: `approx_count_distinct(mac, {foo="bar"}[1d]) by ()`,
+		exp: &LabelAggregationExpr{
+			Operation: OpTypeApproxCountDistinct,
+			Label:     "mac",
+			Left: &LogRangeExpr{
+				Left:     newMatcherExpr([]*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")}),
+				Interval: 24 * time.Hour,
+			},
+			Grouping: &Grouping{Without: false, Groups: nil},
+		},
+	},
+	{
+		in:  `approx_count_distinct(mac, {foo="bar"}[1d]) without (version)`,
+		err: logqlmodel.NewParseError("without is not supported for approx_count_distinct()", 0, 0),
+	},
+	{
+		in:  `approx_count_distinct(mac, {foo="bar"}[1d]) by (mac)`,
+		err: logqlmodel.NewParseError(`approx_count_distinct() cannot group by the counted field "mac"`, 0, 0),
+	},
+	{
+		in:  `approx_count_distinct(mac, {foo="bar"} | unwrap bar [1d]) by (version)`,
+		err: logqlmodel.NewParseError("unwrap is not supported for approx_count_distinct()", 0, 0),
+	},
+	{
+		// Old split-parenthesis syntax is not supported.
+		in:  `approx_count_distinct(mac) by (version) ({foo="bar"}[1d])`,
+		err: logqlmodel.NewParseError("syntax error: unexpected ), expecting ,", 1, 26),
+	},
+	{
+		in:  `approx_count_distinct(mac, {}[1d]) by (version)`,
+		err: logqlmodel.NewParseError(errAtleastOneEqualityMatcherRequired, 0, 0),
 	},
 	{
 		in:  `rate({ foo = "bar" }[5minutes])`,
@@ -387,6 +470,30 @@ var ParseTestCases = []struct {
 	{
 		in:  `min({ foo = "bar" }[5m])`,
 		err: logqlmodel.NewParseError("syntax error: unexpected RANGE", 0, 20),
+	},
+	{
+		in: `avg(
+					label_replace(
+						count_over_time({ foo = "bar" }[5h]) or 0,
+						"bar",
+						"$1$2",
+						"foo",
+						"(.*).(.*)"
+					)
+				) by (bar,foo)`,
+		err: logqlmodel.NewParseError("unexpected literal for right leg of logical/set binary operation (or): 0.000000", 0, 0),
+	},
+	{
+		in: `avg(
+					label_replace(
+						count_over_time({ foo = "bar" }[5h]) or sum_over_time({ foo = "bar" }[5h]),
+						"bar",
+						"$1$2",
+						"foo",
+						"(.*).(.*)"
+					)
+				) by (bar,foo)`,
+		err: logqlmodel.NewParseError("invalid aggregation sum_over_time without unwrap", 0, 0),
 	},
 	// line filter for ip-matcher
 	{
@@ -1384,6 +1491,11 @@ var ParseTestCases = []struct {
 				},
 			},
 		},
+	},
+	{
+		// a numeric label filter literal the float parser rejects is a parse error, not a silent 0.
+		in:  `{app="foo"} | logfmt | status_code > 0x10`,
+		err: logqlmodel.NewParseError(`unable to parse literal as a float: strconv.ParseFloat: parsing "0x10": invalid syntax`, 0, 0),
 	},
 	{
 		in: `{app="foo"} |= "bar" | unpack | json | latency >= 250ms or ( status_code < 500 and status_code > 200)`,
@@ -3236,110 +3348,6 @@ var ParseTestCases = []struct {
 			},
 		},
 	},
-	{
-		in: `variants(count_over_time({foo="bar"}[5m])) of ({foo="bar"}[5m])`,
-		exp: &MultiVariantExpr{
-			logRange: &LogRangeExpr{
-				Left: &MatchersExpr{
-					Mts: []*labels.Matcher{
-						{
-							Name:  "foo",
-							Value: "bar",
-							Type:  labels.MatchEqual,
-						},
-					},
-				},
-				Interval: 5 * time.Minute,
-				Offset:   0,
-				Unwrap:   nil,
-			},
-			variants: []SampleExpr{
-				&RangeAggregationExpr{
-					Left: &LogRangeExpr{
-						Left: &MatchersExpr{
-							Mts: []*labels.Matcher{
-								{
-									Name:  "foo",
-									Value: "bar",
-									Type:  labels.MatchEqual,
-								},
-							},
-						},
-						Interval: 5 * time.Minute,
-						Offset:   0,
-						Unwrap:   nil,
-					},
-					Operation: OpRangeTypeCount,
-					Params:    new(float64),
-					Grouping:  &Grouping{},
-					err:       nil,
-				},
-			},
-		},
-		err: nil,
-	},
-	{
-		in: `variants(count_over_time({foo="bar"}[5m]), rate({foo="bar"}[5m])) of ({foo="bar"}[5m])`,
-		exp: &MultiVariantExpr{
-			logRange: &LogRangeExpr{
-				Left: &MatchersExpr{
-					Mts: []*labels.Matcher{
-						{
-							Name:  "foo",
-							Value: "bar",
-							Type:  labels.MatchEqual,
-						},
-					},
-				},
-				Interval: 5 * time.Minute,
-				Offset:   0,
-				Unwrap:   nil,
-			},
-			variants: []SampleExpr{
-				&RangeAggregationExpr{
-					Left: &LogRangeExpr{
-						Left: &MatchersExpr{
-							Mts: []*labels.Matcher{
-								{
-									Name:  "foo",
-									Value: "bar",
-									Type:  labels.MatchEqual,
-								},
-							},
-						},
-						Interval: 5 * time.Minute,
-						Offset:   0,
-						Unwrap:   nil,
-					},
-					Operation: OpRangeTypeCount,
-					Params:    new(float64),
-					Grouping:  &Grouping{},
-					err:       nil,
-				},
-				&RangeAggregationExpr{
-					Left: &LogRangeExpr{
-						Left: &MatchersExpr{
-							Mts: []*labels.Matcher{
-								{
-									Name:  "foo",
-									Value: "bar",
-									Type:  labels.MatchEqual,
-								},
-							},
-						},
-						Interval: 5 * time.Minute,
-						Offset:   0,
-						Unwrap:   nil,
-					},
-					Operation: OpRangeTypeRate,
-					Params:    new(float64),
-					Grouping:  &Grouping{},
-					err:       nil,
-				},
-			},
-		},
-		err: nil,
-	},
 }
 
 func TestParse(t *testing.T) {
@@ -3489,56 +3497,54 @@ func Benchmark_MetricPipelineCombined(b *testing.B) {
 	expr, err := ParseSampleExpr(query)
 	require.Nil(b, err)
 
-	extractors, err := expr.Extractors()
+	extractor, err := expr.Extractor()
 	require.Nil(b, err)
 
-	for _, p := range extractors {
-		sp := p.ForStream(labels.EmptyLabels())
-		var (
-			samples []log.ExtractedSample
-			v       float64
-			lbs     log.LabelsResult
-			matches bool
-		)
-		in := []byte(
-			`level=debug ts=2020-10-02T10:10:42.092268913Z caller=logging.go:66 traceID=a9d4d8a928d8db1 msg="POST /api/prom/api/v1/query_range (200) 1.5s"`,
-		)
-		b.ReportAllocs()
-		b.ResetTimer()
-		for i := 0; i < b.N; i++ {
-			samples, matches = sp.Process(0, in, labels.EmptyLabels())
-		}
-
-		v = samples[0].Value
-		lbs = samples[0].Labels
-
-		require.True(b, matches)
-		require.Equal(
-			b,
-			labels.FromStrings(
-				"caller",
-				"logging.go:66",
-				"duration",
-				"1.5s",
-				"level",
-				"debug",
-				"method",
-				"POST",
-				"msg",
-				"POST /api/prom/api/v1/query_range (200) 1.5s",
-				"path",
-				"/api/prom/api/v1/query_range",
-				"status",
-				"200",
-				"traceID",
-				"a9d4d8a928d8db1",
-				"ts",
-				"2020-10-02T10:10:42.092268913Z",
-			),
-			lbs.Labels(),
-		)
-		require.Equal(b, 1.0, v)
+	sp := extractor.ForStream(labels.EmptyLabels())
+	var (
+		sample  log.ExtractedSample
+		v       float64
+		lbs     log.LabelsResult
+		matches bool
+	)
+	in := []byte(
+		`level=debug ts=2020-10-02T10:10:42.092268913Z caller=logging.go:66 traceID=a9d4d8a928d8db1 msg="POST /api/prom/api/v1/query_range (200) 1.5s"`,
+	)
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		sample, matches = sp.Process(0, in, labels.EmptyLabels())
 	}
+
+	v = sample.Value
+	lbs = sample.Labels
+
+	require.True(b, matches)
+	require.Equal(
+		b,
+		labels.FromStrings(
+			"caller",
+			"logging.go:66",
+			"duration",
+			"1.5s",
+			"level",
+			"debug",
+			"method",
+			"POST",
+			"msg",
+			"POST /api/prom/api/v1/query_range (200) 1.5s",
+			"path",
+			"/api/prom/api/v1/query_range",
+			"status",
+			"200",
+			"traceID",
+			"a9d4d8a928d8db1",
+			"ts",
+			"2020-10-02T10:10:42.092268913Z",
+		),
+		lbs.Labels(),
+	)
+	require.Equal(b, 1.0, v)
 }
 
 var c []*labels.Matcher
@@ -3617,6 +3623,27 @@ func TestParseSampleExpr_equalityMatcher(t *testing.T) {
 		},
 		{
 			in: `1 + count_over_time({app=~".+"}[5m]) + count_over_time({app=~".+"}[5m]) + 1`,
+		},
+		{
+			in: `approx_count_distinct(mac, {foo="bar"}[1d])`,
+		},
+		{
+			in: `approx_count_distinct(mac, {foo="bar"}[1d]) by ()`,
+		},
+		{
+			in: `approx_count_distinct(mac, {foo="bar"}[1d]) by (version)`,
+		},
+		{
+			in:  `approx_count_distinct(mac, {}[1d])`,
+			err: logqlmodel.NewParseError(errAtleastOneEqualityMatcherRequired, 0, 0),
+		},
+		{
+			in:  `approx_count_distinct(mac, {}[1d]) by (version)`,
+			err: logqlmodel.NewParseError(errAtleastOneEqualityMatcherRequired, 0, 0),
+		},
+		{
+			in:  `approx_count_distinct(mac, {foo!="bar"}[1d]) by (version)`,
+			err: logqlmodel.NewParseError(errAtleastOneEqualityMatcherRequired, 0, 0),
 		},
 		{
 			in:  `count without (rate({namespace="apps"}[15s]))`,
@@ -3705,6 +3732,9 @@ func TestParseLabels(t *testing.T) {
 			require.Equal(t, tc.output, got)
 		})
 	}
+	input := strings.Repeat("a", 1<<24)
+	_, err := ParseLabels(input)
+	require.Error(t, err)
 }
 
 func TestNoOpLabelToString(t *testing.T) {
@@ -3735,4 +3765,29 @@ func TestParseSampleExpr_String(t *testing.T) {
 		// escaping is hard: the result is {cluster="beep", namespace="boop"} | msg=~`\w.*` which is equivalent to the original
 		require.Equal(t, "{cluster=\"beep\", namespace=\"boop\"} | msg=~`\\w.*`", expr.String())
 	})
+
+	t.Run("it correctly surrounds regex containing backticks with double quotes", func(t *testing.T) {
+		query := "{foo=\"bar\"} | logfmt | msg=~\"`.\\\"`\""
+		expr, err := ParseExpr(query)
+		require.NoError(t, err)
+		require.Equal(t, query, expr.String())
+	})
+}
+
+// TestParseUnreservedWordsAsLabelNames pins that `variants` and `of` are usable
+// as label names. Reserving a word in the grammar makes every query over a
+// stream that uses it as a label fail to parse, and `of` in particular is a
+// tempting name for a future clause.
+func TestParseUnreservedWordsAsLabelNames(t *testing.T) {
+	for _, query := range []string{
+		`{variants="a"}`,
+		`{of="a"}`,
+		`sum by (variants, of) (count_over_time({foo="bar"}[5m]))`,
+		`{foo="bar"} | logfmt | of = "a" | variants = "b"`,
+	} {
+		t.Run(query, func(t *testing.T) {
+			_, err := ParseExpr(query)
+			require.NoError(t, err)
+		})
+	}
 }

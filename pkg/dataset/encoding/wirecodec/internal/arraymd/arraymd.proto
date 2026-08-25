@@ -1,0 +1,43 @@
+syntax = "proto3";
+
+package grafana.dataset.array.v1;
+
+option go_package = "github.com/grafana/loki/v3/pkg/dataset/encoding/wirecodec/internal/arraymd";
+
+// Array represents an individual Array in the dataset. The encoding and type of
+// the array determine how to interpret its structure. Type information is
+// stored out of band.
+message Array {
+  // encoding_ref is the index into the dataset-wide dictionary that holds the
+  // encoding name.
+  uint64 encoding_ref = 1;
+
+  // encoding_metadata holds encoding-specific metadata about this Array.
+  bytes encoding_metadata = 2;
+
+  // buffer_ids holds the IDs of the buffers that store the Array's data. How
+  // many buffers an Array can have depends on its encoding.
+  repeated uint64 buffer_ids = 3;
+
+  // children holds the Array's child Arrays, if any.
+  repeated Array children = 4;
+
+  // Stats holds optional Array statistics.
+  Stats stats = 5;
+}
+
+// Stats holds optional statistics for an Array. Child statistics are not rolled
+// up; read the Stats for individual children if needed.
+message Stats {
+  int64 null_count = 1;
+}
+
+// BitpackedMetadata holds encoding-specific metadata for bitpacked arrays.
+message BitpackedMetadata {
+  uint64 block_size = 1;
+}
+
+// ZstdMetadata holds encoding-specific metadata for zstd-compressed arrays.
+message ZstdMetadata {
+  uint64 uncompressed_size = 1;
+}

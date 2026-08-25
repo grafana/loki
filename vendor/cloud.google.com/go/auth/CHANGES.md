@@ -1,4 +1,103 @@
-# Changelog
+# Changes
+
+## [0.23.2](https://github.com/googleapis/google-cloud-go/compare/auth/v0.23.1...auth/v0.23.2) (2026-08-20)
+
+
+### Bug Fixes
+
+* **auth:** Eliminate timing race conditions in grpctransport otel tests ([#20175](https://github.com/googleapis/google-cloud-go/issues/20175)) ([#20382](https://github.com/googleapis/google-cloud-go/issues/20382)) ([637505e](https://github.com/googleapis/google-cloud-go/commit/637505e5d5f090eec020604c3702b6ace11dcd38))
+
+## [0.23.1](https://github.com/googleapis/google-cloud-go/compare/auth/v0.23.0...auth/v0.23.1) (2026-08-13)
+
+
+### Bug Fixes
+
+* **auth:** Fix OpenTelemetry test flake in grpctransport ([#20191](https://github.com/googleapis/google-cloud-go/issues/20191)) ([e43ce28](https://github.com/googleapis/google-cloud-go/commit/e43ce28d01ea80970e6373e1c4540cb470cdc4a6))
+
+## [0.23.0](https://github.com/googleapis/google-cloud-go/compare/auth/v0.22.0...auth/v0.23.0) (2026-08-07)
+
+
+### Features
+
+* X509 workload identity ecp support ([#20138](https://github.com/googleapis/google-cloud-go/issues/20138)) ([5fa474a](https://github.com/googleapis/google-cloud-go/commit/5fa474a10a3863a1bb34ecb27540e8a574d7a736))
+
+## [0.22.0](https://github.com/googleapis/google-cloud-go/compare/auth/v0.21.0...auth/v0.22.0) (2026-07-13)
+
+
+### Features
+
+* **auth:** Populate http.response.status_code in http transport ([#20053](https://github.com/googleapis/google-cloud-go/issues/20053)) ([bff5d7c](https://github.com/googleapis/google-cloud-go/commit/bff5d7c9bc7f8ea8c0059f7d8e2d4294ba92c5bc))
+
+## [0.21.0](https://github.com/googleapis/google-cloud-go/compare/auth/v0.20.0...auth/v0.21.0) (2026-07-07)
+
+
+### Features
+
+* **auth:** Implement updated design for regional access boundary ([#13417](https://github.com/googleapis/google-cloud-go/issues/13417)) ([fadb6c7](https://github.com/googleapis/google-cloud-go/commit/fadb6c764dbe869fca736d9f0446b5010f21d2f2))
+
+
+### Bug Fixes
+
+* **auth:** Avoid double impersonation in idtoken and clarify docs ([#14474](https://github.com/googleapis/google-cloud-go/issues/14474)) ([995bfc3](https://github.com/googleapis/google-cloud-go/commit/995bfc36199ba6ae1c88803c71f39a0b19fc8c0f)), closes [#11105](https://github.com/googleapis/google-cloud-go/issues/11105)
+* **auth:** Correct go min version ([#20094](https://github.com/googleapis/google-cloud-go/issues/20094)) ([6bb4358](https://github.com/googleapis/google-cloud-go/commit/6bb4358dca69b803e52eb2af882fa5afc24d54e2))
+
+## [0.20.0](https://github.com/googleapis/google-cloud-go/releases/tag/auth%2Fv0.20.0) (2026-04-06)
+
+## [0.19.0](https://github.com/googleapis/google-cloud-go/releases/tag/auth%2Fv0.19.0) (2026-03-23)
+
+### Features
+
+* add OpenTelemetry gRPC and HTTP wrappers for T4 tracing (#14133) ([d38abf9](https://github.com/googleapis/google-cloud-go/commit/d38abf988d4017b4832434abae9a90874bec5ce9))
+
+## [0.18.2](https://github.com/googleapis/google-cloud-go/releases/tag/auth%2Fv0.18.2) (2026-02-13)
+
+### Bug Fixes
+
+* fixes gdch credentials logic (#13741) ([f82cda5](https://github.com/googleapis/google-cloud-go/commit/f82cda58bd9885b7b8a9d8b15126f5a1e0add0dc))
+
+## [0.18.1](https://github.com/googleapis/google-cloud-go/releases/tag/auth%2Fv0.18.1) (2026-01-21)
+
+### Bug Fixes
+
+* add InternalOptions.TelemetryAttributes for internal client use (#13641) ([3876978](https://github.com/googleapis/google-cloud-go/commit/38769789755ed47d85e85dcd56596109de65f780))
+* remove singleton and restore normal usage of otelgrpc.clientHandler (#13522) ([673d4b0](https://github.com/googleapis/google-cloud-go/commit/673d4b05617f833aa433f7f6a350b5cb888ea20d))
+
+## [0.18.0](https://github.com/googleapis/google-cloud-go/releases/tag/auth%2Fv0.18.0) (2025-12-15)
+
+### Features
+
+* Support scopes field from impersonated credential json (#13308) ([e3f62e1](https://github.com/googleapis/google-cloud-go/commit/e3f62e102840127a0058f5cced4c9738f2bf45f2))
+* add support for parsing EC private key (#13317) ([ea6bc62](https://github.com/googleapis/google-cloud-go/commit/ea6bc62ffe2cc0a6d607d698a181b37fa46c340d))
+* deprecate unsafe credentials JSON loading options (#13397) ([0dd2a3b](https://github.com/googleapis/google-cloud-go/commit/0dd2a3bdece9a85ee7216a737559fa9f5a869545))
+
+## [0.17.0](https://github.com/googleapis/google-cloud-go/releases/tag/auth%2Fv0.17.0) (2025-10-02)
+
+### Features
+
+* Add trust boundary support for service accounts and impersonation (HTTP/gRPC) (#11870) ([5c2b665](https://github.com/googleapis/google-cloud-go/commit/5c2b665f392e6dd90192f107188720aa1357e7da))
+* add trust boundary support for external accounts (#12864) ([a67a146](https://github.com/googleapis/google-cloud-go/commit/a67a146a6a88a6f1ba10c409dfce8015ecd60a64))
+
+## [0.16.5](https://github.com/googleapis/google-cloud-go/compare/auth/v0.16.4...auth/v0.16.5) (2025-08-14)
+
+
+### Bug Fixes
+
+* **auth:** Improve error message for unknown credentials type ([#12673](https://github.com/googleapis/google-cloud-go/issues/12673)) ([558b164](https://github.com/googleapis/google-cloud-go/commit/558b16429f621276694405fa5f2091199f2d4c4d))
+* **auth:** Set Content-Type in userTokenProvider.exchangeToken ([#12634](https://github.com/googleapis/google-cloud-go/issues/12634)) ([1197ebc](https://github.com/googleapis/google-cloud-go/commit/1197ebcbca491f8c610da732c7361c90bc6f46d0))
+
+## [0.16.4](https://github.com/googleapis/google-cloud-go/compare/auth/v0.16.3...auth/v0.16.4) (2025-08-06)
+
+
+### Bug Fixes
+
+* **auth:** Add UseDefaultClient: true to metadata.Options ([#12666](https://github.com/googleapis/google-cloud-go/issues/12666)) ([1482191](https://github.com/googleapis/google-cloud-go/commit/1482191e88236693efef68769752638281566766)), refs [#11078](https://github.com/googleapis/google-cloud-go/issues/11078) [#12657](https://github.com/googleapis/google-cloud-go/issues/12657)
+
+## [0.16.3](https://github.com/googleapis/google-cloud-go/compare/auth/v0.16.2...auth/v0.16.3) (2025-07-17)
+
+
+### Bug Fixes
+
+* **auth:** Fix race condition in cachedTokenProvider.tokenAsync ([#12586](https://github.com/googleapis/google-cloud-go/issues/12586)) ([73867cc](https://github.com/googleapis/google-cloud-go/commit/73867ccc1e9808d65361bcfc0776bd95fe34dbb3))
 
 ## [0.16.2](https://github.com/googleapis/google-cloud-go/compare/auth/v0.16.1...auth/v0.16.2) (2025-06-04)
 

@@ -2,15 +2,11 @@ package retention
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/base64"
 	"fmt"
 	"os"
 	"path"
 	"path/filepath"
 	"sort"
-	"strconv"
-	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -28,6 +24,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql/log"
 	"github.com/grafana/loki/v3/pkg/storage/chunk"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/client/local"
 	"github.com/grafana/loki/v3/pkg/util/filter"
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
 	"github.com/grafana/loki/v3/pkg/validation"
@@ -166,19 +163,22 @@ func Test_Retention(t *testing.T) {
 			store.Stop()
 
 			// marks and sweep
-			expiration := NewExpirationChecker(tt.limits)
+			expiration := NewExpirationChecker(tt.limits, nil)
 			workDir := filepath.Join(t.TempDir(), "retention")
 			// must not fail the process because deletion must be retried
 			chunkClient := newMockChunkClient(true)
-			sweep, err := NewSweeper(workDir, chunkClient, 10, 0, backoff.Config{MaxRetries: 2}, nil)
+			markerStorageClient, err := local.NewFSObjectClient(local.FSConfig{Directory: workDir})
+			require.NoError(t, err)
+
+			sweep, err := NewSweeper(markerStorageClient, chunkClient, 10, 0, backoff.Config{MaxRetries: 2}, nil)
 			require.NoError(t, err)
 			sweep.Start()
 			defer sweep.Stop()
 
-			marker, err := NewMarker(workDir, expiration, time.Hour, nil, prometheus.NewRegistry())
+			marker, err := NewMarker(markerStorageClient, expiration, time.Hour, nil, prometheus.NewRegistry())
 			require.NoError(t, err)
 			for _, table := range store.indexTables() {
-				_, _, err := marker.MarkForDelete(context.Background(), table.name, "", table, util_log.Logger)
+				_, _, err := marker.FindAndMarkChunksForDeletion(context.Background(), table.name, "", table, util_log.Logger)
 				require.Nil(t, err)
 			}
 
@@ -219,7 +219,11 @@ func Test_Sweeper_deleteChunk(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			workDir := filepath.Join(t.TempDir(), "retention")
 			chunkClient := newMockChunkClient(true)
-			sweep, err := NewSweeper(workDir, chunkClient, 10, 0, backoff.Config{MaxRetries: data.maxRetries}, nil)
+
+			markerStorageClient, err := local.NewFSObjectClient(local.FSConfig{Directory: workDir})
+			require.NoError(t, err)
+
+			sweep, err := NewSweeper(markerStorageClient, chunkClient, 10, 0, backoff.Config{MaxRetries: data.maxRetries}, nil)
 			require.NoError(t, err)
 
 			err = sweep.deleteChunk(context.Background(), []byte(chunkID))
@@ -261,18 +265,18 @@ func Test_EmptyTable(t *testing.T) {
 	require.Len(t, tables, 1)
 
 	// disabled retention should not do anything to the table
-	empty, modified, err := markForDelete(context.Background(), 0, tables[0].name, &noopWriter{}, tables[0], NewExpirationChecker(&fakeLimits{}), nil, util_log.Logger)
+	empty, modified, err := markForDelete(context.Background(), 0, tables[0].name, &noopWriter{}, tables[0], NewExpirationChecker(&fakeLimits{}, nil), nil, util_log.Logger)
 	require.NoError(t, err)
 	require.False(t, empty)
 	require.False(t, modified)
 
 	// Set a very low retention to make sure all chunks are marked for deletion which will create an empty table.
-	empty, modified, err = markForDelete(context.Background(), 0, tables[0].name, &noopWriter{}, tables[0], NewExpirationChecker(&fakeLimits{perTenant: map[string]retentionLimit{"1": {retentionPeriod: time.Second}, "2": {retentionPeriod: time.Second}}}), nil, util_log.Logger)
+	empty, modified, err = markForDelete(context.Background(), 0, tables[0].name, &noopWriter{}, tables[0], NewExpirationChecker(&fakeLimits{perTenant: map[string]retentionLimit{"1": {retentionPeriod: time.Second}, "2": {retentionPeriod: time.Second}}}, nil), nil, util_log.Logger)
 	require.NoError(t, err)
 	require.True(t, empty)
 	require.True(t, modified)
 
-	_, _, err = markForDelete(context.Background(), 0, tables[0].name, &noopWriter{}, newTable("test"), NewExpirationChecker(&fakeLimits{}), nil, util_log.Logger)
+	_, _, err = markForDelete(context.Background(), 0, tables[0].name, &noopWriter{}, newTable("test"), NewExpirationChecker(&fakeLimits{}, nil), nil, util_log.Logger)
 	require.Equal(t, err, errNoChunksFound)
 }
 
@@ -283,7 +287,7 @@ func createChunk(t testing.TB, userID string, lbs labels.Labels, from model.Time
 		blockSize  = 256 * 1024
 	)
 	labelsBuilder := labels.NewBuilder(lbs)
-	labelsBuilder.Set(labels.MetricName, "logs")
+	labelsBuilder.Set(model.MetricNameLabel, "logs")
 	metric := labelsBuilder.Labels()
 	fp := ingesterclient.Fingerprint(lbs)
 	chunkEnc := chunkenc.NewMemChunk(chunkenc.ChunkFormatV4, compression.Snappy, chunkenc.UnorderedWithStructuredMetadataHeadBlockFmt, blockSize, targetSize)
@@ -304,47 +308,59 @@ func createChunk(t testing.TB, userID string, lbs labels.Labels, from model.Time
 	return c
 }
 
-func labelsSeriesID(ls labels.Labels) []byte {
-	h := sha256.Sum256([]byte(labelsString(ls)))
-	return encodeBase64Bytes(h[:])
-}
+// TestChunkRewriterPreservesIngestedAtWhenReindexing covers the chunk rewriter
+// path that runs during a partial delete: when only some lines of a chunk are
+// removed, the chunk is decoded, filtered, re-encoded and re-indexed. This test
+// asserts that IngestedAt survives that round-trip, both on the re-indexed entry
+// and on the chunk written back to the store. If it didn't, a delete request
+// against backfilled data would reset its ingestion time and the data would then
+// expire by its (old) log time — defeating ingestion-time retention.
+//
+// v14 is the schema this feature targets (FormatV4 persists IngestedAt). Note the
+// index here is a mock (*table) that records what IndexChunk receives, so this
+// test exercises the rewriter's preservation logic, not the on-disk index format
+// (that round-trip is covered by the tsdb indexshipper tests).
+func TestChunkRewriterPreservesIngestedAtWhenReindexing(t *testing.T) {
+	now := model.Now()
+	schema := allSchemas[5] // v14
+	tableInterval := ExtractIntervalFromTableName(schema.config.IndexTables.TableFor(now))
+	ingestedAt := now.Add(-30 * time.Minute)
 
-func encodeBase64Bytes(bytes []byte) []byte {
-	encodedLen := base64.RawStdEncoding.EncodedLen(len(bytes))
-	encoded := make([]byte, encodedLen)
-	base64.RawStdEncoding.Encode(encoded, bytes)
-	return encoded
-}
+	// A chunk spanning two hours with a non-zero IngestedAt, as a backfilled chunk would have.
+	originalChunk := createChunk(t, "1", labels.FromStrings("foo", "bar"), tableInterval.Start, tableInterval.Start.Add(2*time.Hour))
+	originalChunk.IngestedAt = ingestedAt
+	require.NoError(t, originalChunk.Encode())
 
-// Backwards-compatible with model.Metric.String()
-func labelsString(ls labels.Labels) string {
-	metricName := ls.Get(labels.MetricName)
-	if metricName != "" && ls.Len() == 1 {
-		return metricName
-	}
-	var b strings.Builder
-	b.Grow(1000)
+	store := newTestStore(t)
+	require.NoError(t, store.Put(context.TODO(), []chunk.Chunk{originalChunk}))
+	store.Stop()
 
-	b.WriteString(metricName)
-	b.WriteByte('{')
-	i := 0
-	ls.Range(func(l labels.Label) {
-		if l.Name == labels.MetricName {
-			return
-		}
-		if i > 0 {
-			b.WriteByte(',')
-			b.WriteByte(' ')
-		}
-		b.WriteString(l.Name)
-		b.WriteByte('=')
-		var buf [1000]byte
-		b.Write(strconv.AppendQuote(buf[:0], l.Value))
-		i++
+	indexTables := store.indexTables()
+	require.Len(t, indexTables, 1)
+	indexTable := indexTables[0]
+
+	// Rewrite the chunk, deleting only its first hour so a new (filtered) chunk is produced and re-indexed.
+	cr := newChunkRewriter(store.chunkClient, indexTable.name, indexTable)
+	wroteChunks, linesDeleted, err := cr.rewriteChunk(context.Background(), []byte(originalChunk.UserID), Chunk{
+		ChunkID: getChunkID(originalChunk.ChunkRef),
+		From:    originalChunk.From,
+		Through: originalChunk.Through,
+	}, tableInterval, func(ts time.Time, _ string, _ labels.Labels) bool {
+		return ts.UnixNano() <= tableInterval.Start.Add(time.Hour).UnixNano()
 	})
-	b.WriteByte('}')
+	require.NoError(t, err)
+	require.True(t, linesDeleted)
+	require.True(t, wroteChunks)
 
-	return b.String()
+	// The re-indexed chunk must carry the original IngestedAt.
+	require.Equal(t, []model.Time{ingestedAt}, indexTable.indexedIngestedAt)
+
+	// Both the original (not yet swept) and the rewritten chunk in the store keep IngestedAt.
+	chunks := store.GetChunks(originalChunk.UserID, originalChunk.From, originalChunk.Through, originalChunk.Metric)
+	require.Len(t, chunks, 2)
+	for _, chk := range chunks {
+		require.Equal(t, ingestedAt, chk.IngestedAt)
+	}
 }
 
 func TestChunkRewriter(t *testing.T) {
@@ -659,7 +675,7 @@ func newSeriesCleanRecorder(indexProcessor IndexProcessor) *seriesCleanedRecorde
 }
 
 func (s *seriesCleanedRecorder) CleanupSeries(userID []byte, lbls labels.Labels) error {
-	s.deletedSeries[string(userID)] = map[uint64]struct{}{lbls.Hash(): {}}
+	s.deletedSeries[string(userID)] = map[uint64]struct{}{labels.StableHash(lbls): {}}
 	return s.IndexProcessor.CleanupSeries(userID, lbls)
 }
 
@@ -844,7 +860,7 @@ func TestMarkForDelete_SeriesCleanup(t *testing.T) {
 				},
 			},
 			expectedDeletedSeries: []map[uint64]struct{}{
-				{labels.FromStrings("foo", "2").Hash(): struct{}{}},
+				{labels.StableHash(labels.FromStrings("foo", "2")): struct{}{}},
 			},
 			expectedEmpty: []bool{
 				false,
@@ -873,7 +889,7 @@ func TestMarkForDelete_SeriesCleanup(t *testing.T) {
 				},
 			},
 			expectedDeletedSeries: []map[uint64]struct{}{
-				{labels.FromStrings("foo", "2").Hash(): struct{}{}},
+				{labels.StableHash(labels.FromStrings("foo", "2")): struct{}{}},
 			},
 			expectedEmpty: []bool{
 				false,
@@ -1109,7 +1125,7 @@ func TestMarkForDelete_DropChunkFromIndex(t *testing.T) {
 
 	for i, table := range tables {
 		empty, _, err := markForDelete(context.Background(), 0, table.name, &noopWriter{}, table,
-			NewExpirationChecker(fakeLimits{perTenant: map[string]retentionLimit{"1": {retentionPeriod: retentionPeriod}}}), nil, util_log.Logger)
+			NewExpirationChecker(fakeLimits{perTenant: map[string]retentionLimit{"1": {retentionPeriod: retentionPeriod}}}, nil), nil, util_log.Logger)
 		require.NoError(t, err)
 		if i == 7 {
 			require.False(t, empty)
@@ -1132,41 +1148,34 @@ func TestMigrateMarkers(t *testing.T) {
 	t.Run("nothing to migrate", func(t *testing.T) {
 		workDir := t.TempDir()
 		dst := path.Join(workDir, "store-1_2023-10-19")
-		require.NoError(t, CopyMarkers(workDir, dst))
-		require.NoDirExists(t, path.Join(workDir, dst, MarkersFolder))
+
+		markerStorageClient, err := local.NewFSObjectClient(local.FSConfig{Directory: dst})
+		require.NoError(t, err)
+
+		require.NoError(t, CopyMarkers(workDir, markerStorageClient, ""))
 	})
 
 	t.Run("migrate markers dir", func(t *testing.T) {
 		workDir := t.TempDir()
 		dst := path.Join(workDir, "store-1_2023-10-19")
-		require.NoError(t, os.Mkdir(path.Join(workDir, MarkersFolder), 0755))
 
 		markers := []string{"foo", "bar", "buzz"}
 		for _, marker := range markers {
-			err := os.WriteFile(path.Join(workDir, MarkersFolder, marker), []byte(marker), 0o666)
+			err := os.WriteFile(path.Join(workDir, marker), []byte(marker), 0o666)
 			require.NoError(t, err)
 		}
 
-		require.NoError(t, CopyMarkers(workDir, dst))
-		targetDir := path.Join(dst, MarkersFolder)
-		require.DirExists(t, targetDir)
+		markerStorageClient, err := local.NewFSObjectClient(local.FSConfig{Directory: dst})
+		require.NoError(t, err)
+
+		require.NoError(t, CopyMarkers(workDir, markerStorageClient, ""))
+		require.DirExists(t, dst)
 		for _, marker := range markers {
-			require.FileExists(t, path.Join(targetDir, marker))
-			b, err := os.ReadFile(path.Join(targetDir, marker))
+			require.FileExists(t, path.Join(dst, marker))
+			b, err := os.ReadFile(path.Join(dst, marker))
 			require.NoError(t, err)
 			require.Equal(t, marker, string(b))
 		}
-	})
-
-	t.Run("file named markers should not be migrated", func(t *testing.T) {
-		workDir := t.TempDir()
-		dst := path.Join(workDir, "store-1_2023-10-19")
-		f, err := os.Create(path.Join(workDir, MarkersFolder))
-		require.NoError(t, err)
-		defer f.Close()
-
-		require.NoError(t, CopyMarkers(workDir, dst))
-		require.NoDirExists(t, path.Join(dst, MarkersFolder))
 	})
 }
 

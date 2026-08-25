@@ -80,10 +80,6 @@ var tokens = map[string]int{
 
 	// keep labels
 	OpKeep: KEEP,
-
-	// variants
-	OpVariants: VARIANTS,
-	VariantsOf: OF,
 }
 
 var parserFlags = map[string]struct{}{
@@ -125,7 +121,8 @@ var functionTokens = map[string]int{
 	OpTypeSortDesc: SORT_DESC,
 	OpLabelReplace: LABEL_REPLACE,
 
-	OpTypeApproxTopK: APPROX_TOPK,
+	OpTypeApproxTopK:          APPROX_TOPK,
+	OpTypeApproxCountDistinct: APPROX_COUNT_DISTINCT,
 
 	// conversion Op
 	OpConvBytes:           BYTES_CONV,
@@ -149,7 +146,7 @@ func (l *lexer) Lex(lval *syntaxSymType) int {
 	case '#':
 		// Scan until a newline or EOF is encountered
 		//nolint:revive
-		for next := l.Peek(); !(next == '\n' || next == scanner.EOF); next = l.Next() {
+		for next := l.Peek(); next != '\n' && next != scanner.EOF; next = l.Next() {
 		}
 
 		return l.Lex(lval)
@@ -384,7 +381,7 @@ func tryScanBytes(number string, l *Scanner) (uint64, bool) {
 
 func isBytesSizeRune(r rune) bool {
 	// Accept: B, kB, MB, GB, TB, PB, KB, KiB, MiB, GiB, TiB, PiB
-	// Do not accept: EB, ZB, YB, PiB, ZiB and YiB. They are not supported since the value migh not be represented in an uint64
+	// Do not accept: EB, ZB, YB, EiB, ZiB and YiB. They are not supported since the value migh not be represented in an uint64
 	switch r {
 	case 'B', 'i', 'k', 'K', 'M', 'G', 'T', 'P':
 		return true

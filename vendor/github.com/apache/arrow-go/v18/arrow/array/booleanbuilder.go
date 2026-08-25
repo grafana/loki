@@ -38,7 +38,7 @@ type BooleanBuilder struct {
 
 func NewBooleanBuilder(mem memory.Allocator) *BooleanBuilder {
 	bb := &BooleanBuilder{builder: builder{mem: mem}}
-	bb.builder.refCount.Add(1)
+	bb.refCount.Add(1)
 	return bb
 }
 
@@ -131,7 +131,7 @@ func (b *BooleanBuilder) AppendValues(v []bool, valid []bool) {
 	for i, vv := range v {
 		bitutil.SetBitTo(b.rawData, b.length+i, vv)
 	}
-	b.builder.unsafeAppendBoolsToBitmap(valid, len(v))
+	b.unsafeAppendBoolsToBitmap(valid, len(v))
 }
 
 func (b *BooleanBuilder) init(capacity int) {
@@ -146,7 +146,7 @@ func (b *BooleanBuilder) init(capacity int) {
 // Reserve ensures there is enough space for appending n elements
 // by checking the capacity and calling Resize if necessary.
 func (b *BooleanBuilder) Reserve(n int) {
-	b.builder.reserve(n, b.Resize)
+	b.reserve(n, b.Resize)
 }
 
 // Resize adjusts the space allocated by b to n elements. If n is greater than b.Cap(),
@@ -159,7 +159,7 @@ func (b *BooleanBuilder) Resize(n int) {
 	if b.capacity == 0 {
 		b.init(n)
 	} else {
-		b.builder.resize(n, b.init)
+		b.resize(n, b.init)
 		b.data.Resize(arrow.BooleanTraits.BytesRequired(n))
 		b.rawData = b.data.Bytes()
 	}

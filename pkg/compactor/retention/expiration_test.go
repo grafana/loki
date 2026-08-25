@@ -5,6 +5,8 @@ import (
 	"time"
 
 	"github.com/grafana/dskit/flagext"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
@@ -106,7 +108,7 @@ func Test_expirationChecker_Expired(t *testing.T) {
 	o, err := overridesTestConfig(d, f)
 	require.NoError(t, err)
 
-	e := NewExpirationChecker(o)
+	e := NewExpirationChecker(o, nil)
 	tests := []struct {
 		name   string
 		userID string
@@ -126,6 +128,56 @@ func Test_expirationChecker_Expired(t *testing.T) {
 			actual, nonDeletedIntervalFilters := e.Expired([]byte(tt.userID), tt.chunk, mustParseLabels(tt.labels), nil, "", model.Now())
 			require.Equal(t, tt.want, actual)
 			require.Nil(t, nonDeletedIntervalFilters)
+		})
+	}
+}
+
+func Test_expirationChecker_Expired_UsesIngestedAt(t *testing.T) {
+	d := defaultLimitsTestConfig()
+	d.RetentionPeriod = model.Duration(time.Hour)
+	o, err := overridesTestConfig(d, fakeOverrides{})
+	require.NoError(t, err)
+
+	reg := prometheus.NewPedanticRegistry()
+	e := NewExpirationChecker(o, reg)
+
+	now := model.Now()
+	tests := []struct {
+		name            string
+		chunk           Chunk
+		want            bool
+		wantMetricDelta float64
+	}{
+		{
+			name:  "zero IngestedAt falls back to Through (expired)",
+			chunk: Chunk{From: now.Add(-3 * time.Hour), Through: now.Add(-2 * time.Hour)},
+			want:  true,
+		},
+		{
+			name:  "zero IngestedAt falls back to Through (not expired)",
+			chunk: Chunk{From: now.Add(-3 * time.Hour), Through: now.Add(-30 * time.Minute)},
+			want:  false,
+		},
+		{
+			name:  "old Through but recent IngestedAt is retained",
+			chunk: Chunk{From: now.Add(-72 * time.Hour), Through: now.Add(-48 * time.Hour), IngestedAt: now.Add(-30 * time.Minute)},
+			want:  false,
+		},
+		{
+			name:            "old IngestedAt expires even if Through is recent",
+			chunk:           Chunk{From: now.Add(-3 * time.Hour), Through: now.Add(-1 * time.Minute), IngestedAt: now.Add(-2 * time.Hour)},
+			want:            true,
+			wantMetricDelta: 1,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			before := testutil.ToFloat64(e.(*expirationChecker).metrics.chunksExpiredByIngestionTime)
+			actual, filterFn := e.Expired([]byte("1"), tt.chunk, mustParseLabels(`{foo="buzz"}`), nil, "", now)
+			require.Equal(t, tt.want, actual)
+			require.Nil(t, filterFn)
+			after := testutil.ToFloat64(e.(*expirationChecker).metrics.chunksExpiredByIngestionTime)
+			require.Equal(t, tt.wantMetricDelta, after-before)
 		})
 	}
 }
@@ -183,7 +235,7 @@ func Test_expirationChecker_Expired_zeroValue(t *testing.T) {
 	}
 	o, err := overridesTestConfig(d, f)
 	require.NoError(t, err)
-	e := NewExpirationChecker(o)
+	e := NewExpirationChecker(o, nil)
 	tests := []struct {
 		name   string
 		userID string
@@ -231,7 +283,7 @@ func Test_expirationChecker_Expired_zeroValueOverride(t *testing.T) {
 	o, err := overridesTestConfig(d, f)
 	require.NoError(t, err)
 
-	e := NewExpirationChecker(o)
+	e := NewExpirationChecker(o, nil)
 	tests := []struct {
 		name   string
 		userID string
@@ -267,7 +319,7 @@ func Test_expirationChecker_DropFromIndex_zeroValue(t *testing.T) {
 	}
 	o, err := overridesTestConfig(d, f)
 	require.NoError(t, err)
-	e := NewExpirationChecker(o)
+	e := NewExpirationChecker(o, nil)
 
 	chunkFrom := model.Now().Add(-3 * time.Hour)
 	chunkThrough := model.Now().Add(-2 * time.Hour)
@@ -282,6 +334,8 @@ func Test_expirationChecker_DropFromIndex_zeroValue(t *testing.T) {
 		{"tenant with no override should not delete", "1", `{foo="buzz"}`, Chunk{From: chunkFrom, Through: chunkThrough}, model.Now().Add(-48 * time.Hour), false},
 		{"tenant with override tableEndTime within retention period should not delete", "2", `{foo="buzz"}`, Chunk{From: chunkFrom, Through: chunkThrough}, model.Now().Add(-1 * time.Hour), false},
 		{"tenant with override should delete", "2", `{foo="buzz"}`, Chunk{From: chunkFrom, Through: chunkThrough}, model.Now().Add(-48 * time.Hour), true},
+		{"tenant with override old tableEndTime but recent IngestedAt should not delete", "2", `{foo="buzz"}`, Chunk{From: chunkFrom, Through: chunkThrough, IngestedAt: model.Now().Add(-1 * time.Hour)}, model.Now().Add(-48 * time.Hour), false},
+		{"tenant with override expired IngestedAt should delete even with recent tableEndTime", "2", `{foo="buzz"}`, Chunk{From: chunkFrom, Through: chunkThrough, IngestedAt: model.Now().Add(-48 * time.Hour)}, model.Now().Add(-1 * time.Hour), true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -306,7 +360,7 @@ func Test_expirationChecker_CanSkipSeries(t *testing.T) {
 	}
 	o, err := overridesTestConfig(d, f)
 	require.NoError(t, err)
-	e := NewExpirationChecker(o)
+	e := NewExpirationChecker(o, nil)
 
 	tests := []struct {
 		name        string
@@ -476,6 +530,107 @@ func TestFindLatestRetentionStartTime(t *testing.T) {
 				},
 			},
 		},
+		{
+			name: "default retention period zero disables retention entirely",
+			limit: fakeLimits{
+				defaultLimit: retentionLimit{
+					retentionPeriod: 0,
+				},
+			},
+			expectedLatestRetentionStartTime: latestRetentionStartTime{
+				overall:  0,
+				defaults: 0,
+				byUser:   map[string]model.Time{},
+			},
+		},
+		{
+			name: "default retention zero with all stream retentions zero does not scan any tables",
+			limit: fakeLimits{
+				defaultLimit: retentionLimit{
+					retentionPeriod: 0,
+					streamRetention: []validation.StreamRetention{
+						{Period: model.Duration(0)},
+					},
+				},
+			},
+			expectedLatestRetentionStartTime: latestRetentionStartTime{
+				overall:  0,
+				defaults: 0,
+				byUser:   map[string]model.Time{},
+			},
+		},
+		{
+			name: "default retention zero with positive stream retention uses stream period",
+			limit: fakeLimits{
+				defaultLimit: retentionLimit{
+					retentionPeriod: 0,
+					streamRetention: []validation.StreamRetention{
+						{Period: model.Duration(7 * dayDuration)},
+					},
+				},
+			},
+			expectedLatestRetentionStartTime: latestRetentionStartTime{
+				overall:  now.Add(-7 * dayDuration),
+				defaults: now.Add(-7 * dayDuration),
+				byUser:   map[string]model.Time{},
+			},
+		},
+		{
+			name: "stream retention zero does not override positive default",
+			limit: fakeLimits{
+				defaultLimit: retentionLimit{
+					retentionPeriod: 30 * dayDuration,
+					streamRetention: []validation.StreamRetention{
+						{Period: model.Duration(0)},
+					},
+				},
+			},
+			expectedLatestRetentionStartTime: latestRetentionStartTime{
+				overall:  now.Add(-30 * dayDuration),
+				defaults: now.Add(-30 * dayDuration),
+				byUser:   map[string]model.Time{},
+			},
+		},
+		{
+			name: "per-user retention zero disables retention for user and does not override overall",
+			limit: fakeLimits{
+				defaultLimit: retentionLimit{
+					retentionPeriod: 30 * dayDuration,
+				},
+				perTenant: map[string]retentionLimit{
+					"0": {retentionPeriod: 0},
+					"1": {retentionPeriod: 7 * dayDuration},
+				},
+			},
+			expectedLatestRetentionStartTime: latestRetentionStartTime{
+				overall:  now.Add(-7 * dayDuration),
+				defaults: now.Add(-30 * dayDuration),
+				byUser: map[string]model.Time{
+					"0": 0,
+					"1": now.Add(-7 * dayDuration),
+				},
+			},
+		},
+		{
+			name: "default zero with some users having positive retention",
+			limit: fakeLimits{
+				defaultLimit: retentionLimit{
+					retentionPeriod: 0,
+				},
+				perTenant: map[string]retentionLimit{
+					"0": {retentionPeriod: 30 * dayDuration},
+					"1": {retentionPeriod: 7 * dayDuration},
+				},
+			},
+			expectedLatestRetentionStartTime: latestRetentionStartTime{
+				overall:  now.Add(-7 * dayDuration),
+				defaults: 0,
+				byUser: map[string]model.Time{
+					"0": now.Add(-30 * dayDuration),
+					"1": now.Add(-7 * dayDuration),
+				},
+			},
+		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			latestRetentionStartTime := findLatestRetentionStartTime(now, tc.limit)
@@ -493,6 +648,7 @@ func TestExpirationChecker_IntervalMayHaveExpiredChunks(t *testing.T) {
 			byUser: map[string]model.Time{
 				"user0": now.Add(-72 * time.Hour),
 				"user1": now.Add(-24 * time.Hour),
+				"user2": 0,
 			},
 		},
 	}
@@ -554,6 +710,16 @@ func TestExpirationChecker_IntervalMayHaveExpiredChunks(t *testing.T) {
 				End:   now.Add(-73 * time.Hour),
 			},
 			hasExpiredChunks: true,
+		},
+
+		// user2 has custom retention disabled, so it must not fall back to defaults
+		{
+			name:   "user2 index - disabled retention",
+			userID: "user2",
+			interval: model.Interval{
+				Start: now.Add(-49 * time.Hour),
+				End:   now.Add(-47 * time.Hour),
+			},
 		},
 
 		// user3 not having custom retention so using defaultLatestRetentionStartTime

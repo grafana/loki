@@ -538,24 +538,6 @@ func createQueryInputFromBlockData(t *testing.T, tenant string, data [][]v1.Seri
 	return res
 }
 
-func createBlockRefsFromBlockData(t *testing.T, tenant string, data []*bloomshipper.CloseableBlockQuerier) []bloomshipper.BlockRef {
-	t.Helper()
-	res := make([]bloomshipper.BlockRef, 0)
-	for i := range data {
-		res = append(res, bloomshipper.BlockRef{
-			Ref: bloomshipper.Ref{
-				TenantID:       tenant,
-				TableName:      "",
-				Bounds:         v1.NewBounds(data[i].Bounds.Min, data[i].Bounds.Max),
-				StartTimestamp: 0,
-				EndTimestamp:   0,
-				Checksum:       0,
-			},
-		})
-	}
-	return res
-}
-
 func TestOverlappingChunks(t *testing.T) {
 	mkRef := func(from, through model.Time) *logproto.ShortRef {
 		return &logproto.ShortRef{From: from, Through: through}

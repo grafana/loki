@@ -24,16 +24,19 @@ import (
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/credentials/google"
 	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/grpc/internal/xds/bootstrap/jwtcreds"
 	"google.golang.org/grpc/internal/xds/bootstrap/tlscreds"
 )
 
 func init() {
-	RegisterCredentials(&insecureCredsBuilder{})
-	RegisterCredentials(&googleDefaultCredsBuilder{})
-	RegisterCredentials(&tlsCredsBuilder{})
+	RegisterChannelCredentials(&insecureCredsBuilder{})
+	RegisterChannelCredentials(&googleDefaultCredsBuilder{})
+	RegisterChannelCredentials(&tlsCredsBuilder{})
+
+	RegisterCallCredentials(&jwtCallCredsBuilder{})
 }
 
-// insecureCredsBuilder implements the `Credentials` interface defined in
+// insecureCredsBuilder implements the `ChannelCredentials` interface defined in
 // package `xds/bootstrap` and encapsulates an insecure credential.
 type insecureCredsBuilder struct{}
 
@@ -45,7 +48,7 @@ func (i *insecureCredsBuilder) Name() string {
 	return "insecure"
 }
 
-// tlsCredsBuilder implements the `Credentials` interface defined in
+// tlsCredsBuilder implements the `ChannelCredentials` interface defined in
 // package `xds/bootstrap` and encapsulates a TLS credential.
 type tlsCredsBuilder struct{}
 
@@ -57,7 +60,7 @@ func (t *tlsCredsBuilder) Name() string {
 	return "tls"
 }
 
-// googleDefaultCredsBuilder implements the `Credentials` interface defined in
+// googleDefaultCredsBuilder implements the `ChannelCredentials` interface defined in
 // package `xds/bootstrap` and encapsulates a Google Default credential.
 type googleDefaultCredsBuilder struct{}
 
@@ -67,4 +70,16 @@ func (d *googleDefaultCredsBuilder) Build(json.RawMessage) (credentials.Bundle, 
 
 func (d *googleDefaultCredsBuilder) Name() string {
 	return "google_default"
+}
+
+// jwtCallCredsBuilder implements the `CallCredentials` interface defined in
+// package `xds/bootstrap` and encapsulates JWT call credentials.
+type jwtCallCredsBuilder struct{}
+
+func (j *jwtCallCredsBuilder) Build(configJSON json.RawMessage) (credentials.PerRPCCredentials, func(), error) {
+	return jwtcreds.NewCallCredentials(configJSON)
+}
+
+func (j *jwtCallCredsBuilder) Name() string {
+	return "jwt_token_file"
 }

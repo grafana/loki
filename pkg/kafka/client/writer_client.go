@@ -207,10 +207,12 @@ func commonKafkaClientOptions(cfg kafka.Config, metrics *kprom.Metrics, logger l
 		opts = append(opts, kgo.AllowAutoTopicCreation())
 	}
 
-	tracer := kotel.NewTracer(
-		kotel.TracerPropagator(propagation.NewCompositeTextMapPropagator(onlySampledTraces{propagation.TraceContext{}})),
-	)
-	opts = append(opts, kgo.WithHooks(kotel.NewKotel(kotel.WithTracer(tracer)).Hooks()...))
+	if cfg.TracingEnabled {
+		tracer := kotel.NewTracer(
+			kotel.TracerPropagator(propagation.NewCompositeTextMapPropagator(onlySampledTraces{propagation.TraceContext{}})),
+		)
+		opts = append(opts, kgo.WithHooks(kotel.NewKotel(kotel.WithTracer(tracer)).Hooks()...))
+	}
 
 	if metrics != nil {
 		opts = append(opts, kgo.WithHooks(metrics))
@@ -223,47 +225,45 @@ func commonKafkaClientOptions(cfg kafka.Config, metrics *kprom.Metrics, logger l
 type Producer struct {
 	*kgo.Client
 
-	closeOnce *sync.Once
-	closed    chan struct{}
-
 	// Keep track of Kafka records size (bytes) currently in-flight in the Kafka client.
 	// This counter is used to implement a limit on the max buffered bytes.
-	bufferedBytes *atomic.Int64
+	bufferedBytes    int64
+	bufferedBytesMtx sync.Mutex
 
 	// The max buffered bytes allowed. Once this limit is reached, produce requests fail.
 	maxBufferedBytes int64
 
+	// Optional interceptor called before actually writing records to kafka.
+	recordsInterceptor func(context.Context, []*kgo.Record) error
+
 	// Custom metrics.
-	bufferedProduceBytes      prometheus.Summary
 	bufferedProduceBytesLimit prometheus.Gauge
 	produceRequestsTotal      prometheus.Counter
 	produceFailuresTotal      *prometheus.CounterVec
+}
+
+// ProducerOption is a functional option for configuring a Producer.
+type ProducerOption func(*Producer)
+
+// WithRecordsInterceptor configures an interceptor to be called before producing records.
+func WithRecordsInterceptor(interceptor func(context.Context, []*kgo.Record) error) ProducerOption {
+	return func(p *Producer) {
+		p.recordsInterceptor = interceptor
+	}
 }
 
 // NewProducer returns a new KafkaProducer.
 //
 // The input prometheus.Registerer must be wrapped with a prefix (the names of metrics
 // registered don't have a prefix).
-func NewProducer(component string, client *kgo.Client, maxBufferedBytes int64, reg prometheus.Registerer) *Producer {
+func NewProducer(component string, client *kgo.Client, maxBufferedBytes int64, reg prometheus.Registerer, opts ...ProducerOption) *Producer {
 	wrappedRegisterer := WrapPrometheusRegisterer(component, reg)
 
 	producer := &Producer{
 		Client:           client,
-		closeOnce:        &sync.Once{},
-		closed:           make(chan struct{}),
-		bufferedBytes:    atomic.NewInt64(0),
 		maxBufferedBytes: maxBufferedBytes,
 
 		// Metrics.
-		bufferedProduceBytes: promauto.With(wrappedRegisterer).NewSummary(
-			prometheus.SummaryOpts{
-				Namespace:  "kafka_client",
-				Name:       "buffered_produce_bytes",
-				Help:       "The buffered produce records in bytes. Quantile buckets keep track of buffered records size over the last 60s.",
-				Objectives: map[float64]float64{0.5: 0.05, 0.99: 0.001, 1: 0.001},
-				MaxAge:     time.Minute,
-				AgeBuckets: 6,
-			}),
 		bufferedProduceBytesLimit: promauto.With(wrappedRegisterer).NewGauge(
 			prometheus.GaugeOpts{
 				Namespace: "kafka_client",
@@ -284,33 +284,16 @@ func NewProducer(component string, client *kgo.Client, maxBufferedBytes int64, r
 
 	producer.bufferedProduceBytesLimit.Set(float64(maxBufferedBytes))
 
-	go producer.updateMetricsLoop()
+	// Apply functional options
+	for _, opt := range opts {
+		opt(producer)
+	}
 
 	return producer
 }
 
 func (c *Producer) Close() {
-	c.closeOnce.Do(func() {
-		close(c.closed)
-	})
-
 	c.Client.Close()
-}
-
-func (c *Producer) updateMetricsLoop() {
-	// We observe buffered produce bytes and at regular intervals, to have a good
-	// approximation of the peak value reached over the observation period.
-	ticker := time.NewTicker(250 * time.Millisecond)
-
-	for {
-		select {
-		case <-ticker.C:
-			c.bufferedProduceBytes.Observe(float64(c.Client.BufferedProduceBytes()))
-
-		case <-c.closed:
-			return
-		}
-	}
 }
 
 // ProduceSync produces records to Kafka and returns once all records have been successfully committed,
@@ -319,6 +302,34 @@ func (c *Producer) updateMetricsLoop() {
 // This function honors the configure max buffered bytes and refuse to produce a record, returnin kgo.ErrMaxBuffered,
 // if the configured limit is reached.
 func (c *Producer) ProduceSync(ctx context.Context, records []*kgo.Record) kgo.ProduceResults {
+	if len(records) == 0 {
+		return kgo.ProduceResults{}
+	}
+
+	c.produceRequestsTotal.Add(float64(len(records)))
+
+	// Call interceptor with all records if configured.
+	if c.recordsInterceptor != nil {
+		if err := c.recordsInterceptor(ctx, records); err != nil {
+			c.produceFailuresTotal.
+				WithLabelValues(produceErrReason(err)).
+				Add(float64(len(records)))
+			return produceResultsForErr(records, err)
+		}
+	}
+
+	// Check that all records can fit within the limit.
+	totalSize := 0
+	for _, record := range records {
+		totalSize += len(record.Value)
+	}
+	if !c.reserveBufferedBytes(totalSize) {
+		c.produceFailuresTotal.
+			WithLabelValues(produceErrReason(kgo.ErrMaxBuffered)).
+			Add(float64(len(records)))
+		return produceResultsForErr(records, kgo.ErrMaxBuffered)
+	}
+
 	var (
 		remaining = atomic.NewInt64(int64(len(records)))
 		done      = make(chan struct{})
@@ -326,12 +337,8 @@ func (c *Producer) ProduceSync(ctx context.Context, records []*kgo.Record) kgo.P
 		res       = make(kgo.ProduceResults, 0, len(records))
 	)
 
-	c.produceRequestsTotal.Add(float64(len(records)))
-
 	onProduceDone := func(r *kgo.Record, err error) {
-		if c.maxBufferedBytes > 0 {
-			c.bufferedBytes.Add(-int64(len(r.Value)))
-		}
+		c.releaseBufferedBytes(len(r.Value))
 
 		resMx.Lock()
 		res = append(res, kgo.ProduceResult{Record: r, Err: err})
@@ -350,12 +357,6 @@ func (c *Producer) ProduceSync(ctx context.Context, records []*kgo.Record) kgo.P
 	}
 
 	for _, record := range records {
-		// Fast fail if the Kafka client buffer is full. Buffered bytes counter is decreased onProducerDone().
-		if c.maxBufferedBytes > 0 && c.bufferedBytes.Add(int64(len(record.Value))) > c.maxBufferedBytes {
-			onProduceDone(record, kgo.ErrMaxBuffered)
-			continue
-		}
-
 		// We use a new context to avoid that other Produce() may be cancelled when this call's context is
 		// canceled. It's important to note that cancelling the context passed to Produce() doesn't actually
 		// prevent the data to be sent over the wire (because it's never removed from the buffer) but in some
@@ -364,17 +365,60 @@ func (c *Producer) ProduceSync(ctx context.Context, records []*kgo.Record) kgo.P
 		// Produce() may theoretically block if the buffer is full, but we configure the Kafka client with
 		// unlimited buffer because we implement the buffer limit ourselves (see maxBufferedBytes). This means
 		// Produce() should never block for us in practice.
-		c.Client.Produce(context.WithoutCancel(ctx), record, onProduceDone)
+		c.Produce(context.WithoutCancel(ctx), record, onProduceDone)
 	}
 
 	// Wait for a response or until the context has done.
 	select {
 	case <-ctx.Done():
-		return kgo.ProduceResults{{Err: context.Cause(ctx)}}
+		return produceResultsForErr(records, context.Cause(ctx))
 	case <-done:
 		// Once we're done, it's guaranteed that no more results will be appended, so we can safely return it.
 		return res
 	}
+}
+
+// reserveBufferedBytes attempts to reserve size bytes of capacity. It returns
+// true on success, otherwise false. A reservation is unsuccessful if size
+// would cause the tee to exceed [TeeConfig.MaxBufferedBytes]. When
+// [TeeConfig.MaxBufferedBytes] is zero, the limit is disabled.
+//
+// All reserved sizes must be returned by calling releaseBufferedBytes with
+// the same value.
+//
+// It is safe for concurrent use.
+func (c *Producer) reserveBufferedBytes(size int) bool {
+	c.bufferedBytesMtx.Lock()
+	defer c.bufferedBytesMtx.Unlock()
+	newVal := c.bufferedBytes + int64(size)
+	if c.maxBufferedBytes > 0 && newVal > c.maxBufferedBytes {
+		return false
+	}
+	c.bufferedBytes = newVal
+	return true
+}
+
+// releaseBufferedBytes returns size bytes of reserved capacity. It must be
+// called whenever previously reserved capacity is no longer needed.
+//
+// It is safe for concurrent use.
+func (c *Producer) releaseBufferedBytes(size int) {
+	c.bufferedBytesMtx.Lock()
+	defer c.bufferedBytesMtx.Unlock()
+	c.bufferedBytes -= int64(size)
+}
+
+// produceResultsForErr returns a [kgo.ProduceResults] that contains all records and
+// the error.
+func produceResultsForErr(records []*kgo.Record, err error) kgo.ProduceResults {
+	results := make(kgo.ProduceResults, 0, len(records))
+	for _, record := range records {
+		results = append(results, kgo.ProduceResult{
+			Record: record,
+			Err:    err,
+		})
+	}
+	return results
 }
 
 func produceErrReason(err error) string {

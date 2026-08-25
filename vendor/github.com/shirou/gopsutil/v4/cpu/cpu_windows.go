@@ -7,11 +7,15 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math/bits"
+	"path/filepath"
 	"strconv"
+	"strings"
+	"syscall"
 	"unsafe"
 
-	"github.com/yusufpapurcu/wmi"
 	"golang.org/x/sys/windows"
+	"golang.org/x/sys/windows/registry"
 
 	"github.com/shirou/gopsutil/v4/internal/common"
 )
@@ -19,6 +23,9 @@ import (
 var (
 	procGetNativeSystemInfo              = common.Modkernel32.NewProc("GetNativeSystemInfo")
 	procGetLogicalProcessorInformationEx = common.Modkernel32.NewProc("GetLogicalProcessorInformationEx")
+	procGetSystemFirmwareTable           = common.Modkernel32.NewProc("GetSystemFirmwareTable")
+	procCallNtPowerInformation           = common.ModPowrProf.NewProc("CallNtPowerInformation")
+	procGetActiveProcessorGroupCount     = common.Modkernel32.NewProc("GetActiveProcessorGroupCount")
 )
 
 type win32_Processor struct { //nolint:revive //FIXME
@@ -46,6 +53,16 @@ type win32_SystemProcessorPerformanceInformation struct { //nolint:revive //FIXM
 	InterruptCount uint64 // ULONG needs to be uint64
 }
 
+// https://learn.microsoft.com/en-us/windows/win32/power/processor-power-information-str
+type processorPowerInformation struct {
+	number           uint32 // http://download.microsoft.com/download/a/d/f/adf1347d-08dc-41a4-9084-623b1194d4b2/MoreThan64proc.docx
+	maxMhz           uint32
+	currentMhz       uint32
+	mhzLimit         uint32
+	maxIdleState     uint32
+	currentIdleState uint32
+}
+
 const (
 	ClocksPerSec = 10000000.0
 
@@ -55,6 +72,30 @@ const (
 
 	// size of systemProcessorPerformanceInfoSize in memory
 	win32_SystemProcessorPerformanceInfoSize = uint32(unsafe.Sizeof(win32_SystemProcessorPerformanceInformation{})) //nolint:revive //FIXME
+
+	firmwareTableProviderSignatureRSMB = 0x52534d42 // "RSMB"  https://gitlab.winehq.org/dreamer/wine/-/blame/wine-7.0-rc6/dlls/ntdll/unix/system.c#L230
+	smBiosHeaderSize                   = 8          // SMBIOS header size
+	smbiosEndOfTable                   = 127        // Minimum length for processor structure
+	smbiosTypeProcessor                = 4          // SMBIOS Type 4: Processor Information
+	smbiosProcessorMinLength           = 0x18       // Minimum length for processor structure
+
+	centralProcessorRegistryKey = `HARDWARE\DESCRIPTION\System\CentralProcessor`
+)
+
+type relationship uint32
+
+// https://learn.microsoft.com/en-us/windows/win32/api/sysinfoapi/nf-sysinfoapi-getlogicalprocessorinformationex
+const (
+	relationProcessorCore    = relationship(0)
+	relationProcessorPackage = relationship(3)
+)
+
+const (
+	kAffinitySize = unsafe.Sizeof(int(0))
+	// https://learn.microsoft.com/en-us/windows-hardware/drivers/kernel/interrupt-affinity-and-priority
+	maxLogicalProcessorsPerGroup = uint32(unsafe.Sizeof(kAffinitySize * 8))
+	// https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/wdm/ne-wdm-power_information_level
+	processorInformation = 11
 )
 
 // Times returns times stat per cpu and combined for all CPUs
@@ -63,14 +104,78 @@ func Times(percpu bool) ([]TimesStat, error) {
 }
 
 func TimesWithContext(_ context.Context, percpu bool) ([]TimesStat, error) {
-	if percpu {
-		return perCPUTimes()
+	// Get the CPU performance counters per processor via Windows API
+	stats, err := perfInfo()
+	if err == nil && len(stats) == 0 {
+		err = errors.New("no processor performance information returned")
+	}
+	if err != nil {
+		if percpu {
+			return nil, err
+		}
+		// perfInfo relies on the undocumented NtQuerySystemInformation, which
+		// may be unavailable in restricted environments. Fall back to the
+		// public GetSystemTimes for the total rather than failing outright.
+		return systemTimes()
 	}
 
-	var ret []TimesStat
-	var lpIdleTime common.FILETIME
-	var lpKernelTime common.FILETIME
-	var lpUserTime common.FILETIME
+	if percpu {
+		ret := make([]TimesStat, 0, len(stats))
+		for core, v := range stats {
+			c := TimesStat{
+				CPU:    fmt.Sprintf("cpu%d", core),
+				User:   float64(v.UserTime) / ClocksPerSec,
+				System: float64(v.KernelTime-v.IdleTime) / ClocksPerSec,
+				Idle:   float64(v.IdleTime) / ClocksPerSec,
+				Irq:    float64(v.InterruptTime) / ClocksPerSec,
+			}
+			ret = append(ret, c)
+		}
+		return ret, nil
+	}
+
+	// Accumulate the times over all CPUs as GetSystemTimes() will only return
+	// the counters for the current processor group. This causes issues for
+	// machines with more than 64 logical processors when the current thread is
+	// switched to another processor group as then the counters are not
+	// monotonic anymore.
+	//
+	// Do all arithmetic on the integer tick counts and convert to float64 only
+	// once. Converting each counter first loses precision on large counters and
+	// can make the returned values non-monotonic. See issue #2110.
+	var idle, kernel, user, interrupt int64
+	for _, v := range stats {
+		idle += v.IdleTime
+		kernel += v.KernelTime
+		user += v.UserTime
+		interrupt += v.InterruptTime
+	}
+
+	return []TimesStat{
+		{
+			CPU:    "cpu-total",
+			User:   float64(user) / ClocksPerSec,
+			System: float64(kernel-idle) / ClocksPerSec, // kernel time includes idle time
+			Idle:   float64(idle) / ClocksPerSec,
+			Irq:    float64(interrupt) / ClocksPerSec,
+		},
+	}, nil
+}
+
+// systemTimes returns the combined CPU times reported by GetSystemTimes.
+//
+// This is only a fallback for TimesWithContext(ctx, false): GetSystemTimes is a
+// documented public API but returns the counters of the calling thread's
+// processor group only, so on hosts with more than 64 logical processors the
+// values are not monotonic once the thread is migrated to another group. It
+// also cannot report Irq, which is left at zero here.
+//
+// Whether perfInfo works is a property of the environment, so in practice a
+// process stays on one path for its whole lifetime. Should perfInfo fail only
+// intermittently on a multi-group host, the two paths cover a different number
+// of processors, and Percent may report one bogus sample before recovering.
+func systemTimes() ([]TimesStat, error) {
+	var lpIdleTime, lpKernelTime, lpUserTime common.FILETIME
 	// GetSystemTimes returns 0 for error, in which case we check err,
 	// see https://pkg.go.dev/golang.org/x/sys/windows#LazyProc.Call
 	r, _, err := common.ProcGetSystemTimes.Call(
@@ -81,79 +186,149 @@ func TimesWithContext(_ context.Context, percpu bool) ([]TimesStat, error) {
 		return nil, err
 	}
 
-	LOT := float64(0.0000001)
-	HIT := (LOT * 4294967296.0)
-	idle := ((HIT * float64(lpIdleTime.DwHighDateTime)) + (LOT * float64(lpIdleTime.DwLowDateTime)))
-	user := ((HIT * float64(lpUserTime.DwHighDateTime)) + (LOT * float64(lpUserTime.DwLowDateTime)))
-	kernel := ((HIT * float64(lpKernelTime.DwHighDateTime)) + (LOT * float64(lpKernelTime.DwLowDateTime)))
-	system := (kernel - idle)
+	// See the note on integer arithmetic in TimesWithContext and issue #2110.
+	idle := uint64(lpIdleTime.DwHighDateTime)<<32 | uint64(lpIdleTime.DwLowDateTime)
+	user := uint64(lpUserTime.DwHighDateTime)<<32 | uint64(lpUserTime.DwLowDateTime)
+	kernel := uint64(lpKernelTime.DwHighDateTime)<<32 | uint64(lpKernelTime.DwLowDateTime)
 
-	ret = append(ret, TimesStat{
-		CPU:    "cpu-total",
-		Idle:   float64(idle),
-		User:   float64(user),
-		System: float64(system),
-	})
-	return ret, nil
+	return []TimesStat{
+		{
+			CPU:    "cpu-total",
+			User:   float64(user) / ClocksPerSec,
+			System: float64(kernel-idle) / ClocksPerSec, // kernel time includes idle time
+			Idle:   float64(idle) / ClocksPerSec,
+		},
+	}, nil
 }
 
 func Info() ([]InfoStat, error) {
 	return InfoWithContext(context.Background())
 }
 
-func InfoWithContext(ctx context.Context) ([]InfoStat, error) {
-	var ret []InfoStat
-	var dst []win32_Processor
-	q := wmi.CreateQuery(&dst, "")
-	if err := common.WMIQueryWithContext(ctx, q, &dst); err != nil {
-		return ret, err
+// this function iterates over each set bit in the package affinity mask, each bit represent a logical processor in a group (assuming you are iteriang over a package mask)
+// the function is used also to compute the global logical processor number
+// https://learn.microsoft.com/en-us/windows/win32/procthread/processor-groups
+// see https://learn.microsoft.com/en-us/windows/win32/api/winnt/ns-winnt-group_affinity
+// and https://learn.microsoft.com/en-us/windows/win32/api/winnt/ns-winnt-processor_relationship
+// and https://learn.microsoft.com/en-us/windows/win32/api/winnt/ns-winnt-system_logical_processor_information_ex
+func forEachSetBit64(mask uint64, fn func(bit int)) {
+	m := mask
+	for m != 0 {
+		b := bits.TrailingZeros64(m)
+		fn(b)
+		m &= m - 1
 	}
-
-	var procID string
-	for i, l := range dst {
-		procID = ""
-		if l.ProcessorID != nil {
-			procID = *l.ProcessorID
-		}
-
-		cpu := InfoStat{
-			CPU:        int32(i),
-			Family:     strconv.FormatUint(uint64(l.Family), 10),
-			VendorID:   l.Manufacturer,
-			ModelName:  l.Name,
-			Cores:      int32(l.NumberOfLogicalProcessors),
-			PhysicalID: procID,
-			Mhz:        float64(l.MaxClockSpeed),
-			Flags:      []string{},
-		}
-		ret = append(ret, cpu)
-	}
-
-	return ret, nil
 }
 
-// perCPUTimes returns times stat per cpu, per core and overall for all CPUs
-func perCPUTimes() ([]TimesStat, error) {
-	var ret []TimesStat
-	stats, err := perfInfo()
+func getProcessorPowerInformation(ctx context.Context) ([]processorPowerInformation, error) {
+	numLP, countErr := CountsWithContext(ctx, true)
+	if countErr != nil {
+		return nil, fmt.Errorf("failed to get logical processor count: %w", countErr)
+	}
+	if numLP <= 0 {
+		return nil, fmt.Errorf("invalid logical processor count: %d", numLP)
+	}
+
+	ppiSize := uintptr(numLP) * unsafe.Sizeof(processorPowerInformation{})
+	buf := make([]byte, ppiSize)
+	ppi, _, err := procCallNtPowerInformation.Call(
+		uintptr(processorInformation),
+		0,
+		0,
+		uintptr(unsafe.Pointer(&buf[0])),
+		uintptr(ppiSize),
+	)
+	if ppi != 0 {
+		return nil, fmt.Errorf("CallNtPowerInformation failed with code %d: %w", ppi, err)
+	}
+	ppis := unsafe.Slice((*processorPowerInformation)(unsafe.Pointer(&buf[0])), numLP)
+	return ppis, nil
+}
+
+func InfoWithContext(ctx context.Context) ([]InfoStat, error) {
+	var ret []InfoStat
+	processorPackages, err := getSystemLogicalProcessorInformationEx(relationProcessorPackage)
 	if err != nil {
-		return nil, err
+		return ret, fmt.Errorf("failed to get processor package information: %w", err)
 	}
-	for core, v := range stats {
-		c := TimesStat{
-			CPU:    fmt.Sprintf("cpu%d", core),
-			User:   float64(v.UserTime) / ClocksPerSec,
-			System: float64(v.KernelTime-v.IdleTime) / ClocksPerSec,
-			Idle:   float64(v.IdleTime) / ClocksPerSec,
-			Irq:    float64(v.InterruptTime) / ClocksPerSec,
+
+	ppis, powerInformationErr := getProcessorPowerInformation(ctx)
+	if powerInformationErr != nil {
+		return ret, fmt.Errorf("failed to get processor power information: %w", powerInformationErr)
+	}
+
+	family, processorId, smBIOSErr := getSMBIOSProcessorInfo()
+	if smBIOSErr != nil {
+		return ret, smBIOSErr
+	}
+
+	for i, pkg := range processorPackages {
+		logicalCount := 0
+		maxMhz := 0
+		model := ""
+		vendorId := ""
+		// iterate over each set bit in the package affinity mask
+		for _, ga := range pkg.processor.groupMask {
+			g := int(ga.group)
+			forEachSetBit64(uint64(ga.mask), func(bit int) {
+				// the global logical processor label
+				globalLpl := g*int(maxLogicalProcessorsPerGroup) + bit
+				if globalLpl >= 0 && globalLpl < len(ppis) {
+					logicalCount++
+					m := int(ppis[globalLpl].maxMhz)
+					if m > maxMhz {
+						maxMhz = m
+					}
+				}
+
+				registryKeyPath := filepath.Join(centralProcessorRegistryKey, strconv.Itoa(globalLpl))
+				key, err := registry.OpenKey(registry.LOCAL_MACHINE, registryKeyPath, registry.QUERY_VALUE|registry.READ)
+				if err == nil {
+					model = getRegistryStringValueIfUnset(key, "ProcessorNameString", model)
+					vendorId = getRegistryStringValueIfUnset(key, "VendorIdentifier", vendorId)
+					_ = key.Close()
+				}
+			})
 		}
-		ret = append(ret, c)
+		ret = append(ret, InfoStat{
+			CPU:        int32(i),
+			Family:     strconv.FormatUint(uint64(family), 10),
+			VendorID:   vendorId,
+			ModelName:  model,
+			Cores:      int32(logicalCount),
+			PhysicalID: processorId,
+			Mhz:        float64(maxMhz),
+			Flags:      []string{},
+		})
 	}
+
 	return ret, nil
 }
 
 // makes call to Windows API function to retrieve performance information for each core
 func perfInfo() ([]win32_SystemProcessorPerformanceInformation, error) {
+	// On hosts with more than 64 logical CPUs Windows splits CPUs into Processor Groups
+	// (up to 64 logical CPUs per group). The non-Ex NtQuerySystemInformation only returns
+	// data for the calling thread's group, so whenever the Ex variant is available we
+	// iterate every active group and concatenate the results. See issue #887.
+	//
+	// Every proc is resolved with Find before it is used: LazyProc.Call panics when it
+	// cannot resolve, and a panic would take the caller's process down instead of
+	// letting TimesWithContext fall back to GetSystemTimes.
+	if common.ProcNtQuerySystemInformationEx.Find() == nil && procGetActiveProcessorGroupCount.Find() == nil {
+		return perfInfoAllGroups()
+	}
+	if err := common.ProcNtQuerySystemInformation.Find(); err != nil {
+		return nil, err
+	}
+	return perfInfoSingleGroup()
+}
+
+// perfInfoSingleGroup queries SystemProcessorPerformanceInformation via the non-Ex
+// NtQuerySystemInformation call. This is the legacy fallback for environments where
+// NtQuerySystemInformationEx cannot be resolved; it only returns data for the calling
+// thread's processor group.
+func perfInfoSingleGroup() ([]win32_SystemProcessorPerformanceInformation, error) {
 	// Make maxResults large for safety.
 	// We can't invoke the api call with a results array that's too small.
 	// If we have more than 2056 cores on a single host, then it's probably the future.
@@ -177,16 +352,61 @@ func perfInfo() ([]win32_SystemProcessorPerformanceInformation, error) {
 
 	// check return code for errors
 	if retCode != 0 {
-		return nil, fmt.Errorf("call to NtQuerySystemInformation returned %d. err: %s", retCode, err.Error())
+		return nil, fmt.Errorf("call to NtQuerySystemInformation returned 0x%x: %w", retCode, err)
 	}
 
 	// calculate the number of returned elements based on the returned size
 	numReturnedElements := retSize / win32_SystemProcessorPerformanceInfoSize
 
 	// trim results to the number of returned elements
-	resultBuffer = resultBuffer[:numReturnedElements]
+	return resultBuffer[:numReturnedElements], nil
+}
 
-	return resultBuffer, nil
+// perfInfoAllGroups queries SystemProcessorPerformanceInformation for every active
+// processor group via NtQuerySystemInformationEx and concatenates the results. The
+// group index is passed as the InputBuffer per the Ex calling convention documented at
+// https://www.geoffchappell.com/studies/windows/km/ntoskrnl/api/ex/sysinfo/queryex.htm
+func perfInfoAllGroups() ([]win32_SystemProcessorPerformanceInformation, error) {
+	// GetActiveProcessorGroupCount returns 0 only on failure; propagate the error
+	// rather than silently defaulting to a single group and returning partial data.
+	r, _, callErr := procGetActiveProcessorGroupCount.Call()
+	if r == 0 {
+		return nil, fmt.Errorf("GetActiveProcessorGroupCount returned 0: %w", callErr)
+	}
+	groupCount := uint16(r)
+
+	var result []win32_SystemProcessorPerformanceInformation
+	for g := uint16(0); g < groupCount; g++ {
+		numLP := windows.GetActiveProcessorCount(g)
+		if numLP == 0 {
+			return nil, fmt.Errorf("GetActiveProcessorCount returned 0 for processor group %d", g)
+		}
+		// buffer sized exactly for this group's logical CPU count
+		buf := make([]win32_SystemProcessorPerformanceInformation, numLP)
+		bufSize := uintptr(win32_SystemProcessorPerformanceInfoSize) * uintptr(numLP)
+		var retSize uint32
+		// InputBuffer is a USHORT (2 bytes) holding the target processor group index.
+		group := g
+		retCode, _, err := common.ProcNtQuerySystemInformationEx.Call(
+			win32_SystemProcessorPerformanceInformationClass, // System Information Class -> SystemProcessorPerformanceInformation
+			uintptr(unsafe.Pointer(&group)),                  // InputBuffer: pointer to USHORT group index
+			unsafe.Sizeof(group),                             // InputBufferLength: sizeof(USHORT) = 2
+			uintptr(unsafe.Pointer(&buf[0])),                 // pointer to first element in result buffer
+			bufSize,                                          // size of the buffer in memory
+			uintptr(unsafe.Pointer(&retSize)),                // pointer to the size of the returned results the windows proc will set this
+		)
+		if retCode != 0 {
+			return nil, fmt.Errorf("call to NtQuerySystemInformationEx(group=%d) returned 0x%x: %w", g, retCode, err)
+		}
+		// Guard against a retSize that is not a whole number of entries or exceeds
+		// the allocated buffer (e.g. CPU hot-add racing with GetActiveProcessorCount).
+		if retSize%win32_SystemProcessorPerformanceInfoSize != 0 || uintptr(retSize) > bufSize {
+			return nil, fmt.Errorf("NtQuerySystemInformationEx(group=%d) returned unexpected retSize=%d (bufSize=%d)", g, retSize, bufSize)
+		}
+		n := retSize / win32_SystemProcessorPerformanceInfoSize
+		result = append(result, buf[:n]...)
+	}
+	return result, nil
 }
 
 // SystemInfo is an equivalent representation of SYSTEM_INFO in the Windows API.
@@ -207,7 +427,7 @@ type systemInfo struct {
 }
 
 type groupAffinity struct {
-	mask     uintptr // https://learn.microsoft.com/it-it/windows-hardware/drivers/kernel/interrupt-affinity-and-priority#about-kaffinity
+	mask     uintptr // https://learn.microsoft.com/en-us/windows-hardware/drivers/kernel/interrupt-affinity-and-priority#about-kaffinity
 	group    uint16
 	reserved [3]uint16
 }
@@ -223,43 +443,128 @@ type processorRelationship struct {
 
 // https://learn.microsoft.com/en-us/windows/win32/api/winnt/ns-winnt-system_logical_processor_information_ex
 type systemLogicalProcessorInformationEx struct {
-	Relationship uint32
-	Size         uint32
-	Processor    processorRelationship
+	relationship uint32
+	size         uint32
+	processor    processorRelationship
 }
 
-func getPhysicalCoreCount() (int, error) {
-	var length uint32
-	const relationAll = 0xffff
-	const relationProcessorCore = 0x0
+// getSMBIOSProcessorInfo reads the SMBIOS Type 4 (Processor Information) structure and returns the Processor Family and ProcessorId fields.
+// If not found, returns 0 and an empty string.
+func getSMBIOSProcessorInfo() (family uint8, processorId string, err error) {
+	// https://learn.microsoft.com/en-us/windows/win32/api/sysinfoapi/nf-sysinfoapi-getsystemfirmwaretable
+	size, _, err := procGetSystemFirmwareTable.Call(
+		uintptr(firmwareTableProviderSignatureRSMB),
+		0,
+		0,
+		0,
+	)
+	if size == 0 {
+		return 0, "", fmt.Errorf("failed to get SMBIOS table size: %w", err)
+	}
+	buf := make([]byte, size)
+	ret, _, err := procGetSystemFirmwareTable.Call(
+		uintptr(firmwareTableProviderSignatureRSMB),
+		0,
+		uintptr(unsafe.Pointer(&buf[0])),
+		uintptr(size),
+	)
+	if ret == 0 {
+		return 0, "", fmt.Errorf("failed to read SMBIOS table: %w", err)
+	}
+	// https://wiki.osdev.org/System_Management_BIOS
+	i := smBiosHeaderSize // skip SMBIOS header (first 8 bytes)
+	maxIterations := len(buf) * 2
+	iterations := 0
+	for i < len(buf) && iterations < maxIterations {
+		iterations++
+		if i+4 > len(buf) {
+			break
+		}
+		typ := buf[i]
+		length := buf[i+1]
+		if typ == smbiosEndOfTable {
+			break
+		}
+		if typ == smbiosTypeProcessor && length >= smbiosProcessorMinLength && i+int(length) <= len(buf) {
+			// Ensure we have enough bytes for procIdBytes
+			if i+16 > len(buf) {
+				break
+			}
+			// Get the processor family from byte at offset 6
+			family = buf[i+6]
+			// Extract processor ID bytes (8 bytes total) from offsets 8-15
+			procIdBytes := buf[i+8 : i+16]
+			// Convert first 4 bytes to 32-bit EAX register value (little endian)
+			eax := uint32(procIdBytes[0]) | uint32(procIdBytes[1])<<8 | uint32(procIdBytes[2])<<16 | uint32(procIdBytes[3])<<24
+			// Convert last 4 bytes to 32-bit EDX register value (little endian)
+			edx := uint32(procIdBytes[4]) | uint32(procIdBytes[5])<<8 | uint32(procIdBytes[6])<<16 | uint32(procIdBytes[7])<<24
+			// Format processor ID as 16 character hex string (EDX+EAX)
+			procId := fmt.Sprintf("%08X%08X", edx, eax)
+			return family, procId, nil
+		}
+		// skip to next structure
+		j := i + int(length)
+		innerIterations := 0
+		maxInner := len(buf) // failsafe for inner loop
+		for j+1 < len(buf) && innerIterations < maxInner {
+			innerIterations++
+			if buf[j] == 0 && buf[j+1] == 0 {
+				j += 2
+				break
+			}
+			j++
+		}
+		if innerIterations >= maxInner {
+			break // malformed buffer, avoid infinite loop
+		}
+		i = j
+	}
+	return 0, "", fmt.Errorf("SMBIOS processor information not found: %w", syscall.ERROR_NOT_FOUND)
+}
 
+func getSystemLogicalProcessorInformationEx(relationship relationship) ([]systemLogicalProcessorInformationEx, error) {
+	var length uint32
 	// First call to determine the required buffer size
-	_, _, err := procGetLogicalProcessorInformationEx.Call(uintptr(relationAll), 0, uintptr(unsafe.Pointer(&length)))
+	_, _, err := procGetLogicalProcessorInformationEx.Call(uintptr(relationship), 0, uintptr(unsafe.Pointer(&length)))
 	if err != nil && !errors.Is(err, windows.ERROR_INSUFFICIENT_BUFFER) {
-		return 0, fmt.Errorf("failed to get buffer size: %w", err)
+		return nil, fmt.Errorf("failed to get buffer size: %w", err)
 	}
 
 	// Allocate the buffer
 	buffer := make([]byte, length)
 
 	// Second call to retrieve the processor information
-	_, _, err = procGetLogicalProcessorInformationEx.Call(uintptr(relationAll), uintptr(unsafe.Pointer(&buffer[0])), uintptr(unsafe.Pointer(&length)))
+	_, _, err = procGetLogicalProcessorInformationEx.Call(uintptr(relationship), uintptr(unsafe.Pointer(&buffer[0])), uintptr(unsafe.Pointer(&length)))
 	if err != nil && !errors.Is(err, windows.NTE_OP_OK) {
-		return 0, fmt.Errorf("failed to get logical processor information: %w", err)
+		return nil, fmt.Errorf("failed to get logical processor information: %w", err)
 	}
 
-	// Iterate through the buffer to count physical cores
+	// Convert the byte slice into a slice of systemLogicalProcessorInformationEx structs
 	offset := uintptr(0)
-	ncpus := 0
+	var infos []systemLogicalProcessorInformationEx
 	for offset < uintptr(length) {
 		info := (*systemLogicalProcessorInformationEx)(unsafe.Pointer(uintptr(unsafe.Pointer(&buffer[0])) + offset))
-		if info.Relationship == relationProcessorCore {
-			ncpus++
-		}
-		offset += uintptr(info.Size)
+		infos = append(infos, *info)
+		offset += uintptr(info.size)
 	}
 
-	return ncpus, nil
+	return infos, nil
+}
+
+func getPhysicalCoreCount() (int, error) {
+	infos, err := getSystemLogicalProcessorInformationEx(relationProcessorCore)
+	return len(infos), err
+}
+
+func getRegistryStringValueIfUnset(key registry.Key, keyName, value string) string {
+	if value != "" {
+		return value
+	}
+	val, _, err := key.GetStringValue(keyName)
+	if err == nil {
+		return strings.TrimSpace(val)
+	}
+	return ""
 }
 
 func CountsWithContext(_ context.Context, logical bool) (int, error) {
@@ -270,12 +575,12 @@ func CountsWithContext(_ context.Context, logical bool) (int, error) {
 			return int(ret), nil
 		}
 
-		var systemInfo systemInfo
-		_, _, err := procGetNativeSystemInfo.Call(uintptr(unsafe.Pointer(&systemInfo)))
-		if systemInfo.dwNumberOfProcessors == 0 {
+		var sInfo systemInfo
+		_, _, err := procGetNativeSystemInfo.Call(uintptr(unsafe.Pointer(&sInfo)))
+		if sInfo.dwNumberOfProcessors == 0 {
 			return 0, err
 		}
-		return int(systemInfo.dwNumberOfProcessors), nil
+		return int(sInfo.dwNumberOfProcessors), nil
 	}
 
 	// Get physical core count https://github.com/giampaolo/psutil/blob/d01a9eaa35a8aadf6c519839e987a49d8be2d891/psutil/_psutil_windows.c#L499

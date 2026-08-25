@@ -35,7 +35,7 @@ func NewMultiInvertedIndex(periods []config.PeriodConfig, indexShards uint32) (*
 
 	for _, pd := range periods {
 		switch pd.IndexType {
-		case types.TSDBType:
+		case types.IndexTypeTSDB:
 			if bitPrefixed == nil {
 				bitPrefixed, err = NewBitPrefixWithShards(indexShards)
 				if err != nil {
@@ -97,7 +97,7 @@ func (m *Multi) LabelValues(t time.Time, name string, shard *logql.Shard) ([]str
 // Therefore we don't need to account for both `from` and `through`.
 func (m *Multi) indexFor(t time.Time) Interface {
 	for i := range m.periods {
-		if !m.periods[i].Time.After(t) && (i+1 == len(m.periods) || t.Before(m.periods[i+1].Time)) {
+		if !m.periods[i].After(t) && (i+1 == len(m.periods) || t.Before(m.periods[i+1].Time)) {
 			return m.indices[m.periods[i].idx]
 		}
 	}

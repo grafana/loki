@@ -7,7 +7,7 @@ This package provides various compression algorithms.
 * Optimized [deflate](https://godoc.org/github.com/klauspost/compress/flate) packages which can be used as a dropin replacement for [gzip](https://godoc.org/github.com/klauspost/compress/gzip), [zip](https://godoc.org/github.com/klauspost/compress/zip) and [zlib](https://godoc.org/github.com/klauspost/compress/zlib).
 * [snappy](https://github.com/klauspost/compress/tree/master/snappy) is a drop-in replacement for `github.com/golang/snappy` offering better compression and concurrent streams.
 * [huff0](https://github.com/klauspost/compress/tree/master/huff0) and [FSE](https://github.com/klauspost/compress/tree/master/fse) implementations for raw entropy encoding.
-* [gzhttp](https://github.com/klauspost/compress/tree/master/gzhttp) Provides client and server wrappers for handling gzipped requests efficiently.
+* [gzhttp](https://github.com/klauspost/compress/tree/master/gzhttp) Provides client and server wrappers for handling gzipped/zstd HTTP requests efficiently.
 * [pgzip](https://github.com/klauspost/pgzip) is a separate package that provides a very fast parallel gzip implementation.
 
 [![Go Reference](https://pkg.go.dev/badge/klauspost/compress.svg)](https://pkg.go.dev/github.com/klauspost/compress?tab=subdirectories)
@@ -27,6 +27,40 @@ Use the links above for more information on each.
 
 # changelog
 
+* Jul 1st, 2026 [1.19.0](https://github.com/klauspost/compress/releases/tag/v1.19.0)
+	* zstd: Add true concurrent stream encodingin https://github.com/klauspost/compress/pull/1136
+	* zstd: arm64 decoder asm by @lizthegrey in https://github.com/klauspost/compress/pull/1160
+	* flate: Add inflate checkpoints in https://github.com/klauspost/compress/pull/1154
+	* zstd: avoid unused BuildDict encoder allocation by @snissn in https://github.com/klauspost/compress/pull/1147
+	* snappy/s2: Limit length of varint in `decodedLen` by @eustas in https://github.com/klauspost/compress/pull/1148
+	* gzhttp: match qvalue parameter case-insensitively (RFC 7231) by @z9z in https://github.com/klauspost/compress/pull/1149
+	* zip: add NameDecoder callback for legacy encoding rewrite by @SAY-5 in https://github.com/klauspost/compress/pull/1150
+	* huff0: Allow building tables from histogram in https://github.com/klauspost/compress/pull/1155
+	* huff0: Allow building table from oversized histogram in https://github.com/klauspost/compress/pull/1156
+	* s2sx: Clean symlink targets in https://github.com/klauspost/compress/pull/1163
+
+* Feb 9th, 2026 [1.18.4](https://github.com/klauspost/compress/releases/tag/v1.18.4)
+	* gzhttp: Add zstandard to server handler wrapper https://github.com/klauspost/compress/pull/1121
+	* zstd: Add ResetWithOptions to encoder/decoder https://github.com/klauspost/compress/pull/1122
+	* gzhttp: preserve qvalue when extra parameters follow in Accept-Encoding by @analytically in https://github.com/klauspost/compress/pull/1116
+
+* Jan 16th, 2026 [1.18.3](https://github.com/klauspost/compress/releases/tag/v1.18.3)
+	* Downstream CVE-2025-61728. See [golang/go#77102](https://github.com/golang/go/issues/77102).
+
+* Dec 1st, 2025 - [1.18.2](https://github.com/klauspost/compress/releases/tag/v1.18.2)
+	* flate: Fix invalid encoding on level 9 with single value input in https://github.com/klauspost/compress/pull/1115
+	* flate: reduce stateless allocations by @RXamzin in https://github.com/klauspost/compress/pull/1106
+
+* Oct 20, 2025 - [1.18.1](https://github.com/klauspost/compress/releases/tag/v1.18.1) - RETRACTED
+  * zstd: Add simple zstd EncodeTo/DecodeTo functions  https://github.com/klauspost/compress/pull/1079
+  * zstd: Fix incorrect buffer size in dictionary encodes https://github.com/klauspost/compress/pull/1059
+  * s2: check for cap, not len of buffer in EncodeBetter/Best by @vdarulis in https://github.com/klauspost/compress/pull/1080
+  * zlib: Avoiding extra allocation in zlib.reader.Reset by @travelpolicy in https://github.com/klauspost/compress/pull/1086
+  * gzhttp: remove redundant err check in zstdReader by @ryanfowler in https://github.com/klauspost/compress/pull/1090
+  * flate: Faster load+store https://github.com/klauspost/compress/pull/1104
+  * flate: Simplify matchlen https://github.com/klauspost/compress/pull/1101
+  * flate: Use exact sizes for huffman tables https://github.com/klauspost/compress/pull/1103
+
 * Feb 19th, 2025 - [1.18.0](https://github.com/klauspost/compress/releases/tag/v1.18.0)
   * Add unsafe little endian loaders https://github.com/klauspost/compress/pull/1036
   * fix: check `r.err != nil` but return a nil value error `err` by @alingse in https://github.com/klauspost/compress/pull/1028
@@ -35,6 +69,9 @@ Use the links above for more information on each.
   * s2: Improve small block compression speed w/o asm https://github.com/klauspost/compress/pull/1048
   * flate: Fix matchlen L5+L6 https://github.com/klauspost/compress/pull/1049
   * flate: Cleanup & reduce casts https://github.com/klauspost/compress/pull/1050
+
+<details>
+	<summary>See changes to v1.17.x</summary>
 
 * Oct 11th, 2024 - [1.17.11](https://github.com/klauspost/compress/releases/tag/v1.17.11)
   * zstd: Fix extra CRC written with multiple Close calls https://github.com/klauspost/compress/pull/1017
@@ -102,7 +139,8 @@ https://github.com/klauspost/compress/pull/919 https://github.com/klauspost/comp
 	* s2: Do 2 overlapping match checks https://github.com/klauspost/compress/pull/839
 	* flate: Add amd64 assembly matchlen https://github.com/klauspost/compress/pull/837
 	* gzip: Copy bufio.Reader on Reset by @thatguystone in https://github.com/klauspost/compress/pull/860
-
+   
+</details>
 <details>
 	<summary>See changes to v1.16.x</summary>
 
@@ -589,7 +627,7 @@ While the release has been extensively tested, it is recommended to testing when
 
 # deflate usage
 
-The packages are drop-in replacements for standard libraries. Simply replace the import path to use them:
+The packages are drop-in replacements for standard library [deflate](https://godoc.org/github.com/klauspost/compress/flate), [gzip](https://godoc.org/github.com/klauspost/compress/gzip), [zip](https://godoc.org/github.com/klauspost/compress/zip), and [zlib](https://godoc.org/github.com/klauspost/compress/zlib). Simply replace the import path to use them:
 
 Typical speed is about 2x of the standard library packages.
 
@@ -600,17 +638,15 @@ Typical speed is about 2x of the standard library packages.
 | `archive/zip`    | `github.com/klauspost/compress/zip`   | [zip](https://pkg.go.dev/github.com/klauspost/compress/zip?tab=doc)     |
 | `compress/flate` | `github.com/klauspost/compress/flate` | [flate](https://pkg.go.dev/github.com/klauspost/compress/flate?tab=doc) |
 
-* Optimized [deflate](https://godoc.org/github.com/klauspost/compress/flate) packages which can be used as a dropin replacement for [gzip](https://godoc.org/github.com/klauspost/compress/gzip), [zip](https://godoc.org/github.com/klauspost/compress/zip) and [zlib](https://godoc.org/github.com/klauspost/compress/zlib).
+You may also be interested in [pgzip](https://github.com/klauspost/pgzip), which is a drop-in replacement for gzip, which support multithreaded compression on big files and the optimized [crc32](https://github.com/klauspost/crc32) package used by these packages.
 
-You may also be interested in [pgzip](https://github.com/klauspost/pgzip), which is a drop in replacement for gzip, which support multithreaded compression on big files and the optimized [crc32](https://github.com/klauspost/crc32) package used by these packages.
-
-The packages contains the same as the standard library, so you can use the godoc for that: [gzip](http://golang.org/pkg/compress/gzip/), [zip](http://golang.org/pkg/archive/zip/),  [zlib](http://golang.org/pkg/compress/zlib/), [flate](http://golang.org/pkg/compress/flate/).
+The packages implement the same API as the standard library, so you can use the original godoc documentation: [gzip](http://golang.org/pkg/compress/gzip/), [zip](http://golang.org/pkg/archive/zip/), [zlib](http://golang.org/pkg/compress/zlib/), [flate](http://golang.org/pkg/compress/flate/).
 
 Currently there is only minor speedup on decompression (mostly CRC32 calculation).
 
 Memory usage is typically 1MB for a Writer. stdlib is in the same range. 
 If you expect to have a lot of concurrently allocated Writers consider using 
-the stateless compress described below.
+the stateless compression described below.
 
 For compression performance, see: [this spreadsheet](https://docs.google.com/spreadsheets/d/1nuNE2nPfuINCZJRMt6wFWhKpToF95I47XjSsc-1rbPQ/edit?usp=sharing).
 
@@ -669,3 +705,8 @@ Here are other packages of good quality and pure Go (no cgo wrappers or autoconv
 # license
 
 This code is licensed under the same conditions as the original Go code. See LICENSE file.
+
+
+
+
+

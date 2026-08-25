@@ -181,7 +181,7 @@ func AppendUint(b []byte, u uint) []byte { return AppendUint64(b, uint64(u)) }
 func AppendUint8(b []byte, u uint8) []byte { return AppendUint64(b, uint64(u)) }
 
 // AppendByte is analogous to AppendUint8
-func AppendByte(b []byte, u byte) []byte { return AppendUint8(b, uint8(u)) }
+func AppendByte(b []byte, u byte) []byte { return AppendUint8(b, u) }
 
 // AppendUint16 appends a uint16 to the slice
 func AppendUint16(b []byte, u uint16) []byte { return AppendUint64(b, uint64(u)) }
@@ -371,7 +371,7 @@ func AppendMapStrStr(b []byte, m map[string]string) []byte {
 
 // AppendMapStrIntf appends a map[string]interface{} to the slice
 // as a MessagePack map with 'str'-type keys.
-func AppendMapStrIntf(b []byte, m map[string]interface{}) ([]byte, error) {
+func AppendMapStrIntf(b []byte, m map[string]any) ([]byte, error) {
 	sz := uint32(len(m))
 	b = AppendMapHeader(b, sz)
 	var err error
@@ -394,7 +394,7 @@ func AppendMapStrIntf(b []byte, m map[string]interface{}) ([]byte, error) {
 //   - A *T, where T is another supported type
 //   - A type that satisfies the msgp.Marshaler interface
 //   - A type that satisfies the msgp.Extension interface
-func AppendIntf(b []byte, i interface{}) ([]byte, error) {
+func AppendIntf(b []byte, i any) ([]byte, error) {
 	if i == nil {
 		return AppendNil(b), nil
 	}
@@ -444,13 +444,13 @@ func AppendIntf(b []byte, i interface{}) ([]byte, error) {
 		return AppendTime(b, i), nil
 	case time.Duration:
 		return AppendDuration(b, i), nil
-	case map[string]interface{}:
+	case map[string]any:
 		return AppendMapStrIntf(b, i)
 	case map[string]string:
 		return AppendMapStrStr(b, i), nil
 	case json.Number:
 		return AppendJSONNumber(b, i)
-	case []interface{}:
+	case []any:
 		b = AppendArrayHeader(b, uint32(len(i)))
 		var err error
 		for _, k := range i {
@@ -483,7 +483,7 @@ func AppendIntf(b []byte, i interface{}) ([]byte, error) {
 	case reflect.Array, reflect.Slice:
 		l := v.Len()
 		b = AppendArrayHeader(b, uint32(l))
-		for i := 0; i < l; i++ {
+		for i := range l {
 			b, err = AppendIntf(b, v.Index(i).Interface())
 			if err != nil {
 				return b, err
@@ -517,4 +517,50 @@ func AppendJSONNumber(b []byte, n json.Number) ([]byte, error) {
 		return AppendFloat(b, ff), nil
 	}
 	return b, err
+}
+
+// AppendBytesTwoPrefixed will add the length to a bin section written with
+// 2 bytes of space saved for a bin8 header.
+// If the sz cannot fit inside a bin8, the data will be moved to make space for the header.
+func AppendBytesTwoPrefixed(b []byte, sz int) []byte {
+	off := len(b) - sz - 2
+	switch {
+	case sz <= math.MaxUint8:
+		// Just write header...
+		prefixu8(b[off:], mbin8, uint8(sz))
+	case sz <= math.MaxUint16:
+		// Scoot one
+		b = append(b, 0)
+		copy(b[off+1:], b[off:])
+		prefixu16(b[off:], mbin16, uint16(sz))
+	default:
+		// Scoot three
+		b = append(b, 0, 0, 0)
+		copy(b[off+3:], b[off:])
+		prefixu32(b[off:], mbin32, uint32(sz))
+	}
+	return b
+}
+
+// AppendBytesStringTwoPrefixed will add the length to a string section written with
+// 2 bytes of space saved for a str8 header.
+// If the sz cannot fit inside a str8, the data will be moved to make space for the header.
+func AppendBytesStringTwoPrefixed(b []byte, sz int) []byte {
+	off := len(b) - sz - 2
+	switch {
+	case sz <= math.MaxUint8:
+		// Just write header...
+		prefixu8(b[off:], mstr8, uint8(sz))
+	case sz <= math.MaxUint16:
+		// Scoot one
+		b = append(b, 0)
+		copy(b[off+1:], b[off:])
+		prefixu16(b[off:], mstr16, uint16(sz))
+	default:
+		// Scoot three
+		b = append(b, 0, 0, 0)
+		copy(b[off+3:], b[off:])
+		prefixu32(b[off:], mstr32, uint32(sz))
+	}
+	return b
 }

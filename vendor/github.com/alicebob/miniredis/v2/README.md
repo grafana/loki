@@ -25,7 +25,7 @@ import "github.com/alicebob/miniredis/v2"
 
 Implemented commands:
 
- - Connection (complete)
+ - Connection
    - AUTH -- see RequireAuth()
    - ECHO
    - HELLO -- see RequireUserAuth()
@@ -36,6 +36,7 @@ Implemented commands:
  - Key
    - COPY
    - DEL
+   - DUMP -- partly, only handles string keys
    - EXISTS
    - EXPIRE
    - EXPIREAT
@@ -50,12 +51,14 @@ Implemented commands:
    - RANDOMKEY -- see m.Seed(...)
    - RENAME
    - RENAMENX
+   - RESTORE -- partly, only handles string keys
    - SCAN
    - TOUCH
    - TTL
    - TYPE
    - UNLINK
- - Transactions (complete)
+   - WAIT -- no-op
+ - Transactions
    - DISCARD
    - EXEC
    - MULTI
@@ -68,19 +71,20 @@ Implemented commands:
    - TIME -- returns time.Now() or value set by SetTime()
    - COMMAND -- partly
    - INFO -- partly, returns only "clients" section with one field "connected_clients"
- - String keys (complete)
+ - String keys
    - APPEND
    - BITCOUNT
    - BITOP
    - BITPOS
    - DECR
    - DECRBY
+   - DELEX -- partly
    - GET
    - GETBIT
-   - GETRANGE
-   - GETSET
    - GETDEL
    - GETEX
+   - GETRANGE
+   - GETSET
    - INCR
    - INCRBY
    - INCRBYFLOAT
@@ -94,7 +98,7 @@ Implemented commands:
    - SETNX
    - SETRANGE
    - STRLEN
- - Hash keys (complete)
+ - Hash keys
    - HDEL
    - HEXISTS
    - HGET
@@ -111,7 +115,7 @@ Implemented commands:
    - HSTRLEN
    - HVALS
    - HSCAN
- - List keys (complete)
+ - List keys
    - BLPOP
    - BRPOP
    - BRPOPLPUSH
@@ -131,14 +135,14 @@ Implemented commands:
    - RPUSHX
    - LMOVE
    - BLMOVE
- - Pub/Sub (complete)
+ - Pub/Sub
    - PSUBSCRIBE
    - PUBLISH
    - PUBSUB
    - PUNSUBSCRIBE
    - SUBSCRIBE
    - UNSUBSCRIBE
- - Set keys (complete)
+ - Set keys
    - SADD
    - SCARD
    - SDIFF
@@ -156,7 +160,7 @@ Implemented commands:
    - SSCAN
    - SUNION
    - SUNIONSTORE
- - Sorted Set keys (complete)
+ - Sorted Set keys
    - ZADD
    - ZCARD
    - ZCOUNT
@@ -222,7 +226,8 @@ Implemented commands:
    - CLUSTER SLOTS
    - CLUSTER KEYSLOT
    - CLUSTER NODES
- - HyperLogLog (complete)
+   - CLUSTER SHARDS
+ - HyperLogLog
    - PFADD
    - PFCOUNT
    - PFMERGE
@@ -301,11 +306,8 @@ Commands which will probably not be implemented:
     - ~~READONLY~~
     - ~~READWRITE~~
  - Key
-    - ~~DUMP~~
     - ~~MIGRATE~~
     - ~~OBJECT~~
-    - ~~RESTORE~~
-    - ~~WAIT~~
  - Scripting
     - ~~FCALL / FCALL_RO *~~
     - ~~FUNCTION *~~
@@ -329,7 +331,7 @@ Commands which will probably not be implemented:
 
 ## &c.
 
-Integration tests are run against Redis 7.2.4. The [./integration](./integration/) subdir
+Integration tests are run against Redis 8.4.0. The [./integration](./integration/) subdir
 compares miniredis against a real redis instance.
 
 The Redis 6 RESP3 protocol is supported. If there are problems, please open

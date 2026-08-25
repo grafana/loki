@@ -10,6 +10,7 @@
     <filename>*.wsdl</filename>
     <filename>*.wsf</filename>
     <filename>*.svg</filename>
+    <filename>*.qrc</filename>
     <filename>*.csproj</filename>
     <filename>*.vcxproj</filename>
     <filename>*.fsproj</filename>

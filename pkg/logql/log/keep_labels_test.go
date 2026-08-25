@@ -111,7 +111,7 @@ func Test_KeepLabels(t *testing.T) {
 	} {
 		t.Run(tc.Name, func(t *testing.T) {
 			keepLabels := NewKeepLabels(tc.keepLabels)
-			lbls := NewBaseLabelsBuilder().ForLabels(tc.lbs, tc.lbs.Hash())
+			lbls := NewBaseLabelsBuilder().ForLabels(tc.lbs, labels.StableHash(tc.lbs))
 			lbls.Reset()
 			keepLabels.Process(0, []byte(""), lbls)
 			require.Equal(t, tc.want, lbls.LabelsResult().Labels())

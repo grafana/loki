@@ -88,7 +88,7 @@ func TestQueryIndex(t *testing.T) {
 		},
 	}
 	for _, s := range cases {
-		b.AddSeries(s.labels, model.Fingerprint(s.labels.Hash()), s.chunks)
+		b.AddSeries(s.labels, model.Fingerprint(labels.StableHash(s.labels)), s.chunks)
 	}
 
 	dst, err := b.Build(context.Background(), dir, func(from, through model.Time, checksum uint32) Identifier {
@@ -102,7 +102,7 @@ func TestQueryIndex(t *testing.T) {
 	})
 	require.Nil(t, err)
 
-	reader, err := index.NewFileReader(dst.Path())
+	reader, err := index.NewMmapFileReader(dst.Path())
 	require.Nil(t, err)
 
 	p, err := PostingsForMatchers(reader, nil, labels.MustNewMatcher(labels.MatchEqual, "foo", "bar"))

@@ -351,7 +351,7 @@ func DECRQPSR(n int) string {
 //
 // See: https://vt100.net/docs/vt510-rm/DECTABSR.html
 func TabStopReport(stops ...int) string {
-	var s []string
+	var s []string //nolint:prealloc
 	for _, v := range stops {
 		s = append(s, strconv.Itoa(v))
 	}
@@ -376,7 +376,7 @@ func DECTABSR(stops ...int) string {
 //
 // See: https://vt100.net/docs/vt510-rm/DECCIR.html
 func CursorInformationReport(values ...int) string {
-	var s []string
+	var s []string //nolint:prealloc
 	for _, v := range values {
 		s = append(s, strconv.Itoa(v))
 	}
@@ -395,7 +395,7 @@ func DECCIR(values ...int) string {
 //
 //	CSI Pn b
 //
-// See: ECMA-48 § 8.3.103
+// See: ECMA-48 § 8.3.103.
 func RepeatPreviousCharacter(n int) string {
 	var s string
 	if n > 1 {

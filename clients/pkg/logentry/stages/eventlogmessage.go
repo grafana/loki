@@ -60,7 +60,7 @@ func validateEventLogMessageConfig(c *EventLogMessageConfig) error {
 	if c == nil {
 		return errors.New(ErrEmptyEvtLogMsgStageConfig)
 	}
-	if c.Source != nil && !model.LabelName(*c.Source).IsValidLegacy() {
+	if c.Source != nil && !model.LegacyValidation.IsValidLabelName(*c.Source) {
 		return fmt.Errorf(ErrInvalidLabelName, *c.Source)
 	}
 	return nil
@@ -108,7 +108,7 @@ func (m *eventLogMessageStage) processEntry(extracted map[string]interface{}, ke
 			continue
 		}
 		mkey := parts[0]
-		if !model.LabelName(mkey).IsValidLegacy() {
+		if !model.LegacyValidation.IsValidLabelName(mkey) {
 			if m.cfg.DropInvalidLabels {
 				if Debug {
 					level.Debug(m.logger).Log("msg", "invalid label parsed from message", "key", mkey)
@@ -155,7 +155,7 @@ func SanitizeFullLabelName(input string) string {
 	}
 	var validSb strings.Builder
 	for i, b := range input {
-		if !((b >= 'a' && b <= 'z') || (b >= 'A' && b <= 'Z') || b == '_' || (b >= '0' && b <= '9' && i > 0)) {
+		if (b < 'a' || b > 'z') && (b < 'A' || b > 'Z') && b != '_' && (b < '0' || b > '9' || i <= 0) {
 			validSb.WriteRune('_')
 		} else {
 			validSb.WriteRune(b)

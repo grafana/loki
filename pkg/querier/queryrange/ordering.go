@@ -1,6 +1,7 @@
 package queryrange
 
 import (
+	"container/heap"
 	"sort"
 
 	"github.com/grafana/loki/v3/pkg/logproto"
@@ -89,7 +90,7 @@ func (pq *priorityqueue) Pop() interface{} {
 	if len(stream.Entries) > 1 {
 		remaining := *stream
 		remaining.Entries = remaining.Entries[1:]
-		pq.Push(&remaining)
+		heap.Push(pq, &remaining)
 	}
 
 	stream.Entries = stream.Entries[:1]

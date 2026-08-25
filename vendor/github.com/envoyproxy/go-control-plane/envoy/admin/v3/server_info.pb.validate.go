@@ -180,6 +180,8 @@ func (m *ServerInfo) validate(all bool) error {
 		}
 	}
 
+	// no validation rules for HotRestartInitializing
+
 	if len(errors) > 0 {
 		return ServerInfoMultiError(errors)
 	}
@@ -193,7 +195,7 @@ type ServerInfoMultiError []error
 
 // Error returns a concatenation of all the error messages it wraps.
 func (m ServerInfoMultiError) Error() string {
-	var msgs []string
+	msgs := make([]string, 0, len(m))
 	for _, err := range m {
 		msgs = append(msgs, err.Error())
 	}
@@ -352,6 +354,8 @@ func (m *CommandLineOptions) validate(all bool) error {
 		}
 	}
 
+	// no validation rules for FileFlushMinSize
+
 	if all {
 		switch v := interface{}(m.GetDrainTime()).(type) {
 		case interface{ ValidateAll() error }:
@@ -424,6 +428,8 @@ func (m *CommandLineOptions) validate(all bool) error {
 
 	// no validation rules for EnableFineGrainLogging
 
+	// no validation rules for LogStacktraceSingleEntry
+
 	// no validation rules for SocketPath
 
 	// no validation rules for SocketMode
@@ -444,7 +450,7 @@ type CommandLineOptionsMultiError []error
 
 // Error returns a concatenation of all the error messages it wraps.
 func (m CommandLineOptionsMultiError) Error() string {
-	var msgs []string
+	msgs := make([]string, 0, len(m))
 	for _, err := range m {
 		msgs = append(msgs, err.Error())
 	}

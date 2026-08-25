@@ -59,15 +59,6 @@ func TestJSONSerializationRoundTrip(t *testing.T) {
 		"empty label filter string": {
 			query: `rate({app="foo"} |= "bar" | json | unwrap latency | path!="" [5m])`,
 		},
-		"multiple variants": {
-			query: `variants(bytes_over_time({foo="bar"}[5m]), count_over_time({foo="bar"}[5m])) of ({foo="bar"}[5m])`,
-		},
-		"multiple variants with aggregation": {
-			query: `variants(sum by (app) (bytes_over_time({foo="bar"}[5m])), count_over_time({foo="bar"}[5m])) of ({foo="bar"}[5m])`,
-		},
-		"multiple variants with filters": {
-			query: `variants(bytes_over_time({foo="bar"}[5m]), count_over_time({foo="bar"}[5m])) of ({foo="bar"} | logfmt[5m])`,
-		},
 	}
 
 	for name, test := range tests {
@@ -88,6 +79,21 @@ func TestJSONSerializationRoundTrip(t *testing.T) {
 			require.Equal(t, expr.Pretty(0), actual.Pretty(0))
 		})
 	}
+}
+
+func TestJSONSerializationCountDistinctSketch(t *testing.T) {
+	expr, err := ParseExpr(`approx_count_distinct(mac, {foo="bar"} | json [1h]) by (version)`)
+	require.NoError(t, err)
+	labelAgg, ok := expr.(*LabelAggregationExpr)
+	require.True(t, ok)
+
+	sketch := NewCountDistinctSketchFromLabelAggregation(labelAgg)
+
+	var buf bytes.Buffer
+	require.NoError(t, EncodeJSON(sketch, &buf))
+	actual, err := DecodeJSON(buf.String())
+	require.NoError(t, err)
+	require.Equal(t, sketch.String(), actual.String())
 }
 
 func TestJSONSerializationParseTestCases(t *testing.T) {

@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 )
 
 // ServiceKind is the kind of service being registered.
@@ -82,6 +83,62 @@ type AgentWeights struct {
 	Warning int
 }
 
+type ServicePort struct {
+	Name    string
+	Port    int
+	Default bool
+}
+
+type ServicePorts []ServicePort
+
+func (sp ServicePorts) Validate() error {
+	if len(sp) == 0 {
+		return nil
+	}
+
+	seenName := make(map[string]struct{}, len(sp))
+	seenDefault := false
+	for _, p := range sp {
+		if strings.TrimSpace(p.Name) == "" {
+			return errors.New("Ports.Name cannot be empty")
+		}
+
+		if p.Port <= 0 {
+			return errors.New("Ports.Port must be non-zero")
+		}
+
+		_, ok := seenName[p.Name]
+		if ok {
+			return fmt.Errorf("Ports.Name %q has to be unique", p.Name)
+		}
+
+		seenName[p.Name] = struct{}{}
+
+		if p.Default && seenDefault {
+			return errors.New("only one port can be marked as default")
+		}
+
+		if p.Default {
+			seenDefault = true
+		}
+	}
+
+	if !seenDefault {
+		return fmt.Errorf("one of the Ports must be marked as Default")
+	}
+
+	return nil
+}
+
+func (sp ServicePorts) HasDefault() bool {
+	for _, p := range sp {
+		if p.Default {
+			return true
+		}
+	}
+	return false
+}
+
 // AgentService represents a service known to the agent
 type AgentService struct {
 	Kind              ServiceKind `json:",omitempty"`
@@ -90,6 +147,7 @@ type AgentService struct {
 	Tags              []string
 	Meta              map[string]string
 	Port              int
+	Ports             ServicePorts `json:",omitempty" bexpr:"-"`
 	Address           string
 	SocketPath        string                    `json:",omitempty"`
 	TaggedAddresses   map[string]ServiceAddress `json:",omitempty"`
@@ -109,6 +167,16 @@ type AgentService struct {
 	// Datacenter is only ever returned and is ignored if presented.
 	Datacenter string    `json:",omitempty" bexpr:"-" hash:"ignore"`
 	Locality   *Locality `json:",omitempty" bexpr:"-" hash:"ignore"`
+}
+
+func (a AgentService) DefaultPort() int {
+	for _, p := range a.Ports {
+		if p.Default {
+			return p.Port
+		}
+	}
+
+	return a.Port
 }
 
 // AgentServiceChecksInfo returns information about a Service and its checks
@@ -132,6 +200,7 @@ type AgentServiceConnectProxyConfig struct {
 	DestinationServiceID   string                  `json:",omitempty"`
 	LocalServiceAddress    string                  `json:",omitempty"`
 	LocalServicePort       int                     `json:",omitempty"`
+	LocalServicePorts      ServicePorts            `json:",omitempty" bexpr:"-"`
 	LocalServiceSocketPath string                  `json:",omitempty"`
 	Mode                   ProxyMode               `json:",omitempty"`
 	TransparentProxy       *TransparentProxyConfig `json:",omitempty"`
@@ -285,6 +354,7 @@ type AgentServiceRegistration struct {
 	Name              string                    `json:",omitempty"`
 	Tags              []string                  `json:",omitempty"`
 	Port              int                       `json:",omitempty"`
+	Ports             ServicePorts              `json:",omitempty"`
 	Address           string                    `json:",omitempty"`
 	SocketPath        string                    `json:",omitempty"`
 	TaggedAddresses   map[string]ServiceAddress `json:",omitempty"`
@@ -298,6 +368,10 @@ type AgentServiceRegistration struct {
 	Namespace         string                          `json:",omitempty" bexpr:"-" hash:"ignore"`
 	Partition         string                          `json:",omitempty" bexpr:"-" hash:"ignore"`
 	Locality          *Locality                       `json:",omitempty" bexpr:"-" hash:"ignore"`
+}
+
+func (a *AgentServiceRegistration) IsConnectEnabled() bool {
+	return a.Connect != nil && (a.Connect.Native || a.Connect.SidecarService != nil)
 }
 
 // ServiceRegisterOpts is used to pass extra options to the service register.
@@ -447,6 +521,7 @@ type Upstream struct {
 	DestinationNamespace string           `json:",omitempty"`
 	DestinationPeer      string           `json:",omitempty"`
 	DestinationName      string
+	DestinationPort      string                 `json:",omitempty"`
 	Datacenter           string                 `json:",omitempty"`
 	LocalBindAddress     string                 `json:",omitempty"`
 	LocalBindPort        int                    `json:",omitempty"`

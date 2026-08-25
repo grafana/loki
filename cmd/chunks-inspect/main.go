@@ -104,6 +104,10 @@ func printFile(filename string, blockDetails, printLines, storeBlocks bool) {
 			fmt.Printf("Block %4d: digest compressed: %02x, original: %02x\n", ix, sha256.Sum256(b.rawData), sha256.Sum256(b.originalData))
 		}
 
+		if b.parseErr != nil {
+			fmt.Printf("Block %4d: FAILED to parse, recovered %d of %d entries: %v\n", ix, len(b.entries), b.numEntries, b.parseErr)
+		}
+
 		totalSize += len(b.originalData)
 
 		if printLines {
@@ -126,7 +130,7 @@ func printFile(filename string, blockDetails, printLines, storeBlocks bool) {
 }
 
 func writeBlockToFile(data []byte, blockIndex int, filename string) {
-	err := os.WriteFile(filename, data, 0640) // #nosec G306 -- this is fencing off the "other" permissions
+	err := os.WriteFile(filename, data, 0640) // #nosec G306 -- this is fencing off the "other" permissions -- nosemgrep: incorrect-default-permissions
 	if err != nil {
 		log.Println("Failed to store block", blockIndex, "to file", filename, "due to error:", err)
 	} else {

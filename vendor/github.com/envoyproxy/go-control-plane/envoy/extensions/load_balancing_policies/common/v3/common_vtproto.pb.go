@@ -9,6 +9,7 @@ package commonv3
 import (
 	protohelpers "github.com/planetscale/vtprotobuf/protohelpers"
 	durationpb "github.com/planetscale/vtprotobuf/types/known/durationpb"
+	structpb "github.com/planetscale/vtprotobuf/types/known/structpb"
 	wrapperspb "github.com/planetscale/vtprotobuf/types/known/wrapperspb"
 	proto "google.golang.org/protobuf/proto"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
@@ -20,6 +21,49 @@ const (
 	// Verify that runtime/protoimpl is sufficiently up-to-date.
 	_ = protoimpl.EnforceVersion(protoimpl.MaxVersion - 20)
 )
+
+func (m *LocalityLbConfig_ZoneAwareLbConfig_ForceLocalZone) MarshalVTStrict() (dAtA []byte, err error) {
+	if m == nil {
+		return nil, nil
+	}
+	size := m.SizeVT()
+	dAtA = make([]byte, size)
+	n, err := m.MarshalToSizedBufferVTStrict(dAtA[:size])
+	if err != nil {
+		return nil, err
+	}
+	return dAtA[:n], nil
+}
+
+func (m *LocalityLbConfig_ZoneAwareLbConfig_ForceLocalZone) MarshalToVTStrict(dAtA []byte) (int, error) {
+	size := m.SizeVT()
+	return m.MarshalToSizedBufferVTStrict(dAtA[:size])
+}
+
+func (m *LocalityLbConfig_ZoneAwareLbConfig_ForceLocalZone) MarshalToSizedBufferVTStrict(dAtA []byte) (int, error) {
+	if m == nil {
+		return 0, nil
+	}
+	i := len(dAtA)
+	_ = i
+	var l int
+	_ = l
+	if m.unknownFields != nil {
+		i -= len(m.unknownFields)
+		copy(dAtA[i:], m.unknownFields)
+	}
+	if m.MinSize != nil {
+		size, err := (*wrapperspb.UInt32Value)(m.MinSize).MarshalToSizedBufferVTStrict(dAtA[:i])
+		if err != nil {
+			return 0, err
+		}
+		i -= size
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		i--
+		dAtA[i] = 0xa
+	}
+	return len(dAtA) - i, nil
+}
 
 func (m *LocalityLbConfig_ZoneAwareLbConfig) MarshalVTStrict() (dAtA []byte, err error) {
 	if m == nil {
@@ -50,6 +94,31 @@ func (m *LocalityLbConfig_ZoneAwareLbConfig) MarshalToSizedBufferVTStrict(dAtA [
 	if m.unknownFields != nil {
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
+	}
+	if m.LocalityBasis != 0 {
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.LocalityBasis))
+		i--
+		dAtA[i] = 0x30
+	}
+	if m.ForceLocalZone != nil {
+		size, err := m.ForceLocalZone.MarshalToSizedBufferVTStrict(dAtA[:i])
+		if err != nil {
+			return 0, err
+		}
+		i -= size
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		i--
+		dAtA[i] = 0x2a
+	}
+	if m.ForceLocalityDirectRouting {
+		i--
+		if m.ForceLocalityDirectRouting {
+			dAtA[i] = 1
+		} else {
+			dAtA[i] = 0
+		}
+		i--
+		dAtA[i] = 0x20
 	}
 	if m.FailTrafficOnPanic {
 		i--
@@ -339,6 +408,30 @@ func (m *ConsistentHashingLbConfig) MarshalToSizedBufferVTStrict(dAtA []byte) (i
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
 	}
+	if len(m.HashPolicy) > 0 {
+		for iNdEx := len(m.HashPolicy) - 1; iNdEx >= 0; iNdEx-- {
+			if vtmsg, ok := interface{}(m.HashPolicy[iNdEx]).(interface {
+				MarshalToSizedBufferVTStrict([]byte) (int, error)
+			}); ok {
+				size, err := vtmsg.MarshalToSizedBufferVTStrict(dAtA[:i])
+				if err != nil {
+					return 0, err
+				}
+				i -= size
+				i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+			} else {
+				encoded, err := proto.Marshal(m.HashPolicy[iNdEx])
+				if err != nil {
+					return 0, err
+				}
+				i -= len(encoded)
+				copy(dAtA[i:], encoded)
+				i = protohelpers.EncodeVarint(dAtA, i, uint64(len(encoded)))
+			}
+			i--
+			dAtA[i] = 0x1a
+		}
+	}
 	if m.HashBalanceFactor != nil {
 		size, err := (*wrapperspb.UInt32Value)(m.HashBalanceFactor).MarshalToSizedBufferVTStrict(dAtA[:i])
 		if err != nil {
@@ -360,6 +453,75 @@ func (m *ConsistentHashingLbConfig) MarshalToSizedBufferVTStrict(dAtA []byte) (i
 		dAtA[i] = 0x8
 	}
 	return len(dAtA) - i, nil
+}
+
+func (m *OrcaOobReportingConfig) MarshalVTStrict() (dAtA []byte, err error) {
+	if m == nil {
+		return nil, nil
+	}
+	size := m.SizeVT()
+	dAtA = make([]byte, size)
+	n, err := m.MarshalToSizedBufferVTStrict(dAtA[:size])
+	if err != nil {
+		return nil, err
+	}
+	return dAtA[:n], nil
+}
+
+func (m *OrcaOobReportingConfig) MarshalToVTStrict(dAtA []byte) (int, error) {
+	size := m.SizeVT()
+	return m.MarshalToSizedBufferVTStrict(dAtA[:size])
+}
+
+func (m *OrcaOobReportingConfig) MarshalToSizedBufferVTStrict(dAtA []byte) (int, error) {
+	if m == nil {
+		return 0, nil
+	}
+	i := len(dAtA)
+	_ = i
+	var l int
+	_ = l
+	if m.unknownFields != nil {
+		i -= len(m.unknownFields)
+		copy(dAtA[i:], m.unknownFields)
+	}
+	if m.TransportSocketMatchCriteria != nil {
+		size, err := (*structpb.Struct)(m.TransportSocketMatchCriteria).MarshalToSizedBufferVTStrict(dAtA[:i])
+		if err != nil {
+			return 0, err
+		}
+		i -= size
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		i--
+		dAtA[i] = 0x1a
+	}
+	if len(m.Authority) > 0 {
+		i -= len(m.Authority)
+		copy(dAtA[i:], m.Authority)
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.Authority)))
+		i--
+		dAtA[i] = 0x12
+	}
+	if m.PortValue != 0 {
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.PortValue))
+		i--
+		dAtA[i] = 0x8
+	}
+	return len(dAtA) - i, nil
+}
+
+func (m *LocalityLbConfig_ZoneAwareLbConfig_ForceLocalZone) SizeVT() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	if m.MinSize != nil {
+		l = (*wrapperspb.UInt32Value)(m.MinSize).SizeVT()
+		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
+	}
+	n += len(m.unknownFields)
+	return n
 }
 
 func (m *LocalityLbConfig_ZoneAwareLbConfig) SizeVT() (n int) {
@@ -384,6 +546,16 @@ func (m *LocalityLbConfig_ZoneAwareLbConfig) SizeVT() (n int) {
 	}
 	if m.FailTrafficOnPanic {
 		n += 2
+	}
+	if m.ForceLocalityDirectRouting {
+		n += 2
+	}
+	if m.ForceLocalZone != nil {
+		l = m.ForceLocalZone.SizeVT()
+		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
+	}
+	if m.LocalityBasis != 0 {
+		n += 1 + protohelpers.SizeOfVarint(uint64(m.LocalityBasis))
 	}
 	n += len(m.unknownFields)
 	return n
@@ -485,6 +657,39 @@ func (m *ConsistentHashingLbConfig) SizeVT() (n int) {
 	}
 	if m.HashBalanceFactor != nil {
 		l = (*wrapperspb.UInt32Value)(m.HashBalanceFactor).SizeVT()
+		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
+	}
+	if len(m.HashPolicy) > 0 {
+		for _, e := range m.HashPolicy {
+			if size, ok := interface{}(e).(interface {
+				SizeVT() int
+			}); ok {
+				l = size.SizeVT()
+			} else {
+				l = proto.Size(e)
+			}
+			n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
+		}
+	}
+	n += len(m.unknownFields)
+	return n
+}
+
+func (m *OrcaOobReportingConfig) SizeVT() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	if m.PortValue != 0 {
+		n += 1 + protohelpers.SizeOfVarint(uint64(m.PortValue))
+	}
+	l = len(m.Authority)
+	if l > 0 {
+		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
+	}
+	if m.TransportSocketMatchCriteria != nil {
+		l = (*structpb.Struct)(m.TransportSocketMatchCriteria).SizeVT()
 		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
 	}
 	n += len(m.unknownFields)

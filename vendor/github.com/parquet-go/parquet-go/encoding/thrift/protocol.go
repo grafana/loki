@@ -25,6 +25,10 @@ const (
 // However, the readers and writer that they instantiates are intended to be
 // used by a single goroutine.
 type Protocol interface {
+	// NewReaderFromBytes returns a reader over b. Every reader constructed from
+	// a byte slice can be repointed at another one, so the concrete BytesReader
+	// is returned rather than the wider Reader.
+	NewReaderFromBytes(b []byte) BytesReader
 	NewReader(r io.Reader) Reader
 	NewWriter(w io.Writer) Writer
 	Features() Features
@@ -49,6 +53,22 @@ type Reader interface {
 	ReadList() (List, error)
 	ReadSet() (Set, error)
 	ReadMap() (Map, error)
+	BytesRead() int
+}
+
+// BytesReader is a Reader positioned over a fixed byte slice.
+//
+// ResetBytes repoints the reader at b and rewinds it, so a caller decoding many
+// values from a byte buffer can reuse one reader instead of allocating one per
+// value.
+//
+// Values decoded through a BytesReader may alias b: ReadBytes and ReadString
+// return sub-slices of it rather than copies. Callers must keep b alive and
+// unmodified for as long as the decoded values are used. This is why Unmarshal,
+// which makes no such demand of its caller, clones its input.
+type BytesReader interface {
+	Reader
+	ResetBytes(b []byte)
 }
 
 // Writer represents a low-level writer of values encoded according to one of

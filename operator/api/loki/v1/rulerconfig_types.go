@@ -232,7 +232,7 @@ type AlertManagerClientTLSConfig struct {
 
 // RemoteWriteAuthType defines the type of authorization to use to access the remote write endpoint.
 //
-// +kubebuilder:validation:Enum=basic;header
+// +kubebuilder:validation:Enum=basic;bearer
 type RemoteWriteAuthType string
 
 const (
@@ -270,7 +270,7 @@ type RemoteWriteClientSpec struct {
 	//
 	// +required
 	// +kubebuilder:validation:Required
-	// +operator-sdk:csv:customresourcedefinitions:type=spec,xDescriptors={"urn:alm:descriptor:com.tectonic.ui:select:basic","urn:alm:descriptor:com.tectonic.ui:select:header"},displayName="Authorization Type"
+	// +operator-sdk:csv:customresourcedefinitions:type=spec,xDescriptors={"urn:alm:descriptor:com.tectonic.ui:select:basic","urn:alm:descriptor:com.tectonic.ui:select:bearer"},displayName="Authorization Type"
 	AuthorizationType RemoteWriteAuthType `json:"authorization"`
 
 	// Name of a secret in the namespace configured for authorization secrets.

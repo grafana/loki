@@ -105,7 +105,7 @@ type CertificatesMultiError []error
 
 // Error returns a concatenation of all the error messages it wraps.
 func (m CertificatesMultiError) Error() string {
-	var msgs []string
+	msgs := make([]string, 0, len(m))
 	for _, err := range m {
 		msgs = append(msgs, err.Error())
 	}
@@ -272,7 +272,7 @@ type CertificateMultiError []error
 
 // Error returns a concatenation of all the error messages it wraps.
 func (m CertificateMultiError) Error() string {
-	var msgs []string
+	msgs := make([]string, 0, len(m))
 	for _, err := range m {
 		msgs = append(msgs, err.Error())
 	}
@@ -499,7 +499,7 @@ type CertificateDetailsMultiError []error
 
 // Error returns a concatenation of all the error messages it wraps.
 func (m CertificateDetailsMultiError) Error() string {
-	var msgs []string
+	msgs := make([]string, 0, len(m))
 	for _, err := range m {
 		msgs = append(msgs, err.Error())
 	}
@@ -642,7 +642,7 @@ type SubjectAlternateNameMultiError []error
 
 // Error returns a concatenation of all the error messages it wraps.
 func (m SubjectAlternateNameMultiError) Error() string {
-	var msgs []string
+	msgs := make([]string, 0, len(m))
 	for _, err := range m {
 		msgs = append(msgs, err.Error())
 	}
@@ -802,7 +802,7 @@ type CertificateDetails_OcspDetailsMultiError []error
 
 // Error returns a concatenation of all the error messages it wraps.
 func (m CertificateDetails_OcspDetailsMultiError) Error() string {
-	var msgs []string
+	msgs := make([]string, 0, len(m))
 	for _, err := range m {
 		msgs = append(msgs, err.Error())
 	}

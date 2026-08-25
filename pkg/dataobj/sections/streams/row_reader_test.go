@@ -1,7 +1,6 @@
 package streams_test
 
 import (
-	"bytes"
 	"context"
 	"errors"
 	"io"
@@ -29,14 +28,18 @@ var streamsTestdata = []struct {
 	{labels.FromStrings("cluster", "test", "app", "baz"), unixTime(30), 5},
 }
 
+func shardForApp(app string) int64 {
+	return int64(streams.ShardBucket(labels.FromStrings("cluster", "test", "app", app)))
+}
+
 func TestRowReader(t *testing.T) {
 	expect := []streams.Stream{
-		{1, unixTime(10), unixTime(15), 25, labels.FromStrings("cluster", "test", "app", "foo"), 2},
-		{2, unixTime(5), unixTime(20), 45, labels.FromStrings("cluster", "test", "app", "bar"), 2},
-		{3, unixTime(25), unixTime(30), 35, labels.FromStrings("cluster", "test", "app", "baz"), 2},
+		{1, unixTime(10), unixTime(15), 25, labels.FromStrings("cluster", "test", "app", "foo"), 2, shardForApp("foo")},
+		{2, unixTime(5), unixTime(20), 45, labels.FromStrings("cluster", "test", "app", "bar"), 2, shardForApp("bar")},
+		{3, unixTime(25), unixTime(30), 35, labels.FromStrings("cluster", "test", "app", "baz"), 2, shardForApp("baz")},
 	}
 
-	sec := buildStreamsSection(t, 1) // Many pages
+	sec := buildStreamsSection(t, 1, 0) // Many pages
 	r := streams.NewRowReader(sec)
 	actual, err := readAllStreams(context.Background(), r)
 	require.NoError(t, err)
@@ -45,10 +48,10 @@ func TestRowReader(t *testing.T) {
 
 func TestRowReader_AddLabelMatcher(t *testing.T) {
 	expect := []streams.Stream{
-		{2, unixTime(5), unixTime(20), 45, labels.FromStrings("cluster", "test", "app", "bar"), 2},
+		{2, unixTime(5), unixTime(20), 45, labels.FromStrings("cluster", "test", "app", "bar"), 2, shardForApp("bar")},
 	}
 
-	sec := buildStreamsSection(t, 1) // Many pages
+	sec := buildStreamsSection(t, 1, 0) // Many pages
 	r := streams.NewRowReader(sec)
 	require.NoError(t, r.SetPredicate(streams.LabelMatcherRowPredicate{Name: "app", Value: "bar"}))
 
@@ -59,11 +62,11 @@ func TestRowReader_AddLabelMatcher(t *testing.T) {
 
 func TestRowReader_AddLabelFilter(t *testing.T) {
 	expect := []streams.Stream{
-		{2, unixTime(5), unixTime(20), 45, labels.FromStrings("cluster", "test", "app", "bar"), 2},
-		{3, unixTime(25), unixTime(30), 35, labels.FromStrings("cluster", "test", "app", "baz"), 2},
+		{2, unixTime(5), unixTime(20), 45, labels.FromStrings("cluster", "test", "app", "bar"), 2, shardForApp("bar")},
+		{3, unixTime(25), unixTime(30), 35, labels.FromStrings("cluster", "test", "app", "baz"), 2, shardForApp("baz")},
 	}
 
-	sec := buildStreamsSection(t, 1) // Many pages
+	sec := buildStreamsSection(t, 1, 0) // Many pages
 	r := streams.NewRowReader(sec)
 	err := r.SetPredicate(streams.LabelFilterRowPredicate{
 		Name: "app",
@@ -79,26 +82,42 @@ func TestRowReader_AddLabelFilter(t *testing.T) {
 	require.Equal(t, expect, actual)
 }
 
+func TestRowReader_ReadBeforeOpen(t *testing.T) {
+	sec := buildStreamsSection(t, 1, 0)
+	r := streams.NewRowReader(sec)
+
+	buf := make([]streams.Stream, 1)
+	n, err := r.Read(context.Background(), buf)
+	require.Zero(t, n)
+	require.ErrorContains(t, err, "row reader not opened")
+}
+
+func TestRowReader_OpenNilSection(t *testing.T) {
+	r := streams.NewRowReader(nil)
+	require.NoError(t, r.Open(context.Background()))
+
+	buf := make([]streams.Stream, 1)
+	n, err := r.Read(context.Background(), buf)
+	require.Zero(t, n)
+	require.ErrorIs(t, err, io.EOF)
+}
+
 func unixTime(sec int64) time.Time { return time.Unix(sec, 0) }
 
-func buildStreamsSection(t *testing.T, pageSize int) *streams.Section {
+func buildStreamsSection(t *testing.T, pageSize, pageRows int) *streams.Section {
 	t.Helper()
 
-	s := streams.NewBuilder(nil, pageSize)
+	s := streams.NewBuilder(nil, pageSize, pageRows)
 	for _, d := range streamsTestdata {
 		s.Record(d.Labels, d.Timestamp, d.UncompressedSize)
 	}
 
-	var buf bytes.Buffer
-
-	builder := dataobj.NewBuilder()
+	builder := dataobj.NewBuilder(nil)
 	require.NoError(t, builder.Append(s))
 
-	_, err := builder.Flush(&buf)
+	obj, closer, err := builder.Flush()
 	require.NoError(t, err)
-
-	obj, err := dataobj.FromReaderAt(bytes.NewReader(buf.Bytes()), int64(buf.Len()))
-	require.NoError(t, err)
+	t.Cleanup(func() { closer.Close() })
 
 	sec, err := streams.Open(t.Context(), obj.Sections()[0])
 	require.NoError(t, err)
@@ -110,6 +129,9 @@ func readAllStreams(ctx context.Context, r *streams.RowReader) ([]streams.Stream
 		res []streams.Stream
 		buf = make([]streams.Stream, 128)
 	)
+	if err := r.Open(ctx); err != nil {
+		return nil, err
+	}
 
 	for {
 		n, err := r.Read(ctx, buf)

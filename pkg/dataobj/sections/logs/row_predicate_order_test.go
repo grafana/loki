@@ -155,7 +155,12 @@ func TestGetPredicateSelectivity(t *testing.T) {
 					min:         25,
 					max:         75,
 				}).ToMemColumn(t),
-				Values: []dataset.Value{dataset.Int64Value(20), dataset.Int64Value(50), dataset.Int64Value(60), dataset.Int64Value(80)}, // 2 values in range. ~200 matching rows
+				Values: dataset.NewInt64ValueSet([]dataset.Value{
+					dataset.Int64Value(20),
+					dataset.Int64Value(50),
+					dataset.Int64Value(60),
+					dataset.Int64Value(80),
+				}), // 2 values in range. ~200 matching rows
 			},
 			want: selectivityScore(0.2), // 0.1 + 0.1
 		},
@@ -210,6 +215,16 @@ func TestGetPredicateSelectivity(t *testing.T) {
 				},
 			},
 			want: selectivityScore(0.15),
+		},
+		{
+			name:      "FalsePredicate has zero selectivity",
+			predicate: dataset.FalsePredicate{},
+			want:      noMatchSelectivity,
+		},
+		{
+			name:      "TruePredicate matches all rows",
+			predicate: dataset.TruePredicate{},
+			want:      matchAllSelectivity,
 		},
 	}
 
@@ -354,6 +369,11 @@ func TestOrderPredicates(t *testing.T) {
 			predicates: []dataset.Predicate{andPred, equalPred2},
 			want:       []dataset.Predicate{equalPred2, andPred},
 		},
+		{
+			name:       "FalsePredicate ordered before other predicates",
+			predicates: []dataset.Predicate{equalPred1, dataset.FalsePredicate{}},
+			want:       []dataset.Predicate{dataset.FalsePredicate{}, equalPred1},
+		},
 	}
 
 	for _, tt := range tests {
@@ -385,8 +405,8 @@ type testColumn struct {
 
 func (c *testColumn) ToMemColumn(t *testing.T) *dataset.MemColumn {
 	return &dataset.MemColumn{
-		Info: dataset.ColumnInfo{
-			Name:             c.name,
+		Desc: dataset.ColumnDesc{
+			Tag:              c.name,
 			RowsCount:        c.rowCount,
 			ValuesCount:      c.valueCount,
 			UncompressedSize: c.size,

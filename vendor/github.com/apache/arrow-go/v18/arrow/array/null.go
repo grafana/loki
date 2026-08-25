@@ -76,8 +76,8 @@ func (a *Null) String() string {
 
 func (a *Null) setData(data *Data) {
 	a.array.setData(data)
-	a.array.nullBitmapBytes = nil
-	a.array.data.nulls = a.array.data.length
+	a.nullBitmapBytes = nil
+	a.data.nulls = a.data.length
 }
 
 func (a *Null) GetOneForMarshal(i int) interface{} {
@@ -115,8 +115,8 @@ func (b *NullBuilder) Release() {
 }
 
 func (b *NullBuilder) AppendNull() {
-	b.builder.length++
-	b.builder.nulls++
+	b.length++
+	b.nulls++
 }
 
 func (b *NullBuilder) AppendNulls(n int) {
@@ -201,6 +201,7 @@ func (b *NullBuilder) Unmarshal(dec *json.Decoder) error {
 
 func (b *NullBuilder) UnmarshalJSON(data []byte) error {
 	dec := json.NewDecoder(bytes.NewReader(data))
+	dec.UseNumber()
 	t, err := dec.Token()
 	if err != nil {
 		return err

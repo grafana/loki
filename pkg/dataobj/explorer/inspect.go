@@ -8,11 +8,15 @@ import (
 	"strings"
 	"time"
 
+	"github.com/go-kit/log"
+	"github.com/go-kit/log/level"
 	"github.com/thanos-io/objstore"
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/datasetmd"
+	"github.com/grafana/loki/v3/pkg/dataobj/sections/indexpointers"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/logs"
+	"github.com/grafana/loki/v3/pkg/dataobj/sections/pointers"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
 )
 
@@ -59,6 +63,12 @@ type PageInfo struct {
 	ValuesCount      uint64 `json:"values_count"`
 }
 
+type IndexPointerRow struct {
+	Path    string    `json:"path"`
+	StartTs time.Time `json:"start_ts"`
+	EndTs   time.Time `json:"end_ts"`
+}
+
 type SectionMetadata struct {
 	Type                  string            `json:"type"`
 	TotalCompressedSize   uint64            `json:"totalCompressedSize"`
@@ -68,6 +78,7 @@ type SectionMetadata struct {
 	Distribution          []uint64          `json:"distribution"`
 	MinTimestamp          time.Time         `json:"minTimestamp"`
 	MaxTimestamp          time.Time         `json:"maxTimestamp"`
+	IndexPointers         []IndexPointerRow `json:"indexPointers,omitempty"`
 }
 
 func (s *Service) handleInspect(w http.ResponseWriter, r *http.Request) {
@@ -88,7 +99,7 @@ func (s *Service) handleInspect(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	metadata := inspectFile(r.Context(), s.bucket, filename)
+	metadata := inspectFile(r.Context(), s.logger, s.bucket, filename)
 	metadata.LastModified = attrs.LastModified.UTC()
 	for _, section := range metadata.Sections {
 		section.MinTimestamp = section.MinTimestamp.UTC().Truncate(time.Second)
@@ -102,8 +113,8 @@ func (s *Service) handleInspect(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func inspectFile(ctx context.Context, bucket objstore.BucketReader, path string) FileMetadata {
-	obj, err := dataobj.FromBucket(ctx, bucket, path)
+func inspectFile(ctx context.Context, logger log.Logger, bucket objstore.BucketReader, path string) FileMetadata {
+	obj, err := dataobj.FromBucket(ctx, bucket, path, 0)
 	if err != nil {
 		return FileMetadata{
 			Error: fmt.Sprintf("failed to read sections: %v", err),
@@ -145,10 +156,157 @@ func inspectFile(ctx context.Context, bucket objstore.BucketReader, path string)
 				}
 			}
 			result.Sections = append(result.Sections, meta)
+		case pointers.CheckSection(section):
+			pointersSection, err := pointers.Open(ctx, section)
+			if err != nil {
+				return FileMetadata{
+					Error: fmt.Sprintf("failed to open pointers section: %v", err),
+				}
+			}
+			meta, err := inspectPointersSection(ctx, section.Type, pointersSection)
+			if err != nil {
+				return FileMetadata{
+					Error: fmt.Sprintf("failed to inspect pointers section: %v", err),
+				}
+			}
+			result.Sections = append(result.Sections, meta)
+		case indexpointers.CheckSection(section):
+			indexPointersSection, err := indexpointers.Open(ctx, section)
+			if err != nil {
+				return FileMetadata{
+					Error: fmt.Sprintf("failed to open index pointers section: %v", err),
+				}
+			}
+			meta, err := inspectIndexPointersSection(ctx, logger, section.Type, indexPointersSection)
+			if err != nil {
+				return FileMetadata{
+					Error: fmt.Sprintf("failed to inspect index pointers section: %v", err),
+				}
+			}
+			result.Sections = append(result.Sections, meta)
 		}
 	}
 
 	return result
+}
+
+func inspectIndexPointersSection(ctx context.Context, logger log.Logger, ty dataobj.SectionType, sec *indexpointers.Section) (SectionMetadata, error) {
+	stats, err := indexpointers.ReadStats(ctx, sec)
+	if err != nil {
+		return SectionMetadata{}, err
+	}
+
+	meta := SectionMetadata{
+		Type:                  ty.String(),
+		TotalCompressedSize:   stats.CompressedSize,
+		TotalUncompressedSize: stats.UncompressedSize,
+		ColumnCount:           len(stats.Columns),
+		Distribution:          stats.TimestampDistribution,
+		MinTimestamp:          stats.MinTimestamp,
+		MaxTimestamp:          stats.MaxTimestamp,
+	}
+
+	for _, col := range stats.Columns {
+		colMeta := ColumnWithPages{
+			Name:             col.Name,
+			Type:             col.Type,
+			ValueType:        strings.TrimPrefix(col.ValueType, "PHYSICAL_TYPE_"),
+			RowsCount:        col.RowsCount,
+			Compression:      strings.TrimPrefix(col.Compression, "COMPRESSION_TYPE_"),
+			UncompressedSize: col.UncompressedSize,
+			CompressedSize:   col.CompressedSize,
+			MetadataOffset:   col.MetadataOffset,
+			MetadataSize:     col.MetadataSize,
+			ValuesCount:      col.ValuesCount,
+			Statistics:       Statistics{CardinalityCount: col.Cardinality},
+		}
+
+		for _, page := range col.Pages {
+
+			colMeta.Pages = append(colMeta.Pages, PageInfo{
+				UncompressedSize: page.UncompressedSize,
+				CompressedSize:   page.CompressedSize,
+				CRC32:            page.CRC32,
+				RowsCount:        page.RowsCount,
+				Encoding:         strings.TrimPrefix(page.Encoding, "ENCODING_TYPE_"),
+				DataOffset:       page.DataOffset,
+				DataSize:         page.DataSize,
+				ValuesCount:      page.ValuesCount,
+			})
+		}
+
+		meta.Columns = append(meta.Columns, colMeta)
+	}
+
+	const maxIndexPointerRows = 1000
+	truncated := false
+	for r := range indexpointers.IterSection(ctx, sec) {
+		if r.Err() != nil {
+			return SectionMetadata{}, r.Err()
+		}
+		if len(meta.IndexPointers) >= maxIndexPointerRows {
+			truncated = true
+			break
+		}
+		p := r.MustValue()
+		meta.IndexPointers = append(meta.IndexPointers, IndexPointerRow{
+			Path:    p.Path,
+			StartTs: p.StartTs.UTC(),
+			EndTs:   p.EndTs.UTC(),
+		})
+	}
+	if truncated {
+		level.Warn(logger).Log("msg", "indexpointers section truncated", "maxRows", maxIndexPointerRows)
+	}
+
+	return meta, nil
+}
+
+func inspectPointersSection(ctx context.Context, ty dataobj.SectionType, sec *pointers.Section) (SectionMetadata, error) {
+	stats, err := pointers.ReadStats(ctx, sec)
+	if err != nil {
+		return SectionMetadata{}, err
+	}
+
+	meta := SectionMetadata{
+		Type:                  ty.String(),
+		TotalCompressedSize:   stats.CompressedSize,
+		TotalUncompressedSize: stats.UncompressedSize,
+		ColumnCount:           len(stats.Columns),
+	}
+
+	for _, col := range stats.Columns {
+		colMeta := ColumnWithPages{
+			Name:             col.Name,
+			Type:             col.Type,
+			ValueType:        strings.TrimPrefix(col.ValueType, "PHYSICAL_TYPE_"),
+			RowsCount:        col.RowsCount,
+			Compression:      strings.TrimPrefix(col.Compression, "COMPRESSION_TYPE_"),
+			UncompressedSize: col.UncompressedSize,
+			CompressedSize:   col.CompressedSize,
+			MetadataOffset:   col.MetadataOffset,
+			MetadataSize:     col.MetadataSize,
+			ValuesCount:      col.ValuesCount,
+			Statistics:       Statistics{CardinalityCount: col.Cardinality},
+		}
+
+		for _, page := range col.Pages {
+			colMeta.Pages = append(colMeta.Pages, PageInfo{
+				UncompressedSize: page.UncompressedSize,
+				CompressedSize:   page.CompressedSize,
+				CRC32:            page.CRC32,
+				RowsCount:        page.RowsCount,
+				Encoding:         strings.TrimPrefix(page.Encoding, "ENCODING_TYPE_"),
+				DataOffset:       page.DataOffset,
+				DataSize:         page.DataSize,
+				ValuesCount:      page.ValuesCount,
+			})
+		}
+
+		meta.Columns = append(meta.Columns, colMeta)
+	}
+
+	return meta, nil
 }
 
 func inspectLogsSection(ctx context.Context, ty dataobj.SectionType, sec *logs.Section) (SectionMetadata, error) {
@@ -168,7 +326,7 @@ func inspectLogsSection(ctx context.Context, ty dataobj.SectionType, sec *logs.S
 		colMeta := ColumnWithPages{
 			Name:             col.Name,
 			Type:             col.Type,
-			ValueType:        strings.TrimPrefix(col.ValueType, "VALUE_TYPE_"),
+			ValueType:        strings.TrimPrefix(col.ValueType, "PHYSICAL_TYPE_"),
 			RowsCount:        col.RowsCount,
 			Compression:      strings.TrimPrefix(col.Compression, "COMPRESSION_TYPE_"),
 			UncompressedSize: col.UncompressedSize,
@@ -218,7 +376,7 @@ func inspectStreamsSection(ctx context.Context, ty dataobj.SectionType, sec *str
 		colMeta := ColumnWithPages{
 			Name:             col.Name,
 			Type:             col.Type,
-			ValueType:        strings.TrimPrefix(col.ValueType, "VALUE_TYPE_"),
+			ValueType:        strings.TrimPrefix(col.ValueType, "PHYSICAL_TYPE_"),
 			RowsCount:        col.RowsCount,
 			Compression:      strings.TrimPrefix(col.Compression, "COMPRESSION_TYPE_"),
 			UncompressedSize: col.UncompressedSize,

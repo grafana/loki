@@ -30,8 +30,8 @@ type MultiConfig struct {
 func (cfg *MultiConfig) RegisterFlagsWithPrefix(f *flag.FlagSet, prefix string) {
 	f.StringVar(&cfg.Primary, prefix+"multi.primary", "", "Primary backend storage used by multi-client.")
 	f.StringVar(&cfg.Secondary, prefix+"multi.secondary", "", "Secondary backend storage used by multi-client.")
-	f.BoolVar(&cfg.MirrorEnabled, prefix+"multi.mirror-enabled", false, "Mirror writes to secondary store.")
-	f.DurationVar(&cfg.MirrorTimeout, prefix+"multi.mirror-timeout", 2*time.Second, "Timeout for storing value to secondary store.")
+	f.BoolVar(&cfg.MirrorEnabled, prefix+"multi.mirror-enabled", false, "Mirror writes to the secondary store.")
+	f.DurationVar(&cfg.MirrorTimeout, prefix+"multi.mirror-timeout", 2*time.Second, "Timeout for storing a value to the secondary store.")
 }
 
 // MultiRuntimeConfig has values that can change in runtime (via overrides)

@@ -1,6 +1,7 @@
 package httpreq
 
 import (
+	"context"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -139,6 +140,116 @@ func Test_testToKeyValues(t *testing.T) {
 		t.Run(c.name, func(t *testing.T) {
 			got := TagsToKeyValues(c.in)
 			assert.Equal(t, c.exp, got)
+		})
+	}
+}
+
+func TestAppendQueryTagsHeader(t *testing.T) {
+	tests := []struct {
+		name       string
+		existing   string
+		additional string
+		expected   string
+		expectedKV []any
+	}{
+		{
+			name:       "sets tags when header is empty",
+			additional: "goldfish_correlation_id=test-uuid",
+			expected:   "goldfish_correlation_id=test-uuid",
+			expectedKV: []any{
+				"goldfish_correlation_id",
+				"test-uuid",
+			},
+		},
+		{
+			name:       "preserves existing tags when appending",
+			existing:   "Source=logvolhist",
+			additional: "goldfish_correlation_id=test-uuid",
+			expected:   "Source=logvolhist,goldfish_correlation_id=test-uuid",
+			expectedKV: []any{
+				"source",
+				"logvolhist",
+				"goldfish_correlation_id",
+				"test-uuid",
+			},
+		},
+		{
+			name:       "sanitizes existing and appended tags",
+			existing:   "Source=log+volhist",
+			additional: "goldfish_correlation_id=test/uuid",
+			expected:   "Source=log_volhist,goldfish_correlation_id=test_uuid",
+			expectedKV: []any{
+				"source",
+				"log_volhist",
+				"goldfish_correlation_id",
+				"test_uuid",
+			},
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			header := make(http.Header)
+			if test.existing != "" {
+				header.Set(string(QueryTagsHTTPHeader), test.existing)
+			}
+
+			AppendQueryTagsHeader(header, test.additional)
+
+			got := header.Get(string(QueryTagsHTTPHeader))
+			require.Equal(t, test.expected, got)
+			require.Equal(t, test.expectedKV, TagsToKeyValues(got))
+		})
+	}
+}
+
+func TestIsLogsDrilldownRequest(t *testing.T) {
+	tests := []struct {
+		name      string
+		queryTags string
+		expected  bool
+	}{
+		{
+			name:      "Valid Logs Drilldown request",
+			queryTags: "Source=grafana-lokiexplore-app,Feature=patterns",
+			expected:  true,
+		},
+		{
+			name:      "Case insensitive source matching",
+			queryTags: "Source=GRAFANA-LOKIEXPLORE-APP,Feature=patterns",
+			expected:  true,
+		},
+		{
+			name:      "Different source",
+			queryTags: "Source=grafana,Feature=explore",
+			expected:  false,
+		},
+		{
+			name:      "No source tag",
+			queryTags: "Feature=patterns,User=test",
+			expected:  false,
+		},
+		{
+			name:      "Empty query tags",
+			queryTags: "",
+			expected:  false,
+		},
+		{
+			name:      "Malformed tags",
+			queryTags: "invalid_tags_format",
+			expected:  false,
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			ctx := context.Background()
+			if test.queryTags != "" {
+				ctx = InjectQueryTags(ctx, test.queryTags)
+			}
+
+			result := IsLogsDrilldownRequest(ctx)
+			require.Equal(t, test.expected, result, "Expected %v, got %v for queryTags: %s", test.expected, result, test.queryTags)
 		})
 	}
 }

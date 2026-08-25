@@ -48,23 +48,22 @@
       enabled: true,
     },
 
+    thanos: {
+      // Whether or not to include thanos specific dashboards
+      enabled: true,
+    },
+
     operational: {
       // Whether or not to include memcached in the operational dashboard
       memcached: true,
       // Whether or not to include consul in the operational dashboard
       consul: true,
-      // Whether or not to include big table in the operational dashboard
-      bigTable: true,
-      // Whether or not to include dynamo in the operational dashboard
-      dynamo: true,
       // Whether or not to include gcs in the operational dashboard
       gcs: true,
       // Whether or not to include s3 in the operational dashboard
       s3: true,
       // Whether or not to include azure blob in the operational dashboard
       azureBlob: true,
-      // Whether or not to include bolt db in the operational dashboard
-      boltDB: true,
     },
 
     // Enable TSDB specific dashboards
@@ -75,18 +74,27 @@
     // Set to four times the scrape interval to account for edge cases: https://www.robustperception.io/what-range-should-i-use-with-rate/
     recording_rules_range_interval: '1m',
 
-    // SSD related configuration for dashboards.
-    ssd: {
-      // Support Loki SSD mode on dashboards.
-      enabled: false,
-
-      // The prefix used to match the write and read pods on SSD mode.
-      pod_prefix_matcher: '(loki.*|enterprise-logs)',
-    },
-
     // Meta-monitoring related configuration
     meta_monitoring: {
       enabled: false,
+    },
+
+    // Enable panels that depend on autoscaler metrics
+    // (loki_autoscaler_min_replicas / loki_autoscaler_max_replicas).
+    autoscaling_metrics: false,
+    // Per-component autoscaling status.
+    // Only consulted when autoscaling_metrics is true.
+    // If true, min and max replicas for the component are shown.
+    // If false, a panel that says "not autoscaled" is shown instead.
+    autoscaled: {
+      gateway: false,  // only when internal_components=true
+      query_frontend: false,
+      query_scheduler: false,
+      querier: false,
+      index_gateway: false,
+      bloom_gateway: false,
+      ingester: false,
+      ruler: false,
     },
   },
 }

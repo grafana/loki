@@ -92,6 +92,26 @@ type ListMeta struct {
 	// should not rely on the remainingItemCount to be set or to be exact.
 	// +optional
 	RemainingItemCount *int64 `json:"remainingItemCount,omitempty" protobuf:"bytes,4,opt,name=remainingItemCount"`
+
+	// shardInfo is set when the list is a filtered subset of the full collection,
+	// as selected by a shard selector on the request. It echoes back the selector
+	// so clients can verify which shard they received and merge sharded responses.
+	// Clients should not cache sharded list responses as a full representation
+	// of the collection.
+	//
+	// This is an alpha field and requires enabling the ShardedListAndWatch feature gate.
+	// +featureGate=ShardedListAndWatch
+	// +optional
+	ShardInfo *ShardInfo `json:"shardInfo,omitempty" protobuf:"bytes,5,opt,name=shardInfo"`
+}
+
+// ShardInfo describes the shard selector that was applied to produce a list response.
+// Its presence on a list response indicates the list is a filtered subset.
+type ShardInfo struct {
+	// selector is the shard selector string from the request, echoed back so clients
+	// can verify which shard they received and merge responses from multiple shards.
+	// +required
+	Selector string `json:"selector" protobuf:"bytes,1,opt,name=selector"`
 }
 
 // Field path constants that are specific to the internal API
@@ -185,7 +205,7 @@ type ObjectMeta struct {
 	// Null for lists.
 	// More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#metadata
 	// +optional
-	CreationTimestamp Time `json:"creationTimestamp,omitempty" protobuf:"bytes,8,opt,name=creationTimestamp"`
+	CreationTimestamp Time `json:"creationTimestamp,omitempty,omitzero" protobuf:"bytes,8,opt,name=creationTimestamp"`
 
 	// DeletionTimestamp is RFC 3339 date and time at which this resource will be deleted. This
 	// field is set by the server when a graceful deletion is requested by the user, and is not
@@ -430,6 +450,38 @@ type ListOptions struct {
 	// compatibility reasons) and to false otherwise.
 	// +optional
 	SendInitialEvents *bool `json:"sendInitialEvents,omitempty" protobuf:"varint,11,opt,name=sendInitialEvents"`
+
+	// shardSelector restricts the list of returned objects using a CEL-based
+	// shard selector expression. The format uses the shardRange() function
+	// combined with || (logical OR) to specify one or more hash ranges:
+	//
+	//   shardRange(object.metadata.uid, '0x0', '0x8000000000000000')
+	//   shardRange(object.metadata.uid, '0x0', '0x8000000000000000') || shardRange(object.metadata.uid, '0x8000000000000000', '0x10000000000000000')
+	//
+	// Field paths use CEL-style object-rooted syntax (e.g. "object.metadata.uid"),
+	// NOT the fieldSelector format ("metadata.uid"). Currently supported paths:
+	//   - object.metadata.uid
+	//   - object.metadata.namespace
+	//
+	// hexStart and hexEnd are single-quoted CEL string literals with a '0x' prefix,
+	// defining the inclusive lower and exclusive upper bounds over the 64-bit FNV-1a
+	// hash space. The full range is [0x0, 0x10000000000000000), where the exclusive
+	// upper bound equals 2^64.
+	//
+	// Examples:
+	//   2-shard split:
+	//     shard 0: shardRange(object.metadata.uid, '0x0000000000000000', '0x8000000000000000')
+	//     shard 1: shardRange(object.metadata.uid, '0x8000000000000000', '0x10000000000000000')
+	//   4-shard split:
+	//     shard 0: shardRange(object.metadata.uid, '0x0000000000000000', '0x4000000000000000')
+	//     shard 1: shardRange(object.metadata.uid, '0x4000000000000000', '0x8000000000000000')
+	//     shard 2: shardRange(object.metadata.uid, '0x8000000000000000', '0xc000000000000000')
+	//     shard 3: shardRange(object.metadata.uid, '0xc000000000000000', '0x10000000000000000')
+	//
+	// This is an alpha field and requires enabling the ShardedListAndWatch feature gate.
+	// +featureGate=ShardedListAndWatch
+	// +optional
+	ShardSelector string `json:"shardSelector,omitempty" protobuf:"bytes,15,opt,name=shardSelector"`
 }
 
 const (
@@ -439,20 +491,6 @@ const (
 	//
 	// The annotation is added to a "Bookmark" event.
 	InitialEventsAnnotationKey = "k8s.io/initial-events-end"
-
-	// InitialEventsListBlueprintAnnotationKey is the name of the key
-	// where an empty, versioned list is encoded in the requested format
-	// (e.g., protobuf, JSON, CBOR), then base64-encoded and stored as a string.
-	//
-	// This encoding matches the request encoding format, which may be
-	// protobuf, JSON, CBOR, or others, depending on what the client requested.
-	// This ensures that the reconstructed list can be processed through the
-	// same decoder chain that would handle a standard LIST call response.
-	//
-	// The annotation is added to a "Bookmark" event and is used by clients
-	// to guarantee the format consistency when reconstructing
-	// the list during WatchList processing.
-	InitialEventsListBlueprintAnnotationKey = "kubernetes.io/initial-events-list-blueprint"
 )
 
 // resourceVersionMatch specifies how the resourceVersion parameter is applied. resourceVersionMatch
@@ -798,7 +836,6 @@ type Status struct {
 	// is not guaranteed to conform to any schema except that defined by
 	// the reason type.
 	// +optional
-	// +listType=atomic
 	Details *StatusDetails `json:"details,omitempty" protobuf:"bytes,5,opt,name=details"`
 	// Suggested HTTP return code for this status, 0 if not set.
 	// +optional
@@ -1398,27 +1435,6 @@ const (
 	ManagedFieldsOperationApply  ManagedFieldsOperationType = "Apply"
 	ManagedFieldsOperationUpdate ManagedFieldsOperationType = "Update"
 )
-
-// FieldsV1 stores a set of fields in a data structure like a Trie, in JSON format.
-//
-// Each key is either a '.' representing the field itself, and will always map to an empty set,
-// or a string representing a sub-field or item. The string will follow one of these four formats:
-// 'f:<name>', where <name> is the name of a field in a struct, or key in a map
-// 'v:<value>', where <value> is the exact json formatted value of a list item
-// 'i:<index>', where <index> is position of a item in a list
-// 'k:<keys>', where <keys> is a map of  a list item's key fields to their unique values
-// If a key maps to an empty Fields value, the field that key represents is part of the set.
-//
-// The exact format is defined in sigs.k8s.io/structured-merge-diff
-// +protobuf.options.(gogoproto.goproto_stringer)=false
-type FieldsV1 struct {
-	// Raw is the underlying serialization of this object.
-	Raw []byte `json:"-" protobuf:"bytes,1,opt,name=Raw"`
-}
-
-func (f FieldsV1) String() string {
-	return string(f.Raw)
-}
 
 // TODO: Table does not generate to protobuf because of the interface{} - fix protobuf
 //   generation to support a meta type that can accept any valid JSON. This can be introduced

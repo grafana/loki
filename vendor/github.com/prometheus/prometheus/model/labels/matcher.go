@@ -1,4 +1,4 @@
-// Copyright 2017 The Prometheus Authors
+// Copyright The Prometheus Authors
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
@@ -101,7 +101,7 @@ func (m *Matcher) shouldQuoteName() bool {
 		}
 		return true
 	}
-	return len(m.Name) == 0
+	return m.Name == ""
 }
 
 // Matches returns whether the matcher matches the given string value.
@@ -152,10 +152,10 @@ func (m *Matcher) SetMatches() []string {
 	return m.re.SetMatches()
 }
 
-// Prefix returns the required prefix of the value to match, if possible.
+// Prefix returns the required prefix of the value to match byte-for-byte, if possible.
 // It will be empty if it's an equality matcher or if the prefix can't be determined.
 func (m *Matcher) Prefix() string {
-	if m.re == nil {
+	if m.re == nil || m.re.caseInsensitivePrefix {
 		return ""
 	}
 	return m.re.prefix

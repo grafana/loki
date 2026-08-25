@@ -44,12 +44,12 @@ func newSampleIterator(samples []logproto.Sample) iter.SampleIterator {
 		iter.NewSeriesIterator(logproto.Series{
 			Labels:     labelFoo.String(),
 			Samples:    samples,
-			StreamHash: labelFoo.Hash(),
+			StreamHash: labels.StableHash(labelFoo),
 		}),
 		iter.NewSeriesIterator(logproto.Series{
 			Labels:     labelBar.String(),
 			Samples:    samples,
-			StreamHash: labelBar.Hash(),
+			StreamHash: labels.StableHash(labelBar),
 		}),
 	})
 }
@@ -60,10 +60,6 @@ func newfakePeekingSampleIterator(samples []logproto.Sample) iter.PeekingSampleI
 
 func newSample(t time.Time, v float64, metric labels.Labels) promql.Sample {
 	return promql.Sample{Metric: metric, T: t.UnixMilli(), F: v}
-}
-
-func newPoint(t time.Time, v float64) promql.FPoint {
-	return promql.FPoint{T: t.UnixMilli(), F: v}
 }
 
 func Benchmark_RangeVectorIteratorCompare(b *testing.B) {
@@ -564,7 +560,7 @@ func sampleIter(negative bool) iter.PeekingSampleIterator {
 					{Timestamp: 3, Hash: 2, Value: value(2., negative)},
 					{Timestamp: 4, Hash: 3, Value: value(3., negative)},
 				},
-				StreamHash: labelFoo.Hash(),
+				StreamHash: labels.StableHash(labelFoo),
 			}),
 		}),
 	)

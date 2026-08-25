@@ -1,9 +1,11 @@
 package msgp
 
 import (
+	"encoding"
 	"encoding/binary"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"math"
 	"reflect"
@@ -33,7 +35,7 @@ var (
 
 	btsType    = reflect.TypeOf(([]byte)(nil))
 	writerPool = sync.Pool{
-		New: func() interface{} {
+		New: func() any {
 			return &Writer{buf: make([]byte, 2048)}
 		},
 	}
@@ -430,7 +432,7 @@ func (mw *Writer) WriteUint64(u uint64) error {
 }
 
 // WriteByte is analogous to WriteUint8
-func (mw *Writer) WriteByte(u byte) error { return mw.WriteUint8(uint8(u)) }
+func (mw *Writer) WriteByte(u byte) error { return mw.WriteUint8(u) }
 
 // WriteUint8 writes a uint8 to the writer
 func (mw *Writer) WriteUint8(u uint8) error { return mw.WriteUint64(uint64(u)) }
@@ -446,6 +448,9 @@ func (mw *Writer) WriteUint(u uint) error { return mw.WriteUint64(uint64(u)) }
 
 // WriteBytes writes binary as 'bin' to the writer
 func (mw *Writer) WriteBytes(b []byte) error {
+	if uint64(len(b)) > math.MaxUint32 {
+		return ErrLimitExceeded
+	}
 	sz := uint32(len(b))
 	var err error
 	switch {
@@ -488,6 +493,10 @@ func (mw *Writer) WriteBool(b bool) error {
 // WriteString writes a messagepack string to the writer.
 // (This is NOT an implementation of io.StringWriter)
 func (mw *Writer) WriteString(s string) error {
+	if uint64(len(s)) > math.MaxUint32 {
+		return ErrLimitExceeded
+	}
+
 	sz := uint32(len(s))
 	var err error
 	switch {
@@ -526,6 +535,9 @@ func (mw *Writer) WriteStringHeader(sz uint32) error {
 // WriteStringFromBytes writes a 'str' object
 // from a []byte.
 func (mw *Writer) WriteStringFromBytes(str []byte) error {
+	if uint64(len(str)) > math.MaxUint32 {
+		return ErrLimitExceeded
+	}
 	sz := uint32(len(str))
 	var err error
 	switch {
@@ -591,7 +603,7 @@ func (mw *Writer) WriteMapStrStr(mp map[string]string) (err error) {
 }
 
 // WriteMapStrIntf writes a map[string]interface to the writer
-func (mw *Writer) WriteMapStrIntf(mp map[string]interface{}) (err error) {
+func (mw *Writer) WriteMapStrIntf(mp map[string]any) (err error) {
 	err = mw.WriteMapHeader(uint32(len(mp)))
 	if err != nil {
 		return
@@ -703,7 +715,7 @@ func (mw *Writer) WriteJSONNumber(n json.Number) error {
 //   - A pointer to a supported type
 //   - A type that satisfies the msgp.Encodable interface
 //   - A type that satisfies the msgp.Extension interface
-func (mw *Writer) WriteIntf(v interface{}) error {
+func (mw *Writer) WriteIntf(v any) error {
 	if v == nil {
 		return mw.WriteNil()
 	}
@@ -754,7 +766,7 @@ func (mw *Writer) WriteIntf(v interface{}) error {
 		return mw.WriteBytes(v)
 	case map[string]string:
 		return mw.WriteMapStrStr(v)
-	case map[string]interface{}:
+	case map[string]any:
 		return mw.WriteMapStrIntf(v)
 	case time.Time:
 		return mw.WriteTime(v)
@@ -817,7 +829,7 @@ func (mw *Writer) writeSlice(v reflect.Value) (err error) {
 	if err != nil {
 		return
 	}
-	for i := uint32(0); i < sz; i++ {
+	for i := range sz {
 		err = mw.WriteIntf(v.Index(int(i)).Interface())
 		if err != nil {
 			return
@@ -840,7 +852,7 @@ func isSupported(k reflect.Kind) bool {
 // value of 'i'. If the underlying value is not
 // a simple builtin (or []byte), GuessSize defaults
 // to 512.
-func GuessSize(i interface{}) int {
+func GuessSize(i any) int {
 	if i == nil {
 		return NilSize
 	}
@@ -868,7 +880,7 @@ func GuessSize(i interface{}) int {
 		return Complex128Size
 	case bool:
 		return BoolSize
-	case map[string]interface{}:
+	case map[string]any:
 		s := MapHeaderSize
 		for key, val := range i {
 			s += StringPrefixSize + len(key) + GuessSize(val)
@@ -883,4 +895,58 @@ func GuessSize(i interface{}) int {
 	default:
 		return 512
 	}
+}
+
+// Temporary buffer for reading/writing binary data.
+var bytesPool = sync.Pool{New: func() any { return make([]byte, 0, 1024) }}
+
+// WriteBinaryAppender will write the bytes from the given
+// encoding.BinaryAppender as a bin array.
+func (mw *Writer) WriteBinaryAppender(b encoding.BinaryAppender) (err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			err = fmt.Errorf("msgp: panic during AppendBinary: %v", r)
+		}
+	}()
+	dst := bytesPool.Get().([]byte)
+	defer bytesPool.Put(dst) //nolint:staticcheck
+	dst, err = b.AppendBinary(dst[:0])
+	if err != nil {
+		return err
+	}
+	return mw.WriteBytes(dst)
+}
+
+// WriteTextAppender will write the bytes from the given
+// encoding.TextAppender as a bin array.
+func (mw *Writer) WriteTextAppender(b encoding.TextAppender) (err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			err = fmt.Errorf("msgp: panic during AppendText: %v", r)
+		}
+	}()
+	dst := bytesPool.Get().([]byte)
+	defer bytesPool.Put(dst) //nolint:staticcheck
+	dst, err = b.AppendText(dst[:0])
+	if err != nil {
+		return err
+	}
+	return mw.WriteBytes(dst)
+}
+
+// WriteTextAppenderString will write the bytes from the given
+// encoding.TextAppender as a string.
+func (mw *Writer) WriteTextAppenderString(b encoding.TextAppender) (err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			err = fmt.Errorf("msgp: panic during AppendText: %v", r)
+		}
+	}()
+	dst := bytesPool.Get().([]byte)
+	defer bytesPool.Put(dst) //nolint:staticcheck
+	dst, err = b.AppendText(dst[:0])
+	if err != nil {
+		return err
+	}
+	return mw.WriteStringFromBytes(dst)
 }

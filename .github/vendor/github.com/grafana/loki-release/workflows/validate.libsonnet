@@ -10,7 +10,7 @@ local setupValidationDeps = function(job) job {
     common.fixDubiousOwnership,
     step.new('install dependencies')
     + step.withIf("${{ !fromJSON(env.SKIP_VALIDATION) && startsWith(inputs.build_image, 'golang') }}")
-    + step.withRun('lib/workflows/install_workflow_dependencies.sh loki-release'),
+    + step.withRun('lib/workflows/install_workflow_dependencies.sh loki-release loki-build-tools'),
     step.new('install tar')
     + step.withIf('${{ !fromJSON(env.SKIP_VALIDATION) }}')
     + step.withRun(|||
@@ -30,7 +30,7 @@ local setupValidationDeps = function(job) job {
   ] + job.steps,
 };
 
-local validationJob = _validationJob(false);
+local validationJob = _validationJob();
 
 {
   local validationMakeStep = function(name, target)
@@ -48,7 +48,7 @@ local validationJob = _validationJob(false);
                      + step.withId('gather-tests')
                      + step.withRun(|||
                        echo "packages=$(find . -path '*_test.go' -printf '%h\n' \
-                         | grep -e "pkg/push" -e "integration" -e "operator" -e "lambda-promtail" -e "helm" -v \
+                         | grep -e "pkg/push" -e "integration" -e "operator" -e "helm" -v \
                          | cut  -d / -f 2,3 \
                          | uniq \
                          | sort \
@@ -86,26 +86,10 @@ local validationJob = _validationJob(false);
                   step.new('test ${{ matrix.package }}')
                   + step.withIf('${{ !fromJSON(env.SKIP_VALIDATION) }}')
                   + step.withRun(|||
-                    gotestsum -- -covermode=atomic -coverprofile=coverage.txt -p=4 ./${MATRIX_PACKAGE}/...
+                    gotestsum -- -tags=assert -covermode=atomic -coverprofile=coverage.txt -p=4 ./${MATRIX_PACKAGE}/...
                   |||)
                   + step.withWorkingDirectory('release'),
                 ]),
-
-  testLambdaPromtail: validationJob
-                      + job.withSteps([
-                        common.fetchReleaseRepo,
-                        common.fixDubiousOwnership,
-                        common.fetchReleaseLib,
-                        step.new('install dependencies')
-                        + step.withIf("${{ !fromJSON(env.SKIP_VALIDATION) && startsWith(inputs.build_image, 'golang') }}")
-                        + step.withRun('lib/workflows/install_workflow_dependencies.sh loki-release'),
-                        step.new('test lambda-promtail package')
-                        + step.withIf('${{ !fromJSON(env.SKIP_VALIDATION) }}')
-                        + step.withWorkingDirectory('release/tools/lambda-promtail')
-                        + step.withRun(|||
-                          gotestsum -- -covermode=atomic -coverprofile=coverage.txt -p=4 ./...
-                        |||),
-                      ]),
 
   testPushPackage: validationJob
                    + job.withSteps([
@@ -139,7 +123,6 @@ local validationJob = _validationJob(false);
       validationMakeStep('validate example configs', 'validate-example-configs'),
       validationMakeStep('validate dev cluster config', 'validate-dev-cluster-config'),
       validationMakeStep('check example config docs', 'check-example-config-doc'),
-      validationMakeStep('check helm reference doc', 'documentation-helm-reference-check'),
     ]) + {
       steps+: [
         step.new('build docs website')
@@ -186,12 +169,12 @@ local validationJob = _validationJob(false);
     + job.withSteps(
       [
         common.checkout,
-        step.new('golangci-lint', 'golangci/golangci-lint-action@08e2f20817b15149a52b5b3ebe7de50aff2ba8c5')
+        step.new('golangci-lint', 'golangci/golangci-lint-action@4afd733a84b1f43292c63897423277bb7f4313a9')
         + step.withIf('${{ !fromJSON(env.SKIP_VALIDATION) }}')
         + step.with({
           version: '${{ inputs.golang_ci_lint_version }}',
-          'only-new-issues': true,
-          args: '-v --timeout 15m --build-tags linux,promtail_journal_enabled',
+          'only-new-issues': false,  // we want a PR to fail if the target branch fails
+          args: '-v --timeout 15m --build-tags linux',
         }),
       ],
     )
@@ -199,14 +182,17 @@ local validationJob = _validationJob(false);
 
   lintFiles: setupValidationDeps(
     validationJob
+    + job.withEnv({
+      GIT_TARGET_BRANCH: '${{ vars.GIT_TARGET_BRANCH }}',
+    })
     + job.withSteps(
       [
         validationMakeStep('lint scripts', 'lint-scripts'),
         step.new('check format')
         + step.withIf('${{ !fromJSON(env.SKIP_VALIDATION) }}')
         + step.withRun(|||
-          git fetch origin
-          make check-format
+          git fetch https://github.com/grafana/loki.git main:refs/remotes/origin/${GIT_TARGET_BRANCH:-main}
+          GIT_TARGET_BRANCH="${GIT_TARGET_BRANCH:-main}" make check-format
         |||)
         + step.withWorkingDirectory('release'),
       ]
@@ -220,7 +206,6 @@ local validationJob = _validationJob(false);
                'golangciLint',
                'lintFiles',
                'integration',
-               'testLambdaPromtail',
                'testPackages',
                'testPushPackage',
              ])
@@ -232,7 +217,7 @@ local validationJob = _validationJob(false);
                step.new('verify checks passed')
                + step.withRun(|||
                  echo "Some checks have failed!"
-                 exit 1,
+                 exit 1
                |||),
              ]),
 
@@ -243,7 +228,6 @@ local validationJob = _validationJob(false);
            'golangciLint',
            'lintFiles',
            'integration',
-           'testLambdaPromtail',
            'testPackages',
            'testPushPackage',
          ])

@@ -13,7 +13,7 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/dlclark/regexp2"
+	"github.com/dlclark/regexp2/v2"
 )
 
 // Serialisation of Chroma rules to XML. The format is:
@@ -150,8 +150,12 @@ func NewXMLLexer(from fs.FS, path string) (*RegexLexer, error) {
 
 		regexAnalysers := make([]regexAnalyse, 0, len(config.Analyse.Regexes))
 
+		regexFlags := regexp2.None
+		if config.CaseInsensitive {
+			regexFlags = regexp2.IgnoreCase
+		}
 		for _, ra := range config.Analyse.Regexes {
-			re, err := regexp2.Compile(ra.Pattern, regexp2.None)
+			re, err := regexp2.Compile(ra.Pattern, regexFlags)
 			if err != nil {
 				return nil, fmt.Errorf("%s: %q is not a valid analyser regex: %w", config.Name, ra.Pattern, err)
 			}
@@ -436,14 +440,14 @@ func (t TokenType) MarshalXML(e *xml.Encoder, start xml.StartElement) error {
 }
 
 // This hijinks is a bit unfortunate but without it we can't deserialise into TokenType.
-func newFromTemplate(template interface{}) (value func() interface{}, target interface{}) {
+func newFromTemplate(template any) (value func() any, target any) {
 	t := reflect.TypeOf(template)
-	if t.Kind() == reflect.Ptr {
+	if t.Kind() == reflect.Pointer {
 		v := reflect.New(t.Elem())
 		return v.Interface, v.Interface()
 	}
 	v := reflect.New(t)
-	return func() interface{} { return v.Elem().Interface() }, v.Interface()
+	return func() any { return v.Elem().Interface() }, v.Interface()
 }
 
 func (b *Emitters) UnmarshalXML(d *xml.Decoder, start xml.StartElement) error {

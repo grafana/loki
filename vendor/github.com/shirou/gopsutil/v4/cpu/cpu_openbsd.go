@@ -54,23 +54,27 @@ func Times(percpu bool) ([]TimesStat, error) {
 	return TimesWithContext(context.Background(), percpu)
 }
 
-func TimesWithContext(_ context.Context, percpu bool) (ret []TimesStat, err error) {
+func TimesWithContext(_ context.Context, percpu bool) ([]TimesStat, error) {
+	ret := make([]TimesStat, 0)
 	if !percpu {
 		mib := []int32{ctlKern, kernCpTime}
 		buf, _, err := common.CallSyscall(mib)
 		if err != nil {
 			return ret, err
 		}
+		if len(buf) < int(unsafe.Sizeof(cpuTimes{})) {
+			return ret, fmt.Errorf("unexpected size: kern.cp_time, %d", len(buf))
+		}
 		times := (*cpuTimes)(unsafe.Pointer(&buf[0]))
-		stat := TimesStat{
+		ret = append(ret, TimesStat{
 			CPU:    "cpu-total",
 			User:   float64(times.User) / ClocksPerSec,
 			Nice:   float64(times.Nice) / ClocksPerSec,
 			System: float64(times.Sys) / ClocksPerSec,
 			Idle:   float64(times.Idle) / ClocksPerSec,
 			Irq:    float64(times.Intr) / ClocksPerSec,
-		}
-		return []TimesStat{stat}, nil
+		})
+		return ret, nil
 	}
 
 	ncpu, err := unix.SysctlUint32("hw.ncpu")
@@ -84,6 +88,9 @@ func TimesWithContext(_ context.Context, percpu bool) (ret []TimesStat, err erro
 		buf, _, err := common.CallSyscall(mib)
 		if err != nil {
 			return ret, err
+		}
+		if len(buf) < int(unsafe.Sizeof(cpuStats{})) {
+			continue
 		}
 
 		stats := (*cpuStats)(unsafe.Pointer(&buf[0]))

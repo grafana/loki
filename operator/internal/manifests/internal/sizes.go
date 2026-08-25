@@ -37,18 +37,16 @@ func (c ComponentResources) DeepCopy() ComponentResources {
 
 // ResourceRequirements sets CPU, Memory, and PVC requirements for a component
 type ResourceRequirements struct {
-	Limits          corev1.ResourceList
-	Requests        corev1.ResourceList
-	PVCSize         resource.Quantity
-	PDBMinAvailable int
+	Limits   corev1.ResourceList
+	Requests corev1.ResourceList
+	PVCSize  resource.Quantity
 }
 
 func (r *ResourceRequirements) DeepCopy() *ResourceRequirements {
 	return &ResourceRequirements{
-		Limits:          r.Limits.DeepCopy(),
-		Requests:        r.Requests.DeepCopy(),
-		PVCSize:         r.PVCSize.DeepCopy(),
-		PDBMinAvailable: r.PDBMinAvailable,
+		Limits:   r.Limits.DeepCopy(),
+		Requests: r.Requests.DeepCopy(),
+		PVCSize:  r.PVCSize.DeepCopy(),
 	}
 }
 
@@ -91,7 +89,6 @@ var resourceRequirementsTable = map[lokiv1.LokiStackSizeType]ComponentResources{
 				corev1.ResourceCPU:    resource.MustParse("500m"),
 				corev1.ResourceMemory: resource.MustParse("3Gi"),
 			},
-			PDBMinAvailable: 2,
 		},
 		Distributor: corev1.ResourceRequirements{
 			Requests: map[corev1.ResourceName]resource.Quantity{
@@ -146,10 +143,9 @@ var resourceRequirementsTable = map[lokiv1.LokiStackSizeType]ComponentResources{
 		Ingester: ResourceRequirements{
 			PVCSize: resource.MustParse("10Gi"),
 			Requests: map[corev1.ResourceName]resource.Quantity{
-				corev1.ResourceCPU:    resource.MustParse("2"),
-				corev1.ResourceMemory: resource.MustParse("8Gi"),
+				corev1.ResourceCPU:    resource.MustParse("1"),
+				corev1.ResourceMemory: resource.MustParse("5.25Gi"),
 			},
-			PDBMinAvailable: 1,
 		},
 		Distributor: corev1.ResourceRequirements{
 			Requests: map[corev1.ResourceName]resource.Quantity{
@@ -204,10 +200,9 @@ var resourceRequirementsTable = map[lokiv1.LokiStackSizeType]ComponentResources{
 		Ingester: ResourceRequirements{
 			PVCSize: resource.MustParse("10Gi"),
 			Requests: map[corev1.ResourceName]resource.Quantity{
-				corev1.ResourceCPU:    resource.MustParse("4"),
-				corev1.ResourceMemory: resource.MustParse("20Gi"),
+				corev1.ResourceCPU:    resource.MustParse("2.5"),
+				corev1.ResourceMemory: resource.MustParse("13.25Gi"),
 			},
-			PDBMinAvailable: 1,
 		},
 		Distributor: corev1.ResourceRequirements{
 			Requests: map[corev1.ResourceName]resource.Quantity{
@@ -265,7 +260,6 @@ var resourceRequirementsTable = map[lokiv1.LokiStackSizeType]ComponentResources{
 				corev1.ResourceCPU:    resource.MustParse("6"),
 				corev1.ResourceMemory: resource.MustParse("30Gi"),
 			},
-			PDBMinAvailable: 2,
 		},
 		Distributor: corev1.ResourceRequirements{
 			Requests: map[corev1.ResourceName]resource.Quantity{
@@ -480,7 +474,7 @@ var StackSizeTable = map[lokiv1.LokiStackSizeType]lokiv1.LokiStackSpec{
 				Replicas: 2,
 			},
 			Ingester: &lokiv1.LokiComponentSpec{
-				Replicas: 2,
+				Replicas: 3,
 			},
 			Querier: &lokiv1.LokiComponentSpec{
 				Replicas: 2,
@@ -540,7 +534,7 @@ var StackSizeTable = map[lokiv1.LokiStackSizeType]lokiv1.LokiStackSpec{
 				Replicas: 2,
 			},
 			Ingester: &lokiv1.LokiComponentSpec{
-				Replicas: 2,
+				Replicas: 3,
 			},
 			Querier: &lokiv1.LokiComponentSpec{
 				Replicas: 2,

@@ -2,6 +2,7 @@ package parquet
 
 import (
 	"io"
+	"slices"
 	"sort"
 )
 
@@ -72,18 +73,11 @@ func (w *SortingWriter[T]) Close() error {
 	if err := w.Flush(); err != nil {
 		return err
 	}
-	return w.output.Close()
-}
 
-func (w *SortingWriter[T]) Flush() error {
 	defer w.resetSortingBuffer()
 
-	if err := w.sortAndWriteBufferedRows(); err != nil {
-		return err
-	}
-
 	if w.numRows == 0 {
-		return nil
+		return w.output.Close()
 	}
 
 	if err := w.writer.Close(); err != nil {
@@ -116,19 +110,27 @@ func (w *SortingWriter[T]) Flush() error {
 		return err
 	}
 
-	rows := m.Rows()
-	defer rows.Close()
-
-	reader := RowReader(rows)
-	if w.sorting.DropDuplicatedRows {
-		reader = DedupeRowReader(rows, w.rowbuf.compare)
-	}
-
-	if _, err := CopyRows(w.output, reader); err != nil {
+	// Writing the merged row group (rather than copying its rows) lets the
+	// writer use its chunk-level fast paths when the sorted chunks do not
+	// overlap: verbatim column chunk copies and column-oriented packing toward
+	// MaxRowsPerRowGroup. Overlapping chunks fall back to the row-oriented heap
+	// merge, and the merge itself applies DropDuplicatedRows when configured.
+	if _, err := w.output.WriteRowGroup(m); err != nil {
 		return err
 	}
 
-	return w.output.Flush()
+	if err := w.output.Flush(); err != nil {
+		return err
+	}
+
+	return w.output.Close()
+}
+
+// Flush sorts any buffered rows and writes them to temporary storage.
+// This can be called multiple times to manage memory usage.
+// The actual merge and write to output happens on Close.
+func (w *SortingWriter[T]) Flush() error {
+	return w.sortAndWriteBufferedRows()
 }
 
 func (w *SortingWriter[T]) Reset(output io.Writer) {
@@ -228,4 +230,42 @@ func (w *SortingWriter[T]) sortAndWriteBufferedRows() error {
 // Only available after Close is called.
 func (w *SortingWriter[T]) File() FileView {
 	return w.output.File()
+}
+
+// EqualSortingColumns compares two slices of sorting columns for equality.
+//
+// Two sorting column slices are considered equal if they have the same length
+// and each corresponding pair of sorting columns is equal. Two sorting columns
+// are equal if they have:
+//   - The same column path (including nested field paths)
+//   - The same sort direction (ascending or descending)
+//   - The same nulls handling (nulls first or nulls last)
+//
+// The comparison is order-sensitive, meaning that [A, B] is not equal to [B, A].
+// Both nil and empty slices are considered equal.
+//
+// This function is useful for:
+//   - Validating that merged row groups maintain expected sorting
+//   - Comparing sorting configurations between different row groups
+//   - Testing sorting column propagation in merge operations
+//
+// Example:
+//
+//	cols1 := []SortingColumn{Ascending("name"), Descending("age")}
+//	cols2 := []SortingColumn{Ascending("name"), Descending("age")}
+//	equal := EqualSortingColumns(cols1, cols2) // returns true
+//
+//	cols3 := []SortingColumn{Descending("age"), Ascending("name")}
+//	equal = EqualSortingColumns(cols1, cols3) // returns false (different order)
+//
+//	cols4 := []SortingColumn{Ascending("name"), Ascending("age")}
+//	equal = EqualSortingColumns(cols1, cols4) // returns false (different direction)
+func EqualSortingColumns(a, b []SortingColumn) bool {
+	return len(a) == len(b) && slices.EqualFunc(a, b, equalSortingColumn)
+}
+
+// equalSortingColumn compares two individual sorting columns for equality.
+// Two sorting columns are equal if they have the same path, direction, and nulls handling.
+func equalSortingColumn(a, b SortingColumn) bool {
+	return slices.Equal(a.Path(), b.Path()) && a.Descending() == b.Descending() && a.NullsFirst() == b.NullsFirst()
 }

@@ -12,7 +12,7 @@ This directory contains the development environment for testing Loki with Kafka 
 2. Run Loki manually with Kafka configuration:
    ```bash
    # From the root of the Loki repository
-   go run ./cmd/loki/main.go --config.file=tools/dev/kafka/loki-local-config.debug.yaml --log.level=debug -target=all
+   go run ./cmd/loki --config.file=tools/dev/kafka/loki-local-config.debug.yaml --log.level=debug -target=all
    ```
 
    Note: Loki is not included in docker-compose as it's intended to be run directly from source code for development.
@@ -33,11 +33,17 @@ This directory contains the development environment for testing Loki with Kafka 
 ### Grafana
 - Available at http://localhost:3000
 - Anonymous access enabled (Admin privileges)
-- Pre-configured with Loki data source
+- Pre-configured with Loki and Prometheus data sources
 - Features enabled:
   - Loki logs dataplane
   - Explore logs shard splitting
   - Loki explore app
+
+### Prometheus
+- Available at http://localhost:9090
+- Scrapes the host Loki's `/metrics` (`host.docker.internal:3100`, the single-binary `-target=all` process)
+- Query its metrics from Grafana via the pre-provisioned `gdev-prometheus` data source
+- Scrape target is defined in `prometheus.yaml`; add more `host:port`s there if you run multiple Loki processes
 
 ### Log Generator
 - Automatically sends sample logs to Loki

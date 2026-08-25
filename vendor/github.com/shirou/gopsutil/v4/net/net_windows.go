@@ -348,7 +348,7 @@ func getTableInfo(filename string, table any) (index, step, length int) {
 		length = int(table.(pmibUDP6TableOwnerPid).DwNumEntries)
 	}
 
-	return
+	return index, step, length
 }
 
 func getTCPConnections(family uint32) ([]ConnectionStat, error) {
@@ -365,7 +365,7 @@ func getTCPConnections(family uint32) ([]ConnectionStat, error) {
 		return nil, errors.New("faimly must be required")
 	}
 
-	for {
+	for retry := 0; retry < 10; retry++ {
 		switch family {
 		case kindTCP4.family:
 			if len(buf) > 0 {
@@ -395,6 +395,12 @@ func getTCPConnections(family uint32) ([]ConnectionStat, error) {
 		if !errors.Is(err, windows.ERROR_INSUFFICIENT_BUFFER) {
 			return nil, err
 		}
+		if retry == 9 {
+			return nil, errors.New("GetExtendedTcpTable: failed to allocate sufficient buffer after 10 retries")
+		}
+
+		// Add 4KB padding to account for concurrent connection growth between calls.
+		size += 4096
 		buf = make([]byte, size)
 	}
 
@@ -446,7 +452,7 @@ func getUDPConnections(family uint32) ([]ConnectionStat, error) {
 		return nil, errors.New("faimly must be required")
 	}
 
-	for {
+	for retry := 0; retry < 10; retry++ {
 		switch family {
 		case kindUDP4.family:
 			if len(buf) > 0 {
@@ -478,6 +484,12 @@ func getUDPConnections(family uint32) ([]ConnectionStat, error) {
 		if !errors.Is(err, windows.ERROR_INSUFFICIENT_BUFFER) {
 			return nil, err
 		}
+		if retry == 9 {
+			return nil, errors.New("GetExtendedUdpTable: failed to allocate sufficient buffer after 10 retries")
+		}
+
+		// Add 4KB padding to account for concurrent connection growth between calls.
+		size += 4096
 		buf = make([]byte, size)
 	}
 
@@ -533,7 +545,7 @@ func getExtendedTCPTable(pTCPTable uintptr, pdwSize *uint32, bOrder bool, ulAf u
 	if r1 != 0 {
 		errcode = syscall.Errno(r1)
 	}
-	return
+	return errcode
 }
 
 func getExtendedUDPTable(pUDPTable uintptr, pdwSize *uint32, bOrder bool, ulAf uint32, tableClass udpTableClass, reserved uint32) (errcode error) {
@@ -541,7 +553,7 @@ func getExtendedUDPTable(pUDPTable uintptr, pdwSize *uint32, bOrder bool, ulAf u
 	if r1 != 0 {
 		errcode = syscall.Errno(r1)
 	}
-	return
+	return errcode
 }
 
 func getUintptrFromBool(b bool) uintptr {

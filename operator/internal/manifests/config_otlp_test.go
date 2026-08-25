@@ -324,13 +324,13 @@ func TestOtlpAttributeConfig(t *testing.T) {
 			},
 		},
 		{
-			desc: "openshift-logging defaults without recommended",
+			desc: "openshift-logging defaults with console labels",
 			spec: lokiv1.LokiStackSpec{
 				Tenants: &lokiv1.TenantsSpec{
 					Mode: lokiv1.OpenshiftLogging,
 					Openshift: &lokiv1.OpenshiftTenantSpec{
 						OTLP: &lokiv1.OpenshiftOTLPConfig{
-							DisableRecommendedAttributes: true,
+							EnableConsoleLabels: true,
 						},
 					},
 				},
@@ -341,7 +341,27 @@ func TestOtlpAttributeConfig(t *testing.T) {
 					ResourceAttributes: []config.OTLPAttribute{
 						{
 							Action: config.OTLPAttributeActionStreamLabel,
-							Names:  otlp.DefaultOTLPAttributes(true),
+							Names: []string{
+								"k8s.container.name",
+								"k8s.cronjob.name",
+								"k8s.daemonset.name",
+								"k8s.deployment.name",
+								"k8s.job.name",
+								"k8s.namespace.name",
+								"k8s.node.name",
+								"k8s.pod.name",
+								"k8s.statefulset.name",
+								"kubernetes.container_name",
+								"kubernetes.host",
+								"kubernetes.namespace_name",
+								"kubernetes.pod_name",
+								"log_source",
+								"log_type",
+								"openshift.cluster.uid",
+								"openshift.log.source",
+								"openshift.log.type",
+								"service.name",
+							},
 						},
 					},
 				},
@@ -385,11 +405,6 @@ func TestOtlpAttributeConfig(t *testing.T) {
 				},
 				Tenants: &lokiv1.TenantsSpec{
 					Mode: lokiv1.OpenshiftLogging,
-					Openshift: &lokiv1.OpenshiftTenantSpec{
-						OTLP: &lokiv1.OpenshiftOTLPConfig{
-							DisableRecommendedAttributes: true,
-						},
-					},
 				},
 			},
 			wantConfig: config.OTLPAttributeConfig{
@@ -473,11 +488,6 @@ func TestOtlpAttributeConfig(t *testing.T) {
 				},
 				Tenants: &lokiv1.TenantsSpec{
 					Mode: lokiv1.OpenshiftLogging,
-					Openshift: &lokiv1.OpenshiftTenantSpec{
-						OTLP: &lokiv1.OpenshiftOTLPConfig{
-							DisableRecommendedAttributes: true,
-						},
-					},
 				},
 			},
 			wantConfig: config.OTLPAttributeConfig{

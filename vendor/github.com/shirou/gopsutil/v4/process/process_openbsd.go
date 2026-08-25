@@ -8,6 +8,7 @@ import (
 	"context"
 	"encoding/binary"
 	"errors"
+	"fmt"
 	"io"
 	"path/filepath"
 	"sort"
@@ -78,7 +79,7 @@ func (p *Process) CwdWithContext(_ context.Context) (string, error) {
 	return common.ByteToString(buf), nil
 }
 
-func (p *Process) ExeWithContext(_ context.Context) (string, error) {
+func (*Process) ExeWithContext(_ context.Context) (string, error) {
 	return "", common.ErrNotImplementedError
 }
 
@@ -94,6 +95,9 @@ func (p *Process) CmdlineSliceWithContext(_ context.Context) ([]string, error) {
 	pointers followed by the strings themselves. The last char
 	pointer is a NULL pointer. */
 	var strParts []string
+	if len(buf) == 0 {
+		return strParts, nil
+	}
 	r := bytes.NewReader(buf)
 	baseAddr := uintptr(unsafe.Pointer(&buf[0]))
 	for {
@@ -105,7 +109,17 @@ func (p *Process) CmdlineSliceWithContext(_ context.Context) ([]string, error) {
 			break
 		}
 		offset := argvp - baseAddr
-		length := uintptr(bytes.IndexByte(buf[offset:], 0))
+		// Reject a malformed/truncated sysctl reply whose pointers fall
+		// outside buf or whose strings are not NUL-terminated, which would
+		// otherwise cause the slice operations below to panic.
+		if offset >= uintptr(len(buf)) {
+			return nil, fmt.Errorf("malformed KERN_PROC_ARGV reply for pid %d: argv pointer out of bounds", p.Pid)
+		}
+		idx := bytes.IndexByte(buf[offset:], 0)
+		if idx < 0 {
+			return nil, fmt.Errorf("malformed KERN_PROC_ARGV reply for pid %d: argv string not NUL-terminated", p.Pid)
+		}
+		length := uintptr(idx)
 		str := string(buf[offset : offset+length])
 		strParts = append(strParts, str)
 	}
@@ -142,7 +156,7 @@ func (p *Process) CmdlineWithContext(ctx context.Context) (string, error) {
 	return strings.Join(argv, " "), nil
 }
 
-func (p *Process) createTimeWithContext(_ context.Context) (int64, error) {
+func (*Process) createTimeWithContext(_ context.Context) (int64, error) {
 	return 0, common.ErrNotImplementedError
 }
 
@@ -252,7 +266,7 @@ func (p *Process) IOCountersWithContext(_ context.Context) (*IOCountersStat, err
 	}, nil
 }
 
-func (p *Process) NumThreadsWithContext(_ context.Context) (int32, error) {
+func (*Process) NumThreadsWithContext(_ context.Context) (int32, error) {
 	/* not supported, just return 1 */
 	return 1, nil
 }
@@ -305,11 +319,11 @@ func (p *Process) ChildrenWithContext(ctx context.Context) ([]*Process, error) {
 	return ret, nil
 }
 
-func (p *Process) ConnectionsWithContext(_ context.Context) ([]net.ConnectionStat, error) {
+func (*Process) ConnectionsWithContext(_ context.Context) ([]net.ConnectionStat, error) {
 	return nil, common.ErrNotImplementedError
 }
 
-func (p *Process) ConnectionsMaxWithContext(_ context.Context, _ int) ([]net.ConnectionStat, error) {
+func (*Process) ConnectionsMaxWithContext(_ context.Context, _ int) ([]net.ConnectionStat, error) {
 	return nil, common.ErrNotImplementedError
 }
 
@@ -342,6 +356,10 @@ func ProcessesWithContext(ctx context.Context) ([]*Process, error) {
 	return results, nil
 }
 
+func (*Process) NumFDsWithContext(_ context.Context) (int32, error) {
+	return 0, common.ErrNotImplementedError
+}
+
 func (p *Process) getKProc() (*KinfoProc, error) {
 	buf, length, err := callKernProcSyscall(KernProcPID, p.Pid)
 	if err != nil {
@@ -358,7 +376,7 @@ func (p *Process) getKProc() (*KinfoProc, error) {
 	return &k, nil
 }
 
-func callKernProcSyscall(op int32, arg int32) ([]byte, uint64, error) {
+func callKernProcSyscall(op, arg int32) ([]byte, uint64, error) {
 	mib := []int32{CTLKern, KernProc, op, arg, sizeOfKinfoProc, 0}
 	mibptr := unsafe.Pointer(&mib[0])
 	miblen := uint64(len(mib))

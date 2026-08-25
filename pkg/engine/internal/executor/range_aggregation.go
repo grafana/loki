@@ -1,0 +1,415 @@
+package executor
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"slices"
+	"time"
+
+	"github.com/apache/arrow-go/v18/arrow"
+	"github.com/apache/arrow-go/v18/arrow/array"
+
+	"github.com/grafana/loki/v3/pkg/engine/internal/assertions"
+	"github.com/grafana/loki/v3/pkg/engine/internal/semconv"
+
+	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
+	"github.com/grafana/loki/v3/pkg/engine/internal/types"
+)
+
+type rangeAggregationOptions struct {
+	grouping physical.Grouping
+
+	// start and end timestamps are equal for instant queries.
+	startTs        time.Time     // start timestamp of the query
+	endTs          time.Time     // end timestamp of the query
+	rangeInterval  time.Duration // range interval
+	step           time.Duration // step used for range queries
+	operation      types.RangeAggregationType
+	maxQuerySeries int // maximum number of unique series allowed
+}
+
+// rangeAggregationOperations holds the mapping of range aggregation types to operations for an aggregator.
+var rangeAggregationOperations = map[types.RangeAggregationType]aggregationOperation{
+	types.RangeAggregationTypeSum:   aggregationOperationSum,
+	types.RangeAggregationTypeCount: aggregationOperationCount,
+	types.RangeAggregationTypeMax:   aggregationOperationMax,
+	types.RangeAggregationTypeMin:   aggregationOperationMin,
+	types.RangeAggregationTypeAvg:   aggregationOperationAvg,
+}
+
+// window is a time interval where start is exclusive and end is inclusive
+// Refer to [logql.batchRangeVectorIterator].
+type window struct {
+	start, end time.Time
+}
+
+// Contains returns if the timestamp t is within the bounds of the window.
+// The window start is exclusive, the window end is inclusive.
+func (w window) Contains(t time.Time) bool {
+	return t.After(w.start) && !t.After(w.end)
+}
+
+// cmpWindowStartTime compares a window's lower bound to t for [slices.BinarySearchFunc].
+func cmpWindowStartTime(w window, t time.Time) int {
+	return w.start.Compare(t)
+}
+
+// cmpWindowEndTime compares a window's upper bound to t for [slices.BinarySearchFunc].
+func cmpWindowEndTime(w window, t time.Time) int {
+	return w.end.Compare(t)
+}
+
+// timestampMatchingWindowsFunc resolves matching range interval windows for a specific timestamp.
+// The list can be empty if the timestamp is out of bounds or does not match any of the range windows.
+type timestampMatchingWindowsFunc func(time.Time) []window
+
+// rangeAggregationPipeline is a pipeline that performs aggregations over a time window.
+//
+// 1. It reads from the input pipelines
+// 2. Groups the data by the specified columns
+// 3. Applies the aggregation function on each group
+//
+// Current version only supports counting for instant queries.
+type rangeAggregationPipeline struct {
+	inputs          []Pipeline
+	inputsExhausted bool // indicates if all inputs are exhausted
+
+	aggregator          *aggregator
+	windowsForTimestamp timestampMatchingWindowsFunc // function to find matching time windows for a given timestamp
+	evaluator           *expressionEvaluator         // used to evaluate column expressions
+	opts                rangeAggregationOptions
+	identCache          *semconv.IdentifierCache
+}
+
+func newRangeAggregationPipeline(inputs []Pipeline, evaluator *expressionEvaluator, opts rangeAggregationOptions) (*rangeAggregationPipeline, error) {
+	r := &rangeAggregationPipeline{
+		inputs:     inputs,
+		evaluator:  evaluator,
+		opts:       opts,
+		identCache: semconv.NewIdentifierCache(),
+	}
+	r.init()
+	return r, nil
+}
+
+func (r *rangeAggregationPipeline) init() {
+	windows := []window{}
+	cur := r.opts.startTs
+	for cur.Compare(r.opts.endTs) <= 0 {
+		windows = append(windows, window{start: cur.Add(-r.opts.rangeInterval), end: cur})
+
+		if r.opts.step == 0 {
+			break
+		}
+
+		// advance to the next window using step
+		cur = cur.Add(r.opts.step)
+	}
+
+	f := newMatcherFactoryFromOpts(r.opts)
+	r.windowsForTimestamp = f.createMatcher(windows)
+
+	op, ok := rangeAggregationOperations[r.opts.operation]
+	if !ok {
+		panic(fmt.Sprintf("unknown range aggregation operation: %v", r.opts.operation))
+	}
+
+	r.aggregator = newAggregator(len(windows), op)
+	r.aggregator.SetMaxSeries(r.opts.maxQuerySeries)
+}
+
+// Open opens all input pipelines.
+func (r *rangeAggregationPipeline) Open(ctx context.Context) error {
+	return openInputsConcurrently(ctx, r.inputs)
+}
+
+// Read reads the next value into its state.
+// It returns an error if reading fails or when the pipeline is exhausted. In this case, the function returns EOF.
+// The implementation must retain the returned error in its state and return it with subsequent Value() calls.
+func (r *rangeAggregationPipeline) Read(ctx context.Context) (arrow.RecordBatch, error) {
+	if r.inputsExhausted {
+		return nil, EOF
+	}
+
+	rec, err := r.read(ctx)
+
+	assertions.CheckColumnDuplicates(rec)
+	assertions.CheckLabelValuesDuplicates(rec)
+
+	return rec, err
+}
+
+// TODOs:
+// - Use columnar access pattern. Current approach is row-based which does not benefit from the storage format.
+// - Add toggle to return partial results on Read() call instead of returning only after exhausting all inputs.
+func (r *rangeAggregationPipeline) read(ctx context.Context) (arrow.RecordBatch, error) {
+	var (
+		tsColumnExpr = &physical.ColumnExpr{
+			Ref: types.ColumnRef{
+				Column: types.ColumnNameBuiltinTimestamp,
+				Type:   types.ColumnTypeBuiltin,
+			},
+		} // timestamp column expression
+
+		valColumnExpr = &physical.ColumnExpr{
+			Ref: types.ColumnRef{
+				Column: types.ColumnNameGeneratedValue,
+				Type:   types.ColumnTypeGenerated,
+			},
+		} // value column expression
+
+	)
+
+	r.aggregator.Reset() // reset before reading new inputs
+	inputsExhausted := false
+	for !inputsExhausted {
+		inputsExhausted = true
+
+		for _, input := range r.inputs {
+			record, err := input.Read(ctx)
+
+			if err != nil {
+				if errors.Is(err, EOF) {
+					continue
+				}
+				return nil, err
+			}
+
+			inputsExhausted = false
+			if record.NumRows() == 0 {
+				// Nothing to process
+				continue
+			}
+
+			assertions.CheckLabelValuesDuplicates(record)
+
+			arrays, groupingFields, err := collectGroupingColumns(record, r.opts.grouping, r.evaluator, r.identCache)
+			if err != nil {
+				return nil, err
+			}
+
+			r.aggregator.AddLabels(groupingFields)
+
+			// extract timestamp column to check if the entry is in range
+			tsVec, err := r.evaluator.eval(tsColumnExpr, record)
+			if err != nil {
+				return nil, err
+			}
+			tsCol := tsVec.(*array.Timestamp)
+
+			// no need to extract value column for COUNT aggregation
+			var valArr *array.Float64
+			if r.opts.operation != types.RangeAggregationTypeCount {
+				valVec, err := r.evaluator.eval(valColumnExpr, record)
+				if err != nil {
+					return nil, err
+				}
+				valArr = valVec.(*array.Float64)
+			}
+
+			labelNames := make([]arrow.Field, 0, len(groupingFields))
+			labelValues := make([]string, 0, len(arrays))
+			windowEnds := make([]time.Time, 0, 4) // best guess
+			for row := range int(record.NumRows()) {
+				windows := r.windowsForTimestamp(tsCol.Value(row).ToTime(arrow.Nanosecond))
+				if len(windows) == 0 {
+					continue // out of range, skip this row
+				}
+
+				var value float64
+				if r.opts.operation != types.RangeAggregationTypeCount {
+					if valArr.IsNull(row) {
+						continue
+					}
+
+					value = valArr.Value(row)
+				}
+
+				labelValues = labelValues[:0]
+				labelNames = labelNames[:0]
+				for i, arr := range arrays {
+					if arr.IsNull(row) {
+						continue
+					}
+					labelValues = append(labelValues, arr.Value(row))
+					labelNames = append(labelNames, groupingFields[i])
+				}
+
+				windowEnds = windowEnds[:0]
+				for _, w := range windows {
+					windowEnds = append(windowEnds, w.end)
+				}
+
+				if err := r.aggregator.AddN(windowEnds, value, labelNames, labelValues); err != nil {
+					return nil, err
+				}
+			}
+		}
+	}
+
+	r.inputsExhausted = true
+
+	rec, err := r.aggregator.BuildRecord()
+
+	return rec, err
+}
+
+// Close closes the resources of the pipeline.
+// The implementation must close all the of the pipeline's inputs.
+func (r *rangeAggregationPipeline) Close() {
+	r.aggregator.Reset()
+	for _, input := range r.inputs {
+		input.Close()
+	}
+}
+
+func newMatcherFactoryFromOpts(opts rangeAggregationOptions) *matcherFactory {
+	return &matcherFactory{
+		start:    opts.startTs,
+		step:     opts.step,
+		interval: opts.rangeInterval,
+		bounds: window{
+			start: opts.startTs.Add(-opts.rangeInterval),
+			end:   opts.endTs,
+		},
+	}
+}
+
+type matcherFactory struct {
+	start    time.Time
+	step     time.Duration
+	interval time.Duration
+	bounds   window
+}
+
+func (f *matcherFactory) createMatcher(windows []window) timestampMatchingWindowsFunc {
+	switch {
+	case f.step == 0:
+		// For instant queries, step == 0, meaning that all samples fall into the one and same step.
+		// A sample timestamp will always match the only time window available, unless the timestamp it out of range.
+		return f.createExactMatcher(windows)
+	case f.step == f.interval:
+		// If the step is equal to the range interval (e.g. when used $__auto in Grafana), then a sample timestamp matches exactly one time window.
+		return f.createAlignedMatcher(windows)
+	case f.step > f.interval:
+		// If the step is greater than the range interval, then a sample timestamp matches either one time window or no time window (and will be discarded).
+		return f.createGappedMatcher(windows)
+	case f.step < f.interval:
+		// If the step is smaller than the range interval, then a sample timestamp matches either one or multiple time windows.
+		return f.createOverlappingMatcher(windows)
+	default:
+		panic("invalid step and range interval")
+	}
+}
+
+// createExactMatcher is used for instant queries.
+// The function returns a matcher that always returns the first aggregation window from the given windows if the timestamp is not out of range.
+// It is expected that len(windows) is exactly 1, but it is not enforced.
+//
+//	steps         |---------x-------|
+//	interval      |---------x-------|
+func (f *matcherFactory) createExactMatcher(windows []window) timestampMatchingWindowsFunc {
+	return func(t time.Time) []window {
+		if !f.bounds.Contains(t) {
+			return nil // out of range
+		}
+		if len(windows) == 0 {
+			return nil
+		}
+		return windows[0:1]
+	}
+}
+
+// createAlignedMatcher is used for range queries.
+// The function returns a matcher that always returns exactly one aggregation window that matches the timestamp if the timestamp is not out of range.
+//
+//	steps         |-----|---x-|-----|
+//	interval                  |-----|
+//	interval            |---x-|
+//	interval      |-----|
+func (f *matcherFactory) createAlignedMatcher(windows []window) timestampMatchingWindowsFunc {
+	startNs := f.start.UnixNano()
+	stepNs := f.step.Nanoseconds()
+
+	return func(t time.Time) []window {
+		if !f.bounds.Contains(t) {
+			return nil // out of range
+		}
+
+		tNs := t.UnixNano()
+		// valid timestamps for window i: t > startNs + (i-1) * intervalNs && t <= startNs + i * intervalNs
+		windowIndex := (tNs - startNs + stepNs - 1) / stepNs // subtract 1ns because we are calculating 0-based indexes
+		return windows[windowIndex : windowIndex+1]
+	}
+}
+
+// createGappedMatcher is used for range queries.
+// The function returns a matcher that either returns exactly one aggregation window that matches the timestamp, or none,
+// if the timestamp is out of bounds or within bounds, but is within a "gap" between the end of an interval and the beginning of the next interval.
+//
+//	steps         |-----|---x-|-----|
+//	interval                     |--|
+//	interval               |x-|
+//	interval         |--|
+func (f *matcherFactory) createGappedMatcher(windows []window) timestampMatchingWindowsFunc {
+	startNs := f.start.UnixNano()
+	stepNs := f.step.Nanoseconds()
+
+	return func(t time.Time) []window {
+		if !f.bounds.Contains(t) {
+			return nil // out of range
+		}
+
+		tNs := t.UnixNano()
+		// For gapped windows, window i covers: (start + i*step - interval, start + i*step]
+		windowIndex := (tNs - startNs + stepNs - 1) / stepNs // subtract 1ns because we are calculating 0-based indexes
+
+		if windowIndex >= int64(len(windows)) {
+			return nil // out of range when bounds do not fit exact number of steps
+		}
+
+		// Verify the timestamp is within the window (not in a gap)
+		if tNs > windows[windowIndex].start.UnixNano() {
+			return windows[windowIndex : windowIndex+1]
+		}
+
+		return nil // timestamp is in a gap
+	}
+}
+
+// createOverlappingMatcher is used for range queries.
+// The function returns a matcher that returns one or more aggregation windows that match the timestamp, if the timestamp is not out of range.
+//
+//	steps         |-----|---x-|-----|
+//	interval               |x-------|
+//	interval         |------x-|
+//	interval   |--------|
+func (f *matcherFactory) createOverlappingMatcher(windows []window) timestampMatchingWindowsFunc {
+	return func(t time.Time) []window {
+		if !f.bounds.Contains(t) {
+			return nil // out of range
+		}
+
+		// Find the last window that could contain the timestamp.
+		// We need the last window where t > window.start, i.e. the index before
+		// the first window where t <= window.start. Use BinarySearchFunc with a
+		// package-level cmp so we do not allocate a closure per call (unlike sort.Search).
+		firstOOBIndex, _ := slices.BinarySearchFunc(windows, t, cmpWindowStartTime)
+
+		windowIndex := firstOOBIndex - 1
+		if windowIndex < 0 {
+			return nil
+		}
+
+		// For every i in [0, windowIndex], t > windows[i].start (by definition of windowIndex).
+		// Containment is therefore equivalent to t <= windows[i].end. Ends are non-decreasing
+		// in i, so matching indices are always a suffix [low, windowIndex] of that prefix.
+		prefix := windows[:windowIndex+1]
+		low, _ := slices.BinarySearchFunc(prefix, t, cmpWindowEndTime)
+		if low > windowIndex {
+			return nil
+		}
+		return windows[low : windowIndex+1]
+	}
+}

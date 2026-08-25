@@ -1,7 +1,6 @@
 package loki
 
 import (
-	"fmt"
 	"path/filepath"
 	"testing"
 	"time"
@@ -19,7 +18,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/storage/config"
 	bloomshipperconfig "github.com/grafana/loki/v3/pkg/storage/stores/shipper/bloomshipper/config"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper"
-	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/boltdb"
 	"github.com/grafana/loki/v3/pkg/storage/types"
 )
 
@@ -163,112 +161,10 @@ func TestMultiKVSetup(t *testing.T) {
 	}
 }
 
-func TestIndexGatewayRingMode_when_TargetIsLegacyReadOrBackend(t *testing.T) {
-	dir := t.TempDir()
-
-	type ringModeTestCase struct {
-		name        string
-		transformer func(cfg *Config)
-		target      string
-	}
-
-	for _, tc := range []ringModeTestCase{
-		{
-			name:   "leagcy read",
-			target: Read,
-			transformer: func(cfg *Config) {
-				cfg.LegacyReadTarget = true
-			},
-		},
-		{
-			name:   "backend",
-			target: Backend,
-			transformer: func(cfg *Config) {
-				cfg.LegacyReadTarget = false
-			},
-		},
-	} {
-		t.Run(fmt.Sprintf("IndexGateway always set to ring mode when running as part of %s", tc.name), func(t *testing.T) {
-			cfg := minimalWorkingConfig(t, dir, tc.target, tc.transformer)
-			c, err := New(cfg)
-			require.NoError(t, err)
-
-			services, err := c.ModuleManager.InitModuleServices(Read)
-			defer func() {
-				for _, service := range services {
-					service.StopAsync()
-				}
-			}()
-
-			require.NoError(t, err)
-			assert.Equal(t, c.Cfg.IndexGateway.Mode, indexgateway.RingMode)
-		})
-	}
-
-	type indexModeTestCase struct {
-		name        string
-		target      string
-		transformer func(cfg *Config)
-	}
-
-	for _, tc := range []indexModeTestCase{
-		{
-			name:   "index gateway",
-			target: IndexGateway,
-		},
-		{
-			name:   "new read target",
-			target: Read,
-			transformer: func(cfg *Config) {
-				cfg.LegacyReadTarget = false
-			},
-		},
-	} {
-		t.Run(fmt.Sprintf("When target is %s", tc.name), func(t *testing.T) {
-			t.Run("IndexGateway config respects configured simple mode", func(t *testing.T) {
-				cfg := minimalWorkingConfig(t, dir, IndexGatewayRing, tc.transformer)
-				cfg.IndexGateway.Mode = indexgateway.SimpleMode
-				c, err := New(cfg)
-				require.NoError(t, err)
-
-				services, err := c.ModuleManager.InitModuleServices(IndexGateway)
-				defer func() {
-					for _, service := range services {
-						service.StopAsync()
-					}
-				}()
-
-				require.NoError(t, err)
-				assert.Equal(t, c.Cfg.IndexGateway.Mode, indexgateway.SimpleMode)
-			})
-
-			t.Run("IndexGateway config respects configured ring mode", func(t *testing.T) {
-				cfg := minimalWorkingConfig(t, dir, IndexGatewayRing)
-				cfg.IndexGateway.Mode = indexgateway.RingMode
-				c, err := New(cfg)
-				require.NoError(t, err)
-
-				services, err := c.ModuleManager.InitModuleServices(IndexGateway)
-				defer func() {
-					for _, service := range services {
-						service.StopAsync()
-					}
-				}()
-
-				require.NoError(t, err)
-				assert.Equal(t, c.Cfg.IndexGateway.Mode, indexgateway.RingMode)
-			})
-		})
-	}
-}
-
 func TestIndexGatewayClientConfig(t *testing.T) {
 	dir := t.TempDir()
-
 	t.Run("IndexGateway client is enabled when running querier target", func(t *testing.T) {
 		cfg := minimalWorkingConfig(t, dir, Querier)
-		cfg.SchemaConfig.Configs[0].IndexType = types.BoltDBShipperType
-		cfg.SchemaConfig.Configs[0].IndexTables.Period = 24 * time.Hour
 		c, err := New(cfg)
 		require.NoError(t, err)
 
@@ -280,74 +176,7 @@ func TestIndexGatewayClientConfig(t *testing.T) {
 		}()
 
 		require.NoError(t, err)
-		assert.False(t, c.Cfg.StorageConfig.BoltDBShipperConfig.IndexGatewayClientConfig.Disabled)
 		assert.False(t, c.Cfg.StorageConfig.TSDBShipperConfig.IndexGatewayClientConfig.Disabled)
-	})
-
-	t.Run("IndexGateway client is disabled when running legacy read target", func(t *testing.T) {
-		cfg := minimalWorkingConfig(t, dir, Read, func(cfg *Config) {
-			cfg.LegacyReadTarget = true
-		})
-		cfg.SchemaConfig.Configs[0].IndexType = types.BoltDBShipperType
-		cfg.SchemaConfig.Configs[0].IndexTables.Period = 24 * time.Hour
-		cfg.CompactorConfig.WorkingDirectory = dir
-		c, err := New(cfg)
-		require.NoError(t, err)
-
-		services, err := c.ModuleManager.InitModuleServices(Read)
-		defer func() {
-			for _, service := range services {
-				service.StopAsync()
-			}
-		}()
-
-		require.NoError(t, err)
-		assert.True(t, c.Cfg.StorageConfig.BoltDBShipperConfig.IndexGatewayClientConfig.Disabled)
-		assert.True(t, c.Cfg.StorageConfig.TSDBShipperConfig.IndexGatewayClientConfig.Disabled)
-	})
-
-	t.Run("IndexGateway client is enabled when running new read target", func(t *testing.T) {
-		cfg := minimalWorkingConfig(t, dir, Read, func(cfg *Config) {
-			cfg.LegacyReadTarget = false
-		})
-		cfg.SchemaConfig.Configs[0].IndexType = types.BoltDBShipperType
-		cfg.SchemaConfig.Configs[0].IndexTables.Period = 24 * time.Hour
-		cfg.CompactorConfig.WorkingDirectory = dir
-		c, err := New(cfg)
-		require.NoError(t, err)
-
-		services, err := c.ModuleManager.InitModuleServices(Read)
-		defer func() {
-			for _, service := range services {
-				service.StopAsync()
-			}
-		}()
-
-		require.NoError(t, err)
-		assert.False(t, c.Cfg.StorageConfig.BoltDBShipperConfig.IndexGatewayClientConfig.Disabled)
-		assert.False(t, c.Cfg.StorageConfig.TSDBShipperConfig.IndexGatewayClientConfig.Disabled)
-	})
-
-	t.Run("IndexGateway client is disabled when running backend target", func(t *testing.T) {
-		cfg := minimalWorkingConfig(t, dir, Backend, func(cfg *Config) {
-			cfg.LegacyReadTarget = false
-		})
-		cfg.SchemaConfig.Configs[0].IndexType = types.BoltDBShipperType
-		cfg.SchemaConfig.Configs[0].IndexTables.Period = 24 * time.Hour
-		cfg.CompactorConfig.WorkingDirectory = dir
-		c, err := New(cfg)
-		require.NoError(t, err)
-
-		services, err := c.ModuleManager.InitModuleServices(Read)
-		defer func() {
-			for _, service := range services {
-				service.StopAsync()
-			}
-		}()
-
-		require.NoError(t, err)
-		assert.True(t, c.Cfg.StorageConfig.BoltDBShipperConfig.IndexGatewayClientConfig.Disabled)
-		assert.True(t, c.Cfg.StorageConfig.TSDBShipperConfig.IndexGatewayClientConfig.Disabled)
 	})
 }
 
@@ -357,13 +186,13 @@ func TestUIServiceInitialization(t *testing.T) {
 	dir := t.TempDir()
 
 	t.Run("UI is not initialized when disabled", func(t *testing.T) {
-		cfg := minimalWorkingConfig(t, dir, All, func(cfg *Config) {
+		cfg := minimalWorkingConfig(t, dir, UI, func(cfg *Config) {
 			cfg.UI.Enabled = false
 		})
 		c, err := New(cfg)
 		require.NoError(t, err)
 
-		services, err := c.ModuleManager.InitModuleServices(All)
+		services, err := c.ModuleManager.InitModuleServices(UI)
 		defer func() {
 			for _, service := range services {
 				service.StopAsync()
@@ -375,13 +204,13 @@ func TestUIServiceInitialization(t *testing.T) {
 	})
 
 	t.Run("UI is initialized when enabled", func(t *testing.T) {
-		cfg := minimalWorkingConfig(t, dir, All, func(cfg *Config) {
+		cfg := minimalWorkingConfig(t, dir, UI, func(cfg *Config) {
 			cfg.UI.Enabled = true
 		})
 		c, err := New(cfg)
 		require.NoError(t, err)
 
-		services, err := c.ModuleManager.InitModuleServices(All)
+		services, err := c.ModuleManager.InitModuleServices(UI)
 		defer func() {
 			for _, service := range services {
 				service.StopAsync()
@@ -391,6 +220,19 @@ func TestUIServiceInitialization(t *testing.T) {
 		require.NoError(t, err)
 		assert.NotNil(t, c.UI, "UI service should be initialized when UI is enabled")
 	})
+}
+
+// TestIndexGatewayInterceptorsOrderedBeforeServer is a regression test for a
+// bug where initServer was called before initIndexGatewayInterceptors, resulting
+// in the interceptors not being effective.
+func TestIndexGatewayInterceptorsOrderedBeforeServer(t *testing.T) {
+	dir := t.TempDir()
+	cfg := minimalWorkingConfig(t, dir, IndexGateway)
+	c, err := New(cfg)
+	require.NoError(t, err)
+
+	require.Contains(t, c.ModuleManager.DependenciesForModule(Server), IndexGatewayInterceptors,
+		"Server must list IndexGatewayInterceptors as a dependency when target=index-gateway")
 }
 
 func minimalWorkingConfig(t *testing.T, dir, target string, cfgTransformers ...func(*Config)) Config {
@@ -411,13 +253,12 @@ func minimalWorkingConfig(t *testing.T, dir, target string, cfgTransformers ...f
 			WorkingDirectory:    []string{filepath.Join(dir, "blooms")},
 			DownloadParallelism: 1,
 		},
-		BoltDBShipperConfig: boltdb.IndexCfg{
-			Config: indexshipper.Config{
-				ActiveIndexDirectory: filepath.Join(dir, "index"),
-				CacheLocation:        filepath.Join(dir, "cache"),
-				Mode:                 indexshipper.ModeWriteOnly,
-				ResyncInterval:       24 * time.Hour,
-			},
+		TSDBShipperConfig: indexshipper.Config{
+			ActiveIndexDirectory: filepath.Join(dir, "index"),
+			CacheLocation:        filepath.Join(dir, "cache"),
+			Mode:                 indexshipper.ModeWriteOnly,
+			ResyncInterval:       24 * time.Hour,
+			IndexReaderMode:      indexshipper.DefaultIndexReaderMode,
 		},
 	}
 
@@ -430,14 +271,13 @@ func minimalWorkingConfig(t *testing.T, dir, target string, cfgTransformers ...f
 	cfg.SchemaConfig = config.SchemaConfig{
 		Configs: []config.PeriodConfig{
 			{
-				IndexType:  types.BoltDBShipperType,
+				IndexType:  types.IndexTypeTSDB,
 				ObjectType: types.StorageTypeFileSystem,
 				IndexTables: config.IndexPeriodicTableConfig{
 					PeriodicTableConfig: config.PeriodicTableConfig{
 						Period: time.Hour * 24,
 					}},
-				RowShards: 16,
-				Schema:    "v11",
+				Schema: "v11",
 				From: config.DayTime{
 					Time: model.Now(),
 				},
@@ -454,9 +294,10 @@ func minimalWorkingConfig(t *testing.T, dir, target string, cfgTransformers ...f
 	cfg.CompactorConfig.CompactorRing.InstanceAddr = localhost
 	cfg.CompactorConfig.WorkingDirectory = filepath.Join(dir, "compactor")
 
-	cfg.Ruler.Config.Ring.InstanceAddr = localhost
-	cfg.Ruler.Config.StoreConfig.Type = types.StorageTypeLocal
-	cfg.Ruler.Config.StoreConfig.Local.Directory = dir
+	cfg.Ruler.Ring.InstanceAddr = localhost
+	// "local" matches the ruler's local rule-store backend (pkg/ruler/rulestore/local.Name)
+	cfg.Ruler.StoreConfig.Type = "local"
+	cfg.Ruler.StoreConfig.Local.Directory = dir
 
 	cfg.Common.CompactorAddress = "http://localhost:0"
 	cfg.Common.PathPrefix = dir

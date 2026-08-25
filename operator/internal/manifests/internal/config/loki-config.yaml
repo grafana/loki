@@ -8,78 +8,78 @@ chunk_store_config:
       max_size_mb: 500
 common:
   storage:
-    {{- with .ObjectStorage.Azure }}
-    azure:
-      environment: {{ .Env }}
-      container_name: {{ .Container }}
-      account_name: ${AZURE_STORAGE_ACCOUNT_NAME}
-      {{- if .WorkloadIdentity }}
-      use_federated_token: true
-      {{- else }}
-      account_key: ${AZURE_STORAGE_ACCOUNT_KEY}
-      {{- end }}
-      {{- with .EndpointSuffix }}
-      endpoint_suffix: {{ . }}
-      {{- end }}
-    {{- end }}
-    {{- with .ObjectStorage.GCS }}
-    gcs:
-      bucket_name: {{ .Bucket }}
-    {{- end }}
-    {{- with .ObjectStorage.S3 }}
-    s3:
-      {{- if .STS }}
-      bucketnames: {{.Buckets}}
-      region: {{.Region}}
-      s3forcepathstyle: false
-      {{- else }}
-      endpoint: {{ .Endpoint }}
-      bucketnames: {{ .Buckets }}
-      region: {{ .Region }}
-      access_key_id: ${AWS_ACCESS_KEY_ID}
-      secret_access_key: ${AWS_ACCESS_KEY_SECRET}
-      {{- if .ForcePathStyle  }}
-      s3forcepathstyle: true
-      {{- end}}
-      {{- end }}
-      {{- with .SSE }}
-      {{- if .Type }}
-      sse:
-        type: {{ .Type }}
-        {{- if eq .Type "SSE-KMS" }}
-        kms_key_id: {{ .KMSKeyID }}
-        {{- with .KMSEncryptionContext }}
-        kms_encryption_context: |
-          ${AWS_SSE_KMS_ENCRYPTION_CONTEXT}
+    object_store:
+      {{- with .ObjectStorage.Azure }}
+      azure:
+        container_name: {{ .Container }}
+        account_name: ${AZURE_STORAGE_ACCOUNT_NAME}
+        endpoint_suffix: {{ .EndpointSuffix }}
+        {{- if not .WorkloadIdentity }}
+        account_key: ${AZURE_STORAGE_ACCOUNT_KEY}
         {{- end }}
+      {{- end }}
+      {{- with .ObjectStorage.GCS }}
+      gcs:
+        bucket_name: {{ .Bucket }}
+      {{- end }}
+      {{- with .ObjectStorage.S3 }}
+      s3:
+        {{- if .STS }}
+        bucket_name: {{ .Buckets }}
+        region: {{ .Region }}
+        endpoint: s3.{{.Region}}.amazonaws.com
+        native_aws_auth_enabled: true
+        {{- else }}
+        endpoint: {{ .Endpoint }}
+        bucket_name: {{ .Buckets }}
+        region: {{ .Region }}
+        access_key_id: ${AWS_ACCESS_KEY_ID}
+        secret_access_key: ${AWS_ACCESS_KEY_SECRET}
+        {{- if .Insecure }}
+        insecure: true
         {{- end}}
+        {{- if .ForcePathStyle  }}
+        bucket_lookup_type: path
+        {{- end}}
+        {{- end }}
+        {{- with .SSE }}
+        {{- if .Type }}
+        sse:
+          type: {{ .Type }}
+          {{- if eq .Type "SSE-KMS" }}
+          kms_key_id: {{ .KMSKeyID }}
+          {{- with .KMSEncryptionContext }}
+          kms_encryption_context: |
+            ${AWS_SSE_KMS_ENCRYPTION_CONTEXT}
+          {{- end }}
+          {{- end}}
+        {{- end }}
+        {{- end }}
       {{- end }}
+      {{- with .ObjectStorage.Swift }}
+      swift:
+        auth_url: {{ .AuthURL }}
+        username: ${SWIFT_USERNAME}
+        user_domain_name: {{ .UserDomainName }}
+        user_domain_id: {{ .UserDomainID }}
+        user_id: {{ .UserID }}
+        password: ${SWIFT_PASSWORD}
+        domain_id: {{ .DomainID }}
+        domain_name: {{ .DomainName }}
+        project_id: {{ .ProjectID }}
+        project_name: {{ .ProjectName }}
+        project_domain_id: {{ .ProjectDomainID }}
+        project_domain_name: {{ .ProjectDomainName }}
+        region_name: {{ .Region }}
+        container_name: {{ .Container }}
       {{- end }}
-    {{- end }}
-    {{- with .ObjectStorage.Swift }}
-    swift:
-      auth_url: {{ .AuthURL }}
-      username: ${SWIFT_USERNAME}
-      user_domain_name: {{ .UserDomainName }}
-      user_domain_id: {{ .UserDomainID }}
-      user_id: {{ .UserID }}
-      password: ${SWIFT_PASSWORD}
-      domain_id: {{ .DomainID }}
-      domain_name: {{ .DomainName }}
-      project_id: {{ .ProjectID }}
-      project_name: {{ .ProjectName }}
-      project_domain_id: {{ .ProjectDomainID }}
-      project_domain_name: {{ .ProjectDomainName }}
-      region_name: {{ .Region }}
-      container_name: {{ .Container }}
-    {{- end }}
-    {{- with .ObjectStorage.AlibabaCloud}}
-    alibabacloud:
-      bucket: {{ .Bucket }}
-      endpoint: {{ .Endpoint }}
-      access_key_id: ${ALIBABA_CLOUD_ACCESS_KEY_ID}
-      secret_access_key: ${ALIBABA_CLOUD_ACCESS_KEY_SECRET}
-    {{- end }}
+      {{- with .ObjectStorage.AlibabaCloud}}
+      alibaba:
+        bucket: {{ .Bucket }}
+        endpoint: {{ .Endpoint }}
+        access_key_id: ${ALIBABA_CLOUD_ACCESS_KEY_ID}
+        access_key_secret: ${ALIBABA_CLOUD_ACCESS_KEY_SECRET}
+      {{- end }}
   compactor_grpc_address: {{ .Compactor.FQDN }}:{{ .Compactor.Port }}
   {{- with .GossipRing }}
   ring:
@@ -152,6 +152,7 @@ ingester:
     final_sleep: 0s
     join_after: 30s
     num_tokens: 512
+    tokens_file_path: {{ .StorageDirectory }}/ring-tokens
     {{- if .GossipRing.EnableIPv6 }}
     enable_inet6: true
     {{- end}}
@@ -173,7 +174,7 @@ ingester_client:
     tls_cipher_suites: {{ .TLS.CipherSuitesString }}
     tls_min_version: {{ .TLS.MinTLSVersion }}
 {{- end }}
-  remote_timeout: 1s
+  remote_timeout: 5s
 # NOTE: Keep the order of keys as in Loki docs
 # to enable easy diffs when vendoring newer
 # Loki releases.
@@ -343,6 +344,10 @@ schema_config:
       {{- end}}
     {{- end }}
 {{ if .Ruler.Enabled }}
+ruler_storage:
+  backend: local
+  local:
+    directory: {{ .Ruler.RulesStorageDirectory }}
 ruler:
   enable_api: true
   enable_sharding: true
@@ -458,75 +463,76 @@ ruler:
   remote_write:
     enabled: {{ .Enabled }}
     config_refresh_period: {{ .RefreshPeriod }}
-    client:
+    clients:
       {{- with .Client }}
-      name: {{ .Name }}
-      url: {{ .URL }}
-      remote_timeout: {{ .RemoteTimeout }}
-      proxy_url: {{ .ProxyURL }}
-      follow_redirects: {{ .FollowRedirects }}
-      headers:
-      {{- range $key, $val := .Headers }}
-        "{{ $key }}": "{{ $val }}"
-      {{- end }}
-      {{- if and .BasicAuthUsername .BasicAuthPassword }}
-      basic_auth:
-        username: {{ .BasicAuthUsername }}
-        password: {{ .BasicAuthPassword }}
-      {{- end }}
-      {{- if .BearerToken }}
-      authorization:
-        type: bearer
-        credentials: {{ .BearerToken }}
-      {{- end }}
+      default:
+        name: {{ .Name }}
+        url: {{ .URL }}
+        remote_timeout: {{ .RemoteTimeout }}
+        proxy_url: {{ .ProxyURL }}
+        follow_redirects: {{ .FollowRedirects }}
+        headers:
+        {{- range $key, $val := .Headers }}
+          "{{ $key }}": "{{ $val }}"
+        {{- end }}
+        {{- if and .BasicAuthUsername .BasicAuthPassword }}
+        basic_auth:
+          username: {{ .BasicAuthUsername }}
+          password: {{ .BasicAuthPassword }}
+        {{- end }}
+        {{- if .BearerToken }}
+        authorization:
+          type: bearer
+          credentials: {{ .BearerToken }}
+        {{- end }}
       {{- end}}
       {{- with .RelabelConfigs }}
-      write_relabel_configs:
-        {{- range $k, $cfg := . }}
-        - {{- if $cfg.SourceLabels}}
-          source_labels: {{ $cfg.SourceLabelsString }}
-          {{- end }}
-          {{- if $cfg.Regex }}
-          regex: {{ $cfg.Regex }}
-          {{- end }}
-          {{- if $cfg.Action }}
-          action: {{ $cfg.Action }}
-          {{- end }}
-          separator: {{ $cfg.SeparatorString }}
-          {{- if $cfg.Replacement }}
-          replacement: {{ $cfg.Replacement }}
-          {{- end }}
-          {{- if $cfg.TargetLabel }}
-          target_label: {{ $cfg.TargetLabel }}
-          {{- end }}
-          {{- if $cfg.Modulus }}
-          modulus: {{ $cfg.Modulus }}
-          {{- end }}
-        {{- end}}
+        write_relabel_configs:
+          {{- range $k, $cfg := . }}
+          - {{- if $cfg.SourceLabels}}
+            source_labels: {{ $cfg.SourceLabelsString }}
+            {{- end }}
+            {{- if $cfg.Regex }}
+            regex: {{ $cfg.Regex }}
+            {{- end }}
+            {{- if $cfg.Action }}
+            action: {{ $cfg.Action }}
+            {{- end }}
+            separator: {{ $cfg.SeparatorString }}
+            {{- if $cfg.Replacement }}
+            replacement: {{ $cfg.Replacement }}
+            {{- end }}
+            {{- if $cfg.TargetLabel }}
+            target_label: {{ $cfg.TargetLabel }}
+            {{- end }}
+            {{- if $cfg.Modulus }}
+            modulus: {{ $cfg.Modulus }}
+            {{- end }}
+          {{- end}}
       {{- end }}
       {{- with .Queue }}
-      queue_config:
-        {{- if .Capacity }}
-        capacity: {{ .Capacity }}
-        {{- end }}
-        {{- if .MaxShards }}
-        max_shards: {{ .MaxShards }}
-        {{- end }}
-        {{- if .MinShards }}
-        min_shards: {{ .MinShards }}
-        {{- end }}
-        {{- if .MaxSamplesPerSend }}
-        max_samples_per_send: {{ .MaxSamplesPerSend }}
-        {{- end }}
-        {{- if .BatchSendDeadline }}
-        batch_send_deadline: {{ .BatchSendDeadline }}
-        {{- end }}
-        {{- if .MinBackOffPeriod }}
-        min_backoff: {{ .MinBackOffPeriod }}
-        {{- end }}
-        {{- if .MaxBackOffPeriod }}
-        max_backoff: {{ .MaxBackOffPeriod }}
-        {{- end }}
+        queue_config:
+          {{- if .Capacity }}
+          capacity: {{ .Capacity }}
+          {{- end }}
+          {{- if .MaxShards }}
+          max_shards: {{ .MaxShards }}
+          {{- end }}
+          {{- if .MinShards }}
+          min_shards: {{ .MinShards }}
+          {{- end }}
+          {{- if .MaxSamplesPerSend }}
+          max_samples_per_send: {{ .MaxSamplesPerSend }}
+          {{- end }}
+          {{- if .BatchSendDeadline }}
+          batch_send_deadline: {{ .BatchSendDeadline }}
+          {{- end }}
+          {{- if .MinBackOffPeriod }}
+          min_backoff: {{ .MinBackOffPeriod }}
+          {{- end }}
+          {{- if .MaxBackOffPeriod }}
+          max_backoff: {{ .MaxBackOffPeriod }}
+          {{- end }}
       {{- end }}
   {{- end }}
   {{- end }}
@@ -536,10 +542,6 @@ ruler:
     min_age: 5m
     max_age: 4h
   rule_path: {{ .StorageDirectory }}
-  storage:
-    type: local
-    local:
-      directory: {{ .Ruler.RulesStorageDirectory }}
   ring:
     kvstore:
       store: memberlist
@@ -595,6 +597,7 @@ server:
 {{- end }}
   log_level: info
 storage_config:
+  use_thanos_objstore: true
 {{- range $_, $ship := .Shippers }}
 {{- if eq $ship "boltdb" }}
   boltdb_shipper:

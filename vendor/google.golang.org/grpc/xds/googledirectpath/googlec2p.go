@@ -38,8 +38,8 @@ import (
 	"google.golang.org/grpc/internal/googlecloud"
 	internalgrpclog "google.golang.org/grpc/internal/grpclog"
 	"google.golang.org/grpc/internal/xds/bootstrap"
+	"google.golang.org/grpc/internal/xds/xdsclient"
 	"google.golang.org/grpc/resolver"
-	"google.golang.org/grpc/xds/internal/xdsclient"
 
 	_ "google.golang.org/grpc/xds" // To register xds resolvers and balancers.
 )
@@ -119,6 +119,16 @@ func getXdsServerURI() string {
 	return fmt.Sprintf("dns:///directpath-pa.%s", universeDomain)
 }
 
+type c2pResolverWrapper struct {
+	resolver.Resolver
+	cancel func() // Release the reference to the xDS client that was created in Build().
+}
+
+func (r *c2pResolverWrapper) Close() {
+	r.Resolver.Close()
+	r.cancel()
+}
+
 type c2pResolverBuilder struct{}
 
 func (c2pResolverBuilder) Build(t resolver.Target, cc resolver.ClientConn, opts resolver.BuildOptions) (resolver.Resolver, error) {
@@ -126,24 +136,38 @@ func (c2pResolverBuilder) Build(t resolver.Target, cc resolver.ClientConn, opts 
 		return nil, fmt.Errorf("google-c2p URI scheme does not support authorities")
 	}
 
-	if !runDirectPath() {
+	isGCE := onGCE()
+	// We check only for the presence of the "force-xds" query parameter key,
+	// and do not evaluate its value.
+	_, forceXDS := t.URL.Query()["force-xds"]
+	if !forceXDS && !isGCE {
 		// If not xDS, fallback to DNS.
 		t.URL.Scheme = dnsName
 		return resolver.Get(dnsName).Build(t, cc, opts)
 	}
 
-	// Note that the following calls to getZone() and getIPv6Capable() does I/O,
-	// and has 10 seconds timeout each.
-	//
-	// This should be fine in most of the cases. In certain error cases, this
-	// could block Dial() for up to 10 seconds (each blocking call has its own
-	// goroutine).
-	zoneCh, ipv6CapableCh := make(chan string), make(chan bool)
-	go func() { zoneCh <- getZone(httpReqTimeout) }()
-	go func() { ipv6CapableCh <- getIPv6Capable(httpReqTimeout) }()
+	var zone string
+	var ipv6Capable bool
+	if forceXDS {
+		// If the force-xds query parameter is present, GCE metadata server
+		// queries are bypassed.
+		zone = ""
+		ipv6Capable = true
+	} else {
+		// Note that the following calls to getZone() and getIPv6Capable() does I/O,
+		// and has 10 seconds timeout each.
+		//
+		// This should be fine in most of the cases. In certain error cases, this
+		// could block Dial() for up to 10 seconds (each blocking call has its own
+		// goroutine).
+		var wg sync.WaitGroup
+		wg.Go(func() { zone = getZone(httpReqTimeout) })
+		wg.Go(func() { ipv6Capable = getIPv6Capable(httpReqTimeout) })
+		wg.Wait()
+	}
 
 	xdsServerURI := getXdsServerURI()
-	nodeCfg := newNodeConfig(<-zoneCh, <-ipv6CapableCh)
+	nodeCfg := newNodeConfig(zone, ipv6Capable, forceXDS)
 	xdsServerCfg := newXdsServerConfig(xdsServerURI)
 	authoritiesCfg := newAuthoritiesConfig(xdsServerCfg)
 
@@ -161,7 +185,6 @@ func (c2pResolverBuilder) Build(t resolver.Target, cc resolver.ClientConn, opts 
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse bootstrap contents: %s, %v", string(cfgJSON), err)
 	}
-	xdsClientPool.SetFallbackBootstrapConfig(config)
 
 	t = resolver.Target{
 		URL: url.URL{
@@ -170,18 +193,42 @@ func (c2pResolverBuilder) Build(t resolver.Target, cc resolver.ClientConn, opts 
 			Path:   t.URL.Path,
 		},
 	}
-	return resolver.Get(xdsName).Build(t, cc, opts)
+
+	// Create a new xDS client for this target using the provided bootstrap
+	// configuration. This client is stored in the xdsclient pool’s internal
+	// cache, keeping it alive and associated with this resolver until Closed().
+	// While the c2p resolver itself does not directly use the client, creating
+	// it ensures that when the xDS resolver later requests a client for the
+	// same target, the existing instance will be reused.
+	_, cancel, err := xdsClientPool.NewClientWithConfig(t.String(), opts.MetricsRecorder, config)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create xds client: %v", err)
+	}
+
+	r, err := resolver.Get(xdsName).Build(t, cc, opts)
+	if err != nil {
+		cancel()
+		return nil, err
+	}
+	return &c2pResolverWrapper{Resolver: r, cancel: cancel}, nil
 }
 
 func (b c2pResolverBuilder) Scheme() string {
 	return c2pScheme
 }
 
-func newNodeConfig(zone string, ipv6Capable bool) map[string]any {
-	node := map[string]any{
-		"id":       fmt.Sprintf("C2P-%d", randInt()),
-		"locality": map[string]any{"zone": zone},
+func newNodeConfig(zone string, ipv6Capable bool, forceXDS bool) map[string]any {
+	prefix := "C2P"
+	if forceXDS {
+		prefix = "C2P-non-gcp"
 	}
+	node := map[string]any{
+		"id": fmt.Sprintf("%s-%d", prefix, randInt()),
+	}
+	if zone != "" {
+		node["locality"] = map[string]any{"zone": zone}
+	}
+	// Enable dualstack endpoints in TD.
 	if ipv6Capable {
 		node["metadata"] = map[string]any{ipv6CapableMetadataName: true}
 	}
@@ -200,11 +247,4 @@ func newXdsServerConfig(uri string) map[string]any {
 		"channel_creds":   []map[string]any{{"type": "google_default"}},
 		"server_features": []any{"ignore_resource_deletion"},
 	}
-}
-
-// runDirectPath returns whether this resolver should use direct path.
-//
-// direct path is enabled if this client is running on GCE.
-func runDirectPath() bool {
-	return onGCE()
 }

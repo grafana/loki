@@ -20,6 +20,7 @@ import (
 	"bytes"
 	"fmt"
 	"reflect"
+	"strconv"
 	"strings"
 	"time"
 
@@ -34,11 +35,19 @@ import (
 type Timestamp struct {
 	array
 	values []arrow.Timestamp
+	layout string
 }
 
 // NewTimestampData creates a new Timestamp from Data.
 func NewTimestampData(data arrow.ArrayData) *Timestamp {
-	a := &Timestamp{}
+	return NewTimestampDataWithValueStrLayout(data, time.RFC3339Nano)
+}
+
+// NewTimestampDataWithValueStrLayout creates a new Timestamp from Data with a custom ValueStr layout.
+// The layout is passed to the time.Time.Format method.
+// This is useful for cases where consumers expect a non standard layout
+func NewTimestampDataWithValueStrLayout(data arrow.ArrayData, layout string) *Timestamp {
+	a := &Timestamp{layout: layout}
 	a.refCount.Add(1)
 	a.setData(data.(*Data))
 	return a
@@ -81,8 +90,8 @@ func (a *Timestamp) setData(data *Data) {
 	vals := data.buffers[1]
 	if vals != nil {
 		a.values = arrow.TimestampTraits.CastFromBytes(vals.Bytes())
-		beg := a.array.data.offset
-		end := beg + a.array.data.length
+		beg := a.data.offset
+		end := beg + a.data.length
 		a.values = a.values[beg:end]
 	}
 }
@@ -93,7 +102,11 @@ func (a *Timestamp) ValueStr(i int) string {
 	}
 
 	toTime, _ := a.DataType().(*arrow.TimestampType).GetToTimeFunc()
-	return toTime(a.values[i]).Format("2006-01-02 15:04:05.999999999Z0700")
+	layout := a.layout
+	if layout == "" {
+		layout = time.RFC3339Nano
+	}
+	return toTime(a.values[i]).Format(layout)
 }
 
 func (a *Timestamp) GetOneForMarshal(i int) interface{} {
@@ -130,10 +143,18 @@ type TimestampBuilder struct {
 	dtype   *arrow.TimestampType
 	data    *memory.Buffer
 	rawData []arrow.Timestamp
+	layout  string
 }
 
 func NewTimestampBuilder(mem memory.Allocator, dtype *arrow.TimestampType) *TimestampBuilder {
-	tb := &TimestampBuilder{builder: builder{mem: mem}, dtype: dtype}
+	return NewTimestampBuilderWithValueStrLayout(mem, dtype, time.RFC3339Nano)
+}
+
+// NewTimestampBuilderWithValueStrLayout creates a new TimestampBuilder with a custom ValueStr layout.
+// The layout is passed to the time.Time.Format method.
+// This is useful for cases where consumers expect a non standard layout
+func NewTimestampBuilderWithValueStrLayout(mem memory.Allocator, dtype *arrow.TimestampType, layout string) *TimestampBuilder {
+	tb := &TimestampBuilder{builder: builder{mem: mem}, dtype: dtype, layout: layout}
 	tb.refCount.Add(1)
 	return tb
 }
@@ -221,7 +242,7 @@ func (b *TimestampBuilder) AppendValues(v []arrow.Timestamp, valid []bool) {
 
 	b.Reserve(len(v))
 	arrow.TimestampTraits.Copy(b.rawData[b.length:], v)
-	b.builder.unsafeAppendBoolsToBitmap(valid, len(v))
+	b.unsafeAppendBoolsToBitmap(valid, len(v))
 }
 
 func (b *TimestampBuilder) init(capacity int) {
@@ -236,7 +257,7 @@ func (b *TimestampBuilder) init(capacity int) {
 // Reserve ensures there is enough space for appending n elements
 // by checking the capacity and calling Resize if necessary.
 func (b *TimestampBuilder) Reserve(n int) {
-	b.builder.reserve(n, b.Resize)
+	b.reserve(n, b.Resize)
 }
 
 // Resize adjusts the space allocated by b to n elements. If n is greater than b.Cap(),
@@ -250,7 +271,7 @@ func (b *TimestampBuilder) Resize(n int) {
 	if b.capacity == 0 {
 		b.init(n)
 	} else {
-		b.builder.resize(nBuilder, b.init)
+		b.resize(nBuilder, b.init)
 		b.data.Resize(arrow.TimestampTraits.BytesRequired(n))
 		b.rawData = arrow.TimestampTraits.CastFromBytes(b.data.Bytes())
 	}
@@ -266,7 +287,7 @@ func (b *TimestampBuilder) NewArray() arrow.Array {
 // so it can be used to build a new array.
 func (b *TimestampBuilder) NewTimestampArray() (a *Timestamp) {
 	data := b.newData()
-	a = NewTimestampData(data)
+	a = NewTimestampDataWithValueStrLayout(data, b.layout)
 	data.Release()
 	return
 }
@@ -295,6 +316,11 @@ func (b *TimestampBuilder) AppendValueFromString(s string) error {
 		return nil
 	}
 
+	if i, parseErr := strconv.ParseInt(s, 10, 64); parseErr == nil {
+		b.Append(arrow.Timestamp(i))
+		return nil
+	}
+
 	loc, err := b.dtype.GetZone()
 	if err != nil {
 		return err
@@ -310,6 +336,11 @@ func (b *TimestampBuilder) AppendValueFromString(s string) error {
 }
 
 func (b *TimestampBuilder) UnmarshalOne(dec *json.Decoder) error {
+	loc, err := b.dtype.GetZone()
+	if err != nil {
+		return err
+	}
+
 	t, err := dec.Token()
 	if err != nil {
 		return err
@@ -319,7 +350,10 @@ func (b *TimestampBuilder) UnmarshalOne(dec *json.Decoder) error {
 	case nil:
 		b.AppendNull()
 	case string:
-		loc, _ := b.dtype.GetZone()
+		if i, parseErr := strconv.ParseInt(v, 10, 64); parseErr == nil {
+			b.Append(arrow.Timestamp(i))
+			break
+		}
 		tm, _, err := arrow.TimestampFromStringInLocation(v, b.dtype.Unit, loc)
 		if err != nil {
 			return &json.UnmarshalTypeError{
@@ -365,6 +399,7 @@ func (b *TimestampBuilder) Unmarshal(dec *json.Decoder) error {
 
 func (b *TimestampBuilder) UnmarshalJSON(data []byte) error {
 	dec := json.NewDecoder(bytes.NewReader(data))
+	dec.UseNumber()
 	t, err := dec.Token()
 	if err != nil {
 		return err

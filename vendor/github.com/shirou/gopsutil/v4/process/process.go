@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"regexp"
 	"runtime"
 	"sort"
 	"sync"
@@ -18,6 +19,7 @@ import (
 
 var (
 	invoke                 common.Invoker = common.Invoke{}
+	strictIntPtrn                         = regexp.MustCompile(`^\d+$`)
 	ErrorNoChildren                       = errors.New("process does not have children") // Deprecated: ErrorNoChildren is never returned by process.Children(), check its returned []*Process slice length instead
 	ErrorProcessNotRunning                = errors.New("process does not exist")
 	ErrorNotPermitted                     = errors.New("operation not permitted")
@@ -108,12 +110,14 @@ type IOCountersStat struct {
 	// WriteCount is a number of read I/O operations such as syscalls.
 	WriteCount uint64 `json:"writeCount"`
 	// ReadBytes is a number of all I/O read in bytes. This includes disk I/O on Linux and Windows.
+	// Darwin does not expose this and reports 0; use DiskReadBytes there.
 	ReadBytes uint64 `json:"readBytes"`
-	// WriteBytes is a number of all I/O write in bytes. This includes disk I/O on Linux and Windows.
+	// WriteBytes is a number of all I/O written in bytes. This includes disk I/O on Linux and Windows.
+	// Darwin does not expose this and reports 0; use DiskWriteBytes there.
 	WriteBytes uint64 `json:"writeBytes"`
-	// DiskReadBytes is a number of disk I/O write in bytes. Currently only Linux has this value.
+	// DiskReadBytes is a number of disk I/O read in bytes. Currently, Linux and Darwin have this value.
 	DiskReadBytes uint64 `json:"diskReadBytes"`
-	// DiskWriteBytes is a number of disk I/O read in bytes.  Currently only Linux has this value.
+	// DiskWriteBytes is a number of disk I/O written in bytes. Currently, Linux and Darwin have this value.
 	DiskWriteBytes uint64 `json:"diskWriteBytes"`
 }
 

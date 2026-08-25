@@ -61,8 +61,8 @@ func (p *StickyConnPool) NewConn(ctx context.Context) (*Conn, error) {
 	return p.pool.NewConn(ctx)
 }
 
-func (p *StickyConnPool) CloseConn(cn *Conn) error {
-	return p.pool.CloseConn(cn)
+func (p *StickyConnPool) CloseConn(ctx context.Context, cn *Conn, reason string, fromState string) error {
+	return p.pool.CloseConn(ctx, cn, reason, fromState)
 }
 
 func (p *StickyConnPool) Get(ctx context.Context) (*Conn, error) {
@@ -121,6 +121,12 @@ func (p *StickyConnPool) Remove(ctx context.Context, cn *Conn, reason error) {
 	}()
 	p._badConnError.Store(BadConnError{wrapped: reason})
 	p.ch <- cn
+}
+
+// RemoveWithoutTurn has the same behavior as Remove for StickyConnPool
+// since StickyConnPool doesn't use a turn-based queue system.
+func (p *StickyConnPool) RemoveWithoutTurn(ctx context.Context, cn *Conn, reason error) {
+	p.Remove(ctx, cn, reason)
 }
 
 func (p *StickyConnPool) Close() error {
@@ -196,6 +202,13 @@ func (p *StickyConnPool) IdleLen() int {
 	return len(p.ch)
 }
 
+// Size returns the maximum pool size, which is always 1 for StickyConnPool.
+func (p *StickyConnPool) Size() int { return 1 }
+
 func (p *StickyConnPool) Stats() *Stats {
 	return &Stats{}
 }
+
+func (p *StickyConnPool) AddPoolHook(hook PoolHook) {}
+
+func (p *StickyConnPool) RemovePoolHook(hook PoolHook) {}

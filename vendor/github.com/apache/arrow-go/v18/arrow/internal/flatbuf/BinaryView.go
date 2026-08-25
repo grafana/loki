@@ -22,13 +22,13 @@ import (
 	flatbuffers "github.com/google/flatbuffers/go"
 )
 
-// / Logically the same as Binary, but the internal representation uses a view
-// / struct that contains the string length and either the string's entire data
-// / inline (for small strings) or an inlined prefix, an index of another buffer,
-// / and an offset pointing to a slice in that buffer (for non-small strings).
-// /
-// / Since it uses a variable number of data buffers, each Field with this type
-// / must have a corresponding entry in `variadicBufferCounts`.
+/// Logically the same as Binary, but the internal representation uses a view
+/// struct that contains the string length and either the string's entire data
+/// inline (for small strings) or an inlined prefix, an index of another buffer,
+/// and an offset pointing to a slice in that buffer (for non-small strings).
+///
+/// Since it uses a variable number of data buffers, each Field with this type
+/// must have a corresponding entry in `variadicBufferCounts`.
 type BinaryView struct {
 	_tab flatbuffers.Table
 }
@@ -38,6 +38,21 @@ func GetRootAsBinaryView(buf []byte, offset flatbuffers.UOffsetT) *BinaryView {
 	x := &BinaryView{}
 	x.Init(buf, n+offset)
 	return x
+}
+
+func FinishBinaryViewBuffer(builder *flatbuffers.Builder, offset flatbuffers.UOffsetT) {
+	builder.Finish(offset)
+}
+
+func GetSizePrefixedRootAsBinaryView(buf []byte, offset flatbuffers.UOffsetT) *BinaryView {
+	n := flatbuffers.GetUOffsetT(buf[offset+flatbuffers.SizeUint32:])
+	x := &BinaryView{}
+	x.Init(buf, n+offset+flatbuffers.SizeUint32)
+	return x
+}
+
+func FinishSizePrefixedBinaryViewBuffer(builder *flatbuffers.Builder, offset flatbuffers.UOffsetT) {
+	builder.FinishSizePrefixed(offset)
 }
 
 func (rcv *BinaryView) Init(buf []byte, i flatbuffers.UOffsetT) {

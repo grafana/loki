@@ -168,7 +168,7 @@ type FilterMultiError []error
 
 // Error returns a concatenation of all the error messages it wraps.
 func (m FilterMultiError) Error() string {
-	var msgs []string
+	msgs := make([]string, 0, len(m))
 	for _, err := range m {
 		msgs = append(msgs, err.Error())
 	}
@@ -445,7 +445,7 @@ type FilterChainMatchMultiError []error
 
 // Error returns a concatenation of all the error messages it wraps.
 func (m FilterChainMatchMultiError) Error() string {
-	var msgs []string
+	msgs := make([]string, 0, len(m))
 	for _, err := range m {
 		msgs = append(msgs, err.Error())
 	}
@@ -725,7 +725,7 @@ type FilterChainMultiError []error
 
 // Error returns a concatenation of all the error messages it wraps.
 func (m FilterChainMultiError) Error() string {
-	var msgs []string
+	msgs := make([]string, 0, len(m))
 	for _, err := range m {
 		msgs = append(msgs, err.Error())
 	}
@@ -1035,7 +1035,7 @@ type ListenerFilterChainMatchPredicateMultiError []error
 
 // Error returns a concatenation of all the error messages it wraps.
 func (m ListenerFilterChainMatchPredicateMultiError) Error() string {
-	var msgs []string
+	msgs := make([]string, 0, len(m))
 	for _, err := range m {
 		msgs = append(msgs, err.Error())
 	}
@@ -1265,7 +1265,7 @@ type ListenerFilterMultiError []error
 
 // Error returns a concatenation of all the error messages it wraps.
 func (m ListenerFilterMultiError) Error() string {
-	var msgs []string
+	msgs := make([]string, 0, len(m))
 	for _, err := range m {
 		msgs = append(msgs, err.Error())
 	}
@@ -1413,7 +1413,7 @@ type ListenerFilterChainMatchPredicate_MatchSetMultiError []error
 
 // Error returns a concatenation of all the error messages it wraps.
 func (m ListenerFilterChainMatchPredicate_MatchSetMultiError) Error() string {
-	var msgs []string
+	msgs := make([]string, 0, len(m))
 	for _, err := range m {
 		msgs = append(msgs, err.Error())
 	}

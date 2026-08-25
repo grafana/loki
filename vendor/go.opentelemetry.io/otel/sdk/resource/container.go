@@ -1,7 +1,7 @@
 // Copyright The OpenTelemetry Authors
 // SPDX-License-Identifier: Apache-2.0
 
-package resource // import "go.opentelemetry.io/otel/sdk/resource"
+package resource
 
 import (
 	"bufio"
@@ -11,7 +11,7 @@ import (
 	"os"
 	"regexp"
 
-	semconv "go.opentelemetry.io/otel/semconv/v1.26.0"
+	semconv "go.opentelemetry.io/otel/semconv/v1.43.0"
 )
 
 type containerIDProvider func() (string, error)
@@ -27,7 +27,7 @@ const cgroupPath = "/proc/self/cgroup"
 
 // Detect returns a *Resource that describes the id of the container.
 // If no container id found, an empty resource will be returned.
-func (cgroupContainerIDDetector) Detect(ctx context.Context) (*Resource, error) {
+func (cgroupContainerIDDetector) Detect(context.Context) (*Resource, error) {
 	containerID, err := containerID()
 	if err != nil {
 		return nil, err

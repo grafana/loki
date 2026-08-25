@@ -1,5 +1,124 @@
 ## Main
 
+## [0.11.0](https://github.com/grafana/loki/compare/operator/v0.10.2...operator/v0.11.0) (2026-08-18)
+
+
+### ⚠ BREAKING CHANGES
+
+* Remove support for experimental LogQL variants() queries ([#23823](https://github.com/grafana/loki/issues/23823))
+
+### Features
+
+* **operator:** Enable multi-variant queries ([#21009](https://github.com/grafana/loki/issues/21009)) ([709e318](https://github.com/grafana/loki/commit/709e3184fc7966bc6b8eb8ca661b6b080c1c6e17))
+* **operator:** Support private VPC S3 endpoints in endpoint validation ([#22395](https://github.com/grafana/loki/issues/22395)) ([394caef](https://github.com/grafana/loki/commit/394caeff2f6c8e55dca4be01bc960ac287fbfcb9))
+* **operator:** Watch object storage Services for NetworkPolicy updates and surface ports in status ([#22436](https://github.com/grafana/loki/issues/22436)) ([12822d5](https://github.com/grafana/loki/commit/12822d51087550f56feca44a0f9f1ae4807c2c7e))
+* Remove support for experimental LogQL variants() queries ([#23823](https://github.com/grafana/loki/issues/23823)) ([132e5f9](https://github.com/grafana/loki/commit/132e5f9cce287101a4b813564f1d6b79484b9f02))
+
+
+### Bug Fixes
+
+* **operator:** Move telemetry recording rules to OpenShift bundle ([#22814](https://github.com/grafana/loki/issues/22814)) ([4632368](https://github.com/grafana/loki/commit/4632368c7e4677191d70543cf41a8571d6eb67e3))
+* **operator:** Release leader lease on shutdown so upgrades are faster ([#24042](https://github.com/grafana/loki/issues/24042)) ([ee0d59d](https://github.com/grafana/loki/commit/ee0d59d92d92a1939593e41ddd6aa704b49b592c))
+* **operator:** Use ruler remote_write clients key instead of deprecated client ([#23455](https://github.com/grafana/loki/issues/23455)) ([f5ddb02](https://github.com/grafana/loki/commit/f5ddb02f41478900198178fdb25e67a095a726b9))
+* **security/UNKNOWN/operator:** Update module github.com/klauspost/compress to v1.18.7 [SECURITY] (main) ([#23608](https://github.com/grafana/loki/issues/23608)) ([e1e4e0e](https://github.com/grafana/loki/commit/e1e4e0e4cad5c3e8a0fa40246a1fdfd6988d3fd6))
+* **security/UNKNOWN/operator:** Update module golang.org/x/net to v0.56.0 [SECURITY] (main) ([#23388](https://github.com/grafana/loki/issues/23388)) ([9362a5e](https://github.com/grafana/loki/commit/9362a5ebdc5cbbc6dc74ef45bda15ca1fa226556))
+* **security/UNKNOWN/operator:** Update module golang.org/x/text to v0.39.0 [SECURITY] (main) ([#23389](https://github.com/grafana/loki/issues/23389)) ([50589e1](https://github.com/grafana/loki/commit/50589e15a35f01b5ca1da99080d2b0fa054cab9b))
+
+## [0.10.2](https://github.com/grafana/loki/compare/operator/v0.10.1...operator/v0.10.2) (2026-06-09)
+
+
+### Features
+
+* **operator:** Add passthrough-gateway component ([#20382](https://github.com/grafana/loki/issues/20382)) ([bf06e45](https://github.com/grafana/loki/commit/bf06e45bcfc7745ee26798fdfbbbe31ecfb3bd3f))
+* **operator:** Introduce passthrough tenancy ([#20573](https://github.com/grafana/loki/issues/20573)) ([ca8aac8](https://github.com/grafana/loki/commit/ca8aac8532b93705a43a5c2972c2397a3eebc820))
+* **operator:** Update ServiceMonitors to use serviceDiscoveryRole: EndpointSlice ([#21731](https://github.com/grafana/loki/issues/21731)) ([d3a12c7](https://github.com/grafana/loki/commit/d3a12c766f06a333984632610dcb6a69067f51bf))
+
+
+### Bug Fixes
+
+* **operator:** Add STS support in Azure secret creation script ([#20833](https://github.com/grafana/loki/issues/20833)) ([a9f11d6](https://github.com/grafana/loki/commit/a9f11d6759372568729e4e36afcc8a64a97e2e61))
+* **operator:** Fix import for yaml v4 ([#22159](https://github.com/grafana/loki/issues/22159)) ([4b37810](https://github.com/grafana/loki/commit/4b37810b4c03b31e35f2b8d56cfd27e44ad912a3))
+* **operator:** Fix RemoteWriteAuthType CEL validation in RulerConfig ([#21677](https://github.com/grafana/loki/issues/21677)) ([50e5873](https://github.com/grafana/loki/commit/50e58735302444eb0c9f1d9eb4ad0d4eb3726370))
+* **operator:** Redistribute ingester resources for 1x.extra-small and 1x.small to support 3 replicas ([#21717](https://github.com/grafana/loki/issues/21717)) ([3bca03f](https://github.com/grafana/loki/commit/3bca03f02be4e98a6f98ed256e37340e173dc675))
+* **operator:** Replace local pkg/push dependency with published module ([#21679](https://github.com/grafana/loki/issues/21679)) ([752874f](https://github.com/grafana/loki/commit/752874f76e758cbb42c3f299d56e7c7282029ae7))
+* **operator:** Ruler doesn't evaluate rules due to use_thanos_objstore ([#21713](https://github.com/grafana/loki/issues/21713)) ([d0b1ea0](https://github.com/grafana/loki/commit/d0b1ea0f2ea0c8f1370bb873d3439fa3626b29ee))
+* **operator:** Use thanos objstore CA flags for S3 and Swift storage ([#22123](https://github.com/grafana/loki/issues/22123)) ([2433c87](https://github.com/grafana/loki/commit/2433c87a3f0818b3f3f84938c0d0d61364fef105))
+
+## [0.10.1](https://github.com/grafana/loki/compare/operator/v0.10.0...operator/v0.10.1) (2026-04-16)
+
+
+### Features
+
+* **operator:** migrate to thanos objstore backend ([#20475](https://github.com/grafana/loki/issues/20475)) ([ffcac2c](https://github.com/grafana/loki/commit/ffcac2ca4562fc8a270e94961d3a4d5fe91c323a))
+
+
+### Bug Fixes
+
+* **deps:** update module google.golang.org/grpc to v1.79.3 [security] (main) ([#21192](https://github.com/grafana/loki/issues/21192)) ([606472c](https://github.com/grafana/loki/commit/606472cc13a795501ddd2a59102661a80170f124))
+* **operator:** tidy go.mod ([#21323](https://github.com/grafana/loki/issues/21323)) ([119622b](https://github.com/grafana/loki/commit/119622b87e696e4a5a873e86aace4a93ebfcdece))
+* **operator:** update latency alert to reflect ingester timeout ([#21370](https://github.com/grafana/loki/issues/21370)) ([91f0ce4](https://github.com/grafana/loki/commit/91f0ce486fd0628ffd296883b440ed8ffb3cf062))
+
+## [0.10.0](https://github.com/grafana/loki/compare/operator/v0.9.0...operator/v0.10.0) (2026-03-18)
+
+
+### ⚠ BREAKING CHANGES
+
+* **operator:** switch default for OpenShift stream labels ([#21001](https://github.com/grafana/loki/issues/21001))
+
+### Features
+
+* **operator:** add option to customize gateway server cert  ([#20325](https://github.com/grafana/loki/issues/20325)) ([3c8b9e8](https://github.com/grafana/loki/commit/3c8b9e8a0397b8e3951a8fe10d009c73ed3fde0a))
+* **operator:** switch default for OpenShift stream labels ([#21001](https://github.com/grafana/loki/issues/21001)) ([61ec040](https://github.com/grafana/loki/commit/61ec040b2dabd74ed6f678e471c01f3507756dbb))
+* **operator:** Update Loki operand to v3.6.5 ([#20696](https://github.com/grafana/loki/issues/20696)) ([d81e977](https://github.com/grafana/loki/commit/d81e977f1ea6004b32ddd1a05af19fe034bdc126))
+* **operator:** update metrics authentication to remove dependency on kube-rbac-proxy ([#20853](https://github.com/grafana/loki/issues/20853)) ([2de6e79](https://github.com/grafana/loki/commit/2de6e7931d46d007d649a2ff575548786a635ac7))
+* Update to go 1.25.7 ([#20694](https://github.com/grafana/loki/issues/20694)) ([3a6ba0d](https://github.com/grafana/loki/commit/3a6ba0d63c79297ca9c343186711d51aba83e9f0))
+
+
+### Bug Fixes
+
+* **operator:** add additional port to networkpolicy when using Swift ([#20129](https://github.com/grafana/loki/issues/20129)) ([1180fff](https://github.com/grafana/loki/commit/1180fffe946aa699ae0c47c76d19586474166477))
+* **operator:** always generate full set of condition metrics for each LokiStack ([#19509](https://github.com/grafana/loki/issues/19509)) ([973bb71](https://github.com/grafana/loki/commit/973bb71d6ea4f579d980d5486fb78e4a30483015))
+* **operator:** configure to extract selectors to allow fine-grained auth in openshift-network mode ([#19958](https://github.com/grafana/loki/issues/19958)) ([0ba8573](https://github.com/grafana/loki/commit/0ba85736ea9b7ac6263e1eb8af8742532f623e41))
+* **operator:** dynamically configure networkpolicy when a Kubernetes service is used for object storage ([#20111](https://github.com/grafana/loki/issues/20111)) ([e8a998b](https://github.com/grafana/loki/commit/e8a998b86e69a7203ace82199d4f7b49d122ab82))
+* **operator:** fix incorrect image reference in olm bundle ([#20966](https://github.com/grafana/loki/issues/20966)) ([84bc9bc](https://github.com/grafana/loki/commit/84bc9bc98f41e634b51a82b6232f0ec01421a69f))
+* **operator:** include Loki Operator in the Observability category in Operator Hub ([#21084](https://github.com/grafana/loki/issues/21084)) ([913c598](https://github.com/grafana/loki/commit/913c5988bc848def9b1f0ce4f440d44e39fe617f))
+* **operator:** Increase distributor-ingester timeout from 1s to 5s ([#20471](https://github.com/grafana/loki/issues/20471)) ([7056ec4](https://github.com/grafana/loki/commit/7056ec41ce2ce2bf23241715e8a0f20e307ddcdc))
+* **operator:** networkpolicies allow access through proxy port when a proxy is configured ([#20194](https://github.com/grafana/loki/issues/20194)) ([ef15181](https://github.com/grafana/loki/commit/ef151816d772395ef61644e2dc66971342cb6b51))
+* **operator:** properly handle the deprecated replicationFactor ([#20935](https://github.com/grafana/loki/issues/20935)) ([1b96366](https://github.com/grafana/loki/commit/1b96366728c8b888745d80b3b277b2ecbfb6278a))
+* **operator:** provide AWS region in environment variable for STS mode ([#21136](https://github.com/grafana/loki/issues/21136)) ([cb261d9](https://github.com/grafana/loki/commit/cb261d953423719d99260a36d5c90fd03d3cc083))
+* **operator:** set ingester minimum available pods based on replication factor ([#19517](https://github.com/grafana/loki/issues/19517)) ([efc63e8](https://github.com/grafana/loki/commit/efc63e8d06fd2680a8af009f45b07eb2d3eb45d5))
+* **operator:** Update maximum OpenShift version ([#20600](https://github.com/grafana/loki/issues/20600)) ([fce93a8](https://github.com/grafana/loki/commit/fce93a8ad59182ae8e6a13c59f69be5ca2fae808))
+
+
+### Performance Improvements
+
+* **operator:** simplification to status validation ([#20725](https://github.com/grafana/loki/issues/20725)) ([834cf12](https://github.com/grafana/loki/commit/834cf12155c2ec6ab9231c12af7c7dc33c8b7728))
+
+## [0.9.0](https://github.com/grafana/loki/compare/operator/v0.8.0...operator/v0.9.0) (2025-12-04)
+
+
+### ⚠ BREAKING CHANGES
+
+* **operator:** consolidate image build workflows and improve documentation ([#19395](https://github.com/grafana/loki/issues/19395))
+
+### Features
+
+* **operator:** Add alert LokiIngesterFlushFailureRateCritical ([#18698](https://github.com/grafana/loki/issues/18698)) ([66ebc5a](https://github.com/grafana/loki/commit/66ebc5a184cf1d54b1e41b14b2a76f6601156405))
+* **operator:** Add warning alert for when LokiStack is not getting ready ([#19258](https://github.com/grafana/loki/issues/19258)) ([c47fe46](https://github.com/grafana/loki/commit/c47fe465ffeebda3f4f8d84e2aff46dac3a2b878))
+* **operator:** deploy network policies with LokiStack ([#19099](https://github.com/grafana/loki/issues/19099)) ([6e6f61f](https://github.com/grafana/loki/commit/6e6f61ff9bd88bfd7e7914de48c7d14aecf7748e))
+* **operator:** s3 validation reject endpoints that contain a URL path ([#19356](https://github.com/grafana/loki/issues/19356)) ([f6ef4d8](https://github.com/grafana/loki/commit/f6ef4d89fd3e6dc43dcee2ef62f2d4ecf77a4d0f))
+
+
+### Bug Fixes
+
+* **operator:** Do not deploy NetworkPolicies automatically on OCP 4.20 ([#19680](https://github.com/grafana/loki/issues/19680)) ([8df33ff](https://github.com/grafana/loki/commit/8df33ff659d53d17b68fb894879587b330e63607))
+* **operator:** Return quickstart script to working condition and improve rootless usage ([#19960](https://github.com/grafana/loki/issues/19960)) ([397da27](https://github.com/grafana/loki/commit/397da277753d771d8c1492dd3f4db4b208b3532d))
+
+
+### Code Refactoring
+
+* **operator:** consolidate image build workflows and improve documentation ([#19395](https://github.com/grafana/loki/issues/19395)) ([292a31e](https://github.com/grafana/loki/commit/292a31e56a36a2e2fef6afe765dbe5b0a2f8f13f))
+
 ## [0.8.0](https://github.com/grafana/loki/compare/operator/v0.7.1...operator/v0.8.0) (2025-03-17)
 
 

@@ -35,6 +35,7 @@ type JSONCmdable interface {
 	JSONObjLen(ctx context.Context, key, path string) *IntPointerSliceCmd
 	JSONSet(ctx context.Context, key, path string, value interface{}) *StatusCmd
 	JSONSetMode(ctx context.Context, key, path string, value interface{}, mode string) *StatusCmd
+	JSONSetWithArgs(ctx context.Context, key, path string, value interface{}, options *JSONSetArgsOptions) *StatusCmd
 	JSONStrAppend(ctx context.Context, key, path, value string) *IntPointerSliceCmd
 	JSONStrLen(ctx context.Context, key, path string) *IntPointerSliceCmd
 	JSONToggle(ctx context.Context, key, path string) *IntPointerSliceCmd
@@ -57,6 +58,25 @@ type JSONArrTrimArgs struct {
 	Stop  *int
 }
 
+// FPHAType is the floating-point type used for storing FP homogeneous arrays
+// in JSON.SET (Redis 8.8+).
+type FPHAType string
+
+const (
+	FPHATypeBF16 FPHAType = "BF16"
+	FPHATypeFP16 FPHAType = "FP16"
+	FPHATypeFP32 FPHAType = "FP32"
+	FPHATypeFP64 FPHAType = "FP64"
+)
+
+// JSONSetArgsOptions are the optional arguments for JSONSetWithArgs.
+// Mode is "NX" or "XX" (case-insensitive). FPHA, when set, forces Redis to
+// store all FP homogeneous arrays using the specified floating-point type.
+type JSONSetArgsOptions struct {
+	Mode string
+	FPHA FPHAType
+}
+
 type JSONCmd struct {
 	baseCmd
 	val      string
@@ -68,8 +88,9 @@ var _ Cmder = (*JSONCmd)(nil)
 func newJSONCmd(ctx context.Context, args ...interface{}) *JSONCmd {
 	return &JSONCmd{
 		baseCmd: baseCmd{
-			ctx:  ctx,
-			args: args,
+			ctx:     ctx,
+			args:    args,
+			cmdType: CmdTypeJSON,
 		},
 	}
 }
@@ -82,6 +103,7 @@ func (cmd *JSONCmd) SetVal(val string) {
 	cmd.val = val
 }
 
+// Val returns the result of the JSON.GET command as a string.
 func (cmd *JSONCmd) Val() string {
 	if len(cmd.val) == 0 && cmd.expanded != nil {
 		val, err := json.Marshal(cmd.expanded)
@@ -100,6 +122,7 @@ func (cmd *JSONCmd) Result() (string, error) {
 	return cmd.Val(), cmd.Err()
 }
 
+// Expanded returns the result of the JSON.GET command as unmarshalled JSON.
 func (cmd *JSONCmd) Expanded() (interface{}, error) {
 	if len(cmd.val) != 0 && cmd.expanded == nil {
 		err := json.Unmarshal([]byte(cmd.val), &cmd.expanded)
@@ -113,9 +136,15 @@ func (cmd *JSONCmd) Expanded() (interface{}, error) {
 
 func (cmd *JSONCmd) readReply(rd *proto.Reader) error {
 	// nil response from JSON.(M)GET (cmd.baseCmd.err will be "redis: nil")
+	// This happens when the key doesn't exist
 	if cmd.baseCmd.Err() == Nil {
 		cmd.val = ""
 		return Nil
+	}
+
+	// Handle other base command errors
+	if cmd.baseCmd.Err() != nil {
+		return cmd.baseCmd.Err()
 	}
 
 	if readType, err := rd.PeekReplyType(); err != nil {
@@ -125,6 +154,13 @@ func (cmd *JSONCmd) readReply(rd *proto.Reader) error {
 		size, err := rd.ReadArrayLen()
 		if err != nil {
 			return err
+		}
+
+		// Empty array means no results found for JSON path, but key exists
+		// This should return "[]", not an error
+		if size == 0 {
+			cmd.val = "[]"
+			return nil
 		}
 
 		expanded := make([]interface{}, size)
@@ -141,12 +177,21 @@ func (cmd *JSONCmd) readReply(rd *proto.Reader) error {
 			return err
 		} else if str == "" || err == Nil {
 			cmd.val = ""
+			return Nil
 		} else {
 			cmd.val = str
 		}
 	}
 
 	return nil
+}
+
+func (cmd *JSONCmd) Clone() Cmder {
+	return &JSONCmd{
+		baseCmd:  cmd.cloneBaseCmd(),
+		val:      cmd.val,
+		expanded: cmd.expanded, // interface{} can be shared as it should be immutable after parsing
+	}
 }
 
 // -------------------------------------------
@@ -159,8 +204,9 @@ type JSONSliceCmd struct {
 func NewJSONSliceCmd(ctx context.Context, args ...interface{}) *JSONSliceCmd {
 	return &JSONSliceCmd{
 		baseCmd: baseCmd{
-			ctx:  ctx,
-			args: args,
+			ctx:     ctx,
+			args:    args,
+			cmdType: CmdTypeJSONSlice,
 		},
 	}
 }
@@ -217,6 +263,18 @@ func (cmd *JSONSliceCmd) readReply(rd *proto.Reader) error {
 	return nil
 }
 
+func (cmd *JSONSliceCmd) Clone() Cmder {
+	var val []interface{}
+	if cmd.val != nil {
+		val = make([]interface{}, len(cmd.val))
+		copy(val, cmd.val)
+	}
+	return &JSONSliceCmd{
+		baseCmd: cmd.cloneBaseCmd(),
+		val:     val,
+	}
+}
+
 /*******************************************************************************
 *
 * IntPointerSliceCmd
@@ -233,8 +291,9 @@ type IntPointerSliceCmd struct {
 func NewIntPointerSliceCmd(ctx context.Context, args ...interface{}) *IntPointerSliceCmd {
 	return &IntPointerSliceCmd{
 		baseCmd: baseCmd{
-			ctx:  ctx,
-			args: args,
+			ctx:     ctx,
+			args:    args,
+			cmdType: CmdTypeIntPointerSlice,
 		},
 	}
 }
@@ -272,6 +331,18 @@ func (cmd *IntPointerSliceCmd) readReply(rd *proto.Reader) error {
 	}
 
 	return nil
+}
+
+func (cmd *IntPointerSliceCmd) Clone() Cmder {
+	var val []*int64
+	if cmd.val != nil {
+		val = make([]*int64, len(cmd.val))
+		copy(val, cmd.val)
+	}
+	return &IntPointerSliceCmd{
+		baseCmd: cmd.cloneBaseCmd(),
+		val:     val,
+	}
 }
 
 //------------------------------------------------------------------------------
@@ -533,6 +604,15 @@ func (c cmdable) JSONSet(ctx context.Context, key, path string, value interface{
 // the argument is a string or []byte when we assume that it can be passed directly as JSON.
 // For more information, see https://redis.io/commands/json.set
 func (c cmdable) JSONSetMode(ctx context.Context, key, path string, value interface{}, mode string) *StatusCmd {
+	return c.JSONSetWithArgs(ctx, key, path, value, &JSONSetArgsOptions{Mode: mode})
+}
+
+// JSONSetWithArgs sets the JSON value at the given path in the given key with optional arguments
+// for setting mode (NX/XX) and the FPHA (Floating-Point Homogeneous Array) type used for storing
+// FP arrays. The value must be something that can be marshaled to JSON (using encoding/JSON) unless
+// the argument is a string or []byte when we assume that it can be passed directly as JSON.
+// For more information, see https://redis.io/commands/json.set
+func (c cmdable) JSONSetWithArgs(ctx context.Context, key, path string, value interface{}, options *JSONSetArgsOptions) *StatusCmd {
 	var bytes []byte
 	var err error
 	switch v := value.(type) {
@@ -544,13 +624,17 @@ func (c cmdable) JSONSetMode(ctx context.Context, key, path string, value interf
 		bytes, err = json.Marshal(v)
 	}
 	args := []interface{}{"JSON.SET", key, path, util.BytesToString(bytes)}
-	if mode != "" {
-		switch strings.ToUpper(mode) {
-		case "XX", "NX":
-			args = append(args, strings.ToUpper(mode))
-
-		default:
-			panic("redis: JSON.SET mode must be NX or XX")
+	if options != nil {
+		if options.Mode != "" {
+			switch strings.ToUpper(options.Mode) {
+			case "XX", "NX":
+				args = append(args, strings.ToUpper(options.Mode))
+			default:
+				panic("redis: JSON.SET mode must be NX or XX")
+			}
+		}
+		if options.FPHA != "" {
+			args = append(args, "FPHA", string(options.FPHA))
 		}
 	}
 	cmd := NewStatusCmd(ctx, args...)

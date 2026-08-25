@@ -19,6 +19,7 @@ type IndexSet interface {
 	PutFile(ctx context.Context, tableName, userID, fileName string, file io.ReadSeeker) error
 	DeleteFile(ctx context.Context, tableName, userID, fileName string) error
 	IsFileNotFoundErr(err error) bool
+	IsRetryableErr(err error) bool
 	IsUserBasedIndexSet() bool
 }
 
@@ -104,6 +105,10 @@ func (i indexSet) DeleteFile(ctx context.Context, tableName, userID, fileName st
 
 func (i indexSet) IsFileNotFoundErr(err error) bool {
 	return i.client.IsFileNotFoundErr(err)
+}
+
+func (i indexSet) IsRetryableErr(err error) bool {
+	return i.client.IsRetryableErr(err)
 }
 
 func (i indexSet) IsUserBasedIndexSet() bool {

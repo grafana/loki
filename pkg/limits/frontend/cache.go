@@ -3,8 +3,6 @@ package frontend
 import (
 	"sync"
 	"time"
-
-	"github.com/coder/quartz"
 )
 
 type cache[K comparable, V any] interface {
@@ -36,16 +34,12 @@ type ttlcache[K comparable, V any] struct {
 	ttl           time.Duration
 	lastEvictedAt time.Time
 	mu            sync.RWMutex
-
-	// Used for tests.
-	clock quartz.Clock
 }
 
 func newTTLCache[K comparable, V any](ttl time.Duration) *ttlcache[K, V] {
 	return &ttlcache[K, V]{
 		items: make(map[K]item[V]),
 		ttl:   ttl,
-		clock: quartz.NewReal(),
 	}
 }
 
@@ -54,7 +48,7 @@ func (c *ttlcache[K, V]) Get(key K) (V, bool) {
 	var (
 		value  V
 		exists bool
-		now    = c.clock.Now()
+		now    = time.Now()
 	)
 	c.mu.RLock()
 	defer c.mu.RUnlock()
@@ -67,7 +61,7 @@ func (c *ttlcache[K, V]) Get(key K) (V, bool) {
 
 // Set implements the [cache] interface.
 func (c *ttlcache[K, V]) Set(key K, value V) {
-	now := c.clock.Now()
+	now := time.Now()
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	c.items[key] = item[V]{

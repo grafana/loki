@@ -3,17 +3,13 @@ package queryrangebase
 import (
 	"bytes"
 	"context"
-	"fmt"
 	"io"
 	"maps"
-	"math"
 	"net/http"
 	"slices"
 	"sort"
-	"strconv"
 	"time"
 
-	"github.com/gogo/status"
 	"github.com/grafana/dskit/httpgrpc"
 	jsoniter "github.com/json-iterator/go"
 	"github.com/prometheus/common/model"
@@ -38,9 +34,6 @@ var (
 		SortMapKeys:            true,
 		ValidateJsonRawMessage: true,
 	}.Froze()
-	errEndBeforeStart = httpgrpc.Errorf(http.StatusBadRequest, "end timestamp must not be before start time")
-	errNegativeStep   = httpgrpc.Errorf(http.StatusBadRequest, "zero or negative query resolution step widths are not accepted. Try a positive integer")
-	errStepTooSmall   = httpgrpc.Errorf(http.StatusBadRequest, "exceeded maximum resolution of 11,000 points per time series. Try increasing the value of the step parameter")
 
 	// PrometheusCodecForRangeQueries is a codec to encode and decode Loki range metric query requests and responses.
 	PrometheusCodecForRangeQueries = &prometheusCodec{
@@ -368,35 +361,4 @@ func sliceSamples(samples []logproto.LegacySample, minTs int64) []logproto.Legac
 	})
 
 	return samples[searchResult:]
-}
-
-func parseDurationMs(s string) (int64, error) {
-	if d, err := strconv.ParseFloat(s, 64); err == nil {
-		ts := d * float64(time.Second/time.Millisecond)
-		if ts > float64(math.MaxInt64) || ts < float64(math.MinInt64) {
-			return 0, httpgrpc.Errorf(http.StatusBadRequest, "cannot parse %q to a valid duration. It overflows int64", s)
-		}
-		return int64(ts), nil
-	}
-	if d, err := model.ParseDuration(s); err == nil {
-		return int64(d) / int64(time.Millisecond/time.Nanosecond), nil
-	}
-	return 0, httpgrpc.Errorf(http.StatusBadRequest, "cannot parse %q to a valid duration", s)
-}
-
-func encodeTime(t int64) string {
-	f := float64(t) / 1.0e3
-	return strconv.FormatFloat(f, 'f', -1, 64)
-}
-
-func encodeDurationMs(d int64) string {
-	return strconv.FormatFloat(float64(d)/float64(time.Second/time.Millisecond), 'f', -1, 64)
-}
-
-func decorateWithParamName(err error, field string) error {
-	errTmpl := "invalid parameter %q; %v"
-	if status, ok := status.FromError(err); ok {
-		return httpgrpc.Errorf(int(status.Code()), errTmpl, field, status.Message())
-	}
-	return fmt.Errorf(errTmpl, field, err)
 }

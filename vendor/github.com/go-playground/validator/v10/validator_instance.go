@@ -68,7 +68,7 @@ type FilterFunc func(ns []byte) bool
 
 // CustomTypeFunc allows for overriding or adding custom field type handler functions
 // field = field value of the type to return a value to be validated
-// example Valuer from sql drive see https://golang.org/src/database/sql/driver/types.go?s=1210:1293#L29
+// example Valuer from sql driver see https://golang.org/src/database/sql/driver/types.go?s=1210:1293#L29
 type CustomTypeFunc func(field reflect.Value) interface{}
 
 // TagNameFunc allows for adding of a custom tag name parser
@@ -96,6 +96,7 @@ type Validate struct {
 	hasTagNameFunc         bool
 	requiredStructEnabled  bool
 	privateFieldValidation bool
+	omitBlankFieldNames    bool
 }
 
 // New returns a new instance of 'validate' with sane defaults.
@@ -104,7 +105,6 @@ type Validate struct {
 // in essence only parsing your validation tags once per struct type.
 // Using multiple instances neglects the benefit of caching.
 func New(options ...Option) *Validate {
-
 	tc := new(tagCache)
 	tc.m.Store(make(map[string]*cTag))
 
@@ -126,7 +126,6 @@ func New(options ...Option) *Validate {
 
 	// must copy validators for separate validations to be used in each instance
 	for k, val := range bakedInValidators {
-
 		switch k {
 		// these require that even if the value is nil that the validation should run, omitempty still overrides this behaviour
 		case requiredIfTag, requiredUnlessTag, requiredWithTag, requiredWithAllTag, requiredWithoutTag, requiredWithoutAllTag,
@@ -183,7 +182,7 @@ func (v Validate) ValidateMapCtx(ctx context.Context, data map[string]interface{
 				errs[field] = errors.New("The field: '" + field + "' is not a map to dive")
 			}
 		} else if ruleStr, ok := rule.(string); ok {
-			err := v.VarCtx(ctx, data[field], ruleStr)
+			err := v.VarWithKeyCtx(ctx, field, data[field], ruleStr)
 			if err != nil {
 				errs[field] = err
 			}
@@ -233,30 +232,12 @@ func (v *Validate) RegisterValidationCtx(tag string, fn FuncCtx, callValidationE
 	return v.registerValidation(tag, fn, false, nilCheckable)
 }
 
-func (v *Validate) registerValidation(tag string, fn FuncCtx, bakedIn bool, nilCheckable bool) error {
-	if len(tag) == 0 {
-		return errors.New("function Key cannot be empty")
-	}
-
-	if fn == nil {
-		return errors.New("function cannot be empty")
-	}
-
-	_, ok := restrictedTags[tag]
-	if !bakedIn && (ok || strings.ContainsAny(tag, restrictedTagChars)) {
-		panic(fmt.Sprintf(restrictedTagErr, tag))
-	}
-	v.validations[tag] = internalValidationFuncWrapper{fn: fn, runValidationOnNil: nilCheckable}
-	return nil
-}
-
 // RegisterAlias registers a mapping of a single validation tag that
 // defines a common or complex set of validation(s) to simplify adding validation
 // to structs.
 //
 // NOTE: this function is not thread-safe it is intended that these all be registered prior to any validation
 func (v *Validate) RegisterAlias(alias, tags string) {
-
 	_, ok := restrictedTags[alias]
 
 	if ok || strings.ContainsAny(alias, restrictedTagChars) {
@@ -280,7 +261,6 @@ func (v *Validate) RegisterStructValidation(fn StructLevelFunc, types ...interfa
 // NOTE:
 // - this method is not thread-safe it is intended that these all be registered prior to any validation
 func (v *Validate) RegisterStructValidationCtx(fn StructLevelFuncCtx, types ...interface{}) {
-
 	if v.structLevelFuncs == nil {
 		v.structLevelFuncs = make(map[reflect.Type]StructLevelFuncCtx)
 	}
@@ -327,7 +307,6 @@ func (v *Validate) RegisterStructValidationMapRules(rules map[string]string, typ
 //
 // NOTE: this method is not thread-safe it is intended that these all be registered prior to any validation
 func (v *Validate) RegisterCustomTypeFunc(fn CustomTypeFunc, types ...interface{}) {
-
 	if v.customFuncs == nil {
 		v.customFuncs = make(map[reflect.Type]CustomTypeFunc)
 	}
@@ -341,7 +320,6 @@ func (v *Validate) RegisterCustomTypeFunc(fn CustomTypeFunc, types ...interface{
 
 // RegisterTranslation registers translations against the provided tag.
 func (v *Validate) RegisterTranslation(tag string, trans ut.Translator, registerFn RegisterTranslationsFunc, translationFn TranslationFunc) (err error) {
-
 	if v.transTagFunc == nil {
 		v.transTagFunc = make(map[ut.Translator]map[string]TranslationFunc)
 	}
@@ -375,7 +353,6 @@ func (v *Validate) Struct(s interface{}) error {
 // It returns InvalidValidationError for bad values passed in and nil or ValidationErrors as error otherwise.
 // You will need to assert the error if it's not nil eg. err.(validator.ValidationErrors) to access the array of errors.
 func (v *Validate) StructCtx(ctx context.Context, s interface{}) (err error) {
-
 	val := reflect.ValueOf(s)
 	top := val
 
@@ -452,7 +429,7 @@ func (v *Validate) StructFilteredCtx(ctx context.Context, s interface{}, fn Filt
 }
 
 // StructPartial validates the fields passed in only, ignoring all others.
-// Fields may be provided in a namespaced fashion relative to the  struct provided
+// Fields may be provided in a namespaced fashion relative to the struct provided
 // eg. NestedStruct.Field or NestedArrayField[0].Struct.Name
 //
 // It returns InvalidValidationError for bad values passed in and nil or ValidationErrors as error otherwise.
@@ -463,7 +440,7 @@ func (v *Validate) StructPartial(s interface{}, fields ...string) error {
 
 // StructPartialCtx validates the fields passed in only, ignoring all others and allows passing of contextual
 // validation information via context.Context
-// Fields may be provided in a namespaced fashion relative to the  struct provided
+// Fields may be provided in a namespaced fashion relative to the struct provided
 // eg. NestedStruct.Field or NestedArrayField[0].Struct.Name
 //
 // It returns InvalidValidationError for bad values passed in and nil or ValidationErrors as error otherwise.
@@ -492,10 +469,8 @@ func (v *Validate) StructPartialCtx(ctx context.Context, s interface{}, fields .
 	name := typ.Name()
 
 	for _, k := range fields {
-
 		flds := strings.Split(k, namespaceSeparator)
 		if len(flds) > 0 {
-
 			vd.misc = append(vd.misc[0:0], name...)
 			// Don't append empty name for unnamed structs
 			if len(vd.misc) != 0 {
@@ -503,7 +478,6 @@ func (v *Validate) StructPartialCtx(ctx context.Context, s interface{}, fields .
 			}
 
 			for _, s := range flds {
-
 				idx := strings.Index(s, leftBracket)
 
 				if idx != -1 {
@@ -519,7 +493,6 @@ func (v *Validate) StructPartialCtx(ctx context.Context, s interface{}, fields .
 						idx = strings.Index(s, leftBracket)
 					}
 				} else {
-
 					vd.misc = append(vd.misc, s...)
 					vd.includeExclude[string(vd.misc)] = struct{}{}
 				}
@@ -542,7 +515,7 @@ func (v *Validate) StructPartialCtx(ctx context.Context, s interface{}, fields .
 }
 
 // StructExcept validates all fields except the ones passed in.
-// Fields may be provided in a namespaced fashion relative to the  struct provided
+// Fields may be provided in a namespaced fashion relative to the struct provided
 // i.e. NestedStruct.Field or NestedArrayField[0].Struct.Name
 //
 // It returns InvalidValidationError for bad values passed in and nil or ValidationErrors as error otherwise.
@@ -553,7 +526,7 @@ func (v *Validate) StructExcept(s interface{}, fields ...string) error {
 
 // StructExceptCtx validates all fields except the ones passed in and allows passing of contextual
 // validation information via context.Context
-// Fields may be provided in a namespaced fashion relative to the  struct provided
+// Fields may be provided in a namespaced fashion relative to the struct provided
 // i.e. NestedStruct.Field or NestedArrayField[0].Struct.Name
 //
 // It returns InvalidValidationError for bad values passed in and nil or ValidationErrors as error otherwise.
@@ -582,7 +555,6 @@ func (v *Validate) StructExceptCtx(ctx context.Context, s interface{}, fields ..
 	name := typ.Name()
 
 	for _, key := range fields {
-
 		vd.misc = vd.misc[0:0]
 
 		if len(name) > 0 {
@@ -708,4 +680,79 @@ func (v *Validate) VarWithValueCtx(ctx context.Context, field interface{}, other
 	}
 	v.pool.Put(vd)
 	return
+}
+
+// VarWithKey validates a single variable with a key to be included in the returned error using tag style validation
+// eg.
+// var s string
+// validate.VarWithKey("email_address", s, "required,email")
+//
+// WARNING: a struct can be passed for validation eg. time.Time is a struct or
+// if you have a custom type and have registered a custom type handler, so must
+// allow it; however unforeseen validations will occur if trying to validate a
+// struct that is meant to be passed to 'validate.Struct'
+//
+// It returns InvalidValidationError for bad values passed in and nil or ValidationErrors as error otherwise.
+// You will need to assert the error if it's not nil eg. err.(validator.ValidationErrors) to access the array of errors.
+// validate Array, Slice and maps fields which may contain more than one error
+func (v *Validate) VarWithKey(key string, field interface{}, tag string) error {
+	return v.VarWithKeyCtx(context.Background(), key, field, tag)
+}
+
+// VarWithKeyCtx validates a single variable with a key to be included in the returned error using tag style validation
+// and allows passing of contextual validation information via context.Context.
+// eg.
+// var s string
+// validate.VarWithKeyCtx("email_address", s, "required,email")
+//
+// WARNING: a struct can be passed for validation eg. time.Time is a struct or
+// if you have a custom type and have registered a custom type handler, so must
+// allow it; however unforeseen validations will occur if trying to validate a
+// struct that is meant to be passed to 'validate.Struct'
+//
+// It returns InvalidValidationError for bad values passed in and nil or ValidationErrors as error otherwise.
+// You will need to assert the error if it's not nil eg. err.(validator.ValidationErrors) to access the array of errors.
+// validate Array, Slice and maps fields which may contain more than one error
+func (v *Validate) VarWithKeyCtx(ctx context.Context, key string, field interface{}, tag string) (err error) {
+	if len(tag) == 0 || tag == skipValidationTag {
+		return nil
+	}
+
+	ctag := v.fetchCacheTag(tag)
+
+	cField := &cField{
+		name:       key,
+		altName:    key,
+		namesEqual: true,
+	}
+
+	val := reflect.ValueOf(field)
+	vd := v.pool.Get().(*validate)
+	vd.top = val
+	vd.isPartial = false
+	vd.traverseField(ctx, val, val, vd.ns[0:0], vd.actualNs[0:0], cField, ctag)
+
+	if len(vd.errs) > 0 {
+		err = vd.errs
+		vd.errs = nil
+	}
+	v.pool.Put(vd)
+	return
+}
+
+func (v *Validate) registerValidation(tag string, fn FuncCtx, bakedIn bool, nilCheckable bool) error {
+	if len(tag) == 0 {
+		return errors.New("function Key cannot be empty")
+	}
+
+	if fn == nil {
+		return errors.New("function cannot be empty")
+	}
+
+	_, ok := restrictedTags[tag]
+	if !bakedIn && (ok || strings.ContainsAny(tag, restrictedTagChars)) {
+		panic(fmt.Sprintf(restrictedTagErr, tag))
+	}
+	v.validations[tag] = internalValidationFuncWrapper{fn: fn, runValidationOnNil: nilCheckable}
+	return nil
 }

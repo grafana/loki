@@ -68,9 +68,6 @@ type Push struct {
 	// auth
 	username, password string
 
-	// Will add these label to the logs pushed to loki
-	labelName, labelValue, streamName, streamValue string
-
 	// push retry and backoff
 	backoff *backoff.Config
 
@@ -216,7 +213,7 @@ func (p *Push) buildPayload(ctx context.Context) ([]byte, error) {
 		streams = append(streams, logproto.Stream{
 			Labels:  s,
 			Entries: entries,
-			Hash:    lbls.Hash(),
+			Hash:    labels.StableHash(lbls),
 		})
 	}
 
@@ -409,9 +406,9 @@ func internalEntry(
 	base string,
 	lbls labels.Labels,
 ) string {
-	for _, l := range lbls {
+	lbls.Range(func(l labels.Label) {
 		base += fmt.Sprintf(" %s=\"%s\"", l.Name, l.Value)
-	}
+	})
 
 	return base
 }

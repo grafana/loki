@@ -7654,6 +7654,7 @@ X__builtin_nanl
 X__builtin_object_size
 X__builtin_popcount
 X__builtin_popcountl
+X__builtin_popcountll
 X__builtin_prefetch
 X__builtin_printf
 X__builtin_rintf
@@ -8756,6 +8757,9 @@ Xpthread_self
 Xpthread_setcancelstate
 Xpthread_setspecific
 Xpthread_sigmask
+Xpthread_barrier_destroy
+Xpthread_barrier_init
+Xpthread_barrier_wait
 Xptrace
 Xptsname
 Xptsname_r
@@ -8934,6 +8938,7 @@ Xsrandom
 Xsscanf
 Xstat
 Xstat64
+Xstatfs
 Xstatvfs
 Xstatx
 Xstderr

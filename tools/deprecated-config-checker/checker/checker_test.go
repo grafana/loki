@@ -15,6 +15,7 @@ const (
 
 var (
 	expectedConfigDeletes = []string{
+		"legacy-read-mode",
 		"ingester.max_transfer_retries",
 		"querier.engine.timeout",
 		"query_range.split_queries_by_interval",
@@ -23,6 +24,7 @@ var (
 		"frontend_worker.match_max_concurrent",
 		"common.storage.s3.sse_encryption",
 		"ruler.storage.s3.sse_encryption",
+		"ruler.remote_write.client",
 		"storage_config.boltdb_shipper.use_boltdb_shipper_as_backup",
 		"storage_config.aws.sse_encryption",
 		"storage_config.s3.sse_encryption",
@@ -34,21 +36,15 @@ var (
 		"compactor.deletion_mode",
 		"compactor.shared_store",
 		"compactor.shared_store_key_prefix",
+		"chunk_store_config.write_dedupe_cache_config",
+		"chunk_store_config.cache_lookups_older_than",
+		"limits_config.unordered_writes",
 		"limits_config.enforce_metric_name",
 		"limits_config.ruler_evaluation_delay_duration",
-	}
-
-	expectedConfigDeprecates = []string{
-		"legacy-read-mode",
-		"ruler.remote_write.client",
-		"index_gateway.ring.replication_factor",
-		"storage_config.bigtable",
-		"storage_config.cassandra",
-		"storage_config.boltdb",
-		"storage_config.grpc_store",
-		"storage_config.aws.dynamodb",
-		"chunk_store_config.write_dedupe_cache_config",
-		"limits_config.unordered_writes",
+		"limits_config.allow_deletes",
+		"limits_config.ruler_enable_wal_replay",
+		"limits_config.per_tenant_override_config",
+		"limits_config.per_tenant_override_period",
 		"limits_config.ruler_remote_write_url",
 		"limits_config.ruler_remote_write_timeout",
 		"limits_config.ruler_remote_write_headers",
@@ -62,9 +58,17 @@ var (
 		"limits_config.ruler_remote_write_queue_max_backoff",
 		"limits_config.ruler_remote_write_queue_retry_on_ratelimit",
 		"limits_config.ruler_remote_write_sigv4_config",
-		"limits_config.per_tenant_override_config",
-		"limits_config.per_tenant_override_period",
-		"limits_config.allow_deletes",
+		"storage_config.bigtable",
+		"storage_config.cassandra",
+		"storage_config.boltdb",
+		"storage_config.grpc_store",
+		"storage_config.aws.dynamodb",
+		"storage_config.index_queries_cache_config",
+		"storage_config.index_cache_validity",
+		"storage_config.disable_broad_index_queries",
+		"schema_config.configs.[0].row_shards",
+		"schema_config.configs.[0].chunks",
+		"schema_config.configs.[0].index.tags",
 		"schema_config.configs.[1].store",
 		"schema_config.configs.[1].object_store",
 		"schema_config.configs.[2].store",
@@ -83,15 +87,25 @@ var (
 		"schema_config.configs.[8].object_store",
 	}
 
-	expectedRuntimeConfigDeletes = []string{
-		"overrides.foo.ruler_evaluation_delay_duration",
-		"overrides.foo.enforce_metric_name",
-		"overrides.bar.ruler_evaluation_delay_duration",
-		"overrides.bar.enforce_metric_name",
+	expectedConfigDeprecates = []string{
+		"index_gateway.ring.replication_factor",
 	}
 
-	expectedRuntimeConfigDeprecates = []string{
+	expectedRuntimeConfigDeletes = []string{
 		"overrides.foo.unordered_writes",
+		"overrides.foo.ruler_evaluation_delay_duration",
+		"overrides.foo.enforce_metric_name",
+		"overrides.foo.allow_deletes",
+		"overrides.foo.ruler_enable_wal_replay",
+		"overrides.foo.per_tenant_override_config",
+		"overrides.foo.per_tenant_override_period",
+		"overrides.bar.unordered_writes",
+		"overrides.bar.ruler_evaluation_delay_duration",
+		"overrides.bar.enforce_metric_name",
+		"overrides.bar.allow_deletes",
+		"overrides.bar.ruler_enable_wal_replay",
+		"overrides.bar.per_tenant_override_config",
+		"overrides.bar.per_tenant_override_period",
 		"overrides.foo.ruler_remote_write_url",
 		"overrides.foo.ruler_remote_write_timeout",
 		"overrides.foo.ruler_remote_write_headers",
@@ -105,10 +119,6 @@ var (
 		"overrides.foo.ruler_remote_write_queue_max_backoff",
 		"overrides.foo.ruler_remote_write_queue_retry_on_ratelimit",
 		"overrides.foo.ruler_remote_write_sigv4_config",
-		"overrides.foo.per_tenant_override_config",
-		"overrides.foo.per_tenant_override_period",
-		"overrides.foo.allow_deletes",
-		"overrides.bar.unordered_writes",
 		"overrides.bar.ruler_remote_write_url",
 		"overrides.bar.ruler_remote_write_timeout",
 		"overrides.bar.ruler_remote_write_headers",
@@ -122,10 +132,9 @@ var (
 		"overrides.bar.ruler_remote_write_queue_max_backoff",
 		"overrides.bar.ruler_remote_write_queue_retry_on_ratelimit",
 		"overrides.bar.ruler_remote_write_sigv4_config",
-		"overrides.bar.per_tenant_override_config",
-		"overrides.bar.per_tenant_override_period",
-		"overrides.bar.allow_deletes",
 	}
+
+	expectedRuntimeConfigDeprecates = []string{}
 )
 
 func TestConfigDeprecatesAndDeletes(t *testing.T) {

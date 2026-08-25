@@ -60,7 +60,7 @@ type IndexStatsCacheConfig struct {
 
 // RegisterFlags registers flags.
 func (cfg *IndexStatsCacheConfig) RegisterFlags(f *flag.FlagSet) {
-	cfg.ResultsCacheConfig.RegisterFlagsWithPrefix(f, "frontend.index-stats-results-cache.")
+	cfg.RegisterFlagsWithPrefix(f, "frontend.index-stats-results-cache.")
 }
 
 func (cfg *IndexStatsCacheConfig) Validate() error {

@@ -28,9 +28,9 @@ var Go = Register(MustNewLexer(
 func goRules() Rules {
 	return Rules{
 		"root": {
-			{`\n`, Text, nil},
-			{`\s+`, Text, nil},
-			{`\\\n`, Text, nil},
+			{`\n`, TextWhitespace, nil},
+			{`\s+`, TextWhitespace, nil},
+			{`//[^\s\n\r][^\n\r]*`, CommentPreproc, nil},
 			{`//[^\n\r]*`, CommentSingle, nil},
 			{`/(\\\n)?[*](.|\n)*?[*](\\\n)?/`, CommentMultiline, nil},
 			{`(import|package)\b`, KeywordNamespace, nil},

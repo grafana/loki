@@ -1,0 +1,54 @@
+target: querier
+auth_enabled: true  # match prod
+
+server:
+  http_listen_port: 3100
+  grpc_listen_port: 9095
+
+common:
+  instance_addr: 127.0.0.1
+  path_prefix: /tmp/loki
+  replication_factor: 1
+  ring:
+    kvstore:
+      store: inmemory
+  compactor_address: http://localhost:3102
+
+# Point to prod-forwarded scheduler
+querier:
+  query_store_only: true
+  multi_tenant_queries_enabled: true
+  per_request_limits_enabled: true
+  max_concurrent: 6
+
+query_scheduler:
+  use_scheduler_ring: false  # explicit override
+
+bloom_gateway:
+  enabled: true
+  client:
+    addresses: localhost:9099
+
+# Object storage — must match prod credentials
+storage_config:
+  aws:
+    bucketnames: loki-data
+    region: us-east-1
+    access_key_id:
+    secret_access_key:
+    session_token:
+  tsdb_shipper:
+    active_index_directory: /data/tsdb-index
+    cache_location: /data/tsdb-cache
+    index_gateway_client:
+      server_address: localhost:9096
+
+schema_config:
+  configs:
+    - from: 2020-10-24
+      store: tsdb
+      object_store: s3
+      schema: v13
+      index:
+        prefix: index_
+        period: 24h

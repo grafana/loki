@@ -5,6 +5,7 @@
     <filename>*.toml</filename>
     <filename>Pipfile</filename>
     <filename>poetry.lock</filename>
+    <filename>uv.lock</filename>
     <mime_type>text/x-toml</mime_type>
   </config>
   <rules>

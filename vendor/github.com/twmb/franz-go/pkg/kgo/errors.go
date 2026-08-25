@@ -7,7 +7,22 @@ import (
 	"io"
 	"net"
 	"os"
+	"syscall"
+
+	"github.com/twmb/franz-go/pkg/kerr"
 )
+
+// IsRetryableBrokerErr returns whether the client considers an error from a
+// broker retrayble. This returns true specifically if the client thinks it can
+// retry whatever it was just trying to do with a broker. It returns false in
+// all other cases.
+//
+// This can used external to the library to help filter errors if use kgo
+// hooks: errors may be sent to hooks before the client retries whatever it was
+// just attempting.
+func IsRetryableBrokerErr(err error) bool {
+	return isRetryableBrokerErr(err)
+}
 
 func isRetryableBrokerErr(err error) bool {
 	// The error could be nil if we are evaluating multiple errors at once,
@@ -41,14 +56,37 @@ func isRetryableBrokerErr(err error) bool {
 	// implements Temporary, so if we test that first, it'll return false
 	// in many cases when we want to return true from os.SyscallError.
 	if se := (*os.SyscallError)(nil); errors.As(err, &se) {
-		// If a dial fails, potentially we could retry if the resolver
-		// had a temporary hiccup, but we will err on the side of this
-		// being a slightly less temporary error.
+		// Non-timeout dial errors are deliberately *not* retryable here.
+		// The carve-out forces every caller that wants dial-error retry
+		// behavior to opt in explicitly, because the right recovery
+		// strategy varies by call site:
+		//
+		//   - Single bad seed bootstrap: should fail fast so the user
+		//     finds out about the typo'd address.
+		//   - cl.broker() unpinned admin: should rotate to a different
+		//     broker via shouldRetryNext, which calls cl.broker()'s
+		//     built-in rotation.
+		//   - Cached controller/coordinator: should clear the cache and
+		//     re-resolve, then retry (handled by failDial).
+		//   - Broker pinned by ID (Broker.RetriableRequest): should retry
+		//     the same broker bounded by retryTimeout (also failDial).
+		//   - Sink (produce) and source (fetch): should refresh metadata
+		//     and remap to the new partition leader (handled at the
+		//     sink/source call sites).
+		//
+		// Returning true here would lump all of these into a generic
+		// retry loop and silently mask the call-site recovery behavior.
 		return !isDialNonTimeoutErr(err)
 	}
 	// EOF can be returned if a broker kills a connection unexpectedly, and
 	// we can retry that. Same for ErrClosed.
 	if errors.Is(err, net.ErrClosed) || errors.Is(err, io.EOF) {
+		// If the FIRST read is EOF, that is usually not a good sign,
+		// often it's from bad SASL. We err on the side of pessimism
+		// and do not retry.
+		if ee := (*ErrFirstReadEOF)(nil); errors.As(err, &ee) && !ee.retry {
+			return false
+		}
 		return true
 	}
 	// We could have a retryable producer ID failure, which then bubbled up
@@ -98,6 +136,32 @@ func isAnyDialErr(err error) bool {
 	return errors.As(err, &ne) && ne.Op == "dial"
 }
 
+// isPermanentDialErr reports whether a dial error is a hard configuration
+// problem that no amount of retrying will fix. We treat the following as
+// permanent:
+//
+//   - DNS NXDOMAIN: the host genuinely does not exist.
+//   - EACCES / EPERM: local socket permission denied.
+//
+// Everything else dial-shaped (ECONNREFUSED, EHOSTUNREACH, ENETUNREACH,
+// dial timeouts, ...) is considered transient. ECONNREFUSED in particular
+// is the canonical signal that a broker is mid-restart (the listener is
+// closed before the JVM exits, and not yet bound after it starts) and is
+// the most common dial error worth retrying.
+func isPermanentDialErr(err error) bool {
+	if !isAnyDialErr(err) {
+		return false
+	}
+	var dnsErr *net.DNSError
+	if errors.As(err, &dnsErr) && dnsErr.IsNotFound {
+		return true
+	}
+	if errors.Is(err, syscall.EACCES) || errors.Is(err, syscall.EPERM) {
+		return true
+	}
+	return false
+}
+
 func isContextErr(err error) bool {
 	return errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded)
 }
@@ -130,9 +194,10 @@ var (
 	// know about (maybe missing from metadata responses now).
 	errUnknownBroker = errors.New("unknown broker")
 
-	// A temporary error returned when a broker chosen for a request is
-	// stopped due to a concurrent metadata response.
-	errChosenBrokerDead = errors.New("the internal broker struct chosen to issue this request has died--either the broker id is migrating or no longer exists")
+	// A temporary error returned when a broker connection has died,
+	// either from a metadata update or from the connection closing
+	// while a request was in-flight.
+	errChosenBrokerDead = errors.New("the broker connection has died and the request will be retried on a new connection")
 
 	// If a broker repeatedly gives us tiny sasl lifetimes, we fail a
 	// request after a few tries to forcefully kill the connection and
@@ -172,6 +237,12 @@ var (
 	errMissingMetadataPartition = errors.New("metadata update is missing a partition that we were previously using")
 
 	errNoCommittedOffset = errors.New("partition has no prior committed offset")
+
+	// Returned by the 848 heartbeat closure when it detects an assignment
+	// change. The heartbeat loop treats this like RebalanceInProgress but
+	// suppresses further heartbeat requests so that a second heartbeat
+	// cannot see stale assignment state and miss a revocation.
+	errReassigned848 = errors.New("848 reassignment detected")
 
 	//////////////
 	// EXTERNAL //
@@ -218,8 +289,9 @@ var (
 // the connection truly was severed before a response was received), but this
 // error can help you quickly check common problems.
 type ErrFirstReadEOF struct {
-	kind uint8
-	err  error
+	kind  uint8
+	err   error
+	retry bool
 }
 
 type errProducerIDLoadFail struct {
@@ -236,16 +308,19 @@ func (e *errProducerIDLoadFail) Error() string {
 func (e *errProducerIDLoadFail) Unwrap() error { return e.err }
 
 const (
-	firstReadSASL uint8 = iota
+	firstReadDial uint8 = iota
 	firstReadTLS
+	firstReadSASL
 )
 
 func (e *ErrFirstReadEOF) Error() string {
 	switch e.kind {
+	case firstReadDial:
+		return "broker closed the connection immediately after a dial, which often happens if the client is using TLS when the broker is not expecting it: is TLS misconfigured on the client or the broker?"
 	case firstReadTLS:
-		return "broker closed the connection immediately after a dial, which happens if the client is using TLS when the broker is not expecting it: is TLS misconfigured on the client or the broker?"
+		return "broker closed the connection immediately during api versions negotiation, which often happens when the broker requires TLS but the client is using plaintext: is TLS missing?"
 	default: // firstReadSASL
-		return "broker closed the connection immediately after a request was issued, which happens when SASL is required but not provided: is SASL missing?"
+		return "broker closed the connection immediately after a request was issued, which often happens when SASL is required but not provided: is SASL missing?"
 	}
 }
 
@@ -263,15 +338,20 @@ type ErrDataLoss struct {
 	// ConsumedTo is what the client had consumed to for this partition before
 	// data loss was detected.
 	ConsumedTo int64
+	// ConsumedToEpoch is the epoch for the offset the client was currently
+	// consuming.
+	ConsumedToEpoch int32
 	// ResetTo is what the client reset the partition to; everything from
 	// ResetTo to ConsumedTo was lost.
 	ResetTo int64
+	// ResetToEpoch is the epoch the client was reset to.
+	ResetToEpoch int32
 }
 
 func (e *ErrDataLoss) Error() string {
 	return fmt.Sprintf("topic %s partition %d lost records;"+
-		" the client consumed to offset %d but was reset to offset %d",
-		e.Topic, e.Partition, e.ConsumedTo, e.ResetTo)
+		" the client consumed to offset %d epoch %d but was reset to offset %d epoch %d",
+		e.Topic, e.Partition, e.ConsumedTo, e.ConsumedToEpoch, e.ResetTo, e.ResetToEpoch)
 }
 
 type errUnknownController struct {
@@ -334,3 +414,42 @@ func isDecompressErr(err error) bool {
 	var ed *errDecompress
 	return errors.As(err, &ed)
 }
+
+func errCodeMessage(code int16, errMessage *string) error {
+	if err := kerr.ErrorForCode(code); err != nil {
+		if errMessage != nil {
+			return fmt.Errorf("%w: %s", err, *errMessage)
+		}
+		return err
+	}
+	return nil
+}
+
+type errApiVersionsReset struct {
+	err error
+}
+
+// errShareConsumerLeft is reported via shareAckCallback for any
+// Record.Ack or MarkAcks call made after LeaveGroup has begun
+// closing the share consumer. Unexported on purpose: there is no
+// importable sentinel for users to errors.Is against, because the
+// situation is non-actionable -- the broker session is gone. Users
+// should treat this as fatal-for-this-record and not retry.
+var errShareConsumerLeft = errors.New("share consumer has left the group; ack will not be delivered")
+
+// errBrokerOmittedAckPartition is reported via shareAckCallback when
+// the broker's ShareFetch or ShareAcknowledge response did not echo a
+// partition we sent acks for. The broker did not return a Kafka error
+// code for the partition; it simply omitted it from the response,
+// which is a protocol violation. Unexported on purpose: like
+// errShareConsumerLeft, there is no importable sentinel for users to
+// errors.Is against. The condition is non-actionable per-record;
+// the right user response is to log and treat the ack as failed.
+//
+// We previously surfaced this as kerr.UnknownServerError, which was
+// misleading because no error code was returned by the broker. The
+// dedicated sentinel makes the actual situation explicit.
+var errBrokerOmittedAckPartition = errors.New("broker omitted partition from share fetch response that we sent acks for")
+
+func (e *errApiVersionsReset) Error() string { return e.err.Error() }
+func (e *errApiVersionsReset) Unwrap() error { return e.err }

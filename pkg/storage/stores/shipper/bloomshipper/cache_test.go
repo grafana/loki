@@ -1,11 +1,9 @@
 package bloomshipper
 
 import (
-	"context"
 	"io/fs"
 	"os"
 	"path/filepath"
-	"sync"
 	"testing"
 	"time"
 
@@ -13,51 +11,8 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/v3/pkg/compression"
-	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/bloomshipper/config"
 )
-
-type mockCache[K comparable, V any] struct {
-	sync.Mutex
-	cache map[K]V
-}
-
-func (m *mockCache[K, V]) Store(_ context.Context, keys []K, values []V) error {
-	m.Lock()
-	defer m.Unlock()
-	for i := range keys {
-		m.cache[keys[i]] = values[i]
-	}
-	return nil
-}
-
-func (m *mockCache[K, V]) Fetch(_ context.Context, keys []K) (found []K, values []V, missing []K, err error) {
-	m.Lock()
-	defer m.Unlock()
-	for _, key := range keys {
-		buf, ok := m.cache[key]
-		if ok {
-			found = append(found, key)
-			values = append(values, buf)
-		} else {
-			missing = append(missing, key)
-		}
-	}
-	return
-}
-
-func (m *mockCache[K, V]) Stop() {
-}
-
-func (m *mockCache[K, V]) GetCacheType() stats.CacheType {
-	return "mock"
-}
-
-func newTypedMockCache[K comparable, V any]() *mockCache[K, V] {
-	return &mockCache[K, V]{
-		cache: make(map[K]V),
-	}
-}
 
 func Test_LoadBlocksDirIntoCache(t *testing.T) {
 	logger := log.NewNopLogger()

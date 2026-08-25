@@ -12,6 +12,8 @@ var (
 	hasAVX512 = cpuid.CPU.Has(cpuid.AVX512F)
 )
 
+const hasNEON = false
+
 //go:noescape
 func accumAVX2(acc *[8]u64, data, key unsafe.Pointer, len u64)
 
@@ -25,7 +27,13 @@ func accumSSE(acc *[8]u64, data, key unsafe.Pointer, len u64)
 func accumBlockAVX2(acc *[8]u64, data, key unsafe.Pointer)
 
 //go:noescape
+func accumBlockAVX512(acc *[8]u64, data, key unsafe.Pointer)
+
+//go:noescape
 func accumBlockSSE(acc *[8]u64, data, key unsafe.Pointer)
+
+func accumNEON(acc *[8]u64, data, key unsafe.Pointer, len u64) { panic("unreachable") }
+func accumBlockNEON(acc *[8]u64, data, key unsafe.Pointer)     { panic("unreachable") }
 
 func withOverrides(avx512, avx2, sse2 bool, cb func()) {
 	avx512Orig, avx2Orig, sse2Orig := hasAVX512, hasAVX2, hasSSE2

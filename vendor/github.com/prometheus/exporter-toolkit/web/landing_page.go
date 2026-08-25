@@ -12,7 +12,6 @@
 // limitations under the License.
 
 //go:build !genassets
-// +build !genassets
 
 //go:generate go run -tags genassets gen_assets.go
 
@@ -38,6 +37,7 @@ type LandingConfig struct {
 	ExtraHTML   string         // Additional HTML to be embedded.
 	ExtraCSS    string         // Additional CSS to be embedded.
 	Version     string         // The version displayed.
+	Profiling   string         // If false, don't display profiling links.
 }
 
 // LandingForm provides a configuration struct for creating a POST form on the landing page.
@@ -77,6 +77,8 @@ var (
 func NewLandingPage(c LandingConfig) (*LandingPageHandler, error) {
 	var buf bytes.Buffer
 
+	c.Form.Action = strings.TrimPrefix(c.Form.Action, "/")
+
 	length := 0
 	for _, input := range c.Form.Inputs {
 		inputLength := len(input.Label)
@@ -100,6 +102,10 @@ func NewLandingPage(c LandingConfig) (*LandingPageHandler, error) {
 		c.RoutePrefix = "/"
 	} else if !strings.HasSuffix(c.RoutePrefix, "/") {
 		c.RoutePrefix += "/"
+	}
+
+	if c.Profiling == "" {
+		c.Profiling = "true"
 	}
 	// Strip leading '/' from Links if present
 	for i, link := range c.Links {

@@ -6,6 +6,8 @@ import (
 	"sync"
 	"time"
 
+	"go.uber.org/atomic"
+
 	"github.com/go-kit/log/level"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
@@ -31,11 +33,15 @@ type WALConfig struct {
 	CheckpointDuration  time.Duration    `yaml:"checkpoint_duration"`
 	FlushOnShutdown     bool             `yaml:"flush_on_shutdown"`
 	ReplayMemoryCeiling flagext.ByteSize `yaml:"replay_memory_ceiling"`
+	DiskFullThreshold   float64          `yaml:"disk_full_threshold"`
 }
 
 func (cfg *WALConfig) Validate() error {
 	if cfg.Enabled && cfg.CheckpointDuration < 1 {
 		return fmt.Errorf("invalid checkpoint duration: %v", cfg.CheckpointDuration)
+	}
+	if cfg.DiskFullThreshold < 0 || cfg.DiskFullThreshold > 1 {
+		return fmt.Errorf("invalid disk full threshold: %v (must be between 0 and 1)", cfg.DiskFullThreshold)
 	}
 	return nil
 }
@@ -46,6 +52,7 @@ func (cfg *WALConfig) RegisterFlags(f *flag.FlagSet) {
 	f.BoolVar(&cfg.Enabled, "ingester.wal-enabled", true, "Enable writing of ingested data into WAL.")
 	f.DurationVar(&cfg.CheckpointDuration, "ingester.checkpoint-duration", 5*time.Minute, "Interval at which checkpoints should be created.")
 	f.BoolVar(&cfg.FlushOnShutdown, "ingester.flush-on-shutdown", false, "When WAL is enabled, should chunks be flushed to long-term storage on shutdown.")
+	f.Float64Var(&cfg.DiskFullThreshold, "ingester.wal-disk-full-threshold", 0.90, "Threshold for disk usage (0.0 to 1.0) at which the WAL will throttle incoming writes. Set to 0 to disable throttling.")
 
 	// Need to set default here
 	cfg.ReplayMemoryCeiling = flagext.ByteSize(defaultCeiling)
@@ -59,6 +66,8 @@ type WAL interface {
 	Log(*wal.Record) error
 	// Stop stops all the WAL operations.
 	Stop() error
+	// IsDiskThrottled returns true if the disk is too full and writes should be throttled.
+	IsDiskThrottled() bool
 }
 
 type noopWAL struct{}
@@ -66,6 +75,7 @@ type noopWAL struct{}
 func (noopWAL) Start()                {}
 func (noopWAL) Log(*wal.Record) error { return nil }
 func (noopWAL) Stop() error           { return nil }
+func (noopWAL) IsDiskThrottled() bool { return false }
 
 type walWrapper struct {
 	cfg        WALConfig
@@ -73,8 +83,9 @@ type walWrapper struct {
 	metrics    *ingesterMetrics
 	seriesIter SeriesIter
 
-	wait sync.WaitGroup
-	quit chan struct{}
+	wait          sync.WaitGroup
+	quit          chan struct{}
+	diskThrottled atomic.Bool
 }
 
 // newWAL creates a WAL object. If the WAL is disabled, then the returned WAL is a no-op WAL.
@@ -147,6 +158,10 @@ func (w *walWrapper) Stop() error {
 	return err
 }
 
+func (w *walWrapper) IsDiskThrottled() bool {
+	return w.diskThrottled.Load()
+}
+
 func (w *walWrapper) checkpointWriter() *WALCheckpointWriter {
 	return &WALCheckpointWriter{
 		metrics:    w.metrics,
@@ -158,6 +173,12 @@ func (w *walWrapper) run() {
 	level.Info(util_log.Logger).Log("msg", "started", "component", "wal")
 	defer w.wait.Done()
 
+	// Start disk monitoring if throttling is enabled
+	if w.cfg.DiskFullThreshold > 0 {
+		w.wait.Add(1)
+		go w.monitorDisk()
+	}
+
 	checkpointer := NewCheckpointer(
 		w.cfg.CheckpointDuration,
 		w.seriesIter,
@@ -167,4 +188,52 @@ func (w *walWrapper) run() {
 	)
 	checkpointer.Run()
 
+}
+
+// monitorDisk periodically checks disk usage and sets the throttle flag
+func (w *walWrapper) monitorDisk() {
+	defer w.wait.Done()
+
+	ticker := time.NewTicker(10 * time.Second)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ticker.C:
+			usage, err := w.checkDiskUsage()
+			if err != nil {
+				level.Warn(util_log.Logger).Log("msg", "failed to check disk usage", "err", err, "component", "wal")
+				continue
+			}
+
+			wasThrottled := w.diskThrottled.Load()
+			isThrottled := usage >= w.cfg.DiskFullThreshold
+
+			if isThrottled != wasThrottled {
+				w.diskThrottled.Store(isThrottled)
+				if isThrottled {
+					level.Warn(util_log.Logger).Log(
+						"msg", "disk usage exceeded threshold, throttling writes",
+						"usage_percent", fmt.Sprintf("%.2f%%", usage*100),
+						"threshold_percent", fmt.Sprintf("%.2f%%", w.cfg.DiskFullThreshold*100),
+						"component", "wal",
+					)
+					w.metrics.walDiskFullFailures.Inc()
+				} else {
+					level.Info(util_log.Logger).Log(
+						"msg", "disk usage below threshold, resuming writes",
+						"usage_percent", fmt.Sprintf("%.2f%%", usage*100),
+						"threshold_percent", fmt.Sprintf("%.2f%%", w.cfg.DiskFullThreshold*100),
+						"component", "wal",
+					)
+				}
+			}
+
+			// Update metrics with current disk usage
+			w.metrics.walDiskUsagePercent.Set(usage)
+
+		case <-w.quit:
+			return
+		}
+	}
 }

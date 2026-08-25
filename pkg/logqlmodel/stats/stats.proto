@@ -65,6 +65,14 @@ message Caches {
     (gogoproto.nullable) = false,
     (gogoproto.jsontag) = "instantMetricResult"
   ];
+  Cache logResult = 9 [
+    (gogoproto.nullable) = false,
+    (gogoproto.jsontag) = "logResult"
+  ];
+  Cache taskResult = 10 [
+    (gogoproto.nullable) = false,
+    (gogoproto.jsontag) = "taskResult"
+  ];
 }
 
 // Summary is the summary of a query statistics.
@@ -98,6 +106,10 @@ message Summary {
   int64 totalPostFilterLines = 11 [(gogoproto.jsontag) = "totalPostFilterLines"];
   // Total bytes processed of metadata.
   int64 totalStructuredMetadataBytesProcessed = 12 [(gogoproto.jsontag) = "totalStructuredMetadataBytesProcessed"];
+  // Estimated bytes for this query reported by index stats before chunk reads.
+  // This is useful to identify haystack-sized queries when index filtering makes
+  // totalBytesProcessed appear much smaller.
+  int64 estimatedQueryBytes = 13 [(gogoproto.jsontag) = "estimatedQueryBytes,omitempty"];
 }
 
 // Statistics from Index queries
@@ -112,6 +124,16 @@ message Index {
   int64 shardsDuration = 3 [(gogoproto.jsontag) = "shardsDuration"];
   // Indicates whether the query used blooms to filter chunks
   bool usedBloomFilters = 4 [(gogoproto.jsontag) = "usedBloomFilters"];
+  // Total unique streams matched
+  int64 totalStreams = 5 [(gogoproto.jsontag) = "totalStreams"];
+  // Time spent fetching chunk refs from index in seconds.
+  // In addition to internal calculations this is also returned by the HTTP API.
+  // Grafana expects time values to be returned in seconds as float.
+  double chunkRefsLookupTime = 6 [(gogoproto.jsontag) = "chunkRefsLookupTime"];
+  // Time spent filtering chunks with bloom gateway in seconds.
+  // In addition to internal calculations this is also returned by the HTTP API.
+  // Grafana expects time values to be returned in seconds as float.
+  double bloomFilterTime = 7 [(gogoproto.jsontag) = "bloomFilterTime"];
 }
 
 message Querier {
@@ -119,6 +141,10 @@ message Querier {
     (gogoproto.nullable) = false,
     (gogoproto.jsontag) = "store"
   ];
+  // Querier execution time in seconds.
+  // Total time the querier spent executing the query. This is separate from execTime which tracks overall execution time.
+  // Grafana expects time values to be returned in seconds as float.
+  double querierExecTime = 2 [(gogoproto.jsontag) = "querierExecTime"];
 }
 
 message Ingester {
@@ -135,6 +161,11 @@ message Ingester {
     (gogoproto.nullable) = false,
     (gogoproto.jsontag) = "store"
   ];
+
+  // Total time querier spent waiting on ingester gRPC Recv(), in seconds.
+  // Omitted from JSON when zero for backwards compatibility.
+  // Grafana expects time values to be returned in seconds as float
+  double recvWaitTime = 6 [(gogoproto.jsontag) = "recvWaitTime,omitempty"];
 }
 
 message Store {
@@ -146,6 +177,8 @@ message Store {
   int64 chunksDownloadTime = 3 [(gogoproto.jsontag) = "chunksDownloadTime"];
   // Whether the query referenced structured metadata
   bool queryReferencedStructured = 13 [(gogoproto.jsontag) = "queryReferencedStructuredMetadata"];
+  // Whether the V2 engine was used for some or all of the query.
+  bool queryUsedV2Engine = 14 [(gogoproto.jsontag) = "queryUsedV2Engine"];
 
   Chunk chunk = 4 [
     (gogoproto.nullable) = false,
@@ -199,6 +232,12 @@ message Dataobj {
 
   // Total possible rows in the data object
   int64 totalRowsAvailable = 12 [(gogoproto.jsontag) = "totalRowsAvailable"];
+
+  // Time spent fetching page metadata or data from object storage in nanoseconds.
+  int64 totalPageDownloadTime = 13 [(gogoproto.jsontag) = "totalPageDownloadTime"];
+
+  // Total bytes transferred between tasks via scheduler streams (sources and sinks).
+  int64 wireBytesTransferred = 14 [(gogoproto.jsontag) = "wireBytesTransferred"];
 }
 
 message Chunk {

@@ -7,7 +7,7 @@ weight: 300
 # What is structured metadata
 
 {{< admonition type="warning" >}}
-Structured metadata was added to chunk format V4 which is used if the schema version is greater or equal to `13`. See [Schema Config](https://grafana.com/docs/loki/<LOKI_VERSION>/configure/storage/#schema-config) for more details about schema versions.
+Structured metadata was added to chunk format V4, which is used if the schema version is greater than or equal to `13`. Structured metadata also requires the `tsdb` index type; it is not supported by the deprecated `boltdb-shipper` store. See [Storage schema](https://grafana.com/docs/loki/<LOKI_VERSION>/operations/storage/schema/) for more details about schema versions and index types.
 {{< /admonition >}}
 
 Selecting proper, low cardinality labels is critical to operating and querying Loki effectively. Some metadata, especially infrastructure related metadata, can be difficult to embed in log lines, and is too high cardinality to effectively store as indexed labels (and therefore reducing performance of the index).
@@ -45,8 +45,8 @@ You can disable Structured Metadata by setting `allow_structured_metadata: false
 You have the option to attach structured metadata to log lines in the push payload along with each log line and the timestamp.
 For more information on how to push logs to Loki via the HTTP endpoint, refer to the [HTTP API documentation](https://grafana.com/docs/loki/<LOKI_VERSION>/reference/api/#ingest-logs).
 
-Alternatively, you can use Grafana Alloy or Promtail to extract and attach structured metadata to your log lines.
-See the [Promtail: Structured metadata stage](https://grafana.com/docs/loki/<LOKI_VERSION>/send-data/promtail/stages/structured_metadata/) for more information.
+Alternatively, you can use Grafana Alloy to extract and attach structured metadata to your log lines.
+See the [Alloy `stage.structured_metadata` block](https://grafana.com/docs/alloy/latest/reference/components/loki/loki.process/#stagestructured_metadata) for more information.
 
 With Loki version 1.2.0, support for structured metadata has been added to the Logstash output plugin. For more information, see [logstash](https://grafana.com/docs/loki/<LOKI_VERSION>/send-data/logstash/).
 
@@ -64,6 +64,8 @@ Along with that, there are separate limits on how much structured metadata can b
 [max_structured_metadata_entries_count: <int> | default = 128]
 ```
 
+Log lines that exceed either limit are rejected by the distributor with an HTTP 400 response, and the discarded entries are counted in the `loki_discarded_samples_total` metric with reason `structured_metadata_too_large` or `structured_metadata_too_many`.
+A large OpenTelemetry log attribute such as `exception.stacktrace` can be the cause — refer to [Handle large attributes such as stack traces](https://grafana.com/docs/loki/<LOKI_VERSION>/send-data/otel/#handle-large-attributes-such-as-stack-traces) for mitigations.
 {{< /admonition >}}
 
 ## Querying structured metadata

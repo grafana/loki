@@ -9,8 +9,13 @@ server:
 
 common:
   path_prefix: /loki
-  compactor_address: http://loki-backend:3100
   replication_factor: 3
+  compactor_grpc_address: loki-monolithic-compactor:9095
+  ring:
+    heartbeat_period: 1m
+    heartbeat_timeout: 5m
+    kvstore:
+      store: memberlist
 
 storage_config:
   aws:
@@ -22,22 +27,16 @@ storage_config:
     s3forcepathstyle: true
 
 memberlist:
-  join_members: ["loki-read", "loki-write", "loki-backend"]
-  dead_node_reclaim_time: 30s
-  gossip_to_dead_nodes_time: 15s
-  left_ingesters_timeout: 30s
-  bind_addr: ['0.0.0.0']
+  join_members:
+    - "loki-monolithic"
+    - "loki-monolithic-compactor"
+  bind_addr: ["0.0.0.0"]
   bind_port: 7946
-  gossip_interval: 2s
+  cluster_label: loki-ha-monolithic
+  cluster_label_verification_disabled: false
 
 ingester:
   lifecycler:
-    join_after: 10s
-    observe_period: 5s
-    ring:
-      replication_factor: 3
-      kvstore:
-        store: memberlist
     final_sleep: 0s
   chunk_idle_period: 1m
   wal:
@@ -52,13 +51,13 @@ ingester:
 
 ruler:
   enable_api: true
-  enable_sharding: true  
+  enable_sharding: true
   wal:
     dir: /loki/ruler-wal
   evaluation:
     mode: remote
     query_frontend:
-      address: dns:///loki-read:9095
+      address: dns:///loki:9095
   storage:
     type: local
     local:
@@ -68,60 +67,33 @@ ruler:
     enabled: true
     clients:
       local:
-         url: http://prometheus:9090/api/v1/write
-         queue_config:
-           # send immediately as soon as a sample is generated
-           capacity: 1
-           batch_send_deadline: 0s
+        url: http://prometheus:9090/api/v1/write
+        queue_config:
+          # send immediately as soon as a sample is generated
+          capacity: 1
+          batch_send_deadline: 0s
 
 schema_config:
   configs:
-  - from: 2020-08-01
-    store: boltdb-shipper
-    object_store: s3
-    schema: v11
-    index:
-      prefix: index_
-      period: 24h
-  - from: 2023-07-11
-    store: tsdb
-    object_store: s3
-    schema: v12
-    index:
-      prefix: index_
-      period: 24h
-  - from: 2024-01-10
-    store: tsdb
-    object_store: s3
-    schema: v12
-    index:
-      prefix: index_
-      period: 24h
-  - from: 2024-03-29
-    store: tsdb
-    object_store: s3
-    schema: v13
-    index:
-      prefix: index_
-      period: 24h
-
+    - from: 2024-03-29
+      store: tsdb
+      object_store: s3
+      schema: v13
+      index:
+        prefix: index_
+        period: 24h
 
 limits_config:
-  max_cache_freshness_per_query: '10m'
+  max_cache_freshness_per_query: "10m"
   reject_old_samples: true
   reject_old_samples_max_age: 30m
-  ingestion_rate_mb: 10
+  ingestion_rate_mb: 100
   ingestion_burst_size_mb: 20
-  # parallelize queries in 15min intervals
   split_queries_by_interval: 15m
   volume_enabled: true
-
-table_manager:
-  retention_deletes_enabled: true
   retention_period: 336h
 
 query_range:
-  # make queries more cache-able by aligning them with their step intervals
   align_queries_with_step: true
   max_retries: 5
   parallelise_shardable_queries: true
@@ -135,8 +107,10 @@ frontend:
 query_scheduler:
   max_outstanding_requests_per_tenant: 1024
 
-querier:
-  query_ingesters_within: 2h
-
 compactor:
-  working_directory: /tmp/compactor
+  working_directory: /loki/compactor
+  horizontal_scaling_mode: ${LOKI_COMPACTOR_MODE:-worker}
+  apply_retention_interval: 1h
+  compaction_interval: 5m
+  retention_enabled: true
+  delete_request_store: s3

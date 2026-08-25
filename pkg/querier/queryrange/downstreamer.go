@@ -195,9 +195,16 @@ func (in instance) For(
 			return nil
 		})
 		if err != nil {
-			ch <- logql.Resp{
+			// Send the error unless the context has been canceled and the
+			// reader has already exited. Without this select, a canceled
+			// context causes this goroutine to block on the channel send
+			// forever, leaking the goroutine.
+			select {
+			case ch <- logql.Resp{
 				I:   -1,
 				Err: err,
+			}:
+			case <-ctx.Done():
 			}
 		}
 		close(ch)
@@ -207,8 +214,8 @@ func (in instance) For(
 	for {
 		select {
 		case <-ctx.Done():
-			// Return early if the context is canceled
-			return acc.Result(), ctx.Err()
+			// Report the cancellation cause so a real failure wins over a generic cancellation.
+			return acc.Result(), context.Cause(ctx)
 		case resp, ok := <-ch:
 			if !ok {
 				// Channel closed, we're done

@@ -1,0 +1,15 @@
+// ulid.proto holds a ULID type.
+syntax = "proto3";
+
+package ulid.loki.v1;
+
+option go_package = "github.com/grafana/loki/v3/pkg/engine/internal/proto/ulid";
+
+// ProtoULID represents a Universally Unique Lexicographically Sortable
+// Identifier (ULID) over protobuf.
+message ProtoULID {
+  // Value holds the [binary representation] of the ULID.
+  //
+  // [binary representation]: https://github.com/ulid/spec?tab=readme-ov-file#binary-layout-and-byte-order
+  bytes value = 1;
+}

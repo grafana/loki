@@ -1013,6 +1013,8 @@ func (m *Bootstrap) validate(all bool) error {
 		}
 	}
 
+	// no validation rules for EnableWorkerCpuAffinity
+
 	switch v := m.StatsFlush.(type) {
 	case *Bootstrap_StatsFlushOnAdmin:
 		if v == nil {
@@ -1040,6 +1042,52 @@ func (m *Bootstrap) validate(all bool) error {
 	default:
 		_ = v // ensures v is used
 	}
+	switch v := m.StatsEviction.(type) {
+	case *Bootstrap_StatsEvictionInterval:
+		if v == nil {
+			err := BootstrapValidationError{
+				field:  "StatsEviction",
+				reason: "oneof value cannot be a typed-nil",
+			}
+			if !all {
+				return err
+			}
+			errors = append(errors, err)
+		}
+
+		if d := m.GetStatsEvictionInterval(); d != nil {
+			dur, err := d.AsDuration(), d.CheckValid()
+			if err != nil {
+				err = BootstrapValidationError{
+					field:  "StatsEvictionInterval",
+					reason: "value is not a valid duration",
+					cause:  err,
+				}
+				if !all {
+					return err
+				}
+				errors = append(errors, err)
+			} else {
+
+				gte := time.Duration(0*time.Second + 1000000*time.Nanosecond)
+
+				if dur < gte {
+					err := BootstrapValidationError{
+						field:  "StatsEvictionInterval",
+						reason: "value must be greater than or equal to 1ms",
+					}
+					if !all {
+						return err
+					}
+					errors = append(errors, err)
+				}
+
+			}
+		}
+
+	default:
+		_ = v // ensures v is used
+	}
 
 	if len(errors) > 0 {
 		return BootstrapMultiError(errors)
@@ -1054,7 +1102,7 @@ type BootstrapMultiError []error
 
 // Error returns a concatenation of all the error messages it wraps.
 func (m BootstrapMultiError) Error() string {
-	var msgs []string
+	msgs := make([]string, 0, len(m))
 	for _, err := range m {
 		msgs = append(msgs, err.Error())
 	}
@@ -1242,6 +1290,40 @@ func (m *Admin) validate(all bool) error {
 
 	// no validation rules for IgnoreGlobalConnLimit
 
+	for idx, item := range m.GetAllowPaths() {
+		_, _ = idx, item
+
+		if all {
+			switch v := interface{}(item).(type) {
+			case interface{ ValidateAll() error }:
+				if err := v.ValidateAll(); err != nil {
+					errors = append(errors, AdminValidationError{
+						field:  fmt.Sprintf("AllowPaths[%v]", idx),
+						reason: "embedded message failed validation",
+						cause:  err,
+					})
+				}
+			case interface{ Validate() error }:
+				if err := v.Validate(); err != nil {
+					errors = append(errors, AdminValidationError{
+						field:  fmt.Sprintf("AllowPaths[%v]", idx),
+						reason: "embedded message failed validation",
+						cause:  err,
+					})
+				}
+			}
+		} else if v, ok := interface{}(item).(interface{ Validate() error }); ok {
+			if err := v.Validate(); err != nil {
+				return AdminValidationError{
+					field:  fmt.Sprintf("AllowPaths[%v]", idx),
+					reason: "embedded message failed validation",
+					cause:  err,
+				}
+			}
+		}
+
+	}
+
 	if len(errors) > 0 {
 		return AdminMultiError(errors)
 	}
@@ -1255,7 +1337,7 @@ type AdminMultiError []error
 
 // Error returns a concatenation of all the error messages it wraps.
 func (m AdminMultiError) Error() string {
-	var msgs []string
+	msgs := make([]string, 0, len(m))
 	for _, err := range m {
 		msgs = append(msgs, err.Error())
 	}
@@ -1446,7 +1528,7 @@ type ClusterManagerMultiError []error
 
 // Error returns a concatenation of all the error messages it wraps.
 func (m ClusterManagerMultiError) Error() string {
-	var msgs []string
+	msgs := make([]string, 0, len(m))
 	for _, err := range m {
 		msgs = append(msgs, err.Error())
 	}
@@ -1603,7 +1685,7 @@ type WatchdogsMultiError []error
 
 // Error returns a concatenation of all the error messages it wraps.
 func (m WatchdogsMultiError) Error() string {
-	var msgs []string
+	msgs := make([]string, 0, len(m))
 	for _, err := range m {
 		msgs = append(msgs, err.Error())
 	}
@@ -1911,7 +1993,7 @@ type WatchdogMultiError []error
 
 // Error returns a concatenation of all the error messages it wraps.
 func (m WatchdogMultiError) Error() string {
-	var msgs []string
+	msgs := make([]string, 0, len(m))
 	for _, err := range m {
 		msgs = append(msgs, err.Error())
 	}
@@ -2039,7 +2121,7 @@ type FatalActionMultiError []error
 
 // Error returns a concatenation of all the error messages it wraps.
 func (m FatalActionMultiError) Error() string {
-	var msgs []string
+	msgs := make([]string, 0, len(m))
 	for _, err := range m {
 		msgs = append(msgs, err.Error())
 	}
@@ -2172,7 +2254,7 @@ type RuntimeMultiError []error
 
 // Error returns a concatenation of all the error messages it wraps.
 func (m RuntimeMultiError) Error() string {
-	var msgs []string
+	msgs := make([]string, 0, len(m))
 	for _, err := range m {
 		msgs = append(msgs, err.Error())
 	}
@@ -2466,7 +2548,7 @@ type RuntimeLayerMultiError []error
 
 // Error returns a concatenation of all the error messages it wraps.
 func (m RuntimeLayerMultiError) Error() string {
-	var msgs []string
+	msgs := make([]string, 0, len(m))
 	for _, err := range m {
 		msgs = append(msgs, err.Error())
 	}
@@ -2600,7 +2682,7 @@ type LayeredRuntimeMultiError []error
 
 // Error returns a concatenation of all the error messages it wraps.
 func (m LayeredRuntimeMultiError) Error() string {
-	var msgs []string
+	msgs := make([]string, 0, len(m))
 	for _, err := range m {
 		msgs = append(msgs, err.Error())
 	}
@@ -2733,7 +2815,7 @@ type CustomInlineHeaderMultiError []error
 
 // Error returns a concatenation of all the error messages it wraps.
 func (m CustomInlineHeaderMultiError) Error() string {
-	var msgs []string
+	msgs := make([]string, 0, len(m))
 	for _, err := range m {
 		msgs = append(msgs, err.Error())
 	}
@@ -2854,6 +2936,66 @@ func (m *MemoryAllocatorManager) validate(all bool) error {
 		}
 	}
 
+	if all {
+		switch v := interface{}(m.GetSoftMemoryLimitBytes()).(type) {
+		case interface{ ValidateAll() error }:
+			if err := v.ValidateAll(); err != nil {
+				errors = append(errors, MemoryAllocatorManagerValidationError{
+					field:  "SoftMemoryLimitBytes",
+					reason: "embedded message failed validation",
+					cause:  err,
+				})
+			}
+		case interface{ Validate() error }:
+			if err := v.Validate(); err != nil {
+				errors = append(errors, MemoryAllocatorManagerValidationError{
+					field:  "SoftMemoryLimitBytes",
+					reason: "embedded message failed validation",
+					cause:  err,
+				})
+			}
+		}
+	} else if v, ok := interface{}(m.GetSoftMemoryLimitBytes()).(interface{ Validate() error }); ok {
+		if err := v.Validate(); err != nil {
+			return MemoryAllocatorManagerValidationError{
+				field:  "SoftMemoryLimitBytes",
+				reason: "embedded message failed validation",
+				cause:  err,
+			}
+		}
+	}
+
+	if all {
+		switch v := interface{}(m.GetMaxPerCpuCacheSizeBytes()).(type) {
+		case interface{ ValidateAll() error }:
+			if err := v.ValidateAll(); err != nil {
+				errors = append(errors, MemoryAllocatorManagerValidationError{
+					field:  "MaxPerCpuCacheSizeBytes",
+					reason: "embedded message failed validation",
+					cause:  err,
+				})
+			}
+		case interface{ Validate() error }:
+			if err := v.Validate(); err != nil {
+				errors = append(errors, MemoryAllocatorManagerValidationError{
+					field:  "MaxPerCpuCacheSizeBytes",
+					reason: "embedded message failed validation",
+					cause:  err,
+				})
+			}
+		}
+	} else if v, ok := interface{}(m.GetMaxPerCpuCacheSizeBytes()).(interface{ Validate() error }); ok {
+		if err := v.Validate(); err != nil {
+			return MemoryAllocatorManagerValidationError{
+				field:  "MaxPerCpuCacheSizeBytes",
+				reason: "embedded message failed validation",
+				cause:  err,
+			}
+		}
+	}
+
+	// no validation rules for MaxUnfreedMemoryBytes
+
 	if len(errors) > 0 {
 		return MemoryAllocatorManagerMultiError(errors)
 	}
@@ -2868,7 +3010,7 @@ type MemoryAllocatorManagerMultiError []error
 
 // Error returns a concatenation of all the error messages it wraps.
 func (m MemoryAllocatorManagerMultiError) Error() string {
-	var msgs []string
+	msgs := make([]string, 0, len(m))
 	for _, err := range m {
 		msgs = append(msgs, err.Error())
 	}
@@ -2933,6 +3075,312 @@ var _ interface {
 	Cause() error
 	ErrorName() string
 } = MemoryAllocatorManagerValidationError{}
+
+// Validate checks the field values on ListenerManager with the rules defined
+// in the proto definition for this message. If any rules are violated, the
+// first error encountered is returned, or nil if there are no violations.
+func (m *ListenerManager) Validate() error {
+	return m.validate(false)
+}
+
+// ValidateAll checks the field values on ListenerManager with the rules
+// defined in the proto definition for this message. If any rules are
+// violated, the result is a list of violation errors wrapped in
+// ListenerManagerMultiError, or nil if none found.
+func (m *ListenerManager) ValidateAll() error {
+	return m.validate(true)
+}
+
+func (m *ListenerManager) validate(all bool) error {
+	if m == nil {
+		return nil
+	}
+
+	var errors []error
+
+	if len(errors) > 0 {
+		return ListenerManagerMultiError(errors)
+	}
+
+	return nil
+}
+
+// ListenerManagerMultiError is an error wrapping multiple validation errors
+// returned by ListenerManager.ValidateAll() if the designated constraints
+// aren't met.
+type ListenerManagerMultiError []error
+
+// Error returns a concatenation of all the error messages it wraps.
+func (m ListenerManagerMultiError) Error() string {
+	msgs := make([]string, 0, len(m))
+	for _, err := range m {
+		msgs = append(msgs, err.Error())
+	}
+	return strings.Join(msgs, "; ")
+}
+
+// AllErrors returns a list of validation violation errors.
+func (m ListenerManagerMultiError) AllErrors() []error { return m }
+
+// ListenerManagerValidationError is the validation error returned by
+// ListenerManager.Validate if the designated constraints aren't met.
+type ListenerManagerValidationError struct {
+	field  string
+	reason string
+	cause  error
+	key    bool
+}
+
+// Field function returns field value.
+func (e ListenerManagerValidationError) Field() string { return e.field }
+
+// Reason function returns reason value.
+func (e ListenerManagerValidationError) Reason() string { return e.reason }
+
+// Cause function returns cause value.
+func (e ListenerManagerValidationError) Cause() error { return e.cause }
+
+// Key function returns key value.
+func (e ListenerManagerValidationError) Key() bool { return e.key }
+
+// ErrorName returns error name.
+func (e ListenerManagerValidationError) ErrorName() string { return "ListenerManagerValidationError" }
+
+// Error satisfies the builtin error interface
+func (e ListenerManagerValidationError) Error() string {
+	cause := ""
+	if e.cause != nil {
+		cause = fmt.Sprintf(" | caused by: %v", e.cause)
+	}
+
+	key := ""
+	if e.key {
+		key = "key for "
+	}
+
+	return fmt.Sprintf(
+		"invalid %sListenerManager.%s: %s%s",
+		key,
+		e.field,
+		e.reason,
+		cause)
+}
+
+var _ error = ListenerManagerValidationError{}
+
+var _ interface {
+	Field() string
+	Reason() string
+	Key() bool
+	Cause() error
+	ErrorName() string
+} = ListenerManagerValidationError{}
+
+// Validate checks the field values on ValidationListenerManager with the rules
+// defined in the proto definition for this message. If any rules are
+// violated, the first error encountered is returned, or nil if there are no violations.
+func (m *ValidationListenerManager) Validate() error {
+	return m.validate(false)
+}
+
+// ValidateAll checks the field values on ValidationListenerManager with the
+// rules defined in the proto definition for this message. If any rules are
+// violated, the result is a list of violation errors wrapped in
+// ValidationListenerManagerMultiError, or nil if none found.
+func (m *ValidationListenerManager) ValidateAll() error {
+	return m.validate(true)
+}
+
+func (m *ValidationListenerManager) validate(all bool) error {
+	if m == nil {
+		return nil
+	}
+
+	var errors []error
+
+	if len(errors) > 0 {
+		return ValidationListenerManagerMultiError(errors)
+	}
+
+	return nil
+}
+
+// ValidationListenerManagerMultiError is an error wrapping multiple validation
+// errors returned by ValidationListenerManager.ValidateAll() if the
+// designated constraints aren't met.
+type ValidationListenerManagerMultiError []error
+
+// Error returns a concatenation of all the error messages it wraps.
+func (m ValidationListenerManagerMultiError) Error() string {
+	msgs := make([]string, 0, len(m))
+	for _, err := range m {
+		msgs = append(msgs, err.Error())
+	}
+	return strings.Join(msgs, "; ")
+}
+
+// AllErrors returns a list of validation violation errors.
+func (m ValidationListenerManagerMultiError) AllErrors() []error { return m }
+
+// ValidationListenerManagerValidationError is the validation error returned by
+// ValidationListenerManager.Validate if the designated constraints aren't met.
+type ValidationListenerManagerValidationError struct {
+	field  string
+	reason string
+	cause  error
+	key    bool
+}
+
+// Field function returns field value.
+func (e ValidationListenerManagerValidationError) Field() string { return e.field }
+
+// Reason function returns reason value.
+func (e ValidationListenerManagerValidationError) Reason() string { return e.reason }
+
+// Cause function returns cause value.
+func (e ValidationListenerManagerValidationError) Cause() error { return e.cause }
+
+// Key function returns key value.
+func (e ValidationListenerManagerValidationError) Key() bool { return e.key }
+
+// ErrorName returns error name.
+func (e ValidationListenerManagerValidationError) ErrorName() string {
+	return "ValidationListenerManagerValidationError"
+}
+
+// Error satisfies the builtin error interface
+func (e ValidationListenerManagerValidationError) Error() string {
+	cause := ""
+	if e.cause != nil {
+		cause = fmt.Sprintf(" | caused by: %v", e.cause)
+	}
+
+	key := ""
+	if e.key {
+		key = "key for "
+	}
+
+	return fmt.Sprintf(
+		"invalid %sValidationListenerManager.%s: %s%s",
+		key,
+		e.field,
+		e.reason,
+		cause)
+}
+
+var _ error = ValidationListenerManagerValidationError{}
+
+var _ interface {
+	Field() string
+	Reason() string
+	Key() bool
+	Cause() error
+	ErrorName() string
+} = ValidationListenerManagerValidationError{}
+
+// Validate checks the field values on ApiListenerManager with the rules
+// defined in the proto definition for this message. If any rules are
+// violated, the first error encountered is returned, or nil if there are no violations.
+func (m *ApiListenerManager) Validate() error {
+	return m.validate(false)
+}
+
+// ValidateAll checks the field values on ApiListenerManager with the rules
+// defined in the proto definition for this message. If any rules are
+// violated, the result is a list of violation errors wrapped in
+// ApiListenerManagerMultiError, or nil if none found.
+func (m *ApiListenerManager) ValidateAll() error {
+	return m.validate(true)
+}
+
+func (m *ApiListenerManager) validate(all bool) error {
+	if m == nil {
+		return nil
+	}
+
+	var errors []error
+
+	// no validation rules for ThreadingModel
+
+	if len(errors) > 0 {
+		return ApiListenerManagerMultiError(errors)
+	}
+
+	return nil
+}
+
+// ApiListenerManagerMultiError is an error wrapping multiple validation errors
+// returned by ApiListenerManager.ValidateAll() if the designated constraints
+// aren't met.
+type ApiListenerManagerMultiError []error
+
+// Error returns a concatenation of all the error messages it wraps.
+func (m ApiListenerManagerMultiError) Error() string {
+	msgs := make([]string, 0, len(m))
+	for _, err := range m {
+		msgs = append(msgs, err.Error())
+	}
+	return strings.Join(msgs, "; ")
+}
+
+// AllErrors returns a list of validation violation errors.
+func (m ApiListenerManagerMultiError) AllErrors() []error { return m }
+
+// ApiListenerManagerValidationError is the validation error returned by
+// ApiListenerManager.Validate if the designated constraints aren't met.
+type ApiListenerManagerValidationError struct {
+	field  string
+	reason string
+	cause  error
+	key    bool
+}
+
+// Field function returns field value.
+func (e ApiListenerManagerValidationError) Field() string { return e.field }
+
+// Reason function returns reason value.
+func (e ApiListenerManagerValidationError) Reason() string { return e.reason }
+
+// Cause function returns cause value.
+func (e ApiListenerManagerValidationError) Cause() error { return e.cause }
+
+// Key function returns key value.
+func (e ApiListenerManagerValidationError) Key() bool { return e.key }
+
+// ErrorName returns error name.
+func (e ApiListenerManagerValidationError) ErrorName() string {
+	return "ApiListenerManagerValidationError"
+}
+
+// Error satisfies the builtin error interface
+func (e ApiListenerManagerValidationError) Error() string {
+	cause := ""
+	if e.cause != nil {
+		cause = fmt.Sprintf(" | caused by: %v", e.cause)
+	}
+
+	key := ""
+	if e.key {
+		key = "key for "
+	}
+
+	return fmt.Sprintf(
+		"invalid %sApiListenerManager.%s: %s%s",
+		key,
+		e.field,
+		e.reason,
+		cause)
+}
+
+var _ error = ApiListenerManagerValidationError{}
+
+var _ interface {
+	Field() string
+	Reason() string
+	Key() bool
+	Cause() error
+	ErrorName() string
+} = ApiListenerManagerValidationError{}
 
 // Validate checks the field values on Bootstrap_StaticResources with the rules
 // defined in the proto definition for this message. If any rules are
@@ -3072,7 +3520,7 @@ type Bootstrap_StaticResourcesMultiError []error
 
 // Error returns a concatenation of all the error messages it wraps.
 func (m Bootstrap_StaticResourcesMultiError) Error() string {
-	var msgs []string
+	msgs := make([]string, 0, len(m))
 	for _, err := range m {
 		msgs = append(msgs, err.Error())
 	}
@@ -3265,7 +3713,7 @@ type Bootstrap_DynamicResourcesMultiError []error
 
 // Error returns a concatenation of all the error messages it wraps.
 func (m Bootstrap_DynamicResourcesMultiError) Error() string {
-	var msgs []string
+	msgs := make([]string, 0, len(m))
 	for _, err := range m {
 		msgs = append(msgs, err.Error())
 	}
@@ -3396,7 +3844,7 @@ type Bootstrap_ApplicationLogConfigMultiError []error
 
 // Error returns a concatenation of all the error messages it wraps.
 func (m Bootstrap_ApplicationLogConfigMultiError) Error() string {
-	var msgs []string
+	msgs := make([]string, 0, len(m))
 	for _, err := range m {
 		msgs = append(msgs, err.Error())
 	}
@@ -3501,7 +3949,7 @@ type Bootstrap_DeferredStatOptionsMultiError []error
 
 // Error returns a concatenation of all the error messages it wraps.
 func (m Bootstrap_DeferredStatOptionsMultiError) Error() string {
-	var msgs []string
+	msgs := make([]string, 0, len(m))
 	for _, err := range m {
 		msgs = append(msgs, err.Error())
 	}
@@ -3637,7 +4085,7 @@ type Bootstrap_GrpcAsyncClientManagerConfigMultiError []error
 
 // Error returns a concatenation of all the error messages it wraps.
 func (m Bootstrap_GrpcAsyncClientManagerConfigMultiError) Error() string {
-	var msgs []string
+	msgs := make([]string, 0, len(m))
 	for _, err := range m {
 		msgs = append(msgs, err.Error())
 	}
@@ -3814,7 +4262,7 @@ type Bootstrap_ApplicationLogConfig_LogFormatMultiError []error
 
 // Error returns a concatenation of all the error messages it wraps.
 func (m Bootstrap_ApplicationLogConfig_LogFormatMultiError) Error() string {
-	var msgs []string
+	msgs := make([]string, 0, len(m))
 	for _, err := range m {
 		msgs = append(msgs, err.Error())
 	}
@@ -3948,7 +4396,7 @@ type ClusterManager_OutlierDetectionMultiError []error
 
 // Error returns a concatenation of all the error messages it wraps.
 func (m ClusterManager_OutlierDetectionMultiError) Error() string {
-	var msgs []string
+	msgs := make([]string, 0, len(m))
 	for _, err := range m {
 		msgs = append(msgs, err.Error())
 	}
@@ -4091,7 +4539,7 @@ type Watchdog_WatchdogActionMultiError []error
 
 // Error returns a concatenation of all the error messages it wraps.
 func (m Watchdog_WatchdogActionMultiError) Error() string {
-	var msgs []string
+	msgs := make([]string, 0, len(m))
 	for _, err := range m {
 		msgs = append(msgs, err.Error())
 	}
@@ -4199,7 +4647,7 @@ type RuntimeLayer_DiskLayerMultiError []error
 
 // Error returns a concatenation of all the error messages it wraps.
 func (m RuntimeLayer_DiskLayerMultiError) Error() string {
-	var msgs []string
+	msgs := make([]string, 0, len(m))
 	for _, err := range m {
 		msgs = append(msgs, err.Error())
 	}
@@ -4301,7 +4749,7 @@ type RuntimeLayer_AdminLayerMultiError []error
 
 // Error returns a concatenation of all the error messages it wraps.
 func (m RuntimeLayer_AdminLayerMultiError) Error() string {
-	var msgs []string
+	msgs := make([]string, 0, len(m))
 	for _, err := range m {
 		msgs = append(msgs, err.Error())
 	}
@@ -4434,7 +4882,7 @@ type RuntimeLayer_RtdsLayerMultiError []error
 
 // Error returns a concatenation of all the error messages it wraps.
 func (m RuntimeLayer_RtdsLayerMultiError) Error() string {
-	var msgs []string
+	msgs := make([]string, 0, len(m))
 	for _, err := range m {
 		msgs = append(msgs, err.Error())
 	}

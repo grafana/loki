@@ -53,18 +53,18 @@ func TestSelectRestores(t *testing.T) {
 		return promql.Vector{
 			promql.Sample{
 				Metric: labels.FromMap(map[string]string{
-					labels.MetricName: "some_metric",
-					"foo":             "bar",  // from the AlertingRule.labels spec
-					"bazz":            "buzz", // an extra label
+					model.MetricNameLabel: "some_metric",
+					"foo":                 "bar",  // from the AlertingRule.labels spec
+					"bazz":                "buzz", // an extra label
 				}),
 				T: util.TimeToMillis(t),
 				F: 1,
 			},
 			promql.Sample{
 				Metric: labels.FromMap(map[string]string{
-					labels.MetricName: "some_metric",
-					"foo":             "bar",  // from the AlertingRule.labels spec
-					"bazz":            "bork", // an extra label (second variant)
+					model.MetricNameLabel: "some_metric",
+					"foo":                 "bar",  // from the AlertingRule.labels spec
+					"bazz":                "bork", // an extra label (second variant)
 				}),
 				T: util.TimeToMillis(t),
 				F: 1,
@@ -155,7 +155,7 @@ func TestMemStoreStopBeforeStart(t *testing.T) {
 		done <- struct{}{}
 	}()
 	select {
-	case <-time.After(time.Millisecond):
+	case <-time.After(100 * time.Millisecond):
 		t.FailNow()
 	case <-done:
 	}
@@ -176,23 +176,24 @@ func TestMemstoreBlocks(t *testing.T) {
 	})
 
 	store := testStore(fn)
+	t.Cleanup(store.Stop)
 
 	done := make(chan struct{})
 	go func() {
 		_, _ = store.Querier(0, 1)
-		done <- struct{}{}
+		close(done)
 	}()
 
 	select {
 	case <-time.After(time.Millisecond):
 	case <-done:
-		t.FailNow()
+		t.Fatal("Querier returned before Start was called")
 	}
 
 	store.Start(MockRuleIter(ars))
 	select {
 	case <-done:
-	case <-time.After(time.Millisecond):
-		t.FailNow()
+	case <-time.After(time.Second):
+		t.Fatal("Querier did not return after Start was called")
 	}
 }

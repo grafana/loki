@@ -24,6 +24,7 @@ type Client interface {
 	DeleteAllOf(ctx context.Context, obj client.Object, opts ...client.DeleteAllOfOption) error
 	List(ctx context.Context, obj client.ObjectList, opts ...client.ListOption) error
 	Patch(ctx context.Context, obj client.Object, patch client.Patch, opts ...client.PatchOption) error
+	Apply(ctx context.Context, config runtime.ApplyConfiguration, opts ...client.ApplyOption) error
 
 	RESTMapper() meta.RESTMapper
 	Scheme() *runtime.Scheme
@@ -42,6 +43,7 @@ type StatusWriter interface {
 	Create(ctx context.Context, obj client.Object, subResource client.Object, opts ...client.SubResourceCreateOption) error
 	Update(ctx context.Context, obj client.Object, opts ...client.SubResourceUpdateOption) error
 	Patch(ctx context.Context, obj client.Object, patch client.Patch, opts ...client.SubResourcePatchOption) error
+	Apply(ctx context.Context, obj runtime.ApplyConfiguration, opts ...client.SubResourceApplyOption) error
 }
 
 // SubResourceClient is a kubernetes status writer interface used internally. It copies functions from
@@ -54,4 +56,5 @@ type SubResourceClient interface {
 	Create(ctx context.Context, obj client.Object, subResource client.Object, opts ...client.SubResourceCreateOption) error
 	Update(ctx context.Context, obj client.Object, opts ...client.SubResourceUpdateOption) error
 	Patch(ctx context.Context, obj client.Object, patch client.Patch, opts ...client.SubResourcePatchOption) error
+	Apply(ctx context.Context, obj runtime.ApplyConfiguration, opts ...client.SubResourceApplyOption) error
 }

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"cmp"
 	"fmt"
+	"maps"
 	"math"
 	"reflect"
 	"slices"
@@ -23,7 +24,7 @@ func Marshal(p Protocol, v any) ([]byte, error) {
 
 type Encoder struct {
 	w Writer
-	f flags
+	f Flags
 }
 
 func NewEncoder(w Writer) *Encoder {
@@ -32,17 +33,15 @@ func NewEncoder(w Writer) *Encoder {
 
 func (e *Encoder) Encode(v any) error {
 	t := reflect.TypeOf(v)
-	cache, _ := encoderCache.Load().(map[typeID]encodeFunc)
+	cache, _ := encoderCache.Load().(map[typeID]EncodeFunc)
 	encode, _ := cache[makeTypeID(t)]
 
 	if encode == nil {
-		encode = encodeFuncOf(t, make(encodeFuncCache))
+		encode = EncodeFuncOf(t, make(EncodeFuncCache))
 
-		newCache := make(map[typeID]encodeFunc, len(cache)+1)
+		newCache := make(map[typeID]EncodeFunc, len(cache)+1)
 		newCache[makeTypeID(t)] = encode
-		for k, v := range cache {
-			newCache[k] = v
-		}
+		maps.Copy(newCache, cache)
 
 		encoderCache.Store(newCache)
 	}
@@ -52,24 +51,46 @@ func (e *Encoder) Encode(v any) error {
 
 func (e *Encoder) Reset(w Writer) {
 	e.w = w
-	e.f = e.f.without(protocolFlags).with(encoderFlags(w))
+	e.f = e.f.Without(protocolFlags).With(encoderFlags(w))
 }
 
-func encoderFlags(w Writer) flags {
-	return flags(w.Protocol().Features() << featuresBitOffset)
+func encoderFlags(w Writer) Flags {
+	return Flags(w.Protocol().Features() << featuresBitOffset)
 }
 
-var encoderCache atomic.Value // map[typeID]encodeFunc
+var encoderCache atomic.Value // map[typeID]EncodeFunc
 
-type encodeFunc func(Writer, reflect.Value, flags) error
+// EncodeFunc is a function that encodes a value to a thrift writer.
+type EncodeFunc func(Writer, reflect.Value, Flags) error
 
-type encodeFuncCache map[reflect.Type]encodeFunc
+// EncodeFuncCache is a cache for encode functions.
+type EncodeFuncCache map[reflect.Type]EncodeFunc
 
-func encodeFuncOf(t reflect.Type, seen encodeFuncCache) encodeFunc {
+// EncodeFuncFor returns the encode function for type T.
+// This is a convenience wrapper around EncodeFuncOf using reflect.TypeFor.
+func EncodeFuncFor[T any](cache EncodeFuncCache) EncodeFunc {
+	return EncodeFuncOf(reflect.TypeFor[T](), cache)
+}
+
+// EncodeFuncOf returns the encode function for the given type.
+func EncodeFuncOf(t reflect.Type, seen EncodeFuncCache) EncodeFunc {
 	f := seen[t]
 	if f != nil {
 		return f
 	}
+
+	if isUnion(t) {
+		return encodeFuncUnionOf(t, seen)
+	}
+
+	// Check if type implements Value interface first
+	if t.Implements(valueType) {
+		zv := reflect.Zero(t).Interface().(Value)
+		f = zv.EncodeFunc(seen)
+		seen[t] = f
+		return f
+	}
+
 	switch t.Kind() {
 	case reflect.Bool:
 		f = encodeBool
@@ -104,44 +125,44 @@ func encodeFuncOf(t reflect.Type, seen encodeFuncCache) encodeFunc {
 	return f
 }
 
-func encodeBool(w Writer, v reflect.Value, _ flags) error {
+func encodeBool(w Writer, v reflect.Value, _ Flags) error {
 	return w.WriteBool(v.Bool())
 }
 
-func encodeInt8(w Writer, v reflect.Value, _ flags) error {
+func encodeInt8(w Writer, v reflect.Value, _ Flags) error {
 	return w.WriteInt8(int8(v.Int()))
 }
 
-func encodeInt16(w Writer, v reflect.Value, _ flags) error {
+func encodeInt16(w Writer, v reflect.Value, _ Flags) error {
 	return w.WriteInt16(int16(v.Int()))
 }
 
-func encodeInt32(w Writer, v reflect.Value, _ flags) error {
+func encodeInt32(w Writer, v reflect.Value, _ Flags) error {
 	return w.WriteInt32(int32(v.Int()))
 }
 
-func encodeInt64(w Writer, v reflect.Value, _ flags) error {
+func encodeInt64(w Writer, v reflect.Value, _ Flags) error {
 	return w.WriteInt64(v.Int())
 }
 
-func encodeFloat64(w Writer, v reflect.Value, _ flags) error {
+func encodeFloat64(w Writer, v reflect.Value, _ Flags) error {
 	return w.WriteFloat64(v.Float())
 }
 
-func encodeString(w Writer, v reflect.Value, _ flags) error {
+func encodeString(w Writer, v reflect.Value, _ Flags) error {
 	return w.WriteString(v.String())
 }
 
-func encodeBytes(w Writer, v reflect.Value, _ flags) error {
+func encodeBytes(w Writer, v reflect.Value, _ Flags) error {
 	return w.WriteBytes(v.Bytes())
 }
 
-func encodeFuncSliceOf(t reflect.Type, seen encodeFuncCache) encodeFunc {
+func encodeFuncSliceOf(t reflect.Type, seen EncodeFuncCache) EncodeFunc {
 	elem := t.Elem()
 	typ := TypeOf(elem)
-	enc := encodeFuncOf(elem, seen)
+	enc := EncodeFuncOf(elem, seen)
 
-	return func(w Writer, v reflect.Value, flags flags) error {
+	return func(w Writer, v reflect.Value, flags Flags) error {
 		n := v.Len()
 		if n > math.MaxInt32 {
 			return fmt.Errorf("slice length is too large to be represented in thrift: %d > max(int32)", n)
@@ -165,7 +186,7 @@ func encodeFuncSliceOf(t reflect.Type, seen encodeFuncCache) encodeFunc {
 	}
 }
 
-func encodeFuncMapOf(t reflect.Type, seen encodeFuncCache) encodeFunc {
+func encodeFuncMapOf(t reflect.Type, seen EncodeFuncCache) EncodeFunc {
 	key, elem := t.Key(), t.Elem()
 	if elem.Size() == 0 { // map[?]struct{}
 		return encodeFuncMapAsSetOf(t, seen)
@@ -173,10 +194,10 @@ func encodeFuncMapOf(t reflect.Type, seen encodeFuncCache) encodeFunc {
 
 	keyType := TypeOf(key)
 	elemType := TypeOf(elem)
-	encodeKey := encodeFuncOf(key, seen)
-	encodeElem := encodeFuncOf(elem, seen)
+	encodeKey := EncodeFuncOf(key, seen)
+	encodeElem := EncodeFuncOf(elem, seen)
 
-	return func(w Writer, v reflect.Value, flags flags) error {
+	return func(w Writer, v reflect.Value, flags Flags) error {
 		n := v.Len()
 		if n > math.MaxInt32 {
 			return fmt.Errorf("map length is too large to be represented in thrift: %d > max(int32)", n)
@@ -207,12 +228,12 @@ func encodeFuncMapOf(t reflect.Type, seen encodeFuncCache) encodeFunc {
 	}
 }
 
-func encodeFuncMapAsSetOf(t reflect.Type, seen encodeFuncCache) encodeFunc {
+func encodeFuncMapAsSetOf(t reflect.Type, seen EncodeFuncCache) EncodeFunc {
 	key := t.Key()
 	typ := TypeOf(key)
-	enc := encodeFuncOf(key, seen)
+	enc := EncodeFuncOf(key, seen)
 
-	return func(w Writer, v reflect.Value, flags flags) error {
+	return func(w Writer, v reflect.Value, flags Flags) error {
 		n := v.Len()
 		if n > math.MaxInt32 {
 			return fmt.Errorf("map length is too large to be represented in thrift: %d > max(int32)", n)
@@ -241,7 +262,6 @@ func encodeFuncMapAsSetOf(t reflect.Type, seen encodeFuncCache) encodeFunc {
 
 type structEncoder struct {
 	fields []structEncoderField
-	union  bool
 }
 
 func dereference(v reflect.Value) reflect.Value {
@@ -256,12 +276,19 @@ func dereference(v reflect.Value) reflect.Value {
 
 func isTrue(v reflect.Value) bool {
 	v = dereference(v)
-	return v.IsValid() && v.Kind() == reflect.Bool && v.Bool()
+	if !v.IsValid() {
+		return false
+	}
+	// Handle BoolValue types (like Null[bool])
+	if v.Type().Implements(boolValueType) {
+		return v.Interface().(BoolValue).Bool()
+	}
+	return v.Kind() == reflect.Bool && v.Bool()
 }
 
-func (enc *structEncoder) encode(w Writer, v reflect.Value, flags flags) error {
-	useDeltaEncoding := flags.have(useDeltaEncoding)
-	coalesceBoolFields := flags.have(coalesceBoolFields)
+func (enc *structEncoder) encode(w Writer, v reflect.Value, flags Flags) error {
+	deltaEnc := flags.Have(useDeltaEncoding)
+	coalesceBool := flags.Have(coalesceBoolFields)
 	numFields := int16(0)
 	lastFieldID := int16(0)
 
@@ -279,7 +306,12 @@ encodeFields:
 			}
 		}
 
-		if !f.flags.have(required) && x.IsZero() {
+		// Check if Value types should be skipped (e.g., Null[T] with Valid=false, nil Slice[T])
+		if f.null(x) {
+			continue encodeFields
+		}
+
+		if !f.flags.Have(Required) && !f.flags.Have(WriteZero) && x.IsZero() {
 			continue encodeFields
 		}
 
@@ -288,14 +320,14 @@ encodeFields:
 			Type: f.typ,
 		}
 
-		if useDeltaEncoding {
+		if deltaEnc {
 			if delta := field.ID - lastFieldID; delta <= 15 {
 				field.ID = delta
 				field.Delta = true
 			}
 		}
 
-		skipValue := coalesceBoolFields && field.Type == BOOL
+		skipValue := coalesceBool && field.Type == BOOL
 		if skipValue && isTrue(x) == true {
 			field.Type = TRUE
 		}
@@ -318,29 +350,19 @@ encodeFields:
 		return err
 	}
 
-	if numFields > 1 && enc.union {
-		return fmt.Errorf("thrift union had more than one field with a non-zero value (%d)", numFields)
-	}
-
 	return nil
-}
-
-func (enc *structEncoder) String() string {
-	if enc.union {
-		return "union"
-	}
-	return "struct"
 }
 
 type structEncoderField struct {
 	index  []int
 	id     int16
-	flags  flags
+	flags  Flags
 	typ    Type
-	encode encodeFunc
+	encode EncodeFunc
+	null   NullFunc
 }
 
-func encodeFuncStructOf(t reflect.Type, seen encodeFuncCache) encodeFunc {
+func encodeFuncStructOf(t reflect.Type, seen EncodeFuncCache) EncodeFunc {
 	enc := &structEncoder{
 		fields: make([]structEncoderField, 0, t.NumField()),
 	}
@@ -348,17 +370,14 @@ func encodeFuncStructOf(t reflect.Type, seen encodeFuncCache) encodeFunc {
 	seen[t] = encode
 
 	forEachStructField(t, nil, func(f structField) {
-		if f.flags.have(union) {
-			enc.union = true
-		} else {
-			enc.fields = append(enc.fields, structEncoderField{
-				index:  f.index,
-				id:     f.id,
-				flags:  f.flags,
-				typ:    TypeOf(f.typ),
-				encode: encodeFuncStructFieldOf(f, seen),
-			})
-		}
+		enc.fields = append(enc.fields, structEncoderField{
+			index:  f.index,
+			id:     f.id,
+			flags:  f.flags,
+			typ:    TypeOf(f.typ),
+			encode: encodeFuncStructFieldOf(f, seen),
+			null:   nullFuncOf(f),
+		})
 	})
 
 	slices.SortStableFunc(enc.fields, func(a, b structEncoderField) int {
@@ -374,22 +393,44 @@ func encodeFuncStructOf(t reflect.Type, seen encodeFuncCache) encodeFunc {
 	return encode
 }
 
-func encodeFuncStructFieldOf(f structField, seen encodeFuncCache) encodeFunc {
-	if f.flags.have(enum) {
+func encodeFuncStructFieldOf(f structField, seen EncodeFuncCache) EncodeFunc {
+	if f.flags.Have(Enum) {
 		switch f.typ.Kind() {
 		case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
 			return encodeInt32
 		}
 	}
-	return encodeFuncOf(f.typ, seen)
+	return EncodeFuncOf(f.typ, seen)
 }
 
-func encodeFuncPtrOf(t reflect.Type, seen encodeFuncCache) encodeFunc {
+// neverNull is used for required fields and non-Value types.
+func neverNull(reflect.Value) bool { return false }
+
+func nullFuncOf(f structField) NullFunc {
+	// Required fields are never skipped
+	if f.flags.Have(Required) {
+		return neverNull
+	}
+	// Union structs are unset when their member field is nil.
+	if f.flags.Have(UnionType) {
+		return unionLayoutOf(f.typ).nullFunc()
+	}
+	// Value types: use their NullFunc
+	if f.flags.Have(ValueType) {
+		zv := reflect.Zero(f.typ).Interface().(Value)
+		return zv.NullFunc()
+	}
+	// Pointer fields are handled by the loop (nil check during traversal)
+	// All other types use neverNull
+	return neverNull
+}
+
+func encodeFuncPtrOf(t reflect.Type, seen EncodeFuncCache) EncodeFunc {
 	typ := t.Elem()
-	enc := encodeFuncOf(typ, seen)
+	enc := EncodeFuncOf(typ, seen)
 	zero := reflect.Zero(typ)
 
-	return func(w Writer, v reflect.Value, f flags) error {
+	return func(w Writer, v reflect.Value, f Flags) error {
 		if v.IsNil() {
 			v = zero
 		} else {

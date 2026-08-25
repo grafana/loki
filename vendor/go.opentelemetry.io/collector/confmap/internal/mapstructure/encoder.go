@@ -7,11 +7,12 @@ import (
 	"encoding"
 	"errors"
 	"fmt"
+	"maps"
 	"reflect"
 	"strings"
 
 	"github.com/go-viper/mapstructure/v2"
-	"gopkg.in/yaml.v3"
+	"go.yaml.in/yaml/v3"
 )
 
 const (
@@ -121,9 +122,7 @@ func (e *Encoder) encodeStruct(value reflect.Value) (any, error) {
 			}
 			if info.squash {
 				if m, ok := encoded.(map[string]any); ok {
-					for k, v := range m {
-						result[k] = v
-					}
+					maps.Copy(result, m)
 				}
 			} else {
 				result[info.name] = encoded
@@ -141,6 +140,11 @@ func (e *Encoder) encodeSlice(value reflect.Value) (any, error) {
 			Kind:   value.Kind(),
 		}
 	}
+
+	if value.IsNil() {
+		return []any(nil), nil
+	}
+
 	result := make([]any, value.Len())
 	for i := 0; i < value.Len(); i++ {
 		var err error
@@ -160,7 +164,12 @@ func (e *Encoder) encodeMap(value reflect.Value) (any, error) {
 			Kind:   value.Kind(),
 		}
 	}
-	result := make(map[string]any)
+
+	var result map[string]any
+	if value.Len() > 0 || !value.IsNil() {
+		result = make(map[string]any)
+	}
+
 	iterator := value.MapRange()
 	for iterator.Next() {
 		encoded, err := e.encode(iterator.Key())
@@ -215,7 +224,7 @@ func getTagInfo(field reflect.StructField) *tagInfo {
 // for the encoding.TextMarshaler interface and calls the MarshalText
 // function if found.
 func TextMarshalerHookFunc() mapstructure.DecodeHookFuncValue {
-	return func(from reflect.Value, _ reflect.Value) (any, error) {
+	return func(from, _ reflect.Value) (any, error) {
 		marshaler, ok := from.Interface().(encoding.TextMarshaler)
 		if !ok {
 			return from.Interface(), nil
@@ -233,7 +242,7 @@ func TextMarshalerHookFunc() mapstructure.DecodeHookFuncValue {
 // to map[string]any using the yaml package, which respects the yaml tags. Ultimately,
 // this allows mapstructure to later marshal the map[string]any in a generic way.
 func YamlMarshalerHookFunc() mapstructure.DecodeHookFuncValue {
-	return func(from reflect.Value, _ reflect.Value) (any, error) {
+	return func(from, _ reflect.Value) (any, error) {
 		if from.Kind() == reflect.Struct {
 			for i := 0; i < from.NumField(); i++ {
 				if _, ok := from.Type().Field(i).Tag.Lookup("mapstructure"); ok {
@@ -254,6 +263,22 @@ func YamlMarshalerHookFunc() mapstructure.DecodeHookFuncValue {
 					}
 					return m, nil
 				}
+			}
+		}
+		return from.Interface(), nil
+	}
+}
+
+// StringTextUnredactedHookFunc returns a DecodeHookFuncValue that extracts the underlying
+// unredacted string from custom string types that implement encoding.TextMarshaler.
+func StringTextUnredactedHookFunc() mapstructure.DecodeHookFuncValue {
+	return func(from, _ reflect.Value) (any, error) {
+		// If the underlying kind is a string, and it implements TextMarshaler
+		// (which obfuscated types like configopaque.String usually do).
+		if from.Kind() == reflect.String {
+			if _, ok := from.Interface().(encoding.TextMarshaler); ok {
+				// Extract the raw string via reflection, bypassing any custom methods.
+				return from.String(), nil
 			}
 		}
 		return from.Interface(), nil

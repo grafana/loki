@@ -14,9 +14,10 @@
     changelogPath='CHANGELOG.md',
     checkTemplate='./.github/workflows/check.yml',
     distMakeTargets=['dist', 'packages'],
+    distOptionalTargets=[],
+    distRunsOn='ubuntu-x64',
     dryRun=false,
-    dockerUsername='grafana',
-    golangCiLintVersion='v1.64.5',
+    golangCiLintVersion='v2.3.0',
     imageBuildTimeoutMin=25,
     imageJobs={},
     imagePrefix='grafana',
@@ -25,11 +26,10 @@
     releaseRepo='grafana/loki-release',
     skipArm=false,
     skipValidation=false,
-    useGitHubAppToken=true,
-    useGCR=false,
     versioningStrategy='always-bump-patch',
                     ) {
     local githubApp = if releaseRepo == 'grafana/enterprise-logs' then 'enterprise-logs-app' else 'loki-gh-app',
+    local garRepoSlug = if releaseRepo == 'grafana/enterprise-logs' then 'enterprise-logs' else 'loki',
 
     name: 'create release PR',
     on: {
@@ -48,13 +48,12 @@
       BUILD_ARTIFACTS_BUCKET: buildArtifactsBucket,
       BUILD_TIMEOUT: imageBuildTimeoutMin,
       CHANGELOG_PATH: changelogPath,
-      DOCKER_USERNAME: dockerUsername,
       DRY_RUN: dryRun,
       IMAGE_PREFIX: imagePrefix,
       RELEASE_LIB_REF: releaseLibRef,
       RELEASE_REPO: releaseRepo,
+      GAR_REPO_SLUG: garRepoSlug,
       SKIP_VALIDATION: skipValidation,
-      USE_GITHUB_APP_TOKEN: useGitHubAppToken,
       VERSIONING_STRATEGY: versioningStrategy,
       GITHUB_APP: githubApp,
     } + if releaseAs != null then {
@@ -74,13 +73,9 @@
                build_image: buildImage,
                golang_ci_lint_version: golangCiLintVersion,
                release_lib_ref: releaseLibRef,
-               use_github_app_token: useGitHubAppToken,
-             })
-             + if useGCR then $.job.withSecrets({
-               GCS_SERVICE_ACCOUNT_KEY: '${{ secrets.GCS_SERVICE_ACCOUNT_KEY }}',
-             }) else {},
+             }),
       version: $.build.version + $.common.job.withNeeds(validationSteps),
-      dist: $.build.dist(buildImage, skipArm, useGCR, distMakeTargets)
+      dist: $.build.dist(buildImage, skipArm, distMakeTargets, distOptionalTargets, distRunsOn)
             + $.common.job.withNeeds(['version'])
             + $.common.job.withPermissions({
               contents: 'write',
@@ -95,20 +90,20 @@
   releaseWorkflow: function(
     branches=['release-[0-9].[0-9].x', 'k[0-9]*'],
     buildArtifactsBucket='loki-build-artifacts',
-    dockerUsername='grafanabot',
-    getDockerCredsFromVault=false,
     imagePrefix='grafana',
+    pluginImagePrefix=null,
     pluginBuildDir='release/plugin-tmp-dir',
     publishBucket='',
     publishToGCS=false,
     releaseLibRef='main',
     releaseRepo='grafana/loki-release',
     releaseBranchTemplate='release-\\${major}.\\${minor}.x',
-    useGitHubAppToken=true,
     dockerPluginPath='clients/cmd/docker-driver',
     publishDockerPlugins=true,
                   ) {
     local githubApp = if releaseRepo == 'grafana/enterprise-logs' then 'enterprise-logs-app' else 'loki-gh-app',
+    local garRepoSlug = if releaseRepo == 'grafana/enterprise-logs' then 'enterprise-logs' else 'loki',
+    local effectivePluginImagePrefix = if pluginImagePrefix != null then pluginImagePrefix else imagePrefix,
 
     name: 'create release',
     on: {
@@ -126,9 +121,10 @@
     env: {
       BUILD_ARTIFACTS_BUCKET: buildArtifactsBucket,
       IMAGE_PREFIX: imagePrefix,
+      PLUGIN_IMAGE_PREFIX: effectivePluginImagePrefix,
       RELEASE_LIB_REF: releaseLibRef,
       RELEASE_REPO: releaseRepo,
-      USE_GITHUB_APP_TOKEN: useGitHubAppToken,
+      GAR_REPO_SLUG: garRepoSlug,
       GITHUB_APP: githubApp,
     } + if publishToGCS then {
       PUBLISH_BUCKET: publishBucket,
@@ -151,9 +147,9 @@
           'id-token': 'write',
         },
       },
-      publishImages: $.release.publishImages(getDockerCredsFromVault, dockerUsername),
+      publishImages: $.release.publishImages(),
     } + (if publishDockerPlugins then {
-           publishDockerPlugins: $.release.publishDockerPlugins(pluginBuildDir, getDockerCredsFromVault, dockerUsername),
+           publishDockerPlugins: $.release.publishDockerPlugins(pluginBuildDir),
            publishRelease: $.release.publishRelease(['createRelease', 'publishImages', 'publishDockerPlugins']),
          } else {
            publishRelease: $.release.publishRelease(['createRelease', 'publishImages']),
@@ -178,7 +174,7 @@
             type: 'boolean',
           },
           golang_ci_lint_version: {
-            default: 'v1.64.5',
+            default: 'v2.3.0',
             description: 'version of golangci-lint to use',
             required: false,
             type: 'string',
@@ -207,7 +203,6 @@
     },
     env: {
       RELEASE_LIB_REF: '${{ inputs.release_lib_ref }}',
-      USE_GITHUB_APP_TOKEN: '${{ inputs.use_github_app_token }}',
     },
     jobs: $.validate,
   },
@@ -228,7 +223,7 @@
             type: 'boolean',
           },
           golang_ci_lint_version: {
-            default: 'v1.64.5',
+            default: 'v2.3.0',
             description: 'version of golangci-lint to use',
             required: false,
             type: 'string',
@@ -246,12 +241,6 @@
             type: 'boolean',
           },
         },
-        secrets: {
-          GCS_SERVICE_ACCOUNT_KEY: {
-            description: 'GCS service account key',
-            required: false,
-          },
-        },
       },
     },
     permissions: {
@@ -263,7 +252,6 @@
     },
     env: {
       RELEASE_LIB_REF: '${{ inputs.release_lib_ref }}',
-      USE_GITHUB_APP_TOKEN: '${{ inputs.use_github_app_token }}',
     },
     jobs: $.validateGel,
   },

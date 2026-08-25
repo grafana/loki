@@ -1,0 +1,80 @@
+syntax = "proto3";
+
+package grafana.dataset.type.v1;
+
+option go_package = "github.com/grafana/loki/v3/pkg/dataset/encoding/wirecodec/internal/typemd";
+
+// Type represents a logical type in a dataset.
+message Type {
+  oneof kind {
+    Null null = 1;
+    Uint32 uint32 = 2;
+    Uint64 uint64 = 3;
+    Int32 int32 = 4;
+    Int64 int64 = 5;
+    Bool bool = 6;
+    UTF8 utf8 = 7;
+    Struct struct = 8;
+    List list = 9;
+  }
+}
+
+// Null is a niladic type whose only value is null.
+message Null {}
+
+// Uint32 is a 32-bit unsigned integer type.
+message Uint32 {
+  bool nullable = 1;
+}
+
+// Uint64 is a 64-bit unsigned integer type.
+message Uint64 {
+  bool nullable = 1;
+}
+
+// Int32 is a 32-bit signed integer type.
+message Int32 {
+  bool nullable = 1;
+}
+
+// Int64 is a 64-bit signed integer type.
+message Int64 {
+  bool nullable = 1;
+}
+
+// Bool is a boolean type.
+message Bool {
+  bool nullable = 1;
+}
+
+// UTF8 is a UTF-8 string type.
+message UTF8 {
+  bool nullable = 1;
+}
+
+// Struct is a structured type with a list of fields.
+message Struct {
+  message Field {
+    // name_ref is the index into the dataset-wide dictionary that holds the
+    // field name.
+    uint64 name_ref = 1;
+    Type type = 2;
+  }
+
+  // Fields holds the list of fields for this struct type.
+  repeated Field fields = 1;
+
+  // Nullable indicates whether an entire struct row can be null. Individual
+  // fields can still be nullable types when this is false.
+  bool nullable = 2;
+}
+
+// List is a list type with a single element type.
+message List {
+  // Element holds the type of the list elements.
+  Type element = 1;
+
+  // Nullable indicates whether the list itself can be null. Individual
+  // elements can still be nullable types when this is false.
+  bool nullable = 2;
+}

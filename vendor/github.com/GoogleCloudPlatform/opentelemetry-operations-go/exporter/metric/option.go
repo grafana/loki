@@ -21,8 +21,9 @@ import (
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/sdk/metric/metricdata"
-	semconv "go.opentelemetry.io/otel/semconv/v1.24.0"
 
+	monitoring "cloud.google.com/go/monitoring/apiv3/v2"
+	semconv "go.opentelemetry.io/otel/semconv/v1.37.0"
 	apioption "google.golang.org/api/option"
 )
 
@@ -42,8 +43,8 @@ type Option func(*options)
 type options struct {
 	// context allows you to provide a custom context for API calls.
 	//
-	// This context will be used several times: first, to create Cloud Monitoring
-	// clients, and then every time a new batch of metrics needs to be uploaded.
+	// This context will be used to create Cloud Monitoring clients, and to get
+	// application default credentials.
 	//
 	// If unset, context.Background() will be used.
 	context context.Context
@@ -69,8 +70,11 @@ type options struct {
 	projectID string
 	// compression enables gzip compression on gRPC calls.
 	compression string
+	// monitoringClient is used as the default client when not nil. If
+	// monitoringClient is nil, a client is created instead.
+	monitoringClient *monitoring.MetricClient
 	// monitoringClientOptions are additional options to be passed
-	// to the underlying Stackdriver Monitoring API client.
+	// to the underlying Cloud Monitoring API client.
 	// Optional.
 	monitoringClientOptions []apioption.ClientOption
 	// destinationProjectQuota sets whether the request should use quota from
@@ -105,6 +109,16 @@ func WithProjectID(id string) func(o *options) {
 func WithDestinationProjectQuota() func(o *options) {
 	return func(o *options) {
 		o.destinationProjectQuota = true
+	}
+}
+
+// WithMonitoringClient configures the client used by the exporter to write
+// metrics to Cloud Monitoring. This option is mutually exclusive with
+// WithMonitoringClientOptions. If both options are provided,
+// WithMonitoringClient is used and WithMonitoringClientOptions is ignored.
+func WithMonitoringClient(cl *monitoring.MetricClient) func(o *options) {
+	return func(o *options) {
+		o.monitoringClient = cl
 	}
 }
 
@@ -197,5 +211,13 @@ func WithMonitoredResourceDescription(mrType string, mrLabels []string) func(o *
 			mrType:   mrType,
 			mrLabels: mrLabelSet,
 		}
+	}
+}
+
+// WithContext allows callers to provide a context to create clients and fetch
+// application default credentials with.
+func WithContext(ctx context.Context) func(o *options) {
+	return func(o *options) {
+		o.context = ctx
 	}
 }

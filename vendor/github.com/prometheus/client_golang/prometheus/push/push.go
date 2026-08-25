@@ -182,7 +182,7 @@ func (p *Pusher) Error() error {
 // For convenience, this method returns a pointer to the Pusher itself.
 func (p *Pusher) Grouping(name, value string) *Pusher {
 	if p.error == nil {
-		if !model.LabelName(name).IsValid() {
+		if !model.UTF8Validation.IsValidLabelName(name) {
 			p.error = fmt.Errorf("grouping label has invalid name: %s", name)
 			return p
 		}

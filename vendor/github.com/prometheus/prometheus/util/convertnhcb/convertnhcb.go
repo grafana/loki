@@ -1,4 +1,4 @@
-// Copyright 2024 The Prometheus Authors
+// Copyright The Prometheus Authors
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
@@ -26,6 +26,7 @@ import (
 
 var (
 	errNegativeBucketCount = errors.New("bucket count must be non-negative")
+	errNaNBucket           = errors.New("bucket boundary must not be NaN")
 	errNegativeCount       = errors.New("count must be non-negative")
 	errCountMismatch       = errors.New("count mismatch")
 	errCountNotCumulative  = errors.New("count is not cumulative")
@@ -69,6 +70,10 @@ func (h *TempHistogram) Reset() {
 
 func (h *TempHistogram) SetBucketCount(boundary, count float64) error {
 	if h.err != nil {
+		return h.err
+	}
+	if math.IsNaN(boundary) {
+		h.err = errNaNBucket
 		return h.err
 	}
 	if count < 0 {

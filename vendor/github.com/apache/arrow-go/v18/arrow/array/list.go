@@ -112,6 +112,9 @@ func (a *List) GetOneForMarshal(i int) interface{} {
 	return json.RawMessage(v)
 }
 
+func (a *List) Validate() error     { return validateListArray(a, false) }
+func (a *List) ValidateFull() error { return validateListArray(a, true) }
+
 func (a *List) MarshalJSON() ([]byte, error) {
 	var buf bytes.Buffer
 	enc := json.NewEncoder(&buf)
@@ -164,8 +167,8 @@ func (a *List) Release() {
 }
 
 func (a *List) ValueOffsets(i int) (start, end int64) {
-	debug.Assert(i >= 0 && i < a.array.data.length, "index out of range")
-	j := i + a.array.data.offset
+	debug.Assert(i >= 0 && i < a.data.length, "index out of range")
+	j := i + a.data.offset
 	start, end = int64(a.offsets[j]), int64(a.offsets[j+1])
 	return
 }
@@ -244,6 +247,9 @@ func (a *LargeList) GetOneForMarshal(i int) interface{} {
 	return json.RawMessage(v)
 }
 
+func (a *LargeList) Validate() error     { return validateLargeListArray(a, false) }
+func (a *LargeList) ValidateFull() error { return validateLargeListArray(a, true) }
+
 func (a *LargeList) MarshalJSON() ([]byte, error) {
 	var buf bytes.Buffer
 	enc := json.NewEncoder(&buf)
@@ -286,8 +292,8 @@ func (a *LargeList) Len() int { return a.array.Len() }
 func (a *LargeList) Offsets() []int64 { return a.offsets }
 
 func (a *LargeList) ValueOffsets(i int) (start, end int64) {
-	debug.Assert(i >= 0 && i < a.array.data.length, "index out of range")
-	j := i + a.array.data.offset
+	debug.Assert(i >= 0 && i < a.data.length, "index out of range")
+	j := i + a.data.offset
 	start, end = a.offsets[j], a.offsets[j+1]
 	return
 }
@@ -468,13 +474,13 @@ func (b *baseListBuilder) AppendEmptyValues(n int) {
 func (b *ListBuilder) AppendValues(offsets []int32, valid []bool) {
 	b.Reserve(len(valid))
 	b.offsets.(*Int32Builder).AppendValues(offsets, nil)
-	b.builder.unsafeAppendBoolsToBitmap(valid, len(valid))
+	b.unsafeAppendBoolsToBitmap(valid, len(valid))
 }
 
 func (b *LargeListBuilder) AppendValues(offsets []int64, valid []bool) {
 	b.Reserve(len(valid))
 	b.offsets.(*Int64Builder).AppendValues(offsets, nil)
-	b.builder.unsafeAppendBoolsToBitmap(valid, len(valid))
+	b.unsafeAppendBoolsToBitmap(valid, len(valid))
 }
 
 func (b *baseListBuilder) unsafeAppendBoolToBitmap(isValid bool) {
@@ -494,7 +500,7 @@ func (b *baseListBuilder) init(capacity int) {
 // Reserve ensures there is enough space for appending n elements
 // by checking the capacity and calling Resize if necessary.
 func (b *baseListBuilder) Reserve(n int) {
-	b.builder.reserve(n, b.resizeHelper)
+	b.reserve(n, b.resizeHelper)
 	b.offsets.Reserve(n)
 }
 
@@ -513,7 +519,7 @@ func (b *baseListBuilder) resizeHelper(n int) {
 	if b.capacity == 0 {
 		b.init(n)
 	} else {
-		b.builder.resize(n, b.builder.init)
+		b.resize(n, b.builder.init)
 	}
 }
 
@@ -627,6 +633,7 @@ func (b *baseListBuilder) Unmarshal(dec *json.Decoder) error {
 
 func (b *baseListBuilder) UnmarshalJSON(data []byte) error {
 	dec := json.NewDecoder(bytes.NewReader(data))
+	dec.UseNumber()
 	t, err := dec.Token()
 	if err != nil {
 		return err
@@ -772,8 +779,8 @@ func (a *ListView) Release() {
 }
 
 func (a *ListView) ValueOffsets(i int) (start, end int64) {
-	debug.Assert(i >= 0 && i < a.array.data.length, "index out of range")
-	j := i + a.array.data.offset
+	debug.Assert(i >= 0 && i < a.data.length, "index out of range")
+	j := i + a.data.offset
 	size := int64(a.sizes[j])
 	// If size is 0, skip accessing offsets.
 	if size == 0 {
@@ -909,8 +916,8 @@ func (a *LargeListView) Offsets() []int64 { return a.offsets }
 func (a *LargeListView) Sizes() []int64 { return a.sizes }
 
 func (a *LargeListView) ValueOffsets(i int) (start, end int64) {
-	debug.Assert(i >= 0 && i < a.array.data.length, "index out of range")
-	j := i + a.array.data.offset
+	debug.Assert(i >= 0 && i < a.data.length, "index out of range")
+	j := i + a.data.offset
 	size := a.sizes[j]
 	// If size is 0, skip accessing offsets.
 	if size == 0 {
@@ -1035,9 +1042,9 @@ func (a *array) validateOffsetsAndMaybeSizes(l offsetsAndSizes, offsetByteWidth 
 }
 
 func (a *ListView) validate(fullValidation bool) error {
-	values := a.array.data.childData[0]
+	values := a.data.childData[0]
 	offsetLimit := values.Len()
-	return a.array.validateOffsetsAndMaybeSizes(a, 4, true, int64(offsetLimit), fullValidation)
+	return a.validateOffsetsAndMaybeSizes(a, 4, true, int64(offsetLimit), fullValidation)
 }
 
 func (a *ListView) Validate() error {
@@ -1049,9 +1056,9 @@ func (a *ListView) ValidateFull() error {
 }
 
 func (a *LargeListView) validate(fullValidation bool) error {
-	values := a.array.data.childData[0]
+	values := a.data.childData[0]
 	offsetLimit := values.Len()
-	return a.array.validateOffsetsAndMaybeSizes(a, 8, true, int64(offsetLimit), fullValidation)
+	return a.validateOffsetsAndMaybeSizes(a, 8, true, int64(offsetLimit), fullValidation)
 }
 
 func (a *LargeListView) Validate() error {
@@ -1238,14 +1245,14 @@ func (b *ListViewBuilder) AppendValuesWithSizes(offsets []int32, sizes []int32, 
 	b.Reserve(len(valid))
 	b.offsets.(*Int32Builder).AppendValues(offsets, nil)
 	b.sizes.(*Int32Builder).AppendValues(sizes, nil)
-	b.builder.unsafeAppendBoolsToBitmap(valid, len(valid))
+	b.unsafeAppendBoolsToBitmap(valid, len(valid))
 }
 
 func (b *LargeListViewBuilder) AppendValuesWithSizes(offsets []int64, sizes []int64, valid []bool) {
 	b.Reserve(len(valid))
 	b.offsets.(*Int64Builder).AppendValues(offsets, nil)
 	b.sizes.(*Int64Builder).AppendValues(sizes, nil)
-	b.builder.unsafeAppendBoolsToBitmap(valid, len(valid))
+	b.unsafeAppendBoolsToBitmap(valid, len(valid))
 }
 
 func (b *baseListViewBuilder) unsafeAppendBoolToBitmap(isValid bool) {
@@ -1266,7 +1273,7 @@ func (b *baseListViewBuilder) init(capacity int) {
 // Reserve ensures there is enough space for appending n elements
 // by checking the capacity and calling Resize if necessary.
 func (b *baseListViewBuilder) Reserve(n int) {
-	b.builder.reserve(n, b.resizeHelper)
+	b.reserve(n, b.resizeHelper)
 	b.offsets.Reserve(n)
 	b.sizes.Reserve(n)
 }
@@ -1287,7 +1294,7 @@ func (b *baseListViewBuilder) resizeHelper(n int) {
 	if b.capacity == 0 {
 		b.init(n)
 	} else {
-		b.builder.resize(n, b.builder.init)
+		b.resize(n, b.builder.init)
 	}
 }
 
@@ -1415,6 +1422,7 @@ func (b *baseListViewBuilder) Unmarshal(dec *json.Decoder) error {
 
 func (b *baseListViewBuilder) UnmarshalJSON(data []byte) error {
 	dec := json.NewDecoder(bytes.NewReader(data))
+	dec.UseNumber()
 	t, err := dec.Token()
 	if err != nil {
 		return err

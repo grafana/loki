@@ -48,10 +48,11 @@ type VirtualMemoryStat struct {
 	Laundry uint64 `json:"laundry"`
 
 	// Linux specific numbers
-	// https://www.centos.org/docs/5/html/5.1/Deployment_Guide/s2-proc-meminfo.html
+	// https://blogs.oracle.com/linux/understanding-linux-kernel-memory-statistics
 	// https://www.kernel.org/doc/Documentation/filesystems/proc.txt
 	// https://www.kernel.org/doc/Documentation/vm/overcommit-accounting
 	// https://www.kernel.org/doc/Documentation/vm/transhuge.txt
+	//
 	Buffers        uint64 `json:"buffers"`
 	Cached         uint64 `json:"cached"`
 	WriteBack      uint64 `json:"writeBack"`

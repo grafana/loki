@@ -4,11 +4,12 @@ menuTitle: Migrate from `loki-distributed`
 description: Migration guide for moving from `loki-distributed` to `loki`
 aliases:
   - ../../installation/helm/migrate-from-distributed
-weight: 600
+weight: 700
 keywords:
   - migrate
   - loki-distributed
   - distributed
+  - helm
 ---
 
 # Migrate from `loki-distributed` Helm chart
@@ -55,7 +56,7 @@ This leverages the fact that the new deployment adds a `app.kubernetes.io/compon
 
 1. Convert all Clients to Push Logs to New `loki` Deployment
 
-   Assuming everything is working as expected, you can now modify the `clients` section of your Grafana Agent or Promtail configuration to push logs to the new deployment. After this change is made, the `loki-distributed` cluster will no longer recieve new logs and can be carefully scaled down.
+   Assuming everything is working as expected, you can now modify the `clients` section of your Grafana Agent or Promtail configuration to push logs to the new deployment. After this change is made, the `loki-distributed` cluster will no longer receive new logs and can be carefully scaled down.
 
    Once this has deployed, query the new `loki` cluster's Loki data source for new logs to make sure they're still being ingested.
 
@@ -111,7 +112,7 @@ This leverages the fact that the new deployment adds a `app.kubernetes.io/compon
    To apply the new configuration (assuming you installed the new chart as `loki` in the _loki_ namespace):
 
    ```bash
-   helm upgrade -n loki loki grafana/loki --values values.yaml
+   helm upgrade -n loki loki grafana-community/loki --values values.yaml
    ```
 
    The `migrate.fromDistributed.memberlistService` was added as an _additional_ memberlist join member, so once this new config is pushed, the components should roll without interruption.

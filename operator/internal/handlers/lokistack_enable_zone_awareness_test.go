@@ -88,8 +88,8 @@ func TestAnnotatePodWithAvailabilityZone_WhenGetReturnsNode_DoesNotError(t *test
 		return kverrors.New("failed to lookup node")
 	}
 
-	expectedPatch, _ := json.Marshal(map[string]interface{}{
-		"metadata": map[string]interface{}{
+	expectedPatch, _ := json.Marshal(map[string]any{
+		"metadata": map[string]any{
 			"annotations": map[string]string{
 				lokiv1.AnnotationAvailabilityZone: "test-node_us-east-2c_us-east-2",
 			},

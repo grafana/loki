@@ -4,17 +4,20 @@ on:
     - cron: '0 0 * * *' # Run daily at 00:00 UTC
   workflow_dispatch: # Allow for manual trigger
 
+permissions:
+  contents: read
+
 jobs:
   relyance:
     permissions:
       contents: read
       id-token: write
 
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-x64
     timeout-minutes: 15
     steps:
       - name: Checkout Code
-        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
         with:
           'persist-credentials': false
 

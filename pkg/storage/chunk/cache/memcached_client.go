@@ -27,7 +27,7 @@ import (
 
 // MemcachedClient interface exists for mocking memcacheClient.
 type MemcachedClient interface {
-	GetMulti(keys []string, opts ...memcache.Option) (map[string]*memcache.Item, error)
+	GetMulti(ctx context.Context, keys []string, opts ...memcache.Option) (map[string]*memcache.Item, error)
 	Set(item *memcache.Item) error
 }
 
@@ -151,7 +151,7 @@ func NewMemcachedClient(cfg MemcachedClientConfig, name string, r prometheus.Reg
 		hostname:    cfg.Host,
 		service:     cfg.Service,
 		logger:      logger,
-		provider:    dns.NewProvider(logger, dnsProviderRegisterer, dns.GolangResolverType),
+		provider:    dns.NewProvider(dns.GolangResolverType, 0, logger, dnsProviderRegisterer),
 		cbs:         make(map[string]*gobreaker.CircuitBreaker[interface{}]),
 		cbFailures:  cfg.CBFailures,
 		cbInterval:  cfg.CBInterval,

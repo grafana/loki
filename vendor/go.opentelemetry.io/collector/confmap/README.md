@@ -126,11 +126,8 @@ service:
   extensions: [ file_storage ]
 ```
 
-
 ```yaml
 # extra_extension.yaml
-processors:
-  batch:
 extensions:
   healthcheckv2:
 
@@ -138,7 +135,6 @@ service:
   extensions: [ healthcheckv2 ]
   pipelines:
     traces:
-      processors: [ batch ]
 ```
 
 If you run the Collector with following command,
@@ -157,7 +153,6 @@ processors:
       - key: key
         value: "value"
         action: upsert
-  batch:
 exporters:
   otlp/out:
 extensions:
@@ -168,7 +163,7 @@ service:
   pipelines:
     traces:
       receivers: [ otlp/in ]
-      processors: [ attributes/example, batch ]
+      processors: [ attributes/example ]
       exporters: [ otlp/out ]
   extensions: [ file_storage, healthcheckv2 ]
 ```
@@ -176,7 +171,7 @@ service:
 Notice that the `service::extensions` list is a combination of both configurations. By default, the value of the last configuration source passed, `extra_extension`, would be used, so the extensions list would be: `service::extensions: [healthcheckv2]`.
 
 > [!NOTE]
-> By enabling this feature gate, all the lists in the given configuration will be merged. 
+> By enabling this feature gate, only the extensions, receivers and exporters under the `service` section are merged.
 
 ### Watching for Updates
 After the configuration was processed, the `Resolver` can be used as a single point to watch for updates in the

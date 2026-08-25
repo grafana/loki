@@ -135,15 +135,15 @@ Using a regular expression makes sense when there are many attributes with simil
 
 ### Customizing OpenShift Defaults
 
-The `openshift-logging` tenancy mode contains its own set of default attributes. Some of these attributes (called "required attributes") can not be removed by applying a custom configuration, because they are needed for other OpenShift components to function properly. Other attributes (called "recommended attributes") are provided but can be disabled in case they influence performance negatively. The complete set of attributes is documented in the [data model](rhobs-data-model) repository. The default configuration only lists the stream labels of the data model, because the mapping to structured metadata is Loki's default.
-
-Because the OpenShift attribute configuration is applied based on the tenancy mode, the simplest configuration is to just set the tenancy mode and not apply any custom attributes. This will provide instant compatibility with the other OpenShift tools.
+The `openshift-logging` tenancy mode contains its own set of default attributes. Some of these attributes (called "required attributes") can not be removed by applying a custom configuration, because they are needed for the authorization to function properly. Another set of attributes ("console labels") is used by the OpenShift Console and can be enabled when that UI is used. The complete set of attributes is documented in the [data model](rhobs-data-model) repository. The default configuration only lists the stream labels of the data model, because the mapping to structured metadata is Loki's default.
 
 In case additional stream labels are needed, the normal custom attribute configuration mentioned above can be used. Attributes defined in the custom configuration will be **merged** with the default configuration. The same approach can be used to drop attributes, as long as they are not part of the set of required attributes.
 
-#### Removing Recommended Attributes
+#### Stream Labels for OpenShift Console
 
-In case of issues with the default set of attributes, there is a way to slim down the default set of attributes applied to a LokiStack operating in `openshift-logging` tenancy mode:
+The log viewer in the OpenShift Console uses a set of pre-defined stream labels for its integrated filters. Earlier versions of the operator automatically added the whole set of stream labels to the OTLP configuration, but this was found out to have negative performance implications for customers with a lot of containers in few namespaces.
+
+It is possible to return to the previous behavior by setting the `enableConsoleLabels` configuration option in the LokiStack:
 
 ```yaml
 # [...]
@@ -152,10 +152,10 @@ spec:
     mode: openshift-logging
     openshift:
       otlp:
-        disableRecommendedAttributes: true # Set this to remove recommended attributes
+        enableConsoleLabels: true
 ```
 
-Setting `disableRecommendedAttributes: true` reduces the set of default stream labels to only the "required attributes". This means the following "recommended attributes" are **not** automatically used as stream labels:
+Setting `enableConsoleLabels: true` adds the whole set of attributes to the stream labels:
 
 - `k8s.container.name`
 - `k8s.cronjob.name`
@@ -170,7 +170,9 @@ Setting `disableRecommendedAttributes: true` reduces the set of default stream l
 - `kubernetes.pod_name`
 - `service.name`
 
-Since these attributes are no longer stream labels by default, queries that previously relied on them **as stream labels** will need to be updated, and their performance might be negatively affected. It is recommended to combine this setting with a [custom attribute mapping](#custom-attribute-mapping) to selectively reintroduce any of these attributes (or other) as stream labels if they are important for your querying strategy.
+Currently the OpenShift Log Console only supports filtering on these attributes by using stream labels. This means that unless the full set of labels is added to the configuration not all filters are working properly. This situation might change in the future when the console is extended to fall back to structured metadata when a certain stream label is not available.
+
+If you know that only a subset of the filters are used, it is recommended to only add those stream labels to the configuration instead of using the full set.
 
 ## References
 

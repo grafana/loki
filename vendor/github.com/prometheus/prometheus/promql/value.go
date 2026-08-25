@@ -1,4 +1,4 @@
-// Copyright 2017 The Prometheus Authors
+// Copyright The Prometheus Authors
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
@@ -14,6 +14,7 @@
 package promql
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -44,7 +45,7 @@ func (s String) String() string {
 }
 
 func (s String) MarshalJSON() ([]byte, error) {
-	return json.Marshal([...]interface{}{float64(s.T) / 1000, s.V})
+	return json.Marshal([...]any{float64(s.T) / 1000, s.V})
 }
 
 // Scalar is a data point that's explicitly not associated with a metric.
@@ -60,7 +61,7 @@ func (s Scalar) String() string {
 
 func (s Scalar) MarshalJSON() ([]byte, error) {
 	v := strconv.FormatFloat(s.V, 'f', -1, 64)
-	return json.Marshal([...]interface{}{float64(s.T) / 1000, v})
+	return json.Marshal([...]any{float64(s.T) / 1000, v})
 }
 
 // Series is a stream of data points belonging to a metric.
@@ -110,7 +111,7 @@ func (p FPoint) String() string {
 // timestamp.
 func (p FPoint) MarshalJSON() ([]byte, error) {
 	v := strconv.FormatFloat(p.F, 'f', -1, 64)
-	return json.Marshal([...]interface{}{float64(p.T) / 1000, v})
+	return json.Marshal([...]any{float64(p.T) / 1000, v})
 }
 
 // HPoint represents a single histogram data point for a given timestamp.
@@ -135,9 +136,9 @@ func (p HPoint) String() string {
 // timestamp.
 func (p HPoint) MarshalJSON() ([]byte, error) {
 	h := struct {
-		Count   string          `json:"count"`
-		Sum     string          `json:"sum"`
-		Buckets [][]interface{} `json:"buckets,omitempty"`
+		Count   string  `json:"count"`
+		Sum     string  `json:"sum"`
+		Buckets [][]any `json:"buckets,omitempty"`
 	}{
 		Count: strconv.FormatFloat(p.H.Count, 'f', -1, 64),
 		Sum:   strconv.FormatFloat(p.H.Sum, 'f', -1, 64),
@@ -160,7 +161,7 @@ func (p HPoint) MarshalJSON() ([]byte, error) {
 				boundaries = 0 // Inclusive only on upper end AKA left open.
 			}
 		}
-		bucketToMarshal := []interface{}{
+		bucketToMarshal := []any{
 			boundaries,
 			strconv.FormatFloat(bucket.Lower, 'f', -1, 64),
 			strconv.FormatFloat(bucket.Upper, 'f', -1, 64),
@@ -168,7 +169,7 @@ func (p HPoint) MarshalJSON() ([]byte, error) {
 		}
 		h.Buckets = append(h.Buckets, bucketToMarshal)
 	}
-	return json.Marshal([...]interface{}{float64(p.T) / 1000, h})
+	return json.Marshal([...]any{float64(p.T) / 1000, h})
 }
 
 // size returns the size of the HPoint compared to the size of an FPoint.
@@ -186,6 +187,26 @@ func totalHPointSize(histograms []HPoint) int {
 		total += h.size()
 	}
 	return total
+}
+
+// countSamplesAfter returns the number of sample equivalents in floats and histograms
+// with timestamp strictly after cutoff. Float samples count as 1; histogram samples
+// count via HPoint.size. Used for range-vector sample stats to count only new points per step.
+//
+// Both slices are sorted by timestamp ascending. We scan backwards from the end
+// because the call site uses cutoff = maxt - interval, which is typically close
+// to the end of the window, so only the last one or two points satisfy the
+// predicate. Backwards linear scan is O(k) for k matches and avoids the closure
+// overhead that sort.Search imposes on these very small slices.
+func countSamplesAfter(floats []FPoint, histograms []HPoint, cutoff int64) int64 {
+	var n int64
+	for i := len(floats) - 1; i >= 0 && floats[i].T > cutoff; i-- {
+		n++
+	}
+	for i := len(histograms) - 1; i >= 0 && histograms[i].T > cutoff; i-- {
+		n += int64(histograms[i].size())
+	}
+	return n
 }
 
 // Sample is a single sample belonging to a metric. It represents either a float
@@ -396,6 +417,26 @@ func (r *Result) String() string {
 	return r.Value.String()
 }
 
+// StartTimestamps stores sample start timestamps aligned with points.
+type StartTimestamps struct {
+	// Floats stores start timestamps for float samples in range-vector functions.
+	// NB: for simplicity, this is also used in instant-vector functions (e.g. start_timestamp()) for
+	// sample start timestamps irrespective of the sample type.
+	Floats []int64
+	// Histograms stores start timestamps for histogram samples.
+	Histograms []int64
+}
+
+// Reset clears the start timestamps while keeping the slice capacity for reuse.
+func (st *StartTimestamps) Reset() {
+	if st.Floats != nil {
+		st.Floats = st.Floats[:0]
+	}
+	if st.Histograms != nil {
+		st.Histograms = st.Histograms[:0]
+	}
+}
+
 // StorageSeries simulates promql.Series as storage.Series.
 type StorageSeries struct {
 	series Series
@@ -470,16 +511,25 @@ func (ssi *storageSeriesIterator) At() (t int64, v float64) {
 	return ssi.currT, ssi.currF
 }
 
-func (ssi *storageSeriesIterator) AtHistogram(*histogram.Histogram) (int64, *histogram.Histogram) {
+func (*storageSeriesIterator) AtHistogram(*histogram.Histogram) (int64, *histogram.Histogram) {
 	panic(errors.New("storageSeriesIterator: AtHistogram not supported"))
 }
 
-func (ssi *storageSeriesIterator) AtFloatHistogram(*histogram.FloatHistogram) (int64, *histogram.FloatHistogram) {
-	return ssi.currT, ssi.currH
+func (ssi *storageSeriesIterator) AtFloatHistogram(fh *histogram.FloatHistogram) (int64, *histogram.FloatHistogram) {
+	if fh == nil {
+		return ssi.currT, ssi.currH.Copy()
+	}
+	ssi.currH.CopyTo(fh)
+	return ssi.currT, fh
 }
 
 func (ssi *storageSeriesIterator) AtT() int64 {
 	return ssi.currT
+}
+
+// TODO(krajorama,ywwg): implement AtST.
+func (*storageSeriesIterator) AtST() int64 {
+	return 0
 }
 
 func (ssi *storageSeriesIterator) Next() chunkenc.ValueType {
@@ -530,6 +580,71 @@ func (ssi *storageSeriesIterator) Next() chunkenc.ValueType {
 	}
 }
 
-func (ssi *storageSeriesIterator) Err() error {
+func (*storageSeriesIterator) Err() error {
 	return nil
+}
+
+type fParams struct {
+	series     Series
+	constValue float64
+	isConstant bool
+	minValue   float64
+	maxValue   float64
+	hasAnyNaN  bool
+}
+
+// newFParams evaluates the expression and returns an fParams object,
+// which holds the parameter values (constant or series) along with min, max, and NaN info.
+func newFParams(ctx context.Context, ev *evaluator, expr parser.Expr) (*fParams, annotations.Annotations) {
+	if expr == nil {
+		return &fParams{}, nil
+	}
+	var constParam bool
+	if _, ok := expr.(*parser.NumberLiteral); ok {
+		constParam = true
+	}
+	val, ws := ev.eval(ctx, expr)
+	mat, ok := val.(Matrix)
+	if !ok || len(mat) == 0 {
+		return &fParams{}, ws
+	}
+	fp := &fParams{
+		series:     mat[0],
+		isConstant: constParam,
+		minValue:   math.MaxFloat64,
+		maxValue:   -math.MaxFloat64,
+	}
+
+	if constParam {
+		fp.constValue = fp.series.Floats[0].F
+		fp.minValue, fp.maxValue = fp.constValue, fp.constValue
+		fp.hasAnyNaN = math.IsNaN(fp.constValue)
+		return fp, ws
+	}
+
+	for _, v := range fp.series.Floats {
+		fp.maxValue = math.Max(fp.maxValue, v.F)
+		fp.minValue = math.Min(fp.minValue, v.F)
+		if math.IsNaN(v.F) {
+			fp.hasAnyNaN = true
+		}
+	}
+	return fp, ws
+}
+
+func (fp *fParams) Max() float64    { return fp.maxValue }
+func (fp *fParams) Min() float64    { return fp.minValue }
+func (fp *fParams) HasAnyNaN() bool { return fp.hasAnyNaN }
+
+// Next returns the next value from the series or the constant value, and advances the series if applicable.
+func (fp *fParams) Next() float64 {
+	if fp.isConstant {
+		return fp.constValue
+	}
+	if len(fp.series.Floats) > 0 {
+		val := fp.series.Floats[0].F
+		fp.series.Floats = fp.series.Floats[1:]
+		return val
+	}
+	return 0
 }

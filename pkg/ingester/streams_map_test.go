@@ -27,12 +27,12 @@ func TestStreamsMap(t *testing.T) {
 			"fake",
 			model.Fingerprint(1),
 			labels.FromStrings("foo", "bar"),
-			true,
 			NewStreamRateCalculator(),
 			NilMetrics,
 			nil,
 			nil,
 			retentionHours,
+			noPolicy,
 		),
 		newStream(
 			chunkfmt,
@@ -42,12 +42,12 @@ func TestStreamsMap(t *testing.T) {
 			"fake",
 			model.Fingerprint(2),
 			labels.FromStrings("bar", "foo"),
-			true,
 			NewStreamRateCalculator(),
 			NilMetrics,
 			nil,
 			nil,
 			retentionHours,
+			noPolicy,
 		),
 	}
 	var s *stream

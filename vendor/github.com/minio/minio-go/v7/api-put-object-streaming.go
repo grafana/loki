@@ -108,19 +108,14 @@ func (c *Client) putObjectMultipartStreamFromReadAt(ctx context.Context, bucketN
 	if err != nil {
 		return UploadInfo{}, err
 	}
-	if opts.Checksum.IsSet() {
-		opts.AutoChecksum = opts.Checksum
-	}
-	withChecksum := c.trailingHeaderSupport
-	if withChecksum {
-		addAutoChecksumHeaders(&opts)
-	}
+
 	// Initiate a new multipart upload.
 	uploadID, err := c.newUploadID(ctx, bucketName, objectName, opts)
 	if err != nil {
 		return UploadInfo{}, err
 	}
-	delete(opts.UserMetadata, "X-Amz-Checksum-Algorithm")
+
+	withChecksum := c.trailingHeaderSupport
 
 	// Aborts the multipart upload in progress, if the
 	// function returns any error, since we do not resume
@@ -215,9 +210,13 @@ func (c *Client) putObjectMultipartStreamFromReadAt(ctx context.Context, bucketN
 				}
 				objPart, err := c.uploadPart(ctx, p)
 				if err != nil {
-					uploadedPartsCh <- uploadedPartRes{
+					select {
+					case <-ctx.Done():
+					case uploadedPartsCh <- uploadedPartRes{
 						Error: err,
+					}:
 					}
+
 					// Exit the goroutine.
 					return
 				}
@@ -226,10 +225,13 @@ func (c *Client) putObjectMultipartStreamFromReadAt(ctx context.Context, bucketN
 				uploadReq.Part = objPart
 
 				// Send successful part info through the channel.
-				uploadedPartsCh <- uploadedPartRes{
+				select {
+				case <-ctx.Done():
+				case uploadedPartsCh <- uploadedPartRes{
 					Size:    objPart.Size,
 					PartNum: uploadReq.PartNum,
 					Part:    uploadReq.Part,
+				}:
 				}
 			}
 		}(partSize)
@@ -257,6 +259,11 @@ func (c *Client) putObjectMultipartStreamFromReadAt(ctx context.Context, bucketN
 				ChecksumSHA1:      uploadRes.Part.ChecksumSHA1,
 				ChecksumSHA256:    uploadRes.Part.ChecksumSHA256,
 				ChecksumCRC64NVME: uploadRes.Part.ChecksumCRC64NVME,
+				ChecksumMD5:       uploadRes.Part.ChecksumMD5,
+				ChecksumSHA512:    uploadRes.Part.ChecksumSHA512,
+				ChecksumXXHash64:  uploadRes.Part.ChecksumXXHash64,
+				ChecksumXXHash3:   uploadRes.Part.ChecksumXXHash3,
+				ChecksumXXHash128: uploadRes.Part.ChecksumXXHash128,
 			})
 		}
 	}
@@ -297,15 +304,6 @@ func (c *Client) putObjectMultipartStreamOptionalChecksum(ctx context.Context, b
 		return UploadInfo{}, err
 	}
 
-	if opts.Checksum.IsSet() {
-		opts.AutoChecksum = opts.Checksum
-		opts.SendContentMd5 = false
-	}
-
-	if !opts.SendContentMd5 {
-		addAutoChecksumHeaders(&opts)
-	}
-
 	// Calculate the optimal parts info for a given size.
 	totalPartsCount, partSize, lastPartSize, err := OptimalPartInfo(size, opts.PartSize)
 	if err != nil {
@@ -316,7 +314,6 @@ func (c *Client) putObjectMultipartStreamOptionalChecksum(ctx context.Context, b
 	if err != nil {
 		return UploadInfo{}, err
 	}
-	delete(opts.UserMetadata, "X-Amz-Checksum-Algorithm")
 
 	// Aborts the multipart upload if the function returns
 	// any error, since we do not resume we should purge
@@ -369,12 +366,18 @@ func (c *Client) putObjectMultipartStreamOptionalChecksum(ctx context.Context, b
 			md5Hash.Reset()
 			md5Hash.Write(buf[:length])
 			md5Base64 = base64.StdEncoding.EncodeToString(md5Hash.Sum(nil))
-		} else {
+		}
+
+		if opts.AutoChecksum.IsSet() {
 			// Add CRC32C instead.
 			crc.Reset()
 			crc.Write(buf[:length])
 			cSum := crc.Sum(nil)
-			customHeader.Set(opts.AutoChecksum.KeyCapitalized(), base64.StdEncoding.EncodeToString(cSum))
+			customHeader.Set(opts.AutoChecksum.Key(), base64.StdEncoding.EncodeToString(cSum))
+			customHeader.Set(amzChecksumAlgo, opts.AutoChecksum.String())
+			if opts.AutoChecksum.FullObjectRequested() {
+				customHeader.Set(amzChecksumMode, ChecksumFullObjectMode.String())
+			}
 		}
 
 		// Update progress reader appropriately to the latest offset
@@ -420,6 +423,11 @@ func (c *Client) putObjectMultipartStreamOptionalChecksum(ctx context.Context, b
 			ChecksumSHA1:      part.ChecksumSHA1,
 			ChecksumSHA256:    part.ChecksumSHA256,
 			ChecksumCRC64NVME: part.ChecksumCRC64NVME,
+			ChecksumMD5:       part.ChecksumMD5,
+			ChecksumSHA512:    part.ChecksumSHA512,
+			ChecksumXXHash64:  part.ChecksumXXHash64,
+			ChecksumXXHash3:   part.ChecksumXXHash3,
+			ChecksumXXHash128: part.ChecksumXXHash128,
 		})
 	}
 
@@ -453,13 +461,6 @@ func (c *Client) putObjectMultipartStreamParallel(ctx context.Context, bucketNam
 	if err = s3utils.CheckValidObjectName(objectName); err != nil {
 		return UploadInfo{}, err
 	}
-	if opts.Checksum.IsSet() {
-		opts.SendContentMd5 = false
-		opts.AutoChecksum = opts.Checksum
-	}
-	if !opts.SendContentMd5 {
-		addAutoChecksumHeaders(&opts)
-	}
 
 	// Cancel all when an error occurs.
 	ctx, cancel := context.WithCancel(ctx)
@@ -476,7 +477,6 @@ func (c *Client) putObjectMultipartStreamParallel(ctx context.Context, bucketNam
 	if err != nil {
 		return UploadInfo{}, err
 	}
-	delete(opts.UserMetadata, "X-Amz-Checksum-Algorithm")
 
 	// Aborts the multipart upload if the function returns
 	// any error, since we do not resume we should purge
@@ -535,24 +535,28 @@ func (c *Client) putObjectMultipartStreamParallel(ctx context.Context, bucketNam
 			break
 		}
 
-		if rerr != nil && rerr != io.ErrUnexpectedEOF && err != io.EOF {
+		if rerr != nil && rerr != io.ErrUnexpectedEOF && rerr != io.EOF {
 			cancel()
 			wg.Wait()
 			return UploadInfo{}, rerr
 		}
 
-		// Calculate md5sum.
-		customHeader := make(http.Header)
-		if !opts.SendContentMd5 {
-			// Add Checksum instead.
-			crc.Reset()
-			crc.Write(buf[:length])
-			cSum := crc.Sum(nil)
-			customHeader.Set(opts.AutoChecksum.Key(), base64.StdEncoding.EncodeToString(cSum))
-		}
-
 		wg.Add(1)
 		go func(partNumber int) {
+			// Calculate md5sum.
+			customHeader := make(http.Header)
+			if opts.AutoChecksum.IsSet() {
+				// Add Checksum instead.
+				crc.Reset()
+				crc.Write(buf[:length])
+				cSum := crc.Sum(nil)
+				customHeader.Set(opts.AutoChecksum.Key(), base64.StdEncoding.EncodeToString(cSum))
+				customHeader.Set(amzChecksumAlgo, opts.AutoChecksum.String())
+				if opts.AutoChecksum.FullObjectRequested() {
+					customHeader.Set(amzChecksumMode, ChecksumFullObjectMode.String())
+				}
+			}
+
 			// Avoid declaring variables in the for loop
 			var md5Base64 string
 
@@ -623,6 +627,11 @@ func (c *Client) putObjectMultipartStreamParallel(ctx context.Context, bucketNam
 			ChecksumSHA1:      part.ChecksumSHA1,
 			ChecksumSHA256:    part.ChecksumSHA256,
 			ChecksumCRC64NVME: part.ChecksumCRC64NVME,
+			ChecksumMD5:       part.ChecksumMD5,
+			ChecksumSHA512:    part.ChecksumSHA512,
+			ChecksumXXHash64:  part.ChecksumXXHash64,
+			ChecksumXXHash3:   part.ChecksumXXHash3,
+			ChecksumXXHash128: part.ChecksumXXHash128,
 		})
 	}
 
@@ -663,9 +672,6 @@ func (c *Client) putObject(ctx context.Context, bucketName, objectName string, r
 
 	if opts.SendContentMd5 && s3utils.IsGoogleEndpoint(*c.endpointURL) && size < 0 {
 		return UploadInfo{}, errInvalidArgument("MD5Sum cannot be calculated with size '-1'")
-	}
-	if opts.Checksum.IsSet() {
-		opts.SendContentMd5 = false
 	}
 
 	var readSeeker io.Seeker
@@ -759,7 +765,7 @@ func (c *Client) putObjectDo(ctx context.Context, bucketName, objectName string,
 			}
 		}
 		if addCrc {
-			opts.AutoChecksum.SetDefault(ChecksumCRC32C)
+			opts.AutoChecksum.SetDefault(ChecksumFullObjectCRC32C)
 			reqMetadata.addCrc = &opts.AutoChecksum
 		}
 	}
@@ -805,6 +811,11 @@ func (c *Client) putObjectDo(ctx context.Context, bucketName, objectName string,
 		ChecksumSHA1:      h.Get(ChecksumSHA1.Key()),
 		ChecksumSHA256:    h.Get(ChecksumSHA256.Key()),
 		ChecksumCRC64NVME: h.Get(ChecksumCRC64NVME.Key()),
+		ChecksumMD5:       h.Get(ChecksumMD5.Key()),
+		ChecksumSHA512:    h.Get(ChecksumSHA512.Key()),
+		ChecksumXXHash64:  h.Get(ChecksumXXHash64.Key()),
+		ChecksumXXHash3:   h.Get(ChecksumXXHash3.Key()),
+		ChecksumXXHash128: h.Get(ChecksumXXHash128.Key()),
 		ChecksumMode:      h.Get(ChecksumFullObjectMode.Key()),
 	}, nil
 }
