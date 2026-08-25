@@ -1188,3 +1188,88 @@ func TestDataObjCompaction_ValidateAcceptsValidCombinations(t *testing.T) {
 		})
 	}
 }
+
+func TestOverrides_SortSchemaLabelsDefault(t *testing.T) {
+	t.Run("register-flags default", func(t *testing.T) {
+		var defaults Limits
+		defaults.RegisterFlags(flag.NewFlagSet("test", flag.PanicOnError))
+		ov, err := NewOverrides(defaults, nil)
+		require.NoError(t, err)
+		require.Equal(t, []string{"label:service_name"}, ov.SortSchemaLabels("any-tenant"))
+	})
+
+	t.Run("flag value is the default for tenants without override", func(t *testing.T) {
+		var defaults Limits
+		fs := flag.NewFlagSet("test", flag.ContinueOnError)
+		defaults.RegisterFlags(fs)
+		require.NoError(t, fs.Parse([]string{"-limits.sort-schema=label:cluster"}))
+		ov, err := NewOverrides(defaults, nil)
+		require.NoError(t, err)
+		require.Equal(t, []string{"label:cluster"}, ov.SortSchemaLabels("any-tenant"))
+	})
+
+	t.Run("per-tenant yaml wins", func(t *testing.T) {
+		var defaults Limits
+		defaults.RegisterFlags(flag.NewFlagSet("test", flag.PanicOnError))
+		ov, err := NewOverrides(defaults, newMockTenantLimits(map[string]*Limits{
+			"custom": {SortSchema: SortSchema{"label:app"}},
+		}))
+		require.NoError(t, err)
+		require.Equal(t, []string{"label:app"}, ov.SortSchemaLabels("custom"))
+		require.Equal(t, []string{"label:service_name"}, ov.SortSchemaLabels("other"))
+	})
+}
+
+func TestSortSchema_FlagValue(t *testing.T) {
+	t.Run("string joins fqns", func(t *testing.T) {
+		s := SortSchema{"label:service_name", "label:namespace"}
+		require.Equal(t, "label:service_name,label:namespace", s.String())
+	})
+
+	t.Run("set replaces previous value", func(t *testing.T) {
+		var s SortSchema
+		require.NoError(t, s.Set("label:app"))
+		require.NoError(t, s.Set("label:job, label:ns"))
+		require.Equal(t, SortSchema{"label:job", "label:ns"}, s)
+	})
+
+	t.Run("set skips empty parts", func(t *testing.T) {
+		var s SortSchema
+		require.NoError(t, s.Set("label:app,,label:job,"))
+		require.Equal(t, SortSchema{"label:app", "label:job"}, s)
+	})
+}
+
+func TestSortSchema_RegisterFlags(t *testing.T) {
+	t.Run("default is DefaultSortSchema", func(t *testing.T) {
+		var l Limits
+		fs := flag.NewFlagSet("test", flag.ContinueOnError)
+		l.RegisterFlags(fs)
+		require.Equal(t, DefaultSortSchema, l.SortSchema)
+	})
+
+	t.Run("parses comma-separated keys", func(t *testing.T) {
+		var l Limits
+		fs := flag.NewFlagSet("test", flag.ContinueOnError)
+		l.RegisterFlags(fs)
+		require.NoError(t, fs.Parse([]string{"-limits.sort-schema=label:app,label:ns"}))
+		require.Equal(t, SortSchema{"label:app", "label:ns"}, l.SortSchema)
+		require.NoError(t, l.Validate())
+	})
+
+	t.Run("validate rejects bad fqn after flag parse", func(t *testing.T) {
+		var l Limits
+		fs := flag.NewFlagSet("test", flag.ContinueOnError)
+		l.RegisterFlags(fs)
+		require.NoError(t, fs.Parse([]string{"-limits.sort-schema=not-a-fqn"}))
+		require.Error(t, l.Validate())
+	})
+
+	t.Run("validate rejects duplicates after flag parse", func(t *testing.T) {
+		var l Limits
+		fs := flag.NewFlagSet("test", flag.ContinueOnError)
+		l.RegisterFlags(fs)
+		require.NoError(t, fs.Parse([]string{"-limits.sort-schema=label:app,label:app"}))
+		require.Error(t, l.Validate())
+	})
+}

@@ -315,6 +315,29 @@ func (s SortSchema) Validate() error {
 	return nil
 }
 
+// String implements flag.Value.
+func (s SortSchema) String() string {
+	parts := make([]string, len(s))
+	for i, fqn := range s {
+		parts[i] = string(fqn)
+	}
+	return strings.Join(parts, ",")
+}
+
+// Set implements flag.Value. Each call overwrites any previous value.
+// Input is a comma-separated list of SortKeyFqn values.
+func (s *SortSchema) Set(v string) error {
+	*s = nil
+	for _, part := range strings.Split(v, ",") {
+		part = strings.TrimSpace(part)
+		if part == "" {
+			continue
+		}
+		*s = append(*s, SortKeyFqn(part))
+	}
+	return nil
+}
+
 type StreamRetention struct {
 	Period   model.Duration    `yaml:"period" json:"period" doc:"description:Retention period applied to the log lines matching the selector."`
 	Priority int               `yaml:"priority" json:"priority" doc:"description:The larger the value, the higher the priority."`
@@ -532,6 +555,9 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 
 	f.BoolVar(&l.DebugEngineTasks, "limits.debug-engine-tasks", false, "Experimental: Toggles verbose debug logging of tasks in the new query engine.")
 	f.BoolVar(&l.DebugEngineStreams, "limits.debug-engine-streams", false, "Experimental: Toggles verbose debug logging of data streams in the new query engine.")
+
+	l.SortSchema = DefaultSortSchema
+	f.Var(&l.SortSchema, "limits.sort-schema", "Experimental: Ordered, comma-separated sort keys for data objects, as `label:<name>,...`. Only the label type is currently supported. Defaults to "+DefaultSortSchema.String()+".")
 }
 
 // SetGlobalOTLPConfig set GlobalOTLPConfig which is used while unmarshaling per-tenant otlp config to use the default list of resource attributes picked as index labels.
