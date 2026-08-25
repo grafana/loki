@@ -92,9 +92,8 @@ type Config struct {
 	PushWorkerCount int        `yaml:"push_worker_count"`
 
 	// Request parser
-	MaxRecvMsgSize      int   `yaml:"max_recv_msg_size"`
-	MaxDecompressedSize int64 `yaml:"max_decompressed_size"`
-	MaxInflightBytes    int   `yaml:"max_inflight_bytes"`
+	MaxPushSizeBytes int `yaml:"max_push_size_bytes"`
+	MaxInflightBytes int `yaml:"max_inflight_bytes"`
 
 	// For testing.
 	factory ring_client.PoolFactory `yaml:"-"`
@@ -134,8 +133,7 @@ func (cfg *Config) RegisterFlags(fs *flag.FlagSet) {
 	cfg.RateStore.RegisterFlagsWithPrefix("distributor.rate-store", fs)
 	cfg.WriteFailuresLogging.RegisterFlagsWithPrefix("distributor.write-failures-logging", fs)
 	cfg.OTLPAttributeLogging.RegisterFlagsWithPrefix("distributor.otlp-attribute-logging", fs)
-	fs.IntVar(&cfg.MaxRecvMsgSize, "distributor.max-recv-msg-size", 100<<20, "The maximum size of a received message.")
-	fs.Int64Var(&cfg.MaxDecompressedSize, "distributor.max-decompressed-size", 5000<<20, "The maximum size of a decompressed message. Defaults to 50x max-recv-msg-size.")
+	fs.IntVar(&cfg.MaxPushSizeBytes, "distributor.max-push-size-bytes", math.MaxInt32, "The maximum size of a Push request.")
 	fs.IntVar(&cfg.MaxInflightBytes, "distributor.max-inflight-bytes", 0, "The maximum number of inflight bytes at a time. 0 means disabled.")
 	fs.IntVar(&cfg.PushWorkerCount, "distributor.push-worker-count", 256, "Number of workers to push batches to ingesters.")
 	fs.BoolVar(&cfg.KafkaEnabled, "distributor.kafka-writes-enabled", false, "Enable writes to Kafka during Push requests.")
@@ -154,9 +152,8 @@ func (cfg *Config) Validate() error {
 	if err := cfg.CircuitBreaker.Validate(); err != nil {
 		return err
 	}
-	// Set default maxDecompressedSize if not configured (50x maxRecvMsgSize)
-	if cfg.MaxDecompressedSize == 0 && cfg.MaxRecvMsgSize > 0 {
-		cfg.MaxDecompressedSize = int64(cfg.MaxRecvMsgSize) * 50
+	if cfg.MaxPushSizeBytes < 0 {
+		return errors.New("max push size cannot be less than zero")
 	}
 	if cfg.MaxInflightBytes < 0 {
 		return errors.New("max inflight bytes cannot be less than zero")

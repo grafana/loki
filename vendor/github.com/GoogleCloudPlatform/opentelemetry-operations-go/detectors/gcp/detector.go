@@ -17,6 +17,7 @@ package gcp
 import (
 	"context"
 	"errors"
+	"net/http"
 	"os"
 	"strings"
 
@@ -87,8 +88,10 @@ func (d *Detector) instanceID() (string, error) {
 
 // Detector collects resource information for all GCP platforms.
 type Detector struct {
-	metadata *metadata.Client
-	os       osProvider
+	metadata       *metadata.Client
+	os             osProvider
+	httpClient     *http.Client
+	computeBaseURL string
 }
 
 // osProvider contains the subset of the os package functions used by.
