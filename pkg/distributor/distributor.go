@@ -92,7 +92,6 @@ type Config struct {
 	PushWorkerCount int        `yaml:"push_worker_count"`
 
 	// Request parser
-	MaxPushSizeBytes int `yaml:"max_push_size_bytes"`
 	MaxInflightBytes int `yaml:"max_inflight_bytes"`
 
 	// For testing.
@@ -133,7 +132,6 @@ func (cfg *Config) RegisterFlags(fs *flag.FlagSet) {
 	cfg.RateStore.RegisterFlagsWithPrefix("distributor.rate-store", fs)
 	cfg.WriteFailuresLogging.RegisterFlagsWithPrefix("distributor.write-failures-logging", fs)
 	cfg.OTLPAttributeLogging.RegisterFlagsWithPrefix("distributor.otlp-attribute-logging", fs)
-	fs.IntVar(&cfg.MaxPushSizeBytes, "distributor.max-push-size-bytes", math.MaxInt32, "The maximum size of a Push request.")
 	fs.IntVar(&cfg.MaxInflightBytes, "distributor.max-inflight-bytes", 0, "The maximum number of inflight bytes at a time. 0 means disabled.")
 	fs.IntVar(&cfg.PushWorkerCount, "distributor.push-worker-count", 256, "Number of workers to push batches to ingesters.")
 	fs.BoolVar(&cfg.KafkaEnabled, "distributor.kafka-writes-enabled", false, "Enable writes to Kafka during Push requests.")
@@ -151,9 +149,6 @@ func (cfg *Config) Validate() error {
 	}
 	if err := cfg.CircuitBreaker.Validate(); err != nil {
 		return err
-	}
-	if cfg.MaxPushSizeBytes < 0 {
-		return errors.New("max push size cannot be less than zero")
 	}
 	if cfg.MaxInflightBytes < 0 {
 		return errors.New("max inflight bytes cannot be less than zero")

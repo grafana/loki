@@ -104,6 +104,7 @@ type Limits struct {
 	MaxLineSize                   flagext.ByteSize `yaml:"max_line_size" json:"max_line_size"`
 	MaxLineSizeTruncate           bool             `yaml:"max_line_size_truncate" json:"max_line_size_truncate"`
 	MaxLineSizeTruncateIdentifier string           `yaml:"max_line_size_truncate_identifier" json:"max_line_size_truncate_identifier"`
+	MaxPushSize                   flagext.ByteSize `yaml:"max_push_size" json:"max_push_size"`
 	IncrementDuplicateTimestamp   bool             `yaml:"increment_duplicate_timestamp" json:"increment_duplicate_timestamp"`
 	SimulatedPushLatency          time.Duration    `yaml:"simulated_push_latency" json:"simulated_push_latency" doc:"description=Simulated latency to add to push requests. Used for testing. Set to 0s to disable."`
 
@@ -332,6 +333,9 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 	f.Var(&l.MaxLineSize, "distributor.max-line-size", "Maximum line size on ingestion path. Example: 256kb. Any log line exceeding this limit will be discarded unless `distributor.max-line-size-truncate` is set, in which case it is truncated rather than discarded completely. There is no limit when set to 0.")
 	f.BoolVar(&l.MaxLineSizeTruncate, "distributor.max-line-size-truncate", false, "Whether to truncate lines that exceed max_line_size.")
 	f.StringVar(&l.MaxLineSizeTruncateIdentifier, "distributor.max-line-size-truncate-identifier", "", "Identifier that is added at the end of a truncated log line.")
+
+	_ = l.MaxPushSize.Set("2GB")
+	f.Var(&l.MaxPushSize, "distributor.max-push-size", "The maximum size of a Push request.")
 	f.IntVar(&l.MaxLabelNameLength, "validation.max-length-label-name", 1024, "Maximum length accepted for label names.")
 	f.IntVar(&l.MaxLabelValueLength, "validation.max-length-label-value", 2048, "Maximum length accepted for label value. This setting also applies to the metric name.")
 	f.IntVar(&l.MaxLabelNamesPerSeries, "validation.max-label-names-per-series", 15, "Maximum number of label names per series.")
@@ -923,6 +927,11 @@ func (o *Overrides) MaxLineSizeTruncate(userID string) bool {
 // MaxLineSizeTruncateIdentifier returns whether lines longer than max should be truncated.
 func (o *Overrides) MaxLineSizeTruncateIdentifier(userID string) string {
 	return o.getOverridesForUser(userID).MaxLineSizeTruncateIdentifier
+}
+
+// MaxPushSize returns the maximum size of a push request.
+func (o *Overrides) MaxPushSize(userID string) int {
+	return o.getOverridesForUser(userID).MaxPushSize.Val()
 }
 
 // MaxEntriesLimitPerQuery returns the limit to number of entries the querier should return per query.
