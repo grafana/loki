@@ -9,13 +9,6 @@ import (
 // ExtractQueryNgrams converts query text into sorted unique n-gram terms using
 // the extraction algorithm paired with indexVersion.
 //
-// A text n-gram is sliced to ngramLength. A packed key (v4 numeric grams) is
-// passed whole, because it carries value bytes where the text path leaves zeros:
-// slicing one to a shorter ngramLength would drop low value bytes, and both
-// FindTerm and the shard filter zero-pad what they are given, so the term would
-// resolve to a different dictionary key and to the wrong shard. Consumers slice
-// the term back down to the width they need.
-//
 // Returns (nil, nil) when the query is too short to produce ngrams; returns a
 // non-nil error only when indexVersion is not a recognised version.
 func ExtractQueryNgrams(query string, ngramLength int, indexVersion string) ([]string, error) {

@@ -55,12 +55,6 @@ Text grams only ever contain the transformed alphabet: space, `.`, `0-9`, `A-Z`.
 below 0x20 is impossible in a text gram and is safe as a tag. `0x01` is used; `0x00` is left
 free as an "empty key" sentinel.
 
-Padding alone would *technically* be enough today (text grams at ngram_length 6 fill all six
-bytes, so a zero byte already implies numeric), but that is an emergent accident of the
-current transform table rather than a stated invariant, and it leaves no room to distinguish
-future gram classes. The explicit tag costs one byte we have spare and makes the disjointness
-a property we assert and test (`TestNumericKeysNeverCollideWithTextKeys`).
-
 ### Adding future gram classes
 
 Tag values 0x02..0x1F are free. A future hex or fixed-length class takes a new tag and the

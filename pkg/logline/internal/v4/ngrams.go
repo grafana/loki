@@ -11,9 +11,6 @@ import "github.com/grafana/loki/pkg/push"
 // density filter stores it as a MatchesAll sentinel and an integer query
 // decomposes into saturated grams whose AND narrows nothing. At 9 digits the
 // space is 10^9, sparse enough for the term to carry real postings.
-//
-// 9 is also the shortest integer that can be looked up at all, because a needle
-// must contain NumericNgramLength consecutive digits to produce a numeric gram.
 
 // Indexable punctuation characters that get normalized to '.' (period).
 const normalizedPunct = '.'
@@ -29,11 +26,6 @@ const NumericNgramLength = 9
 // alphabet (space, '.', '0'-'9', 'A'-'Z'), so any byte below 0x20 is safe.
 // 0x00 is deliberately left unused as an "empty key" sentinel.
 const numericTag = 0x01
-
-// maxNumericDigits is the largest NumericNgramLength the key layout can hold:
-// the payload is 5 bytes (40 bits) and 10^12 < 2^40, so 12 digits fit. Raising
-// NumericNgramLength up to this bound needs no format change.
-const maxNumericDigits = 12
 
 // transformTable maps each byte to its transformed value:
 // - lowercase a-z -> uppercase A-Z
@@ -80,18 +72,8 @@ func init() {
 //  2. Emit text n-grams of length n, skipping any whose bytes are all digits
 //  3. Emit one packed numeric key per window of NumericNgramLength digits
 //
-// Both rules are pure functions of the candidate gram's own bytes, never of its
-// surroundings. That is what keeps recall exact: the query path runs this same
-// function over the needle, so build and query can never disagree about whether
-// a gram is indexed. A numeric needle shorter than NumericNgramLength produces
-// no grams at all, which surfaces as ErrUnsupported and passes the query
-// through to a full Loki scan rather than silently skipping data.
-//
 // The input string is not modified. Duplicates are preserved in the output;
 // callers can deduplicate when needed.
-//
-// Never change the emitted n-gram set: that would silently break already
-// written v4 indexes. If the set must change, add a v5.
 func ExtractFeatures(n int, line string, structuredMetadata push.LabelsAdapter, labelValues []string, ngrams [][8]byte) [][8]byte {
 	ngrams = extractFromText(n, line, ngrams)
 	for _, lbl := range structuredMetadata {
@@ -111,7 +93,7 @@ func extractFromText(n int, text string, ngrams [][8]byte) [][8]byte {
 	tokenStart := -1
 	textLen := len(text)
 
-	for i := 0; i < textLen; i++ {
+	for i := range textLen {
 		if separatorTable[text[i]] {
 			if tokenStart >= 0 {
 				tokenLen := i - tokenStart
@@ -138,11 +120,6 @@ func extractFromText(n int, text string, ngrams [][8]byte) [][8]byte {
 	return ngrams
 }
 
-// extractNgramsFromToken emits the text and numeric grams for one token.
-//
-// A digit run can never cross a token boundary, because every separator is a
-// non-digit. Walking runs inside the token is therefore equivalent to the
-// context-free rule "every window of NumericNgramLength consecutive digits".
 func extractNgramsFromToken(n int, token string, ngrams [][8]byte) [][8]byte {
 	tokenLen := len(token)
 
@@ -150,7 +127,7 @@ func extractNgramsFromToken(n int, token string, ngrams [][8]byte) [][8]byte {
 	for j := 0; j+n <= tokenLen; j++ {
 		var key [8]byte
 		allDigits := true
-		for k := 0; k < n; k++ {
+		for k := range n {
 			c := token[j+k]
 			if !isDigit(c) {
 				allDigits = false
