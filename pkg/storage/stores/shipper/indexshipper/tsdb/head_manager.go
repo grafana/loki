@@ -902,22 +902,26 @@ func (t *tenantHeads) forAll(fn func(user string, ls labels.Labels, fp uint64, c
 				return err
 			}
 
+			scan := idx.NewSeriesScan()
 			for ps.Next() {
 				var (
 					ls   labels.Labels
 					chks []index.ChunkMeta
 				)
 
-				fp, err := idx.Series(ps.At(), 0, math.MaxInt64, &ls, &chks)
+				fp, err := scan.Series(ps.At(), 0, math.MaxInt64, &ls, &chks)
 
 				if err != nil {
+					_ = scan.Close()
 					return errors.Wrapf(err, "iterating postings for tenant: %s", user)
 				}
 
 				if err := fn(user, ls, fp, chks); err != nil {
+					_ = scan.Close()
 					return err
 				}
 			}
+			_ = scan.Close()
 		}
 	}
 
