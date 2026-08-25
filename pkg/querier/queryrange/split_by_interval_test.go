@@ -6,7 +6,6 @@ import (
 	"runtime"
 	"strconv"
 	"sync"
-	"sync/atomic"
 	"testing"
 	"time"
 
@@ -14,6 +13,7 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.uber.org/atomic"
 	"go.yaml.in/yaml/v4"
 
 	"github.com/grafana/loki/v3/pkg/loghttp"
@@ -2052,6 +2052,71 @@ func Test_splitByInterval_Process_compactsOverLimit(t *testing.T) {
 			require.Equal(t, stats.Result{Summary: stats.Summary{Splits: 2}}, compacted.Statistics)
 			require.Equal(t, expectedEntries(direction), compacted.Data.Result[0].Entries)
 			require.Equal(t, int32(2), calls.Load())
+		})
+	}
+}
+
+func Test_splitByInterval_firstIntervalFillsLimit(t *testing.T) {
+	ctx := user.InjectOrgID(context.Background(), "1")
+	const perSplit = 3
+	const limit uint32 = 3
+	const intervals = 3
+
+	next := func(calls *atomic.Int32) queryrangebase.Handler {
+		return queryrangebase.HandlerFunc(func(_ context.Context, r queryrangebase.Request) (queryrangebase.Response, error) {
+			req := r.(*LokiRequest)
+			time.Sleep(time.Millisecond)
+			calls.Add(1)
+			return &LokiResponse{
+				Status:    loghttp.QueryStatusSuccess,
+				Direction: req.Direction,
+				Limit:     req.Limit,
+				Version:   uint32(loghttp.VersionV1),
+				Data: LokiData{
+					ResultType: loghttp.ResultTypeStream,
+					Result: []logproto.Stream{
+						{
+							Labels:  `{foo="bar", level="debug"}`,
+							Entries: splitIntervalLogLines(req.StartTs, perSplit, req.Direction),
+						},
+					},
+				},
+			}, nil
+		})
+	}
+
+	for _, direction := range []logproto.Direction{logproto.FORWARD, logproto.BACKWARD} {
+		t.Run(direction.String(), func(t *testing.T) {
+			var calls atomic.Int32
+			split := SplitByIntervalMiddleware(
+				testSchemas,
+				WithSplitByLimits(fakeLimits{maxQueryParallelism: 1}, time.Hour),
+				DefaultCodec,
+				newDefaultSplitter(fakeLimits{}, nil),
+				nilMetrics,
+			).Wrap(next(&calls))
+
+			res, err := split.Do(ctx, &LokiRequest{
+				StartTs:   time.Unix(0, 0),
+				EndTs:     time.Unix(0, (time.Duration(intervals) * time.Hour).Nanoseconds()),
+				Query:     "",
+				Limit:     limit,
+				Step:      1,
+				Direction: direction,
+				Path:      "/api/prom/query_range",
+			})
+			require.NoError(t, err)
+
+			got := res.(*LokiResponse)
+			require.Equal(t, int64(limit), got.Count())
+			require.Equal(t, stats.Result{Summary: stats.Summary{Splits: 1}}, got.Statistics)
+			require.Equal(t, int32(1), calls.Load())
+
+			firstStart := time.Unix(0, 0)
+			if direction == logproto.BACKWARD {
+				firstStart = time.Unix(0, (2 * time.Hour).Nanoseconds())
+			}
+			require.Equal(t, splitIntervalLogLines(firstStart, perSplit, direction), got.Data.Result[0].Entries)
 		})
 	}
 }
