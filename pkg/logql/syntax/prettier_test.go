@@ -146,6 +146,59 @@ func TestFormat_VectorAggregation(t *testing.T) {
 	}
 }
 
+func TestFormat_LabelAggregation(t *testing.T) {
+	MaxCharsPerLine = 20
+
+	cases := []struct {
+		name string
+		in   string
+		exp  string
+	}{
+		{
+			name: "approx_count_distinct",
+			in:   `approx_count_distinct(mac, {job="loki", instance="localhost"}|logfmt[1m]) by (version)`,
+			exp: `approx_count_distinct(
+  mac,
+  {job="loki", instance="localhost"}
+    | logfmt [1m]
+) by (version)`,
+		},
+		{
+			name: "approx_count_distinct_ungrouped",
+			in:   `approx_count_distinct(mac, {foo="bar"}[1d])`,
+			exp: `approx_count_distinct(
+  mac,
+  {foo="bar"} [1d]
+)`,
+		},
+	}
+
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			expr, err := ParseExpr(c.in)
+			require.NoError(t, err)
+			got := Prettify(expr)
+			assert.Equal(t, c.exp, got)
+		})
+	}
+}
+
+func TestFormat_CountDistinctSketch(t *testing.T) {
+	MaxCharsPerLine = 20
+
+	expr, err := ParseExpr(`approx_count_distinct(mac, {job="loki", instance="localhost"}|json[1h]) by (version)`)
+	require.NoError(t, err)
+	labelAgg, ok := expr.(*LabelAggregationExpr)
+	require.True(t, ok)
+
+	got := Prettify(NewCountDistinctSketchFromLabelAggregation(labelAgg))
+	require.Equal(t, `__count_distinct_sketch__(
+  mac,
+  {job="loki", instance="localhost"}
+    | json [1h]
+) by (version)`, got)
+}
+
 func TestFormat_LabelReplace(t *testing.T) {
 	MaxCharsPerLine = 20
 
