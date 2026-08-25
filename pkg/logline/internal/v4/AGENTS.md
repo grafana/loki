@@ -72,11 +72,12 @@ tag does not need to encode the length: the length is a property of the index ve
 
 1. **Bytes 6-7 stay zero.** `radixSortByNgram` orders only bytes 0-5 and assumes the rest are
    zero; violating this mis-sorts runs and wedges the writer's ascending-term check.
-2. **The packed key occupies all six bytes.** The query path slices terms to the term key
-   width (`logline.TermKeyLengthForVersion`), not to `ngram_length`, so numeric lookups work
-   at any `ngram_length`. Slicing by `ngram_length` would truncate the low value bytes and
-   the lookup would miss, which is why that width is a format property rather than an
-   extraction parameter.
+2. **The packed key occupies all six bytes.** `ExtractQueryNgrams` passes a packed key whole
+   (`logline.IsPackedTermKey`) instead of slicing it to `ngram_length`, so numeric lookups work
+   at any `ngram_length`; consumers slice it back down (`FindTerm` to six bytes,
+   `filterNgramsForShard` to eight). Slicing by `ngram_length` would truncate the low value
+   bytes and the lookup would miss. Text grams are still sliced to `ngram_length`, so their
+   terms are unchanged.
 3. **Rules are context-free.** Both read only the candidate gram's own bytes, so build and
    query always agree. This is what keeps recall exact: a numeric needle shorter than
    `NumericNgramLength` produces no grams, `ExtractQueryNgrams` returns nothing,
