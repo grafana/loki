@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/go-kit/log"
+	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
 	"github.com/thanos-io/objstore"
 
@@ -261,8 +262,9 @@ type outputRecord struct {
 // extracts the embedded compacted log object paths, and loads each object from
 // the data bucket. Returns the streamID->app map and records for each object.
 func readCompactedObjectsFromIndex(ctx context.Context, t *testing.T, dataBucket objstore.Bucket, indexBucket objstore.Bucket, indexPath, tenant string) []struct {
-	streamApp map[int64]string
-	records   []outputRecord
+	streamApp    map[int64]string
+	streamLabels map[int64]labels.Labels
+	records      []outputRecord
 } {
 	t.Helper()
 
@@ -302,8 +304,9 @@ func readCompactedObjectsFromIndex(ctx context.Context, t *testing.T, dataBucket
 
 	// Now load each compacted log object from the data bucket
 	var out []struct {
-		streamApp map[int64]string
-		records   []outputRecord
+		streamApp    map[int64]string
+		streamLabels map[int64]labels.Labels
+		records      []outputRecord
 	}
 
 	for _, logPath := range logObjectPaths {
@@ -311,6 +314,7 @@ func readCompactedObjectsFromIndex(ctx context.Context, t *testing.T, dataBucket
 		require.NoError(t, err, "compacted log object must exist at %s", logPath)
 
 		streamApp := make(map[int64]string)
+		streamLabels := make(map[int64]labels.Labels)
 		for _, sec := range logObj.Sections().Filter(streams.CheckSection) {
 			if sec.Tenant != tenant {
 				continue
@@ -321,6 +325,7 @@ func readCompactedObjectsFromIndex(ctx context.Context, t *testing.T, dataBucket
 				s, err := res.Value()
 				require.NoError(t, err)
 				streamApp[s.ID] = s.Labels.Get("app")
+				streamLabels[s.ID] = s.Labels.Copy()
 			}
 		}
 
@@ -343,9 +348,10 @@ func readCompactedObjectsFromIndex(ctx context.Context, t *testing.T, dataBucket
 		}
 
 		out = append(out, struct {
-			streamApp map[int64]string
-			records   []outputRecord
-		}{streamApp: streamApp, records: records})
+			streamApp    map[int64]string
+			streamLabels map[int64]labels.Labels
+			records      []outputRecord
+		}{streamApp: streamApp, streamLabels: streamLabels, records: records})
 	}
 	return out
 }
@@ -415,12 +421,16 @@ func TestDoLogObjectMerge_MergesAndSplits(t *testing.T) {
 			distinctApps[app] = true
 		}
 
-		// Each object is schema-sorted by [app ASC, streamID ASC, timestamp DESC].
+		// Each object is sorted by [shard, schema, hash, streamID, timestamp DESC].
 		for i := 1; i < len(o.records); i++ {
 			prev, curr := o.records[i-1], o.records[i]
-			require.LessOrEqual(t, prev.app, curr.app, "apps must be non-decreasing within object %d", objIdx)
-			if prev.app == curr.app {
-				require.LessOrEqual(t, prev.streamID, curr.streamID, "streamIDs must be non-decreasing within an app")
+			prevKey, err := logsobj.NewStreamOrderKey(o.streamLabels[prev.streamID], sortSchema)
+			require.NoError(t, err)
+			currKey, err := logsobj.NewStreamOrderKey(o.streamLabels[curr.streamID], sortSchema)
+			require.NoError(t, err)
+			require.LessOrEqual(t, logsobj.CompareStreamOrderKey(prevKey, currKey), 0, "stream order must be non-decreasing within object %d", objIdx)
+			if logsobj.CompareStreamOrderKey(prevKey, currKey) == 0 {
+				require.LessOrEqual(t, prev.streamID, curr.streamID, "streamIDs must be non-decreasing within a stream-order group")
 				if prev.streamID == curr.streamID {
 					require.False(t, curr.ts.After(prev.ts), "timestamps must be non-increasing within a stream")
 				}

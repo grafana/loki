@@ -204,11 +204,28 @@ func (seq *DatasetSequence) Close() {
 	_ = seq.r.Close()
 }
 
-// CompareForSortSchema returns a comparison function for k-way merge using
-// schema-based sort order: [sortKey ASC, streamID ASC, timestamp DESC].
-// sortKeys maps streamID to its pre-computed sort key.
+// StreamSort is the physical sort tuple for one stream: shard, schema key, hash.
+// A []StreamSort is indexed by stream ID with [0] unused.
+type StreamSort struct {
+	Shard uint32
+	Key   string
+	Hash  uint64
+}
+
+// Compare reports the order of a and b by [shard, key, hash].
+func (a StreamSort) Compare(b StreamSort) int {
+	return cmp.Or(
+		cmp.Compare(a.Shard, b.Shard),
+		cmp.Compare(a.Key, b.Key),
+		cmp.Compare(a.Hash, b.Hash),
+	)
+}
+
+// CompareForStreamSort returns a comparison function for k-way merge using
+// schema-based sort order: [shard ASC, sortKey ASC, hash ASC, streamID ASC, timestamp DESC].
+// order maps stream ID to the corresponding sort tuple ([0] unused).
 // math.MaxInt64 is treated as a sentinel (loser-tree maxValue) and always compares greater.
-func CompareForSortSchema(sortKeys []string) func(result.Result[dataset.Row], result.Result[dataset.Row]) bool {
+func CompareForStreamSort(order []StreamSort) func(result.Result[dataset.Row], result.Result[dataset.Row]) bool {
 	return func(a, b result.Result[dataset.Row]) bool {
 		aVal, aErr := a.Value()
 		bVal, bErr := b.Value()
@@ -232,9 +249,9 @@ func CompareForSortSchema(sortKeys []string) func(result.Result[dataset.Row], re
 			return true
 		}
 
-		aKey := sortKeys[aStreamID]
-		bKey := sortKeys[bStreamID]
-		if res := cmp.Compare(aKey, bKey); res != 0 {
+		aSort := order[aStreamID]
+		bSort := order[bStreamID]
+		if res := aSort.Compare(bSort); res != 0 {
 			return res < 0
 		}
 		if res := cmp.Compare(aStreamID, bStreamID); res != 0 {
@@ -258,7 +275,7 @@ func CompareForSortOrder(sort SortOrder) func(result.Result[dataset.Row], result
 			return result.Compare(a, b, compareRowsTimestamp) < 0
 		}
 	case SortSchemaASC:
-		panic("CompareForSortOrder does not support SortSchemaASC: use CompareForSortSchema instead")
+		panic("CompareForSortOrder does not support SortSchemaASC: use CompareForStreamSort instead")
 	default:
 		panic("invalid sort order")
 	}
