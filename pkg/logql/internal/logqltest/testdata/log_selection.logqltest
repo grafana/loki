@@ -8,7 +8,8 @@ clear
 load
   {app="foo"} "1st line" @ 10s
   {app="foo"} "2nd line" @ 20s
-  {app="bar"} "noise"    @ 15s   # different stream: the selector must drop it
+  {app="bar"} "bar line" @ 15s
+  {app="baz"} "noise"    @ 15s
 
 eval select from 0 to 30s {app="foo"}
   {app="foo"} "1st line" @ 10s
@@ -18,7 +19,7 @@ eval select from 0 to 30s {app="foo"}
 eval select from 0 to 30s {app=~"foo|bar"}
   {app="foo"} "1st line" @ 10s
   {app="foo"} "2nd line" @ 20s
-  {app="bar"} "noise"    @ 15s
+  {app="bar"} "bar line" @ 15s
 
 # A selector matching nothing returns no streams.
 eval select from 0 to 30s {app="missing"}
