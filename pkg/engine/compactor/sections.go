@@ -36,11 +36,15 @@ type indexEntry struct {
 }
 
 type sortKey struct {
+	shard     uint32
 	labels    []string
 	timestamp int64
 }
 
 func compareSortKey(a, b sortKey) int {
+	if n := cmp.Compare(a.shard, b.shard); n != 0 {
+		return n
+	}
 	if n := slices.Compare(a.labels, b.labels); n != 0 {
 		return n
 	}
@@ -411,8 +415,8 @@ func logSectionRefsFor(ctx context.Context, bucket objstore.Bucket, tenant, idxP
 						labels[i] = stat.Labels[name]
 					}
 				}
-				minKey := sortKey{labels: labels, timestamp: stat.MinTimestamp}
-				maxKey := sortKey{labels: labels, timestamp: stat.MaxTimestamp}
+				minKey := sortKey{shard: stat.ShardBucket, labels: labels, timestamp: stat.MinTimestamp}
+				maxKey := sortKey{shard: stat.ShardBucket, labels: labels, timestamp: stat.MaxTimestamp}
 
 				id := sectionID{path: stat.ObjectPath, index: stat.SectionIndex}
 				bounded, ok := bySection[id]

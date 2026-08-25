@@ -2,14 +2,12 @@
 package logsobj
 
 import (
-	"cmp"
 	"context"
 	"errors"
 	"flag"
 	"fmt"
 	"io"
 	"iter"
-	"slices"
 	"strings"
 	"time"
 
@@ -225,6 +223,7 @@ func (b *Builder) buildersFor(tenant string) (*streams.Builder, *logs.Builder) {
 		b.streams[tenant] = sb
 	}
 	if _, ok := b.logs[tenant]; !ok {
+		layout := TargetSortLayout(b.schemaLabelsFor(tenant))
 		// TODO(ashwanth): SortSchemaASC does not support AppendUnordered.
 		// It cannot merge stripes with schema ordering. Force AppendOrdered
 		// until stripe merging can use schema keys.
@@ -236,7 +235,9 @@ func (b *Builder) buildersFor(tenant string) (*streams.Builder, *logs.Builder) {
 			AppendStrategy:            logs.AppendOrdered,
 			EstimatedCompressionRatio: b.cfg.EstimatedCompressionRatio,
 			SortOrder:                 logs.SortSchemaASC,
-			SchemaLabels:              b.schemaLabelsFor(tenant),
+			SchemaLabels:              layout.SchemaLabels,
+			StreamOrder:               layout.StreamOrder,
+			ShardCount:                layout.ShardCount,
 		})
 		lb.SetTenant(tenant)
 		b.logs[tenant] = lb
@@ -313,7 +314,8 @@ func (b *Builder) Append(tenant string, stream logproto.Stream, recTime time.Tim
 // Callers are expected to poll [Builder.IsFull] before appending and
 // to flush the builder once it reports full. Appending entries to a full
 // builder is permitted.
-// The SortKey & StreamID fields of the given record are ignored and re-calculated.
+// The SortKey, ShardBucket, StreamHash, and StreamID fields of the given
+// record are ignored and re-calculated.
 func (b *Builder) AppendRecord(tenant string, ls labels.Labels, record logs.Record, ingestionTime time.Time) error {
 	b.metrics.appends.Inc()
 	timer := prometheus.NewTimer(b.metrics.appendTime)
@@ -336,11 +338,15 @@ func (b *Builder) appendAll(tenant string, ls labels.Labels, recordTime time.Tim
 	if err != nil {
 		return err
 	}
+	streamHash := labels.StableHash(ls)
+	streamShard := streams.ShardBucketFromHash(streamHash)
 
 	sb, lb := b.buildersFor(tenant)
 
 	for entry, size := range entriesIter {
 		entry.SortKey = streamSortKey
+		entry.ShardBucket = streamShard
+		entry.StreamHash = streamHash
 		entry.StreamID = sb.Record(ls, entry.Timestamp, size)
 
 		lb.Append(entry)
@@ -527,11 +533,12 @@ func (b *Builder) CopyAndSort(ctx context.Context, obj *dataobj.Object) (*dataob
 			return nil, nil, err
 		}
 
-		iter, iterErr := sortedSchemaIter(ctx, sections, streamRemap.sortKeys, streamRemap.ids)
+		iter, iterErr := sortedSchemaIter(ctx, sections, streamRemap)
 		if iterErr != nil {
 			return nil, nil, fmt.Errorf("creating sort iterator: %w", iterErr)
 		}
 
+		layout := TargetSortLayout(schemaLabels)
 		lb := logs.NewBuilder(b.metrics.logs, logs.BuilderOptions{
 			PageSizeHint:     int(b.cfg.TargetPageSize),
 			PageMaxRowCount:  b.cfg.MaxPageRows,
@@ -539,7 +546,9 @@ func (b *Builder) CopyAndSort(ctx context.Context, obj *dataobj.Object) (*dataob
 			StripeMergeLimit: b.cfg.SectionStripeMergeLimit,
 			AppendStrategy:   logs.AppendOrdered,
 			SortOrder:        logs.SortSchemaASC,
-			SchemaLabels:     schemaLabels,
+			SchemaLabels:     layout.SchemaLabels,
+			StreamOrder:      layout.StreamOrder,
+			ShardCount:       layout.ShardCount,
 		})
 		lb.SetTenant(tenant)
 
@@ -651,86 +660,48 @@ func (b *Builder) buildStreamSection(ctx context.Context, tenant string, iter re
 	return b.builder.Append(sb)
 }
 
-type streamIDRemap struct {
-	sortKeys []string
-	ids      []int64
-}
-
-type streamWithSortKey struct {
-	stream  streams.Stream
-	sortKey string
-}
-
-// sortAndRemapStreams orders the streams by the sort key and reassigns
-// stream IDs in sort key order. It returns an iterator over the remapped
-// streams and a mapping from old stream IDs to new stream IDs.
+// sortAndRemapStreams orders the streams by the globally stable stream order
+// and reassigns stream IDs in that order. It returns an iterator over the
+// remapped streams and a mapping from old stream IDs to new stream IDs.
 //
 // Stream IDs are originally assigned in the order streams are first recorded.
-// After sort key ordering, streams are clustered by sort key, but their
-// original IDs may no longer be monotonic in that order.
+// After ordering, streams are clustered by [shard_bucket, sort-schema, hash],
+// but their original IDs may no longer be monotonic in that order.
 //
-// Reassigning IDs in sort-key order makes the persisted sort metadata
+// Reassigning IDs in stream-order makes the persisted sort metadata
 // [streamID ASC, timestamp DESC] match the physical row order and improves
 // compression and pruning at query time.
 //
 // Log records must also be remapped to keep their stream references valid.
-func sortAndRemapStreams(iter result.Seq[streams.Stream], tenant string, schemaLabels []string, numStreams int) (result.Seq[streams.Stream], streamIDRemap, error) {
-	var (
-		collected = make([]streamWithSortKey, 0, numStreams)
-		remap     = streamIDRemap{
-			sortKeys: make([]string, numStreams+1),
-			ids:      make([]int64, numStreams+1),
-		}
-	)
-
+func sortAndRemapStreams(iter result.Seq[streams.Stream], tenant string, schemaLabels []string, numStreams int) (result.Seq[streams.Stream], []streamRemap, error) {
+	byID := make(map[int64]streams.Stream, numStreams)
 	for res := range iter {
 		stream, err := res.Value()
 		if err != nil {
-			return nil, streamIDRemap{}, err
+			return nil, nil, err
 		}
-		k, err := ComputeSortKey(stream.Labels, schemaLabels)
-		if err != nil {
-			return nil, streamIDRemap{}, err
+		if stream.ID <= 0 || stream.ID > int64(numStreams) {
+			return nil, nil, fmt.Errorf("stream id %d out of range for tenant %s with %d streams", stream.ID, tenant, numStreams)
 		}
-		collected = append(collected, streamWithSortKey{
-			stream:  stream,
-			sortKey: k,
-		})
+		if _, ok := byID[stream.ID]; ok {
+			return nil, nil, fmt.Errorf("duplicate stream id for tenant %s: %d", tenant, stream.ID)
+		}
+		byID[stream.ID] = stream
 	}
 
-	slices.SortFunc(collected, func(a, b streamWithSortKey) int {
-		if res := cmp.Compare(a.sortKey, b.sortKey); res != 0 {
-			return res
-		}
-		return cmp.Compare(a.stream.ID, b.stream.ID)
-	})
-
-	for i := range collected {
-		oldID := collected[i].stream.ID
-		newID := int64(i + 1)
-
-		if oldID <= 0 || oldID > int64(numStreams) {
-			return nil, streamIDRemap{}, fmt.Errorf("stream id %d out of range for tenant %s with %d streams", oldID, tenant, numStreams)
-		}
-		if prevNewID := remap.ids[oldID]; prevNewID != 0 {
-			return nil, streamIDRemap{}, fmt.Errorf("duplicate stream id for tenant %s: old id %d maps to both %d and %d", tenant, oldID, prevNewID, newID)
-		}
-
-		remap.sortKeys[oldID] = collected[i].sortKey
-		remap.ids[oldID] = newID
-
-		// Remap to the new stream ID.
-		collected[i].stream.ID = newID
+	ranks, err := RankStreams(schemaLabels, byID)
+	if err != nil {
+		return nil, nil, err
 	}
-
+	ranked := ranks.Streams()
 	return result.Iter(func(yield func(streams.Stream) bool) error {
-		for _, entry := range collected {
-			if !yield(entry.stream) {
+		for _, stream := range ranked {
+			if !yield(stream) {
 				return nil
 			}
 		}
 		return nil
-	}), remap, nil
+	}), schemaRemap(ranks, 0), nil
 }
 
 func streamsSectionIter(ctx context.Context, section *streams.Section) result.Seq[streams.Stream] {
