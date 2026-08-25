@@ -26,10 +26,11 @@ import (
 var epoch = time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
 
 var (
-	// reInstant and reRange match the remainder of an `eval instant`/`eval range` line (after the
-	// mode keyword), capturing the trailing query to end of line.
+	// reInstant, reRange, and reSelect match the remainder of an `eval instant`/`eval range`/
+	// `eval select` line (after the mode keyword), capturing the trailing query to end of line.
 	reInstant = regexp.MustCompile(`^at\s+(\S+)\s+(.+)$`)
 	reRange   = regexp.MustCompile(`^from\s+(\S+)\s+to\s+(\S+)\s+step\s+(\S+)\s+(.+)$`)
+	reSelect  = regexp.MustCompile(`^from\s+(\S+)\s+to\s+(\S+)\s+(.+)$`)
 
 	// reAt, reRepeat and reMetadata are anchored to the head so each load-line directive matches
 	// only its own leading segment and can never reach into a later [metadata …] value.
@@ -202,19 +203,35 @@ func parseMetadata(rest string) ([]logproto.LabelAdapter, string, error) {
 	return out, rest[len(m[0]):], nil
 }
 
+// evalMode is the kind of `eval` command: `instant`, `range` (both metric queries), or `select`
+// (a log-selection query, which has no notion of a step).
+type evalMode int
+
+const (
+	evalInstant evalMode = iota
+	evalRange
+	evalSelect
+)
+
 type evalCmd struct {
-	instant          bool
+	mode             evalMode
 	ts               time.Duration // instant queries
-	start, end, step time.Duration // range queries
+	start, end, step time.Duration // range and select queries
 	query            string
 }
 
 // getTimeRange returns the query's [start, end] range and step.
 func (c evalCmd) getTimeRange() (start, end, step time.Duration) {
-	if c.instant {
+	switch c.mode {
+	case evalInstant:
 		return c.ts, c.ts, 0
+	case evalRange:
+		return c.start, c.end, c.step
+	case evalSelect:
+		return c.start, c.end, c.step
+	default:
+		panic(fmt.Sprintf("unknown eval mode %v", c.mode))
 	}
-	return c.start, c.end, c.step
 }
 
 func parseEval(line string) (evalCmd, error) {
@@ -229,7 +246,7 @@ func parseEval(line string) (evalCmd, error) {
 		if err != nil {
 			return evalCmd{}, fmt.Errorf("invalid instant time %q: %w", m[1], err)
 		}
-		return evalCmd{instant: true, ts: ts, query: strings.TrimSpace(m[2])}, nil
+		return evalCmd{mode: evalInstant, ts: ts, query: strings.TrimSpace(m[2])}, nil
 	case strings.HasPrefix(rest, "range"):
 		m := reRange.FindStringSubmatch(strings.TrimSpace(strings.TrimPrefix(rest, "range")))
 		if m == nil {
@@ -253,9 +270,29 @@ func parseEval(line string) (evalCmd, error) {
 		if end < start {
 			return evalCmd{}, fmt.Errorf("range end %q is before start %q", m[2], m[1])
 		}
-		return evalCmd{start: start, end: end, step: step, query: strings.TrimSpace(m[4])}, nil
+		return evalCmd{mode: evalRange, start: start, end: end, step: step, query: strings.TrimSpace(m[4])}, nil
+	case strings.HasPrefix(rest, "select"):
+		m := reSelect.FindStringSubmatch(strings.TrimSpace(strings.TrimPrefix(rest, "select")))
+		if m == nil {
+			return evalCmd{}, fmt.Errorf("malformed 'eval select': %q", line)
+		}
+		start, err := time.ParseDuration(m[1])
+		if err != nil {
+			return evalCmd{}, fmt.Errorf("invalid select start %q: %w", m[1], err)
+		}
+		end, err := time.ParseDuration(m[2])
+		if err != nil {
+			return evalCmd{}, fmt.Errorf("invalid select end %q: %w", m[2], err)
+		}
+		if end <= start {
+			return evalCmd{}, fmt.Errorf("select end %q must be after start %q", m[2], m[1])
+		}
+		// A log-selection query has no notion of a step; use one step covering the whole
+		// window so a query that unexpectedly turns out to be a metric query fails fast
+		// (wrong result shape) instead of hanging the step evaluator on a zero step.
+		return evalCmd{mode: evalSelect, start: start, end: end, step: end - start, query: strings.TrimSpace(m[3])}, nil
 	default:
-		return evalCmd{}, fmt.Errorf("expected 'instant' or 'range' after eval: %q", line)
+		return evalCmd{}, fmt.Errorf("expected 'instant', 'range', or 'select' after eval: %q", line)
 	}
 }
 

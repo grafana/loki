@@ -107,10 +107,15 @@ func RunScript(t *testing.T, name, script string) {
 func runEval(t *testing.T, name string, stacks []executionStack, cmd evalCmd, exp expectations) {
 	t.Helper()
 	label := cmd.query
-	if cmd.instant {
+	switch cmd.mode {
+	case evalInstant:
 		label = "instant: " + label
-	} else {
+	case evalRange:
 		label = "range: " + label
+	case evalSelect:
+		label = "select: " + label
+	default:
+		panic(fmt.Sprintf("unknown eval mode %v", cmd.mode))
 	}
 
 	t.Run(label, func(t *testing.T) {

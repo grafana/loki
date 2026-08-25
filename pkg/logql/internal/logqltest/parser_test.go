@@ -154,17 +154,25 @@ func TestStreamsParser_RejectsMalformedDirectives(t *testing.T) {
 func TestParseEval(t *testing.T) {
 	cmd, err := parseEval(`eval instant at 60s sum(rate({app="foo"}[1m]))`)
 	require.NoError(t, err)
-	require.True(t, cmd.instant)
+	require.Equal(t, evalInstant, cmd.mode)
 	require.Equal(t, time.Minute, cmd.ts)
 	require.Equal(t, `sum(rate({app="foo"}[1m]))`, cmd.query)
 
 	cmd, err = parseEval(`eval range from 0 to 10m step 1m count_over_time({app="foo"}[1m])`)
 	require.NoError(t, err)
-	require.False(t, cmd.instant)
+	require.Equal(t, evalRange, cmd.mode)
 	require.Equal(t, time.Duration(0), cmd.start)
 	require.Equal(t, 10*time.Minute, cmd.end)
 	require.Equal(t, time.Minute, cmd.step)
 	require.Equal(t, `count_over_time({app="foo"}[1m])`, cmd.query)
+
+	cmd, err = parseEval(`eval select from 0 to 10m {app="foo"}`)
+	require.NoError(t, err)
+	require.Equal(t, evalSelect, cmd.mode)
+	require.Equal(t, time.Duration(0), cmd.start)
+	require.Equal(t, 10*time.Minute, cmd.end)
+	require.Equal(t, 10*time.Minute, cmd.step)
+	require.Equal(t, `{app="foo"}`, cmd.query)
 
 	_, err = parseEval(`eval sideways at 0s foo`)
 	require.Error(t, err)
@@ -178,6 +186,12 @@ func TestParseEval(t *testing.T) {
 
 	// A backwards range (end before start) would produce an empty step window.
 	_, err = parseEval(`eval range from 10s to 0s step 1s count_over_time({app="foo"}[1m])`)
+	require.Error(t, err)
+
+	// An empty or backwards select window has no valid step to derive.
+	_, err = parseEval(`eval select from 10s to 10s {app="foo"}`)
+	require.Error(t, err)
+	_, err = parseEval(`eval select from 10s to 0s {app="foo"}`)
 	require.Error(t, err)
 }
 

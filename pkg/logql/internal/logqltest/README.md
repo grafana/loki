@@ -49,7 +49,9 @@ load
 
 ### `eval`
 
-Evaluates a query (metric or log-selection) and checks its result.
+Evaluates a query and checks its result. `instant`/`range` are for a metric query (results of
+type vector/scalar/matrix); `select` is for a log-selection query (results of type streams — see
+"Log-selection window" below), which has no notion of a step.
 
 ```
 eval instant at <time> <logql>
@@ -57,13 +59,14 @@ eval instant at <time> <logql>
 
 eval range from <t0> to <t1> step <step> <logql>
   <expected series...>
+
+eval select from <t0> to <t1> <logql>
+  <expected streams...>
 ```
 
 - Times (`<time>`, `<t0>`, `<t1>`, `<step>`) are Go durations offset from the script epoch.
 - Expected results follow on indented lines. The block ends at a blank line, a dedented line,
   or EOF.
-- `<step>` is required by the grammar even for a log-selection query, which has no notion of a
-  step; give it any positive duration.
 
 ## Expected results
 
@@ -100,7 +103,7 @@ otherwise pass vacuously on an empty result).
 ### Log-selection window
 
 A log-selection query's window is **start-inclusive, end-exclusive**: `[t0, t1)` for
-`eval range`, and `[T−30s, T)` for `eval instant at T` (a fixed 30s look-back). This is the
+`eval select`, and `[T−30s, T)` for `eval instant at T` (a fixed 30s look-back). This is the
 opposite of a metric range vector's `(start, end]` — a line exactly at `t1` (or at the instant
 `T`) falls **outside** the window:
 
@@ -109,7 +112,7 @@ load
   {app="foo"} "in range"    @ 10s
   {app="foo"} "at boundary" @ 20s
 
-eval range from 0 to 20s step 10s {app="foo"}
+eval select from 0 to 20s {app="foo"}
   {app="foo"} "in range" @ 10s
 ```
 
@@ -191,7 +194,7 @@ eval instant at 60s sum by (app) (count_over_time({app=~"foo|bar"}[1m]))
 eval range from 0 to 60s step 30s count_over_time({app="foo"}[30s])
   {app="foo"} _ 3 3
 
-eval range from 0 to 60s step 30s {app="foo"} |= "status=200"
+eval select from 0 to 60s {app="foo"} |= "status=200"
   {app="foo"} "level=info status=200" @ 10s
   {app="foo"} "level=info status=200" @ 20s
   {app="foo"} "level=info status=200" @ 30s

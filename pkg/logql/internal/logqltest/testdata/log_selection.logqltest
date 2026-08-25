@@ -10,18 +10,18 @@ load
   {app="foo"} "2nd line" @ 20s
   {app="bar"} "noise"    @ 15s   # different stream: the selector must drop it
 
-eval range from 0 to 30s step 10s {app="foo"}
+eval select from 0 to 30s {app="foo"}
   {app="foo"} "1st line" @ 10s
   {app="foo"} "2nd line" @ 20s
 
 # A regex selector across streams returns one result stream per match.
-eval range from 0 to 30s step 10s {app=~"foo|bar"}
+eval select from 0 to 30s {app=~"foo|bar"}
   {app="foo"} "1st line" @ 10s
   {app="foo"} "2nd line" @ 20s
   {app="bar"} "noise"    @ 15s
 
 # A selector matching nothing returns no streams.
-eval range from 0 to 30s step 10s {app="missing"}
+eval select from 0 to 30s {app="missing"}
   expect empty
 
 # The query window is start-inclusive, end-exclusive: unlike a metric range vector's (start,end],
@@ -31,7 +31,7 @@ load
   {app="foo"} "in range"    @ 10s
   {app="foo"} "at boundary" @ 20s
 
-eval range from 0 to 20s step 10s {app="foo"}
+eval select from 0 to 20s {app="foo"}
   {app="foo"} "in range" @ 10s
 
 # `eval instant at T` looks back a default 30s window: [T-30s, T).
@@ -49,5 +49,5 @@ load
   {app="foo"} "status=200" @ 10s
   {app="foo"} "status=500" @ 20s   # noise: same stream, the filter must drop it
 
-eval range from 0 to 30s step 10s {app="foo"} |= "200"
+eval select from 0 to 30s {app="foo"} |= "200"
   {app="foo"} "status=200" @ 10s

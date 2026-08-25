@@ -97,8 +97,8 @@ eval instant at 60s sum by (app,machine) (count_over_time({app="foo"}[1m])) > bo
 // extra matrix points, and a non-empty result against `expect empty`.
 func TestComparators_DetectMismatches(t *testing.T) {
 	foo := labels.FromStrings("app", "a")
-	rangeCmd := evalCmd{start: time.Minute, end: time.Minute, step: time.Minute}
-	instantCmd := evalCmd{instant: true, ts: time.Minute}
+	rangeCmd := evalCmd{mode: evalRange, start: time.Minute, end: time.Minute, step: time.Minute}
+	instantCmd := evalCmd{mode: evalInstant, ts: time.Minute}
 	ts := epoch.Add(time.Minute).UnixMilli()
 	scalar := func(v float64) expectations { return expectations{scalar: &v} }
 
@@ -158,11 +158,11 @@ func TestComparators_DetectMismatches(t *testing.T) {
 			want: `engine returned duplicate point for series {app="a"}`,
 		},
 		"empty expected but non-empty result": {
-			err:  compareResult("n", evalCmd{instant: true, ts: time.Minute}, expectations{empty: true}, promql.Vector{{Metric: foo, F: 5}}, false),
+			err:  compareResult("n", evalCmd{mode: evalInstant, ts: time.Minute}, expectations{empty: true}, promql.Vector{{Metric: foo, F: 5}}, false),
 			want: "expected an empty result",
 		},
 		"scalar expected but empty vector": {
-			err:  compareResult("n", evalCmd{instant: true, ts: time.Minute}, scalar(5), promql.Vector{}, false),
+			err:  compareResult("n", evalCmd{mode: evalInstant, ts: time.Minute}, scalar(5), promql.Vector{}, false),
 			want: "expected a scalar, got a vector",
 		},
 		"scalar expected but empty matrix": {
@@ -170,7 +170,7 @@ func TestComparators_DetectMismatches(t *testing.T) {
 			want: "expected a scalar, got a matrix",
 		},
 		"empty expected but scalar result": {
-			err:  compareResult("n", evalCmd{instant: true, ts: time.Minute}, expectations{empty: true}, promql.Scalar{V: 5}, false),
+			err:  compareResult("n", evalCmd{mode: evalInstant, ts: time.Minute}, expectations{empty: true}, promql.Scalar{V: 5}, false),
 			want: "expected an empty result, got scalar 5",
 		},
 		"empty expected but non-empty matrix": {
@@ -225,7 +225,7 @@ func TestComparators_DetectMismatches(t *testing.T) {
 			want: "`expect ordered` is only supported for instant queries",
 		},
 		"unsupported result type": {
-			err:  compareResult("n", evalCmd{instant: true, ts: time.Minute}, oneSeries(5), nil, false),
+			err:  compareResult("n", evalCmd{mode: evalInstant, ts: time.Minute}, oneSeries(5), nil, false),
 			want: "unsupported result type",
 		},
 		"streams line mismatch": {
@@ -286,7 +286,7 @@ func TestComparators_DetectMismatches(t *testing.T) {
 			want: `engine returned duplicate stream {app="a"}`,
 		},
 		"vector expected but got streams": {
-			err:  compareResult("n", evalCmd{instant: true, ts: time.Minute}, oneSeries(5), logqlmodel.Streams{}, false),
+			err:  compareResult("n", evalCmd{mode: evalInstant, ts: time.Minute}, oneSeries(5), logqlmodel.Streams{}, false),
 			want: "expected series, got log streams",
 		},
 		"streams expected but got vector": {
@@ -312,7 +312,7 @@ func TestComparators_DetectMismatches(t *testing.T) {
 			want: "expected a scalar, got log streams",
 		},
 		"empty expected but non-empty streams": {
-			err: compareResult("n", evalCmd{instant: true, ts: time.Minute}, expectations{empty: true}, logqlmodel.Streams{
+			err: compareResult("n", evalCmd{mode: evalInstant, ts: time.Minute}, expectations{empty: true}, logqlmodel.Streams{
 				{Labels: `{app="a"}`, Entries: []push.Entry{{Timestamp: epoch, Line: "a"}}},
 			}, false),
 			want: "expected an empty result, got 1 streams",
@@ -327,18 +327,18 @@ func TestComparators_DetectMismatches(t *testing.T) {
 func TestComparators_AcceptMatches(t *testing.T) {
 	foo := labels.FromStrings("app", "a")
 	scalar := 5.0
-	rangeCmd := evalCmd{start: time.Minute, end: time.Minute, step: time.Minute}
-	instantCmd := evalCmd{instant: true, ts: time.Minute}
+	rangeCmd := evalCmd{mode: evalRange, start: time.Minute, end: time.Minute, step: time.Minute}
+	instantCmd := evalCmd{mode: evalInstant, ts: time.Minute}
 	ts := epoch.Add(time.Minute).UnixMilli()
 
 	require.NoError(t, compareScalar("n", expectations{scalar: &scalar}, promql.Scalar{V: 5}, false))
 	require.NoError(t, compareVector("n", instantCmd, oneSeries(5), promql.Vector{{Metric: foo, F: 5, T: ts}}, false))
 	require.NoError(t, compareMatrix("n", rangeCmd, oneSeries(5), promql.Matrix{{Metric: foo, Floats: []promql.FPoint{{T: ts, F: 5}}}}, false))
-	require.NoError(t, compareResult("n", evalCmd{instant: true, ts: time.Minute}, expectations{empty: true}, promql.Vector{}, false))
+	require.NoError(t, compareResult("n", evalCmd{mode: evalInstant, ts: time.Minute}, expectations{empty: true}, promql.Vector{}, false))
 
 	// A matrix gap (`_`) matches a step the engine legitimately omitted.
 	require.NoError(t, compareMatrix("n",
-		evalCmd{start: time.Minute, end: 2 * time.Minute, step: time.Minute},
+		evalCmd{mode: evalRange, start: time.Minute, end: 2 * time.Minute, step: time.Minute},
 		expectations{series: []expectedSeries{{labels: `{app="a"}`, samples: []sample{{present: true, value: 5}, {present: false}}}}},
 		promql.Matrix{{Metric: foo, Floats: []promql.FPoint{{T: ts, F: 5}}}}, false))
 
@@ -360,15 +360,15 @@ func TestComparators_AcceptMatches(t *testing.T) {
 			{Labels: `{app="b"}`, Entries: []push.Entry{{Timestamp: epoch, Line: "x"}}},
 			{Labels: `{app="a"}`, Entries: []push.Entry{{Timestamp: epoch, Line: "1st"}, {Timestamp: epoch.Add(time.Second), Line: "2nd"}}},
 		}, false))
-	require.NoError(t, compareResult("n", evalCmd{instant: true, ts: time.Minute}, expectations{empty: true}, logqlmodel.Streams{}, false))
+	require.NoError(t, compareResult("n", evalCmd{mode: evalInstant, ts: time.Minute}, expectations{empty: true}, logqlmodel.Streams{}, false))
 }
 
 func TestComparators_SkipValues(t *testing.T) {
 	var (
 		foo        = labels.FromStrings("app", "a")
 		bar        = labels.FromStrings("app", "b")
-		instantCmd = evalCmd{instant: true, ts: time.Minute}
-		rangeCmd   = evalCmd{start: time.Minute, end: time.Minute, step: time.Minute}
+		instantCmd = evalCmd{mode: evalInstant, ts: time.Minute}
+		rangeCmd   = evalCmd{mode: evalRange, start: time.Minute, end: time.Minute, step: time.Minute}
 		ts         = epoch.Add(time.Minute).UnixMilli()
 		scalar     = func(v float64) expectations { return expectations{scalar: &v} }
 	)

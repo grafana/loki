@@ -7,6 +7,7 @@
     { "include": "#clear-command" },
     { "include": "#eval-instant" },
     { "include": "#eval-range" },
+    { "include": "#eval-select" },
     { "include": "#eval-fallback" },
     { "include": "#expect-annotation" },
     { "include": "#skip-directive" },
@@ -79,9 +80,26 @@
       ]
     },
 
+    "eval-select": {
+      "name": "meta.command.eval.logqltest",
+      "begin": "^[ \\t]*(eval)[ \\t]+(select)[ \\t]+(from)[ \\t]+(\\S+)[ \\t]+(to)[ \\t]+(\\S+)[ \\t]+",
+      "beginCaptures": {
+        "1": { "name": "keyword.control.eval.logqltest" },
+        "2": { "name": "keyword.other.eval-mode.logqltest" },
+        "3": { "name": "keyword.other.eval-argument.logqltest" },
+        "4": { "name": "constant.numeric.duration.logqltest" },
+        "5": { "name": "keyword.other.eval-argument.logqltest" },
+        "6": { "name": "constant.numeric.duration.logqltest" }
+      },
+      "end": "$",
+      "patterns": [
+        { "include": "#query" }
+      ]
+    },
+
     "eval-fallback": {
       "comment": "Colors the keyword on an eval line the stricter rules above did not match, e.g. while it is still being typed.",
-      "match": "^[ \\t]*(eval)\\b[ \\t]*(instant|range)?\\b",
+      "match": "^[ \\t]*(eval)\\b[ \\t]*(instant|range|select)?\\b",
       "captures": {
         "1": { "name": "keyword.control.eval.logqltest" },
         "2": { "name": "keyword.other.eval-mode.logqltest" }
