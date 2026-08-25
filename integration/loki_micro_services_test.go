@@ -883,6 +883,108 @@ func TestProbabilisticQuery(t *testing.T) {
 	})
 }
 
+func TestApproxCountDistinctQuery(t *testing.T) {
+	clu := cluster.New(nil, cluster.SchemaWithTSDBAndTSDB, func(c *cluster.Cluster) {
+		c.SetSchemaVer("v13")
+	})
+	defer func() {
+		assert.NoError(t, clu.Cleanup())
+	}()
+
+	var (
+		tCompactor = clu.AddComponent(
+			"compactor",
+			"-target=compactor",
+			"-compactor.compaction-interval=1s",
+			"-compactor.retention-delete-delay=1s",
+			"-compactor.delete-request-cancel-period=-60s",
+			"-compactor.deletion-mode=filter-and-delete",
+		)
+		tIndexGateway = clu.AddComponent(
+			"index-gateway",
+			"-target=index-gateway",
+		)
+		tDistributor = clu.AddComponent(
+			"distributor",
+			"-target=distributor",
+		)
+	)
+	require.NoError(t, clu.Run())
+
+	var (
+		tIngester = clu.AddComponent(
+			"ingester",
+			"-target=ingester",
+			"-tsdb.shipper.index-gateway-client.server-address="+tIndexGateway.GRPCURL(),
+		)
+		tQueryScheduler = clu.AddComponent(
+			"query-scheduler",
+			"-target=query-scheduler",
+			"-query-scheduler.use-scheduler-ring=false",
+			"-tsdb.shipper.index-gateway-client.server-address="+tIndexGateway.GRPCURL(),
+		)
+	)
+	require.NoError(t, clu.Run())
+
+	tQuerier := clu.AddComponent(
+		"querier",
+		"-target=querier",
+		"-querier.scheduler-address="+tQueryScheduler.GRPCURL(),
+		"-tsdb.shipper.index-gateway-client.server-address="+tIndexGateway.GRPCURL(),
+		"-common.compactor-address="+tCompactor.HTTPURL(),
+	)
+	require.NoError(t, clu.Run())
+
+	tQueryFrontend := clu.AddComponent(
+		"query-frontend",
+		"-target=query-frontend",
+		"-frontend.scheduler-address="+tQueryScheduler.GRPCURL(),
+		"-tsdb.shipper.index-gateway-client.server-address="+tIndexGateway.GRPCURL(),
+		"-common.compactor-address="+tCompactor.HTTPURL(),
+		"-querier.per-request-limits-enabled=true",
+		"-frontend.encoding=protobuf",
+		"-querier.shard-aggregations=approx_count_distinct",
+		"-frontend.tail-proxy-url="+tQuerier.HTTPURL(),
+	)
+	require.NoError(t, clu.Run())
+
+	tenantID := randStringRunes()
+	now := time.Now()
+	cliDistributor := client.New(tenantID, "", tDistributor.HTTPURL())
+	cliDistributor.Now = now
+	cliIngester := client.New(tenantID, "", tIngester.HTTPURL())
+	cliIngester.Now = now
+	cliQueryFrontend := client.New(tenantID, "", tQueryFrontend.HTTPURL())
+	cliQueryFrontend.Now = now
+
+	t.Run("ingest-logs", func(t *testing.T) {
+		// Overlapping mac values across streams: shared + only-a + only-b = 3.
+		// Summing per-shard estimates would be 4.
+		require.NoError(t, cliDistributor.PushLogLine(`mac="shared"`, now.Add(-20*time.Minute), nil, map[string]string{"job": "devices", "version": "1", "device": "a"}))
+		require.NoError(t, cliDistributor.PushLogLine(`mac="only-a"`, now.Add(-10*time.Minute), nil, map[string]string{"job": "devices", "version": "1", "device": "a"}))
+		require.NoError(t, cliDistributor.PushLogLine(`mac="shared"`, now.Add(-15*time.Minute), nil, map[string]string{"job": "devices", "version": "1", "device": "b"}))
+		require.NoError(t, cliDistributor.PushLogLine(`mac="only-b"`, now.Add(-5*time.Minute), nil, map[string]string{"job": "devices", "version": "1", "device": "b"}))
+	})
+
+	t.Run("query", func(t *testing.T) {
+		resp, err := cliQueryFrontend.RunQuery(context.Background(), `approx_count_distinct(mac, {job="devices"} | logfmt [1h]) by (version)`)
+		require.NoError(t, err)
+		require.Equal(t, "vector", resp.Data.ResultType)
+		require.Len(t, resp.Data.Vector, 1)
+		assert.Equal(t, "1", resp.Data.Vector[0].Metric["version"])
+		assert.Equal(t, "3", resp.Data.Vector[0].Value)
+	})
+
+	t.Run("query-ungrouped", func(t *testing.T) {
+		resp, err := cliQueryFrontend.RunQuery(context.Background(), `approx_count_distinct(mac, {job="devices"} | logfmt [1h]) by ()`)
+		require.NoError(t, err)
+		require.Equal(t, "vector", resp.Data.ResultType)
+		require.Len(t, resp.Data.Vector, 1)
+		assert.Empty(t, resp.Data.Vector[0].Metric)
+		assert.Equal(t, "3", resp.Data.Vector[0].Value)
+	})
+}
+
 func TestCategorizedLabels(t *testing.T) {
 	clu := cluster.New(nil, cluster.SchemaWithTSDB, func(c *cluster.Cluster) {
 		c.SetSchemaVer("v13")
