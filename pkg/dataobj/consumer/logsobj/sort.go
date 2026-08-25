@@ -56,9 +56,9 @@ func streamSorts(remap []streamRemap) []logs.StreamSort {
 	return out
 }
 
-// sortedSchemaIter merges schema-sorted input sections, injects schema sort
+// sortedLogsIter merges schema-sorted input sections, injects schema sort
 // keys, remaps stream IDs, and returns an iterator suitable for AppendOrdered.
-func sortedSchemaIter(ctx context.Context, sections []*dataobj.Section, remap []streamRemap) (result.Seq[logs.Record], error) {
+func sortedLogsIter(ctx context.Context, sections []*dataobj.Section, remap []streamRemap) (result.Seq[logs.Record], error) {
 	iter, err := sortmerge.IteratorForSchema(ctx, sections, streamSorts(remap))
 	if err != nil {
 		return nil, err
