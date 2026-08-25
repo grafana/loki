@@ -81,6 +81,21 @@ func TestJSONSerializationRoundTrip(t *testing.T) {
 	}
 }
 
+func TestJSONSerializationCountDistinctSketch(t *testing.T) {
+	expr, err := ParseExpr(`approx_count_distinct(mac, {foo="bar"} | json [1h]) by (version)`)
+	require.NoError(t, err)
+	labelAgg, ok := expr.(*LabelAggregationExpr)
+	require.True(t, ok)
+
+	sketch := NewCountDistinctSketchFromLabelAggregation(labelAgg)
+
+	var buf bytes.Buffer
+	require.NoError(t, EncodeJSON(sketch, &buf))
+	actual, err := DecodeJSON(buf.String())
+	require.NoError(t, err)
+	require.Equal(t, sketch.String(), actual.String())
+}
+
 func TestJSONSerializationParseTestCases(t *testing.T) {
 	for _, tc := range ParseTestCases {
 		if tc.err == nil {

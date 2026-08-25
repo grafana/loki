@@ -1287,7 +1287,7 @@ dataobj:
       # The maximum row count for pages to use for the data object builder. A
       # value of 0 means no limit.
       # CLI flag: -dataobj-consumer.max-page-rows
-      [max_page_rows: <int> | default = 0]
+      [max_page_rows: <int> | default = 10000]
 
       # The target maximum size of the encoded object and all of its encoded
       # sections (after compression), to limit memory usage of a builder.
@@ -1550,7 +1550,7 @@ dataobj:
     # The maximum row count for pages to use for the data object builder. A
     # value of 0 means no limit.
     # CLI flag: -dataobj-index-builder.max-page-rows
-    [max_page_rows: <int> | default = 0]
+    [max_page_rows: <int> | default = 10000]
 
     # The target maximum size of the encoded object and all of its encoded
     # sections (after compression), to limit memory usage of a builder.
@@ -1714,28 +1714,28 @@ dataobj:
       # (for columnar sections). Uncompressed size is used for consistent I/O
       # and planning.
       # CLI flag: -dataobj.compaction.indexobj-builder.target-page-size
-      [target_page_size: <int> | default = 2KiB]
+      [target_page_size: <int> | default = 128KiB]
 
       # The maximum row count for pages to use for the data object builder. A
       # value of 0 means no limit.
       # CLI flag: -dataobj.compaction.indexobj-builder.max-page-rows
-      [max_page_rows: <int> | default = 0]
+      [max_page_rows: <int> | default = 10000]
 
       # The target maximum size of the encoded object and all of its encoded
       # sections (after compression), to limit memory usage of a builder.
       # CLI flag: -dataobj.compaction.indexobj-builder.target-builder-memory-limit
-      [target_object_size: <int> | default = 4MiB]
+      [target_object_size: <int> | default = 512MiB]
 
       # The target maximum amount of uncompressed data to hold in sections, for
       # sections that support being limited by size. Uncompressed size is used
       # for consistent I/O and planning.
       # CLI flag: -dataobj.compaction.indexobj-builder.target-section-size
-      [target_section_size: <int> | default = 2MiB]
+      [target_section_size: <int> | default = 512MiB]
 
       # The size of logs to buffer in memory before adding into columnar
       # builders, used to reduce CPU load of sorting.
       # CLI flag: -dataobj.compaction.indexobj-builder.buffer-size
-      [buffer_size: <int> | default = 16KiB]
+      [buffer_size: <int> | default = 128MiB]
 
       # The maximum number of dataobj section stripes to merge into a section at
       # once. Must be greater than 1.
@@ -1746,6 +1746,45 @@ dataobj:
       # output size from uncompressed buffered records. Only takes effect with
       # ordered append. Set to 0 or 1 to disable.
       # CLI flag: -dataobj.compaction.indexobj-builder.estimated-compression-ratio
+      [estimated_compression_ratio: <int> | default = 8]
+
+    logsobj_builder:
+      # The target maximum amount of uncompressed data to hold in data pages
+      # (for columnar sections). Uncompressed size is used for consistent I/O
+      # and planning.
+      # CLI flag: -dataobj.compaction.logsobj-builder.target-page-size
+      [target_page_size: <int> | default = 1MiB]
+
+      # The maximum row count for pages to use for the data object builder. A
+      # value of 0 means no limit.
+      # CLI flag: -dataobj.compaction.logsobj-builder.max-page-rows
+      [max_page_rows: <int> | default = 10000]
+
+      # The target maximum size of the encoded object and all of its encoded
+      # sections (after compression), to limit memory usage of a builder.
+      # CLI flag: -dataobj.compaction.logsobj-builder.target-builder-memory-limit
+      [target_object_size: <int> | default = 512MiB]
+
+      # The target maximum amount of uncompressed data to hold in sections, for
+      # sections that support being limited by size. Uncompressed size is used
+      # for consistent I/O and planning.
+      # CLI flag: -dataobj.compaction.logsobj-builder.target-section-size
+      [target_section_size: <int> | default = 512MiB]
+
+      # The size of logs to buffer in memory before adding into columnar
+      # builders, used to reduce CPU load of sorting.
+      # CLI flag: -dataobj.compaction.logsobj-builder.buffer-size
+      [buffer_size: <int> | default = 128MiB]
+
+      # The maximum number of dataobj section stripes to merge into a section at
+      # once. Must be greater than 1.
+      # CLI flag: -dataobj.compaction.logsobj-builder.section-stripe-merge-limit
+      [section_stripe_merge_limit: <int> | default = 2]
+
+      # Expected compression ratio for log data, used to estimate compressed
+      # output size from uncompressed buffered records. Only takes effect with
+      # ordered append. Set to 0 or 1 to disable.
+      # CLI flag: -dataobj.compaction.logsobj-builder.estimated-compression-ratio
       [estimated_compression_ratio: <int> | default = 8]
 
   # The prefix to use for the storage bucket.
@@ -3406,13 +3445,9 @@ ring:
 # CLI flag: -distributor.push-worker-count
 [push_worker_count: <int> | default = 256]
 
-# The maximum size of a received message.
-# CLI flag: -distributor.max-recv-msg-size
-[max_recv_msg_size: <int> | default = 104857600]
-
-# The maximum size of a decompressed message. Defaults to 50x max-recv-msg-size.
-# CLI flag: -distributor.max-decompressed-size
-[max_decompressed_size: <int> | default = 5242880000]
+# The maximum size of a Push request.
+# CLI flag: -distributor.max-push-size-bytes
+[max_push_size_bytes: <int> | default = 2147483647]
 
 # The maximum number of inflight bytes at a time. 0 means disabled.
 # CLI flag: -distributor.max-inflight-bytes
@@ -4005,6 +4040,27 @@ ring:
   # Enable using a IPv6 instance address.
   # CLI flag: -index-gateway.ring.instance-enable-ipv6
   [instance_enable_ipv6: <boolean> | default = false]
+
+# Experimental: Maximum number of index gateway RPCs that can execute
+# concurrently. When the limit is reached, additional requests wait up to
+# -index-gateway.max-concurrent-queue-timeout for a free slot. If no slot
+# becomes free in that time, the index gateway rejects the request with an HTTP
+# 503 status. Clients retry the request against another index gateway replica. 0
+# disables admission control. A recommended starting value when enabling this
+# setting is 200.
+# CLI flag: -index-gateway.max-concurrent
+[max_concurrent: <int> | default = 0]
+
+# Experimental: Maximum time a request waits for a free slot when the index
+# gateway is already executing -index-gateway.max-concurrent requests. If no
+# slot becomes free in that time, the index gateway rejects the request. Bursts
+# shorter than this timeout are absorbed without errors. Clients retry rejected
+# requests against other replicas. When every replica is saturated, a request
+# can wait up to this long per replica, so prefer a low value. 0 means requests
+# wait indefinitely, bounded only by the request's own timeout. Only used when
+# -index-gateway.max-concurrent is greater than 0.
+# CLI flag: -index-gateway.max-concurrent-queue-timeout
+[max_concurrent_queue_timeout: <duration> | default = 5s]
 ```
 
 ### ingester

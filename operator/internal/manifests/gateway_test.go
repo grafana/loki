@@ -1842,3 +1842,325 @@ func TestBuildGateway_PassthroughMode_TopologySpreadConstraint(t *testing.T) {
 		},
 	})
 }
+
+func TestBuildGateway_PassthroughMode_WithHTTPEncryption_WithCustomTLS(t *testing.T) {
+	tt := []struct {
+		name                 string
+		tlsSpec              *lokiv1.TLSSpec
+		expectedArgs         []string
+		expectedVolumeMounts []corev1.VolumeMount
+		expectedVolumes      []corev1.Volume
+	}{
+		{
+			name: "custom TLS without CA",
+			tlsSpec: &lokiv1.TLSSpec{
+				Certificate: &lokiv1.ValueReference{
+					Key:           "tls.crt",
+					ConfigMapName: "my-custom-cert",
+				},
+				PrivateKey: &lokiv1.SecretReference{
+					Key:        "tls.key",
+					SecretName: "my-custom-key",
+				},
+			},
+			expectedArgs: []string{
+				"-listen-addr=:8080",
+				"-admin-addr=:8081",
+				"-loki-distributor-endpoint=https://abcd-distributor-http.efgh.svc.cluster.local:3100",
+				"-loki-query-frontend-endpoint=https://abcd-query-frontend-http.efgh.svc.cluster.local:3100",
+				"-tls-cert-file=/var/run/tls/http/server/tls.crt",
+				"-tls-key-file=/var/run/tls/http/server/tls.key",
+				"-loki-ca-file=/var/run/ca/upstream/service-ca.crt",
+				"-loki-cert-file=/var/run/tls/http/upstream/tls.crt",
+				"-loki-key-file=/var/run/tls/http/upstream/tls.key",
+				"-tls-client-auth=RequireAndVerifyClientCert",
+				"-tls-client-ca-file=/var/run/ca/client/ca.crt",
+				"-tls-min-version=",
+				"-tls-cipher-suites=",
+			},
+			expectedVolumeMounts: []corev1.VolumeMount{
+				{
+					Name:      "tls-secret",
+					ReadOnly:  true,
+					MountPath: "/var/run/tls/http/server",
+				},
+				{
+					Name:      "abcd-ca-bundle",
+					ReadOnly:  true,
+					MountPath: "/var/run/ca/upstream",
+				},
+				{
+					Name:      "abcd-gateway-client-http",
+					ReadOnly:  true,
+					MountPath: "/var/run/tls/http/upstream",
+				},
+				{
+					Name:      "client-ca",
+					ReadOnly:  true,
+					MountPath: "/var/run/ca/client",
+				},
+			},
+			expectedVolumes: []corev1.Volume{
+				{
+					Name: "abcd-ca-bundle",
+					VolumeSource: corev1.VolumeSource{
+						ConfigMap: &corev1.ConfigMapVolumeSource{
+							DefaultMode: &defaultConfigMapMode,
+							LocalObjectReference: corev1.LocalObjectReference{
+								Name: "abcd-ca-bundle",
+							},
+						},
+					},
+				},
+				{
+					Name: "abcd-gateway-client-http",
+					VolumeSource: corev1.VolumeSource{
+						Secret: &corev1.SecretVolumeSource{
+							SecretName: "abcd-gateway-client-http",
+						},
+					},
+				},
+				{
+					Name: "client-ca",
+					VolumeSource: corev1.VolumeSource{
+						ConfigMap: &corev1.ConfigMapVolumeSource{
+							DefaultMode: &defaultConfigMapMode,
+							LocalObjectReference: corev1.LocalObjectReference{
+								Name: "client-ca-bundle",
+							},
+						},
+					},
+				},
+				{
+					Name: "tls-secret",
+					VolumeSource: corev1.VolumeSource{
+						Projected: &corev1.ProjectedVolumeSource{
+							Sources: []corev1.VolumeProjection{
+								{
+									ConfigMap: &corev1.ConfigMapProjection{
+										LocalObjectReference: corev1.LocalObjectReference{
+											Name: "my-custom-cert",
+										},
+										Items: []corev1.KeyToPath{
+											{
+												Key:  "tls.crt",
+												Path: "tls.crt",
+											},
+										},
+									},
+								},
+								{
+									Secret: &corev1.SecretProjection{
+										LocalObjectReference: corev1.LocalObjectReference{
+											Name: "my-custom-key",
+										},
+										Items: []corev1.KeyToPath{
+											{
+												Key:  "tls.key",
+												Path: "tls.key",
+											},
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+		{
+			name: "custom TLS with CA",
+			tlsSpec: &lokiv1.TLSSpec{
+				CA: &lokiv1.ValueReference{
+					Key:        "ca.crt",
+					SecretName: "my-custom-ca",
+				},
+				Certificate: &lokiv1.ValueReference{
+					Key:           "tls.crt",
+					ConfigMapName: "my-custom-cert",
+				},
+				PrivateKey: &lokiv1.SecretReference{
+					Key:        "tls.key",
+					SecretName: "my-custom-key",
+				},
+			},
+			expectedArgs: []string{
+				"-listen-addr=:8080",
+				"-admin-addr=:8081",
+				"-loki-distributor-endpoint=https://abcd-distributor-http.efgh.svc.cluster.local:3100",
+				"-loki-query-frontend-endpoint=https://abcd-query-frontend-http.efgh.svc.cluster.local:3100",
+				"-tls-cert-file=/var/run/tls/http/server/tls.crt",
+				"-tls-key-file=/var/run/tls/http/server/tls.key",
+				"-loki-ca-file=/var/run/ca/upstream/service-ca.crt",
+				"-loki-cert-file=/var/run/tls/http/upstream/tls.crt",
+				"-loki-key-file=/var/run/tls/http/upstream/tls.key",
+				"-tls-client-auth=RequireAndVerifyClientCert",
+				"-tls-client-ca-file=/var/run/ca/client/ca.crt",
+				"-tls-min-version=",
+				"-tls-cipher-suites=",
+			},
+			expectedVolumeMounts: []corev1.VolumeMount{
+				{
+					Name:      "tls-secret",
+					ReadOnly:  true,
+					MountPath: "/var/run/tls/http/server",
+				},
+				{
+					Name:      "abcd-ca-bundle",
+					ReadOnly:  true,
+					MountPath: "/var/run/ca/upstream",
+				},
+				{
+					Name:      "abcd-gateway-client-http",
+					ReadOnly:  true,
+					MountPath: "/var/run/tls/http/upstream",
+				},
+				{
+					Name:      "client-ca",
+					ReadOnly:  true,
+					MountPath: "/var/run/ca/client",
+				},
+			},
+			expectedVolumes: []corev1.Volume{
+				{
+					Name: "abcd-ca-bundle",
+					VolumeSource: corev1.VolumeSource{
+						ConfigMap: &corev1.ConfigMapVolumeSource{
+							DefaultMode: &defaultConfigMapMode,
+							LocalObjectReference: corev1.LocalObjectReference{
+								Name: "abcd-ca-bundle",
+							},
+						},
+					},
+				},
+				{
+					Name: "abcd-gateway-client-http",
+					VolumeSource: corev1.VolumeSource{
+						Secret: &corev1.SecretVolumeSource{
+							SecretName: "abcd-gateway-client-http",
+						},
+					},
+				},
+				{
+					Name: "client-ca",
+					VolumeSource: corev1.VolumeSource{
+						ConfigMap: &corev1.ConfigMapVolumeSource{
+							DefaultMode: &defaultConfigMapMode,
+							LocalObjectReference: corev1.LocalObjectReference{
+								Name: "client-ca-bundle",
+							},
+						},
+					},
+				},
+				{
+					Name: "abcd-gateway-ca-bundle",
+					VolumeSource: corev1.VolumeSource{
+						Projected: &corev1.ProjectedVolumeSource{
+							Sources: []corev1.VolumeProjection{
+								{
+									Secret: &corev1.SecretProjection{
+										LocalObjectReference: corev1.LocalObjectReference{
+											Name: "my-custom-ca",
+										},
+										Items: []corev1.KeyToPath{
+											{
+												Key:  "ca.crt",
+												Path: "service-ca.crt",
+											},
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+				{
+					Name: "tls-secret",
+					VolumeSource: corev1.VolumeSource{
+						Projected: &corev1.ProjectedVolumeSource{
+							Sources: []corev1.VolumeProjection{
+								{
+									ConfigMap: &corev1.ConfigMapProjection{
+										LocalObjectReference: corev1.LocalObjectReference{
+											Name: "my-custom-cert",
+										},
+										Items: []corev1.KeyToPath{
+											{
+												Key:  "tls.crt",
+												Path: "tls.crt",
+											},
+										},
+									},
+								},
+								{
+									Secret: &corev1.SecretProjection{
+										LocalObjectReference: corev1.LocalObjectReference{
+											Name: "my-custom-key",
+										},
+										Items: []corev1.KeyToPath{
+											{
+												Key:  "tls.key",
+												Path: "tls.key",
+											},
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	for _, tc := range tt {
+		t.Run(tc.name, func(t *testing.T) {
+			objs, err := BuildGateway(Options{
+				Name:      "abcd",
+				Namespace: "efgh",
+				Gates: configv1.FeatureGates{
+					LokiStackGateway: true,
+					HTTPEncryption:   true,
+				},
+				Stack: lokiv1.LokiStackSpec{
+					Template: &lokiv1.LokiTemplateSpec{
+						Gateway: &lokiv1.LokiComponentSpec{
+							Replicas: rand.Int31(),
+						},
+					},
+					Tenants: &lokiv1.TenantsSpec{
+						Mode: lokiv1.Passthrough,
+						Passthrough: &lokiv1.PassthroughTenantSpec{
+							CA: &lokiv1.ValueReference{
+								Key:           "ca.crt",
+								ConfigMapName: "client-ca-bundle",
+							},
+						},
+						Gateway: &lokiv1.GatewaySpec{
+							TLS: tc.tlsSpec,
+						},
+					},
+				},
+				Timeouts: defaultTimeoutConfig,
+			})
+
+			require.NoError(t, err)
+
+			dpl := objs[0].(*appsv1.Deployment)
+			require.NotNil(t, dpl)
+			require.Len(t, dpl.Spec.Template.Spec.Containers, 1)
+
+			c := dpl.Spec.Template.Spec.Containers[0]
+
+			require.Equal(t, tc.expectedArgs, c.Args)
+			require.Equal(t, tc.expectedVolumeMounts, c.VolumeMounts)
+			require.Equal(t, tc.expectedVolumes, dpl.Spec.Template.Spec.Volumes)
+
+			// Verify service does not have serving-certs annotation when custom TLS is provided
+			svc := objs[3].(*corev1.Service)
+			require.NotNil(t, svc)
+			_, hasServingCertAnnotation := svc.Annotations["service.beta.openshift.io/serving-cert-secret-name"]
+			require.False(t, hasServingCertAnnotation, "service should not have serving-cert annotation with custom TLS")
+		})
+	}
+}

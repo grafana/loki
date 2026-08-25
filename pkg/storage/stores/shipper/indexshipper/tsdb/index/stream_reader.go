@@ -3,13 +3,10 @@ package index
 import (
 	"context"
 	"fmt"
-	"hash/crc32"
 	"io"
 	"os"
-	"sort"
 
 	"github.com/prometheus/prometheus/model/labels"
-	"github.com/prometheus/prometheus/storage"
 
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/index/streamenc"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/index/streamenc/filepool"
@@ -115,7 +112,7 @@ func NewStreamFileReader(path string, opts StreamOptions) (*StreamReader, error)
 }
 
 // readHeader validates the magic bytes and returns the on-disk format version.
-func (s StreamReader) readHeader() (int, error) {
+func (s *StreamReader) readHeader() (int, error) {
 	// Validate header size
 	if s.size < int64(HeaderLen) {
 		return 0, fmt.Errorf("index header: %w", streamenc.ErrInvalidSize)
@@ -147,7 +144,7 @@ func (s StreamReader) readHeader() (int, error) {
 
 // readTOC reads the fixed-size TOC record from the tail of
 // the file and validates its CRC32.
-func (s StreamReader) readTOC() (*TOC, error) {
+func (s *StreamReader) readTOC() (*TOC, error) {
 	// Validate size
 	if s.size < int64(indexTOCLen) {
 		return nil, fmt.Errorf("index toc: %w", streamenc.ErrInvalidSize)
@@ -196,7 +193,7 @@ func (s StreamReader) readTOC() (*TOC, error) {
 // On disk the section is a 4-byte big-endian count N, followed by N
 // (seriesRef, fingerprint) pairs of 8-byte big-endian values, then the section CRC,
 // which NewDecbufAtChecked validates while opening.
-func (s StreamReader) readFingerprintOffsetsTable(offset int) (FingerprintOffsets, error) {
+func (s *StreamReader) readFingerprintOffsetsTable(offset int) (FingerprintOffsets, error) {
 	decbuf := s.factory.NewDecbufAtChecked(context.Background(), offset, castagnoliTable)
 	defer decbuf.Close()
 	if err := decbuf.Err(); err != nil {
@@ -212,161 +209,36 @@ func (s StreamReader) readFingerprintOffsetsTable(offset int) (FingerprintOffset
 	return result, decbuf.Err()
 }
 
-// seriesOffset returns the absolute file offset of the series record for the
-// given series ref.
-// Series records are padded to a 16-byte alignment and a ref is the record's
-// file offset divided by 16, which is what lets a 4-byte ref address a much
-// larger file.
-// See Creator.AddSeries.
-func seriesOffset(id storage.SeriesRef) int {
-	return int(id) * 16
-}
-
-// readSeriesRecord reads the series record at the given absolute file offset
-// and returns its content bytes, having validated the record's CRC32.
-//
-// On disk a series record is a uvarint content length, the content, then
-// a CRC32 over the content alone.
-// The uvarint length prefix is why this can't go through the streamenc
-// factory: NewDecbufAtChecked assumes a 4-byte big-endian length, so we open
-// a raw Decbuf over the whole file and decode the record ourselves.
-func (s StreamReader) readSeriesRecord(offset int) ([]byte, error) {
-	decbuf := s.factory.NewRawDecbuf(context.Background())
-	defer decbuf.Close()
-	if err := decbuf.Err(); err != nil {
-		return nil, fmt.Errorf("open series decbuf: %w", err)
-	}
-
-	if decbuf.ResetAt(offset); decbuf.Err() != nil {
-		return nil, fmt.Errorf("go to start of series record: %w", decbuf.Err())
-	}
-
-	contentLen := decbuf.Uvarint64()
-	if err := decbuf.Err(); err != nil {
-		return nil, fmt.Errorf("read series record length: %w", err)
-	}
-	// Bound the claimed length against what is left in the file before
-	// allocating, so a corrupt length prefix can't ask for an arbitrarily
-	// large buffer.
-	remaining := decbuf.Len()
-	if remaining < crc32.Size || contentLen > uint64(remaining-crc32.Size) {
-		return nil, fmt.Errorf(
-			"series record at %d claims %d content bytes but only %d remain: %w",
-			offset, contentLen, remaining, streamenc.ErrInvalidSize,
-		)
-	}
-
-	content := make([]byte, contentLen)
-	decbuf.ReadInto(content)
-	expectedCRC := decbuf.Be32()
-	if err := decbuf.Err(); err != nil {
-		return nil, fmt.Errorf("read series record: %w", err)
-	}
-	if crc32.Checksum(content, castagnoliTable) != expectedCRC {
-		return nil, fmt.Errorf("series record at %d: %w", offset, streamenc.ErrInvalidChecksum)
-	}
-	return content, nil
-}
-
-func (s StreamReader) Version() int {
+func (s *StreamReader) Version() int {
 	return s.version
 }
 
 // RawFileReader opens a fresh file handle over the index file.
 // The caller owns closing it.
-func (s StreamReader) RawFileReader() (io.ReadSeekCloser, error) {
+func (s *StreamReader) RawFileReader() (io.ReadSeekCloser, error) {
 	return os.Open(s.path)
 }
 
-func (s StreamReader) Bounds() (int64, int64) {
+func (s *StreamReader) Bounds() (int64, int64) {
 	return s.toc.Metadata.From, s.toc.Metadata.Through
 }
 
-func (s StreamReader) Checksum() uint32 {
+func (s *StreamReader) Checksum() uint32 {
 	return s.toc.Metadata.Checksum
 }
 
-func (s StreamReader) LabelValues(name string, matchers ...*labels.Matcher) ([]string, error) {
+func (s *StreamReader) LabelValues(name string, matchers ...*labels.Matcher) ([]string, error) {
 	if len(matchers) > 0 {
 		return nil, fmt.Errorf("matchers parameter is not implemented: %+v", matchers)
 	}
 	return s.postings.labelValuesFor(name)
 }
 
-func (s StreamReader) LabelNames(matchers ...*labels.Matcher) ([]string, error) {
+func (s *StreamReader) LabelNames(matchers ...*labels.Matcher) ([]string, error) {
 	if len(matchers) > 0 {
 		return nil, fmt.Errorf("matchers parameter is not implemented: %+v", matchers)
 	}
 	return s.postings.labelNames(), nil
-}
-
-func (s StreamReader) LabelValueFor(id storage.SeriesRef, label string) (string, error) {
-	content, err := s.readSeriesRecord(seriesOffset(id))
-	if err != nil {
-		return "", fmt.Errorf("label values for: %w", err)
-	}
-
-	value, err := s.decoder.LabelValueFor(content, label)
-	if err != nil {
-		return "", storage.ErrNotFound
-	}
-	if value == "" {
-		return "", storage.ErrNotFound
-	}
-	return value, nil
-}
-
-func (s StreamReader) LabelNamesFor(ids ...storage.SeriesRef) ([]string, error) {
-	// Gather the name offsets in the symbol table first, so each distinct name
-	// is only resolved once no matter how many series carry it.
-	offsetsMap := make(map[uint32]struct{})
-	for _, id := range ids {
-		content, err := s.readSeriesRecord(seriesOffset(id))
-		if err != nil {
-			return nil, fmt.Errorf("get buffer for series: %w", err)
-		}
-
-		offsets, err := s.decoder.LabelNamesOffsetsFor(content)
-		if err != nil {
-			return nil, fmt.Errorf("get label name offsets: %w", err)
-		}
-		for _, offset := range offsets {
-			offsetsMap[offset] = struct{}{}
-		}
-	}
-
-	names := make([]string, 0, len(offsetsMap))
-	for offset := range offsetsMap {
-		name, err := s.symbols.Lookup(offset)
-		if err != nil {
-			return nil, fmt.Errorf("lookup symbol in LabelNamesFor: %w", err)
-		}
-		names = append(names, name)
-	}
-	sort.Strings(names)
-	return names, nil
-}
-
-func (s StreamReader) Series(id storage.SeriesRef, from int64, through int64, lbls *labels.Labels, chks *[]ChunkMeta) (uint64, error) {
-	content, err := s.readSeriesRecord(seriesOffset(id))
-	if err != nil {
-		return 0, err
-	}
-
-	fingerprint, err := s.decoder.Series(s.version, content, id, from, through, lbls, chks)
-	if err != nil {
-		return 0, fmt.Errorf("decode series: %w", err)
-	}
-	return fingerprint, nil
-}
-
-func (s StreamReader) ChunkStats(id storage.SeriesRef, from, through int64, lbls *labels.Labels, by map[string]struct{}) (uint64, ChunkStats, error) {
-	content, err := s.readSeriesRecord(seriesOffset(id))
-	if err != nil {
-		return 0, ChunkStats{}, err
-	}
-
-	return s.decoder.ChunkStats(s.version, content, id, from, through, lbls, by)
 }
 
 // Postings returns a postings iterator for the given label name and values.
@@ -374,7 +246,7 @@ func (s StreamReader) ChunkStats(id storage.SeriesRef, from, through int64, lbls
 //
 // A non-nil FingerprintFilter restricts the result to the requested shard by
 // bounding the merged postings with the fingerprint offsets table.
-func (s StreamReader) Postings(labelName string, fpFilter FingerprintFilter, labelValues ...string) (Postings, error) {
+func (s *StreamReader) Postings(labelName string, fpFilter FingerprintFilter, labelValues ...string) (Postings, error) {
 	postings, err := s.postings.postingsFor(labelName, labelValues...)
 	if err != nil {
 		return nil, err
@@ -385,10 +257,10 @@ func (s StreamReader) Postings(labelName string, fpFilter FingerprintFilter, lab
 	return postings, nil
 }
 
-func (s StreamReader) Size() int64 {
+func (s *StreamReader) Size() int64 {
 	return s.size
 }
 
-func (s StreamReader) Close() error {
+func (s *StreamReader) Close() error {
 	return s.factory.Close()
 }

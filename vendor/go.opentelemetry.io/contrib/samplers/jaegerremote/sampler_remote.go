@@ -16,7 +16,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package jaegerremote // import "go.opentelemetry.io/contrib/samplers/jaegerremote"
+package jaegerremote
 
 import (
 	"bytes"
@@ -71,7 +71,7 @@ type samplerUpdater interface {
 type Sampler struct {
 	// These fields must be first in the struct because `sync/atomic` expects 64-bit alignment.
 	// Cf. https://github.com/jaegertracing/jaeger-client-go/issues/155, https://pkg.go.dev/sync/atomic#pkg-note-BUG
-	closed int64 // 0 - not closed, 1 - closed
+	closed atomic.Int64 // 0 - not closed, 1 - closed
 
 	sync.RWMutex // used to serialize access to samplerConfig.sampler
 	config
@@ -107,7 +107,7 @@ func (s *Sampler) ShouldSample(p trace.SamplingParameters) trace.SamplingResult 
 // Close does a clean shutdown of the sampler, stopping any background
 // go-routines it may have started.
 func (s *Sampler) Close() {
-	if swapped := atomic.CompareAndSwapInt64(&s.closed, 0, 1); !swapped {
+	if swapped := s.closed.CompareAndSwap(0, 1); !swapped {
 		s.logger.Info("repeated attempt to close the sampler is ignored")
 		return
 	}

@@ -375,6 +375,23 @@ func (ev *DefaultEvaluator) NewStepEvaluator(
 			return nil, err
 		}
 		return newRangeAggEvaluator(iter.NewPeekingSampleIterator(it), e, q, e.Left.Offset)
+	case *syntax.LabelAggregationExpr:
+		it, err := ev.querier.SelectSamples(ctx, SelectSampleParams{
+			&logproto.SampleQueryRequest{
+				Start:    q.Start().Add(-e.Left.Interval).Add(-e.Left.Offset),
+				End:      q.End().Add(-e.Left.Offset).Add(time.Nanosecond),
+				Selector: e.String(),
+				Shards:   q.Shards(),
+				Plan: &plan.QueryPlan{
+					AST: expr,
+				},
+				StoreChunks: q.GetStoreChunks(),
+			},
+		})
+		if err != nil {
+			return nil, err
+		}
+		return newCountDistinctStepEvaluator(iter.NewPeekingSampleIterator(it), q, e.Left.Interval, e.Left.Offset), nil
 	case *syntax.BinOpExpr:
 		return newBinOpStepEvaluator(ctx, nextEvFactory, e, q)
 	case *syntax.LabelReplaceExpr:

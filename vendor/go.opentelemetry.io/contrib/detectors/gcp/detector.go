@@ -1,10 +1,11 @@
 // Copyright The OpenTelemetry Authors
 // SPDX-License-Identifier: Apache-2.0
 
-package gcp // import "go.opentelemetry.io/contrib/detectors/gcp"
+package gcp
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strconv"
 
@@ -12,7 +13,7 @@ import (
 	"github.com/GoogleCloudPlatform/opentelemetry-operations-go/detectors/gcp"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/sdk/resource"
-	semconv "go.opentelemetry.io/otel/semconv/v1.41.0"
+	semconv "go.opentelemetry.io/otel/semconv/v1.43.0"
 )
 
 // NewDetector returns a resource detector which detects resource attributes on:
@@ -149,7 +150,7 @@ func (r *resourceBuilder) addZoneOrRegion(detect func() (string, gcp.LocationTyp
 func (r *resourceBuilder) build() (*resource.Resource, error) {
 	var err error
 	if len(r.errs) > 0 {
-		err = fmt.Errorf("%w: %s", resource.ErrPartialResource, r.errs)
+		err = fmt.Errorf("%w: %w", resource.ErrPartialResource, errors.Join(r.errs...))
 	}
 	return resource.NewWithAttributes(semconv.SchemaURL, r.attrs...), err
 }
