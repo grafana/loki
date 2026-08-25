@@ -47,12 +47,6 @@ type SortLayout struct {
 // CheckSection returns true if section is a logs section.
 func CheckSection(section *dataobj.Section) bool { return sectionType.Equals(section.Type) }
 
-// IsSchemaSorted returns true if the section was written in schema sort order.
-// This check reads only the object-header metadata — no section I/O required.
-func IsSchemaSorted(section *dataobj.Section) bool {
-	return section.Type == schemaSortSectionType
-}
-
 // Section represents an opened logs section.
 type Section struct {
 	inner   *columnar.Section

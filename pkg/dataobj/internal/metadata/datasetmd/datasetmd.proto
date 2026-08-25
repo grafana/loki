@@ -250,8 +250,7 @@ message SortInfo {
   // (when shard_count > 1), then the values of these fully-qualified sort keys
   // (in order), then stream hash (see stream_order), followed by column_sorts
   // as tiebreakers. Each entry is a FQN of the form "label:<name>"
-  // (e.g. "label:service_name"). When set, column_sorts describes only the
-  // remaining tiebreaker columns (typically stream ID ASC, timestamp DESC).
+  // (e.g. "label:service_name").
   repeated string schema_labels = 2;
 
   // stream_order describes how object-local stream IDs were assigned before

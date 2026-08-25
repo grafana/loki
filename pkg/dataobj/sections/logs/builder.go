@@ -117,7 +117,7 @@ type BuilderOptions struct {
 	StreamOrder StreamOrder
 
 	// ShardCount is the number of physical shard buckets in the sort layout.
-	// The current layout uses streams.ShardFactor. Zero means unspecified.
+	// Zero means unspecified.
 	ShardCount uint32
 }
 

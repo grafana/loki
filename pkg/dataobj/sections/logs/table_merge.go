@@ -233,25 +233,24 @@ func CompareForSortSchema(shards []uint32, sortKeys []string, hashes []uint64) f
 			return true
 		}
 
-		if len(shards) > 0 {
-			aShard := shards[aStreamID]
-			bShard := shards[bStreamID]
-			if res := cmp.Compare(aShard, bShard); res != 0 {
-				return res < 0
-			}
+		aShard := shards[aStreamID]
+		bShard := shards[bStreamID]
+		if res := cmp.Compare(aShard, bShard); res != 0 {
+			return res < 0
 		}
+
 		aKey := sortKeys[aStreamID]
 		bKey := sortKeys[bStreamID]
 		if res := cmp.Compare(aKey, bKey); res != 0 {
 			return res < 0
 		}
-		if len(hashes) > 0 {
-			aHash := hashes[aStreamID]
-			bHash := hashes[bStreamID]
-			if res := cmp.Compare(aHash, bHash); res != 0 {
-				return res < 0
-			}
+
+		aHash := hashes[aStreamID]
+		bHash := hashes[bStreamID]
+		if res := cmp.Compare(aHash, bHash); res != 0 {
+			return res < 0
 		}
+
 		if res := cmp.Compare(aStreamID, bStreamID); res != 0 {
 			return res < 0
 		}

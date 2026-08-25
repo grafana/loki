@@ -133,7 +133,7 @@ type StreamOrder int32
 const (
 	// Legacy or unknown stream ordering.
 	STREAM_ORDER_UNSPECIFIED StreamOrder = 0
-	// IDs are assigned by (schema key, labels.StableHash, full labels).
+	// IDs are assigned by (shard_bucket, schema key, labels.StableHash, full labels).
 	STREAM_ORDER_STABLE_HASH_V1 StreamOrder = 2
 )
 
@@ -768,19 +768,20 @@ type SortInfo struct {
 	// contain a single element. Otherwise, this field will contain multiple
 	// elements when compound sorting is used.
 	ColumnSorts []*SortInfo_ColumnSort `protobuf:"bytes,1,rep,name=column_sorts,json=columnSorts,proto3" json:"column_sorts,omitempty"`
-	// schema_labels, if non-empty, indicates that rows are sorted by the values
-	// of these fully-qualified sort keys (in order) as the primary sort keys,
-	// followed by column_sorts as tiebreakers. Each entry is a FQN of the form
-	// "label:<name>" (e.g. "label:service_name"). When set, column_sorts describes
-	// only the remaining tiebreaker columns (typically timestamp DESC).
+	// schema_labels, if non-empty, indicates that rows are sorted by shard_bucket
+	// (when shard_count > 1), then the values of these fully-qualified sort keys
+	// (in order), then stream hash (see stream_order), followed by column_sorts
+	// as tiebreakers. Each entry is a FQN of the form "label:<name>"
+	// (e.g. "label:service_name").
 	SchemaLabels []string `protobuf:"bytes,2,rep,name=schema_labels,json=schemaLabels,proto3" json:"schema_labels,omitempty"`
 	// stream_order describes how object-local stream IDs were assigned before
 	// rows were sorted by stream ID. It is meaningful for LOG sections with
 	// schema_labels and allows independently written objects to prove that their
 	// stream order is globally compatible.
 	StreamOrder StreamOrder `protobuf:"varint,3,opt,name=stream_order,json=streamOrder,proto3,enum=dataobj.metadata.dataset.v2.StreamOrder" json:"stream_order,omitempty"`
-	// shard_count participates in the stream layout. A value of 1 is unsharded.
-	// Zero means the field was not persisted by a legacy writer.
+	// shard_count is the number of physical shard buckets that participate in
+	// the stream layout. Zero means the field was not persisted by a legacy
+	// writer.
 	ShardCount uint32 `protobuf:"varint,4,opt,name=shard_count,json=shardCount,proto3" json:"shard_count,omitempty"`
 }
 

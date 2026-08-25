@@ -340,7 +340,7 @@ func (b *Builder) appendAll(tenant string, ls labels.Labels, recordTime time.Tim
 		return err
 	}
 	streamHash := labels.StableHash(ls)
-	streamShard := streams.ShardBucket(ls)
+	streamShard := streams.ShardBucketFromHash(streamHash)
 
 	sb, lb := b.buildersFor(tenant)
 
