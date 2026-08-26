@@ -176,7 +176,7 @@ func planGlobalStreams(ctx context.Context, t *testing.T, objs []*dataobj.Object
 	type entry struct {
 		sourceIdx      int
 		sourceStreamID int64
-		key            logsobj.StreamOrderKey
+		key            streams.SortKey
 	}
 	var all []entry
 	perObjLogs := make([][]*dataobj.Section, len(objs))
@@ -190,8 +190,10 @@ func planGlobalStreams(ctx context.Context, t *testing.T, objs []*dataobj.Object
 			for res := range streams.IterSection(ctx, ss) {
 				stream, err := res.Value()
 				require.NoError(t, err)
-				key, err := logsobj.NewStreamOrderKey(stream.Labels, sortSchema)
+				schemaKey, err := logsobj.ComputeSchemaKey(stream.Labels, sortSchema)
 				require.NoError(t, err)
+				key := streams.NewSortKey(stream.Labels, schemaKey)
+
 				all = append(all, entry{sourceIdx: sourceIdx, sourceStreamID: stream.ID, key: key})
 			}
 		}
@@ -203,7 +205,7 @@ func planGlobalStreams(ctx context.Context, t *testing.T, objs []*dataobj.Object
 	}
 
 	slices.SortFunc(all, func(a, b entry) int {
-		if r := logsobj.CompareStreamOrderKey(a.key, b.key); r != 0 {
+		if r := streams.CompareSortKey(a.key, b.key); r != 0 {
 			return r
 		}
 		if r := cmp.Compare(a.sourceIdx, b.sourceIdx); r != 0 {

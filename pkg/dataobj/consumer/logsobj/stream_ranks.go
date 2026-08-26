@@ -7,20 +7,20 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
 )
 
-// StreamRanks assigns dense IDs 1..N in StreamOrderKey order to unique label
-// sets from one or more source stream maps. Same labels in two sources share
+// MultiSourceRankedStreams assigns dense IDs 1..N in SortKey order to unique label
+// sets from one or more source stream maps. Equal streams from two sources share
 // one ID so a merge by remapped stream ID timestamp-interleaves them.
-type StreamRanks struct {
-	byNewID []StreamOrderKey  // index = new ID (1..N); [0] unused
-	remap   []map[int64]int64 // per source: old stream ID -> new ID
+type MultiSourceRankedStreams struct {
+	ordered  []streams.SortKey // index = new ID (1..N); [0] unused
+	mappings []map[int64]int64 // per source: old stream ID -> new ID
 }
 
-// RankStreams uniques streams by full labels, sorts them by StreamOrderKey,
-// and assigns dense IDs. sources[i] is the localID -> stream map for one
+// RankMixedStreams extracts uniques streams from all sources, sorts them by SortKey,
+// and assigns IDs according to rank. sources[i] is the localID -> stream map for one
 // input object.
-func RankStreams(schemaLabels []string, sources ...map[int64]streams.Stream) (*StreamRanks, error) {
+func RankMixedStreams(schemaLabels []string, sources ...map[int64]streams.Stream) (*MultiSourceRankedStreams, error) {
 	type uniqStream struct {
-		key    StreamOrderKey
+		key    streams.SortKey
 		stream streams.Stream
 	}
 	type localRef struct {
@@ -33,10 +33,12 @@ func RankStreams(schemaLabels []string, sources ...map[int64]streams.Stream) (*S
 	var allRefs []localRef
 	for sourceIdx, src := range sources {
 		for localID, s := range src {
-			key, err := NewStreamOrderKey(s.Labels, schemaLabels)
+			schemaKey, err := ComputeSchemaKey(s.Labels, schemaLabels)
 			if err != nil {
-				return nil, fmt.Errorf("computing sort key for source %d: %w", sourceIdx, err)
+				return nil, fmt.Errorf("computing schema key for source %d: %w", sourceIdx, err)
 			}
+
+			key := streams.NewSortKey(s.Labels, schemaKey)
 			lk := s.Labels.String()
 			if _, ok := byLabels[lk]; !ok {
 				byLabels[lk] = uniqStream{key: key, stream: s}
@@ -50,49 +52,49 @@ func RankStreams(schemaLabels []string, sources ...map[int64]streams.Stream) (*S
 		unique = append(unique, u)
 	}
 	slices.SortFunc(unique, func(a, b uniqStream) int {
-		return CompareStreamOrderKey(a.key, b.key)
+		return streams.CompareSortKey(a.key, b.key)
 	})
 
-	ranks := &StreamRanks{
-		byNewID: make([]StreamOrderKey, len(unique)+1),
-		remap:   make([]map[int64]int64, len(sources)),
+	ranks := &MultiSourceRankedStreams{
+		ordered:  make([]streams.SortKey, len(unique)+1),
+		mappings: make([]map[int64]int64, len(sources)),
 	}
-	for i := range ranks.remap {
-		ranks.remap[i] = make(map[int64]int64)
+	for i := range ranks.mappings {
+		ranks.mappings[i] = make(map[int64]int64)
 	}
 
 	labelToID := make(map[string]int64, len(unique))
 	for i, u := range unique {
 		id := int64(i + 1)
 		labelToID[u.stream.Labels.String()] = id
-		ranks.byNewID[id] = u.key
+		ranks.ordered[id] = u.key
 	}
 	for _, r := range allRefs {
-		ranks.remap[r.sourceIdx][r.localID] = labelToID[r.labelsKey]
+		ranks.mappings[r.sourceIdx][r.localID] = labelToID[r.labelsKey]
 	}
 	return ranks, nil
 }
 
-// ByID returns the stream order key assigned to new ID id.
-func (r *StreamRanks) ByID(id int64) StreamOrderKey {
-	return r.byNewID[id]
+// ByID returns the sort key assigned to new ID id.
+func (r *MultiSourceRankedStreams) ByID(id int64) streams.SortKey {
+	return r.ordered[id]
 }
 
 // Remap returns the old-to-new ID map for one source.
-func (r *StreamRanks) Remap(sourceIdx int) map[int64]int64 {
-	return r.remap[sourceIdx]
+func (r *MultiSourceRankedStreams) Remap(sourceIdx int) map[int64]int64 {
+	return r.mappings[sourceIdx]
 }
 
 // Resolve returns the global ID of the local stream ID
 // Provided localID must be >0
-func (r *StreamRanks) Resolve(sourceIdx int, localID int64) (int64, error) {
-	if sourceIdx < 0 || sourceIdx >= len(r.remap) {
+func (r *MultiSourceRankedStreams) Resolve(sourceIdx int, localID int64) (int64, error) {
+	if sourceIdx < 0 || sourceIdx >= len(r.mappings) {
 		return 0, fmt.Errorf("source index %d out of range", sourceIdx)
 	}
 	if localID <= 0 {
 		return 0, fmt.Errorf("local id %d out of range", localID)
 	}
-	result, ok := r.remap[sourceIdx][localID]
+	result, ok := r.mappings[sourceIdx][localID]
 	if !ok {
 		return 0, fmt.Errorf("no mapping for local id %d in source %d", localID, sourceIdx)
 	}
@@ -100,6 +102,6 @@ func (r *StreamRanks) Resolve(sourceIdx int, localID int64) (int64, error) {
 }
 
 // Size returns the number of streams held
-func (r *StreamRanks) Size() int {
-	return len(r.byNewID) - 1
+func (r *MultiSourceRankedStreams) Size() int {
+	return len(r.ordered) - 1
 }
