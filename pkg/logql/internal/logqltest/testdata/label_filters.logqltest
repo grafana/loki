@@ -1093,6 +1093,23 @@ eval instant at 60s count_over_time({app="a"} [1m])
   {app="a", lvl="error"} 3
   {app="a", lvl="info"} 2
 
+# structured metadata label filter: logical operators parsed fields and structured metadata.
+clear
+load
+  {app="a"} "code=500" @ 20s [repeat every 20s for 4] [metadata lvl="error"]
+  {app="a"} "code=200" @ 25s [repeat every 20s for 4] [metadata lvl="error"]
+  {app="a"} "code=500" @ 35s [repeat every 20s for 4] [metadata lvl="info"]
+
+eval instant at 60s count_over_time({app="a"} | logfmt | lvl="error" and code="500" [1m])
+  {app="a", code="500", lvl="error"} 3
+eval range from 40s to 80s step 20s count_over_time({app="a"} | logfmt | lvl="error" and code="500" [1m])   # overlapping
+  {app="a", code="500", lvl="error"} 2 3 3
+eval range from 60s to 180s step 120s count_over_time({app="a"} | logfmt | lvl="error" and code="500" [1m]) # non-overlapping
+  {app="a", code="500", lvl="error"} 3 _
+eval instant at 60s count_over_time({app="a"} | logfmt | lvl="info" or code="200" [1m])
+  {app="a", code="200", lvl="error"} 2
+  {app="a", code="500", lvl="info"} 2
+
 # label conflicts: a name can be a stream label, structured metadata, and a parsed field at once.
 #
 # Two separate rules resolve conflicts:
@@ -1124,6 +1141,18 @@ eval instant at 60s count_over_time({app="a"} | logfmt | sp="p" [1m])
 eval instant at 60s count_over_time({app="a"} | logfmt | tri="m" [1m])
   expect empty
 eval instant at 60s count_over_time({app="a"} | logfmt | tri_extracted="m" [1m])
+  expect empty
+
+# label conflicts: duplicated structured metadata keys.
+#
+# When a duplicate structured metadata key is encountered, on the last key is preserved.
+clear
+load
+  {app="a"} "msg" @ 20s [repeat every 20s for 3] [metadata dup="first" dup="second"]
+
+eval instant at 60s count_over_time({app="a"} | dup="second" [1m])
+  {app="a", dup="second"} 3
+eval instant at 60s count_over_time({app="a"} | dup="first" [1m])
   expect empty
 
 # label filter after unwrap
