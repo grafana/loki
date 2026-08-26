@@ -150,16 +150,12 @@ func NewDecoder() (*Decoder, error) {
 
 // Decode converts a Kafka record's byte data back into a logproto.Stream and labels.Labels.
 // The decoding process works as follows:
-// 1. Unmarshal the data into a logproto.Stream.
+// 1. Unmarshal the data into a logproto.Stream, in either encoding the record may carry.
 // 2. Parse and cache the labels for efficiency in future decodes.
 //
 // Returns the decoded logproto.Stream, parsed labels, and any error encountered.
 func (d *Decoder) Decode(data []byte) (logproto.Stream, labels.Labels, error) {
-	d.stream.Labels = ""
-	d.stream.Hash = 0
-	d.stream.Entries = d.stream.Entries[:0]
-
-	if err := d.stream.Unmarshal(data); err != nil {
+	if err := decodeStream(data, d.stream); err != nil {
 		return logproto.Stream{}, labels.EmptyLabels(), fmt.Errorf("failed to unmarshal stream: %w", err)
 	}
 
@@ -185,11 +181,33 @@ func (d *Decoder) DecodeWithoutLabels(data []byte) (logproto.Stream, error) {
 	}
 
 	stream := logproto.Stream{}
-	if err := stream.Unmarshal(data); err != nil {
+	if err := decodeStream(data, &stream); err != nil {
 		return logproto.Stream{}, fmt.Errorf("failed to unmarshal stream: %w", err)
 	}
 
 	return stream, nil
+}
+
+func decodeStream(data []byte, into *logproto.Stream) error {
+	var nested logproto.InternalStreamAdapter
+	nestedErr := nested.Unmarshal(data)
+	if nestedErr == nil {
+		// no need to zero [*into] because ToStream overrides all the values
+		*into = nested.ToStream()
+		return nil
+	}
+
+	// - unmarshaling doesn't zero the values
+	// - [into] could be reused between the calls
+	// => zero the values, keep the into.Entries capacity though
+	into.Labels = ""
+	into.Hash = 0
+	into.Entries = into.Entries[:0]
+
+	if flatErr := into.Unmarshal(data); flatErr != nil {
+		return fmt.Errorf("not a valid record in either encoding: nested: %w; flat: %w", nestedErr, flatErr)
+	}
+	return nil
 }
 
 // sovPush calculates the size of varint-encoded uint64.
