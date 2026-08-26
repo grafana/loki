@@ -382,6 +382,10 @@ type CountDistinctMergeExpr struct {
 func (e *CountDistinctMergeExpr) String() string {
 	var sb strings.Builder
 	for i, d := range e.downstreams {
+		if i >= defaultMaxDepth {
+			break
+		}
+
 		if i > 0 {
 			sb.WriteString(" ++ ")
 		}

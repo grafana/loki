@@ -115,6 +115,25 @@ func TestCountDistinctExpr_String(t *testing.T) {
 		)
 	})
 
+	t.Run("merge caps downstreams at defaultMaxDepth", func(t *testing.T) {
+		old := defaultMaxDepth
+		defaultMaxDepth = 2
+		t.Cleanup(func() { defaultMaxDepth = old })
+
+		expr := &CountDistinctMergeExpr{
+			downstreams: []DownstreamSampleExpr{
+				{SampleExpr: sketch, shard: NewPowerOfTwoShard(index.ShardAnnotation{Shard: 0, Of: 3}).Bind(nil)},
+				{SampleExpr: sketch, shard: NewPowerOfTwoShard(index.ShardAnnotation{Shard: 1, Of: 3}).Bind(nil)},
+				{SampleExpr: sketch, shard: NewPowerOfTwoShard(index.ShardAnnotation{Shard: 2, Of: 3}).Bind(nil)},
+			},
+		}
+		require.Equal(t,
+			`CountDistinctMerge<downstream<__count_distinct_sketch__(mac,{foo="bar"}[5m]) by (version), shard=0_of_3> ++ downstream<__count_distinct_sketch__(mac,{foo="bar"}[5m]) by (version), shard=1_of_3>>`,
+			expr.String(),
+		)
+		require.NotContains(t, expr.String(), "2_of_3")
+	})
+
 	t.Run("eval nil merge", func(t *testing.T) {
 		require.Equal(t, "CountDistinctEval<>", (&CountDistinctEvalExpr{}).String())
 	})
