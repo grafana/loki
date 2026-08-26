@@ -30,7 +30,7 @@ var (
 func asDegraded(err error, missing, invalid lokiv1.LokiStackConditionReason) error {
 	switch {
 	case errors.Is(err, errMissing):
-		return &status.DegradedError{Message: err.Error(), Reason: missing, Requeue: true}
+		return &status.DegradedError{Message: err.Error(), Reason: missing, Requeue: false}
 	case errors.Is(err, errInvalid):
 		return &status.DegradedError{Message: err.Error(), Reason: invalid, Requeue: false}
 	default:

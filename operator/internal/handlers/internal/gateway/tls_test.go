@@ -140,7 +140,7 @@ func TestValidateTLSConfig(t *testing.T) {
 			expError: &status.DegradedError{
 				Message: `Missing ConfigMap "non-existent-configmap" referenced by field spec.tenants.gateway.tls.ca: missing resource`,
 				Reason:  lokiv1.ReasonMissingGatewayTLSConfig,
-				Requeue: true,
+				Requeue: false,
 			},
 		},
 		{
@@ -176,7 +176,7 @@ func TestValidateTLSConfig(t *testing.T) {
 			expError: &status.DegradedError{
 				Message: `Missing ConfigMap "non-existent-configmap" referenced by field spec.tenants.gateway.tls.certificate: missing resource`,
 				Reason:  lokiv1.ReasonMissingGatewayTLSConfig,
-				Requeue: true,
+				Requeue: false,
 			},
 		},
 		{
@@ -194,7 +194,7 @@ func TestValidateTLSConfig(t *testing.T) {
 			expError: &status.DegradedError{
 				Message: `Missing Secret "non-existent-secret" referenced by field spec.tenants.gateway.tls.certificate: missing resource`,
 				Reason:  lokiv1.ReasonMissingGatewayTLSConfig,
-				Requeue: true,
+				Requeue: false,
 			},
 		},
 		{
@@ -212,7 +212,7 @@ func TestValidateTLSConfig(t *testing.T) {
 			expError: &status.DegradedError{
 				Message: `Missing Secret "non-existent-key-secret" referenced by field spec.tenants.gateway.tls.privateKey: missing resource`,
 				Reason:  lokiv1.ReasonMissingGatewayTLSConfig,
-				Requeue: true,
+				Requeue: false,
 			},
 		},
 		{
@@ -409,7 +409,7 @@ func TestValidatePassthroughCA(t *testing.T) {
 			expError: &status.DegradedError{
 				Message: `Missing ConfigMap "non-existent-configmap" referenced by field spec.tenants.passthrough.ca: missing resource`,
 				Reason:  lokiv1.ReasonMissingPassthroughConfiguration,
-				Requeue: true,
+				Requeue: false,
 			},
 		},
 		{
@@ -439,7 +439,7 @@ func TestValidatePassthroughCA(t *testing.T) {
 			expError: &status.DegradedError{
 				Message: `Missing Secret "non-existent-secret" referenced by field spec.tenants.passthrough.ca: missing resource`,
 				Reason:  lokiv1.ReasonMissingPassthroughConfiguration,
-				Requeue: true,
+				Requeue: false,
 			},
 		},
 	} {
