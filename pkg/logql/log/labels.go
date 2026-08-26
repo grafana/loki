@@ -201,6 +201,7 @@ func (b *BaseLabelsBuilder) Reset() {
 	b.errDetails = ""
 	b.baseMap = nil
 	b.parserKeyHints.Reset()
+	clear(b.resultCache)
 }
 
 // ParserLabelHints returns a limited list of expected labels to extract for metric queries.
