@@ -932,6 +932,7 @@ func TestApproxCountDistinctQuery(t *testing.T) {
 		"-querier.scheduler-address="+tQueryScheduler.GRPCURL(),
 		"-tsdb.shipper.index-gateway-client.server-address="+tIndexGateway.GRPCURL(),
 		"-common.compactor-address="+tCompactor.HTTPURL(),
+		"-querier.tsdb-max-bytes-per-shard=1",
 	)
 	require.NoError(t, clu.Run())
 
@@ -944,6 +945,7 @@ func TestApproxCountDistinctQuery(t *testing.T) {
 		"-querier.per-request-limits-enabled=true",
 		"-frontend.encoding=protobuf",
 		"-querier.shard-aggregations=approx_count_distinct",
+		"-querier.tsdb-max-bytes-per-shard=1",
 		"-frontend.tail-proxy-url="+tQuerier.HTTPURL(),
 	)
 	require.NoError(t, clu.Run())
@@ -973,6 +975,7 @@ func TestApproxCountDistinctQuery(t *testing.T) {
 		require.Len(t, resp.Data.Vector, 1)
 		assert.Equal(t, "1", resp.Data.Vector[0].Metric["version"])
 		assert.Equal(t, "3", resp.Data.Vector[0].Value)
+		require.Greater(t, resp.Data.Statistics.Summary.Shards, int64(1))
 	})
 
 	t.Run("query-ungrouped", func(t *testing.T) {
@@ -982,6 +985,7 @@ func TestApproxCountDistinctQuery(t *testing.T) {
 		require.Len(t, resp.Data.Vector, 1)
 		assert.Empty(t, resp.Data.Vector[0].Metric)
 		assert.Equal(t, "3", resp.Data.Vector[0].Value)
+		require.Greater(t, resp.Data.Statistics.Summary.Shards, int64(1))
 	})
 }
 
