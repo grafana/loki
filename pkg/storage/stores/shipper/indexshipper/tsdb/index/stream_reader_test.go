@@ -146,15 +146,21 @@ func BenchmarkNewStreamFileReader(b *testing.B) {
 	}
 }
 
-func writeBenchmarkFixture(t testing.TB, numSeries int, numChunksPerLabel int) string {
+func writeBenchmarkFixture(t testing.TB, numSeries int, numChunksPerSeries int) string {
 	t.Helper()
-	chunks := make([]ChunkMeta, numChunksPerLabel)
-	for i := range numChunksPerLabel {
+	chunks := make([]ChunkMeta, numChunksPerSeries)
+	for i := range numChunksPerSeries {
 		chunks[i] = ChunkMeta{Checksum: uint32(i), MinTime: int64(i * 10), MaxTime: int64(i*10 + 10)}
 	}
 	series := make([]seriesFixture, numSeries)
 	for i := range numSeries {
-		series[i].ls = labels.FromStrings("a", strconv.Itoa(i%5), "b", strconv.Itoa(i%11), "c", strconv.Itoa(i%17))
+		series[i].ls = labels.FromStrings(
+			"id", fmt.Sprintf("series-%d", i),
+			"pod", fmt.Sprintf("pod-%d", i),
+			"a", strconv.Itoa(i%5),
+			"b", strconv.Itoa(i%11),
+			"c", strconv.Itoa(i%17),
+		)
 		series[i].chunks = chunks
 	}
 	return writeIndexFixture(t, FormatV4, series)
