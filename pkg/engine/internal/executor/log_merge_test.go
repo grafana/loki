@@ -365,6 +365,7 @@ func readCompactedObjectsFromIndex(ctx context.Context, t *testing.T, dataBucket
 }
 
 func TestBuildGlobalStreamTable_SameLabelsShareID(t *testing.T) {
+	sortSchema := []string{"label:app"}
 	ls := labels.FromStrings("app", "auth")
 	other := labels.FromStrings("app", "web")
 	sources := []*logSource{
@@ -383,14 +384,22 @@ func TestBuildGlobalStreamTable_SameLabelsShareID(t *testing.T) {
 		},
 	}
 
-	table, err := buildGlobalStreamTable(sources, []string{"label:app"})
+	table, err := buildGlobalStreamTable(sources, sortSchema)
 	require.NoError(t, err)
 
-	a := table.Resolve(0, 2)
-	b := table.Resolve(1, 5)
-	require.Equal(t, a.Stream.ID, b.Stream.ID, "same labels across objects must share one global ID")
-	require.Equal(t, a, table.ByID(a.Stream.ID))
-	require.NotEqual(t, a.Stream.ID, table.Resolve(0, 7).Stream.ID)
+	aID := table.Resolve(0, 2)
+	bID := table.Resolve(1, 5)
+	require.Equal(t, aID, bID, "same labels across objects must share one global ID")
+	require.NotEqual(t, aID, table.Resolve(0, 7))
+
+	count := table.Size()
+	require.Len(t, count, 2)
+	for id := int64(2); id <= int64(count); id++ {
+		prev := table.ByID(id - 1)
+		curr := table.ByID(id)
+		require.Negative(t, logsobj.CompareStreamOrderKey(prev, curr),
+			"global stream IDs must increase in StreamOrderKey order")
+	}
 }
 
 func TestDoLogObjectMerge_MergesAndSplits(t *testing.T) {
@@ -541,6 +550,51 @@ func TestDoLogObjectMerge_DeduplicatesConflictingSourceStreamOrder(t *testing.T)
 		}
 	}
 	require.Equal(t, map[int64]int{1: 2, 2: 2}, counts)
+}
+
+func TestSortLayoutEqual_DetectsMismatchedComponents(t *testing.T) {
+	want := logs.SortLayout{
+		SchemaLabels: []string{"label:app"},
+		StreamOrder:  logs.StreamOrderStableHashV1,
+		ShardCount:   streams.ShardFactor,
+	}
+
+	tests := []struct {
+		name string
+		got  logs.SortLayout
+	}{
+		{
+			name: "schema labels",
+			got: logs.SortLayout{
+				SchemaLabels: []string{"label:cluster"},
+				StreamOrder:  logs.StreamOrderStableHashV1,
+				ShardCount:   streams.ShardFactor,
+			},
+		},
+		{
+			name: "stream order",
+			got: logs.SortLayout{
+				SchemaLabels: []string{"label:app"},
+				StreamOrder:  logs.StreamOrderUnspecified,
+				ShardCount:   streams.ShardFactor,
+			},
+		},
+		{
+			name: "shard count",
+			got: logs.SortLayout{
+				SchemaLabels: []string{"label:app"},
+				StreamOrder:  logs.StreamOrderStableHashV1,
+				ShardCount:   streams.ShardFactor / 2,
+			},
+		},
+	}
+
+	require.True(t, sortLayoutEqual(want, want), "identical layouts must match")
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			require.False(t, sortLayoutEqual(test.got, want))
+		})
+	}
 }
 
 func TestDoLogObjectMerge_NoopsOnSortLayoutMismatch(t *testing.T) {

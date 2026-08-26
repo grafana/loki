@@ -7,20 +7,11 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
 )
 
-// RankedStream is one unique label set after ranking.
-type RankedStream struct {
-	Stream streams.Stream
-	Key    StreamOrderKey
-}
-
-// Shard returns the stream's physical shard bucket.
-func (s RankedStream) Shard() uint32 { return uint32(s.Stream.ShardBucket) }
-
 // StreamRanks assigns dense IDs 1..N in StreamOrderKey order to unique label
 // sets from one or more source stream maps. Same labels in two sources share
 // one ID so a merge by remapped stream ID timestamp-interleaves them.
 type StreamRanks struct {
-	byNewID []RankedStream    // index = new ID (1..N); [0] unused
+	byNewID []StreamOrderKey  // index = new ID (1..N); [0] unused
 	remap   []map[int64]int64 // per source: old stream ID -> new ID
 }
 
@@ -63,7 +54,7 @@ func RankStreams(schemaLabels []string, sources ...map[int64]streams.Stream) (*S
 	})
 
 	ranks := &StreamRanks{
-		byNewID: make([]RankedStream, len(unique)+1),
+		byNewID: make([]StreamOrderKey, len(unique)+1),
 		remap:   make([]map[int64]int64, len(sources)),
 	}
 	for i := range ranks.remap {
@@ -76,7 +67,7 @@ func RankStreams(schemaLabels []string, sources ...map[int64]streams.Stream) (*S
 		labelToID[u.stream.Labels.String()] = id
 		s := u.stream
 		s.ID = id
-		ranks.byNewID[id] = RankedStream{Stream: s, Key: u.key}
+		ranks.byNewID[id] = u.key
 	}
 	for _, r := range allRefs {
 		ranks.remap[r.sourceIdx][r.localID] = labelToID[r.labelsKey]
@@ -85,7 +76,7 @@ func RankStreams(schemaLabels []string, sources ...map[int64]streams.Stream) (*S
 }
 
 // ByID returns the stream assigned to new ID id.
-func (r *StreamRanks) ByID(id int64) RankedStream {
+func (r *StreamRanks) ByID(id int64) StreamOrderKey {
 	return r.byNewID[id]
 }
 
@@ -94,16 +85,12 @@ func (r *StreamRanks) Remap(sourceIdx int) map[int64]int64 {
 	return r.remap[sourceIdx]
 }
 
-// Resolve returns the ranked stream for a source's local stream ID.
-func (r *StreamRanks) Resolve(sourceIdx int, localID int64) RankedStream {
-	return r.ByID(r.remap[sourceIdx][localID])
+// Resolve returns the global ID of the local stream ID
+func (r *StreamRanks) Resolve(sourceIdx int, localID int64) int64 {
+	return r.remap[sourceIdx][localID]
 }
 
-// Streams returns ranked streams in ID order (1..N).
-func (r *StreamRanks) Streams() []streams.Stream {
-	out := make([]streams.Stream, 0, len(r.byNewID)-1)
-	for id := 1; id < len(r.byNewID); id++ {
-		out = append(out, r.byNewID[id].Stream)
-	}
-	return out
+// Size returns the number of streams held
+func (r *StreamRanks) Size() int {
+	return len(r.byNewID) - 1
 }
