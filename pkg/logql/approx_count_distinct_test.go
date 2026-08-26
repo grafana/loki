@@ -151,6 +151,26 @@ func TestCountDistinctExpr_String(t *testing.T) {
 	})
 }
 
+func TestCountDistinctEvalNilMergeExpr(t *testing.T) {
+	ev := NewDownstreamEvaluator(nil)
+	params, err := NewLiteralParams(
+		`count_over_time({foo="bar"}[1m])`,
+		time.Unix(0, 0),
+		time.Unix(0, 0),
+		0,
+		0,
+		logproto.FORWARD,
+		1000,
+		nil,
+		nil,
+	)
+	require.NoError(t, err)
+
+	_, err = ev.NewStepEvaluator(context.Background(), nil, &CountDistinctEvalExpr{}, params)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "missing merge expression")
+}
+
 func mustCountDistinctSketch(t *testing.T, query string) *syntax.CountDistinctSketchExpr {
 	t.Helper()
 	expr, err := syntax.ParseExpr(query)

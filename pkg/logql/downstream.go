@@ -724,16 +724,17 @@ func (ev *DownstreamEvaluator) NewStepEvaluator(
 		}
 		return NewCountMinSketchVectorStepEvaluator(vector), nil
 	case *CountDistinctEvalExpr:
-		var queries []DownstreamQuery
-		if e.mergeExpr != nil {
-			queries = make([]DownstreamQuery, len(e.mergeExpr.downstreams))
-			for i, d := range e.mergeExpr.downstreams {
-				queries[i] = DownstreamQuery{
-					Params: ParamsWithExpressionOverride{
-						Params:             ParamOverridesFromShard(params, d.shard),
-						ExpressionOverride: d.SampleExpr,
-					},
-				}
+		if e.mergeExpr == nil {
+			return nil, fmt.Errorf("CountDistinctEvalExpr is missing merge expression")
+		}
+
+		queries := make([]DownstreamQuery, len(e.mergeExpr.downstreams))
+		for i, d := range e.mergeExpr.downstreams {
+			queries[i] = DownstreamQuery{
+				Params: ParamsWithExpressionOverride{
+					Params:             ParamOverridesFromShard(params, d.shard),
+					ExpressionOverride: d.SampleExpr,
+				},
 			}
 		}
 
