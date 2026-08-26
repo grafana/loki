@@ -20,7 +20,7 @@ func TestApproxCountDistinctShardMapping(t *testing.T) {
 		require.NoError(t, err)
 		_, _, err = m.Map(ast, nilShardMetrics.downstreamRecorder(), true)
 		require.Error(t, err)
-		require.Contains(t, err.Error(), "approx_count_distinct is not enabled")
+		require.Contains(t, err.Error(), "approx_count_distinct is not enabled. See -querier.shard-aggregations")
 	})
 
 	t.Run("zero shards still merge before estimate", func(t *testing.T) {
