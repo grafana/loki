@@ -14,6 +14,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	"github.com/grafana/loki/v3/pkg/logqlmodel"
+	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/index"
 )
 
 func TestCountDistinctVectorMerge(t *testing.T) {
@@ -77,6 +78,67 @@ func TestCountDistinctMatrixMerge(t *testing.T) {
 
 	_, err = left.Merge(CountDistinctMatrix{left[0]})
 	require.Error(t, err)
+}
+
+func TestCountDistinctValue_String(t *testing.T) {
+	require.Equal(t, "CountDistinctVector()", CountDistinctVector{}.String())
+	require.Equal(t, "CountDistinctMatrix()", CountDistinctMatrix{}.String())
+}
+
+func TestCountDistinctExpr_String(t *testing.T) {
+	sketch := mustCountDistinctSketch(t, `approx_count_distinct(mac, {foo="bar"}[5m]) by (version)`)
+
+	t.Run("merge empty", func(t *testing.T) {
+		require.Equal(t, "CountDistinctMerge<>", (&CountDistinctMergeExpr{}).String())
+	})
+
+	t.Run("merge one downstream", func(t *testing.T) {
+		expr := &CountDistinctMergeExpr{
+			downstreams: []DownstreamSampleExpr{{SampleExpr: sketch}},
+		}
+		require.Equal(t,
+			`CountDistinctMerge<downstream<__count_distinct_sketch__(mac,{foo="bar"}[5m]) by (version), shard=<nil>>>`,
+			expr.String(),
+		)
+	})
+
+	t.Run("merge concatenates downstreams", func(t *testing.T) {
+		expr := &CountDistinctMergeExpr{
+			downstreams: []DownstreamSampleExpr{
+				{SampleExpr: sketch, shard: NewPowerOfTwoShard(index.ShardAnnotation{Shard: 0, Of: 2}).Bind(nil)},
+				{SampleExpr: sketch, shard: NewPowerOfTwoShard(index.ShardAnnotation{Shard: 1, Of: 2}).Bind(nil)},
+			},
+		}
+		require.Equal(t,
+			`CountDistinctMerge<downstream<__count_distinct_sketch__(mac,{foo="bar"}[5m]) by (version), shard=0_of_2> ++ downstream<__count_distinct_sketch__(mac,{foo="bar"}[5m]) by (version), shard=1_of_2>>`,
+			expr.String(),
+		)
+	})
+
+	t.Run("eval nil merge", func(t *testing.T) {
+		require.Equal(t, "CountDistinctEval<>", (&CountDistinctEvalExpr{}).String())
+	})
+
+	t.Run("eval wraps merge", func(t *testing.T) {
+		expr := &CountDistinctEvalExpr{
+			mergeExpr: &CountDistinctMergeExpr{
+				downstreams: []DownstreamSampleExpr{{SampleExpr: sketch}},
+			},
+		}
+		require.Equal(t,
+			`CountDistinctEval<CountDistinctMerge<downstream<__count_distinct_sketch__(mac,{foo="bar"}[5m]) by (version), shard=<nil>>>>`,
+			expr.String(),
+		)
+	})
+}
+
+func mustCountDistinctSketch(t *testing.T, query string) *syntax.CountDistinctSketchExpr {
+	t.Helper()
+	expr, err := syntax.ParseExpr(query)
+	require.NoError(t, err)
+	agg, ok := expr.(*syntax.LabelAggregationExpr)
+	require.True(t, ok)
+	return syntax.NewCountDistinctSketchFromLabelAggregation(agg)
 }
 
 func TestCountDistinctProtoRoundTrip(t *testing.T) {
