@@ -339,8 +339,8 @@ func (s *storeSampleResult) CountMinSketchVec() CountMinSketchVector {
 	return CountMinSketchVector{}
 }
 
-func (s *storeSampleResult) CountDistinctVec() CountDistinctVector {
-	return CountDistinctVector{}
+func (s *storeSampleResult) CountDistinctSketchVec() CountDistinctSketchVector {
+	return CountDistinctSketchVector{}
 }
 
 type statsQuerier struct{}

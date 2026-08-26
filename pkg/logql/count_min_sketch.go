@@ -48,8 +48,8 @@ func (v CountMinSketchVector) CountMinSketchVec() CountMinSketchVector {
 	return v
 }
 
-func (CountMinSketchVector) CountDistinctVec() CountDistinctVector {
-	return CountDistinctVector{}
+func (CountMinSketchVector) CountDistinctSketchVec() CountDistinctSketchVector {
+	return CountDistinctSketchVector{}
 }
 
 func (v *CountMinSketchVector) Merge(right *CountMinSketchVector) (*CountMinSketchVector, error) {
