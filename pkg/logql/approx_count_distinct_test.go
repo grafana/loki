@@ -17,8 +17,8 @@ import (
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/index"
 )
 
-func TestCountDistinctVectorMerge(t *testing.T) {
-	left := CountDistinctVector{
+func TestCountDistinctSketchVectorMerge(t *testing.T) {
+	left := CountDistinctSketchVector{
 		{
 			T:      1,
 			F:      hyperloglog.New14(),
@@ -28,7 +28,7 @@ func TestCountDistinctVectorMerge(t *testing.T) {
 	left[0].F.Insert([]byte("a"))
 	left[0].F.Insert([]byte("b"))
 
-	right := CountDistinctVector{
+	right := CountDistinctSketchVector{
 		{
 			T:      1,
 			F:      hyperloglog.New14(),
@@ -56,15 +56,15 @@ func TestCountDistinctVectorMerge(t *testing.T) {
 	require.Equal(t, uint64(1), byVersion["2"])
 }
 
-func TestCountDistinctMatrixMerge(t *testing.T) {
-	left := CountDistinctMatrix{
+func TestCountDistinctSketchMatrixMerge(t *testing.T) {
+	left := CountDistinctSketchMatrix{
 		{{T: 1, F: hyperloglog.New14(), Metric: labels.FromStrings("version", "1")}},
 		{{T: 2, F: hyperloglog.New14(), Metric: labels.FromStrings("version", "1")}},
 	}
 	left[0][0].F.Insert([]byte("a"))
 	left[1][0].F.Insert([]byte("b"))
 
-	right := CountDistinctMatrix{
+	right := CountDistinctSketchMatrix{
 		{{T: 1, F: hyperloglog.New14(), Metric: labels.FromStrings("version", "1")}},
 		{{T: 2, F: hyperloglog.New14(), Metric: labels.FromStrings("version", "1")}},
 	}
@@ -76,41 +76,41 @@ func TestCountDistinctMatrixMerge(t *testing.T) {
 	require.Equal(t, uint64(2), merged[0][0].F.Estimate())
 	require.Equal(t, uint64(1), merged[1][0].F.Estimate())
 
-	_, err = left.Merge(CountDistinctMatrix{left[0]})
+	_, err = left.Merge(CountDistinctSketchMatrix{left[0]})
 	require.Error(t, err)
 }
 
 func TestCountDistinctValue_String(t *testing.T) {
-	require.Equal(t, "CountDistinctVector()", CountDistinctVector{}.String())
-	require.Equal(t, "CountDistinctMatrix()", CountDistinctMatrix{}.String())
+	require.Equal(t, "CountDistinctSketchVector()", CountDistinctSketchVector{}.String())
+	require.Equal(t, "CountDistinctSketchMatrix()", CountDistinctSketchMatrix{}.String())
 }
 
 func TestCountDistinctExpr_String(t *testing.T) {
 	sketch := mustCountDistinctSketch(t, `approx_count_distinct(mac, {foo="bar"}[5m]) by (version)`)
 
 	t.Run("merge empty", func(t *testing.T) {
-		require.Equal(t, "CountDistinctMerge<>", (&CountDistinctMergeExpr{}).String())
+		require.Equal(t, "CountDistinctSketchMerge<>", (&CountDistinctSketchMergeExpr{}).String())
 	})
 
 	t.Run("merge one downstream", func(t *testing.T) {
-		expr := &CountDistinctMergeExpr{
+		expr := &CountDistinctSketchMergeExpr{
 			downstreams: []DownstreamSampleExpr{{SampleExpr: sketch}},
 		}
 		require.Equal(t,
-			`CountDistinctMerge<downstream<__count_distinct_sketch__(mac,{foo="bar"}[5m]) by (version), shard=<nil>>>`,
+			`CountDistinctSketchMerge<downstream<__count_distinct_sketch__(mac,{foo="bar"}[5m]) by (version), shard=<nil>>>`,
 			expr.String(),
 		)
 	})
 
 	t.Run("merge concatenates downstreams", func(t *testing.T) {
-		expr := &CountDistinctMergeExpr{
+		expr := &CountDistinctSketchMergeExpr{
 			downstreams: []DownstreamSampleExpr{
 				{SampleExpr: sketch, shard: NewPowerOfTwoShard(index.ShardAnnotation{Shard: 0, Of: 2}).Bind(nil)},
 				{SampleExpr: sketch, shard: NewPowerOfTwoShard(index.ShardAnnotation{Shard: 1, Of: 2}).Bind(nil)},
 			},
 		}
 		require.Equal(t,
-			`CountDistinctMerge<downstream<__count_distinct_sketch__(mac,{foo="bar"}[5m]) by (version), shard=0_of_2> ++ downstream<__count_distinct_sketch__(mac,{foo="bar"}[5m]) by (version), shard=1_of_2>>`,
+			`CountDistinctSketchMerge<downstream<__count_distinct_sketch__(mac,{foo="bar"}[5m]) by (version), shard=0_of_2> ++ downstream<__count_distinct_sketch__(mac,{foo="bar"}[5m]) by (version), shard=1_of_2>>`,
 			expr.String(),
 		)
 	})
@@ -120,7 +120,7 @@ func TestCountDistinctExpr_String(t *testing.T) {
 		defaultMaxDepth = 2
 		t.Cleanup(func() { defaultMaxDepth = old })
 
-		expr := &CountDistinctMergeExpr{
+		expr := &CountDistinctSketchMergeExpr{
 			downstreams: []DownstreamSampleExpr{
 				{SampleExpr: sketch, shard: NewPowerOfTwoShard(index.ShardAnnotation{Shard: 0, Of: 3}).Bind(nil)},
 				{SampleExpr: sketch, shard: NewPowerOfTwoShard(index.ShardAnnotation{Shard: 1, Of: 3}).Bind(nil)},
@@ -128,30 +128,30 @@ func TestCountDistinctExpr_String(t *testing.T) {
 			},
 		}
 		require.Equal(t,
-			`CountDistinctMerge<downstream<__count_distinct_sketch__(mac,{foo="bar"}[5m]) by (version), shard=0_of_3> ++ downstream<__count_distinct_sketch__(mac,{foo="bar"}[5m]) by (version), shard=1_of_3>>`,
+			`CountDistinctSketchMerge<downstream<__count_distinct_sketch__(mac,{foo="bar"}[5m]) by (version), shard=0_of_3> ++ downstream<__count_distinct_sketch__(mac,{foo="bar"}[5m]) by (version), shard=1_of_3>>`,
 			expr.String(),
 		)
 		require.NotContains(t, expr.String(), "2_of_3")
 	})
 
 	t.Run("eval nil merge", func(t *testing.T) {
-		require.Equal(t, "CountDistinctEval<>", (&CountDistinctEvalExpr{}).String())
+		require.Equal(t, "CountDistinctSketchEval<>", (&CountDistinctSketchEvalExpr{}).String())
 	})
 
 	t.Run("eval wraps merge", func(t *testing.T) {
-		expr := &CountDistinctEvalExpr{
-			mergeExpr: &CountDistinctMergeExpr{
+		expr := &CountDistinctSketchEvalExpr{
+			mergeExpr: &CountDistinctSketchMergeExpr{
 				downstreams: []DownstreamSampleExpr{{SampleExpr: sketch}},
 			},
 		}
 		require.Equal(t,
-			`CountDistinctEval<CountDistinctMerge<downstream<__count_distinct_sketch__(mac,{foo="bar"}[5m]) by (version), shard=<nil>>>>`,
+			`CountDistinctSketchEval<CountDistinctSketchMerge<downstream<__count_distinct_sketch__(mac,{foo="bar"}[5m]) by (version), shard=<nil>>>>`,
 			expr.String(),
 		)
 	})
 }
 
-func TestCountDistinctEvalNilMergeExpr(t *testing.T) {
+func TestCountDistinctSketchEvalNilMergeExpr(t *testing.T) {
 	ev := NewDownstreamEvaluator(nil)
 	params, err := NewLiteralParams(
 		`count_over_time({foo="bar"}[1m])`,
@@ -166,7 +166,7 @@ func TestCountDistinctEvalNilMergeExpr(t *testing.T) {
 	)
 	require.NoError(t, err)
 
-	_, err = ev.NewStepEvaluator(context.Background(), nil, &CountDistinctEvalExpr{}, params)
+	_, err = ev.NewStepEvaluator(context.Background(), nil, &CountDistinctSketchEvalExpr{}, params)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "missing merge expression")
 }
@@ -181,7 +181,7 @@ func mustCountDistinctSketch(t *testing.T, query string) *syntax.CountDistinctSk
 }
 
 func TestCountDistinctProtoRoundTrip(t *testing.T) {
-	original := CountDistinctMatrix{
+	original := CountDistinctSketchMatrix{
 		{
 			{
 				T:      123,
@@ -198,7 +198,7 @@ func TestCountDistinctProtoRoundTrip(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, proto.Values, 2)
 	require.Empty(t, proto.Values[1].Samples)
-	roundTrip, err := CountDistinctMatrixFromProto(proto)
+	roundTrip, err := CountDistinctSketchMatrixFromProto(proto)
 	require.NoError(t, err)
 	require.Len(t, roundTrip, 2)
 	require.Empty(t, roundTrip[1])
@@ -437,7 +437,7 @@ func TestCountDistinctSketchExprReturnsSketches(t *testing.T) {
 	t.Cleanup(func() { _ = step.Close() })
 	okNext, _, result := step.Next()
 	require.True(t, okNext)
-	sketches := result.CountDistinctVec()
+	sketches := result.CountDistinctSketchVec()
 	require.Len(t, sketches, 1)
 	require.Equal(t, uint64(1), sketches[0].F.Estimate())
 }
@@ -483,7 +483,7 @@ func TestCountDistinctSketchExprRangeSteps(t *testing.T) {
 		if !okNext {
 			break
 		}
-		sketches := result.CountDistinctVec()
+		sketches := result.CountDistinctSketchVec()
 		require.Len(t, sketches, 1)
 		estimates = append(estimates, sketches[0].F.Estimate())
 	}

@@ -57,15 +57,15 @@ message CountMinSketchVector {
   repeated Labels metrics = 3;
 }
 
-message CountDistinctMatrix {
-  repeated CountDistinctVector values = 1;
+message CountDistinctSketchMatrix {
+  repeated CountDistinctSketchVector values = 1;
 }
 
-message CountDistinctVector {
-  repeated CountDistinctSample samples = 1;
+message CountDistinctSketchVector {
+  repeated CountDistinctSketchSample samples = 1;
 }
 
-message CountDistinctSample {
+message CountDistinctSketchSample {
   bytes hyperloglog = 1;
   int64 timestamp_ms = 2;
   repeated LabelPair metric = 3;

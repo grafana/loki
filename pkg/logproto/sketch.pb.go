@@ -502,21 +502,21 @@ func (m *CountMinSketchVector) GetMetrics() []*Labels {
 	return nil
 }
 
-type CountDistinctMatrix struct {
-	Values []*CountDistinctVector `protobuf:"bytes,1,rep,name=values,proto3" json:"values,omitempty"`
+type CountDistinctSketchMatrix struct {
+	Values []*CountDistinctSketchVector `protobuf:"bytes,1,rep,name=values,proto3" json:"values,omitempty"`
 }
 
-func (m *CountDistinctMatrix) Reset()      { *m = CountDistinctMatrix{} }
-func (*CountDistinctMatrix) ProtoMessage() {}
-func (*CountDistinctMatrix) Descriptor() ([]byte, []int) {
+func (m *CountDistinctSketchMatrix) Reset()      { *m = CountDistinctSketchMatrix{} }
+func (*CountDistinctSketchMatrix) ProtoMessage() {}
+func (*CountDistinctSketchMatrix) Descriptor() ([]byte, []int) {
 	return fileDescriptor_7f9fd40e59b87ff3, []int{7}
 }
-func (m *CountDistinctMatrix) XXX_Unmarshal(b []byte) error {
+func (m *CountDistinctSketchMatrix) XXX_Unmarshal(b []byte) error {
 	return m.Unmarshal(b)
 }
-func (m *CountDistinctMatrix) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
+func (m *CountDistinctSketchMatrix) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
 	if deterministic {
-		return xxx_messageInfo_CountDistinctMatrix.Marshal(b, m, deterministic)
+		return xxx_messageInfo_CountDistinctSketchMatrix.Marshal(b, m, deterministic)
 	} else {
 		b = b[:cap(b)]
 		n, err := m.MarshalToSizedBuffer(b)
@@ -526,40 +526,40 @@ func (m *CountDistinctMatrix) XXX_Marshal(b []byte, deterministic bool) ([]byte,
 		return b[:n], nil
 	}
 }
-func (m *CountDistinctMatrix) XXX_Merge(src proto.Message) {
-	xxx_messageInfo_CountDistinctMatrix.Merge(m, src)
+func (m *CountDistinctSketchMatrix) XXX_Merge(src proto.Message) {
+	xxx_messageInfo_CountDistinctSketchMatrix.Merge(m, src)
 }
-func (m *CountDistinctMatrix) XXX_Size() int {
+func (m *CountDistinctSketchMatrix) XXX_Size() int {
 	return m.Size()
 }
-func (m *CountDistinctMatrix) XXX_DiscardUnknown() {
-	xxx_messageInfo_CountDistinctMatrix.DiscardUnknown(m)
+func (m *CountDistinctSketchMatrix) XXX_DiscardUnknown() {
+	xxx_messageInfo_CountDistinctSketchMatrix.DiscardUnknown(m)
 }
 
-var xxx_messageInfo_CountDistinctMatrix proto.InternalMessageInfo
+var xxx_messageInfo_CountDistinctSketchMatrix proto.InternalMessageInfo
 
-func (m *CountDistinctMatrix) GetValues() []*CountDistinctVector {
+func (m *CountDistinctSketchMatrix) GetValues() []*CountDistinctSketchVector {
 	if m != nil {
 		return m.Values
 	}
 	return nil
 }
 
-type CountDistinctVector struct {
-	Samples []*CountDistinctSample `protobuf:"bytes,1,rep,name=samples,proto3" json:"samples,omitempty"`
+type CountDistinctSketchVector struct {
+	Samples []*CountDistinctSketchSample `protobuf:"bytes,1,rep,name=samples,proto3" json:"samples,omitempty"`
 }
 
-func (m *CountDistinctVector) Reset()      { *m = CountDistinctVector{} }
-func (*CountDistinctVector) ProtoMessage() {}
-func (*CountDistinctVector) Descriptor() ([]byte, []int) {
+func (m *CountDistinctSketchVector) Reset()      { *m = CountDistinctSketchVector{} }
+func (*CountDistinctSketchVector) ProtoMessage() {}
+func (*CountDistinctSketchVector) Descriptor() ([]byte, []int) {
 	return fileDescriptor_7f9fd40e59b87ff3, []int{8}
 }
-func (m *CountDistinctVector) XXX_Unmarshal(b []byte) error {
+func (m *CountDistinctSketchVector) XXX_Unmarshal(b []byte) error {
 	return m.Unmarshal(b)
 }
-func (m *CountDistinctVector) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
+func (m *CountDistinctSketchVector) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
 	if deterministic {
-		return xxx_messageInfo_CountDistinctVector.Marshal(b, m, deterministic)
+		return xxx_messageInfo_CountDistinctSketchVector.Marshal(b, m, deterministic)
 	} else {
 		b = b[:cap(b)]
 		n, err := m.MarshalToSizedBuffer(b)
@@ -569,42 +569,42 @@ func (m *CountDistinctVector) XXX_Marshal(b []byte, deterministic bool) ([]byte,
 		return b[:n], nil
 	}
 }
-func (m *CountDistinctVector) XXX_Merge(src proto.Message) {
-	xxx_messageInfo_CountDistinctVector.Merge(m, src)
+func (m *CountDistinctSketchVector) XXX_Merge(src proto.Message) {
+	xxx_messageInfo_CountDistinctSketchVector.Merge(m, src)
 }
-func (m *CountDistinctVector) XXX_Size() int {
+func (m *CountDistinctSketchVector) XXX_Size() int {
 	return m.Size()
 }
-func (m *CountDistinctVector) XXX_DiscardUnknown() {
-	xxx_messageInfo_CountDistinctVector.DiscardUnknown(m)
+func (m *CountDistinctSketchVector) XXX_DiscardUnknown() {
+	xxx_messageInfo_CountDistinctSketchVector.DiscardUnknown(m)
 }
 
-var xxx_messageInfo_CountDistinctVector proto.InternalMessageInfo
+var xxx_messageInfo_CountDistinctSketchVector proto.InternalMessageInfo
 
-func (m *CountDistinctVector) GetSamples() []*CountDistinctSample {
+func (m *CountDistinctSketchVector) GetSamples() []*CountDistinctSketchSample {
 	if m != nil {
 		return m.Samples
 	}
 	return nil
 }
 
-type CountDistinctSample struct {
+type CountDistinctSketchSample struct {
 	Hyperloglog []byte       `protobuf:"bytes,1,opt,name=hyperloglog,proto3" json:"hyperloglog,omitempty"`
 	TimestampMs int64        `protobuf:"varint,2,opt,name=timestamp_ms,json=timestampMs,proto3" json:"timestamp_ms,omitempty"`
 	Metric      []*LabelPair `protobuf:"bytes,3,rep,name=metric,proto3" json:"metric,omitempty"`
 }
 
-func (m *CountDistinctSample) Reset()      { *m = CountDistinctSample{} }
-func (*CountDistinctSample) ProtoMessage() {}
-func (*CountDistinctSample) Descriptor() ([]byte, []int) {
+func (m *CountDistinctSketchSample) Reset()      { *m = CountDistinctSketchSample{} }
+func (*CountDistinctSketchSample) ProtoMessage() {}
+func (*CountDistinctSketchSample) Descriptor() ([]byte, []int) {
 	return fileDescriptor_7f9fd40e59b87ff3, []int{9}
 }
-func (m *CountDistinctSample) XXX_Unmarshal(b []byte) error {
+func (m *CountDistinctSketchSample) XXX_Unmarshal(b []byte) error {
 	return m.Unmarshal(b)
 }
-func (m *CountDistinctSample) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
+func (m *CountDistinctSketchSample) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
 	if deterministic {
-		return xxx_messageInfo_CountDistinctSample.Marshal(b, m, deterministic)
+		return xxx_messageInfo_CountDistinctSketchSample.Marshal(b, m, deterministic)
 	} else {
 		b = b[:cap(b)]
 		n, err := m.MarshalToSizedBuffer(b)
@@ -614,33 +614,33 @@ func (m *CountDistinctSample) XXX_Marshal(b []byte, deterministic bool) ([]byte,
 		return b[:n], nil
 	}
 }
-func (m *CountDistinctSample) XXX_Merge(src proto.Message) {
-	xxx_messageInfo_CountDistinctSample.Merge(m, src)
+func (m *CountDistinctSketchSample) XXX_Merge(src proto.Message) {
+	xxx_messageInfo_CountDistinctSketchSample.Merge(m, src)
 }
-func (m *CountDistinctSample) XXX_Size() int {
+func (m *CountDistinctSketchSample) XXX_Size() int {
 	return m.Size()
 }
-func (m *CountDistinctSample) XXX_DiscardUnknown() {
-	xxx_messageInfo_CountDistinctSample.DiscardUnknown(m)
+func (m *CountDistinctSketchSample) XXX_DiscardUnknown() {
+	xxx_messageInfo_CountDistinctSketchSample.DiscardUnknown(m)
 }
 
-var xxx_messageInfo_CountDistinctSample proto.InternalMessageInfo
+var xxx_messageInfo_CountDistinctSketchSample proto.InternalMessageInfo
 
-func (m *CountDistinctSample) GetHyperloglog() []byte {
+func (m *CountDistinctSketchSample) GetHyperloglog() []byte {
 	if m != nil {
 		return m.Hyperloglog
 	}
 	return nil
 }
 
-func (m *CountDistinctSample) GetTimestampMs() int64 {
+func (m *CountDistinctSketchSample) GetTimestampMs() int64 {
 	if m != nil {
 		return m.TimestampMs
 	}
 	return 0
 }
 
-func (m *CountDistinctSample) GetMetric() []*LabelPair {
+func (m *CountDistinctSketchSample) GetMetric() []*LabelPair {
 	if m != nil {
 		return m.Metric
 	}
@@ -903,9 +903,9 @@ func init() {
 	proto.RegisterType((*TDigest_Centroid)(nil), "logproto.TDigest.Centroid")
 	proto.RegisterType((*CountMinSketch)(nil), "logproto.CountMinSketch")
 	proto.RegisterType((*CountMinSketchVector)(nil), "logproto.CountMinSketchVector")
-	proto.RegisterType((*CountDistinctMatrix)(nil), "logproto.CountDistinctMatrix")
-	proto.RegisterType((*CountDistinctVector)(nil), "logproto.CountDistinctVector")
-	proto.RegisterType((*CountDistinctSample)(nil), "logproto.CountDistinctSample")
+	proto.RegisterType((*CountDistinctSketchMatrix)(nil), "logproto.CountDistinctSketchMatrix")
+	proto.RegisterType((*CountDistinctSketchVector)(nil), "logproto.CountDistinctSketchVector")
+	proto.RegisterType((*CountDistinctSketchSample)(nil), "logproto.CountDistinctSketchSample")
 	proto.RegisterType((*Labels)(nil), "logproto.Labels")
 	proto.RegisterType((*TopK)(nil), "logproto.TopK")
 	proto.RegisterType((*TopK_Pair)(nil), "logproto.TopK.Pair")
@@ -1275,14 +1275,14 @@ func (this *CountMinSketchVector) Equal(that interface{}) bool {
 	}
 	return true
 }
-func (this *CountDistinctMatrix) Equal(that interface{}) bool {
+func (this *CountDistinctSketchMatrix) Equal(that interface{}) bool {
 	if that == nil {
 		return this == nil
 	}
 
-	that1, ok := that.(*CountDistinctMatrix)
+	that1, ok := that.(*CountDistinctSketchMatrix)
 	if !ok {
-		that2, ok := that.(CountDistinctMatrix)
+		that2, ok := that.(CountDistinctSketchMatrix)
 		if ok {
 			that1 = &that2
 		} else {
@@ -1304,14 +1304,14 @@ func (this *CountDistinctMatrix) Equal(that interface{}) bool {
 	}
 	return true
 }
-func (this *CountDistinctVector) Equal(that interface{}) bool {
+func (this *CountDistinctSketchVector) Equal(that interface{}) bool {
 	if that == nil {
 		return this == nil
 	}
 
-	that1, ok := that.(*CountDistinctVector)
+	that1, ok := that.(*CountDistinctSketchVector)
 	if !ok {
-		that2, ok := that.(CountDistinctVector)
+		that2, ok := that.(CountDistinctSketchVector)
 		if ok {
 			that1 = &that2
 		} else {
@@ -1333,14 +1333,14 @@ func (this *CountDistinctVector) Equal(that interface{}) bool {
 	}
 	return true
 }
-func (this *CountDistinctSample) Equal(that interface{}) bool {
+func (this *CountDistinctSketchSample) Equal(that interface{}) bool {
 	if that == nil {
 		return this == nil
 	}
 
-	that1, ok := that.(*CountDistinctSample)
+	that1, ok := that.(*CountDistinctSketchSample)
 	if !ok {
-		that2, ok := that.(CountDistinctSample)
+		that2, ok := that.(CountDistinctSketchSample)
 		if ok {
 			that1 = &that2
 		} else {
@@ -1638,36 +1638,36 @@ func (this *CountMinSketchVector) GoString() string {
 	s = append(s, "}")
 	return strings.Join(s, "")
 }
-func (this *CountDistinctMatrix) GoString() string {
+func (this *CountDistinctSketchMatrix) GoString() string {
 	if this == nil {
 		return "nil"
 	}
 	s := make([]string, 0, 5)
-	s = append(s, "&logproto.CountDistinctMatrix{")
+	s = append(s, "&logproto.CountDistinctSketchMatrix{")
 	if this.Values != nil {
 		s = append(s, "Values: "+fmt.Sprintf("%#v", this.Values)+",\n")
 	}
 	s = append(s, "}")
 	return strings.Join(s, "")
 }
-func (this *CountDistinctVector) GoString() string {
+func (this *CountDistinctSketchVector) GoString() string {
 	if this == nil {
 		return "nil"
 	}
 	s := make([]string, 0, 5)
-	s = append(s, "&logproto.CountDistinctVector{")
+	s = append(s, "&logproto.CountDistinctSketchVector{")
 	if this.Samples != nil {
 		s = append(s, "Samples: "+fmt.Sprintf("%#v", this.Samples)+",\n")
 	}
 	s = append(s, "}")
 	return strings.Join(s, "")
 }
-func (this *CountDistinctSample) GoString() string {
+func (this *CountDistinctSketchSample) GoString() string {
 	if this == nil {
 		return "nil"
 	}
 	s := make([]string, 0, 7)
-	s = append(s, "&logproto.CountDistinctSample{")
+	s = append(s, "&logproto.CountDistinctSketchSample{")
 	s = append(s, "Hyperloglog: "+fmt.Sprintf("%#v", this.Hyperloglog)+",\n")
 	s = append(s, "TimestampMs: "+fmt.Sprintf("%#v", this.TimestampMs)+",\n")
 	if this.Metric != nil {
@@ -2137,7 +2137,7 @@ func (m *CountMinSketchVector) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	return len(dAtA) - i, nil
 }
 
-func (m *CountDistinctMatrix) Marshal() (dAtA []byte, err error) {
+func (m *CountDistinctSketchMatrix) Marshal() (dAtA []byte, err error) {
 	size := m.Size()
 	dAtA = make([]byte, size)
 	n, err := m.MarshalToSizedBuffer(dAtA[:size])
@@ -2147,12 +2147,12 @@ func (m *CountDistinctMatrix) Marshal() (dAtA []byte, err error) {
 	return dAtA[:n], nil
 }
 
-func (m *CountDistinctMatrix) MarshalTo(dAtA []byte) (int, error) {
+func (m *CountDistinctSketchMatrix) MarshalTo(dAtA []byte) (int, error) {
 	size := m.Size()
 	return m.MarshalToSizedBuffer(dAtA[:size])
 }
 
-func (m *CountDistinctMatrix) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+func (m *CountDistinctSketchMatrix) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	i := len(dAtA)
 	_ = i
 	var l int
@@ -2174,7 +2174,7 @@ func (m *CountDistinctMatrix) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	return len(dAtA) - i, nil
 }
 
-func (m *CountDistinctVector) Marshal() (dAtA []byte, err error) {
+func (m *CountDistinctSketchVector) Marshal() (dAtA []byte, err error) {
 	size := m.Size()
 	dAtA = make([]byte, size)
 	n, err := m.MarshalToSizedBuffer(dAtA[:size])
@@ -2184,12 +2184,12 @@ func (m *CountDistinctVector) Marshal() (dAtA []byte, err error) {
 	return dAtA[:n], nil
 }
 
-func (m *CountDistinctVector) MarshalTo(dAtA []byte) (int, error) {
+func (m *CountDistinctSketchVector) MarshalTo(dAtA []byte) (int, error) {
 	size := m.Size()
 	return m.MarshalToSizedBuffer(dAtA[:size])
 }
 
-func (m *CountDistinctVector) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+func (m *CountDistinctSketchVector) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	i := len(dAtA)
 	_ = i
 	var l int
@@ -2211,7 +2211,7 @@ func (m *CountDistinctVector) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	return len(dAtA) - i, nil
 }
 
-func (m *CountDistinctSample) Marshal() (dAtA []byte, err error) {
+func (m *CountDistinctSketchSample) Marshal() (dAtA []byte, err error) {
 	size := m.Size()
 	dAtA = make([]byte, size)
 	n, err := m.MarshalToSizedBuffer(dAtA[:size])
@@ -2221,12 +2221,12 @@ func (m *CountDistinctSample) Marshal() (dAtA []byte, err error) {
 	return dAtA[:n], nil
 }
 
-func (m *CountDistinctSample) MarshalTo(dAtA []byte) (int, error) {
+func (m *CountDistinctSketchSample) MarshalTo(dAtA []byte) (int, error) {
 	size := m.Size()
 	return m.MarshalToSizedBuffer(dAtA[:size])
 }
 
-func (m *CountDistinctSample) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+func (m *CountDistinctSketchSample) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	i := len(dAtA)
 	_ = i
 	var l int
@@ -2648,7 +2648,7 @@ func (m *CountMinSketchVector) Size() (n int) {
 	return n
 }
 
-func (m *CountDistinctMatrix) Size() (n int) {
+func (m *CountDistinctSketchMatrix) Size() (n int) {
 	if m == nil {
 		return 0
 	}
@@ -2663,7 +2663,7 @@ func (m *CountDistinctMatrix) Size() (n int) {
 	return n
 }
 
-func (m *CountDistinctVector) Size() (n int) {
+func (m *CountDistinctSketchVector) Size() (n int) {
 	if m == nil {
 		return 0
 	}
@@ -2678,7 +2678,7 @@ func (m *CountDistinctVector) Size() (n int) {
 	return n
 }
 
-func (m *CountDistinctSample) Size() (n int) {
+func (m *CountDistinctSketchSample) Size() (n int) {
 	if m == nil {
 		return 0
 	}
@@ -2927,37 +2927,37 @@ func (this *CountMinSketchVector) String() string {
 	}, "")
 	return s
 }
-func (this *CountDistinctMatrix) String() string {
+func (this *CountDistinctSketchMatrix) String() string {
 	if this == nil {
 		return "nil"
 	}
-	repeatedStringForValues := "[]*CountDistinctVector{"
+	repeatedStringForValues := "[]*CountDistinctSketchVector{"
 	for _, f := range this.Values {
-		repeatedStringForValues += strings.Replace(f.String(), "CountDistinctVector", "CountDistinctVector", 1) + ","
+		repeatedStringForValues += strings.Replace(f.String(), "CountDistinctSketchVector", "CountDistinctSketchVector", 1) + ","
 	}
 	repeatedStringForValues += "}"
-	s := strings.Join([]string{`&CountDistinctMatrix{`,
+	s := strings.Join([]string{`&CountDistinctSketchMatrix{`,
 		`Values:` + repeatedStringForValues + `,`,
 		`}`,
 	}, "")
 	return s
 }
-func (this *CountDistinctVector) String() string {
+func (this *CountDistinctSketchVector) String() string {
 	if this == nil {
 		return "nil"
 	}
-	repeatedStringForSamples := "[]*CountDistinctSample{"
+	repeatedStringForSamples := "[]*CountDistinctSketchSample{"
 	for _, f := range this.Samples {
-		repeatedStringForSamples += strings.Replace(f.String(), "CountDistinctSample", "CountDistinctSample", 1) + ","
+		repeatedStringForSamples += strings.Replace(f.String(), "CountDistinctSketchSample", "CountDistinctSketchSample", 1) + ","
 	}
 	repeatedStringForSamples += "}"
-	s := strings.Join([]string{`&CountDistinctVector{`,
+	s := strings.Join([]string{`&CountDistinctSketchVector{`,
 		`Samples:` + repeatedStringForSamples + `,`,
 		`}`,
 	}, "")
 	return s
 }
-func (this *CountDistinctSample) String() string {
+func (this *CountDistinctSketchSample) String() string {
 	if this == nil {
 		return "nil"
 	}
@@ -2966,7 +2966,7 @@ func (this *CountDistinctSample) String() string {
 		repeatedStringForMetric += strings.Replace(fmt.Sprintf("%v", f), "LabelPair", "LabelPair", 1) + ","
 	}
 	repeatedStringForMetric += "}"
-	s := strings.Join([]string{`&CountDistinctSample{`,
+	s := strings.Join([]string{`&CountDistinctSketchSample{`,
 		`Hyperloglog:` + fmt.Sprintf("%v", this.Hyperloglog) + `,`,
 		`TimestampMs:` + fmt.Sprintf("%v", this.TimestampMs) + `,`,
 		`Metric:` + repeatedStringForMetric + `,`,
@@ -4004,7 +4004,7 @@ func (m *CountMinSketchVector) Unmarshal(dAtA []byte) error {
 	}
 	return nil
 }
-func (m *CountDistinctMatrix) Unmarshal(dAtA []byte) error {
+func (m *CountDistinctSketchMatrix) Unmarshal(dAtA []byte) error {
 	l := len(dAtA)
 	iNdEx := 0
 	for iNdEx < l {
@@ -4027,10 +4027,10 @@ func (m *CountDistinctMatrix) Unmarshal(dAtA []byte) error {
 		fieldNum := int32(wire >> 3)
 		wireType := int(wire & 0x7)
 		if wireType == 4 {
-			return fmt.Errorf("proto: CountDistinctMatrix: wiretype end group for non-group")
+			return fmt.Errorf("proto: CountDistinctSketchMatrix: wiretype end group for non-group")
 		}
 		if fieldNum <= 0 {
-			return fmt.Errorf("proto: CountDistinctMatrix: illegal tag %d (wire type %d)", fieldNum, wire)
+			return fmt.Errorf("proto: CountDistinctSketchMatrix: illegal tag %d (wire type %d)", fieldNum, wire)
 		}
 		switch fieldNum {
 		case 1:
@@ -4062,7 +4062,7 @@ func (m *CountDistinctMatrix) Unmarshal(dAtA []byte) error {
 			if postIndex > l {
 				return io.ErrUnexpectedEOF
 			}
-			m.Values = append(m.Values, &CountDistinctVector{})
+			m.Values = append(m.Values, &CountDistinctSketchVector{})
 			if err := m.Values[len(m.Values)-1].Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
 				return err
 			}
@@ -4091,7 +4091,7 @@ func (m *CountDistinctMatrix) Unmarshal(dAtA []byte) error {
 	}
 	return nil
 }
-func (m *CountDistinctVector) Unmarshal(dAtA []byte) error {
+func (m *CountDistinctSketchVector) Unmarshal(dAtA []byte) error {
 	l := len(dAtA)
 	iNdEx := 0
 	for iNdEx < l {
@@ -4114,10 +4114,10 @@ func (m *CountDistinctVector) Unmarshal(dAtA []byte) error {
 		fieldNum := int32(wire >> 3)
 		wireType := int(wire & 0x7)
 		if wireType == 4 {
-			return fmt.Errorf("proto: CountDistinctVector: wiretype end group for non-group")
+			return fmt.Errorf("proto: CountDistinctSketchVector: wiretype end group for non-group")
 		}
 		if fieldNum <= 0 {
-			return fmt.Errorf("proto: CountDistinctVector: illegal tag %d (wire type %d)", fieldNum, wire)
+			return fmt.Errorf("proto: CountDistinctSketchVector: illegal tag %d (wire type %d)", fieldNum, wire)
 		}
 		switch fieldNum {
 		case 1:
@@ -4149,7 +4149,7 @@ func (m *CountDistinctVector) Unmarshal(dAtA []byte) error {
 			if postIndex > l {
 				return io.ErrUnexpectedEOF
 			}
-			m.Samples = append(m.Samples, &CountDistinctSample{})
+			m.Samples = append(m.Samples, &CountDistinctSketchSample{})
 			if err := m.Samples[len(m.Samples)-1].Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
 				return err
 			}
@@ -4178,7 +4178,7 @@ func (m *CountDistinctVector) Unmarshal(dAtA []byte) error {
 	}
 	return nil
 }
-func (m *CountDistinctSample) Unmarshal(dAtA []byte) error {
+func (m *CountDistinctSketchSample) Unmarshal(dAtA []byte) error {
 	l := len(dAtA)
 	iNdEx := 0
 	for iNdEx < l {
@@ -4201,10 +4201,10 @@ func (m *CountDistinctSample) Unmarshal(dAtA []byte) error {
 		fieldNum := int32(wire >> 3)
 		wireType := int(wire & 0x7)
 		if wireType == 4 {
-			return fmt.Errorf("proto: CountDistinctSample: wiretype end group for non-group")
+			return fmt.Errorf("proto: CountDistinctSketchSample: wiretype end group for non-group")
 		}
 		if fieldNum <= 0 {
-			return fmt.Errorf("proto: CountDistinctSample: illegal tag %d (wire type %d)", fieldNum, wire)
+			return fmt.Errorf("proto: CountDistinctSketchSample: illegal tag %d (wire type %d)", fieldNum, wire)
 		}
 		switch fieldNum {
 		case 1:

@@ -723,9 +723,9 @@ func (ev *DownstreamEvaluator) NewStepEvaluator(
 			return nil, fmt.Errorf("unexpected matrix type: got (%T), want (CountMinSketchVector)", results[0].Data)
 		}
 		return NewCountMinSketchVectorStepEvaluator(vector), nil
-	case *CountDistinctEvalExpr:
+	case *CountDistinctSketchEvalExpr:
 		if e.mergeExpr == nil {
-			return nil, fmt.Errorf("CountDistinctEvalExpr is missing merge expression")
+			return nil, fmt.Errorf("CountDistinctSketchEvalExpr is missing merge expression")
 		}
 
 		queries := make([]DownstreamQuery, len(e.mergeExpr.downstreams))
@@ -738,7 +738,7 @@ func (ev *DownstreamEvaluator) NewStepEvaluator(
 			}
 		}
 
-		acc := newCountDistinctAccumulator()
+		acc := newCountDistinctSketchAccumulator()
 		results, err := ev.Downstream(ctx, queries, acc)
 		if err != nil {
 			return nil, err
@@ -746,12 +746,12 @@ func (ev *DownstreamEvaluator) NewStepEvaluator(
 		if len(results) != 1 {
 			return nil, fmt.Errorf("unexpected results length for sharded count distinct: got (%d), want (1)", len(results))
 		}
-		matrix, ok := results[0].Data.(CountDistinctMatrix)
+		matrix, ok := results[0].Data.(CountDistinctSketchMatrix)
 		if !ok {
-			return nil, fmt.Errorf("unexpected type: got (%T), want (CountDistinctMatrix)", results[0].Data)
+			return nil, fmt.Errorf("unexpected type: got (%T), want (CountDistinctSketchMatrix)", results[0].Data)
 		}
-		inner := NewCountDistinctMatrixStepEvaluator(matrix, params)
-		return NewCountDistinctVectorStepEvaluator(inner), nil
+		inner := NewCountDistinctSketchMatrixStepEvaluator(matrix, params)
+		return NewCountDistinctSketchVectorStepEvaluator(inner), nil
 	default:
 		return ev.defaultEvaluator.NewStepEvaluator(ctx, nextEvFactory, e, params)
 	}

@@ -188,28 +188,28 @@ func (a *CountMinSketchAccumulator) Result() []logqlmodel.Result {
 	}
 }
 
-type CountDistinctAccumulator struct {
-	matrix CountDistinctMatrix
+type CountDistinctSketchAccumulator struct {
+	matrix CountDistinctSketchMatrix
 
 	stats    stats.Result
 	headers  map[string][]string
 	warnings map[string]struct{}
 }
 
-func newCountDistinctAccumulator() *CountDistinctAccumulator {
-	return &CountDistinctAccumulator{
+func newCountDistinctSketchAccumulator() *CountDistinctSketchAccumulator {
+	return &CountDistinctSketchAccumulator{
 		headers:  make(map[string][]string),
 		warnings: make(map[string]struct{}),
 	}
 }
 
-func (a *CountDistinctAccumulator) Accumulate(_ context.Context, res logqlmodel.Result, _ int) error {
-	if res.Data.Type() != CountDistinctMatrixType {
-		return fmt.Errorf("unexpected data type: got (%s), want (%s)", res.Data.Type(), CountDistinctMatrixType)
+func (a *CountDistinctSketchAccumulator) Accumulate(_ context.Context, res logqlmodel.Result, _ int) error {
+	if res.Data.Type() != CountDistinctSketchMatrixType {
+		return fmt.Errorf("unexpected data type: got (%s), want (%s)", res.Data.Type(), CountDistinctSketchMatrixType)
 	}
-	data, ok := res.Data.(CountDistinctMatrix)
+	data, ok := res.Data.(CountDistinctSketchMatrix)
 	if !ok {
-		return fmt.Errorf("unexpected type: got (%T), want (CountDistinctMatrix)", res.Data)
+		return fmt.Errorf("unexpected type: got (%T), want (CountDistinctSketchMatrix)", res.Data)
 	}
 
 	if res.Statistics.Summary.Shards == 0 {
@@ -231,7 +231,7 @@ func (a *CountDistinctAccumulator) Accumulate(_ context.Context, res logqlmodel.
 	return err
 }
 
-func (a *CountDistinctAccumulator) Result() []logqlmodel.Result {
+func (a *CountDistinctSketchAccumulator) Result() []logqlmodel.Result {
 	headers := make([]*definitions.PrometheusResponseHeader, 0, len(a.headers))
 	for name, vals := range a.headers {
 		headers = append(

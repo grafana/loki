@@ -239,18 +239,18 @@ func (m *CountMinSketchResponse) WithHeaders(h []queryrangebase.PrometheusRespon
 }
 
 // GetHeaders returns the HTTP headers in the response.
-func (m *CountDistinctResponse) GetHeaders() []*queryrangebase.PrometheusResponseHeader {
+func (m *CountDistinctSketchResponse) GetHeaders() []*queryrangebase.PrometheusResponseHeader {
 	if m != nil {
 		return convertPrometheusResponseHeadersToPointers(m.Headers)
 	}
 	return nil
 }
 
-func (m *CountDistinctResponse) SetHeader(name, value string) {
+func (m *CountDistinctSketchResponse) SetHeader(name, value string) {
 	m.Headers = setHeader(m.Headers, name, value)
 }
 
-func (m *CountDistinctResponse) WithHeaders(h []queryrangebase.PrometheusResponseHeader) queryrangebase.Response {
+func (m *CountDistinctSketchResponse) WithHeaders(h []queryrangebase.PrometheusResponseHeader) queryrangebase.Response {
 	m.Headers = h
 	return m
 }

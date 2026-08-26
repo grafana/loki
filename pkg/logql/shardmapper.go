@@ -440,8 +440,8 @@ func (m ShardMapper) mapLabelAggregationExpr(expr *syntax.LabelAggregationExpr, 
 	}
 
 	// approx_count_distinct(field, range) by (g) ->
-	// CountDistinctEval(
-	//   CountDistinctMerge(
+	// CountDistinctSketchEval(
+	//   CountDistinctSketchMerge(
 	//     CountDistinctSketch(field, range)[shard=0] ++ ...
 	//   )
 	// )
@@ -468,8 +468,8 @@ func (m ShardMapper) mapLabelAggregationExpr(expr *syntax.LabelAggregationExpr, 
 		r.Add(len(shards), MetricsKey)
 	}
 
-	return &CountDistinctEvalExpr{
-		mergeExpr: &CountDistinctMergeExpr{
+	return &CountDistinctSketchEvalExpr{
+		mergeExpr: &CountDistinctSketchMergeExpr{
 			downstreams: downstreams,
 		},
 	}, bytesPerShard, nil

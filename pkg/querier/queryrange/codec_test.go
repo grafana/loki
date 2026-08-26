@@ -2725,18 +2725,18 @@ func Test_codec_DetectedLabelsResponseProtobufRoundTrip(t *testing.T) {
 	require.Equal(t, want.Response, gotDetected.Response)
 }
 
-func Test_codec_CountDistinctResponseProtobufRoundTrip(t *testing.T) {
+func Test_codec_CountDistinctSketchResponseProtobufRoundTrip(t *testing.T) {
 	ctx := context.Background()
 	hll := hyperloglog.New14()
 	hll.Insert([]byte("shared"))
 	hllBytes, err := hll.MarshalBinary()
 	require.NoError(t, err)
 
-	want := &CountDistinctResponse{
-		Response: &logproto.CountDistinctMatrix{
-			Values: []*logproto.CountDistinctVector{
+	want := &CountDistinctSketchResponse{
+		Response: &logproto.CountDistinctSketchMatrix{
+			Values: []*logproto.CountDistinctSketchVector{
 				{
-					Samples: []*logproto.CountDistinctSample{
+					Samples: []*logproto.CountDistinctSketchSample{
 						{
 							Hyperloglog: hllBytes,
 							TimestampMs: 1000,
@@ -2761,8 +2761,8 @@ func Test_codec_CountDistinctResponseProtobufRoundTrip(t *testing.T) {
 
 	got, err := DefaultCodec.DecodeResponse(ctx, httpResp, &LokiInstantRequest{Path: "/loki/api/v1/query"})
 	require.NoError(t, err)
-	gotCD, ok := got.(*CountDistinctResponse)
-	require.True(t, ok, "expected *CountDistinctResponse, got %T", got)
+	gotCD, ok := got.(*CountDistinctSketchResponse)
+	require.True(t, ok, "expected *CountDistinctSketchResponse, got %T", got)
 	require.Equal(t, want.Response, gotCD.Response)
 }
 

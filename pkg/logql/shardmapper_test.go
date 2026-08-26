@@ -30,7 +30,7 @@ func TestApproxCountDistinctShardMapping(t *testing.T) {
 		mapped, _, err := m.Map(ast, nilShardMetrics.downstreamRecorder(), true)
 		require.NoError(t, err)
 		require.Equal(t,
-			removeWhiteSpace(`CountDistinctEval<CountDistinctMerge<downstream<__count_distinct_sketch__(mac,{foo="bar"}[5m])by(version),shard=<nil>>>>`),
+			removeWhiteSpace(`CountDistinctSketchEval<CountDistinctSketchMerge<downstream<__count_distinct_sketch__(mac,{foo="bar"}[5m])by(version),shard=<nil>>>>`),
 			removeWhiteSpace(mapped.String()),
 		)
 	})
@@ -42,7 +42,7 @@ func TestApproxCountDistinctShardMapping(t *testing.T) {
 		mapped, _, err := m.Map(ast, nilShardMetrics.downstreamRecorder(), true)
 		require.NoError(t, err)
 		require.Equal(t,
-			removeWhiteSpace(`CountDistinctEval<CountDistinctMerge<downstream<__count_distinct_sketch__(mac,{foo="bar"}[5m])by(),shard=0_of_2>++downstream<__count_distinct_sketch__(mac,{foo="bar"}[5m])by(),shard=1_of_2>>>`),
+			removeWhiteSpace(`CountDistinctSketchEval<CountDistinctSketchMerge<downstream<__count_distinct_sketch__(mac,{foo="bar"}[5m])by(),shard=0_of_2>++downstream<__count_distinct_sketch__(mac,{foo="bar"}[5m])by(),shard=1_of_2>>>`),
 			removeWhiteSpace(mapped.String()),
 		)
 	})
@@ -54,12 +54,12 @@ func TestApproxCountDistinctShardMapping(t *testing.T) {
 		mapped, _, err := m.Map(ast, nilShardMetrics.downstreamRecorder(), true)
 		require.NoError(t, err)
 		require.Equal(t,
-			removeWhiteSpace(`CountDistinctEval<CountDistinctMerge<downstream<__count_distinct_sketch__(mac,{foo="bar"}[5m]),shard=0_of_2>++downstream<__count_distinct_sketch__(mac,{foo="bar"}[5m]),shard=1_of_2>>>`),
+			removeWhiteSpace(`CountDistinctSketchEval<CountDistinctSketchMerge<downstream<__count_distinct_sketch__(mac,{foo="bar"}[5m]),shard=0_of_2>++downstream<__count_distinct_sketch__(mac,{foo="bar"}[5m]),shard=1_of_2>>>`),
 			removeWhiteSpace(mapped.String()),
 		)
 	})
 
-	t.Run("outer sum maps child to CountDistinctEval first", func(t *testing.T) {
+	t.Run("outer sum maps child to CountDistinctSketchEval first", func(t *testing.T) {
 		m := NewShardMapper(NewPowerOfTwoStrategy(ConstantShards(2)), nilShardMetrics, []string{SupportApproxCountDistinct})
 		ast, err := syntax.ParseExpr(`sum(approx_count_distinct(mac, {foo="bar"}[5m]) by (version))`)
 		require.NoError(t, err)
@@ -67,8 +67,8 @@ func TestApproxCountDistinctShardMapping(t *testing.T) {
 		require.NoError(t, err)
 		require.Equal(t,
 			removeWhiteSpace(`sum(
-				CountDistinctEval<
-					CountDistinctMerge<
+				CountDistinctSketchEval<
+					CountDistinctSketchMerge<
 						downstream<__count_distinct_sketch__(mac,{foo="bar"}[5m])by(version),shard=0_of_2>
 						++ downstream<__count_distinct_sketch__(mac,{foo="bar"}[5m])by(version),shard=1_of_2>
 					>
@@ -245,8 +245,8 @@ func TestMappingStrings(t *testing.T) {
 		},
 		{
 			in: `approx_count_distinct(mac, {foo="bar"} | json [5m]) by (version)`,
-			out: `CountDistinctEval<
-				CountDistinctMerge<
+			out: `CountDistinctSketchEval<
+				CountDistinctSketchMerge<
 				  downstream<__count_distinct_sketch__(mac,{foo="bar"}|json[5m])by(version), shard=0_of_2>
 				  ++ downstream<__count_distinct_sketch__(mac,{foo="bar"}|json[5m])by(version), shard=1_of_2>
 				>
@@ -254,8 +254,8 @@ func TestMappingStrings(t *testing.T) {
 		},
 		{
 			in: `approx_count_distinct(mac, {foo="bar"} | json [5m]) by ()`,
-			out: `CountDistinctEval<
-				CountDistinctMerge<
+			out: `CountDistinctSketchEval<
+				CountDistinctSketchMerge<
 				  downstream<__count_distinct_sketch__(mac,{foo="bar"}|json[5m])by(), shard=0_of_2>
 				  ++ downstream<__count_distinct_sketch__(mac,{foo="bar"}|json[5m])by(), shard=1_of_2>
 				>
@@ -263,8 +263,8 @@ func TestMappingStrings(t *testing.T) {
 		},
 		{
 			in: `approx_count_distinct(mac, {foo="bar"} | json [5m])`,
-			out: `CountDistinctEval<
-				CountDistinctMerge<
+			out: `CountDistinctSketchEval<
+				CountDistinctSketchMerge<
 				  downstream<__count_distinct_sketch__(mac,{foo="bar"}|json[5m]), shard=0_of_2>
 				  ++ downstream<__count_distinct_sketch__(mac,{foo="bar"}|json[5m]), shard=1_of_2>
 				>
@@ -273,8 +273,8 @@ func TestMappingStrings(t *testing.T) {
 		{
 			in: `sum(approx_count_distinct(mac, {foo="bar"} | json [5m]) by (version))`,
 			out: `sum(
-				CountDistinctEval<
-					CountDistinctMerge<
+				CountDistinctSketchEval<
+					CountDistinctSketchMerge<
 					  downstream<__count_distinct_sketch__(mac,{foo="bar"}|json[5m])by(version), shard=0_of_2>
 					  ++ downstream<__count_distinct_sketch__(mac,{foo="bar"}|json[5m])by(version), shard=1_of_2>
 					>

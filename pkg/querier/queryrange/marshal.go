@@ -145,9 +145,9 @@ func ResultToResponse(result logqlmodel.Result, params logql.Params) (queryrange
 			Warnings:   result.Warnings,
 			Statistics: result.Statistics,
 		}, err
-	case logql.CountDistinctMatrix:
+	case logql.CountDistinctSketchMatrix:
 		r, err := data.ToProto()
-		return &CountDistinctResponse{
+		return &CountDistinctSketchResponse{
 			Response:   r,
 			Warnings:   result.Warnings,
 			Statistics: result.Statistics,
@@ -229,8 +229,8 @@ func ResponseToResult(resp queryrangebase.Response) (logqlmodel.Result, error) {
 			Warnings:   r.Warnings,
 			Statistics: r.Statistics,
 		}, nil
-	case *CountDistinctResponse:
-		matrix, err := logql.CountDistinctMatrixFromProto(r.Response)
+	case *CountDistinctSketchResponse:
+		matrix, err := logql.CountDistinctSketchMatrixFromProto(r.Response)
 		if err != nil {
 			return logqlmodel.Result{}, fmt.Errorf("cannot decode count distinct matrix: %w", err)
 		}
@@ -322,7 +322,7 @@ func QueryResponseWrap(res queryrangebase.Response) (*QueryResponse, error) {
 		p.Response = &QueryResponse_DetectedFields{response}
 	case *CountMinSketchResponse:
 		p.Response = &QueryResponse_CountMinSketches{response}
-	case *CountDistinctResponse:
+	case *CountDistinctSketchResponse:
 		p.Response = &QueryResponse_CountDistinctSketches{response}
 	default:
 		return nil, fmt.Errorf("invalid response format, got (%T)", res)

@@ -961,24 +961,24 @@ func (m *CountMinSketchResponse) GetStatistics() stats.Result {
 	return stats.Result{}
 }
 
-type CountDistinctResponse struct {
-	Response   *github_com_grafana_loki_v3_pkg_logproto.CountDistinctMatrix                                            `protobuf:"bytes,1,opt,name=response,proto3,customtype=github.com/grafana/loki/v3/pkg/logproto.CountDistinctMatrix" json:"response,omitempty"`
+type CountDistinctSketchResponse struct {
+	Response   *github_com_grafana_loki_v3_pkg_logproto.CountDistinctSketchMatrix                                            `protobuf:"bytes,1,opt,name=response,proto3,customtype=github.com/grafana/loki/v3/pkg/logproto.CountDistinctSketchMatrix" json:"response,omitempty"`
 	Headers    []github_com_grafana_loki_v3_pkg_querier_queryrange_queryrangebase_definitions.PrometheusResponseHeader `protobuf:"bytes,2,rep,name=Headers,proto3,customtype=github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase/definitions.PrometheusResponseHeader" json:"-"`
 	Warnings   []string                                                                                                `protobuf:"bytes,3,rep,name=warnings,proto3" json:"warnings,omitempty"`
 	Statistics stats.Result                                                                                            `protobuf:"bytes,4,opt,name=statistics,proto3" json:"statistics"`
 }
 
-func (m *CountDistinctResponse) Reset()      { *m = CountDistinctResponse{} }
-func (*CountDistinctResponse) ProtoMessage() {}
-func (*CountDistinctResponse) Descriptor() ([]byte, []int) {
+func (m *CountDistinctSketchResponse) Reset()      { *m = CountDistinctSketchResponse{} }
+func (*CountDistinctSketchResponse) ProtoMessage() {}
+func (*CountDistinctSketchResponse) Descriptor() ([]byte, []int) {
 	return fileDescriptor_51b9d53b40d11902, []int{14}
 }
-func (m *CountDistinctResponse) XXX_Unmarshal(b []byte) error {
+func (m *CountDistinctSketchResponse) XXX_Unmarshal(b []byte) error {
 	return m.Unmarshal(b)
 }
-func (m *CountDistinctResponse) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
+func (m *CountDistinctSketchResponse) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
 	if deterministic {
-		return xxx_messageInfo_CountDistinctResponse.Marshal(b, m, deterministic)
+		return xxx_messageInfo_CountDistinctSketchResponse.Marshal(b, m, deterministic)
 	} else {
 		b = b[:cap(b)]
 		n, err := m.MarshalToSizedBuffer(b)
@@ -988,26 +988,26 @@ func (m *CountDistinctResponse) XXX_Marshal(b []byte, deterministic bool) ([]byt
 		return b[:n], nil
 	}
 }
-func (m *CountDistinctResponse) XXX_Merge(src proto.Message) {
-	xxx_messageInfo_CountDistinctResponse.Merge(m, src)
+func (m *CountDistinctSketchResponse) XXX_Merge(src proto.Message) {
+	xxx_messageInfo_CountDistinctSketchResponse.Merge(m, src)
 }
-func (m *CountDistinctResponse) XXX_Size() int {
+func (m *CountDistinctSketchResponse) XXX_Size() int {
 	return m.Size()
 }
-func (m *CountDistinctResponse) XXX_DiscardUnknown() {
-	xxx_messageInfo_CountDistinctResponse.DiscardUnknown(m)
+func (m *CountDistinctSketchResponse) XXX_DiscardUnknown() {
+	xxx_messageInfo_CountDistinctSketchResponse.DiscardUnknown(m)
 }
 
-var xxx_messageInfo_CountDistinctResponse proto.InternalMessageInfo
+var xxx_messageInfo_CountDistinctSketchResponse proto.InternalMessageInfo
 
-func (m *CountDistinctResponse) GetWarnings() []string {
+func (m *CountDistinctSketchResponse) GetWarnings() []string {
 	if m != nil {
 		return m.Warnings
 	}
 	return nil
 }
 
-func (m *CountDistinctResponse) GetStatistics() stats.Result {
+func (m *CountDistinctSketchResponse) GetStatistics() stats.Result {
 	if m != nil {
 		return m.Statistics
 	}
@@ -1261,7 +1261,7 @@ type QueryResponse_CountMinSketches struct {
 	CountMinSketches *CountMinSketchResponse `protobuf:"bytes,14,opt,name=countMinSketches,proto3,oneof"`
 }
 type QueryResponse_CountDistinctSketches struct {
-	CountDistinctSketches *CountDistinctResponse `protobuf:"bytes,15,opt,name=countDistinctSketches,proto3,oneof"`
+	CountDistinctSketches *CountDistinctSketchResponse `protobuf:"bytes,15,opt,name=countDistinctSketches,proto3,oneof"`
 }
 
 func (*QueryResponse_Series) isQueryResponse_Response()                {}
@@ -1384,7 +1384,7 @@ func (m *QueryResponse) GetCountMinSketches() *CountMinSketchResponse {
 	return nil
 }
 
-func (m *QueryResponse) GetCountDistinctSketches() *CountDistinctResponse {
+func (m *QueryResponse) GetCountDistinctSketches() *CountDistinctSketchResponse {
 	if x, ok := m.GetResponse().(*QueryResponse_CountDistinctSketches); ok {
 		return x.CountDistinctSketches
 	}
@@ -1623,7 +1623,7 @@ func init() {
 	proto.RegisterType((*TopKSketchesResponse)(nil), "queryrange.TopKSketchesResponse")
 	proto.RegisterType((*QuantileSketchResponse)(nil), "queryrange.QuantileSketchResponse")
 	proto.RegisterType((*CountMinSketchResponse)(nil), "queryrange.CountMinSketchResponse")
-	proto.RegisterType((*CountDistinctResponse)(nil), "queryrange.CountDistinctResponse")
+	proto.RegisterType((*CountDistinctSketchResponse)(nil), "queryrange.CountDistinctSketchResponse")
 	proto.RegisterType((*ShardsResponse)(nil), "queryrange.ShardsResponse")
 	proto.RegisterType((*DetectedFieldsResponse)(nil), "queryrange.DetectedFieldsResponse")
 	proto.RegisterType((*QueryPatternsResponse)(nil), "queryrange.QueryPatternsResponse")
@@ -2388,14 +2388,14 @@ func (this *CountMinSketchResponse) Equal(that interface{}) bool {
 	}
 	return true
 }
-func (this *CountDistinctResponse) Equal(that interface{}) bool {
+func (this *CountDistinctSketchResponse) Equal(that interface{}) bool {
 	if that == nil {
 		return this == nil
 	}
 
-	that1, ok := that.(*CountDistinctResponse)
+	that1, ok := that.(*CountDistinctSketchResponse)
 	if !ok {
-		that2, ok := that.(CountDistinctResponse)
+		that2, ok := that.(CountDistinctSketchResponse)
 		if ok {
 			that1 = &that2
 		} else {
@@ -3431,12 +3431,12 @@ func (this *CountMinSketchResponse) GoString() string {
 	s = append(s, "}")
 	return strings.Join(s, "")
 }
-func (this *CountDistinctResponse) GoString() string {
+func (this *CountDistinctSketchResponse) GoString() string {
 	if this == nil {
 		return "nil"
 	}
 	s := make([]string, 0, 8)
-	s = append(s, "&queryrange.CountDistinctResponse{")
+	s = append(s, "&queryrange.CountDistinctSketchResponse{")
 	s = append(s, "Response: "+fmt.Sprintf("%#v", this.Response)+",\n")
 	s = append(s, "Headers: "+fmt.Sprintf("%#v", this.Headers)+",\n")
 	s = append(s, "Warnings: "+fmt.Sprintf("%#v", this.Warnings)+",\n")
@@ -4670,7 +4670,7 @@ func (m *CountMinSketchResponse) MarshalToSizedBuffer(dAtA []byte) (int, error) 
 	return len(dAtA) - i, nil
 }
 
-func (m *CountDistinctResponse) Marshal() (dAtA []byte, err error) {
+func (m *CountDistinctSketchResponse) Marshal() (dAtA []byte, err error) {
 	size := m.Size()
 	dAtA = make([]byte, size)
 	n, err := m.MarshalToSizedBuffer(dAtA[:size])
@@ -4680,12 +4680,12 @@ func (m *CountDistinctResponse) Marshal() (dAtA []byte, err error) {
 	return dAtA[:n], nil
 }
 
-func (m *CountDistinctResponse) MarshalTo(dAtA []byte) (int, error) {
+func (m *CountDistinctSketchResponse) MarshalTo(dAtA []byte) (int, error) {
 	size := m.Size()
 	return m.MarshalToSizedBuffer(dAtA[:size])
 }
 
-func (m *CountDistinctResponse) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+func (m *CountDistinctSketchResponse) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	i := len(dAtA)
 	_ = i
 	var l int
@@ -5911,7 +5911,7 @@ func (m *CountMinSketchResponse) Size() (n int) {
 	return n
 }
 
-func (m *CountDistinctResponse) Size() (n int) {
+func (m *CountDistinctSketchResponse) Size() (n int) {
 	if m == nil {
 		return 0
 	}
@@ -6543,11 +6543,11 @@ func (this *CountMinSketchResponse) String() string {
 	}, "")
 	return s
 }
-func (this *CountDistinctResponse) String() string {
+func (this *CountDistinctSketchResponse) String() string {
 	if this == nil {
 		return "nil"
 	}
-	s := strings.Join([]string{`&CountDistinctResponse{`,
+	s := strings.Join([]string{`&CountDistinctSketchResponse{`,
 		`Response:` + fmt.Sprintf("%v", this.Response) + `,`,
 		`Headers:` + fmt.Sprintf("%v", this.Headers) + `,`,
 		`Warnings:` + fmt.Sprintf("%v", this.Warnings) + `,`,
@@ -6746,7 +6746,7 @@ func (this *QueryResponse_CountDistinctSketches) String() string {
 		return "nil"
 	}
 	s := strings.Join([]string{`&QueryResponse_CountDistinctSketches{`,
-		`CountDistinctSketches:` + strings.Replace(fmt.Sprintf("%v", this.CountDistinctSketches), "CountDistinctResponse", "CountDistinctResponse", 1) + `,`,
+		`CountDistinctSketches:` + strings.Replace(fmt.Sprintf("%v", this.CountDistinctSketches), "CountDistinctSketchResponse", "CountDistinctSketchResponse", 1) + `,`,
 		`}`,
 	}, "")
 	return s
@@ -9700,7 +9700,7 @@ func (m *CountMinSketchResponse) Unmarshal(dAtA []byte) error {
 	}
 	return nil
 }
-func (m *CountDistinctResponse) Unmarshal(dAtA []byte) error {
+func (m *CountDistinctSketchResponse) Unmarshal(dAtA []byte) error {
 	l := len(dAtA)
 	iNdEx := 0
 	for iNdEx < l {
@@ -9723,10 +9723,10 @@ func (m *CountDistinctResponse) Unmarshal(dAtA []byte) error {
 		fieldNum := int32(wire >> 3)
 		wireType := int(wire & 0x7)
 		if wireType == 4 {
-			return fmt.Errorf("proto: CountDistinctResponse: wiretype end group for non-group")
+			return fmt.Errorf("proto: CountDistinctSketchResponse: wiretype end group for non-group")
 		}
 		if fieldNum <= 0 {
-			return fmt.Errorf("proto: CountDistinctResponse: illegal tag %d (wire type %d)", fieldNum, wire)
+			return fmt.Errorf("proto: CountDistinctSketchResponse: illegal tag %d (wire type %d)", fieldNum, wire)
 		}
 		switch fieldNum {
 		case 1:
@@ -9759,7 +9759,7 @@ func (m *CountDistinctResponse) Unmarshal(dAtA []byte) error {
 				return io.ErrUnexpectedEOF
 			}
 			if m.Response == nil {
-				m.Response = &github_com_grafana_loki_v3_pkg_logproto.CountDistinctMatrix{}
+				m.Response = &github_com_grafana_loki_v3_pkg_logproto.CountDistinctSketchMatrix{}
 			}
 			if err := m.Response.Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
 				return err
@@ -10929,7 +10929,7 @@ func (m *QueryResponse) Unmarshal(dAtA []byte) error {
 			if postIndex > l {
 				return io.ErrUnexpectedEOF
 			}
-			v := &CountDistinctResponse{}
+			v := &CountDistinctSketchResponse{}
 			if err := v.Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
 				return err
 			}
