@@ -436,7 +436,7 @@ func (m ShardMapper) mapApproxTopk(expr *syntax.VectorAggregationExpr, forceNoSh
 
 func (m ShardMapper) mapLabelAggregationExpr(expr *syntax.LabelAggregationExpr, r *downstreamRecorder) (syntax.SampleExpr, uint64, error) {
 	if !m.approxCountDistinctSupport {
-		return nil, 0, fmt.Errorf("approx_count_distinct is not enabled. See -querier.shard-aggregations or the per-tenant shard_aggregations runtime config")
+		return noOp(expr, m.shards.Resolver())
 	}
 
 	// approx_count_distinct(field, range) by (g) ->

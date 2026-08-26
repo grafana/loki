@@ -14,13 +14,13 @@ import (
 )
 
 func TestApproxCountDistinctShardMapping(t *testing.T) {
-	t.Run("disabled", func(t *testing.T) {
+	t.Run("disabled is a no-op", func(t *testing.T) {
 		m := NewShardMapper(NewPowerOfTwoStrategy(ConstantShards(2)), nilShardMetrics, nil)
 		ast, err := syntax.ParseExpr(`approx_count_distinct(mac, {foo="bar"}[5m]) by (version)`)
 		require.NoError(t, err)
-		_, _, err = m.Map(ast, nilShardMetrics.downstreamRecorder(), true)
-		require.Error(t, err)
-		require.Contains(t, err.Error(), "approx_count_distinct is not enabled. See -querier.shard-aggregations")
+		mapped, _, err := m.Map(ast, nilShardMetrics.downstreamRecorder(), true)
+		require.NoError(t, err)
+		require.Equal(t, removeWhiteSpace(ast.String()), removeWhiteSpace(mapped.String()))
 	})
 
 	t.Run("zero shards still merge before estimate", func(t *testing.T) {
