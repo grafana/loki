@@ -337,16 +337,27 @@ func (c *Component) WithExtraConfig(cfg string) {
 	c.extraConfigs = append(c.extraConfigs, cfg)
 }
 
-func getFreePort() (int, error) {
-	l, err := net.Listen("tcp", "127.0.0.1:0")
-	if err != nil {
-		return 0, err
+func getFreePorts(n int) ([]int, error) {
+	listeners := make([]net.Listener, 0, n)
+	defer func() {
+		for _, l := range listeners {
+			_ = l.Close()
+		}
+	}()
+
+	for i := 0; i < n; i++ {
+		l, err := net.Listen("tcp", "127.0.0.1:0")
+		if err != nil {
+			return nil, err
+		}
+		listeners = append(listeners, l)
 	}
-	port := l.Addr().(*net.TCPAddr).Port
-	if err := l.Close(); err != nil {
-		return 0, err
+
+	ports := make([]int, n)
+	for i, l := range listeners {
+		ports[i] = l.Addr().(*net.TCPAddr).Port
 	}
-	return port, nil
+	return ports, nil
 }
 
 func (c *Component) writeConfig() error {
@@ -434,16 +445,12 @@ server:
 func (c *Component) run() error {
 	c.running = true
 
-	httpPort, err := getFreePort()
+	ports, err := getFreePorts(2)
 	if err != nil {
 		return err
 	}
-	grpcPort, err := getFreePort()
-	if err != nil {
-		return err
-	}
-	c.httpPort = httpPort
-	c.grpcPort = grpcPort
+	c.httpPort = ports[0]
+	c.grpcPort = ports[1]
 
 	if err := c.writeConfig(); err != nil {
 		return err
