@@ -238,12 +238,15 @@ func assertBuilderE2EOrdered(t *testing.T, records []builderE2EResolvedRecord, s
 func compareRecords(t *testing.T, a, b builderE2EResolvedRecord, schemaLabels []string) int {
 	t.Helper()
 
-	aKey, err := NewStreamOrderKey(a.labels, schemaLabels)
+	aSchemaKey, err := ComputeSchemaKey(a.labels, schemaLabels)
 	require.NoError(t, err)
-	bKey, err := NewStreamOrderKey(b.labels, schemaLabels)
+	bSchemaKey, err := ComputeSchemaKey(b.labels, schemaLabels)
 	require.NoError(t, err)
 
-	if res := CompareStreamOrderKey(aKey, bKey); res != 0 {
+	aKey := streams.NewSortKey(a.labels, aSchemaKey)
+	bKey := streams.NewSortKey(b.labels, bSchemaKey)
+
+	if res := streams.CompareSortKey(aKey, bKey); res != 0 {
 		return res
 	}
 	if res := cmp.Compare(a.streamID, b.streamID); res != 0 {

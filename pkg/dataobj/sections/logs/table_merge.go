@@ -12,6 +12,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/dataset"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/datasetmd"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/result"
+	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
 	"github.com/grafana/loki/v3/pkg/util/loser"
 )
 
@@ -204,28 +205,11 @@ func (seq *DatasetSequence) Close() {
 	_ = seq.r.Close()
 }
 
-// StreamSort is the physical sort tuple for one stream: shard, schema key, hash.
-// A []StreamSort is indexed by stream ID with [0] unused.
-type StreamSort struct {
-	Shard uint32
-	Key   string
-	Hash  uint64
-}
-
-// Compare reports the order of a and b by [shard, key, hash].
-func (a StreamSort) Compare(b StreamSort) int {
-	return cmp.Or(
-		cmp.Compare(a.Shard, b.Shard),
-		cmp.Compare(a.Key, b.Key),
-		cmp.Compare(a.Hash, b.Hash),
-	)
-}
-
-// CompareForSortSchema returns a comparison function for k-way merge using
-// schema-based sort order: [shard ASC, sortKey ASC, hash ASC, streamID ASC, timestamp DESC].
-// order maps stream ID to the corresponding sort tuple ([0] unused).
+// CompareByStreamSchema returns a comparison function for k-way merge of log lines using
+// schema key ordering: [shard bucket ASC, schemaKey ASC, stream hash ASC, streamID ASC, timestamp DESC].
+// sortKeys map stream IDs to the corresponding schema information (0th element is unused).
 // math.MaxInt64 is treated as a sentinel (loser-tree maxValue) and always compares greater.
-func CompareForSortSchema(order []StreamSort) func(result.Result[dataset.Row], result.Result[dataset.Row]) bool {
+func CompareByStreamSchema(sortKeys []streams.SortKey) func(result.Result[dataset.Row], result.Result[dataset.Row]) bool {
 	return func(a, b result.Result[dataset.Row]) bool {
 		aVal, aErr := a.Value()
 		bVal, bErr := b.Value()
@@ -249,8 +233,9 @@ func CompareForSortSchema(order []StreamSort) func(result.Result[dataset.Row], r
 			return true
 		}
 
-		aSort := order[aStreamID]
-		bSort := order[bStreamID]
+		aSort := sortKeys[aStreamID]
+		bSort := sortKeys[bStreamID]
+		// No need to compare labels for tie-breaks
 		if res := aSort.Compare(bSort); res != 0 {
 			return res < 0
 		}

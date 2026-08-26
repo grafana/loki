@@ -71,7 +71,7 @@ func collectSections(t *testing.T, obj *dataobj.Object) []*dataobj.Section {
 
 // TestIterator_MergesAndOrdersByTimestamp builds two single-stream data
 // objects whose timestamp ranges interleave, then verifies that
-// sortmerge.Iterator merges them into a single non-increasing-timestamp
+// sortmerge.SimpleSortedIterator merges them into a single non-increasing-timestamp
 // stream (SortTimestampDESC) and emits every input record exactly once.
 func TestIterator_MergesAndOrdersByTimestamp(t *testing.T) {
 	now := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
@@ -85,7 +85,7 @@ func TestIterator_MergesAndOrdersByTimestamp(t *testing.T) {
 	sections = append(sections, collectSections(t, objA)...)
 	sections = append(sections, collectSections(t, objB)...)
 
-	iter, err := sortmerge.Iterator(context.Background(), sections, logs.SortTimestampDESC)
+	iter, err := sortmerge.SimpleSortedIterator(context.Background(), sections, logs.SortTimestampDESC)
 	require.NoError(t, err)
 
 	var (
@@ -118,7 +118,7 @@ func TestIterator_SingleSection_DegenerateIdentity(t *testing.T) {
 
 	sections := collectSections(t, obj)
 
-	iter, err := sortmerge.Iterator(context.Background(), sections, logs.SortStreamASC)
+	iter, err := sortmerge.SimpleSortedIterator(context.Background(), sections, logs.SortStreamASC)
 	require.NoError(t, err)
 
 	var count int
@@ -133,7 +133,7 @@ func TestIterator_SingleSection_DegenerateIdentity(t *testing.T) {
 // TestIterator_NoSections returns an iterator over zero sections — should
 // terminate immediately without error.
 func TestIterator_NoSections(t *testing.T) {
-	iter, err := sortmerge.Iterator(context.Background(), nil, logs.SortStreamASC)
+	iter, err := sortmerge.SimpleSortedIterator(context.Background(), nil, logs.SortStreamASC)
 	require.NoError(t, err)
 	for res := range iter {
 		_, err := res.Value()
@@ -263,7 +263,7 @@ func TestIteratorWithStreamRemap_MergesAcrossObjects(t *testing.T) {
 
 	sections, remaps := planGlobalStreams(ctx, t, []*dataobj.Object{objA, objB}, sortSchema)
 
-	iter, err := sortmerge.IteratorWithStreamRemap(ctx, sections, remaps, sortSchema)
+	iter, err := sortmerge.MixedObjectIterator(ctx, sections, remaps, sortSchema)
 	require.NoError(t, err)
 
 	var (
