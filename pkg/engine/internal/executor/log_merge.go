@@ -409,7 +409,7 @@ func (w *logObjectWriter) startNewObject() error {
 // size, and re-basing stream IDs to 1..M within each object.
 func (w *logObjectWriter) add(ctx context.Context, rec logs.Record) error {
 	gs := w.table.ByID(rec.StreamID)
-	if w.logsBuilder.IsFull() && w.haveLast && (gs.Key.SchemaKey != w.lastSchemaKey || gs.Shard() != w.lastShard) {
+	if w.logsBuilder.IsFull() && w.haveLast && (gs.SchemaKey != w.lastSchemaKey || gs.Shard != w.lastShard) {
 		if err := w.finalizeAndUpload(ctx); err != nil {
 			return err
 		}
@@ -418,13 +418,13 @@ func (w *logObjectWriter) add(ctx context.Context, rec logs.Record) error {
 			return err
 		}
 	}
-	w.lastSchemaKey = gs.Key.SchemaKey
-	w.lastShard = gs.Shard()
+	w.lastSchemaKey = gs.SchemaKey
+	w.lastShard = gs.Shard
 	w.haveLast = true
 
 	// There's no equivalent for ingestion time during compaction, so use the current time.
 	ingestionTime := time.Now()
-	err := w.logsBuilder.AppendRecord(w.node.Tenant, gs.Stream.Labels, rec, ingestionTime)
+	err := w.logsBuilder.AppendRecord(w.node.Tenant, gs.Labels, rec, ingestionTime)
 	if err != nil {
 		return err
 	}

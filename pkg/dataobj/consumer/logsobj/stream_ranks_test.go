@@ -23,9 +23,20 @@ func TestRankStreams_SameLabelsShareID(t *testing.T) {
 	ranks, err := RankStreams([]string{"label:app"}, a, b)
 	require.NoError(t, err)
 
-	left := ranks.Resolve(0, 2)
-	right := ranks.Resolve(1, 5)
-	require.Equal(t, left.Stream.ID, right.Stream.ID, "same labels across objects must share one ID")
-	require.Equal(t, left, ranks.ByID(left.Stream.ID))
-	require.NotEqual(t, left.Stream.ID, ranks.Resolve(0, 7).Stream.ID)
+	leftID := ranks.Resolve(0, 2)
+	rightID := ranks.Resolve(1, 5)
+	left := ranks.ByID(leftID)
+	right := ranks.ByID(rightID)
+	require.Equal(t, left, right, "same labels across objects must share one key")
+	require.Equal(t, left, ranks.ByID(leftID))
+	require.NotEqual(t, leftID, ranks.Resolve(0, 7))
+
+	count := ranks.Size()
+	require.Equal(t, count, 2)
+	for id := int64(2); id <= int64(count); id++ {
+		prev := ranks.ByID(id - 1)
+		curr := ranks.ByID(id)
+		require.Negative(t, CompareStreamOrderKey(prev, curr),
+			"global stream IDs must increase in StreamOrderKey order")
+	}
 }
