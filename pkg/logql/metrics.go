@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/c2h5oh/datasize"
@@ -75,6 +76,11 @@ var (
 		Namespace: constants.Loki,
 		Name:      "logql_querystats_bytes_processed_total",
 		Help:      "Total number of bytes processed by LogQL queries, partitioned by tenant.",
+	}, []string{"tenant"})
+	sophieMetric = promauto.NewCounterVec(prometheus.CounterOpts{
+		Namespace: constants.Loki,
+		Name:      "sophie_test_metric",
+		Help:      "Test metric to see how multiple pods behave with the same metric.",
 	}, []string{"tenant"})
 	execLatency = promauto.NewHistogramVec(prometheus.HistogramOpts{
 		Namespace: constants.Loki,
@@ -171,6 +177,16 @@ func RecordRangeAndInstantQueryMetrics(
 	if stats.Index.TotalChunks > 0 {
 		bloomRatio = float64(stats.Index.TotalChunks-stats.Index.PostFilterChunks) / float64(stats.Index.TotalChunks)
 	}
+
+	var once sync.Once
+	once.Do(func() {
+		go func() {
+			for {
+				sophieMetric.WithLabelValues("29").Add(float64(10))
+				time.Sleep(10 * time.Second)
+			}
+		}()
+	})
 
 	logValues = append(logValues, []interface{}{
 		"latency", latencyType, // this can be used to filter log lines.
