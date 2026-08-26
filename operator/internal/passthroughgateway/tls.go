@@ -56,8 +56,20 @@ var tlsCipherSuites = map[string]uint16{
 	"TLS_CHACHA20_POLY1305_SHA256": tls.TLS_CHACHA20_POLY1305_SHA256,
 }
 
+// tlsCurveIDs maps supported key-exchange group names to crypto/tls CurveIDs.
+// Both IANA "TLS Supported Groups" names (matching openshift/api's
+// configv1.TLSGroup values) and Go crypto/tls constant names are accepted.
 var tlsCurveIDs = map[string]tls.CurveID{
-	"X25519":    tls.X25519,
+	// X25519 and the ML-KEM hybrids: IANA name == Go constant name.
+	"X25519":             tls.X25519,
+	"X25519MLKEM768":     tls.X25519MLKEM768,
+	"SecP256r1MLKEM768":  tls.SecP256r1MLKEM768,
+	"SecP384r1MLKEM1024": tls.SecP384r1MLKEM1024,
+
+	// Classic EC curves: IANA name (preferred) and Go constant name (alias).
+	"secp256r1": tls.CurveP256,
+	"secp384r1": tls.CurveP384,
+	"secp521r1": tls.CurveP521,
 	"CurveP256": tls.CurveP256,
 	"CurveP384": tls.CurveP384,
 	"CurveP521": tls.CurveP521,

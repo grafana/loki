@@ -140,6 +140,12 @@ func TestApplyTLSSettings_OverrideDefaults(t *testing.T) {
 			},
 			expected: TLSProfileSpec{
 				MinTLSVersion: "VersionTLS10",
+				Groups: []string{
+					"X25519MLKEM768",
+					"X25519",
+					"secp256r1",
+					"secp384r1",
+				},
 				Ciphers: []string{
 					"TLS_AES_128_GCM_SHA256",
 					"TLS_AES_256_GCM_SHA384",
@@ -172,6 +178,12 @@ func TestApplyTLSSettings_OverrideDefaults(t *testing.T) {
 			},
 			expected: TLSProfileSpec{
 				MinTLSVersion: "VersionTLS12",
+				Groups: []string{
+					"X25519MLKEM768",
+					"X25519",
+					"secp256r1",
+					"secp384r1",
+				},
 				Ciphers: []string{
 					"TLS_AES_128_GCM_SHA256",
 					"TLS_AES_256_GCM_SHA384",
@@ -192,6 +204,12 @@ func TestApplyTLSSettings_OverrideDefaults(t *testing.T) {
 			},
 			expected: TLSProfileSpec{
 				MinTLSVersion: "VersionTLS13",
+				Groups: []string{
+					"X25519MLKEM768",
+					"X25519",
+					"secp256r1",
+					"secp384r1",
+				},
 				Ciphers: []string{
 					"TLS_AES_128_GCM_SHA256",
 					"TLS_AES_256_GCM_SHA384",
