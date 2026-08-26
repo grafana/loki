@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"path"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -129,7 +130,8 @@ func (c *cachedObjectClient) listTableNames(ctx context.Context) ([]client.Stora
 	c.tablesMtx.RLock()
 	defer c.tablesMtx.RUnlock()
 
-	return c.tableNames, nil
+	// Copy so callers can use the slice after we unlock; buildTableNamesCache replaces the backing array.
+	return slices.Clone(c.tableNames), nil
 }
 
 func (c *cachedObjectClient) listTable(ctx context.Context, tableName string) ([]client.StorageObject, []client.StorageCommonPrefix, error) {
@@ -146,7 +148,8 @@ func (c *cachedObjectClient) listTable(ctx context.Context, tableName string) ([
 	tbl.mtx.RLock()
 	defer tbl.mtx.RUnlock()
 
-	return tbl.commonObjects, tbl.userIDs, nil
+	// Copy so callers can use the slices after we unlock; buildCache mutates the cached slices in place.
+	return slices.Clone(tbl.commonObjects), slices.Clone(tbl.userIDs), nil
 }
 
 func (c *cachedObjectClient) listUserIndexInTable(ctx context.Context, tableName, userID string) ([]client.StorageObject, error) {
@@ -164,7 +167,7 @@ func (c *cachedObjectClient) listUserIndexInTable(ctx context.Context, tableName
 	defer tbl.mtx.RUnlock()
 
 	if objects, ok := tbl.userObjects[userID]; ok {
-		return objects, nil
+		return slices.Clone(objects), nil
 	}
 
 	return []client.StorageObject{}, nil
