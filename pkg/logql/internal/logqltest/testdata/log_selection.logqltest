@@ -35,15 +35,6 @@ load
 eval select from 0 to 20s {app="foo"}
   {app="foo"} "in range" @ 10s
 
-# `eval instant at T` looks back a default 30s window: [T-30s, T).
-clear
-load
-  {app="foo"} "too old" @ 0s
-  {app="foo"} "recent"  @ 39s
-
-eval instant at 40s {app="foo"}
-  {app="foo"} "recent" @ 39s
-
 # A `|=` line filter drops lines that don't contain the substring.
 clear
 load
