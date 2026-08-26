@@ -1065,9 +1065,31 @@ eval instant at 60s count_over_time({app="a"} | logfmt | __error_details__="" | 
 # A string filter reads __error__, so it keeps the failing line and the error reaches the result.
 eval instant at 60s count_over_time({app="a"} | logfmt | took > 1s | __error__!="" [1m])
   expect fail msg: LabelFilterErr
-# A converting filter cannot read __error__, so the same intent drops every line instead.
+# A converting filter cannot read __error__ or __error_details__ and is rejected at
+# parse time.
 eval instant at 60s count_over_time({app="a"} | logfmt | took > 1s | __error__ > 0 [1m])
-  expect empty
+  expect fail msg: __error__ is a string label and cannot be compared with __error__>0
+eval instant at 60s count_over_time({app="a"} | logfmt | took > 1s | __error__ >= 0 [1m])
+  expect fail msg: __error__ is a string label and cannot be compared with __error__>=0
+eval instant at 60s count_over_time({app="a"} | logfmt | took > 1s | __error__ < 1 [1m])
+  expect fail msg: __error__ is a string label and cannot be compared with __error__<1
+eval instant at 60s count_over_time({app="a"} | logfmt | took > 1s | __error__ <= 1 [1m])
+  expect fail msg: __error__ is a string label and cannot be compared with __error__<=1
+eval instant at 60s count_over_time({app="a"} | logfmt | took > 1s | __error__ != 0 [1m])
+  expect fail msg: __error__ is a string label and cannot be compared with __error__!=0
+eval instant at 60s count_over_time({app="a"} | logfmt | took > 1s | __error__ == 0 [1m])
+  expect fail msg: __error__ is a string label and cannot be compared with __error__==0
+eval instant at 60s count_over_time({app="a"} | logfmt | took > 1s | __error_details__ > 0 [1m])
+  expect fail msg: __error_details__ is a string label and cannot be compared with __error_details__>0
+# The ip() filter is a converting comparison too and is rejected the same way.
+eval instant at 60s count_over_time({app="a"} | logfmt | took > 1s | __error__ = ip("127.0.0.1") [1m])
+  expect fail msg: __error__ is a string label and cannot be compared with __error__=ip("127.0.0.1")
+eval instant at 60s count_over_time({app="a"} | logfmt | took > 1s | __error__ != ip("127.0.0.1") [1m])
+  expect fail msg: __error__ is a string label and cannot be compared with __error__!=ip("127.0.0.1")
+# __error__ is only ever set by the unwrap conversion itself here, so a
+# converting filter placed after "unwrap" is rejected the same way.
+eval instant at 60s sum_over_time({app="a"} | logfmt | unwrap bytes(size) | __error__ > 0 [1m])
+  expect fail msg: __error__ is a string label and cannot be compared with __error__>0
 # A line skipped by a comparison (e.g. size < 1MB) doesn't fail the query even if
 # another comparison in the query has failed (e.g. took > 1s).
 eval instant at 60s count_over_time({app="a"} | logfmt | took > 1s and size < 1MB [1m])
