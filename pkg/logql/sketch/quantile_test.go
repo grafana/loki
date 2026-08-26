@@ -78,13 +78,13 @@ func TestDDSketchQuantile_Quantile(t *testing.T) {
 	t.Run("0th and 100th quantile", func(t *testing.T) {
 		s := newDDSketchWithValues(t, 2, 4, 10, 20)
 
-		min, err := s.Quantile(0)
+		minQuantile, err := s.Quantile(0)
 		require.NoError(t, err)
-		require.InEpsilon(t, 2.0, min, 0.02)
+		require.InEpsilon(t, 2.0, minQuantile, 0.02)
 
-		max, err := s.Quantile(1)
+		maxQuantile, err := s.Quantile(1)
 		require.NoError(t, err)
-		require.InEpsilon(t, 20.0, max, 0.02)
+		require.InEpsilon(t, 20.0, maxQuantile, 0.02)
 	})
 
 	t.Run("quantile outside [0, 1]", func(t *testing.T) {
