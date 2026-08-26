@@ -142,11 +142,7 @@ only what they can't show, and prefer a trailing `# …` on the relevant line ov
 
 A log-selection query (e.g. `{app="foo"} |= "bar"`) uses `eval select`, not `eval range`/`eval
 instant`, and returns streams, not series — see README.md "Streams" expected results. The
-instant/range cross-check in the checklist above doesn't apply the same way: `eval select` has no
-per-step matrix, just one window's worth of lines, so there's no "last step equals the instant" to
-size for. Instead cross-check by picking an `eval select` window and an `eval instant` time that
-should return the *same* lines (accounting for the default 30s look-back — see README.md
-"Log-selection window" for the exact boundary rule).
+instant/range cross-check in the checklist above doesn't apply to log selection.
 
 ## Files
 
