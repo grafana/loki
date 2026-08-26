@@ -201,7 +201,7 @@ The function is of the form:
 approx_count_distinct(
   <counted field>,
   <log expression> [<duration>]
-) by (<grouping fields>)
+) [by (<grouping fields>)]
 ```
 
 Example:
@@ -213,7 +213,7 @@ approx_count_distinct(
 ) by (version)
 ```
 
-`approx_count_distinct` is only supported for instant queries. An explicit range duration and `by (...)` grouping are required. Do not group by the counted field. `unwrap` is not supported.
+`approx_count_distinct` supports instant and range queries. A range duration is required. Grouping is optional: omit `by` to keep leftover stream labels, or use `by ()` for one unlabeled series. Don't group by the counted field. Prefix `by` and `unwrap` are not supported.
 
 Under the hood, Loki builds one [HyperLogLog](https://en.wikipedia.org/wiki/HyperLogLog) sketch per output group at precision 14 (sparse at low cardinality, about 16 KiB when dense). Index sharding merges sketches before estimating so overlapping values across shards are counted once.
 
