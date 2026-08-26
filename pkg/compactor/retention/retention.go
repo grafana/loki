@@ -474,7 +474,7 @@ type chunkRewriter struct {
 	// ignoreMissingChunks makes rewriteChunk treat a chunk which is indexed but not found in the
 	// object storage as a chunk with all of its lines deleted, instead of failing the operation.
 	// This lets delete requests make progress when the index has entries pointing at chunks which
-	// no longer exist in the storage, at the cost of dropping those index entries.
+	// no longer exist in the storage while leaving the chunk entries as is in the index for diagnosing the issue.
 	ignoreMissingChunks bool
 	missingChunksTotal  prometheus.Counter
 }
@@ -495,8 +495,7 @@ func newChunkRewriter(chunkClient client.Client, tableName string, chunkIndexer 
 // If the newChunk is different, linesDeleted would be true.
 // The newChunk is indexed and uploaded only if it belongs to the current index table being processed,
 // the status of which is set to wroteChunks.
-// If the chunk is not found in the storage and ignoreMissingChunks is set, it is reported as linesDeleted
-// so that the caller drops its dangling index entry instead of failing the whole operation.
+// If the chunk is not found in the storage and ignoreMissingChunks is set, it is ignored and reported as a no-op.
 func (c *chunkRewriter) rewriteChunk(ctx context.Context, userID []byte, ce Chunk, tableInterval model.Interval, filterFunc filter.Func) (wroteChunks bool, linesDeleted bool, err error) {
 	userIDStr := unsafeGetString(userID)
 
@@ -520,11 +519,10 @@ func (c *chunkRewriter) rewriteChunk(ctx context.Context, userID []byte, ce Chun
 			return false, false, fmt.Errorf("expected 1 entry for chunk %s but found %d in storage", ce.ChunkID, len(chks))
 		}
 
-		// The chunk is indexed but gone from the storage. Report it as fully deleted so that the
-		// caller drops the dangling index entry and lets the delete request make progress.
-		level.Warn(util_log.Logger).Log("msg", "de-indexing chunk missing from storage while processing a delete request", "table", c.tableName, "user_id", userIDStr, "chunk_id", ce.ChunkID)
+		// The chunk is indexed but gone from the storage. Report it as a no-op so the caller leaves index entries as-is.
+		level.Warn(util_log.Logger).Log("msg", "ignoring chunk missing from storage while processing a delete request", "table", c.tableName, "user_id", userIDStr, "chunk_id", ce.ChunkID)
 		c.missingChunksTotal.Inc()
-		return false, true, nil
+		return false, false, nil
 	}
 
 	newChunkData, err := chks[0].Data.Rewrite(func(ts time.Time, s string, structuredMetadata labels.Labels) bool {

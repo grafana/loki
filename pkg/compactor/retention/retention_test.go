@@ -407,7 +407,6 @@ func TestChunkRewriterMissingChunk(t *testing.T) {
 		err                 error
 		isNotFoundErr       bool
 		expectedErrContains string
-		expectLinesDeleted  bool
 		expectMissingCount  float64
 	}{
 		{
@@ -425,13 +424,11 @@ func TestChunkRewriterMissingChunk(t *testing.T) {
 			ignoreMissingChunks: true,
 			err:                 client.ErrStorageObjectNotFound,
 			isNotFoundErr:       true,
-			expectLinesDeleted:  true,
 			expectMissingCount:  1,
 		},
 		{
 			name:                "empty response, flag enabled",
 			ignoreMissingChunks: true,
-			expectLinesDeleted:  true,
 			expectMissingCount:  1,
 		},
 		{
@@ -463,7 +460,7 @@ func TestChunkRewriterMissingChunk(t *testing.T) {
 				require.False(t, linesDeleted)
 			} else {
 				require.NoError(t, err)
-				require.Equal(t, tc.expectLinesDeleted, linesDeleted)
+				require.False(t, linesDeleted)
 			}
 
 			// A missing chunk is never rewritten, so nothing should be indexed or uploaded.
