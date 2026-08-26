@@ -69,7 +69,8 @@ func (d *Distributor) pushHandler(w http.ResponseWriter, r *http.Request, pushRe
 	streamResolver := newRequestScopedStreamResolver(tenantID, d.validator.Limits, logger)
 
 	presumedAgentIP := extractPresumedAgentIP(r)
-	req, pushStats, err := push.ParseRequest(logger, tenantID, d.cfg.MaxPushSizeBytes, int64(d.cfg.MaxPushSizeBytes), r, d.validator.Limits, d.tenantConfigs,
+	maxPushSize := d.validator.Limits.MaxPushSize(tenantID)
+	req, pushStats, err := push.ParseRequest(logger, tenantID, maxPushSize, int64(maxPushSize), r, d.validator.Limits, d.tenantConfigs,
 		pushRequestParser, d.usageTracker, streamResolver, presumedAgentIP, format)
 	if err != nil {
 		switch {

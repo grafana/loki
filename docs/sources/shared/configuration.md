@@ -3440,10 +3440,6 @@ ring:
 # CLI flag: -distributor.push-worker-count
 [push_worker_count: <int> | default = 256]
 
-# The maximum size of a Push request.
-# CLI flag: -distributor.max-push-size-bytes
-[max_push_size_bytes: <int> | default = 2147483647]
-
 # The maximum number of inflight bytes at a time. 0 means disabled.
 # CLI flag: -distributor.max-inflight-bytes
 [max_inflight_bytes: <int> | default = 0]
@@ -4524,6 +4520,10 @@ The `limits_config` block configures global and per-tenant limits in Loki. The v
 # Identifier that is added at the end of a truncated log line.
 # CLI flag: -distributor.max-line-size-truncate-identifier
 [max_line_size_truncate_identifier: <string> | default = ""]
+
+# The maximum size of a Push request.
+# CLI flag: -distributor.max-push-size
+[max_push_size: <int> | default = 2GB]
 
 # Alter the log line timestamp during ingestion when the timestamp is the same
 # as the previous entry for the same stream. When enabled, if a log line in a
