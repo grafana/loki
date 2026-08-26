@@ -451,27 +451,11 @@ func (c *Component) run() error {
 	}
 
 	var (
-		readyCh = make(chan struct{})
-		errCh   = make(chan error, 1)
+		readyCh  = make(chan struct{})
+		errCh    = make(chan error, 1)
+		stopPoll = make(chan struct{})
 	)
-
-	go func() {
-		for {
-			time.Sleep(time.Millisecond * 200)
-			if c.loki == nil || c.loki.Server == nil || c.loki.Server.HTTP == nil {
-				continue
-			}
-
-			req := httptest.NewRequest("GET", "http://localhost/ready", nil)
-			w := httptest.NewRecorder()
-			c.loki.Server.HTTP.ServeHTTP(w, req)
-
-			if w.Code == 200 {
-				close(readyCh)
-				return
-			}
-		}
-	}()
+	defer close(stopPoll)
 
 	c.cluster.waitGroup.Add(1)
 	c.wg.Add(1)
@@ -481,19 +465,51 @@ func (c *Component) run() error {
 		defer c.wg.Done()
 		err := c.loki.Run(loki.RunOpts{})
 		if err != nil {
-			newErr := fmt.Errorf("error starting component %v: %w", c.name, err)
-			errCh <- newErr
+			errCh <- fmt.Errorf("error starting component %v: %w", c.name, err)
 		}
 	}()
 
+	// Hit /ready over the listen address after the HTTP server is serving.
+	// Do not call mux ServeHTTP in-process: loki.Run still registers routes on that mux.
+	go c.pollReady(stopPoll, readyCh)
+
 	select {
 	case <-readyCh:
-		break
+		return nil
 	case err := <-errCh:
 		return err
+	case <-time.After(time.Minute):
+		return fmt.Errorf("timeout waiting for component %s to become ready", c.name)
 	}
+}
 
-	return nil
+func (c *Component) pollReady(stop <-chan struct{}, ready chan struct{}) {
+	ticker := time.NewTicker(200 * time.Millisecond)
+	defer ticker.Stop()
+
+	client := &http.Client{Timeout: time.Second}
+
+	for {
+		select {
+		case <-stop:
+			return
+		case <-ticker.C:
+		}
+
+		if c.loki.Server == nil {
+			continue
+		}
+
+		resp, err := client.Get(c.HTTPURL() + "/ready")
+		if err != nil {
+			continue
+		}
+		_ = resp.Body.Close()
+		if resp.StatusCode == http.StatusOK {
+			close(ready)
+			return
+		}
+	}
 }
 
 // cleanup calls the stop handler and returns files and directories to be cleaned up
