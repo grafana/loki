@@ -11,7 +11,6 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
-	"strings"
 	"sync"
 	"text/template"
 	"time"
@@ -306,6 +305,9 @@ type Component struct {
 
 	running bool
 	wg      sync.WaitGroup
+
+	httpPort int
+	grpcPort int
 }
 
 // ClusterSharedPath returns the path to the shared directory between all components in the cluster.
@@ -320,11 +322,11 @@ func (c *Component) AddFlags(flags ...string) {
 }
 
 func (c *Component) HTTPURL() string {
-	return fmt.Sprintf("http://localhost:%s", port(c.loki.Server.HTTPListenAddr().String()))
+	return fmt.Sprintf("http://localhost:%d", c.httpPort)
 }
 
 func (c *Component) GRPCURL() string {
-	return fmt.Sprintf("localhost:%s", port(c.loki.Server.GRPCListenAddr().String()))
+	return fmt.Sprintf("localhost:%d", c.grpcPort)
 }
 
 func (c *Component) WithExtraConfig(cfg string) {
@@ -335,9 +337,16 @@ func (c *Component) WithExtraConfig(cfg string) {
 	c.extraConfigs = append(c.extraConfigs, cfg)
 }
 
-func port(addr string) string {
-	parts := strings.Split(addr, ":")
-	return parts[len(parts)-1]
+func getFreePort() (int, error) {
+	l, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		return 0, err
+	}
+	port := l.Addr().(*net.TCPAddr).Port
+	if err := l.Close(); err != nil {
+		return 0, err
+	}
+	return port, nil
 }
 
 func (c *Component) writeConfig() error {
@@ -408,6 +417,12 @@ func (c *Component) MergedConfig() ([]byte, error) {
 		merger.AddFragment([]byte(extra))
 	}
 
+	merger.AddFragment([]byte(fmt.Sprintf(`
+server:
+  http_listen_port: %d
+  grpc_listen_port: %d
+`, c.httpPort, c.grpcPort)))
+
 	merged, err := merger.Merge()
 	if err != nil {
 		return nil, fmt.Errorf("failed to marshal merged config to YAML: %w", err)
@@ -418,6 +433,17 @@ func (c *Component) MergedConfig() ([]byte, error) {
 
 func (c *Component) run() error {
 	c.running = true
+
+	httpPort, err := getFreePort()
+	if err != nil {
+		return err
+	}
+	grpcPort, err := getFreePort()
+	if err != nil {
+		return err
+	}
+	c.httpPort = httpPort
+	c.grpcPort = grpcPort
 
 	if err := c.writeConfig(); err != nil {
 		return err
@@ -444,7 +470,6 @@ func (c *Component) run() error {
 	if err := config.LimitsConfig.SetDefaultPolicyStreamMapping(config.Distributor.DefaultPolicyStreamMappings); err != nil {
 		return err
 	}
-	var err error
 	c.loki, err = loki.New(config.Config)
 	if err != nil {
 		return err
@@ -494,10 +519,6 @@ func (c *Component) pollReady(stop <-chan struct{}, ready chan struct{}) {
 		case <-stop:
 			return
 		case <-ticker.C:
-		}
-
-		if c.loki.Server == nil {
-			continue
 		}
 
 		resp, err := client.Get(c.HTTPURL() + "/ready")
