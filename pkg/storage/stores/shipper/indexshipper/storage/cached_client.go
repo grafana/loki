@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"path"
-	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -130,8 +129,7 @@ func (c *cachedObjectClient) listTableNames(ctx context.Context) ([]client.Stora
 	c.tablesMtx.RLock()
 	defer c.tablesMtx.RUnlock()
 
-	// Copy so callers can use the slice after we unlock; buildTableNamesCache replaces the backing array.
-	return slices.Clone(c.tableNames), nil
+	return c.tableNames, nil
 }
 
 func (c *cachedObjectClient) listTable(ctx context.Context, tableName string) ([]client.StorageObject, []client.StorageCommonPrefix, error) {
@@ -148,8 +146,7 @@ func (c *cachedObjectClient) listTable(ctx context.Context, tableName string) ([
 	tbl.mtx.RLock()
 	defer tbl.mtx.RUnlock()
 
-	// Copy so callers can use the slices after we unlock; buildCache mutates the cached slices in place.
-	return slices.Clone(tbl.commonObjects), slices.Clone(tbl.userIDs), nil
+	return tbl.commonObjects, tbl.userIDs, nil
 }
 
 func (c *cachedObjectClient) listUserIndexInTable(ctx context.Context, tableName, userID string) ([]client.StorageObject, error) {
@@ -167,7 +164,7 @@ func (c *cachedObjectClient) listUserIndexInTable(ctx context.Context, tableName
 	defer tbl.mtx.RUnlock()
 
 	if objects, ok := tbl.userObjects[userID]; ok {
-		return slices.Clone(objects), nil
+		return objects, nil
 	}
 
 	return []client.StorageObject{}, nil
@@ -296,12 +293,11 @@ func (t *table) buildCache(ctx context.Context, objectClient client.ObjectClient
 		return err
 	}
 
-	t.mtx.Lock()
-	defer t.mtx.Unlock()
-
-	t.commonObjects = t.commonObjects[:0]
-	t.userObjects = map[string][]client.StorageObject{}
-	t.userIDs = t.userIDs[:0]
+	// Build a new snapshot so callers holding previously returned slices
+	// are not racing with in-place appends on the cached backing arrays.
+	commonObjects := []client.StorageObject{}
+	userObjects := map[string][]client.StorageObject{}
+	userIDs := []client.StorageCommonPrefix{}
 
 	for _, object := range objects {
 		// The s3 client can also return the directory itself in the ListObjects.
@@ -315,16 +311,22 @@ func (t *table) buildCache(ctx context.Context, objectClient client.ObjectClient
 		}
 
 		if len(ss) == 2 {
-			t.commonObjects = append(t.commonObjects, object)
+			commonObjects = append(commonObjects, object)
 		} else {
 			userID := ss[1]
-			if len(t.userObjects[userID]) == 0 {
-				t.userIDs = append(t.userIDs, client.StorageCommonPrefix(path.Join(t.name, userID)))
+			if len(userObjects[userID]) == 0 {
+				userIDs = append(userIDs, client.StorageCommonPrefix(path.Join(t.name, userID)))
 			}
-			t.userObjects[userID] = append(t.userObjects[userID], object)
+			userObjects[userID] = append(userObjects[userID], object)
 		}
 	}
 
+	t.mtx.Lock()
+	defer t.mtx.Unlock()
+
+	t.commonObjects = commonObjects
+	t.userObjects = userObjects
+	t.userIDs = userIDs
 	t.cacheBuiltAt = time.Now()
 	return nil
 }
