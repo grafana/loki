@@ -28,9 +28,6 @@ var epoch = time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
 var (
 	// reInstant, reRange, and reSelect match the remainder of an `eval instant`/`eval range`/
 	// `eval select` line (after the mode keyword), capturing the trailing query to end of line.
-	// `eval select` requires a bare `forward`/`backward` direction before the query: the order the
-	// expected log lines are written in follows it, so a script that left it out would put the
-	// reader (and a default) in charge of reading the expectation block.
 	reInstant = regexp.MustCompile(`^at\s+(\S+)\s+(.+)$`)
 	reRange   = regexp.MustCompile(`^from\s+(\S+)\s+to\s+(\S+)\s+step\s+(\S+)\s+(.+)$`)
 	reSelect  = regexp.MustCompile(`^from\s+(\S+)\s+to\s+(\S+)\s+((?i:forward|backward))\s+(.+)$`)
