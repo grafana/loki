@@ -83,6 +83,7 @@ func BuildGateway(opts Options) ([]client.Object, error) {
 	minTLSVersion := opts.TLSProfile.MinTLSVersion
 	ciphersList := opts.TLSProfile.Ciphers
 	ciphers := strings.Join(ciphersList, `,`)
+	curves := strings.Join(opts.TLSProfile.Groups, `,`)
 
 	if opts.Gates.HTTPEncryption {
 		serviceName := serviceNameGatewayHTTP(opts.Name)
@@ -107,7 +108,7 @@ func BuildGateway(opts Options) ([]client.Object, error) {
 			gatewayTLS = opts.Stack.Tenants.Gateway.TLS
 		}
 
-		if err := configureGatewayServerPKI(&dpl.Spec.Template.Spec, &opts.Stack, opts.Name, opts.Namespace, minTLSVersion, ciphers, gatewayTLS); err != nil {
+		if err := configureGatewayServerPKI(&dpl.Spec.Template.Spec, &opts.Stack, opts.Name, opts.Namespace, minTLSVersion, ciphers, curves, gatewayTLS); err != nil {
 			return nil, err
 		}
 	}
@@ -118,7 +119,7 @@ func BuildGateway(opts Options) ([]client.Object, error) {
 			adminGroups = opts.Stack.Tenants.Openshift.AdminGroups
 		}
 
-		if err := configureGatewayDeploymentForMode(dpl, opts.Stack.Tenants, opts.Gates, minTLSVersion, ciphers, adminGroups); err != nil {
+		if err := configureGatewayDeploymentForMode(dpl, opts.Stack.Tenants, opts.Gates, minTLSVersion, ciphers, curves, adminGroups); err != nil {
 			return nil, err
 		}
 
@@ -624,7 +625,7 @@ func configureGatewayServerPKI(
 	podSpec *corev1.PodSpec,
 	stack *lokiv1.LokiStackSpec,
 	name, namespace string,
-	minTLSVersion, ciphers string,
+	minTLSVersion, ciphers, curves string,
 	tlsOptions *lokiv1.TLSSpec,
 ) error {
 	serviceName := serviceNameGatewayHTTP(name)
@@ -636,9 +637,9 @@ func configureGatewayServerPKI(
 		if stack.Tenants.Passthrough == nil || stack.Tenants.Passthrough.CA == nil {
 			return kverrors.New("client CA not provided")
 		}
-		return configurePassGatewayServerPKI(podSpec, stack.Tenants.Passthrough.CA, serverCAName, upstreamCAName, upstreamClientName, minTLSVersion, ciphers, tlsOptions)
+		return configurePassGatewayServerPKI(podSpec, stack.Tenants.Passthrough.CA, serverCAName, upstreamCAName, upstreamClientName, minTLSVersion, ciphers, curves, tlsOptions)
 	}
-	return configureObsGatewayServerPKI(podSpec, namespace, serviceName, serverCAName, upstreamCAName, upstreamClientName, minTLSVersion, ciphers, tlsOptions)
+	return configureObsGatewayServerPKI(podSpec, namespace, serviceName, serverCAName, upstreamCAName, upstreamClientName, minTLSVersion, ciphers, curves, tlsOptions)
 }
 
 // configureObsGatewayServerPKI configures PKI for the observatorium gateway.
@@ -646,7 +647,7 @@ func configureObsGatewayServerPKI(
 	podSpec *corev1.PodSpec,
 	namespace, serviceName, serverCAName string,
 	upstreamCAName, upstreamClientName string,
-	minTLSVersion, ciphers string,
+	minTLSVersion, ciphers, curves string,
 	tlsOptions *lokiv1.TLSSpec,
 ) error {
 	var gwIndex int
@@ -681,6 +682,7 @@ func configureObsGatewayServerPKI(
 		fmt.Sprintf("--tls.internal.server.key-file=%s", gatewayServerHTTPTLSKey()),
 		fmt.Sprintf("--tls.min-version=%s", minTLSVersion),
 		fmt.Sprintf("--tls.cipher-suites=%s", ciphers),
+		fmt.Sprintf("--tls.curve-preferences=%s", curves),
 		fmt.Sprintf("--logs.tls.ca-file=%s", gatewayUpstreamCAPath()),
 		fmt.Sprintf("--logs.tls.cert-file=%s", gatewayUpstreamHTTPTLSCert()),
 		fmt.Sprintf("--logs.tls.key-file=%s", gatewayUpstreamHTTPTLSKey()),
@@ -767,7 +769,7 @@ func configurePassGatewayServerPKI(
 	clientCAs *lokiv1.ValueReference,
 	serverCAName string,
 	upstreamCAName, upstreamClientName string,
-	minTLSVersion, ciphers string,
+	minTLSVersion, ciphers, curves string,
 	tlsOptions *lokiv1.TLSSpec,
 ) error {
 	var gwIndex int
@@ -801,6 +803,7 @@ func configurePassGatewayServerPKI(
 		fmt.Sprintf("-tls-client-ca-file=%s/%s", clientCADir, clientCAs.Key),
 		fmt.Sprintf("-tls-min-version=%s", minTLSVersion),
 		fmt.Sprintf("-tls-cipher-suites=%s", ciphers),
+		fmt.Sprintf("-tls-curve-preferences=%s", curves),
 	)
 
 	gwContainer.ReadinessProbe.HTTPGet.Scheme = corev1.URISchemeHTTPS
