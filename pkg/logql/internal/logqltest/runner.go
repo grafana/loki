@@ -125,16 +125,27 @@ func runEval(t *testing.T, name string, stacks []executionStack, cmd evalCmd, ex
 					t.Skipf("%s: stack does not support this query", stack.name())
 				}
 				res, err := stack.eval(cmd)
-				assertResult(t, name, cmd, exp, res, err, stack.isQueryShardingSupported(), exp.isValueComparisonSkipped[stack.name()])
+				assertResult(t, name, cmd, exp, res, err, stack.isQueryShardingSupported(),
+					exp.isValueComparisonSkipped[stack.name()], effectiveEpsilon(exp, stack.name()))
 			})
 		}
 	})
 }
 
+// effectiveEpsilon returns the floating point comparison tolerance for stackName: the value set
+// by an `expect values-toleration <epsilon> on "<stack>"` directive if the eval has one for this
+// stack, or defaultEpsilon otherwise.
+func effectiveEpsilon(exp expectations, stackName string) float64 {
+	if v, ok := exp.valuesToleration[stackName]; ok {
+		return v
+	}
+	return defaultEpsilon
+}
+
 // assertResult applies exp to a result any execution stack produces. On a fail expectation it
 // checks the error; otherwise it compares the data and, for a sharding stack running a shardable
 // query, asserts the response reported at least two shards.
-func assertResult(t *testing.T, name string, cmd evalCmd, exp expectations, res logqlmodel.Result, err error, queryShardingEnabled, isValueComparisonSkipped bool) {
+func assertResult(t *testing.T, name string, cmd evalCmd, exp expectations, res logqlmodel.Result, err error, queryShardingEnabled, isValueComparisonSkipped bool, epsilon float64) {
 	t.Helper()
 
 	if exp.fail {
@@ -149,7 +160,7 @@ func assertResult(t *testing.T, name string, cmd evalCmd, exp expectations, res 
 	}
 
 	require.NoError(t, err, "%s: query %q", name, cmd.query)
-	require.NoError(t, compareResult(name, cmd, exp, res.Data, isValueComparisonSkipped))
+	require.NoError(t, compareResult(name, cmd, exp, res.Data, isValueComparisonSkipped, epsilon))
 
 	if queryShardingEnabled && isQueryShardingSupported(cmd.query) {
 		require.GreaterOrEqualf(t, res.Statistics.Summary.Shards, int64(2),
@@ -217,14 +228,15 @@ func consumeBlock(lines []string, i int, fn func(content string)) int {
 // Each compare* function below self-guards against every other expectation kind (so it gives a
 // clear "expected X, got Y" error even when called directly, as the tests do). With skipValues
 // true the comparators check result shape only — series count, timestamps, and present/absent
-// samples (or log lines) — and skip value equality.
-func compareResult(name string, cmd evalCmd, exp expectations, data any, skipValues bool) error {
+// samples (or log lines) — and skip value equality. Otherwise, values are compared within epsilon
+// (see floatsEqual).
+func compareResult(name string, cmd evalCmd, exp expectations, data any, skipValues bool, epsilon float64) error {
 	switch v := data.(type) {
 	case promql.Scalar:
 		if exp.empty {
 			return fmt.Errorf("%s: expected an empty result, got scalar %v", name, v.V)
 		}
-		return compareScalar(name, exp, v, skipValues)
+		return compareScalar(name, exp, v, skipValues, epsilon)
 	case promql.Vector:
 		if exp.empty {
 			if len(v) != 0 {
@@ -232,7 +244,7 @@ func compareResult(name string, cmd evalCmd, exp expectations, data any, skipVal
 			}
 			return nil
 		}
-		return compareVector(name, cmd, exp, v, skipValues)
+		return compareVector(name, cmd, exp, v, skipValues, epsilon)
 	case promql.Matrix:
 		if exp.empty {
 			if len(v) != 0 {
@@ -240,7 +252,7 @@ func compareResult(name string, cmd evalCmd, exp expectations, data any, skipVal
 			}
 			return nil
 		}
-		return compareMatrix(name, cmd, exp, v, skipValues)
+		return compareMatrix(name, cmd, exp, v, skipValues, epsilon)
 	case logqlmodel.Streams:
 		if exp.empty {
 			if len(v) != 0 {
@@ -254,7 +266,7 @@ func compareResult(name string, cmd evalCmd, exp expectations, data any, skipVal
 	}
 }
 
-func compareScalar(name string, exp expectations, s promql.Scalar, skipValues bool) error {
+func compareScalar(name string, exp expectations, s promql.Scalar, skipValues bool, epsilon float64) error {
 	if len(exp.series) > 0 {
 		return fmt.Errorf("%s: expected series, got a scalar", name)
 	}
@@ -264,13 +276,13 @@ func compareScalar(name string, exp expectations, s promql.Scalar, skipValues bo
 	if exp.scalar == nil {
 		return fmt.Errorf("%s: scalar result but no scalar value expected", name)
 	}
-	if !skipValues && !floatsEqual(*exp.scalar, s.V) {
+	if !skipValues && !floatsEqual(*exp.scalar, s.V, epsilon) {
 		return fmt.Errorf("%s: scalar mismatch: want %v, got %v", name, *exp.scalar, s.V)
 	}
 	return nil
 }
 
-func compareVector(name string, cmd evalCmd, exp expectations, v promql.Vector, skipValues bool) error {
+func compareVector(name string, cmd evalCmd, exp expectations, v promql.Vector, skipValues bool, epsilon float64) error {
 	if exp.scalar != nil {
 		return fmt.Errorf("%s: expected a scalar, got a vector", name)
 	}
@@ -299,7 +311,7 @@ func compareVector(name string, cmd evalCmd, exp expectations, v promql.Vector, 
 			if v[i].T != wantTS {
 				return fmt.Errorf("%s: series %s has timestamp %dms, expected %dms", name, v[i].Metric.String(), v[i].T, wantTS)
 			}
-			if !skipValues && !floatsEqual(es.samples[0].value, v[i].F) {
+			if !skipValues && !floatsEqual(es.samples[0].value, v[i].F, epsilon) {
 				return fmt.Errorf("%s: series %s (position %d) value mismatch: want %v, got %v", name, es.labels, i, es.samples[0].value, v[i].F)
 			}
 		}
@@ -340,14 +352,14 @@ func compareVector(name string, cmd evalCmd, exp expectations, v promql.Vector, 
 		if !ok {
 			return fmt.Errorf("%s: missing expected series %s; got %v", name, k, got)
 		}
-		if !skipValues && !floatsEqual(wv, gv) {
+		if !skipValues && !floatsEqual(wv, gv, epsilon) {
 			return fmt.Errorf("%s: series %s value mismatch: want %v, got %v", name, k, wv, gv)
 		}
 	}
 	return nil
 }
 
-func compareMatrix(name string, cmd evalCmd, exp expectations, m promql.Matrix, skipValues bool) error {
+func compareMatrix(name string, cmd evalCmd, exp expectations, m promql.Matrix, skipValues bool, epsilon float64) error {
 	if exp.scalar != nil {
 		return fmt.Errorf("%s: expected a scalar, got a matrix", name)
 	}
@@ -421,7 +433,7 @@ func compareMatrix(name string, cmd evalCmd, exp expectations, m promql.Matrix, 
 			if !has {
 				return fmt.Errorf("%s: series %s missing point at step %d (t=%dms)", name, k, i, ts)
 			}
-			if !skipValues && !floatsEqual(p.value, gv) {
+			if !skipValues && !floatsEqual(p.value, gv, epsilon) {
 				return fmt.Errorf("%s: series %s step %d value mismatch: want %v, got %v", name, k, i, p.value, gv)
 			}
 		}
@@ -490,7 +502,9 @@ func streamKeys(m map[string][]push.Entry) []string {
 	return out
 }
 
-func floatsEqual(a, b float64) bool {
+// floatsEqual reports whether a and b are equal within epsilon: the absolute difference is within
+// epsilon, or the difference relative to the larger magnitude is.
+func floatsEqual(a, b, epsilon float64) bool {
 	if math.IsNaN(a) || math.IsNaN(b) {
 		return math.IsNaN(a) && math.IsNaN(b)
 	}
@@ -498,10 +512,10 @@ func floatsEqual(a, b float64) bool {
 		return a == b
 	}
 	diff := math.Abs(a - b)
-	if diff <= defaultEpsilon {
+	if diff <= epsilon {
 		return true
 	}
-	return diff/math.Max(math.Abs(a), math.Abs(b)) <= defaultEpsilon
+	return diff/math.Max(math.Abs(a), math.Abs(b)) <= epsilon
 }
 
 func keys(m map[string]map[int64]float64) []string {

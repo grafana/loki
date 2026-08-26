@@ -366,6 +366,7 @@ func (*QuantileSketchMatrixStepEvaluator) Explain(parent Node) {
 type QuantileSketchVectorStepEvaluator struct {
 	inner    StepEvaluator
 	quantile float64
+	err      error
 }
 
 var _ StepEvaluator = NewQuantileSketchVectorStepEvaluator(nil, 0)
@@ -387,7 +388,11 @@ func (e *QuantileSketchVectorStepEvaluator) Next() (bool, int64, StepResult) {
 	vec := make(promql.Vector, len(quantileSketchVec))
 
 	for i, quantileSketch := range quantileSketchVec {
-		f, _ := quantileSketch.F.Quantile(e.quantile)
+		f, err := quantileSketch.F.Quantile(e.quantile)
+		if err != nil {
+			e.err = err
+			return false, 0, SampleVector{}
+		}
 
 		vec[i] = promql.Sample{
 			T:      quantileSketch.T,
@@ -401,4 +406,4 @@ func (e *QuantileSketchVectorStepEvaluator) Next() (bool, int64, StepResult) {
 
 func (*QuantileSketchVectorStepEvaluator) Close() error { return nil }
 
-func (*QuantileSketchVectorStepEvaluator) Error() error { return nil }
+func (e *QuantileSketchVectorStepEvaluator) Error() error { return e.err }

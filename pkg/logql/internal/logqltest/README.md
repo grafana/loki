@@ -155,22 +155,43 @@ eval instant at 60s sort(count_over_time({app=~"a|b"}[1m]))
 
 `expect ordered` is instant-only; use distinct, non-`NaN` values so the order is unambiguous.
 
-### Skipping value comparison on one stack
+### Relaxing or skipping value comparison on one stack
 
-Every query runs on multiple [execution stacks](#execution-stacks). When one stack returns values that
-legitimately differ skip its value check while keeping every other stack exact:
+Every query runs on multiple [execution stacks](#execution-stacks). Loosen the comparison, or skip
+it, when one stack legitimately returns different values. Keep every other stack exact.
+
+`expect values-toleration <epsilon> on "<stack>"` compares values on the named stack, but with
+`<epsilon>` in place of the default `1e-9` tolerance. Use this when a stack's result is
+approximate, but the query still exercises a real assertion — e.g. a sharded query whose value goes
+through a probabilistic sketch:
 
 ```
 eval instant at 60s quantile_over_time(0.5, {app="a"} | logfmt | unwrap v [1m]) by (pod)
-  skip values-comparison on "query-frontend + query-scheduler (sharding)"
+  expect values-toleration 0.02 on "query-frontend + query-scheduler (sharding)"
   {pod="1"} 3
   {pod="2"} 15
+```
+
+- `<epsilon>` is a plain positive, finite number, the same dual absolute/relative bound the
+  default `1e-9` uses: a match if the absolute difference is within `<epsilon>`, or the
+  difference relative to the larger magnitude is.
+- May repeat for multiple stacks, one directive per stack.
+
+`skip values-comparison on "<stack>"` drops the value check entirely for the named stack:
+
+```
+eval instant at 60s some_query_with_a_nondeterministic_value({app="a"}[1m])
+  skip values-comparison on "query-frontend + query-scheduler (sharding)"
+  {app="a"} 3
 ```
 
 - `<stack>` is the exact stack name, in double quotes.
 - The named stack still runs the query, must not error, and is still checked for series/stream
   count, sample/line count, and timestamps. Only the float value comparison (or, for a
   log-selection query, the log line text) is skipped.
+
+A stack can have `skip values-comparison` or `expect values-toleration`, not both — they're
+contradictory ("don't compare" vs. "compare, loosely").
 
 ## Execution stacks
 
