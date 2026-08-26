@@ -439,6 +439,15 @@ func (m ShardMapper) mapLabelAggregationExpr(expr *syntax.LabelAggregationExpr, 
 		return noOp(expr, m.shards.Resolver())
 	}
 
+	shards, bytesPerShard, err := m.shards.Shards(expr)
+	if err != nil {
+		return nil, 0, err
+	}
+	if len(shards) == 0 {
+		// with no shards, we don't need to send sketches over the network. Instead the downstream tasks derive the estimate and send it back directly.
+		return noOp(expr, m.shards.Resolver())
+	}
+
 	// approx_count_distinct(field, range) by (g) ->
 	// CountDistinctSketchEval(
 	//   CountDistinctSketchMerge(
@@ -446,27 +455,14 @@ func (m ShardMapper) mapLabelAggregationExpr(expr *syntax.LabelAggregationExpr, 
 	//   )
 	// )
 	sketchExpr := syntax.NewCountDistinctSketchFromLabelAggregation(expr)
-
-	shards, bytesPerShard, err := m.shards.Shards(expr)
-	if err != nil {
-		return nil, 0, err
-	}
-
-	downstreams := make([]DownstreamSampleExpr, 0, max(1, len(shards)))
-	if len(shards) == 0 {
-		// Preserve merge-before-estimate even with zero shards.
+	downstreams := make([]DownstreamSampleExpr, 0, len(shards))
+	for i := range shards {
 		downstreams = append(downstreams, DownstreamSampleExpr{
+			shard:      &shards[i],
 			SampleExpr: sketchExpr,
 		})
-	} else {
-		for i := range shards {
-			downstreams = append(downstreams, DownstreamSampleExpr{
-				shard:      &shards[i],
-				SampleExpr: sketchExpr,
-			})
-		}
-		r.Add(len(shards), MetricsKey)
 	}
+	r.Add(len(shards), MetricsKey)
 
 	return &CountDistinctSketchEvalExpr{
 		mergeExpr: &CountDistinctSketchMergeExpr{

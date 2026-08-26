@@ -23,16 +23,13 @@ func TestApproxCountDistinctShardMapping(t *testing.T) {
 		require.Equal(t, removeWhiteSpace(ast.String()), removeWhiteSpace(mapped.String()))
 	})
 
-	t.Run("zero shards still merge before estimate", func(t *testing.T) {
+	t.Run("zero shards is a no-op", func(t *testing.T) {
 		m := NewShardMapper(NewPowerOfTwoStrategy(ConstantShards(0)), nilShardMetrics, []string{SupportApproxCountDistinct})
 		ast, err := syntax.ParseExpr(`approx_count_distinct(mac, {foo="bar"}[5m]) by (version)`)
 		require.NoError(t, err)
 		mapped, _, err := m.Map(ast, nilShardMetrics.downstreamRecorder(), true)
 		require.NoError(t, err)
-		require.Equal(t,
-			removeWhiteSpace(`CountDistinctSketchEval<CountDistinctSketchMerge<downstream<__count_distinct_sketch__(mac,{foo="bar"}[5m])by(version),shard=<nil>>>>`),
-			removeWhiteSpace(mapped.String()),
-		)
+		require.Equal(t, removeWhiteSpace(ast.String()), removeWhiteSpace(mapped.String()))
 	})
 
 	t.Run("ungrouped by ()", func(t *testing.T) {
