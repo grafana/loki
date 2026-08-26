@@ -90,7 +90,7 @@ func (c *Context) doLogObjectMerge(ctx context.Context, node *physical.LogMerge)
 	calc := dataobjindex.NewCalculator(indexBuilder)
 
 	sections, remaps := sectionsWithRemaps(sources, table)
-	merged, err := sortmerge.IteratorWithStreamRemap(ctx, sections, remaps, node.SortSchema)
+	merged, err := sortmerge.MixedObjectIterator(ctx, sections, remaps, node.SortSchema)
 	if err != nil {
 		return nil, fmt.Errorf("starting k-way log merge: %w", err)
 	}

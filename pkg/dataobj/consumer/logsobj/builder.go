@@ -259,7 +259,7 @@ func (b *Builder) IsFull() bool {
 }
 
 func (b *Builder) getSortKey(tenant string, ls labels.Labels) (string, error) {
-	sortKey, err := ComputeSortKey(ls, b.schemaLabelsFor(tenant))
+	sortKey, err := ComputeSchemaKey(ls, b.schemaLabelsFor(tenant))
 	if err != nil {
 		return "", fmt.Errorf("compute sort key for tenant %s: %w", tenant, err)
 	}
@@ -344,7 +344,7 @@ func (b *Builder) appendAll(tenant string, ls labels.Labels, recordTime time.Tim
 	sb, lb := b.buildersFor(tenant)
 
 	for entry, size := range entriesIter {
-		entry.SortKey = streamSortKey
+		entry.SchemaKey = streamSortKey
 		entry.ShardBucket = streamShard
 		entry.StreamHash = streamHash
 		entry.StreamID = sb.Record(ls, entry.Timestamp, size)
@@ -524,7 +524,7 @@ func (b *Builder) CopyAndSort(ctx context.Context, obj *dataobj.Object) (*dataob
 			return nil, nil, fmt.Errorf("opening streams section for tenant %s: %w", tenant, err)
 		}
 
-		streamIter, streamRemap, err := sortAndRemapStreams(streamsSectionIter(ctx, streamsSection), tenant, schemaLabels, streamsSection.NumRows())
+		streamIter, remappedStreams, err := sortAndRemapStreams(streamsSectionIter(ctx, streamsSection), tenant, schemaLabels, streamsSection.NumRows())
 		if err != nil {
 			return nil, nil, fmt.Errorf("building stream ID remap for tenant %s: %w", tenant, err)
 		}
@@ -533,7 +533,7 @@ func (b *Builder) CopyAndSort(ctx context.Context, obj *dataobj.Object) (*dataob
 			return nil, nil, err
 		}
 
-		logsIter, iterErr := sortedLogsIter(ctx, sections, streamRemap)
+		logsIter, iterErr := sortedLogsIter(ctx, sections, remappedStreams)
 		if iterErr != nil {
 			return nil, nil, fmt.Errorf("creating sort iterator: %w", iterErr)
 		}
@@ -659,9 +659,9 @@ func (b *Builder) buildStreamSection(ctx context.Context, tenant string, iter re
 	return b.builder.Append(sb)
 }
 
-type streamWithRemap struct {
-	stream streams.Stream
-	remap  streamRemap
+type mappedStream struct {
+	stream  streams.Stream
+	mapping rankedSortKey
 }
 
 // sortAndRemapStreams orders the streams by the globally stable stream order
@@ -677,58 +677,55 @@ type streamWithRemap struct {
 // compression and pruning at query time.
 //
 // Log records must also be remapped to keep their stream references valid.
-func sortAndRemapStreams(iter result.Seq[streams.Stream], tenant string, schemaLabels []string, numStreams int) (result.Seq[streams.Stream], []streamRemap, error) {
-	collected := make([]streamWithRemap, 0, numStreams)
-	remap := make([]streamRemap, numStreams+1)
+func sortAndRemapStreams(iter result.Seq[streams.Stream], tenant string, schemaLabels []string, numStreams int) (result.Seq[streams.Stream], []rankedSortKey, error) {
+	allStreams := make([]mappedStream, 0, numStreams)
+	lookup := make([]rankedSortKey, numStreams+1)
 
 	for res := range iter {
 		stream, err := res.Value()
 		if err != nil {
 			return nil, nil, err
 		}
-		r, err := newStreamRemap(stream.Labels, schemaLabels)
+		r, err := emptyRankedSortKey(stream.Labels, schemaLabels)
 		if err != nil {
 			return nil, nil, err
 		}
-		collected = append(collected, streamWithRemap{
-			stream: stream,
-			remap:  r,
+		allStreams = append(allStreams, mappedStream{
+			stream:  stream,
+			mapping: r,
 		})
 	}
 
-	slices.SortFunc(collected, func(a, b streamWithRemap) int {
-		if res := a.remap.StreamSort.Compare(b.remap.StreamSort); res != 0 {
-			return res
-		}
-		return labels.Compare(a.stream.Labels, b.stream.Labels)
+	slices.SortFunc(allStreams, func(a, b mappedStream) int {
+		return streams.CompareSortKey(a.mapping.SortKey, b.mapping.SortKey)
 	})
 
-	for i := range collected {
-		oldID := collected[i].stream.ID
+	for i := range allStreams {
+		oldID := allStreams[i].stream.ID
 		newID := int64(i + 1)
 
 		if oldID <= 0 || oldID > int64(numStreams) {
 			return nil, nil, fmt.Errorf("stream id %d out of range for tenant %s with %d streams", oldID, tenant, numStreams)
 		}
-		if prev := remap[oldID]; prev.newID != 0 {
-			return nil, nil, fmt.Errorf("duplicate stream id for tenant %s: old id %d maps to both %d and %d", tenant, oldID, prev.newID, newID)
+		if prev := lookup[oldID]; prev.rank != 0 {
+			return nil, nil, fmt.Errorf("duplicate stream id for tenant %s: old id %d maps to both %d and %d", tenant, oldID, prev.rank, newID)
 		}
 
-		collected[i].remap.newID = newID
-		remap[oldID] = collected[i].remap
+		allStreams[i].mapping.rank = newID
+		lookup[oldID] = allStreams[i].mapping
 
 		// Remap to the new stream ID.
-		collected[i].stream.ID = newID
+		allStreams[i].stream.ID = newID
 	}
 
 	return result.Iter(func(yield func(streams.Stream) bool) error {
-		for _, entry := range collected {
+		for _, entry := range allStreams {
 			if !yield(entry.stream) {
 				return nil
 			}
 		}
 		return nil
-	}), remap, nil
+	}), lookup, nil
 }
 
 func streamsSectionIter(ctx context.Context, section *streams.Section) result.Seq[streams.Stream] {
@@ -746,9 +743,9 @@ func streamsSectionIter(ctx context.Context, section *streams.Section) result.Se
 	})
 }
 
-// ComputeSortKey builds a composite sort key from stream labels using FQN entries.
+// ComputeSchemaKey builds a composite sort key from stream labels using FQN entries.
 // Each FQN must be "label:<name>" — validation.SortSchema.Validate() enforces this.
-func ComputeSortKey(ls labels.Labels, schemaLabels []string) (string, error) {
+func ComputeSchemaKey(ls labels.Labels, schemaLabels []string) (string, error) {
 	if len(schemaLabels) == 0 {
 		return "", nil
 	}

@@ -8,16 +8,17 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/dataset"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/result"
+	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
 )
 
 func TestCompareForSortSchema(t *testing.T) {
-	order := []StreamSort{
+	schemas := []streams.SortKey{
 		{}, // [0] unused
-		{Shard: 1, Key: "a", Hash: 2},
-		{Shard: 0, Key: "z", Hash: 9},
-		{Shard: 1, Key: "a", Hash: 1},
+		{ShardBucket: 1, SchemaKey: "a", Hash: 2},
+		{ShardBucket: 0, SchemaKey: "z", Hash: 9},
+		{ShardBucket: 1, SchemaKey: "a", Hash: 1},
 	}
-	less := CompareForSortSchema(order)
+	less := CompareByStreamSchema(schemas)
 	row := func(id, ts int64) result.Result[dataset.Row] {
 		return result.Value(dataset.Row{
 			Values: []dataset.Value{dataset.Int64Value(id), dataset.Int64Value(ts)},
@@ -37,9 +38,9 @@ func TestCompareForSortSchema(t *testing.T) {
 }
 
 func TestStreamSortCompare(t *testing.T) {
-	a := StreamSort{Shard: 0, Key: "z", Hash: 9}
-	b := StreamSort{Shard: 1, Key: "a", Hash: 1}
-	c := StreamSort{Shard: 1, Key: "a", Hash: 2}
+	a := streams.SortKey{ShardBucket: 0, SchemaKey: "z", Hash: 9}
+	b := streams.SortKey{ShardBucket: 1, SchemaKey: "a", Hash: 1}
+	c := streams.SortKey{ShardBucket: 1, SchemaKey: "a", Hash: 2}
 
 	require.Negative(t, a.Compare(b))
 	require.Negative(t, b.Compare(c))
