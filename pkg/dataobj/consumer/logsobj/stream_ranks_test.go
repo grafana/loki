@@ -20,7 +20,7 @@ func TestRankStreams_SameLabelsShareID(t *testing.T) {
 		5: {ID: 5, Labels: ls.Copy(), ShardBucket: int64(streams.ShardBucket(ls))},
 	}
 
-	ranks, err := RankStreams([]string{"label:app"}, a, b)
+	ranks, err := RankMixedStreams([]string{"label:app"}, a, b)
 	require.NoError(t, err)
 
 	leftID := ranks.Resolve(0, 2)
