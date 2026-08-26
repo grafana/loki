@@ -2,7 +2,7 @@ package aws
 
 import (
 	"context"
-	"crypto/sha256"
+	cryptosha256 "crypto/sha256"
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/base64"
@@ -540,7 +540,7 @@ func (a *S3ObjectClient) PutObject(ctx context.Context, objectKey string, object
 		// encoding is an AWS-proprietary protocol that S3-compatible backends
 		// such as OpenStack Swift do not support, causing 501 NotImplemented
 		// errors (grafana/loki#21791).
-		h := sha256.New()
+		h := cryptosha256.New()
 		if _, err := io.Copy(h, readSeeker); err != nil {
 			return fmt.Errorf("computing sha256 checksum for PutObject: %w", err)
 		}
