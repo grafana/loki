@@ -2,6 +2,7 @@ package retention
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path"
@@ -13,6 +14,7 @@ import (
 
 	"github.com/grafana/dskit/backoff"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/assert"
@@ -24,11 +26,18 @@ import (
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql/log"
 	"github.com/grafana/loki/v3/pkg/storage/chunk"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/client"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client/local"
 	"github.com/grafana/loki/v3/pkg/util/filter"
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
 	"github.com/grafana/loki/v3/pkg/validation"
 )
+
+// newTestChunkRewriter builds a chunkRewriter with the default (strict) handling of chunks missing
+// from the storage. Tests which exercise ignoreMissingChunks call newChunkRewriter directly.
+func newTestChunkRewriter(chunkClient client.Client, tableName string, chunkIndexer chunkIndexer) *chunkRewriter {
+	return newChunkRewriter(chunkClient, tableName, chunkIndexer, false, prometheus.NewCounter(prometheus.CounterOpts{Name: "missing_chunks_total"}))
+}
 
 type mockChunkClient struct {
 	mtx              sync.Mutex
@@ -175,7 +184,7 @@ func Test_Retention(t *testing.T) {
 			sweep.Start()
 			defer sweep.Stop()
 
-			marker, err := NewMarker(markerStorageClient, expiration, time.Hour, nil, prometheus.NewRegistry())
+			marker, err := NewMarker(markerStorageClient, expiration, time.Hour, nil, false, prometheus.NewRegistry())
 			require.NoError(t, err)
 			for _, table := range store.indexTables() {
 				_, _, err := marker.FindAndMarkChunksForDeletion(context.Background(), table.name, "", table, util_log.Logger)
@@ -340,7 +349,7 @@ func TestChunkRewriterPreservesIngestedAtWhenReindexing(t *testing.T) {
 	indexTable := indexTables[0]
 
 	// Rewrite the chunk, deleting only its first hour so a new (filtered) chunk is produced and re-indexed.
-	cr := newChunkRewriter(store.chunkClient, indexTable.name, indexTable)
+	cr := newTestChunkRewriter(store.chunkClient, indexTable.name, indexTable)
 	wroteChunks, linesDeleted, err := cr.rewriteChunk(context.Background(), []byte(originalChunk.UserID), Chunk{
 		ChunkID: getChunkID(originalChunk.ChunkRef),
 		From:    originalChunk.From,
@@ -360,6 +369,108 @@ func TestChunkRewriterPreservesIngestedAtWhenReindexing(t *testing.T) {
 	require.Len(t, chunks, 2)
 	for _, chk := range chunks {
 		require.Equal(t, ingestedAt, chk.IngestedAt)
+	}
+}
+
+// missingChunkClient wraps a chunk client and reports the chunk as missing from the storage on
+// GetChunks, either through a not-found error or through an empty response, depending on how the
+// underlying object client surfaces the condition.
+type missingChunkClient struct {
+	client.Client
+
+	err            error
+	isNotFoundErr  bool
+	getChunksCalls int
+}
+
+func (m *missingChunkClient) GetChunks(_ context.Context, _ []chunk.Chunk) ([]chunk.Chunk, error) {
+	m.getChunksCalls++
+	return nil, m.err
+}
+
+func (m *missingChunkClient) IsChunkNotFoundErr(err error) bool {
+	return m.isNotFoundErr && err != nil
+}
+
+func TestChunkRewriterMissingChunk(t *testing.T) {
+	now := model.Now()
+	schema := allSchemas[3] // v12
+	tableInterval := ExtractIntervalFromTableName(schema.config.IndexTables.TableFor(now))
+
+	chk := createChunk(t, "1", labels.FromStrings("foo", "bar"), tableInterval.Start, tableInterval.Start.Add(time.Hour))
+
+	for _, tc := range []struct {
+		name                string
+		ignoreMissingChunks bool
+		// err is what the wrapped chunk client returns from GetChunks. A nil err with no chunks
+		// covers clients which report a missing chunk through an empty response.
+		err                 error
+		isNotFoundErr       bool
+		expectedErrContains string
+		expectLinesDeleted  bool
+		expectMissingCount  float64
+	}{
+		{
+			name:                "not found error, flag disabled",
+			err:                 client.ErrStorageObjectNotFound,
+			isNotFoundErr:       true,
+			expectedErrContains: "object not found in storage",
+		},
+		{
+			name:                "empty response, flag disabled",
+			expectedErrContains: "expected 1 entry for chunk",
+		},
+		{
+			name:                "not found error, flag enabled",
+			ignoreMissingChunks: true,
+			err:                 client.ErrStorageObjectNotFound,
+			isNotFoundErr:       true,
+			expectLinesDeleted:  true,
+			expectMissingCount:  1,
+		},
+		{
+			name:                "empty response, flag enabled",
+			ignoreMissingChunks: true,
+			expectLinesDeleted:  true,
+			expectMissingCount:  1,
+		},
+		{
+			// Errors which are not a missing chunk must keep failing the operation so that we do
+			// not drop index entries of chunks which are still in the storage.
+			name:                "other error, flag enabled",
+			ignoreMissingChunks: true,
+			err:                 errors.New("failed to reach the object storage"),
+			expectedErrContains: "failed to reach the object storage",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			chunkClient := &missingChunkClient{err: tc.err, isNotFoundErr: tc.isNotFoundErr}
+			missingChunksTotal := prometheus.NewCounter(prometheus.CounterOpts{Name: "missing_chunks_total"})
+			indexTable := newTable(schema.config.IndexTables.TableFor(now))
+
+			cr := newChunkRewriter(chunkClient, indexTable.name, indexTable, tc.ignoreMissingChunks, missingChunksTotal)
+			wroteChunks, linesDeleted, err := cr.rewriteChunk(context.Background(), []byte(chk.UserID), Chunk{
+				ChunkID: getChunkID(chk.ChunkRef),
+				From:    chk.From,
+				Through: chk.Through,
+			}, tableInterval, func(_ time.Time, _ string, _ labels.Labels) bool {
+				return true
+			})
+
+			require.Equal(t, 1, chunkClient.getChunksCalls)
+			if tc.expectedErrContains != "" {
+				require.ErrorContains(t, err, tc.expectedErrContains)
+				require.False(t, linesDeleted)
+			} else {
+				require.NoError(t, err)
+				require.Equal(t, tc.expectLinesDeleted, linesDeleted)
+			}
+
+			// A missing chunk is never rewritten, so nothing should be indexed or uploaded.
+			require.False(t, wroteChunks)
+			require.Empty(t, indexTable.indexedIngestedAt)
+			require.Equal(t, tc.expectMissingCount, testutil.ToFloat64(missingChunksTotal))
+		})
 	}
 }
 
@@ -597,7 +708,7 @@ func TestChunkRewriter(t *testing.T) {
 			indexTables := store.indexTables()
 			require.Len(t, indexTables, len(tt.expectedRespByTables))
 			for _, indexTable := range indexTables {
-				cr := newChunkRewriter(store.chunkClient, indexTable.name, indexTable)
+				cr := newTestChunkRewriter(store.chunkClient, indexTable.name, indexTable)
 
 				wroteChunks, linesDeleted, err := cr.rewriteChunk(context.Background(), []byte(tt.chunk.UserID), Chunk{
 					ChunkID: getChunkID(tt.chunk.ChunkRef),
@@ -1041,7 +1152,7 @@ func TestMarkForDelete_SeriesCleanup(t *testing.T) {
 			for i, table := range tables {
 				seriesCleanRecorder := newSeriesCleanRecorder(table)
 
-				cr := newChunkRewriter(store.chunkClient, table.name, table)
+				cr := newTestChunkRewriter(store.chunkClient, table.name, table)
 				marker := &noopWriter{}
 				empty, isModified, err := markForDelete(context.Background(), 0, table.name, marker, seriesCleanRecorder, expirationChecker, cr, util_log.Logger)
 				require.NoError(t, err)
@@ -1086,7 +1197,7 @@ func TestDeleteTimeout(t *testing.T) {
 			&noopWriter{},
 			newSeriesCleanRecorder(table),
 			expirationChecker,
-			newChunkRewriter(store.chunkClient, table.name, table),
+			newTestChunkRewriter(store.chunkClient, table.name, table),
 			util_log.Logger,
 		)
 

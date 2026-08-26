@@ -3099,6 +3099,14 @@ retention_backoff_config:
 # CLI flag: -compactor.delete-max-interval
 [delete_max_interval: <duration> | default = 24h]
 
+# Do not fail processing of a delete request with a line filter when a chunk it
+# needs to rebuild is indexed but missing from the object storage. When enabled,
+# the index entry of the missing chunk is dropped and processing continues.
+# Chunks skipped this way are counted by the
+# loki_compactor_deletion_missing_chunks_total metric.
+# CLI flag: -compactor.deletion-ignore-missing-chunks
+[deletion_ignore_missing_chunks: <boolean> | default = false]
+
 # Maximum number of tables to compact in parallel. While increasing this value,
 # please make sure compactor has enough disk space allocated to be able to store
 # and compact as many tables.
