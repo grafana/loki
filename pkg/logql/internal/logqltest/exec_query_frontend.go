@@ -218,7 +218,7 @@ func (s *queryFrontendExecutionStack) querier() logql.Querier {
 
 func (s *queryFrontendExecutionStack) eval(cmd evalCmd) (logqlmodel.Result, error) {
 	var lokiReq queryrangebase.Request
-	if cmd.instant {
+	if cmd.mode == evalInstant {
 		lokiReq = &queryrange.LokiInstantRequest{
 			Query:     cmd.query,
 			Limit:     1000,

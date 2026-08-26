@@ -7,10 +7,11 @@
     { "include": "#clear-command" },
     { "include": "#eval-instant" },
     { "include": "#eval-range" },
+    { "include": "#eval-select" },
     { "include": "#eval-fallback" },
     { "include": "#expect-annotation" },
     { "include": "#skip-directive" },
-    { "include": "#series-expectation" },
+    { "include": "#result-expectation" },
     { "include": "#scalar-expectation" },
     { "include": "#comment" }
   ],
@@ -79,9 +80,26 @@
       ]
     },
 
+    "eval-select": {
+      "name": "meta.command.eval.logqltest",
+      "begin": "^[ \\t]*(eval)[ \\t]+(select)[ \\t]+(from)[ \\t]+(\\S+)[ \\t]+(to)[ \\t]+(\\S+)[ \\t]+",
+      "beginCaptures": {
+        "1": { "name": "keyword.control.eval.logqltest" },
+        "2": { "name": "keyword.other.eval-mode.logqltest" },
+        "3": { "name": "keyword.other.eval-argument.logqltest" },
+        "4": { "name": "constant.numeric.duration.logqltest" },
+        "5": { "name": "keyword.other.eval-argument.logqltest" },
+        "6": { "name": "constant.numeric.duration.logqltest" }
+      },
+      "end": "$",
+      "patterns": [
+        { "include": "#query" }
+      ]
+    },
+
     "eval-fallback": {
       "comment": "Colors the keyword on an eval line the stricter rules above did not match, e.g. while it is still being typed.",
-      "match": "^[ \\t]*(eval)\\b[ \\t]*(instant|range)?\\b",
+      "match": "^[ \\t]*(eval)\\b[ \\t]*(instant|range|select)?\\b",
       "captures": {
         "1": { "name": "keyword.control.eval.logqltest" },
         "2": { "name": "keyword.other.eval-mode.logqltest" }
@@ -124,13 +142,17 @@
       }
     },
 
-    "series-expectation": {
-      "name": "meta.expectation.series.logqltest",
+    "result-expectation": {
+      "comment": "A series line (`{labels} p0 p1 ...`) or a log-stream line (`{labels} \"line\" @ ts`); both start with a label set, so both token kinds are included here.",
+      "name": "meta.expectation.result.logqltest",
       "begin": "^[ \\t]*(?=\\{)",
       "end": "$",
       "patterns": [
         { "include": "#label-set" },
         { "include": "#comment" },
+        { "include": "#at-clause" },
+        { "include": "#log-line" },
+        { "include": "#raw-log-line" },
         { "include": "#sample" }
       ]
     },
