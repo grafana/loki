@@ -104,6 +104,39 @@ func TestEncoderDecoderEmptyStream(t *testing.T) {
 	require.Empty(t, decodedStream.Entries)
 }
 
+func TestDecoderDoesNotCarryFieldsBetweenRecords(t *testing.T) {
+	decoder, err := NewDecoder()
+	require.NoError(t, err)
+
+	encode := func(stream logproto.Stream) []byte {
+		records, err := Encode(0, "test-tenant", stream, 10<<20)
+		require.NoError(t, err)
+		require.Len(t, records, 1)
+		return records[0].Value
+	}
+
+	withHash := encode(logproto.Stream{
+		Labels:  `{app="test"}`,
+		Hash:    999,
+		Entries: []logproto.Entry{{Timestamp: time.Unix(0, 1), Line: "first"}},
+	})
+	withoutHash := encode(logproto.Stream{
+		Labels:  `{app="other"}`,
+		Entries: []logproto.Entry{{Timestamp: time.Unix(0, 2), Line: "second"}},
+	})
+
+	decoded, _, err := decoder.Decode(withHash)
+	require.NoError(t, err)
+	require.Equal(t, uint64(999), decoded.Hash)
+
+	decoded, ls, err := decoder.Decode(withoutHash)
+	require.NoError(t, err)
+	require.Zero(t, decoded.Hash, "hash of the previous record leaked into this one")
+	require.Equal(t, `{app="other"}`, ls.String())
+	require.Len(t, decoded.Entries, 1)
+	require.Equal(t, "second", decoded.Entries[0].Line)
+}
+
 func BenchmarkEncodeDecode(b *testing.B) {
 	decoder, _ := NewDecoder()
 	stream := generateStream(1000, 200)
