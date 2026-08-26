@@ -393,7 +393,7 @@ func TestBuildGlobalStreamTable_SameLabelsShareID(t *testing.T) {
 	require.NotEqual(t, aID, table.Resolve(0, 7))
 
 	count := table.Size()
-	require.Len(t, count, 2)
+	require.Equal(t, count, 2)
 	for id := int64(2); id <= int64(count); id++ {
 		prev := table.ByID(id - 1)
 		curr := table.ByID(id)
