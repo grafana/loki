@@ -6,9 +6,6 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// substring of the parse error logql returns for selectors that match everything
-const errAtleastOneMatcherRequired = "queries require at least one regexp or equality matcher"
-
 func TestParseLogQLExpressionForDeletion(t *testing.T) {
 	for _, tc := range []struct {
 		name        string
@@ -17,8 +14,8 @@ func TestParseLogQLExpressionForDeletion(t *testing.T) {
 	}{
 		{"invalid logql", "gjgjg ggj", "syntax error"},
 		{"pipeline expression with invalid line filter", `{env="dev", secret="true"} |= social sec number`, "syntax error"},
-		{"matcher matching everything", `{env=~".*"}`, errAtleastOneMatcherRequired},
-		{"only empty-compatible matchers", `{env!="dev"}`, errAtleastOneMatcherRequired},
+		{"matcher matching everything", `{env=~".*"}`, "queries require at least one regexp or equality matcher"},
+		{"only empty-compatible matchers", `{env!="dev"}`, "queries require at least one regexp or equality matcher"},
 		{"unclosed character class in line filter", `{env="dev"} |~ "["`, "error parsing regexp: missing closing ]"},
 		{"unclosed character class in negated line filter", `{env="dev"} !~ "["`, "error parsing regexp: missing closing ]"},
 		{"invalid repetition in label filter regex", `{env="dev"} | addr=~"*"`, "error parsing regexp: missing argument to repetition operator"},

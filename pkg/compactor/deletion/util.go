@@ -12,9 +12,7 @@ var (
 	errInvalidQuery = errors.New("invalid query expression")
 )
 
-// parseDeletionQuery checks if the given logQL is valid for deletions. It applies the
-// same validation we apply to queries on the read path, e.g. requiring at least one
-// matcher that does not match everything.
+// parseDeletionQuery checks if the given logQL is valid for deletions.
 func parseDeletionQuery(query string) (syntax.LogSelectorExpr, error) {
 	logSelectorExpr, err := syntax.ParseLogSelector(query, true)
 	if err != nil {
