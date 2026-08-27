@@ -14,6 +14,7 @@ func TestIsQueryShardingSupported(t *testing.T) {
 		"shardable vector aggregation":         {`sum(rate({app="a"}[1m]))`, true},
 		"top-level quantile shards":            {`quantile_over_time(0.99, {app="a"} | unwrap v [1m]) by (pod)`, true},
 		"nested quantile does not shard":       {`max(quantile_over_time(0.99, {app="a"} | unwrap v [1m]))`, false},
+		"top-level approx_count_distinct shards": {`approx_count_distinct(id, {app="a"} | logfmt [1m]) by (pod)`, true},
 		"non-shardable range op":               {`stddev_over_time({app="a"} | unwrap v [1m])`, false},
 		"vector() literal does not shard":      {`vector(1)`, false},
 		"unparseable query is unsupported":     {`}{ not a query`, false},

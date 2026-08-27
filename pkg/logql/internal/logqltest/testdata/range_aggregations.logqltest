@@ -341,6 +341,141 @@ eval instant at 60s quantile_over_time(0.5, {app="a"} | unwrap v [1m])
 eval range from 30s to 60s step 30s quantile_over_time(0.5, {app="a"} | unwrap v [1m])
   {app="a"} 2 2
 
+# approx_count_distinct()
+#
+# A duplicate id=1 does not raise the distinct count. A "noise" line has no id, so logfmt skips it.
+clear
+load
+  {app="a"} "id=1"   @ 10s
+  {app="a"} "id=1"   @ 15s   # duplicate
+  {app="a"} "id=2"   @ 20s
+  {app="a"} "id=3"   @ 30s
+  {app="a"} "id=4"   @ 40s
+  {app="a"} "id=5"   @ 50s
+  {app="a"} "id=6"   @ 110s
+  {app="a"} "noise"  @ 25s
+
+eval instant at 60s approx_count_distinct(id, {app="a"} | logfmt [1m])
+  {app="a"} 5
+eval range from 30s to 60s step 30s approx_count_distinct(id, {app="a"} | logfmt [1m])  # overlapping
+  {app="a"} 3 5     # (−30s,30s]={1,2,3}→3, (0s,60s]={1,2,3,4,5}→5
+eval range from 20s to 50s step 30s approx_count_distinct(id, {app="a"} | logfmt [15s]) # non-overlapping
+  {app="a"} 2 2     # (5s,20s]={1,2}→2, (35s,50s]={4,5}→2
+# The offset shifts the window back.
+eval instant at 50s approx_count_distinct(id, {app="a"} | logfmt [15s] offset 20s)
+  {app="a"} 2
+eval range from 50s to 110s step 30s approx_count_distinct(id, {app="a"} | logfmt [15s] offset 20s)
+  {app="a"} 2 1 _
+# Output gap.
+eval range from 50s to 110s step 30s approx_count_distinct(id, {app="a"} | logfmt [15s])
+  {app="a"} 2 _ 1
+# Single-sample window: the distinct count is 1.
+eval instant at 10s approx_count_distinct(id, {app="a"} | logfmt [5s])
+  {app="a"} 1
+# An empty window emits no point.
+eval instant at 80s approx_count_distinct(id, {app="a"} | logfmt [5s])
+  expect empty
+# unwrap is not supported.
+eval instant at 60s approx_count_distinct(id, {app="a"} | logfmt | unwrap id [1m])
+  expect fail msg: unwrap is not supported for approx_count_distinct()
+# without() is not supported.
+eval instant at 60s approx_count_distinct(id, {app="a"} | logfmt [1m]) without (app)
+  expect fail msg: without is not supported for approx_count_distinct()
+# The counted field must not appear in by().
+eval instant at 60s approx_count_distinct(id, {app="a"} | logfmt [1m]) by (id)
+  expect fail msg: cannot group by the counted field "id"
+# Old split-parenthesis syntax is not supported.
+eval instant at 60s approx_count_distinct(id) by (app) ({app="a"} | logfmt [1m])
+  expect fail msg: unexpected )
+# Prefix grouping is not supported.
+eval instant at 60s approx_count_distinct by (app) (id, {app="a"} | logfmt [1m])
+  expect fail
+
+# approx_count_distinct() with grouping.
+#
+# id=shared occurs in both pods. by() and by(app) keep 5 values, not 6 (3+3 would be a merge bug).
+# HLL is exact at this cardinality, so the sharding stack keeps the value check.
+clear
+load
+  {app="a", pod="1"} "id=2"      @ 20s
+  {app="a", pod="1"} "id=4"      @ 30s
+  {app="a", pod="1"} "id=shared" @ 35s
+  {app="a", pod="2"} "id=10"     @ 40s
+  {app="a", pod="2"} "id=20"     @ 50s
+  {app="a", pod="2"} "id=shared" @ 45s
+  {app="a", pod="1"} "noise"     @ 25s
+
+# Default grouping keeps stream labels and drops the counted field.
+eval instant at 60s approx_count_distinct(id, {app="a"} | logfmt [1m])
+  {app="a", pod="1"} 3
+  {app="a", pod="2"} 3
+eval instant at 60s approx_count_distinct(id, {app="a"} | logfmt [1m]) by (pod)
+  {pod="1"} 3
+  {pod="2"} 3
+eval instant at 60s approx_count_distinct(id, {app="a"} | logfmt [1m]) by (app)
+  {app="a"} 5
+eval instant at 60s approx_count_distinct(id, {app="a"} | logfmt [1m]) by ()
+  {} 5
+eval range from 60s to 70s step 10s approx_count_distinct(id, {app="a"} | logfmt [1m]) by (pod)
+  {pod="1"} 3 3
+  {pod="2"} 3 3
+
+# approx_count_distinct() extraction:
+# - Stream labels, structured metadata, logfmt, and json all supply the counted field.
+# - Missing and empty values are skipped.
+clear
+load
+  {app="a", mac="aa"} "x" @ 20s
+  {app="a", mac="bb"} "x" @ 30s
+  {app="a", mac="aa"} "x" @ 40s
+  {app="noise", mac="zz"} "x" @ 20s
+
+eval instant at 60s approx_count_distinct(mac, {app="a"}[1m])
+  {app="a"} 2
+eval range from 40s to 60s step 20s approx_count_distinct(mac, {app="a"}[1m])  # overlapping
+  {app="a"} 2 2
+eval range from 60s to 130s step 70s approx_count_distinct(mac, {app="a"}[1m]) # non-overlapping
+  {app="a"} 2 _
+
+clear
+load
+  {app="a"} "x" @ 20s [metadata mac="aa"]
+  {app="a"} "x" @ 30s [metadata mac="bb"]
+  {app="a"} "x" @ 40s [metadata mac="aa"]
+  {app="noise"} "x" @ 20s [metadata mac="zz"]
+
+eval instant at 60s approx_count_distinct(mac, {app="a"}[1m])
+  {app="a"} 2
+
+clear
+load
+  {app="a"} `{"id":"1"}` @ 20s
+  {app="a"} `{"id":"2"}` @ 30s
+  {app="a"} `{"id":"1"}` @ 40s
+  {app="a"} `{"other":1}` @ 50s
+  {app="noise"} `{"id":"z"}` @ 20s
+
+eval instant at 60s approx_count_distinct(id, {app="a"} | json [1m])
+  {app="a"} 2
+
+clear
+load
+  {app="a"} "id="      @ 20s
+  {app="a"} "other=1"  @ 30s
+  {app="a"} "id=1"     @ 40s
+  {app="a"} `id=1 bad="unterminated` @ 50s
+  {app="noise"} "id=z" @ 20s
+
+# logfmt drops empty id= unless --keep-empty. Both forms skip the empty value.
+eval instant at 60s approx_count_distinct(id, {app="a"} | logfmt [1m])
+  {app="a"} 1
+eval instant at 60s approx_count_distinct(id, {app="a"} | logfmt --keep-empty [1m])
+  {app="a"} 1
+eval instant at 60s approx_count_distinct(id, {app="a"} | logfmt --strict [1m])
+  expect fail msg: LogfmtParserErr
+eval instant at 60s approx_count_distinct(id, {app="a"} | logfmt --strict | __error__="" [1m])
+  {app="a"} 1
+
 # rate_counter() treats the unwrapped value as a counter: the per-second increase over the range with
 # counter resets added back, using Prometheus-style boundary extrapolation.
 #
