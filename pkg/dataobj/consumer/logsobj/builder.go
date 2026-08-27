@@ -169,7 +169,6 @@ type Builder struct {
 	metrics   *BuilderMetrics
 	overrides TenantOverrides
 	logger    log.Logger
-	scratch   scratch.Store
 
 	labelCache *lru.Cache[string, labels.Labels]
 
@@ -210,7 +209,6 @@ func NewBuilder(cfg BuilderConfig, scratchStore scratch.Store, metrics *BuilderM
 		metrics:    metrics,
 		logger:     logger,
 		overrides:  overrides,
-		scratch:    scratchStore,
 		labelCache: labelCache,
 		builder:    dataobj.NewBuilder(scratchStore),
 		streams:    make(map[string]*streams.Builder),
@@ -470,9 +468,9 @@ func (b *Builder) Flush() (*dataobj.Object, io.Closer, error) {
 // For each tenant, first comes the streams section, and second come the
 // new, rewritten logs sections. Tenants are sorted in natural order.
 //
-// CopyAndSort trusts persisted sort-layout metadata. If every logs section
+// CopyAndSort uses the persisted SortLayout to choose implementation. If every logs section
 // already follows its tenant's target layout, it performs only a k-way merge
-// and stream-ID remap. If any section differs, it resorts the complete object.
+// and stream-ID remap. If any section differs, it re-sorts the entire object.
 func (b *Builder) CopyAndSort(ctx context.Context, obj *dataobj.Object) (*dataobj.Object, io.Closer, error) {
 	// Must reset builder when done.
 	defer b.Reset()
