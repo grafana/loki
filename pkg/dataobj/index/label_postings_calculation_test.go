@@ -320,6 +320,69 @@ func TestLabelPostingsCalculation_TimestampsAndSizes(t *testing.T) {
 	require.Equal(t, expectedSize, row["uncompressed_size.int64"])
 }
 
+func TestLabelPostingsCalculation_ShardBucketsHandling(t *testing.T) {
+	builder := newTestIndexBuilder(t)
+	calcCtx := makeTestCalcContext(builder)
+	calc := &labelPostingsCalculation{}
+
+	require.NoError(t, calc.Prepare(context.Background(), calcCtx, nil, logs.Stats{}))
+
+	ts1 := time.Unix(10, 0).UTC()
+
+	batch := []logs.Record{
+		{StreamID: 1, Timestamp: ts1, Line: []byte("")}, // shard: 30 (svcA, prod)
+		{StreamID: 2, Timestamp: ts1, Line: []byte("")}, // shard: 25 (svcB, dev)
+		{StreamID: 3, Timestamp: ts1, Line: []byte("")}, // shard: 5  (staging)
+		{StreamID: 4, Timestamp: ts1, Line: []byte("")}, // shard: 15 (dev)
+	}
+	require.NoError(t, calc.ProcessBatch(context.Background(), calcCtx, batch))
+	require.NoError(t, calc.Flush(context.Background(), calcCtx))
+
+	tbl := flushAndReadAllPostingsTable(t, builder)
+	// 2 postings: service_name=svcA, env=prod (both from stream 1).
+	require.Len(t, tbl.rows, 5)
+
+	// Shard factor should be constant on all rows
+	for _, row := range tbl.rows {
+		require.Equal(t, int64(streams.ShardFactor), row["shard_buckets.int64"])
+	}
+
+	// Check min & max shard buckets are calculated correctly
+	// Dev is derived from two records in the same object. Prod & staging have one record.
+	type expectation struct {
+		env      string
+		minShard int64
+		maxShard int64
+	}
+	expect := []expectation{
+		{
+			env:      "prod",
+			minShard: 30,
+			maxShard: 30,
+		},
+		{
+			env:      "staging",
+			minShard: 5,
+			maxShard: 5,
+		},
+		{
+			env:      "dev",
+			minShard: 15,
+			maxShard: 25,
+		},
+	}
+	for _, exp := range expect {
+		i := findRow(tbl.rows, map[string]any{
+			"column_name.utf8": "env",
+			"label_value.utf8": exp.env,
+		})
+		require.NotEqual(t, -1, i)
+		row := tbl.rows[i]
+		require.Equal(t, exp.minShard, row["min_shard_bucket.int64"])
+		require.Equal(t, exp.maxShard, row["max_shard_bucket.int64"])
+	}
+}
+
 func TestLabelPostingsCalculation_EmptyBatch(t *testing.T) {
 	builder := newTestIndexBuilder(t)
 	calcCtx := makeTestCalcContext(builder)
