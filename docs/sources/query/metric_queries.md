@@ -158,10 +158,38 @@ Examples:
     vector(0) # will return 0
     ```
 
+## approx_count_distinct
+
+LogQL's `approx_count_distinct` function approximates the number of distinct values of a label or extracted field without creating one series per distinct value. Use it when an exact `count by` would explode series cardinality.
+
+To use `approx_count_distinct`, set `limits_config.shard_aggregations` to include `approx_count_distinct` in your [Loki configuration](https://grafana.com/docs/loki/<LOKI_VERSION>/configure/#limits_config). This operator also requires `frontend.encoding: protobuf`.
+
+The function is of the form:
+
+```logql
+approx_count_distinct(
+  <counted field>,
+  <log expression> [<duration>]
+) [by (<grouping fields>)]
+```
+
+Example:
+
+```logql
+approx_count_distinct(
+  mac_address,
+  {job="devices"} | json [1d]
+) by (version)
+```
+
+`approx_count_distinct` supports instant and range queries. A range duration is required. Grouping is optional: omit `by` to keep leftover stream labels, or use `by ()` for one unlabeled series. Don't group by the counted field.
+
+Under the hood, Loki builds one [HyperLogLog](https://en.wikipedia.org/wiki/HyperLogLog) sketch per output group at precision 14 (sparse at low cardinality, about 16 KiB when dense). Index sharding merges sketches before estimating so overlapping values across shards are counted once.
+
 ## Probabilistic aggregation
 
 {{< admonition type="note" >}}
-Probabilistic aggregation is an experimental feature. Engineering and on-call support is not available. Documentation is either limited or not provided outside of code comments. No SLA is provided. To use these features, set `limits_config.shard_aggregations` to include `approx_topk` and/or `approx_count_distinct` in your [Loki configuration](https://grafana.com/docs/loki/<LOKI_VERSION>/configure/#limits_config). These operators also require `frontend.encoding: protobuf`. To enable these features in Grafana Cloud, contact Grafana Support.
+`approx_topk` is an experimental feature. Engineering and on-call support is not available. Documentation is either limited or not provided outside of code comments. No SLA is provided. To use this feature, set `limits_config.shard_aggregations` to include `approx_topk` in your [Loki configuration](https://grafana.com/docs/loki/<LOKI_VERSION>/configure/#limits_config). This operator also requires `frontend.encoding: protobuf`. To enable this feature in Grafana Cloud, contact Grafana Support.
 {{< /admonition >}}
 
 ### `approx_topk`
@@ -190,32 +218,6 @@ topk(
 ```
 
 `__count_min_sketch__` is calculated for each shard and merged on the frontend. Then `eval_cms` iterates through the labels list and determines the count for each. Then `topk` selects the top items.
-
-### `approx_count_distinct`
-
-LogQL's `approx_count_distinct` function approximates the number of distinct values of a label or extracted field without creating one series per distinct value. Use it when an exact `count by` would explode series cardinality.
-
-The function is of the form:
-
-```logql
-approx_count_distinct(
-  <counted field>,
-  <log expression> [<duration>]
-) [by (<grouping fields>)]
-```
-
-Example:
-
-```logql
-approx_count_distinct(
-  mac_address,
-  {job="devices"} | json [1d]
-) by (version)
-```
-
-`approx_count_distinct` supports instant and range queries. A range duration is required. Grouping is optional: omit `by` to keep leftover stream labels, or use `by ()` for one unlabeled series. Don't group by the counted field.
-
-Under the hood, Loki builds one [HyperLogLog](https://en.wikipedia.org/wiki/HyperLogLog) sketch per output group at precision 14 (sparse at low cardinality, about 16 KiB when dense). Index sharding merges sketches before estimating so overlapping values across shards are counted once.
 
 ## Result ordering
 
