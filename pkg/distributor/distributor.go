@@ -119,8 +119,9 @@ type Config struct {
 
 	KafkaConfig kafka.Config `yaml:"-"`
 
-	DataObjTeeConfig DataObjTeeConfig     `yaml:"dataobj_tee"`
-	CircuitBreaker   CircuitBreakerConfig `yaml:"circuit_breaker"`
+	DataObjTeeConfig    DataObjTeeConfig     `yaml:"dataobj_tee"`
+	CircuitBreaker      CircuitBreakerConfig `yaml:"circuit_breaker"`
+	WriteFaultInjection WriteFaultInjection  `yaml:"write_fault_injection" doc:"description=Opt-in write error and latency injection for rollout testing. Disabled by default."`
 }
 
 // RegisterFlags registers distributor-related flags.
@@ -131,6 +132,7 @@ func (cfg *Config) RegisterFlags(fs *flag.FlagSet) {
 	cfg.CircuitBreaker.RegisterFlags(fs)
 	cfg.RateStore.RegisterFlagsWithPrefix("distributor.rate-store", fs)
 	cfg.WriteFailuresLogging.RegisterFlagsWithPrefix("distributor.write-failures-logging", fs)
+	cfg.WriteFaultInjection.RegisterFlags(fs)
 	cfg.OTLPAttributeLogging.RegisterFlagsWithPrefix("distributor.otlp-attribute-logging", fs)
 	fs.IntVar(&cfg.MaxInflightBytes, "distributor.max-inflight-bytes", 0, "The maximum number of inflight bytes at a time. 0 means disabled.")
 	fs.IntVar(&cfg.PushWorkerCount, "distributor.push-worker-count", 256, "Number of workers to push batches to ingesters.")
@@ -145,6 +147,9 @@ func (cfg *Config) Validate() error {
 		return errors.New("at least one of kafka and ingestor writes must be enabled")
 	}
 	if err := cfg.DataObjTeeConfig.Validate(); err != nil {
+		return err
+	}
+	if err := cfg.WriteFaultInjection.Validate(); err != nil {
 		return err
 	}
 	if err := cfg.CircuitBreaker.Validate(); err != nil {
@@ -352,6 +357,7 @@ type Distributor struct {
 
 	inflightBytes  atomic.Int64
 	circuitBreaker circuitBreaker
+	writeFault     *writeFaultInjector
 }
 
 // New a distributor creates.
@@ -493,6 +499,7 @@ func New(
 		tee:                   tee,
 		usageTracker:          usageTracker,
 		ingesterTasks:         make(chan pushIngesterTask),
+		writeFault:            newWriteFaultInjector(cfg.WriteFaultInjection),
 		m:                     newMetrics(registerer),
 		writeFailuresManager:  writefailures.NewManager(logger, registerer, cfg.WriteFailuresLogging, configs, "distributor"),
 		otlpAttrReporter:      otlpattrs.NewReporter(cfg.OTLPAttributeLogging, configs),
@@ -679,6 +686,10 @@ func (d *Distributor) pushWithResolver(ctx context.Context, req *logproto.PushRe
 
 	tenantID, err := tenant.TenantID(ctx)
 	if err != nil {
+		return nil, err
+	}
+
+	if err := d.writeFault.maybe(ctx); err != nil {
 		return nil, err
 	}
 
