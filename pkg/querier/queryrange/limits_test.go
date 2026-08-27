@@ -1025,6 +1025,199 @@ func Test_MaxQuerySize_WithQueryLimitsContext(t *testing.T) {
 	}
 }
 
+func Test_MaxQuerySize_WithPlannedRanges(t *testing.T) {
+	schemas := []config.PeriodConfig{
+		{
+			From:      config.DayTime{Time: model.TimeFromUnix(testTime.Add(-48 * time.Hour).Unix())},
+			IndexType: types.IndexTypeTSDB,
+		},
+	}
+	query := `{app="foo"} |= "foo"`
+	reqStart := testTime.Add(-24 * time.Hour)
+	reqEnd := testTime
+	smallWindow := querylimits.TimeRange{Start: testTime.Add(-30 * time.Minute), End: testTime}
+	disjointWindows := []querylimits.TimeRange{
+		{Start: testTime.Add(-2 * time.Hour), End: testTime.Add(-time.Hour)},
+		{Start: testTime.Add(-30 * time.Minute), End: testTime},
+	}
+
+	for _, tc := range []struct {
+		desc              string
+		planned           []querylimits.TimeRange
+		injectPlan        bool
+		withParentRange   bool
+		queryBytes        uint64
+		limit             int
+		shouldErr         bool
+		expectedStatsHits int
+		expectStatsRanges []querylimits.TimeRange
+	}{
+		{
+			desc:              "absent plan uses the request range",
+			injectPlan:        false,
+			queryBytes:        500,
+			limit:             1000,
+			shouldErr:         false,
+			expectedStatsHits: 1,
+		},
+		{
+			desc:              "absent plan still uses QueryLimitsContext as a floor",
+			injectPlan:        false,
+			withParentRange:   true,
+			queryBytes:        500,
+			limit:             1000,
+			shouldErr:         false,
+			expectedStatsHits: 2,
+		},
+		{
+			desc:              "present empty plan is zero bytes and does not query stats",
+			injectPlan:        true,
+			planned:           nil,
+			queryBytes:        5000,
+			limit:             1,
+			shouldErr:         false,
+			expectedStatsHits: 0,
+		},
+		{
+			desc:              "one planned window replaces the request span",
+			injectPlan:        true,
+			planned:           []querylimits.TimeRange{smallWindow},
+			queryBytes:        200,
+			limit:             1000,
+			shouldErr:         false,
+			expectedStatsHits: 1,
+			expectStatsRanges: []querylimits.TimeRange{smallWindow},
+		},
+		{
+			desc:              "disjoint planned windows are summed not covered",
+			injectPlan:        true,
+			planned:           disjointWindows,
+			queryBytes:        400,
+			limit:             1000,
+			shouldErr:         false,
+			expectedStatsHits: 2,
+			expectStatsRanges: disjointWindows,
+		},
+		{
+			desc:              "sum of planned windows can still exceed the limit",
+			injectPlan:        true,
+			planned:           disjointWindows,
+			queryBytes:        400,
+			limit:             700,
+			shouldErr:         true,
+			expectedStatsHits: 2,
+			expectStatsRanges: disjointWindows,
+		},
+		{
+			desc:              "parent QueryLimitsContext is not a floor once a plan is present",
+			injectPlan:        true,
+			withParentRange:   true,
+			planned:           []querylimits.TimeRange{smallWindow},
+			queryBytes:        200,
+			limit:             1000,
+			shouldErr:         false,
+			expectedStatsHits: 1,
+			expectStatsRanges: []querylimits.TimeRange{smallWindow},
+		},
+		{
+			desc:              "empty plan ignores a parent range that would have exceeded the limit",
+			injectPlan:        true,
+			withParentRange:   true,
+			planned:           []querylimits.TimeRange{},
+			queryBytes:        5000,
+			limit:             1,
+			shouldErr:         false,
+			expectedStatsHits: 0,
+		},
+		{
+			desc:       "empty planned windows are skipped",
+			injectPlan: true,
+			planned: []querylimits.TimeRange{
+				{Start: testTime, End: testTime},
+				smallWindow,
+			},
+			queryBytes:        200,
+			limit:             1000,
+			shouldErr:         false,
+			expectedStatsHits: 1,
+			expectStatsRanges: []querylimits.TimeRange{smallWindow},
+		},
+	} {
+		t.Run(tc.desc, func(t *testing.T) {
+			statsHits := atomic.NewInt32(0)
+			var gotStatsRanges []querylimits.TimeRange
+
+			statsHandler := queryrangebase.HandlerFunc(func(_ context.Context, req queryrangebase.Request) (queryrangebase.Response, error) {
+				statsHits.Inc()
+				gotStatsRanges = append(gotStatsRanges, querylimits.TimeRange{
+					Start: req.GetStart(),
+					End:   req.GetEnd(),
+				})
+				return &IndexStatsResponse{
+					Response: &logproto.IndexStatsResponse{
+						Bytes: tc.queryBytes,
+					},
+				}, nil
+			})
+
+			promHandler := queryrangebase.HandlerFunc(func(_ context.Context, req queryrangebase.Request) (queryrangebase.Response, error) {
+				require.Equal(t, reqStart.UnixMilli(), req.GetStart().UnixMilli())
+				require.Equal(t, reqEnd.UnixMilli(), req.GetEnd().UnixMilli())
+				return &LokiPromResponse{
+					Response: &queryrangebase.PrometheusResponse{
+						Status: "success",
+					},
+				}, nil
+			})
+
+			lokiReq := &LokiRequest{
+				Query:     query,
+				StartTs:   reqStart,
+				EndTs:     reqEnd,
+				Direction: logproto.FORWARD,
+				Path:      "/query_range",
+				Plan: &plan.QueryPlan{
+					AST: syntax.MustParseExpr(query),
+				},
+			}
+
+			ctx := user.InjectOrgID(context.Background(), "foo")
+			if tc.withParentRange {
+				ctx = querylimits.InjectQueryLimitsContextIntoContext(ctx, querylimits.Context{
+					Expr: `{context="true"}`,
+					From: testTime.Add(-7 * 24 * time.Hour),
+					To:   testTime,
+				})
+			}
+			if tc.injectPlan {
+				ctx = querylimits.InjectPlannedQueryRanges(ctx, tc.planned)
+			}
+
+			handler := NewQuerySizeLimiterMiddleware(schemas, testEngineOpts, util_log.Logger, fakeLimits{
+				maxQueryBytesRead: tc.limit,
+			}, statsHandler).Wrap(promHandler)
+
+			_, err := handler.Do(ctx, lokiReq)
+			if tc.shouldErr {
+				require.Error(t, err)
+			} else {
+				require.NoError(t, err)
+			}
+			require.Equal(t, tc.expectedStatsHits, int(statsHits.Load()))
+
+			if tc.expectStatsRanges != nil {
+				require.Equal(t, len(tc.expectStatsRanges), len(gotStatsRanges))
+				lookback := testEngineOpts.MaxLookBackPeriod
+				for i, want := range tc.expectStatsRanges {
+					// Log selectors have Interval=0, so getStatsForMatchers applies MaxLookBackPeriod.
+					require.Equal(t, want.Start.Add(-lookback).UnixMilli(), gotStatsRanges[i].Start.UnixMilli())
+					require.Equal(t, want.End.UnixMilli(), gotStatsRanges[i].End.UnixMilli())
+				}
+			}
+		})
+	}
+}
+
 func Test_MaxQuerySize_MaxLookBackPeriod(t *testing.T) {
 	engineOpts := testEngineOpts
 	engineOpts.MaxLookBackPeriod = 1 * time.Hour
