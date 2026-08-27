@@ -289,16 +289,10 @@ func (g *Gateway) LabelNamesForMetricName(ctx context.Context, req *logproto.Lab
 	// An empty matchers string cannot be parsed,
 	// therefore we check the string representation of the matchers.
 	if req.Matchers != syntax.EmptyMatchers {
-		expr, err := syntax.ParseExprWithoutValidation(req.Matchers)
+		matchers, err = syntax.ParseMatchers(req.Matchers, false)
 		if err != nil {
 			return nil, err
 		}
-
-		matcherExpr, ok := expr.(*syntax.MatchersExpr)
-		if !ok {
-			return nil, fmt.Errorf("invalid label matchers found of type %T", expr)
-		}
-		matchers = matcherExpr.Mts
 	}
 
 	if err := g.queryGate.Start(ctx); err != nil {
@@ -324,16 +318,10 @@ func (g *Gateway) LabelValuesForMetricName(ctx context.Context, req *logproto.La
 	// An empty matchers string cannot be parsed,
 	// therefore we check the string representation of the matchers.
 	if req.Matchers != syntax.EmptyMatchers {
-		expr, err := syntax.ParseExprWithoutValidation(req.Matchers)
+		matchers, err = syntax.ParseMatchers(req.Matchers, false)
 		if err != nil {
 			return nil, err
 		}
-
-		matcherExpr, ok := expr.(*syntax.MatchersExpr)
-		if !ok {
-			return nil, fmt.Errorf("invalid label matchers found of type %T", expr)
-		}
-		matchers = matcherExpr.Mts
 	}
 
 	if err := g.queryGate.Start(ctx); err != nil {
