@@ -3101,9 +3101,15 @@ retention_backoff_config:
 
 # Do not fail processing of a delete request with a line filter when a chunk it
 # needs to rebuild is indexed but missing from the object storage. When enabled,
-# the index entry of the missing chunk is dropped and processing continues.
-# Chunks skipped this way are counted by the
-# loki_compactor_deletion_missing_chunks_total metric.
+# the missing chunk is skipped and its index entry is left as is for diagnosing
+# the issue. Chunks skipped this way are counted by the
+# loki_compactor_deletion_missing_chunks_total metric and logged with their
+# chunk IDs. This setting has no effect when horizontal_scaling_mode is not
+# disabled. CAUTION: enable this only as a temporary escape hatch to unblock
+# delete requests, and only after verifying against the object storage that the
+# chunks really are missing. If a chunk gets skipped while it is in fact still
+# present, the data it holds is left undeleted even though the delete request is
+# reported as processed.
 # CLI flag: -compactor.deletion-ignore-missing-chunks
 [deletion_ignore_missing_chunks: <boolean> | default = false]
 

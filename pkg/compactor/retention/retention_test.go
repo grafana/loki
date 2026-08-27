@@ -443,30 +443,45 @@ func TestChunkRewriterMissingChunk(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			chunkClient := &missingChunkClient{err: tc.err, isNotFoundErr: tc.isNotFoundErr}
 			missingChunksTotal := prometheus.NewCounter(prometheus.CounterOpts{Name: "missing_chunks_total"})
+
 			indexTable := newTable(schema.config.IndexTables.TableFor(now))
+			indexTable.Put(chk)
+			indexedBefore, err := indexTable.GetChunks(chk.UserID, chk.From, chk.Through, chk.Metric)
+			require.NoError(t, err)
+			require.Len(t, indexedBefore, 1)
+
+			// A delete request with a line filter matching every line of the chunk.
+			expirationChecker := newMockExpirationChecker(map[string]chunkExpiry{
+				getChunkID(chk.ChunkRef): {
+					isExpired:  true,
+					filterFunc: func(_ time.Time, _ string, _ labels.Labels) bool { return true },
+				},
+			}, nil)
 
 			cr := newChunkRewriter(chunkClient, indexTable.name, indexTable, tc.ignoreMissingChunks, missingChunksTotal)
-			wroteChunks, linesDeleted, err := cr.rewriteChunk(context.Background(), []byte(chk.UserID), Chunk{
-				ChunkID: getChunkID(chk.ChunkRef),
-				From:    chk.From,
-				Through: chk.Through,
-			}, tableInterval, func(_ time.Time, _ string, _ labels.Labels) bool {
-				return true
-			})
+			marker := &noopWriter{}
+			empty, modified, err := markForDelete(context.Background(), 0, indexTable.name, marker,
+				newSeriesCleanRecorder(indexTable), expirationChecker, cr, util_log.Logger)
 
 			require.Equal(t, 1, chunkClient.getChunksCalls)
 			if tc.expectedErrContains != "" {
 				require.ErrorContains(t, err, tc.expectedErrContains)
-				require.False(t, linesDeleted)
 			} else {
 				require.NoError(t, err)
-				require.False(t, linesDeleted)
 			}
 
-			// A missing chunk is never rewritten, so nothing should be indexed or uploaded.
-			require.False(t, wroteChunks)
+			// Whether the chunk was skipped or the operation failed, the chunk is never rewritten,
+			// so nothing is indexed or marked for deletion and the table is left untouched.
 			require.Empty(t, indexTable.indexedIngestedAt)
+			require.EqualValues(t, 0, marker.count)
+			require.False(t, empty)
+			require.False(t, modified)
 			require.Equal(t, tc.expectMissingCount, testutil.ToFloat64(missingChunksTotal))
+
+			// Most importantly, the index entry of the missing chunk is left as is.
+			indexedAfter, err := indexTable.GetChunks(chk.UserID, chk.From, chk.Through, chk.Metric)
+			require.NoError(t, err)
+			require.Equal(t, indexedBefore, indexedAfter)
 		})
 	}
 }
