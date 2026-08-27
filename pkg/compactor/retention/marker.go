@@ -15,10 +15,10 @@ import (
 
 	"github.com/go-kit/log/level"
 	"go.etcd.io/bbolt"
-	"go.uber.org/atomic"
 
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client"
 	boltdbcommon "github.com/grafana/loki/v3/pkg/storage/common/boltdb"
+	"github.com/grafana/loki/v3/pkg/util/atomicutil"
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
 )
 
@@ -256,7 +256,7 @@ func (r *markerProcessor) processFile(name string, deleteFunc func(ctx context.C
 	var (
 		wg               sync.WaitGroup
 		queue            = make(chan *keyPair)
-		allChunksDeleted = atomic.NewBool(true)
+		allChunksDeleted = atomicutil.NewBool(true)
 	)
 
 	tempFile, err := os.CreateTemp("", name)

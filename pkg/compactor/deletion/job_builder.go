@@ -8,13 +8,13 @@ import (
 	"path"
 	"strconv"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/go-kit/log/level"
 	"github.com/gogo/protobuf/proto"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
-	"go.uber.org/atomic"
 
 	"github.com/grafana/loki/v3/pkg/compactor/client/grpc"
 	"github.com/grafana/loki/v3/pkg/compactor/deletion/deletionproto"
@@ -397,7 +397,7 @@ func (b *JobBuilder) OnJobResponse(response *grpc.JobResult) error {
 
 	b.currSegmentStorageUpdates.addUpdates(jobDetails.labels, updates)
 	delete(b.currentManifest.jobsInProgress, response.JobId)
-	b.currSegmentNumJobsToProcess.Dec()
+	b.currSegmentNumJobsToProcess.Add(-1)
 
 	return nil
 }

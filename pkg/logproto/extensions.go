@@ -1,11 +1,13 @@
 package logproto
 
+//lint:file-ignore faillint protobuf-generated numeric fields require primitive sync/atomic helpers
+
 import (
 	"fmt"
 	"slices"
 	"sort"
 	"strings"
-	"sync/atomic" //lint:ignore faillint we can't use go.uber.org/atomic with a protobuf struct without wrapping it.
+	"sync/atomic" //lint:ignore faillint protobuf/struct numeric fields require primitive atomic helpers.
 	"time"
 
 	"github.com/cespare/xxhash/v2"

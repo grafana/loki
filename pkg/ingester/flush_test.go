@@ -1,6 +1,7 @@
 package ingester
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"net/http"
@@ -9,11 +10,10 @@ import (
 	"os"
 	"sort"
 	"sync"
+	"sync/atomic"
 	"syscall"
 	"testing"
 	"time"
-
-	"context"
 
 	gokitlog "github.com/go-kit/log"
 	"github.com/grafana/dskit/flagext"
@@ -24,7 +24,6 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
-	"go.uber.org/atomic"
 
 	"github.com/grafana/dskit/tenant"
 
@@ -45,6 +44,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/sharding"
 	storagetypes "github.com/grafana/loki/v3/pkg/storage/types"
 	"github.com/grafana/loki/v3/pkg/util"
+	"github.com/grafana/loki/v3/pkg/util/atomicutil"
 	"github.com/grafana/loki/v3/pkg/util/constants"
 	"github.com/grafana/loki/v3/pkg/validation"
 )
@@ -187,7 +187,7 @@ func benchmarkPushDuringEncode(b *testing.B, lockDuringEncode bool) {
 	defer cancel()
 
 	var encodes atomic.Int64
-	var encodeErr atomic.Error
+	var encodeErr atomicutil.Error
 	var wg sync.WaitGroup
 	wg.Add(1)
 	go func() {

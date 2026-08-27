@@ -3,10 +3,9 @@ package cache
 import (
 	"context"
 	"fmt"
+	"sync/atomic"
 	"testing"
 	"time"
-
-	"go.uber.org/atomic"
 
 	"github.com/go-kit/log"
 	"github.com/prometheus/client_golang/prometheus/testutil"
@@ -47,9 +46,9 @@ func TestEmbeddedCacheEviction(t *testing.T) {
 	}
 
 	for _, test := range tests {
-		removedEntriesCount := atomic.NewInt64(0)
+		removedEntriesCount := new(atomic.Int64)
 		onEntryRemoved := func(_ string, _ []byte) {
-			removedEntriesCount.Inc()
+			removedEntriesCount.Add(1)
 		}
 		c := NewTypedEmbeddedCache[string, []byte](test.name, test.cfg, nil, log.NewNopLogger(), "test", sizeOf, onEntryRemoved)
 		ctx := context.Background()
@@ -186,9 +185,9 @@ func TestEmbeddedCacheExpiry(t *testing.T) {
 		PurgeInterval: 50 * time.Millisecond,
 	}
 
-	removedEntriesCount := atomic.NewInt64(0)
+	removedEntriesCount := new(atomic.Int64)
 	onEntryRemoved := func(_ string, _ []byte) {
-		removedEntriesCount.Inc()
+		removedEntriesCount.Add(1)
 	}
 	c := NewTypedEmbeddedCache[string, []byte]("cache_exprity_test", cfg, nil, log.NewNopLogger(), "test", sizeOf, onEntryRemoved)
 	ctx := context.Background()

@@ -10,13 +10,13 @@ import (
 	"net/http/httptest"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/go-kit/log"
 	"github.com/grafana/dskit/flagext"
 	"github.com/stretchr/testify/require"
-	"go.uber.org/atomic"
 
 	"github.com/grafana/loki/v3/pkg/storage/bucket"
 	"github.com/grafana/loki/v3/pkg/storage/bucket/s3"
@@ -131,7 +131,7 @@ func TestCongestionControl_S3Throttling_RetriesThenExceeds(t *testing.T) {
 	var serverGets atomic.Int64
 	ctrl := newCongestionControlledS3(t, func(w http.ResponseWriter, r *http.Request) {
 		if isChunkGet(r) {
-			serverGets.Inc()
+			serverGets.Add(1)
 			writeS3Error(w, http.StatusServiceUnavailable, "SlowDown", "Please reduce your request rate.")
 			return
 		}
@@ -155,7 +155,7 @@ func TestCongestionControl_S3Throttling_RecoversAfterRetry(t *testing.T) {
 	var serverGets atomic.Int64
 	ctrl := newCongestionControlledS3(t, func(w http.ResponseWriter, r *http.Request) {
 		if isChunkGet(r) {
-			if serverGets.Inc() <= 2 {
+			if serverGets.Add(1) <= 2 {
 				writeS3Error(w, http.StatusServiceUnavailable, "SlowDown", "Please reduce your request rate.")
 				return
 			}

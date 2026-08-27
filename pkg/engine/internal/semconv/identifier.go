@@ -5,9 +5,8 @@ import (
 	"fmt"
 	"strings"
 
-	"go.uber.org/atomic"
-
 	"github.com/grafana/loki/v3/pkg/engine/internal/types"
+	"github.com/grafana/loki/v3/pkg/util/atomicutil"
 )
 
 const (
@@ -46,7 +45,7 @@ type Identifier struct {
 	dataType   types.DataType
 
 	// fqn is the cached fully qualified name to avoid allocations when calling FQN() multiple times
-	fqn atomic.String
+	fqn atomicutil.String
 }
 
 // DataType returns the Loki data type of the identifier.

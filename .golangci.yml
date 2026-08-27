@@ -46,6 +46,8 @@ linters:
           deny:
             - pkg: github.com/go-kit/kit/log
               desc: Use github.com/go-kit/log instead of github.com/go-kit/kit/log
+            - pkg: go.uber.org/atomic
+              desc: Use sync/atomic typed wrappers instead of go.uber.org/atomic
     goconst:
       min-occurrences: 5
     misspell:

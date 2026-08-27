@@ -2,10 +2,10 @@ package ingester
 
 import (
 	"fmt"
+	"sync/atomic"
 
 	"github.com/dustin/go-humanize"
 	"github.com/go-kit/log/level"
-	"go.uber.org/atomic"
 	"golang.org/x/sync/singleflight"
 
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
@@ -72,7 +72,7 @@ func (c *replayController) Add(x int64) {
 
 func (c *replayController) Sub(x int64) {
 	c.totalSubtracted.Add(x)
-	c.metrics.setRecoveryBytesInUse(c.currentBytes.Sub(x))
+	c.metrics.setRecoveryBytesInUse(c.currentBytes.Add(-x))
 }
 
 func (c *replayController) Cur() int {

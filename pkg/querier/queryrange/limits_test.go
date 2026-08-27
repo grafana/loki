@@ -7,6 +7,7 @@ import (
 	"reflect"
 	"regexp"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -15,7 +16,6 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/promql"
 	"github.com/stretchr/testify/require"
-	"go.uber.org/atomic"
 	"go.yaml.in/yaml/v4"
 
 	"github.com/grafana/loki/v3/pkg/logproto"
@@ -312,11 +312,11 @@ func Test_MaxQueryParallelism(t *testing.T) {
 	var count atomic.Int32
 	var maxVal atomic.Int32
 	h := queryrangebase.HandlerFunc(func(_ context.Context, _ queryrangebase.Request) (queryrangebase.Response, error) {
-		cur := count.Inc()
+		cur := count.Add(1)
 		if cur > maxVal.Load() {
 			maxVal.Store(cur)
 		}
-		defer count.Dec()
+		defer count.Add(-1)
 		// simulate some work
 		time.Sleep(20 * time.Millisecond)
 		return queryrangebase.NewEmptyPrometheusResponse(model.ValMatrix), nil
@@ -960,10 +960,10 @@ func Test_MaxQuerySize_WithQueryLimitsContext(t *testing.T) {
 		},
 	} {
 		t.Run(tc.desc, func(t *testing.T) {
-			statsHits := atomic.NewInt32(0)
+			statsHits := new(atomic.Int32)
 
 			statsHandler := queryrangebase.HandlerFunc(func(_ context.Context, req queryrangebase.Request) (queryrangebase.Response, error) {
-				statsHits.Inc()
+				statsHits.Add(1)
 
 				bytes := tc.queryBytes
 				if req.GetQuery() == ctxSentinal {

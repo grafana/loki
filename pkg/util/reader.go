@@ -2,8 +2,7 @@ package util //nolint:revive
 
 import (
 	"io"
-
-	"go.uber.org/atomic"
+	"sync/atomic"
 )
 
 type sizeReader struct {

@@ -18,9 +18,9 @@ import (
 	"github.com/twmb/franz-go/plugin/kprom"
 	"go.opentelemetry.io/otel/propagation"
 	"go.opentelemetry.io/otel/trace"
-	"go.uber.org/atomic"
 
 	"github.com/grafana/loki/v3/pkg/kafka"
+	"github.com/grafana/loki/v3/pkg/util/atomicutil"
 )
 
 // writerRequestTimeoutOverhead is the overhead applied by the Writer to every Kafka timeout.
@@ -331,7 +331,7 @@ func (c *Producer) ProduceSync(ctx context.Context, records []*kgo.Record) kgo.P
 	}
 
 	var (
-		remaining = atomic.NewInt64(int64(len(records)))
+		remaining = atomicutil.NewInt64(int64(len(records)))
 		done      = make(chan struct{})
 		resMx     sync.Mutex
 		res       = make(kgo.ProduceResults, 0, len(records))
@@ -351,7 +351,7 @@ func (c *Producer) ProduceSync(ctx context.Context, records []*kgo.Record) kgo.P
 		// In case of error we'll wait for all responses anyway before returning from produceSync().
 		// It allows us to keep code easier, given we don't expect this function to be frequently
 		// called with multiple records.
-		if remaining.Dec() == 0 {
+		if remaining.Add(-1) == 0 {
 			close(done)
 		}
 	}

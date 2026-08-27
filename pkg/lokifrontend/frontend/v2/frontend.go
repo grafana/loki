@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"strconv"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/go-kit/log"
@@ -23,7 +24,6 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"go.opentelemetry.io/otel"
-	"go.uber.org/atomic"
 
 	"github.com/grafana/dskit/tenant"
 
@@ -230,7 +230,7 @@ func (f *Frontend) RoundTripGRPC(ctx context.Context, req *httpgrpc.HTTPRequest)
 	defer cancel()
 
 	freq := &frontendRequest{
-		queryID:      f.lastQueryID.Inc(),
+		queryID:      f.lastQueryID.Add(1),
 		request:      req,
 		tenantID:     tenantID,
 		actor:        httpreq.ExtractActorPath(ctx),
@@ -290,7 +290,7 @@ func (f *Frontend) Do(ctx context.Context, req queryrangebase.Request) (queryran
 	defer cancel()
 
 	freq := &frontendRequest{
-		queryID:      f.lastQueryID.Inc(),
+		queryID:      f.lastQueryID.Add(1),
 		tenantID:     tenantID,
 		actor:        httpreq.ExtractActorPath(ctx),
 		statsEnabled: stats.IsEnabled(ctx),

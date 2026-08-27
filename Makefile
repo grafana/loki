@@ -378,9 +378,17 @@ else
 	go version
 	golangci-lint version
 	golangci-lint run -v $(LINT_FLAGS)
+	# Forbid go.uber.org/atomic; use sync/atomic typed wrappers (atomic.Int64, etc.).
 	GOFLAGS=$(GOFLAGS) faillint -paths \
-		"sync/atomic=go.uber.org/atomic" \
+		"go.uber.org/atomic=sync/atomic" \
 		./...
+
+	# Forbid the old-style primitive helpers. Prefer typed wrappers
+	# (atomic.Int64.Add, atomic.Uint32.Load, ...). Protobuf numeric fields
+	# still need the primitives (pkg/logproto, pkg/querier/stats, pkg/logqlmodel/stats).
+	GOFLAGS=$(GOFLAGS) faillint -paths \
+		"sync/atomic.{AddInt32,AddInt64,AddUint32,AddUint64,AddUintptr,CompareAndSwapInt32,CompareAndSwapInt64,CompareAndSwapPointer,CompareAndSwapUint32,CompareAndSwapUint64,CompareAndSwapUintptr,LoadInt32,LoadInt64,LoadPointer,LoadUint32,LoadUint64,LoadUintptr,StoreInt32,StoreInt64,StorePointer,StoreUint32,StoreUint64,StoreUintptr,SwapInt32,SwapInt64,SwapPointer,SwapUint32,SwapUint64,SwapUintptr}" \
+		$$(go list ./... | grep -vE '/pkg/logproto$$|/pkg/querier/stats$$|/pkg/logqlmodel/stats$$')
 
 	# Use our spanlogger implementation instead of the one in dskit to make sure we use the correct tracing lib.
 	faillint -paths \

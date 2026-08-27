@@ -9,11 +9,11 @@ import (
 	"net"
 	"net/http"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
-	"go.uber.org/atomic"
 	"golang.org/x/net/http2"
 
 	"github.com/grafana/loki/v3/pkg/engine/internal/obslock"

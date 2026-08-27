@@ -11,6 +11,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 	"unicode/utf8"
 
@@ -35,7 +36,6 @@ import (
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
-	"go.uber.org/atomic"
 	"golang.org/x/time/rate"
 
 	"github.com/grafana/loki/v3/pkg/analytics"
@@ -488,7 +488,7 @@ func New(
 		ingesterClients:       clientpool.NewPool("ingester", clientCfg.PoolConfig, ingestersRing, ingesterClientFactory, logger, metricsNamespace),
 		labelCache:            labelCache,
 		shardTracker:          NewShardTracker(),
-		healthyInstancesCount: atomic.NewUint32(0),
+		healthyInstancesCount: new(atomic.Uint32),
 		rateLimitStrat:        rateLimitStrat,
 		tee:                   tee,
 		usageTracker:          usageTracker,
@@ -628,11 +628,11 @@ type PushTracker struct {
 // If err is not nil, the stream push is considered failed.
 func (p *PushTracker) doneWithResult(err error) {
 	if err == nil {
-		if p.streamsPending.Dec() == 0 {
+		if p.streamsPending.Add(-1) == 0 {
 			p.done <- struct{}{}
 		}
 	} else {
-		if p.streamsFailed.Inc() == 1 {
+		if p.streamsFailed.Add(1) == 1 {
 			p.err <- err
 		}
 	}
@@ -1523,12 +1523,12 @@ func (d *Distributor) sendStreams(task pushIngesterTask) {
 	// goroutine will write to either channel.
 	for i := range task.streamTracker {
 		if err != nil {
-			if task.streamTracker[i].failed.Inc() <= int32(task.streamTracker[i].maxFailures) {
+			if task.streamTracker[i].failed.Add(1) <= int32(task.streamTracker[i].maxFailures) {
 				continue
 			}
 			task.pushTracker.doneWithResult(err)
 		} else {
-			if task.streamTracker[i].succeeded.Inc() != int32(task.streamTracker[i].minSuccess) {
+			if task.streamTracker[i].succeeded.Add(1) != int32(task.streamTracker[i].minSuccess) {
 				continue
 			}
 			task.pushTracker.doneWithResult(nil)

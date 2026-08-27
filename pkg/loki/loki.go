@@ -10,6 +10,7 @@ import (
 	"os"
 	rt "runtime"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/fatih/color"
@@ -28,7 +29,6 @@ import (
 	"github.com/grafana/dskit/signals"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
-	"go.uber.org/atomic"
 	"google.golang.org/grpc/health/grpc_health_v1"
 
 	"github.com/grafana/loki/v3/pkg/labelaccess"
@@ -590,7 +590,7 @@ func (t *Loki) Run(opts RunOpts) error {
 		return err
 	}
 
-	shutdownRequested := atomic.NewBool(false)
+	shutdownRequested := new(atomic.Bool)
 
 	// before starting servers, register /ready handler. It should reflect entire Loki.
 	if t.Cfg.InternalServer.Enable {

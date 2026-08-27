@@ -2,10 +2,9 @@ package ingester
 
 import (
 	"context"
+	"sync/atomic"
 	"testing"
 	"time"
-
-	"go.uber.org/atomic"
 
 	"github.com/grafana/dskit/services"
 	"github.com/grafana/dskit/user"

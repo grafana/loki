@@ -11,13 +11,13 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"os"
+	"sync/atomic"
 	"syscall"
 	"testing"
 	"time"
 
 	"cloud.google.com/go/storage"
 	"github.com/stretchr/testify/require"
-	"go.uber.org/atomic"
 	"google.golang.org/api/googleapi"
 	"google.golang.org/api/option"
 
@@ -63,7 +63,7 @@ func Test_Hedging(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			count := atomic.NewInt32(0)
+			count := new(atomic.Int32)
 			server := fakeServer(t, 200*time.Millisecond, count)
 			ctx := context.Background()
 			c, err := newGCSObjectClient(ctx, GCSConfig{
@@ -87,7 +87,7 @@ func Test_Hedging(t *testing.T) {
 
 func fakeServer(t *testing.T, returnIn time.Duration, counter *atomic.Int32) *httptest.Server {
 	server := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		counter.Inc()
+		counter.Add(1)
 		time.Sleep(returnIn)
 		_, _ = w.Write([]byte(`{}`))
 	}))

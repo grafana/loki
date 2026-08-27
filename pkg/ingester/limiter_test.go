@@ -3,15 +3,16 @@ package ingester
 import (
 	"fmt"
 	"math"
+	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/grafana/dskit/ring"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"go.uber.org/atomic"
 	"golang.org/x/time/rate"
 
+	"github.com/grafana/loki/v3/pkg/util/atomicutil"
 	"github.com/grafana/loki/v3/pkg/util/flagext"
 	"github.com/grafana/loki/v3/pkg/validation"
 )
@@ -130,8 +131,8 @@ func TestStreamCountLimiter_AssertNewStreamAllowed(t *testing.T) {
 			require.NoError(t, err)
 
 			ownedStreamSvc := &ownedStreamService{
-				fixedLimit:       atomic.NewInt32(testData.fixedLimit),
-				ownedStreamCount: atomic.NewInt64(int64(testData.ownedStreamCount)),
+				fixedLimit:       atomicutil.NewInt32(testData.fixedLimit),
+				ownedStreamCount: atomicutil.NewInt64(int64(testData.ownedStreamCount)),
 			}
 			strategy := &fixedStrategy{localLimit: testData.calculatedLocalLimit}
 			limiter := NewLimiter(limits, NilMetrics, strategy, &TenantBasedStrategy{limits: limits})
@@ -159,8 +160,8 @@ func TestStreamCountLimiter_DelegateStreamLimits(t *testing.T) {
 		return 200 // well above the limit
 	}
 	ownedStreamSvc := &ownedStreamService{
-		fixedLimit:       atomic.NewInt32(0),
-		ownedStreamCount: atomic.NewInt64(0),
+		fixedLimit:       new(atomic.Int32),
+		ownedStreamCount: new(atomic.Int64),
 	}
 
 	scl := newStreamCountLimiter("test", defaultCountSupplier, limiter, ownedStreamSvc, true)

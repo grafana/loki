@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"os"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"testing/synctest"
 	"time"
@@ -15,7 +16,6 @@ import (
 	"github.com/oklog/ulid/v2"
 	"github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/stretchr/testify/require"
-	"go.uber.org/atomic"
 
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
 	"github.com/grafana/loki/v3/pkg/engine/internal/scheduler/wire"
@@ -378,7 +378,7 @@ func TestScheduler_Start(t *testing.T) {
 	t.Run("Starts new tasks without emitting a task result", func(t *testing.T) {
 		var results atomic.Int64
 		handler := func(_ context.Context, _ *workflow.Task, _ workflow.TaskResult) {
-			results.Inc()
+			results.Add(1)
 		}
 
 		sched := newTestScheduler(t)
@@ -1096,7 +1096,7 @@ func TestScheduler_worker(t *testing.T) {
 	t.Run("Stream closure propagates to handler", func(t *testing.T) {
 		var closeNotifications atomic.Int64
 		handler := func(_ context.Context, _ *workflow.Stream) {
-			closeNotifications.Inc()
+			closeNotifications.Add(1)
 		}
 
 		sched := newTestScheduler(t)
@@ -1698,7 +1698,7 @@ type mockRecordWriter struct {
 }
 
 func (m *mockRecordWriter) Write(_ context.Context, _ arrow.RecordBatch) error {
-	m.writes.Inc()
+	m.writes.Add(1)
 	if m.wrote != nil {
 		select {
 		case m.wrote <- struct{}{}:

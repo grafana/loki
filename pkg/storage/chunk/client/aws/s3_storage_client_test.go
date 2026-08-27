@@ -11,6 +11,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"strings"
+	"sync/atomic"
 	"syscall"
 	"testing"
 	"time"
@@ -21,7 +22,6 @@ import (
 	"github.com/grafana/dskit/flagext"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"go.uber.org/atomic"
 
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client/hedging"
 
@@ -283,7 +283,7 @@ func Test_Hedging(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			count := atomic.NewInt32(0)
+			count := new(atomic.Int32)
 
 			c, err := NewS3ObjectClient(S3Config{
 				AccessKeyID:     "foo",
@@ -292,7 +292,7 @@ func Test_Hedging(t *testing.T) {
 				BucketNames:     "foo",
 				Inject: func(_ http.RoundTripper) http.RoundTripper {
 					return RoundTripperFunc(func(_ *http.Request) (*http.Response, error) {
-						count.Inc()
+						count.Add(1)
 						time.Sleep(200 * time.Millisecond)
 						return nil, errors.New("foo")
 					})
@@ -405,11 +405,11 @@ func Test_RetryLogic(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			callCount := atomic.NewInt32(0)
+			callCount := new(atomic.Int32)
 
 			mockS3 := &testAttributesS3Client{
 				HeadObjectFunc: func(_ context.Context, _ *s3.HeadObjectInput) (*s3.HeadObjectOutput, error) {
-					callNum := callCount.Inc()
+					callNum := callCount.Add(1)
 					if !tc.exists {
 						rfIn := &types.NotFound{}
 						return nil, rfIn
@@ -434,7 +434,7 @@ func Test_RetryLogic(t *testing.T) {
 				Inject: func(_ http.RoundTripper) http.RoundTripper {
 					return RoundTripperFunc(func(_ *http.Request) (*http.Response, error) {
 						// Increment the call counter
-						callNum := callCount.Inc()
+						callNum := callCount.Add(1)
 
 						// Fail the first set of calls
 						if int(callNum) <= tc.maxRetries-1 {

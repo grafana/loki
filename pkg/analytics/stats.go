@@ -12,13 +12,14 @@ import (
 	"runtime"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
+	"github.com/grafana/loki/v3/pkg/util/atomicutil"
 	"github.com/grafana/loki/v3/pkg/util/build"
 
 	"github.com/cespare/xxhash/v2"
 	jsoniter "github.com/json-iterator/go"
-	"go.uber.org/atomic"
 )
 
 var (
@@ -254,15 +255,15 @@ func Edition(edition string) {
 }
 
 type Statistics struct {
-	min   *atomic.Float64
-	max   *atomic.Float64
+	min   *atomicutil.Float64
+	max   *atomicutil.Float64
 	count *atomic.Int64
 
-	avg *atomic.Float64
+	avg *atomicutil.Float64
 
 	// require for stddev and stdvar
-	mean  *atomic.Float64
-	value *atomic.Float64
+	mean  *atomicutil.Float64
+	value *atomicutil.Float64
 }
 
 // NewStatistics returns a new Statistics object.
@@ -290,12 +291,12 @@ func NewStatistics(name string) *Statistics {
 		},
 		func() *Statistics { // create
 			s := &Statistics{
-				min:   atomic.NewFloat64(math.Inf(0)),
-				max:   atomic.NewFloat64(math.Inf(-1)),
-				count: atomic.NewInt64(0),
-				avg:   atomic.NewFloat64(0),
-				mean:  atomic.NewFloat64(0),
-				value: atomic.NewFloat64(0),
+				min:   atomicutil.NewFloat64(math.Inf(0)),
+				max:   atomicutil.NewFloat64(math.Inf(-1)),
+				count: new(atomic.Int64),
+				avg:   new(atomicutil.Float64),
+				mean:  new(atomicutil.Float64),
+				value: new(atomicutil.Float64),
 			}
 			expvar.Publish(statsPrefix+name, s)
 			return s
@@ -370,7 +371,7 @@ func (s *Statistics) Record(v float64) {
 
 type Counter struct {
 	total *atomic.Int64
-	rate  *atomic.Float64
+	rate  *atomicutil.Float64
 
 	resetTime time.Time
 }
@@ -391,8 +392,8 @@ func NewCounter(name string) *Counter {
 		},
 		func() *Counter { // create
 			c := &Counter{
-				total:     atomic.NewInt64(0),
-				rate:      atomic.NewFloat64(0),
+				total:     new(atomic.Int64),
+				rate:      new(atomicutil.Float64),
 				resetTime: time.Now(),
 			}
 			expvar.Publish(statsPrefix+name, c)
@@ -450,7 +451,7 @@ func NewWordCounter(name string) *WordCounter {
 		},
 		func() *WordCounter { // create
 			c := &WordCounter{
-				count: atomic.NewInt64(0),
+				count: new(atomic.Int64),
 				words: sync.Map{},
 			}
 			expvar.Publish(statsPrefix+name, c)

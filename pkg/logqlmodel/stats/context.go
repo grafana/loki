@@ -19,10 +19,12 @@ Finally to get a snapshot of the current query statistic use
 */
 package stats
 
+//lint:file-ignore faillint protobuf-generated numeric fields require primitive sync/atomic helpers
+
 import (
 	"context"
 	"sync"
-	"sync/atomic" //lint:ignore faillint we can't use go.uber.org/atomic with a protobuf struct without wrapping it.
+	"sync/atomic" //lint:ignore faillint protobuf/struct numeric fields require primitive atomic helpers.
 	"time"
 
 	"github.com/dustin/go-humanize"
