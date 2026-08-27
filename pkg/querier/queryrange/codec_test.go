@@ -35,6 +35,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/v3/pkg/querier/plan"
 	"github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase"
+	"github.com/grafana/loki/v3/pkg/storage/detected"
 	"github.com/grafana/loki/v3/pkg/util"
 	"github.com/grafana/loki/v3/pkg/util/httpreq"
 )
@@ -1963,6 +1964,46 @@ func Test_codec_MergeResponse_DetectedFieldsResponse(t *testing.T) {
 	})
 }
 
+// Test_codec_MergeResponse_DetectedLabelsResponse is a regression test for
+// https://github.com/grafana/loki/issues/16315: a multi-tenant detected_labels query 500s with
+// "too short binary".
+func Test_codec_MergeResponse_DetectedLabelsResponse(t *testing.T) {
+	// Build a response as MultiTenantQuerier.DetectedLabels would: per-tenant
+	// labels merged through detected.MergeLabels.
+	buildTenantMergedResponse := func(label string, cardinality int) *DetectedLabelsResponse {
+		var perTenant []*logproto.DetectedLabel
+		for tenant := 0; tenant < 2; tenant++ {
+			sketch := hyperloglog.New()
+			for i := 0; i < cardinality; i++ {
+				sketch.Insert([]byte(fmt.Sprintf("tenant-%d-value-%d", tenant, i)))
+			}
+			marshalled, err := sketch.MarshalBinary()
+			require.NoError(t, err)
+			perTenant = append(perTenant, &logproto.DetectedLabel{Label: label, Sketch: marshalled})
+		}
+
+		merged, err := detected.MergeLabels(perTenant)
+		require.NoError(t, err)
+
+		return &DetectedLabelsResponse{
+			Response: &logproto.DetectedLabelsResponse{DetectedLabels: merged},
+		}
+	}
+
+	// Two split-interval responses, each already merged across tenants.
+	responses := []queryrangebase.Response{
+		buildTenantMergedResponse("foo", 5),
+		buildTenantMergedResponse("foo", 7),
+	}
+
+	got, err := DefaultCodec.MergeResponse(responses...)
+	require.NoError(t, err)
+
+	response := got.(*DetectedLabelsResponse).Response
+	require.Len(t, response.DetectedLabels, 1)
+	require.Equal(t, "foo", response.DetectedLabels[0].Label)
+}
+
 type badResponse struct{}
 
 func (badResponse) Reset()                                                 {}
@@ -2682,6 +2723,47 @@ func Test_codec_DetectedLabelsResponseProtobufRoundTrip(t *testing.T) {
 	gotDetected, ok := got.(*DetectedLabelsResponse)
 	require.True(t, ok, "expected *DetectedLabelsResponse, got %T", got)
 	require.Equal(t, want.Response, gotDetected.Response)
+}
+
+func Test_codec_CountDistinctSketchResponseProtobufRoundTrip(t *testing.T) {
+	ctx := context.Background()
+	hll := hyperloglog.New14()
+	hll.Insert([]byte("shared"))
+	hllBytes, err := hll.MarshalBinary()
+	require.NoError(t, err)
+
+	want := &CountDistinctSketchResponse{
+		Response: &logproto.CountDistinctSketchMatrix{
+			Values: []*logproto.CountDistinctSketchVector{
+				{
+					Samples: []*logproto.CountDistinctSketchSample{
+						{
+							Hyperloglog: hllBytes,
+							TimestampMs: 1000,
+							Metric:      []*logproto.LabelPair{{Name: "version", Value: "1"}},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	u := &url.URL{Path: "/loki/api/v1/query"}
+	encReq := &http.Request{
+		Method:     "GET",
+		RequestURI: u.String(),
+		URL:        u,
+		Header:     http.Header{"Accept": []string{ProtobufType}},
+	}
+	httpResp, err := DefaultCodec.EncodeResponse(ctx, encReq, want)
+	require.NoError(t, err)
+	require.Equal(t, http.StatusOK, httpResp.StatusCode)
+
+	got, err := DefaultCodec.DecodeResponse(ctx, httpResp, &LokiInstantRequest{Path: "/loki/api/v1/query"})
+	require.NoError(t, err)
+	gotCD, ok := got.(*CountDistinctSketchResponse)
+	require.True(t, ok, "expected *CountDistinctSketchResponse, got %T", got)
+	require.Equal(t, want.Response, gotCD.Response)
 }
 
 func Benchmark_CodecDecodeLogs(b *testing.B) {

@@ -303,11 +303,11 @@ func ensureCAForObjectStorage(p *corev1.PodSpec, tls *TLSConfig, secretType loki
 	switch secretType {
 	case lokiv1.ObjectStorageSecretS3:
 		container.Args = append(container.Args,
-			fmt.Sprintf("-s3.http.ca-file=%s", path.Join(caDirectory, tls.Key)),
+			fmt.Sprintf("-common.storage.object-store.s3.http.tls-ca-path=%s", path.Join(caDirectory, tls.Key)),
 		)
 	case lokiv1.ObjectStorageSecretSwift:
 		container.Args = append(container.Args,
-			fmt.Sprintf("-swift.http.tls-ca-path=%s", path.Join(caDirectory, tls.Key)),
+			fmt.Sprintf("-common.storage.object-store.swift.http.tls-ca-path=%s", path.Join(caDirectory, tls.Key)),
 		)
 	}
 

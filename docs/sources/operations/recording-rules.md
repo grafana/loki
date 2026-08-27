@@ -2,7 +2,7 @@
 title: Manage recording rules
 menuTitle: Recording rules
 description: Describes how to setup and use recording rules in Grafana Loki.
-weight:  
+weight:
 ---
 # Manage recording rules
 
@@ -28,15 +28,24 @@ is that Prometheus will, for example, reject a remote-write request with 100 sam
 
 ### Start-up
 
-When the `ruler` starts up, it will load the WALs for the tenants who have recording rules. These WAL files are stored
-on disk and are loaded into memory.
+When the `ruler` starts up, it opens and replays each tenant's WAL independently, in its own goroutine. This means
+replay for different tenants can happen at the same time, and the `ruler` doesn't wait for one tenant's replay to
+finish before starting the next one's.
 
 {{< admonition type="note" >}}
-WALs are loaded one at a time upon start-up. This is a current limitation of the Loki ruler.
-For this reason, it is advisable that the number of rule groups serviced by a ruler be kept to a reasonable size, since
-_no rule evaluation occurs while WAL replay is in progress (this includes alerting rules)_.
+Rule evaluation is not blocked by WAL replay. Both recording rules and alerting rules evaluate on their normal
+schedule while a tenant's WAL is still replaying.
+
+The only thing affected during replay is sample persistence. Until a tenant's WAL replay finishes, its appender is
+not ready, so any samples produced by that tenant's recording rules during this window are dropped instead of being
+written to the WAL. You can monitor this with the `loki_ruler_wal_appender_ready` metric (see
+[Appender Not Ready](#appender-not-ready)). Alerting rules are not affected, because Loki sends alert notifications
+before it appends any samples.
 {{< /admonition >}}
 
+You can disable WAL replay for a tenant with the per-tenant limit `ruler_enable_wal_replay`
+(`-ruler.enable-wal-replay`, default `true`). Disabling replay reduces start-up memory usage and shortens the
+appender's not-ready window, but the `ruler` will not recover the tenant's in-memory WAL state after a restart.
 
 ### Truncation
 
@@ -47,31 +56,32 @@ and replaying of the WAL.
 
 ### Cleaner
 
-<span style="background-color:#f3f973;">WAL Cleaner is an experimental feature.</span>
-
 The WAL Cleaner watches for abandoned WALs (tenants who no longer have recording rules associated) and deletes them.
 Enable this feature only if you are running into storage concerns with WALs that are too large. WALs should not grow
 excessively large due to truncation.
 
+The WAL Cleaner is disabled by default. Enable it by setting `-ruler.wal-cleaner.period` to a non-zero value.
+
 ## Scaling
 
-See Mimir's guide for [configuring Grafana Mimir hash rings](/docs/mimir/latest/configure/configure-hash-rings/) for scaling the ruler using a ring.
+See Mimir's guide for [configuring Grafana Mimir hash rings](https://grafana.com/docs/mimir/latest/configure/configure-hash-rings/) for scaling the ruler using a ring.
 
 {{< admonition type="note" >}}
-The `ruler` shards by rule _group_, not by individual rules. This is an artifact of the fact that Prometheus
-recording rules need to run in order since one recording rule can reuse another - but this is not possible in Loki.
+By default, the `ruler` shards by rule _group_, not by individual rules. This is an artifact of the fact that Prometheus
+recording rules need to run in order since one recording rule can reuse another, but this is not possible in Loki.
+To shard by individual rule instead, set `-ruler.sharding-algo="by-rule"`. For details, refer to [Tuning](#tuning).
 {{< /admonition >}}
 
 ## Deployment
 
 The `ruler` needs to persist its WAL files to disk, and it incurs a bit of a start-up cost by reading these WALs into memory.
-As such, it is recommended that you try to minimize churn of individual `ruler` instances since rule evaluation is blocked
-while the WALs are being read from disk.
+As such, it is recommended that you try to minimize churn of individual `ruler` instances, since recording rule samples
+produced while a tenant's WAL is being read from disk are dropped rather than persisted (see [Start-up](#start-up)).
 
 ### Kubernetes
 
 It is recommended that you run the `rulers` using `StatefulSets`. The `ruler` will write its WAL files to persistent storage,
-so a `Persistent Volume` should be utilised.
+so a `Persistent Volume` should be utilized.
 
 ## Remote-Write
 
@@ -80,9 +90,9 @@ so a `Persistent Volume` should be utilised.
 Remote-write client configuration is fully compatible with [prometheus configuration format](https://prometheus.io/docs/prometheus/latest/configuration/configuration/#remote_write).
 
 ```yaml
-remote_write:	
-  clients:	
-    mimir:	
+remote_write:
+  clients:
+    mimir:
       url: http://mimir/api/v1/push
       write_relabel_configs:
       - action: replace
@@ -102,12 +112,18 @@ Remote-write can be tuned if the default configuration is insufficient (see [Fai
 
 There is a [guide](https://prometheus.io/docs/practices/remote_write/) on the Prometheus website, all of which applies to Loki, too.
 
-Rules can be evenly distributed across available rulers by using `-ruler.enable-sharding=true` and `-ruler.sharding-strategy="by-rule"`.
-Rule groups execute in order; this is a feature inherited from Prometheus' rule engine (which Loki uses), but Loki has no
-need for this constraint because rules cannot depend on each other. The default sharding strategy will shard by rule groups,
-but this may be undesirable as some rule groups could contain more expensive rules, which can lead to subsequent rules missing evaluations.
-The `by-rule` sharding strategy creates one rule group for each rule the ruler instance "owns" (based on its hash ring), and these rings
-are all executed concurrently.
+Rules can be evenly distributed across available rulers by using `-ruler.enable-sharding=true` and `-ruler.sharding-algo="by-rule"`.
+
+`-ruler.enable-sharding` and `-ruler.sharding-strategy` control which `ruler` instances own which tenants (ring-based
+sharding, with optional shuffle sharding across rulers). For details, refer to
+[Shuffle sharding](https://grafana.com/docs/loki/<LOKI_VERSION>/operations/shuffle-sharding/#shuffle-sharding-in-the-ruler).
+
+`-ruler.sharding-algo` controls how a single tenant's rule groups are split up for evaluation once sharding is
+enabled. Rule groups execute in order; this is a feature inherited from Prometheus' rule engine (which Loki uses), but
+Loki has no need for this constraint because rules cannot depend on each other. The default algorithm, `by-group`,
+shards by rule group, but this may be undesirable, since some rule groups could contain more expensive rules, which
+can lead to subsequent rules missing evaluations. The `by-rule` algorithm creates one rule group for each rule the
+ruler instance "owns" (based on its hash ring), and these groups are all executed concurrently.
 
 ## Observability
 
@@ -121,10 +137,10 @@ Additional metrics are exposed, also with the prefix `loki_ruler_wal_`. All per-
 label, so be aware that cardinality could begin to be a concern if the number of tenants grows sufficiently large.
 
 Some key metrics to note are:
+
 - `loki_ruler_wal_appender_ready`: whether a WAL appender is ready to accept samples (1) or not (0)
 - `loki_ruler_wal_prometheus_remote_storage_samples_total`: number of samples sent per tenant to remote storage
-- `loki_ruler_wal_prometheus_remote_storage_samples...`
-  - `loki_ruler_wal_prometheus_remote_storage_samples_pending_total`: samples buffered in memory, waiting to be sent to remote storage
+  - `loki_ruler_wal_prometheus_remote_storage_samples_pending`: samples currently buffered in memory, waiting to be sent to remote storage. This is a gauge, not a counter, so don't use `rate()` or `increase()` with it.
   - `loki_ruler_wal_prometheus_remote_storage_samples_failed_total`: samples that failed when sent to remote storage
   - `loki_ruler_wal_prometheus_remote_storage_samples_dropped_total`: samples dropped by relabel configurations
   - `loki_ruler_wal_prometheus_remote_storage_samples_retried_total`: samples re-resent to remote storage
@@ -153,22 +169,21 @@ aware that if the remote storage is down for longer than `ruler.wal.max-age`, da
 
 In cases 2 and 3, you should consider [tuning](#tuning) remote-write appropriately.
 
-Further reading: see [this blog post](/blog/2021/04/12/how-to-troubleshoot-remote-write-issues-in-prometheus/)
+Further reading: see [this blog post](https://grafana.com/blog/how-to-troubleshoot-remote-write-issues-in-prometheus/)
 by Prometheus maintainer Callum Styan.
 
 ### Appender Not Ready
 
 Each tenant's WAL has an "appender" internally; this appender is used to _append_ samples to the WAL. The appender is marked
-as _not ready_ until the WAL replay is complete upon startup. If the WAL is corrupted for some reason, or is taking a long
-time to replay, you can determine this by alerting on `loki_ruler_wal_appender_ready < 1`.
+as _not ready_ until the WAL storage has been initialized upon startup. You can alert on `loki_ruler_wal_appender_ready < 1`
+to detect tenants whose WAL is not yet ready to accept samples.
 
 ### Corrupt WAL
 
 If a disk fails or the `ruler` does not terminate correctly, there's a chance one or more tenant WALs can become corrupted.
-A mechanism exists for automatically repairing the WAL, but this cannot handle every conceivable scenario. In this case,
-the `loki_ruler_wal_corruptions_repair_failed_total` metric will be incremented.
+The `ruler` wipes its WAL directory on startup, so any WAL left over from a previous run — corrupt or not — is discarded and
+recreated fresh rather than replayed.
 
 ### Found another failure mode?
 
 Open an [issue](https://github.com/grafana/loki/issues) and tell us about it!
-

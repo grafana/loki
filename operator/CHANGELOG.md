@@ -1,5 +1,49 @@
 ## Main
 
+## [0.11.0](https://github.com/grafana/loki/compare/operator/v0.10.2...operator/v0.11.0) (2026-08-18)
+
+
+### ⚠ BREAKING CHANGES
+
+* Remove support for experimental LogQL variants() queries ([#23823](https://github.com/grafana/loki/issues/23823))
+
+### Features
+
+* **operator:** Enable multi-variant queries ([#21009](https://github.com/grafana/loki/issues/21009)) ([709e318](https://github.com/grafana/loki/commit/709e3184fc7966bc6b8eb8ca661b6b080c1c6e17))
+* **operator:** Support private VPC S3 endpoints in endpoint validation ([#22395](https://github.com/grafana/loki/issues/22395)) ([394caef](https://github.com/grafana/loki/commit/394caeff2f6c8e55dca4be01bc960ac287fbfcb9))
+* **operator:** Watch object storage Services for NetworkPolicy updates and surface ports in status ([#22436](https://github.com/grafana/loki/issues/22436)) ([12822d5](https://github.com/grafana/loki/commit/12822d51087550f56feca44a0f9f1ae4807c2c7e))
+* Remove support for experimental LogQL variants() queries ([#23823](https://github.com/grafana/loki/issues/23823)) ([132e5f9](https://github.com/grafana/loki/commit/132e5f9cce287101a4b813564f1d6b79484b9f02))
+
+
+### Bug Fixes
+
+* **operator:** Move telemetry recording rules to OpenShift bundle ([#22814](https://github.com/grafana/loki/issues/22814)) ([4632368](https://github.com/grafana/loki/commit/4632368c7e4677191d70543cf41a8571d6eb67e3))
+* **operator:** Release leader lease on shutdown so upgrades are faster ([#24042](https://github.com/grafana/loki/issues/24042)) ([ee0d59d](https://github.com/grafana/loki/commit/ee0d59d92d92a1939593e41ddd6aa704b49b592c))
+* **operator:** Use ruler remote_write clients key instead of deprecated client ([#23455](https://github.com/grafana/loki/issues/23455)) ([f5ddb02](https://github.com/grafana/loki/commit/f5ddb02f41478900198178fdb25e67a095a726b9))
+* **security/UNKNOWN/operator:** Update module github.com/klauspost/compress to v1.18.7 [SECURITY] (main) ([#23608](https://github.com/grafana/loki/issues/23608)) ([e1e4e0e](https://github.com/grafana/loki/commit/e1e4e0e4cad5c3e8a0fa40246a1fdfd6988d3fd6))
+* **security/UNKNOWN/operator:** Update module golang.org/x/net to v0.56.0 [SECURITY] (main) ([#23388](https://github.com/grafana/loki/issues/23388)) ([9362a5e](https://github.com/grafana/loki/commit/9362a5ebdc5cbbc6dc74ef45bda15ca1fa226556))
+* **security/UNKNOWN/operator:** Update module golang.org/x/text to v0.39.0 [SECURITY] (main) ([#23389](https://github.com/grafana/loki/issues/23389)) ([50589e1](https://github.com/grafana/loki/commit/50589e15a35f01b5ca1da99080d2b0fa054cab9b))
+
+## [0.10.2](https://github.com/grafana/loki/compare/operator/v0.10.1...operator/v0.10.2) (2026-06-09)
+
+
+### Features
+
+* **operator:** Add passthrough-gateway component ([#20382](https://github.com/grafana/loki/issues/20382)) ([bf06e45](https://github.com/grafana/loki/commit/bf06e45bcfc7745ee26798fdfbbbe31ecfb3bd3f))
+* **operator:** Introduce passthrough tenancy ([#20573](https://github.com/grafana/loki/issues/20573)) ([ca8aac8](https://github.com/grafana/loki/commit/ca8aac8532b93705a43a5c2972c2397a3eebc820))
+* **operator:** Update ServiceMonitors to use serviceDiscoveryRole: EndpointSlice ([#21731](https://github.com/grafana/loki/issues/21731)) ([d3a12c7](https://github.com/grafana/loki/commit/d3a12c766f06a333984632610dcb6a69067f51bf))
+
+
+### Bug Fixes
+
+* **operator:** Add STS support in Azure secret creation script ([#20833](https://github.com/grafana/loki/issues/20833)) ([a9f11d6](https://github.com/grafana/loki/commit/a9f11d6759372568729e4e36afcc8a64a97e2e61))
+* **operator:** Fix import for yaml v4 ([#22159](https://github.com/grafana/loki/issues/22159)) ([4b37810](https://github.com/grafana/loki/commit/4b37810b4c03b31e35f2b8d56cfd27e44ad912a3))
+* **operator:** Fix RemoteWriteAuthType CEL validation in RulerConfig ([#21677](https://github.com/grafana/loki/issues/21677)) ([50e5873](https://github.com/grafana/loki/commit/50e58735302444eb0c9f1d9eb4ad0d4eb3726370))
+* **operator:** Redistribute ingester resources for 1x.extra-small and 1x.small to support 3 replicas ([#21717](https://github.com/grafana/loki/issues/21717)) ([3bca03f](https://github.com/grafana/loki/commit/3bca03f02be4e98a6f98ed256e37340e173dc675))
+* **operator:** Replace local pkg/push dependency with published module ([#21679](https://github.com/grafana/loki/issues/21679)) ([752874f](https://github.com/grafana/loki/commit/752874f76e758cbb42c3f299d56e7c7282029ae7))
+* **operator:** Ruler doesn't evaluate rules due to use_thanos_objstore ([#21713](https://github.com/grafana/loki/issues/21713)) ([d0b1ea0](https://github.com/grafana/loki/commit/d0b1ea0f2ea0c8f1370bb873d3439fa3626b29ee))
+* **operator:** Use thanos objstore CA flags for S3 and Swift storage ([#22123](https://github.com/grafana/loki/issues/22123)) ([2433c87](https://github.com/grafana/loki/commit/2433c87a3f0818b3f3f84938c0d0d61364fef105))
+
 ## [0.10.1](https://github.com/grafana/loki/compare/operator/v0.10.0...operator/v0.10.1) (2026-04-16)
 
 

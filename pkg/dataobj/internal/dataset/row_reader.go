@@ -33,10 +33,26 @@ type RowReaderOptions struct {
 	// Holds a list of predicates that can be sequentially applied to the dataset.
 	Predicates []Predicate
 
-	// Prefetch enables bulk retrieving pages from the dataset when reading
-	// starts. To reduce read latency, this option should only be disabled when
-	// the entire Dataset is already held in memory.
-	Prefetch bool
+	// PrefetchAllOnOpen controls when pages are downloaded.
+	//
+	// If true, all pages are downloaded when the reader is opened.
+	// If false, pages are downloaded lazily as they are read, targeting
+	// [defaultTargetDownloadedBytes] bytes of cached pages at a time. Pages
+	// required for the current read range are always downloaded even if they
+	// exceed the target.
+	PrefetchAllOnOpen bool
+
+	// StatsTracker keeps track of the various reader internal stats.
+	StatsTracker RowReaderStatsTracker
+}
+
+type RowReaderStatsTracker interface {
+	OnColumnPredicateBuilt(column Column, stats ColumnReadPageStats)
+}
+
+type ColumnReadPageStats struct {
+	Total    uint64
+	Relevant uint64
 }
 
 // A RowReader reads [Row]s from a [Dataset].
@@ -95,7 +111,7 @@ func (r *RowReader) Read(ctx context.Context, s []Row) (int, error) {
 	}
 
 	region := xcap.RegionFromContext(ctx)
-	region.Record(xcap.StatDatasetReadCalls.Observe(1))
+	region.Record(dataobj.StatDatasetReadCalls.Observe(1))
 
 	// Our Read implementation works by:
 	//
@@ -168,8 +184,8 @@ func (r *RowReader) Read(ctx context.Context, s []Row) (int, error) {
 			primaryColumnBytes += s[i].Size()
 		}
 
-		region.Record(xcap.StatDatasetPrimaryRowsRead.Observe(int64(rowsRead)))
-		region.Record(xcap.StatDatasetPrimaryRowBytes.Observe(primaryColumnBytes))
+		region.Record(dataobj.StatDatasetPrimaryRowsRead.Observe(int64(rowsRead)))
+		region.Record(dataobj.StatDatasetPrimaryRowBytes.Observe(primaryColumnBytes))
 	} else {
 		rowsRead, passCount, err = r.readAndFilterPrimaryColumns(ctx, readSize, s[:readSize])
 		if err != nil {
@@ -201,8 +217,8 @@ func (r *RowReader) Read(ctx context.Context, s []Row) (int, error) {
 			totalBytesFilled += s[i].Size() - s[i].SizeOfColumns(r.primaryColumnIndexes)
 		}
 
-		region.Record(xcap.StatDatasetSecondaryRowsRead.Observe(int64(count)))
-		region.Record(xcap.StatDatasetSecondaryRowBytes.Observe(totalBytesFilled))
+		region.Record(dataobj.StatDatasetSecondaryRowsRead.Observe(int64(count)))
+		region.Record(dataobj.StatDatasetSecondaryRowBytes.Observe(totalBytesFilled))
 	}
 
 	// We only advance r.row after we successfully read and filled rows. This
@@ -225,6 +241,7 @@ func (r *RowReader) readAndFilterPrimaryColumns(ctx context.Context, readSize in
 		passCount          int // number of rows that passed the predicate
 		primaryColumnBytes int64
 		filledColumns      = make(map[Column]struct{}, len(r.primaryColumnIndexes))
+		region             = xcap.RegionFromContext(ctx)
 	)
 
 	// sequentially apply the predicates.
@@ -275,6 +292,13 @@ func (r *RowReader) readAndFilterPrimaryColumns(ctx context.Context, readSize in
 			passCount++
 		}
 
+		// Track rows that are relevant to the stream matchers.
+		// This is updated only if the first predicate is streamID
+		// any other applied predicates measure query selectivity.
+		if i == 0 && isStreamIDPredicate(p) {
+			region.Record(dataobj.StatStreamRelevantRows.Observe(int64(passCount)))
+		}
+
 		if passCount == 0 {
 			// No rows passed the predicate, so we can stop early.
 			break
@@ -287,9 +311,8 @@ func (r *RowReader) readAndFilterPrimaryColumns(ctx context.Context, readSize in
 		readSize = passCount
 	}
 
-	region := xcap.RegionFromContext(ctx)
-	region.Record(xcap.StatDatasetPrimaryRowsRead.Observe(int64(rowsRead)))
-	region.Record(xcap.StatDatasetPrimaryRowBytes.Observe(primaryColumnBytes))
+	region.Record(dataobj.StatDatasetPrimaryRowsRead.Observe(int64(rowsRead)))
+	region.Record(dataobj.StatDatasetPrimaryRowBytes.Observe(primaryColumnBytes))
 
 	return rowsRead, passCount, nil
 }
@@ -474,40 +497,25 @@ func (r *RowReader) init(ctx context.Context) error {
 }
 
 func (r *RowReader) prefetchPages(ctx context.Context) error {
-	if !r.opts.Prefetch {
+	if !r.opts.PrefetchAllOnOpen {
 		return nil
 	}
 	return r.dl.Prefetch(ctx)
 }
 
-// allColumns returns the full set of column to read. If r was configured with
-// prefetching, wrapped columns from [rowReaderDownloader] are returned. Otherwise,
-// the columns of the original dataset are returned.
+// allColumns returns the full set of columns to read.
 func (r *RowReader) allColumns() []Column {
-	if r.opts.Prefetch {
-		return r.dl.AllColumns()
-	}
-	return r.dl.OrigColumns()
+	return r.dl.AllColumns()
 }
 
-// primaryColumns returns the primary columns to read. If r was configured with
-// prefetching, wrapped columns from [rowReaderDownloader] are returned. Otherwise,
-// the primary columns of the original dataset are returned.
+// primaryColumns returns the primary columns to read.
 func (r *RowReader) primaryColumns() []Column {
-	if r.opts.Prefetch {
-		return r.dl.PrimaryColumns()
-	}
-	return r.dl.OrigPrimaryColumns()
+	return r.dl.PrimaryColumns()
 }
 
-// secondaryColumns returns the secondary columns to read. If r was configured with
-// prefetching, wrapped columns from [rowReaderDownloader] are returned. Otherwise,
-// the secondary columns of the original dataset are returned.
+// secondaryColumns returns the secondary columns to read.
 func (r *RowReader) secondaryColumns() []Column {
-	if r.opts.Prefetch {
-		return r.dl.SecondaryColumns()
-	}
-	return r.dl.OrigSecondaryColumns()
+	return r.dl.SecondaryColumns()
 }
 
 // validatePredicate ensures that all columns used in a predicate have been
@@ -570,6 +578,11 @@ func (r *RowReader) initDownloader(ctx context.Context) error {
 		r.dl.Reset(r.opts.Dataset)
 	}
 
+	r.dl.targetCompressedBytes = defaultTargetDownloadedBytes
+	if r.opts.PrefetchAllOnOpen {
+		r.dl.targetCompressedBytes = 0
+	}
+
 	mask := bitmask.New(len(r.opts.Columns))
 	r.fillPrimaryMask(mask)
 
@@ -582,11 +595,11 @@ func (r *RowReader) initDownloader(ctx context.Context) error {
 
 		if primary {
 			r.primaryColumnIndexes = append(r.primaryColumnIndexes, i)
-			region.Record(xcap.StatDatasetPrimaryColumns.Observe(1))
-			region.Record(xcap.StatDatasetPrimaryColumnPages.Observe(pageCount))
+			region.Record(dataobj.StatDatasetPrimaryColumns.Observe(1))
+			region.Record(dataobj.StatDatasetPrimaryColumnPages.Observe(pageCount))
 		} else {
-			region.Record(xcap.StatDatasetSecondaryColumns.Observe(1))
-			region.Record(xcap.StatDatasetSecondaryColumnPages.Observe(pageCount))
+			region.Record(dataobj.StatDatasetSecondaryColumns.Observe(1))
+			region.Record(dataobj.StatDatasetSecondaryColumnPages.Observe(pageCount))
 		}
 	}
 
@@ -620,8 +633,8 @@ func (r *RowReader) initDownloader(ctx context.Context) error {
 		rowsCount = max(rowsCount, uint64(column.ColumnDesc().RowsCount))
 	}
 
-	region.Record(xcap.StatDatasetMaxRows.Observe(int64(rowsCount)))
-	region.Record(xcap.StatDatasetRowsAfterPruning.Observe(int64(ranges.Len())))
+	region.Record(dataobj.StatDatasetMaxRows.Observe(int64(rowsCount)))
+	region.Record(dataobj.StatDatasetRowsAfterPruning.Observe(int64(ranges.Len())))
 
 	return nil
 }
@@ -825,11 +838,16 @@ func (r *RowReader) buildColumnPredicateRanges(ctx context.Context, c Column, p 
 
 	region := xcap.RegionFromContext(ctx)
 
-	var ranges rangeset.Set
-
 	var (
+		ranges       rangeset.Set
 		pageStart    int
 		lastPageSize int
+
+		isStreamCol      = isStreamIDColumn(c)
+		prevPageIncluded bool // used for tracking avg run length
+
+		totalPages    = uint64(c.ColumnDesc().PagesCount)
+		relevantPages = uint64(0)
 	)
 
 	for result := range c.ListPages(ctx) {
@@ -847,12 +865,29 @@ func (r *RowReader) buildColumnPredicateRanges(ctx context.Context, c Column, p 
 			End:   uint64(pageStart + pageInfo.RowCount),
 		}
 
+		if isStreamCol {
+			region.Record(dataobj.StatStreamPagesTotal.Observe(1))
+		}
+
 		minValue, maxValue, err := readMinMax(pageInfo.Stats)
 		if err != nil {
 			return rangeset.Set{}, fmt.Errorf("failed to read page stats: %w", err)
 		} else if minValue.IsNil() || maxValue.IsNil() {
 			// No stats, so we add the whole range.
 			ranges.Add(pageRange)
+			relevantPages++
+
+			if isStreamCol {
+				region.Record(dataobj.StatStreamRelevantPages.Observe(1))
+
+				// record start of a new run
+				if !prevPageIncluded {
+					region.Record(dataobj.StatStreamPageRuns.Observe(1))
+				}
+
+			}
+
+			prevPageIncluded = true
 			continue
 		}
 
@@ -880,6 +915,16 @@ func (r *RowReader) buildColumnPredicateRanges(ctx context.Context, c Column, p 
 
 		if include {
 			ranges.Add(pageRange)
+			relevantPages++
+
+			if isStreamCol {
+				region.Record(dataobj.StatStreamRelevantPages.Observe(1))
+
+				// track start of a new run
+				if !prevPageIncluded {
+					region.Record(dataobj.StatStreamPageRuns.Observe(1))
+				}
+			}
 		} else {
 			// Page-level stats were present and the predicate ruled out the page,
 			// so the page will not be downloaded for this predicate. Pages without
@@ -887,6 +932,12 @@ func (r *RowReader) buildColumnPredicateRanges(ctx context.Context, c Column, p 
 			// counted here.
 			region.Record(dataobj.StatDatasetPagesPruned.Observe(1))
 		}
+
+		prevPageIncluded = include
+	}
+
+	if r.opts.StatsTracker != nil {
+		r.opts.StatsTracker.OnColumnPredicateBuilt(c, ColumnReadPageStats{totalPages, relevantPages})
 	}
 
 	return ranges, nil
@@ -953,4 +1004,17 @@ func (r *RowReader) predicateColumns(p Predicate, keep func(c Column) bool) ([]C
 	}
 
 	return ret, idxs, nil
+}
+
+func isStreamIDPredicate(p Predicate) bool {
+	in, ok := p.(InPredicate)
+	if !ok {
+		return false
+	}
+
+	return isStreamIDColumn(in.Column)
+}
+
+func isStreamIDColumn(col Column) bool {
+	return col.ColumnDesc().Type.Logical == "stream_id"
 }

@@ -183,14 +183,32 @@ func (c *grpcStorageClient) NewRangeReaderReadObject(ctx context.Context, params
 	obj := msg.GetMetadata()
 	// This is the size of the entire object, even if only a range was requested.
 	size := obj.GetSize()
+	var chunkCRC uint32
+	chunkCRCPresent := false
+	if !params.disableCRCCheck &&
+		msg.GetChecksummedData() != nil &&
+		msg.GetChecksummedData().Crc32C != nil {
+		chunkCRCPresent = true
+		chunkCRC = *msg.GetChecksummedData().Crc32C
+	}
+	startOffset := params.offset
+	if params.offset < 0 {
+		startOffset = size + params.offset
+	}
+	// If caller has specified a negative start offset that's larger than the
+	// reported size, start at the beginning of the object.
+	if startOffset < 0 {
+		startOffset = 0
+	}
 
-	// Only support checksums when reading an entire object, not a range.
 	var (
 		wantCRC  uint32
 		checkCRC bool
 	)
 	if checksums := msg.GetObjectChecksums(); checksums != nil && checksums.Crc32C != nil {
-		if params.offset == 0 && params.length < 0 {
+		if !params.disableCRCCheck &&
+			startOffset == 0 &&
+			(params.length < 0 || (obj != nil && params.length >= size)) {
 			checkCRC = true
 		}
 		wantCRC = checksums.GetCrc32C()
@@ -215,13 +233,18 @@ func (c *grpcStorageClient) NewRangeReaderReadObject(ctx context.Context, params
 			cancel: cancel,
 			size:   size,
 			// Preserve the decoder to read out object data when Read/WriteTo is called.
-			currMsg:   res.decoder,
-			settings:  s,
-			zeroRange: params.length == 0,
-			wantCRC:   wantCRC,
-			checkCRC:  checkCRC,
+			currMsg:         res.decoder,
+			wantChunkCRC:    chunkCRC,
+			chunkCRCPresent: chunkCRCPresent,
+			settings:        s,
+			zeroRange:       params.length == 0,
+			wantCRC:         wantCRC,
+			checkCRC:        checkCRC,
+			disableCRCCheck: params.disableCRCCheck,
 		},
 		checkCRC: checkCRC,
+		bucket:   params.bucket,
+		object:   params.object,
 	}
 
 	cr := msg.GetContentRange()
@@ -248,23 +271,30 @@ type readStreamResponseReadObject struct {
 }
 
 type gRPCReadObjectReader struct {
-	seen, size int64
-	zeroRange  bool
-	stream     storagepb.Storage_ReadObjectClient
-	reopen     func(seen int64) (*readStreamResponseReadObject, context.CancelFunc, error)
-	leftovers  []byte
-	currMsg    *readObjectResponseDecoder // decoder for the current message
-	cancel     context.CancelFunc
-	settings   *settings
-	checkCRC   bool   // should we check the CRC?
-	wantCRC    uint32 // the CRC32c value the server sent in the header
-	gotCRC     uint32 // running crc
+	seen, size      int64
+	zeroRange       bool
+	stream          storagepb.Storage_ReadObjectClient
+	reopen          func(seen int64) (*readStreamResponseReadObject, context.CancelFunc, error)
+	leftovers       []byte
+	currMsg         *readObjectResponseDecoder // decoder for the current message
+	wantChunkCRC    uint32
+	chunkCRCPresent bool
+	cancel          context.CancelFunc
+	settings        *settings
+	checkCRC        bool   // should we check the CRC?
+	wantCRC         uint32 // the CRC32c value the server sent in the header
+	gotCRC          uint32 // running crc
+	gotChunkCRC     uint32 // running crc32c of chunk
+	disableCRCCheck bool
 }
 
 // Update the running CRC with the data in the slice, if CRC checking was enabled.
 func (r *gRPCReadObjectReader) updateCRC(b []byte) {
 	if r.checkCRC {
 		r.gotCRC = crc32.Update(r.gotCRC, crc32cTable, b)
+	}
+	if r.chunkCRCPresent {
+		r.gotChunkCRC = crc32.Update(r.gotChunkCRC, crc32cTable, b)
 	}
 }
 
@@ -273,6 +303,17 @@ func (r *gRPCReadObjectReader) runCRCCheck() error {
 	if r.checkCRC && r.gotCRC != r.wantCRC {
 		return fmt.Errorf("storage: bad CRC on read: got %d, want %d", r.gotCRC, r.wantCRC)
 	}
+	return nil
+}
+
+// checkAndResetChunkCRC verifies the chunk CRC if present, and resets the chunk CRC state.
+func (r *gRPCReadObjectReader) checkAndResetChunkCRC() error {
+	if r.chunkCRCPresent && r.gotChunkCRC != r.wantChunkCRC {
+		return fmt.Errorf("storage: bad CRC on chunk read: got %d, want %d", r.gotChunkCRC, r.wantChunkCRC)
+	}
+	r.gotChunkCRC = 0
+	r.chunkCRCPresent = false
+	r.wantChunkCRC = 0
 	return nil
 }
 
@@ -305,14 +346,36 @@ func (r *gRPCReadObjectReader) Read(p []byte) (int, error) {
 			r.updateCRC(b)
 		})
 		r.seen += int64(n)
+		if r.currMsg.done {
+			if err := r.checkAndResetChunkCRC(); err != nil {
+				return n, err
+			}
+		}
 		return n, nil
+	} else if err := r.checkAndResetChunkCRC(); err != nil {
+		return 0, err
 	}
 
 	// Attempt to Recv the next message on the stream.
 	// This will update r.currMsg with the decoder for the new message.
 	err := r.recv()
+	if err == io.EOF {
+		if err := r.runCRCCheck(); err != nil {
+			return 0, err
+		}
+		return 0, io.EOF
+	}
 	if err != nil {
 		return 0, err
+	}
+
+	msg := r.currMsg.msg
+	if !r.disableCRCCheck &&
+		msg.GetChecksummedData() != nil &&
+		msg.GetChecksummedData().Crc32C != nil {
+		r.wantChunkCRC = *msg.GetChecksummedData().Crc32C
+		r.chunkCRCPresent = true
+		r.gotChunkCRC = 0
 	}
 
 	// TODO: Determine if we need to capture incremental CRC32C for this
@@ -327,6 +390,11 @@ func (r *gRPCReadObjectReader) Read(p []byte) (int, error) {
 		r.updateCRC(b)
 	})
 	r.seen += int64(n)
+	if r.currMsg.done {
+		if err := r.checkAndResetChunkCRC(); err != nil {
+			return n, err
+		}
+	}
 	return n, nil
 }
 
@@ -360,8 +428,19 @@ func (r *gRPCReadObjectReader) WriteTo(w io.Writer) (int64, error) {
 			r.updateCRC(b)
 		})
 		r.seen += int64(written)
-		r.currMsg = nil
 		if err != nil {
+			r.currMsg = nil
+			return r.seen - alreadySeen, err
+		}
+		if r.currMsg.done {
+			if err := r.checkAndResetChunkCRC(); err != nil {
+				r.currMsg = nil
+				return r.seen - alreadySeen, err
+			}
+		}
+		r.currMsg = nil
+	} else if r.currMsg != nil {
+		if err := r.checkAndResetChunkCRC(); err != nil {
 			return r.seen - alreadySeen, err
 		}
 	}
@@ -379,7 +458,14 @@ func (r *gRPCReadObjectReader) WriteTo(w io.Writer) (int64, error) {
 			}
 			return r.seen - alreadySeen, err
 		}
-
+		msg := r.currMsg.msg
+		if !r.disableCRCCheck &&
+			msg.ChecksummedData != nil &&
+			msg.ChecksummedData.Crc32C != nil {
+			r.gotChunkCRC = 0
+			r.wantChunkCRC = *msg.ChecksummedData.Crc32C
+			r.chunkCRCPresent = true
+		}
 		// TODO: Determine if we need to capture incremental CRC32C for this
 		// chunk. The Object CRC32C checksum is captured when directed to read
 		// the entire Object. If directed to read a range, we may need to
@@ -393,6 +479,11 @@ func (r *gRPCReadObjectReader) WriteTo(w io.Writer) (int64, error) {
 		r.seen += int64(written)
 		if err != nil {
 			return r.seen - alreadySeen, err
+		}
+		if r.currMsg != nil && r.currMsg.done {
+			if err := r.checkAndResetChunkCRC(); err != nil {
+				return r.seen - alreadySeen, err
+			}
 		}
 	}
 
@@ -596,7 +687,7 @@ func (d *readObjectResponseDecoder) writeToAndUpdateCRC(w io.Writer, updateCRC f
 		// Write all remaining data from the current buffer
 		n, err := w.Write(b)
 		written += int64(n)
-		updateCRC(b)
+		updateCRC(b[:n])
 		if err != nil {
 			return written, err
 		}

@@ -1,7 +1,7 @@
 // Copyright The OpenTelemetry Authors
 // SPDX-License-Identifier: Apache-2.0
 
-package autoexport // import "go.opentelemetry.io/contrib/exporters/autoexport"
+package autoexport
 
 import (
 	"context"
@@ -199,7 +199,7 @@ func init() {
 		host := getenv("OTEL_EXPORTER_PROMETHEUS_HOST", "localhost")
 		port := getenv("OTEL_EXPORTER_PROMETHEUS_PORT", "9464")
 		addr := host + ":" + port
-		lis, err := net.Listen("tcp", addr)
+		lis, err := (&net.ListenConfig{}).Listen(context.Background(), "tcp", addr)
 		if err != nil {
 			return nil, errors.Join(
 				fmt.Errorf("binding address %s for Prometheus exporter: %w", addr, err),

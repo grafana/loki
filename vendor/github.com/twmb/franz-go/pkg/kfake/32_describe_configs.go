@@ -7,13 +7,29 @@ import (
 	"github.com/twmb/franz-go/pkg/kmsg"
 )
 
+// DescribeConfigs: v0-4
+//
+// Supported resource types:
+// * BROKER (2)
+// * TOPIC (4)
+// * GROUP (32)
+//
+// Version notes:
+// * v1: ConfigSynonyms in response
+// * v2: ThrottleMillis
+// * v3: ConfigType and ConfigDocumentation in response
+// * v4: Flexible versions
+
 func init() { regKey(32, 0, 4) }
 
-func (c *Cluster) handleDescribeConfigs(b *broker, kreq kmsg.Request) (kmsg.Response, error) {
-	req := kreq.(*kmsg.DescribeConfigsRequest)
-	resp := req.ResponseKind().(*kmsg.DescribeConfigsResponse)
+func (c *Cluster) handleDescribeConfigs(creq *clientReq) (kmsg.Response, error) {
+	var (
+		b    = creq.cc.b
+		req  = creq.kreq.(*kmsg.DescribeConfigsRequest)
+		resp = req.ResponseKind().(*kmsg.DescribeConfigsResponse)
+	)
 
-	if err := checkReqVersion(req.Key(), req.Version); err != nil {
+	if err := c.checkReqVersion(req.Key(), req.Version); err != nil {
 		return nil, err
 	}
 
@@ -36,6 +52,7 @@ func (c *Cluster) handleDescribeConfigs(b *broker, kreq kmsg.Request) (kmsg.Resp
 			rc.ReadOnly = rc.Source == kmsg.ConfigSourceStaticBrokerConfig
 			rc.IsDefault = rc.Source == kmsg.ConfigSourceDefaultConfig || rc.Source == kmsg.ConfigSourceStaticBrokerConfig
 			rc.IsSensitive = sensitive
+			rc.ConfigType = configTypes[k] // v3+: defaults to 0 (UNKNOWN) if not in map
 
 			// We walk configs from static to default to dynamic,
 			// if this config already exists previously, we move
@@ -77,6 +94,10 @@ outer:
 		rr := &req.Resources[i]
 		switch rr.ResourceType {
 		case kmsg.ConfigResourceTypeBroker:
+			if !c.allowedClusterACL(creq, kmsg.ACLOperationDescribeConfigs) {
+				doner(rr.ResourceName, rr.ResourceType, kerr.ClusterAuthorizationFailed.Code)
+				continue outer
+			}
 			id := int32(-1)
 			if rr.ResourceName != "" {
 				iid, err := strconv.Atoi(rr.ResourceName)
@@ -91,12 +112,29 @@ outer:
 			filter(rr, r)
 
 		case kmsg.ConfigResourceTypeTopic:
+			if !c.allowedACL(creq, rr.ResourceName, kmsg.ACLResourceTypeTopic, kmsg.ACLOperationDescribeConfigs) {
+				doner(rr.ResourceName, rr.ResourceType, kerr.TopicAuthorizationFailed.Code)
+				continue
+			}
 			if _, ok := c.data.tps.gett(rr.ResourceName); !ok {
 				doner(rr.ResourceName, rr.ResourceType, kerr.UnknownTopicOrPartition.Code)
 				continue
 			}
 			r := doner(rr.ResourceName, rr.ResourceType, 0)
 			c.data.configs(rr.ResourceName, rfn(r))
+			filter(rr, r)
+
+		case kmsg.ConfigResourceTypeGroupConfig:
+			r := doner(rr.ResourceName, rr.ResourceType, 0)
+			emit := rfn(r)
+			for k := range validGroupConfigs {
+				v, dynamic := c.groupConfigs[rr.ResourceName][k]
+				src := kmsg.ConfigSourceDefaultConfig
+				if dynamic {
+					src = kmsg.ConfigSourceGroupConfig
+				}
+				emit(k, v, src, false)
+			}
 			filter(rr, r)
 
 		default:

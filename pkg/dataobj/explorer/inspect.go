@@ -8,6 +8,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/go-kit/log"
+	"github.com/go-kit/log/level"
 	"github.com/thanos-io/objstore"
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
@@ -61,6 +63,12 @@ type PageInfo struct {
 	ValuesCount      uint64 `json:"values_count"`
 }
 
+type IndexPointerRow struct {
+	Path    string    `json:"path"`
+	StartTs time.Time `json:"start_ts"`
+	EndTs   time.Time `json:"end_ts"`
+}
+
 type SectionMetadata struct {
 	Type                  string            `json:"type"`
 	TotalCompressedSize   uint64            `json:"totalCompressedSize"`
@@ -70,6 +78,7 @@ type SectionMetadata struct {
 	Distribution          []uint64          `json:"distribution"`
 	MinTimestamp          time.Time         `json:"minTimestamp"`
 	MaxTimestamp          time.Time         `json:"maxTimestamp"`
+	IndexPointers         []IndexPointerRow `json:"indexPointers,omitempty"`
 }
 
 func (s *Service) handleInspect(w http.ResponseWriter, r *http.Request) {
@@ -90,7 +99,7 @@ func (s *Service) handleInspect(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	metadata := inspectFile(r.Context(), s.bucket, filename)
+	metadata := inspectFile(r.Context(), s.logger, s.bucket, filename)
 	metadata.LastModified = attrs.LastModified.UTC()
 	for _, section := range metadata.Sections {
 		section.MinTimestamp = section.MinTimestamp.UTC().Truncate(time.Second)
@@ -104,7 +113,7 @@ func (s *Service) handleInspect(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func inspectFile(ctx context.Context, bucket objstore.BucketReader, path string) FileMetadata {
+func inspectFile(ctx context.Context, logger log.Logger, bucket objstore.BucketReader, path string) FileMetadata {
 	obj, err := dataobj.FromBucket(ctx, bucket, path, 0)
 	if err != nil {
 		return FileMetadata{
@@ -168,7 +177,7 @@ func inspectFile(ctx context.Context, bucket objstore.BucketReader, path string)
 					Error: fmt.Sprintf("failed to open index pointers section: %v", err),
 				}
 			}
-			meta, err := inspectIndexPointersSection(ctx, section.Type, indexPointersSection)
+			meta, err := inspectIndexPointersSection(ctx, logger, section.Type, indexPointersSection)
 			if err != nil {
 				return FileMetadata{
 					Error: fmt.Sprintf("failed to inspect index pointers section: %v", err),
@@ -181,7 +190,7 @@ func inspectFile(ctx context.Context, bucket objstore.BucketReader, path string)
 	return result
 }
 
-func inspectIndexPointersSection(ctx context.Context, ty dataobj.SectionType, sec *indexpointers.Section) (SectionMetadata, error) {
+func inspectIndexPointersSection(ctx context.Context, logger log.Logger, ty dataobj.SectionType, sec *indexpointers.Section) (SectionMetadata, error) {
 	stats, err := indexpointers.ReadStats(ctx, sec)
 	if err != nil {
 		return SectionMetadata{}, err
@@ -227,6 +236,27 @@ func inspectIndexPointersSection(ctx context.Context, ty dataobj.SectionType, se
 		}
 
 		meta.Columns = append(meta.Columns, colMeta)
+	}
+
+	const maxIndexPointerRows = 1000
+	truncated := false
+	for r := range indexpointers.IterSection(ctx, sec) {
+		if r.Err() != nil {
+			return SectionMetadata{}, r.Err()
+		}
+		if len(meta.IndexPointers) >= maxIndexPointerRows {
+			truncated = true
+			break
+		}
+		p := r.MustValue()
+		meta.IndexPointers = append(meta.IndexPointers, IndexPointerRow{
+			Path:    p.Path,
+			StartTs: p.StartTs.UTC(),
+			EndTs:   p.EndTs.UTC(),
+		})
+	}
+	if truncated {
+		level.Warn(logger).Log("msg", "indexpointers section truncated", "maxRows", maxIndexPointerRows)
 	}
 
 	return meta, nil

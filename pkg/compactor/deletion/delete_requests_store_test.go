@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 	"testing"
 	"time"
 
@@ -141,6 +142,47 @@ func TestAllDeleteRequestsStoreTypes(t *testing.T) {
 			deleteGenNumber2, err := tc.store.GetCacheGenerationNumber(context.Background(), user2)
 			require.NoError(t, err)
 			require.NotEqual(t, updateGenNumber2, deleteGenNumber2)
+		})
+	}
+}
+
+func TestUpdateCacheGenerationNumberStoreTypes(t *testing.T) {
+	for _, storeType := range []DeleteRequestsStoreDBType{DeleteRequestsStoreDBTypeBoltDB, DeleteRequestsStoreDBTypeSQLite} {
+		t.Run(string(storeType), func(t *testing.T) {
+			tc := setupStoreType(t, storeType)
+			defer tc.store.Stop()
+
+			// no gen number exists for the user yet
+			before, err := tc.store.GetCacheGenerationNumber(context.Background(), user1)
+			require.NoError(t, err)
+			require.Empty(t, before)
+
+			require.NoError(t, tc.store.UpdateCacheGenerationNumber(context.Background(), user1))
+
+			after, err := tc.store.GetCacheGenerationNumber(context.Background(), user1)
+			require.NoError(t, err)
+			require.NotEmpty(t, after)
+
+			// bumping again should yield a different (greater) gen number
+			time.Sleep(time.Millisecond)
+			require.NoError(t, tc.store.UpdateCacheGenerationNumber(context.Background(), user1))
+
+			bumped, err := tc.store.GetCacheGenerationNumber(context.Background(), user1)
+			require.NoError(t, err)
+			require.NotEqual(t, after, bumped)
+
+			// the gen number is a unix nano timestamp; compare numerically so the
+			// assertion stays correct regardless of the string representation.
+			afterNum, err := strconv.ParseInt(after, 10, 64)
+			require.NoError(t, err)
+			bumpedNum, err := strconv.ParseInt(bumped, 10, 64)
+			require.NoError(t, err)
+			require.Greater(t, bumpedNum, afterNum)
+
+			// it should not affect other users
+			otherUser, err := tc.store.GetCacheGenerationNumber(context.Background(), user2)
+			require.NoError(t, err)
+			require.Empty(t, otherUser)
 		})
 	}
 }

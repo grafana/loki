@@ -121,27 +121,9 @@ func validateExpr(expr Expr) error {
 		return validateSampleExpr(e)
 	case LogSelectorExpr:
 		return validateLogSelectorExpression(e)
-	case VariantsExpr:
-		return validateVariantsExpr(e)
 	default:
 		return logqlmodel.NewParseError(fmt.Sprintf("unexpected expression type: %v", e), 0, 0)
 	}
-}
-
-func validateVariantsExpr(e VariantsExpr) error {
-	err := validateLogSelectorExpression(e.LogRange().Left)
-	if err != nil {
-		return err
-	}
-
-	for _, variant := range e.Variants() {
-		err = validateSampleExpr(variant)
-		if err != nil {
-			return err
-		}
-	}
-
-	return nil
 }
 
 // validateMatchers checks whether a query would touch all the streams in the query range or uses at least one matcher to select specific streams.
@@ -225,18 +207,38 @@ func validateSampleExpr(expr SampleExpr) error {
 			}
 		}
 		return validateSampleExpr(e.Left)
+	case *LabelAggregationExpr:
+		if e.err != nil {
+			return e.err
+		}
+		if err := e.Validate(); err != nil {
+			return err
+		}
+		return validateSampleSelector(e)
+	case *CountDistinctSketchExpr:
+		if e.err != nil {
+			return e.err
+		}
+		if err := e.Validate(); err != nil {
+			return err
+		}
+		return validateSampleSelector(e)
 	case *LabelReplaceExpr:
 		if e.err != nil {
 			return e.err
 		}
 		return validateSampleExpr(e.Left)
 	default:
-		selector, err := e.Selector()
-		if err != nil {
-			return err
-		}
-		return validateLogSelectorExpression(selector)
+		return validateSampleSelector(e)
 	}
+}
+
+func validateSampleSelector(expr SampleExpr) error {
+	selector, err := expr.Selector()
+	if err != nil {
+		return err
+	}
+	return validateLogSelectorExpression(selector)
 }
 
 func validateLogSelectorExpression(expr LogSelectorExpr) error {

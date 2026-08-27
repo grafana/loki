@@ -11,19 +11,50 @@ import (
 	"github.com/grafana/loki/v3/pkg/scratch"
 )
 
-func TestBuilderFactory(t *testing.T) {
-	bf := NewBuilderFactory(testBuilderConfig, scratch.NewMemory(), log.NewNopLogger())
-	// Can create a builder without registering metrics.
-	b, err := bf.NewBuilder(nil)
+func newTestBuilderFactory(t *testing.T, reg prometheus.Registerer, overrides TenantOverrides) *BuilderFactory {
+	t.Helper()
+	metrics := NewBuilderMetrics()
+	require.NoError(t, metrics.Register(reg))
+	bf, err := NewBuilderFactory(testBuilderConfig, scratch.NewMemory(), metrics, log.NewNopLogger(), overrides)
+	require.NoError(t, err)
+	return bf
+}
+
+func TestBuilderFactory_NewSorterBuilder(t *testing.T) {
+	bf := newTestBuilderFactory(t, prometheus.NewRegistry(), nil)
+
+	b, err := bf.NewSorterBuilder()
 	require.NoError(t, err)
 	require.NotNil(t, b)
-	// Can also create a builder with metrics.
+}
+
+func TestBuilderFactory_NewBuilder(t *testing.T) {
+	bf := newTestBuilderFactory(t, prometheus.NewRegistry(), nil)
+
+	b, err := bf.NewBuilder()
+	require.NoError(t, err)
+	require.NotNil(t, b)
+}
+
+func TestBuilderFactory_RegistersMetrics(t *testing.T) {
 	reg := prometheus.NewRegistry()
-	b, err = bf.NewBuilder(reg)
-	require.NoError(t, err)
-	require.NotNil(t, b)
+	newTestBuilderFactory(t, reg, nil)
+
 	// Should be able to gather registered metrics.
 	n, err := testutil.GatherAndCount(reg)
 	require.NoError(t, err)
 	require.Greater(t, n, 0)
+}
+
+func TestBuilderFactory_SetsOverridesOnBuilders(t *testing.T) {
+	overrides := tenantOverrides{"tenant": {"label"}}
+	bf := newTestBuilderFactory(t, prometheus.NewRegistry(), overrides)
+
+	b, err := bf.NewBuilder()
+	require.NoError(t, err)
+	require.Equal(t, overrides, b.overrides)
+
+	b, err = bf.NewSorterBuilder()
+	require.NoError(t, err)
+	require.Equal(t, overrides, b.overrides)
 }

@@ -52,16 +52,20 @@ func encodeLevels(dst, src []byte, bitWidth uint) ([]byte, error) {
 		}
 	}
 
-	bitMask := byte(1<<bitWidth) - 1
-	bitShift := 8 - bitWidth
 	bitOffset := uint(0)
 
 	for _, value := range src {
-		v := bitFlip(value) >> bitShift
 		i := bitOffset / 8
 		j := bitOffset % 8
-		dst[i+0] |= (v & bitMask) << j
-		dst[i+1] |= (v >> (8 - j))
+		available := 8 - j
+		if bitWidth <= available {
+			// Value fits entirely in byte i; align to the right within available bits.
+			dst[i] |= value << (available - bitWidth)
+		} else {
+			// Split across byte i and byte i+1.
+			dst[i] |= value >> (bitWidth - available)
+			dst[i+1] |= value << (8 - (bitWidth - available))
+		}
 		bitOffset += bitWidth
 	}
 
@@ -89,31 +93,27 @@ func decodeLevels(dst, src []byte, bitWidth uint) ([]byte, error) {
 	}
 
 	bitMask := byte(1<<bitWidth) - 1
-	bitShift := 8 - bitWidth
 	bitOffset := uint(0)
 
 	for k := range dst {
 		i := bitOffset / 8
 		j := bitOffset % 8
-		v := (src[i+0] >> j)
-		if int(i+1) < len(src) {
-			v |= (src[i+1] << (8 - j))
+		available := 8 - j
+		var v byte
+		if bitWidth <= available {
+			v = (src[i] >> (available - bitWidth)) & bitMask
+		} else {
+			remaining := bitWidth - available
+			topBits := src[i] & ((1 << available) - 1)
+			var bottomBits byte
+			if int(i+1) < len(src) {
+				bottomBits = src[i+1] >> (8 - remaining)
+			}
+			v = (topBits << remaining) | bottomBits
 		}
-		v &= bitMask
-		dst[k] = bitFlip(v) >> bitShift
+		dst[k] = v
 		bitOffset += bitWidth
 	}
 
 	return dst, nil
-}
-
-func bitFlip(b byte) byte {
-	return (((b >> 0) & 1) << 7) |
-		(((b >> 1) & 1) << 6) |
-		(((b >> 2) & 1) << 5) |
-		(((b >> 3) & 1) << 4) |
-		(((b >> 4) & 1) << 3) |
-		(((b >> 5) & 1) << 2) |
-		(((b >> 6) & 1) << 1) |
-		(((b >> 7) & 1) << 0)
 }

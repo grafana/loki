@@ -23,6 +23,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/compactor/deletion"
 	"github.com/grafana/loki/v3/pkg/compactor/jobqueue"
 	"github.com/grafana/loki/v3/pkg/compactor/retention"
+	"github.com/grafana/loki/v3/pkg/storage/bucket"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client/local"
 	chunk_util "github.com/grafana/loki/v3/pkg/storage/chunk/client/util"
@@ -266,7 +267,14 @@ func (c *Compactor) init(
 			} else {
 				raw = objectClient
 			}
+			// Chunk keys for filesystem-backed stores must be encoded with FSEncoder
+			// so that they match the keys written by the rest of the storage stack
+			// (see storage.NewChunkClient). This applies both to the legacy filesystem
+			// object client and to the thanos object store adapter backed by a
+			// filesystem bucket.
 			if _, ok := raw.(*local.FSObjectClient); ok {
+				encoder = client.FSEncoder
+			} else if adapter, ok := raw.(*bucket.ObjectClientAdapter); ok && adapter.IsBackendFilesystem() {
 				encoder = client.FSEncoder
 			}
 			chunkClient := client.NewClient(objectClient, encoder, schemaConfig)
@@ -376,7 +384,7 @@ func (c *Compactor) initDeletes(objectClient client.ObjectClient, indexUpdatePro
 		return err
 	}
 
-	c.expirationChecker = newExpirationChecker(retention.NewExpirationChecker(limits), c.deleteRequestsManager)
+	c.expirationChecker = newExpirationChecker(retention.NewExpirationChecker(limits, r), c.deleteRequestsManager)
 	return nil
 }
 

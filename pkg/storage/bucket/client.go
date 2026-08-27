@@ -7,6 +7,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"maps"
 	"net/http"
 	"regexp"
 	"strconv"
@@ -165,6 +166,44 @@ func (cfg *ConfigWithNamedStores) Validate() error {
 	return cfg.NamedStores.Validate()
 }
 
+// DisableRetries configures a backend, or a named backend, to make only one
+// request. A caller should use this only when another layer provides retries.
+func (cfg *ConfigWithNamedStores) DisableRetries(backend string) error {
+	storeType, named := cfg.NamedStores.LookupStoreType(backend)
+	if !named {
+		return cfg.Config.disableRetries(backend)
+	}
+
+	switch storeType {
+	case S3:
+		cfg.NamedStores.S3 = maps.Clone(cfg.NamedStores.S3)
+		storeCfg := cfg.NamedStores.S3[backend]
+		storeCfg.MaxRetries = 1
+		cfg.NamedStores.S3[backend] = storeCfg
+	case GCS:
+		cfg.NamedStores.GCS = maps.Clone(cfg.NamedStores.GCS)
+		storeCfg := cfg.NamedStores.GCS[backend]
+		storeCfg.MaxRetries = 1
+		cfg.NamedStores.GCS[backend] = storeCfg
+	case Azure:
+		cfg.NamedStores.Azure = maps.Clone(cfg.NamedStores.Azure)
+		storeCfg := cfg.NamedStores.Azure[backend]
+		storeCfg.MaxRetries = 1
+		cfg.NamedStores.Azure[backend] = storeCfg
+	case Swift:
+		cfg.NamedStores.Swift = maps.Clone(cfg.NamedStores.Swift)
+		storeCfg := cfg.NamedStores.Swift[backend]
+		storeCfg.MaxRetries = 1
+		cfg.NamedStores.Swift[backend] = storeCfg
+	case Filesystem:
+		// do nothing
+	default:
+		return fmt.Errorf("cannot disable retries for backend: %s", storeType)
+	}
+
+	return nil
+}
+
 func (cfg *Config) disableRetries(backend string) error {
 	switch backend {
 	case S3:
@@ -184,31 +223,21 @@ func (cfg *Config) disableRetries(backend string) error {
 	return nil
 }
 
-func (cfg *Config) configureTransport(backend string, rt http.RoundTripper) error {
-	switch backend {
-	case S3:
-		cfg.S3.HTTP.Transport = rt
-	case GCS:
-		cfg.GCS.Transport = rt
-	case Azure:
-		cfg.Azure.Transport = rt
-	case Swift:
-		cfg.Swift.HTTP.Transport = rt
-	case Filesystem, Alibaba, BOS:
-		// do nothing
-	default:
-		return fmt.Errorf("cannot configure transport for backend: %s", backend)
-	}
-
-	return nil
-}
-
 // NewClient creates a new bucket client based on the configured backend
-func NewClient(ctx context.Context, backend string, cfg Config, name string, logger log.Logger) (objstore.InstrumentedBucket, error) {
+func NewClient(ctx context.Context, backend string, cfg Config, name string, logger log.Logger, wrapRT func(http.RoundTripper) http.RoundTripper) (objstore.InstrumentedBucket, error) {
 	var (
 		client objstore.Bucket
 		err    error
 	)
+
+	instrumentTransport := func() func(http.RoundTripper) http.RoundTripper {
+		return func(rt http.RoundTripper) http.RoundTripper {
+			if wrapRT != nil {
+				rt = wrapRT(rt)
+			}
+			return &instrumentedRoundTripper{next: rt}
+		}
+	}
 
 	// TODO: add support for other backends that loki already supports
 	switch backend {
@@ -255,12 +284,6 @@ func NewClient(ctx context.Context, backend string, cfg Config, name string, log
 
 type instrumentedRoundTripper struct {
 	next http.RoundTripper
-}
-
-func instrumentTransport() func(http.RoundTripper) http.RoundTripper {
-	return func(rt http.RoundTripper) http.RoundTripper {
-		return &instrumentedRoundTripper{next: rt}
-	}
 }
 
 func (i *instrumentedRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) {

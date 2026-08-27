@@ -248,6 +248,7 @@ var (
 	moducrt             = windows.NewLazySystemDLL("ucrtbase.dll")
 	procFindfirst32     = moducrt.NewProc("_findfirst32")
 	procFindnext32      = moducrt.NewProc("_findnext32")
+	procStat32i64       = moducrt.NewProc("_stat32i64")
 	procStat64i32       = moducrt.NewProc("_stat64i32")
 	procWchmod          = moducrt.NewProc("_wchmod")
 	procWfindfirst32    = moducrt.NewProc("_wfindfirst32")
@@ -1865,6 +1866,9 @@ func Xfread(t *TLS, ptr uintptr, size, nmemb types.Size_t, stream uintptr) types
 	if __ccgo_strace {
 		trc("t=%v ptr=%v nmemb=%v stream=%v, (%v:)", t, ptr, nmemb, stream, origin(2))
 	}
+	if size == 0 || nmemb == 0 {
+		return 0
+	}
 	f, ok := winGetObject(stream).(*file)
 	if !ok {
 		t.setErrno(errno.EBADF)
@@ -1881,7 +1885,7 @@ func Xfread(t *TLS, ptr uintptr, size, nmemb types.Size_t, stream uintptr) types
 
 	if dmesgs {
 		// dmesg("%v: %d %#x x %#x: %#x\n%s", origin(1), file(stream).fd(), size, nmemb, types.Size_t(m)/size, hex.Dump(GoBytes(ptr, int(m))))
-		dmesg("%v: %d %#x x %#x: %#x\n%s", origin(1), f._fd, size, nmemb, types.Size_t(n)/size)
+		dmesg("%v: %d %#x x %#x: %#x", origin(1), f._fd, size, nmemb, types.Size_t(n)/size)
 	}
 
 	return types.Size_t(n) / size
@@ -1893,7 +1897,7 @@ func Xfwrite(t *TLS, ptr uintptr, size, nmemb types.Size_t, stream uintptr) type
 	if __ccgo_strace {
 		trc("t=%v ptr=%v nmemb=%v stream=%v, (%v:)", t, ptr, nmemb, stream, origin(2))
 	}
-	if ptr == 0 || size == 0 {
+	if ptr == 0 || size == 0 || nmemb == 0 {
 		return 0
 	}
 
@@ -1913,7 +1917,7 @@ func Xfwrite(t *TLS, ptr uintptr, size, nmemb types.Size_t, stream uintptr) type
 
 	if dmesgs {
 		// 		// dmesg("%v: %d %#x x %#x: %#x\n%s", origin(1), file(stream).fd(), size, nmemb, types.Size_t(m)/size, hex.Dump(GoBytes(ptr, int(m))))
-		dmesg("%v: %d %#x x %#x: %#x\n%s", origin(1), f._fd, size, nmemb, types.Size_t(n)/size)
+		dmesg("%v: %d %#x x %#x: %#x", origin(1), f._fd, size, nmemb, types.Size_t(n)/size)
 	}
 	return types.Size_t(n) / size
 }
@@ -7530,6 +7534,18 @@ func X_vscprintf(t *TLS, format uintptr, argptr uintptr) int32 {
 }
 
 // int _stat32i64(const char *path, struct _stat32i64 *buffer);
+func X_stat32i64(t *TLS, path uintptr, buffer uintptr) int32 {
+	if __ccgo_strace {
+		trc("t=%v path=%v buffer=%v, (%v:)", t, path, buffer, origin(2))
+	}
+	r0, _, err := procStat32i64.Call(uintptr(path), uintptr(buffer))
+	if err != windows.NOERROR {
+		t.setErrno(err)
+	}
+	return int32(r0)
+}
+
+// int _stat64i32(const char *path, struct _stat64i32 *buffer);
 func X_stat64i32(t *TLS, path uintptr, buffer uintptr) int32 {
 	if __ccgo_strace {
 		trc("t=%v path=%v buffer=%v, (%v:)", t, path, buffer, origin(2))
@@ -7539,6 +7555,14 @@ func X_stat64i32(t *TLS, path uintptr, buffer uintptr) int32 {
 		t.setErrno(err)
 	}
 	return int32(r0)
+}
+
+func X__stat32i64(t *TLS, path uintptr, buffer uintptr) int32 {
+	return X_stat32i64(t, path, buffer)
+}
+
+func X__stat64i32(t *TLS, path uintptr, buffer uintptr) int32 {
+	return X_stat64i32(t, path, buffer)
 }
 
 func AtomicLoadNUint8(ptr uintptr, memorder int32) uint8 {
@@ -7813,9 +7837,11 @@ func X_wfindnext64i32(tls *TLS, handle types.Intptr_t, fileinfo uintptr) (r int3
 }
 
 // wchar_t *_wfullpath(
-//    wchar_t *absPath,
-//    const wchar_t *relPath,
-//    size_t maxLength
+//
+//	wchar_t *absPath,
+//	const wchar_t *relPath,
+//	size_t maxLength
+//
 // );
 func X_wfullpath(tls *TLS, absPath, relPath uintptr, maxLength Tsize_t) (r uintptr) {
 	r0, _, err := procWfullpath.Call(absPath, relPath, uintptr(maxLength))

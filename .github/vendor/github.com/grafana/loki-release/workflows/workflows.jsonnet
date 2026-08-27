@@ -15,7 +15,7 @@ local dockerPluginDir = 'clients/cmd/docker-driver';
       buildImage=buildImage,
       buildArtifactsBucket='loki-build-artifacts',
       branches=['release-[0-9]+.[0-9]+.x'],
-      imagePrefix='trevorwhitney075',
+      imagePrefix='us-docker.pkg.dev/grafanalabs-dev/docker-loki-dev',
       releaseLibRef='main',
       releaseRepo='grafana/loki-release',
       distRunsOn='ubuntu-26.04',
@@ -36,7 +36,7 @@ local dockerPluginDir = 'clients/cmd/docker-driver';
       buildArtifactsBucket='loki-build-artifacts',
       branches=['release-[0-9]+.[0-9]+.x'],
       dryRun=true,
-      imagePrefix='trevorwhitney075',
+      imagePrefix='us-docker.pkg.dev/grafanalabs-dev/docker-loki-dev',
       releaseLibRef='main',
       releaseRepo='grafana/loki-release',
       skipValidation=false,
@@ -46,19 +46,33 @@ local dockerPluginDir = 'clients/cmd/docker-driver';
       on+: {
         pull_request: {},
       },
+      env+: {
+        IMAGE_PREFIX: 'us-docker.pkg.dev/grafanalabs-dev/docker-loki-dev/ci/${{ github.run_id }}',
+        PLUGIN_IMAGE_PREFIX: 'us-docker.pkg.dev/grafanalabs-dev/docker-loki-dev/ci/${{ github.run_id }}',
+      },
+      jobs+: {
+        publishImages: lokiRelease.release.publishImages(
+          needs=['loki', 'loki-docker-driver'],
+          sha='${{ github.sha }}',
+          isLatest='false',
+        ),
+        publishDockerPlugins: lokiRelease.release.publishDockerPlugins(
+          dockerPluginDir,
+          needs=['loki', 'loki-docker-driver'],
+          sha='${{ github.sha }}',
+          isLatest='false',
+        ),
+      },
     }, false, false
   ),
   '.github/workflows/release.yml': std.manifestYamlDoc(
     lokiRelease.releaseWorkflow(
       branches=['release-[0-9]+.[0-9]+.x'],
       buildArtifactsBucket='loki-build-artifacts',
-      dockerUsername='trevorwhitney075',
-      getDockerCredsFromVault=false,
-      imagePrefix='trevorwhitney075',
+      imagePrefix='us-docker.pkg.dev/grafanalabs-dev/docker-loki-dev',
       pluginBuildDir=dockerPluginDir,
       releaseLibRef='main',
       releaseRepo='grafana/loki-release',
-      useGitHubAppToken=true,
     ) + {
       name: 'Create Release',
       on+: {

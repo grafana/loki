@@ -108,9 +108,9 @@ func loadTestCases(tb testing.TB, config *GeneratorConfig) []TestCase {
 
 // setupBenchmarkWithStore sets up the benchmark environment with the specified store type
 // and returns the necessary components
-func setupBenchmarkWithStore(tb testing.TB, storeType string) logql.Engine {
+func setupBenchmarkWithStore(tb testing.TB, storeType string, dir string) logql.Engine {
 	tb.Helper()
-	entries, err := os.ReadDir(DefaultDataDir)
+	entries, err := os.ReadDir(dir)
 	if err != nil || len(entries) == 0 {
 		tb.Fatal("Data directory is empty or does not exist. Please run 'go generate ./...' first to generate test data")
 	}
@@ -118,7 +118,7 @@ func setupBenchmarkWithStore(tb testing.TB, storeType string) logql.Engine {
 	var querier logql.Querier
 	switch storeType {
 	case StoreDataObjV2Engine:
-		store, err := NewDataObjV2EngineStore(DefaultDataDir, testTenant)
+		store, err := NewDataObjV2EngineStore(dir, testTenant)
 		if err != nil {
 			tb.Fatal(err)
 		}
@@ -126,7 +126,7 @@ func setupBenchmarkWithStore(tb testing.TB, storeType string) logql.Engine {
 		return store.engine
 	case StoreChunk:
 		reg := prometheus.NewRegistry()
-		store, err := NewChunkStoreWithRegisterer(DefaultDataDir, testTenant, reg)
+		store, err := NewChunkStoreWithRegisterer(dir, testTenant, reg)
 		if err != nil {
 			tb.Fatal(err)
 		}
@@ -147,10 +147,77 @@ func setupBenchmarkWithStore(tb testing.TB, storeType string) logql.Engine {
 	return engine
 }
 
+func TestBenchE2EQuery(t *testing.T) {
+	staticData := []logproto.Stream{
+		{
+			Labels: "{service_name=\"web-server\",app=\"web\"}",
+			Entries: []logproto.Entry{
+				{Timestamp: time.Now(), Line: "1"},
+				{Timestamp: time.Now(), Line: "2"},
+				{Timestamp: time.Now(), Line: "3"},
+			},
+		},
+	}
+	dir := t.TempDir()
+
+	{
+		// Create datasets
+		tenantID := "test-tenant"
+		chunkStore, err := NewChunkStoreWithRegisterer(dir, tenantID, prometheus.NewRegistry())
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Failed to create chunk store: %v\n", err)
+			os.Exit(1)
+		}
+		dataObjStore, err := NewDataObjStore(dir, tenantID)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Failed to create dataobj store: %v\n", err)
+			os.Exit(1)
+		}
+
+		// Write static data to all the stores
+		for _, store := range []Store{chunkStore, dataObjStore} {
+			require.NoError(t, store.Write(context.Background(), staticData))
+		}
+
+		// Close all stores to ensure data is flushed
+		for _, store := range []Store{chunkStore, dataObjStore} {
+			require.NoError(t, store.Close())
+		}
+	}
+
+	for _, storeType := range allStores {
+		t.Run(fmt.Sprintf("store=%s", storeType), func(t *testing.T) {
+			engine := setupBenchmarkWithStore(t, storeType, dir)
+			query := `{service_name="web-server"}`
+			params, err := logql.NewLiteralParams(
+				query,
+				time.Now().Add(-20*time.Hour),
+				time.Now(),
+				0,
+				0,
+				logproto.BACKWARD,
+				1000,
+				nil,
+				nil,
+			)
+			require.NoError(t, err)
+			q := engine.Query(params)
+			res, err := q.Exec(user.InjectOrgID(context.Background(), testTenant))
+			require.NoError(t, err)
+
+			require.Equal(t, 1, len(res.Data.(logqlmodel.Streams)))
+			entries := res.Data.(logqlmodel.Streams)[0].Entries
+			require.Equal(t, 3, len(entries))
+			require.Equal(t, "3", entries[0].Line)
+			require.Equal(t, "2", entries[1].Line)
+			require.Equal(t, "1", entries[2].Line)
+		})
+	}
+}
+
 // TestStorageEquality ensures that for each test case, all known storages
 // return the same query result.
 func TestStorageEquality(t *testing.T) {
-
 	if !*slowTests {
 		t.Skip("test skipped because -slow-tests flag is not set")
 	}
@@ -162,7 +229,7 @@ func TestStorageEquality(t *testing.T) {
 	}
 
 	generateStore := func(name string) *store {
-		engine := setupBenchmarkWithStore(t, name)
+		engine := setupBenchmarkWithStore(t, name, DefaultDataDir)
 		// Load and validate the generator config
 		config, err := LoadConfig(DefaultDataDir)
 		if err != nil {
@@ -235,9 +302,7 @@ func TestStorageEquality(t *testing.T) {
 						return
 					}
 
-					var (
-						actual, expected logqlmodel.Result
-					)
+					var actual, expected logqlmodel.Result
 
 					g, ctx := errgroup.WithContext(ctx)
 
@@ -254,7 +319,6 @@ func TestStorageEquality(t *testing.T) {
 					})
 
 					err = g.Wait()
-
 					if err != nil {
 						if errors.Is(err, engine.ErrNotSupported) {
 							t.Skipf("Store %s does not support features used in test case %s", store.Name, baseCase.Name())
@@ -317,7 +381,7 @@ func TestLogQLQueries(t *testing.T) {
 	// We keep this test for debugging even though it's too slow for now.
 	t.Skip("Too slow for now.")
 	store := StoreDataObjV2Engine
-	engine := setupBenchmarkWithStore(t, store)
+	engine := setupBenchmarkWithStore(t, store, DefaultDataDir)
 	// Load and validate the generator config
 	config, err := LoadConfig(DefaultDataDir)
 	if err != nil {
@@ -396,7 +460,7 @@ func TestLogQLQueries(t *testing.T) {
 func BenchmarkLogQL(b *testing.B) {
 	// Run benchmarks for both storage types
 	for _, storeType := range allStores {
-		engine := setupBenchmarkWithStore(b, storeType)
+		engine := setupBenchmarkWithStore(b, storeType, DefaultDataDir)
 		// Load and validate the generator config
 		config, err := LoadConfig(DefaultDataDir)
 		if err != nil {
@@ -503,7 +567,7 @@ func TestPrintBenchmarkQueries(t *testing.T) {
 func TestStoresGenerateData(t *testing.T) {
 	dir := t.TempDir()
 
-	chunkStore, err := NewChunkStore(dir, testTenant)
+	chunkStore, err := NewChunkStoreWithRegisterer(dir, testTenant, prometheus.NewRegistry())
 	if err != nil {
 		t.Fatal(err)
 	}

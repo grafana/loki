@@ -1,7 +1,7 @@
 // Copyright The OpenTelemetry Authors
 // SPDX-License-Identifier: Apache-2.0
 
-package aggregate // import "go.opentelemetry.io/otel/sdk/metric/internal/aggregate"
+package aggregate
 
 import (
 	"context"
@@ -13,15 +13,16 @@ import (
 )
 
 type sumValue[N int64 | float64] struct {
-	n         atomicCounter[N]
-	res       FilteredExemplarReservoir[N]
-	attrs     attribute.Set
-	startTime time.Time
+	n             atomicCounter[N]
+	res           FilteredExemplarReservoir[N]
+	attrs         attribute.Set
+	startTime     time.Time
+	dropExemplars bool
 }
 
 type sumValueMap[N int64 | float64] struct {
-	values limitedSyncMap
 	newRes func(attribute.Set) FilteredExemplarReservoir[N]
+	values limitedSyncMap[*sumValue[N]]
 }
 
 func (s *sumValueMap[N]) measure(
@@ -30,18 +31,23 @@ func (s *sumValueMap[N]) measure(
 	fltrAttr attribute.Set,
 	droppedAttr []attribute.KeyValue,
 ) {
-	sv := s.values.LoadOrStoreAttr(fltrAttr, func(attr attribute.Set) any {
+	sv := s.values.LoadOrStoreAttr(fltrAttr, func(attr attribute.Set) *sumValue[N] {
+		r := s.newRes(attr)
+		_, isDrop := r.(*dropRes[N])
 		return &sumValue[N]{
-			res:       s.newRes(attr),
-			attrs:     attr,
-			startTime: now(),
+			res:           r,
+			attrs:         attr,
+			startTime:     now(),
+			dropExemplars: isDrop,
 		}
-	}).(*sumValue[N])
+	})
 	sv.n.add(value)
 	// It is possible for collection to race with measurement and observe the
 	// exemplar in the batch of metrics after the add() for cumulative sums.
 	// This is an accepted tradeoff to avoid locking during measurement.
-	sv.res.Offer(ctx, value, droppedAttr)
+	if !sv.dropExemplars {
+		sv.res.Offer(ctx, value, droppedAttr)
+	}
 }
 
 // newDeltaSum returns an aggregator that summarizes a set of measurements as
@@ -57,12 +63,12 @@ func newDeltaSum[N int64 | float64](
 		start:     now(),
 		hotColdValMap: [2]sumValueMap[N]{
 			{
-				values: limitedSyncMap{aggLimit: limit},
 				newRes: r,
+				values: limitedSyncMap[*sumValue[N]]{aggLimit: limit},
 			},
 			{
-				values: limitedSyncMap{aggLimit: limit},
 				newRes: r,
+				values: limitedSyncMap[*sumValue[N]]{aggLimit: limit},
 			},
 		},
 	}
@@ -134,8 +140,8 @@ func newCumulativeSum[N int64 | float64](
 		monotonic: monotonic,
 		start:     now(),
 		sumValueMap: sumValueMap[N]{
-			values: limitedSyncMap{aggLimit: limit},
 			newRes: r,
+			values: limitedSyncMap[*sumValue[N]]{aggLimit: limit},
 		},
 	}
 }

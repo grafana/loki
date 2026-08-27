@@ -68,10 +68,10 @@ func getLocalStore(path string, cm ClientMetrics) Store {
 			ResyncInterval:         1 * time.Minute,
 			IngesterDBRetainPeriod: 1 * time.Minute,
 			IngesterName:           "ingester-1",
+			IndexReaderMode:        indexshipper.DefaultIndexReaderMode,
 			Mode:                   indexshipper.ModeReadWrite,
 		},
-		MaxChunkBatchSize:  10,
-		IndexCacheValidity: 1 * time.Minute,
+		MaxChunkBatchSize: 10,
 	}
 
 	schemaConfig := config.SchemaConfig{
@@ -87,7 +87,6 @@ func getLocalStore(path string, cm ClientMetrics) Store {
 						Prefix: "index_",
 						Period: time.Hour * 24,
 					}},
-				RowShards: 16,
 			},
 		},
 	}
@@ -999,12 +998,12 @@ func (p *mockStreamExtractor) BaseLabels() lokilog.LabelsResult {
 	return p.wrappedSP.BaseLabels()
 }
 
-func (p *mockStreamExtractor) Process(ts int64, line []byte, lbs labels.Labels) ([]lokilog.ExtractedSample, bool) {
+func (p *mockStreamExtractor) Process(ts int64, line []byte, lbs labels.Labels) (lokilog.ExtractedSample, bool) {
 	p.called++
 	return p.wrappedSP.Process(ts, line, lbs)
 }
 
-func (p *mockStreamExtractor) ProcessString(ts int64, line string, lbs labels.Labels) ([]lokilog.ExtractedSample, bool) {
+func (p *mockStreamExtractor) ProcessString(ts int64, line string, lbs labels.Labels) (lokilog.ExtractedSample, bool) {
 	p.called++
 	return p.wrappedSP.ProcessString(ts, line, lbs)
 }
@@ -1238,7 +1237,6 @@ func TestStore_indexPrefixChange(t *testing.T) {
 				Prefix: "index_tsdb_",
 				Period: time.Hour * 24,
 			}},
-		RowShards: 2,
 	}
 	schemaConfig.Configs = append(schemaConfig.Configs, periodConfig2)
 
@@ -1352,7 +1350,6 @@ func TestStore_MultiPeriod(t *testing.T) {
 						Prefix: "index_",
 						Period: time.Hour * 24,
 					}},
-				RowShards: 2,
 			}
 
 			schemaConfig := config.SchemaConfig{
@@ -1677,7 +1674,6 @@ func TestStore_BoltdbTsdbSameIndexPrefix(t *testing.T) {
 						Prefix: "index_",
 						Period: time.Hour * 24,
 					}},
-				RowShards: 2,
 			},
 			{
 				From:       config.DayTime{Time: timeToModelTime(newStartDate)},
@@ -1817,7 +1813,6 @@ func TestStore_SyncStopInteraction(t *testing.T) {
 						Prefix: "index_",
 						Period: time.Hour * 24,
 					}},
-				RowShards: 2,
 			},
 			{
 				From:       config.DayTime{Time: timeToModelTime(newStartDate)},

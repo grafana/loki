@@ -1,5 +1,38 @@
 # Release History
 
+## 1.23.0 (2026-08-11)
+
+### Features Added
+
+* Helper method `runtime.NewRequestForNextLink` for creating requests for pageable operations that uses a next link.  It handles absolute and relative next links.
+
+### Bugs Fixed
+
+* Fixed an issue where `runtime.Pager[T].More` could return `true` indefinitely after `NextPage` failed to retrieve the first page, causing `for pager.More()` loops to spin. After a page fetch returns an error the `Pager` now enters a terminal state: `More` returns `false` and subsequent `NextPage` calls return the same error without invoking the fetcher again.
+
+## 1.22.0 (2026-06-04)
+
+### Features Added
+
+* Added type `datetime.RFC7231` for date/time values in RFC 1123 format with a fixed GMT timezone.
+
+### Other Changes
+
+* Upgraded dependencies.
+
+## 1.21.1 (2026-04-16)
+
+### Bugs Fixed
+
+* Fixed an issue in `ResponseError.Error()` where the request URL path was being logged unescaped.
+* Redact query parameters when logging errors.
+* For `runtime.JoinPaths`, don't add a slash between root and paths when `paths` starts with `?` (query string).
+
+### Other Changes
+
+* Upgraded to Go 1.25.0.
+* Upgraded dependencies.
+
 ## 1.21.0 (2026-01-12)
 
 ### Features Added

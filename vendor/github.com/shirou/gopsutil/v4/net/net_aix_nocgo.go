@@ -78,6 +78,35 @@ func parseNetstatI(output string) ([]IOCountersStat, error) {
 	return ret, nil
 }
 
+// parseEntstat extracts BytesSent and BytesRecv from entstat output.
+// The entstat two-column Transmit/Receive format (including the "Bytes:"
+// line) has been stable across AIX 4.3 through 7.3 (over 25 years).
+// The output has a two-column layout with Transmit on the left and Receive
+// on the right, e.g.:
+//
+//	Bytes: 3509236040                             Bytes: 4547812126
+func parseEntstat(output string) (bytesSent, bytesRecv uint64) {
+	for _, line := range strings.Split(output, "\n") {
+		if !strings.Contains(line, "Bytes:") {
+			continue
+		}
+		// Split on "Bytes:" to get: ["", " 3509236040                             ", " 4547812126"]
+		parts := strings.Split(line, "Bytes:")
+		if len(parts) >= 2 {
+			if v, err := strconv.ParseUint(strings.TrimSpace(parts[1]), 10, 64); err == nil {
+				bytesSent = v
+			}
+		}
+		if len(parts) >= 3 {
+			if v, err := strconv.ParseUint(strings.TrimSpace(parts[2]), 10, 64); err == nil {
+				bytesRecv = v
+			}
+		}
+		return
+	}
+	return
+}
+
 func IOCountersWithContext(ctx context.Context, pernic bool) ([]IOCountersStat, error) {
 	out, err := invoke.CommandWithContext(ctx, "netstat", "-idn")
 	if err != nil {
@@ -88,6 +117,24 @@ func IOCountersWithContext(ctx context.Context, pernic bool) ([]IOCountersStat, 
 	if err != nil {
 		return nil, err
 	}
+
+	// Populate BytesSent/BytesRecv via entstat for each interface.
+	// entstat only works on hardware/virtual ethernet adapters; it fails
+	// on loopback (lo0) with errno 19, which is silently skipped. Errors
+	// on other interfaces are propagated since they indicate a real problem.
+	for i := range iocounters {
+		entOut, err := invoke.CommandWithContext(ctx, "entstat", iocounters[i].Name)
+		if err != nil {
+			// entstat fails on loopback (lo0) with errno 19 — this is expected.
+			// For other interfaces, propagate the error.
+			if iocounters[i].Name == "lo0" {
+				continue
+			}
+			return nil, err
+		}
+		iocounters[i].BytesSent, iocounters[i].BytesRecv = parseEntstat(string(entOut))
+	}
+
 	if !pernic {
 		return getIOCountersAll(iocounters), nil
 	}

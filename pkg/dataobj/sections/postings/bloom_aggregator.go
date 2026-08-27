@@ -3,6 +3,7 @@ package postings
 import (
 	"fmt"
 	"math"
+	"time"
 
 	"github.com/bits-and-blooms/bloom/v3"
 
@@ -19,6 +20,7 @@ type bloomPostingKey struct {
 // bloomPostingEntry holds the aggregated state for a single bloom posting.
 type bloomPostingEntry struct {
 	ObjectPath       string
+	ShardBuckets     int64
 	SectionIndex     int64
 	ColumnName       string
 	bloomFilter      *bloom.BloomFilter
@@ -58,6 +60,8 @@ func (e *bloomPostingEntry) BitmapBytes() []byte {
 type bloomAggregator struct {
 	entries       map[bloomPostingKey]*bloomPostingEntry
 	estimatedSize int
+	minTimestamp  time.Time
+	maxTimestamp  time.Time
 }
 
 // newBloomAggregator creates a new bloomAggregator.
@@ -69,8 +73,9 @@ func newBloomAggregator() *bloomAggregator {
 
 // PrepareColumn initializes the bloom filter for a specific column. Must be
 // called before any Observe calls for the given (objectPath, sectionIndex,
-// columnName) combination.
-func (a *bloomAggregator) PrepareColumn(objectPath string, sectionIndex int64, columnName string, estimatedCardinality uint) {
+// columnName) combination. shardBuckets is stored on the entry immediately so
+// a prepared-but-unobserved column still records the object's shard factor.
+func (a *bloomAggregator) PrepareColumn(objectPath string, sectionIndex int64, columnName string, estimatedCardinality uint, shardBuckets int64) {
 	key := bloomPostingKey{
 		objectPath:   objectPath,
 		sectionIndex: sectionIndex,
@@ -83,6 +88,7 @@ func (a *bloomAggregator) PrepareColumn(objectPath string, sectionIndex int64, c
 
 	entry := &bloomPostingEntry{
 		ObjectPath:   objectPath,
+		ShardBuckets: shardBuckets,
 		SectionIndex: sectionIndex,
 		ColumnName:   columnName,
 		bloomFilter:  bloom.NewWithEstimates(estimatedCardinality, 1.0/128.0),
@@ -92,8 +98,8 @@ func (a *bloomAggregator) PrepareColumn(objectPath string, sectionIndex int64, c
 	}
 	a.entries[key] = entry
 
-	// Track size estimate for new entry: 5 int64 fields + string sizes + bloom filter capacity.
-	a.estimatedSize += 5*8 + len(objectPath) + len(columnName) + int(entry.bloomFilter.Cap()/8)
+	// Track size estimate for new entry: 6 int64 fields + string sizes + bloom filter capacity.
+	a.estimatedSize += 6*8 + len(objectPath) + len(columnName) + int(entry.bloomFilter.Cap()/8)
 }
 
 // Observe records a single observation for a bloom column. Returns an error if
@@ -111,6 +117,7 @@ func (a *bloomAggregator) Observe(obs BloomObservation) error {
 	}
 
 	entry.bloomFilter.Add([]byte(obs.Value))
+	entry.ShardBuckets = obs.ShardBuckets
 
 	// Grow bitmap if needed and set the bit for this stream ID.
 	if int(obs.StreamID) >= entry.bitmap.Len() {
@@ -132,22 +139,45 @@ func (a *bloomAggregator) Observe(obs BloomObservation) error {
 	}
 	entry.UncompressedSize += obs.UncompressedSize
 
+	ts := obs.Timestamp.UTC()
+	if a.minTimestamp.IsZero() || ts.Before(a.minTimestamp) {
+		a.minTimestamp = ts
+	}
+	if a.maxTimestamp.IsZero() || ts.After(a.maxTimestamp) {
+		a.maxTimestamp = ts
+	}
+
 	return nil
 }
 
-// Entries returns all aggregated entries. Bitmap normalization (padding to
-// equal length) is NOT done here; the caller (columnarEncode) handles it
-// across both label and bloom entries.
-func (a *bloomAggregator) Entries() []*bloomPostingEntry {
+// Entries returns all aggregated entries converted to public type. Bitmap
+// normalization (padding to equal length) is NOT done here. Returns an error if
+// any bloom filter fails to marshal.
+func (a *bloomAggregator) Entries() ([]BloomEntry, error) {
 	if len(a.entries) == 0 {
-		return nil
+		return nil, nil
 	}
 
-	result := make([]*bloomPostingEntry, 0, len(a.entries))
+	result := make([]BloomEntry, 0, len(a.entries))
 	for _, entry := range a.entries {
-		result = append(result, entry)
+		bloomBytes, err := entry.BloomBytes()
+		if err != nil {
+			return nil, fmt.Errorf("marshaling bloom filter for %q section %d column %q: %w",
+				entry.ObjectPath, entry.SectionIndex, entry.ColumnName, err)
+		}
+		result = append(result, BloomEntry{
+			ObjectPath:       entry.ObjectPath,
+			ShardBuckets:     entry.ShardBuckets,
+			SectionIndex:     entry.SectionIndex,
+			ColumnName:       entry.ColumnName,
+			BloomFilter:      bloomBytes,
+			StreamIDBitmap:   entry.BitmapBytes(),
+			MinTimestamp:     entry.MinTimestamp,
+			MaxTimestamp:     entry.MaxTimestamp,
+			UncompressedSize: entry.UncompressedSize,
+		})
 	}
-	return result
+	return result, nil
 }
 
 // BloomBytes marshals and returns the bloom filter bytes for a specific column.
@@ -171,8 +201,16 @@ func (a *bloomAggregator) EstimatedSize() int {
 	return a.estimatedSize
 }
 
+// TimeRange returns the minimum and maximum observation timestamp seen by the
+// aggregator. It returns zero time.Time values when nothing has been observed.
+func (a *bloomAggregator) TimeRange() (time.Time, time.Time) {
+	return a.minTimestamp, a.maxTimestamp
+}
+
 // Reset clears all accumulated state including prepared columns.
 func (a *bloomAggregator) Reset() {
 	a.entries = make(map[bloomPostingKey]*bloomPostingEntry)
 	a.estimatedSize = 0
+	a.minTimestamp = time.Time{}
+	a.maxTimestamp = time.Time{}
 }

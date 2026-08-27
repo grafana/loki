@@ -10,6 +10,7 @@ import (
 
 	"github.com/parquet-go/bitpack/unsafecast"
 	"github.com/parquet-go/jsonlite"
+	"github.com/parquet-go/parquet-go/format"
 )
 
 var jsonNull jsonlite.Value
@@ -29,7 +30,7 @@ func jsonParse(data []byte) (*jsonlite.Value, error) {
 func writeJSONToLeaf(col ColumnBuffer, levels columnLevels, val *jsonlite.Value, node Node) {
 	typ := node.Type()
 	if typ.Kind() == ByteArray {
-		if logicalType := typ.LogicalType(); logicalType != nil && logicalType.Json != nil {
+		if logicalType := typ.LogicalType(); logicalTypeIs[*format.JsonType](logicalType) {
 			writeJSONToByteArray(col, levels, val, node)
 			return
 		}
@@ -103,8 +104,8 @@ func writeJSONString(col ColumnBuffer, levels columnLevels, str string, node Nod
 	typ := node.Type()
 
 	if logicalType := typ.LogicalType(); logicalType != nil {
-		switch {
-		case logicalType.Timestamp != nil:
+		switch logicalType.Value.(type) {
+		case *format.TimestampType:
 			t, err := time.Parse(time.RFC3339, str)
 			if err != nil {
 				panic(fmt.Errorf("cannot parse JSON string %q as timestamp: %w", str, err))
@@ -112,7 +113,7 @@ func writeJSONString(col ColumnBuffer, levels columnLevels, str string, node Nod
 			writeTime(col, levels, t, node)
 			return
 
-		case logicalType.Date != nil:
+		case *format.DateType:
 			t, err := time.Parse("2006-01-02", str)
 			if err != nil {
 				panic(fmt.Errorf("cannot parse JSON string %q as date: %w", str, err))
@@ -120,7 +121,7 @@ func writeJSONString(col ColumnBuffer, levels columnLevels, str string, node Nod
 			writeTime(col, levels, t, node)
 			return
 
-		case logicalType.Time != nil:
+		case *format.TimeType:
 			t, err := time.Parse("15:04:05.000000000", str)
 			if err != nil {
 				panic(fmt.Errorf("cannot parse JSON string %q as time: %w", str, err))
@@ -132,7 +133,7 @@ func writeJSONString(col ColumnBuffer, levels columnLevels, str string, node Nod
 			writeDuration(col, levels, d, node)
 			return
 
-		case logicalType.UUID != nil:
+		case *format.UUIDType:
 			// Only parse UUID strings when writing to binary UUID columns
 			// (FIXED_LEN_BYTE_ARRAY with 16 bytes). If writing to a STRING
 			// column with UUID logical type, write the string as-is.
@@ -149,8 +150,8 @@ func writeJSONNumber(col ColumnBuffer, levels columnLevels, num json.Number, nod
 	str := num.String()
 
 	if logicalType := typ.LogicalType(); logicalType != nil {
-		switch {
-		case logicalType.Timestamp != nil:
+		switch logicalType.Value.(type) {
+		case *format.TimestampType:
 			// Interpret number as seconds since Unix epoch (with sub-second precision)
 			f, err := num.Float64()
 			if err != nil {
@@ -161,7 +162,7 @@ func writeJSONNumber(col ColumnBuffer, levels columnLevels, num json.Number, nod
 			writeTime(col, levels, t, node)
 			return
 
-		case logicalType.Date != nil:
+		case *format.DateType:
 			// Interpret number as seconds since Unix epoch
 			i, err := num.Int64()
 			if err != nil {
@@ -171,7 +172,7 @@ func writeJSONNumber(col ColumnBuffer, levels columnLevels, num json.Number, nod
 			writeTime(col, levels, t, node)
 			return
 
-		case logicalType.Time != nil:
+		case *format.TimeType:
 			// Interpret number as seconds since midnight
 			f, err := num.Float64()
 			if err != nil {

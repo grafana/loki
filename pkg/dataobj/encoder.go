@@ -12,13 +12,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/scratch"
 )
 
-var (
-	magic = []byte("DOBJ")
-
-	// legacyMagic is the magic bytes used in the original dataobj format where
-	// file metadata was kept at the bottom of the file.
-	legacyMagic = []byte("THOR")
-)
+var magic = []byte("DOBJ")
 
 const (
 	fileFormatVersion = 0x1

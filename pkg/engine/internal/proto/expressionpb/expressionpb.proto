@@ -102,6 +102,7 @@ message LiteralExpression {
     DurationLiteral duration_literal = 7;
     BytesLiteral bytes_literal = 8;
     StringListLiteral string_list_literal = 9;
+    LabelFmtListLiteral label_fmt_list_literal = 10;
   }
 }
 
@@ -147,6 +148,18 @@ message BytesLiteral {
 // StringListLiteral represents a list of string literal values.
 message StringListLiteral {
   repeated string value = 1;
+}
+
+// LabelFmtListLiteral represents a list of label fmt literal values.
+message LabelFmtListLiteral {
+  repeated LabelFmtLiteral value = 1;
+}
+
+// LabelFmtLiteral represents a label fmt literal.
+message LabelFmtLiteral {
+  string name = 1;
+  string value = 2;
+  bool rename = 3;
 }
 
 // ColumnExpression is an expression used to reference a column.

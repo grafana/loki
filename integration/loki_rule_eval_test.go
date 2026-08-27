@@ -16,26 +16,28 @@ import (
 
 	"github.com/grafana/loki/v3/integration/client"
 	"github.com/grafana/loki/v3/integration/cluster"
-
 	"github.com/grafana/loki/v3/pkg/ruler"
 )
 
-// TestLocalRuleEval tests that rules are evaluated locally with an embedded query engine
+// mode=EvalModeLocal tests that rules are evaluated locally with an embedded query engine
 // and that the results are written to the backend correctly.
-func TestLocalRuleEval(t *testing.T) {
-	testRuleEval(t, ruler.EvalModeLocal)
-}
-
-// TestRemoteRuleEval tests that rules are evaluated remotely against a configured query-frontend
+// mode=EvalModeRemote tests that rules are evaluated remotely against a configured query-frontend
 // and that the results are written to the backend correctly.
-func TestRemoteRuleEval(t *testing.T) {
-	testRuleEval(t, ruler.EvalModeRemote)
+func TestRuleEval(t *testing.T) {
+	for _, mode := range []string{ruler.EvalModeLocal, ruler.EvalModeRemote} {
+		for _, useThanosObjstore := range []bool{false, true} {
+			name := fmt.Sprintf("mode=%v/use_thanos_objstore=%v", mode, useThanosObjstore)
+			t.Run(name, func(t *testing.T) {
+				testRuleEval(t, mode, useThanosObjstore)
+			})
+		}
+	}
 }
 
 // The only way we can test rule evaluation in an integration test is to use the remote-write feature.
 // In this test we stub out a remote-write receiver and check that the expected data is sent to it.
 // Both the local and the remote rule evaluation modes should produce the same result.
-func testRuleEval(t *testing.T, mode string) {
+func testRuleEval(t *testing.T, mode string, useThanosObjstore bool) {
 	clu := cluster.New(nil, cluster.SchemaWithTSDB, func(c *cluster.Cluster) {
 		c.SetSchemaVer("v13")
 	})
@@ -43,20 +45,35 @@ func testRuleEval(t *testing.T, mode string) {
 		assert.NoError(t, clu.Cleanup())
 	})
 
-	// initialise a write component and ingest some logs
-	tWrite := clu.AddComponent(
-		"write",
-		"-target=write",
+	// Start storage and write-path components.
+	var (
+		tCompactor = clu.AddComponent(
+			"compactor",
+			"-target=compactor",
+		)
+		tIndexGateway = clu.AddComponent(
+			"index-gateway",
+			"-target=index-gateway",
+		)
+		tDistributor = clu.AddComponent(
+			"distributor",
+			"-target=distributor",
+		)
 	)
+	require.NoError(t, clu.Run())
+
+	clu.AddComponent(
+		"ingester",
+		"-target=ingester",
+		"-tsdb.shipper.index-gateway-client.server-address="+tIndexGateway.GRPCURL(),
+	)
+	require.NoError(t, clu.Run())
 
 	now := time.Now()
 	tenantID := randStringRunes()
-
-	require.NoError(t, clu.Run())
-
 	job := "accesslog"
 
-	cliWrite := client.New(tenantID, "", tWrite.HTTPURL())
+	cliWrite := client.New(tenantID, "", tDistributor.HTTPURL())
 	cliWrite.Now = now
 
 	// 1. Ingest some logs
@@ -67,24 +84,40 @@ func testRuleEval(t *testing.T, mode string) {
 	// advance time to after the last ingested log line so queries don't return empty results
 	now = now.Add(time.Second * 2)
 
-	// start up read component for remote rule evaluation
-	tRead := clu.AddComponent(
-		"read",
-		"-target=read",
-		// we set a fake address here because deletion is not being tested,
-		// and we have a circular dependency with the backend
-		"-common.compactor-address=http://fake",
-		"-legacy-read-mode=false",
-		"-query-scheduler.use-scheduler-ring=false",
-	)
+	// For remote evaluation, start the query stack so the ruler can delegate queries.
+	var tQueryFrontend *cluster.Component
+	if mode == ruler.EvalModeRemote {
+		tQueryScheduler := clu.AddComponent(
+			"query-scheduler",
+			"-target=query-scheduler",
+			"-query-scheduler.use-scheduler-ring=false",
+			"-tsdb.shipper.index-gateway-client.server-address="+tIndexGateway.GRPCURL(),
+		)
+		require.NoError(t, clu.Run())
 
-	require.NoError(t, clu.Run())
+		_ = clu.AddComponent(
+			"querier",
+			"-target=querier",
+			"-querier.scheduler-address="+tQueryScheduler.GRPCURL(),
+			"-tsdb.shipper.index-gateway-client.server-address="+tIndexGateway.GRPCURL(),
+			"-common.compactor-address="+tCompactor.HTTPURL(),
+		)
+		tQueryFrontend = clu.AddComponent(
+			"query-frontend",
+			"-target=query-frontend",
+			"-frontend.scheduler-address="+tQueryScheduler.GRPCURL(),
+			"-tsdb.shipper.index-gateway-client.server-address="+tIndexGateway.GRPCURL(),
+			"-common.compactor-address="+tCompactor.HTTPURL(),
+		)
+		require.NoError(t, clu.Run())
+	}
 
-	// start up a backend component which contains the ruler
-	tBackend := clu.AddComponent(
-		"backend",
-		"-target=backend",
-		"-legacy-read-mode=false",
+	// Start the ruler component.
+	tRuler := clu.AddComponent(
+		"ruler",
+		"-target=ruler",
+		"-common.compactor-address="+tCompactor.HTTPURL(),
+		fmt.Sprintf("-use-thanos-objstore=%v", useThanosObjstore),
 	)
 
 	rwHandler := func(called *bool, test func(w http.ResponseWriter, r *http.Request)) *httptest.Server {
@@ -119,17 +152,16 @@ func testRuleEval(t *testing.T, mode string) {
 	server1 := rwHandler(&called, expectedResults)
 	defer server1.Close()
 
-	// configure the backend component
-	tBackend.WithRulerRemoteWrite("target1", server1.URL)
+	tRuler.WithRulerRemoteWrite("target1", server1.URL)
 
 	if mode == ruler.EvalModeRemote {
-		tBackend.WithExtraConfig(fmt.Sprintf(`
+		tRuler.WithExtraConfig(fmt.Sprintf(`
 ruler:
   evaluation:
     mode: %s
     query_frontend:
       address: %s
-`, mode, tRead.GRPCURL()))
+`, mode, tQueryFrontend.GRPCURL()))
 	}
 
 	record := fmt.Sprintf(`
@@ -143,27 +175,27 @@ groups:
       foo: bar
 `, job)
 
-	require.NoError(t, tBackend.WithTenantRules(map[string]map[string]string{
+	require.NoError(t, tRuler.WithTenantRules(map[string]map[string]string{
 		tenantID: {
 			"record.yaml": record,
 		},
 	}))
 
-	m, e := tBackend.MergedConfig()
+	m, e := tRuler.MergedConfig()
 	require.NoError(t, e)
-	t.Logf("starting backend with config:\n%s\n", m)
+	t.Logf("starting ruler with config:\n%s\n", m)
 
 	require.NoError(t, clu.Run())
 
-	cliBackend := client.New(tenantID, "", tBackend.HTTPURL())
-	cliBackend.Now = now
+	cliRuler := client.New(tenantID, "", tRuler.HTTPURL())
+	cliRuler.Now = now
 
 	// 2. Assert rules evaluation
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
 	// check rules exist
-	resp, err := cliBackend.GetRules(ctx)
+	resp, err := cliRuler.GetRules(ctx)
 
 	require.NoError(t, err)
 	require.NotNil(t, resp)
@@ -173,7 +205,7 @@ groups:
 	require.Len(t, resp.Data.Groups, 1)
 	require.Len(t, resp.Data.Groups[0].Rules, 1)
 
-	// ensure that both remote-write receivers were called
+	// ensure that the remote-write receiver was called with the expected data
 	require.Eventually(t, func() bool {
 		return assert.ObjectsAreEqualValues(true, called)
 	}, 30*time.Second, 100*time.Millisecond, "remote-write was not called")

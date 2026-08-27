@@ -47,6 +47,7 @@ ingester:
     final_sleep: 0s
     join_after: 30s
     num_tokens: 512
+    tokens_file_path: /tmp/loki/ring-tokens
     enable_inet6: true
     ring:
       replication_factor: 1

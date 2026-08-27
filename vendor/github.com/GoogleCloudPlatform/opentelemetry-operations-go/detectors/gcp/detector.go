@@ -17,6 +17,7 @@ package gcp
 import (
 	"context"
 	"errors"
+	"net/http"
 	"os"
 	"strings"
 
@@ -39,6 +40,7 @@ const (
 	GCE
 	CloudRun
 	CloudRunJob
+	CloudRunWorkerPool
 	CloudFunctions
 	AppEngineStandard
 	AppEngineFlex
@@ -58,6 +60,8 @@ func (d *Detector) CloudPlatform() Platform {
 		return CloudRun
 	case d.onCloudRunJob():
 		return CloudRunJob
+	case d.onCloudRunWorkerPool():
+		return CloudRunWorkerPool
 	case d.onAppEngineStandard():
 		return AppEngineStandard
 	case d.onAppEngine():
@@ -84,8 +88,10 @@ func (d *Detector) instanceID() (string, error) {
 
 // Detector collects resource information for all GCP platforms.
 type Detector struct {
-	metadata *metadata.Client
-	os       osProvider
+	metadata       *metadata.Client
+	os             osProvider
+	httpClient     *http.Client
+	computeBaseURL string
 }
 
 // osProvider contains the subset of the os package functions used by.

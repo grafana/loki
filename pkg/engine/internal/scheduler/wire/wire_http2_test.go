@@ -12,14 +12,13 @@ import (
 	"github.com/go-kit/log"
 	"github.com/oklog/ulid/v2"
 	"github.com/stretchr/testify/require"
-	"golang.org/x/net/http2"
-	"golang.org/x/net/http2/h2c"
 
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
 	"github.com/grafana/loki/v3/pkg/engine/internal/scheduler/wire"
 	"github.com/grafana/loki/v3/pkg/engine/internal/types"
 	"github.com/grafana/loki/v3/pkg/engine/internal/util/dag"
 	"github.com/grafana/loki/v3/pkg/engine/internal/workflow"
+	serverutil "github.com/grafana/loki/v3/pkg/util/server"
 )
 
 // TestHTTP2BasicConnectivity tests basic connection establishment and communication.
@@ -102,7 +101,7 @@ func TestHTTP2WithPeers(t *testing.T) {
 		serverReceived <- message
 
 		// Echo back a WorkerReadyMessage
-		if _, ok := message.(wire.TaskStatusMessage); ok {
+		if _, ok := message.(wire.TaskResultMessage); ok {
 			return peer.SendMessageAsync(ctx, wire.WorkerReadyMessage{})
 		}
 		return nil
@@ -170,13 +169,13 @@ func TestHTTP2WithPeers(t *testing.T) {
 	}()
 
 	// Send message from client to server (synchronous)
-	err = clientPeer.SendMessage(ctx, wire.TaskStatusMessage{})
+	err = clientPeer.SendMessage(ctx, wire.TaskResultMessage{Result: workflow.TaskResult{Outcome: workflow.TaskOutcomeCompleted}})
 	require.NoError(t, err)
 
 	// Wait for server to receive the message
 	select {
 	case msg := <-serverReceived:
-		require.IsType(t, wire.TaskStatusMessage{}, msg)
+		require.IsType(t, wire.TaskResultMessage{Result: workflow.TaskResult{Outcome: workflow.TaskOutcomeCompleted}}, msg)
 	case <-ctx.Done():
 		t.Fatal("timeout waiting for server to receive message")
 	}
@@ -324,7 +323,7 @@ func TestHTTP2MultipleClients(t *testing.T) {
 
 			// Send messages
 			for j := 0; j < 3; j++ {
-				msg := wire.TaskStatusMessage{}
+				msg := wire.TaskResultMessage{Result: workflow.TaskResult{Outcome: workflow.TaskOutcomeCompleted}}
 				err := peer.SendMessage(ctx, msg)
 				if err != nil {
 					t.Errorf("Client %d send failed: %v", clientIdx, err)
@@ -499,8 +498,7 @@ func TestHTTP2MessageFrameSerialization(t *testing.T) {
 	}{
 		{"WorkerReadyMessage", wire.WorkerReadyMessage{}},
 		{"TaskCancelMessage", wire.TaskCancelMessage{}},
-		{"TaskFlagMessage", wire.TaskFlagMessage{Interruptible: true}},
-		{"TaskStatusMessage", wire.TaskStatusMessage{}},
+		{"TaskResultMessage", wire.TaskResultMessage{Result: workflow.TaskResult{Outcome: workflow.TaskOutcomeCompleted}}},
 		{"TaskAssignMessage", wire.TaskAssignMessage{
 			Task: &workflow.Task{
 				ULID:     ulid.Make(),
@@ -508,18 +506,18 @@ func TestHTTP2MessageFrameSerialization(t *testing.T) {
 				Fragment: expectedPlan,
 				Sources: map[physical.Node][]*workflow.Stream{
 					compat: {
-						{ULID: ulid.Make(), TenantID: "fake"},
+						{ULID: ulid.Make()},
 					},
 				},
 				Sinks: map[physical.Node][]*workflow.Stream{
 					scanSet: {
-						{ULID: ulid.Make(), TenantID: "fake"},
+						{ULID: ulid.Make()},
 					},
 				},
 			},
-			StreamStates: nil,
+			ClosedSourceIDs: nil,
 		}},
-		{"StreamStatusMessage", wire.StreamStatusMessage{}},
+		{"StreamClosedMessage", wire.StreamClosedMessage{}},
 	}
 
 	for _, tc := range testCases {
@@ -667,9 +665,8 @@ func prepareHTTP2Listener(t *testing.T) (*wire.HTTP2Listener, func()) {
 	mux := http.NewServeMux()
 	mux.Handle("/", listener)
 
-	server := &http.Server{
-		Handler: h2c.NewHandler(mux, &http2.Server{}),
-	}
+	server := &http.Server{Handler: mux}
+	serverutil.EnableUnencryptedHTTP2(server)
 	wgServe := sync.WaitGroup{}
 	wgServe.Add(1)
 

@@ -48,6 +48,20 @@ func newSweeperMetrics(r prometheus.Registerer) *sweeperMetrics {
 	}
 }
 
+type expirationMetrics struct {
+	chunksExpiredByIngestionTime prometheus.Counter
+}
+
+func newExpirationMetrics(r prometheus.Registerer) *expirationMetrics {
+	return &expirationMetrics{
+		chunksExpiredByIngestionTime: promauto.With(r).NewCounter(prometheus.CounterOpts{
+			Namespace: "loki_compactor",
+			Name:      "retention_chunks_expired_by_ingestion_time_total",
+			Help:      "Total number of chunks expired based on their ingestion time (IngestedAt) rather than their data time range.",
+		}),
+	}
+}
+
 type markerMetrics struct {
 	tableProcessedTotal           *prometheus.CounterVec
 	tableMarksCreatedTotal        *prometheus.CounterVec

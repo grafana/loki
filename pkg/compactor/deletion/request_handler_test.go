@@ -372,6 +372,53 @@ func TestGetAllDeleteRequestsHandler(t *testing.T) {
 	})
 }
 
+func TestUpdateCacheGenerationNumberHandler(t *testing.T) {
+	for _, tc := range []struct {
+		name               string
+		orgID              string
+		updateGenErr       error
+		expectedCode       int
+		expectedBody       string
+		expectedUpdateUser string
+	}{
+		{
+			name:               "it bumps the cache generation number for the user",
+			orgID:              "org-id",
+			expectedCode:       http.StatusNoContent,
+			expectedUpdateUser: "org-id",
+		},
+		{
+			name:               "it returns 500 when the store errors",
+			orgID:              "org-id",
+			updateGenErr:       errors.New("something bad"),
+			expectedCode:       http.StatusInternalServerError,
+			expectedUpdateUser: "org-id",
+		},
+		{
+			name:         "it returns 400 when there is no org id",
+			orgID:        "",
+			expectedCode: http.StatusBadRequest,
+			expectedBody: "no org id\n",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			store := &mockDeleteRequestsStore{updateGenErr: tc.updateGenErr}
+			h := NewDeleteRequestHandler(store, 0, 0, nil)
+
+			req := buildRequest(tc.orgID, ``, "", "", false)
+
+			w := httptest.NewRecorder()
+			h.UpdateCacheGenerationNumberHandler(w, req)
+
+			require.Equal(t, tc.expectedCode, w.Code)
+			require.Equal(t, tc.expectedUpdateUser, store.updatedCacheGenForUser)
+			if tc.expectedBody != "" {
+				require.Equal(t, tc.expectedBody, w.Body.String())
+			}
+		})
+	}
+}
+
 func buildRequest(orgID, query, start, end string, forQuerytimeFiltering bool) *http.Request {
 	var req *http.Request
 	if orgID == "" {

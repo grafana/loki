@@ -4,16 +4,14 @@ import (
 	"bytes"
 	"context"
 	"html/template"
-	"io"
 	"math/rand"
-	"net/http"
 	"net/http/httptest"
 	"strconv"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"gopkg.in/yaml.v2"
+	"go.yaml.in/yaml/v4"
 
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/util"
@@ -212,11 +210,6 @@ func (b bytesBuffered) Close() error {
 
 func (b bytesBuffered) BytesBuffer() *bytes.Buffer {
 	return b.Buffer
-}
-
-func TestIsRequestBodyTooLargeRegression(t *testing.T) {
-	_, err := io.ReadAll(http.MaxBytesReader(httptest.NewRecorder(), io.NopCloser(bytes.NewReader([]byte{1, 2, 3, 4})), 1))
-	assert.True(t, util.IsRequestBodyTooLarge(err))
 }
 
 func TestErrorTypeFromHTTPStatus(t *testing.T) {

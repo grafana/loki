@@ -23,9 +23,10 @@ type indexShipperIterator interface {
 
 // indexShipperQuerier is used for querying index from the shipper.
 type indexShipperQuerier struct {
-	shipper     indexShipperIterator
-	chunkFilter chunk.RequestChunkFilterer
-	tableRange  config.TableRange
+	shipper       indexShipperIterator
+	chunkFilterMu sync.Mutex
+	chunkFilter   chunk.RequestChunkFilterer
+	tableRange    config.TableRange
 }
 
 func newIndexShipperQuerier(shipper indexShipperIterator, tableRange config.TableRange) Index {
@@ -62,8 +63,8 @@ func (i *indexShipperQuerier) indices(ctx context.Context, from, through model.T
 
 	idx := NewMultiIndex(itr)
 
-	if i.chunkFilter != nil {
-		idx.SetChunkFilterer(i.chunkFilter)
+	if f := i.getChunkFilter(); f != nil {
+		idx.SetChunkFilterer(f)
 	}
 	return idx, nil
 }
@@ -76,7 +77,16 @@ func (i *indexShipperQuerier) Bounds() (model.Time, model.Time) {
 }
 
 func (i *indexShipperQuerier) SetChunkFilterer(chunkFilter chunk.RequestChunkFilterer) {
+	i.chunkFilterMu.Lock()
 	i.chunkFilter = chunkFilter
+	i.chunkFilterMu.Unlock()
+}
+
+func (i *indexShipperQuerier) getChunkFilter() chunk.RequestChunkFilterer {
+	i.chunkFilterMu.Lock()
+	f := i.chunkFilter
+	i.chunkFilterMu.Unlock()
+	return f
 }
 
 // Close implements Index.Close, but we offload this responsibility

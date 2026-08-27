@@ -7,10 +7,10 @@ import (
 	context "context"
 	fmt "fmt"
 	proto "github.com/gogo/protobuf/proto"
-	empty "github.com/golang/protobuf/ptypes/empty"
 	grpc "google.golang.org/grpc"
 	codes "google.golang.org/grpc/codes"
 	status "google.golang.org/grpc/status"
+	emptypb "google.golang.org/protobuf/types/known/emptypb"
 	io "io"
 	math "math"
 	math_bits "math/bits"
@@ -236,12 +236,12 @@ const _ = grpc.SupportPackageIsVersion4
 //
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://godoc.org/google.golang.org/grpc#ClientConn.NewStream.
 type FakeServerClient interface {
-	Succeed(ctx context.Context, in *empty.Empty, opts ...grpc.CallOption) (*empty.Empty, error)
-	FailWithError(ctx context.Context, in *empty.Empty, opts ...grpc.CallOption) (*empty.Empty, error)
-	FailWithHTTPError(ctx context.Context, in *FailWithHTTPErrorRequest, opts ...grpc.CallOption) (*empty.Empty, error)
-	Sleep(ctx context.Context, in *empty.Empty, opts ...grpc.CallOption) (*empty.Empty, error)
-	StreamSleep(ctx context.Context, in *empty.Empty, opts ...grpc.CallOption) (FakeServer_StreamSleepClient, error)
-	ReturnProxyProtoCallerIP(ctx context.Context, in *empty.Empty, opts ...grpc.CallOption) (*ProxyProtoIPResponse, error)
+	Succeed(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*emptypb.Empty, error)
+	FailWithError(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*emptypb.Empty, error)
+	FailWithHTTPError(ctx context.Context, in *FailWithHTTPErrorRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
+	Sleep(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*emptypb.Empty, error)
+	StreamSleep(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (FakeServer_StreamSleepClient, error)
+	ReturnProxyProtoCallerIP(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*ProxyProtoIPResponse, error)
 }
 
 type fakeServerClient struct {
@@ -252,8 +252,8 @@ func NewFakeServerClient(cc *grpc.ClientConn) FakeServerClient {
 	return &fakeServerClient{cc}
 }
 
-func (c *fakeServerClient) Succeed(ctx context.Context, in *empty.Empty, opts ...grpc.CallOption) (*empty.Empty, error) {
-	out := new(empty.Empty)
+func (c *fakeServerClient) Succeed(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*emptypb.Empty, error) {
+	out := new(emptypb.Empty)
 	err := c.cc.Invoke(ctx, "/server.FakeServer/Succeed", in, out, opts...)
 	if err != nil {
 		return nil, err
@@ -261,8 +261,8 @@ func (c *fakeServerClient) Succeed(ctx context.Context, in *empty.Empty, opts ..
 	return out, nil
 }
 
-func (c *fakeServerClient) FailWithError(ctx context.Context, in *empty.Empty, opts ...grpc.CallOption) (*empty.Empty, error) {
-	out := new(empty.Empty)
+func (c *fakeServerClient) FailWithError(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*emptypb.Empty, error) {
+	out := new(emptypb.Empty)
 	err := c.cc.Invoke(ctx, "/server.FakeServer/FailWithError", in, out, opts...)
 	if err != nil {
 		return nil, err
@@ -270,8 +270,8 @@ func (c *fakeServerClient) FailWithError(ctx context.Context, in *empty.Empty, o
 	return out, nil
 }
 
-func (c *fakeServerClient) FailWithHTTPError(ctx context.Context, in *FailWithHTTPErrorRequest, opts ...grpc.CallOption) (*empty.Empty, error) {
-	out := new(empty.Empty)
+func (c *fakeServerClient) FailWithHTTPError(ctx context.Context, in *FailWithHTTPErrorRequest, opts ...grpc.CallOption) (*emptypb.Empty, error) {
+	out := new(emptypb.Empty)
 	err := c.cc.Invoke(ctx, "/server.FakeServer/FailWithHTTPError", in, out, opts...)
 	if err != nil {
 		return nil, err
@@ -279,8 +279,8 @@ func (c *fakeServerClient) FailWithHTTPError(ctx context.Context, in *FailWithHT
 	return out, nil
 }
 
-func (c *fakeServerClient) Sleep(ctx context.Context, in *empty.Empty, opts ...grpc.CallOption) (*empty.Empty, error) {
-	out := new(empty.Empty)
+func (c *fakeServerClient) Sleep(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*emptypb.Empty, error) {
+	out := new(emptypb.Empty)
 	err := c.cc.Invoke(ctx, "/server.FakeServer/Sleep", in, out, opts...)
 	if err != nil {
 		return nil, err
@@ -288,7 +288,7 @@ func (c *fakeServerClient) Sleep(ctx context.Context, in *empty.Empty, opts ...g
 	return out, nil
 }
 
-func (c *fakeServerClient) StreamSleep(ctx context.Context, in *empty.Empty, opts ...grpc.CallOption) (FakeServer_StreamSleepClient, error) {
+func (c *fakeServerClient) StreamSleep(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (FakeServer_StreamSleepClient, error) {
 	stream, err := c.cc.NewStream(ctx, &_FakeServer_serviceDesc.Streams[0], "/server.FakeServer/StreamSleep", opts...)
 	if err != nil {
 		return nil, err
@@ -304,7 +304,7 @@ func (c *fakeServerClient) StreamSleep(ctx context.Context, in *empty.Empty, opt
 }
 
 type FakeServer_StreamSleepClient interface {
-	Recv() (*empty.Empty, error)
+	Recv() (*emptypb.Empty, error)
 	grpc.ClientStream
 }
 
@@ -312,15 +312,15 @@ type fakeServerStreamSleepClient struct {
 	grpc.ClientStream
 }
 
-func (x *fakeServerStreamSleepClient) Recv() (*empty.Empty, error) {
-	m := new(empty.Empty)
+func (x *fakeServerStreamSleepClient) Recv() (*emptypb.Empty, error) {
+	m := new(emptypb.Empty)
 	if err := x.ClientStream.RecvMsg(m); err != nil {
 		return nil, err
 	}
 	return m, nil
 }
 
-func (c *fakeServerClient) ReturnProxyProtoCallerIP(ctx context.Context, in *empty.Empty, opts ...grpc.CallOption) (*ProxyProtoIPResponse, error) {
+func (c *fakeServerClient) ReturnProxyProtoCallerIP(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*ProxyProtoIPResponse, error) {
 	out := new(ProxyProtoIPResponse)
 	err := c.cc.Invoke(ctx, "/server.FakeServer/ReturnProxyProtoCallerIP", in, out, opts...)
 	if err != nil {
@@ -331,34 +331,34 @@ func (c *fakeServerClient) ReturnProxyProtoCallerIP(ctx context.Context, in *emp
 
 // FakeServerServer is the server API for FakeServer service.
 type FakeServerServer interface {
-	Succeed(context.Context, *empty.Empty) (*empty.Empty, error)
-	FailWithError(context.Context, *empty.Empty) (*empty.Empty, error)
-	FailWithHTTPError(context.Context, *FailWithHTTPErrorRequest) (*empty.Empty, error)
-	Sleep(context.Context, *empty.Empty) (*empty.Empty, error)
-	StreamSleep(*empty.Empty, FakeServer_StreamSleepServer) error
-	ReturnProxyProtoCallerIP(context.Context, *empty.Empty) (*ProxyProtoIPResponse, error)
+	Succeed(context.Context, *emptypb.Empty) (*emptypb.Empty, error)
+	FailWithError(context.Context, *emptypb.Empty) (*emptypb.Empty, error)
+	FailWithHTTPError(context.Context, *FailWithHTTPErrorRequest) (*emptypb.Empty, error)
+	Sleep(context.Context, *emptypb.Empty) (*emptypb.Empty, error)
+	StreamSleep(*emptypb.Empty, FakeServer_StreamSleepServer) error
+	ReturnProxyProtoCallerIP(context.Context, *emptypb.Empty) (*ProxyProtoIPResponse, error)
 }
 
 // UnimplementedFakeServerServer can be embedded to have forward compatible implementations.
 type UnimplementedFakeServerServer struct {
 }
 
-func (*UnimplementedFakeServerServer) Succeed(ctx context.Context, req *empty.Empty) (*empty.Empty, error) {
+func (*UnimplementedFakeServerServer) Succeed(ctx context.Context, req *emptypb.Empty) (*emptypb.Empty, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method Succeed not implemented")
 }
-func (*UnimplementedFakeServerServer) FailWithError(ctx context.Context, req *empty.Empty) (*empty.Empty, error) {
+func (*UnimplementedFakeServerServer) FailWithError(ctx context.Context, req *emptypb.Empty) (*emptypb.Empty, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method FailWithError not implemented")
 }
-func (*UnimplementedFakeServerServer) FailWithHTTPError(ctx context.Context, req *FailWithHTTPErrorRequest) (*empty.Empty, error) {
+func (*UnimplementedFakeServerServer) FailWithHTTPError(ctx context.Context, req *FailWithHTTPErrorRequest) (*emptypb.Empty, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method FailWithHTTPError not implemented")
 }
-func (*UnimplementedFakeServerServer) Sleep(ctx context.Context, req *empty.Empty) (*empty.Empty, error) {
+func (*UnimplementedFakeServerServer) Sleep(ctx context.Context, req *emptypb.Empty) (*emptypb.Empty, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method Sleep not implemented")
 }
-func (*UnimplementedFakeServerServer) StreamSleep(req *empty.Empty, srv FakeServer_StreamSleepServer) error {
+func (*UnimplementedFakeServerServer) StreamSleep(req *emptypb.Empty, srv FakeServer_StreamSleepServer) error {
 	return status.Errorf(codes.Unimplemented, "method StreamSleep not implemented")
 }
-func (*UnimplementedFakeServerServer) ReturnProxyProtoCallerIP(ctx context.Context, req *empty.Empty) (*ProxyProtoIPResponse, error) {
+func (*UnimplementedFakeServerServer) ReturnProxyProtoCallerIP(ctx context.Context, req *emptypb.Empty) (*ProxyProtoIPResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method ReturnProxyProtoCallerIP not implemented")
 }
 
@@ -367,7 +367,7 @@ func RegisterFakeServerServer(s *grpc.Server, srv FakeServerServer) {
 }
 
 func _FakeServer_Succeed_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(empty.Empty)
+	in := new(emptypb.Empty)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
@@ -379,13 +379,13 @@ func _FakeServer_Succeed_Handler(srv interface{}, ctx context.Context, dec func(
 		FullMethod: "/server.FakeServer/Succeed",
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(FakeServerServer).Succeed(ctx, req.(*empty.Empty))
+		return srv.(FakeServerServer).Succeed(ctx, req.(*emptypb.Empty))
 	}
 	return interceptor(ctx, in, info, handler)
 }
 
 func _FakeServer_FailWithError_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(empty.Empty)
+	in := new(emptypb.Empty)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
@@ -397,7 +397,7 @@ func _FakeServer_FailWithError_Handler(srv interface{}, ctx context.Context, dec
 		FullMethod: "/server.FakeServer/FailWithError",
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(FakeServerServer).FailWithError(ctx, req.(*empty.Empty))
+		return srv.(FakeServerServer).FailWithError(ctx, req.(*emptypb.Empty))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -421,7 +421,7 @@ func _FakeServer_FailWithHTTPError_Handler(srv interface{}, ctx context.Context,
 }
 
 func _FakeServer_Sleep_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(empty.Empty)
+	in := new(emptypb.Empty)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
@@ -433,13 +433,13 @@ func _FakeServer_Sleep_Handler(srv interface{}, ctx context.Context, dec func(in
 		FullMethod: "/server.FakeServer/Sleep",
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(FakeServerServer).Sleep(ctx, req.(*empty.Empty))
+		return srv.(FakeServerServer).Sleep(ctx, req.(*emptypb.Empty))
 	}
 	return interceptor(ctx, in, info, handler)
 }
 
 func _FakeServer_StreamSleep_Handler(srv interface{}, stream grpc.ServerStream) error {
-	m := new(empty.Empty)
+	m := new(emptypb.Empty)
 	if err := stream.RecvMsg(m); err != nil {
 		return err
 	}
@@ -447,7 +447,7 @@ func _FakeServer_StreamSleep_Handler(srv interface{}, stream grpc.ServerStream) 
 }
 
 type FakeServer_StreamSleepServer interface {
-	Send(*empty.Empty) error
+	Send(*emptypb.Empty) error
 	grpc.ServerStream
 }
 
@@ -455,12 +455,12 @@ type fakeServerStreamSleepServer struct {
 	grpc.ServerStream
 }
 
-func (x *fakeServerStreamSleepServer) Send(m *empty.Empty) error {
+func (x *fakeServerStreamSleepServer) Send(m *emptypb.Empty) error {
 	return x.ServerStream.SendMsg(m)
 }
 
 func _FakeServer_ReturnProxyProtoCallerIP_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(empty.Empty)
+	in := new(emptypb.Empty)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
@@ -472,7 +472,7 @@ func _FakeServer_ReturnProxyProtoCallerIP_Handler(srv interface{}, ctx context.C
 		FullMethod: "/server.FakeServer/ReturnProxyProtoCallerIP",
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(FakeServerServer).ReturnProxyProtoCallerIP(ctx, req.(*empty.Empty))
+		return srv.(FakeServerServer).ReturnProxyProtoCallerIP(ctx, req.(*emptypb.Empty))
 	}
 	return interceptor(ctx, in, info, handler)
 }

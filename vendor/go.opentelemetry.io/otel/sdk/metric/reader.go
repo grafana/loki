@@ -1,7 +1,7 @@
 // Copyright The OpenTelemetry Authors
 // SPDX-License-Identifier: Apache-2.0
 
-package metric // import "go.opentelemetry.io/otel/sdk/metric"
+package metric
 
 import (
 	"context"
@@ -183,6 +183,15 @@ type AggregationSelector func(InstrumentKind) Aggregation
 // mapping: Counter ⇨ Sum, Observable Counter ⇨ Sum, UpDownCounter ⇨ Sum,
 // Observable UpDownCounter ⇨ Sum, Observable Gauge ⇨ LastValue,
 // Histogram ⇨ ExplicitBucketHistogram.
+//
+// The default ExplicitBucketHistogram boundaries are designed for
+// millisecond-scale latency values. Boundaries are interpreted relative to the
+// values recorded for the instrument and are not rescaled when an instrument is
+// created with a different unit (e.g. via
+// [go.opentelemetry.io/otel/metric.WithUnit]). Instrumentation authors should
+// supply appropriate boundaries per instrument via
+// [go.opentelemetry.io/otel/metric.WithExplicitBucketBoundaries]; end users
+// can also override boundaries for a specific instrument with a [View].
 func DefaultAggregationSelector(ik InstrumentKind) Aggregation {
 	switch ik {
 	case InstrumentKindCounter,

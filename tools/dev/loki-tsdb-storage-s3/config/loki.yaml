@@ -110,7 +110,6 @@ schema_config:
       object_store: s3
       schema: v13
       store: tsdb
-      row_shards: 4
 server:
   graceful_shutdown_timeout: 5s
   grpc_server_max_concurrent_streams: 1000
@@ -126,12 +125,7 @@ storage_config:
     s3forcepathstyle: true
     insecure: true
     endpoint: minio:9000
-  index_queries_cache_config:
-    memcached:
-      batch_size: 256
-      parallelism: 10
-    memcached_client:
-      addresses: memcached:11211
+    region: minio
   tsdb_shipper:
     active_index_directory: /data/tsdb-index
     cache_location: /data/tsdb-cache

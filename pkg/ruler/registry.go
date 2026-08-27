@@ -3,7 +3,8 @@ package ruler
 import (
 	"context"
 	"fmt"
-	"net/url"
+	"maps"
+	"os"
 	"strings"
 	"sync"
 	"time"
@@ -14,17 +15,13 @@ import (
 	"github.com/grafana/dskit/user"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
-	promConfig "github.com/prometheus/common/config"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/config"
 	"github.com/prometheus/prometheus/model/exemplar"
 	"github.com/prometheus/prometheus/model/histogram"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/model/metadata"
-	"github.com/prometheus/prometheus/model/relabel"
 	"github.com/prometheus/prometheus/storage"
-	"github.com/prometheus/sigv4"
-	"gopkg.in/yaml.v2"
 
 	"github.com/grafana/loki/v3/pkg/ruler/storage/cleaner"
 	"github.com/grafana/loki/v3/pkg/ruler/storage/instance"
@@ -37,6 +34,7 @@ type walRegistry struct {
 
 	metrics     *storageRegistryMetrics
 	overridesMu sync.Mutex
+	refreshMu   sync.Mutex
 
 	config         Config
 	overrides      RulesLimits
@@ -57,7 +55,19 @@ func newWALRegistry(logger log.Logger, reg prometheus.Registerer, config Config,
 		return nullRegistry{}
 	}
 
-	manager := createInstanceManager(logger, reg, overrides)
+	// Wipe the WAL directory before any per-tenant storage is opened. This runs
+	// exactly once per ruler startup (newWALRegistry is called once), unlike the
+	// per-tenant wal.NewStorage which is re-invoked whenever a tenant instance
+	// restarts. Because the WAL is always discarded here, there is nothing to
+	// replay when the per-tenant storage is later opened.
+	level.Info(logger).Log("msg", "wiping ruler WAL directory on startup", "dir", config.WAL.Dir)
+	if err := os.RemoveAll(config.WAL.Dir); err != nil {
+		// Non-fatal: a failed wipe just leaves stale data on disk, so we log and
+		// continue rather than blocking ruler startup.
+		level.Error(logger).Log("msg", "failed to wipe ruler WAL directory on startup", "dir", config.WAL.Dir, "err", err)
+	}
+
+	manager := createInstanceManager(logger, reg)
 
 	return &walRegistry{
 		logger:    logger,
@@ -75,11 +85,10 @@ func newWALRegistry(logger log.Logger, reg prometheus.Registerer, config Config,
 	}
 }
 
-func createInstanceManager(logger log.Logger, reg prometheus.Registerer, overrides RulesLimits) *instance.BasicManager {
+func createInstanceManager(logger log.Logger, reg prometheus.Registerer) *instance.BasicManager {
 	tenantManager := &tenantWALManager{
-		reg:       reg,
-		logger:    log.With(logger, "manager", "tenant-wal"),
-		overrides: overrides,
+		reg:    reg,
+		logger: log.With(logger, "manager", "tenant-wal"),
 	}
 
 	return instance.NewBasicManager(instance.BasicManagerConfig{
@@ -154,9 +163,14 @@ func (r *walRegistry) Appender(ctx context.Context) storage.Appender {
 	// we should reconfigure the storage whenever this appender is requested, but since
 	// this can request an appender very often, we hide this behind a gate
 	now := time.Now()
-	if r.lastUpdateTime.Before(now.Add(-r.config.RemoteWrite.ConfigRefreshPeriod)) {
+	r.refreshMu.Lock()
+	shouldRefresh := r.lastUpdateTime.Before(now.Add(-r.config.RemoteWrite.ConfigRefreshPeriod))
+	if shouldRefresh {
 		r.lastUpdateTime = now
+	}
+	r.refreshMu.Unlock()
 
+	if shouldRefresh {
 		level.Debug(r.logger).Log("user", tenant, "msg", "refreshing remote-write configuration")
 		r.configureTenantStorage(tenant)
 	}
@@ -207,8 +221,10 @@ func (r *walRegistry) getTenantConfig(tenant string) (instance.Config, error) {
 	if rwCfg.Enabled {
 		for id := range r.config.RemoteWrite.Clients {
 			clt := rwCfg.Clients[id]
-			if rwCfg.Clients[id].Headers == nil {
+			if clt.Headers == nil {
 				clt.Headers = make(map[string]string)
+			} else {
+				clt.Headers = maps.Clone(clt.Headers)
 			}
 
 			// ensure that no variation of the X-Scope-OrgId header can be added, which might trick authentication
@@ -252,83 +268,10 @@ func (r *walRegistry) getTenantRemoteWriteConfig(tenant string, base RemoteWrite
 		// metadata is only used by prometheus scrape configs
 		clt.MetadataConfig = config.MetadataConfig{Send: false}
 
-		// Keeping these blocks for backward compatibility
-		if v := r.overrides.RulerRemoteWriteURL(tenant); v != "" {
-			u, err := url.Parse(v)
-			if err != nil {
-				return nil, fmt.Errorf("error parsing given remote-write URL: %w", err)
-			}
-			clt.URL = &promConfig.URL{u}
-		}
-		if v := r.overrides.RulerRemoteWriteTimeout(tenant); v > 0 {
-			clt.RemoteTimeout = model.Duration(v)
-		}
-
-		// overwrite, do not merge
-		if v := r.overrides.RulerRemoteWriteHeaders(tenant); v != nil {
-			clt.Headers = v
-		}
-
-		relabelConfigs, err := r.createRelabelConfigs(tenant)
-		if err != nil {
-			return nil, fmt.Errorf("failed to parse relabel configs: %w", err)
-		}
-
-		// if any relabel configs are defined for a tenant, override all base relabel configs,
-		// even if an empty list is configured; however if this value is not overridden for a tenant,
-		// it should retain the base value
-		if relabelConfigs != nil {
-			clt.WriteRelabelConfigs = relabelConfigs
-		}
-
-		if v := r.overrides.RulerRemoteWriteQueueCapacity(tenant); v > 0 {
-			clt.QueueConfig.Capacity = v
-		}
-
-		if v := r.overrides.RulerRemoteWriteQueueMinShards(tenant); v > 0 {
-			clt.QueueConfig.MinShards = v
-		}
-
-		if v := r.overrides.RulerRemoteWriteQueueMaxShards(tenant); v > 0 {
-			clt.QueueConfig.MaxShards = v
-		}
-
-		if v := r.overrides.RulerRemoteWriteQueueMaxSamplesPerSend(tenant); v > 0 {
-			clt.QueueConfig.MaxSamplesPerSend = v
-		}
-
-		if v := r.overrides.RulerRemoteWriteQueueMinBackoff(tenant); v > 0 {
-			clt.QueueConfig.MinBackoff = model.Duration(v)
-		}
-
-		if v := r.overrides.RulerRemoteWriteQueueMaxBackoff(tenant); v > 0 {
-			clt.QueueConfig.MaxBackoff = model.Duration(v)
-		}
-
-		if v := r.overrides.RulerRemoteWriteQueueBatchSendDeadline(tenant); v > 0 {
-			clt.QueueConfig.BatchSendDeadline = model.Duration(v)
-		}
-
-		if v := r.overrides.RulerRemoteWriteQueueRetryOnRateLimit(tenant); v {
-			clt.QueueConfig.RetryOnRateLimit = v
-		}
-
-		if v := r.overrides.RulerRemoteWriteSigV4Config(tenant); v != nil {
-			clt.SigV4Config = &sigv4.SigV4Config{}
-			clt.SigV4Config.Region = v.Region
-			clt.SigV4Config.AccessKey = v.AccessKey
-			clt.SigV4Config.SecretKey = v.SecretKey
-			clt.SigV4Config.Profile = v.Profile
-			clt.SigV4Config.RoleARN = v.RoleARN
-			clt.SigV4Config.ExternalID = v.ExternalID
-			clt.SigV4Config.UseFIPSSTSEndpoint = v.UseFIPSSTSEndpoint
-			clt.SigV4Config.ServiceName = v.ServiceName
-		}
-
 		if v := r.overrides.RulerRemoteWriteConfig(tenant, id); v != nil {
 			// overwrite, do not merge
 			if v.Headers != nil {
-				clt.Headers = v.Headers
+				clt.Headers = maps.Clone(v.Headers)
 			}
 
 			// if any relabel configs are defined for a tenant, override all base relabel configs,
@@ -338,8 +281,12 @@ func (r *walRegistry) getTenantRemoteWriteConfig(tenant string, base RemoteWrite
 				clt.WriteRelabelConfigs = v.WriteRelabelConfigs
 			}
 
+			// Cast [rulerconfig.RemoteWriteConfig] to [config.RemoteWriteConfig] so it can be used to merge with [clt].
+			// This can be done safely without copying, because the structs are identical
+			// and mergo only reads [casted].
+			casted := (*config.RemoteWriteConfig)(v)
 			// merge with override
-			if err := mergo.Merge(&clt, *v, mergo.WithOverride); err != nil {
+			if err := mergo.Merge(&clt, casted, mergo.WithOverride); err != nil {
 				return nil, fmt.Errorf("failed to apply remote write clients configs: %w", err)
 			}
 		}
@@ -352,40 +299,6 @@ func (r *walRegistry) getTenantRemoteWriteConfig(tenant string, base RemoteWrite
 	}
 
 	return overrides, nil
-}
-
-// createRelabelConfigs converts the util.RelabelConfig into relabel.Config to allow for
-// more control over json/yaml unmarshaling
-func (r *walRegistry) createRelabelConfigs(tenant string) ([]*relabel.Config, error) {
-	configs := r.overrides.RulerRemoteWriteRelabelConfigs(tenant)
-
-	// zero value is nil, which we want to treat as "no override"
-	if configs == nil {
-		return nil, nil
-	}
-
-	// we want to treat an empty slice as "no relabel configs"
-	relabelConfigs := make([]*relabel.Config, len(configs))
-	for i, config := range configs {
-		out, err := yaml.Marshal(config)
-		if err != nil {
-			return nil, err
-		}
-
-		var rc relabel.Config
-		if err = yaml.Unmarshal(out, &rc); err != nil {
-			return nil, err
-		}
-
-		// Validate the relabel config to catch invalid configurations
-		if err := rc.Validate(model.UTF8Validation); err != nil {
-			return nil, err
-		}
-
-		relabelConfigs[i] = &rc
-	}
-
-	return relabelConfigs, nil
 }
 
 var errNotReady = errors.New("appender not ready")
@@ -455,9 +368,8 @@ type readyChecker interface {
 }
 
 type tenantWALManager struct {
-	logger    log.Logger
-	reg       prometheus.Registerer
-	overrides RulesLimits
+	logger log.Logger
+	reg    prometheus.Registerer
 }
 
 func (t *tenantWALManager) newInstance(c instance.Config) (instance.ManagedInstance, error) {
@@ -465,14 +377,8 @@ func (t *tenantWALManager) newInstance(c instance.Config) (instance.ManagedInsta
 		"tenant": c.Tenant,
 	}, t.reg)
 
-	// Get the per-tenant setting for WAL replay from overrides
-	enableReplay := true // Default to true for backward compatibility
-	if t.overrides != nil {
-		enableReplay = t.overrides.RulerEnableWALReplay(c.Tenant)
-	}
-
 	// create the instance with our custom walFactory
-	return instance.New(reg, c, wal.NewMetrics(reg), t.logger, enableReplay)
+	return instance.New(reg, c, wal.NewMetrics(reg), t.logger)
 }
 
 type storageRegistryMetrics struct {

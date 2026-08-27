@@ -49,11 +49,22 @@ func TestEvaluate_Constant(t *testing.T) {
 
 	e := &expr.Constant{Value: columnartest.Scalar(t, types.KindUint64, 42)}
 
-	expect := columnartest.Scalar(t, types.KindUint64, 42)
+	t.Run("without input", func(t *testing.T) {
+		expect := columnartest.Scalar(t, types.KindUint64, 42)
 
-	result, err := expr.Evaluate(&alloc, e, nil, memory.Bitmap{})
-	require.NoError(t, err)
-	columnartest.RequireDatumsEqual(t, expect, result, memory.Bitmap{})
+		result, err := expr.Evaluate(&alloc, e, nil, memory.Bitmap{})
+		require.NoError(t, err)
+		columnartest.RequireDatumsEqual(t, expect, result, memory.Bitmap{})
+	})
+
+	t.Run("with array input", func(t *testing.T) {
+		input := columnartest.Array(t, types.KindInt64, &alloc, int64(1), int64(2), int64(3))
+		expect := columnartest.Array(t, types.KindUint64, &alloc, 42, 42, 42)
+
+		result, err := expr.Evaluate(&alloc, e, input, memory.Bitmap{})
+		require.NoError(t, err)
+		columnartest.RequireDatumsEqual(t, expect, result, memory.Bitmap{})
+	})
 }
 
 func TestEvaluate_Column(t *testing.T) {
@@ -277,6 +288,25 @@ func TestEvaluate_MakeStruct(t *testing.T) {
 		columnartest.RequireDatumsEqual(t, expect, result, memory.Bitmap{})
 	})
 
+	t.Run("broadcast scalar values", func(t *testing.T) {
+		e := &expr.MakeStruct{
+			Names: []string{"name", "constant"},
+			Values: []expr.Expression{
+				&expr.Column{Name: "name"},
+				&expr.Constant{Value: columnartest.Scalar(t, types.KindInt64, 5)},
+			},
+		}
+
+		expect := columnartest.Struct(t, &alloc,
+			columnartest.Field("name", types.KindUTF8, "Alice", "Bob", "Charlie"),
+			columnartest.Field("constant", types.KindInt64, int64(5), int64(5), int64(5)),
+		)
+
+		result, err := expr.Evaluate(&alloc, e, record, memory.Bitmap{})
+		require.NoError(t, err)
+		columnartest.RequireDatumsEqual(t, expect, result, memory.Bitmap{})
+	})
+
 	t.Run("mismatched names and values", func(t *testing.T) {
 		e := &expr.MakeStruct{
 			Names:  []string{"a", "b"},
@@ -296,15 +326,112 @@ func TestEvaluate_MakeStruct(t *testing.T) {
 		_, err := expr.Evaluate(&alloc, e, record, memory.Bitmap{})
 		require.Error(t, err)
 	})
+}
 
-	t.Run("scalar value rejected", func(t *testing.T) {
-		e := &expr.MakeStruct{
-			Names:  []string{"x"},
-			Values: []expr.Expression{&expr.Constant{Value: columnartest.Scalar(t, types.KindUTF8, "hello")}},
-		}
+func TestEvaluate_NullableStruct(t *testing.T) {
+	var alloc memory.Allocator
 
-		_, err := expr.Evaluate(&alloc, e, record, memory.Bitmap{})
-		require.Error(t, err)
+	input := columnartest.StructWithValidity(t, &alloc, []bool{true, false, true},
+		columnartest.Field("foo", types.KindInt64, int64(10), int64(20), int64(30)),
+		columnartest.Field("bar", types.KindInt64, int64(40), int64(50), int64(60)),
+	)
+
+	t.Run("identity preserves struct validity", func(t *testing.T) {
+		actual, err := expr.Evaluate(&alloc, &expr.Identity{}, input, memory.Bitmap{})
+		require.NoError(t, err)
+
+		columnartest.RequireDatumsEqual(t, input, actual, memory.Bitmap{})
+	})
+
+	t.Run("column propagates struct validity", func(t *testing.T) {
+		actual, err := expr.Evaluate(&alloc, &expr.Column{Name: "foo"}, input, memory.Bitmap{})
+		require.NoError(t, err)
+
+		columnartest.RequireDatumsEqual(t,
+			columnartest.Array(t, types.KindInt64, &alloc, int64(10), nil, int64(30)),
+			actual,
+			memory.Bitmap{},
+		)
+	})
+
+	t.Run("extract propagates struct validity", func(t *testing.T) {
+		actual, err := expr.Evaluate(&alloc, &expr.Extract{
+			Name:  "foo",
+			Value: &expr.Identity{},
+		}, input, memory.Bitmap{})
+		require.NoError(t, err)
+
+		columnartest.RequireDatumsEqual(t,
+			columnartest.Array(t, types.KindInt64, &alloc, int64(10), nil, int64(30)),
+			actual,
+			memory.Bitmap{},
+		)
+	})
+
+	t.Run("include preserves struct validity", func(t *testing.T) {
+		actual, err := expr.Evaluate(&alloc, &expr.Include{
+			Names: []string{"foo"},
+			Value: &expr.Identity{},
+		}, input, memory.Bitmap{})
+		require.NoError(t, err)
+
+		columnartest.RequireDatumsEqual(t,
+			columnartest.StructWithValidity(t, &alloc, []bool{true, false, true},
+				columnartest.Field("foo", types.KindInt64, int64(10), int64(20), int64(30)),
+			),
+			actual,
+			memory.Bitmap{},
+		)
+	})
+
+	makeStruct := &expr.MakeStruct{
+		Names: []string{"constant", "foo"},
+		Values: []expr.Expression{
+			&expr.Constant{Value: &columnar.NumberScalar[int64]{Value: 5}},
+			&expr.Column{Name: "foo"},
+		},
+	}
+	expectedStruct := columnartest.Struct(t, &alloc,
+		columnartest.Field("constant", types.KindInt64, int64(5), int64(5), int64(5)),
+		columnartest.Field("foo", types.KindInt64, int64(10), nil, int64(30)),
+	)
+
+	t.Run("MakeStruct propagates validity per field", func(t *testing.T) {
+		actual, err := expr.Evaluate(&alloc, makeStruct, input, memory.Bitmap{})
+		require.NoError(t, err)
+
+		columnartest.RequireDatumsEqual(t, expectedStruct, actual, memory.Bitmap{})
+	})
+
+	t.Run("include preserves MakeStruct validity", func(t *testing.T) {
+		actual, err := expr.Evaluate(&alloc, &expr.Include{
+			Names: []string{"constant", "foo"},
+			Value: makeStruct,
+		}, input, memory.Bitmap{})
+		require.NoError(t, err)
+
+		columnartest.RequireDatumsEqual(t, expectedStruct, actual, memory.Bitmap{})
+	})
+
+	t.Run("nested extract propagates every struct validity", func(t *testing.T) {
+		nested := columnartest.StructWithValidity(t, &alloc, []bool{true, true, false},
+			columnartest.Field("value", types.KindInt64, int64(1), int64(2), int64(3)),
+		)
+		outer := columnartest.StructWithValidity(t, &alloc, []bool{true, false, true},
+			columnartest.Field("nested", types.KindStruct, nested),
+		)
+
+		actual, err := expr.Evaluate(&alloc, &expr.Extract{
+			Name:  "value",
+			Value: &expr.Column{Name: "nested"},
+		}, outer, memory.Bitmap{})
+		require.NoError(t, err)
+
+		columnartest.RequireDatumsEqual(t,
+			columnartest.Array(t, types.KindInt64, &alloc, int64(1), nil, nil),
+			actual,
+			memory.Bitmap{},
+		)
 	})
 }
 

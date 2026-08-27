@@ -9,11 +9,11 @@ import (
 	"math"
 	"math/rand"
 	"strings"
-	"sync"
 	"sync/atomic"
 	"time"
 
 	"github.com/twmb/franz-go/pkg/kerr"
+	"github.com/twmb/franz-go/pkg/kgo/internal/xsync"
 	"github.com/twmb/franz-go/pkg/kmsg"
 )
 
@@ -81,7 +81,7 @@ func (cl *Client) pushMetrics() {
 		cl.cfg.logger.Log(LogLevelInfo, "received client metrics subscription, beginning periodic send loop",
 			"client_instance_id", fmt.Sprintf("%x", gresp.ClientInstanceID),
 			"subscription_id", gresp.SubscriptionID,
-			"accepteded_compression_types", gresp.AcceptedCompressionTypes,
+			"accepted_compression_types", gresp.AcceptedCompressionTypes,
 			"telemetry_max_bytes", gresp.TelemetryMaxBytes,
 			"push_interval", time.Duration(gresp.PushIntervalMillis)*time.Millisecond,
 			"requested_metrics", gresp.RequestedMetrics,
@@ -313,7 +313,7 @@ type (
 		closedFirstObserve atomic.Bool
 
 		// mu is grabbed when accessing the map fields.
-		mu          sync.Mutex
+		mu          xsync.Mutex
 		unsupported atomic.Bool // set to true if the broker does not support client metrics; guards nil-ing the maps
 
 		pConnCreation metricRate
@@ -732,7 +732,6 @@ const (
 	protoTypeVarint = 0
 	protoType64bit  = 1
 	protoTypeLength = 2
-	protoType32bit  = 5
 )
 
 // appendProtoTag adds a Protocol Buffer tag (field number + proto type)

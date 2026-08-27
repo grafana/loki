@@ -2,27 +2,13 @@ package main
 
 import (
 	"bytes"
-	"compress/gzip"
 	"encoding/binary"
 	"fmt"
 	"hash/crc32"
 	"io"
 
-	"github.com/golang/snappy"
-	"github.com/klauspost/compress/flate"
-	"github.com/klauspost/compress/zstd"
-	"github.com/pierrec/lz4"
+	"github.com/grafana/loki/v3/pkg/compression"
 )
-
-type Encoding struct {
-	code     int
-	name     string
-	readerFn func(io.Reader) (io.Reader, error)
-}
-
-func (e Encoding) String() string {
-	return e.name
-}
 
 // The table gets initialized with sync.Once but may still cause a race
 // with any other use of the crc32 package anywhere. Thus we initialize it
@@ -32,27 +18,6 @@ var castagnoliTable *crc32.Table
 func init() {
 	castagnoliTable = crc32.MakeTable(crc32.Castagnoli)
 }
-
-var (
-	encNone     = Encoding{code: 0, name: "none", readerFn: func(reader io.Reader) (io.Reader, error) { return reader, nil }}
-	encGZIP     = Encoding{code: 1, name: "gzip", readerFn: func(reader io.Reader) (io.Reader, error) { return gzip.NewReader(reader) }}
-	encDumb     = Encoding{code: 2, name: "dumb", readerFn: func(reader io.Reader) (io.Reader, error) { return reader, nil }}
-	encLZ4      = Encoding{code: 3, name: "lz4", readerFn: func(reader io.Reader) (io.Reader, error) { return lz4.NewReader(reader), nil }}
-	encSnappy   = Encoding{code: 4, name: "snappy", readerFn: func(reader io.Reader) (io.Reader, error) { return snappy.NewReader(reader), nil }}
-	enclz4_256k = Encoding{code: 5, name: "lz4-256k", readerFn: func(reader io.Reader) (io.Reader, error) { return lz4.NewReader(reader), nil }}
-	enclz4_1M   = Encoding{code: 6, name: "lz4-1M", readerFn: func(reader io.Reader) (io.Reader, error) { return lz4.NewReader(reader), nil }}
-	enclz4_4M   = Encoding{code: 7, name: "lz4-4M", readerFn: func(reader io.Reader) (io.Reader, error) { return lz4.NewReader(reader), nil }}
-	encFlate    = Encoding{code: 8, name: "flate", readerFn: func(reader io.Reader) (io.Reader, error) { return flate.NewReader(reader), nil }}
-	encZstd     = Encoding{code: 9, name: "zstd", readerFn: func(reader io.Reader) (io.Reader, error) {
-		r, err := zstd.NewReader(reader)
-		if err != nil {
-			panic(err)
-		}
-		return r, nil
-	}}
-
-	Encodings = []Encoding{encNone, encGZIP, encDumb, encLZ4, encSnappy, enclz4_256k, enclz4_1M, enclz4_4M, encFlate, encZstd}
-)
 
 const (
 	_ byte = iota
@@ -64,7 +29,7 @@ const (
 
 type LokiChunk struct {
 	format   byte
-	encoding Encoding
+	encoding compression.Codec
 
 	blocks []LokiBlock
 
@@ -88,6 +53,8 @@ type LokiBlock struct {
 	entries          []LokiEntry
 	storedChecksum   uint32
 	computedChecksum uint32
+
+	parseErr error
 }
 
 type label struct {
@@ -138,12 +105,10 @@ func parseLokiChunk(chunkHeader *ChunkHeader, r io.Reader) (*LokiChunk, error) {
 	f := data[4]
 
 	// Compression
-	compression, err := getCompression(f, data[5])
+	codec, err := getCompression(f, data[5])
 	if err != nil {
 		return nil, fmt.Errorf("failed to read compression: %w", err)
 	}
-
-	// return &LokiChunk{encoding: compression}, nil
 
 	// This was copied from memchunk.go newByteChunk() as a helper function to use here also
 	// In format >=v4 there are multiple metadata sections at the end of the chunk file,
@@ -193,8 +158,7 @@ func parseLokiChunk(chunkHeader *ChunkHeader, r io.Reader) (*LokiChunk, error) {
 		structuredMetadata = structuredMetadata[n:]
 
 		// Next we need to decompress the list of strings
-		lr, err := compression.readerFn(bytes.NewReader(structuredMetadata))
-		decompressed, err := io.ReadAll(lr)
+		decompressed, err := decompress(codec, structuredMetadata)
 		if err != nil {
 			return nil, err
 		}
@@ -225,54 +189,50 @@ func parseLokiChunk(chunkHeader *ChunkHeader, r io.Reader) (*LokiChunk, error) {
 
 	lokiChunk := &LokiChunk{
 		format:                   f,
-		encoding:                 compression,
+		encoding:                 codec,
 		metadataChecksum:         metaChecksum,
 		computedMetadataChecksum: computedMetaChecksum,
 	}
 
 	for ix := 0; ix < int(blocks); ix++ {
 		block := LokiBlock{}
+		var metaErr error
 		// Read number of entries in block
-		block.numEntries, metadata, err = readUvarint(err, metadata)
+		block.numEntries, metadata, metaErr = readUvarint(metaErr, metadata)
 		// Read block minimum time
-		block.minT, metadata, err = readVarint(err, metadata)
+		block.minT, metadata, metaErr = readVarint(metaErr, metadata)
 		// Read block max time
-		block.maxT, metadata, err = readVarint(err, metadata)
+		block.maxT, metadata, metaErr = readVarint(metaErr, metadata)
 		// Read offset to block data
-		block.dataOffset, metadata, err = readUvarint(err, metadata)
+		block.dataOffset, metadata, metaErr = readUvarint(metaErr, metadata)
 		if f >= chunkFormatV3 {
 			// Read uncompressed size
-			block.uncompSize, metadata, err = readUvarint(err, metadata)
+			block.uncompSize, metadata, metaErr = readUvarint(metaErr, metadata)
 		}
 		// Read block length
 		dataLength := uint64(0)
-		dataLength, metadata, err = readUvarint(err, metadata)
+		dataLength, metadata, metaErr = readUvarint(metaErr, metadata)
 
-		if err != nil {
-			return nil, err
+		if metaErr != nil {
+			return nil, fmt.Errorf("failed to read metadata for block %d: %w", ix, metaErr)
 		}
 
 		block.rawData = data[block.dataOffset : block.dataOffset+dataLength]
 		block.storedChecksum = binary.BigEndian.Uint32(data[block.dataOffset+dataLength : block.dataOffset+dataLength+4])
 		block.computedChecksum = crc32.Checksum(block.rawData, castagnoliTable)
-		block.originalData, block.entries, err = parseLokiBlock(f, compression, block.rawData, structuredMetadataSymbols)
+		block.originalData, block.entries, block.parseErr = parseLokiBlock(f, codec, block.rawData, structuredMetadataSymbols)
 		lokiChunk.blocks = append(lokiChunk.blocks, block)
 	}
 
 	return lokiChunk, nil
 }
 
-func parseLokiBlock(format byte, compression Encoding, data []byte, symbols []string) ([]byte, []LokiEntry, error) {
-	r, err := compression.readerFn(bytes.NewReader(data))
+func parseLokiBlock(format byte, codec compression.Codec, data []byte, symbols []string) ([]byte, []LokiEntry, error) {
+	decompressed, err := decompress(codec, data)
 	if err != nil {
 		return nil, nil, err
 	}
-
-	decompressed, err := io.ReadAll(r)
 	origDecompressed := decompressed
-	if err != nil {
-		return nil, nil, err
-	}
 
 	entries := []LokiEntry(nil)
 	for len(decompressed) > 0 {
@@ -282,11 +242,11 @@ func parseLokiBlock(format byte, compression Encoding, data []byte, symbols []st
 		timestamp, decompressed, err = readVarint(err, decompressed)
 		lineLength, decompressed, err = readUvarint(err, decompressed)
 		if err != nil {
-			return origDecompressed, nil, err
+			return origDecompressed, entries, err
 		}
 
 		if len(decompressed) < int(lineLength) {
-			return origDecompressed, nil, fmt.Errorf("not enough line data, need %d, got %d", lineLength, len(decompressed))
+			return origDecompressed, entries, fmt.Errorf("not enough line data, need %d, got %d", lineLength, len(decompressed))
 		}
 		line := string(decompressed[0:lineLength])
 		decompressed = decompressed[lineLength:]
@@ -301,7 +261,7 @@ func parseLokiBlock(format byte, compression Encoding, data []byte, symbols []st
 			var structuredMetadataPairs uint64
 			structuredMetadataPairs, decompressed, err = readUvarint(err, decompressed)
 			if err != nil {
-				return origDecompressed, nil, err
+				return origDecompressed, entries, err
 			}
 			structuredMetdata = make([]label, 0, structuredMetadataPairs)
 			// Read all the pairs
@@ -309,12 +269,12 @@ func parseLokiBlock(format byte, compression Encoding, data []byte, symbols []st
 				var nameIdx uint64
 				nameIdx, decompressed, err = readUvarint(err, decompressed)
 				if err != nil {
-					return origDecompressed, nil, err
+					return origDecompressed, entries, err
 				}
 				var valIdx uint64
 				valIdx, decompressed, err = readUvarint(err, decompressed)
 				if err != nil {
-					return origDecompressed, nil, err
+					return origDecompressed, entries, err
 				}
 				lbl := label{name: symbols[nameIdx], val: symbols[valIdx]}
 				structuredMetdata = append(structuredMetdata, lbl)
@@ -356,20 +316,30 @@ func readUvarint(prevErr error, buf []byte) (uint64, []byte, error) {
 	return val, buf[n:], nil
 }
 
-func getCompression(format byte, code byte) (Encoding, error) {
+func getCompression(format byte, code byte) (compression.Codec, error) {
 	if format == chunkFormatV1 {
-		return encGZIP, nil
+		return compression.GZIP, nil
 	}
 
 	if format >= chunkFormatV2 {
-		for _, e := range Encodings {
-			if e.code == int(code) {
-				return e, nil
-			}
+		codec := compression.Codec(code)
+		if !codec.IsSupported() {
+			return compression.None, fmt.Errorf("unknown encoding: %d", code)
 		}
-
-		return encNone, fmt.Errorf("unknown encoding: %d", code)
+		return codec, nil
 	}
 
-	return encNone, fmt.Errorf("unknown format: %d", format)
+	return compression.None, fmt.Errorf("unknown format: %d", format)
+}
+
+func decompress(codec compression.Codec, data []byte) ([]byte, error) {
+	pool := compression.GetReaderPool(codec)
+
+	r, err := pool.GetReader(bytes.NewReader(data))
+	if err != nil {
+		return nil, err
+	}
+	defer pool.PutReader(r)
+
+	return io.ReadAll(r)
 }

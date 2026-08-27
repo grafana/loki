@@ -14,6 +14,8 @@ queries:
     requires:
       structured_metadata:
         - detected_level
+      keywords:
+        - error
   - description: JSON parsing with duration filter and structured metadata
     query: ${SELECTOR} | json | duration_seconds > 0.1 | detected_level!="debug"
     skip: true # numeric label filter (> 0.1) unsupported by v2 engine
@@ -82,3 +84,28 @@ queries:
         - detected_level
       keywords:
         - refused
+  - description: label_format rename target replaces pre-existing structured metadata of the same name
+    query: ${SELECTOR} | label_format detected_level=service_name
+    kind: log
+    time_range:
+      length: 24h
+    directions: backward # forward log queries unsupported by v2 engine
+    tags:
+      - label_format
+      - rename
+      - structured-metadata
+    requires:
+      labels:
+        - service_name
+      structured_metadata:
+        - detected_level
+    notes: >
+      v1's lbs.Set(ParsedLabel, "detected_level", v) silently deletes
+      detected_level from stream/metadata categories before adding the
+      parsed value, so the renamed target overwrites the pre-existing
+      structured-metadata detected_level. Pre-fix v2 left two coexisting
+      detected_level columns in the Arrow output (one from metadata, one
+      from the labelfmt projection), and the streamsResultBuilder dedup
+      surfaced the older metadata value — making the rename appear to do
+      nothing for detected_level while still dropping the source label.
+      v1 returns detected_level carrying service_name's value.

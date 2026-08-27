@@ -2,15 +2,17 @@ package indexgateway
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"math"
+	"net/http"
 	"sort"
-	"sync"
 	"time"
 
 	"github.com/c2h5oh/datasize"
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
+	"github.com/grafana/dskit/gate"
 	"github.com/grafana/dskit/services"
 	"github.com/grafana/dskit/tenant"
 	"github.com/prometheus/client_golang/prometheus"
@@ -26,38 +28,21 @@ import (
 	"github.com/grafana/loki/v3/pkg/querier/plan"
 	v1 "github.com/grafana/loki/v3/pkg/storage/bloom/v1"
 	"github.com/grafana/loki/v3/pkg/storage/chunk"
-	"github.com/grafana/loki/v3/pkg/storage/config"
 	"github.com/grafana/loki/v3/pkg/storage/stores"
 	"github.com/grafana/loki/v3/pkg/storage/stores/index"
 	"github.com/grafana/loki/v3/pkg/storage/stores/index/seriesvolume"
-	seriesindex "github.com/grafana/loki/v3/pkg/storage/stores/series/index"
 	tsdb_index "github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/index"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/sharding"
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
-	"github.com/grafana/loki/v3/pkg/util/spanlogger"
 )
 
 var tracer = otel.Tracer("pkg/indexgateway")
-
-const (
-	maxIndexEntriesPerResponse = 1000
-)
 
 type IndexQuerier interface {
 	stores.ChunkFetcher
 	index.BaseReader
 	index.StatsReader
 	Stop()
-}
-
-type IndexClient interface {
-	seriesindex.ReadClient
-	Stop()
-}
-
-type IndexClientWithRange struct {
-	IndexClient
-	TableRange config.TableRange
 }
 
 type BloomQuerier interface {
@@ -68,9 +53,9 @@ type Gateway struct {
 	services.Service
 
 	indexQuerier IndexQuerier
-	indexClients []IndexClientWithRange
 	bloomQuerier BloomQuerier
 	metrics      *Metrics
+	queryGate    gate.Gate
 
 	cfg    Config
 	limits Limits
@@ -81,133 +66,85 @@ type Gateway struct {
 //
 // In case it is configured to be in ring mode, a Basic Service wrapping the ring client is started.
 // Otherwise, it starts an Idle Service that doesn't have lifecycle hooks.
-func NewIndexGateway(cfg Config, limits Limits, log log.Logger, r prometheus.Registerer, indexQuerier IndexQuerier, indexClients []IndexClientWithRange, bloomQuerier BloomQuerier) (*Gateway, error) {
+func NewIndexGateway(cfg Config, limits Limits, log log.Logger, r prometheus.Registerer, indexQuerier IndexQuerier, _ any, bloomQuerier BloomQuerier) (*Gateway, error) {
 	g := &Gateway{
 		indexQuerier: indexQuerier,
 		bloomQuerier: bloomQuerier,
 		cfg:          cfg,
 		limits:       limits,
 		log:          log,
-		indexClients: indexClients,
 		metrics:      NewMetrics(r),
+		queryGate:    newQueryGate(cfg, r),
 	}
-
-	// query newer periods first
-	sort.Slice(g.indexClients, func(i, j int) bool {
-		return g.indexClients[i].TableRange.Start > g.indexClients[j].TableRange.Start
-	})
 
 	g.Service = services.NewIdleService(nil, func(_ error) error {
 		g.indexQuerier.Stop()
-		for _, indexClient := range g.indexClients {
-			indexClient.Stop()
-		}
 		return nil
 	})
 
 	return g, nil
 }
 
-func (g *Gateway) QueryIndex(request *logproto.QueryIndexRequest, server logproto.IndexGateway_QueryIndexServer) error {
-	log, _ := spanlogger.NewOTel(context.Background(), g.log, tracer, "IndexGateway.QueryIndex")
-	defer log.Finish()
-
-	var outerErr, innerErr error
-
-	queries := make([]seriesindex.Query, 0, len(request.Queries))
-	for _, query := range request.Queries {
-		if _, err := config.ExtractTableNumberFromName(query.TableName); err != nil {
-			level.Error(log).Log("msg", "skip querying table", "table", query.TableName, "err", err)
-			continue
-		}
-
-		queries = append(queries, seriesindex.Query{
-			TableName:        query.TableName,
-			HashValue:        query.HashValue,
-			RangeValuePrefix: query.RangeValuePrefix,
-			RangeValueStart:  query.RangeValueStart,
-			ValueEqual:       query.ValueEqual,
-		})
-	}
-
-	sort.Slice(queries, func(i, j int) bool {
-		ta, _ := config.ExtractTableNumberFromName(queries[i].TableName)
-		tb, _ := config.ExtractTableNumberFromName(queries[j].TableName)
-		return ta < tb
-	})
-
-	sendBatchMtx := sync.Mutex{}
-	for _, indexClient := range g.indexClients {
-		// find queries that can be handled by this index client.
-		start := sort.Search(len(queries), func(i int) bool {
-			tableNumber, _ := config.ExtractTableNumberFromName(queries[i].TableName)
-			return tableNumber >= indexClient.TableRange.Start
-		})
-		end := sort.Search(len(queries), func(j int) bool {
-			tableNumber, _ := config.ExtractTableNumberFromName(queries[j].TableName)
-			return tableNumber > indexClient.TableRange.End
-		})
-		if end-start <= 0 {
-			continue
-		}
-
-		outerErr = indexClient.QueryPages(server.Context(), queries[start:end], func(query seriesindex.Query, batch seriesindex.ReadBatchResult) bool {
-			innerErr = buildResponses(query, batch, func(response *logproto.QueryIndexResponse) error {
-				// do not send grpc responses concurrently. See https://github.com/grpc/grpc-go/blob/master/stream.go#L120-L123.
-				sendBatchMtx.Lock()
-				defer sendBatchMtx.Unlock()
-
-				return server.Send(response)
-			})
-
-			return innerErr == nil
-		})
-
-		if innerErr != nil {
-			return innerErr
-		}
-
-		if outerErr != nil {
-			return outerErr
-		}
-	}
-
-	return nil
+// indexSyncer is implemented by an index store that can trigger an on-demand
+// sync and report per-index sync status. The gateway's indexQuerier satisfies it
+// when backed by a syncable (TSDB) index store.
+type indexSyncer interface {
+	TriggerSync() bool
+	SyncStatuses() []index.SyncStatus
 }
 
-func buildResponses(query seriesindex.Query, batch seriesindex.ReadBatchResult, callback func(*logproto.QueryIndexResponse) error) error {
-	itr := batch.Iterator()
-	var resp []*logproto.Row
-
-	for itr.Next() {
-		if len(resp) == maxIndexEntriesPerResponse {
-			err := callback(&logproto.QueryIndexResponse{
-				QueryKey: seriesindex.QueryKey(query),
-				Rows:     resp,
-			})
-			if err != nil {
-				return err
-			}
-			resp = []*logproto.Row{}
-		}
-
-		resp = append(resp, &logproto.Row{
-			RangeValue: itr.RangeValue(),
-			Value:      itr.Value(),
-		})
+// SyncIndexesHandler triggers an asynchronous index sync (refresh the
+// object-listing cache, then download newly shipped indexes) so freshly flushed
+// indexes become queryable without waiting for the periodic list-cache TTL. It
+// responds 202 if a new sync was started, 409 if one is already in progress, or
+// 503 if the configured index store has no syncable indexes. The operation is
+// cluster-wide (not tenant-scoped).
+func (g *Gateway) SyncIndexesHandler(w http.ResponseWriter, _ *http.Request) {
+	// A store that is not an indexSyncer, or one with no syncable indexes (an
+	// empty status list - e.g. a non-TSDB backend, or a querier backed by an
+	// index-gateway client), does not support on-demand syncing.
+	syncer, ok := g.indexQuerier.(indexSyncer)
+	if !ok || len(syncer.SyncStatuses()) == 0 {
+		level.Warn(g.log).Log("msg", "index sync requested but the configured index store does not support it")
+		w.WriteHeader(http.StatusServiceUnavailable)
+		_, _ = w.Write([]byte("index sync not supported by the configured index store\n"))
+		return
 	}
 
-	if len(resp) != 0 {
-		err := callback(&logproto.QueryIndexResponse{
-			QueryKey: seriesindex.QueryKey(query),
-			Rows:     resp,
-		})
-		if err != nil {
-			return err
-		}
+	if syncer.TriggerSync() {
+		w.WriteHeader(http.StatusAccepted)
+		_, _ = w.Write([]byte("index sync started; use GET /sync-indexes for status\n"))
+		return
 	}
 
-	return nil
+	// A sync (manual or periodic) is already running, so we did not start a new
+	// one: a conflict with the current state of the resource.
+	w.WriteHeader(http.StatusConflict)
+	_, _ = w.Write([]byte("index sync already in progress; use GET /sync-indexes for status\n"))
+}
+
+// SyncIndexStatusHandler reports the current/last sync status of each synced
+// index as a JSON array (one entry per index, e.g. per schema period). The
+// per-index JSON shape is defined by index.SyncStatus.MarshalJSON.
+func (g *Gateway) SyncIndexStatusHandler(w http.ResponseWriter, _ *http.Request) {
+	syncer, ok := g.indexQuerier.(indexSyncer)
+	var statuses []index.SyncStatus
+	if ok {
+		statuses = syncer.SyncStatuses()
+	}
+	// No syncable indexes (not an indexSyncer, or an empty status list) means the
+	// configured index store does not support on-demand syncing.
+	if len(statuses) == 0 {
+		level.Warn(g.log).Log("msg", "index sync status requested but the configured index store does not support it")
+		w.WriteHeader(http.StatusServiceUnavailable)
+		_, _ = w.Write([]byte("index sync not supported by the configured index store\n"))
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	if err := json.NewEncoder(w).Encode(statuses); err != nil {
+		level.Error(g.log).Log("msg", "failed encoding index sync status response", "err", err)
+	}
 }
 
 func (g *Gateway) GetChunkRef(ctx context.Context, req *logproto.GetChunkRefRequest) (result *logproto.GetChunkRefResponse, err error) {
@@ -223,6 +160,11 @@ func (g *Gateway) GetChunkRef(ctx context.Context, req *logproto.GetChunkRefRequ
 	if err != nil {
 		return nil, err
 	}
+
+	if err := g.queryGate.Start(ctx); err != nil {
+		return nil, mapGateError(err)
+	}
+	defer g.queryGate.Done()
 
 	predicate := chunk.NewPredicate(matchers, &req.Plan)
 	chunkRefsLookupStart := time.Now()
@@ -316,6 +258,12 @@ func (g *Gateway) GetSeries(ctx context.Context, req *logproto.GetSeriesRequest)
 	if err != nil {
 		return nil, err
 	}
+
+	if err := g.queryGate.Start(ctx); err != nil {
+		return nil, mapGateError(err)
+	}
+	defer g.queryGate.Done()
+
 	series, err := g.indexQuerier.GetSeries(ctx, instanceID, req.From, req.Through, matchers...)
 	if err != nil {
 		return nil, err
@@ -352,6 +300,12 @@ func (g *Gateway) LabelNamesForMetricName(ctx context.Context, req *logproto.Lab
 		}
 		matchers = matcherExpr.Mts
 	}
+
+	if err := g.queryGate.Start(ctx); err != nil {
+		return nil, mapGateError(err)
+	}
+	defer g.queryGate.Done()
+
 	names, err := g.indexQuerier.LabelNamesForMetricName(ctx, instanceID, req.From, req.Through, req.MetricName, matchers...)
 	if err != nil {
 		return nil, err
@@ -381,6 +335,12 @@ func (g *Gateway) LabelValuesForMetricName(ctx context.Context, req *logproto.La
 		}
 		matchers = matcherExpr.Mts
 	}
+
+	if err := g.queryGate.Start(ctx); err != nil {
+		return nil, mapGateError(err)
+	}
+	defer g.queryGate.Done()
+
 	names, err := g.indexQuerier.LabelValuesForMetricName(ctx, instanceID, req.From, req.Through, req.MetricName, req.LabelName, matchers...)
 	if err != nil {
 		return nil, err
@@ -400,6 +360,11 @@ func (g *Gateway) GetStats(ctx context.Context, req *logproto.IndexStatsRequest)
 		return nil, err
 	}
 
+	if err := g.queryGate.Start(ctx); err != nil {
+		return nil, mapGateError(err)
+	}
+	defer g.queryGate.Done()
+
 	return g.indexQuerier.Stats(ctx, instanceID, req.From, req.Through, matchers...)
 }
 
@@ -413,6 +378,11 @@ func (g *Gateway) GetVolume(ctx context.Context, req *logproto.VolumeRequest) (*
 	if err != nil && req.Matchers != seriesvolume.MatchAny {
 		return nil, err
 	}
+
+	if err := g.queryGate.Start(ctx); err != nil {
+		return nil, mapGateError(err)
+	}
+	defer g.queryGate.Done()
 
 	return g.indexQuerier.Volume(ctx, instanceID, req.From, req.Through, req.GetLimit(), req.TargetLabels, req.AggregateBy, matchers...)
 }
@@ -431,6 +401,11 @@ func (g *Gateway) GetShards(request *logproto.ShardsRequest, server logproto.Ind
 	if err != nil {
 		return err
 	}
+
+	if err := g.queryGate.Start(ctx); err != nil {
+		return mapGateError(err)
+	}
+	defer g.queryGate.Done()
 
 	ok := g.indexQuerier.HasChunkSizingInfo(request.From, request.Through)
 	if !ok {
@@ -481,7 +456,7 @@ func (g *Gateway) boundedShards(
 
 	start := time.Now()
 
-	// 1) for all bounds, get chunk refs
+	// For all bounds, get chunk refs
 	refs, err := g.indexQuerier.GetChunkRefsWithSizingInfo(ctx, instanceID, req.From, req.Through, p)
 	if err != nil {
 		return err
@@ -493,51 +468,12 @@ func (g *Gateway) boundedShards(
 		attribute.Int("index_chunks_resolved", ct),
 	))
 
-	filtered := refs
-
-	// 2) filter via blooms if enabled
-	filters := v1.ExtractTestableLabelMatchers(p.Plan().AST)
-	// NOTE(chaudum): Temporarily disable bloom filtering of chunk refs,
-	// as this doubles the load on bloom gateways.
-	// if g.bloomQuerier != nil && len(filters) > 0 {
-	// 	xs, err := g.bloomQuerier.FilterChunkRefs(ctx, instanceID, req.From, req.Through, refs, p.Plan())
-	// 	if err != nil {
-	// 		level.Error(logger).Log("msg", "failed to filter chunk refs", "err", err)
-	// 	} else {
-	// 		filtered = xs
-	// 	}
-	// 	sp.LogKV(
-	// 		"stage", "queried bloom gateway",
-	// 		"err", err,
-	// 	)
-	// }
-
 	g.metrics.preFilterChunks.WithLabelValues(routeShards).Observe(float64(ct))
-	g.metrics.postFilterChunks.WithLabelValues(routeShards).Observe(float64(len(filtered)))
+	g.metrics.postFilterChunks.WithLabelValues(routeShards).Observe(float64(ct))
 
-	resp := &logproto.ShardsResponse{}
-
-	// Edge case: if there are no chunks after filtering, we still need to return a single shard
-	if len(filtered) == 0 {
-		resp.Shards = []logproto.Shard{
-			{
-				Bounds: logproto.FPBounds{Min: 0, Max: math.MaxUint64},
-				Stats:  &logproto.IndexStatsResponse{},
-			},
-		}
-
-	} else {
-		shards, chunkGrps, err := accumulateChunksToShards(req, refs)
-		if err != nil {
-			return err
-		}
-		resp.Shards = shards
-
-		// If the index gateway is configured to precompute chunks, we can return the chunk groups
-		// alongside the shards, otherwise discarding them
-		if g.limits.TSDBPrecomputeChunks(instanceID) {
-			resp.ChunkGroups = chunkGrps
-		}
+	resp, err := buildShardsResponse(req, refs, g.limits.TSDBPrecomputeChunks(instanceID))
+	if err != nil {
+		return err
 	}
 
 	sp.AddEvent("send shards response", trace.WithAttributes(
@@ -553,7 +489,6 @@ func (g *Gateway) boundedShards(
 	level.Debug(logger).Log(
 		"msg", "send shards response",
 		"total_chunks", ct,
-		"post_filter_chunks", len(filtered),
 		"shards", len(resp.Shards),
 		"query", req.Query,
 		"target_bytes_per_shard", datasize.ByteSize(req.TargetBytesPerShard).HumanReadable(),
@@ -563,24 +498,57 @@ func (g *Gateway) boundedShards(
 		"through", req.Through.Time().String(),
 		"length", req.Through.Time().Sub(req.From.Time()).String(),
 		"end_delta", time.Since(req.Through.Time()).String(),
-		"filters", len(filters),
 	)
 
-	// Populate index statistics for metrics logging
-	resp.Statistics.Index.TotalChunks = int64(ct)
-	resp.Statistics.Index.PostFilterChunks = int64(len(filtered))
-	// compute unique streams matched post-filtering
-	{
-		seen := make(map[model.Fingerprint]struct{}, 1024)
-		for _, ref := range filtered {
-			seen[model.Fingerprint(ref.Fingerprint)] = struct{}{}
-		}
-		resp.Statistics.Index.TotalStreams = int64(len(seen))
-	}
 	resp.Statistics.Index.ShardsDuration = int64(time.Since(start))
 
-	// 3) build shards
 	return server.Send(resp)
+}
+
+// buildShardsResponse builds the response for a shards request from the chunk refs
+// resolved from the index. precomputeChunks controls whether the per-shard chunk
+// groups are returned alongside the shards.
+func buildShardsResponse(
+	req *logproto.ShardsRequest,
+	refs []logproto.ChunkRefWithSizingInfo,
+	precomputeChunks bool,
+) (*logproto.ShardsResponse, error) {
+	resp := &logproto.ShardsResponse{}
+
+	if len(refs) == 0 {
+		// Edge case: if there are no chunks, we still need to return a single shard
+		resp.Shards = []logproto.Shard{
+			{
+				Bounds: logproto.FPBounds{Min: 0, Max: math.MaxUint64},
+				Stats:  &logproto.IndexStatsResponse{},
+			},
+		}
+	} else {
+		shards, err := accumulateChunksToShards(req, refs)
+		if err != nil {
+			return nil, err
+		}
+		resp.Shards = shards
+
+		// If the index gateway is configured to precompute chunks, we can return the chunk groups
+		// alongside the shards, otherwise avoid calculating them.
+		if precomputeChunks {
+			resp.ChunkGroups = chunkGroupsForShards(shards, refs)
+		}
+	}
+
+	// Populate index statistics for metrics logging
+	ct := len(refs)
+	resp.Statistics.Index.TotalChunks = int64(ct)
+	resp.Statistics.Index.PostFilterChunks = int64(ct)
+	// compute unique streams matched post-filtering
+	seen := make(map[model.Fingerprint]struct{}, 1024)
+	for _, ref := range refs {
+		seen[model.Fingerprint(ref.Fingerprint)] = struct{}{}
+	}
+	resp.Statistics.Index.TotalStreams = int64(len(seen))
+
+	return resp, nil
 }
 
 // ExtractShardRequestMatchersAndAST extracts the matchers and AST from a query string.
@@ -617,7 +585,7 @@ func ExtractShardRequestMatchersAndAST(query string) (chunk.Predicate, error) {
 func accumulateChunksToShards(
 	req *logproto.ShardsRequest,
 	filtered []logproto.ChunkRefWithSizingInfo,
-) ([]logproto.Shard, []logproto.ChunkRefGroup, error) {
+) ([]logproto.Shard, error) {
 	// map for looking up post-filtered chunks in O(n) while iterating the index again for sizing info
 	filteredM := make(map[model.Fingerprint][]logproto.ChunkRefWithSizingInfo, 1024)
 	for _, ref := range filtered {
@@ -639,21 +607,29 @@ func accumulateChunksToShards(
 	}
 	sort.Sort(collectedSeries)
 
-	shards := collectedSeries.ShardsFor(req.TargetBytesPerShard)
+	return collectedSeries.ShardsFor(req.TargetBytesPerShard), nil
+}
+
+// chunkGroupsForShards buckets the given chunk refs into one group per shard.
+// It expects chunkRefs to be ordered by fingerprint.
+func chunkGroupsForShards(
+	shards []logproto.Shard,
+	chunkRefs []logproto.ChunkRefWithSizingInfo,
+) []logproto.ChunkRefGroup {
 	chkGrps := make([]logproto.ChunkRefGroup, 0, len(shards))
 	for _, s := range shards {
-		from := sort.Search(len(filtered), func(i int) bool {
-			return filtered[i].Fingerprint >= uint64(s.Bounds.Min)
+		from := sort.Search(len(chunkRefs), func(i int) bool {
+			return chunkRefs[i].Fingerprint >= uint64(s.Bounds.Min)
 		})
-		through := sort.Search(len(filtered), func(i int) bool {
-			return filtered[i].Fingerprint > uint64(s.Bounds.Max)
+		through := sort.Search(len(chunkRefs), func(i int) bool {
+			return chunkRefs[i].Fingerprint > uint64(s.Bounds.Max)
 		})
 		chkGrps = append(chkGrps, logproto.ChunkRefGroup{
-			Refs: refsWithSizingInfoToRefs(filtered[from:through]),
+			Refs: refsWithSizingInfoToRefs(chunkRefs[from:through]),
 		})
 	}
 
-	return shards, chkGrps, nil
+	return chkGrps
 }
 
 func refsWithSizingInfoToRefs(refsWithSizingInfo []logproto.ChunkRefWithSizingInfo) []*logproto.ChunkRef {

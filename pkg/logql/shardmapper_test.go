@@ -13,6 +13,70 @@ import (
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/index"
 )
 
+func TestApproxCountDistinctShardMapping(t *testing.T) {
+	t.Run("disabled is a no-op", func(t *testing.T) {
+		m := NewShardMapper(NewPowerOfTwoStrategy(ConstantShards(2)), nilShardMetrics, nil)
+		ast, err := syntax.ParseExpr(`approx_count_distinct(mac, {foo="bar"}[5m]) by (version)`)
+		require.NoError(t, err)
+		mapped, _, err := m.Map(ast, nilShardMetrics.downstreamRecorder(), true)
+		require.NoError(t, err)
+		require.Equal(t, removeWhiteSpace(ast.String()), removeWhiteSpace(mapped.String()))
+	})
+
+	t.Run("zero shards is a no-op", func(t *testing.T) {
+		m := NewShardMapper(NewPowerOfTwoStrategy(ConstantShards(0)), nilShardMetrics, []string{SupportApproxCountDistinct})
+		ast, err := syntax.ParseExpr(`approx_count_distinct(mac, {foo="bar"}[5m]) by (version)`)
+		require.NoError(t, err)
+		mapped, _, err := m.Map(ast, nilShardMetrics.downstreamRecorder(), true)
+		require.NoError(t, err)
+		require.Equal(t, removeWhiteSpace(ast.String()), removeWhiteSpace(mapped.String()))
+	})
+
+	t.Run("ungrouped by ()", func(t *testing.T) {
+		m := NewShardMapper(NewPowerOfTwoStrategy(ConstantShards(2)), nilShardMetrics, []string{SupportApproxCountDistinct})
+		ast, err := syntax.ParseExpr(`approx_count_distinct(mac, {foo="bar"}[5m]) by ()`)
+		require.NoError(t, err)
+		mapped, _, err := m.Map(ast, nilShardMetrics.downstreamRecorder(), true)
+		require.NoError(t, err)
+		require.Equal(t,
+			removeWhiteSpace(`CountDistinctSketchEval<CountDistinctSketchMerge<downstream<__count_distinct_sketch__(mac,{foo="bar"}[5m])by(),shard=0_of_2>++downstream<__count_distinct_sketch__(mac,{foo="bar"}[5m])by(),shard=1_of_2>>>`),
+			removeWhiteSpace(mapped.String()),
+		)
+	})
+
+	t.Run("omitted by keeps leftover labels", func(t *testing.T) {
+		m := NewShardMapper(NewPowerOfTwoStrategy(ConstantShards(2)), nilShardMetrics, []string{SupportApproxCountDistinct})
+		ast, err := syntax.ParseExpr(`approx_count_distinct(mac, {foo="bar"}[5m])`)
+		require.NoError(t, err)
+		mapped, _, err := m.Map(ast, nilShardMetrics.downstreamRecorder(), true)
+		require.NoError(t, err)
+		require.Equal(t,
+			removeWhiteSpace(`CountDistinctSketchEval<CountDistinctSketchMerge<downstream<__count_distinct_sketch__(mac,{foo="bar"}[5m]),shard=0_of_2>++downstream<__count_distinct_sketch__(mac,{foo="bar"}[5m]),shard=1_of_2>>>`),
+			removeWhiteSpace(mapped.String()),
+		)
+	})
+
+	t.Run("outer sum maps child to CountDistinctSketchEval first", func(t *testing.T) {
+		m := NewShardMapper(NewPowerOfTwoStrategy(ConstantShards(2)), nilShardMetrics, []string{SupportApproxCountDistinct})
+		ast, err := syntax.ParseExpr(`sum(approx_count_distinct(mac, {foo="bar"}[5m]) by (version))`)
+		require.NoError(t, err)
+		mapped, _, err := m.Map(ast, nilShardMetrics.downstreamRecorder(), true)
+		require.NoError(t, err)
+		require.Equal(t,
+			removeWhiteSpace(`sum(
+				CountDistinctSketchEval<
+					CountDistinctSketchMerge<
+						downstream<__count_distinct_sketch__(mac,{foo="bar"}[5m])by(version),shard=0_of_2>
+						++ downstream<__count_distinct_sketch__(mac,{foo="bar"}[5m])by(version),shard=1_of_2>
+					>
+				>
+			)`),
+			removeWhiteSpace(mapped.String()),
+		)
+		require.NotContains(t, mapped.String(), "sum(approx_count_distinct")
+	})
+}
+
 func TestShardedStringer(t *testing.T) {
 	for _, tc := range []struct {
 		in  syntax.Expr
@@ -116,7 +180,7 @@ func TestMapSampleExpr(t *testing.T) {
 
 func TestMappingStrings(t *testing.T) {
 	strategy := NewPowerOfTwoStrategy(ConstantShards(2))
-	m := NewShardMapper(strategy, nilShardMetrics, []string{ShardQuantileOverTime, SupportApproxTopk})
+	m := NewShardMapper(strategy, nilShardMetrics, []string{ShardQuantileOverTime, SupportApproxTopk, SupportApproxCountDistinct})
 	for _, tc := range []struct {
 		in  string
 		out string
@@ -174,6 +238,44 @@ func TestMappingStrings(t *testing.T) {
 				  downstream<__count_min_sketch__(sum by(ip)(rate({foo="bar"}[5m]))), shard=0_of_2>
 				  ++ downstream<__count_min_sketch__(sum by(ip)(rate({foo="bar"}[5m]))), shard=1_of_2>
 			        >
+			)`,
+		},
+		{
+			in: `approx_count_distinct(mac, {foo="bar"} | json [5m]) by (version)`,
+			out: `CountDistinctSketchEval<
+				CountDistinctSketchMerge<
+				  downstream<__count_distinct_sketch__(mac,{foo="bar"}|json[5m])by(version), shard=0_of_2>
+				  ++ downstream<__count_distinct_sketch__(mac,{foo="bar"}|json[5m])by(version), shard=1_of_2>
+				>
+			>`,
+		},
+		{
+			in: `approx_count_distinct(mac, {foo="bar"} | json [5m]) by ()`,
+			out: `CountDistinctSketchEval<
+				CountDistinctSketchMerge<
+				  downstream<__count_distinct_sketch__(mac,{foo="bar"}|json[5m])by(), shard=0_of_2>
+				  ++ downstream<__count_distinct_sketch__(mac,{foo="bar"}|json[5m])by(), shard=1_of_2>
+				>
+			>`,
+		},
+		{
+			in: `approx_count_distinct(mac, {foo="bar"} | json [5m])`,
+			out: `CountDistinctSketchEval<
+				CountDistinctSketchMerge<
+				  downstream<__count_distinct_sketch__(mac,{foo="bar"}|json[5m]), shard=0_of_2>
+				  ++ downstream<__count_distinct_sketch__(mac,{foo="bar"}|json[5m]), shard=1_of_2>
+				>
+			>`,
+		},
+		{
+			in: `sum(approx_count_distinct(mac, {foo="bar"} | json [5m]) by (version))`,
+			out: `sum(
+				CountDistinctSketchEval<
+					CountDistinctSketchMerge<
+					  downstream<__count_distinct_sketch__(mac,{foo="bar"}|json[5m])by(version), shard=0_of_2>
+					  ++ downstream<__count_distinct_sketch__(mac,{foo="bar"}|json[5m])by(version), shard=1_of_2>
+					>
+				>
 			)`,
 		},
 		{
@@ -394,9 +496,9 @@ func TestMappingStrings(t *testing.T) {
 				)
 				/
 				sum by (cluster) (
-					downstream<sum by (cluster) (count_over_time({job=~"myapps.*"}|="stats" | json busy="utilization" [5m])),shard=0_of_2>
+					downstream<sum by (cluster) (count_over_time({job=~"myapps.*"}|="stats" | json busy="utilization" | busy != "" [5m])),shard=0_of_2>
 					++
-					downstream<sum by (cluster) (count_over_time({job=~"myapps.*"}|="stats" | json busy="utilization" [5m])),shard=1_of_2>
+					downstream<sum by (cluster) (count_over_time({job=~"myapps.*"}|="stats" | json busy="utilization" | busy != "" [5m])),shard=1_of_2>
 				)
 			)`,
 		},
@@ -410,9 +512,9 @@ func TestMappingStrings(t *testing.T) {
 				)
 				/
 				sum without(busy) (
-					downstream<sum without(busy) (count_over_time({job=~"myapps.*"} |="stats" | json | keep busy [5m])),shard=0_of_2>
+					downstream<sum without(busy) (count_over_time({job=~"myapps.*"} |="stats" | json | keep busy | busy != "" [5m])),shard=0_of_2>
 					++
-					downstream<sum without(busy) (count_over_time({job=~"myapps.*"} |="stats" | json | keep busy [5m])),shard=1_of_2>
+					downstream<sum without(busy) (count_over_time({job=~"myapps.*"} |="stats" | json | keep busy | busy != "" [5m])),shard=1_of_2>
 				)
 			)`,
 		},
@@ -426,10 +528,110 @@ func TestMappingStrings(t *testing.T) {
 				)
 				/
 				sum without(foo,busy) (
-					downstream<sum without(foo,busy) (count_over_time({job=~"myapps.*"} |="stats" | json | keep busy [5m])),shard=0_of_2>
+					downstream<sum without(foo,busy) (count_over_time({job=~"myapps.*"} |="stats" | json | keep busy | busy != "" [5m])),shard=0_of_2>
 					++
-					downstream<sum without(foo,busy) (count_over_time({job=~"myapps.*"} |="stats" | json | keep busy [5m])),shard=1_of_2>
+					downstream<sum without(foo,busy) (count_over_time({job=~"myapps.*"} |="stats" | json | keep busy | busy != "" [5m])),shard=1_of_2>
 				)
+			)`,
+		},
+		// Outer sum around a non-additive range aggregation with label
+		// reduction: must fall through to the range-aggr merger so per-shard
+		// partials are combined by max/min/... — not by the outer sum.
+		{
+			in: `sum(max_over_time({foo="bar"} | logfmt | drop level | unwrap bar [5m]))`,
+			out: `sum(
+				max without () (
+					downstream<max_over_time({foo="bar"} | logfmt | drop level | unwrap bar [5m]), shard=0_of_2>
+					++
+					downstream<max_over_time({foo="bar"} | logfmt | drop level | unwrap bar [5m]), shard=1_of_2>
+				)
+			)`,
+		},
+		{
+			in: `sum(min_over_time({foo="bar"} | logfmt | unwrap bar [5m]) by (baz))`,
+			out: `sum(
+				min by (baz) (
+					downstream<min_over_time({foo="bar"} | logfmt | unwrap bar [5m]) by (baz), shard=0_of_2>
+					++
+					downstream<min_over_time({foo="bar"} | logfmt | unwrap bar [5m]) by (baz), shard=1_of_2>
+				)
+			)`,
+		},
+		{
+			in: `sum(max_over_time({foo="bar"} | json | label_format new=level | unwrap value [5m]))`,
+			out: `sum(
+				max without () (
+					downstream<max_over_time({foo="bar"} | json | label_format new=level | unwrap value [5m]), shard=0_of_2>
+					++
+					downstream<max_over_time({foo="bar"} | json | label_format new=level | unwrap value [5m]), shard=1_of_2>
+				)
+			)`,
+		},
+		{
+			in: `sum(max_over_time({foo="bar"} | logfmt | unwrap bar [5m]) without (baz))`,
+			out: `sum(
+				max without (baz) (
+					downstream<max_over_time({foo="bar"} | logfmt | unwrap bar [5m]) without (baz), shard=0_of_2>
+					++
+					downstream<max_over_time({foo="bar"} | logfmt | unwrap bar [5m]) without (baz), shard=1_of_2>
+				)
+			)`,
+		},
+		{
+			in: `sum(avg by (a) (rate({foo="bar"}[5m])))`,
+			out: `sum(
+				(
+					sum by (a) (
+						downstream<sum by (a) (rate({foo="bar"}[5m])), shard=0_of_2>
+						++
+						downstream<sum by (a) (rate({foo="bar"}[5m])), shard=1_of_2>
+					)
+					/
+					sum by (a) (
+						downstream<count by (a) (rate({foo="bar"}[5m])), shard=0_of_2>
+						++
+						downstream<count by (a) (rate({foo="bar"}[5m])), shard=1_of_2>
+					)
+				)
+			)`,
+		},
+		{
+			// avg_over_time with drop: guard fires and mapRangeAggregationExpr's
+			// avg-decomposition kicks in. Both the resulting sum(sum_over_time)
+			// and sum(count_over_time) are additive → fast path at each leg.
+			in: `sum(avg_over_time({foo="bar"} | logfmt | drop level | unwrap bar [5m]))`,
+			out: `sum(
+				(
+					sum without () (
+						downstream<sum without () (sum_over_time({foo="bar"} | logfmt | drop level | unwrap bar [5m])), shard=0_of_2>
+						++
+						downstream<sum without () (sum_over_time({foo="bar"} | logfmt | drop level | unwrap bar [5m])), shard=1_of_2>
+					)
+					/
+					sum without (bar) (
+						downstream<sum without (bar) (count_over_time({foo="bar"} | logfmt | drop level | bar != "" [5m])), shard=0_of_2>
+						++
+						downstream<sum without (bar) (count_over_time({foo="bar"} | logfmt | drop level | bar != "" [5m])), shard=1_of_2>
+					)
+				)
+			)`,
+		},
+		// Outer sum around an additive range aggregation with label reduction:
+		// per-shard sum-compression is safe — preserve the fast path.
+		{
+			in: `sum(count_over_time({foo="bar"} | logfmt | drop __error__ [5m]))`,
+			out: `sum(
+				downstream<sum(count_over_time({foo="bar"} | logfmt | drop __error__ [5m])), shard=0_of_2>
+				++
+				downstream<sum(count_over_time({foo="bar"} | logfmt | drop __error__ [5m])), shard=1_of_2>
+			)`,
+		},
+		{
+			in: `sum(count_over_time({foo="bar"} | logfmt | label_format new=level [5m]))`,
+			out: `sum(
+				downstream<sum(count_over_time({foo="bar"} | logfmt | label_format new=level [5m])), shard=0_of_2>
+				++
+				downstream<sum(count_over_time({foo="bar"} | logfmt | label_format new=level [5m])), shard=1_of_2>
 			)`,
 		},
 		// should be noop if VectorExpr
@@ -836,6 +1038,7 @@ func TestMapping(t *testing.T) {
 				Params:    3,
 				Operation: syntax.OpTypeTopK,
 				Left: &CountMinSketchEvalExpr{
+					operation: syntax.OpTypeApproxTopK,
 					downstreams: []DownstreamSampleExpr{
 						{
 							shard: NewPowerOfTwoShard(index.ShardAnnotation{
@@ -886,6 +1089,7 @@ func TestMapping(t *testing.T) {
 				Params:    3,
 				Operation: syntax.OpTypeTopK,
 				Left: &CountMinSketchEvalExpr{
+					operation: syntax.OpTypeApproxTopK,
 					downstreams: []DownstreamSampleExpr{
 						{
 							shard: nil,
@@ -920,6 +1124,7 @@ func TestMapping(t *testing.T) {
 			in: `approx_topk(3, topk(5, rate({foo="bar"}[5m])))`,
 			expr: &syntax.VectorAggregationExpr{
 				Left: &CountMinSketchEvalExpr{
+					operation: syntax.OpTypeApproxTopK,
 					downstreams: []DownstreamSampleExpr{{
 						SampleExpr: &syntax.VectorAggregationExpr{
 							Operation: syntax.OpTypeCountMinSketch,
@@ -1582,8 +1787,15 @@ func TestMapping(t *testing.T) {
 								Left: &syntax.RangeAggregationExpr{
 									Operation: syntax.OpRangeTypeCount,
 									Left: &syntax.LogRangeExpr{
-										Left: &syntax.MatchersExpr{
-											Mts: []*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")},
+										Left: &syntax.PipelineExpr{
+											Left: &syntax.MatchersExpr{
+												Mts: []*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")},
+											},
+											MultiStages: syntax.MultiStageExpr{
+												&syntax.LabelFilterExpr{
+													LabelFilterer: log.NewStringLabelFilter(mustNewMatcher(labels.MatchNotEqual, "bytes", "")),
+												},
+											},
 										},
 										Interval: 5 * time.Minute,
 									},
@@ -1604,8 +1816,15 @@ func TestMapping(t *testing.T) {
 									Left: &syntax.RangeAggregationExpr{
 										Operation: syntax.OpRangeTypeCount,
 										Left: &syntax.LogRangeExpr{
-											Left: &syntax.MatchersExpr{
-												Mts: []*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")},
+											Left: &syntax.PipelineExpr{
+												Left: &syntax.MatchersExpr{
+													Mts: []*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")},
+												},
+												MultiStages: syntax.MultiStageExpr{
+													&syntax.LabelFilterExpr{
+														LabelFilterer: log.NewStringLabelFilter(mustNewMatcher(labels.MatchNotEqual, "bytes", "")),
+													},
+												},
 											},
 											Interval: 5 * time.Minute,
 										},

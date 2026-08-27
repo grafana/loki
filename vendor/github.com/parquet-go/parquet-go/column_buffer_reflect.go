@@ -20,6 +20,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/parquet-go/jsonlite"
 	"github.com/parquet-go/parquet-go/deprecated"
+	"github.com/parquet-go/parquet-go/format"
 	"github.com/parquet-go/parquet-go/internal/memory"
 	"github.com/parquet-go/parquet-go/sparse"
 	"github.com/twpayne/go-geom"
@@ -33,13 +34,13 @@ import (
 )
 
 // isNullValue determines if a reflect.Value represents a null value for parquet encoding.
-// Only nil-able types can be null:
+// This handles various types that can represent null including:
 // - Invalid reflect values
 // - Nil pointers/interfaces/slices/maps
 // - json.RawMessage containing "null"
 // - *jsonlite.Value with Kind == jsonlite.Null
 // - *structpb.Value with NullValue kind
-// Value types (bool, int, float, string, struct, etc.) are never null.
+// - Zero values for value types (bool, int, float, string, struct, etc.)
 func isNullValue(value reflect.Value) bool {
 	switch value.Kind() {
 	case reflect.Invalid:
@@ -71,7 +72,7 @@ func isNullValue(value reflect.Value) bool {
 		return value.IsNil()
 
 	default:
-		return false
+		return value.IsZero()
 	}
 }
 
@@ -218,15 +219,15 @@ func writeTime(col ColumnBuffer, levels columnLevels, t time.Time, node Node) {
 	typ := node.Type()
 
 	if logicalType := typ.LogicalType(); logicalType != nil {
-		switch {
-		case logicalType.Timestamp != nil:
+		switch lt := logicalType.Value.(type) {
+		case *format.TimestampType:
 			// TIMESTAMP logical type -> write to int64
-			unit := logicalType.Timestamp.Unit
+			unit := lt.Unit
 			var val int64
-			switch {
-			case unit.Millis != nil:
+			switch unit.Value.(type) {
+			case *format.MilliSeconds:
 				val = t.UnixMilli()
-			case unit.Micros != nil:
+			case *format.MicroSeconds:
 				val = t.UnixMicro()
 			default:
 				val = t.UnixNano()
@@ -234,19 +235,19 @@ func writeTime(col ColumnBuffer, levels columnLevels, t time.Time, node Node) {
 			col.writeInt64(levels, val)
 			return
 
-		case logicalType.Date != nil:
+		case *format.DateType:
 			// DATE logical type -> write to int32
 			col.writeInt32(levels, int32(daysSinceUnixEpoch(t)))
 			return
 
-		case logicalType.Time != nil:
+		case *format.TimeType:
 			// TIME logical type -> write time of day
-			unit := logicalType.Time.Unit
+			unit := lt.Unit
 			nanos := timeOfDayNanos(t)
-			switch {
-			case unit.Millis != nil:
+			switch unit.Value.(type) {
+			case *format.MilliSeconds:
 				col.writeInt32(levels, int32(nanos/1e6))
-			case unit.Micros != nil:
+			case *format.MicroSeconds:
 				col.writeInt64(levels, nanos/1e3)
 			default:
 				col.writeInt64(levels, nanos)
@@ -281,13 +282,13 @@ func writeTime(col ColumnBuffer, levels columnLevels, t time.Time, node Node) {
 func writeDuration(col ColumnBuffer, levels columnLevels, d time.Duration, node Node) {
 	typ := node.Type()
 
-	if logicalType := typ.LogicalType(); logicalType != nil && logicalType.Time != nil {
+	if lt, ok := logicalTypeOf[*format.TimeType](typ.LogicalType()); ok {
 		// TIME logical type
-		unit := logicalType.Time.Unit
-		switch {
-		case unit.Millis != nil:
+		unit := lt.Unit
+		switch unit.Value.(type) {
+		case *format.MilliSeconds:
 			col.writeInt32(levels, int32(d.Milliseconds()))
-		case unit.Micros != nil:
+		case *format.MicroSeconds:
 			col.writeInt64(levels, d.Microseconds())
 		default:
 			col.writeInt64(levels, d.Nanoseconds())
@@ -320,22 +321,24 @@ func writeDuration(col ColumnBuffer, levels columnLevels, d time.Duration, node 
 // writeValueFuncOf constructs a function that writes reflect.Values to column buffers.
 // It follows the deconstructFuncOf pattern, recursively building functions for the schema tree.
 // Returns (nextColumnIndex, writeFunc).
-func writeValueFuncOf(columnIndex int16, node Node) (int16, writeValueFunc) {
+func writeValueFuncOf(columnIndex uint16, node Node) (uint16, writeValueFunc) {
 	switch {
 	case node.Optional():
 		return writeValueFuncOfOptional(columnIndex, node)
 	case node.Repeated():
-		return writeValueFuncOfRepeated(columnIndex, node)
+		return writeValueFuncOfRepeated(columnIndex, Required(node))
 	case isList(node):
 		return writeValueFuncOfList(columnIndex, node)
 	case isMap(node):
 		return writeValueFuncOfMap(columnIndex, node)
+	case isVariant(node):
+		return writeValueFuncOfVariant(columnIndex, node)
 	default:
 		return writeValueFuncOfRequired(columnIndex, node)
 	}
 }
 
-func writeValueFuncOfOptional(columnIndex int16, node Node) (int16, writeValueFunc) {
+func writeValueFuncOfOptional(columnIndex uint16, node Node) (uint16, writeValueFunc) {
 	nextColumnIndex, writeValue := writeValueFuncOf(columnIndex, Required(node))
 	return nextColumnIndex, func(columns []ColumnBuffer, levels columnLevels, value reflect.Value) {
 		if isNullValue(value) {
@@ -347,8 +350,8 @@ func writeValueFuncOfOptional(columnIndex int16, node Node) (int16, writeValueFu
 	}
 }
 
-func writeValueFuncOfRepeated(columnIndex int16, node Node) (int16, writeValueFunc) {
-	nextColumnIndex, writeValue := writeValueFuncOf(columnIndex, Required(node))
+func writeValueFuncOfRepeated(columnIndex uint16, node Node) (uint16, writeValueFunc) {
+	nextColumnIndex, writeValue := writeValueFuncOf(columnIndex, node)
 	return nextColumnIndex, func(columns []ColumnBuffer, levels columnLevels, value reflect.Value) {
 	writeRepatedValue:
 		if !value.IsValid() {
@@ -476,7 +479,7 @@ func writeValueFuncOfRepeated(columnIndex int16, node Node) (int16, writeValueFu
 	}
 }
 
-func writeValueFuncOfRequired(columnIndex int16, node Node) (int16, writeValueFunc) {
+func writeValueFuncOfRequired(columnIndex uint16, node Node) (uint16, writeValueFunc) {
 	switch {
 	case node.Leaf():
 		return writeValueFuncOfLeaf(columnIndex, node)
@@ -485,11 +488,16 @@ func writeValueFuncOfRequired(columnIndex int16, node Node) (int16, writeValueFu
 	}
 }
 
-func writeValueFuncOfList(columnIndex int16, node Node) (int16, writeValueFunc) {
-	return writeValueFuncOf(columnIndex, Repeated(listElementOf(node)))
+func writeValueFuncOfList(columnIndex uint16, node Node) (uint16, writeValueFunc) {
+	elem := listElementOf(node)
+	// Preserve optionality of list elements when writing via reflection paths.
+	if elem.Optional() {
+		return writeValueFuncOfRepeated(columnIndex, elem)
+	}
+	return writeValueFuncOf(columnIndex, Repeated(elem))
 }
 
-func writeValueFuncOfMap(columnIndex int16, node Node) (int16, writeValueFunc) {
+func writeValueFuncOfMap(columnIndex uint16, node Node) (uint16, writeValueFunc) {
 	keyValue := mapKeyValueOf(node)
 	keyValueType := keyValue.GoType()
 	keyValueElem := keyValueType.Elem()
@@ -576,7 +584,7 @@ func writeValueFuncOfMap(columnIndex int16, node Node) (int16, writeValueFunc) {
 
 var structFieldsCache atomic.Value // map[reflect.Type]map[string][]int
 
-func writeValueFuncOfGroup(columnIndex int16, node Node) (int16, writeValueFunc) {
+func writeValueFuncOfGroup(columnIndex uint16, node Node) (uint16, writeValueFunc) {
 	fields := node.Fields()
 	writers := make([]fieldWriter, len(fields))
 	for i, field := range fields {
@@ -602,12 +610,7 @@ func writeValueFuncOfGroup(columnIndex int16, node Node) (int16, writeValueFunc)
 				v := new(string)
 				for i := range writers {
 					w := &writers[i]
-					s, ok := m[w.fieldName]
-					if !ok {
-						w.writeValue(columns, levels, reflect.Value{})
-						continue
-					}
-					*v = s
+					*v = m[w.fieldName]
 					w.writeValue(columns, levels, reflect.ValueOf(v).Elem())
 				}
 
@@ -712,12 +715,9 @@ func writeValueFuncOfGroup(columnIndex int16, node Node) (int16, writeValueFunc)
 	}
 }
 
-func writeValueFuncOfLeaf(columnIndex int16, node Node) (int16, writeValueFunc) {
-	if columnIndex < 0 {
-		panic("writeValueFuncOfLeaf called with invalid columnIndex -1 (empty group)")
-	}
+func writeValueFuncOfLeaf(columnIndex uint16, node Node) (uint16, writeValueFunc) {
 	if columnIndex > MaxColumnIndex {
-		panic("row cannot be written because it has more than 127 columns")
+		panic("row cannot be written because it has too many columns")
 	}
 	return columnIndex + 1, func(columns []ColumnBuffer, levels columnLevels, value reflect.Value) {
 		col := columns[columnIndex]
@@ -809,9 +809,8 @@ func writeValueFuncOfLeaf(columnIndex int16, node Node) (int16, writeValueFunc) 
 
 		case reflect.Float32:
 			typ := node.Type()
-			logicalType := typ.LogicalType()
-			if logicalType != nil && logicalType.Decimal != nil {
-				decimalValue(col, levels, typ, value, logicalType.Decimal.Scale)
+			if decimal, ok := logicalTypeOf[*format.DecimalType](typ.LogicalType()); ok {
+				decimalValue(col, levels, typ, value, decimal.Scale)
 				return
 			}
 			col.writeFloat(levels, float32(value.Float()))
@@ -819,9 +818,8 @@ func writeValueFuncOfLeaf(columnIndex int16, node Node) (int16, writeValueFunc) 
 
 		case reflect.Float64:
 			typ := node.Type()
-			logicalType := typ.LogicalType()
-			if logicalType != nil && logicalType.Decimal != nil {
-				decimalValue(col, levels, typ, value, logicalType.Decimal.Scale)
+			if decimal, ok := logicalTypeOf[*format.DecimalType](typ.LogicalType()); ok {
+				decimalValue(col, levels, typ, value, decimal.Scale)
 				return
 			}
 
@@ -835,8 +833,7 @@ func writeValueFuncOfLeaf(columnIndex int16, node Node) (int16, writeValueFunc) 
 				writeJSONNumber(col, levels, json.Number(v), node)
 			default:
 				typ := node.Type()
-				logicalType := typ.LogicalType()
-				if logicalType != nil && logicalType.UUID != nil {
+				if logicalTypeIs[*format.UUIDType](typ.LogicalType()) {
 					writeUUID(col, levels, v, typ)
 					return
 				}
@@ -870,6 +867,9 @@ func writeValueFuncOfLeaf(columnIndex int16, node Node) (int16, writeValueFunc) 
 				return
 			case deprecated.Int96:
 				col.writeInt96(levels, v)
+				return
+			case Interval:
+				writeInterval(col, levels, v)
 				return
 			}
 		}
@@ -939,6 +939,14 @@ func writeUUID(col ColumnBuffer, levels columnLevels, str string, typ Type) {
 	buf.Reset()
 }
 
+func writeInterval(col ColumnBuffer, levels columnLevels, iv Interval) {
+	var buf [12]byte
+	binary.LittleEndian.PutUint32(buf[0:4], iv.Months)
+	binary.LittleEndian.PutUint32(buf[4:8], iv.Days)
+	binary.LittleEndian.PutUint32(buf[8:12], iv.Milliseconds)
+	col.writeByteArray(levels, buf[:])
+}
+
 func decimalValue(col ColumnBuffer, levels columnLevels, typ Type, value reflect.Value, scale int32) {
 	val := int64(math.Round(value.Float() * math.Pow10(int(scale))))
 	switch typ.Kind() {
@@ -962,15 +970,15 @@ func numberToByteArray(data any) []byte {
 
 func writeBigFloat(col ColumnBuffer, levels columnLevels, f *big.Float, node Node) {
 	typ := node.Type()
-	logicalType := typ.LogicalType()
-	if logicalType == nil || logicalType.Decimal == nil {
+	decimal, ok := logicalTypeOf[*format.DecimalType](typ.LogicalType())
+	if !ok {
 		panic("writeBigFloat requires a decimal logical type")
 	}
 
-	scale := int(logicalType.Decimal.Scale)
+	scale := int(decimal.Scale)
 	// Compute minimum precision needed: decimal precision * log2(10) ≈ precision * 3.32
 	// We use precision * 4 + 64 for safety margin
-	minPrec := uint(logicalType.Decimal.Precision)*4 + 64
+	minPrec := uint(decimal.Precision)*4 + 64
 	prec := max(f.Prec(), minPrec)
 	scaleFactor := new(big.Float).SetPrec(prec)
 	scaleFactor.SetInt(new(big.Int).Exp(big.NewInt(10), big.NewInt(int64(scale)), nil))

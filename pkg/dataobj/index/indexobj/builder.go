@@ -146,7 +146,7 @@ func (b *Builder) getPostingsBuilderForTenant(tenantID string) *postings.Builder
 	}
 	pb, ok := b.postings[tenantID]
 	if !ok {
-		pb = postings.NewBuilder(b.metrics.postings, int(b.cfg.TargetPageSize), b.cfg.MaxPageRows)
+		pb = postings.NewBuilder(b.metrics.postings, int(b.cfg.TargetPageSize), b.cfg.MaxPageRows, int(b.cfg.TargetSectionSize))
 		pb.SetTenant(tenantID)
 		b.postings[tenantID] = pb
 	}
@@ -157,7 +157,7 @@ func (b *Builder) getPostingsBuilderForTenant(tenantID string) *postings.Builder
 
 // AppendStat records a per-sort-key aggregate for a data object section.
 func (b *Builder) AppendStat(tenantID, objectPath string, sectionIdx int64,
-	sortSchema string, labels map[string]string, minTs, maxTs time.Time, rows int, uncompressedSize int64) error {
+	shardBucket uint32, sortSchema string, labels map[string]string, minTs, maxTs time.Time, rows int, uncompressedSize int64) error {
 	b.metrics.appendsTotal.Inc()
 
 	timer := prometheus.NewTimer(b.metrics.appendTime)
@@ -169,6 +169,7 @@ func (b *Builder) AppendStat(tenantID, objectPath string, sectionIdx int64,
 	tenantStats.Append(stats.Stat{
 		ObjectPath:       objectPath,
 		SectionIndex:     sectionIdx,
+		ShardBucket:      shardBucket,
 		SortSchema:       sortSchema,
 		Labels:           labels,
 		MinTimestamp:     minTs.UnixNano(),
@@ -206,7 +207,7 @@ func (b *Builder) AppendStat(tenantID, objectPath string, sectionIdx int64,
 // requires all observations for a section to be present before encoding
 // (bitmap normalization, bloom filter construction). The builderFull flag
 // provides back-pressure via TargetObjectSize.
-func (b *Builder) ObserveLabelPosting(tenantID string, obs postings.LabelObservation) error {
+func (b *Builder) ObserveLabelPosting(tenantID string, obs postings.LabelObservation) {
 	// Postings are observed per (record × stream label), so this method runs in
 	// a hot loop that fires hundreds of thousands of times per logs section.
 	// Per-call prometheus.NewTimer / Histogram.Observe / sizeEstimate.Set were
@@ -227,15 +228,16 @@ func (b *Builder) ObserveLabelPosting(tenantID string, obs postings.LabelObserva
 	if b.currentSizeEstimate > int(b.cfg.TargetObjectSize) {
 		b.builderFull = true
 	}
-	return nil
 }
 
 // PrepareBloomColumn initializes the bloom filter for a specific column.
 // Must be called before any ObserveBloomPosting calls for the given (objectPath, sectionIdx, columnName).
+// shardBuckets is stored on the entry immediately so a prepared-but-unobserved
+// column still records the object's shard factor.
 func (b *Builder) PrepareBloomColumn(tenantID, objectPath string, sectionIdx int64,
-	columnName string, estimatedCardinality uint) {
+	columnName string, estimatedCardinality uint, shardBuckets int64) {
 	tenantPostings := b.getPostingsBuilderForTenant(tenantID)
-	tenantPostings.PrepareBloomColumn(objectPath, sectionIdx, columnName, estimatedCardinality)
+	tenantPostings.PrepareBloomColumn(objectPath, sectionIdx, columnName, estimatedCardinality, shardBuckets)
 }
 
 // ObserveBloomPosting records a bloom-filter posting observation for a data
@@ -271,9 +273,9 @@ func (b *Builder) BloomBytes(tenantID, objectPath string, sectionIdx int64, colu
 	return tenantPostings.BloomBytes(objectPath, sectionIdx, columnName)
 }
 
-func (b *Builder) AppendIndexPointer(tenantID string, path string, startTs time.Time, endTs time.Time) error {
+func (b *Builder) AppendIndexPointer(tenantID string, pointer indexpointers.IndexPointer) error {
 	b.metrics.appendsTotal.Inc()
-	newEntrySize := len(path) + 1 + 1 // path, startTs, endTs
+	newEntrySize := len(pointer.Path) + 1 + 1 + 8 + 8 // path, startTs, endTs, fileSize, uncompressedLogsSize
 
 	if b.state != builderStateEmpty && b.currentSizeEstimate+newEntrySize > int(b.cfg.TargetObjectSize) {
 		b.builderFull = true
@@ -285,7 +287,7 @@ func (b *Builder) AppendIndexPointer(tenantID string, path string, startTs time.
 	tenantIndexPointers := b.getIndexPointerBuilderForTenant(tenantID)
 	preAppendSizeEstimate := tenantIndexPointers.EstimatedSize()
 
-	tenantIndexPointers.Append(path, startTs, endTs)
+	tenantIndexPointers.Append(pointer.Path, pointer.StartTs, pointer.EndTs, pointer.FileSize, pointer.UncompressedLogsSize)
 
 	postAppendSizeEstimate := tenantIndexPointers.EstimatedSize()
 	b.unflushedSizeEstimate += postAppendSizeEstimate - preAppendSizeEstimate
@@ -456,10 +458,33 @@ func (b *Builder) estimatedSize() int {
 }
 
 // TimeRanges returns the time range of the data in the builder, by tenant.
+// For each tenant, the range is the union of its streams and postings ranges;
+// a source with no observations (zero time range) does not contribute.
 func (b *Builder) TimeRanges() []multitenancy.TimeRange {
-	timeRanges := make([]multitenancy.TimeRange, 0, len(b.streams))
-	for tenantID, tenantStreams := range b.streams {
-		minTime, maxTime := tenantStreams.TimeRange()
+	tenantIDs := make(map[string]struct{}, len(b.streams)+len(b.postings))
+	for tenantID := range b.streams {
+		tenantIDs[tenantID] = struct{}{}
+	}
+	for tenantID := range b.postings {
+		tenantIDs[tenantID] = struct{}{}
+	}
+
+	timeRanges := make([]multitenancy.TimeRange, 0, len(tenantIDs))
+	for tenantID := range tenantIDs {
+		var minTime, maxTime time.Time
+
+		if s, ok := b.streams[tenantID]; ok {
+			sMin, sMax := s.TimeRange()
+			minTime, maxTime = unionTimeRange(minTime, maxTime, sMin, sMax)
+		}
+		if p, ok := b.postings[tenantID]; ok {
+			pMin, pMax := p.TimeRange()
+			minTime, maxTime = unionTimeRange(minTime, maxTime, pMin, pMax)
+		}
+
+		if minTime.IsZero() && maxTime.IsZero() {
+			continue
+		}
 		timeRanges = append(timeRanges, multitenancy.TimeRange{
 			Tenant:  tenantID,
 			MinTime: minTime,
@@ -467,6 +492,19 @@ func (b *Builder) TimeRanges() []multitenancy.TimeRange {
 		})
 	}
 	return timeRanges
+}
+
+func unionTimeRange(curMin, curMax, candMin, candMax time.Time) (time.Time, time.Time) {
+	if candMin.IsZero() {
+		return curMin, curMax
+	}
+	if curMin.IsZero() || candMin.Before(curMin) {
+		curMin = candMin
+	}
+	if curMax.IsZero() || candMax.After(curMax) {
+		curMax = candMax
+	}
+	return curMin, curMax
 }
 
 // Flush flushes all buffered data to the buffer provided. Calling Flush can result

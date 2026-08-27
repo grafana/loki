@@ -21,6 +21,7 @@ import (
 	"log"
 	"strings"
 
+	"go.opentelemetry.io/otel/attribute"
 	otelcodes "go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/trace"
 	"google.golang.org/grpc"
@@ -83,7 +84,10 @@ func (h *clientTracingHandler) finishTrace(err error, ts trace.Span) {
 // It creates a new outgoing carrier which serializes information about this
 // span into gRPC Metadata, if TextMapPropagator is provided in the trace
 // options. if TextMapPropagator is not provided, it returns the context as is.
-func (h *clientTracingHandler) traceTagRPC(ctx context.Context, ai *attemptInfo, nameResolutionDelayed bool) (context.Context, *attemptInfo) {
+//
+// Note: The passed attemptInfo pointer (ai) is mutated in-place. Fields such as
+// ai.traceSpan are updated directly. No new attemptInfo is returned.
+func (h *clientTracingHandler) traceTagRPC(ctx context.Context, ai *attemptInfo, nameResolutionDelayed bool) context.Context {
 	// Add a "Delayed name resolution complete" event to the call span
 	// if there was name resolution delay. In case of multiple retry attempts,
 	// ensure that event is added only once.
@@ -98,7 +102,7 @@ func (h *clientTracingHandler) traceTagRPC(ctx context.Context, ai *attemptInfo,
 	carrier := otelinternaltracing.NewOutgoingCarrier(ctx)
 	h.options.TraceOptions.TextMapPropagator.Inject(ctx, carrier)
 	ai.traceSpan = span
-	return carrier.Context(), ai
+	return carrier.Context()
 }
 
 // createCallTraceSpan creates a call span to put in the provided context using
@@ -120,17 +124,32 @@ func (h *clientTracingHandler) HandleConn(context.Context, stats.ConnStats) {}
 
 // TagRPC implements per RPC attempt context management for traces.
 func (h *clientTracingHandler) TagRPC(ctx context.Context, info *stats.RPCTagInfo) context.Context {
-	ctx, ai := getOrCreateRPCAttemptInfo(ctx)
-	ctx, ai = h.traceTagRPC(ctx, ai, info.NameResolutionDelay)
-	return setRPCInfo(ctx, &rpcInfo{ai: ai})
+	ctx, ri := getOrCreateClientRPCInfo(ctx)
+	ci := getCallInfo(ctx)
+	if ci == nil {
+		logger.Error("context passed into client side stats handler (TagRPC) has no call info")
+		return ctx
+	}
+	ctx = h.traceTagRPC(ctx, ri.ai, info.NameResolutionDelay)
+	return ctx
 }
 
 // HandleRPC handles per RPC tracing implementation.
 func (h *clientTracingHandler) HandleRPC(ctx context.Context, rs stats.RPCStats) {
-	ri := getRPCInfo(ctx)
+	ri := clientRPCInfo(ctx)
 	if ri == nil {
 		logger.Error("ctx passed into client side tracing handler trace event handling has no client attempt data present")
 		return
+	}
+
+	// Client-specific Begin attributes.
+	if begin, ok := rs.(*stats.Begin); ok {
+		ci := getCallInfo(ctx)
+		previousRPCAttempts := ci.previousRPCAttempts.Add(1) - 1
+		ri.ai.traceSpan.SetAttributes(
+			attribute.Int64("previous-rpc-attempts", int64(previousRPCAttempts)),
+			attribute.Bool("transparent-retry", begin.IsTransparentRetryAttempt),
+		)
 	}
 	populateSpan(rs, ri.ai)
 }

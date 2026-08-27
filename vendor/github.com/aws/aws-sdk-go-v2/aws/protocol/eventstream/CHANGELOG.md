@@ -1,3 +1,31 @@
+# v1.7.16 (2026-07-31.2)
+
+* **Dependency Update**: Upgrade to smithy-go v1.27.6 to fix various serde issues in HTTP binding services.
+
+# v1.7.15 (2026-07-28)
+
+* **Dependency Update**: Update to smithy-go v1.27.5.
+
+# v1.7.14 (2026-07-01)
+
+* No change notes available for this release.
+
+# v1.7.13 (2026-06-04)
+
+* **Dependency Update**: Update to smithy-go v1.27.1 to fix several union-related deserialization bugs in schema-serde-enabled services.
+
+# v1.7.12 (2026-06-03)
+
+* No change notes available for this release.
+
+# v1.7.11 (2026-05-29)
+
+* **Dependency Update**: Update to smithy-go v1.26.0.
+
+# v1.7.10 (2026-04-29)
+
+* **Dependency Update**: Update to smithy-go v1.25.1.
+
 # v1.7.9 (2026-04-17)
 
 * **Dependency Update**: Bump smithy-go to 1.25.0 to support endpointBdd trait

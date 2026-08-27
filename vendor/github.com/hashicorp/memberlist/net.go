@@ -12,6 +12,7 @@ import (
 	"io"
 	"math"
 	"net"
+	"slices"
 	"sync/atomic"
 	"time"
 
@@ -71,13 +72,6 @@ const (
 	// it from the encryptionVersion header which is either 0/1 right now and
 	// also any of the existing messageTypes
 	hasLabelMsg messageType = 244
-)
-
-// compressionType is used to specify the compression algorithm
-type compressionType uint8
-
-const (
-	lzwAlgo compressionType = iota
 )
 
 const (
@@ -194,13 +188,6 @@ type pushNodeState struct {
 	Vsn         []uint8 // Protocol versions
 }
 
-// compress is used to wrap an underlying payload
-// using a specified compression algorithm
-type compress struct {
-	Algo compressionType
-	Buf  []byte
-}
-
 // msgHandoff is used to transfer a message between goroutines
 type msgHandoff struct {
 	msgType messageType
@@ -283,7 +270,7 @@ func (m *Memberlist) handleConn(conn net.Conn) {
 				return
 			}
 
-			err = m.rawSendMsgStream(conn, out.Bytes(), streamLabel)
+			err = m.rawSendMsgStream(conn, out, streamLabel)
 			if err != nil {
 				m.logger.Printf("[ERR] memberlist: Failed to send error: %s %s", err, LogConn(conn))
 				return
@@ -342,7 +329,7 @@ func (m *Memberlist) handleConn(conn net.Conn) {
 			return
 		}
 
-		err = m.rawSendMsgStream(conn, out.Bytes(), streamLabel)
+		err = m.rawSendMsgStream(conn, out, streamLabel)
 		if err != nil {
 			m.logger.Printf("[ERR] memberlist: Failed to send ack: %s %s", err, LogConn(conn))
 			return
@@ -460,17 +447,22 @@ func (m *Memberlist) handleCommand(buf []byte, from net.Addr, timestamp time.Tim
 
 		// Check for overflow and append if not full
 		m.msgQueueLock.Lock()
-		if queue.Len() >= m.config.HandoffQueueDepth {
-			m.logger.Printf("[WARN] memberlist: handler queue full, dropping message (%d) %s", msgType, LogAddress(from))
-		} else {
+		dropped := queue.Len() >= m.config.HandoffQueueDepth
+		if !dropped {
 			queue.PushBack(msgHandoff{msgType, buf, from})
 		}
 		m.msgQueueLock.Unlock()
 
-		// Notify of pending message
-		select {
-		case m.handoffCh <- struct{}{}:
-		default:
+		if dropped {
+			// Log outside the lock to avoid blocking other goroutines (e.g. getNextMessage)
+			// on potentially slow I/O while holding msgQueueLock.
+			m.logger.Printf("[WARN] memberlist: handler queue full, dropping message (%d) %s", msgType, LogAddress(from))
+		} else {
+			// Notify of pending message
+			select {
+			case m.handoffCh <- struct{}{}:
+			default:
+			}
 		}
 
 	default:
@@ -760,11 +752,37 @@ func (m *Memberlist) handleUser(buf []byte, from net.Addr) {
 	}
 }
 
+// decompressLabels returns the precomputed metric label slice for typ on
+// the receive path. Each known type gets a dedicated case keyed to a
+// named precomputed field; adding a new compressionType requires another
+// case. Forgetting to add the case is not a compile error — the default
+// arm builds a fresh slice via withMetricLabel, so the new type's metrics still
+// emit correctly but pay an allocation per call.
+//
+// Unknown types (including unknownCompressionType from a wrapper-decode failure)
+// also fall through to the default arm.
+func (m *Memberlist) decompressLabels(typ compressionType) []metrics.Label {
+	switch typ {
+	case lzwCompressionType:
+		return m.decompressLZWLabels
+	case snappyCompressionType:
+		return m.decompressSnappyLabels
+	default:
+		return withMetricLabel(m.metricLabels, "algo", compressionTypeLabel(typ))
+	}
+}
+
 // handleCompressed is used to unpack a compressed message
 func (m *Memberlist) handleCompressed(buf []byte, from net.Addr, timestamp time.Time) {
-	// Try to decode the payload
-	payload, err := decompressPayload(buf)
+	typ, payload, err := decompressPayload(buf)
+	// attempts_total is incremented unconditionally (mirroring the compress
+	// side's `compress_attempts_total`). On wrapper-decode failure the type is
+	// unknownCompressionType, which surfaces as algo="unknown" via decompressLabels.
+	metrics.IncrCounterWithLabels(metricDecompressAttempts, 1,
+		m.decompressLabels(typ))
 	if err != nil {
+		metrics.IncrCounterWithLabels(metricDecompressErrors, 1,
+			m.decompressLabels(typ))
 		m.logger.Printf("[ERR] memberlist: Failed to decompress payload: %v %s", err, LogAddress(from))
 		return
 	}
@@ -779,7 +797,7 @@ func (m *Memberlist) encodeAndSendMsg(a Address, msgType messageType, msg interf
 	if err != nil {
 		return err
 	}
-	if err := m.sendMsg(a, out.Bytes()); err != nil {
+	if err := m.sendMsg(a, out); err != nil {
 		return err
 	}
 	return nil
@@ -810,7 +828,7 @@ func (m *Memberlist) sendMsg(a Address, msg []byte) error {
 
 	// Send the messages.
 	for _, compound := range compounds {
-		if err := m.rawSendMsgPacket(a, nil, compound.Bytes()); err != nil {
+		if err := m.rawSendMsgPacket(a, nil, compound); err != nil {
 			return err
 		}
 	}
@@ -827,14 +845,23 @@ func (m *Memberlist) rawSendMsgPacket(a Address, node *Node, msg []byte) error {
 
 	// Check if we have compression enabled
 	if m.config.EnableCompression {
-		buf, err := compressPayload(msg, m.config.MsgpackUseNewTimeFormat)
+		metrics.IncrCounterWithLabels(metricCompressAttempts, 1,
+			m.compressMetricLabels)
+		buf, err := compressPayload(m.compressionType, msg, m.config.MsgpackUseNewTimeFormat)
 		if err != nil {
+			// Compression failed — fall back to plaintext.
+			metrics.IncrCounterWithLabels(metricCompressErrors, 1,
+				m.compressMetricLabels)
 			m.logger.Printf("[WARN] memberlist: Failed to compress payload: %v", err)
+		} else if len(buf) < len(msg) {
+			// Compression reduced the size; emit the compressed bytes.
+			msg = buf
 		} else {
-			// Only use compression if it reduced the size
-			if buf.Len() < len(msg) {
-				msg = buf.Bytes()
-			}
+			// Compressed payload was no smaller than the input — fall
+			// back to plaintext to avoid paying encryption + network
+			// cost on a worse-than-original payload.
+			metrics.IncrCounterWithLabels(metricCompressSkipped, 1,
+				m.compressSkippedSizeWorseLabels)
 		}
 	}
 
@@ -866,13 +893,12 @@ func (m *Memberlist) rawSendMsgPacket(a Address, node *Node, msg []byte) error {
 
 	// Check if we have encryption enabled
 	if m.config.EncryptionEnabled() && m.config.GossipVerifyOutgoing {
-		// Encrypt the payload
 		var (
 			primaryKey  = m.config.Keyring.GetPrimaryKey()
 			packetLabel = []byte(m.config.Label)
-			buf         bytes.Buffer
+			buf         = bytes.NewBuffer(nil)
 		)
-		err := encryptPayload(m.encryptionVersion(), primaryKey, msg, packetLabel, &buf)
+		err := encryptPayload(m.encryptionVersion(), primaryKey, msg, packetLabel, buf)
 		if err != nil {
 			m.logger.Printf("[ERR] memberlist: Encryption of message failed: %v", err)
 			return err
@@ -890,11 +916,24 @@ func (m *Memberlist) rawSendMsgPacket(a Address, node *Node, msg []byte) error {
 func (m *Memberlist) rawSendMsgStream(conn net.Conn, sendBuf []byte, streamLabel string) error {
 	// Check if compression is enabled
 	if m.config.EnableCompression {
-		compBuf, err := compressPayload(sendBuf, m.config.MsgpackUseNewTimeFormat)
+		metrics.IncrCounterWithLabels(metricCompressAttempts, 1,
+			m.compressMetricLabels)
+		compBuf, err := compressPayload(m.compressionType, sendBuf, m.config.MsgpackUseNewTimeFormat)
 		if err != nil {
+			// Compression failed — fall back to plaintext.
+			metrics.IncrCounterWithLabels(metricCompressErrors, 1,
+				m.compressMetricLabels)
 			m.logger.Printf("[ERROR] memberlist: Failed to compress payload: %v", err)
+		} else if len(compBuf) < len(sendBuf) {
+			// Compression reduced the size; emit the compressed bytes.
+			sendBuf = compBuf
 		} else {
-			sendBuf = compBuf.Bytes()
+			// Compressed payload was no smaller than the input — fall
+			// back to plaintext to avoid paying encryption + network
+			// cost on a worse-than-original payload. Mirrors
+			// rawSendMsgPacket.
+			metrics.IncrCounterWithLabels(metricCompressSkipped, 1,
+				m.compressSkippedSizeWorseLabels)
 		}
 	}
 
@@ -1050,7 +1089,6 @@ func (m *Memberlist) sendLocalState(conn net.Conn, join bool, streamLabel string
 		userData = m.config.Delegate.LocalState(join)
 	}
 
-	// Create a bytes buffer writer
 	bufConn := bytes.NewBuffer(nil)
 
 	// Send our node state
@@ -1086,7 +1124,9 @@ func (m *Memberlist) sendLocalState(conn net.Conn, join bool, streamLabel string
 	return m.rawSendMsgStream(conn, bufConn.Bytes(), streamLabel)
 }
 
-// encryptLocalState is used to help encrypt local state before sending
+// encryptLocalState encrypts a local-state payload for stream send.
+// Returns a freshly-allocated byte slice owned by the caller.
+// On error nil is returned.
 func (m *Memberlist) encryptLocalState(sendBuf []byte, streamLabel string) ([]byte, error) {
 	var buf bytes.Buffer
 
@@ -1104,7 +1144,7 @@ func (m *Memberlist) encryptLocalState(sendBuf []byte, streamLabel string) ([]by
 	//
 	//   [messageType; byte] [messageLength; uint32] [stream_label; optional]
 	//
-	dataBytes := appendBytes(buf.Bytes()[:5], []byte(streamLabel))
+	dataBytes := slices.Concat(buf.Bytes()[:5], []byte(streamLabel))
 
 	// Write the encrypted cipher text to the buffer
 	key := m.config.Keyring.GetPrimaryKey()
@@ -1115,10 +1155,13 @@ func (m *Memberlist) encryptLocalState(sendBuf []byte, streamLabel string) ([]by
 	return buf.Bytes(), nil
 }
 
-// decryptRemoteState is used to help decrypt the remote state
+// decryptRemoteState is used to help decrypt the remote state.
 func (m *Memberlist) decryptRemoteState(bufConn io.Reader, streamLabel string) ([]byte, error) {
-	// Read in enough to determine message length
-	cipherText := bytes.NewBuffer(nil)
+	// Read in enough to determine message length. Use the push-pull pool:
+	// the cipher text scales with maxPushStateBytes and is dropped after
+	// decryptPayload returns the freshly-allocated plaintext.
+	cipherText := getPushPullBuffer()
+	defer releasePushPullBuffer(cipherText)
 	cipherText.WriteByte(byte(encryptMsg))
 	_, err := io.CopyN(cipherText, bufConn, 4)
 	if err != nil {
@@ -1152,7 +1195,7 @@ func (m *Memberlist) decryptRemoteState(bufConn io.Reader, streamLabel string) (
 	//
 	//   [messageType; byte] [messageLength; uint32] [label_data; optional]
 	//
-	dataBytes := appendBytes(cipherText.Bytes()[:5], []byte(streamLabel))
+	dataBytes := slices.Concat(cipherText.Bytes()[:5], []byte(streamLabel))
 	cipherBytes := cipherText.Bytes()[5:]
 
 	// Decrypt the payload
@@ -1202,12 +1245,25 @@ func (m *Memberlist) readStream(conn net.Conn, streamLabel string) (messageType,
 
 	// Check if we have a compressed message
 	if msgType == compressMsg {
-		var c compress
+		var c compressedPayload
 		if err := dec.Decode(&c); err != nil {
+			// Wrapper-decode failure happens before any algo tag is read
+			// from the wire; emit with unknownCompressionType so the metric is
+			// symmetric with handleCompressed (UDP) which routes the same
+			// case via decompressPayload's unknownCompressionType sentinel. attempts
+			// counts everything we tried to decompress, including malformed
+			// frames, mirroring the compress side's denominator semantics.
+			unknownLabels := m.decompressLabels(unknownCompressionType)
+			metrics.IncrCounterWithLabels(metricDecompressAttempts, 1, unknownLabels)
+			metrics.IncrCounterWithLabels(metricDecompressErrors, 1, unknownLabels)
 			return 0, nil, nil, err
 		}
+		metrics.IncrCounterWithLabels(metricDecompressAttempts, 1,
+			m.decompressLabels(c.Algo))
 		decomp, err := decompressBuffer(&c)
 		if err != nil {
+			metrics.IncrCounterWithLabels(metricDecompressErrors, 1,
+				m.decompressLabels(c.Algo))
 			return 0, nil, nil, err
 		}
 
@@ -1365,7 +1421,7 @@ func (m *Memberlist) sendPingAndWaitForAck(a Address, ping ping, deadline time.T
 		return false, err
 	}
 
-	if err = m.rawSendMsgStream(conn, out.Bytes(), m.config.Label); err != nil {
+	if err = m.rawSendMsgStream(conn, out, m.config.Label); err != nil {
 		return false, err
 	}
 

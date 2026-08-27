@@ -239,9 +239,19 @@ storage_config:
     cache_location: /loki/index_cache
   alibabacloud:
     bucket: <bucket>
+    # Alibabacloud region name.
+    # Required when signature_version=v4.
+    # region: <region>
     endpoint: <endpoint>
     access_key_id: <access_key_id>
     secret_access_key: <secret_access_key>
+    # Specify the RAM role name of the ECS instance. ECS RAM role authentication is used only 
+    # when neither access_key_id nor secret_access_key is configured and requires signature_version=v4. 
+    # If not set, the role name will be automatically retrieved from the ECS instance metadata.
+    # ram_role_name: <ram_role_name>
+    # The signature version to use for authenticating against OSS. Supported values are: v1, v4. 
+    # ECS RAM role authentication requires signature_version=v4.
+    # signature_version: <signature_version>
 
 ```
 
@@ -306,6 +316,7 @@ schema_config:
         prefix: index_
 
 storage_config:
+  use_thanos_objstore: false # COS is not yet supported by Thanos storage client
   cos:
     bucketnames: <bucket1, bucket2>
     endpoint: <endpoint>
@@ -335,6 +346,7 @@ schema_config:
         prefix: index_
 
 storage_config:
+  use_thanos_objstore: false # COS is not yet supported by Thanos storage client
   cos:
     bucketnames: <bucket1, bucket2>
     endpoint: <endpoint>
@@ -350,10 +362,10 @@ storage_config:
 
 ```yaml
 
-# This partial configuration uses IBM Cloud Object Storage (COS) for chunk storage. 
+# This partial configuration uses IBM Cloud Object Storage (COS) for chunk storage.
 # A trusted profile will be used for authenticating with COS. We can either pass
 # the trusted profile name or trusted profile ID along with the compute resource token file.
-# If we pass both trusted profile name and trusted profile ID it should be of 
+# If we pass both trusted profile name and trusted profile ID it should be of
 # the same trusted profile.
 # In order to use trusted profile authentication we need to follow an additional step to create a trusted profile.
 # For more details about creating a trusted profile, see https://cloud.ibm.com/docs/account?topic=account-create-trusted-profile&interface=ui.
@@ -371,6 +383,7 @@ schema_config:
         prefix: index_
 
 storage_config:
+  use_thanos_objstore: false # COS is not yet supported by Thanos storage client
   cos:
     bucketnames: <bucket1, bucket2>
     endpoint: <endpoint>
@@ -443,6 +456,193 @@ storage_config:
     # See https://docs.microsoft.com/en-us/azure/storage/blobs/storage-blobs-introduction#containers
     container_name: <azure_storage_bucket_name>
     request_timeout: 0
+
+```
+
+
+## 18-Thanos-GCS-Example.yaml
+
+```yaml
+
+# This is a complete configuration to deploy Loki backed by GCS, using the
+# Thanos-based object store client (storage_config.object_store).
+# Index files will be written locally at /loki/index and, eventually, will be shipped to the storage via tsdb-shipper.
+
+auth_enabled: false
+
+server:
+  http_listen_port: 3100
+
+common:
+  ring:
+    instance_addr: 127.0.0.1
+    kvstore:
+      store: inmemory
+  replication_factor: 1
+  path_prefix: /loki
+
+schema_config:
+  configs:
+    - from: 2020-05-15
+      store: tsdb
+      object_store: gcs
+      schema: v13
+      index:
+        prefix: index_
+        period: 24h
+
+storage_config:
+  use_thanos_objstore: true
+  tsdb_shipper:
+    active_index_directory: /loki/index
+    cache_location: /loki/index_cache
+  object_store:
+    gcs:
+      bucket_name: <BUCKET_NAME>
+
+```
+
+
+## 19-Thanos-S3-Example.yaml
+
+```yaml
+
+# This is a complete configuration to deploy Loki backed by AWS S3,
+# using the Thanos-based object store client (storage_config.object_store).
+# Index files will be written locally at /loki/index and, eventually, will be shipped to the storage via tsdb-shipper.
+
+auth_enabled: false
+
+server:
+  http_listen_port: 3100
+
+common:
+  ring:
+    instance_addr: 127.0.0.1
+    kvstore:
+      store: inmemory
+  replication_factor: 1
+  path_prefix: /loki
+
+schema_config:
+  configs:
+    - from: 2020-05-15
+      store: tsdb
+      object_store: s3
+      schema: v13
+      index:
+        prefix: index_
+        period: 24h
+
+storage_config:
+  use_thanos_objstore: true
+  tsdb_shipper:
+    active_index_directory: /loki/index
+    cache_location: /loki/index_cache
+  object_store:
+    s3:
+      bucket_name: <BUCKET_NAME>
+      # The endpoint is required. For AWS, use the regional S3 endpoint.
+      endpoint: s3.<REGION>.amazonaws.com
+      region: <REGION>
+      # Leave the access key and secret unset to use an EC2 instance role, or
+      # the AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY environment variables.
+      access_key_id: <ACCESS_KEY_ID>
+      secret_access_key: <SECRET_ACCESS_KEY>
+
+```
+
+
+## 20-Thanos-Azure-Example.yaml
+
+```yaml
+
+# This is a complete configuration to deploy Loki backed by Azure Blob Storage,
+# using the Thanos-based object store client (storage_config.object_store).
+# Index files will be written locally at /loki/index and, eventually, will be shipped to the storage via tsdb-shipper.
+
+auth_enabled: false
+
+server:
+  http_listen_port: 3100
+
+common:
+  ring:
+    instance_addr: 127.0.0.1
+    kvstore:
+      store: inmemory
+  replication_factor: 1
+  path_prefix: /loki
+
+schema_config:
+  configs:
+    - from: 2020-05-15
+      store: tsdb
+      object_store: azure
+      schema: v13
+      index:
+        prefix: index_
+        period: 24h
+
+storage_config:
+  use_thanos_objstore: true
+  tsdb_shipper:
+    active_index_directory: /loki/index
+    cache_location: /loki/index_cache
+  object_store:
+    azure:
+      account_name: <ACCOUNT_NAME>
+      account_key: <ACCOUNT_KEY>
+      container_name: <CONTAINER_NAME>
+
+```
+
+
+## 21-Thanos-MinIO-Example.yaml
+
+```yaml
+
+# This is a complete configuration to deploy Loki backed by a MinIO cluster,
+# using the Thanos-based object store client (storage_config.object_store).
+# Index files will be written locally at /loki/index and, eventually, will be shipped to the storage via tsdb-shipper.
+
+auth_enabled: false
+
+server:
+  http_listen_port: 3100
+
+common:
+  ring:
+    instance_addr: 127.0.0.1
+    kvstore:
+      store: inmemory
+  replication_factor: 1
+  path_prefix: /loki
+
+schema_config:
+  configs:
+    - from: 2020-05-15
+      store: tsdb
+      object_store: s3
+      schema: v13
+      index:
+        prefix: index_
+        period: 24h
+
+storage_config:
+  use_thanos_objstore: true
+  tsdb_shipper:
+    active_index_directory: /loki/index
+    cache_location: /loki/index_cache
+  object_store:
+    s3:
+      bucket_name: <BUCKET_NAME>
+      # Use a fully qualified domain name (fqdn), like localhost, without a scheme.
+      endpoint: <FQDN>:<PORT>
+      access_key_id: <ACCESS_KEY_ID>
+      secret_access_key: <SECRET_ACCESS_KEY>
+      insecure: true
+      bucket_lookup_type: path
 
 ```
 

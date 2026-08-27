@@ -12,10 +12,10 @@ import (
 type Parser struct {
 	comma   byte
 	comment byte
-	s       scan.Bytes
+	s       *scan.Bytes
 }
 
-func NewParser(comma, comment byte, s scan.Bytes) *Parser {
+func NewParser(comma, comment byte, s *scan.Bytes) *Parser {
 	return &Parser{
 		comma:   comma,
 		comment: comment,
@@ -55,7 +55,7 @@ func (r *Parser) CountFields(collectIndexes bool) (fields int, fieldPos []int, h
 		if finished {
 			return 0, nil, false
 		}
-		finished = len(r.s) == 0 && len(line) == 0
+		finished = len(*r.s) == 0 && len(line) == 0
 		if len(line) == lengthNL(line) {
 			line = nil
 			continue // Skip empty lines.

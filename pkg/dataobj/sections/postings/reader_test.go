@@ -28,7 +28,7 @@ func TestReader_ReadBeforeOpen(t *testing.T) {
 
 func TestReader_RoundTrip(t *testing.T) {
 	// Build a tiny postings section with one label entry, read it back.
-	b := postings.NewBuilder(nil, 0, 0)
+	b := postings.NewBuilder(nil, 0, 0, 1<<20)
 	ts := time.Unix(0, 0).UTC()
 	b.ObserveLabelPosting(postings.LabelObservation{ObjectPath: "/obj", SectionIndex: 0, ColumnName: "env", LabelValue: "prod", StreamID: 1, Timestamp: ts, UncompressedSize: 100})
 
@@ -72,6 +72,8 @@ func TestReader_RoundTrip(t *testing.T) {
 	require.Equal(t, int64(100), row["uncompressed_size.int64"])
 	require.Equal(t, ts.UTC(), row["min_timestamp.timestamp"])
 	require.Equal(t, ts.UTC(), row["max_timestamp.timestamp"])
+	require.Equal(t, int64(0), row["min_shard_bucket.int64"])
+	require.Equal(t, int64(0), row["max_shard_bucket.int64"])
 }
 
 // readTable drains a Reader into an arrow.Table, mirroring the helper in

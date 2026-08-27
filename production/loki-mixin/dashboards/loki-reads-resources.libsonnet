@@ -13,173 +13,128 @@
   then '(.*ingester.*|loki-single-binary)'
   else '(.*ingester|partition-ingester).*',
 
-  grafanaDashboards+:: if $._config.ssd.enabled then {} else {
+  grafanaDashboards+:: {
     'loki-reads-resources.json':
       ($.dashboard('Loki / Reads Resources', uid='reads-resources'))
       .addCluster()
       .addNamespace()
       .addTag()
+
+      // --- Gateway ---
       .addRowIf(
         $._config.internal_components,
-        $.row('Gateway')
-        .addPanel(
+        $.componentRow(
+          'Gateway',
           $.containerCPUUsagePanel('CPU', 'cortex-gw(-internal)?'),
-        )
-        .addPanel(
           $.containerMemoryWorkingSetPanel('Memory (workingset)', 'cortex-gw(-internal)?'),
-        )
-        .addPanel(
-          $.goHeapInUsePanel('Memory (go heap inuse)', 'cortex-gw(-internal)?'),
-        )
-      )
-      .addRow(
-        $.row('Query Frontend')
-        .addPanel(
-          $.containerCPUUsagePanel('CPU', 'query-frontend'),
-        )
-        .addPanel(
-          $.containerMemoryWorkingSetPanel('Memory (workingset)', 'query-frontend'),
-        )
-        .addPanel(
-          $.goHeapInUsePanel('Memory (go heap inuse)', 'query-frontend'),
+          $.goHeapAllocPanel('Memory (go heap alloc)', 'cortex-gw(-internal)?'),
+          'container=~"cortex-gw(-internal)?"',
+          'container=~"cortex-gw(-internal)?"',
+          'gateway'
         )
       )
-      .addRow(
-        $.row('Query Scheduler')
-        .addPanel(
-          $.containerCPUUsagePanel('CPU', 'query-scheduler'),
-        )
-        .addPanel(
-          $.containerMemoryWorkingSetPanel('Memory (workingset)', 'query-scheduler'),
-        )
-        .addPanel(
-          $.goHeapInUsePanel('Memory (go heap inuse)', 'query-scheduler'),
-        )
-      )
-      .addRow(
-        $.row('Querier')
-        .addPanel(
-          $.containerCPUUsagePanel('CPU', 'querier'),
-        )
-        .addPanel(
-          $.containerMemoryWorkingSetPanel('Memory (workingset)', 'querier'),
-        )
-        .addPanel(
-          $.goHeapInUsePanel('Memory (go heap inuse)', 'querier'),
-        )
-        .addPanel(
-          $.newQueryPanel('Disk Writes', 'Bps') +
-          $.queryPanel(
-            'sum by(%s, device) (rate(node_disk_written_bytes_total[$__rate_interval])) + %s' % [$._config.per_node_label, $.filterNodeDiskContainer('querier')],
-            '{{%s}} - {{device}}' % $._config.per_instance_label
-          ) +
-          $.withStacking,
-        )
-        .addPanel(
-          $.newQueryPanel('Disk Reads', 'Bps') +
-          $.queryPanel(
-            'sum by(%s,device) (rate(node_disk_read_bytes_total[$__rate_interval])) + %s' % [$._config.per_node_label, $.filterNodeDiskContainer('querier')],
-            '{{%s}} - {{device}}' % $._config.per_instance_label
-          ) +
-          $.withStacking,
-        )
-        .addPanel(
+
+      // --- Query Frontend ---
+      .addRow($.componentRow(
+        'Query Frontend',
+        $.containerCPUUsagePanel('CPU', 'query-frontend'),
+        $.containerMemoryWorkingSetPanel('Memory (workingset)', 'query-frontend'),
+        $.goHeapAllocPanel('Memory (go heap alloc)', 'query-frontend'),
+        'container="query-frontend"',
+        'container="query-frontend"',
+        'query_frontend'
+      ))
+
+      // --- Query Scheduler ---
+      .addRow($.componentRow(
+        'Query Scheduler',
+        $.containerCPUUsagePanel('CPU', 'query-scheduler'),
+        $.containerMemoryWorkingSetPanel('Memory (workingset)', 'query-scheduler'),
+        $.goHeapAllocPanel('Memory (go heap alloc)', 'query-scheduler'),
+        'container="query-scheduler"',
+        'container="query-scheduler"',
+        'query_scheduler'
+      ))
+
+      // --- Querier ---
+      .addRow($.componentRow(
+        'Querier',
+        $.containerCPUUsagePanel('CPU', 'querier'),
+        $.containerMemoryWorkingSetPanel('Memory (workingset)', 'querier'),
+        $.goHeapAllocPanel('Memory (go heap alloc)', 'querier'),
+        'container="querier"',
+        'container="querier"',
+        'querier',
+        trailingPanels=[
+          $.diskWritesPanel('container="querier"'),
+          $.diskReadsPanel('container="querier"'),
           $.containerDiskSpaceUtilizationPanel('Disk Space Utilization', 'querier'),
-        )
-      )
-      // Otherwise we add the index gateway information
-      .addRow(
-        $.row('Index Gateway')
-        .addPanel(
-          $.CPUUsagePanel('CPU', index_gateway_pod_matcher),
-        )
-        .addPanel(
-          $.memoryWorkingSetPanel('Memory (workingset)', index_gateway_pod_matcher),
-        )
-        .addPanel(
-          $.goHeapInUsePanel('Memory (go heap inuse)', index_gateway_job_matcher),
-        )
-        .addPanel(
-          $.newQueryPanel('Disk Writes', 'Bps') +
-          $.queryPanel(
-            'sum by(%s, device) (rate(node_disk_written_bytes_total[$__rate_interval])) + %s' % [$._config.per_node_label, $.filterNodeDisk(index_gateway_pod_matcher)],
-            '{{%s}} - {{device}}' % $._config.per_instance_label
-          ) +
-          $.withStacking,
-        )
-        .addPanel(
-          $.newQueryPanel('Disk Reads', 'Bps') +
-          $.queryPanel(
-            'sum by(%s, device) (rate(node_disk_read_bytes_total[$__rate_interval])) + %s' % [$._config.per_node_label, $.filterNodeDisk(index_gateway_pod_matcher)],
-            '{{%s}} - {{device}}' % $._config.per_instance_label
-          ) +
-          $.withStacking,
-        )
-        .addPanel(
+        ],
+        trailingSpans=[4, 4, 4],
+      ))
+
+      // --- Index Gateway ---
+      .addRow($.componentRow(
+        'Index Gateway',
+        $.CPUUsagePanel('CPU', index_gateway_pod_matcher),
+        $.memoryWorkingSetPanel('Memory (workingset)', index_gateway_pod_matcher),
+        $.goHeapAllocPanel('Memory (go heap alloc)', index_gateway_job_matcher),
+        index_gateway_pod_matcher,
+        index_gateway_pod_matcher,
+        'index_gateway',
+        trailingPanels=[
+          $.diskWritesPanel(index_gateway_pod_matcher),
+          $.diskReadsPanel(index_gateway_pod_matcher),
           $.containerDiskSpaceUtilizationPanel('Disk Space Utilization', index_gateway_job_matcher),
-        )
-      )
-      .addRow(
-        $.row('Bloom Gateway')
-        .addPanel(
-          $.containerCPUUsagePanel('CPU', 'bloom-gateway'),
-        )
-        .addPanel(
-          $.containerMemoryWorkingSetPanel('Memory (workingset)', 'bloom-gateway'),
-        )
-        .addPanel(
-          $.goHeapInUsePanel('Memory (go heap inuse)', 'bloom-gateway'),
-        )
-        .addPanel(
-          $.newQueryPanel('Disk Writes', 'Bps') +
-          $.queryPanel(
-            'sum by(%s, device) (rate(node_disk_written_bytes_total[$__rate_interval])) + %s' % [$._config.per_node_label, $.filterNodeDiskContainer('bloom-gateway')],
-            '{{%s}} - {{device}}' % $._config.per_instance_label
-          ) +
-          $.withStacking,
-        )
-        .addPanel(
-          $.newQueryPanel('Disk Reads', 'Bps') +
-          $.queryPanel(
-            'sum by(%s, device) (rate(node_disk_read_bytes_total[$__rate_interval])) + %s' % [$._config.per_node_label, $.filterNodeDiskContainer('bloom-gateway')],
-            '{{%s}} - {{device}}' % $._config.per_instance_label
-          ) +
-          $.withStacking,
-        )
-        .addPanel(
+        ],
+        trailingSpans=[4, 4, 4],
+      ))
+
+      // --- Bloom Gateway ---
+      .addRow($.componentRow(
+        'Bloom Gateway',
+        $.containerCPUUsagePanel('CPU', 'bloom-gateway'),
+        $.containerMemoryWorkingSetPanel('Memory (workingset)', 'bloom-gateway'),
+        $.goHeapAllocPanel('Memory (go heap alloc)', 'bloom-gateway'),
+        'container="bloom-gateway"',
+        'container="bloom-gateway"',
+        'bloom_gateway',
+        trailingPanels=[
+          $.diskWritesPanel('container="bloom-gateway"'),
+          $.diskReadsPanel('container="bloom-gateway"'),
           $.containerDiskSpaceUtilizationPanel('Disk Space Utilization', 'bloom-gateway'),
-        )
-      )
-      .addRow(
-        $.row('Ingester')
-        .addPanel(
-          $.CPUUsagePanel('CPU', ingester_pod_matcher),
-        )
-        .addPanel(
-          $.memoryWorkingSetPanel('Memory (workingset)', ingester_pod_matcher),
-        )
-        .addPanel(
-          $.goHeapInUsePanel('Memory (go heap inuse)', ingester_job_matcher),
-        )
-      )
-      .addRow(
-        $.row('Ruler')
-        .addPanel(
+        ],
+        trailingSpans=[4, 4, 4],
+      ))
+
+      // --- Ingester ---
+      .addRow($.componentRow(
+        'Ingester',
+        $.CPUUsagePanel('CPU', ingester_pod_matcher),
+        $.memoryWorkingSetPanel('Memory (workingset)', ingester_pod_matcher),
+        $.goHeapAllocPanel('Memory (go heap alloc)', ingester_job_matcher),
+        ingester_pod_matcher,
+        ingester_pod_matcher,
+        'ingester'
+      ))
+
+      // --- Ruler ---
+      .addRow($.componentRow(
+        'Ruler',
+        $.containerCPUUsagePanel('CPU', 'ruler'),
+        $.containerMemoryWorkingSetPanel('Memory (workingset)', 'ruler'),
+        $.goHeapAllocPanel('Memory (go heap alloc)', 'ruler'),
+        'container="ruler"',
+        'container="ruler"',
+        'ruler',
+        trailingPanels=[
           $.newQueryPanel('Rules') +
           $.queryPanel(
             'sum by(%(label)s) (loki_prometheus_rule_group_rules{%(matcher)s}) or sum by(%(label)s) (cortex_prometheus_rule_group_rules{%(matcher)s})' % { label: $._config.per_instance_label, matcher: $.jobMatcher('ruler') },
             '{{%s}}' % $._config.per_instance_label
           ),
-        )
-        .addPanel(
-          $.containerCPUUsagePanel('CPU', 'ruler'),
-        )
-        .addPanel(
-          $.containerMemoryWorkingSetPanel('Memory (workingset)', 'ruler'),
-        )
-        .addPanel(
-          $.goHeapInUsePanel('Memory (go heap inuse)', 'ruler'),
-        )
-      ),
+        ],
+        trailingSpans=[6],
+      )),
   },
 }

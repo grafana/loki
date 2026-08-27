@@ -162,7 +162,7 @@ func (orig *Function) UnmarshalJSON(iter *json.Iterator) {
 		case "startLine", "start_line":
 			orig.StartLine = iter.ReadInt64()
 		default:
-			iter.Skip()
+			iter.HandleUnknownField(f)
 		}
 	}
 }

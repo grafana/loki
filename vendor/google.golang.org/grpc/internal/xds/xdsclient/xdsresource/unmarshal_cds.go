@@ -29,6 +29,7 @@ import (
 	v3clusterpb "github.com/envoyproxy/go-control-plane/envoy/config/cluster/v3"
 	v3corepb "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
 	v3aggregateclusterpb "github.com/envoyproxy/go-control-plane/envoy/extensions/clusters/aggregate/v3"
+	v3http11proxypb "github.com/envoyproxy/go-control-plane/envoy/extensions/transport_sockets/http_11_proxy/v3"
 	v3tlspb "github.com/envoyproxy/go-control-plane/envoy/extensions/transport_sockets/tls/v3"
 
 	"google.golang.org/grpc/internal/envconfig"
@@ -47,9 +48,12 @@ import (
 // validateClusterAndConstructClusterUpdate function for testing purposes.
 var ValidateClusterAndConstructClusterUpdateForTesting = validateClusterAndConstructClusterUpdate
 
-// TransportSocket proto message has a `name` field which is expected to be set
-// to this value by the management server.
-const transportSocketName = "envoy.transport_sockets.tls"
+const (
+	maxSNILength = 255
+	// TransportSocket proto message has a `name` field which is expected to be set
+	// to this value by the management server.
+	transportSocketName = "envoy.transport_sockets.tls"
+)
 
 func unmarshalClusterResource(r *anypb.Any, serverCfg *bootstrap.ServerConfig) (string, ClusterUpdate, error) {
 	r, err := UnwrapResource(r)
@@ -64,6 +68,10 @@ func unmarshalClusterResource(r *anypb.Any, serverCfg *bootstrap.ServerConfig) (
 	cluster := &v3clusterpb.Cluster{}
 	if err := proto.Unmarshal(r.GetValue(), cluster); err != nil {
 		return "", ClusterUpdate{}, fmt.Errorf("failed to unmarshal resource: %v", err)
+	}
+
+	if cluster.GetName() == "" {
+		return "", ClusterUpdate{}, fmt.Errorf("empty resource name in Cluster resource")
 	}
 	cu, err := validateClusterAndConstructClusterUpdate(cluster, serverCfg)
 	if err != nil {
@@ -154,7 +162,8 @@ func validateClusterAndConstructClusterUpdate(cluster *v3clusterpb.Cluster, serv
 	// Process security configuration received from the control plane iff the
 	// corresponding environment variable is set.
 	var sc *SecurityConfig
-	if sc, err = securityConfigFromCluster(cluster); err != nil {
+	var isHTTP11ProxyEnabled bool
+	if sc, isHTTP11ProxyEnabled, err = securityConfigFromCluster(cluster); err != nil {
 		return ClusterUpdate{}, err
 	}
 
@@ -178,14 +187,54 @@ func validateClusterAndConstructClusterUpdate(cluster *v3clusterpb.Cluster, serv
 			return ClusterUpdate{}, fmt.Errorf("JSON generated from xDS LB policy registry: %s is invalid: %v", pretty.FormatJSON(lbPolicy), err)
 		}
 	}
+	var lrsReportEndpointMetrics *LRSReportEndpointMetricsConfig
+	if envconfig.XDSORCAToLRSPropEnabled && len(cluster.GetLrsReportEndpointMetrics()) > 0 {
+		lrsReportEndpointMetrics = &LRSReportEndpointMetricsConfig{
+			NamedMetrics: make(map[string]struct{}),
+		}
+		for _, m := range cluster.GetLrsReportEndpointMetrics() {
+			switch m {
+			case "cpu_utilization":
+				lrsReportEndpointMetrics.CPUUtilization = true
+			case "mem_utilization":
+				lrsReportEndpointMetrics.MemUtilization = true
+			case "application_utilization":
+				lrsReportEndpointMetrics.ApplicationUtilization = true
+			case "named_metrics.*":
+				// If "named_metrics.*" is present, it takes precedence over any specific
+				// "named_metrics.foo" fields. Per gRFC A85, specific named metrics are ignored
+				// if NamedMetricsAll is true. We clear the map to save memory.
+				lrsReportEndpointMetrics.NamedMetricsAll = true
+				lrsReportEndpointMetrics.NamedMetrics = nil
+			default:
+				if lrsReportEndpointMetrics.NamedMetricsAll {
+					continue
+				}
+				if name, found := strings.CutPrefix(m, "named_metrics."); found && name != "" {
+					lrsReportEndpointMetrics.NamedMetrics[name] = struct{}{}
+				}
+			}
+		}
+	}
+
+	var metadata map[string]any
+	if envconfig.GCPAuthenticationFilterEnabled {
+		var err error
+		if metadata, err = validateAndConstructMetadata(cluster.GetMetadata()); err != nil {
+			return ClusterUpdate{}, err
+		}
+	}
 
 	ret := ClusterUpdate{
-		ClusterName:      cluster.GetName(),
-		SecurityCfg:      sc,
-		MaxRequests:      circuitBreakersFromCluster(cluster),
-		LBPolicy:         lbPolicy,
-		OutlierDetection: od,
-		TelemetryLabels:  telemetryLabels,
+		ClusterName:              cluster.GetName(),
+		SecurityCfg:              sc,
+		MaxRequests:              circuitBreakersFromCluster(cluster),
+		LBPolicy:                 lbPolicy,
+		OutlierDetection:         od,
+		TelemetryLabels:          telemetryLabels,
+		LRSReportEndpointMetrics: lrsReportEndpointMetrics,
+		Metadata:                 metadata,
+		IsHTTP11ProxyEnabled:     isHTTP11ProxyEnabled,
 	}
 
 	if lrs := cluster.GetLrsServer(); lrs != nil {
@@ -272,37 +321,67 @@ func dnsHostNameFromCluster(cluster *v3clusterpb.Cluster) (string, error) {
 
 // securityConfigFromCluster extracts the relevant security configuration from
 // the received Cluster resource.
-func securityConfigFromCluster(cluster *v3clusterpb.Cluster) (*SecurityConfig, error) {
+func securityConfigFromCluster(cluster *v3clusterpb.Cluster) (*SecurityConfig, bool, error) {
 	if tsm := cluster.GetTransportSocketMatches(); len(tsm) != 0 {
-		return nil, fmt.Errorf("unsupported transport_socket_matches field is non-empty: %+v", tsm)
+		return nil, false, fmt.Errorf("unsupported transport_socket_matches field is non-empty: %+v", tsm)
 	}
 	// The Cluster resource contains a `transport_socket` field, which contains
 	// a oneof `typed_config` field of type `protobuf.Any`. The any proto
 	// contains a marshaled representation of an `UpstreamTlsContext` message.
 	ts := cluster.GetTransportSocket()
 	if ts == nil {
-		return nil, nil
+		return nil, false, nil
 	}
-	if name := ts.GetName(); name != transportSocketName {
-		return nil, fmt.Errorf("transport_socket field has unexpected name: %s", name)
-	}
+	var isHTTP11ProxyEnabled bool
 	tc := ts.GetTypedConfig()
-	if typeURL := tc.GetTypeUrl(); typeURL != version.V3UpstreamTLSContextURL {
-		return nil, fmt.Errorf("transport_socket missing typed_config or wrong type_url: %q", typeURL)
+	typeURL := tc.GetTypeUrl()
+
+	if envconfig.XDSHTTPConnectEnabled && typeURL == version.V3HTTP11ProxyUpstreamTransportURL {
+		isHTTP11ProxyEnabled = true
+		http11Proxy := &v3http11proxypb.Http11ProxyUpstreamTransport{}
+		if err := proto.Unmarshal(tc.GetValue(), http11Proxy); err != nil {
+			return nil, false, fmt.Errorf("failed to unmarshal Http11ProxyUpstreamTransport in CDS response: %v", err)
+		}
+		ts = http11Proxy.GetTransportSocket()
+		if ts == nil {
+			return nil, true, nil
+		}
+		tc = ts.GetTypedConfig()
+		typeURL = tc.GetTypeUrl()
+	}
+
+	if name := ts.GetName(); name != transportSocketName {
+		return nil, false, fmt.Errorf("transport_socket field has unexpected name: %s", name)
+	}
+	if typeURL != version.V3UpstreamTLSContextURL {
+		return nil, false, fmt.Errorf("transport_socket missing typed_config or wrong type_url: %q", typeURL)
 	}
 	upstreamCtx := &v3tlspb.UpstreamTlsContext{}
 	if err := proto.Unmarshal(tc.GetValue(), upstreamCtx); err != nil {
-		return nil, fmt.Errorf("failed to unmarshal UpstreamTlsContext in CDS response: %v", err)
+		return nil, false, fmt.Errorf("failed to unmarshal UpstreamTlsContext in CDS response: %v", err)
 	}
 	// The following fields from `UpstreamTlsContext` are ignored:
-	// - sni
 	// - allow_renegotiation
 	// - max_session_keys
 	if upstreamCtx.GetCommonTlsContext() == nil {
-		return nil, errors.New("UpstreamTlsContext in CDS response does not contain a CommonTlsContext")
+		return nil, false, errors.New("UpstreamTlsContext in CDS response does not contain a CommonTlsContext")
 	}
 
-	return securityConfigFromCommonTLSContext(upstreamCtx.GetCommonTlsContext(), false)
+	sc, err := securityConfigFromCommonTLSContext(upstreamCtx.GetCommonTlsContext(), false)
+	if err != nil {
+		return nil, false, err
+	}
+	// Set SNI related fields in SecurityConfig from UpstreamTlsContext if
+	// `GRPC_EXPERIMENTAL_XDS_SNI` is enabled.
+	if envconfig.XDSSNIEnabled {
+		sc.SNI = upstreamCtx.GetSni()
+		if len(sc.SNI) > maxSNILength {
+			return nil, false, fmt.Errorf("SNI value %q in UpstreamTlsContext in CDS response exceeds max length of %d", sc.SNI, maxSNILength)
+		}
+		sc.UseAutoHostSNI = upstreamCtx.GetAutoHostSni()
+		sc.AutoSNISANValidation = upstreamCtx.GetAutoSniSanValidation()
+	}
+	return sc, isHTTP11ProxyEnabled, nil
 }
 
 // common is expected to be not nil.

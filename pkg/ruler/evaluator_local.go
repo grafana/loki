@@ -7,12 +7,12 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
+	"github.com/grafana/dskit/user"
 
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql"
 	"github.com/grafana/loki/v3/pkg/logqlmodel"
 	"github.com/grafana/loki/v3/pkg/util"
-	util_log "github.com/grafana/loki/v3/pkg/util/log"
 )
 
 const EvalModeLocal = "local"
@@ -20,11 +20,6 @@ const EvalModeLocal = "local"
 type LocalEvaluator struct {
 	engine *logql.QueryEngine
 	logger log.Logger
-
-	// we don't want/need to log all the additional context, such as
-	// caller=spanlogger.go:116 component=ruler evaluation_mode=remote method=ruler.remoteEvaluation.Query
-	// in insights logs, so create a new logger
-	insightsLogger log.Logger
 }
 
 func NewLocalEvaluator(engine *logql.QueryEngine, logger log.Logger) (*LocalEvaluator, error) {
@@ -33,9 +28,8 @@ func NewLocalEvaluator(engine *logql.QueryEngine, logger log.Logger) (*LocalEval
 	}
 
 	return &LocalEvaluator{
-		engine:         engine,
-		logger:         logger,
-		insightsLogger: log.With(util_log.Logger, "msg", "request timings", "insight", "true", "source", "loki_ruler"),
+		engine: engine,
+		logger: logger,
 	}, nil
 }
 
@@ -63,7 +57,8 @@ func (l *LocalEvaluator) Eval(ctx context.Context, qs string, now time.Time) (*l
 
 	// Retrieve rule details from context
 	ruleName, ruleType := GetRuleDetailsFromContext(ctx)
+	orgID, _ := user.ExtractOrgID(ctx)
 
-	level.Info(l.insightsLogger).Log("rule_name", ruleName, "rule_type", ruleType, "total", res.Statistics.Summary.ExecTime, "total_bytes", res.Statistics.Summary.TotalBytesProcessed, "query_hash", util.HashedQuery(qs))
+	level.Info(l.logger).Log("msg", "rule evaluation succeeded", "tenant_id", orgID, "rule_name", ruleName, "rule_type", ruleType, "total", res.Statistics.Summary.ExecTime, "total_bytes", res.Statistics.Summary.TotalBytesProcessed, "query_hash", util.HashedQuery(qs))
 	return &res, nil
 }

@@ -1,0 +1,925 @@
+# Scalar / scalar arithmetic.
+clear
+
+eval instant at 60s 2
+  2
+eval instant at 60s 1+1
+  2
+eval instant at 60s 7 - 2
+  5
+eval instant at 60s 7 * 2
+  14
+eval instant at 60s 2 ^ 3
+  8
+eval instant at 60s 10 / 5 / 2
+  1
+eval instant at 60s 10 / (5 / 2)
+  4
+eval instant at 60s 10 % 3
+  1
+eval instant at 60s 1+1--1
+  3
+# Binary, octal, and integer hex numbers are not supported as scalar literals.
+eval instant at 60s 0b1010
+  expect fail msg: unable to parse literal as a float
+eval instant at 60s 0o17
+  expect fail msg: unable to parse literal as a float
+eval instant at 60s 0x1A
+  expect fail msg: unable to parse literal as a float
+# Hex floats are supported: they always have a 'p' exponent.
+eval instant at 60s 0x1p3
+  8
+eval instant at 60s 0X1p3
+  8
+eval instant at 60s 0x1P3
+  8
+eval instant at 60s 0x1.8p3
+  12
+# Division and modulo return NaN for a zero divisor, regardless of dividend sign.
+eval instant at 60s 10 / 0
+  NaN
+eval instant at 60s -10 / 0
+  NaN
+eval instant at 60s 10 % 0
+  NaN
+
+# Scalar / scalar comparison.
+clear
+
+eval instant at 60s 7 == 7
+  1
+eval instant at 60s 7 != 2
+  1
+eval instant at 60s 7 > 2
+  1
+eval instant at 60s 2 > 7
+  0
+eval instant at 60s 7 >= 7
+  1
+eval instant at 60s 2 < 7
+  1
+eval instant at 60s 2 <= 2
+  1
+# There is no vector to keep the left value from. "bool" is redundant here: both forms
+# give the same 0/1 result.
+eval instant at 60s 7 == bool 7
+  1
+eval instant at 60s 2 == bool 1
+  0
+# A literal cannot be a leg of a logical/set operator.
+eval instant at 60s 1 and 2
+  expect fail msg: unexpected literal for left leg of logical/set binary operation
+
+# Scalar operators precedence and associativity.
+clear
+
+# ^ is right-associative and binds tighter than any other operator.
+eval instant at 60s 2^3^2
+  512
+eval instant at 60s 2 % 2^3
+  2
+# The sign attaches to the literal before `^` applies: (-2)^2, not -(2^2).
+eval instant at 60s -2^2
+  4
+# LogQL only allows a leading sign directly on a NUMBER literal, not on a general
+# expression. This failure is a grammar rule, not operator precedence.
+eval instant at 60s -count_over_time({app="foo"}[1m])
+  expect fail regex: expecting NUMBER
+
+# Vector / scalar arithmetic.
+clear
+load
+  {app="foo"} "x" @ 0s [repeat every 10s for 19]
+  {app="bar"} "x" @ 0s [repeat every 20s for 10]
+  {app="noise"} "noise" @ 0s [repeat every 10s for 19]
+
+# +
+eval instant at 60s count_over_time({app="foo"}[1m]) + 1
+  {app="foo"} 7
+eval range from 60s to 180s step 30s count_over_time({app="foo"}[1m]) + 1
+  {app="foo"} 7 7 7 7 7
+eval instant at 60s 1 + count_over_time({app="foo"}[1m])
+  {app="foo"} 7
+eval range from 60s to 180s step 30s 1 + count_over_time({app="foo"}[1m])
+  {app="foo"} 7 7 7 7 7
+# -
+eval instant at 60s rate({app="bar"}[1m]) - 1
+  {app="bar"} -0.95
+eval range from 60s to 180s step 30s rate({app="bar"}[1m]) - 1
+  {app="bar"} -0.95 -0.95 -0.95 -0.95 -0.95
+eval instant at 60s 1 - rate({app="bar"}[1m])
+  {app="bar"} 0.95
+eval range from 60s to 180s step 30s 1 - rate({app="bar"}[1m])
+  {app="bar"} 0.95 0.95 0.95 0.95 0.95
+eval instant at 60s rate({app="bar"}[1m]) - 1 / 2
+  {app="bar"} -0.45
+eval range from 60s to 180s step 30s rate({app="bar"}[1m]) - 1 / 2
+  {app="bar"} -0.45 -0.45 -0.45 -0.45 -0.45
+# *
+eval instant at 60s count_over_time({app="foo"}[1m]) * 2
+  {app="foo"} 12
+eval range from 60s to 180s step 30s count_over_time({app="foo"}[1m]) * 2
+  {app="foo"} 12 12 12 12 12
+eval instant at 60s 2 * count_over_time({app="foo"}[1m])
+  {app="foo"} 12
+eval range from 60s to 180s step 30s 2 * count_over_time({app="foo"}[1m])
+  {app="foo"} 12 12 12 12 12
+# /
+eval instant at 60s count_over_time({app="foo"}[1m]) / 2
+  {app="foo"} 3
+eval range from 60s to 180s step 30s count_over_time({app="foo"}[1m]) / 2
+  {app="foo"} 3 3 3 3 3
+eval instant at 60s 30 / count_over_time({app="foo"}[1m])
+  {app="foo"} 5
+eval range from 60s to 180s step 30s 30 / count_over_time({app="foo"}[1m])
+  {app="foo"} 5 5 5 5 5
+# % (modulo applies to each sample; the scalar can be on either side)
+eval instant at 60s count_over_time({app="foo"}[1m]) % 4
+  {app="foo"} 2
+eval range from 60s to 180s step 30s count_over_time({app="foo"}[1m]) % 4
+  {app="foo"} 2 2 2 2 2
+eval instant at 60s 16 % count_over_time({app="foo"}[1m])
+  {app="foo"} 4
+eval range from 60s to 180s step 30s 16 % count_over_time({app="foo"}[1m])
+  {app="foo"} 4 4 4 4 4
+# ^
+eval instant at 60s count_over_time({app="bar"}[1m]) ^ 2
+  {app="bar"} 9
+eval range from 60s to 180s step 30s count_over_time({app="bar"}[1m]) ^ 2
+  {app="bar"} 9 9 9 9 9
+eval instant at 60s 2 ^ count_over_time({app="bar"}[1m])
+  {app="bar"} 8
+eval range from 60s to 180s step 30s 2 ^ count_over_time({app="bar"}[1m])
+  {app="bar"} 8 8 8 8 8
+# Division and modulo return NaN for a zero divisor.
+eval instant at 60s count_over_time({app="foo"}[1m]) / 0
+  {app="foo"} NaN
+eval instant at 60s count_over_time({app="foo"}[1m]) % 0
+  {app="foo"} NaN
+
+# Vector / scalar comparisons.
+#
+# In this scenario, every query matches both {app="foo"} (count=6/min) and
+# {app="bar"} (count=3/min); the threshold picks out only one of the two.
+clear
+load
+  {app="foo"} "x" @ 0s [repeat every 10s for 19]
+  {app="bar"} "x" @ 0s [repeat every 20s for 10]
+  {app="noise"} "noise" @ 0s [repeat every 10s for 19]
+
+# >
+eval instant at 60s count_over_time({app=~"foo|bar"}[1m]) > 4
+  {app="foo"} 6
+eval range from 60s to 180s step 30s count_over_time({app=~"foo|bar"}[1m]) > 4
+  {app="foo"} 6 6 6 6 6
+eval instant at 60s 4 > count_over_time({app=~"foo|bar"}[1m])
+  {app="bar"} 3
+eval range from 60s to 180s step 30s 4 > count_over_time({app=~"foo|bar"}[1m])
+  {app="bar"} 3 3 3 3 3
+# <
+eval instant at 60s count_over_time({app=~"foo|bar"}[1m]) < 4
+  {app="bar"} 3
+eval range from 60s to 180s step 30s count_over_time({app=~"foo|bar"}[1m]) < 4
+  {app="bar"} 3 3 3 3 3
+eval instant at 60s 4 < count_over_time({app=~"foo|bar"}[1m])
+  {app="foo"} 6
+eval range from 60s to 180s step 30s 4 < count_over_time({app=~"foo|bar"}[1m])
+  {app="foo"} 6 6 6 6 6
+# >= / <= (the threshold sits exactly on foo's value)
+eval instant at 60s count_over_time({app=~"foo|bar"}[1m]) >= 6
+  {app="foo"} 6
+eval range from 60s to 180s step 30s count_over_time({app=~"foo|bar"}[1m]) >= 6
+  {app="foo"} 6 6 6 6 6
+eval instant at 60s 6 <= count_over_time({app=~"foo|bar"}[1m])
+  {app="foo"} 6
+eval range from 60s to 180s step 30s 6 <= count_over_time({app=~"foo|bar"}[1m])
+  {app="foo"} 6 6 6 6 6
+# <= / >= (the threshold sits exactly on bar's value)
+eval instant at 60s count_over_time({app=~"foo|bar"}[1m]) <= 3
+  {app="bar"} 3
+eval range from 60s to 180s step 30s count_over_time({app=~"foo|bar"}[1m]) <= 3
+  {app="bar"} 3 3 3 3 3
+eval instant at 60s 3 >= count_over_time({app=~"foo|bar"}[1m])
+  {app="bar"} 3
+eval range from 60s to 180s step 30s 3 >= count_over_time({app=~"foo|bar"}[1m])
+  {app="bar"} 3 3 3 3 3
+# ==
+eval instant at 60s count_over_time({app=~"foo|bar"}[1m]) == 6
+  {app="foo"} 6
+eval range from 60s to 180s step 30s count_over_time({app=~"foo|bar"}[1m]) == 6
+  {app="foo"} 6 6 6 6 6
+eval instant at 60s 6 == count_over_time({app=~"foo|bar"}[1m])
+  {app="foo"} 6
+eval range from 60s to 180s step 30s 6 == count_over_time({app=~"foo|bar"}[1m])
+  {app="foo"} 6 6 6 6 6
+# !=
+eval instant at 60s count_over_time({app=~"foo|bar"}[1m]) != 6
+  {app="bar"} 3
+eval range from 60s to 180s step 30s count_over_time({app=~"foo|bar"}[1m]) != 6
+  {app="bar"} 3 3 3 3 3
+eval instant at 60s 6 != count_over_time({app=~"foo|bar"}[1m])
+  {app="bar"} 3
+eval range from 60s to 180s step 30s 6 != count_over_time({app=~"foo|bar"}[1m])
+  {app="bar"} 3 3 3 3 3
+# bool never filters: both series survive, each with its own 0/1.
+eval instant at 60s count_over_time({app=~"foo|bar"}[1m]) == bool 6
+  {app="foo"} 1
+  {app="bar"} 0
+eval range from 60s to 180s step 30s count_over_time({app=~"foo|bar"}[1m]) == bool 6
+  {app="foo"} 1 1 1 1 1
+  {app="bar"} 0 0 0 0 0
+eval instant at 60s 6 == bool count_over_time({app=~"foo|bar"}[1m])
+  {app="foo"} 1
+  {app="bar"} 0
+eval range from 60s to 180s step 30s 6 == bool count_over_time({app=~"foo|bar"}[1m])
+  {app="foo"} 1 1 1 1 1
+  {app="bar"} 0 0 0 0 0
+
+# Vector / scalar arithmetic: ^ (power) edge cases.
+clear
+load
+  {app="a", k="nan"}  "v=NaN" @ 30s
+  {app="a", k="pinf"} "v=Inf" @ 30s
+  {app="a", k="zero"} "v=0"   @ 30s
+  {app="a", k="neg"}  "v=-1"  @ 30s
+  {app="noise"}       "z=1"   @ 30s
+
+# x^0 == 1 for any x, including 0, NaN, and +Inf.
+eval instant at 60s max_over_time({app="a", k="zero"} | logfmt | unwrap v [1m]) ^ 0
+  {app="a", k="zero"} 1
+eval range from 60s to 180s step 30s max_over_time({app="a", k="zero"} | logfmt | unwrap v [1m]) ^ 0
+  {app="a", k="zero"} 1 _ _ _ _
+eval instant at 60s max_over_time({app="a", k="nan"} | logfmt | unwrap v [1m]) ^ 0
+  {app="a", k="nan"} 1
+eval range from 60s to 180s step 30s max_over_time({app="a", k="nan"} | logfmt | unwrap v [1m]) ^ 0
+  {app="a", k="nan"} 1 _ _ _ _
+eval instant at 60s max_over_time({app="a", k="pinf"} | logfmt | unwrap v [1m]) ^ 0
+  {app="a", k="pinf"} 1
+eval range from 60s to 180s step 30s max_over_time({app="a", k="pinf"} | logfmt | unwrap v [1m]) ^ 0
+  {app="a", k="pinf"} 1 _ _ _ _
+# 0^(a negative, non-odd exponent) == +Inf.
+eval instant at 60s max_over_time({app="a", k="zero"} | logfmt | unwrap v [1m]) ^ -2
+  {app="a", k="zero"} +Inf
+eval range from 60s to 180s step 30s max_over_time({app="a", k="zero"} | logfmt | unwrap v [1m]) ^ -2
+  {app="a", k="zero"} +Inf _ _ _ _
+# A negative base with a fractional exponent is NaN.
+eval instant at 60s max_over_time({app="a", k="neg"} | logfmt | unwrap v [1m]) ^ 0.5
+  {app="a", k="neg"} NaN
+eval range from 60s to 180s step 30s max_over_time({app="a", k="neg"} | logfmt | unwrap v [1m]) ^ 0.5
+  {app="a", k="neg"} NaN _ _ _ _
+
+# Vector / scalar arithmetic: NaN propagating through a second op.
+clear
+
+eval instant at 60s (vector(1) / vector(0)) + 1
+  {} NaN
+eval range from 60s to 180s step 30s (vector(1) / vector(0)) + 1
+  {} NaN NaN NaN NaN NaN
+
+# Logical operators.
+clear
+load
+  {app="foo"} "x" @ 0s [repeat every 10s for 19]
+  {app="bar"} "x" @ 0s [repeat every 20s for 10]
+  {app="noise"} "noise" @ 0s [repeat every 10s for 19]
+
+eval instant at 60s rate({app="foo"}[1m]) or rate({app="bar"}[1m])
+  {app="foo"} 0.1
+  {app="bar"} 0.05
+eval range from 60s to 180s step 30s rate({app="foo"}[1m]) or rate({app="bar"}[1m])
+  {app="foo"} 0.1 0.1 0.1 0.1 0.1
+  {app="bar"} 0.05 0.05 0.05 0.05 0.05
+
+eval instant at 60s rate({app="foo"}[1m]) or vector(0)
+  {app="foo"} 0.1
+  {} 0
+eval range from 60s to 180s step 30s rate({app="foo"}[1m]) or vector(0)
+  {app="foo"} 0.1 0.1 0.1 0.1 0.1
+  {} 0 0 0 0 0
+
+eval instant at 60s rate({app=~"foo|bar"}[1m]) and rate({app="bar"}[1m])
+  {app="bar"} 0.05
+eval range from 60s to 180s step 30s rate({app=~"foo|bar"}[1m]) and rate({app="bar"}[1m])
+  {app="bar"} 0.05 0.05 0.05 0.05 0.05
+
+eval instant at 60s rate({app=~"foo|bar"}[1m]) unless rate({app="bar"}[1m])
+  {app="foo"} 0.1
+eval range from 60s to 180s step 30s rate({app=~"foo|bar"}[1m]) unless rate({app="bar"}[1m])
+  {app="foo"} 0.1 0.1 0.1 0.1 0.1
+
+# Vector / vector arithmetic (matched on identical labels; foo is dropped, bar survives).
+eval instant at 60s rate({app=~"foo|bar"}[1m]) + rate({app="bar"}[1m])
+  {app="bar"} 0.1
+eval range from 60s to 180s step 30s rate({app=~"foo|bar"}[1m]) + rate({app="bar"}[1m])
+  {app="bar"} 0.1 0.1 0.1 0.1 0.1
+eval instant at 60s rate({app=~"foo|bar"}[1m]) - rate({app="bar"}[1m])
+  {app="bar"} 0
+eval range from 60s to 180s step 30s rate({app=~"foo|bar"}[1m]) - rate({app="bar"}[1m])
+  {app="bar"} 0 0 0 0 0
+eval instant at 60s count_over_time({app=~"foo|bar"}[1m]) * count_over_time({app="bar"}[1m])
+  {app="bar"} 9
+eval range from 60s to 180s step 30s count_over_time({app=~"foo|bar"}[1m]) * count_over_time({app="bar"}[1m])
+  {app="bar"} 9 9 9 9 9
+eval instant at 60s count_over_time({app=~"foo|bar"}[1m]) / count_over_time({app="bar"}[1m])
+  {app="bar"} 1
+eval range from 60s to 180s step 30s count_over_time({app=~"foo|bar"}[1m]) / count_over_time({app="bar"}[1m])
+  {app="bar"} 1 1 1 1 1
+eval instant at 60s count_over_time({app=~"foo|bar"}[1m]) % count_over_time({app="bar"}[1m])
+  {app="bar"} 0
+eval range from 60s to 180s step 30s count_over_time({app=~"foo|bar"}[1m]) % count_over_time({app="bar"}[1m])
+  {app="bar"} 0 0 0 0 0
+# A zero divisor yields NaN for both / and %.
+eval instant at 60s sum(count_over_time({app="foo"}[1m])) / vector(0)
+  {} NaN
+eval range from 60s to 180s step 30s sum(count_over_time({app="foo"}[1m])) / vector(0)
+  {} NaN NaN NaN NaN NaN
+eval instant at 60s sum(count_over_time({app="foo"}[1m])) % vector(0)
+  {} NaN
+eval range from 60s to 180s step 30s sum(count_over_time({app="foo"}[1m])) % vector(0)
+  {} NaN NaN NaN NaN NaN
+eval instant at 60s count_over_time({app="bar"}[1m]) ^ count_over_time({app="bar"}[1m])
+  {app="bar"} 27
+eval range from 60s to 180s step 30s count_over_time({app="bar"}[1m]) ^ count_over_time({app="bar"}[1m])
+  {app="bar"} 27 27 27 27 27
+
+# Vector / vector comparison. Bare foo vs bar never share labels → empty result.
+clear
+load
+  {app="foo"} "x" @ 0s [repeat every 10s for 19]
+  {app="bar"} "x" @ 0s [repeat every 20s for 10]
+  {app="noise"} "noise" @ 0s [repeat every 10s for 19]
+
+eval instant at 60s count_over_time({app="foo"}[1m]) > count_over_time({app="bar"}[1m])
+  expect empty
+eval range from 60s to 180s step 30s count_over_time({app="foo"}[1m]) > count_over_time({app="bar"}[1m])
+  expect empty
+eval instant at 60s count_over_time({app="foo"}[1m]) > bool count_over_time({app="bar"}[1m])
+  expect empty
+eval range from 60s to 180s step 30s count_over_time({app="foo"}[1m]) > bool count_over_time({app="bar"}[1m])
+  expect empty
+
+# `without (app)` strips app so the two sides match on the empty label set.
+eval instant at 60s sum without(app) (count_over_time({app="foo"}[1m])) > bool sum without(app) (count_over_time({app="bar"}[1m]))
+  {} 1
+eval range from 60s to 180s step 30s sum without(app) (count_over_time({app="foo"}[1m])) > bool sum without(app) (count_over_time({app="bar"}[1m]))
+  {} 1 1 1 1 1
+eval instant at 60s sum without(app) (count_over_time({app="foo"}[1m])) >= sum without(app) (count_over_time({app="bar"}[1m]))
+  {} 6
+eval range from 60s to 180s step 30s sum without(app) (count_over_time({app="foo"}[1m])) >= sum without(app) (count_over_time({app="bar"}[1m]))
+  {} 6 6 6 6 6
+
+# `by (app)` additions: foo+bar never match; foo+foo doubles.
+eval instant at 60s sum by (app) (count_over_time({app="foo"}[1m])) + sum by (app) (count_over_time({app="bar"}[1m]))
+  expect empty
+eval range from 60s to 180s step 30s sum by (app) (count_over_time({app="foo"}[1m])) + sum by (app) (count_over_time({app="bar"}[1m]))
+  expect empty
+eval instant at 60s sum by (app) (count_over_time({app="foo"}[1m])) + sum by (app) (count_over_time({app="foo"}[1m]))
+  {app="foo"} 12
+eval range from 60s to 180s step 30s sum by (app) (count_over_time({app="foo"}[1m])) + sum by (app) (count_over_time({app="foo"}[1m]))
+  {app="foo"} 12 12 12 12 12
+
+# Vector to vector comparison operators. Non-bool keeps the left value; `bool` gives 1
+# where the comparison holds, else 0.
+#
+# In this scenario, the sides match on `id` as less-than, equal, and greater-than pairs,
+# so each operator keeps a different subset.
+clear
+load
+  {app="left",  id="lt"} "x" @ 0s [repeat every 20s for 10]
+  {app="left",  id="eq"} "x" @ 0s [repeat every 20s for 10]
+  {app="left",  id="gt"} "x" @ 0s [repeat every 10s for 19]
+  {app="right", id="lt"} "x" @ 0s [repeat every 10s for 19]
+  {app="right", id="eq"} "x" @ 0s [repeat every 20s for 10]
+  {app="right", id="gt"} "x" @ 0s [repeat every 20s for 10]
+  {app="noise"} "noise" @ 0s [repeat every 10s for 19]
+
+# <
+eval instant at 60s sum by (id) (count_over_time({app="left"}[1m])) < sum by (id) (count_over_time({app="right"}[1m]))
+  {id="lt"} 3
+eval range from 60s to 180s step 30s sum by (id) (count_over_time({app="left"}[1m])) < sum by (id) (count_over_time({app="right"}[1m]))
+  {id="lt"} 3 3 3 3 3
+eval instant at 60s sum by (id) (count_over_time({app="left"}[1m])) < bool sum by (id) (count_over_time({app="right"}[1m]))
+  {id="lt"} 1
+  {id="eq"} 0
+  {id="gt"} 0
+eval range from 60s to 180s step 30s sum by (id) (count_over_time({app="left"}[1m])) < bool sum by (id) (count_over_time({app="right"}[1m]))
+  {id="lt"} 1 1 1 1 1
+  {id="eq"} 0 0 0 0 0
+  {id="gt"} 0 0 0 0 0
+# <=
+eval instant at 60s sum by (id) (count_over_time({app="left"}[1m])) <= sum by (id) (count_over_time({app="right"}[1m]))
+  {id="lt"} 3
+  {id="eq"} 3
+eval range from 60s to 180s step 30s sum by (id) (count_over_time({app="left"}[1m])) <= sum by (id) (count_over_time({app="right"}[1m]))
+  {id="lt"} 3 3 3 3 3
+  {id="eq"} 3 3 3 3 3
+eval instant at 60s sum by (id) (count_over_time({app="left"}[1m])) <= bool sum by (id) (count_over_time({app="right"}[1m]))
+  {id="lt"} 1
+  {id="eq"} 1
+  {id="gt"} 0
+eval range from 60s to 180s step 30s sum by (id) (count_over_time({app="left"}[1m])) <= bool sum by (id) (count_over_time({app="right"}[1m]))
+  {id="lt"} 1 1 1 1 1
+  {id="eq"} 1 1 1 1 1
+  {id="gt"} 0 0 0 0 0
+# >
+eval instant at 60s sum by (id) (count_over_time({app="left"}[1m])) > sum by (id) (count_over_time({app="right"}[1m]))
+  {id="gt"} 6
+eval range from 60s to 180s step 30s sum by (id) (count_over_time({app="left"}[1m])) > sum by (id) (count_over_time({app="right"}[1m]))
+  {id="gt"} 6 6 6 6 6
+eval instant at 60s sum by (id) (count_over_time({app="left"}[1m])) > bool sum by (id) (count_over_time({app="right"}[1m]))
+  {id="lt"} 0
+  {id="eq"} 0
+  {id="gt"} 1
+eval range from 60s to 180s step 30s sum by (id) (count_over_time({app="left"}[1m])) > bool sum by (id) (count_over_time({app="right"}[1m]))
+  {id="lt"} 0 0 0 0 0
+  {id="eq"} 0 0 0 0 0
+  {id="gt"} 1 1 1 1 1
+# >=
+eval instant at 60s sum by (id) (count_over_time({app="left"}[1m])) >= sum by (id) (count_over_time({app="right"}[1m]))
+  {id="eq"} 3
+  {id="gt"} 6
+eval range from 60s to 180s step 30s sum by (id) (count_over_time({app="left"}[1m])) >= sum by (id) (count_over_time({app="right"}[1m]))
+  {id="eq"} 3 3 3 3 3
+  {id="gt"} 6 6 6 6 6
+eval instant at 60s sum by (id) (count_over_time({app="left"}[1m])) >= bool sum by (id) (count_over_time({app="right"}[1m]))
+  {id="lt"} 0
+  {id="eq"} 1
+  {id="gt"} 1
+eval range from 60s to 180s step 30s sum by (id) (count_over_time({app="left"}[1m])) >= bool sum by (id) (count_over_time({app="right"}[1m]))
+  {id="lt"} 0 0 0 0 0
+  {id="eq"} 1 1 1 1 1
+  {id="gt"} 1 1 1 1 1
+# ==
+eval instant at 60s sum by (id) (count_over_time({app="left"}[1m])) == sum by (id) (count_over_time({app="right"}[1m]))
+  {id="eq"} 3
+eval range from 60s to 180s step 30s sum by (id) (count_over_time({app="left"}[1m])) == sum by (id) (count_over_time({app="right"}[1m]))
+  {id="eq"} 3 3 3 3 3
+eval instant at 60s sum by (id) (count_over_time({app="left"}[1m])) == bool sum by (id) (count_over_time({app="right"}[1m]))
+  {id="lt"} 0
+  {id="eq"} 1
+  {id="gt"} 0
+eval range from 60s to 180s step 30s sum by (id) (count_over_time({app="left"}[1m])) == bool sum by (id) (count_over_time({app="right"}[1m]))
+  {id="lt"} 0 0 0 0 0
+  {id="eq"} 1 1 1 1 1
+  {id="gt"} 0 0 0 0 0
+# !=
+eval instant at 60s sum by (id) (count_over_time({app="left"}[1m])) != sum by (id) (count_over_time({app="right"}[1m]))
+  {id="lt"} 3
+  {id="gt"} 6
+eval range from 60s to 180s step 30s sum by (id) (count_over_time({app="left"}[1m])) != sum by (id) (count_over_time({app="right"}[1m]))
+  {id="lt"} 3 3 3 3 3
+  {id="gt"} 6 6 6 6 6
+eval instant at 60s sum by (id) (count_over_time({app="left"}[1m])) != bool sum by (id) (count_over_time({app="right"}[1m]))
+  {id="lt"} 1
+  {id="eq"} 0
+  {id="gt"} 1
+eval range from 60s to 180s step 30s sum by (id) (count_over_time({app="left"}[1m])) != bool sum by (id) (count_over_time({app="right"}[1m]))
+  {id="lt"} 1 1 1 1 1
+  {id="eq"} 0 0 0 0 0
+  {id="gt"} 1 1 1 1 1
+# `bool` is only valid immediately after the operator; before it the query fails to parse.
+eval instant at 60s sum by (id) (count_over_time({app="left"}[1m])) bool > sum by (id) (count_over_time({app="right"}[1m]))
+  expect fail msg: syntax error: unexpected bool
+
+clear
+load
+  {app="foo"} "xbar"  @ 0s [repeat every 10s for 19]
+  {app="foo"} "noise" @ 5s [repeat every 10s for 19]
+  {app="bar"} "xbar"  @ 0s [repeat every 20s for 10]
+  {app="bar"} "noise" @ 10s [repeat every 20s for 10]
+
+eval instant at 60s 10 / ((rate({app="foo"} |~".+bar" [1m]) /5))
+  {app="foo"} 500
+eval range from 60s to 180s step 30s 10 / ((rate({app="foo"} |~".+bar" [1m]) /5))
+  {app="foo"} 500 500 500 500 500
+
+# Operator precedence and composition (a + a/a, then avg/sum over it).
+eval instant at 60s sum by (app) (rate({app=~"foo|bar"} |~".+bar" [1m])) + sum by (app) (rate({app=~"foo|bar"} |~".+bar" [1m])) / sum by (app) (rate({app=~"foo|bar"} |~".+bar" [1m]))
+  {app="foo"} 1.1
+  {app="bar"} 1.05
+eval range from 60s to 180s step 30s sum by (app) (rate({app=~"foo|bar"} |~".+bar" [1m])) + sum by (app) (rate({app=~"foo|bar"} |~".+bar" [1m])) / sum by (app) (rate({app=~"foo|bar"} |~".+bar" [1m]))
+  {app="foo"} 1.1 1.1 1.1 1.1 1.1
+  {app="bar"} 1.05 1.05 1.05 1.05 1.05
+eval instant at 60s avg by (app) ( sum by (app) (rate({app=~"foo|bar"} |~".+bar" [1m])) + sum by (app) (rate({app=~"foo|bar"} |~".+bar" [1m])) / sum by (app) (rate({app=~"foo|bar"} |~".+bar" [1m])) ) * 2
+  {app="foo"} 2.2
+  {app="bar"} 2.1
+eval range from 60s to 180s step 30s avg by (app) ( sum by (app) (rate({app=~"foo|bar"} |~".+bar" [1m])) + sum by (app) (rate({app=~"foo|bar"} |~".+bar" [1m])) / sum by (app) (rate({app=~"foo|bar"} |~".+bar" [1m])) ) * 2
+  {app="foo"} 2.2 2.2 2.2 2.2 2.2
+  {app="bar"} 2.1 2.1 2.1 2.1 2.1
+eval instant at 60s sum ( sum by (app) (rate({app=~"foo|bar"} |~".+bar" [1m])) + sum by (app) (rate({app=~"foo|bar"} |~".+bar" [1m])) / sum by (app) (rate({app=~"foo|bar"} |~".+bar" [1m])) ) + 1
+  {} 3.15
+eval range from 60s to 180s step 30s sum ( sum by (app) (rate({app=~"foo|bar"} |~".+bar" [1m])) + sum by (app) (rate({app=~"foo|bar"} |~".+bar" [1m])) / sum by (app) (rate({app=~"foo|bar"} |~".+bar" [1m])) ) + 1
+  {} 3.15 3.15 3.15 3.15 3.15
+# or binds looser than and/unless: `a or b and c` parses as `a or (b and c)`. Here
+# `b and c` is empty, so the result is plain `a`.
+eval instant at 60s rate({app="foo"} |~".+bar" [1m]) or rate({app="bar"} |~".+bar" [1m]) and vector(0)
+  {app="foo"} 0.1
+eval range from 60s to 180s step 30s rate({app="foo"} |~".+bar" [1m]) or rate({app="bar"} |~".+bar" [1m]) and vector(0)
+  {app="foo"} 0.1 0.1 0.1 0.1 0.1
+
+# Comparisons against NaN/+Inf/-Inf operands.
+clear
+load
+  {app="a", k="fin"}  "v=2"    @ 30s
+  {app="a", k="nan"}  "v=NaN"  @ 30s
+  {app="a", k="pinf"} "v=Inf"  @ 30s
+  {app="a", k="ninf"} "v=-Inf" @ 30s
+  {app="noise"}       "z=1"    @ 30s
+
+# NaN never compares equal, less, or greater to anything. Non-bool drops the sample for
+# ==/</>/<=/>=.
+eval instant at 60s max_over_time({app="a", k="nan"} | logfmt | unwrap v [1m]) > 1
+  expect empty
+eval range from 60s to 180s step 30s max_over_time({app="a", k="nan"} | logfmt | unwrap v [1m]) > 1
+  expect empty
+eval instant at 60s 1 > max_over_time({app="a", k="nan"} | logfmt | unwrap v [1m])
+  expect empty
+eval range from 60s to 180s step 30s 1 > max_over_time({app="a", k="nan"} | logfmt | unwrap v [1m])
+  expect empty
+# `!=` is the exception: NaN is never equal to anything, so it always satisfies !=, and
+# non-bool keeps its own NaN value instead of dropping it.
+eval instant at 60s max_over_time({app="a", k="nan"} | logfmt | unwrap v [1m]) != 1
+  {app="a", k="nan"} NaN
+eval range from 60s to 180s step 30s max_over_time({app="a", k="nan"} | logfmt | unwrap v [1m]) != 1
+  {app="a", k="nan"} NaN _ _ _ _
+eval instant at 60s max_over_time({app="a", k="nan"} | logfmt | unwrap v [1m]) != bool 1
+  {app="a", k="nan"} 1
+eval range from 60s to 180s step 30s max_over_time({app="a", k="nan"} | logfmt | unwrap v [1m]) != bool 1
+  {app="a", k="nan"} 1 _ _ _ _
+# `bool` still gives 0, never 1, for the operators NaN always fails.
+eval instant at 60s max_over_time({app="a", k="nan"} | logfmt | unwrap v [1m]) > bool 1
+  {app="a", k="nan"} 0
+eval range from 60s to 180s step 30s max_over_time({app="a", k="nan"} | logfmt | unwrap v [1m]) > bool 1
+  {app="a", k="nan"} 0 _ _ _ _
+eval instant at 60s 1 > bool max_over_time({app="a", k="nan"} | logfmt | unwrap v [1m])
+  {app="a", k="nan"} 0
+eval range from 60s to 180s step 30s 1 > bool max_over_time({app="a", k="nan"} | logfmt | unwrap v [1m])
+  {app="a", k="nan"} 0 _ _ _ _
+# +Inf / -Inf compare normally against a finite scalar.
+eval instant at 60s max_over_time({app="a", k="pinf"} | logfmt | unwrap v [1m]) > 1
+  {app="a", k="pinf"} +Inf
+eval range from 60s to 180s step 30s max_over_time({app="a", k="pinf"} | logfmt | unwrap v [1m]) > 1
+  {app="a", k="pinf"} +Inf _ _ _ _
+eval instant at 60s max_over_time({app="a", k="ninf"} | logfmt | unwrap v [1m]) < 1
+  {app="a", k="ninf"} -Inf
+eval range from 60s to 180s step 30s max_over_time({app="a", k="ninf"} | logfmt | unwrap v [1m]) < 1
+  {app="a", k="ninf"} -Inf _ _ _ _
+# Vector / vector: ignoring(k) matches the "pinf" series against the "ninf" series.
+eval instant at 60s max_over_time({app="a", k="pinf"} | logfmt | unwrap v [1m]) > bool ignoring (k) max_over_time({app="a", k="ninf"} | logfmt | unwrap v [1m])
+  {app="a"} 1
+eval range from 60s to 180s step 30s max_over_time({app="a", k="pinf"} | logfmt | unwrap v [1m]) > bool ignoring (k) max_over_time({app="a", k="ninf"} | logfmt | unwrap v [1m])
+  {app="a"} 1 _ _ _ _
+eval instant at 60s max_over_time({app="a", k="pinf"} | logfmt | unwrap v [1m]) > ignoring (k) max_over_time({app="a", k="ninf"} | logfmt | unwrap v [1m])
+  {app="a"} +Inf
+eval range from 60s to 180s step 30s max_over_time({app="a", k="pinf"} | logfmt | unwrap v [1m]) > ignoring (k) max_over_time({app="a", k="ninf"} | logfmt | unwrap v [1m])
+  {app="a"} +Inf _ _ _ _
+# A NaN operand keeps the vector/vector comparison empty even when matched via ignoring(k).
+eval instant at 60s max_over_time({app="a", k="nan"} | logfmt | unwrap v [1m]) == ignoring (k) max_over_time({app="a", k="fin"} | logfmt | unwrap v [1m])
+  expect empty
+eval range from 60s to 180s step 30s max_over_time({app="a", k="nan"} | logfmt | unwrap v [1m]) == ignoring (k) max_over_time({app="a", k="fin"} | logfmt | unwrap v [1m])
+  expect empty
+
+# on()/on(app)/ignoring — one stream carrying a machine label.
+clear
+load
+  {app="foo", machine="fuzz"} "x" @ 0s [repeat every 10s for 19]
+  {app="noise"} "noise" @ 0s [repeat every 10s for 19]
+
+eval instant at 60s sum by (app,machine) (count_over_time({app="foo"}[1m])) + on () sum by (app) (count_over_time({app="foo"}[1m]))
+  {} 12
+eval range from 60s to 180s step 30s sum by (app,machine) (count_over_time({app="foo"}[1m])) + on () sum by (app) (count_over_time({app="foo"}[1m]))
+  {} 12 12 12 12 12
+eval instant at 60s sum by (app,machine) (count_over_time({app="foo"}[1m])) + on (app) sum by (app) (count_over_time({app="foo"}[1m]))
+  {app="foo"} 12
+eval range from 60s to 180s step 30s sum by (app,machine) (count_over_time({app="foo"}[1m])) + on (app) sum by (app) (count_over_time({app="foo"}[1m]))
+  {app="foo"} 12 12 12 12 12
+eval instant at 60s sum by (app,machine) (count_over_time({app="foo"}[1m])) > bool ignoring (machine) sum by (app) (count_over_time({app="foo"}[1m]))
+  {app="foo"} 0
+eval range from 60s to 180s step 30s sum by (app,machine) (count_over_time({app="foo"}[1m])) > bool ignoring (machine) sum by (app) (count_over_time({app="foo"}[1m]))
+  {app="foo"} 0 0 0 0 0
+
+# and / unless with on() / ignoring()
+clear
+load
+  {app="requests", pod="a"} "x" @ 0s [repeat every 10s for 19]
+  {app="requests", pod="b"} "x" @ 0s [repeat every 15s for 19]
+  {app="errors",   pod="a"} "x" @ 0s [repeat every 20s for 10]
+  {app="noise"}              "noise" @ 0s [repeat every 10s for 19]
+
+# and on(<label>)
+eval instant at 60s count_over_time({app="requests"}[1m]) and on (pod) count_over_time({app="errors"}[1m])
+  {app="requests", pod="a"} 6
+eval range from 60s to 180s step 30s count_over_time({app="requests"}[1m]) and on (pod) count_over_time({app="errors"}[1m])
+  {app="requests", pod="a"} 6 6 6 6 6
+# and ignoring(<label>)
+eval instant at 60s count_over_time({app="requests"}[1m]) and ignoring (app) count_over_time({app="errors"}[1m])
+  {app="requests", pod="a"} 6
+eval range from 60s to 180s step 30s count_over_time({app="requests"}[1m]) and ignoring (app) count_over_time({app="errors"}[1m])
+  {app="requests", pod="a"} 6 6 6 6 6
+# unless on(<label>)
+eval instant at 60s count_over_time({app="requests"}[1m]) unless on (pod) count_over_time({app="errors"}[1m])
+  {app="requests", pod="b"} 4
+eval range from 60s to 180s step 30s count_over_time({app="requests"}[1m]) unless on (pod) count_over_time({app="errors"}[1m])
+  {app="requests", pod="b"} 4 4 4 4 4
+# unless on(<label>) can exclude every series, leaving an empty result.
+eval instant at 60s count_over_time({app="errors"}[1m]) unless on (pod) count_over_time({app="requests"}[1m])
+  expect empty
+eval range from 60s to 180s step 30s count_over_time({app="errors"}[1m]) unless on (pod) count_over_time({app="requests"}[1m])
+  expect empty
+# and on(): matches on the empty label set, so any non-empty RHS keeps every LHS series.
+eval instant at 60s count_over_time({app="requests"}[1m]) and on () vector(1)
+  {app="requests", pod="a"} 6
+  {app="requests", pod="b"} 4
+eval range from 60s to 180s step 30s count_over_time({app="requests"}[1m]) and on () vector(1)
+  {app="requests", pod="a"} 6 6 6 6 6
+  {app="requests", pod="b"} 4 4 4 4 4
+eval instant at 60s count_over_time({app="requests"}[1m]) and on () count_over_time({app="missing"}[1m])
+  expect empty
+eval range from 60s to 180s step 30s count_over_time({app="requests"}[1m]) and on () count_over_time({app="missing"}[1m])
+  expect empty
+eval instant at 60s count_over_time({app="missing"}[1m]) and on () count_over_time({app="requests"}[1m])
+  expect empty
+eval range from 60s to 180s step 30s count_over_time({app="missing"}[1m]) and on () count_over_time({app="requests"}[1m])
+  expect empty
+# unless on(): a non-empty RHS also matches every LHS series, so it excludes everything.
+eval instant at 60s count_over_time({app="requests"}[1m]) unless on () vector(1)
+  expect empty
+eval range from 60s to 180s step 30s count_over_time({app="requests"}[1m]) unless on () vector(1)
+  expect empty
+eval instant at 60s count_over_time({app="requests"}[1m]) unless on () count_over_time({app="missing"}[1m])
+  {app="requests", pod="a"} 6
+  {app="requests", pod="b"} 4
+eval range from 60s to 180s step 30s count_over_time({app="requests"}[1m]) unless on () count_over_time({app="missing"}[1m])
+  {app="requests", pod="a"} 6 6 6 6 6
+  {app="requests", pod="b"} 4 4 4 4 4
+
+# and / unless tolerate a many-to-one relationship without an explicit group_left/right
+clear
+load
+  {app="foo", machine="fuzz"} "x" @ 0s [repeat every 10s for 19]
+  {app="foo", machine="buzz"} "x" @ 0s [repeat every 15s for 19]
+  {app="bar", machine="solo"} "x" @ 0s [repeat every 20s for 10]
+  {app="noise"} "noise" @ 0s [repeat every 10s for 19]
+
+# and
+eval instant at 60s sum by (app,machine) (count_over_time({app=~"foo|bar"}[1m])) and ignoring (machine) sum by (app) (count_over_time({app="foo"}[1m]))
+  {app="foo", machine="fuzz"} 6
+  {app="foo", machine="buzz"} 4
+eval range from 60s to 180s step 30s sum by (app,machine) (count_over_time({app=~"foo|bar"}[1m])) and ignoring (machine) sum by (app) (count_over_time({app="foo"}[1m]))
+  {app="foo", machine="fuzz"} 6 6 6 6 6
+  {app="foo", machine="buzz"} 4 4 4 4 4
+# unless
+eval instant at 60s sum by (app,machine) (count_over_time({app=~"foo|bar"}[1m])) unless ignoring (machine) sum by (app) (count_over_time({app="foo"}[1m]))
+  {app="bar", machine="solo"} 3
+eval range from 60s to 180s step 30s sum by (app,machine) (count_over_time({app=~"foo|bar"}[1m])) unless ignoring (machine) sum by (app) (count_over_time({app="foo"}[1m]))
+  {app="bar", machine="solo"} 3 3 3 3 3
+
+# or with on() / ignoring()
+clear
+load
+  {app="requests", pod="a"} "x" @ 0s [repeat every 10s for 19]
+  {app="requests", pod="b"} "x" @ 0s [repeat every 15s for 19]
+  {app="errors",   pod="a"} "x" @ 0s [repeat every 20s for 10]
+  {app="errors",   pod="c"} "x" @ 0s [repeat every 30s for 10]
+  {app="noise"}              "noise" @ 0s [repeat every 10s for 19]
+
+# or keeps every LHS series unchanged. An RHS series with no match is added to the result
+# unchanged, keeping its own full label set.
+eval instant at 60s count_over_time({app="requests"}[1m]) or on (pod) (count_over_time({app="errors"}[1m]) * 100)
+  {app="requests", pod="a"} 6
+  {app="requests", pod="b"} 4
+  {app="errors", pod="c"} 200
+eval range from 60s to 180s step 30s count_over_time({app="requests"}[1m]) or on (pod) (count_over_time({app="errors"}[1m]) * 100)
+  {app="requests", pod="a"} 6 6 6 6 6
+  {app="requests", pod="b"} 4 4 4 4 4
+  {app="errors", pod="c"} 200 200 200 200 200
+# ignoring(app) reaches the same result: app is the only other label.
+eval instant at 60s count_over_time({app="requests"}[1m]) or ignoring (app) (count_over_time({app="errors"}[1m]) * 100)
+  {app="requests", pod="a"} 6
+  {app="requests", pod="b"} 4
+  {app="errors", pod="c"} 200
+eval range from 60s to 180s step 30s count_over_time({app="requests"}[1m]) or ignoring (app) (count_over_time({app="errors"}[1m]) * 100)
+  {app="requests", pod="a"} 6 6 6 6 6
+  {app="requests", pod="b"} 4 4 4 4 4
+  {app="errors", pod="c"} 200 200 200 200 200
+
+# group_left() without labels.
+clear
+load
+  {app="foo", machine="fuzz"} "x" @ 0s [repeat every 10s for 19]
+  {app="foo", machine="buzz"} "x" @ 0s [repeat every 15s for 19]
+  {app="noise"} "noise" @ 0s [repeat every 10s for 19]
+
+# Many-to-one without an explicit group_left errors.
+eval instant at 60s sum by (app,machine) (count_over_time({app="foo"}[1m])) > bool ignoring (machine) sum by (app) (count_over_time({app="foo"}[1m]))
+  expect fail msg: multiple matches for labels: many-to-one matching must be explicit (group_left/group_right)
+eval range from 60s to 180s step 30s sum by (app,machine) (count_over_time({app="foo"}[1m])) > bool ignoring (machine) sum by (app) (count_over_time({app="foo"}[1m]))
+  expect fail msg: multiple matches for labels: many-to-one matching must be explicit (group_left/group_right)
+# Two grammar forms: bare and an explicit empty ().
+eval instant at 60s sum by (app,machine) (count_over_time({app="foo"}[1m])) > bool on () group_left sum by (app) (count_over_time({app="foo"}[1m]))
+  {app="foo", machine="fuzz"} 0
+  {app="foo", machine="buzz"} 0
+eval range from 60s to 180s step 30s sum by (app,machine) (count_over_time({app="foo"}[1m])) > bool on () group_left sum by (app) (count_over_time({app="foo"}[1m]))
+  {app="foo", machine="fuzz"} 0 0 0 0 0
+  {app="foo", machine="buzz"} 0 0 0 0 0
+eval instant at 60s sum by (app,machine) (count_over_time({app="foo"}[1m])) > bool on () group_left () sum by (app) (count_over_time({app="foo"}[1m]))
+  {app="foo", machine="fuzz"} 0
+  {app="foo", machine="buzz"} 0
+eval range from 60s to 180s step 30s sum by (app,machine) (count_over_time({app="foo"}[1m])) > bool on () group_left () sum by (app) (count_over_time({app="foo"}[1m]))
+  {app="foo", machine="fuzz"} 0 0 0 0 0
+  {app="foo", machine="buzz"} 0 0 0 0 0
+# ignoring(machine) group_left reaches the same result here, since app is the only other
+# label.
+eval instant at 60s sum by (app,machine) (count_over_time({app="foo"}[1m])) > bool ignoring (machine) group_left sum by (app) (count_over_time({app="foo"}[1m]))
+  {app="foo", machine="fuzz"} 0
+  {app="foo", machine="buzz"} 0
+eval range from 60s to 180s step 30s sum by (app,machine) (count_over_time({app="foo"}[1m])) > bool ignoring (machine) group_left sum by (app) (count_over_time({app="foo"}[1m]))
+  {app="foo", machine="fuzz"} 0 0 0 0 0
+  {app="foo", machine="buzz"} 0 0 0 0 0
+# Non-bool keeps the many side's own value and labels; the one side is used only to match.
+eval instant at 60s sum by (app,machine) (count_over_time({app="foo"}[1m])) < on () group_left sum by (app) (count_over_time({app="foo"}[1m]))
+  {app="foo", machine="fuzz"} 6
+  {app="foo", machine="buzz"} 4
+eval range from 60s to 180s step 30s sum by (app,machine) (count_over_time({app="foo"}[1m])) < on () group_left sum by (app) (count_over_time({app="foo"}[1m]))
+  {app="foo", machine="fuzz"} 6 6 6 6 6
+  {app="foo", machine="buzz"} 4 4 4 4 4
+
+# group_left() without labels: duplicate series case.
+clear
+load
+  {app="foo", machine="fuzz"} "x" @ 0s [repeat every 10s for 19]
+  {app="foo", machine="buzz"} "x" @ 0s [repeat every 10s for 19]
+  {app="foo", pool="z1"} "x" @ 0s [repeat every 10s for 19]
+  {app="foo", pool="z2"} "x" @ 0s [repeat every 10s for 19]
+  {app="noise"} "noise" @ 0s [repeat every 10s for 19]
+
+eval instant at 60s sum by (app,machine) (count_over_time({app="foo", machine=~".+"}[1m])) > bool on (app) group_left sum by (app,pool) (count_over_time({app="foo", pool=~".+"}[1m]))
+  expect fail msg: found duplicate series on the right hand-side
+eval range from 60s to 180s step 30s sum by (app,machine) (count_over_time({app="foo", machine=~".+"}[1m])) > bool on (app) group_left sum by (app,pool) (count_over_time({app="foo", pool=~".+"}[1m]))
+  expect fail msg: found duplicate series on the right hand-side
+
+# group_left() with labels.
+clear
+load
+  {app="foo", machine="fuzz", pool="foo"} "x" @ 0s [repeat every 10s for 19]
+  {app="foo", machine="buzz", pool="foo"} "x" @ 0s [repeat every 15s for 19]
+  {app="noise"} "noise" @ 0s [repeat every 10s for 19]
+
+eval instant at 60s sum by (app,machine) (count_over_time({app="foo"}[1m])) > bool on (app) group_left (pool) sum by (app,pool) (count_over_time({app="foo"}[1m]))
+  {app="foo", machine="fuzz", pool="foo"} 0
+  {app="foo", machine="buzz", pool="foo"} 0
+eval range from 60s to 180s step 30s sum by (app,machine) (count_over_time({app="foo"}[1m])) > bool on (app) group_left (pool) sum by (app,pool) (count_over_time({app="foo"}[1m]))
+  {app="foo", machine="fuzz", pool="foo"} 0 0 0 0 0
+  {app="foo", machine="buzz", pool="foo"} 0 0 0 0 0
+# Each machine's own share of the app total.
+eval instant at 60s count_over_time({app="foo"}[1m]) / on (app) group_left sum by (app) (count_over_time({app="foo"}[1m]))
+  {app="foo", machine="fuzz", pool="foo"} 0.6
+  {app="foo", machine="buzz", pool="foo"} 0.4
+eval range from 60s to 180s step 30s count_over_time({app="foo"}[1m]) / on (app) group_left sum by (app) (count_over_time({app="foo"}[1m]))
+  {app="foo", machine="fuzz", pool="foo"} 0.6 0.6 0.6 0.6 0.6
+  {app="foo", machine="buzz", pool="foo"} 0.4 0.4 0.4 0.4 0.4
+# The shares collapse to 1 when summed.
+eval instant at 60s sum(count_over_time({app="foo"}[1m]) / on (app) group_left sum by (app) (count_over_time({app="foo"}[1m])))
+  {} 1
+eval range from 60s to 180s step 30s sum(count_over_time({app="foo"}[1m]) / on (app) group_left sum by (app) (count_over_time({app="foo"}[1m])))
+  {} 1 1 1 1 1
+# Include-label deletion: the RHS lacks `pool` (aggregated away), so group_left(pool)
+# deletes it from the result rather than keeping the many side's own value.
+eval instant at 60s sum by (app,machine,pool) (count_over_time({app="foo"}[1m])) > bool on (app) group_left (pool) sum by (app) (count_over_time({app="foo"}[1m]))
+  {app="foo", machine="fuzz"} 0
+  {app="foo", machine="buzz"} 0
+eval range from 60s to 180s step 30s sum by (app,machine,pool) (count_over_time({app="foo"}[1m])) > bool on (app) group_left (pool) sum by (app) (count_over_time({app="foo"}[1m]))
+  {app="foo", machine="fuzz"} 0 0 0 0 0
+  {app="foo", machine="buzz"} 0 0 0 0 0
+
+# group_left() with labels: collision case.
+#
+# In this scenario, two many-side series differ only by `pool`. group_left(pool)
+# overwrites both with the single "one" side's value. They collapse onto the
+# identical label set.
+clear
+load
+  {app="foo", pool="a"} "x" @ 0s [repeat every 10s for 19]
+  {app="foo", pool="b"} "x" @ 0s [repeat every 10s for 19]
+  {app="foo", pool="z", side="one"} "x" @ 0s [repeat every 10s for 19]
+  {app="noise"} "noise" @ 0s [repeat every 10s for 19]
+
+eval instant at 60s sum by (app,pool) (count_over_time({app="foo", pool=~"a|b"}[1m])) > bool on (app) group_left (pool) sum by (app,pool) (count_over_time({app="foo", side="one"}[1m]))
+  expect fail msg: multiple matches for labels: grouping labels must ensure unique matches
+
+# group_right() without labels.
+clear
+load
+  {app="foo", machine="fuzz"} "x" @ 0s [repeat every 10s for 19]
+  {app="foo", machine="buzz"} "x" @ 0s [repeat every 15s for 19]
+  {app="noise"} "noise" @ 0s [repeat every 10s for 19]
+
+# One-to-many without an explicit group_right errors: the right side isn't unique.
+eval instant at 60s sum by (app) (count_over_time({app="foo"}[1m])) >= bool ignoring (machine) sum by (app,machine) (count_over_time({app="foo"}[1m]))
+  expect fail msg: found duplicate series on the right hand-side
+eval range from 60s to 180s step 30s sum by (app) (count_over_time({app="foo"}[1m])) >= bool ignoring (machine) sum by (app,machine) (count_over_time({app="foo"}[1m]))
+  expect fail msg: found duplicate series on the right hand-side
+# Two grammar forms: bare and an explicit empty (). The "one" side (left) aggregates every
+# machine, so it is always >= any single machine's count.
+eval instant at 60s sum by (app) (count_over_time({app="foo"}[1m])) >= bool on () group_right sum by (app,machine) (count_over_time({app="foo"}[1m]))
+  {app="foo", machine="fuzz"} 1
+  {app="foo", machine="buzz"} 1
+eval range from 60s to 180s step 30s sum by (app) (count_over_time({app="foo"}[1m])) >= bool on () group_right sum by (app,machine) (count_over_time({app="foo"}[1m]))
+  {app="foo", machine="fuzz"} 1 1 1 1 1
+  {app="foo", machine="buzz"} 1 1 1 1 1
+eval instant at 60s sum by (app) (count_over_time({app="foo"}[1m])) >= bool on () group_right () sum by (app,machine) (count_over_time({app="foo"}[1m]))
+  {app="foo", machine="fuzz"} 1
+  {app="foo", machine="buzz"} 1
+eval range from 60s to 180s step 30s sum by (app) (count_over_time({app="foo"}[1m])) >= bool on () group_right () sum by (app,machine) (count_over_time({app="foo"}[1m]))
+  {app="foo", machine="fuzz"} 1 1 1 1 1
+  {app="foo", machine="buzz"} 1 1 1 1 1
+# ignoring(machine) group_right reaches the same result here, since app is the only other
+# label.
+eval instant at 60s sum by (app) (count_over_time({app="foo"}[1m])) >= bool ignoring (machine) group_right sum by (app,machine) (count_over_time({app="foo"}[1m]))
+  {app="foo", machine="fuzz"} 1
+  {app="foo", machine="buzz"} 1
+eval range from 60s to 180s step 30s sum by (app) (count_over_time({app="foo"}[1m])) >= bool ignoring (machine) group_right sum by (app,machine) (count_over_time({app="foo"}[1m]))
+  {app="foo", machine="fuzz"} 1 1 1 1 1
+  {app="foo", machine="buzz"} 1 1 1 1 1
+# Non-bool keeps the "one" side's own value; the labels still come from the many side.
+eval instant at 60s sum by (app) (count_over_time({app="foo"}[1m])) > on () group_right sum by (app,machine) (count_over_time({app="foo"}[1m]))
+  {app="foo", machine="fuzz"} 10
+  {app="foo", machine="buzz"} 10
+eval range from 60s to 180s step 30s sum by (app) (count_over_time({app="foo"}[1m])) > on () group_right sum by (app,machine) (count_over_time({app="foo"}[1m]))
+  {app="foo", machine="fuzz"} 10 10 10 10 10
+  {app="foo", machine="buzz"} 10 10 10 10 10
+
+# group_right() without labels: duplicate series case.
+clear
+load
+  {app="foo", machine="fuzz"} "x" @ 0s [repeat every 10s for 19]
+  {app="foo", machine="buzz"} "x" @ 0s [repeat every 10s for 19]
+  {app="foo", pool="z1"} "x" @ 0s [repeat every 10s for 19]
+  {app="foo", pool="z2"} "x" @ 0s [repeat every 10s for 19]
+  {app="noise"} "noise" @ 0s [repeat every 10s for 19]
+
+eval instant at 60s sum by (app,pool) (count_over_time({app="foo", pool=~".+"}[1m])) > bool on (app) group_right sum by (app,machine) (count_over_time({app="foo", machine=~".+"}[1m]))
+  expect fail msg: found duplicate series on the left hand-side
+eval range from 60s to 180s step 30s sum by (app,pool) (count_over_time({app="foo", pool=~".+"}[1m])) > bool on (app) group_right sum by (app,machine) (count_over_time({app="foo", machine=~".+"}[1m]))
+  expect fail msg: found duplicate series on the left hand-side
+
+# group_right() with labels.
+clear
+load
+  {app="foo", machine="fuzz", pool="foo"} "x" @ 0s [repeat every 10s for 19]
+  {app="foo", machine="buzz", pool="foo"} "x" @ 0s [repeat every 15s for 19]
+  {app="noise"} "noise" @ 0s [repeat every 10s for 19]
+
+eval instant at 60s sum by (app,pool) (count_over_time({app="foo"}[1m])) > bool on (app) group_right (pool) sum by (app,machine) (count_over_time({app="foo"}[1m]))
+  {app="foo", machine="fuzz", pool="foo"} 1
+  {app="foo", machine="buzz", pool="foo"} 1
+eval range from 60s to 180s step 30s sum by (app,pool) (count_over_time({app="foo"}[1m])) > bool on (app) group_right (pool) sum by (app,machine) (count_over_time({app="foo"}[1m]))
+  {app="foo", machine="fuzz", pool="foo"} 1 1 1 1 1
+  {app="foo", machine="buzz", pool="foo"} 1 1 1 1 1
+# Include-label deletion: the LHS lacks `pool` (aggregated away), so group_right(pool)
+# deletes it from the result rather than keeping the many side's own value.
+eval instant at 60s sum by (app) (count_over_time({app="foo"}[1m])) > bool on (app) group_right (pool) sum by (app,machine,pool) (count_over_time({app="foo"}[1m]))
+  {app="foo", machine="fuzz"} 1
+  {app="foo", machine="buzz"} 1
+eval range from 60s to 180s step 30s sum by (app) (count_over_time({app="foo"}[1m])) > bool on (app) group_right (pool) sum by (app,machine,pool) (count_over_time({app="foo"}[1m]))
+  {app="foo", machine="fuzz"} 1 1 1 1 1
+  {app="foo", machine="buzz"} 1 1 1 1 1
+
+# group_right() with labels: collision case.
+#
+# Two many-side series differ only by `pool`. group_right(pool) overwrites both with the
+# single "one" side's value. They collapse onto the identical label set.
+clear
+load
+  {app="foo", pool="a"} "x" @ 0s [repeat every 10s for 19]
+  {app="foo", pool="b"} "x" @ 0s [repeat every 10s for 19]
+  {app="foo", pool="z", side="one"} "x" @ 0s [repeat every 10s for 19]
+  {app="noise"} "noise" @ 0s [repeat every 10s for 19]
+
+eval instant at 60s sum by (app,pool) (count_over_time({app="foo", side="one"}[1m])) > bool on (app) group_right (pool) sum by (app,pool) (count_over_time({app="foo", pool=~"a|b"}[1m]))
+  expect fail msg: multiple matches for labels: grouping labels must ensure unique matches
+
+# `or vector(0)` fills the steps where the left side is absent.
+clear
+load
+  {app="foo"}   "x"     @ 0s [repeat every 10s for 7]
+  {app="noise"} "noise" @ 0s [repeat every 10s for 19]
+
+eval range from 60s to 180s step 30s rate({app="foo"}[1m]) or vector(0)
+  {app="foo"} 0.1 0.05 _ _ _
+  {} 0 0 0 0 0
+
+eval range from 60s to 180s step 30s sum(rate({app="foo"}[1m])) or vector(0)
+  {} 0.1 0.05 0 0 0
+
+# Non-bool `>` drops the non-matching samples; `> bool` keeps values as 0.
+clear
+load
+  {app="foo"}   "x"     @ 10s [repeat every 10s for 5]
+  {app="foo"}   "x"     @ 100s
+  {app="noise"} "noise" @ 10s [repeat every 10s for 6]
+
+eval range from 60s to 120s step 30s count_over_time({app="foo"}[1m]) > 3
+  {app="foo"} 5 _ _
+eval range from 60s to 120s step 30s count_over_time({app="foo"}[1m]) > bool 3
+  {app="foo"} 1 0 0

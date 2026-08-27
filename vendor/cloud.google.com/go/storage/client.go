@@ -109,6 +109,8 @@ type storageClient interface {
 	DeleteNotification(ctx context.Context, bucket string, id string, opts ...storageOption) error
 
 	NewMultiRangeDownloader(ctx context.Context, params *newMultiRangeDownloaderParams, opts ...storageOption) (*MultiRangeDownloader, error)
+
+	fetchBucketMetadata(ctx context.Context, bucket string) (resource string, location string, err error)
 }
 
 // settings contains transport-agnostic configuration for API calls made via
@@ -297,12 +299,13 @@ type openWriterParams struct {
 }
 
 type newMultiRangeDownloaderParams struct {
-	bucket        string
-	conds         *Conditions
-	encryptionKey []byte
-	gen           int64
-	object        string
-	handle        *ReadHandle
+	bucket                 string
+	conds                  *Conditions
+	disableMRDReadChecksum bool
+	encryptionKey          []byte
+	gen                    int64
+	handle                 *ReadHandle
+	object                 string
 
 	// Multistream settings.
 	minConnections      int
@@ -312,15 +315,16 @@ type newMultiRangeDownloaderParams struct {
 }
 
 type newRangeReaderParams struct {
-	bucket         string
-	conds          *Conditions
-	encryptionKey  []byte
-	gen            int64
-	length         int64
-	object         string
-	offset         int64
-	readCompressed bool // Use accept-encoding: gzip. Only works for HTTP currently.
-	handle         *ReadHandle
+	bucket          string
+	conds           *Conditions
+	encryptionKey   []byte
+	gen             int64
+	length          int64
+	object          string
+	offset          int64
+	readCompressed  bool // Use accept-encoding: gzip. Only works for HTTP currently.
+	handle          *ReadHandle
+	disableCRCCheck bool
 }
 
 type getObjectParams struct {
@@ -356,11 +360,12 @@ type moveObjectParams struct {
 }
 
 type composeObjectRequest struct {
-	dstBucket     string
-	dstObject     destinationObject
-	srcs          []sourceObject
-	predefinedACL string
-	sendCRC32C    bool
+	dstBucket           string
+	dstObject           destinationObject
+	srcs                []sourceObject
+	predefinedACL       string
+	sendCRC32C          bool
+	deleteSourceObjects bool
 }
 
 type sourceObject struct {

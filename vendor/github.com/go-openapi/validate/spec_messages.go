@@ -132,6 +132,9 @@ const (
 
 	// RequiredButNotDefinedError ...
 	RequiredButNotDefinedError = "%q is present in required but not defined as property in definition %q"
+	// RequiredButNotDefinedInSchemaError is the same slip, in a schema a definition holds rather than
+	// in the definition itself.
+	RequiredButNotDefinedInSchemaError = "%q is present in required but not defined as property in schema %q"
 
 	// SomeParametersBrokenError indicates that some parameters could not be resolved, which might result in partial checks to be carried on.
 	SomeParametersBrokenError = "some parameters definitions are broken in %q.%s. Cannot carry on full checks on parameters for operation %s"
@@ -176,6 +179,18 @@ const (
 
 	// UnusedResponseWarning ...
 	UnusedResponseWarning = "response %q is not used anywhere"
+
+	// DubiousAbsoluteRefWarning flags a $ref pointing to an absolute local file location that escapes the
+	// spec's base path. Absolute local references are legitimate when they stay beneath the base path
+	// (flattening/expansion introduces such anchors for cyclical $refs), but an absolute reference that
+	// escapes the base path - or a file:// reference in a spec with no known base - may indicate an
+	// unsafe or adversarial spec.
+	DubiousAbsoluteRefWarning = "$ref %q points to an absolute or local file location that escapes the spec's base path: this may be unsafe with adversarial specs"
+
+	// DubiousMultipleHostsWarning flags a spec whose remote $refs resolve to several distinct hosts.
+	// A single consistent remote host is common and legitimate; references spread across multiple hosts
+	// may indicate an unsafe or adversarial spec.
+	DubiousMultipleHostsWarning = "$ref values point to %d distinct remote hosts (%s): a spec referencing multiple hosts may be unsafe"
 
 	InvalidObject = "expected an object in %q.%s"
 )
@@ -246,6 +261,10 @@ func invalidPatternMsg(pattern, path string) errors.Error {
 
 func requiredButNotDefinedMsg(path, definition string) errors.Error {
 	return errors.New(errors.CompositeErrorCode, RequiredButNotDefinedError, path, definition)
+}
+
+func requiredButNotDefinedInSchemaMsg(path, schema string) errors.Error {
+	return errors.New(errors.CompositeErrorCode, RequiredButNotDefinedInSchemaError, path, schema)
 }
 
 func pathParamGarbledMsg(path, param string) errors.Error {
@@ -403,4 +422,12 @@ func someParametersBrokenMsg(path, method, operationID string) errors.Error {
 
 func refShouldNotHaveSiblingsMsg(path, operationID string) errors.Error {
 	return errors.New(errors.CompositeErrorCode, RefShouldNotHaveSiblingsWarning, operationID, path)
+}
+
+func dubiousAbsoluteRefMsg(ref string) errors.Error {
+	return errors.New(errors.CompositeErrorCode, DubiousAbsoluteRefWarning, ref)
+}
+
+func dubiousMultipleHostsMsg(count int, hosts string) errors.Error {
+	return errors.New(errors.CompositeErrorCode, DubiousMultipleHostsWarning, count, hosts)
 }

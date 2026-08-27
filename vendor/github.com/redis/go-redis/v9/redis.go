@@ -26,6 +26,14 @@ type Scanner = hscan.Scanner
 // Nil reply returned by Redis when key does not exist.
 const Nil = proto.Nil
 
+// String representations of special float values.
+// Values are lowercase for consistency with Redis RESP2 protocol responses.
+const (
+	NaN  = internal.NaN  // Not a Number
+	Inf  = internal.Inf  // Positive infinity
+	NInf = internal.NInf // Negative infinity
+)
+
 // SetLogger set custom log
 // Use with VoidLogger to disable logging.
 // If logger is nil, the call is ignored and the existing logger is kept.
@@ -215,6 +223,96 @@ func (hs *hooksMixin) processTxPipelineHook(ctx context.Context, cmds []Cmder) e
 
 //------------------------------------------------------------------------------
 
+// Stable identifiers for baseClient.onClose hooks. Each component that
+// registers a close callback owns a dedicated id here so the set of known
+// hooks is discoverable in one place and id collisions are caught at
+// compile time. New ids should be added as additional constants.
+const (
+	// onCloseHookIDSentinelFailover identifies the close callback installed
+	// by NewFailoverClient to tear down sentinel failover background work.
+	onCloseHookIDSentinelFailover = "sentinel-failover"
+)
+
+// onCloseHooks is a small registry of named close callbacks attached to a
+// baseClient. Each callback is identified by a stable string id; registering
+// the same id twice replaces the previous callback rather than chaining onto
+// it. This guarantees the registry stays bounded regardless of how often a
+// hook is (re)registered and avoids the unbounded closure chain that
+// motivated issue #3772.
+//
+// Hooks are invoked in registration order. All hooks run regardless of
+// individual errors; the first non-nil error is returned.
+//
+// A zero-value onCloseHooks is ready to use. It is safe for concurrent use.
+// Clones of a baseClient share the same *onCloseHooks so registrations and
+// close semantics are preserved across WithTimeout / WithContext / etc.
+type onCloseHooks struct {
+	mu    sync.Mutex
+	order []string
+	hooks map[string]func() error
+}
+
+// register adds or replaces the callback associated with id. Re-registering
+// an existing id overwrites the previous callback in place; new ids are
+// appended to the invocation order.
+func (h *onCloseHooks) register(id string, fn func() error) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	if h.hooks == nil {
+		h.hooks = make(map[string]func() error)
+	}
+	if _, exists := h.hooks[id]; !exists {
+		h.order = append(h.order, id)
+	}
+	h.hooks[id] = fn
+}
+
+// unregister removes the callback associated with id, if any. It is kept
+// for API symmetry with register so future callers (e.g. dynamic hook
+// owners that need to detach before client Close) do not have to
+// reinvent it.
+//
+//nolint:unused // kept for API symmetry with register; see comment above.
+func (h *onCloseHooks) unregister(id string) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	if _, exists := h.hooks[id]; !exists {
+		return
+	}
+	delete(h.hooks, id)
+	for i, x := range h.order {
+		if x == id {
+			h.order = append(h.order[:i], h.order[i+1:]...)
+			break
+		}
+	}
+}
+
+// run invokes all registered callbacks in registration order and returns
+// the first non-nil error encountered. All callbacks are executed even if
+// an earlier one returns an error.
+func (h *onCloseHooks) run() error {
+	if h == nil {
+		return nil
+	}
+	h.mu.Lock()
+	fns := make([]func() error, 0, len(h.order))
+	for _, id := range h.order {
+		if fn := h.hooks[id]; fn != nil {
+			fns = append(fns, fn)
+		}
+	}
+	h.mu.Unlock()
+
+	var firstErr error
+	for _, fn := range fns {
+		if err := fn(); err != nil && firstErr == nil {
+			firstErr = err
+		}
+	}
+	return firstErr
+}
+
 type baseClient struct {
 	opt        *Options
 	optLock    sync.RWMutex
@@ -222,7 +320,13 @@ type baseClient struct {
 	pubSubPool *pool.PubSubPool
 	hooksMixin
 
-	onClose func() error // hook called when client is closed
+	// onClose holds named callbacks invoked when the client is closed.
+	// Registering a new callback never removes previously registered ones;
+	// only re-registering the same id replaces the existing callback. This
+	// lets composing components (e.g. sentinel failover) add close logic
+	// safely without fear of overwriting each other and without building
+	// unbounded closure chains on repeated registration.
+	onClose *onCloseHooks
 
 	// Push notification processing
 	pushProcessor push.NotificationProcessor
@@ -252,8 +356,17 @@ func (c *baseClient) clone() *baseClient {
 	return clone
 }
 
+// cloneOpt clones c.opt while holding optLock to prevent races with initConn
+// which writes to MaintNotificationsConfig.Mode under the same lock.
+func (c *baseClient) cloneOpt() *Options {
+	c.optLock.RLock()
+	clone := c.opt.clone()
+	c.optLock.RUnlock()
+	return clone
+}
+
 func (c *baseClient) withTimeout(timeout time.Duration) *baseClient {
-	opt := c.opt.clone()
+	opt := c.cloneOpt()
 	opt.ReadTimeout = timeout
 	opt.WriteTimeout = timeout
 
@@ -347,7 +460,11 @@ func (c *baseClient) onAuthenticationErr() func(poolCn *pool.Conn, err error) {
 		if err != nil {
 			if isBadConn(err, false, c.opt.Addr) {
 				// Close the connection to force a reconnection.
-				err := c.connPool.CloseConn(poolCn)
+				// Re-auth happens on connections that were idle in the pool (the pool hook
+				// waits for IDLE state before transitioning to UNUSABLE for re-auth).
+				// From metrics perspective, the connection was never "used" by a client.
+				// Note: Using context.Background() as this callback doesn't have access to caller's context.
+				err := c.connPool.CloseConn(context.Background(), poolCn, pool.CloseReasonAuthError, pool.MetricStateIdle)
 				if err != nil {
 					internal.Logger.Printf(context.Background(), "redis: failed to close connection: %v", err)
 					// try to close the network connection directly
@@ -360,27 +477,6 @@ func (c *baseClient) onAuthenticationErr() func(poolCn *pool.Conn, err error) {
 			}
 			internal.Logger.Printf(context.Background(), "redis: re-authentication failed: %v", err)
 		}
-	}
-}
-
-func (c *baseClient) wrappedOnClose(newOnClose func() error) func() error {
-	onClose := c.onClose
-	return func() error {
-		var firstErr error
-		err := newOnClose()
-		// Even if we have an error we would like to execute the onClose hook
-		// if it exists. We will return the first error that occurred.
-		// This is to keep error handling consistent with the rest of the code.
-		if err != nil {
-			firstErr = err
-		}
-		if onClose != nil {
-			err = onClose()
-			if err != nil && firstErr == nil {
-				firstErr = err
-			}
-		}
-		return firstErr
 	}
 }
 
@@ -483,7 +579,22 @@ func (c *baseClient) initConn(ctx context.Context, cn *pool.Conn) error {
 			return fmt.Errorf("failed to subscribe to streaming credentials: %w", initErr)
 		}
 
-		c.onClose = c.wrappedOnClose(unsubscribeFromCredentialsProvider)
+		// Per-connection unsubscribe is attached to the connection itself so it
+		// runs when this specific connection is closed. Do not register it on
+		// c.onClose: initConn runs for every (re)initialized connection, and
+		// attaching per-connection state to the shared baseClient registry would
+		// either leak entries (one per connection id, never trimmed) or — with
+		// the pre-fix wrappedOnClose approach — build an unbounded closure chain
+		// retaining every prior connection's unsubscribe (see issue #3772).
+		//
+		// Note: pool.Conn.SetOnClose OVERWRITES any prior callback (see the
+		// doc on that method). That is safe here because the streaming
+		// credentials Manager deduplicates listeners by connection id, so a
+		// second initConn on the same cn re-Subscribes the SAME listener and
+		// the returned unsubscribe is equivalent to the one already installed.
+		// Any future code path that could hand out a distinct unsubscribe on
+		// re-initialization must first invoke the existing one to avoid
+		// orphaning the old subscription on the credentials provider.
 		cn.SetOnClose(unsubscribeFromCredentialsProvider)
 
 		username, password = credentials.BasicAuth()
@@ -501,8 +612,13 @@ func (c *baseClient) initConn(ctx context.Context, cn *pool.Conn) error {
 
 	// for redis-server versions that do not support the HELLO command,
 	// RESP2 will continue to be used.
+	// helloOK tracks whether HELLO succeeded. If it did not, the connection
+	// falls back to RESP2 regardless of c.opt.Protocol, and features that
+	// require RESP3 (e.g. maintenance notifications) must be skipped.
+	helloOK := false
 	if initErr = conn.Hello(ctx, c.opt.Protocol, username, password, c.opt.ClientName).Err(); initErr == nil {
 		// Authentication successful with HELLO command
+		helloOK = true
 	} else if !isRedisError(initErr) {
 		// When the server responds with the RESP protocol and the result is not a normal
 		// execution result of the HELLO command, we consider it to be an indication that
@@ -551,17 +667,58 @@ func (c *baseClient) initConn(ctx context.Context, cn *pool.Conn) error {
 	maintNotifEnabled := c.opt.MaintNotificationsConfig != nil && c.opt.MaintNotificationsConfig.Mode != maintnotifications.ModeDisabled
 	protocol := c.opt.Protocol
 	var endpointType maintnotifications.EndpointType
+	var maintNotifMode maintnotifications.Mode
 	if maintNotifEnabled {
 		endpointType = c.opt.MaintNotificationsConfig.EndpointType
+		maintNotifMode = c.opt.MaintNotificationsConfig.Mode
 	}
 	c.optLock.RUnlock()
+
+	// Maintenance notifications require RESP3 push frames. If HELLO failed
+	// and the connection fell back to RESP2, there is no point in sending
+	// CLIENT MAINT_NOTIFICATIONS: the server either rejects it (making the
+	// error misleading) or accepts it silently, leaving the client unable
+	// to receive any notifications. Decide based on the actual negotiated
+	// protocol rather than the requested one.
+	if maintNotifEnabled && protocol == 3 && !helloOK {
+		if maintNotifMode == maintnotifications.ModeEnabled {
+			// Explicitly requested - fail fast with a clear reason.
+			cn.GetStateMachine().Transition(pool.StateClosed)
+			if errorCallback := pool.GetMetricErrorCallback(); errorCallback != nil {
+				errorCallback(ctx, "HANDSHAKE_FAILED", cn, "HANDSHAKE_FAILED", true, 0)
+			}
+			return fmt.Errorf("failed to enable maintnotifications: server does not support RESP3 (HELLO command failed)")
+		}
+		// auto/other modes: silently disable maintnotifications for this client.
+		c.optLock.Lock()
+		c.opt.MaintNotificationsConfig.Mode = maintnotifications.ModeDisabled
+		c.optLock.Unlock()
+		if err := c.disableMaintNotificationsUpgrades(); err != nil {
+			internal.Logger.Printf(ctx, "failed to disable maintnotifications in auto mode: %v", err)
+		}
+		maintNotifEnabled = false
+	}
+
 	var maintNotifHandshakeErr error
 	if maintNotifEnabled && protocol == 3 {
+		// Hold the manager read lock across the handshake and tracking so a
+		// concurrent downgrade cannot remove pool-level listeners before a
+		// successfully enabled connection is tracked for retirement.
+		c.maintNotificationsManagerLock.RLock()
+		manager := c.maintNotificationsManager
 		maintNotifHandshakeErr = conn.ClientMaintNotifications(
 			ctx,
 			true,
 			endpointType.String(),
 		).Err()
+		// A successful handshake enables maintnotifications for this connection,
+		// but must not promote ModeAuto to ModeEnabled. ModeEnabled is the
+		// explicit fail-closed policy; ModeAuto must remain able to downgrade if a
+		// later reconnect/failover reaches an endpoint that rejects the command.
+		if maintNotifHandshakeErr == nil && manager != nil {
+			manager.TrackMaintNotificationsConn(cn)
+		}
+		c.maintNotificationsManagerLock.RUnlock()
 		if maintNotifHandshakeErr != nil {
 			if !isRedisError(maintNotifHandshakeErr) {
 				// if not redis error, fail the connection
@@ -594,13 +751,6 @@ func (c *baseClient) initConn(ctx context.Context, cn *pool.Conn) error {
 					internal.Logger.Printf(ctx, "failed to disable maintnotifications in auto mode: %v", initErr)
 				}
 			}
-		} else {
-			// handshake was executed successfully
-			// to make sure that the handshake will be executed on other connections as well if it was successfully
-			// executed on this connection, we will force the handshake to be executed on all connections
-			c.optLock.Lock()
-			c.opt.MaintNotificationsConfig.Mode = maintnotifications.ModeEnabled
-			c.optLock.Unlock()
 		}
 	}
 
@@ -703,7 +853,9 @@ func (c *baseClient) process(ctx context.Context, cmd Cmder) error {
 		if cn != nil {
 			lastConn = cn
 		}
-		if err == nil || !retry {
+		// Don't retry if command explicitly disables retries (e.g., RawWriteToCmd
+		// which writes directly to an io.Writer and cannot undo partial writes)
+		if err == nil || !retry || cmd.NoRetry() {
 			// Record total operation duration
 			if opDurationCallback != nil {
 				operationDuration := time.Since(operationStart)
@@ -798,16 +950,9 @@ func classifyCommandError(err error) (errorType, statusCode string, isInternal b
 }
 
 func (c *baseClient) assertUnstableCommand(cmd Cmder) (bool, error) {
-	switch cmd.(type) {
-	case *AggregateCmd, *FTInfoCmd, *FTSpellCheckCmd, *FTSearchCmd, *FTSynDumpCmd:
-		if c.opt.UnstableResp3 {
-			return true, nil
-		} else {
-			return false, fmt.Errorf("RESP3 responses for this command are disabled because they may still change. Please set the flag UnstableResp3. See the README and the release notes for guidance")
-		}
-	default:
-		return false, nil
-	}
+	// All search commands (FTSearchCmd, AggregateCmd, FTInfoCmd, FTSpellCheckCmd, FTSynDumpCmd)
+	// now have stable RESP3 parsing. No commands require the UnstableResp3 flag anymore.
+	return false, nil
 }
 
 func (c *baseClient) _process(ctx context.Context, cmd Cmder, attempt int) (bool, *pool.Conn, error) {
@@ -930,7 +1075,9 @@ func (c *baseClient) disableMaintNotificationsUpgrades() error {
 	if c.maintNotificationsManager != nil {
 		// Closing the manager will also shutdown the pool hook
 		// and remove it from the pool
-		c.maintNotificationsManager.Close()
+		if err := c.maintNotificationsManager.Close(); err != nil {
+			return err
+		}
 		c.maintNotificationsManager = nil
 	}
 	return nil
@@ -948,10 +1095,8 @@ func (c *baseClient) Close() error {
 		firstErr = err
 	}
 
-	if c.onClose != nil {
-		if err := c.onClose(); err != nil && firstErr == nil {
-			firstErr = err
-		}
+	if err := c.onClose.run(); err != nil && firstErr == nil {
+		firstErr = err
 	}
 
 	// Unregister pools from OTel before closing them
@@ -1028,7 +1173,10 @@ func (c *baseClient) generalProcessPipeline(
 			canRetry, err = p(ctx, cn, cmds)
 			return err
 		})
-		if lastErr == nil || !canRetry || !shouldRetry(lastErr, true) {
+		// Don't retry if any command in the pipeline explicitly disables retries
+		// (e.g., RawWriteToCmd which writes directly to an io.Writer and cannot
+		// undo partial writes on retry)
+		if lastErr == nil || !canRetry || !shouldRetry(lastErr, true) || cmdsContainNoRetry(cmds) {
 			// The error should be set here only when failing to obtain the conn.
 			if !isRedisError(lastErr) {
 				setCmdsErr(cmds, lastErr)
@@ -1196,6 +1344,7 @@ type Client struct {
 }
 
 // NewClient returns a client to the Redis Server specified by Options.
+// Passing nil Options will cause a panic.
 func NewClient(opt *Options) *Client {
 	if opt == nil {
 		panic("redis: NewClient nil options")
@@ -1208,7 +1357,8 @@ func NewClient(opt *Options) *Client {
 
 	c := Client{
 		baseClient: &baseClient{
-			opt: opt,
+			opt:     opt,
+			onClose: &onCloseHooks{},
 		},
 	}
 	c.init()
@@ -1295,7 +1445,8 @@ func (c *Client) Process(ctx context.Context, cmd Cmder) error {
 	return err
 }
 
-// Options returns read-only Options that were used to create the client.
+// Options returns read-only *Options that were used to create the client.
+// Any alteration of the returned *Options may result in undefined behaviour.
 func (c *Client) Options() *Options {
 	return c.opt
 }
@@ -1490,6 +1641,7 @@ func newConn(opt *Options, connPool pool.Pooler, parentHooks *hooksMixin) *Conn 
 		baseClient: baseClient{
 			opt:      opt,
 			connPool: connPool,
+			onClose:  &onCloseHooks{},
 		},
 	}
 

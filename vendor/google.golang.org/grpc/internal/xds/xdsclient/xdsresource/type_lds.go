@@ -66,9 +66,12 @@ type HTTPFilter struct {
 	// yet supported).
 	Name string
 	// Filter is the HTTP filter found in the registry for the config type.
-	Filter httpfilter.Filter
+	Filter httpfilter.Builder
 	// Config contains the filter's configuration
 	Config httpfilter.FilterConfig
+	// Disabled specifies if the filter is disabled. For more information, see
+	// envoyproxy.io/docs/envoy/latest/intro/arch_overview/http/http_filters#route-based-filter-chain
+	Disabled bool
 }
 
 // InboundListenerConfig contains information about the inbound listener, i.e

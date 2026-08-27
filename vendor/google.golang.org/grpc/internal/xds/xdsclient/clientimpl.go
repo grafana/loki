@@ -75,6 +75,20 @@ var (
 		Labels:      []string{"grpc.target", "grpc.xds.server"},
 		Default:     false,
 	})
+	xdsClientConnectedMetric = estats.RegisterInt64AsyncGauge(estats.MetricDescriptor{
+		Name:        "grpc.xds_client.connected",
+		Description: "A metric that is 1 if the xDS Client has a working ADS stream to the server, 0 otherwise.",
+		Unit:        "{connected}",
+		Type:        estats.MetricTypeIntAsyncGauge,
+		Labels:      []string{"grpc.target", "grpc.xds.server"},
+	})
+	xdsClientResourcesMetric = estats.RegisterInt64AsyncGauge(estats.MetricDescriptor{
+		Name:        "grpc.xds_client.resources",
+		Description: "Counts of xDS resources.",
+		Unit:        "{resource}",
+		Type:        estats.MetricTypeIntAsyncGauge,
+		Labels:      []string{"grpc.target", "grpc.xds.authority", "grpc.xds.cache_state", "grpc.xds.resource_type"},
+	})
 )
 
 // clientImpl embed xdsclient.XDSClient and implement internal XDSClient
@@ -121,7 +135,7 @@ func (mr *metricsReporter) ReportMetric(metric any) {
 }
 
 func newClientImpl(config *bootstrap.Config, metricsRecorder estats.MetricsRecorder, target string, watchExpiryTimeout time.Duration) (*clientImpl, error) {
-	gConfig, err := buildXDSClientConfig(config, metricsRecorder, target, watchExpiryTimeout)
+	gConfig, err := BuildXDSClientConfig(config, metricsRecorder, target, watchExpiryTimeout)
 	if err != nil {
 		return nil, err
 	}
@@ -188,8 +202,10 @@ func buildServerConfigs(bootstrapSC []*bootstrap.ServerConfig, grpcTransportConf
 	return gServerCfg, nil
 }
 
-// buildXDSClientConfig builds the xdsclient.Config from the bootstrap.Config.
-func buildXDSClientConfig(config *bootstrap.Config, metricsRecorder estats.MetricsRecorder, target string, watchExpiryTimeout time.Duration) (xdsclient.Config, error) {
+// BuildXDSClientConfig builds the xdsclient.Config from the bootstrap.Config.
+//
+// This function is exported for fuzz testing purposes only.
+func BuildXDSClientConfig(config *bootstrap.Config, metricsRecorder estats.MetricsRecorder, target string, watchExpiryTimeout time.Duration) (xdsclient.Config, error) {
 	grpcTransportConfigs := make(map[string]grpctransport.Config)
 	gServerCfgMap := make(map[xdsclient.ServerConfig]*bootstrap.ServerConfig)
 
@@ -262,4 +278,51 @@ func populateGRPCTransportConfigsFromServerConfig(sc *bootstrap.ServerConfig, gr
 		}
 	}
 	return nil
+}
+
+// RegisterAsyncReporter adapts the generic clients.AsyncReporter to the
+// estats.AsyncMetricReporter interface and registers it.
+func (mr *metricsReporter) RegisterAsyncReporter(reporter clients.AsyncReporter) func() {
+	if mr.recorder == nil || reporter == nil {
+		return func() {}
+	}
+
+	// Define which metrics we intend to report for OTel registration.
+	descriptors := []estats.AsyncMetric{
+		xdsClientConnectedMetric,
+		xdsClientResourcesMetric,
+	}
+
+	// Create the callback wrapper.
+	// This function is invoked by the stats system during a scrape.
+	cbWrapper := func(rec estats.AsyncMetricsRecorder) error {
+		wrapper := &asyncMetricsRecorderAdapter{
+			target:   mr.target,
+			delegate: rec,
+		}
+		reporter.Report(wrapper)
+		return nil
+	}
+
+	// Register with the underlying gRPC stats recorder.
+	return mr.recorder.RegisterAsyncReporter(estats.AsyncMetricReporterFunc(cbWrapper), descriptors...)
+}
+
+// asyncMetricsRecorderAdapter adapts estats.AsyncMetricsRecorder to clients.AsyncMetricsRecorder.
+type asyncMetricsRecorderAdapter struct {
+	target   string
+	delegate estats.AsyncMetricsRecorder
+}
+
+func (a *asyncMetricsRecorderAdapter) ReportMetric(metric any) {
+	switch m := metric.(type) {
+	case *metrics.XDSClientConnected:
+		// Record: grpc.xds_client.connected
+		// Labels: grpc.target, grpc.xds.server
+		a.delegate.RecordInt64AsyncGauge(xdsClientConnectedMetric, m.Value, a.target, m.ServerURI)
+	case *metrics.XDSClientResourceStats:
+		// Record: grpc.xds_client.resources
+		// Labels: grpc.target, grpc.xds.authority, grpc.xds.cache_state, grpc.xds.resource_type
+		a.delegate.RecordInt64AsyncGauge(xdsClientResourcesMetric, m.Count, a.target, m.Authority, m.CacheState, m.ResourceType)
+	}
 }

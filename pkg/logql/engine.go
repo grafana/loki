@@ -5,7 +5,6 @@ import (
 	"errors"
 	"flag"
 	"fmt"
-	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -160,6 +159,10 @@ type EngineOpts struct {
 	// MaxCountMinSketchHeapSize is the maximum number of labels the heap for a topk query using a count min sketch
 	// can track. This impacts the memory usage and accuracy of a sharded probabilistic topk query.
 	MaxCountMinSketchHeapSize int `yaml:"max_count_min_sketch_heap_size"`
+}
+
+func (opts *EngineOpts) RegisterFlags(f *flag.FlagSet) {
+	opts.RegisterFlagsWithPrefix("", f)
 }
 
 func (opts *EngineOpts) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
@@ -318,23 +321,6 @@ func (q *query) Eval(ctx context.Context) (promql_parser.Value, error) {
 	}
 
 	switch e := q.params.GetExpression().(type) {
-	// A VariantsExpr is a specific type of SampleExpr, so make sure this case is evaulated first
-	case syntax.VariantsExpr:
-		tenants, _ := tenant.TenantIDs(ctx)
-		multiVariantEnabled := false
-		for _, t := range tenants {
-			if q.limits.EnableMultiVariantQueries(t) {
-				multiVariantEnabled = true
-				break
-			}
-		}
-
-		if !multiVariantEnabled {
-			return nil, logqlmodel.ErrVariantsDisabled
-		}
-
-		value, err := q.evalVariants(ctx, e)
-		return value, err
 	case syntax.SampleExpr:
 		value, err := q.evalSample(ctx, e)
 		return value, err
@@ -426,6 +412,8 @@ func (q *query) evalSample(ctx context.Context, expr syntax.SampleExpr) (promql_
 			return JoinCountMinSketchVector(next, vec, stepEvaluator, q.params)
 		case HeapCountMinSketchVector:
 			return JoinCountMinSketchVector(next, vec.CountMinSketchVector, stepEvaluator, q.params)
+		case CountDistinctSketchVector:
+			return JoinCountDistinctSketchVector(next, vec, stepEvaluator, q.params)
 		default:
 			return nil, fmt.Errorf("unsupported result type: %T", r)
 		}
@@ -469,62 +457,6 @@ func vectorsToSeriesWithLimit(vec promql.Vector, sm map[uint64]promql.Series, ma
 		sm[hash] = series
 	}
 	return limitExceeded
-}
-
-func multiVariantVectorsToSeries(ctx context.Context, maxSeries int, vec promql.Vector, sm map[string]map[uint64]promql.Series, skippedVariants map[string]struct{}) int {
-	count := 0
-	metadataCtx := metadata.FromContext(ctx)
-
-	for _, p := range vec {
-		var (
-			series promql.Series
-			hash   = labels.StableHash(p.Metric)
-			ok     bool
-		)
-
-		if !p.Metric.Has(constants.VariantLabel) {
-			continue
-		}
-
-		variantLabel := p.Metric.Get(constants.VariantLabel)
-
-		if _, ok = skippedVariants[variantLabel]; ok {
-			continue
-		}
-
-		if _, ok = sm[variantLabel]; !ok {
-			variant := make(map[uint64]promql.Series)
-			sm[variantLabel] = variant
-		}
-
-		if len(sm[variantLabel]) >= maxSeries {
-			skippedVariants[variantLabel] = struct{}{}
-			// This can cause count to be negative, as we may be removing series added in a previous iteration
-			// However, since we sum this value across all iterations, a negative will make sure the total series count is correct
-			count = count - len(sm[variantLabel])
-			delete(sm, variantLabel)
-			metadataCtx.AddWarning(fmt.Sprintf("maximum of series (%d) reached for variant (%s)", maxSeries, variantLabel))
-			continue
-		}
-
-		series, ok = sm[variantLabel][hash]
-		if !ok {
-			series = promql.Series{
-				Metric: p.Metric,
-				Floats: make([]promql.FPoint, 0, 1),
-			}
-			sm[variantLabel][hash] = series
-			count++
-		}
-
-		series.Floats = append(series.Floats, promql.FPoint{
-			T: p.T,
-			F: p.F,
-		})
-		sm[variantLabel][hash] = series
-	}
-
-	return count
 }
 
 func (q *query) JoinSampleVector(ctx context.Context, next bool, r StepResult, stepEvaluator StepEvaluator, maxSeries int, mergeFirstLast bool) (promql_parser.Value, error) {
@@ -574,20 +506,16 @@ func (q *query) JoinSampleVector(ctx context.Context, next bool, r StepResult, s
 	for next {
 		vec = r.SampleVector()
 
-		if httpreq.IsLogsDrilldownRequest(ctx) {
-			// For Logs Drilldown requests, use limited vectorsToSeries to prevent exceeding maxSeries
-			limitExceeded := vectorsToSeriesWithLimit(vec, seriesIndex, maxSeries)
-			// If the limit was exceeded (series were skipped), add warning and break
-			if limitExceeded {
-				metadata.FromContext(ctx).AddWarning(fmt.Sprintf("maximum number of series (%d) reached for a single query; returning partial results", maxSeries))
-				break // Break out of the loop to return partial results
-			}
-		} else {
-			// For non-drilldown requests, use unlimited vectorsToSeries and check for hard limit
-			vectorsToSeries(vec, seriesIndex)
-			if len(seriesIndex) > maxSeries {
+		// vectorsToSeriesWithLimit stops accumulating once maxSeries distinct series
+		// exist and reports whether the limit was hit, so seriesIndex never grows past
+		// maxSeries regardless of request type.
+		if vectorsToSeriesWithLimit(vec, seriesIndex, maxSeries) {
+			if !httpreq.IsLogsDrilldownRequest(ctx) {
 				return nil, logqlmodel.NewSeriesLimitError(maxSeries)
 			}
+			// Logs Drilldown returns partial results with a warning instead of failing.
+			metadata.FromContext(ctx).AddWarning(fmt.Sprintf("maximum number of series (%d) reached for a single query; returning partial results", maxSeries))
+			break
 		}
 
 		next, _, r = stepEvaluator.Next()
@@ -604,78 +532,6 @@ func (q *query) JoinSampleVector(ctx context.Context, next bool, r StepResult, s
 	sort.Sort(result)
 
 	return result, stepEvaluator.Error()
-}
-
-func (q *query) JoinMultiVariantSampleVector(ctx context.Context, next bool, r StepResult, stepEvaluator StepEvaluator, maxSeries int) (promql_parser.Value, error) {
-	vec := promql.Vector{}
-	if next {
-		vec = r.SampleVector()
-	}
-
-	seriesIndex := map[string]map[uint64]promql.Series{}
-	// Track variants that exceed the limit across all steps
-	// use a map for faster lookup
-	skippedVariants := map[string]struct{}{}
-
-	if GetRangeType(q.params) == InstantType {
-		multiVariantVectorsToSeries(ctx, maxSeries, vec, seriesIndex, skippedVariants)
-
-		// Filter the vector to remove skipped variants
-		filterVariantVector(&vec, skippedVariants)
-
-		// an instant query sharded first/last_over_time can return a single vector
-		sortByValue, err := Sortable(q.params)
-		if err != nil {
-			return nil, fmt.Errorf("fail to check Sortable, logql: %s ,err: %s", q.params.QueryString(), err)
-		}
-		if !sortByValue {
-			sort.Slice(vec, func(i, j int) bool { return labels.Compare(vec[i].Metric, vec[j].Metric) < 0 })
-		}
-		return vec, nil
-	}
-
-	seriesCount := 0
-	for next {
-		vec = r.SampleVector()
-		// Filter out any samples from variants we've already skipped
-		filterVariantVector(&vec, skippedVariants)
-		seriesCount += multiVariantVectorsToSeries(ctx, maxSeries, vec, seriesIndex, skippedVariants)
-
-		next, _, r = stepEvaluator.Next()
-		if stepEvaluator.Error() != nil {
-			return nil, stepEvaluator.Error()
-		}
-	}
-
-	series := make([]promql.Series, 0, seriesCount)
-	for _, ss := range seriesIndex {
-		for _, s := range ss {
-			series = append(series, s)
-		}
-	}
-	result := promql.Matrix(series)
-	sort.Sort(result)
-
-	return result, stepEvaluator.Error()
-}
-
-// filterVariantVector removes samples from the vector that belong to skipped variants
-func filterVariantVector(vec *promql.Vector, skipped map[string]struct{}) {
-	if len(skipped) == 0 {
-		return
-	}
-
-	// Filter the vector
-	for i := 0; i < len(*vec); i++ {
-		sample := (*vec)[i]
-		if sample.Metric.Has(constants.VariantLabel) {
-			variant := sample.Metric.Get(constants.VariantLabel)
-			if _, shouldSkip := skipped[variant]; shouldSkip {
-				*vec = slices.Delete(*vec, i, i+1)
-				i-- // Adjust the index since we removed an item
-			}
-		}
-	}
 }
 
 func (q *query) checkIntervalLimit(expr syntax.SampleExpr, limit time.Duration) error {
@@ -804,60 +660,4 @@ type groupedAggregation struct {
 	groupCount  int
 	heap        vectorByValueHeap
 	reverseHeap vectorByReverseValueHeap
-}
-
-func (q *query) evalVariants(
-	ctx context.Context,
-	expr syntax.VariantsExpr,
-) (promql_parser.Value, error) {
-	tenantIDs, err := tenant.TenantIDs(ctx)
-	if err != nil {
-		return nil, err
-	}
-
-	maxIntervalCapture := func(id string) time.Duration { return q.limits.MaxQueryRange(ctx, id) }
-	maxQueryInterval := validation.SmallestPositiveNonZeroDurationPerTenant(
-		tenantIDs,
-		maxIntervalCapture,
-	)
-	if maxQueryInterval != 0 {
-		for i, v := range expr.Variants() {
-			err = q.checkIntervalLimit(v, maxQueryInterval)
-			if err != nil {
-				return nil, err
-			}
-
-			vExpr, err := optimizeSampleExpr(v)
-			if err != nil {
-				return nil, err
-			}
-
-			if err = expr.SetVariant(i, vExpr); err != nil {
-				return nil, err
-			}
-		}
-	}
-
-	stepEvaluator, err := q.evaluator.NewVariantsStepEvaluator(ctx, expr, q.params)
-	if err != nil {
-		return nil, err
-	}
-	defer util.LogErrorWithContext(ctx, "closing VariantsExpr", stepEvaluator.Close)
-
-	next, _, r := stepEvaluator.Next()
-	if stepEvaluator.Error() != nil {
-		return nil, stepEvaluator.Error()
-	}
-
-	if next && r != nil {
-		switch vec := r.(type) {
-		case SampleVector:
-			maxSeriesCapture := func(id string) int { return q.limits.MaxQuerySeries(ctx, id) }
-			maxSeries := validation.SmallestPositiveIntPerTenant(tenantIDs, maxSeriesCapture)
-			return q.JoinMultiVariantSampleVector(ctx, next, vec, stepEvaluator, maxSeries)
-		default:
-			return nil, fmt.Errorf("unsupported result type: %T", r)
-		}
-	}
-	return nil, errors.New("unexpected empty result")
 }

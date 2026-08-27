@@ -145,19 +145,27 @@ type Spec struct {
 	enums       enumAnalysis
 	allSchemas  map[string]SchemaRef
 	allOfs      map[string]SchemaRef
+	mangler     mangling.NameMangler
 }
 
 // New takes a swagger spec object and returns an analyzed spec document.
 // The analyzed document contains a number of indices that make it easier to
 // reason about semantics of a swagger specification for use in code generation
 // or validation etc.
-func New(doc *spec.Swagger) *Spec {
+func New(doc *spec.Swagger, opts ...Option) *Spec {
+	o := &analyzerOptions{}
+	for _, opt := range opts {
+		opt(o)
+	}
+
 	a := &Spec{
 		spec:       doc,
 		references: referenceAnalysis{},
 		patterns:   patternAnalysis{},
 		enums:      enumAnalysis{},
+		mangler:    mangling.NewNameMangler(o.manglerOpts...),
 	}
+
 	a.reset()
 	a.initialize()
 
@@ -286,20 +294,6 @@ func (s *Spec) ProducesFor(operation *spec.Operation) []string {
 	}
 
 	return s.structMapKeys(prod)
-}
-
-func mapKeyFromParam(param *spec.Parameter) string {
-	return fmt.Sprintf("%s#%s", param.In, fieldNameFromParam(param))
-}
-
-func fieldNameFromParam(param *spec.Parameter) string {
-	// TODO: this should be x-go-name
-	if nm, ok := param.Extensions.GetString("go-name"); ok {
-		return nm
-	}
-	mangler := mangling.NewNameMangler()
-
-	return mangler.ToGoName(param.Name)
 }
 
 // ErrorOnParamFunc is a callback function to be invoked
@@ -591,6 +585,20 @@ func (s *Spec) AllRefs() (result []spec.Ref) {
 	return
 }
 
+// AllRefsByLocation returns all the references found in the document, keyed by
+// where each one is declared.
+//
+// Keys are local JSON references into the analyzed document, with tokens
+// escaped as per RFC 6901, e.g. "#/paths/~1pets/get/responses/200/schema".
+//
+// Unlike [Spec.AllRefs], the result is not deduplicated: the same reference
+// declared in several places appears under each of its locations.
+//
+// The map is cloned to avoid accidental changes.
+func (s *Spec) AllRefsByLocation() map[string]spec.Ref {
+	return cloneRefMap(s.references.allRefs)
+}
+
 // ParameterPatterns returns all the patterns found in parameters
 // the map is cloned to avoid accidental changes.
 func (s *Spec) ParameterPatterns() map[string]string {
@@ -651,6 +659,19 @@ func (s *Spec) AllEnums() map[string][]any {
 	return cloneEnumMap(s.enums.allEnums)
 }
 
+func (s *Spec) mapKeyFromParam(param *spec.Parameter) string {
+	return fmt.Sprintf("%s#%s", param.In, s.fieldNameFromParam(param))
+}
+
+func (s *Spec) fieldNameFromParam(param *spec.Parameter) string {
+	// TODO: this should be x-go-name
+	if nm, ok := param.Extensions.GetString("go-name"); ok {
+		return nm
+	}
+
+	return s.mangler.ToGoName(param.Name)
+}
+
 func (s *Spec) structMapKeys(mp map[string]struct{}) []string {
 	if len(mp) == 0 {
 		return nil
@@ -668,7 +689,7 @@ func (s *Spec) paramsAsMap(parameters []spec.Parameter, res map[string]spec.Para
 	for _, param := range parameters {
 		pr := param
 		if pr.Ref.String() == "" {
-			res[mapKeyFromParam(&pr)] = pr
+			res[s.mapKeyFromParam(&pr)] = pr
 
 			continue
 		}
@@ -699,7 +720,7 @@ func (s *Spec) paramsAsMap(parameters []spec.Parameter, res map[string]spec.Para
 		}
 
 		pr = objAsParam
-		res[mapKeyFromParam(&pr)] = pr
+		res[s.mapKeyFromParam(&pr)] = pr
 	}
 }
 
@@ -1041,6 +1062,13 @@ func (s *Spec) analyzeSchema(name string, schema *spec.Schema, prefix string) {
 
 func cloneStringMap(source map[string]string) map[string]string {
 	res := make(map[string]string, len(source))
+	maps.Copy(res, source)
+
+	return res
+}
+
+func cloneRefMap(source map[string]spec.Ref) map[string]spec.Ref {
+	res := make(map[string]spec.Ref, len(source))
 	maps.Copy(res, source)
 
 	return res

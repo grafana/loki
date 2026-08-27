@@ -1,5 +1,19 @@
 # Changes
 
+## 2.3.0 - 2026-08-08
+
+- Updated `github.com/oschwald/maxminddb-golang/v2` to `v2.5.0` and switched
+  all exported database model structs to generated decoders. This substantially
+  reduces City and Enterprise lookup latency and allocations while preserving
+  the existing lookup APIs and decoded results.
+
+## 2.2.0 - 2026-05-17
+
+- This module now targets Go 1.25+.
+- Updated dependencies to latest version. In particular
+  `github.com/oschwald/maxminddb-golang/v2` was updated to `v2.3.0`, which
+  includes several performance improvements.
+
 ## 2.1.0 - 2025-12-22
 
 - Added support for the GeoIP Anonymous Plus database. This database provides

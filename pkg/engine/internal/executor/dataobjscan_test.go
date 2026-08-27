@@ -266,9 +266,9 @@ func Test_dataobjScan_DuplicateColumns(t *testing.T) {
 			semconv.FieldFromFQN("utf8.builtin.message", true),
 		}
 
-		expectCSV := `prod,namespace-2,NULL,loki,NULL,NULL,1970-01-01 00:00:03,message 3
+		expectCSV := `prod,NULL,pod-1,loki,NULL,override,1970-01-01 00:00:01,message 1
 prod,NULL,NULL,loki,namespace-1,NULL,1970-01-01 00:00:02,message 2
-prod,NULL,pod-1,loki,NULL,override,1970-01-01 00:00:01,message 1`
+prod,namespace-2,NULL,loki,NULL,NULL,1970-01-01 00:00:03,message 3`
 
 		expectRecord, err := CSVToArrow(expectFields, expectCSV)
 		require.NoError(t, err)
@@ -292,9 +292,9 @@ prod,NULL,pod-1,loki,NULL,override,1970-01-01 00:00:01,message 1`
 			semconv.FieldFromFQN("utf8.metadata.pod", true),
 		}
 
-		expectCSV := `NULL,NULL
+		expectCSV := `pod-1,override
 NULL,NULL
-pod-1,override`
+NULL,NULL`
 
 		expectRecord, err := CSVToArrow(expectFields, expectCSV)
 		require.NoError(t, err)
@@ -318,9 +318,9 @@ pod-1,override`
 			semconv.FieldFromFQN("utf8.metadata.namespace", true),
 		}
 
-		expectCSV := `namespace-2,NULL
+		expectCSV := `NULL,NULL
 NULL,namespace-1
-NULL,NULL`
+namespace-2,NULL`
 
 		expectRecord, err := CSVToArrow(expectFields, expectCSV)
 		require.NoError(t, err)
@@ -340,12 +340,11 @@ func buildDataobj(t testing.TB, streams []logproto.Stream) *dataobj.Object {
 			BufferSize:              8_000,
 			SectionStripeMergeLimit: 2,
 		},
-		DataobjSortOrder: "timestamp-desc",
-	}, nil)
+	}, nil, logsobj.NewBuilderMetrics(), log.NewNopLogger(), nil)
 	require.NoError(t, err)
 
 	for _, stream := range streams {
-		require.NoError(t, builder.Append("tenant", stream))
+		require.NoError(t, builder.Append("tenant", stream, time.Now()))
 	}
 
 	obj, closer, err := builder.Flush()

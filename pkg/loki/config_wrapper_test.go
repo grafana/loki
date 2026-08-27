@@ -93,6 +93,7 @@ server:
 			config, defaults := testContext(emptyConfigString, nil)
 
 			assert.EqualValues(t, defaults.Ruler.RulePath, config.Ruler.RulePath)
+			assert.EqualValues(t, defaults.Ruler.WAL.Dir, config.Ruler.WAL.Dir)
 			assert.EqualValues(t, defaults.Ingester.WAL.Dir, config.Ingester.WAL.Dir)
 		})
 
@@ -103,6 +104,7 @@ common:
 			config, _ := testContext(configFileString, nil)
 
 			assert.EqualValues(t, "/opt/loki/rules-temp", config.Ruler.RulePath)
+			assert.EqualValues(t, "/opt/loki/ruler-wal", config.Ruler.WAL.Dir)
 			assert.EqualValues(t, "/opt/loki/wal", config.Ingester.WAL.Dir)
 			assert.EqualValues(t, "/opt/loki/compactor", config.CompactorConfig.WorkingDirectory)
 			assert.EqualValues(t, flagext.StringSliceCSV{"/opt/loki/blooms"}, config.StorageConfig.BloomShipperConfig.WorkingDirectory)
@@ -115,6 +117,7 @@ common:
 			config, _ := testContext(configFileString, nil)
 
 			assert.EqualValues(t, "/opt/loki/rules-temp", config.Ruler.RulePath)
+			assert.EqualValues(t, "/opt/loki/ruler-wal", config.Ruler.WAL.Dir)
 			assert.EqualValues(t, "/opt/loki/wal", config.Ingester.WAL.Dir)
 			assert.EqualValues(t, "/opt/loki/compactor", config.CompactorConfig.WorkingDirectory)
 			assert.EqualValues(t, flagext.StringSliceCSV{"/opt/loki/blooms"}, config.StorageConfig.BloomShipperConfig.WorkingDirectory)
@@ -125,10 +128,13 @@ common:
 common:
   path_prefix: /opt/loki
 ruler:
-  rule_path: /etc/ruler/rules`
+  rule_path: /etc/ruler/rules
+  wal:
+    dir: /etc/ruler/wal`
 			config, _ := testContext(configFileString, nil)
 
 			assert.EqualValues(t, "/etc/ruler/rules", config.Ruler.RulePath)
+			assert.EqualValues(t, "/etc/ruler/wal", config.Ruler.WAL.Dir)
 			assert.EqualValues(t, "/opt/loki/wal", config.Ingester.WAL.Dir)
 		})
 
@@ -136,9 +142,10 @@ ruler:
 			configFileString := `---
 common:
   path_prefix: /opt/loki`
-			config, _ := testContext(configFileString, []string{"-ruler.rule-path", "/etc/ruler/rules"})
+			config, _ := testContext(configFileString, []string{"-ruler.rule-path", "/etc/ruler/rules", "-ruler.wal.dir", "/etc/ruler/wal"})
 
 			assert.EqualValues(t, "/etc/ruler/rules", config.Ruler.RulePath)
+			assert.EqualValues(t, "/etc/ruler/wal", config.Ruler.WAL.Dir)
 			assert.EqualValues(t, "/opt/loki/wal", config.Ingester.WAL.Dir)
 		})
 	})
@@ -1165,87 +1172,6 @@ chunk_store_config:
 		})
 	})
 
-	t.Run("for the write dedupe cache config", func(t *testing.T) {
-		t.Run("no embedded cache enabled by default if Redis is set", func(t *testing.T) {
-			configFileString := `---
-chunk_store_config:
-  write_dedupe_cache_config:
-    redis:
-      endpoint: endpoint.redis.org`
-
-			config, _, _ := configWrapperFromYAML(t, configFileString, nil)
-			assert.EqualValues(t, "endpoint.redis.org", config.ChunkStoreConfig.WriteDedupeCacheConfig.Redis.Endpoint)
-			assert.False(t, config.ChunkStoreConfig.WriteDedupeCacheConfig.EmbeddedCache.Enabled)
-		})
-
-		t.Run("no embedded cache enabled by default if Memcache is set", func(t *testing.T) {
-			configFileString := `---
-chunk_store_config:
-  write_dedupe_cache_config:
-    memcached_client:
-      host: host.memcached.org`
-
-			config, _, _ := configWrapperFromYAML(t, configFileString, nil)
-			assert.EqualValues(t, "host.memcached.org", config.ChunkStoreConfig.WriteDedupeCacheConfig.MemcacheClient.Host)
-			assert.False(t, config.ChunkStoreConfig.WriteDedupeCacheConfig.EmbeddedCache.Enabled)
-		})
-
-		t.Run("no embedded cache is enabled by default even if no other cache is set", func(t *testing.T) {
-			config, _, _ := configWrapperFromYAML(t, minimalConfig, nil)
-			assert.False(t, config.ChunkStoreConfig.WriteDedupeCacheConfig.EmbeddedCache.Enabled)
-		})
-	})
-
-	t.Run("for the index queries cache config", func(t *testing.T) {
-		t.Run("no embedded cache enabled by default if Redis is set", func(t *testing.T) {
-			configFileString := `---
-schema_config:
-  configs:
-    - from: 2020-10-24
-      store: boltdb-shipper
-      object_store: filesystem
-      schema: v12
-      index:
-        prefix: index_
-        period: 24h
-storage_config:
-  index_queries_cache_config:
-    redis:
-      endpoint: endpoint.redis.org`
-
-			config, _, _ := configWrapperFromYAML(t, configFileString, nil)
-			assert.EqualValues(t, "endpoint.redis.org", config.StorageConfig.IndexQueriesCacheConfig.Redis.Endpoint)
-			assert.False(t, config.StorageConfig.IndexQueriesCacheConfig.EmbeddedCache.Enabled)
-		})
-
-		t.Run("no embedded cache enabled by default if Memcache is set", func(t *testing.T) {
-			configFileString := `---
-schema_config:
-  configs:
-    - from: 2020-10-24
-      store: boltdb-shipper
-      object_store: filesystem
-      schema: v12
-      index:
-        prefix: index_
-        period: 24h
-storage_config:
-  index_queries_cache_config:
-    memcached_client:
-      host: host.memcached.org`
-
-			config, _, _ := configWrapperFromYAML(t, configFileString, nil)
-
-			assert.EqualValues(t, "host.memcached.org", config.StorageConfig.IndexQueriesCacheConfig.MemcacheClient.Host)
-			assert.False(t, config.StorageConfig.IndexQueriesCacheConfig.EmbeddedCache.Enabled)
-		})
-
-		t.Run("no embedded cache is enabled by default even if no other cache is set", func(t *testing.T) {
-			config, _, _ := configWrapperFromYAML(t, minimalConfig, nil)
-			assert.False(t, config.StorageConfig.IndexQueriesCacheConfig.EmbeddedCache.Enabled)
-		})
-	})
-
 	t.Run("for the query range results cache config", func(t *testing.T) {
 		t.Run("no embedded cache enabled by default if Redis is set", func(t *testing.T) {
 			configFileString := `---
@@ -2020,16 +1946,6 @@ schema_config:
       index:
         prefix: index_
         period: 24h
-storage_config:
-  index_cache_validity: 10m
-  index_queries_cache_config:
-    memcached:
-      batch_size: 256
-      parallelism: 10
-    memcached_client:
-      consistent_hash: true
-      host: memcached-index-queries.loki.svc.cluster.local
-      service: memcached-client
 `
 		config, _, err := configWrapperFromYAML(t, yamlContent, nil)
 		assert.NoError(t, err)

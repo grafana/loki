@@ -5,10 +5,15 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
+	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
 	"github.com/twmb/franz-go/pkg/kgo"
+
+	"github.com/grafana/loki/v3/pkg/distributor/shardstreams"
+	"github.com/grafana/loki/v3/pkg/util/flagext"
 )
 
 func Test_PolicyStreamMapping_PolicyFor(t *testing.T) {
@@ -644,4 +649,77 @@ func TestKafkaIngestionPolicyRoundtrip(t *testing.T) {
 		extractedPolicy := ExtractIngestionPolicyContext(consumerCtx)
 		require.Equal(t, "test-policy", extractedPolicy)
 	})
+}
+
+func TestPerPolicyConfigOverride_ApplyTo(t *testing.T) {
+	base := shardstreams.Config{
+		Enabled:                  true,
+		DesiredRate:              flagext.ByteSize(1536 * 1024),
+		TimeShardingEnabled:      false,
+		TimeShardingIgnoreRecent: 40 * time.Minute,
+		LoggingEnabled:           false,
+	}
+
+	// withBase returns a copy of base with fn applied, for readable per-field expectations.
+	withBase := func(fn func(c *shardstreams.Config)) shardstreams.Config {
+		c := base
+		fn(&c)
+		return c
+	}
+
+	for _, tc := range []struct {
+		name     string
+		override *PerPolicyConfigOverride
+		expected shardstreams.Config
+	}{
+		{
+			name:     "nil override inherits base",
+			override: nil,
+			expected: base,
+		},
+		{
+			name:     "empty override inherits base",
+			override: &PerPolicyConfigOverride{},
+			expected: base,
+		},
+		{
+			name:     "only time sharding overridden, rest inherited",
+			override: &PerPolicyConfigOverride{TimeShardingEnabled: ptr(true)},
+			expected: withBase(func(c *shardstreams.Config) { c.TimeShardingEnabled = true }),
+		},
+		{
+			name:     "only desired rate overridden, rest inherited",
+			override: &PerPolicyConfigOverride{DesiredRate: ptr(flagext.ByteSize(512 * 1024))},
+			expected: withBase(func(c *shardstreams.Config) { c.DesiredRate = flagext.ByteSize(512 * 1024) }),
+		},
+		{
+			name: "all fields overridden",
+			override: &PerPolicyConfigOverride{
+				Enabled:                  ptr(false),
+				DesiredRate:              ptr(flagext.ByteSize(512 * 1024)),
+				TimeShardingEnabled:      ptr(true),
+				TimeShardingIgnoreRecent: ptr(model.Duration(10 * time.Minute)),
+				LoggingEnabled:           ptr(true),
+			},
+			expected: shardstreams.Config{
+				Enabled:                  false,
+				DesiredRate:              flagext.ByteSize(512 * 1024),
+				TimeShardingEnabled:      true,
+				TimeShardingIgnoreRecent: 10 * time.Minute,
+				LoggingEnabled:           true,
+			},
+		},
+		{
+			name:     "zero-value fields replace, not inherit",
+			override: &PerPolicyConfigOverride{Enabled: ptr(false), DesiredRate: ptr(flagext.ByteSize(0))},
+			expected: withBase(func(c *shardstreams.Config) {
+				c.Enabled = false
+				c.DesiredRate = 0
+			}),
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			require.Equal(t, tc.expected, tc.override.ApplyTo(base))
+		})
+	}
 }

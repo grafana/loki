@@ -328,6 +328,31 @@ func (dm *DeleteRequestHandler) GetCacheGenerationNumberHandler(w http.ResponseW
 	}
 }
 
+// UpdateCacheGenerationNumberHandler bumps a user's cache generation number so that
+// any query result caches for the user get invalidated. This is used, for example, to
+// resolve query result inconsistencies after replaying historical data for a tenant.
+func (dm *DeleteRequestHandler) UpdateCacheGenerationNumberHandler(w http.ResponseWriter, r *http.Request) {
+	if dm == nil {
+		http.Error(w, "Retention is not enabled", http.StatusBadRequest)
+		return
+	}
+	ctx := r.Context()
+	userID, err := tenant.TenantID(ctx)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	if err := dm.deleteRequestsStore.UpdateCacheGenerationNumber(ctx, userID); err != nil {
+		level.Error(util_log.Logger).Log("msg", "error updating cache generation number", "user", userID, "err", err)
+		http.Error(w, fmt.Sprintf("error updating cache generation number %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	level.Info(util_log.Logger).Log("msg", "cache generation number updated for user", "user", userID)
+	w.WriteHeader(http.StatusNoContent)
+}
+
 func query(params url.Values) (string, syntax.LogSelectorExpr, error) {
 	query := params.Get("query")
 	if len(query) == 0 {

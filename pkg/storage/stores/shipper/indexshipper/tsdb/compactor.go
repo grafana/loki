@@ -37,7 +37,7 @@ func (i indexProcessor) NewTableCompactor(ctx context.Context, commonIndexSet co
 }
 
 func (i indexProcessor) OpenCompactedIndexFile(ctx context.Context, path, tableName, userID, workingDir string, periodConfig config.PeriodConfig, logger log.Logger) (compactor.CompactedIndex, error) {
-	indexFile, err := OpenShippableTSDB(path)
+	indexFile, err := OpenShippableTSDB(path, tsdbindex.MmapOptions{})
 	if err != nil {
 		return nil, err
 	}
@@ -107,7 +107,7 @@ func (t *tableCompactor) CompactTable() error {
 		}
 
 		downloadPaths[job] = downloadedAt
-		idx, err := OpenShippableTSDB(downloadedAt)
+		idx, err := OpenShippableTSDB(downloadedAt, tsdbindex.MmapOptions{})
 		if err != nil {
 			return err
 		}
@@ -231,7 +231,7 @@ func processSourceIndex(ctx context.Context, sourceIndex storage.IndexFile, sour
 		}
 	}()
 
-	indexFile, err := OpenShippableTSDB(path)
+	indexFile, err := OpenShippableTSDB(path, tsdbindex.MmapOptions{})
 	if err != nil {
 		return err
 	}
@@ -333,9 +333,10 @@ func (c *compactedIndex) ForEachSeries(ctx context.Context, callback retention.S
 			logprotoChunkRef.Checksum = chk.Checksum
 
 			series.AppendChunks(retention.Chunk{
-				ChunkID: schemaCfg.ExternalKey(logprotoChunkRef),
-				From:    logprotoChunkRef.From,
-				Through: logprotoChunkRef.Through,
+				ChunkID:    schemaCfg.ExternalKey(logprotoChunkRef),
+				From:       logprotoChunkRef.From,
+				Through:    logprotoChunkRef.Through,
+				IngestedAt: model.Time(chk.IngestedAt),
 			})
 		}
 		if ctx.Err() != nil {
@@ -353,7 +354,7 @@ func (c *compactedIndex) ForEachSeries(ctx context.Context, callback retention.S
 
 // IndexChunk adds the chunk to the list of chunks to index.
 // Before accepting the chunk it checks if it falls within the tableInterval and rejects it if not.
-func (c *compactedIndex) IndexChunk(chunkRef logproto.ChunkRef, lbls labels.Labels, sizeInKB uint32, logEntriesCount uint32) (bool, error) {
+func (c *compactedIndex) IndexChunk(chunkRef logproto.ChunkRef, lbls labels.Labels, ingestedAt model.Time, sizeInKB uint32, logEntriesCount uint32) (bool, error) {
 	if chunkRef.From > c.tableInterval.End || c.tableInterval.Start > chunkRef.Through {
 		return false, nil
 	}
@@ -364,11 +365,12 @@ func (c *compactedIndex) IndexChunk(chunkRef logproto.ChunkRef, lbls labels.Labe
 	ls := b.Labels().String()
 
 	c.indexChunks[ls] = append(c.indexChunks[ls], tsdbindex.ChunkMeta{
-		Checksum: chunkRef.Checksum,
-		MinTime:  int64(chunkRef.From),
-		MaxTime:  int64(chunkRef.Through),
-		KB:       sizeInKB,
-		Entries:  logEntriesCount,
+		Checksum:   chunkRef.Checksum,
+		MinTime:    int64(chunkRef.From),
+		MaxTime:    int64(chunkRef.Through),
+		IngestedAt: int64(ingestedAt),
+		KB:         sizeInKB,
+		Entries:    logEntriesCount,
 	})
 
 	return true, nil
@@ -478,7 +480,7 @@ func (c *compactedIndex) ToIndexFile() (shipperindex.Index, error) {
 		return nil, err
 	}
 
-	return NewShippableTSDBFile(id)
+	return NewShippableTSDBFile(id, tsdbindex.MmapOptions{})
 }
 
 func getUnsafeBytes(s string) []byte {

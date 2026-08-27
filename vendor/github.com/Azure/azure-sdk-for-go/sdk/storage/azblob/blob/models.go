@@ -1,6 +1,3 @@
-//go:build go1.18
-// +build go1.18
-
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License. See License.txt in the project root for license information.
 
@@ -23,6 +20,28 @@ func NewSharedKeyCredential(accountName, accountKey string) (*SharedKeyCredentia
 	return exported.NewSharedKeyCredential(accountName, accountKey)
 }
 
+// ExpectContinueMode is the mode for applying the HTTP "Expect: 100-continue" header to
+// operations that include a request body.
+type ExpectContinueMode = exported.ExpectContinueMode
+
+const (
+	// ExpectContinueModeApplyOnThrottle indicates that Expect-Continue will not be applied
+	// until specific errors are encountered from the service, at which point it will be
+	// applied for a fixed window of time after the last triggering error. This is the default.
+	ExpectContinueModeApplyOnThrottle = exported.ExpectContinueModeApplyOnThrottle
+
+	// ExpectContinueModeOn indicates Expect-Continue will be applied regardless of recent
+	// error status. The ContentLengthThreshold option still applies.
+	ExpectContinueModeOn = exported.ExpectContinueModeOn
+
+	// ExpectContinueModeOff indicates Expect-Continue will never be applied.
+	ExpectContinueModeOff = exported.ExpectContinueModeOff
+)
+
+// ExpectContinueOptions configures the behavior for applying the HTTP "Expect: 100-continue"
+// header to operations that include a request body.
+type ExpectContinueOptions = exported.ExpectContinueOptions
+
 // Type Declarations ---------------------------------------------------------------------
 
 // AccessConditions identifies blob-specific access conditions which you optionally set.
@@ -34,11 +53,18 @@ type LeaseAccessConditions = exported.LeaseAccessConditions
 // ModifiedAccessConditions contains a group of parameters for specifying access conditions.
 type ModifiedAccessConditions = exported.ModifiedAccessConditions
 
+// BlobModifiedAccessConditions contains a group of parameters for specifying blob access conditions.
+type BlobModifiedAccessConditions = exported.BlobModifiedAccessConditions
+
 // CPKInfo contains a group of parameters for client provided encryption key.
 type CPKInfo = generated.CPKInfo
 
 // CPKScopeInfo contains a group of parameters for client provided encryption scope.
 type CPKScopeInfo = generated.CPKScopeInfo
+
+// SourceCPKInfo contains a group of parameters for the AppendBlobClient.AppendBlockFromURL,
+// BlockBlobClient.UploadBlobFromURL, BlockBlobClient.StageBlockFromURL and PageBlobClient.UploadPagesFromURL methods.
+type SourceCPKInfo = generated.SourceCPKInfo
 
 // HTTPHeaders contains a group of parameters for the BlobClient.SetHTTPHeaders method.
 type HTTPHeaders = generated.BlobHTTPHeaders
@@ -188,6 +214,17 @@ type DownloadFileOptions struct {
 
 // ---------------------------------------------------------------------------------------------------------------------
 
+// AccessTierConditions specifies conditions based on when the blob's access tier was last changed.
+// These conditions allow operations to be performed only if the access tier has or has not been
+// modified relative to the specified date/time.
+type AccessTierConditions struct {
+	// Specify this header value to operate only on a blob if the access-tier has been modified since the specified date/time.
+	IfModifiedSince *time.Time
+
+	// Specify this header value to operate only on a blob if the access-tier has not been modified since the specified date/time.
+	IfUnmodifiedSince *time.Time
+}
+
 // DeleteOptions contains the optional parameters for the Client.Delete method.
 type DeleteOptions struct {
 	// Required if the blob has associated snapshots. Specify one of the following two options: include: Delete the base blob
@@ -199,6 +236,11 @@ type DeleteOptions struct {
 	// with caution.
 	// For more information, see https://docs.microsoft.com/rest/api/storageservices/delete-blob
 	BlobDeleteType *DeleteType
+
+	// AccessTierConditions specifies optional conditions based on when the blob's access tier was last changed.
+	// These conditions allow operations to be performed only if the access tier has or has not been
+	// modified relative to the specified date/time.
+	AccessTierConditions *AccessTierConditions
 }
 
 func (o *DeleteOptions) format() (*generated.BlobClientDeleteOptions, *generated.LeaseAccessConditions, *generated.ModifiedAccessConditions) {
@@ -209,6 +251,11 @@ func (o *DeleteOptions) format() (*generated.BlobClientDeleteOptions, *generated
 	basics := generated.BlobClientDeleteOptions{
 		DeleteSnapshots: o.DeleteSnapshots,
 		DeleteType:      o.BlobDeleteType, // None by default
+	}
+
+	if o.AccessTierConditions != nil {
+		basics.AccessTierIfModifiedSince = o.AccessTierConditions.IfModifiedSince
+		basics.AccessTierIfUnmodifiedSince = o.AccessTierConditions.IfUnmodifiedSince
 	}
 
 	if o.AccessConditions == nil {
@@ -402,11 +449,13 @@ type SetTagsOptions struct {
 	TransactionalContentMD5 []byte
 
 	AccessConditions *AccessConditions
+
+	BlobModifiedAccessConditions *BlobModifiedAccessConditions
 }
 
-func (o *SetTagsOptions) format() (*generated.BlobClientSetTagsOptions, *ModifiedAccessConditions, *generated.LeaseAccessConditions) {
+func (o *SetTagsOptions) format() (*generated.BlobClientSetTagsOptions, *ModifiedAccessConditions, *generated.LeaseAccessConditions, *generated.BlobModifiedAccessConditions) {
 	if o == nil {
-		return nil, nil, nil
+		return nil, nil, nil, nil
 	}
 
 	options := &generated.BlobClientSetTagsOptions{
@@ -416,7 +465,8 @@ func (o *SetTagsOptions) format() (*generated.BlobClientSetTagsOptions, *Modifie
 	}
 
 	leaseAccessConditions, modifiedAccessConditions := exported.FormatBlobAccessConditions(o.AccessConditions)
-	return options, modifiedAccessConditions, leaseAccessConditions
+	blobModifiedAccessConditions := exported.FormatBlobModifiedAccessConditions(o.BlobModifiedAccessConditions)
+	return options, modifiedAccessConditions, leaseAccessConditions, blobModifiedAccessConditions
 }
 
 // ---------------------------------------------------------------------------------------------------------------------
@@ -430,11 +480,13 @@ type GetTagsOptions struct {
 	VersionID *string
 
 	BlobAccessConditions *AccessConditions
+
+	BlobModifiedAccessConditions *BlobModifiedAccessConditions
 }
 
-func (o *GetTagsOptions) format() (*generated.BlobClientGetTagsOptions, *generated.ModifiedAccessConditions, *generated.LeaseAccessConditions) {
+func (o *GetTagsOptions) format() (*generated.BlobClientGetTagsOptions, *generated.ModifiedAccessConditions, *generated.LeaseAccessConditions, *generated.BlobModifiedAccessConditions) {
 	if o == nil {
-		return nil, nil, nil
+		return nil, nil, nil, nil
 	}
 
 	options := &generated.BlobClientGetTagsOptions{
@@ -443,7 +495,8 @@ func (o *GetTagsOptions) format() (*generated.BlobClientGetTagsOptions, *generat
 	}
 
 	leaseAccessConditions, modifiedAccessConditions := exported.FormatBlobAccessConditions(o.BlobAccessConditions)
-	return options, modifiedAccessConditions, leaseAccessConditions
+	blobModifiedAccessConditions := exported.FormatBlobModifiedAccessConditions(o.BlobModifiedAccessConditions)
+	return options, modifiedAccessConditions, leaseAccessConditions, blobModifiedAccessConditions
 }
 
 // ---------------------------------------------------------------------------------------------------------------------
@@ -523,6 +576,8 @@ type CopyFromURLOptions struct {
 	BlobTags map[string]string
 	// Only Bearer type is supported. Credentials should be a valid OAuth access token to copy source.
 	CopySourceAuthorization *string
+	// File request Intent. Valid value is backup.
+	FileRequestIntent *FileRequestIntentType
 	// Specifies the date time when the blobs immutability policy is set to expire.
 	ImmutabilityPolicyExpiry *time.Time
 	// Specifies the immutability policy mode to set on the blob.
@@ -558,6 +613,7 @@ func (o *CopyFromURLOptions) format() (*generated.BlobClientCopyFromURLOptions, 
 		CopySourceAuthorization:  o.CopySourceAuthorization,
 		ImmutabilityPolicyExpiry: o.ImmutabilityPolicyExpiry,
 		ImmutabilityPolicyMode:   o.ImmutabilityPolicyMode,
+		FileRequestIntent:        o.FileRequestIntent,
 		LegalHold:                o.LegalHold,
 		Metadata:                 o.Metadata,
 		SourceContentMD5:         o.SourceContentMD5,

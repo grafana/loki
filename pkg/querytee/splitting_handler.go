@@ -338,7 +338,7 @@ func (f *SplittingHandler) serveSplits(ctx context.Context, req queryrangebase.R
 		}
 
 		switch op.Plan.AST.(type) {
-		case syntax.VariantsExpr, syntax.SampleExpr:
+		case syntax.SampleExpr:
 			level.Info(f.logger).Log("msg", "serving metric split", "query", req.GetQuery())
 			resp, err := f.metricsQueryHandler.Do(ctx, req)
 			if resp != nil && f.addRoutingDecisionsToWarnings {

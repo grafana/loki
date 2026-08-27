@@ -389,20 +389,6 @@ func Test_QueryResponseMarshalLoop(t *testing.T) {
 	}
 }
 
-func Test_LabelResponseMarshalLoop(t *testing.T) {
-	for i, labelTest := range labelTests {
-		var r loghttp.LabelResponse
-
-		err := json.Unmarshal([]byte(labelTest.expected), &r)
-		require.NoError(t, err)
-
-		jsonOut, err := json.Marshal(r)
-		require.NoError(t, err)
-
-		testJSONBytesEqual(t, []byte(labelTest.expected), jsonOut, "Label Marshal Loop %d failed", i)
-	}
-}
-
 func Test_TailResponseMarshalLoop(t *testing.T) {
 	for i, tailTest := range tailTests {
 		var r loghttp.TailResponse

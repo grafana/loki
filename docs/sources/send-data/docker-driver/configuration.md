@@ -24,14 +24,14 @@ the logging driver supports can be set using the `--log-opt <NAME>=<VALUE>` flag
 `--log-opt` can be passed multiple times for each option to be set.
 
 The following command will start Grafana in a container and send logs to Grafana
-Cloud, using a batch size of 400 entries and no more than 5 retries if a send
+Cloud, using a batch size of 400000 bytes and no more than 5 retries if a send
 fails.
 
 ```bash
 docker run --log-driver=loki \
     --log-opt loki-url="https://<user_id>:<password>@logs-us-west1.grafana.net/loki/api/v1/push" \
     --log-opt loki-retries=5 \
-    --log-opt loki-batch-size=400 \
+    --log-opt loki-batch-size=400000 \
     grafana/grafana
 ```
 
@@ -65,7 +65,7 @@ Options for the logging driver can also be configured with `log-opts` in the
   "log-driver": "loki",
   "log-opts": {
     "loki-url": "https://<user_id>:<password>@logs-us-west1.grafana.net/loki/api/v1/push",
-    "loki-batch-size": "400"
+    "loki-batch-size": "400000"
   }
 }
 ```

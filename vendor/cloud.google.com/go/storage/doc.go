@@ -407,6 +407,9 @@ roles which must be enabled in order to do the export successfully. To
 disable this export, you can use the [WithDisabledClientMetrics] client
 option.
 
+To disable OpenTelemetry bucket metadata in traces, you can set the
+environment variable GO_OTEL_BUCKETMETADATA_DISABLED=true.
+
 The client automatically computes and sends CRC32C checksums for uploads using [Writer],
 providing an additional layer of data integrity validation with a slight CPU overhead.
 
@@ -415,6 +418,19 @@ returns an error but may leave corrupt data on the server, requiring manual clea
 apply to single-shot uploads when user-provided checksum is provided.
 
 Automatic checksumming can be disabled using [Writer.DisableAutoChecksum].
+
+# Read checksumming
+
+By default, the client automatically computes and validates CRC32C checksums for reads
+when downloading an entire object, providing an additional layer of data integrity
+validation with a slight CPU overhead.
+
+For gRPC clients, read checksumming is also performed for partial reads (range requests)
+by validating the checksum of each individual data chunk returned by the server.
+
+Automatic read checksumming can be disabled using the [WithDisableReaderChecksum] option
+for a normal reader (both gRPC and JSON), or the [WithDisableMRDReadChecksum] option
+for the multi-range downloader (gRPC only).
 
 # Parallel Uploads
 

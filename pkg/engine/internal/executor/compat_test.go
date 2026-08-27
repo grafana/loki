@@ -617,14 +617,10 @@ func TestNewColumnCompatibilityPipeline_ErrorCases(t *testing.T) {
 // (as happens with multiple parsers like `| json | logfmt |`), the second ColumnCompat preserves
 // values created by the first ColumnCompat instead of clobbering them.
 func TestMultipleColumnCompatPreservesValues(t *testing.T) {
-	// Simulate a batch with mixed JSON and logfmt lines
-	// After JSON parser + ColumnCompat₁:
-	// - Row 0: level="info" from JSON, level_extracted="info" created
-	// - Row 1: level=NULL (logfmt line, JSON parsing failed), level_extracted=NULL
-	//
-	// After logfmt parser + ColumnCompat₂:
-	// - Row 0: level=NULL (JSON line, logfmt parsing failed), level_extracted should STAY "info"
-	// - Row 1: level="warn" from logfmt, level_extracted should be "warn"
+	// Simulate two consecutive ColumnCompat passes (as happens with parser +
+	// `| line_format ...` or parser + parser pipelines). The first Compat
+	// populates `<name>_extracted`; the second Compat must preserve that
+	// value when this row contributed no new value.
 
 	compat := &physical.ColumnCompat{
 		Source:      types.ColumnTypeParsed,
@@ -632,60 +628,96 @@ func TestMultipleColumnCompatPreservesValues(t *testing.T) {
 		Collisions:  []types.ColumnType{types.ColumnTypeMetadata},
 	}
 
-	// Step 1: Simulate state after JSON parser + ColumnCompat₁
-	// Row 0: JSON line successfully parsed level="info", moved to level_extracted
-	// Row 1: logfmt line, JSON parsing failed, level=NULL, level_extracted=NULL
 	schemaAfterFirstCompat := arrow.NewSchema([]arrow.Field{
 		semconv.FieldFromFQN("utf8.builtin.message", true),
 		semconv.FieldFromFQN("timestamp_ns.builtin.timestamp", false),
-		semconv.FieldFromFQN("utf8.metadata.level", true),         // metadata level
-		semconv.FieldFromFQN("utf8.parsed.level", true),           // parsed level (NULL for row 0, set by first ColumnCompat)
-		semconv.FieldFromFQN("utf8.parsed.level_extracted", true), // created by first ColumnCompat
+		semconv.FieldFromFQN("utf8.metadata.level", true),         // metadata level (collides with parsed.level)
+		semconv.FieldFromFQN("utf8.parsed.level", true),           // parsed level (NULL after first Compat for rows whose value was promoted)
+		semconv.FieldFromFQN("utf8.parsed.level_extracted", true), // created by first Compat
 	}, nil)
 
-	inputAfterFirstCompat := NewArrowtestPipeline(schemaAfterFirstCompat, arrowtest.Rows{
+	tests := []struct {
+		name              string
+		rows              arrowtest.Rows
+		wantLevelExtNulls []bool
+		wantLevelExtVals  []string // ignored where wantLevelExtNulls[i] is true
+	}{
 		{
-			"utf8.builtin.message":           `{"level":"info","msg":"test"}`,
-			"timestamp_ns.builtin.timestamp": time.Unix(1000, 0).UTC(),
-			"utf8.metadata.level":            "debug", // metadata level different from parsed
-			"utf8.parsed.level":              nil,     // NULL - was moved to level_extracted by first ColumnCompat
-			"utf8.parsed.level_extracted":    "info",  // created by first ColumnCompat
+			// Mixed JSON/logfmt batch, non-empty preserved.
+			// Row 0: JSON line — first Compat set level_extracted="info"; second Compat (logfmt) finds nothing new for this row.
+			// Row 1: logfmt line — first Compat saw nothing; second Compat extracts "warn".
+			name: "non-empty existing destination is preserved",
+			rows: arrowtest.Rows{
+				{
+					"utf8.builtin.message":           `{"level":"info","msg":"test"}`,
+					"timestamp_ns.builtin.timestamp": time.Unix(1000, 0).UTC(),
+					"utf8.metadata.level":            "debug",
+					"utf8.parsed.level":              nil,
+					"utf8.parsed.level_extracted":    "info",
+				},
+				{
+					"utf8.builtin.message":           `level=warn msg="test"`,
+					"timestamp_ns.builtin.timestamp": time.Unix(1001, 0).UTC(),
+					"utf8.metadata.level":            "debug",
+					"utf8.parsed.level":              "warn",
+					"utf8.parsed.level_extracted":    nil,
+				},
+			},
+			wantLevelExtNulls: []bool{false, false},
+			wantLevelExtVals:  []string{"info", "warn"},
 		},
 		{
-			"utf8.builtin.message":           `level=warn msg="test"`,
-			"timestamp_ns.builtin.timestamp": time.Unix(1001, 0).UTC(),
-			"utf8.metadata.level":            "debug",
-			"utf8.parsed.level":              "warn", // NOW set by logfmt parser (simulated)
-			"utf8.parsed.level_extracted":    nil,    // Was NULL from first ColumnCompat
+			// Same shape as above, except the first Compat promoted an
+			// empty string (e.g. `"level":""` in JSON or an absent field
+			// elsewhere in the pipeline) to level_extracted. The empty
+			// string is a real value and must survive the second Compat,
+			// not be overwritten to NULL.
+			name: "empty-string existing destination is preserved",
+			rows: arrowtest.Rows{
+				{
+					"utf8.builtin.message":           `{"level":"","msg":"test"}`,
+					"timestamp_ns.builtin.timestamp": time.Unix(1000, 0).UTC(),
+					"utf8.metadata.level":            "debug",
+					"utf8.parsed.level":              nil,
+					"utf8.parsed.level_extracted":    "", // explicit empty — set by first Compat
+				},
+			},
+			wantLevelExtNulls: []bool{false},
+			wantLevelExtVals:  []string{""},
 		},
-	})
-
-	// Step 2: Run second ColumnCompat (simulating logfmt parser's ColumnCompat)
-	pipeline := newColumnCompatibilityPipeline(compat, inputAfterFirstCompat)
-	defer pipeline.Close()
-
-	batch, err := pipeline.Read(t.Context())
-	require.NoError(t, err)
-	require.NotNil(t, batch)
-
-	levelExtractedIdx := -1
-	for i := range batch.Schema().NumFields() {
-		if batch.Schema().Field(i).Name == "utf8.parsed.level_extracted" {
-			levelExtractedIdx = i
-			break
-		}
 	}
-	require.NotEqual(t, -1, levelExtractedIdx, "level_extracted column should exist")
 
-	levelExtractedCol := batch.Column(levelExtractedIdx).(*array.String)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			input := NewArrowtestPipeline(schemaAfterFirstCompat, tt.rows)
 
-	// Row 0: Should preserve "info" from first ColumnCompat, NOT overwrite with NULL
-	require.False(t, levelExtractedCol.IsNull(0), "Row 0 level_extracted should not be NULL")
-	require.Equal(t, "info", levelExtractedCol.Value(0),
-		"Row 0 level_extracted should preserve 'info' from first ColumnCompat")
+			pipeline := newColumnCompatibilityPipeline(compat, input)
+			defer pipeline.Close()
 
-	// Row 1: Should have "warn" from second ColumnCompat
-	require.False(t, levelExtractedCol.IsNull(1), "Row 1 level_extracted should not be NULL")
-	require.Equal(t, "warn", levelExtractedCol.Value(1),
-		"Row 1 level_extracted should be 'warn' from second ColumnCompat")
+			batch, err := pipeline.Read(t.Context())
+			require.NoError(t, err)
+			require.NotNil(t, batch)
+
+			levelExtractedIdx := -1
+			for i := range batch.Schema().NumFields() {
+				if batch.Schema().Field(i).Name == "utf8.parsed.level_extracted" {
+					levelExtractedIdx = i
+					break
+				}
+			}
+			require.NotEqual(t, -1, levelExtractedIdx, "level_extracted column should exist")
+
+			levelExtractedCol := batch.Column(levelExtractedIdx).(*array.String)
+			require.Equal(t, len(tt.wantLevelExtNulls), levelExtractedCol.Len())
+
+			for i, wantNull := range tt.wantLevelExtNulls {
+				if wantNull {
+					require.True(t, levelExtractedCol.IsNull(i), "row %d level_extracted should be NULL", i)
+				} else {
+					require.False(t, levelExtractedCol.IsNull(i), "row %d level_extracted should not be NULL", i)
+					require.Equal(t, tt.wantLevelExtVals[i], levelExtractedCol.Value(i), "row %d level_extracted value", i)
+				}
+			}
+		})
+	}
 }

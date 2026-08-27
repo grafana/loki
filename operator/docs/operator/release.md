@@ -62,6 +62,12 @@ Since the operator shares the same repo with Loki, we want to make sure that, wh
 
 Since step 1. is currently not automated and disconnected from release-please we have put in place a workflow in `.github/workflows/operator-check-prepare-release-commit.yml` that runs on release-please PRs. This workflow is responsible for making sure that in master exists a commit with the message `chore(operator): Prepare community release v$VERSION`. Once we automate step 1. we should be able to remove this workflow.
 
+#### publishImages
+
+When release-please creates a release, the `publishImages` job in `.github/workflows/operator-release-please.yml` builds and pushes the operator image using `.github/workflows/operator-reusable-image-build.yml`.
+
+Images are pushed to Google Artifact Registry (GAR) at `us-docker.pkg.dev/grafanalabs-global/dockerhub-loki-prod-mirror/loki-operator:<version>`. The `gar-image-mirror` service mirrors them to [docker.io/grafana/loki-operator](https://hub.docker.com/r/grafana/loki-operator/tags).
+
 ### Publish release to operatorhubs
 
 To publish a community release of Loki Operator to the community hubs we leverage the workflow in `.github/workflows/operator-publish-operator-hub.yml` this workflow is set to trigger on release publication that matches `operator/`.
@@ -77,5 +83,5 @@ This workflow will then use a workflow `.github/workflows/operator-reusable-hub-
 1. Create a PR to bump the version (i.e [v0.6.1 preparation PR](https://github.com/grafana/loki/pull/13105)), be careful with the commit message;
 2. Re-trigger the action `operator-publish-operator-hub` on the release-please PR;
 3. Merge the release-please PR (i.e [v0.6.1 release PR](https://github.com/grafana/loki/pull/12593) );
-4. The `publishImages` job will build and push the release images to `grafana/loki-operator` ([docker repo](https://hub.docker.com/r/grafana/loki-operator/tags));
+4. The `publishImages` job will build and push the release image to Google Artifact Registry (GAR), which is mirrored to [docker.io/grafana/loki-operator](https://hub.docker.com/r/grafana/loki-operator/tags);
 5. The `operator-publish-operator-hub` workflow will automatically open PRs to [k8s-operatorhub/community-operators](https://github.com/k8s-operatorhub/community-operators) and [redhat-openshift-ecosystem/community-operators-prod](https://github.com/redhat-openshift-ecosystem/community-operators-prod);

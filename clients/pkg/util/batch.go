@@ -11,7 +11,7 @@ import (
 	"github.com/golang/snappy"
 	"github.com/prometheus/common/model"
 
-	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/pkg/push"
 )
 
 const (
@@ -23,7 +23,7 @@ const (
 // and entries in a single batch request. In case of multi-tenant Promtail, log
 // streams for each tenant are stored in a dedicated batch.
 type batch struct {
-	streams   map[string]*logproto.Stream
+	streams   map[string]*push.Stream
 	bytes     int
 	createdAt time.Time
 
@@ -32,7 +32,7 @@ type batch struct {
 
 func newBatch(maxStreams int, entries ...Entry) *batch {
 	b := &batch{
-		streams:    map[string]*logproto.Stream{},
+		streams:    map[string]*push.Stream{},
 		bytes:      0,
 		createdAt:  time.Now(),
 		maxStreams: maxStreams,
@@ -63,9 +63,9 @@ func (b *batch) add(entry Entry) error {
 		return fmt.Errorf(errMaxStreamsLimitExceeded, streams, b.maxStreams, labels)
 	}
 	// Add the entry as a new stream
-	b.streams[labels] = &logproto.Stream{
+	b.streams[labels] = &push.Stream{
 		Labels:  labels,
-		Entries: []logproto.Entry{entry.Entry},
+		Entries: []push.Entry{entry.Entry},
 	}
 	return nil
 }
@@ -102,11 +102,6 @@ func labelsMapToString(ls model.LabelSet, without model.LabelName) string {
 	return b.String()
 }
 
-// sizeBytes returns the current batch size in bytes
-func (b *batch) sizeBytes() int {
-	return b.bytes
-}
-
 // sizeBytesAfter returns the size of the batch after the input entry
 // will be added to the batch itself
 func (b *batch) sizeBytesAfter(entry Entry) int {
@@ -131,9 +126,9 @@ func (b *batch) encode() ([]byte, int, error) {
 }
 
 // creates push request and returns it, together with number of entries
-func (b *batch) createPushRequest() (*logproto.PushRequest, int) {
-	req := logproto.PushRequest{
-		Streams: make([]logproto.Stream, 0, len(b.streams)),
+func (b *batch) createPushRequest() (*push.PushRequest, int) {
+	req := push.PushRequest{
+		Streams: make([]push.Stream, 0, len(b.streams)),
 	}
 
 	entriesCount := 0

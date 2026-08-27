@@ -89,7 +89,7 @@ func NewAzurePipelinesCredential(tenantID, clientID, serviceConnectionID, system
 		options = &AzurePipelinesCredentialOptions{}
 	}
 	// these headers are useful to the DevOps team when debugging OIDC error responses
-	options.ClientOptions.Logging.AllowedHeaders = append(options.ClientOptions.Logging.AllowedHeaders, xMsEdgeRef, xVssE2eId)
+	options.Logging.AllowedHeaders = append(options.Logging.AllowedHeaders, xMsEdgeRef, xVssE2eId)
 	caco := ClientAssertionCredentialOptions{
 		AdditionallyAllowedTenants: options.AdditionallyAllowedTenants,
 		Cache:                      options.Cache,

@@ -1,6 +1,8 @@
 package postings
 
 import (
+	"time"
+
 	"github.com/grafana/loki/v3/pkg/memory"
 )
 
@@ -15,6 +17,7 @@ type labelPostingKey struct {
 // labelPostingEntry holds the aggregated state for a single label posting.
 type labelPostingEntry struct {
 	ObjectPath       string
+	ShardBuckets     int64
 	SectionIndex     int64
 	ColumnName       string
 	LabelValue       string
@@ -22,6 +25,8 @@ type labelPostingEntry struct {
 	MinTimestamp     int64
 	MaxTimestamp     int64
 	UncompressedSize int64
+	MinShardBucket   uint32
+	MaxShardBucket   uint32
 }
 
 // BitmapBytes returns the raw bytes of the bitmap trimmed to the logical size
@@ -40,6 +45,8 @@ func (e *labelPostingEntry) BitmapBytes() []byte {
 type labelAggregator struct {
 	entries       map[labelPostingKey]*labelPostingEntry
 	estimatedSize int
+	minTimestamp  time.Time
+	maxTimestamp  time.Time
 }
 
 // newLabelAggregator creates a new labelAggregator.
@@ -60,21 +67,32 @@ func (a *labelAggregator) Observe(obs LabelObservation) {
 
 	tsNano := obs.Timestamp.UnixNano()
 
+	ts := obs.Timestamp.UTC()
+	if a.minTimestamp.IsZero() || ts.Before(a.minTimestamp) {
+		a.minTimestamp = ts
+	}
+	if a.maxTimestamp.IsZero() || ts.After(a.maxTimestamp) {
+		a.maxTimestamp = ts
+	}
+
 	entry, ok := a.entries[key]
 	if !ok {
 		entry = &labelPostingEntry{
-			ObjectPath:   obs.ObjectPath,
-			SectionIndex: obs.SectionIndex,
-			ColumnName:   obs.ColumnName,
-			LabelValue:   obs.LabelValue,
-			bitmap:       memory.NewBitmap(nil, 0),
-			MinTimestamp: tsNano,
-			MaxTimestamp: tsNano,
+			ObjectPath:     obs.ObjectPath,
+			ShardBuckets:   obs.ShardBuckets,
+			SectionIndex:   obs.SectionIndex,
+			ColumnName:     obs.ColumnName,
+			LabelValue:     obs.LabelValue,
+			bitmap:         memory.NewBitmap(nil, 0),
+			MinTimestamp:   tsNano,
+			MaxTimestamp:   tsNano,
+			MinShardBucket: obs.ShardBucket,
+			MaxShardBucket: obs.ShardBucket,
 		}
 		a.entries[key] = entry
 
-		// Track size for new entry: 5 int64 fields + string sizes
-		a.estimatedSize += 5*8 + len(obs.ObjectPath) + len(obs.ColumnName) + len(obs.LabelValue)
+		// Track size for new entry: 5 int64 fields + 2 uint32 fields encoded as int64 + string sizes
+		a.estimatedSize += 7*8 + len(obs.ObjectPath) + len(obs.ColumnName) + len(obs.LabelValue)
 	}
 
 	// Grow bitmap if needed and set the bit for this stream ID.
@@ -94,20 +112,37 @@ func (a *labelAggregator) Observe(obs LabelObservation) {
 	if tsNano > entry.MaxTimestamp {
 		entry.MaxTimestamp = tsNano
 	}
+	if obs.ShardBucket < entry.MinShardBucket {
+		entry.MinShardBucket = obs.ShardBucket
+	}
+	if obs.ShardBucket > entry.MaxShardBucket {
+		entry.MaxShardBucket = obs.ShardBucket
+	}
 	entry.UncompressedSize += obs.UncompressedSize
 }
 
-// Entries returns all aggregated entries. Bitmap normalization (padding to
-// equal length) is NOT done here; the caller (columnarEncode) handles it
-// across both label and bloom entries.
-func (a *labelAggregator) Entries() []*labelPostingEntry {
+// Entries returns all aggregated entries converted to public type. Bitmap
+// normalization (padding to equal length) is NOT done here.
+func (a *labelAggregator) Entries() []LabelEntry {
 	if len(a.entries) == 0 {
 		return nil
 	}
 
-	result := make([]*labelPostingEntry, 0, len(a.entries))
+	result := make([]LabelEntry, 0, len(a.entries))
 	for _, entry := range a.entries {
-		result = append(result, entry)
+		result = append(result, LabelEntry{
+			ObjectPath:       entry.ObjectPath,
+			ShardBuckets:     entry.ShardBuckets,
+			SectionIndex:     entry.SectionIndex,
+			ColumnName:       entry.ColumnName,
+			LabelValue:       entry.LabelValue,
+			StreamIDBitmap:   entry.BitmapBytes(),
+			MinTimestamp:     entry.MinTimestamp,
+			MaxTimestamp:     entry.MaxTimestamp,
+			UncompressedSize: entry.UncompressedSize,
+			MinShardBucket:   entry.MinShardBucket,
+			MaxShardBucket:   entry.MaxShardBucket,
+		})
 	}
 	return result
 }
@@ -118,8 +153,16 @@ func (a *labelAggregator) EstimatedSize() int {
 	return a.estimatedSize
 }
 
+// TimeRange returns the minimum and maximum observation timestamp seen by the
+// aggregator. It returns zero time.Time values when nothing has been observed.
+func (a *labelAggregator) TimeRange() (time.Time, time.Time) {
+	return a.minTimestamp, a.maxTimestamp
+}
+
 // Reset clears all accumulated state.
 func (a *labelAggregator) Reset() {
 	a.entries = make(map[labelPostingKey]*labelPostingEntry)
 	a.estimatedSize = 0
+	a.minTimestamp = time.Time{}
+	a.maxTimestamp = time.Time{}
 }

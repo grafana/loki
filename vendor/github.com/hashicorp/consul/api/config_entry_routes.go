@@ -54,6 +54,11 @@ func (a *TCPRouteConfigEntry) GetModifyIndex() uint64     { return a.ModifyIndex
 // TCPService is a service reference for a TCPRoute
 type TCPService struct {
 	Name string
+	// TLS allows overriding listener-level TLS certificate settings for this service.
+	TLS *GatewayServiceTLSConfig `json:",omitempty"`
+
+	// Limits are upstream circuit-breaker limits applied to this routed service.
+	Limits *UpstreamLimits `json:",omitempty"`
 
 	// Partition is the partition the config entry is associated with.
 	// Partitioning is a Consul Enterprise feature.
@@ -202,6 +207,52 @@ type HTTPFilters struct {
 	RetryFilter   *RetryFilter
 	TimeoutFilter *TimeoutFilter
 	JWT           *JWTFilter
+	ExtProc       []ExtProcFilter
+	// ExtAuthz controls the ext_authz HTTP filter behaviour for routes on an
+	// API Gateway that has a builtin/ext-authz EnvoyExtension applied. When set,
+	// it overrides the gateway-wide ExtAuthz toggle for the matched route:
+	// Enabled=true forces the ext_authz check to run, Enabled=false skips it.
+	// When nil, the route inherits the gateway-wide default. Exclusions are
+	// controlled exclusively at the http-route level.
+	ExtAuthz *HTTPRouteExtAuthzFilter
+}
+
+// ExtProcFilter provides per-route control of a builtin/ext-proc attachment.
+type ExtProcFilter struct {
+	StatPrefix string            `json:",omitempty"`
+	Mode       string            `json:",omitempty"`
+	Overrides  *ExtProcOverrides `json:",omitempty"`
+}
+
+// ExtProcOverrides carries per-route overrides applied when Mode is "override".
+type ExtProcOverrides struct {
+	Processing *ExtProcProcessing `json:",omitempty"`
+	// MessageTimeout   string             `json:",omitempty"`
+	// FailureModeAllow *bool              `json:",omitempty"`
+}
+
+// ExtProcProcessing configures request and response processing modes.
+type ExtProcProcessing struct {
+	Request  *ExtProcProcessingDirection `json:",omitempty"`
+	Response *ExtProcProcessingDirection `json:",omitempty"`
+}
+
+// ExtProcProcessingDirection configures processing modes for one direction.
+type ExtProcProcessingDirection struct {
+	HeadersMode  string `json:",omitempty"`
+	BodyMode     string `json:",omitempty"`
+	TrailersMode string `json:",omitempty"`
+	MaxBodyBytes int64  `json:",omitempty"`
+}
+
+// HTTPRouteExtAuthzFilter controls ext_authz filter behaviour at the
+// individual http-route rule level.
+type HTTPRouteExtAuthzFilter struct {
+	// Enabled controls whether Envoy runs the ext_authz check for requests
+	// matched by this rule. Enabled=true force-enables the check (overriding a
+	// disabled gateway toggle); Enabled=false force-skips it. This takes
+	// precedence over the gateway-wide ExtAuthz toggle.
+	Enabled bool
 }
 
 // HTTPResponseFilters specifies a list of filters used to modify a
@@ -270,6 +321,11 @@ type HTTPService struct {
 	// ResponseFilters is a list of HTTP-based filters used to modify the
 	// response returned from the upstream service
 	ResponseFilters HTTPResponseFilters
+
+	// TLS allows overriding listener-level TLS certificate settings for this service.
+	TLS *GatewayServiceTLSConfig `json:",omitempty"`
+	// Limits are upstream circuit-breaker limits applied to this routed service.
+	Limits *UpstreamLimits `json:",omitempty"`
 
 	// Partition is the partition the config entry is associated with.
 	// Partitioning is a Consul Enterprise feature.

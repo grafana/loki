@@ -23,6 +23,8 @@ import (
 	"net"
 	net_http "net/http"
 	"net/url"
+	"path"
+	"regexp"
 	"strings"
 
 	"github.com/baidubce/bce-sdk-go/bce"
@@ -40,6 +42,7 @@ const (
 	STORAGE_CLASS_ARCHIVE         = "ARCHIVE"
 	STORAGE_CLASS_MAZ_STANDARD    = "MAZ_STANDARD"
 	STORAGE_CLASS_MAZ_STANDARD_IA = "MAZ_STANDARD_IA"
+	STORAGE_CLASS_MAZ_COLD        = "MAZ_COLD"
 
 	FETCH_MODE_SYNC  = "sync"
 	FETCH_MODE_ASYNC = "async"
@@ -74,6 +77,7 @@ const (
 	INVENTORY_SCHEDULE_DAILY   = "ThreeDaily"
 	INVENTORY_SCHEDULE_WEEKLY  = "Weekly"
 	INVENTORY_SCHEDULE_MONTHLY = "Monthly"
+	INVENTORY_SCHEDULE_ONCE    = "Once"
 
 	INVENTORY_FILE_FORMAT_CSV = "CSV"
 
@@ -91,6 +95,10 @@ const (
 	API_VERSION_V1 = "v1"
 	API_VERSION_V2 = "v2"
 	HTTPTimeFormat = "Mon, 02 Jan 2006 15:04:05 GMT"
+
+	BUCKET_META_TYPE_FLAT         string = "FLAT"
+	BUCKET_META_TYPE_HIERARCHY    string = "HIERARCHY"
+	BUCKET_META_TYPE_HIERARCHY_XH string = "HIERARCHY_XH"
 )
 
 var DEFAULT_CNAME_LIKE_LIST = []string{
@@ -104,6 +112,7 @@ var VALID_STORAGE_CLASS_TYPE = map[string]int{
 	STORAGE_CLASS_ARCHIVE:         3,
 	STORAGE_CLASS_MAZ_STANDARD:    4,
 	STORAGE_CLASS_MAZ_STANDARD_IA: 5,
+	STORAGE_CLASS_MAZ_COLD:        6,
 }
 
 var VALID_RESTORE_TIER = map[string]int{
@@ -353,6 +362,15 @@ func SendRequest(cli bce.Client, req *BosRequest, resp *BosResponse, ctx *BosCon
 		need_retry bool
 	)
 	setUriAndEndpoint(cli, req, ctx, cli.GetBceClientConfig().Endpoint)
+	if req.Bucket() != "" && !isValidBucketName(req.Bucket()) {
+		return bce.NewBceClientError(fmt.Sprintf("invalid bucket name: %s", req.Bucket()))
+	}
+	if req.IsObjectReq() {
+		if err = validateObjectKey(req.Object()); err != nil {
+			return bce.NewBceClientError(err.Error())
+		}
+	}
+
 	req.SetContext(ctx.Ctx)
 	var body *bce.TeeReadNopCloser
 	if req.Body() != nil {
@@ -361,6 +379,8 @@ func SendRequest(cli bce.Client, req *BosRequest, resp *BosResponse, ctx *BosCon
 	if body != nil {
 		body.Mark()
 	}
+	// sdk do not need to set request id
+	req.SetWithOutRequestId(true)
 	if ctx.ApiVersion == API_VERSION_V2 {
 		err = cli.SendRequestV2(&req.BceRequest, &resp.BceResponse)
 	} else {
@@ -614,5 +634,28 @@ func getObjectMetaOptions(result *ObjectMeta) []GetOption {
 		getHeader(http.BCE_TAGGING_COUNT, &result.objectTagCount),
 		getHeader(http.BCE_CONTENT_CRC64ECMA, &result.ContentCrc64ECMA),
 		getHeader(http.BCE_USER_METADATA_PREFIX, &result.UserMeta),
+		getHeader(http.BCE_RESTORE, &result.BceRestore),
 	}
+}
+
+func validateObjectKey(objectKey string) error {
+	// 1. 拒绝路径穿越特征（关键）
+	if strings.Contains(objectKey, "..") {
+		return fmt.Errorf("invalid object key: %s", objectKey)
+	}
+	// 2. 路径规范化
+	objectCleaned := path.Clean("/" + strings.Trim(objectKey, "/"))
+	// 3. 去除首尾斜杠
+	objectCleaned = strings.Trim(objectCleaned, "/")
+	// 4. 最终校验
+	if len(objectCleaned) == 0 || objectCleaned == "v1" {
+		return fmt.Errorf("invalid object key: %s", objectKey)
+	}
+	return nil
+}
+
+var bucketRe = regexp.MustCompile(`^[a-z0-9][a-z0-9-]{1,61}[a-z0-9]$`)
+
+func isValidBucketName(bucket string) bool {
+	return bucketRe.MatchString(bucket)
 }

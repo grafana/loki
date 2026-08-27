@@ -52,6 +52,7 @@ type indexSet struct {
 	cacheLocation     string
 	logger            log.Logger
 	maxConcurrent     int
+	downloadTimeout   time.Duration
 
 	lastUsedAt time.Time
 	index      map[string]index.Index
@@ -61,7 +62,7 @@ type indexSet struct {
 	cancelFunc context.CancelFunc // helps with cancellation of initialization if we are asked to stop.
 }
 
-func NewIndexSet(tableName, userID, cacheLocation string, baseIndexSet storage.IndexSet, openIndexFileFunc index.OpenIndexFileFunc, logger log.Logger) (IndexSet, error) {
+func NewIndexSet(tableName, userID, cacheLocation string, baseIndexSet storage.IndexSet, openIndexFileFunc index.OpenIndexFileFunc, logger log.Logger, downloadTimeout time.Duration) (IndexSet, error) {
 	if baseIndexSet.IsUserBasedIndexSet() && userID == "" {
 		return nil, fmt.Errorf("userID must not be empty")
 	} else if !baseIndexSet.IsUserBasedIndexSet() && userID != "" {
@@ -83,6 +84,7 @@ func NewIndexSet(tableName, userID, cacheLocation string, baseIndexSet storage.I
 		cacheLocation:     cacheLocation,
 		logger:            logger,
 		maxConcurrent:     maxConcurrent,
+		downloadTimeout:   downloadTimeout,
 		lastUsedAt:        time.Now(),
 		index:             map[string]index.Index{},
 		indexMtx:          newMtxWithReadiness(),
@@ -97,7 +99,7 @@ func (t *indexSet) Init(forQuerying bool, logger log.Logger) (err error) {
 	// Using background context to avoid cancellation of download when request times out.
 	// We would anyways need the files for serving next requests.
 	ctx := context.Background()
-	ctx, t.cancelFunc = context.WithTimeout(ctx, downloadTimeout)
+	ctx, t.cancelFunc = context.WithTimeout(ctx, t.downloadTimeout)
 
 	defer func() {
 		if err != nil {
@@ -130,12 +132,12 @@ func (t *indexSet) Init(forQuerying bool, logger log.Logger) (err error) {
 		// if we fail to open an index file, lets skip it and let sync operation re-download the file from storage.
 		idx, err := t.openIndexFileFunc(fullPath)
 		if err != nil {
-			level.Error(logger).Log("msg", fmt.Sprintf("failed to open existing index file %s, removing the file and continuing without it to let the sync operation catch up", fullPath), "err", err)
+			level.Error(logger).Log("msg", "failed to open existing index file, removing and continuing to let the sync operation catch up", "path", fullPath, "err", err)
 			// Sometimes files get corrupted when the process gets killed in the middle of a download operation which can cause problems in reading the file.
 			// Implementation of openIndexFileFunc should take care of gracefully handling corrupted files.
 			// Let us just remove the file and let the sync operation re-download it.
 			if err := os.Remove(fullPath); err != nil {
-				level.Error(logger).Log("msg", fmt.Sprintf("failed to remove index file %s which failed to open", fullPath))
+				level.Error(logger).Log("msg", "failed to remove index file which failed to open", "path", fullPath)
 			}
 			continue
 		}
@@ -143,7 +145,7 @@ func (t *indexSet) Init(forQuerying bool, logger log.Logger) (err error) {
 		t.index[entry.Name()] = idx
 	}
 
-	level.Debug(logger).Log("msg", fmt.Sprintf("opened %d local files, now starting sync operation", len(t.index)))
+	level.Debug(logger).Log("msg", "opened local files, now starting sync operation", "count", len(t.index))
 
 	// sync the table to get new files and remove the deleted ones from storage.
 	err = t.syncWithRetry(ctx, false, forQuerying)
@@ -183,6 +185,10 @@ func (t *indexSet) ForEach(ctx context.Context, callback index.ForEachIndexCallb
 	}
 	defer t.indexMtx.rUnlock()
 
+	if t.err != nil {
+		return t.err
+	}
+
 	logger := spanlogger.FromContext(ctx, t.logger)
 	level.Debug(logger).Log("index-files-count", len(t.index))
 
@@ -201,6 +207,10 @@ func (t *indexSet) ForEachConcurrent(ctx context.Context, callback index.ForEach
 		return err
 	}
 	defer t.indexMtx.rUnlock()
+
+	if t.err != nil {
+		return t.err
+	}
 
 	logger := spanlogger.FromContext(ctx, t.logger)
 	level.Debug(logger).Log("index-files-count", len(t.index))
@@ -313,14 +323,14 @@ func (t *indexSet) syncWithRetry(ctx context.Context, lock, bypassListCache bool
 
 // sync downloads updated and new files from the storage relevant for the table and removes the deleted ones
 func (t *indexSet) sync(ctx context.Context, lock, bypassListCache bool) (err error) {
-	level.Debug(t.logger).Log("msg", fmt.Sprintf("syncing files for table %s", t.tableName))
+	level.Debug(t.logger).Log("msg", "syncing files for table", "table", t.tableName)
 
 	toDownload, toDelete, err := t.checkStorageForUpdates(ctx, lock, bypassListCache)
 	if err != nil {
 		return err
 	}
 
-	level.Debug(t.logger).Log("msg", fmt.Sprintf("updates for table %s. toDownload: %s, toDelete: %s", t.tableName, toDownload, toDelete))
+	level.Debug(t.logger).Log("msg", "computed storage updates for table", "table", t.tableName, "to_download", toDownload, "to_delete", toDelete)
 
 	downloadedFiles, err := t.doConcurrentDownload(ctx, toDownload)
 	if err != nil {
@@ -445,7 +455,7 @@ func (t *indexSet) doConcurrentDownload(ctx context.Context, files []storage.Ind
 		fileName, err := t.downloadFileFromStorage(ctx, files[idx].Name, t.cacheLocation)
 		if err != nil {
 			if t.baseIndexSet.IsFileNotFoundErr(err) {
-				level.Info(t.logger).Log("msg", fmt.Sprintf("ignoring missing file %s, possibly removed during compaction", fileName))
+				level.Info(t.logger).Log("msg", "ignoring missing file, possibly removed during compaction", "file", fileName)
 				return nil
 			}
 			return err

@@ -10,8 +10,28 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
+	"github.com/grafana/loki/v3/pkg/engine/internal/types"
 	"github.com/grafana/loki/v3/pkg/logproto"
 )
+
+func TestOperatorRegionName(t *testing.T) {
+	tests := []struct {
+		name string
+		node physical.Node
+		want string
+	}{
+		{"non-projection node uses its type", &physical.Limit{}, "Limit"},
+		{"column projection is not a parser", &physical.Projection{Expressions: []physical.Expression{&physical.ColumnExpr{}}}, "Projection"},
+		{"logfmt projection names the parser", &physical.Projection{Expressions: []physical.Expression{&physical.VariadicExpr{Op: types.VariadicOpParseLogfmt}}}, "Projection/PARSE_LOGFMT"},
+		{"json projection names the parser", &physical.Projection{Expressions: []physical.Expression{&physical.VariadicExpr{Op: types.VariadicOpParseJSON}}}, "Projection/PARSE_JSON"},
+		{"parser is found among multiple expressions", &physical.Projection{Expressions: []physical.Expression{&physical.ColumnExpr{}, &physical.VariadicExpr{Op: types.VariadicOpParseRegexp}}}, "Projection/PARSE_REGEXP"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			require.Equal(t, tt.want, operatorRegionName(tt.node))
+		})
+	}
+}
 
 func TestExecutor(t *testing.T) {
 	t.Run("pipeline fails if plan is nil", func(t *testing.T) {

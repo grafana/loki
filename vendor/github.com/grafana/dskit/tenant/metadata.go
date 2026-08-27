@@ -3,8 +3,6 @@ package tenant
 import (
 	"fmt"
 	"iter"
-	"maps"
-	"slices"
 	"strings"
 )
 
@@ -53,41 +51,55 @@ func (e *errMetadataUnsupportedCharacter) Error() string {
 }
 
 type Metadata struct {
-	data map[string]string
+	source string // invariant: b, err := ParseMetadata(a.source); err == nil && a == b
 }
 
-func NewMetadata() Metadata {
-	return Metadata{}
+// NewMetadata returns tenant ID metadata from a source string.
+//
+// The format for metadata must be a colon-delimited list of key value pairs,
+// lexicographically sorted by key. Examples:
+// - :key=value
+// - :key=value:foo=bar
+//
+// If you don't trust the source to be already valid, use ParseMetadata instead.
+func NewMetadata(source string) Metadata {
+	return Metadata{source: source}
 }
 
-// ParseMetadata from string without validating input. ValidMetadata must be used
-// to ensure input contains only allowed characters. The format for metadata is a
-// colon-delimited list of key value pairs.
-// Examples:
-// - key=value
-// - key=value:foo=bar
-func ParseMetadata(input string) (Metadata, error) {
-	if input == "" {
-		return Metadata{}, nil
+// ParseMetadata validates and constructs a [Metadata]. See [NewMetadata].
+//
+// It doesn't allocate.
+func ParseMetadata(source string) (Metadata, error) {
+	if err := ValidMetadata(source); err != nil || source == "" {
+		return Metadata{}, err
 	}
-	var (
-		currentPair  string
-		hasMorePairs bool
-		remaining    = input
-		metadata     = NewMetadata()
-	)
-	for {
-		currentPair, remaining, hasMorePairs = stringsCut(remaining, metadataSeparator)
-		key, val, ok := stringsCut(currentPair, metadataKVSeparator)
+
+	remaining := source
+	if remaining[0] != metadataSeparator {
+		return Metadata{}, errMalformedMetadata{source: source, reason: fmt.Sprintf("missing '%c' at start", metadataSeparator)}
+	}
+	prevKey := "" // < than every other string
+	for len(remaining) > 0 {
+		next := strings.IndexByte(remaining[1:], metadataSeparator)
+		if next < 0 {
+			next = len(remaining)
+		} else {
+			next += 1 // Add back the ':'
+		}
+
+		kv := remaining[:next]
+		remaining = remaining[next:]
+
+		key, _, ok := stringsCut(kv, metadataKVSeparator)
 		if !ok {
-			return Metadata{}, fmt.Errorf("invalid key value pair %s", currentPair)
+			return Metadata{}, errMalformedMetadata{source: source, reason: fmt.Sprintf("no key-value separator '%c' in %q", metadataKVSeparator, kv)}
 		}
-		metadata.Set(key, val)
-		if !hasMorePairs {
-			break
+		if prevKey >= key {
+			return Metadata{}, errMalformedMetadata{source: source, reason: "keys must be unique and sorted"}
 		}
+		prevKey = key
 	}
-	return metadata, nil
+	return NewMetadata(source), nil
 }
 
 // ValidMetadata returns an error if the metadata is invalid, nil otherwise.
@@ -104,61 +116,114 @@ func ValidMetadata(s string) error {
 	return nil
 }
 
-// Set a key value pair.
-func (m *Metadata) Set(key string, val string) {
-	if m.data == nil {
-		m.data = make(map[string]string)
-	}
-	m.data[key] = val
+func (m Metadata) Encode() string {
+	return m.source
 }
 
-// Remove the value with key from m.
-func (m Metadata) Remove(key string) {
-	if m.data != nil {
-		delete(m.data, key)
-	}
+// IsEmpty returns true iff metadata holds no key-value pairs.
+func (m Metadata) IsEmpty() bool {
+	return m.source == ""
 }
 
-// Has checks whether a specific metadata key is present.
-func (m Metadata) Has(key string) bool {
-	if m.data == nil {
-		return false
+// Divide iterates over Metadata, mapping each key-value pair to a new Metadata
+// that only contains it.
+//
+// It doesn't allocate.
+func (m Metadata) Divide() iter.Seq[Metadata] {
+	return func(yield func(Metadata) bool) {
+		remaining := m.source
+		for len(remaining) > 0 {
+			next := strings.IndexByte(remaining[1:], metadataSeparator)
+			if next < 0 {
+				next = len(remaining)
+			} else {
+				next += 1 // Add back the ':'
+			}
+			if !yield(NewMetadata(remaining[:next])) {
+				return
+			}
+			remaining = remaining[next:]
+		}
 	}
-	_, ok := m.data[key]
-	return ok
-}
-
-// Get the value set for key.
-func (m Metadata) Get(key string) (string, bool) {
-	if m.data == nil {
-		return "", false
-	}
-	val, ok := m.data[key]
-	return val, ok
 }
 
 // Iter returns a new iterator that yields key/value pairs sorted by keys.
+//
+// It doesn't allocate.
 func (m Metadata) Iter() iter.Seq2[string, string] {
 	return func(yield func(string, string) bool) {
-		keys := slices.Sorted(maps.Keys(m.data))
-		for _, key := range keys {
-			if !yield(key, m.data[key]) {
+		for sub := range m.Divide() {
+			k, v, _ := stringsCut(sub.Encode()[1:], metadataKVSeparator)
+			if !yield(k, v) {
 				return
 			}
 		}
 	}
 }
 
+// Set a key value pair.
+//
+// It is O(n) over the size of Metadata and allocates.
+func (m *Metadata) Set(key string, val string) {
+	var source strings.Builder
+	inserted := false
+	for prevKey, prevVal := range m.Iter() {
+		if inserted {
+			writeMetadataKV(&source, prevKey, prevVal)
+			continue
+		}
+
+		switch strings.Compare(prevKey, key) {
+		case -1: // prevKey < key
+			writeMetadataKV(&source, prevKey, prevVal)
+		case 0: // prevKey == key, key replaces prevKey
+			writeMetadataKV(&source, key, val)
+			inserted = true
+		case 1: // prevKey > key, insert key before it
+			writeMetadataKV(&source, key, val)
+			writeMetadataKV(&source, prevKey, prevVal)
+			inserted = true
+		}
+	}
+	if !inserted {
+		writeMetadataKV(&source, key, val)
+	}
+	m.source = source.String()
+}
+
+func writeMetadataKV(into *strings.Builder, key, val string) {
+	_ = into.WriteByte(metadataSeparator)
+	_, _ = into.WriteString(key)
+	_ = into.WriteByte(metadataKVSeparator)
+	_, _ = into.WriteString(val)
+}
+
+// With returns a new Metadata, setting key to value.
+//
+// It is O(n) over the size of Metadata and allocates.
+func (m Metadata) With(key string, val string) Metadata {
+	m.Set(key, val)
+	return m
+}
+
+// Has checks whether a specific metadata key is present.
+func (m Metadata) Has(key string) bool {
+	_, ok := m.Get(key)
+	return ok
+}
+
+// Get the value set for key.
+func (m Metadata) Get(key string) (string, bool) {
+	for k, v := range m.Iter() {
+		if k == key {
+			return v, true
+		}
+	}
+	return "", false
+}
+
 // WithTenant encodes the metadata as a tenant-prefixed string.
 // The format is "tenantID:key1=val1:key2=val2" with keys sorted alphabetically.
 func (m Metadata) WithTenant(tenantID string) string {
-	var sb strings.Builder
-	sb.WriteString(tenantID)
-	for key, val := range m.Iter() {
-		sb.WriteRune(metadataSeparator)
-		sb.WriteString(key)
-		sb.WriteRune(metadataKVSeparator)
-		sb.WriteString(val)
-	}
-	return sb.String()
+	return tenantID + m.source
 }

@@ -25,6 +25,7 @@ var (
 	procGetLogicalProcessorInformationEx = common.Modkernel32.NewProc("GetLogicalProcessorInformationEx")
 	procGetSystemFirmwareTable           = common.Modkernel32.NewProc("GetSystemFirmwareTable")
 	procCallNtPowerInformation           = common.ModPowrProf.NewProc("CallNtPowerInformation")
+	procGetActiveProcessorGroupCount     = common.Modkernel32.NewProc("GetActiveProcessorGroupCount")
 )
 
 type win32_Processor struct { //nolint:revive //FIXME
@@ -103,14 +104,78 @@ func Times(percpu bool) ([]TimesStat, error) {
 }
 
 func TimesWithContext(_ context.Context, percpu bool) ([]TimesStat, error) {
-	if percpu {
-		return perCPUTimes()
+	// Get the CPU performance counters per processor via Windows API
+	stats, err := perfInfo()
+	if err == nil && len(stats) == 0 {
+		err = errors.New("no processor performance information returned")
+	}
+	if err != nil {
+		if percpu {
+			return nil, err
+		}
+		// perfInfo relies on the undocumented NtQuerySystemInformation, which
+		// may be unavailable in restricted environments. Fall back to the
+		// public GetSystemTimes for the total rather than failing outright.
+		return systemTimes()
 	}
 
-	var ret []TimesStat
-	var lpIdleTime common.FILETIME
-	var lpKernelTime common.FILETIME
-	var lpUserTime common.FILETIME
+	if percpu {
+		ret := make([]TimesStat, 0, len(stats))
+		for core, v := range stats {
+			c := TimesStat{
+				CPU:    fmt.Sprintf("cpu%d", core),
+				User:   float64(v.UserTime) / ClocksPerSec,
+				System: float64(v.KernelTime-v.IdleTime) / ClocksPerSec,
+				Idle:   float64(v.IdleTime) / ClocksPerSec,
+				Irq:    float64(v.InterruptTime) / ClocksPerSec,
+			}
+			ret = append(ret, c)
+		}
+		return ret, nil
+	}
+
+	// Accumulate the times over all CPUs as GetSystemTimes() will only return
+	// the counters for the current processor group. This causes issues for
+	// machines with more than 64 logical processors when the current thread is
+	// switched to another processor group as then the counters are not
+	// monotonic anymore.
+	//
+	// Do all arithmetic on the integer tick counts and convert to float64 only
+	// once. Converting each counter first loses precision on large counters and
+	// can make the returned values non-monotonic. See issue #2110.
+	var idle, kernel, user, interrupt int64
+	for _, v := range stats {
+		idle += v.IdleTime
+		kernel += v.KernelTime
+		user += v.UserTime
+		interrupt += v.InterruptTime
+	}
+
+	return []TimesStat{
+		{
+			CPU:    "cpu-total",
+			User:   float64(user) / ClocksPerSec,
+			System: float64(kernel-idle) / ClocksPerSec, // kernel time includes idle time
+			Idle:   float64(idle) / ClocksPerSec,
+			Irq:    float64(interrupt) / ClocksPerSec,
+		},
+	}, nil
+}
+
+// systemTimes returns the combined CPU times reported by GetSystemTimes.
+//
+// This is only a fallback for TimesWithContext(ctx, false): GetSystemTimes is a
+// documented public API but returns the counters of the calling thread's
+// processor group only, so on hosts with more than 64 logical processors the
+// values are not monotonic once the thread is migrated to another group. It
+// also cannot report Irq, which is left at zero here.
+//
+// Whether perfInfo works is a property of the environment, so in practice a
+// process stays on one path for its whole lifetime. Should perfInfo fail only
+// intermittently on a multi-group host, the two paths cover a different number
+// of processors, and Percent may report one bogus sample before recovering.
+func systemTimes() ([]TimesStat, error) {
+	var lpIdleTime, lpKernelTime, lpUserTime common.FILETIME
 	// GetSystemTimes returns 0 for error, in which case we check err,
 	// see https://pkg.go.dev/golang.org/x/sys/windows#LazyProc.Call
 	r, _, err := common.ProcGetSystemTimes.Call(
@@ -121,20 +186,19 @@ func TimesWithContext(_ context.Context, percpu bool) ([]TimesStat, error) {
 		return nil, err
 	}
 
-	LOT := float64(0.0000001)
-	HIT := (LOT * 4294967296.0)
-	idle := ((HIT * float64(lpIdleTime.DwHighDateTime)) + (LOT * float64(lpIdleTime.DwLowDateTime)))
-	user := ((HIT * float64(lpUserTime.DwHighDateTime)) + (LOT * float64(lpUserTime.DwLowDateTime)))
-	kernel := ((HIT * float64(lpKernelTime.DwHighDateTime)) + (LOT * float64(lpKernelTime.DwLowDateTime)))
-	system := (kernel - idle)
+	// See the note on integer arithmetic in TimesWithContext and issue #2110.
+	idle := uint64(lpIdleTime.DwHighDateTime)<<32 | uint64(lpIdleTime.DwLowDateTime)
+	user := uint64(lpUserTime.DwHighDateTime)<<32 | uint64(lpUserTime.DwLowDateTime)
+	kernel := uint64(lpKernelTime.DwHighDateTime)<<32 | uint64(lpKernelTime.DwLowDateTime)
 
-	ret = append(ret, TimesStat{
-		CPU:    "cpu-total",
-		Idle:   float64(idle),
-		User:   float64(user),
-		System: float64(system),
-	})
-	return ret, nil
+	return []TimesStat{
+		{
+			CPU:    "cpu-total",
+			User:   float64(user) / ClocksPerSec,
+			System: float64(kernel-idle) / ClocksPerSec, // kernel time includes idle time
+			Idle:   float64(idle) / ClocksPerSec,
+		},
+	}, nil
 }
 
 func Info() ([]InfoStat, error) {
@@ -241,28 +305,30 @@ func InfoWithContext(ctx context.Context) ([]InfoStat, error) {
 	return ret, nil
 }
 
-// perCPUTimes returns times stat per cpu, per core and overall for all CPUs
-func perCPUTimes() ([]TimesStat, error) {
-	var ret []TimesStat
-	stats, err := perfInfo()
-	if err != nil {
-		return nil, err
-	}
-	for core, v := range stats {
-		c := TimesStat{
-			CPU:    fmt.Sprintf("cpu%d", core),
-			User:   float64(v.UserTime) / ClocksPerSec,
-			System: float64(v.KernelTime-v.IdleTime) / ClocksPerSec,
-			Idle:   float64(v.IdleTime) / ClocksPerSec,
-			Irq:    float64(v.InterruptTime) / ClocksPerSec,
-		}
-		ret = append(ret, c)
-	}
-	return ret, nil
-}
-
 // makes call to Windows API function to retrieve performance information for each core
 func perfInfo() ([]win32_SystemProcessorPerformanceInformation, error) {
+	// On hosts with more than 64 logical CPUs Windows splits CPUs into Processor Groups
+	// (up to 64 logical CPUs per group). The non-Ex NtQuerySystemInformation only returns
+	// data for the calling thread's group, so whenever the Ex variant is available we
+	// iterate every active group and concatenate the results. See issue #887.
+	//
+	// Every proc is resolved with Find before it is used: LazyProc.Call panics when it
+	// cannot resolve, and a panic would take the caller's process down instead of
+	// letting TimesWithContext fall back to GetSystemTimes.
+	if common.ProcNtQuerySystemInformationEx.Find() == nil && procGetActiveProcessorGroupCount.Find() == nil {
+		return perfInfoAllGroups()
+	}
+	if err := common.ProcNtQuerySystemInformation.Find(); err != nil {
+		return nil, err
+	}
+	return perfInfoSingleGroup()
+}
+
+// perfInfoSingleGroup queries SystemProcessorPerformanceInformation via the non-Ex
+// NtQuerySystemInformation call. This is the legacy fallback for environments where
+// NtQuerySystemInformationEx cannot be resolved; it only returns data for the calling
+// thread's processor group.
+func perfInfoSingleGroup() ([]win32_SystemProcessorPerformanceInformation, error) {
 	// Make maxResults large for safety.
 	// We can't invoke the api call with a results array that's too small.
 	// If we have more than 2056 cores on a single host, then it's probably the future.
@@ -286,16 +352,61 @@ func perfInfo() ([]win32_SystemProcessorPerformanceInformation, error) {
 
 	// check return code for errors
 	if retCode != 0 {
-		return nil, fmt.Errorf("call to NtQuerySystemInformation returned %d. err: %s", retCode, err.Error())
+		return nil, fmt.Errorf("call to NtQuerySystemInformation returned 0x%x: %w", retCode, err)
 	}
 
 	// calculate the number of returned elements based on the returned size
 	numReturnedElements := retSize / win32_SystemProcessorPerformanceInfoSize
 
 	// trim results to the number of returned elements
-	resultBuffer = resultBuffer[:numReturnedElements]
+	return resultBuffer[:numReturnedElements], nil
+}
 
-	return resultBuffer, nil
+// perfInfoAllGroups queries SystemProcessorPerformanceInformation for every active
+// processor group via NtQuerySystemInformationEx and concatenates the results. The
+// group index is passed as the InputBuffer per the Ex calling convention documented at
+// https://www.geoffchappell.com/studies/windows/km/ntoskrnl/api/ex/sysinfo/queryex.htm
+func perfInfoAllGroups() ([]win32_SystemProcessorPerformanceInformation, error) {
+	// GetActiveProcessorGroupCount returns 0 only on failure; propagate the error
+	// rather than silently defaulting to a single group and returning partial data.
+	r, _, callErr := procGetActiveProcessorGroupCount.Call()
+	if r == 0 {
+		return nil, fmt.Errorf("GetActiveProcessorGroupCount returned 0: %w", callErr)
+	}
+	groupCount := uint16(r)
+
+	var result []win32_SystemProcessorPerformanceInformation
+	for g := uint16(0); g < groupCount; g++ {
+		numLP := windows.GetActiveProcessorCount(g)
+		if numLP == 0 {
+			return nil, fmt.Errorf("GetActiveProcessorCount returned 0 for processor group %d", g)
+		}
+		// buffer sized exactly for this group's logical CPU count
+		buf := make([]win32_SystemProcessorPerformanceInformation, numLP)
+		bufSize := uintptr(win32_SystemProcessorPerformanceInfoSize) * uintptr(numLP)
+		var retSize uint32
+		// InputBuffer is a USHORT (2 bytes) holding the target processor group index.
+		group := g
+		retCode, _, err := common.ProcNtQuerySystemInformationEx.Call(
+			win32_SystemProcessorPerformanceInformationClass, // System Information Class -> SystemProcessorPerformanceInformation
+			uintptr(unsafe.Pointer(&group)),                  // InputBuffer: pointer to USHORT group index
+			unsafe.Sizeof(group),                             // InputBufferLength: sizeof(USHORT) = 2
+			uintptr(unsafe.Pointer(&buf[0])),                 // pointer to first element in result buffer
+			bufSize,                                          // size of the buffer in memory
+			uintptr(unsafe.Pointer(&retSize)),                // pointer to the size of the returned results the windows proc will set this
+		)
+		if retCode != 0 {
+			return nil, fmt.Errorf("call to NtQuerySystemInformationEx(group=%d) returned 0x%x: %w", g, retCode, err)
+		}
+		// Guard against a retSize that is not a whole number of entries or exceeds
+		// the allocated buffer (e.g. CPU hot-add racing with GetActiveProcessorCount).
+		if retSize%win32_SystemProcessorPerformanceInfoSize != 0 || uintptr(retSize) > bufSize {
+			return nil, fmt.Errorf("NtQuerySystemInformationEx(group=%d) returned unexpected retSize=%d (bufSize=%d)", g, retSize, bufSize)
+		}
+		n := retSize / win32_SystemProcessorPerformanceInfoSize
+		result = append(result, buf[:n]...)
+	}
+	return result, nil
 }
 
 // SystemInfo is an equivalent representation of SYSTEM_INFO in the Windows API.

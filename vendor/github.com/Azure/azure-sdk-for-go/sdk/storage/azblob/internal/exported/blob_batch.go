@@ -1,6 +1,3 @@
-//go:build go1.18
-// +build go1.18
-
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License. See License.txt in the project root for license information.
 
@@ -55,18 +52,18 @@ func buildSubRequest(req *policy.Request) []byte {
 		blobPath += "?" + req.Raw().URL.RawQuery
 	}
 
-	batchSubRequest.WriteString(fmt.Sprintf("%s %s %s%s", req.Raw().Method, blobPath, httpVersion, httpNewline))
+	fmt.Fprintf(&batchSubRequest, "%s %s %s%s", req.Raw().Method, blobPath, httpVersion, httpNewline)
 
 	for k, v := range req.Raw().Header {
 		if strings.EqualFold(k, shared.HeaderXmsVersion) {
 			continue
 		}
 		if len(v) > 0 {
-			batchSubRequest.WriteString(fmt.Sprintf("%v: %v%v", k, v[0], httpNewline))
+			fmt.Fprintf(&batchSubRequest, "%v: %v%v", k, v[0], httpNewline)
 		}
 	}
 
-	batchSubRequest.WriteString(httpNewline)
+	fmt.Fprint(&batchSubRequest, httpNewline)
 	return []byte(batchSubRequest.String())
 }
 

@@ -42,14 +42,14 @@ type TSSLSocket struct {
 //
 // Example:
 //
-//     trans := thrift.NewTSSLSocketConf("localhost:9090", &TConfiguration{
-//         ConnectTimeout: time.Second, // Use 0 for no timeout
-//         SocketTimeout:  time.Second, // Use 0 for no timeout
+//	trans := thrift.NewTSSLSocketConf("localhost:9090", &TConfiguration{
+//	    ConnectTimeout: time.Second, // Use 0 for no timeout
+//	    SocketTimeout:  time.Second, // Use 0 for no timeout
 //
-//         TLSConfig: &tls.Config{
-//             // Fill in tls config here.
-//         }
-//     })
+//	    TLSConfig: &tls.Config{
+//	        // Fill in tls config here.
+//	    }
+//	})
 func NewTSSLSocketConf(hostPort string, conf *TConfiguration) *TSSLSocket {
 	if cfg := conf.GetTLSConfig(); cfg != nil && cfg.MinVersion == 0 {
 		cfg.MinVersion = tls.VersionTLS10

@@ -6,36 +6,42 @@ import (
 	"github.com/go-kit/log/level"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/prometheus/model/labels"
 
+	"github.com/grafana/loki/v3/pkg/logql/log"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
+	"github.com/grafana/loki/v3/pkg/logqlmodel"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/index"
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
 )
 
 const (
-	ShardLastOverTime     = "last_over_time"
-	ShardFirstOverTime    = "first_over_time"
-	ShardQuantileOverTime = "quantile_over_time"
-	SupportApproxTopk     = "approx_topk"
+	ShardLastOverTime          = "last_over_time"
+	ShardFirstOverTime         = "first_over_time"
+	ShardQuantileOverTime      = "quantile_over_time"
+	SupportApproxTopk          = "approx_topk"
+	SupportApproxCountDistinct = "approx_count_distinct"
 )
 
 type ShardMapper struct {
-	shards                   ShardingStrategy
-	metrics                  *MapperMetrics
-	quantileOverTimeSharding bool
-	lastOverTimeSharding     bool
-	firstOverTimeSharding    bool
-	approxTopkSupport        bool
+	shards                     ShardingStrategy
+	metrics                    *MapperMetrics
+	quantileOverTimeSharding   bool
+	lastOverTimeSharding       bool
+	firstOverTimeSharding      bool
+	approxTopkSupport          bool
+	approxCountDistinctSupport bool
 }
 
 func NewShardMapper(strategy ShardingStrategy, metrics *MapperMetrics, shardAggregation []string) ShardMapper {
 	mapper := ShardMapper{
-		shards:                   strategy,
-		metrics:                  metrics,
-		quantileOverTimeSharding: false,
-		lastOverTimeSharding:     false,
-		firstOverTimeSharding:    false,
-		approxTopkSupport:        false,
+		shards:                     strategy,
+		metrics:                    metrics,
+		quantileOverTimeSharding:   false,
+		lastOverTimeSharding:       false,
+		firstOverTimeSharding:      false,
+		approxTopkSupport:          false,
+		approxCountDistinctSupport: false,
 	}
 	for _, a := range shardAggregation {
 		switch a {
@@ -47,6 +53,8 @@ func NewShardMapper(strategy ShardingStrategy, metrics *MapperMetrics, shardAggr
 			mapper.firstOverTimeSharding = true
 		case SupportApproxTopk:
 			mapper.approxTopkSupport = true
+		case SupportApproxCountDistinct:
+			mapper.approxCountDistinctSupport = true
 		}
 	}
 
@@ -90,9 +98,6 @@ func (m ShardMapper) Map(expr syntax.Expr, r *downstreamRecorder, topLevel bool)
 		return e, 0, nil
 	case *syntax.VectorExpr:
 		return e, 0, nil
-	case *syntax.MultiVariantExpr:
-		// TODO(twhitney): this should be possible to support but hasn't been implemented yet
-		return e, 0, nil
 	case *syntax.MatchersExpr, *syntax.PipelineExpr:
 		return m.mapLogSelectorExpr(e.(syntax.LogSelectorExpr), r)
 	case *syntax.VectorAggregationExpr:
@@ -101,6 +106,8 @@ func (m ShardMapper) Map(expr syntax.Expr, r *downstreamRecorder, topLevel bool)
 		return m.mapLabelReplaceExpr(e, r, topLevel)
 	case *syntax.RangeAggregationExpr:
 		return m.mapRangeAggregationExpr(e, r, topLevel)
+	case *syntax.LabelAggregationExpr:
+		return m.mapLabelAggregationExpr(e, r)
 	case *syntax.BinOpExpr:
 		return m.mapBinOpExpr(e, r, topLevel)
 	default:
@@ -243,6 +250,26 @@ func (m ShardMapper) mapVectorAggregationExpr(expr *syntax.VectorAggregationExpr
 
 		case syntax.OpTypeSum:
 			// sum(x) -> sum(sum(x, shard=1) ++ sum(x, shard=2)...)
+			//
+			// This opaque per-shard rewrite is safe only if the per-shard
+			// partials can be combined by an outer sum. That fails when BOTH
+			// hold:
+			//   1. Downstream stages can collapse the same output labelset
+			//      across shards (drop/keep/labelfmt rename, or an explicit
+			//      by/without inside a range/vector aggregation), and
+			//   2. The inner range aggregation is non-additive
+			//      (max/min/avg/quantile/first/last/etc.). Its per-shard
+			//      partials require a semantically-appropriate combiner
+			//      (max/min/re-avg/sketch merge) before an outer sum.
+			//
+			// When both conditions hold, fall through to child-level mapping
+			// so mapRangeAggregationExpr can decompose with the right merger.
+			// Additive inners (count/rate/bytes/bytes_rate/sum_over_time) keep
+			// the fast leaf-compression path even under label reduction — an
+			// outer sum is the correct combiner regardless of collapse.
+			if syntax.ReducesLabels(expr.Left) && syntax.HasNonAdditiveAggr(expr.Left) {
+				break
+			}
 			return m.wrappedShardedVectorAggr(expr, r)
 
 		case syntax.OpTypeMin, syntax.OpTypeMax:
@@ -369,6 +396,7 @@ func (m ShardMapper) mapApproxTopk(expr *syntax.VectorAggregationExpr, forceNoSh
 	if shards == 0 || forceNoShard {
 		return &syntax.VectorAggregationExpr{
 			Left: &CountMinSketchEvalExpr{
+				operation: syntax.OpTypeApproxTopK,
 				downstreams: []DownstreamSampleExpr{{
 					SampleExpr: countMinSketchExpr,
 				}},
@@ -394,6 +422,7 @@ func (m ShardMapper) mapApproxTopk(expr *syntax.VectorAggregationExpr, forceNoSh
 	}
 
 	sharded := &CountMinSketchEvalExpr{
+		operation:   syntax.OpTypeApproxTopK,
 		downstreams: downstreams,
 	}
 
@@ -402,6 +431,43 @@ func (m ShardMapper) mapApproxTopk(expr *syntax.VectorAggregationExpr, forceNoSh
 		Grouping:  expr.Grouping,
 		Operation: syntax.OpTypeTopK,
 		Params:    expr.Params,
+	}, bytesPerShard, nil
+}
+
+func (m ShardMapper) mapLabelAggregationExpr(expr *syntax.LabelAggregationExpr, r *downstreamRecorder) (syntax.SampleExpr, uint64, error) {
+	if !m.approxCountDistinctSupport {
+		return noOp(expr, m.shards.Resolver())
+	}
+
+	shards, bytesPerShard, err := m.shards.Shards(expr)
+	if err != nil {
+		return nil, 0, err
+	}
+	if len(shards) == 0 {
+		// with no shards, we don't need to send sketches over the network. Instead the downstream tasks derive the estimate and send it back directly.
+		return noOp(expr, m.shards.Resolver())
+	}
+
+	// approx_count_distinct(field, range) by (g) ->
+	// CountDistinctSketchEval(
+	//   CountDistinctSketchMerge(
+	//     CountDistinctSketch(field, range)[shard=0] ++ ...
+	//   )
+	// )
+	sketchExpr := syntax.NewCountDistinctSketchFromLabelAggregation(expr)
+	downstreams := make([]DownstreamSampleExpr, 0, len(shards))
+	for i := range shards {
+		downstreams = append(downstreams, DownstreamSampleExpr{
+			shard:      &shards[i],
+			SampleExpr: sketchExpr,
+		})
+	}
+	r.Add(len(shards), MetricsKey)
+
+	return &CountDistinctSketchEvalExpr{
+		mergeExpr: &CountDistinctSketchMergeExpr{
+			downstreams: downstreams,
+		},
 	}, bytesPerShard, nil
 }
 
@@ -479,6 +545,14 @@ func (m ShardMapper) mapRangeAggregationExpr(expr *syntax.RangeAggregationExpr, 
 			return m.mapSampleExpr(expr, r)
 		}
 
+		// Below this point the avg_over_time() is decomposed into a sum_over_time()
+		// divided by a count_over_time(). The count leg cannot reproduce a
+		// post filter on __error__, because only the unwrap conversion sets that
+		// label and the count_over_time() doesn't support unwrap.
+		if hasUnwrapPostFiltersOnError(expr.Left) {
+			return noOp(expr, m.shards.Resolver())
+		}
+
 		grouping := expr.Grouping
 		if grouping == nil {
 			grouping = &syntax.Grouping{Without: true}
@@ -498,7 +572,7 @@ func (m ShardMapper) mapRangeAggregationExpr(expr *syntax.RangeAggregationExpr, 
 		}
 
 		// Strip unwrap from log range
-		countOverTimeSelector, err := expr.Left.WithoutUnwrap()
+		countOverTimeSelector, err := convertUnwrapToLabelFilters(expr.Left)
 		if err != nil {
 			return nil, 0, err
 		}
@@ -609,8 +683,9 @@ func (m ShardMapper) mapRangeAggregationExpr(expr *syntax.RangeAggregationExpr, 
 		}
 
 		return &MergeFirstOverTimeExpr{
-			downstreams: downstreams,
-			offset:      expr.Left.Offset,
+			downstreams:   downstreams,
+			offset:        expr.Left.Offset,
+			rangeInterval: expr.Left.Interval,
 		}, bytesPerShard, nil
 	case syntax.OpRangeTypeLast:
 		if !m.lastOverTimeSharding {
@@ -640,8 +715,9 @@ func (m ShardMapper) mapRangeAggregationExpr(expr *syntax.RangeAggregationExpr, 
 		}
 
 		return &MergeLastOverTimeExpr{
-			downstreams: downstreams,
-			offset:      expr.Left.Offset,
+			downstreams:   downstreams,
+			offset:        expr.Left.Offset,
+			rangeInterval: expr.Left.Interval,
 		}, bytesPerShard, nil
 	default:
 		// don't shard if there's not an appropriate optimization
@@ -673,4 +749,59 @@ func isLiteralOrVector(e syntax.Expr) bool {
 
 func badASTMapping(got syntax.Expr) error {
 	return fmt.Errorf("bad AST mapping: expected SampleExpr, but got (%T)", got)
+}
+
+// convertUnwrapToLabelFilters returns a copy of the log range with the unwrap
+// removed and replaced by the label filters that select the same log lines.
+//
+// A line yields an unwrapped sample only when the unwrap identifier resolves to
+// a non-empty label and the post filters keep the line, so `| unwrap x | f`
+// becomes `| x != "" | f`.
+func convertUnwrapToLabelFilters(r *syntax.LogRangeExpr) (*syntax.LogRangeExpr, error) {
+	if r.Unwrap == nil {
+		return syntax.Clone(r)
+	}
+
+	// WithoutUnwrap clones the selector, and the copy is required: the stages
+	// below are appended in place, while the caller keeps the original pipeline
+	// on the sum leg of the decomposition.
+	out, err := r.WithoutUnwrap()
+	if err != nil {
+		return nil, err
+	}
+
+	stages := syntax.MultiStageExpr{
+		&syntax.LabelFilterExpr{
+			LabelFilterer: log.NewStringLabelFilter(
+				labels.MustNewMatcher(labels.MatchNotEqual, r.Unwrap.Identifier, ""),
+			),
+		},
+	}
+	for _, f := range r.Unwrap.PostFilters {
+		stages = append(stages, &syntax.LabelFilterExpr{LabelFilterer: f})
+	}
+
+	switch left := out.Left.(type) {
+	case *syntax.PipelineExpr:
+		left.MultiStages = append(left.MultiStages, stages...)
+	case *syntax.MatchersExpr:
+		out.Left = &syntax.PipelineExpr{Left: left, MultiStages: stages}
+	default:
+		return nil, fmt.Errorf("unsupported log selector type %T", out.Left)
+	}
+	return out, nil
+}
+
+func hasUnwrapPostFiltersOnError(r *syntax.LogRangeExpr) bool {
+	if r.Unwrap == nil {
+		return false
+	}
+	for _, f := range r.Unwrap.PostFilters {
+		for _, name := range f.RequiredLabelNames() {
+			if name == logqlmodel.ErrorLabel || name == logqlmodel.ErrorDetailsLabel {
+				return true
+			}
+		}
+	}
+	return false
 }
