@@ -8,6 +8,7 @@ import (
 	"io"
 	"reflect"
 	"sort"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -25,6 +26,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/postings"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/stats"
+	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
 	"github.com/grafana/loki/v3/pkg/engine/internal/util/dag"
 	"github.com/grafana/loki/v3/pkg/engine/internal/workflow"
@@ -221,6 +223,34 @@ func buildOverlappingPostingsIndex(ctx context.Context, t *testing.T, bucket obj
 	})
 }
 
+func buildCurrentIndexWithStats(ctx context.Context, t *testing.T, bucket objstore.Bucket, tenant, path string, rows []stats.Stat) {
+	t.Helper()
+	seen := make(map[string]bool)
+	var postingRows []postings.Row
+	for _, row := range rows {
+		key := fmt.Sprintf("%s#%d", row.ObjectPath, row.SectionIndex)
+		if seen[key] {
+			continue
+		}
+		seen[key] = true
+		postingRows = append(postingRows, postings.Row{
+			Kind:         postings.KindLabel,
+			ObjectPath:   row.ObjectPath,
+			SectionIndex: row.SectionIndex,
+			ColumnName:   "layout",
+			LabelValue:   "current",
+			ShardBuckets: streams.ShardFactor,
+		})
+	}
+	buildIndex(ctx, t, bucket, testIndexObject{
+		tenant:      tenant,
+		path:        path,
+		sectionSize: 1 << 21,
+		stats:       rows,
+		postings:    postingRows,
+	})
+}
+
 func TestCompactTenantLogs_DispatchesLogMergePlans(t *testing.T) {
 	ctx := context.Background()
 	bucket := objstore.NewInMemBucket()
@@ -229,7 +259,7 @@ func TestCompactTenantLogs_DispatchesLogMergePlans(t *testing.T) {
 
 	// Two overlapping objects -> 2 runs. Each object's physical sections must
 	// stay together and ordered in the dispatched task.
-	buildIndexWithStats(ctx, t, bucket, "acme", convergedPath, []stats.Stat{
+	buildCurrentIndexWithStats(ctx, t, bucket, "acme", convergedPath, []stats.Stat{
 		{ObjectPath: "logs/log-0", SectionIndex: 0, SortSchema: "label:service_name",
 			Labels: map[string]string{"service_name": "auth"}, MinTimestamp: 10, MaxTimestamp: 20, RowCount: 1, UncompressedSize: 50},
 		{ObjectPath: "logs/log-0", SectionIndex: 1, SortSchema: "label:service_name",
@@ -275,6 +305,53 @@ func TestCompactTenantLogs_DispatchesLogMergePlans(t *testing.T) {
 	require.Equal(t, []string{convergedPath}, swaps[0].oldPaths)
 }
 
+func TestCompactTenantLogs_DispatchesSortObjectPlans(t *testing.T) {
+	ctx := context.Background()
+	bucket := objstore.NewInMemBucket()
+	window := time.Date(2026, 5, 14, 0, 0, 0, 0, time.UTC).Truncate(metastore.MetastoreWindowSize)
+	convergedPath := "indexes/aa/converged"
+	buildCurrentIndexWithStats(ctx, t, bucket, "acme", convergedPath, []stats.Stat{
+		{ObjectPath: "logs/log-0", SectionIndex: 0, SortSchema: "label:cluster",
+			Labels: map[string]string{"cluster": "dev"}, MinTimestamp: 10, MaxTimestamp: 30, RowCount: 2, UncompressedSize: 100},
+		{ObjectPath: "logs/log-1", SectionIndex: 0, SortSchema: "label:cluster",
+			Labels: map[string]string{"cluster": "prod"}, MinTimestamp: 20, MaxTimestamp: 40, RowCount: 3, UncompressedSize: 200},
+	})
+
+	runner := &fakeRunner{}
+	replacer := &fakeReplacer{swapped: true}
+	c := newTestCoordinator(t, bucket, runner, replacer, fixedClock(window.Add(time.Hour)), newFakeLimits("acme"))
+
+	result, err := c.compactTenantLogs(ctx, "acme", window, indexEntry{
+		Path:                 convergedPath,
+		UncompressedLogsSize: 300,
+	})
+	require.NoError(t, err)
+	require.Equal(t, compactionStats{removed: 1, added: 2, dispatched: 2}, result)
+
+	calls := runner.snapshot()
+	require.Len(t, calls, 2)
+	sources := make(map[string]bool)
+	for _, call := range calls {
+		require.Equal(t, []string{"compaction", "sort-object"}, call.opts.Actor)
+		root, err := call.plan.Root()
+		require.NoError(t, err)
+		node, ok := root.(*physical.SortObject)
+		require.True(t, ok)
+		require.Equal(t, []string{"label:service_name"}, node.SortSchema)
+		sources[node.SourceObjectPath] = true
+	}
+	require.Equal(t, map[string]bool{"logs/log-0": true, "logs/log-1": true}, sources)
+
+	swaps := replacer.snapshot()
+	require.Len(t, swaps, 1)
+	require.Equal(t, []string{convergedPath}, swaps[0].oldPaths)
+	require.Len(t, swaps[0].newEntries, 2)
+	require.ElementsMatch(t, []uint64{100, 200}, []uint64{
+		swaps[0].newEntries[0].UncompressedLogsSize,
+		swaps[0].newEntries[1].UncompressedLogsSize,
+	})
+}
+
 func TestCompactTenant_DispatchesIndexMergePlans(t *testing.T) {
 	ctx := context.Background()
 	bucket := objstore.NewInMemBucket()
@@ -296,7 +373,7 @@ func TestCompactTenant_DispatchesIndexMergePlans(t *testing.T) {
 	replacer := &fakeReplacer{swapped: true}
 	c := newTestCoordinator(t, bucket, runner, replacer, fixedClock(window.Add(time.Hour)), newFakeLimits("acme"))
 
-	stats, err := c.compactTenant(ctx, "acme", window, []indexEntry{
+	stats, err := c.compactTenantIndexes(ctx, "acme", window, []indexEntry{
 		{Path: "indexes/a", Start: window.Add(time.Hour), End: window.Add(2 * time.Hour)},
 		{Path: "indexes/b", Start: window.Add(time.Hour), End: window.Add(2 * time.Hour)},
 	})
@@ -313,6 +390,90 @@ func TestCompactTenant_DispatchesIndexMergePlans(t *testing.T) {
 	require.Equal(t, []string{"indexes/b#0", "indexes/b#1"}, sectionRefNames(runs[1].Sections))
 }
 
+func TestCompactTenant_DoesNotMergeIndexesAcrossSortSchemas(t *testing.T) {
+	ctx := context.Background()
+	bucket := objstore.NewInMemBucket()
+	window := time.Date(2026, 5, 14, 0, 0, 0, 0, time.UTC).Truncate(metastore.MetastoreWindowSize)
+	var entries []indexEntry
+
+	for _, schema := range []string{"label:service_name", "label:cluster"} {
+		for i := range 2 {
+			path := fmt.Sprintf("indexes/%s/%d", schema, i)
+			buildIndex(ctx, t, bucket, testIndexObject{
+				tenant:      "acme",
+				path:        path,
+				sectionSize: 1 << 20,
+				stats: []stats.Stat{{
+					ObjectPath:       path + "/logs",
+					SectionIndex:     0,
+					SortSchema:       schema,
+					Labels:           map[string]string{},
+					MinTimestamp:     10,
+					MaxTimestamp:     20,
+					RowCount:         1,
+					UncompressedSize: 100,
+				}},
+				postings: []postings.Row{
+					{
+						Kind:           postings.KindLabel,
+						ObjectPath:     path + "/logs",
+						SectionIndex:   0,
+						ColumnName:     "common",
+						LabelValue:     "a",
+						MinTimestamp:   10,
+						MaxTimestamp:   20,
+						ShardBuckets:   streams.ShardFactor,
+						MinShardBucket: 0,
+						MaxShardBucket: streams.ShardFactor - 1,
+					},
+					{
+						Kind:           postings.KindLabel,
+						ObjectPath:     path + "/logs",
+						SectionIndex:   0,
+						ColumnName:     "common",
+						LabelValue:     "z",
+						MinTimestamp:   30,
+						MaxTimestamp:   40,
+						ShardBuckets:   streams.ShardFactor,
+						MinShardBucket: 0,
+						MaxShardBucket: streams.ShardFactor - 1,
+					},
+				},
+			})
+			entries = append(entries, indexEntry{Path: path, Start: window, End: window.Add(time.Hour)})
+		}
+	}
+
+	runner := &fakeRunner{}
+	replacer := &fakeReplacer{swapped: true}
+	c := newTestCoordinator(t, bucket, runner, replacer, fixedClock(window.Add(time.Hour)), newFakeLimits("acme"))
+	result, err := c.compactTenantIndexes(ctx, "acme", window, entries)
+	require.NoError(t, err)
+	require.Equal(t, compactionStats{removed: 4, added: 2, dispatched: 2}, result)
+
+	calls := runner.snapshot()
+	require.Len(t, calls, 2)
+	for _, call := range calls {
+		root, err := call.plan.Root()
+		require.NoError(t, err)
+		node, ok := root.(*physical.IndexMerge)
+		require.True(t, ok)
+		var schemas = make(map[string]bool)
+		for _, run := range node.Runs {
+			for _, section := range run.Sections {
+				if strings.Contains(section.ObjectPath, "label:service_name") {
+					schemas["label:service_name"] = true
+				}
+				if strings.Contains(section.ObjectPath, "label:cluster") {
+					schemas["label:cluster"] = true
+				}
+			}
+		}
+		require.Len(t, schemas, 1, "one IndexMerge task must contain only one sort schema")
+	}
+	require.Len(t, replacer.snapshot(), 2, "each schema group is swapped independently")
+}
+
 func TestCompactTenantLogs_NoStatsRowsForTenantIsConverged(t *testing.T) {
 	ctx := context.Background()
 	bucket := objstore.NewInMemBucket()
@@ -321,7 +482,7 @@ func TestCompactTenantLogs_NoStatsRowsForTenantIsConverged(t *testing.T) {
 
 	// Index has a stats section (so it flushes) but for a DIFFERENT tenant;
 	// "acme" gets zero refs -> no tasks -> converged.
-	buildIndexWithStats(ctx, t, bucket, "other", convergedPath, []stats.Stat{
+	buildCurrentIndexWithStats(ctx, t, bucket, "other", convergedPath, []stats.Stat{
 		{ObjectPath: "logs/log-0", SectionIndex: 0, SortSchema: "label:service_name",
 			Labels: map[string]string{"service_name": "auth"}, MinTimestamp: 10, MaxTimestamp: 20, RowCount: 1, UncompressedSize: 100},
 	})
@@ -345,7 +506,7 @@ func TestCompactTenantLogs_InternalObjectOverlapIsConverged(t *testing.T) {
 
 	// Overlapping physical sections in one object are one planning unit and do
 	// not trigger a rewrite by themselves.
-	buildIndexWithStats(ctx, t, bucket, "acme", convergedPath, []stats.Stat{
+	buildCurrentIndexWithStats(ctx, t, bucket, "acme", convergedPath, []stats.Stat{
 		{ObjectPath: "logs/log-0", SectionIndex: 0, SortSchema: "label:service_name",
 			Labels: map[string]string{"service_name": "auth"}, MinTimestamp: 10, MaxTimestamp: 30, RowCount: 1, UncompressedSize: 100},
 		{ObjectPath: "logs/log-0", SectionIndex: 1, SortSchema: "label:service_name",
@@ -366,13 +527,13 @@ func TestCompactTenantLogs_InternalObjectOverlapIsConverged(t *testing.T) {
 	require.Empty(t, replacer.snapshot(), "terminal window performs no swap")
 }
 
-func TestCompactTenantLogs_TouchingRunsAreConverged(t *testing.T) {
+func TestCompactTenantLogs_SamePrefixMergesRegardlessOfTimestamp(t *testing.T) {
 	ctx := context.Background()
 	bucket := objstore.NewInMemBucket()
 	window := time.Date(2026, 5, 14, 0, 0, 0, 0, time.UTC).Truncate(metastore.MetastoreWindowSize)
 	indexPath := "indexes/aa/converged"
 
-	buildIndexWithStats(ctx, t, bucket, "acme", indexPath, []stats.Stat{
+	buildCurrentIndexWithStats(ctx, t, bucket, "acme", indexPath, []stats.Stat{
 		{ObjectPath: "logs/log-0", SectionIndex: 0, SortSchema: "label:service_name",
 			Labels: map[string]string{"service_name": "auth"}, MinTimestamp: 10, MaxTimestamp: 20, UncompressedSize: 100},
 		{ObjectPath: "logs/log-1", SectionIndex: 0, SortSchema: "label:service_name",
@@ -386,9 +547,9 @@ func TestCompactTenantLogs_TouchingRunsAreConverged(t *testing.T) {
 
 	stats, err := c.compactTenantLogs(ctx, "acme", window, indexEntry{Path: indexPath})
 	require.NoError(t, err)
-	require.Equal(t, compactionStats{}, stats)
-	require.Empty(t, runner.snapshot())
-	require.Empty(t, replacer.snapshot())
+	require.Equal(t, compactionStats{removed: 1, added: 1, dispatched: 1}, stats)
+	require.Len(t, runner.snapshot(), 1)
+	require.Len(t, replacer.snapshot(), 1)
 }
 
 func TestCompactTenantLogs_TerminalBelowFloorSkips(t *testing.T) {
@@ -398,7 +559,7 @@ func TestCompactTenantLogs_TerminalBelowFloorSkips(t *testing.T) {
 	convergedPath := "indexes/aa/converged"
 
 	// Two overlapping same-tuple rows -> P=2, total size 30, below the 1GiB floor.
-	buildIndexWithStats(ctx, t, bucket, "acme", convergedPath, []stats.Stat{
+	buildCurrentIndexWithStats(ctx, t, bucket, "acme", convergedPath, []stats.Stat{
 		{ObjectPath: "logs/log-0", SectionIndex: 0, SortSchema: "label:service_name",
 			Labels: map[string]string{"service_name": "auth"}, MinTimestamp: 10, MaxTimestamp: 30, RowCount: 1, UncompressedSize: 10},
 		{ObjectPath: "logs/log-1", SectionIndex: 0, SortSchema: "label:service_name",
@@ -423,7 +584,7 @@ func TestCompactTenantLogs_TerminalBelowFloorSkips(t *testing.T) {
 func twoRunConvergedBucket(ctx context.Context, t *testing.T, tenant, path string) objstore.Bucket {
 	t.Helper()
 	bucket := objstore.NewInMemBucket()
-	buildIndexWithStats(ctx, t, bucket, tenant, path, []stats.Stat{
+	buildCurrentIndexWithStats(ctx, t, bucket, tenant, path, []stats.Stat{
 		{ObjectPath: "logs/log-0", SectionIndex: 0, SortSchema: "label:service_name",
 			Labels: map[string]string{"service_name": "auth"}, MinTimestamp: 10, MaxTimestamp: 30, RowCount: 1, UncompressedSize: 100},
 		{ObjectPath: "logs/log-1", SectionIndex: 0, SortSchema: "label:service_name",
@@ -479,7 +640,7 @@ func TestCompactJobToCEdgeCases(t *testing.T) {
 				return bucket, func(c *coordinator) (compactionStats, error) {
 					indexes, err := loadTenantIndexes(ctx, bucket, window)
 					require.NoError(t, err)
-					return c.compactTenant(ctx, "acme", window, indexes["acme"])
+					return c.compactTenantIndexes(ctx, "acme", window, indexes["acme"])
 				}
 			},
 		},
@@ -544,7 +705,7 @@ func TestCompact_SplitsWhenRunsExceedK(t *testing.T) {
 		ctx := context.Background()
 		path := "indexes/aa/converged"
 		bucket := objstore.NewInMemBucket()
-		buildIndexWithStats(ctx, t, bucket, "acme", path, []stats.Stat{
+		buildCurrentIndexWithStats(ctx, t, bucket, "acme", path, []stats.Stat{
 			{ObjectPath: "logs/log-0", SectionIndex: 0, SortSchema: "label:service_name",
 				Labels: map[string]string{"service_name": "auth"}, MinTimestamp: 10, MaxTimestamp: 30, RowCount: 1, UncompressedSize: 100},
 			{ObjectPath: "logs/log-1", SectionIndex: 0, SortSchema: "label:service_name",
@@ -582,7 +743,7 @@ func TestCompact_SplitsWhenRunsExceedK(t *testing.T) {
 
 		indexes, err := loadTenantIndexes(ctx, bucket, window)
 		require.NoError(t, err)
-		stats, err := c.compactTenant(ctx, "acme", window, indexes["acme"])
+		stats, err := c.compactTenantIndexes(ctx, "acme", window, indexes["acme"])
 		require.NoError(t, err)
 		require.Equal(t, 2, stats.dispatched, "3 overlapping runs with K=2 must split into 2 tasks")
 		require.Equal(t, 2, stats.added)
@@ -702,7 +863,7 @@ func TestCompactTenant_TouchingSectionsAreConverged(t *testing.T) {
 	defer runner.assertUniqueObjects(t)
 	replacer := &fakeReplacer{swapped: true}
 	c := newTestCoordinator(t, bucket, runner, replacer, fixedClock(window.Add(time.Hour)), newFakeLimits("acme"))
-	stats, err := c.compactTenant(ctx, "acme", window, []indexEntry{{Path: "indexes/a"}, {Path: "indexes/b"}})
+	stats, err := c.compactTenantIndexes(ctx, "acme", window, []indexEntry{{Path: "indexes/a"}, {Path: "indexes/b"}})
 
 	require.NoError(t, err)
 	require.Equal(t, compactionStats{}, stats)
@@ -733,7 +894,7 @@ func TestCompactTenant_PostingTimestampsDetectOverlap(t *testing.T) {
 	defer runner.assertUniqueObjects(t)
 	replacer := &fakeReplacer{swapped: true}
 	c := newTestCoordinator(t, bucket, runner, replacer, fixedClock(window.Add(time.Hour)), newFakeLimits("acme"))
-	_, err := c.compactTenant(ctx, "acme", window, []indexEntry{
+	_, err := c.compactTenantIndexes(ctx, "acme", window, []indexEntry{
 		{Path: "indexes/a", Start: window, End: window.Add(time.Hour)},
 		{Path: "indexes/b", Start: window, End: window.Add(time.Hour)},
 	})
@@ -754,7 +915,7 @@ func TestCompactTenant_FailsOnIncompleteDiscovery(t *testing.T) {
 	defer runner.assertUniqueObjects(t)
 	replacer := &fakeReplacer{swapped: true}
 	c := newTestCoordinator(t, bucket, runner, replacer, fixedClock(window.Add(time.Hour)), newFakeLimits("acme"))
-	_, err := c.compactTenant(ctx, "acme", window, []indexEntry{{Path: "indexes/a"}, {Path: "indexes/missing"}})
+	_, err := c.compactTenantIndexes(ctx, "acme", window, []indexEntry{{Path: "indexes/a"}, {Path: "indexes/missing"}})
 
 	require.ErrorContains(t, err, "discover index section bounds")
 	require.Empty(t, runner.snapshot())
@@ -807,8 +968,8 @@ func logMergeBucket(ctx context.Context, t *testing.T, window time.Time, tenant 
 					Labels: map[string]string{"service_name": "auth"}, MinTimestamp: 20, MaxTimestamp: 40, RowCount: 1, UncompressedSize: 100},
 			},
 			postings: []postings.Row{
-				{Kind: postings.KindLabel, ObjectPath: p + ".log-0", ColumnName: "service_name", LabelValue: "a", MinTimestamp: 10, MaxTimestamp: 20},
-				{Kind: postings.KindLabel, ObjectPath: p + ".log-1", ColumnName: "service_name", LabelValue: "z", MinTimestamp: 30, MaxTimestamp: 40},
+				{Kind: postings.KindLabel, ObjectPath: p + ".log-0", ColumnName: "service_name", LabelValue: "a", MinTimestamp: 10, MaxTimestamp: 20, ShardBuckets: streams.ShardFactor},
+				{Kind: postings.KindLabel, ObjectPath: p + ".log-1", ColumnName: "service_name", LabelValue: "z", MinTimestamp: 30, MaxTimestamp: 40, ShardBuckets: streams.ShardFactor},
 			},
 		})
 		entries = append(entries, testIndex{path: p, start: window.Add(time.Hour), end: window.Add(2 * time.Hour)})
@@ -1470,7 +1631,7 @@ func TestCompactTenantLogs_PublishesGlobalTimeRange(t *testing.T) {
 	window := imWindow()
 	bucket := objstore.NewInMemBucket()
 	indexPath := "indexes/converged"
-	buildIndexWithStats(ctx, t, bucket, "acme", indexPath, []stats.Stat{
+	buildCurrentIndexWithStats(ctx, t, bucket, "acme", indexPath, []stats.Stat{
 		{ObjectPath: "logs/a", SectionIndex: 0, SortSchema: "label:service_name",
 			Labels: map[string]string{"service_name": "auth"}, MinTimestamp: 500, MaxTimestamp: 1000, UncompressedSize: 100},
 		{ObjectPath: "logs/a", SectionIndex: 0, SortSchema: "label:service_name",
