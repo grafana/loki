@@ -88,6 +88,48 @@ func (CountDistinctSketchVector) String() string {
 
 func (CountDistinctSketchVector) Type() promql_parser.ValueType { return CountDistinctSketchVectorType }
 
+// ToProto serializes the vector for frontend/querier transport.
+func (v CountDistinctSketchVector) ToProto() (*logproto.CountDistinctSketchVector, error) {
+	samples := make([]*logproto.CountDistinctSketchSample, len(v))
+	for i, sample := range v {
+		p, err := sample.ToProto()
+		if err != nil {
+			return nil, err
+		}
+		samples[i] = p
+	}
+	return &logproto.CountDistinctSketchVector{Samples: samples}, nil
+}
+
+// CountDistinctSketchVectorFromProto deserializes a CountDistinctSketchVector.
+func CountDistinctSketchVectorFromProto(proto *logproto.CountDistinctSketchVector) (CountDistinctSketchVector, error) {
+	if proto == nil {
+		return CountDistinctSketchVector{}, nil
+	}
+	out := make(CountDistinctSketchVector, len(proto.Samples))
+	for i, sample := range proto.Samples {
+		s, err := CountDistinctSketchSampleFromProto(sample)
+		if err != nil {
+			return nil, err
+		}
+		out[i] = s
+	}
+	return out, nil
+}
+
+// Estimate converts sketches into a numeric sample vector.
+func (v CountDistinctSketchVector) Estimate() SampleVector {
+	out := make(promql.Vector, 0, len(v))
+	for _, sample := range v {
+		out = append(out, promql.Sample{
+			T:      sample.T,
+			F:      float64(sample.F.Estimate()),
+			Metric: sample.Metric,
+		})
+	}
+	return SampleVector(out)
+}
+
 func (CountDistinctSketchMatrix) String() string {
 	return "CountDistinctSketchMatrix()"
 }
@@ -110,19 +152,6 @@ func (m CountDistinctSketchMatrix) Merge(right CountDistinctSketchMatrix) (Count
 	return m, nil
 }
 
-// ToProto serializes the vector for frontend/querier transport.
-func (v CountDistinctSketchVector) ToProto() (*logproto.CountDistinctSketchVector, error) {
-	samples := make([]*logproto.CountDistinctSketchSample, len(v))
-	for i, sample := range v {
-		p, err := sample.ToProto()
-		if err != nil {
-			return nil, err
-		}
-		samples[i] = p
-	}
-	return &logproto.CountDistinctSketchVector{Samples: samples}, nil
-}
-
 func (m CountDistinctSketchMatrix) ToProto() (*logproto.CountDistinctSketchMatrix, error) {
 	values := make([]*logproto.CountDistinctSketchVector, len(m))
 	for i, vec := range m {
@@ -133,6 +162,22 @@ func (m CountDistinctSketchMatrix) ToProto() (*logproto.CountDistinctSketchMatri
 		values[i] = p
 	}
 	return &logproto.CountDistinctSketchMatrix{Values: values}, nil
+}
+
+// CountDistinctSketchMatrixFromProto deserializes a CountDistinctSketchMatrix.
+func CountDistinctSketchMatrixFromProto(proto *logproto.CountDistinctSketchMatrix) (CountDistinctSketchMatrix, error) {
+	if proto == nil {
+		return CountDistinctSketchMatrix{}, nil
+	}
+	out := make(CountDistinctSketchMatrix, len(proto.Values))
+	for i, vec := range proto.Values {
+		v, err := CountDistinctSketchVectorFromProto(vec)
+		if err != nil {
+			return nil, err
+		}
+		out[i] = v
+	}
+	return out, nil
 }
 
 // ToProto serializes one sketch sample.
@@ -150,38 +195,6 @@ func (s CountDistinctSketchSample) ToProto() (*logproto.CountDistinctSketchSampl
 		TimestampMs: s.T,
 		Metric:      metric,
 	}, nil
-}
-
-// CountDistinctSketchVectorFromProto deserializes a CountDistinctSketchVector.
-func CountDistinctSketchVectorFromProto(proto *logproto.CountDistinctSketchVector) (CountDistinctSketchVector, error) {
-	if proto == nil {
-		return CountDistinctSketchVector{}, nil
-	}
-	out := make(CountDistinctSketchVector, len(proto.Samples))
-	for i, sample := range proto.Samples {
-		s, err := CountDistinctSketchSampleFromProto(sample)
-		if err != nil {
-			return nil, err
-		}
-		out[i] = s
-	}
-	return out, nil
-}
-
-// CountDistinctSketchMatrixFromProto deserializes a CountDistinctSketchMatrix.
-func CountDistinctSketchMatrixFromProto(proto *logproto.CountDistinctSketchMatrix) (CountDistinctSketchMatrix, error) {
-	if proto == nil {
-		return CountDistinctSketchMatrix{}, nil
-	}
-	out := make(CountDistinctSketchMatrix, len(proto.Values))
-	for i, vec := range proto.Values {
-		v, err := CountDistinctSketchVectorFromProto(vec)
-		if err != nil {
-			return nil, err
-		}
-		out[i] = v
-	}
-	return out, nil
 }
 
 // CountDistinctSketchSampleFromProto deserializes one sketch sample.
@@ -202,19 +215,6 @@ func CountDistinctSketchSampleFromProto(proto *logproto.CountDistinctSketchSampl
 		F:      hll,
 		Metric: builder.Labels(),
 	}, nil
-}
-
-// Estimate converts sketches into a numeric sample vector.
-func (v CountDistinctSketchVector) Estimate() SampleVector {
-	out := make(promql.Vector, 0, len(v))
-	for _, sample := range v {
-		out = append(out, promql.Sample{
-			T:      sample.T,
-			F:      float64(sample.F.Estimate()),
-			Metric: sample.Metric,
-		})
-	}
-	return SampleVector(out)
 }
 
 // JoinCountDistinctSketchVector joins step sketches into a CountDistinctSketchMatrix.
