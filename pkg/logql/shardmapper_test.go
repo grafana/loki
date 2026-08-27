@@ -13,6 +13,15 @@ import (
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/index"
 )
 
+func TestApproxTopkDisabled(t *testing.T) {
+	m := NewShardMapper(NewPowerOfTwoStrategy(ConstantShards(2)), nilShardMetrics, nil)
+	ast, err := syntax.ParseExpr(`approx_topk(3, sum by(ip)(rate({foo="bar"}[5m])))`)
+	require.NoError(t, err)
+	_, _, err = m.Map(ast, nilShardMetrics.downstreamRecorder(), true)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "approx_topk is not enabled. See -querier.shard-aggregations")
+}
+
 func TestApproxCountDistinctShardMapping(t *testing.T) {
 	t.Run("disabled is a no-op", func(t *testing.T) {
 		m := NewShardMapper(NewPowerOfTwoStrategy(ConstantShards(2)), nilShardMetrics, nil)
