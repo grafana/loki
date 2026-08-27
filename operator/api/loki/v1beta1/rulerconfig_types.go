@@ -546,10 +546,6 @@ type RulerConfigList struct {
 	Items           []RulerConfig `json:"items"`
 }
 
-func init() {
-	SchemeBuilder.Register(&RulerConfig{}, &RulerConfigList{})
-}
-
 // ConvertTo RulerConfig this RulerConfig (v1beta1) to the Hub version (v1).
 func (src *RulerConfig) ConvertTo(dstRaw conversion.Hub) error {
 	dst := dstRaw.(*v1.RulerConfig)

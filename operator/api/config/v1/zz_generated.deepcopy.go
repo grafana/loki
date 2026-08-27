@@ -5,7 +5,7 @@
 package v1
 
 import (
-	runtime "k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/component-base/config/v1alpha1"
 )
 
