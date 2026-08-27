@@ -213,21 +213,9 @@ approx_count_distinct(
 ) by (version)
 ```
 
-`approx_count_distinct` supports instant and range queries. A range duration is required. Grouping is optional: omit `by` to keep leftover stream labels, or use `by ()` for one unlabeled series. Don't group by the counted field. Prefix `by` and `unwrap` are not supported.
+`approx_count_distinct` supports instant and range queries. A range duration is required. Grouping is optional: omit `by` to keep leftover stream labels, or use `by ()` for one unlabeled series. Don't group by the counted field.
 
 Under the hood, Loki builds one [HyperLogLog](https://en.wikipedia.org/wiki/HyperLogLog) sketch per output group at precision 14 (sparse at low cardinality, about 16 KiB when dense). Index sharding merges sketches before estimating so overlapping values across shards are counted once.
-
-The expression `approx_count_distinct(field, range) by (group)` becomes
-
-```
-evaluate(
-  merge(
-    count_distinct_sketch(field, range, shard=0),
-    count_distinct_sketch(field, range, shard=1),
-    ...
-  )
-)
-```
 
 ## Result ordering
 
