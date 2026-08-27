@@ -234,6 +234,7 @@ func TestDrilldownConfigTenantLimitsSource(t *testing.T) {
 		expectedSeries   float64
 		expectedLabelLen float64
 		expectedStatus   int
+		expectedMode     string
 	}{
 		{
 			name:     "tenant has specific limits configured via TenantLimits",
@@ -247,6 +248,7 @@ func TestDrilldownConfigTenantLimitsSource(t *testing.T) {
 			expectedSeries:   float64(2000),
 			expectedLabelLen: float64(200),
 			expectedStatus:   200,
+			expectedMode:     "tenant",
 		},
 		{
 			name:     "no per-tenant limits - uses defaults from Overrides",
@@ -263,6 +265,7 @@ func TestDrilldownConfigTenantLimitsSource(t *testing.T) {
 			expectedSeries:   float64(1000),
 			expectedLabelLen: float64(100),
 			expectedStatus:   200,
+			expectedMode:     "defaults",
 		},
 		{
 			name:     "mode=defaults bypasses tenant-specific limits",
@@ -280,6 +283,9 @@ func TestDrilldownConfigTenantLimitsSource(t *testing.T) {
 			expectedSeries:   float64(1000),
 			expectedLabelLen: float64(100),
 			expectedStatus:   200,
+			// mode reflects the actual source used, not the query param — this tenant DOES have an
+			// override, but mode=defaults bypassed it, so the response must say "defaults", not "tenant".
+			expectedMode: "defaults",
 		},
 	}
 
@@ -321,6 +327,7 @@ func TestDrilldownConfigTenantLimitsSource(t *testing.T) {
 			assert.Equal(t, tc.expectedRateMB, response.Limits["ingestion_rate_mb"])
 			assert.Equal(t, tc.expectedSeries, response.Limits["max_query_series"])
 			assert.Equal(t, tc.expectedLabelLen, response.Limits["max_label_name_length"])
+			assert.Equal(t, tc.expectedMode, response.Mode)
 		})
 	}
 }
