@@ -120,12 +120,16 @@ func (c *Context) doLogObjectMerge(ctx context.Context, node *physical.LogMerge)
 		return nil, fmt.Errorf("LogMerge: produced no compacted objects for tenant %q", node.Tenant)
 	}
 
-	idxPath, err := c.flushAndUploadIndex(ctx, calc, func(ctx context.Context, obj *dataobj.Object) (string, error) {
+	idxPath, err := c.flushAndUploadIndex(ctx, calc, func(ctx context.Context, obj *dataobj.Object) (path string, outputErr error) {
 		reader, err := obj.Reader(ctx)
 		if err != nil {
 			return "", err
 		}
-		defer reader.Close()
+		defer func() {
+			if outputErr == nil {
+				outputErr = reader.Close()
+			}
+		}()
 		return v2.CompactedIndexPath(node.Tenant, reader)
 	})
 	if err != nil {
