@@ -1,5 +1,18 @@
 # Changelog
 
+## [3.6.16](https://github.com/grafana/loki/compare/v3.6.15...v3.6.16) (2026-08-27)
+
+
+### Features
+
+* Add flag to ignore missing chunks during deletion of logs with line filter [release-3.6.x] ([#24232](https://github.com/grafana/loki/issues/24232)) ([b87159f](https://github.com/grafana/loki/commit/b87159fa8cd7f93e2445e48e0c0409b403e56db7))
+
+
+### Bug Fixes
+
+* **security/UNKNOWN/:** Update module go.etcd.io/etcd/client/pkg/v3 to v3.5.33 [SECURITY] (release-3.6.x) ([#24062](https://github.com/grafana/loki/issues/24062)) ([bf4b367](https://github.com/grafana/loki/commit/bf4b3670ff3e2eb9f29183d6dfb4d729b83f62ec))
+* **storage:** Pre-compute SHA-256 to avoid aws-chunked on PutObject [release-3.6.x] ([#24214](https://github.com/grafana/loki/issues/24214)) ([0a29895](https://github.com/grafana/loki/commit/0a29895fe461acbf848376a451896d9f8a542b3d))
+
 ## [3.6.15](https://github.com/grafana/loki/compare/v3.6.14...v3.6.15) (2026-08-05)
 
 
