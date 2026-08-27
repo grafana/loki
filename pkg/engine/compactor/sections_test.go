@@ -200,7 +200,7 @@ func TestLogSectionRefsFor_AggregatesStatsRows(t *testing.T) {
 	refs, schema, _, err := logSectionRefsFor(ctx, bucket, "acme", path)
 	require.NoError(t, err)
 	require.Equal(t, []string{"label:service_name"}, schema)
-	require.Equal(t, []v2.Section[sortKey]{
+	require.Equal(t, []v2.Section[logSortPrefix]{
 		{
 			Ref: &compactionv2pb.SectionRef{
 				ObjectPath:       "logs/log-0",
@@ -211,8 +211,8 @@ func TestLogSectionRefsFor_AggregatesStatsRows(t *testing.T) {
 				MaxTimestamp:     1000,
 				UncompressedSize: 500,
 			},
-			Min: sortKey{labels: []string{"auth"}},
-			Max: sortKey{labels: []string{"billing"}},
+			Min: logSortPrefix{labels: []string{"auth"}},
+			Max: logSortPrefix{labels: []string{"billing"}},
 		},
 	}, refs)
 }
@@ -259,7 +259,7 @@ func TestLogSectionRefsFor_MultiKeySchemaOrdersValuesAndReturnsFQN(t *testing.T)
 	refs, schema, _, err := logSectionRefsFor(ctx, bucket, "acme", path)
 	require.NoError(t, err)
 	require.Equal(t, []string{"label:service_name", "label:namespace"}, schema)
-	require.Equal(t, []v2.Section[sortKey]{
+	require.Equal(t, []v2.Section[logSortPrefix]{
 		{
 			Ref: &compactionv2pb.SectionRef{
 				ObjectPath:       "logs/log-0",
@@ -269,8 +269,8 @@ func TestLogSectionRefsFor_MultiKeySchemaOrdersValuesAndReturnsFQN(t *testing.T)
 				MaxTimestamp:     20,
 				UncompressedSize: 100,
 			},
-			Min: sortKey{labels: []string{"auth", "eu"}},
-			Max: sortKey{labels: []string{"auth", "eu"}},
+			Min: logSortPrefix{labels: []string{"auth", "eu"}},
+			Max: logSortPrefix{labels: []string{"auth", "eu"}},
 		},
 	}, refs)
 }
@@ -289,8 +289,8 @@ func TestLogSectionRefsFor_EmptySortSchema(t *testing.T) {
 	require.NoError(t, err)
 	require.Empty(t, schema, "empty sort_schema yields no schema keys (not a bogus label: entry)")
 	require.Len(t, refs, 1)
-	require.Equal(t, sortKey{}, refs[0].Min)
-	require.Equal(t, sortKey{}, refs[0].Max)
+	require.Equal(t, logSortPrefix{}, refs[0].Min)
+	require.Equal(t, logSortPrefix{}, refs[0].Max)
 	require.Equal(t, int64(10), refs[0].Ref.MinTimestamp)
 	require.Equal(t, int64(20), refs[0].Ref.MaxTimestamp)
 	require.Equal(t, "logs/log-0", refs[0].Ref.ObjectPath)

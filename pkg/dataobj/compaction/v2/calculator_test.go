@@ -258,7 +258,7 @@ func TestIsConverged(t *testing.T) {
 	}
 }
 
-func TestIsConvergedInclusive_TreatsEqualBoundariesAsOverlap(t *testing.T) {
+func TestIsConvergedWithInclusiveOverlap_TreatsEqualBoundariesAsOverlap(t *testing.T) {
 	touching := []Section[testKey]{
 		testSection("a", 0, key("a", 0), key("b", 0)),
 		testSection("b", 0, key("b", 0), key("c", 0)),
@@ -268,8 +268,8 @@ func TestIsConvergedInclusive_TreatsEqualBoundariesAsOverlap(t *testing.T) {
 		testSection("b", 0, key("c", 0), key("d", 0)),
 	}
 
-	require.False(t, IsConvergedInclusive(touching, compareTestKey))
-	require.True(t, IsConvergedInclusive(separate, compareTestKey))
+	require.False(t, IsConvergedWithInclusiveOverlap(touching, compareTestKey))
+	require.True(t, IsConvergedWithInclusiveOverlap(separate, compareTestKey))
 }
 
 func runRefs(runs []Run) [][]string {
