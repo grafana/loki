@@ -169,6 +169,7 @@ type Builder struct {
 	metrics   *BuilderMetrics
 	overrides TenantOverrides
 	logger    log.Logger
+	scratch   scratch.Store
 
 	labelCache *lru.Cache[string, labels.Labels]
 
@@ -209,6 +210,7 @@ func NewBuilder(cfg BuilderConfig, scratchStore scratch.Store, metrics *BuilderM
 		metrics:    metrics,
 		logger:     logger,
 		overrides:  overrides,
+		scratch:    scratchStore,
 		labelCache: labelCache,
 		builder:    dataobj.NewBuilder(scratchStore),
 		streams:    make(map[string]*streams.Builder),
@@ -467,6 +469,10 @@ func (b *Builder) Flush() (*dataobj.Object, io.Closer, error) {
 // so the logs are sorted object-wide. The order of the sections is deterministic.
 // For each tenant, first comes the streams section, and second come the
 // new, rewritten logs sections. Tenants are sorted in natural order.
+//
+// CopyAndSort trusts persisted sort-layout metadata. If every logs section
+// already follows its tenant's target layout, it performs only a k-way merge
+// and stream-ID remap. If any section differs, it resorts the complete object.
 func (b *Builder) CopyAndSort(ctx context.Context, obj *dataobj.Object) (*dataobj.Object, io.Closer, error) {
 	// Must reset builder when done.
 	defer b.Reset()
@@ -479,6 +485,11 @@ func (b *Builder) CopyAndSort(ctx context.Context, obj *dataobj.Object) (*dataob
 	case <-ctx.Done():
 		return nil, nil, ctx.Err()
 	default:
+	}
+
+	requiresSort, err := b.requiresResort(ctx, obj)
+	if err != nil {
+		return nil, nil, err
 	}
 
 	sb := streams.NewBuilder(b.metrics.streams, int(b.cfg.TargetPageSize), b.cfg.MaxPageRows)
@@ -533,9 +544,25 @@ func (b *Builder) CopyAndSort(ctx context.Context, obj *dataobj.Object) (*dataob
 			return nil, nil, err
 		}
 
-		logsIter, iterErr := sortedLogsIter(ctx, sections, remappedStreams)
+		mergeSections := sections
+		mergeRemap := remappedStreams
+		var intermediateCloser io.Closer
+		if requiresSort {
+			replayedSections, replayedRemap, closer, err := b.replaySections(ctx, tenant, sections, remappedStreams)
+			if err != nil {
+				return nil, nil, fmt.Errorf("replaying logs sections for tenant %s: %w", tenant, err)
+			}
+			intermediateCloser = closer
+			mergeSections = replayedSections
+			mergeRemap = replayedRemap
+		}
+
+		logsIter, iterErr := mergeAndRemapLogsIter(ctx, mergeSections, mergeRemap)
 		if iterErr != nil {
-			return nil, nil, fmt.Errorf("creating sort iterator: %w", iterErr)
+			if intermediateCloser != nil {
+				_ = intermediateCloser.Close()
+			}
+			return nil, nil, fmt.Errorf("creating sort iterator for tenant %s: %w", tenant, iterErr)
 		}
 
 		lb := logs.NewBuilder(b.metrics.logs, logs.BuilderOptions{
@@ -552,7 +579,15 @@ func (b *Builder) CopyAndSort(ctx context.Context, obj *dataobj.Object) (*dataob
 		lb.SetTenant(tenant)
 
 		if err := b.drainLogsIter(ctx, logsIter, lb, tenant); err != nil {
+			if intermediateCloser != nil {
+				_ = intermediateCloser.Close()
+			}
 			return nil, nil, err
+		}
+		if intermediateCloser != nil {
+			if err := intermediateCloser.Close(); err != nil {
+				return nil, nil, fmt.Errorf("closing temporary sort runs for tenant %s: %w", tenant, err)
+			}
 		}
 	}
 
@@ -563,6 +598,33 @@ func (b *Builder) CopyAndSort(ctx context.Context, obj *dataobj.Object) (*dataob
 	}
 
 	return b.builder.Flush()
+}
+
+// requiresResort trusts each logs section's persisted layout contract and
+// selects a full-object resort when any section differs from its tenant's
+// target layout.
+func (b *Builder) requiresResort(ctx context.Context, obj *dataobj.Object) (bool, error) {
+	var resort bool
+	for _, tenant := range obj.Tenants() {
+		found := false
+		want := TargetSortLayout(b.schemaLabelsFor(tenant))
+		for _, section := range obj.Sections().Filter(func(section *dataobj.Section) bool {
+			return logs.CheckSection(section) && section.Tenant == tenant
+		}) {
+			found = true
+			opened, err := logs.Open(ctx, section)
+			if err != nil {
+				return false, fmt.Errorf("opening logs section for tenant %s: %w", tenant, err)
+			}
+			if !CompareSortLayout(opened.SortLayout(), want) {
+				resort = true
+			}
+		}
+		if !found {
+			return false, fmt.Errorf("no logs sections found for tenant: %v", tenant)
+		}
+	}
+	return resort, nil
 }
 
 func (b *Builder) observeObject(ctx context.Context, obj *dataobj.Object) error {

@@ -24,6 +24,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
+	"github.com/grafana/loki/v3/pkg/scratch"
 	"github.com/grafana/loki/v3/pkg/validation"
 )
 
@@ -319,6 +320,99 @@ func TestBuilder_CopyAndSort(t *testing.T) {
 				prevTs = val.Timestamp
 			}
 		}
+	}
+}
+
+func TestBuilder_CopyAndSort_SelectsStrategyFromLayout(t *testing.T) {
+	target := TargetSortLayout([]string{"label:app"})
+	tests := []struct {
+		name    string
+		layouts []logs.SortLayout
+		resort  bool
+	}{
+		{
+			name:    "all sections match",
+			layouts: []logs.SortLayout{target, target},
+		},
+		{
+			name: "schema labels mismatch",
+			layouts: []logs.SortLayout{{
+				SchemaLabels: []string{"label:cluster"},
+				StreamOrder:  target.StreamOrder,
+				ShardCount:   target.ShardCount,
+			}},
+			resort: true,
+		},
+		{
+			name: "stream order mismatch",
+			layouts: []logs.SortLayout{{
+				SchemaLabels: target.SchemaLabels,
+				StreamOrder:  logs.StreamOrderUnspecified,
+				ShardCount:   target.ShardCount,
+			}},
+			resort: true,
+		},
+		{
+			name: "shard count mismatch",
+			layouts: []logs.SortLayout{{
+				SchemaLabels: target.SchemaLabels,
+				StreamOrder:  target.StreamOrder,
+				ShardCount:   target.ShardCount / 2,
+			}},
+			resort: true,
+		},
+		{
+			name: "mixed layouts resort the whole object",
+			layouts: []logs.SortLayout{
+				target,
+				{
+					SchemaLabels: []string{"label:cluster"},
+					StreamOrder:  target.StreamOrder,
+					ShardCount:   target.ShardCount,
+				},
+			},
+			resort: true,
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			objectBuilder := dataobj.NewBuilder(scratch.NewMemory())
+			for i, layout := range test.layouts {
+				logsBuilder := logs.NewBuilder(nil, logs.BuilderOptions{
+					PageSizeHint:     2048,
+					BufferSize:       2048,
+					StripeMergeLimit: 2,
+					AppendStrategy:   logs.AppendOrdered,
+					SortOrder:        logs.SortSchemaASC,
+					SchemaLabels:     layout.SchemaLabels,
+					StreamOrder:      layout.StreamOrder,
+					ShardCount:       layout.ShardCount,
+				})
+				logsBuilder.SetTenant("tenant")
+				logsBuilder.Append(logs.Record{
+					StreamID:  1,
+					Timestamp: time.Unix(int64(i), 0).UTC(),
+					Line:      []byte("line"),
+				})
+				require.NoError(t, objectBuilder.Append(logsBuilder))
+			}
+			object, closer, err := objectBuilder.Flush()
+			require.NoError(t, err)
+			t.Cleanup(func() { require.NoError(t, closer.Close()) })
+
+			builder, err := NewBuilder(
+				testBuilderConfig,
+				scratch.NewMemory(),
+				NewBuilderMetrics(),
+				log.NewNopLogger(),
+				tenantOverrides{"tenant": target.SchemaLabels},
+			)
+			require.NoError(t, err)
+			resort, err := builder.requiresResort(t.Context(), object)
+			require.NoError(t, err)
+			require.Equal(t, test.resort, resort)
+		})
 	}
 }
 
