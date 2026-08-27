@@ -345,15 +345,17 @@ func (r *LokiStackReconciler) enqueueForSecret() handler.EventHandler {
 
 		var requests []reconcile.Request
 		for _, stack := range lokiStacks.Items {
-			if (obj.GetName() == stack.Spec.Storage.Secret.Name || stackReferencesSecret(&stack, obj.GetName())) && obj.GetNamespace() == stack.Namespace {
-				requests = append(requests, reconcile.Request{
-					NamespacedName: types.NamespacedName{
-						Namespace: stack.Namespace,
-						Name:      stack.Name,
-					},
-				})
-				r.Log.Info("Enqueued request for LokiStack because of Secret resource change", "LokiStack", stack.Name, "Secret", obj.GetName())
+			if obj.GetNamespace() != stack.Namespace || !(obj.GetName() == stack.Spec.Storage.Secret.Name || stackReferencesSecret(&stack, obj.GetName())) {
+				continue
 			}
+
+			requests = append(requests, reconcile.Request{
+				NamespacedName: types.NamespacedName{
+					Namespace: stack.Namespace,
+					Name:      stack.Name,
+				},
+			})
+			r.Log.Info("Enqueued request for LokiStack because of Secret resource change", "LokiStack", stack.Name, "Secret", obj.GetName())
 		}
 
 		return requests

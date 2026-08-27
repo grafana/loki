@@ -48,7 +48,7 @@ func BuildOptions(ctx context.Context, log logr.Logger, k k8s.Client, stack *lok
 		}
 	}
 
-	if err := validateTLSConfig(ctx, k, stack); err != nil {
+	if err = validateTLSConfig(ctx, k, stack); err != nil {
 		return "", tenants, err
 	}
 
