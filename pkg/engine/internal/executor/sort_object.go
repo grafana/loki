@@ -60,37 +60,23 @@ func (c *Context) doSortObject(ctx context.Context, node *physical.SortObject) (
 		return nil, fmt.Errorf("SortObject: sorting source %q: %w", node.SourceObjectPath, err)
 	}
 
-	objectUploader := uploader.New(uploader.Config{SHAPrefixSize: 2}, c.dataObjectBucket(), c.logger)
-	sortedPath, err := objectUploader.Upload(ctx, sorted)
-	if err != nil {
-		return nil, errors.Join(fmt.Errorf("SortObject: uploading sorted object: %w", err), sortedCloser.Close())
-	}
-
 	indexBuilder, err := indexobj.NewBuilder(c.indexobjCfg, c.scratchStore)
 	if err != nil {
 		return nil, errors.Join(fmt.Errorf("SortObject: creating index builder: %w", err), sortedCloser.Close())
 	}
 	calculator := dataobjindex.NewCalculator(indexBuilder)
-	if err := calculator.Calculate(ctx, c.logger, sorted, sortedPath); err != nil {
-		return nil, errors.Join(fmt.Errorf("SortObject: indexing sorted object %q: %w", sortedPath, err), sortedCloser.Close())
+
+	sortedPath, err := uploader.ObjectKey(ctx, sorted, 2)
+	if err != nil {
+		return nil, errors.Join(fmt.Errorf("SortObject: generating sorted object path: %w", err), sortedCloser.Close())
 	}
-	if err := sortedCloser.Close(); err != nil {
-		return nil, fmt.Errorf("SortObject: closing sorted object %q: %w", sortedPath, err)
+	if _, err := c.uploadAndIndexObject(ctx, sorted, sortedCloser, sortedPath, calculator); err != nil {
+		return nil, fmt.Errorf("SortObject: writing sorted object: %w", err)
 	}
 
-	indexObject, indexCloser, _, err := calculator.Flush()
+	indexPath, err := c.flushAndUploadIndex(ctx, calculator, dataobjindex.ObjectKey)
 	if err != nil {
-		return nil, fmt.Errorf("SortObject: flushing index: %w", err)
-	}
-	indexPath, err := dataobjindex.ObjectKey(ctx, indexObject)
-	if err != nil {
-		return nil, errors.Join(fmt.Errorf("SortObject: generating index path: %w", err), indexCloser.Close())
-	}
-	if _, err := c.uploadObject(ctx, c.bucket, indexPath, indexObject); err != nil {
-		return nil, errors.Join(fmt.Errorf("SortObject: uploading index %q: %w", indexPath, err), indexCloser.Close())
-	}
-	if err := indexCloser.Close(); err != nil {
-		return nil, fmt.Errorf("SortObject: closing index %q: %w", indexPath, err)
+		return nil, fmt.Errorf("SortObject: writing index: %w", err)
 	}
 
 	return []v2.ResultArtifact{{Path: indexPath}}, nil

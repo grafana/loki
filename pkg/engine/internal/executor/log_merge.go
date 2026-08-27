@@ -120,29 +120,19 @@ func (c *Context) doLogObjectMerge(ctx context.Context, node *physical.LogMerge)
 		return nil, fmt.Errorf("LogMerge: produced no compacted objects for tenant %q", node.Tenant)
 	}
 
-	idxObj, idxCloser, _, err := calc.Flush()
+	idxPath, err := c.flushAndUploadIndex(ctx, calc, func(ctx context.Context, obj *dataobj.Object) (string, error) {
+		reader, err := obj.Reader(ctx)
+		if err != nil {
+			return "", err
+		}
+		path, pathErr := v2.CompactedIndexPath(node.Tenant, reader)
+		if closeErr := reader.Close(); closeErr != nil && pathErr == nil {
+			pathErr = closeErr
+		}
+		return path, pathErr
+	})
 	if err != nil {
-		return nil, fmt.Errorf("flushing index: %w", err)
-	}
-
-	idxPathReader, err := idxObj.Reader(ctx)
-	if err != nil {
-		return nil, errors.Join(err, idxCloser.Close())
-	}
-	idxPath, hashErr := v2.CompactedIndexPath(node.Tenant, idxPathReader)
-	if cerr := idxPathReader.Close(); cerr != nil && hashErr == nil {
-		hashErr = cerr
-	}
-	if hashErr != nil {
-		return nil, errors.Join(hashErr, idxCloser.Close())
-	}
-
-	if _, upErr := c.uploadObject(ctx, c.bucket, idxPath, idxObj); upErr != nil {
-		return nil, errors.Join(fmt.Errorf("uploading index %q: %w", idxPath, upErr), idxCloser.Close())
-	}
-
-	if err := idxCloser.Close(); err != nil {
-		return nil, fmt.Errorf("closing index %q: %w", idxPath, err)
+		return nil, err
 	}
 
 	stats.Outcome = logMergeOutcomeSuccess
@@ -452,18 +442,9 @@ func (w *logObjectWriter) finalizeAndUpload(ctx context.Context) error {
 		return errors.Join(hashErr, closer.Close())
 	}
 
-	size, upErr := w.c.uploadObject(ctx, w.c.dataObjectBucket(), path, obj)
-	if upErr != nil {
-		return errors.Join(fmt.Errorf("uploading %q: %w", path, upErr), closer.Close())
-	}
-
-	// Build the index over the just-written object while it is still in memory.
-	if err := w.calc.Calculate(ctx, w.c.logger, obj, path); err != nil {
-		return errors.Join(fmt.Errorf("indexing %q: %w", path, err), closer.Close())
-	}
-
-	if err := closer.Close(); err != nil {
-		return fmt.Errorf("closing compacted object %q: %w", path, err)
+	size, err := w.c.uploadAndIndexObject(ctx, obj, closer, path, w.calc)
+	if err != nil {
+		return err
 	}
 
 	level.Info(w.c.logger).Log(
