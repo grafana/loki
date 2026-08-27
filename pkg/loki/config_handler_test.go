@@ -227,6 +227,7 @@ func TestDrilldownConfigTenantLimitsSource(t *testing.T) {
 	testCases := []struct {
 		name             string
 		tenantID         string
+		path             string
 		tenantLimits     validation.TenantLimits
 		overrides        *mockCombinedLimits
 		expectedRateMB   float64
@@ -237,6 +238,7 @@ func TestDrilldownConfigTenantLimitsSource(t *testing.T) {
 		{
 			name:     "tenant has specific limits configured via TenantLimits",
 			tenantID: "tenant-with-config",
+			path:     "/loki/api/v1/config",
 			tenantLimits: &mockTenantLimits{
 				limits: perTenantLimits, // This tenant has specific limits from runtime config
 			},
@@ -249,6 +251,7 @@ func TestDrilldownConfigTenantLimitsSource(t *testing.T) {
 		{
 			name:     "no per-tenant limits - uses defaults from Overrides",
 			tenantID: "tenant-without-config",
+			path:     "/loki/api/v1/config",
 			tenantLimits: &mockTenantLimits{
 				limits: nil, // TenantLimits returns nil for this tenant (no runtime config)
 			},
@@ -256,6 +259,23 @@ func TestDrilldownConfigTenantLimitsSource(t *testing.T) {
 				o, _ := validation.NewOverrides(*defaultLimits, nil)
 				return &mockCombinedLimits{Overrides: o}
 			}(),
+			expectedRateMB:   10.0,
+			expectedSeries:   float64(1000),
+			expectedLabelLen: float64(100),
+			expectedStatus:   200,
+		},
+		{
+			name:     "mode=defaults bypasses tenant-specific limits",
+			tenantID: "tenant-with-config",
+			path:     "/loki/api/v1/config?mode=defaults",
+			tenantLimits: &mockTenantLimits{
+				limits: perTenantLimits, // this tenant HAS an override...
+			},
+			overrides: func() *mockCombinedLimits {
+				o, _ := validation.NewOverrides(*defaultLimits, nil)
+				return &mockCombinedLimits{Overrides: o}
+			}(),
+			// ...but mode=defaults should return defaultLimits, not perTenantLimits
 			expectedRateMB:   10.0,
 			expectedSeries:   float64(1000),
 			expectedLabelLen: float64(100),
@@ -278,7 +298,7 @@ func TestDrilldownConfigTenantLimitsSource(t *testing.T) {
 
 			handler := loki.tenantLimitsHandler(true)
 
-			req := httptest.NewRequest("GET", "/loki/api/v1/config", nil)
+			req := httptest.NewRequest("GET", tc.path, nil)
 			req.Header.Set("X-Scope-OrgID", tc.tenantID)
 
 			w := httptest.NewRecorder()
