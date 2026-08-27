@@ -243,17 +243,99 @@ type compactionStats struct {
 	dispatched int
 }
 
-// compactTenantLogs processes one schema-homogeneous index. Matching objects
-// are compacted with LogMerge; objects using an older schema are individually
-// rewritten with SortObject. Stats are zero-valued on any no-op.
+type indexedLogLayout struct {
+	sortSchema string
+	shardCount int64
+}
+
+func (c *coordinator) runCompactionPlan(
+	ctx context.Context,
+	tenant string,
+	actor string,
+	plan *physical.Plan,
+) (*v2.ResultArtifact, error) {
+	opts := workflow.Options{Tenant: tenant, Actor: []string{"compaction", actor}}
+	rec, err := c.runPlan(ctx, opts, plan)
+	if err != nil || rec == nil {
+		return nil, err
+	}
+	artifacts, err := v2.ReadResultRecord(rec)
+	if err != nil {
+		return nil, err
+	}
+	if len(artifacts) == 0 {
+		return nil, nil
+	}
+	if len(artifacts) > 1 {
+		return nil, fmt.Errorf("%s job produced %d artifacts, want 1", actor, len(artifacts))
+	}
+	return &artifacts[0], nil
+}
+
+func (c *coordinator) replaceLogIndex(
+	ctx context.Context,
+	tenant string,
+	window time.Time,
+	sourceIndex indexEntry,
+	results []*metastore.TableOfContentsEntry,
+	dispatched int,
+) (compactionStats, error) {
+	newEntries := make([]metastore.TableOfContentsEntry, len(results))
+	for i, result := range results {
+		if result == nil {
+			return compactionStats{}, nil
+		}
+		newEntries[i] = *result
+	}
+
+	// A source row of 0 uncompressed size means unknown. Legacy objects carry
+	// positive-but-wrong internal stats, so keep the replacement unknown until
+	// it can be backfilled without relying on those stats.
+	if sourceIndex.UncompressedLogsSize == 0 {
+		for i := range newEntries {
+			newEntries[i].UncompressedLogsSize = 0
+		}
+	}
+
+	if c.cfg.DryRun {
+		return compactionStats{dispatched: dispatched}, nil
+	}
+
+	c.fillFileSizes(ctx, newEntries)
+	replaceCtx, cancel := context.WithTimeout(ctx, c.cfg.ToCConsolidateTimeout)
+	defer cancel()
+
+	swapped, err := c.metastoreWriter.ReplaceIndexPointers(
+		replaceCtx,
+		window,
+		tenant,
+		[]string{sourceIndex.Path},
+		newEntries,
+	)
+	if err != nil {
+		return compactionStats{}, fmt.Errorf("replace source log index %q: %w", sourceIndex.Path, err)
+	}
+	if !swapped {
+		return compactionStats{}, nil
+	}
+	return compactionStats{
+		removed:    1,
+		added:      len(newEntries),
+		dispatched: dispatched,
+	}, nil
+}
+
+// compactTenantLogs processes one layout-homogeneous index. Objects matching
+// the target layout are compacted with LogMerge; incompatible objects are
+// individually rewritten with SortObject. Stats are zero-valued on any no-op.
 func (c *coordinator) compactTenantLogs(
 	ctx context.Context,
 	tenant string,
 	window time.Time,
-	converged indexEntry,
+	sourceIndex indexEntry,
 ) (compactionStats, error) {
-	entryLogger := log.With(c.logger, "tenant", tenant, "entry", converged.Path)
-	sections, sortSchema, shardCount, err := logSectionRefsFor(ctx, c.bucket, tenant, converged.Path)
+	entryLogger := log.With(c.logger, "tenant", tenant, "entry", sourceIndex.Path)
+	sections, sortSchema, shardCount, err := logSectionRefsFor(ctx, c.bucket, tenant, sourceIndex.Path)
 	if err != nil {
 		return compactionStats{}, fmt.Errorf("reading log section refs: %w", err)
 	}
@@ -264,12 +346,12 @@ func (c *coordinator) compactTenantLogs(
 	targetSortSchema := c.limits.SortSchemaLabels(tenant)
 	// Decide whether the logs referenced by this index file are ready to merge, or if they need re-sorting first.
 	if !slices.Equal(sortSchema, targetSortSchema) || shardCount != int64(streams.ShardFactor) {
-		return c.sortTenantLogObjects(ctx, tenant, window, converged, sections, targetSortSchema)
+		return c.sortTenantLogObjects(ctx, tenant, window, sourceIndex, sections, targetSortSchema)
 	}
 
 	// Begin k-way merge planning
-	runs := v2.CalculateRuns(sections, compareSortKey)
-	if v2.IsConvergedInclusive(sections, compareSortKey) || v2.BelowMinCompactionSize(runs, uint64(c.cfg.LogMinCompactionSize)) {
+	runs := v2.CalculateRuns(sections, compareLogSortPrefix)
+	if v2.IsConvergedWithInclusiveOverlap(sections, compareLogSortPrefix) || v2.BelowMinCompactionSize(runs, uint64(c.cfg.LogMinCompactionSize)) {
 		level.Debug(entryLogger).Log("msg", "log-compaction: window not worth compacting, skipping", "window", window)
 		return compactionStats{}, nil
 	}
@@ -277,7 +359,7 @@ func (c *coordinator) compactTenantLogs(
 	tasks := v2.Plan(runs, tenant, c.cfg.LogMaxRunsPerTask, sortSchema)
 
 	level.Info(entryLogger).Log("msg", "planned log compaction tasks", "input_runs", len(runs), "tasks", len(tasks))
-	logLogTaskDetails(entryLogger, tasks)
+	logMergeTaskDetails(entryLogger, tasks)
 
 	resultEntries := make([]*metastore.TableOfContentsEntry, len(tasks))
 	g, gctx := errgroup.WithContext(ctx)
@@ -287,27 +369,13 @@ func (c *coordinator) compactTenantLogs(
 	for i, ts := range tasks {
 		g.Go(func() error {
 			plan := buildLogMergePlan(tenant, window, ts)
-			opts := workflow.Options{Tenant: tenant, Actor: []string{"compaction", "log-merge"}}
-			rec, err := c.runPlan(gctx, opts, plan)
-			if err != nil {
+			artifact, err := c.runCompactionPlan(gctx, tenant, "log-merge", plan)
+			if err != nil || artifact == nil {
 				return err
-			}
-			if rec == nil {
-				return nil
-			}
-			artifacts, err := v2.ReadResultRecord(rec)
-			if err != nil {
-				return err
-			}
-			if len(artifacts) == 0 {
-				return nil
-			}
-			if len(artifacts) > 1 {
-				return fmt.Errorf("log-merge job produced %d artifacts, want 1", len(artifacts))
 			}
 			minTS, maxTS := taskBounds(ts)
 			resultEntries[i] = &metastore.TableOfContentsEntry{
-				Path:                 artifacts[0].Path,
+				Path:                 artifact.Path,
 				StartTime:            time.Unix(0, minTS).UTC(),
 				EndTime:              time.Unix(0, maxTS).UTC(),
 				UncompressedLogsSize: taskUncompressedLogsSize(ts),
@@ -319,56 +387,13 @@ func (c *coordinator) compactTenantLogs(
 		return compactionStats{}, fmt.Errorf("failed to execute log-merge tasks: %w", err)
 	}
 
-	// Replacing the converged index is atomic across all tasks planned from it.
-	// If any task rejects its sources (for example, because their sort layouts
-	// do not match), then return early and discard all work in order to maintain correctness.
-	for _, e := range resultEntries {
-		if e == nil {
-			return compactionStats{}, nil
-		}
-	}
-
-	newEntries := make([]metastore.TableOfContentsEntry, len(resultEntries))
-	for i, e := range resultEntries {
-		newEntries[i] = *e
-	}
-
-	// A converged row of 0 uncompressed size means unknown. Legacy objects
-	// carry positive-but-wrong internal stats (line length only, omitting
-	// structured metadata), so persisting 0 keeps the row unknown and lets us
-	// later distinguish and backfill those indexes without rescanning.
-	if converged.UncompressedLogsSize == 0 {
-		for i := range newEntries {
-			newEntries[i].UncompressedLogsSize = 0
-		}
-	}
-
-	oldPaths := []string{converged.Path}
-	stats := compactionStats{
-		removed:    len(oldPaths),
-		added:      len(newEntries),
-		dispatched: len(tasks),
-	}
-
-	if c.cfg.DryRun {
-		return compactionStats{dispatched: len(tasks)}, nil
-	}
-
-	c.fillFileSizes(ctx, newEntries)
-
-	phase2Ctx, cancel := context.WithTimeout(ctx, c.cfg.ToCConsolidateTimeout)
-	defer cancel()
-	swapped, err := c.metastoreWriter.ReplaceIndexPointers(phase2Ctx, window, tenant, oldPaths, newEntries)
+	stats, err := c.replaceLogIndex(ctx, tenant, window, sourceIndex, resultEntries, len(tasks))
 	if err != nil {
-		return compactionStats{}, fmt.Errorf("failed to replace index pointers after log-compaction: %w", err)
+		return compactionStats{}, err
 	}
-	if !swapped {
-		level.Debug(entryLogger).Log("msg", "log-compaction ToC replace race-loss / already-converged",
-			"window", window)
-		return compactionStats{}, nil
+	if stats.removed > 0 {
+		level.Debug(entryLogger).Log("msg", "log-compaction step completed for index", "index_files_added", stats.added, "index_files_removed", stats.removed, "tasks_dispatched", stats.dispatched)
 	}
-
-	level.Debug(entryLogger).Log("msg", "log-compaction step completed for index", "index_files_added", stats.added, "index_files_removed", stats.removed, "tasks_dispatched", stats.dispatched)
 	return stats, nil
 }
 
@@ -376,8 +401,8 @@ func (c *coordinator) sortTenantLogObjects(
 	ctx context.Context,
 	tenant string,
 	window time.Time,
-	converged indexEntry,
-	sections []v2.Section[sortKey],
+	sourceIndex indexEntry,
+	sections []v2.Section[logSortPrefix],
 	targetSortSchema []string,
 ) (compactionStats, error) {
 	type object struct {
@@ -414,28 +439,14 @@ func (c *coordinator) sortTenantLogObjects(
 		resultIdx := idx
 		g.Go(func() error {
 			plan := buildSortObjectPlan(path, targetSortSchema)
-			opts := workflow.Options{Tenant: tenant, Actor: []string{"compaction", "sort-object"}}
-			rec, err := c.runPlan(gctx, opts, plan)
-			if err != nil {
+			artifact, err := c.runCompactionPlan(gctx, tenant, "sort-object", plan)
+			if err != nil || artifact == nil {
 				return err
-			}
-			if rec == nil {
-				return nil
-			}
-			artifacts, err := v2.ReadResultRecord(rec)
-			if err != nil {
-				return err
-			}
-			if len(artifacts) == 0 {
-				return nil
-			}
-			if len(artifacts) > 1 {
-				return fmt.Errorf("sort-object job produced %d artifacts, want 1", len(artifacts))
 			}
 
 			obj := objectsByPath[path]
 			resultEntries[resultIdx] = &metastore.TableOfContentsEntry{
-				Path:                 artifacts[0].Path,
+				Path:                 artifact.Path,
 				StartTime:            time.Unix(0, obj.minTimestamp).UTC(),
 				EndTime:              time.Unix(0, obj.maxTimestamp).UTC(),
 				UncompressedLogsSize: obj.uncompressedSize,
@@ -448,48 +459,10 @@ func (c *coordinator) sortTenantLogObjects(
 		return compactionStats{}, fmt.Errorf("failed to execute sort-object tasks: %w", err)
 	}
 
-	newEntries := make([]metastore.TableOfContentsEntry, len(resultEntries))
-	for i, entry := range resultEntries {
-		if entry == nil {
-			return compactionStats{}, nil
-		}
-		newEntries[i] = *entry
-	}
-	if converged.UncompressedLogsSize == 0 {
-		for i := range newEntries {
-			newEntries[i].UncompressedLogsSize = 0
-		}
-	}
-
-	if c.cfg.DryRun {
-		return compactionStats{dispatched: len(objectsByPath)}, nil
-	}
-
-	c.fillFileSizes(ctx, newEntries)
-	phase2Ctx, cancel := context.WithTimeout(ctx, c.cfg.ToCConsolidateTimeout)
-	defer cancel()
-	swapped, err := c.metastoreWriter.ReplaceIndexPointers(
-		phase2Ctx,
-		window,
-		tenant,
-		[]string{converged.Path},
-		newEntries,
-	)
-	if err != nil {
-		return compactionStats{}, fmt.Errorf("failed to replace index pointer after sorting objects: %w", err)
-	}
-	if !swapped {
-		return compactionStats{}, nil
-	}
-
-	return compactionStats{
-		removed:    1,
-		added:      len(newEntries),
-		dispatched: len(objectsByPath),
-	}, nil
+	return c.replaceLogIndex(ctx, tenant, window, sourceIndex, resultEntries, len(objectsByPath))
 }
 
-func logLogTaskDetails(logger log.Logger, tasks []*compactionv2pb.TaskSpec) {
+func logMergeTaskDetails(logger log.Logger, tasks []*compactionv2pb.TaskSpec) {
 	// Only log the first 20 tasks
 	tasksCnt := min(len(tasks), 20)
 	for _, task := range tasks[:tasksCnt] {
@@ -511,22 +484,25 @@ func logLogTaskDetails(logger log.Logger, tasks []*compactionv2pb.TaskSpec) {
 }
 
 // compactTenantIndexes performs one index-compaction pass for a tenant and window.
-// Indexes are grouped by log sort schema so an IndexMerge can never create an
-// index containing stats for incompatible schemas.
+// Indexes are grouped by indexed log layout so an IndexMerge can never create
+// an index containing incompatible sort metadata.
 func (c *coordinator) compactTenantIndexes(ctx context.Context, tenant string, window time.Time, entries []indexEntry) (compactionStats, error) {
-	groups := make(map[string][]indexEntry)
+	groups := make(map[indexedLogLayout][]indexEntry)
 	for _, entry := range entries {
 		_, schemaLabels, shardCount, err := logSectionRefsFor(ctx, c.bucket, tenant, entry.Path)
 		if err != nil {
 			return compactionStats{}, fmt.Errorf("discover index section bounds: read index sort schema %s: %w", entry.Path, err)
 		}
-		key := fmt.Sprintf("%s\x01%d", strings.Join(schemaLabels, "\x00"), shardCount)
+		key := indexedLogLayout{
+			sortSchema: strings.Join(schemaLabels, ","),
+			shardCount: shardCount,
+		}
 		groups[key] = append(groups[key], entry)
 	}
 
 	var total compactionStats
 	for _, groupIndexEntries := range groups {
-		stats, err := c.compactTenantSchemaGroup(ctx, tenant, window, groupIndexEntries)
+		stats, err := c.compactTenantLayoutGroup(ctx, tenant, window, groupIndexEntries)
 		if err != nil {
 			return total, err
 		}
@@ -537,7 +513,7 @@ func (c *coordinator) compactTenantIndexes(ctx context.Context, tenant string, w
 	return total, nil
 }
 
-func (c *coordinator) compactTenantSchemaGroup(ctx context.Context, tenant string, window time.Time, entries []indexEntry) (compactionStats, error) {
+func (c *coordinator) compactTenantLayoutGroup(ctx context.Context, tenant string, window time.Time, entries []indexEntry) (compactionStats, error) {
 	windowLogger := log.With(c.logger, "tenant", tenant, "window", window)
 	sections, err := indexSectionRefsFor(ctx, c.bucket, tenant, entries)
 	if err != nil {
@@ -567,25 +543,11 @@ func (c *coordinator) compactTenantSchemaGroup(ctx context.Context, tenant strin
 	for i, task := range tasks {
 		g.Go(func() error {
 			plan := buildIndexMergePlan(tenant, window, task)
-			opts := workflow.Options{Tenant: tenant, Actor: []string{"compaction", "index-merge"}}
-			rec, err := c.runPlan(gctx, opts, plan)
-			if err != nil {
+			artifact, err := c.runCompactionPlan(gctx, tenant, "index-merge", plan)
+			if err != nil || artifact == nil {
 				return err
 			}
-			if rec == nil {
-				return nil
-			}
-			artifacts, err := v2.ReadResultRecord(rec)
-			if err != nil {
-				return err
-			}
-			if len(artifacts) == 0 {
-				return nil
-			}
-			if len(artifacts) > 1 {
-				return fmt.Errorf("index-merge job produced %d artifacts, want 1", len(artifacts))
-			}
-			outputs[i] = artifacts[0].Path
+			outputs[i] = artifact.Path
 			return nil
 		})
 	}

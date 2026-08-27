@@ -47,10 +47,10 @@ func IsConverged[K any](sections []Section[K], compare CompareFunc[K]) bool {
 	return isConverged(sections, compare, false)
 }
 
-// IsConvergedInclusive reports whether a set of sections have no overlap,
+// IsConvergedWithInclusiveOverlap reports whether a set of sections have no overlap,
 // treating equal object boundaries as overlapping. It is useful when keys are
 // prefixes whose omitted suffixes may interleave.
-func IsConvergedInclusive[K any](sections []Section[K], compare CompareFunc[K]) bool {
+func IsConvergedWithInclusiveOverlap[K any](sections []Section[K], compare CompareFunc[K]) bool {
 	return isConverged(sections, compare, true)
 }
 
