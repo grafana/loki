@@ -7,9 +7,9 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
 )
 
-// MultiSourceRankedStreams assigns dense IDs 1..N in SortKey order to unique label
-// sets from one or more source stream maps. Equal streams from two sources share
-// one ID so a merge by remapped stream ID timestamp-interleaves them.
+// MultiSourceRankedStreams gathers and sorts input streams from multiple sources.
+// It assigns new IDs (1..N) in SortKey order for each unique sort key and maintains a mapping from source local ID to global ID.
+// Therefore, equal streams from two sources share one global ID
 type MultiSourceRankedStreams struct {
 	ordered  []streams.SortKey // index = new ID (1..N); [0] unused
 	mappings []map[int64]int64 // per source: old stream ID -> new ID
@@ -19,17 +19,13 @@ type MultiSourceRankedStreams struct {
 // and assigns IDs according to rank. sources[i] is the localID -> stream map for one
 // input object.
 func RankMixedStreams(schemaLabels []string, sources ...map[int64]streams.Stream) (*MultiSourceRankedStreams, error) {
-	type uniqStream struct {
-		key    streams.SortKey
-		stream streams.Stream
-	}
 	type localRef struct {
 		sourceIdx int
 		localID   int64
 		labelsKey string
 	}
 
-	byLabels := make(map[string]*uniqStream)
+	byLabels := make(map[string]streams.SortKey)
 	var allRefs []localRef
 	for sourceIdx, src := range sources {
 		for localID, s := range src {
@@ -41,18 +37,18 @@ func RankMixedStreams(schemaLabels []string, sources ...map[int64]streams.Stream
 			key := streams.NewSortKey(s.Labels, schemaKey)
 			lk := s.Labels.String()
 			if _, ok := byLabels[lk]; !ok {
-				byLabels[lk] = &uniqStream{key: key, stream: s}
+				byLabels[lk] = key
 			}
 			allRefs = append(allRefs, localRef{sourceIdx: sourceIdx, localID: localID, labelsKey: lk})
 		}
 	}
 
-	unique := make([]uniqStream, 0, len(byLabels))
+	unique := make([]streams.SortKey, 0, len(byLabels))
 	for _, u := range byLabels {
-		unique = append(unique, *u)
+		unique = append(unique, u)
 	}
-	slices.SortFunc(unique, func(a, b uniqStream) int {
-		return streams.CompareSortKey(a.key, b.key)
+	slices.SortFunc(unique, func(a, b streams.SortKey) int {
+		return streams.CompareSortKey(a, b)
 	})
 
 	ranks := &MultiSourceRankedStreams{
@@ -64,12 +60,10 @@ func RankMixedStreams(schemaLabels []string, sources ...map[int64]streams.Stream
 	}
 
 	labelToID := make(map[string]int64, len(unique))
-	for i, u := range unique {
+	for i, k := range unique {
 		id := int64(i + 1)
-		labelToID[u.stream.Labels.String()] = id
-		s := u.stream
-		s.ID = id
-		ranks.ordered[id] = u.key
+		labelToID[k.Labels.String()] = id
+		ranks.ordered[id] = k
 	}
 	for _, r := range allRefs {
 		ranks.mappings[r.sourceIdx][r.localID] = labelToID[r.labelsKey]

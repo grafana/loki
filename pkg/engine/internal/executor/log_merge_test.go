@@ -397,7 +397,7 @@ func TestBuildGlobalStreamTable_SameLabelsShareID(t *testing.T) {
 	for id := int64(2); id <= int64(count); id++ {
 		prev := table.ByID(id - 1)
 		curr := table.ByID(id)
-		require.Negative(t, logsobj.CompareStreamOrderKey(prev, curr),
+		require.Negative(t, streams.CompareSortKey(prev, curr),
 			"global stream IDs must increase in StreamOrderKey order")
 	}
 }
