@@ -269,7 +269,7 @@ func (c *Compactor) init(
 				return fmt.Errorf("failed to init sweeper: %w", err)
 			}
 
-			sc.tableMarker, err = retention.NewMarker(retentionWorkDir, c.expirationChecker, c.cfg.RetentionTableTimeout, chunkClient, r)
+			sc.tableMarker, err = retention.NewMarker(retentionWorkDir, c.expirationChecker, c.cfg.RetentionTableTimeout, chunkClient, c.cfg.DeletionIgnoreMissingChunks, r)
 			if err != nil {
 				return fmt.Errorf("failed to init table marker: %w", err)
 			}
