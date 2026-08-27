@@ -161,7 +161,7 @@ Examples:
 ## Probabilistic aggregation
 
 {{< admonition type="note" >}}
-Probabilistic aggregation is an experimental feature. Engineering and on-call support is not available. Documentation is either limited or not provided outside of code comments. No SLA is provided. To use these features, set `limits_config.shard_aggregations` to include `approx_topk` and/or `approx_count_distinct` in your [Loki configuration](https://grafana.com/docs/loki/<LOKI_VERSION>/configure/#limits_config). `approx_count_distinct` also requires `frontend.encoding: protobuf`. To enable these features in Grafana Cloud, contact Grafana Support.
+Probabilistic aggregation is an experimental feature. Engineering and on-call support is not available. Documentation is either limited or not provided outside of code comments. No SLA is provided. To use these features, set `limits_config.shard_aggregations` to include `approx_topk` and/or `approx_count_distinct` in your [Loki configuration](https://grafana.com/docs/loki/<LOKI_VERSION>/configure/#limits_config). These operators also require `frontend.encoding: protobuf`. To enable these features in Grafana Cloud, contact Grafana Support.
 {{< /admonition >}}
 
 ### `approx_topk`
