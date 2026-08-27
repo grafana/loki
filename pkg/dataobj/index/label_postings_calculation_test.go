@@ -383,6 +383,91 @@ func TestLabelPostingsCalculation_ShardBucketsHandling(t *testing.T) {
 	}
 }
 
+func TestLabelPostingsCalculation_SharedLabelAggregation(t *testing.T) {
+	builder := newTestIndexBuilder(t)
+	calcCtx := makeTestCalcContext(builder)
+	calc := &labelPostingsCalculation{}
+
+	require.NoError(t, calc.Prepare(context.Background(), calcCtx, nil, logs.Stats{}))
+
+	ts1 := time.Unix(10, 0).UTC()
+	ts2 := time.Unix(20, 0).UTC()
+	line2 := []byte("from-two")  // stream 2: service_name=svcB, env=dev
+	line4 := []byte("from-four") // stream 4: env=dev
+	line1 := []byte("from-one")  // stream 1: service_name=svcA, env=prod (must not mix into env=dev)
+
+	batch := []logs.Record{
+		{StreamID: 2, Timestamp: ts1, Line: line2},
+		{StreamID: 4, Timestamp: ts2, Line: line4},
+		{StreamID: 1, Timestamp: ts1, Line: line1},
+	}
+	require.NoError(t, calc.ProcessBatch(context.Background(), calcCtx, batch))
+	require.NoError(t, calc.Flush(context.Background(), calcCtx))
+
+	tbl := flushAndReadAllPostingsTable(t, builder)
+	// service_name=svcA, service_name=svcB, env=prod, env=dev
+	require.Len(t, tbl.rows, 4)
+
+	i := findRow(tbl.rows, map[string]any{
+		"column_name.utf8": "env",
+		"label_value.utf8": "dev",
+	})
+	require.NotEqual(t, -1, i, "expected env=dev posting aggregated across streams 2 and 4")
+	row := tbl.rows[i]
+	require.Equal(t, int64(len(line2)+len(line4)), row["uncompressed_size.int64"])
+	require.Equal(t, ts1.UTC(), row["min_timestamp.timestamp"])
+	require.Equal(t, ts2.UTC(), row["max_timestamp.timestamp"])
+
+	bitmap := tbl.opaque["stream_id_bitmap.binary"][i]
+	require.True(t, isBitSet(bitmap, 2), "env=dev bitmap should have stream 2 set")
+	require.True(t, isBitSet(bitmap, 4), "env=dev bitmap should have stream 4 set")
+	require.False(t, isBitSet(bitmap, 1), "env=dev bitmap should not include stream 1 (env=prod)")
+}
+
+func TestLabelPostingsCalculation_UnknownStreamID(t *testing.T) {
+	tt := []struct {
+		name     string
+		streamID int64
+		mutate   func(*logsCalculationContext)
+	}{
+		{
+			name:     "stream not in labels or shards",
+			streamID: 99,
+		},
+		{
+			name:     "missing shard bucket",
+			streamID: 1,
+			mutate: func(ctx *logsCalculationContext) {
+				delete(ctx.streamShardBuckets, 1)
+			},
+		},
+		{
+			name:     "missing stream labels",
+			streamID: 1,
+			mutate: func(ctx *logsCalculationContext) {
+				delete(ctx.streamLabels, 1)
+			},
+		},
+	}
+
+	for _, tc := range tt {
+		t.Run(tc.name, func(t *testing.T) {
+			builder := newTestIndexBuilder(t)
+			calcCtx := makeTestCalcContext(builder)
+			if tc.mutate != nil {
+				tc.mutate(calcCtx)
+			}
+			calc := &labelPostingsCalculation{}
+
+			require.NoError(t, calc.Prepare(context.Background(), calcCtx, nil, logs.Stats{}))
+			err := calc.ProcessBatch(context.Background(), calcCtx, []logs.Record{
+				{StreamID: tc.streamID, Timestamp: time.Unix(10, 0).UTC(), Line: []byte("x")},
+			})
+			require.ErrorContains(t, err, "unknown stream ID for record")
+		})
+	}
+}
+
 func TestLabelPostingsCalculation_EmptyBatch(t *testing.T) {
 	builder := newTestIndexBuilder(t)
 	calcCtx := makeTestCalcContext(builder)

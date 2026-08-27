@@ -2,6 +2,7 @@ package index
 
 import (
 	"context"
+	"errors"
 
 	"github.com/prometheus/prometheus/model/labels"
 
@@ -32,8 +33,12 @@ func (c *labelPostingsCalculation) ProcessBatch(_ context.Context, calcCtx *logs
 		if batchErr != nil {
 			break
 		}
-		streamLbls := calcCtx.streamLabels[log.StreamID]
-		shardBucket := calcCtx.streamShardBuckets[log.StreamID]
+		streamLbls, labelsOK := calcCtx.streamLabels[log.StreamID]
+		shardBucket, shardOK := calcCtx.streamShardBuckets[log.StreamID]
+
+		if !labelsOK || !shardOK {
+			return errors.New("unknown stream ID for record")
+		}
 
 		// The uncompressed byte contract is line bytes plus structured metadata
 		// value bytes, matching streams.Stream.UncompressedSize and the stats
