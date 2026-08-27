@@ -426,39 +426,10 @@ func (e *CountDistinctSketchEvalExpr) Walk(f syntax.WalkFn) {
 }
 
 // CountDistinctSketchMatrixStepEvaluator steps through a matrix of count-distinct sketches.
-type CountDistinctSketchMatrixStepEvaluator struct {
-	end, ts time.Time
-	step    time.Duration
-	m       CountDistinctSketchMatrix
-}
+type CountDistinctSketchMatrixStepEvaluator = SketchMatrixStepEvaluator[CountDistinctSketchVector]
 
 func NewCountDistinctSketchMatrixStepEvaluator(m CountDistinctSketchMatrix, params Params) *CountDistinctSketchMatrixStepEvaluator {
-	return &CountDistinctSketchMatrixStepEvaluator{
-		end:  params.End(),
-		ts:   params.Start().Add(-params.Step()), // corrected on first Next()
-		step: params.Step(),
-		m:    m,
-	}
-}
-
-func (m *CountDistinctSketchMatrixStepEvaluator) Next() (bool, int64, StepResult) {
-	m.ts = m.ts.Add(m.step)
-	if m.ts.After(m.end) {
-		return false, 0, nil
-	}
-	ts := m.ts.UnixNano() / int64(time.Millisecond)
-	if len(m.m) == 0 {
-		return false, 0, nil
-	}
-	vec := m.m[0]
-	m.m = m.m[1:]
-	return true, ts, vec
-}
-
-func (*CountDistinctSketchMatrixStepEvaluator) Close() error { return nil }
-func (*CountDistinctSketchMatrixStepEvaluator) Error() error { return nil }
-func (m *CountDistinctSketchMatrixStepEvaluator) Explain(parent Node) {
-	parent.Child("CountDistinctSketchMatrix")
+	return newSketchMatrixStepEvaluator(m, params, "CountDistinctSketchMatrix")
 }
 
 // CountDistinctSketchVectorStepEvaluator estimates one sketch vector per step.

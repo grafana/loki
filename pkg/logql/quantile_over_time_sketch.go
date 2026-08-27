@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"math"
 	"sync"
-	"time"
 
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/promql"
@@ -315,50 +314,10 @@ func JoinQuantileSketchVector(next bool, r StepResult, stepEvaluator StepEvaluat
 
 // QuantileSketchMatrixStepEvaluator steps through a matrix of quantile sketch
 // vectors, ie t-digest or DDSketch structures per time step.
-type QuantileSketchMatrixStepEvaluator struct {
-	end, ts time.Time
-	step    time.Duration
-	m       ProbabilisticQuantileMatrix
-}
+type QuantileSketchMatrixStepEvaluator = SketchMatrixStepEvaluator[ProbabilisticQuantileVector]
 
 func NewQuantileSketchMatrixStepEvaluator(m ProbabilisticQuantileMatrix, params Params) *QuantileSketchMatrixStepEvaluator {
-	var (
-		step = params.Step()
-	)
-	return &QuantileSketchMatrixStepEvaluator{
-		end:  params.End(),
-		ts:   params.Start().Add(-step), // will be corrected on first Next() call
-		step: step,
-		m:    m,
-	}
-}
-
-func (m *QuantileSketchMatrixStepEvaluator) Next() (bool, int64, StepResult) {
-	m.ts = m.ts.Add(m.step)
-	if m.ts.After(m.end) {
-		return false, 0, nil
-	}
-
-	ts := m.ts.UnixNano() / int64(time.Millisecond)
-
-	if len(m.m) == 0 {
-		return false, 0, nil
-	}
-
-	vec := m.m[0]
-
-	// Reset for next step
-	m.m = m.m[1:]
-
-	return true, ts, vec
-}
-
-func (*QuantileSketchMatrixStepEvaluator) Close() error { return nil }
-
-func (*QuantileSketchMatrixStepEvaluator) Error() error { return nil }
-
-func (*QuantileSketchMatrixStepEvaluator) Explain(parent Node) {
-	parent.Child("QuantileSketchMatrix")
+	return newSketchMatrixStepEvaluator(m, params, "QuantileSketchMatrix")
 }
 
 // QuantileSketchVectorStepEvaluator evaluates a quantile sketch into a
