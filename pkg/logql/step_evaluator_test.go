@@ -4,12 +4,25 @@ import (
 	"testing"
 	"time"
 
-	"github.com/axiomhq/hyperloglog"
-	"github.com/prometheus/prometheus/model/labels"
+	"github.com/prometheus/prometheus/promql"
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/v3/pkg/logproto"
 )
+
+// testSketchVec is a StepResult used only to drive SketchMatrixStepEvaluator.
+type testSketchVec struct {
+	id string
+}
+
+func (testSketchVec) SampleVector() promql.Vector                    { return nil }
+func (testSketchVec) QuantileSketchVec() ProbabilisticQuantileVector { return nil }
+func (testSketchVec) CountMinSketchVec() CountMinSketchVector        { return CountMinSketchVector{} }
+func (testSketchVec) CountDistinctSketchVec() CountDistinctSketchVector {
+	return nil
+}
+
+var _ StepResult = testSketchVec{}
 
 func TestSketchMatrixStepEvaluator(t *testing.T) {
 	var (
@@ -19,16 +32,16 @@ func TestSketchMatrixStepEvaluator(t *testing.T) {
 	)
 	params := mustSketchMatrixParams(t, start, end, step)
 
-	v0 := countDistinctStepVec("0")
-	v1 := countDistinctStepVec("1")
-	v2 := countDistinctStepVec("2")
-	ev := NewCountDistinctSketchMatrixStepEvaluator(CountDistinctSketchMatrix{v0, v1, v2}, params)
+	v0 := testSketchVec{id: "0"}
+	v1 := testSketchVec{id: "1"}
+	v2 := testSketchVec{id: "2"}
+	ev := newSketchMatrixStepEvaluator([]testSketchVec{v0, v1, v2}, params, "TestSketch")
 
-	for i, want := range []CountDistinctSketchVector{v0, v1, v2} {
+	for i, want := range []testSketchVec{v0, v1, v2} {
 		ok, ts, r := ev.Next()
 		require.True(t, ok)
 		require.Equal(t, start.Add(step*time.Duration(i)).UnixMilli(), ts)
-		require.Equal(t, want, r.CountDistinctSketchVec())
+		require.Equal(t, want, r)
 	}
 
 	ok, _, r := ev.Next()
@@ -38,7 +51,7 @@ func TestSketchMatrixStepEvaluator(t *testing.T) {
 
 func TestSketchMatrixStepEvaluator_EmptyMatrix(t *testing.T) {
 	params := mustSketchMatrixParams(t, time.Unix(0, 0), time.Unix(2, 0), time.Second)
-	ev := NewCountDistinctSketchMatrixStepEvaluator(CountDistinctSketchMatrix{}, params)
+	ev := newSketchMatrixStepEvaluator([]testSketchVec{}, params, "TestSketch")
 
 	ok, _, r := ev.Next()
 	require.False(t, ok)
@@ -52,13 +65,13 @@ func TestSketchMatrixStepEvaluator_FewerVectorsThanSteps(t *testing.T) {
 		step  = time.Second
 	)
 	params := mustSketchMatrixParams(t, start, end, step)
-	only := countDistinctStepVec("only")
-	ev := NewCountDistinctSketchMatrixStepEvaluator(CountDistinctSketchMatrix{only}, params)
+	only := testSketchVec{id: "only"}
+	ev := newSketchMatrixStepEvaluator([]testSketchVec{only}, params, "TestSketch")
 
 	ok, ts, r := ev.Next()
 	require.True(t, ok)
 	require.Equal(t, start.UnixMilli(), ts)
-	require.Equal(t, only, r.CountDistinctSketchVec())
+	require.Equal(t, only, r)
 
 	ok, _, r = ev.Next()
 	require.False(t, ok)
@@ -68,40 +81,14 @@ func TestSketchMatrixStepEvaluator_FewerVectorsThanSteps(t *testing.T) {
 func TestSketchMatrixStepEvaluator_StopsAtEnd(t *testing.T) {
 	start := time.Unix(0, 0)
 	params := mustSketchMatrixParams(t, start, start, time.Second)
-	first := countDistinctStepVec("first")
-	unused := countDistinctStepVec("unused")
-	ev := NewCountDistinctSketchMatrixStepEvaluator(CountDistinctSketchMatrix{first, unused}, params)
+	first := testSketchVec{id: "first"}
+	unused := testSketchVec{id: "unused"}
+	ev := newSketchMatrixStepEvaluator([]testSketchVec{first, unused}, params, "TestSketch")
 
 	ok, ts, r := ev.Next()
 	require.True(t, ok)
 	require.Equal(t, start.UnixMilli(), ts)
-	require.Equal(t, first, r.CountDistinctSketchVec())
-
-	ok, _, r = ev.Next()
-	require.False(t, ok)
-	require.Nil(t, r)
-}
-
-func TestSketchMatrixStepEvaluator_QuantileAlias(t *testing.T) {
-	var (
-		start = time.Unix(0, 0)
-		end   = time.Unix(1, 0)
-		step  = time.Second
-	)
-	params := mustSketchMatrixParams(t, start, end, step)
-	v0 := ProbabilisticQuantileVector{{T: 0, Metric: labels.FromStrings("step", "0")}}
-	v1 := ProbabilisticQuantileVector{{T: 1, Metric: labels.FromStrings("step", "1")}}
-	ev := NewQuantileSketchMatrixStepEvaluator(ProbabilisticQuantileMatrix{v0, v1}, params)
-
-	ok, ts, r := ev.Next()
-	require.True(t, ok)
-	require.Equal(t, start.UnixMilli(), ts)
-	require.Equal(t, v0, r.QuantileSketchVec())
-
-	ok, ts, r = ev.Next()
-	require.True(t, ok)
-	require.Equal(t, start.Add(step).UnixMilli(), ts)
-	require.Equal(t, v1, r.QuantileSketchVec())
+	require.Equal(t, first, r)
 
 	ok, _, r = ev.Next()
 	require.False(t, ok)
@@ -110,26 +97,14 @@ func TestSketchMatrixStepEvaluator_QuantileAlias(t *testing.T) {
 
 func TestSketchMatrixStepEvaluator_CloseErrorExplain(t *testing.T) {
 	params := mustSketchMatrixParams(t, time.Unix(0, 0), time.Unix(0, 0), time.Second)
+	ev := newSketchMatrixStepEvaluator([]testSketchVec{}, params, "TestSketch")
 
-	t.Run("count-distinct", func(t *testing.T) {
-		ev := NewCountDistinctSketchMatrixStepEvaluator(CountDistinctSketchMatrix{}, params)
-		require.NoError(t, ev.Close())
-		require.NoError(t, ev.Error())
+	require.NoError(t, ev.Close())
+	require.NoError(t, ev.Error())
 
-		tree := NewTree()
-		ev.Explain(tree)
-		require.Equal(t, "CountDistinctSketchMatrix\n", tree.String())
-	})
-
-	t.Run("quantile", func(t *testing.T) {
-		ev := NewQuantileSketchMatrixStepEvaluator(ProbabilisticQuantileMatrix{}, params)
-		require.NoError(t, ev.Close())
-		require.NoError(t, ev.Error())
-
-		tree := NewTree()
-		ev.Explain(tree)
-		require.Equal(t, "QuantileSketchMatrix\n", tree.String())
-	})
+	tree := NewTree()
+	ev.Explain(tree)
+	require.Equal(t, "TestSketch\n", tree.String())
 }
 
 func mustSketchMatrixParams(t *testing.T, start, end time.Time, step time.Duration) LiteralParams {
@@ -147,11 +122,4 @@ func mustSketchMatrixParams(t *testing.T, start, end time.Time, step time.Durati
 	)
 	require.NoError(t, err)
 	return params
-}
-
-func countDistinctStepVec(step string) CountDistinctSketchVector {
-	return CountDistinctSketchVector{{
-		F:      hyperloglog.New14(),
-		Metric: labels.FromStrings("step", step),
-	}}
 }
