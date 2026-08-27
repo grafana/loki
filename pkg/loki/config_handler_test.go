@@ -248,7 +248,7 @@ func TestDrilldownConfigTenantLimitsSource(t *testing.T) {
 			expectedSeries:   float64(2000),
 			expectedLabelLen: float64(200),
 			expectedStatus:   200,
-			expectedMode:     "tenant",
+			expectedMode:     "active",
 		},
 		{
 			name:     "no per-tenant limits - uses defaults from Overrides",
@@ -265,7 +265,9 @@ func TestDrilldownConfigTenantLimitsSource(t *testing.T) {
 			expectedSeries:   float64(1000),
 			expectedLabelLen: float64(100),
 			expectedStatus:   200,
-			expectedMode:     "defaults",
+			// No mode param was requested, so this is still "active" reporting even though it happens
+			// to equal the compiled default (this tenant simply has no override).
+			expectedMode: "active",
 		},
 		{
 			name:     "mode=defaults bypasses tenant-specific limits",
@@ -283,8 +285,8 @@ func TestDrilldownConfigTenantLimitsSource(t *testing.T) {
 			expectedSeries:   float64(1000),
 			expectedLabelLen: float64(100),
 			expectedStatus:   200,
-			// mode reflects the actual source used, not the query param — this tenant DOES have an
-			// override, but mode=defaults bypassed it, so the response must say "defaults", not "tenant".
+			// mode reflects the requested param being honored: this tenant DOES have an override, but
+			// mode=defaults bypassed it, so the response must say "defaults", not "active".
 			expectedMode: "defaults",
 		},
 	}

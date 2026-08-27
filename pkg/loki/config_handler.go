@@ -166,12 +166,11 @@ func (t *Loki) tenantLimitsHandler(forDrilldown bool) func(http.ResponseWriter, 
 		// lookup so callers can read the compiled-in default regardless of
 		// whether this tenant has an override configured.
 		var limit *validation.Limits
-		mode := "defaults"
-		if r.URL.Query().Get("mode") != "defaults" && t.TenantLimits != nil {
+		mode := "active"
+		if r.URL.Query().Get("mode") == "defaults" {
+			mode = "defaults"
+		} else if t.TenantLimits != nil {
 			limit = t.TenantLimits.TenantLimits(user)
-			if limit != nil {
-				mode = "tenant"
-			}
 		}
 		if limit == nil && t.Overrides != nil {
 			// There is no limit for this tenant, so we default to the default limits.
