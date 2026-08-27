@@ -142,12 +142,17 @@ func TestAddDeleteRequestHandler(t *testing.T) {
 	t.Run("Validation", func(t *testing.T) {
 		h := NewDeleteRequestHandler(&mockDeleteRequestsStore{}, time.Minute, 0, nil)
 
+		// error is the message the response body is expected to contain
 		for _, tc := range []struct {
 			orgID, query, startTime, endTime, interval, error string
 		}{
 			{"", `{foo="bar"}`, "0000000000", "0000000001", "", "no org id\n"},
 			{"org-id", "", "0000000000", "0000000001", "", "query not set\n"},
-			{"org-id", `not a query`, "0000000000", "0000000001", "", "invalid query expression\n"},
+			{"org-id", `not a query`, "0000000000", "0000000001", "", "invalid query expression: parse error"},
+			{"org-id", `{foo=~".*"}`, "0000000000", "0000000001", "", "invalid query expression: parse error : queries require at least one regexp or equality matcher that does not have an empty-compatible value"},
+			{"org-id", `{foo!="bar"}`, "0000000000", "0000000001", "", "invalid query expression: parse error : queries require at least one regexp or equality matcher that does not have an empty-compatible value"},
+			{"org-id", `{foo="bar"} |~ "["`, "0000000000", "0000000001", "", `invalid query expression: parse error : stage '|~ "["' : error parsing regexp: missing closing ]`},
+			{"org-id", `{foo="bar"} | addr=ip("not-an-ip")`, "0000000000", "0000000001", "", `invalid query expression: parse error : stage '| addr=ip("not-an-ip")' : ip: invalid pattern: "not-an-ip"`},
 			{"org-id", `{foo="bar"}`, "", "0000000001", "", "start time not set\n"},
 			{"org-id", `{foo="bar"}`, "0000000000000", "0000000001", "", "invalid start time: require unix seconds or RFC3339 format\n"},
 			{"org-id", `{foo="bar"}`, "0000000000", "0000000000001", "", "invalid end time: require unix seconds or RFC3339 format\n"},
@@ -170,7 +175,7 @@ func TestAddDeleteRequestHandler(t *testing.T) {
 				h.AddDeleteRequestHandler(w, req)
 
 				require.Equal(t, w.Code, http.StatusBadRequest)
-				require.Equal(t, w.Body.String(), tc.error)
+				require.Contains(t, w.Body.String(), tc.error)
 			})
 		}
 	})
