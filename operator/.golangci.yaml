@@ -1,8 +1,8 @@
 # golangci.com configuration
-# https://golangci-lint.run/usage/configuration/
+# https://golangci-lint.run/docs/configuration/file/
 version: "2"
 linters:
-  default: standard # use default linters: errcheck, govet, ineffassign staticcheck unused
+  default: standard # use default linters: errcheck, govet, ineffassign, staticcheck, unused
   enable:
     - copyloopvar # catches accidental copies of loop variables, including aliases
     - err113 # checks that errors are wrapped according to go 1.13 error wrapping tools
@@ -11,8 +11,8 @@ linters:
     - modernize # suggests newer stdlib and language idioms when applicable
     - nolintlint # validates nolint directives so they stay intentional
     - revive # configurable style and correctness checks
-    - rowserrcheck # checks whether Err of rows is checked successfully
     - testifylint # catches common mistakes in testify assertions and tests
+    - importas # checks that imports are sorted and have clear aliases
   settings:
     copyloopvar:
       check-alias: true

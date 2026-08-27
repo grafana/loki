@@ -1817,7 +1817,7 @@ func TestBuildGateway_PassthroughMode_TopologySpreadConstraint(t *testing.T) {
 
 	dpl := objs[0].(*appsv1.Deployment)
 	require.NotNil(t, dpl)
-	require.EqualValues(t, dpl.Spec.Template.Spec.TopologySpreadConstraints, []corev1.TopologySpreadConstraint{
+	require.Equal(t, []corev1.TopologySpreadConstraint{
 		{
 			MaxSkew:           2,
 			TopologyKey:       "zone",
@@ -1840,7 +1840,7 @@ func TestBuildGateway_PassthroughMode_TopologySpreadConstraint(t *testing.T) {
 				},
 			},
 		},
-	})
+	}, dpl.Spec.Template.Spec.TopologySpreadConstraints)
 }
 
 func TestBuildGateway_PassthroughMode_WithHTTPEncryption_WithCustomTLS(t *testing.T) {
