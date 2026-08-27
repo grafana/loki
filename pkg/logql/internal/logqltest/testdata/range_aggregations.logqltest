@@ -476,6 +476,19 @@ eval instant at 60s approx_count_distinct(id, {app="a"} | logfmt --strict [1m])
 eval instant at 60s approx_count_distinct(id, {app="a"} | logfmt --strict | __error__="" [1m])
   {app="a"} 1
 
+# approx_count_distinct() with a large set.
+#
+# HLL is exact at low cardinality. This load has 20000 distinct ids.
+clear
+load
+  {app="a"}     "id={{.i}}" @ 1ms [repeat every 1ms for 20000]
+  {app="noise"} "id=z"      @ 1ms
+
+eval instant at 60s approx_count_distinct(id, {app="a"} | logfmt [1m])
+  {app="a"} 19820  # true distinct count=20000; error=0.9% (within 1.5%)
+eval range from 40s to 60s step 20s approx_count_distinct(id, {app="a"} | logfmt [1m])  # overlapping
+  {app="a"} 19820 19820
+
 # rate_counter() treats the unwrapped value as a counter: the per-second increase over the range with
 # counter resets added back, using Prometheus-style boundary extrapolation.
 #
