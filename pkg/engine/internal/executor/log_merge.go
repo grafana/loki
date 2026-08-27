@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"slices"
 	"strings"
 	"time"
 
@@ -278,11 +277,7 @@ func (c *Context) collectLogSources(ctx context.Context, node *physical.LogMerge
 // sourcesMatchSortLayout reports whether every logs section in sources has the
 // target layout. mismatch is the first object path that does not match.
 func sourcesMatchSortLayout(ctx context.Context, sources []*logSource, sortSchema []string) (ok bool, mismatch string, err error) {
-	want := logs.SortLayout{
-		SchemaLabels: sortSchema,
-		StreamOrder:  logs.StreamOrderStableHashV1,
-		ShardCount:   streams.ShardFactor,
-	}
+	want := logsobj.TargetSortLayout(sortSchema)
 	for _, src := range sources {
 		for _, sec := range src.logsSections {
 			opened, err := logs.Open(ctx, sec)
@@ -290,18 +285,12 @@ func sourcesMatchSortLayout(ctx context.Context, sources []*logSource, sortSchem
 				return false, src.path, fmt.Errorf("opening logs section in %q: %w", src.path, err)
 			}
 			got := opened.SortLayout()
-			if !sortLayoutEqual(got, want) {
+			if !logsobj.CompareSortLayout(got, want) {
 				return false, src.path, nil
 			}
 		}
 	}
 	return true, "", nil
-}
-
-func sortLayoutEqual(got, want logs.SortLayout) bool {
-	return slices.Equal(got.SchemaLabels, want.SchemaLabels) &&
-		got.StreamOrder == want.StreamOrder &&
-		got.ShardCount == want.ShardCount
 }
 
 // resolveStreams decodes a streams section into a map from local stream ID to its
