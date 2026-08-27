@@ -36,6 +36,7 @@ func TestRoundTripNodes_Reflection(t *testing.T) {
 		new(physical.Projection),
 		new(physical.RangeAggregation),
 		new(physical.ScanSet),
+		new(physical.SortObject),
 		new(physical.TopK),
 		new(physical.VectorAggregation),
 		//new(physical.LogMerge),
