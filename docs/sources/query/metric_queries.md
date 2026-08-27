@@ -158,7 +158,9 @@ Examples:
     vector(0) # will return 0
     ```
 
-## approx_count_distinct
+## Probabilistic aggregation
+
+### `approx_count_distinct`
 
 LogQL's `approx_count_distinct` function approximates the number of distinct values of a label or extracted field without creating one series per distinct value. Use it when an exact `count by` would explode series cardinality.
 
@@ -186,13 +188,11 @@ approx_count_distinct(
 
 Under the hood, Loki builds one [HyperLogLog](https://en.wikipedia.org/wiki/HyperLogLog) sketch per output group at precision 14 (sparse at low cardinality, about 16 KiB when dense). Index sharding merges sketches before estimating so overlapping values across shards are counted once.
 
-## Probabilistic aggregation
+### `approx_topk`
 
 {{< admonition type="note" >}}
 `approx_topk` is an experimental feature. Engineering and on-call support is not available. Documentation is either limited or not provided outside of code comments. No SLA is provided. To use this feature, set `limits_config.shard_aggregations` to include `approx_topk` in your [Loki configuration](https://grafana.com/docs/loki/<LOKI_VERSION>/configure/#limits_config). This operator also requires `frontend.encoding: protobuf`. To enable this feature in Grafana Cloud, contact Grafana Support.
 {{< /admonition >}}
-
-### `approx_topk`
 
 LogQL's `approx_topk` function provides a probabilistic approximation of `topk`. It is a drop-in replacement for `topk` that is great for when `topk` queries time out or hit the maximum series limit. This tends to happen when the list of values that you're sorting through in order to find the most frequent values is very large. `approx_topk` is also great in cases where a faster, approximate answer is preferred to a slower, more accurate one.
 
