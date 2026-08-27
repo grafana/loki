@@ -744,7 +744,7 @@ github.com/go-logr/stdr
 ## explicit; go 1.12
 github.com/go-ole/go-ole
 github.com/go-ole/go-ole/oleutil
-# github.com/go-openapi/analysis v0.26.0
+# github.com/go-openapi/analysis v0.26.1
 ## explicit; go 1.25.0
 github.com/go-openapi/analysis
 github.com/go-openapi/analysis/internal/debug
@@ -767,7 +767,7 @@ github.com/go-openapi/jsonreference/internal
 # github.com/go-openapi/loads v0.25.1
 ## explicit; go 1.25.0
 github.com/go-openapi/loads
-# github.com/go-openapi/spec v0.22.9
+# github.com/go-openapi/spec v0.22.10
 ## explicit; go 1.25.0
 github.com/go-openapi/spec
 # github.com/go-openapi/strfmt v0.27.0
