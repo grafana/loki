@@ -1,6 +1,11 @@
 package v4
 
-import "github.com/grafana/loki/pkg/push"
+import (
+	"encoding/binary"
+	"slices"
+
+	"github.com/grafana/loki/pkg/push"
+)
 
 // v4 shares the v3 on-disk format byte-for-byte. The only difference is n-gram
 // extraction: an all-digit gram is NumericNgramLength digits long instead of n,
@@ -90,30 +95,21 @@ func extractFromText(n int, text string, ngrams [][8]byte) [][8]byte {
 		return ngrams
 	}
 
-	tokenStart := -1
+	// Two tight scans rather than one loop carrying token state: skip separators,
+	// then run to the end of the token. This drops the per-byte "am I inside a
+	// token" branch, and each scan has a single well-predicted exit condition.
 	textLen := len(text)
 
-	for i := range textLen {
-		if separatorTable[text[i]] {
-			if tokenStart >= 0 {
-				tokenLen := i - tokenStart
-				if tokenLen >= n {
-					ngrams = extractNgramsFromToken(n, text[tokenStart:i], ngrams)
-				}
-				tokenStart = -1
-			}
-			continue
+	for i := 0; i < textLen; {
+		for i < textLen && separatorTable[text[i]] {
+			i++
 		}
-
-		if tokenStart < 0 {
-			tokenStart = i
+		start := i
+		for i < textLen && !separatorTable[text[i]] {
+			i++
 		}
-	}
-
-	if tokenStart >= 0 {
-		tokenLen := textLen - tokenStart
-		if tokenLen >= n {
-			ngrams = extractNgramsFromToken(n, text[tokenStart:textLen], ngrams)
+		if i-start >= n {
+			ngrams = extractNgramsFromToken(n, text[start:i], ngrams)
 		}
 	}
 
@@ -124,25 +120,83 @@ func extractNgramsFromToken(n int, token string, ngrams [][8]byte) [][8]byte {
 	tokenLen := len(token)
 
 	// Text grams: the v3 sliding window, minus the all-digit ones.
-	for j := 0; j+n <= tokenLen; j++ {
-		var key [8]byte
-		allDigits := true
-		for k := range n {
-			c := token[j+k]
-			if !isDigit(c) {
-				allDigits = false
+	//
+	// Consecutive windows overlap by n-1 bytes, so rescanning each window from
+	// scratch transforms and digit-tests every byte n times. The window is kept
+	// incrementally instead: w holds the transformed bytes packed big-endian in
+	// its top n bytes, and digits counts how many of them are ASCII digits, so
+	// each byte of the token is transformed and tested exactly once.
+	// longestRun is the longest digit run anywhere in the token. The window walk
+	// below visits every byte exactly once, so tracking it there is free, and it
+	// lets the numeric pass be skipped outright for the large majority of tokens
+	// whose longest run is too short to produce a key.
+	longestRun, run := 0, 0
+
+	if tokenLen >= n {
+		shift := uint(64 - 8*n)
+
+		// Grow once for the token's worst case rather than testing capacity on
+		// every emit. Writing through a pre-sized window turns each emit into a
+		// store plus an index bump.
+		base := len(ngrams)
+		maxText := tokenLen - n + 1
+		ngrams = slices.Grow(ngrams, maxText)
+		dst := ngrams[base : base+maxText]
+		out := 0
+
+		var w uint64
+		digits := 0
+		for k := 0; k < n; k++ {
+			c := token[k]
+			w = w<<8 | uint64(transformTable[c])
+			if isDigit(c) {
+				digits++
+				run++
+				if run > longestRun {
+					longestRun = run
+				}
+			} else {
+				run = 0
 			}
-			key[k] = transformTable[c]
 		}
-		if allDigits {
-			// Covered by the numeric grams below, at a length that is actually
-			// selective. Emitting it here would only add a saturated term.
-			continue
+		w <<= shift
+
+		for j := 0; ; j++ {
+			if digits < n {
+				// An all-digit window is covered by the numeric grams below, at a
+				// length that is actually selective. Emitting it here would only
+				// add a saturated term.
+				binary.BigEndian.PutUint64(dst[out][:], w)
+				out++
+			}
+
+			next := j + n
+			if next >= tokenLen {
+				break
+			}
+			if isDigit(token[j]) {
+				digits--
+			}
+			c := token[next]
+			if isDigit(c) {
+				digits++
+				run++
+				if run > longestRun {
+					longestRun = run
+				}
+			} else {
+				run = 0
+			}
+			w = w<<8 | uint64(transformTable[c])<<shift
 		}
-		ngrams = append(ngrams, key)
+
+		ngrams = ngrams[:base+out]
 	}
 
 	// Numeric grams: one packed key per window of NumericNgramLength digits.
+	if longestRun < NumericNgramLength {
+		return ngrams
+	}
 	for j := 0; j < tokenLen; {
 		if !isDigit(token[j]) {
 			j++
