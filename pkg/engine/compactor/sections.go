@@ -35,12 +35,12 @@ type indexEntry struct {
 	UncompressedLogsSize uint64
 }
 
-type sortKey struct {
+type logSortPrefix struct {
 	shard  uint32
 	labels []string
 }
 
-func compareSortKey(a, b sortKey) int {
+func compareLogSortPrefix(a, b logSortPrefix) int {
 	if n := cmp.Compare(a.shard, b.shard); n != 0 {
 		return n
 	}
@@ -340,10 +340,10 @@ func postingsBoundColumns(section *postings.Section) ([]*postings.Column, error)
 
 // logSectionRefsFor returns one bounded reference per log section indexed by
 // idxPath, together with the index's sort schema and shard count.
-func logSectionRefsFor(ctx context.Context, bucket objstore.Bucket, tenant, idxPath string) ([]v2.Section[sortKey], []string, int64, error) {
+func logSectionRefsFor(ctx context.Context, bucket objstore.Bucket, tenant, idxPath string) ([]v2.Section[logSortPrefix], []string, int64, error) {
 	obj, err := dataobj.FromBucket(ctx, bucket, idxPath, prefetchBytes)
 	if err != nil {
-		return nil, nil, 0, fmt.Errorf("open converged index tenant=%s index=%s: %w", tenant, idxPath, err)
+		return nil, nil, 0, fmt.Errorf("open source index tenant=%s index=%s: %w", tenant, idxPath, err)
 	}
 
 	type sectionID struct {
@@ -357,7 +357,7 @@ func logSectionRefsFor(ctx context.Context, bucket objstore.Bucket, tenant, idxP
 		schemaName string
 		reader     stats.Reader
 
-		bySection = make(map[sectionID]*v2.Section[sortKey])
+		bySection = make(map[sectionID]*v2.Section[logSortPrefix])
 	)
 	defer reader.Close()
 
@@ -412,35 +412,34 @@ func logSectionRefsFor(ctx context.Context, bucket objstore.Bucket, tenant, idxP
 						labels[i] = stat.Labels[name]
 					}
 				}
-				minKey := sortKey{shard: stat.ShardBucket, labels: labels}
-				maxKey := sortKey{shard: stat.ShardBucket, labels: labels}
+				key := logSortPrefix{shard: stat.ShardBucket, labels: labels}
 
 				id := sectionID{path: stat.ObjectPath, index: stat.SectionIndex}
 				bounded, ok := bySection[id]
 				if !ok {
-					bySection[id] = &v2.Section[sortKey]{
+					bySection[id] = &v2.Section[logSortPrefix]{
 						Ref: &compactionv2pb.SectionRef{
 							ObjectPath:       stat.ObjectPath,
 							SectionIndex:     stat.SectionIndex,
-							MinKey:           minKey.labels,
-							MaxKey:           maxKey.labels,
+							MinKey:           key.labels,
+							MaxKey:           key.labels,
 							MinTimestamp:     stat.MinTimestamp,
 							MaxTimestamp:     stat.MaxTimestamp,
 							UncompressedSize: stat.UncompressedSize,
 						},
-						Min: minKey,
-						Max: maxKey,
+						Min: key,
+						Max: key,
 					}
 					continue
 				}
 
-				if compareSortKey(minKey, bounded.Min) < 0 {
-					bounded.Min = minKey
-					bounded.Ref.MinKey = minKey.labels
+				if compareLogSortPrefix(key, bounded.Min) < 0 {
+					bounded.Min = key
+					bounded.Ref.MinKey = key.labels
 				}
-				if compareSortKey(maxKey, bounded.Max) > 0 {
-					bounded.Max = maxKey
-					bounded.Ref.MaxKey = maxKey.labels
+				if compareLogSortPrefix(key, bounded.Max) > 0 {
+					bounded.Max = key
+					bounded.Ref.MaxKey = key.labels
 				}
 				bounded.Ref.MinTimestamp = min(bounded.Ref.MinTimestamp, stat.MinTimestamp)
 				bounded.Ref.MaxTimestamp = max(bounded.Ref.MaxTimestamp, stat.MaxTimestamp)
@@ -489,11 +488,11 @@ func logSectionRefsFor(ctx context.Context, bucket objstore.Bucket, tenant, idxP
 		}
 	}
 
-	refs := make([]v2.Section[sortKey], 0, len(bySection))
+	refs := make([]v2.Section[logSortPrefix], 0, len(bySection))
 	for _, ref := range bySection {
 		refs = append(refs, *ref)
 	}
-	slices.SortFunc(refs, func(a, b v2.Section[sortKey]) int {
+	slices.SortFunc(refs, func(a, b v2.Section[logSortPrefix]) int {
 		if n := strings.Compare(a.Ref.ObjectPath, b.Ref.ObjectPath); n != 0 {
 			return n
 		}
