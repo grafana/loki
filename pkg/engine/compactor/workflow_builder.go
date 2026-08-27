@@ -57,6 +57,17 @@ func buildLogMergePlan(
 	return physical.FromGraph(g)
 }
 
+func buildSortObjectPlan(sourceObjectPath string, sortSchema []string) *physical.Plan {
+	node := &physical.SortObject{
+		NodeID:           ulid.Make(),
+		SourceObjectPath: sourceObjectPath,
+		SortSchema:       sortSchema,
+	}
+	var g dag.Graph[physical.Node]
+	g.Add(node)
+	return physical.FromGraph(g)
+}
+
 // runPlan constructs a workflow.Workflow from a single-root plan, runs it,
 // and drains the pipeline. A compaction job emits exactly one record batch
 // reporting the artifacts it produced. Returns the record batch or nil,nil

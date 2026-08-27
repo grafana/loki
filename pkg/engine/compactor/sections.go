@@ -36,19 +36,15 @@ type indexEntry struct {
 }
 
 type sortKey struct {
-	shard     uint32
-	labels    []string
-	timestamp int64
+	shard  uint32
+	labels []string
 }
 
 func compareSortKey(a, b sortKey) int {
 	if n := cmp.Compare(a.shard, b.shard); n != 0 {
 		return n
 	}
-	if n := slices.Compare(a.labels, b.labels); n != 0 {
-		return n
-	}
-	return cmp.Compare(a.timestamp, b.timestamp)
+	return slices.Compare(a.labels, b.labels)
 }
 
 type indexSortKey struct {
@@ -342,11 +338,12 @@ func postingsBoundColumns(section *postings.Section) ([]*postings.Column, error)
 	return columns, nil
 }
 
-// logSectionRefsFor returns one bounded reference per log section indexed by idxPath.
-func logSectionRefsFor(ctx context.Context, bucket objstore.Bucket, tenant, idxPath string) ([]v2.Section[sortKey], []string, error) {
+// logSectionRefsFor returns one bounded reference per log section indexed by
+// idxPath, together with the index's sort schema and shard count.
+func logSectionRefsFor(ctx context.Context, bucket objstore.Bucket, tenant, idxPath string) ([]v2.Section[sortKey], []string, int64, error) {
 	obj, err := dataobj.FromBucket(ctx, bucket, idxPath, prefetchBytes)
 	if err != nil {
-		return nil, nil, fmt.Errorf("open converged index tenant=%s index=%s: %w", tenant, idxPath, err)
+		return nil, nil, 0, fmt.Errorf("open converged index tenant=%s index=%s: %w", tenant, idxPath, err)
 	}
 
 	type sectionID struct {
@@ -373,18 +370,18 @@ func logSectionRefsFor(ctx context.Context, bucket objstore.Bucket, tenant, idxP
 
 		statsSection, err := stats.Open(ctx, section)
 		if err != nil {
-			return nil, nil, fmt.Errorf("open stats section tenant=%s index=%s: %w", tenant, idxPath, err)
+			return nil, nil, 0, fmt.Errorf("open stats section tenant=%s index=%s: %w", tenant, idxPath, err)
 		}
 
 		reader.Reset(stats.ReaderOptions{Columns: statsSection.Columns()})
 		if err := reader.Open(ctx); err != nil {
-			return nil, nil, fmt.Errorf("opening reader tenant=%s index=%s: %w", tenant, idxPath, err)
+			return nil, nil, 0, fmt.Errorf("opening reader tenant=%s index=%s: %w", tenant, idxPath, err)
 		}
 
 		for {
 			record, readErr := reader.Read(ctx, batchSize)
 			if readErr != nil && !errors.Is(readErr, io.EOF) {
-				return nil, nil, fmt.Errorf("reading batch tenant=%s index=%s: %w", tenant, idxPath, readErr)
+				return nil, nil, 0, fmt.Errorf("reading batch tenant=%s index=%s: %w", tenant, idxPath, readErr)
 			}
 			numRows := int(record.NumRows())
 			if numRows == 0 && errors.Is(readErr, io.EOF) {
@@ -394,7 +391,7 @@ func logSectionRefsFor(ctx context.Context, bucket objstore.Bucket, tenant, idxP
 			rows := scratch[:numRows]
 			n, err := stats.FromRecordBatch(record, rows)
 			if err != nil {
-				return nil, nil, fmt.Errorf("decode stats batch tenant=%s index=%s: %w", tenant, idxPath, err)
+				return nil, nil, 0, fmt.Errorf("decode stats batch tenant=%s index=%s: %w", tenant, idxPath, err)
 			}
 
 			for _, stat := range rows[:n] {
@@ -402,10 +399,10 @@ func logSectionRefsFor(ctx context.Context, bucket objstore.Bucket, tenant, idxP
 					schemaName = stat.SortSchema
 					schema, labelNames, err = parseSortSchema(stat.SortSchema)
 					if err != nil {
-						return nil, nil, fmt.Errorf("parse log sort schema tenant=%s index=%s: %w", tenant, idxPath, err)
+						return nil, nil, 0, fmt.Errorf("parse log sort schema tenant=%s index=%s: %w", tenant, idxPath, err)
 					}
 				} else if stat.SortSchema != schemaName {
-					return nil, nil, fmt.Errorf("index %s contains log sort schemas %q and %q", idxPath, schemaName, stat.SortSchema)
+					return nil, nil, 0, fmt.Errorf("index %s contains log sort schemas %q and %q", idxPath, schemaName, stat.SortSchema)
 				}
 
 				var labels []string
@@ -415,8 +412,8 @@ func logSectionRefsFor(ctx context.Context, bucket objstore.Bucket, tenant, idxP
 						labels[i] = stat.Labels[name]
 					}
 				}
-				minKey := sortKey{shard: stat.ShardBucket, labels: labels, timestamp: stat.MinTimestamp}
-				maxKey := sortKey{shard: stat.ShardBucket, labels: labels, timestamp: stat.MaxTimestamp}
+				minKey := sortKey{shard: stat.ShardBucket, labels: labels}
+				maxKey := sortKey{shard: stat.ShardBucket, labels: labels}
 
 				id := sectionID{path: stat.ObjectPath, index: stat.SectionIndex}
 				bounded, ok := bySection[id]
@@ -427,8 +424,8 @@ func logSectionRefsFor(ctx context.Context, bucket objstore.Bucket, tenant, idxP
 							SectionIndex:     stat.SectionIndex,
 							MinKey:           minKey.labels,
 							MaxKey:           maxKey.labels,
-							MinTimestamp:     minKey.timestamp,
-							MaxTimestamp:     maxKey.timestamp,
+							MinTimestamp:     stat.MinTimestamp,
+							MaxTimestamp:     stat.MaxTimestamp,
 							UncompressedSize: stat.UncompressedSize,
 						},
 						Min: minKey,
@@ -456,6 +453,42 @@ func logSectionRefsFor(ctx context.Context, bucket objstore.Bucket, tenant, idxP
 		}
 	}
 
+	var (
+		shardCount     int64
+		haveShardCount bool
+	)
+	for _, section := range obj.Sections().Filter(postings.CheckSection) {
+		if section.Tenant != tenant {
+			continue
+		}
+		opened, err := postings.Open(ctx, section)
+		if err != nil {
+			return nil, nil, 0, fmt.Errorf("open postings section tenant=%s index=%s: %w", tenant, idxPath, err)
+		}
+		inner := postings.NewReader(postings.ReaderOptions{Columns: opened.Columns()})
+		if err := inner.Open(ctx); err != nil {
+			return nil, nil, 0, fmt.Errorf("opening postings reader tenant=%s index=%s: %w", tenant, idxPath, err)
+		}
+		rowReader := postings.NewRowReader(ctx, inner)
+		for rowReader.Next() {
+			row := rowReader.At()
+			if !haveShardCount {
+				shardCount = row.ShardBuckets
+				haveShardCount = true
+			} else if row.ShardBuckets != shardCount {
+				_ = rowReader.Close()
+				return nil, nil, 0, fmt.Errorf("index %s contains shard counts %d and %d", idxPath, shardCount, row.ShardBuckets)
+			}
+		}
+		if err := rowReader.Err(); err != nil {
+			_ = rowReader.Close()
+			return nil, nil, 0, fmt.Errorf("reading postings tenant=%s index=%s: %w", tenant, idxPath, err)
+		}
+		if err := rowReader.Close(); err != nil {
+			return nil, nil, 0, fmt.Errorf("closing postings reader tenant=%s index=%s: %w", tenant, idxPath, err)
+		}
+	}
+
 	refs := make([]v2.Section[sortKey], 0, len(bySection))
 	for _, ref := range bySection {
 		refs = append(refs, *ref)
@@ -466,7 +499,7 @@ func logSectionRefsFor(ctx context.Context, bucket objstore.Bucket, tenant, idxP
 		}
 		return cmp.Compare(a.Ref.SectionIndex, b.Ref.SectionIndex)
 	})
-	return refs, schema, nil
+	return refs, schema, shardCount, nil
 }
 
 func parseSortSchema(value string) (schema, labelNames []string, _ error) {
