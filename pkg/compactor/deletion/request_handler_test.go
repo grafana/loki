@@ -142,9 +142,8 @@ func TestAddDeleteRequestHandler(t *testing.T) {
 	t.Run("Validation", func(t *testing.T) {
 		h := NewDeleteRequestHandler(&mockDeleteRequestsStore{}, time.Minute, 0, nil)
 
-		// error is the message the response body is expected to contain
 		for _, tc := range []struct {
-			orgID, query, startTime, endTime, interval, error string
+			orgID, query, startTime, endTime, interval, expectedErrorSubstring string
 		}{
 			{"", `{foo="bar"}`, "0000000000", "0000000001", "", "no org id\n"},
 			{"org-id", "", "0000000000", "0000000001", "", "query not set\n"},
@@ -164,7 +163,7 @@ func TestAddDeleteRequestHandler(t *testing.T) {
 			{"org-id", `{foo="bar"} |= "foo"`, "0000000000", "0000000001", "30s", "max_interval can't be greater than the interval to be deleted (1s)\n"},
 			{"org-id", `{foo="bar"} |= "foo"`, "0000000000", "0000000000", "", "start time can't be greater than or equal to end time\n"},
 		} {
-			t.Run(strings.TrimSpace(tc.error), func(t *testing.T) {
+			t.Run(strings.TrimSpace(tc.expectedErrorSubstring), func(t *testing.T) {
 				req := buildRequest(tc.orgID, tc.query, tc.startTime, tc.endTime, false)
 
 				params := req.URL.Query()
@@ -175,7 +174,7 @@ func TestAddDeleteRequestHandler(t *testing.T) {
 				h.AddDeleteRequestHandler(w, req)
 
 				require.Equal(t, w.Code, http.StatusBadRequest)
-				require.Contains(t, w.Body.String(), tc.error)
+				require.Contains(t, w.Body.String(), tc.expectedErrorSubstring)
 			})
 		}
 	})
