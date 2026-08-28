@@ -2,13 +2,11 @@ package index
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"io"
 	"os"
 
 	"github.com/prometheus/prometheus/model/labels"
-	"github.com/prometheus/prometheus/storage"
 
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/index/streamenc"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/index/streamenc/filepool"
@@ -16,33 +14,64 @@ import (
 
 // StreamReader is the file-streaming counterpart to ByteSliceReader.
 //
-// Currently, StreamReader delegates some calls to a *ByteSliceReader.
-// Follow-up changes will progressively replace embedded calls with streaming implementations
-// backed by a file-handle pool.
+// It serves every read through a pool of file handles rather than a memory
+// mapping, so the Go scheduler can observe a blocking read and run other work
+// while it completes. A page fault on a memory mapping is invisible to the
+// runtime and blocks the whole OS thread instead.
+//
+// The sections that are small enough to hold in memory — the TOC and the
+// fingerprint offsets — are read once at construction.
+// The symbols section and the postings offset table are scanned once to
+// build a sparse offset table, so later lookups seek close to their target
+// and read only a bounded window.
+// Series records are read on demand, one per lookup.
 type StreamReader struct {
-	mmapReader *ByteSliceReader
-
 	factory *streamenc.FilePoolDecbufFactory
 	path    string
 	size    int64
 	version int
-	toc     *TOC
+
+	toc                *TOC
+	symbols            *streamSymbols
+	postings           *streamPostings
+	fingerprintOffsets FingerprintOffsets
+	decoder            *Decoder
+}
+
+const DefaultMaxIdleFileHandles = 16
+
+// StreamOptions selects the streaming reader and tunes it.
+type StreamOptions struct {
+	// MaxIdleFileHandles is the number of idle file handles the reader keeps
+	// open for its index file.
+	// Zero disables pooling entirely: every read opens and closes the file.
+	MaxIdleFileHandles uint
+}
+
+func DefaultStreamOptions() StreamOptions {
+	return StreamOptions{MaxIdleFileHandles: DefaultMaxIdleFileHandles}
+}
+
+// OpenReader implements ReaderOptions.
+func (o StreamOptions) OpenReader(path string) (Reader, error) {
+	r, err := NewStreamFileReader(path, o)
+	if err != nil {
+		return nil, err
+	}
+	return r, nil
 }
 
 // NewStreamFileReader constructs a StreamReader against the given index file.
-func NewStreamFileReader(path string) (*StreamReader, error) {
-	fileInfo, err := os.Stat(path)
+func NewStreamFileReader(path string, opts StreamOptions) (*StreamReader, error) {
+	factory, err := streamenc.NewFilePoolDecbufFactory(path, opts.MaxIdleFileHandles, filepool.NewFilePoolMetrics(nil))
 	if err != nil {
-		return nil, fmt.Errorf("stat index file: %w", err)
+		return nil, fmt.Errorf("index file decbuf factory: %w", err)
 	}
-	size := fileInfo.Size()
-
-	factory := streamenc.NewFilePoolDecbufFactory(path, 0, filepool.NewFilePoolMetrics(nil))
 
 	reader := &StreamReader{
 		factory: factory,
 		path:    path,
-		size:    size,
+		size:    factory.FileSize(),
 	}
 
 	version, err := reader.readHeader()
@@ -59,29 +88,41 @@ func NewStreamFileReader(path string) (*StreamReader, error) {
 	}
 	reader.toc = toc
 
-	// Fallback used by not-yet-ported methods
-	mmapReader, err := NewMmapFileReader(path)
+	reader.postings, err = newStreamPostings(context.Background(), factory, int(toc.PostingsTable))
 	if err != nil {
 		_ = factory.Close()
 		return nil, err
 	}
-	reader.mmapReader = mmapReader
+
+	reader.symbols, err = newStreamSymbols(context.Background(), factory, int(toc.Symbols), reader.postings.isLabelName)
+	if err != nil {
+		_ = factory.Close()
+		return nil, err
+	}
+
+	reader.fingerprintOffsets, err = reader.readFingerprintOffsetsTable(int(toc.FingerprintOffsets))
+	if err != nil {
+		_ = factory.Close()
+		return nil, err
+	}
+
+	reader.decoder = newDecoder(reader.symbols.Lookup, DefaultMaxChunksToBypassMarkerLookup)
 
 	return reader, nil
 }
 
 // readHeader validates the magic bytes and returns the on-disk format version.
-func (s StreamReader) readHeader() (int, error) {
+func (s *StreamReader) readHeader() (int, error) {
 	// Validate header size
 	if s.size < int64(HeaderLen) {
 		return 0, fmt.Errorf("index header: %w", streamenc.ErrInvalidSize)
 	}
 	// Construct decbuf
 	decbuf := s.factory.NewRawDecbuf(context.Background())
+	defer decbuf.Close()
 	if err := decbuf.Err(); err != nil {
 		return 0, fmt.Errorf("open header decbuf: %w", err)
 	}
-	defer func() { _ = decbuf.Close() }()
 	// Extract and validate magic
 	magic := decbuf.Be32()
 	if err := decbuf.Err(); err != nil {
@@ -103,17 +144,17 @@ func (s StreamReader) readHeader() (int, error) {
 
 // readTOC reads the fixed-size TOC record from the tail of
 // the file and validates its CRC32.
-func (s StreamReader) readTOC() (*TOC, error) {
+func (s *StreamReader) readTOC() (*TOC, error) {
 	// Validate size
 	if s.size < int64(indexTOCLen) {
 		return nil, fmt.Errorf("index toc: %w", streamenc.ErrInvalidSize)
 	}
 	// Create decbuf
 	decbuf := s.factory.NewRawDecbuf(context.Background())
+	defer decbuf.Close()
 	if err := decbuf.Err(); err != nil {
 		return nil, fmt.Errorf("open toc decbuf: %w", err)
 	}
-	defer func() { _ = decbuf.Close() }()
 	// Validate CRC32
 	tocStart := int(s.size) - indexTOCLen
 	if decbuf.ResetAt(tocStart); decbuf.Err() != nil {
@@ -146,70 +187,80 @@ func (s StreamReader) readTOC() (*TOC, error) {
 	return toc, nil
 }
 
-func (s StreamReader) Version() int {
+// readFingerprintOffsetsTable reads the fingerprint-offsets section at the
+// given absolute file offset into memory.
+// It is the StreamReader's counterpart to readFingerprintOffsetsTable in index.go.
+// On disk the section is a 4-byte big-endian count N, followed by N
+// (seriesRef, fingerprint) pairs of 8-byte big-endian values, then the section CRC,
+// which NewDecbufAtChecked validates while opening.
+func (s *StreamReader) readFingerprintOffsetsTable(offset int) (FingerprintOffsets, error) {
+	decbuf := s.factory.NewDecbufAtChecked(context.Background(), offset, castagnoliTable)
+	defer decbuf.Close()
+	if err := decbuf.Err(); err != nil {
+		return nil, err
+	}
+
+	n := decbuf.Be32()
+	result := make(FingerprintOffsets, 0, int(n))
+	for decbuf.Err() == nil && n > 0 {
+		result = append(result, [2]uint64{decbuf.Be64(), decbuf.Be64()})
+		n--
+	}
+	return result, decbuf.Err()
+}
+
+func (s *StreamReader) Version() int {
 	return s.version
 }
 
 // RawFileReader opens a fresh file handle over the index file.
 // The caller owns closing it.
-func (s StreamReader) RawFileReader() (io.ReadSeekCloser, error) {
+func (s *StreamReader) RawFileReader() (io.ReadSeekCloser, error) {
 	return os.Open(s.path)
 }
 
-func (s StreamReader) PostingsRanges() (map[labels.Label]Range, error) {
-	return s.mmapReader.PostingsRanges()
-}
-
-func (s StreamReader) Bounds() (int64, int64) {
+func (s *StreamReader) Bounds() (int64, int64) {
 	return s.toc.Metadata.From, s.toc.Metadata.Through
 }
 
-func (s StreamReader) Checksum() uint32 {
+func (s *StreamReader) Checksum() uint32 {
 	return s.toc.Metadata.Checksum
 }
 
-func (s StreamReader) Symbols() StringIter {
-	return s.mmapReader.Symbols()
+func (s *StreamReader) LabelValues(name string, matchers ...*labels.Matcher) ([]string, error) {
+	if len(matchers) > 0 {
+		return nil, fmt.Errorf("matchers parameter is not implemented: %+v", matchers)
+	}
+	return s.postings.labelValuesFor(name)
 }
 
-func (s StreamReader) SymbolTableSize() uint64 {
-	return s.mmapReader.SymbolTableSize()
+func (s *StreamReader) LabelNames(matchers ...*labels.Matcher) ([]string, error) {
+	if len(matchers) > 0 {
+		return nil, fmt.Errorf("matchers parameter is not implemented: %+v", matchers)
+	}
+	return s.postings.labelNames(), nil
 }
 
-func (s StreamReader) LabelValues(name string, matchers ...*labels.Matcher) ([]string, error) {
-	return s.mmapReader.LabelValues(name, matchers...)
+// Postings returns a postings iterator for the given label name and values.
+// Values must be provided in ascending order.
+//
+// A non-nil FingerprintFilter restricts the result to the requested shard by
+// bounding the merged postings with the fingerprint offsets table.
+func (s *StreamReader) Postings(labelName string, fpFilter FingerprintFilter, labelValues ...string) (Postings, error) {
+	postings, err := s.postings.postingsFor(labelName, labelValues...)
+	if err != nil {
+		return nil, err
+	}
+	if fpFilter != nil {
+		return NewShardedPostings(postings, fpFilter, s.fingerprintOffsets), nil
+	}
+	return postings, nil
 }
 
-func (s StreamReader) LabelNames(matchers ...*labels.Matcher) ([]string, error) {
-	return s.mmapReader.LabelNames(matchers...)
-}
-
-func (s StreamReader) LabelValueFor(id storage.SeriesRef, label string) (string, error) {
-	return s.mmapReader.LabelValueFor(id, label)
-}
-
-func (s StreamReader) LabelNamesFor(ids ...storage.SeriesRef) ([]string, error) {
-	return s.mmapReader.LabelNamesFor(ids...)
-}
-
-func (s StreamReader) Series(id storage.SeriesRef, from int64, through int64, lbls *labels.Labels, chks *[]ChunkMeta) (uint64, error) {
-	return s.mmapReader.Series(id, from, through, lbls, chks)
-}
-
-func (s StreamReader) ChunkStats(id storage.SeriesRef, from, through int64, lbls *labels.Labels, by map[string]struct{}) (uint64, ChunkStats, error) {
-	return s.mmapReader.ChunkStats(id, from, through, lbls, by)
-}
-
-func (s StreamReader) Postings(name string, fpFilter FingerprintFilter, values ...string) (Postings, error) {
-	return s.mmapReader.Postings(name, fpFilter, values...)
-}
-
-func (s StreamReader) Size() int64 {
+func (s *StreamReader) Size() int64 {
 	return s.size
 }
 
-func (s StreamReader) Close() error {
-	mmapErr := s.mmapReader.Close()
-	factoryErr := s.factory.Close()
-	return errors.Join(mmapErr, factoryErr)
+func (s *StreamReader) Close() error {
+	return s.factory.Close()
 }

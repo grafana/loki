@@ -4,6 +4,10 @@
 
 legacy-read-mode: "Legacy read SSD mode is deprecated and will be eventually removed. Use the new read and backend targets."
 
+distributor:
+  max_recv_msg_size: "Replaced by max_push_size_bytes which includes both max_recv_msg_size and max_decompressed_size."
+  max_decompressed_size: "Replaced by max_push_size_bytes which includes both max_recv_msg_size and max_decompressed_size."
+
 ingester:
   max_transfer_retries: "Enable the ingester WAL and rely on new ingesters to replay the WAL."
 
@@ -105,3 +109,16 @@ limits_config:
   per_tenant_override_config: "This setting is removed in favor of runtime_config.file"
   per_tenant_override_period: "This setting is removed in favor of runtime_config.period"
   enable_multi_variant_queries: "This setting is removed. LogQL no longer supports variants() queries."
+  ruler_remote_write_url: "This setting is removed. Use ruler_remote_write_config instead."
+  ruler_remote_write_timeout: "This setting is removed. Use ruler_remote_write_config instead."
+  ruler_remote_write_headers: "This setting is removed. Use ruler_remote_write_config instead."
+  ruler_remote_write_relabel_configs: "This setting is removed. Use ruler_remote_write_config instead."
+  ruler_remote_write_queue_capacity: "This setting is removed. Use ruler_remote_write_config instead."
+  ruler_remote_write_queue_min_shards: "This setting is removed. Use ruler_remote_write_config instead."
+  ruler_remote_write_queue_max_shards: "This setting is removed. Use ruler_remote_write_config instead."
+  ruler_remote_write_queue_max_samples_per_send: "This setting is removed. Use ruler_remote_write_config instead."
+  ruler_remote_write_queue_batch_send_deadline: "This setting is removed. Use ruler_remote_write_config instead."
+  ruler_remote_write_queue_min_backoff: "This setting is removed. Use ruler_remote_write_config instead."
+  ruler_remote_write_queue_max_backoff: "This setting is removed. Use ruler_remote_write_config instead."
+  ruler_remote_write_queue_retry_on_ratelimit: "This setting is removed. Use ruler_remote_write_config instead."
+  ruler_remote_write_sigv4_config: "This setting is removed. Use ruler_remote_write_config instead."

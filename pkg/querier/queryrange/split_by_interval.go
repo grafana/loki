@@ -16,6 +16,7 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
+	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase"
 	"github.com/grafana/loki/v3/pkg/storage/config"
 	"github.com/grafana/loki/v3/pkg/util/constants"
@@ -30,6 +31,31 @@ type lokiResult struct {
 type packedResp struct {
 	resp queryrangebase.Response
 	err  error
+}
+
+// joinPartialFromResponses keeps the usage of already-completed responses when
+// a fan-out exits on a failure or a cancellation.
+func joinPartialFromResponses(ctx context.Context, responses []queryrangebase.Response) {
+	for _, r := range responses {
+		if s, ok := statisticsFromResponse(r); ok {
+			stats.JoinPartial(ctx, s)
+		}
+	}
+}
+
+func statisticsFromResponse(resp queryrangebase.Response) (stats.Result, bool) {
+	switch r := resp.(type) {
+	case *LokiResponse:
+		return r.Statistics, true
+	case *LokiPromResponse:
+		return r.Statistics, true
+	case *LokiSeriesResponse:
+		return r.Statistics, true
+	case *LokiLabelNamesResponse:
+		return r.Statistics, true
+	default:
+		return stats.Result{}, false
+	}
 }
 
 type SplitByMetrics struct {
@@ -106,10 +132,7 @@ func (h *splitByInterval) Process(
 	ch := h.Feed(ctx, input)
 
 	// queries with 0 limits should not be exited early
-	var unlimited bool
-	if threshold == 0 {
-		unlimited = true
-	}
+	unlimited := threshold == 0
 
 	// Parallelism will be at least 1
 	p := max(parallelism, 1)
@@ -127,9 +150,18 @@ func (h *splitByInterval) Process(
 	for _, x := range input {
 		select {
 		case <-ctx.Done():
-			return nil, ctx.Err()
+			// Keep the usage of the intervals that completed before the
+			// cancellation, and report the cause so a real failure wins over a
+			// generic cancellation.
+			joinPartialFromResponses(ctx, responses)
+			return nil, context.Cause(ctx)
 		case data := <-x.ch:
 			if data.err != nil {
+				// Keep the usage of the intervals that completed before the failure.
+				joinPartialFromResponses(ctx, responses)
+				// Cancel the siblings with this failure as the cause, so it is not
+				// lost behind a generic cancellation.
+				cancel(data.err)
 				return nil, data.err
 			}
 
@@ -140,6 +172,18 @@ func (h *splitByInterval) Process(
 				threshold -= casted.Count()
 
 				if threshold <= 0 {
+					// Stop in-flight splits before compacting; merge can take
+					// long enough that the next interval would otherwise start.
+					cancel(errors.New("split by interval process canceled"))
+
+					// Each split still carries the original line limit, so holding
+					// every sub-response until a final merge is O(splits × limit).
+					// Compact immediately so oversized splits can be GC'd and so a
+					// single already-merged result keeps stats.Splits accurate.
+					if allLokiResponses(responses) {
+						responses = []queryrangebase.Response{mergeLokiResponse(responses...)}
+					}
+
 					return responses, nil
 				}
 
@@ -245,7 +289,22 @@ func (h *splitByInterval) Do(ctx context.Context, r queryrangebase.Request) (que
 	if err != nil {
 		return nil, err
 	}
+	// A single response is already complete. Process compact-merges log
+	// early-exits (including a first interval that already filled the limit),
+	// so re-merging would call MergeSplit once more and reset stats.Splits to 1.
+	if len(resps) == 1 {
+		return resps[0], nil
+	}
 	return h.merger.MergeResponse(resps...)
+}
+
+func allLokiResponses(responses []queryrangebase.Response) bool {
+	for _, r := range responses {
+		if _, ok := r.(*LokiResponse); !ok {
+			return false
+		}
+	}
+	return true
 }
 
 // maxRangeVectorAndOffsetDurationFromQueryString

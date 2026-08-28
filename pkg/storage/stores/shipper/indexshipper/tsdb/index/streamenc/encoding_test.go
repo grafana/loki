@@ -731,11 +731,13 @@ func runAllBufReaderTypes(t *testing.T, caseName string, bytes []byte, testFn fu
 	require.NoError(t, os.WriteFile(filePath, bytes, 0700))
 
 	reg := prometheus.WrapRegistererWithPrefix("indexheader_", prometheus.NewPedanticRegistry())
-	diskFactory := NewFilePoolDecbufFactory(filePath, 0, filepool.NewFilePoolMetrics(reg))
+	diskFactory, err := NewFilePoolDecbufFactory(filePath, 0, filepool.NewFilePoolMetrics(reg))
+	require.NoError(t, err)
 	t.Cleanup(func() {
 		_ = diskFactory.Close()
 	})
 	diskDecBuf := diskFactory.NewRawDecbuf(context.Background())
+	t.Cleanup(func() { _ = diskDecBuf.Close() })
 	require.NoError(t, diskDecBuf.Err())
 
 	name := caseName

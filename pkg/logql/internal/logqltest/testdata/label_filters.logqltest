@@ -163,12 +163,14 @@ eval instant at 60s count_over_time({app="a"} | logfmt | name!~"(?i)alpha" [1m])
 # numeric label filter: > >= < <= == !=.
 clear
 load
-  {app="p"}                "status=500"  @ 20s [repeat every 20s for 4]
-  {app="p"}                "status=200"  @ 30s [repeat every 20s for 2]
-  {app="s", status="500"}  "x"           @ 15s [repeat every 15s for 5]
-  {app="s", status="200"}  "x"           @ 30s [repeat every 20s for 2]
-  {app="m"}                "x"           @ 12s [repeat every 12s for 6] [metadata status="500"]
-  {app="m"}                "x"           @ 30s [repeat every 20s for 2] [metadata status="200"]
+  {app="p"}                "status=500"       @ 20s [repeat every 20s for 4]
+  {app="p"}                "status=200"       @ 30s [repeat every 20s for 2]
+  {app="j"}                `{"status":"500"}` @ 20s [repeat every 20s for 4]
+  {app="j"}                `{"status":500}`   @ 30s [repeat every 20s for 2]
+  {app="s", status="500"}  "x"                @ 15s [repeat every 15s for 5]
+  {app="s", status="200"}  "x"                @ 30s [repeat every 20s for 2]
+  {app="m"}                "x"                @ 12s [repeat every 12s for 6] [metadata status="500"]
+  {app="m"}                "x"                @ 30s [repeat every 20s for 2] [metadata status="200"]
 
 # parsed field
 eval instant at 60s count_over_time({app="p"} | logfmt | status >= 500 [1m])
@@ -183,6 +185,8 @@ eval instant at 60s count_over_time({app="p"} | logfmt | status == 200 [1m])
   {app="p", status="200"} 2
 eval instant at 60s count_over_time({app="p"} | logfmt | status != 200 [1m])
   {app="p", status="500"} 3
+eval instant at 60s count_over_time({app="j"} | json | status >= 500 [1m])
+  {app="j", status="500"} 5
 # stream label
 eval instant at 60s count_over_time({app="s"} | status >= 500 [1m])
   {app="s", status="500"} 4
@@ -225,11 +229,16 @@ eval instant at 60s count_over_time({app="b"} | logfmt | status > 400 [1m])
 eval instant at 60s count_over_time({app="b"} | logfmt | status > 400 | __error__="" [1m])
   expect empty
 
-# string vs numeric equality matcher: a quoted value compares as a string, a bare number as a number.
+# numeric label filter: literal parsing edge cases.
+# - a quoted value compares as a string, a bare number as a number.
+# - a negative or scientific-notation literal converts like any other float.
+# - a literal the float parser rejects is a parse error.
 clear
 load
   {app="a"} "code=200"   @ 20s [repeat every 20s for 4]
   {app="a"} "code=200.0" @ 30s [repeat every 20s for 2]
+  {app="a"} "code=-5"    @ 15s [repeat every 15s for 5]
+  {app="a"} "code=1500"  @ 55s
 
 eval instant at 60s count_over_time({app="a"} | logfmt | code = "200" [1m])
   {app="a", code="200"} 3
@@ -247,16 +256,34 @@ eval instant at 60s count_over_time({app="a"} | logfmt | code = 200 [1m])
 eval instant at 60s count_over_time({app="a"} | logfmt | code == 200 [1m])
   {app="a", code="200"} 3
   {app="a", code="200.0"} 2
+# A negative literal compares below zero.
+eval instant at 60s count_over_time({app="a"} | logfmt | code < 0 [1m])
+  {app="a", code="-5"} 4
+eval instant at 60s count_over_time({app="a"} | logfmt | code >= 0 [1m])
+  {app="a", code="200"} 3
+  {app="a", code="200.0"} 2
+  {app="a", code="1500"} 1
+# Scientific notation converts the same as a plain float.
+eval instant at 60s count_over_time({app="a"} | logfmt | code > 1e3 [1m])
+  {app="a", code="1500"} 1
+eval instant at 60s count_over_time({app="a"} | logfmt | code == 1.5e3 [1m])
+  {app="a", code="1500"} 1
+# A literal the float parser rejects (no float syntax for hex or octal integers) is a parse error.
+eval instant at 60s count_over_time({app="a"} | logfmt | code > 0x10 [1m])
+  expect fail msg: unable to parse literal as a float
+eval instant at 60s count_over_time({app="a"} | logfmt | code > 0o17 [1m])
+  expect fail msg: unable to parse literal as a float
 
 # duration label filter.
 clear
 load
-  {app="p"}               "took=2s"    @ 20s [repeat every 20s for 4]
-  {app="p"}               "took=500ms" @ 30s [repeat every 20s for 2]
-  {app="s", took="2s"}    "x"          @ 15s [repeat every 15s for 5]
-  {app="s", took="500ms"} "x"          @ 30s [repeat every 20s for 2]
-  {app="m"}               "x"          @ 12s [repeat every 12s for 6] [metadata took="2s"]
-  {app="m"}               "x"          @ 30s [repeat every 20s for 2] [metadata took="500ms"]
+  {app="p"}               "took=2s"       @ 20s [repeat every 20s for 4]
+  {app="p"}               "took=500ms"    @ 30s [repeat every 20s for 2]
+  {app="j"}               `{"took":"2s"}` @ 20s [repeat every 20s for 4]
+  {app="s", took="2s"}    "x"             @ 15s [repeat every 15s for 5]
+  {app="s", took="500ms"} "x"             @ 30s [repeat every 20s for 2]
+  {app="m"}               "x"             @ 12s [repeat every 12s for 6] [metadata took="2s"]
+  {app="m"}               "x"             @ 30s [repeat every 20s for 2] [metadata took="500ms"]
 
 # parsed field
 eval instant at 60s count_over_time({app="p"} | logfmt | took > 1s [1m])
@@ -267,6 +294,8 @@ eval range from 60s to 180s step 120s count_over_time({app="p"} | logfmt | took 
   {app="p", took="2s"} 3 _
 eval instant at 60s count_over_time({app="p"} | logfmt | took <= 1s [1m])
   {app="p", took="500ms"} 2
+eval instant at 60s count_over_time({app="j"} | json | took > 1s [1m])
+  {app="j", took="2s"} 3
 # stream label
 eval instant at 60s count_over_time({app="s"} | took > 1s [1m])
   {app="s", took="2s"} 4
@@ -294,11 +323,19 @@ eval instant at 60s count_over_time({app=~".+"} | logfmt | took > 1s [1m])
 # duration label filter comparators: = == != > >= < <=.
 clear
 load
-  {app="a"} "took=2s"    @ 20s [repeat every 20s for 4]
-  {app="a"} "took=500ms" @ 30s [repeat every 20s for 2]
-  {app="a"} "took=1h30m" @ 15s [repeat every 15s for 5]
-  {app="a"} "took=1.5s"  @ 55s
-  {app="a"} "other=1"    @ 45s
+  {app="a"}                "took=2s"    @ 20s [repeat every 20s for 4]
+  {app="a"}                "took=500ms" @ 30s [repeat every 20s for 2]
+  {app="a"}                "took=1h30m" @ 15s [repeat every 15s for 5]
+  {app="a"}                "took=1.5s"  @ 55s
+  {app="a"}                "other=1"    @ 45s
+  {app="s", took="2s"}     "x"          @ 20s [repeat every 20s for 4]
+  {app="s", took="500ms"}  "x"          @ 30s [repeat every 20s for 2]
+  {app="s", took="1h30m"}  "x"          @ 15s [repeat every 15s for 5]
+  {app="s", took="1.5s"}   "x"          @ 55s
+  {app="m"}                "x"          @ 20s [repeat every 20s for 4] [metadata took="2s"]
+  {app="m"}                "x"          @ 30s [repeat every 20s for 2] [metadata took="500ms"]
+  {app="m"}                "x"          @ 15s [repeat every 15s for 5] [metadata took="1h30m"]
+  {app="m"}                "x"          @ 55s                          [metadata took="1.5s"]
 
 # =
 eval instant at 60s count_over_time({app="a"} | logfmt | took = 2s [1m])
@@ -307,30 +344,70 @@ eval range from 40s to 80s step 20s count_over_time({app="a"} | logfmt | took = 
   {app="a", took="2s"} 2 3 3
 eval range from 60s to 180s step 120s count_over_time({app="a"} | logfmt | took = 2s [1m]) # non-overlapping
   {app="a", took="2s"} 3 _
+eval instant at 60s count_over_time({app="s"} | took = 2s [1m])
+  {app="s", took="2s"} 3
+eval instant at 60s count_over_time({app="m"} | took = 2s [1m])
+  {app="m", took="2s"} 3
 # ==
 eval instant at 60s count_over_time({app="a"} | logfmt | took == 90m [1m])
   {app="a", took="1h30m"} 4
+eval instant at 60s count_over_time({app="s"} | took == 90m [1m])
+  {app="s", took="1h30m"} 4
+eval instant at 60s count_over_time({app="m"} | took == 90m [1m])
+  {app="m", took="1h30m"} 4
 # !=
 eval instant at 60s count_over_time({app="a"} | logfmt | took != 2s [1m])
   {app="a", took="500ms"} 2
   {app="a", took="1h30m"} 4
   {app="a", took="1.5s"} 1
+eval instant at 60s count_over_time({app="s"} | took != 2s [1m])
+  {app="s", took="500ms"} 2
+  {app="s", took="1h30m"} 4
+  {app="s", took="1.5s"} 1
+eval instant at 60s count_over_time({app="m"} | took != 2s [1m])
+  {app="m", took="500ms"} 2
+  {app="m", took="1h30m"} 4
+  {app="m", took="1.5s"} 1
 # >
 eval instant at 60s count_over_time({app="a"} | logfmt | took > 1.5s [1m])
   {app="a", took="2s"} 3
   {app="a", took="1h30m"} 4
+eval instant at 60s count_over_time({app="s"} | took > 1.5s [1m])
+  {app="s", took="2s"} 3
+  {app="s", took="1h30m"} 4
+eval instant at 60s count_over_time({app="m"} | took > 1.5s [1m])
+  {app="m", took="2s"} 3
+  {app="m", took="1h30m"} 4
 # >=
 eval instant at 60s count_over_time({app="a"} | logfmt | took >= 1.5s [1m])
   {app="a", took="2s"} 3
   {app="a", took="1h30m"} 4
   {app="a", took="1.5s"} 1
+eval instant at 60s count_over_time({app="s"} | took >= 1.5s [1m])
+  {app="s", took="2s"} 3
+  {app="s", took="1h30m"} 4
+  {app="s", took="1.5s"} 1
+eval instant at 60s count_over_time({app="m"} | took >= 1.5s [1m])
+  {app="m", took="2s"} 3
+  {app="m", took="1h30m"} 4
+  {app="m", took="1.5s"} 1
 # <
 eval instant at 60s count_over_time({app="a"} | logfmt | took < 1s [1m])
   {app="a", took="500ms"} 2
+eval instant at 60s count_over_time({app="s"} | took < 1s [1m])
+  {app="s", took="500ms"} 2
+eval instant at 60s count_over_time({app="m"} | took < 1s [1m])
+  {app="m", took="500ms"} 2
 # <=
 eval instant at 60s count_over_time({app="a"} | logfmt | took <= 1.5s [1m])
   {app="a", took="500ms"} 2
   {app="a", took="1.5s"} 1
+eval instant at 60s count_over_time({app="s"} | took <= 1.5s [1m])
+  {app="s", took="500ms"} 2
+  {app="s", took="1.5s"} 1
+eval instant at 60s count_over_time({app="m"} | took <= 1.5s [1m])
+  {app="m", took="500ms"} 2
+  {app="m", took="1.5s"} 1
 # A line without the label is dropped, and sets no error.
 eval instant at 60s count_over_time({app="a"} | logfmt | took > 0s [1m])
   {app="a", took="2s"} 3
@@ -434,45 +511,166 @@ eval range from 60s to 180s step 120s count_over_time({app="a"} | logfmt | took 
 # bytes label filter.
 clear
 load
-  {app="p"}               "size=3MB"   @ 20s [repeat every 20s for 4]
-  {app="p"}               "size=500KB" @ 30s [repeat every 20s for 2]
-  {app="s", size="3MB"}   "x"          @ 15s [repeat every 15s for 5]
-  {app="s", size="500KB"} "x"          @ 30s [repeat every 20s for 2]
-  {app="m"}               "x"          @ 12s [repeat every 12s for 6] [metadata size="3MB"]
-  {app="m"}               "x"          @ 30s [repeat every 20s for 2] [metadata size="500KB"]
+  {app="p"}               "size=3MB"      @ 20s [repeat every 20s for 4]
+  {app="p"}               "size=500KB"    @ 30s [repeat every 20s for 2]
+  {app="p"}               "size=2048KiB"  @ 20s [repeat every 20s for 4]
+  {app="p"}               "size=2MiB"     @ 20s [repeat every 20s for 4]
+  {app="p"}               "size=2GB"      @ 20s [repeat every 20s for 4]
+  {app="p"}               "size=2GiB"     @ 20s [repeat every 20s for 4]
+  {app="p"}               "size=2TB"      @ 20s [repeat every 20s for 4]
+  {app="p"}               "size=2TiB"     @ 20s [repeat every 20s for 4]
+  {app="p"}               "size=2PB"      @ 20s [repeat every 20s for 4]
+  {app="p"}               "size=2PiB"     @ 20s [repeat every 20s for 4]
+  {app="j"}               `{"size":"3MB"}` @ 20s [repeat every 20s for 4]
+  {app="s", size="3MB"}       "x"         @ 15s [repeat every 15s for 5]
+  {app="s", size="500KB"}     "x"         @ 30s [repeat every 20s for 2]
+  {app="s", size="500KiB"}    "x"         @ 30s [repeat every 20s for 2]
+  {app="s", size="2MiB"}      "x"         @ 15s [repeat every 15s for 5]
+  {app="s", size="2GB"}       "x"         @ 15s [repeat every 15s for 5]
+  {app="s", size="2GiB"}      "x"         @ 15s [repeat every 15s for 5]
+  {app="s", size="2TB"}       "x"         @ 15s [repeat every 15s for 5]
+  {app="s", size="2TiB"}      "x"         @ 15s [repeat every 15s for 5]
+  {app="s", size="2PB"}       "x"         @ 15s [repeat every 15s for 5]
+  {app="s", size="2PiB"}      "x"         @ 15s [repeat every 15s for 5]
+  {app="m"}               "x"             @ 12s [repeat every 12s for 6] [metadata size="3MB"]
+  {app="m"}               "x"             @ 30s [repeat every 20s for 2] [metadata size="500KB"]
+  {app="m"}               "x"             @ 12s [repeat every 12s for 6] [metadata size="2048KiB"]
+  {app="m"}               "x"             @ 12s [repeat every 12s for 6] [metadata size="2MiB"]
+  {app="m"}               "x"             @ 12s [repeat every 12s for 6] [metadata size="2GB"]
+  {app="m"}               "x"             @ 12s [repeat every 12s for 6] [metadata size="2GiB"]
+  {app="m"}               "x"             @ 12s [repeat every 12s for 6] [metadata size="2TB"]
+  {app="m"}               "x"             @ 12s [repeat every 12s for 6] [metadata size="2TiB"]
+  {app="m"}               "x"             @ 12s [repeat every 12s for 6] [metadata size="2PB"]
+  {app="m"}               "x"             @ 12s [repeat every 12s for 6] [metadata size="2PiB"]
 
 # parsed field
+# every supported unit is a valid query literal, not just MB: KiB, MiB, GB, GiB, TB, TiB, PB, PiB.
 eval instant at 60s count_over_time({app="p"} | logfmt | size > 1MB [1m])
   {app="p", size="3MB"} 3
+  {app="p", size="2048KiB"} 3
+  {app="p", size="2MiB"} 3
+  {app="p", size="2GB"} 3
+  {app="p", size="2GiB"} 3
+  {app="p", size="2TB"} 3
+  {app="p", size="2TiB"} 3
+  {app="p", size="2PB"} 3
+  {app="p", size="2PiB"} 3
 eval range from 40s to 80s step 20s count_over_time({app="p"} | logfmt | size > 1MB [1m])   # overlapping
   {app="p", size="3MB"} 2 3 3
+  {app="p", size="2048KiB"} 2 3 3
+  {app="p", size="2MiB"} 2 3 3
+  {app="p", size="2GB"} 2 3 3
+  {app="p", size="2GiB"} 2 3 3
+  {app="p", size="2TB"} 2 3 3
+  {app="p", size="2TiB"} 2 3 3
+  {app="p", size="2PB"} 2 3 3
+  {app="p", size="2PiB"} 2 3 3
 eval range from 60s to 180s step 120s count_over_time({app="p"} | logfmt | size > 1MB [1m]) # non-overlapping
   {app="p", size="3MB"} 3 _
+  {app="p", size="2048KiB"} 3 _
+  {app="p", size="2MiB"} 3 _
+  {app="p", size="2GB"} 3 _
+  {app="p", size="2GiB"} 3 _
+  {app="p", size="2TB"} 3 _
+  {app="p", size="2TiB"} 3 _
+  {app="p", size="2PB"} 3 _
+  {app="p", size="2PiB"} 3 _
 eval instant at 60s count_over_time({app="p"} | logfmt | size < 1MB [1m])
   {app="p", size="500KB"} 2
+eval instant at 60s count_over_time({app="j"} | json | size > 1MB [1m])
+  {app="j", size="3MB"} 3
 # stream label
 eval instant at 60s count_over_time({app="s"} | size > 1MB [1m])
   {app="s", size="3MB"} 4
+  {app="s", size="2MiB"} 4
+  {app="s", size="2GB"} 4
+  {app="s", size="2GiB"} 4
+  {app="s", size="2TB"} 4
+  {app="s", size="2TiB"} 4
+  {app="s", size="2PB"} 4
+  {app="s", size="2PiB"} 4
 eval range from 40s to 80s step 20s count_over_time({app="s"} | size > 1MB [1m])   # overlapping
   {app="s", size="3MB"} 2 4 4
+  {app="s", size="2MiB"} 2 4 4
+  {app="s", size="2GB"} 2 4 4
+  {app="s", size="2GiB"} 2 4 4
+  {app="s", size="2TB"} 2 4 4
+  {app="s", size="2TiB"} 2 4 4
+  {app="s", size="2PB"} 2 4 4
+  {app="s", size="2PiB"} 2 4 4
 eval range from 60s to 180s step 120s count_over_time({app="s"} | size > 1MB [1m]) # non-overlapping
   {app="s", size="3MB"} 4 _
+  {app="s", size="2MiB"} 4 _
+  {app="s", size="2GB"} 4 _
+  {app="s", size="2GiB"} 4 _
+  {app="s", size="2TB"} 4 _
+  {app="s", size="2TiB"} 4 _
+  {app="s", size="2PB"} 4 _
+  {app="s", size="2PiB"} 4 _
 eval instant at 60s count_over_time({app="s"} | size < 1MB [1m])
   {app="s", size="500KB"} 2
+  {app="s", size="500KiB"} 2
 # structured metadata
 eval instant at 60s count_over_time({app="m"} | size > 1MB [1m])
   {app="m", size="3MB"} 5
+  {app="m", size="2048KiB"} 5
+  {app="m", size="2MiB"} 5
+  {app="m", size="2GB"} 5
+  {app="m", size="2GiB"} 5
+  {app="m", size="2TB"} 5
+  {app="m", size="2TiB"} 5
+  {app="m", size="2PB"} 5
+  {app="m", size="2PiB"} 5
 eval range from 40s to 80s step 20s count_over_time({app="m"} | size > 1MB [1m])   # overlapping
   {app="m", size="3MB"} 3 5 5
+  {app="m", size="2048KiB"} 3 5 5
+  {app="m", size="2MiB"} 3 5 5
+  {app="m", size="2GB"} 3 5 5
+  {app="m", size="2GiB"} 3 5 5
+  {app="m", size="2TB"} 3 5 5
+  {app="m", size="2TiB"} 3 5 5
+  {app="m", size="2PB"} 3 5 5
+  {app="m", size="2PiB"} 3 5 5
 eval range from 60s to 180s step 120s count_over_time({app="m"} | size > 1MB [1m]) # non-overlapping
   {app="m", size="3MB"} 5 _
+  {app="m", size="2048KiB"} 5 _
+  {app="m", size="2MiB"} 5 _
+  {app="m", size="2GB"} 5 _
+  {app="m", size="2GiB"} 5 _
+  {app="m", size="2TB"} 5 _
+  {app="m", size="2TiB"} 5 _
+  {app="m", size="2PB"} 5 _
+  {app="m", size="2PiB"} 5 _
 eval instant at 60s count_over_time({app="m"} | size < 1MB [1m])
   {app="m", size="500KB"} 2
 # {app=~".+"} selects the match from every source at once; the sources repeat at different cadences.
 eval instant at 60s count_over_time({app=~".+"} | logfmt | size > 1MB [1m])
   {app="p", size="3MB"} 3
+  {app="p", size="2048KiB"} 3
+  {app="p", size="2MiB"} 3
+  {app="p", size="2GB"} 3
+  {app="p", size="2GiB"} 3
+  {app="p", size="2TB"} 3
+  {app="p", size="2TiB"} 3
+  {app="p", size="2PB"} 3
+  {app="p", size="2PiB"} 3
   {app="s", size="3MB"} 4
+  {app="s", size="2MiB"} 4
+  {app="s", size="2GB"} 4
+  {app="s", size="2GiB"} 4
+  {app="s", size="2TB"} 4
+  {app="s", size="2TiB"} 4
+  {app="s", size="2PB"} 4
+  {app="s", size="2PiB"} 4
   {app="m", size="3MB"} 5
+  {app="m", size="2048KiB"} 5
+  {app="m", size="2MiB"} 5
+  {app="m", size="2GB"} 5
+  {app="m", size="2GiB"} 5
+  {app="m", size="2TB"} 5
+  {app="m", size="2TiB"} 5
+  {app="m", size="2PB"} 5
+  {app="m", size="2PiB"} 5
 
 # bytes label filter comparators: = == != > >= < <=.
 clear
@@ -739,6 +937,7 @@ load
   {app="a"} "x=1 y=0 z=0" @ 30s [repeat every 20s for 2]
   {app="a"} "x=0 y=1 z=1" @ 15s [repeat every 15s for 5]
   {app="a"} "x=0 y=1 z=0" @ 55s
+  {app="a"} "x=0 y=0 z=1" @ 58s # noise: matches none of x="1", y="1", z="0"
 
 # An unparenthesized chain groups as x="1" or (y="1" and z="1").
 eval instant at 60s count_over_time({app="a"} | logfmt | x="1" or y="1" and z="1" [1m])
@@ -773,55 +972,90 @@ eval instant at 60s count_over_time({app="a"} | logfmt | x="1" or y="1" | z="1" 
 eval instant at 60s count_over_time({app="a"} | logfmt | (x="1" or y="1") and z="1" [1m])
   {app="a", x="1", y="1", z="1"} 3
   {app="a", x="0", y="1", z="1"} 4
+# A three-operand or chain evaluates every clause. Dropping the middle one here would
+# incorrectly exclude the third row, which matches only through y="1".
+eval instant at 60s count_over_time({app="a"} | logfmt | x="1" or y="1" or z="0" [1m])
+  {app="a", x="1", y="1", z="1"} 3
+  {app="a", x="1", y="0", z="0"} 2
+  {app="a", x="0", y="1", z="1"} 4
+  {app="a", x="0", y="1", z="0"} 1
+# A trailing clause that matches nothing does not change the result.
+eval instant at 60s count_over_time({app="a"} | logfmt | x="1" or y="1" or z="0" or missing="1" [1m])
+  {app="a", x="1", y="1", z="1"} 3
+  {app="a", x="1", y="0", z="0"} 2
+  {app="a", x="0", y="1", z="1"} 4
+  {app="a", x="0", y="1", z="0"} 1
 
 # label filter or: a match on the left operand skips evaluating the right one.
 clear
 load
-  {app="a"} "lvl=error took=oops" @ 20s [repeat every 20s for 4]
-  {app="a"} "lvl=info took=2s"    @ 30s [repeat every 20s for 2]
+  {app="a"} "lvl=error took=oops size=oops" @ 20s [repeat every 20s for 4]
+  {app="a"} "lvl=info took=2s size=3MB"     @ 30s [repeat every 20s for 2]
+  {app="b"} "addr=1.2.3.9 took=oops"        @ 20s
 
 eval instant at 60s count_over_time({app="a"} | logfmt | lvl="error" or took > 1s [1m])
-  {app="a", lvl="error", took="oops"} 3
-  {app="a", lvl="info", took="2s"} 2
+  {app="a", lvl="error", took="oops", size="oops"} 3
+  {app="a", lvl="info", took="2s", size="3MB"} 2
 eval range from 40s to 80s step 20s count_over_time({app="a"} | logfmt | lvl="error" or took > 1s [1m])   # overlapping
-  {app="a", lvl="error", took="oops"} 2 3 3
-  {app="a", lvl="info", took="2s"} 1 2 2
+  {app="a", lvl="error", took="oops", size="oops"} 2 3 3
+  {app="a", lvl="info", took="2s", size="3MB"} 1 2 2
 eval range from 60s to 180s step 120s count_over_time({app="a"} | logfmt | lvl="error" or took > 1s [1m]) # non-overlapping
-  {app="a", lvl="error", took="oops"} 3 _
-  {app="a", lvl="info", took="2s"} 2 _
+  {app="a", lvl="error", took="oops", size="oops"} 3 _
+  {app="a", lvl="info", took="2s", size="3MB"} 2 _
 # The same predicates in the other order convert oops first, which fails.
 eval instant at 60s count_over_time({app="a"} | logfmt | took > 1s or lvl="error" [1m])
   expect fail msg: LabelFilterErr
 # and always runs both operands.
 eval instant at 60s count_over_time({app="a"} | logfmt | lvl="error" and took > 1s [1m])
   expect fail msg: LabelFilterErr
+# ip() mixed with a duration filter in the same chain: whichever operand comes first decides the outcome.
+eval instant at 60s count_over_time({app="b"} | logfmt | addr = ip("1.2.3.0/24") or took > 1s [1m])
+  {app="b", addr="1.2.3.9", took="oops"} 1
+eval instant at 60s count_over_time({app="b"} | logfmt | took > 1s or addr = ip("1.2.3.0/24") [1m])
+  expect fail msg: invalid duration
+# The same shape holds for a bytes filter instead of a duration filter.
+eval instant at 60s count_over_time({app="a"} | logfmt | lvl="error" or size > 1MB [1m])
+  {app="a", lvl="error", took="oops", size="oops"} 3
+  {app="a", lvl="info", took="2s", size="3MB"} 2
+# size="oops" has no leading digit, so ParseBytes tries to parse an empty string.
+eval instant at 60s count_over_time({app="a"} | logfmt | size > 1MB or lvl="error" [1m])
+  expect fail msg: parsing \"\": invalid syntax
+eval instant at 60s count_over_time({app="a"} | logfmt | lvl="error" and size > 1MB [1m])
+  expect fail msg: parsing \"\": invalid syntax
 
 # label filter errors: the first filter that fails owns __error_details__.
 clear
 load
-  {app="a"} "x=nope y=90" @ 20s [repeat every 20s for 4]
+  {app="a"} "x=nope y=90 z=oops" @ 20s [repeat every 20s for 4]
 
 eval instant at 60s count_over_time({app="a"} | logfmt | x > 1s and y > 1s [1m])
   expect fail msg: invalid duration
 eval instant at 60s count_over_time({app="a"} | logfmt | y > 1s and x > 1s [1m])
   expect fail msg: missing unit in duration
+# The same rule holds when a bytes filter is the one that fails first.
+eval instant at 60s count_over_time({app="a"} | logfmt | x > 1s and z > 1MB [1m])
+  expect fail msg: invalid duration
+eval instant at 60s count_over_time({app="a"} | logfmt | z > 1MB and x > 1s [1m])
+  expect fail msg: parsing \"\": invalid syntax
 
 # __error__ label filter: it drops a line that a later stage failed to process.
 clear
 load
-  {app="a"} "took=oops" @ 20s [repeat every 20s for 4]
-  {app="a"} "took=2s"   @ 30s [repeat every 20s for 2]
+  {app="a"} "took=oops size=3MB"   @ 20s [repeat every 20s for 4]
+  {app="a"} "took=2s size=500KB"   @ 30s [repeat every 20s for 2]
 
 eval instant at 60s count_over_time({app="a"} | logfmt | took > 1s [1m])
   expect fail msg: LabelFilterErr
+eval instant at 60s count_over_time({app="a"} | logfmt | took > 1s and size > 1MB [1m])
+  expect fail msg: LabelFilterErr
 eval instant at 60s count_over_time({app="a"} | logfmt | took > 1s | __error__="" [1m])
-  {app="a", took="2s"} 2
+  {app="a", took="2s", size="500KB"} 2
 eval range from 40s to 80s step 20s count_over_time({app="a"} | logfmt | took > 1s | __error__="" [1m])   # overlapping
-  {app="a", took="2s"} 1 2 2
+  {app="a", took="2s", size="500KB"} 1 2 2
 eval range from 60s to 180s step 120s count_over_time({app="a"} | logfmt | took > 1s | __error__="" [1m]) # non-overlapping
-  {app="a", took="2s"} 2 _
+  {app="a", took="2s", size="500KB"} 2 _
 eval instant at 60s count_over_time({app="a"} | logfmt | took > 1s | __error__!="LabelFilterErr" [1m])
-  {app="a", took="2s"} 2
+  {app="a", took="2s", size="500KB"} 2
 # A filter that runs before the parser cannot drop the line: no stage has failed yet.
 eval instant at 60s count_over_time({app="a"} | __error__="" | logfmt | took > 1s [1m])
   expect fail msg: LabelFilterErr
@@ -834,6 +1068,10 @@ eval instant at 60s count_over_time({app="a"} | logfmt | took > 1s | __error__!=
 # A converting filter cannot read __error__, so the same intent drops every line instead.
 eval instant at 60s count_over_time({app="a"} | logfmt | took > 1s | __error__ > 0 [1m])
   expect empty
+# A line skipped by a comparison (e.g. size < 1MB) doesn't fail the query even if
+# another comparison in the query has failed (e.g. took > 1s).
+eval instant at 60s count_over_time({app="a"} | logfmt | took > 1s and size < 1MB [1m])
+  {app="a", took="2s", size="500KB"} 2
 
 # structured metadata label filter: metadata joins the label set without a parser.
 clear
@@ -930,3 +1168,23 @@ eval instant at 60s sum_over_time({app=~".+"} | logfmt | unwrap v | lvl="error" 
   {app="p", lvl="error"} 6
   {app="s", lvl="error"} 8
   {app="m", lvl="error"} 10
+
+# duration and bytes as ordinary label names.
+clear
+load
+  {app="a"}                               "duration=90s bytes=25MB" @ 20s [repeat every 20s for 3]
+  {app="a"}                               "duration=30s bytes=25MB" @ 20s # noise: duration too short
+  {app="a"}                               "duration=90s bytes=10MB" @ 20s # noise: bytes too small
+  {app="s", duration="90s", bytes="25MB"} "x"                       @ 20s [repeat every 20s for 3]
+  {app="s", duration="30s", bytes="25MB"} "x"                       @ 20s # noise: duration too short
+  {app="s", duration="90s", bytes="10MB"} "x"                       @ 20s # noise: bytes too small
+  {app="m"}                               "x"                       @ 20s [repeat every 20s for 3] [metadata duration="90s" bytes="25MB"]
+  {app="m"}                               "x"                       @ 20s [metadata duration="30s" bytes="25MB"] # noise: duration too short
+  {app="m"}                               "x"                       @ 20s [metadata duration="90s" bytes="10MB"] # noise: bytes too small
+
+eval instant at 60s count_over_time({app="a"} | logfmt | duration > 1m and bytes > 20MB [1m])
+  {app="a", duration="90s", bytes="25MB"} 3
+eval instant at 60s count_over_time({app="s"} | duration > 1m and bytes > 20MB [1m])
+  {app="s", duration="90s", bytes="25MB"} 3
+eval instant at 60s count_over_time({app="m"} | duration > 1m and bytes > 20MB [1m])
+  {app="m", duration="90s", bytes="25MB"} 3

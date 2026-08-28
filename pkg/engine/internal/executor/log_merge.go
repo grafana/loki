@@ -396,10 +396,8 @@ func (c *Context) newLogObjectWriter(node *physical.LogMerge, table *globalStrea
 
 func (w *logObjectWriter) startNewObject() error {
 	cfg := logsobj.BuilderConfig{
-		BuilderBaseConfig:    w.c.indexobjCfg,
-		DataobjSortOrder:     "stream-asc",
+		BuilderBaseConfig:    w.c.logsobjCfg,
 		AppendOrderedEnabled: true,
-		DataobjUseSortSchema: true,
 	}
 	overrides := fixedSortSchema(w.node.SortSchema)
 

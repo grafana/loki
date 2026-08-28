@@ -45,3 +45,16 @@ func TestLabelAggregator_TimeRange_ObserveAtUnixEpoch(t *testing.T) {
 	require.Equal(t, epoch, gotMin)
 	require.Equal(t, epoch, gotMax)
 }
+
+func TestLabelAggregator_ShardBucketRange(t *testing.T) {
+	a := newLabelAggregator()
+	ts := time.Unix(1, 0).UTC()
+	a.Observe(LabelObservation{ObjectPath: "/a", SectionIndex: 0, ColumnName: "app", LabelValue: "x", StreamID: 1, Timestamp: ts, ShardBucket: 4})
+	a.Observe(LabelObservation{ObjectPath: "/a", SectionIndex: 0, ColumnName: "app", LabelValue: "x", StreamID: 2, Timestamp: ts, ShardBucket: 1})
+	a.Observe(LabelObservation{ObjectPath: "/a", SectionIndex: 0, ColumnName: "app", LabelValue: "x", StreamID: 3, Timestamp: ts, ShardBucket: 9})
+
+	entries := a.Entries()
+	require.Len(t, entries, 1)
+	require.Equal(t, uint32(1), entries[0].MinShardBucket)
+	require.Equal(t, uint32(9), entries[0].MaxShardBucket)
+}

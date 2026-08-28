@@ -2,6 +2,7 @@ package ansi
 
 import (
 	"bytes"
+	"unicode/utf8"
 
 	"github.com/charmbracelet/x/ansi/parser"
 )
@@ -88,6 +89,17 @@ func stringWidth(m Method, s string) int {
 	for i := 0; i < len(s); i++ {
 		state, action := parser.Table.Transition(pstate, s[i])
 		if action == parser.PrintAction || state == parser.Utf8State {
+			if m == WcWidth {
+				// Wcwidth sums codepoints, so where the cluster boundaries
+				// fall makes no difference to the total. Skipping the
+				// segmentation is a good deal cheaper.
+				r, size := utf8.DecodeRuneInString(s[i:])
+				width += wcRuneWidth(r)
+				i += size - 1
+				pstate = parser.GroundState
+				continue
+			}
+
 			cluster, w := FirstGraphemeCluster(s[i:], m)
 			width += w
 

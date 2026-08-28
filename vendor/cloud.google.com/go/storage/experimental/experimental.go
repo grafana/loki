@@ -122,3 +122,10 @@ func WithDirectConnectivityEnforced() option.ClientOption {
 func WithOtelMetrics() option.ClientOption {
 	return internal.WithOtelMetrics.(func() option.ClientOption)()
 }
+
+// WithOtelDebugMetrics provides an [option.ClientOption] that may be passed to
+// [cloud.google.com/go/storage.NewClient] or [cloud.google.com/go/storage.NewGRPCClient].
+// It enables debug client-side OpenTelemetry metrics.
+func WithOtelDebugMetrics() option.ClientOption {
+	return internal.WithOtelDebugMetrics.(func() option.ClientOption)()
+}

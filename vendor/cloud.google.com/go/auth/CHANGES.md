@@ -1,5 +1,19 @@
 # Changes
 
+## [0.23.2](https://github.com/googleapis/google-cloud-go/compare/auth/v0.23.1...auth/v0.23.2) (2026-08-20)
+
+
+### Bug Fixes
+
+* **auth:** Eliminate timing race conditions in grpctransport otel tests ([#20175](https://github.com/googleapis/google-cloud-go/issues/20175)) ([#20382](https://github.com/googleapis/google-cloud-go/issues/20382)) ([637505e](https://github.com/googleapis/google-cloud-go/commit/637505e5d5f090eec020604c3702b6ace11dcd38))
+
+## [0.23.1](https://github.com/googleapis/google-cloud-go/compare/auth/v0.23.0...auth/v0.23.1) (2026-08-13)
+
+
+### Bug Fixes
+
+* **auth:** Fix OpenTelemetry test flake in grpctransport ([#20191](https://github.com/googleapis/google-cloud-go/issues/20191)) ([e43ce28](https://github.com/googleapis/google-cloud-go/commit/e43ce28d01ea80970e6373e1c4540cb470cdc4a6))
+
 ## [0.23.0](https://github.com/googleapis/google-cloud-go/compare/auth/v0.22.0...auth/v0.23.0) (2026-08-07)
 
 

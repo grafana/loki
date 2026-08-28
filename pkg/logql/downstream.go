@@ -332,6 +332,9 @@ type MergeFirstOverTimeExpr struct {
 	syntax.SampleExpr
 	downstreams []DownstreamSampleExpr
 	offset      time.Duration
+
+	// rangeInterval is the range vector's own interval, e.g. the 1m in first_over_time(...[1m]).
+	rangeInterval time.Duration
 }
 
 func (e MergeFirstOverTimeExpr) String() string {
@@ -366,6 +369,9 @@ type MergeLastOverTimeExpr struct {
 	syntax.SampleExpr
 	downstreams []DownstreamSampleExpr
 	offset      time.Duration
+
+	// rangeInterval is the range vector's own interval, e.g. the 1m in last_over_time(...[1m]).
+	rangeInterval time.Duration
 }
 
 func (e MergeLastOverTimeExpr) String() string {
@@ -399,6 +405,8 @@ func (e *MergeLastOverTimeExpr) Walk(f syntax.WalkFn) {
 type CountMinSketchEvalExpr struct {
 	syntax.SampleExpr
 	downstreams []DownstreamSampleExpr
+	// operation is the user-facing operator that produced this sketch, e.g. approx_topk.
+	operation string
 }
 
 func (e CountMinSketchEvalExpr) String() string {
@@ -468,6 +476,10 @@ type DownstreamEvaluator struct {
 func (ev DownstreamEvaluator) Downstream(ctx context.Context, queries []DownstreamQuery, acc Accumulator) ([]logqlmodel.Result, error) {
 	results, err := ev.Downstreamer.Downstream(ctx, queries, acc)
 	if err != nil {
+		// Keep the usage of the shards that completed before the failure.
+		for _, res := range results {
+			stats.JoinPartial(ctx, res.Statistics)
+		}
 		return nil, err
 	}
 
@@ -637,7 +649,7 @@ func (ev *DownstreamEvaluator) NewStepEvaluator(
 			}
 		}
 
-		return NewMergeFirstOverTimeStepEvaluator(params, xs, e.offset), nil
+		return NewMergeFirstOverTimeStepEvaluator(params, xs, e.offset, e.rangeInterval), nil
 	case *MergeLastOverTimeExpr:
 		queries := make([]DownstreamQuery, len(e.downstreams))
 
@@ -672,8 +684,12 @@ func (ev *DownstreamEvaluator) NewStepEvaluator(
 				return nil, fmt.Errorf("unexpected type (%s) uncoercible to StepEvaluator", data.Type())
 			}
 		}
-		return NewMergeLastOverTimeStepEvaluator(params, xs, e.offset), nil
+		return NewMergeLastOverTimeStepEvaluator(params, xs, e.offset, e.rangeInterval), nil
 	case *CountMinSketchEvalExpr:
+		if GetRangeType(params) != InstantType {
+			return nil, errCountMinSketchInstantOnly(e.operation)
+		}
+
 		queries := make([]DownstreamQuery, len(e.downstreams))
 
 		for i, d := range e.downstreams {
@@ -707,6 +723,35 @@ func (ev *DownstreamEvaluator) NewStepEvaluator(
 			return nil, fmt.Errorf("unexpected matrix type: got (%T), want (CountMinSketchVector)", results[0].Data)
 		}
 		return NewCountMinSketchVectorStepEvaluator(vector), nil
+	case *CountDistinctSketchEvalExpr:
+		if e.mergeExpr == nil {
+			return nil, fmt.Errorf("CountDistinctSketchEvalExpr is missing merge expression")
+		}
+
+		queries := make([]DownstreamQuery, len(e.mergeExpr.downstreams))
+		for i, d := range e.mergeExpr.downstreams {
+			queries[i] = DownstreamQuery{
+				Params: ParamsWithExpressionOverride{
+					Params:             ParamOverridesFromShard(params, d.shard),
+					ExpressionOverride: d.SampleExpr,
+				},
+			}
+		}
+
+		acc := newCountDistinctSketchAccumulator()
+		results, err := ev.Downstream(ctx, queries, acc)
+		if err != nil {
+			return nil, err
+		}
+		if len(results) != 1 {
+			return nil, fmt.Errorf("unexpected results length for sharded count distinct: got (%d), want (1)", len(results))
+		}
+		matrix, ok := results[0].Data.(CountDistinctSketchMatrix)
+		if !ok {
+			return nil, fmt.Errorf("unexpected type: got (%T), want (CountDistinctSketchMatrix)", results[0].Data)
+		}
+		inner := NewCountDistinctSketchMatrixStepEvaluator(matrix, params)
+		return NewCountDistinctSketchVectorStepEvaluator(inner), nil
 	default:
 		return ev.defaultEvaluator.NewStepEvaluator(ctx, nextEvFactory, e, params)
 	}

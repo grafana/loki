@@ -380,6 +380,78 @@ var ParseTestCases = []struct {
 		err: logqlmodel.NewParseError("grouping not allowed for approx_topk aggregation", 0, 0),
 	},
 	{
+		in: `approx_count_distinct(mac, {foo="bar"} | json [1d]) by (version)`,
+		exp: &LabelAggregationExpr{
+			Operation: OpTypeApproxCountDistinct,
+			Label:     "mac",
+			Left: &LogRangeExpr{
+				Left: newPipelineExpr(
+					newMatcherExpr([]*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")}),
+					MultiStageExpr{newLabelParserExpr(OpParserTypeJSON, "")},
+				),
+				Interval: 24 * time.Hour,
+			},
+			Grouping: &Grouping{Groups: []string{"version"}},
+		},
+	},
+	{
+		in: `approx_count_distinct(mac, {foo="bar"}[1h] offset 5m) by (version)`,
+		exp: &LabelAggregationExpr{
+			Operation: OpTypeApproxCountDistinct,
+			Label:     "mac",
+			Left: &LogRangeExpr{
+				Left:     newMatcherExpr([]*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")}),
+				Interval: time.Hour,
+				Offset:   5 * time.Minute,
+			},
+			Grouping: &Grouping{Groups: []string{"version"}},
+		},
+	},
+	{
+		in: `approx_count_distinct(mac, {foo="bar"}[1d])`,
+		exp: &LabelAggregationExpr{
+			Operation: OpTypeApproxCountDistinct,
+			Label:     "mac",
+			Left: &LogRangeExpr{
+				Left:     newMatcherExpr([]*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")}),
+				Interval: 24 * time.Hour,
+			},
+		},
+	},
+	{
+		in: `approx_count_distinct(mac, {foo="bar"}[1d]) by ()`,
+		exp: &LabelAggregationExpr{
+			Operation: OpTypeApproxCountDistinct,
+			Label:     "mac",
+			Left: &LogRangeExpr{
+				Left:     newMatcherExpr([]*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")}),
+				Interval: 24 * time.Hour,
+			},
+			Grouping: &Grouping{Without: false, Groups: nil},
+		},
+	},
+	{
+		in:  `approx_count_distinct(mac, {foo="bar"}[1d]) without (version)`,
+		err: logqlmodel.NewParseError("without is not supported for approx_count_distinct()", 0, 0),
+	},
+	{
+		in:  `approx_count_distinct(mac, {foo="bar"}[1d]) by (mac)`,
+		err: logqlmodel.NewParseError(`approx_count_distinct() cannot group by the counted field "mac"`, 0, 0),
+	},
+	{
+		in:  `approx_count_distinct(mac, {foo="bar"} | unwrap bar [1d]) by (version)`,
+		err: logqlmodel.NewParseError("unwrap is not supported for approx_count_distinct()", 0, 0),
+	},
+	{
+		// Old split-parenthesis syntax is not supported.
+		in:  `approx_count_distinct(mac) by (version) ({foo="bar"}[1d])`,
+		err: logqlmodel.NewParseError("syntax error: unexpected ), expecting ,", 1, 26),
+	},
+	{
+		in:  `approx_count_distinct(mac, {}[1d]) by (version)`,
+		err: logqlmodel.NewParseError(errAtleastOneEqualityMatcherRequired, 0, 0),
+	},
+	{
 		in:  `rate({ foo = "bar" }[5minutes])`,
 		err: logqlmodel.NewParseError(`unknown unit "minutes" in duration "5minutes"`, 0, 21),
 	},
@@ -1419,6 +1491,11 @@ var ParseTestCases = []struct {
 				},
 			},
 		},
+	},
+	{
+		// a numeric label filter literal the float parser rejects is a parse error, not a silent 0.
+		in:  `{app="foo"} | logfmt | status_code > 0x10`,
+		err: logqlmodel.NewParseError(`unable to parse literal as a float: strconv.ParseFloat: parsing "0x10": invalid syntax`, 0, 0),
 	},
 	{
 		in: `{app="foo"} |= "bar" | unpack | json | latency >= 250ms or ( status_code < 500 and status_code > 200)`,
@@ -3546,6 +3623,27 @@ func TestParseSampleExpr_equalityMatcher(t *testing.T) {
 		},
 		{
 			in: `1 + count_over_time({app=~".+"}[5m]) + count_over_time({app=~".+"}[5m]) + 1`,
+		},
+		{
+			in: `approx_count_distinct(mac, {foo="bar"}[1d])`,
+		},
+		{
+			in: `approx_count_distinct(mac, {foo="bar"}[1d]) by ()`,
+		},
+		{
+			in: `approx_count_distinct(mac, {foo="bar"}[1d]) by (version)`,
+		},
+		{
+			in:  `approx_count_distinct(mac, {}[1d])`,
+			err: logqlmodel.NewParseError(errAtleastOneEqualityMatcherRequired, 0, 0),
+		},
+		{
+			in:  `approx_count_distinct(mac, {}[1d]) by (version)`,
+			err: logqlmodel.NewParseError(errAtleastOneEqualityMatcherRequired, 0, 0),
+		},
+		{
+			in:  `approx_count_distinct(mac, {foo!="bar"}[1d]) by (version)`,
+			err: logqlmodel.NewParseError(errAtleastOneEqualityMatcherRequired, 0, 0),
 		},
 		{
 			in:  `count without (rate({namespace="apps"}[15s]))`,

@@ -375,6 +375,10 @@ func (ev *DefaultEvaluator) NewStepEvaluator(
 			return nil, err
 		}
 		return newRangeAggEvaluator(iter.NewPeekingSampleIterator(it), e, q, e.Left.Offset)
+	case *syntax.LabelAggregationExpr:
+		return ev.newCountDistinctEvaluator(ctx, expr, e.String(), e.Left, q, false)
+	case *syntax.CountDistinctSketchExpr:
+		return ev.newCountDistinctEvaluator(ctx, expr, e.String(), e.Left, q, true)
 	case *syntax.BinOpExpr:
 		return newBinOpStepEvaluator(ctx, nextEvFactory, e, q)
 	case *syntax.LabelReplaceExpr:
@@ -388,6 +392,32 @@ func (ev *DefaultEvaluator) NewStepEvaluator(
 	default:
 		return nil, EvaluatorUnsupportedType(e, ev)
 	}
+}
+
+func (ev *DefaultEvaluator) newCountDistinctEvaluator(
+	ctx context.Context,
+	expr syntax.SampleExpr,
+	selector string,
+	left *syntax.LogRangeExpr,
+	q Params,
+	emitSketch bool,
+) (StepEvaluator, error) {
+	it, err := ev.querier.SelectSamples(ctx, SelectSampleParams{
+		&logproto.SampleQueryRequest{
+			Start:    q.Start().Add(-left.Interval).Add(-left.Offset),
+			End:      q.End().Add(-left.Offset).Add(time.Nanosecond),
+			Selector: selector,
+			Shards:   q.Shards(),
+			Plan: &plan.QueryPlan{
+				AST: expr,
+			},
+			StoreChunks: q.GetStoreChunks(),
+		},
+	})
+	if err != nil {
+		return nil, err
+	}
+	return newCountDistinctStepEvaluator(iter.NewPeekingSampleIterator(it), q, left.Interval, left.Offset, emitSketch), nil
 }
 
 func newVectorAggEvaluator(
@@ -404,25 +434,36 @@ func newVectorAggEvaluator(
 	if err != nil {
 		return nil, err
 	}
-	sort.Strings(expr.Grouping.Groups)
 
 	if expr.Operation == syntax.OpTypeCountMinSketch {
 		return newCountMinSketchVectorAggEvaluator(nextEvaluator, expr, maxCountMinSketchHeapSize)
 	}
 
+	// We can't mutate expr directly because it may be shared with another
+	// VectorAggregationExpr (e.g. the sum/count legs of a sharded
+	// avg_over_time). So we make a copy of the groups and sort the copy.
+	exprSortedGroups := make([]string, len(expr.Grouping.Groups))
+	copy(exprSortedGroups, expr.Grouping.Groups)
+	sort.Strings(exprSortedGroups)
+
 	return &VectorAggEvaluator{
-		nextEvaluator: nextEvaluator,
-		expr:          expr,
-		buf:           make([]byte, 0, 1024),
-		lb:            labels.NewBuilder(labels.EmptyLabels()),
+		nextEvaluator:    nextEvaluator,
+		expr:             expr,
+		exprSortedGroups: exprSortedGroups,
+		buf:              make([]byte, 0, 1024),
+		lb:               labels.NewBuilder(labels.EmptyLabels()),
 	}, nil
 }
 
 type VectorAggEvaluator struct {
 	nextEvaluator StepEvaluator
 	expr          *syntax.VectorAggregationExpr
-	buf           []byte
-	lb            *labels.Builder
+
+	// exprSortedGroups holds the expr.Grouping.Groups sorted lexicographically.
+	exprSortedGroups []string
+
+	buf []byte
+	lb  *labels.Builder
 }
 
 func (e *VectorAggEvaluator) Next() (bool, int64, StepResult) {
@@ -443,9 +484,9 @@ func (e *VectorAggEvaluator) Next() (bool, int64, StepResult) {
 
 		var groupingKey uint64
 		if e.expr.Grouping.Without {
-			groupingKey, e.buf = metric.HashWithoutLabels(e.buf, e.expr.Grouping.Groups...)
+			groupingKey, e.buf = metric.HashWithoutLabels(e.buf, e.exprSortedGroups...)
 		} else {
-			groupingKey, e.buf = metric.HashForLabels(e.buf, e.expr.Grouping.Groups...)
+			groupingKey, e.buf = metric.HashForLabels(e.buf, e.exprSortedGroups...)
 		}
 		group, ok := result[groupingKey]
 		// Add a new group if it doesn't exist.
@@ -454,13 +495,13 @@ func (e *VectorAggEvaluator) Next() (bool, int64, StepResult) {
 
 			if e.expr.Grouping.Without {
 				e.lb.Reset(metric)
-				e.lb.Del(e.expr.Grouping.Groups...)
+				e.lb.Del(e.exprSortedGroups...)
 				e.lb.Del(model.MetricNameLabel)
 				m = e.lb.Labels()
 			} else {
-				b := labels.NewScratchBuilder(len(e.expr.Grouping.Groups))
+				b := labels.NewScratchBuilder(len(e.exprSortedGroups))
 				metric.Range(func(l labels.Label) {
-					for _, n := range e.expr.Grouping.Groups {
+					for _, n := range e.exprSortedGroups {
 						if l.Name == n {
 							b.Add(l.Name, l.Value)
 							break

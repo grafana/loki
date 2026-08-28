@@ -3,6 +3,7 @@ package logsobj
 import (
 	"bytes"
 	"context"
+	"flag"
 	"fmt"
 	"math"
 	"math/rand"
@@ -22,6 +23,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
+	"github.com/grafana/loki/v3/pkg/validation"
 )
 
 var testBuilderConfig = BuilderConfig{
@@ -32,7 +34,6 @@ var testBuilderConfig = BuilderConfig{
 		BufferSize:              2048 * 8,
 		SectionStripeMergeLimit: 2,
 	},
-	DataobjSortOrder: sortTimestampDESC,
 }
 
 func TestBuilder(t *testing.T) {
@@ -92,6 +93,18 @@ func TestBuilder(t *testing.T) {
 
 		require.Equal(t, 1, obj.Sections().Count(streams.CheckSection))
 		require.Equal(t, 1, obj.Sections().Count(logs.CheckSection))
+
+		for _, sec := range obj.Sections().Filter(streams.CheckSection) {
+			streamSec, err := streams.Open(t.Context(), sec)
+			require.NoError(t, err)
+			for res := range streams.IterSection(t.Context(), streamSec) {
+				stream, err := res.Value()
+				require.NoError(t, err)
+				require.Equal(t, int64(streams.ShardBucket(stream.Labels)), stream.ShardBucket)
+				require.GreaterOrEqual(t, stream.ShardBucket, int64(0))
+				require.Less(t, stream.ShardBucket, int64(streams.ShardFactor))
+			}
+		}
 	})
 }
 
@@ -348,10 +361,10 @@ func BenchmarkBuilder_CopyAndSort(b *testing.B) {
 		labels    func(tenant string, i int) string
 	}{
 		{
-			name: "default",
+			name: "default_sort_schema",
 			cfg: BuilderConfig{
-				BuilderBaseConfig: benchBaseCfg,
-				DataobjSortOrder:  sortTimestampDESC,
+				BuilderBaseConfig:    benchBaseCfg,
+				AppendOrderedEnabled: true,
 			},
 			labels: func(_ string, i int) string {
 				app := apps[i%len(apps)]
@@ -360,11 +373,9 @@ func BenchmarkBuilder_CopyAndSort(b *testing.B) {
 			},
 		},
 		{
-			name: "sort_schema",
+			name: "custom_sort_schema",
 			cfg: BuilderConfig{
 				BuilderBaseConfig:    benchBaseCfg,
-				DataobjSortOrder:     sortStreamASC,
-				DataobjUseSortSchema: true,
 				AppendOrderedEnabled: true,
 			},
 			overrides: tenantOverrides{
@@ -423,10 +434,17 @@ type tenantOverrides map[string][]string
 
 func (m tenantOverrides) SortSchemaLabels(tenant string) []string { return m[tenant] }
 
+// limitsByTenant implements validation.TenantLimits for builder tests that
+// need the real Overrides defaulting path.
+type limitsByTenant map[string]*validation.Limits
+
+func (m limitsByTenant) TenantLimits(userID string) *validation.Limits { return m[userID] }
+func (m limitsByTenant) AllByUserID() map[string]*validation.Limits    { return m }
+
 func TestBuilder_CopyAndSort_SortSchema(t *testing.T) {
 	now := time.Date(2025, time.September, 17, 0, 0, 0, 0, time.UTC)
 
-	makeCfg := func(useSortSchema bool) BuilderConfig {
+	makeCfg := func() BuilderConfig {
 		return BuilderConfig{
 			BuilderBaseConfig: BuilderBaseConfig{
 				TargetPageSize:          2048,
@@ -435,8 +453,6 @@ func TestBuilder_CopyAndSort_SortSchema(t *testing.T) {
 				BufferSize:              2048 * 8,
 				SectionStripeMergeLimit: 2,
 			},
-			DataobjSortOrder:     sortTimestampDESC,
-			DataobjUseSortSchema: useSortSchema,
 		}
 	}
 
@@ -534,22 +550,28 @@ func TestBuilder_CopyAndSort_SortSchema(t *testing.T) {
 		}
 	}
 
-	t.Run("schema tenant sorted by label, plain tenant by DataobjSortOrder", func(t *testing.T) {
-		cfg := makeCfg(true)
-		overrides := tenantOverrides{"schema-tenant": {"label:app"}}
+	t.Run("custom schema tenant sorted by app, default schema tenant by service_name", func(t *testing.T) {
+		cfg := makeCfg()
+		var defaults validation.Limits
+		defaults.RegisterFlags(flag.NewFlagSet("test", flag.PanicOnError))
+		overrides, err := validation.NewOverrides(defaults, limitsByTenant{
+			"schema-tenant": {SortSchema: validation.SortSchema{"label:app"}},
+		})
+		require.NoError(t, err)
 
 		b, err := NewBuilder(cfg, nil, NewBuilderMetrics(), log.NewNopLogger(), overrides)
 		require.NoError(t, err)
-		for _, app := range []string{"zoo", "alpha", "middle"} {
+		for _, name := range []string{"zoo", "alpha", "middle"} {
 			for i := range 4 {
+				ts := now.Add(time.Duration(i) * time.Second)
 				require.NoError(t, b.Append("schema-tenant", logproto.Stream{
-					Labels:  fmt.Sprintf(`{app=%q}`, app),
-					Entries: []push.Entry{{Timestamp: now.Add(time.Duration(i) * time.Second), Line: app}},
-				}, now.Add(time.Duration(i)*time.Second)))
-				require.NoError(t, b.Append("plain-tenant", logproto.Stream{
-					Labels:  fmt.Sprintf(`{app=%q}`, app),
-					Entries: []push.Entry{{Timestamp: now.Add(time.Duration(i) * time.Second), Line: app}},
-				}, now.Add(time.Duration(i)*time.Second)))
+					Labels:  fmt.Sprintf(`{app=%q}`, name),
+					Entries: []push.Entry{{Timestamp: ts, Line: name}},
+				}, ts))
+				require.NoError(t, b.Append("default-tenant", logproto.Stream{
+					Labels:  fmt.Sprintf(`{service_name=%q}`, name),
+					Entries: []push.Entry{{Timestamp: ts, Line: name}},
+				}, ts))
 			}
 		}
 		obj1, closer1, err := b.Flush()
@@ -561,24 +583,40 @@ func TestBuilder_CopyAndSort_SortSchema(t *testing.T) {
 		require.Equal(t, []string{"alpha", "middle", "zoo"}, appOrder(t, obj2, "schema-tenant"))
 		timestampsDescWithinGroups(t, obj2, "schema-tenant")
 
-		var allTS []time.Time
+		// default-tenant has no per-tenant override, so Overrides.SortSchemaLabels
+		// returns the limits default (label:service_name).
+		streamToSvc := make(map[int64]string)
 		for _, sec := range obj2.Sections().Filter(func(s *dataobj.Section) bool {
-			return logs.CheckSection(s) && s.Tenant == "plain-tenant"
+			return streams.CheckSection(s) && s.Tenant == "default-tenant"
+		}) {
+			streamSec, err := streams.Open(t.Context(), sec)
+			require.NoError(t, err)
+			for res := range streams.IterSection(t.Context(), streamSec) {
+				val, err := res.Value()
+				require.NoError(t, err)
+				streamToSvc[val.ID] = val.Labels.Get("service_name")
+			}
+		}
+		seen := make(map[string]bool)
+		var svcOrder []string
+		for _, sec := range obj2.Sections().Filter(func(s *dataobj.Section) bool {
+			return logs.CheckSection(s) && s.Tenant == "default-tenant"
 		}) {
 			for res := range iterLogsSection(t, sec) {
 				val, err := res.Value()
 				require.NoError(t, err)
-				allTS = append(allTS, val.Timestamp)
+				svc := streamToSvc[val.StreamID]
+				if !seen[svc] {
+					seen[svc] = true
+					svcOrder = append(svcOrder, svc)
+				}
 			}
 		}
-		for i := 1; i < len(allTS); i++ {
-			require.LessOrEqual(t, allTS[i].UnixNano(), allTS[i-1].UnixNano(),
-				"plain-tenant must be timestamp DESC at index %d", i)
-		}
+		require.Equal(t, []string{"alpha", "middle", "zoo"}, svcOrder)
 	})
 
 	t.Run("schema labels persisted in section metadata", func(t *testing.T) {
-		cfg := makeCfg(true)
+		cfg := makeCfg()
 		overrides := tenantOverrides{"t1": {"label:app"}}
 		obj1 := buildObj(t, cfg, "t1", []string{"b", "a"}, overrides)
 		obj2 := copyAndSort(t, cfg, obj1, overrides)
@@ -598,7 +636,7 @@ func TestBuilder_CopyAndSort_SortSchema(t *testing.T) {
 	})
 
 	t.Run("initial flush emits schema-ordered logs sections", func(t *testing.T) {
-		cfg := makeCfg(true)
+		cfg := makeCfg()
 		overrides := tenantOverrides{"t1": {"label:app"}}
 		obj := buildObj(t, cfg, "t1", []string{"zoo", "alpha", "middle"}, overrides)
 
@@ -652,20 +690,19 @@ func TestBuilder_CopyAndSort_SortSchema(t *testing.T) {
 		}
 	})
 
-	t.Run("idempotent: second CopyAndSort reads schema from metadata, not overrides", func(t *testing.T) {
-		cfg := makeCfg(true)
+	t.Run("idempotent: second CopyAndSort with the same schema preserves order", func(t *testing.T) {
+		cfg := makeCfg()
 		overrides := tenantOverrides{"t1": {"label:app"}}
 		obj1 := buildObj(t, cfg, "t1", []string{"zoo", "alpha", "middle"}, overrides)
 		obj2 := copyAndSort(t, cfg, obj1, overrides)
-		obj3 := copyAndSort(t, cfg, obj2, nil)
+		obj3 := copyAndSort(t, cfg, obj2, overrides)
 
-		require.Equal(t, []string{"alpha", "middle", "zoo"}, appOrder(t, obj3, "t1"),
-			"second CopyAndSort must preserve schema sort using persisted metadata")
+		require.Equal(t, []string{"alpha", "middle", "zoo"}, appOrder(t, obj3, "t1"))
 		timestampsDescWithinGroups(t, obj3, "t1")
 	})
 
 	t.Run("multi-label compound key", func(t *testing.T) {
-		cfg := makeCfg(true)
+		cfg := makeCfg()
 		overrides := tenantOverrides{"t1": {"label:namespace", "label:app"}}
 		b, err := NewBuilder(cfg, nil, NewBuilderMetrics(), log.NewNopLogger(), overrides)
 		require.NoError(t, err)
@@ -716,7 +753,7 @@ func TestBuilder_CopyAndSort_SortSchema(t *testing.T) {
 	})
 
 	t.Run("stream IDs remapped to sort key order", func(t *testing.T) {
-		cfg := makeCfg(true)
+		cfg := makeCfg()
 		overrides := tenantOverrides{"t1": {"label:app"}}
 		schemaLabels := []string{"label:app"}
 
@@ -887,37 +924,6 @@ func TestBuilder_CopyAndSort_SortSchema(t *testing.T) {
 		}
 	})
 
-	t.Run("flag off: schema config ignored, DataobjSortOrder used", func(t *testing.T) {
-		cfg := makeCfg(false)
-		overrides := tenantOverrides{"t1": {"label:app"}}
-		obj1 := buildObj(t, cfg, "t1", []string{"zoo", "alpha", "middle"}, overrides)
-		obj2 := copyAndSort(t, cfg, obj1, overrides)
-
-		var allTS []time.Time
-		for _, sec := range obj2.Sections().Filter(func(s *dataobj.Section) bool {
-			return logs.CheckSection(s) && s.Tenant == "t1"
-		}) {
-			for res := range iterLogsSection(t, sec) {
-				val, err := res.Value()
-				require.NoError(t, err)
-				allTS = append(allTS, val.Timestamp)
-			}
-		}
-		for i := 1; i < len(allTS); i++ {
-			require.LessOrEqual(t, allTS[i].UnixNano(), allTS[i-1].UnixNano(),
-				"with flag off, order must be timestamp DESC at index %d", i)
-		}
-
-		for _, sec := range obj2.Sections().Filter(func(s *dataobj.Section) bool {
-			return logs.CheckSection(s) && s.Tenant == "t1"
-		}) {
-			logsSection, err := logs.Open(t.Context(), sec)
-			require.NoError(t, err)
-			schemaLabels, err := logsSection.SchemaLabels()
-			require.NoError(t, err)
-			require.Empty(t, schemaLabels, "SchemaLabels must be absent when flag is off")
-		}
-	})
 }
 
 func TestComputeSortKey(t *testing.T) {

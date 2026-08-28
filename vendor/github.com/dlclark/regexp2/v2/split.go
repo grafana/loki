@@ -33,21 +33,20 @@ func (re *Regexp) Split(input string, count int) ([]string, error) {
 	// iterate through the matches
 	priorIndex := 0
 	var retVal []string
-	var txt []rune
+	matched := false
 
 	m, err := re.FindStringMatch(input)
 
 	for ; m != nil && count > 0; m, err = re.FindNextMatch(m) {
-		txt = m.text.runes
-		// if we have an m, we don't have an err
-		// append our match
-		retVal = append(retVal, string(txt[priorIndex:m.RuneIndex]))
+		matched = true
+		start, end := matchInputSpan(m)
+		retVal = append(retVal, input[priorIndex:start])
 		// append any capture groups, skipping group 0
 		gs := m.Groups()
 		for i := 1; i < len(gs); i++ {
 			retVal = append(retVal, gs[i].String())
 		}
-		priorIndex = m.RuneIndex + m.RuneLength
+		priorIndex = end
 		count--
 	}
 
@@ -55,13 +54,10 @@ func (re *Regexp) Split(input string, count int) ([]string, error) {
 		return nil, err
 	}
 
-	if txt == nil {
-		// we never matched, return the original string
+	if !matched {
 		return []string{input}, nil
 	}
 
-	// append our remainder
-	retVal = append(retVal, string(txt[priorIndex:]))
-
+	retVal = append(retVal, input[priorIndex:])
 	return retVal, nil
 }

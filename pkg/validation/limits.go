@@ -15,7 +15,6 @@ import (
 	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
-	"github.com/prometheus/sigv4"
 	"go.uber.org/atomic"
 	yaml "go.yaml.in/yaml/v4"
 	"golang.org/x/time/rate"
@@ -27,7 +26,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/logql"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	rulerconfig "github.com/grafana/loki/v3/pkg/ruler/config"
-	"github.com/grafana/loki/v3/pkg/ruler/util"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/sharding"
 	"github.com/grafana/loki/v3/pkg/util/flagext"
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
@@ -106,6 +104,7 @@ type Limits struct {
 	MaxLineSize                   flagext.ByteSize `yaml:"max_line_size" json:"max_line_size"`
 	MaxLineSizeTruncate           bool             `yaml:"max_line_size_truncate" json:"max_line_size_truncate"`
 	MaxLineSizeTruncateIdentifier string           `yaml:"max_line_size_truncate_identifier" json:"max_line_size_truncate_identifier"`
+	MaxPushSize                   flagext.ByteSize `yaml:"max_push_size" json:"max_push_size"`
 	IncrementDuplicateTimestamp   bool             `yaml:"increment_duplicate_timestamp" json:"increment_duplicate_timestamp"`
 	SimulatedPushLatency          time.Duration    `yaml:"simulated_push_latency" json:"simulated_push_latency" doc:"description=Simulated latency to add to push requests. Used for testing. Set to 0s to disable."`
 
@@ -172,33 +171,6 @@ type Limits struct {
 	// this field is the inversion of the general remote_write.enabled because the zero value of a boolean is false,
 	// and if it were ruler_remote_write_enabled, it would be impossible to know if the value was explicitly set or default
 	RulerRemoteWriteDisabled bool `yaml:"ruler_remote_write_disabled" json:"ruler_remote_write_disabled" doc:"description=Disable recording rules remote-write."`
-
-	// deprecated use RulerRemoteWriteConfig instead.
-	RulerRemoteWriteURL string `yaml:"ruler_remote_write_url" json:"ruler_remote_write_url" doc:"deprecated|description=Use 'ruler_remote_write_config' instead. The URL of the endpoint to send samples to."`
-	// deprecated use RulerRemoteWriteConfig instead
-	RulerRemoteWriteTimeout time.Duration `yaml:"ruler_remote_write_timeout" json:"ruler_remote_write_timeout" doc:"deprecated|description=Use 'ruler_remote_write_config' instead. Timeout for requests to the remote write endpoint."`
-	// deprecated use RulerRemoteWriteConfig instead
-	RulerRemoteWriteHeaders OverwriteMarshalingStringMap `yaml:"ruler_remote_write_headers" json:"ruler_remote_write_headers" doc:"deprecated|description=Use 'ruler_remote_write_config' instead. Custom HTTP headers to be sent along with each remote write request. Be aware that headers that are set by Loki itself can't be overwritten."`
-	// deprecated use RulerRemoteWriteConfig instead
-	RulerRemoteWriteRelabelConfigs []*util.RelabelConfig `yaml:"ruler_remote_write_relabel_configs,omitempty" json:"ruler_remote_write_relabel_configs,omitempty" doc:"deprecated|description=Use 'ruler_remote_write_config' instead. List of remote write relabel configurations."`
-	// deprecated use RulerRemoteWriteConfig instead
-	RulerRemoteWriteQueueCapacity int `yaml:"ruler_remote_write_queue_capacity" json:"ruler_remote_write_queue_capacity" doc:"deprecated|description=Use 'ruler_remote_write_config' instead. Number of samples to buffer per shard before we block reading of more samples from the WAL. It is recommended to have enough capacity in each shard to buffer several requests to keep throughput up while processing occasional slow remote requests."`
-	// deprecated use RulerRemoteWriteConfig instead
-	RulerRemoteWriteQueueMinShards int `yaml:"ruler_remote_write_queue_min_shards" json:"ruler_remote_write_queue_min_shards" doc:"deprecated|description=Use 'ruler_remote_write_config' instead. Minimum number of shards, i.e. amount of concurrency."`
-	// deprecated use RulerRemoteWriteConfig instead
-	RulerRemoteWriteQueueMaxShards int `yaml:"ruler_remote_write_queue_max_shards" json:"ruler_remote_write_queue_max_shards" doc:"deprecated|description=Use 'ruler_remote_write_config' instead. Maximum number of shards, i.e. amount of concurrency."`
-	// deprecated use RulerRemoteWriteConfig instead
-	RulerRemoteWriteQueueMaxSamplesPerSend int `yaml:"ruler_remote_write_queue_max_samples_per_send" json:"ruler_remote_write_queue_max_samples_per_send" doc:"deprecated|description=Use 'ruler_remote_write_config' instead. Maximum number of samples per send."`
-	// deprecated use RulerRemoteWriteConfig instead
-	RulerRemoteWriteQueueBatchSendDeadline time.Duration `yaml:"ruler_remote_write_queue_batch_send_deadline" json:"ruler_remote_write_queue_batch_send_deadline" doc:"deprecated|description=Use 'ruler_remote_write_config' instead. Maximum time a sample will wait in buffer."`
-	// deprecated use RulerRemoteWriteConfig instead
-	RulerRemoteWriteQueueMinBackoff time.Duration `yaml:"ruler_remote_write_queue_min_backoff" json:"ruler_remote_write_queue_min_backoff" doc:"deprecated|description=Use 'ruler_remote_write_config' instead. Initial retry delay. Gets doubled for every retry."`
-	// deprecated use RulerRemoteWriteConfig instead
-	RulerRemoteWriteQueueMaxBackoff time.Duration `yaml:"ruler_remote_write_queue_max_backoff" json:"ruler_remote_write_queue_max_backoff" doc:"deprecated|description=Use 'ruler_remote_write_config' instead. Maximum retry delay."`
-	// deprecated use RulerRemoteWriteConfig instead
-	RulerRemoteWriteQueueRetryOnRateLimit bool `yaml:"ruler_remote_write_queue_retry_on_ratelimit" json:"ruler_remote_write_queue_retry_on_ratelimit" doc:"deprecated|description=Use 'ruler_remote_write_config' instead. Retry upon receiving a 429 status code from the remote-write storage. This is experimental and might change in the future."`
-	// deprecated use RulerRemoteWriteConfig instead
-	RulerRemoteWriteSigV4Config *sigv4.SigV4Config `yaml:"ruler_remote_write_sigv4_config" json:"ruler_remote_write_sigv4_config" doc:"deprecated|description=Use 'ruler_remote_write_config' instead. Configures AWS's Signature Verification 4 signing process to sign every remote write request."`
 
 	RulerRemoteWriteConfig map[string]rulerconfig.RemoteWriteConfig `yaml:"ruler_remote_write_config,omitempty" json:"ruler_remote_write_config,omitempty" doc:"description=Configures global and per-tenant limits for remote write clients. A map with remote client id as key."`
 
@@ -344,6 +316,29 @@ func (s SortSchema) Validate() error {
 	return nil
 }
 
+// String implements flag.Value.
+func (s SortSchema) String() string {
+	parts := make([]string, len(s))
+	for i, fqn := range s {
+		parts[i] = string(fqn)
+	}
+	return strings.Join(parts, ",")
+}
+
+// Set implements flag.Value. Each call overwrites any previous value.
+// Input is a comma-separated list of SortKeyFqn values.
+func (s *SortSchema) Set(v string) error {
+	*s = nil
+	for _, part := range strings.Split(v, ",") {
+		part = strings.TrimSpace(part)
+		if part == "" {
+			continue
+		}
+		*s = append(*s, SortKeyFqn(part))
+	}
+	return nil
+}
+
 type StreamRetention struct {
 	Period   model.Duration    `yaml:"period" json:"period" doc:"description:Retention period applied to the log lines matching the selector."`
 	Priority int               `yaml:"priority" json:"priority" doc:"description:The larger the value, the higher the priority."`
@@ -361,6 +356,9 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 	f.Var(&l.MaxLineSize, "distributor.max-line-size", "Maximum line size on ingestion path. Example: 256kb. Any log line exceeding this limit will be discarded unless `distributor.max-line-size-truncate` is set, in which case it is truncated rather than discarded completely. There is no limit when set to 0.")
 	f.BoolVar(&l.MaxLineSizeTruncate, "distributor.max-line-size-truncate", false, "Whether to truncate lines that exceed max_line_size.")
 	f.StringVar(&l.MaxLineSizeTruncateIdentifier, "distributor.max-line-size-truncate-identifier", "", "Identifier that is added at the end of a truncated log line.")
+
+	_ = l.MaxPushSize.Set("2GB")
+	f.Var(&l.MaxPushSize, "distributor.max-push-size", "The maximum size of a Push request.")
 	f.IntVar(&l.MaxLabelNameLength, "validation.max-length-label-name", 1024, "Maximum length accepted for label names.")
 	f.IntVar(&l.MaxLabelValueLength, "validation.max-length-label-value", 2048, "Maximum length accepted for label value. This setting also applies to the metric name.")
 	f.IntVar(&l.MaxLabelNamesPerSeries, "validation.max-label-names-per-series", 15, "Maximum number of label names per series.")
@@ -561,6 +559,9 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 
 	f.BoolVar(&l.DebugEngineTasks, "limits.debug-engine-tasks", false, "Experimental: Toggles verbose debug logging of tasks in the new query engine.")
 	f.BoolVar(&l.DebugEngineStreams, "limits.debug-engine-streams", false, "Experimental: Toggles verbose debug logging of data streams in the new query engine.")
+
+	l.SortSchema = DefaultSortSchema
+	f.Var(&l.SortSchema, "limits.sort-schema", "Experimental: Ordered, comma-separated sort keys for data objects, as `label:<name>,...`. Only the label type is currently supported. Defaults to "+DefaultSortSchema.String()+".")
 }
 
 // SetGlobalOTLPConfig set GlobalOTLPConfig which is used while unmarshaling per-tenant otlp config to use the default list of resource attributes picked as index labels.
@@ -954,6 +955,11 @@ func (o *Overrides) MaxLineSizeTruncateIdentifier(userID string) string {
 	return o.getOverridesForUser(userID).MaxLineSizeTruncateIdentifier
 }
 
+// MaxPushSize returns the maximum size of a push request.
+func (o *Overrides) MaxPushSize(userID string) int {
+	return o.getOverridesForUser(userID).MaxPushSize.Val()
+}
+
 // MaxEntriesLimitPerQuery returns the limit to number of entries the querier should return per query.
 func (o *Overrides) MaxEntriesLimitPerQuery(_ context.Context, userID string) int {
 	return o.getOverridesForUser(userID).MaxEntriesLimitPerQuery
@@ -1007,83 +1013,6 @@ func (o *Overrides) RulerAlertManagerConfig(userID string) *rulerconfig.AlertMan
 // RulerRemoteWriteDisabled returns whether remote-write is disabled for a given user or not.
 func (o *Overrides) RulerRemoteWriteDisabled(userID string) bool {
 	return o.getOverridesForUser(userID).RulerRemoteWriteDisabled
-}
-
-// Deprecated: use RulerRemoteWriteConfig instead
-// RulerRemoteWriteURL returns the remote-write URL to use for a given user.
-func (o *Overrides) RulerRemoteWriteURL(userID string) string {
-	return o.getOverridesForUser(userID).RulerRemoteWriteURL
-}
-
-// Deprecated: use RulerRemoteWriteConfig instead
-// RulerRemoteWriteTimeout returns the duration after which to timeout a remote-write request for a given user.
-func (o *Overrides) RulerRemoteWriteTimeout(userID string) time.Duration {
-	return o.getOverridesForUser(userID).RulerRemoteWriteTimeout
-}
-
-// Deprecated: use RulerRemoteWriteConfig instead
-// RulerRemoteWriteHeaders returns the headers to use in a remote-write for a given user.
-func (o *Overrides) RulerRemoteWriteHeaders(userID string) map[string]string {
-	return o.getOverridesForUser(userID).RulerRemoteWriteHeaders.Map()
-}
-
-// Deprecated: use RulerRemoteWriteConfig instead
-// RulerRemoteWriteRelabelConfigs returns the write relabel configs to use in a remote-write for a given user.
-func (o *Overrides) RulerRemoteWriteRelabelConfigs(userID string) []*util.RelabelConfig {
-	return o.getOverridesForUser(userID).RulerRemoteWriteRelabelConfigs
-}
-
-// Deprecated: use RulerRemoteWriteConfig instead
-// RulerRemoteWriteQueueCapacity returns the queue capacity to use in a remote-write for a given user.
-func (o *Overrides) RulerRemoteWriteQueueCapacity(userID string) int {
-	return o.getOverridesForUser(userID).RulerRemoteWriteQueueCapacity
-}
-
-// Deprecated: use RulerRemoteWriteConfig instead
-// RulerRemoteWriteQueueMinShards returns the minimum shards to use in a remote-write for a given user.
-func (o *Overrides) RulerRemoteWriteQueueMinShards(userID string) int {
-	return o.getOverridesForUser(userID).RulerRemoteWriteQueueMinShards
-}
-
-// Deprecated: use RulerRemoteWriteConfig instead
-// RulerRemoteWriteQueueMaxShards returns the maximum shards to use in a remote-write for a given user.
-func (o *Overrides) RulerRemoteWriteQueueMaxShards(userID string) int {
-	return o.getOverridesForUser(userID).RulerRemoteWriteQueueMaxShards
-}
-
-// Deprecated: use RulerRemoteWriteConfig instead
-// RulerRemoteWriteQueueMaxSamplesPerSend returns the max samples to send in a remote-write for a given user.
-func (o *Overrides) RulerRemoteWriteQueueMaxSamplesPerSend(userID string) int {
-	return o.getOverridesForUser(userID).RulerRemoteWriteQueueMaxSamplesPerSend
-}
-
-// Deprecated: use RulerRemoteWriteConfig instead
-// RulerRemoteWriteQueueBatchSendDeadline returns the maximum time a sample will be buffered before being discarded for a given user.
-func (o *Overrides) RulerRemoteWriteQueueBatchSendDeadline(userID string) time.Duration {
-	return o.getOverridesForUser(userID).RulerRemoteWriteQueueBatchSendDeadline
-}
-
-// Deprecated: use RulerRemoteWriteConfig instead
-// RulerRemoteWriteQueueMinBackoff returns the minimum time for an exponential backoff for a given user.
-func (o *Overrides) RulerRemoteWriteQueueMinBackoff(userID string) time.Duration {
-	return o.getOverridesForUser(userID).RulerRemoteWriteQueueMinBackoff
-}
-
-// Deprecated: use RulerRemoteWriteConfig instead
-// RulerRemoteWriteQueueMaxBackoff returns the maximum time for an exponential backoff for a given user.
-func (o *Overrides) RulerRemoteWriteQueueMaxBackoff(userID string) time.Duration {
-	return o.getOverridesForUser(userID).RulerRemoteWriteQueueMaxBackoff
-}
-
-// Deprecated: use RulerRemoteWriteConfig instead
-// RulerRemoteWriteQueueRetryOnRateLimit returns whether to retry failed remote-write requests (429 response) for a given user.
-func (o *Overrides) RulerRemoteWriteQueueRetryOnRateLimit(userID string) bool {
-	return o.getOverridesForUser(userID).RulerRemoteWriteQueueRetryOnRateLimit
-}
-
-// Deprecated: use RulerRemoteWriteConfig instead
-func (o *Overrides) RulerRemoteWriteSigV4Config(userID string) *sigv4.SigV4Config {
-	return o.getOverridesForUser(userID).RulerRemoteWriteSigV4Config
 }
 
 // RulerRemoteWriteConfig returns the remote-write configurations to use for a given user and a given remote client.

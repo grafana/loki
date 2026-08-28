@@ -216,6 +216,35 @@ func TestLogSectionRefsFor_AggregatesStatsRows(t *testing.T) {
 	}, refs)
 }
 
+func TestLogSectionRefsFor_OrdersPhysicalSections(t *testing.T) {
+	ctx := context.Background()
+	bucket := objstore.NewInMemBucket()
+	path := "indexes/aa/objects"
+
+	buildIndexWithStats(ctx, t, bucket, "acme", path, []stats.Stat{
+		{ObjectPath: "logs/log-b", SectionIndex: 1, SortSchema: "label:service_name",
+			Labels: map[string]string{"service_name": "delta"}, MinTimestamp: 30, MaxTimestamp: 40, UncompressedSize: 100},
+		{ObjectPath: "logs/log-a", SectionIndex: 0, SortSchema: "label:service_name",
+			Labels: map[string]string{"service_name": "echo"}, MinTimestamp: 50, MaxTimestamp: 60, UncompressedSize: 100},
+		{ObjectPath: "logs/log-b", SectionIndex: 0, SortSchema: "label:service_name",
+			Labels: map[string]string{"service_name": "alpha"}, MinTimestamp: 10, MaxTimestamp: 20, UncompressedSize: 100},
+	})
+
+	sections, _, err := logSectionRefsFor(ctx, bucket, "acme", path)
+	require.NoError(t, err)
+	require.Len(t, sections, 3)
+	require.Equal(t, []string{"logs/log-a", "logs/log-b", "logs/log-b"}, []string{
+		sections[0].Ref.ObjectPath,
+		sections[1].Ref.ObjectPath,
+		sections[2].Ref.ObjectPath,
+	})
+	require.Equal(t, []int64{0, 0, 1}, []int64{
+		sections[0].Ref.SectionIndex,
+		sections[1].Ref.SectionIndex,
+		sections[2].Ref.SectionIndex,
+	})
+}
+
 func TestLogSectionRefsFor_MultiKeySchemaOrdersValuesAndReturnsFQN(t *testing.T) {
 	ctx := context.Background()
 	bucket := objstore.NewInMemBucket()
