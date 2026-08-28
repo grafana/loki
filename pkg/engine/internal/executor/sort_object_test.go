@@ -70,13 +70,13 @@ func TestDoSortObject_RewritesWholeObjectAndReindexes(t *testing.T) {
 	require.NoError(t, err)
 	require.ElementsMatch(t, tenants, indexObj.Tenants(), "the replacement index must cover every source tenant")
 
-	statsRows := readSortObjectStats(t, ctx, indexObj)
+	statsRows := readSortObjectStats(ctx, t, indexObj)
 	statsPaths := make(map[string]bool)
 	for _, stat := range statsRows {
 		statsPaths[stat.row.ObjectPath] = true
 	}
 
-	postingsRows := readSortObjectPostings(t, ctx, indexObj)
+	postingsRows := readSortObjectPostings(ctx, t, indexObj)
 	postingsPaths := make(map[string]bool)
 	for _, posting := range postingsRows {
 		postingsPaths[posting.row.ObjectPath] = true
@@ -266,7 +266,7 @@ type tenantPosting struct {
 	row    postings.Row
 }
 
-func readSortObjectStats(t *testing.T, ctx context.Context, object *dataobj.Object) []tenantStat {
+func readSortObjectStats(ctx context.Context, t *testing.T, object *dataobj.Object) []tenantStat {
 	t.Helper()
 	var rows []tenantStat
 	for _, section := range object.Sections().Filter(stats.CheckSection) {
@@ -282,7 +282,7 @@ func readSortObjectStats(t *testing.T, ctx context.Context, object *dataobj.Obje
 	return rows
 }
 
-func readSortObjectPostings(t *testing.T, ctx context.Context, object *dataobj.Object) []tenantPosting {
+func readSortObjectPostings(ctx context.Context, t *testing.T, object *dataobj.Object) []tenantPosting {
 	t.Helper()
 	var rows []tenantPosting
 	for _, section := range object.Sections().Filter(postings.CheckSection) {
