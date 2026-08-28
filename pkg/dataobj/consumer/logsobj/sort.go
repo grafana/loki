@@ -110,7 +110,7 @@ func (b *Builder) replaySections(ctx context.Context,
 	sections []*dataobj.Section,
 	remap []rankedSortKey,
 ) ([]*dataobj.Section, []rankedSortKey, io.Closer, error) {
-	objBuilder := dataobj.NewBuilder(nil)
+	objBuilder := dataobj.NewBuilder(b.scratch)
 	intermediateSectionBuilder := logs.NewBuilder(b.metrics.logs, logs.BuilderOptions{
 		PageSizeHint:     int(b.cfg.TargetPageSize),
 		PageMaxRowCount:  b.cfg.MaxPageRows,

@@ -169,6 +169,7 @@ type Builder struct {
 	metrics   *BuilderMetrics
 	overrides TenantOverrides
 	logger    log.Logger
+	scratch   scratch.Store
 
 	labelCache *lru.Cache[string, labels.Labels]
 
@@ -208,6 +209,7 @@ func NewBuilder(cfg BuilderConfig, scratchStore scratch.Store, metrics *BuilderM
 		cfg:        cfg,
 		metrics:    metrics,
 		logger:     logger,
+		scratch:    scratchStore,
 		overrides:  overrides,
 		labelCache: labelCache,
 		builder:    dataobj.NewBuilder(scratchStore),
