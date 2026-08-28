@@ -122,6 +122,74 @@ func TestConfigDiffHandler(t *testing.T) {
 	}
 }
 
+func TestConfigQueryHandler(t *testing.T) {
+	cfg := newDefaultDiffConfigMock()
+
+	t.Run("single top-level path", func(t *testing.T) {
+		req := httptest.NewRequest("GET", "http://test.com/config?q=my_int", nil)
+		w := httptest.NewRecorder()
+
+		configHandler(cfg, cfg)(w, req)
+		resp := w.Result()
+		require.Equal(t, 200, resp.StatusCode)
+		assert.Equal(t, "application/json", resp.Header.Get("Content-Type"))
+		assert.Equal(t, []string{"my_int"}, resp.Header.Values(ConfigQueryHandledHeader))
+
+		var body map[string]any
+		require.NoError(t, json.NewDecoder(resp.Body).Decode(&body))
+		assert.Equal(t, float64(666), body["my_int"])
+	})
+
+	t.Run("nested path", func(t *testing.T) {
+		req := httptest.NewRequest("GET", "http://test.com/config?q=my_nested_struct.my_string", nil)
+		w := httptest.NewRecorder()
+
+		configHandler(cfg, cfg)(w, req)
+		resp := w.Result()
+		require.Equal(t, 200, resp.StatusCode)
+
+		var body map[string]any
+		require.NoError(t, json.NewDecoder(resp.Body).Decode(&body))
+		assert.Equal(t, "string1", body["my_nested_struct.my_string"])
+	})
+
+	t.Run("multiple paths in one request", func(t *testing.T) {
+		req := httptest.NewRequest("GET", "http://test.com/config?q=my_int&q=my_float", nil)
+		w := httptest.NewRecorder()
+
+		configHandler(cfg, cfg)(w, req)
+		resp := w.Result()
+		require.Equal(t, 200, resp.StatusCode)
+		assert.ElementsMatch(t, []string{"my_int", "my_float"}, resp.Header.Values(ConfigQueryHandledHeader))
+
+		var body map[string]any
+		require.NoError(t, json.NewDecoder(resp.Body).Decode(&body))
+		assert.Equal(t, float64(666), body["my_int"])
+		assert.Equal(t, 6.66, body["my_float"])
+	})
+
+	t.Run("unknown path returns 400", func(t *testing.T) {
+		req := httptest.NewRequest("GET", "http://test.com/config?q=does.not.exist", nil)
+		w := httptest.NewRecorder()
+
+		configHandler(cfg, cfg)(w, req)
+		resp := w.Result()
+		assert.Equal(t, 400, resp.StatusCode)
+		// The header still reflects what was recognized/attempted, even though it didn't resolve.
+		assert.Equal(t, []string{"does.not.exist"}, resp.Header.Values(ConfigQueryHandledHeader))
+	})
+
+	t.Run("no q param leaves the header unset and behaves as before", func(t *testing.T) {
+		req := httptest.NewRequest("GET", "http://test.com/config", nil)
+		w := httptest.NewRecorder()
+
+		configHandler(cfg, cfg)(w, req)
+		resp := w.Result()
+		assert.Equal(t, 200, resp.StatusCode)
+		assert.Empty(t, resp.Header.Values(ConfigQueryHandledHeader))
+	})
+}
+
 func TestLimitsDirectJSONMarshaling(t *testing.T) {
 	// Test that validation.Limits can be directly marshaled to JSON
 	// (it has proper json tags)
@@ -227,19 +295,16 @@ func TestDrilldownConfigTenantLimitsSource(t *testing.T) {
 	testCases := []struct {
 		name             string
 		tenantID         string
-		path             string
 		tenantLimits     validation.TenantLimits
 		overrides        *mockCombinedLimits
 		expectedRateMB   float64
 		expectedSeries   float64
 		expectedLabelLen float64
 		expectedStatus   int
-		expectedMode     string
 	}{
 		{
 			name:     "tenant has specific limits configured via TenantLimits",
 			tenantID: "tenant-with-config",
-			path:     "/loki/api/v1/config",
 			tenantLimits: &mockTenantLimits{
 				limits: perTenantLimits, // This tenant has specific limits from runtime config
 			},
@@ -248,12 +313,10 @@ func TestDrilldownConfigTenantLimitsSource(t *testing.T) {
 			expectedSeries:   float64(2000),
 			expectedLabelLen: float64(200),
 			expectedStatus:   200,
-			expectedMode:     "active",
 		},
 		{
 			name:     "no per-tenant limits - uses defaults from Overrides",
 			tenantID: "tenant-without-config",
-			path:     "/loki/api/v1/config",
 			tenantLimits: &mockTenantLimits{
 				limits: nil, // TenantLimits returns nil for this tenant (no runtime config)
 			},
@@ -265,29 +328,6 @@ func TestDrilldownConfigTenantLimitsSource(t *testing.T) {
 			expectedSeries:   float64(1000),
 			expectedLabelLen: float64(100),
 			expectedStatus:   200,
-			// No mode param was requested, so this is still "active" reporting even though it happens
-			// to equal the compiled default (this tenant simply has no override).
-			expectedMode: "active",
-		},
-		{
-			name:     "mode=defaults bypasses tenant-specific limits",
-			tenantID: "tenant-with-config",
-			path:     "/loki/api/v1/config?mode=defaults",
-			tenantLimits: &mockTenantLimits{
-				limits: perTenantLimits, // this tenant HAS an override...
-			},
-			overrides: func() *mockCombinedLimits {
-				o, _ := validation.NewOverrides(*defaultLimits, nil)
-				return &mockCombinedLimits{Overrides: o}
-			}(),
-			// ...but mode=defaults should return defaultLimits, not perTenantLimits
-			expectedRateMB:   10.0,
-			expectedSeries:   float64(1000),
-			expectedLabelLen: float64(100),
-			expectedStatus:   200,
-			// mode reflects the requested param being honored: this tenant DOES have an override, but
-			// mode=defaults bypassed it, so the response must say "defaults", not "active".
-			expectedMode: "defaults",
 		},
 	}
 
@@ -306,7 +346,7 @@ func TestDrilldownConfigTenantLimitsSource(t *testing.T) {
 
 			handler := loki.tenantLimitsHandler(true)
 
-			req := httptest.NewRequest("GET", tc.path, nil)
+			req := httptest.NewRequest("GET", "/loki/api/v1/config", nil)
 			req.Header.Set("X-Scope-OrgID", tc.tenantID)
 
 			w := httptest.NewRecorder()
@@ -329,7 +369,6 @@ func TestDrilldownConfigTenantLimitsSource(t *testing.T) {
 			assert.Equal(t, tc.expectedRateMB, response.Limits["ingestion_rate_mb"])
 			assert.Equal(t, tc.expectedSeries, response.Limits["max_query_series"])
 			assert.Equal(t, tc.expectedLabelLen, response.Limits["max_label_name_length"])
-			assert.Equal(t, tc.expectedMode, response.Mode)
 		})
 	}
 }

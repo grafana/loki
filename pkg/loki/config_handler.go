@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"reflect"
+	"strings"
 
 	"github.com/grafana/dskit/tenant"
 	"go.yaml.in/yaml/v4"
@@ -12,6 +13,13 @@ import (
 	"github.com/grafana/loki/v3/pkg/util/build"
 	"github.com/grafana/loki/v3/pkg/validation"
 )
+
+// ConfigQueryHandledHeader carries each q path this Loki recognized and processed, one header
+// value per path. Its absence tells a caller (e.g. a proxying gateway forcing a fixed q) that this
+// Loki predates q support, so the response is the full, unfiltered config rather than the scoped
+// field(s) requested. Echoing the actual path(s) back — not just a boolean — lets the caller
+// confirm the specific field it asked for was the one processed, not merely that some q was.
+const ConfigQueryHandledHeader = "X-Loki-Config-Query"
 
 func yamlMarshalUnmarshal(in interface{}) (map[string]interface{}, error) {
 	yamlBytes, err := yaml.Marshal(in)
@@ -115,8 +123,57 @@ func configHandler(actualCfg any, defaultCfg any) http.HandlerFunc {
 			output = actualCfg
 		}
 
+		if paths := r.URL.Query()["q"]; len(paths) > 0 {
+			for _, path := range paths {
+				w.Header().Add(ConfigQueryHandledHeader, path)
+			}
+			result, err := extractConfigPaths(output, paths)
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusBadRequest)
+				return
+			}
+			w.Header().Set("Content-Type", "application/json")
+			if err := json.NewEncoder(w).Encode(result); err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+			}
+			return
+		}
+
 		writeYAMLResponse(w, output)
 	}
+}
+
+// extractConfigPaths returns cfg's value at each dot-separated path in paths, keyed by the
+// requested path.
+func extractConfigPaths(cfg any, paths []string) (map[string]any, error) {
+	cfgMap, err := yamlMarshalUnmarshal(cfg)
+	if err != nil {
+		return nil, err
+	}
+	result := make(map[string]any, len(paths))
+	for _, path := range paths {
+		val, ok := lookupConfigPath(cfgMap, path)
+		if !ok {
+			return nil, fmt.Errorf("config field not found: %q", path)
+		}
+		result[path] = val
+	}
+	return result, nil
+}
+
+func lookupConfigPath(m map[string]interface{}, path string) (any, bool) {
+	var cur any = m
+	for _, segment := range strings.Split(path, ".") {
+		asMap, ok := cur.(map[string]interface{})
+		if !ok {
+			return nil, false
+		}
+		cur, ok = asMap[segment]
+		if !ok {
+			return nil, false
+		}
+	}
+	return cur, true
 }
 
 func filterLimitFields(limits any, allowlist []string) (map[string]any, error) {
@@ -162,14 +219,9 @@ func (t *Loki) tenantLimitsHandler(forDrilldown bool) func(http.ResponseWriter, 
 			return
 		}
 
-		// Get tenant limits or defaults. ?mode=defaults bypasses the per-tenant
-		// lookup so callers can read the compiled-in default regardless of
-		// whether this tenant has an override configured.
+		// Get tenant limits or defaults
 		var limit *validation.Limits
-		mode := "active"
-		if r.URL.Query().Get("mode") == "defaults" {
-			mode = "defaults"
-		} else if t.TenantLimits != nil {
+		if t.TenantLimits != nil {
 			limit = t.TenantLimits.TenantLimits(user)
 		}
 		if limit == nil && t.Overrides != nil {
@@ -204,7 +256,6 @@ func (t *Loki) tenantLimitsHandler(forDrilldown bool) func(http.ResponseWriter, 
 			Limits:                 filteredLimits,
 			PatternIngesterEnabled: t.Cfg.Pattern.Enabled,
 			Version:                version,
-			Mode:                   mode,
 		}
 
 		// Return JSON response
