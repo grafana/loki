@@ -14,11 +14,8 @@ import (
 	"github.com/grafana/loki/v3/pkg/validation"
 )
 
-// ConfigQueryHandledHeader carries each q path this Loki recognized and processed, one header
-// value per path. Its absence tells a caller (e.g. a proxying gateway forcing a fixed q) that this
-// Loki predates q support, so the response is the full, unfiltered config rather than the scoped
-// field(s) requested. Echoing the actual path(s) back — not just a boolean — lets the caller
-// confirm the specific field it asked for was the one processed, not merely that some q was.
+// ConfigQueryHandledHeader lists each q path this Loki recognized and processed. Its absence means
+// this Loki predates q support and returned the full config instead of the requested field(s).
 const ConfigQueryHandledHeader = "X-Loki-Config-Query"
 
 func yamlMarshalUnmarshal(in interface{}) (map[string]interface{}, error) {
@@ -123,6 +120,7 @@ func configHandler(actualCfg any, defaultCfg any) http.HandlerFunc {
 			output = actualCfg
 		}
 
+		// Return only the requested fields
 		if paths := r.URL.Query()["q"]; len(paths) > 0 {
 			for _, path := range paths {
 				w.Header().Add(ConfigQueryHandledHeader, path)
@@ -143,8 +141,6 @@ func configHandler(actualCfg any, defaultCfg any) http.HandlerFunc {
 	}
 }
 
-// extractConfigPaths returns cfg's value at each dot-separated path in paths, keyed by the
-// requested path.
 func extractConfigPaths(cfg any, paths []string) (map[string]any, error) {
 	cfgMap, err := yamlMarshalUnmarshal(cfg)
 	if err != nil {
