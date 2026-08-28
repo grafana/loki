@@ -3,6 +3,7 @@ package indexgateway
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
 	"testing"
 	"testing/synctest"
@@ -11,6 +12,7 @@ import (
 	"github.com/grafana/dskit/gate"
 	"github.com/grafana/dskit/httpgrpc"
 	"github.com/grafana/dskit/user"
+	pkgerrors "github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
@@ -52,6 +54,55 @@ func TestMapGateError(t *testing.T) {
 
 	sentinel := errors.New("boom")
 	require.Equal(t, sentinel, mapGateError(sentinel))
+}
+
+func TestNewInFlightGate(t *testing.T) {
+	t.Run("zero disables the cap", func(t *testing.T) {
+		g := newInFlightGate(0, prometheus.NewRegistry())
+		for range 100 {
+			require.NoError(t, g.Start(context.Background()))
+		}
+	})
+
+	t.Run("rejects immediately once full", func(t *testing.T) {
+		g := newInFlightGate(1, prometheus.NewRegistry())
+
+		require.NoError(t, g.Start(context.Background()))
+		require.ErrorIs(t, g.Start(context.Background()), gate.ErrMaxConcurrent)
+
+		g.Done()
+		require.NoError(t, g.Start(context.Background()))
+	})
+}
+
+func TestMapInFlightGateError(t *testing.T) {
+	requireShedError(t, mapInFlightGateError(fmt.Errorf("%w: 4", gate.ErrMaxConcurrent)))
+
+	sentinel := errors.New("boom")
+	require.Equal(t, sentinel, mapInFlightGateError(sentinel))
+}
+
+func TestIsLoadShed(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		err  error
+		want bool
+	}{
+		{name: "nil", err: nil, want: false},
+		{name: "plain error", err: errors.New("boom"), want: false},
+		{name: "503", err: httpgrpc.Error(http.StatusServiceUnavailable, "shed"), want: true},
+		{name: "500", err: httpgrpc.Error(http.StatusInternalServerError, "boom"), want: false},
+		{name: "400", err: httpgrpc.Error(http.StatusBadRequest, "bad"), want: false},
+		{
+			name: "503 wrapped by the GetShards callback",
+			err:  pkgerrors.Wrap(httpgrpc.Error(http.StatusServiceUnavailable, "shed"), "get shards"),
+			want: true,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			require.Equal(t, tc.want, isLoadShed(tc.err))
+		})
+	}
 }
 
 // requireShedError asserts that err is the gate's load-shed error, which

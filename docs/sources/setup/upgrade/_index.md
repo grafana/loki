@@ -37,6 +37,14 @@ The output is incredibly verbose as it shows the entire internal config struct u
 
 ## Main / Unreleased
 
+### Index gateway client requests are now bounded
+
+An index gateway client request no longer retries against every index gateway instance until one answers. It now retries against at most `-tsdb.shipper.index-gateway-client.max-retries` further instances, which defaults to `2`, and each instance is tried at most once. The previous behavior let a single request occupy a goroutine for the sum of every instance's timeout, so a querier could stall when many instances were slow or unreachable.
+
+The candidate instances are the healthy instances the ring or DNS reports, so an instance that already failed its heartbeat is not counted against the budget. If you leave `-index-gateway.shard-size` at its default of `0`, a request can choose from the whole index gateway fleet, and the budget bounds how much of that fleet one request explores. Raise `-tsdb.shipper.index-gateway-client.max-retries` if your instances fail faster than the ring notices.
+
+Each index gateway client also has a new in-flight request limit, `-tsdb.shipper.index-gateway-client.max-in-flight-requests`, which defaults to `2048`. Requests that arrive when the limit is reached fail immediately with an HTTP 503 status, the same status an index gateway returns when it sheds load, so the query-frontend retries them. The limit applies per client, and Loki builds one client for each `schema_config` period, so the process-wide limit is this value multiplied by the number of periods. Set the flag to `0` to disable the limit.
+
 ### `frontend.encoding` default changed to `protobuf`
 
 The default value of `-frontend.encoding` / `frontend.encoding` changed from `json` to `protobuf`. This only affects the internal request/response encoding between the query-frontend, query-scheduler, and querier. Client-facing APIs are unchanged, and no persisted state uses this setting, so no data migration is required.
