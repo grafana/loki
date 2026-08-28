@@ -410,7 +410,7 @@ func seedSourceLogObject(
 
 	streamLabels := labels.FromStrings("app", "api", "cluster", "prod")
 	streamHash := labels.StableHash(streamLabels)
-	shardBucket := uint32(streams.ShardBucket(streamLabels))
+	shardBucket := streams.ShardBucket(streamLabels)
 	if layout.ShardCount > 0 {
 		shardBucket %= layout.ShardCount
 	}
@@ -614,14 +614,6 @@ func expectedSourceLogLines(sourcePaths []string) []string {
 		lines = append(lines, sourcePath+"/first", sourcePath+"/second")
 	}
 	return lines
-}
-
-func pathSet(paths []string) map[string]bool {
-	set := make(map[string]bool, len(paths))
-	for _, path := range paths {
-		set[path] = true
-	}
-	return set
 }
 
 func mustLoadTenants(ctx context.Context, t *testing.T, b objstore.Bucket, window time.Time) tenantIndexes {
