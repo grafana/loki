@@ -48,9 +48,9 @@ jobs:
         go-version-file: ./operator/go.mod
         cache-dependency-path: ./operator/go.sum
     - name: Lint
-      uses: golangci/golangci-lint-action@1e7e51e771db61008b38414a730f564565cf7c20 # v9.2
+      uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a # v9.3
       with:
-        version: v2.13.2
+        version: v2.12.2 # Do not approve updates without validating "make lint" in the operator folder still works
         args: --timeout=5m
         working-directory: ./operator
     - name: Check prometheus rules
