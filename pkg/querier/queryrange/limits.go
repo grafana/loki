@@ -62,6 +62,11 @@ type querySizeLimitSpec struct {
 	// errorTmpl is the client-facing message template. It takes two strings: the
 	// bytes the query would read and the configured limit.
 	errorTmpl string
+	// clipPlannedToRequest intersects planned windows with the request range
+	// (the split/shard piece). MaxQuerierBytesRead sets this so a full-query
+	// plan is not applied to every split. MaxQueryBytesRead leaves the plan
+	// as injected.
+	clipPlannedToRequest bool
 }
 
 var (
@@ -71,19 +76,22 @@ var (
 		errorTmpl: limErrQueryTooManyBytesTmpl,
 	}
 	maxQuerierBytesReadSpec = querySizeLimitSpec{
-		limitName: "MaxQuerierBytesRead",
-		sentinel:  logqlmodel.ErrQuerierTooManyBytes,
-		errorTmpl: limErrQuerierTooManyBytesTmpl,
+		limitName:            "MaxQuerierBytesRead",
+		sentinel:             logqlmodel.ErrQuerierTooManyBytes,
+		errorTmpl:            limErrQuerierTooManyBytesTmpl,
+		clipPlannedToRequest: true,
 	}
 	maxQuerierBytesReadShardableSpec = querySizeLimitSpec{
-		limitName: "MaxQuerierBytesRead",
-		sentinel:  logqlmodel.ErrQuerierTooManyBytes,
-		errorTmpl: limErrQuerierTooManyBytesShardableTmpl,
+		limitName:            "MaxQuerierBytesRead",
+		sentinel:             logqlmodel.ErrQuerierTooManyBytes,
+		errorTmpl:            limErrQuerierTooManyBytesShardableTmpl,
+		clipPlannedToRequest: true,
 	}
 	maxQuerierBytesReadUnshardableSpec = querySizeLimitSpec{
-		limitName: "MaxQuerierBytesRead",
-		sentinel:  logqlmodel.ErrQuerierTooManyBytes,
-		errorTmpl: limErrQuerierTooManyBytesUnshardableTmpl,
+		limitName:            "MaxQuerierBytesRead",
+		sentinel:             logqlmodel.ErrQuerierTooManyBytes,
+		errorTmpl:            limErrQuerierTooManyBytesUnshardableTmpl,
+		clipPlannedToRequest: true,
 	}
 )
 
@@ -318,6 +326,8 @@ func NewQuerySizeLimiterMiddleware(
 // If server middleware has attached planned ranges, those windows replace
 // req.GetStart()/GetEnd() and QueryLimitsContext is not used as a floor.
 // A present empty plan is 0 bytes, not a fallback to the full span.
+// MaxQuerierBytesRead intersects the plan with the request range (the
+// split/shard piece) so the full-query plan is not applied to every split.
 func (q *querySizeLimiter) getBytesReadForRequest(ctx context.Context, r queryrangebase.Request) (uint64, error) {
 	ctx, sp := tracer.Start(ctx, "querySizeLimiter.getBytesReadForRequest")
 	defer sp.End()
@@ -357,14 +367,25 @@ func (q *querySizeLimiter) getBytesReadForRequest(ctx context.Context, r queryra
 	return queryBytes, nil
 }
 
-// getBytesForPlannedRanges sizes the query over each planned window. The plan
-// is the final scan set: windows are not clipped to the request range, and
+// getBytesForPlannedRanges sizes the query over each planned window.
 // QueryLimitsContext is not applied as a floor. Matcher offsets and lookback
 // are still applied inside getBytesForQueryAndRange. Callers should merge
 // adjacent ranges before injecting.
+//
+// MaxQueryBytesRead treats the plan as the final scan set and does not clip
+// to the request range. MaxQuerierBytesRead intersects each window with
+// r.GetStart()/GetEnd() (the split/shard piece).
 func (q *querySizeLimiter) getBytesForPlannedRanges(ctx context.Context, r queryrangebase.Request, planned []querylimits.TimeRange) (uint64, error) {
+	reqRange := querylimits.TimeRange{Start: r.GetStart(), End: r.GetEnd()}
 	var total uint64
 	for _, window := range planned {
+		if q.spec.clipPlannedToRequest {
+			clipped, overlap := window.Intersect(reqRange)
+			if !overlap {
+				continue
+			}
+			window = clipped
+		}
 		if !window.Start.Before(window.End) {
 			continue
 		}

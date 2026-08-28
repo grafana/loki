@@ -11,6 +11,23 @@ type TimeRange struct {
 	End   time.Time
 }
 
+// Intersect returns the overlapping half-open window of r and other.
+// ok is false when the ranges do not overlap or either side is empty.
+func (r TimeRange) Intersect(other TimeRange) (TimeRange, bool) {
+	start := r.Start
+	if other.Start.After(start) {
+		start = other.Start
+	}
+	end := r.End
+	if other.End.Before(end) {
+		end = other.End
+	}
+	if !start.Before(end) {
+		return TimeRange{}, false
+	}
+	return TimeRange{Start: start, End: end}, true
+}
+
 // plannedQueryRanges distinguishes "absent" from "present, including empty".
 // A present empty list means the query should be sized as zero bytes.
 type plannedQueryRanges struct {
