@@ -1232,7 +1232,7 @@ func Test_MaxQuerySize_WithPlannedRanges(t *testing.T) {
 	}
 }
 
-func Test_MaxQuerierSize_WithPlannedRanges(t *testing.T) {
+func Test_MaxQuerierSize_IgnoresPlannedRanges(t *testing.T) {
 	schemas := []config.PeriodConfig{
 		{
 			From:      config.DayTime{Time: model.TimeFromUnix(testTime.Add(-48 * time.Hour).Unix())},
@@ -1240,135 +1240,49 @@ func Test_MaxQuerierSize_WithPlannedRanges(t *testing.T) {
 		},
 	}
 	query := `{app="foo"} |= "foo"`
-	// Simulate a post-split piece: the last hour of a 24h picker range.
 	splitStart := testTime.Add(-time.Hour)
 	splitEnd := testTime
-	inSplit := querylimits.TimeRange{Start: testTime.Add(-30 * time.Minute), End: testTime}
-	outsideSplit := querylimits.TimeRange{Start: testTime.Add(-3 * time.Hour), End: testTime.Add(-2 * time.Hour)}
-	straddling := querylimits.TimeRange{Start: testTime.Add(-90 * time.Minute), End: testTime.Add(-30 * time.Minute)}
+	// A plan that would be 0 bytes if applied. The querier limiter must still
+	// size the split range and reject.
+	planned := []querylimits.TimeRange{}
 
-	for _, tc := range []struct {
-		desc              string
-		planned           []querylimits.TimeRange
-		queryBytes        uint64
-		limit             int
-		shouldErr         bool
-		expectedStatsHits int
-		expectStatsRanges []querylimits.TimeRange
-	}{
-		{
-			desc:              "querier limiter intersects the plan with the split range",
-			planned:           []querylimits.TimeRange{outsideSplit, inSplit},
-			queryBytes:        400,
-			limit:             500,
-			shouldErr:         false,
-			expectedStatsHits: 1,
-			expectStatsRanges: []querylimits.TimeRange{inSplit},
+	statsHits := atomic.NewInt32(0)
+	statsHandler := queryrangebase.HandlerFunc(func(_ context.Context, req queryrangebase.Request) (queryrangebase.Response, error) {
+		statsHits.Inc()
+		require.Equal(t, splitStart.Add(-testEngineOpts.MaxLookBackPeriod).UnixMilli(), req.GetStart().UnixMilli())
+		require.Equal(t, splitEnd.UnixMilli(), req.GetEnd().UnixMilli())
+		return &IndexStatsResponse{
+			Response: &logproto.IndexStatsResponse{Bytes: 5000},
+		}, nil
+	})
+
+	lokiReq := &LokiRequest{
+		Query:     query,
+		StartTs:   splitStart,
+		EndTs:     splitEnd,
+		Direction: logproto.FORWARD,
+		Path:      "/query_range",
+		Plan: &plan.QueryPlan{
+			AST: syntax.MustParseExpr(query),
 		},
-		{
-			desc: "querier limiter still rejects when the split overlap exceeds the cap",
-			planned: []querylimits.TimeRange{
-				{Start: testTime.Add(-50 * time.Minute), End: testTime.Add(-25 * time.Minute)},
-				inSplit,
-			},
-			queryBytes:        400,
-			limit:             500,
-			shouldErr:         true,
-			expectedStatsHits: 2,
-		},
-		{
-			desc:              "windows that straddle the split are clipped to the overlap",
-			planned:           []querylimits.TimeRange{straddling},
-			queryBytes:        200,
-			limit:             1000,
-			shouldErr:         false,
-			expectedStatsHits: 1,
-			expectStatsRanges: []querylimits.TimeRange{
-				{Start: splitStart, End: testTime.Add(-30 * time.Minute)},
-			},
-		},
-		{
-			desc:              "windows entirely outside the split contribute no bytes",
-			planned:           []querylimits.TimeRange{outsideSplit},
-			queryBytes:        5000,
-			limit:             1,
-			shouldErr:         false,
-			expectedStatsHits: 0,
-		},
-		{
-			desc:              "empty plan is still zero bytes on the querier limiter",
-			planned:           []querylimits.TimeRange{},
-			queryBytes:        5000,
-			limit:             1,
-			shouldErr:         false,
-			expectedStatsHits: 0,
-		},
-	} {
-		t.Run(tc.desc, func(t *testing.T) {
-			statsHits := atomic.NewInt32(0)
-			var gotStatsRanges []querylimits.TimeRange
-
-			statsHandler := queryrangebase.HandlerFunc(func(_ context.Context, req queryrangebase.Request) (queryrangebase.Response, error) {
-				statsHits.Inc()
-				gotStatsRanges = append(gotStatsRanges, querylimits.TimeRange{
-					Start: req.GetStart(),
-					End:   req.GetEnd(),
-				})
-				return &IndexStatsResponse{
-					Response: &logproto.IndexStatsResponse{
-						Bytes: tc.queryBytes,
-					},
-				}, nil
-			})
-
-			promHandler := queryrangebase.HandlerFunc(func(_ context.Context, req queryrangebase.Request) (queryrangebase.Response, error) {
-				require.Equal(t, splitStart.UnixMilli(), req.GetStart().UnixMilli())
-				require.Equal(t, splitEnd.UnixMilli(), req.GetEnd().UnixMilli())
-				return &LokiPromResponse{
-					Response: &queryrangebase.PrometheusResponse{
-						Status: "success",
-					},
-				}, nil
-			})
-
-			lokiReq := &LokiRequest{
-				Query:     query,
-				StartTs:   splitStart,
-				EndTs:     splitEnd,
-				Direction: logproto.FORWARD,
-				Path:      "/query_range",
-				Plan: &plan.QueryPlan{
-					AST: syntax.MustParseExpr(query),
-				},
-			}
-
-			ctx := querylimits.InjectPlannedQueryRanges(
-				user.InjectOrgID(context.Background(), "foo"),
-				tc.planned,
-			)
-
-			handler := NewQuerierSizeLimiterMiddleware(schemas, testEngineOpts, util_log.Logger, fakeLimits{
-				maxQuerierBytesRead: tc.limit,
-			}, statsHandler).Wrap(promHandler)
-
-			_, err := handler.Do(ctx, lokiReq)
-			if tc.shouldErr {
-				require.Error(t, err)
-			} else {
-				require.NoError(t, err)
-			}
-			require.Equal(t, tc.expectedStatsHits, int(statsHits.Load()))
-
-			if tc.expectStatsRanges != nil {
-				require.Equal(t, len(tc.expectStatsRanges), len(gotStatsRanges))
-				lookback := testEngineOpts.MaxLookBackPeriod
-				for i, want := range tc.expectStatsRanges {
-					require.Equal(t, want.Start.Add(-lookback).UnixMilli(), gotStatsRanges[i].Start.UnixMilli())
-					require.Equal(t, want.End.UnixMilli(), gotStatsRanges[i].End.UnixMilli())
-				}
-			}
-		})
 	}
+
+	ctx := querylimits.InjectPlannedQueryRanges(
+		user.InjectOrgID(context.Background(), "foo"),
+		planned,
+	)
+
+	handler := NewQuerierSizeLimiterMiddleware(schemas, testEngineOpts, util_log.Logger, fakeLimits{
+		maxQuerierBytesRead: 1,
+	}, statsHandler).Wrap(queryrangebase.HandlerFunc(func(_ context.Context, _ queryrangebase.Request) (queryrangebase.Response, error) {
+		return &LokiPromResponse{
+			Response: &queryrangebase.PrometheusResponse{Status: "success"},
+		}, nil
+	}))
+
+	_, err := handler.Do(ctx, lokiReq)
+	require.Error(t, err)
+	require.Equal(t, int32(1), statsHits.Load())
 }
 
 func Test_MaxQuerySize_MaxLookBackPeriod(t *testing.T) {
