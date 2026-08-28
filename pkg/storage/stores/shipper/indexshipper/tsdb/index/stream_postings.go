@@ -59,21 +59,20 @@ func newStreamPostings(ctx context.Context, factory *streamenc.FilePoolDecbufFac
 func (p *streamPostings) build(ctx context.Context) error {
 	var (
 		lastName   string
-		haveName   bool
 		lastValue  []byte // the previous entry's value, in a buffer every entry reuses
 		haveLast   bool
 		lastOff    int
 		valueCount int
 	)
 	err := streamPostingsOffsetTable(ctx, p.factory, p.off, func(labelName, labelValue []byte, _ uint64, entryOffset int) error {
-		if !haveName || lastName != string(labelName) {
+		if lastName != string(labelName) {
 			// New label name
 			if haveLast {
 				// Always include the last value for the previous label name
 				p.postings[lastName] = append(p.postings[lastName], streamPostingOffset{labelValue: string(lastValue), offset: lastOff})
 				haveLast = false
 			}
-			lastName, haveName = string(labelName), true
+			lastName = string(labelName)
 			p.postings[lastName] = []streamPostingOffset{}
 			valueCount = 0
 		}
