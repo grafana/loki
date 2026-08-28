@@ -764,7 +764,7 @@ github.com/go-openapi/jsonpointer/jsonname
 ## explicit; go 1.25.0
 github.com/go-openapi/jsonreference
 github.com/go-openapi/jsonreference/internal
-# github.com/go-openapi/loads v0.25.1
+# github.com/go-openapi/loads v0.25.2
 ## explicit; go 1.25.0
 github.com/go-openapi/loads
 # github.com/go-openapi/spec v0.22.11
@@ -814,7 +814,7 @@ github.com/go-openapi/swag/typeutils
 # github.com/go-openapi/swag/yamlutils v0.29.1
 ## explicit; go 1.25.0
 github.com/go-openapi/swag/yamlutils
-# github.com/go-openapi/validate v0.26.4
+# github.com/go-openapi/validate v0.26.5
 ## explicit; go 1.25.0
 github.com/go-openapi/validate
 # github.com/go-playground/locales v0.14.1
