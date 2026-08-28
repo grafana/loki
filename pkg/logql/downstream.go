@@ -405,6 +405,8 @@ func (e *MergeLastOverTimeExpr) Walk(f syntax.WalkFn) {
 type CountMinSketchEvalExpr struct {
 	syntax.SampleExpr
 	downstreams []DownstreamSampleExpr
+	// operation is the user-facing operator that produced this sketch, e.g. approx_topk.
+	operation string
 }
 
 func (e CountMinSketchEvalExpr) String() string {
@@ -684,6 +686,10 @@ func (ev *DownstreamEvaluator) NewStepEvaluator(
 		}
 		return NewMergeLastOverTimeStepEvaluator(params, xs, e.offset, e.rangeInterval), nil
 	case *CountMinSketchEvalExpr:
+		if GetRangeType(params) != InstantType {
+			return nil, errCountMinSketchInstantOnly(e.operation)
+		}
+
 		queries := make([]DownstreamQuery, len(e.downstreams))
 
 		for i, d := range e.downstreams {
@@ -717,6 +723,35 @@ func (ev *DownstreamEvaluator) NewStepEvaluator(
 			return nil, fmt.Errorf("unexpected matrix type: got (%T), want (CountMinSketchVector)", results[0].Data)
 		}
 		return NewCountMinSketchVectorStepEvaluator(vector), nil
+	case *CountDistinctSketchEvalExpr:
+		if e.mergeExpr == nil {
+			return nil, fmt.Errorf("CountDistinctSketchEvalExpr is missing merge expression")
+		}
+
+		queries := make([]DownstreamQuery, len(e.mergeExpr.downstreams))
+		for i, d := range e.mergeExpr.downstreams {
+			queries[i] = DownstreamQuery{
+				Params: ParamsWithExpressionOverride{
+					Params:             ParamOverridesFromShard(params, d.shard),
+					ExpressionOverride: d.SampleExpr,
+				},
+			}
+		}
+
+		acc := newCountDistinctSketchAccumulator()
+		results, err := ev.Downstream(ctx, queries, acc)
+		if err != nil {
+			return nil, err
+		}
+		if len(results) != 1 {
+			return nil, fmt.Errorf("unexpected results length for sharded count distinct: got (%d), want (1)", len(results))
+		}
+		matrix, ok := results[0].Data.(CountDistinctSketchMatrix)
+		if !ok {
+			return nil, fmt.Errorf("unexpected type: got (%T), want (CountDistinctSketchMatrix)", results[0].Data)
+		}
+		inner := NewCountDistinctSketchMatrixStepEvaluator(matrix, params)
+		return NewCountDistinctSketchVectorStepEvaluator(inner), nil
 	default:
 		return ev.defaultEvaluator.NewStepEvaluator(ctx, nextEvFactory, e, params)
 	}

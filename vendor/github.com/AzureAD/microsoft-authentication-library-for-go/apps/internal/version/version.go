@@ -8,4 +8,4 @@ package version
 const SKU = "MSAL.Go"
 
 // Version is the version of this client package that is communicated to the server.
-const Version = "1.8.0"
+const Version = "1.9.0"

@@ -375,6 +375,10 @@ func (ev *DefaultEvaluator) NewStepEvaluator(
 			return nil, err
 		}
 		return newRangeAggEvaluator(iter.NewPeekingSampleIterator(it), e, q, e.Left.Offset)
+	case *syntax.LabelAggregationExpr:
+		return ev.newCountDistinctEvaluator(ctx, expr, e.String(), e.Left, q, false)
+	case *syntax.CountDistinctSketchExpr:
+		return ev.newCountDistinctEvaluator(ctx, expr, e.String(), e.Left, q, true)
 	case *syntax.BinOpExpr:
 		return newBinOpStepEvaluator(ctx, nextEvFactory, e, q)
 	case *syntax.LabelReplaceExpr:
@@ -388,6 +392,32 @@ func (ev *DefaultEvaluator) NewStepEvaluator(
 	default:
 		return nil, EvaluatorUnsupportedType(e, ev)
 	}
+}
+
+func (ev *DefaultEvaluator) newCountDistinctEvaluator(
+	ctx context.Context,
+	expr syntax.SampleExpr,
+	selector string,
+	left *syntax.LogRangeExpr,
+	q Params,
+	emitSketch bool,
+) (StepEvaluator, error) {
+	it, err := ev.querier.SelectSamples(ctx, SelectSampleParams{
+		&logproto.SampleQueryRequest{
+			Start:    q.Start().Add(-left.Interval).Add(-left.Offset),
+			End:      q.End().Add(-left.Offset).Add(time.Nanosecond),
+			Selector: selector,
+			Shards:   q.Shards(),
+			Plan: &plan.QueryPlan{
+				AST: expr,
+			},
+			StoreChunks: q.GetStoreChunks(),
+		},
+	})
+	if err != nil {
+		return nil, err
+	}
+	return newCountDistinctStepEvaluator(iter.NewPeekingSampleIterator(it), q, left.Interval, left.Offset, emitSketch), nil
 }
 
 func newVectorAggEvaluator(

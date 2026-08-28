@@ -51,4 +51,8 @@ var (
 	// WithOtelMetrics is a function which is implemented by the storage package.
 	// It enables client-side OpenTelemetry metrics.
 	WithOtelMetrics any // func() option.ClientOption
+
+	// WithOtelDebugMetrics is a function which is implemented by the storage package.
+	// It enables debug client-side OpenTelemetry metrics.
+	WithOtelDebugMetrics any // func() option.ClientOption
 )

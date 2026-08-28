@@ -14,38 +14,38 @@ import (
 	"github.com/grafana/loki/v3/pkg/util/arrowtest"
 )
 
-var records = []arrowtest.Rows{
-	{
-		{"ts": int64(10), "table": "A", "line": "line A"},
-		{"ts": int64(15), "table": "A", "line": "line B"},
-		{"ts": int64(5), "table": "A", "line": "line C"},
-		{"ts": int64(20), "table": "A", "line": "line D"},
-	},
-	{
-		{"ts": int64(1), "table": "A", "line": "line A"},
-		{"ts": int64(50), "table": "A", "line": "line B"},
-	},
-	{
-		// This record contains an additional column not found in the other
-		// records; this tests to make sure topkBatch properly merges schemas.
-		{"ts": int64(100), "table": "B", "app": "loki", "line": "line A"},
-		{"ts": int64(75), "table": "B", "app": "loki", "line": "line B"},
-		{"ts": int64(25), "table": "B", "app": "loki", "line": "line C"},
-	},
-	{
-		{"ts": int64(13), "table": "C", "line": "line A"},
-		{"ts": int64(15), "table": "C", "line": "line B"},
-		{"ts": int64(17), "table": "C", "line": "line C"},
-		{"ts": int64(19), "table": "C", "line": "line D"},
-	},
-	{
-		// This record contains a nil sort key to test the behaviour of
-		// NullsFirst.
-		{"table": "D", "line": "line A"},
-	},
-}
-
 func Test_topkBatch(t *testing.T) {
+	records := []arrowtest.Rows{
+		{
+			{"ts": int64(10), "table": "A", "line": "line A"},
+			{"ts": int64(15), "table": "A", "line": "line B"},
+			{"ts": int64(5), "table": "A", "line": "line C"},
+			{"ts": int64(20), "table": "A", "line": "line D"},
+		},
+		{
+			{"ts": int64(1), "table": "A", "line": "line A"},
+			{"ts": int64(50), "table": "A", "line": "line B"},
+		},
+		{
+			// This record contains an additional column not found in the other
+			// records; this tests to make sure topkBatch properly merges schemas.
+			{"ts": int64(100), "table": "B", "app": "loki", "line": "line A"},
+			{"ts": int64(75), "table": "B", "app": "loki", "line": "line B"},
+			{"ts": int64(25), "table": "B", "app": "loki", "line": "line C"},
+		},
+		{
+			{"ts": int64(13), "table": "C", "line": "line A"},
+			{"ts": int64(15), "table": "C", "line": "line B"},
+			{"ts": int64(17), "table": "C", "line": "line C"},
+			{"ts": int64(19), "table": "C", "line": "line D"},
+		},
+		{
+			// This record contains a nil sort key to test the behaviour of
+			// NullsFirst.
+			{"table": "D", "line": "line A"},
+		},
+	}
+
 	tt := []struct {
 		name       string
 		ascending  bool
@@ -131,26 +131,31 @@ func Test_topkBatch(t *testing.T) {
 
 func Test_topkBatch_stability(t *testing.T) {
 	lineIdent := semconv.NewIdentifier("line", types.ColumnTypeLabel, types.Loki.String)
-	records = []arrowtest.Rows{
+	appIdent := semconv.NewIdentifier("app", types.ColumnTypeLabel, types.Loki.String)
+
+	// Simulate two batches arriving sequentially
+	records := []arrowtest.Rows{
 		{
-			{"ts": int64(10), lineIdent.FQN(): "line A"},
-			{"ts": int64(15), lineIdent.FQN(): "line B"},
-			{"ts": int64(5), lineIdent.FQN(): "line C"},
+			{"ts": int64(10), lineIdent.FQN(): "line A", appIdent.FQN(): "a"},
+			{"ts": int64(15), lineIdent.FQN(): "line B", appIdent.FQN(): "a"},
+			{"ts": int64(5), lineIdent.FQN(): "line C", appIdent.FQN(): "a"},
 		},
 		{
-			{"ts": int64(5), lineIdent.FQN(): "line D"},
+			{"ts": int64(5), lineIdent.FQN(): "line D", appIdent.FQN(): "z"},
 		},
 	}
 
+	// line D wins the labels hash tiebreaker, so expect it over line C.
 	expect := arrowtest.Rows{
-		{"ts": int64(15), lineIdent.FQN(): "line B"},
-		{"ts": int64(10), lineIdent.FQN(): "line A"},
-		{"ts": int64(5), lineIdent.FQN(): "line D"},
+		{"ts": int64(15), lineIdent.FQN(): "line B", appIdent.FQN(): "a"},
+		{"ts": int64(10), lineIdent.FQN(): "line A", appIdent.FQN(): "a"},
+		{"ts": int64(5), lineIdent.FQN(): "line D", appIdent.FQN(): "z"},
 	}
 
 	schema := arrow.NewSchema([]arrow.Field{
 		{Name: "ts", Type: arrow.PrimitiveTypes.Int64, Nullable: true},
 		{Name: lineIdent.FQN(), Type: arrow.BinaryTypes.String, Nullable: true},
+		{Name: appIdent.FQN(), Type: arrow.BinaryTypes.String, Nullable: true},
 	}, nil)
 
 	b := topkBatch{

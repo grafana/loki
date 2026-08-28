@@ -3099,6 +3099,20 @@ retention_backoff_config:
 # CLI flag: -compactor.delete-max-interval
 [delete_max_interval: <duration> | default = 24h]
 
+# Do not fail processing of a delete request with a line filter when a chunk it
+# needs to rebuild is indexed but missing from the object storage. When enabled,
+# the missing chunk is skipped and its index entry is left as is for diagnosing
+# the issue. Chunks skipped this way are counted by the
+# loki_compactor_deletion_missing_chunks_total metric and logged with their
+# chunk IDs. This setting has no effect when horizontal_scaling_mode is not
+# disabled. CAUTION: enable this only as a temporary escape hatch to unblock
+# delete requests, and only after verifying against the object storage that the
+# chunks really are missing. If a chunk gets skipped while it is in fact still
+# present, the data it holds is left undeleted even though the delete request is
+# reported as processed.
+# CLI flag: -compactor.deletion-ignore-missing-chunks
+[deletion_ignore_missing_chunks: <boolean> | default = false]
+
 # Maximum number of tables to compact in parallel. While increasing this value,
 # please make sure compactor has enough disk space allocated to be able to store
 # and compact as many tables.
@@ -3439,14 +3453,6 @@ ring:
 # Number of workers to push batches to ingesters.
 # CLI flag: -distributor.push-worker-count
 [push_worker_count: <int> | default = 256]
-
-# The maximum size of a received message.
-# CLI flag: -distributor.max-recv-msg-size
-[max_recv_msg_size: <int> | default = 104857600]
-
-# The maximum size of a decompressed message. Defaults to 50x max-recv-msg-size.
-# CLI flag: -distributor.max-decompressed-size
-[max_decompressed_size: <int> | default = 5242880000]
 
 # The maximum number of inflight bytes at a time. 0 means disabled.
 # CLI flag: -distributor.max-inflight-bytes
@@ -4039,6 +4045,27 @@ ring:
   # Enable using a IPv6 instance address.
   # CLI flag: -index-gateway.ring.instance-enable-ipv6
   [instance_enable_ipv6: <boolean> | default = false]
+
+# Experimental: Maximum number of index gateway RPCs that can execute
+# concurrently. When the limit is reached, additional requests wait up to
+# -index-gateway.max-concurrent-queue-timeout for a free slot. If no slot
+# becomes free in that time, the index gateway rejects the request with an HTTP
+# 503 status. Clients retry the request against another index gateway replica. 0
+# disables admission control. A recommended starting value when enabling this
+# setting is 200.
+# CLI flag: -index-gateway.max-concurrent
+[max_concurrent: <int> | default = 0]
+
+# Experimental: Maximum time a request waits for a free slot when the index
+# gateway is already executing -index-gateway.max-concurrent requests. If no
+# slot becomes free in that time, the index gateway rejects the request. Bursts
+# shorter than this timeout are absorbed without errors. Clients retry rejected
+# requests against other replicas. When every replica is saturated, a request
+# can wait up to this long per replica, so prefer a low value. 0 means requests
+# wait indefinitely, bounded only by the request's own timeout. Only used when
+# -index-gateway.max-concurrent is greater than 0.
+# CLI flag: -index-gateway.max-concurrent-queue-timeout
+[max_concurrent_queue_timeout: <duration> | default = 5s]
 ```
 
 ### ingester
@@ -4507,6 +4534,10 @@ The `limits_config` block configures global and per-tenant limits in Loki. The v
 # Identifier that is added at the end of a truncated log line.
 # CLI flag: -distributor.max-line-size-truncate-identifier
 [max_line_size_truncate_identifier: <string> | default = ""]
+
+# The maximum size of a Push request.
+# CLI flag: -distributor.max-push-size
+[max_push_size: <int> | default = 2GB]
 
 # Alter the log line timestamp during ingestion when the timestamp is the same
 # as the previous entry for the same stream. When enabled, if a log line in a

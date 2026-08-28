@@ -12,6 +12,7 @@ import (
 	"github.com/c2h5oh/datasize"
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
+	"github.com/grafana/dskit/gate"
 	"github.com/grafana/dskit/services"
 	"github.com/grafana/dskit/tenant"
 	"github.com/prometheus/client_golang/prometheus"
@@ -54,6 +55,7 @@ type Gateway struct {
 	indexQuerier IndexQuerier
 	bloomQuerier BloomQuerier
 	metrics      *Metrics
+	queryGate    gate.Gate
 
 	cfg    Config
 	limits Limits
@@ -72,6 +74,7 @@ func NewIndexGateway(cfg Config, limits Limits, log log.Logger, r prometheus.Reg
 		limits:       limits,
 		log:          log,
 		metrics:      NewMetrics(r),
+		queryGate:    newQueryGate(cfg, r),
 	}
 
 	g.Service = services.NewIdleService(nil, func(_ error) error {
@@ -157,6 +160,11 @@ func (g *Gateway) GetChunkRef(ctx context.Context, req *logproto.GetChunkRefRequ
 	if err != nil {
 		return nil, err
 	}
+
+	if err := g.queryGate.Start(ctx); err != nil {
+		return nil, mapGateError(err)
+	}
+	defer g.queryGate.Done()
 
 	predicate := chunk.NewPredicate(matchers, &req.Plan)
 	chunkRefsLookupStart := time.Now()
@@ -250,6 +258,12 @@ func (g *Gateway) GetSeries(ctx context.Context, req *logproto.GetSeriesRequest)
 	if err != nil {
 		return nil, err
 	}
+
+	if err := g.queryGate.Start(ctx); err != nil {
+		return nil, mapGateError(err)
+	}
+	defer g.queryGate.Done()
+
 	series, err := g.indexQuerier.GetSeries(ctx, instanceID, req.From, req.Through, matchers...)
 	if err != nil {
 		return nil, err
@@ -275,17 +289,17 @@ func (g *Gateway) LabelNamesForMetricName(ctx context.Context, req *logproto.Lab
 	// An empty matchers string cannot be parsed,
 	// therefore we check the string representation of the matchers.
 	if req.Matchers != syntax.EmptyMatchers {
-		expr, err := syntax.ParseExprWithoutValidation(req.Matchers)
+		matchers, err = syntax.ParseMatchers(req.Matchers, false)
 		if err != nil {
 			return nil, err
 		}
-
-		matcherExpr, ok := expr.(*syntax.MatchersExpr)
-		if !ok {
-			return nil, fmt.Errorf("invalid label matchers found of type %T", expr)
-		}
-		matchers = matcherExpr.Mts
 	}
+
+	if err := g.queryGate.Start(ctx); err != nil {
+		return nil, mapGateError(err)
+	}
+	defer g.queryGate.Done()
+
 	names, err := g.indexQuerier.LabelNamesForMetricName(ctx, instanceID, req.From, req.Through, req.MetricName, matchers...)
 	if err != nil {
 		return nil, err
@@ -304,17 +318,17 @@ func (g *Gateway) LabelValuesForMetricName(ctx context.Context, req *logproto.La
 	// An empty matchers string cannot be parsed,
 	// therefore we check the string representation of the matchers.
 	if req.Matchers != syntax.EmptyMatchers {
-		expr, err := syntax.ParseExprWithoutValidation(req.Matchers)
+		matchers, err = syntax.ParseMatchers(req.Matchers, false)
 		if err != nil {
 			return nil, err
 		}
-
-		matcherExpr, ok := expr.(*syntax.MatchersExpr)
-		if !ok {
-			return nil, fmt.Errorf("invalid label matchers found of type %T", expr)
-		}
-		matchers = matcherExpr.Mts
 	}
+
+	if err := g.queryGate.Start(ctx); err != nil {
+		return nil, mapGateError(err)
+	}
+	defer g.queryGate.Done()
+
 	names, err := g.indexQuerier.LabelValuesForMetricName(ctx, instanceID, req.From, req.Through, req.MetricName, req.LabelName, matchers...)
 	if err != nil {
 		return nil, err
@@ -334,6 +348,11 @@ func (g *Gateway) GetStats(ctx context.Context, req *logproto.IndexStatsRequest)
 		return nil, err
 	}
 
+	if err := g.queryGate.Start(ctx); err != nil {
+		return nil, mapGateError(err)
+	}
+	defer g.queryGate.Done()
+
 	return g.indexQuerier.Stats(ctx, instanceID, req.From, req.Through, matchers...)
 }
 
@@ -347,6 +366,11 @@ func (g *Gateway) GetVolume(ctx context.Context, req *logproto.VolumeRequest) (*
 	if err != nil && req.Matchers != seriesvolume.MatchAny {
 		return nil, err
 	}
+
+	if err := g.queryGate.Start(ctx); err != nil {
+		return nil, mapGateError(err)
+	}
+	defer g.queryGate.Done()
 
 	return g.indexQuerier.Volume(ctx, instanceID, req.From, req.Through, req.GetLimit(), req.TargetLabels, req.AggregateBy, matchers...)
 }
@@ -365,6 +389,11 @@ func (g *Gateway) GetShards(request *logproto.ShardsRequest, server logproto.Ind
 	if err != nil {
 		return err
 	}
+
+	if err := g.queryGate.Start(ctx); err != nil {
+		return mapGateError(err)
+	}
+	defer g.queryGate.Done()
 
 	ok := g.indexQuerier.HasChunkSizingInfo(request.From, request.Through)
 	if !ok {

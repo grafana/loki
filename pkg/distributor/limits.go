@@ -49,6 +49,7 @@ type Limits interface {
 	IngestionPartitionsTenantShardSize(userID string) int
 
 	SimulatedPushLatency(userID string) time.Duration
+	MaxPushSize(userID string) int
 
 	validation.IngestionPolicyOverrideLimits
 }

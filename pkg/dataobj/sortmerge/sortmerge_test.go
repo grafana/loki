@@ -152,9 +152,7 @@ func buildSchemaObject(t *testing.T, sortSchema []string, byLabel map[string][]p
 	t.Helper()
 
 	cfg := testBuilderConfig
-	cfg.DataobjSortOrder = "timestamp-desc"
 	cfg.AppendOrderedEnabled = true
-	cfg.DataobjUseSortSchema = true
 
 	b, err := logsobj.NewBuilder(cfg, nil, logsobj.NewBuilderMetrics(), log.NewNopLogger(), schemaOverrides(sortSchema))
 	require.NoError(t, err)

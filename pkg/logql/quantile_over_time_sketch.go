@@ -68,6 +68,10 @@ func (ProbabilisticQuantileVector) CountMinSketchVec() CountMinSketchVector {
 	return CountMinSketchVector{}
 }
 
+func (ProbabilisticQuantileVector) CountDistinctSketchVec() CountDistinctSketchVector {
+	return CountDistinctSketchVector{}
+}
+
 func (q ProbabilisticQuantileVector) ToProto() *logproto.QuantileSketchVector {
 	samples := make([]*logproto.QuantileSketchSample, len(q))
 	for i, sample := range q {
