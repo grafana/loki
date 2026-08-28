@@ -348,8 +348,8 @@ github.com/go-logr/stdr v1.2.2/go.mod h1:mMo/vtBO5dYbehREoey6XUKy/eSumjCCveDpRre
 github.com/go-ole/go-ole v1.2.6/go.mod h1:pprOEPIfldk/42T2oK7lQ4v4JSDwmV0As9GaiUsvbm0=
 github.com/go-ole/go-ole v1.3.0 h1:Dt6ye7+vXGIKZ7Xtk4s6/xVdGDQynvom7xCFEdWr6uE=
 github.com/go-ole/go-ole v1.3.0/go.mod h1:5LS6F96DhAwUc7C+1HLexzMXY1xGRSryjyPPKW6zv78=
-github.com/go-openapi/analysis v0.26.1 h1:BqYuDaQiFflcgPWGDQc7niUFE2pHTVq1H3iwDsRYMqM=
-github.com/go-openapi/analysis v0.26.1/go.mod h1:E2siwFrz00/Z1sifwhy63h+hMkg0USofwD4gYPYeQME=
+github.com/go-openapi/analysis v0.26.2 h1:Q6wOwXW8mcVAkpDFMshj/F4PlK2Fx86tmLJjZW4vyEs=
+github.com/go-openapi/analysis v0.26.2/go.mod h1:KAxGydTYCbs6dK9zjCMQ1AoEVD2RzSWEQNgmb64dRpI=
 github.com/go-openapi/errors v0.22.8 h1:oP7sW7TWc3wFFjrzzj0nI83H2qMBkNjNfSd+XRejk/I=
 github.com/go-openapi/errors v0.22.8/go.mod h1:BuUoHcYrU6E7V9gfj1I5wLQqgtIHnup/alXZ8KdgQ0w=
 github.com/go-openapi/jsonpointer v1.0.0 h1:kR9tHqY0CtZaOPVFm622dPVNhrvYpwr4uCxgL3h1H8s=
