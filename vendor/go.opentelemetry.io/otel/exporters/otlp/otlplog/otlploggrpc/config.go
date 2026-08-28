@@ -141,8 +141,7 @@ func newConfig(options []Option) config {
 	return c
 }
 
-// RetryConfig defines configuration for retrying the export of log data
-// that failed.
+// RetryConfig defines configuration for retrying failed exports of log data.
 //
 // This configuration does not define any network retry strategy. That is
 // entirely handled by the gRPC ClientConn.
@@ -155,7 +154,7 @@ type RetryConfig retry.Config
 // If the OTEL_EXPORTER_OTLP_ENDPOINT or OTEL_EXPORTER_OTLP_LOGS_ENDPOINT
 // environment variable is set, and this option is not passed, that variable
 // value will be used to determine client security. If the endpoint has a
-// scheme of "http" or "unix" client security will be disabled. If both are
+// scheme of "http" or "unix", client security will be disabled. If both are
 // set, OTEL_EXPORTER_OTLP_LOGS_ENDPOINT will take precedence.
 //
 // By default, if an environment variable is not set, and this option is not
@@ -219,7 +218,7 @@ func WithEndpointURL(rawURL string) Option {
 	})
 }
 
-// WithReconnectionPeriod set the minimum amount of time between connection
+// WithReconnectionPeriod sets the minimum amount of time between connection
 // attempts to the target endpoint.
 //
 // This option has no effect if WithGRPCConn is used.
@@ -234,9 +233,9 @@ func WithReconnectionPeriod(rp time.Duration) Option {
 type Compression int
 
 const (
-	// NoCompression represents that no compression should be used.
+	// NoCompression indicates that no compression is used.
 	NoCompression Compression = iota
-	// GzipCompression represents that gzip compression should be used.
+	// GzipCompression indicates that gzip compression is used.
 	GzipCompression
 )
 
@@ -260,13 +259,13 @@ func WithCompressor(compressor string) Option {
 	})
 }
 
-// WithHeaders will send the provided headers with each gRPC requests.
+// WithHeaders sends the provided headers with each gRPC request.
 //
 // If the OTEL_EXPORTER_OTLP_HEADERS or OTEL_EXPORTER_OTLP_LOGS_HEADERS
 // environment variable is set, and this option is not passed, that variable
-// value will be used. The value will be parsed as a list of key value pairs.
+// value will be used. The value will be parsed as a list of key-value pairs.
 // These pairs are expected to be in the W3C Correlation-Context format
-// without additional semi-colon delimited metadata (i.e. "k1=v1,k2=v2"). If
+// without additional semicolon-delimited metadata (i.e. "k1=v1,k2=v2"). If
 // both are set, OTEL_EXPORTER_OTLP_LOGS_HEADERS will take precedence.
 //
 // By default, if an environment variable is not set, and this option is not
@@ -278,12 +277,12 @@ func WithHeaders(headers map[string]string) Option {
 	})
 }
 
-// WithTLSCredentials sets the gRPC connection to use creds.
+// WithTLSCredentials sets the gRPC connection to use the provided credentials.
 //
 // If the OTEL_EXPORTER_OTLP_CERTIFICATE or
 // OTEL_EXPORTER_OTLP_LOGS_CERTIFICATE environment variable is set, and
 // this option is not passed, that variable value will be used. The value will
-// be parsed the filepath of the TLS certificate chain to use. If both are
+// be parsed as the filepath of the TLS certificate chain to use. If both are
 // set, OTEL_EXPORTER_OTLP_LOGS_CERTIFICATE will take precedence.
 //
 // By default, if an environment variable is not set, and this option is not
@@ -308,9 +307,9 @@ func WithServiceConfig(serviceConfig string) Option {
 }
 
 // WithDialOption sets explicit grpc.DialOptions to use when establishing a
-// gRPC connection. The options here are appended to the internal grpc.DialOptions
-// used so they will take precedence over any other internal grpc.DialOptions
-// they might conflict with.
+// gRPC connection. The options here are appended to the internal
+// grpc.DialOptions used, so they will take precedence over any other internal
+// grpc.DialOptions with which they conflict.
 // The [grpc.WithBlock], [grpc.WithTimeout], and [grpc.WithReturnConnectionError]
 // grpc.DialOptions are ignored.
 //
@@ -326,10 +325,10 @@ func WithDialOption(opts ...grpc.DialOption) Option {
 //
 // This option takes precedence over any other option that relates to
 // establishing or persisting a gRPC connection to a target endpoint. Any
-// other option of those types passed will be ignored.
+// other options of those types that are passed will be ignored.
 //
-// It is the callers responsibility to close the passed conn. The Exporter
-// Shutdown method will not close this connection.
+// It is the caller's responsibility to close the passed conn.
+// [Exporter.Shutdown] will not close this connection.
 func WithGRPCConn(conn *grpc.ClientConn) Option {
 	return fnOpt(func(c config) config {
 		c.gRPCConn = newSetting(conn)
@@ -337,10 +336,11 @@ func WithGRPCConn(conn *grpc.ClientConn) Option {
 	})
 }
 
-// WithTimeout sets the max amount of time an Exporter will attempt an export.
+// WithTimeout sets the maximum amount of time an Exporter will attempt an
+// export.
 //
 // This takes precedence over any retry settings defined by WithRetry. Once
-// this time limit has been reached the export is abandoned and the log
+// this time limit has been reached, the export is abandoned and the log
 // data is dropped.
 //
 // If the OTEL_EXPORTER_OTLP_TIMEOUT or OTEL_EXPORTER_OTLP_LOGS_TIMEOUT
@@ -374,8 +374,8 @@ func WithMaxRequestSize(size int) Option {
 // WithRetry sets the retry policy for transient retryable errors that are
 // returned by the target endpoint.
 //
-// If the target endpoint responds with not only a retryable error, but
-// explicitly returns a backoff time in the response, that time will take
+// If the target endpoint responds with a retryable error and explicitly
+// returns a backoff time in the response, that time will take
 // precedence over these settings.
 //
 // These settings define the retry strategy implemented by the exporter.
@@ -383,8 +383,8 @@ func WithMaxRequestSize(size int) Option {
 // That is handled by the gRPC ClientConn.
 //
 // If unset, the default retry policy will be used. It will retry the export
-// 5 seconds after receiving a retryable error and increase exponentially
-// after each error for no more than a total time of 1 minute.
+// 5 seconds after receiving a retryable error, with the time between retries
+// increasing exponentially after each error, for no more than 1 minute total.
 func WithRetry(rc RetryConfig) Option {
 	return fnOpt(func(c config) config {
 		c.retryCfg = newSetting(retry.Config(rc))
@@ -393,7 +393,7 @@ func WithRetry(rc RetryConfig) Option {
 }
 
 // convCompression returns the parsed compression encoded in s. NoCompression
-// and an errors are returned if s is unknown.
+// and an error are returned if s is unknown.
 func convCompression(s string) (Compression, error) {
 	switch s {
 	case "gzip":
@@ -414,8 +414,8 @@ func convEndpoint(s string) (string, error) {
 	return u.Host, nil
 }
 
-// convInsecure converts s from string to bool without case sensitivity.
-// If s is not valid returns error.
+// convInsecure converts s from a string to a bool without case sensitivity.
+// If s is invalid, it returns an error.
 func convInsecure(s string) (bool, error) {
 	s = strings.ToLower(s)
 	if s != "true" && s != "false" {
@@ -425,8 +425,8 @@ func convInsecure(s string) (bool, error) {
 	return s == "true", nil
 }
 
-// loadInsecureFromEnvEndpoint returns a resolver that fetches
-// insecure setting from envEndpoint is it possible.
+// loadInsecureFromEnvEndpoint returns a resolver that fetches the insecure
+// setting from envEndpoint, if possible.
 func loadInsecureFromEnvEndpoint(envEndpoint []string) resolver[bool] {
 	return func(s setting[bool]) setting[bool] {
 		if s.Set {
@@ -450,7 +450,7 @@ func loadInsecureFromEnvEndpoint(envEndpoint []string) resolver[bool] {
 }
 
 // convHeaders converts the OTel environment variable header value s into a
-// mapping of header key to value. If s is invalid a partial result and error
+// mapping of header keys to values. If s is invalid, a partial result and an error
 // are returned.
 func convHeaders(s string) (map[string]string, error) {
 	out := make(map[string]string)
@@ -483,8 +483,9 @@ func convHeaders(s string) (map[string]string, error) {
 	return out, err
 }
 
-// convDuration converts s into a duration of milliseconds. If s does not
-// contain an integer, 0 and an error are returned.
+// convDuration interprets s as a number of milliseconds and returns the
+// corresponding duration. If s does not contain an integer, 0 and an error are
+// returned.
 func convDuration(s string) (time.Duration, error) {
 	d, err := strconv.Atoi(s)
 	if err != nil {
@@ -495,10 +496,10 @@ func convDuration(s string) (time.Duration, error) {
 }
 
 // loadEnvTLS returns a resolver that loads a *tls.Config from files defined by
-// the OTLP TLS environment variables. This will load both the rootCAs and
+// the OTLP TLS environment variables. This will load both the root CAs and
 // certificates used for mTLS.
 //
-// If the filepath defined is invalid or does not contain valid TLS files, an
+// If a configured filepath is invalid or does not point to a valid TLS file, an
 // error is passed to the OTel ErrorHandler and no TLS configuration is
 // provided.
 func loadEnvTLS[T *tls.Config]() resolver[T] {
@@ -544,7 +545,7 @@ func loadEnvTLS[T *tls.Config]() resolver[T] {
 var readFile = os.ReadFile
 
 // loadCertPool loads and returns the *x509.CertPool found at path if it exists
-// and is valid. Otherwise, nil and an error is returned.
+// and is valid. Otherwise, nil and an error are returned.
 func loadCertPool(path string) (*x509.CertPool, error) {
 	b, err := readFile(path)
 	if err != nil {
@@ -558,7 +559,7 @@ func loadCertPool(path string) (*x509.CertPool, error) {
 }
 
 // loadCertificates loads and returns the tls.Certificate found at path if it
-// exists and is valid. Otherwise, nil and an error is returned.
+// exists and is valid. Otherwise, nil and an error are returned.
 func loadCertificates(certPath, keyPath string) ([]tls.Certificate, error) {
 	cert, err := readFile(certPath)
 	if err != nil {
@@ -575,9 +576,8 @@ func loadCertificates(certPath, keyPath string) ([]tls.Certificate, error) {
 	return []tls.Certificate{crt}, nil
 }
 
-// insecureFromScheme return setting if the connection should
-// use client transport security or not.
-// Empty scheme doesn't force insecure setting.
+// insecureFromScheme returns the insecure setting implied by scheme.
+// An empty scheme does not force an insecure setting.
 func insecureFromScheme(prev setting[bool], scheme string) setting[bool] {
 	if scheme == "https" {
 		return newSetting(false)
@@ -609,18 +609,18 @@ func newSetting[T any](value T) setting[T] {
 	return setting[T]{Value: value, Set: true}
 }
 
-// resolver returns an updated setting after applying an resolution operation.
+// resolver returns an updated setting after applying a resolution operation.
 type resolver[T any] func(setting[T]) setting[T]
 
 // Resolve returns a resolved version of s.
 //
-// It will apply all the passed fn in the order provided, chaining together the
-// return setting to the next input. The setting s is used as the initial
-// argument to the first fn.
+// It applies all functions in fn in the order provided, passing each returned
+// setting to the next function. The setting s is used as the initial argument
+// to the first function.
 //
-// Each fn needs to validate if it should apply given the Set state of the
-// setting. This will not perform any checks on the set state when chaining
-// function.
+// Each function in fn needs to determine whether it should apply given the Set
+// state of the setting. This will not perform any checks on the set state when
+// chaining functions.
 func (s setting[T]) Resolve(fn ...resolver[T]) setting[T] {
 	for _, f := range fn {
 		s = f(s)
@@ -659,7 +659,7 @@ func getEnv[T any](keys []string, conv func(string) (T, error)) resolver[T] {
 	}
 }
 
-// fallback returns a resolve that will set a setting value to val if it is not
+// fallback returns a resolver that will set a setting value to val if it is not
 // already set.
 //
 // This is usually passed at the end of a resolver chain to ensure a default is
