@@ -58,21 +58,9 @@ type parser struct {
 	*strings.Reader
 }
 
-func (p *parser) Parse() (Expr, error) {
-	p.errs = p.errs[:0]
-	p.Scanner.Error = func(_ *Scanner, msg string) {
-		p.Error(msg)
-	}
-	e := p.p.Parse(p)
-	if e != 0 || len(p.errs) > 0 {
-		return nil, p.errs[0]
-	}
-	return p.expr, nil
-}
-
 // ParseExpr parses a string and returns an Expr.
 func ParseExpr(input string) (Expr, error) {
-	expr, err := ParseExprWithoutValidation(input)
+	expr, err := parseExprWithoutValidation(input)
 	if err != nil {
 		return nil, err
 	}
@@ -82,7 +70,13 @@ func ParseExpr(input string) (Expr, error) {
 	return expr, nil
 }
 
-func ParseExprWithoutValidation(input string) (expr Expr, err error) {
+// parseExprWithoutValidation parses a string and returns an Expr, skipping the
+// semantic validation done by ParseExpr.
+//
+// The parse itself is inlined here rather than living on the parser type: parts
+// of LogQL parsing panic deliberately and rely on the recover below, so there
+// must be no way to invoke them without it.
+func parseExprWithoutValidation(input string) (expr Expr, err error) {
 	if len(input) >= maxInputSize {
 		return nil, logqlmodel.NewParseError(fmt.Sprintf("input size too long (%d > %d)", len(input), maxInputSize), 0, 0)
 	}
@@ -104,7 +98,15 @@ func ParseExprWithoutValidation(input string) (expr Expr, err error) {
 
 	p.Reset(input)
 	p.Init(p.Reader)
-	return p.Parse()
+
+	p.errs = p.errs[:0]
+	p.Scanner.Error = func(_ *Scanner, msg string) {
+		p.Error(msg)
+	}
+	if e := p.p.Parse(p); e != 0 || len(p.errs) > 0 {
+		return nil, p.errs[0]
+	}
+	return p.expr, nil
 }
 
 func MustParseExpr(input string) Expr {
@@ -146,7 +148,7 @@ func ParseMatchers(input string, validate bool) ([]*labels.Matcher, error) {
 	if validate {
 		expr, err = ParseExpr(input)
 	} else {
-		expr, err = ParseExprWithoutValidation(input)
+		expr, err = parseExprWithoutValidation(input)
 	}
 
 	if err != nil {
@@ -207,18 +209,38 @@ func validateSampleExpr(expr SampleExpr) error {
 			}
 		}
 		return validateSampleExpr(e.Left)
+	case *LabelAggregationExpr:
+		if e.err != nil {
+			return e.err
+		}
+		if err := e.Validate(); err != nil {
+			return err
+		}
+		return validateSampleSelector(e)
+	case *CountDistinctSketchExpr:
+		if e.err != nil {
+			return e.err
+		}
+		if err := e.Validate(); err != nil {
+			return err
+		}
+		return validateSampleSelector(e)
 	case *LabelReplaceExpr:
 		if e.err != nil {
 			return e.err
 		}
 		return validateSampleExpr(e.Left)
 	default:
-		selector, err := e.Selector()
-		if err != nil {
-			return err
-		}
-		return validateLogSelectorExpression(selector)
+		return validateSampleSelector(e)
 	}
+}
+
+func validateSampleSelector(expr SampleExpr) error {
+	selector, err := expr.Selector()
+	if err != nil {
+		return err
+	}
+	return validateLogSelectorExpression(selector)
 }
 
 func validateLogSelectorExpression(expr LogSelectorExpr) error {
@@ -241,7 +263,7 @@ func validateSortGrouping(grouping *Grouping) error {
 
 // ParseLogSelector parses a log selector expression `{app="foo"} |= "filter"`
 func ParseLogSelector(input string, validate bool) (LogSelectorExpr, error) {
-	expr, err := ParseExprWithoutValidation(input)
+	expr, err := parseExprWithoutValidation(input)
 	if err != nil {
 		return nil, err
 	}

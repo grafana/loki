@@ -7,6 +7,7 @@ import (
 	"hash/crc32"
 	"io"
 	"math"
+	"math/rand"
 	"os"
 	"path/filepath"
 	"slices"
@@ -101,6 +102,21 @@ func openBothReaders(t testing.TB, path string) (*ByteSliceReader, *StreamReader
 	return mmap, stream
 }
 
+// scanFor opens a series scan over r, registering a cleanup that closes it.
+func scanFor(t testing.TB, r Reader) SeriesScan {
+	t.Helper()
+
+	scan := r.NewSeriesScan()
+	t.Cleanup(func() { require.NoError(t, scan.Close()) })
+	return scan
+}
+
+// scanBoth opens a series scan over each reader returned by openBothReaders.
+func scanBoth(t testing.TB, mmap, stream Reader) (SeriesScan, SeriesScan) {
+	t.Helper()
+	return scanFor(t, mmap), scanFor(t, stream)
+}
+
 // writeCrossCheckFixture builds a small but non-trivial index used by
 // the cross-check tests: multiple label names, multiple values per
 // name, a couple of chunks per series.
@@ -130,15 +146,21 @@ func BenchmarkNewStreamFileReader(b *testing.B) {
 	}
 }
 
-func writeBenchmarkFixture(t testing.TB, numSeries int, numChunksPerLabel int) string {
+func writeBenchmarkFixture(t testing.TB, numSeries int, numChunksPerSeries int) string {
 	t.Helper()
-	chunks := make([]ChunkMeta, numChunksPerLabel)
-	for i := range numChunksPerLabel {
+	chunks := make([]ChunkMeta, numChunksPerSeries)
+	for i := range numChunksPerSeries {
 		chunks[i] = ChunkMeta{Checksum: uint32(i), MinTime: int64(i * 10), MaxTime: int64(i*10 + 10)}
 	}
 	series := make([]seriesFixture, numSeries)
 	for i := range numSeries {
-		series[i].ls = labels.FromStrings("a", strconv.Itoa(i%5), "b", strconv.Itoa(i%11), "c", strconv.Itoa(i%17))
+		series[i].ls = labels.FromStrings(
+			"id", fmt.Sprintf("series-%d", i),
+			"pod", fmt.Sprintf("pod-%d", i),
+			"a", strconv.Itoa(i%5),
+			"b", strconv.Itoa(i%11),
+			"c", strconv.Itoa(i%17),
+		)
 		series[i].chunks = chunks
 	}
 	return writeIndexFixture(t, FormatV4, series)
@@ -259,6 +281,7 @@ func TestStreamReader_SeriesMatchesMmap(t *testing.T) {
 		t.Run(fmt.Sprintf("format=%d", format), func(t *testing.T) {
 			path, through := writeManyChunksFixture(t, format)
 			mmap, stream := openBothReaders(t, path)
+			mmapScan, streamScan := scanBoth(t, mmap, stream)
 
 			refs := allSeriesRefs(t, mmap)
 			require.NotEmpty(t, refs)
@@ -279,7 +302,7 @@ func TestStreamReader_SeriesMatchesMmap(t *testing.T) {
 			for _, w := range windows {
 				t.Run(w.name, func(t *testing.T) {
 					for _, ref := range refs {
-						requireStreamSeriesEqual(t, mmap, stream, ref, w.from, w.through)
+						requireStreamSeriesEqual(t, mmapScan, streamScan, ref, w.from, w.through)
 					}
 				})
 			}
@@ -288,9 +311,9 @@ func TestStreamReader_SeriesMatchesMmap(t *testing.T) {
 }
 
 // requireStreamSeriesEqual asserts that Series and ChunkStats agree between the
-// two readers for one series ref and one query window, including the
+// two readers' scans for one series ref and one query window, including the
 // labels-free Series path.
-func requireStreamSeriesEqual(t *testing.T, mmap, stream Reader, ref storage.SeriesRef, from, through int64) {
+func requireStreamSeriesEqual(t *testing.T, mmap, stream SeriesScan, ref storage.SeriesRef, from, through int64) {
 	t.Helper()
 
 	var mmapLabels, streamLabels labels.Labels
@@ -474,12 +497,14 @@ func TestReaders_RejectsCorruptSeriesRecord(t *testing.T) {
 					require.NoError(t, err)
 					t.Cleanup(func() { require.NoError(t, r.Close()) })
 
+					scan := scanFor(t, r)
+
 					var lbls labels.Labels
 					var chunks []ChunkMeta
-					_, err = r.Series(ref, 0, math.MaxInt64, &lbls, &chunks)
+					_, err = scan.Series(ref, 0, math.MaxInt64, &lbls, &chunks)
 					require.ErrorContains(t, err, "invalid checksum")
 
-					_, _, err = r.ChunkStats(ref, 0, math.MaxInt64, &lbls, nil)
+					_, _, err = scan.ChunkStats(ref, 0, math.MaxInt64, &lbls, nil)
 					require.ErrorContains(t, err, "invalid checksum")
 				})
 			}
@@ -517,12 +542,14 @@ func TestReaders_RejectsOutOfRangeSeriesRef(t *testing.T) {
 			require.NoError(t, err)
 			t.Cleanup(func() { require.NoError(t, r.Close()) })
 
+			scan := scanFor(t, r)
+
 			var lbls labels.Labels
 			var chunks []ChunkMeta
-			_, err = r.Series(ref, 0, math.MaxInt64, &lbls, &chunks)
+			_, err = scan.Series(ref, 0, math.MaxInt64, &lbls, &chunks)
 			require.ErrorContains(t, err, "invalid size")
 
-			_, _, err = r.ChunkStats(ref, 0, math.MaxInt64, &lbls, nil)
+			_, _, err = scan.ChunkStats(ref, 0, math.MaxInt64, &lbls, nil)
 			require.ErrorContains(t, err, "invalid size")
 		})
 	}
@@ -585,6 +612,7 @@ func TestStreamLabels_MatchesMmap(t *testing.T) {
 			for _, format := range []int{FormatV3, FormatV4} {
 				t.Run(fmt.Sprintf("format=%d", format), func(t *testing.T) {
 					mmap, stream := openBothReaders(t, writeFixture(t, format))
+					mmapScan, streamScan := scanBoth(t, mmap, stream)
 
 					mmapNames, err := mmap.LabelNames()
 					require.NoError(t, err)
@@ -608,25 +636,25 @@ func TestStreamLabels_MatchesMmap(t *testing.T) {
 					require.NotEmpty(t, refs)
 
 					// LabelNamesFor over every ref at once
-					mmapNamesFor, err := mmap.LabelNamesFor(refs...)
+					mmapNamesFor, err := mmapScan.LabelNamesFor(refs...)
 					require.NoError(t, err)
-					streamNamesFor, err := stream.LabelNamesFor(refs...)
+					streamNamesFor, err := streamScan.LabelNamesFor(refs...)
 					require.NoError(t, err)
 					require.Equal(t, mmapNamesFor, streamNamesFor)
 
 					for _, ref := range refs {
 						// LabelNamesFor over every ref at once
-						mmapNamesFor, err := mmap.LabelNamesFor(ref)
+						mmapNamesFor, err := mmapScan.LabelNamesFor(ref)
 						require.NoError(t, err)
-						streamNamesFor, err := stream.LabelNamesFor(ref)
+						streamNamesFor, err := streamScan.LabelNamesFor(ref)
 						require.NoError(t, err)
 						require.Equal(t, mmapNamesFor, streamNamesFor)
 
 						// Both a label the series carries and one it doesn't,
 						// the latter being reported as storage.ErrNotFound.
 						for _, labelName := range slices.Concat(mmapNames, []string{"does-not-exist"}) {
-							mmapValue, mmapErr := mmap.LabelValueFor(ref, labelName)
-							streamValue, streamErr := stream.LabelValueFor(ref, labelName)
+							mmapValue, mmapErr := mmapScan.LabelValueFor(ref, labelName)
+							streamValue, streamErr := streamScan.LabelValueFor(ref, labelName)
 							require.Equal(t, mmapErr, streamErr)
 							require.Equal(t, mmapValue, streamValue)
 						}
@@ -634,9 +662,9 @@ func TestStreamLabels_MatchesMmap(t *testing.T) {
 
 					// LabelNamesFor rejects a ref past the end of the file the
 					// same way in both readers.
-					_, err = stream.LabelNamesFor(refs[len(refs)-1] + 1<<20)
+					_, err = streamScan.LabelNamesFor(refs[len(refs)-1] + 1<<20)
 					require.Error(t, err)
-					_, err = mmap.LabelNamesFor(refs[len(refs)-1] + 1<<20)
+					_, err = mmapScan.LabelNamesFor(refs[len(refs)-1] + 1<<20)
 					require.Error(t, err)
 				})
 			}
@@ -672,16 +700,221 @@ func TestStreamLabels_RejectsCorruptSeriesRecord(t *testing.T) {
 	corruptSeriesRecord(t, path, ref)
 
 	mmap, stream := openBothReaders(t, path)
+	mmapScan, streamScan := scanBoth(t, mmap, stream)
 
-	_, mmapErr := mmap.LabelNamesFor(ref)
-	_, streamErr := stream.LabelNamesFor(ref)
+	_, mmapErr := mmapScan.LabelNamesFor(ref)
+	_, streamErr := streamScan.LabelNamesFor(ref)
 	require.ErrorContains(t, mmapErr, "invalid checksum")
 	require.ErrorContains(t, streamErr, "invalid checksum")
-	_, mmapErr = mmap.LabelValueFor(ref, "id")
-	_, streamErr = stream.LabelValueFor(ref, "id")
+	_, mmapErr = mmapScan.LabelValueFor(ref, "id")
+	_, streamErr = streamScan.LabelValueFor(ref, "id")
 	require.ErrorContains(t, mmapErr, "invalid checksum")
 	require.ErrorContains(t, streamErr, "invalid checksum")
 
+}
+
+// TestStreamReader_SeriesScanRefOrders asserts a scan agrees with the mmap
+// reader whatever order the refs arrive in.
+func TestStreamReader_SeriesScanRefOrders(t *testing.T) {
+	for _, format := range []int{FormatV3, FormatV4} {
+		t.Run(fmt.Sprintf("format=%d", format), func(t *testing.T) {
+			path, _ := writeManyChunksFixture(t, format)
+			mmap, stream := openBothReaders(t, path)
+			mmapScan := scanFor(t, mmap)
+
+			ascending := allSeriesRefs(t, mmap)
+			require.NotEmpty(t, ascending)
+
+			descending := slices.Clone(ascending)
+			slices.Reverse(descending)
+
+			// A fixed shuffle, plus repeats, so the scan sees both backwards
+			// steps and a ref it has already read.
+			shuffled := slices.Clone(ascending)
+			rnd := rand.New(rand.NewSource(1))
+			rnd.Shuffle(len(shuffled), func(i, j int) { shuffled[i], shuffled[j] = shuffled[j], shuffled[i] })
+			shuffled = append(shuffled, ascending[0], ascending[len(ascending)-1], ascending[0])
+
+			for name, refs := range map[string][]storage.SeriesRef{
+				"ascending":  ascending,
+				"descending": descending,
+				"shuffled":   shuffled,
+			} {
+				t.Run(name, func(t *testing.T) {
+					scan := stream.NewSeriesScan()
+					defer func() { require.NoError(t, scan.Close()) }()
+
+					// Collect everything the scan produces before comparing, so a
+					// record whose bytes were invalidated by a later read shows up
+					// as a mismatch rather than being compared while still valid.
+					type result struct {
+						fingerprint uint64
+						lbls        labels.Labels
+						chunks      []ChunkMeta
+						stats       ChunkStats
+						labelValue  string
+					}
+					got := make([]result, 0, len(refs))
+					for _, ref := range refs {
+						var r result
+						var err error
+						r.fingerprint, err = scan.Series(ref, 0, math.MaxInt64, &r.lbls, &r.chunks)
+						require.NoError(t, err)
+						r.chunks = slices.Clone(r.chunks)
+
+						var statsLabels labels.Labels
+						_, r.stats, err = scan.ChunkStats(ref, 0, math.MaxInt64, &statsLabels, nil)
+						require.NoError(t, err)
+
+						r.labelValue, err = scan.LabelValueFor(ref, "id")
+						require.NoError(t, err)
+
+						got = append(got, r)
+					}
+
+					for i, ref := range refs {
+						var wantLabels labels.Labels
+						var wantChunks []ChunkMeta
+						wantFingerprint, err := mmapScan.Series(ref, 0, math.MaxInt64, &wantLabels, &wantChunks)
+						require.NoError(t, err)
+						require.Equal(t, wantFingerprint, got[i].fingerprint)
+						require.Equal(t, wantLabels, got[i].lbls)
+						require.Equal(t, wantChunks, got[i].chunks)
+
+						var statsLabels labels.Labels
+						_, wantStats, err := mmapScan.ChunkStats(ref, 0, math.MaxInt64, &statsLabels, nil)
+						require.NoError(t, err)
+						require.Equal(t, wantStats, got[i].stats)
+
+						wantValue, err := mmapScan.LabelValueFor(ref, "id")
+						require.NoError(t, err)
+						require.Equal(t, wantValue, got[i].labelValue)
+					}
+				})
+			}
+		})
+	}
+}
+
+// TestStreamReader_SeriesScanRecoversFromError asserts a scan that hits a bad
+// record keeps working for the records after it.
+func TestStreamReader_SeriesScanRecoversFromError(t *testing.T) {
+	path, _ := writeManyChunksFixture(t, FormatV4)
+
+	mmap, err := NewMmapFileReader(path)
+	require.NoError(t, err)
+	refs := allSeriesRefs(t, mmap)
+	require.NoError(t, mmap.Close())
+	require.Greater(t, len(refs), 2)
+
+	corruptSeriesRecord(t, path, refs[0])
+
+	mmap, stream := openBothReaders(t, path)
+	mmapScan, scan := scanBoth(t, mmap, stream)
+
+	var lbls labels.Labels
+	var chunks []ChunkMeta
+
+	// A corrupt record, then a ref past the end of the file, then good records:
+	// each failure mode must leave the scan usable.
+	_, err = scan.Series(refs[0], 0, math.MaxInt64, &lbls, &chunks)
+	require.ErrorContains(t, err, "invalid checksum")
+
+	_, err = scan.Series(refs[len(refs)-1]+1<<20, 0, math.MaxInt64, &lbls, &chunks)
+	require.ErrorContains(t, err, "invalid size")
+
+	for _, ref := range refs[1:] {
+		var wantLabels labels.Labels
+		var wantChunks []ChunkMeta
+		wantFingerprint, err := mmapScan.Series(ref, 0, math.MaxInt64, &wantLabels, &wantChunks)
+		require.NoError(t, err)
+
+		gotFingerprint, err := scan.Series(ref, 0, math.MaxInt64, &lbls, &chunks)
+		require.NoError(t, err)
+		require.Equal(t, wantFingerprint, gotFingerprint)
+		require.Equal(t, wantLabels, lbls)
+		require.Equal(t, wantChunks, chunks)
+	}
+}
+
+// TestStreamReader_ConcurrentSeriesScans asserts that scans taken from one
+// reader are independent.
+func TestStreamReader_ConcurrentSeriesScans(t *testing.T) {
+	path, _ := writeManyChunksFixture(t, FormatV4)
+	mmap, stream := openBothReaders(t, path)
+
+	refs := allSeriesRefs(t, mmap)
+	require.NotEmpty(t, refs)
+
+	mmapScan := scanFor(t, mmap)
+	want := make([]labels.Labels, len(refs))
+	for i, ref := range refs {
+		var chunks []ChunkMeta
+		_, err := mmapScan.Series(ref, 0, math.MaxInt64, &want[i], &chunks)
+		require.NoError(t, err)
+	}
+
+	const goroutines = 8
+	errs := make(chan error, goroutines)
+	for g := 0; g < goroutines; g++ {
+		go func() {
+			errs <- func() error {
+				scan := stream.NewSeriesScan()
+				defer func() { _ = scan.Close() }()
+
+				for round := 0; round < 20; round++ {
+					for i, ref := range refs {
+						var lbls labels.Labels
+						var chunks []ChunkMeta
+						if _, err := scan.Series(ref, 0, math.MaxInt64, &lbls, &chunks); err != nil {
+							return err
+						}
+						if !labels.Equal(want[i], lbls) {
+							return fmt.Errorf("ref %d: got %s, want %s", ref, lbls, want[i])
+						}
+					}
+				}
+				return nil
+			}()
+		}()
+	}
+	for g := 0; g < goroutines; g++ {
+		require.NoError(t, <-errs)
+	}
+}
+
+// BenchmarkSeriesIteration reads every series matched by a broad postings list.
+func BenchmarkSeriesIteration(b *testing.B) {
+	path := writeBenchmarkFixture(b, 200_000, 3)
+	r, err := NewStreamFileReader(path, DefaultStreamOptions())
+	require.NoError(b, err)
+	b.Cleanup(func() { require.NoError(b, r.Close()) })
+
+	postings, err := r.Postings("c", nil, "3")
+	require.NoError(b, err)
+	var refs []storage.SeriesRef
+	for postings.Next() {
+		refs = append(refs, postings.At())
+	}
+	require.NoError(b, postings.Err())
+	require.NotEmpty(b, refs)
+
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		scan := r.NewSeriesScan()
+		var lbls labels.Labels
+		chunks := make([]ChunkMeta, 0, 8)
+		for _, ref := range refs {
+			chunks = chunks[:0]
+			if _, err := scan.Series(ref, 0, math.MaxInt64, &lbls, &chunks); err != nil {
+				b.Fatal(err)
+			}
+		}
+		if err := scan.Close(); err != nil {
+			b.Fatal(err)
+		}
+	}
 }
 
 // corruptFileBytes reads the whole file, hands the bytes to mutate, and
@@ -714,6 +947,8 @@ func requireLabelsEqual(t *testing.T, mmap, stream Reader) {
 
 func requirePostingsSeriesEqual(t *testing.T, mmap, stream Reader) {
 	t.Helper()
+	mmapScan, streamScan := scanBoth(t, mmap, stream)
+
 	labelNames, err := mmap.LabelNames()
 	require.NoError(t, err)
 	for _, labelName := range labelNames {
@@ -725,13 +960,13 @@ func requirePostingsSeriesEqual(t *testing.T, mmap, stream Reader) {
 			require.Equal(t, mmapSeriesRefs, streamSeriesRefs)
 
 			for _, seriesRef := range mmapSeriesRefs {
-				requireSeriesEqual(t, mmap, stream, seriesRef, labelName)
+				requireSeriesEqual(t, mmapScan, streamScan, seriesRef, labelName)
 			}
 		}
 	}
 }
 
-func requireSeriesEqual(t *testing.T, mmap, stream Reader, seriesRef storage.SeriesRef, labelName string) {
+func requireSeriesEqual(t *testing.T, mmap, stream SeriesScan, seriesRef storage.SeriesRef, labelName string) {
 	t.Helper()
 
 	var mmapLabels, streamLabels labels.Labels
@@ -759,7 +994,7 @@ func requireSeriesEqual(t *testing.T, mmap, stream Reader, seriesRef storage.Ser
 	requireChunkStatsEqual(t, mmap, stream, seriesRef, labelName)
 }
 
-func requireChunkStatsEqual(t *testing.T, mmap Reader, stream Reader, seriesRef storage.SeriesRef, labelName string) {
+func requireChunkStatsEqual(t *testing.T, mmap, stream SeriesScan, seriesRef storage.SeriesRef, labelName string) {
 	for _, by := range []map[string]struct{}{nil, {labelName: {}}} {
 		var mmapLabels, streamLabels labels.Labels
 		mmapFingerprints, mmapChunkStats, err := mmap.ChunkStats(seriesRef, 0, math.MaxInt64, &mmapLabels, by)
