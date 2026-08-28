@@ -73,7 +73,6 @@ func (p *streamPostings) build(ctx context.Context) error {
 				haveLast = false
 			}
 			lastName = string(labelName)
-			p.postings[lastName] = []streamPostingOffset{}
 			valueCount = 0
 		}
 		if valueCount%symbolFactor == 0 {
