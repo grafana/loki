@@ -976,8 +976,8 @@ go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc v0.7
 go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc v0.71.0/go.mod h1:dylvB+ZiiwMvsDij9O84Uy7SijLgHMX4mbkncds+4Sw=
 go.opentelemetry.io/contrib/instrumentation/net/http/httptrace/otelhttptrace v0.70.0 h1:aVgLpGksz0vjoe6OynycqX8daNOAxJx5ZEhJXIXOVIU=
 go.opentelemetry.io/contrib/instrumentation/net/http/httptrace/otelhttptrace v0.70.0/go.mod h1:kmJlX6WuTrAH1fOCSbPJFrSnUagB8c3SY3E87It3JD8=
-go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp v0.70.0 h1:LMuyCAyfalSjDyjdC65nK6N0zoTT63+E/u95X0JovZI=
-go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp v0.70.0/go.mod h1:085m8qbm4hgc8rZWGDEa4vmyyo2c3nPxUslYUKUIU04=
+go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp v0.71.0 h1:3g7B90UzBltIDKq1/5mrTGxTnOFDV0ICOhLoxiZ8jlg=
+go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp v0.71.0/go.mod h1:Ef8SuTh59BT7+ofpDxN9z+yOlc4t2GjLmKDgYNJL/NU=
 go.opentelemetry.io/contrib/propagators/jaeger v1.46.0 h1:uxl0SGcmuBkHj/Adl9oftEAyiawQBPL5RzMAmt/Yvq4=
 go.opentelemetry.io/contrib/propagators/jaeger v1.46.0/go.mod h1:LiOkxCIvoLofmRps7f8l0NkBtmObnAyQ5trteFs6wj8=
 go.opentelemetry.io/contrib/samplers/jaegerremote v0.37.3 h1:20rKrm6q8YlSVwVObflwKd2abo9f8b3WsxJ6YTyQtE8=
