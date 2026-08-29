@@ -30,7 +30,7 @@ var (
 	// `eval select` line (after the mode keyword), capturing the trailing query to end of line.
 	reInstant = regexp.MustCompile(`^at\s+(\S+)\s+(.+)$`)
 	reRange   = regexp.MustCompile(`^from\s+(\S+)\s+to\s+(\S+)\s+step\s+(\S+)\s+(.+)$`)
-	reSelect  = regexp.MustCompile(`^from\s+(\S+)\s+to\s+(\S+)\s+(.+)$`)
+	reSelect  = regexp.MustCompile(`^from\s+(\S+)\s+to\s+(\S+)\s+((?i:forward|backward))\s+(.+)$`)
 
 	// reAt, reRepeat and reMetadata are anchored to the head so each load-line directive matches
 	// only its own leading segment and can never reach into a later [metadata …] value.
@@ -215,8 +215,9 @@ const (
 
 type evalCmd struct {
 	mode             evalMode
-	ts               time.Duration // instant queries
-	start, end, step time.Duration // range and select queries
+	ts               time.Duration      // instant queries
+	start, end, step time.Duration      // range and select queries
+	direction        logproto.Direction // select queries
 	query            string
 }
 
@@ -287,10 +288,14 @@ func parseEval(line string) (evalCmd, error) {
 		if end <= start {
 			return evalCmd{}, fmt.Errorf("select end %q must be after start %q", m[2], m[1])
 		}
+		direction := logproto.FORWARD
+		if strings.EqualFold(m[3], "backward") {
+			direction = logproto.BACKWARD
+		}
 		// A log-selection query has no notion of a step; use one step covering the whole
 		// window so a query that unexpectedly turns out to be a metric query fails fast
 		// (wrong result shape) instead of hanging the step evaluator on a zero step.
-		return evalCmd{mode: evalSelect, start: start, end: end, step: end - start, query: strings.TrimSpace(m[3])}, nil
+		return evalCmd{mode: evalSelect, start: start, end: end, step: end - start, direction: direction, query: strings.TrimSpace(m[4])}, nil
 	default:
 		return evalCmd{}, fmt.Errorf("expected 'instant', 'range', or 'select' after eval: %q", line)
 	}

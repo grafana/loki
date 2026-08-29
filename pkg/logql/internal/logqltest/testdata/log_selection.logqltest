@@ -11,18 +11,18 @@ load
   {app="bar"} "bar line" @ 15s
   {app="baz"} "noise"    @ 15s
 
-eval select from 0 to 30s {app="foo"}
+eval select from 0 to 30s forward {app="foo"}
   {app="foo"} "1st line" @ 10s
   {app="foo"} "2nd line" @ 20s
 
 # A regex selector across streams returns one result stream per match.
-eval select from 0 to 30s {app=~"foo|bar"}
+eval select from 0 to 30s forward {app=~"foo|bar"}
   {app="foo"} "1st line" @ 10s
   {app="foo"} "2nd line" @ 20s
   {app="bar"} "bar line" @ 15s
 
 # A selector matching nothing returns no streams.
-eval select from 0 to 30s {app="missing"}
+eval select from 0 to 30s forward {app="missing"}
   expect empty
 
 # The query window is start-inclusive, end-exclusive: unlike a metric range vector's (start,end],
@@ -32,7 +32,7 @@ load
   {app="foo"} "in range"    @ 10s
   {app="foo"} "at boundary" @ 20s
 
-eval select from 0 to 20s {app="foo"}
+eval select from 0 to 20s forward {app="foo"}
   {app="foo"} "in range" @ 10s
 
 # A `|=` line filter drops lines that don't contain the substring.
@@ -41,5 +41,47 @@ load
   {app="foo"} "status=200" @ 10s
   {app="foo"} "status=500" @ 20s   # noise: same stream, the filter must drop it
 
-eval select from 0 to 30s {app="foo"} |= "200"
+eval select from 0 to 30s forward {app="foo"} |= "200"
   {app="foo"} "status=200" @ 10s
+
+#
+# Direction. The window and the set of matching lines are the same either way; only the order the
+# lines come back in changes: oldest-first for `forward`, newest-first for `backward`.
+#
+clear
+load
+  {app="foo"} "1st line" @ 10s
+  {app="foo"} "2nd line" @ 20s
+  {app="foo"} "3rd line" @ 30s
+  {app="bar"} "bar 1st"  @ 15s
+  {app="bar"} "bar 2nd"  @ 25s
+
+eval select from 0 to 40s forward {app="foo"}
+  {app="foo"} "1st line" @ 10s
+  {app="foo"} "2nd line" @ 20s
+  {app="foo"} "3rd line" @ 30s
+
+eval select from 0 to 40s backward {app="foo"}
+  {app="foo"} "3rd line" @ 30s
+  {app="foo"} "2nd line" @ 20s
+  {app="foo"} "1st line" @ 10s
+
+eval select from 0 to 40s backward {app=~"foo|bar"}
+  {app="foo"} "3rd line" @ 30s
+  {app="foo"} "2nd line" @ 20s
+  {app="foo"} "1st line" @ 10s
+  {app="bar"} "bar 2nd"  @ 25s
+  {app="bar"} "bar 1st"  @ 15s
+
+# Direction does not widen the window: the `[start, end)` bounds still apply.
+eval select from 20s to 30s backward {app="foo"}
+  {app="foo"} "2nd line" @ 20s
+
+# A line filter runs before the ordering, so `backward` returns the surviving lines newest-first.
+eval select from 0 to 40s backward {app="foo"} |~ "1st|3rd"
+  {app="foo"} "3rd line" @ 30s
+  {app="foo"} "1st line" @ 10s
+
+# A selector matching nothing returns no streams, whichever direction it is read in.
+eval select from 0 to 40s backward {app="missing"}
+  expect empty

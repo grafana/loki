@@ -81,15 +81,17 @@
     },
 
     "eval-select": {
+      "comment": "The bare `forward`/`backward` direction between the window and the query is required, and is matched by name so that a line with a misspelled one falls through to #eval-fallback instead of coloring the typo as a direction.",
       "name": "meta.command.eval.logqltest",
-      "begin": "^[ \\t]*(eval)[ \\t]+(select)[ \\t]+(from)[ \\t]+(\\S+)[ \\t]+(to)[ \\t]+(\\S+)[ \\t]+",
+      "begin": "^[ \\t]*(eval)[ \\t]+(select)[ \\t]+(from)[ \\t]+(\\S+)[ \\t]+(to)[ \\t]+(\\S+)[ \\t]+((?i:forward|backward))[ \\t]+",
       "beginCaptures": {
         "1": { "name": "keyword.control.eval.logqltest" },
         "2": { "name": "keyword.other.eval-mode.logqltest" },
         "3": { "name": "keyword.other.eval-argument.logqltest" },
         "4": { "name": "constant.numeric.duration.logqltest" },
         "5": { "name": "keyword.other.eval-argument.logqltest" },
-        "6": { "name": "constant.numeric.duration.logqltest" }
+        "6": { "name": "constant.numeric.duration.logqltest" },
+        "7": { "name": "constant.language.direction.logqltest" }
       },
       "end": "$",
       "patterns": [
