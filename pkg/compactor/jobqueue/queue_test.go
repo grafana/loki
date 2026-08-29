@@ -291,6 +291,42 @@ func TestQueue_JobTimeout(t *testing.T) {
 	q.processingJobsMtx.RUnlock()
 }
 
+func TestQueue_TimeoutRetrySkipsCompletedJob(t *testing.T) {
+	q := newQueue(time.Hour, nil)
+	defer func() {
+		close(q.stop)
+		q.wg.Wait()
+	}()
+
+	require.NoError(t, q.RegisterBuilder(compactor_grpc.JOB_TYPE_DELETION, &mockBuilder{}, jobTimeout, jobRetries, nil))
+
+	job := &compactor_grpc.Job{
+		Id:   "test-job",
+		Type: compactor_grpc.JOB_TYPE_DELETION,
+	}
+
+	q.processingJobsMtx.Lock()
+	q.processingJobs[job.Id] = &processingJob{
+		job:          job,
+		dequeued:     time.Now().Add(-2 * jobTimeout),
+		attemptsLeft: 2,
+	}
+	q.processingJobsMtx.Unlock()
+
+	// Select the job for retry, then simulate a late successful response before retrying it.
+	jobsToRetry := q.findJobsToRetry(time.Now())
+	require.Equal(t, []string{job.Id}, jobsToRetry)
+	require.NoError(t, q.reportJobResult(&compactor_grpc.JobResult{
+		JobId:   job.Id,
+		JobType: job.Type,
+	}))
+
+	retriedJob, reason, ok := q.prepareJobForRetry(jobsToRetry[0])
+	require.False(t, ok)
+	require.Nil(t, retriedJob)
+	require.Empty(t, reason)
+}
+
 func TestQueue_Close(t *testing.T) {
 	q := NewQueue(nil)
 
