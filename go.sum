@@ -781,8 +781,8 @@ github.com/prometheus/common v0.4.1/go.mod h1:TNfzLD0ON7rHzMJeJkieUDPYmFC7Snx/y8
 github.com/prometheus/common v0.9.1/go.mod h1:yhUN8i9wzaXS3w1O07YhxHEBxD+W35wd8bs7vj7HSQ4=
 github.com/prometheus/common v0.70.1 h1:1HvjP4D5oL3t8RsPlwxA9onvvStjtIHYE5XuuwOi/PY=
 github.com/prometheus/common v0.70.1/go.mod h1:VdFUQDMZK3VLkurFUVhia6uys/0suUp86TJz5qbJRhc=
-github.com/prometheus/exporter-toolkit v0.18.0 h1:flIJBxf3OdOlKAZ2u4t5ZqKlbFuVIp2WGogxYQel48c=
-github.com/prometheus/exporter-toolkit v0.18.0/go.mod h1:kOoEK/7wbe2Ns33l7wYHOXDZAZ/XGLyJqoGwmJxK+QU=
+github.com/prometheus/exporter-toolkit v0.19.0 h1:JljWCzE5naAiZ7Ukeb8PwjNbU+WwISuW0ktgdXMnMhc=
+github.com/prometheus/exporter-toolkit v0.19.0/go.mod h1:kOoEK/7wbe2Ns33l7wYHOXDZAZ/XGLyJqoGwmJxK+QU=
 github.com/prometheus/otlptranslator v1.0.0 h1:s0LJW/iN9dkIH+EnhiD3BlkkP5QVIUVEoIwkU+A6qos=
 github.com/prometheus/otlptranslator v1.0.0/go.mod h1:vRYWnXvI6aWGpsdY/mOT/cbeVRBlPWtBNDb7kGR3uKM=
 github.com/prometheus/procfs v0.0.0-20181005140218-185b4288413d/go.mod h1:c3At6R/oaqEKCNdg8wHV1ftS6bRYblBhIjjI8uT2IGk=
