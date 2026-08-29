@@ -417,7 +417,7 @@ require (
 	golang.org/x/tools v0.49.0
 	google.golang.org/genproto v0.0.0-20260819154853-08b0e4226688 // indirect
 	google.golang.org/genproto/googleapis/api v0.0.0-20260819154853-08b0e4226688 // indirect
-	google.golang.org/genproto/googleapis/rpc v0.0.0-20260819154853-08b0e4226688
+	google.golang.org/genproto/googleapis/rpc v0.0.0-20260825221802-da73d73af1c5
 	gopkg.in/inf.v0 v0.9.1 // indirect
 	k8s.io/client-go v0.36.4 // indirect
 	k8s.io/kube-openapi v0.0.0-20260821135717-be32def86098 // indirect
