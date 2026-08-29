@@ -8,6 +8,9 @@ import (
 	"github.com/pkg/errors"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
+	"go.uber.org/atomic"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 	"gotest.tools/assert"
 
 	"github.com/grafana/loki/v3/pkg/iter"
@@ -170,6 +173,64 @@ func TestTailer(t *testing.T) {
 			test.tester(t, tailer, test.tailClient)
 		})
 	}
+}
+
+func TestTailerStopsWhenIngesterRejectsQuery(t *testing.T) {
+	t.Parallel()
+
+	client := newTailClientMock()
+	client.On("Recv").Return((*logproto.TailResponse)(nil), status.Error(codes.InvalidArgument, `parse error : stage '|~ "GET("' : error parsing regexp: missing closing )`))
+
+	var reconnectCalls atomic.Int32
+	tailDisconnectedIngesters := func([]string) (map[string]logproto.Querier_TailClient, error) {
+		reconnectCalls.Inc()
+		return map[string]logproto.Querier_TailClient{}, nil
+	}
+
+	tailer := newTailer(0, map[string]logproto.Querier_TailClient{"test": client}, testutil.NewFakeStreamIterator(0, 0), tailDisconnectedIngesters, timeout, throttle, false, NewMetrics(nil), log.NewNopLogger())
+	defer tailer.close()
+
+	select {
+	case err := <-tailer.getCloseErrorChan():
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "error parsing regexp")
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for the tailer to surface the ingester error")
+	}
+
+	require.Eventually(t, tailer.stopped.Load, 2*time.Second, 10*time.Millisecond)
+
+	// The ingester rejects the query for good, so the tailer must not keep
+	// reconnecting. Give any in-flight reconnect attempt a moment to land,
+	// then require that the retry loop has stopped.
+	time.Sleep(50 * time.Millisecond)
+	final := reconnectCalls.Load()
+	time.Sleep(100 * time.Millisecond)
+	require.Equal(t, final, reconnectCalls.Load())
+}
+
+func TestTailerKeepsReconnectingOnTransientIngesterError(t *testing.T) {
+	t.Parallel()
+
+	client := newTailClientMock()
+	client.On("Recv").Return((*logproto.TailResponse)(nil), status.Error(codes.Unavailable, "connection refused"))
+
+	var reconnectCalls atomic.Int32
+	tailDisconnectedIngesters := func([]string) (map[string]logproto.Querier_TailClient, error) {
+		reconnectCalls.Inc()
+		return map[string]logproto.Querier_TailClient{}, nil
+	}
+
+	tailer := newTailer(0, map[string]logproto.Querier_TailClient{"test": client}, testutil.NewFakeStreamIterator(0, 0), tailDisconnectedIngesters, timeout, throttle, false, NewMetrics(nil), log.NewNopLogger())
+	defer tailer.close()
+
+	// A transient error must not stop the tailer: the querier keeps trying to
+	// reconnect so a recovered ingester is picked up again.
+	require.Eventually(t, func() bool {
+		return reconnectCalls.Load() > 0
+	}, 2*time.Second, 10*time.Millisecond)
+
+	require.False(t, tailer.stopped.Load())
 }
 
 func TestCategorizedLabels(t *testing.T) {
