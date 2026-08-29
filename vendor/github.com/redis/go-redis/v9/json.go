@@ -96,6 +96,7 @@ func newJSONCmd(ctx context.Context, args ...interface{}) *JSONCmd {
 }
 
 func (cmd *JSONCmd) String() string {
+	cmd.await()
 	return cmdString(cmd, cmd.val)
 }
 
@@ -105,6 +106,7 @@ func (cmd *JSONCmd) SetVal(val string) {
 
 // Val returns the result of the JSON.GET command as a string.
 func (cmd *JSONCmd) Val() string {
+	cmd.await()
 	if len(cmd.val) == 0 && cmd.expanded != nil {
 		val, err := json.Marshal(cmd.expanded)
 		if err != nil {
@@ -119,11 +121,13 @@ func (cmd *JSONCmd) Val() string {
 }
 
 func (cmd *JSONCmd) Result() (string, error) {
+	cmd.await()
 	return cmd.Val(), cmd.Err()
 }
 
 // Expanded returns the result of the JSON.GET command as unmarshalled JSON.
 func (cmd *JSONCmd) Expanded() (interface{}, error) {
+	cmd.await()
 	if len(cmd.val) != 0 && cmd.expanded == nil {
 		err := json.Unmarshal([]byte(cmd.val), &cmd.expanded)
 		if err != nil {
@@ -136,15 +140,18 @@ func (cmd *JSONCmd) Expanded() (interface{}, error) {
 
 func (cmd *JSONCmd) readReply(rd *proto.Reader) error {
 	// nil response from JSON.(M)GET (cmd.baseCmd.err will be "redis: nil")
-	// This happens when the key doesn't exist
-	if cmd.baseCmd.Err() == Nil {
+	// This happens when the key doesn't exist.
+	// Use rawErr() (not Err()): readReply runs inside the batch's Exec, before
+	// the autopipeline batch's done channel is closed, so Err()->await() would
+	// deadlock on the very Exec that is calling readReply.
+	if cmd.baseCmd.rawErr() == Nil {
 		cmd.val = ""
 		return Nil
 	}
 
 	// Handle other base command errors
-	if cmd.baseCmd.Err() != nil {
-		return cmd.baseCmd.Err()
+	if cmd.baseCmd.rawErr() != nil {
+		return cmd.baseCmd.rawErr()
 	}
 
 	if readType, err := rd.PeekReplyType(); err != nil {
@@ -212,6 +219,7 @@ func NewJSONSliceCmd(ctx context.Context, args ...interface{}) *JSONSliceCmd {
 }
 
 func (cmd *JSONSliceCmd) String() string {
+	cmd.await()
 	return cmdString(cmd, cmd.val)
 }
 
@@ -220,15 +228,19 @@ func (cmd *JSONSliceCmd) SetVal(val []interface{}) {
 }
 
 func (cmd *JSONSliceCmd) Val() []interface{} {
+	cmd.await()
 	return cmd.val
 }
 
 func (cmd *JSONSliceCmd) Result() ([]interface{}, error) {
+	cmd.await()
 	return cmd.val, cmd.err
 }
 
 func (cmd *JSONSliceCmd) readReply(rd *proto.Reader) error {
-	if cmd.baseCmd.Err() == Nil {
+	// rawErr(), not Err(): readReply runs inside Exec before the batch's done
+	// channel closes, so Err()->await() would deadlock (see JSONCmd.readReply).
+	if cmd.baseCmd.rawErr() == Nil {
 		cmd.val = nil
 		return Nil
 	}
@@ -238,7 +250,7 @@ func (cmd *JSONSliceCmd) readReply(rd *proto.Reader) error {
 	} else if readType == proto.RespArray {
 		response, err := rd.ReadReply()
 		if err != nil {
-			return nil
+			return err
 		} else {
 			cmd.val = response.([]interface{})
 		}
@@ -299,6 +311,7 @@ func NewIntPointerSliceCmd(ctx context.Context, args ...interface{}) *IntPointer
 }
 
 func (cmd *IntPointerSliceCmd) String() string {
+	cmd.await()
 	return cmdString(cmd, cmd.val)
 }
 
@@ -307,10 +320,12 @@ func (cmd *IntPointerSliceCmd) SetVal(val []*int64) {
 }
 
 func (cmd *IntPointerSliceCmd) Val() []*int64 {
+	cmd.await()
 	return cmd.val
 }
 
 func (cmd *IntPointerSliceCmd) Result() ([]*int64, error) {
+	cmd.await()
 	return cmd.val, cmd.err
 }
 
