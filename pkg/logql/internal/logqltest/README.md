@@ -146,8 +146,9 @@ eval select from 0 to 30s forward {app="a"}
 
 Results only come back in categories because the harness **asks for them that way**. Every
 [execution stack](#execution-stacks) sends the `categorize-labels` response encoding flag
-(`X-Loki-Response-Encoding-Flags: categorize-labels`) on a query, which is what Grafana's Explore
-does — so these scripts assert the shape a Grafana user actually sees, not the plain-API default.
+(`X-Loki-Response-Encoding-Flags: categorize-labels`) on a query, as Grafana's Loki datasource does
+on every data query — Explore, dashboards, and alerting alike. So these scripts assert the shape a
+Grafana user actually sees, not the plain-API default.
 
 Without the flag Loki merges all three categories into one label set: the example above would return
 `{app="a", lvl="error", trace_id="abc"}` and `{app="a"}` as **two** streams, with nothing on an entry
