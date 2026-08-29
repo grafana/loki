@@ -78,10 +78,14 @@ eval select from <t0> to <t1> <forward|backward> <logql>
 - **Matrix** (range queries): one line per series, `{labels} <p0> <p1> …`, one point per step
   from `<t0>` to `<t1>`. Use `_` for a step with no point.
 - **Streams** (log-selection queries, e.g. `{app="foo"} |= "bar"`): one line per log entry,
-  `{labels} "<line>" @ <ts>` (or `` `<line>` `` for a raw line). Several lines sharing the same
-  `{labels}` belong to one stream and are checked as an exact, ordered sequence — a stream's line
-  order is meaningful (it follows the query direction), unlike the set of series in a
-  vector/matrix. Distinct label sets are compared as a set (order-independent), like series.
+  `{labels} "<line>" @ <ts>  [metadata key1="value1" …]  [parsed key1="value1" …]` (or
+  `` `<line>` `` for a raw line).
+  Several lines sharing the same `{labels}` belong to one stream and are checked as an exact,
+  ordered sequence — a stream's line order is meaningful (it follows the query direction), unlike
+  the set of series in a vector/matrix. Distinct label sets are compared as a set
+  (order-independent), like series.
+  `{labels}` holds the **stream labels alone**; the two optional clauses carry the other label
+  categories — see "Categorized labels" below.
 
 Point syntax (from promqltest):
 
@@ -91,13 +95,71 @@ Point syntax (from promqltest):
 - `<base>[±<step>]x<count>` — expands to `count+1` points: `2+3x2` → `2 5 8`; `1-1x2` → `1 0 -1`;
   `4x3` → `4 4 4 4`
 
-Label sets are compared as sets (order-independent). Note that Loki promotes **structured
-metadata into the result label set**, so a stream loaded with `[metadata detected_level="info"]`
-produces series labelled `{…, detected_level="info"}`.
+Label sets are compared as sets (order-independent). Note that a **metric** query promotes
+**structured metadata into the result label set**, so a stream loaded with
+`[metadata detected_level="info"]` produces series labelled `{…, detected_level="info"}`. A
+log-selection query does not — see "Structured Metadata and Parsed Fields" below.
 
 An **empty-value label is significant**: `{app="a", age=""}` asserts that `age` is present with an
 empty value (e.g. from a `json` expression whose path is missing, or `logfmt --keep-empty`), which is
 distinct from omitting `age` entirely.
+
+### Structured Metadata and Parsed Fields
+
+A LogQL label belongs to one of three categories: a **stream** label from the selector, a
+**structured metadata** label attached at ingest, or a **parsed** label a pipeline stage extracted.
+Log-selection results keep the three apart, so an expected line writes the stream labels in
+`{labels}` and pins the other two with an optional `[metadata …]` / `[parsed …]` clause — the same
+`key="value"` syntax as a `load` line's metadata, again with **literal square brackets**:
+
+```
+load
+  {app="a"} "boom" @ 10s [metadata lvl="error" trace_id="abc"]
+  {app="a"} "fine" @ 20s
+
+eval select from 0 to 30s forward {app="a"}
+  {app="a"} "boom" @ 10s [metadata lvl="error" trace_id="abc"]
+  {app="a"} "fine" @ 20s
+```
+
+- Each clause is the **complete** expected set for its category, compared order-independently. A
+  line written **without** a clause asserts the entry carries nothing in that category — so `"fine"`
+  above has no metadata, and neither line has a parsed label.
+- Both entries share one stream. Metadata stays out of the stream labels, so a high-cardinality
+  value like `trace_id` does not split the result into one stream per line.
+- Writing the categories apart is what catches a label that moves between them. `| label_format`
+  reads a metadata label and writes a **parsed** one:
+
+  ```
+  eval select from 0 to 30s forward {app="a"} | label_format level=lvl
+    {app="a"} "boom" @ 10s [metadata trace_id="abc"] [parsed level="error"]
+  ```
+
+  `lvl` has left the metadata and `level` has appeared in the parsed labels, while `{app="a"}` is
+  unchanged.
+- The clauses are ordered, `[metadata …]` before `[parsed …]`. The other way round is an error, not
+  a silently dropped clause.
+- An empty value is significant here too: `[metadata lvl=""]` asserts `lvl` is present and empty,
+  distinct from an absent `lvl`.
+- Both clauses are for `eval select` only; a metric query has no per-entry labels, and asserts
+  metadata through its result label set instead.
+
+Results only come back in categories because the harness **asks for them that way**. Every
+[execution stack](#execution-stacks) sends the `categorize-labels` response encoding flag
+(`X-Loki-Response-Encoding-Flags: categorize-labels`) on a query, which is what Grafana's Explore
+does — so these scripts assert the shape a Grafana user actually sees, not the plain-API default.
+
+Without the flag Loki merges all three categories into one label set: the example above would return
+`{app="a", lvl="error", trace_id="abc"}` and `{app="a"}` as **two** streams, with nothing on an entry
+to say which category a label came from. The flag is set in two places, since it is read twice:
+
+- The query-frontend stacks put it on the HTTP request *and* its context (`exec_query_frontend.go`).
+  The frontend's response encoder reads the header to write the categories into the JSON; the
+  querier reads the context copy — forwarded through `QueryRequestWrap` — to categorize at all.
+- The direct stack injects it straight into the engine's context (`exec_direct.go`), since it has no
+  frontend in front of it.
+
+The flag applies to log-selection queries only, so metric results are untouched.
 
 Every `eval` must assert exactly one kind of result — series, log streams, a scalar,
 `expect empty`, or `expect fail`; otherwise the harness errors (a forgotten expected block would
@@ -138,7 +200,6 @@ The direction only changes the order lines come back in, never which lines match
 bounds and the pipeline are unaffected. Expected lines within one stream are compared in the order
 they are written, so a `backward` block lists them newest first. Streams themselves are still
 compared as a set, and each is ordered independently.
-
 
 ### Empty results
 
@@ -208,8 +269,8 @@ eval instant at 60s some_query_with_a_nondeterministic_value({app="a"}[1m])
 
 - `<stack>` is the exact stack name, in double quotes.
 - The named stack still runs the query, must not error, and is still checked for series/stream
-  count, sample/line count, and timestamps. Only the float value comparison (or, for a
-  log-selection query, the log line text) is skipped.
+  count, sample/line count, timestamps, and categorized labels. Only the float value comparison
+  (or, for a log-selection query, the log line text) is skipped.
 
 A stack can have `skip values-comparison` or `expect values-toleration`, not both — they're
 contradictory ("don't compare" vs. "compare, loosely").
@@ -242,6 +303,9 @@ eval select from 0 to 60s forward {app="foo"} |= "status=200"
   {app="foo"} "level=info status=200" @ 30s
   {app="foo"} "level=info status=200" @ 40s
   {app="foo"} "level=info status=200" @ 50s
+
+eval select from 0 to 20s forward {app="bar"}
+  {app="bar"} "level=error status=500" @ 10s [metadata detected_level="error"]
 ```
 
 ## Scope
