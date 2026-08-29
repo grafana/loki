@@ -30,7 +30,7 @@ func (m *Logger) HandleInitialize(ctx context.Context, in middleware.InitializeI
 	return next.HandleInitialize(ctx, in)
 }
 
-// AddLogger is a helper util to add waiter logger after `SetLogger` middleware in
+// AddLogger is a helper util to add a waiter logger to the initialize stack.
 func (m Logger) AddLogger(stack *middleware.Stack) error {
-	return stack.Initialize.Insert(&m, "SetLogger", middleware.After)
+	return stack.Initialize.Add(&m, middleware.After)
 }
