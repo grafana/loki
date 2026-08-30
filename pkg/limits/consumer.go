@@ -10,6 +10,7 @@ import (
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/backoff"
+	"github.com/grafana/dskit/services"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/twmb/franz-go/pkg/kgo"
@@ -25,6 +26,7 @@ type kafkaConsumer interface {
 // consumer processes records from the metadata topic. It is responsible for
 // replaying newly assigned partitions and merging records from other zones.
 type consumer struct {
+	*services.BasicService
 	client           kafkaConsumer
 	partitionManager *partitionManager
 	usage            *usageStore
@@ -42,7 +44,8 @@ type consumer struct {
 	recordsInvalid   prometheus.Counter
 
 	// Used for tests.
-	clock quartz.Clock
+	clock       quartz.Clock
+	postFetchCh chan<- struct{}
 }
 
 // newConsumer returns a new Consumer.
@@ -55,7 +58,7 @@ func newConsumer(
 	logger log.Logger,
 	reg prometheus.Registerer,
 ) *consumer {
-	return &consumer{
+	c := &consumer{
 		client:           client,
 		partitionManager: partitionManager,
 		usage:            usage,
@@ -65,8 +68,9 @@ func newConsumer(
 		clock:            quartz.NewReal(),
 		lag: promauto.With(reg).NewHistogram(
 			prometheus.HistogramOpts{
-				Name:                            "loki_ingest_limits_lag_seconds",
-				Help:                            "The estimated consumption lag in seconds, measured as the difference between the current time and the timestamp of the record.",
+				Name: "loki_ingest_limits_lag_seconds",
+				Help: "The estimated consumption lag in seconds, measured as the difference between the current time and the timestamp of the record.",
+
 				NativeHistogramBucketFactor:     1.1,
 				NativeHistogramMinResetDuration: 1 * time.Hour,
 				NativeHistogramMaxBucketNumber:  100,
@@ -92,41 +96,69 @@ func newConsumer(
 			},
 		),
 	}
+	c.BasicService = services.NewBasicService(c.starting, c.running, c.stopping)
+	return c
 }
 
-func (c *consumer) Run(ctx context.Context) {
-	b := backoff.New(ctx, backoff.Config{
-		MinBackoff: 100 * time.Millisecond,
-		MaxBackoff: time.Second,
-		MaxRetries: 0,
-	})
-	for b.Ongoing() {
-		select {
-		case <-ctx.Done():
-			return
-		default:
-			if err := c.pollFetches(ctx); err != nil {
-				if errors.Is(err, kgo.ErrClientClosed) {
-					return
-				}
-				level.Error(c.logger).Log("msg", "failed to poll fetches", "err", err.Error())
-				b.Wait()
-			}
-		}
-	}
-}
-
-func (c *consumer) pollFetches(ctx context.Context) error {
-	fetches := c.client.PollFetches(ctx)
-	if err := fetches.Err(); err != nil {
-		return err
-	}
-	fetches.EachPartition(c.processFetchTopicPartition(ctx))
+// starting implements [services.StartingFn].
+func (c *consumer) starting(_ context.Context) error {
 	return nil
 }
 
-func (c *consumer) processFetchTopicPartition(ctx context.Context) func(kgo.FetchTopicPartition) {
+// running implements [services.RunningFn].
+func (c *consumer) running(ctx context.Context) error {
+	return c.run(ctx)
+}
+
+// running implements [services.StoppingFn].
+func (c *consumer) stopping(_ error) error {
+	return nil
+}
+
+func (c *consumer) run(ctx context.Context) error {
+	b := backoff.New(ctx, backoff.Config{
+		MinBackoff: 100 * time.Millisecond,
+		MaxBackoff: 10 * time.Second,
+		MaxRetries: 0,
+	})
+	for b.Ongoing() {
+		fetches := c.client.PollFetches(ctx)
+		// We use Err0 instead of [kgo.IsClientClosed] so we can also check
+		// if the context was canceled.
+		if err := fetches.Err0(); errors.Is(err, kgo.ErrClientClosed) || errors.Is(err, context.Canceled) {
+			// We don't return an error here as it manifests as a service
+			// failure when stopping the service.
+			return nil
+		}
+		// The client can fetch from multiple brokers in a single poll.
+		// This means we must handle both records and errors at the same
+		// time, as some brokers might be polled successfully while others
+		// return errors.
+		var numRecords int
+		fetches.EachPartition(c.processFetchTopicPartition(ctx, &numRecords))
+		if numRecords == 0 {
+			// If no records were fetched, backoff before the next poll.
+			b.Wait()
+		} else {
+			// If records were fetched, reset the backoff before the next poll.
+			b.Reset()
+		}
+		if c.postFetchCh != nil {
+			// Most of the time this is used in tests that need to synchronize with the
+			// fetch loop. For example, a test might want to wait for a fetch to complete
+			// and then assert an expectation.
+			c.postFetchCh <- struct{}{}
+		}
+	}
+	return nil
+}
+
+func (c *consumer) processFetchTopicPartition(ctx context.Context, numRecords *int) func(kgo.FetchTopicPartition) {
 	return func(p kgo.FetchTopicPartition) {
+		if err := p.Err; err != nil {
+			level.Error(c.logger).Log("msg", "failed to poll fetches", "topic", p.Topic, "partition", p.Partition, "err", err)
+			return
+		}
 		// When used with [kgo.EachPartition], this function is called once
 		// for each partition in a fetch, including partitions that have not
 		// produced records since the last fetch. If there are no records
@@ -136,6 +168,7 @@ func (c *consumer) processFetchTopicPartition(ctx context.Context) func(kgo.Fetc
 			return
 		}
 		logger := log.With(c.logger, "partition", p.Partition)
+		*numRecords += len(p.Records)
 		c.recordsFetched.Add(float64(len(p.Records)))
 		// We need the state of the partition so we can discard any records
 		// that we produced (unless replaying) and mark a replaying partition

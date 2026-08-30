@@ -14,8 +14,8 @@ import (
 )
 
 func TestProducer_Produce(t *testing.T) {
-	kafka := mockKafka{}
-	p := newProducer(&kafka, "topic", 1, "zone1", log.NewNopLogger(), prometheus.NewRegistry())
+	kafkaClient := mockKafka{produced: make(chan *kgo.Record, 1)}
+	p := newProducer(&kafkaClient, "topic", 1, "zone1", log.NewNopLogger(), prometheus.NewRegistry())
 	// Record should be produced.
 	metadata := &proto.StreamMetadata{
 		StreamHash: 0x1,
@@ -30,17 +30,16 @@ func TestProducer_Produce(t *testing.T) {
 	}
 	b, err := expectedMetadataRecord.Marshal()
 	require.NoError(t, err)
-	expectedRecords := []*kgo.Record{{
+	expectedRecord := &kgo.Record{
 		Topic: "topic",
 		Key:   []byte("tenant"),
 		Value: b,
-	}}
-	require.Equal(t, expectedRecords, kafka.produced)
+	}
+	require.Equal(t, expectedRecord, <-kafkaClient.produced)
 	// Record should fail to be produced.
-	kafka.produced = []*kgo.Record{}
-	kafka.produceFailer = func(_ *kgo.Record) error {
+	kafkaClient.produceFailer = func(_ *kgo.Record) error {
 		return errors.New("failed to produce record")
 	}
 	require.NoError(t, p.Produce(ctx, "tenant", metadata))
-	require.Equal(t, []*kgo.Record{}, kafka.produced)
+	require.Equal(t, int64(1), kafkaClient.producedFailed.Load())
 }
