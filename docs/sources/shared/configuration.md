@@ -6293,9 +6293,11 @@ http_config:
 # CLI flag: -<prefix>.s3.signature-version
 [signature_version: <string> | default = "v4"]
 
-# The S3 storage class which objects will use. Supported values are: GLACIER,
-# DEEP_ARCHIVE, GLACIER_IR, INTELLIGENT_TIERING, ONEZONE_IA, OUTPOSTS,
-# REDUCED_REDUNDANCY, STANDARD, STANDARD_IA.
+# The S3 storage class which objects will use. Supported values are:
+# DEEP_ARCHIVE, EXPRESS_ONEZONE, FSX_ONTAP, FSX_OPENZFS, GLACIER, GLACIER_IR,
+# INTELLIGENT_TIERING, ONEZONE_IA, OUTPOSTS, REDUCED_REDUNDANCY, SNOW, STANDARD,
+# STANDARD_IA. EXPRESS_ONEZONE is only accepted by S3 Express One Zone directory
+# buckets, which in turn reject every other storage class.
 # CLI flag: -<prefix>.s3.storage-class
 [storage_class: <string> | default = "STANDARD"]
 
