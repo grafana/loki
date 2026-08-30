@@ -22,6 +22,7 @@ func Test_dropLabelStage_Process(t *testing.T) {
 	tests := []struct {
 		name           string
 		config         *LabelDropConfig
+		patternConfig  *LabelPatternDropConfig
 		inputLabels    model.LabelSet
 		expectedLabels model.LabelSet
 	}{
@@ -57,11 +58,24 @@ func Test_dropLabelStage_Process(t *testing.T) {
 				"testLabel2": "testValue",
 			},
 		},
+		{
+			name:   "drop label using patterns",
+			config: &LabelDropConfig{"foobar"},
+			patternConfig: &LabelPatternDropConfig{`^testLabel.*$`},
+			inputLabels: model.LabelSet{
+				"testLabel1": "testValue",
+				"testLabel2": "testValue",
+				"test-label3": "testValue",
+			},
+			expectedLabels: model.LabelSet{
+				"test-label3": "testValue",
+			},
+		},
 	}
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			st, err := newLabelDropStage(test.config)
+			st, err := newLabelDropStage(test.config, test.patternConfig)
 			if err != nil {
 				t.Fatal(err)
 			}
