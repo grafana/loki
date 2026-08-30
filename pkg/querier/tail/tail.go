@@ -242,11 +242,16 @@ func (t *Tailer) readTailClient(addr string, querierTailClient logproto.Querier_
 			// We don't want to log error when its due to stopping the tail request
 			if !stopped {
 				level.Error(logger).Log("msg", "Error receiving response from grpc tail client", "err", err)
-				// The ingester rejected the query itself (for example a pipeline
-				// stage it couldn't compile). Reconnecting will hit the same error
-				// forever and leave the client hanging on an open websocket, so
-				// surface the error and stop tailing instead of retrying.
-				if status.Code(err) == codes.InvalidArgument {
+				// The ingester rejects an invalid query (for example a pipeline
+				// stage it couldn't compile) with a client error, but that error
+				// crosses the gRPC boundary wrapped by ClientGrpcStatusAndError,
+				// so it arrives as an httpgrpc status whose code is the HTTP
+				// status (400 for query errors), not codes.InvalidArgument. A 4xx
+				// here means the caller is at fault and reconnecting would hit
+				// the same rejection forever, leaving the client hanging on an
+				// open websocket, so surface the error and stop tailing instead
+				// of retrying.
+				if code := status.Code(err); code == codes.InvalidArgument || int(code)/100 == 4 {
 					t.stopAndSignal(err)
 				}
 			}
