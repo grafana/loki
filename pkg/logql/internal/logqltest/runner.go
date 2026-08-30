@@ -113,7 +113,7 @@ func runEval(t *testing.T, name string, stacks []executionStack, cmd evalCmd, ex
 	case evalRange:
 		label = "range: " + label
 	case evalSelect:
-		label = "select: " + label
+		label = "select " + strings.ToLower(cmd.direction.String()) + ": " + label
 	default:
 		panic(fmt.Sprintf("unknown eval mode %v", cmd.mode))
 	}

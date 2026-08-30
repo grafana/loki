@@ -223,7 +223,7 @@ func (s *queryFrontendExecutionStack) eval(cmd evalCmd) (logqlmodel.Result, erro
 			Query:     cmd.query,
 			Limit:     1000,
 			TimeTs:    epoch.Add(cmd.ts),
-			Direction: logproto.FORWARD,
+			Direction: cmd.direction,
 			Path:      "/loki/api/v1/query",
 		}
 	} else {
@@ -233,7 +233,7 @@ func (s *queryFrontendExecutionStack) eval(cmd evalCmd) (logqlmodel.Result, erro
 			Step:      cmd.step.Milliseconds(),
 			StartTs:   epoch.Add(cmd.start),
 			EndTs:     epoch.Add(cmd.end),
-			Direction: logproto.FORWARD,
+			Direction: cmd.direction,
 			Path:      "/loki/api/v1/query_range",
 		}
 	}

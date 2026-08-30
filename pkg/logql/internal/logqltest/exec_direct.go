@@ -53,7 +53,7 @@ func (s *directExecutionStack) eval(cmd evalCmd) (logqlmodel.Result, error) {
 	params, err := logql.NewLiteralParams(
 		cmd.query,
 		epoch.Add(start), epoch.Add(end), step, 0,
-		logproto.FORWARD, 1000, nil, nil,
+		cmd.direction, 1000, nil, nil,
 	)
 	if err != nil {
 		return logqlmodel.Result{}, err

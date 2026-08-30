@@ -166,12 +166,13 @@ func TestParseEval(t *testing.T) {
 	require.Equal(t, time.Minute, cmd.step)
 	require.Equal(t, `count_over_time({app="foo"}[1m])`, cmd.query)
 
-	cmd, err = parseEval(`eval select from 0 to 10m {app="foo"}`)
+	cmd, err = parseEval(`eval select from 0 to 10m forward {app="foo"}`)
 	require.NoError(t, err)
 	require.Equal(t, evalSelect, cmd.mode)
 	require.Equal(t, time.Duration(0), cmd.start)
 	require.Equal(t, 10*time.Minute, cmd.end)
 	require.Equal(t, 10*time.Minute, cmd.step)
+	require.Equal(t, logproto.FORWARD, cmd.direction)
 	require.Equal(t, `{app="foo"}`, cmd.query)
 
 	_, err = parseEval(`eval sideways at 0s foo`)
@@ -189,10 +190,56 @@ func TestParseEval(t *testing.T) {
 	require.Error(t, err)
 
 	// An empty or backwards select window has no valid step to derive.
-	_, err = parseEval(`eval select from 10s to 10s {app="foo"}`)
+	_, err = parseEval(`eval select from 10s to 10s forward {app="foo"}`)
 	require.Error(t, err)
-	_, err = parseEval(`eval select from 10s to 0s {app="foo"}`)
+	_, err = parseEval(`eval select from 10s to 0s forward {app="foo"}`)
 	require.Error(t, err)
+}
+
+func TestParseEval_SelectDirection(t *testing.T) {
+	for name, tc := range map[string]struct {
+		line      string
+		direction logproto.Direction
+		query     string
+	}{
+		"forward":          {`eval select from 0 to 10m forward {app="foo"}`, logproto.FORWARD, `{app="foo"}`},
+		"backward":         {`eval select from 0 to 10m backward {app="foo"}`, logproto.BACKWARD, `{app="foo"}`},
+		"case insensitive": {`eval select from 0 to 10m BackWard {app="foo"}`, logproto.BACKWARD, `{app="foo"}`},
+		"pipeline follows": {`eval select from 0 to 10m backward {app="foo"} |= "x" | logfmt`, logproto.BACKWARD, `{app="foo"} |= "x" | logfmt`},
+		"extra whitespace": {`eval select from 0 to 10m   backward   {app="foo"}`, logproto.BACKWARD, `{app="foo"}`},
+		// The direction is the token before the query, so the same word inside the query is
+		// query text.
+		"direction word inside the query": {`eval select from 0 to 10m forward {app="foo"} |= "backward"`, logproto.FORWARD, `{app="foo"} |= "backward"`},
+	} {
+		t.Run(name, func(t *testing.T) {
+			cmd, err := parseEval(tc.line)
+			require.NoError(t, err)
+			require.Equal(t, evalSelect, cmd.mode)
+			require.Equal(t, tc.direction, cmd.direction)
+			require.Equal(t, tc.query, cmd.query)
+		})
+	}
+
+	// The direction is required: a select line without one, or with a misspelled one, must be
+	// rejected rather than have the stray text folded into the query.
+	for name, line := range map[string]string{
+		"missing":             `eval select from 0 to 10m {app="foo"}`,
+		"misspelled":          `eval select from 0 to 10m backwards {app="foo"}`,
+		"unknown word":        `eval select from 0 to 10m sideways {app="foo"}`,
+		"direction, no query": `eval select from 0 to 10m backward`,
+	} {
+		t.Run(name, func(t *testing.T) {
+			_, err := parseEval(line)
+			require.ErrorContains(t, err, "malformed 'eval select'")
+		})
+	}
+
+	// A metric query has no line order, so instant and range take no direction: one written there
+	// stays part of the query text, where LogQL rejects it.
+	cmd, err := parseEval(`eval instant at 60s backward count_over_time({app="foo"}[1m])`)
+	require.NoError(t, err)
+	require.Equal(t, `backward count_over_time({app="foo"}[1m])`, cmd.query)
+	require.Equal(t, logproto.FORWARD, cmd.direction)
 }
 
 func TestExpectationsParser(t *testing.T) {
