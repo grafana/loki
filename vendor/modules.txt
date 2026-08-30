@@ -855,8 +855,8 @@ github.com/goccy/go-json/internal/encoder/vm_color_indent
 github.com/goccy/go-json/internal/encoder/vm_indent
 github.com/goccy/go-json/internal/errors
 github.com/goccy/go-json/internal/runtime
-# github.com/gofrs/flock v0.13.0
-## explicit; go 1.24.0
+# github.com/gofrs/flock v0.13.1
+## explicit; go 1.25.0
 github.com/gofrs/flock
 # github.com/gogo/googleapis v1.4.1
 ## explicit; go 1.12
