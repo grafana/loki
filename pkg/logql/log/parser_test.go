@@ -1759,6 +1759,50 @@ func TestLogfmtExpressionParser(t *testing.T) {
 	}
 }
 
+func TestLogfmtExpressionParser_RenamedLabelWithGroupingHints(t *testing.T) {
+	// Reproduces metric queries that group by a renamed logfmt label, e.g.
+	// sum by (ip) (count_over_time({app="foo"} | logfmt ip=remote_addr [5m])).
+	// Grouping adds parser hints that only require the renamed identifier, so
+	// the parser must still read the original source key to remap it.
+	tests := []struct {
+		name        string
+		line        []byte
+		expressions []LabelExtractionExpr
+		groups      []string
+		want        labels.Labels
+	}{
+		{
+			name:        "renamed source is the first field",
+			line:        []byte(`remote_addr=1.2.3.4 status=200`),
+			expressions: []LabelExtractionExpr{NewLabelExtractionExpr("ip", "remote_addr")},
+			groups:      []string{"ip"},
+			want:        labels.FromStrings("ip", "1.2.3.4"),
+		},
+		{
+			name:        "renamed source follows a non-required field",
+			line:        []byte(`status=200 remote_addr=1.2.3.4`),
+			expressions: []LabelExtractionExpr{NewLabelExtractionExpr("ip", "remote_addr")},
+			groups:      []string{"ip"},
+			want:        labels.FromStrings("ip", "1.2.3.4"),
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			l, err := NewLogfmtExpressionParser(tt.expressions, false)
+			require.NoError(t, err)
+
+			hints := NewParserHint(nil, tt.groups, false, false, "", nil)
+			b := NewBaseLabelsBuilderWithGrouping(tt.groups, hints, false, false).
+				ForLabels(labels.EmptyLabels(), 0)
+			b.Reset()
+
+			_, _ = l.Process(0, tt.line, b)
+			require.Equal(t, tt.want, b.LabelsResult().Labels())
+		})
+	}
+}
+
 func TestXExpressionParserFailures(t *testing.T) {
 	tests := []struct {
 		name       string
