@@ -55,6 +55,7 @@ func CreateOrUpdateLokiStack(
 	}
 
 	gwImg := getGatewayImage(&stack)
+	operatorImg := getOperatorImage()
 
 	objStore, err := storage.BuildOptions(ctx, k, &stack, fg)
 	if err != nil {
@@ -99,6 +100,7 @@ func CreateOrUpdateLokiStack(
 		Name:                   req.Name,
 		Namespace:              req.Namespace,
 		Image:                  img,
+		OperatorImage:          operatorImg,
 		GatewayImage:           gwImg,
 		GatewayBaseDomain:      baseDomain,
 		Stack:                  stack.Spec,
@@ -273,6 +275,14 @@ func getGatewayImage(stack *lokiv1.LokiStack) string {
 		if img == "" {
 			return manifests.DefaultLokiStackGatewayImage
 		}
+	}
+	return img
+}
+
+func getOperatorImage() string {
+	img := os.Getenv(manifests.EnvRelatedImageOperator)
+	if img == "" {
+		return manifests.DefaultOperatorImage
 	}
 	return img
 }
