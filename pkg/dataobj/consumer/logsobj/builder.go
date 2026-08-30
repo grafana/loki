@@ -140,10 +140,10 @@ type BuilderConfig struct {
 // RegisterFlagsWithPrefix registers flags with the given prefix.
 func (cfg *BuilderConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	// Set defaults for base builder configuration
-	_ = cfg.TargetPageSize.Set("2MB")
-	_ = cfg.TargetObjectSize.Set("1GB")
-	_ = cfg.BufferSize.Set("16MB")
-	_ = cfg.TargetSectionSize.Set("128MB")
+	_ = cfg.TargetPageSize.Set("1MB")
+	_ = cfg.TargetObjectSize.Set("512MB") // compressed
+	_ = cfg.BufferSize.Set("128MB")
+	_ = cfg.TargetSectionSize.Set("512MB") // uncompressed
 	cfg.BuilderBaseConfig.RegisterFlagsWithPrefix(prefix, f)
 
 	f.BoolVar(&cfg.AppendOrderedEnabled, prefix+"append-ordered-enabled", true, "Skips intermediate stripe sorting and merging. Expects data to be sorted before appending.")
