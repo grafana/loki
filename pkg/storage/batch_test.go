@@ -19,6 +19,9 @@ import (
 	"github.com/grafana/loki/v3/pkg/logql"
 	"github.com/grafana/loki/v3/pkg/logql/log"
 	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
+	"github.com/grafana/loki/v3/pkg/storage/chunk"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/cache"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/fetcher"
 	"github.com/grafana/loki/v3/pkg/storage/config"
 	"github.com/grafana/loki/v3/pkg/util"
 )
@@ -1745,6 +1748,44 @@ func TestBatchCancel(t *testing.T) {
 	for it.Next() {
 	}
 	require.Equal(t, context.Canceled, it.Err())
+
+	newChunk := func(t *testing.T, client *errorChunkClient) *LazyChunk {
+		t.Helper()
+		chunkFetcher, err := fetcher.New(cache.NewNoopCache(), cache.NewNoopCache(), false, s, client, 0, 0, true)
+		require.NoError(t, err)
+		t.Cleanup(chunkFetcher.Stop)
+		return &LazyChunk{
+			Chunk: chunk.Chunk{
+				ChunkRef: logproto.ChunkRef{UserID: "user", Fingerprint: 1, From: 1, Through: 2},
+			},
+			Fetcher: chunkFetcher,
+		}
+	}
+
+	t.Run("context cancellation is not a fetch error", func(t *testing.T) {
+		require.NoError(t, fetchLazyChunks(ctx, s, []*LazyChunk{newChunk(t, &errorChunkClient{})}))
+	})
+
+	t.Run("storage error wins concurrent cancellation", func(t *testing.T) {
+		storageErr := errors.New("storage error")
+		ctx, cancel := context.WithCancel(context.Background())
+		client := &errorChunkClient{err: storageErr, beforeReturn: cancel}
+
+		require.ErrorIs(t, fetchLazyChunks(ctx, s, []*LazyChunk{newChunk(t, client)}), storageErr)
+	})
+}
+
+type errorChunkClient struct {
+	mockChunkStoreClient
+	err          error
+	beforeReturn func()
+}
+
+func (c *errorChunkClient) GetChunks(context.Context, []chunk.Chunk) ([]chunk.Chunk, error) {
+	if c.beforeReturn != nil {
+		c.beforeReturn()
+	}
+	return nil, c.err
 }
 
 var entry logproto.Entry

@@ -742,11 +742,11 @@ func fetchLazyChunks(ctx context.Context, s config.SchemaConfig, chunks []*LazyC
 				index[key] = chk
 			}
 			chks, err := fetcher.FetchChunks(ctx, chks)
-			if ctx.Err() != nil {
-				errChan <- nil
-				return
-			}
 			if err != nil {
+				if ctxErr := ctx.Err(); ctxErr != nil && errors.Is(err, ctxErr) {
+					errChan <- nil
+					return
+				}
 				level.Error(logger).Log("msg", "error fetching chunks", "err", err)
 				if isInvalidChunkError(err) {
 					level.Error(logger).Log("msg", "checksum of chunks does not match", "err", chunk.ErrInvalidChecksum)
@@ -756,6 +756,10 @@ func fetchLazyChunks(ctx context.Context, s config.SchemaConfig, chunks []*LazyC
 				errChan <- err
 				return
 
+			}
+			if ctx.Err() != nil {
+				errChan <- nil
+				return
 			}
 			// assign fetched chunk by key as FetchChunks doesn't guarantee the order.
 			for _, chk := range chks {
@@ -786,9 +790,8 @@ func fetchLazyChunks(ctx context.Context, s config.SchemaConfig, chunks []*LazyC
 }
 
 func isInvalidChunkError(err error) bool {
-	err = errors.Cause(err)
 	if err, ok := err.(promql.ErrStorage); ok {
-		return err.Err == chunk.ErrInvalidChecksum || err.Err == chunkenc.ErrInvalidChecksum
+		return errors.Is(err.Err, chunk.ErrInvalidChecksum) || errors.Is(err.Err, chunkenc.ErrInvalidChecksum)
 	}
 	return false
 }
