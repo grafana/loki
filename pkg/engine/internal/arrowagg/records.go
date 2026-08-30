@@ -3,6 +3,8 @@ package arrowagg
 import (
 	"fmt"
 	"hash/maphash"
+	"slices"
+	"strings"
 
 	"github.com/apache/arrow-go/v18/arrow"
 	"github.com/apache/arrow-go/v18/arrow/array"
@@ -13,9 +15,11 @@ import (
 // single, combined record with a combined schema.
 //
 // The returned record will have a schema composed of the union of all fields
-// from the input records. Fields will be placed in the order in which they are
-// first seen. When aggregating records, fields that do not exist in the source
-// record will be filled with null values in the output record.
+// from the input records. Fields are sorted alphabetically by name in the
+// output schema so that the ordering is deterministic regardless of the order
+// in which individual records are appended. When aggregating records, fields
+// that do not exist in the source record will be filled with null values in
+// the output record.
 type Records struct {
 	mem memory.Allocator
 
@@ -110,8 +114,7 @@ func (r *Records) AppendSlice(rec arrow.RecordBatch, i, j int64) {
 // If no records have been appended, Aggregate returns an error.
 //
 // The returned record will have a schema composed of the union of all fields
-// from the input records, sorted by the order in which each field was first
-// seen.
+// from the input records, sorted alphabetically by field name.
 //
 // Fields that do not exist in source records will be filled with null values
 // in the output record.
@@ -123,6 +126,12 @@ func (r *Records) Aggregate() (arrow.RecordBatch, error) {
 		return nil, fmt.Errorf("no records to flush")
 	}
 	defer r.Reset()
+
+	// Sort fields alphabetically so the output schema has a deterministic column
+	// ordering regardless of the order in which individual records were appended.
+	slices.SortFunc(r.fields, func(a, b arrow.Field) int {
+		return strings.Compare(a.Name, b.Name)
+	})
 
 	mapper := NewMapper(r.fields)
 	defer mapper.Reset() // Allow immediately freeing memory used by the mapper.
