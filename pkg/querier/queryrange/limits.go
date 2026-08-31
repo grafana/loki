@@ -14,7 +14,6 @@ import (
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/httpgrpc"
 	"github.com/grafana/dskit/tenant"
-	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/model/timestamp"
@@ -385,30 +384,8 @@ func (q *querySizeLimiter) getBytesForQueryAndRange(ctx context.Context, query s
 	return combinedStats.Bytes, nil
 }
 
-func (q *querySizeLimiter) getSchemaCfg(r queryrangebase.Request) (config.PeriodConfig, error) {
-	maxRVDuration, maxOffset, err := maxRangeVectorAndOffsetDurationFromQueryString(r.GetQuery())
-	if err != nil {
-		return config.PeriodConfig{}, errors.New("failed to get range-vector and offset duration: " + err.Error())
-	}
-
-	adjustedStart := int64(model.Time(r.GetStart().UnixMilli()).Add(-maxRVDuration).Add(-maxOffset))
-	adjustedEnd := int64(model.Time(r.GetEnd().UnixMilli()).Add(-maxOffset))
-
-	return ShardingConfigs(q.cfg).GetConf(adjustedStart, adjustedEnd)
-}
-
 func (q *querySizeLimiter) Do(ctx context.Context, r queryrangebase.Request) (queryrangebase.Response, error) {
 	log := spanlogger.FromContext(ctx, q.logger)
-
-	// Only support TSDB
-	schemaCfg, err := q.getSchemaCfg(r)
-	if err != nil {
-		level.Warn(log).Log("msg", "failed to get schema config, not applying querySizeLimit", "err", err)
-		return q.next.Do(ctx, r)
-	}
-	if schemaCfg.IndexType != types.IndexTypeTSDB {
-		return q.next.Do(ctx, r)
-	}
 
 	tenantIDs, err := tenant.TenantIDs(ctx)
 	if err != nil {

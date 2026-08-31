@@ -160,15 +160,6 @@ func (ast *astMapperware) Do(ctx context.Context, r queryrangebase.Request) (que
 		return nil, err
 	}
 
-	maxRVDuration, maxOffset := maxRangeVectorAndOffsetDuration(params.GetExpression())
-
-	conf, err := ast.confs.GetConf(int64(model.Time(r.GetStart().UnixMilli()).Add(-maxRVDuration).Add(-maxOffset)), int64(model.Time(r.GetEnd().UnixMilli()).Add(-maxOffset)))
-	// cannot shard with this timerange
-	if err != nil {
-		level.Warn(spLogger).Log("err", err.Error(), "msg", "skipped AST mapper for request")
-		return ast.next.Do(ctx, r)
-	}
-
 	tenants, err := tenant.TenantIDs(ctx)
 	if err != nil {
 		return nil, err
@@ -181,9 +172,8 @@ func (ast *astMapperware) Do(ctx context.Context, r queryrangebase.Request) (que
 	// will merge with the stats returned from the engine.
 	resolverStats, ctx := stats.NewContext(ctx)
 
-	resolver, ok := shardResolverForConf(
+	resolver, ok := newDynamicShardResolver(
 		ctx,
-		conf,
 		ast.ng.Opts().MaxLookBackPeriod,
 		ast.logger,
 		MinWeightedParallelism(ctx, tenants, ast.confs, ast.limits, model.Time(r.GetStart().UnixMilli()), model.Time(r.GetEnd().UnixMilli())),
@@ -419,13 +409,6 @@ type seriesShardingHandler struct {
 }
 
 func (ss *seriesShardingHandler) Do(ctx context.Context, r queryrangebase.Request) (queryrangebase.Response, error) {
-	// GetConf validates that the request fits within a single sharding config;
-	// the returned config is otherwise unused since the shard factor is fixed.
-	if _, err := ss.confs.GetConf(r.GetStart().UnixMilli(), r.GetEnd().UnixMilli()); err != nil {
-		level.Warn(ss.logger).Log("err", err.Error(), "msg", "skipped sharding for request")
-		return ss.next.Do(ctx, r)
-	}
-
 	req, ok := r.(*LokiSeriesRequest)
 	if !ok {
 		return nil, fmt.Errorf("expected *LokiSeriesRequest, got (%T)", r)
