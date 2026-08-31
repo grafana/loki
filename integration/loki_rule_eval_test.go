@@ -39,6 +39,43 @@ func TestRuleEval(t *testing.T) {
 // In this test we stub out a remote-write receiver and check that the expected data is sent to it.
 // Both the local and the remote rule evaluation modes should produce the same result.
 func testRuleEval(t *testing.T, mode string, useThanosObjstore bool) {
+	rwHandler := func(called *atomic.Bool, test func(w http.ResponseWriter, r *http.Request)) *httptest.Server {
+		return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if r.URL.Path != "/api/v1/write" {
+				t.Errorf("Expected to request '/api/v1/write', got: %s", r.URL.Path)
+			}
+
+			test(w, r)
+
+			called.Store(true)
+
+			w.WriteHeader(http.StatusOK)
+		}))
+	}
+
+	// this is the function that will be called when the remote-write receiver receives a request.
+	// it tests that the expected payload is received.
+	expectedResults := func(_ http.ResponseWriter, r *http.Request) {
+		wr, err := remote.DecodeWriteRequest(r.Body)
+		require.NoError(t, err)
+
+		// depending on the rule interval, we may get multiple timeseries before remote-write is triggered,
+		// so we just check that we have at least one that matches our requirements.
+		require.GreaterOrEqual(t, len(wr.Timeseries), 1)
+
+		// we expect to see two GET lines from the aggregation in the recording rule
+		require.Equal(t, wr.Timeseries[len(wr.Timeseries)-1].Samples[0].Value, float64(2))
+	}
+
+	var called atomic.Bool
+	server1 := rwHandler(&called, expectedResults)
+
+	// Registered before the cluster cleanup so that it runs after it (t.Cleanup runs in
+	// LIFO order): the ruler flushes its remote-write queue while stopping, and that flush
+	// needs a live receiver, or it retries against a dead connection until it hits its
+	// flush deadline.
+	t.Cleanup(server1.Close)
+
 	clu := cluster.New(nil, cluster.SchemaWithTSDB, func(c *cluster.Cluster) {
 		c.SetSchemaVer("v13")
 	})
@@ -120,38 +157,6 @@ func testRuleEval(t *testing.T, mode string, useThanosObjstore bool) {
 		"-common.compactor-address="+tCompactor.HTTPURL(),
 		fmt.Sprintf("-use-thanos-objstore=%v", useThanosObjstore),
 	)
-
-	rwHandler := func(called *atomic.Bool, test func(w http.ResponseWriter, r *http.Request)) *httptest.Server {
-		return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			if r.URL.Path != "/api/v1/write" {
-				t.Errorf("Expected to request '/api/v1/write', got: %s", r.URL.Path)
-			}
-
-			test(w, r)
-
-			called.Store(true)
-
-			w.WriteHeader(http.StatusOK)
-		}))
-	}
-
-	// this is the function that will be called when the remote-write receiver receives a request.
-	// it tests that the expected payload is received.
-	expectedResults := func(_ http.ResponseWriter, r *http.Request) {
-		wr, err := remote.DecodeWriteRequest(r.Body)
-		require.NoError(t, err)
-
-		// depending on the rule interval, we may get multiple timeseries before remote-write is triggered,
-		// so we just check that we have at least one that matches our requirements.
-		require.GreaterOrEqual(t, len(wr.Timeseries), 1)
-
-		// we expect to see two GET lines from the aggregation in the recording rule
-		require.Equal(t, wr.Timeseries[len(wr.Timeseries)-1].Samples[0].Value, float64(2))
-	}
-
-	var called atomic.Bool
-	server1 := rwHandler(&called, expectedResults)
-	defer server1.Close()
 
 	tRuler.WithRulerRemoteWrite("target1", server1.URL)
 
