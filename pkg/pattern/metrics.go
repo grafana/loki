@@ -1,6 +1,7 @@
 package pattern
 
 import (
+	"github.com/grafana/dskit/instrument"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 )
@@ -13,6 +14,9 @@ type ingesterMetrics struct {
 	tokensPerLine          *prometheus.HistogramVec
 	statePerLine           *prometheus.HistogramVec
 	metricSamples          *prometheus.CounterVec
+	ingesterAppends        *prometheus.CounterVec
+	ingesterMetricAppends  *prometheus.CounterVec
+	sendDuration           *instrument.HistogramCollector
 }
 
 func newIngesterMetrics(r prometheus.Registerer, metricsNamespace string) *ingesterMetrics {
@@ -61,6 +65,29 @@ func newIngesterMetrics(r prometheus.Registerer, metricsNamespace string) *inges
 			Name:      "metric_samples",
 			Help:      "The total number of metric samples created to write back to Loki.",
 		}, []string{"tenant"}),
+		ingesterAppends: promauto.With(r).NewCounterVec(prometheus.CounterOpts{
+			Namespace: metricsNamespace,
+			Subsystem: "pattern_ingester",
+			Name:      "kafka_appends_total",
+			Help:      "The total number of batch appends sent to pattern ingesters.",
+		}, []string{"ingester", "status"}),
+		ingesterMetricAppends: promauto.With(r).NewCounterVec(prometheus.CounterOpts{
+			Namespace: metricsNamespace,
+			Subsystem: "pattern_ingester",
+			Name:      "kafka_metric_appends_total",
+			Help:      "The total number of metric only batch appends sent to pattern ingesters. These requests will not be processed for patterns.",
+		}, []string{"status"}),
+		sendDuration: instrument.NewHistogramCollector(
+			promauto.With(r).NewHistogramVec(
+				prometheus.HistogramOpts{
+					Namespace: metricsNamespace,
+					Subsystem: "pattern_ingester",
+					Name:      "kafka_send_duration_seconds",
+					Help:      "Time spent forwarding batches from Kafka to the pattern ingester",
+					Buckets:   prometheus.DefBuckets,
+				}, instrument.HistogramCollectorBuckets,
+			),
+		),
 	}
 }
 
