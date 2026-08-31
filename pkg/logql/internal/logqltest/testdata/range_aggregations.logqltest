@@ -807,13 +807,14 @@ eval instant at 270s rate(({app=~"foo|bar"} |~".+bar" | unwrap bar)[1m])
 eval range from 60s to 270s step 30s rate(({app=~"foo|bar"} |~".+bar" | unwrap bar)[1m]) # overlapping
   {app="foo"} 0.3 0.3 0.3 0.3 0.3 0.15 _ _
   {app="bar"} 0.6 0.6 0.6 0.6 0.6 0.3 _ _
-# The offset shifts the window back.
-eval instant at 150s rate(({app=~"foo|bar"} |~".+bar" | unwrap bar)[20s] offset 90s)
+# The offset shifts the window back: at 210s the un-offset window would already be empty
+# (windows past 180s are empty, per above), but shifted back 90s it still lands on data.
+eval instant at 210s rate(({app=~"foo|bar"} |~".+bar" | unwrap bar)[20s] offset 90s)
   {app="foo"} 0.3
   {app="bar"} 0.6
-eval range from 60s to 150s step 30s rate(({app=~"foo|bar"} |~".+bar" | unwrap bar)[20s] offset 90s)
-  {app="foo"} _ 0.15 0.3 0.3
-  {app="bar"} _ 0.3 0.6 0.6
+eval range from 60s to 210s step 30s rate(({app=~"foo|bar"} |~".+bar" | unwrap bar)[20s] offset 90s)
+  {app="foo"} _ 0.15 0.3 0.3 0.3 0.3
+  {app="bar"} _ 0.3 0.6 0.6 0.6 0.6
 # rate() doesn't allow grouping, with or without unwrap.
 eval instant at 120s rate(({app=~"foo|bar"} |~".+bar" | unwrap bar)[1m]) by (app)
   expect fail msg: grouping not allowed for rate aggregation
