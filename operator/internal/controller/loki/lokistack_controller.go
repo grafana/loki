@@ -345,7 +345,7 @@ func (r *LokiStackReconciler) enqueueForSecret() handler.EventHandler {
 
 		var requests []reconcile.Request
 		for _, stack := range lokiStacks.Items {
-			if obj.GetNamespace() != stack.Namespace || !(obj.GetName() == stack.Spec.Storage.Secret.Name || stackReferencesSecret(&stack, obj.GetName())) {
+			if obj.GetNamespace() != stack.Namespace || (obj.GetName() != stack.Spec.Storage.Secret.Name && !stackReferencesSecret(&stack, obj.GetName())) {
 				continue
 			}
 
