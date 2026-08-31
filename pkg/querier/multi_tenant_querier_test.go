@@ -21,7 +21,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
-	"github.com/grafana/loki/v3/pkg/querier/plan"
+	"github.com/grafana/loki/v3/pkg/querier/testutil"
 )
 
 func TestMultiTenantQuerier_SelectLogs(t *testing.T) {
@@ -89,9 +89,7 @@ func TestMultiTenantQuerier_SelectLogs(t *testing.T) {
 				Shards:    nil,
 				Start:     time.Unix(0, 1),
 				End:       time.Unix(0, time.Now().UnixNano()),
-				Plan: &plan.QueryPlan{
-					AST: syntax.MustParseExpr(tc.selector),
-				},
+				Plan:      testutil.MustPlan(tc.selector),
 			}}
 			iter, err := multiTenantQuerier.SelectLogs(ctx, params)
 			require.NoError(t, err)
@@ -161,9 +159,7 @@ func TestMultiTenantQuerier_SelectSamples(t *testing.T) {
 			ctx := user.InjectOrgID(context.Background(), tc.orgID)
 			params := logql.SelectSampleParams{SampleQueryRequest: &logproto.SampleQueryRequest{
 				Selector: tc.selector,
-				Plan: &plan.QueryPlan{
-					AST: syntax.MustParseExpr(tc.selector),
-				},
+				Plan:     testutil.MustPlan(tc.selector),
 			}}
 			iter, err := multiTenantQuerier.SelectSamples(ctx, params)
 			require.NoError(t, err)
@@ -194,9 +190,7 @@ func TestMultiTenantQuerier_TenantFilter(t *testing.T) {
 		t.Run(tc.selector, func(t *testing.T) {
 			params := logql.SelectSampleParams{SampleQueryRequest: &logproto.SampleQueryRequest{
 				Selector: tc.selector,
-				Plan: &plan.QueryPlan{
-					AST: syntax.MustParseExpr(tc.selector),
-				},
+				Plan:     testutil.MustPlan(tc.selector),
 			}}
 			_, updatedSelector, err := removeTenantSelector(params, []string{})
 			require.NoError(t, err)
