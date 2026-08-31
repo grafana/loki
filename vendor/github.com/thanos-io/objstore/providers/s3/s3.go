@@ -458,7 +458,7 @@ func (b *Bucket) Iter(ctx context.Context, dir string, f func(string) error, opt
 	}, filteredOpts...)
 }
 
-func (b *Bucket) getRange(ctx context.Context, name string, off, length int64) (*minio.Object, error) {
+func (b *Bucket) getRange(ctx context.Context, name string, off, length int64) (io.ReadCloser, error) {
 	sse, err := b.getServerSideEncryption(ctx)
 	if err != nil {
 		return nil, err
@@ -488,52 +488,39 @@ func (b *Bucket) getRange(ctx context.Context, name string, off, length int64) (
 		return nil, err
 	}
 
-	return r, nil
+	return objstore.ObjectSizerReadCloser{
+		ReadCloser: r,
+		Size: func() (int64, error) {
+			stat, err := r.Stat()
+			if err != nil {
+				return 0, err
+			}
+
+			return stat.Size, nil
+		},
+	}, nil
 }
 
 // Get returns a reader for the given object name.
 func (b *Bucket) Get(ctx context.Context, name string) (io.ReadCloser, error) {
-	r, err := b.getRange(ctx, name, 0, -1)
-	if err != nil {
-		return r, err
-	}
-
-	return objstore.ObjectSizerReadCloser{
-		ReadCloser: r,
-		Size: func() (int64, error) {
-			stat, err := r.Stat()
-			if err != nil {
-				return 0, err
-			}
-
-			return stat.Size, nil
-		},
-	}, nil
+	return b.getRange(ctx, name, 0, -1)
 }
 
 // GetRange returns a new range reader for the given object name and range.
 func (b *Bucket) GetRange(ctx context.Context, name string, off, length int64) (io.ReadCloser, error) {
-	r, err := b.getRange(ctx, name, off, length)
-	if err != nil {
-		return r, err
-	}
-
-	return objstore.ObjectSizerReadCloser{
-		ReadCloser: r,
-		Size: func() (int64, error) {
-			stat, err := r.Stat()
-			if err != nil {
-				return 0, err
-			}
-
-			return stat.Size, nil
-		},
-	}, nil
+	return b.getRange(ctx, name, off, length)
 }
 
 // Exists checks if the given object exists.
 func (b *Bucket) Exists(ctx context.Context, name string) (bool, error) {
-	_, err := b.client.StatObject(ctx, b.name, name, minio.StatObjectOptions{})
+	sse, err := b.getServerSideEncryption(ctx)
+	if err != nil {
+		return false, err
+	}
+
+	_, err = b.client.StatObject(ctx, b.name, name, minio.StatObjectOptions{
+		ServerSideEncryption: sse,
+	})
 	if err != nil {
 		if b.IsObjNotFoundErr(err) {
 			return false, nil
@@ -546,10 +533,6 @@ func (b *Bucket) Exists(ctx context.Context, name string) (bool, error) {
 
 // Upload the contents of the reader as an object into the bucket.
 func (b *Bucket) Upload(ctx context.Context, name string, r io.Reader) error {
-	return b.upload(ctx, name, r, "", false)
-}
-
-func (b *Bucket) upload(ctx context.Context, name string, r io.Reader, etag string, requireNewObject bool) error {
 	sse, err := b.getServerSideEncryption(ctx)
 	if err != nil {
 		return err
@@ -573,33 +556,24 @@ func (b *Bucket) upload(ctx context.Context, name string, r io.Reader, etag stri
 		userMetadata[k] = v
 	}
 
-	putOpts := minio.PutObjectOptions{
-		DisableMultipart:     b.disableMultipart,
-		PartSize:             partSize,
-		ServerSideEncryption: sse,
-		UserMetadata:         userMetadata,
-		StorageClass:         b.storageClass,
-		SendContentMd5:       b.sendContentMd5,
-		// 4 is what minio-go have as the default. To be certain we do micro benchmark before any changes we
-		// ensure we pin this number to four.
-		// TODO(bwplotka): Consider adjusting this number to GOMAXPROCS or to expose this in config if it becomes bottleneck.
-		NumThreads: 4,
-	}
-	if etag != "" {
-		if requireNewObject {
-			putOpts.SetMatchETagExcept(etag)
-		} else {
-			putOpts.SetMatchETag(etag)
-		}
-	}
-
 	if _, err := b.client.PutObject(
 		ctx,
 		b.name,
 		name,
 		r,
 		size,
-		putOpts,
+		minio.PutObjectOptions{
+			DisableMultipart:     b.disableMultipart,
+			PartSize:             partSize,
+			ServerSideEncryption: sse,
+			UserMetadata:         userMetadata,
+			StorageClass:         b.storageClass,
+			SendContentMd5:       b.sendContentMd5,
+			// 4 is what minio-go have as the default. To be certain we do micro benchmark before any changes we
+			// ensure we pin this number to four.
+			// TODO(bwplotka): Consider adjusting this number to GOMAXPROCS or to expose this in config if it becomes bottleneck.
+			NumThreads: 4,
+		},
 	); err != nil {
 		return errors.Wrap(err, "upload s3 object")
 	}
@@ -607,41 +581,16 @@ func (b *Bucket) upload(ctx context.Context, name string, r io.Reader, etag stri
 	return nil
 }
 
-// Upload the contents of the reader as an object into the bucket.
-func (b *Bucket) GetAndReplace(ctx context.Context, name string, f func(io.ReadCloser) (io.ReadCloser, error)) error {
-	// We use rc for our callback instead of passing originalContent directly,
-	// since passing a concrete type directly will always be detected as
-	// non-nil, due to the way Go converts concrete types to interfaces.
-	var rc io.ReadCloser
-
-	var etag string
-
-	originalContent, err := b.getRange(ctx, name, 0, -1)
-	if err != nil && !b.IsObjNotFoundErr(err) {
-		return err
-	} else if originalContent != nil {
-		stats, err := originalContent.Stat()
-		if err != nil {
-			return err
-		}
-		rc = originalContent
-		etag = stats.ETag
-	}
-
-	// Call work function to get a new version of the file
-	newContent, err := f(rc)
-	if err != nil {
-		return err
-	} else if newContent != nil {
-		defer newContent.Close()
-	}
-
-	return b.upload(ctx, name, newContent, etag, originalContent == nil)
-}
-
 // Attributes returns information about the specified object.
 func (b *Bucket) Attributes(ctx context.Context, name string) (objstore.ObjectAttributes, error) {
-	objInfo, err := b.client.StatObject(ctx, b.name, name, minio.StatObjectOptions{})
+	sse, err := b.getServerSideEncryption(ctx)
+	if err != nil {
+		return objstore.ObjectAttributes{}, err
+	}
+
+	objInfo, err := b.client.StatObject(ctx, b.name, name, minio.StatObjectOptions{
+		ServerSideEncryption: sse,
+	})
 	if err != nil {
 		return objstore.ObjectAttributes{}, err
 	}

@@ -426,7 +426,3 @@ func (b *Bucket) IsAccessDeniedErr(err error) bool {
 	}
 	return false
 }
-
-func (b *Bucket) GetAndReplace(ctx context.Context, name string, f func(io.ReadCloser) (io.ReadCloser, error)) error {
-	panic("unimplemented: OSS.GetAndReplace")
-}
