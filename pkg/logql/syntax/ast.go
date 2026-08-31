@@ -1126,7 +1126,39 @@ func mustNewNumericLabelFilter(t log.LabelFilterType, name string, lit *LiteralE
 	if err != nil {
 		panic(err)
 	}
-	return log.NewNumericLabelFilter(t, name, v)
+	f := log.NewNumericLabelFilter(t, name, v)
+	mustNotCompareReservedErrorLabel(name, f)
+	return f
+}
+
+func mustNewDurationLabelFilter(t log.LabelFilterType, name string, d time.Duration) log.LabelFilterer {
+	f := log.NewDurationLabelFilter(t, name, d)
+	mustNotCompareReservedErrorLabel(name, f)
+	return f
+}
+
+func mustNewBytesLabelFilter(t log.LabelFilterType, name string, b uint64) log.LabelFilterer {
+	f := log.NewBytesLabelFilter(t, name, b)
+	mustNotCompareReservedErrorLabel(name, f)
+	return f
+}
+
+func mustNewIPLabelFilter(pattern, name string, t log.LabelFilterType) log.LabelFilterer {
+	f := log.NewIPLabelFilter(pattern, name, t)
+	mustNotCompareReservedErrorLabel(name, f)
+	return f
+}
+
+// mustNotCompareReservedErrorLabel panics if name is __error__ or
+// __error_details__.
+func mustNotCompareReservedErrorLabel(name string, filter fmt.Stringer) {
+	if name != logqlmodel.ErrorLabel && name != logqlmodel.ErrorDetailsLabel {
+		return
+	}
+	panic(logqlmodel.NewParseError(fmt.Sprintf(
+		"%s is a string label and cannot be compared with %s; use a string comparison instead, for example %s=\"\" or %s!=\"\"",
+		name, filter.String(), name, name,
+	), 0, 0))
 }
 
 type UnwrapExpr struct {

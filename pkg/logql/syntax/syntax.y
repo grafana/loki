@@ -318,8 +318,8 @@ labelExtractionExpressionList:
   ;
 
 ipLabelFilter:
-    IDENTIFIER EQ IP OPEN_PARENTHESIS STRING CLOSE_PARENTHESIS { $$ = log.NewIPLabelFilter($5, $1,log.LabelFilterEqual) }
-  | IDENTIFIER NEQ IP OPEN_PARENTHESIS STRING CLOSE_PARENTHESIS { $$ = log.NewIPLabelFilter($5, $1, log.LabelFilterNotEqual) }
+    IDENTIFIER EQ IP OPEN_PARENTHESIS STRING CLOSE_PARENTHESIS { $$ = mustNewIPLabelFilter($5, $1, log.LabelFilterEqual) }
+  | IDENTIFIER NEQ IP OPEN_PARENTHESIS STRING CLOSE_PARENTHESIS { $$ = mustNewIPLabelFilter($5, $1, log.LabelFilterNotEqual) }
   ;
 
 unitFilter:
@@ -327,23 +327,23 @@ unitFilter:
     | bytesFilter    { $$ = $1 }
 
 durationFilter:
-      IDENTIFIER GT DURATION      { $$ = log.NewDurationLabelFilter(log.LabelFilterGreaterThan, $1, $3) }
-    | IDENTIFIER GTE DURATION     { $$ = log.NewDurationLabelFilter(log.LabelFilterGreaterThanOrEqual, $1, $3) }
-    | IDENTIFIER LT DURATION      { $$ = log.NewDurationLabelFilter(log.LabelFilterLesserThan, $1, $3) }
-    | IDENTIFIER LTE DURATION     { $$ = log.NewDurationLabelFilter(log.LabelFilterLesserThanOrEqual, $1, $3) }
-    | IDENTIFIER NEQ DURATION     { $$ = log.NewDurationLabelFilter(log.LabelFilterNotEqual, $1, $3) }
-    | IDENTIFIER EQ DURATION      { $$ = log.NewDurationLabelFilter(log.LabelFilterEqual, $1, $3) }
-    | IDENTIFIER CMP_EQ DURATION  { $$ = log.NewDurationLabelFilter(log.LabelFilterEqual, $1, $3) }
+      IDENTIFIER GT DURATION      { $$ = mustNewDurationLabelFilter(log.LabelFilterGreaterThan, $1, $3) }
+    | IDENTIFIER GTE DURATION     { $$ = mustNewDurationLabelFilter(log.LabelFilterGreaterThanOrEqual, $1, $3) }
+    | IDENTIFIER LT DURATION      { $$ = mustNewDurationLabelFilter(log.LabelFilterLesserThan, $1, $3) }
+    | IDENTIFIER LTE DURATION     { $$ = mustNewDurationLabelFilter(log.LabelFilterLesserThanOrEqual, $1, $3) }
+    | IDENTIFIER NEQ DURATION     { $$ = mustNewDurationLabelFilter(log.LabelFilterNotEqual, $1, $3) }
+    | IDENTIFIER EQ DURATION      { $$ = mustNewDurationLabelFilter(log.LabelFilterEqual, $1, $3) }
+    | IDENTIFIER CMP_EQ DURATION  { $$ = mustNewDurationLabelFilter(log.LabelFilterEqual, $1, $3) }
     ;
 
 bytesFilter:
-      IDENTIFIER GT BYTES     { $$ = log.NewBytesLabelFilter(log.LabelFilterGreaterThan, $1, $3) }
-    | IDENTIFIER GTE BYTES    { $$ = log.NewBytesLabelFilter(log.LabelFilterGreaterThanOrEqual, $1, $3) }
-    | IDENTIFIER LT BYTES     { $$ = log.NewBytesLabelFilter(log.LabelFilterLesserThan, $1, $3) }
-    | IDENTIFIER LTE BYTES    { $$ = log.NewBytesLabelFilter(log.LabelFilterLesserThanOrEqual, $1, $3) }
-    | IDENTIFIER NEQ BYTES    { $$ = log.NewBytesLabelFilter(log.LabelFilterNotEqual, $1, $3) }
-    | IDENTIFIER EQ BYTES     { $$ = log.NewBytesLabelFilter(log.LabelFilterEqual, $1, $3) }
-    | IDENTIFIER CMP_EQ BYTES { $$ = log.NewBytesLabelFilter(log.LabelFilterEqual, $1, $3) }
+      IDENTIFIER GT BYTES     { $$ = mustNewBytesLabelFilter(log.LabelFilterGreaterThan, $1, $3) }
+    | IDENTIFIER GTE BYTES    { $$ = mustNewBytesLabelFilter(log.LabelFilterGreaterThanOrEqual, $1, $3) }
+    | IDENTIFIER LT BYTES     { $$ = mustNewBytesLabelFilter(log.LabelFilterLesserThan, $1, $3) }
+    | IDENTIFIER LTE BYTES    { $$ = mustNewBytesLabelFilter(log.LabelFilterLesserThanOrEqual, $1, $3) }
+    | IDENTIFIER NEQ BYTES    { $$ = mustNewBytesLabelFilter(log.LabelFilterNotEqual, $1, $3) }
+    | IDENTIFIER EQ BYTES     { $$ = mustNewBytesLabelFilter(log.LabelFilterEqual, $1, $3) }
+    | IDENTIFIER CMP_EQ BYTES { $$ = mustNewBytesLabelFilter(log.LabelFilterEqual, $1, $3) }
     ;
 
 numberFilter:
