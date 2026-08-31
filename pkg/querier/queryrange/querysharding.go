@@ -31,8 +31,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/util/validation"
 )
 
-var errInvalidShardingRange = errors.New("Query does not fit in a single sharding configuration")
-
 // NewQueryShardMiddleware creates a middleware which downstreams queries after AST mapping and query encoding.
 func NewQueryShardMiddleware(
 	logger log.Logger,
@@ -359,35 +357,23 @@ func hasShards(confs ShardingConfigs) bool {
 // ShardingConfigs is a slice of chunk shard configs
 type ShardingConfigs []config.PeriodConfig
 
-// ValidRange extracts a non-overlapping sharding configuration from a list of configs and a time range.
-func (confs ShardingConfigs) ValidRange(start, end int64) (config.PeriodConfig, error) {
-	for i, conf := range confs {
-		if start < int64(conf.From.Time) {
-			// the query starts before this config's range
-			return config.PeriodConfig{}, errInvalidShardingRange
-		} else if i == len(confs)-1 {
-			// the last configuration has no upper bound
-			return conf, nil
-		} else if end < int64(confs[i+1].From.Time) {
-			// The request is entirely scoped into this shard config
-			return conf, nil
-		}
-
-		continue
-	}
-
-	return config.PeriodConfig{}, errInvalidShardingRange
-}
-
-// GetConf will extract a shardable config corresponding to a request and the shardingconfigs
+// GetConf returns the period config that covers the end of the query range.
+// Since TSDB is the only supported index type and sharding is resolved
+// dynamically, queries may span multiple schema_config periods.
 func (confs ShardingConfigs) GetConf(start, end int64) (config.PeriodConfig, error) {
-	conf, err := confs.ValidRange(start, end)
-	// query exists across multiple sharding configs
-	if err != nil {
-		return conf, err
+	if len(confs) == 0 {
+		return config.PeriodConfig{}, errors.New("no schema configs defined")
 	}
-
-	return conf, nil
+	// Return the config that covers the end of the query range. Walk backwards
+	// to find the first config whose From <= end.
+	for i := len(confs) - 1; i >= 0; i-- {
+		if int64(confs[i].From.Time) <= end {
+			return confs[i], nil
+		}
+	}
+	// Query ends before the first config; return the first config and let
+	// downstream code handle the edge case.
+	return confs[0], nil
 }
 
 // NewSeriesQueryShardMiddleware creates a middleware which shards series queries.

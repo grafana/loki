@@ -700,6 +700,8 @@ func TestShardingAcrossConfigs_ASTMapper(t *testing.T) {
 			},
 			numExpectedShards: 2,
 		},
+		// Queries covering both schemas are now sharded since TSDB is the
+		// only supported index type and sharding is resolved dynamically.
 		{
 			name: "logs query covering both schemas",
 			req:  defaultReq().WithStartEnd(confs[0].From.Time.Time(), now.Time()).WithQuery(`{foo="bar"}`),
@@ -709,7 +711,7 @@ func TestShardingAcrossConfigs_ASTMapper(t *testing.T) {
 					{Name: "Header", Values: []string{"value"}},
 				},
 			},
-			numExpectedShards: 1,
+			numExpectedShards: 2,
 		},
 		{
 			name: "metric query covering both schemas",
@@ -726,11 +728,11 @@ func TestShardingAcrossConfigs_ASTMapper(t *testing.T) {
 					},
 				},
 			},
-			numExpectedShards: 1,
+			numExpectedShards: 2,
 		},
 		{
 			name: "metric query with start/end within first schema but with large enough range to cover previous schema too",
-			req:  defaultReq().WithStartEnd(confs[1].From.Time.Add(5*time.Minute).Time(), confs[1].From.Time.Add(time.Hour).Time()).WithQuery(`rate({foo="bar"}[24h])`),
+			req:  defaultReq().WithStartEnd(confs[1].From.Time.Add(5*time.Minute).Time(), confs[1].From.Time.Add(time.Hour).Time()).WithQuery(`rate({foo="bar"}[30m])`),
 			resp: &LokiPromResponse{
 				Response: &queryrangebase.PrometheusResponse{
 					Status: loghttp.QueryStatusSuccess,
@@ -743,7 +745,7 @@ func TestShardingAcrossConfigs_ASTMapper(t *testing.T) {
 					},
 				},
 			},
-			numExpectedShards: 1,
+			numExpectedShards: 2,
 		},
 		{
 			name: "metric query with start/end within first schema but with large enough offset to shift it to previous schema",
@@ -760,7 +762,7 @@ func TestShardingAcrossConfigs_ASTMapper(t *testing.T) {
 					},
 				},
 			},
-			numExpectedShards: 1,
+			numExpectedShards: 2,
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -776,8 +778,7 @@ func TestShardingAcrossConfigs_ASTMapper(t *testing.T) {
 
 			// TSDB is the only index type; sharding is resolved dynamically from
 			// index stats. Return a large byte count and cap the factor via
-			// maxShards so queries scoped to a single schema deterministically
-			// shard into 2, while queries spanning both schemas are not sharded.
+			// maxShards so all queries deterministically shard into 2.
 			statsHandler := queryrangebase.HandlerFunc(func(_ context.Context, _ queryrangebase.Request) (queryrangebase.Response, error) {
 				return &IndexStatsResponse{
 					Response: &logproto.IndexStatsResponse{Bytes: 1 << 40},
@@ -854,6 +855,8 @@ func TestShardingAcrossConfigs_SeriesSharding(t *testing.T) {
 			},
 			numExpectedShards: 16,
 		},
+		// Queries covering both schemas are now sharded since TSDB is the
+		// only supported index type.
 		{
 			name: "series query covering both schemas",
 			req: &LokiSeriesRequest{
@@ -861,7 +864,7 @@ func TestShardingAcrossConfigs_SeriesSharding(t *testing.T) {
 				StartTs: confs[0].From.Time.Time(),
 				EndTs:   now.Time(),
 				Path:    "foo",
-			}, numExpectedShards: 1,
+			}, numExpectedShards: 16,
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

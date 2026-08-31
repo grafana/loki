@@ -394,7 +394,7 @@ func (q *querySizeLimiter) getSchemaCfg(r queryrangebase.Request) (config.Period
 	adjustedStart := int64(model.Time(r.GetStart().UnixMilli()).Add(-maxRVDuration).Add(-maxOffset))
 	adjustedEnd := int64(model.Time(r.GetEnd().UnixMilli()).Add(-maxOffset))
 
-	return ShardingConfigs(q.cfg).ValidRange(adjustedStart, adjustedEnd)
+	return ShardingConfigs(q.cfg).GetConf(adjustedStart, adjustedEnd)
 }
 
 func (q *querySizeLimiter) Do(ctx context.Context, r queryrangebase.Request) (queryrangebase.Response, error) {
