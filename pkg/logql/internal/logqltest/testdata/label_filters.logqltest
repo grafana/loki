@@ -1069,18 +1069,18 @@ eval instant at 60s count_over_time({app="a"} | logfmt | took > 1s | __error__!=
 # parse time.
 eval instant at 60s count_over_time({app="a"} | logfmt | took > 1s | __error__ > 0 [1m])
   expect fail msg: __error__ is a string label and cannot be compared with __error__>0
-eval instant at 60s count_over_time({app="a"} | logfmt | took > 1s | __error__ >= 0 [1m])
-  expect fail msg: __error__ is a string label and cannot be compared with __error__>=0
-eval instant at 60s count_over_time({app="a"} | logfmt | took > 1s | __error__ < 1 [1m])
-  expect fail msg: __error__ is a string label and cannot be compared with __error__<1
-eval instant at 60s count_over_time({app="a"} | logfmt | took > 1s | __error__ <= 1 [1m])
-  expect fail msg: __error__ is a string label and cannot be compared with __error__<=1
 eval instant at 60s count_over_time({app="a"} | logfmt | took > 1s | __error__ != 0 [1m])
   expect fail msg: __error__ is a string label and cannot be compared with __error__!=0
-eval instant at 60s count_over_time({app="a"} | logfmt | took > 1s | __error__ == 0 [1m])
-  expect fail msg: __error__ is a string label and cannot be compared with __error__==0
+eval instant at 60s count_over_time({app="a"} | logfmt | took > 1s | __error__ > 1s [1m])
+  expect fail msg: __error__ is a string label and cannot be compared with __error__>1s
 eval instant at 60s count_over_time({app="a"} | logfmt | took > 1s | __error_details__ > 0 [1m])
   expect fail msg: __error_details__ is a string label and cannot be compared with __error_details__>0
+eval instant at 60s count_over_time({app="a"} | logfmt | took > 1s | __error_details__ != 1s [1m])
+  expect fail msg: __error_details__ is a string label and cannot be compared with __error_details__!=1s
+# The check applies wherever the filter appears, including combined with
+# another filter via "and".
+eval instant at 60s count_over_time({app="a"} | logfmt | took > 1s and __error__ > 0 [1m])
+  expect fail msg: __error__ is a string label and cannot be compared with __error__>0
 # The ip() filter is a converting comparison too and is rejected the same way.
 eval instant at 60s count_over_time({app="a"} | logfmt | took > 1s | __error__ = ip("127.0.0.1") [1m])
   expect fail msg: __error__ is a string label and cannot be compared with __error__=ip("127.0.0.1")

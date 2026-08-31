@@ -9,7 +9,6 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 	promql_parser "github.com/prometheus/prometheus/promql/parser"
 
-	"github.com/grafana/loki/v3/pkg/logql/log"
 	"github.com/grafana/loki/v3/pkg/logqlmodel"
 	"github.com/grafana/loki/v3/pkg/util"
 )
@@ -235,9 +234,6 @@ func validateSampleExpr(expr SampleExpr) error {
 }
 
 func validateSampleSelector(expr SampleExpr) error {
-	if err := validateUnwrapPostFilters(expr); err != nil {
-		return err
-	}
 	selector, err := expr.Selector()
 	if err != nil {
 		return err
@@ -245,103 +241,13 @@ func validateSampleSelector(expr SampleExpr) error {
 	return validateLogSelectorExpression(selector)
 }
 
-// validateUnwrapPostFilters validates the label filters placed after
-// "unwrap".
-func validateUnwrapPostFilters(expr SampleExpr) error {
-	var r *LogRangeExpr
-
-	// Every SampleExpr implementation has its own case here, so a new one that
-	// wraps a LogRangeExpr is never silently skipped.
-	//
-	// A new implementation falls into default below instead, which fails
-	// until someone decides whether it can wrap unwrap post-filters.
-	switch e := expr.(type) {
-	case *RangeAggregationExpr:
-		r = e.Left
-	case *LabelAggregationExpr:
-		r = e.Left
-	case *CountDistinctSketchExpr:
-		r = e.Left
-	case *BinOpExpr, *VectorAggregationExpr, *LabelReplaceExpr, *LiteralExpr, *VectorExpr:
-		return nil
-	default:
-		return logqlmodel.NewParseError(fmt.Sprintf("unknown sample expr: %T", expr), 0, 0)
-	}
-	if r == nil || r.Unwrap == nil {
-		return nil
-	}
-	for _, f := range r.Unwrap.PostFilters {
-		if err := validateLabelFilterer(f); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
 func validateLogSelectorExpression(expr LogSelectorExpr) error {
 	switch e := expr.(type) {
 	case *VectorExpr:
 		return nil
 	default:
-		if err := validateMatchers(e.Matchers()); err != nil {
-			return err
-		}
-		return validateLabelFilters(e)
+		return validateMatchers(e.Matchers())
 	}
-}
-
-// validateLabelFilters returns the first invalid label filter error found
-// in expr, or nil if expr has none.
-func validateLabelFilters(expr Expr) error {
-	var err error
-	visitor := &DepthFirstTraversal{
-		VisitLabelFilterFn: func(_ RootVisitor, e *LabelFilterExpr) {
-			if err == nil {
-				err = validateLabelFilterer(e.LabelFilterer)
-			}
-		},
-	}
-	expr.Accept(visitor)
-	return err
-}
-
-func validateLabelFilterer(f log.LabelFilterer) error {
-	// Every log.LabelFilterer implementation has its own case here, so a
-	// new implementation is never silently accepted.
-	//
-	// A new implementation falls into default below instead, which fails
-	// until someone decides whether it can read __error__ and __error_details__.
-	switch lf := f.(type) {
-	case *log.BinaryLabelFilter:
-		if err := validateLabelFilterer(lf.Left); err != nil {
-			return err
-		}
-		return validateLabelFilterer(lf.Right)
-	case *log.NumericLabelFilter:
-		return validateNotReservedErrorLabelFilter(lf.Name, lf)
-	case *log.DurationLabelFilter:
-		return validateNotReservedErrorLabelFilter(lf.Name, lf)
-	case *log.BytesLabelFilter:
-		return validateNotReservedErrorLabelFilter(lf.Name, lf)
-	case *log.IPLabelFilter:
-		return validateNotReservedErrorLabelFilter(lf.Label, lf)
-	case *log.StringLabelFilter, *log.LineFilterLabelFilter, *log.NoopLabelFilter:
-		return nil
-	default:
-		return logqlmodel.NewParseError(fmt.Sprintf("unknown label filterer: %T", f), 0, 0)
-	}
-}
-
-// validateNotReservedErrorLabelFilter rejects filter if name is __error__ or
-// __error_details__.
-func validateNotReservedErrorLabelFilter(name string, filter fmt.Stringer) error {
-	if name != logqlmodel.ErrorLabel && name != logqlmodel.ErrorDetailsLabel {
-		return nil
-	}
-	return logqlmodel.NewParseError(fmt.Sprintf(
-		"%s is a string label and cannot be compared with %s; use a string comparison instead, for example %s=\"\" or %s!=\"\"",
-		name, filter.String(), name, name,
-	), 0, 0)
 }
 
 // validateSortGrouping prevent by|without groupings on sort operations.
