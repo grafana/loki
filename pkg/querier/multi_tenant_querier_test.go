@@ -192,7 +192,7 @@ func TestMultiTenantQuerier_TenantFilter(t *testing.T) {
 				Selector: tc.selector,
 				Plan:     testutil.MustPlan(tc.selector),
 			}}
-			_, updatedSelector, err := removeTenantSelector(params, []string{})
+			_, _, updatedSelector, err := removeTenantSelector(params, []string{})
 			require.NoError(t, err)
 			require.Equal(t, removeWhiteSpace(tc.expected), removeWhiteSpace(updatedSelector.String()))
 		})
@@ -699,6 +699,66 @@ func TestMultiTenantQuerier_DetectedLabels(t *testing.T) {
 				// Allow for some error in cardinality estimation due to HyperLogLog approximation
 				require.InDelta(t, tc.expected[i].Cardinality, resp.DetectedLabels[i].Cardinality, float64(tc.expected[i].Cardinality)*0.02)
 			}
+		})
+	}
+}
+
+// TestSelectLogs_TenantIDOnlySelector verifies that SelectLogs validates the
+// rewritten selector after __tenant_id__ matchers are stripped. A query left
+// with no equality or regexp matcher should be rejected to prevent scanning
+// every stream for the matched tenant.
+func TestSelectLogs_TenantIDOnlySelector(t *testing.T) {
+	for _, tc := range []struct {
+		desc     string
+		orgID    string
+		selector string
+	}{
+		{
+			desc:     "tenant ID only selector becomes empty after stripping",
+			orgID:    "1|2",
+			selector: `{__tenant_id__="1"}`,
+		},
+		{
+			desc:     "tenant ID with negation matcher leaves no equality matcher",
+			orgID:    "1|2",
+			selector: `{__tenant_id__="1", foo!="bar"}`,
+		},
+		{
+			desc:     "tenant ID with regex-all matcher leaves no equality matcher",
+			orgID:    "1|2",
+			selector: `{__tenant_id__="1", foo=~".*"}`,
+		},
+	} {
+		t.Run(tc.desc, func(t *testing.T) {
+			// Validate that the original selector would pass ParseLogSelector
+			// validation (has at least one equality/regexp matcher).
+			_, err := syntax.ParseLogSelector(tc.selector, true)
+			require.NoError(t, err, "original selector should be valid")
+
+			querier := newQuerierMock()
+			querier.On("SelectLogs", mock.Anything, mock.Anything).Return(func() iter.EntryIterator { return mockStreamIterator(1, 2) }, nil)
+
+			multiTenantQuerier := NewMultiTenantQuerier(querier, log.NewNopLogger())
+			ctx := user.InjectOrgID(context.Background(), tc.orgID)
+
+			params := logql.SelectLogParams{QueryRequest: &logproto.QueryRequest{
+				Selector:  tc.selector,
+				Direction: logproto.BACKWARD,
+				Limit:     0,
+				Shards:    nil,
+				Start:     time.Unix(0, 1),
+				End:       time.Unix(0, time.Now().UnixNano()),
+				Plan:      testutil.MustPlan(tc.selector),
+			}}
+
+			// SelectLogs should fail because the rewritten selector has no
+			// equality or regexp matcher after stripping __tenant_id__.
+			_, err = multiTenantQuerier.SelectLogs(ctx, params)
+			require.Error(t, err)
+			require.Contains(t, err.Error(), "at least one regexp or equality matcher")
+
+			// Verify the underlying querier was NOT called.
+			querier.AssertNotCalled(t, "SelectLogs", mock.Anything, mock.Anything)
 		})
 	}
 }
