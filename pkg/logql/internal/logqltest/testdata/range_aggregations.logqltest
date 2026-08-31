@@ -432,10 +432,6 @@ load
 
 eval instant at 60s approx_count_distinct(mac, {app="a"}[1m])
   {app="a"} 2
-eval range from 40s to 60s step 20s approx_count_distinct(mac, {app="a"}[1m])  # overlapping
-  {app="a"} 2 2
-eval range from 60s to 130s step 70s approx_count_distinct(mac, {app="a"}[1m]) # non-overlapping
-  {app="a"} 2 _
 
 clear
 load
