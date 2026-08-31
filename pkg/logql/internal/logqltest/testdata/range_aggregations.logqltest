@@ -281,10 +281,13 @@ eval instant at 60s quantile_over_time(0.5, {app="a"}[1m])
 
 # quantile_over_time() with grouping.
 #
-# Sharded quantile_over_time is computed from an approximate DDSketch, so its value differs from the
-# exact unsharded quantile (sharply on these tiny fixtures: it returns the value at the rank, not the
-# interpolated one). Skip the value comparison on the sharding stack; direct and no-sharding still
-# assert the exact values.
+# Sharded quantile_over_time is computed from an approximate DDSketch, so its value differs
+# from the exact unsharded quantile. Both interpolate between the same two ranked samples, but
+# the sketch only stores which bucket a sample falls into, so each is off by the bucket's ~1%
+# relative error.
+#
+# Allow that on the sharding stack with a 2% toleration; direct and no-sharding still assert the
+# exact values.
 clear
 load
   {app="a", pod="1"} "v=2"  @ 20s
@@ -294,23 +297,47 @@ load
   {app="a", pod="1"} "noise" @ 25s
 
 eval instant at 60s quantile_over_time(0.5, {app="a"} | logfmt | unwrap v [1m]) by (pod)
-  skip values-comparison on "query-frontend + query-scheduler (sharding)"
+  expect values-toleration 0.02 on "query-frontend + query-scheduler (sharding)"
   {pod="1"} 3
   {pod="2"} 15
 eval instant at 60s quantile_over_time(0.5, {app="a"} | logfmt | unwrap v [1m]) by (app)
-  skip values-comparison on "query-frontend + query-scheduler (sharding)"
+  expect values-toleration 0.02 on "query-frontend + query-scheduler (sharding)"
   {app="a"} 7
 eval instant at 60s quantile_over_time(0.5, {app="a"} | logfmt | unwrap v [1m]) without (pod)
-  skip values-comparison on "query-frontend + query-scheduler (sharding)"
+  expect values-toleration 0.02 on "query-frontend + query-scheduler (sharding)"
   {app="a"} 7
 eval instant at 60s quantile_over_time(0.5, {app="a"} | logfmt | unwrap v [1m]) without (app)
-  skip values-comparison on "query-frontend + query-scheduler (sharding)"
+  expect values-toleration 0.02 on "query-frontend + query-scheduler (sharding)"
   {pod="1"} 3
   {pod="2"} 15
 eval range from 60s to 70s step 10s quantile_over_time(0.5, {app="a"} | logfmt | unwrap v [1m]) by (pod)
-  skip values-comparison on "query-frontend + query-scheduler (sharding)"
+  expect values-toleration 0.02 on "query-frontend + query-scheduler (sharding)"
   {pod="1"} 3 3
   {pod="2"} 15 15
+eval instant at 60s quantile_over_time(0, {app="a"} | logfmt | unwrap v [1m]) by (pod)
+  expect values-toleration 0.02 on "query-frontend + query-scheduler (sharding)"
+  {pod="1"} 2
+  {pod="2"} 10
+eval instant at 60s quantile_over_time(1, {app="a"} | logfmt | unwrap v [1m]) by (pod)
+  expect values-toleration 0.02 on "query-frontend + query-scheduler (sharding)"
+  {pod="1"} 4
+  {pod="2"} 20
+eval instant at 60s quantile_over_time(1.5, {app="a"} | logfmt | unwrap v [1m]) by (pod)
+  {pod="1"} +Inf
+  {pod="2"} +Inf
+
+# quantile_over_time() with grouping: a group's unwrapped values are all non-finite (NaN).
+clear
+load
+  {app="a", pod="1"} "v=2"   @ 20s
+  {app="a", pod="1"} "v=4"   @ 30s
+  {app="a", pod="2"} "v=NaN" @ 20s
+  {app="a", pod="2"} "v=NaN" @ 30s
+
+eval instant at 60s quantile_over_time(0.5, {app="a"} | logfmt | unwrap v [1m]) by (pod)
+  expect values-toleration 0.02 on "query-frontend + query-scheduler (sharding)"
+  {pod="1"} 3
+  {pod="2"} NaN
 
 # unwrap of a stream label `bar`.
 clear
