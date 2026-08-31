@@ -29,16 +29,18 @@ func Equal(expected, actual interface{}) bool {
 type MockRoundTripperOption func(*MockRoundTripper)
 
 type MockRoundTripper struct {
-	Err         []error
-	ErrCount    int
-	StatusCode  []int
-	CodeCount   int
-	StatusMsg   []string
-	MsgCount    int
-	RespBody    []string
-	RequestTime *time.Duration
-	Headers     map[string]string
-	RespCount   int
+	Err          []error
+	ErrCount     int
+	StatusCode   []int
+	CodeCount    int
+	StatusMsg    []string
+	MsgCount     int
+	RespBody     []string
+	RequestTime  *time.Duration
+	Headers      map[string]string
+	HeadersList  []map[string]string
+	HeadersCount int
+	RespCount    int
 }
 
 var (
@@ -93,6 +95,14 @@ func AddHeaders(kv map[string]string) MockRoundTripperOption {
 			m.Headers[k] = v
 		}
 	}
+}
+
+// AppendHeaders sets the response headers per request: the i-th request gets the i-th
+// map, and the last map is reused once the list is exhausted. Unlike AddHeaders, which
+// applies the same headers to every response, it allows simulating values changing
+// across retries.
+func AppendHeaders(kv []map[string]string) MockRoundTripperOption {
+	return func(m *MockRoundTripper) { m.HeadersList = append(m.HeadersList, kv...) }
 }
 
 func (m *MockRoundTripper) RoundTrip(request *http.Request) (*http.Response, error) {
@@ -152,6 +162,16 @@ func (m *MockRoundTripper) RoundTrip(request *http.Request) (*http.Response, err
 	for k, v := range m.Headers {
 		resp.Header[http.CanonicalHeaderKey(k)] = append(resp.Header[k], v)
 	}
+	if len(m.HeadersList) > 0 {
+		headerIndex := m.HeadersCount
+		if headerIndex >= len(m.HeadersList) {
+			headerIndex = len(m.HeadersList) - 1
+		}
+		for k, v := range m.HeadersList[headerIndex] {
+			resp.Header.Set(http.CanonicalHeaderKey(k), v)
+		}
+	}
+	m.HeadersCount++
 	return resp, nil
 }
 
