@@ -2113,6 +2113,27 @@ func mustNewBinOpExpr(op string, opts *BinOpOptions, lhs, rhs Expr) SampleExpr {
 		}
 	}
 
+	if opts != nil {
+		if opts.ReturnBool && !IsComparisonOperator(op) {
+			return &BinOpExpr{err: logqlmodel.NewParseError(
+				"bool modifier can only be used on comparison operators", 0, 0)}
+		}
+
+		if matching := opts.VectorMatching; matching != nil {
+			if IsLogicalBinOp(op) && matching.Card != CardOneToOne {
+				return &BinOpExpr{err: logqlmodel.NewParseError(fmt.Sprintf(
+					"no grouping allowed for %q operation", op), 0, 0)}
+			}
+
+			// An empty on()/ignoring() list names no matching labels, so it stays legal
+			// next to a scalar operand. Only an explicit label list requires a vector.
+			if (lOk || rOk) && len(matching.MatchingLabels) > 0 {
+				return &BinOpExpr{err: logqlmodel.NewParseError(
+					"vector matching only allowed between instant vectors", 0, 0)}
+			}
+		}
+	}
+
 	// map expr like (1+1) -> 2
 	if lOk && rOk {
 		return reduceBinOp(op, leftVal, rightVal)

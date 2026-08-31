@@ -47,6 +47,20 @@ Schedulers and queriers already accept both encodings, so mixed frontends during
 
 The default value of `frontend.compress_responses` changed to `true`. A bug in Loki 3.4.0 unintentionally switched it to `false`. If you don't want the query-frontend to compress HTTP responses, set `frontend.compress_responses` to `false` explicitly.
 
+### Breaking change: LogQL rejects invalid binary operator modifiers
+
+LogQL now rejects, at parse time, a few combinations of binary operator modifiers that
+previously parsed but had no effect:
+
+- `bool` on an operator other than `==`, `!=`, `>`, `>=`, `<`, or `<=`.
+- `group_left`/`group_right` on `and`, `or`, or `unless`.
+- `on(...)`/`ignoring(...)` with at least one label next to a scalar operand. An empty
+  `on()`/`ignoring()` stays valid, including when combined with `group_left`/`group_right`.
+
+Because the modifier had no effect in every one of these cases, no query's computed result
+changes. Only a query that already contained one of these invalid combinations starts returning
+a parse error. If a query fails after upgrading, remove the invalid modifier from it.
+
 ### Breaking change: Removal of LogQL `variants()` queries
 
 The experimental `variants()` LogQL expression is no longer supported.
