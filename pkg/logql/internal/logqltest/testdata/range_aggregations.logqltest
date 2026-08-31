@@ -96,17 +96,6 @@ eval instant at 60s bytes_rate({app=~"a|b"} | logfmt | unwrap v [30s])
 eval instant at 60s bytes_rate({app=~"a|b"} |~".+bar" [30s]) by (app)
   expect fail msg: grouping not allowed for bytes_rate aggregation
 
-# unwrap of a stream label `foo` (no parser stage).
-clear
-load
-  {app="foo", foo="2"} "xbar" @ 0s [repeat every 10s for 13]
-  {app="noise"} "noise" @ 0s [repeat every 10s for 13]
-
-eval instant at 60s rate({app="foo"} | unwrap foo [30s])
-  {app="foo"} 0.2
-eval range from 60s to 120s step 15s rate({app="foo"} | unwrap foo [30s])
-  {app="foo"} 0.2 0.2 0.2 0.2 0.2
-
 # first_over_time() / last_over_time()
 clear
 load
@@ -339,32 +328,18 @@ eval instant at 60s quantile_over_time(0.5, {app="a"} | logfmt | unwrap v [1m]) 
   {pod="1"} 3
   {pod="2"} NaN
 
-# unwrap of a stream label `bar`.
+# quantile_over_time() over a structured metadata field.
 clear
 load
-  {app="foo", bar="3"} "xbar"  @ 0s [repeat every 10s for 19]
-  {app="foo", bar="3"} "noise" @ 5s [repeat every 10s for 19]
-  {app="bar", bar="6"} "xbar"  @ 0s [repeat every 10s for 19]
-  {app="bar", bar="6"} "noise" @ 5s [repeat every 10s for 19]
+  {app="a"} "msg"   @ 10s [metadata v="1"]
+  {app="a"} "msg"   @ 20s [metadata v="2"]
+  {app="a"} "msg"   @ 30s [metadata v="3"]
+  {app="a"} "noise" @ 25s
 
-eval instant at 120s rate(({app=~"foo|bar"} |~".+bar" | unwrap bar)[1m])
-  {app="foo"} 0.3
-  {app="bar"} 0.6
-eval range from 60s to 180s step 30s rate(({app=~"foo|bar"} |~".+bar" | unwrap bar)[1m])
-  {app="foo"} 0.3 0.3 0.3 0.3 0.3
-  {app="bar"} 0.6 0.6 0.6 0.6 0.6
-
-# Combines a numeric label filter with unwrap: after logfmt, `bar > 0` drops the bar=0 lines
-# before unwrapping bazz.
-clear
-load
-  {job="foo"} "bar=1 bazz=10" @ 10s [repeat every 10s for 12]
-  {job="foo"} "bar=0 bazz=99" @ 15s [repeat every 10s for 12]
-
-eval instant at 120s sum(rate({job="foo"} | logfmt | bar > 0 | unwrap bazz [30s]))
-  {} 1
-eval range from 60s to 120s step 30s sum(rate({job="foo"} | logfmt | bar > 0 | unwrap bazz [30s]))
-  {} 1 1 1
+eval instant at 60s quantile_over_time(0.5, {app="a"} | unwrap v [1m])
+  {app="a"} 2
+eval range from 30s to 60s step 30s quantile_over_time(0.5, {app="a"} | unwrap v [1m])
+  {app="a"} 2 2
 
 # rate_counter() treats the unwrapped value as a counter: the per-second increase over the range with
 # counter resets added back, using Prometheus-style boundary extrapolation.
@@ -507,6 +482,18 @@ load
 eval instant at 210s rate_counter({app="a"} | logfmt | unwrap c [90s])
   {app="a"} 1
 
+# rate_counter() over a structured metadata field.
+clear
+load
+  {app="a"} "msg" @ 180s [metadata c="40"]
+  {app="a"} "msg" @ 210s [metadata c="100"]
+  {app="a"} "msg" @ 150s
+
+eval instant at 210s rate_counter({app="a"} | unwrap c [90s])
+  {app="a"} 1
+eval range from 180s to 210s step 30s rate_counter({app="a"} | unwrap c [90s])
+  {app="a"} 0 1
+
 # count_over_time()
 clear
 load
@@ -610,6 +597,42 @@ eval instant at 1300ms rate({app="b"} |= "keep" [500ms] offset 500ms)
   {app="b"} 4
 eval range from 1000ms to 1600ms step 300ms rate({app="b"} |= "keep" [500ms] offset 500ms)
   {app="b"} 6 4 6
+
+# rate() with unwrap, from a stream label, structured metadata, or a parsed field.
+clear
+load
+  {app="p"}        "v=2"   @ 0s  [repeat every 10s for 13]
+  {app="s", v="2"} "x"     @ 0s  [repeat every 10s for 13]
+  {app="m"}        "x"     @ 0s  [repeat every 10s for 13] [metadata v="2"]
+  {app="noise"}    "noise" @ 0s  [repeat every 10s for 13]
+  {app="err"}      "msg"   @ 20s [metadata v="oops"]
+  {app="err"}      "msg"   @ 40s [metadata v="6"]
+
+# parsed field
+eval instant at 60s rate({app="p"} | logfmt | unwrap v [30s])
+  {app="p"} 0.2
+eval range from 60s to 120s step 15s rate({app="p"} | logfmt | unwrap v [30s])
+  {app="p"} 0.2 0.2 0.2 0.2 0.2
+# stream label
+eval instant at 60s rate({app="s"} | logfmt | unwrap v [30s])
+  {app="s"} 0.2
+eval range from 60s to 120s step 15s rate({app="s"} | logfmt | unwrap v [30s])
+  {app="s"} 0.2 0.2 0.2 0.2 0.2
+# structured metadata
+eval instant at 60s rate({app="m"} | logfmt | unwrap v [30s])
+  {app="m"} 0.2
+eval range from 60s to 120s step 15s rate({app="m"} | logfmt | unwrap v [30s])
+  {app="m"} 0.2 0.2 0.2 0.2 0.2
+# all sources
+eval instant at 60s rate({app=~"p|s|m"} | logfmt | unwrap v [30s])
+  {app="p"} 0.2
+  {app="s"} 0.2
+  {app="m"} 0.2
+# A non-numeric value, from any source, sets the extraction error. A __error__ filter drops it.
+eval instant at 60s rate({app="err"} | unwrap v [1m])
+  expect fail
+eval instant at 60s rate({app="err"} | unwrap v | __error__="" [1m])
+  {app="err"} 0.1
 
 # avg_over_time() edge cases:
 # - any NaN -> NaN
@@ -811,6 +834,80 @@ eval range from 60s to 180s step 60s avg_over_time({app="a"} | json | unwrap v |
   {pod="1"} 4 4 _
   {pod="2"} 9 9 _
 
+# avg_over_time() with grouping on structured metadata.
+clear
+load
+  {app="a"} "msg"   @ 10s [repeat every 60s for 2] [metadata v="2" pod="1"]
+  {app="a"} "msg"   @ 20s [repeat every 60s for 2] [metadata v="4" pod="1"]
+  {app="a"} "noise" @ 25s [repeat every 60s for 2] [metadata pod="1"]
+  {app="a"} "msg"   @ 15s [repeat every 60s for 2] [metadata v="6" pod="2"]
+  {app="a"} "msg"   @ 35s [repeat every 60s for 2] [metadata v="12" pod="2"]
+  {app="a"} "junk"  @ 15s [repeat every 60s for 2] [metadata pod="3"]
+  {app="a"} "moar"  @ 35s [repeat every 60s for 2] [metadata pod="3"]
+
+# by() a single label
+eval instant at 60s avg_over_time({app="a"} | unwrap v [1m]) by (pod)
+  {pod="1"} 3
+  {pod="2"} 9
+eval range from 60s to 180s step 60s avg_over_time({app="a"} | unwrap v [1m]) by (pod)
+  {pod="1"} 3 3 _
+  {pod="2"} 9 9 _
+eval instant at 60s avg_over_time({app="a"} | unwrap v [1m]) by (app)
+  {app="a"} 6
+eval range from 60s to 180s step 60s avg_over_time({app="a"} | unwrap v [1m]) by (app)
+  {app="a"} 6 6 _
+eval instant at 60s sum(avg_over_time({app="a"} | unwrap v [1m]) by (pod))
+  {} 12
+eval range from 60s to 180s step 60s sum(avg_over_time({app="a"} | unwrap v [1m]) by (pod))
+  {} 12 12 _
+# by() multiple labels
+eval instant at 60s avg_over_time({app="a"} | unwrap v [1m]) by (pod, app)
+  {app="a", pod="1"} 3
+  {app="a", pod="2"} 9
+eval range from 60s to 180s step 60s avg_over_time({app="a"} | unwrap v [1m]) by (pod, app)
+  {app="a", pod="1"} 3 3 _
+  {app="a", pod="2"} 9 9 _
+# by() with no labels
+eval instant at 60s avg_over_time({app="a"} | unwrap v [1m]) by ()
+  {} 6
+eval range from 60s to 180s step 60s avg_over_time({app="a"} | unwrap v [1m]) by ()
+  {} 6 6 _
+# without() a single label
+eval instant at 60s avg_over_time({app="a"} | unwrap v [1m]) without (pod)
+  {app="a"} 6
+eval range from 60s to 180s step 60s avg_over_time({app="a"} | unwrap v [1m]) without (pod)
+  {app="a"} 6 6 _
+# drop <label>
+eval instant at 60s avg_over_time({app="a"} | drop pod | unwrap v [1m])
+  {app="a"} 6
+eval range from 60s to 180s step 60s avg_over_time({app="a"} | drop pod | unwrap v [1m])
+  {app="a"} 6 6 _
+# drop <label> then group by(<label>)
+eval instant at 60s avg_over_time({app="a"} | drop pod | unwrap v [1m]) by (pod)
+  {} 6
+eval range from 60s to 180s step 60s avg_over_time({app="a"} | drop pod | unwrap v [1m]) by (pod)
+  {} 6 6 _
+# binary operation
+eval instant at 60s avg_over_time({app="a"} | unwrap v [1m]) by (pod) > 5
+  {pod="2"} 9
+eval range from 60s to 180s step 60s avg_over_time({app="a"} | unwrap v [1m]) by (pod) > 5
+  {pod="2"} 9 9 _
+# filtering stage after unwrap
+eval instant at 60s avg_over_time({app="a"} | unwrap v | pod="1" [1m]) by (app)
+  {app="a"} 3
+eval range from 60s to 180s step 60s avg_over_time({app="a"} | unwrap v | pod="1" [1m]) by (app)
+  {app="a"} 3 3 _
+eval instant at 60s avg_over_time({app="a"} | unwrap v | pod!="1" [1m]) by (pod)
+  {pod="2"} 9
+eval range from 60s to 180s step 60s avg_over_time({app="a"} | unwrap v | pod!="1" [1m]) by (pod)
+  {pod="2"} 9 9 _
+eval instant at 60s avg_over_time({app="a"} | unwrap v | v > 3 [1m]) by (pod)
+  {pod="1"} 4
+  {pod="2"} 9
+eval range from 60s to 180s step 60s avg_over_time({app="a"} | unwrap v | v > 3 [1m]) by (pod)
+  {pod="1"} 4 4 _
+  {pod="2"} 9 9 _
+
 # min_over_time() / max_over_time()
 # - a leading NaN is ignored
 # - all NaN -> NaN
@@ -907,6 +1004,28 @@ eval range from 60s to 70s step 10s min_over_time({app="a"} | logfmt | unwrap v 
   {pod="1"} 2 2
   {pod="2"} 10 10
 
+# min_over_time() / max_over_time() over a structured metadata field.
+clear
+load
+  {app="a", pod="1"} "msg" @ 20s [metadata v="2"]
+  {app="a", pod="1"} "msg" @ 30s [metadata v="4"]
+  {app="a", pod="2"} "msg" @ 40s [metadata v="10"]
+  {app="a", pod="2"} "msg" @ 50s [metadata v="20"]
+  {app="a", pod="1"} "noise" @ 25s
+
+eval instant at 60s min_over_time({app="a"} | unwrap v [1m]) by (pod)
+  {pod="1"} 2
+  {pod="2"} 10
+eval instant at 60s max_over_time({app="a"} | unwrap v [1m]) by (pod)
+  {pod="1"} 4
+  {pod="2"} 20
+eval range from 60s to 70s step 10s min_over_time({app="a"} | unwrap v [1m]) by (pod)
+  {pod="1"} 2 2
+  {pod="2"} 10 10
+eval range from 60s to 70s step 10s max_over_time({app="a"} | unwrap v [1m]) by (pod)
+  {pod="1"} 4 4
+  {pod="2"} 20 20
+
 # sum_over_time()
 #
 # - any NaN -> NaN
@@ -949,6 +1068,18 @@ eval instant at 60s sum_over_time({app="a"}[1m])
 # sum_over_time() doesn't allow grouping.
 eval instant at 60s sum_over_time({app="a"} | logfmt | unwrap v [1m]) by (app)
   expect fail msg: grouping not allowed for sum_over_time aggregation
+
+# sum_over_time() over a structured metadata field.
+clear
+load
+  {app="a"} "msg"   @ 20s [metadata v="7"]
+  {app="a"} "msg"   @ 40s [metadata v="5"]
+  {app="a"} "noise" @ 30s
+
+eval instant at 60s sum_over_time({app="a"} | unwrap v [1m])
+  {app="a"} 12
+eval range from 40s to 60s step 20s sum_over_time({app="a"} | unwrap v [1m])
+  {app="a"} 12 12
 
 # stddev_over_time() / stdvar_over_time()
 clear
@@ -1037,6 +1168,22 @@ eval instant at 60s stdvar_over_time({app="a"} | logfmt | unwrap v [1m]) without
 eval range from 60s to 70s step 10s stddev_over_time({app="a"} | logfmt | unwrap v [1m]) by (pod)
   {pod="1"} 1 1
   {pod="2"} 5 5
+
+# stddev_over_time() / stdvar_over_time() over a structured metadata field.
+clear
+load
+  {app="a"} "msg"   @ 20s [metadata v="2"]
+  {app="a"} "msg"   @ 40s [metadata v="4"]
+  {app="a"} "noise" @ 30s
+
+eval instant at 60s stdvar_over_time({app="a"} | unwrap v [1m])
+  {app="a"} 1
+eval instant at 60s stddev_over_time({app="a"} | unwrap v [1m])
+  {app="a"} 1
+eval range from 40s to 60s step 20s stdvar_over_time({app="a"} | unwrap v [1m])
+  {app="a"} 1 1
+eval range from 40s to 60s step 20s stddev_over_time({app="a"} | unwrap v [1m])
+  {app="a"} 1 1
 
 # absent_over_time()
 clear
