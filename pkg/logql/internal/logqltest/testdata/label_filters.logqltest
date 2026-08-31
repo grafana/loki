@@ -1145,7 +1145,7 @@ eval instant at 60s count_over_time({app="a"} | logfmt | tri_extracted="m" [1m])
 
 # label conflicts: duplicated structured metadata keys.
 #
-# When a duplicate structured metadata key is encountered, on the last key is preserved.
+# When a duplicate structured metadata key is encountered, only the last key is preserved.
 clear
 load
   {app="a"} "msg" @ 20s [repeat every 20s for 3] [metadata dup="first" dup="second"]
