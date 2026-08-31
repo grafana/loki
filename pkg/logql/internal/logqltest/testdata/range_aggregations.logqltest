@@ -385,7 +385,7 @@ eval instant at 60s approx_count_distinct(id, {app="a"} | logfmt [1m]) without (
 eval instant at 60s approx_count_distinct(id, {app="a"} | logfmt [1m]) by (id)
   expect fail msg: cannot group by the counted field "id"
 # Old split-parenthesis syntax is not supported.
-eval instant at 60s approx_count_distinct(id) by (app) ({app="a"} | logfmt [1m])
+eval instant at 60s approx_count_distinct(id) ({app="a"} | logfmt [1m])
   expect fail msg: unexpected )
 # Prefix grouping is not supported.
 eval instant at 60s approx_count_distinct by (app) (id, {app="a"} | logfmt [1m])
