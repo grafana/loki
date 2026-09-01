@@ -275,6 +275,7 @@ func mutatePodSpec(existing *corev1.PodSpec, desired *corev1.PodSpec) {
 	existing.Containers = desired.Containers
 	existing.InitContainers = desired.InitContainers
 	existing.NodeSelector = desired.NodeSelector
+	existing.TerminationGracePeriodSeconds = desired.TerminationGracePeriodSeconds
 	existing.Tolerations = desired.Tolerations
 	existing.TopologySpreadConstraints = desired.TopologySpreadConstraints
 	existing.Volumes = desired.Volumes
