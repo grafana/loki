@@ -4,12 +4,14 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"strings"
 
 	"github.com/ViaQ/logerr/v2/kverrors"
 	"github.com/go-logr/logr"
 	corev1 "k8s.io/api/core/v1"
 	rbacv1 "k8s.io/api/rbac/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -163,11 +165,25 @@ func CreateOrUpdateLokiStack(
 
 	ll.Info("manifests built", "count", len(objects))
 
-	// The status is updated before the objects are actually created to
-	// avoid the scenario in which the configmap is successfully created or
-	// updated and another resource is not. This would cause the status to
-	// be possibly misaligned with the configmap, which could lead to
-	// a user possibly being unable to read logs.
+	// We check all resources before creating or updating. This ensures we detect ownership conflicts
+	// early and prevent partial deployments
+	conflicts, err := checkResourceOwnership(ctx, ll, k, req, &stack, objects)
+	if err != nil {
+		return nil, err
+	}
+	if len(conflicts) > 0 {
+		conflictList := strings.Join(conflicts, "; ")
+		return nil, &status.DegradedError{
+			Message: fmt.Sprintf(
+				"Resource ownership conflict detected: %s. Delete the conflicting resource or rename to resolve.",
+				conflictList,
+			),
+			Reason:  lokiv1.ReasonResourceOwnershipConflict,
+			Requeue: true,
+		}
+	}
+
+	// Set storage schema status
 	if err := status.SetStorageSchemaStatus(ctx, k, req, objStore.Schemas); err != nil {
 		ll.Error(err, "failed to set storage schema status")
 		return nil, err
@@ -229,6 +245,38 @@ func CreateOrUpdateLokiStack(
 		NetworkPolicies:            networkPolicyRuleSet,
 		NetworkPolicyObjStorePorts: opts.NetworkPolicyObjStorePorts,
 	}, nil
+}
+
+// checkResourceOwnership checks if any resources exist and are owned by other controllers
+func checkResourceOwnership(
+	ctx context.Context,
+	ll logr.Logger,
+	k k8s.Client,
+	req ctrl.Request,
+	stack *lokiv1.LokiStack,
+	objects []client.Object,
+) ([]string, error) {
+	var conflicts []string
+
+	// Check each namespaced resource in the manifests
+	for _, obj := range objects {
+		if !isNamespacedResource(obj) {
+			continue
+		}
+		obj.SetNamespace(req.Namespace)
+		kind := obj.GetObjectKind().GroupVersionKind().Kind
+		existing := obj.DeepCopyObject().(client.Object)
+		err := k.Get(ctx, client.ObjectKeyFromObject(obj), existing)
+		if err == nil && !metav1.IsControlledBy(existing, stack) {
+			resourceName := fmt.Sprintf("%s/%s", kind, obj.GetName())
+			ll.Error(nil, "resource exists and is not managed by this LokiStack",
+				"resource", resourceName,
+				"namespace", req.Namespace)
+			conflicts = append(conflicts, resourceName)
+		}
+	}
+
+	return conflicts, nil
 }
 
 func dependentAnnotations(ctx context.Context, k k8s.Client, obj client.Object) (map[string]string, error) {
