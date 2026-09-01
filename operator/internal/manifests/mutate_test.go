@@ -1200,3 +1200,68 @@ func TestGetMutateFunc_MutatePodDisruptionBudget(t *testing.T) {
 	require.Exactly(t, got.Labels, want.Labels)
 	require.Exactly(t, got.Spec, want.Spec)
 }
+
+func TestMutateFuncFor_TerminationGracePeriodSeconds(t *testing.T) {
+	type test struct {
+		name     string
+		got      *appsv1.Deployment
+		want     *appsv1.Deployment
+		expected *int64
+	}
+	table := []test{
+		{
+			name: "preserve existing value when desired is nil",
+			got: &appsv1.Deployment{
+				Spec: appsv1.DeploymentSpec{
+					Template: corev1.PodTemplateSpec{
+						Spec: corev1.PodSpec{
+							TerminationGracePeriodSeconds: ptr.To(int64(30)),
+						},
+					},
+				},
+			},
+			want: &appsv1.Deployment{
+				Spec: appsv1.DeploymentSpec{
+					Template: corev1.PodTemplateSpec{
+						Spec: corev1.PodSpec{
+							TerminationGracePeriodSeconds: nil,
+						},
+					},
+				},
+			},
+			expected: ptr.To(int64(30)),
+		},
+		{
+			name: "update when desired is set",
+			got: &appsv1.Deployment{
+				Spec: appsv1.DeploymentSpec{
+					Template: corev1.PodTemplateSpec{
+						Spec: corev1.PodSpec{
+							TerminationGracePeriodSeconds: ptr.To(int64(30)),
+						},
+					},
+				},
+			},
+			want: &appsv1.Deployment{
+				Spec: appsv1.DeploymentSpec{
+					Template: corev1.PodTemplateSpec{
+						Spec: corev1.PodSpec{
+							TerminationGracePeriodSeconds: ptr.To(int64(600)),
+						},
+					},
+				},
+			},
+			expected: ptr.To(int64(600)),
+		},
+	}
+
+	for _, tst := range table {
+		t.Run(tst.name, func(t *testing.T) {
+			t.Parallel()
+			f := MutateFuncFor(tst.got, tst.want, nil)
+			err := f()
+			require.NoError(t, err)
+			require.Equal(t, tst.expected, tst.got.Spec.Template.Spec.TerminationGracePeriodSeconds)
+		})
+	}
+}

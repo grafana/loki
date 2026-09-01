@@ -275,7 +275,10 @@ func mutatePodSpec(existing *corev1.PodSpec, desired *corev1.PodSpec) {
 	existing.Containers = desired.Containers
 	existing.InitContainers = desired.InitContainers
 	existing.NodeSelector = desired.NodeSelector
-	existing.TerminationGracePeriodSeconds = desired.TerminationGracePeriodSeconds
+	// Only set TerminationGracePeriodSeconds when explicitly configured to avoid clearing the Kubernetes API server default.
+	if desired.TerminationGracePeriodSeconds != nil {
+		existing.TerminationGracePeriodSeconds = desired.TerminationGracePeriodSeconds
+	}
 	existing.Tolerations = desired.Tolerations
 	existing.TopologySpreadConstraints = desired.TopologySpreadConstraints
 	existing.Volumes = desired.Volumes
