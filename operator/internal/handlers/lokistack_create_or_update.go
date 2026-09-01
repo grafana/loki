@@ -267,12 +267,16 @@ func checkResourceOwnership(
 		kind := obj.GetObjectKind().GroupVersionKind().Kind
 		existing := obj.DeepCopyObject().(client.Object)
 		err := k.Get(ctx, client.ObjectKeyFromObject(obj), existing)
-		if err == nil && !metav1.IsControlledBy(existing, stack) {
-			resourceName := fmt.Sprintf("%s/%s", kind, obj.GetName())
-			ll.Error(nil, "resource exists and is not managed by this LokiStack",
-				"resource", resourceName,
-				"namespace", req.Namespace)
-			conflicts = append(conflicts, resourceName)
+		if err == nil {
+			existingOwner := metav1.GetControllerOf(existing)
+			if existingOwner != nil && existingOwner.UID != stack.UID {
+				resourceName := fmt.Sprintf("%s/%s", kind, obj.GetName())
+				ll.Error(nil, "resource exists and is owned by a different controller",
+					"resource", resourceName,
+					"namespace", req.Namespace,
+					"owner", existingOwner.Name)
+				conflicts = append(conflicts, resourceName)
+			}
 		}
 	}
 
