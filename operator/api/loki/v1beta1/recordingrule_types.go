@@ -109,10 +109,6 @@ type RecordingRuleList struct {
 	Items           []RecordingRule `json:"items"`
 }
 
-func init() {
-	SchemeBuilder.Register(&RecordingRule{}, &RecordingRuleList{})
-}
-
 // ConvertTo converts this RecordingRule (v1beta1) to the Hub version (v1).
 func (src *RecordingRule) ConvertTo(dstRaw conversion.Hub) error {
 	dst := dstRaw.(*v1.RecordingRule)
