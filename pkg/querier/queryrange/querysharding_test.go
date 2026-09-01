@@ -170,10 +170,8 @@ func Test_astMapper(t *testing.T) {
 	})
 
 	mware := newASTMapperware(
-		ShardingConfigs{
-			config.PeriodConfig{
-				IndexType: types.IndexTypeTSDB,
-			},
+		[]config.PeriodConfig{
+			{IndexType: types.IndexTypeTSDB},
 		},
 		testEngineOpts,
 		handler,
@@ -307,10 +305,8 @@ func Test_astMapper_QuerySizeLimits(t *testing.T) {
 			})
 
 			mware := newASTMapperware(
-				ShardingConfigs{
-					config.PeriodConfig{
-						IndexType: types.IndexTypeTSDB,
-					},
+				[]config.PeriodConfig{
+					{IndexType: types.IndexTypeTSDB},
 				},
 				testEngineOpts,
 				handler,
@@ -362,10 +358,8 @@ func Test_astMapper_TSDBShardingStrategyUsesContext(t *testing.T) {
 
 	calls := 0
 	mware := newASTMapperware(
-		ShardingConfigs{
-			config.PeriodConfig{
-				IndexType: types.IndexTypeTSDB,
-			},
+		[]config.PeriodConfig{
+			{IndexType: types.IndexTypeTSDB},
 		},
 		testEngineOpts,
 		handler,
@@ -408,10 +402,8 @@ func Test_ShardingByPass(t *testing.T) {
 	})
 
 	mware := newASTMapperware(
-		ShardingConfigs{
-			config.PeriodConfig{
-				IndexType: types.IndexTypeTSDB,
-			},
+		[]config.PeriodConfig{
+			{IndexType: types.IndexTypeTSDB},
 		},
 		testEngineOpts,
 		handler,
@@ -433,41 +425,6 @@ func Test_ShardingByPass(t *testing.T) {
 	require.Equal(t, called, 1)
 }
 
-func Test_hasShards(t *testing.T) {
-	for i, tc := range []struct {
-		input    ShardingConfigs
-		expected bool
-	}{
-		{
-			input: ShardingConfigs{
-				{},
-			},
-			expected: false,
-		},
-		{
-			input: ShardingConfigs{
-				{IndexType: types.IndexTypeTSDB},
-			},
-			expected: true,
-		},
-		{
-			input: ShardingConfigs{
-				{},
-				{IndexType: types.IndexTypeTSDB},
-				{},
-			},
-			expected: true,
-		},
-		{
-			input:    nil,
-			expected: false,
-		},
-	} {
-		t.Run(fmt.Sprintf("%d", i), func(t *testing.T) {
-			require.Equal(t, tc.expected, hasShards(tc.input))
-		})
-	}
-}
 
 // astmapper successful stream & prom conversion
 
@@ -498,7 +455,7 @@ func Test_InstantSharding(t *testing.T) {
 	})
 
 	cpyPeriodConf := testSchemasTSDB[0]
-	sharding := NewQueryShardMiddleware(log.NewNopLogger(), ShardingConfigs{
+	sharding := NewQueryShardMiddleware(log.NewNopLogger(), []config.PeriodConfig{
 		cpyPeriodConf,
 	}, testEngineOpts, queryrangebase.NewInstrumentMiddlewareMetrics(nil, constants.Loki),
 		nilShardingMetrics,
@@ -560,7 +517,7 @@ func Test_InstantSharding(t *testing.T) {
 }
 
 func Test_SeriesShardingHandler(t *testing.T) {
-	sharding := NewSeriesQueryShardMiddleware(log.NewNopLogger(), ShardingConfigs{
+	sharding := NewSeriesQueryShardMiddleware(log.NewNopLogger(), []config.PeriodConfig{
 		config.PeriodConfig{
 			IndexType: types.IndexTypeTSDB,
 		},
@@ -627,7 +584,7 @@ func Test_SeriesShardingHandler(t *testing.T) {
 
 func TestShardingAcrossConfigs_ASTMapper(t *testing.T) {
 	now := model.Now()
-	confs := ShardingConfigs{
+	confs := []config.PeriodConfig{
 		{
 			From:      config.DayTime{Time: now.Add(-30 * 24 * time.Hour)},
 			IndexType: types.IndexTypeTSDB,
@@ -819,7 +776,7 @@ func TestShardingAcrossConfigs_ASTMapper(t *testing.T) {
 
 func TestShardingAcrossConfigs_SeriesSharding(t *testing.T) {
 	now := model.Now()
-	confs := ShardingConfigs{
+	confs := []config.PeriodConfig{
 		{
 			From:      config.DayTime{Time: now.Add(-30 * 24 * time.Hour)},
 			IndexType: types.IndexTypeTSDB,

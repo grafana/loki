@@ -12,7 +12,6 @@ import (
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/httpgrpc"
 	"github.com/grafana/dskit/tenant"
-	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/promql/parser"
 
@@ -23,7 +22,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/querier/astmapper"
 	"github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase"
 	"github.com/grafana/loki/v3/pkg/storage/config"
-	"github.com/grafana/loki/v3/pkg/storage/types"
 	"github.com/grafana/loki/v3/pkg/util"
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
 	"github.com/grafana/loki/v3/pkg/util/marshal"
@@ -34,7 +32,7 @@ import (
 // NewQueryShardMiddleware creates a middleware which downstreams queries after AST mapping and query encoding.
 func NewQueryShardMiddleware(
 	logger log.Logger,
-	confs ShardingConfigs,
+	confs []config.PeriodConfig,
 	engineOpts logql.EngineOpts,
 	middlewareMetrics *queryrangebase.InstrumentMiddlewareMetrics,
 	shardingMetrics *logql.MapperMetrics,
@@ -44,17 +42,6 @@ func NewQueryShardMiddleware(
 	retryNextHandler queryrangebase.Handler,
 	shardAggregation []string,
 ) queryrangebase.Middleware {
-	noshards := !hasShards(confs)
-
-	if noshards {
-		level.Warn(logger).Log(
-			"middleware", "QueryShard",
-			"msg", "no configuration with shard found",
-			"confs", fmt.Sprintf("%+v", confs),
-		)
-		return queryrangebase.PassthroughMiddleware
-	}
-
 	mapperware := queryrangebase.MiddlewareFunc(func(next queryrangebase.Handler) queryrangebase.Handler {
 		return newASTMapperware(confs, engineOpts, next, retryNextHandler, statsHandler, logger, shardingMetrics, limits, maxShards, shardAggregation)
 	})
@@ -73,7 +60,7 @@ func NewQueryShardMiddleware(
 }
 
 func newASTMapperware(
-	confs ShardingConfigs,
+	confs []config.PeriodConfig,
 	engineOpts logql.EngineOpts,
 	next queryrangebase.Handler,
 	retryNextHandler queryrangebase.Handler,
@@ -105,7 +92,7 @@ func newASTMapperware(
 }
 
 type astMapperware struct {
-	confs            ShardingConfigs
+	confs            []config.PeriodConfig
 	logger           log.Logger
 	limits           Limits
 	next             queryrangebase.Handler
@@ -335,56 +322,15 @@ func (splitter *shardSplitter) Do(ctx context.Context, r queryrangebase.Request)
 	return splitter.next.Do(ctx, r)
 }
 
-func hasShards(confs ShardingConfigs) bool {
-	for _, conf := range confs {
-		if conf.IndexType == types.IndexTypeTSDB {
-			return true
-		}
-	}
-	return false
-}
-
-// ShardingConfigs is a slice of chunk shard configs
-type ShardingConfigs []config.PeriodConfig
-
-// GetConf returns the period config that covers the end of the query range.
-// Since TSDB is the only supported index type and sharding is resolved
-// dynamically, queries may span multiple schema_config periods.
-func (confs ShardingConfigs) GetConf(start, end int64) (config.PeriodConfig, error) {
-	if len(confs) == 0 {
-		return config.PeriodConfig{}, errors.New("no schema configs defined")
-	}
-	// Return the config that covers the end of the query range. Walk backwards
-	// to find the first config whose From <= end.
-	for i := len(confs) - 1; i >= 0; i-- {
-		if int64(confs[i].From.Time) <= end {
-			return confs[i], nil
-		}
-	}
-	// Query ends before the first config; return the first config and let
-	// downstream code handle the edge case.
-	return confs[0], nil
-}
-
 // NewSeriesQueryShardMiddleware creates a middleware which shards series queries.
 func NewSeriesQueryShardMiddleware(
 	logger log.Logger,
-	confs ShardingConfigs,
+	confs []config.PeriodConfig,
 	middlewareMetrics *queryrangebase.InstrumentMiddlewareMetrics,
 	shardingMetrics *logql.MapperMetrics,
 	limits Limits,
 	merger queryrangebase.Merger,
 ) queryrangebase.Middleware {
-	noshards := !hasShards(confs)
-
-	if noshards {
-		level.Warn(logger).Log(
-			"middleware", "QueryShard",
-			"msg", "no configuration with shard found",
-			"confs", fmt.Sprintf("%+v", confs),
-		)
-		return queryrangebase.PassthroughMiddleware
-	}
 	return queryrangebase.MiddlewareFunc(func(next queryrangebase.Handler) queryrangebase.Handler {
 		return queryrangebase.InstrumentMiddleware("sharding", middlewareMetrics).Wrap(
 			&seriesShardingHandler{
@@ -400,7 +346,7 @@ func NewSeriesQueryShardMiddleware(
 }
 
 type seriesShardingHandler struct {
-	confs   ShardingConfigs
+	confs   []config.PeriodConfig
 	logger  log.Logger
 	next    queryrangebase.Handler
 	metrics *logql.MapperMetrics
