@@ -425,7 +425,6 @@ func Test_ShardingByPass(t *testing.T) {
 	require.Equal(t, called, 1)
 }
 
-
 // astmapper successful stream & prom conversion
 
 func mockHandler(resp queryrangebase.Response, err error) queryrangebase.Handler {
@@ -518,7 +517,7 @@ func Test_InstantSharding(t *testing.T) {
 
 func Test_SeriesShardingHandler(t *testing.T) {
 	sharding := NewSeriesQueryShardMiddleware(log.NewNopLogger(), []config.PeriodConfig{
-		config.PeriodConfig{
+		{
 			IndexType: types.IndexTypeTSDB,
 		},
 	},
