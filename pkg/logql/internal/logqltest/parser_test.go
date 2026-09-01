@@ -347,6 +347,69 @@ func TestExpectationsParser(t *testing.T) {
 		require.ErrorContains(t, newExpectationsParser().parse(`skip values-comparison "`+directStackName+`"`), "invalid skip directive")
 		require.ErrorContains(t, newExpectationsParser().parse(`skip values-comparison on `+directStackName), "invalid skip directive")
 	})
+
+	t.Run("values-toleration sets one stack's tolerance", func(t *testing.T) {
+		p := newExpectationsParser()
+		require.NoError(t, p.parse(`expect values-toleration 0.02 on "`+queryFrontendShardStackName+`"`))
+		require.NoError(t, p.parse(`{app="a"} 1`))
+		exp := p.get()
+		require.Equal(t, 0.02, exp.valuesToleration[queryFrontendShardStackName])
+		require.NotContains(t, exp.valuesToleration, directStackName)
+	})
+
+	t.Run("values-toleration directives accumulate across stacks", func(t *testing.T) {
+		p := newExpectationsParser()
+		require.NoError(t, p.parse(`expect values-toleration 0.01 on "`+directStackName+`"`))
+		require.NoError(t, p.parse(`expect values-toleration 0.02 on "`+queryFrontendShardStackName+`"`))
+		exp := p.get()
+		require.Equal(t, 0.01, exp.valuesToleration[directStackName])
+		require.Equal(t, 0.02, exp.valuesToleration[queryFrontendShardStackName])
+	})
+
+	t.Run("values-toleration with unknown stack is rejected", func(t *testing.T) {
+		require.ErrorContains(t, newExpectationsParser().parse(`expect values-toleration 0.02 on "nope"`), "unknown stack")
+	})
+
+	t.Run("values-toleration with a non-positive, non-finite, or non-numeric value is rejected", func(t *testing.T) {
+		require.ErrorContains(t, newExpectationsParser().parse(`expect values-toleration 0 on "`+directStackName+`"`), "must be a positive, finite number")
+		require.ErrorContains(t, newExpectationsParser().parse(`expect values-toleration -0.01 on "`+directStackName+`"`), "must be a positive, finite number")
+		require.ErrorContains(t, newExpectationsParser().parse(`expect values-toleration abc on "`+directStackName+`"`), "must be a positive, finite number")
+		require.ErrorContains(t, newExpectationsParser().parse(`expect values-toleration NaN on "`+directStackName+`"`), "must be a positive, finite number")
+		require.ErrorContains(t, newExpectationsParser().parse(`expect values-toleration Inf on "`+directStackName+`"`), "must be a positive, finite number")
+	})
+
+	t.Run("malformed values-toleration directive is rejected", func(t *testing.T) {
+		// Missing `on`, or an unquoted stack name.
+		require.ErrorContains(t, newExpectationsParser().parse(`expect values-toleration 0.02 "`+directStackName+`"`), "invalid values-toleration directive")
+		require.ErrorContains(t, newExpectationsParser().parse(`expect values-toleration 0.02 on `+directStackName), "invalid values-toleration directive")
+	})
+
+	t.Run("a stack cannot both skip values-comparison and have a toleration", func(t *testing.T) {
+		// skip, then toleration, on the same stack.
+		p := newExpectationsParser()
+		require.NoError(t, p.parse(`skip values-comparison on "`+directStackName+`"`))
+		require.ErrorContains(t, p.parse(`expect values-toleration 0.02 on "`+directStackName+`"`), "cannot also set a toleration")
+
+		// toleration, then skip, on the same stack.
+		p = newExpectationsParser()
+		require.NoError(t, p.parse(`expect values-toleration 0.02 on "`+directStackName+`"`))
+		require.ErrorContains(t, p.parse(`skip values-comparison on "`+directStackName+`"`), "cannot also skip values-comparison")
+	})
+
+	t.Run("duplicate values-toleration directive for the same stack is rejected", func(t *testing.T) {
+		p := newExpectationsParser()
+		require.NoError(t, p.parse(`expect values-toleration 0.02 on "`+directStackName+`"`))
+		require.ErrorContains(t, p.parse(`expect values-toleration 0.03 on "`+directStackName+`"`), "duplicate values-toleration directive")
+	})
+
+	t.Run("skip and values-toleration on different stacks both apply", func(t *testing.T) {
+		p := newExpectationsParser()
+		require.NoError(t, p.parse(`skip values-comparison on "`+directStackName+`"`))
+		require.NoError(t, p.parse(`expect values-toleration 0.02 on "`+queryFrontendShardStackName+`"`))
+		exp := p.get()
+		require.True(t, exp.isValueComparisonSkipped[directStackName])
+		require.Equal(t, 0.02, exp.valuesToleration[queryFrontendShardStackName])
+	})
 }
 
 func TestExpectationsValidate(t *testing.T) {

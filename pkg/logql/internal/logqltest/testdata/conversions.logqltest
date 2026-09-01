@@ -18,6 +18,7 @@ load
   {unit="frac"}  "b=1.5B"     @ 10s [repeat every 10s for 18]
   {unit="noise"} "noise"      @ 10s [repeat every 10s for 18]
   {unit="bytes"} "bytes=25MB" @ 10s [repeat every 10s for 18]
+  {unit="meta"}  "noise"      @ 10s [repeat every 10s for 18] [metadata b="4MiB"]
 
 # A line without the unwrapped field (e.g. "noise" line has no "b") is dropped by unwrap.
 eval instant at 120s max_over_time({unit=~".+"} | logfmt | unwrap bytes(b) [1m]) by (unit)
@@ -36,6 +37,7 @@ eval instant at 120s max_over_time({unit=~".+"} | logfmt | unwrap bytes(b) [1m])
   {unit="mixed"} 2000
   {unit="comma"} 2048
   {unit="frac"}  1
+  {unit="meta"}  4194304
 eval range from 60s to 180s step 60s max_over_time({unit=~".+"} | logfmt | unwrap bytes(b) [30s]) by (unit)
   {unit="kb"}    1000 1000 1000
   {unit="kib"}   1024 1024 1024
@@ -52,6 +54,7 @@ eval range from 60s to 180s step 60s max_over_time({unit=~".+"} | logfmt | unwra
   {unit="mixed"} 2000 2000 2000
   {unit="comma"} 2048 2048 2048
   {unit="frac"}  1 1 1
+  {unit="meta"}  4194304 4194304 4194304
 # The unwrapped label can itself be named "bytes".
 eval instant at 120s max_over_time({unit="bytes"} | logfmt | unwrap bytes(bytes) [1m])
   {unit="bytes"} 25000000
@@ -78,6 +81,7 @@ load
   {unit="neg"}   "d=-5s"        @ 10s [repeat every 10s for 18]
   {unit="noise"} "noise"        @ 10s [repeat every 10s for 18]
   {unit="dur"}   "duration=90s" @ 10s [repeat every 10s for 18]
+  {unit="meta"}  "noise"        @ 10s [repeat every 10s for 18] [metadata d="1h30m"]
 
 # A line without the unwrapped field (e.g. "noise" line has no "d") is dropped by unwrap.
 eval instant at 120s max_over_time({unit=~".+"} | logfmt | unwrap duration(d) [1m]) by (unit)
@@ -87,6 +91,7 @@ eval instant at 120s max_over_time({unit=~".+"} | logfmt | unwrap duration(d) [1
   {unit="hm"}  5400
   {unit="fh"}  5400
   {unit="neg"} -5
+  {unit="meta"} 5400
 # duration_seconds() is identical to duration().
 eval instant at 120s max_over_time({unit=~".+"} | logfmt | unwrap duration_seconds(d) [1m]) by (unit)
   {unit="s"}   2
@@ -95,6 +100,7 @@ eval instant at 120s max_over_time({unit=~".+"} | logfmt | unwrap duration_secon
   {unit="hm"}  5400
   {unit="fh"}  5400
   {unit="neg"} -5
+  {unit="meta"} 5400
 
 eval range from 60s to 120s step 30s max_over_time({unit=~".+"} | logfmt | unwrap duration(d) [1m]) by (unit)
   {unit="s"}   2 2 2
@@ -103,6 +109,7 @@ eval range from 60s to 120s step 30s max_over_time({unit=~".+"} | logfmt | unwra
   {unit="hm"}  5400 5400 5400
   {unit="fh"}  5400 5400 5400
   {unit="neg"} -5 -5 -5
+  {unit="meta"} 5400 5400 5400
 eval range from 60s to 120s step 30s max_over_time({unit=~".+"} | logfmt | unwrap duration_seconds(d) [1m]) by (unit)
   {unit="s"}   2 2 2
   {unit="ms"}  0.5 0.5 0.5
@@ -110,6 +117,7 @@ eval range from 60s to 120s step 30s max_over_time({unit=~".+"} | logfmt | unwra
   {unit="hm"}  5400 5400 5400
   {unit="fh"}  5400 5400 5400
   {unit="neg"} -5 -5 -5
+  {unit="meta"} 5400 5400 5400
 # The unwrapped label can itself be named "duration".
 eval instant at 120s max_over_time({unit="dur"} | logfmt | unwrap duration(duration) [1m])
   {unit="dur"} 90

@@ -10,6 +10,8 @@ type BosRequest struct {
 	ObjectKey       string
 	Tracker         []RequestTracker
 	IsObjectRequest bool
+	// the per-request metadata sink supplied by the caller, set by handleOptions
+	ResponseCommon *ResponseCommon
 }
 
 func (r *BosRequest) SetBucket(bkt string) {

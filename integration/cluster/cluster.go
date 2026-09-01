@@ -11,7 +11,6 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
-	"strings"
 	"sync"
 	"text/template"
 	"time"
@@ -36,8 +35,8 @@ var configTemplate = template.Must(template.New("").Parse(`
 auth_enabled: true
 
 server:
-  http_listen_port: 0
-  grpc_listen_port: 0
+  http_listen_port: {{.httpPort}}
+  grpc_listen_port: {{.grpcPort}}
   grpc_server_max_recv_msg_size: 110485813
   grpc_server_max_send_msg_size: 110485813
 
@@ -304,6 +303,10 @@ type Component struct {
 	overridesFile string
 	dataPath      string
 
+	// HTTP and gRPC ports where the component is listening to.
+	httpPort int
+	grpcPort int
+
 	running bool
 	wg      sync.WaitGroup
 }
@@ -320,11 +323,11 @@ func (c *Component) AddFlags(flags ...string) {
 }
 
 func (c *Component) HTTPURL() string {
-	return fmt.Sprintf("http://localhost:%s", port(c.loki.Server.HTTPListenAddr().String()))
+	return fmt.Sprintf("http://localhost:%d", c.httpPort)
 }
 
 func (c *Component) GRPCURL() string {
-	return fmt.Sprintf("localhost:%s", port(c.loki.Server.GRPCListenAddr().String()))
+	return fmt.Sprintf("localhost:%d", c.grpcPort)
 }
 
 func (c *Component) WithExtraConfig(cfg string) {
@@ -335,17 +338,22 @@ func (c *Component) WithExtraConfig(cfg string) {
 	c.extraConfigs = append(c.extraConfigs, cfg)
 }
 
-func port(addr string) string {
-	parts := strings.Split(addr, ":")
-	return parts[len(parts)-1]
-}
-
 func (c *Component) writeConfig() error {
 	var err error
 
 	configFile, err := os.CreateTemp("", fmt.Sprintf("loki-%s-config-*.yaml", c.name))
 	if err != nil {
 		return fmt.Errorf("error creating config file: %w", err)
+	}
+
+	// Listen ports are picked by the harness rather than by the server, so that
+	// the harness can probe readiness over the network.
+	if c.httpPort, err = freePort(); err != nil {
+		return fmt.Errorf("error allocating http port: %w", err)
+	}
+
+	if c.grpcPort, err = freePort(); err != nil {
+		return fmt.Errorf("error allocating grpc port: %w", err)
 	}
 
 	c.dataPath, err = os.MkdirTemp("", fmt.Sprintf("loki-%s-data-", c.name))
@@ -379,6 +387,8 @@ func (c *Component) MergedConfig() ([]byte, error) {
 	if err := configTemplate.Execute(&sb, map[string]interface{}{
 		"dataPath":       c.dataPath,
 		"sharedDataPath": c.cluster.sharedPath,
+		"httpPort":       c.httpPort,
+		"grpcPort":       c.grpcPort,
 	}); err != nil {
 		return nil, fmt.Errorf("error writing config file: %w", err)
 	}
@@ -455,18 +465,26 @@ func (c *Component) run() error {
 		errCh   = make(chan error, 1)
 	)
 
+	// Probe readiness over the network to guarantee the component is ready before
+	// the test proceeds.
+	//
+	// We don't check readiness by calling ServeHTTP on the router directly because
+	// the component may still initialize even if the readiness check passes
+	// (e.g. the server only accepts connections once initialization has completed,
+	// while directly calling ServeHTTP may pass the readiness probe even if the
+	// initialization has not completed yet).
+	readyURL := fmt.Sprintf("%s/ready", c.HTTPURL())
 	go func() {
 		for {
 			time.Sleep(time.Millisecond * 200)
-			if c.loki == nil || c.loki.Server == nil || c.loki.Server.HTTP == nil {
+
+			resp, err := http.Get(readyURL) // #nosec G107 -- local test server
+			if err != nil {
 				continue
 			}
+			_ = resp.Body.Close()
 
-			req := httptest.NewRequest("GET", "http://localhost/ready", nil)
-			w := httptest.NewRecorder()
-			c.loki.Server.HTTP.ServeHTTP(w, req)
-
-			if w.Code == 200 {
+			if resp.StatusCode == http.StatusOK {
 				close(readyCh)
 				return
 			}
@@ -558,4 +576,17 @@ func NewRemoteWriteServer(handler *http.HandlerFunc) *httptest.Server {
 	server.Start()
 
 	return server
+}
+
+// freePort asks the kernel for an unused port. There is an inherent gap between
+// releasing it here and the server binding it, but the integration tests start
+// components one at a time, so nothing else in the suite should compete for it.
+func freePort() (int, error) {
+	l, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		return 0, err
+	}
+	defer l.Close()
+
+	return l.Addr().(*net.TCPAddr).Port, nil
 }
