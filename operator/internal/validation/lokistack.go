@@ -56,7 +56,7 @@ func (v *LokiStackValidator) validate(ctx context.Context, stack *lokiv1.LokiSta
 		storageStatus = stack.Status.Storage
 	}
 
-	errors := ValidateSchemas(&stack.Spec.Storage, time.Now().UTC(), storageStatus)
+	errors := ValidateSchemas(&stack.Spec.Storage, time.Now().UTC(), storageStatus, stack.Spec.Limits)
 	if len(errors) != 0 {
 		allErrs = append(allErrs, errors...)
 	}
@@ -292,7 +292,7 @@ func (v *LokiStackValidator) validateReplicationSpec(stack lokiv1.LokiStackSpec)
 }
 
 // ValidateSchemas ensures that the schemas are in a valid format
-func ValidateSchemas(v *lokiv1.ObjectStorageSpec, utcTime time.Time, status lokiv1.LokiStackStorageStatus) field.ErrorList {
+func ValidateSchemas(v *lokiv1.ObjectStorageSpec, utcTime time.Time, status lokiv1.LokiStackStorageStatus, limits *lokiv1.LimitsSpec) field.ErrorList {
 	var allErrs field.ErrorList
 
 	appliedSchemasFound := 0
@@ -301,6 +301,7 @@ func ValidateSchemas(v *lokiv1.ObjectStorageSpec, utcTime time.Time, status loki
 
 	cutoff := utcTime.Add(lokiv1.StorageSchemaUpdateBuffer)
 	appliedSchemas := buildAppliedSchemaMap(status.Schemas, cutoff)
+	expiredSchemas := buildExpiredSchemaSet(status.Schemas, utcTime, limits)
 
 	for i, sc := range v.Schemas {
 		if found[sc.EffectiveDate] {
@@ -360,7 +361,10 @@ func ValidateSchemas(v *lokiv1.ObjectStorageSpec, utcTime time.Time, status loki
 		))
 	}
 
-	if appliedSchemasFound != len(appliedSchemas) {
+	// Only check for removed schemas if they haven't expired
+	// Allow removal of expired schemas (those past their retention period)
+	requiredSchemas := len(appliedSchemas) - len(expiredSchemas)
+	if appliedSchemasFound < requiredSchemas {
 		allErrs = append(allErrs, field.Invalid(
 			field.NewPath("spec").Child("storage").Child("schemas"),
 			v.Schemas,
@@ -388,4 +392,55 @@ func buildAppliedSchemaMap(schemas []lokiv1.ObjectStorageSchema, effectiveDate t
 	}
 
 	return appliedMap
+}
+
+// buildExpiredSchemaSet creates a set of schema effective dates that have expired
+// based on the retention period. A schema is considered expired if:
+// 1. There is a next schema (this is not the last schema)
+// 2. The current time is beyond (next schema effective date + retention period)
+// This ensures all data written using the expired schema has been retained for the full period.
+func buildExpiredSchemaSet(schemas []lokiv1.ObjectStorageSchema, currentTime time.Time, limits *lokiv1.LimitsSpec) map[lokiv1.StorageSchemaEffectiveDate]bool {
+	expiredSet := make(map[lokiv1.StorageSchemaEffectiveDate]bool)
+
+	// Get retention period in days (default to 0 if not set, which means never expire)
+	retentionDays := getRetentionDays(limits)
+	if retentionDays == 0 {
+		// No retention configured, schemas never expire
+		return expiredSet
+	}
+
+	// Sort schemas by effective date to find the next schema
+	sortedSchemas := make([]lokiv1.ObjectStorageSchema, len(schemas))
+	copy(sortedSchemas, schemas)
+
+	// For each schema (except the last one), check if it has expired
+	for i := 0; i < len(sortedSchemas)-1; i++ {
+		currentSchema := sortedSchemas[i]
+		nextSchema := sortedSchemas[i+1]
+
+		nextDate, err := nextSchema.EffectiveDate.UTCTime()
+		if err != nil {
+			continue
+		}
+
+		// Schema data expires at: next schema date + retention period
+		// Data written with this schema is valid from currentDate to nextDate-1
+		// That data must be retained for retentionDays from when it was written
+		// So the last data expires at: (nextDate - 1 day) + retentionDays
+		expirationDate := nextDate.AddDate(0, 0, retentionDays)
+
+		if currentTime.After(expirationDate) {
+			expiredSet[currentSchema.EffectiveDate] = true
+		}
+	}
+
+	return expiredSet
+}
+
+// getRetentionDays returns the global retention period in days, or 0 if not configured
+func getRetentionDays(limits *lokiv1.LimitsSpec) int {
+	if limits == nil || limits.Global == nil || limits.Global.Retention == nil {
+		return 0
+	}
+	return int(limits.Global.Retention.Days)
 }

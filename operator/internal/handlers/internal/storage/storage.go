@@ -50,6 +50,7 @@ func BuildOptions(ctx context.Context, k k8s.Client, stack *lokiv1.LokiStack, fg
 		now,
 		stack.Spec.Storage,
 		stack.Status.Storage,
+		stack.Spec.Limits,
 	)
 	if err != nil {
 		return storage.Options{}, &status.DegradedError{
