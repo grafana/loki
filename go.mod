@@ -125,7 +125,7 @@ require (
 	github.com/prometheus/sigv4 v0.4.1
 	github.com/richardartoul/molecule v1.0.0
 	github.com/schollz/progressbar/v3 v3.19.1
-	github.com/shirou/gopsutil/v4 v4.26.7
+	github.com/shirou/gopsutil/v4 v4.26.8
 	github.com/thanos-io/objstore v0.0.0-20260828142402-4b0f36756cea
 	github.com/tjhop/slog-gokit v0.2.0
 	github.com/twmb/franz-go v1.21.3
