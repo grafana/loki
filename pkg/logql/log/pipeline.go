@@ -73,6 +73,7 @@ func (n *noopPipeline) ForStream(labels labels.Labels) StreamPipeline {
 
 func (n *noopPipeline) Reset() {
 	clear(n.cache)
+	clear(n.baseBuilder.resultCache)
 }
 
 // IsNoopPipeline tells if a pipeline is a Noop.
@@ -188,8 +189,16 @@ func (p *pipeline) ForStream(labels labels.Labels) StreamPipeline {
 	return res
 }
 
+// Reset returns the pipeline to the state of a freshly built one.
+//
+// resultCache is cleared here and not in BaseLabelsBuilder.Reset: the builder
+// reset runs once per line, while this runs once per push in a long-lived
+// pipeline such as an ingester tailer. Without it the cache keeps one
+// LabelsResult per distinct label set for the lifetime of the pipeline, which
+// with structured metadata is effectively one entry per log line (#24031).
 func (p *pipeline) Reset() {
 	p.baseBuilder.Reset()
+	clear(p.baseBuilder.resultCache)
 	clear(p.streamPipelines)
 }
 
