@@ -13,7 +13,7 @@ func TestBuildSchemaConfig_NoSchemas(t *testing.T) {
 	spec := lokiv1.ObjectStorageSpec{}
 	status := lokiv1.LokiStackStorageStatus{}
 
-	expected, err := BuildSchemaConfig(time.Now().UTC(), spec, status)
+	expected, err := BuildSchemaConfig(time.Now().UTC(), spec, status, nil)
 
 	require.Error(t, err)
 	require.Nil(t, expected)
@@ -30,7 +30,7 @@ func TestBuildSchemaConfig_AddSchema_NoStatuses(t *testing.T) {
 	}
 	status := lokiv1.LokiStackStorageStatus{}
 
-	actual, err := BuildSchemaConfig(time.Now().UTC(), spec, status)
+	actual, err := BuildSchemaConfig(time.Now().UTC(), spec, status, nil)
 	expected := []lokiv1.ObjectStorageSchema{
 		{
 			Version:       lokiv1.ObjectStorageSchemaV11,
@@ -65,7 +65,7 @@ func TestBuildSchemaConfig_AddSchema_WithStatuses_WithValidDate(t *testing.T) {
 		},
 	}
 
-	actual, err := BuildSchemaConfig(utcTime, spec, status)
+	actual, err := BuildSchemaConfig(utcTime, spec, status, nil)
 	expected := []lokiv1.ObjectStorageSchema{
 		{
 			Version:       lokiv1.ObjectStorageSchemaV11,
@@ -105,7 +105,7 @@ func TestBuildSchemaConfig_AddSchema_WithStatuses_WithInvalidDate(t *testing.T) 
 		},
 	}
 
-	expected, err := BuildSchemaConfig(utcTime, spec, status)
+	expected, err := BuildSchemaConfig(utcTime, spec, status, nil)
 
 	require.Error(t, err)
 	require.Nil(t, expected)
