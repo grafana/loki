@@ -350,8 +350,9 @@ func newQueryFrontendTripperware(logger log.Logger, overrides *validation.Overri
 	cfg.ShardedQueries = sharded
 
 	// Enable the aggregations that only shard behind this flag. quantile_over_time uses the
-	// count-min/quantile sketch path; first/last_over_time use the timestamp-carrying merge path.
-	cfg.ShardAggregations = []string{"quantile_over_time", "first_over_time", "last_over_time", "approx_topk"}
+	// count-min/quantile sketch path; first/last_over_time use the timestamp-carrying merge path;
+	// approx_count_distinct uses the HyperLogLog sketch path.
+	cfg.ShardAggregations = []string{"quantile_over_time", "first_over_time", "last_over_time", "approx_topk", "approx_count_distinct"}
 
 	var engineOpts logql.EngineOpts
 	flagext.DefaultValues(&engineOpts)

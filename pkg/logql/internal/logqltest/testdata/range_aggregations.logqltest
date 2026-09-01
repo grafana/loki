@@ -96,17 +96,6 @@ eval instant at 60s bytes_rate({app=~"a|b"} | logfmt | unwrap v [30s])
 eval instant at 60s bytes_rate({app=~"a|b"} |~".+bar" [30s]) by (app)
   expect fail msg: grouping not allowed for bytes_rate aggregation
 
-# unwrap of a stream label `foo` (no parser stage).
-clear
-load
-  {app="foo", foo="2"} "xbar" @ 0s [repeat every 10s for 13]
-  {app="noise"} "noise" @ 0s [repeat every 10s for 13]
-
-eval instant at 60s rate({app="foo"} | unwrap foo [30s])
-  {app="foo"} 0.2
-eval range from 60s to 120s step 15s rate({app="foo"} | unwrap foo [30s])
-  {app="foo"} 0.2 0.2 0.2 0.2 0.2
-
 # first_over_time() / last_over_time()
 clear
 load
@@ -281,10 +270,13 @@ eval instant at 60s quantile_over_time(0.5, {app="a"}[1m])
 
 # quantile_over_time() with grouping.
 #
-# Sharded quantile_over_time is computed from an approximate DDSketch, so its value differs from the
-# exact unsharded quantile (sharply on these tiny fixtures: it returns the value at the rank, not the
-# interpolated one). Skip the value comparison on the sharding stack; direct and no-sharding still
-# assert the exact values.
+# Sharded quantile_over_time is computed from an approximate DDSketch, so its value differs
+# from the exact unsharded quantile. Both interpolate between the same two ranked samples, but
+# the sketch only stores which bucket a sample falls into, so each is off by the bucket's ~1%
+# relative error.
+#
+# Allow that on the sharding stack with a 2% toleration; direct and no-sharding still assert the
+# exact values.
 clear
 load
   {app="a", pod="1"} "v=2"  @ 20s
@@ -294,50 +286,204 @@ load
   {app="a", pod="1"} "noise" @ 25s
 
 eval instant at 60s quantile_over_time(0.5, {app="a"} | logfmt | unwrap v [1m]) by (pod)
-  skip values-comparison on "query-frontend + query-scheduler (sharding)"
+  expect values-toleration 0.02 on "query-frontend + query-scheduler (sharding)"
   {pod="1"} 3
   {pod="2"} 15
 eval instant at 60s quantile_over_time(0.5, {app="a"} | logfmt | unwrap v [1m]) by (app)
-  skip values-comparison on "query-frontend + query-scheduler (sharding)"
+  expect values-toleration 0.02 on "query-frontend + query-scheduler (sharding)"
   {app="a"} 7
 eval instant at 60s quantile_over_time(0.5, {app="a"} | logfmt | unwrap v [1m]) without (pod)
-  skip values-comparison on "query-frontend + query-scheduler (sharding)"
+  expect values-toleration 0.02 on "query-frontend + query-scheduler (sharding)"
   {app="a"} 7
 eval instant at 60s quantile_over_time(0.5, {app="a"} | logfmt | unwrap v [1m]) without (app)
-  skip values-comparison on "query-frontend + query-scheduler (sharding)"
+  expect values-toleration 0.02 on "query-frontend + query-scheduler (sharding)"
   {pod="1"} 3
   {pod="2"} 15
 eval range from 60s to 70s step 10s quantile_over_time(0.5, {app="a"} | logfmt | unwrap v [1m]) by (pod)
-  skip values-comparison on "query-frontend + query-scheduler (sharding)"
+  expect values-toleration 0.02 on "query-frontend + query-scheduler (sharding)"
   {pod="1"} 3 3
   {pod="2"} 15 15
+eval instant at 60s quantile_over_time(0, {app="a"} | logfmt | unwrap v [1m]) by (pod)
+  expect values-toleration 0.02 on "query-frontend + query-scheduler (sharding)"
+  {pod="1"} 2
+  {pod="2"} 10
+eval instant at 60s quantile_over_time(1, {app="a"} | logfmt | unwrap v [1m]) by (pod)
+  expect values-toleration 0.02 on "query-frontend + query-scheduler (sharding)"
+  {pod="1"} 4
+  {pod="2"} 20
+eval instant at 60s quantile_over_time(1.5, {app="a"} | logfmt | unwrap v [1m]) by (pod)
+  {pod="1"} +Inf
+  {pod="2"} +Inf
 
-# unwrap of a stream label `bar`.
+# quantile_over_time() with grouping: a group's unwrapped values are all non-finite (NaN).
 clear
 load
-  {app="foo", bar="3"} "xbar"  @ 0s [repeat every 10s for 19]
-  {app="foo", bar="3"} "noise" @ 5s [repeat every 10s for 19]
-  {app="bar", bar="6"} "xbar"  @ 0s [repeat every 10s for 19]
-  {app="bar", bar="6"} "noise" @ 5s [repeat every 10s for 19]
+  {app="a", pod="1"} "v=2"   @ 20s
+  {app="a", pod="1"} "v=4"   @ 30s
+  {app="a", pod="2"} "v=NaN" @ 20s
+  {app="a", pod="2"} "v=NaN" @ 30s
 
-eval instant at 120s rate(({app=~"foo|bar"} |~".+bar" | unwrap bar)[1m])
-  {app="foo"} 0.3
-  {app="bar"} 0.6
-eval range from 60s to 180s step 30s rate(({app=~"foo|bar"} |~".+bar" | unwrap bar)[1m])
-  {app="foo"} 0.3 0.3 0.3 0.3 0.3
-  {app="bar"} 0.6 0.6 0.6 0.6 0.6
+eval instant at 60s quantile_over_time(0.5, {app="a"} | logfmt | unwrap v [1m]) by (pod)
+  expect values-toleration 0.02 on "query-frontend + query-scheduler (sharding)"
+  {pod="1"} 3
+  {pod="2"} NaN
 
-# Combines a numeric label filter with unwrap: after logfmt, `bar > 0` drops the bar=0 lines
-# before unwrapping bazz.
+# quantile_over_time() over a structured metadata field.
 clear
 load
-  {job="foo"} "bar=1 bazz=10" @ 10s [repeat every 10s for 12]
-  {job="foo"} "bar=0 bazz=99" @ 15s [repeat every 10s for 12]
+  {app="a"} "msg"   @ 10s [metadata v="1"]
+  {app="a"} "msg"   @ 20s [metadata v="2"]
+  {app="a"} "msg"   @ 30s [metadata v="3"]
+  {app="a"} "noise" @ 25s
 
-eval instant at 120s sum(rate({job="foo"} | logfmt | bar > 0 | unwrap bazz [30s]))
-  {} 1
-eval range from 60s to 120s step 30s sum(rate({job="foo"} | logfmt | bar > 0 | unwrap bazz [30s]))
-  {} 1 1 1
+eval instant at 60s quantile_over_time(0.5, {app="a"} | unwrap v [1m])
+  {app="a"} 2
+eval range from 30s to 60s step 30s quantile_over_time(0.5, {app="a"} | unwrap v [1m])
+  {app="a"} 2 2
+
+# approx_count_distinct()
+#
+# A duplicate id=1 does not raise the distinct count. A "noise" line has no id, so logfmt skips it.
+clear
+load
+  {app="a"} "id=1"   @ 10s
+  {app="a"} "id=1"   @ 15s   # duplicate
+  {app="a"} "id=2"   @ 20s
+  {app="a"} "id=3"   @ 30s
+  {app="a"} "id=4"   @ 40s
+  {app="a"} "id=5"   @ 50s
+  {app="a"} "id=6"   @ 110s
+  {app="a"} "noise"  @ 25s
+
+eval instant at 60s approx_count_distinct(id, {app="a"} | logfmt [1m])
+  {app="a"} 5
+eval range from 30s to 60s step 30s approx_count_distinct(id, {app="a"} | logfmt [1m])  # overlapping
+  {app="a"} 3 5     # (−30s,30s]={1,2,3}→3, (0s,60s]={1,2,3,4,5}→5
+eval range from 20s to 50s step 30s approx_count_distinct(id, {app="a"} | logfmt [15s]) # non-overlapping
+  {app="a"} 2 2     # (5s,20s]={1,2}→2, (35s,50s]={4,5}→2
+# The offset shifts the window back.
+eval instant at 50s approx_count_distinct(id, {app="a"} | logfmt [15s] offset 20s)
+  {app="a"} 2
+eval range from 50s to 110s step 30s approx_count_distinct(id, {app="a"} | logfmt [15s] offset 20s)
+  {app="a"} 2 1 _
+# Output gap.
+eval range from 50s to 110s step 30s approx_count_distinct(id, {app="a"} | logfmt [15s])
+  {app="a"} 2 _ 1
+# Single-sample window: the distinct count is 1.
+eval instant at 10s approx_count_distinct(id, {app="a"} | logfmt [5s])
+  {app="a"} 1
+# An empty window emits no point.
+eval instant at 80s approx_count_distinct(id, {app="a"} | logfmt [5s])
+  expect empty
+# unwrap is not supported.
+eval instant at 60s approx_count_distinct(id, {app="a"} | logfmt | unwrap id [1m])
+  expect fail msg: unwrap is not supported for approx_count_distinct()
+# without() is not supported.
+eval instant at 60s approx_count_distinct(id, {app="a"} | logfmt [1m]) without (app)
+  expect fail msg: without is not supported for approx_count_distinct()
+# The counted field must not appear in by().
+eval instant at 60s approx_count_distinct(id, {app="a"} | logfmt [1m]) by (id)
+  expect fail msg: cannot group by the counted field "id"
+# Old split-parenthesis syntax is not supported.
+eval instant at 60s approx_count_distinct(id) ({app="a"} | logfmt [1m])
+  expect fail msg: unexpected )
+# Prefix grouping is not supported.
+eval instant at 60s approx_count_distinct by (app) (id, {app="a"} | logfmt [1m])
+  expect fail
+
+# approx_count_distinct() with grouping.
+#
+# id=shared occurs in both pods. by() and by(app) keep 5 values, not 6 (3+3 would be a merge bug).
+# HLL is exact at this cardinality, so the sharding stack keeps the value check.
+clear
+load
+  {app="a", pod="1"} "id=2"      @ 20s
+  {app="a", pod="1"} "id=4"      @ 30s
+  {app="a", pod="1"} "id=shared" @ 35s
+  {app="a", pod="2"} "id=10"     @ 40s
+  {app="a", pod="2"} "id=20"     @ 50s
+  {app="a", pod="2"} "id=shared" @ 45s
+  {app="a", pod="1"} "noise"     @ 25s
+
+# Default grouping keeps stream labels and drops the counted field.
+eval instant at 60s approx_count_distinct(id, {app="a"} | logfmt [1m])
+  {app="a", pod="1"} 3
+  {app="a", pod="2"} 3
+eval instant at 60s approx_count_distinct(id, {app="a"} | logfmt [1m]) by (pod)
+  {pod="1"} 3
+  {pod="2"} 3
+eval instant at 60s approx_count_distinct(id, {app="a"} | logfmt [1m]) by (app)
+  {app="a"} 5
+eval instant at 60s approx_count_distinct(id, {app="a"} | logfmt [1m]) by ()
+  {} 5
+eval range from 60s to 70s step 10s approx_count_distinct(id, {app="a"} | logfmt [1m]) by (pod)
+  {pod="1"} 3 3
+  {pod="2"} 3 3
+
+# approx_count_distinct() extraction:
+# - Stream labels, structured metadata, logfmt, and json all supply the counted field.
+# - Missing and empty values are skipped.
+clear
+load
+  {app="a", mac="aa"} "x" @ 20s
+  {app="a", mac="bb"} "x" @ 30s
+  {app="a", mac="aa"} "x" @ 40s
+  {app="noise", mac="zz"} "x" @ 20s
+
+eval instant at 60s approx_count_distinct(mac, {app="a"}[1m])
+  {app="a"} 2
+
+clear
+load
+  {app="a"} "x" @ 20s [metadata mac="aa"]
+  {app="a"} "x" @ 30s [metadata mac="bb"]
+  {app="a"} "x" @ 40s [metadata mac="aa"]
+  {app="noise"} "x" @ 20s [metadata mac="zz"]
+
+eval instant at 60s approx_count_distinct(mac, {app="a"}[1m])
+  {app="a"} 2
+
+clear
+load
+  {app="a"} `{"id":"1"}` @ 20s
+  {app="a"} `{"id":"2"}` @ 30s
+  {app="a"} `{"id":"1"}` @ 40s
+  {app="a"} `{"other":1}` @ 50s
+  {app="noise"} `{"id":"z"}` @ 20s
+
+eval instant at 60s approx_count_distinct(id, {app="a"} | json [1m])
+  {app="a"} 2
+
+clear
+load
+  {app="a"} "id="      @ 20s
+  {app="a"} "other=1"  @ 30s
+  {app="a"} "id=1"     @ 40s
+  {app="a"} `id=1 bad="unterminated` @ 50s
+  {app="noise"} "id=z" @ 20s
+
+# logfmt drops empty id= unless --keep-empty. Both forms skip the empty value.
+eval instant at 60s approx_count_distinct(id, {app="a"} | logfmt [1m])
+  {app="a"} 1
+eval instant at 60s approx_count_distinct(id, {app="a"} | logfmt --keep-empty [1m])
+  {app="a"} 1
+eval instant at 60s approx_count_distinct(id, {app="a"} | logfmt --strict [1m])
+  expect fail msg: LogfmtParserErr
+eval instant at 60s approx_count_distinct(id, {app="a"} | logfmt --strict | __error__="" [1m])
+  {app="a"} 1
+
+# approx_count_distinct() with a large set.
+#
+# HLL is exact at low cardinality. This load has 20000 distinct ids.
+clear
+load
+  {app="a"}     "id={{.i}}" @ 1ms [repeat every 1ms for 20000]
+  {app="noise"} "id=z"      @ 1ms
+
+eval instant at 60s approx_count_distinct(id, {app="a"} | logfmt [1m])
+  {app="a"} 19820  # true distinct count=20000; error=0.9% (within 1.5%)
+eval range from 40s to 60s step 20s approx_count_distinct(id, {app="a"} | logfmt [1m])  # overlapping
+  {app="a"} 19820 19820
 
 # rate_counter() treats the unwrapped value as a counter: the per-second increase over the range with
 # counter resets added back, using Prometheus-style boundary extrapolation.
@@ -480,6 +626,18 @@ load
 eval instant at 210s rate_counter({app="a"} | logfmt | unwrap c [90s])
   {app="a"} 1
 
+# rate_counter() over a structured metadata field.
+clear
+load
+  {app="a"} "msg" @ 180s [metadata c="40"]
+  {app="a"} "msg" @ 210s [metadata c="100"]
+  {app="a"} "msg" @ 150s
+
+eval instant at 210s rate_counter({app="a"} | unwrap c [90s])
+  {app="a"} 1
+eval range from 180s to 210s step 30s rate_counter({app="a"} | unwrap c [90s])
+  {app="a"} 0 1
+
 # count_over_time()
 clear
 load
@@ -583,6 +741,42 @@ eval instant at 1300ms rate({app="b"} |= "keep" [500ms] offset 500ms)
   {app="b"} 4
 eval range from 1000ms to 1600ms step 300ms rate({app="b"} |= "keep" [500ms] offset 500ms)
   {app="b"} 6 4 6
+
+# rate() with unwrap, from a stream label, structured metadata, or a parsed field.
+clear
+load
+  {app="p"}        "v=2"   @ 0s  [repeat every 10s for 13]
+  {app="s", v="2"} "x"     @ 0s  [repeat every 10s for 13]
+  {app="m"}        "x"     @ 0s  [repeat every 10s for 13] [metadata v="2"]
+  {app="noise"}    "noise" @ 0s  [repeat every 10s for 13]
+  {app="err"}      "msg"   @ 20s [metadata v="oops"]
+  {app="err"}      "msg"   @ 40s [metadata v="6"]
+
+# parsed field
+eval instant at 60s rate({app="p"} | logfmt | unwrap v [30s])
+  {app="p"} 0.2
+eval range from 60s to 120s step 15s rate({app="p"} | logfmt | unwrap v [30s])
+  {app="p"} 0.2 0.2 0.2 0.2 0.2
+# stream label
+eval instant at 60s rate({app="s"} | logfmt | unwrap v [30s])
+  {app="s"} 0.2
+eval range from 60s to 120s step 15s rate({app="s"} | logfmt | unwrap v [30s])
+  {app="s"} 0.2 0.2 0.2 0.2 0.2
+# structured metadata
+eval instant at 60s rate({app="m"} | logfmt | unwrap v [30s])
+  {app="m"} 0.2
+eval range from 60s to 120s step 15s rate({app="m"} | logfmt | unwrap v [30s])
+  {app="m"} 0.2 0.2 0.2 0.2 0.2
+# all sources
+eval instant at 60s rate({app=~"p|s|m"} | logfmt | unwrap v [30s])
+  {app="p"} 0.2
+  {app="s"} 0.2
+  {app="m"} 0.2
+# A non-numeric value, from any source, sets the extraction error. A __error__ filter drops it.
+eval instant at 60s rate({app="err"} | unwrap v [1m])
+  expect fail
+eval instant at 60s rate({app="err"} | unwrap v | __error__="" [1m])
+  {app="err"} 0.1
 
 # avg_over_time() edge cases:
 # - any NaN -> NaN
@@ -784,6 +978,80 @@ eval range from 60s to 180s step 60s avg_over_time({app="a"} | json | unwrap v |
   {pod="1"} 4 4 _
   {pod="2"} 9 9 _
 
+# avg_over_time() with grouping on structured metadata.
+clear
+load
+  {app="a"} "msg"   @ 10s [repeat every 60s for 2] [metadata v="2" pod="1"]
+  {app="a"} "msg"   @ 20s [repeat every 60s for 2] [metadata v="4" pod="1"]
+  {app="a"} "noise" @ 25s [repeat every 60s for 2] [metadata pod="1"]
+  {app="a"} "msg"   @ 15s [repeat every 60s for 2] [metadata v="6" pod="2"]
+  {app="a"} "msg"   @ 35s [repeat every 60s for 2] [metadata v="12" pod="2"]
+  {app="a"} "junk"  @ 15s [repeat every 60s for 2] [metadata pod="3"]
+  {app="a"} "moar"  @ 35s [repeat every 60s for 2] [metadata pod="3"]
+
+# by() a single label
+eval instant at 60s avg_over_time({app="a"} | unwrap v [1m]) by (pod)
+  {pod="1"} 3
+  {pod="2"} 9
+eval range from 60s to 180s step 60s avg_over_time({app="a"} | unwrap v [1m]) by (pod)
+  {pod="1"} 3 3 _
+  {pod="2"} 9 9 _
+eval instant at 60s avg_over_time({app="a"} | unwrap v [1m]) by (app)
+  {app="a"} 6
+eval range from 60s to 180s step 60s avg_over_time({app="a"} | unwrap v [1m]) by (app)
+  {app="a"} 6 6 _
+eval instant at 60s sum(avg_over_time({app="a"} | unwrap v [1m]) by (pod))
+  {} 12
+eval range from 60s to 180s step 60s sum(avg_over_time({app="a"} | unwrap v [1m]) by (pod))
+  {} 12 12 _
+# by() multiple labels
+eval instant at 60s avg_over_time({app="a"} | unwrap v [1m]) by (pod, app)
+  {app="a", pod="1"} 3
+  {app="a", pod="2"} 9
+eval range from 60s to 180s step 60s avg_over_time({app="a"} | unwrap v [1m]) by (pod, app)
+  {app="a", pod="1"} 3 3 _
+  {app="a", pod="2"} 9 9 _
+# by() with no labels
+eval instant at 60s avg_over_time({app="a"} | unwrap v [1m]) by ()
+  {} 6
+eval range from 60s to 180s step 60s avg_over_time({app="a"} | unwrap v [1m]) by ()
+  {} 6 6 _
+# without() a single label
+eval instant at 60s avg_over_time({app="a"} | unwrap v [1m]) without (pod)
+  {app="a"} 6
+eval range from 60s to 180s step 60s avg_over_time({app="a"} | unwrap v [1m]) without (pod)
+  {app="a"} 6 6 _
+# drop <label>
+eval instant at 60s avg_over_time({app="a"} | drop pod | unwrap v [1m])
+  {app="a"} 6
+eval range from 60s to 180s step 60s avg_over_time({app="a"} | drop pod | unwrap v [1m])
+  {app="a"} 6 6 _
+# drop <label> then group by(<label>)
+eval instant at 60s avg_over_time({app="a"} | drop pod | unwrap v [1m]) by (pod)
+  {} 6
+eval range from 60s to 180s step 60s avg_over_time({app="a"} | drop pod | unwrap v [1m]) by (pod)
+  {} 6 6 _
+# binary operation
+eval instant at 60s avg_over_time({app="a"} | unwrap v [1m]) by (pod) > 5
+  {pod="2"} 9
+eval range from 60s to 180s step 60s avg_over_time({app="a"} | unwrap v [1m]) by (pod) > 5
+  {pod="2"} 9 9 _
+# filtering stage after unwrap
+eval instant at 60s avg_over_time({app="a"} | unwrap v | pod="1" [1m]) by (app)
+  {app="a"} 3
+eval range from 60s to 180s step 60s avg_over_time({app="a"} | unwrap v | pod="1" [1m]) by (app)
+  {app="a"} 3 3 _
+eval instant at 60s avg_over_time({app="a"} | unwrap v | pod!="1" [1m]) by (pod)
+  {pod="2"} 9
+eval range from 60s to 180s step 60s avg_over_time({app="a"} | unwrap v | pod!="1" [1m]) by (pod)
+  {pod="2"} 9 9 _
+eval instant at 60s avg_over_time({app="a"} | unwrap v | v > 3 [1m]) by (pod)
+  {pod="1"} 4
+  {pod="2"} 9
+eval range from 60s to 180s step 60s avg_over_time({app="a"} | unwrap v | v > 3 [1m]) by (pod)
+  {pod="1"} 4 4 _
+  {pod="2"} 9 9 _
+
 # min_over_time() / max_over_time()
 # - a leading NaN is ignored
 # - all NaN -> NaN
@@ -880,6 +1148,28 @@ eval range from 60s to 70s step 10s min_over_time({app="a"} | logfmt | unwrap v 
   {pod="1"} 2 2
   {pod="2"} 10 10
 
+# min_over_time() / max_over_time() over a structured metadata field.
+clear
+load
+  {app="a", pod="1"} "msg" @ 20s [metadata v="2"]
+  {app="a", pod="1"} "msg" @ 30s [metadata v="4"]
+  {app="a", pod="2"} "msg" @ 40s [metadata v="10"]
+  {app="a", pod="2"} "msg" @ 50s [metadata v="20"]
+  {app="a", pod="1"} "noise" @ 25s
+
+eval instant at 60s min_over_time({app="a"} | unwrap v [1m]) by (pod)
+  {pod="1"} 2
+  {pod="2"} 10
+eval instant at 60s max_over_time({app="a"} | unwrap v [1m]) by (pod)
+  {pod="1"} 4
+  {pod="2"} 20
+eval range from 60s to 70s step 10s min_over_time({app="a"} | unwrap v [1m]) by (pod)
+  {pod="1"} 2 2
+  {pod="2"} 10 10
+eval range from 60s to 70s step 10s max_over_time({app="a"} | unwrap v [1m]) by (pod)
+  {pod="1"} 4 4
+  {pod="2"} 20 20
+
 # sum_over_time()
 #
 # - any NaN -> NaN
@@ -922,6 +1212,18 @@ eval instant at 60s sum_over_time({app="a"}[1m])
 # sum_over_time() doesn't allow grouping.
 eval instant at 60s sum_over_time({app="a"} | logfmt | unwrap v [1m]) by (app)
   expect fail msg: grouping not allowed for sum_over_time aggregation
+
+# sum_over_time() over a structured metadata field.
+clear
+load
+  {app="a"} "msg"   @ 20s [metadata v="7"]
+  {app="a"} "msg"   @ 40s [metadata v="5"]
+  {app="a"} "noise" @ 30s
+
+eval instant at 60s sum_over_time({app="a"} | unwrap v [1m])
+  {app="a"} 12
+eval range from 40s to 60s step 20s sum_over_time({app="a"} | unwrap v [1m])
+  {app="a"} 12 12
 
 # stddev_over_time() / stdvar_over_time()
 clear
@@ -1010,6 +1312,22 @@ eval instant at 60s stdvar_over_time({app="a"} | logfmt | unwrap v [1m]) without
 eval range from 60s to 70s step 10s stddev_over_time({app="a"} | logfmt | unwrap v [1m]) by (pod)
   {pod="1"} 1 1
   {pod="2"} 5 5
+
+# stddev_over_time() / stdvar_over_time() over a structured metadata field.
+clear
+load
+  {app="a"} "msg"   @ 20s [metadata v="2"]
+  {app="a"} "msg"   @ 40s [metadata v="4"]
+  {app="a"} "noise" @ 30s
+
+eval instant at 60s stdvar_over_time({app="a"} | unwrap v [1m])
+  {app="a"} 1
+eval instant at 60s stddev_over_time({app="a"} | unwrap v [1m])
+  {app="a"} 1
+eval range from 40s to 60s step 20s stdvar_over_time({app="a"} | unwrap v [1m])
+  {app="a"} 1 1
+eval range from 40s to 60s step 20s stddev_over_time({app="a"} | unwrap v [1m])
+  {app="a"} 1 1
 
 # absent_over_time()
 clear
