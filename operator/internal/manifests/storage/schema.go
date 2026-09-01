@@ -20,12 +20,13 @@ func BuildSchemaConfig(
 	utcTime time.Time,
 	spec lokiv1.ObjectStorageSpec,
 	status lokiv1.LokiStackStorageStatus,
+	limits *lokiv1.LimitsSpec,
 ) ([]lokiv1.ObjectStorageSchema, error) {
 	if len(spec.Schemas) == 0 {
 		return nil, kverrors.New("spec does not contain any schemas")
 	}
 
-	errors := validation.ValidateSchemas(&spec, utcTime, status)
+	errors := validation.ValidateSchemas(&spec, utcTime, status, limits)
 	if len(errors) != 0 {
 		return nil, kverrors.Wrap(errors[0], "spec contains invalid schema entry")
 	}
