@@ -49,9 +49,11 @@ const (
 	storageVolumeName      = "storage"
 	rulePartsSeparator     = "___"
 
-	walDirectory          = "/tmp/wal"
-	dataDirectory         = "/tmp/loki"
-	rulesStorageDirectory = "/tmp/rules"
+	walDirectory  = "/var/lib/loki/wal"
+	dataDirectory = "/var/lib/loki"
+	// rulesStorageDirectory is the persistent storage path for rules.
+	// It aligns with the default used by the official Helm chart.
+	rulesStorageDirectory = "/var/lib/loki/rules"
 
 	rulerContainerName = "loki-ruler"
 
