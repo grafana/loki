@@ -16,6 +16,9 @@ func (t QueryPlan) Marshal() ([]byte, error) {
 }
 
 func (t *QueryPlan) MarshalTo(data []byte) (int, error) {
+	if t.AST == nil {
+		return copy(data, ""), nil // unlike JSON "null" we marshal a nil Plan to an empty string
+	}
 	appender := &appendWriter{
 		slice: data[:0],
 	}
@@ -32,6 +35,9 @@ func (t *QueryPlan) Unmarshal(data []byte) error {
 }
 
 func (t *QueryPlan) Size() int {
+	if t.AST == nil {
+		return 0
+	}
 	counter := &countWriter{}
 	err := syntax.EncodeJSON(t.AST, counter)
 	if err != nil {
@@ -42,6 +48,9 @@ func (t *QueryPlan) Size() int {
 }
 
 func (t QueryPlan) MarshalJSON() ([]byte, error) {
+	if t.AST == nil {
+		return []byte(""), nil // unlike JSON "null" we marshal a nil Plan to an empty string
+	}
 	var buf bytes.Buffer
 	err := syntax.EncodeJSON(t.AST, &buf)
 	if err != nil {
@@ -52,8 +61,9 @@ func (t QueryPlan) MarshalJSON() ([]byte, error) {
 }
 
 func (t *QueryPlan) UnmarshalJSON(data []byte) error {
-	// An empty query plan is ingored to be backwards compatible.
+	// Handle empty input for backward compatibility
 	if len(data) == 0 {
+		t.AST = nil
 		return nil
 	}
 

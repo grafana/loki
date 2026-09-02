@@ -30,7 +30,7 @@ var (
 	// `eval select` line (after the mode keyword), capturing the trailing query to end of line.
 	reInstant = regexp.MustCompile(`^at\s+(\S+)\s+(.+)$`)
 	reRange   = regexp.MustCompile(`^from\s+(\S+)\s+to\s+(\S+)\s+step\s+(\S+)\s+(.+)$`)
-	reSelect  = regexp.MustCompile(`^from\s+(\S+)\s+to\s+(\S+)\s+(.+)$`)
+	reSelect  = regexp.MustCompile(`^from\s+(\S+)\s+to\s+(\S+)\s+((?i:forward|backward))\s+(.+)$`)
 
 	// reAt, reRepeat and reMetadata are anchored to the head so each load-line directive matches
 	// only its own leading segment and can never reach into a later [metadata …] value.
@@ -40,6 +40,9 @@ var (
 
 	// reSkip matches a `skip <what> on "<stack>"` directive in an expectation block.
 	reSkip = regexp.MustCompile(`^skip\s+(\S+)\s+on\s+"([^"]+)"$`)
+
+	// reValuesToleration matches an `expect values-toleration <epsilon> on "<stack>"` directive.
+	reValuesToleration = regexp.MustCompile(`^expect\s+values-toleration\s+(\S+)\s+on\s+"([^"]+)"$`)
 
 	// reMetadataKeyValue scans the key="value" pairs inside an already-extracted metadata block; it
 	// is intentionally not anchored.
@@ -215,8 +218,9 @@ const (
 
 type evalCmd struct {
 	mode             evalMode
-	ts               time.Duration // instant queries
-	start, end, step time.Duration // range and select queries
+	ts               time.Duration      // instant queries
+	start, end, step time.Duration      // range and select queries
+	direction        logproto.Direction // select queries
 	query            string
 }
 
@@ -287,10 +291,14 @@ func parseEval(line string) (evalCmd, error) {
 		if end <= start {
 			return evalCmd{}, fmt.Errorf("select end %q must be after start %q", m[2], m[1])
 		}
+		direction := logproto.FORWARD
+		if strings.EqualFold(m[3], "backward") {
+			direction = logproto.BACKWARD
+		}
 		// A log-selection query has no notion of a step; use one step covering the whole
 		// window so a query that unexpectedly turns out to be a metric query fails fast
 		// (wrong result shape) instead of hanging the step evaluator on a zero step.
-		return evalCmd{mode: evalSelect, start: start, end: end, step: end - start, query: strings.TrimSpace(m[3])}, nil
+		return evalCmd{mode: evalSelect, start: start, end: end, step: end - start, direction: direction, query: strings.TrimSpace(m[4])}, nil
 	default:
 		return evalCmd{}, fmt.Errorf("expected 'instant', 'range', or 'select' after eval: %q", line)
 	}
@@ -327,6 +335,11 @@ type expectations struct {
 	// compared, set by a `skip values-comparison on "<stack>"` directive. The stack still runs and
 	// must not error; only the value/series comparison is skipped.
 	isValueComparisonSkipped map[string]bool
+
+	// valuesToleration holds, for a stack named by an `expect values-toleration <epsilon> on
+	// "<stack>"` directive, the relative tolerance to use for that stack's value comparison
+	// instead of defaultEpsilon.
+	valuesToleration map[string]float64
 }
 
 // validate ensures an eval asserts exactly one result kind: series, log streams, a scalar,
@@ -383,8 +396,9 @@ func newExpectationsParser() *expectationsParser {
 }
 
 // parse consumes one expectation line: an `expect` annotation (`fail [msg:|regex:]` / `empty` /
-// `ordered`), a `{labels} p0 p1 ...` series line, a `{labels} "line" @ <ts>` log-stream line, or a
-// bare scalar value.
+// `ordered` / `values-toleration <epsilon> on "<stack>"`), a `skip values-comparison on
+// "<stack>"` directive, a `{labels} p0 p1 ...` series line, a `{labels} "line" @ <ts>` log-stream
+// line, or a bare scalar value.
 func (p *expectationsParser) parse(line string) error {
 	switch {
 	case strings.HasPrefix(line, "expect fail"):
@@ -415,6 +429,29 @@ func (p *expectationsParser) parse(line string) error {
 	case line == "expect ordered":
 		// Compare the following series positionally rather than as a set (for sort/sort_desc).
 		p.exp.ordered = true
+	case strings.HasPrefix(line, "expect values-toleration"):
+		m := reValuesToleration.FindStringSubmatch(line)
+		if m == nil {
+			return fmt.Errorf(`invalid values-toleration directive %q (use: expect values-toleration <epsilon> on "<stack>")`, line)
+		}
+		epsilon, err := strconv.ParseFloat(m[1], 64)
+		if err != nil || !(epsilon > 0) || math.IsInf(epsilon, 0) {
+			return fmt.Errorf("invalid values-toleration value %q: must be a positive, finite number", m[1])
+		}
+		stack := m[2]
+		if !isKnownStackName(stack) {
+			return fmt.Errorf("unknown stack %q in values-toleration directive (known: %s)", stack, strings.Join(stackNames, ", "))
+		}
+		if p.exp.isValueComparisonSkipped[stack] {
+			return fmt.Errorf("stack %q already has values-comparison skipped; cannot also set a toleration", stack)
+		}
+		if _, dup := p.exp.valuesToleration[stack]; dup {
+			return fmt.Errorf("duplicate values-toleration directive for stack %q", stack)
+		}
+		if p.exp.valuesToleration == nil {
+			p.exp.valuesToleration = map[string]float64{}
+		}
+		p.exp.valuesToleration[stack] = epsilon
 	case strings.HasPrefix(line, "expect "):
 		// Reject unrecognized `expect` annotations rather than silently skipping them,
 		// which would let a script assert something the harness never actually checks.
@@ -430,6 +467,9 @@ func (p *expectationsParser) parse(line string) error {
 		}
 		if !isKnownStackName(stack) {
 			return fmt.Errorf("unknown stack %q in skip directive (known: %s)", stack, strings.Join(stackNames, ", "))
+		}
+		if _, hasToleration := p.exp.valuesToleration[stack]; hasToleration {
+			return fmt.Errorf("stack %q already has a values-toleration; cannot also skip values-comparison", stack)
 		}
 		if p.exp.isValueComparisonSkipped == nil {
 			p.exp.isValueComparisonSkipped = map[string]bool{}

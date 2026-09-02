@@ -42,7 +42,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
-	"github.com/grafana/loki/v3/pkg/querier/plan"
+	"github.com/grafana/loki/v3/pkg/querier/testutil"
 	"github.com/grafana/loki/v3/pkg/runtime"
 	"github.com/grafana/loki/v3/pkg/storage/chunk"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/fetcher"
@@ -250,6 +250,7 @@ func TestIngester(t *testing.T) {
 		Limit:    100,
 		Start:    time.Unix(0, 0),
 		End:      time.Unix(1, 0),
+		Plan:     testutil.MustPlan(`{foo="bar"}`),
 	}, &result)
 	require.NoError(t, err)
 	// We always send an empty batch to make sure stats are sent, so there will always be one empty response.
@@ -264,6 +265,7 @@ func TestIngester(t *testing.T) {
 		Limit:    100,
 		Start:    time.Unix(0, 0),
 		End:      time.Unix(1, 0),
+		Plan:     testutil.MustPlan(`{foo="bar",bar="baz1"}`),
 	}, &result)
 	require.NoError(t, err)
 	// We always send an empty batch to make sure stats are sent, so there will always be one empty response.
@@ -279,6 +281,7 @@ func TestIngester(t *testing.T) {
 		Limit:    100,
 		Start:    time.Unix(0, 0),
 		End:      time.Unix(1, 0),
+		Plan:     testutil.MustPlan(`{foo="bar",bar="baz2"}`),
 	}, &result)
 	require.NoError(t, err)
 	// We always send an empty batch to make sure stats are sent, so there will always be one empty response.
@@ -1015,9 +1018,7 @@ func Test_DedupeIngester(t *testing.T) {
 				End:       time.Unix(0, requests+1),
 				Limit:     uint32(requests * streamCount),
 				Direction: logproto.BACKWARD,
-				Plan: &plan.QueryPlan{
-					AST: syntax.MustParseExpr(`{foo="bar"} | label_format bar=""`),
-				},
+				Plan:      testutil.MustPlan(`{foo="bar"} | label_format bar=""`),
 			})
 			require.NoError(t, err)
 			iterators = append(iterators, iter.NewQueryClientIterator(stream, logproto.BACKWARD))
@@ -1048,6 +1049,7 @@ func Test_DedupeIngester(t *testing.T) {
 				End:       time.Unix(0, requests+1),
 				Limit:     uint32(requests * streamCount),
 				Direction: logproto.FORWARD,
+				Plan:      testutil.MustPlan(`{foo="bar"} | label_format bar=""`),
 			})
 			require.NoError(t, err)
 			iterators = append(iterators, iter.NewQueryClientIterator(stream, logproto.FORWARD))
@@ -1076,9 +1078,7 @@ func Test_DedupeIngester(t *testing.T) {
 				Selector: `sum(rate({foo="bar"}[1m])) by (bar)`,
 				Start:    time.Unix(0, 0),
 				End:      time.Unix(0, requests+1),
-				Plan: &plan.QueryPlan{
-					AST: syntax.MustParseExpr(`sum(rate({foo="bar"}[1m])) by (bar)`),
-				},
+				Plan:     testutil.MustPlan(`sum(rate({foo="bar"}[1m])) by (bar)`),
 			})
 			require.NoError(t, err)
 			iterators = append(iterators, iter.NewSampleQueryClientIterator(stream))
@@ -1114,9 +1114,7 @@ func Test_DedupeIngester(t *testing.T) {
 				Selector: `sum(rate({foo="bar"}[1m]))`,
 				Start:    time.Unix(0, 0),
 				End:      time.Unix(0, requests+1),
-				Plan: &plan.QueryPlan{
-					AST: syntax.MustParseExpr(`sum(rate({foo="bar"}[1m]))`),
-				},
+				Plan:     testutil.MustPlan(`sum(rate({foo="bar"}[1m]))`),
 			})
 			require.NoError(t, err)
 			iterators = append(iterators, iter.NewSampleQueryClientIterator(stream))
@@ -1177,9 +1175,7 @@ func Test_DedupeIngesterParser(t *testing.T) {
 				End:       time.Unix(0, int64(requests+1)),
 				Limit:     uint32(requests * streamCount * 2),
 				Direction: logproto.BACKWARD,
-				Plan: &plan.QueryPlan{
-					AST: syntax.MustParseExpr(`{foo="bar"} | json`),
-				},
+				Plan:      testutil.MustPlan(`{foo="bar"} | json`),
 			})
 			require.NoError(t, err)
 			iterators = append(iterators, iter.NewQueryClientIterator(stream, logproto.BACKWARD))
@@ -1207,9 +1203,7 @@ func Test_DedupeIngesterParser(t *testing.T) {
 				End:       time.Unix(0, int64(requests+1)),
 				Limit:     uint32(requests * streamCount * 2),
 				Direction: logproto.FORWARD,
-				Plan: &plan.QueryPlan{
-					AST: syntax.MustParseExpr(`{foo="bar"} | json`),
-				},
+				Plan:      testutil.MustPlan(`{foo="bar"} | json`),
 			})
 			require.NoError(t, err)
 			iterators = append(iterators, iter.NewQueryClientIterator(stream, logproto.FORWARD))
@@ -1234,9 +1228,7 @@ func Test_DedupeIngesterParser(t *testing.T) {
 				Selector: `rate({foo="bar"} | json [1m])`,
 				Start:    time.Unix(0, 0),
 				End:      time.Unix(0, int64(requests+1)),
-				Plan: &plan.QueryPlan{
-					AST: syntax.MustParseExpr(`rate({foo="bar"} | json [1m])`),
-				},
+				Plan:     testutil.MustPlan(`rate({foo="bar"} | json [1m])`),
 			})
 			require.NoError(t, err)
 			iterators = append(iterators, iter.NewSampleQueryClientIterator(stream))
@@ -1262,9 +1254,7 @@ func Test_DedupeIngesterParser(t *testing.T) {
 				Selector: `sum by (c,d,e,foo) (rate({foo="bar"} | json [1m]))`,
 				Start:    time.Unix(0, 0),
 				End:      time.Unix(0, int64(requests+1)),
-				Plan: &plan.QueryPlan{
-					AST: syntax.MustParseExpr(`sum by (c,d,e,foo) (rate({foo="bar"} | json [1m]))`),
-				},
+				Plan:     testutil.MustPlan(`sum by (c,d,e,foo) (rate({foo="bar"} | json [1m]))`),
 			})
 			require.NoError(t, err)
 			iterators = append(iterators, iter.NewSampleQueryClientIterator(stream))

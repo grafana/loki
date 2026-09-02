@@ -1499,12 +1499,12 @@ syntaxdefault:
 	case 129:
 		syntaxDollar = syntaxS[syntaxpt-6 : syntaxpt+1]
 		{
-			syntaxVAL.filterer = log.NewIPLabelFilter(syntaxDollar[5].str, syntaxDollar[1].str, log.LabelFilterEqual)
+			syntaxVAL.filterer = mustNewIPLabelFilter(syntaxDollar[5].str, syntaxDollar[1].str, log.LabelFilterEqual)
 		}
 	case 130:
 		syntaxDollar = syntaxS[syntaxpt-6 : syntaxpt+1]
 		{
-			syntaxVAL.filterer = log.NewIPLabelFilter(syntaxDollar[5].str, syntaxDollar[1].str, log.LabelFilterNotEqual)
+			syntaxVAL.filterer = mustNewIPLabelFilter(syntaxDollar[5].str, syntaxDollar[1].str, log.LabelFilterNotEqual)
 		}
 	case 131:
 		syntaxDollar = syntaxS[syntaxpt-1 : syntaxpt+1]
@@ -1519,72 +1519,72 @@ syntaxdefault:
 	case 133:
 		syntaxDollar = syntaxS[syntaxpt-3 : syntaxpt+1]
 		{
-			syntaxVAL.filterer = log.NewDurationLabelFilter(log.LabelFilterGreaterThan, syntaxDollar[1].str, syntaxDollar[3].dur)
+			syntaxVAL.filterer = mustNewDurationLabelFilter(log.LabelFilterGreaterThan, syntaxDollar[1].str, syntaxDollar[3].dur)
 		}
 	case 134:
 		syntaxDollar = syntaxS[syntaxpt-3 : syntaxpt+1]
 		{
-			syntaxVAL.filterer = log.NewDurationLabelFilter(log.LabelFilterGreaterThanOrEqual, syntaxDollar[1].str, syntaxDollar[3].dur)
+			syntaxVAL.filterer = mustNewDurationLabelFilter(log.LabelFilterGreaterThanOrEqual, syntaxDollar[1].str, syntaxDollar[3].dur)
 		}
 	case 135:
 		syntaxDollar = syntaxS[syntaxpt-3 : syntaxpt+1]
 		{
-			syntaxVAL.filterer = log.NewDurationLabelFilter(log.LabelFilterLesserThan, syntaxDollar[1].str, syntaxDollar[3].dur)
+			syntaxVAL.filterer = mustNewDurationLabelFilter(log.LabelFilterLesserThan, syntaxDollar[1].str, syntaxDollar[3].dur)
 		}
 	case 136:
 		syntaxDollar = syntaxS[syntaxpt-3 : syntaxpt+1]
 		{
-			syntaxVAL.filterer = log.NewDurationLabelFilter(log.LabelFilterLesserThanOrEqual, syntaxDollar[1].str, syntaxDollar[3].dur)
+			syntaxVAL.filterer = mustNewDurationLabelFilter(log.LabelFilterLesserThanOrEqual, syntaxDollar[1].str, syntaxDollar[3].dur)
 		}
 	case 137:
 		syntaxDollar = syntaxS[syntaxpt-3 : syntaxpt+1]
 		{
-			syntaxVAL.filterer = log.NewDurationLabelFilter(log.LabelFilterNotEqual, syntaxDollar[1].str, syntaxDollar[3].dur)
+			syntaxVAL.filterer = mustNewDurationLabelFilter(log.LabelFilterNotEqual, syntaxDollar[1].str, syntaxDollar[3].dur)
 		}
 	case 138:
 		syntaxDollar = syntaxS[syntaxpt-3 : syntaxpt+1]
 		{
-			syntaxVAL.filterer = log.NewDurationLabelFilter(log.LabelFilterEqual, syntaxDollar[1].str, syntaxDollar[3].dur)
+			syntaxVAL.filterer = mustNewDurationLabelFilter(log.LabelFilterEqual, syntaxDollar[1].str, syntaxDollar[3].dur)
 		}
 	case 139:
 		syntaxDollar = syntaxS[syntaxpt-3 : syntaxpt+1]
 		{
-			syntaxVAL.filterer = log.NewDurationLabelFilter(log.LabelFilterEqual, syntaxDollar[1].str, syntaxDollar[3].dur)
+			syntaxVAL.filterer = mustNewDurationLabelFilter(log.LabelFilterEqual, syntaxDollar[1].str, syntaxDollar[3].dur)
 		}
 	case 140:
 		syntaxDollar = syntaxS[syntaxpt-3 : syntaxpt+1]
 		{
-			syntaxVAL.filterer = log.NewBytesLabelFilter(log.LabelFilterGreaterThan, syntaxDollar[1].str, syntaxDollar[3].bytes)
+			syntaxVAL.filterer = mustNewBytesLabelFilter(log.LabelFilterGreaterThan, syntaxDollar[1].str, syntaxDollar[3].bytes)
 		}
 	case 141:
 		syntaxDollar = syntaxS[syntaxpt-3 : syntaxpt+1]
 		{
-			syntaxVAL.filterer = log.NewBytesLabelFilter(log.LabelFilterGreaterThanOrEqual, syntaxDollar[1].str, syntaxDollar[3].bytes)
+			syntaxVAL.filterer = mustNewBytesLabelFilter(log.LabelFilterGreaterThanOrEqual, syntaxDollar[1].str, syntaxDollar[3].bytes)
 		}
 	case 142:
 		syntaxDollar = syntaxS[syntaxpt-3 : syntaxpt+1]
 		{
-			syntaxVAL.filterer = log.NewBytesLabelFilter(log.LabelFilterLesserThan, syntaxDollar[1].str, syntaxDollar[3].bytes)
+			syntaxVAL.filterer = mustNewBytesLabelFilter(log.LabelFilterLesserThan, syntaxDollar[1].str, syntaxDollar[3].bytes)
 		}
 	case 143:
 		syntaxDollar = syntaxS[syntaxpt-3 : syntaxpt+1]
 		{
-			syntaxVAL.filterer = log.NewBytesLabelFilter(log.LabelFilterLesserThanOrEqual, syntaxDollar[1].str, syntaxDollar[3].bytes)
+			syntaxVAL.filterer = mustNewBytesLabelFilter(log.LabelFilterLesserThanOrEqual, syntaxDollar[1].str, syntaxDollar[3].bytes)
 		}
 	case 144:
 		syntaxDollar = syntaxS[syntaxpt-3 : syntaxpt+1]
 		{
-			syntaxVAL.filterer = log.NewBytesLabelFilter(log.LabelFilterNotEqual, syntaxDollar[1].str, syntaxDollar[3].bytes)
+			syntaxVAL.filterer = mustNewBytesLabelFilter(log.LabelFilterNotEqual, syntaxDollar[1].str, syntaxDollar[3].bytes)
 		}
 	case 145:
 		syntaxDollar = syntaxS[syntaxpt-3 : syntaxpt+1]
 		{
-			syntaxVAL.filterer = log.NewBytesLabelFilter(log.LabelFilterEqual, syntaxDollar[1].str, syntaxDollar[3].bytes)
+			syntaxVAL.filterer = mustNewBytesLabelFilter(log.LabelFilterEqual, syntaxDollar[1].str, syntaxDollar[3].bytes)
 		}
 	case 146:
 		syntaxDollar = syntaxS[syntaxpt-3 : syntaxpt+1]
 		{
-			syntaxVAL.filterer = log.NewBytesLabelFilter(log.LabelFilterEqual, syntaxDollar[1].str, syntaxDollar[3].bytes)
+			syntaxVAL.filterer = mustNewBytesLabelFilter(log.LabelFilterEqual, syntaxDollar[1].str, syntaxDollar[3].bytes)
 		}
 	case 147:
 		syntaxDollar = syntaxS[syntaxpt-3 : syntaxpt+1]

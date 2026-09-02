@@ -193,7 +193,6 @@ func initMetrics(ctx context.Context, projectID string, config *storageConfig) (
 			resource.WithAttributes(
 				attribute.String("gcp.client.version", internal.Version),
 				attribute.String("gcp.client.service", "storage"),
-				attribute.String("gcp.client.repo", "googleapis/google-cloud-go"),
 				attribute.String("gcp.client.artifact", "cloud.google.com/go/storage"),
 			),
 		)
@@ -661,7 +660,6 @@ func (cm *clientMetrics) recordRPC(ctx context.Context, method, target string, d
 			attribute.String("rpc.system.name", "grpc"),
 			attribute.String("rpc.method", logicalMethod),
 			attribute.String("error.type", errorType),
-			attribute.String("gcp.errors.domain", "storage.googleapis.com"),
 		)
 		cm.errors.Add(ctx, 1, metric.WithAttributes(injectAPIMethod(ctx, errorAttrs)...))
 	}
@@ -860,7 +858,6 @@ func (rt *metricsRoundTripper) RoundTrip(req *http.Request) (*http.Response, err
 				attribute.String("rpc.system.name", "http"),
 				attribute.String("rpc.method", logicalMethod),
 				attribute.String("error.type", errorType),
-				attribute.String("gcp.errors.domain", "storage.googleapis.com"),
 			)
 			rt.metrics.errors.Add(req.Context(), 1, metric.WithAttributes(injectAPIMethod(req.Context(), errorAttrs)...))
 		}
@@ -1231,15 +1228,10 @@ func (cm *clientMetrics) startOperation(ctx context.Context, method string, isHT
 	record := func(err error) {
 		recordOnce.Do(func() {
 			duration := time.Since(state.startTime).Seconds()
-			statusStr := "OK"
-			if err != nil && err != io.EOF {
-				statusStr = "Error"
-			}
 			errorType := computeErrorType(err, isHTTP, 0)
 
 			attrs := []attribute.KeyValue{
 				attribute.String("rpc.method", method),
-				attribute.String("status", statusStr),
 				attribute.String("error.type", errorType),
 			}
 			opts := metric.WithAttributes(injectAPIMethod(ctx, attrs)...)

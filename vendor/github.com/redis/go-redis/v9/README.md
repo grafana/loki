@@ -21,6 +21,7 @@ In `go-redis` we are aiming to support the last three releases of Redis. Current
 - [Redis 8.2](https://raw.githubusercontent.com/redis/redis/8.2/00-RELEASENOTES) - using Redis CE 8.2
 - [Redis 8.4](https://raw.githubusercontent.com/redis/redis/8.4/00-RELEASENOTES) - using Redis CE 8.4
 - [Redis 8.8](https://raw.githubusercontent.com/redis/redis/8.8/00-RELEASENOTES) - using Redis CE 8.8
+- [Redis 8.10](https://raw.githubusercontent.com/redis/redis/8.10/00-RELEASENOTES) - using Redis CE 8.10
 
 Although the `go.mod` states it requires at minimum `go 1.24`, our CI is configured to run the tests against all supported
 versions of Redis and multiple versions of Go ([1.24](https://go.dev/doc/devel/release#go1.24.0), oldstable, and stable). We observe that some modules related test may not pass with
@@ -78,9 +79,13 @@ surface. The API is experimental and may change in a future release.
 - [StreamingCredentialsProvider (e.g. entra id, oauth)](#1-streaming-credentials-provider-highest-priority) (experimental)
 - [Pub/Sub](https://redis.uptrace.dev/guide/go-redis-pubsub.html).
 - [Pipelines and transactions](https://redis.uptrace.dev/guide/go-redis-pipelines.html).
+- [Automatic pipelining](#automatic-pipelining) (experimental) — batches concurrent
+  commands into pipelines for you; meant for high-throughput / high-load / scale
+  use cases.
 - [Scripting](https://redis.uptrace.dev/guide/lua-scripting.html).
 - [Redis Sentinel](https://redis.uptrace.dev/guide/go-redis-sentinel.html).
 - [Redis Cluster](https://redis.uptrace.dev/guide/go-redis-cluster.html).
+- [Client-side caching](#client-side-caching).
 - [Redis Performance Monitoring](https://redis.uptrace.dev/guide/redis-performance-monitoring.html).
 - [Redis Probabilistic [RedisStack]](https://redis.io/docs/data-types/probabilistic/)
 - [Customizable read and write buffers size.](#custom-buffer-sizes)
@@ -285,6 +290,50 @@ rdb := redis.NewClient(&redis.Options{
 })
 ```
 
+### Client-side caching
+
+go-redis supports server-assisted client-side caching for standalone clients.
+Eligible read replies are stored in the application's memory, so repeated reads
+can avoid a Redis round trip. Redis tracks which keys each connection has read
+and sends RESP3 invalidation notifications when those keys change. go-redis
+uses those notifications to evict affected entries automatically.
+
+> **Experimental:** The client-side caching API may change in a minor release.
+
+Enable the built-in bounded cache with `ClientSideCacheConfig`:
+
+```go
+rdb := redis.NewClient(&redis.Options{
+    Addr:     "localhost:6379",
+    Protocol: 3,
+    DB:       0,
+    ClientSideCacheConfig: &redis.ClientSideCacheConfig{
+        MaxEntries: 10_000,
+    },
+})
+defer rdb.Close()
+```
+
+Client-side caching currently requires RESP3, a standalone client, and database
+0. Fixed `Username` and `Password` values are supported. It is disabled when a
+dynamic credential provider is configured, because cached data must never be
+reused after the client's ACL identity changes. Only deterministic read
+commands supported by the cache are stored; writes and streaming responses
+bypass it.
+
+While client-side caching is enabled, go-redis rejects `SELECT`, `AUTH`,
+`HELLO` with arguments, `RESET`, `CLIENT TRACKING`, and raw `SUBSCRIBE`,
+`PSUBSCRIBE`, or `SSUBSCRIBE` commands because they would change connection
+state that the cache relies on. A guarded command also fails its whole
+pipeline. The typed `Subscribe`, `PSubscribe`, and `SSubscribe` APIs remain
+supported because they use dedicated connections.
+
+Invalidations are processed asynchronously. `DrainInterval` controls how often
+idle connections are checked for them, while `MaxStaleness` can provide an
+optional upper bound on an entry's lifetime. See the
+[client-side caching example](./example/client-side-caching) for a working
+demonstration.
+
 ### Connecting via a redis url
 
 go-redis also supports connecting via the
@@ -339,6 +388,118 @@ rdb := redis.NewClient(&redis.Options{
     WriteBufferSize: 1024 * 1024, // 1MiB write buffer
 })
 ```
+
+### Automatic pipelining
+
+**Experimental** — the API may still change. Reach for autopipelining in
+high-throughput / high-load / scale scenarios; at low concurrency a plain
+client is simpler and just as fast. A runnable usage tour and throughput
+comparison live in [`example/autopipeline`](example/autopipeline).
+
+> **EXPERIMENTAL:** the autopipelining API is subject to change in a future
+> release as we gather feedback — pin your go-redis version if you adopt it.
+
+When many goroutines issue commands concurrently, autopipelining batches them
+into Redis pipelines automatically — without you writing any pipeline code. It
+comes in two faces:
+
+- **`AutoPipeline()` — blocking, drop-in.** Each command call blocks until it
+  executes and returns its own value/error, exactly like a normal client, so
+  existing code keeps working unchanged. Under concurrency the engine coalesces
+  commands from all goroutines into deep, back-to-back pipelines (a single
+  ordered batch stream by default), reaching several times a plain client's
+  executed commands per second in the same environment — roughly an order of
+  magnitude with a parallel-batch config (`MaxConcurrentBatches` > 1 with
+  `Unordered`). Per-goroutine ordering is preserved.
+- **`AsyncAutoPipeline()` — deferred, highest throughput.** Command calls return
+  immediately; you submit a window of commands and read their results afterward,
+  which keeps each pipeline deep — tens of times a plain client's throughput.
+  Ordered by default. Absolute numbers depend heavily on the machine, network
+  path and server; see `autopipeline_bench_README.md` for the benchmark
+  methodology and multipliers.
+
+```go
+rdb := redis.NewClient(&redis.Options{Addr: "localhost:6379"})
+defer rdb.Close()
+ctx := context.Background()
+
+// Blocking face: drop-in for a normal client, batched under the hood.
+ap, err := rdb.AutoPipeline()
+if err != nil { // invalid AutoPipelineOptions, or the client is closed
+    log.Fatal(err)
+}
+defer ap.Close()
+
+var wg sync.WaitGroup
+for i := 0; i < 1000; i++ {
+    wg.Add(1)
+    go func(i int) {
+        defer wg.Done()
+        key := fmt.Sprintf("key:%d", i)
+        if err := ap.Set(ctx, key, i, 0).Err(); err != nil { // blocks until executed
+            log.Printf("set %s: %v", key, err)
+        }
+    }(i)
+}
+wg.Wait()
+```
+
+For maximum throughput, submit a window on the async face and read later:
+
+```go
+ctx := context.Background()
+ap, err := rdb.AsyncAutoPipeline() // ordered by default
+if err != nil {
+    log.Fatal(err)
+}
+defer ap.Close()
+
+cmds := make([]*redis.StatusCmd, 0, 200)
+for i := 0; i < 200; i++ {
+    cmds = append(cmds, ap.Set(ctx, fmt.Sprintf("key:%d", i), i, 0)) // returns immediately
+}
+for _, cmd := range cmds {
+    if err := cmd.Err(); err != nil { // blocks until executed
+        log.Printf("set: %v", err)
+    }
+}
+```
+
+Each face has a no-argument form that uses `Options.AutoPipelineOptions` (or the
+built-in default) and a `WithOptions` form that takes an explicit
+`*AutoPipelineOptions`; both return `(*AutoPipeliner, error)` — the error is
+non-nil for an invalid config or a closed client (e.g.
+`ap, err := rdb.AsyncAutoPipelineWithOptions(&redis.AutoPipelineOptions{MaxConcurrentBatches: 8, Unordered: true})`);
+a handful of parallel batches saturates the link — more permits only add
+overlapping batches without deepening them.
+They work on `ClusterClient` too: commands are routed to the correct shard per
+key, so a single batch may span many slots; ordering across nodes is per key
+(same-key commands stay in order, different nodes' sub-pipelines run
+concurrently). Because batches share a few pipeline connections, autopipelining
+also needs far fewer connections than a plain client at the same concurrency
+(see `PipelinePoolSize`). Autopipelining is only a win under concurrency (or
+windowed submission) — a single goroutine issuing one blocking command at a
+time sees little benefit, and a hand-written `Pipeline()` is still fastest when
+you can batch by hand.
+
+Caveats: a command's context is not honored once it is queued (batches execute
+on the autopipeliner's own context) — use a plain client for per-command
+deadlines. Blocking commands (`BLPOP`, `WAIT`, ...) are never batched and run
+directly on your context — as are `SHUTDOWN` and `MONITOR`, which would
+poison a shared pipeline connection — and `Do` also bypasses batching with plain
+`Client.Do` semantics — prefer the typed methods (`ap.Set`, `ap.Get`, ...). On
+a dropped connection a batch is retried whole (up to `MaxRetries`), so
+non-idempotent commands may execute twice. Both faces return a cached,
+client-shared instance: the first call's config wins and `Close` stops it for
+all callers. Hooks may read command results (the engine hands a hook running
+on the dispatch goroutine the same view a plain pipeline hook gets), but a
+hook must never issue a command on the same autopipeliner and wait for it —
+the nested command needs the very dispatch slot the hook is holding, and the
+engine only recovers by failing that flush after its 30s permit backstops.
+`Options.Limiter` is consulted once per batch dispatch (as with a manual
+pipeline), not once per command. An autopipeliner created on a
+`WithTimeout`/`WithReadTimeout` clone is not stopped by the parent's `Close` —
+close it explicitly.
 
 ### Advanced Configuration
 
@@ -456,6 +617,24 @@ vals, err := rdb.Eval(ctx, "return {KEYS[1],ARGV[1]}", []string{"key"}, "hello")
 // custom command
 res, err := rdb.Do(ctx, "set", "key", "value").Result()
 ```
+
+### Raw commands and connection state
+
+`Do` sends the command verbatim on whichever pooled connection happens to be
+free. For keyspace commands that is all you need. It is the wrong tool for
+any command that alters **connection session state** — `SELECT`,
+`CLIENT SETNAME`, `CLIENT TRACKING`, `RESET`, `HIMPORT PREPARE`/`DISCARD`,
+and similar: the state lands on (or is wiped from) a single arbitrary
+connection, later commands are served by other connections that don't share
+it, and the affected connection eventually returns to the pool and serves
+unrelated callers. The result is nondeterministic behavior that typed APIs
+manage for you — for example, the typed `HImport*` methods keep a
+client-side registry and replay fieldsets onto every connection that needs
+them, while a raw `Do(ctx, "himport", "prepare", ...)` bypasses that
+entirely, with no replay, recovery, or discard propagation.
+
+For session-scoped work without a typed API, hold a dedicated connection
+(`client.Conn()`) for its whole lifetime and close it afterwards.
 
 ## Typed Errors
 

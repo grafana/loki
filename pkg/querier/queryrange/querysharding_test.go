@@ -23,6 +23,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/querier/plan"
 	"github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase"
 	"github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase/definitions"
+	"github.com/grafana/loki/v3/pkg/querier/testutil"
 	"github.com/grafana/loki/v3/pkg/storage/config"
 	"github.com/grafana/loki/v3/pkg/storage/types"
 	"github.com/grafana/loki/v3/pkg/util"
@@ -187,9 +188,7 @@ func Test_astMapper(t *testing.T) {
 
 	req := defaultReq()
 	req.Query = `{foo="bar"}`
-	req.Plan = &plan.QueryPlan{
-		AST: syntax.MustParseExpr(req.Query),
-	}
+	req.Plan = testutil.MustPlan(req.Query)
 	resp, err := mware.Do(user.InjectOrgID(context.Background(), "1"), req)
 	require.Nil(t, err)
 
@@ -332,9 +331,7 @@ func Test_astMapper_QuerySizeLimits(t *testing.T) {
 
 			req := defaultReq()
 			req.Query = tc.query
-			req.Plan = &plan.QueryPlan{
-				AST: syntax.MustParseExpr(tc.query),
-			}
+			req.Plan = testutil.MustPlan(tc.query)
 			_, err := mware.Do(user.InjectOrgID(context.Background(), "1"), req)
 			if err != nil {
 				require.ErrorContains(t, err, tc.err)
@@ -394,9 +391,7 @@ func Test_astMapper_TSDBShardingStrategyUsesContext(t *testing.T) {
 
 	req := defaultReq()
 	req.Query = `{app="foo"}`
-	req.Plan = &plan.QueryPlan{
-		AST: syntax.MustParseExpr(req.Query),
-	}
+	req.Plan = testutil.MustPlan(req.Query)
 	ctx := context.WithValue(context.Background(), strategyContextKey{}, "strategy-context")
 	ctx = user.InjectOrgID(ctx, "tenant-a")
 
@@ -431,9 +426,7 @@ func Test_ShardingByPass(t *testing.T) {
 
 	req := defaultReq()
 	req.Query = `1+1`
-	req.Plan = &plan.QueryPlan{
-		AST: syntax.MustParseExpr(req.Query),
-	}
+	req.Plan = testutil.MustPlan(req.Query)
 
 	_, err := mware.Do(user.InjectOrgID(context.Background(), "1"), req)
 	require.Nil(t, err)
@@ -540,9 +533,7 @@ func Test_InstantSharding(t *testing.T) {
 		Query:  `rate({app="foo"}[1m])`,
 		TimeTs: util.TimeFromMillis(10),
 		Path:   "/v1/query",
-		Plan: &plan.QueryPlan{
-			AST: syntax.MustParseExpr(`rate({app="foo"}[1m])`),
-		},
+		Plan:   testutil.MustPlan(`rate({app="foo"}[1m])`),
 	})
 	require.NoError(t, err)
 	require.Equal(t, 3, called, "expected 3 calls but got {}", called)
@@ -950,9 +941,7 @@ func Test_ASTMapper_MaxLookBackPeriod(t *testing.T) {
 		TimeTs:    testTime,
 		Direction: logproto.FORWARD,
 		Path:      "/loki/api/v1/query",
-		Plan: &plan.QueryPlan{
-			AST: syntax.MustParseExpr(q),
-		},
+		Plan:      testutil.MustPlan(q),
 	}
 
 	ctx := user.InjectOrgID(context.Background(), "foo")
