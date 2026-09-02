@@ -28,25 +28,46 @@ eval instant at 60s bytes_over_time({app="a", level="error"} | line_format "V={{
 eval instant at 60s bytes_over_time({app="a"} | line_format "{{ nosuchfunc }}" [1m])
   expect fail msg: not defined
 
+# line_format reads a structured-metadata field the same way it reads a stream label.
+clear
+load
+  {app="a"} "x" @ 20s [repeat every 20s for 4] [metadata level="error"]
+  {app="a"} "x" @ 30s [repeat every 20s for 2] [metadata level="warn"]
+
+eval instant at 60s count_over_time({app="a"} | line_format "L={{.level}}" |= "L=error" [1m])
+  {app="a", level="error"} 3
+eval range from 40s to 80s step 20s count_over_time({app="a"} | line_format "L={{.level}}" |= "L=error" [1m])   # overlapping
+  {app="a", level="error"} 2 3 3
+eval range from 60s to 180s step 120s count_over_time({app="a"} | line_format "L={{.level}}" |= "L=error" [1m]) # non-overlapping
+  {app="a", level="error"} 3 _
+eval instant at 60s bytes_over_time({app="a"} | level="error" | line_format "{{.level}}" [1m])
+  {app="a", level="error"} 15
+
 # label_format renames a label (dst=src) or sets one from a template (dst="...").
 clear
 load
   {app="a", method="get"} "msg" @ 20s [repeat every 20s for 4]
+  {app="a"}               "msg" @ 30s [repeat every 20s for 2] [metadata method="post"]
   {app="noise"}           "msg" @ 30s [repeat every 20s for 2]
 
 # Rename copies the source value to the new label and removes the source.
 eval instant at 60s count_over_time({app="a"} | label_format verb=method [1m])
   {app="a", verb="get"} 3
+  {app="a", verb="post"} 2
 eval range from 40s to 80s step 20s count_over_time({app="a"} | label_format verb=method [1m])   # overlapping
   {app="a", verb="get"} 2 3 3
+  {app="a", verb="post"} 1 2 2
 eval range from 60s to 180s step 120s count_over_time({app="a"} | label_format verb=method [1m]) # non-overlapping
   {app="a", verb="get"} 3 _
+  {app="a", verb="post"} 2 _
 # Template sets a new label from another label and keeps the source.
 eval instant at 60s count_over_time({app="a"} | label_format route="{{.method}}-ok" [1m])
   {app="a", method="get", route="get-ok"} 3
+  {app="a", method="post", route="post-ok"} 2
 # A template that targets an existing label overwrites it in place.
 eval instant at 60s count_over_time({app="a"} | label_format method="{{.method}}!" [1m])
   {app="a", method="get!"} 3
+  {app="a", method="post!"} 2
 # An invalid template fails at parse time.
 eval instant at 60s count_over_time({app="a"} | label_format x="{{" [1m])
   expect fail msg: unclosed action
@@ -74,54 +95,63 @@ eval range from 40s to 80s step 20s bytes_over_time({app="a"} | line_format `{{ 
 eval range from 60s to 180s step 120s bytes_over_time({app="a"} | line_format `{{ printf "\x1b[31m%s\x1b[0m" .msg }}` | decolorize [1m]) # non-overlapping
   {app="a", msg="hello"} 15 _
 
-# drop removes labels by name, or by name and value. A dropped stream label leaves the series.
+# drop removes labels by name, or by name and value, from a stream label or from structured
+# metadata alike. A dropped label leaves the series.
 clear
 load
   {app="a", code="500", zone="eu"} "msg" @ 20s [repeat every 20s for 4]
   {app="a", code="200", zone="eu"} "msg" @ 30s [repeat every 20s for 2]
+  {app="a", zone="eu"}             "msg" @ 30s [repeat every 20s for 2] [metadata code="300"]
   {app="noise"}                    "msg" @ 20s [repeat every 20s for 4]
 
-# Dropping both labels here merges the two streams into {app="a"}.
+# Dropping both labels here merges all three streams into {app="a"}.
 eval instant at 60s count_over_time({app="a"} | drop code, zone [1m])
-  {app="a"} 5
+  {app="a"} 7
 eval range from 40s to 80s step 20s count_over_time({app="a"} | drop code, zone [1m])   # overlapping
-  {app="a"} 3 5 5
+  {app="a"} 4 7 7
 eval range from 60s to 180s step 120s count_over_time({app="a"} | drop code, zone [1m]) # non-overlapping
-  {app="a"} 5 _
-# Dropping one label keeps the streams distinct.
+  {app="a"} 7 _
+# Dropping one label keeps the streams distinct, whether code came from a stream label or,
+# for "300", structured metadata.
 eval instant at 60s count_over_time({app="a"} | drop zone [1m])
   {app="a", code="500"} 3
   {app="a", code="200"} 2
+  {app="a", code="300"} 2
 # Name and value drops the label only from lines where it matches.
 eval instant at 60s count_over_time({app="a"} | drop code="500" [1m])
   {app="a", zone="eu"} 3
   {app="a", code="200", zone="eu"} 2
+  {app="a", code="300", zone="eu"} 2
 # drop needs at least one label name; a bare drop is a parse error.
 eval instant at 60s count_over_time({app="a"} | drop [1m])
   expect fail msg: expecting IDENTIFIER
 
-# keep removes every label not listed.
+# keep removes every label not listed, whether it came from a stream label or structured
+# metadata.
 clear
 load
   {app="a", code="500", zone="eu"} "msg" @ 20s [repeat every 20s for 4]
   {app="a", code="200", zone="eu"} "msg" @ 30s [repeat every 20s for 2]
+  {app="a", code="300"}            "msg" @ 30s [repeat every 20s for 2] [metadata zone="eu"]
   {app="noise"}                    "msg" @ 20s [repeat every 20s for 4]
 
-# Keeping only zone drops app and code, so the two streams merge into {zone="eu"}.
+# Keeping only zone drops app and code, so all three streams merge into {zone="eu"}.
 eval instant at 60s count_over_time({app="a"} | keep zone [1m])
-  {zone="eu"} 5
+  {zone="eu"} 7
 eval range from 40s to 80s step 20s count_over_time({app="a"} | keep zone [1m])   # overlapping
-  {zone="eu"} 3 5 5
+  {zone="eu"} 4 7 7
 eval range from 60s to 180s step 120s count_over_time({app="a"} | keep zone [1m]) # non-overlapping
-  {zone="eu"} 5 _
+  {zone="eu"} 7 _
 # Keeping several labels leaves the streams distinct.
 eval instant at 60s count_over_time({app="a"} | keep code, zone [1m])
   {code="500", zone="eu"} 3
   {code="200", zone="eu"} 2
-# Name and value keeps the label only where it matches; the other lines lose every label.
+  {code="300", zone="eu"} 2
+# Name and value keeps the label only where it matches; the other lines lose every label,
+# including a metadata-origin one not in the keep list.
 eval instant at 60s count_over_time({app="a"} | keep code="500" [1m])
   {code="500"} 3
-  {} 2
+  {} 4
 # keep needs at least one label name; a bare keep is a parse error.
 eval instant at 60s count_over_time({app="a"} | keep [1m])
   expect fail msg: expecting IDENTIFIER

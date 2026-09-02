@@ -166,12 +166,13 @@ func TestParseEval(t *testing.T) {
 	require.Equal(t, time.Minute, cmd.step)
 	require.Equal(t, `count_over_time({app="foo"}[1m])`, cmd.query)
 
-	cmd, err = parseEval(`eval select from 0 to 10m {app="foo"}`)
+	cmd, err = parseEval(`eval select from 0 to 10m forward {app="foo"}`)
 	require.NoError(t, err)
 	require.Equal(t, evalSelect, cmd.mode)
 	require.Equal(t, time.Duration(0), cmd.start)
 	require.Equal(t, 10*time.Minute, cmd.end)
 	require.Equal(t, 10*time.Minute, cmd.step)
+	require.Equal(t, logproto.FORWARD, cmd.direction)
 	require.Equal(t, `{app="foo"}`, cmd.query)
 
 	_, err = parseEval(`eval sideways at 0s foo`)
@@ -189,10 +190,56 @@ func TestParseEval(t *testing.T) {
 	require.Error(t, err)
 
 	// An empty or backwards select window has no valid step to derive.
-	_, err = parseEval(`eval select from 10s to 10s {app="foo"}`)
+	_, err = parseEval(`eval select from 10s to 10s forward {app="foo"}`)
 	require.Error(t, err)
-	_, err = parseEval(`eval select from 10s to 0s {app="foo"}`)
+	_, err = parseEval(`eval select from 10s to 0s forward {app="foo"}`)
 	require.Error(t, err)
+}
+
+func TestParseEval_SelectDirection(t *testing.T) {
+	for name, tc := range map[string]struct {
+		line      string
+		direction logproto.Direction
+		query     string
+	}{
+		"forward":          {`eval select from 0 to 10m forward {app="foo"}`, logproto.FORWARD, `{app="foo"}`},
+		"backward":         {`eval select from 0 to 10m backward {app="foo"}`, logproto.BACKWARD, `{app="foo"}`},
+		"case insensitive": {`eval select from 0 to 10m BackWard {app="foo"}`, logproto.BACKWARD, `{app="foo"}`},
+		"pipeline follows": {`eval select from 0 to 10m backward {app="foo"} |= "x" | logfmt`, logproto.BACKWARD, `{app="foo"} |= "x" | logfmt`},
+		"extra whitespace": {`eval select from 0 to 10m   backward   {app="foo"}`, logproto.BACKWARD, `{app="foo"}`},
+		// The direction is the token before the query, so the same word inside the query is
+		// query text.
+		"direction word inside the query": {`eval select from 0 to 10m forward {app="foo"} |= "backward"`, logproto.FORWARD, `{app="foo"} |= "backward"`},
+	} {
+		t.Run(name, func(t *testing.T) {
+			cmd, err := parseEval(tc.line)
+			require.NoError(t, err)
+			require.Equal(t, evalSelect, cmd.mode)
+			require.Equal(t, tc.direction, cmd.direction)
+			require.Equal(t, tc.query, cmd.query)
+		})
+	}
+
+	// The direction is required: a select line without one, or with a misspelled one, must be
+	// rejected rather than have the stray text folded into the query.
+	for name, line := range map[string]string{
+		"missing":             `eval select from 0 to 10m {app="foo"}`,
+		"misspelled":          `eval select from 0 to 10m backwards {app="foo"}`,
+		"unknown word":        `eval select from 0 to 10m sideways {app="foo"}`,
+		"direction, no query": `eval select from 0 to 10m backward`,
+	} {
+		t.Run(name, func(t *testing.T) {
+			_, err := parseEval(line)
+			require.ErrorContains(t, err, "malformed 'eval select'")
+		})
+	}
+
+	// A metric query has no line order, so instant and range take no direction: one written there
+	// stays part of the query text, where LogQL rejects it.
+	cmd, err := parseEval(`eval instant at 60s backward count_over_time({app="foo"}[1m])`)
+	require.NoError(t, err)
+	require.Equal(t, `backward count_over_time({app="foo"}[1m])`, cmd.query)
+	require.Equal(t, logproto.FORWARD, cmd.direction)
 }
 
 func TestExpectationsParser(t *testing.T) {
@@ -299,6 +346,69 @@ func TestExpectationsParser(t *testing.T) {
 		// Missing `on`, or an unquoted stack name.
 		require.ErrorContains(t, newExpectationsParser().parse(`skip values-comparison "`+directStackName+`"`), "invalid skip directive")
 		require.ErrorContains(t, newExpectationsParser().parse(`skip values-comparison on `+directStackName), "invalid skip directive")
+	})
+
+	t.Run("values-toleration sets one stack's tolerance", func(t *testing.T) {
+		p := newExpectationsParser()
+		require.NoError(t, p.parse(`expect values-toleration 0.02 on "`+queryFrontendShardStackName+`"`))
+		require.NoError(t, p.parse(`{app="a"} 1`))
+		exp := p.get()
+		require.Equal(t, 0.02, exp.valuesToleration[queryFrontendShardStackName])
+		require.NotContains(t, exp.valuesToleration, directStackName)
+	})
+
+	t.Run("values-toleration directives accumulate across stacks", func(t *testing.T) {
+		p := newExpectationsParser()
+		require.NoError(t, p.parse(`expect values-toleration 0.01 on "`+directStackName+`"`))
+		require.NoError(t, p.parse(`expect values-toleration 0.02 on "`+queryFrontendShardStackName+`"`))
+		exp := p.get()
+		require.Equal(t, 0.01, exp.valuesToleration[directStackName])
+		require.Equal(t, 0.02, exp.valuesToleration[queryFrontendShardStackName])
+	})
+
+	t.Run("values-toleration with unknown stack is rejected", func(t *testing.T) {
+		require.ErrorContains(t, newExpectationsParser().parse(`expect values-toleration 0.02 on "nope"`), "unknown stack")
+	})
+
+	t.Run("values-toleration with a non-positive, non-finite, or non-numeric value is rejected", func(t *testing.T) {
+		require.ErrorContains(t, newExpectationsParser().parse(`expect values-toleration 0 on "`+directStackName+`"`), "must be a positive, finite number")
+		require.ErrorContains(t, newExpectationsParser().parse(`expect values-toleration -0.01 on "`+directStackName+`"`), "must be a positive, finite number")
+		require.ErrorContains(t, newExpectationsParser().parse(`expect values-toleration abc on "`+directStackName+`"`), "must be a positive, finite number")
+		require.ErrorContains(t, newExpectationsParser().parse(`expect values-toleration NaN on "`+directStackName+`"`), "must be a positive, finite number")
+		require.ErrorContains(t, newExpectationsParser().parse(`expect values-toleration Inf on "`+directStackName+`"`), "must be a positive, finite number")
+	})
+
+	t.Run("malformed values-toleration directive is rejected", func(t *testing.T) {
+		// Missing `on`, or an unquoted stack name.
+		require.ErrorContains(t, newExpectationsParser().parse(`expect values-toleration 0.02 "`+directStackName+`"`), "invalid values-toleration directive")
+		require.ErrorContains(t, newExpectationsParser().parse(`expect values-toleration 0.02 on `+directStackName), "invalid values-toleration directive")
+	})
+
+	t.Run("a stack cannot both skip values-comparison and have a toleration", func(t *testing.T) {
+		// skip, then toleration, on the same stack.
+		p := newExpectationsParser()
+		require.NoError(t, p.parse(`skip values-comparison on "`+directStackName+`"`))
+		require.ErrorContains(t, p.parse(`expect values-toleration 0.02 on "`+directStackName+`"`), "cannot also set a toleration")
+
+		// toleration, then skip, on the same stack.
+		p = newExpectationsParser()
+		require.NoError(t, p.parse(`expect values-toleration 0.02 on "`+directStackName+`"`))
+		require.ErrorContains(t, p.parse(`skip values-comparison on "`+directStackName+`"`), "cannot also skip values-comparison")
+	})
+
+	t.Run("duplicate values-toleration directive for the same stack is rejected", func(t *testing.T) {
+		p := newExpectationsParser()
+		require.NoError(t, p.parse(`expect values-toleration 0.02 on "`+directStackName+`"`))
+		require.ErrorContains(t, p.parse(`expect values-toleration 0.03 on "`+directStackName+`"`), "duplicate values-toleration directive")
+	})
+
+	t.Run("skip and values-toleration on different stacks both apply", func(t *testing.T) {
+		p := newExpectationsParser()
+		require.NoError(t, p.parse(`skip values-comparison on "`+directStackName+`"`))
+		require.NoError(t, p.parse(`expect values-toleration 0.02 on "`+queryFrontendShardStackName+`"`))
+		exp := p.get()
+		require.True(t, exp.isValueComparisonSkipped[directStackName])
+		require.Equal(t, 0.02, exp.valuesToleration[queryFrontendShardStackName])
 	})
 }
 

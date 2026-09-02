@@ -144,6 +144,10 @@ A log-selection query (e.g. `{app="foo"} |= "bar"`) uses `eval select`, not `eva
 instant`, and returns streams, not series — see README.md "Streams" expected results. The
 instant/range cross-check in the checklist above doesn't apply to log selection.
 
+Every `eval select` states a `forward` or `backward` direction, and expected lines within one
+stream are compared **in that order** — oldest first under `forward`, newest first under
+`backward`.
+
 ## Files
 
 One feature per file: `range_aggregations`, `vector_aggregations`, `binary_operations`,

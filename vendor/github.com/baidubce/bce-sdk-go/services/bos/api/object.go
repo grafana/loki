@@ -219,6 +219,7 @@ func OptionsObject(cli bce.Client, bucket, object string, args *OptionsObjectArg
 
 	//get header
 	result := &OptionsObjectResult{}
+	retrieveResponseFields(result, resp)
 	getOptions := []GetOption{
 		getHeader(http.ACCESS_CONTROL_ALLOW_CREDENTIALS, &result.AllowCredentials),
 		getHeader(http.ACCESS_CONTROL_ALLOW_HEADERS, &result.AllowHeaders),
@@ -336,6 +337,7 @@ func PostObject(cli bce.Client, bucket, object string, content *bytes.Buffer, ar
 
 	//get header
 	result := &PostObjectResult{}
+	retrieveResponseFields(result, resp)
 	getOptions := []GetOption{
 		getHeader(http.ETAG, &result.ETag),
 		getHeader(http.CONTENT_MD5, &result.ContentMD5),
@@ -464,6 +466,7 @@ func CopyObject(cli bce.Client, bucket, object, source string, args *CopyObjectA
 		return nil, resp.ServiceError()
 	}
 	jsonBody := &CopyObjectResult{}
+	retrieveResponseFields(jsonBody, resp)
 	if err := resp.ParseJsonBody(jsonBody); err != nil {
 		return nil, err
 	}
@@ -536,6 +539,7 @@ func GetObject(cli bce.Client, bucket, object string, ctx *BosContext, args map[
 	}
 
 	result := &GetObjectResult{}
+	retrieveResponseFields(result, resp)
 	getOptions := getObjectMetaOptions(&result.ObjectMeta)
 	if err := handleGetOptions(resp, getOptions); err != nil {
 		log.Warnf("Handle get options error: %s", err)
@@ -599,6 +603,7 @@ func GetObjectWithArgs(cli bce.Client, bucket, object string, ctx *BosContext, a
 	}
 
 	result := &GetObjectResult{}
+	retrieveResponseFields(result, resp)
 	getOptions := getObjectMetaOptions(&result.ObjectMeta)
 	if err := handleGetOptions(resp, getOptions); err != nil {
 		log.Warnf("Handle get options error: %s", err)
@@ -641,6 +646,7 @@ func GetObjectMeta(cli bce.Client, bucket, object string, ctx *BosContext, optio
 		return nil, resp.ServiceError()
 	}
 	result := &GetObjectMetaResult{}
+	retrieveResponseFields(result, resp)
 	getOptions := getObjectMetaOptions(&result.ObjectMeta)
 	if err := handleGetOptions(resp, getOptions); err != nil {
 		log.Warnf("Handle get options error: %s", err)
@@ -697,6 +703,7 @@ func SelectObject(cli bce.Client, bucket, object string, args *SelectObjectArgs,
 	}
 
 	result := &SelectObjectResult{}
+	retrieveResponseFields(result, resp)
 
 	result.Body = resp.Body()
 	return result, nil
@@ -771,6 +778,7 @@ func FetchObject(cli bce.Client, bucket, object, source string, args *FetchObjec
 		return nil, resp.ServiceError()
 	}
 	jsonBody := &FetchObjectResult{}
+	retrieveResponseFields(jsonBody, resp)
 	if err := resp.ParseJsonBody(jsonBody); err != nil {
 		return nil, err
 	}
@@ -868,6 +876,7 @@ func AppendObject(cli bce.Client, bucket, object string, content *bce.Body, args
 	defer func() { resp.Body().Close() }()
 	headers := resp.Headers()
 	result := &AppendObjectResult{}
+	retrieveResponseFields(result, resp)
 	getOptions := []GetOption{
 		getHeader(http.CONTENT_MD5, &result.ContentMD5),
 		getHeader(http.BCE_CONTENT_CRC32, &result.ContentCrc32),
@@ -969,6 +978,7 @@ func DeleteMultipleObjects(cli bce.Client, bucket string, objectListStream *bce.
 		return nil, resp.ServiceError()
 	}
 	jsonBody := &DeleteMultipleObjectsResult{}
+	retrieveResponseFields(jsonBody, resp)
 
 	if resp.Header(http.CONTENT_LENGTH) == "0" {
 		resp.Body().Close()
@@ -1171,6 +1181,7 @@ func GetObjectAcl(cli bce.Client, bucket, object string, ctx *BosContext,
 		return nil, resp.ServiceError()
 	}
 	result := &GetObjectAclResult{}
+	retrieveResponseFields(result, resp)
 	if err := resp.ParseJsonBody(result); err != nil {
 		return nil, err
 	}

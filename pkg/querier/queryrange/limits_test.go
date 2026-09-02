@@ -20,11 +20,10 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql"
-	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	"github.com/grafana/loki/v3/pkg/logqlmodel"
 	"github.com/grafana/loki/v3/pkg/logqlmodel/metadata"
-	"github.com/grafana/loki/v3/pkg/querier/plan"
 	"github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase"
+	"github.com/grafana/loki/v3/pkg/querier/testutil"
 	"github.com/grafana/loki/v3/pkg/storage/config"
 	"github.com/grafana/loki/v3/pkg/storage/types"
 	"github.com/grafana/loki/v3/pkg/util"
@@ -169,9 +168,7 @@ func Test_seriesLimiter(t *testing.T) {
 		EndTs:     testTime,
 		Direction: logproto.FORWARD,
 		Path:      "/query_range",
-		Plan: &plan.QueryPlan{
-			AST: syntax.MustParseExpr(`rate({app="foo"} |= "foo"[1m])`),
-		},
+		Plan:      testutil.MustPlan(`rate({app="foo"} |= "foo"[1m])`),
 	}
 
 	ctx := user.InjectOrgID(context.Background(), "1")
@@ -527,9 +524,7 @@ func Test_MaxQueryLookBack(t *testing.T) {
 		EndTs:     testTime,
 		Direction: logproto.FORWARD,
 		Path:      "/loki/api/v1/query_range",
-		Plan: &plan.QueryPlan{
-			AST: syntax.MustParseExpr(`{app="foo"} |= "foo"`),
-		},
+		Plan:      testutil.MustPlan(`{app="foo"} |= "foo"`),
 	}
 
 	ctx := user.InjectOrgID(context.Background(), "1")
@@ -860,9 +855,7 @@ func Test_MaxQuerySize(t *testing.T) {
 				EndTs:     tc.queryEnd,
 				Direction: logproto.FORWARD,
 				Path:      "/query_range",
-				Plan: &plan.QueryPlan{
-					AST: syntax.MustParseExpr(tc.query),
-				},
+				Plan:      testutil.MustPlan(tc.query),
 			}
 
 			ctx := user.InjectOrgID(context.Background(), "foo")
@@ -991,9 +984,7 @@ func Test_MaxQuerySize_WithQueryLimitsContext(t *testing.T) {
 				EndTs:     tc.queryEnd,
 				Direction: logproto.FORWARD,
 				Path:      "/query_range",
-				Plan: &plan.QueryPlan{
-					AST: syntax.MustParseExpr(tc.query),
-				},
+				Plan:      testutil.MustPlan(tc.query),
 			}
 
 			ctx := user.InjectOrgID(context.Background(), "foo")

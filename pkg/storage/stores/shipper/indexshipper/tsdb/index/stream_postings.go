@@ -58,26 +58,31 @@ func newStreamPostings(ctx context.Context, factory *streamenc.FilePoolDecbufFac
 
 func (p *streamPostings) build(ctx context.Context) error {
 	var (
-		lastName, lastValue string
-		haveLast            bool
-		lastOff             int
-		valueCount          int
+		lastName   string
+		lastValue  []byte // the previous entry's value, in a buffer every entry reuses
+		haveLast   bool
+		lastOff    int
+		valueCount int
 	)
-	err := streamPostingsOffsetTable(ctx, p.factory, p.off, func(labelName, labelValue string, _ uint64, entryOffset int) error {
-		if _, ok := p.postings[labelName]; !ok {
+	err := streamPostingsOffsetTable(ctx, p.factory, p.off, func(labelName, labelValue []byte, _ uint64, entryOffset int) error {
+		if lastName != string(labelName) {
 			// New label name
-			p.postings[labelName] = []streamPostingOffset{}
 			if haveLast {
 				// Always include the last value for the previous label name
-				p.postings[lastName] = append(p.postings[lastName], streamPostingOffset{labelValue: lastValue, offset: lastOff})
+				p.postings[lastName] = append(p.postings[lastName], streamPostingOffset{labelValue: string(lastValue), offset: lastOff})
+				haveLast = false
 			}
+			lastName = string(labelName)
 			valueCount = 0
 		}
 		if valueCount%symbolFactor == 0 {
-			p.postings[labelName] = append(p.postings[labelName], streamPostingOffset{labelValue: labelValue, offset: entryOffset})
+			p.postings[lastName] = append(p.postings[lastName], streamPostingOffset{labelValue: string(labelValue), offset: entryOffset})
 			haveLast = false
 		} else {
-			lastName, lastValue, lastOff = labelName, labelValue, entryOffset
+			lastOff = entryOffset
+			// This value is kept only if it turns out to be the last of its label name.
+			// Copying it into a reused buffer defers allocating the string until we know it will be kept.
+			lastValue = append(lastValue[:0], labelValue...)
 			haveLast = true
 		}
 		valueCount++
@@ -87,7 +92,7 @@ func (p *streamPostings) build(ctx context.Context) error {
 		return err
 	}
 	if haveLast {
-		p.postings[lastName] = append(p.postings[lastName], streamPostingOffset{labelValue: lastValue, offset: lastOff})
+		p.postings[lastName] = append(p.postings[lastName], streamPostingOffset{labelValue: string(lastValue), offset: lastOff})
 	}
 	// Trim any extra space in the slices
 	for k, v := range p.postings {
@@ -99,11 +104,11 @@ func (p *streamPostings) build(ctx context.Context) error {
 }
 
 // isLabelName reports whether the given name is a label name held in the postings offset table.
-func (p *streamPostings) isLabelName(name string) bool {
-	if name == "" { // in postings, this is where the all-postings entry is stored, not a real label name
+func (p *streamPostings) isLabelName(name []byte) bool {
+	if len(name) == 0 { // in postings, this is where the all-postings entry is stored, not a real label name
 		return false
 	}
-	_, ok := p.postings[name]
+	_, ok := p.postings[string(name)]
 	return ok
 }
 
@@ -339,12 +344,19 @@ func (p *pooledBigEndianPostings) release() {
 // streamPostingsOffsetTable iterates the postings-offset table, running
 // perEntryFn against each entry in the table.
 // It is the streaming equivalent of ReadOffsetTable.
+//
+// labelName and labelValue are valid only for the duration of the perEntryFn
+// call they are passed to: they each point into a scratch buffer that is
+// overwritten with each call.
+// A callback that keeps either must copy it, which converting to a string does.
+// Since we only need to keep a small proportion of the names/values, this is
+// a significant saving on allocations.
 func streamPostingsOffsetTable(
 	ctx context.Context,
 	factory *streamenc.FilePoolDecbufFactory,
 	postingsOffsetTableOffset int,
 	perEntryFn func(
-		labelName, labelValue string,
+		labelName, labelValue []byte,
 		postingsOffset uint64, // Absolute file offset
 		entryOffset int, // Relative offset of this entry within the postings offset table
 	) error,
@@ -355,14 +367,17 @@ func streamPostingsOffsetTable(
 		return err
 	}
 
+	var labelName []byte
+	var labelValue []byte
+
 	size := decbuf.Be32()
 	for i := uint32(0); decbuf.Err() == nil && i < size; i++ {
 		entryOffset := decbuf.Offset()
 		if keyCount := decbuf.Uvarint(); keyCount != 2 {
 			return fmt.Errorf("unexpected number of keys for postings offset table %d", keyCount)
 		}
-		labelName := decbuf.UvarintStr()
-		labelValue := decbuf.UvarintStr()
+		labelName = append(labelName[:0], decbuf.UnsafeUvarintBytes()...)
+		labelValue = append(labelValue[:0], decbuf.UnsafeUvarintBytes()...)
 		postingsOffset := decbuf.Uvarint64()
 		if err := decbuf.Err(); err != nil {
 			return err

@@ -9,7 +9,7 @@ volumes:
   minio:
 
 x-loki-common: &loki-common
-  image: grafana/loki:3.7.6@sha256:efd47c67f9bac88ca29bcf8cb997d9ab29d1848bd0aff579282295542a745952
+  image: grafana/loki:3.7.7@sha256:d70e4659623f3e109af669cae76fe2a5dd5be54e2298fe8aed380d982fbc2500
   volumes:
     - ./config:/etc/loki/
     - loki:/loki
