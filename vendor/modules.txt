@@ -1431,8 +1431,8 @@ github.com/prometheus/client_golang/prometheus/testutil/promlint/validations
 ## explicit; go 1.25.0
 github.com/prometheus/client_golang/exp/api/remote
 github.com/prometheus/client_golang/exp/internal/github.com/efficientgo/core/backoff
-# github.com/prometheus/client_model v0.6.2
-## explicit; go 1.22.0
+# github.com/prometheus/client_model v0.6.3
+## explicit; go 1.23
 github.com/prometheus/client_model/go
 # github.com/prometheus/common v0.70.1
 ## explicit; go 1.25.0
