@@ -57,6 +57,8 @@ const (
 
 	// EnvRelatedImageLoki is the environment variable to fetch the Loki image pullspec.
 	EnvRelatedImageLoki = "RELATED_IMAGE_LOKI"
+	// EnvRelatedImageOperator is the environment variable to fetch the Loki Operator image pullspec.
+	EnvRelatedImageOperator = "RELATED_IMAGE_OPERATOR"
 	// EnvRelatedImageGateway is the environment variable to fetch the Gateway image pullspec.
 	EnvRelatedImageGateway = "RELATED_IMAGE_GATEWAY"
 	// EnvRelatedImagePassthroughGateway is the environment variable to fetch the Passthrough Gateway image pullspec.
@@ -64,6 +66,8 @@ const (
 
 	// DefaultContainerImage declares the default fallback for loki image.
 	DefaultContainerImage = "docker.io/grafana/loki:3.7.3"
+	// DefaultOperatorImage declares the default fallback for the Loki Operator image.
+	DefaultOperatorImage = "docker.io/grafana/loki-operator:0.11.0"
 
 	// DefaultLokiStackGatewayImage declares the default image for lokiStack-gateway.
 	DefaultLokiStackGatewayImage = "quay.io/observatorium/api:latest"

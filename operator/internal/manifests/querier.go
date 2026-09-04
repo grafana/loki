@@ -57,7 +57,7 @@ func BuildQuerier(opts Options) ([]client.Object, error) {
 		return nil, err
 	}
 
-	if err := configureReplication(&deployment.Spec.Template, opts.Stack.Replication, LabelQuerierComponent, opts.Name); err != nil {
+	if err := configureReplication(&deployment.Spec.Template, opts.Stack.Replication, LabelQuerierComponent, opts.Name, opts.OperatorImage); err != nil {
 		return nil, err
 	}
 
