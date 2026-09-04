@@ -24853,7 +24853,7 @@ func Xfcntl(tls *TLS, fd int32, cmd int32, va uintptr) (r int32) {
 	if cmd == int32(F_SETFL) {
 		arg = arg | uint32(O_LARGEFILE)
 	}
-	if cmd == int32(F_SETLKW) {
+	if cmd == int32(F_SETLKW) || cmd == int32(F_OFD_SETLKW) {
 		return X__syscall_ret(tls, Uint32FromInt32(___syscall_cp(tls, int32(SYS_fcntl64), fd, cmd, int32(uintptr(arg)), 0, 0, 0)))
 	}
 	if cmd == int32(F_GETOWN) {
@@ -24896,6 +24896,10 @@ func Xfcntl(tls *TLS, fd int32, cmd int32, va uintptr) (r int32) {
 	case int32(F_SETLK):
 		fallthrough
 	case int32(F_GETLK):
+		fallthrough
+	case int32(F_OFD_SETLK):
+		fallthrough
+	case int32(F_OFD_GETLK):
 		fallthrough
 	case int32(F_GETOWN_EX):
 		fallthrough
@@ -104342,7 +104346,7 @@ func Xexpm1l(tls *TLS, x float64) (r float64) {
 	return Xexpm1(tls, x)
 }
 
-func Xfabs(tls *TLS, x float64) (r float64) {
+func ___musl_fabs(tls *TLS, x float64) (r float64) {
 	if __ccgo_strace {
 		trc("tls=%v x=%v, (%v:)", tls, x, origin(2))
 		defer func() { trc("-> %v", r) }()
@@ -144595,7 +144599,7 @@ func Xmemchr(tls *TLS, src uintptr, c int32, n Tsize_t) (r uintptr) {
 	return v4
 }
 
-func Xmemcmp(tls *TLS, vl uintptr, vr uintptr, n Tsize_t) (r1 int32) {
+func ___musl_memcmp(tls *TLS, vl uintptr, vr uintptr, n Tsize_t) (r1 int32) {
 	if __ccgo_strace {
 		trc("tls=%v vl=%v vr=%v n=%v, (%v:)", tls, vl, vr, n, origin(2))
 		defer func() { trc("-> %v", r1) }()
@@ -144627,7 +144631,7 @@ func Xmemcmp(tls *TLS, vl uintptr, vr uintptr, n Tsize_t) (r1 int32) {
 const LS = 0
 const RS = 0
 
-func Xmemcpy(tls *TLS, dest uintptr, src uintptr, n Tsize_t) (r uintptr) {
+func ___musl_memcpy(tls *TLS, dest uintptr, src uintptr, n Tsize_t) (r uintptr) {
 	if __ccgo_strace {
 		trc("tls=%v dest=%v src=%v n=%v, (%v:)", tls, dest, src, n, origin(2))
 		defer func() { trc("-> %v", r) }()
@@ -145275,7 +145279,7 @@ const WS = 0
 
 type TWT = uint32
 
-func Xmemmove(tls *TLS, dest uintptr, src uintptr, n Tsize_t) (r uintptr) {
+func ___musl_memmove(tls *TLS, dest uintptr, src uintptr, n Tsize_t) (r uintptr) {
 	if __ccgo_strace {
 		trc("tls=%v dest=%v src=%v n=%v, (%v:)", tls, dest, src, n, origin(2))
 		defer func() { trc("-> %v", r) }()
@@ -145394,7 +145398,7 @@ func Xmemrchr(tls *TLS, m uintptr, c int32, n Tsize_t) (r uintptr) {
 	return X__memrchr(tls, m, c, n)
 }
 
-func Xmemset(tls *TLS, dest uintptr, c int32, n Tsize_t) (r uintptr) {
+func ___musl_memset(tls *TLS, dest uintptr, c int32, n Tsize_t) (r uintptr) {
 	if __ccgo_strace {
 		trc("tls=%v dest=%v c=%v n=%v, (%v:)", tls, dest, c, n, origin(2))
 		defer func() { trc("-> %v", r) }()
@@ -145866,7 +145870,7 @@ func Xstrcpy(tls *TLS, dest uintptr, src uintptr) (r uintptr) {
 	return dest
 }
 
-func Xstrcspn(tls *TLS, s uintptr, c uintptr) (r Tsize_t) {
+func ___musl_strcspn(tls *TLS, s uintptr, c uintptr) (r Tsize_t) {
 	if __ccgo_strace {
 		trc("tls=%v s=%v c=%v, (%v:)", tls, s, c, origin(2))
 		defer func() { trc("-> %v", r) }()
