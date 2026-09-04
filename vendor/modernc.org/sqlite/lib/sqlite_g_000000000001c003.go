@@ -48,11 +48,12 @@ const _POSIX_THREAD_SAFE_FUNCTIONS = 200112
 func _unixFileLock(tls *libc.TLS, pFile uintptr, pLock uintptr) (r int32) {
 	bp := tls.Alloc(48)
 	defer tls.Free(48)
+	var h, rc int32
 	var pInode uintptr
-	var rc int32
 	var _ /* lock at bp+0 */ Tflock
-	_, _ = pInode, rc
+	_, _, _ = h, pInode, rc
 	pInode = (*TunixFile)(unsafe.Pointer(pFile)).FpInode
+	h = (*TunixFile)(unsafe.Pointer(pFile)).Fh
 	if libc.Int32FromUint16((*TunixFile)(unsafe.Pointer(pFile)).FctrlFlags)&(libc.Int32FromInt32(UNIXFILE_EXCL)|libc.Int32FromInt32(UNIXFILE_RDONLY)) == int32(UNIXFILE_EXCL) {
 		if libc.Int32FromUint8((*TunixInodeInfo)(unsafe.Pointer(pInode)).FbProcessLock) == 0 {
 			/* assert( pInode->nLock==0 ); <-- Not true if unix-excl READONLY used */
@@ -60,7 +61,7 @@ func _unixFileLock(tls *libc.TLS, pFile uintptr, pLock uintptr) (r int32) {
 			(**(**Tflock)(__ccgo_up(bp))).Fl_start = int64(_sqlite3PendingByte + libc.Int32FromInt32(2))
 			(**(**Tflock)(__ccgo_up(bp))).Fl_len = int64(SHARED_SIZE)
 			(**(**Tflock)(__ccgo_up(bp))).Fl_type = int16(F_WRLCK)
-			rc = (*(*func(*libc.TLS, int32, int32, uintptr) int32)(unsafe.Pointer(&struct{ uintptr }{_aSyscall[int32(7)].FpCurrent})))(tls, (*TunixFile)(unsafe.Pointer(pFile)).Fh, int32(F_SETLK), libc.VaList(bp+32, bp))
+			rc = (*(*func(*libc.TLS, int32, int32, uintptr) int32)(unsafe.Pointer(&struct{ uintptr }{_aSyscall[int32(7)].FpCurrent})))(tls, h, int32(F_SETLK), libc.VaList(bp+32, bp))
 			if rc < 0 {
 				return rc
 			}
@@ -70,7 +71,7 @@ func _unixFileLock(tls *libc.TLS, pFile uintptr, pLock uintptr) (r int32) {
 			rc = 0
 		}
 	} else {
-		rc = (*(*func(*libc.TLS, int32, int32, uintptr) int32)(unsafe.Pointer(&struct{ uintptr }{_aSyscall[int32(7)].FpCurrent})))(tls, (*TunixFile)(unsafe.Pointer(pFile)).Fh, int32(F_SETLK), libc.VaList(bp+32, pLock))
+		rc = (*(*func(*libc.TLS, int32, int32, uintptr) int32)(unsafe.Pointer(&struct{ uintptr }{_aSyscall[int32(7)].FpCurrent})))(tls, h, int32(F_SETLK), libc.VaList(bp+32, pLock))
 	}
 	return rc
 }

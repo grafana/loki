@@ -159,7 +159,7 @@ func _closeUnixFile(tls *libc.TLS, id uintptr) (r int32) {
 	_ = pFile
 	pFile = id
 	if (*TunixFile)(unsafe.Pointer(pFile)).Fh >= 0 {
-		_robust_close(tls, pFile, (*TunixFile)(unsafe.Pointer(pFile)).Fh, int32(42509))
+		_robust_close(tls, pFile, (*TunixFile)(unsafe.Pointer(pFile)).Fh, int32(42654))
 		(*TunixFile)(unsafe.Pointer(pFile)).Fh = -int32(1)
 	}
 	Xsqlite3_free(tls, (*TunixFile)(unsafe.Pointer(pFile)).FpPreallocatedUnused)
@@ -904,6 +904,11 @@ func _unixLock(tls *libc.TLS, id uintptr, eFileLock int32) (r int32) {
 			(*TunixFile)(unsafe.Pointer(pFile)).FeFileLock = uint8(SHARED_LOCK)
 			(*TunixInodeInfo)(unsafe.Pointer(pInode)).FnLock = (*TunixInodeInfo)(unsafe.Pointer(pInode)).FnLock + 1
 			(*TunixInodeInfo)(unsafe.Pointer(pInode)).FnShared = int32(1)
+			if (*TunixInodeInfo)(unsafe.Pointer(pInode)).FhLock == 0 {
+				/* First lock on this inode: pFile->h now holds the kernel locks */
+				(*TunixInodeInfo)(unsafe.Pointer(pInode)).FhLock = (*TunixFile)(unsafe.Pointer(pFile)).Fh
+				(*TunixInodeInfo)(unsafe.Pointer(pInode)).FbLockIsReadOnly = libc.BoolUint8(libc.Int32FromUint16((*TunixFile)(unsafe.Pointer(pFile)).FctrlFlags)&int32(UNIXFILE_RDONLY) != 0)
+			}
 		}
 	} else {
 		if eFileLock == int32(EXCLUSIVE_LOCK) && (*TunixInodeInfo)(unsafe.Pointer(pInode)).FnShared > int32(1) {

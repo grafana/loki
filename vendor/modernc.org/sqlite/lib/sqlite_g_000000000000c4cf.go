@@ -1243,7 +1243,7 @@ func _ptrmapPut(tls *libc.TLS, pBt uintptr, key TPgno, eType Tu8, parent TPgno, 
 	}
 	/* The super-journal page number must never be used as a pointer map page */
 	if key == uint32(0) {
-		**(**int32)(__ccgo_up(pRC)) = _sqlite3CorruptError(tls, int32(74301))
+		**(**int32)(__ccgo_up(pRC)) = _sqlite3CorruptError(tls, int32(74450))
 		return
 	}
 	iPtrmap = _ptrmapPageno(tls, pBt, key)
@@ -1256,12 +1256,12 @@ func _ptrmapPut(tls *libc.TLS, pBt uintptr, key TPgno, eType Tu8, parent TPgno, 
 		/* The first byte of the extra data is the MemPage.isInit byte.
 		 ** If that byte is set, it means this page is also being used
 		 ** as a btree page. */
-		**(**int32)(__ccgo_up(pRC)) = _sqlite3CorruptError(tls, int32(74314))
+		**(**int32)(__ccgo_up(pRC)) = _sqlite3CorruptError(tls, int32(74463))
 		goto ptrmap_exit
 	}
 	offset = libc.Int32FromUint32(libc.Uint32FromInt32(5) * (key - iPtrmap - libc.Uint32FromInt32(1)))
 	if offset < 0 {
-		**(**int32)(__ccgo_up(pRC)) = _sqlite3CorruptError(tls, int32(74319))
+		**(**int32)(__ccgo_up(pRC)) = _sqlite3CorruptError(tls, int32(74468))
 		goto ptrmap_exit
 	}
 	pPtrmap = _sqlite3PagerGetData(tls, **(**uintptr)(__ccgo_up(bp)))
@@ -2095,7 +2095,7 @@ func _sqlite3VdbeMemFromBtree(tls *libc.TLS, pCur uintptr, offset Tu32, amt Tu32
 		return int32(SQLITE_NOMEM)
 	}
 	if uint64(amt)+uint64(offset) > libc.Uint64FromInt64(_sqlite3BtreeMaxRecordSize(tls, pCur)) {
-		return _sqlite3CorruptError(tls, int32(87091))
+		return _sqlite3CorruptError(tls, int32(87240))
 	}
 	v1 = _sqlite3VdbeMemClearAndResize(tls, pMem, libc.Int32FromUint32(amt+uint32(1)))
 	rc = v1
