@@ -12,7 +12,6 @@ import (
 	"github.com/dustin/go-humanize"
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
-	"github.com/klauspost/compress/zstd"
 	"github.com/pierrec/lz4/v4"
 	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
@@ -80,11 +79,12 @@ func extractLogs(r *http.Request, maxRecvMsgSize int, maxDecompressedSize int64,
 		}
 
 	case zstdContentEncoding:
-		var err error
-		body, err = zstd.NewReader(body)
+		dec, err := getZstdDecoder(body)
 		if err != nil {
 			return plog.NewLogs(), err
 		}
+		defer putZstdDecoder(dec)
+		body = dec
 		if maxDecompressedSize > 0 {
 			body = io.LimitReader(body, maxDecompressedSize+1)
 		}

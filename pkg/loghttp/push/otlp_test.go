@@ -4,9 +4,11 @@ import (
 	"compress/gzip"
 	"context"
 	"fmt"
+	"math/rand"
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -14,9 +16,11 @@ import (
 	"github.com/grafana/dskit/flagext"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/model/relabel"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/collector/pdata/pcommon"
 	"go.opentelemetry.io/collector/pdata/plog"
+	"go.uber.org/goleak"
 	"google.golang.org/genproto/googleapis/rpc/status"
 	"google.golang.org/protobuf/proto"
 
@@ -1807,6 +1811,195 @@ func TestContentEncodingAndLength(t *testing.T) {
 							require.Equal(t, expectedLog.Body().AsString(), extractedLog.Body().AsString())
 						}
 					}
+				}
+			}
+		})
+	}
+}
+
+func otlpEncodedRequest(body []byte, contentEncoding string) *http.Request {
+	req := httptest.NewRequest("POST", "/v1/logs", bytes.NewReader(body))
+	req.Header.Set("Content-Type", pbContentType)
+	if contentEncoding != "" {
+		req.Header.Set("Content-Encoding", contentEncoding)
+	}
+	return req
+}
+
+// TestExtractLogsRepeatedCompressedRequests runs each encoding over a run of requests,
+// so a decoder carrying state out of one request into the next would show up, and then
+// aborts one part way through the stream.
+func TestExtractLogsRepeatedCompressedRequests(t *testing.T) {
+	for _, enc := range []struct {
+		encoding string
+		encode   func(plog.Logs) ([]byte, error)
+	}{
+		{gzipContentEncoding, createGzipCompressedProtobuf},
+		{zstdContentEncoding, createZstdCompressedProtobuf},
+		{lz4ContentEncoding, createLz4CompressedProtobuf},
+	} {
+		t.Run("encoding="+enc.encoding, func(t *testing.T) {
+			body, err := enc.encode(largeOTLPLogs())
+			require.NoError(t, err)
+
+			for range 5 {
+				logs, err := extractLogs(otlpEncodedRequest(body, enc.encoding), 0, 0, NewPushStats())
+				require.NoError(t, err)
+				require.Equal(t, 1024, logs.LogRecordCount())
+			}
+
+			// And the failure path, where the reader is released mid-stream.
+			_, err = extractLogs(otlpEncodedRequest(body, enc.encoding), 0, 1024, NewPushStats())
+			require.ErrorIs(t, err, util.ErrMessageDecompressedSizeTooLarge)
+		})
+	}
+}
+
+// TestExtractLogsZstdDecoderReuseAfterFailures mixes malformed bodies in, to check a
+// decoder is never handed back to the pool in a state that breaks the next request to
+// pick it up.
+func TestExtractLogsZstdDecoderReuseAfterFailures(t *testing.T) {
+	good, err := createZstdCompressedProtobuf(simpleOTLPLogs())
+	require.NoError(t, err)
+	large, err := createZstdCompressedProtobuf(largeOTLPLogs())
+	require.NoError(t, err)
+
+	for range 10 {
+		logs, err := extractLogs(otlpEncodedRequest(good, zstdContentEncoding), 0, 0, NewPushStats())
+		require.NoError(t, err)
+		require.Equal(t, 1, logs.LogRecordCount())
+
+		// Truncated body: the decoder is released mid-stream.
+		_, err = extractLogs(otlpEncodedRequest(large[:len(large)/2], zstdContentEncoding), 0, 0, NewPushStats())
+		require.Error(t, err)
+
+		// Not zstd at all, so it fails while reading the frame header.
+		_, err = extractLogs(otlpEncodedRequest([]byte("not compressed"), zstdContentEncoding), 0, 0, NewPushStats())
+		require.Error(t, err)
+
+		// Aborted part way through by the decompressed size limit.
+		_, err = extractLogs(otlpEncodedRequest(large, zstdContentEncoding), 0, 1024, NewPushStats())
+		require.ErrorIs(t, err, util.ErrMessageDecompressedSizeTooLarge)
+	}
+}
+
+// TestExtractLogsDecompressorDoesNotLeakGoroutines covers the abort paths, where the
+// request body is only partly consumed. The zstd decoder decodes on its own goroutines;
+// left unreleased there, they stay alive for the lifetime of the process.
+func TestExtractLogsDecompressorDoesNotLeakGoroutines(t *testing.T) {
+	for _, tc := range []struct {
+		encoding string
+		encode   func(plog.Logs) ([]byte, error)
+	}{
+		{gzipContentEncoding, createGzipCompressedProtobuf},
+		{zstdContentEncoding, createZstdCompressedProtobuf},
+		{lz4ContentEncoding, createLz4CompressedProtobuf},
+	} {
+		t.Run(tc.encoding, func(t *testing.T) {
+			body, err := tc.encode(largeOTLPLogs())
+			require.NoError(t, err)
+
+			ignore := goleak.IgnoreCurrent()
+			for range 50 {
+				// Stop reading well before the end of the stream.
+				_, err := extractLogs(otlpEncodedRequest(body, tc.encoding), 0, 1024, NewPushStats())
+				require.Error(t, err)
+			}
+			goleak.VerifyNone(t, ignore)
+		})
+	}
+}
+
+// TestExtractLogsZstdConcurrent hammers the decoder pool from several goroutines at once.
+// Worth running under -race: the pool is shared state a single-threaded test never
+// contends.
+func TestExtractLogsZstdConcurrent(t *testing.T) {
+	type variant struct {
+		body        []byte
+		wantRecords int
+		wantFirst   string
+	}
+	firstBody := func(logs plog.Logs) string {
+		return logs.ResourceLogs().At(0).ScopeLogs().At(0).LogRecords().At(0).Body().AsString()
+	}
+
+	var variants []variant
+	// Mix payload sizes so goroutines fight over decoders that have seen different frames.
+	for _, logs := range []plog.Logs{simpleOTLPLogs(), largeOTLPLogs(), highEntropyOTLPLogs(200)} {
+		body, err := createZstdCompressedProtobuf(logs)
+		require.NoError(t, err)
+		variants = append(variants, variant{body, logs.LogRecordCount(), firstBody(logs)})
+	}
+
+	var wg sync.WaitGroup
+	for g := range 16 {
+		wg.Add(1)
+		go func(g int) {
+			defer wg.Done()
+			for i := range 40 {
+				v := variants[(g+i)%len(variants)]
+				logs, err := extractLogs(otlpEncodedRequest(v.body, zstdContentEncoding), 0, 0, NewPushStats())
+				if !assert.NoError(t, err) {
+					return
+				}
+				// A decoder carrying state across requests would show up as a short read
+				// or as garbled body text.
+				assert.Equal(t, v.wantRecords, logs.LogRecordCount())
+				assert.Equal(t, v.wantFirst, firstBody(logs))
+			}
+		}(g)
+	}
+	wg.Wait()
+}
+
+// highEntropyOTLPLogs builds records whose bodies vary, so the payload compresses like
+// real log data (~5x) rather than like largeOTLPLogs' run of spaces (~380x). Compression
+// ratio changes how much of a request is decode work versus decoder setup, which is what
+// the decoder pool affects.
+func highEntropyOTLPLogs(records int) plog.Logs {
+	rng := rand.New(rand.NewSource(1))
+	ld := plog.NewLogs()
+	rl := ld.ResourceLogs().AppendEmpty()
+	rl.Resource().Attributes().PutStr("service.name", "checkout")
+	rl.Resource().Attributes().PutStr("k8s.namespace.name", "ecommerce-prod")
+	sl := rl.ScopeLogs().AppendEmpty()
+	for i := 0; i < records; i++ {
+		lr := sl.LogRecords().AppendEmpty()
+		lr.Body().SetStr(fmt.Sprintf(
+			`{"level":"info","msg":"request completed","route":"/api/v1/checkout","status":%d,"duration_ms":%d,"order_id":"ord_%010x","user_id":"usr_%08x"}`,
+			200+(i%5)*100, rng.Intn(2500), rng.Int63n(1<<40), rng.Int31()))
+		lr.SetTimestamp(pcommon.Timestamp(uint64(time.Now().UnixNano()) + uint64(i)*1_000_000))
+		lr.Attributes().PutStr("client.address", fmt.Sprintf("10.%d.%d.%d", rng.Intn(256), rng.Intn(256), rng.Intn(256)))
+		lr.Attributes().PutInt("http.response.status_code", int64(200+(i%5)*100))
+	}
+	return ld
+}
+
+// BenchmarkExtractLogsZstd covers the zstd decode path at three body sizes. Compare it
+// against the base branch to see what reusing the decoder is worth:
+//
+//	git stash && go test -run XXX -bench ExtractLogsZstd -count=6 > base.txt
+//	git stash pop && go test -run XXX -bench ExtractLogsZstd -count=6 > new.txt
+//	benchstat base.txt new.txt
+func BenchmarkExtractLogsZstd(b *testing.B) {
+	for _, batch := range []struct {
+		name    string
+		records int
+	}{
+		{"typical-25KB", 50},
+		{"p99-500KB", 1000},
+		{"large-4MB", 8000},
+	} {
+		body, err := createZstdCompressedProtobuf(highEntropyOTLPLogs(batch.records))
+		require.NoError(b, err)
+
+		b.Run(batch.name, func(b *testing.B) {
+			b.ReportAllocs()
+			b.SetBytes(int64(len(body)))
+			b.ResetTimer()
+			for range b.N {
+				if _, err := extractLogs(otlpEncodedRequest(body, zstdContentEncoding), 0, 0, NewPushStats()); err != nil {
+					b.Fatal(err)
 				}
 			}
 		})
