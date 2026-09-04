@@ -46,3 +46,7 @@ type Tstatx_timestamp = struct {
 	Ftv_nsec Tuint32_t
 	F__pad   Tuint32_t
 }
+
+const __PIE__ = 2
+
+const __pie__ = 2

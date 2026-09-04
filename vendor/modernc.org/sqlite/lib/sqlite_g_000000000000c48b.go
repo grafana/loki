@@ -30,14 +30,14 @@ func Xsqlite3_preupdate_old(tls *libc.TLS, db uintptr, iIdx int32, ppValue uintp
 	/* Test that this call is being made from within an SQLITE_DELETE or
 	 ** SQLITE_UPDATE pre-update callback, and that iIdx is within range. */
 	if !(p != 0) || (*TPreUpdate)(unsafe.Pointer(p)).Fop == int32(SQLITE_INSERT) {
-		rc = _sqlite3MisuseError(tls, int32(95913))
+		rc = _sqlite3MisuseError(tls, int32(96062))
 		goto preupdate_old_out
 	}
 	if (*TPreUpdate)(unsafe.Pointer(p)).FpPk != 0 {
 		iStore = _sqlite3TableColumnToIndex(tls, (*TPreUpdate)(unsafe.Pointer(p)).FpPk, iIdx)
 	} else {
 		if iIdx >= int32((*TTable)(unsafe.Pointer((*TPreUpdate)(unsafe.Pointer(p)).FpTab)).FnCol) {
-			rc = _sqlite3MisuseError(tls, int32(95919))
+			rc = _sqlite3MisuseError(tls, int32(96068))
 			goto preupdate_old_out
 		} else {
 			iStore = int32(_sqlite3TableColumnToStorage(tls, (*TPreUpdate)(unsafe.Pointer(p)).FpTab, int16(iIdx)))
@@ -97,7 +97,7 @@ func Xsqlite3_preupdate_old(tls *libc.TLS, db uintptr, iIdx int32, ppValue uintp
 					})(unsafe.Pointer((*TPreUpdate)(unsafe.Pointer(p)).FpTab + 64))).FpDfltList + 8 + uintptr(libc.Int32FromUint16((*TColumn)(unsafe.Pointer(pCol)).FiDflt)-int32(1))*32))).FpExpr
 					rc = _sqlite3ValueFromExpr(tls, db, pDflt, (*Tsqlite3)(unsafe.Pointer(db)).Fenc, libc.Uint8FromInt8((*TColumn)(unsafe.Pointer(pCol)).Faffinity), bp)
 					if rc == SQLITE_OK && **(**uintptr)(__ccgo_up(bp)) == uintptr(0) {
-						rc = _sqlite3CorruptError(tls, int32(95975))
+						rc = _sqlite3CorruptError(tls, int32(96124))
 					}
 					**(**uintptr)(__ccgo_up((*TPreUpdate)(unsafe.Pointer(p)).FapDflt + uintptr(iIdx)*8)) = **(**uintptr)(__ccgo_up(bp))
 				}
