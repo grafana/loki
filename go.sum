@@ -59,8 +59,8 @@ github.com/DataDog/sketches-go v1.4.8 h1:pFk9BNn+Rzv8IMIoPUttoOpOr3bJOqU3P6EP5wK
 github.com/DataDog/sketches-go v1.4.8/go.mod h1:a/wjRUqzqtGS8qRHRPDCs4EAQfmvPDZGDlMIF5mxXOE=
 github.com/DmitriyVTitov/size v1.5.0 h1:/PzqxYrOyOUX1BXj6J9OuVRVGe+66VL4D9FlUaW515g=
 github.com/DmitriyVTitov/size v1.5.0/go.mod h1:le6rNI4CoLQV1b9gzp1+3d7hMAD/uu2QcJ+aYbNgiU0=
-github.com/GoogleCloudPlatform/opentelemetry-operations-go/detectors/gcp v1.36.0 h1:3SdxXLkgAfiHRWcGTq6fneq9jgoJzneiY0yPQnjoT2E=
-github.com/GoogleCloudPlatform/opentelemetry-operations-go/detectors/gcp v1.36.0/go.mod h1:1iIdl0k+ppn9wT0wzR9H7HkSvIui/4qgtnKW10cQtds=
+github.com/GoogleCloudPlatform/opentelemetry-operations-go/detectors/gcp v1.37.0 h1:edOuLWehuDlQ68roBF900Y09jvBoJP5W5d/wusz9nWY=
+github.com/GoogleCloudPlatform/opentelemetry-operations-go/detectors/gcp v1.37.0/go.mod h1:iIyrdhveU5Ow84ipRlxtjCOQnIM0DiqSMxuxm50xwZY=
 github.com/GoogleCloudPlatform/opentelemetry-operations-go/exporter/metric v0.61.0 h1:BeC1Bub7Ttk33TF8v3ZeQ2L8acvz4ZLqtQuLyJAZquc=
 github.com/GoogleCloudPlatform/opentelemetry-operations-go/exporter/metric v0.61.0/go.mod h1:UgG/Xn9+NXb1/ueSczIFxyuya3hs3srFDiZG2JrpJwY=
 github.com/GoogleCloudPlatform/opentelemetry-operations-go/internal/cloudmock v0.61.0 h1:eSgSuKdcpY7RTN1oXSzC6S39rPBImn03ubLMsWK4RRg=
