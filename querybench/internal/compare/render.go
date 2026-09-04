@@ -1,7 +1,10 @@
 package compare
 
 import (
+	"bytes"
+	"encoding/csv"
 	"fmt"
+	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -17,11 +20,11 @@ type Input struct {
 	Report *report.Report
 }
 
-// Render returns the markdown comparison of a and b. Column cells read
+// RenderMarkdown returns the markdown comparison of a and b. Column cells read
 // "<a-value> / <b-value> (±x%)", where the percentage is b relative to a and is
 // omitted when either side is missing or a is zero. A query present in only one
 // report still gets a row, with a dash for the absent side.
-func Render(a, b Input) string {
+func RenderMarkdown(a, b Input) string {
 	var sb strings.Builder
 	writeHeader(&sb, a, b)
 	writeTable(&sb, a, b)
@@ -62,12 +65,54 @@ var columns = []column{
 	{header: "Querier mem alloc", extract: fromUint(func(m report.SystemStats) *uint64 { return m.AllocBytesPerSecond }), format: formatBytesPerSecond},
 }
 
+// fixedHeaders are the descriptive columns that precede the metric columns.
+// Both the markdown and CSV renderers build their header from this plus
+// columnHeaders(), so the two formats share one column order.
+var fixedHeaders = []string{"Query type", "Query name", "Query expression", "Query timerange", "Query steps"}
+
+// RenderCSV returns the comparison table as CSV, with the same columns as the
+// markdown table. The expression and name cells are raw (no markdown code
+// quoting or escaping); the CSV writer quotes any field that needs it. It omits
+// the markdown header and notes: the table only.
+func RenderCSV(a, b Input) (string, error) {
+	order, aByKey, bByKey := alignQueries(a.Report, b.Report)
+
+	var buf bytes.Buffer
+	w := csv.NewWriter(&buf)
+	if err := w.Write(slices.Concat(fixedHeaders, columnHeaders())); err != nil {
+		return "", err
+	}
+	for _, k := range order {
+		qa, qb := aByKey[k], bByKey[k]
+		ref := qa
+		if ref == nil {
+			ref = qb
+		}
+
+		row := []string{
+			string(ref.Type),
+			ref.Name,
+			ref.Expr,
+			timerangeCell(ref),
+			stepCell(ref),
+		}
+		for _, c := range columns {
+			row = append(row, cell(c, qa, qb))
+		}
+		if err := w.Write(row); err != nil {
+			return "", err
+		}
+	}
+	w.Flush()
+	return buf.String(), w.Error()
+}
+
 // writeTable writes the comparison table: one row per unique query, ordered by
 // a's queries first, then queries found only in b.
 func writeTable(sb *strings.Builder, a, b Input) {
 	order, aByKey, bByKey := alignQueries(a.Report, b.Report)
 
-	headers := append([]string{"Query type", "Query name", "Query expression", "Query timerange", "Query steps"}, columnHeaders()...)
+	headers := slices.Concat(fixedHeaders, columnHeaders())
 	sb.WriteString("| " + strings.Join(headers, " | ") + " |\n")
 	sb.WriteString("|" + strings.Repeat(" --- |", len(headers)) + "\n")
 

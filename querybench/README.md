@@ -111,11 +111,14 @@ The report path is printed on start and on completion. The file is named
 ### reportstat
 
 ```
-reportstat chunks:reports/chunks.json dataobj:reports/dataobj.json -o comparison.md
+reportstat chunks:reports/chunks.json dataobj:reports/dataobj.json > comparison.md
 ```
 
 Each argument is `<name>:<path>`; `<name>` labels that report in the output.
-With no `-o`, the markdown is written to stdout.
+The output goes to stdout; redirect it to save a file.
+
+`-format` selects the output: `markdown` (default) writes the table with a
+header and notes; `csv` writes the bare table only, with the same columns.
 
 Every cell reads `a / b (±% of b vs a)` and is **per single query**: latency
 figures come from the per-run latencies; object-store and memcached totals are

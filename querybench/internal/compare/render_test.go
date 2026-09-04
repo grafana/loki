@@ -45,12 +45,12 @@ func instantQuery(expr string, end time.Time, window time.Duration, runs int, la
 	}
 }
 
-// TestRender covers the whole markdown in one exact-output assertion. The
-// scenario exercises: an instant query (no step), a range query matched across
-// reports despite different absolute times, a query only in a, and a query only
-// in b, plus per-query normalization over differing run counts (a: 2 runs, b: 4)
-// and missing metrics rendered as a dash.
-func TestRender(t *testing.T) {
+// sampleReports builds the two reports the render tests share. The scenario
+// exercises an instant query (no step), a range query matched across reports
+// despite different absolute times, a query only in a, a query only in b, and
+// per-query normalization over differing run counts (a: 2 runs, b: 4) with some
+// metrics missing.
+func sampleReports() (a, b *report.Report) {
 	day1 := time.Date(2026, 8, 19, 0, 0, 0, 0, time.UTC)
 	day2 := time.Date(2026, 8, 20, 0, 0, 0, 0, time.UTC)
 
@@ -63,7 +63,7 @@ func TestRender(t *testing.T) {
 		}
 	}
 
-	a := &report.Report{
+	a = &report.Report{
 		Description:    "chunks backend",
 		RequestedStart: day1.Add(-24 * time.Hour), RequestedEnd: day1,
 		Queries: []report.Query{
@@ -75,7 +75,7 @@ func TestRender(t *testing.T) {
 				report.SystemStats{CPUPeakCores: f(1)}),
 		},
 	}
-	b := &report.Report{
+	b = &report.Report{
 		Description:    "dataobj backend",
 		RequestedStart: day2.Add(-24 * time.Hour), RequestedEnd: day2,
 		Queries: []report.Query{
@@ -88,8 +88,13 @@ func TestRender(t *testing.T) {
 				report.SystemStats{CPUPeakCores: f(4)}),
 		},
 	}
+	return a, b
+}
 
-	got := Render(Input{"chunks", a}, Input{"dataobj", b})
+// TestRenderMarkdown covers the whole markdown in one exact-output assertion.
+func TestRenderMarkdown(t *testing.T) {
+	a, b := sampleReports()
+	got := RenderMarkdown(Input{"chunks", a}, Input{"dataobj", b})
 
 	want := "# Query benchmark comparison\n" +
 		"\n" +
@@ -115,7 +120,28 @@ func TestRender(t *testing.T) {
 		"- A `–` marks a query absent from one report or a metric that could not be captured; the percentage is omitted when either side is missing or the `a` value is zero.\n"
 
 	if got != want {
-		t.Fatalf("Render output mismatch\n--- got ---\n%s\n--- want ---\n%s", got, want)
+		t.Fatalf("RenderMarkdown output mismatch\n--- got ---\n%s\n--- want ---\n%s", got, want)
+	}
+}
+
+// TestRenderCSV asserts the exact CSV: the same columns as the markdown table,
+// the table only (no header or notes), with raw expression and name cells.
+func TestRenderCSV(t *testing.T) {
+	a, b := sampleReports()
+	got, err := RenderCSV(Input{"chunks", a}, Input{"dataobj", b})
+	if err != nil {
+		t.Fatalf("RenderCSV: %v", err)
+	}
+
+	want := `Query type,Query name,Query expression,Query timerange,Query steps,Min latency,50p latency,Max latency,Processed bytes,Fetched bytes (object storage),Fetched bytes (memcached),Object storage requests,Querier CPU (s/query),Querier peak CPU (cores),Querier mem peak,Querier mem alloc
+instant,avg(i),avg(i),1h,–,500 ms / 1.00 s (+100.0%),500 ms / 1.00 s (+100.0%),700 ms / 1.00 s (+42.9%),1 KB / 2 KB (+100.0%),2 KB / 2 KB (+0.0%),3 KB / 2 KB (-33.3%),100 / 200 (+100.0%),2.00 s / 3.00 s (+50.0%),2.00 / 3.00 (+50.0%),800 MB / 400 MB (-50.0%),1 KB/s / 2 KB/s (+100.0%)
+range,sum(r),sum(r),6h,5m,1.00 s / 2.00 s (+100.0%),1.00 s / 2.00 s (+100.0%),3.00 s / 2.00 s (-33.3%),1 KB / 2 KB (+100.0%),2 KB / 2 KB (+0.0%),3 KB / 2 KB (-33.3%),50 / 100 (+100.0%),2.00 s / 3.00 s (+50.0%),2.00 / 3.00 (+50.0%),800 MB / 400 MB (-50.0%),1 KB/s / 2 KB/s (+100.0%)
+range,sum(a),sum(a),1h,1m,1.00 s / –,1.00 s / –,1.00 s / –,5 B / –,– / –,– / –,– / –,– / –,1.00 / –,– / –,– / –
+range,sum(b),sum(b),2h,5m,– / 5.00 s,– / 5.00 s,– / 5.00 s,– / 10 B,– / –,– / –,– / –,– / –,– / 4.00,– / –,– / –
+`
+
+	if got != want {
+		t.Fatalf("RenderCSV output mismatch\n--- got ---\n%s\n--- want ---\n%s", got, want)
 	}
 }
 
@@ -151,7 +177,7 @@ func TestRender_ZeroBaselineOmitsPercent(t *testing.T) {
 			instantQuery("avg(z)", end, time.Hour, 1, []float64{1}, processed, report.SystemStats{}),
 		}}
 	}
-	md := Render(Input{"a", mk(0)}, Input{"b", mk(100)})
+	md := RenderMarkdown(Input{"a", mk(0)}, Input{"b", mk(100)})
 	if !strings.Contains(md, "0 B / 100 B") {
 		t.Fatalf("expected zero-baseline processed-bytes cell:\n%s", md)
 	}

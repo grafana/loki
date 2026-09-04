@@ -1,5 +1,6 @@
-// Command reportstat compares two querybench JSON reports side-by-side and
-// writes a human-readable markdown comparison.
+// Command reportstat compares two querybench JSON reports side-by-side. It
+// writes a markdown comparison by default, or the bare table as CSV with
+// -format csv.
 //
 // Each argument is "<name>:<path>", where <name> is the short label used for
 // that report in the output.
@@ -24,15 +25,15 @@ func main() {
 }
 
 func run() error {
-	out := flag.String("o", "", "output markdown file (default: stdout)")
+	format := flag.String("format", "markdown", "output format: markdown or csv")
 	flag.Usage = func() {
-		fmt.Fprintf(os.Stderr, "usage: reportstat [-o out.md] <name-a>:<report-a.json> <name-b>:<report-b.json>\n")
+		fmt.Fprintf(os.Stderr, "usage: reportstat [-format markdown|csv] <name-a>:<report-a.json> <name-b>:<report-b.json>\n")
 		flag.PrintDefaults()
 	}
 	flag.Parse()
 
-	// Accept -o before or after the positional report arguments; the standard flag
-	// package stops at the first positional, so parse the remainder in a loop.
+	// Accept -format before or after the positional report arguments; the standard
+	// flag package stops at the first positional, so parse the remainder in a loop.
 	positionals := parseInterleaved()
 	if len(positionals) != 2 {
 		flag.Usage()
@@ -48,17 +49,20 @@ func run() error {
 		return err
 	}
 
-	md := compare.Render(a, b)
-
-	if *out == "" {
-		fmt.Print(md)
+	switch *format {
+	case "markdown":
+		fmt.Print(compare.RenderMarkdown(a, b))
 		return nil
+	case "csv":
+		rendered, err := compare.RenderCSV(a, b)
+		if err != nil {
+			return fmt.Errorf("render csv: %w", err)
+		}
+		fmt.Print(rendered)
+		return nil
+	default:
+		return fmt.Errorf("invalid -format %q: want markdown or csv", *format)
 	}
-	if err := os.WriteFile(*out, []byte(md), 0o644); err != nil {
-		return fmt.Errorf("write %q: %w", *out, err)
-	}
-	log.Printf("wrote %s", *out)
-	return nil
 }
 
 // parseInterleaved returns the positional arguments, parsing any flags that
