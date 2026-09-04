@@ -624,13 +624,12 @@ github.com/drone/envsubst/path
 # github.com/dustin/go-humanize v1.0.1
 ## explicit; go 1.16
 github.com/dustin/go-humanize
-# github.com/ebitengine/purego v0.10.2
-## explicit; go 1.18
+# github.com/ebitengine/purego v0.11.0
+## explicit; go 1.25.0
 github.com/ebitengine/purego
 github.com/ebitengine/purego/internal/cgo
 github.com/ebitengine/purego/internal/fakecgo
 github.com/ebitengine/purego/internal/strings
-github.com/ebitengine/purego/internal/xreflect
 # github.com/edsrzf/mmap-go v1.2.1-0.20241212181136-fad1cd13edbd
 ## explicit; go 1.17
 github.com/edsrzf/mmap-go
