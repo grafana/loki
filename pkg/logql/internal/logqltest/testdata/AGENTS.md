@@ -159,11 +159,6 @@ eval select from 0 to 30s forward {app="a"} | label_format level=lvl
   {app="a"} "boom" @ 10s [metadata trace_id="abc"] [parsed level="error"]
 ```
 
-Cover the stages that move a label between categories — `label_format`, `drop`, `keep`, and a
-parser that re-extracts a metadata name. Note metadata is *not* in the stream labels here, so
-entries that differ only in a metadata value stay in one stream, unlike the series a metric query
-would produce from them.
-
 ## Files
 
 One feature per file: `range_aggregations`, `vector_aggregations`, `binary_operations`,
