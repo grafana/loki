@@ -362,6 +362,80 @@ func TestVolume(t *testing.T) {
 	})
 }
 
+type mockStoreShards struct {
+	mockStore
+	resp *logproto.ShardsResponse
+	err  error
+}
+
+func (m mockStoreShards) GetShards(_ context.Context, _ string, _, _ model.Time, _ uint64, _ chunk.Predicate) (*logproto.ShardsResponse, error) {
+	return m.resp, m.err
+}
+
+func TestCompositeStore_GetShards(t *testing.T) {
+	t.Run("a single contributing store is returned unmodified, chunk groups included", func(t *testing.T) {
+		resp := &logproto.ShardsResponse{
+			Shards:      []logproto.Shard{{Bounds: logproto.FPBounds{Min: 0, Max: 100}, Stats: &stats.Stats{Bytes: 10}}},
+			ChunkGroups: []logproto.ChunkRefGroup{{Refs: []*logproto.ChunkRef{{Checksum: 1}}}},
+		}
+		resp.Statistics.Summary.Shards = 3
+		cs := CompositeStore{
+			stores: []compositeStoreEntry{
+				{model.TimeFromUnix(10), mockStoreShards{mockStore: mockStore(0), resp: resp}},
+			},
+		}
+
+		got, err := cs.GetShards(context.Background(), "fake", model.TimeFromUnix(10), model.TimeFromUnix(20), 100, chunk.Predicate{})
+		require.NoError(t, err)
+		require.Same(t, resp, got)
+	})
+
+	t.Run("the highest-byte store's bounds win, chunk groups are dropped, statistics are summed", func(t *testing.T) {
+		// The second store has fewer shards but more total bytes, and must win.
+		smaller := &logproto.ShardsResponse{
+			Shards: []logproto.Shard{
+				{Bounds: logproto.FPBounds{Min: 0, Max: 50}, Stats: &stats.Stats{Bytes: 10}},
+				{Bounds: logproto.FPBounds{Min: 51, Max: 100}, Stats: &stats.Stats{Bytes: 10}},
+				{Bounds: logproto.FPBounds{Min: 101, Max: 150}, Stats: &stats.Stats{Bytes: 10}},
+			},
+			ChunkGroups: []logproto.ChunkRefGroup{{}, {}, {Refs: []*logproto.ChunkRef{{Checksum: 1}}}},
+		}
+		smaller.Statistics.Summary.Shards = 2
+		bigger := &logproto.ShardsResponse{
+			Shards: []logproto.Shard{
+				{Bounds: logproto.FPBounds{Min: 0, Max: 100}, Stats: &stats.Stats{Bytes: 1000}},
+			},
+			ChunkGroups: []logproto.ChunkRefGroup{{Refs: []*logproto.ChunkRef{{Checksum: 2}}}},
+		}
+		bigger.Statistics.Summary.Shards = 5
+		cs := CompositeStore{
+			stores: []compositeStoreEntry{
+				{model.TimeFromUnix(10), mockStoreShards{mockStore: mockStore(0), resp: smaller}},
+				{model.TimeFromUnix(20), mockStoreShards{mockStore: mockStore(1), resp: bigger}},
+			},
+		}
+
+		got, err := cs.GetShards(context.Background(), "fake", model.TimeFromUnix(10), model.TimeFromUnix(30), 100, chunk.Predicate{})
+		require.NoError(t, err)
+		require.Equal(t, bigger.Shards, got.Shards)
+		require.Nil(t, got.ChunkGroups)
+		require.Equal(t, int64(7), got.Statistics.Summary.Shards)
+	})
+
+	t.Run("it returns an error if any store returns an error", func(t *testing.T) {
+		cs := CompositeStore{
+			stores: []compositeStoreEntry{
+				{model.TimeFromUnix(10), mockStoreShards{mockStore: mockStore(0), resp: &logproto.ShardsResponse{}}},
+				{model.TimeFromUnix(20), mockStoreShards{mockStore: mockStore(1), err: errors.New("something bad")}},
+			},
+		}
+
+		got, err := cs.GetShards(context.Background(), "fake", model.TimeFromUnix(10), model.TimeFromUnix(30), 100, chunk.Predicate{})
+		require.Error(t, err)
+		require.Nil(t, got)
+	})
+}
+
 func TestFilterForTimeRange(t *testing.T) {
 	mkRefs := func(from, through model.Time) (res []*logproto.ChunkRef) {
 		for i := from; i <= through; i++ {

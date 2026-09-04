@@ -647,7 +647,7 @@ func NewLogFilterTripperware(cfg Config, engineOpts logql.EngineOpts, routerConf
 			QueryMetricsMiddleware(metrics.QueryMetrics),
 			StatsCollectorMiddleware(),
 			NewLimitsMiddleware(limits),
-			NewQuerySizeLimiterMiddleware(schema.Configs, engineOpts, log, limits, statsHandler),
+			NewQuerySizeLimiterMiddleware(engineOpts, log, limits, statsHandler),
 		}
 
 		// Splitting, sharding, caching and retry middlwares are not added to v2 engine splits
@@ -684,7 +684,7 @@ func NewLogFilterTripperware(cfg Config, engineOpts logql.EngineOpts, routerConf
 			// The sharding middleware takes care of enforcing this limit for both shardable and non-shardable queries.
 			// If we are not using sharding, we enforce the limit by adding this middleware after time splitting.
 			chunksEngineMWs = append(chunksEngineMWs,
-				NewQuerierSizeLimiterMiddleware(schema.Configs, engineOpts, log, limits, statsHandler),
+				NewQuerierSizeLimiterMiddleware(engineOpts, log, limits, statsHandler),
 			)
 		}
 
@@ -998,7 +998,7 @@ func NewMetricTripperware(cfg Config, engineOpts logql.EngineOpts, routerConfig 
 
 		queryRangeMiddleware = append(
 			queryRangeMiddleware,
-			NewQuerySizeLimiterMiddleware(schema.Configs, engineOpts, log, limits, statsHandler),
+			NewQuerySizeLimiterMiddleware(engineOpts, log, limits, statsHandler),
 		)
 
 		// Splitting, sharding, caching and retry middlwares are not added to v2 engine splits
@@ -1036,7 +1036,7 @@ func NewMetricTripperware(cfg Config, engineOpts logql.EngineOpts, routerConfig 
 
 			// TODO: also add for v2 splits?
 			chunksEngineMWs = append(chunksEngineMWs,
-				NewQuerierSizeLimiterMiddleware(schema.Configs, engineOpts, log, limits, statsHandler),
+				NewQuerierSizeLimiterMiddleware(engineOpts, log, limits, statsHandler),
 			)
 		}
 
@@ -1131,7 +1131,7 @@ func NewInstantMetricTripperware(
 		queryRangeMiddleware := []base.Middleware{
 			StatsCollectorMiddleware(),
 			NewLimitsMiddleware(limits),
-			NewQuerySizeLimiterMiddleware(schema.Configs, engineOpts, log, limits, statsHandler),
+			NewQuerySizeLimiterMiddleware(engineOpts, log, limits, statsHandler),
 			NewSplitByRangeMiddleware(log, engineOpts, limits, cfg.InstantMetricQuerySplitAlign, metrics.rangeMapper),
 		}
 
