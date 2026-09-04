@@ -38,7 +38,9 @@ type RangeVectorIterator interface {
 	Error() error
 }
 
-func newRangeVectorIterator(
+// newTimestampFirstRangeVectorIterator returns a range-vector iterator. The input
+// iterator must return samples in global timestamp order.
+func newTimestampFirstRangeVectorIterator(
 	it iter.PeekingSampleIterator,
 	expr *syntax.RangeAggregationExpr,
 	selRange, step, start, end, offset int64) (RangeVectorIterator, error) {
