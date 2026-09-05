@@ -207,6 +207,8 @@ func (c *Context) execute(ctx context.Context, node physical.Node) Pipeline {
 		// node's Runs, producing schema-sorted compacted log object(s). See
 		// executeLogMerge / doLogObjectMerge in log_merge.go.
 		return NewObservedPipeline(n.Type().String(), nodeAttributes(n), c.executeLogMerge(n))
+	case *physical.SortObject:
+		return NewObservedPipeline(n.Type().String(), nodeAttributes(n), c.executeSortObject(n))
 	default:
 		return errorPipeline(ctx, fmt.Errorf("invalid node type: %T", node))
 	}

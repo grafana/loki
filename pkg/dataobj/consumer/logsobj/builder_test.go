@@ -24,6 +24,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
+	"github.com/grafana/loki/v3/pkg/scratch"
 	"github.com/grafana/loki/v3/pkg/validation"
 )
 
@@ -259,20 +260,50 @@ func TestBuilder_EarliestRecordTime(t *testing.T) {
 func TestBuilder_CopyAndSort(t *testing.T) {
 	builder, _ := NewBuilder(testBuilderConfig, nil, NewBuilderMetrics(), log.NewNopLogger(), nil)
 
+	type copiedRecord struct {
+		tenant    string
+		timestamp int64
+		line      string
+		metadata  string
+	}
+
 	now := time.Date(2025, time.September, 17, 0, 0, 0, 0, time.UTC)
 	numRows := 16 // 16 rows with 1KiB each line and 8KiB section size ~> 2 logs sections per tenant
+	expectedRecords := make(map[copiedRecord]int)
 
 	for _, tenant := range []string{"tenant-a", "tenant-b", "tenant-c"} {
-		for i := range numRows {
+		appendRecord := func(i int) {
+			timestamp := now.Add(time.Duration(i%8) * time.Second)
+			line := fmt.Sprintf("%s/%02d/", tenant, i) + strings.Repeat("a", 1024)
+			metadata := fmt.Sprintf("metadata-%02d", i)
+			record := copiedRecord{
+				tenant:    tenant,
+				timestamp: timestamp.UnixNano(),
+				line:      line,
+				metadata:  metadata,
+			}
 			err := builder.Append(tenant, logproto.Stream{
 				Labels: `{cluster="test",app="foo"}`,
 				Entries: []push.Entry{{
-					Timestamp: now.Add(time.Duration(i%8) * time.Second),
-					Line:      strings.Repeat("a", 1024), // 1KiB log line
+					Timestamp: timestamp,
+					Line:      line,
+					StructuredMetadata: []push.LabelAdapter{{
+						Name:  "sequence",
+						Value: metadata,
+					}},
 				}},
-			}, now.Add(time.Duration(i%8)*time.Second))
+			}, timestamp)
 			require.NoError(t, err)
+			expectedRecords[record]++
 		}
+
+		for i := range numRows {
+			appendRecord(i)
+		}
+
+		// Repeat a row after enough data has been appended to place the two
+		// copies in different source sections.
+		appendRecord(0)
 	}
 
 	obj1, closer1, err := builder.Flush()
@@ -280,19 +311,13 @@ func TestBuilder_CopyAndSort(t *testing.T) {
 	defer closer1.Close()
 
 	newBuilder, _ := NewBuilder(testBuilderConfig, nil, NewBuilderMetrics(), log.NewNopLogger(), nil)
+	resort, err := newBuilder.requiresResort(t.Context(), obj1)
+	require.NoError(t, err)
+	require.False(t, resort, "matching layouts should use the merge-only path")
 
 	obj2, closer2, err := newBuilder.CopyAndSort(t.Context(), obj1)
 	require.NoError(t, err)
 	defer closer2.Close()
-
-	for i, obj := range []*dataobj.Object{obj1, obj2} {
-		t.Log(" === dataobj", i)
-		t.Log("Size:   ", obj.Size())
-		t.Log("Tenants:", obj.Tenants())
-		for i, section := range obj.Sections() {
-			t.Log("Section:", i, section.Tenant, section.Type.String())
-		}
-	}
 
 	require.Equal(
 		t,
@@ -308,17 +333,119 @@ func TestBuilder_CopyAndSort(t *testing.T) {
 	)
 
 	// Assert DESC timestamp ordering across sections of a tenant
+	actualRecords := make(map[copiedRecord]int)
 	for _, tenant := range []string{"tenant-a", "tenant-b", "tenant-c"} {
 		prevTs := time.Unix(0, math.MaxInt64)
 		for _, sec := range obj2.Sections().Filter(func(s *dataobj.Section) bool {
 			return logs.CheckSection(s) && s.Tenant == tenant
 		}) {
 			for res := range iterLogsSection(t, sec) {
-				val, _ := res.Value()
+				val, err := res.Value()
+				require.NoError(t, err)
 				require.LessOrEqual(t, val.Timestamp, prevTs)
 				prevTs = val.Timestamp
+				actualRecords[copiedRecord{
+					tenant:    tenant,
+					timestamp: val.Timestamp.UnixNano(),
+					line:      string(val.Line),
+					metadata:  val.Metadata.Get("sequence"),
+				}]++
 			}
 		}
+	}
+	require.Equal(t, expectedRecords, actualRecords)
+}
+
+func TestBuilder_CopyAndSort_SelectsStrategyFromLayout(t *testing.T) {
+	target := TargetSortLayout([]string{"label:app"})
+	tests := []struct {
+		name    string
+		layouts []logs.SortLayout
+		resort  bool
+	}{
+		{
+			name:    "all sections match",
+			layouts: []logs.SortLayout{target, target},
+		},
+		{
+			name: "schema labels mismatch",
+			layouts: []logs.SortLayout{{
+				SchemaLabels: []string{"label:cluster"},
+				StreamOrder:  target.StreamOrder,
+				ShardCount:   target.ShardCount,
+			}},
+			resort: true,
+		},
+		{
+			name: "stream order mismatch",
+			layouts: []logs.SortLayout{{
+				SchemaLabels: target.SchemaLabels,
+				StreamOrder:  logs.StreamOrderUnspecified,
+				ShardCount:   target.ShardCount,
+			}},
+			resort: true,
+		},
+		{
+			name: "shard count mismatch",
+			layouts: []logs.SortLayout{{
+				SchemaLabels: target.SchemaLabels,
+				StreamOrder:  target.StreamOrder,
+				ShardCount:   target.ShardCount / 2,
+			}},
+			resort: true,
+		},
+		{
+			name: "mixed layouts resort the whole object",
+			layouts: []logs.SortLayout{
+				target,
+				{
+					SchemaLabels: []string{"label:cluster"},
+					StreamOrder:  target.StreamOrder,
+					ShardCount:   target.ShardCount,
+				},
+			},
+			resort: true,
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			objectBuilder := dataobj.NewBuilder(scratch.NewMemory())
+			for i, layout := range test.layouts {
+				logsBuilder := logs.NewBuilder(nil, logs.BuilderOptions{
+					PageSizeHint:     2048,
+					BufferSize:       2048,
+					StripeMergeLimit: 2,
+					AppendStrategy:   logs.AppendOrdered,
+					SortOrder:        logs.SortSchemaASC,
+					SchemaLabels:     layout.SchemaLabels,
+					StreamOrder:      layout.StreamOrder,
+					ShardCount:       layout.ShardCount,
+				})
+				logsBuilder.SetTenant("tenant")
+				logsBuilder.Append(logs.Record{
+					StreamID:  1,
+					Timestamp: time.Unix(int64(i), 0).UTC(),
+					Line:      []byte("line"),
+				})
+				require.NoError(t, objectBuilder.Append(logsBuilder))
+			}
+			object, closer, err := objectBuilder.Flush()
+			require.NoError(t, err)
+			t.Cleanup(func() { require.NoError(t, closer.Close()) })
+
+			builder, err := NewBuilder(
+				testBuilderConfig,
+				scratch.NewMemory(),
+				NewBuilderMetrics(),
+				log.NewNopLogger(),
+				tenantOverrides{"tenant": target.SchemaLabels},
+			)
+			require.NoError(t, err)
+			resort, err := builder.requiresResort(t.Context(), object)
+			require.NoError(t, err)
+			require.Equal(t, test.resort, resort)
+		})
 	}
 }
 
