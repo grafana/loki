@@ -1,5 +1,19 @@
 ## Main
 
+## [0.11.1](https://github.com/grafana/loki/compare/operator/v0.11.0...operator/v0.11.1) (2026-09-03)
+
+
+### Features
+
+* **operator:** Allow custom certs to be used by the passthrough gateway tenancy ([#23896](https://github.com/grafana/loki/issues/23896)) ([abf69d1](https://github.com/grafana/loki/commit/abf69d149da664e2d373eab5db1aaf75229ebc7c))
+
+
+### Bug Fixes
+
+* **operator:** Remove BoltDB alerts, recording rules, and Grafana dashboards ([#23884](https://github.com/grafana/loki/issues/23884)) ([260115c](https://github.com/grafana/loki/commit/260115c3a0847f227e3080e0f43dd0b174515276))
+* **security/HIGH/operator:** Update module google.golang.org/grpc to v1.83.1 [SECURITY] (main) ([#24326](https://github.com/grafana/loki/issues/24326)) ([e9831ee](https://github.com/grafana/loki/commit/e9831eedac3f76a4eaee7c2929c07db520e7baee))
+* **security/UNKNOWN/operator:** Update module golang.org/x/crypto to v0.56.0 [SECURITY] (main) ([#24334](https://github.com/grafana/loki/issues/24334)) ([185e3ae](https://github.com/grafana/loki/commit/185e3aea0ece2810dba04591b01575dd1263b005))
+
 ## [0.11.0](https://github.com/grafana/loki/compare/operator/v0.10.2...operator/v0.11.0) (2026-08-18)
 
 
