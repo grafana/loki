@@ -149,6 +149,10 @@ func (s StageAnalysisRecorder) RequiredLabelNames() []string {
 	return s.origin.RequiredLabelNames()
 }
 
+func (s StageAnalysisRecorder) Hints() log.StageHints {
+	return s.origin.Hints()
+}
+
 type StageAnalysisRecord struct {
 	Processed    bool
 	LineBefore   string
