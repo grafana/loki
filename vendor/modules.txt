@@ -1803,8 +1803,8 @@ go.opentelemetry.io/collector/pipeline/internal/globalsignal
 # go.opentelemetry.io/collector/processor v1.66.0
 ## explicit; go 1.26.0
 go.opentelemetry.io/collector/processor
-# go.opentelemetry.io/collector/processor/xprocessor v0.159.0
-## explicit; go 1.25.0
+# go.opentelemetry.io/collector/processor/xprocessor v0.160.0
+## explicit; go 1.26.0
 go.opentelemetry.io/collector/processor/xprocessor
 # go.opentelemetry.io/contrib/bridges/prometheus v0.71.0
 ## explicit; go 1.25.0
