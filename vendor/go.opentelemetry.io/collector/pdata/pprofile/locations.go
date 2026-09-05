@@ -5,21 +5,25 @@ package pprofile // import "go.opentelemetry.io/collector/pdata/pprofile"
 
 import (
 	"errors"
+	"fmt"
 	"math"
 )
 
 // FromLocationIndices builds a slice containing all the locations of a Stack.
 // Updates made to the returned map will not be applied back to the Stack.
-func FromLocationIndices(table LocationSlice, record Stack) LocationSlice {
+func FromLocationIndices(table LocationSlice, record Stack) (LocationSlice, error) {
 	m := NewLocationSlice()
 	m.EnsureCapacity(record.LocationIndices().Len())
 
 	for _, idx := range record.LocationIndices().All() {
+		if idx < 0 || int(idx) >= table.Len() {
+			return m, fmt.Errorf("location index %d out of bounds [0, %d)", idx, table.Len())
+		}
 		l := table.At(int(idx))
 		l.CopyTo(m.AppendEmpty())
 	}
 
-	return m
+	return m, nil
 }
 
 var errTooManyLocationTableEntries = errors.New("too many entries in LocationTable")

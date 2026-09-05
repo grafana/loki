@@ -9,7 +9,7 @@ import "fmt"
 // dictionary to another.
 func (ms Sample) switchDictionary(src, dst ProfilesDictionary) error {
 	for i, v := range ms.AttributeIndices().All() {
-		if src.AttributeTable().Len() <= int(v) {
+		if v < 0 || src.AttributeTable().Len() <= int(v) {
 			return fmt.Errorf("invalid attribute index %d", v)
 		}
 

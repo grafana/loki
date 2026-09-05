@@ -1756,8 +1756,8 @@ go.etcd.io/etcd/client/v3/internal/resolver
 ## explicit; go 1.24.0
 go.opentelemetry.io/auto/sdk
 go.opentelemetry.io/auto/sdk/internal/telemetry
-# go.opentelemetry.io/collector/component v1.65.0
-## explicit; go 1.25.0
+# go.opentelemetry.io/collector/component v1.66.0
+## explicit; go 1.26.0
 go.opentelemetry.io/collector/component
 # go.opentelemetry.io/collector/confmap v1.65.0
 ## explicit; go 1.25.0
@@ -1770,14 +1770,14 @@ go.opentelemetry.io/collector/confmap/internal/third_party/composehook
 ## explicit; go 1.26.0
 go.opentelemetry.io/collector/consumer
 go.opentelemetry.io/collector/consumer/internal
-# go.opentelemetry.io/collector/consumer/xconsumer v0.159.0
-## explicit; go 1.25.0
+# go.opentelemetry.io/collector/consumer/xconsumer v0.160.0
+## explicit; go 1.26.0
 go.opentelemetry.io/collector/consumer/xconsumer
 # go.opentelemetry.io/collector/featuregate v1.66.0
 ## explicit; go 1.26.0
 go.opentelemetry.io/collector/featuregate
-# go.opentelemetry.io/collector/internal/componentalias v0.159.0
-## explicit; go 1.25.0
+# go.opentelemetry.io/collector/internal/componentalias v0.160.0
+## explicit; go 1.26.0
 go.opentelemetry.io/collector/internal/componentalias
 # go.opentelemetry.io/collector/pdata v1.66.0
 ## explicit; go 1.26.0
@@ -1793,15 +1793,15 @@ go.opentelemetry.io/collector/pdata/plog/plogotlp
 go.opentelemetry.io/collector/pdata/pmetric
 go.opentelemetry.io/collector/pdata/pmetric/pmetricotlp
 go.opentelemetry.io/collector/pdata/ptrace
-# go.opentelemetry.io/collector/pdata/pprofile v0.159.0
-## explicit; go 1.25.0
+# go.opentelemetry.io/collector/pdata/pprofile v0.160.0
+## explicit; go 1.26.0
 go.opentelemetry.io/collector/pdata/pprofile
-# go.opentelemetry.io/collector/pipeline v1.65.0
-## explicit; go 1.25.0
+# go.opentelemetry.io/collector/pipeline v1.66.0
+## explicit; go 1.26.0
 go.opentelemetry.io/collector/pipeline
 go.opentelemetry.io/collector/pipeline/internal/globalsignal
-# go.opentelemetry.io/collector/processor v1.65.0
-## explicit; go 1.25.0
+# go.opentelemetry.io/collector/processor v1.66.0
+## explicit; go 1.26.0
 go.opentelemetry.io/collector/processor
 # go.opentelemetry.io/collector/processor/xprocessor v0.159.0
 ## explicit; go 1.25.0
