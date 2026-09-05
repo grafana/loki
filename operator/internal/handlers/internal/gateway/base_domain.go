@@ -16,7 +16,7 @@ import (
 // getOpenShiftBaseDomain returns the cluster DNS base domain on OpenShift
 // clusters to auto-create redirect URLs for OpenShift Auth or an error.
 // If the config.openshift.io/DNS object is not found the whole lokistack
-// resoure is set to a degraded state.
+// resource is set to a degraded state.
 func getOpenShiftBaseDomain(ctx context.Context, k k8s.Client) (string, error) {
 	var cluster configv1.DNS
 	key := client.ObjectKey{Name: "cluster"}

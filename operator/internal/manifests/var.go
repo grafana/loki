@@ -561,7 +561,7 @@ func gatewayServiceMonitorEndpoint(gatewayName, portName, serviceName, namespace
 	}
 }
 
-// configureAffinity returns an Affinity struture that can be used directly
+// configureAffinity returns an Affinity structure that can be used directly
 // in a Deployment/StatefulSet. Parameters will affected configuration of the
 // different fields in Affinity (NodeAffinity, PodAffinity, PodAntiAffinity).
 func configureAffinity(componentLabel, stackName string, enableNodeAffinity bool, cSpec *lokiv1.LokiComponentSpec) *corev1.Affinity {
