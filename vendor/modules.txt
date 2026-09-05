@@ -260,7 +260,7 @@ github.com/alibabacloud-go/debug/debug
 ## explicit; go 1.14
 github.com/alibabacloud-go/tea/tea
 github.com/alibabacloud-go/tea/utils
-# github.com/alicebob/miniredis/v2 v2.38.0
+# github.com/alicebob/miniredis/v2 v2.39.0
 ## explicit; go 1.17
 github.com/alicebob/miniredis/v2
 github.com/alicebob/miniredis/v2/fpconv

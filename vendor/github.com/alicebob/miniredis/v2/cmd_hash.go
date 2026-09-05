@@ -31,6 +31,10 @@ func commandsHash(m *Miniredis) {
 	m.srv.Register("HSCAN", m.cmdHscan, server.ReadOnlyOption())
 	m.srv.Register("HRANDFIELD", m.cmdHrandfield, server.ReadOnlyOption())
 	m.srv.Register("HEXPIRE", m.cmdHexpire)
+	m.srv.Register("HPERSIST", m.cmdHpersist)
+	m.srv.Register("HTTL", m.cmdHttl, server.ReadOnlyOption())
+	m.srv.Register("HPTTL", m.cmdHpttl, server.ReadOnlyOption())
+	m.srv.Register("HSETEX", m.cmdHsetex)
 }
 
 // HSET
@@ -763,7 +767,7 @@ func parseHExpireArgs(args []string) (hexpireOpts, string) {
 				return hexpireOpts{}, msgNumFieldsInvalid
 			}
 			if numFields <= 0 {
-				return hexpireOpts{}, msgNumFieldsInvalid
+				return hexpireOpts{}, msgNumFieldsPositive
 			}
 
 			// FIELDS numFields field1 field2 ...
@@ -787,6 +791,331 @@ func parseHExpireArgs(args []string) (hexpireOpts, string) {
 	}
 
 	return opts, ""
+}
+
+// HPERSIST
+func (m *Miniredis) cmdHpersist(c *server.Peer, cmd string, args []string) {
+	if !m.isValidCMD(c, cmd, args, atLeast(3)) {
+		return
+	}
+
+	key := args[0]
+	fields, errMsg := parseFieldsArgs(args[1:])
+	if errMsg != "" {
+		setDirty(c)
+		c.WriteError(errMsg)
+		return
+	}
+
+	withTx(m, c, func(c *server.Peer, ctx *connCtx) {
+		db := m.db(ctx.selectedDB)
+
+		if _, ok := db.keys[key]; !ok {
+			c.WriteLen(len(fields))
+			for range fields {
+				c.WriteInt(-2)
+			}
+			return
+		}
+
+		if db.t(key) != keyTypeHash {
+			c.WriteError(msgWrongType)
+			return
+		}
+
+		c.WriteLen(len(fields))
+		for _, field := range fields {
+			if _, ok := db.hashKeys[key][field]; !ok {
+				c.WriteInt(-2)
+				continue
+			}
+
+			fieldTTLs := db.hashTTLs[key]
+			if fieldTTLs == nil {
+				c.WriteInt(-1)
+				continue
+			}
+			if _, ok := fieldTTLs[field]; !ok {
+				c.WriteInt(-1)
+				continue
+			}
+
+			delete(fieldTTLs, field)
+			c.WriteInt(1)
+		}
+	})
+}
+
+// HTTL
+func (m *Miniredis) cmdHttl(c *server.Peer, cmd string, args []string) {
+	m.cmdHttlGeneric(c, cmd, args, time.Second)
+}
+
+// HPTTL
+func (m *Miniredis) cmdHpttl(c *server.Peer, cmd string, args []string) {
+	m.cmdHttlGeneric(c, cmd, args, time.Millisecond)
+}
+
+func (m *Miniredis) cmdHttlGeneric(c *server.Peer, cmd string, args []string, unit time.Duration) {
+	if !m.isValidCMD(c, cmd, args, atLeast(3)) {
+		return
+	}
+
+	key := args[0]
+	fields, errMsg := parseFieldsArgs(args[1:])
+	if errMsg != "" {
+		setDirty(c)
+		c.WriteError(errMsg)
+		return
+	}
+
+	withTx(m, c, func(c *server.Peer, ctx *connCtx) {
+		db := m.db(ctx.selectedDB)
+
+		if _, ok := db.keys[key]; !ok {
+			c.WriteLen(len(fields))
+			for range fields {
+				c.WriteInt(-2)
+			}
+			return
+		}
+
+		if db.t(key) != keyTypeHash {
+			c.WriteError(msgWrongType)
+			return
+		}
+
+		c.WriteLen(len(fields))
+		for _, field := range fields {
+			if _, ok := db.hashKeys[key][field]; !ok {
+				c.WriteInt(-2)
+				continue
+			}
+
+			fieldTTLs := db.hashTTLs[key]
+			if fieldTTLs == nil {
+				c.WriteInt(-1)
+				continue
+			}
+			ttl, ok := fieldTTLs[field]
+			if !ok {
+				c.WriteInt(-1)
+				continue
+			}
+
+			c.WriteInt(int(ttl / unit))
+		}
+	})
+}
+
+type hsetexOpts struct {
+	key     string
+	fnx     bool
+	fxx     bool
+	ttlMode string // "", "EX", "PX", "EXAT", "PXAT", "KEEPTTL"
+	ttlVal  int    // raw value for EX/PX/EXAT/PXAT
+	fields  []string
+	values  []string
+}
+
+func parseHSetEXArgs(args []string) (hsetexOpts, string) {
+	var opts hsetexOpts
+	opts.key = args[0]
+	args = args[1:]
+
+	for len(args) > 0 {
+		switch strings.ToUpper(args[0]) {
+		case "FNX":
+			opts.fnx = true
+			args = args[1:]
+		case "FXX":
+			opts.fxx = true
+			args = args[1:]
+		case "KEEPTTL":
+			if opts.ttlMode != "" {
+				return hsetexOpts{}, msgSyntaxError
+			}
+			opts.ttlMode = "KEEPTTL"
+			args = args[1:]
+		case "EX", "PX", "EXAT", "PXAT":
+			if opts.ttlMode != "" {
+				return hsetexOpts{}, "ERR Only one of EX, PX, EXAT, PXAT or KEEPTTL arguments can be specified"
+			}
+			mode := strings.ToUpper(args[0])
+			if len(args) < 2 {
+				return hsetexOpts{}, msgInvalidInt
+			}
+			var val int
+			if err := optIntSimple(args[1], &val); err != nil {
+				return hsetexOpts{}, msgInvalidInt
+			}
+			if val <= 0 {
+				return hsetexOpts{}, "ERR invalid expire time, must be >= 0"
+			}
+			opts.ttlMode = mode
+			opts.ttlVal = val
+			args = args[2:]
+		case "FIELDS":
+			if len(args) < 2 {
+				return hsetexOpts{}, msgNumFieldsInvalid
+			}
+			var numFields int
+			if err := optIntSimple(args[1], &numFields); err != nil {
+				return hsetexOpts{}, msgNumFieldsInvalid
+			}
+			if numFields <= 0 {
+				return hsetexOpts{}, msgNumFieldsPositive
+			}
+			// Need numFields * 2 args (field value pairs)
+			if len(args) < 2+numFields*2 {
+				return hsetexOpts{}, msgNumFieldsParameter
+			}
+			if len(args) > 2+numFields*2 {
+				return hsetexOpts{}, msgNumFieldsParameter
+			}
+			fvArgs := args[2 : 2+numFields*2]
+			for i := 0; i < len(fvArgs); i += 2 {
+				opts.fields = append(opts.fields, fvArgs[i])
+				opts.values = append(opts.values, fvArgs[i+1])
+			}
+			args = args[2+numFields*2:]
+		default:
+			return hsetexOpts{}, msgSyntaxError
+		}
+	}
+
+	if opts.fnx && opts.fxx {
+		return hsetexOpts{}, msgSyntaxError
+	}
+
+	if len(opts.fields) == 0 {
+		return hsetexOpts{}, fmt.Sprintf(msgMandatoryArgument, "FIELDS")
+	}
+
+	return opts, ""
+}
+
+// HSETEX
+func (m *Miniredis) cmdHsetex(c *server.Peer, cmd string, args []string) {
+	if !m.isValidCMD(c, cmd, args, atLeast(4)) {
+		return
+	}
+
+	opts, errMsg := parseHSetEXArgs(args)
+	if errMsg != "" {
+		setDirty(c)
+		c.WriteError(errMsg)
+		return
+	}
+
+	withTx(m, c, func(c *server.Peer, ctx *connCtx) {
+		db := m.db(ctx.selectedDB)
+
+		if t, ok := db.keys[opts.key]; ok && t != keyTypeHash {
+			c.WriteError(msgWrongType)
+			return
+		}
+
+		// FNX: only set if none of the specified fields exist
+		if opts.fnx {
+			for _, field := range opts.fields {
+				if _, ok := db.hashKeys[opts.key][field]; ok {
+					c.WriteInt(0)
+					return
+				}
+			}
+		}
+
+		// FXX: only set if all of the specified fields exist
+		if opts.fxx {
+			for _, field := range opts.fields {
+				if _, ok := db.hashKeys[opts.key][field]; !ok {
+					c.WriteInt(0)
+					return
+				}
+			}
+		}
+
+		// Resolve TTL
+		var ttl time.Duration
+		hasTTL := false
+		keepTTL := false
+		switch opts.ttlMode {
+		case "EX":
+			ttl = time.Duration(opts.ttlVal) * time.Second
+			hasTTL = true
+		case "PX":
+			ttl = time.Duration(opts.ttlVal) * time.Millisecond
+			hasTTL = true
+		case "EXAT":
+			ttl = m.at(opts.ttlVal, time.Second)
+			hasTTL = true
+		case "PXAT":
+			ttl = m.at(opts.ttlVal, time.Millisecond)
+			hasTTL = true
+		case "KEEPTTL":
+			keepTTL = true
+		}
+
+		// Set all fields
+		for i, field := range opts.fields {
+			db.hashSet(opts.key, field, opts.values[i])
+
+			if keepTTL {
+				// Don't touch existing TTL
+				continue
+			}
+
+			// Initialize TTL map if needed
+			if db.hashTTLs[opts.key] == nil {
+				if hasTTL {
+					db.hashTTLs[opts.key] = map[string]time.Duration{}
+				}
+			}
+
+			if hasTTL {
+				db.hashTTLs[opts.key][field] = ttl
+			} else {
+				// No TTL option: remove any existing TTL
+				if fieldTTLs := db.hashTTLs[opts.key]; fieldTTLs != nil {
+					delete(fieldTTLs, field)
+				}
+			}
+		}
+
+		c.WriteInt(1)
+	})
+}
+
+// parseFieldsArgs parses "FIELDS numfields field [field ...]" from args.
+// Returns the parsed field names, or an error string.
+func parseFieldsArgs(args []string) ([]string, string) {
+	if len(args) < 2 {
+		return nil, fmt.Sprintf(msgMandatoryArgument, "FIELDS")
+	}
+
+	if strings.ToLower(args[0]) != "fields" {
+		return nil, fmt.Sprintf(msgMandatoryArgument, "FIELDS")
+	}
+
+	var numFields int
+	if err := optIntSimple(args[1], &numFields); err != nil {
+		return nil, msgNumFieldsInvalid
+	}
+	if numFields <= 0 {
+		return nil, msgNumFieldsPositive
+	}
+
+	if len(args) < 2+numFields {
+		return nil, msgNumFieldsParameter
+	}
+
+	// Reject trailing args after the declared fields
+	if len(args) > 2+numFields {
+		return nil, msgNumFieldsParameter
+	}
+
+	return append([]string{}, args[2:2+numFields]...), ""
 }
 
 func abs(n int) int {
