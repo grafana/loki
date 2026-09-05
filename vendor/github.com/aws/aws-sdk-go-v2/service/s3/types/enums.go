@@ -1094,19 +1094,21 @@ type ObjectStorageClass string
 
 // Enum values for ObjectStorageClass
 const (
-	ObjectStorageClassStandard           ObjectStorageClass = "STANDARD"
-	ObjectStorageClassReducedRedundancy  ObjectStorageClass = "REDUCED_REDUNDANCY"
-	ObjectStorageClassGlacier            ObjectStorageClass = "GLACIER"
-	ObjectStorageClassStandardIa         ObjectStorageClass = "STANDARD_IA"
-	ObjectStorageClassOnezoneIa          ObjectStorageClass = "ONEZONE_IA"
-	ObjectStorageClassIntelligentTiering ObjectStorageClass = "INTELLIGENT_TIERING"
-	ObjectStorageClassDeepArchive        ObjectStorageClass = "DEEP_ARCHIVE"
-	ObjectStorageClassOutposts           ObjectStorageClass = "OUTPOSTS"
-	ObjectStorageClassGlacierIr          ObjectStorageClass = "GLACIER_IR"
-	ObjectStorageClassSnow               ObjectStorageClass = "SNOW"
-	ObjectStorageClassExpressOnezone     ObjectStorageClass = "EXPRESS_ONEZONE"
-	ObjectStorageClassFsxOpenzfs         ObjectStorageClass = "FSX_OPENZFS"
-	ObjectStorageClassFsxOntap           ObjectStorageClass = "FSX_ONTAP"
+	ObjectStorageClassStandard             ObjectStorageClass = "STANDARD"
+	ObjectStorageClassReducedRedundancy    ObjectStorageClass = "REDUCED_REDUNDANCY"
+	ObjectStorageClassGlacier              ObjectStorageClass = "GLACIER"
+	ObjectStorageClassStandardIa           ObjectStorageClass = "STANDARD_IA"
+	ObjectStorageClassOnezoneIa            ObjectStorageClass = "ONEZONE_IA"
+	ObjectStorageClassIntelligentTiering   ObjectStorageClass = "INTELLIGENT_TIERING"
+	ObjectStorageClassDeepArchive          ObjectStorageClass = "DEEP_ARCHIVE"
+	ObjectStorageClassOutposts             ObjectStorageClass = "OUTPOSTS"
+	ObjectStorageClassGlacierIr            ObjectStorageClass = "GLACIER_IR"
+	ObjectStorageClassSnow                 ObjectStorageClass = "SNOW"
+	ObjectStorageClassExpressOnezone       ObjectStorageClass = "EXPRESS_ONEZONE"
+	ObjectStorageClassFsxOpenzfs           ObjectStorageClass = "FSX_OPENZFS"
+	ObjectStorageClassFsxOntap             ObjectStorageClass = "FSX_ONTAP"
+	ObjectStorageClassAwsBackupWarm        ObjectStorageClass = "AWS_BACKUP_WARM"
+	ObjectStorageClassAwsBackupLowCostWarm ObjectStorageClass = "AWS_BACKUP_LOW_COST_WARM"
 )
 
 // Values returns all known values for ObjectStorageClass. Note that this can be
@@ -1128,6 +1130,8 @@ func (ObjectStorageClass) Values() []ObjectStorageClass {
 		"EXPRESS_ONEZONE",
 		"FSX_OPENZFS",
 		"FSX_ONTAP",
+		"AWS_BACKUP_WARM",
+		"AWS_BACKUP_LOW_COST_WARM",
 	}
 }
 
@@ -1441,6 +1445,7 @@ type ServerSideEncryption string
 const (
 	ServerSideEncryptionAes256     ServerSideEncryption = "AES256"
 	ServerSideEncryptionAwsFsx     ServerSideEncryption = "aws:fsx"
+	ServerSideEncryptionAwsBackup  ServerSideEncryption = "aws:backup"
 	ServerSideEncryptionAwsKms     ServerSideEncryption = "aws:kms"
 	ServerSideEncryptionAwsKmsDsse ServerSideEncryption = "aws:kms:dsse"
 )
@@ -1453,6 +1458,7 @@ func (ServerSideEncryption) Values() []ServerSideEncryption {
 	return []ServerSideEncryption{
 		"AES256",
 		"aws:fsx",
+		"aws:backup",
 		"aws:kms",
 		"aws:kms:dsse",
 	}
@@ -1501,19 +1507,21 @@ type StorageClass string
 
 // Enum values for StorageClass
 const (
-	StorageClassStandard           StorageClass = "STANDARD"
-	StorageClassReducedRedundancy  StorageClass = "REDUCED_REDUNDANCY"
-	StorageClassStandardIa         StorageClass = "STANDARD_IA"
-	StorageClassOnezoneIa          StorageClass = "ONEZONE_IA"
-	StorageClassIntelligentTiering StorageClass = "INTELLIGENT_TIERING"
-	StorageClassGlacier            StorageClass = "GLACIER"
-	StorageClassDeepArchive        StorageClass = "DEEP_ARCHIVE"
-	StorageClassOutposts           StorageClass = "OUTPOSTS"
-	StorageClassGlacierIr          StorageClass = "GLACIER_IR"
-	StorageClassSnow               StorageClass = "SNOW"
-	StorageClassExpressOnezone     StorageClass = "EXPRESS_ONEZONE"
-	StorageClassFsxOpenzfs         StorageClass = "FSX_OPENZFS"
-	StorageClassFsxOntap           StorageClass = "FSX_ONTAP"
+	StorageClassStandard             StorageClass = "STANDARD"
+	StorageClassReducedRedundancy    StorageClass = "REDUCED_REDUNDANCY"
+	StorageClassStandardIa           StorageClass = "STANDARD_IA"
+	StorageClassOnezoneIa            StorageClass = "ONEZONE_IA"
+	StorageClassIntelligentTiering   StorageClass = "INTELLIGENT_TIERING"
+	StorageClassGlacier              StorageClass = "GLACIER"
+	StorageClassDeepArchive          StorageClass = "DEEP_ARCHIVE"
+	StorageClassOutposts             StorageClass = "OUTPOSTS"
+	StorageClassGlacierIr            StorageClass = "GLACIER_IR"
+	StorageClassSnow                 StorageClass = "SNOW"
+	StorageClassExpressOnezone       StorageClass = "EXPRESS_ONEZONE"
+	StorageClassFsxOpenzfs           StorageClass = "FSX_OPENZFS"
+	StorageClassFsxOntap             StorageClass = "FSX_ONTAP"
+	StorageClassAwsBackupWarm        StorageClass = "AWS_BACKUP_WARM"
+	StorageClassAwsBackupLowCostWarm StorageClass = "AWS_BACKUP_LOW_COST_WARM"
 )
 
 // Values returns all known values for StorageClass. Note that this can be
@@ -1535,6 +1543,8 @@ func (StorageClass) Values() []StorageClass {
 		"EXPRESS_ONEZONE",
 		"FSX_OPENZFS",
 		"FSX_ONTAP",
+		"AWS_BACKUP_WARM",
+		"AWS_BACKUP_LOW_COST_WARM",
 	}
 }
 

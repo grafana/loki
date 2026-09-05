@@ -68,10 +68,13 @@ type UpdateEndpointOptions struct {
 func UpdateEndpoint(stack *middleware.Stack, options UpdateEndpointOptions) (err error) {
 	const serializerID = "OperationSerializer"
 
-	// initial arn look up middleware
-	err = stack.Initialize.Insert(&s3shared.ARNLookup{
+	// initial arn look up middleware. RegisterServiceMetadata no longer runs as
+	// an Initialize-step middleware (its context is now set in invokeOperation),
+	// so add ARNLookup directly to the Initialize step rather than anchoring it
+	// to that ID.
+	err = stack.Initialize.Add(&s3shared.ARNLookup{
 		GetARNValue: options.Accessor.GetBucketFromInput,
-	}, "legacyEndpointContextSetter", middleware.After)
+	}, middleware.After)
 	if err != nil {
 		return err
 	}
