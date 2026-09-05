@@ -1,6 +1,6 @@
 module github.com/grafana/loki/operator
 
-go 1.25.7
+go 1.26.0
 
 toolchain go1.26.6
 
