@@ -22,6 +22,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore/multitenancy"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/postings"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/stats"
+	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
 )
 
 func TestLoadTenantIndexes_GroupsByTenant(t *testing.T) {
@@ -196,10 +197,10 @@ func TestLogSectionRefsFor_AggregatesStatsRows(t *testing.T) {
 			Labels: map[string]string{"service_name": "billing"}, MinTimestamp: 100, MaxTimestamp: 900, RowCount: 2, UncompressedSize: 200},
 	})
 
-	refs, schema, err := logSectionRefsFor(ctx, bucket, "acme", path)
+	refs, schema, _, err := logSectionRefsFor(ctx, bucket, "acme", path)
 	require.NoError(t, err)
 	require.Equal(t, []string{"label:service_name"}, schema)
-	require.Equal(t, []v2.Section[sortKey]{
+	require.Equal(t, []v2.Section[logSortPrefix]{
 		{
 			Ref: &compactionv2pb.SectionRef{
 				ObjectPath:       "logs/log-0",
@@ -210,8 +211,8 @@ func TestLogSectionRefsFor_AggregatesStatsRows(t *testing.T) {
 				MaxTimestamp:     1000,
 				UncompressedSize: 500,
 			},
-			Min: sortKey{labels: []string{"auth"}, timestamp: 500},
-			Max: sortKey{labels: []string{"billing"}, timestamp: 900},
+			Min: logSortPrefix{labels: []string{"auth"}},
+			Max: logSortPrefix{labels: []string{"billing"}},
 		},
 	}, refs)
 }
@@ -230,7 +231,7 @@ func TestLogSectionRefsFor_OrdersPhysicalSections(t *testing.T) {
 			Labels: map[string]string{"service_name": "alpha"}, MinTimestamp: 10, MaxTimestamp: 20, UncompressedSize: 100},
 	})
 
-	sections, _, err := logSectionRefsFor(ctx, bucket, "acme", path)
+	sections, _, _, err := logSectionRefsFor(ctx, bucket, "acme", path)
 	require.NoError(t, err)
 	require.Len(t, sections, 3)
 	require.Equal(t, []string{"logs/log-a", "logs/log-b", "logs/log-b"}, []string{
@@ -255,10 +256,10 @@ func TestLogSectionRefsFor_MultiKeySchemaOrdersValuesAndReturnsFQN(t *testing.T)
 			Labels: map[string]string{"service_name": "auth", "namespace": "eu"}, MinTimestamp: 10, MaxTimestamp: 20, RowCount: 1, UncompressedSize: 100},
 	})
 
-	refs, schema, err := logSectionRefsFor(ctx, bucket, "acme", path)
+	refs, schema, _, err := logSectionRefsFor(ctx, bucket, "acme", path)
 	require.NoError(t, err)
 	require.Equal(t, []string{"label:service_name", "label:namespace"}, schema)
-	require.Equal(t, []v2.Section[sortKey]{
+	require.Equal(t, []v2.Section[logSortPrefix]{
 		{
 			Ref: &compactionv2pb.SectionRef{
 				ObjectPath:       "logs/log-0",
@@ -268,8 +269,8 @@ func TestLogSectionRefsFor_MultiKeySchemaOrdersValuesAndReturnsFQN(t *testing.T)
 				MaxTimestamp:     20,
 				UncompressedSize: 100,
 			},
-			Min: sortKey{labels: []string{"auth", "eu"}, timestamp: 10},
-			Max: sortKey{labels: []string{"auth", "eu"}, timestamp: 20},
+			Min: logSortPrefix{labels: []string{"auth", "eu"}},
+			Max: logSortPrefix{labels: []string{"auth", "eu"}},
 		},
 	}, refs)
 }
@@ -284,12 +285,14 @@ func TestLogSectionRefsFor_EmptySortSchema(t *testing.T) {
 			Labels: map[string]string{}, MinTimestamp: 10, MaxTimestamp: 20, RowCount: 1, UncompressedSize: 100},
 	})
 
-	refs, schema, err := logSectionRefsFor(ctx, bucket, "acme", path)
+	refs, schema, _, err := logSectionRefsFor(ctx, bucket, "acme", path)
 	require.NoError(t, err)
 	require.Empty(t, schema, "empty sort_schema yields no schema keys (not a bogus label: entry)")
 	require.Len(t, refs, 1)
-	require.Equal(t, sortKey{timestamp: 10}, refs[0].Min)
-	require.Equal(t, sortKey{timestamp: 20}, refs[0].Max)
+	require.Equal(t, logSortPrefix{}, refs[0].Min)
+	require.Equal(t, logSortPrefix{}, refs[0].Max)
+	require.Equal(t, int64(10), refs[0].Ref.MinTimestamp)
+	require.Equal(t, int64(20), refs[0].Ref.MaxTimestamp)
 	require.Equal(t, "logs/log-0", refs[0].Ref.ObjectPath)
 	require.Equal(t, int64(100), refs[0].Ref.UncompressedSize)
 }
@@ -306,8 +309,67 @@ func TestLogSectionRefsFor_RejectsMixedSchemas(t *testing.T) {
 			Labels: map[string]string{"namespace": "prod"}, MinTimestamp: 10, MaxTimestamp: 20},
 	})
 
-	_, _, err := logSectionRefsFor(ctx, bucket, "acme", path)
+	_, _, _, err := logSectionRefsFor(ctx, bucket, "acme", path)
 	require.ErrorContains(t, err, `contains log sort schemas "label:service_name" and "label:namespace"`)
+}
+
+func TestLogSectionRefsFor_ReadsAndValidatesShardCount(t *testing.T) {
+	ctx := context.Background()
+	const tenant = "acme"
+
+	t.Run("current index", func(t *testing.T) {
+		bucket := objstore.NewInMemBucket()
+		path := "indexes/current"
+		buildIndex(ctx, t, bucket, testIndexObject{
+			tenant:      tenant,
+			path:        path,
+			sectionSize: 1 << 20,
+			stats: []stats.Stat{{
+				ObjectPath: "logs/current", SortSchema: "label:service_name",
+			}},
+			postings: []postings.Row{{
+				Kind: postings.KindLabel, ObjectPath: "logs/current",
+				ColumnName: "service_name", LabelValue: "api",
+				ShardBuckets: streams.ShardFactor,
+			}},
+		})
+
+		_, _, shardCount, err := logSectionRefsFor(ctx, bucket, tenant, path)
+		require.NoError(t, err)
+		require.Equal(t, int64(streams.ShardFactor), shardCount)
+	})
+
+	t.Run("legacy index has no shard count", func(t *testing.T) {
+		bucket := objstore.NewInMemBucket()
+		path := "indexes/legacy"
+		buildIndexWithStats(ctx, t, bucket, tenant, path, []stats.Stat{{
+			ObjectPath: "logs/legacy", SortSchema: "label:service_name",
+		}})
+
+		_, _, shardCount, err := logSectionRefsFor(ctx, bucket, tenant, path)
+		require.NoError(t, err)
+		require.Zero(t, shardCount)
+	})
+
+	t.Run("mixed shard counts are invalid", func(t *testing.T) {
+		bucket := objstore.NewInMemBucket()
+		path := "indexes/mixed-shards"
+		buildIndex(ctx, t, bucket, testIndexObject{
+			tenant:      tenant,
+			path:        path,
+			sectionSize: 1 << 20,
+			stats: []stats.Stat{{
+				ObjectPath: "logs/mixed", SortSchema: "label:service_name",
+			}},
+			postings: []postings.Row{
+				{Kind: postings.KindLabel, ObjectPath: "logs/mixed", ColumnName: "service_name", LabelValue: "api", ShardBuckets: streams.ShardFactor},
+				{Kind: postings.KindLabel, ObjectPath: "logs/mixed", ColumnName: "service_name", LabelValue: "worker"},
+			},
+		})
+
+		_, _, _, err := logSectionRefsFor(ctx, bucket, tenant, path)
+		require.ErrorContains(t, err, "contains shard counts")
+	})
 }
 
 // TestLoadTenantIndexes_PopulatesSizeColumns verifies that loadTenantIndexes

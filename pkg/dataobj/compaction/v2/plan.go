@@ -44,6 +44,17 @@ func CalculateRuns[K any](sections []Section[K], compare CompareFunc[K]) []Run {
 // overlap. Touching bounds are considered converged because rewriting cannot remove their
 // ambiguity. It does not mutate sections.
 func IsConverged[K any](sections []Section[K], compare CompareFunc[K]) bool {
+	return isConverged(sections, compare, false)
+}
+
+// IsConvergedWithInclusiveOverlap reports whether a set of sections have no overlap,
+// treating equal object boundaries as overlapping. It is useful when keys are
+// prefixes whose omitted suffixes may interleave.
+func IsConvergedWithInclusiveOverlap[K any](sections []Section[K], compare CompareFunc[K]) bool {
+	return isConverged(sections, compare, true)
+}
+
+func isConverged[K any](sections []Section[K], compare CompareFunc[K], equalityOverlaps bool) bool {
 	objects := groupSectionsByObject(sections, compare)
 	if len(objects) <= 1 {
 		return true
@@ -51,7 +62,8 @@ func IsConverged[K any](sections []Section[K], compare CompareFunc[K]) bool {
 
 	maxKey := objects[0].max
 	for _, obj := range objects[1:] {
-		if compare(maxKey, obj.min) > 0 {
+		comparison := compare(maxKey, obj.min)
+		if comparison > 0 || (equalityOverlaps && comparison == 0) {
 			return false
 		}
 		if compare(obj.max, maxKey) > 0 {
