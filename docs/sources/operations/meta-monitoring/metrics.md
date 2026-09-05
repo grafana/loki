@@ -2,7 +2,7 @@
 title: Key metrics for monitoring Loki
 menuTitle: Key Metrics
 description: Describes the most important Loki metrics for detecting negative trends and abnormal behavior.
-weight: 200
+weight: 500
 ---
 
 # Key metrics for monitoring Loki
