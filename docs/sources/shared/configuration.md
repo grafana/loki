@@ -3515,6 +3515,12 @@ otlp_config:
 # CLI flag: -distributor.ingester-writes-enabled
 [ingester_writes_enabled: <boolean> | default = true]
 
+# Replace a non-ACTIVE ingester in the write set (for example one that is
+# LEAVING during a scale-down or rollout) with the next healthy ingester so
+# writes keep quorum. Defaults to false.
+# CLI flag: -distributor.extend-writes
+[extend_writes: <boolean> | default = false]
+
 # Enable checking limits against the ingest-limits service. Defaults to false.
 # CLI flag: -distributor.ingest-limits-enabled
 [ingest_limits_enabled: <boolean> | default = false]
