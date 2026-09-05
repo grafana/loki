@@ -1,0 +1,12 @@
+A .*literal.* concatenation keeps whole-value semantics as a substring
+match, even on a non-message column.
+
+-- column --
+utf8.label.foo
+
+-- regex --
+.*foo.*
+
+-- expect --
+%1 = MATCH_STR label.foo "foo"
+RETURN %1
