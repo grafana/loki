@@ -2,6 +2,8 @@ package querier
 
 import (
 	"context"
+	"crypto/rand"
+	"math/big"
 	"net/http"
 	"slices"
 	"strings"
@@ -53,6 +55,11 @@ type IngesterQuerier struct {
 	getShardCountForTenant func(string) int
 	pool                   *ring_client.Pool
 	logger                 log.Logger
+
+	// Zone preferences are evaluated on every query, so only warn once when they
+	// cannot be honoured.
+	warnZoneAwarenessDisabled sync.Once
+	warnTooManyZones          sync.Once
 }
 
 func NewIngesterQuerier(querierConfig Config, clientCfg client.Config, ring ring.ReadRing, partitionRing *ring.PartitionInstanceRing, getShardCountForTenant func(string) int, metricsNamespace string, logger log.Logger) (*IngesterQuerier, error) {
@@ -164,6 +171,123 @@ func ExtractPartitionContext(ctx context.Context) *PartitionContext {
 	return v
 }
 
+// preferredZoneSorter returns a ring.ZoneSorter that moves preferredZones to the
+// front of the list, and randomizes the order of the remaining zones. All
+// preferred zones are given equal priority. Randomizing the rest spreads load
+// evenly across the zones we fall back to.
+func preferredZoneSorter(preferredZones []string) ring.ZoneSorter {
+	return func(zones []string) []string {
+		shuffleZones(zones)
+
+		if len(preferredZones) == 0 {
+			return zones
+		}
+
+		// Move the preferred zones to the front. They have already been shuffled,
+		// so they keep equal priority relative to each other.
+		nextPos := 0
+		for idx, zone := range zones {
+			if slices.Contains(preferredZones, zone) {
+				zones[nextPos], zones[idx] = zones[idx], zones[nextPos]
+				nextPos++
+			}
+		}
+
+		return zones
+	}
+}
+
+// shuffleZones shuffles zones in place, using crypto/rand as the source of
+// randomness. If no randomness is available the current order is kept: the order
+// zones are queried in must never be a reason to fail a query.
+func shuffleZones(zones []string) {
+	for i := len(zones) - 1; i > 0; i-- {
+		n, err := rand.Int(rand.Reader, big.NewInt(int64(i+1)))
+		if err != nil {
+			return
+		}
+
+		j := int(n.Int64())
+		zones[i], zones[j] = zones[j], zones[i]
+	}
+}
+
+// countZones returns the number of distinct zones the given instances belong to.
+func countZones(instances []ring.InstanceDesc) int {
+	zones := make([]string, 0, 3)
+	for _, instance := range instances {
+		if !slices.Contains(zones, instance.Zone) {
+			zones = append(zones, instance.Zone)
+		}
+	}
+	return len(zones)
+}
+
+// zoneReadsEnabled returns whether the querier is configured to prefer or restrict
+// the zones it reads from.
+func (q *IngesterQuerier) zoneReadsEnabled() bool {
+	return len(q.querierConfig.PreferAvailabilityZones) > 0 || q.querierConfig.IngesterQueryZones > 0
+}
+
+// quorumConfigForZoneReads returns the config to use when querying the ingester
+// ring, honouring querier.prefer-availability-zones and
+// querier.ingester-query-zones. replicationSet is modified in place when fewer
+// zones should be queried than the ring itself requires for quorum.
+func (q *IngesterQuerier) quorumConfigForZoneReads(replicationSet *ring.ReplicationSet) ring.DoUntilQuorumConfig {
+	if !q.zoneReadsEnabled() {
+		return defaultQuorumConfig
+	}
+
+	// Without zone awareness the ring gives no guarantee about how replicas are
+	// spread across zones, and instances may not report a zone at all, so there is
+	// nothing meaningful to prefer or restrict.
+	if !replicationSet.ZoneAwarenessEnabled {
+		q.warnZoneAwarenessDisabled.Do(func() {
+			level.Warn(q.logger).Log("msg", "ignoring querier availability zone preferences because zone awareness is disabled on the ingester ring")
+		})
+		return defaultQuorumConfig
+	}
+
+	if n := q.querierConfig.IngesterQueryZones; n > 0 {
+		// The completeness check below must use the number of zones registered in
+		// the ring, not the number left in the replication set. Zone-aware rings
+		// drop every instance of a zone that has any unhealthy instance, so a ring
+		// with more zones than replicas can present a replication set with few
+		// enough zones to look like it qualifies, when in fact no single zone holds
+		// a complete copy of the data.
+		ringZones := q.ring.ZonesCount()
+
+		// The quorum requirement is relative to the zones actually present in the
+		// replication set, since that is what dskit counts when deciding how many
+		// zones must succeed.
+		setZones := countZones(replicationSet.Instances)
+
+		switch {
+		case ringZones > q.ring.ReplicationFactor():
+			// Querying fewer zones than the ring requires for quorum is only correct
+			// if every zone holds a complete copy of the data. Zone-aware replication
+			// places at most one replica per zone, so that only holds when there are
+			// no more zones than replicas.
+			q.warnTooManyZones.Do(func() {
+				level.Warn(q.logger).Log(
+					"msg", "ignoring querier.ingester-query-zones because the ingester ring has more zones than the replication factor, so a single zone does not hold a complete copy of the data",
+					"zones", ringZones,
+					"replication_factor", q.ring.ReplicationFactor(),
+				)
+			})
+		case setZones-n > replicationSet.MaxUnavailableZones:
+			// Only ever loosen the ring's quorum requirement. Asking for more zones
+			// than the ring requires must not make queries more likely to fail.
+			replicationSet.MaxUnavailableZones = setZones - n
+		}
+	}
+
+	return ring.DoUntilQuorumConfig{
+		MinimizeRequests: true,
+		ZoneSorter:       preferredZoneSorter(q.querierConfig.PreferAvailabilityZones),
+	}
+}
+
 // forAllIngesters runs f, in parallel, for all ingesters
 func (q *IngesterQuerier) forAllIngesters(ctx context.Context, f func(context.Context, logproto.QuerierClient) (interface{}, error)) ([]responseFromIngesters, error) {
 	if q.querierConfig.QueryPartitionIngesters {
@@ -198,7 +322,11 @@ func (q *IngesterQuerier) forAllIngesters(ctx context.Context, f func(context.Co
 		return nil, err
 	}
 
-	return q.forGivenIngesters(ctx, replicationSet, defaultQuorumConfig, f)
+	// Must be called before replicationSet is passed by value below, as it may
+	// lower the number of zones required to answer the query.
+	quorumConfig := q.quorumConfigForZoneReads(&replicationSet)
+
+	return q.forGivenIngesters(ctx, replicationSet, quorumConfig, f)
 }
 
 // forGivenIngesterSets runs f, in parallel, for given ingester sets
@@ -317,6 +445,26 @@ func (q *IngesterQuerier) TailDisconnectedIngesters(ctx context.Context, req *lo
 		return nil, err
 	}
 
+	// When reads are restricted to a subset of zones, only reconnect to ingesters in
+	// the zones we would query. Otherwise a long lived tail request would gradually
+	// connect to every ingester in the ring, defeating the zone restriction. Zones
+	// that already have a connected ingester are also allowed, so a zone we failed
+	// over to is not dropped again.
+	//
+	// Only zones present in the replication set are considered: a preferred zone
+	// with no healthy ingester must not keep the tail from reconnecting to the zones
+	// that do have one. If that leaves no allowed zone, every zone is considered, so
+	// tailing never stops reconnecting.
+	var allowedZones []string
+	if q.zoneReadsEnabled() && replicationSet.ZoneAwarenessEnabled {
+		for _, ingester := range replicationSet.Instances {
+			allowed := connected[ingester.Addr] || slices.Contains(q.querierConfig.PreferAvailabilityZones, ingester.Zone)
+			if allowed && !slices.Contains(allowedZones, ingester.Zone) {
+				allowedZones = append(allowedZones, ingester.Zone)
+			}
+		}
+	}
+
 	// Look for disconnected ingesters or new one we should (re)connect to
 	reconnectIngesters := []ring.InstanceDesc{}
 
@@ -327,6 +475,10 @@ func (q *IngesterQuerier) TailDisconnectedIngesters(ctx context.Context, req *lo
 
 		// Skip ingesters which are leaving or joining the cluster
 		if ingester.State != ring.ACTIVE {
+			continue
+		}
+
+		if len(allowedZones) > 0 && !slices.Contains(allowedZones, ingester.Zone) {
 			continue
 		}
 
