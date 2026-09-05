@@ -212,55 +212,35 @@ func Fuzz_bitmap_EncodeN(f *testing.F) {
 
 func Benchmark_bitmapEncoder(b *testing.B) {
 	b.Run("width=1", func(b *testing.B) { benchmarkBitmapEncoder(b, 1) })
-	b.Run("width=3", func(b *testing.B) { benchmarkBitmapEncoder(b, 3) })
-	b.Run("width=5", func(b *testing.B) { benchmarkBitmapEncoder(b, 5) })
-	b.Run("width=8", func(b *testing.B) { benchmarkBitmapEncoder(b, 8) })
-	b.Run("width=32", func(b *testing.B) { benchmarkBitmapEncoder(b, 32) })
-	b.Run("width=64", func(b *testing.B) { benchmarkBitmapEncoder(b, 64) })
 }
 
 func benchmarkBitmapEncoder(b *testing.B, width int) {
-	b.Run("variance=none", func(b *testing.B) {
-		var cw countingWriter
-		enc := newBitmapEncoder(&cw)
+	runBenchmark := func(b *testing.B, name string, width int, m func(i, width int) uint64) {
+		b.Run(name, func(b *testing.B) {
+			// Pre-compute values so we're not benchmarking generation or conversion to Value type.
+			const numValues = 32768 // Enough to defeat the CPU branch predictor
+			values := make([]Value, numValues)
+			for i := range values {
+				values[i] = Uint64Value(m(i, width))
+			}
 
-		b.ResetTimer()
+			var cw countingWriter
+			enc := newBitmapEncoder(&cw)
 
-		for i := 0; i < b.N; i++ {
-			_ = enc.Encode(Uint64Value(1))
-		}
-		_ = enc.Flush()
+			b.ResetTimer()
+			for i := 0; i < b.N; i++ {
+				_ = enc.Encode(values[i%numValues])
+			}
+			_ = enc.Flush()
 
-		b.ReportMetric(float64(cw.n), "encoded_bytes")
-	})
+			b.ReportMetric(float64(cw.n), "encoded_bytes")
+		})
+	}
 
-	b.Run("variance=alternating", func(b *testing.B) {
-		var cw countingWriter
-		enc := newBitmapEncoder(&cw)
-
-		b.ResetTimer()
-		for i := 0; i < b.N; i++ {
-			_ = enc.Encode(Uint64Value(uint64(i % width)))
-		}
-		_ = enc.Flush()
-
-		b.ReportMetric(float64(cw.n), "encoded_bytes")
-	})
-
-	b.Run("variance=random", func(b *testing.B) {
-		rnd := rand.New(rand.NewSource(0))
-
-		var cw countingWriter
-		enc := newBitmapEncoder(&cw)
-
-		b.ResetTimer()
-		for i := 0; i < b.N; i++ {
-			_ = enc.Encode(Uint64Value(uint64(rnd.Int63()) % uint64(width)))
-		}
-		_ = enc.Flush()
-
-		b.ReportMetric(float64(cw.n), "encoded_bytes")
-	})
+	runBenchmark(b, "variance=none", width, func(i, width int) uint64 { return 1 })
+	runBenchmark(b, "variance=alternating", width, func(i, width int) uint64 { return uint64(i % (1 << width)) })
+	rnd := rand.New(rand.NewSource(0))
+	runBenchmark(b, "variance=random", width, func(i, width int) uint64 { return uint64(rnd.Int63()) % uint64(1<<width) })
 }
 
 func Benchmark_bitmapDecoder_DecodeBatches(b *testing.B) {
