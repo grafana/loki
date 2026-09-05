@@ -26,11 +26,11 @@ func TestAggregator(t *testing.T) {
 	colSvc := semconv.NewIdentifier("service", types.ColumnTypeLabel, types.Loki.String).FQN()
 
 	t.Run("basic SUM aggregation with record building", func(t *testing.T) {
-		agg := newAggregator(10, aggregationOperationSum)
-		agg.AddLabels(groupBy)
-
 		ts1 := time.Date(2024, 1, 1, 10, 0, 0, 0, time.UTC)
 		ts2 := time.Date(2024, 1, 1, 10, 1, 0, 0, time.UTC)
+
+		agg := newAggregator(aggregationOperationSum, ts1, ts2, ts2.Sub(ts1))
+		agg.AddLabels(groupBy)
 
 		// Add test data
 		// ts1: prod/app1 = 10, prod/app2 = 20, dev/app1 = 30
@@ -66,11 +66,11 @@ func TestAggregator(t *testing.T) {
 	})
 
 	t.Run("basic AVG aggregation with record building", func(t *testing.T) {
-		agg := newAggregator(10, aggregationOperationAvg)
-		agg.AddLabels(groupBy)
-
 		ts1 := time.Date(2024, 1, 1, 10, 0, 0, 0, time.UTC)
 		ts2 := time.Date(2024, 1, 1, 10, 1, 0, 0, time.UTC)
+
+		agg := newAggregator(aggregationOperationAvg, ts1, ts2, ts2.Sub(ts1))
+		agg.AddLabels(groupBy)
 
 		// Add test data
 		// ts1: prod/app1 = 10, prod/app2 = 20, dev/app1 = 30
@@ -107,12 +107,13 @@ func TestAggregator(t *testing.T) {
 	})
 
 	t.Run("basic COUNT aggregation with record building", func(t *testing.T) {
-		agg := newAggregator(10, aggregationOperationCount)
-		agg.AddLabels(groupBy)
 
 		ts1 := time.Date(2024, 1, 1, 10, 0, 0, 0, time.UTC)
 		ts2 := time.Date(2024, 1, 1, 10, 1, 0, 0, time.UTC)
 		ts3 := time.Date(2024, 1, 1, 10, 2, 0, 0, time.UTC)
+
+		agg := newAggregator(aggregationOperationCount, ts1, ts3, ts2.Sub(ts1))
+		agg.AddLabels(groupBy)
 
 		// Add test data
 		// ts1: add one datapoint for prod/app1, prod/app2, and dev/app1
@@ -159,11 +160,11 @@ func TestAggregator(t *testing.T) {
 	})
 
 	t.Run("basic MAX aggregation with record building", func(t *testing.T) {
-		agg := newAggregator(10, aggregationOperationMax)
-		agg.AddLabels(groupBy)
-
 		ts1 := time.Date(2024, 1, 1, 10, 0, 0, 0, time.UTC)
 		ts2 := time.Date(2024, 1, 1, 10, 1, 0, 0, time.UTC)
+
+		agg := newAggregator(aggregationOperationMax, ts1, ts2, ts2.Sub(ts1))
+		agg.AddLabels(groupBy)
 
 		// Add test data
 		// ts1: add one datapoint for prod/app1, prod/app2, and dev/app1
@@ -201,11 +202,11 @@ func TestAggregator(t *testing.T) {
 	})
 
 	t.Run("basic MIN aggregation with record building", func(t *testing.T) {
-		agg := newAggregator(10, aggregationOperationMin)
-		agg.AddLabels(groupBy)
-
 		ts1 := time.Date(2024, 1, 1, 10, 0, 0, 0, time.UTC)
 		ts2 := time.Date(2024, 1, 1, 10, 1, 0, 0, time.UTC)
+
+		agg := newAggregator(aggregationOperationMin, ts1, ts2, ts2.Sub(ts1))
+		agg.AddLabels(groupBy)
 
 		// Add test data
 		// ts1: add one datapoint for prod/app1, prod/app2, and dev/app1
@@ -246,11 +247,11 @@ func TestAggregator(t *testing.T) {
 		// Empty groupBy represents sum by () or sum(...) - all values aggregated into single group
 		groupBy := []arrow.Field{}
 
-		agg := newAggregator(1, aggregationOperationSum)
-		agg.AddLabels(groupBy)
-
 		ts1 := time.Date(2024, 1, 1, 10, 0, 0, 0, time.UTC)
 		ts2 := time.Date(2024, 1, 1, 10, 1, 0, 0, time.UTC)
+
+		agg := newAggregator(aggregationOperationSum, ts1, ts2, ts2.Sub(ts1))
+		agg.AddLabels(groupBy)
 
 		// Add test data
 		// ts1: prod/app1 = 10, prod/app2 = 20, dev/app1 = 30
@@ -283,10 +284,10 @@ func TestAggregator(t *testing.T) {
 	})
 
 	t.Run("basic SUM aggregation with without() grouping", func(t *testing.T) {
-		agg := newAggregator(10, aggregationOperationSum)
-
 		ts1 := time.Date(2024, 1, 1, 10, 0, 0, 0, time.UTC)
 		ts2 := time.Date(2024, 1, 1, 10, 1, 0, 0, time.UTC)
+
+		agg := newAggregator(aggregationOperationSum, ts1, ts2, ts2.Sub(ts1))
 
 		buildFields := func(names ...string) []arrow.Field {
 			result := make([]arrow.Field, len(names))
@@ -334,12 +335,12 @@ func TestAggregator(t *testing.T) {
 	})
 
 	t.Run("series limit enforcement", func(t *testing.T) {
-		agg := newAggregator(10, aggregationOperationSum)
-		agg.AddLabels(groupBy)
-		agg.SetMaxSeries(3) // Limit to 3 series
-
 		ts1 := time.Date(2024, 1, 1, 10, 0, 0, 0, time.UTC)
 		ts2 := time.Date(2024, 1, 1, 10, 1, 0, 0, time.UTC)
+
+		agg := newAggregator(aggregationOperationSum, ts1, ts2, ts2.Sub(ts1))
+		agg.AddLabels(groupBy)
+		agg.SetMaxSeries(3) // Limit to 3 series
 
 		// Add first 3 series at ts1 - should succeed
 		err := agg.AddN([]time.Time{ts1}, 10, groupBy, []string{"prod", "app1"})
@@ -376,12 +377,14 @@ func BenchmarkAggregator(b *testing.B) {
 		semconv.FieldFromIdent(semconv.NewIdentifier("service", types.ColumnTypeLabel, types.Loki.String), true),
 	}
 
-	agg := newAggregator(10, aggregationOperationSum)
+	start := time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)
+	end := start.Add(time.Hour)
+	agg := newAggregator(aggregationOperationSum, start, end, 60*time.Second)
 	agg.AddLabels(fields)
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		ts := time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC).Add(time.Duration(i) * time.Second)
+		ts := start.Add(time.Duration(i%3600) * time.Second)
 		env := fmt.Sprintf("env-%d", i%3)
 		cluster := fmt.Sprintf("cluster-%d", i%10)
 		service := fmt.Sprintf("service-%d", i%7)

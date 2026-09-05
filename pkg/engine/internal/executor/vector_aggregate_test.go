@@ -95,6 +95,9 @@ func TestVectorAggregationPipeline(t *testing.T) {
 		grouping:       grouping,
 		operation:      types.VectorAggregationTypeSum,
 		maxQuerySeries: 0, // no limit for test
+		start:          t1,
+		end:            t3,
+		step:           t2.Sub(t1),
 	})
 	require.NoError(t, err)
 	defer pipeline.Close()
@@ -196,6 +199,8 @@ func TestVectorAggregationPipeline_MissingGroupingColumn(t *testing.T) {
 		},
 		operation:      types.VectorAggregationTypeSum,
 		maxQuerySeries: 0,
+		start:          ts,
+		end:            ts,
 	}
 
 	inputA := NewArrowtestPipeline(schemaWithLevel, rowsWithLevel)
@@ -296,6 +301,8 @@ func TestVectorAggregationPipeline_WithoutGroupsByShortName(t *testing.T) {
 		},
 		operation:      types.VectorAggregationTypeSum,
 		maxQuerySeries: 0,
+		start:          ts,
+		end:            ts,
 	}
 
 	inputA := NewArrowtestPipeline(schemaA, rowsA)
@@ -390,6 +397,8 @@ func TestVectorAggregationPipeline_WithoutSortsColumns(t *testing.T) {
 		},
 		operation:      types.VectorAggregationTypeSum,
 		maxQuerySeries: 0,
+		start:          ts,
+		end:            ts,
 	}
 
 	inputA := NewArrowtestPipeline(schemaA, rowsA)
