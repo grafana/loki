@@ -397,7 +397,7 @@ func TestBuildGlobalStreamTable_SameLabelsShareID(t *testing.T) {
 	for id := int64(2); id <= int64(count); id++ {
 		prev := table.ByID(id - 1)
 		curr := table.ByID(id)
-		require.Negative(t, logsobj.CompareStreamOrderKey(prev, curr),
+		require.Negative(t, streams.CompareSortKey(prev, curr),
 			"global stream IDs must increase in StreamOrderKey order")
 	}
 }
@@ -470,12 +470,16 @@ func TestDoLogObjectMerge_MergesAndSplits(t *testing.T) {
 		// Each object is sorted by [shard, schema, hash, streamID, timestamp DESC].
 		for i := 1; i < len(o.records); i++ {
 			prev, curr := o.records[i-1], o.records[i]
-			prevKey, err := logsobj.NewStreamOrderKey(o.streamLabels[prev.streamID], sortSchema)
+			prevSchemaKey, err := logsobj.ComputeSchemaKey(o.streamLabels[prev.streamID], sortSchema)
 			require.NoError(t, err)
-			currKey, err := logsobj.NewStreamOrderKey(o.streamLabels[curr.streamID], sortSchema)
+			prevKey := streams.NewSortKey(o.streamLabels[prev.streamID], prevSchemaKey)
+
+			currSchemaKey, err := logsobj.ComputeSchemaKey(o.streamLabels[curr.streamID], sortSchema)
 			require.NoError(t, err)
-			require.LessOrEqual(t, logsobj.CompareStreamOrderKey(prevKey, currKey), 0, "stream order must be non-decreasing within object %d", objIdx)
-			if logsobj.CompareStreamOrderKey(prevKey, currKey) == 0 {
+			currKey := streams.NewSortKey(o.streamLabels[curr.streamID], currSchemaKey)
+
+			require.LessOrEqual(t, streams.CompareSortKey(prevKey, currKey), 0, "stream order must be non-decreasing within object %d", objIdx)
+			if streams.CompareSortKey(prevKey, currKey) == 0 {
 				require.LessOrEqual(t, prev.streamID, curr.streamID, "streamIDs must be non-decreasing within a stream-order group")
 				if prev.streamID == curr.streamID {
 					require.False(t, curr.ts.After(prev.ts), "timestamps must be non-increasing within a stream")

@@ -90,7 +90,7 @@ func (c *Context) doLogObjectMerge(ctx context.Context, node *physical.LogMerge)
 	calc := dataobjindex.NewCalculator(indexBuilder)
 
 	sections, remaps := sectionsWithRemaps(sources, table)
-	merged, err := sortmerge.IteratorWithStreamRemap(ctx, sections, remaps, node.SortSchema)
+	merged, err := sortmerge.MixedObjectIterator(ctx, sections, remaps, node.SortSchema)
 	if err != nil {
 		return nil, fmt.Errorf("starting k-way log merge: %w", err)
 	}
@@ -327,16 +327,16 @@ func resolveStreams(ctx context.Context, section *dataobj.Section) (map[int64]st
 
 // buildGlobalStreamTable ranks unique label sets across sources into one
 // StreamOrderKey ID space. Same labels in two objects share one ID.
-func buildGlobalStreamTable(sources []*logSource, sortSchema []string) (*logsobj.StreamRanks, error) {
+func buildGlobalStreamTable(sources []*logSource, sortSchema []string) (*logsobj.MultiSourceRankedStreams, error) {
 	maps := make([]map[int64]streams.Stream, 0, len(sources))
 	for _, src := range sources {
 		maps = append(maps, src.streams)
 	}
-	return logsobj.RankStreams(sortSchema, maps...)
+	return logsobj.RankMixedStreams(sortSchema, maps...)
 }
 
 // sectionsWithRemaps flattens the sources' logs sections
-func sectionsWithRemaps(sources []*logSource, table *logsobj.StreamRanks) ([]*dataobj.Section, []map[int64]int64) {
+func sectionsWithRemaps(sources []*logSource, table *logsobj.MultiSourceRankedStreams) ([]*dataobj.Section, []map[int64]int64) {
 	var (
 		sections []*dataobj.Section
 		remaps   []map[int64]int64
@@ -356,7 +356,7 @@ func sectionsWithRemaps(sources []*logSource, table *logsobj.StreamRanks) ([]*da
 type logObjectWriter struct {
 	c     *Context
 	node  *physical.LogMerge
-	table *logsobj.StreamRanks
+	table *logsobj.MultiSourceRankedStreams
 	calc  *dataobjindex.Calculator
 
 	builderMetrics *logsobj.BuilderMetrics
@@ -373,7 +373,7 @@ type fixedSortSchema []string
 
 func (s fixedSortSchema) SortSchemaLabels(string) []string { return s }
 
-func (c *Context) newLogObjectWriter(node *physical.LogMerge, table *logsobj.StreamRanks, calc *dataobjindex.Calculator) (*logObjectWriter, error) {
+func (c *Context) newLogObjectWriter(node *physical.LogMerge, table *logsobj.MultiSourceRankedStreams, calc *dataobjindex.Calculator) (*logObjectWriter, error) {
 	w := &logObjectWriter{
 		c:              c,
 		node:           node,
@@ -409,7 +409,7 @@ func (w *logObjectWriter) startNewObject() error {
 // size, and re-basing stream IDs to 1..M within each object.
 func (w *logObjectWriter) add(ctx context.Context, rec logs.Record) error {
 	gs := w.table.ByID(rec.StreamID)
-	if w.logsBuilder.IsFull() && w.haveLast && (gs.SchemaKey != w.lastSchemaKey || gs.Shard != w.lastShard) {
+	if w.logsBuilder.IsFull() && w.haveLast && (gs.SchemaKey != w.lastSchemaKey || gs.ShardBucket != w.lastShard) {
 		if err := w.finalizeAndUpload(ctx); err != nil {
 			return err
 		}
@@ -419,7 +419,7 @@ func (w *logObjectWriter) add(ctx context.Context, rec logs.Record) error {
 		}
 	}
 	w.lastSchemaKey = gs.SchemaKey
-	w.lastShard = gs.Shard
+	w.lastShard = gs.ShardBucket
 	w.haveLast = true
 
 	// There's no equivalent for ingestion time during compaction, so use the current time.

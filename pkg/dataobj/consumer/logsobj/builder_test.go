@@ -891,11 +891,14 @@ func TestBuilder_CopyAndSort_SortSchema(t *testing.T) {
 			streamIDsAfter[stream.id] = struct{}{}
 
 			if i > 0 {
-				prevKey, err := NewStreamOrderKey(streamsAfter[i-1].labels, schemaLabels)
+				prevSchemaKey, err := ComputeSchemaKey(streamsAfter[i-1].labels, schemaLabels)
 				require.NoError(t, err)
-				currKey, err := NewStreamOrderKey(stream.labels, schemaLabels)
+				prevKey := streams.NewSortKey(streamsAfter[i-1].labels, prevSchemaKey)
+
+				currSchemaKey, err := ComputeSchemaKey(stream.labels, schemaLabels)
 				require.NoError(t, err)
-				require.LessOrEqual(t, CompareStreamOrderKey(prevKey, currKey), 0)
+				currKey := streams.NewSortKey(stream.labels, currSchemaKey)
+				require.LessOrEqual(t, streams.CompareSortKey(prevKey, currKey), 0)
 			}
 		}
 		require.ElementsMatch(t, beforeLabels, afterLabels)
@@ -933,14 +936,17 @@ func TestBuilder_CopyAndSort_SortSchema(t *testing.T) {
 				continue
 			}
 			prev := logsAfter[i-1]
-			prevKey, err := NewStreamOrderKey(prev.labels, schemaLabels)
+			prevSchemaKey, err := ComputeSchemaKey(prev.labels, schemaLabels)
 			require.NoError(t, err)
-			currKey, err := NewStreamOrderKey(record.labels, schemaLabels)
+			prevKey := streams.NewSortKey(prev.labels, prevSchemaKey)
+
+			currSchemaKey, err := ComputeSchemaKey(record.labels, schemaLabels)
 			require.NoError(t, err)
+			currKey := streams.NewSortKey(record.labels, currSchemaKey)
 
 			switch {
-			case CompareStreamOrderKey(prevKey, currKey) != 0:
-				require.LessOrEqual(t, CompareStreamOrderKey(prevKey, currKey), 0)
+			case streams.CompareSortKey(prevKey, currKey) != 0:
+				require.LessOrEqual(t, streams.CompareSortKey(prevKey, currKey), 0)
 			case prev.streamID != record.streamID:
 				require.LessOrEqual(t, prev.streamID, record.streamID)
 			default:
@@ -953,13 +959,14 @@ func TestBuilder_CopyAndSort_SortSchema(t *testing.T) {
 
 func expectedLabelOrder(t *testing.T, values []string, labelName string, schemaLabels []string) []string {
 	t.Helper()
-	keys := make([]StreamOrderKey, 0, len(values))
+	keys := make([]streams.SortKey, 0, len(values))
 	for _, v := range values {
-		k, err := NewStreamOrderKey(labels.FromStrings(labelName, v), schemaLabels)
+		schemaKey, err := ComputeSchemaKey(labels.FromStrings(labelName, v), schemaLabels)
 		require.NoError(t, err)
+		k := streams.NewSortKey(labels.FromStrings(labelName, v), schemaKey)
 		keys = append(keys, k)
 	}
-	slices.SortFunc(keys, CompareStreamOrderKey)
+	slices.SortFunc(keys, streams.CompareSortKey)
 	out := make([]string, len(keys))
 	for i, k := range keys {
 		out[i] = k.Labels.Get(labelName)
@@ -969,13 +976,14 @@ func expectedLabelOrder(t *testing.T, values []string, labelName string, schemaL
 
 func expectedPairsOrder(t *testing.T, values [][2]string, schemaLabels []string) [][2]string {
 	t.Helper()
-	keys := make([]StreamOrderKey, 0, len(values))
+	keys := make([]streams.SortKey, 0, len(values))
 	for _, v := range values {
-		k, err := NewStreamOrderKey(labels.FromStrings("namespace", v[0], "app", v[1]), schemaLabels)
+		schemaKey, err := ComputeSchemaKey(labels.FromStrings("namespace", v[0], "app", v[1]), schemaLabels)
 		require.NoError(t, err)
+		k := streams.NewSortKey(labels.FromStrings("namespace", v[0], "app", v[1]), schemaKey)
 		keys = append(keys, k)
 	}
-	slices.SortFunc(keys, CompareStreamOrderKey)
+	slices.SortFunc(keys, streams.CompareSortKey)
 	out := make([][2]string, len(keys))
 	for i, k := range keys {
 		out[i] = [2]string{k.Labels.Get("namespace"), k.Labels.Get("app")}
@@ -1031,7 +1039,7 @@ func TestComputeSortKey(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := ComputeSortKey(tt.labels, tt.schemaLabels)
+			got, err := ComputeSchemaKey(tt.labels, tt.schemaLabels)
 			if tt.wantErr {
 				require.Error(t, err)
 				return

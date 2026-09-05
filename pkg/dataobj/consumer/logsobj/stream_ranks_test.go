@@ -20,7 +20,7 @@ func TestRankStreams_SameLabelsShareID(t *testing.T) {
 		5: {ID: 5, Labels: ls.Copy(), ShardBucket: int64(streams.ShardBucket(ls))},
 	}
 
-	ranks, err := RankStreams([]string{"label:app"}, a, b)
+	ranks, err := RankMixedStreams([]string{"label:app"}, a, b)
 	require.NoError(t, err)
 
 	leftID := ranks.Resolve(0, 2)
@@ -36,7 +36,7 @@ func TestRankStreams_SameLabelsShareID(t *testing.T) {
 	for id := int64(2); id <= int64(count); id++ {
 		prev := ranks.ByID(id - 1)
 		curr := ranks.ByID(id)
-		require.Negative(t, CompareStreamOrderKey(prev, curr),
+		require.Negative(t, streams.CompareSortKey(prev, curr),
 			"global stream IDs must increase in StreamOrderKey order")
 	}
 }
