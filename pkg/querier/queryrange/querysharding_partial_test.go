@@ -89,7 +89,7 @@ func TestASTMapperware_PartialStatsOnError(t *testing.T) {
 	})
 
 	mware := newASTMapperware(
-		ShardingConfigs{config.PeriodConfig{IndexType: types.IndexTypeTSDB}},
+		[]config.PeriodConfig{{IndexType: types.IndexTypeTSDB}},
 		testEngineOpts,
 		handler,
 		handler,
@@ -156,7 +156,7 @@ func TestASTMapperware_QuerierBytesLimitIsClassifiedAsLimit(t *testing.T) {
 	})
 
 	mware := newASTMapperware(
-		ShardingConfigs{config.PeriodConfig{IndexType: types.IndexTypeTSDB}},
+		[]config.PeriodConfig{{IndexType: types.IndexTypeTSDB}},
 		testEngineOpts,
 		handler,
 		handler,

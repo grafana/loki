@@ -21,10 +21,11 @@ import (
 
 	"github.com/grafana/dskit/tenant"
 
-	push2 "github.com/grafana/loki/pkg/push"
 	"github.com/grafana/loki/v3/pkg/loghttp/push"
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
 	"github.com/grafana/loki/v3/pkg/validation"
+
+	push2 "github.com/grafana/loki/pkg/push"
 )
 
 // PushHandler reads a snappy-compressed proto from the HTTP body.
@@ -69,7 +70,7 @@ func (d *Distributor) pushHandler(w http.ResponseWriter, r *http.Request, pushRe
 	streamResolver := newRequestScopedStreamResolver(tenantID, d.validator.Limits, logger)
 
 	presumedAgentIP := extractPresumedAgentIP(r)
-	maxPushSize := d.validator.Limits.MaxPushSize(tenantID)
+	maxPushSize := d.validator.MaxPushSize(tenantID)
 	req, pushStats, err := push.ParseRequest(logger, tenantID, maxPushSize, int64(maxPushSize), r, d.validator.Limits, d.tenantConfigs,
 		pushRequestParser, d.usageTracker, streamResolver, presumedAgentIP, format)
 	if err != nil {

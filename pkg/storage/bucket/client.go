@@ -171,7 +171,7 @@ func (cfg *ConfigWithNamedStores) Validate() error {
 func (cfg *ConfigWithNamedStores) DisableRetries(backend string) error {
 	storeType, named := cfg.NamedStores.LookupStoreType(backend)
 	if !named {
-		return cfg.Config.disableRetries(backend)
+		return cfg.disableRetries(backend)
 	}
 
 	switch storeType {
