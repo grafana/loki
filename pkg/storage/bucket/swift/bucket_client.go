@@ -11,7 +11,12 @@ import (
 )
 
 // NewBucketClient creates a new Swift bucket client
-func NewBucketClient(cfg Config, _ string, logger log.Logger, wrapper func(http.RoundTripper) http.RoundTripper) (objstore.Bucket, error) {
+func NewBucketClient(cfg Config, _ string, connectionPoolSize int, logger log.Logger, wrapper func(http.RoundTripper) http.RoundTripper) (objstore.Bucket, error) {
+	maxIdleConnsPerHost := cfg.HTTP.MaxIdleConnsPerHost
+	if maxIdleConnsPerHost == 0 {
+		maxIdleConnsPerHost = connectionPoolSize
+	}
+
 	bucketConfig := swift.Config{
 		ApplicationCredentialID:     cfg.ApplicationCredentialID,
 		ApplicationCredentialName:   cfg.ApplicationCredentialName,
@@ -41,7 +46,7 @@ func NewBucketClient(cfg Config, _ string, logger log.Logger, wrapper func(http.
 			TLSHandshakeTimeout:   model.Duration(cfg.HTTP.TLSHandshakeTimeout),
 			ExpectContinueTimeout: model.Duration(cfg.HTTP.ExpectContinueTimeout),
 			MaxIdleConns:          cfg.HTTP.MaxIdleConns,
-			MaxIdleConnsPerHost:   cfg.HTTP.MaxIdleConnsPerHost,
+			MaxIdleConnsPerHost:   maxIdleConnsPerHost,
 			MaxConnsPerHost:       cfg.HTTP.MaxConnsPerHost,
 			Transport:             cfg.HTTP.Transport,
 			TLSConfig: exthttp.TLSConfig{
