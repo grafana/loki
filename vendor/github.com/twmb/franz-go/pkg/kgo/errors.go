@@ -13,13 +13,13 @@ import (
 )
 
 // IsRetryableBrokerErr returns whether the client considers an error from a
-// broker retrayble. This returns true specifically if the client thinks it can
+// broker retryable. This returns true specifically if the client thinks it can
 // retry whatever it was just trying to do with a broker. It returns false in
 // all other cases.
 //
-// This can used external to the library to help filter errors if use kgo
-// hooks: errors may be sent to hooks before the client retries whatever it was
-// just attempting.
+// This can be used external to the library to help filter errors when using
+// kgo hooks: errors may be sent to hooks before the client retries whatever it
+// was just attempting.
 func IsRetryableBrokerErr(err error) bool {
 	return isRetryableBrokerErr(err)
 }
@@ -80,7 +80,18 @@ func isRetryableBrokerErr(err error) bool {
 	}
 	// EOF can be returned if a broker kills a connection unexpectedly, and
 	// we can retry that. Same for ErrClosed.
-	if errors.Is(err, net.ErrClosed) || errors.Is(err, io.EOF) {
+	//
+	// ErrUnexpectedEOF is EOF's mid-frame sibling and does NOT satisfy
+	// errors.Is(err, io.EOF): a graceful FIN landing inside a
+	// length-prefixed frame (broker shutting down mid-write, an LB or
+	// proxy draining) makes io.ReadFull return it. Without matching it
+	// here, this one disconnect shape -- alone among all of them (RST is
+	// a SyscallError, boundary FIN is io.EOF, refused is a dial error) --
+	// surfaced after zero retries: group sessions tore down, and a
+	// metadata request dying mid-read reached bumpRepeatedLoadErr with
+	// netErr=false, insta-failing buffered records on a transient
+	// network event.
+	if errors.Is(err, net.ErrClosed) || errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF) {
 		// If the FIRST read is EOF, that is usually not a good sign,
 		// often it's from bad SASL. We err on the side of pessimism
 		// and do not retry.
@@ -97,11 +108,6 @@ func isRetryableBrokerErr(err error) bool {
 	// We could have chosen a broker, and then a concurrent metadata update
 	// could have removed it.
 	if errors.Is(err, errChosenBrokerDead) {
-		return true
-	}
-	// A broker kept giving us short sasl lifetimes, so we killed the
-	// connection ourselves. We can retry on a new connection.
-	if errors.Is(err, errSaslReauthLoop) {
 		return true
 	}
 	// We really should not get correlation mismatch, but if we do, we can
@@ -199,11 +205,6 @@ var (
 	// while a request was in-flight.
 	errChosenBrokerDead = errors.New("the broker connection has died and the request will be retried on a new connection")
 
-	// If a broker repeatedly gives us tiny sasl lifetimes, we fail a
-	// request after a few tries to forcefully kill the connection and
-	// restart a new connection ourselves.
-	errSaslReauthLoop = errors.New("the broker is repeatedly giving us sasl lifetimes that are too short to write a request")
-
 	// A temporary error returned when Kafka replies with a different
 	// correlation ID than we were expecting for the request the client
 	// issued.
@@ -237,6 +238,20 @@ var (
 	errMissingMetadataPartition = errors.New("metadata update is missing a partition that we were previously using")
 
 	errNoCommittedOffset = errors.New("partition has no prior committed offset")
+
+	// Returned when a ListOffsets success response carries a negative
+	// offset, which no legitimate listing produces. Non-retryable so the
+	// broker misbehavior surfaces in polls; the load is still retried.
+	errNegativeListedOffset = errors.New("broker replied to a ListOffsets request with an invalid negative offset")
+
+	errFetchNoProgress = errors.New("fetch response contained record batches but none contained or exceeded the requested offset")
+
+	// Injected as a fake errored fetch when an OffsetFetch response
+	// repeatedly omits a partition we requested; the group coordinator
+	// answers every requested partition, so an omission is a broker bug
+	// that would otherwise leave the partition silently unconsumed for
+	// the rest of the group session.
+	errOffsetFetchOmitted = errors.New("broker repeatedly omitted a requested partition from an OffsetFetch response")
 
 	// Returned by the 848 heartbeat closure when it detects an assignment
 	// change. The heartbeat loop treats this like RebalanceInProgress but
