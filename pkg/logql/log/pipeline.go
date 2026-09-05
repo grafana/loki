@@ -73,6 +73,7 @@ func (n *noopPipeline) ForStream(labels labels.Labels) StreamPipeline {
 
 func (n *noopPipeline) Reset() {
 	clear(n.cache)
+	n.baseBuilder.ResetCache()
 }
 
 // IsNoopPipeline tells if a pipeline is a Noop.
@@ -189,7 +190,7 @@ func (p *pipeline) ForStream(labels labels.Labels) StreamPipeline {
 }
 
 func (p *pipeline) Reset() {
-	p.baseBuilder.Reset()
+	p.baseBuilder.ResetCache()
 	clear(p.streamPipelines)
 }
 
