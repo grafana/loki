@@ -50,6 +50,21 @@ func TestLabelsBuilder_Get(t *testing.T) {
 	require.False(t, ok)
 }
 
+func TestBaseLabelsBuilder_ResetClearsResultCache(t *testing.T) {
+	lbs := labels.FromStrings("app", "x")
+	base := NewBaseLabelsBuilder()
+	b := base.ForLabels(lbs, labels.StableHash(lbs))
+	require.NotEmpty(t, base.resultCache)
+
+	b.Reset()
+	b.Add(StructuredMetadataLabel, labels.FromStrings("trace_id", "aaa"))
+	_ = b.LabelsResult()
+	require.NotEmpty(t, base.resultCache)
+
+	b.Reset()
+	require.Empty(t, base.resultCache)
+}
+
 func TestLabelsBuilder_LabelsError(t *testing.T) {
 	lbs := labels.FromStrings("already", "in")
 	b := NewBaseLabelsBuilder().ForLabels(lbs, labels.StableHash(lbs))
