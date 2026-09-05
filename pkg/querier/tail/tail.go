@@ -11,6 +11,8 @@ import (
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/pkg/errors"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 
 	"github.com/grafana/loki/v3/pkg/iter"
 	loghttp "github.com/grafana/loki/v3/pkg/loghttp/legacy"
@@ -208,6 +210,18 @@ func (t *Tailer) dropTailClient(addr string) {
 	delete(t.querierTailClients, addr)
 }
 
+// stopAndSignal marks the tailer as stopped and pushes a fatal error to the
+// closeErrChan, so the tail handler can relay it to the client and tear the
+// connection down. The send must not block: the handler may already be gone
+// (e.g. the client disconnected), in which case the error is simply dropped.
+func (t *Tailer) stopAndSignal(err error) {
+	t.stopped.Store(true)
+	select {
+	case t.closeErrChan <- err:
+	default:
+	}
+}
+
 // keeps reading streams from grpc connection with ingesters
 func (t *Tailer) readTailClient(addr string, querierTailClient logproto.Querier_TailClient) {
 	var resp *logproto.TailResponse
@@ -228,6 +242,18 @@ func (t *Tailer) readTailClient(addr string, querierTailClient logproto.Querier_
 			// We don't want to log error when its due to stopping the tail request
 			if !stopped {
 				level.Error(logger).Log("msg", "Error receiving response from grpc tail client", "err", err)
+				// The ingester rejects an invalid query (for example a pipeline
+				// stage it couldn't compile) with a client error, but that error
+				// crosses the gRPC boundary wrapped by ClientGrpcStatusAndError,
+				// so it arrives as an httpgrpc status whose code is the HTTP
+				// status (400 for query errors), not codes.InvalidArgument. A 4xx
+				// here means the caller is at fault and reconnecting would hit
+				// the same rejection forever, leaving the client hanging on an
+				// open websocket, so surface the error and stop tailing instead
+				// of retrying.
+				if code := status.Code(err); code == codes.InvalidArgument || int(code)/100 == 4 {
+					t.stopAndSignal(err)
+				}
 			}
 			break
 		}
