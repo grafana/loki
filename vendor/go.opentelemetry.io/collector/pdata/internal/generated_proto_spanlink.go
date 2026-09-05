@@ -20,12 +20,12 @@ import (
 // different trace.
 // See Link definition in OTLP: https://github.com/open-telemetry/opentelemetry-proto/blob/main/opentelemetry/proto/trace/v1/trace.proto
 type SpanLink struct {
+	TraceId                TraceID
+	SpanId                 SpanID
 	TraceState             string
 	Attributes             []KeyValue
 	DroppedAttributesCount uint32
 	Flags                  uint32
-	TraceId                TraceID
-	SpanId                 SpanID
 }
 
 var (
