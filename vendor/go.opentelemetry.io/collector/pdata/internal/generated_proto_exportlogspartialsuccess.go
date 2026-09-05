@@ -17,8 +17,8 @@ import (
 
 // ExportPartialSuccess represents the details of a partially successful export request.
 type ExportLogsPartialSuccess struct {
-	ErrorMessage       string
 	RejectedLogRecords int64
+	ErrorMessage       string
 }
 
 var (

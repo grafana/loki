@@ -22,21 +22,21 @@ import (
 // summary statistics for a population of values, it may optionally contain the
 // distribution of those values across a set of buckets.
 type ExponentialHistogramDataPoint struct {
-	Positive          ExponentialHistogramDataPointBuckets
-	Negative          ExponentialHistogramDataPointBuckets
 	Attributes        []KeyValue
-	Exemplars         []Exemplar
 	StartTimeUnixNano uint64
 	TimeUnixNano      uint64
 	Count             uint64
 	Sum               float64
+	Scale             int32
 	ZeroCount         uint64
+	Positive          ExponentialHistogramDataPointBuckets
+	Negative          ExponentialHistogramDataPointBuckets
+	Flags             uint32
+	Exemplars         []Exemplar
 	Min               float64
 	Max               float64
 	ZeroThreshold     float64
 	metadata          [1]uint64
-	Scale             int32
-	Flags             uint32
 }
 
 var (

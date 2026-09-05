@@ -19,8 +19,8 @@ import (
 // style of encoding attributes which is more convenient
 // for profiles than opentelemetry.proto.common.v1.KeyValue.
 type KeyValueAndUnit struct {
-	Value        AnyValue
 	KeyStrindex  int32
+	Value        AnyValue
 	UnitStrindex int32
 }
 
