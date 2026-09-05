@@ -14,6 +14,7 @@ import (
 	"github.com/twmb/franz-go/pkg/kgo"
 	"github.com/twmb/franz-go/pkg/kmsg"
 	"github.com/twmb/franz-go/pkg/sasl/plain"
+	"github.com/twmb/franz-go/pkg/sasl/scram"
 	"github.com/twmb/franz-go/plugin/kotel"
 	"github.com/twmb/franz-go/plugin/kprom"
 	"go.opentelemetry.io/otel/propagation"
@@ -195,12 +196,25 @@ func commonKafkaClientOptions(cfg kafka.Config, metrics *kprom.Metrics, logger l
 
 	// SASL plain auth.
 	if cfg.SASLUsername != "" && cfg.SASLPassword.String() != "" {
-		opts = append(opts, kgo.SASL(plain.Plain(func(_ context.Context) (plain.Auth, error) {
-			return plain.Auth{
+		switch cfg.SASLMechanism {
+		case kafka.SASLMechanismScramSHA256:
+			opts = append(opts, kgo.SASL(scram.Auth{
 				User: cfg.SASLUsername,
 				Pass: cfg.SASLPassword.String(),
-			}, nil
-		})))
+			}.AsSha256Mechanism()))
+		case kafka.SASLMechanismScramSHA512:
+			opts = append(opts, kgo.SASL(scram.Auth{
+				User: cfg.SASLUsername,
+				Pass: cfg.SASLPassword.String(),
+			}.AsSha512Mechanism()))
+		default: // kafka.SASLMechanismPlain or empty (backward-compatible default)
+			opts = append(opts, kgo.SASL(plain.Plain(func(_ context.Context) (plain.Auth, error) {
+				return plain.Auth{
+					User: cfg.SASLUsername,
+					Pass: cfg.SASLPassword.String(),
+				}, nil
+			})))
+		}
 	}
 
 	if cfg.AutoCreateTopicEnabled {
