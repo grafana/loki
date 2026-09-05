@@ -840,6 +840,72 @@ func TestReduceStages_FoldsHintsAcrossStages(t *testing.T) {
 	require.False(t, ReduceStages([]Stage{lineFilter, lineFilter}).Hints().CanModifyLabels)
 }
 
+func BenchmarkLineSampleExtractor_Process(b *testing.B) {
+	var (
+		streamLabels       = labels.FromStrings("cluster", "us-central1", "namespace", "dev", "pod", "app-7d9f8c-abcde")
+		structuredMetadata = labels.FromStrings("trace_id", "4bf92f3577b34da6a3ce929d0e0e4736")
+		line               = []byte(`level=info msg="request handled" status=200`)
+	)
+
+	benchmarks := []struct {
+		name  string
+		build func(b *testing.B) SampleExtractor
+	}{
+		{
+			name: "no labels and no structured metadata processing",
+			build: func(b *testing.B) SampleExtractor {
+				se, err := NewLineSampleExtractor(CountExtractor, nil, nil, false, true)
+				require.NoError(b, err)
+				return se
+			},
+		},
+		{
+			name: "group by labels but no stage processing",
+			build: func(b *testing.B) SampleExtractor {
+				se, err := NewLineSampleExtractor(CountExtractor, nil, []string{"namespace"}, false, false)
+				require.NoError(b, err)
+				return se
+			},
+		},
+		{
+			name: "group by labels with line filtering",
+			build: func(b *testing.B) SampleExtractor {
+				se, err := NewLineSampleExtractor(CountExtractor,
+					[]Stage{mustFilter(NewFilter("info", LineMatchEqual)).ToStage()},
+					[]string{"namespace"}, false, false)
+				require.NoError(b, err)
+				return se
+			},
+		},
+		{
+			name: "no grouping and no processing",
+			build: func(b *testing.B) SampleExtractor {
+				se, err := NewLineSampleExtractor(CountExtractor, nil, nil, false, false)
+				require.NoError(b, err)
+				return se
+			},
+		},
+		{
+			name: "group by structured metadata",
+			build: func(b *testing.B) SampleExtractor {
+				se, err := NewLineSampleExtractor(CountExtractor, nil, []string{"trace_id"}, false, false)
+				require.NoError(b, err)
+				return se
+			},
+		},
+	}
+
+	for _, bm := range benchmarks {
+		b.Run(bm.name, func(b *testing.B) {
+			sse := bm.build(b).ForStream(streamLabels)
+			b.ReportAllocs()
+			for i := 0; i < b.N; i++ {
+				_, _ = sse.Process(int64(i), line, structuredMetadata)
+			}
+		})
+	}
+}
+
 func TestBinaryLabelFilter_Hints(t *testing.T) {
 	safe := NewStringLabelFilter(labels.MustNewMatcher(labels.MatchEqual, "a", "1")) // reads only
 	unsafeFilter := NewBytesLabelFilter(LabelFilterGreaterThan, "size", 5)           // sets __error__ on parse failure
