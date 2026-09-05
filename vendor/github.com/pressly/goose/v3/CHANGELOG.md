@@ -7,6 +7,36 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [v3.28.0] - 2026-09-02
+
+### Added
+
+- CLI: `azuresql` driver for Azure SQL with Microsoft Entra ID (Azure AD) authentication via
+  `fedauth` connection string parameters, e.g.
+  `goose azuresql "sqlserver://host?database=mydb&fedauth=ActiveDirectoryDefault" status`.
+  Excluded when building with the `no_mssql` or `no_azuresql` tags (#1109)
+- MySQL/MariaDB table-based `Locker` via `lock.NewMySQLTableLocker`, the MySQL counterpart to the
+  Postgres table locker from #993, accepting the same `TableLockerOption` set (#1075)
+
+### Changed
+
+- **Minimum Go version is now 1.26**
+- ClickHouse: new `goose_db_version` tables are created with `ORDER BY (version_id)` instead of
+  `ORDER BY (date)`. Existing tables are unchanged (#1085)
+- MySQL/TiDB: the `tstamp` column is now `DATETIME` instead of `TIMESTAMP`, which is capped at
+  2038-01-19 (#1053). Only newly created tables are affected; existing tables can be updated with:
+
+  ```sql
+  ALTER TABLE goose_db_version MODIFY tstamp datetime NULL DEFAULT CURRENT_TIMESTAMP;
+  ```
+
+- Various dependency upgrades
+
+### Fixed
+
+- `goose create` returns a clear "file exists" error, including the path, instead of `%!w(<nil>)`
+  when the migration file already exists (#1104)
+
 ## [v3.27.3] - 2026-07-22
 
 ### Changed
@@ -325,7 +355,8 @@ Here's a quick summary:
 - Add new `context.Context`-aware functions and methods, for both sql and go migrations.
 - Return error when no migration files found or dir is not a directory.
 
-[Unreleased]: https://github.com/pressly/goose/compare/v3.27.3...HEAD
+[Unreleased]: https://github.com/pressly/goose/compare/v3.28.0...HEAD
+[v3.28.0]: https://github.com/pressly/goose/compare/v3.27.3...v3.28.0
 [v3.27.3]: https://github.com/pressly/goose/compare/v3.27.2...v3.27.3
 [v3.27.2]: https://github.com/pressly/goose/compare/v3.27.1...v3.27.2
 [v3.27.1]: https://github.com/pressly/goose/compare/v3.27.0...v3.27.1

@@ -1394,8 +1394,8 @@ github.com/pmezard/go-difflib/difflib
 # github.com/power-devops/perfstat v0.0.0-20260805114148-88456608a4f6
 ## explicit; go 1.14
 github.com/power-devops/perfstat
-# github.com/pressly/goose/v3 v3.27.3
-## explicit; go 1.25.7
+# github.com/pressly/goose/v3 v3.28.0
+## explicit; go 1.26.0
 github.com/pressly/goose/v3
 github.com/pressly/goose/v3/database
 github.com/pressly/goose/v3/database/dialect
