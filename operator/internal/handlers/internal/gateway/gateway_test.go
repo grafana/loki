@@ -400,7 +400,7 @@ func TestBuildOptions_PassthroughMode_MissingCA_SetDegraded(t *testing.T) {
 	}
 
 	degradedErr := &status.DegradedError{
-		Message: "Invalid passthrough configuration: missing CA configuration",
+		Message: "Invalid configuration, field spec.tenants.passthrough.ca must be configured",
 		Reason:  lokiv1.ReasonInvalidPassthroughConfiguration,
 		Requeue: false,
 	}
