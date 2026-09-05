@@ -9,12 +9,15 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/alicebob/miniredis/v2/server"
 )
 
 // commandsSortedSet handles all sorted set operations.
 func commandsSortedSet(m *Miniredis) {
+	m.srv.Register("BZPOPMAX", m.cmdBzpopmax)
+	m.srv.Register("BZPOPMIN", m.cmdBzpopmin)
 	m.srv.Register("ZADD", m.cmdZadd)
 	m.srv.Register("ZCARD", m.cmdZcard, server.ReadOnlyOption())
 	m.srv.Register("ZCOUNT", m.cmdZcount, server.ReadOnlyOption())
@@ -1516,6 +1519,73 @@ func (m *Miniredis) cmdZpopmax(reverse bool) server.Cmd {
 			}
 		})
 	}
+}
+
+// BZPOPMAX
+func (m *Miniredis) cmdBzpopmax(c *server.Peer, cmd string, args []string) {
+	m.cmdBzpop(c, cmd, args, true)
+}
+
+// BZPOPMIN
+func (m *Miniredis) cmdBzpopmin(c *server.Peer, cmd string, args []string) {
+	m.cmdBzpop(c, cmd, args, false)
+}
+
+func (m *Miniredis) cmdBzpop(c *server.Peer, cmd string, args []string, reverse bool) {
+	if !m.isValidCMD(c, cmd, args, atLeast(2)) {
+		return
+	}
+
+	var opts struct {
+		keys    []string
+		timeout time.Duration
+	}
+
+	if ok := optDuration(c, args[len(args)-1], &opts.timeout); !ok {
+		return
+	}
+	opts.keys = args[:len(args)-1]
+
+	blocking(
+		m,
+		c,
+		opts.timeout,
+		func(c *server.Peer, ctx *connCtx) bool {
+			db := m.db(ctx.selectedDB)
+			for _, key := range opts.keys {
+				if !db.exists(key) {
+					continue
+				}
+				if db.t(key) != keyTypeSortedSet {
+					c.WriteError(msgWrongType)
+					return true
+				}
+
+				members := db.ssetMembers(key)
+				if len(members) == 0 {
+					continue
+				}
+				// members are ordered by score, ascending. ZPOPMIN takes the
+				// first, ZPOPMAX the last.
+				member := members[0]
+				if reverse {
+					member = members[len(members)-1]
+				}
+				score := db.ssetScore(key, member)
+				db.ssetRem(key, member)
+				c.WriteLen(3)
+				c.WriteBulk(key)
+				c.WriteBulk(member)
+				c.WriteFloat(score)
+				return true
+			}
+			return false
+		},
+		func(c *server.Peer) {
+			// timeout
+			c.WriteLen(-1)
+		},
+	)
 }
 
 // ZRANDMEMBER
