@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/grafana/dskit/ring"
+	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/atomic"
@@ -130,8 +131,10 @@ func TestStreamCountLimiter_AssertNewStreamAllowed(t *testing.T) {
 			require.NoError(t, err)
 
 			ownedStreamSvc := &ownedStreamService{
-				fixedLimit:       atomic.NewInt32(testData.fixedLimit),
-				ownedStreamCount: atomic.NewInt64(int64(testData.ownedStreamCount)),
+				fixedLimit: atomic.NewInt32(testData.fixedLimit),
+				streamCounts: map[string]*atomic.Int64{
+					defaultStreamCountBucket: atomic.NewInt64(int64(testData.ownedStreamCount)),
+				},
 			}
 			strategy := &fixedStrategy{localLimit: testData.calculatedLocalLimit}
 			limiter := NewLimiter(limits, NilMetrics, strategy, &TenantBasedStrategy{limits: limits})
@@ -159,8 +162,8 @@ func TestStreamCountLimiter_DelegateStreamLimits(t *testing.T) {
 		return 200 // well above the limit
 	}
 	ownedStreamSvc := &ownedStreamService{
-		fixedLimit:       atomic.NewInt32(0),
-		ownedStreamCount: atomic.NewInt64(0),
+		fixedLimit:   atomic.NewInt32(0),
+		streamCounts: map[string]*atomic.Int64{},
 	}
 
 	scl := newStreamCountLimiter("test", defaultCountSupplier, limiter, ownedStreamSvc, true)
@@ -560,3 +563,72 @@ func (m *mockRingStrategy) convertGlobalToLocalLimit(globalLimit int, _ string) 
 }
 
 func ptr[T any](v T) *T { return &v }
+
+func TestLimiter_StreamCountBucket(t *testing.T) {
+	newLimiterWith := func(t *testing.T, useOwnedStreamCount bool) *Limiter {
+		limits, err := validation.NewOverrides(validation.Limits{
+			MaxGlobalStreamsPerUser: 1000,
+			UseOwnedStreamCount:     useOwnedStreamCount,
+			PolicyOverrideLimits: map[string]validation.PolicyOverridableLimits{
+				"local-only":  {MaxLocalStreamsPerUser: ptr(10)},
+				"global-only": {MaxGlobalStreamsPerUser: ptr(20)},
+				"both":        {MaxLocalStreamsPerUser: ptr(10), MaxGlobalStreamsPerUser: ptr(20)},
+				"rate-only":   {IngestionRateMB: ptr(10.0)},
+			},
+		}, nil)
+		require.NoError(t, err)
+		return NewLimiter(limits, NilMetrics, &fixedStrategy{localLimit: 100}, &TenantBasedStrategy{limits: limits})
+	}
+
+	limiter := newLimiterWith(t, true)
+	// A stream-count override (local or global) gives the policy its own bucket.
+	require.Equal(t, "local-only", limiter.streamCountBucket("test", "local-only"))
+	require.Equal(t, "global-only", limiter.streamCountBucket("test", "global-only"))
+	require.Equal(t, "both", limiter.streamCountBucket("test", "both"))
+	// Overriding other limits does not create a stream-count bucket.
+	require.Equal(t, defaultStreamCountBucket, limiter.streamCountBucket("test", "rate-only"))
+	// Policies without overrides and streams without a policy use the default bucket.
+	require.Equal(t, defaultStreamCountBucket, limiter.streamCountBucket("test", "unknown"))
+	require.Equal(t, defaultStreamCountBucket, limiter.streamCountBucket("test", noPolicy))
+
+	// Without owned-stream counting there is no per-policy count to check against, so
+	// stream-count overrides are ignored and everything lands in the default bucket.
+	limiter = newLimiterWith(t, false)
+	require.Equal(t, defaultStreamCountBucket, limiter.streamCountBucket("test", "both"))
+}
+
+func TestStreamCountLimiter_PolicyBucketIsolation(t *testing.T) {
+	limits, err := validation.NewOverrides(validation.Limits{
+		MaxGlobalStreamsPerUser: 5,
+		UseOwnedStreamCount:     true,
+		PolicyOverrideLimits: map[string]validation.PolicyOverridableLimits{
+			"replay": {MaxGlobalStreamsPerUser: ptr(3)},
+		},
+	}, nil)
+	require.NoError(t, err)
+
+	// Single healthy instance and RF 1: adjusted global limits == configured global limits.
+	limiter := NewLimiter(limits, NilMetrics, &mockRingStrategy{healthyInstances: 1, replicationFactor: 1}, &TenantBasedStrategy{limits: limits})
+	svc := newOwnedStreamService("test", limiter)
+	scl := newStreamCountLimiter("test", func() int { return 0 }, limiter, svc, false)
+
+	// Fill the default bucket: the tenant-wide limit is hit, the replay bucket is untouched.
+	for n := range 5 {
+		require.NoError(t, scl.AssertNewStreamAllowed("test", defaultStreamCountBucket))
+		svc.trackStreamOwnership(model.Fingerprint(n), true, defaultStreamCountBucket)
+	}
+	require.Error(t, scl.AssertNewStreamAllowed("test", defaultStreamCountBucket))
+	require.NoError(t, scl.AssertNewStreamAllowed("test", "replay"), "a full default bucket must not affect the replay bucket")
+
+	// Fill the replay bucket to its own limit.
+	for n := range 3 {
+		require.NoError(t, scl.AssertNewStreamAllowed("test", "replay"))
+		svc.trackStreamOwnership(model.Fingerprint(100+n), true, "replay")
+	}
+	require.Error(t, scl.AssertNewStreamAllowed("test", "replay"))
+
+	// Removing a default-bucket stream frees default capacity even though replay is full.
+	svc.trackRemovedStream(model.Fingerprint(0), defaultStreamCountBucket)
+	require.NoError(t, scl.AssertNewStreamAllowed("test", defaultStreamCountBucket))
+	require.Error(t, scl.AssertNewStreamAllowed("test", "replay"))
+}

@@ -88,6 +88,11 @@ type stream struct {
 
 	retentionHours string
 	policy         string
+
+	// streamCountBucket is the name of the bucket used to track stream counts.
+	// If the policy overrides stream limits, then streamCountBucket is the policy name.
+	// Otherwise, streamCountBucket is defaultStreamCountBucket.
+	streamCountBucket string
 }
 
 type chunkDesc struct {
