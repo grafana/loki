@@ -186,10 +186,12 @@ type logSource struct {
 }
 
 // collectLogSources opens every unique source object referenced by node.Runs and
-// returns the tenant's logs sections plus its localStreamID->stream map. Objects are deduplicated by path
+// returns only the logs sections the task was assigned (by SectionIndex) plus the
+// tenant's localStreamID->stream map. Objects are deduplicated by path.
 func (c *Context) collectLogSources(ctx context.Context, node *physical.LogMerge) ([]*logSource, error) {
-	// Deduplicate object paths across all runs
-	seen := make(map[string]struct{})
+	// Per object, the set of logs SectionIndex values this task must merge. The
+	// paths slice preserves first-seen order for deterministic output.
+	wanted := make(map[string]map[int64]struct{})
 	var paths []string
 	for _, run := range node.Runs {
 		if run == nil {
@@ -199,41 +201,47 @@ func (c *Context) collectLogSources(ctx context.Context, node *physical.LogMerge
 			if sec == nil {
 				continue
 			}
-			if _, ok := seen[sec.ObjectPath]; ok {
-				continue
+			set, ok := wanted[sec.ObjectPath]
+			if !ok {
+				set = make(map[int64]struct{})
+				wanted[sec.ObjectPath] = set
+				paths = append(paths, sec.ObjectPath)
 			}
-			seen[sec.ObjectPath] = struct{}{}
-			paths = append(paths, sec.ObjectPath)
+			set[sec.SectionIndex] = struct{}{}
 		}
 	}
 	srcBucket := c.dataObjectBucket()
 
-	// Gather log and streams sections
+	// Gather the assigned log sections and the tenant's streams section.
 	sources := make([]*logSource, 0, len(paths))
 	for _, path := range paths {
+		want := wanted[path]
 		obj, err := dataobj.FromBucket(ctx, srcBucket, path, 0)
 		if err != nil {
 			return nil, fmt.Errorf("opening object %q: %w", path, err)
 		}
 
-		var (
-			logsSections   []*dataobj.Section
-			streamSections []*dataobj.Section
-		)
-		for _, sec := range obj.Sections() {
+		logsSections := make([]*dataobj.Section, 0, len(want))
+		for i, sec := range obj.Sections().Filter(logs.CheckSection) {
+			if _, ok := want[int64(i)]; !ok {
+				continue
+			}
+			if sec.Tenant != node.Tenant {
+				return nil, fmt.Errorf("object %q logs section %d belongs to tenant %q, expected %q", path, i, sec.Tenant, node.Tenant)
+			}
+			logsSections = append(logsSections, sec)
+		}
+
+		if len(logsSections) != len(want) {
+			return nil, fmt.Errorf("object %q: found %d of %d requested logs sections for tenant %q (stale plan or index/object mismatch)", path, len(logsSections), len(want), node.Tenant)
+		}
+
+		var streamSections []*dataobj.Section
+		for _, sec := range obj.Sections().Filter(streams.CheckSection) {
 			if sec.Tenant != node.Tenant {
 				continue
 			}
-			switch {
-			case logs.CheckSection(sec):
-				logsSections = append(logsSections, sec)
-			case streams.CheckSection(sec):
-				streamSections = append(streamSections, sec)
-			}
-		}
-
-		if len(logsSections) == 0 {
-			continue
+			streamSections = append(streamSections, sec)
 		}
 
 		if len(streamSections) == 0 {
