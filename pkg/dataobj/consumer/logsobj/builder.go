@@ -2,7 +2,6 @@
 package logsobj
 
 import (
-	"cmp"
 	"context"
 	"errors"
 	"flag"
@@ -534,7 +533,7 @@ func (b *Builder) CopyAndSort(ctx context.Context, obj *dataobj.Object) (*dataob
 			return nil, nil, err
 		}
 
-		iter, iterErr := sortedSchemaIter(ctx, sections, streamRemap.shards, streamRemap.sortKeys, streamRemap.hashes, streamRemap.ids)
+		logsIter, iterErr := sortedLogsIter(ctx, sections, streamRemap)
 		if iterErr != nil {
 			return nil, nil, fmt.Errorf("creating sort iterator: %w", iterErr)
 		}
@@ -552,7 +551,7 @@ func (b *Builder) CopyAndSort(ctx context.Context, obj *dataobj.Object) (*dataob
 		})
 		lb.SetTenant(tenant)
 
-		if err := b.drainLogsIter(ctx, iter, lb, tenant); err != nil {
+		if err := b.drainLogsIter(ctx, logsIter, lb, tenant); err != nil {
 			return nil, nil, err
 		}
 	}
@@ -660,16 +659,9 @@ func (b *Builder) buildStreamSection(ctx context.Context, tenant string, iter re
 	return b.builder.Append(sb)
 }
 
-type streamIDRemap struct {
-	shards   []uint32
-	sortKeys []string
-	hashes   []uint64
-	ids      []int64
-}
-
-type streamWithSortKey struct {
-	stream   streams.Stream
-	orderKey StreamOrderKey
+type streamWithRemap struct {
+	stream streams.Stream
+	remap  streamRemap
 }
 
 // sortAndRemapStreams orders the streams by the globally stable stream order
@@ -685,37 +677,30 @@ type streamWithSortKey struct {
 // compression and pruning at query time.
 //
 // Log records must also be remapped to keep their stream references valid.
-func sortAndRemapStreams(iter result.Seq[streams.Stream], tenant string, schemaLabels []string, numStreams int) (result.Seq[streams.Stream], streamIDRemap, error) {
-	var (
-		collected = make([]streamWithSortKey, 0, numStreams)
-		remap     = streamIDRemap{
-			shards:   make([]uint32, numStreams+1),
-			sortKeys: make([]string, numStreams+1),
-			hashes:   make([]uint64, numStreams+1),
-			ids:      make([]int64, numStreams+1),
-		}
-	)
+func sortAndRemapStreams(iter result.Seq[streams.Stream], tenant string, schemaLabels []string, numStreams int) (result.Seq[streams.Stream], []streamRemap, error) {
+	collected := make([]streamWithRemap, 0, numStreams)
+	remap := make([]streamRemap, numStreams+1)
 
 	for res := range iter {
 		stream, err := res.Value()
 		if err != nil {
-			return nil, streamIDRemap{}, err
+			return nil, nil, err
 		}
-		k, err := NewStreamOrderKey(stream.Labels, schemaLabels)
+		r, err := newStreamRemap(stream.Labels, schemaLabels)
 		if err != nil {
-			return nil, streamIDRemap{}, err
+			return nil, nil, err
 		}
-		collected = append(collected, streamWithSortKey{
-			stream:   stream,
-			orderKey: k,
+		collected = append(collected, streamWithRemap{
+			stream: stream,
+			remap:  r,
 		})
 	}
 
-	slices.SortFunc(collected, func(a, b streamWithSortKey) int {
-		if res := CompareStreamOrderKey(a.orderKey, b.orderKey); res != 0 {
+	slices.SortFunc(collected, func(a, b streamWithRemap) int {
+		if res := a.remap.StreamSort.Compare(b.remap.StreamSort); res != 0 {
 			return res
 		}
-		return cmp.Compare(a.stream.ID, b.stream.ID)
+		return labels.Compare(a.stream.Labels, b.stream.Labels)
 	})
 
 	for i := range collected {
@@ -723,16 +708,14 @@ func sortAndRemapStreams(iter result.Seq[streams.Stream], tenant string, schemaL
 		newID := int64(i + 1)
 
 		if oldID <= 0 || oldID > int64(numStreams) {
-			return nil, streamIDRemap{}, fmt.Errorf("stream id %d out of range for tenant %s with %d streams", oldID, tenant, numStreams)
+			return nil, nil, fmt.Errorf("stream id %d out of range for tenant %s with %d streams", oldID, tenant, numStreams)
 		}
-		if prevNewID := remap.ids[oldID]; prevNewID != 0 {
-			return nil, streamIDRemap{}, fmt.Errorf("duplicate stream id for tenant %s: old id %d maps to both %d and %d", tenant, oldID, prevNewID, newID)
+		if prev := remap[oldID]; prev.newID != 0 {
+			return nil, nil, fmt.Errorf("duplicate stream id for tenant %s: old id %d maps to both %d and %d", tenant, oldID, prev.newID, newID)
 		}
 
-		remap.shards[oldID] = collected[i].orderKey.Shard
-		remap.sortKeys[oldID] = collected[i].orderKey.SchemaKey
-		remap.hashes[oldID] = collected[i].orderKey.Hash
-		remap.ids[oldID] = newID
+		collected[i].remap.newID = newID
+		remap[oldID] = collected[i].remap
 
 		// Remap to the new stream ID.
 		collected[i].stream.ID = newID

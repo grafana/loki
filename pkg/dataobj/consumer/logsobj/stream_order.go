@@ -1,11 +1,9 @@
 package logsobj
 
 import (
-	"cmp"
-
 	"github.com/prometheus/prometheus/model/labels"
 
-	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
+	"github.com/grafana/loki/v3/pkg/dataobj/sections/logs"
 )
 
 // StreamOrderKey is the globally stable ordering key for one stream.
@@ -22,30 +20,22 @@ type StreamOrderKey struct {
 
 // NewStreamOrderKey computes the globally stable ordering key for a stream.
 func NewStreamOrderKey(streamLabels labels.Labels, schemaLabels []string) (StreamOrderKey, error) {
-	schemaKey, err := ComputeSortKey(streamLabels, schemaLabels)
+	r, err := newStreamRemap(streamLabels, schemaLabels)
 	if err != nil {
 		return StreamOrderKey{}, err
 	}
-	hash := labels.StableHash(streamLabels)
-	return StreamOrderKey{
-		Shard:     streams.ShardBucketFromHash(hash),
-		SchemaKey: schemaKey,
-		Hash:      hash,
-		Labels:    streamLabels,
-	}, nil
+	return r.orderKey(streamLabels), nil
 }
 
 // CompareStreamOrderKey compares stream keys by shard bucket, schema key,
 // stable hash, and full labels.
 func CompareStreamOrderKey(a, b StreamOrderKey) int {
-	if n := cmp.Compare(a.Shard, b.Shard); n != 0 {
-		return n
-	}
-	if n := cmp.Compare(a.SchemaKey, b.SchemaKey); n != 0 {
-		return n
-	}
-	if n := cmp.Compare(a.Hash, b.Hash); n != 0 {
+	if n := a.sortingOrder().Compare(b.sortingOrder()); n != 0 {
 		return n
 	}
 	return labels.Compare(a.Labels, b.Labels)
+}
+
+func (k StreamOrderKey) sortingOrder() logs.StreamSort {
+	return logs.StreamSort{Shard: k.Shard, Key: k.SchemaKey, Hash: k.Hash}
 }

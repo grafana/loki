@@ -30,9 +30,9 @@ func Iterator(ctx context.Context, sections []*dataobj.Section, sort logs.SortOr
 // from multiple schema-sorted logs sections. The input sections must be sorted
 // by [shard ASC, schema sort key ASC, hash ASC, streamID ASC, timestamp DESC].
 //
-// shards, sortKeys, and hashes map StreamID to the corresponding sort component.
-func IteratorForSchema(ctx context.Context, sections []*dataobj.Section, shards []uint32, sortKeys []string, hashes []uint64) (result.Seq[logs.Record], error) {
-	return iterator(ctx, sections, iteratorOptions{less: logs.CompareForSortSchema(shards, sortKeys, hashes)})
+// order maps StreamID to the corresponding sort tuple ([0] unused).
+func IteratorForSchema(ctx context.Context, sections []*dataobj.Section, order []logs.StreamSort) (result.Seq[logs.Record], error) {
+	return iterator(ctx, sections, iteratorOptions{less: logs.CompareForSortSchema(order)})
 }
 
 // IteratorWithStreamRemap performs a k-way merge over logs sections drawn from
