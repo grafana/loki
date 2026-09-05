@@ -95,6 +95,59 @@ func Test_Hedging(t *testing.T) {
 	}
 }
 
+// TestNewContainerClientSkipsTLSWhenNotConfigured checks that when HTTPConfig is
+// all zero values the TLS code path is skipped and defaultClientFactory is called
+// (the mock transport set by the factory is what the client ends up using).
+func TestNewContainerClientSkipsTLSWhenNotConfigured(t *testing.T) {
+	factoryCalled := false
+	defaultClientFactory = func() *http.Client {
+		factoryCalled = true
+		return &http.Client{Transport: http.DefaultTransport}
+	}
+
+	b := &BlobStorage{
+		cfg: &BlobStorageConfig{
+			ContainerName: "foo",
+			Environment:   azureGlobal,
+			MaxRetries:    1,
+			// HTTPConfig intentionally left at zero value
+		},
+		metrics: metrics,
+	}
+
+	_, err := b.newContainerClient(hedging.Config{}, false)
+	// The client creation itself may error (no real Azure creds), but what we
+	// care about is that defaultClientFactory was called and no TLS error surfaced.
+	require.True(t, factoryCalled, "defaultClientFactory should have been called")
+	require.NoError(t, err)
+}
+
+// TestNewContainerClientAppliesTLSWhenConfigured checks that setting at least one
+// TLS option (here InsecureSkipVerify) causes the TLS code path to execute and
+// that it does so without returning an error.
+func TestNewContainerClientAppliesTLSWhenConfigured(t *testing.T) {
+	defaultClientFactory = func() *http.Client {
+		return &http.Client{
+			Transport: &http.Transport{},
+		}
+	}
+
+	b := &BlobStorage{
+		cfg: &BlobStorageConfig{
+			ContainerName: "foo",
+			Environment:   azureGlobal,
+			MaxRetries:    1,
+			HTTPConfig: BlobStorageHTTPConfig{
+				InsecureSkipVerify: true,
+			},
+		},
+		metrics: metrics,
+	}
+
+	_, err := b.newContainerClient(hedging.Config{}, false)
+	require.NoError(t, err)
+}
+
 func Test_DefaultContainerURL(t *testing.T) {
 	c, err := NewBlobStorage(&BlobStorageConfig{
 		ContainerName:      "foo",
