@@ -1,7 +1,6 @@
 package executor
 
 import (
-	"cmp"
 	"context"
 	"errors"
 	"fmt"
@@ -29,6 +28,9 @@ func (c *Context) executeLogMerge(node *physical.LogMerge) Pipeline {
 		arts, err := c.doLogObjectMerge(ctx, node)
 		if err != nil {
 			return errorPipeline(ctx, err)
+		}
+		if len(arts) == 0 {
+			return emptyPipeline()
 		}
 		return NewBufferedPipeline(v2.BuildResultRecord(memory.DefaultAllocator, arts))
 	}, nil)
@@ -59,6 +61,21 @@ func (c *Context) doLogObjectMerge(ctx context.Context, node *physical.LogMerge)
 	if len(sources) == 0 {
 		c.observeLogMerge(node.Tenant, logMergeObservedStats{Outcome: logMergeOutcomeEmpty}, time.Since(start))
 		return nil, fmt.Errorf("LogMerge: no source log sections for tenant %q", node.Tenant)
+	}
+
+	ok, mismatch, err := sourcesMatchSortLayout(ctx, sources, node.SortSchema)
+	if err != nil {
+		return nil, err
+	}
+	if !ok {
+		level.Warn(c.logger).Log(
+			"msg", "LogMerge: skipping task; source object sort layout does not match target",
+			"tenant", node.Tenant,
+			"path", mismatch,
+			"sort_schema", strings.Join(node.SortSchema, ","),
+		)
+		c.observeLogMerge(node.Tenant, logMergeObservedStats{Outcome: logMergeOutcomeEmpty}, time.Since(start))
+		return nil, nil
 	}
 
 	table, err := buildGlobalStreamTable(sources, node.SortSchema)
@@ -258,6 +275,35 @@ func (c *Context) collectLogSources(ctx context.Context, node *physical.LogMerge
 	return sources, nil
 }
 
+// sourcesMatchSortLayout reports whether every logs section in sources has the
+// target layout. mismatch is the first object path that does not match.
+func sourcesMatchSortLayout(ctx context.Context, sources []*logSource, sortSchema []string) (ok bool, mismatch string, err error) {
+	want := logs.SortLayout{
+		SchemaLabels: sortSchema,
+		StreamOrder:  logs.StreamOrderStableHashV1,
+		ShardCount:   streams.ShardFactor,
+	}
+	for _, src := range sources {
+		for _, sec := range src.logsSections {
+			opened, err := logs.Open(ctx, sec)
+			if err != nil {
+				return false, src.path, fmt.Errorf("opening logs section in %q: %w", src.path, err)
+			}
+			got := opened.SortLayout()
+			if !sortLayoutEqual(got, want) {
+				return false, src.path, nil
+			}
+		}
+	}
+	return true, "", nil
+}
+
+func sortLayoutEqual(got, want logs.SortLayout) bool {
+	return slices.Equal(got.SchemaLabels, want.SchemaLabels) &&
+		got.StreamOrder == want.StreamOrder &&
+		got.ShardCount == want.ShardCount
+}
+
 // resolveStreams decodes a streams section into a map from local stream ID to its
 // stream (labels + aggregates). Labels are deep-copied so they remain valid after
 // the underlying reader buffers are reused.
@@ -279,74 +325,18 @@ func resolveStreams(ctx context.Context, section *dataobj.Section) (map[int64]st
 	return out, nil
 }
 
-// globalStreamTable holds the disjoint global stream assignment for a merge.
-// Global IDs are assigned in StreamOrderKey order so a merge by remapped
-// stream ID is [shard, schema, hash, timestamp].
-type globalStreamTable struct {
-	sortKeys       []string          // index = global ID (1..N); [0] unused; object-split lookup
-	streams        []streams.Stream  // index = global ID; source stream with aggregates
-	streamIDRemaps []map[int64]int64 // per source object (by index): sourceStreamID -> globalID
-}
-
-// buildGlobalStreamTable computes the global stream assignment from all sources.
-func buildGlobalStreamTable(sources []*logSource, sortSchema []string) (*globalStreamTable, error) {
-	type entry struct {
-		sourceIdx      int
-		sourceStreamID int64
-		key            logsobj.StreamOrderKey
-		stream         streams.Stream
+// buildGlobalStreamTable ranks unique label sets across sources into one
+// StreamOrderKey ID space. Same labels in two objects share one ID.
+func buildGlobalStreamTable(sources []*logSource, sortSchema []string) (*logsobj.StreamRanks, error) {
+	maps := make([]map[int64]streams.Stream, 0, len(sources))
+	for _, src := range sources {
+		maps = append(maps, src.streams)
 	}
-
-	var allEntries []entry
-	for sourceIdx, src := range sources {
-		for sourceStreamID, s := range src.streams {
-			key, err := logsobj.NewStreamOrderKey(s.Labels, sortSchema)
-			if err != nil {
-				return nil, fmt.Errorf("computing sort key for object %q: %w", src.path, err)
-			}
-			allEntries = append(allEntries, entry{
-				sourceIdx:      sourceIdx,
-				sourceStreamID: sourceStreamID,
-				key:            key,
-				stream:         s,
-			})
-		}
-	}
-
-	// Order by (stream order key, sourceIdx, sourceStreamID) so global IDs are
-	// shard-then-schema-major and each source section stays monotonic under the
-	// merge comparator.
-	slices.SortFunc(allEntries, func(a, b entry) int {
-		if r := logsobj.CompareStreamOrderKey(a.key, b.key); r != 0 {
-			return r
-		}
-		if r := cmp.Compare(a.sourceIdx, b.sourceIdx); r != 0 {
-			return r
-		}
-		return cmp.Compare(a.sourceStreamID, b.sourceStreamID)
-	})
-
-	table := &globalStreamTable{
-		sortKeys:       make([]string, len(allEntries)+1),
-		streams:        make([]streams.Stream, len(allEntries)+1),
-		streamIDRemaps: make([]map[int64]int64, len(sources)),
-	}
-	for i := range table.streamIDRemaps {
-		table.streamIDRemaps[i] = make(map[int64]int64)
-	}
-	for i, e := range allEntries {
-		gid := int64(i + 1)
-		table.sortKeys[gid] = e.key.SchemaKey
-		s := e.stream
-		s.ID = gid
-		table.streams[gid] = s
-		table.streamIDRemaps[e.sourceIdx][e.sourceStreamID] = gid
-	}
-	return table, nil
+	return logsobj.RankStreams(sortSchema, maps...)
 }
 
 // sectionsWithRemaps flattens the sources' logs sections
-func sectionsWithRemaps(sources []*logSource, table *globalStreamTable) ([]*dataobj.Section, []map[int64]int64) {
+func sectionsWithRemaps(sources []*logSource, table *logsobj.StreamRanks) ([]*dataobj.Section, []map[int64]int64) {
 	var (
 		sections []*dataobj.Section
 		remaps   []map[int64]int64
@@ -354,7 +344,7 @@ func sectionsWithRemaps(sources []*logSource, table *globalStreamTable) ([]*data
 	for sourceIdx, src := range sources {
 		for _, sec := range src.logsSections {
 			sections = append(sections, sec)
-			remaps = append(remaps, table.streamIDRemaps[sourceIdx])
+			remaps = append(remaps, table.Remap(sourceIdx))
 		}
 	}
 	return sections, remaps
@@ -366,16 +356,15 @@ func sectionsWithRemaps(sources []*logSource, table *globalStreamTable) ([]*data
 type logObjectWriter struct {
 	c     *Context
 	node  *physical.LogMerge
-	table *globalStreamTable
+	table *logsobj.StreamRanks
 	calc  *dataobjindex.Calculator
 
 	builderMetrics *logsobj.BuilderMetrics
 
-	logsBuilder *logsobj.Builder
-	sortBuilder *logsobj.Builder
-	lastSortKey string
-	lastShard   uint32
-	haveLast    bool
+	logsBuilder   *logsobj.Builder
+	lastSchemaKey string
+	lastShard     uint32
+	haveLast      bool
 
 	stats logMergeStats
 }
@@ -384,7 +373,7 @@ type fixedSortSchema []string
 
 func (s fixedSortSchema) SortSchemaLabels(string) []string { return s }
 
-func (c *Context) newLogObjectWriter(node *physical.LogMerge, table *globalStreamTable, calc *dataobjindex.Calculator) (*logObjectWriter, error) {
+func (c *Context) newLogObjectWriter(node *physical.LogMerge, table *logsobj.StreamRanks, calc *dataobjindex.Calculator) (*logObjectWriter, error) {
 	w := &logObjectWriter{
 		c:              c,
 		node:           node,
@@ -412,12 +401,6 @@ func (w *logObjectWriter) startNewObject() error {
 		return err
 	}
 
-	// Sort builder uses the same sort schema for now
-	w.sortBuilder, err = logsobj.NewBuilder(cfg, w.c.scratchStore, w.builderMetrics, w.c.logger, overrides)
-	if err != nil {
-		return err
-	}
-
 	return nil
 }
 
@@ -425,10 +408,8 @@ func (w *logObjectWriter) startNewObject() error {
 // output object at stream boundaries once the current object reaches its target
 // size, and re-basing stream IDs to 1..M within each object.
 func (w *logObjectWriter) add(ctx context.Context, rec logs.Record) error {
-	stream := w.table.streams[rec.StreamID]
-	sortKey := w.table.sortKeys[rec.StreamID]
-	shard := uint32(stream.ShardBucket)
-	if w.logsBuilder.IsFull() && w.haveLast && (sortKey != w.lastSortKey || shard != w.lastShard) {
+	gs := w.table.ByID(rec.StreamID)
+	if w.logsBuilder.IsFull() && w.haveLast && (gs.SchemaKey != w.lastSchemaKey || gs.Shard != w.lastShard) {
 		if err := w.finalizeAndUpload(ctx); err != nil {
 			return err
 		}
@@ -437,13 +418,13 @@ func (w *logObjectWriter) add(ctx context.Context, rec logs.Record) error {
 			return err
 		}
 	}
-	w.lastSortKey = sortKey
-	w.lastShard = shard
+	w.lastSchemaKey = gs.SchemaKey
+	w.lastShard = gs.Shard
 	w.haveLast = true
 
 	// There's no equivalent for ingestion time during compaction, so use the current time.
 	ingestionTime := time.Now()
-	err := w.logsBuilder.AppendRecord(w.node.Tenant, stream.Labels, rec, ingestionTime)
+	err := w.logsBuilder.AppendRecord(w.node.Tenant, gs.Labels, rec, ingestionTime)
 	if err != nil {
 		return err
 	}
@@ -465,23 +446,9 @@ func (w *logObjectWriter) finish(ctx context.Context) (logMergeStats, error) {
 // finalizeAndUpload appends the pending sections, flushes them into one compacted
 // log object, computes its content-hash path, and uploads it to the data bucket.
 func (w *logObjectWriter) finalizeAndUpload(ctx context.Context) error {
-	intermediate, intermediateCloser, err := w.logsBuilder.Flush()
+	obj, closer, err := w.logsBuilder.Flush()
 	if err != nil {
 		return fmt.Errorf("flushing logs builder: %w", err)
-	}
-
-	// Enforce object-wide arbitrary sorting on top of the schema via an intermediate sort.
-	// This enables resorting into any order after schema: e.g. [schema, stream ID, timestamp ASC]
-	// This is useful when the output ordering is different from the input ordering.
-	//
-	// Differing stream orders can happen if two input objects appended streams in a different order at build time,
-	// assigning them different stream IDs that the loser merge tree cannot dedup.
-	obj, closer, err := w.sortBuilder.CopyAndSort(ctx, intermediate)
-	if err != nil {
-		return errors.Join(fmt.Errorf("sorting compacted object: %w", err), intermediateCloser.Close())
-	}
-	if err := intermediateCloser.Close(); err != nil {
-		return errors.Join(fmt.Errorf("closing unsorted compacted object: %w", err), closer.Close())
 	}
 
 	pathReader, err := obj.Reader(ctx)

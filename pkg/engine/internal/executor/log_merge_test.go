@@ -102,7 +102,15 @@ func buildSourceLogObject(t *testing.T, bucket objstore.Bucket, path string, sor
 	require.NoError(t, err)
 	defer closer.Close()
 
-	require.NoError(t, uploadObjectToBucket(context.Background(), bucket, path, obj))
+	// Ingest CopyAndSorts after Flush so source objects are in StreamOrderKey
+	// order. Compaction only merges pre-sorted objects.
+	sorter, err := logsobj.NewBuilder(cfg, scratch.NewMemory(), logsobj.NewBuilderMetrics(), log.NewNopLogger(), sortSchemaOverrides(sortSchema))
+	require.NoError(t, err)
+	sorted, sortedCloser, err := sorter.CopyAndSort(context.Background(), obj)
+	require.NoError(t, err)
+	defer sortedCloser.Close()
+
+	require.NoError(t, uploadObjectToBucket(context.Background(), bucket, path, sorted))
 }
 
 func TestCollectLogSources_DedupsAndResolvesLabels(t *testing.T) {
@@ -356,6 +364,44 @@ func readCompactedObjectsFromIndex(ctx context.Context, t *testing.T, dataBucket
 	return out
 }
 
+func TestBuildGlobalStreamTable_SameLabelsShareID(t *testing.T) {
+	sortSchema := []string{"label:app"}
+	ls := labels.FromStrings("app", "auth")
+	other := labels.FromStrings("app", "web")
+	sources := []*logSource{
+		{
+			path: "a",
+			streams: map[int64]streams.Stream{
+				2: {ID: 2, Labels: ls, ShardBucket: int64(streams.ShardBucket(ls))},
+				7: {ID: 7, Labels: other, ShardBucket: int64(streams.ShardBucket(other))},
+			},
+		},
+		{
+			path: "b",
+			streams: map[int64]streams.Stream{
+				5: {ID: 5, Labels: ls.Copy(), ShardBucket: int64(streams.ShardBucket(ls))},
+			},
+		},
+	}
+
+	table, err := buildGlobalStreamTable(sources, sortSchema)
+	require.NoError(t, err)
+
+	aID := table.Resolve(0, 2)
+	bID := table.Resolve(1, 5)
+	require.Equal(t, aID, bID, "same labels across objects must share one global ID")
+	require.NotEqual(t, aID, table.Resolve(0, 7))
+
+	count := table.Size()
+	require.Equal(t, count, 2)
+	for id := int64(2); id <= int64(count); id++ {
+		prev := table.ByID(id - 1)
+		curr := table.ByID(id)
+		require.Negative(t, logsobj.CompareStreamOrderKey(prev, curr),
+			"global stream IDs must increase in StreamOrderKey order")
+	}
+}
+
 func TestDoLogObjectMerge_MergesAndSplits(t *testing.T) {
 	ctx := context.Background()
 	dataBucket := objstore.NewInMemBucket()
@@ -456,10 +502,9 @@ func TestDoLogObjectMerge_DeduplicatesConflictingSourceStreamOrder(t *testing.T)
 	early := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
 	late := early.Add(time.Hour)
 
-	// Both streams have the same schema key, but their local stream ID ordering is
-	// different between objects. The loser tree preserves those source-local
-	// orders; the output CopyAndSort pass must restore ordering after logsobj
-	// deduplicates the repeated full-label streams.
+	// Same schema key, different local stream ID order. Unique-label global IDs
+	// make the tree timestamp-merge each full-label stream instead of treating
+	// the two objects as distinct streams.
 	buildSourceLogObject(t, dataBucket, "objA", sortSchema, map[string][]testStream{
 		tenant: {
 			{labels: `{app="a",instance="1"}`, entries: linesAt(early, 1)},
@@ -505,6 +550,81 @@ func TestDoLogObjectMerge_DeduplicatesConflictingSourceStreamOrder(t *testing.T)
 		}
 	}
 	require.Equal(t, map[int64]int{1: 2, 2: 2}, counts)
+}
+
+func TestSortLayoutEqual_DetectsMismatchedComponents(t *testing.T) {
+	want := logs.SortLayout{
+		SchemaLabels: []string{"label:app"},
+		StreamOrder:  logs.StreamOrderStableHashV1,
+		ShardCount:   streams.ShardFactor,
+	}
+
+	tests := []struct {
+		name string
+		got  logs.SortLayout
+	}{
+		{
+			name: "schema labels",
+			got: logs.SortLayout{
+				SchemaLabels: []string{"label:cluster"},
+				StreamOrder:  logs.StreamOrderStableHashV1,
+				ShardCount:   streams.ShardFactor,
+			},
+		},
+		{
+			name: "stream order",
+			got: logs.SortLayout{
+				SchemaLabels: []string{"label:app"},
+				StreamOrder:  logs.StreamOrderUnspecified,
+				ShardCount:   streams.ShardFactor,
+			},
+		},
+		{
+			name: "shard count",
+			got: logs.SortLayout{
+				SchemaLabels: []string{"label:app"},
+				StreamOrder:  logs.StreamOrderStableHashV1,
+				ShardCount:   streams.ShardFactor / 2,
+			},
+		},
+	}
+
+	require.True(t, sortLayoutEqual(want, want), "identical layouts must match")
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			require.False(t, sortLayoutEqual(test.got, want))
+		})
+	}
+}
+
+func TestDoLogObjectMerge_NoopsOnSortLayoutMismatch(t *testing.T) {
+	ctx := context.Background()
+	dataBucket := objstore.NewInMemBucket()
+	indexBucket := objstore.NewInMemBucket()
+
+	const tenant = "T"
+	base := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+
+	buildSourceLogObject(t, dataBucket, "objA", []string{"label:cluster"}, map[string][]testStream{
+		tenant: {{labels: `{app="a",cluster="c"}`, entries: linesAt(base, 2)}},
+	})
+	buildSourceLogObject(t, dataBucket, "objB", []string{"label:app"}, map[string][]testStream{
+		tenant: {{labels: `{app="a"}`, entries: linesAt(base, 2)}},
+	})
+
+	c := newTestExecutorContext(t, indexBucket)
+	c.dataBucket = dataBucket
+	node := &physical.LogMerge{
+		Tenant:     tenant,
+		SortSchema: []string{"label:app"},
+		Runs: []*compactionv2pb.RunRef{
+			{Sections: []*compactionv2pb.SectionRef{{ObjectPath: "objA"}, {ObjectPath: "objB"}}},
+		},
+	}
+
+	arts, err := c.doLogObjectMerge(ctx, node)
+	require.NoError(t, err)
+	require.Empty(t, arts, "mismatched sort layout must no-op the whole task")
 }
 
 func TestDoLogObjectMerge_WritesIndexOverCompactedObjects(t *testing.T) {
