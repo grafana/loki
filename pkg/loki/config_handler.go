@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"reflect"
+	"strings"
 
 	"github.com/grafana/dskit/tenant"
 	"go.yaml.in/yaml/v4"
@@ -12,6 +13,10 @@ import (
 	"github.com/grafana/loki/v3/pkg/util/build"
 	"github.com/grafana/loki/v3/pkg/validation"
 )
+
+// ConfigQueryHandledHeader lists each q path this Loki recognized and processed. Its absence means
+// this Loki predates q support and returned the full config instead of the requested field(s).
+const ConfigQueryHandledHeader = "X-Loki-Config-Query"
 
 func yamlMarshalUnmarshal(in interface{}) (map[string]interface{}, error) {
 	yamlBytes, err := yaml.Marshal(in)
@@ -115,8 +120,56 @@ func configHandler(actualCfg any, defaultCfg any) http.HandlerFunc {
 			output = actualCfg
 		}
 
+		// Return only the requested fields
+		if paths := r.URL.Query()["q"]; len(paths) > 0 {
+			for _, path := range paths {
+				w.Header().Add(ConfigQueryHandledHeader, path)
+			}
+			result, err := extractConfigPaths(output, paths)
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusBadRequest)
+				return
+			}
+			w.Header().Set("Content-Type", "application/json")
+			if err := json.NewEncoder(w).Encode(result); err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+			}
+			return
+		}
+
 		writeYAMLResponse(w, output)
 	}
+}
+
+func extractConfigPaths(cfg any, paths []string) (map[string]any, error) {
+	cfgMap, err := yamlMarshalUnmarshal(cfg)
+	if err != nil {
+		return nil, err
+	}
+	result := make(map[string]any, len(paths))
+	for _, path := range paths {
+		val, ok := lookupConfigPath(cfgMap, path)
+		if !ok {
+			return nil, fmt.Errorf("config field not found: %q", path)
+		}
+		result[path] = val
+	}
+	return result, nil
+}
+
+func lookupConfigPath(m map[string]interface{}, path string) (any, bool) {
+	var cur any = m
+	for _, segment := range strings.Split(path, ".") {
+		asMap, ok := cur.(map[string]interface{})
+		if !ok {
+			return nil, false
+		}
+		cur, ok = asMap[segment]
+		if !ok {
+			return nil, false
+		}
+	}
+	return cur, true
 }
 
 func filterLimitFields(limits any, allowlist []string) (map[string]any, error) {

@@ -122,6 +122,74 @@ func TestConfigDiffHandler(t *testing.T) {
 	}
 }
 
+func TestConfigQueryHandler(t *testing.T) {
+	cfg := newDefaultDiffConfigMock()
+
+	t.Run("single top-level path", func(t *testing.T) {
+		req := httptest.NewRequest("GET", "http://test.com/config?q=my_int", nil)
+		w := httptest.NewRecorder()
+
+		configHandler(cfg, cfg)(w, req)
+		resp := w.Result()
+		require.Equal(t, 200, resp.StatusCode)
+		assert.Equal(t, "application/json", resp.Header.Get("Content-Type"))
+		assert.Equal(t, []string{"my_int"}, resp.Header.Values(ConfigQueryHandledHeader))
+
+		var body map[string]any
+		require.NoError(t, json.NewDecoder(resp.Body).Decode(&body))
+		assert.Equal(t, float64(666), body["my_int"])
+	})
+
+	t.Run("nested path", func(t *testing.T) {
+		req := httptest.NewRequest("GET", "http://test.com/config?q=my_nested_struct.my_string", nil)
+		w := httptest.NewRecorder()
+
+		configHandler(cfg, cfg)(w, req)
+		resp := w.Result()
+		require.Equal(t, 200, resp.StatusCode)
+
+		var body map[string]any
+		require.NoError(t, json.NewDecoder(resp.Body).Decode(&body))
+		assert.Equal(t, "string1", body["my_nested_struct.my_string"])
+	})
+
+	t.Run("multiple paths in one request", func(t *testing.T) {
+		req := httptest.NewRequest("GET", "http://test.com/config?q=my_int&q=my_float", nil)
+		w := httptest.NewRecorder()
+
+		configHandler(cfg, cfg)(w, req)
+		resp := w.Result()
+		require.Equal(t, 200, resp.StatusCode)
+		assert.ElementsMatch(t, []string{"my_int", "my_float"}, resp.Header.Values(ConfigQueryHandledHeader))
+
+		var body map[string]any
+		require.NoError(t, json.NewDecoder(resp.Body).Decode(&body))
+		assert.Equal(t, float64(666), body["my_int"])
+		assert.Equal(t, 6.66, body["my_float"])
+	})
+
+	t.Run("unknown path returns 400", func(t *testing.T) {
+		req := httptest.NewRequest("GET", "http://test.com/config?q=does.not.exist", nil)
+		w := httptest.NewRecorder()
+
+		configHandler(cfg, cfg)(w, req)
+		resp := w.Result()
+		assert.Equal(t, 400, resp.StatusCode)
+		// The header still reflects what was recognized/attempted, even though it didn't resolve.
+		assert.Equal(t, []string{"does.not.exist"}, resp.Header.Values(ConfigQueryHandledHeader))
+	})
+
+	t.Run("no q param leaves the header unset and behaves as before", func(t *testing.T) {
+		req := httptest.NewRequest("GET", "http://test.com/config", nil)
+		w := httptest.NewRecorder()
+
+		configHandler(cfg, cfg)(w, req)
+		resp := w.Result()
+		assert.Equal(t, 200, resp.StatusCode)
+		assert.Empty(t, resp.Header.Values(ConfigQueryHandledHeader))
+	})
+}
+
 func TestLimitsDirectJSONMarshaling(t *testing.T) {
 	// Test that validation.Limits can be directly marshaled to JSON
 	// (it has proper json tags)
