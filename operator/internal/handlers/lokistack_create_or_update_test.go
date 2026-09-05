@@ -321,7 +321,7 @@ func TestCreateOrUpdateLokiStack_SetsOwnerRefOnAllObjects(t *testing.T) {
 		}
 
 		require.True(t, found, "expected to find a matching ownerRef, but did not")
-		require.EqualValues(t, expected, ref)
+		require.Equal(t, expected, ref)
 		return nil
 	}
 

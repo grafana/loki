@@ -198,8 +198,7 @@ func TestServiceMonitorEndpoints_ForBuiltInCertRotation(t *testing.T) {
 			require.NotNil(t, tst.ServiceMonitor.Spec.Endpoints[0].TLSConfig)
 
 			// Do not use bearer authentication for loki endpoints
-			require.Empty(t, tst.ServiceMonitor.Spec.Endpoints[0].BearerTokenFile)   //nolint:staticcheck
-			require.Empty(t, tst.ServiceMonitor.Spec.Endpoints[0].BearerTokenSecret) //nolint:staticcheck
+			require.Nil(t, tst.ServiceMonitor.Spec.Endpoints[0].Authorization)
 
 			// Check using built-in PKI
 			c := tst.ServiceMonitor.Spec.Endpoints[0].TLSConfig
