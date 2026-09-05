@@ -72,6 +72,10 @@ When using IBM Cloud Object Storage (COS) as object storage, IAM `Writer` role i
 
 See the [IBM Cloud Object Storage section](https://grafana.com/docs/loki/<LOKI_VERSION>/configure/storage/#ibm-deployment-cos-single-store) on the storage page for a detailed setup guide.
 
+## Index Format
+
+For the on-disk binary layout of the index files, see [TSDB index format](https://grafana.com/docs/loki/<LOKI_VERSION>/reference/tsdb-index-format/).
+
 ## Chunk Format
 
 ```
