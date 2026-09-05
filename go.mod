@@ -268,7 +268,7 @@ require (
 	github.com/zeebo/assert v1.3.1 // indirect
 	github.com/zeebo/xxh3 v1.1.0 // indirect
 	go.opentelemetry.io/auto/sdk v1.2.1 // indirect
-	go.opentelemetry.io/collector/component v1.65.0 // indirect
+	go.opentelemetry.io/collector/component v1.66.0 // indirect
 	go.opentelemetry.io/collector/confmap v1.65.0 // indirect
 	go.opentelemetry.io/collector/consumer v1.66.0 // indirect
 	go.opentelemetry.io/collector/featuregate v1.66.0 // indirect
