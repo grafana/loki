@@ -238,8 +238,10 @@ func (c *Calculator) processStreamsSection(ctx context.Context, section *dataobj
 					return fmt.Errorf("failed to append to stream: %w", err)
 				}
 				streamIDLookup[stream.ID] = newStreamID
-				streamLabels[stream.ID] = stream.Labels
-				shardBuckets[stream.ID] = streams.ShardBucket(stream.Labels)
+				if _, ok := streamLabels[stream.ID]; !ok {
+					streamLabels[stream.ID] = stream.Labels
+					shardBuckets[stream.ID] = streams.ShardBucket(stream.Labels)
+				}
 				c.uncompressedByTenant[section.Tenant] += uint64(stream.UncompressedSize)
 			}
 			return nil
