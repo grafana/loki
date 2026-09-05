@@ -6910,6 +6910,14 @@ tsdb_shipper:
     # CLI flag: -tsdb.shipper.index-gateway-client.min-shuffle-shard-size
     [min_shuffle_shard_size: <int> | default = 3]
 
+    # Experimental: Maximum number of in-flight requests this client will send
+    # to the index gateway pool at once. Requests beyond this limit are rejected
+    # immediately instead of retrying across every pool member, to avoid
+    # amplifying load when all Index Gateway replicas are shedding. A value of 0
+    # disables the limit.
+    # CLI flag: -tsdb.shipper.index-gateway-client.max-in-flight-requests
+    [max_in_flight_requests: <int> | default = 2048]
+
   # Experimental. Number of idle file handles the stream index reader keeps open
   # per index file. Only applies when -shipper.index-reader-mode=stream. Set to
   # 0 to disable pooling.
