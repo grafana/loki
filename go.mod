@@ -87,7 +87,7 @@ require (
 	golang.org/x/sync v0.22.0
 	golang.org/x/sys v0.47.0 // indirect
 	golang.org/x/time v0.15.0
-	google.golang.org/api v0.296.0
+	google.golang.org/api v0.297.0
 	google.golang.org/grpc v1.83.2
 	k8s.io/klog/v2 v2.140.0 // indirect
 )

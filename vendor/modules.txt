@@ -2140,8 +2140,8 @@ golang.org/x/time/rate
 # golang.org/x/tools v0.49.0
 ## explicit; go 1.25.0
 golang.org/x/tools/txtar
-# google.golang.org/api v0.296.0
-## explicit; go 1.25.0
+# google.golang.org/api v0.297.0
+## explicit; go 1.26.0
 google.golang.org/api/googleapi
 google.golang.org/api/googleapi/transport
 google.golang.org/api/iamcredentials/v1
