@@ -697,7 +697,7 @@ func newRangeAggEvaluator(
 ) (StepEvaluator, error) {
 	switch expr.Operation {
 	case syntax.OpRangeTypeAbsent:
-		iter, err := newRangeVectorIterator(
+		iter, err := newTimestampFirstRangeVectorIterator(
 			it, expr,
 			expr.Left.Interval.Nanoseconds(),
 			q.Step().Nanoseconds(),
@@ -749,7 +749,7 @@ func newRangeAggEvaluator(
 			iter: iter,
 		}, nil
 	default:
-		iter, err := newRangeVectorIterator(
+		iter, err := newTimestampFirstRangeVectorIterator(
 			it, expr,
 			expr.Left.Interval.Nanoseconds(),
 			q.Step().Nanoseconds(),

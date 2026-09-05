@@ -637,7 +637,7 @@ func (s *LokiStore) SelectSamples(ctx context.Context, req logql.SelectSamplePar
 		chunkFilterer = s.chunkFilterer.ForRequest(ctx)
 	}
 
-	return newSampleBatchIterator(
+	return newTimestampFirstSampleBatchIterator(
 		ctx,
 		s.schemaCfg,
 		s.chunkMetrics,
