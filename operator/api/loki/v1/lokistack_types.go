@@ -1427,6 +1427,8 @@ const (
 	ReasonStorageNeedsSchemaUpdate LokiStackConditionReason = "StorageNeedsSchemaUpdate"
 	// ReasonInsufficientIngesterReplicas when the ingester replicas are less than or equal to the replication factor. Which causes log ingestion to stop when ingester pods get restarted.
 	ReasonInsufficientIngesterReplicas LokiStackConditionReason = "InsufficientIngesterReplicas"
+	// ReasonResourceOwnershipConflict when a resource already exists and is owned by a different controller.
+	ReasonResourceOwnershipConflict LokiStackConditionReason = "ResourceOwnershipConflict"
 )
 
 // PodStatus is a short description of the status a Pod can be in.
