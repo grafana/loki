@@ -355,6 +355,8 @@ func (s *Scheduler) handleTaskResult(ctx context.Context, worker *workerConn, ms
 		Task:    task.inner,
 		Result:  result,
 	})
+
+	task.releaseTerminalResources()
 	return nil
 }
 
@@ -463,6 +465,8 @@ func (s *Scheduler) recordDisconnectedTaskResult(ctx context.Context, n *notifie
 		Task:    task.inner,
 		Result:  result,
 	})
+
+	task.releaseTerminalResources()
 }
 
 func (s *Scheduler) runAssignLoop(ctx context.Context) error {
@@ -1268,6 +1272,8 @@ func (s *Scheduler) Cancel(ctx context.Context, tasks ...*workflow.Task) error {
 			Task:    taskToCancel,
 			Result:  result,
 		})
+
+		registered.releaseTerminalResources()
 		s.closeTaskSinks(ctx, &n, registered)
 	}
 
