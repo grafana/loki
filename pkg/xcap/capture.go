@@ -250,11 +250,7 @@ func (c *Capture) Value(stat Statistic) *AggregatedObservation {
 			continue
 		}
 		if rolled == nil {
-			rolled = &AggregatedObservation{
-				Statistic: obs.Statistic,
-				Value:     obs.Value,
-				Count:     obs.Count,
-			}
+			rolled = &AggregatedObservation{Statistic: obs.Statistic, value: obs.value, Count: obs.Count}
 		} else {
 			rolled.Merge(obs)
 		}
@@ -287,11 +283,7 @@ func (c *Capture) ValueFromRegion(name string, stat Statistic) *AggregatedObserv
 			continue
 		}
 		if rolled == nil {
-			rolled = &AggregatedObservation{
-				Statistic: obs.Statistic,
-				Value:     obs.Value,
-				Count:     obs.Count,
-			}
+			rolled = &AggregatedObservation{Statistic: obs.Statistic, value: obs.value, Count: obs.Count}
 		} else {
 			rolled.Merge(obs)
 		}
@@ -323,7 +315,7 @@ func ValueFromRegion[T any](c *Capture, name string, stat Statistic) T {
 		return zero
 	}
 
-	val, ok := rolled.Value.(T)
+	val, ok := rolled.Value().(T)
 	if !ok {
 		var zero T
 		return zero
@@ -341,6 +333,6 @@ func TryValue[T any](c *Capture, stat Statistic) (T, bool) {
 		return zero, false
 	}
 
-	val, ok := rolled.Value.(T)
+	val, ok := rolled.Value().(T)
 	return val, ok
 }

@@ -433,7 +433,7 @@ func TestCapture_Value(t *testing.T) {
 			}
 
 			require.NotNil(t, got)
-			require.Equal(t, tt.wantValue, got.Value)
+			require.Equal(t, tt.wantValue, got.Value())
 			require.Equal(t, tt.wantCount, got.Count)
 			require.Equal(t, stat.Key(), got.Statistic.Key())
 		})
@@ -463,13 +463,13 @@ func TestCapture_ValueFromRegion(t *testing.T) {
 	// Exact name matches only the Open region.
 	gotOpen := capture.ValueFromRegion("logs.Reader.Open", stat)
 	require.NotNil(t, gotOpen)
-	require.Equal(t, int64(125), gotOpen.Value)
+	require.Equal(t, int64(125), gotOpen.Value())
 	require.Equal(t, 2, gotOpen.Count)
 
 	// Exact name matches only the Read region.
 	gotRead := capture.ValueFromRegion("logs.Reader.Read", stat)
 	require.NotNil(t, gotRead)
-	require.Equal(t, int64(50), gotRead.Value)
+	require.Equal(t, int64(50), gotRead.Value())
 	require.Equal(t, 1, gotRead.Count)
 
 	// Prefix is not a match — no region is named "logs.Reader." exactly.
