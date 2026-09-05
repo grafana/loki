@@ -1282,8 +1282,8 @@ github.com/oklog/ulid/v2
 # github.com/open-telemetry/opentelemetry-collector-contrib/internal/exp/metrics v0.159.0
 ## explicit; go 1.25.0
 github.com/open-telemetry/opentelemetry-collector-contrib/internal/exp/metrics/identity
-# github.com/open-telemetry/opentelemetry-collector-contrib/pkg/pdatautil v0.159.0
-## explicit; go 1.25.0
+# github.com/open-telemetry/opentelemetry-collector-contrib/pkg/pdatautil v0.160.0
+## explicit; go 1.26.0
 github.com/open-telemetry/opentelemetry-collector-contrib/pkg/pdatautil
 # github.com/open-telemetry/opentelemetry-collector-contrib/processor/deltatocumulativeprocessor v0.159.0
 ## explicit; go 1.25.0
