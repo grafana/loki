@@ -656,8 +656,6 @@ func TestShardingAcrossConfigs_ASTMapper(t *testing.T) {
 			},
 			numExpectedShards: 2,
 		},
-		// Queries covering both schemas are now sharded since TSDB is the
-		// only supported index type and sharding is resolved dynamically.
 		{
 			name: "logs query covering both schemas",
 			req:  defaultReq().WithStartEnd(confs[0].From.Time.Time(), now.Time()).WithQuery(`{foo="bar"}`),
@@ -811,8 +809,6 @@ func TestShardingAcrossConfigs_SeriesSharding(t *testing.T) {
 			},
 			numExpectedShards: 16,
 		},
-		// Queries covering both schemas are now sharded since TSDB is the
-		// only supported index type.
 		{
 			name: "series query covering both schemas",
 			req: &LokiSeriesRequest{
