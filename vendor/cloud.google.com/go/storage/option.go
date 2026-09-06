@@ -41,8 +41,6 @@ func init() {
 	storageinternal.WithMetricInterval = withMetricInterval
 	storageinternal.WithMeterProvider = withMeterProvider
 	storageinternal.WithReadStallTimeout = withReadStallTimeout
-	storageinternal.WithGRPCBidiReads = withGRPCBidiReads
-	storageinternal.WithZonalBucketAPIs = withZonalBucketAPIs
 	storageinternal.WithDirectConnectivityEnforced = withDirectConnectivityEnforced
 	storageinternal.WithOtelMetrics = withOtelMetrics
 	storageinternal.WithOtelDebugMetrics = withOtelDebugMetrics
@@ -279,7 +277,15 @@ func (wrstc *withReadStallTimeoutConfig) ApplyStorageOpt(config *storageConfig) 
 	config.readStallTimeoutConfig = wrstc.readStallTimeoutConfig
 }
 
-func withGRPCBidiReads() option.ClientOption {
+// WithGRPCBidiReads provides an [option.ClientOption] that may be passed to
+// [NewGRPCClient].
+//
+// It instructs the client to use the bi-directional gRPC API for all standard object
+// downloads. Additionally, this option is strictly required to use the
+// [MultiRangeDownloader] surface.
+//
+// Note: This option is exclusively supported for gRPC clients.
+func WithGRPCBidiReads() option.ClientOption {
 	return &withGRPCBidiReadsConfig{}
 }
 
@@ -291,18 +297,22 @@ func (w *withGRPCBidiReadsConfig) ApplyStorageOpt(config *storageConfig) {
 	config.grpcBidiReads = true
 }
 
-func withZonalBucketAPIs() option.ClientOption {
-	return &withZonalBucketAPIsConfig{}
+// WithAppendableUploads provides an [option.ClientOption] that may be passed to
+// [NewGRPCClient].
+//
+// It enables the client to use appendable object semantics for uploads by default.
+//
+// Note: This option is exclusively supported for gRPC clients.
+func WithAppendableUploads() option.ClientOption {
+	return &withGRPCAppendableUploadsConfig{}
 }
 
-type withZonalBucketAPIsConfig struct {
+type withGRPCAppendableUploadsConfig struct {
 	internaloption.EmbeddableAdapter
 }
 
-func (w *withZonalBucketAPIsConfig) ApplyStorageOpt(config *storageConfig) {
-	// Use both appendable upload semantics and bidi reads.
+func (w *withGRPCAppendableUploadsConfig) ApplyStorageOpt(config *storageConfig) {
 	config.grpcAppendableUploads = true
-	config.grpcBidiReads = true
 }
 
 func withOtelMetrics() option.ClientOption {

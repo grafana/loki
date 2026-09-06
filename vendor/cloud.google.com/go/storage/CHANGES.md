@@ -1,6 +1,13 @@
 # Changes
 
 
+## [1.67.0](https://github.com/googleapis/google-cloud-go/compare/storage/v1.66.0...storage/v1.67.0) (2026-09-03)
+
+
+### Features
+
+* **storage:** Promote WithGRPCBidiReads and WithGRPCAppendableUploads out of experimental ([#20387](https://github.com/googleapis/google-cloud-go/issues/20387)) ([de23089](https://github.com/googleapis/google-cloud-go/commit/de230896bd59c6f34e763369fb92e1ee8df3548b))
+
 ## [1.66.0](https://github.com/googleapis/google-cloud-go/compare/storage/v1.65.1...storage/v1.66.0) (2026-08-26)
 
 
