@@ -1,4 +1,4 @@
-FROM logstash:9.5.2@sha256:846ff0640c359a5268bffbac3b673af6c4b7174d735330ddac0e61da4fc5d9c7
+FROM logstash:9.5.3@sha256:3cb668ba95447a31e9ade79c082206322d10cd07517647a7e3480b123f71c238
 
 USER logstash
 ENV PATH /usr/share/logstash/vendor/jruby/bin:/usr/share/logstash/vendor/bundle/jruby/3.1.0/bin:/usr/share/logstash/jdk/bin:$PATH
