@@ -1414,7 +1414,7 @@ func Test_newSampleBatchChunkIterator(t *testing.T) {
 			ex, err := log.NewLineSampleExtractor(log.CountExtractor, nil, nil, false, false)
 			require.NoError(t, err)
 
-			it, err := newSampleBatchIterator(
+			it, err := newTimestampFirstSampleBatchIterator(
 				context.Background(),
 				s,
 				NilMetrics,

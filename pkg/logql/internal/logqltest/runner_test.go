@@ -14,6 +14,7 @@ import (
 
 	"github.com/grafana/loki/pkg/push"
 
+	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logqlmodel"
 )
 
@@ -271,6 +272,51 @@ func TestComparators_DetectMismatches(t *testing.T) {
 			}, false),
 			want: `stream {app="a"} has 1 lines, expected 2`,
 		},
+		"streams unexpected structured metadata": {
+			// A line with no `[metadata ...]` clause asserts the entry carries no metadata.
+			err: compareStreams("n", oneStream("a"), logqlmodel.Streams{
+				{Labels: `{app="a"}`, Entries: []push.Entry{gotEntry("a", clauseAdapters("lvl", "error"), nil)}},
+			}, false),
+			want: `stream {app="a"} line 0 structured metadata mismatch: want {}, got {lvl="error"}`,
+		},
+		"streams missing structured metadata": {
+			err: compareStreams("n", oneStreamWithMetadata("a", "lvl", "error"), logqlmodel.Streams{
+				{Labels: `{app="a"}`, Entries: []push.Entry{gotEntry("a", nil, nil)}},
+			}, false),
+			want: `stream {app="a"} line 0 structured metadata mismatch: want {lvl="error"}, got {}`,
+		},
+		"streams structured metadata value mismatch": {
+			err: compareStreams("n", oneStreamWithMetadata("a", "lvl", "error"), logqlmodel.Streams{
+				{Labels: `{app="a"}`, Entries: []push.Entry{gotEntry("a", clauseAdapters("lvl", "info"), nil)}},
+			}, false),
+			want: `structured metadata mismatch: want {lvl="error"}, got {lvl="info"}`,
+		},
+		"streams structured metadata mis-categorized as parsed": {
+			// Both categories carry the same pair, so only comparing them apart tells the two results
+			// apart — this is the mistake `| label_format` can make.
+			err: compareStreams("n", oneStreamWithMetadata("a", "lvl", "error"), logqlmodel.Streams{
+				{Labels: `{app="a"}`, Entries: []push.Entry{gotEntry("a", nil, clauseAdapters("lvl", "error"))}},
+			}, false),
+			want: `structured metadata mismatch: want {lvl="error"}, got {}`,
+		},
+		"streams unexpected parsed label": {
+			err: compareStreams("n", oneStream("a"), logqlmodel.Streams{
+				{Labels: `{app="a"}`, Entries: []push.Entry{gotEntry("a", nil, clauseAdapters("lvl", "error"))}},
+			}, false),
+			want: `stream {app="a"} line 0 parsed labels mismatch: want {}, got {lvl="error"}`,
+		},
+		"streams parsed label value mismatch": {
+			err: compareStreams("n", oneStreamWithParsed("a", "lvl", "error"), logqlmodel.Streams{
+				{Labels: `{app="a"}`, Entries: []push.Entry{gotEntry("a", nil, clauseAdapters("lvl", "info"))}},
+			}, false),
+			want: `parsed labels mismatch: want {lvl="error"}, got {lvl="info"}`,
+		},
+		"streams parsed label mis-categorized as metadata": {
+			err: compareStreams("n", oneStreamWithParsed("a", "lvl", "error"), logqlmodel.Streams{
+				{Labels: `{app="a"}`, Entries: []push.Entry{gotEntry("a", clauseAdapters("lvl", "error"), nil)}},
+			}, false),
+			want: `structured metadata mismatch: want {}, got {lvl="error"}`,
+		},
 		"streams duplicate expected stream": {
 			err: compareStreams("n", expectations{streams: []expectedStream{
 				{labels: `{app="a"}`, entries: []expectedLogEntry{{ts: 0, line: "a"}}},
@@ -361,6 +407,16 @@ func TestComparators_AcceptMatches(t *testing.T) {
 			{Labels: `{app="a"}`, Entries: []push.Entry{{Timestamp: epoch, Line: "1st"}, {Timestamp: epoch.Add(time.Second), Line: "2nd"}}},
 		}, false))
 	require.NoError(t, compareResult("n", evalCmd{mode: evalInstant, ts: time.Minute}, expectations{empty: true}, logqlmodel.Streams{}, false, defaultEpsilon))
+
+	// A `[metadata ...]` expectation matches whatever order the pairs come back in.
+	require.NoError(t, compareStreams("n",
+		expectations{streams: []expectedStream{{
+			labels:  `{app="a", lvl="error", pod="p1"}`,
+			entries: []expectedLogEntry{{ts: 0, line: "x", metadata: labels.FromStrings("lvl", "error", "pod", "p1")}},
+		}}},
+		logqlmodel.Streams{{Labels: `{app="a", lvl="error", pod="p1"}`, Entries: []push.Entry{
+			gotEntry("x", []logproto.LabelAdapter{{Name: "pod", Value: "p1"}, {Name: "lvl", Value: "error"}}, nil),
+		}}}, false))
 }
 
 func TestComparators_SkipValues(t *testing.T) {
@@ -405,6 +461,13 @@ func TestComparators_SkipValues(t *testing.T) {
 		}}, logqlmodel.Streams{
 			{Labels: `{app="a"}`, Entries: []push.Entry{{Timestamp: epoch, Line: "a"}}},
 		}, true), "has 1 lines, expected 2")
+	})
+
+	t.Run("structured metadata mismatches still error", func(t *testing.T) {
+		// Metadata identifies an entry rather than valuing it, so it is checked even here.
+		require.ErrorContains(t, compareStreams("n", oneStream("a"), logqlmodel.Streams{
+			{Labels: `{app="a"}`, Entries: []push.Entry{gotEntry("wrong line", clauseAdapters("lvl", "error"), nil)}},
+		}, true), `structured metadata mismatch: want {}, got {lvl="error"}`)
 	})
 
 	t.Run("timestamp mismatches still error", func(t *testing.T) {
@@ -458,6 +521,33 @@ func TestEffectiveEpsilon(t *testing.T) {
 	// inheriting a toleration meant for a different stack.
 	require.Equal(t, defaultEpsilon, effectiveEpsilon(exp, queryFrontendShardStackName))
 	require.Equal(t, defaultEpsilon, effectiveEpsilon(expectations{}, directStackName))
+}
+
+// oneStreamWithMetadata builds a single-stream, single-line expectation carrying one structured
+// metadata pair. A categorized result keeps metadata out of the stream labels, so the label set
+// stays the bare `{app="a"}`.
+func oneStreamWithMetadata(line, key, value string) expectations {
+	return expectations{streams: []expectedStream{{
+		labels:  `{app="a"}`,
+		entries: []expectedLogEntry{{ts: 0, line: line, metadata: labels.FromStrings(key, value)}},
+	}}}
+}
+
+// oneStreamWithParsed builds the same shape carrying one parsed label instead.
+func oneStreamWithParsed(line, key, value string) expectations {
+	return expectations{streams: []expectedStream{{
+		labels:  `{app="a"}`,
+		entries: []expectedLogEntry{{ts: 0, line: line, parsed: labels.FromStrings(key, value)}},
+	}}}
+}
+
+// gotEntry builds a result entry at the script epoch with the given categorized labels.
+func gotEntry(line string, structuredMetadata, parsed []logproto.LabelAdapter) push.Entry {
+	return push.Entry{Timestamp: epoch, Line: line, StructuredMetadata: structuredMetadata, Parsed: parsed}
+}
+
+func clauseAdapters(key, value string) []logproto.LabelAdapter {
+	return []logproto.LabelAdapter{{Name: key, Value: value}}
 }
 
 func TestFloatsEqual(t *testing.T) {

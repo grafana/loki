@@ -198,7 +198,7 @@ func Benchmark_RangeVectorIterator(b *testing.B) {
 
 	for i := 0; i < b.N; i++ {
 		i := 0
-		it, err := newRangeVectorIterator(newfakePeekingSampleIterator(samples),
+		it, err := newTimestampFirstRangeVectorIterator(newfakePeekingSampleIterator(samples),
 			&syntax.RangeAggregationExpr{Operation: syntax.OpRangeTypeCount}, tt.selRange,
 			tt.step, tt.start.UnixNano(), tt.end.UnixNano(), tt.offset)
 		if err != nil {
@@ -322,7 +322,7 @@ func Test_RangeVectorIterator_InstantQuery(t *testing.T) {
 		t.Run(
 			fmt.Sprintf("%d logs[%s] - start %s - end %s", i, tt.selRange, tt.now.Add(-tt.selRange), tt.now),
 			func(t *testing.T) {
-				it, err := newRangeVectorIterator(
+				it, err := newTimestampFirstRangeVectorIterator(
 					newfakePeekingSampleIterator(samples),
 					&syntax.RangeAggregationExpr{Operation: syntax.OpRangeTypeCount},
 					tt.selRange.Nanoseconds(),
@@ -467,7 +467,7 @@ func Test_RangeVectorIterator(t *testing.T) {
 		t.Run(
 			fmt.Sprintf("logs[%s] - step: %s - offset: %s", time.Duration(tt.selRange), time.Duration(tt.step), time.Duration(tt.offset)),
 			func(t *testing.T) {
-				it, err := newRangeVectorIterator(newfakePeekingSampleIterator(samples),
+				it, err := newTimestampFirstRangeVectorIterator(newfakePeekingSampleIterator(samples),
 					&syntax.RangeAggregationExpr{Operation: syntax.OpRangeTypeCount}, tt.selRange,
 					tt.step, tt.start.UnixNano(), tt.end.UnixNano(), tt.offset)
 				require.NoError(t, err)
@@ -491,7 +491,7 @@ func Test_RangeVectorIteratorBadLabels(t *testing.T) {
 			Labels:  "{badlabels=}",
 			Samples: samples,
 		}))
-	it, err := newRangeVectorIterator(badIterator,
+	it, err := newTimestampFirstRangeVectorIterator(badIterator,
 		&syntax.RangeAggregationExpr{Operation: syntax.OpRangeTypeCount}, (30 * time.Second).Nanoseconds(),
 		(30 * time.Second).Nanoseconds(), time.Unix(10, 0).UnixNano(), time.Unix(100, 0).UnixNano(), 0)
 	require.NoError(t, err)
@@ -537,7 +537,7 @@ func Test_InstantQueryRangeVectorAggregations(t *testing.T) {
 	var start, end int64 = 4, 4 // Instant query
 	for _, tt := range tests {
 		t.Run(fmt.Sprintf("testing aggregation %s", tt.name), func(t *testing.T) {
-			it, err := newRangeVectorIterator(sampleIter(tt.negative),
+			it, err := newTimestampFirstRangeVectorIterator(sampleIter(tt.negative),
 				&syntax.RangeAggregationExpr{Left: &syntax.LogRangeExpr{Interval: 2}, Params: proto.Float64(0.99), Operation: tt.op},
 				3, 1, start, end, 0)
 			require.NoError(t, err)

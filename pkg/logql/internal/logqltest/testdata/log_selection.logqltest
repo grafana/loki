@@ -85,3 +85,46 @@ eval select from 0 to 40s backward {app="foo"} |~ "1st|3rd"
 # A selector matching nothing returns no streams, whichever direction it is read in.
 eval select from 0 to 40s backward {app="missing"}
   expect empty
+
+#
+# Structured metadata and parsed fields smoke test
+#
+clear
+load
+  {app="foo"} "with metadata" @ 10s [metadata lvl="error" trace_id="abc"]
+  {app="foo"} "no metadata"   @ 20s
+
+# Both entries belong to one stream: the metadata stays out of the stream labels.
+eval select from 0 to 30s forward {app="foo"}
+  {app="foo"} "with metadata" @ 10s [metadata lvl="error" trace_id="abc"]
+  {app="foo"} "no metadata"   @ 20s
+
+# A metadata label filter drops the entries that don't match, and keeps the metadata on the rest.
+eval select from 0 to 30s forward {app="foo"} | lvl="error"
+  {app="foo"} "with metadata" @ 10s [metadata lvl="error" trace_id="abc"]
+
+# `drop` removes a metadata label from the entry.
+eval select from 0 to 30s forward {app="foo"} | drop lvl
+  {app="foo"} "with metadata" @ 10s [metadata trace_id="abc"]
+  {app="foo"} "no metadata"   @ 20s
+
+# `label_format` re-categorizes: `level` is a parsed label, so `lvl` leaves the metadata.
+eval select from 0 to 30s forward {app="foo"} | label_format level=lvl
+  {app="foo"} "with metadata" @ 10s [metadata trace_id="abc"] [parsed level="error"]
+  {app="foo"} "no metadata"   @ 20s
+
+# A parser puts each field it extracts in the parsed category, beside the untouched metadata.
+clear
+load
+  {app="foo"} "lvl=error msg=boom" @ 10s [metadata trace_id="abc"]
+
+eval select from 0 to 30s forward {app="foo"} | logfmt
+  {app="foo"} "lvl=error msg=boom" @ 10s [metadata trace_id="abc"] [parsed lvl="error" msg="boom"]
+
+# An empty metadata value is significant: it is present, and distinct from an absent label.
+clear
+load
+  {app="foo"} "x" @ 10s [metadata lvl=""]
+
+eval select from 0 to 30s forward {app="foo"}
+  {app="foo"} "x" @ 10s [metadata lvl=""]

@@ -164,11 +164,12 @@ type mergeSampleIterator struct {
 	errs   []error
 }
 
-// NewMergeSampleIterator returns a new iterator which uses a heap to merge together samples for multiple iterators and deduplicate if any.
+// NewTimestampFirstMergeSampleIterator returns a new iterator which uses a heap to merge together samples for multiple iterators and deduplicate if any.
 // The iterator only order and merge entries across given `is` iterators, it does not merge entries within individual iterator.
 // This means using this iterator with a single iterator will result in the same result as the input iterator.
+// Samples are returned in global timestamp order, as long as each input iterator is itself timestamp-ordered.
 // If you don't need to deduplicate sample, use `NewSortSampleIterator` instead.
-func NewMergeSampleIterator(ctx context.Context, is []SampleIterator) SampleIterator {
+func NewTimestampFirstMergeSampleIterator(ctx context.Context, is []SampleIterator) SampleIterator {
 	h := SampleIteratorHeap{
 		its: make([]SampleIterator, 0, len(is)),
 	}
@@ -502,8 +503,8 @@ type QuerySampleClient interface {
 	CloseSend() error
 }
 
-// NewSampleQueryClientIterator returns an iterator over a QueryClient.
-func NewSampleQueryClientIterator(client QuerySampleClient) SampleIterator {
+// NewTimestampFirstSampleQueryClientIterator returns a timestamp-first iterator over a QueryClient.
+func NewTimestampFirstSampleQueryClientIterator(client QuerySampleClient) SampleIterator {
 	return &sampleQueryClientIterator{
 		client: client,
 	}
@@ -524,7 +525,7 @@ func (i *sampleQueryClientIterator) Next() bool {
 		stats.JoinIngesters(ctx, batch.Stats)
 		_ = metadata.AddWarnings(ctx, batch.Warnings...)
 
-		i.curr = NewSampleQueryResponseIterator(batch)
+		i.curr = NewTimestampFirstSampleQueryResponseIterator(batch)
 	}
 	return true
 }
@@ -549,8 +550,8 @@ func (i *sampleQueryClientIterator) Close() error {
 	return i.client.CloseSend()
 }
 
-// NewSampleQueryResponseIterator returns an iterator over a SampleQueryResponse.
-func NewSampleQueryResponseIterator(resp *logproto.SampleQueryResponse) SampleIterator {
+// NewTimestampFirstSampleQueryResponseIterator returns a timestamp-first iterator over a SampleQueryResponse.
+func NewTimestampFirstSampleQueryResponseIterator(resp *logproto.SampleQueryResponse) SampleIterator {
 	return NewMultiSeriesIterator(resp.Series)
 }
 

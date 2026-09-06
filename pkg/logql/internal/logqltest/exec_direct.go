@@ -11,6 +11,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql"
 	"github.com/grafana/loki/v3/pkg/logqlmodel"
+	"github.com/grafana/loki/v3/pkg/util/httpreq"
 )
 
 // directExecutionStack runs queries straight through the v1 engine, with no query-frontend in
@@ -58,6 +59,9 @@ func (s *directExecutionStack) eval(cmd evalCmd) (logqlmodel.Result, error) {
 	if err != nil {
 		return logqlmodel.Result{}, err
 	}
+
 	ctx := user.InjectOrgID(context.Background(), tenant)
+	// Add flag to categorize labels. This is mimicking standard behavior of our most important client: Grafana
+	ctx = httpreq.AddEncodingFlagsToContext(ctx, httpreq.NewEncodingFlags(httpreq.FlagCategorizeLabels))
 	return engine.Query(params).Exec(ctx)
 }
