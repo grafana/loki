@@ -390,8 +390,12 @@ func (q *MultiTenantQuerier) DetectedLabels(ctx context.Context, req *logproto.D
 	}, nil
 }
 
-// removeTenantSelector filters the given tenant IDs based on any tenant ID filter the in passed selector.
-func removeTenantSelector(params logql.SelectSampleParams, tenantIDs []string) (map[string]struct{}, []*labels.Matcher, syntax.Expr, error) {
+// removeTenantSelector filters the given tenant IDs based on any tenant ID filter in the passed selector.
+// It returns:
+//   - matchedTenants: tenant IDs that matched the selector's tenant filter
+//   - filteredMatchers: matchers with __tenant_id__ removed, for validation before use
+//   - updatedExpr: the expression with filteredMatchers already applied
+func removeTenantSelector(params logql.SelectSampleParams, tenantIDs []string) (matchedTenants map[string]struct{}, filteredMatchers []*labels.Matcher, updatedExpr syntax.Expr, err error) {
 	expr, err := params.Expr()
 	if err != nil {
 		return nil, nil, nil, err
@@ -400,8 +404,8 @@ func removeTenantSelector(params logql.SelectSampleParams, tenantIDs []string) (
 	if err != nil {
 		return nil, nil, nil, err
 	}
-	matchedTenants, filteredMatchers := filterValuesByMatchers(defaultTenantLabel, tenantIDs, selector.Matchers()...)
-	updatedExpr := replaceMatchers(expr, filteredMatchers)
+	matchedTenants, filteredMatchers = filterValuesByMatchers(defaultTenantLabel, tenantIDs, selector.Matchers()...)
+	updatedExpr = replaceMatchers(expr, filteredMatchers)
 	return matchedTenants, filteredMatchers, updatedExpr, nil
 }
 
