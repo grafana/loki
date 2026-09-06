@@ -1,4 +1,4 @@
-// Copyright 2022, Google Inc.
+// Copyright 2026, Google Inc.
 // All rights reserved.
 //
 // Redistribution and use in source and binary forms, with or without
@@ -27,12 +27,12 @@
 // (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 // OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-//go:build !go1.27
+//go:build go1.27
 
 package gax
 
 import (
-	"encoding/json"
+	"encoding/json/jsontext"
 	"errors"
 	"io"
 
@@ -42,8 +42,6 @@ import (
 )
 
 var (
-	arrayOpen     = json.Delim('[')
-	arrayClose    = json.Delim(']')
 	errBadOpening = errors.New("unexpected opening token, expected '['")
 )
 
@@ -57,7 +55,7 @@ var (
 type ProtoJSONStream struct {
 	first, closed bool
 	reader        io.ReadCloser
-	stream        *json.Decoder
+	stream        *jsontext.Decoder
 	typ           protoreflect.MessageType
 }
 
@@ -70,7 +68,7 @@ func NewProtoJSONStreamReader(rc io.ReadCloser, typ protoreflect.MessageType) *P
 	return &ProtoJSONStream{
 		first:  true,
 		reader: rc,
-		stream: json.NewDecoder(rc),
+		stream: jsontext.NewDecoder(rc),
 		typ:    typ,
 	}
 }
@@ -85,43 +83,51 @@ func (s *ProtoJSONStream) Recv() (proto.Message, error) {
 	if s.closed {
 		return nil, io.EOF
 	}
+	// Handle start-of-stream (which should be a JSON array)
 	if s.first {
 		s.first = false
+		kind := s.stream.PeekKind()
 
-		// Consume the opening '[' so Decode gets one object at a time.
-		if t, err := s.stream.Token(); err != nil {
-			return nil, err
-		} else if t != arrayOpen {
+		if kind == jsontext.KindBeginArray {
+			// Read and discard the start of array.
+			err := s.stream.SkipValue()
+			if err != nil {
+				return nil, err
+			}
+		} else {
+			// stream isn't a JSON array.
 			return nil, errBadOpening
 		}
 	}
 
-	// Capture the next block of data for the item (a JSON object) in the stream.
-	var raw json.RawMessage
-	if err := s.stream.Decode(&raw); err != nil {
-		e := err
-		// To avoid checking the first token of each stream, just attempt to
-		// Decode the next blob and if that fails, double check if it is just
-		// the closing token ']'. If it is the closing, return io.EOF. If it
-		// isn't, return the original error.
-		if t, _ := s.stream.Token(); t == arrayClose {
-			e = io.EOF
+	// Ensure we're not at the end of the stream by looking for end of array.
+	kind := s.stream.PeekKind()
+	if kind == jsontext.KindEndArray {
+		// We're at the end of the array.
+		err := s.stream.SkipValue()
+		if err != nil {
+			return nil, err
 		}
-		return nil, e
+		return nil, io.EOF
+	}
+
+	// Get the next value.
+	v, err := s.stream.ReadValue()
+	if err != nil {
+		return nil, err
 	}
 
 	// Initialize a new instance of the protobuf message to unmarshal the
 	// raw data into.
 	m := s.typ.New().Interface()
 	unm := protojson.UnmarshalOptions{AllowPartial: true, DiscardUnknown: true}
-	err := unm.Unmarshal(raw, m)
-
+	err = unm.Unmarshal(v, m)
 	return m, err
 }
 
 // Close closes the stream so that resources are cleaned up.
 func (s *ProtoJSONStream) Close() error {
-	// Dereference the *json.Decoder so that the memory is gc'd.
+	// Dereference the *jsontext.Decoder so that the memory is gc'd.
 	s.stream = nil
 	s.closed = true
 
