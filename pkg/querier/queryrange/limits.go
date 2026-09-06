@@ -244,7 +244,6 @@ type querySizeLimiter struct {
 	logger            log.Logger
 	next              queryrangebase.Handler
 	statsHandler      queryrangebase.Handler
-	cfg               []config.PeriodConfig
 	maxLookBackPeriod time.Duration
 	limitFunc         func(context.Context, string) int
 	spec              querySizeLimitSpec
@@ -252,7 +251,6 @@ type querySizeLimiter struct {
 
 func newQuerySizeLimiter(
 	next queryrangebase.Handler,
-	cfg []config.PeriodConfig,
 	engineOpts logql.EngineOpts,
 	logger log.Logger,
 	limitFunc func(context.Context, string) int,
@@ -262,7 +260,6 @@ func newQuerySizeLimiter(
 	q := &querySizeLimiter{
 		logger:            logger,
 		next:              next,
-		cfg:               cfg,
 		maxLookBackPeriod: engineOpts.MaxLookBackPeriod,
 		limitFunc:         limitFunc,
 		spec:              spec,
@@ -278,27 +275,25 @@ func newQuerySizeLimiter(
 
 // NewQuerierSizeLimiterMiddleware creates a new Middleware that enforces query size limits after sharding and splitting.
 func NewQuerierSizeLimiterMiddleware(
-	cfg []config.PeriodConfig,
 	engineOpts logql.EngineOpts,
 	logger log.Logger,
 	limits Limits,
 	statsHandler ...queryrangebase.Handler,
 ) queryrangebase.Middleware {
 	return queryrangebase.MiddlewareFunc(func(next queryrangebase.Handler) queryrangebase.Handler {
-		return newQuerySizeLimiter(next, cfg, engineOpts, logger, limits.MaxQuerierBytesRead, maxQuerierBytesReadSpec, statsHandler...)
+		return newQuerySizeLimiter(next, engineOpts, logger, limits.MaxQuerierBytesRead, maxQuerierBytesReadSpec, statsHandler...)
 	})
 }
 
 // NewQuerySizeLimiterMiddleware creates a new Middleware that enforces query size limits.
 func NewQuerySizeLimiterMiddleware(
-	cfg []config.PeriodConfig,
 	engineOpts logql.EngineOpts,
 	logger log.Logger,
 	limits Limits,
 	statsHandler ...queryrangebase.Handler,
 ) queryrangebase.Middleware {
 	return queryrangebase.MiddlewareFunc(func(next queryrangebase.Handler) queryrangebase.Handler {
-		return newQuerySizeLimiter(next, cfg, engineOpts, logger, limits.MaxQueryBytesRead, maxQueryBytesReadSpec, statsHandler...)
+		return newQuerySizeLimiter(next, engineOpts, logger, limits.MaxQueryBytesRead, maxQueryBytesReadSpec, statsHandler...)
 	})
 }
 

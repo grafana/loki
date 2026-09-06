@@ -227,33 +227,57 @@ func (c CompositeStore) GetShards(
 	targetBytesPerShard uint64,
 	predicate chunk.Predicate,
 ) (*logproto.ShardsResponse, error) {
-	// TODO(owen-d): improve. Since shards aren't easily merge-able,
-	// we choose the store which returned the highest shard count.
-	// This is only used when a query crosses a schema boundary
-	var groups []*logproto.ShardsResponse
+	var responses []*logproto.ShardsResponse
 	err := c.forStores(ctx, from, through, func(innerCtx context.Context, from, through model.Time, store Store) error {
 		shards, err := store.GetShards(innerCtx, userID, from, through, targetBytesPerShard, predicate)
 		if err != nil {
 			return err
 		}
-		groups = append(groups, shards)
+		responses = append(responses, shards)
 		return nil
 	})
 	if err != nil {
 		return nil, err
 	}
 
-	switch {
-	case len(groups) == 1:
-		return groups[0], nil
-	case len(groups) == 0:
+	switch len(responses) {
+	case 0:
 		return nil, nil
-	default:
-		sort.Slice(groups, func(i, j int) bool {
-			return len(groups[i].Shards) > len(groups[j].Shards)
-		})
-		return groups[0], nil
+	case 1:
+		return responses[0], nil
 	}
+
+	// Multiple periods contributed. Each store bin-packs shard bounds from
+	// only its own fingerprints and bytes, so bounds aren't aligned across
+	// stores and can't be merged index-for-index. Keep the bounds from the
+	// store holding the most bytes -- the partition most representative of
+	// this query's data -- and drop every chunk group: a chunk group is only
+	// valid paired with its own store's bounds, so downstream re-resolves
+	// chunks live against the merged range instead, the same fallback
+	// power_of_two sharding always uses.
+	best := responses[0]
+	bestBytes := sumShardBytes(best)
+	for _, r := range responses[1:] {
+		if b := sumShardBytes(r); b > bestBytes {
+			best, bestBytes = r, b
+		}
+	}
+
+	merged := &logproto.ShardsResponse{Shards: best.Shards}
+	for _, r := range responses {
+		merged.Statistics.Merge(r.Statistics)
+	}
+	return merged, nil
+}
+
+func sumShardBytes(r *logproto.ShardsResponse) uint64 {
+	var total uint64
+	for _, s := range r.Shards {
+		if s.Stats != nil {
+			total += s.Stats.Bytes
+		}
+	}
+	return total
 }
 
 func (c CompositeStore) HasForSeries(from, through model.Time) (sharding.ForSeries, bool) {
