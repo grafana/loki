@@ -763,6 +763,56 @@ func TestSelectLogs_TenantIDOnlySelector(t *testing.T) {
 	}
 }
 
+// TestSelectSamples_TenantIDOnlySelector verifies that SelectSamples validates
+// the rewritten selector after __tenant_id__ matchers are stripped. A query
+// left with no equality or regexp matcher should be rejected to prevent
+// scanning every stream for the matched tenant.
+func TestSelectSamples_TenantIDOnlySelector(t *testing.T) {
+	for _, tc := range []struct {
+		desc     string
+		orgID    string
+		selector string
+	}{
+		{
+			desc:     "tenant ID only selector becomes empty after stripping",
+			orgID:    "1|2",
+			selector: `count_over_time({__tenant_id__="1"}[1m])`,
+		},
+		{
+			desc:     "tenant ID with negation matcher leaves no equality matcher",
+			orgID:    "1|2",
+			selector: `count_over_time({__tenant_id__="1", foo!="bar"}[1m])`,
+		},
+		{
+			desc:     "tenant ID with regex-all matcher leaves no equality matcher",
+			orgID:    "1|2",
+			selector: `count_over_time({__tenant_id__="1", foo=~".*"}[1m])`,
+		},
+	} {
+		t.Run(tc.desc, func(t *testing.T) {
+			querier := newQuerierMock()
+			querier.On("SelectSamples", mock.Anything, mock.Anything).Return(func() iter.SampleIterator { return newSampleIterator() }, nil)
+
+			multiTenantQuerier := NewMultiTenantQuerier(querier, log.NewNopLogger())
+			ctx := user.InjectOrgID(context.Background(), tc.orgID)
+
+			params := logql.SelectSampleParams{SampleQueryRequest: &logproto.SampleQueryRequest{
+				Selector: tc.selector,
+				Plan:     testutil.MustPlan(tc.selector),
+			}}
+
+			// SelectSamples should fail because the rewritten selector has no
+			// equality or regexp matcher after stripping __tenant_id__.
+			_, err := multiTenantQuerier.SelectSamples(ctx, params)
+			require.Error(t, err)
+			require.Contains(t, err.Error(), "at least one regexp or equality matcher")
+
+			// Verify the underlying querier was NOT called.
+			querier.AssertNotCalled(t, "SelectSamples", mock.Anything, mock.Anything)
+		})
+	}
+}
+
 func TestMultiTenantQuerierPatterns(t *testing.T) {
 	now := time.Now()
 
