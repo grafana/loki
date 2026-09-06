@@ -769,7 +769,7 @@ github.com/go-openapi/loads
 # github.com/go-openapi/spec v0.22.11
 ## explicit; go 1.25.0
 github.com/go-openapi/spec
-# github.com/go-openapi/strfmt v0.27.0
+# github.com/go-openapi/strfmt v0.27.1
 ## explicit; go 1.25.0
 github.com/go-openapi/strfmt
 github.com/go-openapi/strfmt/internal/bsonlite

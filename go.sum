@@ -360,8 +360,8 @@ github.com/go-openapi/loads v0.25.2 h1:+uNsDlRQfYtZTrh+3pdwampcAqZVPuBJW0IA82aZH
 github.com/go-openapi/loads v0.25.2/go.mod h1:RXsfJEQGGNv4uw8u/KdmF8Vh8OR4fTfs9ZO4QrzNohA=
 github.com/go-openapi/spec v0.22.11 h1:/ZW28n4PCghbBpwjmvoMeyCeDwd6pIe715Ov8T3kAaQ=
 github.com/go-openapi/spec v0.22.11/go.mod h1:Ypu+u1KTejey7/QCr3j1ChdjwhGgXuklbH7l8+YP1J4=
-github.com/go-openapi/strfmt v0.27.0 h1:kbcTeaD9TXuXD0hhMXzuYa1sdTo6+dWGvwjW93E80IM=
-github.com/go-openapi/strfmt v0.27.0/go.mod h1:s/qhDqfY72irigXUGJmtgid2Rm+3tnz3k8hZaRmvWYc=
+github.com/go-openapi/strfmt v0.27.1 h1:6yeRws56xbMR8c75R487iLfrREpYnmnBs4g554f5hdk=
+github.com/go-openapi/strfmt v0.27.1/go.mod h1:7enjivZtYHpyqjJLetiAOh6McJziVnvIS/e7rX8/798=
 github.com/go-openapi/swag v0.29.1 h1:C6EeWzUwQtcWEhE9eqBdUubGXxhWY4PlzHMLD7kLaiQ=
 github.com/go-openapi/swag v0.29.1/go.mod h1:BzxEXKiPlSXRsRTv1KSBF/BpGKHxA/YciCnr4tv9bvA=
 github.com/go-openapi/swag/cmdutils v0.29.1 h1:3DorPGfUdE80BogKY22EzoHBcHMrkVomZMoV7kS4ANY=
