@@ -179,6 +179,37 @@ func TestDecodeInterleavedEncodings(t *testing.T) {
 	}
 }
 
+// TestDecodeEmptiesEntriesOfAReusedStream covers the shape TestDecodeInterleavedEncodings
+// cannot: both of its records hold one entry, so entries surviving from the previous record
+// would not show. A record with no entries after one with several is where they would.
+func TestDecodeEmptiesEntriesOfAReusedStream(t *testing.T) {
+	full, err := Encode(0, "test-tenant", logproto.Stream{Labels: `{app="full"}`, Entries: []push.Entry{
+		{Timestamp: time.Unix(0, 1), Line: "a"},
+		{Timestamp: time.Unix(0, 2), Line: "b"},
+		{Timestamp: time.Unix(0, 3), Line: "c"},
+	}}, 10<<20)
+	require.NoError(t, err)
+
+	// A group carrying no entries, rather than labels alone, so the record is unambiguously
+	// in the nested encoding.
+	empty := nestedRecord(t, logproto.InternalStreamAdapter{
+		Labels:       `{app="empty"}`,
+		ResourceLogs: []logproto.ResourceLogs{{ScopeLogs: []logproto.ScopeLogs{{}}}},
+	}).Value
+
+	decoder, err := NewDecoder()
+	require.NoError(t, err)
+
+	got, _, err := decoder.Decode(full[0].Value)
+	require.NoError(t, err)
+	require.Len(t, got.Entries, 3)
+
+	got, _, err = decoder.Decode(empty)
+	require.NoError(t, err)
+	require.Equal(t, `{app="empty"}`, got.Labels)
+	require.Empty(t, got.Entries, "entries of the previous record leaked into this one")
+}
+
 func TestDecodeRejectsDataInNeitherEncoding(t *testing.T) {
 	decoder, err := NewDecoder()
 	require.NoError(t, err)
@@ -266,7 +297,9 @@ func BenchmarkDecode(b *testing.B) {
 		// The same OTLP data as shared, in the encoding it uses today: every entry carrying
 		// its own copy of the three attributes. This is the comparator that says what the
 		// nesting buys, which the wire_bytes of shared alone does not show.
-		expandedRecords, err := Encode(0, "test-tenant", shared.ToStream(), 10<<20)
+		var expanded logproto.Stream
+		shared.ToStream(&expanded)
+		expandedRecords, err := Encode(0, "test-tenant", expanded, 10<<20)
 		require.NoError(b, err)
 		require.Len(b, expandedRecords, 1)
 
@@ -293,6 +326,10 @@ func BenchmarkDecode(b *testing.B) {
 			b.Run(shape.name+"/"+tc.name, func(b *testing.B) {
 				decoder, err := NewDecoder()
 				require.NoError(b, err)
+
+				// The fallback's cost is an allocation count per record, so report it without
+				// waiting for -benchmem.
+				b.ReportAllocs()
 
 				for b.Loop() {
 					var err error

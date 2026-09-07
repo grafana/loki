@@ -1,6 +1,8 @@
 package logproto
 
 import (
+	"slices"
+
 	"github.com/grafana/loki/pkg/push"
 )
 
@@ -8,8 +10,8 @@ import (
 // that must not be restated at each call site, because restating them is how a site comes to
 // forget that a resource or a scope attribute applies to an entry.
 
-// EntryCount is the number of entries the stream holds, across every group and scope.
-func (s *InternalStreamAdapter) EntryCount() int {
+// entryCount is the number of entries the stream holds, across every group and scope.
+func (s *InternalStreamAdapter) entryCount() int {
 	n := 0
 	for i := range s.ResourceLogs {
 		for j := range s.ResourceLogs[i].ScopeLogs {
@@ -17,21 +19,6 @@ func (s *InternalStreamAdapter) EntryCount() int {
 		}
 	}
 	return n
-}
-
-// AppendEffectiveMetadata appends everything that applies to an entry — its own pairs, then
-// its resource's, then its scope's — to dst and returns the result.
-//
-// Reading only an entry's own StructuredMetadata silently misses attributes that arrived on
-// the resource or the scope, which is the mistake this exists to prevent.
-//
-// The order, and the duplicate a repeated name leaves behind, are exactly what the OTLP parse
-// site produces when it expands attributes onto entries itself. Reproducing it is what makes
-// a nested record and its flat equivalent store identical bytes.
-func AppendEffectiveMetadata(dst, resAttrs, scopeAttrs []push.LabelAdapter, e *push.Entry) []push.LabelAdapter {
-	dst = append(dst, e.StructuredMetadata...)
-	dst = append(dst, resAttrs...)
-	return append(dst, scopeAttrs...)
 }
 
 // FromStream wraps a flat stream as an internal one, in a single group and scope with no
@@ -50,24 +37,20 @@ func FromStream(s Stream) InternalStreamAdapter {
 	}
 }
 
-// ToStream flattens the internal stream back into the wire format Loki has always used,
+// ToStream flattens the internal stream into out, in the wire format Loki has always used,
 // resolving each entry's effective metadata onto it.
 //
 // It is the expensive direction: every entry beneath a resource or scope that carries
 // attributes gets a fresh metadata slice.
-func (s *InternalStreamAdapter) ToStream() Stream {
-	out := Stream{
-		Labels: s.Labels,
-		Hash:   s.Hash,
-	}
-
-	count := s.EntryCount()
+func (s *InternalStreamAdapter) ToStream(out *Stream) {
+	out.Labels = s.Labels
+	out.Hash = s.Hash
+	out.Entries = out.Entries[:0]
+	count := s.entryCount()
 	if count == 0 {
-		// Left nil rather than an empty slice, because the flat form unmarshals to nil when
-		// it carries no entries and the two must be indistinguishable.
-		return out
+		return
 	}
-	out.Entries = make([]push.Entry, 0, count)
+	out.Entries = slices.Grow(out.Entries, count)
 
 	for i := range s.ResourceLogs {
 		res := &s.ResourceLogs[i]
@@ -82,11 +65,15 @@ func (s *InternalStreamAdapter) ToStream() Stream {
 
 			for k := range scope.Entries {
 				e := scope.Entries[k]
+
 				md := make([]push.LabelAdapter, 0, len(e.StructuredMetadata)+len(res.Attrs)+len(scope.Attrs))
-				e.StructuredMetadata = AppendEffectiveMetadata(md, res.Attrs, scope.Attrs, &scope.Entries[k])
+				md = append(md, e.StructuredMetadata...)
+				md = append(md, res.Attrs...)
+				md = append(md, scope.Attrs...)
+
+				e.StructuredMetadata = md
 				out.Entries = append(out.Entries, e)
 			}
 		}
 	}
-	return out
 }

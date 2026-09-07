@@ -114,7 +114,9 @@ func TestEncodingsAreMutuallyUndecodable(t *testing.T) {
 			require.True(t, tt.decodesFlat || tt.decodesNested, "a record must decode as one of the two")
 
 			if tt.decodesFlat && tt.decodesNested {
-				require.Equal(t, flat, nested.ToStream(),
+				var fromNested Stream
+				nested.ToStream(&fromNested)
+				require.Equal(t, flat, fromNested,
 					"a record both encodings accept must mean the same thing either way")
 			}
 		})
@@ -141,8 +143,11 @@ func TestFromStreamRoundTripsThroughToStream(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			nested := FromStream(tt.stream)
-			require.Equal(t, len(tt.stream.Entries), nested.EntryCount())
-			require.Equal(t, tt.stream, nested.ToStream())
+			require.Equal(t, len(tt.stream.Entries), nested.entryCount())
+
+			var got Stream
+			nested.ToStream(&got)
+			require.Equal(t, tt.stream, got)
 		})
 	}
 }
@@ -156,8 +161,24 @@ func TestToStreamLeavesEntriesNilWhenEmpty(t *testing.T) {
 		{Labels: `{a="b"}`, ResourceLogs: []ResourceLogs{{}}},
 		{Labels: `{a="b"}`, ResourceLogs: []ResourceLogs{{ScopeLogs: []ScopeLogs{{}}}}},
 	} {
-		require.Nil(t, s.ToStream().Entries)
+		var got Stream
+		s.ToStream(&got)
+		require.Nil(t, got.Entries)
 	}
+}
+
+// TestToStreamOverwritesAReusedStream covers the reuse the decoder does between records:
+// nothing of the stream out held before may survive, least of all entries, which an
+// entry-less record would otherwise inherit whole.
+func TestToStreamOverwritesAReusedStream(t *testing.T) {
+	out := Stream{Labels: `{a="b"}`, Hash: 7, Entries: []push.Entry{entry(1, "x"), entry(2, "y")}}
+
+	empty := InternalStreamAdapter{Labels: `{c="d"}`, ResourceLogs: []ResourceLogs{{ScopeLogs: []ScopeLogs{{}}}}}
+	empty.ToStream(&out)
+
+	require.Equal(t, `{c="d"}`, out.Labels)
+	require.Zero(t, out.Hash)
+	require.Empty(t, out.Entries)
 }
 
 // TestToStreamResolvesEffectiveMetadata pins the expansion against what the OTLP parse site
@@ -180,7 +201,8 @@ func TestToStreamResolvesEffectiveMetadata(t *testing.T) {
 		}},
 	}
 
-	got := nested.ToStream()
+	var got Stream
+	nested.ToStream(&got)
 
 	require.Equal(t, `{a="b"}`, got.Labels)
 	require.Equal(t, uint64(7), got.Hash)
@@ -219,7 +241,8 @@ func TestToStreamKeepsEntriesUnderTheirOwnGroup(t *testing.T) {
 		},
 	}
 
-	got := nested.ToStream()
+	var got Stream
+	nested.ToStream(&got)
 
 	require.Len(t, got.Entries, 2)
 	require.Equal(t, "one", got.Entries[0].Line)
@@ -228,10 +251,10 @@ func TestToStreamKeepsEntriesUnderTheirOwnGroup(t *testing.T) {
 	require.Equal(t, push.LabelsAdapter{{Name: "host", Value: "host-2"}}, got.Entries[1].StructuredMetadata)
 }
 
-// TestToStreamDoesNotWriteThroughSharedAttrs guards against expanding into a shared slice. The
-// signature of AppendEffectiveMetadata invites passing resAttrs as dst to save an allocation,
-// but a resource's attributes belong to every entry beneath it, so appending one entry's
-// metadata onto them would corrupt its siblings.
+// TestToStreamDoesNotWriteThroughSharedAttrs guards against expanding into a shared slice.
+// Appending an entry's own metadata onto res.Attrs saves an allocation and is the obvious
+// shortcut, but a resource's attributes belong to every entry beneath it, so taking it would
+// corrupt the entry's siblings.
 func TestToStreamDoesNotWriteThroughSharedAttrs(t *testing.T) {
 	resAttrs := make([]push.LabelAdapter, 1, 8) // spare capacity is what makes a stray append silent
 	resAttrs[0] = push.LabelAdapter{Name: "host", Value: "host-1"}
@@ -247,7 +270,8 @@ func TestToStreamDoesNotWriteThroughSharedAttrs(t *testing.T) {
 		}},
 	}
 
-	nested.ToStream()
+	var got Stream
+	nested.ToStream(&got)
 
 	require.Equal(t, []push.LabelAdapter{{Name: "host", Value: "host-1"}}, nested.ResourceLogs[0].Attrs)
 	require.Equal(t, []push.LabelAdapter{{Name: "scope", Value: "lib"}}, nested.ResourceLogs[0].ScopeLogs[0].Attrs)

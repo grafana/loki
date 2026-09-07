@@ -156,7 +156,7 @@ func NewDecoder() (*Decoder, error) {
 // Returns the decoded logproto.Stream, parsed labels, and any error encountered.
 func (d *Decoder) Decode(data []byte) (logproto.Stream, labels.Labels, error) {
 	if err := decodeStream(data, d.stream); err != nil {
-		return logproto.Stream{}, labels.EmptyLabels(), fmt.Errorf("failed to unmarshal stream: %w", err)
+		return logproto.Stream{}, labels.EmptyLabels(), err
 	}
 
 	var ls labels.Labels
@@ -182,30 +182,30 @@ func (d *Decoder) DecodeWithoutLabels(data []byte) (logproto.Stream, error) {
 
 	stream := logproto.Stream{}
 	if err := decodeStream(data, &stream); err != nil {
-		return logproto.Stream{}, fmt.Errorf("failed to unmarshal stream: %w", err)
+		return logproto.Stream{}, err
 	}
 
 	return stream, nil
 }
 
+// decodeStream unmarshals a record into `into`, in whichever of the two encodings it carries.
 func decodeStream(data []byte, into *logproto.Stream) error {
 	var nested logproto.InternalStreamAdapter
 	nestedErr := nested.Unmarshal(data)
 	if nestedErr == nil {
-		// no need to zero [*into] because ToStream overrides all the values
-		*into = nested.ToStream()
+		nested.ToStream(into)
 		return nil
 	}
 
-	// - unmarshaling doesn't zero the values
-	// - [into] could be reused between the calls
-	// => zero the values, keep the into.Entries capacity though
+	// Unmarshal leaves fields absent from the wire untouched and `into` may be reused between
+	// calls, so reset it here rather than leaving either path to overwrite everything. The
+	// Entries capacity is kept.
 	into.Labels = ""
 	into.Hash = 0
 	into.Entries = into.Entries[:0]
 
 	if flatErr := into.Unmarshal(data); flatErr != nil {
-		return fmt.Errorf("not a valid record in either encoding: nested: %w; flat: %w", nestedErr, flatErr)
+		return fmt.Errorf("failed to unmarshal stream in either encoding: nested: %w; flat: %w", nestedErr, flatErr)
 	}
 	return nil
 }
