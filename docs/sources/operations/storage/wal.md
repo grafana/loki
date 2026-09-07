@@ -174,7 +174,7 @@ If you encounter this restart loop, the pod can recover by:
 3. The next startup will replay a smaller WAL quickly
 4. No further restarts will occur
 
-Do not use `kubectl delete pod --force --grace-period=0` as this will leave the WAL corrupted.
+Do not use `kubectl delete pod --force --grace-period=0` as this skips the flush/checkpoint, so the next replay is as long or longer.
 
 ### Non-Kubernetes or baremetal deployments
 
