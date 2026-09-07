@@ -361,7 +361,7 @@ github.com/aws/aws-sdk-go-v2/internal/strings
 github.com/aws/aws-sdk-go-v2/internal/sync/singleflight
 github.com/aws/aws-sdk-go-v2/internal/timeconv
 github.com/aws/aws-sdk-go-v2/internal/timeouts
-# github.com/aws/aws-sdk-go-v2/aws/protocol/eventstream v1.7.16
+# github.com/aws/aws-sdk-go-v2/aws/protocol/eventstream v1.7.18
 ## explicit; go 1.24
 github.com/aws/aws-sdk-go-v2/aws/protocol/eventstream
 github.com/aws/aws-sdk-go-v2/aws/protocol/eventstream/eventstreamapi
@@ -1215,7 +1215,7 @@ github.com/mitchellh/reflectwalk
 # github.com/moby/docker-image-spec v1.3.1
 ## explicit; go 1.18
 github.com/moby/docker-image-spec/specs-go/v1
-# github.com/moby/moby/api v1.55.0
+# github.com/moby/moby/api v1.56.0
 ## explicit; go 1.24
 github.com/moby/moby/api/types/blkiodev
 github.com/moby/moby/api/types/build
@@ -1227,7 +1227,7 @@ github.com/moby/moby/api/types/network
 github.com/moby/moby/api/types/storage
 github.com/moby/moby/api/types/swarm
 github.com/moby/moby/api/types/volume
-# github.com/moby/moby/v2 v2.0.0-beta.21
+# github.com/moby/moby/v2 v2.0.0-beta.23
 ## explicit; go 1.26.3
 github.com/moby/moby/v2/daemon/internal/filters
 github.com/moby/moby/v2/daemon/internal/stringid
