@@ -69,6 +69,29 @@ commonLabels: {}
 # @default -- See values.yaml
 loki:
   # Configures the liveness probe for all of the Loki pods
+  # NOTE: Do not use /ready for liveness probes on ingesters or single-binary deployments.
+  # The /ready endpoint returns 503 until WAL replay completes, which can take many minutes
+  # for large WALs (e.g., >1 GB with 650 segments). A liveness probe on /ready will cause
+  # the pod to be SIGTERM'd mid-replay, leaving the WAL larger and creating a restart loop.
+  #
+  # If a liveness probe is desired, use /metrics which is always available:
+  #   livenessProbe:
+  #     httpGet:
+  #       path: /metrics
+  #       port: http-metrics
+  #       initialDelaySeconds: 15
+  #       timeoutSeconds: 1
+  #
+  # Or pair a liveness probe with a very generous startupProbe on /ready:
+  #   startupProbe:
+  #     httpGet:
+  #       path: /ready
+  #       port: http-metrics
+  #       periodSeconds: 10
+  #       initialDelaySeconds: 30
+  #       failureThreshold: 180  # 1800s = 30 minutes to allow WAL replay completion
+  #
+  # Default is no liveness probe ({}), which is recommended for most deployments.
   livenessProbe: {}
   # Configures the readiness probe for all of the Loki pods
   readinessProbe:
@@ -81,6 +104,10 @@ loki:
     failureThreshold: 3
     timeoutSeconds: 1
   # Configures the startup probe for all of the Loki pods
+  # This allows WAL replay to complete without triggering pod restarts.
+  # On each restart, Kubernetes cancels in-flight replay, leaving the WAL
+  # larger and causing the next replay to take even longer—a restart loop.
+  # Set failureThreshold high (e.g., 180) to allow WAL replay to complete.
   startupProbe: {}
   image:
     # -- The Docker registry

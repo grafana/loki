@@ -125,6 +125,57 @@ Then you may recreate the (updated) StatefulSet and one-by-one start deleting th
 
 By following the above steps, you can ensure a smooth scaling down process for the Loki ingesters while maintaining data integrity and minimizing potential disruptions.
 
+
+
+### Kubernetes liveness probe restart loop warning
+
+**IMPORTANT:** When deploying Loki on Kubernetes with a liveness probe on the `/ready` endpoint, you may encounter a restart loop. The `/ready` endpoint returns HTTP 503 until WAL replay has completed, which can take many minutes for large WALs (e.g., >1 GB with 650 segments).
+
+When a liveness probe fails during WAL replay:
+1. Kubernetes sends SIGTERM to the pod mid-replay
+2. The interrupted flush leaves the WAL larger than before
+3. On the next restart, replay takes even longer
+4. This repeats until a cluster operator manually intervenes
+
+**Recommended configurations:**
+
+- **Best practice (no liveness probe):** Leave `loki.livenessProbe` empty (`{}`) in your `values.yaml`. The default is no liveness probe, which is recommended for most deployments.
+
+- **Using `/metrics` instead:** If you need a liveness probe, use the `/metrics` endpoint which is always available:
+  ```yaml
+  livenessProbe:
+    httpGet:
+      path: /metrics
+      port: http-metrics
+    initialDelaySeconds: 15
+    timeoutSeconds: 1
+  ```
+
+- **Pairing liveness + startup probes:** If you must use a liveness probe on `/ready`, provide a generous startup probe with a long failure threshold (30+ minutes):
+  ```yaml
+  livenessProbe:
+    httpGet:
+      path: /ready
+      port: http-metrics
+  # ... (other settings as needed)
+  startupProbe:
+    httpGet:
+      path: /ready
+      port: http-metrics
+    periodSeconds: 10
+    initialDelaySeconds: 30
+    failureThreshold: 180  # 1800s = 30 minutes
+  ```
+
+**Recovery from the loop:**
+If you encounter this restart loop, the pod can recover by:
+1. Deleting the problematic pod gracefully: `kubectl delete pod <pod-name>`
+2. The pod will shut down cleanly, flush its WAL to storage, and checkpoint
+3. The next startup will replay a smaller WAL quickly
+4. No further restarts will occur
+
+Do not use `kubectl delete pod --force --grace-period=0` as this will leave the WAL corrupted.
+
 ### Non-Kubernetes or baremetal deployments
 
 * When the ingester restarts for any reason (upgrade, crash, etc), it should be able to attach to the same volume in order to recover back the WAL and tokens.
