@@ -223,3 +223,7 @@ type ProjectConfig struct {
 
 	Gates FeatureGates `json:"featureGates,omitempty"`
 }
+
+func init() {
+	SchemeBuilder.Register(&ProjectConfig{})
+}

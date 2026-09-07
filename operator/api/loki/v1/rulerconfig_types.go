@@ -552,5 +552,9 @@ type RulerConfigList struct {
 	Items           []RulerConfig `json:"items"`
 }
 
+func init() {
+	SchemeBuilder.Register(&RulerConfig{}, &RulerConfigList{})
+}
+
 // Hub declares the v1.RulerConfig as the hub CRD version.
 func (*RulerConfig) Hub() {}

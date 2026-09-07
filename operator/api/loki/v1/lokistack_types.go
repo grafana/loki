@@ -1622,6 +1622,10 @@ type LokiStackList struct {
 	Items           []LokiStack `json:"items"`
 }
 
+func init() {
+	SchemeBuilder.Register(&LokiStack{}, &LokiStackList{})
+}
+
 // Hub declares the v1.LokiStack as the hub CRD version.
 func (*LokiStack) Hub() {}
 

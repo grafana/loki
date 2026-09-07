@@ -115,5 +115,9 @@ type RecordingRuleList struct {
 	Items           []RecordingRule `json:"items"`
 }
 
+func init() {
+	SchemeBuilder.Register(&RecordingRule{}, &RecordingRuleList{})
+}
+
 // Hub declares the v1.RecordingRule as the hub CRD version.
 func (*RecordingRule) Hub() {}

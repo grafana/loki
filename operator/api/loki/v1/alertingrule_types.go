@@ -130,5 +130,9 @@ type AlertingRuleList struct {
 	Items           []AlertingRule `json:"items"`
 }
 
+func init() {
+	SchemeBuilder.Register(&AlertingRule{}, &AlertingRuleList{})
+}
+
 // Hub declares the v1.AlertingRule as the hub CRD version.
 func (*AlertingRule) Hub() {}

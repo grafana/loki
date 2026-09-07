@@ -131,6 +131,10 @@ type AlertingRuleList struct {
 	Items           []AlertingRule `json:"items"`
 }
 
+func init() {
+	SchemeBuilder.Register(&AlertingRule{}, &AlertingRuleList{})
+}
+
 // ConvertTo converts this AlertingRule (v1beta1) to the Hub version (v1).
 func (src *AlertingRule) ConvertTo(dstRaw conversion.Hub) error {
 	dst := dstRaw.(*v1.AlertingRule)

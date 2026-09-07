@@ -825,6 +825,10 @@ type LokiStackList struct {
 	Items           []LokiStack `json:"items"`
 }
 
+func init() {
+	SchemeBuilder.Register(&LokiStack{}, &LokiStackList{})
+}
+
 func convertStatusV1(src PodStatusMap) v1.PodStatusMap {
 	if src == nil {
 		return nil
