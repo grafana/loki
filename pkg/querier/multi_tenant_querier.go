@@ -2,7 +2,6 @@ package querier
 
 import (
 	"context"
-	"fmt"
 	"sort"
 	"strings"
 
@@ -60,15 +59,17 @@ func (q *MultiTenantQuerier) SelectLogs(ctx context.Context, params logql.Select
 		return nil, err
 	}
 	matchedTenants, filteredMatchers := filterValuesByMatchers(defaultTenantLabel, tenantIDs, selector.Matchers()...)
-	params.Selector = replaceMatchers(selector, filteredMatchers).String()
+	if err := syntax.ValidateMatchers(filteredMatchers); err != nil {
+		return nil, err
+	}
+	updatedSelector := replaceMatchers(selector, filteredMatchers)
 
-	parsed, err := syntax.ParseLogSelector(params.Selector, true)
-	if err != nil {
-		return nil, fmt.Errorf("log selector is invalid after matcher update: %w", err)
-	}
+	// Update Plan with the modified AST directly (no string round-trip)
 	params.Plan = &plan.QueryPlan{
-		AST: parsed,
+		AST: updatedSelector,
 	}
+	// Keep Selector in sync for backward compatibility during version-skew rollout
+	params.Selector = updatedSelector.String()
 
 	// in case of multiple tenants, we need to filter the store chunks by tenant if they are provided
 	storeOverridesByTenant := make(map[string][]*logproto.ChunkRef)
@@ -108,11 +109,20 @@ func (q *MultiTenantQuerier) SelectSamples(ctx context.Context, params logql.Sel
 		return q.Querier.SelectSamples(ctx, params)
 	}
 
-	matchedTenants, updatedSelector, err := removeTenantSelector(params, tenantIDs)
+	matchedTenants, filteredMatchers, updatedExpr, err := removeTenantSelector(params, tenantIDs)
 	if err != nil {
 		return nil, err
 	}
-	params.Selector = updatedSelector.String()
+	if err := syntax.ValidateMatchers(filteredMatchers); err != nil {
+		return nil, err
+	}
+
+	// Update Plan with the modified AST directly (no string round-trip)
+	params.Plan = &plan.QueryPlan{
+		AST: updatedExpr,
+	}
+	// Keep Selector in sync for backward compatibility during version-skew rollout
+	params.Selector = updatedExpr.String()
 
 	// in case of multiple tenants, we need to filter the store chunks by tenant if they are provided
 	storeOverridesByTenant := make(map[string][]*logproto.ChunkRef)
@@ -380,19 +390,23 @@ func (q *MultiTenantQuerier) DetectedLabels(ctx context.Context, req *logproto.D
 	}, nil
 }
 
-// removeTenantSelector filters the given tenant IDs based on any tenant ID filter the in passed selector.
-func removeTenantSelector(params logql.SelectSampleParams, tenantIDs []string) (map[string]struct{}, syntax.Expr, error) {
+// removeTenantSelector filters the given tenant IDs based on any tenant ID filter in the passed selector.
+// It returns:
+//   - matchedTenants: tenant IDs that matched the selector's tenant filter
+//   - filteredMatchers: matchers with __tenant_id__ removed, for validation before use
+//   - updatedExpr: the expression with filteredMatchers already applied
+func removeTenantSelector(params logql.SelectSampleParams, tenantIDs []string) (matchedTenants map[string]struct{}, filteredMatchers []*labels.Matcher, updatedExpr syntax.Expr, err error) {
 	expr, err := params.Expr()
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
 	selector, err := expr.Selector()
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
-	matchedTenants, filteredMatchers := filterValuesByMatchers(defaultTenantLabel, tenantIDs, selector.Matchers()...)
-	updatedExpr := replaceMatchers(expr, filteredMatchers)
-	return matchedTenants, updatedExpr, nil
+	matchedTenants, filteredMatchers = filterValuesByMatchers(defaultTenantLabel, tenantIDs, selector.Matchers()...)
+	updatedExpr = replaceMatchers(expr, filteredMatchers)
+	return matchedTenants, filteredMatchers, updatedExpr, nil
 }
 
 // replaceMatchers traverses the passed expression and replaces all matchers.
