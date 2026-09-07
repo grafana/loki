@@ -893,7 +893,12 @@ func TestOtlpError(t *testing.T) {
 			OTLPError(r, tc.msg, tc.inCode, logger)
 
 			require.Equal(t, tc.expectedCode, r.Code)
-			require.Equal(t, "application/octet-stream", r.Header().Get("Content-Type"))
+			// Result holds the headers as they were when WriteHeader committed
+			// them, which is what the client sees. Header() also reflects
+			// assignments made too late to be sent.
+			resp := r.Result()
+			defer resp.Body.Close()
+			require.Equal(t, pbContentType, resp.Header.Get("Content-Type"))
 
 			respStatus := &status.Status{}
 			require.NoError(t, proto.Unmarshal(r.Body.Bytes(), respStatus))
