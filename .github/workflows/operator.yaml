@@ -50,7 +50,7 @@ jobs:
     - name: Lint
       uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a # v9.3
       with:
-        version: v2.12.2 # Do not approve updates without validating "make lint" in the operator folder still works
+        version: v2.13.2 # Do not approve updates without validating "make lint" in the operator folder still works
         args: --timeout=5m
         working-directory: ./operator
     - name: Check prometheus rules
