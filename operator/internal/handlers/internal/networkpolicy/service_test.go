@@ -12,7 +12,6 @@ import (
 	"k8s.io/apimachinery/pkg/apis/meta/internalversion/scheme"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/intstr"
-	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
 	configv1 "github.com/grafana/loki/operator/api/config/v1"
@@ -107,11 +106,11 @@ func TestServicePortToPodPort(t *testing.T) {
 				},
 				Ports: []discoveryv1.EndpointPort{
 					{
-						Port: ptr.To(int32(8080)),
+						Port: new(int32(8080)),
 					},
 					{
-						Port: ptr.To(int32(6443)),
-						Name: ptr.To("https"),
+						Port: new(int32(6443)),
+						Name: new("https"),
 					},
 				},
 			}
@@ -238,7 +237,7 @@ func TestResolveTargetPort(t *testing.T) {
 				Items: []discoveryv1.EndpointSlice{
 					{
 						Ports: []discoveryv1.EndpointPort{
-							{Port: ptr.To(int32(80))},
+							{Port: new(int32(80))},
 						},
 					},
 				},
@@ -265,7 +264,7 @@ func TestResolveTargetPort(t *testing.T) {
 				Items: []discoveryv1.EndpointSlice{
 					{
 						Ports: []discoveryv1.EndpointPort{
-							{Port: ptr.To(int32(8080))},
+							{Port: new(int32(8080))},
 						},
 					},
 				},
@@ -293,8 +292,8 @@ func TestResolveTargetPort(t *testing.T) {
 					{
 						Ports: []discoveryv1.EndpointPort{
 							{
-								Port: ptr.To(int32(8080)),
-								Name: ptr.To("http"),
+								Port: new(int32(8080)),
+								Name: new("http"),
 							},
 						},
 					},
@@ -323,8 +322,8 @@ func TestResolveTargetPort(t *testing.T) {
 					{
 						Ports: []discoveryv1.EndpointPort{
 							{
-								Port: ptr.To(int32(8080)),
-								Name: ptr.To("http"),
+								Port: new(int32(8080)),
+								Name: new("http"),
 							},
 						},
 					},
@@ -352,7 +351,7 @@ func TestResolveTargetPort(t *testing.T) {
 				Items: []discoveryv1.EndpointSlice{
 					{
 						Ports: []discoveryv1.EndpointPort{
-							{Port: ptr.To(int32(6443))},
+							{Port: new(int32(6443))},
 						},
 					},
 				},
@@ -412,7 +411,7 @@ func TestDetermineObjectStoragePorts(t *testing.T) {
 					},
 				},
 				Ports: []discoveryv1.EndpointPort{
-					{Port: ptr.To(int32(9000))},
+					{Port: new(int32(9000))},
 				},
 			},
 			expectedPorts: []int32{9000},
@@ -549,7 +548,7 @@ func TestDetermineObjectStoragePorts(t *testing.T) {
 					},
 				},
 				Ports: []discoveryv1.EndpointPort{
-					{Port: ptr.To(int32(9000))},
+					{Port: new(int32(9000))},
 				},
 			},
 			expectedPorts: []int32{9000, 8080},

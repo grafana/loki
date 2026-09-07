@@ -29,8 +29,8 @@ func TestGetMutateFunc_MutateObjectMeta(t *testing.T) {
 			OwnerReferences: []metav1.OwnerReference{
 				{
 					APIVersion:         "loki.grafana.com/v1",
-					BlockOwnerDeletion: ptr.To(true),
-					Controller:         ptr.To(true),
+					BlockOwnerDeletion: new(true),
+					Controller:         new(true),
 					Kind:               "LokiStack",
 					Name:               "lokistack-testing",
 					UID:                "6128aa83-de7f-47c0-abf2-4a380713b599",
@@ -859,7 +859,7 @@ func TestGetMutateFunc_MutateServiceMonitorSpec(t *testing.T) {
 								HTTPConfigWithTLSFiles: monitoringv1.HTTPConfigWithTLSFiles{
 									TLSConfig: &monitoringv1.TLSConfig{
 										SafeTLSConfig: monitoringv1.SafeTLSConfig{
-											ServerName: ptr.To("loki-test.some-ns.svc.cluster.local"),
+											ServerName: new("loki-test.some-ns.svc.cluster.local"),
 										},
 										TLSFilesConfig: monitoringv1.TLSFilesConfig{
 											CAFile: PrometheusCAFile,
@@ -892,7 +892,7 @@ func TestGetMutateFunc_MutateServiceMonitorSpec(t *testing.T) {
 								HTTPConfigWithTLSFiles: monitoringv1.HTTPConfigWithTLSFiles{
 									TLSConfig: &monitoringv1.TLSConfig{
 										SafeTLSConfig: monitoringv1.SafeTLSConfig{
-											ServerName: ptr.To("loki-test.some-ns.svc.cluster.local"),
+											ServerName: new("loki-test.some-ns.svc.cluster.local"),
 										},
 										TLSFilesConfig: monitoringv1.TLSFilesConfig{
 											CAFile: PrometheusCAFile,
@@ -910,7 +910,7 @@ func TestGetMutateFunc_MutateServiceMonitorSpec(t *testing.T) {
 								HTTPConfigWithTLSFiles: monitoringv1.HTTPConfigWithTLSFiles{
 									TLSConfig: &monitoringv1.TLSConfig{
 										SafeTLSConfig: monitoringv1.SafeTLSConfig{
-											ServerName: ptr.To("loki-test.some-ns.svc.cluster.local"),
+											ServerName: new("loki-test.some-ns.svc.cluster.local"),
 										},
 										TLSFilesConfig: monitoringv1.TLSFilesConfig{
 											CAFile: PrometheusCAFile,
@@ -948,7 +948,7 @@ func TestGetMutateFunc_MutateServiceMonitorSpec(t *testing.T) {
 								HTTPConfigWithTLSFiles: monitoringv1.HTTPConfigWithTLSFiles{
 									TLSConfig: &monitoringv1.TLSConfig{
 										SafeTLSConfig: monitoringv1.SafeTLSConfig{
-											ServerName: ptr.To("loki-test.some-ns.svc.cluster.local"),
+											ServerName: new("loki-test.some-ns.svc.cluster.local"),
 										},
 										TLSFilesConfig: monitoringv1.TLSFilesConfig{
 											CAFile: PrometheusCAFile,
@@ -986,7 +986,7 @@ func TestGetMutateFunc_MutateServiceMonitorSpec(t *testing.T) {
 								HTTPConfigWithTLSFiles: monitoringv1.HTTPConfigWithTLSFiles{
 									TLSConfig: &monitoringv1.TLSConfig{
 										SafeTLSConfig: monitoringv1.SafeTLSConfig{
-											ServerName: ptr.To("loki-test.some-ns.svc.cluster.local"),
+											ServerName: new("loki-test.some-ns.svc.cluster.local"),
 										},
 										TLSFilesConfig: monitoringv1.TLSFilesConfig{
 											CAFile: PrometheusCAFile,
@@ -1004,7 +1004,7 @@ func TestGetMutateFunc_MutateServiceMonitorSpec(t *testing.T) {
 								HTTPConfigWithTLSFiles: monitoringv1.HTTPConfigWithTLSFiles{
 									TLSConfig: &monitoringv1.TLSConfig{
 										SafeTLSConfig: monitoringv1.SafeTLSConfig{
-											ServerName: ptr.To("loki-test.some-ns.svc.cluster.local"),
+											ServerName: new("loki-test.some-ns.svc.cluster.local"),
 										},
 										TLSFilesConfig: monitoringv1.TLSFilesConfig{
 											CAFile: PrometheusCAFile,

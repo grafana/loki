@@ -14,7 +14,6 @@ import (
 	networkingv1 "k8s.io/api/networking/v1"
 	policyv1 "k8s.io/api/policy/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/utils/ptr"
 
 	configv1 "github.com/grafana/loki/operator/api/config/v1"
 	lokiv1 "github.com/grafana/loki/operator/api/loki/v1"
@@ -1523,12 +1522,12 @@ func TestBuildGateway_ExternalAccessControl(t *testing.T) {
 		},
 		{
 			desc:                   "external access explicitly enabled - Kubernetes",
-			externalAccessDisabled: ptr.To(false),
+			externalAccessDisabled: new(false),
 			expectIngress:          true,
 		},
 		{
 			desc:                   "external access disabled - Kubernetes",
-			externalAccessDisabled: ptr.To(true),
+			externalAccessDisabled: new(true),
 			expectIngress:          false,
 		},
 	}
