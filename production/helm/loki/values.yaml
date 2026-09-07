@@ -83,13 +83,13 @@ loki:
   #       timeoutSeconds: 1
   #
   # Or pair a liveness probe with a very generous startupProbe on /ready:
-  #   startupProbe:
-  #     httpGet:
-  #       path: /ready
-  #       port: http-metrics
-  #       periodSeconds: 10
-  #       initialDelaySeconds: 30
-  #       failureThreshold: 180  # 1800s = 30 minutes to allow WAL replay completion
+  # startupProbe:
+  #   httpGet:
+  #     path: /ready
+  #     port: http-metrics
+  #     periodSeconds: 10
+  #     initialDelaySeconds: 30
+  #     failureThreshold: 180  # 1800s = 30 minutes to allow WAL replay completion
   #
   # Default is no liveness probe ({}), which is recommended for most deployments.
   livenessProbe: {}
