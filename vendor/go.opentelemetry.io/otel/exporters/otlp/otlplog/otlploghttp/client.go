@@ -50,8 +50,8 @@ var errInsecureEndpointWithTLS = errors.New("insecure HTTP endpoint cannot use T
 // maxResponseBodySize is the maximum number of bytes to read from a response
 // body. It is set to 4 MiB per the OTLP specification recommendation to
 // mitigate excessive memory usage caused by a misconfigured or malicious
-// server. If exceeded, the response is treated as a not-retryable error.
-// This is a variable to allow tests to override it.
+// server. If this limit is exceeded, the response is treated as a non-retryable
+// error. This is a variable to allow tests to override it.
 var maxResponseBodySize int64 = 4 * 1024 * 1024
 
 // nextExporterID returns the next unique ID for an exporter.
@@ -135,10 +135,10 @@ type httpClient struct {
 	inst *observ.Instrumentation
 }
 
-// Keep it in sync with golang's DefaultTransport from net/http! We
+// Keep it in sync with Go's DefaultTransport from net/http! We
 // have our own copy to avoid handling a situation where the
 // DefaultTransport is overwritten with some different implementation
-// of http.RoundTripper or it's modified by another package.
+// of http.RoundTripper or it is modified by another package.
 var ourTransport = &http.Transport{
 	Proxy: http.ProxyFromEnvironment,
 	DialContext: (&net.Dialer{
@@ -154,7 +154,7 @@ var ourTransport = &http.Transport{
 
 func (c *httpClient) uploadLogs(ctx context.Context, data []*logpb.ResourceLogs) (uploadErr error) {
 	// The Exporter synchronizes access to client methods. This is not called
-	// after the Exporter is shutdown. Only thing to do here is send data.
+	// after the Exporter is shut down. The only thing to do here is send data.
 
 	pbRequest := &collogpb.ExportLogsServiceRequest{ResourceLogs: data}
 	body, err := proto.Marshal(pbRequest)
@@ -355,9 +355,9 @@ type retryableError struct {
 	err      error
 }
 
-// newResponseError returns a retryableError and will extract any explicit
-// throttle delay contained in headers. The returned error wraps wrapped
-// if it is not nil.
+// newResponseError returns a retryableError and extracts any explicit
+// throttle delay contained in headers. The returned error wraps the supplied
+// error when it is non-nil.
 func newResponseError(header http.Header, wrapped error) error {
 	var rErr retryableError
 	if v := header.Get("Retry-After"); v != "" {
@@ -410,8 +410,8 @@ func (e retryableError) As(target any) bool {
 	}
 }
 
-// evaluate returns if err is retry-able. If it is and it includes an explicit
-// throttling delay, that delay is also returned.
+// evaluate reports whether err is retryable. If so, it also returns any
+// explicit throttling delay included in err.
 func evaluate(err error) (bool, time.Duration) {
 	if err == nil {
 		return false, 0

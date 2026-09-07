@@ -320,7 +320,7 @@ var ltt = []struct {
 						},
 					},
 				},
-				ReplicationFactor: 2,
+				ReplicationFactor: 2, //nolint:staticcheck
 				Replication: &lokiv1.ReplicationSpec{
 					Zones: []lokiv1.ZoneSpec{
 						{

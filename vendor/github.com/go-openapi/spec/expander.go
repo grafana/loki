@@ -583,7 +583,7 @@ func expandPathItem(pathItem *PathItem, resolver *schemaLoader, basePath string)
 
 	pathItem.Ref = Ref{}
 	for i := range pathItem.Parameters {
-		if err := expandParameterOrResponse(&(pathItem.Parameters[i]), resolver, basePath); resolver.shouldStopOnError(err) {
+		if err := expandParameterOrResponse(&pathItem.Parameters[i], resolver, basePath); resolver.shouldStopOnError(err) {
 			return err
 		}
 	}

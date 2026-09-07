@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"math"
 	"sync"
-	"time"
 
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/promql"
@@ -315,50 +314,10 @@ func JoinQuantileSketchVector(next bool, r StepResult, stepEvaluator StepEvaluat
 
 // QuantileSketchMatrixStepEvaluator steps through a matrix of quantile sketch
 // vectors, ie t-digest or DDSketch structures per time step.
-type QuantileSketchMatrixStepEvaluator struct {
-	end, ts time.Time
-	step    time.Duration
-	m       ProbabilisticQuantileMatrix
-}
+type QuantileSketchMatrixStepEvaluator = SketchMatrixStepEvaluator[ProbabilisticQuantileVector]
 
 func NewQuantileSketchMatrixStepEvaluator(m ProbabilisticQuantileMatrix, params Params) *QuantileSketchMatrixStepEvaluator {
-	var (
-		step = params.Step()
-	)
-	return &QuantileSketchMatrixStepEvaluator{
-		end:  params.End(),
-		ts:   params.Start().Add(-step), // will be corrected on first Next() call
-		step: step,
-		m:    m,
-	}
-}
-
-func (m *QuantileSketchMatrixStepEvaluator) Next() (bool, int64, StepResult) {
-	m.ts = m.ts.Add(m.step)
-	if m.ts.After(m.end) {
-		return false, 0, nil
-	}
-
-	ts := m.ts.UnixNano() / int64(time.Millisecond)
-
-	if len(m.m) == 0 {
-		return false, 0, nil
-	}
-
-	vec := m.m[0]
-
-	// Reset for next step
-	m.m = m.m[1:]
-
-	return true, ts, vec
-}
-
-func (*QuantileSketchMatrixStepEvaluator) Close() error { return nil }
-
-func (*QuantileSketchMatrixStepEvaluator) Error() error { return nil }
-
-func (*QuantileSketchMatrixStepEvaluator) Explain(parent Node) {
-	parent.Child("QuantileSketchMatrix")
+	return newSketchMatrixStepEvaluator(m, params, "QuantileSketchMatrix")
 }
 
 // QuantileSketchVectorStepEvaluator evaluates a quantile sketch into a
@@ -366,6 +325,7 @@ func (*QuantileSketchMatrixStepEvaluator) Explain(parent Node) {
 type QuantileSketchVectorStepEvaluator struct {
 	inner    StepEvaluator
 	quantile float64
+	err      error
 }
 
 var _ StepEvaluator = NewQuantileSketchVectorStepEvaluator(nil, 0)
@@ -387,7 +347,11 @@ func (e *QuantileSketchVectorStepEvaluator) Next() (bool, int64, StepResult) {
 	vec := make(promql.Vector, len(quantileSketchVec))
 
 	for i, quantileSketch := range quantileSketchVec {
-		f, _ := quantileSketch.F.Quantile(e.quantile)
+		f, err := quantileSketch.F.Quantile(e.quantile)
+		if err != nil {
+			e.err = err
+			return false, 0, SampleVector{}
+		}
 
 		vec[i] = promql.Sample{
 			T:      quantileSketch.T,
@@ -401,4 +365,4 @@ func (e *QuantileSketchVectorStepEvaluator) Next() (bool, int64, StepResult) {
 
 func (*QuantileSketchVectorStepEvaluator) Close() error { return nil }
 
-func (*QuantileSketchVectorStepEvaluator) Error() error { return nil }
+func (e *QuantileSketchVectorStepEvaluator) Error() error { return e.err }

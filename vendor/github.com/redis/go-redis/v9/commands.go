@@ -199,6 +199,9 @@ type Cmdable interface {
 	ClientUnblock(ctx context.Context, id int64) *IntCmd
 	ClientUnblockWithError(ctx context.Context, id int64) *IntCmd
 	ClientMaintNotifications(ctx context.Context, enabled bool, endpointType string) *StatusCmd
+	ClientTracking(ctx context.Context, on bool, opt *ClientTrackingOptions) *StatusCmd
+	ClientTrackingOn(ctx context.Context, opt *ClientTrackingOptions) *StatusCmd
+	ClientTrackingOff(ctx context.Context) *StatusCmd
 	ConfigGet(ctx context.Context, parameter string) *MapStringStringCmd
 	ConfigResetStat(ctx context.Context) *StatusCmd
 	ConfigSet(ctx context.Context, parameter, value string) *StatusCmd
@@ -209,6 +212,7 @@ type Cmdable interface {
 	FlushDB(ctx context.Context) *StatusCmd
 	FlushDBAsync(ctx context.Context) *StatusCmd
 	Info(ctx context.Context, section ...string) *StringCmd
+	InfoMap(ctx context.Context, section ...string) *InfoCmd
 	LastSave(ctx context.Context) *IntCmd
 	Save(ctx context.Context) *StatusCmd
 	Shutdown(ctx context.Context) *StatusCmd
@@ -296,8 +300,8 @@ func (c cmdable) Wait(ctx context.Context, numSlaves int, timeout time.Duration)
 	return cmd
 }
 
-func (c cmdable) WaitAOF(ctx context.Context, numLocal, numSlaves int, timeout time.Duration) *IntCmd {
-	cmd := NewIntCmd(ctx, "waitAOF", numLocal, numSlaves, int(timeout/time.Millisecond))
+func (c cmdable) WaitAOF(ctx context.Context, numLocal, numSlaves int, timeout time.Duration) *IntSliceCmd {
+	cmd := NewIntSliceCmd(ctx, "waitAOF", numLocal, numSlaves, int(timeout/time.Millisecond))
 	cmd.setReadTimeout(timeout)
 	_ = c(ctx, cmd)
 	return cmd
@@ -565,6 +569,95 @@ func (c cmdable) ClientMaintNotifications(ctx context.Context, enabled bool, end
 	return cmd
 }
 
+// ClientTrackingOptions configures CLIENT TRACKING ON. See
+// https://redis.io/commands/client-tracking/ for semantics.
+type ClientTrackingOptions struct {
+	Redirect int64
+	Bcast    bool
+	Prefixes []string
+	OptIn    bool
+	OptOut   bool
+	NoLoop   bool
+}
+
+// ClientTracking enables or disables server-assisted client-side caching for
+// the ONE connection that happens to serve this command. On a pooled client
+// that connection is arbitrary, so this is only meaningful on a dedicated
+// connection (see Client.Conn). When on is false, opt is ignored. Invalid
+// option combinations are reported via the returned command's Err and nothing
+// is sent to the server.
+//
+// Must not be combined with the built-in client-side cache: on a client
+// configured with Options.ClientSideCache or ClientSideCacheConfig this
+// command is rejected, because changing a pool connection's tracking state
+// would silently break the cache's invalidation.
+func (c cmdable) ClientTracking(ctx context.Context, on bool, opt *ClientTrackingOptions) *StatusCmd {
+	if !on {
+		return c.ClientTrackingOff(ctx)
+	}
+	return c.ClientTrackingOn(ctx, opt)
+}
+
+// ClientTrackingOn enables tracking on the serving connection. See
+// ClientTracking for the pooled-client and built-in-CSC caveats.
+func (c cmdable) ClientTrackingOn(ctx context.Context, opt *ClientTrackingOptions) *StatusCmd {
+	args := []interface{}{"client", "tracking", "on"}
+	if opt != nil {
+		if err := validateClientTrackingOptions(opt); err != nil {
+			cmd := NewStatusCmd(ctx, args...)
+			cmd.SetErr(err)
+			return cmd
+		}
+		args = appendClientTrackingOptions(args, opt)
+	}
+	cmd := NewStatusCmd(ctx, args...)
+	_ = c(ctx, cmd)
+	return cmd
+}
+
+// ClientTrackingOff disables tracking on the serving connection. See
+// ClientTracking for the pooled-client and built-in-CSC caveats.
+func (c cmdable) ClientTrackingOff(ctx context.Context) *StatusCmd {
+	cmd := NewStatusCmd(ctx, "client", "tracking", "off")
+	_ = c(ctx, cmd)
+	return cmd
+}
+
+func validateClientTrackingOptions(opt *ClientTrackingOptions) error {
+	if opt.OptIn && opt.OptOut {
+		return errors.New("redis: CLIENT TRACKING OPTIN and OPTOUT are mutually exclusive")
+	}
+	if opt.Bcast && (opt.OptIn || opt.OptOut) {
+		return errors.New("redis: CLIENT TRACKING BCAST cannot be combined with OPTIN or OPTOUT")
+	}
+	if len(opt.Prefixes) > 0 && !opt.Bcast {
+		return errors.New("redis: CLIENT TRACKING PREFIX requires BCAST")
+	}
+	return nil
+}
+
+func appendClientTrackingOptions(args []interface{}, opt *ClientTrackingOptions) []interface{} {
+	if opt.Redirect != 0 {
+		args = append(args, "redirect", opt.Redirect)
+	}
+	if opt.Bcast {
+		args = append(args, "bcast")
+	}
+	for _, p := range opt.Prefixes {
+		args = append(args, "prefix", p)
+	}
+	if opt.OptIn {
+		args = append(args, "optin")
+	}
+	if opt.OptOut {
+		args = append(args, "optout")
+	}
+	if opt.NoLoop {
+		args = append(args, "noloop")
+	}
+	return args
+}
+
 // ------------------------------------------------------------------------------------------------
 
 func (c cmdable) ConfigGet(ctx context.Context, parameter string) *MapStringStringCmd {
@@ -706,7 +799,7 @@ func (c cmdable) ReplicaOf(ctx context.Context, host, port string) *StatusCmd {
 }
 
 func (c cmdable) SlowLogGet(ctx context.Context, num int64) *SlowLogCmd {
-	cmd := NewSlowLogCmd(context.Background(), "slowlog", "get", num)
+	cmd := NewSlowLogCmd(ctx, "slowlog", "get", num)
 	_ = c(ctx, cmd)
 	return cmd
 }
@@ -797,6 +890,11 @@ func (c *ModuleLoadexConfig) toArgs() []interface{} {
 
 // ModuleLoadex Redis `MODULE LOADEX path [CONFIG name value [CONFIG name value ...]] [ARGS args [args ...]]` command.
 func (c cmdable) ModuleLoadex(ctx context.Context, conf *ModuleLoadexConfig) *StringCmd {
+	if conf == nil {
+		cmd := NewStringCmd(ctx)
+		cmd.SetErr(errors.New("redis: ModuleLoadex nil config"))
+		return cmd
+	}
 	cmd := NewStringCmd(ctx, conf.toArgs()...)
 	_ = c(ctx, cmd)
 	return cmd

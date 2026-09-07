@@ -1523,17 +1523,18 @@ func _rbuDeltaApply(tls *libc.TLS, zSrc uintptr, lenSrc int32, _zDelta uintptr, 
 	defer tls.Free(16)
 	*(*uintptr)(unsafe.Pointer(bp)) = _zDelta
 	*(*int32)(unsafe.Pointer(bp + 8)) = _lenDelta
-	var cnt, limit, ofst, total uint32
+	var cnt, ofst uint32
+	var limit, total Tsqlite3_uint64
 	_, _, _, _ = cnt, limit, ofst, total
-	total = uint32(0)
-	limit = _rbuDeltaGetInt(tls, bp, bp+8)
+	total = uint64(0)
+	limit = uint64(_rbuDeltaGetInt(tls, bp, bp+8))
 	if **(**int32)(__ccgo_up(bp + 8)) <= 0 || int32(**(**int8)(__ccgo_up(**(**uintptr)(__ccgo_up(bp))))) != int32('\n') {
 		/* ERROR: size integer not terminated by "\n" */
 		return -int32(1)
 	}
 	**(**uintptr)(__ccgo_up(bp)) = **(**uintptr)(__ccgo_up(bp)) + 1
-	**(**int32)(__ccgo_up(bp + 8)) = **(**int32)(__ccgo_up(bp + 8)) - 1
-	for **(**int8)(__ccgo_up(**(**uintptr)(__ccgo_up(bp)))) != 0 && **(**int32)(__ccgo_up(bp + 8)) > 0 {
+	**(**int32)(__ccgo_up(bp + 8)) = **(**int32)(__ccgo_up(bp + 8)) - 1 /* Skip the \n */
+	for **(**int32)(__ccgo_up(bp + 8)) > 0 && **(**int8)(__ccgo_up(**(**uintptr)(__ccgo_up(bp)))) != 0 {
 		cnt = _rbuDeltaGetInt(tls, bp, bp+8)
 		if **(**int32)(__ccgo_up(bp + 8)) <= 0 {
 			return -int32(1)
@@ -1543,13 +1544,13 @@ func _rbuDeltaApply(tls *libc.TLS, zSrc uintptr, lenSrc int32, _zDelta uintptr, 
 			**(**uintptr)(__ccgo_up(bp)) = **(**uintptr)(__ccgo_up(bp)) + 1
 			**(**int32)(__ccgo_up(bp + 8)) = **(**int32)(__ccgo_up(bp + 8)) - 1
 			ofst = _rbuDeltaGetInt(tls, bp, bp+8)
-			if **(**int32)(__ccgo_up(bp + 8)) > 0 || int32(**(**int8)(__ccgo_up(**(**uintptr)(__ccgo_up(bp))))) != int32(',') {
+			if **(**int32)(__ccgo_up(bp + 8)) > 0 && int32(**(**int8)(__ccgo_up(**(**uintptr)(__ccgo_up(bp))))) != int32(',') {
 				/* ERROR: copy command not terminated by ',' */
 				return -int32(1)
 			}
 			**(**uintptr)(__ccgo_up(bp)) = **(**uintptr)(__ccgo_up(bp)) + 1
 			**(**int32)(__ccgo_up(bp + 8)) = **(**int32)(__ccgo_up(bp + 8)) - 1
-			total = total + cnt
+			total = total + uint64(cnt)
 			if total > limit {
 				/* ERROR: copy exceeds output file size */
 				return -int32(1)
@@ -1563,12 +1564,12 @@ func _rbuDeltaApply(tls *libc.TLS, zSrc uintptr, lenSrc int32, _zDelta uintptr, 
 		case int32(':'):
 			**(**uintptr)(__ccgo_up(bp)) = **(**uintptr)(__ccgo_up(bp)) + 1
 			**(**int32)(__ccgo_up(bp + 8)) = **(**int32)(__ccgo_up(bp + 8)) - 1
-			total = total + cnt
+			total = total + uint64(cnt)
 			if total > limit {
 				/* ERROR:  insert command gives an output larger than predicted */
 				return -int32(1)
 			}
-			if libc.Int64FromUint32(cnt) > int64(**(**int32)(__ccgo_up(bp + 8))) {
+			if cnt > libc.Uint32FromInt32(**(**int32)(__ccgo_up(bp + 8))) {
 				/* ERROR: insert count exceeds size of delta */
 				return -int32(1)
 			}
@@ -1584,7 +1585,7 @@ func _rbuDeltaApply(tls *libc.TLS, zSrc uintptr, lenSrc int32, _zDelta uintptr, 
 				/* ERROR: generated size does not match predicted size */
 				return -int32(1)
 			}
-			return libc.Int32FromUint32(total)
+			return libc.Int32FromUint64(total)
 		default:
 			/* ERROR: unknown delta operator */
 			return -int32(1)

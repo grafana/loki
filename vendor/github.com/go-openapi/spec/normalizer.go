@@ -41,10 +41,11 @@ func normalizeURI(refPath, base string) string {
 	if refURL.Path == "." {
 		refURL.Path = ""
 	}
+	forgetSpelling(refURL)
 
 	r := MustCreateRef(refURL.String())
 	if r.IsCanonical() {
-		return refURL.String()
+		return r.String()
 	}
 
 	baseURL, _ := parseURL(base)
@@ -252,11 +253,12 @@ func normalizeBase(in string) string {
 	if u.Path == "." { // empty after Clean()
 		u.Path = ""
 	}
+	forgetSpelling(u)
 
 	if u.Scheme != "" {
 		if path.IsAbs(u.Path) || u.Scheme != fileScheme {
 			// this is absolute or explicitly not a local file: we're good
-			return u.String()
+			return canonicalString(u)
 		}
 	}
 
@@ -269,5 +271,41 @@ func normalizeBase(in string) string {
 	u.Scheme = fileScheme
 	u.Path = absPath(u.Path) // platform-dependent
 	u.RawQuery = ""          // any query component is irrelevant for a base
-	return u.String()
+	return canonicalString(u)
+}
+
+// forgetSpelling drops the escaped spelling url.Parse recorded, so that rendering the URL
+// derives it from Path and Fragment again.
+//
+// url.URL.String returns RawPath whenever it still decodes to Path, and the normalizer rewrites
+// Path - path.Clean, then a join onto the base. A RawPath describing the path as it was written
+// no longer describes the path we now hold, and rendering it can produce a URI that does not
+// parse: normalizeBase("%2F") used to return "file://%2F", where the escaped form lost the
+// leading slash that Path carries and what is left reads as an authority.
+func forgetSpelling(u *url.URL) {
+	u.RawPath = ""
+	u.RawFragment = ""
+}
+
+// canonicalString renders a URL the way jsonreference does.
+//
+// The normalizer and jsonreference each canonicalize a URI, and they used to disagree: the
+// normalizer kept the spelling it was handed while a Ref lower-cases the host, drops a default
+// port and re-escapes path and fragment. Everything the expander stores - cache keys, the
+// parentRefs chain, a $ref written back into the document - goes through both, so the two must
+// agree or one document splits into two spellings of itself.
+//
+// A URI that jsonreference cannot parse is returned as it stands, rather than panicking through
+// MustCreateRef. Such a URI is a defect in the normalizer, and the fuzz target reports it as one.
+func canonicalString(u *url.URL) string {
+	rendered := u.String()
+
+	r, err := NewRef(rendered)
+	if err != nil {
+		specLogger.Printf("warning: the normalizer produced an unparseable URI %q: %v", rendered, err)
+
+		return rendered
+	}
+
+	return r.String()
 }
