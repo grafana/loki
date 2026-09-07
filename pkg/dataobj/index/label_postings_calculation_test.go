@@ -339,7 +339,7 @@ func TestLabelPostingsCalculation_ShardBucketsHandling(t *testing.T) {
 	require.NoError(t, calc.Flush(context.Background(), calcCtx))
 
 	tbl := flushAndReadAllPostingsTable(t, builder)
-	// 2 postings: service_name=svcA, env=prod (both from stream 1).
+	// 5 postings: service_name={svcA, svcB}, env={dev, staging, prod}
 	require.Len(t, tbl.rows, 5)
 
 	// Shard factor should be constant on all rows
@@ -463,7 +463,7 @@ func TestLabelPostingsCalculation_UnknownStreamID(t *testing.T) {
 			err := calc.ProcessBatch(context.Background(), calcCtx, []logs.Record{
 				{StreamID: tc.streamID, Timestamp: time.Unix(10, 0).UTC(), Line: []byte("x")},
 			})
-			require.ErrorContains(t, err, "unknown stream ID for record")
+			require.ErrorContains(t, err, "unknown stream ID")
 		})
 	}
 }
@@ -551,6 +551,7 @@ func BenchmarkLabelPostingsCalculation_ProcessBatch(b *testing.B) {
 					"namespace", fmt.Sprintf("ns-%d", i%10),
 				)
 			}
+			shardBuckets := makeTestShardBuckets(streamLabels)
 
 			// Pre-build the batch: records are distributed round-robin across streams.
 			batch := make([]logs.Record, bc.records)
@@ -571,11 +572,12 @@ func BenchmarkLabelPostingsCalculation_ProcessBatch(b *testing.B) {
 					b.Fatal(err)
 				}
 				calcCtx := &logsCalculationContext{
-					tenantID:     "bench-tenant",
-					objectPath:   "bench/path",
-					sectionIdx:   0,
-					streamLabels: streamLabels,
-					builder:      builder,
+					tenantID:           "bench-tenant",
+					objectPath:         "bench/path",
+					sectionIdx:         0,
+					streamLabels:       streamLabels,
+					streamShardBuckets: shardBuckets,
+					builder:            builder,
 				}
 				calc := &labelPostingsCalculation{}
 
