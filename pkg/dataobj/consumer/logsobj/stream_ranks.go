@@ -91,11 +91,10 @@ func (r *StreamRanks) Resolve(sourceIdx int, localID int64) (int64, error) {
 	if sourceIdx < 0 || sourceIdx >= len(r.remap) {
 		return 0, fmt.Errorf("source index %d out of range", sourceIdx)
 	}
-	mapping := r.remap[sourceIdx]
 	if localID <= 0 {
 		return 0, fmt.Errorf("local id %d out of range", localID)
 	}
-	result, ok := mapping[localID]
+	result, ok := r.remap[sourceIdx][localID]
 	if !ok {
 		return 0, fmt.Errorf("no mapping for local id %d in source %d", localID, sourceIdx)
 	}
