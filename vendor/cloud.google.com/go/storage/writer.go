@@ -113,18 +113,26 @@ type Writer struct {
 	// ChunkSize must be set before the first Write call.
 	ChunkSize int
 
-	// ChunkRetryDeadline sets a per-chunk retry deadline for multi-chunk
-	// resumable uploads.
+	// ChunkRetryDeadline sets a per-chunk retry deadline for uploads.
 	//
 	// For uploads of larger files, the Writer will attempt to retry if the
 	// request to upload a particular chunk fails with a transient error.
 	// If a single chunk has been attempting to upload for longer than this
 	// deadline and the request fails, it will no longer be retried, and the
-	// error will be returned to the caller. This is only applicable for files
-	// which are large enough to require a multi-chunk resumable upload. The
-	// default value is 32s. Users may want to pick a longer deadline if they
-	// are using larger values for ChunkSize or if they expect to have a slow or
-	// unreliable internet connection.
+	// error will be returned to the caller. This deadline measures the total
+	// time spent queuing, transmitting, and retrying a single chunk.
+	//
+	// For HTTP clients, a chunk is defined by the ChunkSize, so this deadline
+	// is only applicable to files large enough to require a multi-chunk upload.
+	// Users may also want to pick a longer deadline if they are using larger
+	// values for ChunkSize.
+	//
+	// For gRPC clients, data is streamed internally in 2 MiB quantums,
+	// and this deadline applies to each individual quantum. Therefore, it applies
+	// to all uploads, and the deadline does not need to scale with the ChunkSize.
+	//
+	// The default value is 32s. Users may want to pick a longer deadline if they
+	// expect to have a slow or unreliable internet connection.
 	//
 	// To set a deadline on the entire upload, use context timeout or
 	// cancellation.
@@ -153,11 +161,9 @@ type Writer struct {
 	// when Writer.Close() is called; otherwise, the object is left unfinalized
 	// and can be appended to later.
 	//
-	// Defaults to false unless the experiemental WithZonalBucketAPIs option was
-	// set.
+	// Defaults to false unless the [WithAppendableUploads] option was set.
 	//
-	// Append is only supported for gRPC. This feature is in preview and is not
-	// yet available for general use.
+	// Append is only supported for gRPC.
 	Append bool
 
 	// FinalizeOnClose indicates whether the Writer should finalize an object when
@@ -167,8 +173,6 @@ type Writer struct {
 	// finalized, which means they can be appended to later. If Append is set
 	// to false, this parameter will be ignored; non-appendable objects will
 	// always be finalized when Writer.Close returns without error.
-	//
-	// This feature is in preview and is not yet available for general use.
 	FinalizeOnClose bool
 
 	// ProgressFunc can be used to monitor the progress of a large write
@@ -360,7 +364,7 @@ func (w *Writer) Write(p []byte) (int, error) {
 // automatic content sniffing in the Writer.
 //
 // Flush is supported only on gRPC clients where [Writer.Append] is set
-// to true. This feature is in preview and is not yet available for general use.
+// to true.
 func (w *Writer) Flush() (int64, error) {
 	// Return error if Append is not true.
 	if !w.Append {

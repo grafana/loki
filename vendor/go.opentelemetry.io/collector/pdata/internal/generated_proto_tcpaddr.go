@@ -16,9 +16,9 @@ import (
 )
 
 type TCPAddr struct {
-	Zone string
 	IP   []byte
 	Port int64
+	Zone string
 }
 
 var (

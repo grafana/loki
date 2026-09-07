@@ -1314,7 +1314,6 @@ func (o *ObjectHandle) NewWriter(ctx context.Context) *Writer {
 //
 // NewWriterFromAppendableObject is supported only for gRPC clients and only for
 // objects which were created append semantics and not finalized.
-// This feature is in preview and is not yet available for general use.
 func (o *ObjectHandle) NewWriterFromAppendableObject(ctx context.Context, opts *AppendableWriterOpts) (*Writer, int64, error) {
 	ctx, _ = startSpanWithBucket(ctx, o.c, o.bucket, "Object.WriterFromAppendableObject")
 	if o.gen < 0 {
@@ -1360,7 +1359,6 @@ func (o *ObjectHandle) NewWriterFromAppendableObject(ctx context.Context, opts *
 //
 // AppendableWriterOpts is supported only for gRPC clients and only for
 // objects which were created append semantics and not finalized.
-// This feature is in preview and is not yet available for general use.
 type AppendableWriterOpts struct {
 	// ChunkSize: See Writer.ChunkSize.
 	ChunkSize int

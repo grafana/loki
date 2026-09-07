@@ -35,6 +35,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/v3/pkg/querier/plan"
 	"github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase"
+	"github.com/grafana/loki/v3/pkg/querier/testutil"
 	"github.com/grafana/loki/v3/pkg/storage/detected"
 	"github.com/grafana/loki/v3/pkg/util"
 	"github.com/grafana/loki/v3/pkg/util/httpreq"
@@ -70,9 +71,7 @@ func Test_codec_EncodeDecodeRequest(t *testing.T) {
 			Path:      "/query_range",
 			StartTs:   start,
 			EndTs:     end,
-			Plan: &plan.QueryPlan{
-				AST: syntax.MustParseExpr(`{foo="bar"}`),
-			},
+			Plan:      testutil.MustPlan(`{foo="bar"}`),
 		}, false},
 		{"query_range", func() (*http.Request, error) {
 			return http.NewRequest(http.MethodGet,
@@ -86,9 +85,7 @@ func Test_codec_EncodeDecodeRequest(t *testing.T) {
 			Path:      "/query_range",
 			StartTs:   start,
 			EndTs:     end,
-			Plan: &plan.QueryPlan{
-				AST: syntax.MustParseExpr(`{foo="bar"}`),
-			},
+			Plan:      testutil.MustPlan(`{foo="bar"}`),
 		}, false},
 		{"legacy query_range with refexp", func() (*http.Request, error) {
 			return http.NewRequest(http.MethodGet,
@@ -102,9 +99,7 @@ func Test_codec_EncodeDecodeRequest(t *testing.T) {
 			Path:      "/api/prom/query",
 			StartTs:   start,
 			EndTs:     end,
-			Plan: &plan.QueryPlan{
-				AST: syntax.MustParseExpr(`{foo="bar"} |~ "foo"`),
-			},
+			Plan:      testutil.MustPlan(`{foo="bar"} |~ "foo"`),
 		}, false},
 		{"series", func() (*http.Request, error) {
 			return http.NewRequest(http.MethodGet,
@@ -334,9 +329,7 @@ func Test_codec_DecodeRequest_cacheHeader(t *testing.T) {
 				Direction: logproto.FORWARD,
 				Path:      "/v1/query",
 				TimeTs:    start,
-				Plan: &plan.QueryPlan{
-					AST: syntax.MustParseExpr(`{foo="bar"}`),
-				},
+				Plan:      testutil.MustPlan(`{foo="bar"}`),
 				CachingOptions: queryrangebase.CachingOptions{
 					Disabled: true,
 				},
@@ -363,9 +356,7 @@ func Test_codec_DecodeRequest_cacheHeader(t *testing.T) {
 				Path:      "/query_range",
 				StartTs:   start,
 				EndTs:     end,
-				Plan: &plan.QueryPlan{
-					AST: syntax.MustParseExpr(`{foo="bar"}`),
-				},
+				Plan:      testutil.MustPlan(`{foo="bar"}`),
 				CachingOptions: queryrangebase.CachingOptions{
 					Disabled: true,
 				},

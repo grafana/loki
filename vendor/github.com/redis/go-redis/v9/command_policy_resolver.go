@@ -109,6 +109,13 @@ var defaultPolicies = map[module]map[commandName]*routing.CommandPolicy{
 			Request:  routing.ReqDefault,
 			Response: routing.RespDefaultKeyless,
 		},
+		"aliaslist": {
+			Request:  routing.ReqDefault,
+			Response: routing.RespDefaultKeyless,
+			Tips: map[string]string{
+				routing.ReadOnlyCMD: "",
+			},
+		},
 		"info": {
 			Request:  routing.ReqDefault,
 			Response: routing.RespDefaultKeyless,
@@ -154,6 +161,26 @@ var defaultPolicies = map[module]map[commandName]*routing.CommandPolicy{
 			Response: routing.RespDefaultKeyless,
 		},
 	},
+}
+
+// defaultPolicyKeyless reports whether name (e.g. "ft.aliaslist") is registered
+// in the static policy table as a plain keyless command: default request
+// routing with a keyless response policy. Commands whose slot comes from a key
+// (RespDefaultHashSlot, e.g. ft.suglen) or with special request routing
+// (ReqSpecial, e.g. ft.cursor) are excluded — their key position must still be
+// resolved. cmdFirstKeyPosWithInfo consults this so the initial slot
+// computation on a cold command-info cache matches the policy the router
+// applies once the command reaches routeAndRun.
+func defaultPolicyKeyless(name string) bool {
+	i := strings.IndexByte(name, '.')
+	if i < 0 {
+		return false
+	}
+	policy, ok := defaultPolicies[name[:i]][name[i+1:]]
+	if !ok {
+		return false
+	}
+	return policy.Request == routing.ReqDefault && policy.Response == routing.RespDefaultKeyless
 }
 
 type CommandInfoResolveFunc func(ctx context.Context, cmd Cmder) *routing.CommandPolicy

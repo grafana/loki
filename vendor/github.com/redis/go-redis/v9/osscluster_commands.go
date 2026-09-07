@@ -9,19 +9,19 @@ import (
 func (c *ClusterClient) DBSize(ctx context.Context) *IntCmd {
 	cmd := NewIntCmd(ctx, "dbsize")
 	_ = c.withProcessHook(ctx, cmd, func(ctx context.Context, _ Cmder) error {
-		var size int64
+		var size atomic.Int64
 		err := c.ForEachMaster(ctx, func(ctx context.Context, master *Client) error {
 			n, err := master.DBSize(ctx).Result()
 			if err != nil {
 				return err
 			}
-			atomic.AddInt64(&size, n)
+			size.Add(n)
 			return nil
 		})
 		if err != nil {
 			cmd.SetErr(err)
 		} else {
-			cmd.val = size
+			cmd.val = size.Load()
 		}
 		return nil
 	})
