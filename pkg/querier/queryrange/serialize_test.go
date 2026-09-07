@@ -2,6 +2,7 @@ package queryrange
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -16,6 +17,36 @@ import (
 	"github.com/grafana/loki/v3/pkg/logqlmodel"
 	"github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase"
 )
+
+func TestWriteEncodeError(t *testing.T) {
+	encodeErr := errors.New("encoding failed")
+
+	t.Run("nothing written yet", func(t *testing.T) {
+		w := httptest.NewRecorder()
+		w.Header().Set("Content-Type", "application/json; charset=UTF-8")
+
+		writeEncodeError(context.Background(), w, &trackedWriter{w: w}, encodeErr)
+
+		require.Equal(t, http.StatusInternalServerError, w.Code)
+		require.Equal(t, "text/plain; charset=utf-8", w.Header().Get("Content-Type"))
+		require.Equal(t, encodeErr.Error(), w.Body.String())
+	})
+
+	t.Run("headers already committed", func(t *testing.T) {
+		w := httptest.NewRecorder()
+		w.Header().Set("Content-Type", "application/json; charset=UTF-8")
+
+		tracked := &trackedWriter{w: w}
+		_, err := tracked.Write([]byte(`{"status":`))
+		require.NoError(t, err)
+
+		writeEncodeError(context.Background(), w, tracked, encodeErr)
+
+		require.Equal(t, http.StatusOK, w.Code)
+		require.Equal(t, "application/json; charset=UTF-8", w.Header().Get("Content-Type"))
+		require.Equal(t, `{"status":`, w.Body.String())
+	})
+}
 
 func TestResponseFormat(t *testing.T) {
 	for _, tc := range []struct {
