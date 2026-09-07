@@ -88,7 +88,7 @@ func (r *StreamRanks) Remap(sourceIdx int) map[int64]int64 {
 // Resolve returns the global ID of the local stream ID
 // Provided localID must be >0
 func (r *StreamRanks) Resolve(sourceIdx int, localID int64) (int64, error) {
-	if sourceIdx < 0 || sourceIdx > len(r.remap) {
+	if sourceIdx < 0 || sourceIdx >= len(r.remap) {
 		return 0, fmt.Errorf("source index %d out of range", sourceIdx)
 	}
 	mapping := r.remap[sourceIdx]
