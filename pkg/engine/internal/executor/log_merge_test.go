@@ -387,10 +387,14 @@ func TestBuildGlobalStreamTable_SameLabelsShareID(t *testing.T) {
 	table, err := buildGlobalStreamTable(sources, sortSchema)
 	require.NoError(t, err)
 
-	aID := table.Resolve(0, 2)
-	bID := table.Resolve(1, 5)
+	aID, err := table.Resolve(0, 2)
+	require.NoError(t, err)
+	bID, err := table.Resolve(1, 5)
+	require.NoError(t, err)
 	require.Equal(t, aID, bID, "same labels across objects must share one global ID")
-	require.NotEqual(t, aID, table.Resolve(0, 7))
+	aID2, err := table.Resolve(0, 7)
+	require.NoError(t, err)
+	require.NotEqual(t, aID, aID2)
 
 	count := table.Size()
 	require.Equal(t, count, 2)

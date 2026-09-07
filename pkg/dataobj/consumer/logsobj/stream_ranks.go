@@ -75,7 +75,7 @@ func RankStreams(schemaLabels []string, sources ...map[int64]streams.Stream) (*S
 	return ranks, nil
 }
 
-// ByID returns the stream assigned to new ID id.
+// ByID returns the stream order key assigned to new ID id.
 func (r *StreamRanks) ByID(id int64) StreamOrderKey {
 	return r.byNewID[id]
 }
@@ -86,8 +86,20 @@ func (r *StreamRanks) Remap(sourceIdx int) map[int64]int64 {
 }
 
 // Resolve returns the global ID of the local stream ID
-func (r *StreamRanks) Resolve(sourceIdx int, localID int64) int64 {
-	return r.remap[sourceIdx][localID]
+// Provided localID must be >0
+func (r *StreamRanks) Resolve(sourceIdx int, localID int64) (int64, error) {
+	if sourceIdx < 0 || sourceIdx > len(r.remap) {
+		return 0, fmt.Errorf("source index %d out of range", sourceIdx)
+	}
+	mapping := r.remap[sourceIdx]
+	if localID <= 0 {
+		return 0, fmt.Errorf("local id %d out of range", localID)
+	}
+	result, ok := mapping[localID]
+	if !ok {
+		return 0, fmt.Errorf("no mapping for local id %d in source %d", localID, sourceIdx)
+	}
+	return result, nil
 }
 
 // Size returns the number of streams held
