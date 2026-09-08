@@ -35,10 +35,15 @@ func (e BadConnError) Unwrap() error {
 
 type StickyConnPool struct {
 	pool   Pooler
-	shared int32 // atomic
+	shared atomic.Int32
 
-	state uint32 // atomic
+	state atomic.Uint32
 	ch    chan *Conn
+
+	// onFirstConn runs once when this sticky pool claims a connection from its
+	// parent. CSC uses it to revoke cache ownership before the connection leaves
+	// the parent's background drainer.
+	onFirstConn func(*Conn)
 
 	_badConnError atomic.Value
 }
@@ -53,7 +58,7 @@ func NewStickyConnPool(pool Pooler) *StickyConnPool {
 			ch:   make(chan *Conn, 1),
 		}
 	}
-	atomic.AddInt32(&p.shared, 1)
+	p.shared.Add(1)
 	return p
 }
 
@@ -68,13 +73,16 @@ func (p *StickyConnPool) CloseConn(ctx context.Context, cn *Conn, reason string,
 func (p *StickyConnPool) Get(ctx context.Context) (*Conn, error) {
 	// In worst case this races with Close which is not a very common operation.
 	for i := 0; i < 1000; i++ {
-		switch atomic.LoadUint32(&p.state) {
+		switch p.state.Load() {
 		case stateDefault:
 			cn, err := p.pool.Get(ctx)
 			if err != nil {
 				return nil, err
 			}
-			if atomic.CompareAndSwapUint32(&p.state, stateDefault, stateInited) {
+			if p.state.CompareAndSwap(stateDefault, stateInited) {
+				if p.onFirstConn != nil {
+					p.onFirstConn(cn)
+				}
 				return cn, nil
 			}
 			p.pool.Remove(ctx, cn, ErrClosed)
@@ -96,12 +104,26 @@ func (p *StickyConnPool) Get(ctx context.Context) (*Conn, error) {
 	return nil, fmt.Errorf("redis: StickyConnPool.Get: infinite loop")
 }
 
+// SetOnFirstConn configures a callback that runs when the sticky pool first
+// claims a parent connection. It must be called before the pool is used.
+func (p *StickyConnPool) SetOnFirstConn(fn func(*Conn)) {
+	p.onFirstConn = fn
+}
+
 func (p *StickyConnPool) Put(ctx context.Context, cn *Conn) {
 	defer func() {
 		if recover() != nil {
 			p.freeConn(ctx, cn)
 		}
 	}()
+	// A connection marked for removal on release (it may hold unread
+	// replies) must not be served to the next Get: record it as a bad
+	// connection — exactly like Remove — so Get refuses and the underlying
+	// connection is removed from the parent pool when the sticky pool
+	// unwinds (the parent's Put honors the same mark).
+	if reason := cn.CloseOnPutReason(); reason != "" {
+		p._badConnError.Store(BadConnError{wrapped: errors.New(reason)})
+	}
 	p.ch <- cn
 }
 
@@ -130,16 +152,16 @@ func (p *StickyConnPool) RemoveWithoutTurn(ctx context.Context, cn *Conn, reason
 }
 
 func (p *StickyConnPool) Close() error {
-	if shared := atomic.AddInt32(&p.shared, -1); shared > 0 {
+	if shared := p.shared.Add(-1); shared > 0 {
 		return nil
 	}
 
 	for i := 0; i < 1000; i++ {
-		state := atomic.LoadUint32(&p.state)
+		state := p.state.Load()
 		if state == stateClosed {
 			return ErrClosed
 		}
-		if atomic.CompareAndSwapUint32(&p.state, state, stateClosed) {
+		if p.state.CompareAndSwap(state, stateClosed) {
 			close(p.ch)
 			cn, ok := <-p.ch
 			if ok {
@@ -168,8 +190,8 @@ func (p *StickyConnPool) Reset(ctx context.Context) error {
 		return errors.New("redis: StickyConnPool does not have a Conn")
 	}
 
-	if !atomic.CompareAndSwapUint32(&p.state, stateInited, stateDefault) {
-		state := atomic.LoadUint32(&p.state)
+	if !p.state.CompareAndSwap(stateInited, stateDefault) {
+		state := p.state.Load()
 		return fmt.Errorf("redis: invalid StickyConnPool state: %d", state)
 	}
 
@@ -186,7 +208,7 @@ func (p *StickyConnPool) badConnError() error {
 }
 
 func (p *StickyConnPool) Len() int {
-	switch atomic.LoadUint32(&p.state) {
+	switch p.state.Load() {
 	case stateDefault:
 		return 0
 	case stateInited:

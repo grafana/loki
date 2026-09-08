@@ -259,13 +259,8 @@ func WithDisableReaderChecksum() ReaderOption {
 // NewMultiRangeDownloader creates a multi-range reader for an object.
 // Must be called on a gRPC client created using [NewGRPCClient].
 //
-// This uses the gRPC-specific bi-directional read API, which is in private
-// preview; please contact your account manager if interested. The option
-// [experimental.WithGRPCBidiReads] or [experimental.WithZonalBucketAPIs]
-// must be selected in order to use this API.
-
-// NewMultiRangeDownloader creates a multi-range reader for an object.
-// Must be called on a gRPC client created using [NewGRPCClient].
+// This uses the gRPC-specific bi-directional read API. The option
+// [WithGRPCBidiReads] must be selected in order to use this API.
 func (o *ObjectHandle) NewMultiRangeDownloader(ctx context.Context, opts ...MRDOption) (mrd *MultiRangeDownloader, err error) {
 	// This span covers the life of the MRD. It is closed via the context
 	// in MultiRangeDownloader.Close.
@@ -525,9 +520,7 @@ func (r *Reader) Metadata() map[string]string {
 // ReadHandle returns the read handle associated with an object.
 // ReadHandle will be periodically refreshed.
 //
-// ReadHandle requires the gRPC-specific bi-directional read API, which is in
-// private preview; please contact your account manager if interested.
-// Note that this only valid for gRPC and only with zonal buckets.
+// ReadHandle requires the gRPC-specific bi-directional read API.
 func (r *Reader) ReadHandle() ReadHandle {
 	if r.handle == nil {
 		r.handle = &ReadHandle{}
@@ -541,8 +534,6 @@ func (r *Reader) ReadHandle() ReadHandle {
 //
 // Typically, a MultiRangeDownloader opens a stream to which we can add
 // different ranges to read from the object.
-//
-// This API is currently in preview and is not yet available for general use.
 type MultiRangeDownloader struct {
 	// Attrs is populated when NewMultiRangeDownloader returns.
 	Attrs ReaderObjectAttrs

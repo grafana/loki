@@ -1645,7 +1645,7 @@ type bidiReadStreamResponse struct {
 	decoder *readResponseDecoder
 }
 
-// gRPCReader is used by storage.Reader if the experimental option WithGRPCBidiReads is passed.
+// gRPCReader is used by storage.Reader if the option WithGRPCBidiReads is passed.
 type gRPCReader struct {
 	seen, size      int64
 	zeroRange       bool
