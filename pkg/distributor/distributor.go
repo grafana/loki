@@ -1083,14 +1083,14 @@ func (d *Distributor) pushWithResolver(ctx context.Context, req *logproto.PushRe
 // kafkaProduceErrToStatusErr maps Kafka producer backpressure errors to a
 // retryable HTTP status.
 func kafkaProduceErrToStatusErr(err error) error {
-	if errors.Is(err, kgo.ErrRecordTimeout) || errors.Is(err, kgo.ErrMaxBuffered) {
+	if errors.Is(err, kgo.ErrRecordTimeout) || errors.Is(err, kgo.ErrMaxBuffered) || errors.Is(err, kgo.ErrClientClosed) {
 		return httpgrpc.Error(http.StatusServiceUnavailable, err.Error())
 	}
 	return err
 }
 
 func isCircuitBreakerTrialErr(err error) bool {
-	return errors.Is(err, kgo.ErrMaxBuffered) || errors.Is(err, errServiceUnavailableMaxLoad)
+	return errors.Is(err, kgo.ErrMaxBuffered) || errors.Is(err, kgo.ErrRecordTimeout) || errors.Is(err, errServiceUnavailableMaxLoad)
 }
 
 // missingEnforcedLabels returns true if the stream is missing any of the required labels.

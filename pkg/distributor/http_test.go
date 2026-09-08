@@ -309,39 +309,43 @@ func TestPushHandlerKafkaBackpressure(t *testing.T) {
 }
 
 func TestPushHandlerKafkaBackpressureTripsCircuitBreaker(t *testing.T) {
-	limits := &validation.Limits{}
-	flagext.DefaultValues(limits)
+	for _, writeErr := range []error{kgo.ErrMaxBuffered, kgo.ErrRecordTimeout} {
+		t.Run(writeErr.Error(), func(t *testing.T) {
+			limits := &validation.Limits{}
+			flagext.DefaultValues(limits)
 
-	kafkaWriter := &mockKafkaProducer{failOnWrite: true, writeErr: kgo.ErrMaxBuffered}
-	distributors, _ := prepareButDontStart(t, 1, 0, limits, nil)
-	d := distributors[0]
-	d.cfg.KafkaEnabled = true
-	d.cfg.IngesterEnabled = false
-	d.cfg.KafkaConfig.ProducerMaxRecordSizeBytes = 1000
-	d.kafkaWriter = kafkaWriter
-	d.circuitBreaker = newTrialCircuitBreaker(time.Minute, 1, 1, isCircuitBreakerTrialErr)
-	startAndWaitRunningDistributors(t, distributors)
+			kafkaWriter := &mockKafkaProducer{failOnWrite: true, writeErr: writeErr}
+			distributors, _ := prepareButDontStart(t, 1, 0, limits, nil)
+			d := distributors[0]
+			d.cfg.KafkaEnabled = true
+			d.cfg.IngesterEnabled = false
+			d.cfg.KafkaConfig.ProducerMaxRecordSizeBytes = 1000
+			d.kafkaWriter = kafkaWriter
+			d.circuitBreaker = newTrialCircuitBreaker(time.Minute, 1, 1, isCircuitBreakerTrialErr)
+			startAndWaitRunningDistributors(t, distributors)
 
-	b, err := proto.Marshal(&logproto.PushRequest{
-		Streams: []logproto.Stream{
-			{
-				Labels:  `{foo="bar"}`,
-				Entries: []logproto.Entry{{Timestamp: time.Now(), Line: "hello"}},
-			},
-		},
-	})
-	require.NoError(t, err)
+			b, err := proto.Marshal(&logproto.PushRequest{
+				Streams: []logproto.Stream{
+					{
+						Labels:  `{foo="bar"}`,
+						Entries: []logproto.Entry{{Timestamp: time.Now(), Line: "hello"}},
+					},
+				},
+			})
+			require.NoError(t, err)
 
-	req := httptest.NewRequest(http.MethodPost, "/loki/api/v1/push", bytes.NewReader(snappy.Encode(nil, b)))
-	req = req.WithContext(user.InjectOrgID(t.Context(), "test"))
-	req.Header.Set("Content-Type", "application/x-protobuf")
+			req := httptest.NewRequest(http.MethodPost, "/loki/api/v1/push", bytes.NewReader(snappy.Encode(nil, b)))
+			req = req.WithContext(user.InjectOrgID(t.Context(), "test"))
+			req.Header.Set("Content-Type", "application/x-protobuf")
 
-	rec := httptest.NewRecorder()
-	d.pushHandler(rec, req, push.ParseLokiRequest, push.HTTPError, constants.Loki)
-	require.Equal(t, http.StatusServiceUnavailable, rec.Code)
+			rec := httptest.NewRecorder()
+			d.pushHandler(rec, req, push.ParseLokiRequest, push.HTTPError, constants.Loki)
+			require.Equal(t, http.StatusServiceUnavailable, rec.Code)
 
-	allow, _ := d.circuitBreaker.Allow()
-	require.False(t, allow, "circuit breaker should have opened on the kgo.ErrMaxBuffered failure")
+			allow, _ := d.circuitBreaker.Allow()
+			require.False(t, allow, "circuit breaker should have opened on the %s failure", writeErr)
+		})
+	}
 }
 
 func TestPushHandlerLogPushRequestStreams(t *testing.T) {

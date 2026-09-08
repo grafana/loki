@@ -640,7 +640,7 @@ func TestDistributorPushToKafka(t *testing.T) {
 	})
 
 	t.Run("with kafka, producer backpressure is reported as a retryable error", func(t *testing.T) {
-		for _, writeErr := range []error{kgo.ErrRecordTimeout, kgo.ErrMaxBuffered} {
+		for _, writeErr := range []error{kgo.ErrRecordTimeout, kgo.ErrMaxBuffered, kgo.ErrClientClosed} {
 			t.Run(writeErr.Error(), func(t *testing.T) {
 				kafkaWriter := &mockKafkaProducer{
 					failOnWrite: true,

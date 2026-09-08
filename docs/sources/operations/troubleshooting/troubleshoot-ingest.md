@@ -965,6 +965,28 @@ The distributor's Kafka producer wasn't able to deliver records to the Kafka bro
 - HTTP status: 503 Service Unavailable
 - Configurable per tenant: No
 
+### Error: Kafka producer closed
+
+**Error message:**
+
+- `client closed`
+
+**Cause:**
+
+The distributor's Kafka producer was closed while a push was in flight, most commonly a distributor pod shutting down during a rollout or scale-down. Unlike the backpressure errors above, this isn't caused by Kafka broker load.
+
+**Resolution:**
+
+* **Implement retry logic** with exponential backoff in your client; a retry lands on a different distributor replica.
+* If this occurs outside of rollouts or scaling events, check for distributor pods crashing or being OOM killed.
+
+**Properties:**
+
+- Enforced by: Distributor (Kafka producer)
+- Retryable: Yes
+- HTTP status: 503 Service Unavailable
+- Configurable per tenant: No
+
 ## Structured metadata errors
 
 These errors occur when using structured metadata incorrectly.
