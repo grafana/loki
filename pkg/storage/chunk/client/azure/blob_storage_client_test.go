@@ -124,12 +124,12 @@ func TestNewContainerClientSkipsTLSWhenNotConfigured(t *testing.T) {
 
 // TestNewContainerClientAppliesTLSWhenConfigured checks that setting at least one
 // TLS option (here InsecureSkipVerify) causes the TLS code path to execute and
-// that it does so without returning an error.
+// that the resulting transport actually has the option applied.
 func TestNewContainerClientAppliesTLSWhenConfigured(t *testing.T) {
+	var capturedTransport *http.Transport
 	defaultClientFactory = func() *http.Client {
-		return &http.Client{
-			Transport: &http.Transport{},
-		}
+		capturedTransport = &http.Transport{}
+		return &http.Client{Transport: capturedTransport}
 	}
 
 	b := &BlobStorage{
@@ -146,6 +146,8 @@ func TestNewContainerClientAppliesTLSWhenConfigured(t *testing.T) {
 
 	_, err := b.newContainerClient(hedging.Config{}, false)
 	require.NoError(t, err)
+	require.NotNil(t, capturedTransport.TLSClientConfig, "TLSClientConfig should have been set")
+	require.True(t, capturedTransport.TLSClientConfig.InsecureSkipVerify, "InsecureSkipVerify should be true")
 }
 
 func Test_DefaultContainerURL(t *testing.T) {

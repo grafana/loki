@@ -1,4 +1,4 @@
-﻿---
+---
 description: Configuration reference for the parameters used to configure Grafana Loki.
 title: Grafana Loki configuration parameters
 ---
@@ -67,8 +67,8 @@ Pass the `-config.expand-env` flag at the command line to enable this way of set
 ### Generic placeholders
 
 - `<boolean>` : a boolean that can take the values `true` or `false`
-- `<int>` : A┬áplain integer (for example, `0`,┬á`1024`,┬á`5000`) or a size in bytes with optional unit suffix (for example, `1024`, `256KB`, `64MB`, `4GB`). Supported units: `B`, `KB`, `MB`, `GB`, `TB`, `PB`, `EB`. 
-- `<duration>` : a duration with required unit suffix. Supported units depend on the field type. Prometheus duration fields support: 'ms', 's', 'm', 'h', 'd', 'w', 'y' (for example, '30s', '1m', '1h', '1d', '1w'). Go native duration fields support: 'ns', 'us', '┬╡s', 'ms', 's', 'm', 'h' but not 'd', 'w', 'y'. Note: '0' is allowed without a unit.
+- `<int>` : A plain integer (for example, `0`, `1024`, `5000`) or a size in bytes with optional unit suffix (for example, `1024`, `256KB`, `64MB`, `4GB`). Supported units: `B`, `KB`, `MB`, `GB`, `TB`, `PB`, `EB`. 
+- `<duration>` : a duration with required unit suffix. Supported units depend on the field type. Prometheus duration fields support: 'ms', 's', 'm', 'h', 'd', 'w', 'y' (for example, '30s', '1m', '1h', '1d', '1w'). Go native duration fields support: 'ns', 'us', 'µs', 'ms', 's', 'm', 'h' but not 'd', 'w', 'y'. Note: '0' is allowed without a unit.
 - `<labelname>` : a string matching the regular expression `[a-zA-Z_][a-zA-Z0-9_]*`
 - `<labelvalue>` : a string of unicode characters
 - `<filename>` : a valid path relative to current working directory or an absolute path.
@@ -3628,7 +3628,7 @@ The `frontend` block configures the Loki query-frontend.
 # In the event a tenant is repeatedly sending queries that lead the querier to
 # crash or be killed due to an out-of-memory error, the crashed querier will be
 # disconnected from the query frontend and a new querier will be immediately
-# assigned to the tenantΓÇÖs shard. This invalidates the assumption that shuffle
+# assigned to the tenant’s shard. This invalidates the assumption that shuffle
 # sharding can be used to reduce the impact on tenants. This option mitigates
 # the impact by configuring a delay between when a querier disconnects because
 # of a crash and when the crashed querier is actually removed from the tenant's

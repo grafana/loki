@@ -6,7 +6,7 @@ import (
 
 	"github.com/grafana/dskit/flagext"
 
-	lokihttp "github.com/grafana/loki/v3/pkg/storage/bucket/http"
+	buckethttp "github.com/grafana/loki/v3/pkg/storage/bucket/http"
 )
 
 // Config holds the config options for an Azure backend
@@ -23,7 +23,7 @@ type Config struct {
 	// Allow upstream callers to inject a round tripper
 	Transport http.RoundTripper `yaml:"-"`
 
-	HTTP lokihttp.Config `yaml:"http_config"`
+	HTTP buckethttp.Config `yaml:"http_config"`
 }
 
 // RegisterFlags registers the flags for Azure storage
