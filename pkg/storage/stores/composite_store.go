@@ -247,14 +247,13 @@ func (c CompositeStore) GetShards(
 		return responses[0], nil
 	}
 
-	// Multiple periods contributed. Each store bin-packs shard bounds from
-	// only its own fingerprints and bytes, so bounds aren't aligned across
-	// stores and can't be merged index-for-index. Keep the bounds from the
-	// store holding the most bytes -- the partition most representative of
-	// this query's data -- and drop every chunk group: a chunk group is only
-	// valid paired with its own store's bounds, so downstream re-resolves
-	// chunks live against the merged range instead, the same fallback
-	// power_of_two sharding always uses.
+	// More than one period contributed shards. Each store computes its bounds
+	// from its own fingerprints and bytes, so the bounds from different stores
+	// do not line up and cannot be merged one by one. Use the bounds from the
+	// store with the most bytes, since it best represents the query's data, and
+	// drop the chunk groups. A chunk group only makes sense together with the
+	// bounds of the store it came from, so callers look up chunks again against
+	// the merged range, as they already do for power_of_two sharding.
 	best := responses[0]
 	bestBytes := sumShardBytes(best)
 	for _, r := range responses[1:] {
