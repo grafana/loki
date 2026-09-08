@@ -59,6 +59,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/util/constants"
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
 	lokiring "github.com/grafana/loki/v3/pkg/util/ring"
+	"github.com/grafana/loki/v3/pkg/util/server"
 	"github.com/grafana/loki/v3/pkg/validation"
 )
 
@@ -659,7 +660,7 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 		return nil, err
 	}
 	resp, err := d.pushWithResolver(ctx, req, newRequestScopedStreamResolver(tenantID, d.validator.Limits, d.logger), constants.Loki)
-	return resp, kafkaProduceErrToStatusErr(err)
+	return resp, pushErrToStatusErr(err)
 }
 
 // Push a set of streams.
@@ -1091,6 +1092,24 @@ func kafkaProduceErrToStatusErr(err error) error {
 
 func isCircuitBreakerTrialErr(err error) bool {
 	return errors.Is(err, kgo.ErrMaxBuffered) || errors.Is(err, kgo.ErrRecordTimeout) || errors.Is(err, errServiceUnavailableMaxLoad)
+}
+
+// contextErrToStatusErr maps a bare context cancellation/timeout to the status
+// codes Loki uses elsewhere for the same condition, since neither implements
+// GRPCStatus() and so would otherwise fall through to an unclassified 500.
+func contextErrToStatusErr(err error) error {
+	switch {
+	case errors.Is(err, context.Canceled):
+		return httpgrpc.Error(server.StatusClientClosedRequest, err.Error())
+	case errors.Is(err, context.DeadlineExceeded):
+		return httpgrpc.Error(http.StatusGatewayTimeout, err.Error())
+	}
+	return err
+}
+
+// pushErrToStatusErr applies all of the push-path error-to-status mappings.
+func pushErrToStatusErr(err error) error {
+	return contextErrToStatusErr(kafkaProduceErrToStatusErr(err))
 }
 
 // missingEnforcedLabels returns true if the stream is missing any of the required labels.

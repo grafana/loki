@@ -150,7 +150,7 @@ func (d *Distributor) pushHandler(w http.ResponseWriter, r *http.Request, pushRe
 
 	// circuitBreakerErr must be the raw error, not the mapped one below.
 	circuitBreakerErr = err
-	resp, ok := httpgrpc.HTTPResponseFromError(kafkaProduceErrToStatusErr(err))
+	resp, ok := httpgrpc.HTTPResponseFromError(pushErrToStatusErr(err))
 	if ok {
 		body := string(resp.Body)
 		if d.tenantConfigs.LogPushRequest(tenantID) {

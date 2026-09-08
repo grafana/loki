@@ -819,7 +819,9 @@ The Loki service is unavailable or not listening on the expected port.
 
 **Cause:**
 
-Requests are timing out due to slow response times or network issues.
+Requests are timing out due to slow response times or network issues. This
+includes the distributor's own request context expiring while still waiting
+on Kafka or ingester writes to complete.
 
 **Default configuration:**
 

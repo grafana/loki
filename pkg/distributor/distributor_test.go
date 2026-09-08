@@ -50,6 +50,7 @@ import (
 	loki_flagext "github.com/grafana/loki/v3/pkg/util/flagext"
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
 	loki_net "github.com/grafana/loki/v3/pkg/util/net"
+	"github.com/grafana/loki/v3/pkg/util/server"
 	"github.com/grafana/loki/v3/pkg/util/test"
 	"github.com/grafana/loki/v3/pkg/validation"
 
@@ -781,6 +782,81 @@ func TestDistributorPushToKafka(t *testing.T) {
 			})
 		}
 	})
+}
+
+func TestContextErrToStatusErr(t *testing.T) {
+	otherErr := errors.New("some other error")
+
+	for _, tc := range []struct {
+		name         string
+		err          error
+		expectedCode int32
+		unchanged    bool
+	}{
+		{name: "canceled", err: context.Canceled, expectedCode: server.StatusClientClosedRequest},
+		{name: "deadline exceeded", err: context.DeadlineExceeded, expectedCode: http.StatusGatewayTimeout},
+		{name: "wrapped deadline exceeded", err: fmt.Errorf("produce: %w", context.DeadlineExceeded), expectedCode: http.StatusGatewayTimeout},
+		{name: "unrelated error", err: otherErr, unchanged: true},
+		{name: "nil", err: nil, unchanged: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			got := contextErrToStatusErr(tc.err)
+			if tc.unchanged {
+				require.Equal(t, tc.err, got)
+				return
+			}
+			resp, ok := httpgrpc.HTTPResponseFromError(got)
+			require.True(t, ok, "expected an httpgrpc error, got: %v", got)
+			require.Equal(t, tc.expectedCode, resp.Code)
+		})
+	}
+}
+
+func TestPushContextCanceled(t *testing.T) {
+	limits := &validation.Limits{}
+	flagext.DefaultValues(limits)
+
+	for _, tc := range []struct {
+		name         string
+		ctx          func() context.Context
+		expectedCode int32
+	}{
+		{
+			name: "canceled",
+			ctx: func() context.Context {
+				c, cancel := context.WithCancel(ctx)
+				cancel()
+				return c
+			},
+			expectedCode: server.StatusClientClosedRequest,
+		},
+		{
+			name: "deadline exceeded",
+			ctx: func() context.Context {
+				c, cancel := context.WithDeadline(ctx, time.Now().Add(-time.Second))
+				t.Cleanup(cancel)
+				return c
+			},
+			expectedCode: http.StatusGatewayTimeout,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			distributors, _ := prepareButDontStart(t, 1, 0, limits, nil)
+			d := distributors[0]
+			// Kafka is disabled by default too, so nothing ever completes the
+			// push and the outer ctx.Done() is the only case that can fire.
+			d.cfg.IngesterEnabled = false
+			startAndWaitRunningDistributors(t, distributors)
+
+			request := makeWriteRequest(10, 64)
+			_, err := d.Push(tc.ctx(), request)
+			require.Error(t, err)
+
+			resp, ok := httpgrpc.HTTPResponseFromError(err)
+			require.True(t, ok, "expected an httpgrpc error, got: %v", err)
+			require.Equal(t, tc.expectedCode, resp.Code)
+		})
+	}
 }
 
 func Test_SortLabelsOnPush(t *testing.T) {
