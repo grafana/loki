@@ -23,10 +23,9 @@ const (
 	maxConfigQueryPathLength = 512
 )
 
-// ConfigQueryHandledHeader lists each q path this Loki recognized and processed. When a request
-// includes q, the header's absence means this Loki predates q support and returned the full config
-// instead of the requested field(s). When a request omits q, the header is absent simply because
-// there was nothing to echo, not because of an old Loki.
+// ConfigQueryHandledHeader lists each q path this Loki recognized and processed. Its absence implies
+// an old Loki predating q support only when the request actually included q — when q is omitted
+// there's simply nothing to echo.
 const ConfigQueryHandledHeader = "X-Loki-Config-Query"
 
 func yamlMarshalUnmarshal(in interface{}) (map[string]interface{}, error) {
