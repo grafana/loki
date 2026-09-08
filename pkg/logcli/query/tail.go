@@ -12,6 +12,7 @@ import (
 	"github.com/fatih/color"
 	"github.com/gorilla/websocket"
 	"github.com/grafana/dskit/backoff"
+	"github.com/prometheus/prometheus/model/labels"
 
 	"github.com/grafana/loki/v3/pkg/logcli/client"
 	"github.com/grafana/loki/v3/pkg/logcli/output"
@@ -92,7 +93,7 @@ func (q *Query) TailQuery(delayFor time.Duration, c client.Client, out output.Lo
 			return
 		}
 
-		labels := loghttp.LabelSet{}
+		streamLabels := loghttp.LabelSet{}
 		for _, stream := range tailResponse.Streams {
 			if !q.NoLabels {
 				if len(q.IgnoreLabelsKey) > 0 || len(q.ShowLabelsKey) > 0 {
@@ -107,15 +108,22 @@ func (q *Query) TailQuery(delayFor time.Duration, c client.Client, out output.Lo
 						ls = matchLabels(false, ls, q.ShowLabelsKey)
 					}
 
-					labels = ls
+					streamLabels = ls
 
 				} else {
-					labels = stream.Labels
+					streamLabels = stream.Labels
 				}
 			}
 
 			for _, entry := range stream.Entries {
-				out.FormatAndPrintln(entry.Timestamp, labels, 0, entry.Line)
+				merged := make(loghttp.LabelSet, len(streamLabels)+entry.StructuredMetadata.Len())
+				for k, v := range streamLabels {
+					merged[k] = v
+				}
+				entry.StructuredMetadata.Range(func(lbl labels.Label) {
+					merged[lbl.Name] = lbl.Value
+				})
+				out.FormatAndPrintln(entry.Timestamp, merged, 0, entry.Line)
 				lastReceivedTimestamp = entry.Timestamp
 			}
 

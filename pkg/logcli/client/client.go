@@ -25,6 +25,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/storage/stores/index/seriesvolume"
 	"github.com/grafana/loki/v3/pkg/util"
 	"github.com/grafana/loki/v3/pkg/util/build"
+	"github.com/grafana/loki/v3/pkg/util/httpreq"
 )
 
 const (
@@ -722,6 +723,8 @@ func (c *DefaultClient) wsConnect(path, query string, quiet bool) (*websocket.Co
 	if err != nil {
 		return nil, err
 	}
+
+	h.Set(httpreq.LokiEncodingFlagsHeader, string(httpreq.FlagCategorizeLabels))
 
 	ws := websocket.Dialer{
 		TLSClientConfig: tlsConfig,
