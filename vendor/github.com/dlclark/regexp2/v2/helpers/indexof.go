@@ -147,7 +147,7 @@ func IndexFunc(in []rune, f func(ch rune) bool) int {
 
 func IndexOfAnyExceptInSet(in []rune, set syntax.CharSet) int {
 	for i, c := range in {
-		if !set.CharIn(c) {
+		if !set.Contains(c) {
 			return i
 		}
 	}
