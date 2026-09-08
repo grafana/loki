@@ -49,6 +49,7 @@ const (
 const (
 	errCodeRequestTimeout           = "RequestTimeout"           // 400
 	errCodeTooManyRequestsException = "TooManyRequestsException" // 429
+	errCodeTooManyRequests          = "TooManyRequests"          // 429, S3-compatible stores such as OCI Object Storage
 	errCodeInternalError            = "InternalError"            // 500
 	errCodeServiceUnavailable       = "ServiceUnavailable"       // 503
 	errCodeSlowDown                 = "SlowDown"                 // 503
@@ -716,6 +717,7 @@ func isRetryableS3ErrorCode(code string) bool {
 	switch code {
 	case errCodeRequestTimeout,
 		errCodeTooManyRequestsException,
+		errCodeTooManyRequests,
 		errCodeInternalError,
 		errCodeServiceUnavailable,
 		errCodeSlowDown:

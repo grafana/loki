@@ -101,6 +101,11 @@ func TestIsRetryableErr(t *testing.T) {
 			expected: true,
 		},
 		{
+			name:     "IsStorageThrottledErr - Too Many Requests (S3-compatible, e.g. OCI Object Storage)",
+			err:      &smithy.GenericAPIError{Code: errCodeTooManyRequests},
+			expected: true,
+		},
+		{
 			name:     "IsStorageThrottledErr - 503",
 			err:      &smithy.GenericAPIError{Code: errCodeSlowDown},
 			expected: true,
