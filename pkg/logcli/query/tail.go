@@ -2,6 +2,7 @@ package query
 
 import (
 	"context"
+	"fmt"
 	"log"
 	"os"
 	"os/signal"
@@ -21,20 +22,24 @@ import (
 )
 
 // TailQuery connects to the Loki websocket endpoint and tails logs
-func (q *Query) TailQuery(delayFor time.Duration, c client.Client, out output.LogOutput) {
+func (q *Query) TailQuery(delayFor time.Duration, c client.Client, out output.LogOutput) error {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
 	conn, err := c.LiveTailQueryConn(q.QueryString, delayFor, q.Limit, q.Start, q.Quiet)
 	if err != nil {
-		log.Fatalf("Tailing logs failed: %+v", err)
+		return err
 	}
 
 	go func() {
 		stopChan := make(chan os.Signal, 1)
 		signal.Notify(stopChan, os.Interrupt, syscall.SIGTERM)
 		<-stopChan
+		cancel()
 		if err := conn.WriteMessage(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.CloseNormalClosure, "")); err != nil {
 			log.Println("Error closing websocket:", err)
 		}
-		os.Exit(0)
+		_ = conn.Close()
 	}()
 
 	if len(q.IgnoreLabelsKey) > 0 && !q.Quiet {
@@ -48,6 +53,12 @@ func (q *Query) TailQuery(delayFor time.Duration, c client.Client, out output.Lo
 	lastReceivedTimestamp := q.Start
 
 	for {
+		select {
+		case <-ctx.Done():
+			return nil
+		default:
+		}
+
 		tailResponse := new(loghttp.TailResponse)
 		err := unmarshal.ReadTailResponseJSON(tailResponse, conn)
 		if err != nil {
@@ -56,6 +67,9 @@ func (q *Query) TailQuery(delayFor time.Duration, c client.Client, out output.Lo
 			// in Loki stops running. The following error would be printed:
 			// "websocket: close 1006 (abnormal closure): unexpected EOF"
 			if websocket.IsCloseError(err, websocket.CloseAbnormalClosure) {
+				if ctx.Err() != nil {
+					return nil
+				}
 				log.Printf("Remote websocket connection closed unexpectedly (%+v). Connecting again.", err)
 
 				// Close previous connection. If it fails to close the connection it should be fine as it is already broken.
@@ -64,32 +78,39 @@ func (q *Query) TailQuery(delayFor time.Duration, c client.Client, out output.Lo
 				}
 
 				// Try to re-establish the connection up to 5 times.
-				backoff := backoff.New(context.Background(), backoff.Config{
+				bo := backoff.New(ctx, backoff.Config{
 					MinBackoff: 1 * time.Second,
 					MaxBackoff: 10 * time.Second,
 					MaxRetries: 5,
 				})
 
-				for backoff.Ongoing() {
+				for bo.Ongoing() {
 					conn, err = c.LiveTailQueryConn(q.QueryString, delayFor, q.Limit, lastReceivedTimestamp, q.Quiet)
 					if err == nil {
 						break
 					}
 
+					if ctx.Err() != nil {
+						return nil
+					}
+
 					log.Println("Error recreating tailing connection after unexpected close, will retry:", err)
-					backoff.Wait()
+					bo.Wait()
 				}
 
-				if err = backoff.Err(); err != nil {
+				if err = bo.Err(); err != nil {
+					if ctx.Err() != nil {
+						return nil
+					}
 					log.Println("Error recreating tailing connection:", err)
-					return
+					return fmt.Errorf("recreating tailing connection: %w", err)
 				}
 
 				continue
 			}
 
 			log.Println("Error reading stream:", err)
-			return
+			return fmt.Errorf("reading tail stream: %w", err)
 		}
 
 		labels := loghttp.LabelSet{}
@@ -115,7 +136,9 @@ func (q *Query) TailQuery(delayFor time.Duration, c client.Client, out output.Lo
 			}
 
 			for _, entry := range stream.Entries {
-				out.FormatAndPrintln(entry.Timestamp, labels, 0, entry.Line)
+				if err := out.FormatAndPrintln(entry.Timestamp, labels, 0, entry.Line); err != nil {
+					return err
+				}
 				lastReceivedTimestamp = entry.Timestamp
 			}
 
