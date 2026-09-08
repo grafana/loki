@@ -44,7 +44,7 @@ type executionStack interface {
 
 // isQueryShardingSupported reports whether the shard mapper fans a query out into >= 2 shards.
 func isQueryShardingSupported(query string) bool {
-	expr, err := syntax.ParseSampleExpr(query)
+	expr, err := syntax.ParseExpr(query)
 	if err != nil {
 		return false
 	}

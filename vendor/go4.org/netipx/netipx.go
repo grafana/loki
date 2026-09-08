@@ -189,22 +189,16 @@ func PrefixLastIP(p netip.Prefix) netip.Addr {
 	if !p.IsValid() {
 		return netip.Addr{}
 	}
-	a16 := p.Addr().As16()
-	var off uint8
-	var bits uint8 = 128
+	if p.Bits() == p.Addr().BitLen() {
+		// Single-IP prefix; no host bits to set.
+		// (An addr in a valid Prefix never has a zone.)
+		return p.Addr()
+	}
+	u := u128From16(p.Addr().As16())
 	if p.Addr().Is4() {
-		off = 12
-		bits = 32
+		return u.bitsSetFrom(uint8(96 + p.Bits())).IP4()
 	}
-	for b := uint8(p.Bits()); b < bits; b++ {
-		byteNum, bitInByte := b/8, 7-(b%8)
-		a16[off+byteNum] |= 1 << uint(bitInByte)
-	}
-	if p.Addr().Is4() {
-		return netip.AddrFrom16(a16).Unmap()
-	} else {
-		return netip.AddrFrom16(a16) // doesn't unmap
-	}
+	return u.bitsSetFrom(uint8(p.Bits())).IP6() // doesn't unmap
 }
 
 // IPRange represents an inclusive range of IP addresses

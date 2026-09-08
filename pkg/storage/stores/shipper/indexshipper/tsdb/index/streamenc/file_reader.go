@@ -16,9 +16,9 @@ import (
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/index/streamenc/filepool"
 )
 
-// readerBufferSize is the size of the buffer used for reading index-header files. This
+// ReaderBufferSize is the size of the buffer used for reading index-header files. This
 // value is arbitrary and will likely change in the future based on profiling results.
-const readerBufferSize = 4096
+const ReaderBufferSize = 4096
 
 type FileReader struct {
 	file   *os.File
@@ -31,7 +31,7 @@ type FileReader struct {
 
 var bufferPool = sync.Pool{
 	New: func() any {
-		return bufio.NewReaderSize(nil, readerBufferSize)
+		return bufio.NewReaderSize(nil, ReaderBufferSize)
 	},
 }
 

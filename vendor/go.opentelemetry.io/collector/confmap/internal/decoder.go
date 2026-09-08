@@ -152,7 +152,7 @@ func expandNilStructPointersHookFunc() mapstructure.DecodeHookFuncValue {
 			toElem := to.Type().Elem()
 			// ensure that map values are pointers to a struct
 			// (that may be nil and require manual setting w/ zero value)
-			if toElem.Kind() == reflect.Ptr && toElem.Elem().Kind() == reflect.Struct {
+			if toElem.Kind() == reflect.Pointer && toElem.Elem().Kind() == reflect.Struct {
 				fromRange := from.MapRange()
 				for fromRange.Next() {
 					fromKey := fromRange.Key()
@@ -186,7 +186,7 @@ func mapKeyStringToMapKeyTextUnmarshalerHookFunc() mapstructure.DecodeHookFuncTy
 		}
 
 		// Checks that the key type of to implements the TextUnmarshaler interface.
-		if _, ok := reflect.New(to.Key()).Interface().(encoding.TextUnmarshaler); !ok {
+		if _, ok := reflect.TypeAssert[encoding.TextUnmarshaler](reflect.New(to.Key())); !ok {
 			return data, nil
 		}
 
@@ -217,7 +217,7 @@ func unmarshalerEmbeddedStructsHookFunc(settings UnmarshalOptions) mapstructure.
 		if to.Type().Kind() != reflect.Struct {
 			return from.Interface(), nil
 		}
-		fromAsMap, ok := from.Interface().(map[string]any)
+		fromAsMap, ok := reflect.TypeAssert[map[string]any](from)
 		if !ok {
 			return from.Interface(), nil
 		}
@@ -233,7 +233,7 @@ func unmarshalerEmbeddedStructsHookFunc(settings UnmarshalOptions) mapstructure.
 			if !slices.Contains(tagParts[1:], "squash") {
 				continue
 			}
-			unmarshaler, ok := to.Field(i).Addr().Interface().(Unmarshaler)
+			unmarshaler, ok := reflect.TypeAssert[Unmarshaler](to.Field(i).Addr())
 			if !ok {
 				continue
 			}
@@ -311,7 +311,7 @@ func unmarshalerHookFunc(result any, skipTopLevelUnmarshaler bool) mapstructure.
 			return from.Interface(), nil
 		}
 
-		if _, ok = from.Interface().(map[string]any); !ok {
+		if _, ok = reflect.TypeAssert[map[string]any](from); !ok {
 			return from.Interface(), nil
 		}
 
@@ -405,20 +405,4 @@ func castTo(exp ExpandedValue, useOriginal bool) any {
 	}
 	// Otherwise, use the parsed value (previous behavior).
 	return exp.Value
-}
-
-// Check if a reflect.Type is of the form T, where:
-// X is any type or interface
-// T = string | map[X]T | []T | [n]T
-func isStringyStructure(t reflect.Type) bool {
-	if t.Kind() == reflect.String {
-		return true
-	}
-	if t.Kind() == reflect.Map {
-		return isStringyStructure(t.Elem())
-	}
-	if t.Kind() == reflect.Slice || t.Kind() == reflect.Array {
-		return isStringyStructure(t.Elem())
-	}
-	return false
 }

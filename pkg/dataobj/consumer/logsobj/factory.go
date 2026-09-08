@@ -33,7 +33,7 @@ func NewBuilderFactory(
 	if overrides != nil {
 		level.Info(logger).Log("msg", "sort schema overrides wired to builder factory at construction")
 	} else {
-		level.Warn(logger).Log("msg", "sort schema overrides not provided at construction; schema sort will not apply to the initial builder")
+		level.Info(logger).Log("msg", "no sort schema overrides at construction")
 	}
 
 	return &BuilderFactory{

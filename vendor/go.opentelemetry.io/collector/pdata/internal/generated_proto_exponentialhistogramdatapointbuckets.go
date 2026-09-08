@@ -17,8 +17,8 @@ import (
 
 // ExponentialHistogramDataPointBuckets are a set of bucket counts, encoded in a contiguous array of counts.
 type ExponentialHistogramDataPointBuckets struct {
-	BucketCounts []uint64
 	Offset       int32
+	BucketCounts []uint64
 }
 
 var (

@@ -55,25 +55,12 @@ type IndexReader interface {
 	// during background garbage collections. Input values must be sorted.
 	Postings(name string, fpFilter index.FingerprintFilter, values ...string) (index.Postings, error)
 
-	// Series populates the given labels and chunk metas for the series identified
-	// by the reference.
-	// Returns storage.ErrNotFound if the ref does not resolve to a known series.
-	Series(ref storage.SeriesRef, from int64, through int64, lset *labels.Labels, chks *[]index.ChunkMeta) (uint64, error)
-
-	// ChunkStats returns the stats for the chunks in the given series.
-	ChunkStats(ref storage.SeriesRef, from, through int64, lset *labels.Labels, by map[string]struct{}) (uint64, index.ChunkStats, error)
-
 	// LabelNames returns all the unique label names present in the index in sorted order.
 	LabelNames(matchers ...*labels.Matcher) ([]string, error)
 
-	// LabelValueFor returns label value for the given label name in the series referred to by ID.
-	// If the series couldn't be found or the series doesn't have the requested label a
-	// storage.ErrNotFound is returned as error.
-	LabelValueFor(id storage.SeriesRef, label string) (string, error)
-
-	// LabelNamesFor returns all the label names for the series referred to by IDs.
-	// The names returned are sorted.
-	LabelNamesFor(ids ...storage.SeriesRef) ([]string, error)
+	// NewSeriesScan returns a scan over the series of one pass over a postings
+	// list. The caller owns the returned scan and must Close it.
+	NewSeriesScan() index.SeriesScan
 
 	// Close releases the underlying resources of the reader.
 	Close() error
@@ -303,9 +290,12 @@ func labelValuesWithMatchers(r IndexReader, name string, matchers ...*labels.Mat
 		return nil, err
 	}
 
+	scan := r.NewSeriesScan()
+	defer scan.Close()
+
 	dedupe := map[string]interface{}{}
 	for p.Next() {
-		v, err := r.LabelValueFor(p.At(), name)
+		v, err := scan.LabelValueFor(p.At(), name)
 		if err != nil {
 			if err == storage.ErrNotFound {
 				continue
@@ -342,5 +332,8 @@ func labelNamesWithMatchers(r IndexReader, matchers ...*labels.Matcher) ([]strin
 		return nil, errors.Wrapf(p.Err(), "postings for label names with matchers")
 	}
 
-	return r.LabelNamesFor(postings...)
+	scan := r.NewSeriesScan()
+	defer scan.Close()
+
+	return scan.LabelNamesFor(postings...)
 }

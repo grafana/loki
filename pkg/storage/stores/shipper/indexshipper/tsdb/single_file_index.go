@@ -8,6 +8,7 @@ import (
 	"math"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/go-kit/log/level"
@@ -121,8 +122,9 @@ func (f *TSDBFile) Reader() (io.ReadSeekCloser, error) {
 // and translates the IndexReader to an Index implementation
 // It loads the file into memory and doesn't keep a file descriptor open
 type TSDBIndex struct {
-	reader      IndexReader
-	chunkFilter chunk.RequestChunkFilterer
+	reader        IndexReader
+	chunkFilterMu sync.Mutex
+	chunkFilter   chunk.RequestChunkFilterer
 }
 
 // Return the index as well as the underlying raw file reader which isn't exposed as an index
@@ -154,7 +156,16 @@ func (i *TSDBIndex) Bounds() (model.Time, model.Time) {
 }
 
 func (i *TSDBIndex) SetChunkFilterer(chunkFilter chunk.RequestChunkFilterer) {
+	i.chunkFilterMu.Lock()
 	i.chunkFilter = chunkFilter
+	i.chunkFilterMu.Unlock()
+}
+
+func (i *TSDBIndex) getChunkFilter() chunk.RequestChunkFilterer {
+	i.chunkFilterMu.Lock()
+	f := i.chunkFilter
+	i.chunkFilterMu.Unlock()
+	return f
 }
 
 // fn must NOT capture it's arguments. They're reused across series iterations and returned to
@@ -164,8 +175,8 @@ func (i *TSDBIndex) SetChunkFilterer(chunkFilter chunk.RequestChunkFilterer) {
 // it is ignored (it's enforced elsewhere in index selection)
 func (i *TSDBIndex) ForSeries(ctx context.Context, _ string, fpFilter index.FingerprintFilter, from model.Time, through model.Time, fn func(labels.Labels, model.Fingerprint, []index.ChunkMeta) (stop bool), matchers ...*labels.Matcher) error {
 	var filterer chunk.Filterer
-	if i.chunkFilter != nil {
-		filterer = i.chunkFilter.ForRequest(ctx)
+	if f := i.getChunkFilter(); f != nil {
+		filterer = f.ForRequest(ctx)
 	}
 	return i.forSeriesAndLabels(ctx, fpFilter, filterer, from, through, fn, matchers...)
 }
@@ -178,8 +189,11 @@ func (i *TSDBIndex) forSeriesAndLabels(ctx context.Context, fpFilter index.Finge
 	defer func() { ChunkMetasPool.Put(chks) }()
 
 	return i.forPostings(ctx, fpFilter, from, through, matchers, func(p index.Postings) error {
+		scan := i.reader.NewSeriesScan()
+		defer scan.Close()
+
 		for p.Next() {
-			hash, err := i.reader.Series(p.At(), int64(from), int64(through), &ls, &chks)
+			hash, err := scan.Series(p.At(), int64(from), int64(through), &ls, &chks)
 			if err != nil {
 				return err
 			}
@@ -208,8 +222,11 @@ func (i *TSDBIndex) forSeriesNoLabels(ctx context.Context, fpFilter index.Finger
 	defer func() { ChunkMetasPool.Put(chks) }()
 
 	return i.forPostings(ctx, fpFilter, from, through, matchers, func(p index.Postings) error {
+		scan := i.reader.NewSeriesScan()
+		defer scan.Close()
+
 		for p.Next() {
-			hash, err := i.reader.Series(p.At(), int64(from), int64(through), nil, &chks)
+			hash, err := scan.Series(p.At(), int64(from), int64(through), nil, &chks)
 			if err != nil {
 				return err
 			}
@@ -265,8 +282,8 @@ func (i *TSDBIndex) GetChunkRefs(ctx context.Context, userID string, from, throu
 	}
 
 	var filterer chunk.Filterer
-	if i.chunkFilter != nil {
-		filterer = i.chunkFilter.ForRequest(ctx)
+	if f := i.getChunkFilter(); f != nil {
+		filterer = f.ForRequest(ctx)
 	}
 	var err error
 	if filterer != nil {
@@ -344,8 +361,8 @@ func (i *TSDBIndex) Stats(ctx context.Context, _ string, from, through model.Tim
 		var ls labels.Labels
 		var filterer chunk.Filterer
 		by := make(map[string]struct{})
-		if i.chunkFilter != nil {
-			filterer = i.chunkFilter.ForRequest(ctx)
+		if f := i.getChunkFilter(); f != nil {
+			filterer = f.ForRequest(ctx)
 			if filterer != nil {
 				for _, k := range filterer.RequiredLabelNames() {
 					by[k] = struct{}{}
@@ -353,8 +370,11 @@ func (i *TSDBIndex) Stats(ctx context.Context, _ string, from, through model.Tim
 			}
 		}
 
+		scan := i.reader.NewSeriesScan()
+		defer scan.Close()
+
 		for p.Next() {
-			fp, stats, err := i.reader.ChunkStats(p.At(), int64(from), int64(through), &ls, by)
+			fp, stats, err := scan.ChunkStats(p.At(), int64(from), int64(through), &ls, by)
 			if err != nil {
 				return err
 			}
@@ -420,8 +440,8 @@ func (i *TSDBIndex) Volume(
 	aggregateBySeries := seriesvolume.AggregateBySeries(aggregateBy) || aggregateBy == ""
 	var by map[string]struct{}
 	var filterer chunk.Filterer
-	if i.chunkFilter != nil {
-		filterer = i.chunkFilter.ForRequest(ctx)
+	if f := i.getChunkFilter(); f != nil {
+		filterer = f.ForRequest(ctx)
 	}
 	if !includeAll && (aggregateBySeries || len(targetLabels) > 0) {
 		by = make(map[string]struct{}, len(labelsToMatch))
@@ -439,8 +459,11 @@ func (i *TSDBIndex) Volume(
 
 	return i.forPostings(ctx, fpFilter, from, through, matchers, func(p index.Postings) error {
 		var ls labels.Labels
+		scan := i.reader.NewSeriesScan()
+		defer scan.Close()
+
 		for p.Next() {
-			fp, stats, err := i.reader.ChunkStats(p.At(), int64(from), int64(through), &ls, by)
+			fp, stats, err := scan.ChunkStats(p.At(), int64(from), int64(through), &ls, by)
 			if err != nil {
 				return fmt.Errorf("series volume: %w", err)
 			}

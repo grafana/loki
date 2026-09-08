@@ -1689,6 +1689,20 @@ func (r *ByteSliceReader) LabelValues(name string, matchers ...*labels.Matcher) 
 	return values, nil
 }
 
+// NewSeriesScan returns a byteSliceSeriesScan which forwards requests
+// back to the ByteSliceReader.
+// A ByteSliceReader already has the whole index addressable in memory,
+// so there is nothing to amortize across a scan.
+func (r *ByteSliceReader) NewSeriesScan() SeriesScan {
+	return byteSliceSeriesScan{r}
+}
+
+// byteSliceSeriesScan forwards straight to its ByteSliceReader.
+type byteSliceSeriesScan struct{ *ByteSliceReader }
+
+// Close is a no-op.
+func (byteSliceSeriesScan) Close() error { return nil }
+
 // LabelNamesFor returns all the label names for the series referred to by IDs.
 // The names returned are sorted.
 func (r *ByteSliceReader) LabelNamesFor(ids ...storage.SeriesRef) ([]string, error) {

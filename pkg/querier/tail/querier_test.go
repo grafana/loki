@@ -38,9 +38,7 @@ func TestQuerier_Tail_QueryTimeoutConfigFlag(t *testing.T) {
 		DelayFor: 0,
 		Limit:    10,
 		Start:    time.Now(),
-		Plan: &plan.QueryPlan{
-			AST: syntax.MustParseExpr(`{type="test"}`),
-		},
+		Plan:     testutil.MustPlan(`{type="test"}`),
 	}
 
 	// Setup mocks

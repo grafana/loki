@@ -95,67 +95,46 @@ func TestBuilder_EndToEnd(t *testing.T) {
 		}
 	}
 
-	for _, tc := range []struct {
-		name          string
-		sortOrder     string
-		useSortSchema bool
-	}{
-		{name: "SortOrderStreamASC", sortOrder: sortStreamASC},
-		{name: "SortOrderTimestampDESC", sortOrder: sortTimestampDESC},
-		{name: "UseSchemaSort", sortOrder: sortStreamASC, useSortSchema: true},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			cfg := baseCfg
-			cfg.DataobjSortOrder = tc.sortOrder
-			cfg.DataobjUseSortSchema = tc.useSortSchema
+	overrides := makeOverrides()
 
-			overrides := makeOverrides()
-			var expectedSchemaLabels []string
-			if tc.useSortSchema {
-				expectedSchemaLabels = schemaLabels
-			}
+	b, err := NewBuilder(baseCfg, nil, NewBuilderMetrics(), log.NewNopLogger(), overrides)
+	require.NoError(t, err)
+	appendDataset(t, b)
 
-			b, err := NewBuilder(cfg, nil, NewBuilderMetrics(), log.NewNopLogger(), overrides)
-			require.NoError(t, err)
-			appendDataset(t, b)
+	obj1, closer, err := b.Flush()
+	require.NoError(t, err)
+	defer closer.Close()
 
-			obj1, closer, err := b.Flush()
-			require.NoError(t, err)
-			defer closer.Close()
+	intermediateByTenant := make(map[string][]builderE2EResolvedRecord, len(tenants))
+	for _, tenant := range tenants {
+		require.Equal(t, 1, countTenantSections(obj1, tenant, streams.CheckSection))
+		require.Greater(t, countTenantSections(obj1, tenant, logs.CheckSection), 1)
 
-			intermediateByTenant := make(map[string][]builderE2EResolvedRecord, len(tenants))
-			for _, tenant := range tenants {
-				require.Equal(t, 1, countTenantSections(obj1, tenant, streams.CheckSection))
-				require.Greater(t, countTenantSections(obj1, tenant, logs.CheckSection), 1)
+		assertBuilderE2ESchemaLabels(t, obj1, tenant, schemaLabels)
 
-				assertBuilderE2ESchemaLabels(t, obj1, tenant, expectedSchemaLabels)
+		for _, sec := range obj1.Sections().Filter(func(s *dataobj.Section) bool {
+			return logs.CheckSection(s) && s.Tenant == tenant
+		}) {
+			assertBuilderE2EOrdered(t, resolveTenantLogsSection(t, obj1, tenant, sec), schemaLabels)
+		}
+		intermediateByTenant[tenant] = resolveTenantLogs(t, obj1, tenant)
+	}
 
-				for _, sec := range obj1.Sections().Filter(func(s *dataobj.Section) bool {
-					return logs.CheckSection(s) && s.Tenant == tenant
-				}) {
-					// logs are ordered within each section.
-					assertBuilderE2EOrdered(t, resolveTenantLogsSection(t, obj1, tenant, sec), tc.sortOrder, expectedSchemaLabels)
-				}
-				intermediateByTenant[tenant] = resolveTenantLogs(t, obj1, tenant)
-			}
+	mergeBuilder, err := NewBuilder(baseCfg, nil, NewBuilderMetrics(), log.NewNopLogger(), overrides)
+	require.NoError(t, err)
+	obj2, closer2, err := mergeBuilder.CopyAndSort(t.Context(), obj1)
+	require.NoError(t, err)
+	defer closer2.Close()
 
-			mergeBuilder, err := NewBuilder(cfg, nil, NewBuilderMetrics(), log.NewNopLogger(), overrides)
-			require.NoError(t, err)
-			obj2, closer2, err := mergeBuilder.CopyAndSort(t.Context(), obj1)
-			require.NoError(t, err)
-			defer closer2.Close()
+	require.ElementsMatch(t, obj1.Tenants(), obj2.Tenants())
+	for _, tenant := range tenants {
+		require.Equal(t, 1, countTenantSections(obj2, tenant, streams.CheckSection))
+		require.Greater(t, countTenantSections(obj2, tenant, logs.CheckSection), 1)
+		assertBuilderE2ESchemaLabels(t, obj2, tenant, schemaLabels)
 
-			require.ElementsMatch(t, obj1.Tenants(), obj2.Tenants())
-			for _, tenant := range tenants {
-				require.Equal(t, 1, countTenantSections(obj2, tenant, streams.CheckSection))
-				require.Greater(t, countTenantSections(obj2, tenant, logs.CheckSection), 1)
-				assertBuilderE2ESchemaLabels(t, obj2, tenant, expectedSchemaLabels)
-
-				got := resolveTenantLogs(t, obj2, tenant)
-				assertBuilderE2ESameContent(t, intermediateByTenant[tenant], got)
-				assertBuilderE2EOrdered(t, got, tc.sortOrder, expectedSchemaLabels)
-			}
-		})
+		got := resolveTenantLogs(t, obj2, tenant)
+		assertBuilderE2ESameContent(t, intermediateByTenant[tenant], got)
+		assertBuilderE2EOrdered(t, got, schemaLabels)
 	}
 }
 
@@ -248,46 +227,30 @@ func contentCounts(records []builderE2EResolvedRecord) map[string]int {
 	return counts
 }
 
-func assertBuilderE2EOrdered(t *testing.T, records []builderE2EResolvedRecord, sortOrder string, schemaLabels []string) {
+func assertBuilderE2EOrdered(t *testing.T, records []builderE2EResolvedRecord, schemaLabels []string) {
 	t.Helper()
 	for i := 1; i < len(records); i++ {
-		require.LessOrEqualf(t, compareRecords(t, records[i-1], records[i], sortOrder, schemaLabels), 0,
+		require.LessOrEqualf(t, compareRecords(t, records[i-1], records[i], schemaLabels), 0,
 			"records out of order at index %d: %+v then %+v", i, records[i-1], records[i])
 	}
 }
 
-func compareRecords(t *testing.T, a, b builderE2EResolvedRecord, sortOrder string, schemaLabels []string) int {
+func compareRecords(t *testing.T, a, b builderE2EResolvedRecord, schemaLabels []string) int {
 	t.Helper()
 
-	if len(schemaLabels) > 0 {
-		aKey, err := ComputeSortKey(a.labels, schemaLabels)
-		require.NoError(t, err)
+	aKey, err := ComputeSortKey(a.labels, schemaLabels)
+	require.NoError(t, err)
 
-		bKey, err := ComputeSortKey(b.labels, schemaLabels)
-		require.NoError(t, err)
+	bKey, err := ComputeSortKey(b.labels, schemaLabels)
+	require.NoError(t, err)
 
-		if res := cmp.Compare(aKey, bKey); res != 0 {
-			return res
-		}
-		if res := cmp.Compare(a.streamID, b.streamID); res != 0 {
-			return res
-		}
-		return cmp.Compare(b.ts, a.ts)
-	} else if sortOrder == sortStreamASC {
-
-		if res := cmp.Compare(a.streamID, b.streamID); res != 0 {
-			return res
-		}
-		return cmp.Compare(b.ts, a.ts)
-	} else if sortOrder == sortTimestampDESC {
-		if res := cmp.Compare(b.ts, a.ts); res != 0 {
-			return res
-		}
-		return cmp.Compare(a.streamID, b.streamID)
+	if res := cmp.Compare(aKey, bKey); res != 0 {
+		return res
 	}
-
-	t.Fatalf("unknown sort order: %q", sortOrder)
-	return 0
+	if res := cmp.Compare(a.streamID, b.streamID); res != 0 {
+		return res
+	}
+	return cmp.Compare(b.ts, a.ts)
 }
 
 func countTenantSections(obj *dataobj.Object, tenant string, check func(*dataobj.Section) bool) int {
