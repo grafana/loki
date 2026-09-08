@@ -1,0 +1,21 @@
+#
+# Label matchers in log-selection queries: whether a matcher passes depends on the label as it
+# exists at its position in the pipeline, not on a value a later stage produces. See
+# label_filters.logqltest for label filters in metric queries, and log_selection.logqltest for
+# stream selectors and line filters.
+#
+
+# A `name=""` filter before logfmt() reads an absent label, which compares equal to "". Every
+# line reaches logfmt(), no matter what it later parses for `name`.
+clear
+load
+  {app="a"} "name=parsed" @ 10s
+  {app="a"} "name=other"  @ 20s # noise: a different parsed value
+
+# after the parser: the parsed value never matches the filter, whatever it is.
+eval select from 0 to 30s forward {app="a"} | logfmt | name=""
+  expect empty
+# before the parser: the absent name matches the filter, so every line reaches the parser.
+eval select from 0 to 30s forward {app="a"} | name="" | logfmt
+  {app="a"} "name=parsed" @ 10s [parsed name="parsed"]
+  {app="a"} "name=other"  @ 20s [parsed name="other"]
