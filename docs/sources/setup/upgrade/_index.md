@@ -43,6 +43,17 @@ The default value of `-frontend.encoding` / `frontend.encoding` changed from `js
 
 Schedulers and queriers already accept both encodings, so mixed frontends during a rolling upgrade are safe. To keep the previous behavior, set `frontend.encoding: json` explicitly.
 
+### LogQL label filter regexes are anchored to the whole label value
+
+A label filter such as `| name=~"al.*"` now matches the whole label value, as the documentation has always stated and as stream selector matchers already behaved. It previously matched a substring for some patterns, so `| name=~"al.*"` also returned `prealpha`.
+
+Two shapes were affected, for `=~` and `!~`, on parsed fields, stream labels, and structured metadata:
+
+- a one-sided star, `foo.*` or `.*foo`, and their `(?i)` forms;
+- an alternation whose branches share a leading literal, such as `warn|warning`, `prod|preprod`, or `bar|buzz`, which Go factors into a common prefix. An alternation with no shared prefix, such as `foo|bar`, was not affected.
+
+Queries using those patterns return fewer results than before, and `!~` returns more. If a dashboard or alert relied on the substring behavior, write it explicitly: use `.*foo.*` for a substring match, and `foo.*` only when you mean a prefix.
+
 ### LogQL rejects numeric, duration, bytes, and `ip()` comparisons against `__error__` and `__error_details__`
 
 A query such as `| __error__ > 0`, `| __error__ != 1s`, `| __error_details__ == 1MB`, or `| __error__ = ip("1.2.3.4")` now fails to parse. These two labels always hold a string (or are unset), so a numeric, duration, bytes, or IP comparison against them could never find a match; such a query used to parse successfully and then silently return no results. This also applies after `| unwrap`. Use a string comparison instead, for example `| __error__ != ""` or `| __error__=""`.
