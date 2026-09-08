@@ -190,7 +190,7 @@ require (
 	github.com/charmbracelet/x/windows v0.2.2 // indirect
 	github.com/clipperhouse/displaywidth v0.11.0 // indirect
 	github.com/clipperhouse/uax29/v2 v2.7.0 // indirect
-	github.com/containerd/containerd/v2 v2.3.4 // indirect
+	github.com/containerd/containerd/v2 v2.3.5 // indirect
 	github.com/containerd/errdefs v1.0.0 // indirect
 	github.com/ebitengine/purego v0.11.0 // indirect
 	github.com/envoyproxy/go-control-plane/envoy v1.39.0 // indirect
