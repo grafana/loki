@@ -90,6 +90,8 @@ func convertPrometheusMetricsInto(promMetrics []*dto.MetricFamily, now time.Time
 		switch pm.GetType() {
 		case dto.MetricType_GAUGE:
 			newMetric.Data = convertGauge(pm.GetMetric(), now)
+		case dto.MetricType_UNTYPED:
+			newMetric.Data = convertUntyped(pm.GetMetric(), now)
 		case dto.MetricType_COUNTER:
 			newMetric.Data = convertCounter(pm.GetMetric(), now)
 		case dto.MetricType_SUMMARY:
@@ -101,7 +103,7 @@ func convertPrometheusMetricsInto(promMetrics []*dto.MetricFamily, now time.Time
 				newMetric.Data = convertHistogram(pm.GetMetric(), now)
 			}
 		default:
-			// MetricType_GAUGE_HISTOGRAM, MetricType_UNTYPED
+			// MetricType_GAUGE_HISTOGRAM
 			errs = append(errs, fmt.Errorf("%w: %v for metric %v", errUnsupportedType, pm.GetType(), pm.GetName()))
 			continue
 		}
@@ -129,6 +131,24 @@ func convertGauge(metrics []*dto.Metric, now time.Time) metricdata.Gauge[float64
 			Attributes: convertLabels(m.GetLabel()),
 			Time:       now,
 			Value:      m.GetGauge().GetValue(),
+		}
+		if m.GetTimestampMs() != 0 {
+			dp.Time = time.UnixMilli(m.GetTimestampMs())
+		}
+		otelGauge.DataPoints[i] = dp
+	}
+	return otelGauge
+}
+
+func convertUntyped(metrics []*dto.Metric, now time.Time) metricdata.Gauge[float64] {
+	otelGauge := metricdata.Gauge[float64]{
+		DataPoints: make([]metricdata.DataPoint[float64], len(metrics)),
+	}
+	for i, m := range metrics {
+		dp := metricdata.DataPoint[float64]{
+			Attributes: convertLabels(m.GetLabel()),
+			Time:       now,
+			Value:      m.GetUntyped().GetValue(),
 		}
 		if m.GetTimestampMs() != 0 {
 			dp.Time = time.UnixMilli(m.GetTimestampMs())

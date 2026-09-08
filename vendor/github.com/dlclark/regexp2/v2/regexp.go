@@ -13,7 +13,6 @@ import (
 	"errors"
 	"log"
 	"math"
-	"sort"
 	"strconv"
 	"sync"
 	"time"
@@ -245,7 +244,7 @@ func (re *Regexp) FindStringMatch(s string) (*Match, error) {
 	if !ok {
 		return nil, nil
 	}
-	return re.findDecodedStringMatch(s, startAt)
+	return re.findDecodedStringMatch(s, startAt, -1)
 }
 
 // FindRunesMatch searches the input rune slice for a Regexp match
@@ -255,24 +254,25 @@ func (re *Regexp) FindRunesMatch(r []rune) (*Match, error) {
 
 // FindStringMatchStartingAt searches the input string for a Regexp match starting at the startAt index
 func (re *Regexp) FindStringMatchStartingAt(s string, startAt int) (*Match, error) {
-	startAt, ok, err := re.findStringMatchStart(s, startAt)
+	candidate, ok, err := re.findStringMatchStart(s, startAt)
 	if err != nil {
 		return nil, err
 	}
 	if !ok {
 		return nil, nil
 	}
-	return re.findDecodedStringMatch(s, startAt)
+	return re.findDecodedStringMatch(s, candidate, startAt)
 }
 
-func (re *Regexp) findDecodedStringMatch(s string, startAt int) (*Match, error) {
+func (re *Regexp) findDecodedStringMatch(s string, candidate, startAt int) (*Match, error) {
 	// Returned matches retain their rune data, so this path must not consume a
 	// pooled buffer that can never be returned.
-	d := re.decodeStringInput(s, startAt, false)
+	d := re.decodeStringInput(s, candidate, false)
 	runner := re.getRunner()
 	defer re.putRunner(runner)
 	text := newStringMatchTextAt(s, d.runes, d.runeOffset, d.byteOffset)
-	return runner.scan(d.runes, text, d.runeStart, -1, false, re.MatchTimeout)
+	origin := re.stringSearchOrigin(s, startAt, d.runeStart)
+	return runner.scan(d.runes, text, origin, d.runeStart, -1, false, re.MatchTimeout)
 }
 
 // FindRunesMatchStartingAt searches the input rune slice for a Regexp match starting at the startAt index
@@ -295,22 +295,28 @@ func (re *Regexp) FindAllStringIndex(s string, n int) ([][]int, error) {
 		return nil, nil
 	}
 
-	d := re.decodeStringInput(s, startAt, true)
+	// Index results only need byte offsets. Keep the mapper relative to the
+	// decoded suffix so neither decoding nor mapping has to count prefix runes.
+	d := decodeInput(s, startAt, re.decodeFrom(s, startAt), re.optimizations.MaxCachedRuneBufferLength, false)
 	runner := re.getRunner()
 	defer func() {
 		re.putRunner(runner)
 		d.release()
 	}()
-	byteOffsets := newStringByteMapper(s)
+	byteOffsets := stringByteMapper{input: s[d.byteOffset:]}
+	if re.RightToLeft() {
+		byteOffsets.runePos = len(d.runes)
+		byteOffsets.bytePos = len(byteOffsets.input)
+	}
 	if re.quickCode != nil {
 		runner.code = re.quickCode
 	}
-	return re.findAllRunesIndex(runner, d.runes, d.runeStart, n, func(runeIndex, runeLength int) (int, int) {
-		if byteOffsets == nil {
+	origin := re.stringSearchOrigin(s, -1, d.runeStart)
+	return re.findAllRunesIndex(runner, d.runes, origin, d.runeStart, n, func(runeIndex, runeLength int) (int, int) {
+		if len(d.runes) == len(byteOffsets.input) {
 			return d.byteOffset + runeIndex, d.byteOffset + runeIndex + runeLength
 		}
-		start := runeIndex + d.runeOffset
-		return byteOffsets.byteIndex(start), byteOffsets.byteIndex(start + runeLength)
+		return d.byteOffset + byteOffsets.byteIndex(runeIndex), d.byteOffset + byteOffsets.byteIndex(runeIndex+runeLength)
 	})
 }
 
@@ -331,12 +337,12 @@ func (re *Regexp) FindAllRunesIndex(r []rune, n int) ([][]int, error) {
 	if re.quickCode != nil {
 		runner.code = re.quickCode
 	}
-	return re.findAllRunesIndex(runner, r, startAt, n, func(runeIndex, runeLength int) (int, int) {
+	return re.findAllRunesIndex(runner, r, startAt, startAt, n, func(runeIndex, runeLength int) (int, int) {
 		return runeIndex, runeIndex + runeLength
 	})
 }
 
-func (re *Regexp) findAllRunesIndex(runner *Runner, input []rune, startAt, n int, makeIndex func(runeIndex, runeLength int) (int, int)) ([][]int, error) {
+func (re *Regexp) findAllRunesIndex(runner *Runner, input []rune, origin, startAt, n int, makeIndex func(runeIndex, runeLength int) (int, int)) ([][]int, error) {
 	var out [][]int
 	var flat []int
 	if n > 0 {
@@ -347,7 +353,7 @@ func (re *Regexp) findAllRunesIndex(runner *Runner, input []rune, startAt, n int
 	prevEnd := -1
 	previousMatchLength := -1
 	for n != 0 {
-		m, err := runner.scan(input, nil, startAt, previousMatchLength, true, re.MatchTimeout)
+		m, err := runner.scan(input, nil, origin, startAt, previousMatchLength, true, re.MatchTimeout)
 		if err != nil {
 			return nil, err
 		}
@@ -367,46 +373,37 @@ func (re *Regexp) findAllRunesIndex(runner *Runner, input []rune, startAt, n int
 		}
 
 		startAt = m.textpos
+		origin = startAt
 		previousMatchLength = m.RuneLength
 	}
 	return out, nil
 }
 
 type stringByteMapper struct {
-	runeIndexes []int
-	deltas      []int
+	input   string
+	runePos int
+	bytePos int
 }
 
-func newStringByteMapper(s string) *stringByteMapper {
-	var mapper *stringByteMapper
-	runeIndex := 0
-	delta := 0
-	for strIdx, ch := range s {
-		runeLen := utf8.RuneLen(ch)
-		if ch == utf8.RuneError {
-			_, runeLen = utf8.DecodeRuneInString(s[strIdx:])
-		}
-		if runeLen != 1 {
-			if mapper == nil {
-				mapper = &stringByteMapper{}
-			}
-			delta += runeLen - 1
-			mapper.runeIndexes = append(mapper.runeIndexes, runeIndex+1)
-			mapper.deltas = append(mapper.deltas, delta)
-		}
-		runeIndex++
-	}
-	return mapper
-}
-
+// runeIndex is relative to input; each invalid UTF-8 byte counts as one rune.
 func (m *stringByteMapper) byteIndex(runeIndex int) int {
-	i := sort.Search(len(m.runeIndexes), func(i int) bool {
-		return m.runeIndexes[i] > runeIndex
-	}) - 1
-	if i < 0 {
-		return runeIndex
+	for m.runePos < runeIndex {
+		size := 1
+		if m.input[m.bytePos] >= utf8.RuneSelf {
+			_, size = utf8.DecodeRuneInString(m.input[m.bytePos:])
+		}
+		m.bytePos += size
+		m.runePos++
 	}
-	return runeIndex + m.deltas[i]
+	for m.runePos > runeIndex {
+		size := 1
+		if m.input[m.bytePos-1] >= utf8.RuneSelf {
+			_, size = utf8.DecodeLastRuneInString(m.input[:m.bytePos])
+		}
+		m.bytePos -= size
+		m.runePos--
+	}
+	return m.bytePos
 }
 
 // FindNextMatch returns the next match in the same input string as the match parameter.
@@ -430,10 +427,6 @@ func (re *Regexp) MatchString(s string) (bool, error) {
 
 		return re.matchStringAt(s, candidateByteIndex)
 	}
-	return re.matchString(s)
-}
-
-func (re *Regexp) matchString(s string) (bool, error) {
 	return re.matchStringAt(s, -1)
 }
 
@@ -468,7 +461,8 @@ func (re *Regexp) matchStringAt(s string, startAt int) (bool, error) {
 		runner.code = re.quickCode
 	}
 
-	m, err := runner.scan(input, nil, runeStart, -1, true, re.MatchTimeout)
+	origin := re.stringSearchOrigin(s, -1, runeStart)
+	m, err := runner.scan(input, nil, origin, runeStart, -1, true, re.MatchTimeout)
 	if err != nil {
 		return false, err
 	}

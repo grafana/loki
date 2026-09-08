@@ -38,6 +38,7 @@ func makeTestStreamLabels() map[int64]labels.Labels {
 		1: labels.FromStrings("service_name", "svcA", "env", "prod"),
 		2: labels.FromStrings("service_name", "svcB", "env", "dev"),
 		3: labels.FromStrings("env", "staging"),
+		4: labels.FromStrings("env", "dev"),
 	}
 }
 

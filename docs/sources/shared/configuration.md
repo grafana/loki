@@ -1250,6 +1250,26 @@ kafka_config:
   # CLI flag: -kafka.producer-max-buffered-bytes
   [producer_max_buffered_bytes: <int> | default = 1073741824]
 
+  # The maximum number of Produce requests the producer can have in-flight per
+  # Kafka broker at any given time. The product of this value and
+  # -kafka.producer-linger should exceed the maximum Produce latency expected
+  # from the Kafka backend in steady state. If the backend takes longer than
+  # that to process a Produce request, the client will buffer data and stop
+  # issuing new Produce requests until some in-flight ones complete, which
+  # surfaces as added latency to callers.
+  # CLI flag: -kafka.producer-max-inflight-requests-per-broker
+  [producer_max_inflight_requests_per_broker: <int> | default = 20]
+
+  # How long the producer waits, buffering records for the same partition,
+  # before sending a Produce request. The product of this value and
+  # -kafka.producer-max-inflight-requests-per-broker should exceed the maximum
+  # Produce latency expected from the Kafka backend in steady state. If the
+  # backend takes longer than that to process a Produce request, the client will
+  # buffer data and stop issuing new Produce requests until some in-flight ones
+  # complete, which surfaces as added latency to callers.
+  # CLI flag: -kafka.producer-linger
+  [producer_linger: <duration> | default = 50ms]
+
   # The guaranteed maximum lag before a consumer is considered to have caught up
   # reading from a partition at startup, becomes ACTIVE in the hash ring and
   # passes the readiness check. Set -kafka.max-consumer-lag-at-startup to 0 to

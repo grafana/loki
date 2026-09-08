@@ -192,7 +192,7 @@ func (s *Script) EvalShaRO(ctx context.Context, c Scripter, keys []string, args 
 // it is retried using EVAL.
 func (s *Script) Run(ctx context.Context, c Scripter, keys []string, args ...interface{}) *Cmd {
 	r := s.EvalSha(ctx, c, keys, args...)
-	if errors.Is(r.Err(), ErrNoScript) {
+	if isNoScriptErr(r.Err()) {
 		return s.Eval(ctx, c, keys, args...)
 	}
 	return r
@@ -202,8 +202,20 @@ func (s *Script) Run(ctx context.Context, c Scripter, keys []string, args ...int
 // it is retried using EVAL_RO.
 func (s *Script) RunRO(ctx context.Context, c Scripter, keys []string, args ...interface{}) *Cmd {
 	r := s.EvalShaRO(ctx, c, keys, args...)
-	if errors.Is(r.Err(), ErrNoScript) {
+	if isNoScriptErr(r.Err()) {
 		return s.EvalRO(ctx, c, keys, args...)
 	}
 	return r
+}
+
+// isNoScriptErr reports whether err means "this digest is not cached", whether
+// it arrived already normalized to ErrNoScript or as the server's raw NOSCRIPT
+// error. Both are accepted because the Eval wrappers only normalize when the
+// result is readable without blocking — on the deferred autopipeline face the
+// raw error reaches here untouched (see cmdable.eval).
+func isNoScriptErr(err error) bool {
+	if err == nil {
+		return false
+	}
+	return errors.Is(err, ErrNoScript) || HasErrorPrefix(err, "NOSCRIPT")
 }

@@ -45,7 +45,7 @@ func GetCachedTimeNs() int64 {
 }
 
 // Global atomic counter for connection IDs
-var connIDCounter uint64
+var connIDCounter atomic.Uint64
 
 // HandoffState represents the atomic state for connection handoffs
 // This struct is stored atomically to prevent race conditions between
@@ -63,7 +63,7 @@ type atomicNetConn struct {
 
 // generateConnID generates a fast unique identifier for a connection with zero allocations
 func generateConnID() uint64 {
-	return atomic.AddUint64(&connIDCounter, 1)
+	return connIDCounter.Add(1)
 }
 
 type Conn struct {
@@ -109,6 +109,18 @@ type Conn struct {
 	expiresAt time.Time
 	poolName  string // Name of the pool this connection belongs to (for metrics)
 
+	// preparedFieldsets tracks HIMPORT fieldsets prepared on this
+	// connection's current server session: fieldset name -> client-side
+	// registry version. The server drops fieldsets when the session ends,
+	// so the map is cleared whenever the underlying network connection is
+	// replaced. preparedFieldsetsEpoch records the registry's discard-all
+	// epoch the session was prepared under; a session behind the current
+	// epoch replays HIMPORT DISCARDALL before its next HIMPORT command.
+	// Guarded by preparedFieldsetsMu; the map is nil until first use.
+	preparedFieldsetsMu    sync.Mutex
+	preparedFieldsets      map[string]uint64
+	preparedFieldsetsEpoch uint64
+
 	// When a goroutine closes a connection, it usually knows the reason, so closeReason is not needed.
 	// closeReason is only used when an in-use connection is closed by another goroutine,
 	// to inform the goroutine using the connection why the connection was closed.
@@ -135,6 +147,24 @@ type Conn struct {
 	initConnFunc func(context.Context, *Conn) error
 
 	onClose func() error
+
+	// onCscClose is the client-side-caching close hook, kept separate from
+	// onClose (streaming-credentials cleanup) so neither clobbers the other.
+	// Both keep overwrite semantics, so re-running initConn can't accumulate them.
+	onCscClose func() error
+
+	// onCscReinit runs after the connection is claimed for reinitialization but
+	// before its socket is replaced. CSC uses it to invalidate entries whose
+	// server-side tracking coverage belongs to the old socket.
+	onCscReinit func()
+
+	// cscReadPending requests one conservative drain after a command read through
+	// a transport whose buffered state cannot be fully observed by MaybeHasData.
+	cscReadPending atomic.Bool
+
+	// lastCscPeriodicProbeNs throttles bounded fallback reads on platforms and
+	// opaque transports without a non-consuming readiness mechanism.
+	lastCscPeriodicProbeNs atomic.Int64
 }
 
 func NewConn(netConn net.Conn) *Conn {
@@ -638,6 +668,18 @@ func (cn *Conn) SetOnClose(fn func() error) {
 	cn.onClose = fn
 }
 
+// SetOnCscClose sets the client-side-caching close hook, overwriting any
+// previous one. It runs on Close in addition to the SetOnClose callback.
+func (cn *Conn) SetOnCscClose(fn func() error) {
+	cn.onCscClose = fn
+}
+
+// SetOnCscReinit sets the client-side-caching pre-reinitialization hook,
+// overwriting any previous one.
+func (cn *Conn) SetOnCscReinit(fn func()) {
+	cn.onCscReinit = fn
+}
+
 // SetInitConnFunc sets the connection initialization function to be called on reconnections.
 func (cn *Conn) SetInitConnFunc(fn func(context.Context, *Conn) error) {
 	cn.initConnFunc = fn
@@ -661,6 +703,85 @@ func (cn *Conn) SetNetConn(netConn net.Conn) {
 	cn.readerMu.Unlock()
 
 	cn.bw.Reset(netConn)
+
+	// A new socket is a new server session with no HIMPORT fieldsets and
+	// nothing left to discard.
+	cn.ClearPreparedFieldsets(0)
+}
+
+// FieldsetPreparedVersion returns the client-side registry version at which
+// the named HIMPORT fieldset was prepared on this connection's current server
+// session, or 0 if it was not prepared on it (registry versions start at 1).
+func (cn *Conn) FieldsetPreparedVersion(name string) uint64 {
+	cn.preparedFieldsetsMu.Lock()
+	version := cn.preparedFieldsets[name]
+	cn.preparedFieldsetsMu.Unlock()
+	return version
+}
+
+// MarkFieldsetPrepared records that the named HIMPORT fieldset was prepared
+// on this connection's current server session at the given registry version.
+// A session acquiring its first fieldset adopts the given discard-all epoch
+// (fieldsets prepared after an HIMPORT DISCARDALL are not subject to it);
+// the epoch never moves backwards, so a mark carrying an older snapshot
+// cannot regress a session already wiped at a newer epoch.
+func (cn *Conn) MarkFieldsetPrepared(name string, version, epoch uint64) {
+	cn.preparedFieldsetsMu.Lock()
+	if len(cn.preparedFieldsets) == 0 {
+		cn.preparedFieldsets = make(map[string]uint64)
+		if epoch > cn.preparedFieldsetsEpoch {
+			cn.preparedFieldsetsEpoch = epoch
+		}
+	}
+	cn.preparedFieldsets[name] = version
+	cn.preparedFieldsetsMu.Unlock()
+}
+
+// UnmarkFieldsetPrepared forgets that the named HIMPORT fieldset was prepared
+// on this connection, forcing a replay before the next HIMPORT SET using it.
+func (cn *Conn) UnmarkFieldsetPrepared(name string) {
+	cn.preparedFieldsetsMu.Lock()
+	delete(cn.preparedFieldsets, name)
+	cn.preparedFieldsetsMu.Unlock()
+}
+
+// HasPreparedFieldsets reports whether any HIMPORT fieldset is prepared on
+// this connection's current server session.
+func (cn *Conn) HasPreparedFieldsets() bool {
+	cn.preparedFieldsetsMu.Lock()
+	n := len(cn.preparedFieldsets)
+	cn.preparedFieldsetsMu.Unlock()
+	return n > 0
+}
+
+// PreparedFieldsetNames returns the names of the HIMPORT fieldsets prepared
+// on this connection's current server session.
+func (cn *Conn) PreparedFieldsetNames() []string {
+	cn.preparedFieldsetsMu.Lock()
+	names := make([]string, 0, len(cn.preparedFieldsets))
+	for name := range cn.preparedFieldsets {
+		names = append(names, name)
+	}
+	cn.preparedFieldsetsMu.Unlock()
+	return names
+}
+
+// FieldsetEpoch returns the discard-all epoch this connection's prepared
+// fieldsets belong to (0 when none were ever prepared on the session).
+func (cn *Conn) FieldsetEpoch() uint64 {
+	cn.preparedFieldsetsMu.Lock()
+	epoch := cn.preparedFieldsetsEpoch
+	cn.preparedFieldsetsMu.Unlock()
+	return epoch
+}
+
+// ClearPreparedFieldsets forgets all HIMPORT fieldsets prepared on this
+// connection and records the discard-all epoch the wipe corresponds to.
+func (cn *Conn) ClearPreparedFieldsets(epoch uint64) {
+	cn.preparedFieldsetsMu.Lock()
+	cn.preparedFieldsets = nil
+	cn.preparedFieldsetsEpoch = epoch
+	cn.preparedFieldsetsMu.Unlock()
 }
 
 // GetNetConn safely returns the current network connection using atomic load (lock-free).
@@ -692,6 +813,10 @@ func (cn *Conn) SetNetConnAndInitConn(ctx context.Context, netConn net.Conn) err
 	)
 	if err != nil {
 		return fmt.Errorf("cannot initialize connection from state %s: %w", finalState, err)
+	}
+
+	if cn.onCscReinit != nil {
+		cn.onCscReinit()
 	}
 
 	// Replace the underlying connection
@@ -774,8 +899,13 @@ func (cn *Conn) MarkQueuedForHandoff() error {
 			// Already unusable - this is fine, keep the new handoff state
 			return nil
 		}
-		// Restore the original state if transition fails for other reasons
-		cn.handoffStateAtomic.Store(currentState)
+		// Restore the original handoff state only if nothing else changed it
+		// since our CAS above. A concurrent handoff worker may have completed
+		// the handoff and run ClearHandoffState in this window; a plain Store
+		// would clobber that, resurrecting ShouldHandoff=true and wedging the
+		// connection so it can never be acquired again. The CAS leaves the
+		// worker's state intact when it has taken over.
+		cn.handoffStateAtomic.CompareAndSwap(newState, currentState)
 		return fmt.Errorf("failed to mark connection as unusable: %w", err)
 	}
 	return nil
@@ -871,6 +1001,18 @@ func (cn *Conn) PeekReplyTypeSafe() (byte, error) {
 	return cn.rd.PeekReplyType()
 }
 
+// PeekReplyTypeForCheck peeks at the reply type while holding readerMu, so it is
+// safe against a concurrent SetNetConn resetting the reader during handoff.
+// Unlike PeekReplyTypeSafe it does not require the data to already be buffered:
+// the pool health check calls it after connCheck reports unexpected socket data,
+// and connCheck only MSG_PEEKs, so the byte still has to be pulled from the
+// socket into the reader here.
+func (cn *Conn) PeekReplyTypeForCheck() (byte, error) {
+	cn.readerMu.RLock()
+	defer cn.readerMu.RUnlock()
+	return cn.rd.PeekReplyType()
+}
+
 func (cn *Conn) Write(b []byte) (int, error) {
 	// Lock-free netConn access for better performance
 	if netConn := cn.getNetConn(); netConn != nil {
@@ -904,6 +1046,29 @@ func (cn *Conn) WithReader(
 			return err
 		}
 	}
+	return fn(cn.rd)
+}
+
+// WithReaderHardDeadline runs fn under a HARD read deadline of now+timeout,
+// bypassing getEffectiveReadTimeout so a relaxed maintenance timeout can't extend
+// it (used by the CSC drainer). Takes no context: an expired cycle ctx must not
+// become the socket deadline, or the read surfaces context.DeadlineExceeded, which
+// isBadConn treats as fatal.
+func (cn *Conn) WithReaderHardDeadline(
+	timeout time.Duration, fn func(rd *proto.Reader) error,
+) (err error) {
+	netConn := cn.getNetConn()
+	if netConn == nil {
+		return errConnectionNotAvailable
+	}
+	if err := netConn.SetReadDeadline(time.Now().Add(timeout)); err != nil {
+		return err
+	}
+	defer func() {
+		if clearErr := netConn.SetReadDeadline(time.Time{}); clearErr != nil {
+			err = clearErr
+		}
+	}()
 	return fn(cn.rd)
 }
 
@@ -944,16 +1109,28 @@ func (cn *Conn) IsClosed() bool {
 }
 
 func (cn *Conn) Close() error {
-	if cn.IsClosed() {
-		return nil
+	for {
+		state := cn.stateMachine.GetState()
+		if state == StateClosed {
+			return nil
+		}
+		if cn.stateMachine.TryTransitionFast(state, StateClosed) {
+			// TryTransitionFast deliberately skips waiter notification; Close
+			// still needs to wake any goroutine waiting on initialization.
+			cn.stateMachine.notifyWaiters()
+			break
+		}
 	}
-	// Transition to CLOSED state
-	cn.stateMachine.Transition(StateClosed)
 
 	if cn.onClose != nil {
 		// ignore error
 		_ = cn.onClose()
 		cn.onClose = nil
+	}
+	if cn.onCscClose != nil {
+		// ignore error
+		_ = cn.onCscClose()
+		cn.onCscClose = nil
 	}
 
 	// Lock-free netConn access for better performance
@@ -972,6 +1149,56 @@ func (cn *Conn) MaybeHasData() bool {
 		return maybeHasData(netConn)
 	}
 	return false
+}
+
+// CheckForData reports whether the socket has data ready and surfaces a
+// detected closed or failed socket.
+func (cn *Conn) CheckForData() (bool, error) {
+	if netConn := cn.getNetConn(); netConn != nil {
+		return checkForData(netConn)
+	}
+	return false, nil
+}
+
+// MarkCscReadPending requests one conservative CSC drain after a command read
+// when the transport may retain data that MaybeHasData cannot observe.
+func (cn *Conn) MarkCscReadPending() {
+	netConn := cn.getNetConn()
+	if netConn == nil {
+		return
+	}
+	if needsCscReadProbe(netConn) {
+		cn.cscReadPending.Store(true)
+	}
+}
+
+// TakeCscReadPending consumes the post-command conservative-drain request.
+func (cn *Conn) TakeCscReadPending() bool {
+	return cn.cscReadPending.Swap(false)
+}
+
+// TakeCscPeriodicReadPending schedules a throttled conservative read for
+// transports with no readiness mechanism. It returns true at most once per
+// interval, including when several drainer passes race.
+func (cn *Conn) TakeCscPeriodicReadPending(interval time.Duration) bool {
+	netConn := cn.getNetConn()
+	if netConn == nil || interval <= 0 || !needsCscPeriodicProbe(netConn) {
+		return false
+	}
+
+	now := time.Since(cn.createdAt).Nanoseconds()
+	if now <= 0 {
+		now = 1
+	}
+	for {
+		last := cn.lastCscPeriodicProbeNs.Load()
+		if last != 0 && now >= last && now-last < int64(interval) {
+			return false
+		}
+		if cn.lastCscPeriodicProbeNs.CompareAndSwap(last, now) {
+			return true
+		}
+	}
 }
 
 // deadline computes the effective deadline time based on context and timeout.
