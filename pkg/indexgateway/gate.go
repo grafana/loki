@@ -28,11 +28,11 @@ func mapGateError(err error) error {
 }
 
 // newInFlightGate creates a non-blocking gate. A max of zero disables it.
-func newInFlightGate(max int, reg prometheus.Registerer) gate.Gate {
-	if max <= 0 {
+func newInFlightGate(maxConcurrent int, reg prometheus.Registerer) gate.Gate {
+	if maxConcurrent <= 0 {
 		return gate.NewNoop()
 	}
-	return gate.NewInstrumented(reg, max, gate.NewRejecting(max))
+	return gate.NewInstrumented(reg, maxConcurrent, gate.NewRejecting(maxConcurrent))
 }
 
 // mapInFlightGateError maps a capacity rejection to HTTP 503.
