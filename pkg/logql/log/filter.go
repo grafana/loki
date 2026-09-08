@@ -578,7 +578,7 @@ func (l prefixFilter) Filter(line []byte) bool {
 	if len(l.match) > len(line) {
 		return false
 	}
-	return equalBytes(line[:len(l.match)], l.match, l.caseInsensitive)
+	return contains(line[:len(l.match)], l.match, l.caseInsensitive)
 }
 
 func (l prefixFilter) ToStage() Stage {
@@ -620,7 +620,7 @@ func (l suffixFilter) Filter(line []byte) bool {
 	if len(l.match) > len(line) {
 		return false
 	}
-	return equalBytes(line[len(line)-len(l.match):], l.match, l.caseInsensitive)
+	return contains(line[len(line)-len(l.match):], l.match, l.caseInsensitive)
 }
 
 func (l suffixFilter) ToStage() Stage {
@@ -647,24 +647,6 @@ func newSuffixFilter(match []byte, caseInsensitive bool) MatcherFilterer {
 		match = bytes.ToLower(match)
 	}
 	return suffixFilter{match: match, caseInsensitive: caseInsensitive}
-}
-
-// equalBytes compares two equal-length slices. match MUST already be lowercase
-// when caseInsensitive is set, which the constructors guarantee.
-func equalBytes(line, match []byte, caseInsensitive bool) bool {
-	if !caseInsensitive {
-		return bytes.Equal(line, match)
-	}
-	for i := range match {
-		c := line[i]
-		if c >= 'A' && c <= 'Z' {
-			c += 'a' - 'A'
-		}
-		if c != match[i] {
-			return false
-		}
-	}
-	return true
 }
 
 type containsAllFilter struct {
@@ -888,6 +870,14 @@ func (s *RegexSimplifier) simplifyConcat(reg *syntax.Regexp, baseLiteral []byte,
 			if literals != 0 {
 				return nil, false
 			}
+			// A literal separated from an earlier one by `.*` is not contiguous
+			// with it, so appending the two and matching the result would be
+			// wrong. `a(.*c|d)` recurses here with baseLiteral "a" and would
+			// otherwise fold to "ac", which neither matches "axc" nor rejects
+			// "acb". Leave it to the regexp fallback.
+			if starAfter {
+				return nil, false
+			}
 			literals++
 			baseLiteral = append(baseLiteral, []byte(string(sub.Rune))...)
 			baseLiteralIsCaseInsensitive = util.IsCaseInsensitive(sub)
@@ -913,6 +903,13 @@ func (s *RegexSimplifier) simplifyConcat(reg *syntax.Regexp, baseLiteral []byte,
 
 	// if we have a filter from concat alternates.
 	if curr != nil {
+		// Anchored, a `.*` beside the alternation widens every branch: `a(bb|cc).*`
+		// accepts "abbX", which the per-branch equalities above would reject. The
+		// branch filters are already built by this point, so rather than rewrite
+		// them, leave the whole expression to the anchored regexp fallback.
+		if isLabel && (starBefore || starAfter) {
+			return nil, false
+		}
 		return curr, true
 	}
 

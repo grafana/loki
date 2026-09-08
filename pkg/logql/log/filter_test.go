@@ -410,6 +410,13 @@ func TestLabelFilterRegexIsAnchored(t *testing.T) {
 		"a|ab|abc", "al.*|be.*",
 		// shapes that were already correct, kept as regression cover
 		"pre.*ha", "al[a-z]*", "a.*a", "foo.*bar", ".*", ".+",
+		// an alternation beside a `.*` widens every branch, so it must not fold
+		// to per-branch equalities (review on #24421)
+		"a(bb|cc).*", "(?i)a(bb|cc).*", "foo(bar|baz).*", "(bar|baz).*",
+		// a literal separated from an earlier one by `.*` is not contiguous
+		"a(.*c|d)", "a(b|.*c)", "pre(.*x|y)", "a(.*c|.*d)",
+		// non-ascii case folding must match the existing filters
+		"(?i)ünf.*", "(?i).*ÜNF", "(?i)Ünf", "(?i).*ünf.*",
 	} {
 		t.Run(re, func(t *testing.T) {
 			anchored := regexp.MustCompile("^(?:" + re + ")$")
@@ -424,6 +431,9 @@ func TestLabelFilterRegexIsAnchored(t *testing.T) {
 					"warn", "warning", "prewarn", "warnings",
 					"prod", "preprod", "nonprod", "production",
 					"GET", "GETALL", "TARGET", "400", "404", "4041", "foobar", "xfoobary",
+					"foobarX", "foobaz", "ac", "axc", "acb", "ad", "abd", "abdX",
+					"prex", "preXx", "prey", "abb", "abbX", "acc", "accX",
+					"ünf", "ÜNF", "Ünf", "ünfoo", "ÜNFOO", "xünf", "UNF",
 				} {
 					want := anchored.MatchString(v)
 					if matchType == labels.MatchNotRegexp {
@@ -443,13 +453,15 @@ func TestLabelFilterRegexIsAnchored(t *testing.T) {
 func TestLineFilterRegexStaysUnanchored(t *testing.T) {
 	for _, re := range []string{
 		"al.*", ".*al", "alpha", "warn|warning", "prod|preprod", "bar|buzz", "b(ar|uzz)",
+		"a(bb|cc).*", "a(.*c|d)", "a(b|.*c)", "(?i)ünf.*",
 	} {
 		t.Run(re, func(t *testing.T) {
 			unanchored := regexp.MustCompile(re)
 			f, err := NewFilter(re, LineMatchRegexp)
 			require.NoError(t, err)
 
-			for _, v := range []string{"alpha", "prealpha", "barbell", "rebar", "prewarn", "nonprod", "xfoobary"} {
+			for _, v := range []string{"alpha", "prealpha", "barbell", "rebar", "prewarn", "nonprod",
+				"xfoobary", "abbX", "axc", "acb", "zzaxczz", "ÜNFOO"} {
 				require.Equalf(t, unanchored.MatchString(v), f.Filter([]byte(v)),
 					"line filter %q on value %q", re, v)
 			}
