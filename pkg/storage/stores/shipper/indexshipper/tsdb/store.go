@@ -13,7 +13,9 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 
+	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/v3/pkg/storage/chunk"
+	chunkcache "github.com/grafana/loki/v3/pkg/storage/chunk/cache"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/fetcher"
 	"github.com/grafana/loki/v3/pkg/storage/config"
@@ -22,6 +24,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/downloads"
 	shipperindex "github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/index"
 	tsdbindex "github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/index"
+	"github.com/grafana/loki/v3/pkg/util/constants"
 )
 
 type IndexWriter interface {
@@ -30,10 +33,11 @@ type IndexWriter interface {
 
 type store struct {
 	index.Reader
-	indexShipper indexshipper.IndexShipper
-	indexWriter  IndexWriter
-	logger       log.Logger
-	stopOnce     sync.Once
+	indexShipper  indexshipper.IndexShipper
+	indexWriter   IndexWriter
+	logger        log.Logger
+	stopOnce      sync.Once
+	postingsCache chunkcache.Cache
 }
 
 // NewStore creates a new tsdb index ReaderWriter.
@@ -58,6 +62,7 @@ func NewStore(
 	}
 
 	if err := storeInstance.init(name, prefix, indexShipperCfg, schemaCfg, objectClient, limits, tableRange, reg); err != nil {
+		storeInstance.Stop()
 		return nil, nil, err
 	}
 
@@ -66,6 +71,15 @@ func NewStore(
 
 func (s *store) init(name, prefix string, indexShipperCfg indexshipper.Config, schemaCfg config.SchemaConfig, objectClient client.ObjectClient,
 	limits downloads.Limits, tableRange config.TableRange, reg prometheus.Registerer) error {
+	var err error
+	if (indexShipperCfg.Mode == indexshipper.ModeReadOnly || indexShipperCfg.Mode == indexshipper.ModeReadWrite) && chunkcache.IsCacheConfigured(indexShipperCfg.PostingsCache) {
+		postingsCfg := indexShipperCfg.PostingsCache
+		postingsCfg.Prefix = "tsdb-postings"
+		s.postingsCache, err = chunkcache.New(postingsCfg, reg, s.logger, stats.IndexCache, constants.Loki)
+		if err != nil {
+			return err
+		}
+	}
 
 	readerOpts, err := indexShipperCfg.IndexReaderOptions()
 	if err != nil {
@@ -79,7 +93,7 @@ func (s *store) init(name, prefix string, indexShipperCfg indexshipper.Config, s
 		limits,
 		nil,
 		func(p string) (shipperindex.Index, error) {
-			return OpenShippableTSDB(p, readerOpts)
+			return openShippableTSDBWithPostingsCache(p, readerOpts, s.postingsCache, prefix, indexShipperCfg.CacheLocation)
 		},
 		tableRange,
 		prometheus.WrapRegistererWithPrefix("loki_tsdb_shipper_", reg),
@@ -159,7 +173,12 @@ func (s *store) Stop() {
 				level.Error(s.logger).Log("msg", "failed to stop head manager", "err", err)
 			}
 		}
-		s.indexShipper.Stop()
+		if s.indexShipper != nil {
+			s.indexShipper.Stop()
+		}
+		if s.postingsCache != nil {
+			s.postingsCache.Stop()
+		}
 	})
 }
 
