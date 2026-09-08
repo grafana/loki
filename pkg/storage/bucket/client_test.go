@@ -11,6 +11,8 @@ import (
 	"github.com/stretchr/testify/require"
 	yaml "go.yaml.in/yaml/v4"
 
+	"github.com/grafana/loki/v3/pkg/storage/bucket/oci"
+
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
 )
 
@@ -43,6 +45,13 @@ gcs:
 `
 )
 
+func TestDisableRetriesOCI(t *testing.T) {
+	cfg := Config{}
+	cfg.OCI.MaxRequestRetries = 3
+
+	require.NoError(t, cfg.disableRetries(OCI))
+	require.Equal(t, 1, cfg.OCI.MaxRequestRetries)
+}
 func TestNewClient(t *testing.T) {
 	t.Parallel()
 
@@ -92,4 +101,9 @@ func TestNewClient(t *testing.T) {
 			}
 		})
 	}
+}
+func TestOCIIsConfigured(t *testing.T) {
+	require.False(t, oci.Config{}.IsConfigured())
+	require.True(t, oci.Config{Bucket: "loki-data"}.IsConfigured())
+	require.True(t, oci.Config{Region: "ap-tokyo-1"}.IsConfigured())
 }

@@ -118,7 +118,7 @@ type PeriodConfig struct {
 	// type of index client to use.
 	IndexType string `yaml:"store" doc:"description=store and object_store below affect which <storage_config> key is used. Which index to use. Only tsdb is supported."`
 	// type of object client to use.
-	ObjectType  string                   `yaml:"object_store" doc:"description=Which store to use for the chunks. Either aws (alias s3), azure, gcs, alibabacloud, bos, cos, swift, filesystem, or a named_store (refer to named_stores_config)."`
+	ObjectType  string                   `yaml:"object_store" doc:"description=Which store to use for the chunks. Either aws (alias s3), azure, gcs, alibabacloud, bos, oci, cos, swift, filesystem, or a named_store (refer to named_stores_config)."`
 	Schema      string                   `yaml:"schema" doc:"description=The schema version to use, current recommended schema is v13."`
 	IndexTables IndexPeriodicTableConfig `yaml:"index" doc:"description=Configures how the index is updated and stored."`
 
