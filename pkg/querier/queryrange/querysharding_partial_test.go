@@ -17,11 +17,10 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/loghttp"
 	"github.com/grafana/loki/v3/pkg/logproto"
-	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	"github.com/grafana/loki/v3/pkg/logqlmodel"
 	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
-	"github.com/grafana/loki/v3/pkg/querier/plan"
 	"github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase"
+	"github.com/grafana/loki/v3/pkg/querier/testutil"
 	"github.com/grafana/loki/v3/pkg/storage/config"
 	"github.com/grafana/loki/v3/pkg/storage/types"
 	"github.com/grafana/loki/v3/pkg/util"
@@ -110,7 +109,7 @@ func TestASTMapperware_PartialStatsOnError(t *testing.T) {
 	query := `count_over_time({app="left"}[1h]) / count_over_time({app="right"}[1h])`
 	req := defaultReq()
 	req.Query = query
-	req.Plan = &plan.QueryPlan{AST: syntax.MustParseExpr(query)}
+	req.Plan = testutil.MustPlan(query)
 
 	data := &queryData{}
 	ctx := user.InjectOrgID(context.WithValue(context.Background(), ctxKey, data), "1")
@@ -178,7 +177,7 @@ func TestASTMapperware_QuerierBytesLimitIsClassifiedAsLimit(t *testing.T) {
 	query := `avg_over_time({app="foo"} | json busy="utilization" | unwrap busy [5m])`
 	req := defaultReq()
 	req.Query = query
-	req.Plan = &plan.QueryPlan{AST: syntax.MustParseExpr(query)}
+	req.Plan = testutil.MustPlan(query)
 
 	_, err := mware.Do(user.InjectOrgID(context.Background(), "1"), req)
 	require.Error(t, err)

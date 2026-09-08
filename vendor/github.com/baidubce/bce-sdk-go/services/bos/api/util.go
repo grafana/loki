@@ -381,6 +381,10 @@ func SendRequest(cli bce.Client, req *BosRequest, resp *BosResponse, ctx *BosCon
 	}
 	// sdk do not need to set request id
 	req.SetWithOutRequestId(true)
+	// fill the caller supplied metadata after the final attempt, no matter whether it
+	// succeeded, failed at the http level or failed in a response handler. Registering
+	// the defer here also keeps the metadata untouched when the validations above fail.
+	defer fillResponseCommon(req, ctx, resp)
 	if ctx.ApiVersion == API_VERSION_V2 {
 		err = cli.SendRequestV2(&req.BceRequest, &resp.BceResponse)
 	} else {
@@ -437,6 +441,7 @@ func SendRequestFromBytes(cli bce.Client, req *BosRequest, resp *BosResponse, ct
 	)
 	setUriAndEndpoint(cli, req, ctx, cli.GetBceClientConfig().Endpoint)
 	req.SetContext(ctx.Ctx)
+	defer fillResponseCommon(req, ctx, resp)
 	if err = cli.SendRequestFromBytes(&req.BceRequest, &resp.BceResponse, content); err != nil {
 		if serviceErr, isServiceErr := err.(*bce.BceServiceError); isServiceErr {
 			if serviceErr.StatusCode == net_http.StatusInternalServerError ||

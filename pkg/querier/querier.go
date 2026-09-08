@@ -271,7 +271,7 @@ func (q *SingleTenantQuerier) SelectSamples(ctx context.Context, params logql.Se
 
 		iters = append(iters, storeIter)
 	}
-	return iter.NewMergeSampleIterator(ctx, iters), nil
+	return iter.NewTimestampFirstMergeSampleIterator(ctx, iters), nil
 }
 
 func (q *SingleTenantQuerier) isWithinIngesterMaxLookbackPeriod(maxLookback time.Duration, queryEnd time.Time) bool {

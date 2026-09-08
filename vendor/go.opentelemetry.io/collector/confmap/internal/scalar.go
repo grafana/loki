@@ -142,7 +142,7 @@ func scalarUnmarshalerHookFunc() mapstructure.DecodeHookFuncValue {
 // ScalarMarshaler interface.
 func scalarMarshalerHookFunc() mapstructure.DecodeHookFuncValue {
 	return safeWrapDecodeHookFunc(func(from, _ reflect.Value) (any, error) {
-		marshaler, ok := from.Interface().(ScalarMarshaler)
+		marshaler, ok := reflect.TypeAssert[ScalarMarshaler](from)
 		if !ok {
 			return from.Interface(), nil
 		}
