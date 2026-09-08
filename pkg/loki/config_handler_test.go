@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"io"
 	"net/http/httptest"
+	"net/url"
+	"strings"
 	"testing"
 	"time"
 
@@ -188,6 +190,30 @@ func TestConfigQueryHandler(t *testing.T) {
 		configHandler(cfg, cfg)(w, req)
 		resp := w.Result()
 		assert.Equal(t, 200, resp.StatusCode)
+		assert.Empty(t, resp.Header.Values(ConfigQueryHandledHeader))
+	})
+
+	t.Run("too many q parameters returns 400", func(t *testing.T) {
+		query := make(url.Values)
+		for range maxConfigQueryPaths + 1 {
+			query.Add("q", "my_int")
+		}
+		req := httptest.NewRequest("GET", "http://test.com/config?"+query.Encode(), nil)
+		w := httptest.NewRecorder()
+
+		configHandler(cfg, cfg)(w, req)
+		resp := w.Result()
+		assert.Equal(t, 400, resp.StatusCode)
+		assert.Empty(t, resp.Header.Values(ConfigQueryHandledHeader))
+	})
+
+	t.Run("q parameter too long returns 400", func(t *testing.T) {
+		req := httptest.NewRequest("GET", "http://test.com/config?q="+strings.Repeat("a", maxConfigQueryPathLength+1), nil)
+		w := httptest.NewRecorder()
+
+		configHandler(cfg, cfg)(w, req)
+		resp := w.Result()
+		assert.Equal(t, 400, resp.StatusCode)
 		assert.Empty(t, resp.Header.Values(ConfigQueryHandledHeader))
 	})
 }
