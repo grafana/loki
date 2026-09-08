@@ -321,7 +321,7 @@ func (s *LokiStore) storeForPeriod(p config.PeriodConfig, tableRange config.Tabl
 		var shadowClient *indexgateway.GatewayClient
 		var clientToUse series.GatewayClient = primaryClient
 		if shouldUseTeeIndexGatewayClient(s.cfg.TSDBShipperConfig) {
-			shadowClient, err = indexgateway.NewGatewayClient("shadow", s.cfg.TSDBShipperConfig.ShadowIndexGatewayClientConfig, indexClientReg, s.limits, indexClientLogger, s.metricsNamespace)
+			shadowClient, err = indexgateway.NewGatewayClient("secondary", s.cfg.TSDBShipperConfig.ShadowIndexGatewayClientConfig, indexClientReg, s.limits, indexClientLogger, s.metricsNamespace)
 			if err != nil {
 				primaryClient.Stop()
 				return nil, nil, nil, err

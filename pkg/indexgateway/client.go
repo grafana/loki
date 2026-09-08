@@ -144,9 +144,7 @@ type GatewayClient struct {
 // If it is configured to be in ring mode, a pool of GRPC connections to all Index Gateway instances is created using a ring.
 // Otherwise, it creates a GRPC connection pool to as many addresses as can be resolved from the given address.
 //
-// name distinguishes the in-flight gate metrics of clients sharing a registerer.
-// It must be unique per registerer: the gate registers through promauto, which
-// panics on collision.
+// name distinguishes gate metrics for clients sharing a registerer.
 func NewGatewayClient(name string, cfg ClientConfig, r prometheus.Registerer, limits Limits, logger log.Logger, metricsNamespace string) (*GatewayClient, error) {
 	latency := prometheus.NewHistogramVec(prometheus.HistogramOpts{
 		Namespace: constants.Loki,
@@ -411,10 +409,7 @@ func (s *GatewayClient) GetShards(ctx context.Context, in *logproto.ShardsReques
 	return res, nil
 }
 
-// poolDo runs callback against the Index Gateway instances serving the request's
-// tenant, moving on to another instance when one fails. Each instance is tried
-// at most once and at most cfg.MaxRetries instances are tried after the first,
-// so a request cannot walk the whole pool.
+// poolDo tries each gateway once, up to cfg.MaxRetries retries.
 func (s *GatewayClient) poolDo(
 	ctx context.Context,
 	callback func(client logproto.IndexGatewayClient) error,
@@ -544,9 +539,7 @@ func (s *GatewayClient) getServerAddresses(tenantID string) ([]string, error) {
 		addrs = s.dnsProvider.Addresses()
 	}
 
-	// SRV resolution reports one host:port more than once when records share a
-	// target or resolve to the same address, and a ring can hold two instances
-	// with the same address. Both would let poolDo attempt an instance twice.
+	// DNS and ring discovery can return duplicate addresses.
 	return dedupe(addrs), nil
 }
 

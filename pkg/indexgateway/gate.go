@@ -27,9 +27,7 @@ func mapGateError(err error) error {
 	return err
 }
 
-// newInFlightGate builds the cap on requests a single GatewayClient may have in
-// flight. Unlike the server gate it never queues: a request arriving at a full
-// gate is rejected straight away. A max of zero disables the cap.
+// newInFlightGate creates a non-blocking gate. A max of zero disables it.
 func newInFlightGate(max int, reg prometheus.Registerer) gate.Gate {
 	if max <= 0 {
 		return gate.NewNoop()
@@ -37,8 +35,7 @@ func newInFlightGate(max int, reg prometheus.Registerer) gate.Gate {
 	return gate.NewInstrumented(reg, max, gate.NewRejecting(max))
 }
 
-// mapInFlightGateError converts a client-side in-flight rejection into the 503
-// the index gateway itself returns when it sheds load.
+// mapInFlightGateError maps a capacity rejection to HTTP 503.
 func mapInFlightGateError(err error) error {
 	if errors.Is(err, gate.ErrMaxConcurrent) {
 		return httpgrpc.Error(http.StatusServiceUnavailable, "the index gateway client is at its in-flight request limit")
@@ -46,9 +43,7 @@ func mapInFlightGateError(err error) error {
 	return err
 }
 
-// isLoadShed reports whether err carries a 503, the status both the index
-// gateway and its client use to say a request was refused to protect capacity
-// rather than because it could not be served.
+// isLoadShed reports whether err carries a 503.
 func isLoadShed(err error) bool {
 	resp, ok := httpgrpc.HTTPResponseFromError(err)
 	return ok && resp.Code == http.StatusServiceUnavailable

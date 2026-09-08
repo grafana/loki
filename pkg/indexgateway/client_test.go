@@ -268,8 +268,7 @@ func configurePool(t *testing.T, client *GatewayClient, logger log.Logger, numEr
 	return pool
 }
 
-// TestGatewayClient_SimpleMode_RetriesGetShards covers the streaming RPC, whose
-// callback wraps the error it returns to poolDo.
+// The streaming callback wraps errors before returning them to poolDo.
 func TestGatewayClient_SimpleMode_RetriesGetShards(t *testing.T) {
 	logger, _, client := createSimpleGatewayClient(t, []string{
 		"0.0.0.0", "1.1.1.1", "2.2.2.2", "3.3.3.3", "4.4.4.4",
@@ -322,9 +321,7 @@ func TestDoubleRegistration(t *testing.T) {
 	defer client.Stop()
 }
 
-// TestGatewayClient_SharedRegisterer covers storeForPeriod, which builds the
-// primary and the shadow client from a single registerer. The gate metrics are
-// registered through promauto, which panics on collision.
+// gate.NewInstrumented panics when two clients register indistinguishable metrics.
 func TestGatewayClient_SharedRegisterer(t *testing.T) {
 	logger := log.NewNopLogger()
 	reg := prometheus.NewRegistry()
@@ -333,22 +330,20 @@ func TestGatewayClient_SharedRegisterer(t *testing.T) {
 	cfg := ClientConfig{Address: "my-store-address:1234", MaxInFlightRequests: 7}
 
 	require.NotPanics(t, func() {
-		for _, name := range []string{"primary", "shadow"} {
+		for _, name := range []string{"primary", "secondary"} {
 			client, err := NewGatewayClient(name, cfg, reg, o, logger, constants.Loki)
 			require.NoError(t, err)
 			t.Cleanup(client.Stop)
 		}
 	})
 
-	for _, name := range []string{"primary", "shadow"} {
+	for _, name := range []string{"primary", "secondary"} {
 		m := findMetric(t, reg, "loki_index_gateway_client_gate_queries_concurrent_max", map[string]string{"client": name})
 		require.NotNil(t, m, "no gate metrics registered for the %s client", name)
 		require.Equal(t, float64(7), m.GetGauge().GetValue())
 	}
 }
 
-// fakeGateways scripts a set of index gateway instances: which fail to dial,
-// which return an error, and the order poolDo tried them in.
 type fakeGateways struct {
 	dialErr map[string]error
 	rpcErr  map[string]error
@@ -396,8 +391,6 @@ func (c *scriptedGatewayConn) Check(context.Context, *grpc_health_v1.HealthCheck
 
 func (c *scriptedGatewayConn) Close() error { return nil }
 
-// newScriptedGatewayClient builds a simple-mode client whose pool serves the
-// scripted instances instead of real connections.
 func newScriptedGatewayClient(t *testing.T, cfg ClientConfig, reg prometheus.Registerer, gateways *fakeGateways, addrs []string) *GatewayClient {
 	t.Helper()
 
@@ -503,8 +496,7 @@ func TestGatewayClient_RetryBudget(t *testing.T) {
 }
 
 func TestGatewayClient_NeverTriesTheSameInstanceTwice(t *testing.T) {
-	// DNS SRV resolution can report one host:port more than once, for instance
-	// when two records share a target or resolve to the same address.
+	// SRV resolution can return the same host:port more than once.
 	addrs := []string{"1.1.1.1", "2.2.2.2", "1.1.1.1", "2.2.2.2", "1.1.1.1"}
 	gateways := &fakeGateways{rpcErr: failEvery(addrs, errors.New("boom"))}
 
@@ -613,8 +605,7 @@ func TestGatewayClient_InFlightCap(t *testing.T) {
 	})
 }
 
-// findMetric returns the first sample of the named metric carrying every label
-// in want, or nil if there is none.
+// findMetric returns the first matching metric or nil.
 func findMetric(t *testing.T, reg *prometheus.Registry, name string, want map[string]string) *dto.Metric {
 	t.Helper()
 
