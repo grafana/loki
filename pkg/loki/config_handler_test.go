@@ -147,6 +147,8 @@ func TestConfigQueryHandler(t *testing.T) {
 		configHandler(cfg, cfg)(w, req)
 		resp := w.Result()
 		require.Equal(t, 200, resp.StatusCode)
+		assert.Equal(t, "application/json", resp.Header.Get("Content-Type"))
+		assert.Equal(t, []string{"my_nested_struct.my_string"}, resp.Header.Values(ConfigQueryHandledHeader))
 
 		var body map[string]any
 		require.NoError(t, json.NewDecoder(resp.Body).Decode(&body))

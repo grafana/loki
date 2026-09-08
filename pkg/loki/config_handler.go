@@ -2,6 +2,7 @@ package loki
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"reflect"
@@ -14,8 +15,18 @@ import (
 	"github.com/grafana/loki/v3/pkg/validation"
 )
 
-// ConfigQueryHandledHeader lists each q path this Loki recognized and processed. Its absence means
-// this Loki predates q support and returned the full config instead of the requested field(s).
+var errConfigFieldNotFound = errors.New("config field not found")
+
+// Bounds on the q query parameter to prevent unbounded header values and work per request.
+const (
+	maxConfigQueryPaths      = 20
+	maxConfigQueryPathLength = 512
+)
+
+// ConfigQueryHandledHeader lists each q path this Loki recognized and processed. When a request
+// includes q, the header's absence means this Loki predates q support and returned the full config
+// instead of the requested field(s). When a request omits q, the header is absent simply because
+// there was nothing to echo, not because of an old Loki.
 const ConfigQueryHandledHeader = "X-Loki-Config-Query"
 
 func yamlMarshalUnmarshal(in interface{}) (map[string]interface{}, error) {
@@ -122,12 +133,27 @@ func configHandler(actualCfg any, defaultCfg any) http.HandlerFunc {
 
 		// Return only the requested fields
 		if paths := r.URL.Query()["q"]; len(paths) > 0 {
+			if len(paths) > maxConfigQueryPaths {
+				http.Error(w, fmt.Sprintf("too many q parameters: got %d, max %d", len(paths), maxConfigQueryPaths), http.StatusBadRequest)
+				return
+			}
+			for _, path := range paths {
+				if len(path) > maxConfigQueryPathLength {
+					http.Error(w, fmt.Sprintf("q parameter too long: max %d characters", maxConfigQueryPathLength), http.StatusBadRequest)
+					return
+				}
+			}
+
 			for _, path := range paths {
 				w.Header().Add(ConfigQueryHandledHeader, path)
 			}
 			result, err := extractConfigPaths(output, paths)
 			if err != nil {
-				http.Error(w, err.Error(), http.StatusBadRequest)
+				status := http.StatusInternalServerError
+				if errors.Is(err, errConfigFieldNotFound) {
+					status = http.StatusBadRequest
+				}
+				http.Error(w, err.Error(), status)
 				return
 			}
 			w.Header().Set("Content-Type", "application/json")
@@ -150,7 +176,7 @@ func extractConfigPaths(cfg any, paths []string) (map[string]any, error) {
 	for _, path := range paths {
 		val, ok := lookupConfigPath(cfgMap, path)
 		if !ok {
-			return nil, fmt.Errorf("config field not found: %q", path)
+			return nil, fmt.Errorf("%w: %q", errConfigFieldNotFound, path)
 		}
 		result[path] = val
 	}
