@@ -924,6 +924,47 @@ Loki is temporarily unable to handle requests due to high load or maintenance. T
 - HTTP status: 503 Service Unavailable
 - Configurable per tenant: No
 
+### Error: Kafka producer backpressure
+
+These errors occur only when the distributor is configured to write to Kafka (`-distributor.kafka-writes-enabled=true`), and indicate that the Kafka producer could not keep up with the incoming write volume.
+
+**Error messages:**
+
+- `records have timed out before they were able to be produced`
+- `the maximum amount of records are buffered, cannot buffer more`
+
+**Cause:**
+
+The distributor's Kafka producer wasn't able to deliver records to the Kafka brokers within `kafka_config.write_timeout`, or the amount of unacknowledged, buffered data reached `kafka_config.producer_max_buffered_bytes`. Both are transient backpressure conditions: the Kafka brokers or the network path to them are slower than the rate at which the distributor is trying to produce records, for example during a broker rollout, a partition rebalance, or a broker-side incident.
+
+**Default configuration:**
+
+- `kafka_config.write_timeout` (`-kafka.write-timeout`): 10s
+- `kafka_config.producer_max_buffered_bytes` (`-kafka.producer-max-buffered-bytes`): 1 GiB (0 disables the limit)
+
+**Resolution:**
+
+* **Implement retry logic** with exponential backoff in your client; this is a retryable condition.
+* **Check Kafka broker health and load** (under-replicated partitions, broker CPU/disk/network saturation, ongoing rollouts).
+* **Increase `kafka_config.write_timeout`** if brokers are healthy but consistently slow to acknowledge writes:
+
+   ```yaml
+   kafka_config:
+     write_timeout: 20s
+   ```
+
+* **Review distributor and Kafka client metrics** for write latency and backpressure:
+  - `loki_kafka_client_produce_failures_total{component="distributor", reason=~"timeout|buffer-full"}`: counts these failures directly, by reason.
+  - `loki_distributor_kafka_appends_total` (check the `status="fail"` series)
+  - `loki_distributor_kafka_latency_seconds`: only observed when at least one record in the batch succeeds, so it stays quiet during a total failure.
+
+**Properties:**
+
+- Enforced by: Distributor (Kafka producer)
+- Retryable: Yes
+- HTTP status: 503 Service Unavailable
+- Configurable per tenant: No
+
 ## Structured metadata errors
 
 These errors occur when using structured metadata incorrectly.

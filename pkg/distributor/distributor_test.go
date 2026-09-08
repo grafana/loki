@@ -639,6 +639,33 @@ func TestDistributorPushToKafka(t *testing.T) {
 		require.Error(t, err)
 	})
 
+	t.Run("with kafka, producer backpressure is reported as a retryable error", func(t *testing.T) {
+		for _, writeErr := range []error{kgo.ErrRecordTimeout, kgo.ErrMaxBuffered} {
+			t.Run(writeErr.Error(), func(t *testing.T) {
+				kafkaWriter := &mockKafkaProducer{
+					failOnWrite: true,
+					writeErr:    writeErr,
+				}
+				distributors, _ := prepareButDontStart(t, 1, 0, limits, nil)
+				for _, d := range distributors {
+					d.cfg.KafkaEnabled = true
+					d.cfg.IngesterEnabled = false
+					d.cfg.KafkaConfig.ProducerMaxRecordSizeBytes = 1000
+					d.kafkaWriter = kafkaWriter
+				}
+				startAndWaitRunningDistributors(t, distributors)
+
+				request := makeWriteRequest(10, 64)
+				_, err := distributors[0].Push(ctx, request)
+				require.Error(t, err)
+
+				resp, ok := httpgrpc.HTTPResponseFromError(err)
+				require.True(t, ok, "expected an httpgrpc error carrying a status code, got: %v", err)
+				require.Equal(t, int32(http.StatusServiceUnavailable), resp.Code)
+			})
+		}
+	})
+
 	t.Run("with kafka, no failures is successful", func(t *testing.T) {
 		kafkaWriter := &mockKafkaProducer{
 			failOnWrite: false,
@@ -2444,6 +2471,7 @@ func makeWriteRequest(lines, size int) *logproto.PushRequest {
 
 type mockKafkaProducer struct {
 	failOnWrite     bool
+	writeErr        error // error returned per record when failOnWrite is set; defaults to kgo.ErrRecordTimeout
 	pushes          uint64
 	records         []*kgo.Record
 	recordsPerTopic map[string][]*kgo.Record
@@ -2455,12 +2483,16 @@ func (m *mockKafkaProducer) ProduceSync(_ context.Context, records []*kgo.Record
 	defer m.mu.Unlock()
 	results := make(kgo.ProduceResults, 0, len(records))
 	if m.failOnWrite {
+		writeErr := m.writeErr
+		if writeErr == nil {
+			writeErr = kgo.ErrRecordTimeout
+		}
 		// We must append a result for each record that has both the record and the
 		// error, as this is how it works in [kgo].
 		for _, record := range records {
 			results = append(results, kgo.ProduceResult{
 				Record: record,
-				Err:    kgo.ErrRecordTimeout,
+				Err:    writeErr,
 			})
 		}
 	} else {
