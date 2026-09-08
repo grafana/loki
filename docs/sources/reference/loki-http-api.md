@@ -1255,6 +1255,16 @@ GET /config
 modify the output. If it has the value `diffs` only the differences between the default configuration
 and the current are returned. A value of `defaults` returns the default configuration.
 
+The optional `q` query parameter returns only the requested field(s) instead of the full configuration.
+Its value is a dot-separated path into the configuration (for example `limits_config.ingestion_rate_strategy`),
+and it may be repeated to fetch several fields in one request (`?q=<path>&q=<path>`). The response is JSON,
+keyed by the requested path(s). An unrecognized path returns `400`; at most 20 paths of at most 512
+characters each are accepted, and exceeding either limit also returns `400`.
+
+Each requested path, whether or not it resolved, is echoed back via the `X-Loki-Config-Query` response
+header. This lets a caller confirm that `q` was supported and considered — its absence means an older
+Loki that doesn't understand `q` yet returned the full, unfiltered config instead.
+
 In microservices mode, the `/config` endpoint is exposed by all components.
 
 ## List running services
