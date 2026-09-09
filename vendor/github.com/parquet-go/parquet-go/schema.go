@@ -385,14 +385,7 @@ func (s *Schema) Reconstruct(value any, row Row) error {
 		v = v.Elem()
 	}
 
-	b := valuesSliceBufferPool.Get(
-		func() *valuesSliceBuffer {
-			return &valuesSliceBuffer{
-				values: make([][]Value, 0, 64),
-			}
-		},
-		func(v *valuesSliceBuffer) { v.values = v.values[:0] },
-	)
+	b := acquireValuesSliceBuffer()
 
 	state := s.lazyLoadState()
 	funcs := s.lazyLoadFuncs()
@@ -431,6 +424,17 @@ func (v *valuesSliceBuffer) release() {
 }
 
 var valuesSliceBufferPool memory.Pool[valuesSliceBuffer]
+
+func acquireValuesSliceBuffer() *valuesSliceBuffer {
+	return valuesSliceBufferPool.Get(
+		func() *valuesSliceBuffer {
+			return &valuesSliceBuffer{
+				values: make([][]Value, 0, 64),
+			}
+		},
+		func(v *valuesSliceBuffer) { v.values = v.values[:0] },
+	)
+}
 
 // Lookup returns the leaf column at the given path.
 //
@@ -750,7 +754,7 @@ func nodeOf(path []string, t reflect.Type, tags parquetTags, tagReplacements []S
 				}
 				n = FieldID(n, id)
 			default:
-				throwUnknownTag(t, "map", option)
+				throwUnknownTag(t, "map", joinOptionArgs(option, args))
 			}
 		})
 
@@ -786,6 +790,17 @@ func splitOptionArgs(s string) (option, args string) {
 		args = "()"
 	}
 	return
+}
+
+// joinOptionArgs is the inverse of splitOptionArgs for the purpose of
+// rendering a tag back to the user. splitOptionArgs returns args="()" as
+// a sentinel meaning "no parens in the source"; we drop it here so plain
+// options don't render as "foo()" in panic messages.
+func joinOptionArgs(option, args string) string {
+	if args == "()" {
+		return option
+	}
+	return option + args
 }
 
 func parseDecimalArgs(args string) (scale, precision int, err error) {
@@ -1069,7 +1084,15 @@ func makeNodeOf(path []string, t reflect.Type, name string, tags parquetTags, ta
 					if t == reflect.TypeFor[json.RawMessage]() {
 						throwInvalidTag(t, name, option)
 					}
-					element := makeNodeOf(append(path, "list", "element"), t.Elem(), t.Name(), tags.getListElementNodeTags(), tagReplacements)
+					elementTags := tags.getListElementNodeTags()
+					if elem := t.Elem(); elem.Kind() == reflect.Slice && elem.Elem().Kind() != reflect.Uint8 && !strings.Contains(elementTags.parquet, "list") {
+						// A nested slice under a list is itself a list: recurse the
+						// list option implicitly so any nesting depth is expressible
+						// with a single `list` tag on the field. An explicit
+						// parquet-element tag still takes precedence.
+						elementTags.parquet += ",list"
+					}
+					element := makeNodeOf(append(path, "list", "element"), t.Elem(), t.Name(), elementTags, tagReplacements)
 					setNode(element)
 					setList()
 				default:
@@ -1327,6 +1350,8 @@ func makeNodeOf(path []string, t reflect.Type, name string, tags parquetTags, ta
 					throwInvalidTag(t, name, option+args)
 				}
 				setNode(Geography(crs, alg))
+			default:
+				throwUnknownTag(t, name, joinOptionArgs(option, args))
 			}
 		})
 	}
@@ -1390,6 +1415,7 @@ func forEachTagOption(tags []string, do func(option, args string)) {
 			option, tag = split(tag)
 			var args string
 			option, args = splitOptionArgs(option)
+			option = strings.TrimSpace(option)
 			do(option, args)
 		}
 	}

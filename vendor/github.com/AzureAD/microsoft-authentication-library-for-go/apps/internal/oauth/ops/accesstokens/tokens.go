@@ -292,7 +292,11 @@ func (tr *TokenResponse) CacheKey(authParams authority.AuthParams) string {
 	if authParams.AuthorizationType == authority.ATOnBehalfOf {
 		return authParams.AssertionHash()
 	}
-	if authParams.AuthorizationType == authority.ATClientCredentials {
+	// An app-only (client credentials) request keys on the app-token-cache partition.
+	// AcquireTokenSilent overrides AuthorizationType to ATRefreshToken before the
+	// proactive-refresh write-back, so check IsAppTokenCache here to keep the write key
+	// aligned with the read key (authParams.CacheKey). See issue #630.
+	if authParams.AuthorizationType == authority.ATClientCredentials || authParams.IsAppTokenCache {
 		return authParams.AppKey()
 	}
 	if authParams.IsConfidentialClient || authParams.AuthorizationType == authority.ATRefreshToken {

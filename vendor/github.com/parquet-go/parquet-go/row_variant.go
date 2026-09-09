@@ -1,13 +1,10 @@
 package parquet
 
 import (
-	"encoding/binary"
 	"fmt"
-	"maps"
 	"reflect"
 	"unsafe"
 
-	"github.com/google/uuid"
 	"github.com/parquet-go/parquet-go/variant"
 )
 
@@ -122,82 +119,76 @@ func deconstructFuncOfUnshreddedVariant(columnIndex uint16, node Node) (uint16, 
 	}
 }
 
-// deconstructFuncOfShreddedVariant handles the 3-field shredded variant:
-// metadata (required), value (optional), typed_value (optional).
-//
-// When the Go value matches the typed_value schema, the value is written to the
-// typed_value columns and the value column is set to null. Otherwise, the variant-
-// encoded bytes are written to the value column and typed_value columns are null.
+// deconstructFuncOfShreddedVariant writes Go values into a shredded variant
+// group per the Variant Shredding specification (see
+// variant_shredded_write.go): values matching the typed_value schema are
+// shredded into typed columns; everything else is encoded as plain variant
+// values into the appropriate value column, sharing the row's metadata
+// dictionary.
 //
 //go:noinline
 func deconstructFuncOfShreddedVariant(columnIndex uint16, node Node) (uint16, deconstructFunc) {
-	// Fields are sorted alphabetically: metadata, typed_value, value
-	var metadataColumnIndex, valueColumnIndex, typedValueStartColumn uint16
-	var typedValueLeafCount uint16
-	var typedValueNode Node
-
-	col := columnIndex
-	for _, f := range node.Fields() {
-		n := numLeafColumnsOf(f)
-		switch f.Name() {
-		case "metadata":
-			metadataColumnIndex = col
-			col += n
-		case "typed_value":
-			typedValueStartColumn = col
-			typedValueNode = f
-			typedValueLeafCount = n
-			col += n
-		case "value":
-			valueColumnIndex = col
-			col += n
+	// Schemas that cannot be written to (e.g. missing the metadata column)
+	// may still be read from; fail when a row is written, not at build time.
+	group, err := buildShreddedVariantGroup(node, 0, 0, 0)
+	if err == nil && group.metadataCol < 0 {
+		err = fmt.Errorf("variant: shredded variant group has no metadata field")
+	}
+	if err != nil {
+		numCols := numLeafColumnsOf(node)
+		return columnIndex + numCols, func([][]Value, columnLevels, reflect.Value) {
+			panic(fmt.Sprintf("invalid shredded variant schema: %v", err))
 		}
 	}
-	nextColumnIndex := col
-
-	// Determine the shredded type structure
-	typedInner := Required(typedValueNode)
-	matcher := buildShreddedMatcher(typedInner)
+	nextColumnIndex := columnIndex + uint16(group.numCols)
 
 	return nextColumnIndex, func(columns [][]Value, levels columnLevels, value reflect.Value) {
-		metaIdx := ^metadataColumnIndex
-		valIdx := ^valueColumnIndex
+		// An invalid value means an enclosing optional/repeated wrapper is
+		// null for this row: the whole variant group is null.
+		if !value.IsValid() {
+			appendShreddedNulls(columns, columnIndex, 0, group.numCols, levels.definitionLevel, levels.repetitionLevel)
+			return
+		}
 
-		metadata, val := variantMarshalOrNull(value)
+		// Convert the Go value to a variant value tree. Raw variant structs
+		// (Metadata/Value []byte fields) are decoded so their contents can
+		// be shredded like any other value.
+		var v variant.Value
+		if metaBytes, valBytes, ok := extractRawVariantStruct(value); ok {
+			m, err := variant.DecodeMetadata(metaBytes)
+			if err != nil {
+				panic(fmt.Sprintf("variant metadata: %v", err))
+			}
+			if v, err = variant.Decode(m, valBytes); err != nil {
+				panic(fmt.Sprintf("variant decode: %v", err))
+			}
+		} else {
+			var err error
+			if v, err = variant.ValueOf(extractGoValue(value)); err != nil {
+				panic(fmt.Sprintf("variant marshal: %v", err))
+			}
+		}
 
-		// Always write metadata
+		// The row's metadata dictionary contains every object field name of
+		// the value, shredded or not.
+		var b variant.MetadataBuilder
+		addVariantFieldNames(&b, v)
+
+		group.write(columns, columnIndex, &b, v, true, shredLevels{
+			baseDef: int(levels.definitionLevel),
+			baseRep: int(levels.repetitionDepth),
+			rep:     levels.repetitionLevel,
+		})
+
+		// The metadata column is written last so the dictionary includes
+		// the field IDs assigned while encoding residual values.
+		_, metadata := b.Build()
+		metaCol := columnIndex + uint16(group.metadataCol)
 		metaValue := makeValueByteArray(ByteArray, unsafe.SliceData(metadata), len(metadata))
 		metaValue.repetitionLevel = levels.repetitionLevel
 		metaValue.definitionLevel = levels.definitionLevel
-		metaValue.columnIndex = metaIdx
-		columns[metadataColumnIndex] = append(columns[metadataColumnIndex], metaValue)
-
-		// Try to shred the value
-		goVal := extractGoValue(value)
-		if goVal != nil && matcher.canShred(goVal) {
-			// Write null to value column (optional, def level not incremented)
-			columns[valueColumnIndex] = append(columns[valueColumnIndex], Value{
-				repetitionLevel: levels.repetitionLevel,
-				definitionLevel: levels.definitionLevel,
-				columnIndex:     valIdx,
-			})
-			// Write typed value (increment def level for optional typed_value wrapper)
-			typedLevels := levels
-			typedLevels.definitionLevel++
-			matcher.shred(columns, typedLevels, typedValueStartColumn, goVal)
-		} else {
-			// Write variant bytes to value column (increment def level for optional wrapper)
-			valueLevels := levels
-			valueLevels.definitionLevel++
-			valValue := makeValueByteArray(ByteArray, unsafe.SliceData(val), len(val))
-			valValue.repetitionLevel = valueLevels.repetitionLevel
-			valValue.definitionLevel = valueLevels.definitionLevel
-			valValue.columnIndex = valIdx
-			columns[valueColumnIndex] = append(columns[valueColumnIndex], valValue)
-
-			// Write null to all typed_value columns
-			writeNullLeaves(columns, typedValueStartColumn, typedValueStartColumn+typedValueLeafCount, levels)
-		}
+		metaValue.columnIndex = ^metaCol
+		columns[metaCol] = append(columns[metaCol], metaValue)
 	}
 }
 
@@ -215,366 +206,6 @@ func extractGoValue(value reflect.Value) any {
 		v = v.Elem()
 	}
 	return v.Interface()
-}
-
-// writeNullLeaves writes null values to all leaf columns in the range [start, end).
-func writeNullLeaves(columns [][]Value, start, end uint16, levels columnLevels) {
-	for col := start; col < end; col++ {
-		columns[col] = append(columns[col], Value{
-			repetitionLevel: levels.repetitionLevel,
-			definitionLevel: levels.definitionLevel,
-			columnIndex:     ^col,
-		})
-	}
-}
-
-// shreddedMatcher determines if a Go value can be shredded into a typed_value
-// column and performs the shredding.
-//
-// A matcher is one of three kinds:
-//   - primitive: typ is set (leaf column)
-//   - group: fields is set (object with per-field matchers)
-//   - unsupported: neither (e.g., LIST — values go to the fallback column)
-//
-// leafCount is always set to the number of leaf columns occupied.
-type shreddedMatcher struct {
-	typ       Type                   // non-nil for primitive typed_value (leaf node)
-	fields    []shreddedFieldMatcher // non-nil for group typed_value (object node)
-	leafCount uint16
-}
-
-func (m *shreddedMatcher) isPrimitive() bool { return m.typ != nil }
-func (m *shreddedMatcher) isGroup() bool     { return len(m.fields) > 0 }
-func (m *shreddedMatcher) kind() Kind        { return m.typ.Kind() }
-func (m *shreddedMatcher) isString() bool {
-	lt := m.typ.LogicalType()
-	return lt != nil && lt.UTF8 != nil
-}
-func (m *shreddedMatcher) isUUID() bool {
-	lt := m.typ.LogicalType()
-	return lt != nil && lt.UUID != nil
-}
-
-type shreddedFieldMatcher struct {
-	name    string
-	matcher shreddedMatcher
-}
-
-func buildShreddedMatcher(node Node) shreddedMatcher {
-	if node.Leaf() {
-		return shreddedMatcher{
-			typ:       node.Type(),
-			leafCount: 1,
-		}
-	}
-
-	// Check if this is a group with (value, typed_value) pairs for each field
-	fields := node.Fields()
-	matchers := make([]shreddedFieldMatcher, 0, len(fields))
-	for _, f := range fields {
-		subFields := f.Fields()
-		if len(subFields) == 2 {
-			// This is a (value, typed_value) pair for a named field
-			valueNode := fieldByName(f, "value")
-			typedNode := fieldByName(f, "typed_value")
-			if valueNode != nil && typedNode != nil {
-				matchers = append(matchers, shreddedFieldMatcher{
-					name:    f.Name(),
-					matcher: buildShreddedMatcher(Required(typedNode)),
-				})
-			}
-		}
-	}
-
-	if len(matchers) > 0 {
-		return shreddedMatcher{
-			fields:    matchers,
-			leafCount: countMatcherLeaves(matchers),
-		}
-	}
-
-	// Unsupported typed_value structure (e.g., LIST). Return a matcher
-	// that never shreds so values always go to the value column.
-	// Still compute leaf count so column offsets are correct.
-	return shreddedMatcher{
-		leafCount: numLeafColumnsOf(node),
-	}
-}
-
-func (m *shreddedMatcher) canShred(v any) bool {
-	if v == nil {
-		return false
-	}
-	if m.isPrimitive() {
-		return canShredPrimitive(v, m)
-	}
-	if m.isGroup() {
-		return canShredObject(v, m.fields)
-	}
-	return false
-}
-
-func canShredPrimitive(v any, m *shreddedMatcher) bool {
-	switch m.kind() {
-	case ByteArray:
-		if m.isString() {
-			switch v.(type) {
-			case string:
-				return true
-			}
-		} else {
-			switch v.(type) {
-			case []byte:
-				return true
-			}
-		}
-	case Int32:
-		switch v.(type) {
-		case int8, int16, int32, uint8, uint16:
-			return true
-		}
-	case Int64:
-		switch v.(type) {
-		case int8, int16, int32, int64, int, uint8, uint16, uint32:
-			return true
-		}
-	case Float:
-		switch v.(type) {
-		case float32:
-			return true
-		}
-	case Double:
-		switch v.(type) {
-		case float32, float64:
-			return true
-		}
-	case Boolean:
-		switch v.(type) {
-		case bool:
-			return true
-		}
-	case FixedLenByteArray:
-		if m.isUUID() {
-			switch v.(type) {
-			case uuid.UUID, [16]byte:
-				return true
-			}
-		} else {
-			switch v.(type) {
-			case [16]byte:
-				return true
-			}
-		}
-	}
-	return false
-}
-
-func canShredObject(v any, fields []shreddedFieldMatcher) bool {
-	m, ok := v.(map[string]any)
-	if !ok {
-		return false
-	}
-	// An object can be shredded if ALL its fields exist in the shredded schema
-	for key := range m {
-		found := false
-		for _, f := range fields {
-			if f.name == key {
-				found = true
-				break
-			}
-		}
-		if !found {
-			return false
-		}
-	}
-	return true
-}
-
-func (m *shreddedMatcher) shred(columns [][]Value, levels columnLevels, startColumn uint16, v any) {
-	if m.isPrimitive() {
-		col := startColumn
-		pv := goValueToParquetValue(v, m.kind())
-		pv.repetitionLevel = levels.repetitionLevel
-		pv.definitionLevel = levels.definitionLevel
-		pv.columnIndex = ^col
-		columns[col] = append(columns[col], pv)
-		return
-	}
-	if m.isGroup() {
-		m.shredObject(columns, levels, startColumn, v)
-	}
-}
-
-func (m *shreddedMatcher) shredObject(columns [][]Value, levels columnLevels, startColumn uint16, v any) {
-	obj, ok := v.(map[string]any)
-	if !ok {
-		// Should not happen if canShred returned true
-		return
-	}
-
-	col := startColumn
-	for _, f := range m.fields {
-		// Within each field's sub-group, fields are sorted alphabetically:
-		// typed_value comes before value.
-		typedValueCol := col
-		typedCount := f.matcher.leafCount
-		valueCol := col + typedCount
-		nextFieldCol := valueCol + 1
-
-		fieldVal, exists := obj[f.name]
-		if exists && fieldVal != nil && f.matcher.canShred(fieldVal) {
-			// Write null to field's value column
-			columns[valueCol] = append(columns[valueCol], Value{
-				repetitionLevel: levels.repetitionLevel,
-				definitionLevel: levels.definitionLevel,
-				columnIndex:     ^valueCol,
-			})
-			// Write typed value (increment def for optional typed_value)
-			typedLevels := levels
-			typedLevels.definitionLevel++
-			f.matcher.shred(columns, typedLevels, typedValueCol, fieldVal)
-		} else if exists && fieldVal != nil {
-			// Value doesn't match typed schema: write variant to field's value.
-			// Encode metadata+value together so nested objects can be decoded later.
-			valueLevels := levels
-			valueLevels.definitionLevel++
-			metadata, val, err := variant.Marshal(fieldVal)
-			if err != nil {
-				panic(fmt.Sprintf("variant marshal field %q: %v", f.name, err))
-			}
-			combined := encodeFieldVariant(metadata, val)
-			valValue := makeValueByteArray(ByteArray, unsafe.SliceData(combined), len(combined))
-			valValue.repetitionLevel = valueLevels.repetitionLevel
-			valValue.definitionLevel = valueLevels.definitionLevel
-			valValue.columnIndex = ^valueCol
-			columns[valueCol] = append(columns[valueCol], valValue)
-			// Write null to typed_value columns
-			writeNullLeaves(columns, typedValueCol, typedValueCol+typedCount, levels)
-		} else {
-			// Field not present or null: write null to both
-			writeNullLeaves(columns, typedValueCol, nextFieldCol, levels)
-		}
-
-		col = nextFieldCol
-	}
-}
-
-// encodeFieldVariant encodes metadata and value bytes together for per-field
-// fallback storage. Format: 4-byte LE metadata length + metadata + value.
-// This ensures nested objects retain their metadata dictionary for decoding.
-func encodeFieldVariant(metadata, value []byte) []byte {
-	mLen := len(metadata)
-	buf := make([]byte, 4+mLen+len(value))
-	binary.LittleEndian.PutUint32(buf, uint32(mLen))
-	copy(buf[4:], metadata)
-	copy(buf[4+mLen:], value)
-	return buf
-}
-
-// decodeFieldVariant splits per-field variant bytes back into metadata and value.
-func decodeFieldVariant(data []byte) (metadata, value []byte, ok bool) {
-	if len(data) < 4 {
-		return nil, data, false
-	}
-	mLen := int(binary.LittleEndian.Uint32(data))
-	if 4+mLen > len(data) {
-		return nil, data, false
-	}
-	return data[4 : 4+mLen], data[4+mLen:], true
-}
-
-// countMatcherColumns returns the total number of leaf columns for a matcher,
-// including the value column for each field in a group.
-func countMatcherColumns(m *shreddedMatcher) uint16 {
-	if m.isGroup() {
-		return countMatcherLeaves(m.fields)
-	}
-	return m.leafCount
-}
-
-// countMatcherLeaves sums the leaf columns for a list of field matchers.
-// Each field contributes its typed_value leaf count plus one value column.
-func countMatcherLeaves(fields []shreddedFieldMatcher) uint16 {
-	var count uint16
-	for _, f := range fields {
-		count += f.matcher.leafCount + 1 // typed_value leaves + value column
-	}
-	return count
-}
-
-func goValueToParquetValue(v any, kind Kind) Value {
-	switch kind {
-	case Boolean:
-		return BooleanValue(v.(bool))
-	case Int32:
-		switch val := v.(type) {
-		case int8:
-			return Int32Value(int32(val))
-		case int16:
-			return Int32Value(int32(val))
-		case int32:
-			return Int32Value(val)
-		case uint8:
-			return Int32Value(int32(val))
-		case uint16:
-			return Int32Value(int32(val))
-		default:
-			return Int32Value(0)
-		}
-	case Int64:
-		switch val := v.(type) {
-		case int8:
-			return Int64Value(int64(val))
-		case int16:
-			return Int64Value(int64(val))
-		case int32:
-			return Int64Value(int64(val))
-		case int64:
-			return Int64Value(val)
-		case int:
-			return Int64Value(int64(val))
-		case uint8:
-			return Int64Value(int64(val))
-		case uint16:
-			return Int64Value(int64(val))
-		case uint32:
-			return Int64Value(int64(val))
-		default:
-			return Int64Value(0)
-		}
-	case Float:
-		return FloatValue(v.(float32))
-	case Double:
-		switch val := v.(type) {
-		case float32:
-			return DoubleValue(float64(val))
-		case float64:
-			return DoubleValue(val)
-		default:
-			return DoubleValue(0)
-		}
-	case ByteArray:
-		switch val := v.(type) {
-		case string:
-			return ByteArrayValue([]byte(val))
-		case []byte:
-			return ByteArrayValue(val)
-		default:
-			return ByteArrayValue(nil)
-		}
-	case FixedLenByteArray:
-		switch val := v.(type) {
-		case uuid.UUID:
-			b := [16]byte(val)
-			return FixedLenByteArrayValue(b[:])
-		case [16]byte:
-			return FixedLenByteArrayValue(val[:])
-		default:
-			return FixedLenByteArrayValue(nil)
-		}
-	default:
-		return Value{}
-	}
 }
 
 // reconstructFuncOfVariant handles reconstruction of variant columns back into
@@ -641,110 +272,70 @@ func reconstructFuncOfUnshreddedVariant(columnIndex uint16, node Node) (uint16, 
 	}
 }
 
-// reconstructFuncOfShreddedVariant handles the 3-field shredded variant.
+// reconstructFuncOfShreddedVariant reconstructs Go values from a shredded
+// variant group using the construct_variant algorithm of the Variant
+// Shredding specification (see variant_shredded_read.go).
 //
 //go:noinline
 func reconstructFuncOfShreddedVariant(columnIndex uint16, node Node) (uint16, reconstructFunc) {
-	// Fields are sorted alphabetically: metadata, typed_value, value
-	var metadataOffset, valueOffset, typedValueOffset uint16
-	var typedValueLeafCount uint16
-	var typedValueNode Node
-
-	col := uint16(0)
-	for _, f := range node.Fields() {
-		n := numLeafColumnsOf(f)
-		switch f.Name() {
-		case "metadata":
-			metadataOffset = col
-			col += n
-		case "typed_value":
-			typedValueOffset = col
-			typedValueNode = f
-			typedValueLeafCount = n
-			col += n
-		case "value":
-			valueOffset = col
-			col += n
+	group, err := buildShreddedVariantGroup(node, 0, 0, 0)
+	if err != nil {
+		numCols := numLeafColumnsOf(node)
+		return columnIndex + numCols, func(reflect.Value, columnLevels, [][]Value) error {
+			return err
 		}
 	}
-	totalCols := int(col)
-	nextColumnIndex := columnIndex + col
-
-	typedInner := Required(typedValueNode)
-	extractor := buildShreddedExtractor(typedInner)
+	nextColumnIndex := columnIndex + uint16(group.numCols)
 
 	return nextColumnIndex, func(value reflect.Value, levels columnLevels, columns [][]Value) error {
-		if len(columns) < totalCols {
-			return fmt.Errorf("shredded variant reconstruction: expected %d columns, got %d", totalCols, len(columns))
+		if len(columns) < group.numCols {
+			return fmt.Errorf("shredded variant reconstruction: expected %d columns, got %d", group.numCols, len(columns))
+		}
+		if group.metadataCol < 0 {
+			return fmt.Errorf("shredded variant reconstruction: missing metadata column")
 		}
 
-		metaCol := columns[metadataOffset]
-		valCol := columns[valueOffset]
-		typedColumns := columns[typedValueOffset : typedValueOffset+typedValueLeafCount]
-
-		if len(metaCol) == 0 {
-			return fmt.Errorf("variant reconstruction: no values in metadata column %d", columnIndex)
+		reader := &variantColumnReader{
+			columns: columns,
+			pos:     make([]int, len(columns)),
 		}
 
-		metaVal := metaCol[0]
-		hasValue := len(valCol) > 0 && !valCol[0].IsNull()
-		hasTypedValue := hasNonNullInColumns(typedColumns)
-
-		if metaVal.IsNull() && !hasValue && !hasTypedValue {
-			// All null: missing/null
+		metaVal, ok := reader.next(group.metadataCol)
+		if !ok || metaVal.IsNull() || int(metaVal.definitionLevel) < int(levels.definitionLevel) {
+			// The variant group itself is null for this row.
 			value.Set(reflect.Zero(value.Type()))
 			return nil
 		}
+		metaBytes := metaVal.ByteArray()
+		m, err := variant.DecodeMetadata(metaBytes)
+		if err != nil {
+			return fmt.Errorf("variant metadata: %w", err)
+		}
 
-		if hasValue && !hasTypedValue {
-			// Unshredded value
-			valBytes := valCol[0].ByteArray()
-			if len(valBytes) == 0 {
-				value.Set(reflect.Zero(value.Type()))
+		v, present, err := group.read(reader, m, int(levels.definitionLevel), int(levels.repetitionDepth))
+		if err != nil {
+			return err
+		}
+		if !present {
+			// value and typed_value both null at the top level is invalid
+			// per the spec; read it as variant null (matching
+			// parquet-java's behavior).
+			v = variant.Null()
+		}
+
+		// If the target is a raw variant struct (Metadata/Value []byte
+		// fields), re-encode the reconstructed value.
+		if isRawVariantStructTarget(value) {
+			var b variant.MetadataBuilder
+			encoded := variant.Encode(&b, v)
+			_, metadata := b.Build()
+			if setRawVariantStruct(value, metadata, encoded) {
 				return nil
 			}
-			metaBytes := metaVal.ByteArray()
-			if setRawVariantStruct(value, metaBytes, valBytes) {
-				return nil
-			}
-			goVal, err := variant.Unmarshal(metaBytes, valBytes)
-			if err != nil {
-				return fmt.Errorf("variant unmarshal: %w", err)
-			}
-			return setVariantGoValue(value, goVal)
 		}
 
-		if !hasValue && hasTypedValue {
-			// Shredded value: extract from typed columns
-			goVal := extractor.extract(typedColumns)
-			return setVariantGoValue(value, goVal)
-		}
-
-		if hasValue && hasTypedValue {
-			// Partially shredded: typed_value has some fields, value has the rest
-			typedVal := extractor.extract(typedColumns)
-			valBytes := valCol[0].ByteArray()
-			metaBytes := metaVal.ByteArray()
-			unshreddedVal, err := variant.Unmarshal(metaBytes, valBytes)
-			if err != nil {
-				return fmt.Errorf("variant unmarshal: %w", err)
-			}
-			merged := mergeVariantObjects(typedVal, unshreddedVal)
-			return setVariantGoValue(value, merged)
-		}
-
-		value.Set(reflect.Zero(value.Type()))
-		return nil
+		return setVariantGoValue(value, v.GoValue())
 	}
-}
-
-func hasNonNullInColumns(columns [][]Value) bool {
-	for _, col := range columns {
-		if len(col) > 0 && !col[0].IsNull() {
-			return true
-		}
-	}
-	return false
 }
 
 // setRawVariantStruct checks if the target value is a struct with Metadata and
@@ -794,186 +385,19 @@ func setVariantGoValue(value reflect.Value, goVal any) error {
 	return nil
 }
 
-// shreddedExtractor reconstructs Go values from typed_value columns.
-// Same three-kind structure as shreddedMatcher: primitive (typ set),
-// group (fields set), or unsupported (neither).
-type shreddedExtractor struct {
-	typ       Type                     // non-nil for primitive (leaf column)
-	fields    []shreddedFieldExtractor // non-nil for group (object)
-	leafCount int
-}
-
-func (e *shreddedExtractor) isPrimitive() bool { return e.typ != nil }
-func (e *shreddedExtractor) isGroup() bool     { return len(e.fields) > 0 }
-func (e *shreddedExtractor) kind() Kind        { return e.typ.Kind() }
-func (e *shreddedExtractor) isString() bool {
-	lt := e.typ.LogicalType()
-	return lt != nil && lt.UTF8 != nil
-}
-func (e *shreddedExtractor) isUUID() bool {
-	lt := e.typ.LogicalType()
-	return lt != nil && lt.UUID != nil
-}
-
-type shreddedFieldExtractor struct {
-	name      string
-	extractor shreddedExtractor
-}
-
-func buildShreddedExtractor(node Node) shreddedExtractor {
-	if node.Leaf() {
-		return shreddedExtractor{
-			typ:       node.Type(),
-			leafCount: 1,
-		}
+// isRawVariantStructTarget reports whether the reconstruction target is a
+// struct with Metadata and Value []byte fields (raw variant passthrough).
+func isRawVariantStructTarget(value reflect.Value) bool {
+	t := value.Type()
+	for t.Kind() == reflect.Ptr {
+		t = t.Elem()
 	}
-
-	fields := node.Fields()
-	extractors := make([]shreddedFieldExtractor, 0, len(fields))
-	for _, f := range fields {
-		subFields := f.Fields()
-		if len(subFields) == 2 {
-			typedNode := fieldByName(f, "typed_value")
-			if typedNode != nil {
-				extractors = append(extractors, shreddedFieldExtractor{
-					name:      f.Name(),
-					extractor: buildShreddedExtractor(Required(typedNode)),
-				})
-			}
-		}
+	if t.Kind() != reflect.Struct {
+		return false
 	}
-
-	if len(extractors) > 0 {
-		leaves := 0
-		for _, f := range extractors {
-			leaves += f.extractor.leafCount + 1 // typed_value leaves + value column
-		}
-		return shreddedExtractor{
-			fields:    extractors,
-			leafCount: leaves,
-		}
-	}
-
-	// Unsupported typed_value structure (e.g., LIST). Return an extractor
-	// that always returns nil so values are read from the value column.
-	return shreddedExtractor{
-		leafCount: int(numLeafColumnsOf(node)),
-	}
-}
-
-func (e *shreddedExtractor) extract(columns [][]Value) any {
-	if e.isPrimitive() {
-		if len(columns) == 0 || len(columns[0]) == 0 || columns[0][0].IsNull() {
-			return nil
-		}
-		return parquetValueToGo(columns[0][0], e)
-	}
-	if e.isGroup() {
-		return e.extractObject(columns)
-	}
-	return nil
-}
-
-func (e *shreddedExtractor) extractObject(columns [][]Value) any {
-	result := make(map[string]any)
-	col := 0
-	for _, f := range e.fields {
-		// Within each field's sub-group, fields are sorted alphabetically:
-		// typed_value comes before value.
-		typedStart := col
-		typedCount := f.extractor.leafCount
-		valueCol := col + typedCount
-		nextFieldCol := valueCol + 1
-
-		hasValue := valueCol < len(columns) && len(columns[valueCol]) > 0 && !columns[valueCol][0].IsNull()
-		hasTyped := hasNonNullInRange(columns, typedStart, typedStart+typedCount)
-
-		if hasTyped {
-			val := f.extractor.extract(columns[typedStart : typedStart+typedCount])
-			if val != nil {
-				result[f.name] = val
-			}
-		} else if hasValue {
-			// Field stored as unshredded variant with metadata+value encoded together.
-			data := columns[valueCol][0].ByteArray()
-			metaBytes, valBytes, ok := decodeFieldVariant(data)
-			if ok {
-				goVal, err := variant.Unmarshal(metaBytes, valBytes)
-				if err == nil && goVal != nil {
-					result[f.name] = goVal
-				}
-			}
-		}
-
-		col = nextFieldCol
-	}
-
-	if len(result) == 0 {
-		return nil
-	}
-	return result
-}
-
-func hasNonNullInRange(columns [][]Value, start, end int) bool {
-	for i := start; i < end && i < len(columns); i++ {
-		if len(columns[i]) > 0 && !columns[i][0].IsNull() {
-			return true
-		}
-	}
-	return false
-}
-
-func parquetValueToGo(v Value, e *shreddedExtractor) any {
-	switch e.kind() {
-	case Boolean:
-		return v.Boolean()
-	case Int32:
-		return v.Int32()
-	case Int64:
-		return v.Int64()
-	case Float:
-		return v.Float()
-	case Double:
-		return v.Double()
-	case ByteArray:
-		b := v.ByteArray()
-		if e.isString() {
-			return string(b)
-		}
-		dst := make([]byte, len(b))
-		copy(dst, b)
-		return dst
-	case FixedLenByteArray:
-		b := v.ByteArray()
-		if e.isUUID() && len(b) == 16 {
-			return uuid.UUID(b)
-		}
-		if len(b) == 16 {
-			var u [16]byte
-			copy(u[:], b)
-			return u
-		}
-		dst := make([]byte, len(b))
-		copy(dst, b)
-		return dst
-	default:
-		return nil
-	}
-}
-
-// mergeVariantObjects merges two values, preferring typed (shredded) values
-// over unshredded ones. Used for partially shredded objects.
-func mergeVariantObjects(typed, unshredded any) any {
-	typedMap, tOk := typed.(map[string]any)
-	unshreddedMap, uOk := unshredded.(map[string]any)
-	if tOk && uOk {
-		result := make(map[string]any, len(typedMap)+len(unshreddedMap))
-		maps.Copy(result, unshreddedMap)
-		maps.Copy(result, typedMap)
-		return result
-	}
-	if tOk {
-		return typed
-	}
-	return unshredded
+	byteSliceType := reflect.TypeOf([]byte(nil))
+	metaField, hasMetadata := t.FieldByName("Metadata")
+	valField, hasValue := t.FieldByName("Value")
+	return hasMetadata && hasValue &&
+		metaField.Type == byteSliceType && valField.Type == byteSliceType
 }

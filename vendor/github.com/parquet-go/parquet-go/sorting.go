@@ -110,15 +110,12 @@ func (w *SortingWriter[T]) Close() error {
 		return err
 	}
 
-	rows := m.Rows()
-	defer rows.Close()
-
-	reader := RowReader(rows)
-	if w.sorting.DropDuplicatedRows {
-		reader = DedupeRowReader(rows, w.rowbuf.compare)
-	}
-
-	if _, err := CopyRows(w.output, reader); err != nil {
+	// Writing the merged row group (rather than copying its rows) lets the
+	// writer use its chunk-level fast paths when the sorted chunks do not
+	// overlap: verbatim column chunk copies and column-oriented packing toward
+	// MaxRowsPerRowGroup. Overlapping chunks fall back to the row-oriented heap
+	// merge, and the merge itself applies DropDuplicatedRows when configured.
+	if _, err := w.output.WriteRowGroup(m); err != nil {
 		return err
 	}
 

@@ -1,6 +1,54 @@
 # Changes
 
 
+## [1.67.0](https://github.com/googleapis/google-cloud-go/compare/storage/v1.66.0...storage/v1.67.0) (2026-09-03)
+
+
+### Features
+
+* **storage:** Promote WithGRPCBidiReads and WithGRPCAppendableUploads out of experimental ([#20387](https://github.com/googleapis/google-cloud-go/issues/20387)) ([de23089](https://github.com/googleapis/google-cloud-go/commit/de230896bd59c6f34e763369fb92e1ee8df3548b))
+
+## [1.66.0](https://github.com/googleapis/google-cloud-go/compare/storage/v1.65.1...storage/v1.66.0) (2026-08-26)
+
+
+### Features
+
+* Update API sources and regenerate ([#20427](https://github.com/googleapis/google-cloud-go/issues/20427)) ([eb07af9](https://github.com/googleapis/google-cloud-go/commit/eb07af97288cb3446ef50ff1806c7bc12d5c6350))
+
+## [1.65.1](https://github.com/googleapis/google-cloud-go/compare/storage/v1.65.0...storage/v1.65.1) (2026-08-25)
+
+
+### Bug Fixes
+
+* **storage:** Enforce gRPC writer chunk retry deadlines by tying timers to server acks ([#20059](https://github.com/googleapis/google-cloud-go/issues/20059)) ([dbb5f6f](https://github.com/googleapis/google-cloud-go/commit/dbb5f6f6dc0f554f41219fecc52b01f25e8d2ffb))
+
+## [1.65.0](https://github.com/googleapis/google-cloud-go/compare/storage/v1.64.0...storage/v1.65.0) (2026-08-14)
+
+
+### Features
+
+* Update API sources and regenerate ([#20252](https://github.com/googleapis/google-cloud-go/issues/20252)) ([ac017a0](https://github.com/googleapis/google-cloud-go/commit/ac017a0d30ec2d42db35f7d3b5ea7fb20b4b860a))
+* Update API sources and regenerate ([#20369](https://github.com/googleapis/google-cloud-go/issues/20369)) ([bfe3aaf](https://github.com/googleapis/google-cloud-go/commit/bfe3aafc49e0c13815aa0401b1eba47aef4511df))
+
+## [1.64.0](https://github.com/googleapis/google-cloud-go/compare/storage/v1.63.1...storage/v1.64.0) (2026-07-21)
+
+
+### Features
+
+* **storage:** Accept CRC32C for appendable objects ([#20104](https://github.com/googleapis/google-cloud-go/issues/20104)) ([1b2f5af](https://github.com/googleapis/google-cloud-go/commit/1b2f5afa0fe0f159edbc7184467928ebbd8720e2))
+
+## [1.63.1](https://github.com/googleapis/google-cloud-go/compare/storage/v1.63.0...storage/v1.63.1) (2026-07-13)
+
+
+### Features
+
+* **o11y:** Regenerate clients for LRO tracing ([#20107](https://github.com/googleapis/google-cloud-go/issues/20107)) ([779074e](https://github.com/googleapis/google-cloud-go/commit/779074edd267a26520bae459307660953129eb07))
+
+
+### Bug Fixes
+
+* **storage:** Minor documentation fix ([#20139](https://github.com/googleapis/google-cloud-go/issues/20139)) ([37f1745](https://github.com/googleapis/google-cloud-go/commit/37f17453d73ad7abbc424f51b51ff82f8004c5b2))
+
 ## [1.63.0](https://github.com/googleapis/google-cloud-go/compare/storage/v1.62.2...storage/v1.63.0) (2026-06-25)
 
 

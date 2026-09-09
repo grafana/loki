@@ -2,6 +2,7 @@ package variant
 
 import (
 	"math"
+	"time"
 
 	"github.com/google/uuid"
 )
@@ -109,6 +110,17 @@ func TimestampNTZ(v int64) Value {
 // Time returns a time variant value (microseconds since midnight).
 func Time(v int64) Value {
 	return Value{basic: BasicPrimitive, primitive: PrimitiveTime, i64: v}
+}
+
+// TimestampNanos returns a timestamp variant value (nanoseconds since epoch, UTC).
+func TimestampNanos(v int64) Value {
+	return Value{basic: BasicPrimitive, primitive: PrimitiveTimestampNanos, i64: v}
+}
+
+// TimestampNTZNanos returns a timestamp without timezone variant value
+// (nanoseconds since epoch).
+func TimestampNTZNanos(v int64) Value {
+	return Value{basic: BasicPrimitive, primitive: PrimitiveTimestampNTZNanos, i64: v}
 }
 
 // UUID returns a UUID variant value.
@@ -224,7 +236,10 @@ func (v Value) ArrayValue() Array {
 //	Float → float32, Double → float64
 //	String → string, Binary → []byte
 //	Date → int32 (days since epoch)
-//	Timestamp/TimestampNTZ → int64 (microseconds since epoch)
+//	Timestamp/TimestampNanos → time.Time (UTC)
+//	TimestampNTZ/TimestampNTZNanos → int64 (microseconds/nanoseconds since
+//	    epoch; these have no time zone, so no time.Time instant exists for
+//	    them)
 //	Time → int64 (microseconds since midnight)
 //	UUID → uuid.UUID
 //	Decimal4 → int32 (unscaled), Decimal8 → int64 (unscaled), Decimal16 → [16]byte
@@ -273,7 +288,11 @@ func (v Value) GoValue() any {
 		return v.bytes
 	case PrimitiveDate:
 		return int32(v.i64)
-	case PrimitiveTimestamp, PrimitiveTimestampNTZ, PrimitiveTime:
+	case PrimitiveTimestamp:
+		return time.UnixMicro(v.i64).UTC()
+	case PrimitiveTimestampNanos:
+		return time.Unix(0, v.i64).UTC()
+	case PrimitiveTimestampNTZ, PrimitiveTimestampNTZNanos, PrimitiveTime:
 		return v.i64
 	case PrimitiveUUID:
 		return v.uuid
@@ -288,8 +307,11 @@ func (v Value) GoValue() any {
 	}
 }
 
-// Equal reports whether two variant values are deeply equal.
-// Short strings and primitive strings with the same content are considered equal.
+// Equal reports whether two variant values are structurally equal: the same
+// value with the same primitive type. Object fields are compared without
+// regard to order, short strings and primitive strings with the same content
+// are considered equal, and floating-point values are compared bitwise (NaN
+// equals NaN, negative zero does not equal positive zero).
 func (v Value) Equal(other Value) bool {
 	// Normalize: treat short strings and primitive strings as equivalent
 	if v.isString() && other.isString() {
@@ -300,12 +322,22 @@ func (v Value) Equal(other Value) bool {
 	}
 	switch v.basic {
 	case BasicObject:
+		// Objects are unordered collections of named fields: two objects
+		// with the same fields in different order are equal. The encoded
+		// form sorts field IDs by name regardless of construction order —
+		// VariantEncoding.md: "The field values are not required to be in
+		// the same order as the field IDs, to enable flexibility when
+		// constructing Variant values."
 		if len(v.object.Fields) != len(other.object.Fields) {
 			return false
 		}
-		for i, f := range v.object.Fields {
-			of := other.object.Fields[i]
-			if f.Name != of.Name || !f.Value.Equal(of.Value) {
+		otherByName := make(map[string]Value, len(other.object.Fields))
+		for _, f := range other.object.Fields {
+			otherByName[f.Name] = f.Value
+		}
+		for _, f := range v.object.Fields {
+			ov, ok := otherByName[f.Name]
+			if !ok || !f.Value.Equal(ov) {
 				return false
 			}
 		}

@@ -6,6 +6,7 @@ package libc // import "modernc.org/libc"
 
 import (
 	crand "crypto/rand"
+	"encoding/binary"
 	"encoding/hex"
 	"errors"
 	"fmt"
@@ -62,7 +63,7 @@ type (
 )
 
 // // Keep these outside of the var block otherwise go generate will miss them.
-var X__stderrp = Xstdout
+var X__stderrp = Xstderr
 var X__stdinp = Xstdin
 var X__stdoutp = Xstdout
 
@@ -221,7 +222,13 @@ func Xsrandomdev(t *TLS) {
 	if __ccgo_strace {
 		trc("t=%v, (%v:)", t, origin(2))
 	}
-	panic(todo(""))
+	var seed int64
+	if err := binary.Read(crand.Reader, binary.LittleEndian, &seed); err != nil {
+		panic(fmt.Sprintf("srandomdev: failed to read from crypto/rand: %v", err))
+	}
+	randomMu.Lock()
+	randomGen.Seed(seed)
+	randomMu.Unlock()
 }
 
 // int gethostuuid(uuid_t id, const struct timespec *wait);

@@ -579,6 +579,13 @@ func getNumBuffers(dt arrow.DataType) int {
 		return 1
 	case arrow.BINARY, arrow.LARGE_BINARY, arrow.STRING, arrow.LARGE_STRING, arrow.DENSE_UNION:
 		return 3
+	case arrow.BINARY_VIEW, arrow.STRING_VIEW:
+		// bitmap + view-header buffer + a single overflow data buffer.
+		// ArraySpan's fixed buffer array limits additional data buffers,
+		// so callers producing multi-buffer views must keep their data
+		// within a single block (the default 32KB allocation in the
+		// builder is sufficient for most use cases).
+		return 3
 	case arrow.EXTENSION:
 		return getNumBuffers(dt.(arrow.ExtensionType).StorageType())
 	default:

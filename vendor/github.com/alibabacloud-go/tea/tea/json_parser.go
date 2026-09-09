@@ -13,11 +13,11 @@ import (
 	"github.com/modern-go/reflect2"
 )
 
+var jsonParser jsoniter.API
+
 const maxUint = ^uint(0)
 const maxInt = int(maxUint >> 1)
 const minInt = -maxInt - 1
-
-var jsonParser jsoniter.API
 
 func init() {
 	jsonParser = jsoniter.Config{

@@ -156,6 +156,15 @@ linters:
   exclusions:
     warn-unused: true
     rules:
+      # These decoders intentionally keep compact string and pointer cases
+      # inline. nestif remains enabled and explicitly suppressed at each hot
+      # function; exclude revive's overlapping nesting and switch-style rules
+      # without a function-wide revive directive that nolintlint may consider
+      # unused when analyzer results come from cache.
+      - linters:
+          - revive
+        path: internal/decoder/data_decoder.go
+        text: "^(max-control-nesting|enforce-switch-style):"
       - linters:
           - govet
           - revive

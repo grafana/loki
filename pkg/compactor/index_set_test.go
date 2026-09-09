@@ -152,7 +152,6 @@ func TestIndexSet_ApplyIndexUpdates(t *testing.T) {
 						Prefix: "index_",
 						Period: time.Hour * 24,
 					}},
-				RowShards: 16,
 			},
 		},
 	}

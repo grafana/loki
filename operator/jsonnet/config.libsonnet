@@ -144,23 +144,43 @@ local utils = (import 'github.com/grafana/jsonnet-libs/mixin-utils/utils.libsonn
 
     grafanaDashboards+: {
       'loki-retention.json'+: {
-        // TODO (JoaoBraveCoding) Once we upgrade to 3.x we should be able to lift the drops on
-        // 'Number of times Tables were skipped during Compaction' and 'Retention' since Loki will then have the
-        // updated metrics
-        local dropList = ['Logs', 'Number of times Tables were skipped during Compaction', 'Retention'],
+        local dropList = [
+          'Logs',
+          // BoltDB-specific rows
+          'Per Table Marker',
+          'Sweeper',
+          // BoltDB-specific panels in unnamed rows
+          'Marked Chunks (24h)',
+          'Mark Table Latency',
+          'Sweeper Lag',
+          'Marks Files to Process',
+          'Delete Rate Per Status',
+        ],
         local replacements = [
           { from: 'cluster=~"$cluster",', to: '' },
           { from: 'container="compactor"', to: 'container=~".+-compactor"' },
           { from: 'job=~"($namespace)/compactor"', to: 'namespace="$namespace", job=~".+-compactor-http"' },
+          { from: 'sum(loki_compactor_locked_table_successive_compaction_skips', to: 'sum by (table_name)(loki_compactor_locked_table_successive_compaction_skips' },
         ],
         uid: 'RetCujSHzC8gd9i5fck9a3v9n2EvTzA',
         title: 'OpenShift Logging / LokiStack / Retention',
         tags: defaultLokiTags(super.tags),
-        rows: [
+        local processedRows = [
           r {
-            panels: mapPanels([replaceMatchers(replacements), replaceType('stat', 'singlestat'), replaceType('timeseries', 'graph')], dropPanels(r.panels, dropList, function(p) true)),
+            panels: mapPanels([
+              replaceMatchers(replacements),
+              replaceLabelFormat('Compact Tables Operations Per Status', '{{success}}', '{{status}}'),
+              replaceLabelFormat('Mark Operations Per Status', '{{success}}', '{{status}}'),
+              replaceType('stat', 'singlestat'),
+              replaceType('timeseries', 'graph'),
+            ], dropPanels(r.panels, dropList, function(p) true)),
           }
           for r in dropPanels(super.rows, dropList, function(p) true)
+        ],
+        rows: [
+          r
+          for r in processedRows
+          if std.length(r.panels) > 0
         ],
         templating+: {
           list: mapTemplateParameters(super.list),

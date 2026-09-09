@@ -67,6 +67,7 @@ type encDriverI interface {
 	// encode a []byte as nil, empty or encoded sequence of bytes depending on context
 	EncodeBytes(v []byte)
 	EncodeTime(time.Time)
+
 	WriteArrayStart(length int)
 	WriteArrayEnd()
 	WriteMapStart(length int)
@@ -75,6 +76,8 @@ type encDriverI interface {
 	// these write a zero-len map or array into the stream
 	WriteMapEmpty()
 	WriteArrayEmpty()
+
+	NumBytesWritten() int
 
 	writeNilMap()
 	writeNilArray()
@@ -391,6 +394,7 @@ func chanToSlice(rv reflect.Value, rtslice reflect.Type, timeout time.Duration) 
 type encoderI interface {
 	Encode(v interface{}) error
 	MustEncode(v interface{})
+	NumBytesWritten() int
 	Release()
 	Reset(w io.Writer)
 	ResetBytes(out *[]byte)

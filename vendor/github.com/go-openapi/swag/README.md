@@ -5,7 +5,7 @@
 <!-- Badges: release & docker images  -->
 <!-- Badges: code quality  -->
 <!-- Badges: license & compliance -->
-[![Release][release-badge]][release-url] [![Go Report Card][gocard-badge]][gocard-url] [![CodeFactor Grade][codefactor-badge]][codefactor-url] [![License][license-badge]][license-url]
+[![Release][release-badge]][release-url] [![CodeFactor Grade][codefactor-badge]][codefactor-url] [![License][license-badge]][license-url]
 <!-- Badges: documentation & support -->
 <!-- Badges: others & stats -->
 [![GoDoc][godoc-badge]][godoc-url] [![Discord Channel][discord-badge]][discord-url] [![go version][goversion-badge]][goversion-url] ![Top language][top-badge] ![Commits since latest release][commits-badge]
@@ -67,11 +67,12 @@ Child modules will continue to evolve and some new ones may be added in the futu
 | `cmdutils`     | utilities to work with CLIs ||
 | `conv`        | type conversion utilities | convert between values and pointers for any types<br />convert from string to builtin types (wraps `strconv`)<br />require `./typeutils` (test dependency)<br /> |
 | `fileutils`   | file utilities | |
-| `jsonname`    | JSON utilities | infer JSON names from `go` properties<br /> |
+| `jsonname`    | JSON utilities (deprecated) | infer JSON names from `go` properties<br />use `github.com/go-openapi/jsonpointer/jsonname` instead |
 | `jsonutils`   | JSON utilities | fast json concatenation<br />read and write JSON from and to dynamic `go` data structures<br />~require `github.com/mailru/easyjson`~<br /> |
 | `loading`     | file loading | load from file or http<br />require `./yamlutils`<br /> |
 | `mangling`    | safe name generation | name mangling for `go`<br /> |
 | `netutils`    | networking utilities | host, port from address<br /> |
+| `pools`       | utilities to work with sync.Pools | |
 | `stringutils` | `string` utilities | search in slice (with case-insensitive)<br />split/join query parameters as arrays<br /> |
 | `typeutils`   | `go` types utilities | check the zero value for any type<br />safe check for a nil value<br /> |
 | `yamlutils`   | YAML utilities | converting YAML to JSON<br />loading YAML into a dynamic YAML document<br />maintaining the original order of keys in YAML objects<br />require `./jsonutils`<br />~require `github.com/mailru/easyjson`~<br />require `go.yaml.in/yaml/v3`<br /> |
@@ -196,8 +197,6 @@ Maintainers can cut a new release by either:
 [gomod-badge]: https://badge.fury.io/go/github.com%2Fgo-openapi%2Fswag.svg
 [gomod-url]: https://badge.fury.io/go/github.com%2Fgo-openapi%2Fswag
 <!-- Badges: code quality  -->
-[gocard-badge]: https://goreportcard.com/badge/github.com/go-openapi/swag
-[gocard-url]: https://goreportcard.com/report/github.com/go-openapi/swag
 [codefactor-badge]: https://img.shields.io/codefactor/grade/github/go-openapi/swag
 [codefactor-url]: https://www.codefactor.io/repository/github/go-openapi/swag
 <!-- Badges: documentation & support -->

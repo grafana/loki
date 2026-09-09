@@ -5,7 +5,7 @@
 <!-- Badges: release & docker images  -->
 <!-- Badges: code quality  -->
 <!-- Badges: license & compliance -->
-[![Release][release-badge]][release-url] [![Go Report Card][gocard-badge]][gocard-url] [![CodeFactor Grade][codefactor-badge]][codefactor-url] [![License][license-badge]][license-url]
+[![Release][release-badge]][release-url] [![CodeFactor Grade][codefactor-badge]][codefactor-url] [![License][license-badge]][license-url]
 <!-- Badges: documentation & support -->
 <!-- Badges: others & stats -->
 [![GoDoc][godoc-badge]][godoc-url] [![Discord Channel][discord-badge]][discord-url] [![go version][goversion-badge]][goversion-url] ![Top language][top-badge] ![Commits since latest release][commits-badge]
@@ -14,9 +14,10 @@
 
 An implementation of JSON Reference for golang.
 
-<!--
 ## Announcements
--->
+
+* **2026-07-07** : landing v1.0.0
+  * stable API pledge
 
 ## Status
 
@@ -96,8 +97,6 @@ Maintainers can cut a new release by either:
 [gomod-badge]: https://badge.fury.io/go/github.com%2Fgo-openapi%2Fjsonreference.svg
 [gomod-url]: https://badge.fury.io/go/github.com%2Fgo-openapi%2Fjsonreference
 <!-- Badges: code quality  -->
-[gocard-badge]: https://goreportcard.com/badge/github.com/go-openapi/jsonreference
-[gocard-url]: https://goreportcard.com/report/github.com/go-openapi/jsonreference
 [codefactor-badge]: https://img.shields.io/codefactor/grade/github/go-openapi/jsonreference
 [codefactor-url]: https://www.codefactor.io/repository/github/go-openapi/jsonreference
 <!-- Badges: documentation & support -->
@@ -105,9 +104,6 @@ Maintainers can cut a new release by either:
 [doc-url]: https://goswagger.io/go-openapi
 [godoc-badge]: https://pkg.go.dev/badge/github.com/go-openapi/jsonreference
 [godoc-url]: http://pkg.go.dev/github.com/go-openapi/jsonreference
-[slack-logo]: https://a.slack-edge.com/e6a93c1/img/icons/favicon-32.png
-[slack-badge]: https://img.shields.io/badge/slack-blue?link=https%3A%2F%2Fgoswagger.slack.com%2Farchives%2FC04R30YM
-[slack-url]: https://goswagger.slack.com/archives/C04R30YMU
 [discord-badge]: https://img.shields.io/discord/1446918742398341256?logo=discord&label=discord&color=blue
 [discord-url]: https://discord.gg/FfnFYaC3k5
 

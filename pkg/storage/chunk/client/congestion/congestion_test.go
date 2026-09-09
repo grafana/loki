@@ -66,6 +66,26 @@ func TestCombinedConstruction(t *testing.T) {
 	m.Unregister()
 }
 
+func TestNoopControllerWrapIsPassThrough(t *testing.T) {
+	cfg := Config{
+		Enabled: true,
+		Retry: RetrierConfig{
+			Strategy: "limited",
+			Limit:    2,
+		},
+	}
+	m := NewMetrics(t.Name(), cfg)
+	t.Cleanup(m.Unregister)
+
+	ctrl := NewController(cfg, log.NewNopLogger(), m)
+	require.IsType(t, &NoopController{}, ctrl)
+	require.IsType(t, &LimitedRetrier{}, ctrl.getRetrier())
+
+	inner := newMockObjectClient(maxFailer{max: 0})
+	require.Same(t, inner, ctrl.Wrap(inner), "NoopController.Wrap must return the inner client unwrapped")
+
+}
+
 func TestHedgerConstruction(t *testing.T) {
 	//cfg := Config{
 	//	Hedge: HedgerConfig{

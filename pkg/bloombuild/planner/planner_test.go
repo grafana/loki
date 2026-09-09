@@ -53,7 +53,6 @@ func createPlanner(
 				IndexType:  types.IndexTypeTSDB,
 				ObjectType: types.StorageTypeFileSystem,
 				Schema:     "v13",
-				RowShards:  16,
 			},
 		},
 	}

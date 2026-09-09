@@ -72,7 +72,7 @@ func (c *Client) FGetObject(ctx context.Context, bucketName, objectName, filePat
 	filePartPath := filepath.Join(filepath.Dir(filePath), sum256Hex([]byte(filepath.Base(filePath)+objectStat.ETag))+".part.minio")
 
 	// If exists, open in append mode. If not create it as a part file.
-	filePart, err := os.OpenFile(filePartPath, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o600)
+	filePart, err := os.OpenFile(filePartPath, os.O_CREATE|os.O_APPEND|os.O_RDWR, 0o600)
 	if err != nil {
 		return err
 	}
@@ -98,17 +98,39 @@ func (c *Client) FGetObject(ctx context.Context, bucketName, objectName, filePat
 	// appropriate range offsets to read from.
 	if st.Size() > 0 {
 		opts.SetRange(st.Size(), 0)
+		if opts.Checksum && objectStat.ChecksumMode == ChecksumFullObjectMode.String() {
+			if hasherReader := c.newChecksumVerifyingReader(objectStat); hasherReader != nil {
+				// Read existing file data into hash.
+				if _, err = io.CopyN(hasherReader.Hash, filePart, st.Size()); err != nil {
+					_ = hasherReader.Close()
+					return err
+				}
+				opts.checkSumReader = hasherReader
+			}
+		}
 	}
 
 	// Seek to current position for incoming reader.
 	objectReader, objectStat, _, err := c.getObject(ctx, bucketName, objectName, opts)
 	if err != nil {
+		if opts.checkSumReader != nil {
+			_ = opts.checkSumReader.Close()
+		}
 		return err
 	}
+
+	defer objectReader.Close()
 
 	// Write to the part file.
 	if _, err = io.CopyN(filePart, objectReader, objectStat.Size); err != nil {
 		return err
+	}
+
+	// Verify the checksum of the downloaded object before committing the file.
+	if cr, ok := objectReader.(*checksumVerifyingReader); ok {
+		if err = cr.VerifyChecksum(); err != nil {
+			return err
+		}
 	}
 
 	// Close the file before rename, this is specifically needed for Windows users.

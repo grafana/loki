@@ -17,6 +17,7 @@
 package array
 
 import (
+	"math"
 	"reflect"
 	"strconv"
 
@@ -213,6 +214,10 @@ func (b *{{.Name}}Builder) AppendValueFromString(s string) error {
 		return nil
 	}
   {{if or (eq .Name "Date32") -}}
+  	if v, parseErr := strconv.ParseInt(s, 10, 32); parseErr == nil {
+  		b.Append(arrow.Date32(v))
+  		return nil
+  	}
   	tm, err := time.Parse("2006-01-02", s)
     if err != nil {
       b.AppendNull()
@@ -220,6 +225,10 @@ func (b *{{.Name}}Builder) AppendValueFromString(s string) error {
     }
     b.Append(arrow.Date32FromTime(tm))
   {{else if or (eq .Name "Date64") -}}
+  	if v, parseErr := strconv.ParseInt(s, 10, 64); parseErr == nil {
+  		b.Append(arrow.Date64(v))
+  		return nil
+  	}
   	tm, err := time.Parse("2006-01-02", s)
     if err != nil {
       b.AppendNull()
@@ -227,6 +236,10 @@ func (b *{{.Name}}Builder) AppendValueFromString(s string) error {
     }
     b.Append(arrow.Date64FromTime(tm))
   {{else if or (eq .Name "Time32") -}}
+  	if v, parseErr := strconv.ParseInt(s, 10, 32); parseErr == nil {
+  		b.Append(arrow.Time32(v))
+  		return nil
+  	}
   	val, err := arrow.Time32FromString(s, b.dtype.Unit)
     if err != nil {
       b.AppendNull()
@@ -234,6 +247,10 @@ func (b *{{.Name}}Builder) AppendValueFromString(s string) error {
     }
     b.Append(val)
   {{else if or (eq .Name "Time64") -}}
+  	if v, parseErr := strconv.ParseInt(s, 10, 64); parseErr == nil {
+  		b.Append(arrow.Time64(v))
+  		return nil
+  	}
     val, err := arrow.Time64FromString(s, b.dtype.Unit)
     if err != nil {
       b.AppendNull()
@@ -241,6 +258,10 @@ func (b *{{.Name}}Builder) AppendValueFromString(s string) error {
     }
     b.Append(val)
   {{else if (eq .Name "Duration") -}}
+	if v, parseErr := strconv.ParseInt(s, 10, 64); parseErr == nil {
+		b.Append(arrow.Duration(v))
+		return nil
+	}
 	dur, err := time.ParseDuration(s)
 	if err != nil {
 		return err
@@ -283,6 +304,10 @@ func (b *{{.Name}}Builder) UnmarshalOne(dec *json.Decoder) error {
 		b.AppendNull()
 {{if or (eq .Name "Date32") (eq .Name "Date64") -}}
 	case string:
+		if i, parseErr := strconv.ParseInt(v, 10, {{.Size}}*8); parseErr == nil {
+			b.Append({{.QualifiedType}}(i))
+			break
+		}
 		tm, err := time.Parse("2006-01-02", v)
 		if err != nil {
 			return &json.UnmarshalTypeError{
@@ -302,11 +327,26 @@ func (b *{{.Name}}Builder) UnmarshalOne(dec *json.Decoder) error {
 				Offset: dec.InputOffset(),
 			}
 		}
+		{{if eq .Size "4" -}}
+		// {{.QualifiedType}} is int32-backed; reject values outside int32 range
+		// to avoid silent wrap-around.
+		if n < -2147483648 || n > 2147483647 {
+			return &json.UnmarshalTypeError{
+				Value: v.String(),
+				Type: reflect.TypeOf({{.QualifiedType}}(0)),
+				Offset: dec.InputOffset(),
+			}
+		}
+		{{end -}}
 		b.Append({{.QualifiedType}}(n))
 	case float64:
 		b.Append({{.QualifiedType}}(v))
 {{else if or (eq .Name "Time32") (eq .Name "Time64") -}}
 	case string:
+		if i, parseErr := strconv.ParseInt(v, 10, {{.Size}}*8); parseErr == nil {
+			b.Append({{.QualifiedType}}(i))
+			break
+		}
 		tm, err := {{.QualifiedType}}FromString(v, b.dtype.Unit)
 		if err != nil {
 			return &json.UnmarshalTypeError{
@@ -326,6 +366,17 @@ func (b *{{.Name}}Builder) UnmarshalOne(dec *json.Decoder) error {
 				Offset: dec.InputOffset(),
 			}
 		}
+		{{if eq .Size "4" -}}
+		// {{.QualifiedType}} is int32-backed; reject values outside int32 range
+		// to avoid silent wrap-around.
+		if n < -2147483648 || n > 2147483647 {
+			return &json.UnmarshalTypeError{
+				Value: v.String(),
+				Type: reflect.TypeOf({{.QualifiedType}}(0)),
+				Offset: dec.InputOffset(),
+			}
+		}
+		{{end -}}
 		b.Append({{.QualifiedType}}(n))
 	case float64:
 		b.Append({{.QualifiedType}}(v))
@@ -343,6 +394,13 @@ func (b *{{.Name}}Builder) UnmarshalOne(dec *json.Decoder) error {
 	case float64:
 		b.Append({{.QualifiedType}}(v))
 	case string:
+		// raw integer strings (e.g. "9223372036854775807") - useful when the
+		// caller serializes large integers as strings to bypass JSON number
+		// precision limits
+		if i, parseErr := strconv.ParseInt(v, 10, 64); parseErr == nil {
+			b.Append(arrow.Duration(i))
+			break
+		}
 		// be flexible for specifying durations by accepting forms like
 		// 3h2m0.5s regardless of the unit and converting it to the proper
 		// precision.
@@ -381,10 +439,11 @@ func (b *{{.Name}}Builder) UnmarshalOne(dec *json.Decoder) error {
 {{if or (eq .Name "Float32") (eq .Name "Float64") -}}
 		f, err := strconv.ParseFloat(v, {{.Size}}*8)
 {{else if eq (printf "%.1s" .Name) "U" -}}
-		// Try ParseUint first for direct integer strings, fall back to ParseFloat for exponential notation
+		// Try ParseUint first for direct integer strings, fall back to ParseFloat for
+		// exponential notation. Reject NaN/Inf, then range-check before any uint
+		// conversion to avoid undefined behavior on overflow or non-finite values.
 		f, err := strconv.ParseUint(v, 10, {{.Size}}*8)
 		if err != nil {
-			// Could be exponential notation - try parsing as float
 			fval, ferr := strconv.ParseFloat(v, 64)
 			if ferr != nil {
 				return &json.UnmarshalTypeError{
@@ -393,22 +452,42 @@ func (b *{{.Name}}Builder) UnmarshalOne(dec *json.Decoder) error {
 					Offset: dec.InputOffset(),
 				}
 			}
-			// Check if it's a whole number and in valid range
-			if fval != float64(uint64(fval)) || fval < 0 || fval > float64(^{{.name}}(0)) {
+			if math.IsNaN(fval) || math.IsInf(fval, 0) || fval < 0 || fval >= float64(^{{.name}}(0))+1 {
 				return &json.UnmarshalTypeError{
 					Value: v,
 					Type: reflect.TypeOf({{.name}}(0)),
 					Offset: dec.InputOffset(),
 				}
 			}
-			f = uint64(fval)
-			err = nil // Clear error after successful float parsing
+			{{if eq .Size "8" -}}
+			// Beyond 2^53, float64 cannot represent every integer exactly, so
+			// exponent-form input like "9.007199254740993e15" may have been
+			// silently rounded by ParseFloat. Reject conservatively.
+			if math.Abs(fval) >= 9007199254740992 {
+				return &json.UnmarshalTypeError{
+					Value: v,
+					Type: reflect.TypeOf({{.name}}(0)),
+					Offset: dec.InputOffset(),
+				}
+			}
+			{{end -}}
+			truncated := uint64(fval)
+			if fval != float64(truncated) {
+				return &json.UnmarshalTypeError{
+					Value: v,
+					Type: reflect.TypeOf({{.name}}(0)),
+					Offset: dec.InputOffset(),
+				}
+			}
+			f = truncated
+			err = nil
 		}
 {{else -}}
-		// Try ParseInt first for direct integer strings, fall back to ParseFloat for exponential notation
+		// Try ParseInt first for direct integer strings, fall back to ParseFloat for
+		// exponential notation. Reject NaN/Inf, then range-check before any int
+		// conversion to avoid undefined behavior on overflow or non-finite values.
 		f, err := strconv.ParseInt(v, 10, {{.Size}}*8)
 		if err != nil {
-			// Could be exponential notation - try parsing as float
 			fval, ferr := strconv.ParseFloat(v, 64)
 			if ferr != nil {
 				return &json.UnmarshalTypeError{
@@ -417,13 +496,12 @@ func (b *{{.Name}}Builder) UnmarshalOne(dec *json.Decoder) error {
 					Offset: dec.InputOffset(),
 				}
 			}
-			// Check if it's a whole number and in valid range
 			{{if eq .Size "8" -}}
-			if fval != float64(int64(fval)) || fval < -9223372036854775808.0 || fval >= 9223372036854775808.0 {
+			if math.IsNaN(fval) || math.IsInf(fval, 0) || fval < -9223372036854775808.0 || fval >= 9223372036854775808.0 {
 			{{else -}}
 			minVal := float64(int64(-1) << ({{.Size}}*8-1))
 			maxVal := float64(int64(1) << ({{.Size}}*8-1))
-			if fval != float64(int64(fval)) || fval < minVal || fval >= maxVal {
+			if math.IsNaN(fval) || math.IsInf(fval, 0) || fval < minVal || fval >= maxVal {
 			{{end -}}
 				return &json.UnmarshalTypeError{
 					Value: v,
@@ -431,8 +509,28 @@ func (b *{{.Name}}Builder) UnmarshalOne(dec *json.Decoder) error {
 					Offset: dec.InputOffset(),
 				}
 			}
-			f = int64(fval)
-			err = nil // Clear error after successful float parsing
+			{{if eq .Size "8" -}}
+			// Beyond 2^53, float64 cannot represent every integer exactly, so
+			// exponent-form input like "9.007199254740993e15" may have been
+			// silently rounded by ParseFloat. Reject conservatively.
+			if math.Abs(fval) >= 9007199254740992 {
+				return &json.UnmarshalTypeError{
+					Value: v,
+					Type: reflect.TypeOf({{.name}}(0)),
+					Offset: dec.InputOffset(),
+				}
+			}
+			{{end -}}
+			truncated := int64(fval)
+			if fval != float64(truncated) {
+				return &json.UnmarshalTypeError{
+					Value: v,
+					Type: reflect.TypeOf({{.name}}(0)),
+					Offset: dec.InputOffset(),
+				}
+			}
+			f = truncated
+			err = nil
 		}
 {{end -}}
 		if err != nil {
@@ -449,10 +547,14 @@ func (b *{{.Name}}Builder) UnmarshalOne(dec *json.Decoder) error {
 {{if or (eq .Name "Float32") (eq .Name "Float64") -}}
 		f, err := strconv.ParseFloat(v.String(), {{.Size}}*8)
 {{else if eq (printf "%.1s" .Name) "U" -}}
-		// Try ParseUint first for direct integer strings, fall back to ParseFloat for exponential notation
+		// Try ParseUint first to preserve precision for integer values too large
+		// for float64. Fall back to ParseFloat to support exponential notation
+		// (e.g. "1e3"), but reject NaN/Inf, fractional, or out-of-range values
+		// so invalid JSON is surfaced as UnmarshalTypeError rather than silently
+		// coerced. Range-check before any uint conversion to avoid undefined
+		// behavior on overflow or non-finite values.
 		f, err := strconv.ParseUint(v.String(), 10, {{.Size}}*8)
 		if err != nil {
-			// Could be exponential notation - try parsing as float
 			fval, ferr := strconv.ParseFloat(v.String(), 64)
 			if ferr != nil {
 				return &json.UnmarshalTypeError{
@@ -461,22 +563,47 @@ func (b *{{.Name}}Builder) UnmarshalOne(dec *json.Decoder) error {
 					Offset: dec.InputOffset(),
 				}
 			}
-			// Check if it's a whole number and in valid range
-			if fval != float64(uint64(fval)) || fval < 0 || fval > float64(^{{.name}}(0)) {
+			// Boundary is max+1: for {{.name}}, valid range is [0, max]; reject anything >= max+1.
+			// For uint64, float64(^uint64(0)) already rounds up to 2^64, so this naturally
+			// rejects the exact 2^64 boundary that the looser `>` check missed.
+			if math.IsNaN(fval) || math.IsInf(fval, 0) || fval < 0 || fval >= float64(^{{.name}}(0))+1 {
 				return &json.UnmarshalTypeError{
 					Value: v.String(),
 					Type: reflect.TypeOf({{.name}}(0)),
 					Offset: dec.InputOffset(),
 				}
 			}
-			f = uint64(fval)
-			err = nil // Clear error after successful float parsing
+			{{if eq .Size "8" -}}
+			// Beyond 2^53, float64 cannot represent every integer exactly, so
+			// exponent-form input like "9.007199254740993e15" may have been
+			// silently rounded by ParseFloat. Reject conservatively.
+			if math.Abs(fval) >= 9007199254740992 {
+				return &json.UnmarshalTypeError{
+					Value: v.String(),
+					Type: reflect.TypeOf({{.name}}(0)),
+					Offset: dec.InputOffset(),
+				}
+			}
+			{{end -}}
+			truncated := uint64(fval)
+			if fval != float64(truncated) {
+				return &json.UnmarshalTypeError{
+					Value: v.String(),
+					Type: reflect.TypeOf({{.name}}(0)),
+					Offset: dec.InputOffset(),
+				}
+			}
+			f = truncated
+			err = nil
 		}
 {{else -}}
-		// Try ParseInt first for direct integer strings, fall back to ParseFloat for exponential notation
+		// Try ParseInt first to preserve precision for integer values too large
+		// for float64. Fall back to ParseFloat to support exponential notation
+		// (e.g. "1e3"), but reject NaN/Inf, fractional, or out-of-range values
+		// so invalid JSON like 1.5 or 128 (for int8) is surfaced as
+		// UnmarshalTypeError rather than silently truncated or wrapped.
 		f, err := strconv.ParseInt(v.String(), 10, {{.Size}}*8)
 		if err != nil {
-			// Could be exponential notation - try parsing as float
 			fval, ferr := strconv.ParseFloat(v.String(), 64)
 			if ferr != nil {
 				return &json.UnmarshalTypeError{
@@ -485,13 +612,12 @@ func (b *{{.Name}}Builder) UnmarshalOne(dec *json.Decoder) error {
 					Offset: dec.InputOffset(),
 				}
 			}
-			// Check if it's a whole number and in valid range
 			{{if eq .Size "8" -}}
-			if fval != float64(int64(fval)) || fval < -9223372036854775808.0 || fval >= 9223372036854775808.0 {
+			if math.IsNaN(fval) || math.IsInf(fval, 0) || fval < -9223372036854775808.0 || fval >= 9223372036854775808.0 {
 			{{else -}}
 			minVal := float64(int64(-1) << ({{.Size}}*8-1))
 			maxVal := float64(int64(1) << ({{.Size}}*8-1))
-			if fval != float64(int64(fval)) || fval < minVal || fval >= maxVal {
+			if math.IsNaN(fval) || math.IsInf(fval, 0) || fval < minVal || fval >= maxVal {
 			{{end -}}
 				return &json.UnmarshalTypeError{
 					Value: v.String(),
@@ -499,8 +625,28 @@ func (b *{{.Name}}Builder) UnmarshalOne(dec *json.Decoder) error {
 					Offset: dec.InputOffset(),
 				}
 			}
-			f = int64(fval)
-			err = nil // Clear error after successful float parsing
+			{{if eq .Size "8" -}}
+			// Beyond 2^53, float64 cannot represent every integer exactly, so
+			// exponent-form input like "9.007199254740993e15" may have been
+			// silently rounded by ParseFloat. Reject conservatively.
+			if math.Abs(fval) >= 9007199254740992 {
+				return &json.UnmarshalTypeError{
+					Value: v.String(),
+					Type: reflect.TypeOf({{.name}}(0)),
+					Offset: dec.InputOffset(),
+				}
+			}
+			{{end -}}
+			truncated := int64(fval)
+			if fval != float64(truncated) {
+				return &json.UnmarshalTypeError{
+					Value: v.String(),
+					Type: reflect.TypeOf({{.name}}(0)),
+					Offset: dec.InputOffset(),
+				}
+			}
+			f = truncated
+			err = nil
 		}
 {{end -}}
 		if err != nil {
@@ -534,6 +680,7 @@ func (b *{{.Name}}Builder) Unmarshal(dec *json.Decoder) error {
 
 func (b *{{.Name}}Builder) UnmarshalJSON(data []byte) error {
 	dec := json.NewDecoder(bytes.NewReader(data))
+	dec.UseNumber()
 	t, err := dec.Token()
 	if err != nil {
 		return err

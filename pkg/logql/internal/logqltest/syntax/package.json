@@ -1,0 +1,35 @@
+{
+  "name": "logqltest",
+  "displayName": "LogQL test scripts",
+  "description": "Syntax highlighting for the logqltest declarative DSL (pkg/logql/internal/logqltest/testdata/*.logqltest).",
+  "version": "1.0.0",
+  "publisher": "grafana",
+  "engines": {
+    "vscode": "^1.60.0"
+  },
+  "categories": [
+    "Programming Languages"
+  ],
+  "contributes": {
+    "languages": [
+      {
+        "id": "logqltest",
+        "aliases": [
+          "LogQL test script",
+          "logqltest"
+        ],
+        "extensions": [
+          ".logqltest"
+        ],
+        "configuration": "./language-configuration.json"
+      }
+    ],
+    "grammars": [
+      {
+        "language": "logqltest",
+        "scopeName": "source.logqltest",
+        "path": "./logqltest.tmLanguage.json"
+      }
+    ]
+  }
+}

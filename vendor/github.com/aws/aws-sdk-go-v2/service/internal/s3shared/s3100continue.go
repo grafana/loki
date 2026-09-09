@@ -13,9 +13,9 @@ const default100ContinueThresholdBytes int64 = 1024 * 1024 * 2
 // Add100Continue add middleware, which adds {Expect: 100-continue} header for s3 client HTTP PUT request larger than 2MB
 // or with unknown size streaming bodies, during operation builder step
 func Add100Continue(stack *middleware.Stack, continueHeaderThresholdBytes int64) error {
-	return stack.Build.Add(&s3100Continue{
+	return stack.Build.Insert(&s3100Continue{
 		continueHeaderThresholdBytes: continueHeaderThresholdBytes,
-	}, middleware.After)
+	}, "RecursionDetection", middleware.Before)
 }
 
 type s3100Continue struct {

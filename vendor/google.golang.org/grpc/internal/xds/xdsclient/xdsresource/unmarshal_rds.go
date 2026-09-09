@@ -33,6 +33,7 @@ import (
 	"google.golang.org/protobuf/types/known/anypb"
 
 	v3routepb "github.com/envoyproxy/go-control-plane/envoy/config/route/v3"
+	v3matcherpb "github.com/envoyproxy/go-control-plane/envoy/type/matcher/v3"
 	v3typepb "github.com/envoyproxy/go-control-plane/envoy/type/v3"
 )
 
@@ -256,9 +257,13 @@ func routesProtoToSlice(routes []*v3routepb.Route, csps map[string]clusterspecif
 
 		for _, h := range match.GetHeaders() {
 			var header HeaderMatcher
+			// The deprecated exact/prefix/suffix/contains match fields are
+			// converted to the equivalent StringMatcher so that
+			// StringMatcherFromProto owns validation for all of them.
+			var smProto *v3matcherpb.StringMatcher
 			switch ht := h.GetHeaderMatchSpecifier().(type) {
 			case *v3routepb.HeaderMatcher_ExactMatch:
-				header.ExactMatch = &ht.ExactMatch
+				smProto = &v3matcherpb.StringMatcher{MatchPattern: &v3matcherpb.StringMatcher_Exact{Exact: ht.ExactMatch}}
 			case *v3routepb.HeaderMatcher_SafeRegexMatch:
 				regex := ht.SafeRegexMatch.GetRegex()
 				re, err := matcher.CompileSafeRegex(regex)
@@ -274,17 +279,25 @@ func routesProtoToSlice(routes []*v3routepb.Route, csps map[string]clusterspecif
 			case *v3routepb.HeaderMatcher_PresentMatch:
 				header.PresentMatch = &ht.PresentMatch
 			case *v3routepb.HeaderMatcher_PrefixMatch:
-				header.PrefixMatch = &ht.PrefixMatch
+				smProto = &v3matcherpb.StringMatcher{MatchPattern: &v3matcherpb.StringMatcher_Prefix{Prefix: ht.PrefixMatch}}
 			case *v3routepb.HeaderMatcher_SuffixMatch:
-				header.SuffixMatch = &ht.SuffixMatch
+				smProto = &v3matcherpb.StringMatcher{MatchPattern: &v3matcherpb.StringMatcher_Suffix{Suffix: ht.SuffixMatch}}
+			case *v3routepb.HeaderMatcher_ContainsMatch:
+				smProto = &v3matcherpb.StringMatcher{MatchPattern: &v3matcherpb.StringMatcher_Contains{Contains: ht.ContainsMatch}}
 			case *v3routepb.HeaderMatcher_StringMatch:
-				sm, err := matcher.StringMatcherFromProto(ht.StringMatch)
-				if err != nil {
-					return nil, nil, fmt.Errorf("route %+v has an invalid string matcher: %v", err, ht.StringMatch)
+				if ht.StringMatch == nil {
+					return nil, nil, fmt.Errorf("route %+v has an empty string matcher", r)
 				}
-				header.StringMatch = &sm
+				smProto = ht.StringMatch
 			default:
 				return nil, nil, fmt.Errorf("route %+v has an unrecognized header matcher: %+v", r, ht)
+			}
+			if smProto != nil {
+				sm, err := matcher.StringMatcherFromProto(smProto)
+				if err != nil {
+					return nil, nil, fmt.Errorf("route %+v has an invalid header matcher: %v", r, err)
+				}
+				header.StringMatch = &sm
 			}
 			header.Name = h.GetName()
 			invert := h.GetInvertMatch()

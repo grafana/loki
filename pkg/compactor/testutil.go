@@ -200,12 +200,8 @@ func (c compactedIndex) Close() error {
 	return c.indexFile.Close()
 }
 
-func (c compactedIndex) Reader() (io.ReadSeeker, error) {
-	_, err := c.indexFile.Seek(0, 0)
-	if err != nil {
-		return nil, err
-	}
-	return c.indexFile, nil
+func (c compactedIndex) Reader() (io.ReadSeekCloser, error) {
+	return os.Open(c.indexFile.Name())
 }
 
 type testIndexCompactor struct{}

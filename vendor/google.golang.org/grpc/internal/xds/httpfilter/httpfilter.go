@@ -21,6 +21,9 @@
 package httpfilter
 
 import (
+	"context"
+
+	"google.golang.org/grpc"
 	iresolver "google.golang.org/grpc/internal/resolver"
 	"google.golang.org/protobuf/proto"
 )
@@ -66,11 +69,34 @@ type Builder interface {
 	IsTerminal() bool
 }
 
+// ClientInterceptor is an interceptor for gRPC client streams.
+type ClientInterceptor interface {
+	// NewStream creates a ClientStream for an RPC.
+	//
+	// Implementations may delegate stream creation to the provided newStream
+	// function, passing the provided CallOption slice along with any new
+	// CallOption instances they wish to add. To intercept or override stream
+	// behavior, implementations may wrap the ClientStream returned by the
+	// delegate.
+	//
+	// Note: RPCInfo.Context is currently unused and will be nil.
+	NewStream(ctx context.Context, ri iresolver.RPCInfo, newStream func(ctx context.Context, opts ...grpc.CallOption) (grpc.ClientStream, error), opts ...grpc.CallOption) (grpc.ClientStream, error)
+
+	// Close closes the interceptor. Once called, no new calls to NewStream are
+	// accepted. Ongoing calls to NewStream are allowed to complete.
+	Close()
+}
+
+// ClientFilterOptions contains options for building a client filter.
+type ClientFilterOptions struct {
+	FilterName string // FilterName is the filter name from the xDS configuration.
+}
+
 // ClientFilterBuilder is an optional interface that a Builder can implement to
 // indicate its capability to build client-side filters.
 type ClientFilterBuilder interface {
 	// BuildClientFilter constructs a ClientFilter.
-	BuildClientFilter() ClientFilter
+	BuildClientFilter(opts ClientFilterOptions) ClientFilter
 }
 
 // ClientFilter represents the actual filter implementation on the client side.
@@ -84,7 +110,7 @@ type ClientFilter interface {
 	//
 	// It is valid for this method to return a nil Interceptor and a nil error.
 	// In this case, the RPC will not be intercepted by this filter.
-	BuildClientInterceptor(config, override FilterConfig) (iresolver.ClientInterceptor, error)
+	BuildClientInterceptor(config, override FilterConfig) (ClientInterceptor, error)
 
 	// Close is called when the filter is no longer needed.
 	Close()

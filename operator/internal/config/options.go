@@ -21,7 +21,11 @@ import (
 // LoadConfig initializes the controller configuration, optionally overriding the defaults
 // from a provided configuration file.
 func LoadConfig(scheme *runtime.Scheme, configFile string) (*configv1.ProjectConfig, *TokenCCOAuthConfig, ctrl.Options, error) {
-	options := ctrl.Options{Scheme: scheme}
+	options := ctrl.Options{
+		Scheme:                        scheme,
+		LeaderElectionReleaseOnCancel: true,
+	}
+
 	leaderElection := leaderelection.LeaderElectionDefaulting(openshiftconfigv1.LeaderElection{}, "", "")
 	if configFile == "" {
 		return &configv1.ProjectConfig{}, nil, options, nil

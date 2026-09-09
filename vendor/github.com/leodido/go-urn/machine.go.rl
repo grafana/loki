@@ -24,6 +24,7 @@ var (
     err8141QComponentStart = "expecting only one q-component (starting with the ?= sequence) [col %d]"
     err8141MalformedRComp  = "expecting a non-empty r-component containing alnum, hex, or others ([~&()+,-.:=@;$_!*'] or [/?] but not at its beginning) [col %d]"
     err8141MalformedQComp  = "expecting a non-empty q-component containing alnum, hex, or others ([~&()+,-.:=@;$_!*'] or [/?] but not at its beginning) [col %d]"
+    errInvalidSyntax       = "invalid URN syntax [col %d]"
 )
 
 %%{
@@ -48,7 +49,7 @@ action set_pre {
 action throw_pre_urn_err {
     if m.parsingMode != RFC8141Only {
         // Throw an error when:
-        // - we are entering here matching the the prefix in the namespace identifier part
+        // - we are entering here matching the prefix in the namespace identifier part
         // - looking ahead (3 chars) we find a colon
         if pos := m.p + 3; pos < m.pe && m.data[pos] == 58 && output.prefix != "" {
             m.err = fmt.Errorf(errNoUrnWithinID, pos)
@@ -366,6 +367,9 @@ func (m *machine) Parse(input []byte) (*URN, error) {
     %% write exec;
 
     if m.cs < first_final || m.cs == en_fail {
+        if m.err == nil {
+            m.err = fmt.Errorf(errInvalidSyntax, m.p)
+        }
         return nil, m.err
     }
 

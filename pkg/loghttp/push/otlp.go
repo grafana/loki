@@ -185,6 +185,12 @@ func otlpToLokiPushRequest(ctx context.Context, ld plog.Logs, userID string, otl
 		resourceAttributesAsStructuredMetadata := resResult.StructuredMetadata
 		streamLabels := resResult.StreamLabels
 
+		// The backfill labels are reserved for Loki: they may only be added below, from the
+		// X-Loki-Backfill-Shard header, so clients cannot spoof them to bypass validation.
+		if hasReservedBackfillLabels(streamLabels) {
+			return nil, errReservedBackfillLabels()
+		}
+
 		if backfillShard != "" {
 			streamLabels[constants.BackfillLabel] = "true"
 			streamLabels[constants.BackfillShardLabel] = model.LabelValue(backfillShard)
@@ -253,16 +259,10 @@ func otlpToLokiPushRequest(ctx context.Context, ld plog.Logs, userID string, otl
 			stats.StructuredMetadataBytes[policy] = make(map[time.Duration]int64)
 		}
 
-		if _, ok := stats.ResourceAndSourceMetadataLabels[policy]; !ok {
-			stats.ResourceAndSourceMetadataLabels[policy] = make(map[time.Duration]push.LabelsAdapter)
-		}
-
 		// We group by retention period to later be able to map bytes ingested to each retention period.
 		// Ex: 10GB ingested has 30d retention and 1GB has 365d retention.
 		stats.StructuredMetadataBytes[policy][retentionPeriodForUser] += resourceAttributesAsStructuredMetadataSize
 		totalBytesReceived += resourceAttributesAsStructuredMetadataSize
-
-		stats.ResourceAndSourceMetadataLabels[policy][retentionPeriodForUser] = append(stats.ResourceAndSourceMetadataLabels[policy][retentionPeriodForUser], resourceAttributesAsStructuredMetadata...)
 
 		for j := 0; j < sls.Len(); j++ {
 			logs := sls.At(j).LogRecords()
@@ -286,7 +286,6 @@ func otlpToLokiPushRequest(ctx context.Context, ld plog.Logs, userID string, otl
 			stats.StructuredMetadataBytes[policy][retentionPeriodForUser] += scopeAttributesAsStructuredMetadataSize
 			totalBytesReceived += scopeAttributesAsStructuredMetadataSize
 
-			stats.ResourceAndSourceMetadataLabels[policy][retentionPeriodForUser] = append(stats.ResourceAndSourceMetadataLabels[policy][retentionPeriodForUser], scopeAttributesAsStructuredMetadata...)
 			for k := 0; k < logs.Len(); k++ {
 				log := logs.At(k)
 
@@ -304,6 +303,12 @@ func otlpToLokiPushRequest(ctx context.Context, ld plog.Logs, userID string, otl
 				var entryLbs labels.Labels
 
 				if len(logLabels) > 0 {
+					// Log attributes promoted to index labels must not smuggle in the reserved
+					// backfill labels either (they would overwrite the header-injected ones).
+					if hasReservedBackfillLabels(logLabels) {
+						return nil, errReservedBackfillLabels()
+					}
+
 					// Combine resource labels with log attributes
 					combinedLabels := make(model.LabelSet, len(streamLabels)+len(logLabels))
 					for k, v := range streamLabels {

@@ -50,7 +50,6 @@ var (
 						Prefix: "index_",
 						Period: time.Hour * 24,
 					}},
-				RowShards: 16,
 			},
 			{
 				From:       dayFromTime(start.Add(25 * time.Hour)),
@@ -62,7 +61,6 @@ var (
 						Prefix: "index_",
 						Period: time.Hour * 24,
 					}},
-				RowShards: 16,
 			},
 			{
 				From:       dayFromTime(start.Add(73 * time.Hour)),
@@ -74,7 +72,6 @@ var (
 						Prefix: "index_",
 						Period: time.Hour * 24,
 					}},
-				RowShards: 16,
 			},
 			{
 				From:       dayFromTime(start.Add(100 * time.Hour)),
@@ -86,7 +83,6 @@ var (
 						Prefix: "index_",
 						Period: time.Hour * 24,
 					}},
-				RowShards: 16,
 			},
 			{
 				From:       dayFromTime(start.Add(125 * time.Hour)),
@@ -98,7 +94,6 @@ var (
 						Prefix: "index_",
 						Period: time.Hour * 24,
 					}},
-				RowShards: 16,
 			},
 			{
 				From:       dayFromTime(start.Add(150 * time.Hour)),
@@ -110,7 +105,6 @@ var (
 						Prefix: "index_",
 						Period: time.Hour * 24,
 					}},
-				RowShards: 16,
 			},
 		},
 	}

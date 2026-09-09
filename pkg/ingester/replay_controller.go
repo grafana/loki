@@ -79,16 +79,27 @@ func (c *replayController) Cur() int {
 	return int(c.currentBytes.Load())
 }
 
-func (c *replayController) Flush() {
+// Flush runs (or joins) a single in-flight flush and returns the number of
+// bytes that flush subtracted. The returned value is shared with every caller
+// coalesced into the same flush, so each caller observes the progress made by
+// the flush it actually participated in rather than comparing against a
+// snapshot taken outside the flush (which can miss progress made by an already
+// in-flight flush before the snapshot was taken).
+func (c *replayController) Flush() int64 {
 	// Use singleflight to ensure only one flush happens at a time
-	_, _, _ = c.flushSF.Do("flush", func() (interface{}, error) {
-		c.flush()
-		return nil, nil
+	subtracted, _, _ := c.flushSF.Do("flush", func() (interface{}, error) {
+		return c.flush(), nil
 	})
+	return subtracted.(int64)
 }
 
-func (c *replayController) flush() {
+// flush performs a single flush and returns how many bytes it subtracted.
+// Because singleflight guarantees only one flush runs at a time and Sub is only
+// called from within a flush, the delta of totalSubtracted across this call is
+// exactly the progress attributable to this flush.
+func (c *replayController) flush() int64 {
 	c.metrics.recoveryIsFlushing.Set(1)
+	subtractedBefore := c.totalSubtracted.Load()
 	prior := c.currentBytes.Load()
 	level.Debug(util_log.Logger).Log(
 		"msg", "replay flusher pre-flush",
@@ -104,6 +115,7 @@ func (c *replayController) flush() {
 	)
 
 	c.metrics.recoveryIsFlushing.Set(0)
+	return c.totalSubtracted.Load() - subtractedBefore
 }
 
 // WithBackPressure is expected to call replayController.Add in the passed function to increase the managed byte count.
@@ -116,10 +128,16 @@ func (c *replayController) WithBackPressure(fn func() error) error {
 	}
 	// use 90% as a threshold since we'll be adding to it.
 	for c.Cur() > ceiling {
-		subtractedBefore := c.totalSubtracted.Load()
-		// too much backpressure, flush
-		c.Flush()
-		if c.totalSubtracted.Load() == subtractedBefore {
+		// too much backpressure, flush. Flush reports how many bytes the flush
+		// we participated in subtracted, so a caller coalesced into an already
+		// in-flight flush still observes that flush's progress.
+		//
+		// Only treat a zero-progress flush as fatal if we are *still* over the
+		// ceiling afterwards. A concurrent worker's flush may have drained memory
+		// below the ceiling between our loop guard and this call, in which case
+		// our own flush legitimately has nothing to do and we should simply exit
+		// the loop rather than report a spurious no-progress error.
+		if c.Flush() == 0 && c.Cur() > ceiling {
 			return fmt.Errorf("WAL replay flush made no progress: %s in use, ceiling %s; cannot recover",
 				humanize.Bytes(uint64(c.currentBytes.Load())),
 				humanize.Bytes(uint64(ceiling)),

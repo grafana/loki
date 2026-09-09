@@ -82,38 +82,38 @@ func NewMCSPAuthenticatorBuilder() *MCSPAuthenticatorBuilder {
 
 // SetApiKey sets the ApiKey field in the builder.
 func (builder *MCSPAuthenticatorBuilder) SetApiKey(s string) *MCSPAuthenticatorBuilder {
-	builder.MCSPAuthenticator.ApiKey = s
+	builder.ApiKey = s
 	return builder
 }
 
 // SetURL sets the URL field in the builder.
 func (builder *MCSPAuthenticatorBuilder) SetURL(s string) *MCSPAuthenticatorBuilder {
-	builder.MCSPAuthenticator.URL = s
+	builder.URL = s
 	return builder
 }
 
 // SetDisableSSLVerification sets the DisableSSLVerification field in the builder.
 func (builder *MCSPAuthenticatorBuilder) SetDisableSSLVerification(b bool) *MCSPAuthenticatorBuilder {
-	builder.MCSPAuthenticator.DisableSSLVerification = b
+	builder.DisableSSLVerification = b
 	return builder
 }
 
 // SetHeaders sets the Headers field in the builder.
 func (builder *MCSPAuthenticatorBuilder) SetHeaders(headers map[string]string) *MCSPAuthenticatorBuilder {
-	builder.MCSPAuthenticator.Headers = headers
+	builder.Headers = headers
 	return builder
 }
 
 // SetClient sets the Client field in the builder.
 func (builder *MCSPAuthenticatorBuilder) SetClient(client *http.Client) *MCSPAuthenticatorBuilder {
-	builder.MCSPAuthenticator.Client = client
+	builder.Client = client
 	return builder
 }
 
 // Build() returns a validated instance of the MCSPAuthenticator with the config that was set in the builder.
 func (builder *MCSPAuthenticatorBuilder) Build() (*MCSPAuthenticator, error) {
 	// Make sure the config is valid.
-	err := builder.MCSPAuthenticator.Validate()
+	err := builder.Validate()
 	if err != nil {
 		return nil, RepurposeSDKProblem(err, "validation-failed")
 	}

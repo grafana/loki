@@ -28,6 +28,7 @@ import (
 	"google.golang.org/grpc/experimental/balancer/weight"
 	"google.golang.org/grpc/internal/envconfig"
 	"google.golang.org/grpc/internal/hierarchy"
+	"google.golang.org/grpc/internal/proxyattributes"
 	internalserviceconfig "google.golang.org/grpc/internal/serviceconfig"
 	xdsinternal "google.golang.org/grpc/internal/xds"
 	"google.golang.org/grpc/internal/xds/balancer/clusterimpl"
@@ -293,6 +294,24 @@ func priorityLocalitiesToClusterImpl(localities []xdsresource.Locality, priority
 			// the Cluster Resolver (which is trying to modify attributes).
 			resolverEndpoint := endpoint.ResolverEndpoint
 			resolverEndpoint.Addresses = slices.Clone(endpoint.ResolverEndpoint.Addresses)
+
+			if clusterUpdate.IsHTTP11ProxyEnabled {
+				var proxyAddrStr string
+				if val, ok := endpoint.Metadata["envoy.http11_proxy_transport_socket.proxy_address"].(xdsresource.ProxyAddressMetadataValue); ok {
+					proxyAddrStr = val.Address
+				} else if val, ok := locality.Metadata["envoy.http11_proxy_transport_socket.proxy_address"].(xdsresource.ProxyAddressMetadataValue); ok {
+					proxyAddrStr = val.Address
+				}
+				if proxyAddrStr != "" {
+					for idx, addr := range resolverEndpoint.Addresses {
+						connectAddr := addr.Addr
+						addr.Addr = proxyAddrStr
+						resolverEndpoint.Addresses[idx] = proxyattributes.Set(addr, proxyattributes.Options{
+							ConnectAddr: connectAddr,
+						})
+					}
+				}
+			}
 
 			resolverEndpoint = hierarchy.SetInEndpoint(resolverEndpoint, []string{priorityName, localityStr})
 			resolverEndpoint = xdsinternal.SetLocalityIDInEndpoint(resolverEndpoint, locality.ID)

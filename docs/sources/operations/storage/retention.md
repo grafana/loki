@@ -23,7 +23,12 @@ The Compactor is responsible for compaction of index files and applying log rete
 Run the Compactor as a singleton (a single instance).
 {{< /admonition >}}
 
-The Compactor loops to apply compaction and retention at every `compactor.compaction-interval`, or as soon as possible if running behind.
+The Compactor runs compaction and retention on two independent schedules:
+
+- Compaction runs every `compactor.compaction-interval`.
+- Retention runs every `compactor.apply-retention-interval`. If you leave this at its default of `0s`, Loki sets it to the same value as `compactor.compaction-interval`. Whenever the two intervals are equal, Loki extends the retention interval by the smaller of `10m` or half the interval, so that compaction and retention do not run at the same time. For example, with the default `compaction_interval` of `10m`, retention runs every `15m`.
+
+If the Compactor falls behind on either schedule, it runs the corresponding operation as soon as possible.
 Both compaction and retention are idempotent, which means once the action has been performed, if the action is performed multiple times, it has no further effect on logs after the first time it is performed. If the Compactor restarts, it continues from where it left off.
 
 {{< admonition type="note" >}}
@@ -49,10 +54,12 @@ Chunks cannot be deleted immediately for the following reasons:
 
 - It provides a short window of time in which to cancel chunk deletion in the case of a configuration mistake.
 
-Marker files should be stored on a persistent disk to ensure that the chunks pending for deletion are processed even if the Compactor process restarts.
+By default, marker files are written to local disk, under `<working_directory>/retention/<object_store_type>_<period_from_date>/markers/`. Marker files should be stored on a persistent disk to ensure that the chunks pending for deletion are processed even if the Compactor process restarts.
 {{< admonition type="note" >}}
 Grafana Labs recommends running Compactor as a stateful deployment (StatefulSet when using Kubernetes) with a persistent storage for storing marker files.
 {{< /admonition >}}
+
+Alternatively, you can configure the Compactor to store marker files in object storage instead of local disk, by setting `compactor.deletion-marker-object-store-prefix` (`deletion_marker_object_store_prefix`) to a prefix that ends with `/`. When set, the Compactor writes marker files to the same per-period object store bucket used for chunks, under that prefix. On startup it also copies any existing marker files from local disk to that prefix, then removes the local copies. This lets you run the Compactor without a persistent volume for marker files. Leave this setting empty to keep using local disk.
 
 ### Retention Configuration
 
@@ -93,11 +100,22 @@ Retention is only available if the index period is 24h. Single store TSDB requir
 
 `working_directory` is the directory where marked chunks and temporary tables will be saved.
 
-`compaction_interval` dictates how often compaction and/or retention is applied. If the Compactor falls behind, compaction and/or retention occur as soon as possible.
+`compaction_interval` dictates how often compaction is applied. If the Compactor falls behind, compaction occurs as soon as possible.
+
+`apply_retention_interval` dictates how often retention is applied, independently of `compaction_interval`. Refer to [Compactor](#compactor) for how the default value is derived from `compaction_interval`.
 
 `retention_delete_delay` is the delay after which the Compactor will delete marked chunks.
 
 `retention_delete_worker_count` specifies the maximum quantity of goroutine workers instantiated to delete chunks.
+
+A few other options are also relevant when tuning retention:
+
+- `retention_table_timeout` bounds how long the Compactor spends applying retention and processing delete requests on any single table. It defaults to `0s`, meaning no timeout. If the work on a table exceeds this timeout, the Compactor logs a warning and stops early rather than failing, and the remaining work is picked up again on a later run.
+- `retention_backoff_config` controls the retry behavior (minimum and maximum backoff, and number of retries) used by the sweeper when it fails to delete a marked chunk.
+- `delete_request_store_key_prefix` sets the path prefix used to store delete requests within `delete_request_store` (default `index/`).
+- `delete_request_store_db_type` sets the type of database used to store delete requests (default `boltdb`).
+
+Refer to the [Configuration reference](https://grafana.com/docs/loki/<LOKI_VERSION>/configure/#compactor) for the full list of `compactor` options and their defaults.
 
 #### Configuring the retention period
 
@@ -109,7 +127,7 @@ There are two ways of setting retention policies:
 - `retention_stream` which is only applied to log streams matching the selector.
 
 {{< admonition type="note" >}}
-The minimum retention period is 24h.
+Each `retention_stream` rule's `period` must be at least 24h. Loki rejects configuration with a shorter value, both in the global `retention_stream` list and in any per-tenant override. This minimum does not apply to the `retention_period` setting, either globally or per tenant.
 {{< /admonition >}}
 
 This example configures global retention that applies to all tenants (unless overridden by configuring per-tenant overrides):
@@ -160,7 +178,7 @@ Retention period for a given stream is decided based on the first match in this 
 5. If no global `retention_period` is specified, the default value of `0s` is used, which means logs are kept indefinitely.
 
 {{< admonition type="note" >}}
-The larger the priority value, the higher the priority.
+The larger the priority value, the higher the priority. If two matching `retention_stream` rules have the same priority, Loki applies the shorter (lowest) of the two periods.
 {{< /admonition >}}
 
 Stream matching uses the same syntax as Prometheus label matching:
@@ -238,7 +256,8 @@ The following objects are written to the configured bucket. The exact prefixes d
 | `<tenant_id>/` (for example, `fake/` in single-tenant mode, or your org ID per tenant) | Chunk objects (the log data). | Yes. These are the only objects a lifecycle rule should target. |
 | Index objects (under the index path prefix, `index/` by default, set by `index.path_prefix` in `schema_config`) | TSDB or BoltDB index files, written by ingesters and rewritten by the Compactor. The `index.prefix` value (for example `index_` or `loki_index_`) is the table-name prefix used inside this path, not the path itself, so match a lifecycle rule against the path prefix. | No. Loki manages the index lifecycle internally. Deleting index objects removes references to live chunks and breaks queries. |
 | `loki_cluster_seed.json` | A small file at the bucket root holding the cluster seed used by usage reporting. It is written once and never rotated. | No. A blanket age-based rule will delete it once it ages past the time to live (TTL). |
-| Compactor delete-request store (the `delete_request_store` you configure, such as `markers/` and the delete-request objects) | The Compactor's record of chunks pending deletion and of in-flight delete requests. | No. Removing these makes the Compactor lose track of pending deletions. |
+| Delete-request store objects (a `delete_requests/` table under `delete_request_store_key_prefix`, `index/` by default, in the bucket configured by `delete_request_store`) | The Compactor's database of delete requests submitted through the [Log entry deletion](https://grafana.com/docs/loki/<LOKI_VERSION>/operations/storage/logs-deletion/) API, and their processing status. | No. Removing these makes the Compactor lose track of pending delete requests. |
+| Deletion marker objects (only present if you set `deletion_marker_object_store_prefix`; otherwise markers are kept on the Compactor's local disk and never appear in the bucket) | The Compactor's record of chunks that are marked for deletion but not yet swept. Written under the configured prefix in the same per-period bucket used for chunks. | No. Removing these makes the Compactor lose track of chunks pending deletion. |
 | Ruler store objects (if the Ruler is backed by the same bucket) | Recording and alerting rule files. | No. These are configuration, not time-series data. |
 
 ### Compactor retention versus object store lifecycle policies

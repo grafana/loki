@@ -42,6 +42,7 @@ const (
 	STORAGE_CLASS_ARCHIVE         = "ARCHIVE"
 	STORAGE_CLASS_MAZ_STANDARD    = "MAZ_STANDARD"
 	STORAGE_CLASS_MAZ_STANDARD_IA = "MAZ_STANDARD_IA"
+	STORAGE_CLASS_MAZ_COLD        = "MAZ_COLD"
 
 	FETCH_MODE_SYNC  = "sync"
 	FETCH_MODE_ASYNC = "async"
@@ -94,6 +95,10 @@ const (
 	API_VERSION_V1 = "v1"
 	API_VERSION_V2 = "v2"
 	HTTPTimeFormat = "Mon, 02 Jan 2006 15:04:05 GMT"
+
+	BUCKET_META_TYPE_FLAT         string = "FLAT"
+	BUCKET_META_TYPE_HIERARCHY    string = "HIERARCHY"
+	BUCKET_META_TYPE_HIERARCHY_XH string = "HIERARCHY_XH"
 )
 
 var DEFAULT_CNAME_LIKE_LIST = []string{
@@ -107,6 +112,7 @@ var VALID_STORAGE_CLASS_TYPE = map[string]int{
 	STORAGE_CLASS_ARCHIVE:         3,
 	STORAGE_CLASS_MAZ_STANDARD:    4,
 	STORAGE_CLASS_MAZ_STANDARD_IA: 5,
+	STORAGE_CLASS_MAZ_COLD:        6,
 }
 
 var VALID_RESTORE_TIER = map[string]int{
@@ -375,6 +381,10 @@ func SendRequest(cli bce.Client, req *BosRequest, resp *BosResponse, ctx *BosCon
 	}
 	// sdk do not need to set request id
 	req.SetWithOutRequestId(true)
+	// fill the caller supplied metadata after the final attempt, no matter whether it
+	// succeeded, failed at the http level or failed in a response handler. Registering
+	// the defer here also keeps the metadata untouched when the validations above fail.
+	defer fillResponseCommon(req, ctx, resp)
 	if ctx.ApiVersion == API_VERSION_V2 {
 		err = cli.SendRequestV2(&req.BceRequest, &resp.BceResponse)
 	} else {
@@ -431,6 +441,7 @@ func SendRequestFromBytes(cli bce.Client, req *BosRequest, resp *BosResponse, ct
 	)
 	setUriAndEndpoint(cli, req, ctx, cli.GetBceClientConfig().Endpoint)
 	req.SetContext(ctx.Ctx)
+	defer fillResponseCommon(req, ctx, resp)
 	if err = cli.SendRequestFromBytes(&req.BceRequest, &resp.BceResponse, content); err != nil {
 		if serviceErr, isServiceErr := err.(*bce.BceServiceError); isServiceErr {
 			if serviceErr.StatusCode == net_http.StatusInternalServerError ||

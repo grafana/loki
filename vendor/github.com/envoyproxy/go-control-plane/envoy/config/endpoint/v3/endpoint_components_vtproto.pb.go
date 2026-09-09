@@ -182,6 +182,13 @@ func (m *Endpoint) MarshalToSizedBufferVTStrict(dAtA []byte) (int, error) {
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
 	}
+	if len(m.ObservabilityName) > 0 {
+		i -= len(m.ObservabilityName)
+		copy(dAtA[i:], m.ObservabilityName)
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.ObservabilityName)))
+		i--
+		dAtA[i] = 0x2a
+	}
 	if len(m.AdditionalAddresses) > 0 {
 		for iNdEx := len(m.AdditionalAddresses) - 1; iNdEx >= 0; iNdEx-- {
 			size, err := m.AdditionalAddresses[iNdEx].MarshalToSizedBufferVTStrict(dAtA[:i])
@@ -387,27 +394,29 @@ func (m *LbEndpointCollection) MarshalToSizedBufferVTStrict(dAtA []byte) (int, e
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
 	}
-	if m.Entries != nil {
-		if vtmsg, ok := interface{}(m.Entries).(interface {
-			MarshalToSizedBufferVTStrict([]byte) (int, error)
-		}); ok {
-			size, err := vtmsg.MarshalToSizedBufferVTStrict(dAtA[:i])
-			if err != nil {
-				return 0, err
+	if len(m.Entries) > 0 {
+		for iNdEx := len(m.Entries) - 1; iNdEx >= 0; iNdEx-- {
+			if vtmsg, ok := interface{}(m.Entries[iNdEx]).(interface {
+				MarshalToSizedBufferVTStrict([]byte) (int, error)
+			}); ok {
+				size, err := vtmsg.MarshalToSizedBufferVTStrict(dAtA[:i])
+				if err != nil {
+					return 0, err
+				}
+				i -= size
+				i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+			} else {
+				encoded, err := proto.Marshal(m.Entries[iNdEx])
+				if err != nil {
+					return 0, err
+				}
+				i -= len(encoded)
+				copy(dAtA[i:], encoded)
+				i = protohelpers.EncodeVarint(dAtA, i, uint64(len(encoded)))
 			}
-			i -= size
-			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
-		} else {
-			encoded, err := proto.Marshal(m.Entries)
-			if err != nil {
-				return 0, err
-			}
-			i -= len(encoded)
-			copy(dAtA[i:], encoded)
-			i = protohelpers.EncodeVarint(dAtA, i, uint64(len(encoded)))
+			i--
+			dAtA[i] = 0xa
 		}
-		i--
-		dAtA[i] = 0xa
 	}
 	return len(dAtA) - i, nil
 }
@@ -773,6 +782,10 @@ func (m *Endpoint) SizeVT() (n int) {
 			n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
 		}
 	}
+	l = len(m.ObservabilityName)
+	if l > 0 {
+		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
+	}
 	n += len(m.unknownFields)
 	return n
 }
@@ -837,15 +850,17 @@ func (m *LbEndpointCollection) SizeVT() (n int) {
 	}
 	var l int
 	_ = l
-	if m.Entries != nil {
-		if size, ok := interface{}(m.Entries).(interface {
-			SizeVT() int
-		}); ok {
-			l = size.SizeVT()
-		} else {
-			l = proto.Size(m.Entries)
+	if len(m.Entries) > 0 {
+		for _, e := range m.Entries {
+			if size, ok := interface{}(e).(interface {
+				SizeVT() int
+			}); ok {
+				l = size.SizeVT()
+			} else {
+				l = proto.Size(e)
+			}
+			n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
 		}
-		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
 	}
 	n += len(m.unknownFields)
 	return n

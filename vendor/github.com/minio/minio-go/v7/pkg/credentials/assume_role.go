@@ -19,6 +19,7 @@ package credentials
 
 import (
 	"bytes"
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/xml"
@@ -142,7 +143,7 @@ func closeResponse(resp *http.Response) {
 	}
 }
 
-func getAssumeRoleCredentials(clnt *http.Client, endpoint string, opts STSAssumeRoleOptions) (AssumeRoleResponse, error) {
+func getAssumeRoleCredentials(ctx context.Context, clnt *http.Client, endpoint string, opts STSAssumeRoleOptions) (AssumeRoleResponse, error) {
 	v := url.Values{}
 	v.Set("Action", "AssumeRole")
 	v.Set("Version", STSVersion)
@@ -180,7 +181,7 @@ func getAssumeRoleCredentials(clnt *http.Client, endpoint string, opts STSAssume
 	}
 	postBody.Seek(0, 0)
 
-	req, err := http.NewRequest(http.MethodPost, u.String(), postBody)
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, u.String(), postBody)
 	if err != nil {
 		return AssumeRoleResponse{}, err
 	}
@@ -245,7 +246,7 @@ func (m *STSAssumeRole) RetrieveWithCredContext(cc *CredContext) (Value, error) 
 		return Value{}, errors.New("STS endpoint unknown")
 	}
 
-	a, err := getAssumeRoleCredentials(client, stsEndpoint, m.Options)
+	a, err := getAssumeRoleCredentials(cc.requestContext(), client, stsEndpoint, m.Options)
 	if err != nil {
 		return Value{}, err
 	}

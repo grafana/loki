@@ -6,8 +6,11 @@ linters:
     - depguard
     - funlen
     - gomoddirectives
+    - gomodguard
+    - gomodguard_v2
     - godox
     - exhaustruct
+    - exhaustruct_v5
     - nlreturn
     - nonamedreturns
     - noinlineerr

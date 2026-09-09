@@ -47,6 +47,7 @@ By adding our output plugin you can quickly try Loki without doing big configura
 
 These third-party clients also enable sending logs to Loki:
 
+- [Apache APISIX loki-logger](https://apisix.apache.org/docs/apisix/plugins/loki-logger/) (API gateway)
 - [Cribl Loki Destination](https://docs.cribl.io/stream/destinations-loki)
 - [GrafanaLokiLogger](https://github.com/antoniojmsjr/GrafanaLokiLogger) (Delphi/Lazarus)
 - [ilogtail](https://github.com/alibaba/ilogtail) (Go)

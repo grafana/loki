@@ -3,6 +3,9 @@ package loki
 import (
 	"context"
 	"errors"
+	"fmt"
+	"net/url"
+	"strings"
 	"time"
 
 	"github.com/go-logr/logr"
@@ -102,6 +105,16 @@ var (
 		DeleteFunc:  func(e event.DeleteEvent) bool { return true },
 		GenericFunc: func(e event.GenericEvent) bool { return false },
 	})
+	// createOrUpdatePred uses ResourceVersion for update detection instead of Generation,
+	// making it suitable for resources like Services that don't populate Generation.
+	createOrUpdatePred = builder.WithPredicates(predicate.Funcs{
+		UpdateFunc: func(e event.UpdateEvent) bool {
+			return e.ObjectOld.GetResourceVersion() != e.ObjectNew.GetResourceVersion()
+		},
+		CreateFunc:  func(e event.CreateEvent) bool { return true },
+		DeleteFunc:  func(e event.DeleteEvent) bool { return false },
+		GenericFunc: func(e event.GenericEvent) bool { return false },
+	})
 )
 
 // LokiStackReconciler reconciles a LokiStack object
@@ -169,10 +182,11 @@ func (r *LokiStackReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		return ctrl.Result{}, err
 	}
 
-	if degraded != nil {
-		return ctrl.Result{
-			Requeue: degraded.Requeue,
-		}, nil
+	if degraded != nil && degraded.Requeue {
+		// (JoaoBraveCoding) Result.Requeue is deprecated in favor of RequeueAfter, but a fixed interval would
+		// poll forever without backoff when a misconfigured LokiStack stays degraded.
+		// We can still get the old behavior by using something like https://pkg.go.dev/k8s.io/client-go/util/workqueue
+		return ctrl.Result{Requeue: true}, nil //nolint:staticcheck
 	}
 
 	return ctrl.Result{}, nil
@@ -219,6 +233,7 @@ func (r *LokiStackReconciler) buildController(bld k8s.Builder) error {
 		Owns(&rbacv1.Role{}, updateOrDeleteOnlyPred).
 		Owns(&rbacv1.RoleBinding{}, updateOrDeleteOnlyPred).
 		Owns(&networkingv1.NetworkPolicy{}, updateOrDeleteOnlyPred).
+		Watches(&corev1.Service{}, r.enqueueForObjectStorageServices(), createOrUpdatePred).
 		Watches(&corev1.Service{}, r.enqueueForAlertManagerServices(), createUpdateOrDeletePred).
 		Watches(&corev1.Secret{}, r.enqueueForStorageSecret(), createUpdateOrDeletePred).
 		Watches(&corev1.ConfigMap{}, r.enqueueForStorageCA(), createUpdateOrDeletePred)
@@ -369,6 +384,54 @@ func (r *LokiStackReconciler) enqueueForStorageCA() handler.EventHandler {
 				},
 			})
 			r.Log.Info("Enqueued request for LokiStack because of Storage CA resource change", "LokiStack", stack.Name, "ConfigMap", obj.GetName())
+		}
+
+		return requests
+	})
+}
+
+func (r *LokiStackReconciler) enqueueForObjectStorageServices() handler.EventHandler {
+	return handler.EnqueueRequestsFromMapFunc(func(ctx context.Context, obj client.Object) []reconcile.Request {
+		lokiStacks := &lokiv1.LokiStackList{}
+		if err := r.List(ctx, lokiStacks); err != nil {
+			r.Log.Error(err, "Error listing LokiStack resources for object storage service update")
+			return nil
+		}
+
+		var requests []reconcile.Request
+		for _, stack := range lokiStacks.Items {
+			if stack.Spec.NetworkPolicies == nil || stack.Spec.NetworkPolicies.RuleSet == lokiv1.NetworkPolicyRuleSetNone {
+				continue
+			}
+
+			secret := &corev1.Secret{}
+			key := client.ObjectKey{
+				Name:      stack.Spec.Storage.Secret.Name,
+				Namespace: stack.Namespace,
+			}
+			if err := r.Get(ctx, key, secret); err != nil {
+				continue
+			}
+
+			storageEndpoint := string(secret.Data["endpoint"])
+			if storageEndpoint == "" {
+				continue
+			}
+
+			storageURL, err := url.Parse(storageEndpoint)
+			if err != nil || storageURL.Hostname() == "" {
+				continue
+			}
+			svcHostname := fmt.Sprintf("%s.%s.svc", obj.GetName(), obj.GetNamespace())
+			if storageURL.Hostname() == svcHostname || strings.HasPrefix(storageURL.Hostname(), svcHostname+".") {
+				requests = append(requests, reconcile.Request{
+					NamespacedName: types.NamespacedName{
+						Namespace: stack.Namespace,
+						Name:      stack.Name,
+					},
+				})
+				r.Log.Info("Enqueued LokiStack for object storage Service resource change", "LokiStack", stack.Name, "Service", obj.GetName())
+			}
 		}
 
 		return requests

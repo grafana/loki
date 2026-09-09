@@ -125,14 +125,13 @@ func testChunkFetcher(t *testing.T, c cache.Cache, chunks []chunk.Chunk) {
 	s := config.SchemaConfig{
 		Configs: []config.PeriodConfig{
 			{
-				From:      config.DayTime{Time: 0},
-				Schema:    "v11",
-				RowShards: 16,
+				From:   config.DayTime{Time: 0},
+				Schema: "v11",
 			},
 		},
 	}
 
-	fetcher, err := fetcher.New(c, nil, false, s, nil, 0, 0)
+	fetcher, err := fetcher.New(c, nil, false, s, nil, 0, 0, false)
 	require.NoError(t, err)
 	defer fetcher.Stop()
 
@@ -168,9 +167,8 @@ func testCache(t *testing.T, cache cache.Cache) {
 	s := config.SchemaConfig{
 		Configs: []config.PeriodConfig{
 			{
-				From:      config.DayTime{Time: 0},
-				Schema:    "v11",
-				RowShards: 16,
+				From:   config.DayTime{Time: 0},
+				Schema: "v11",
 			},
 		},
 	}

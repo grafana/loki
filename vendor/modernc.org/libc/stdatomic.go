@@ -729,11 +729,16 @@ func X__atomic_compare_exchangeInt32(t *TLS, ptr, expected, desired uintptr, wea
 	exp := (*int32)(unsafe.Pointer(expected))
 	des := *(*int32)(unsafe.Pointer(desired))
 	old := *exp
-	if atomic.CompareAndSwapInt32(p, old, des) {
-		return 1
+	for {
+		if atomic.CompareAndSwapInt32(p, old, des) {
+			return 1
+		}
+		cur := atomic.LoadInt32(p)
+		if cur != old {
+			*exp = cur
+			return 0
+		}
 	}
-	*exp = atomic.LoadInt32(p)
-	return 0
 }
 
 func X__atomic_compare_exchangeUint32(t *TLS, ptr, expected, desired uintptr, weak, success, failure int32) int32 {
@@ -741,11 +746,16 @@ func X__atomic_compare_exchangeUint32(t *TLS, ptr, expected, desired uintptr, we
 	exp := (*uint32)(unsafe.Pointer(expected))
 	des := *(*uint32)(unsafe.Pointer(desired))
 	old := *exp
-	if atomic.CompareAndSwapUint32(p, old, des) {
-		return 1
+	for {
+		if atomic.CompareAndSwapUint32(p, old, des) {
+			return 1
+		}
+		cur := atomic.LoadUint32(p)
+		if cur != old {
+			*exp = cur
+			return 0
+		}
 	}
-	*exp = atomic.LoadUint32(p)
-	return 0
 }
 
 func X__atomic_compare_exchangeInt64(t *TLS, ptr, expected, desired uintptr, weak, success, failure int32) int32 {
@@ -753,11 +763,16 @@ func X__atomic_compare_exchangeInt64(t *TLS, ptr, expected, desired uintptr, wea
 	exp := (*int64)(unsafe.Pointer(expected))
 	des := *(*int64)(unsafe.Pointer(desired))
 	old := *exp
-	if atomic.CompareAndSwapInt64(p, old, des) {
-		return 1
+	for {
+		if atomic.CompareAndSwapInt64(p, old, des) {
+			return 1
+		}
+		cur := atomic.LoadInt64(p)
+		if cur != old {
+			*exp = cur
+			return 0
+		}
 	}
-	*exp = atomic.LoadInt64(p)
-	return 0
 }
 
 func X__atomic_compare_exchangeUint64(t *TLS, ptr, expected, desired uintptr, weak, success, failure int32) int32 {
@@ -765,11 +780,16 @@ func X__atomic_compare_exchangeUint64(t *TLS, ptr, expected, desired uintptr, we
 	exp := (*uint64)(unsafe.Pointer(expected))
 	des := *(*uint64)(unsafe.Pointer(desired))
 	old := *exp
-	if atomic.CompareAndSwapUint64(p, old, des) {
-		return 1
+	for {
+		if atomic.CompareAndSwapUint64(p, old, des) {
+			return 1
+		}
+		cur := atomic.LoadUint64(p)
+		if cur != old {
+			*exp = cur
+			return 0
+		}
 	}
-	*exp = atomic.LoadUint64(p)
-	return 0
 }
 
 func X__c11_atomic_compare_exchange_strongInt8(t *TLS, ptr, expected uintptr, desired int8, success, failure int32) int32 {
@@ -932,6 +952,19 @@ func X__atomic_loadUint64(t *TLS, ptr, ret uintptr, memorder int32) {
 	X__atomic_loadInt64(t, ptr, ret, memorder)
 }
 
+// The float variants atomically load the value's bit pattern, so they delegate
+// to the same-width integer helper. wasm2c emits these for any load from shared
+// linear memory (its data pointer is _Atomic volatile), including plain f32/f64
+// loads; there is no atomic-float RMW in wasm, so only load/store are needed.
+
+func X__atomic_loadFloat32(t *TLS, ptr, ret uintptr, memorder int32) {
+	X__atomic_loadInt32(t, ptr, ret, memorder)
+}
+
+func X__atomic_loadFloat64(t *TLS, ptr, ret uintptr, memorder int32) {
+	X__atomic_loadInt64(t, ptr, ret, memorder)
+}
+
 // ----
 
 // void __atomic_store (type *ptr, type *val, int memorder)
@@ -1013,6 +1046,17 @@ func X__c11_atomic_storeUint64(t *TLS, ptr uintptr, val uint64, memorder int32) 
 }
 
 func X__atomic_storeUint64(t *TLS, ptr, val uintptr, memorder int32) {
+	X__atomic_storeInt64(t, ptr, val, memorder)
+}
+
+// The float variants atomically store the value's bit pattern (see the matching
+// note on __atomic_loadFloat32).
+
+func X__atomic_storeFloat32(t *TLS, ptr, val uintptr, memorder int32) {
+	X__atomic_storeInt32(t, ptr, val, memorder)
+}
+
+func X__atomic_storeFloat64(t *TLS, ptr, val uintptr, memorder int32) {
 	X__atomic_storeInt64(t, ptr, val, memorder)
 }
 

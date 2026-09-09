@@ -82,6 +82,29 @@ func (v *cloneVisitor) VisitRangeAggregation(e *RangeAggregationExpr) {
 	v.cloned = copied
 }
 
+func (v *cloneVisitor) VisitLabelAggregation(e *LabelAggregationExpr) {
+	copied := &LabelAggregationExpr{
+		Left:      MustClone[*LogRangeExpr](e.Left),
+		Operation: e.Operation,
+		Label:     e.Label,
+	}
+	if e.Grouping != nil {
+		copied.Grouping = cloneGrouping(e.Grouping)
+	}
+	v.cloned = copied
+}
+
+func (v *cloneVisitor) VisitCountDistinctSketch(e *CountDistinctSketchExpr) {
+	copied := &CountDistinctSketchExpr{
+		Left:  MustClone[*LogRangeExpr](e.Left),
+		Label: e.Label,
+	}
+	if e.Grouping != nil {
+		copied.Grouping = cloneGrouping(e.Grouping)
+	}
+	v.cloned = copied
+}
+
 func (v *cloneVisitor) VisitLabelReplace(e *LabelReplaceExpr) {
 	left := MustClone[SampleExpr](e.Left)
 	v.cloned = mustNewLabelReplaceExpr(left, e.Dst, e.Replacement, e.Src, e.Regex)
@@ -299,17 +322,4 @@ func (v *cloneVisitor) VisitLogfmtParser(e *LogfmtParserExpr) {
 		Strict:    e.Strict,
 		KeepEmpty: e.KeepEmpty,
 	}
-}
-
-func (v *cloneVisitor) VisitVariants(e *MultiVariantExpr) {
-	copied := &MultiVariantExpr{
-		logRange: MustClone[*LogRangeExpr](e.logRange),
-		variants: make([]SampleExpr, len(e.variants)),
-	}
-
-	for i, v := range e.variants {
-		copied.variants[i] = MustClone[SampleExpr](v)
-	}
-
-	v.cloned = copied
 }

@@ -6,7 +6,7 @@ type Index interface {
 	Name() string
 	Path() string
 	Close() error
-	Reader() (io.ReadSeeker, error)
+	Reader() (io.ReadSeekCloser, error)
 }
 
 // OpenIndexFileFunc opens an index file stored at the given path.

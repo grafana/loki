@@ -205,58 +205,6 @@ A service(s) is rate limiting at least 10% of all incoming requests.
 | `per_stream_rate_limit` | `perStreamRateLimit`, `perStreamRateLimitBurst` |
 
 
-## Loki Storage Slow Write
-
-### Impact
-
-The cluster is unable to push logs to backend storage in a timely manner.
-
-### Summary
-
-The cluster is unable to push logs to backend storage in a timely manner.
-
-### Severity
-
-`Warning`
-
-### Access Required
-
-- Console access to the cluster
-- Edit access to the deployed operator and Loki namespace:
-  - OpenShift
-    - `openshift-logging` (LokiStack)
-    - `openshift-operators-redhat` (Loki Operator)
-
-### Steps
-
-- Ensure that the cluster can communicate with the backend storage
-
-## Loki Storage Slow Read
-
-### Impact
-
-The cluster is unable to retrieve logs to backend storage in a timely manner.
-
-### Summary
-
-The cluster is unable to retrieve logs to backend storage in a timely manner.
-
-### Severity
-
-`Warning`
-
-### Access Required
-
-- Console access to the cluster
-- Edit access to the deployed operator and Loki namespace:
-  - OpenShift
-    - `openshift-logging` (LokiStack)
-    - `openshift-operators-redhat` (Loki Operator)
-
-### Steps
-
-- Ensure that the cluster can communicate with the backend storage
-
 ## Loki Write Path High Load
 
 ### Impact

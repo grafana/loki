@@ -1,7 +1,7 @@
 // Copyright The OpenTelemetry Authors
 // SPDX-License-Identifier: Apache-2.0
 
-package gcp // import "go.opentelemetry.io/contrib/detectors/gcp"
+package gcp
 
 import (
 	"context"
@@ -12,7 +12,7 @@ import (
 	"cloud.google.com/go/compute/metadata"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/sdk/resource"
-	semconv "go.opentelemetry.io/otel/semconv/v1.41.0"
+	semconv "go.opentelemetry.io/otel/semconv/v1.43.0"
 )
 
 const serviceNamespace = "cloud-run-managed"

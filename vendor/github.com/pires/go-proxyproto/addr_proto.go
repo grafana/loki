@@ -14,6 +14,23 @@ const (
 	UnixDatagram AddressFamilyAndProtocol = '\x32'
 )
 
+// supportedTransportProtocol is the set of address-family/transport-protocol
+// bytes defined by the PROXY protocol v2 spec (section 2.2). Any other value is
+// rejected during v2 parsing. This matters for bytes that share a known family
+// but an undefined transport (e.g. 0x13: IPv4 family, transport 3): they pass
+// the IsIPv4/IsIPv6 family checks yet are neither stream nor datagram, so
+// newIPAddr would return a nil net.Addr and later panic callers of
+// RemoteAddr().String() / LocalAddr().String().
+var supportedTransportProtocol = map[AddressFamilyAndProtocol]bool{
+	UNSPEC:       true,
+	TCPv4:        true,
+	UDPv4:        true,
+	TCPv6:        true,
+	UDPv6:        true,
+	UnixStream:   true,
+	UnixDatagram: true,
+}
+
 // IsIPv4 returns true if the address family is IPv4 (AF_INET4), false otherwise.
 func (ap AddressFamilyAndProtocol) IsIPv4() bool {
 	return ap&0xF0 == 0x10

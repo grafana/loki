@@ -74,7 +74,7 @@ type decReaderI interface {
 	// bytesReadFrom(startpos uint) []byte
 
 	// isBytes() bool
-	resetIO(r io.Reader, bufsize int, maxInitLen int, blist *bytesFreeList)
+	resetIO(r io.Reader, bufsize int, maxBytesPerRead int, blist *bytesFreeList)
 
 	resetBytes(in []byte)
 
@@ -114,7 +114,7 @@ type ioDecReader struct {
 
 	blist *bytesFreeList
 
-	maxInitLen uint
+	maxBytesPerRead uint
 
 	n uint // num read
 
@@ -145,10 +145,10 @@ func (z *ioDecReader) resetBytes(in []byte) {
 	halt.errorStr("resetBytes unsupported by ioDecReader")
 }
 
-func (z *ioDecReader) resetIO(r io.Reader, bufsize int, maxInitLen int, blist *bytesFreeList) {
+func (z *ioDecReader) resetIO(r io.Reader, bufsize int, maxBytesPerRead int, blist *bytesFreeList) {
 	buf := z.buf
 	*z = ioDecReader{}
-	z.maxInitLen = max(1024, uint(maxInitLen))
+	z.maxBytesPerRead = uint(maxBytesPerRead)
 	z.blist = blist
 	z.buf = blist.check(buf, max(256, bufsize))
 	z.bufsize = uint(max(0, bufsize))
@@ -371,7 +371,7 @@ func (z *ioDecReader) readxb(n uint) (out []byte, useBuf bool) {
 	BUFIO:
 		nn := int(n+z.rc) - int(z.wc)
 		if nn > 0 {
-			z.fillbuf(decInferLen(nn, z.maxInitLen, 1))
+			z.fillbuf(min(uint(nn), z.maxBytesPerRead))
 			goto BUFIO
 		}
 		pos := z.rc
@@ -393,7 +393,7 @@ func (z *ioDecReader) readxb(n uint) (out []byte, useBuf bool) {
 	nn := int(n)
 	for nn > 0 {
 		halt.onerror(err) // check error whenever there's more to read
-		n2 := r + decInferLen(int(nn), z.maxInitLen, 1)
+		n2 := r + min(uint(nn), z.maxBytesPerRead)
 		if cap(out) < int(n2) {
 			out2 := z.blist.putGet(out, int(n2))[:n2] // make([]byte, len2+len3)
 			copy(out2, out)
@@ -428,7 +428,7 @@ func (z *ioDecReader) skip(n uint) {
 		z.n += n2
 		n -= n2
 		if n > 0 {
-			z.fillbuf(decInferLen(int(n+z.rc)-int(z.wc), z.maxInitLen, 1))
+			z.fillbuf(min(n+z.rc-z.wc, z.maxBytesPerRead))
 			goto BUFIO
 		}
 		return
@@ -441,7 +441,8 @@ func (z *ioDecReader) skip(n uint) {
 	if z.recording {
 		out = z.buf
 	} else {
-		nn := int(decInferLen(int(n), z.maxInitLen, 1))
+		// established that n > 0
+		nn := int(min(uint(n), z.maxBytesPerRead))
 		if cap(z.buf) >= nn/2 {
 			out = z.buf[:cap(z.buf)]
 		} else {
@@ -459,7 +460,7 @@ func (z *ioDecReader) skip(n uint) {
 		n2 := uint(nn)
 		if z.recording {
 			r = uint(len(out))
-			n2 = r + decInferLen(int(nn), z.maxInitLen, 1)
+			n2 = r + min(uint(nn), z.maxBytesPerRead)
 			if cap(out) < int(n2) {
 				out2 := z.blist.putGet(out, int(n2))[:n2] // make([]byte, len2+len3)
 				copy(out2, out)
@@ -480,7 +481,6 @@ func (z *ioDecReader) skip(n uint) {
 	} else if fromBlist {
 		z.blist.put(out)
 	}
-	return
 }
 
 // ---- JSON SPECIFIC HELPERS HERE ----
@@ -688,7 +688,7 @@ type bytesDecReader struct {
 	xb []byte // buffer for readxb
 }
 
-func (z *bytesDecReader) resetIO(r io.Reader, bufsize int, maxInitLen int, blist *bytesFreeList) {
+func (z *bytesDecReader) resetIO(r io.Reader, bufsize int, maxBytesPerRead int, blist *bytesFreeList) {
 	halt.errorStr("resetIO unsupported by bytesDecReader")
 }
 

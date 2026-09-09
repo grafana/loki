@@ -137,7 +137,7 @@
                          git config --global --add safe.directory "$GITHUB_WORKSPACE"
                        |||),
 
-  githubAppToken: $.step.new('get github app token', 'grafana/shared-workflows/actions/create-github-app-token@580590a644e82e79bb2598bdaba0be245a14dda0')  // create-github-app-token/v0.2.2
+  githubAppToken: $.step.new('get github app token', 'grafana/shared-workflows/actions/create-github-app-token@46f48da11e78ebdba7a8747ae456b11062fac83e')  // create-github-app-token/v0.3.1
                   + $.step.withId('get_github_app_token')
                   + $.step.with({
                     github_app: '${{ env.GITHUB_APP }}',

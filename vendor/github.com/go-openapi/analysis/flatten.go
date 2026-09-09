@@ -5,6 +5,7 @@ package analysis
 
 import (
 	"log"
+	"maps"
 	"path"
 	"slices"
 	"sort"
@@ -179,18 +180,20 @@ func normalizeRef(opts *FlattenOpts) error {
 	debugLog("normalizeRef")
 
 	altered := false
-	for k, w := range opts.Spec.references.allRefs {
-		if !strings.HasPrefix(w.String(), opts.BasePath+definitionsPath) { // may be a mix of / and \, depending on OS
-			continue
-		}
+	for _, refs := range []map[string]spec.Ref{opts.Spec.references.allRefs, opts.Spec.references.unmappedRefs} {
+		for k, w := range refs {
+			if !strings.HasPrefix(w.String(), opts.BasePath+definitionsPath) { // may be a mix of / and \, depending on OS
+				continue
+			}
 
-		altered = true
-		debugLog("stripping absolute path for: %s", w.String())
+			altered = true
+			debugLog("stripping absolute path for: %s", w.String())
 
-		// strip the base path from definition
-		if err := replace.UpdateRef(opts.Swagger(), k,
-			spec.MustCreateRef(path.Join(definitionsPath, path.Base(w.String())))); err != nil {
-			return err
+			// strip the base path from definition
+			if err := replace.UpdateRef(opts.Swagger(), k,
+				spec.MustCreateRef(path.Join(definitionsPath, path.Base(w.String())))); err != nil {
+				return err
+			}
 		}
 	}
 
@@ -243,7 +246,7 @@ func nameInlinedSchemas(opts *FlattenOpts) error {
 			continue
 		}
 
-		asch, err := Schema(SchemaOpts{Schema: sch.Schema, Root: opts.Swagger(), BasePath: opts.BasePath})
+		asch, err := Schema(SchemaOpts{Schema: sch.Schema, Root: opts.Swagger(), BasePath: opts.BasePath, PathLoaderWithOptions: opts.PathLoaderWithOptions})
 		if err != nil {
 			return ErrAtKey(key, err)
 		}
@@ -274,6 +277,10 @@ func removeUnusedSinglePass(opts *FlattenOpts) (hasRemoved bool) {
 
 	for _, k := range opts.Spec.AllDefinitionReferences() {
 		delete(expected, k)
+	}
+
+	for _, ref := range opts.Spec.references.unmappedRefs {
+		delete(expected, ref.String())
 	}
 
 	for k := range expected {
@@ -327,9 +334,11 @@ func importNewRef(entry sortref.RefRevIdx, refStr string, opts *FlattenOpts) err
 	partialAnalyzer.analyzeSchema("", sch, "/")
 
 	// now rewrite those refs with rebase
-	for key, ref := range partialAnalyzer.references.allRefs {
-		if err := replace.UpdateRef(sch, key, spec.MustCreateRef(normalize.RebaseRef(entry.Ref.String(), ref.String()))); err != nil {
-			return ErrRewriteRef(key, entry.Ref.String(), err)
+	for _, refs := range []map[string]spec.Ref{partialAnalyzer.references.allRefs, partialAnalyzer.references.unmappedRefs} {
+		for key, ref := range refs {
+			if err := replace.UpdateRef(sch, key, spec.MustCreateRef(normalize.RebaseRef(entry.Ref.String(), ref.String()))); err != nil {
+				return ErrRewriteRef(key, entry.Ref.String(), err)
+			}
 		}
 	}
 
@@ -374,10 +383,20 @@ func importNewRef(entry sortref.RefRevIdx, refStr string, opts *FlattenOpts) err
 // At every iteration, new remotes may be found when digging deeper: they are rebased to the current schema before being imported.
 //
 // This returns true when no more remote references can be found.
+// importableRefs returns every $ref that flatten has to bring into the root document: the ones the
+// model maps, and the ones held by keywords it does not.
+func importableRefs(sp *Spec) map[string]spec.Ref {
+	refs := make(map[string]spec.Ref, len(sp.references.schemas)+len(sp.references.unmappedRefs))
+	maps.Copy(refs, sp.references.schemas)
+	maps.Copy(refs, sp.references.unmappedRefs)
+
+	return refs
+}
+
 func importExternalReferences(opts *FlattenOpts) (bool, error) {
 	debugLog("importExternalReferences")
 
-	groupedRefs := sortref.ReverseIndex(opts.Spec.references.schemas, opts.BasePath)
+	groupedRefs := sortref.ReverseIndex(importableRefs(opts.Spec), opts.BasePath)
 	sortedRefStr := make([]string, 0, len(groupedRefs))
 	if opts.flattenContext == nil {
 		opts.flattenContext = newContext()
@@ -575,7 +594,7 @@ func stripOAIGenForRef(opts *FlattenOpts, k string, r *newRef) (bool, error) {
 	}
 
 	// rewrite other parents to point to first parent
-	if len(pr) > 1 {
+	if len(pr) > 1 { //nolint:nestif // should be refactored at a later time
 		for _, p := range pr[1:] {
 			replacingRef := spec.MustCreateRef(pr[0])
 
@@ -657,7 +676,7 @@ func stripOAIGenForRef(opts *FlattenOpts, k string, r *newRef) (bool, error) {
 
 	// determine if the previous substitution did inline a complex schema
 	if r.schema != nil && r.schema.Ref.String() == "" { // inline schema
-		asch, err := Schema(SchemaOpts{Schema: r.schema, Root: opts.Swagger(), BasePath: opts.BasePath})
+		asch, err := Schema(SchemaOpts{Schema: r.schema, Root: opts.Swagger(), BasePath: opts.BasePath, PathLoaderWithOptions: opts.PathLoaderWithOptions})
 		if err != nil {
 			return false, err
 		}
@@ -761,7 +780,7 @@ func flattenAnonPointer(key string, v SchemaRef, refsToReplace map[string]Schema
 	debugLog("namePointers at %s for %s", key, v.Ref.String())
 
 	// qualify the expanded schema
-	asch, ers := Schema(SchemaOpts{Schema: v.Schema, Root: opts.Swagger(), BasePath: opts.BasePath})
+	asch, ers := Schema(SchemaOpts{Schema: v.Schema, Root: opts.Swagger(), BasePath: opts.BasePath, PathLoaderWithOptions: opts.PathLoaderWithOptions})
 	if ers != nil {
 		return ErrAtKey(key, ers)
 	}

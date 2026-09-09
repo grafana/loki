@@ -142,6 +142,11 @@ func TestRequestLimitedRetryNonRetryableErr(t *testing.T) {
 	require.EqualValues(t, 0, testutil.ToFloat64(metrics.retries))
 	require.EqualValues(t, 1, testutil.ToFloat64(metrics.nonRetryableErrors))
 	require.EqualValues(t, 1, testutil.ToFloat64(metrics.requests))
+
+	// Error classification outside the retry path must not record the failure a
+	// second time. Fetchers use this predicate to select a metric label.
+	require.False(t, ctrl.IsRetryableErr(err))
+	require.EqualValues(t, 1, testutil.ToFloat64(metrics.nonRetryableErrors))
 	metrics.Unregister()
 }
 

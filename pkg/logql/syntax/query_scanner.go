@@ -441,12 +441,13 @@ func (s *Scanner) scanNumber(ch rune, seenDot bool) (rune, rune) {
 	}
 
 	// exponent
-	if e := lower(ch); (e == 'e' || e == 'p') && s.Mode&ScanFloats != 0 {
-		switch {
-		case e == 'e' && prefix != 0 && prefix != '0':
+	//
+	// 'p'/'P' only introduces an exponent for a hex mantissa (prefix == 'x'), matching Go's hex-float
+	// syntax (e.g. 0x1p3). For any other prefix, 'p'/'P' is left unconsumed so callers can treat it as
+	// part of a following identifier, such as the "PB"/"PiB" byte-size suffix handled in lex.go.
+	if e := lower(ch); (e == 'e' || (e == 'p' && prefix == 'x')) && s.Mode&ScanFloats != 0 {
+		if e == 'e' && prefix != 0 && prefix != '0' {
 			s.errorf("%q exponent requires decimal mantissa", ch)
-		case e == 'p' && prefix != 'x':
-			s.errorf("%q exponent requires hexadecimal mantissa", ch)
 		}
 		ch = s.next()
 		tok = Float

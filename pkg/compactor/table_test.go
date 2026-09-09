@@ -529,7 +529,6 @@ func TestTable_applyStorageUpdates(t *testing.T) {
 						Prefix: "index_",
 						Period: time.Hour * 24,
 					}},
-				RowShards: 16,
 			},
 		},
 	}

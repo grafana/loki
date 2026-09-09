@@ -130,6 +130,10 @@ func (m Map) String() string {
 }
 
 func TypeOf(t reflect.Type) Type {
+	if isUnion(t) {
+		return STRUCT
+	}
+
 	// Check if type implements Value interface first
 	if t.Implements(valueType) {
 		zv := reflect.Zero(t).Interface().(Value)

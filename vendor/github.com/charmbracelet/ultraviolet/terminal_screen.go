@@ -7,6 +7,7 @@ import (
 	"log"
 	"os"
 	"strings"
+	"sync"
 
 	"github.com/charmbracelet/colorprofile"
 	"github.com/charmbracelet/x/ansi"
@@ -37,6 +38,16 @@ type TerminalScreen struct {
 	windowTitle          string
 	syncUpdates          bool // mode 2026
 	resetTabs            bool // DECST8C - reset terminal tabs on start
+
+	// mu serializes access to the render buffer, output buffer, and
+	// width-method state so the terminal event loop (which negotiates
+	// grapheme-cluster width) cannot race with the application's own
+	// Render/Flush goroutine.
+	mu sync.Mutex
+	// widthMethodOverride is set when the application explicitly calls
+	// [TerminalScreen.SetWidthMethod]. An explicit override suppresses the
+	// automatic mode-2027 width-method negotiation.
+	widthMethodOverride bool
 }
 
 var _ Screen = (*TerminalScreen)(nil)
@@ -130,9 +141,53 @@ func (s *TerminalScreen) WidthMethod() WidthMethod {
 	return s.win.WidthMethod()
 }
 
-// SetWidthMethod sets the width method for the terminal screen.
+// SetWidthMethod sets the width method for the terminal screen. This is an
+// override that propagates to the window/buffer and the renderer so that all
+// width measurements use the same method. Calling this marks the width method
+// as explicitly overridden, which disables automatic mode-2027 negotiation.
 func (s *TerminalScreen) SetWidthMethod(method ansi.Method) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.widthMethodOverride = true
+	s.setWidthMethod(method)
+}
+
+// setWidthMethod propagates the width method to the window/buffer and the
+// renderer. Callers must hold s.mu.
+func (s *TerminalScreen) setWidthMethod(method ansi.Method) {
 	s.win.SetWidthMethod(method)
+	s.rend.SetWidthMethod(method)
+}
+
+// requestGraphemeWidth queues a DECRQM request for Unicode core mode (DEC mode
+// 2027) so the terminal reports whether it measures cell width using grapheme
+// clustering. The response arrives as a [ModeReportEvent].
+func (s *TerminalScreen) requestGraphemeWidth() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.buf.WriteString(ansi.RequestMode(ansi.ModeUnicodeCore))
+}
+
+// enableGraphemeWidth enables Unicode core mode (DEC mode 2027) on the terminal
+// and switches the screen's width method to [ansi.GraphemeWidth] so wide-glyph
+// measurement matches the terminal. The change propagates to the
+// window/buffer and renderer.
+//
+// If the application has explicitly set a width method via
+// [TerminalScreen.SetWidthMethod], the explicit choice is preserved and this is
+// a no-op. The change is committed to the underlying writer through the
+// screen's normal locked write path so it cannot race with Render/Flush.
+func (s *TerminalScreen) enableGraphemeWidth() {
+	s.mu.Lock()
+	if s.widthMethodOverride {
+		s.mu.Unlock()
+		return
+	}
+	s.buf.WriteString(ansi.SetMode(ansi.ModeUnicodeCore))
+	s.setWidthMethod(ansi.GraphemeWidth)
+	s.rend.SetGraphemeWidth(true)
+	s.mu.Unlock()
+	_ = s.Flush()
 }
 
 // SetColorProfile sets the color profile for the terminal screen.
@@ -173,6 +228,8 @@ func (s *TerminalScreen) Display(d Drawable) error {
 // The changes can be committed to the underlying writer by calling the
 // [TerminalScreen.Flush] method.
 func (s *TerminalScreen) Render() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	for y := 0; y < s.win.Height(); y++ {
 		for x := 0; x < s.win.Width(); {
 			cell := s.win.CellAt(x, y)
@@ -194,6 +251,8 @@ func (s *TerminalScreen) Render() {
 
 // Flush writes any pending output to the underlying writer.
 func (s *TerminalScreen) Flush() error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	if s.cursor != nil && !s.cursor.Hidden && s.cursor.X >= 0 && s.cursor.Y >= 0 {
 		s.rend.MoveTo(s.cursor.X, s.cursor.Y)
 	} else if !s.altScreen {

@@ -5,13 +5,12 @@ import (
 	"math"
 	"sync/atomic"
 	"time"
-	"unsafe"
 )
 
 type state [2]time.Duration
 
 type fibonacciBackoff struct {
-	state unsafe.Pointer
+	state atomic.Pointer[state]
 }
 
 // Fibonacci is a wrapper around Retry that uses a Fibonacci backoff. See
@@ -33,23 +32,22 @@ func NewFibonacci(base time.Duration) Backoff {
 		panic("base must be greater than 0")
 	}
 
-	return &fibonacciBackoff{
-		state: unsafe.Pointer(&state{0, base}),
-	}
+	b := new(fibonacciBackoff)
+	b.state.Store(&state{0, base})
+	return b
 }
 
 // Next implements Backoff. It is safe for concurrent use.
 func (b *fibonacciBackoff) Next() (time.Duration, bool) {
 	for {
-		curr := atomic.LoadPointer(&b.state)
-		currState := (*state)(curr)
-		next := currState[0] + currState[1]
+		curr := b.state.Load()
+		next := curr[0] + curr[1]
 
 		if next <= 0 {
 			return math.MaxInt64, false
 		}
 
-		if atomic.CompareAndSwapPointer(&b.state, curr, unsafe.Pointer(&state{currState[1], next})) {
+		if b.state.CompareAndSwap(curr, &state{curr[1], next}) {
 			return next, false
 		}
 	}

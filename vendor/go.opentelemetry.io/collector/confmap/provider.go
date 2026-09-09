@@ -263,6 +263,7 @@ func checkRawConfType(rawConf any) error {
 	default:
 		return fmt.Errorf(
 			"unsupported type=%T for retrieved config,"+
-				" ensure that values are wrapped in quotes", rawConf)
+				" ensure that values are wrapped in quotes", rawConf,
+		)
 	}
 }

@@ -11,6 +11,10 @@ type AssertionRequestOptions struct {
 
 	// TokenEndpoint is the intended token endpoint. Used as the assertion's "aud" claim.
 	TokenEndpoint string
+
+	// FMIPath is the federated managed identity path for the current request, if any.
+	// Assertion providers can use this to scope the credential they return.
+	FMIPath string
 }
 
 // TokenProviderParameters is the authentication parameters passed to token providers

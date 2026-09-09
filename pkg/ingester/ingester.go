@@ -1189,7 +1189,7 @@ func (i *Ingester) QuerySample(req *logproto.SampleQueryRequest, queryServer log
 			return err
 		}
 
-		it = iter.NewMergeSampleIterator(ctx, []iter.SampleIterator{it, storeItr})
+		it = iter.NewTimestampFirstMergeSampleIterator(ctx, []iter.SampleIterator{it, storeItr})
 	}
 
 	defer util.LogErrorWithContext(ctx, "closing iterator", it.Close)

@@ -180,7 +180,7 @@ func (service *BaseService) ConfigureService(serviceName string) error {
 		if enableRetries, ok := serviceProps[PROPNAME_SVC_ENABLE_RETRIES]; ok && enableRetries != "" {
 			boolValue, err := strconv.ParseBool(enableRetries)
 			if boolValue && err == nil {
-				var maxRetries int = 0
+				var maxRetries = 0
 				var retryInterval time.Duration = 0
 
 				var s string
@@ -356,7 +356,7 @@ func (service *BaseService) SetUserAgent(userAgent string) {
 // detailedResponse: a DetailedResponse instance containing the status code, headers, etc.
 //
 // err: a non-nil error object if an error occurred
-func (service *BaseService) Request(req *http.Request, result interface{}) (detailedResponse *DetailedResponse, err error) {
+func (service *BaseService) Request(req *http.Request, result any) (detailedResponse *DetailedResponse, err error) {
 	// Set default headers on the request.
 	if service.DefaultHeaders != nil {
 		for k, v := range service.DefaultHeaders {
@@ -419,7 +419,7 @@ func (service *BaseService) Request(req *http.Request, result interface{}) (deta
 	// Invoke the request, then check for errors during the invocation.
 	GetLogger().Debug("Sending HTTP request message...")
 	var httpResponse *http.Response
-	httpResponse, err = service.Client.Do(req)
+	httpResponse, err = service.Client.Do(req) // #nosec G704
 	if err != nil {
 		if strings.Contains(err.Error(), SSL_CERTIFICATION_ERROR) {
 			err = errors.New(ERRORMSG_SSL_VERIFICATION_FAILED + "\n" + err.Error())
@@ -495,20 +495,21 @@ func (service *BaseService) Request(req *http.Request, result interface{}) (deta
 			// Check to see if the caller wanted the response body as a string.
 			// If the caller passed in 'result' as the address of *string,
 			// then we'll reflectively set result to point to it.
-			if resultType == "**string" {
+			switch resultType {
+			case "**string":
 				responseString := string(responseBody)
 				rResult := reflect.ValueOf(result).Elem()
 				rResult.Set(reflect.ValueOf(&responseString))
 
 				// And set the string in the Result field.
 				detailedResponse.Result = &responseString
-			} else if resultType == "*[]uint8" { // byte is an alias for uint8
+			case "*[]uint8": // byte is an alias for uint8
 				rResult := reflect.ValueOf(result).Elem()
 				rResult.Set(reflect.ValueOf(responseBody))
 
 				// And set the byte slice in the Result field.
 				detailedResponse.Result = responseBody
-			} else {
+			default:
 				// At this point, we don't know how to set the result field, so we have to return an error.
 				// But make sure we save the bytes we read in the DetailedResponse for debugging purposes
 				detailedResponse.Result = responseBody
@@ -611,7 +612,7 @@ type Error struct {
 //     b) the string form of the byte-stream if the byte-stream could not be successfully
 //     decoded as JSON.
 //  3. This function will close the io.ReadCloser before returning.
-func decodeAsMap(byteBuffer []byte) (result map[string]interface{}, err error) {
+func decodeAsMap(byteBuffer []byte) (result map[string]any, err error) {
 	err = json.NewDecoder(bytes.NewReader(byteBuffer)).Decode(&result)
 	if err != nil {
 		err = SDKErrorf(err, "", "decode-error", getComponentInfo())
@@ -620,7 +621,7 @@ func decodeAsMap(byteBuffer []byte) (result map[string]interface{}, err error) {
 }
 
 // getErrorMessage: try to retrieve an error message from the decoded response body (map).
-func getErrorMessage(responseMap map[string]interface{}, statusCode int) string {
+func getErrorMessage(responseMap map[string]any, statusCode int) string {
 	// If the response contained the "errors" field, then try to deserialize responseMap
 	// into an array of Error structs, then return the first entry's "Message" field.
 	if _, ok := responseMap["errors"]; ok {
@@ -665,7 +666,7 @@ func getErrorMessage(responseMap map[string]interface{}, statusCode int) string 
 }
 
 // getErrorCode tries to retrieve an error code from the decoded response body (map).
-func getErrorCode(responseMap map[string]interface{}) string {
+func getErrorCode(responseMap map[string]any) string {
 	// If the response contained the "errors" field, then try to deserialize responseMap
 	// into an array of Error structs, then return the first entry's "Message" field.
 	if _, ok := responseMap["errors"]; ok {
@@ -701,7 +702,7 @@ func getErrorCode(responseMap map[string]interface{}) string {
 // A retryable client is a client whose transport is a
 // retryablehttp.RoundTripper instance.
 func isRetryableClient(client *http.Client) bool {
-	var isRetryable bool = false
+	var isRetryable = false
 	if client != nil && client.Transport != nil {
 		_, isRetryable = client.Transport.(*retryablehttp.RoundTripper)
 	}
@@ -787,7 +788,7 @@ func DefaultHTTPClient() *http.Client {
 // httpLogger is a shim layer used to allow the Go core's logger to be used with the retryablehttp interfaces.
 type httpLogger struct{}
 
-func (l *httpLogger) Printf(format string, inserts ...interface{}) {
+func (l *httpLogger) Printf(format string, inserts ...any) {
 	if GetLogger().IsLogLevelEnabled(LevelDebug) {
 		msg := fmt.Sprintf(format, inserts...)
 		GetLogger().Log(LevelDebug, RedactSecrets(msg))

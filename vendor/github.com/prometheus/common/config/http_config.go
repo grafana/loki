@@ -132,7 +132,7 @@ func (tv *TLSVersion) String() string {
 			return s
 		}
 	}
-	return fmt.Sprintf("%d", tv)
+	return fmt.Sprintf("%d", *tv)
 }
 
 // BasicAuth contains basic HTTP authentication credentials.
@@ -1178,10 +1178,8 @@ func originalRequestHost(req *http.Request) string {
 }
 
 // sensitiveHeadersOnRedirect lists the headers that must not be forwarded when
-// following a redirect to a different host. The first four entries match the
-// list stripped by makeHeadersCopier in net/http/client.go; we additionally
-// strip the Proxy-* headers, which net/http does not, to avoid leaking proxy
-// credentials to an untrusted host.
+// following a redirect to a different host. The list matches the one stripped
+// by makeHeadersCopier in net/http/client.go.
 var sensitiveHeadersOnRedirect = map[string]struct{}{
 	"Authorization": {},
 	// "Www-Authenticate" is the canonical form produced by

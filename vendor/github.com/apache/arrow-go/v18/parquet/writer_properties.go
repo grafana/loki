@@ -27,7 +27,7 @@ import (
 const (
 	// Default Buffer size used for the Reader
 	DefaultBufSize int64 = 4096 * 4
-	// Default data page size limit is 1K it's not guaranteed, but we will try to
+	// Default data page size limit is 1M, it's not guaranteed, but we will try to
 	// cut data pages off at this size where possible.
 	DefaultDataPageSize int64 = 1024 * 1024
 	// Default is for dictionary encoding to be turned on, use WithDictionaryDefault

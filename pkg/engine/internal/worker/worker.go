@@ -102,9 +102,13 @@ type Config struct {
 	// Required for compaction tasks; may be nil for query-only workers.
 	ScratchStore scratch.Store
 
-	// IndexobjCfg is the builder config for index objects.
+	// IndexobjCfg is the builder config for compacted index objects.
 	// Required for compaction tasks; may be nil for query-only workers.
 	IndexobjCfg logsobj.BuilderBaseConfig
+
+	// LogsobjCfg is the builder config for compacted log objects
+	// Required for compaction tasks; may be nil for query-only workers.
+	LogsobjCfg logsobj.BuilderBaseConfig
 
 	// IndexMergeObserver is used  by compaction to populate output-size
 	// histograms. Optional; nil disables observation.
@@ -215,6 +219,7 @@ func (w *Worker) run(ctx context.Context) error {
 			TaskCaches:     w.taskCaches,
 			ScratchStore:   w.config.ScratchStore,
 			IndexobjCfg:    w.config.IndexobjCfg,
+			LogsobjCfg:     w.config.LogsobjCfg,
 
 			IndexMergeObserver: w.config.IndexMergeObserver,
 			LogMergeObserver:   w.config.LogMergeObserver,

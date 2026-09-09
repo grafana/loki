@@ -1,4 +1,4 @@
-//go:build !notmono && !codec.notmono 
+//go:build !notmono && !codec.notmono
 
 // Copyright (c) 2012-2020 Ugorji Nwoke. All rights reserved.
 // Use of this source code is governed by a MIT license found in the LICENSE file.
@@ -918,6 +918,10 @@ func (e *encoderSimpleBytes) MustEncode(v interface{}) {
 	defer panicValToErr(e, callRecoverSentinel, &e.err, nil, true)
 	e.mustEncode(v)
 	return
+}
+
+func (e *encoderSimpleBytes) NumBytesWritten() int {
+	return e.e.NumBytesWritten()
 }
 
 func (e *encoderSimpleBytes) mustEncode(v interface{}) {
@@ -2194,7 +2198,8 @@ func (d *decoderSimpleBytes) kChan(f *decFnInfo, rv reflect.Value) {
 	}
 
 	rtelem := ti.elem
-	useTransient := decUseTransient && ti.elemkind != byte(reflect.Ptr) && ti.tielem.flagCanTransient
+	useTransient := decUseTransient && ti.tielem.flagCanTransient &&
+		ti.elemkind != byte(reflect.Slice) && ti.elemkind != byte(reflect.Ptr)
 
 	for k := reflect.Kind(ti.elemkind); k == reflect.Ptr; k = rtelem.Kind() {
 		rtelem = rtelem.Elem()
@@ -2285,7 +2290,7 @@ func (d *decoderSimpleBytes) kMap(f *decFnInfo, rv reflect.Value) {
 	vtypePtr := vtypeKind == reflect.Ptr
 	ktypePtr := ktypeKind == reflect.Ptr
 
-	vTransient := decUseTransient && !vtypePtr && ti.tielem.flagCanTransient
+	vTransient := decUseTransient && !vtypePtr && ti.tielem.flagCanTransient && vtypeKind != reflect.Slice
 
 	kTransient := vTransient && !ktypePtr && ti.tikey.flagCanTransient
 
@@ -3737,6 +3742,7 @@ func (d *simpleEncDriverBytes) init(hh Handle, shared *encoderBase, enc encoderI
 	return
 }
 
+func (e *simpleEncDriverBytes) NumBytesWritten() int    { return e.w.numWrite() }
 func (e *simpleEncDriverBytes) writeBytesAsis(b []byte) { e.w.writeb(b) }
 
 func (e *simpleEncDriverBytes) writerEnd() { e.w.end() }
@@ -3772,7 +3778,7 @@ func (d *simpleDecDriverBytes) resetInBytes(in []byte) {
 }
 
 func (d *simpleDecDriverBytes) resetInIO(r io.Reader) {
-	d.r.resetIO(r, d.h.ReaderBufferSize, d.h.MaxInitLen, &d.d.blist)
+	d.r.resetIO(r, d.h.ReaderBufferSize, d.h.maxBytes2Read(), &d.d.blist)
 }
 
 func (d *simpleDecDriverBytes) descBd() string {
@@ -4683,6 +4689,10 @@ func (e *encoderSimpleIO) MustEncode(v interface{}) {
 	defer panicValToErr(e, callRecoverSentinel, &e.err, nil, true)
 	e.mustEncode(v)
 	return
+}
+
+func (e *encoderSimpleIO) NumBytesWritten() int {
+	return e.e.NumBytesWritten()
 }
 
 func (e *encoderSimpleIO) mustEncode(v interface{}) {
@@ -5959,7 +5969,8 @@ func (d *decoderSimpleIO) kChan(f *decFnInfo, rv reflect.Value) {
 	}
 
 	rtelem := ti.elem
-	useTransient := decUseTransient && ti.elemkind != byte(reflect.Ptr) && ti.tielem.flagCanTransient
+	useTransient := decUseTransient && ti.tielem.flagCanTransient &&
+		ti.elemkind != byte(reflect.Slice) && ti.elemkind != byte(reflect.Ptr)
 
 	for k := reflect.Kind(ti.elemkind); k == reflect.Ptr; k = rtelem.Kind() {
 		rtelem = rtelem.Elem()
@@ -6050,7 +6061,7 @@ func (d *decoderSimpleIO) kMap(f *decFnInfo, rv reflect.Value) {
 	vtypePtr := vtypeKind == reflect.Ptr
 	ktypePtr := ktypeKind == reflect.Ptr
 
-	vTransient := decUseTransient && !vtypePtr && ti.tielem.flagCanTransient
+	vTransient := decUseTransient && !vtypePtr && ti.tielem.flagCanTransient && vtypeKind != reflect.Slice
 
 	kTransient := vTransient && !ktypePtr && ti.tikey.flagCanTransient
 
@@ -7502,6 +7513,7 @@ func (d *simpleEncDriverIO) init(hh Handle, shared *encoderBase, enc encoderI) (
 	return
 }
 
+func (e *simpleEncDriverIO) NumBytesWritten() int    { return e.w.numWrite() }
 func (e *simpleEncDriverIO) writeBytesAsis(b []byte) { e.w.writeb(b) }
 
 func (e *simpleEncDriverIO) writerEnd() { e.w.end() }
@@ -7537,7 +7549,7 @@ func (d *simpleDecDriverIO) resetInBytes(in []byte) {
 }
 
 func (d *simpleDecDriverIO) resetInIO(r io.Reader) {
-	d.r.resetIO(r, d.h.ReaderBufferSize, d.h.MaxInitLen, &d.d.blist)
+	d.r.resetIO(r, d.h.ReaderBufferSize, d.h.maxBytes2Read(), &d.d.blist)
 }
 
 func (d *simpleDecDriverIO) descBd() string {

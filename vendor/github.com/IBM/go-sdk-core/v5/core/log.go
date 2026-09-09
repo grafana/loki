@@ -35,11 +35,11 @@ const (
 // Logger is the logging interface implemented and used by the Go core library.
 // Users of the library can supply their own implementation by calling SetLogger().
 type Logger interface {
-	Log(level LogLevel, format string, inserts ...interface{})
-	Error(format string, inserts ...interface{})
-	Warn(format string, inserts ...interface{})
-	Info(format string, inserts ...interface{})
-	Debug(format string, inserts ...interface{})
+	Log(level LogLevel, format string, inserts ...any)
+	Error(format string, inserts ...any)
+	Warn(format string, inserts ...any)
+	Info(format string, inserts ...any)
+	Debug(format string, inserts ...any)
 
 	SetLogLevel(level LogLevel)
 	GetLogLevel() LogLevel
@@ -111,7 +111,7 @@ func (l *SDKLoggerImpl) errorLog() *log.Logger {
 }
 
 // Log will log the specified message on the appropriate log.Logger instance if "level" is currently enabled.
-func (l *SDKLoggerImpl) Log(level LogLevel, format string, inserts ...interface{}) {
+func (l *SDKLoggerImpl) Log(level LogLevel, format string, inserts ...any) {
 	if l.IsLogLevelEnabled(level) {
 		var goLogger *log.Logger
 		switch level {
@@ -125,22 +125,22 @@ func (l *SDKLoggerImpl) Log(level LogLevel, format string, inserts ...interface{
 }
 
 // Error logs a message at level "Error"
-func (l *SDKLoggerImpl) Error(format string, inserts ...interface{}) {
+func (l *SDKLoggerImpl) Error(format string, inserts ...any) {
 	l.Log(LevelError, "[Error] "+format, inserts...)
 }
 
 // Warn logs a message at level "Warn"
-func (l *SDKLoggerImpl) Warn(format string, inserts ...interface{}) {
+func (l *SDKLoggerImpl) Warn(format string, inserts ...any) {
 	l.Log(LevelWarn, "[Warn] "+format, inserts...)
 }
 
 // Info logs a message at level "Info"
-func (l *SDKLoggerImpl) Info(format string, inserts ...interface{}) {
+func (l *SDKLoggerImpl) Info(format string, inserts ...any) {
 	l.Log(LevelInfo, "[Info] "+format, inserts...)
 }
 
 // Debug logs a message at level "Debug"
-func (l *SDKLoggerImpl) Debug(format string, inserts ...interface{}) {
+func (l *SDKLoggerImpl) Debug(format string, inserts ...any) {
 	l.Log(LevelDebug, "[Debug] "+format, inserts...)
 }
 

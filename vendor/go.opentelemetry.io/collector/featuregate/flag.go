@@ -5,6 +5,7 @@ package featuregate // import "go.opentelemetry.io/collector/featuregate"
 
 import (
 	"flag"
+	"fmt"
 	"strings"
 
 	"go.uber.org/multierr"
@@ -57,6 +58,10 @@ func (f *flagValue) Set(s string) error {
 	ids := strings.Split(s, ",")
 	for i := range ids {
 		id := ids[i]
+		if id == "" {
+			errs = multierr.Append(errs, fmt.Errorf("empty feature gate identifier at index %d", i))
+			continue
+		}
 		val := true
 		switch id[0] {
 		case '-':

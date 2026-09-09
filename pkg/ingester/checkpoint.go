@@ -239,15 +239,18 @@ func (s *streamIterator) Next() bool {
 	// remove the first stream
 	s.instances[0].streams = s.instances[0].streams[1:]
 
-	stream.chunkMtx.RLock()
-	defer stream.chunkMtx.RUnlock()
-
+	stream.chunkMtx.Lock()
 	if len(stream.chunks) < 1 {
 		// it's possible the stream has been flushed to storage
 		// in between starting the checkpointing process and
 		// checkpointing this stream.
+		// Unlock before recursing so empty streams don't stay
+		// exclusively locked while later streams are serialized.
+		stream.chunkMtx.Unlock()
 		return s.Next()
 	}
+	defer stream.chunkMtx.Unlock()
+
 	chunks, err := toWireChunks(stream.chunks, s.buffer)
 	if err != nil {
 		s.err = err

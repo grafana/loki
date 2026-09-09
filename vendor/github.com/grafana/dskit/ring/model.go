@@ -2,10 +2,12 @@ package ring
 
 import (
 	"fmt"
+	"maps"
 	"math"
 	"sort"
 	"sync"
 	"time"
+	"unsafe"
 
 	"github.com/gogo/protobuf/proto"
 
@@ -469,9 +471,21 @@ func (d *Desc) RemoveTombstones(limit time.Time) (total, removed int) {
 	return
 }
 
-// Clone returns a deep copy of the ring state.
+// Clone returns a copy of the ring state. The returned Desc and its Ingesters map are
+// safe to modify (entries can be added, removed or replaced), but reference-type fields
+// inside InstanceDesc (Tokens, Versions) share their underlying storage with the
+// original, so they must be treated as read-only.
+//
+// It's hand-written instead of using the reflection-based proto.Clone because it runs on
+// the memberlist hot path (once per watcher notification), where reflection is a
+// significant CPU cost on rings with thousands of instances. Sharing Tokens and Versions
+// storage is not a behavior change: gogo's proto.Clone shallow-copies non-nullable map
+// values, so it shared those fields too.
 func (d *Desc) Clone() memberlist.Mergeable {
-	return proto.Clone(d).(*Desc)
+	if d == nil {
+		return (*Desc)(nil)
+	}
+	return &Desc{Ingesters: maps.Clone(d.Ingesters)}
 }
 
 func (d *Desc) getTokensInfo() map[uint32]instanceInfo {
@@ -687,9 +701,17 @@ func (d *Desc) RingCompare(o *Desc) CompareResult {
 			return Different
 		}
 
-		for ix, t := range ing.Tokens {
-			if oing.Tokens[ix] != t {
-				return Different
+		// Consecutive ring states usually share the token slice storage for instances
+		// whose tokens didn't change: the memberlist KV store only replaces map entries
+		// of changed instances, and Desc clones share the Tokens backing arrays. When
+		// both slices point at the same storage, they are equal without comparing the
+		// elements. This is only a fast path: slices with different storage but equal
+		// content still compare as equal below.
+		if unsafe.SliceData(ing.Tokens) != unsafe.SliceData(oing.Tokens) {
+			for ix, t := range ing.Tokens {
+				if oing.Tokens[ix] != t {
+					return Different
+				}
 			}
 		}
 

@@ -520,6 +520,7 @@ func (b *RunEndEncodedBuilder) Unmarshal(dec *json.Decoder) error {
 // UnmarshalJSON can't be used in conjunction with AppendValueFromString (as it calls UnmarshalOne)
 func (b *RunEndEncodedBuilder) UnmarshalJSON(data []byte) error {
 	dec := json.NewDecoder(bytes.NewReader(data))
+	dec.UseNumber()
 	t, err := dec.Token()
 	if err != nil {
 		return err

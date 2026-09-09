@@ -37,6 +37,34 @@ The output is incredibly verbose as it shows the entire internal config struct u
 
 ## Main / Unreleased
 
+### `frontend.encoding` default changed to `protobuf`
+
+The default value of `-frontend.encoding` / `frontend.encoding` changed from `json` to `protobuf`. This only affects the internal request/response encoding between the query-frontend, query-scheduler, and querier. Client-facing APIs are unchanged, and no persisted state uses this setting, so no data migration is required.
+
+Schedulers and queriers already accept both encodings, so mixed frontends during a rolling upgrade are safe. To keep the previous behavior, set `frontend.encoding: json` explicitly.
+
+### LogQL rejects numeric, duration, bytes, and `ip()` comparisons against `__error__` and `__error_details__`
+
+A query such as `| __error__ > 0`, `| __error__ != 1s`, `| __error_details__ == 1MB`, or `| __error__ = ip("1.2.3.4")` now fails to parse. These two labels always hold a string (or are unset), so a numeric, duration, bytes, or IP comparison against them could never find a match; such a query used to parse successfully and then silently return no results. This also applies after `| unwrap`. Use a string comparison instead, for example `| __error__ != ""` or `| __error__=""`.
+
+### `frontend.compress_responses` default changed to `true`
+
+The default value of `frontend.compress_responses` changed to `true`. A bug in Loki 3.4.0 unintentionally switched it to `false`. If you don't want the query-frontend to compress HTTP responses, set `frontend.compress_responses` to `false` explicitly.
+
+### Breaking change: Removal of LogQL `variants()` queries
+
+The experimental `variants()` LogQL expression is no longer supported.
+
+The per-tenant setting `enable_multi_variant_queries` (`-limits.enable-multi-variant-queries`) that gated it has been removed. A leftover `enable_multi_variant_queries:` key in `limits_config` or in a runtime overrides file is ignored, so it does not block an upgrade, but you should remove it; the `deprecated-config-checker` tool will flag it. The `-limits.enable-multi-variant-queries` command line flag no longer exists and Loki fails to start if it is passed.
+
+### Optional chunk fetch error propagation
+
+`chunk_store_config.propagate_chunk_fetch_errors` setting returns chunk fetch errors instead of incomplete query results. The setting is disabled by default.
+
+### Breaking change: Removal of the `row_shards` schema setting
+
+The `row_shards` setting on a `schema_config` `period_config` has been removed. It configured a static query shard factor for legacy (non-TSDB) index types. TSDB, the only supported index type, resolves log and metric query sharding dynamically from index statistics and ignores `row_shards`; series queries continue to use the previous default factor of 16. Because schema config is parsed strictly, a leftover `row_shards:` key now fails config load. Remove the `row_shards` setting from every `period_config`; the `deprecated-config-checker` tool will flag it.
+
 ### TSDB schema v14
 
 Loki now supports the experimental TSDB storage schema `v14`. Schema v14 uses the
@@ -52,7 +80,7 @@ stopping new v14 writes first, because earlier binaries cannot read v14 indexes.
 
 ### Breaking change: Thanos storage clients are used by default
 
-The default value of `storage_config.use_thanos_objstore` changed from `false` to `true`, enabling the Thanos based object store clients by default if not otherwise explicitly specified.
+The default value of `storage_config.use_thanos_objstore` changed from `false` to `true`, enabling the Thanos-based object store clients by default if not otherwise explicitly specified.
 
 Please refer to [Migrate to Thanos storage clients](https://grafana.com/docs/loki/<LOKI_VERSION>/setup/migrate/migrate-storage-clients/) for how to migrate your configuration.
 
@@ -75,12 +103,30 @@ As a result, the following have been removed:
 
 ### Breaking change: Removal of various deprecated configuration options
 
+- The per-tenant ruler remote write settings have been removed in favor of `limits_config.ruler_remote_write_config`:
+  - `limits_config.ruler_remote_write_url`
+  - `limits_config.ruler_remote_write_timeout`
+  - `limits_config.ruler_remote_write_headers`
+  - `limits_config.ruler_remote_write_relabel_configs`
+  - `limits_config.ruler_remote_write_queue_capacity`
+  - `limits_config.ruler_remote_write_queue_min_shards`
+  - `limits_config.ruler_remote_write_queue_max_shards`
+  - `limits_config.ruler_remote_write_queue_max_samples_per_send`
+  - `limits_config.ruler_remote_write_queue_batch_send_deadline`
+  - `limits_config.ruler_remote_write_queue_min_backoff`
+  - `limits_config.ruler_remote_write_queue_max_backoff`
+  - `limits_config.ruler_remote_write_queue_retry_on_ratelimit`
+  - `limits_config.ruler_remote_write_sigv4_config`
 - The single remote-write `client` setting (`ruler.remote_write.client` in the yaml file) has been removed in favor of the `clients` map (`ruler.remote_write.clients`), which allows configuring one or more remote-write clients keyed by an id. When upgrading, move your existing `client` configuration under `clients` with a chosen key.
 - The settings `-limits.per-user-override-config` (`limits_config.per_tenant_override_config`) and `-limits.per-user-override-period` (`limits_config.per_tenant_override_period`) have been removed in favor of `-runtime-config.file` (`runtime_config.file`) and `-runtime-config.reload-period` (`runtime_config.period`) respectively.
 - The per-tenant setting `unordered_writes` has been removed. Loki now always allows unordered writes.
 - The setting `-store.index-cache-write` (`chunk_store_config.write_dedupe_cache_config` block in the yaml file) has been removed as it was only used for legacy storage backends that have been removed as well.
 - The setting `-store.index-cache-read` (`storage_config.index_queries_cache_config` block in the yaml file) has been removed as it was only used for legacy storage backends (`boltdb-shipper`) that have been removed as well.
 - The setting `-store.index-cache-validity` (`storage_config.index_cache_validity` block in the yaml file) has been removed as it was only used in combination with the removed `-store.index-cache-read` setting.
+- The setting `-store.cache-lookups-older-than` (`chunk_store_config.cache_lookups_older_than` in the yaml file) has been removed as it was only used to cache index entries for legacy storage backends that have been removed as well.
+- The setting `-store.disable-broad-index-queries` (`storage_config.disable_broad_index_queries` in the yaml file) has been removed as it was only used for legacy storage backends that have been removed as well.
+- The `chunks` block (`chunks:` under a `schema_config` `period_config` in the yaml file) has been removed as it only configured chunk tables for legacy storage backends that have been removed as well. TSDB stores chunks directly in object storage. Remove the `chunks` block from every `period_config`.
+- The `tags` setting (`tags:` under the `index` block of a `schema_config` `period_config` in the yaml file) has been removed as it only applied to managed tables of legacy storage backends that have been removed as well. Remove the `tags` setting from every `period_config`.
 
 Use the `deprecated-config-checker` tool to validate your `config.yaml`.
 
@@ -451,7 +497,7 @@ period_config:
 ```
 
 {{< admonition type="note" >}}
-`path_prefix` only applies to TSDB and BoltDB indexes. This setting has no effect on [legacy indexes](https://grafana.com/docs/loki/<LOKI_VERSION>/configure/storage/#index-storage).
+`path_prefix` only applies to TSDB and BoltDB indexes. This setting has no effect on legacy indexes.
 {{< /admonition >}}
 
 `path_prefix` defaults to `index/` which is same as the default value of the removed configurations.
@@ -574,7 +620,7 @@ All of these are cached to the `results_cache` which is configured in the `query
 #### Write dedupe cache is deprecated
 
 Write dedupe cache is deprecated because it not required by the newer single store indexes ([TSDB](https://grafana.com/docs/loki/<LOKI_VERSION>/operations/storage/tsdb/) and boltdb-shipper).
-If you using a [legacy index type](https://grafana.com/docs/loki/<LOKI_VERSION>/configure/storage/#index-storage), consider migrating to TSDB (recommended).
+If you are using a legacy index type, you must migrate to TSDB to use Loki 4.0.
 
 #### Embedded cache metric changes
 

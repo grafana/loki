@@ -52,7 +52,7 @@ func (t TransitionTable) AddMany(codes []byte, state State, action Action, next 
 // AddRange adds a range of transitions.
 func (t TransitionTable) AddRange(start, end byte, state State, action Action, next State) {
 	for i := int(start); i <= int(end); i++ {
-		t.AddOne(byte(i), state, action, next)
+		t.AddOne(byte(i), state, action, next) //nolint:gosec
 	}
 }
 
@@ -67,7 +67,7 @@ func (t TransitionTable) Transition(state State, code byte) (State, Action) {
 func r(start, end byte) []byte {
 	var a []byte
 	for i := int(start); i <= int(end); i++ {
-		a = append(a, byte(i))
+		a = append(a, byte(i)) //nolint:gosec
 	}
 	return a
 }

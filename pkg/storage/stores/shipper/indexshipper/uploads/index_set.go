@@ -153,6 +153,11 @@ func (t *indexSet) uploadIndex(ctx context.Context, idx index.Index) error {
 	if err != nil {
 		return err
 	}
+	defer func() {
+		if err := idxReader.Close(); err != nil {
+			level.Error(util_log.Logger).Log("msg", "failed to close index reader", "path", idxPath, "err", err)
+		}
+	}()
 
 	_, err = idxReader.Seek(0, 0)
 	if err != nil {

@@ -29,6 +29,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	iresolver "google.golang.org/grpc/internal/resolver"
 	"google.golang.org/grpc/internal/xds/httpfilter"
@@ -104,7 +105,7 @@ func (builder) IsTerminal() bool {
 	return false
 }
 
-func (builder) BuildClientFilter() httpfilter.ClientFilter {
+func (builder) BuildClientFilter(httpfilter.ClientFilterOptions) httpfilter.ClientFilter {
 	return clientFilter{}
 }
 
@@ -114,7 +115,7 @@ type clientFilter struct{}
 
 func (clientFilter) Close() {}
 
-func (clientFilter) BuildClientInterceptor(cfg, override httpfilter.FilterConfig) (iresolver.ClientInterceptor, error) {
+func (clientFilter) BuildClientInterceptor(cfg, override httpfilter.FilterConfig) (httpfilter.ClientInterceptor, error) {
 	if cfg == nil {
 		return nil, fmt.Errorf("fault: nil config provided")
 	}
@@ -147,12 +148,12 @@ type interceptor struct {
 
 var activeFaults uint32 // global active faults; accessed atomically
 
-func (i *interceptor) NewStream(ctx context.Context, _ iresolver.RPCInfo, done func(), newStream func(ctx context.Context, done func()) (iresolver.ClientStream, error)) (iresolver.ClientStream, error) {
+func (i *interceptor) NewStream(ctx context.Context, _ iresolver.RPCInfo, newStream func(ctx context.Context, opts ...grpc.CallOption) (grpc.ClientStream, error), opts ...grpc.CallOption) (grpc.ClientStream, error) {
 	if maxAF := i.config.GetMaxActiveFaults(); maxAF != nil {
 		defer atomic.AddUint32(&activeFaults, ^uint32(0)) // decrement counter
 		if af := atomic.AddUint32(&activeFaults, 1); af > maxAF.GetValue() {
 			// Would exceed maximum active fault limit.
-			return newStream(ctx, done)
+			return newStream(ctx, opts...)
 		}
 	}
 
@@ -166,7 +167,7 @@ func (i *interceptor) NewStream(ctx context.Context, _ iresolver.RPCInfo, done f
 		}
 		return nil, err
 	}
-	return newStream(ctx, done)
+	return newStream(ctx, opts...)
 }
 
 func (i *interceptor) Close() {}

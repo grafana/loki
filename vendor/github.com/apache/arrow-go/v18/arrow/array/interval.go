@@ -330,6 +330,7 @@ func (b *MonthIntervalBuilder) Unmarshal(dec *json.Decoder) error {
 // value that will be added to the builder.
 func (b *MonthIntervalBuilder) UnmarshalJSON(data []byte) error {
 	dec := json.NewDecoder(bytes.NewReader(data))
+	dec.UseNumber()
 	t, err := dec.Token()
 	if err != nil {
 		return err
@@ -631,6 +632,7 @@ func (b *DayTimeIntervalBuilder) Unmarshal(dec *json.Decoder) error {
 // with the values expected to be objects of the form {"days": #, "milliseconds": #}
 func (b *DayTimeIntervalBuilder) UnmarshalJSON(data []byte) error {
 	dec := json.NewDecoder(bytes.NewReader(data))
+	dec.UseNumber()
 	t, err := dec.Token()
 	if err != nil {
 		return err
@@ -936,6 +938,7 @@ func (b *MonthDayNanoIntervalBuilder) Unmarshal(dec *json.Decoder) error {
 // {"months": #, "days": #, "nanoseconds": #}
 func (b *MonthDayNanoIntervalBuilder) UnmarshalJSON(data []byte) error {
 	dec := json.NewDecoder(bytes.NewReader(data))
+	dec.UseNumber()
 	t, err := dec.Token()
 	if err != nil {
 		return err

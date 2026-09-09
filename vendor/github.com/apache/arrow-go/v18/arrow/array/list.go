@@ -112,6 +112,9 @@ func (a *List) GetOneForMarshal(i int) interface{} {
 	return json.RawMessage(v)
 }
 
+func (a *List) Validate() error     { return validateListArray(a, false) }
+func (a *List) ValidateFull() error { return validateListArray(a, true) }
+
 func (a *List) MarshalJSON() ([]byte, error) {
 	var buf bytes.Buffer
 	enc := json.NewEncoder(&buf)
@@ -243,6 +246,9 @@ func (a *LargeList) GetOneForMarshal(i int) interface{} {
 	}
 	return json.RawMessage(v)
 }
+
+func (a *LargeList) Validate() error     { return validateLargeListArray(a, false) }
+func (a *LargeList) ValidateFull() error { return validateLargeListArray(a, true) }
 
 func (a *LargeList) MarshalJSON() ([]byte, error) {
 	var buf bytes.Buffer
@@ -627,6 +633,7 @@ func (b *baseListBuilder) Unmarshal(dec *json.Decoder) error {
 
 func (b *baseListBuilder) UnmarshalJSON(data []byte) error {
 	dec := json.NewDecoder(bytes.NewReader(data))
+	dec.UseNumber()
 	t, err := dec.Token()
 	if err != nil {
 		return err
@@ -1415,6 +1422,7 @@ func (b *baseListViewBuilder) Unmarshal(dec *json.Decoder) error {
 
 func (b *baseListViewBuilder) UnmarshalJSON(data []byte) error {
 	dec := json.NewDecoder(bytes.NewReader(data))
+	dec.UseNumber()
 	t, err := dec.Token()
 	if err != nil {
 		return err

@@ -438,7 +438,7 @@ func buildLabelBloomSection(t *testing.T, labelsIn []labelPosting, bloomsIn []bl
 		}
 	}
 	for _, bp := range bloomsIn {
-		b.PrepareBloomColumn(bp.obj, bp.section, bp.columnName, 1000)
+		b.PrepareBloomColumn(bp.obj, bp.section, bp.columnName, 1000, 0)
 		for _, v := range bp.values {
 			require.NoError(t, b.ObserveBloomPosting(postings.BloomObservation{
 				ObjectPath: bp.obj, SectionIndex: bp.section, ColumnName: bp.columnName,

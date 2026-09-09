@@ -11,7 +11,7 @@ keywords:
 
 # Upgrade from the Loki Helm chart to the Community Helm chart
 
-The Loki Helm chart has moved from the [Loki repository](https://github.com/grafana/loki) to the [Grafana Community Helm Charts repository](https://github.com/grafana-community/helm-charts). Chart version 6.55.0 (appVersion 3.6.7) was the last release from the Loki repository. Chart version 18.4.4 (appVersion 3.7.3) is the current release from the community repository at the time this topic was published.
+The Loki Helm chart has moved from the [Loki repository](https://github.com/grafana/loki) to the [Grafana Community Helm Charts repository](https://github.com/grafana-community/helm-charts). Chart version 6.55.0 (appVersion 3.6.7) was the last release from the Loki repository. Chart version 18.7.6 (appVersion 3.7.6) is the current release from the community repository at the time this topic was published.
 
 This guide walks you through upgrading from 6.55.0 to the current community chart version, which spans twelve major chart versions (7 through 18), each with breaking changes.
 
@@ -53,13 +53,13 @@ New location for 7.x and later from the community repository:
 ```bash
 helm repo add grafana-community https://grafana-community.github.io/helm-charts
 helm repo update
-helm upgrade <RELEASE_NAME> grafana-community/loki -f values.yaml --version 18.4.4
+helm upgrade <RELEASE_NAME> grafana-community/loki -f values.yaml --version 18.7.6
 ```
 
 Or if you are using OCI for 7.x and later:
 
 ```bash
-helm upgrade <RELEASE_NAME> oci://ghcr.io/grafana-community/helm-charts/loki -f values.yaml --version 18.4.4
+helm upgrade <RELEASE_NAME> oci://ghcr.io/grafana-community/helm-charts/loki -f values.yaml --version 18.7.6
 ```
 
 ## Update your values file for breaking changes
@@ -561,6 +561,7 @@ Remove or rename the following keys in your values file:
 
 | Old value | Replacement |
 | --- | --- |
+| `ingester.updateStrategy` | `ingester.strategy` |
 | `clusterLabelOverride` | `monitoring.appInstanceLabelName` and `monitoring.appInstanceLabelValue` |
 | `monitoring.serviceMonitor.clusterLabel` | `monitoring.appInstanceLabelName` and `monitoring.appInstanceLabelValue` |
 | `monitoring.dashboards.namespace` | `monitoring.namespace` (now applies to all monitoring resources) |
@@ -603,6 +604,10 @@ global:
   imageRegistry: null
 ```
 
+{{< admonition type="note" >}}
+As of chart 18.3.0, `singleBinary.persistence.enableStatefulSetAutoDeletePVC` defaults to `false` (it defaulted to `true` before). Since you're upgrading straight to 18.7.6, your deployment starts on the new default: persistent volume claims (PVCs) for the single binary StatefulSet are retained, not automatically deleted, when the StatefulSet is deleted or scaled down. If you rely on the old auto-delete behavior, set `singleBinary.persistence.enableStatefulSetAutoDeletePVC: true` explicitly in your values file.
+{{< /admonition >}}
+
 ## Perform the upgrade
 
 After updating your values file, run the upgrade:
@@ -610,7 +615,7 @@ After updating your values file, run the upgrade:
 ```bash
 helm upgrade <RELEASE_NAME> grafana-community/loki \
   -f your-updated-values.yaml \
-  --version 18.4.4
+  --version 18.7.6
 ```
 
 Or using OCI:
@@ -618,7 +623,7 @@ Or using OCI:
 ```bash
 helm upgrade <RELEASE_NAME> oci://ghcr.io/grafana-community/helm-charts/loki \
   -f your-updated-values.yaml \
-  --version 18.4.4
+  --version 18.7.6
 ```
 
 ### Verify the upgrade

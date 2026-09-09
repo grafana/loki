@@ -11,11 +11,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/grafana/loki/v3/pkg/compression"
-	"github.com/grafana/loki/v3/pkg/storage/types"
-	"github.com/grafana/loki/v3/pkg/util"
-	"github.com/grafana/loki/v3/pkg/util/httpreq"
-
 	"github.com/go-kit/log"
 	"github.com/grafana/dskit/flagext"
 	"github.com/grafana/dskit/user"
@@ -26,6 +21,7 @@ import (
 	"github.com/grafana/loki/pkg/push"
 
 	"github.com/grafana/loki/v3/pkg/chunkenc"
+	"github.com/grafana/loki/v3/pkg/compression"
 	"github.com/grafana/loki/v3/pkg/ingester/client"
 	"github.com/grafana/loki/v3/pkg/iter"
 	"github.com/grafana/loki/v3/pkg/logproto"
@@ -35,11 +31,15 @@ import (
 	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/v3/pkg/querier/astmapper"
 	"github.com/grafana/loki/v3/pkg/querier/plan"
+	"github.com/grafana/loki/v3/pkg/querier/testutil"
 	"github.com/grafana/loki/v3/pkg/storage/chunk"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client/local"
 	"github.com/grafana/loki/v3/pkg/storage/config"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper"
+	"github.com/grafana/loki/v3/pkg/storage/types"
+	"github.com/grafana/loki/v3/pkg/util"
 	"github.com/grafana/loki/v3/pkg/util/constants"
+	"github.com/grafana/loki/v3/pkg/util/httpreq"
 	"github.com/grafana/loki/v3/pkg/util/marshal"
 	"github.com/grafana/loki/v3/pkg/validation"
 )
@@ -68,6 +68,7 @@ func getLocalStore(path string, cm ClientMetrics) Store {
 			ResyncInterval:         1 * time.Minute,
 			IngesterDBRetainPeriod: 1 * time.Minute,
 			IngesterName:           "ingester-1",
+			IndexReaderMode:        indexshipper.DefaultIndexReaderMode,
 			Mode:                   indexshipper.ModeReadWrite,
 		},
 		MaxChunkBatchSize: 10,
@@ -86,7 +87,6 @@ func getLocalStore(path string, cm ClientMetrics) Store {
 						Prefix: "index_",
 						Period: time.Hour * 24,
 					}},
-				RowShards: 16,
 			},
 		},
 	}
@@ -371,9 +371,7 @@ func Test_store_SelectLogs(t *testing.T) {
 				logger:       log.NewNopLogger(),
 			}
 
-			tt.req.Plan = &plan.QueryPlan{
-				AST: syntax.MustParseExpr(tt.req.Selector),
-			}
+			tt.req.Plan = testutil.MustPlan(tt.req.Selector)
 
 			ctx = user.InjectOrgID(context.Background(), "test-user")
 			it, err := s.SelectLogs(ctx, logql.SelectLogParams{QueryRequest: tt.req})
@@ -701,9 +699,7 @@ func Test_store_SelectSample(t *testing.T) {
 				chunkMetrics: NilMetrics,
 			}
 
-			tt.req.Plan = &plan.QueryPlan{
-				AST: syntax.MustParseExpr(tt.req.Selector),
-			}
+			tt.req.Plan = testutil.MustPlan(tt.req.Selector)
 
 			ctx = user.InjectOrgID(context.Background(), "test-user")
 			it, err := s.SelectSamples(ctx, logql.SelectSampleParams{SampleQueryRequest: tt.req})
@@ -998,12 +994,12 @@ func (p *mockStreamExtractor) BaseLabels() lokilog.LabelsResult {
 	return p.wrappedSP.BaseLabels()
 }
 
-func (p *mockStreamExtractor) Process(ts int64, line []byte, lbs labels.Labels) ([]lokilog.ExtractedSample, bool) {
+func (p *mockStreamExtractor) Process(ts int64, line []byte, lbs labels.Labels) (lokilog.ExtractedSample, bool) {
 	p.called++
 	return p.wrappedSP.Process(ts, line, lbs)
 }
 
-func (p *mockStreamExtractor) ProcessString(ts int64, line string, lbs labels.Labels) ([]lokilog.ExtractedSample, bool) {
+func (p *mockStreamExtractor) ProcessString(ts int64, line string, lbs labels.Labels) (lokilog.ExtractedSample, bool) {
 	p.called++
 	return p.wrappedSP.ProcessString(ts, line, lbs)
 }
@@ -1237,7 +1233,6 @@ func TestStore_indexPrefixChange(t *testing.T) {
 				Prefix: "index_tsdb_",
 				Period: time.Hour * 24,
 			}},
-		RowShards: 2,
 	}
 	schemaConfig.Configs = append(schemaConfig.Configs, periodConfig2)
 
@@ -1351,7 +1346,6 @@ func TestStore_MultiPeriod(t *testing.T) {
 						Prefix: "index_",
 						Period: time.Hour * 24,
 					}},
-				RowShards: 2,
 			}
 
 			schemaConfig := config.SchemaConfig{
@@ -1504,9 +1498,7 @@ func Test_OverlappingChunks(t *testing.T) {
 		Direction: logproto.BACKWARD,
 		Start:     time.Unix(0, 0),
 		End:       time.Unix(0, 10),
-		Plan: &plan.QueryPlan{
-			AST: syntax.MustParseExpr(`{foo="bar"}`),
-		},
+		Plan:      testutil.MustPlan(`{foo="bar"}`),
 	}})
 	if err != nil {
 		t.Errorf("store.SelectLogs() error = %v", err)
@@ -1625,9 +1617,7 @@ func Test_GetSeries(t *testing.T) {
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			if tt.req.Selector != "" {
-				tt.req.Plan = &plan.QueryPlan{
-					AST: syntax.MustParseExpr(tt.req.Selector),
-				}
+				tt.req.Plan = testutil.MustPlan(tt.req.Selector)
 			} else {
 				tt.req.Plan = &plan.QueryPlan{
 					AST: nil,
@@ -1676,7 +1666,6 @@ func TestStore_BoltdbTsdbSameIndexPrefix(t *testing.T) {
 						Prefix: "index_",
 						Period: time.Hour * 24,
 					}},
-				RowShards: 2,
 			},
 			{
 				From:       config.DayTime{Time: timeToModelTime(newStartDate)},
@@ -1816,7 +1805,6 @@ func TestStore_SyncStopInteraction(t *testing.T) {
 						Prefix: "index_",
 						Period: time.Hour * 24,
 					}},
-				RowShards: 2,
 			},
 			{
 				From:       config.DayTime{Time: timeToModelTime(newStartDate)},
@@ -1916,9 +1904,7 @@ func TestQueryReferencingStructuredMetadata(t *testing.T) {
 			Direction: logproto.FORWARD,
 			Start:     chkFrom,
 			End:       chkThrough.Add(time.Minute),
-			Plan: &plan.QueryPlan{
-				AST: syntax.MustParseExpr(stream),
-			},
+			Plan:      testutil.MustPlan(stream),
 		}})
 		require.NoError(t, err)
 
@@ -1993,9 +1979,7 @@ func TestQueryReferencingStructuredMetadata(t *testing.T) {
 					Direction: logproto.FORWARD,
 					Start:     chkFrom,
 					End:       chkThrough.Add(time.Minute),
-					Plan: &plan.QueryPlan{
-						AST: syntax.MustParseExpr(tc.query),
-					},
+					Plan:      testutil.MustPlan(tc.query),
 				}})
 				require.NoError(t, err)
 				numEntries := int64(0)

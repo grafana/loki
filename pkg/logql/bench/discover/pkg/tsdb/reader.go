@@ -29,7 +29,7 @@ func OpenAndInspectIndexes(paths []string) ([]IndexReaderResult, error) {
 }
 
 func openAndInspectIndex(path string) (result IndexReaderResult, err error) {
-	reader, err := tsdbindex.NewFileReader(path)
+	reader, err := tsdbindex.NewMmapFileReader(path)
 	if err != nil {
 		return IndexReaderResult{}, fmt.Errorf("open tsdb index %q: %w", path, err)
 	}
@@ -53,7 +53,7 @@ func openAndInspectIndex(path string) (result IndexReaderResult, err error) {
 
 	// Full index handle for structural discovery (ForSeries traversal).
 	// This stays open — the caller must close it via result.Index.Close().
-	idx, _, err := lokitsdb.NewTSDBIndexFromFile(path)
+	idx, _, err := lokitsdb.NewTSDBIndexFromFile(path, tsdbindex.MmapOptions{})
 	if err != nil {
 		return IndexReaderResult{}, fmt.Errorf("open TSDB index for discovery %q: %w", path, err)
 	}
