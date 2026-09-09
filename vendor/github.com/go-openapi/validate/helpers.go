@@ -42,6 +42,7 @@ const (
 	jsonRequired          = "required"
 	jsonRef               = "$ref"
 	jsonDefault           = "default"
+	jsonDiscriminator     = "discriminator"
 
 	jsonAllOf                = "allOf"
 	jsonAnyOf                = "anyOf"
@@ -50,12 +51,17 @@ const (
 	jsonAdditionalItems      = "additionalItems"
 	jsonAdditionalProperties = "additionalProperties"
 
-	swaggerPaths       = "paths"
-	swaggerDefinitions = "definitions"
-	swaggerResponses   = "responses"
-	swaggerParameters  = "parameters"
-	swaggerHeaders     = "headers"
-	swaggerOperationID = "operationId"
+	swaggerPaths            = "paths"
+	swaggerDefinitions      = "definitions"
+	swaggerResponses        = "responses"
+	swaggerParameters       = "parameters"
+	swaggerHeaders          = "headers"
+	swaggerOperationID      = "operationId"
+	swaggerSecurity         = "security"
+	swaggerCollectionFormat = "collectionFormat"
+
+	// securitySchemeOAuth2 is the only security scheme type whose requirements carry scopes.
+	securitySchemeOAuth2 = "oauth2"
 
 	jsonMimeApplicationJSON = "application/json"
 )

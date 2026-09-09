@@ -17,9 +17,9 @@ import (
 
 // ScopeLogs is a collection of logs from a LibraryInstrumentation.
 type ScopeLogs struct {
-	SchemaUrl  string
-	LogRecords []*LogRecord
 	Scope      InstrumentationScope
+	LogRecords []*LogRecord
+	SchemaUrl  string
 }
 
 var (

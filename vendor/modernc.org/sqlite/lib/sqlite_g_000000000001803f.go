@@ -158,6 +158,8 @@ const __FPCLASS_QNAN = 2
 
 const __FPCLASS_SNAN = 1
 
+const __GNUC_PATCHLEVEL__ = 1
+
 const __GNUC__ = 4
 
 const __GXX_ABI_VERSION = 1002
@@ -229,12 +231,6 @@ const __OPENCL_MEMORY_SCOPE_SUB_GROUP = 4
 const __OPENCL_MEMORY_SCOPE_WORK_GROUP = 1
 
 const __OPENCL_MEMORY_SCOPE_WORK_ITEM = 0
-
-const __STDC_EMBED_EMPTY__ = 2
-
-const __STDC_EMBED_FOUND__ = 1
-
-const __STDC_EMBED_NOT_FOUND__ = 0
 
 const __UINT16_FMTX__ = "hX"
 

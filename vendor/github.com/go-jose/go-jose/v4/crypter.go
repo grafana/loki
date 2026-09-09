@@ -258,6 +258,10 @@ func (ctx *genericEncrypter) addRecipient(recipient Recipient) (err error) {
 	}
 
 	recipientInfo, err = makeJWERecipient(recipient.Algorithm, recipient.Key)
+	if err != nil {
+		return err
+	}
+
 	if recipient.KeyID != "" {
 		recipientInfo.keyID = recipient.KeyID
 	}
@@ -270,10 +274,8 @@ func (ctx *genericEncrypter) addRecipient(recipient Recipient) (err error) {
 		}
 	}
 
-	if err == nil {
-		ctx.recipients = append(ctx.recipients, recipientInfo)
-	}
-	return err
+	ctx.recipients = append(ctx.recipients, recipientInfo)
+	return nil
 }
 
 func makeJWERecipient(alg KeyAlgorithm, encryptionKey interface{}) (recipientKeyInfo, error) {
@@ -490,21 +492,19 @@ func (obj JSONWebEncryption) Decrypt(decryptionKey interface{}) ([]byte, error) 
 	recipientHeaders := obj.mergedHeaders(&recipient)
 
 	cek, err := decrypter.decryptKey(recipientHeaders, &recipient, generator)
-	if err == nil {
-		// Found a valid CEK -- let's try to decrypt.
-		plaintext, err = cipher.decrypt(cek, authData, parts)
-	}
-
-	if plaintext == nil {
+	if err != nil {
 		return nil, ErrCryptoFailure
 	}
 
-	// The "zip" header parameter may only be present in the protected header.
-	if comp := obj.protected.getCompression(); comp != "" {
-		plaintext, err = decompress(comp, plaintext)
-		if err != nil {
-			return nil, fmt.Errorf("go-jose/go-jose: failed to decompress plaintext: %v", err)
-		}
+	// Found a valid CEK -- let's try to decrypt.
+	plaintext, err = cipher.decrypt(cek, authData, parts)
+	if err != nil {
+		return nil, ErrCryptoFailure
+	}
+
+	plaintext, err = obj.decompress(plaintext)
+	if err != nil {
+		return nil, err
 	}
 
 	return plaintext, nil
@@ -559,31 +559,38 @@ func (obj JSONWebEncryption) DecryptMulti(decryptionKey interface{}) (int, Heade
 	var plaintext []byte
 	var headers rawHeader
 
+	if len(obj.recipients) == 0 {
+		return -1, Header{}, nil, errors.New("go-jose/go-jose: no recipients")
+	}
+
+	// Loop sets `err` in the function scope; don't shadow it.
 	for i, recipient := range obj.recipients {
 		recipientHeaders := obj.mergedHeaders(&recipient)
 
-		cek, err := decrypter.decryptKey(recipientHeaders, &recipient, generator)
-		if err == nil {
-			// Found a valid CEK -- let's try to decrypt.
-			plaintext, err = cipher.decrypt(cek, authData, parts)
-			if err == nil {
-				index = i
-				headers = recipientHeaders
-				break
-			}
+		var cek []byte
+		cek, err = decrypter.decryptKey(recipientHeaders, &recipient, generator)
+		if err != nil {
+			continue
 		}
+
+		// Found a valid CEK -- let's try to decrypt.
+		plaintext, err = cipher.decrypt(cek, authData, parts)
+		if err != nil {
+			continue
+		}
+
+		index = i
+		headers = recipientHeaders
+		break
 	}
 
-	if plaintext == nil {
+	if err != nil {
 		return -1, Header{}, nil, ErrCryptoFailure
 	}
 
-	// The "zip" header parameter may only be present in the protected header.
-	if comp := obj.protected.getCompression(); comp != "" {
-		plaintext, err = decompress(comp, plaintext)
-		if err != nil {
-			return -1, Header{}, nil, fmt.Errorf("go-jose/go-jose: failed to decompress plaintext: %v", err)
-		}
+	plaintext, err = obj.decompress(plaintext)
+	if err != nil {
+		return -1, Header{}, nil, err
 	}
 
 	sanitized, err := headers.sanitized()
@@ -592,4 +599,23 @@ func (obj JSONWebEncryption) DecryptMulti(decryptionKey interface{}) (int, Heade
 	}
 
 	return index, sanitized, plaintext, err
+}
+
+// decompress decompresses plaintext using the protected "zip" header, if present.
+// It returns plaintext unchanged when there is no protected header or "zip" value.
+func (obj JSONWebEncryption) decompress(plaintext []byte) ([]byte, error) {
+	if obj.protected == nil {
+		return plaintext, nil
+	}
+
+	comp := obj.protected.getCompression()
+	if comp == "" {
+		return plaintext, nil
+	}
+
+	plaintext, err := decompress(comp, plaintext)
+	if err != nil {
+		return nil, fmt.Errorf("go-jose/go-jose: failed to decompress plaintext: %v", err)
+	}
+	return plaintext, nil
 }

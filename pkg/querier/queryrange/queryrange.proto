@@ -192,6 +192,16 @@ message CountMinSketchResponse {
   stats.Result statistics = 4 [(gogoproto.nullable) = false];
 }
 
+message CountDistinctSketchResponse {
+  logproto.CountDistinctSketchMatrix response = 1 [(gogoproto.customtype) = "github.com/grafana/loki/v3/pkg/logproto.CountDistinctSketchMatrix"];
+  repeated definitions.PrometheusResponseHeader Headers = 2 [
+    (gogoproto.jsontag) = "-",
+    (gogoproto.customtype) = "github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase/definitions.PrometheusResponseHeader"
+  ];
+  repeated string warnings = 3 [(gogoproto.jsontag) = "warnings,omitempty"];
+  stats.Result statistics = 4 [(gogoproto.nullable) = false];
+}
+
 message ShardsResponse {
   indexgatewaypb.ShardsResponse response = 1 [(gogoproto.customtype) = "github.com/grafana/loki/v3/pkg/logproto.ShardsResponse"];
   repeated definitions.PrometheusResponseHeader Headers = 2 [
@@ -239,6 +249,7 @@ message QueryResponse {
     QueryPatternsResponse patternsResponse = 12;
     DetectedLabelsResponse detectedLabels = 13;
     CountMinSketchResponse countMinSketches = 14;
+    CountDistinctSketchResponse countDistinctSketches = 15;
   }
 }
 

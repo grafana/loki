@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/go-kit/log"
+	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
 	"github.com/thanos-io/objstore"
 
@@ -81,9 +82,7 @@ func buildSourceLogObject(t *testing.T, bucket objstore.Bucket, path string, sor
 			SectionStripeMergeLimit:   2,
 			EstimatedCompressionRatio: 8,
 		},
-		DataobjSortOrder:     "timestamp-desc",
 		AppendOrderedEnabled: true,
-		DataobjUseSortSchema: len(sortSchema) > 0,
 	}
 
 	b, err := logsobj.NewBuilder(cfg, scratch.NewMemory(), logsobj.NewBuilderMetrics(), log.NewNopLogger(), sortSchemaOverrides(sortSchema))
@@ -103,7 +102,15 @@ func buildSourceLogObject(t *testing.T, bucket objstore.Bucket, path string, sor
 	require.NoError(t, err)
 	defer closer.Close()
 
-	require.NoError(t, uploadObjectToBucket(context.Background(), bucket, path, obj))
+	// Ingest CopyAndSorts after Flush so source objects are in StreamOrderKey
+	// order. Compaction only merges pre-sorted objects.
+	sorter, err := logsobj.NewBuilder(cfg, scratch.NewMemory(), logsobj.NewBuilderMetrics(), log.NewNopLogger(), sortSchemaOverrides(sortSchema))
+	require.NoError(t, err)
+	sorted, sortedCloser, err := sorter.CopyAndSort(context.Background(), obj)
+	require.NoError(t, err)
+	defer sortedCloser.Close()
+
+	require.NoError(t, uploadObjectToBucket(context.Background(), bucket, path, sorted))
 }
 
 func TestCollectLogSources_DedupsAndResolvesLabels(t *testing.T) {
@@ -263,8 +270,9 @@ type outputRecord struct {
 // extracts the embedded compacted log object paths, and loads each object from
 // the data bucket. Returns the streamID->app map and records for each object.
 func readCompactedObjectsFromIndex(ctx context.Context, t *testing.T, dataBucket objstore.Bucket, indexBucket objstore.Bucket, indexPath, tenant string) []struct {
-	streamApp map[int64]string
-	records   []outputRecord
+	streamApp    map[int64]string
+	streamLabels map[int64]labels.Labels
+	records      []outputRecord
 } {
 	t.Helper()
 
@@ -304,8 +312,9 @@ func readCompactedObjectsFromIndex(ctx context.Context, t *testing.T, dataBucket
 
 	// Now load each compacted log object from the data bucket
 	var out []struct {
-		streamApp map[int64]string
-		records   []outputRecord
+		streamApp    map[int64]string
+		streamLabels map[int64]labels.Labels
+		records      []outputRecord
 	}
 
 	for _, logPath := range logObjectPaths {
@@ -313,6 +322,7 @@ func readCompactedObjectsFromIndex(ctx context.Context, t *testing.T, dataBucket
 		require.NoError(t, err, "compacted log object must exist at %s", logPath)
 
 		streamApp := make(map[int64]string)
+		streamLabels := make(map[int64]labels.Labels)
 		for _, sec := range logObj.Sections().Filter(streams.CheckSection) {
 			if sec.Tenant != tenant {
 				continue
@@ -323,6 +333,7 @@ func readCompactedObjectsFromIndex(ctx context.Context, t *testing.T, dataBucket
 				s, err := res.Value()
 				require.NoError(t, err)
 				streamApp[s.ID] = s.Labels.Get("app")
+				streamLabels[s.ID] = s.Labels.Copy()
 			}
 		}
 
@@ -345,11 +356,54 @@ func readCompactedObjectsFromIndex(ctx context.Context, t *testing.T, dataBucket
 		}
 
 		out = append(out, struct {
-			streamApp map[int64]string
-			records   []outputRecord
-		}{streamApp: streamApp, records: records})
+			streamApp    map[int64]string
+			streamLabels map[int64]labels.Labels
+			records      []outputRecord
+		}{streamApp: streamApp, streamLabels: streamLabels, records: records})
 	}
 	return out
+}
+
+func TestBuildGlobalStreamTable_SameLabelsShareID(t *testing.T) {
+	sortSchema := []string{"label:app"}
+	ls := labels.FromStrings("app", "auth")
+	other := labels.FromStrings("app", "web")
+	sources := []*logSource{
+		{
+			path: "a",
+			streams: map[int64]streams.Stream{
+				2: {ID: 2, Labels: ls, ShardBucket: int64(streams.ShardBucket(ls))},
+				7: {ID: 7, Labels: other, ShardBucket: int64(streams.ShardBucket(other))},
+			},
+		},
+		{
+			path: "b",
+			streams: map[int64]streams.Stream{
+				5: {ID: 5, Labels: ls.Copy(), ShardBucket: int64(streams.ShardBucket(ls))},
+			},
+		},
+	}
+
+	table, err := buildGlobalStreamTable(sources, sortSchema)
+	require.NoError(t, err)
+
+	aID, err := table.Resolve(0, 2)
+	require.NoError(t, err)
+	bID, err := table.Resolve(1, 5)
+	require.NoError(t, err)
+	require.Equal(t, aID, bID, "same labels across objects must share one global ID")
+	aID2, err := table.Resolve(0, 7)
+	require.NoError(t, err)
+	require.NotEqual(t, aID, aID2)
+
+	count := table.Size()
+	require.Equal(t, count, 2)
+	for id := int64(2); id <= int64(count); id++ {
+		prev := table.ByID(id - 1)
+		curr := table.ByID(id)
+		require.Negative(t, logsobj.CompareStreamOrderKey(prev, curr),
+			"global stream IDs must increase in StreamOrderKey order")
+	}
 }
 
 func TestDoLogObjectMerge_MergesAndSplits(t *testing.T) {
@@ -417,12 +471,16 @@ func TestDoLogObjectMerge_MergesAndSplits(t *testing.T) {
 			distinctApps[app] = true
 		}
 
-		// Each object is schema-sorted by [app ASC, streamID ASC, timestamp DESC].
+		// Each object is sorted by [shard, schema, hash, streamID, timestamp DESC].
 		for i := 1; i < len(o.records); i++ {
 			prev, curr := o.records[i-1], o.records[i]
-			require.LessOrEqual(t, prev.app, curr.app, "apps must be non-decreasing within object %d", objIdx)
-			if prev.app == curr.app {
-				require.LessOrEqual(t, prev.streamID, curr.streamID, "streamIDs must be non-decreasing within an app")
+			prevKey, err := logsobj.NewStreamOrderKey(o.streamLabels[prev.streamID], sortSchema)
+			require.NoError(t, err)
+			currKey, err := logsobj.NewStreamOrderKey(o.streamLabels[curr.streamID], sortSchema)
+			require.NoError(t, err)
+			require.LessOrEqual(t, logsobj.CompareStreamOrderKey(prevKey, currKey), 0, "stream order must be non-decreasing within object %d", objIdx)
+			if logsobj.CompareStreamOrderKey(prevKey, currKey) == 0 {
+				require.LessOrEqual(t, prev.streamID, curr.streamID, "streamIDs must be non-decreasing within a stream-order group")
 				if prev.streamID == curr.streamID {
 					require.False(t, curr.ts.After(prev.ts), "timestamps must be non-increasing within a stream")
 				}
@@ -448,10 +506,9 @@ func TestDoLogObjectMerge_DeduplicatesConflictingSourceStreamOrder(t *testing.T)
 	early := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
 	late := early.Add(time.Hour)
 
-	// Both streams have the same schema key, but their local stream ID ordering is
-	// different between objects. The loser tree preserves those source-local
-	// orders; the output CopyAndSort pass must restore ordering after logsobj
-	// deduplicates the repeated full-label streams.
+	// Same schema key, different local stream ID order. Unique-label global IDs
+	// make the tree timestamp-merge each full-label stream instead of treating
+	// the two objects as distinct streams.
 	buildSourceLogObject(t, dataBucket, "objA", sortSchema, map[string][]testStream{
 		tenant: {
 			{labels: `{app="a",instance="1"}`, entries: linesAt(early, 1)},
@@ -497,6 +554,81 @@ func TestDoLogObjectMerge_DeduplicatesConflictingSourceStreamOrder(t *testing.T)
 		}
 	}
 	require.Equal(t, map[int64]int{1: 2, 2: 2}, counts)
+}
+
+func TestSortLayoutEqual_DetectsMismatchedComponents(t *testing.T) {
+	want := logs.SortLayout{
+		SchemaLabels: []string{"label:app"},
+		StreamOrder:  logs.StreamOrderStableHashV1,
+		ShardCount:   streams.ShardFactor,
+	}
+
+	tests := []struct {
+		name string
+		got  logs.SortLayout
+	}{
+		{
+			name: "schema labels",
+			got: logs.SortLayout{
+				SchemaLabels: []string{"label:cluster"},
+				StreamOrder:  logs.StreamOrderStableHashV1,
+				ShardCount:   streams.ShardFactor,
+			},
+		},
+		{
+			name: "stream order",
+			got: logs.SortLayout{
+				SchemaLabels: []string{"label:app"},
+				StreamOrder:  logs.StreamOrderUnspecified,
+				ShardCount:   streams.ShardFactor,
+			},
+		},
+		{
+			name: "shard count",
+			got: logs.SortLayout{
+				SchemaLabels: []string{"label:app"},
+				StreamOrder:  logs.StreamOrderStableHashV1,
+				ShardCount:   streams.ShardFactor / 2,
+			},
+		},
+	}
+
+	require.True(t, sortLayoutEqual(want, want), "identical layouts must match")
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			require.False(t, sortLayoutEqual(test.got, want))
+		})
+	}
+}
+
+func TestDoLogObjectMerge_NoopsOnSortLayoutMismatch(t *testing.T) {
+	ctx := context.Background()
+	dataBucket := objstore.NewInMemBucket()
+	indexBucket := objstore.NewInMemBucket()
+
+	const tenant = "T"
+	base := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+
+	buildSourceLogObject(t, dataBucket, "objA", []string{"label:cluster"}, map[string][]testStream{
+		tenant: {{labels: `{app="a",cluster="c"}`, entries: linesAt(base, 2)}},
+	})
+	buildSourceLogObject(t, dataBucket, "objB", []string{"label:app"}, map[string][]testStream{
+		tenant: {{labels: `{app="a"}`, entries: linesAt(base, 2)}},
+	})
+
+	c := newTestExecutorContext(t, indexBucket)
+	c.dataBucket = dataBucket
+	node := &physical.LogMerge{
+		Tenant:     tenant,
+		SortSchema: []string{"label:app"},
+		Runs: []*compactionv2pb.RunRef{
+			{Sections: []*compactionv2pb.SectionRef{{ObjectPath: "objA"}, {ObjectPath: "objB"}}},
+		},
+	}
+
+	arts, err := c.doLogObjectMerge(ctx, node)
+	require.NoError(t, err)
+	require.Empty(t, arts, "mismatched sort layout must no-op the whole task")
 }
 
 func TestDoLogObjectMerge_WritesIndexOverCompactedObjects(t *testing.T) {

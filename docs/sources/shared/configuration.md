@@ -1250,6 +1250,26 @@ kafka_config:
   # CLI flag: -kafka.producer-max-buffered-bytes
   [producer_max_buffered_bytes: <int> | default = 1073741824]
 
+  # The maximum number of Produce requests the producer can have in-flight per
+  # Kafka broker at any given time. The product of this value and
+  # -kafka.producer-linger should exceed the maximum Produce latency expected
+  # from the Kafka backend in steady state. If the backend takes longer than
+  # that to process a Produce request, the client will buffer data and stop
+  # issuing new Produce requests until some in-flight ones complete, which
+  # surfaces as added latency to callers.
+  # CLI flag: -kafka.producer-max-inflight-requests-per-broker
+  [producer_max_inflight_requests_per_broker: <int> | default = 20]
+
+  # How long the producer waits, buffering records for the same partition,
+  # before sending a Produce request. The product of this value and
+  # -kafka.producer-max-inflight-requests-per-broker should exceed the maximum
+  # Produce latency expected from the Kafka backend in steady state. If the
+  # backend takes longer than that to process a Produce request, the client will
+  # buffer data and stop issuing new Produce requests until some in-flight ones
+  # complete, which surfaces as added latency to callers.
+  # CLI flag: -kafka.producer-linger
+  [producer_linger: <duration> | default = 50ms]
+
   # The guaranteed maximum lag before a consumer is considered to have caught up
   # reading from a partition at startup, becomes ACTIVE in the hash ring and
   # passes the readiness check. Set -kafka.max-consumer-lag-at-startup to 0 to
@@ -3099,6 +3119,20 @@ retention_backoff_config:
 # CLI flag: -compactor.delete-max-interval
 [delete_max_interval: <duration> | default = 24h]
 
+# Do not fail processing of a delete request with a line filter when a chunk it
+# needs to rebuild is indexed but missing from the object storage. When enabled,
+# the missing chunk is skipped and its index entry is left as is for diagnosing
+# the issue. Chunks skipped this way are counted by the
+# loki_compactor_deletion_missing_chunks_total metric and logged with their
+# chunk IDs. This setting has no effect when horizontal_scaling_mode is not
+# disabled. CAUTION: enable this only as a temporary escape hatch to unblock
+# delete requests, and only after verifying against the object storage that the
+# chunks really are missing. If a chunk gets skipped while it is in fact still
+# present, the data it holds is left undeleted even though the delete request is
+# reported as processed.
+# CLI flag: -compactor.deletion-ignore-missing-chunks
+[deletion_ignore_missing_chunks: <boolean> | default = false]
+
 # Maximum number of tables to compact in parallel. While increasing this value,
 # please make sure compactor has enough disk space allocated to be able to store
 # and compact as many tables.
@@ -3439,10 +3473,6 @@ ring:
 # Number of workers to push batches to ingesters.
 # CLI flag: -distributor.push-worker-count
 [push_worker_count: <int> | default = 256]
-
-# The maximum size of a Push request.
-# CLI flag: -distributor.max-push-size-bytes
-[max_push_size_bytes: <int> | default = 2147483647]
 
 # The maximum number of inflight bytes at a time. 0 means disabled.
 # CLI flag: -distributor.max-inflight-bytes
@@ -4524,6 +4554,10 @@ The `limits_config` block configures global and per-tenant limits in Loki. The v
 # Identifier that is added at the end of a truncated log line.
 # CLI flag: -distributor.max-line-size-truncate-identifier
 [max_line_size_truncate_identifier: <string> | default = ""]
+
+# The maximum size of a Push request.
+# CLI flag: -distributor.max-push-size
+[max_push_size: <int> | default = 2GB]
 
 # Alter the log line timestamp during ingestion when the timestamp is the same
 # as the previous entry for the same stream. When enabled, if a log line in a

@@ -16,7 +16,7 @@ import (
 //
 // Validators build a location by appending tokens as they descend into
 // properties and array items, then render it only when they report an error.
-// Keeping the tokens apart until then is what makes it possible to produce a
+// Keeping the tokens apart until then makes it possible to produce a
 // valid [RFC 6901] JSON pointer: a token is escaped when it is rendered, and
 // the separator can never be confused with a token that contains one.
 //
