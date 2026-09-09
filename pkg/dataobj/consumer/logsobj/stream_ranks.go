@@ -29,7 +29,7 @@ func RankStreams(schemaLabels []string, sources ...map[int64]streams.Stream) (*S
 		labelsKey string
 	}
 
-	byLabels := make(map[string]*uniqStream)
+	byLabels := make(map[string]uniqStream)
 	var allRefs []localRef
 	for sourceIdx, src := range sources {
 		for localID, s := range src {
@@ -39,7 +39,7 @@ func RankStreams(schemaLabels []string, sources ...map[int64]streams.Stream) (*S
 			}
 			lk := s.Labels.String()
 			if _, ok := byLabels[lk]; !ok {
-				byLabels[lk] = &uniqStream{key: key, stream: s}
+				byLabels[lk] = uniqStream{key: key, stream: s}
 			}
 			allRefs = append(allRefs, localRef{sourceIdx: sourceIdx, localID: localID, labelsKey: lk})
 		}
@@ -47,7 +47,7 @@ func RankStreams(schemaLabels []string, sources ...map[int64]streams.Stream) (*S
 
 	unique := make([]uniqStream, 0, len(byLabels))
 	for _, u := range byLabels {
-		unique = append(unique, *u)
+		unique = append(unique, u)
 	}
 	slices.SortFunc(unique, func(a, b uniqStream) int {
 		return CompareStreamOrderKey(a.key, b.key)
@@ -65,8 +65,6 @@ func RankStreams(schemaLabels []string, sources ...map[int64]streams.Stream) (*S
 	for i, u := range unique {
 		id := int64(i + 1)
 		labelToID[u.stream.Labels.String()] = id
-		s := u.stream
-		s.ID = id
 		ranks.byNewID[id] = u.key
 	}
 	for _, r := range allRefs {
