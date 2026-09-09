@@ -239,12 +239,12 @@ func benchmarkReads(path string) (*benchStats, error) {
 
 	elapsed := time.Since(start)
 	fmt.Fprintf(os.Stderr, "  %s (%s): %d queries, %d I/Os, %.1f MB read, %s\n",
-		path, handle.version(), len(sampleTerms), counter.count, float64(counter.bytes)/1024/1024,
+		path, handle.version(), len(sampleTerms), counter.count.Load(), float64(counter.bytes.Load())/1024/1024,
 		elapsed.Round(time.Millisecond))
 
 	return &benchStats{
 		Label: path, Queries: len(sampleTerms),
-		TotalIOs: counter.count, TotalIOBytes: counter.bytes, Duration: elapsed,
+		TotalIOs: counter.count.Load(), TotalIOBytes: counter.bytes.Load(), Duration: elapsed,
 	}, nil
 }
 
