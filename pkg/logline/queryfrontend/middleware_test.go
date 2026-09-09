@@ -11,6 +11,10 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/grafana/dskit/user"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/common/model"
+	"github.com/stretchr/testify/require"
+
 	"github.com/grafana/loki/v3/pkg/loghttp"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
@@ -18,9 +22,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/querier/queryrange"
 	"github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase"
 	"github.com/grafana/loki/v3/pkg/util/httpreq"
-	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/common/model"
-	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/v3/pkg/logline/hintprovider"
 )
@@ -219,7 +220,7 @@ func buildStatsAwareQuerier(
 }
 
 func findLogLine(logs, contains string) string {
-	for _, line := range strings.Split(logs, "\n") {
+	for line := range strings.SplitSeq(logs, "\n") {
 		if strings.Contains(line, contains) {
 			return line
 		}
@@ -1946,7 +1947,7 @@ func TestEmptyLokiResponseMergesSafely(t *testing.T) {
 	}
 
 	empty := emptyLokiResponse(req)
-	real := &queryrange.LokiResponse{
+	realResp := &queryrange.LokiResponse{
 		Status:    "success",
 		Direction: logproto.FORWARD,
 		Limit:     100,
@@ -1965,7 +1966,7 @@ func TestEmptyLokiResponseMergesSafely(t *testing.T) {
 		},
 	}
 
-	merged, err := queryrange.DefaultCodec.MergeResponse(empty, real)
+	merged, err := queryrange.DefaultCodec.MergeResponse(empty, realResp)
 	require.NoError(t, err)
 
 	lokiMerged := merged.(*queryrange.LokiResponse)

@@ -6,12 +6,15 @@ import (
 	"fmt"
 	"math"
 	"sort"
-	"sync/atomic"
 	"time"
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/user"
+	"github.com/prometheus/common/model"
+	"github.com/zeebo/xxh3"
+	"go.uber.org/atomic"
+
 	"github.com/grafana/loki/v3/pkg/loghttp"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
@@ -21,8 +24,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/util/httpreq"
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
 	"github.com/grafana/loki/v3/pkg/util/querylimits"
-	"github.com/prometheus/common/model"
-	"github.com/zeebo/xxh3"
 
 	"github.com/grafana/loki/v3/pkg/logline/hintprovider"
 	"github.com/grafana/loki/v3/pkg/logline/verification"
@@ -92,12 +93,12 @@ type hintPrefetchResult struct {
 
 	// Per-query impact counters, updated from the filter layer and logged once
 	// after the full query pipeline finishes.
-	totalIntervals        int64
-	skippedIntervals      int64
-	narrowedIntervals     int64
-	passthroughIntervals  int64
-	originalDurationNanos int64
-	queryDurationNanos    int64
+	totalIntervals        atomic.Int64
+	skippedIntervals      atomic.Int64
+	narrowedIntervals     atomic.Int64
+	passthroughIntervals  atomic.Int64
+	originalDurationNanos atomic.Int64
+	queryDurationNanos    atomic.Int64
 }
 
 type hintImpactSnapshot struct {
@@ -122,29 +123,29 @@ func (r *hintPrefetchResult) recordSkipped(intervalDuration time.Duration) {
 	if r == nil {
 		return
 	}
-	atomic.AddInt64(&r.totalIntervals, 1)
-	atomic.AddInt64(&r.skippedIntervals, 1)
-	atomic.AddInt64(&r.originalDurationNanos, intervalDuration.Nanoseconds())
+	r.totalIntervals.Add(1)
+	r.skippedIntervals.Add(1)
+	r.originalDurationNanos.Add(intervalDuration.Nanoseconds())
 }
 
 func (r *hintPrefetchResult) recordNarrowed(originalDuration, queriedDuration time.Duration) {
 	if r == nil {
 		return
 	}
-	atomic.AddInt64(&r.totalIntervals, 1)
-	atomic.AddInt64(&r.narrowedIntervals, 1)
-	atomic.AddInt64(&r.originalDurationNanos, originalDuration.Nanoseconds())
-	atomic.AddInt64(&r.queryDurationNanos, queriedDuration.Nanoseconds())
+	r.totalIntervals.Add(1)
+	r.narrowedIntervals.Add(1)
+	r.originalDurationNanos.Add(originalDuration.Nanoseconds())
+	r.queryDurationNanos.Add(queriedDuration.Nanoseconds())
 }
 
 func (r *hintPrefetchResult) recordPassthrough(intervalDuration time.Duration) {
 	if r == nil {
 		return
 	}
-	atomic.AddInt64(&r.totalIntervals, 1)
-	atomic.AddInt64(&r.passthroughIntervals, 1)
-	atomic.AddInt64(&r.originalDurationNanos, intervalDuration.Nanoseconds())
-	atomic.AddInt64(&r.queryDurationNanos, intervalDuration.Nanoseconds())
+	r.totalIntervals.Add(1)
+	r.passthroughIntervals.Add(1)
+	r.originalDurationNanos.Add(intervalDuration.Nanoseconds())
+	r.queryDurationNanos.Add(intervalDuration.Nanoseconds())
 }
 
 func (r *hintPrefetchResult) impactSnapshot() hintImpactSnapshot {
@@ -152,8 +153,8 @@ func (r *hintPrefetchResult) impactSnapshot() hintImpactSnapshot {
 		return hintImpactSnapshot{}
 	}
 
-	originalNanos := atomic.LoadInt64(&r.originalDurationNanos)
-	queryNanos := atomic.LoadInt64(&r.queryDurationNanos)
+	originalNanos := r.originalDurationNanos.Load()
+	queryNanos := r.queryDurationNanos.Load()
 	ratio := 0.0
 	if originalNanos > 0 {
 		ratio = float64(originalNanos-queryNanos) / float64(originalNanos)
@@ -163,10 +164,10 @@ func (r *hintPrefetchResult) impactSnapshot() hintImpactSnapshot {
 	}
 
 	return hintImpactSnapshot{
-		totalIntervals:       atomic.LoadInt64(&r.totalIntervals),
-		skippedIntervals:     atomic.LoadInt64(&r.skippedIntervals),
-		narrowedIntervals:    atomic.LoadInt64(&r.narrowedIntervals),
-		passthroughIntervals: atomic.LoadInt64(&r.passthroughIntervals),
+		totalIntervals:       r.totalIntervals.Load(),
+		skippedIntervals:     r.skippedIntervals.Load(),
+		narrowedIntervals:    r.narrowedIntervals.Load(),
+		passthroughIntervals: r.passthroughIntervals.Load(),
 		originalDuration:     time.Duration(originalNanos),
 		queryDuration:        time.Duration(queryNanos),
 		timeReductionRatio:   ratio,
