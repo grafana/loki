@@ -111,6 +111,14 @@ func (s *statistic) Key() StatisticKey {
 	}
 }
 
+// Observation holds a value for a particular statistic. Observations are
+// created from statistics via Observe and then recorded into a Region using
+// [Region.Record].
+type Observation struct {
+	stat Statistic
+	val  value
+}
+
 // StatisticInt64 is a statistic for int64 values.
 type StatisticInt64 struct {
 	statistic
@@ -118,9 +126,9 @@ type StatisticInt64 struct {
 
 // Observe creates an observation with an int64 value.
 func (s *StatisticInt64) Observe(value int64) Observation {
-	return &observation{
+	return Observation{
 		stat: s,
-		val:  value,
+		val:  int64Value(value),
 	}
 }
 
@@ -131,9 +139,9 @@ type StatisticFloat64 struct {
 
 // Observe creates an observation with a float64 value.
 func (s *StatisticFloat64) Observe(value float64) Observation {
-	return &observation{
+	return Observation{
 		stat: s,
-		val:  value,
+		val:  float64Value(value),
 	}
 }
 
@@ -144,9 +152,9 @@ type StatisticFlag struct {
 
 // Observe creates an observation with a bool value.
 func (s *StatisticFlag) Observe(value bool) Observation {
-	return &observation{
+	return Observation{
 		stat: s,
-		val:  value,
+		val:  boolValue(value),
 	}
 }
 
