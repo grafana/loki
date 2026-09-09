@@ -367,9 +367,13 @@ func panicIfInvalidFormat(chunkFmt byte, head HeadBlockFmt) {
 
 // NewMemChunk returns a new in-mem chunk.
 func newMemChunkWithFormat(format byte, enc compression.Codec, head HeadBlockFmt, blockSize, targetSize int) *MemChunk {
+	return newMemChunkWithSymbolizer(format, enc, head, blockSize, targetSize, newSymbolizer())
+}
+
+// newMemChunkWithSymbolizer builds a chunk around an existing symbolizer.
+func newMemChunkWithSymbolizer(format byte, enc compression.Codec, head HeadBlockFmt, blockSize, targetSize int, symbolizer *symbolizer) *MemChunk {
 	panicIfInvalidFormat(format, head)
 
-	symbolizer := newSymbolizer()
 	return &MemChunk{
 		blockSize:  blockSize,  // The blockSize in bytes.
 		targetSize: targetSize, // Desired chunk size in compressed bytes
@@ -1157,7 +1161,16 @@ func (c *MemChunk) Blocks(mintT, maxtT time.Time) []Block {
 // Filter.Func would be called for each log entry, and the ones for which it returns true would be removed.
 // The new chunk would have data in the same order as the original chunk.
 func (c *MemChunk) Rewrite(filter filter.Func) (Chunk, error) {
-	newChunk := NewMemChunk(c.format, c.Encoding(), c.headFmt, math.MaxInt, math.MaxInt)
+	// Blocks cite symbols by position and unchanged ones are copied over as they
+	// are, so the new table has to number those strings identically. Symbols the
+	// removed entries leave behind are blanked below, not dropped, which would
+	// renumber everything after them.
+	cloned := c.symbolizer.clone()
+	newChunk := newMemChunkWithSymbolizer(c.format, c.Encoding(), c.headFmt, math.MaxInt, math.MaxInt, cloned)
+
+	// Positions any surviving entry still cites, in any block.
+	usedSymbols := make([]bool, len(cloned.labels))
+	var rewritten []logproto.LabelAdapter
 
 	// iterate through the entries block-by-block to avoid re-encoding unchanged blocks
 	for _, b := range c.blocks {
@@ -1171,10 +1184,13 @@ func (c *MemChunk) Rewrite(filter filter.Func) (Chunk, error) {
 				entriesRemoved = true
 				continue
 			}
+
+			rewritten = c.retainSymbols(itr.currSymbols(), usedSymbols, rewritten[:0])
+
 			entry := logproto.Entry{
 				Timestamp:          timestamp,
 				Line:               line,
-				StructuredMetadata: logproto.FromLabelsToLabelAdapters(itr.currStructuredMetadata),
+				StructuredMetadata: rewritten,
 			}
 			if _, err := newChunk.Append(&entry); err != nil {
 				return nil, err
@@ -1202,11 +1218,52 @@ func (c *MemChunk) Rewrite(filter filter.Func) (Chunk, error) {
 		return nil, chunk.ErrRewriteNoDataLeft
 	}
 
+	// One of the side effects of the bug, which copied unmodified blocks as is
+	// without accounting for updates in symbol tables due to the removal of symbols,
+	// is that it could leave entries pointing to non-existent symbols.
+	// Re-encoding a position the table does not hold resolves it to the empty
+	// string, which add() files as a new symbol.
+	// Only a position past the end can be that symbol: every other
+	// string re-encoded already had one. Growth beyond it stays unaccounted for
+	// so retainOnly rejects it rather than blank something still cited.
+	if pos, ok := newChunk.symbolizer.positionOf(""); ok && int(pos) == len(usedSymbols) {
+		usedSymbols = append(usedSymbols, true)
+	}
+
+	// Erase(set to empty string) what only the removed entries cited.
+	if err := newChunk.symbolizer.retainOnly(usedSymbols); err != nil {
+		return nil, err
+	}
+
 	if err := newChunk.Close(); err != nil {
 		return nil, err
 	}
 
 	return newChunk, nil
+}
+
+// retainSymbols marks the positions an entry cites and appends its metadata to
+// dst, resolved from the strings as stored -- not as reads return them, since
+// reads normalize names and re-encoding those would file a second copy of each
+// while the copied blocks carry on citing the stored one. A position the table
+// does not hold resolves to the empty string, and has nothing to mark.
+func (c *MemChunk) retainSymbols(syms symbols, usedSymbols []bool, dst []logproto.LabelAdapter) []logproto.LabelAdapter {
+	for _, sym := range syms {
+		// uint32 because int() turns a position past 2^31 negative on 32 bit.
+		if sym.Name < uint32(len(usedSymbols)) {
+			usedSymbols[sym.Name] = true
+		}
+		if sym.Value < uint32(len(usedSymbols)) {
+			usedSymbols[sym.Value] = true
+		}
+
+		dst = append(dst, logproto.LabelAdapter{
+			Name:  c.symbolizer.lookup(sym.Name),
+			Value: c.symbolizer.lookup(sym.Value),
+		})
+	}
+
+	return dst
 }
 
 // encBlock is an internal wrapper for a block, mainly to avoid binding an encoding in a block itself.
@@ -1471,6 +1528,17 @@ func (si *bufferedIterator) Next() bool {
 	si.currLine = line
 	si.currStructuredMetadata = structuredMetadata
 	return true
+}
+
+// currSymbols returns the symbol positions the current entry was encoded with,
+// as opposed to the strings they resolve to. Only valid until the next call to
+// Next, which reuses the buffer, and empty for formats without structured
+// metadata.
+func (si *bufferedIterator) currSymbols() symbols {
+	if si.format < ChunkFormatV4 {
+		return nil
+	}
+	return si.symbolsBuf
 }
 
 // moveNext moves the buffer to the next entry
