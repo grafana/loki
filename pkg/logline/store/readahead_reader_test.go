@@ -69,6 +69,7 @@ func TestReadAheadReaderAt_BufferMiss(t *testing.T) {
 	buf := make([]byte, 10)
 	n, err := r.ReadAt(buf, 0)
 	require.NoError(t, err)
+	require.Equal(t, 10, n)
 	require.Equal(t, data[:10], buf)
 
 	// Read at offset 200 → miss, fills [200, 300).

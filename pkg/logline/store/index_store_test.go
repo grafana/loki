@@ -313,7 +313,7 @@ func TestConfig_Validate_MinDate_InvalidFormat(t *testing.T) {
 	require.Contains(t, err.Error(), "min_date must be YYYY-MM-DD")
 }
 
-func TestConfig_RegisterFlags_Smoke(t *testing.T) {
+func TestConfig_RegisterFlags_Smoke(_ *testing.T) {
 	cfg := Config{}
 	fs := flag.NewFlagSet("test", flag.ContinueOnError)
 	// should not panic
@@ -691,7 +691,7 @@ func TestStore_PutIndexStreaming_UploadEarlyReturnDoesNotHang(t *testing.T) {
 	}
 
 	// meta.json must not be written when the index upload failed.
-	exists, err := bucket.Bucket.Exists(context.Background(), meta.MetaPath())
+	exists, err := bucket.Exists(context.Background(), meta.MetaPath())
 	require.NoError(t, err)
 	require.False(t, exists, "meta.json must not be written when the upload fails")
 }
@@ -1315,7 +1315,7 @@ func TestStore_StartPolling_UpdatesSnapshot(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	s.StartPolling(ctx)
+	require.NoError(t, s.StartPolling(ctx))
 
 	now := time.Now().UTC()
 	meta := Meta{
@@ -1926,8 +1926,9 @@ func TestStore_StartPolling_LogsInitialPollError(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	// Should not panic — errors are logged and continue
-	s.StartPolling(ctx)
+	// The initial poll fails and the error is surfaced to the caller rather than
+	// panicking or blocking.
+	require.Error(t, s.StartPolling(ctx))
 	time.Sleep(20 * time.Millisecond)
 }
 
@@ -1936,7 +1937,7 @@ func TestStore_StartPolling_CancelStopsGoroutine(t *testing.T) {
 	s := newTestStore(t, bucket)
 
 	ctx, cancel := context.WithCancel(context.Background())
-	s.StartPolling(ctx)
+	require.NoError(t, s.StartPolling(ctx))
 
 	// Cancel and give the goroutine time to stop
 	cancel()

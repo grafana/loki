@@ -146,14 +146,10 @@ func TestMurmur3Mix_ChiSquaredUniformity(t *testing.T) {
 		chiSq, criticalValue, shardCount-1)
 
 	// Log the actual skew for visibility.
-	min, max := math.MaxFloat64, 0.0
+	lowest, highest := math.MaxFloat64, 0.0
 	for _, c := range counts {
-		if c < min {
-			min = c
-		}
-		if c > max {
-			max = c
-		}
+		lowest = math.Min(lowest, c)
+		highest = math.Max(highest, c)
 	}
-	t.Logf("chi-squared=%.2f, min=%d, max=%d, skew=%.3fx", chiSq, int(min), int(max), max/min)
+	t.Logf("chi-squared=%.2f, min=%d, max=%d, skew=%.3fx", chiSq, int(lowest), int(highest), highest/lowest)
 }
