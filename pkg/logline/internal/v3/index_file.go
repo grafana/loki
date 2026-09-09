@@ -12,8 +12,9 @@ import (
 	"time"
 
 	"github.com/RoaringBitmap/roaring"
-	"github.com/grafana/loki/v3/pkg/logline/format"
 	"github.com/klauspost/compress/zstd"
+
+	"github.com/grafana/loki/v3/pkg/logline/format"
 )
 
 const (

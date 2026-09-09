@@ -7,8 +7,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	"github.com/prometheus/common/model"
+
+	"github.com/grafana/loki/v3/pkg/logql/syntax"
 )
 
 // ErrUnsupported is returned when the query shape cannot be handled by the

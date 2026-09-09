@@ -5,8 +5,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/grafana/loki/v3/pkg/logline/store"
 	"github.com/stretchr/testify/require"
+
+	"github.com/grafana/loki/v3/pkg/logline/store"
 )
 
 func TestFilterNgramsForShard_Unsharded(t *testing.T) {

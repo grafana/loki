@@ -12,11 +12,12 @@ import (
 
 	"github.com/RoaringBitmap/roaring"
 	"github.com/go-kit/log"
-	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/require"
 	"github.com/thanos-io/objstore"
+
+	"github.com/grafana/loki/v3/pkg/logql/syntax"
 
 	"github.com/grafana/loki/v3/pkg/logline"
 	"github.com/grafana/loki/v3/pkg/logline/format"

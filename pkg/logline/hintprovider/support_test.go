@@ -3,8 +3,9 @@ package hintprovider
 import (
 	"testing"
 
-	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	"github.com/stretchr/testify/require"
+
+	"github.com/grafana/loki/v3/pkg/logql/syntax"
 )
 
 func TestSupportedQuery(t *testing.T) {
