@@ -68,6 +68,11 @@ var (
 		Name:      "ingester_memory_streams",
 		Help:      "The total number of streams in memory per tenant.",
 	}, []string{"tenant"})
+	memoryShardedStreams = promauto.NewGaugeVec(prometheus.GaugeOpts{
+		Namespace: constants.Loki,
+		Name:      "ingester_memory_sharded_streams",
+		Help:      "The total number of streams in memory per tenant that are shards of a stream, meaning they carry the " + ShardLbName + " label. This is a subset of " + constants.Loki + "_ingester_memory_streams.",
+	}, []string{"tenant"})
 	memoryStreamsLabelsBytes = promauto.NewGauge(prometheus.GaugeOpts{
 		Namespace: constants.Loki,
 		Name:      "ingester_memory_streams_labels_bytes",
@@ -356,6 +361,9 @@ func (i *instance) onStreamCreationError(ctx context.Context, pushReqStream logp
 
 func (i *instance) onStreamCreated(s *stream) {
 	memoryStreams.WithLabelValues(i.instanceID).Inc()
+	if s.labels.Has(ShardLbName) {
+		memoryShardedStreams.WithLabelValues(i.instanceID).Inc()
+	}
 	memoryStreamsLabelsBytes.Add(float64(len(s.labels.String())))
 	i.streamsCreatedTotal.Inc()
 	i.addTailersToNewStream(s)
@@ -427,6 +435,9 @@ func (i *instance) removeStream(s *stream) {
 		i.index.Delete(s.labels, s.fp)
 		i.streamsRemovedTotal.Inc()
 		memoryStreams.WithLabelValues(i.instanceID).Dec()
+		if s.labels.Has(ShardLbName) {
+			memoryShardedStreams.WithLabelValues(i.instanceID).Dec()
+		}
 		memoryStreamsLabelsBytes.Sub(float64(len(s.labels.String())))
 		streamsCountStats.Add(-1)
 		i.ownedStreamsSvc.trackRemovedStream(s.fp, s.policy)

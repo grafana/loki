@@ -14,6 +14,7 @@ import (
 	"github.com/grafana/dskit/flagext"
 	"github.com/grafana/dskit/tenant"
 	"github.com/grafana/dskit/user"
+	promtestutil "github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
@@ -1585,6 +1586,42 @@ func TestInstance_LabelsWithValues(t *testing.T) {
 		require.NoError(t, err)
 		require.Equal(t, map[string]UniqueValues{}, res)
 	})
+}
+
+func TestMemoryShardedStreamsMetric(t *testing.T) {
+	limits, err := validation.NewOverrides(defaultLimitsTestConfig(), nil)
+	require.NoError(t, err)
+	limiter := NewLimiter(limits, NilMetrics, newIngesterRingLimiterStrategy(&ringCountMock{count: 1}, 1), &TenantBasedStrategy{limits: limits})
+	tenantsRetention := retention.NewTenantsRetention(limits)
+
+	tenantID := "memory-sharded-streams"
+	inst, err := newInstance(defaultConfig(), defaultPeriodConfigs, tenantID, limiter, loki_runtime.DefaultTenantConfigs(), noopWAL{}, NilMetrics, &OnceSwitch{}, nil, nil, nil, NewStreamRateCalculator(), nil, nil, tenantsRetention)
+	require.NoError(t, err)
+
+	t.Cleanup(func() {
+		memoryStreams.DeleteLabelValues(tenantID)
+		memoryShardedStreams.DeleteLabelValues(tenantID)
+	})
+
+	now := time.Now().Add(-5 * time.Minute)
+	require.NoError(t, inst.Push(context.Background(), &logproto.PushRequest{Streams: []logproto.Stream{
+		{Labels: `{app="foo"}`, Entries: entries(1, now)},
+		{Labels: `{__stream_shard__="0", app="bar"}`, Entries: entries(1, now)},
+		{Labels: `{__stream_shard__="1", app="bar"}`, Entries: entries(1, now)},
+	}}))
+
+	require.Equal(t, 3.0, promtestutil.ToFloat64(memoryStreams.WithLabelValues(tenantID)))
+	require.Equal(t, 2.0, promtestutil.ToFloat64(memoryShardedStreams.WithLabelValues(tenantID)))
+
+	require.NoError(t, inst.streams.ForEach(func(s *stream) (bool, error) {
+		if s.labels.Has(ShardLbName) {
+			inst.removeStream(s)
+		}
+		return true, nil
+	}))
+
+	require.Equal(t, 1.0, promtestutil.ToFloat64(memoryStreams.WithLabelValues(tenantID)))
+	require.Equal(t, 0.0, promtestutil.ToFloat64(memoryShardedStreams.WithLabelValues(tenantID)))
 }
 
 type fakeQueryServer func(*logproto.QueryResponse) error
