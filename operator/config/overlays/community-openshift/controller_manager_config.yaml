@@ -30,8 +30,9 @@ featureGates:
     caRefresh: 35064h
     # Target certificate validity: 90d
     certValidity: 2160h
-    # Target certificate refresh at 80% of validity
-    certRefresh: 1728h
+    # Refresh at 55d (35 days remaining) to avoid tripping the OpenShift
+    # expiry alert for certs with less than 30 days remaining.
+    certRefresh: 1320h
   #
   # Component feature gates
   #
