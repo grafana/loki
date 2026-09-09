@@ -606,16 +606,7 @@ func (r *IndexReader) query(term string) ([]uint32, error) {
 	return res.Roaring.ToArray(), nil
 }
 
-func (r *IndexReader) getDocument(id uint32) *format.DocumentMetadata {
-	// docs is sorted ascending by ID (encodeDocumentMetadata sorts before writing).
-	i := sort.Search(len(r.docs), func(i int) bool { return r.docs[i].ID >= id })
-	if i < len(r.docs) && r.docs[i].ID == id {
-		return &r.docs[i]
-	}
-	return nil
-}
-
-func (r *IndexReader) ClassifyRead(offset, length int64) format.ReadSection {
+func (r *IndexReader) ClassifyRead(offset, _ int64) format.ReadSection {
 	switch {
 	case offset >= r.layout.headerStart && offset < r.layout.headerEnd:
 		return format.ReadSectionHeader

@@ -175,11 +175,10 @@ func mergeIndexes(ctx context.Context, w mergeWriter, allDocs []format.DocumentM
 			}
 		}
 		termCount++
-		minIdx := active[0]
-		minTerm := iterators[minIdx].Term()
+		// Only the term is needed below, not the iterator that owns it.
+		minTerm := iterators[active[0]].Term()
 		for _, idx := range active[1:] {
 			if compareTerm8(iterators[idx].Term(), minTerm) < 0 {
-				minIdx = idx
 				minTerm = iterators[idx].Term()
 			}
 		}

@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"io"
 
-	v3 "github.com/grafana/loki/v3/pkg/logline/internal/v3"
 	"github.com/grafana/loki/v3/pkg/logline/format"
+	v3 "github.com/grafana/loki/v3/pkg/logline/internal/v3"
 )
 
 // CurrentVersion is the canonical name for the current index format.

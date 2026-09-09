@@ -55,7 +55,7 @@ func TestMergeSentinelPropagation(t *testing.T) {
 	outputPath := filepath.Join(dir, "merged.lidx")
 	out, err := os.Create(outputPath)
 	require.NoError(t, err)
-	_, err = mergeFilesTo(t, context.Background(), []string{pathA, pathB}, out, cfg)
+	_, err = mergeFilesTo(context.Background(), t, []string{pathA, pathB}, out, cfg)
 	require.NoError(t, err)
 	require.NoError(t, out.Close())
 
@@ -107,7 +107,7 @@ func TestMergeBothSentinel(t *testing.T) {
 	outputPath := filepath.Join(dir, "merged.lidx")
 	out, err := os.Create(outputPath)
 	require.NoError(t, err)
-	_, err = mergeFilesTo(t, context.Background(), []string{pathA, pathB}, out, cfg)
+	_, err = mergeFilesTo(context.Background(), t, []string{pathA, pathB}, out, cfg)
 	require.NoError(t, err)
 	require.NoError(t, out.Close())
 

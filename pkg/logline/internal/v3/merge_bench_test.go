@@ -60,7 +60,7 @@ func benchmarkMerge(b *testing.B, inputs []string, totalBytes int64) {
 		if err != nil {
 			b.Fatal(err)
 		}
-		_, mergeErr := mergeFilesTo(b, context.Background(), inputs, f, cfg)
+		_, mergeErr := mergeFilesTo(context.Background(), b, inputs, f, cfg)
 		closeErr := f.Close()
 		if mergeErr != nil {
 			b.Fatal(mergeErr)

@@ -28,7 +28,7 @@ type docTimeKey struct {
 
 func TestWriter_MinimalRoundTrip(t *testing.T) {
 	for _, version := range AllVersions() {
-		version := version
+
 		t.Run(version, func(t *testing.T) {
 			source := testIndexSource{
 				docs: []format.DocumentMetadata{{ID: 0, MinTimeUnix: 100, MaxTimeUnix: 200}},
@@ -47,7 +47,7 @@ func TestWriter_MinimalRoundTrip(t *testing.T) {
 
 func TestWriter_BasicRoundTrip(t *testing.T) {
 	for _, version := range AllVersions() {
-		version := version
+
 		t.Run(version, func(t *testing.T) {
 			source := testIndexSource{
 				docs: []format.DocumentMetadata{
@@ -80,7 +80,7 @@ func TestWriter_BasicRoundTrip(t *testing.T) {
 
 func TestWriter_DocMetadataPreserved(t *testing.T) {
 	for _, version := range AllVersions() {
-		version := version
+
 		t.Run(version, func(t *testing.T) {
 			source := testIndexSource{
 				docs: []format.DocumentMetadata{
@@ -113,7 +113,7 @@ func TestWriter_DocMetadataPreserved(t *testing.T) {
 
 func TestWriter_EmptyIndex(t *testing.T) {
 	for _, version := range AllVersions() {
-		version := version
+
 		t.Run(version, func(t *testing.T) {
 			path, header := writeIndex(t, version, nil, nil)
 
@@ -132,7 +132,7 @@ func TestWriter_EmptyIndex(t *testing.T) {
 
 func TestWriter_TermOrderingEnforced(t *testing.T) {
 	for _, version := range AllVersions() {
-		version := version
+
 		t.Run(version, func(t *testing.T) {
 			path := filepath.Join(t.TempDir(), "ordering.lidx")
 			writer, err := NewWriter(version, path, []format.DocumentMetadata{{ID: 0}, {ID: 1}}, nil)
@@ -161,7 +161,7 @@ func TestWriter_TermOrderingEnforced(t *testing.T) {
 
 func TestWriter_FailedWriteNoPartialFile(t *testing.T) {
 	for _, version := range AllVersions() {
-		version := version
+
 		t.Run(version, func(t *testing.T) {
 			path := filepath.Join(t.TempDir(), "partial.lidx")
 			writer, err := NewWriter(version, path, []format.DocumentMetadata{{ID: 0}, {ID: 1}}, nil)
@@ -194,7 +194,7 @@ func TestWriter_FailedWriteNoPartialFile(t *testing.T) {
 
 func TestWriter_LargeBitmapRoundTrip(t *testing.T) {
 	for _, version := range AllVersions() {
-		version := version
+
 		t.Run(version, func(t *testing.T) {
 			const docCount = 10000
 
@@ -225,7 +225,7 @@ func TestWriter_LargeBitmapRoundTrip(t *testing.T) {
 
 func TestWriter_LargeTermSetRoundTrip(t *testing.T) {
 	for _, version := range AllVersions() {
-		version := version
+
 		t.Run(version, func(t *testing.T) {
 			const (
 				docCount  = 128
@@ -268,7 +268,7 @@ func TestWriter_LargeTermSetRoundTrip(t *testing.T) {
 
 func TestReader_OpenAndCachedReopenMatch(t *testing.T) {
 	for _, version := range AllVersions() {
-		version := version
+
 		t.Run(version, func(t *testing.T) {
 			source := testIndexSource{
 				docs: []format.DocumentMetadata{
@@ -302,7 +302,7 @@ func TestReader_OpenAndCachedReopenMatch(t *testing.T) {
 
 func TestReader_CloseIsIdempotent(t *testing.T) {
 	for _, version := range AllVersions() {
-		version := version
+
 		t.Run(version, func(t *testing.T) {
 			source := testIndexSource{
 				docs:  []format.DocumentMetadata{{ID: 0, MinTimeUnix: 1, MaxTimeUnix: 2}},
@@ -321,7 +321,7 @@ func TestReader_CloseIsIdempotent(t *testing.T) {
 
 func TestReader_FindTerm_Miss(t *testing.T) {
 	for _, version := range AllVersions() {
-		version := version
+
 		t.Run(version, func(t *testing.T) {
 			source := testIndexSource{
 				docs: []format.DocumentMetadata{
@@ -351,7 +351,7 @@ func TestReader_FindTerm_Miss(t *testing.T) {
 
 func TestReader_AND_DisjointTerms(t *testing.T) {
 	for _, version := range AllVersions() {
-		version := version
+
 		t.Run(version, func(t *testing.T) {
 			source := testIndexSource{
 				docs: []format.DocumentMetadata{
@@ -372,7 +372,7 @@ func TestReader_AND_DisjointTerms(t *testing.T) {
 
 func TestReader_AND_MultipleTerms(t *testing.T) {
 	for _, version := range AllVersions() {
-		version := version
+
 		t.Run(version, func(t *testing.T) {
 			source := testIndexSource{
 				docs: []format.DocumentMetadata{
@@ -400,7 +400,7 @@ func TestReader_AND_MultipleTerms(t *testing.T) {
 
 func TestReader_QueryNoTerms(t *testing.T) {
 	for _, version := range AllVersions() {
-		version := version
+
 		t.Run(version, func(t *testing.T) {
 			source := testIndexSource{
 				docs:  []format.DocumentMetadata{{ID: 0, MinTimeUnix: 1, MaxTimeUnix: 2}},
@@ -415,7 +415,7 @@ func TestReader_QueryNoTerms(t *testing.T) {
 
 func TestMerger_TwoSources_CanReopen(t *testing.T) {
 	for _, version := range AllVersions() {
-		version := version
+
 		t.Run(version, func(t *testing.T) {
 			sources := []testIndexSource{
 				{
@@ -457,7 +457,7 @@ func TestMerger_TwoSources_CanReopen(t *testing.T) {
 
 func TestMerger_DocIDsRemappedSequentially(t *testing.T) {
 	for _, version := range AllVersions() {
-		version := version
+
 		t.Run(version, func(t *testing.T) {
 			sources := []testIndexSource{
 				{
@@ -491,7 +491,7 @@ func TestMerger_DocIDsRemappedSequentially(t *testing.T) {
 
 func TestMerger_QueryResultsUseRemappedDocIDs(t *testing.T) {
 	for _, version := range AllVersions() {
-		version := version
+
 		t.Run(version, func(t *testing.T) {
 			sources := []testIndexSource{
 				{
@@ -521,7 +521,7 @@ func TestMerger_QueryResultsUseRemappedDocIDs(t *testing.T) {
 
 func TestMerger_DisjointTermsUnion(t *testing.T) {
 	for _, version := range AllVersions() {
-		version := version
+
 		t.Run(version, func(t *testing.T) {
 			sources := []testIndexSource{
 				{
@@ -547,7 +547,7 @@ func TestMerger_DisjointTermsUnion(t *testing.T) {
 
 func TestMerger_DeduplicatesDocsByTimeBounds(t *testing.T) {
 	for _, version := range AllVersions() {
-		version := version
+
 		t.Run(version, func(t *testing.T) {
 			sources := []testIndexSource{
 				{
@@ -586,7 +586,7 @@ func TestMerger_DeduplicatesDocsByTimeBounds(t *testing.T) {
 
 func TestMerger_EmptyInputs(t *testing.T) {
 	for _, version := range AllVersions() {
-		version := version
+
 		t.Run(version, func(t *testing.T) {
 			cases := []struct {
 				name    string
@@ -614,7 +614,7 @@ func TestMerger_EmptyInputs(t *testing.T) {
 			}
 
 			for _, tc := range cases {
-				tc := tc
+
 				t.Run(tc.name, func(t *testing.T) {
 					expected := expectedMergedIndex(tc.sources)
 					path, header := writeAndMerge(t, version, tc.sources)
@@ -631,7 +631,7 @@ func TestMerger_EmptyInputs(t *testing.T) {
 
 func TestMerger_TooFewReaders(t *testing.T) {
 	for _, version := range AllVersions() {
-		version := version
+
 		t.Run(version, func(t *testing.T) {
 			merger, err := NewMerger(version, nil)
 			require.NoError(t, err)
@@ -651,7 +651,7 @@ func TestMerger_TooFewReaders(t *testing.T) {
 
 func TestMerger_MismatchedReaderSizeCounts(t *testing.T) {
 	for _, version := range AllVersions() {
-		version := version
+
 		t.Run(version, func(t *testing.T) {
 			merger, err := NewMerger(version, nil)
 			require.NoError(t, err)
@@ -676,7 +676,7 @@ func (discardWriter) Write(p []byte) (int, error) { return len(p), nil }
 
 func TestMerger_ThreeSources(t *testing.T) {
 	for _, version := range AllVersions() {
-		version := version
+
 		t.Run(version, func(t *testing.T) {
 			sources := []testIndexSource{
 				{
@@ -707,7 +707,7 @@ func TestMerger_ThreeSources(t *testing.T) {
 
 func TestMerger_MergedCanBeMergedAgain(t *testing.T) {
 	for _, version := range AllVersions() {
-		version := version
+
 		t.Run(version, func(t *testing.T) {
 			sources := []testIndexSource{
 				{
@@ -733,7 +733,7 @@ func TestMerger_MergedCanBeMergedAgain(t *testing.T) {
 
 			mergedPath, _ := writeAndMerge(t, version, sources)
 			pathC, _ := writeIndex(t, version, sourceC.docs, sourceC.terms)
-			remergedPath, header := mergePaths(t, version, context.Background(), []string{mergedPath, pathC})
+			remergedPath, header := mergePaths(context.Background(), t, version, []string{mergedPath, pathC})
 
 			expected := expectedMergedIndex(append(sources, sourceC))
 
@@ -745,7 +745,7 @@ func TestMerger_MergedCanBeMergedAgain(t *testing.T) {
 
 func TestMerger_CancelledContext(t *testing.T) {
 	for _, version := range AllVersions() {
-		version := version
+
 		t.Run(version, func(t *testing.T) {
 			pathA, _ := writeIndex(t, version, []format.DocumentMetadata{{ID: 0, MinTimeUnix: 100, MaxTimeUnix: 200}}, map[[8]byte][]uint32{term8("AAAAAA"): {0}})
 			pathB, _ := writeIndex(t, version, []format.DocumentMetadata{{ID: 0, MinTimeUnix: 300, MaxTimeUnix: 400}}, map[[8]byte][]uint32{term8("AAAAAA"): {0}})
@@ -766,7 +766,7 @@ func TestMerger_CancelledContext(t *testing.T) {
 
 func TestOpenReaderAt_Valid(t *testing.T) {
 	for _, version := range AllVersions() {
-		version := version
+
 		t.Run(version, func(t *testing.T) {
 			source := testIndexSource{
 				docs: []format.DocumentMetadata{
@@ -875,7 +875,7 @@ func TestValidateVersion_Unknown(t *testing.T) {
 
 func TestMerge_Comprehensive(t *testing.T) {
 	for _, version := range AllVersions() {
-		version := version
+
 		t.Run(version, func(t *testing.T) {
 			sources := buildComprehensiveSources()
 			expected := expectedMergedIndex(sources)
@@ -908,7 +908,7 @@ func TestMerge_Comprehensive(t *testing.T) {
 			require.Equal(t, openDocIDs, cachedDocIDs)
 
 			sourcePath, _ := writeIndex(t, version, sources[0].docs, sources[0].terms)
-			remergedPath, remergedHeader := mergePaths(t, version, context.Background(), []string{path, sourcePath})
+			remergedPath, remergedHeader := mergePaths(context.Background(), t, version, []string{path, sourcePath})
 			remergedExpected := expectedMergedIndex([]testIndexSource{expected, sources[0]})
 
 			require.Equal(t, uint32(len(remergedExpected.docs)), remergedHeader.DocumentCount)
@@ -934,7 +934,7 @@ func FuzzWriteAndQuery(f *testing.F) {
 		source, queries := buildFuzzWriteCase(docSeed, termSeed, modeSeed)
 
 		for _, version := range AllVersions() {
-			version := version
+
 			t.Run(version, func(t *testing.T) {
 				path, header := writeIndex(t, version, source.docs, source.terms)
 				size := fileSize(t, path)
@@ -964,7 +964,7 @@ func FuzzMergeAndQuery(f *testing.F) {
 		expected := expectedMergedIndex(sources)
 
 		for _, version := range AllVersions() {
-			version := version
+
 			t.Run(version, func(t *testing.T) {
 				path, header := writeAndMerge(t, version, sources)
 				size := fileSize(t, path)
@@ -984,7 +984,7 @@ func FuzzMergeAndQuery(f *testing.F) {
 
 				if remerge && len(queries) > 0 && len(sources) > 0 {
 					sourcePath, _ := writeIndex(t, version, sources[0].docs, sources[0].terms)
-					remergedPath, remergedHeader := mergePaths(t, version, context.Background(), []string{path, sourcePath})
+					remergedPath, remergedHeader := mergePaths(context.Background(), t, version, []string{path, sourcePath})
 					remergedExpected := expectedMergedIndex([]testIndexSource{expected, sources[0]})
 					require.Equal(t,
 						expectedDocIDs(remergedExpected, queries[0]),
@@ -1099,10 +1099,10 @@ func writeAndMerge(t *testing.T, version string, sources []testIndexSource) (str
 		paths[i] = path
 	}
 
-	return mergePaths(t, version, context.Background(), paths)
+	return mergePaths(context.Background(), t, version, paths)
 }
 
-func mergePaths(t *testing.T, version string, ctx context.Context, paths []string) (string, format.HeaderInfo) {
+func mergePaths(ctx context.Context, t *testing.T, version string, paths []string) (string, format.HeaderInfo) {
 	t.Helper()
 
 	readers := make([]io.ReaderAt, len(paths))

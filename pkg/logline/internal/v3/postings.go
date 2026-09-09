@@ -34,7 +34,7 @@ type postingsBlockDirEntry struct {
 // StreamingPostingsEncoder serializes postings directly to a writer.
 type StreamingPostingsEncoder interface {
 	PostingsEncoder
-	StreamPostingsData(w io.Writer, postings []format.TermBitmapPostings, documentCount uint32) (int64, []postingsBlockDirEntry, error)
+	streamPostingsData(w io.Writer, postings []format.TermBitmapPostings, documentCount uint32) (int64, []postingsBlockDirEntry, error)
 	CompressionType() uint32
 }
 
@@ -50,14 +50,14 @@ type PostingsReader interface {
 // OpenPostingsReader creates a section reader for a specific encoding.
 func OpenPostingsReader(
 	encoding format.PostingsEncoding,
-	packingFactor uint8,
+	_ uint8, // packingFactor, unused by the encodings this reader supports
 	reader io.ReaderAt,
 	dataOffset int64,
 	dataSize uint64,
 	dir []postingsBlockDirEntry,
 	termCount uint64,
-	documentCount uint32,
-	compressionType uint32,
+	_ uint32, // documentCount, unused
+	_ uint32, // compressionType, unused
 ) (PostingsReader, error) {
 	switch encoding {
 	case format.PostingsEncodingFastDeltaVarIntBlocked:
@@ -139,7 +139,7 @@ type FastPostingsEncoder struct {
 }
 
 // fastStreamingSession holds the mutable state for an in-progress streaming
-// encode. Lifted from the local variables in StreamPostingsData so that the
+// encode. Lifted from the local variables in streamPostingsData so that the
 // same logic can be driven term-by-term via beginStream/writeTerm/endStream.
 type fastStreamingSession struct {
 	encoder        *zstd.Encoder
@@ -329,7 +329,7 @@ func writeFull(w io.Writer, bytesWritten *int64, p []byte) error {
 	return nil
 }
 
-func (e *FastPostingsEncoder) StreamPostingsData(
+func (e *FastPostingsEncoder) streamPostingsData(
 	w io.Writer,
 	postings []format.TermBitmapPostings,
 	documentCount uint32,
@@ -349,7 +349,7 @@ func (e *FastPostingsEncoder) StreamPostingsData(
 
 func (e *FastPostingsEncoder) Encode(postings []format.TermBitmapPostings, _ uint32) ([]byte, error) {
 	var out bytes.Buffer
-	_, _, err := e.StreamPostingsData(&out, postings, 0)
+	_, _, err := e.streamPostingsData(&out, postings, 0)
 	if err != nil {
 		return nil, err
 	}

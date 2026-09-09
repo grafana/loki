@@ -80,7 +80,7 @@ func TestStreamingMerge_FromFiles(t *testing.T) {
 	streamOut := filepath.Join(dir, "stream_merged.idx")
 	streamOutFile, err := os.Create(streamOut)
 	require.NoError(t, err)
-	_, err = mergeFilesTo(t, context.Background(), inputPaths, streamOutFile, cfg)
+	_, err = mergeFilesTo(context.Background(), t, inputPaths, streamOutFile, cfg)
 	require.NoError(t, err)
 	require.NoError(t, streamOutFile.Close())
 
@@ -122,7 +122,7 @@ func openTestReaderAt(tb testing.TB, path string) (*os.File, int64) {
 // and benchmarks that produce fixtures on disk and want to merge them.
 // Production compaction always goes through StreamingMergeIndexReaders
 // directly with io.ReaderAts backed by object-storage range reads.
-func mergeFilesTo(tb testing.TB, ctx context.Context, inputPaths []string, out io.Writer, cfg IndexWriteConfig) (format.HeaderInfo, error) {
+func mergeFilesTo(ctx context.Context, tb testing.TB, inputPaths []string, out io.Writer, cfg IndexWriteConfig) (format.HeaderInfo, error) {
 	tb.Helper()
 	readers := make([]io.ReaderAt, len(inputPaths))
 	sizes := make([]int64, len(inputPaths))
