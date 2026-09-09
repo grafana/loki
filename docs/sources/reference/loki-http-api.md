@@ -1322,6 +1322,9 @@ client timeout when calling it.
 
 In microservices mode, the `/flush/tenant` endpoint is exposed by the ingester.
 
+Each request is counted in the `loki_ingester_flush_tenant_requests_total`
+metric, labeled by outcome (`status`: `success` or `failure`).
+
 ## Sync indexes from object storage
 
 ```bash
