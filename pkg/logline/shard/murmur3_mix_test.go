@@ -5,8 +5,9 @@ import (
 	"math"
 	"testing"
 
-	"github.com/grafana/loki/v3/pkg/logline/shard"
 	"github.com/stretchr/testify/require"
+
+	"github.com/grafana/loki/v3/pkg/logline/shard"
 )
 
 func TestMurmur3Mix_ShardRange(t *testing.T) {

@@ -4,8 +4,9 @@ import (
 	"encoding/json"
 	"testing"
 
-	"github.com/grafana/loki/v3/pkg/logline/store"
 	"github.com/stretchr/testify/require"
+
+	"github.com/grafana/loki/v3/pkg/logline/store"
 )
 
 func TestMeta_ShardFieldsRoundTrip(t *testing.T) {

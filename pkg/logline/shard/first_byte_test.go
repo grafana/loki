@@ -3,8 +3,9 @@ package shard_test
 import (
 	"testing"
 
-	"github.com/grafana/loki/v3/pkg/logline/shard"
 	"github.com/stretchr/testify/require"
+
+	"github.com/grafana/loki/v3/pkg/logline/shard"
 )
 
 func TestFirstByte_ShardRange(t *testing.T) {
