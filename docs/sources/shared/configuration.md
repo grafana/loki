@@ -2793,6 +2793,12 @@ The `chunk_store_config` block configures how chunks will be cached and how long
 # CLI flag: -store.skip-query-writeback-older-than
 [skip_query_writeback_cache_older_than: <duration> | default = 0s]
 
+# Experimental. Return an object-storage chunk fetch error instead of incomplete
+# results. Applies to queries, bloom builds, and migration, including checksum
+# failures.
+# CLI flag: -chunk-store.propagate-chunk-fetch-errors
+[propagate_chunk_fetch_errors: <boolean> | default = false]
+
 # Chunks will be handed off to the L2 cache after this duration. 0 to disable L2
 # cache.
 # CLI flag: -store.chunks-cache-l2.handoff
