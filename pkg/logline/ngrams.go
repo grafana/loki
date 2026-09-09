@@ -5,7 +5,7 @@ import (
 
 	"github.com/grafana/loki/pkg/push"
 
-	v3 "github.com/grafana/loki-logline-index-private/pkg/logline/v3"
+	v3 "github.com/grafana/loki/v3/pkg/logline/internal/v3"
 )
 
 // ExtractFunc is the signature of an n-gram extraction function. Implementations

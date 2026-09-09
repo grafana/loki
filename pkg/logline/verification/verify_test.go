@@ -6,7 +6,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki-logline-index-private/pkg/hintprovider"
+	"github.com/grafana/loki/v3/pkg/logline/hintprovider"
 )
 
 var base = time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC)

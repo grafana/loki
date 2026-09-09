@@ -3,7 +3,7 @@ package verification
 import (
 	"time"
 
-	"github.com/grafana/loki-logline-index-private/pkg/hintprovider"
+	"github.com/grafana/loki/v3/pkg/logline/hintprovider"
 )
 
 // Report summarizes whether provided hint ranges cover actual query results.

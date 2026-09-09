@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"io"
 
-	v3 "github.com/grafana/loki-logline-index-private/pkg/logline/v3"
+	v3 "github.com/grafana/loki/v3/pkg/logline/internal/v3"
 	"github.com/grafana/loki/v3/pkg/logline/format"
 )
 
