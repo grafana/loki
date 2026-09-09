@@ -1588,7 +1588,7 @@ func TestInstance_LabelsWithValues(t *testing.T) {
 	})
 }
 
-func TestMemoryShardedStreamsMetric(t *testing.T) {
+func TestMemoryStreamShardsMetric(t *testing.T) {
 	limits, err := validation.NewOverrides(defaultLimitsTestConfig(), nil)
 	require.NoError(t, err)
 	limiter := NewLimiter(limits, NilMetrics, newIngesterRingLimiterStrategy(&ringCountMock{count: 1}, 1), &TenantBasedStrategy{limits: limits})
@@ -1600,7 +1600,7 @@ func TestMemoryShardedStreamsMetric(t *testing.T) {
 
 	t.Cleanup(func() {
 		memoryStreams.DeleteLabelValues(tenantID)
-		memoryShardedStreams.DeleteLabelValues(tenantID)
+		memoryStreamShards.DeleteLabelValues(tenantID)
 	})
 
 	now := time.Now().Add(-5 * time.Minute)
@@ -1611,7 +1611,7 @@ func TestMemoryShardedStreamsMetric(t *testing.T) {
 	}}))
 
 	require.Equal(t, 3.0, promtestutil.ToFloat64(memoryStreams.WithLabelValues(tenantID)))
-	require.Equal(t, 2.0, promtestutil.ToFloat64(memoryShardedStreams.WithLabelValues(tenantID)))
+	require.Equal(t, 2.0, promtestutil.ToFloat64(memoryStreamShards.WithLabelValues(tenantID)))
 
 	require.NoError(t, inst.streams.ForEach(func(s *stream) (bool, error) {
 		if s.labels.Has(ShardLbName) {
@@ -1621,7 +1621,7 @@ func TestMemoryShardedStreamsMetric(t *testing.T) {
 	}))
 
 	require.Equal(t, 1.0, promtestutil.ToFloat64(memoryStreams.WithLabelValues(tenantID)))
-	require.Equal(t, 0.0, promtestutil.ToFloat64(memoryShardedStreams.WithLabelValues(tenantID)))
+	require.Equal(t, 0.0, promtestutil.ToFloat64(memoryStreamShards.WithLabelValues(tenantID)))
 }
 
 type fakeQueryServer func(*logproto.QueryResponse) error
