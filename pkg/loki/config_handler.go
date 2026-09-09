@@ -24,9 +24,9 @@ const (
 	maxConfigQueryPathLength = 512
 )
 
-// configQueryPathSegmentRe matches a single dot-separated segment of a q path, mirroring the
-// snake_case charset of real config field names. Rejects empty, leading/trailing/double dots, and
-// control characters before a path is ever echoed into a response header.
+// configQueryPathSegmentRe matches a single dot-separated segment of a q path: letters, digits, and
+// underscores only. Rejects empty, leading/trailing/double dots, and control characters before a
+// path is ever echoed into a response header.
 var configQueryPathSegmentRe = regexp.MustCompile(`^[A-Za-z0-9_]+$`)
 
 func validConfigQueryPath(path string) bool {
