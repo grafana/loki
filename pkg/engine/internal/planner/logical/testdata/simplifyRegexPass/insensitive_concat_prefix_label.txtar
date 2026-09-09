@@ -1,0 +1,12 @@
+A case-insensitive literal prefix concatenation on a non-message column must
+stay anchored.
+
+-- column --
+utf8.label.foo
+
+-- regex --
+(?i)ERROR.*
+
+-- expect --
+%1 = MATCH_RE label.foo "^(?:(?i)ERROR.*)$"
+RETURN %1

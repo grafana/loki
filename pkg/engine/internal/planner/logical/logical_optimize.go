@@ -241,6 +241,18 @@ func (pass simplifyRegexPass) simplifyBinop(b *BinOp) (simplified []Node, change
 
 	nodes, changed := pass.simplifyRegex(b.Left, isMessage, reg.Simplify())
 
+	if !changed && !isMessage {
+		// A regex on a non-message column must match the whole value, like a
+		// stream selector matcher. The executor's MATCH_RE is unanchored, so
+		// anchor the pattern before it reaches execution.
+		anchored := &BinOp{
+			Left:  b.Left,
+			Op:    b.Op,
+			Right: NewLiteral("^(?:" + expr + ")$"),
+		}
+		return []Node{anchored}, true, nil
+	}
+
 	if changed && b.Op == types.BinaryOpNotMatchRe {
 		// Add a final instruction to invert the match.
 		nodes = append(nodes, &UnaryOp{
@@ -282,6 +294,11 @@ func (pass simplifyRegexPass) simplifyRegex(from Value, isMessage bool, reg *syn
 		return result, true
 
 	case syntax.OpConcat:
+		// Non-message columns match whole values: only .*literal.* is safe as
+		// a substring match, other shapes fall back to an anchored regexp.
+		if !isMessage && !isContainsEquivalentConcat(reg) {
+			return nil, false
+		}
 		return pass.simplifyRegexConcat(from, reg, nil)
 
 	case syntax.OpCapture:
@@ -334,12 +351,38 @@ func (pass simplifyRegexPass) simplifyRegex(from Value, isMessage bool, reg *syn
 		}
 
 	case syntax.OpEmptyMatch:
+		if !isMessage {
+			// anchored empty regexp matches only empty values.
+			return []Node{
+				&BinOp{
+					Left:  from,
+					Right: &Literal{inner: types.StringLiteral("")},
+					Op:    types.BinaryOpEq,
+				},
+			}, true
+		}
 		// "()" simplifies to an always-pass expression, so we propagate the
 		// source back up.
 		return []Node{from}, true
 	}
 
 	return nil, false
+}
+
+// isContainsEquivalentConcat reports whether a concat regexp is .*literal.*,
+// the only concat shape whose substring simplification matches whole values.
+func isContainsEquivalentConcat(reg *syntax.Regexp) bool {
+	util.ClearCapture(reg.Sub...)
+	isDotStar := func(r *syntax.Regexp) bool {
+		return r.Op == syntax.OpStar && r.Sub[0].Op == syntax.OpAnyCharNotNL
+	}
+	subs := make([]*syntax.Regexp, 0, len(reg.Sub))
+	for _, sub := range reg.Sub {
+		if sub.Op != syntax.OpEmptyMatch {
+			subs = append(subs, sub)
+		}
+	}
+	return len(subs) == 3 && isDotStar(subs[0]) && subs[1].Op == syntax.OpLiteral && isDotStar(subs[2])
 }
 
 // simplifyRegexConcat attempts to simplify regex concatenations. Supported
