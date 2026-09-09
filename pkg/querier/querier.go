@@ -14,6 +14,7 @@ import (
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/google/uuid"
+	"github.com/grafana/dskit/flagext"
 	"github.com/grafana/dskit/httpgrpc"
 	"github.com/grafana/dskit/tenant"
 	"github.com/pkg/errors"
@@ -62,6 +63,9 @@ type Config struct {
 	PerRequestLimitsEnabled   bool             `yaml:"per_request_limits_enabled"`
 	QueryPartitionIngesters   bool             `yaml:"query_partition_ingesters" category:"experimental"`
 
+	PreferAvailabilityZones flagext.StringSliceCSV `yaml:"prefer_availability_zones" category:"experimental"`
+	IngesterQueryZones      int                    `yaml:"ingester_query_zones" category:"experimental"`
+
 	IngesterQueryStoreMaxLookback time.Duration `yaml:"-"`
 	QueryPatternIngestersWithin   time.Duration `yaml:"-"`
 }
@@ -82,12 +86,17 @@ func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	f.BoolVar(&cfg.MultiTenantQueriesEnabled, prefix+"multi-tenant-queries-enabled", false, "When true, allow queries to span multiple tenants.")
 	f.BoolVar(&cfg.PerRequestLimitsEnabled, prefix+"per-request-limits-enabled", false, "When true, querier limits sent via a header are enforced.")
 	f.BoolVar(&cfg.QueryPartitionIngesters, prefix+"query-partition-ingesters", false, "When true, querier directs ingester queries to the partition-ingesters instead of the normal ingesters.")
+	f.Var(&cfg.PreferAvailabilityZones, prefix+"prefer-availability-zones", "Comma-separated list of availability zones to prefer when querying ingesters. All zones in the list are given equal priority and are queried before any other zone. Requires zone awareness to be enabled on the ingester ring. When empty, zones are queried in random order. Setting this also limits the initial requests to the number of zones the ingester ring requires for quorum, rather than querying every zone.")
+	f.IntVar(&cfg.IngesterQueryZones, prefix+"ingester-query-zones", 0, "Number of availability zones to query ingesters in. 0 (default) uses the ingester ring quorum requirement, which queries a majority of zones. Set to 1 to query a single zone. Querying fewer zones than the ring quorum requires every zone to hold a complete copy of the data, so it is ignored unless zone awareness is enabled and the replication factor is greater than or equal to the number of zones. Use querier.prefer-availability-zones to control which zones are queried first. If the queried zones cannot serve the request, the querier automatically falls back to the remaining zones.")
 }
 
 // Validate validates the config.
 func (cfg *Config) Validate() error {
 	if cfg.QueryStoreOnly && cfg.QueryIngesterOnly {
 		return errors.New("querier.query_store_only and querier.query_ingester_only cannot both be true")
+	}
+	if cfg.IngesterQueryZones < 0 {
+		return errors.New("querier.ingester_query_zones must be greater than or equal to 0")
 	}
 	return nil
 }
