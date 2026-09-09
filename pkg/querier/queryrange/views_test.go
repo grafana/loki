@@ -311,12 +311,13 @@ func Benchmark_DecodeMergeEncodeCycle(b *testing.B) {
 	require.NoError(b, err)
 
 	responses := make([]*LokiSeriesResponse, 100)
+	seriesData := generateSeries()
 	for i := range responses {
 		responses[i] = &LokiSeriesResponse{
 			Status:     "200",
 			Version:    1,
 			Statistics: stats.Result{},
-			Data:       generateSeries(),
+			Data:       seriesData,
 		}
 	}
 
