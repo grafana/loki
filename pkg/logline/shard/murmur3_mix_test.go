@@ -11,7 +11,7 @@ import (
 )
 
 func TestMurmur3Mix_ShardRange(t *testing.T) {
-	for i := 0; i < 10000; i++ {
+	for i := range 10000 {
 		var ngram [8]byte
 		binary.LittleEndian.PutUint64(ngram[:], uint64(i))
 		got := shard.Murmur3Mix(ngram, 10)
@@ -23,7 +23,7 @@ func TestMurmur3Mix_ShardRange(t *testing.T) {
 func TestMurmur3Mix_Deterministic(t *testing.T) {
 	ngram := [8]byte{0x42, 0x13, 0xAB, 0xFF, 0x00, 0x7C, 0x31, 0x9E}
 	first := shard.Murmur3Mix(ngram, 8)
-	for i := 0; i < 100; i++ {
+	for range 100 {
 		require.Equal(t, first, shard.Murmur3Mix(ngram, 8))
 	}
 }
@@ -35,7 +35,7 @@ func TestMurmur3Mix_Distribution(t *testing.T) {
 	)
 
 	counts := make([]int, shardCount)
-	for i := 0; i < nKeys; i++ {
+	for i := range nKeys {
 		var ngram [8]byte
 		binary.LittleEndian.PutUint64(ngram[:], uint64(i))
 		counts[shard.Murmur3Mix(ngram, shardCount)]++
@@ -83,7 +83,7 @@ func TestMurmur3Mix_AllBytesParticipate(t *testing.T) {
 	base := [8]byte{0x12, 0x34, 0x56, 0x78, 0x9A, 0xBC, 0xDE, 0xF0}
 	baseHash := murmur3MixRaw(base)
 
-	for bit := 0; bit < 64; bit++ {
+	for bit := range 64 {
 		flipped := base
 		flipped[bit/8] ^= 1 << (bit % 8)
 		flippedHash := murmur3MixRaw(flipped)
@@ -126,7 +126,7 @@ func TestMurmur3Mix_ChiSquaredUniformity(t *testing.T) {
 	)
 
 	counts := make([]float64, shardCount)
-	for i := 0; i < nKeys; i++ {
+	for i := range nKeys {
 		var ngram [8]byte
 		binary.LittleEndian.PutUint64(ngram[:], uint64(i))
 		counts[shard.Murmur3Mix(ngram, shardCount)]++

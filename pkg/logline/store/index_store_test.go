@@ -1312,8 +1312,7 @@ func TestStore_StartPolling_UpdatesSnapshot(t *testing.T) {
 	bucket := objstore.NewInMemBucket()
 	s := newTestStore(t, bucket)
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 
 	require.NoError(t, s.StartPolling(ctx))
 
@@ -1923,8 +1922,7 @@ func TestStore_StartPolling_LogsInitialPollError(t *testing.T) {
 	bucket := &errorBucket{Bucket: objstore.NewInMemBucket(), failIter: true}
 	s := newTestStore(t, bucket)
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 
 	// The initial poll fails and the error is surfaced to the caller rather than
 	// panicking or blocking.

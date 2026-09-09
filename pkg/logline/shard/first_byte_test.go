@@ -9,7 +9,7 @@ import (
 )
 
 func TestFirstByte_ShardRange(t *testing.T) {
-	for b := 0; b < 256; b++ {
+	for b := range 256 {
 		ngram := [8]byte{byte(b)}
 		got := shard.FirstByte(ngram, 4)
 		require.GreaterOrEqual(t, got, 0)
@@ -20,14 +20,14 @@ func TestFirstByte_ShardRange(t *testing.T) {
 func TestFirstByte_Deterministic(t *testing.T) {
 	ngram := [8]byte{0x42}
 	first := shard.FirstByte(ngram, 8)
-	for i := 0; i < 100; i++ {
+	for range 100 {
 		require.Equal(t, first, shard.FirstByte(ngram, 8))
 	}
 }
 
 func TestFirstByte_DistributionNotAllZero(t *testing.T) {
 	counts := make([]int, 4)
-	for b := 0; b < 256; b++ {
+	for b := range 256 {
 		ngram := [8]byte{byte(b)}
 		counts[shard.FirstByte(ngram, 4)]++
 	}

@@ -145,7 +145,7 @@ func TestReadAheadReaderAt_AlternatingRegions(t *testing.T) {
 	// should each occupy a slot without evicting the other.
 	r := NewReadAheadReaderAt(context.Background(), bucket, "test/alt", 10000, 1000)
 
-	for round := 0; round < 10; round++ {
+	for round := range 10 {
 		// Read from region A (term-like).
 		offA := int64(round * 50)
 		buf := make([]byte, 50)

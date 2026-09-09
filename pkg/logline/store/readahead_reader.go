@@ -115,10 +115,7 @@ func (r *readAheadReaderAt) ReadAt(p []byte, off int64) (int, error) {
 	if avail <= 0 {
 		return 0, io.EOF
 	}
-	n := need
-	if n > avail {
-		n = avail
-	}
+	n := min(need, avail)
 	copy(p, s.buf[off-s.start:off-s.start+n])
 	if n < need {
 		return int(n), io.EOF
@@ -144,10 +141,7 @@ func (r *readAheadReaderAt) fill(s *slot, off int64) error {
 	r.clock++
 	s.age = r.clock
 
-	end := off + r.chunkSz
-	if end > r.fileSize {
-		end = r.fileSize
-	}
+	end := min(off+r.chunkSz, r.fileSize)
 	length := end - off
 	if length <= 0 {
 		s.start = off
