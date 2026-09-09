@@ -2,6 +2,7 @@ package validation
 
 import (
 	"context"
+	"sort"
 	"time"
 
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -412,6 +413,12 @@ func buildExpiredSchemaSet(schemas []lokiv1.ObjectStorageSchema, currentTime tim
 	// Sort schemas by effective date to find the next schema
 	sortedSchemas := make([]lokiv1.ObjectStorageSchema, len(schemas))
 	copy(sortedSchemas, schemas)
+
+	sort.SliceStable(sortedSchemas, func(i, j int) bool {
+		iDate, _ := sortedSchemas[i].EffectiveDate.UTCTime()
+		jDate, _ := sortedSchemas[j].EffectiveDate.UTCTime()
+		return iDate.Before(jDate)
+	})
 
 	// For each schema (except the last one), check if it has expired
 	for i := 0; i < len(sortedSchemas)-1; i++ {
