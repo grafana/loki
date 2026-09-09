@@ -141,7 +141,9 @@ func (b *ProxyBackend) createBackendRequest(orig *http.Request, body io.ReadClos
 	// Prepend the endpoint path to the request path.
 	req.URL.Path = path.Join(b.endpoint.Path, req.URL.Path)
 
-	// Set the correct host header for the backend
+	// Override Host. Go's client prefers Request.Host over Header["Host"], and
+	// Clone() copies the inbound Host; without this the backend sees the client Host.
+	req.Host = b.endpoint.Host
 	req.Header.Set("Host", b.endpoint.Host)
 
 	// Replace the auth:

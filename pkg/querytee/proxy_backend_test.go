@@ -226,3 +226,19 @@ func Test_ProxyBackend_Alias(t *testing.T) {
 		})
 	}
 }
+
+func Test_ProxyBackend_createBackendRequest_overridesRequestHost(t *testing.T) {
+	u, err := url.Parse("http://backend.example:3100")
+	require.NoError(t, err)
+
+	orig := httptest.NewRequest("GET", "http://querytee.local/loki/api/v1/query", nil)
+	orig.Host = "evil.example"
+
+	b, err := NewProxyBackend("test", u, time.Second, false)
+	require.NoError(t, err)
+	r, span := b.createBackendRequest(orig, nil)
+	defer span.Finish()
+
+	assert.Equal(t, "backend.example:3100", r.Host)
+	assert.Equal(t, "backend.example:3100", r.Header.Get("Host"))
+}
