@@ -647,23 +647,24 @@ func OTLPError(w http.ResponseWriter, errorStr string, code int, logger log.Logg
 		code = http.StatusServiceUnavailable
 	}
 
-	// As per the OTLP spec, we send the status code on the http header.
-	w.WriteHeader(code)
-
 	// Status 0 because we omit the Status.code field.
 	status := grpcstatus.New(0, errorStr).Proto()
 	respBytes, err := proto.Marshal(status)
 	if err != nil {
 		level.Error(logger).Log("msg", "failed to marshal error response", "error", err)
-		writeResponseFailedBody, _ := proto.Marshal(grpcstatus.New(
+		respBytes, _ = proto.Marshal(grpcstatus.New(
 			codes.Internal,
 			fmt.Sprintf("failed to marshal error response: %s", err.Error()),
 		).Proto())
-		_, _ = w.Write(writeResponseFailedBody)
-		return
 	}
 
-	w.Header().Set(contentType, "application/octet-stream")
+	// The body is a Protobuf-encoded Status, so it must be announced as such.
+	// Headers have to be set before WriteHeader, which commits them.
+	w.Header().Set(contentType, pbContentType)
+
+	// As per the OTLP spec, we send the status code on the http header.
+	w.WriteHeader(code)
+
 	if _, err = w.Write(respBytes); err != nil {
 		level.Error(logger).Log("msg", "failed to write error response", "error", err)
 		writeResponseFailedBody, _ := proto.Marshal(grpcstatus.New(
