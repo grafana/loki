@@ -256,7 +256,9 @@ func TestFetchChunks_CacheDecodeIsNotLoggedAsDownloadFailure(t *testing.T) {
 	require.Empty(t, got)
 
 	require.Empty(t, storageErrorCounterDeltas(t, beforeFailures))
-	require.Equal(t, int64(1), statsCtx.Store().ChunkFetchFailures)
+	// Cache decode failures are silently dropped (never retried from storage,
+	// see processCacheResponse), so they aren't counted as chunk fetch failures.
+	require.Equal(t, int64(0), statsCtx.Store().ChunkFetchFailures)
 }
 
 func TestFetchChunks_HandlesStorageErrors(t *testing.T) {
