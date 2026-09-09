@@ -1,0 +1,373 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  annotations:
+    serviceaccounts.openshift.io/oauth-redirectreference.grafana: '{"kind":"OAuthRedirectReference","apiVersion":"v1","reference":{"kind":"Route","name":"grafana"}}'
+  name: grafana
+  namespace: openshift-monitoring
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: logging-application-logs-reader
+rules:
+- apiGroups:
+  - loki.grafana.com
+  resourceNames:
+  - logs
+  resources:
+  - application
+  verbs:
+  - get
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: logging-grafana-alertmanager-access
+rules:
+- apiGroups:
+  - ""
+  resources:
+  - namespaces
+  verbs:
+  - get
+- apiGroups:
+  - monitoring.coreos.com
+  resourceNames:
+  - non-existant
+  resources:
+  - alertmanagers
+  verbs:
+  - patch
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  labels:
+    app.kubernetes.io/part-of: openshift-monitoring
+  name: logging-grafana-users-alertmanager-access
+  namespace: openshift-monitoring
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: monitoring-alertmanager-edit
+subjects:
+- apiGroup: rbac.authorization.k8s.io
+  kind: Group
+  name: system:authenticated
+- apiGroup: rbac.authorization.k8s.io
+  kind: Group
+  name: system:authenticated:oauth
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: logging-grafana-alertmanager-access
+  namespace: openshift-monitoring
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: logging-grafana-alertmanager-access
+subjects:
+- kind: ServiceAccount
+  name: grafana
+  namespace: openshift-monitoring
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: logging-grafana-auth-delegator
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: system:auth-delegator
+subjects:
+- kind: ServiceAccount
+  name: grafana
+  namespace: openshift-monitoring
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: logging-grafana-metrics-view
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: cluster-monitoring-view
+subjects:
+- kind: ServiceAccount
+  name: grafana
+  namespace: openshift-monitoring
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: logging-users-application-logs-reader
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: logging-application-logs-reader
+subjects:
+- apiGroup: rbac.authorization.k8s.io
+  kind: Group
+  name: system:authenticated
+---
+apiVersion: v1
+data:
+  config.ini: |
+    [analytics]
+    check_for_updates = false
+    reporting_enabled = false
+    [auth]
+    disable_login_form = true
+    [auth.basic]
+    enabled = false
+    [auth.generic_oauth]
+    name = OpenShift
+    icon = signin
+    enabled = true
+    client_id = system:serviceaccount:openshift-monitoring:grafana
+    client_secret = ${OAUTH_CLIENT_SECRET}
+    scopes = user:info user:check-access user:list-projects role:logging-grafana-alertmanager-access:openshift-monitoring
+    empty_scopes = false
+    auth_url = https://oauth-openshift.apps.${CLUSTER_ROUTES_BASE}/oauth/authorize
+    token_url = https://oauth-openshift.apps.${CLUSTER_ROUTES_BASE}/oauth/token
+    api_url = https://kubernetes.default.svc/apis/user.openshift.io/v1/users/~
+    email_attribute_path = metadata.name
+    allow_sign_up = true
+    allow_assign_grafana_admin = true
+    role_attribute_path = contains(groups[*], 'system:cluster-admins') && 'GrafanaAdmin' || contains(groups[*], 'cluster-admin') && 'GrafanaAdmin'  || contains(groups[*], 'dedicated-admin') && 'GrafanaAdmin' || 'Viewer'
+    tls_client_cert = /etc/tls/private/tls.crt
+    tls_client_key = /etc/tls/private/tls.key
+    tls_client_ca = /run/secrets/kubernetes.io/serviceaccount/ca.crt
+    use_pkce = true
+    [paths]
+    data = /var/lib/grafana
+    logs = /var/lib/grafana/logs
+    plugins = /var/lib/grafana/plugins
+    provisioning = /etc/grafana/provisioning
+    [security]
+    admin_user = system:does-not-exist
+    cookie_secure = true
+    [server]
+    protocol = https
+    cert_file = /etc/tls/private/tls.crt
+    cert_key = /etc/tls/private/tls.key
+    root_url = https://grafana-openshift-monitoring.apps.${CLUSTER_ROUTES_BASE}/
+    [users]
+    viewers_can_edit = true
+    default_theme = light
+    [log]
+    mode = console
+    level = info
+    [dataproxy]
+    logging = true
+kind: ConfigMap
+metadata:
+  name: grafana-config-455kdg4tgt
+  namespace: openshift-monitoring
+---
+apiVersion: v1
+data:
+  datasources.yaml: |
+    apiVersion: 1
+    datasources:
+      - access: proxy
+        editable: true
+        jsonData:
+          tlsAuthWithCACert: true
+          timeInterval: 5s
+          oauthPassThru: true
+          manageAlerts: true
+          alertmanagerUid: 8e7816ff-6815-4a38-95f4-370485165c5e
+        secureJsonData:
+          tlsCACert: ${GATEWAY_SERVICE_CA}
+        name: Prometheus
+        uid: 73a57e8b-7679-4a18-915c-292f143448c7
+        type: prometheus
+        url: https://${CLUSTER_MONITORING_THANOS_QUERIER_OAUTH_ADDRESS}
+      - name: Loki (Application)
+        uid: 4b4e7fa0-9846-4a8a-9ab3-f09b21e777c8
+        isDefault: true
+        type: loki
+        access: proxy
+        url: https://${GATEWAY_ADDRESS}/api/logs/v1/application/
+        jsonData:
+          tlsAuthWithCACert: true
+          oauthPassThru: true
+          manageAlerts: true
+          alertmanagerUid: 8e7816ff-6815-4a38-95f4-370485165c5e
+        secureJsonData:
+          tlsCACert: ${GATEWAY_SERVICE_CA}
+      - name: Loki (Infrastructure)
+        uid: 306ba00d-0435-4ee5-99a2-681f81b3e338
+        type: loki
+        access: proxy
+        url: https://${GATEWAY_ADDRESS}/api/logs/v1/infrastructure/
+        jsonData:
+          tlsAuthWithCACert: true
+          oauthPassThru: true
+          manageAlerts: true
+          alertmanagerUid: 8e7816ff-6815-4a38-95f4-370485165c5e
+        secureJsonData:
+          tlsCACert: ${GATEWAY_SERVICE_CA}
+      - name: Loki (Audit)
+        uid: b1688386-b1df-4492-88ba-a9ceb75f295a
+        type: loki
+        access: proxy
+        url: https://${GATEWAY_ADDRESS}/api/logs/v1/audit/
+        jsonData:
+          tlsAuthWithCACert: true
+          oauthPassThru: true
+          manageAlerts: true
+          alertmanagerUid: 8e7816ff-6815-4a38-95f4-370485165c5e
+        secureJsonData:
+          tlsCACert: ${GATEWAY_SERVICE_CA}
+      - name: Alertmanager
+        type: alertmanager
+        url: https://${CLUSTER_MONITORING_ALERTMANAGER_ADDRESS}
+        access: proxy
+        uid: 8e7816ff-6815-4a38-95f4-370485165c5e
+        jsonData:
+          # Valid options for implementation include mimir, cortex and prometheus
+          implementation: prometheus
+          tlsAuthWithCACert: true
+          oauthPassThru: true
+          handleGrafanaManagedAlerts: true
+        secureJsonData:
+          tlsCACert: ${GATEWAY_SERVICE_CA}
+kind: ConfigMap
+metadata:
+  name: grafana-datasources-8tfkb28kfd
+  namespace: openshift-monitoring
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  annotations:
+    kubernetes.io/service-account.name: grafana
+  name: grafana-token
+  namespace: openshift-monitoring
+type: kubernetes.io/service-account-token
+---
+apiVersion: v1
+kind: Service
+metadata:
+  annotations:
+    service.alpha.openshift.io/serving-cert-secret-name: grafana-tls
+  labels:
+    app: grafana
+  name: grafana
+  namespace: openshift-monitoring
+spec:
+  ports:
+  - name: http-grafana
+    port: 3000
+    protocol: TCP
+    targetPort: http-grafana
+  selector:
+    app: grafana
+  sessionAffinity: None
+  type: ClusterIP
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    app: grafana
+  name: grafana
+  namespace: openshift-monitoring
+spec:
+  selector:
+    matchLabels:
+      app: grafana
+  template:
+    metadata:
+      labels:
+        app: grafana
+    spec:
+      containers:
+      - args:
+        - -config=/etc/grafana/config.ini
+        env:
+        - name: OAUTH_CLIENT_SECRET
+          valueFrom:
+            secretKeyRef:
+              key: token
+              name: grafana-token
+        - name: CLUSTER_ROUTES_BASE
+        - name: GATEWAY_SERVICE_CA
+          valueFrom:
+            configMapKeyRef:
+              key: service-ca.crt
+              name: openshift-service-ca.crt
+        - name: GATEWAY_ADDRESS
+          value: lokistack-dev-gateway-http.openshift-logging.svc:8080
+        - name: CLUSTER_MONITORING_THANOS_QUERIER_OAUTH_ADDRESS
+          value: thanos-querier.openshift-monitoring.svc.cluster.local:9091/
+        - name: CLUSTER_MONITORING_ALERTMANAGER_ADDRESS
+          value: alertmanager-main.openshift-monitoring.svc:9094
+        image: docker.io/grafana/grafana:9.4.7
+        imagePullPolicy: IfNotPresent
+        name: grafana
+        ports:
+        - containerPort: 3000
+          name: http-grafana
+          protocol: TCP
+        readinessProbe:
+          failureThreshold: 3
+          httpGet:
+            path: /robots.txt
+            port: 3000
+            scheme: HTTPS
+          initialDelaySeconds: 5
+          periodSeconds: 10
+          successThreshold: 1
+          timeoutSeconds: 2
+        resources:
+          limits:
+            cpu: 1000m
+            memory: 256Mi
+          requests:
+            cpu: 250m
+            memory: 256Mi
+        volumeMounts:
+        - mountPath: /etc/grafana
+          name: grafana-config
+        - mountPath: /etc/tls/private
+          name: secret-grafana-tls
+        - mountPath: /var/lib/grafana
+          name: grafana
+        - mountPath: /etc/grafana/provisioning/datasources
+          name: grafana-datasources
+      serviceAccountName: grafana
+      volumes:
+      - configMap:
+          name: grafana-config-455kdg4tgt
+        name: grafana-config
+      - name: secret-grafana-tls
+        secret:
+          defaultMode: 420
+          secretName: grafana-tls
+      - configMap:
+          name: grafana-datasources-8tfkb28kfd
+        name: grafana-datasources
+      - emptyDir: {}
+        name: grafana
+---
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: grafana
+  namespace: openshift-monitoring
+spec:
+  port:
+    targetPort: http-grafana
+  tls:
+    insecureEdgeTerminationPolicy: Redirect
+    termination: reencrypt
+  to:
+    kind: Service
+    name: grafana
+    weight: 100
+  wildcardPolicy: None
