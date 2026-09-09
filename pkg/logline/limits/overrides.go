@@ -9,12 +9,13 @@ import (
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/runtimeconfig"
 	"github.com/grafana/dskit/services"
-	"github.com/grafana/loki/v3/pkg/loki"
-	"github.com/grafana/loki/v3/pkg/validation"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"go.uber.org/atomic"
 	"go.yaml.in/yaml/v4"
+
+	"github.com/grafana/loki/v3/pkg/loki"
+	"github.com/grafana/loki/v3/pkg/validation"
 )
 
 // runtimeConfigValues mirrors Loki's runtime config YAML structure.
@@ -88,21 +89,21 @@ func (m *maxLimits) recompute() {
 // from every tenant's limits. Per-tenant zero values are skipped (treated as
 // "use the default"). The result is always at least defaultVal.
 func (m *maxLimits) computeMax(fn func(*validation.Limits) time.Duration, defaultVal time.Duration) time.Duration {
-	max := defaultVal
+	maxVal := defaultVal
 	for _, l := range m.inner.AllByUserID() {
 		if l == nil {
 			continue
 		}
-		if v := fn(l); v > max {
-			max = v
+		if v := fn(l); v > maxVal {
+			maxVal = v
 		}
 	}
-	return max
+	return maxVal
 }
 
 // listenForReloads blocks until the channel is closed (manager stopped),
 // recomputing max limits on every runtime config reload.
-func (m *maxLimits) listenForReloads(ch <-chan interface{}) {
+func (m *maxLimits) listenForReloads(ch <-chan any) {
 	for range ch {
 		m.recompute()
 	}
@@ -171,7 +172,7 @@ func NewOverrides(
 
 // loadRuntimeConfig returns a Loader that parses the runtime config YAML.
 func loadRuntimeConfig(logger log.Logger) runtimeconfig.Loader {
-	return func(r io.Reader) (interface{}, error) {
+	return func(r io.Reader) (any, error) {
 		var cfg runtimeConfigValues
 		decoder := yaml.NewDecoder(r)
 		if err := decoder.Decode(&cfg); err != nil {

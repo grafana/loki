@@ -6,10 +6,11 @@ import (
 	"time"
 
 	"github.com/go-kit/log"
-	"github.com/grafana/loki/v3/pkg/validation"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/require"
+
+	"github.com/grafana/loki/v3/pkg/validation"
 )
 
 // fakeTenantLimits implements validation.TenantLimits for tests.

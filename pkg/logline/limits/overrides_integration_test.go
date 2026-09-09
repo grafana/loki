@@ -10,13 +10,14 @@ import (
 	"github.com/go-kit/log"
 	"github.com/grafana/dskit/runtimeconfig"
 	"github.com/grafana/dskit/services"
-	"github.com/grafana/loki/v3/pkg/loki"
-	"github.com/grafana/loki/v3/pkg/validation"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki-logline-index-private/pkg/limits"
+	"github.com/grafana/loki/v3/pkg/loki"
+	"github.com/grafana/loki/v3/pkg/validation"
+
+	"github.com/grafana/loki/v3/pkg/logline/limits"
 )
 
 // validDefaults returns a validation.Limits with all fields populated to
