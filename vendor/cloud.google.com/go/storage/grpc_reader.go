@@ -32,7 +32,7 @@ import (
 )
 
 // Below is the legacy implementation of gRPC downloads using the ReadObject API.
-// It's used by gRPC if the experimental option WithGRPCBidiReads was not passed.
+// It's used by gRPC if the option WithGRPCBidiReads was not passed.
 // TODO: once BidiReadObject is in GA, remove this implementation.
 
 // Custom codec to be used for unmarshaling ReadObjectResponse messages.

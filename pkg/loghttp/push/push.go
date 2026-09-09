@@ -104,6 +104,7 @@ type TenantsRetention interface {
 type Limits interface {
 	OTLPConfig(userID string) OTLPConfig
 	DiscoverServiceName(userID string) []string
+	MaxPushSize(userID string) int
 }
 
 type EmptyLimits struct{}

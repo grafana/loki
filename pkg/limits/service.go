@@ -136,7 +136,7 @@ func New(cfg Config, limits Limits, logger log.Logger, reg prometheus.Registerer
 	if err != nil {
 		return nil, fmt.Errorf("failed to create kafka client: %w", err)
 	}
-	s.kafkaWriter, err = client.NewWriterClient("ingest-limits-writer", kCfg, 20, logger, reg)
+	s.kafkaWriter, err = client.NewWriterClient("ingest-limits-writer", kCfg, logger, reg)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create kafka client: %w", err)
 	}

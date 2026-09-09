@@ -20,11 +20,10 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql"
-	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	"github.com/grafana/loki/v3/pkg/logqlmodel"
 	"github.com/grafana/loki/v3/pkg/logqlmodel/metadata"
-	"github.com/grafana/loki/v3/pkg/querier/plan"
 	"github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase"
+	"github.com/grafana/loki/v3/pkg/querier/testutil"
 	"github.com/grafana/loki/v3/pkg/storage/config"
 	"github.com/grafana/loki/v3/pkg/storage/types"
 	"github.com/grafana/loki/v3/pkg/util"
@@ -169,9 +168,7 @@ func Test_seriesLimiter(t *testing.T) {
 		EndTs:     testTime,
 		Direction: logproto.FORWARD,
 		Path:      "/query_range",
-		Plan: &plan.QueryPlan{
-			AST: syntax.MustParseExpr(`rate({app="foo"} |= "foo"[1m])`),
-		},
+		Plan:      testutil.MustPlan(`rate({app="foo"} |= "foo"[1m])`),
 	}
 
 	ctx := user.InjectOrgID(context.Background(), "1")
@@ -527,9 +524,7 @@ func Test_MaxQueryLookBack(t *testing.T) {
 		EndTs:     testTime,
 		Direction: logproto.FORWARD,
 		Path:      "/loki/api/v1/query_range",
-		Plan: &plan.QueryPlan{
-			AST: syntax.MustParseExpr(`{app="foo"} |= "foo"`),
-		},
+		Plan:      testutil.MustPlan(`{app="foo"} |= "foo"`),
 	}
 
 	ctx := user.InjectOrgID(context.Background(), "1")
@@ -753,14 +748,6 @@ func Test_WeightedParallelism_DivideByZeroError(t *testing.T) {
 func Test_MaxQuerySize(t *testing.T) {
 	const statsBytes = 1000
 
-	schemas := []config.PeriodConfig{
-		{
-			// TSDB -> Time -2 days
-			From:      config.DayTime{Time: model.TimeFromUnix(testTime.Add(-48 * time.Hour).Unix())},
-			IndexType: types.IndexTypeTSDB,
-		},
-	}
-
 	for _, tc := range []struct {
 		desc       string
 		query      string
@@ -860,16 +847,14 @@ func Test_MaxQuerySize(t *testing.T) {
 				EndTs:     tc.queryEnd,
 				Direction: logproto.FORWARD,
 				Path:      "/query_range",
-				Plan: &plan.QueryPlan{
-					AST: syntax.MustParseExpr(tc.query),
-				},
+				Plan:      testutil.MustPlan(tc.query),
 			}
 
 			ctx := user.InjectOrgID(context.Background(), "foo")
 
 			middlewares := []queryrangebase.Middleware{
-				NewQuerySizeLimiterMiddleware(schemas, testEngineOpts, util_log.Logger, tc.limits, queryStatsHandler),
-				NewQuerierSizeLimiterMiddleware(schemas, testEngineOpts, util_log.Logger, tc.limits, querierStatsHandler),
+				NewQuerySizeLimiterMiddleware(testEngineOpts, util_log.Logger, tc.limits, queryStatsHandler),
+				NewQuerierSizeLimiterMiddleware(testEngineOpts, util_log.Logger, tc.limits, querierStatsHandler),
 			}
 
 			_, err := queryrangebase.MergeMiddlewares(middlewares...).Wrap(promHandler).Do(ctx, lokiReq)
@@ -889,12 +874,6 @@ func Test_MaxQuerySize(t *testing.T) {
 func Test_MaxQuerySize_WithQueryLimitsContext(t *testing.T) {
 	// a sentinal query value to control when our mock stats handler returns context stats
 	ctxSentinal := `{context="true"}`
-	schemas := []config.PeriodConfig{
-		{
-			From:      config.DayTime{Time: model.TimeFromUnix(testTime.Add(-48 * time.Hour).Unix())},
-			IndexType: types.IndexTypeTSDB,
-		},
-	}
 
 	for _, tc := range []struct {
 		desc              string
@@ -991,9 +970,7 @@ func Test_MaxQuerySize_WithQueryLimitsContext(t *testing.T) {
 				EndTs:     tc.queryEnd,
 				Direction: logproto.FORWARD,
 				Path:      "/query_range",
-				Plan: &plan.QueryPlan{
-					AST: syntax.MustParseExpr(tc.query),
-				},
+				Plan:      testutil.MustPlan(tc.query),
 			}
 
 			ctx := user.InjectOrgID(context.Background(), "foo")
@@ -1007,7 +984,7 @@ func Test_MaxQuerySize_WithQueryLimitsContext(t *testing.T) {
 			}
 
 			middlewares := []queryrangebase.Middleware{
-				NewQuerySizeLimiterMiddleware(schemas, testEngineOpts, util_log.Logger, fakeLimits{
+				NewQuerySizeLimiterMiddleware(testEngineOpts, util_log.Logger, fakeLimits{
 					maxQueryBytesRead: tc.limit,
 				}, statsHandler),
 			}
@@ -1051,11 +1028,11 @@ func Test_MaxQuerySize_MaxLookBackPeriod(t *testing.T) {
 	}{
 		{
 			desc:       "QuerySizeLimiter",
-			middleware: NewQuerySizeLimiterMiddleware(testSchemasTSDB, engineOpts, util_log.Logger, lim, statsHandler),
+			middleware: NewQuerySizeLimiterMiddleware(engineOpts, util_log.Logger, lim, statsHandler),
 		},
 		{
 			desc:       "QuerierSizeLimiter",
-			middleware: NewQuerierSizeLimiterMiddleware(testSchemasTSDB, engineOpts, util_log.Logger, lim, statsHandler),
+			middleware: NewQuerierSizeLimiterMiddleware(engineOpts, util_log.Logger, lim, statsHandler),
 		},
 	} {
 		t.Run(tc.desc, func(t *testing.T) {

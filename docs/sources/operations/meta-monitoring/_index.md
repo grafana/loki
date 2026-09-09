@@ -27,6 +27,8 @@ There are three primary components to monitoring Loki:
 
 1. [The Loki mixin](https://github.com/grafana/loki/tree/main/production/loki-mixin-compiled): is an opinionated set of dashboards, alerts, and recording rules to monitor your Loki cluster. The mixin provides a comprehensive package for monitoring Loki in production. You can install the mixin into a Grafana instance. To install the Loki mixin, follow [these directions](https://grafana.com/docs/loki/<LOKI_VERSION>/operations/meta-monitoring/mixins).
 
+If you run Loki in monolithic mode without the Kubernetes Monitoring Helm chart, refer to [Single binary meta-monitoring](https://grafana.com/docs/loki/<LOKI_VERSION>/operations/meta-monitoring/single-binary/) for an alternative setup.
+
 You should also plan separately for infrastructure-level monitoring, to monitor the capacity or throughput of your storage provider, for example, or your networking layer.
 
 - [MinIO](https://min.io/docs/minio/linux/operations/monitoring/collect-minio-metrics-using-prometheus.html)

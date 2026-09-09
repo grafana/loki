@@ -18,7 +18,7 @@ type DefaultOutput struct {
 }
 
 // Format a log entry in a human readable format
-func (o *DefaultOutput) FormatAndPrintln(ts time.Time, lbls loghttp.LabelSet, maxLabelsLen int, line string) {
+func (o *DefaultOutput) FormatAndPrintln(ts time.Time, lbls loghttp.LabelSet, maxLabelsLen int, line string) error {
 	format := o.options.TimestampFormat
 	if format == "" {
 		format = time.RFC3339
@@ -28,15 +28,16 @@ func (o *DefaultOutput) FormatAndPrintln(ts time.Time, lbls loghttp.LabelSet, ma
 	line = strings.TrimSpace(line)
 
 	if o.options.NoLabels {
-		fmt.Fprintf(o.w, "%s %s\n", color.BlueString(timestamp), line)
-		return
+		_, err := fmt.Fprintf(o.w, "%s %s\n", color.BlueString(timestamp), line)
+		return err
 	}
 	if o.options.ColoredOutput {
 		labelsColor := getColor(lbls.String()).SprintFunc()
-		fmt.Fprintf(o.w, "%s %s %s\n", color.BlueString(timestamp), labelsColor(padLabel(lbls, maxLabelsLen)), line)
-	} else {
-		fmt.Fprintf(o.w, "%s %s %s\n", color.BlueString(timestamp), color.RedString(padLabel(lbls, maxLabelsLen)), line)
+		_, err := fmt.Fprintf(o.w, "%s %s %s\n", color.BlueString(timestamp), labelsColor(padLabel(lbls, maxLabelsLen)), line)
+		return err
 	}
+	_, err := fmt.Fprintf(o.w, "%s %s %s\n", color.BlueString(timestamp), color.RedString(padLabel(lbls, maxLabelsLen)), line)
+	return err
 }
 
 // WithWriter returns a copy of the LogOutput with the writer set to the given writer

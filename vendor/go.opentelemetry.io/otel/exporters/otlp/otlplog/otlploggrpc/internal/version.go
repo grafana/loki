@@ -5,4 +5,4 @@ package internal
 
 // Version is the current release version of the OpenTelemetry otlploggrpc
 // exporter in use.
-const Version = "0.21.0"
+const Version = "0.22.0"

@@ -129,6 +129,9 @@ func (c cmdable) ExpireAt(ctx context.Context, key string, tm time.Time) *BoolCm
 	return cmd
 }
 
+// ExpireTime returns the absolute expiration time of key as a Unix timestamp
+// encoded in *DurationCmd (seconds since the epoch), not a remaining TTL.
+// Convert with: time.Unix(int64(d/time.Second), 0). Use TTL/PTTL for remaining TTL.
 func (c cmdable) ExpireTime(ctx context.Context, key string) *DurationCmd {
 	cmd := NewDurationCmd(ctx, time.Second, "expiretime", key)
 	_ = c(ctx, cmd)
@@ -209,6 +212,9 @@ func (c cmdable) PExpireAt(ctx context.Context, key string, tm time.Time) *BoolC
 	return cmd
 }
 
+// PExpireTime returns the absolute expiration time of key as a Unix timestamp
+// encoded in *DurationCmd (milliseconds since the epoch), not a remaining TTL.
+// Convert with: time.UnixMilli(int64(d/time.Millisecond)). Use TTL/PTTL for remaining TTL.
 func (c cmdable) PExpireTime(ctx context.Context, key string) *DurationCmd {
 	cmd := NewDurationCmd(ctx, time.Millisecond, "pexpiretime", key)
 	_ = c(ctx, cmd)

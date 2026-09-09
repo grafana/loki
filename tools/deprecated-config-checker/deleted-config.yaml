@@ -4,6 +4,10 @@
 
 legacy-read-mode: "Legacy read SSD mode is deprecated and will be eventually removed. Use the new read and backend targets."
 
+distributor:
+  max_recv_msg_size: "Replaced by max_push_size_bytes which includes both max_recv_msg_size and max_decompressed_size."
+  max_decompressed_size: "Replaced by max_push_size_bytes which includes both max_recv_msg_size and max_decompressed_size."
+
 ingester:
   max_transfer_retries: "Enable the ingester WAL and rely on new ingesters to replay the WAL."
 

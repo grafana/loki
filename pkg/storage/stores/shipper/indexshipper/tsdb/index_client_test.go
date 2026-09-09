@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"math"
+	"sync"
 	"testing"
 	"time"
 
@@ -319,4 +320,48 @@ type fakeLimits struct {
 
 func (f *fakeLimits) VolumeMaxSeries(_ string) int {
 	return f.volumeMaxSeries
+}
+
+func TestIndexShipperQuerier_ConcurrentChunkFilterer(t *testing.T) {
+	tempDir := t.TempDir()
+	tableRange := config.TableRange{
+		Start: 0,
+		End:   math.MaxInt64,
+		PeriodConfig: &config.PeriodConfig{
+			IndexTables: config.IndexPeriodicTableConfig{
+				PeriodicTableConfig: config.PeriodicTableConfig{
+					Period: config.ObjectStorageIndexRequiredPeriod,
+				}},
+		},
+	}
+	indexStart := model.TimeFromUnixNano(time.Now().Truncate(config.ObjectStorageIndexRequiredPeriod).UnixNano())
+	tables := map[string][]*TSDBFile{
+		tableRange.PeriodConfig.IndexTables.TableFor(indexStart): {
+			BuildIndex(t, tempDir, []LoadableSeries{
+				{
+					Labels: mustParseLabels(`{foo="bar"}`),
+					Chunks: buildChunkMetas(int64(indexStart), int64(indexStart+99)),
+				},
+			}),
+		},
+	}
+	q := newIndexShipperQuerier(mockIndexShipperIndexIterator{tables: tables}, tableRange)
+	idx := NewMultiIndex(IndexSlice{q, q})
+	matcher := labels.MustNewMatcher(labels.MatchEqual, "foo", "bar")
+
+	// Populate PeriodConfig.schemaInt before concurrent queries.
+	_, err := q.GetChunkRefs(context.Background(), "fake", indexStart, indexStart+100, nil, nil, matcher)
+	require.NoError(t, err)
+
+	var wg sync.WaitGroup
+	for i := 0; i < 16; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			idx.SetChunkFilterer(&filterAll{})
+			_, err := idx.GetChunkRefs(context.Background(), "fake", indexStart, indexStart+100, nil, nil, matcher)
+			require.NoError(t, err)
+		}()
+	}
+	wg.Wait()
 }

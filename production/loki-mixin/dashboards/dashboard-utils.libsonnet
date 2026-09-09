@@ -227,6 +227,22 @@ local utils = import 'mixin-utils/utils.libsonnet';
       tooltip: { sort: 2 },  // Sort descending.
     },
 
+  // Live heap objects, i.e. memory actually in use by the application.
+  // Prefer this over goHeapInUsePanel: heap_inuse_bytes counts whole spans the
+  // allocator has reserved, so it also includes allocator overhead and
+  // fragmentation within partially used spans. heap_alloc_bytes is "memory we
+  // actually use"; heap_inuse_bytes is "memory the Go runtime holds for current
+  // and future allocations".
+  goHeapAllocPanel(title, jobName)::
+    $.newQueryPanel(title, 'bytes') +
+    $.queryPanel(
+      'sum by(%s) (go_memstats_heap_alloc_bytes{%s})' % [$._config.per_instance_label, $.jobMatcher(jobName)],
+      '{{%s}}' % $._config.per_instance_label
+    ) +
+    {
+      tooltip: { sort: 2 },  // Sort descending.
+    },
+
   filterNodeDisk(matcher)::
     |||
       ignoring(%s) group_right() (label_replace(count by(%s, %s, device) (container_fs_writes_bytes_total{%s, %s, device!~".*sda.*"}), "device", "$1", "device", "/dev/(.*)") * 0)
@@ -348,4 +364,168 @@ local utils = import 'mixin-utils/utils.libsonnet';
   p99LatencyByPod(metric, selectorStr)::
     $.newQueryPanel('Per Pod Latency (p99)', 'ms') +
     latencyPanelWithExtraGrouping(metric, selectorStr, '1e3', 'pod'),
+
+  //
+  // Shared building blocks for the "Resources" dashboards.
+  //
+
+  // Regex matching the "type" label on the loki_autoscaler_* metrics, per
+  // component. Follows the naming convention emitted by the loki-autoscaler
+  // exporter.
+  autoscalerType:: {
+    gateway: 'cortex_gateway(_internal)?',
+    distributor: 'distributor',
+    query_frontend: 'query-frontend',
+    query_scheduler: 'query-scheduler',
+    querier: 'querier',
+    index_gateway: 'index-gateway',
+    bloom_gateway: 'bloom-gateway',
+    ingester: '(partition-)?ingester',
+    ruler: 'ruler',
+  },
+
+  // withNoValue replaces the "No data" a panel renders when its query
+  // returns nothing with a custom message.
+  withNoValue(text):: {
+    fieldConfig+: {
+      defaults+: {
+        noValue: text,
+      },
+    },
+  },
+
+  oomKilledPanel(matcher)::
+    $.newQueryPanel('OOMs') +
+    $.queryPanel(
+      |||
+        sum(
+          increase(kube_pod_container_status_restarts_total{%(ns)s, %(m)s}[$__rate_interval]) > 0
+          and on(pod)
+          kube_pod_container_status_last_terminated_reason{%(m)s, reason="OOMKilled"} == 1
+        )
+      ||| % { ns: $.namespaceMatcher(), m: matcher },
+      'OOMs'
+    ) +
+    $.withNoValue('No OOMs observed in time period 🎉'),
+
+  // Grouped by job rather than summed, so that zone-replicated components
+  // report one series per zone. The partition ingesters, for example, run each
+  // zone as its own StatefulSet but export a single per-zone min/max replicas
+  // series, so a summed pod count compares N zones of pods against one zone's
+  // limit. Grouping keeps both panels in the same units, and surfaces any
+  // imbalance between zones.
+  // The job label carries a "<namespace>/" prefix that is redundant here (the
+  // namespace is already a dashboard variable), so strip it for the legend.
+  // Series whose job has no prefix are left untouched by label_replace.
+  runningPodsPanel(matcher)::
+    $.newQueryPanel('Running Pods') +
+    $.queryPanel(
+      'label_replace(count by (%(job)s) (up{%(ns)s, %(m)s}), "%(job)s", "$1", "%(job)s", ".*/(.*)")' % {
+        job: $._config.per_job_label,
+        ns: $.namespaceMatcher(),
+        m: matcher,
+      },
+      '{{%s}}' % $._config.per_job_label
+    ),
+
+  minReplicasPanel(component)::
+    $.panel('Min Replicas') +
+    $.newStatPanel(
+      'sum(loki_autoscaler_min_replicas{%s, type=~"%s"})' % [$.namespaceMatcher(), $.autoscalerType[component]],
+      unit='short',
+      decimals=0,
+      novalue='Not auto-scaled',
+    ),
+
+  maxReplicasPanel(component)::
+    $.panel('Max Replicas') +
+    $.newStatPanel(
+      'sum(loki_autoscaler_max_replicas{%s, type=~"%s"})' % [$.namespaceMatcher(), $.autoscalerType[component]],
+      unit='short',
+      decimals=0,
+      novalue='Not auto-scaled',
+    ),
+
+  // autoscalingPanels returns the leading Min/Max Replicas panels + spans for
+  // a component's row, or nothing at all when autoscaling_metrics is disabled.
+  //
+  // The panels are rendered whether or not the component is actually
+  // auto-scaled: when the autoscaler exports no metrics for it they display
+  // "Not auto-scaled" instead of a number, so there is no build-time list of
+  // auto-scaled components to keep in sync.
+  autoscalingPanels(component)::
+    if !$._config.autoscaling_metrics then
+      { panels: [], spans: [] }
+    else
+      {
+        panels: [$.minReplicasPanel(component), $.maxReplicasPanel(component)],
+        spans: [2, 2],
+      },
+
+  diskWritesPanel(matcher)::
+    $.newQueryPanel('Disk Writes', 'Bps') +
+    $.queryPanel(
+      'sum by(%s, %s, device) (rate(node_disk_written_bytes_total[$__rate_interval])) + %s' % [$._config.per_node_label, $._config.per_instance_label, $.filterNodeDisk(matcher)],
+      '{{%s}} - {{device}}' % $._config.per_instance_label
+    ) +
+    $.withStacking,
+
+  diskReadsPanel(matcher)::
+    $.newQueryPanel('Disk Reads', 'Bps') +
+    $.queryPanel(
+      'sum by(%s, %s, device) (rate(node_disk_read_bytes_total[$__rate_interval])) + %s' % [$._config.per_node_label, $._config.per_instance_label, $.filterNodeDisk(matcher)],
+      '{{%s}} - {{device}}' % $._config.per_instance_label
+    ) +
+    $.withStacking,
+
+  // componentRow builds a per-component row. Panels are packed onto 12-unit
+  // visual lines and wrap onto subsequent lines when the running total
+  // exceeds 12, letting a single (collapsible) row hold several visual lines.
+  // Layouts:
+  //   autoscaling_metrics off (OSS default):
+  //     Line 1: [RunningPods=4, OOMs=4, CPU=4]
+  //     Line 2: [Memory ws=6, Memory heap=6]
+  //   autoscaling_metrics on:
+  //     Line 1: [MinReplicas=2, MaxReplicas=2, RunningPods=4, CPU=4]
+  //     Line 2: [OOMs=4, Memory ws=4, Memory heap=4]
+  // trailingPanels/trailingSpans are appended after the core panels (e.g.
+  // Disk Writes/Reads/Space, Rules), and are expected to add up to 12.
+  componentRow(
+    title,
+    cpuPanel,
+    memoryPanel,
+    goHeapPanel,
+    runningPodsMatcher,
+    oomMatcher,
+    autoscalingComponent,
+    trailingPanels=[],
+    trailingSpans=[],
+  )::
+    local as = $.autoscalingPanels(autoscalingComponent);
+    local hasAS = std.length(as.panels) > 0;
+    local oomPanel = $.oomKilledPanel(oomMatcher);
+    local podsPanel = $.runningPodsPanel(runningPodsMatcher);
+    local corePanels =
+      if hasAS then
+        // Autoscaling-on layout: replicas/status on line 1 with RunningPods
+        // and CPU; OOMs + memory on line 2.
+        as.panels + [podsPanel, cpuPanel, oomPanel, memoryPanel, goHeapPanel]
+      else
+        // Autoscaling-off layout: RunningPods/OOMs/CPU on line 1; memory on
+        // line 2.
+        [podsPanel, oomPanel, cpuPanel, memoryPanel, goHeapPanel];
+    local coreSpans = if hasAS then as.spans + [4, 4, 4, 4, 4] else [4, 4, 4, 6, 6];
+    local spans = coreSpans + trailingSpans;
+    local row = std.foldl(
+      function(r, p) r.addPanel(p),
+      corePanels + trailingPanels,
+      $.row(title),
+    );
+    // Override the spans auto-assigned by addPanel() with our explicit list.
+    row {
+      panels: [
+        row.panels[i] { span: spans[i] }
+        for i in std.range(0, std.length(spans) - 1)
+      ],
+    },
 }
