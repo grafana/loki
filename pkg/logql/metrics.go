@@ -100,6 +100,16 @@ var (
 		Name:      "logql_querystats_downloaded_chunk_total",
 		Help:      "Total count of chunks downloaded found while executing LogQL queries.",
 	}, []string{"status_code", "type", "range"})
+	chunkFetchFailuresTotal = promauto.NewCounterVec(prometheus.CounterOpts{
+		Namespace: constants.Loki,
+		Name:      "logql_querystats_chunk_fetch_failures_total",
+		Help:      "Total count of chunks that failed to be fetched while executing LogQL queries.",
+	}, []string{"status_code", "type", "range"})
+	queriesWithChunkFetchFailuresTotal = promauto.NewCounterVec(prometheus.CounterOpts{
+		Namespace: constants.Loki,
+		Name:      "logql_querystats_queries_with_chunk_fetch_failures_total",
+		Help:      "Total count of LogQL queries that had at least one chunk fetch failure.",
+	}, []string{"status_code", "type", "range"})
 	ingesterLineTotal = promauto.NewCounter(prometheus.CounterOpts{
 		Namespace: constants.Loki,
 		Name:      "logql_querystats_ingester_sent_lines_total",
@@ -252,6 +262,7 @@ func RecordRangeAndInstantQueryMetrics(
 		"index_shard_resolver_duration", time.Duration(stats.Index.ShardsDuration),
 		"index_bloom_filter_time", logql_stats.ConvertSecondsToNanoseconds(stats.Index.BloomFilterTime),
 		"index_chunk_refs_lookup_time", logql_stats.ConvertSecondsToNanoseconds(stats.Index.ChunkRefsLookupTime),
+		"chunk_fetch_failures", stats.TotalChunkFetchFailures(),
 	}...)
 
 	if stats.Summary.EstimatedQueryBytes > 0 {
@@ -331,6 +342,10 @@ func RecordRangeAndInstantQueryMetrics(
 	duplicatesTotal.Add(float64(stats.TotalDuplicates()))
 	chunkDownloadedTotal.WithLabelValues(status, queryType, rt).
 		Add(float64(stats.TotalChunksDownloaded()))
+	if failures := stats.TotalChunkFetchFailures(); failures > 0 {
+		chunkFetchFailuresTotal.WithLabelValues(status, queryType, rt).Add(float64(failures))
+		queriesWithChunkFetchFailuresTotal.WithLabelValues(status, queryType, rt).Inc()
+	}
 	ingesterLineTotal.Add(float64(stats.Ingester.TotalLinesSent))
 
 	recordUsageStats(queryType, stats)

@@ -302,6 +302,7 @@ func (s *Store) Merge(m Store) {
 	s.Dataobj.TotalPageDownloadTime += m.Dataobj.TotalPageDownloadTime
 	s.Dataobj.TotalRowsAvailable += m.Dataobj.TotalRowsAvailable
 	s.Dataobj.WireBytesTransferred += m.Dataobj.WireBytesTransferred
+	s.ChunkFetchFailures += m.ChunkFetchFailures
 	if m.QueryReferencedStructured {
 		s.QueryReferencedStructured = true
 	}
@@ -431,6 +432,12 @@ func (r Result) TotalChunksRef() int64 {
 	return r.Querier.Store.TotalChunksRef + r.Ingester.Store.TotalChunksRef
 }
 
+// TotalChunkFetchFailures returns the number of chunks that failed to be
+// fetched or decoded for the query, whether or not the failure was tolerated.
+func (r Result) TotalChunkFetchFailures() int64 {
+	return r.Querier.Store.ChunkFetchFailures + r.Ingester.Store.ChunkFetchFailures
+}
+
 func (r Result) TotalDecompressedBytes() int64 {
 	return r.Querier.Store.Chunk.DecompressedBytes + r.Ingester.Store.Chunk.DecompressedBytes
 }
@@ -526,6 +533,13 @@ func (c *Context) AddChunksDownloaded(i int64) {
 
 func (c *Context) AddChunksRef(i int64) {
 	atomic.AddInt64(&c.store.TotalChunksRef, i)
+}
+
+// AddChunkFetchFailures counts chunks that could not be fetched or decoded for
+// the query, even when propagateChunkFetchErrors chose to tolerate the
+// failure instead of failing the whole query.
+func (c *Context) AddChunkFetchFailures(i int64) {
+	atomic.AddInt64(&c.store.ChunkFetchFailures, i)
 }
 
 func (c *Context) AddIndexTotalChunkRefs(i int64) {
@@ -754,6 +768,7 @@ func (r Result) KVList() []any {
 		"Querier.TotalDuplicates", r.Querier.Store.Chunk.TotalDuplicates,
 		"Querier.QueryReferencedStructuredMetadata", r.Querier.Store.QueryReferencedStructured,
 		"Querier.QueryUsedV2Engine", r.Querier.Store.QueryUsedV2Engine,
+		"Querier.ChunkFetchFailures", r.Querier.Store.ChunkFetchFailures,
 	}
 
 	if r.QueryUsedV2Engine() {

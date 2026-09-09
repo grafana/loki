@@ -2050,7 +2050,8 @@ var (
 				"chunkRefsFetchTime": 0,
 				"queryReferencedStructuredMetadata": false,
 				"queryUsedV2Engine": false,
-				"pipelineWrapperFilteredLines": 2
+				"pipelineWrapperFilteredLines": 2,
+				"chunkFetchFailures": 0
 			},
 			"totalBatches": 6,
 			"totalChunksMatched": 7,
@@ -2094,7 +2095,8 @@ var (
 				"chunkRefsFetchTime": 19,
 				"queryReferencedStructuredMetadata": true,
 				"queryUsedV2Engine": false,
-				"pipelineWrapperFilteredLines": 4
+				"pipelineWrapperFilteredLines": 4,
+				"chunkFetchFailures": 0
 			}
 		},
 		"index": {

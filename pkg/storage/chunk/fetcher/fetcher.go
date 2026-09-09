@@ -209,9 +209,9 @@ func (c *Fetcher) FetchChunks(ctx context.Context, chunks []chunk.Chunk) ([]chun
 
 	// processCacheResponse will decode all the fetched chunks and also provide us with a list of
 	// missing chunks that we need to fetch from the storage layer
-	fromCache, missing, cacheDecodeErr := c.processCacheResponse(ctx, chunks, cacheHits, cacheBufs)
+	fromCache, missing, cacheDecodeFailures, cacheDecodeErr := c.processCacheResponse(ctx, chunks, cacheHits, cacheBufs)
 	if cacheDecodeErr != nil {
-		level.Warn(log).Log("msg", "error process response from cache", "err", cacheDecodeErr)
+		level.Warn(log).Log("msg", "error process response from cache", "err", cacheDecodeErr, "failed_chunks", cacheDecodeFailures)
 	}
 
 	var (
@@ -236,14 +236,21 @@ func (c *Fetcher) FetchChunks(ctx context.Context, chunks []chunk.Chunk) ([]chun
 	st.AddCacheEntriesStored(stats.ChunkCache, len(fromStorage))
 	st.AddCacheBytesSent(stats.ChunkCache, bytes)
 
+	storageFailures := 0
 	if storageErr != nil {
 		if !errors.Is(storageErr, context.Canceled) && !errors.Is(storageErr, context.DeadlineExceeded) {
 			storageErrors.WithLabelValues(c.storageErrorReason(storageErr)).Inc()
+			storageFailures = len(missing) - len(fromStorage)
 		}
 		level.Error(log).Log("msg", "failed downloading chunks", "err", storageErr)
-		if c.propagateChunkFetchErrors {
-			return nil, storageErr
-		}
+	}
+
+	if failures := cacheDecodeFailures + storageFailures; failures > 0 {
+		st.AddChunkFetchFailures(int64(failures))
+	}
+
+	if storageErr != nil && c.propagateChunkFetchErrors {
+		return nil, storageErr
 	}
 
 	if cacheErr := c.WriteBackCache(ctx, fromStorage); cacheErr != nil {
@@ -301,7 +308,7 @@ func (c *Fetcher) WriteBackCache(ctx context.Context, chunks []chunk.Chunk) erro
 // ProcessCacheResponse decodes the chunks coming back from the cache, separating
 // hits and misses. A chunk that fails to decode is in neither result, so the
 // caller never sees it and never asks storage for it.
-func (c *Fetcher) processCacheResponse(ctx context.Context, chunks []chunk.Chunk, keys []string, bufs [][]byte) ([]chunk.Chunk, []chunk.Chunk, error) {
+func (c *Fetcher) processCacheResponse(ctx context.Context, chunks []chunk.Chunk, keys []string, bufs [][]byte) ([]chunk.Chunk, []chunk.Chunk, int, error) {
 	var (
 		requests  = make([]decodeRequest, 0, len(keys))
 		responses = make(chan decodeResponse)
@@ -334,7 +341,10 @@ func (c *Fetcher) processCacheResponse(ctx context.Context, chunks []chunk.Chunk
 		}
 	}()
 
-	var err error
+	var (
+		err    error
+		failed int
+	)
 	found := make([]chunk.Chunk, 0, len(requests))
 	for i := 0; i < len(requests); i++ {
 		response := <-responses
@@ -342,11 +352,12 @@ func (c *Fetcher) processCacheResponse(ctx context.Context, chunks []chunk.Chunk
 		// Don't exit early, as we don't want to block the workers.
 		if response.err != nil {
 			err = response.err
+			failed++
 		} else {
 			found = append(found, response.chunk)
 		}
 	}
-	return found, missing, err
+	return found, missing, failed, err
 }
 
 func (c *Fetcher) storageErrorReason(err error) string {
