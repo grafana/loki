@@ -1257,13 +1257,16 @@ and the current are returned. A value of `defaults` returns the default configur
 
 The optional `q` query parameter returns only the requested field(s) instead of the full configuration.
 Its value is a dot-separated path into the configuration (for example `limits_config.ingestion_rate_strategy`),
-and it may be repeated to fetch several fields in one request (`?q=<path>&q=<path>`). The response is JSON,
-keyed by the requested path(s). An unrecognized path returns `400`; at most 20 paths of at most 512
-characters each are accepted, and exceeding either limit also returns `400`.
+made of `.`-separated segments of letters, digits, and underscores, and it may be repeated to fetch several
+fields in one request (`?q=<path>&q=<path>`). The response is JSON, keyed by the requested path(s). A
+malformed path, or a request with more than 20 `q` values or any value over 512 characters, returns `400`
+with no `X-Loki-Config-Query` header at all. A well-formed but unrecognized path also returns `400`, but
+still gets the header, since the path was recognized and attempted.
 
-Each requested path, whether or not it resolved, is echoed back via the `X-Loki-Config-Query` response
-header. This lets a caller confirm that `q` was supported and considered — its absence means an older
-Loki that doesn't understand `q` yet returned the full, unfiltered config instead.
+Each requested path that was recognized and attempted — whether or not it resolved to a value — is echoed
+back via the `X-Loki-Config-Query` response header. This lets a caller confirm that `q` was supported and
+considered — its absence, together with a full, unfiltered config in the response body, means an older
+Loki that doesn't understand `q` yet.
 
 In microservices mode, the `/config` endpoint is exposed by all components.
 

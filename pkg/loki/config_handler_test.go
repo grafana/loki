@@ -216,6 +216,30 @@ func TestConfigQueryHandler(t *testing.T) {
 		assert.Equal(t, 400, resp.StatusCode)
 		assert.Empty(t, resp.Header.Values(ConfigQueryHandledHeader))
 	})
+
+	for _, tc := range []struct {
+		name string
+		path string
+	}{
+		{"empty", ""},
+		{"trailing dot", "my_int."},
+		{"leading dot", ".my_int"},
+		{"double dot", "my_int..my_float"},
+		{"control characters", "my_int\r\nX-Injected: evil"},
+		{"space", "my int"},
+	} {
+		t.Run("malformed q parameter returns 400/"+tc.name, func(t *testing.T) {
+			query := make(url.Values)
+			query.Set("q", tc.path)
+			req := httptest.NewRequest("GET", "http://test.com/config?"+query.Encode(), nil)
+			w := httptest.NewRecorder()
+
+			configHandler(cfg, cfg)(w, req)
+			resp := w.Result()
+			assert.Equal(t, 400, resp.StatusCode)
+			assert.Empty(t, resp.Header.Values(ConfigQueryHandledHeader))
+		})
+	}
 }
 
 func TestLimitsDirectJSONMarshaling(t *testing.T) {

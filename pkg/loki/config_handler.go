@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"reflect"
+	"regexp"
 	"strings"
 
 	"github.com/grafana/dskit/tenant"
@@ -22,6 +23,20 @@ const (
 	maxConfigQueryPaths      = 20
 	maxConfigQueryPathLength = 512
 )
+
+// configQueryPathSegmentRe matches a single dot-separated segment of a q path, mirroring the
+// snake_case charset of real config field names. Rejects empty, leading/trailing/double dots, and
+// control characters before a path is ever echoed into a response header.
+var configQueryPathSegmentRe = regexp.MustCompile(`^[A-Za-z0-9_]+$`)
+
+func validConfigQueryPath(path string) bool {
+	for _, segment := range strings.Split(path, ".") {
+		if !configQueryPathSegmentRe.MatchString(segment) {
+			return false
+		}
+	}
+	return true
+}
 
 // ConfigQueryHandledHeader lists each q path this Loki recognized and processed. Its absence implies
 // an old Loki predating q support only when the request actually included q — when q is omitted
@@ -139,6 +154,10 @@ func configHandler(actualCfg any, defaultCfg any) http.HandlerFunc {
 			for _, path := range paths {
 				if len(path) > maxConfigQueryPathLength {
 					http.Error(w, fmt.Sprintf("q parameter too long: max %d characters", maxConfigQueryPathLength), http.StatusBadRequest)
+					return
+				}
+				if !validConfigQueryPath(path) {
+					http.Error(w, fmt.Sprintf("invalid q parameter: %q", path), http.StatusBadRequest)
 					return
 				}
 			}
