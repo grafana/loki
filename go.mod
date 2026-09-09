@@ -100,6 +100,7 @@ require (
 	github.com/DmitriyVTitov/size v1.5.0
 	github.com/IBM/go-sdk-core/v5 v5.23.3
 	github.com/IBM/ibm-cos-sdk-go v1.15.1
+	github.com/RoaringBitmap/roaring v1.9.4
 	github.com/aliyun/credentials-go v1.4.13
 	github.com/apache/arrow-go/v18 v18.7.0
 	github.com/aws/aws-sdk-go-v2/service/s3 v1.106.5
@@ -151,6 +152,7 @@ require (
 	github.com/containerd/ttrpc v1.2.9 // indirect
 	github.com/dlclark/regexp2/v2 v2.7.2 // indirect
 	github.com/go-openapi/swag/pools v0.29.2 // indirect
+	github.com/mschoch/smat v0.2.0 // indirect
 	go.opentelemetry.io/collector/consumer/xconsumer v0.160.0 // indirect
 	go.opentelemetry.io/collector/pdata/pprofile v0.160.0 // indirect
 	go.opentelemetry.io/collector/processor/xprocessor v0.160.0 // indirect
@@ -266,7 +268,7 @@ require (
 	github.com/xo/terminfo v1.0.0 // indirect
 	github.com/yusufpapurcu/wmi v1.2.4 // indirect
 	github.com/zeebo/assert v1.3.1 // indirect
-	github.com/zeebo/xxh3 v1.1.0 // indirect
+	github.com/zeebo/xxh3 v1.1.0
 	go.opentelemetry.io/auto/sdk v1.2.1 // indirect
 	go.opentelemetry.io/collector/component v1.66.0 // indirect
 	go.opentelemetry.io/collector/confmap v1.66.0 // indirect
