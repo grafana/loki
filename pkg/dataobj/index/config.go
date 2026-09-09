@@ -22,10 +22,10 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 
 func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	// Set defaults for base builder configuration
-	_ = cfg.TargetPageSize.Set("128KB")
-	_ = cfg.TargetObjectSize.Set("64MB")
-	_ = cfg.BufferSize.Set("2MB")
-	_ = cfg.TargetSectionSize.Set("16MB")
+	_ = cfg.TargetPageSize.Set("128KB")   // smaller pages gives more opportunities to prune
+	_ = cfg.TargetObjectSize.Set("512MB") // compressed
+	_ = cfg.BufferSize.Set("128MB")
+	_ = cfg.TargetSectionSize.Set("512MB") // uncompressed
 	cfg.BuilderBaseConfig.RegisterFlagsWithPrefix(prefix, f)
 	cfg.EstimatedCompressionRatio = 1
 	if ecr := f.Lookup(prefix + "estimated-compression-ratio"); ecr != nil {
