@@ -3,7 +3,6 @@ package jsonlite
 import (
 	"encoding/json"
 	"fmt"
-	"hash/maphash"
 	"strconv"
 	"strings"
 	"unsafe"
@@ -19,11 +18,6 @@ const (
 	// unparsedBit is set for objects/arrays that haven't been parsed yet (lazy parsing).
 	// On 64-bit systems this is bit 60, on 32-bit systems this is bit 28.
 	unparsedBit = uintptr(1) << (kindShift - 1)
-)
-
-var (
-	// hashseed is the seed used for hashing object keys.
-	hashseed = maphash.MakeSeed()
 )
 
 // Kind represents the type of a JSON value.
@@ -229,7 +223,16 @@ func (v *Value) Lookup(k string) *Value {
 	}
 	fields := unsafe.Slice((*field)(parsed.p), parsed.len())
 	hashes := fields[0].k
-	refkey := byte(maphash.String(hashseed, k))
+	if len(hashes) == 0 {
+		// Small object: no hash index was built, linear scan the keys.
+		for i := 1; i < len(fields); i++ {
+			if fields[i].k == k {
+				return &fields[i].v
+			}
+		}
+		return nil
+	}
+	refkey := hashKey(k)
 	offset := 0
 	for {
 		i := strings.IndexByte(hashes[offset:], refkey)

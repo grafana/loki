@@ -110,8 +110,11 @@ func updateGo(v *[4]uint32, buf *[16]byte, input []byte) {
 
 // Sum32 returns the 32 bits Hash value.
 func (xxh *XXHZero) Sum32() uint32 {
+	// The length term is taken modulo 2^32, but whether the accumulator lanes
+	// are folded in depends on the true length: a 4 GiB input is not a short
+	// input even though its truncated length is 0.
 	h32 := uint32(xxh.totalLen)
-	if h32 >= 16 {
+	if xxh.totalLen >= 16 {
 		h32 += rol1(xxh.v[0]) + rol7(xxh.v[1]) + rol12(xxh.v[2]) + rol18(xxh.v[3])
 	} else {
 		h32 += prime5

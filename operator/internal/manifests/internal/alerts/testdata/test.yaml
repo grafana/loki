@@ -37,23 +37,6 @@ tests:
       - series: 'loki_request_duration_seconds_bucket{namespace="my-ns", job="ingester", route="my-route", le="+Inf"}'
         values: '0+100x60'
 
-      - series: 'job_le_namespace_operation:loki_boltdb_shipper_request_duration_seconds_bucket:rate5m{namespace="my-ns", job="ingester", operation="WRITE", le="1"}'
-        values: '0+10x20'
-      - series: 'job_le_namespace_operation:loki_boltdb_shipper_request_duration_seconds_bucket:rate5m{namespace="my-ns", job="ingester", operation="WRITE", le="5"}'
-        values: '0+50x20'
-      - series: 'job_le_namespace_operation:loki_boltdb_shipper_request_duration_seconds_bucket:rate5m{namespace="my-ns", job="ingester", operation="WRITE", le="10"}'
-        values: '0+100x20'
-      - series: 'job_le_namespace_operation:loki_boltdb_shipper_request_duration_seconds_bucket:rate5m{namespace="my-ns", job="ingester", operation="WRITE", le="+Inf"}'
-        values: '0+100x20'
-      - series: 'job_le_namespace_operation:loki_boltdb_shipper_request_duration_seconds_bucket:rate5m{namespace="my-ns", job="querier", operation="Shipper.Query", le="1"}'
-        values: '0+10x20'
-      - series: 'job_le_namespace_operation:loki_boltdb_shipper_request_duration_seconds_bucket:rate5m{namespace="my-ns", job="querier", operation="Shipper.Query", le="5"}'
-        values: '0+50x20'
-      - series: 'job_le_namespace_operation:loki_boltdb_shipper_request_duration_seconds_bucket:rate5m{namespace="my-ns", job="querier", operation="Shipper.Query", le="10"}'
-        values: '0+100x20'
-      - series: 'job_le_namespace_operation:loki_boltdb_shipper_request_duration_seconds_bucket:rate5m{namespace="my-ns", job="querier", operation="Shipper.Query", le="+Inf"}'
-        values: '0+100x20'
-
       - series: 'loki_logql_querystats_latency_seconds_bucket{namespace="my-ns", job="querier", route="my-route", le="1"}'
         values: '0x20'
       - series: 'loki_logql_querystats_latency_seconds_bucket{namespace="my-ns", job="querier", route="my-route", le="30"}'
@@ -144,28 +127,6 @@ tests:
               summary: "At least 10% of requests are responded with the rate limit error code."
               description: "ingester my-route is experiencing 429 errors."
               runbook_url: "[[ .RunbookURL ]]#Loki-Tenant-Rate-Limit"
-      - eval_time: 16m
-        alertname: LokiStorageSlowWrite
-        exp_alerts:
-          - exp_labels:
-              namespace: my-ns
-              job: ingester
-              severity: warning
-            exp_annotations:
-              summary: "The storage path is experiencing slow write response rates."
-              description: "The storage path is experiencing slow write response rates."
-              runbook_url: "[[ .RunbookURL ]]#Loki-Storage-Slow-Write"
-      - eval_time: 16m
-        alertname: LokiStorageSlowRead
-        exp_alerts:
-          - exp_labels:
-              namespace: my-ns
-              job: querier
-              severity: warning
-            exp_annotations:
-              summary: "The storage path is experiencing slow read response rates."
-              description: "The storage path is experiencing slow read response rates."
-              runbook_url: "[[ .RunbookURL ]]#Loki-Storage-Slow-Read"
       - eval_time: 16m
         alertname: LokiWritePathHighLoad
         exp_alerts:

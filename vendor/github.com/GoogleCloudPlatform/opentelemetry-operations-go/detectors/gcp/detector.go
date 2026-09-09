@@ -12,11 +12,16 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+// Package gcp provides functions for detecting the GCP platform and resources.
+//
+// Deprecated: This package is deprecated and will no longer be maintained.
+// Use [go.opentelemetry.io/contrib/detectors/gcp] instead.
 package gcp
 
 import (
 	"context"
 	"errors"
+	"net/http"
 	"os"
 	"strings"
 
@@ -27,12 +32,18 @@ var errEnvVarNotFound = errors.New("environment variable not found")
 
 // NewDetector returns a *Detector which can get detect the platform,
 // and fetch attributes of the platform on which it is running.
+//
+// Deprecated: Use [go.opentelemetry.io/contrib/detectors/gcp] instead.
 func NewDetector() *Detector {
 	return &Detector{metadata: metadata.NewClient(nil), os: realOSProvider{}}
 }
 
+// Platform represents a Google Cloud platform type.
+//
+// Deprecated: Use [go.opentelemetry.io/contrib/detectors/gcp] instead.
 type Platform int64
 
+// Deprecated: Use [go.opentelemetry.io/contrib/detectors/gcp] instead.
 const (
 	UnknownPlatform Platform = iota
 	GKE
@@ -47,6 +58,8 @@ const (
 )
 
 // CloudPlatform returns the platform on which this program is running.
+//
+// Deprecated: Use [go.opentelemetry.io/contrib/detectors/gcp] instead.
 func (d *Detector) CloudPlatform() Platform {
 	switch {
 	case d.onBareMetalSolution():
@@ -72,6 +85,8 @@ func (d *Detector) CloudPlatform() Platform {
 }
 
 // ProjectID returns the ID of the project in which this program is running.
+//
+// Deprecated: Use [go.opentelemetry.io/contrib/detectors/gcp] instead.
 func (d *Detector) ProjectID() (string, error) {
 	// N.B. d.metadata.ProjectIDWithContext(context.TODO()) is cached globally, so if we use it here it's untestable.
 	s, err := d.metadata.GetWithContext(context.TODO(), "project/project-id")
@@ -86,9 +101,13 @@ func (d *Detector) instanceID() (string, error) {
 }
 
 // Detector collects resource information for all GCP platforms.
+//
+// Deprecated: Use [go.opentelemetry.io/contrib/detectors/gcp] instead.
 type Detector struct {
-	metadata *metadata.Client
-	os       osProvider
+	metadata       *metadata.Client
+	os             osProvider
+	httpClient     *http.Client
+	computeBaseURL string
 }
 
 // osProvider contains the subset of the os package functions used by.

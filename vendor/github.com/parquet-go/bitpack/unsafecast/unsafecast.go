@@ -52,3 +52,17 @@ func Slice[To, From any](data []From) []To {
 func String(data []byte) string {
 	return unsafe.String(unsafe.SliceData(data), len(data))
 }
+
+// Bytes converts a string to a byte slice value. The returned slice shares the
+// backing array of the string.
+//
+// The returned slice must not be modified. Go string values are immutable, and
+// the compiler relies on that: string constants may live in read-only memory,
+// where a write faults, and equal strings may share storage, where a write
+// corrupts an unrelated value. Bytes is for handing string data to an API that
+// takes a []byte without paying for a copy, nothing more.
+//
+// It is the inverse of String.
+func Bytes(data string) []byte {
+	return unsafe.Slice(unsafe.StringData(data), len(data))
+}

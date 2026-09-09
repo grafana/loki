@@ -2,6 +2,7 @@ package logql
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"math"
 	"testing"
@@ -16,6 +17,8 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
+	"github.com/grafana/loki/v3/pkg/logqlmodel"
+	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/index"
 )
 
@@ -61,6 +64,15 @@ func TestMappingEquivalence(t *testing.T) {
 		{`avg_over_time({a=~".+"} | logfmt | unwrap value [1s])`, false, nil},
 		{`avg_over_time({a=~".+"} | logfmt | unwrap value [1s]) by (a)`, true, nil},
 		{`avg_over_time({a=~".+"} | logfmt | unwrap value [1s]) without (stream)`, true, nil},
+		// avg_over_time() by(<unsorted labels>) needs to sort grouping labels
+		// on both side of the legs the avg_over_time() gets decomposed to
+		// (sum_over_time() / count_over_time).
+		{`avg_over_time({a=~".+"} | logfmt | unwrap value [1s]) by (c, a)`, true, nil},
+		// avg_over_time() with "unwrap" and without() grouping gets sharded
+		// by adding a filter to ensure the existence of the unwrap field on
+		// right side of the legs the avg_over_time() gets decomposed to
+		// (sum_over_time() / count_over_time).
+		{`avg_over_time({a=~".+"} | logfmt | unwrap value [1s]) without (stream, level)`, true, nil},
 		{`avg_over_time({a=~".+"} | logfmt | drop level | unwrap value [1s])`, true, nil},
 		{`avg_over_time({a=~".+"} | logfmt | drop level | unwrap value [1s]) without (stream)`, true, nil},
 		// outer sum around a non-additive range aggregation with label
@@ -96,10 +108,17 @@ func TestMappingEquivalence(t *testing.T) {
 		{`first_over_time({a=~".+"} | logfmt | unwrap value [1s]) by (a)`, false, []string{ShardFirstOverTime}},
 		{`first_over_time({a=~".+"} | logfmt | unwrap value [1s] offset 2s) by (a)`, false, []string{ShardFirstOverTime}},
 		{`first_over_time({a=~".+"} | logfmt | unwrap value [1s] offset -2s) by (a)`, false, []string{ShardFirstOverTime}},
+		// window wider than step: the range vector selector overlaps across steps, so a
+		// grouped, sharded first/last_over_time must reuse the same picked sample across
+		// several consecutive output steps instead of matching it to a single one.
+		{`first_over_time({a=~".+"} | logfmt | unwrap value [5s]) by (a)`, false, []string{ShardFirstOverTime}},
+		{`first_over_time({a=~".+"} | logfmt | unwrap value [5s] offset 2s) by (a)`, false, []string{ShardFirstOverTime}},
 		{`last_over_time({a=~".+"} | logfmt | unwrap value [1s])`, false, []string{ShardLastOverTime}},
 		{`last_over_time({a=~".+"} | logfmt | unwrap value [1s]) by (a)`, false, []string{ShardLastOverTime}},
 		{`last_over_time({a=~".+"} | logfmt | unwrap value [1s] offset 2s) by (a)`, false, []string{ShardLastOverTime}},
 		{`last_over_time({a=~".+"} | logfmt | unwrap value [1s] offset -2s) by (a)`, false, []string{ShardLastOverTime}},
+		{`last_over_time({a=~".+"} | logfmt | unwrap value [5s]) by (a)`, false, []string{ShardLastOverTime}},
+		{`last_over_time({a=~".+"} | logfmt | unwrap value [5s] offset 2s) by (a)`, false, []string{ShardLastOverTime}},
 		// topk prefers already-seen values in tiebreakers. Since the test data generates
 		// the same log lines for each series & the resulting promql.Vectors aren't deterministically
 		// sorted by labels, we don't expect this to pass.
@@ -968,4 +987,40 @@ and
   >
     10`
 	assert.Equal(t, expected, got)
+}
+
+// partialResultDownstreamer returns the results of the shards that completed
+// together with the error of the one that failed, as instance.For does.
+type partialResultDownstreamer struct {
+	results []logqlmodel.Result
+	err     error
+}
+
+func (d partialResultDownstreamer) Downstream(_ context.Context, _ []DownstreamQuery, _ Accumulator) ([]logqlmodel.Result, error) {
+	return d.results, d.err
+}
+
+// TestDownstreamEvaluator_KeepsCompletedShardUsageOnError covers a single
+// Downstream call where one shard completed and another failed: the completed
+// shard's usage must still reach the partial collector, since the engine drops
+// the results along with the error.
+func TestDownstreamEvaluator_KeepsCompletedShardUsageOnError(t *testing.T) {
+	const shardABytes = 4096
+
+	partial, ctx := stats.NewPartialContext(context.Background())
+
+	ev := DownstreamEvaluator{Downstreamer: partialResultDownstreamer{
+		// Shard A completed; shard B failed and contributed no result.
+		results: []logqlmodel.Result{{
+			Statistics: stats.Result{
+				Querier: stats.Querier{Store: stats.Store{Chunk: stats.Chunk{DecompressedBytes: shardABytes}}},
+			},
+		}},
+		err: errors.New("shard B failed"),
+	}}
+
+	res, err := ev.Downstream(ctx, []DownstreamQuery{{}, {}}, nil)
+	require.Error(t, err)
+	require.Nil(t, res)
+	require.Equal(t, int64(shardABytes), partial.Result().Querier.Store.Chunk.DecompressedBytes)
 }

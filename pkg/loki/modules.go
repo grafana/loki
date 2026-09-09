@@ -389,10 +389,6 @@ func (t *Loki) initDistributor() (services.Service, error) {
 		return nil, err
 	}
 
-	if t.PushParserWrapper != nil {
-		t.distributor.RequestParserWrapper = t.PushParserWrapper
-	}
-
 	// Register the distributor to receive Push requests over GRPC
 	// EXCEPT when running with `-target=all` or `-target=` contains `ingester`
 	if !t.Cfg.isTarget(All) && !t.Cfg.isTarget(Ingester) {
@@ -2463,6 +2459,7 @@ func (t *Loki) initDataObjCompactionWorker() (services.Service, error) {
 		Metastore:    ms,
 		ScratchStore: t.scratchStore,
 		IndexobjCfg:  t.Cfg.DataObj.Compaction.IndexobjBuilder,
+		LogsobjCfg:   t.Cfg.DataObj.Compaction.LogsobjBuilder,
 		Logger:       logger,
 		Registerer:   prometheus.DefaultRegisterer,
 	})

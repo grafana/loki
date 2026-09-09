@@ -5,3 +5,4 @@ golangci-lint
 functional_tests
 .idea
 vendor/
+.branch-validate/

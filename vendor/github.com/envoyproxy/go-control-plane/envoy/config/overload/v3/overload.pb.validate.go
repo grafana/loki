@@ -783,6 +783,165 @@ var _ interface {
 	ErrorName() string
 } = ScaleTimersOverloadActionConfigValidationError{}
 
+// Validate checks the field values on ShrinkHeapConfig with the rules defined
+// in the proto definition for this message. If any rules are violated, the
+// first error encountered is returned, or nil if there are no violations.
+func (m *ShrinkHeapConfig) Validate() error {
+	return m.validate(false)
+}
+
+// ValidateAll checks the field values on ShrinkHeapConfig with the rules
+// defined in the proto definition for this message. If any rules are
+// violated, the result is a list of violation errors wrapped in
+// ShrinkHeapConfigMultiError, or nil if none found.
+func (m *ShrinkHeapConfig) ValidateAll() error {
+	return m.validate(true)
+}
+
+func (m *ShrinkHeapConfig) validate(all bool) error {
+	if m == nil {
+		return nil
+	}
+
+	var errors []error
+
+	if d := m.GetTimerInterval(); d != nil {
+		dur, err := d.AsDuration(), d.CheckValid()
+		if err != nil {
+			err = ShrinkHeapConfigValidationError{
+				field:  "TimerInterval",
+				reason: "value is not a valid duration",
+				cause:  err,
+			}
+			if !all {
+				return err
+			}
+			errors = append(errors, err)
+		} else {
+
+			gte := time.Duration(1*time.Second + 0*time.Nanosecond)
+
+			if dur < gte {
+				err := ShrinkHeapConfigValidationError{
+					field:  "TimerInterval",
+					reason: "value must be greater than or equal to 1s",
+				}
+				if !all {
+					return err
+				}
+				errors = append(errors, err)
+			}
+
+		}
+	}
+
+	if all {
+		switch v := interface{}(m.GetMaxUnfreedMemoryBytes()).(type) {
+		case interface{ ValidateAll() error }:
+			if err := v.ValidateAll(); err != nil {
+				errors = append(errors, ShrinkHeapConfigValidationError{
+					field:  "MaxUnfreedMemoryBytes",
+					reason: "embedded message failed validation",
+					cause:  err,
+				})
+			}
+		case interface{ Validate() error }:
+			if err := v.Validate(); err != nil {
+				errors = append(errors, ShrinkHeapConfigValidationError{
+					field:  "MaxUnfreedMemoryBytes",
+					reason: "embedded message failed validation",
+					cause:  err,
+				})
+			}
+		}
+	} else if v, ok := interface{}(m.GetMaxUnfreedMemoryBytes()).(interface{ Validate() error }); ok {
+		if err := v.Validate(); err != nil {
+			return ShrinkHeapConfigValidationError{
+				field:  "MaxUnfreedMemoryBytes",
+				reason: "embedded message failed validation",
+				cause:  err,
+			}
+		}
+	}
+
+	if len(errors) > 0 {
+		return ShrinkHeapConfigMultiError(errors)
+	}
+
+	return nil
+}
+
+// ShrinkHeapConfigMultiError is an error wrapping multiple validation errors
+// returned by ShrinkHeapConfig.ValidateAll() if the designated constraints
+// aren't met.
+type ShrinkHeapConfigMultiError []error
+
+// Error returns a concatenation of all the error messages it wraps.
+func (m ShrinkHeapConfigMultiError) Error() string {
+	msgs := make([]string, 0, len(m))
+	for _, err := range m {
+		msgs = append(msgs, err.Error())
+	}
+	return strings.Join(msgs, "; ")
+}
+
+// AllErrors returns a list of validation violation errors.
+func (m ShrinkHeapConfigMultiError) AllErrors() []error { return m }
+
+// ShrinkHeapConfigValidationError is the validation error returned by
+// ShrinkHeapConfig.Validate if the designated constraints aren't met.
+type ShrinkHeapConfigValidationError struct {
+	field  string
+	reason string
+	cause  error
+	key    bool
+}
+
+// Field function returns field value.
+func (e ShrinkHeapConfigValidationError) Field() string { return e.field }
+
+// Reason function returns reason value.
+func (e ShrinkHeapConfigValidationError) Reason() string { return e.reason }
+
+// Cause function returns cause value.
+func (e ShrinkHeapConfigValidationError) Cause() error { return e.cause }
+
+// Key function returns key value.
+func (e ShrinkHeapConfigValidationError) Key() bool { return e.key }
+
+// ErrorName returns error name.
+func (e ShrinkHeapConfigValidationError) ErrorName() string { return "ShrinkHeapConfigValidationError" }
+
+// Error satisfies the builtin error interface
+func (e ShrinkHeapConfigValidationError) Error() string {
+	cause := ""
+	if e.cause != nil {
+		cause = fmt.Sprintf(" | caused by: %v", e.cause)
+	}
+
+	key := ""
+	if e.key {
+		key = "key for "
+	}
+
+	return fmt.Sprintf(
+		"invalid %sShrinkHeapConfig.%s: %s%s",
+		key,
+		e.field,
+		e.reason,
+		cause)
+}
+
+var _ error = ShrinkHeapConfigValidationError{}
+
+var _ interface {
+	Field() string
+	Reason() string
+	Key() bool
+	Cause() error
+	ErrorName() string
+} = ShrinkHeapConfigValidationError{}
+
 // Validate checks the field values on OverloadAction with the rules defined in
 // the proto definition for this message. If any rules are violated, the first
 // error encountered is returned, or nil if there are no violations.

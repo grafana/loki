@@ -207,7 +207,7 @@ func (fakeBlock) Iterator(context.Context, log.StreamPipeline) iter.EntryIterato
 	return nil
 }
 
-func (fakeBlock) SampleIterator(_ context.Context, _ ...log.StreamSampleExtractor) iter.SampleIterator {
+func (fakeBlock) SampleIterator(_ context.Context, _ log.StreamSampleExtractor) iter.SampleIterator {
 	return nil
 }
 

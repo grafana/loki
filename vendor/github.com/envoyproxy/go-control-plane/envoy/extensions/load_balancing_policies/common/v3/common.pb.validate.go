@@ -576,6 +576,161 @@ var _ interface {
 	ErrorName() string
 } = ConsistentHashingLbConfigValidationError{}
 
+// Validate checks the field values on OrcaOobReportingConfig with the rules
+// defined in the proto definition for this message. If any rules are
+// violated, the first error encountered is returned, or nil if there are no violations.
+func (m *OrcaOobReportingConfig) Validate() error {
+	return m.validate(false)
+}
+
+// ValidateAll checks the field values on OrcaOobReportingConfig with the rules
+// defined in the proto definition for this message. If any rules are
+// violated, the result is a list of violation errors wrapped in
+// OrcaOobReportingConfigMultiError, or nil if none found.
+func (m *OrcaOobReportingConfig) ValidateAll() error {
+	return m.validate(true)
+}
+
+func (m *OrcaOobReportingConfig) validate(all bool) error {
+	if m == nil {
+		return nil
+	}
+
+	var errors []error
+
+	if m.GetPortValue() > 65535 {
+		err := OrcaOobReportingConfigValidationError{
+			field:  "PortValue",
+			reason: "value must be less than or equal to 65535",
+		}
+		if !all {
+			return err
+		}
+		errors = append(errors, err)
+	}
+
+	if !_OrcaOobReportingConfig_Authority_Pattern.MatchString(m.GetAuthority()) {
+		err := OrcaOobReportingConfigValidationError{
+			field:  "Authority",
+			reason: "value does not match regex pattern \"^[^\\x00\\n\\r]*$\"",
+		}
+		if !all {
+			return err
+		}
+		errors = append(errors, err)
+	}
+
+	if all {
+		switch v := interface{}(m.GetTransportSocketMatchCriteria()).(type) {
+		case interface{ ValidateAll() error }:
+			if err := v.ValidateAll(); err != nil {
+				errors = append(errors, OrcaOobReportingConfigValidationError{
+					field:  "TransportSocketMatchCriteria",
+					reason: "embedded message failed validation",
+					cause:  err,
+				})
+			}
+		case interface{ Validate() error }:
+			if err := v.Validate(); err != nil {
+				errors = append(errors, OrcaOobReportingConfigValidationError{
+					field:  "TransportSocketMatchCriteria",
+					reason: "embedded message failed validation",
+					cause:  err,
+				})
+			}
+		}
+	} else if v, ok := interface{}(m.GetTransportSocketMatchCriteria()).(interface{ Validate() error }); ok {
+		if err := v.Validate(); err != nil {
+			return OrcaOobReportingConfigValidationError{
+				field:  "TransportSocketMatchCriteria",
+				reason: "embedded message failed validation",
+				cause:  err,
+			}
+		}
+	}
+
+	if len(errors) > 0 {
+		return OrcaOobReportingConfigMultiError(errors)
+	}
+
+	return nil
+}
+
+// OrcaOobReportingConfigMultiError is an error wrapping multiple validation
+// errors returned by OrcaOobReportingConfig.ValidateAll() if the designated
+// constraints aren't met.
+type OrcaOobReportingConfigMultiError []error
+
+// Error returns a concatenation of all the error messages it wraps.
+func (m OrcaOobReportingConfigMultiError) Error() string {
+	msgs := make([]string, 0, len(m))
+	for _, err := range m {
+		msgs = append(msgs, err.Error())
+	}
+	return strings.Join(msgs, "; ")
+}
+
+// AllErrors returns a list of validation violation errors.
+func (m OrcaOobReportingConfigMultiError) AllErrors() []error { return m }
+
+// OrcaOobReportingConfigValidationError is the validation error returned by
+// OrcaOobReportingConfig.Validate if the designated constraints aren't met.
+type OrcaOobReportingConfigValidationError struct {
+	field  string
+	reason string
+	cause  error
+	key    bool
+}
+
+// Field function returns field value.
+func (e OrcaOobReportingConfigValidationError) Field() string { return e.field }
+
+// Reason function returns reason value.
+func (e OrcaOobReportingConfigValidationError) Reason() string { return e.reason }
+
+// Cause function returns cause value.
+func (e OrcaOobReportingConfigValidationError) Cause() error { return e.cause }
+
+// Key function returns key value.
+func (e OrcaOobReportingConfigValidationError) Key() bool { return e.key }
+
+// ErrorName returns error name.
+func (e OrcaOobReportingConfigValidationError) ErrorName() string {
+	return "OrcaOobReportingConfigValidationError"
+}
+
+// Error satisfies the builtin error interface
+func (e OrcaOobReportingConfigValidationError) Error() string {
+	cause := ""
+	if e.cause != nil {
+		cause = fmt.Sprintf(" | caused by: %v", e.cause)
+	}
+
+	key := ""
+	if e.key {
+		key = "key for "
+	}
+
+	return fmt.Sprintf(
+		"invalid %sOrcaOobReportingConfig.%s: %s%s",
+		key,
+		e.field,
+		e.reason,
+		cause)
+}
+
+var _ error = OrcaOobReportingConfigValidationError{}
+
+var _ interface {
+	Field() string
+	Reason() string
+	Key() bool
+	Cause() error
+	ErrorName() string
+} = OrcaOobReportingConfigValidationError{}
+
+var _OrcaOobReportingConfig_Authority_Pattern = regexp.MustCompile("^[^\x00\n\r]*$")
+
 // Validate checks the field values on LocalityLbConfig_ZoneAwareLbConfig with
 // the rules defined in the proto definition for this message. If any rules
 // are violated, the first error encountered is returned, or nil if there are

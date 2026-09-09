@@ -10,7 +10,7 @@ import (
 
 type nullType format.NullType
 
-var nullLogicalType = format.LogicalType{Unknown: new(format.NullType)}
+var nullLogicalType = format.LogicalType{Value: new(format.NullType)}
 
 func (t *nullType) String() string { return (*format.NullType)(t).String() }
 

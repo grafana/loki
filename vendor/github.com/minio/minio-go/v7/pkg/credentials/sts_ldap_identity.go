@@ -172,7 +172,7 @@ func (k *LDAPIdentity) RetrieveWithCredContext(cc *CredContext) (value Value, er
 		v.Set("ConfigName", k.ConfigName)
 	}
 
-	req, err := http.NewRequest(http.MethodPost, u.String(), strings.NewReader(v.Encode()))
+	req, err := http.NewRequestWithContext(cc.requestContext(), http.MethodPost, u.String(), strings.NewReader(v.Encode()))
 	if err != nil {
 		return value, err
 	}

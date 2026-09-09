@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"math"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -916,6 +917,10 @@ func (f *fakeLimits) DiscoverServiceName(_ string) []string {
 		"job",
 		"k8s_job_name",
 	}
+}
+
+func (f *fakeLimits) MaxPushSize(_ string) int {
+	return math.MaxInt32
 }
 
 type mockStreamResolver struct {

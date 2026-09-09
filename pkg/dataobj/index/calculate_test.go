@@ -5,10 +5,12 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"strconv"
 	"testing"
 	"time"
 
 	"github.com/go-kit/log"
+	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
 
 	"github.com/thanos-io/objstore/providers/filesystem"
@@ -112,6 +114,71 @@ func createTestLogObject(t *testing.T, tenants int) *dataobj.Object {
 	require.Equal(t, tenants, logSections)
 
 	return obj
+}
+
+func TestCalculator_Calculate_StatsShardBuckets(t *testing.T) {
+	// Two streams share service_name (the default stats grouping key) but
+	// land in different shard buckets. Calculate must populate
+	// streamShardBuckets from labels; a missing or zeroed map would either
+	// error or collapse these into one row.
+	first := labels.FromStrings("service_name", "api", "instance", "0")
+	firstShard := streams.ShardBucket(first)
+	var second labels.Labels
+	for i := 1; i < 256; i++ {
+		candidate := labels.FromStrings("service_name", "api", "instance", strconv.Itoa(i))
+		if streams.ShardBucket(candidate) != firstShard {
+			second = candidate
+			break
+		}
+	}
+	require.NotEmpty(t, second)
+
+	logBuilder, err := logsobj.NewBuilder(logsobj.BuilderConfig{
+		BuilderBaseConfig: logsobj.BuilderBaseConfig{
+			TargetPageSize:          2048,
+			TargetObjectSize:        1 << 22,
+			TargetSectionSize:       1 << 21,
+			BufferSize:              2048 * 8,
+			SectionStripeMergeLimit: 2,
+		},
+	}, nil, logsobj.NewBuilderMetrics(), log.NewNopLogger(), nil)
+	require.NoError(t, err)
+
+	ts := time.Unix(10, 0).UTC()
+	for _, lbls := range []labels.Labels{first, second} {
+		require.NoError(t, logBuilder.Append("tenant-1", logproto.Stream{
+			Labels: lbls.String(),
+			Entries: []push.Entry{{
+				Timestamp: ts,
+				Line:      "hello",
+			}},
+		}, ts))
+	}
+
+	logObj, logCloser, err := logBuilder.Flush()
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = logCloser.Close() })
+
+	indexBuilder, err := indexobj.NewBuilder(testCalculatorConfig, nil)
+	require.NoError(t, err)
+	calculator := NewCalculator(indexBuilder)
+	require.NoError(t, calculator.Calculate(context.Background(), log.NewNopLogger(), logObj, "test/path/obj1"))
+
+	indexObj, indexCloser, _, err := calculator.Flush()
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = indexCloser.Close() })
+
+	rows := readAllStatsRows(t, indexObj)
+	require.Len(t, rows, 2)
+	gotShards := make(map[int64]struct{}, len(rows))
+	for _, row := range rows {
+		require.Equal(t, "api", row["service_name.label.utf8"])
+		gotShards[row["__shard_bucket__.int64"].(int64)] = struct{}{}
+	}
+	require.Equal(t, map[int64]struct{}{
+		int64(firstShard):                  {},
+		int64(streams.ShardBucket(second)): {},
+	}, gotShards)
 }
 
 func TestCalculator_Calculate(t *testing.T) {

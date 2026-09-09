@@ -148,7 +148,7 @@ const x10Offset = 32
 //
 // See: https://invisible-island.net/xterm/ctlseqs/ctlseqs.html#Mouse%20Tracking
 func MouseX10(b byte, x, y int) string {
-	return "\x1b[M" + string(b+x10Offset) + string(byte(x)+x10Offset+1) + string(byte(y)+x10Offset+1)
+	return "\x1b[M" + string(b+x10Offset) + string(byte(x)+x10Offset+1) + string(byte(y)+x10Offset+1) //nolint:gosec
 }
 
 // MouseSgr returns an escape sequence representing a mouse event in SGR mode.

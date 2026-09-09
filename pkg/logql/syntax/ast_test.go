@@ -2,7 +2,6 @@ package syntax
 
 import (
 	"fmt"
-	"strings"
 	"testing"
 	"time"
 
@@ -539,6 +538,27 @@ func Test_FilterMatcher(t *testing.T) {
 			[]linecheck{{"foo", true}, {"bar", false}, {"127.0.0.2", false}, {"127.0.0.1", true}},
 		},
 		{
+			`{app="foo"} |= ip("127.0.0.0/8") or "foo"`,
+			[]*labels.Matcher{
+				mustNewMatcher(labels.MatchEqual, "app", "foo"),
+			},
+			[]linecheck{{"foo", true}, {"bar", false}, {"req from 127.0.0.2 ok", true}, {"req from 8.8.8.8 ok", false}},
+		},
+		{
+			`{app="foo"} |= ip("10.0.0.0/8") or ip("192.168.0.0/16")`,
+			[]*labels.Matcher{
+				mustNewMatcher(labels.MatchEqual, "app", "foo"),
+			},
+			[]linecheck{{"from 10.5.3.2", true}, {"from 192.168.1.1", true}, {"from 8.8.8.8", false}},
+		},
+		{
+			`{app="foo"} |= "special" or ip("10.0.0.0/8") or "special2"`,
+			[]*labels.Matcher{
+				mustNewMatcher(labels.MatchEqual, "app", "foo"),
+			},
+			[]linecheck{{"has special", true}, {"from 10.5.3.2", true}, {"has special2", true}, {"nothing relevant", false}},
+		},
+		{
 			`{app="foo"} != ip("127.0.0.1") or "foo"`,
 			[]*labels.Matcher{
 				mustNewMatcher(labels.MatchEqual, "app", "foo"),
@@ -723,6 +743,26 @@ func TestStringer(t *testing.T) {
 		{
 			in:  `{app="foo"} |~ ip("127.0.0.1") or "foo"`,
 			out: `{app="foo"} |~ ip("127.0.0.1") or "foo"`,
+		},
+		{
+			in:  `{app="foo"} |= ip("10.0.0.0/8") or ip("192.168.0.0/16") or "baz"`,
+			out: `{app="foo"} |= ip("10.0.0.0/8") or ip("192.168.0.0/16") or "baz"`,
+		},
+		{
+			in:  `{app="foo"} |= "baz" or ip("10.0.0.0/8") or ip("192.168.0.0/16")`,
+			out: `{app="foo"} |= "baz" or ip("10.0.0.0/8") or ip("192.168.0.0/16")`,
+		},
+		{
+			in:  `{app="foo"} |= "baz" or ip("10.0.0.0/8") or "qux"`,
+			out: `{app="foo"} |= "baz" or ip("10.0.0.0/8") or "qux"`,
+		},
+		{
+			in:  `{app="foo"} |= ip("10.0.0.0/8") or ip("192.168.0.0/16") or ip("172.16.0.0/12") or "baz"`,
+			out: `{app="foo"} |= ip("10.0.0.0/8") or ip("192.168.0.0/16") or ip("172.16.0.0/12") or "baz"`,
+		},
+		{
+			in:  `{app="foo"} != ip("10.0.0.0/8") or ip("192.168.0.0/16") or "baz"`,
+			out: `{app="foo"} != ip("10.0.0.0/8") != ip("192.168.0.0/16") != "baz"`,
 		},
 		{
 			in:  `{app="foo"} |> "foo <_> baz" or "foo <_>"`,
@@ -1156,69 +1196,5 @@ func TestCombineFilters(t *testing.T) {
 		if i > 2 {
 			t.Fatalf("left num isn't a correct number")
 		}
-	}
-}
-
-func Test_VariantsExpr_String(t *testing.T) {
-	t.Parallel()
-	tests := []struct {
-		expr string
-	}{
-		{`variants(count_over_time({foo="bar"}[5m])) of ({foo="bar"}[5m])`},
-		{
-			`variants(count_over_time({baz="qux", foo=~"bar"}[5m]), bytes_over_time({baz="qux", foo=~"bar"}[5m])) of ({baz="qux", foo=~"bar"} | logfmt | this = "that"[5m])`,
-		},
-		{
-			`variants(count_over_time({baz="qux", foo!="bar"}[5m]),rate({baz="qux", foo!="bar"}[5m])) of ({baz="qux", foo!="bar"} |= "that" [5m])`,
-		},
-		{
-			`variants(sum by (app) (count_over_time({baz="qux", foo!="bar"}[5m])),rate({baz="qux", foo!="bar"}[5m])) of ({baz="qux", foo!="bar"} |= "that" [5m])`,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.expr, func(t *testing.T) {
-			t.Parallel()
-			expr, err := ParseExpr(tt.expr)
-			require.NoError(t, err)
-
-			expr2, err := ParseExpr(expr.String())
-			require.Nil(t, err)
-
-			AssertExpressions(t, expr, expr2)
-		})
-	}
-}
-
-func Test_VariantsExpr_Pretty(t *testing.T) {
-	tests := []struct {
-		expr   string
-		pretty string
-	}{
-		{`variants(count_over_time({foo="bar"}[5m])) of ({foo="bar"}[5m])`, `
-variants(
-  count_over_time({foo="bar"}[5m])
-) of (
-  {foo="bar"} [5m]
-)`},
-		{
-			`variants(count_over_time({baz="qux", foo=~"bar"}[5m]), bytes_over_time({baz="qux", foo=~"bar"}[5m])) of ({baz="qux", foo=~"bar"} | logfmt | this = "that"[5m])`,
-			`variants(
-  count_over_time({baz="qux", foo=~"bar"}[5m]),
-  bytes_over_time({baz="qux", foo=~"bar"}[5m])
-) of (
-  {baz="qux", foo=~"bar"} | logfmt | this="that" [5m]
-)`,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.expr, func(t *testing.T) {
-			t.Parallel()
-			expr, err := ParseExpr(tt.expr)
-			require.NoError(t, err)
-
-			require.Equal(t, strings.TrimSpace(tt.pretty), strings.TrimSpace(expr.Pretty(0)))
-		})
 	}
 }

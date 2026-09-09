@@ -34,15 +34,6 @@ var (
 	// It takes ReadStallTimeoutConfig as inputs and returns a option.ClientOption.
 	WithReadStallTimeout any // func (*ReadStallTimeoutConfig) option.ClientOption
 
-	// WithGRPCBidiReads is a function which is implemented by the storage package.
-	// It sets the gRPC client to use the BidiReadObject API for downloads.
-	WithGRPCBidiReads any // func() option.ClientOption
-
-	// WithZonalBucketAPIs is a function which is implemented by the storage package.
-	// It sets the gRPC client to use the BidiReadObject API for downloads and
-	// appendable object semantics by default for uploads.
-	WithZonalBucketAPIs any // func() option.ClientOption
-
 	// WithDirectConnectivityEnforced is a function which is implemented by the storage package.
 	// It sets the gRPC client to use direct path connectivity for all requests and may fail
 	// if direct path connectivity cannot be established for a request.
@@ -51,4 +42,8 @@ var (
 	// WithOtelMetrics is a function which is implemented by the storage package.
 	// It enables client-side OpenTelemetry metrics.
 	WithOtelMetrics any // func() option.ClientOption
+
+	// WithOtelDebugMetrics is a function which is implemented by the storage package.
+	// It enables debug client-side OpenTelemetry metrics.
+	WithOtelDebugMetrics any // func() option.ClientOption
 )

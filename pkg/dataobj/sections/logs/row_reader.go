@@ -158,10 +158,10 @@ func (r *RowReader) initReader(ctx context.Context) error {
 	}
 
 	readerOpts := dataset.RowReaderOptions{
-		Dataset:    dset,
-		Columns:    columns,
-		Predicates: predicates,
-		Prefetch:   true,
+		Dataset:           dset,
+		Columns:           columns,
+		Predicates:        predicates,
+		PrefetchAllOnOpen: true,
 	}
 
 	if r.reader == nil {

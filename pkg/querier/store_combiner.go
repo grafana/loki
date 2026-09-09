@@ -123,7 +123,7 @@ func (sc *StoreCombiner) SelectSamples(ctx context.Context, req logql.SelectSamp
 		iters = append(iters, iter)
 	}
 
-	return iter.NewMergeSampleIterator(ctx, iters), nil
+	return iter.NewTimestampFirstMergeSampleIterator(ctx, iters), nil
 }
 
 // SelectLogs implements Store

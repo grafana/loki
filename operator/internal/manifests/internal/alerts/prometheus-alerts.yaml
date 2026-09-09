@@ -111,38 +111,6 @@ groups:
     for: 15m
     labels:
       severity: warning
-  - alert: LokiStorageSlowWrite
-    annotations:
-      description: |-
-        The storage path is experiencing slow write response rates.
-      summary: "The storage path is experiencing slow write response rates."
-      runbook_url: "[[ .RunbookURL ]]#Loki-Storage-Slow-Write"
-    expr: |
-      histogram_quantile(0.99,
-        sum(
-          job_le_namespace_operation:loki_boltdb_shipper_request_duration_seconds_bucket:rate5m{operation="WRITE"}
-        ) by (job, le, namespace)
-      )
-      > 1
-    for: 15m
-    labels:
-      severity: warning
-  - alert: LokiStorageSlowRead
-    annotations:
-      description: |-
-        The storage path is experiencing slow read response rates.
-      summary: "The storage path is experiencing slow read response rates."
-      runbook_url: "[[ .RunbookURL ]]#Loki-Storage-Slow-Read"
-    expr: |
-      histogram_quantile(0.99,
-        sum(
-          job_le_namespace_operation:loki_boltdb_shipper_request_duration_seconds_bucket:rate5m{operation="Shipper.Query"}
-        ) by (job, le, namespace)
-      )
-      > 5
-    for: 15m
-    labels:
-      severity: warning
   - alert: LokiWritePathHighLoad
     annotations:
       description: |-

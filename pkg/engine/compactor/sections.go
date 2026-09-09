@@ -24,6 +24,8 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/stats"
 )
 
+const prefetchBytes = 2 * 1024 * 1024
+
 // indexEntry is one index object listed in a ToC for a particular tenant.
 type indexEntry struct {
 	Path                 string
@@ -34,11 +36,15 @@ type indexEntry struct {
 }
 
 type sortKey struct {
+	shard     uint32
 	labels    []string
 	timestamp int64
 }
 
 func compareSortKey(a, b sortKey) int {
+	if n := cmp.Compare(a.shard, b.shard); n != 0 {
+		return n
+	}
 	if n := slices.Compare(a.labels, b.labels); n != 0 {
 		return n
 	}
@@ -222,7 +228,7 @@ func indexSectionRefsFor(ctx context.Context, bucket objstore.Bucket, tenant str
 
 	var reads []sectionRead
 	for _, entry := range entries {
-		obj, err := dataobj.FromBucket(ctx, bucket, entry.Path, 0)
+		obj, err := dataobj.FromBucket(ctx, bucket, entry.Path, prefetchBytes)
 		if err != nil {
 			return nil, fmt.Errorf("open index tenant=%s index=%s: %w", tenant, entry.Path, err)
 		}
@@ -338,7 +344,7 @@ func postingsBoundColumns(section *postings.Section) ([]*postings.Column, error)
 
 // logSectionRefsFor returns one bounded reference per log section indexed by idxPath.
 func logSectionRefsFor(ctx context.Context, bucket objstore.Bucket, tenant, idxPath string) ([]v2.Section[sortKey], []string, error) {
-	obj, err := dataobj.FromBucket(ctx, bucket, idxPath, 0)
+	obj, err := dataobj.FromBucket(ctx, bucket, idxPath, prefetchBytes)
 	if err != nil {
 		return nil, nil, fmt.Errorf("open converged index tenant=%s index=%s: %w", tenant, idxPath, err)
 	}
@@ -409,8 +415,8 @@ func logSectionRefsFor(ctx context.Context, bucket objstore.Bucket, tenant, idxP
 						labels[i] = stat.Labels[name]
 					}
 				}
-				minKey := sortKey{labels: labels, timestamp: stat.MinTimestamp}
-				maxKey := sortKey{labels: labels, timestamp: stat.MaxTimestamp}
+				minKey := sortKey{shard: stat.ShardBucket, labels: labels, timestamp: stat.MinTimestamp}
+				maxKey := sortKey{shard: stat.ShardBucket, labels: labels, timestamp: stat.MaxTimestamp}
 
 				id := sectionID{path: stat.ObjectPath, index: stat.SectionIndex}
 				bounded, ok := bySection[id]

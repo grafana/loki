@@ -2,6 +2,7 @@ package iter
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"hash/fnv"
 	"math/rand"
@@ -959,4 +960,200 @@ func TestMergeIteratorNoDedupDifferentStructuredMetadata(t *testing.T) {
 	require.Equal(t, ts, got[1].Timestamp)
 	require.Equal(t, line, got[1].Line)
 	require.NotEqual(t, got[0].StructuredMetadata, got[1].StructuredMetadata)
+}
+
+// TestNonOverlappingIterator_ShouldSurfaceErrors verifies the entry concatenation
+// reports a sub-iterator failure through Err instead of treating it as normal
+// exhaustion.
+func TestNonOverlappingIterator_ShouldSurfaceErrors(t *testing.T) {
+	line := func(ts int) logproto.Entry {
+		return logproto.Entry{Timestamp: time.Unix(int64(ts), 0), Line: fmt.Sprintf("%d", ts)}
+	}
+	failing := func(ts int, labels string, err error) EntryIterator {
+		return &erroringEntryIterator{entries: []logproto.Entry{line(ts)}, labels: labels, err: err}
+	}
+	healthy := func(ts int, labels string) EntryIterator {
+		return NewStreamIterator(logproto.Stream{Labels: labels, Entries: []logproto.Entry{line(ts)}})
+	}
+
+	t.Run("error stops iteration and is surfaced", func(t *testing.T) {
+		wantErr := errors.New("boom")
+		it := NewNonOverlappingIterator([]EntryIterator{
+			failing(1, `{app="a"}`, wantErr),
+			healthy(2, `{app="b"}`),
+		})
+
+		var got int
+		for it.Next() {
+			got++
+		}
+		require.Equal(t, 1, got, "iteration stops at the failing stream; later streams are not played")
+		require.ErrorIs(t, it.Err(), wantErr, "the error must be surfaced, not dropped as normal exhaustion")
+	})
+
+	t.Run("error in the last stream is surfaced", func(t *testing.T) {
+		wantErr := errors.New("boom")
+		it := NewNonOverlappingIterator([]EntryIterator{
+			healthy(1, `{app="a"}`),
+			failing(2, `{app="b"}`, wantErr),
+		})
+
+		for it.Next() { //nolint:revive
+		}
+		require.ErrorIs(t, it.Err(), wantErr)
+	})
+
+	t.Run("no error returns nil", func(t *testing.T) {
+		it := NewNonOverlappingIterator([]EntryIterator{
+			healthy(1, `{app="a"}`),
+			healthy(2, `{app="b"}`),
+		})
+
+		var got int
+		for it.Next() {
+			got++
+		}
+		require.Equal(t, 2, got)
+		require.NoError(t, it.Err())
+	})
+
+	t.Run("close error surfaces through Close, not Err", func(t *testing.T) {
+		wantErr := errors.New("close boom")
+		it := NewNonOverlappingIterator([]EntryIterator{
+			&erroringEntryIterator{entries: []logproto.Entry{line(1)}, labels: `{app="a"}`, closeErr: wantErr},
+			healthy(2, `{app="b"}`),
+		})
+
+		require.NoError(t, it.Err(), "a close error is not a read error")
+		require.ErrorIs(t, it.Close(), wantErr, "Close must surface a sub-iterator close error")
+	})
+
+	t.Run("close error while iterating is not a read error", func(t *testing.T) {
+		// The first iterator reads cleanly, then its Close fails while iterating.
+		// That is a cleanup failure, not a read failure, so iteration continues
+		// and Err stays nil.
+		it := NewNonOverlappingIterator([]EntryIterator{
+			&erroringEntryIterator{entries: []logproto.Entry{line(1)}, labels: `{app="a"}`, closeErr: errors.New("close boom")},
+			healthy(2, `{app="b"}`),
+		})
+
+		var got int
+		for it.Next() {
+			got++
+		}
+		require.Equal(t, 2, got, "both streams play; a close failure does not stop iteration")
+		require.NoError(t, it.Err(), "a close error during iteration must not become a read error")
+	})
+
+	t.Run("stream that errors before any entry stops immediately", func(t *testing.T) {
+		wantErr := errors.New("open failed")
+		it := NewNonOverlappingIterator([]EntryIterator{
+			&erroringEntryIterator{labels: `{app="a"}`, err: wantErr}, // no entries
+			healthy(2, `{app="b"}`),
+		})
+
+		var got int
+		for it.Next() {
+			got++
+		}
+		require.Equal(t, 0, got, "no entries are produced")
+		require.ErrorIs(t, it.Err(), wantErr)
+	})
+
+	t.Run("error in a middle stream stops before later streams", func(t *testing.T) {
+		wantErr := errors.New("boom")
+		it := NewNonOverlappingIterator([]EntryIterator{
+			healthy(1, `{app="a"}`),
+			failing(2, `{app="b"}`, wantErr),
+			healthy(3, `{app="c"}`),
+		})
+
+		var got int
+		for it.Next() {
+			got++
+		}
+		require.Equal(t, 2, got, "the stream after the failing one is not played")
+		require.ErrorIs(t, it.Err(), wantErr)
+	})
+
+	t.Run("fail-fast leaves cleanup to Close", func(t *testing.T) {
+		errored := &erroringEntryIterator{entries: []logproto.Entry{line(1)}, labels: `{app="a"}`, err: errors.New("boom")}
+		later1 := &erroringEntryIterator{entries: []logproto.Entry{line(2)}, labels: `{app="b"}`}
+		later2 := &erroringEntryIterator{entries: []logproto.Entry{line(3)}, labels: `{app="c"}`}
+
+		it := NewNonOverlappingIterator([]EntryIterator{errored, later1, later2})
+		for it.Next() { //nolint:revive
+		}
+		require.NoError(t, it.Close())
+
+		require.Equal(t, 1, errored.closed, "the errored current iterator is closed once")
+		require.Equal(t, 1, later1.closed, "an un-started iterator is closed once")
+		require.Equal(t, 1, later2.closed, "an un-started iterator is closed once")
+	})
+
+	t.Run("close error replaying an already-surfaced read error is not reported again", func(t *testing.T) {
+		// Some EntryIterator implementations (e.g. the chunk block iterator) return
+		// their stored read error from Close too, as a fallback for callers that
+		// only check the Close return value. That must not turn into a second,
+		// spurious close error once the read error already surfaced through Err.
+		wantErr := errors.New("boom")
+		errored := &erroringEntryIterator{entries: []logproto.Entry{line(1)}, labels: `{app="a"}`, err: wantErr, closeErr: wantErr}
+
+		it := NewNonOverlappingIterator([]EntryIterator{errored, healthy(2, `{app="b"}`)})
+		for it.Next() { //nolint:revive
+		}
+		require.ErrorIs(t, it.Err(), wantErr)
+		require.NoError(t, it.Close())
+		require.Equal(t, 1, errored.closed)
+	})
+
+	t.Run("Close surfaces every close error", func(t *testing.T) {
+		it := NewNonOverlappingIterator([]EntryIterator{
+			&erroringEntryIterator{entries: []logproto.Entry{line(1)}, closeErr: errors.New("close a")},
+			&erroringEntryIterator{entries: []logproto.Entry{line(2)}, closeErr: errors.New("close b")},
+		})
+
+		err := it.Close() // no iteration, so both remain for Close to close
+		require.ErrorContains(t, err, "close a")
+		require.ErrorContains(t, err, "close b")
+	})
+
+	t.Run("Err is stable after a read error", func(t *testing.T) {
+		wantErr := errors.New("boom")
+		it := NewNonOverlappingIterator([]EntryIterator{failing(1, `{app="a"}`, wantErr)})
+
+		for it.Next() { //nolint:revive
+		}
+		require.ErrorIs(t, it.Err(), wantErr)
+
+		require.False(t, it.Next(), "further Next calls keep returning false")
+		require.ErrorIs(t, it.Err(), wantErr, "Err stays set")
+	})
+}
+
+// erroringEntryIterator yields its entries, then fails: the Next after the last
+// entry returns false with err set, modeling a stream that read some data and
+// then failed mid-stream.
+type erroringEntryIterator struct {
+	entries  []logproto.Entry
+	labels   string
+	err      error // a read failure, returned by Err once the entries are exhausted
+	closeErr error // a cleanup failure, returned by Close; kept separate from err
+	closed   int   // number of times Close was called
+	i        int
+}
+
+func (it *erroringEntryIterator) Next() bool {
+	it.i++
+	return it.i <= len(it.entries)
+}
+func (it *erroringEntryIterator) At() logproto.Entry { return it.entries[it.i-1] }
+func (it *erroringEntryIterator) Labels() string     { return it.labels }
+func (it *erroringEntryIterator) StreamHash() uint64 { return 0 }
+func (it *erroringEntryIterator) Close() error       { it.closed++; return it.closeErr }
+func (it *erroringEntryIterator) Err() error {
+	if it.i > len(it.entries) {
+		return it.err
+	}
+	return nil
 }

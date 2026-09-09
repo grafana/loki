@@ -3,6 +3,7 @@ package logql
 import (
 	"context"
 	"fmt"
+	"math"
 	"math/rand"
 	"sort"
 	"testing"
@@ -197,7 +198,7 @@ func Benchmark_RangeVectorIterator(b *testing.B) {
 
 	for i := 0; i < b.N; i++ {
 		i := 0
-		it, err := newRangeVectorIterator(newfakePeekingSampleIterator(samples),
+		it, err := newTimestampFirstRangeVectorIterator(newfakePeekingSampleIterator(samples),
 			&syntax.RangeAggregationExpr{Operation: syntax.OpRangeTypeCount}, tt.selRange,
 			tt.step, tt.start.UnixNano(), tt.end.UnixNano(), tt.offset)
 		if err != nil {
@@ -321,7 +322,7 @@ func Test_RangeVectorIterator_InstantQuery(t *testing.T) {
 		t.Run(
 			fmt.Sprintf("%d logs[%s] - start %s - end %s", i, tt.selRange, tt.now.Add(-tt.selRange), tt.now),
 			func(t *testing.T) {
-				it, err := newRangeVectorIterator(
+				it, err := newTimestampFirstRangeVectorIterator(
 					newfakePeekingSampleIterator(samples),
 					&syntax.RangeAggregationExpr{Operation: syntax.OpRangeTypeCount},
 					tt.selRange.Nanoseconds(),
@@ -466,7 +467,7 @@ func Test_RangeVectorIterator(t *testing.T) {
 		t.Run(
 			fmt.Sprintf("logs[%s] - step: %s - offset: %s", time.Duration(tt.selRange), time.Duration(tt.step), time.Duration(tt.offset)),
 			func(t *testing.T) {
-				it, err := newRangeVectorIterator(newfakePeekingSampleIterator(samples),
+				it, err := newTimestampFirstRangeVectorIterator(newfakePeekingSampleIterator(samples),
 					&syntax.RangeAggregationExpr{Operation: syntax.OpRangeTypeCount}, tt.selRange,
 					tt.step, tt.start.UnixNano(), tt.end.UnixNano(), tt.offset)
 				require.NoError(t, err)
@@ -490,7 +491,7 @@ func Test_RangeVectorIteratorBadLabels(t *testing.T) {
 			Labels:  "{badlabels=}",
 			Samples: samples,
 		}))
-	it, err := newRangeVectorIterator(badIterator,
+	it, err := newTimestampFirstRangeVectorIterator(badIterator,
 		&syntax.RangeAggregationExpr{Operation: syntax.OpRangeTypeCount}, (30 * time.Second).Nanoseconds(),
 		(30 * time.Second).Nanoseconds(), time.Unix(10, 0).UnixNano(), time.Unix(100, 0).UnixNano(), 0)
 	require.NoError(t, err)
@@ -536,7 +537,7 @@ func Test_InstantQueryRangeVectorAggregations(t *testing.T) {
 	var start, end int64 = 4, 4 // Instant query
 	for _, tt := range tests {
 		t.Run(fmt.Sprintf("testing aggregation %s", tt.name), func(t *testing.T) {
-			it, err := newRangeVectorIterator(sampleIter(tt.negative),
+			it, err := newTimestampFirstRangeVectorIterator(sampleIter(tt.negative),
 				&syntax.RangeAggregationExpr{Left: &syntax.LogRangeExpr{Interval: 2}, Params: proto.Float64(0.99), Operation: tt.op},
 				3, 1, start, end, 0)
 			require.NoError(t, err)
@@ -637,4 +638,90 @@ func TestQuantiles(t *testing.T) {
 			}
 		}
 	}
+}
+
+// FuzzDDSketchQuantileMatchesExact checks that DDSketchQuantile.Quantile stays within the
+// sketch's relative accuracy of the exact (unsharded) Quantile across sample counts, magnitudes,
+// and quantiles, including the edges (an empty sample set, or a quantile outside [0, 1]) where
+// both must agree on the same NaN/±Inf sentinel rather than just a close value.
+func FuzzDDSketchQuantileMatchesExact(f *testing.F) {
+	// The sketch's relative accuracy (1%) plus margin. Same value as TestQuantiles above and
+	// the sharding toleration in range_aggregations.logqltest.
+	const fuzzQuantileEpsilon = 0.02
+
+	f.Add(int64(1), uint8(1), 0.5, 1.0)     // q=0.5, single value
+	f.Add(int64(2), uint8(2), 0.5, 10.0)    // q=0.5, two values
+	f.Add(int64(3), uint8(4), 0.0, 100.0)   // q=0, minimum
+	f.Add(int64(4), uint8(4), 1.0, 100.0)   // q=1, maximum
+	f.Add(int64(5), uint8(255), 0.5, 1e6)   // q=0.5, dense, large magnitude
+	f.Add(int64(8), uint8(255), 0.9, 1e-6)  // q=0.9, dense, small magnitude
+	f.Add(int64(6), uint8(10), 0.25, 1e-6)  // q=0.25, sparse, small magnitude
+	f.Add(int64(7), uint8(20), 0.75, 100.0) // q=0.75, third quartile
+	f.Add(int64(9), uint8(0), 0.5, 100.0)   // q=0.5, empty sample set
+	f.Add(int64(10), uint8(4), 1.5, 100.0)  // q=1.5, out of [0, 1]
+	f.Add(int64(11), uint8(4), -0.5, 100.0) // q=-0.5, out of [0, 1]
+
+	f.Fuzz(func(t *testing.T, seed int64, n uint8, q, scale float64) {
+		if math.IsNaN(q) {
+			t.Skip("quantile is NaN: undefined for both implementations")
+		}
+		if math.IsNaN(scale) || math.IsInf(scale, 0) {
+			t.Skip("non-finite scale")
+		}
+
+		r := rand.New(rand.NewSource(seed))
+		values := make(vector.HeapByMaxValue, n)
+		sk := sketch.NewDDSketch()
+		for i := range values {
+			v := (r.Float64()*2 - 1) * scale // uniform in [-scale, scale]
+			values[i] = promql.Sample{F: v}
+			if err := sk.Add(v); err != nil {
+				t.Skip("value outside the sketch's indexable range")
+			}
+		}
+
+		want := Quantile(q, values)
+		got, err := sk.Quantile(q)
+		require.NoError(t, err)
+
+		switch {
+		case math.IsNaN(want):
+			// An empty sample set: both must return NaN, not just agree numerically (NaN
+			// never equals itself under ==, let alone under a tolerance check).
+			if !math.IsNaN(got) {
+				t.Fatalf("want NaN (empty sample set), got %v: seed=%d n=%d q=%v scale=%v", got, seed, n, q, scale)
+			}
+		case math.IsInf(want, 0):
+			// A quantile outside [0, 1]: both must return the same sentinel infinity exactly,
+			// not just a close value (Inf - Inf is NaN, so a tolerance check can't verify this).
+			if got != want {
+				t.Fatalf("want %v (quantile outside [0, 1]), got %v: seed=%d n=%d q=%v scale=%v", want, got, seed, n, q, scale)
+			}
+		default:
+			// Each bracketing order statistic is only ~1% accurate on its own.
+			//
+			// Averaging two of them can inflate the result's relative error when they nearly
+			// cancel (opposite signs, e.g. a median of {8.5, -20.7}). That is inherent to
+			// interpolating quantized points, not a bug. Bound the divergence against the
+			// inputs' known magnitude (|scale|) instead of the result, which cancellation can
+			// shrink toward zero and hide a real divergence.
+			absTolerance := fuzzQuantileEpsilon * math.Abs(scale)
+			diff := math.Abs(want - got)
+			if diff > absTolerance && !quantilesClose(want, got, fuzzQuantileEpsilon) {
+				t.Fatalf("sketch quantile diverges from exact beyond tolerance: seed=%d n=%d q=%v scale=%v want=%v got=%v diff=%v",
+					seed, n, q, scale, want, got, diff)
+			}
+		}
+	})
+}
+
+// quantilesClose reports whether want and got are within epsilon of each other, as an absolute
+// difference or, if larger, a relative one — the latter alone breaks down when want is 0 or very
+// small.
+func quantilesClose(want, got, epsilon float64) bool {
+	diff := math.Abs(want - got)
+	if diff <= epsilon {
+		return true
+	}
+	return diff/math.Max(math.Abs(want), math.Abs(got)) <= epsilon
 }

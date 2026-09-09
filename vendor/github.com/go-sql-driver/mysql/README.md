@@ -314,7 +314,10 @@ Type:           duration
 Default:        0
 ```
 
-[Truncate time values](https://pkg.go.dev/time#Duration.Truncate) to the specified duration. The value must be a decimal number with a unit suffix (*"ms"*, *"s"*, *"m"*, *"h"*), such as *"30s"*, *"0.5m"* or *"1m30s"*.
+[Truncate time values](https://pkg.go.dev/time#Duration.Truncate) in query arguments to the specified duration. The value must be a decimal number with a unit suffix (*"ns"*, *"us"*, *"ms"*, etc...), such as "1us", "1ms", or "10ns".
+
+> [!NOTE]
+> `time.Time` arguments are sent with up to nanosecond precision, so a value from `time.Now()` usually has more fractional-second digits than a `DATETIME(N)` or `TIMESTAMP(N)` column stores. On MariaDB, comparing such a value against an indexed column can prevent an index range scan, turning it into a full index scan. Truncating to the column's precision (`1us` for `DATETIME(6)`) avoids this. Only arguments sent to the server are truncated; values read from the server are not affected.
 
 ##### `maxAllowedPacket`
 ```

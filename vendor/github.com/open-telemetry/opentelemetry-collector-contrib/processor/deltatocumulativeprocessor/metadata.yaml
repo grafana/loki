@@ -1,5 +1,6 @@
 display_name: Delta to Cumulative Processor
-type: deltatocumulative
+type: delta_to_cumulative
+deprecated_type: deltatocumulative
 
 description: |
   The Delta to Cumulative Processor (`deltatocumulativeprocessor`) converts metrics from delta temporality to

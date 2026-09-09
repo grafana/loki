@@ -1166,6 +1166,7 @@ func (d *jsonEncDriver[T]) init(hh Handle, shared *encoderBase, enc encoderI) (f
 	return
 }
 
+func (e *jsonEncDriver[T]) NumBytesWritten() int    { return e.w.numWrite() }
 func (e *jsonEncDriver[T]) writeBytesAsis(b []byte) { e.w.writeb(b) }
 
 // func (e *jsonEncDriver[T]) writeStringAsisDblQuoted(v string) { e.w.writeqstr(v) }
@@ -1204,7 +1205,7 @@ func (d *jsonDecDriver[T]) resetInBytes(in []byte) {
 }
 
 func (d *jsonDecDriver[T]) resetInIO(r io.Reader) {
-	d.r.resetIO(r, d.h.ReaderBufferSize, d.h.MaxInitLen, &d.d.blist)
+	d.r.resetIO(r, d.h.ReaderBufferSize, d.h.maxBytes2Read(), &d.d.blist)
 }
 
 // ---- (custom stanza)

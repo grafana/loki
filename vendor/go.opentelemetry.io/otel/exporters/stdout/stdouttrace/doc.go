@@ -6,4 +6,4 @@
 //
 // See [go.opentelemetry.io/otel/exporters/stdout/stdouttrace/internal/x] for information about
 // the experimental features.
-package stdouttrace // import "go.opentelemetry.io/otel/exporters/stdout/stdouttrace"
+package stdouttrace

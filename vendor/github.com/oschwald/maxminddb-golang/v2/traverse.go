@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"iter"
 	"net/netip"
+	"runtime"
 
 	"github.com/oschwald/maxminddb-golang/v2/internal/mmdberrors"
 )
@@ -134,7 +135,7 @@ func (r *Reader) NetworksWithin(prefix netip.Prefix, options ...NetworksOption) 
 			return
 		}
 
-		prefix, err := netIP.Prefix(bit)
+		networkPrefix, err := netIP.Prefix(bit)
 		if err != nil {
 			yield(Result{
 				ip:        ip,
@@ -147,7 +148,7 @@ func (r *Reader) NetworksWithin(prefix netip.Prefix, options ...NetworksOption) 
 		nodes := make([]netNode, 0, 64)
 		nodes = append(nodes,
 			netNode{
-				ip:      prefix.Addr(),
+				ip:      networkPrefix.Addr(),
 				bit:     uint(bit),
 				pointer: pointer,
 			},
@@ -248,6 +249,7 @@ func (r *Reader) NetworksWithin(prefix netip.Prefix, options ...NetworksOption) 
 				node.pointer = leftPointer
 			}
 		}
+		runtime.KeepAlive(r)
 	}
 }
 

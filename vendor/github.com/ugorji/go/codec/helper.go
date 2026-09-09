@@ -1462,8 +1462,8 @@ func (o intf2impls) intf2impl(rtid uintptr) (rv reflect.Value) {
 }
 
 type structFieldInfoNode struct {
-	offset   uint16
-	index    uint16
+	offset   uint64
+	index    uint32
 	kind     uint8
 	numderef uint8
 	_        uint16 // padding
@@ -2301,7 +2301,7 @@ func (x *TypeInfos) rget(rt reflect.Type, path *structFieldInfoPathNode, pv *typ
 	//       and iteration using equals is faster than maps there
 	flen := rt.NumField()
 LOOP:
-	for j, jlen := uint16(0), uint16(flen); j < jlen; j++ {
+	for j, jlen := uint32(0), uint32(flen); j < jlen; j++ {
 		f := rt.Field(int(j))
 		fkind := f.Type.Kind()
 
@@ -2374,7 +2374,7 @@ LOOP:
 						parent: path,
 						structFieldInfoNode: structFieldInfoNode{
 							typ:      f.Type,
-							offset:   uint16(f.Offset),
+							offset:   uint64(f.Offset),
 							index:    j,
 							kind:     uint8(fkind),
 							numderef: numderef,
@@ -2423,7 +2423,7 @@ LOOP:
 
 		si.node = structFieldInfoNode{
 			typ:      f.Type,
-			offset:   uint16(f.Offset),
+			offset:   uint64(f.Offset),
 			index:    j,
 			kind:     uint8(fkind),
 			numderef: numderef,

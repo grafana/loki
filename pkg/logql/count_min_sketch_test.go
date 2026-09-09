@@ -5,12 +5,12 @@ import (
 	"math/rand"
 	"testing"
 
-	"github.com/grafana/loki/v3/pkg/logproto"
-
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
 
+	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql/sketch"
+	"github.com/grafana/loki/v3/pkg/logql/syntax"
 )
 
 func TestHeapCountMinSketchVectorHeap(t *testing.T) {
@@ -115,4 +115,10 @@ func BenchmarkHeapCountMinSketchVectorAdd(b *testing.B) {
 			}
 		}
 	}
+}
+
+func TestErrCountMinSketchInstantOnly(t *testing.T) {
+	require.EqualError(t, errCountMinSketchInstantOnly(""), "count min sketches are only supported on instant queries")
+	require.EqualError(t, errCountMinSketchInstantOnly(syntax.OpTypeApproxTopK), "approx_topk error: count min sketches are only supported on instant queries")
+	require.EqualError(t, errCountMinSketchInstantOnly("approx_foo"), "approx_foo error: count min sketches are only supported on instant queries")
 }

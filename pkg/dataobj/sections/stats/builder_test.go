@@ -140,6 +140,7 @@ func TestBuilder_RoundTrip(t *testing.T) {
 	expected := arrowtest.Rows{
 		{
 			"object_path.utf8":        "/tenant/abc/obj2",
+			"__shard_bucket__.int64":  int64(0),
 			"section_index.int64":     int64(1),
 			"sort_schema.utf8":        "label:service_name",
 			"min_timestamp.timestamp": time.Unix(0, 500).UTC(),
@@ -150,6 +151,7 @@ func TestBuilder_RoundTrip(t *testing.T) {
 		},
 		{
 			"object_path.utf8":        "/tenant/abc/obj3",
+			"__shard_bucket__.int64":  int64(0),
 			"section_index.int64":     int64(2),
 			"sort_schema.utf8":        "label:service_name",
 			"min_timestamp.timestamp": time.Unix(0, 3000).UTC(),
@@ -160,6 +162,7 @@ func TestBuilder_RoundTrip(t *testing.T) {
 		},
 		{
 			"object_path.utf8":        "/tenant/abc/obj1",
+			"__shard_bucket__.int64":  int64(0),
 			"section_index.int64":     int64(0),
 			"sort_schema.utf8":        "label:service_name",
 			"min_timestamp.timestamp": time.Unix(0, 1000).UTC(),
@@ -192,6 +195,7 @@ func TestBuilder_SortOrder(t *testing.T) {
 	expected := arrowtest.Rows{
 		{
 			"object_path.utf8":        "",
+			"__shard_bucket__.int64":  int64(0),
 			"section_index.int64":     int64(0),
 			"sort_schema.utf8":        "label:service_name",
 			"min_timestamp.timestamp": time.Unix(0, 100).UTC(),
@@ -202,6 +206,7 @@ func TestBuilder_SortOrder(t *testing.T) {
 		},
 		{
 			"object_path.utf8":        "",
+			"__shard_bucket__.int64":  int64(0),
 			"section_index.int64":     int64(0),
 			"sort_schema.utf8":        "label:service_name",
 			"min_timestamp.timestamp": time.Unix(0, 200).UTC(),
@@ -212,6 +217,7 @@ func TestBuilder_SortOrder(t *testing.T) {
 		},
 		{
 			"object_path.utf8":        "",
+			"__shard_bucket__.int64":  int64(0),
 			"section_index.int64":     int64(0),
 			"sort_schema.utf8":        "label:service_name",
 			"min_timestamp.timestamp": time.Unix(0, 300).UTC(),
@@ -222,6 +228,7 @@ func TestBuilder_SortOrder(t *testing.T) {
 		},
 		{
 			"object_path.utf8":        "",
+			"__shard_bucket__.int64":  int64(0),
 			"section_index.int64":     int64(0),
 			"sort_schema.utf8":        "label:service_name",
 			"min_timestamp.timestamp": time.Unix(0, 200).UTC(),
@@ -232,6 +239,7 @@ func TestBuilder_SortOrder(t *testing.T) {
 		},
 		{
 			"object_path.utf8":        "",
+			"__shard_bucket__.int64":  int64(0),
 			"section_index.int64":     int64(0),
 			"sort_schema.utf8":        "label:service_name",
 			"min_timestamp.timestamp": time.Unix(0, 50).UTC(),
@@ -262,6 +270,7 @@ func TestBuilder_AllSameServiceName(t *testing.T) {
 	expected := arrowtest.Rows{
 		{
 			"object_path.utf8":        "a",
+			"__shard_bucket__.int64":  int64(0),
 			"section_index.int64":     int64(0),
 			"sort_schema.utf8":        "label:service_name",
 			"min_timestamp.timestamp": time.Unix(0, 100).UTC(),
@@ -272,6 +281,7 @@ func TestBuilder_AllSameServiceName(t *testing.T) {
 		},
 		{
 			"object_path.utf8":        "b",
+			"__shard_bucket__.int64":  int64(0),
 			"section_index.int64":     int64(0),
 			"sort_schema.utf8":        "label:service_name",
 			"min_timestamp.timestamp": time.Unix(0, 200).UTC(),
@@ -282,6 +292,7 @@ func TestBuilder_AllSameServiceName(t *testing.T) {
 		},
 		{
 			"object_path.utf8":        "c",
+			"__shard_bucket__.int64":  int64(0),
 			"section_index.int64":     int64(0),
 			"sort_schema.utf8":        "label:service_name",
 			"min_timestamp.timestamp": time.Unix(0, 300).UTC(),
@@ -300,6 +311,7 @@ func TestCompare_FullKeyOrder(t *testing.T) {
 	base := func() Stat {
 		return Stat{
 			SortSchema:   schema,
+			ShardBucket:  2,
 			Labels:       map[string]string{"service_name": "svc", "namespace": "ns"},
 			MinTimestamp: 100,
 			MaxTimestamp: 200,
@@ -316,6 +328,7 @@ func TestCompare_FullKeyOrder(t *testing.T) {
 		name   string
 		mutate func(*Stat)
 	}{
+		{"shard bucket", func(s *Stat) { s.ShardBucket = 7 }},
 		{"first sort label", func(s *Stat) { s.Labels = map[string]string{"service_name": "zzz", "namespace": "ns"} }},
 		{"second sort label", func(s *Stat) { s.Labels = map[string]string{"service_name": "svc", "namespace": "zz"} }},
 		{"min timestamp", func(s *Stat) { s.MinTimestamp = 999 }},
@@ -376,6 +389,7 @@ func TestBuilder_TieBreakOnObjectPathAndSectionIndex(t *testing.T) {
 	expected := arrowtest.Rows{
 		{
 			"object_path.utf8":        "objA",
+			"__shard_bucket__.int64":  int64(0),
 			"section_index.int64":     int64(0),
 			"sort_schema.utf8":        schema,
 			"min_timestamp.timestamp": time.Unix(0, 100).UTC(),
@@ -386,6 +400,7 @@ func TestBuilder_TieBreakOnObjectPathAndSectionIndex(t *testing.T) {
 		},
 		{
 			"object_path.utf8":        "objA",
+			"__shard_bucket__.int64":  int64(0),
 			"section_index.int64":     int64(1),
 			"sort_schema.utf8":        schema,
 			"min_timestamp.timestamp": time.Unix(0, 100).UTC(),
@@ -396,6 +411,7 @@ func TestBuilder_TieBreakOnObjectPathAndSectionIndex(t *testing.T) {
 		},
 		{
 			"object_path.utf8":        "objB",
+			"__shard_bucket__.int64":  int64(0),
 			"section_index.int64":     int64(0),
 			"sort_schema.utf8":        schema,
 			"min_timestamp.timestamp": time.Unix(0, 100).UTC(),
@@ -423,6 +439,7 @@ func TestBuilder_MissingServiceName(t *testing.T) {
 	expected := arrowtest.Rows{
 		{
 			"object_path.utf8":        "obj1",
+			"__shard_bucket__.int64":  int64(0),
 			"section_index.int64":     int64(0),
 			"sort_schema.utf8":        "label:service_name",
 			"min_timestamp.timestamp": time.Unix(0, 100).UTC(),
@@ -433,6 +450,7 @@ func TestBuilder_MissingServiceName(t *testing.T) {
 		},
 		{
 			"object_path.utf8":        "obj2",
+			"__shard_bucket__.int64":  int64(0),
 			"section_index.int64":     int64(0),
 			"sort_schema.utf8":        "label:service_name",
 			"min_timestamp.timestamp": time.Unix(0, 200).UTC(),
@@ -530,6 +548,7 @@ func TestBuilder_LargeValues(t *testing.T) {
 	expected := arrowtest.Rows{
 		{
 			"object_path.utf8":        longPath,
+			"__shard_bucket__.int64":  int64(0),
 			"section_index.int64":     int64(99),
 			"sort_schema.utf8":        longSchema,
 			"min_timestamp.timestamp": time.Unix(0, 1_000_000).UTC(),
@@ -564,6 +583,7 @@ func TestBuilder_ResetAndReuse(t *testing.T) {
 	expected := arrowtest.Rows{
 		{
 			"object_path.utf8":        "",
+			"__shard_bucket__.int64":  int64(0),
 			"section_index.int64":     int64(0),
 			"sort_schema.utf8":        "label:service_name",
 			"min_timestamp.timestamp": time.Unix(0, 200).UTC(),
@@ -588,9 +608,10 @@ func TestBuilder_EstimatedSize(t *testing.T) {
 		Labels:     map[string]string{"sch": "svc"}, // key: 3 bytes, value: 3 bytes
 	})
 
-	// 5 * 8 = 40 for int64s (SectionIndex, MinTimestamp, MaxTimestamp, RowCount, UncompressedSize)
-	// + 3 (ObjectPath) + 3 (SortSchema) + 3 (key) + 3 (value) = 52
-	require.Equal(t, 52, b.EstimatedSize())
+	// 6 * 8 = 48 for numeric fields (SectionIndex, ShardBucket, MinTimestamp,
+	// MaxTimestamp, RowCount, UncompressedSize)
+	// + 3 (ObjectPath) + 3 (SortSchema) + 3 (key) + 3 (value) = 60
+	require.Equal(t, 60, b.EstimatedSize())
 }
 
 // TestBuilder_FlushResetsBuilder verifies that a flush resets the builder state.

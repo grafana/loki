@@ -186,13 +186,13 @@ func TestUIServiceInitialization(t *testing.T) {
 	dir := t.TempDir()
 
 	t.Run("UI is not initialized when disabled", func(t *testing.T) {
-		cfg := minimalWorkingConfig(t, dir, All, func(cfg *Config) {
+		cfg := minimalWorkingConfig(t, dir, UI, func(cfg *Config) {
 			cfg.UI.Enabled = false
 		})
 		c, err := New(cfg)
 		require.NoError(t, err)
 
-		services, err := c.ModuleManager.InitModuleServices(All)
+		services, err := c.ModuleManager.InitModuleServices(UI)
 		defer func() {
 			for _, service := range services {
 				service.StopAsync()
@@ -204,13 +204,13 @@ func TestUIServiceInitialization(t *testing.T) {
 	})
 
 	t.Run("UI is initialized when enabled", func(t *testing.T) {
-		cfg := minimalWorkingConfig(t, dir, All, func(cfg *Config) {
+		cfg := minimalWorkingConfig(t, dir, UI, func(cfg *Config) {
 			cfg.UI.Enabled = true
 		})
 		c, err := New(cfg)
 		require.NoError(t, err)
 
-		services, err := c.ModuleManager.InitModuleServices(All)
+		services, err := c.ModuleManager.InitModuleServices(UI)
 		defer func() {
 			for _, service := range services {
 				service.StopAsync()
@@ -258,6 +258,7 @@ func minimalWorkingConfig(t *testing.T, dir, target string, cfgTransformers ...f
 			CacheLocation:        filepath.Join(dir, "cache"),
 			Mode:                 indexshipper.ModeWriteOnly,
 			ResyncInterval:       24 * time.Hour,
+			IndexReaderMode:      indexshipper.DefaultIndexReaderMode,
 		},
 	}
 

@@ -16,10 +16,3 @@ groups:
           loki_request_duration_seconds_count[1m]
         )
       ) by (job, namespace, route, status_code)
-  - record: job_le_namespace_operation:loki_boltdb_shipper_request_duration_seconds_bucket:rate5m
-    expr: |
-      sum(
-        rate(
-          loki_boltdb_shipper_request_duration_seconds_bucket[5m]
-        )
-      ) by (job, le, namespace, operation)

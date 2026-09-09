@@ -1,3 +1,16 @@
+# v1.106.5 (2026-08-05)
+
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.106.4 (2026-08-03)
+
+* **Bug Fix**: Expand S3 operations that check for an error inside an HTTP 200 response
+
+# v1.106.3 (2026-07-31.2)
+
+* **Dependency Update**: Updated to the latest SDK module versions
+* **Dependency Update**: Upgrade to smithy-go v1.27.6 to fix various serde issues in HTTP binding services.
+
 # v1.106.2 (2026-07-29)
 
 * **Dependency Update**: Updated to the latest SDK module versions

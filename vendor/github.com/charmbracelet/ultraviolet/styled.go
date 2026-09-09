@@ -113,9 +113,11 @@ func printString[T []byte | string](
 		tailc = *NewCell(m, tail)
 	}
 
-	decoder := ansi.DecodeSequenceWc[T]
+	// A [WidthMethod] the ansi package doesn't know about falls back to
+	// wcwidth, so the segmenter below always agrees with the decoder.
+	decoder, method := ansi.DecodeSequenceWc[T], ansi.WcWidth
 	if m == ansi.GraphemeWidth {
-		decoder = ansi.DecodeSequence[T]
+		decoder, method = ansi.DecodeSequence[T], ansi.GraphemeWidth
 	}
 
 	if s == nil {
@@ -126,10 +128,24 @@ func printString[T []byte | string](
 	var style Style
 	var link Link
 	var state byte
+	lastX, lastY := -1, -1 // last cell written, for folding in combining marks
 	for len(str) > 0 {
 		seq, width, n, newState := decoder(str, state, p)
-		switch width {
-		case 1, 2, 3, 4: // wide cells can go up to 4 cells wide
+		// The decoder's ASCII fast path doesn't check for trailing combining
+		// sequences, so re-decode as a full cluster when one starts here.
+		// The str[1] >= 0xc0 check skips the segmenter for plain ASCII.
+		if n == 1 && seq[0] > 0x1f && seq[0] < 0x7f && len(str) > 1 && str[1] >= 0xc0 {
+			if cluster, cw := ansi.FirstGraphemeCluster(str, method); len(cluster) > 1 {
+				seq, width, n = cluster, cw, len(cluster)
+			}
+		}
+		switch {
+		// Any positive width is a printable grapheme cluster. Wcwidth measures
+		// a cluster per codepoint, so this is not bounded by how wide a glyph
+		// can be: a ZWJ emoji sequence such as "👨‍👩‍👧‍👦" is eight columns,
+		// and capping the width here would fall through to the escape sequence
+		// branch and drop the cluster from the screen.
+		case width > 0:
 			cell.Width = width
 			cell.Content = string(seq)
 			cell.Style = style
@@ -141,6 +157,7 @@ func printString[T []byte | string](
 					lines = append(lines, Line{})
 				}
 				lines[y] = append(lines[y], cell)
+				lastX, lastY = len(lines[y])-1, y
 				x += width
 			} else {
 				// Drawing to screen: handle wrapping, truncation, and bounds
@@ -158,10 +175,12 @@ func printString[T []byte | string](
 						cell.Style = style
 						cell.Link = link
 						s.SetCell(x, y, &cell)
+						lastX, lastY = x, y
 						x += tailc.Width
 					} else {
 						// Print the cell to the screen
 						s.SetCell(x, y, &cell)
+						lastX, lastY = x, y
 						x += width
 					}
 				}
@@ -194,6 +213,24 @@ func printString[T []byte | string](
 					x = 0
 				} else {
 					x = bounds.Min.X
+				}
+			case len(seq) > 0 && seq[0] >= 0xc0:
+				// A zero-width grapheme, i.e. a combining mark the re-decode
+				// above couldn't fold because an escape sequence sits between
+				// it and its base, as in "a\x1b[31m\u0301". Every escape
+				// introducer is a C0 or C1 byte, so a UTF-8 lead byte here is
+				// always text. The mark belongs to the cell we last wrote; the
+				// accumulator below would let the next glyph clobber it.
+				if s == nil {
+					if lastY >= 0 && lastY < len(lines) && lastX < len(lines[lastY]) {
+						lines[lastY][lastX].Content += string(seq)
+					}
+				} else if lastX >= 0 {
+					if prev := s.CellAt(lastX, lastY); prev != nil {
+						folded := *prev
+						folded.Content += string(seq)
+						s.SetCell(lastX, lastY, &folded)
+					}
 				}
 			default:
 				cell.Content += string(seq)

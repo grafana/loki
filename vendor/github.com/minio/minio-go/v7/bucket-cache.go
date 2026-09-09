@@ -76,33 +76,35 @@ func (c *Client) getBucketLocation(ctx context.Context, bucketName string) (stri
 
 // processes the getBucketLocation http response from the server.
 func processBucketLocationResponse(resp *http.Response, bucketName string) (bucketLocation string, err error) {
-	if resp != nil {
-		if resp.StatusCode != http.StatusOK {
-			err = httpRespToErrorResponse(resp, bucketName, "")
-			errResp := ToErrorResponse(err)
-			// For access denied error, it could be an anonymous
-			// request. Move forward and let the top level callers
-			// succeed if possible based on their policy.
-			switch errResp.Code {
-			case NotImplemented:
-				switch errResp.Server {
-				case "AmazonSnowball":
-					return "snowball", nil
-				case "cloudflare":
-					return "us-east-1", nil
-				}
-			case AuthorizationHeaderMalformed:
-				fallthrough
-			case InvalidRegion:
-				fallthrough
-			case AccessDenied:
-				if errResp.Region == "" {
-					return "us-east-1", nil
-				}
-				return errResp.Region, nil
+	if resp == nil {
+		return "", errInvalidArgument("Empty http response. " + reportIssue)
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		err = httpRespToErrorResponse(resp, bucketName, "")
+		errResp := ToErrorResponse(err)
+		// For access denied error, it could be an anonymous
+		// request. Move forward and let the top level callers
+		// succeed if possible based on their policy.
+		switch errResp.Code {
+		case NotImplemented:
+			switch errResp.Server {
+			case "AmazonSnowball":
+				return "snowball", nil
+			case "cloudflare":
+				return "us-east-1", nil
 			}
-			return "", err
+		case AuthorizationHeaderMalformed:
+			fallthrough
+		case InvalidRegion:
+			fallthrough
+		case AccessDenied:
+			if errResp.Region == "" {
+				return "us-east-1", nil
+			}
+			return errResp.Region, nil
 		}
+		return "", err
 	}
 
 	// Extract location.
@@ -170,7 +172,7 @@ func (c *Client) getBucketLocationRequest(ctx context.Context, bucketName string
 	c.setUserAgent(req)
 
 	// Get credentials from the configured credentials provider.
-	value, err := c.credsProvider.GetWithContext(c.CredContext())
+	value, err := c.credsProvider.GetWithContext(c.credContext(ctx))
 	if err != nil {
 		return nil, err
 	}

@@ -319,6 +319,7 @@ func (c *WriterConfig) ConfigureWriter(config *WriterConfig) {
 		SkipPageBounds:               coalesceSlices(c.SkipPageBounds, config.SkipPageBounds),
 		SkipPageStatistics:           coalesceSlices(c.SkipPageStatistics, config.SkipPageStatistics),
 		Encodings:                    encodings,
+		DictionaryMaxBytes:           cmp.Or(c.DictionaryMaxBytes, config.DictionaryMaxBytes),
 		SchemaConfig:                 cmp.Or(c.SchemaConfig, config.SchemaConfig),
 		Encryption:                   cmp.Or(c.Encryption, config.Encryption),
 	}

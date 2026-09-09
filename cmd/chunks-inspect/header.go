@@ -8,6 +8,7 @@ import (
 	"io"
 
 	"github.com/golang/snappy"
+	"github.com/prometheus/common/model"
 )
 
 type ChunkHeader struct {
@@ -17,9 +18,9 @@ type ChunkHeader struct {
 	UserID      string `json:"userID"`
 
 	// These fields will be in all chunks, including old ones.
-	From    Time   `json:"from"`    // model.Time
-	Through Time   `json:"through"` // model.Time
-	Metric  Labels `json:"metric"`
+	From    model.Time `json:"from"`
+	Through model.Time `json:"through"`
+	Metric  Labels     `json:"metric"`
 
 	// We never use Delta encoding (the zero value), so if this entry is
 	// missing, we default to DoubleDelta.

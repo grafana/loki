@@ -14,9 +14,9 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/thanos-io/objstore"
 
+	"github.com/grafana/loki/v3/pkg/storage/bucket/gcs"
+	"github.com/grafana/loki/v3/pkg/storage/bucket/s3"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client"
-	"github.com/grafana/loki/v3/pkg/storage/chunk/client/aws"
-	"github.com/grafana/loki/v3/pkg/storage/chunk/client/gcp"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client/hedging"
 )
 
@@ -30,7 +30,7 @@ type ObjectClientAdapter struct {
 	storeType string
 }
 
-func NewObjectClient(ctx context.Context, backend string, cfg ConfigWithNamedStores, component string, hedgingCfg hedging.Config, disableRetries bool, logger log.Logger) (*ObjectClientAdapter, error) {
+func NewObjectClient(ctx context.Context, backend string, cfg ConfigWithNamedStores, component string, hedgingCfg hedging.Config, logger log.Logger) (*ObjectClientAdapter, error) {
 	var (
 		storeType = backend
 		storeCfg  = cfg.Config
@@ -41,12 +41,6 @@ func NewObjectClient(ctx context.Context, backend string, cfg ConfigWithNamedSto
 		// override config with values from named store config
 		if err := cfg.NamedStores.OverrideConfig(&storeCfg, backend); err != nil {
 			return nil, err
-		}
-	}
-
-	if disableRetries {
-		if err := storeCfg.disableRetries(storeType); err != nil {
-			return nil, fmt.Errorf("create bucket: %w", err)
 		}
 	}
 
@@ -93,9 +87,9 @@ func NewObjectClient(ctx context.Context, backend string, cfg ConfigWithNamedSto
 
 	switch storeType {
 	case GCS:
-		o.isRetryableErr = gcp.IsRetryableErr
+		o.isRetryableErr = gcs.IsRetryableErr
 	case S3:
-		o.isRetryableErr = aws.IsRetryableErr
+		o.isRetryableErr = s3.IsRetryableErr
 	}
 
 	return o, nil

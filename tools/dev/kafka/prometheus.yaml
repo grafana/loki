@@ -1,0 +1,10 @@
+global:
+  scrape_interval: 5s
+  evaluation_interval: 5s
+
+scrape_configs:
+  # Loki runs on the host as a single-binary (-target=all), so there is one /metrics endpoint.
+  # If you run multiple Loki processes/containers, add their host:port here.
+  - job_name: loki
+    static_configs:
+      - targets: ["host.docker.internal:3100"]

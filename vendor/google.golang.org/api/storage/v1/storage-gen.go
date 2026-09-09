@@ -155,6 +155,7 @@ func NewService(ctx context.Context, opts ...option.ClientOption) (*Service, err
 	s.Objects = NewObjectsService(s)
 	s.Operations = NewOperationsService(s)
 	s.Projects = NewProjectsService(s)
+	s.RapidCaches = NewRapidCachesService(s)
 	if endpoint != "" {
 		s.BasePath = endpoint
 	}
@@ -202,6 +203,8 @@ type Service struct {
 	Operations *OperationsService
 
 	Projects *ProjectsService
+
+	RapidCaches *RapidCachesService
 }
 
 func (s *Service) userAgent() string {
@@ -340,6 +343,15 @@ func NewProjectsServiceAccountService(s *Service) *ProjectsServiceAccountService
 }
 
 type ProjectsServiceAccountService struct {
+	s *Service
+}
+
+func NewRapidCachesService(s *Service) *RapidCachesService {
+	rs := &RapidCachesService{s: s}
+	return rs
+}
+
+type RapidCachesService struct {
 	s *Service
 }
 
@@ -2202,6 +2214,8 @@ type ManagedFolder struct {
 	// Name: The name of the managed folder. Required if not specified by URL
 	// parameter.
 	Name string `json:"name,omitempty"`
+	// RapidCacheConfig: The rapid cache configuration for the managed folder.
+	RapidCacheConfig *RapidCacheConfig `json:"rapidCacheConfig,omitempty"`
 	// SelfLink: The link to this managed folder.
 	SelfLink string `json:"selfLink,omitempty"`
 	// UpdateTime: The last update time of the managed folder metadata in RFC 3339
@@ -2877,6 +2891,153 @@ type PolicyBindings struct {
 
 func (s PolicyBindings) MarshalJSON() ([]byte, error) {
 	type NoMethod PolicyBindings
+	return gensupport.MarshalJSON(NoMethod(s), s.ForceSendFields, s.NullFields)
+}
+
+// RapidCache: A Rapid Cache instance.
+type RapidCache struct {
+	// AdmissionPolicy: The cache-level entry admission policy.
+	AdmissionPolicy string `json:"admissionPolicy,omitempty"`
+	// Bucket: The name of the bucket containing this cache instance.
+	Bucket string `json:"bucket,omitempty"`
+	// CacheType: The type of Rapid Cache this represents. Valid values include:
+	// "rapid-cache" and "rapid-cache-ultra".
+	CacheType string `json:"cacheType,omitempty"`
+	// CreateTime: The creation time of the cache instance in RFC 3339 format.
+	CreateTime string `json:"createTime,omitempty"`
+	// Id: The ID of the resource, including the project number, bucket name and
+	// rapid cache ID.
+	Id string `json:"id,omitempty"`
+	// IngestOnWrite: Specifies whether objects are ingested into the cache upon
+	// write.
+	IngestOnWrite bool `json:"ingestOnWrite,omitempty"`
+	// Kind: The kind of item this is. For Rapid Cache, this is always
+	// storage#rapidCache.
+	Kind string `json:"kind,omitempty"`
+	// PendingUpdate: True if the cache instance has an active Update long-running
+	// operation.
+	PendingUpdate bool `json:"pendingUpdate,omitempty"`
+	// RapidCacheId: The ID of the Rapid cache instance.
+	RapidCacheId string `json:"rapidCacheId,omitempty"`
+	// SelfLink: The link to this cache instance.
+	SelfLink string `json:"selfLink,omitempty"`
+	// State: The current state of the cache instance.
+	State string `json:"state,omitempty"`
+	// Ttl: The TTL of all cache entries in whole seconds. e.g., "7200s".
+	Ttl string `json:"ttl,omitempty"`
+	// UpdateTime: The modification time of the cache instance metadata in RFC 3339
+	// format.
+	UpdateTime string `json:"updateTime,omitempty"`
+	// Zone: The zone in which the cache instance is running. For example,
+	// us-central1-a.
+	Zone string `json:"zone,omitempty"`
+
+	// ServerResponse contains the HTTP response code and headers from the server.
+	googleapi.ServerResponse `json:"-"`
+	// ForceSendFields is a list of field names (e.g. "AdmissionPolicy") to
+	// unconditionally include in API requests. By default, fields with empty or
+	// default values are omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-ForceSendFields for more
+	// details.
+	ForceSendFields []string `json:"-"`
+	// NullFields is a list of field names (e.g. "AdmissionPolicy") to include in
+	// API requests with the JSON null value. By default, fields with empty values
+	// are omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-NullFields for more details.
+	NullFields []string `json:"-"`
+}
+
+func (s RapidCache) MarshalJSON() ([]byte, error) {
+	type NoMethod RapidCache
+	return gensupport.MarshalJSON(NoMethod(s), s.ForceSendFields, s.NullFields)
+}
+
+// RapidCacheConfig: Configuration options for the rapid cache of a managed
+// folder.
+type RapidCacheConfig struct {
+	// Policies: A map of rapid cache IDs to the corresponding `RapidCachePolicy`
+	// configurations for a managed folder.
+	Policies map[string]RapidCachePolicy `json:"policies,omitempty"`
+	// ForceSendFields is a list of field names (e.g. "Policies") to
+	// unconditionally include in API requests. By default, fields with empty or
+	// default values are omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-ForceSendFields for more
+	// details.
+	ForceSendFields []string `json:"-"`
+	// NullFields is a list of field names (e.g. "Policies") to include in API
+	// requests with the JSON null value. By default, fields with empty values are
+	// omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-NullFields for more details.
+	NullFields []string `json:"-"`
+}
+
+func (s RapidCacheConfig) MarshalJSON() ([]byte, error) {
+	type NoMethod RapidCacheConfig
+	return gensupport.MarshalJSON(NoMethod(s), s.ForceSendFields, s.NullFields)
+}
+
+// RapidCachePolicy: The rapid cache policy configuration for a managed folder.
+type RapidCachePolicy struct {
+	// IngestOnWrite: The ingest-on-write policy for objects in the managed folder.
+	// When set to `enabled`, objects are automatically ingested into the cache
+	// when they are written to the managed folder.
+	//
+	// Possible values:
+	//   "enabled" - Ingestion on write is explicitly enabled for the managed
+	// folder.
+	//   "unspecified" - Ingestion on write isn't specified at the managed folder
+	// level and is inherited from the parent resource's configuration. This is the
+	// default value.
+	IngestOnWrite string `json:"ingestOnWrite,omitempty"`
+	// RapidCacheId: The unique identifier of the rapid cache.
+	RapidCacheId string `json:"rapidCacheId,omitempty"`
+	// ForceSendFields is a list of field names (e.g. "IngestOnWrite") to
+	// unconditionally include in API requests. By default, fields with empty or
+	// default values are omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-ForceSendFields for more
+	// details.
+	ForceSendFields []string `json:"-"`
+	// NullFields is a list of field names (e.g. "IngestOnWrite") to include in API
+	// requests with the JSON null value. By default, fields with empty values are
+	// omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-NullFields for more details.
+	NullFields []string `json:"-"`
+}
+
+func (s RapidCachePolicy) MarshalJSON() ([]byte, error) {
+	type NoMethod RapidCachePolicy
+	return gensupport.MarshalJSON(NoMethod(s), s.ForceSendFields, s.NullFields)
+}
+
+// RapidCaches: A list of Rapid Caches.
+type RapidCaches struct {
+	// Items: The list of items.
+	Items []*RapidCache `json:"items,omitempty"`
+	// Kind: The kind of item this is. For lists of Rapid Caches, this is always
+	// storage#rapidCaches.
+	Kind string `json:"kind,omitempty"`
+	// NextPageToken: The continuation token, used to page through large result
+	// sets. Provide this value in a subsequent request to return the next page of
+	// results.
+	NextPageToken string `json:"nextPageToken,omitempty"`
+
+	// ServerResponse contains the HTTP response code and headers from the server.
+	googleapi.ServerResponse `json:"-"`
+	// ForceSendFields is a list of field names (e.g. "Items") to unconditionally
+	// include in API requests. By default, fields with empty or default values are
+	// omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-ForceSendFields for more
+	// details.
+	ForceSendFields []string `json:"-"`
+	// NullFields is a list of field names (e.g. "Items") to include in API
+	// requests with the JSON null value. By default, fields with empty values are
+	// omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-NullFields for more details.
+	NullFields []string `json:"-"`
+}
+
+func (s RapidCaches) MarshalJSON() ([]byte, error) {
+	type NoMethod RapidCaches
 	return gensupport.MarshalJSON(NoMethod(s), s.ForceSendFields, s.NullFields)
 }
 
@@ -8694,6 +8855,129 @@ func (c *ManagedFoldersTestIamPermissionsCall) Do(opts ...googleapi.CallOption) 
 	return ret, nil
 }
 
+type ManagedFoldersUpdateCall struct {
+	s             *Service
+	bucket        string
+	managedFolder string
+	managedfolder *ManagedFolder
+	urlParams_    gensupport.URLParams
+	ctx_          context.Context
+	header_       http.Header
+}
+
+// Update: Updates a managed folder using patch semantics.
+//
+// - bucket: The name of the bucket containing the managed folder.
+// - managedFolder: The name of the managed folder.
+func (r *ManagedFoldersService) Update(bucket string, managedFolder string, managedfolder *ManagedFolder) *ManagedFoldersUpdateCall {
+	c := &ManagedFoldersUpdateCall{s: r.s, urlParams_: make(gensupport.URLParams)}
+	c.bucket = bucket
+	c.managedFolder = managedFolder
+	c.managedfolder = managedfolder
+	return c
+}
+
+// IfMetagenerationMatch sets the optional parameter "ifMetagenerationMatch":
+// Makes the operation conditional on whether the metageneration of the managed
+// folder matches the specified value.
+func (c *ManagedFoldersUpdateCall) IfMetagenerationMatch(ifMetagenerationMatch int64) *ManagedFoldersUpdateCall {
+	c.urlParams_.Set("ifMetagenerationMatch", fmt.Sprint(ifMetagenerationMatch))
+	return c
+}
+
+// IfMetagenerationNotMatch sets the optional parameter
+// "ifMetagenerationNotMatch": Makes the operation conditional on whether the
+// metageneration of the managed folder doesn't match the specified value.
+func (c *ManagedFoldersUpdateCall) IfMetagenerationNotMatch(ifMetagenerationNotMatch int64) *ManagedFoldersUpdateCall {
+	c.urlParams_.Set("ifMetagenerationNotMatch", fmt.Sprint(ifMetagenerationNotMatch))
+	return c
+}
+
+// Fields allows partial responses to be retrieved. See
+// https://developers.google.com/gdata/docs/2.0/basics#PartialResponse for more
+// details.
+func (c *ManagedFoldersUpdateCall) Fields(s ...googleapi.Field) *ManagedFoldersUpdateCall {
+	c.urlParams_.Set("fields", googleapi.CombineFields(s))
+	return c
+}
+
+// Context sets the context to be used in this call's Do method.
+func (c *ManagedFoldersUpdateCall) Context(ctx context.Context) *ManagedFoldersUpdateCall {
+	c.ctx_ = ctx
+	return c
+}
+
+// Header returns a http.Header that can be modified by the caller to add
+// headers to the request.
+func (c *ManagedFoldersUpdateCall) Header() http.Header {
+	if c.header_ == nil {
+		c.header_ = make(http.Header)
+	}
+	return c.header_
+}
+
+func (c *ManagedFoldersUpdateCall) doRequest(alt string) (*http.Response, error) {
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
+	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.managedfolder)
+	if err != nil {
+		return nil, err
+	}
+	c.urlParams_.Set("alt", alt)
+	c.urlParams_.Set("prettyPrint", "false")
+	urls := googleapi.ResolveRelative(c.s.BasePath, "b/{bucket}/managedFolders/{managedFolder}")
+	urls += "?" + c.urlParams_.Encode()
+	req, err := http.NewRequest("PATCH", urls, body)
+	if err != nil {
+		return nil, err
+	}
+	req.Header = reqHeaders
+	googleapi.Expand(req.URL, map[string]string{
+		"bucket":        c.bucket,
+		"managedFolder": c.managedFolder,
+	})
+	c.s.logger.DebugContext(c.ctx_, "api request", "serviceName", apiName, "rpcName", "storage.managedFolders.update", "request", internallog.HTTPRequest(req, body.Bytes()))
+	return gensupport.SendRequest(c.ctx_, c.s.client, req)
+}
+
+// Do executes the "storage.managedFolders.update" call.
+// Any non-2xx status code is an error. Response headers are in either
+// *ManagedFolder.ServerResponse.Header or (if a response was returned at all)
+// in error.(*googleapi.Error).Header. Use googleapi.IsNotModified to check
+// whether the returned error was because http.StatusNotModified was returned.
+func (c *ManagedFoldersUpdateCall) Do(opts ...googleapi.CallOption) (*ManagedFolder, error) {
+	gensupport.SetOptions(c.urlParams_, opts...)
+	res, err := c.doRequest("json")
+	if res != nil && res.StatusCode == http.StatusNotModified {
+		if res.Body != nil {
+			res.Body.Close()
+		}
+		return nil, gensupport.WrapError(&googleapi.Error{
+			Code:   res.StatusCode,
+			Header: res.Header,
+		})
+	}
+	if err != nil {
+		return nil, err
+	}
+	defer googleapi.CloseBody(res)
+	if err := googleapi.CheckResponse(res); err != nil {
+		return nil, gensupport.WrapError(err)
+	}
+	ret := &ManagedFolder{
+		ServerResponse: googleapi.ServerResponse{
+			Header:         res.Header,
+			HTTPStatusCode: res.StatusCode,
+		},
+	}
+	target := &ret
+	b, err := gensupport.DecodeResponseBytes(target, res)
+	if err != nil {
+		return nil, err
+	}
+	c.s.logger.DebugContext(c.ctx_, "api response", "serviceName", apiName, "rpcName", "storage.managedFolders.update", "response", internallog.HTTPResponse(res, b))
+	return ret, nil
+}
+
 type NotificationsDeleteCall struct {
 	s            *Service
 	bucket       string
@@ -10043,8 +10327,14 @@ func (c *ObjectsComposeCall) DestinationPredefinedAcl(destinationPredefinedAcl s
 }
 
 // DropContextGroups sets the optional parameter "dropContextGroups": Specifies
-// which groups of Object Contexts from the source object(s) should be dropped
-// from the destination object.
+// which object context groups to drop from the source object(s) during a
+// compose operation. The accepted value is 'custom'.
+// Destination contexts behave as follows:
+// - When request body contexts are provided, they override all source
+// contexts.
+// - When no request body contexts are provided, source contexts are preserved
+// unless 'dropContextGroups' contains 'custom', in which case all contexts are
+// dropped.
 func (c *ObjectsComposeCall) DropContextGroups(dropContextGroups ...string) *ObjectsComposeCall {
 	c.urlParams_.SetMulti("dropContextGroups", append([]string{}, dropContextGroups...))
 	return c
@@ -12155,8 +12445,14 @@ func (c *ObjectsRewriteCall) DestinationPredefinedAcl(destinationPredefinedAcl s
 }
 
 // DropContextGroups sets the optional parameter "dropContextGroups": Specifies
-// which groups of Object Contexts from the source object should be dropped
-// from the destination object.
+// which object context groups to drop from the source object during a copy
+// operation. The accepted value is 'custom'.
+// Destination contexts behave as follows:
+// - When request body contexts are provided, they override all source
+// contexts.
+// - When no request body contexts are provided, source contexts are preserved
+// unless 'dropContextGroups' contains 'custom', in which case all contexts are
+// dropped.
 func (c *ObjectsRewriteCall) DropContextGroups(dropContextGroups ...string) *ObjectsRewriteCall {
 	c.urlParams_.SetMulti("dropContextGroups", append([]string{}, dropContextGroups...))
 	return c
@@ -13984,5 +14280,576 @@ func (c *ProjectsServiceAccountGetCall) Do(opts ...googleapi.CallOption) (*Servi
 		return nil, err
 	}
 	c.s.logger.DebugContext(c.ctx_, "api response", "serviceName", apiName, "rpcName", "storage.projects.serviceAccount.get", "response", internallog.HTTPResponse(res, b))
+	return ret, nil
+}
+
+type RapidCachesDisableCall struct {
+	s            *Service
+	bucket       string
+	rapidCacheId string
+	urlParams_   gensupport.URLParams
+	ctx_         context.Context
+	header_      http.Header
+}
+
+// Disable: Disables a Rapid Cache instance.
+//
+// - bucket: Name of the parent bucket.
+// - rapidCacheId: The ID of the requested Rapid Cache instance.
+func (r *RapidCachesService) Disable(bucket string, rapidCacheId string) *RapidCachesDisableCall {
+	c := &RapidCachesDisableCall{s: r.s, urlParams_: make(gensupport.URLParams)}
+	c.bucket = bucket
+	c.rapidCacheId = rapidCacheId
+	return c
+}
+
+// Fields allows partial responses to be retrieved. See
+// https://developers.google.com/gdata/docs/2.0/basics#PartialResponse for more
+// details.
+func (c *RapidCachesDisableCall) Fields(s ...googleapi.Field) *RapidCachesDisableCall {
+	c.urlParams_.Set("fields", googleapi.CombineFields(s))
+	return c
+}
+
+// Context sets the context to be used in this call's Do method.
+func (c *RapidCachesDisableCall) Context(ctx context.Context) *RapidCachesDisableCall {
+	c.ctx_ = ctx
+	return c
+}
+
+// Header returns a http.Header that can be modified by the caller to add
+// headers to the request.
+func (c *RapidCachesDisableCall) Header() http.Header {
+	if c.header_ == nil {
+		c.header_ = make(http.Header)
+	}
+	return c.header_
+}
+
+func (c *RapidCachesDisableCall) doRequest(alt string) (*http.Response, error) {
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
+	c.urlParams_.Set("alt", alt)
+	c.urlParams_.Set("prettyPrint", "false")
+	urls := googleapi.ResolveRelative(c.s.BasePath, "b/{bucket}/rapidCaches/{rapidCacheId}/disable")
+	urls += "?" + c.urlParams_.Encode()
+	req, err := http.NewRequest("POST", urls, nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header = reqHeaders
+	googleapi.Expand(req.URL, map[string]string{
+		"bucket":       c.bucket,
+		"rapidCacheId": c.rapidCacheId,
+	})
+	c.s.logger.DebugContext(c.ctx_, "api request", "serviceName", apiName, "rpcName", "storage.rapidCaches.disable", "request", internallog.HTTPRequest(req, nil))
+	return gensupport.SendRequest(c.ctx_, c.s.client, req)
+}
+
+// Do executes the "storage.rapidCaches.disable" call.
+// Any non-2xx status code is an error. Response headers are in either
+// *GoogleLongrunningOperation.ServerResponse.Header or (if a response was
+// returned at all) in error.(*googleapi.Error).Header. Use
+// googleapi.IsNotModified to check whether the returned error was because
+// http.StatusNotModified was returned.
+func (c *RapidCachesDisableCall) Do(opts ...googleapi.CallOption) (*GoogleLongrunningOperation, error) {
+	gensupport.SetOptions(c.urlParams_, opts...)
+	res, err := c.doRequest("json")
+	if res != nil && res.StatusCode == http.StatusNotModified {
+		if res.Body != nil {
+			res.Body.Close()
+		}
+		return nil, gensupport.WrapError(&googleapi.Error{
+			Code:   res.StatusCode,
+			Header: res.Header,
+		})
+	}
+	if err != nil {
+		return nil, err
+	}
+	defer googleapi.CloseBody(res)
+	if err := googleapi.CheckResponse(res); err != nil {
+		return nil, gensupport.WrapError(err)
+	}
+	ret := &GoogleLongrunningOperation{
+		ServerResponse: googleapi.ServerResponse{
+			Header:         res.Header,
+			HTTPStatusCode: res.StatusCode,
+		},
+	}
+	target := &ret
+	b, err := gensupport.DecodeResponseBytes(target, res)
+	if err != nil {
+		return nil, err
+	}
+	c.s.logger.DebugContext(c.ctx_, "api response", "serviceName", apiName, "rpcName", "storage.rapidCaches.disable", "response", internallog.HTTPResponse(res, b))
+	return ret, nil
+}
+
+type RapidCachesGetCall struct {
+	s            *Service
+	bucket       string
+	rapidCacheId string
+	urlParams_   gensupport.URLParams
+	ifNoneMatch_ string
+	ctx_         context.Context
+	header_      http.Header
+}
+
+// Get: Returns the metadata of a Rapid Cache instance.
+//
+// - bucket: Name of the parent bucket.
+// - rapidCacheId: The ID of the requested Rapid Cache instance.
+func (r *RapidCachesService) Get(bucket string, rapidCacheId string) *RapidCachesGetCall {
+	c := &RapidCachesGetCall{s: r.s, urlParams_: make(gensupport.URLParams)}
+	c.bucket = bucket
+	c.rapidCacheId = rapidCacheId
+	return c
+}
+
+// Fields allows partial responses to be retrieved. See
+// https://developers.google.com/gdata/docs/2.0/basics#PartialResponse for more
+// details.
+func (c *RapidCachesGetCall) Fields(s ...googleapi.Field) *RapidCachesGetCall {
+	c.urlParams_.Set("fields", googleapi.CombineFields(s))
+	return c
+}
+
+// IfNoneMatch sets an optional parameter which makes the operation fail if the
+// object's ETag matches the given value. This is useful for getting updates
+// only after the object has changed since the last request.
+func (c *RapidCachesGetCall) IfNoneMatch(entityTag string) *RapidCachesGetCall {
+	c.ifNoneMatch_ = entityTag
+	return c
+}
+
+// Context sets the context to be used in this call's Do method.
+func (c *RapidCachesGetCall) Context(ctx context.Context) *RapidCachesGetCall {
+	c.ctx_ = ctx
+	return c
+}
+
+// Header returns a http.Header that can be modified by the caller to add
+// headers to the request.
+func (c *RapidCachesGetCall) Header() http.Header {
+	if c.header_ == nil {
+		c.header_ = make(http.Header)
+	}
+	return c.header_
+}
+
+func (c *RapidCachesGetCall) doRequest(alt string) (*http.Response, error) {
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
+	if c.ifNoneMatch_ != "" {
+		reqHeaders.Set("If-None-Match", c.ifNoneMatch_)
+	}
+	c.urlParams_.Set("alt", alt)
+	c.urlParams_.Set("prettyPrint", "false")
+	urls := googleapi.ResolveRelative(c.s.BasePath, "b/{bucket}/rapidCaches/{rapidCacheId}")
+	urls += "?" + c.urlParams_.Encode()
+	req, err := http.NewRequest("GET", urls, nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header = reqHeaders
+	googleapi.Expand(req.URL, map[string]string{
+		"bucket":       c.bucket,
+		"rapidCacheId": c.rapidCacheId,
+	})
+	c.s.logger.DebugContext(c.ctx_, "api request", "serviceName", apiName, "rpcName", "storage.rapidCaches.get", "request", internallog.HTTPRequest(req, nil))
+	return gensupport.SendRequest(c.ctx_, c.s.client, req)
+}
+
+// Do executes the "storage.rapidCaches.get" call.
+// Any non-2xx status code is an error. Response headers are in either
+// *RapidCache.ServerResponse.Header or (if a response was returned at all) in
+// error.(*googleapi.Error).Header. Use googleapi.IsNotModified to check
+// whether the returned error was because http.StatusNotModified was returned.
+func (c *RapidCachesGetCall) Do(opts ...googleapi.CallOption) (*RapidCache, error) {
+	gensupport.SetOptions(c.urlParams_, opts...)
+	res, err := c.doRequest("json")
+	if res != nil && res.StatusCode == http.StatusNotModified {
+		if res.Body != nil {
+			res.Body.Close()
+		}
+		return nil, gensupport.WrapError(&googleapi.Error{
+			Code:   res.StatusCode,
+			Header: res.Header,
+		})
+	}
+	if err != nil {
+		return nil, err
+	}
+	defer googleapi.CloseBody(res)
+	if err := googleapi.CheckResponse(res); err != nil {
+		return nil, gensupport.WrapError(err)
+	}
+	ret := &RapidCache{
+		ServerResponse: googleapi.ServerResponse{
+			Header:         res.Header,
+			HTTPStatusCode: res.StatusCode,
+		},
+	}
+	target := &ret
+	b, err := gensupport.DecodeResponseBytes(target, res)
+	if err != nil {
+		return nil, err
+	}
+	c.s.logger.DebugContext(c.ctx_, "api response", "serviceName", apiName, "rpcName", "storage.rapidCaches.get", "response", internallog.HTTPResponse(res, b))
+	return ret, nil
+}
+
+type RapidCachesInsertCall struct {
+	s          *Service
+	bucket     string
+	rapidcache *RapidCache
+	urlParams_ gensupport.URLParams
+	ctx_       context.Context
+	header_    http.Header
+}
+
+// Insert: Creates a Rapid Cache instance.
+//
+// - bucket: Name of the parent bucket.
+func (r *RapidCachesService) Insert(bucket string, rapidcache *RapidCache) *RapidCachesInsertCall {
+	c := &RapidCachesInsertCall{s: r.s, urlParams_: make(gensupport.URLParams)}
+	c.bucket = bucket
+	c.rapidcache = rapidcache
+	return c
+}
+
+// Fields allows partial responses to be retrieved. See
+// https://developers.google.com/gdata/docs/2.0/basics#PartialResponse for more
+// details.
+func (c *RapidCachesInsertCall) Fields(s ...googleapi.Field) *RapidCachesInsertCall {
+	c.urlParams_.Set("fields", googleapi.CombineFields(s))
+	return c
+}
+
+// Context sets the context to be used in this call's Do method.
+func (c *RapidCachesInsertCall) Context(ctx context.Context) *RapidCachesInsertCall {
+	c.ctx_ = ctx
+	return c
+}
+
+// Header returns a http.Header that can be modified by the caller to add
+// headers to the request.
+func (c *RapidCachesInsertCall) Header() http.Header {
+	if c.header_ == nil {
+		c.header_ = make(http.Header)
+	}
+	return c.header_
+}
+
+func (c *RapidCachesInsertCall) doRequest(alt string) (*http.Response, error) {
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
+	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.rapidcache)
+	if err != nil {
+		return nil, err
+	}
+	c.urlParams_.Set("alt", alt)
+	c.urlParams_.Set("prettyPrint", "false")
+	urls := googleapi.ResolveRelative(c.s.BasePath, "b/{bucket}/rapidCaches")
+	urls += "?" + c.urlParams_.Encode()
+	req, err := http.NewRequest("POST", urls, body)
+	if err != nil {
+		return nil, err
+	}
+	req.Header = reqHeaders
+	googleapi.Expand(req.URL, map[string]string{
+		"bucket": c.bucket,
+	})
+	c.s.logger.DebugContext(c.ctx_, "api request", "serviceName", apiName, "rpcName", "storage.rapidCaches.insert", "request", internallog.HTTPRequest(req, body.Bytes()))
+	return gensupport.SendRequest(c.ctx_, c.s.client, req)
+}
+
+// Do executes the "storage.rapidCaches.insert" call.
+// Any non-2xx status code is an error. Response headers are in either
+// *GoogleLongrunningOperation.ServerResponse.Header or (if a response was
+// returned at all) in error.(*googleapi.Error).Header. Use
+// googleapi.IsNotModified to check whether the returned error was because
+// http.StatusNotModified was returned.
+func (c *RapidCachesInsertCall) Do(opts ...googleapi.CallOption) (*GoogleLongrunningOperation, error) {
+	gensupport.SetOptions(c.urlParams_, opts...)
+	res, err := c.doRequest("json")
+	if res != nil && res.StatusCode == http.StatusNotModified {
+		if res.Body != nil {
+			res.Body.Close()
+		}
+		return nil, gensupport.WrapError(&googleapi.Error{
+			Code:   res.StatusCode,
+			Header: res.Header,
+		})
+	}
+	if err != nil {
+		return nil, err
+	}
+	defer googleapi.CloseBody(res)
+	if err := googleapi.CheckResponse(res); err != nil {
+		return nil, gensupport.WrapError(err)
+	}
+	ret := &GoogleLongrunningOperation{
+		ServerResponse: googleapi.ServerResponse{
+			Header:         res.Header,
+			HTTPStatusCode: res.StatusCode,
+		},
+	}
+	target := &ret
+	b, err := gensupport.DecodeResponseBytes(target, res)
+	if err != nil {
+		return nil, err
+	}
+	c.s.logger.DebugContext(c.ctx_, "api response", "serviceName", apiName, "rpcName", "storage.rapidCaches.insert", "response", internallog.HTTPResponse(res, b))
+	return ret, nil
+}
+
+type RapidCachesListCall struct {
+	s            *Service
+	bucket       string
+	urlParams_   gensupport.URLParams
+	ifNoneMatch_ string
+	ctx_         context.Context
+	header_      http.Header
+}
+
+// List: Returns a list of Rapid Cache instances of the bucket.
+//
+// - bucket: Name of the parent bucket.
+func (r *RapidCachesService) List(bucket string) *RapidCachesListCall {
+	c := &RapidCachesListCall{s: r.s, urlParams_: make(gensupport.URLParams)}
+	c.bucket = bucket
+	return c
+}
+
+// PageSize sets the optional parameter "pageSize": Maximum number of items to
+// return in a single page of responses.
+func (c *RapidCachesListCall) PageSize(pageSize int64) *RapidCachesListCall {
+	c.urlParams_.Set("pageSize", fmt.Sprint(pageSize))
+	return c
+}
+
+// PageToken sets the optional parameter "pageToken": A previously-returned
+// page token representing part of the larger set of results to view.
+func (c *RapidCachesListCall) PageToken(pageToken string) *RapidCachesListCall {
+	c.urlParams_.Set("pageToken", pageToken)
+	return c
+}
+
+// Fields allows partial responses to be retrieved. See
+// https://developers.google.com/gdata/docs/2.0/basics#PartialResponse for more
+// details.
+func (c *RapidCachesListCall) Fields(s ...googleapi.Field) *RapidCachesListCall {
+	c.urlParams_.Set("fields", googleapi.CombineFields(s))
+	return c
+}
+
+// IfNoneMatch sets an optional parameter which makes the operation fail if the
+// object's ETag matches the given value. This is useful for getting updates
+// only after the object has changed since the last request.
+func (c *RapidCachesListCall) IfNoneMatch(entityTag string) *RapidCachesListCall {
+	c.ifNoneMatch_ = entityTag
+	return c
+}
+
+// Context sets the context to be used in this call's Do method.
+func (c *RapidCachesListCall) Context(ctx context.Context) *RapidCachesListCall {
+	c.ctx_ = ctx
+	return c
+}
+
+// Header returns a http.Header that can be modified by the caller to add
+// headers to the request.
+func (c *RapidCachesListCall) Header() http.Header {
+	if c.header_ == nil {
+		c.header_ = make(http.Header)
+	}
+	return c.header_
+}
+
+func (c *RapidCachesListCall) doRequest(alt string) (*http.Response, error) {
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
+	if c.ifNoneMatch_ != "" {
+		reqHeaders.Set("If-None-Match", c.ifNoneMatch_)
+	}
+	c.urlParams_.Set("alt", alt)
+	c.urlParams_.Set("prettyPrint", "false")
+	urls := googleapi.ResolveRelative(c.s.BasePath, "b/{bucket}/rapidCaches")
+	urls += "?" + c.urlParams_.Encode()
+	req, err := http.NewRequest("GET", urls, nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header = reqHeaders
+	googleapi.Expand(req.URL, map[string]string{
+		"bucket": c.bucket,
+	})
+	c.s.logger.DebugContext(c.ctx_, "api request", "serviceName", apiName, "rpcName", "storage.rapidCaches.list", "request", internallog.HTTPRequest(req, nil))
+	return gensupport.SendRequest(c.ctx_, c.s.client, req)
+}
+
+// Do executes the "storage.rapidCaches.list" call.
+// Any non-2xx status code is an error. Response headers are in either
+// *RapidCaches.ServerResponse.Header or (if a response was returned at all) in
+// error.(*googleapi.Error).Header. Use googleapi.IsNotModified to check
+// whether the returned error was because http.StatusNotModified was returned.
+func (c *RapidCachesListCall) Do(opts ...googleapi.CallOption) (*RapidCaches, error) {
+	gensupport.SetOptions(c.urlParams_, opts...)
+	res, err := c.doRequest("json")
+	if res != nil && res.StatusCode == http.StatusNotModified {
+		if res.Body != nil {
+			res.Body.Close()
+		}
+		return nil, gensupport.WrapError(&googleapi.Error{
+			Code:   res.StatusCode,
+			Header: res.Header,
+		})
+	}
+	if err != nil {
+		return nil, err
+	}
+	defer googleapi.CloseBody(res)
+	if err := googleapi.CheckResponse(res); err != nil {
+		return nil, gensupport.WrapError(err)
+	}
+	ret := &RapidCaches{
+		ServerResponse: googleapi.ServerResponse{
+			Header:         res.Header,
+			HTTPStatusCode: res.StatusCode,
+		},
+	}
+	target := &ret
+	b, err := gensupport.DecodeResponseBytes(target, res)
+	if err != nil {
+		return nil, err
+	}
+	c.s.logger.DebugContext(c.ctx_, "api response", "serviceName", apiName, "rpcName", "storage.rapidCaches.list", "response", internallog.HTTPResponse(res, b))
+	return ret, nil
+}
+
+// Pages invokes f for each page of results.
+// A non-nil error returned from f will halt the iteration.
+// The provided context supersedes any context provided to the Context method.
+func (c *RapidCachesListCall) Pages(ctx context.Context, f func(*RapidCaches) error) error {
+	c.ctx_ = ctx
+	defer c.PageToken(c.urlParams_.Get("pageToken"))
+	for {
+		x, err := c.Do()
+		if err != nil {
+			return err
+		}
+		if err := f(x); err != nil {
+			return err
+		}
+		if x.NextPageToken == "" {
+			return nil
+		}
+		c.PageToken(x.NextPageToken)
+	}
+}
+
+type RapidCachesUpdateCall struct {
+	s            *Service
+	bucket       string
+	rapidCacheId string
+	rapidcache   *RapidCache
+	urlParams_   gensupport.URLParams
+	ctx_         context.Context
+	header_      http.Header
+}
+
+// Update: Updates the configuration of a Rapid Cache instance.
+//
+// - bucket: Name of the parent bucket.
+// - rapidCacheId: The ID of the requested Rapid Cache instance.
+func (r *RapidCachesService) Update(bucket string, rapidCacheId string, rapidcache *RapidCache) *RapidCachesUpdateCall {
+	c := &RapidCachesUpdateCall{s: r.s, urlParams_: make(gensupport.URLParams)}
+	c.bucket = bucket
+	c.rapidCacheId = rapidCacheId
+	c.rapidcache = rapidcache
+	return c
+}
+
+// Fields allows partial responses to be retrieved. See
+// https://developers.google.com/gdata/docs/2.0/basics#PartialResponse for more
+// details.
+func (c *RapidCachesUpdateCall) Fields(s ...googleapi.Field) *RapidCachesUpdateCall {
+	c.urlParams_.Set("fields", googleapi.CombineFields(s))
+	return c
+}
+
+// Context sets the context to be used in this call's Do method.
+func (c *RapidCachesUpdateCall) Context(ctx context.Context) *RapidCachesUpdateCall {
+	c.ctx_ = ctx
+	return c
+}
+
+// Header returns a http.Header that can be modified by the caller to add
+// headers to the request.
+func (c *RapidCachesUpdateCall) Header() http.Header {
+	if c.header_ == nil {
+		c.header_ = make(http.Header)
+	}
+	return c.header_
+}
+
+func (c *RapidCachesUpdateCall) doRequest(alt string) (*http.Response, error) {
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
+	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.rapidcache)
+	if err != nil {
+		return nil, err
+	}
+	c.urlParams_.Set("alt", alt)
+	c.urlParams_.Set("prettyPrint", "false")
+	urls := googleapi.ResolveRelative(c.s.BasePath, "b/{bucket}/rapidCaches/{rapidCacheId}")
+	urls += "?" + c.urlParams_.Encode()
+	req, err := http.NewRequest("PATCH", urls, body)
+	if err != nil {
+		return nil, err
+	}
+	req.Header = reqHeaders
+	googleapi.Expand(req.URL, map[string]string{
+		"bucket":       c.bucket,
+		"rapidCacheId": c.rapidCacheId,
+	})
+	c.s.logger.DebugContext(c.ctx_, "api request", "serviceName", apiName, "rpcName", "storage.rapidCaches.update", "request", internallog.HTTPRequest(req, body.Bytes()))
+	return gensupport.SendRequest(c.ctx_, c.s.client, req)
+}
+
+// Do executes the "storage.rapidCaches.update" call.
+// Any non-2xx status code is an error. Response headers are in either
+// *GoogleLongrunningOperation.ServerResponse.Header or (if a response was
+// returned at all) in error.(*googleapi.Error).Header. Use
+// googleapi.IsNotModified to check whether the returned error was because
+// http.StatusNotModified was returned.
+func (c *RapidCachesUpdateCall) Do(opts ...googleapi.CallOption) (*GoogleLongrunningOperation, error) {
+	gensupport.SetOptions(c.urlParams_, opts...)
+	res, err := c.doRequest("json")
+	if res != nil && res.StatusCode == http.StatusNotModified {
+		if res.Body != nil {
+			res.Body.Close()
+		}
+		return nil, gensupport.WrapError(&googleapi.Error{
+			Code:   res.StatusCode,
+			Header: res.Header,
+		})
+	}
+	if err != nil {
+		return nil, err
+	}
+	defer googleapi.CloseBody(res)
+	if err := googleapi.CheckResponse(res); err != nil {
+		return nil, gensupport.WrapError(err)
+	}
+	ret := &GoogleLongrunningOperation{
+		ServerResponse: googleapi.ServerResponse{
+			Header:         res.Header,
+			HTTPStatusCode: res.StatusCode,
+		},
+	}
+	target := &ret
+	b, err := gensupport.DecodeResponseBytes(target, res)
+	if err != nil {
+		return nil, err
+	}
+	c.s.logger.DebugContext(c.ctx_, "api response", "serviceName", apiName, "rpcName", "storage.rapidCaches.update", "response", internallog.HTTPResponse(res, b))
 	return ret, nil
 }

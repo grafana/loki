@@ -74,9 +74,13 @@ type WorkerParams struct {
 	// Required for compaction tasks; may be nil for query-only workers.
 	ScratchStore scratch.Store
 
-	// IndexobjCfg is the builder config for index objects.
-	// Required for compaction tasks; may be nil for query-only workers.
+	// IndexobjCfg is the builder config for compacted index objects.
+	// Required for compaction tasks; may be the zero value for query-only workers.
 	IndexobjCfg logsobj.BuilderBaseConfig
+
+	// LogsobjCfg is the builder config for compacted log objects
+	// Required for compaction tasks; may be the zero-value for query-only workers.
+	LogsobjCfg logsobj.BuilderBaseConfig
 
 	// IndexMergeObserver is used  by compaction to populate output-size
 	// histograms. Optional; nil for query-only workers.
@@ -173,6 +177,7 @@ func NewWorker(params WorkerParams, reg prometheus.Registerer) (*Worker, error) 
 		TaskCaches:     taskCaches,
 		ScratchStore:   params.ScratchStore,
 		IndexobjCfg:    params.IndexobjCfg,
+		LogsobjCfg:     params.LogsobjCfg,
 
 		IndexMergeObserver: params.IndexMergeObserver,
 		LogMergeObserver:   params.LogMergeObserver,

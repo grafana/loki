@@ -4,6 +4,7 @@ import (
 	"errors"
 	"math"
 	"net/netip"
+	"runtime"
 )
 
 const notFound uint = math.MaxUint
@@ -39,7 +40,9 @@ func (r Result) Decode(v any) error {
 		return errors.New("cannot call Decode on a closed database")
 	}
 
-	return r.reader.decoder.Decode(r.offset, v)
+	err := r.reader.decoder.Decode(r.offset, v)
+	runtime.KeepAlive(r.reader)
+	return err
 }
 
 // DecodePath unmarshals a value from data section into v, following the
@@ -99,7 +102,9 @@ func (r Result) DecodePath(v any, path ...any) error {
 	if r.reader == nil || r.reader.buffer == nil {
 		return errors.New("cannot call DecodePath on a closed database")
 	}
-	return r.reader.decoder.DecodePath(r.offset, path, v)
+	err := r.reader.decoder.DecodePath(r.offset, path, v)
+	runtime.KeepAlive(r.reader)
+	return err
 }
 
 // Err provides a way to check whether there was an error during the lookup

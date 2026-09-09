@@ -1065,6 +1065,10 @@ func (e *encoder[T]) MustEncode(v interface{}) {
 	return
 }
 
+func (e *encoder[T]) NumBytesWritten() int {
+	return e.e.NumBytesWritten()
+}
+
 func (e *encoder[T]) mustEncode(v interface{}) {
 	halt.onerror(e.err)
 	if e.hh == nil {

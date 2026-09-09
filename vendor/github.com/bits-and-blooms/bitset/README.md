@@ -3,7 +3,6 @@
 *Go language library to map between non-negative integers and boolean values*
 
 [![Test](https://github.com/bits-and-blooms/bitset/workflows/Test/badge.svg)](https://github.com/bits-and-blooms/bitset/actions?query=workflow%3ATest)
-[![Go Report Card](https://goreportcard.com/badge/github.com/bits-and-blooms/bitset)](https://goreportcard.com/report/github.com/bits-and-blooms/bitset)
 [![PkgGoDev](https://pkg.go.dev/badge/github.com/bits-and-blooms/bitset?tab=doc)](https://pkg.go.dev/github.com/bits-and-blooms/bitset?tab=doc)
 
 
@@ -210,10 +209,6 @@ go test
 go test -cover
 ```
 
-## Stars
-
-
-[![Star History Chart](https://api.star-history.com/svg?repos=bits-and-blooms/bitset&type=Date)](https://www.star-history.com/#bits-and-blooms/bitset&Date)
 
 ## Further reading
 

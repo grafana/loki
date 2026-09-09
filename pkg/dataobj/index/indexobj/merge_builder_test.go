@@ -171,7 +171,7 @@ func TestMergeBuilder_AppendPostingsBloomEntry(t *testing.T) {
 
 	// Create valid bloom bytes using an observation builder
 	tempBuilder := postings.NewBuilder(nil, 0, 0, 1<<20)
-	tempBuilder.PrepareBloomColumn("/obj2", 1, "service_name", 100)
+	tempBuilder.PrepareBloomColumn("/obj2", 1, "service_name", 100, 0)
 	err = tempBuilder.ObserveBloomPosting(postings.BloomObservation{
 		ObjectPath:       "/obj2",
 		SectionIndex:     1,

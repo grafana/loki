@@ -104,6 +104,8 @@ func (m *SocketOption) validate(all bool) error {
 		}
 	}
 
+	// no validation rules for IpVersion
+
 	oneofValuePresent := false
 	switch v := m.Value.(type) {
 	case *SocketOption_IntValue:
