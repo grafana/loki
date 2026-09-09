@@ -437,10 +437,28 @@ func buildExpiredSchemaSet(schemas []lokiv1.ObjectStorageSchema, currentTime tim
 	return expiredSet
 }
 
-// getRetentionDays returns the global retention period in days, or 0 if not configured
+// getRetentionDays returns the maximum retention period in days across global and all tenants.
+// Returns 0 if no retention is configured anywhere (which means schema removal is not allowed).
+// This ensures we honor the longest retention period, whether global or per-tenant.
 func getRetentionDays(limits *lokiv1.LimitsSpec) int {
-	if limits == nil || limits.Global == nil || limits.Global.Retention == nil {
-		return 0
+	maxRetention := 0
+
+	// Check global retention
+	if limits != nil && limits.Global != nil && limits.Global.Retention != nil {
+		maxRetention = int(limits.Global.Retention.Days)
 	}
-	return int(limits.Global.Retention.Days)
+
+	// Check all tenant retention periods and use the maximum
+	if limits != nil && limits.Tenants != nil {
+		for _, tenantLimits := range limits.Tenants {
+			if tenantLimits.Retention != nil {
+				tenantRetention := int(tenantLimits.Retention.Days)
+				if tenantRetention > maxRetention {
+					maxRetention = tenantRetention
+				}
+			}
+		}
+	}
+
+	return maxRetention
 }
