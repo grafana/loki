@@ -43,7 +43,7 @@ func TestStreamingMerge_FromFiles(t *testing.T) {
 	dir := t.TempDir()
 	inputPaths := make([]string, numSources)
 
-	for s := 0; s < numSources; s++ {
+	for s := range numSources {
 		docs := make([]format.DocumentMetadata, docsPerSource)
 		for i := range docs {
 			// ~50% overlap: docs 0-249 shared across sources.
@@ -56,12 +56,12 @@ func TestStreamingMerge_FromFiles(t *testing.T) {
 		}
 
 		termPostings := make(map[[8]byte][]uint32)
-		for j := 0; j < termsPerSource; j++ {
+		for j := range termsPerSource {
 			var tk [8]byte
 			// "T" + 1-digit source + 4-digit term = 6 chars (fits NgramLength).
 			copy(tk[:], fmt.Sprintf("T%d%04d", s, j))
 			var ids []uint32
-			for d := 0; d < docsPerSource; d++ {
+			for d := range docsPerSource {
 				if (j*31+d*17)%5 == 0 {
 					ids = append(ids, uint32(d))
 				}

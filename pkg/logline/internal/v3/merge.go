@@ -82,7 +82,7 @@ func openMergeInputsFromReaders(readers []io.ReaderAt, sizes []int64) ([]*IndexR
 	for i, r := range readers {
 		ir, err := OpenIndexAt(r, 0, sizes[i])
 		if err != nil {
-			for j := 0; j < i; j++ {
+			for j := range i {
 				idxReaders[j].Close()
 			}
 			return nil, nil, fmt.Errorf("open input index %d: %w", i, err)

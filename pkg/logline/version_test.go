@@ -200,7 +200,7 @@ func TestWriter_LargeBitmapRoundTrip(t *testing.T) {
 
 			docs := make([]format.DocumentMetadata, docCount)
 			docIDs := make([]uint32, docCount)
-			for i := 0; i < docCount; i++ {
+			for i := range docCount {
 				docs[i] = format.DocumentMetadata{
 					ID:          uint32(i),
 					MinTimeUnix: int64(i) * 100,
@@ -233,7 +233,7 @@ func TestWriter_LargeTermSetRoundTrip(t *testing.T) {
 			)
 
 			docs := make([]format.DocumentMetadata, docCount)
-			for i := 0; i < docCount; i++ {
+			for i := range docCount {
 				docs[i] = format.DocumentMetadata{
 					ID:          uint32(i),
 					MinTimeUnix: int64(i) * 1000,
@@ -242,7 +242,7 @@ func TestWriter_LargeTermSetRoundTrip(t *testing.T) {
 			}
 
 			terms := make(map[[8]byte][]uint32, termCount)
-			for i := 0; i < termCount; i++ {
+			for i := range termCount {
 				terms[term8(fmt.Sprintf("T%05d", i))] = []uint32{uint32(i % docCount)}
 			}
 
@@ -258,7 +258,7 @@ func TestWriter_LargeTermSetRoundTrip(t *testing.T) {
 				require.NoError(t, file.Close())
 			}()
 
-			for i := 0; i < termCount; i++ {
+			for i := range termCount {
 				term := fmt.Sprintf("T%05d", i)
 				require.Equal(t, expectedDocIDs(source, []string{term}), queryTerms(t, reader, []string{term}))
 			}
@@ -1314,7 +1314,7 @@ func buildComprehensiveSources() []testIndexSource {
 		terms: make(map[[8]byte][]uint32),
 	}
 
-	for i := 0; i < docsA; i++ {
+	for i := range docsA {
 		sourceA.docs[i] = format.DocumentMetadata{
 			ID:          uint32(i),
 			MinTimeUnix: int64(i) * 1000,
@@ -1322,7 +1322,7 @@ func buildComprehensiveSources() []testIndexSource {
 		}
 	}
 
-	for i := 0; i < docsB; i++ {
+	for i := range docsB {
 		minTime := int64(docsA+i) * 1000
 		maxTime := minTime + 500
 		if i < sharedDocs {
@@ -1336,15 +1336,15 @@ func buildComprehensiveSources() []testIndexSource {
 		}
 	}
 
-	for i := 0; i < termsOnlyA; i++ {
+	for i := range termsOnlyA {
 		key := term8(fmt.Sprintf("A%05d", i))
 		sourceA.terms[key] = formulaDocIDs(docsA, i, 3, 5)
 	}
-	for i := 0; i < termsOnlyB; i++ {
+	for i := range termsOnlyB {
 		key := term8(fmt.Sprintf("B%05d", i))
 		sourceB.terms[key] = formulaDocIDs(docsB, i, 4, 7)
 	}
-	for i := 0; i < sharedTerms; i++ {
+	for i := range sharedTerms {
 		key := term8(fmt.Sprintf("S%05d", i))
 		sourceA.terms[key] = formulaDocIDs(docsA, i+1, 2, 5)
 		sourceB.terms[key] = formulaDocIDs(docsB, i+2, 3, 6)
@@ -1360,7 +1360,7 @@ func buildComprehensiveSources() []testIndexSource {
 
 func formulaDocIDs(docCount, seed, modulus, fallbackMod int) []uint32 {
 	ids := make([]uint32, 0)
-	for i := 0; i < docCount; i++ {
+	for i := range docCount {
 		if (i+seed)%modulus == 0 || (i*seed+1)%fallbackMod == 0 {
 			ids = append(ids, uint32(i))
 		}
@@ -1507,12 +1507,12 @@ func buildFuzzMergeCase(sourceSeed, docSeed, modeSeed uint8) ([]testIndexSource,
 			}, false
 	case 5:
 		sources := make([]testIndexSource, 0, sourceCount)
-		for i := 0; i < sourceCount; i++ {
+		for i := range sourceCount {
 			source := testIndexSource{
 				docs:  buildDocs(docCount + i),
 				terms: make(map[[8]byte][]uint32),
 			}
-			for termIdx := 0; termIdx < 3; termIdx++ {
+			for termIdx := range 3 {
 				source.terms[term8(fmt.Sprintf("M%05d", termIdx))] = formulaDocIDs(len(source.docs), i+termIdx+1, 2+termIdx, 5+termIdx)
 			}
 			sources = append(sources, source)
@@ -1528,7 +1528,7 @@ func buildFuzzMergeCase(sourceSeed, docSeed, modeSeed uint8) ([]testIndexSource,
 
 func buildDocs(count int) []format.DocumentMetadata {
 	docs := make([]format.DocumentMetadata, count)
-	for i := 0; i < count; i++ {
+	for i := range count {
 		docs[i] = format.DocumentMetadata{
 			ID:          uint32(i),
 			MinTimeUnix: int64(i) * 100,
@@ -1540,7 +1540,7 @@ func buildDocs(count int) []format.DocumentMetadata {
 
 func buildSequentialIDs(count int) []uint32 {
 	ids := make([]uint32, count)
-	for i := 0; i < count; i++ {
+	for i := range count {
 		ids[i] = uint32(i)
 	}
 	return ids

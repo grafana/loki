@@ -1,6 +1,7 @@
 package hintprovider
 
 import (
+	"maps"
 	"strings"
 	"testing"
 	"time"
@@ -230,7 +231,7 @@ func TestAggregateShardRanges(t *testing.T) {
 		// iteration. Three shards is the minimum to trigger — the reset
 		// requires at least one iteration AFTER the nil intersection.
 		shard2 := shardKey{shardGroup: shardGroup{ShardCount: 4, ShardAlgorithm: "first_byte"}, ShardValue: 2}
-		for i := 0; i < 200; i++ {
+		for i := range 200 {
 			byKey := map[shardKey][]HintTimeRange{
 				shard0: {{Start: t0, End: t0.Add(10 * m)}},
 				shard1: {{Start: t0.Add(20 * m), End: t0.Add(30 * m)}},
@@ -251,7 +252,7 @@ func TestAggregateShardRanges(t *testing.T) {
 		// [20m, 30m]. Output must be stable across map iteration orders.
 		shard2 := shardKey{shardGroup: shardGroup{ShardCount: 4, ShardAlgorithm: "first_byte"}, ShardValue: 2}
 		want := []HintTimeRange{{Start: t0.Add(20 * m), End: t0.Add(30 * m)}}
-		for i := 0; i < 200; i++ {
+		for i := range 200 {
 			byKey := map[shardKey][]HintTimeRange{
 				shard0: {{Start: t0.Add(10 * m), End: t0.Add(30 * m)}},
 				shard1: {{Start: t0.Add(20 * m), End: t0.Add(40 * m)}},
@@ -320,12 +321,10 @@ func TestAggregateShardRanges(t *testing.T) {
 			return out
 		}
 		byKey := map[shardKey][]HintTimeRange{}
-		for k, v := range mkGroup(4, 10, 15, 18, 19) { // intersect → [19m, 30m]
-			byKey[k] = v
-		}
-		for k, v := range mkGroup(8, 50, 55, 58, 59) { // intersect → [59m, 70m]
-			byKey[k] = v
-		}
+		// intersect → [19m, 30m]
+		maps.Copy(byKey, mkGroup(4, 10, 15, 18, 19))
+		// intersect → [59m, 70m]
+		maps.Copy(byKey, mkGroup(8, 50, 55, 58, 59))
 		got := aggregateShardRanges(byKey)
 		require.Len(t, got, 2)
 		require.Equal(t, t0.Add(19*m), got[0].Start)

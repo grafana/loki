@@ -72,13 +72,10 @@ func FormatHintRanges(ranges []HintTimeRange) string {
 		return "[]"
 	}
 
-	limit := len(ranges)
-	if limit > maxLoggedHintRanges {
-		limit = maxLoggedHintRanges
-	}
+	limit := min(len(ranges), maxLoggedHintRanges)
 
 	var b strings.Builder
-	for i := 0; i < limit; i++ {
+	for i := range limit {
 		if i > 0 {
 			b.WriteString(";")
 		}

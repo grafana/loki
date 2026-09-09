@@ -22,7 +22,7 @@ func TestTermIterator_MultiBlock(t *testing.T) {
 	// lexicographically ordered 6-byte ASCII terms. Range 000000–131072,
 	// all distinct, lexicographic order matches numeric order.
 	postings := make(map[[8]byte][]uint32, totalTerms)
-	for i := 0; i < totalTerms; i++ {
+	for i := range totalTerms {
 		var t6 [8]byte
 		s := fmt.Sprintf("%06d", i)
 		copy(t6[:6], s)

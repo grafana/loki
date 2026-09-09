@@ -49,12 +49,9 @@ func orderUncorrelated(terms []string) []string {
 	}
 
 	ordered := make([]string, 0, len(terms))
-	stride := len(terms) / 2
-	if stride < 1 {
-		stride = 1
-	}
+	stride := max(len(terms)/2, 1)
 
-	for i := 0; i < stride; i++ {
+	for i := range stride {
 		ordered = append(ordered, terms[i])
 		j := i + stride
 		if j < len(terms) {

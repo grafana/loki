@@ -517,7 +517,7 @@ func decodeDocumentMetadata(data []byte, count uint32) ([]format.DocumentMetadat
 		return nil, fmt.Errorf("document metadata entries exceed declared document count")
 	}
 	docs := make([]format.DocumentMetadata, n)
-	for i := uint32(0); i < n; i++ {
+	for i := range n {
 		off := int(i) * 20
 		docs[i] = format.DocumentMetadata{
 			ID:          binary.LittleEndian.Uint32(data[off : off+4]),
@@ -763,7 +763,7 @@ type docTimeKey struct {
 // Merge helpers are in merge.go.
 
 func compareTerm8(a, b [8]byte) int {
-	for i := 0; i < 8; i++ {
+	for i := range 8 {
 		if a[i] < b[i] {
 			return -1
 		}
@@ -796,10 +796,7 @@ func buildTermData(terms [][NgramLength]byte) ([]byte, []termBlockDirEntry, erro
 	var out bytes.Buffer
 	entries := make([]termBlockDirEntry, 0, len(terms)/TermDictBlockSize+1)
 	for start := 0; start < len(terms); start += TermDictBlockSize {
-		end := start + TermDictBlockSize
-		if end > len(terms) {
-			end = len(terms)
-		}
+		end := min(start+TermDictBlockSize, len(terms))
 		blockTerms := terms[start:end]
 
 		raw := make([]byte, len(blockTerms)*NgramLength)
@@ -966,12 +963,9 @@ func (idx *termBlockIndex) FindTerm(term [NgramLength]byte) (int, error) {
 	if idx.termCount == 0 {
 		return -1, nil
 	}
-	blockIdx := sort.Search(len(idx.dir), func(i int) bool {
+	blockIdx := max(sort.Search(len(idx.dir), func(i int) bool {
 		return bytes.Compare(idx.dir[i].FirstTerm[:], term[:]) > 0
-	}) - 1
-	if blockIdx < 0 {
-		blockIdx = 0
-	}
+	})-1, 0)
 	if blockIdx >= len(idx.dir) {
 		return -1, nil
 	}

@@ -84,7 +84,7 @@ func TestTermDictionary_LargeDataset(t *testing.T) {
 	// Create a dataset to test query functionality
 	// Note: Block size is now 131072 (128K), so 200 terms fit in 1 block
 	ngrams := make([][NgramLength]byte, 200)
-	for i := 0; i < 200; i++ {
+	for i := range 200 {
 		ngrams[i] = [NgramLength]byte{
 			byte('A' + (i / 26 / 26 % 26)),
 			byte('A' + (i / 26 % 26)),
@@ -177,7 +177,7 @@ func TestTermDictionary_PrefixCompression(t *testing.T) {
 
 func BenchmarkTermDictionary_Build(b *testing.B) {
 	ngrams := make([][NgramLength]byte, 10000)
-	for i := 0; i < 10000; i++ {
+	for i := range 10000 {
 		ngrams[i] = [NgramLength]byte{
 			byte('A' + (i / 26 / 26 / 26 % 26)),
 			byte('A' + (i / 26 / 26 % 26)),
@@ -195,7 +195,7 @@ func BenchmarkTermDictionary_Build(b *testing.B) {
 
 func BenchmarkTermDictionary_Query(b *testing.B) {
 	ngrams := make([][NgramLength]byte, 10000)
-	for i := 0; i < 10000; i++ {
+	for i := range 10000 {
 		ngrams[i] = [NgramLength]byte{
 			byte('A' + (i / 26 / 26 / 26 % 26)),
 			byte('A' + (i / 26 / 26 % 26)),

@@ -152,7 +152,7 @@ func (p *CachingHintProvider) ProvideHints(
 		dayFrom := model.TimeFromUnixNano(day.start.UnixNano())
 		dayThrough := model.TimeFromUnixNano(day.endExclusive.Add(-time.Nanosecond).UnixNano())
 		sfKey := singleflightKey(tenant, queryString, day.day)
-		value, _, shared := p.flight.Do(sfKey, func() (interface{}, error) {
+		value, _, shared := p.flight.Do(sfKey, func() (any, error) {
 			hints, stats, provideErr := p.delegate.ProvideHints(ctx, tenant, expr, dayFrom, dayThrough)
 			result := &provideHintsResult{
 				hints: hints,

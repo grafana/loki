@@ -23,7 +23,7 @@ func TestDensityFilterSentinel(t *testing.T) {
 
 	w, err := newStreamingIndexWriter(path, cfg, docCount)
 	require.NoError(t, err)
-	for i := uint32(0); i < docCount; i++ {
+	for i := range docCount {
 		w.AddDocument(format.DocumentMetadata{ID: i, MinTimeUnix: int64(i), MaxTimeUnix: int64(i + 1)})
 	}
 
@@ -65,7 +65,7 @@ func TestDensityFilterSentinel_ExceedsDayCutoff(t *testing.T) {
 
 	w, err := newStreamingIndexWriter(path, cfg, docCount)
 	require.NoError(t, err)
-	for i := uint32(0); i < docCount; i++ {
+	for i := range docCount {
 		w.AddDocument(format.DocumentMetadata{ID: i, MinTimeUnix: int64(i), MaxTimeUnix: int64(i + 1)})
 	}
 
@@ -98,7 +98,7 @@ func TestDensityFilterDisabled(t *testing.T) {
 
 	w, err := newStreamingIndexWriter(path, cfg, docCount)
 	require.NoError(t, err)
-	for i := uint32(0); i < docCount; i++ {
+	for i := range docCount {
 		w.AddDocument(format.DocumentMetadata{ID: i, MinTimeUnix: int64(i), MaxTimeUnix: int64(i + 1)})
 	}
 
@@ -131,7 +131,7 @@ func TestDensityFilterDisabled_NoDocumentInterval(t *testing.T) {
 
 	w, err := newStreamingIndexWriter(path, cfg, docCount)
 	require.NoError(t, err)
-	for i := uint32(0); i < docCount; i++ {
+	for i := range docCount {
 		w.AddDocument(format.DocumentMetadata{ID: i, MinTimeUnix: int64(i), MaxTimeUnix: int64(i + 1)})
 	}
 

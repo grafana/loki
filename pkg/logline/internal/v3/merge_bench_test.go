@@ -118,7 +118,7 @@ func buildSyntheticIndex(b *testing.B, dir string, fileIdx, numDocs, numTerms in
 	}
 
 	baseTime := time.Date(2026, 2, 25, 0, 0, 0, 0, time.UTC)
-	for i := 0; i < numDocs; i++ {
+	for i := range numDocs {
 		w.AddDocument(format.DocumentMetadata{
 			ID:          uint32(i),
 			MinTimeUnix: baseTime.Add(time.Duration(fileIdx*numDocs+i) * time.Minute).UnixMilli(),
@@ -132,7 +132,7 @@ func buildSyntheticIndex(b *testing.B, dir string, fileIdx, numDocs, numTerms in
 		ids  []uint32
 	}
 	terms := make([]termBM, numTerms)
-	for t := 0; t < numTerms; t++ {
+	for t := range numTerms {
 		var term [8]byte
 		term[0] = byte(t >> 16)
 		term[1] = byte(t >> 8)

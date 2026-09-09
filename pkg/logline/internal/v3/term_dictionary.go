@@ -66,10 +66,7 @@ func BuildTermDictionary(ngrams [][NgramLength]byte) *TermDictionary {
 	prevHeader := firstHeader
 
 	for i := 0; i < len(ngrams); i += TermDictBlockSize {
-		end := i + TermDictBlockSize
-		if end > len(ngrams) {
-			end = len(ngrams)
-		}
+		end := min(i+TermDictBlockSize, len(ngrams))
 		chunk := ngrams[i:end]
 
 		var headerBytes [NgramLength]byte
@@ -134,18 +131,15 @@ func BuildTermDictionaryFromStrings(ngrams []string) *TermDictionary {
 
 func xorNgramBytes(a, b []byte) [NgramLength]byte {
 	var result [NgramLength]byte
-	for i := 0; i < NgramLength; i++ {
+	for i := range NgramLength {
 		result[i] = a[i] ^ b[i]
 	}
 	return result
 }
 
 func commonPrefixLength(a, b []byte) int {
-	n := len(a)
-	if len(b) < n {
-		n = len(b)
-	}
-	for i := 0; i < n; i++ {
+	n := min(len(b), len(a))
+	for i := range n {
 		if a[i] != b[i] {
 			return i
 		}
@@ -159,9 +153,9 @@ func decodeTermDictHeader(first [NgramLength]byte, deltas []byte, blockIdx int) 
 	}
 
 	current := first
-	for i := 0; i < blockIdx; i++ {
+	for i := range blockIdx {
 		deltaStart := i * NgramLength
-		for j := 0; j < NgramLength; j++ {
+		for j := range NgramLength {
 			current[j] ^= deltas[deltaStart+j]
 		}
 	}
@@ -262,7 +256,7 @@ func decodeTermDictBlock(payload *TermDictionaryPayload, blockIdx, count, numBlo
 	entryDataPos := 0
 	suffixPos := 0
 
-	for i := 0; i < entriesBefore; i++ {
+	for range entriesBefore {
 		if entryDataPos >= len(payload.EntryData) {
 			break
 		}
@@ -342,10 +336,7 @@ func (td *TermDictionary) Query(ngram [NgramLength]byte) (int, error) {
 	}
 
 	// Check the block before where we'd insert
-	blockIdx := lo - 1
-	if blockIdx < 0 {
-		blockIdx = 0
-	}
+	blockIdx := max(lo-1, 0)
 	if blockIdx >= td.NumBlocks {
 		return -1, nil
 	}

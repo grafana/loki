@@ -301,13 +301,7 @@ func boundSource(s string) string {
 }
 
 func appendTruncationMarker(s string) string {
-	keep := maxMergedSourceLen - len(truncatedSourceMarker)
-	if keep < 0 {
-		keep = 0
-	}
-	if keep > len(s) {
-		keep = len(s)
-	}
+	keep := min(max(maxMergedSourceLen-len(truncatedSourceMarker), 0), len(s))
 	return s[:keep] + truncatedSourceMarker
 }
 

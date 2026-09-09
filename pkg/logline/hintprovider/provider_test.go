@@ -40,7 +40,7 @@ func TestFormatHintRanges_Passthrough(t *testing.T) {
 func TestFormatHintRanges_Truncates(t *testing.T) {
 	base := time.Date(2026, 2, 26, 10, 0, 0, 0, time.UTC)
 	ranges := make([]HintTimeRange, 0, maxLoggedHintRanges+2)
-	for i := 0; i < maxLoggedHintRanges+2; i++ {
+	for i := range maxLoggedHintRanges + 2 {
 		start := base.Add(time.Duration(i) * time.Minute)
 		ranges = append(ranges, HintTimeRange{Start: start, End: start.Add(10 * time.Second)})
 	}

@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"sort"
+	"slices"
 	"sync"
 	"testing"
 
@@ -111,7 +111,7 @@ func buildQueryTestIndex(t *testing.T, cfg IndexWriteConfig) ([]byte, string, []
 	require.NoError(t, err)
 
 	docs := make([]format.DocumentMetadata, 0, docCount)
-	for i := 0; i < docCount; i++ {
+	for i := range docCount {
 		docs = append(docs, format.DocumentMetadata{
 			ID:          uint32(i),
 			MinTimeUnix: int64(i),
@@ -124,7 +124,7 @@ func buildQueryTestIndex(t *testing.T, cfg IndexWriteConfig) ([]byte, string, []
 	// ascending order requirement.
 	terms := make([]string, 0, termCount)
 	expected := make(map[string][]uint32, termCount)
-	for i := 0; i < termCount; i++ {
+	for i := range termCount {
 		term := fmt.Sprintf("T%05d", i)
 		terms = append(terms, term)
 
@@ -155,9 +155,7 @@ func uniqueSorted(values []uint32) []uint32 {
 	if len(values) == 0 {
 		return nil
 	}
-	sort.Slice(values, func(i, j int) bool {
-		return values[i] < values[j]
-	})
+	slices.Sort(values)
 	out := values[:1]
 	for i := 1; i < len(values); i++ {
 		if values[i] != out[len(out)-1] {

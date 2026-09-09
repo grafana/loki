@@ -77,7 +77,7 @@ func extractFromText(n int, text string, ngrams [][8]byte) [][8]byte {
 	tokenStart := -1
 	textLen := len(text)
 
-	for i := 0; i < textLen; i++ {
+	for i := range textLen {
 		if separatorTable[text[i]] {
 			if tokenStart >= 0 {
 				tokenLen := i - tokenStart
@@ -108,7 +108,7 @@ func extractNgramsFromToken(n int, token string, ngrams [][8]byte) [][8]byte {
 	tokenLen := len(token)
 	for j := 0; j <= tokenLen-n; j++ {
 		var key [8]byte
-		for k := 0; k < n; k++ {
+		for k := range n {
 			key[k] = transformTable[token[j+k]]
 		}
 		ngrams = append(ngrams, key)

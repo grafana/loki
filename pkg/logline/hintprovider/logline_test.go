@@ -741,7 +741,7 @@ func TestLoglineHintProvider_ProvideHints_EmptyShardAnnihilatesIntersection(t *t
 	require.Len(t, ngrams, 3)
 
 	byShard := make(map[int][]string)
-	for shardValue := 0; shardValue < 10; shardValue++ {
+	for shardValue := range 10 {
 		meta := store.Meta{
 			ShardCount:     10,
 			ShardAlgorithm: shard.AlgorithmMurmur3Mix,
