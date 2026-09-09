@@ -29,7 +29,7 @@ type readerFrom interface {
 // another fetch in the background.
 type source struct {
 	cl     *Client // our owning client, for cfg, metadata triggering, context, etc.
-	nodeID int32   // the node ID of the broker this sink belongs to
+	nodeID int32   // the node ID of the broker this source belongs to
 
 	// Tracks how many _failed_ fetch requests we have in a row (unable to
 	// receive a response). Any response, even responses with an ErrorCode
@@ -117,7 +117,17 @@ func (s *source) removeCursor(rm *cursor) {
 
 // cursor is where we are consuming from for an individual partition.
 type cursor struct {
-	topic     string
+	topic string
+	// topicID is written once at cursor creation and is deliberately
+	// never re-adopted if a delete+recreate hands back a new ID for the
+	// same name: a recreated topic stalls loudly (UNKNOWN_TOPIC_ID, see
+	// the UnknownTopicID arm below) and the user must purge+re-add. This
+	// is the principled alternative to librdkafka/Java's adopt-and-gamble;
+	// issue #908 records why auto-adoption was backed out (PR #391/#377:
+	// OffsetForLeaderEpoch has no TopicID field, so an adopted ID cannot
+	// be validated against truncation). The metadata merge copies this
+	// pointer over rather than swapping the ID; do not "fix" the stall
+	// into an adopt without solving #908.
 	topicID   [16]byte
 	partition int32
 
@@ -297,7 +307,25 @@ func (p *cursorOffsetPreferred) move() {
 	c.source.cl.sinksAndSourcesMu.Unlock()
 
 	if !exists {
+		// The preferred replica is a broker we have not yet learned from
+		// metadata - e.g. a freshly added replica that the broker we
+		// fetched from already knows about, before our periodic refresh
+		// caught up. We force a metadata update so the source comes to
+		// exist for a future move, but we must ALSO re-enable the cursor
+		// on its current (leader) source. The caller (source.fetch) deletes
+		// this cursor from the request's used offsets right after we return,
+		// so neither the fetch's used-offset finishing nor a later buffered
+		// poll will re-enable it: leaving it unusable here would strand the
+		// partition. The leader is unchanged, so no cursor
+		// migration re-enables it, and a metadata refresh that merely
+		// learns the new broker never touches cursor usability - the
+		// partition would silently never be consumed again until an
+		// unrelated session restart (rebalance, assign, leader change).
+		//
+		// Re-enabling on the current source keeps us consuming from the
+		// leader until a later fetch's preferred replica can be honored.
 		c.source.cl.triggerUpdateMetadataNow("cursor moving to a different broker that is not yet known")
+		c.allowUsable()
 		return
 	}
 
@@ -398,22 +426,13 @@ type bufferedFetch struct {
 	usedOffsets usedOffsets // what the offsets will be next if this fetch is used
 }
 
-func (s *source) hook(f *Fetch, buffered, polled bool) {
+func (s *source) hookBuffered(f *Fetch) {
 	// Collect matching hooks once, then fuse dispatch with the metrics walk
 	// so we visit each record exactly once regardless of hook count.
-	var (
-		bufH []HookFetchRecordBuffered
-		unbH []HookFetchRecordUnbuffered
-	)
+	var bufH []HookFetchRecordBuffered
 	s.cl.cfg.hooks.each(func(h Hook) {
-		if buffered {
-			if h, ok := h.(HookFetchRecordBuffered); ok {
-				bufH = append(bufH, h)
-			}
-		} else {
-			if h, ok := h.(HookFetchRecordUnbuffered); ok {
-				unbH = append(unbH, h)
-			}
+		if h, ok := h.(HookFetchRecordBuffered); ok {
+			bufH = append(bufH, h)
 		}
 	})
 
@@ -430,19 +449,91 @@ func (s *source) hook(f *Fetch, buffered, polled bool) {
 				for _, h := range bufH {
 					h.OnFetchRecordBuffered(r)
 				}
-				for _, h := range unbH {
-					h.OnFetchRecordUnbuffered(r, polled)
-				}
 			}
 		}
 	}
-	if buffered {
-		s.cl.consumer.bufferedRecords.Add(int64(nrecs))
-		s.cl.consumer.bufferedBytes.Add(nbytes)
-	} else {
-		s.cl.consumer.bufferedRecords.Add(-int64(nrecs))
-		s.cl.consumer.bufferedBytes.Add(-nbytes)
+	s.cl.consumer.bufferedRecords.Add(int64(nrecs))
+	s.cl.consumer.bufferedBytes.Add(nbytes)
+}
+
+// hookDeferUnbuffered is the unbuffered counterpart of hookBuffered, split
+// because its dispatch must NOT run at the call sites: every take/discard
+// path holds c.sourcesReadyMu, and the poll path additionally holds c.mu
+// (the invalidation path holds c.mu and sessionChangeMu too). User hook
+// code invoked there can re-enter the client -- the hook docs bless
+// interceptor usage and warn only about slowness -- and a re-entrant call
+// that needs c.mu (polling, AddConsumeTopics, ...) would park forever with
+// c.mu held, wedging every future poll, every rebalance's assign, and
+// Close. So this captures what dispatch needs NOW and queues the user-code
+// dispatch on the consumer, to run once the locks release.
+//
+// The capture must be eager for a second reason: callers compact the
+// fetch's Topics/Partitions slices in place after this returns (pause
+// stripping reuses the same backing arrays), so a closure over f would
+// observe a corrupted view. Records themselves are never mutated; we
+// flatten the record pointers. Gauge accounting is atomic and happens
+// immediately -- only user code is deferred, and only when an unbuffered
+// hook is actually registered.
+//
+// Must be called with c.sourcesReadyMu held.
+func (s *source) hookDeferUnbuffered(f *Fetch, polled bool) {
+	var unbH []HookFetchRecordUnbuffered
+	s.cl.cfg.hooks.each(func(h Hook) {
+		if h, ok := h.(HookFetchRecordUnbuffered); ok {
+			unbH = append(unbH, h)
+		}
+	})
+
+	c := &s.cl.consumer
+	var nrecs int
+	var nbytes int64
+	if len(unbH) == 0 {
+		// No hook to dispatch. The gauges still need the walk (bytes
+		// are per-record), but nothing is captured and nothing is
+		// allocated.
+		for i := range f.Topics {
+			t := &f.Topics[i]
+			for j := range t.Partitions {
+				p := &t.Partitions[j]
+				nrecs += len(p.Records)
+				for k := range p.Records {
+					nbytes += p.Records[k].userSize()
+				}
+			}
+		}
+		c.bufferedRecords.Add(-int64(nrecs))
+		c.bufferedBytes.Add(-nbytes)
+		return
 	}
+
+	var recs []*Record
+	for i := range f.Topics {
+		t := &f.Topics[i]
+		for j := range t.Partitions {
+			p := &t.Partitions[j]
+			nrecs += len(p.Records)
+			for k := range p.Records {
+				r := p.Records[k]
+				nbytes += r.userSize()
+				recs = append(recs, r)
+			}
+		}
+	}
+	c.bufferedRecords.Add(-int64(nrecs))
+	c.bufferedBytes.Add(-nbytes)
+
+	if len(recs) == 0 {
+		return
+	}
+	c.deferredFetchHooks = append(c.deferredFetchHooks, func() {
+		// unbH is almost always length one; keeping it outermost keeps
+		// the per-record loop free of the hook-slice ranging.
+		for _, h := range unbH {
+			for _, r := range recs {
+				h.OnFetchRecordUnbuffered(r, polled)
+			}
+		}
+	})
 }
 
 // takeBuffered drains a buffered fetch and updates offsets.
@@ -630,9 +721,9 @@ func (s *source) takeNBuffered(paused pausedTopics, n int) (Fetch, int, bool) {
 	}
 
 	if len(rstrip.Topics) > 0 {
-		s.hook(&rstrip, false, true)
+		s.hookDeferUnbuffered(&rstrip, true)
 	}
-	s.hook(&r, false, true) // unbuffered, polled
+	s.hookDeferUnbuffered(&r, true) // unbuffered, polled
 
 	drained := len(bf.Topics) == 0
 	if drained {
@@ -648,7 +739,7 @@ func (s *source) takeBufferedFn(polled bool, offsetFn func(usedOffsets)) Fetch {
 	r.doneFetch <- true
 	close(s.sem)
 
-	s.hook(&r.fetch, false, polled) // unbuffered, potentially polled
+	s.hookDeferUnbuffered(&r.fetch, polled) // unbuffered, potentially polled
 
 	return r.fetch
 }
@@ -1011,13 +1102,21 @@ func (s *source) fetch(consumerSession *consumerSession, doneFetch chan<- bool) 
 		return fetched
 
 	default:
-		// Any other top-level error is unexpected: current brokers
-		// only emit session-related codes here. Rather than bumping
-		// the session epoch against a failed request, reset defensively
-		// so the next request re-establishes state the broker agrees
-		// with.
-		s.cl.cfg.logger.Log(LogLevelWarn, "fetch response has unexpected top-level error, resetting session", "broker", logID(s.nodeID), "err", err)
-		s.session.reset()
+		// Any other top-level error is unexpected: current brokers only
+		// emit session-related codes here, and every one of those arms
+		// above self-heals in a single round-trip (a reset re-establishes
+		// the session at epoch 0, which the broker then accepts). An
+		// unexpected code has no such bounded heal: a non-conformant or
+		// future broker that returns one persistently would spin this
+		// fetch at round-trip pace, re-logging on every iteration, because
+		// nothing here paces the loop. Back off rather than bumping the
+		// session epoch against a failed request; backoff also resets the
+		// session defensively so the next request re-establishes state the
+		// broker agrees with. This mirrors the transport-error and
+		// all-partitions-stripped paths, and the share fetch loop's
+		// top-level-error arm.
+		s.cl.cfg.logger.Log(LogLevelWarn, "fetch response has unexpected top-level error, resetting session and backing off", "broker", logID(s.nodeID), "err", err)
+		backoff(err)
 		return fetched
 	}
 
@@ -1066,7 +1165,7 @@ func (s *source) fetch(consumerSession *consumerSession, doneFetch chan<- bool) 
 			usedOffsets: req.usedOffsets,
 		}
 		s.sem = make(chan struct{})
-		s.hook(&fetch, true, false) // buffered, not polled
+		s.hookBuffered(&fetch) // buffered, not polled
 		s.cl.consumer.addSourceReadyForDraining(s)
 	} else if allErrsStripped {
 		// If we stripped all errors from the response, we are likely
@@ -1096,6 +1195,15 @@ func (s *source) handleReqResp(br *broker, req *fetchRequest, resp *kmsg.FetchRe
 		numErrsStripped  int
 		kip320           = s.cl.supportsOffsetForLeaderEpoch()
 		kmove            kip951move
+		// seen guards against a broker returning the same partition (or the
+		// same topic) more than once in a single fetch response. Each
+		// requested partition maps to one stable *cursorOffsetNext for the
+		// life of the request; processing one twice would double-advance its
+		// offset / double-append its records, or enqueue two move()s for one
+		// cursor (the #1167 concurrent-source hazard). We must not dedup by
+		// deleting from req.usedOffsets - that map re-enables the cursor
+		// after the response - so we track seen pointers separately.
+		seen map[*cursorOffsetNext]struct{}
 	)
 	defer kmove.maybeBeginMove(s.cl)
 
@@ -1145,6 +1253,18 @@ func (s *source) handleReqResp(br *broker, req *fetchRequest, resp *kmsg.FetchRe
 				)
 				continue
 			}
+			if _, dup := seen[partOffset]; dup {
+				s.cl.cfg.logger.Log(LogLevelWarn, "broker returned a duplicate partition in a fetch response, ignoring the duplicate",
+					"broker", logID(s.nodeID),
+					"topic", topic,
+					"partition", partition,
+				)
+				continue
+			}
+			if seen == nil {
+				seen = make(map[*cursorOffsetNext]struct{}, req.numOffsets)
+			}
+			seen[partOffset] = struct{}{}
 			c := partOffset.from
 
 			// If we are fetching from the replica already, Kafka replies with a -1
@@ -1158,6 +1278,7 @@ func (s *source) handleReqResp(br *broker, req *fetchRequest, resp *kmsg.FetchRe
 				continue
 			}
 
+			priorOffset := partOffset.offset
 			fp := partOffset.processRespPartition(br, rp, s.cl.cfg.decompressor, s.cl.cfg.hooks)
 			if fp.Err != nil {
 				if moving := kmove.maybeAddFetchPartition(resp, rp, c); moving {
@@ -1165,6 +1286,25 @@ func (s *source) handleReqResp(br *broker, req *fetchRequest, resp *kmsg.FetchRe
 					continue
 				}
 				updateWhy.add(topic, partition, fp.Err)
+			}
+
+			// A response can carry batch data for a partition yet
+			// advance nothing: every batch's last offset below our
+			// requested offset (a broker violating "return the batch
+			// containing the fetch offset"). Nothing buffers, no error
+			// is set, and the cursor re-enables at the same offset --
+			// without intervention the next fetch re-requests
+			// immediately and the loop runs hot at round-trip pace,
+			// silently, forever. Strip the partition: if the WHOLE
+			// response is such non-progress, the allErrsStripped
+			// backoff below paces us like any other all-stripped
+			// response. Legitimate empties are excluded: a caught-up
+			// partition has no batch bytes, control/aborted records
+			// advance the offset even when not kept, and a compacted
+			// empty batch advances via its preserved last offset.
+			if fp.Err == nil && len(fp.Records) == 0 && partOffset.offset == priorOffset && len(rp.RecordBatches) > 0 {
+				strip(topic, partition, errFetchNoProgress)
+				continue
 			}
 
 			// We only keep the partition if it has no error, or an
@@ -1496,7 +1636,13 @@ func ProcessFetchPartition(o ProcessFetchPartitionOpts, rp *kmsg.FetchResponseTo
 		offset := int64(binary.BigEndian.Uint64(in))
 		length = int32(binary.BigEndian.Uint32(in[8:]))
 		length += 12 // for the int64 offset we skipped and int32 length field itself
-		if len(in) < int(length) {
+		// length is read as a signed int32: a high-bit-set length field (or a
+		// near-MaxInt32 one, which overflows negative once we add 12) is
+		// negative and would slip past the truncation check below, panicking
+		// check()'s in[:length] with a negative bound. Treat a negative length
+		// as an untrustworthy/truncated batch and stop, matching the negative
+		// guards already in parseReadSize and the xerial decoder.
+		if length < 0 || len(in) < int(length) {
 			break
 		}
 
@@ -1593,6 +1739,25 @@ func buildAborter(rp *kmsg.FetchResponseTopicPartition) aborter {
 	for _, abort := range rp.AbortedTransactions {
 		a[abort.ProducerID] = append(a[abort.ProducerID], abort.FirstOffset)
 	}
+	// shouldAbortBatch and trackAbortedPID below both treat a[pid][0] as the
+	// smallest remaining aborted first offset for that producer: a batch is
+	// aborted once its FirstOffset reaches a[pid][0], and each abort marker
+	// pops a[pid][0]. The broker is NOT required to return a producer's aborted
+	// transactions sorted by first offset, though. Apache Kafka happens to (its
+	// transaction index is appended in last-offset order, which for one
+	// producer's strictly sequential transactions coincides with first-offset
+	// order), but Redpanda concatenates its newest in-memory aborted ranges
+	// (highest offsets) ahead of older on-disk snapshot ranges, so one
+	// producer's entries can arrive highest-first-offset first. With a[pid][0]
+	// not the smallest, a lower aborted transaction slips past the
+	// `FirstOffset < pidAborts[0]` guard and its records are surfaced to the
+	// application as committed - a read_committed violation. Sort each
+	// producer's first offsets ascending to restore the invariant the rest of
+	// the filtering relies on (the Java client makes the same guarantee with a
+	// first-offset-ordered priority queue).
+	for pid := range a {
+		slices.Sort(a[pid])
+	}
 	return a
 }
 
@@ -1613,7 +1778,16 @@ func (a aborter) shouldAbortBatch(b *kmsg.RecordBatch) bool {
 }
 
 func (a aborter) trackAbortedPID(producerID int64) {
-	remaining := a[producerID][1:]
+	pidAborts := a[producerID]
+	if len(pidAborts) == 0 {
+		// Already exhausted for this PID. A well-formed response pops once
+		// per aborted transaction (one abort marker each), so this is only
+		// reachable from a buggy/hostile broker; reslicing a[producerID][1:]
+		// on the nil/empty slice would panic. Java removes the PID from a Set
+		// here, which is idempotent - mirror that.
+		return
+	}
+	remaining := pidAborts[1:]
 	if len(remaining) == 0 {
 		delete(a, producerID)
 	} else {
@@ -1625,22 +1799,24 @@ func (a aborter) trackAbortedPID(producerID int64) {
 // processing records to fetch part //
 //////////////////////////////////////
 
-// readRawRecordsInto reads records from in and returns them, returning early
-// if there were partial records.
-func readRawRecordsInto(rs []kmsg.Record, in []byte) []kmsg.Record {
+// readRawRecordsInto reads records from in and returns them and the total
+// number of headers they hold, returning early if there were partial records.
+func readRawRecordsInto(rs []kmsg.Record, in []byte) ([]kmsg.Record, int) {
+	var nheaders int
 	for i := range rs {
 		length, used := kbin.Varint(in)
 		total := used + int(length)
 		if used == 0 || length < 0 || len(in) < total {
-			return rs[:i]
+			return rs[:i], nheaders
 		}
 		if err := (&rs[i]).ReadFrom(in[:total]); err != nil {
 			rs[i] = kmsg.Record{} // clear any invalid partial data
-			return rs[:i]
+			return rs[:i], nheaders
 		}
+		nheaders += len(rs[i].Headers)
 		in = in[total:]
 	}
-	return rs
+	return rs, nheaders
 }
 
 func (o *ProcessFetchPartitionOpts) processRecordBatch(
@@ -1691,6 +1867,43 @@ func (o *ProcessFetchPartitionOpts) processRecordBatch(
 	uncompressedBytes := len(rawRecords)
 
 	numRecords := int(batch.NumRecords)
+	// NumRecords is decoded straight off the wire and is therefore
+	// attacker/bug controlled. A negative count would panic the slice
+	// sizing below (ensureLen does s[:n], which panics for n<0); reject it
+	// as a corrupt batch, matching the Java client's InvalidRecordException
+	// guard (DefaultRecordBatch: "Found invalid record count"). A count
+	// larger than the available record bytes is likewise impossible for a
+	// well-formed batch - every record needs at least one byte - so clamp
+	// the up-front allocation to the byte count to keep a bogus huge count
+	// from driving a massive allocation. The true decodable count is
+	// recomputed by readRawRecordsInto, and the truncation defer below
+	// leaves the offset unadvanced whenever it disagrees with numRecords.
+	if numRecords < 0 {
+		fp.Err = fmt.Errorf("invalid record batch: negative record count %d", numRecords)
+		return 0, 0
+	}
+	if numRecords > len(rawRecords) {
+		// A batch claiming records with ZERO record bytes deserves a
+		// special word: the clamp below would make it decode zero
+		// records "successfully", and the KAFKA-5443 defer would then
+		// advance the offset past the batch's whole claimed range -- a
+		// silent skip of offsets the broker asserts hold records. The
+		// legitimate compacted-empty batch (KAFKA-5443) claims ZERO
+		// records, so claiming more with no bytes is corruption; error
+		// loudly like the Java client's InvalidRecordException instead
+		// of silently skipping.
+		if len(rawRecords) == 0 {
+			fp.Err = fmt.Errorf("invalid record batch: %d claimed records with no record bytes", numRecords)
+			return 0, uncompressedBytes
+		}
+		numRecords = len(rawRecords)
+	}
+
+	// Presize for the first batch; later batches grow the slice normally.
+	if cap(fp.Records) == 0 {
+		fp.Records = make([]*Record, 0, numRecords)
+	}
+
 	var krecords []kmsg.Record
 	var krecordsPool PoolKRecords
 	pools(o.Pools).each(func(p Pool) bool {
@@ -1708,7 +1921,7 @@ func (o *ProcessFetchPartitionOpts) processRecordBatch(
 		}()
 	}
 	krecords = ensureLen(krecords, numRecords)
-	krecords = readRawRecordsInto(krecords, rawRecords)
+	krecords, nheaders := readRawRecordsInto(krecords, rawRecords)
 
 	// KAFKA-5443: compacted topics preserve the last offset in a batch,
 	// even if the last record is removed, meaning that using offsets from
@@ -1739,6 +1952,8 @@ func (o *ProcessFetchPartitionOpts) processRecordBatch(
 	})
 	rrecords = ensureLen(rrecords, numRecords)
 
+	hslab := make([]RecordHeader, nheaders) // headers are dropped together, same as records, with the same slab tradeoffs above
+
 	var p *recordPools
 	var poolsCtx context.Context
 	if usesPools {
@@ -1746,8 +1961,10 @@ func (o *ProcessFetchPartitionOpts) processRecordBatch(
 	}
 
 	recordCtx := poolsCtx
+	var slabbed bool
 	if o.shareAckSlab != nil && len(rrecords) > 0 {
 		if slab := o.shareAckSlab(numRecords, &rrecords[0]); slab != nil {
+			slabbed = true
 			parent := poolsCtx
 			if parent == nil {
 				parent = context.Background()
@@ -1757,11 +1974,36 @@ func (o *ProcessFetchPartitionOpts) processRecordBatch(
 	}
 	var nkept int
 	defer func() {
-		if p != nil && nkept > 0 {
-			p.n.Add(int64(nkept))
+		if p == nil {
+			return
 		}
+		if nkept > 0 {
+			p.n.Add(int64(nkept))
+			return
+		}
+		// No record from this batch was kept: an aborted transaction's
+		// data batch, a control/marker batch, or a batch wholly below
+		// the requested offset. Nothing will ever call Recycle, so the
+		// recordPools put-back would never run and abort-heavy
+		// read_committed workloads would leak every pool Get. Release
+		// the pooled slices now, zeroing the written-then-discarded
+		// records like Recycle would have. Skip when a share-ack slab
+		// was created: the slab indexes rrecords by pointer, and putting
+		// the slice back would let the pool hand out memory the slab
+		// still references.
+		if slabbed {
+			return
+		}
+		clear(p.recs)
+		p.release()
 	}()
 
+	// A control batch ends at most one aborted transaction for its producer,
+	// so we pop the aborter at most once per batch. A well-formed control
+	// batch holds a single marker record; a buggy/hostile broker can pack many
+	// (and Java inspects only a control batch's first record), so without this
+	// guard a second abort marker would pop an already-empty aborter slice.
+	abortMarkerHandled := false
 	for i := range krecords {
 		record := &rrecords[i]
 		recordToRecord(
@@ -1770,19 +2012,26 @@ func (o *ProcessFetchPartitionOpts) processRecordBatch(
 			batch,
 			&krecords[i],
 			record,
+			&hslab,
 		)
-		record.Context = recordCtx  //nolint:fatcontext // not a nested context
-		krecords[i] = kmsg.Record{} // prevent the kmsg.Record from hanging onto anything
+		record.Context = recordCtx //nolint:fatcontext // not a nested context
+
+		// Prevent the kmsg.Record from hanging onto anything. The
+		// header slice is kept: the decoder reuses its capacity.
+		clear(krecords[i].Headers)
+		krecords[i] = kmsg.Record{Headers: krecords[i].Headers}
+
 		if kept := o.maybeKeepRecord(fp, record, abortBatch); kept {
 			nkept++
 		}
 
-		if abortBatch && record.Attrs.IsControl() {
+		if abortBatch && !abortMarkerHandled && record.Attrs.IsControl() {
 			// A control record has a key and a value where the key
 			// is int16 version and int16 type. Aborted records
 			// have a type of 0.
 			if key := record.Key; len(key) >= 4 && key[2] == 0 && key[3] == 0 {
 				aborter.trackAbortedPID(batch.ProducerID)
+				abortMarkerHandled = true
 			}
 		}
 	}
@@ -1818,7 +2067,10 @@ out:
 	for len(rawInner) > 17 { // magic at byte 17
 		length := int32(binary.BigEndian.Uint32(rawInner[8:]))
 		length += 12 // offset and length fields
-		if len(rawInner) < int(length) {
+		// A negative length (high-bit-set length field, signed int32) would
+		// slip past the truncation check and panic rawInner[:length]; treat it
+		// as a truncated message set. See the record-batch loop's guard.
+		if length < 0 || len(rawInner) < int(length) {
 			break
 		}
 
@@ -1868,18 +2120,53 @@ out:
 		return 0, uncompressedBytes
 	}
 
-	firstOffset := message.Offset - int64(len(innerMessages)) + 1
+	// Inner offsets: the log cleaner preserves each retained inner
+	// message's original offset, so a compacted compressed message set
+	// legally contains offset gaps. For a v1 wrapper, inner offsets are
+	// stored relative to the set's first offset and the wrapper carries
+	// the absolute offset of the LAST inner message, so absolute =
+	// (wrapper - lastInner) + inner. We previously relabeled inner
+	// messages contiguously counting back from the wrapper offset, which
+	// mislabels every record before a gap; a commit taken mid-set then
+	// names an offset that skips real records for any other client
+	// reading the log honestly. Kafka and librdkafka both honor the
+	// stored offsets; downstream we already handle gapped offsets (see
+	// maybeKeepRecord's compaction comment).
+	//
+	// Two wrapper quirks, matching Kafka's own consumer: a wrapper
+	// offset of 0 means the inner offsets are used as-is (certain
+	// versions of librdkafka produced wrapper offset 0), and a wrapper
+	// offset below the last inner offset is an invalid set that we
+	// surface rather than guess at.
+	innerOffset := func(m readerFrom) int64 {
+		switch m := m.(type) {
+		case *kmsg.MessageV0:
+			return m.Offset
+		case *kmsg.MessageV1:
+			return m.Offset
+		}
+		return 0
+	}
+	var base int64
+	if message.Offset != 0 {
+		lastInner := innerOffset(innerMessages[len(innerMessages)-1])
+		if message.Offset < lastInner {
+			fp.Err = fmt.Errorf("invalid compressed message set: wrapper offset %d is less than the last inner offset %d", message.Offset, lastInner)
+			return 0, uncompressedBytes
+		}
+		base = message.Offset - lastInner
+	}
 	for i := range innerMessages {
 		innerMessage := innerMessages[i]
 		switch innerMessage := innerMessage.(type) {
 		case *kmsg.MessageV0:
-			innerMessage.Offset = firstOffset + int64(i)
+			innerMessage.Offset += base
 			innerMessage.Attributes |= int8(compression)
 			if !o.processV0Message(fp, innerMessage) {
 				return i, uncompressedBytes
 			}
 		case *kmsg.MessageV1:
-			innerMessage.Offset = firstOffset + int64(i)
+			innerMessage.Offset += base
 			innerMessage.Attributes |= int8(compression)
 			if !o.processV1Message(fp, innerMessage) {
 				return i, uncompressedBytes
@@ -1931,7 +2218,10 @@ func (o *ProcessFetchPartitionOpts) processV0OuterMessage(
 	for len(rawInner) > 17 { // magic at byte 17
 		length := int32(binary.BigEndian.Uint32(rawInner[8:]))
 		length += 12 // offset and length fields
-		if len(rawInner) < int(length) {
+		// A negative length (high-bit-set length field, signed int32) would
+		// slip past the truncation check and panic rawInner[:length]; treat it
+		// as a truncated message set. See the record-batch loop's guard.
+		if length < 0 || len(rawInner) < int(length) {
 			break // truncated batch
 		}
 		var m kmsg.MessageV0
@@ -1956,11 +2246,16 @@ func (o *ProcessFetchPartitionOpts) processV0OuterMessage(
 		return 0, uncompressedBytes
 	}
 
-	firstOffset := message.Offset - int64(len(innerMessages)) + 1
+	// For a v0 wrapper, inner offsets are stored ABSOLUTE (magic-0-era
+	// brokers rewrote compressed sets server-side on append), so we use
+	// them as-is; Kafka's own consumer does the same. The log cleaner
+	// preserves retained messages' offsets, so gaps from compaction are
+	// legal and handled downstream (see maybeKeepRecord). We previously
+	// relabeled contiguously counting back from the wrapper offset,
+	// mislabeling every record before a gap.
 	for i := range innerMessages {
 		innerMessage := &innerMessages[i]
 		innerMessage.Attributes |= int8(compression)
-		innerMessage.Offset = firstOffset + int64(i)
 		if !o.processV0Message(fp, innerMessage) {
 			return i, uncompressedBytes
 		}
@@ -2026,10 +2321,11 @@ func recordToRecord(
 	batch *kmsg.RecordBatch,
 	krecord *kmsg.Record,
 	r *Record,
+	hslab *[]RecordHeader,
 ) {
 	var h []RecordHeader
-	if len(krecord.Headers) > 0 {
-		h = make([]RecordHeader, len(krecord.Headers))
+	if n := len(krecord.Headers); n > 0 {
+		h, *hslab = (*hslab)[:n:n], (*hslab)[n:]
 		for i, kv := range krecord.Headers {
 			h[i] = RecordHeader{
 				Key:   kv.Key,
@@ -2730,7 +3026,7 @@ func (s *source) removeShareCursor(c *shareCursor) {
 		s.share.cursorsStart = 0
 	}
 	s.share.mu.Unlock()
-	// We don't ned to wake the source to send this is a forgotten
+	// We don't need to wake the source to send this as a forgotten
 	// partition, but it doesn't hurt.
 	s.maybeShareConsume()
 }

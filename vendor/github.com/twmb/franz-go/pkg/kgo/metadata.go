@@ -781,6 +781,12 @@ func (cl *Client) mergeTopicPartitions(
 ) {
 	isProduce := kind == partitionKindProduce
 	isShare := kind == partitionKindShare
+	// The logger is an interface, so the variadic slice and the interface
+	// boxes for every argument are built at the call site even when the
+	// logger drops the line. The logs below fire once per partition per
+	// metadata refresh, so for a client with many partitions that is
+	// continuous garbage forever; we only pay it if debug is on.
+	debug := cl.cfg.logger.Level() >= LogLevelDebug
 	lv := *l.load() // copy so our field writes do not collide with reads
 
 	r := mt.newPartitions(cl, kind)
@@ -835,8 +841,11 @@ func (cl *Client) mergeTopicPartitions(
 	//
 	// 2) a topic was deleted and recreated with fewer partitions
 	//
-	// Both of these scenarios should be rare to non-existent, and we do
-	// nothing if we encounter them.
+	// Case 1 is temporary and heals on a later refresh; case 2 is
+	// permanent. Below, we keep the missing partition around either way.
+	// For producers we bump its load error, which fails buffered records
+	// only once the unknown fail limit trips (so case 1 does not fail
+	// records); consumers keep consuming through the existing cursor.
 
 	// Migrating topicPartitions is a little tricky because we have to
 	// worry about underlying pointers that may currently be loaded.
@@ -851,9 +860,11 @@ func (cl *Client) mergeTopicPartitions(
 			// consuming, the partition is part of a group or part
 			// of what was loaded for direct consuming.
 			//
-			// We only clear a partition if it is purged from the
-			// client (which can happen automatically for consumers
-			// if the user opted into ConsumeRecreatedTopics).
+			// We only clear a partition if the topic is purged from
+			// the client, either manually via PurgeTopicsFromClient
+			// or automatically for regex consumers when the topic
+			// has been missing from metadata for longer than
+			// ConsiderMissingTopicDeletedAfter.
 			dup := *oldTP
 			newTP := &dup
 			newTP.loadErr = errMissingMetadataPartition
@@ -991,12 +1002,14 @@ func (cl *Client) mergeTopicPartitions(
 		// If the tp data equals the old, then the sink / source is the
 		// same, because the sink/source is from the tp leader.
 		if newTP.topicPartitionData == oldTP.topicPartitionData {
-			cl.cfg.logger.Log(LogLevelDebug, "metadata refresh has identical topic partition data",
-				"topic", topic,
-				"partition", part,
-				"leader", newTP.leader,
-				"leader_epoch", newTP.leaderEpoch,
-			)
+			if debug {
+				cl.cfg.logger.Log(LogLevelDebug, "metadata refresh has identical topic partition data",
+					"topic", topic,
+					"partition", part,
+					"leader", newTP.leader,
+					"leader_epoch", newTP.leaderEpoch,
+				)
+			}
 			switch kind {
 			case partitionKindProduce:
 				newTP.records = oldTP.records
@@ -1007,14 +1020,16 @@ func (cl *Client) mergeTopicPartitions(
 				newTP.cursor = oldTP.cursor // unlike records, there is no failing state for a cursor
 			}
 		} else {
-			cl.cfg.logger.Log(LogLevelDebug, "metadata refresh topic partition data changed",
-				"topic", topic,
-				"partition", part,
-				"new_leader", newTP.leader,
-				"new_leader_epoch", newTP.leaderEpoch,
-				"old_leader", oldTP.leader,
-				"old_leader_epoch", oldTP.leaderEpoch,
-			)
+			if debug {
+				cl.cfg.logger.Log(LogLevelDebug, "metadata refresh topic partition data changed",
+					"topic", topic,
+					"partition", part,
+					"new_leader", newTP.leader,
+					"new_leader_epoch", newTP.leaderEpoch,
+					"old_leader", oldTP.leader,
+					"old_leader_epoch", oldTP.leaderEpoch,
+				)
+			}
 			switch kind {
 			case partitionKindProduce:
 				oldTP.migrateProductionTo(newTP) // migration clears failing state
@@ -1050,32 +1065,38 @@ func (cl *Client) mergeTopicPartitions(
 		case partitionKindProduce:
 			if newTP.records.recBufsIdx == -1 {
 				newTP.records.sink.addRecBuf(newTP.records)
-				cl.cfg.logger.Log(LogLevelDebug, "metadata refresh new produce partition",
-					"topic", topic,
-					"partition", newTP.partition(),
-					"leader", newTP.leader,
-					"leader_epoch", newTP.leaderEpoch,
-				)
+				if debug {
+					cl.cfg.logger.Log(LogLevelDebug, "metadata refresh new produce partition",
+						"topic", topic,
+						"partition", newTP.partition(),
+						"leader", newTP.leader,
+						"leader_epoch", newTP.leaderEpoch,
+					)
+				}
 			}
 		case partitionKindShare:
 			if newTP.shareCursor.cursorsIdx == -1 {
 				newTP.shareCursor.source.Load().addShareCursor(newTP.shareCursor)
-				cl.cfg.logger.Log(LogLevelDebug, "metadata refresh new share consume partition",
-					"topic", topic,
-					"partition", newTP.partition(),
-					"leader", newTP.leader,
-					"leader_epoch", newTP.leaderEpoch,
-				)
+				if debug {
+					cl.cfg.logger.Log(LogLevelDebug, "metadata refresh new share consume partition",
+						"topic", topic,
+						"partition", newTP.partition(),
+						"leader", newTP.leader,
+						"leader_epoch", newTP.leaderEpoch,
+					)
+				}
 			}
 		default:
 			if newTP.cursor.cursorsIdx == -1 {
 				newTP.cursor.source.addCursor(newTP.cursor)
-				cl.cfg.logger.Log(LogLevelDebug, "metadata refresh new consume partition",
-					"topic", topic,
-					"partition", newTP.partition(),
-					"leader", newTP.leader,
-					"leader_epoch", newTP.leaderEpoch,
-				)
+				if debug {
+					cl.cfg.logger.Log(LogLevelDebug, "metadata refresh new consume partition",
+						"topic", topic,
+						"partition", newTP.partition(),
+						"leader", newTP.leader,
+						"leader_epoch", newTP.leaderEpoch,
+					)
+				}
 			}
 		}
 	}

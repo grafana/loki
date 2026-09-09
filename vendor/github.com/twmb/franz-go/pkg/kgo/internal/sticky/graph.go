@@ -42,9 +42,10 @@ func (b *balancer) newGraph(
 	for memberNum := range b.plan {
 		out := outBufs[:0:len(topicPotentials)]
 		outBufs = outBufs[len(topicPotentials):]
-		// In the worst case, if every node is linked to each other,
-		// each node will have nparts edges. We preallocate the worst
-		// case. It is common for the graph to be highly connected.
+		// Out edges are per topic, not per partition: in the worst
+		// case a member subscribes to every topic, so we preallocate
+		// one topic slot per member. The partition edges themselves
+		// are enumerated from topicInfos during findSteal.
 		g.out[memberNum] = out
 	}
 	for topicNum, potentials := range topicPotentials {
