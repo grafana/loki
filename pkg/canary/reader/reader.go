@@ -71,6 +71,7 @@ type Reader struct {
 	done            chan struct{}
 	queryAppend     string
 	labelSelector   string
+	disableTail     bool
 }
 
 func buildLabelSelector(labels, sName, sValue, lName, lVal string) (string, error) {
@@ -112,6 +113,7 @@ func NewReader(writer io.Writer,
 	interval time.Duration,
 	queryAppend string,
 	labels string,
+	disableTail bool,
 ) (*Reader, error) {
 	h := http.Header{}
 
@@ -176,18 +178,26 @@ func NewReader(writer io.Writer,
 		shuttingDown:    false,
 		queryAppend:     queryAppend,
 		labelSelector:   labelSel,
+		disableTail:     disableTail,
 	}
 
-	go rd.run()
+	if disableTail {
+		go func() {
+			<-rd.quit
+			close(rd.done)
+		}()
+	} else {
+		go rd.run()
 
-	go func() {
-		<-rd.quit
-		if rd.conn != nil {
-			fmt.Fprintf(rd.w, "shutting down reader\n")
-			rd.shuttingDown = true
-			_ = rd.conn.Close()
-		}
-	}()
+		go func() {
+			<-rd.quit
+			if rd.conn != nil {
+				fmt.Fprintf(rd.w, "shutting down reader\n")
+				rd.shuttingDown = true
+				_ = rd.conn.Close()
+			}
+		}()
+	}
 
 	return &rd, nil
 }
