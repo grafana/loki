@@ -243,7 +243,7 @@ func TestFetchChunks_CacheDecodeIsNotLoggedAsDownloadFailure(t *testing.T) {
 	key := sc.ExternalKey(chunks[0].ChunkRef)
 	require.NoError(t, l1.Store(context.Background(), []string{key}, [][]byte{[]byte("not a chunk")}))
 
-	f, err := New(l1, l2, false, sc, chunkClient, 0, 0, false)
+	f, err := New(l1, l2, false, sc, chunkClient, 0, 0, true)
 	require.NoError(t, err)
 	t.Cleanup(f.Stop)
 
@@ -261,13 +261,13 @@ func TestFetchChunks_HandlesStorageErrors(t *testing.T) {
 	tests := []struct {
 		name       string
 		client     *storageErrorClient
-		propagate  bool
 		wantReason string
 	}{
 		{name: "not found", client: &storageErrorClient{err: storageErr, notFound: true, retryable: true}, wantReason: storageErrorNotFound},
 		{name: "retryable", client: &storageErrorClient{err: storageErr, retryable: true}, wantReason: storageErrorRetryable},
 		{name: "other", client: &storageErrorClient{err: storageErr}, wantReason: storageErrorOther},
-		{name: "propagated", client: &storageErrorClient{err: storageErr}, propagate: true, wantReason: storageErrorOther},
+		{name: "checksum", client: &storageErrorClient{err: fmt.Errorf("decode chunk: %w", chunk.ErrInvalidChecksum)}, wantReason: storageErrorOther},
+		{name: "chunkenc checksum", client: &storageErrorClient{err: fmt.Errorf("decode chunk: %w", chunkenc.ErrInvalidChecksum)}, wantReason: storageErrorOther},
 		{name: "retries exceeded", client: &storageErrorClient{err: congestion.RetriesExceeded}, wantReason: storageErrorRetryable},
 		{name: "canceled", client: &storageErrorClient{err: context.Canceled}},
 		{name: "deadline", client: &storageErrorClient{err: context.DeadlineExceeded}},
@@ -275,26 +275,34 @@ func TestFetchChunks_HandlesStorageErrors(t *testing.T) {
 	}
 
 	for _, test := range tests {
-		t.Run(test.name, func(t *testing.T) {
-			f, err := New(cache.NewMockCache(), cache.NewMockCache(), false, testSchemaConfig(), test.client, 0, 0, test.propagate)
-			require.NoError(t, err)
-			t.Cleanup(f.Stop)
-
-			before := readStorageErrorCounters(t)
-			got, err := f.FetchChunks(context.Background(), makeChunks(time.Now(), c{time.Hour, 2 * time.Hour}))
-
-			if test.propagate {
-				require.ErrorIs(t, err, storageErr)
-			} else {
+		for _, propagate := range []bool{false, true} {
+			t.Run(fmt.Sprintf("%s/propagate=%t", test.name, propagate), func(t *testing.T) {
+				chunks := makeChunks(time.Now(), c{time.Hour, 2 * time.Hour}, c{2 * time.Hour, 3 * time.Hour})
+				test.client.chunks = chunks
+				if test.client.err != nil {
+					test.client.chunks = chunks[:1]
+				}
+				f, err := New(cache.NewMockCache(), cache.NewMockCache(), false, testSchemaConfig(), test.client, 0, 0, propagate)
 				require.NoError(t, err)
-			}
-			require.Empty(t, got)
-			if test.wantReason == "" {
-				require.Empty(t, storageErrorCounterDeltas(t, before))
-			} else {
-				require.Equal(t, map[string]float64{test.wantReason: 1}, storageErrorCounterDeltas(t, before))
-			}
-		})
+				t.Cleanup(f.Stop)
+
+				before := readStorageErrorCounters(t)
+				got, err := f.FetchChunks(context.Background(), chunks)
+
+				if propagate && test.client.err != nil {
+					require.ErrorIs(t, err, test.client.err)
+					require.Nil(t, got)
+				} else {
+					require.NoError(t, err)
+					require.Equal(t, test.client.chunks, got)
+				}
+				if test.wantReason == "" {
+					require.Empty(t, storageErrorCounterDeltas(t, before))
+				} else {
+					require.Equal(t, map[string]float64{test.wantReason: 1}, storageErrorCounterDeltas(t, before))
+				}
+			})
+		}
 	}
 }
 
@@ -323,11 +331,12 @@ func storageErrorCounterDeltas(t *testing.T, before map[string]float64) map[stri
 type storageErrorClient struct {
 	client.Client
 	err                 error
+	chunks              []chunk.Chunk
 	notFound, retryable bool
 }
 
 func (s *storageErrorClient) GetChunks(context.Context, []chunk.Chunk) ([]chunk.Chunk, error) {
-	return nil, s.err
+	return s.chunks, s.err
 }
 
 func (s *storageErrorClient) IsChunkNotFoundErr(error) bool { return s.notFound }
