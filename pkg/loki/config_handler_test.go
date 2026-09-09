@@ -195,7 +195,7 @@ func TestConfigQueryHandler(t *testing.T) {
 
 	t.Run("too many q parameters returns 400", func(t *testing.T) {
 		query := make(url.Values)
-		for range maxConfigQueryPaths + 1 {
+		for i := 0; i < maxConfigQueryPaths+1; i++ {
 			query.Add("q", "my_int")
 		}
 		req := httptest.NewRequest("GET", "http://test.com/config?"+query.Encode(), nil)
