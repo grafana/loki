@@ -21,6 +21,10 @@ func TestValidateStorageClass(t *testing.T) {
 			StorageClassStandardInfrequentAccess,
 			nil,
 		},
+		"should not return error for the S3 Express One Zone storage class": {
+			StorageClassExpressOneZone,
+			nil,
+		},
 	}
 
 	for name, test := range tests {
