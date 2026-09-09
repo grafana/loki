@@ -685,6 +685,32 @@ func (old *topicPartition) migrateCursorTo( //nolint:revive // old/new naming ma
 
 func (tp *topicPartition) migrateShareCursorTo(cl *Client, new *topicPartition) {
 	c := tp.shareCursor
+	new.shareCursor = c
+
+	// Relocating the cursor between sources races the share consumer's
+	// leave. leave waits for every share worker to exit (sc.workers == 0),
+	// then drains each source's cursors via closeShareSession, iterating a
+	// snapshot of the source list taken after that barrier. A relocation that
+	// removes the cursor from its old source before that source is drained,
+	// and lands it on an already-drained source (or on one created after the
+	// snapshot), leaves the cursor's pending acks on a source nothing will
+	// drain: sc.pendingAcks never returns to 0 (FlushAcks hangs) and the held
+	// records release only via the broker's acquisition-lock timeout.
+	//
+	// Register the migration as a share worker so leave's barrier waits for an
+	// in-flight migration before it snapshots and drains. This mirrors
+	// applyMovesBlocking, the CurrentLeader-hint sibling that already does
+	// this; the metadata-merge path (this function) was the only share-cursor
+	// relocation not covered by the barrier. If the consumer is already dying,
+	// incWorker returns false: skip the swap and leave the cursor on its
+	// current source, which closeShareSession then drains. new.shareCursor is
+	// assigned above either way, so the stored partition data is always valid.
+	sc := cl.consumer.s
+	if !sc.incWorker() {
+		return
+	}
+	defer sc.decWorker()
+
 	cl.sinksAndSourcesMu.Lock()
 	sns := cl.sinksAndSources[new.leader]
 	cl.sinksAndSourcesMu.Unlock()
@@ -693,7 +719,6 @@ func (tp *topicPartition) migrateShareCursorTo(cl *Client, new *topicPartition) 
 	}
 	c.source.Store(sns.source)
 	sns.source.addShareCursor(c)
-	new.shareCursor = c
 }
 
 type kip951move struct {
@@ -911,8 +936,27 @@ func (k *kip951move) doMove(cl *Client) {
 	// same (this allows easier injection of failures in local testing).  A
 	// higher epoch can come from a concurrent metadata update that
 	// actually performed the move first.
-	modifyP := func(d *topicPartitionsData, partition int32, td topicPartitionData) (old, new *topicPartition, modified bool) {
+	//
+	// The hint was staged from a produce/fetch response and we are applied
+	// asynchronously: between staging and now, the user can purge the
+	// topic and re-add it (a produce or AddConsumeTopics recreates the
+	// topic with zero partitions until metadata loads), so the partition
+	// index can be out of range, and even in range the object at this
+	// index can belong to the new topic incarnation rather than the one
+	// whose response produced the hint. The owns check pins object
+	// identity: the records/cursor pointer is preserved across legitimate
+	// metadata updates and prior moves (the migrate functions copy it into
+	// the new topicPartition), so a mismatch can only mean purge+re-add -
+	// skip, and let the live incarnation resolve its own leader via
+	// metadata.
+	modifyP := func(d *topicPartitionsData, partition int32, td topicPartitionData, owns func(*topicPartition) bool) (old, new *topicPartition, modified bool) {
+		if int(partition) < 0 || int(partition) >= len(d.partitions) {
+			return nil, nil, false
+		}
 		old = d.partitions[partition]
+		if !owns(old) {
+			return nil, nil, false
+		}
 		if old.leaderEpoch > td.leaderEpoch {
 			return nil, nil, false
 		}
@@ -963,7 +1007,7 @@ func (k *kip951move) doMove(cl *Client) {
 			if !ok {
 				continue // perhaps concurrently purged
 			}
-			old, new, modified := modifyP(lr.r, recBuf.partition, td)
+			old, new, modified := modifyP(lr.r, recBuf.partition, td, func(tp *topicPartition) bool { return tp.records == recBuf })
 			if modified {
 				cl.cfg.logger.Log(LogLevelInfo, "moving producing partition due to kip-951 not_leader_for_partition",
 					"topic", recBuf.topic,
@@ -994,7 +1038,7 @@ func (k *kip951move) doMove(cl *Client) {
 			if !ok {
 				continue // perhaps concurrently purged
 			}
-			old, new, modified := modifyP(lr.r, cursor.partition, td)
+			old, new, modified := modifyP(lr.r, cursor.partition, td, func(tp *topicPartition) bool { return tp.cursor == cursor })
 			if modified {
 				cl.cfg.logger.Log(LogLevelInfo, "moving consuming partition due to kip-951 not_leader_for_partition",
 					"topic", cursor.topic,
