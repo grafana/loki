@@ -10,14 +10,15 @@ import (
 	"github.com/apache/arrow-go/v18/arrow/array"
 	"github.com/apache/arrow-go/v18/arrow/memory"
 
+	"github.com/grafana/loki/v3/pkg/engine/internal/functions"
 	"github.com/grafana/loki/v3/pkg/engine/internal/semconv"
 	"github.com/grafana/loki/v3/pkg/engine/internal/types"
 	"github.com/grafana/loki/v3/pkg/engine/internal/util"
 	"github.com/grafana/loki/v3/pkg/logql/log"
 )
 
-func parseFn(op types.VariadicOp) VariadicFunction {
-	return VariadicFunctionFunc(func(input arrow.RecordBatch, args ...arrow.Array) (arrow.Array, error) {
+func parseFn(op types.VariadicOp) functions.VariadicFunction {
+	return functions.VariadicFunctionFunc(func(input arrow.RecordBatch, args ...arrow.Array) (arrow.Array, error) {
 		var (
 			sourceCol       *array.String
 			requestedKeys   []string
