@@ -37,11 +37,14 @@ func FromStream(s Stream) InternalStreamAdapter {
 	}
 }
 
-// ToStream flattens the internal stream into out, in the wire format Loki has always used,
-// resolving each entry's effective metadata onto it.
+// ToStream expands nested OTLP-like InternalStreamAdapter structure to logproto.Stream.
+// It copies structured metadata from the top levels to each logproto.Entry. If an attribute
+// is duplicated (e.g., exists in resource, scope, and entry) then the precedence is
+// entry >> scope >> resource.
 //
-// It is the expensive direction: every entry beneath a resource or scope that carries
-// attributes gets a fresh metadata slice.
+// out is reused: its entries slice is truncated and refilled, so an older result is not a
+// snapshot. Copy it if you need to keep one. Entries with no attributes to resolve are copied as
+// they are, so their structured metadata is shared with s and must not be written to.
 func (s *InternalStreamAdapter) ToStream(out *Stream) {
 	out.Labels = s.Labels
 	out.Hash = s.Hash
@@ -52,28 +55,51 @@ func (s *InternalStreamAdapter) ToStream(out *Stream) {
 	}
 	out.Entries = slices.Grow(out.Entries, count)
 
-	for i := range s.ResourceLogs {
-		res := &s.ResourceLogs[i]
-		for j := range res.ScopeLogs {
-			scope := &res.ScopeLogs[j]
+	var sharedAttrs []push.LabelAdapter
 
-			nothingLifted := len(res.Attrs) == 0 && len(scope.Attrs) == 0
-			if nothingLifted {
+	for i := range s.ResourceLogs {
+		res := s.ResourceLogs[i]
+		for j := range res.ScopeLogs {
+			scope := res.ScopeLogs[j]
+
+			hasSharedAttrs := len(res.Attrs) > 0 || len(scope.Attrs) > 0
+			if !hasSharedAttrs {
 				out.Entries = append(out.Entries, scope.Entries...)
 				continue
+			}
+
+			sharedAttrs = append(sharedAttrs[:0], scope.Attrs...)
+			// only add resource attributes if they are not overridden by scope attrs already
+			for _, resAttr := range res.Attrs {
+				if !hasName(sharedAttrs, resAttr.Name) {
+					sharedAttrs = append(sharedAttrs, resAttr)
+				}
 			}
 
 			for k := range scope.Entries {
 				e := scope.Entries[k]
 
-				md := make([]push.LabelAdapter, 0, len(e.StructuredMetadata)+len(res.Attrs)+len(scope.Attrs))
+				md := make([]push.LabelAdapter, 0, len(e.StructuredMetadata)+len(sharedAttrs))
 				md = append(md, e.StructuredMetadata...)
-				md = append(md, res.Attrs...)
-				md = append(md, scope.Attrs...)
+
+				for _, sharedAttr := range sharedAttrs {
+					if !hasName(md, sharedAttr.Name) {
+						md = append(md, sharedAttr)
+					}
+				}
 
 				e.StructuredMetadata = md
 				out.Entries = append(out.Entries, e)
 			}
 		}
 	}
+}
+
+func hasName(attrs []push.LabelAdapter, name string) bool {
+	for i := range attrs {
+		if attrs[i].Name == name {
+			return true
+		}
+	}
+	return false
 }

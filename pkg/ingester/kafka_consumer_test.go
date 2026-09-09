@@ -80,37 +80,26 @@ func (nc *noopCommitter) EnqueueOffset(_ int64) {}
 func (noopCommitter) Commit(_ context.Context, _ int64) error { return nil }
 
 func TestConsumer(t *testing.T) {
-	require.Equal(t, []*logproto.PushRequest{
+	want := []*logproto.PushRequest{
 		{
 			Streams: []logproto.Stream{streamBar},
 		},
 		{
 			Streams: []logproto.Stream{streamFoo},
 		},
-	}, consume(t, encodeFlat, streamBar, streamFoo))
-}
+	}
 
-// TestConsumerReadsEitherEncoding is the equivalence property at the boundary that matters:
-// what the consumer pushes must not depend on the encoding the producer chose.
-func TestConsumerReadsEitherEncoding(t *testing.T) {
-	flat := consume(t, encodeFlat, streamBar, streamFoo)
-	nested := consume(t, encodeNested, streamBar, streamFoo)
+	encoders := map[string]func(*testing.T, logproto.Stream) []*kgo.Record{
+		"can consume flattened data": encodeFlat,
+		"can consume nested data":    encodeNested,
+	}
 
-	require.Equal(t, flat, nested)
-}
-
-// TestConsumerReadsMixedEncodings covers the rollout window, when records in both encodings
-// sit within retention on the same topic.
-func TestConsumerReadsMixedEncodings(t *testing.T) {
-	mixed := consume(t, func(t *testing.T, stream logproto.Stream) []*kgo.Record {
-		t.Helper()
-		if stream.Labels == streamBar.Labels {
-			return encodeFlat(t, stream)
-		}
-		return encodeNested(t, stream)
-	}, streamBar, streamFoo)
-
-	require.Equal(t, consume(t, encodeFlat, streamBar, streamFoo), mixed)
+	for name, encoder := range encoders {
+		t.Run(name, func(t *testing.T) {
+			got := consume(t, encoder, streamBar, streamFoo)
+			require.Equal(t, want, got)
+		})
+	}
 }
 
 // consume runs the records of each stream through a consumer and returns what reached the

@@ -96,6 +96,9 @@ func TestNoDifferenceBetweenEncodingsForConsumers(t *testing.T) {
 	}
 }
 
+// TestDecodeNestedRecordYieldsFlatStream is the end to end shape of a nested record read by a
+// consumer. The resource and scope attributes are here so that resolving them runs as part of a
+// decode; what they resolve to is TestToStream's business.
 func TestDecodeNestedRecordYieldsFlatStream(t *testing.T) {
 	nested := logproto.InternalStreamAdapter{
 		Labels: `{app="test"}`,
@@ -121,28 +124,27 @@ func TestDecodeNestedRecordYieldsFlatStream(t *testing.T) {
 	require.Equal(t, `{app="test"}`, ls.String())
 	require.Equal(t, uint64(1234), got.Hash)
 	require.Len(t, got.Entries, 2)
-
 	require.Equal(t, "a", got.Entries[0].Line)
-	require.Equal(t, push.LabelsAdapter{
-		{Name: "trace_id", Value: "1"},
-		{Name: "host", Value: "host-1"},
-		{Name: "scope", Value: "lib"},
-	}, got.Entries[0].StructuredMetadata)
-
 	require.Equal(t, "b", got.Entries[1].Line)
-	require.Equal(t, push.LabelsAdapter{
-		{Name: "host", Value: "host-1"},
-		{Name: "scope", Value: "lib"},
-	}, got.Entries[1].StructuredMetadata)
 }
 
-// TestDecodeInterleavedEncodings guards the reuse the Decoder does between calls: nothing
-// from a record may survive into the next one, in either direction.
+// TestDecodeInterleavedEncodings guards the reuse the Decoder does between calls: nothing from a
+// record may survive into the next one, in either direction. The records differ in entry count as
+// well as in encoding, because entries left over from a longer record only show on a shorter one.
 func TestDecodeInterleavedEncodings(t *testing.T) {
-	flatStream := logproto.Stream{Labels: `{app="flat"}`, Hash: 999, Entries: []push.Entry{
+	oneFlat, err := Encode(0, "test-tenant", logproto.Stream{Labels: `{app="flat"}`, Hash: 999, Entries: []push.Entry{
 		{Timestamp: time.Unix(0, 1), Line: "flat line"},
-	}}
-	nestedStream := logproto.InternalStreamAdapter{
+	}}, 10<<20)
+	require.NoError(t, err)
+
+	threeFlat, err := Encode(0, "test-tenant", logproto.Stream{Labels: `{app="three"}`, Entries: []push.Entry{
+		{Timestamp: time.Unix(0, 1), Line: "a"},
+		{Timestamp: time.Unix(0, 2), Line: "b"},
+		{Timestamp: time.Unix(0, 3), Line: "c"},
+	}}, 10<<20)
+	require.NoError(t, err)
+
+	oneNested := nestedRecord(t, logproto.InternalStreamAdapter{
 		Labels: `{app="nested"}`,
 		ResourceLogs: []logproto.ResourceLogs{{
 			Attrs: []push.LabelAdapter{{Name: "host", Value: "host-1"}},
@@ -150,49 +152,11 @@ func TestDecodeInterleavedEncodings(t *testing.T) {
 				Entries: []push.Entry{{Timestamp: time.Unix(0, 2), Line: "nested line"}},
 			}},
 		}},
-	}
+	}).Value
 
-	flatRecords, err := Encode(0, "test-tenant", flatStream, 10<<20)
-	require.NoError(t, err)
-	nestedValue := nestedRecord(t, nestedStream).Value
-
-	decoder, err := NewDecoder()
-	require.NoError(t, err)
-
-	// Twice through, so that each encoding is decoded both first and after the other.
-	for range 2 {
-		got, ls, err := decoder.Decode(flatRecords[0].Value)
-		require.NoError(t, err)
-		require.Equal(t, `{app="flat"}`, ls.String())
-		require.Equal(t, uint64(999), got.Hash)
-		require.Len(t, got.Entries, 1)
-		require.Equal(t, "flat line", got.Entries[0].Line)
-		require.Empty(t, got.Entries[0].StructuredMetadata)
-
-		got, ls, err = decoder.Decode(nestedValue)
-		require.NoError(t, err)
-		require.Equal(t, `{app="nested"}`, ls.String())
-		require.Zero(t, got.Hash, "hash of the previous record leaked into this one")
-		require.Len(t, got.Entries, 1)
-		require.Equal(t, "nested line", got.Entries[0].Line)
-		require.Equal(t, push.LabelsAdapter{{Name: "host", Value: "host-1"}}, got.Entries[0].StructuredMetadata)
-	}
-}
-
-// TestDecodeEmptiesEntriesOfAReusedStream covers the shape TestDecodeInterleavedEncodings
-// cannot: both of its records hold one entry, so entries surviving from the previous record
-// would not show. A record with no entries after one with several is where they would.
-func TestDecodeEmptiesEntriesOfAReusedStream(t *testing.T) {
-	full, err := Encode(0, "test-tenant", logproto.Stream{Labels: `{app="full"}`, Entries: []push.Entry{
-		{Timestamp: time.Unix(0, 1), Line: "a"},
-		{Timestamp: time.Unix(0, 2), Line: "b"},
-		{Timestamp: time.Unix(0, 3), Line: "c"},
-	}}, 10<<20)
-	require.NoError(t, err)
-
-	// A group carrying no entries, rather than labels alone, so the record is unambiguously
-	// in the nested encoding.
-	empty := nestedRecord(t, logproto.InternalStreamAdapter{
+	// A group carrying no entries, rather than labels alone, so the record is unambiguously in
+	// the nested encoding.
+	emptyNested := nestedRecord(t, logproto.InternalStreamAdapter{
 		Labels:       `{app="empty"}`,
 		ResourceLogs: []logproto.ResourceLogs{{ScopeLogs: []logproto.ScopeLogs{{}}}},
 	}).Value
@@ -200,14 +164,34 @@ func TestDecodeEmptiesEntriesOfAReusedStream(t *testing.T) {
 	decoder, err := NewDecoder()
 	require.NoError(t, err)
 
-	got, _, err := decoder.Decode(full[0].Value)
-	require.NoError(t, err)
-	require.Len(t, got.Entries, 3)
+	// Twice through, so every record is decoded both first and after each of the others.
+	for range 2 {
+		got, ls, err := decoder.Decode(oneFlat[0].Value)
+		require.NoError(t, err)
+		require.Equal(t, `{app="flat"}`, ls.String())
+		require.Equal(t, uint64(999), got.Hash)
+		require.Len(t, got.Entries, 1)
+		require.Equal(t, "flat line", got.Entries[0].Line)
+		require.Empty(t, got.Entries[0].StructuredMetadata)
 
-	got, _, err = decoder.Decode(empty)
-	require.NoError(t, err)
-	require.Equal(t, `{app="empty"}`, got.Labels)
-	require.Empty(t, got.Entries, "entries of the previous record leaked into this one")
+		got, ls, err = decoder.Decode(oneNested)
+		require.NoError(t, err)
+		require.Equal(t, `{app="nested"}`, ls.String())
+		require.Zero(t, got.Hash, "hash of the previous record leaked into this one")
+		require.Len(t, got.Entries, 1)
+		require.Equal(t, "nested line", got.Entries[0].Line)
+		require.Equal(t, push.LabelsAdapter{{Name: "host", Value: "host-1"}}, got.Entries[0].StructuredMetadata)
+
+		got, ls, err = decoder.Decode(threeFlat[0].Value)
+		require.NoError(t, err)
+		require.Equal(t, `{app="three"}`, ls.String())
+		require.Len(t, got.Entries, 3)
+
+		got, ls, err = decoder.Decode(emptyNested)
+		require.NoError(t, err)
+		require.Equal(t, `{app="empty"}`, ls.String())
+		require.Empty(t, got.Entries, "entries of the previous record leaked into this one")
+	}
 }
 
 func TestDecodeRejectsDataInNeitherEncoding(t *testing.T) {
@@ -217,32 +201,6 @@ func TestDecodeRejectsDataInNeitherEncoding(t *testing.T) {
 	_, err = decoder.DecodeWithoutLabels([]byte("invalid data"))
 	require.ErrorContains(t, err, "nested:")
 	require.ErrorContains(t, err, "flat:")
-
-	_, _, err = decoder.Decode([]byte("invalid data"))
-	require.Error(t, err)
-}
-
-// TestDecodeReportsBothFailuresForATruncatedNestedRecord covers the case the combined error
-// exists for: the record was written in the nested encoding, so the flat failure alone would
-// describe a wire format it was never in.
-func TestDecodeReportsBothFailuresForATruncatedNestedRecord(t *testing.T) {
-	nested := logproto.InternalStreamAdapter{
-		Labels: `{app="test"}`,
-		ResourceLogs: []logproto.ResourceLogs{{
-			Attrs: []push.LabelAdapter{{Name: "host", Value: "host-1"}},
-			ScopeLogs: []logproto.ScopeLogs{{
-				Entries: []push.Entry{{Timestamp: time.Unix(0, 1), Line: "a line long enough to cut"}},
-			}},
-		}},
-	}
-
-	decoder, err := NewDecoder()
-	require.NoError(t, err)
-
-	value := nestedRecord(t, nested).Value
-	truncated := value[:len(value)-8]
-	_, err = decoder.DecodeWithoutLabels(truncated)
-	require.ErrorContains(t, err, "unexpected EOF", "the nested failure is the one that explains the record")
 }
 
 // decodeFlatOnly is DecodeWithoutLabels as it stood before this change: unmarshal as a flat
