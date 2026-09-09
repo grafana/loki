@@ -1832,19 +1832,22 @@ func TestRunTenantLoop_DisablingLogMidRunStopsLogMerge(t *testing.T) {
 	require.Eventually(t, func() bool {
 		mu.Lock()
 		defer mu.Unlock()
-		return len(phases) >= cutoff+4 // several more cycles after disabling
+		// Drain the in-flight log phase. The first subsequent index dispatch
+		// marks a new phase; configuration is re-read between phases.
+		for cutoff < len(phases) && phases[cutoff] == "log-merge" {
+			cutoff++
+		}
+		return len(phases) >= cutoff+4
 	}, 2*time.Second, 5*time.Millisecond)
 	cancel()
 	<-done
 
 	mu.Lock()
 	defer mu.Unlock()
-	// The mid-run disable is not instantaneous: an in-flight log-merge cycle
-	// may still complete. Assert that dispatches eventually settle to
-	// index-merge only — i.e. the tail after the cutoff contains no log-merge.
+	// Every dispatch after the in-flight log phase must be index-merge.
 	tail := phases[cutoff:]
 	require.NotEmpty(t, tail)
-	for _, p := range tail[len(tail)-4:] {
+	for _, p := range tail {
 		require.Equal(t, "index-merge", p, "no log-merge after log compaction is disabled")
 	}
 }
