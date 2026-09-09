@@ -296,7 +296,6 @@ func (v *LokiStackValidator) validateReplicationSpec(stack lokiv1.LokiStackSpec)
 func ValidateSchemas(v *lokiv1.ObjectStorageSpec, utcTime time.Time, status lokiv1.LokiStackStorageStatus, limits *lokiv1.LimitsSpec) field.ErrorList {
 	var allErrs field.ErrorList
 
-	appliedSchemasFound := 0
 	containsValidStartDate := false
 	found := make(map[lokiv1.StorageSchemaEffectiveDate]bool)
 
@@ -350,8 +349,6 @@ func ValidateSchemas(v *lokiv1.ObjectStorageSpec, utcTime time.Time, status loki
 				lokiv1.ErrSchemaRetroactivelyChanged.Error(),
 			))
 		}
-
-		appliedSchemasFound++
 	}
 
 	if !containsValidStartDate {
@@ -362,15 +359,30 @@ func ValidateSchemas(v *lokiv1.ObjectStorageSpec, utcTime time.Time, status loki
 		))
 	}
 
-	// Only check for removed schemas if they haven't expired
-	// Allow removal of expired schemas (those past their retention period)
-	requiredSchemas := len(appliedSchemas) - len(expiredSchemas)
-	if appliedSchemasFound < requiredSchemas {
-		allErrs = append(allErrs, field.Invalid(
-			field.NewPath("spec").Child("storage").Child("schemas"),
-			v.Schemas,
-			lokiv1.ErrSchemaRetroactivelyRemoved.Error(),
-		))
+	// Check that all non-expired schemas are still present
+	for effectiveDate := range appliedSchemas {
+		// Skip if this schema has expired
+		if expiredSchemas[effectiveDate] {
+			continue
+		}
+
+		// Non-expired schema must be present in spec
+		schemaFound := false
+		for _, sc := range v.Schemas {
+			if sc.EffectiveDate == effectiveDate {
+				schemaFound = true
+				break
+			}
+		}
+
+		if !schemaFound {
+			allErrs = append(allErrs, field.Invalid(
+				field.NewPath("spec").Child("storage").Child("schemas"),
+				v.Schemas,
+				lokiv1.ErrSchemaRetroactivelyRemoved.Error(),
+			))
+			break // One error is sufficient
+		}
 	}
 
 	if len(allErrs) == 0 {
@@ -446,22 +458,37 @@ func buildExpiredSchemaSet(schemas []lokiv1.ObjectStorageSchema, currentTime tim
 
 // getRetentionDays returns the maximum retention period in days across global and all tenants.
 // Returns 0 if no retention is configured anywhere (which means schema removal is not allowed).
-// This ensures we honor the longest retention period, whether global or per-tenant.
+// This ensures we honor the longest retention period, whether global or per-tenant, including
+// per-stream retention which can exceed the default retention period.
 func getRetentionDays(limits *lokiv1.LimitsSpec) int {
 	maxRetention := 0
 
-	// Check global retention
+	// Check global retention (both default and per-stream)
 	if limits != nil && limits.Global != nil && limits.Global.Retention != nil {
 		maxRetention = int(limits.Global.Retention.Days)
+
+		// Check per-stream retention in global limits
+		for _, stream := range limits.Global.Retention.Streams {
+			if stream != nil && int(stream.Days) > maxRetention {
+				maxRetention = int(stream.Days)
+			}
+		}
 	}
 
-	// Check all tenant retention periods and use the maximum
+	// Check all tenant retention periods (both default and per-stream) and use the maximum
 	if limits != nil && limits.Tenants != nil {
 		for _, tenantLimits := range limits.Tenants {
 			if tenantLimits.Retention != nil {
 				tenantRetention := int(tenantLimits.Retention.Days)
 				if tenantRetention > maxRetention {
 					maxRetention = tenantRetention
+				}
+
+				// Check per-stream retention in tenant limits
+				for _, stream := range tenantLimits.Retention.Streams {
+					if stream != nil && int(stream.Days) > maxRetention {
+						maxRetention = int(stream.Days)
+					}
 				}
 			}
 		}
