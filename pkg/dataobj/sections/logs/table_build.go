@@ -74,8 +74,14 @@ func sortRecords(records []Record, sortOrder SortOrder) {
 			}
 			return reverseOrderIfEqual(cmp.Compare(a.StreamID, b.StreamID))
 		case SortSchemaASC:
-			// Sort by [schema sort key ASC, streamID ASC, timestamp DESC].
+			// Sort by [shard_bucket ASC, schema sort key ASC, stream hash ASC, streamID ASC, timestamp DESC].
+			if res := cmp.Compare(a.ShardBucket, b.ShardBucket); res != 0 {
+				return res
+			}
 			if res := cmp.Compare(a.SortKey, b.SortKey); res != 0 {
+				return res
+			}
+			if res := cmp.Compare(a.StreamHash, b.StreamHash); res != 0 {
 				return res
 			}
 			if res := cmp.Compare(a.StreamID, b.StreamID); res != 0 {
@@ -97,7 +103,7 @@ func reverseOrderIfEqual(res int) int {
 }
 
 // SortRecords sorts records in place by sortOrder. For SortSchemaASC each
-// record's SortKey must be set before calling.
+// record's ShardBucket, SortKey, and StreamHash must be set before calling.
 func SortRecords(records []Record, sortOrder SortOrder) { sortRecords(records, sortOrder) }
 
 func equalRecords(a, b Record) bool {
