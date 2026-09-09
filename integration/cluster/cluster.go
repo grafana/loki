@@ -126,7 +126,7 @@ ruler:
   wal:
     dir: {{.sharedDataPath}}/ruler-wal
   # local rule storage is set by common.storage.filesystem.rules_directory
-  # however, even if this is set, ruler_storage has precedence over ruler.storage 
+  # however, even if this is set, ruler_storage has precedence over ruler.storage
   # when storage.use_thanos_objstore is true, so keep it for testing purpose
   storage:
     type: local
@@ -135,10 +135,12 @@ ruler:
   rule_path: {{.sharedDataPath}}/prom-rule
 `))
 
-func resetMetricRegistry() {
-	registry := &wrappedRegisterer{Registry: prometheus.NewRegistry()}
-	prometheus.DefaultRegisterer = registry
-	prometheus.DefaultGatherer = registry
+func init() {
+	if reg, ok := prometheus.DefaultRegisterer.(*prometheus.Registry); ok {
+		wrapped := &wrappedRegisterer{Registry: reg}
+		prometheus.DefaultRegisterer = wrapped
+		prometheus.DefaultGatherer = wrapped
+	}
 }
 
 type wrappedRegisterer struct {
@@ -179,7 +181,6 @@ func New(logLevel level.Value, opts ...func(*Cluster)) *Cluster {
 		util_log.Logger = level.NewFilter(log.NewLogfmtLogger(os.Stderr), level.Allow(logLevel))
 	}
 
-	resetMetricRegistry()
 	sharedPath, err := os.MkdirTemp("", "loki-shared-data-")
 	if err != nil {
 		panic(err.Error())

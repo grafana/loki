@@ -28,6 +28,7 @@ import (
 )
 
 func TestBloomBuilding(t *testing.T) {
+	t.Parallel()
 	const (
 		nSeries        = 10 //1000
 		nLogsPerSeries = 50

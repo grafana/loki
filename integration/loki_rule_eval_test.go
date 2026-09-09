@@ -25,6 +25,7 @@ import (
 // mode=EvalModeRemote tests that rules are evaluated remotely against a configured query-frontend
 // and that the results are written to the backend correctly.
 func TestRuleEval(t *testing.T) {
+	t.Parallel()
 	for _, mode := range []string{ruler.EvalModeLocal, ruler.EvalModeRemote} {
 		for _, useThanosObjstore := range []bool{false, true} {
 			name := fmt.Sprintf("mode=%v/use_thanos_objstore=%v", mode, useThanosObjstore)

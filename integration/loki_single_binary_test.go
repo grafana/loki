@@ -15,6 +15,7 @@ import (
 )
 
 func TestSingleBinaryIngestQuery(t *testing.T) {
+	t.Parallel()
 	clu := cluster.New(nil, cluster.SchemaWithTSDB, func(c *cluster.Cluster) {
 		c.SetSchemaVer("v13")
 	})

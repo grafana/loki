@@ -29,6 +29,7 @@ type DetectedFieldResponse struct {
 }
 
 func Test_ExploreLogsApis(t *testing.T) {
+	t.Parallel()
 	clu := cluster.New(nil, cluster.SchemaWithTSDBAndTSDB, func(c *cluster.Cluster) {
 		c.SetSchemaVer("v13")
 	})

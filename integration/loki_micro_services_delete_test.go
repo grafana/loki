@@ -28,6 +28,7 @@ type pushRequest struct {
 }
 
 func TestMicroServicesDeleteRequest(t *testing.T) {
+	t.Parallel()
 	clu := cluster.New(nil, cluster.SchemaWithTSDBAndTSDB, func(c *cluster.Cluster) {
 		c.SetSchemaVer("v13")
 	})

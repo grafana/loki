@@ -22,6 +22,7 @@ import (
 )
 
 func TestMicroServicesIngestQuery(t *testing.T) {
+	t.Parallel()
 	clu := cluster.New(nil, cluster.SchemaWithTSDBAndTSDB, func(c *cluster.Cluster) {
 		c.SetSchemaVer("v13")
 	})
@@ -208,6 +209,7 @@ func TestMicroServicesIngestQuery(t *testing.T) {
 }
 
 func TestMicroServicesIngestQueryWithSchemaChange(t *testing.T) {
+	t.Parallel()
 	// init the cluster with a single tsdb period. Uses prefix index_tsdb_
 	clu := cluster.New(nil, cluster.SchemaWithTSDB)
 
@@ -402,6 +404,7 @@ func TestMicroServicesIngestQueryWithSchemaChange(t *testing.T) {
 }
 
 func TestMicroServicesIngestQueryOverMultipleBucketSingleProvider(t *testing.T) {
+	t.Parallel()
 	for name, opt := range map[string]func(c *cluster.Cluster){
 		"multiple-tsdb": cluster.SchemaWithTSDBAndTSDB,
 	} {
@@ -528,6 +531,7 @@ func TestMicroServicesIngestQueryOverMultipleBucketSingleProvider(t *testing.T) 
 }
 
 func TestSchedulerRing(t *testing.T) {
+	t.Parallel()
 	clu := cluster.New(nil, cluster.SchemaWithTSDB, func(c *cluster.Cluster) {
 		c.SetSchemaVer("v13")
 	})
@@ -648,6 +652,7 @@ func TestSchedulerRing(t *testing.T) {
 }
 
 func TestOTLPLogsIngestQuery(t *testing.T) {
+	t.Parallel()
 	clu := cluster.New(nil, cluster.SchemaWithTSDB, func(c *cluster.Cluster) {
 		c.SetSchemaVer("v13")
 	})
@@ -775,6 +780,7 @@ func TestOTLPLogsIngestQuery(t *testing.T) {
 }
 
 func TestProbabilisticQuery(t *testing.T) {
+	t.Parallel()
 	clu := cluster.New(nil, cluster.SchemaWithTSDBAndTSDB, func(c *cluster.Cluster) {
 		c.SetSchemaVer("v13")
 	})
@@ -884,6 +890,7 @@ func TestProbabilisticQuery(t *testing.T) {
 }
 
 func TestApproxCountDistinctQuery(t *testing.T) {
+	t.Parallel()
 	clu := cluster.New(nil, cluster.SchemaWithTSDBAndTSDB, func(c *cluster.Cluster) {
 		c.SetSchemaVer("v13")
 	})
@@ -990,6 +997,7 @@ func TestApproxCountDistinctQuery(t *testing.T) {
 }
 
 func TestCategorizedLabels(t *testing.T) {
+	t.Parallel()
 	clu := cluster.New(nil, cluster.SchemaWithTSDB, func(c *cluster.Cluster) {
 		c.SetSchemaVer("v13")
 	})

@@ -27,6 +27,7 @@ loki_compactor_pending_delete_requests_count 0
 `
 
 func TestExtractCounterMetric(t *testing.T) {
+	t.Parallel()
 	val, labels, err := extractMetric("loki_compactor_oldest_pending_delete_request_age_seconds", exampleMetricOutput)
 	require.NoError(t, err)
 	require.NotNil(t, labels)

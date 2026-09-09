@@ -37,6 +37,7 @@ import (
 // through a ~1m per-table cache, only becomes queryable after an explicit
 // PUT /sync-indexes, which refreshes that cache and downloads the new index.
 func TestFlushTenant(t *testing.T) {
+	t.Parallel()
 	clu := cluster.New(nil, cluster.SchemaWithTSDB, func(c *cluster.Cluster) {
 		c.SetSchemaVer("v13")
 	})

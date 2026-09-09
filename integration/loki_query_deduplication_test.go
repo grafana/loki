@@ -23,6 +23,7 @@ import (
 // data is served from the ingester (in-memory) or from the chunk store (after a
 // flush + TSDB index build + querier discovery).
 func TestDedupMicroServicesKafka(t *testing.T) {
+	t.Parallel()
 	// Fake Kafka broker with a single partition, so all records are consumed in a
 	// single total order (the sentinel barrier below relies on this).
 	kafkaCluster, _ := testkafka.CreateCluster(t, 1, "loki")

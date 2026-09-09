@@ -216,6 +216,7 @@ func clusterAllLBACAggregation(t *testing.T) *cluster.Component {
 // TestLabelAccessDefault starts a Loki cluster and verifies
 // the query results are as expected as per the testCase configuration
 func TestLabelAccessTestCases(t *testing.T) {
+	t.Parallel()
 	for _, testCase := range testCases {
 		t.Run(testCase.name, func(t *testing.T) {
 			if testCase.createCluster == nil {
@@ -238,6 +239,7 @@ func TestLabelAccessTestCases(t *testing.T) {
 }
 
 func TestAggregatedMetricsTestCases(t *testing.T) {
+	t.Parallel()
 	var aggregatedMetricsTestCases = []*testQueryAndLabelResults{
 		{
 			name:          "aggregated metrics",
