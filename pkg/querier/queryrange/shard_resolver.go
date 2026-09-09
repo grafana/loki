@@ -19,18 +19,15 @@ import (
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	logqlstats "github.com/grafana/loki/v3/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase"
-	"github.com/grafana/loki/v3/pkg/storage/config"
 	"github.com/grafana/loki/v3/pkg/storage/stores/index/stats"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/sharding"
-	"github.com/grafana/loki/v3/pkg/storage/types"
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
 	"github.com/grafana/loki/v3/pkg/util/spanlogger"
 	"github.com/grafana/loki/v3/pkg/util/validation"
 )
 
-func shardResolverForConf(
+func newDynamicShardResolver(
 	ctx context.Context,
-	conf config.PeriodConfig,
 	defaultLookback time.Duration,
 	logger log.Logger,
 	maxParallelism int,
@@ -39,11 +36,6 @@ func shardResolverForConf(
 	statsHandler, next, retryNext queryrangebase.Handler,
 	limits Limits,
 ) (logql.ShardResolver, bool) {
-	// TSDB is the only supported index type; other types are rejected at store
-	// construction, so sharding is always resolved dynamically.
-	if conf.IndexType != types.IndexTypeTSDB {
-		return nil, false
-	}
 	return &dynamicShardResolver{
 		ctx:              ctx,
 		logger:           logger,
