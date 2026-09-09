@@ -73,7 +73,7 @@ func (c *Context) doLogObjectMerge(ctx context.Context, node *physical.LogMerge)
 	calc := dataobjindex.NewCalculator(indexBuilder)
 
 	sections, remaps := sectionsWithRemaps(sources, table)
-	merged, err := sortmerge.IteratorWithStreamRemap(ctx, sections, remaps, table.sortKeys, node.SortSchema)
+	merged, err := sortmerge.IteratorWithStreamRemap(ctx, sections, remaps, node.SortSchema)
 	if err != nil {
 		return nil, fmt.Errorf("starting k-way log merge: %w", err)
 	}
@@ -279,9 +279,11 @@ func resolveStreams(ctx context.Context, section *dataobj.Section) (map[int64]st
 	return out, nil
 }
 
-// globalStreamTable holds the disjoint global stream assignment for a merge
+// globalStreamTable holds the disjoint global stream assignment for a merge.
+// Global IDs are assigned in StreamOrderKey order so a merge by remapped
+// stream ID is [shard, schema, hash, timestamp].
 type globalStreamTable struct {
-	sortKeys       []string          // index = global ID (1..N); [0] unused
+	sortKeys       []string          // index = global ID (1..N); [0] unused; object-split lookup
 	streams        []streams.Stream  // index = global ID; source stream with aggregates
 	streamIDRemaps []map[int64]int64 // per source object (by index): sourceStreamID -> globalID
 }
@@ -291,30 +293,31 @@ func buildGlobalStreamTable(sources []*logSource, sortSchema []string) (*globalS
 	type entry struct {
 		sourceIdx      int
 		sourceStreamID int64
-		sortKey        string
+		key            logsobj.StreamOrderKey
 		stream         streams.Stream
 	}
 
 	var allEntries []entry
 	for sourceIdx, src := range sources {
 		for sourceStreamID, s := range src.streams {
-			key, err := logsobj.ComputeSortKey(s.Labels, sortSchema)
+			key, err := logsobj.NewStreamOrderKey(s.Labels, sortSchema)
 			if err != nil {
 				return nil, fmt.Errorf("computing sort key for object %q: %w", src.path, err)
 			}
 			allEntries = append(allEntries, entry{
 				sourceIdx:      sourceIdx,
 				sourceStreamID: sourceStreamID,
-				sortKey:        key,
+				key:            key,
 				stream:         s,
 			})
 		}
 	}
 
-	// Order by (sortKey, sourceIdx, sourceStreamID) so global IDs are sort-key-major
-	// and each source section stays monotonic under the merge comparator.
+	// Order by (stream order key, sourceIdx, sourceStreamID) so global IDs are
+	// shard-then-schema-major and each source section stays monotonic under the
+	// merge comparator.
 	slices.SortFunc(allEntries, func(a, b entry) int {
-		if r := cmp.Compare(a.sortKey, b.sortKey); r != 0 {
+		if r := logsobj.CompareStreamOrderKey(a.key, b.key); r != 0 {
 			return r
 		}
 		if r := cmp.Compare(a.sourceIdx, b.sourceIdx); r != 0 {
@@ -333,7 +336,7 @@ func buildGlobalStreamTable(sources []*logSource, sortSchema []string) (*globalS
 	}
 	for i, e := range allEntries {
 		gid := int64(i + 1)
-		table.sortKeys[gid] = e.sortKey
+		table.sortKeys[gid] = e.key.SchemaKey
 		s := e.stream
 		s.ID = gid
 		table.streams[gid] = s
@@ -371,6 +374,8 @@ type logObjectWriter struct {
 	logsBuilder *logsobj.Builder
 	sortBuilder *logsobj.Builder
 	lastSortKey string
+	lastShard   uint32
+	haveLast    bool
 
 	stats logMergeStats
 }
@@ -420,7 +425,10 @@ func (w *logObjectWriter) startNewObject() error {
 // output object at stream boundaries once the current object reaches its target
 // size, and re-basing stream IDs to 1..M within each object.
 func (w *logObjectWriter) add(ctx context.Context, rec logs.Record) error {
-	if w.logsBuilder.IsFull() && rec.SortKey != w.lastSortKey {
+	stream := w.table.streams[rec.StreamID]
+	sortKey := w.table.sortKeys[rec.StreamID]
+	shard := uint32(stream.ShardBucket)
+	if w.logsBuilder.IsFull() && w.haveLast && (sortKey != w.lastSortKey || shard != w.lastShard) {
 		if err := w.finalizeAndUpload(ctx); err != nil {
 			return err
 		}
@@ -429,8 +437,9 @@ func (w *logObjectWriter) add(ctx context.Context, rec logs.Record) error {
 			return err
 		}
 	}
-	w.lastSortKey = rec.SortKey
-	stream := w.table.streams[rec.StreamID]
+	w.lastSortKey = sortKey
+	w.lastShard = shard
+	w.haveLast = true
 
 	// There's no equivalent for ingestion time during compaction, so use the current time.
 	ingestionTime := time.Now()
