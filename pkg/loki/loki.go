@@ -991,6 +991,10 @@ func (t *Loki) setupModuleManager() error {
 		}
 	}
 
+	if err := t.setupLogline(); err != nil {
+		return err
+	}
+
 	return nil
 }
 

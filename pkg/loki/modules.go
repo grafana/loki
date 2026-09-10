@@ -157,6 +157,7 @@ const (
 	ScratchStore                 = "scratch-store"
 	LoglineIndexBuilder          = "logline-index-builder"
 	LoglineBuilderPartitionRing  = "logline-index-builder-partition-ring"
+	LoglineQueryFrontendMW       = "logline-query-frontend-middleware"
 	UIRing                       = "ui-ring"
 	UI                           = "ui"
 	All                          = "all"

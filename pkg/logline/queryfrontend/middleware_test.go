@@ -18,12 +18,12 @@ import (
 	"github.com/grafana/loki/v3/pkg/loghttp"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
-	"github.com/grafana/loki/v3/pkg/loki"
 	"github.com/grafana/loki/v3/pkg/querier/queryrange"
 	"github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase"
 	"github.com/grafana/loki/v3/pkg/util/httpreq"
 
 	"github.com/grafana/loki/v3/pkg/logline/hintprovider"
+	"github.com/grafana/loki/v3/pkg/logline/store"
 )
 
 // ---------------------------------------------------------------------------
@@ -979,8 +979,9 @@ func TestDryRun_HeaderGated_WithoutHeader(t *testing.T) {
 
 func TestWrapMiddleware_Disabled(t *testing.T) {
 	wrapped, storeSvc, cleanup, err := WrapMiddleware(
-		loki.ConfigWrapper{},
+		Deps{},
 		Config{Enabled: false},
+		store.Config{},
 		nil,
 		nil,
 		log.NewNopLogger(),
