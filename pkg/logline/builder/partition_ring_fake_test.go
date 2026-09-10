@@ -9,8 +9,8 @@ import (
 )
 
 // fakePartitionRing satisfies ring.PartitionRingReader with an in-memory
-// snapshot. Tests can mutate it between rebalances via markActive,
-// markInactive, and removePartition. It exists so unit tests can
+// snapshot. Tests can mutate it between rebalances via markActive
+// and markInactive. It exists so unit tests can
 // exercise ring-aware code without spinning up memberlist (which would
 // bind real ports, gossip, and break in CI).
 type fakePartitionRing struct {
@@ -76,14 +76,6 @@ func (f *fakePartitionRing) markInactiveLocked(id int32) {
 	d := f.desc.Partitions[id]
 	d.StateChangeLocked = true
 	f.desc.Partitions[id] = d
-	f.rebuild()
-}
-
-// removePartition deletes the partition from the ring entirely.
-func (f *fakePartitionRing) removePartition(id int32) {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	f.desc.RemovePartition(id)
 	f.rebuild()
 }
 
