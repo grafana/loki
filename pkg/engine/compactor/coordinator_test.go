@@ -1784,6 +1784,42 @@ func TestRunTenantLoop_RunsMultipleIndexMergesPerLogMerge(t *testing.T) {
 	require.Equal(t, expectation, phases)
 }
 
+// disableObservingLimits wraps a Limits to pin down exactly when runTenantLoop
+// saw log compaction get disabled. It captures count() the first time
+// CompactionPhases reports runLog=false, from inside that call, before
+// runTenantLoop acts on the result. That gives a boundary tied to the loop's
+// own observation of the disable, not to when the test called setLog — which
+// races with the loop and can be one or more iterations behind.
+type disableObservingLimits struct {
+	Limits
+	count func() int
+
+	mu       sync.Mutex
+	observed int
+}
+
+func newDisableObservingLimits(limits Limits, count func() int) *disableObservingLimits {
+	return &disableObservingLimits{Limits: limits, count: count, observed: -1}
+}
+
+func (d *disableObservingLimits) CompactionPhases(userID string) (runIndex, runLog bool) {
+	runIndex, runLog = d.Limits.CompactionPhases(userID)
+	if !runLog {
+		d.mu.Lock()
+		if d.observed < 0 {
+			d.observed = d.count()
+		}
+		d.mu.Unlock()
+	}
+	return runIndex, runLog
+}
+
+func (d *disableObservingLimits) observedAt() int {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	return d.observed
+}
+
 // TestRunTenantLoop_DisablingLogMidRunStopsLogMerge verifies that turning off
 // log compaction while the loop runs stops further log-merge dispatches on the
 // next iteration while index-merge continues, because runTenantLoop re-reads
@@ -1813,6 +1849,13 @@ func TestRunTenantLoop_DisablingLogMidRunStopsLogMerge(t *testing.T) {
 		return v2.BuildResultRecord(memory.DefaultAllocator, []v2.ResultArtifact{{Path: "indexes/aa/bb"}}), nil
 	}
 
+	observingLimits := newDisableObservingLimits(limits, func() int {
+		mu.Lock()
+		defer mu.Unlock()
+		return len(phases)
+	})
+	c.limits = observingLimits
+
 	done := make(chan struct{})
 	go func() { c.runTenantLoop(ctx, "acme"); close(done) }()
 
@@ -1824,27 +1867,28 @@ func TestRunTenantLoop_DisablingLogMidRunStopsLogMerge(t *testing.T) {
 	}
 	limits.setLog("acme", false)
 
-	// Record how many phases exist at the cutoff, then let the loop run more.
-	mu.Lock()
-	cutoff := len(phases)
-	mu.Unlock()
-
+	// Wait for runTenantLoop to observe the disable and keep dispatching
+	// index-merge afterwards, proving the loop doesn't just stall.
 	require.Eventually(t, func() bool {
+		boundary := observingLimits.observedAt()
+		if boundary < 0 {
+			return false
+		}
 		mu.Lock()
 		defer mu.Unlock()
-		return len(phases) >= cutoff+4 // several more cycles after disabling
-	}, 2*time.Second, 5*time.Millisecond)
+		return len(phases)-boundary >= 3
+	}, 2*time.Second, 5*time.Millisecond, "expected index-merge dispatches to continue after disabling")
 	cancel()
 	<-done
 
+	boundary := observingLimits.observedAt()
+	require.GreaterOrEqual(t, boundary, 0, "expected runTenantLoop to observe log compaction disabled")
+
 	mu.Lock()
 	defer mu.Unlock()
-	// The mid-run disable is not instantaneous: an in-flight log-merge cycle
-	// may still complete. Assert that dispatches eventually settle to
-	// index-merge only — i.e. the tail after the cutoff contains no log-merge.
-	tail := phases[cutoff:]
-	require.NotEmpty(t, tail)
-	for _, p := range tail[len(tail)-4:] {
-		require.Equal(t, "index-merge", p, "no log-merge after log compaction is disabled")
+	tail := phases[boundary:]
+	require.NotEmpty(t, tail, "expected index-merge dispatches to continue after disabling log compaction")
+	for _, p := range tail {
+		require.Equal(t, "index-merge", p, "no log-merge dispatch after runTenantLoop observed log compaction disabled")
 	}
 }
