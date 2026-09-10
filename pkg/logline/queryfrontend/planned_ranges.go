@@ -10,7 +10,8 @@ import (
 )
 
 // plannedRangeSource lets Loki's size limiter wait on hint prefetch only
-// when the full-span query would exceed MaxQueryBytesRead.
+// when the full-span query would exceed MaxQueryBytesRead. Wait only
+// blocks; the scan plan is built when the lookup finishes.
 type plannedRangeSource struct {
 	result  *hintPrefetchResult
 	timeout time.Duration
@@ -32,7 +33,16 @@ func (s *plannedRangeSource) Wait(ctx context.Context) ([]querylimits.TimeRange,
 	if s.result.err != nil {
 		return nil, false
 	}
-	return buildPlannedQueryRanges(s.result.ranges, s.result.queryStart, s.result.queryEnd, s.result.ingesterCutoff), true
+	return s.result.planned, true
+}
+
+// setPlannedRanges builds the Loki scan plan after the hint lookup finishes.
+// Call before closing done. A lookup error leaves planned unset so Wait is absent.
+func (r *hintPrefetchResult) setPlannedRanges() {
+	if r == nil || r.err != nil {
+		return
+	}
+	r.planned = buildPlannedQueryRanges(r.ranges, r.queryStart, r.queryEnd, r.ingesterCutoff)
 }
 
 // buildPlannedQueryRanges is the time that will actually be queried:

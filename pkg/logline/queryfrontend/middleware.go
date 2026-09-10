@@ -85,6 +85,7 @@ type provisionalQueryResult struct {
 // between the prefetch and filter middleware layers via context.
 type hintPrefetchResult struct {
 	ranges         []hintprovider.HintTimeRange // normalized, sorted by start
+	planned        []querylimits.TimeRange      // query-clipped store windows + ingester
 	err            error
 	stats          *hintprovider.QueryStats
 	queryBytes     uint64
@@ -329,9 +330,8 @@ func resolveMode(header string, tenantMode, defaultMode Mode, requireOptInHeader
 	return mode, false
 }
 
-// resolveMaxQueryBytesRead is used only to decide whether to start a hint
-// lookup when the query is under min_query_bytes but would still 400.
-// The size limiter owns waiting on the resulting PlannedRangeSource.
+// resolveMaxQueryBytesRead returns the tenant MaxQueryBytesRead override,
+// else the cell setting, else 0 when neither is set.
 func (h *loglinePrefetchHandler) resolveMaxQueryBytesRead(tenant string) int64 {
 	if r, ok := h.tenantSettings.(maxQueryBytesReader); ok {
 		if v := r.MaxQueryBytesRead(tenant); v > 0 {
@@ -879,6 +879,7 @@ func (h *loglinePrefetchHandler) Do(ctx context.Context, req queryrangebase.Requ
 	prefetchCtx := ctx
 	go func() {
 		defer close(result.done)
+		defer result.setPlannedRanges()
 
 		start := time.Now()
 		defer func() {

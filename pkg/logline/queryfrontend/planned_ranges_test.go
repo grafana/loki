@@ -157,6 +157,7 @@ func TestPlannedRangeSource_Wait_EmptyIsPresent(t *testing.T) {
 		ingesterCutoff: queryEnd,
 		done:           make(chan struct{}),
 	}
+	result.setPlannedRanges()
 	close(result.done)
 
 	src := &plannedRangeSource{result: result, timeout: time.Second}
