@@ -9,22 +9,24 @@ import (
 	"path/filepath"
 	"slices"
 	"sync"
-	"sync/atomic"
 	"time"
+
+	"go.uber.org/atomic"
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/backoff"
 	"github.com/grafana/dskit/ring"
 	"github.com/grafana/dskit/services"
-	"github.com/grafana/loki/v3/pkg/logline"
-	"github.com/grafana/loki/v3/pkg/kafka"
-	"github.com/grafana/loki/v3/pkg/logline/store"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/twmb/franz-go/pkg/kerr"
 	"github.com/twmb/franz-go/pkg/kgo"
 	"github.com/twmb/franz-go/pkg/kmsg"
 	"golang.org/x/sync/errgroup"
+
+	"github.com/grafana/loki/v3/pkg/kafka"
+	"github.com/grafana/loki/v3/pkg/logline"
+	"github.com/grafana/loki/v3/pkg/logline/store"
 )
 
 const (
@@ -809,7 +811,7 @@ func (s *Service) executeFlush(ctx context.Context, builder *indexBuilder, lastC
 
 	start := time.Now()
 	var files []fileInfo
-	if !retryTilSuccess("prepare_flush_files", func(ctx context.Context) error {
+	if !retryTilSuccess("prepare_flush_files", func(_ context.Context) error {
 		var err error
 		files, err = builder.prepareIndexes()
 		return err
@@ -1027,7 +1029,7 @@ func (s *Service) uploadPartialIndexes(ctx context.Context, files []fileInfo) er
 	g, ctx := errgroup.WithContext(ctx)
 
 	for _, f := range files {
-		f := f
+
 		g.Go(func() error {
 			uploadStart := time.Now()
 

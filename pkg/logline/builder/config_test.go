@@ -5,8 +5,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/grafana/loki/v3/pkg/kafka"
 	"github.com/stretchr/testify/require"
+
+	"github.com/grafana/loki/v3/pkg/kafka"
 )
 
 func TestConfigValidation(t *testing.T) {

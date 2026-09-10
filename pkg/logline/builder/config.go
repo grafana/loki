@@ -61,8 +61,10 @@ const (
 
 // Config holds configuration for the logline index builder service.
 type Config struct {
-	// Kafka configuration - uses Loki's kafka.Config for consistency
-	Kafka   kafka.Config  `yaml:"kafka"`
+	// Kafka is Loki's root kafka_config, injected by the module wiring rather
+	// than configured here, so there is only one kafka section in the config
+	// file and only one set of -kafka.* flags.
+	Kafka   kafka.Config  `yaml:"-"`
 	Logline LoglineConfig `yaml:"logline"`
 
 	FlushOnIdle   time.Duration `yaml:"flush_on_idle"`
@@ -146,31 +148,6 @@ func (c *Config) RegisterFlags(f *flag.FlagSet) {
 		f = flag.CommandLine
 	}
 
-	// Kafka configuration flags
-	f.StringVar(&c.Kafka.Address, "kafka.address", "localhost:9092",
-		"Comma-separated list of Kafka broker addresses (deprecated, use kafka.reader-config.address)")
-	f.StringVar(&c.Kafka.Topic, "kafka.topic", "",
-		"Kafka topic to consume from (required)")
-	f.StringVar(&c.Kafka.ClientID, "kafka.client-id", "",
-		"Kafka client ID (deprecated, use kafka.reader-config.client-id)")
-	f.DurationVar(&c.Kafka.DialTimeout, "kafka.dial-timeout", 2*time.Second,
-		"Maximum time to wait for a connection to be established")
-
-	// Reader/Writer specific configs
-	f.StringVar(&c.Kafka.ReaderConfig.Address, "kafka.reader-config.address", "localhost:9092",
-		"Kafka broker addresses for consumer")
-	f.StringVar(&c.Kafka.ReaderConfig.ClientID, "kafka.reader-config.client-id", "",
-		"Client ID for Kafka consumer")
-
-	// SASL Authentication
-	f.StringVar(&c.Kafka.SASLUsername, "kafka.sasl-username", "",
-		"SASL username for Kafka authentication")
-	// Note: SASLPassword is flagext.Secret, needs special handling
-
-	// Consumer settings
-	f.StringVar(&c.Kafka.ConsumerGroup, "kafka.consumer-group", "logline-index-builder",
-		"Kafka consumer group ID (used for both partition assignment and offset storage)")
-
 	// Builder-specific flags
 	f.IntVar(&c.Logline.NgramLength, "logline-index-builder.ngram-length", DefaultNgramLength,
 		"N-gram length for feature extraction")
@@ -218,11 +195,20 @@ func (c *Config) RegisterFlags(f *flag.FlagSet) {
 
 // Validate validates the configuration and applies defaults.
 func (c *Config) Validate() error {
-	c.Kafka.ProducerMaxRecordSizeBytes = kafka.MaxProducerRecordDataBytesLimit // we don't use this setting but it has to be set for validate to pass
-	c.Kafka.ProducerMaxInflightRequestsPerBroker = 20                         // also producer-only and unused here, but Validate now requires >= 1
-
-	if err := c.Kafka.Validate(); err != nil {
-		return fmt.Errorf("invalid kafka config: %w", err)
+	// Kafka is Loki's root kafka_config, injected by the module wiring and
+	// validated there as a whole. Only the fields this builder consumes are
+	// checked here, so producer-only settings it never reads cannot fail its
+	// startup. Forcing ProducerMaxRecordSizeBytes and
+	// ProducerMaxInflightRequestsPerBroker to satisfy kafka.Config.Validate is
+	// no longer necessary.
+	if c.Kafka.ReaderConfig.Address == "" && c.Kafka.Address == "" {
+		return fmt.Errorf("invalid kafka config: %w", kafka.ErrMissingKafkaAddress)
+	}
+	if c.Kafka.Topic == "" {
+		return fmt.Errorf("invalid kafka config: %w", kafka.ErrMissingKafkaTopic)
+	}
+	if (c.Kafka.SASLUsername == "") != (c.Kafka.SASLPassword.String() == "") {
+		return fmt.Errorf("invalid kafka config: %w", kafka.ErrInconsistentSASLUsernameAndPassword)
 	}
 
 	if c.Kafka.ConsumerGroup == "" {

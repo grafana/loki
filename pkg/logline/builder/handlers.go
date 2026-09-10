@@ -6,6 +6,6 @@ import (
 )
 
 // RegisterHandlers registers HTTP handlers for the logline-index-builder target.
-func RegisterHandlers(srv *server.Server, logger log.Logger) error {
+func RegisterHandlers(_ *server.Server, _ log.Logger) error {
 	return nil
 }

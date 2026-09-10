@@ -9,11 +9,12 @@ import (
 	"time"
 
 	"github.com/go-kit/log"
-	"github.com/grafana/loki/v3/pkg/logline/store"
-	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/stretchr/testify/require"
 	"github.com/thanos-io/objstore"
+
+	"github.com/grafana/loki/v3/pkg/logline/store"
+	"github.com/grafana/loki/v3/pkg/logproto"
 )
 
 // TestService_UploadSetsShardMeta verifies that shard fields from fileInfo are
@@ -46,7 +47,7 @@ func TestService_UploadSetsShardMeta(t *testing.T) {
 			{Timestamp: now, Line: "error: connection failed to primary database server"},
 		},
 	}
-	svc.activeBuilder.processStream(stream, parseLabelsOrNil(stream.Labels), now, recordRef{})
+	_ = svc.activeBuilder.processStream(stream, parseLabelsOrNil(stream.Labels), now, recordRef{})
 
 	files, err := svc.activeBuilder.prepareIndexes()
 	require.NoError(t, err)

@@ -79,12 +79,6 @@ func (f *fakePartitionRing) markInactiveLocked(id int32) {
 }
 
 // removePartition deletes the partition from the ring entirely.
-func (f *fakePartitionRing) removePartition(id int32) {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	f.desc.RemovePartition(id)
-	f.rebuild()
-}
 
 func (f *fakePartitionRing) rebuild() {
 	desc := ring.NewPartitionRingDesc()

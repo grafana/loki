@@ -3,15 +3,15 @@ package builder
 import (
 	"context"
 	"runtime/debug"
-	"sync/atomic"
 	"testing"
 	"time"
 
+	"go.uber.org/atomic"
+
 	"github.com/go-kit/log"
+
 	"github.com/grafana/loki/v3/pkg/kafka"
 
-	"github.com/grafana/loki/v3/pkg/logline/store"
-	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/stretchr/testify/require"
@@ -21,6 +21,9 @@ import (
 	"github.com/twmb/franz-go/pkg/kfake"
 	"github.com/twmb/franz-go/pkg/kgo"
 	"github.com/twmb/franz-go/pkg/kmsg"
+
+	"github.com/grafana/loki/v3/pkg/logline/store"
+	"github.com/grafana/loki/v3/pkg/logproto"
 )
 
 const testTopic = "test-topic"
@@ -306,10 +309,10 @@ func TestService_ConsumerGroupAssignment(t *testing.T) {
 	startCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	err = svc.Service.StartAsync(startCtx)
+	err = svc.StartAsync(startCtx)
 	require.NoError(t, err)
 
-	err = svc.Service.AwaitRunning(startCtx)
+	err = svc.AwaitRunning(startCtx)
 	require.NoError(t, err)
 
 	// Give it time to process.
@@ -317,8 +320,8 @@ func TestService_ConsumerGroupAssignment(t *testing.T) {
 
 	t.Log("Direct partition assignment test completed successfully")
 
-	svc.Service.StopAsync()
-	err = svc.Service.AwaitTerminated(startCtx)
+	svc.StopAsync()
+	err = svc.AwaitTerminated(startCtx)
 	require.NoError(t, err)
 }
 
@@ -500,8 +503,8 @@ func TestService_FlushTickerTriggersMaxAge(t *testing.T) {
 	ctx := t.Context()
 
 	// Start the service — this launches the poll loop and flush ticker.
-	go svc.Service.StartAsync(ctx)
-	require.NoError(t, svc.Service.AwaitRunning(ctx))
+	go func() { _ = svc.StartAsync(ctx) }()
+	require.NoError(t, svc.AwaitRunning(ctx))
 
 	// Produce a single record so the builder has data with firstAppend set.
 	producer, err := kgo.NewClient(
@@ -528,8 +531,8 @@ func TestService_FlushTickerTriggersMaxAge(t *testing.T) {
 		return len(bucket.Objects()) > 0
 	}, 5*time.Second, 50*time.Millisecond, "expected flush ticker to produce index files via max_age")
 
-	svc.Service.StopAsync()
-	require.NoError(t, svc.Service.AwaitTerminated(ctx))
+	svc.StopAsync()
+	require.NoError(t, svc.AwaitTerminated(ctx))
 }
 
 // TestService_PreMinDateOffsetCommit verifies that Kafka offsets are committed
@@ -586,7 +589,7 @@ func TestService_PreMinDateOffsetCommit(t *testing.T) {
 	lastProducedOffset := results[0].Record.Offset
 
 	// Manually drive the service: simulate consuming the record via processRecordBatch.
-	svc.processRecordBatch([]rawRecord{
+	_ = svc.processRecordBatch([]rawRecord{
 		{
 			value:     data,
 			timestamp: time.Now(),
@@ -787,16 +790,16 @@ func TestService_PollErrorDoesNotDropHealthyPartitionRecords(t *testing.T) {
 
 	startCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
-	require.NoError(t, svc.Service.StartAsync(startCtx))
-	require.NoError(t, svc.Service.AwaitRunning(startCtx))
+	require.NoError(t, svc.StartAsync(startCtx))
+	require.NoError(t, svc.AwaitRunning(startCtx))
 
 	require.Eventually(t, func() bool {
 		return len(bucket.Objects()) > 0
 	}, 3*time.Second, 50*time.Millisecond,
 		"partition-0 record should be indexed despite the partition-1 error in the same fetch")
 
-	svc.Service.StopAsync()
-	require.NoError(t, svc.Service.AwaitTerminated(startCtx))
+	svc.StopAsync()
+	require.NoError(t, svc.AwaitTerminated(startCtx))
 }
 
 func mustMarshalStream(t *testing.T, line string) []byte {
@@ -871,16 +874,16 @@ func TestService_MultiPartitionConsumption(t *testing.T) {
 	startCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	require.NoError(t, svc.Service.StartAsync(startCtx))
-	require.NoError(t, svc.Service.AwaitRunning(startCtx))
+	require.NoError(t, svc.StartAsync(startCtx))
+	require.NoError(t, svc.AwaitRunning(startCtx))
 
 	// Wait for the rebalance to complete and the service to own all partitions.
 	require.Eventually(t, func() bool {
 		return len(svc.snapshotOwnedPartitions()) == 6
 	}, 5*time.Second, 50*time.Millisecond, "service should own all six partitions")
 
-	svc.Service.StopAsync()
-	require.NoError(t, svc.Service.AwaitTerminated(startCtx))
+	svc.StopAsync()
+	require.NoError(t, svc.AwaitTerminated(startCtx))
 }
 
 // TestService_ReconcileActiveSetForcesRebalance checks that a rebalance is
@@ -971,7 +974,7 @@ func TestShouldFlush_MemoryBytes(t *testing.T) {
 	threshold := base + 2<<20
 	debug.SetMemoryLimit(int64(float64(threshold) / 0.7))
 
-	ok, reason := svc.shouldFlush()
+	ok, _ := svc.shouldFlush()
 	require.False(t, ok, "buffer floor alone must not cross the threshold")
 
 	// Each first touch of a (shard, day) allocates its dense tick bitset
@@ -982,7 +985,7 @@ func TestShouldFlush_MemoryBytes(t *testing.T) {
 		builder.ing.postings.recordDocumentTick(0, uint32(i*ticksPerDay))
 	}
 
-	ok, reason = svc.shouldFlush()
+	ok, reason := svc.shouldFlush()
 	require.True(t, ok)
 	require.Equal(t, reasonMemory, reason)
 

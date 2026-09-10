@@ -129,7 +129,7 @@ func TestCooperativeActiveStickyBalancer_ConvergesToOneActivePerMember(t *testin
 				ring.markActive(1)
 				ring.markActive(2)
 			},
-			check: func(active []int32, prev, next map[string][]int32) {
+			check: func(active []int32, _, next map[string][]int32) {
 				require.ElementsMatch(t, []int32{0, 1, 2}, active)
 				assertPartitionsAreSpread([]int32{0, 1, 2}, next)
 			},
@@ -139,7 +139,7 @@ func TestCooperativeActiveStickyBalancer_ConvergesToOneActivePerMember(t *testin
 			mutate: func() {
 				memberCount = 20
 			},
-			check: func(active []int32, prev, next map[string][]int32) {
+			check: func(active []int32, _, next map[string][]int32) {
 				require.ElementsMatch(t, []int32{0, 1, 2}, active)
 				assertPartitionsAreSpread([]int32{0, 1, 2}, next)
 			},
@@ -151,7 +151,7 @@ func TestCooperativeActiveStickyBalancer_ConvergesToOneActivePerMember(t *testin
 				ring.markActive(4)
 				ring.markActive(5)
 			},
-			check: func(active []int32, prev, next map[string][]int32) {
+			check: func(active []int32, _, next map[string][]int32) {
 				require.ElementsMatch(t, []int32{0, 1, 2, 3, 4, 5}, active)
 				assertPartitionsAreSpread([]int32{0, 1, 2, 3, 4, 5}, next)
 			},
@@ -161,7 +161,7 @@ func TestCooperativeActiveStickyBalancer_ConvergesToOneActivePerMember(t *testin
 			mutate: func() {
 				memberCount = 8
 			},
-			check: func(active []int32, prev, next map[string][]int32) {
+			check: func(active []int32, _, next map[string][]int32) {
 				require.ElementsMatch(t, []int32{0, 1, 2, 3, 4, 5}, active)
 				assertPartitionsAreSpread([]int32{0, 1, 2, 3, 4, 5}, next)
 			},
@@ -174,7 +174,7 @@ func TestCooperativeActiveStickyBalancer_ConvergesToOneActivePerMember(t *testin
 				ring.markInactive(4)
 				ring.markInactive(5)
 			},
-			check: func(active []int32, prev, next map[string][]int32) {
+			check: func(active []int32, _, next map[string][]int32) {
 				require.ElementsMatch(t, []int32{0, 1}, active)
 				// Inactive partitions remain in the ring and are sticky, so the
 				// full ring set is still spread one per member.
@@ -187,7 +187,7 @@ func TestCooperativeActiveStickyBalancer_ConvergesToOneActivePerMember(t *testin
 				ring.markInactiveLocked(2)
 				ring.markInactiveLocked(3)
 			},
-			check: func(active []int32, prev, next map[string][]int32) {
+			check: func(active []int32, _, next map[string][]int32) {
 				require.ElementsMatch(t, []int32{0, 1}, active)
 				// Lock status is irrelevant: every ring partition is sticky and
 				// spread one per member.

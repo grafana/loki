@@ -96,7 +96,7 @@ func (s *Service) createKafkaClient() (*kgo.Client, error) {
 
 	if s.cfg.Kafka.SASLUsername != "" && s.cfg.Kafka.SASLPassword.String() != "" {
 		level.Info(s.logger).Log("msg", "enabling SASL PLAIN authentication", "username", s.cfg.Kafka.SASLUsername)
-		opts = append(opts, kgo.SASL(plain.Plain(func(ctx context.Context) (plain.Auth, error) {
+		opts = append(opts, kgo.SASL(plain.Plain(func(_ context.Context) (plain.Auth, error) {
 			return plain.Auth{
 				User: s.cfg.Kafka.SASLUsername,
 				Pass: s.cfg.Kafka.SASLPassword.String(),

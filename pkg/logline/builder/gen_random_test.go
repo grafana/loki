@@ -10,8 +10,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/stretchr/testify/require"
+
+	"github.com/grafana/loki/v3/pkg/logproto"
 )
 
 // TestGenerateSyntheticRandom writes a pathological capture file where every
