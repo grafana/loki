@@ -376,6 +376,21 @@ func TestGetAllDeleteRequestsHandler(t *testing.T) {
 	})
 }
 
+func TestGetCacheGenerationNumberHandler(t *testing.T) {
+	store := &mockDeleteRequestsStore{genNumber: "42"}
+	h := NewDeleteRequestHandler(store, 0, 0, nil)
+
+	w := httptest.NewRecorder()
+	h.GetCacheGenerationNumberHandler(w, buildRequest("org-id", ``, "", "", false))
+
+	require.Equal(t, http.StatusOK, w.Code)
+	require.Equal(t, "application/json", w.Header().Get("Content-Type"))
+
+	var result string
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &result))
+	require.Equal(t, "42", result)
+}
+
 func TestUpdateCacheGenerationNumberHandler(t *testing.T) {
 	for _, tc := range []struct {
 		name               string
