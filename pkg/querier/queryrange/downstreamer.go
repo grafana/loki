@@ -17,6 +17,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/logql"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	"github.com/grafana/loki/v3/pkg/logqlmodel"
+	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/v3/pkg/querier/plan"
 	"github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase"
 )
@@ -134,7 +135,18 @@ func withoutOffset(query logql.DownstreamQuery) (string, time.Time, time.Time) {
 }
 
 func (in instance) Downstream(ctx context.Context, queries []logql.DownstreamQuery, acc logql.Accumulator) ([]logqlmodel.Result, error) {
+	ctx, recorder, owner := startFanout(ctx, len(queries))
+	if recorder != nil {
+		for _, query := range queries {
+			recorder.addShards(len(query.Params.Shards()))
+		}
+		if owner {
+			defer recorder.finish()
+		}
+	}
+
 	return in.For(ctx, queries, acc, func(qry logql.DownstreamQuery) (logqlmodel.Result, error) {
+		start := time.Now()
 		var req queryrangebase.Request
 		if in.splitAlign {
 			qs, newStart, newEnd := withoutOffset(qry)
@@ -155,9 +167,20 @@ func (in instance) Downstream(ctx context.Context, queries []logql.DownstreamQue
 
 		res, err := in.handler.Do(ctx, req)
 		if err != nil {
+			if recorder != nil {
+				recorder.addRequest(time.Since(start), err, nil)
+			}
 			return logqlmodel.Result{}, err
 		}
-		return ResponseToResult(res)
+		result, err := ResponseToResult(res)
+		if recorder != nil {
+			var responseStats *stats.Result
+			if response, ok := statisticsFromResponse(res); ok && owner {
+				responseStats = &response
+			}
+			recorder.addRequest(time.Since(start), err, responseStats)
+		}
+		return result, err
 	})
 }
 

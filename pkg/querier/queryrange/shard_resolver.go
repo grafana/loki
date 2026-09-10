@@ -78,9 +78,16 @@ func getStatsForMatchers(
 	defaultLookback time.Duration,
 ) ([]*stats.Stats, error) {
 	startTime := time.Now()
+	ctx, recorder, owner := startFanout(ctx, len(matcherGroups))
+	if recorder != nil {
+		if owner {
+			defer recorder.finish()
+		}
+	}
 
 	results := make([]*stats.Stats, len(matcherGroups))
 	if err := concurrency.ForEachJob(ctx, len(matcherGroups), parallelism, func(ctx context.Context, i int) error {
+		requestStart := time.Now()
 		matchers := syntax.MatchersString(matcherGroups[i].Matchers)
 		diff := matcherGroups[i].Interval + matcherGroups[i].Offset
 		adjustedFrom := start.Add(-diff)
@@ -100,12 +107,22 @@ func getStatsForMatchers(
 			Matchers: matchers,
 		})
 		if err != nil {
+			if recorder != nil {
+				recorder.addRequest(time.Since(requestStart), err, nil)
+			}
 			return err
 		}
 
 		casted, ok := resp.(*IndexStatsResponse)
 		if !ok {
-			return fmt.Errorf("expected *IndexStatsResponse while querying index, got %T", resp)
+			err := fmt.Errorf("expected *IndexStatsResponse while querying index, got %T", resp)
+			if recorder != nil {
+				recorder.addRequest(time.Since(requestStart), err, nil)
+			}
+			return err
+		}
+		if recorder != nil {
+			recorder.addRequest(time.Since(requestStart), nil, nil)
 		}
 
 		results[i] = casted.Response

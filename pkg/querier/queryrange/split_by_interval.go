@@ -29,8 +29,9 @@ type lokiResult struct {
 }
 
 type packedResp struct {
-	resp queryrangebase.Response
-	err  error
+	resp     queryrangebase.Response
+	err      error
+	duration time.Duration
 }
 
 // joinPartialFromResponses keeps the usage of already-completed responses when
@@ -146,6 +147,8 @@ func (h *splitByInterval) Process(
 	for i := 0; i < p; i++ {
 		go h.loop(ctx, ch, next)
 	}
+	recorder, _ := ctx.Value(fanoutContextKey{}).(*fanoutRecorder)
+	recordResults, _ := ctx.Value(fanoutResultOwnerKey{}).(bool)
 
 	for _, x := range input {
 		select {
@@ -156,6 +159,13 @@ func (h *splitByInterval) Process(
 			joinPartialFromResponses(ctx, responses)
 			return nil, context.Cause(ctx)
 		case data := <-x.ch:
+			if recorder != nil {
+				var result *stats.Result
+				if responseStats, ok := statisticsFromResponse(data.resp); ok && recordResults {
+					result = &responseStats
+				}
+				recorder.addRequest(data.duration, data.err, result)
+			}
 			if data.err != nil {
 				// Keep the usage of the intervals that completed before the failure.
 				joinPartialFromResponses(ctx, responses)
@@ -197,7 +207,7 @@ func (h *splitByInterval) Process(
 
 func (h *splitByInterval) loop(ctx context.Context, ch <-chan *lokiResult, next queryrangebase.Handler) {
 	for data := range ch {
-
+		start := time.Now()
 		ctx, sp := tracer.Start(ctx, "interval")
 		if sp.SpanContext().IsSampled() {
 			data.req.LogToSpan(sp)
@@ -209,7 +219,7 @@ func (h *splitByInterval) loop(ctx context.Context, ch <-chan *lokiResult, next 
 		select {
 		case <-ctx.Done():
 			return
-		case data.ch <- &packedResp{resp, err}:
+		case data.ch <- &packedResp{resp: resp, err: err, duration: time.Since(start)}:
 			// The parent Process method will return on the first error. So stop
 			// processng.
 			if err != nil {
@@ -251,6 +261,17 @@ func (h *splitByInterval) Do(ctx context.Context, r queryrangebase.Request) (que
 
 	if len(intervals) == 1 {
 		return h.next.Do(ctx, intervals[0])
+	}
+
+	var recorder *fanoutRecorder
+	var owner bool
+	ctx, recorder, owner = startFanout(ctx, len(intervals))
+	ctx = context.WithValue(ctx, fanoutResultOwnerKey{}, recorder == nil || owner)
+	if recorder != nil {
+		recorder.addSplits(int64(len(intervals)))
+		if owner {
+			defer recorder.finish()
+		}
 	}
 
 	var limit int64
