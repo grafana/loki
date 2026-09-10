@@ -1,4 +1,4 @@
-# pkg/limits/
+# pkg/logline/limits/
 
 Per-tenant settings interface, construction, and runtime reloading for logline components.
 
@@ -16,8 +16,8 @@ Per-tenant settings interface, construction, and runtime reloading for logline c
   2. Loki config `limits_config` defaults (retention_period)
 - `NewOverrides` consumes whatever defaults are already present in
   `loki.ConfigWrapper`. It does not apply ad-hoc per-field backfills; defaults
-  are expected to be initialized by config loading (`flagext.DefaultValues` in
-  `cmd/logline`).
+  are expected to have been initialized by the caller's config loading, normally
+  via `flagext.DefaultValues`.
 - NewOverrides accepts a loki.ConfigWrapper. It handles:
   1. SetDefaultLimitsForYAMLUnmarshalling (so per-tenant YAML inherits global defaults)
   2. runtimeconfig.Manager creation for periodic file polling

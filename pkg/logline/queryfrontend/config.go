@@ -161,14 +161,14 @@ func (c *ShardPlanningConfig) Validate() error {
 	return nil
 }
 
-// Config controls logline query frontend middleware injection in GEL.
+// Config controls logline query frontend middleware injection.
 type Config struct {
 	Enabled       bool             `yaml:"enabled"`
 	Store         store.Config     `yaml:"store"`
 	QueryFrontend MiddlewareConfig `yaml:"query_frontend"`
 }
 
-// RegisterFlags registers GEL integration flags for logline middleware.
+// RegisterFlags registers the integration flags for the logline middleware.
 func (c *Config) RegisterFlags(f *flag.FlagSet) {
 	if f == nil {
 		f = flag.CommandLine

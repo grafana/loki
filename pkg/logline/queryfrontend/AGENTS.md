@@ -1,11 +1,10 @@
-# pkg/queryfrontend
+# pkg/logline/queryfrontend/
 
 ## What this package does
 
-This package integrates the **logline index** into **Loki's query-range pipeline** for
-Grafana Enterprise Logs (GEL). It injects two middlewares around Loki's existing
-`queryrangebase` middleware stack to skip or narrow time intervals that the logline
-index proves contain no matching log lines.
+This package integrates the **logline index** into **Loki's query-range pipeline**. It
+injects two middlewares around Loki's existing `queryrangebase` middleware stack to skip
+or narrow time intervals that the logline index proves contain no matching log lines.
 
 ## Architecture: Two-layer middleware
 
@@ -27,10 +26,11 @@ index proves contain no matching log lines.
 ## Key integration points
 
 - **Wiring**: `WrapMiddleware` / `WrapMiddlewareWithStore` in `integration.go` create the
-  store, hint provider, optional cache, and compose the middleware stack. Called from
-  `pkg/enterprise/loki/init/logline.go` in the `enterprise-logs` repo.
-- **Hint provider**: `pkg/hintprovider` does the actual index lookups.
-- **Store**: `pkg/store` manages the logline index data (object storage, polling).
+  store, hint provider, optional cache, and compose the middleware stack. The caller owns
+  the returned `services.Service` and prepends the wrapped middleware to
+  `Loki.QueryFrontEndMiddleware`.
+- **Hint provider**: `pkg/logline/hintprovider` does the actual index lookups.
+- **Store**: `pkg/logline/store` manages the logline index data (object storage, polling).
 - **Loki codec**: `mergeLokiResponse` in Loki's `pkg/querier/queryrange/codec.go` merges
   sub-interval responses. It inherits `Direction`, `Limit`, and `Version` from
   `responses[0]`, so any empty response returned by the filter middleware **must**
@@ -61,5 +61,5 @@ filter middleware falls back to passthrough — it does not block or fail the qu
 ## Running tests
 
 ```sh
-cd pkg/queryfrontend && go test -v ./...
+cd pkg/logline/queryfrontend && go test -v ./...
 ```
