@@ -18,8 +18,8 @@
           "subdir": "grafana-builder"
         }
       },
-      "version": "5a573cd6b179ac3ce46bcf74db290a941f6f5f0d",
-      "sum": "YPaA+KJ6JBW9QpxNvl0iAxnC7gL4jRRvulNl6QRkPU0="
+      "version": "9a2e846669f8512b32cdb6c80104e0586744aff9",
+      "sum": "FqEJAICz9T90PMJLW8i4HXazyWQPNzi68A8UauXa7GQ="
     },
     {
       "source": {
@@ -28,8 +28,8 @@
           "subdir": "mixin-utils"
         }
       },
-      "version": "5a573cd6b179ac3ce46bcf74db290a941f6f5f0d",
-      "sum": "kgoIxOkFlpadoT9+HnMZ4LMdaS1HJsAAUQEe1eUg22E="
+      "version": "9a2e846669f8512b32cdb6c80104e0586744aff9",
+      "sum": "pdZBifAdc1FjwhKRZIpSF/Hi2C9P9nsExGJxgxNHGRk="
     },
     {
       "source": {
@@ -38,7 +38,7 @@
           "subdir": "production/loki-mixin"
         }
       },
-      "version": "82cdcdc0410650624141a6225d1b449053f9cdf9",
+      "version": "7a40404f32b3e6464c9cfc6cc7dd75a40f3931da",
       "sum": "eWbTcw/pDtp0PmKktHzTxMH4uS+7UwDmbKOypRyxlCM="
     },
     {
@@ -48,8 +48,8 @@
           "subdir": "operations/mimir-mixin"
         }
       },
-      "version": "34b078fbd5e790f27796430d3c498e9b07bc0532",
-      "sum": "otMM8BRbzTMcedkpqaxPqTxLFh3kE3WBYRs9+a8QLPs="
+      "version": "34baa9ce9f4d4a360713f12f7f3bcd4d338f20fa",
+      "sum": "4iw0+Ldyr+iGZV7ZYzhieM1s5XC/N3lKe4K878wTbTM="
     },
     {
       "source": {
@@ -58,8 +58,8 @@
           "subdir": "operations/rollout-operator-mixin"
         }
       },
-      "version": "ee4822b061cb7497b7e8a716161dfa0e3230c0ca",
-      "sum": "zz2Sep/VbyrGcKKa3wy0oGIwMq2qEqBiLTVEVmqDMDE="
+      "version": "b94b0ae0a200a14b6e6958034795cc79da20fcba",
+      "sum": "W72L2f3KTfKhh8MhPZLuU2UfD3kKliDnTZZgh+FUlK8="
     },
     {
       "source": {
@@ -68,8 +68,8 @@
           "subdir": "jsonnet/kube-prometheus/lib"
         }
       },
-      "version": "110c59d94ccff6f3e894c55247df6c218ef6cd7a",
-      "sum": "QKRgrgEZ3k9nLmLCrDBaeIGVqQZf+AvZTcnhdLk3TrA="
+      "version": "47ad01db8dee2a0a659faeb89e1d0042bfee7e3c",
+      "sum": "0mD7V+3jCnIp+OZF/g+EwtS6BgUW2r2bNAdwQ8uulGA="
     }
   ],
   "legacyImports": false
