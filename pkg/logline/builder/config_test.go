@@ -27,7 +27,7 @@ func TestConfigValidation(t *testing.T) {
 					ProducerMaxRecordSizeBytes: 15 * 1024 * 1024,
 				},
 				ScratchDir:    "/tmp/test",
-				Logline:       LoglineConfig{NgramLength: DefaultNgramLength, DocumentInterval: DefaultDocumentInterval, IndexVersion: "v3"},
+				Index:         IndexConfig{NgramLength: DefaultNgramLength, DocumentInterval: DefaultDocumentInterval, Version: "v3"},
 				FlushOnIdle:   DefaultIdleFlushTimeout,
 				FlushOnMaxAge: DefaultMaxBuilderAge,
 			},
@@ -124,7 +124,7 @@ func TestConfigValidation(t *testing.T) {
 					ProducerMaxRecordSizeBytes: 15 * 1024 * 1024,
 				},
 				ScratchDir: "/tmp/test",
-				Logline: LoglineConfig{
+				Index: IndexConfig{
 					NgramLength:      DefaultNgramLength,
 					DocumentInterval: 200 * time.Millisecond,
 				},
@@ -141,7 +141,7 @@ func TestConfigValidation(t *testing.T) {
 					ProducerMaxRecordSizeBytes: 15 * 1024 * 1024,
 				},
 				ScratchDir: "/tmp/test",
-				Logline: LoglineConfig{
+				Index: IndexConfig{
 					DocumentInterval: 500 * time.Microsecond, // Too small
 				},
 			},
@@ -158,7 +158,7 @@ func TestConfigValidation(t *testing.T) {
 					ProducerMaxRecordSizeBytes: 15 * 1024 * 1024,
 				},
 				ScratchDir: "/tmp/test",
-				Logline: LoglineConfig{
+				Index: IndexConfig{
 					DocumentInterval: 2 * time.Hour, // Too large
 				},
 			},
@@ -179,7 +179,7 @@ func TestConfigValidation(t *testing.T) {
 					ProducerMaxRecordSizeBytes: 15 * 1024 * 1024,
 				},
 				ScratchDir: "/tmp/test",
-				Logline: LoglineConfig{
+				Index: IndexConfig{
 					DocumentInterval: 10 * time.Millisecond,
 				},
 			},
@@ -199,7 +199,7 @@ func TestConfigValidation(t *testing.T) {
 					ProducerMaxRecordSizeBytes: 15 * 1024 * 1024,
 				},
 				ScratchDir: "/tmp/test",
-				Logline: LoglineConfig{
+				Index: IndexConfig{
 					DocumentInterval: 1 * time.Millisecond,
 				},
 			},
@@ -263,7 +263,7 @@ func TestConfigValidation(t *testing.T) {
 					ProducerMaxRecordSizeBytes: 15 * 1024 * 1024,
 				},
 				ScratchDir: "/tmp/test",
-				Logline: LoglineConfig{
+				Index: IndexConfig{
 					NgramLength: 7,
 				},
 			},
@@ -280,7 +280,7 @@ func TestConfigValidation(t *testing.T) {
 					ProducerMaxRecordSizeBytes: 15 * 1024 * 1024,
 				},
 				ScratchDir: "/tmp/test",
-				Logline: LoglineConfig{
+				Index: IndexConfig{
 					NgramLength: -1,
 				},
 			},
@@ -297,7 +297,7 @@ func TestConfigValidation(t *testing.T) {
 					ProducerMaxRecordSizeBytes: 15 * 1024 * 1024,
 				},
 				ScratchDir: "/tmp/test",
-				Logline: LoglineConfig{
+				Index: IndexConfig{
 					DocumentInterval: 7 * time.Millisecond, // In bounds, but 24h % 7ms != 0
 				},
 			},
@@ -328,7 +328,7 @@ func TestConfigValidation(t *testing.T) {
 					ProducerMaxRecordSizeBytes: 15 * 1024 * 1024,
 				},
 				ScratchDir: "/tmp/test",
-				Logline:    LoglineConfig{ShardCount: 4, ShardAlgorithm: ""},
+				Index:      IndexConfig{ShardCount: 4, ShardAlgorithm: ""},
 			},
 			wantError: true,
 			errorMsg:  "shard_algorithm must be set when shard_count > 1",
@@ -343,7 +343,7 @@ func TestConfigValidation(t *testing.T) {
 					ProducerMaxRecordSizeBytes: 15 * 1024 * 1024,
 				},
 				ScratchDir: "/tmp/test",
-				Logline:    LoglineConfig{ShardCount: 4, ShardAlgorithm: "unknown_algo"},
+				Index:      IndexConfig{ShardCount: 4, ShardAlgorithm: "unknown_algo"},
 			},
 			wantError: true,
 			errorMsg:  "unknown shard algorithm",
@@ -358,7 +358,7 @@ func TestConfigValidation(t *testing.T) {
 					ProducerMaxRecordSizeBytes: 15 * 1024 * 1024,
 				},
 				ScratchDir: "/tmp/test",
-				Logline:    LoglineConfig{ShardCount: -1},
+				Index:      IndexConfig{ShardCount: -1},
 			},
 			wantError: true,
 			errorMsg:  "shard_count must be >= 0",
@@ -373,7 +373,7 @@ func TestConfigValidation(t *testing.T) {
 					ProducerMaxRecordSizeBytes: 15 * 1024 * 1024,
 				},
 				ScratchDir: "/tmp/test",
-				Logline:    LoglineConfig{ShardCount: 0, ShardAlgorithm: ""},
+				Index:      IndexConfig{ShardCount: 0, ShardAlgorithm: ""},
 			},
 			wantError: false,
 		},
@@ -387,7 +387,7 @@ func TestConfigValidation(t *testing.T) {
 					ProducerMaxRecordSizeBytes: 15 * 1024 * 1024,
 				},
 				ScratchDir: "/tmp/test",
-				Logline:    LoglineConfig{ShardCount: 4, ShardAlgorithm: "first_byte"},
+				Index:      IndexConfig{ShardCount: 4, ShardAlgorithm: "first_byte"},
 			},
 			wantError: false,
 		},
@@ -401,7 +401,7 @@ func TestConfigValidation(t *testing.T) {
 					ProducerMaxRecordSizeBytes: 15 * 1024 * 1024,
 				},
 				ScratchDir: "/tmp/test",
-				Logline: LoglineConfig{
+				Index: IndexConfig{
 					ShardCount:     256,
 					ShardAlgorithm: "murmur3_mix"},
 			},
@@ -417,7 +417,7 @@ func TestConfigValidation(t *testing.T) {
 					ProducerMaxRecordSizeBytes: 15 * 1024 * 1024,
 				},
 				ScratchDir: "/tmp/test",
-				Logline: LoglineConfig{
+				Index: IndexConfig{
 					ShardCount:     257,
 					ShardAlgorithm: "murmur3_mix"},
 			},
@@ -434,7 +434,7 @@ func TestConfigValidation(t *testing.T) {
 					ProducerMaxRecordSizeBytes: 15 * 1024 * 1024,
 				},
 				ScratchDir: "/tmp/test",
-				Logline:    LoglineConfig{ShardCount: 10, ShardAlgorithm: "murmur3_mix"},
+				Index:      IndexConfig{ShardCount: 10, ShardAlgorithm: "murmur3_mix"},
 			},
 			wantError: false,
 		},
@@ -509,11 +509,11 @@ func TestConfigValidation(t *testing.T) {
 			} else {
 				require.NoError(t, err)
 				// Verify defaults were applied when zero values provided
-				if tt.settings.Logline.NgramLength == 0 {
-					require.Equal(t, DefaultNgramLength, tt.settings.Logline.NgramLength)
+				if tt.settings.Index.NgramLength == 0 {
+					require.Equal(t, DefaultNgramLength, tt.settings.Index.NgramLength)
 				}
-				if tt.settings.Logline.DocumentInterval == 0 {
-					require.Equal(t, DefaultDocumentInterval, tt.settings.Logline.DocumentInterval)
+				if tt.settings.Index.DocumentInterval == 0 {
+					require.Equal(t, DefaultDocumentInterval, tt.settings.Index.DocumentInterval)
 				}
 			}
 		})

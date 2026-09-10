@@ -64,8 +64,8 @@ type Config struct {
 	// Kafka is Loki's root kafka_config, injected by the module wiring rather
 	// than configured here, so there is only one kafka section in the config
 	// file and only one set of -kafka.* flags.
-	Kafka   kafka.Config  `yaml:"-"`
-	Logline LoglineConfig `yaml:"logline"`
+	Kafka kafka.Config `yaml:"-"`
+	Index IndexConfig  `yaml:"index"`
 
 	FlushOnIdle   time.Duration `yaml:"flush_on_idle"`
 	FlushOnMaxAge time.Duration `yaml:"flush_on_max_age"`
@@ -128,14 +128,14 @@ type Config struct {
 	disableStaticMembership bool `yaml:"-"`
 }
 
-type LoglineConfig struct {
+type IndexConfig struct {
 	NgramLength      int           `yaml:"ngram_length"`
 	DocumentInterval time.Duration `yaml:"document_interval"`
 	ShardCount       int           `yaml:"shard_count"`
 	ShardAlgorithm   string        `yaml:"shard_algorithm"`
-	// IndexVersion is the format version written to meta.json.
+	// Version is the format version written to meta.json.
 	// Defaults to logline.CurrentVersion ("v3").
-	IndexVersion string `yaml:"index_version"`
+	Version string `yaml:"index_version"`
 	// DensityThreshold filters n-grams covering more than this fraction of a
 	// full day's documents (24h / DocumentInterval). 0 = use the format
 	// version's built-in default (v3 default: 0.20).
@@ -149,17 +149,17 @@ func (c *Config) RegisterFlags(f *flag.FlagSet) {
 	}
 
 	// Builder-specific flags
-	f.IntVar(&c.Logline.NgramLength, "logline-index-builder.ngram-length", DefaultNgramLength,
+	f.IntVar(&c.Index.NgramLength, "logline-index-builder.ngram-length", DefaultNgramLength,
 		"N-gram length for feature extraction")
-	f.DurationVar(&c.Logline.DocumentInterval, "logline-index-builder.document-interval", DefaultDocumentInterval,
+	f.DurationVar(&c.Index.DocumentInterval, "logline-index-builder.document-interval", DefaultDocumentInterval,
 		"Time range each document covers (e.g., 100ms, 1s)")
-	f.IntVar(&c.Logline.ShardCount, "logline-index-builder.shard-count", 0,
+	f.IntVar(&c.Index.ShardCount, "logline-index-builder.shard-count", 0,
 		"Number of ngram shards per date bucket. 0 or 1 disables sharding (single file per date).")
-	f.StringVar(&c.Logline.ShardAlgorithm, "logline-index-builder.shard-algorithm", "murmur3_mix",
+	f.StringVar(&c.Index.ShardAlgorithm, "logline-index-builder.shard-algorithm", "murmur3_mix",
 		"Shard algorithm for ngram routing. Valid values: first_byte, murmur3_mix.")
-	f.StringVar(&c.Logline.IndexVersion, "logline-index-builder.index-version", "",
+	f.StringVar(&c.Index.Version, "logline-index-builder.index-version", "",
 		"Index format version string written to meta.json (defaults to current version)")
-	f.Float64Var(&c.Logline.DensityThreshold, "logline-index-builder.density-threshold", 0,
+	f.Float64Var(&c.Index.DensityThreshold, "logline-index-builder.density-threshold", 0,
 		"Filter n-grams covering more than this fraction of a full day's documents (0 = use format default; v3 default is 0.20)")
 	f.DurationVar(&c.FlushOnIdle, "logline-index-builder.flush-on-idle", DefaultIdleFlushTimeout,
 		"Duration of inactivity before flushing")
@@ -254,34 +254,34 @@ func (c *Config) Validate() error {
 			MaxExtractThreads, c.ExtractThreads)
 	}
 
-	if c.Logline.NgramLength == 0 {
-		c.Logline.NgramLength = DefaultNgramLength
+	if c.Index.NgramLength == 0 {
+		c.Index.NgramLength = DefaultNgramLength
 	}
 
 	// radixSortByNgram orders only the first 6 key bytes and assumes bytes 6-7
 	// are zero. A 7- or 8-byte ngram would mis-sort runs, and the flush merge
 	// would then wedge the retry loop at the writer's ascending-term check;
 	// anything longer extracts zero ngrams and silently commits empty cycles.
-	if c.Logline.NgramLength < 1 || c.Logline.NgramLength > 6 {
-		return fmt.Errorf("ngram_length must be between 1 and 6 (the radix sort orders only the first 6 ngram bytes), got %d", c.Logline.NgramLength)
+	if c.Index.NgramLength < 1 || c.Index.NgramLength > 6 {
+		return fmt.Errorf("ngram_length must be between 1 and 6 (the radix sort orders only the first 6 ngram bytes), got %d", c.Index.NgramLength)
 	}
 
-	if c.Logline.DocumentInterval == 0 {
-		c.Logline.DocumentInterval = DefaultDocumentInterval
+	if c.Index.DocumentInterval == 0 {
+		c.Index.DocumentInterval = DefaultDocumentInterval
 	}
 
-	if c.Logline.IndexVersion == "" {
-		c.Logline.IndexVersion = logline.CurrentVersion
+	if c.Index.Version == "" {
+		c.Index.Version = logline.CurrentVersion
 	}
 
 	// Default density threshold: 0.20 (terms in >20% of a day's docs become sentinels).
-	if c.Logline.DensityThreshold == 0 {
-		c.Logline.DensityThreshold = 0.20
+	if c.Index.DensityThreshold == 0 {
+		c.Index.DensityThreshold = 0.20
 	}
 
 	// The index-defining settings (version, interval, sharding) are validated
 	// in one place only, after the defaults above have been applied.
-	if err := validateLoglineIndexSettings(c.Logline); err != nil {
+	if err := validateIndexSettings(c.Index); err != nil {
 		return err
 	}
 
@@ -323,14 +323,14 @@ func (c *Config) Validate() error {
 	return nil
 }
 
-// validateLoglineIndexSettings checks the index-defining settings (version,
+// validateIndexSettings checks the index-defining settings (version,
 // interval, sharding) as a unit. It is the single owner of these checks;
 // Config.Validate applies defaults and delegates here.
-func validateLoglineIndexSettings(settings LoglineConfig) error {
-	if settings.IndexVersion == "" {
+func validateIndexSettings(settings IndexConfig) error {
+	if settings.Version == "" {
 		return fmt.Errorf("index_version is required")
 	}
-	if err := logline.ValidateVersion(settings.IndexVersion); err != nil {
+	if err := logline.ValidateVersion(settings.Version); err != nil {
 		return fmt.Errorf("invalid index_version: %w", err)
 	}
 	if settings.DocumentInterval < MinDocumentInterval {

@@ -1839,7 +1839,7 @@ logline:
     [min_date: <string> | default = ""]
 
   index_builder:
-    logline:
+    index:
       # N-gram length for feature extraction
       # CLI flag: -logline-index-builder.ngram-length
       [ngram_length: <int> | default = 6]

@@ -27,7 +27,7 @@ func TestBuilder_Flush_EmptyBuilder(t *testing.T) {
 			ConsumerGroup:              "test-group",
 			ProducerMaxRecordSizeBytes: 15 * 1024 * 1024,
 		},
-		Logline: LoglineConfig{
+		Index: IndexConfig{
 			DocumentInterval: 100 * time.Millisecond,
 			NgramLength:      3},
 		FlushOnIdle:   1 * time.Minute,
@@ -62,7 +62,7 @@ func TestBuilder_ProcessStream_WithData(t *testing.T) {
 			ConsumerGroup:              "test-group",
 			ProducerMaxRecordSizeBytes: 15 * 1024 * 1024,
 		},
-		Logline: LoglineConfig{
+		Index: IndexConfig{
 			DocumentInterval: 100 * time.Millisecond,
 			NgramLength:      3},
 		FlushOnIdle:   1 * time.Minute,
@@ -105,9 +105,9 @@ func TestBuilder_V3ExtractsLabelValues(t *testing.T) {
 			ConsumerGroup:              "test-group",
 			ProducerMaxRecordSizeBytes: 15 * 1024 * 1024,
 		},
-		Logline: LoglineConfig{
+		Index: IndexConfig{
 			DocumentInterval: 100 * time.Millisecond,
-			IndexVersion:     "v3",
+			Version:          "v3",
 			NgramLength:      6,
 		},
 		FlushOnMaxBytes: 4096,
@@ -157,7 +157,7 @@ func TestBuilder_FlushIntegration(t *testing.T) {
 			ConsumerGroup:              "test-group",
 			ProducerMaxRecordSizeBytes: 15 * 1024 * 1024,
 		},
-		Logline: LoglineConfig{
+		Index: IndexConfig{
 			// 200ms: divides 24h, and its docID window (epoch + 2^32 ticks ≈
 			// 27y) ends comfortably past Validate's one-year future runway.
 			DocumentInterval: 200 * time.Millisecond,
@@ -222,7 +222,7 @@ func TestBuilder_ProcessStream_MultipleEntries(t *testing.T) {
 			ConsumerGroup:              "test-group",
 			ProducerMaxRecordSizeBytes: 15 * 1024 * 1024,
 		},
-		Logline: LoglineConfig{
+		Index: IndexConfig{
 			DocumentInterval: 100 * time.Millisecond,
 			NgramLength:      3},
 		FlushOnIdle:   1 * time.Minute,
@@ -282,7 +282,7 @@ func TestProcessStream_FutureEntriesGetOwnBucket(t *testing.T) {
 			ConsumerGroup:              "test-group",
 			ProducerMaxRecordSizeBytes: 15 * 1024 * 1024,
 		},
-		Logline: LoglineConfig{
+		Index: IndexConfig{
 			DocumentInterval: 100 * time.Millisecond,
 			NgramLength:      3},
 		FlushOnIdle:   1 * time.Minute,
@@ -353,7 +353,7 @@ func BenchmarkProcessStream(b *testing.B) {
 			ConsumerGroup:              "bench-group",
 			ProducerMaxRecordSizeBytes: 15 * 1024 * 1024,
 		},
-		Logline: LoglineConfig{
+		Index: IndexConfig{
 			DocumentInterval: DefaultDocumentInterval,
 			NgramLength:      DefaultNgramLength,
 		},
@@ -441,7 +441,7 @@ func BenchmarkProcessStream_NoFlush(b *testing.B) {
 			ConsumerGroup:              "bench-group",
 			ProducerMaxRecordSizeBytes: 15 * 1024 * 1024,
 		},
-		Logline: LoglineConfig{
+		Index: IndexConfig{
 			DocumentInterval: DefaultDocumentInterval,
 			NgramLength:      DefaultNgramLength,
 		},
@@ -516,7 +516,7 @@ func BenchmarkProcessStream_ParallelConsumers(b *testing.B) {
 				ConsumerGroup:              "bench-group",
 				ProducerMaxRecordSizeBytes: 15 * 1024 * 1024,
 			},
-			Logline: LoglineConfig{
+			Index: IndexConfig{
 				DocumentInterval: DefaultDocumentInterval,
 				NgramLength:      DefaultNgramLength,
 			},
@@ -615,7 +615,7 @@ func TestBuilder_TracksDateRanges(t *testing.T) {
 			ConsumerGroup:              "test-group",
 			ProducerMaxRecordSizeBytes: 15 * 1024 * 1024,
 		},
-		Logline: LoglineConfig{
+		Index: IndexConfig{
 			DocumentInterval: 100 * time.Millisecond,
 			NgramLength:      3},
 		FlushOnIdle:   1 * time.Minute,
@@ -667,7 +667,7 @@ func TestBuilder_QueueTimestampInObjectKey(t *testing.T) {
 			ConsumerGroup:              "test-group",
 			ProducerMaxRecordSizeBytes: 15 * 1024 * 1024,
 		},
-		Logline: LoglineConfig{
+		Index: IndexConfig{
 			DocumentInterval: 100 * time.Millisecond,
 			NgramLength:      3},
 		FlushOnIdle:   1 * time.Minute,
@@ -741,7 +741,7 @@ func TestBuilder_OutOfWindowTimestamps_Panic(t *testing.T) {
 			ConsumerGroup:              "test-group",
 			ProducerMaxRecordSizeBytes: 15 * 1024 * 1024,
 		},
-		Logline: LoglineConfig{
+		Index: IndexConfig{
 			DocumentInterval: 100 * time.Millisecond,
 			NgramLength:      3},
 		FlushOnIdle:   1 * time.Minute,
@@ -768,7 +768,7 @@ func TestBuilder_OutOfWindowTimestamps_Panic(t *testing.T) {
 		_ = builder.processStream(stream, parseLabelsOrNil(stream.Labels), time.Now(), ref)
 	}
 
-	windowEnd := docIDWindowEnd(cfg.Logline.DocumentInterval)
+	windowEnd := docIDWindowEnd(cfg.Index.DocumentInterval)
 	require.Panics(t, func() { process(docIDEpoch.Add(-time.Second), recordRef{}) },
 		"pre-epoch timestamp must panic")
 	require.Panics(t, func() { process(windowEnd, recordRef{}) },
@@ -795,7 +795,7 @@ func TestBuilder_OutOfWindowTimestamps_Panic(t *testing.T) {
 	// The window boundaries themselves are representable: the epoch is tick 0
 	// and the last interval before the end is tick 2^32-1.
 	require.NotPanics(t, func() { process(docIDEpoch, recordRef{}) })
-	require.NotPanics(t, func() { process(windowEnd.Add(-cfg.Logline.DocumentInterval), recordRef{}) })
+	require.NotPanics(t, func() { process(windowEnd.Add(-cfg.Index.DocumentInterval), recordRef{}) })
 }
 
 func TestBuilder_MinDate_DropsOldEntries(t *testing.T) {
@@ -808,7 +808,7 @@ func TestBuilder_MinDate_DropsOldEntries(t *testing.T) {
 			ConsumerGroup:              "test-group",
 			ProducerMaxRecordSizeBytes: 15 * 1024 * 1024,
 		},
-		Logline: LoglineConfig{
+		Index: IndexConfig{
 			DocumentInterval: 100 * time.Millisecond,
 			NgramLength:      3},
 		FlushOnIdle:   1 * time.Minute,
@@ -866,7 +866,7 @@ func TestNewIndexBuilder_RejectsPreEpochMinDate(t *testing.T) {
 			ConsumerGroup:              "test-group",
 			ProducerMaxRecordSizeBytes: 15 * 1024 * 1024,
 		},
-		Logline: LoglineConfig{
+		Index: IndexConfig{
 			DocumentInterval: 100 * time.Millisecond,
 			NgramLength:      3},
 		FlushOnIdle:   1 * time.Minute,

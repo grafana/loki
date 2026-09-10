@@ -294,8 +294,8 @@ func BenchmarkCapturedPipeline(b *testing.B) {
 
 	newBuilder := func(b *testing.B) *indexBuilder {
 		cfg := Config{
-			Logline: LoglineConfig{
-				IndexVersion:     "v3",
+			Index: IndexConfig{
+				Version:          "v3",
 				DocumentInterval: 100 * time.Millisecond,
 				NgramLength:      6,
 			},
@@ -452,8 +452,8 @@ func BenchmarkPartitionComparison(b *testing.B) {
 
 		newBld := func(b *testing.B) *indexBuilder {
 			cfg := Config{
-				Logline: LoglineConfig{
-					IndexVersion:     "v3",
+				Index: IndexConfig{
+					Version:          "v3",
 					DocumentInterval: 250 * time.Millisecond,
 					NgramLength:      6,
 				},
@@ -597,8 +597,8 @@ func runBuilderE2E(t *testing.T, records []capturedRecord, decoder *kafka.Decode
 		extractThreads = n
 	}
 	cfg := Config{
-		Logline: LoglineConfig{
-			IndexVersion:     "v3",
+		Index: IndexConfig{
+			Version:          "v3",
 			DocumentInterval: 100 * time.Millisecond,
 			ShardCount:       shardCount,
 			NgramLength:      6,
@@ -611,7 +611,7 @@ func runBuilderE2E(t *testing.T, records []capturedRecord, decoder *kafka.Decode
 		ScratchDir:             t.TempDir(),
 	}
 	if shardCount > 1 {
-		cfg.Logline.ShardAlgorithm = "murmur3_mix"
+		cfg.Index.ShardAlgorithm = "murmur3_mix"
 	}
 	builder, err := newIndexBuilder(cfg, "2026-01-01", log.NewNopLogger(), NewMetrics(prometheus.NewRegistry()))
 	if err != nil {

@@ -135,23 +135,23 @@ type indexBuilder struct {
 // newIndexBuilder creates a new indexBuilder. Scratch directory creation and
 // cleanup are handled by Service.starting().
 func newIndexBuilder(cfg Config, minDate string, logger log.Logger, metrics *Metrics) (*indexBuilder, error) {
-	extractFn, err := logline.ExtractorForVersion(cfg.Logline.IndexVersion)
+	extractFn, err := logline.ExtractorForVersion(cfg.Index.Version)
 	if err != nil {
-		return nil, fmt.Errorf("resolve extractor for index version %q: %w", cfg.Logline.IndexVersion, err)
+		return nil, fmt.Errorf("resolve extractor for index version %q: %w", cfg.Index.Version, err)
 	}
 
 	shardFn := shard.Noop
-	if cfg.Logline.ShardCount > 1 {
-		fn, err := shard.New(cfg.Logline.ShardAlgorithm)
+	if cfg.Index.ShardCount > 1 {
+		fn, err := shard.New(cfg.Index.ShardAlgorithm)
 		if err != nil {
-			return nil, fmt.Errorf("create shard func %q: %w", cfg.Logline.ShardAlgorithm, err)
+			return nil, fmt.Errorf("create shard func %q: %w", cfg.Index.ShardAlgorithm, err)
 		}
 		shardFn = fn
 	}
 
-	intervalNanos := cfg.Logline.DocumentInterval.Nanoseconds()
+	intervalNanos := cfg.Index.DocumentInterval.Nanoseconds()
 	if intervalNanos <= 0 {
-		return nil, fmt.Errorf("document interval must be positive, got %s", cfg.Logline.DocumentInterval)
+		return nil, fmt.Errorf("document interval must be positive, got %s", cfg.Index.DocumentInterval)
 	}
 
 	// A min_date at or after the docID epoch is what makes the PRE-epoch panic
@@ -193,9 +193,9 @@ func newIndexBuilder(cfg Config, minDate string, logger log.Logger, metrics *Met
 		bufferPairs:    cfg.PostingsBufferPairs,
 		spillWatermark: cfg.PostingsSpillWatermark,
 		intervalNanos:  intervalNanos,
-		ticksPerDay:    uint64((24 * time.Hour) / cfg.Logline.DocumentInterval),
+		ticksPerDay:    uint64((24 * time.Hour) / cfg.Index.DocumentInterval),
 		baseBucket:     epochBucket(docIDEpoch, intervalNanos),
-		shardCount:     cfg.Logline.ShardCount,
+		shardCount:     cfg.Index.ShardCount,
 		shardFn:        shardFn,
 		scratchDir:     runDir,
 	}
@@ -205,7 +205,7 @@ func newIndexBuilder(cfg Config, minDate string, logger log.Logger, metrics *Met
 		c.runPrefix = runPrefix
 		return &streamIngester{
 			minDate:            minDate,
-			ngramLength:        cfg.Logline.NgramLength,
+			ngramLength:        cfg.Index.NgramLength,
 			extractFn:          extractFn,
 			postings:           newPostingsBuffer(c),
 			dateRanges:         make(map[string]*dateRange),
@@ -515,12 +515,12 @@ func (s *indexBuilder) prepareIndexes() ([]fileInfo, error) {
 	dates := s.unionDateRanges()
 
 	writerCfg := format.WriterConfig{
-		DensityThreshold: float32(s.cfg.Logline.DensityThreshold),
-		DocumentInterval: s.cfg.Logline.DocumentInterval,
+		DensityThreshold: float32(s.cfg.Index.DensityThreshold),
+		DocumentInterval: s.cfg.Index.DocumentInterval,
 	}
 	runCount := len(runPaths)
 	mergeStart := time.Now()
-	merged, err := host.mergeRuns(s.runDir, s.cfg.Logline.IndexVersion, writerCfg, runPaths)
+	merged, err := host.mergeRuns(s.runDir, s.cfg.Index.Version, writerCfg, runPaths)
 	if err != nil {
 		s.discardIndexes()
 		return nil, fmt.Errorf("merge runs: %w", err)
@@ -654,7 +654,7 @@ func (s *indexBuilder) estimatedMemoryBytes() uint64 {
 // running it returns the busiest worker's date count (reading the maps would
 // race); after the drain barrier it is the exact union.
 func (s *indexBuilder) bucketCount() int {
-	shards := max(s.cfg.Logline.ShardCount, 1)
+	shards := max(s.cfg.Index.ShardCount, 1)
 	if s.pipeline != nil {
 		if s.pipeline.drained() {
 			return len(s.unionDateRanges()) * shards

@@ -64,9 +64,9 @@ func setupKafkaTest(t *testing.T) (*kfake.Cluster, Config) {
 			ConsumerGroup:              "test-group",
 			ProducerMaxRecordSizeBytes: kafka.MaxProducerRecordDataBytesLimit,
 		},
-		Logline: LoglineConfig{
+		Index: IndexConfig{
 			DocumentInterval: 100 * time.Millisecond,
-			IndexVersion:     "v3",
+			Version:          "v3",
 			DensityThreshold: 0.20,
 			NgramLength:      3,
 		},
@@ -213,7 +213,7 @@ func TestService_New_MissingKafkaAddress(t *testing.T) {
 			ConsumerGroup:              "test-group",
 			ProducerMaxRecordSizeBytes: 15 * 1024 * 1024,
 		},
-		Logline: LoglineConfig{
+		Index: IndexConfig{
 			DocumentInterval: 100 * time.Millisecond,
 			NgramLength:      3},
 
@@ -769,9 +769,9 @@ func TestService_PollErrorDoesNotDropHealthyPartitionRecords(t *testing.T) {
 			ConsumerGroup:              "test-group-poll-err",
 			ProducerMaxRecordSizeBytes: kafka.MaxProducerRecordDataBytesLimit,
 		},
-		Logline: LoglineConfig{
+		Index: IndexConfig{
 			DocumentInterval: 100 * time.Millisecond,
-			IndexVersion:     "v3",
+			Version:          "v3",
 			DensityThreshold: 0.20,
 			NgramLength:      3,
 		},
@@ -835,7 +835,7 @@ func TestService_MultiPartitionConsumption(t *testing.T) {
 			ConsumerGroup:              "test-group-multi",
 			ProducerMaxRecordSizeBytes: kafka.MaxProducerRecordDataBytesLimit,
 		},
-		Logline: LoglineConfig{
+		Index: IndexConfig{
 			DocumentInterval: 100 * time.Millisecond,
 			NgramLength:      3,
 		},
@@ -934,9 +934,9 @@ func TestShouldFlush_MemoryBytes(t *testing.T) {
 			ConsumerGroup:              "test-group",
 			ProducerMaxRecordSizeBytes: 15 * 1024 * 1024,
 		},
-		Logline: LoglineConfig{
+		Index: IndexConfig{
 			DocumentInterval: 100 * time.Millisecond,
-			IndexVersion:     "v3",
+			Version:          "v3",
 			NgramLength:      3,
 		},
 		ScratchDir:      tmpDir,

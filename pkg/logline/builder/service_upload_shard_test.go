@@ -27,10 +27,10 @@ func TestService_UploadSetsShardMeta(t *testing.T) {
 
 	cfg := baseCfg
 	cfg.ScratchDir = tmpDir
-	cfg.Logline.ShardCount = 4
-	cfg.Logline.ShardAlgorithm = "first_byte"
-	cfg.Logline.NgramLength = 6
-	cfg.Logline.DocumentInterval = 100 * time.Millisecond
+	cfg.Index.ShardCount = 4
+	cfg.Index.ShardAlgorithm = "first_byte"
+	cfg.Index.NgramLength = 6
+	cfg.Index.DocumentInterval = 100 * time.Millisecond
 	require.NoError(t, cfg.Validate())
 
 	bucket := objstore.NewInMemBucket()

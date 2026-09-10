@@ -22,7 +22,7 @@ func makeShardedConfig(t *testing.T, shardCount int) Config {
 			ConsumerGroup:              "test-group",
 			ProducerMaxRecordSizeBytes: 15 * 1024 * 1024,
 		},
-		Logline: LoglineConfig{
+		Index: IndexConfig{
 			DocumentInterval: 100 * time.Millisecond,
 			NgramLength:      6,
 			ShardCount:       shardCount,
@@ -129,7 +129,7 @@ func TestBuilder_Sharded_NgramRouting(t *testing.T) {
 
 func TestBuilder_Sharded_LabelValueRouting(t *testing.T) {
 	cfg := makeShardedConfig(t, 2)
-	cfg.Logline.IndexVersion = "v3"
+	cfg.Index.Version = "v3"
 	b, err := newIndexBuilder(cfg, "2026-01-01", log.NewNopLogger(), NewMetrics(prometheus.NewRegistry()))
 	require.NoError(t, err)
 

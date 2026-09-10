@@ -1040,15 +1040,15 @@ func (s *Service) uploadPartialIndexes(ctx context.Context, files []fileInfo) er
 			meta := store.Meta{
 				StorageID:        f.storageID,
 				Date:             f.date,
-				Version:          s.cfg.Logline.IndexVersion,
+				Version:          s.cfg.Index.Version,
 				MinLogTs:         f.minLogTs,
 				MaxLogTs:         f.maxLogTs,
 				MinRecordTs:      f.minEnqueuedTime,
 				MaxRecordTs:      f.maxEnqueuedTime,
-				ShardCount:       s.cfg.Logline.ShardCount,
-				ShardAlgorithm:   s.cfg.Logline.ShardAlgorithm,
+				ShardCount:       s.cfg.Index.ShardCount,
+				ShardAlgorithm:   s.cfg.Index.ShardAlgorithm,
 				ShardValue:       f.shardValue,
-				DocumentInterval: s.cfg.Logline.DocumentInterval,
+				DocumentInterval: s.cfg.Index.DocumentInterval,
 			}
 			if err := meta.SetFileInfo(f.file); err != nil {
 				return fmt.Errorf("failed to populate file info: %w", err)

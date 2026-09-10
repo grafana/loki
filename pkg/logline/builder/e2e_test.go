@@ -50,7 +50,7 @@ func TestE2E(t *testing.T) {
 			ConsumerGroup:              "test-group",
 			ProducerMaxRecordSizeBytes: 15 * 1024 * 1024,
 		},
-		Logline: LoglineConfig{
+		Index: IndexConfig{
 			DocumentInterval: 100 * time.Millisecond,
 			NgramLength:      6,
 		},
@@ -146,7 +146,7 @@ func TestE2E_DecodeErrorFailsFast(t *testing.T) {
 			ConsumerGroup:              "test-decode-fail-group",
 			ProducerMaxRecordSizeBytes: 15 * 1024 * 1024,
 		},
-		Logline: LoglineConfig{
+		Index: IndexConfig{
 			DocumentInterval: 100 * time.Millisecond,
 			NgramLength:      6,
 		},
@@ -217,7 +217,7 @@ func TestE2E_GracefulShutdownFlush(t *testing.T) {
 			ConsumerGroup:              "test-shutdown-group",
 			ProducerMaxRecordSizeBytes: 15 * 1024 * 1024,
 		},
-		Logline: LoglineConfig{
+		Index: IndexConfig{
 			DocumentInterval: 100 * time.Millisecond,
 			NgramLength:      6,
 		},
@@ -301,7 +301,7 @@ func TestE2E_OffsetCommit(t *testing.T) {
 			ConsumerGroup:              consumerGroup,
 			ProducerMaxRecordSizeBytes: 15 * 1024 * 1024,
 		},
-		Logline: LoglineConfig{
+		Index: IndexConfig{
 			DocumentInterval: 100 * time.Millisecond,
 			NgramLength:      6,
 		},

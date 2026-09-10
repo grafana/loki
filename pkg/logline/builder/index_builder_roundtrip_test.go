@@ -46,9 +46,9 @@ func roundTripConfig(t *testing.T, shardCount, bufferPairs int) Config {
 			ConsumerGroup:              "test-group",
 			ProducerMaxRecordSizeBytes: 15 * 1024 * 1024,
 		},
-		Logline: LoglineConfig{
+		Index: IndexConfig{
 			DocumentInterval: 100 * time.Millisecond,
-			IndexVersion:     "v3",
+			Version:          "v3",
 			DensityThreshold: -1, // disable the MatchesAll sentinel so every term lists docs
 			ShardCount:       shardCount,
 			NgramLength:      6,
@@ -58,7 +58,7 @@ func roundTripConfig(t *testing.T, shardCount, bufferPairs int) Config {
 		ScratchDir:    t.TempDir(),
 	}
 	if shardCount > 1 {
-		cfg.Logline.ShardAlgorithm = "murmur3_mix"
+		cfg.Index.ShardAlgorithm = "murmur3_mix"
 	}
 	require.NoError(t, cfg.Validate())
 	cfg.PostingsBufferPairs = bufferPairs
