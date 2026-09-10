@@ -1003,12 +1003,6 @@ func Test_MaxQuerySize_WithQueryLimitsContext(t *testing.T) {
 }
 
 func Test_MaxQuerySize_WithPlannedRanges(t *testing.T) {
-	schemas := []config.PeriodConfig{
-		{
-			From:      config.DayTime{Time: model.TimeFromUnix(testTime.Add(-48 * time.Hour).Unix())},
-			IndexType: types.IndexTypeTSDB,
-		},
-	}
 	query := `{app="foo"} |= "foo"`
 	reqStart := testTime.Add(-24 * time.Hour)
 	reqEnd := testTime
@@ -1167,9 +1161,7 @@ func Test_MaxQuerySize_WithPlannedRanges(t *testing.T) {
 				EndTs:     reqEnd,
 				Direction: logproto.FORWARD,
 				Path:      "/query_range",
-				Plan: &plan.QueryPlan{
-					AST: syntax.MustParseExpr(query),
-				},
+				Plan:      testutil.MustPlan(query),
 			}
 
 			ctx := user.InjectOrgID(context.Background(), "foo")
@@ -1184,7 +1176,7 @@ func Test_MaxQuerySize_WithPlannedRanges(t *testing.T) {
 				ctx = querylimits.InjectPlannedQueryRanges(ctx, tc.planned)
 			}
 
-			handler := NewQuerySizeLimiterMiddleware(schemas, testEngineOpts, util_log.Logger, fakeLimits{
+			handler := NewQuerySizeLimiterMiddleware(testEngineOpts, util_log.Logger, fakeLimits{
 				maxQueryBytesRead: tc.limit,
 			}, statsHandler).Wrap(promHandler)
 
@@ -1210,12 +1202,6 @@ func Test_MaxQuerySize_WithPlannedRanges(t *testing.T) {
 }
 
 func Test_MaxQuerierSize_IgnoresPlannedRanges(t *testing.T) {
-	schemas := []config.PeriodConfig{
-		{
-			From:      config.DayTime{Time: model.TimeFromUnix(testTime.Add(-48 * time.Hour).Unix())},
-			IndexType: types.IndexTypeTSDB,
-		},
-	}
 	query := `{app="foo"} |= "foo"`
 	splitStart := testTime.Add(-time.Hour)
 	splitEnd := testTime
@@ -1239,9 +1225,7 @@ func Test_MaxQuerierSize_IgnoresPlannedRanges(t *testing.T) {
 		EndTs:     splitEnd,
 		Direction: logproto.FORWARD,
 		Path:      "/query_range",
-		Plan: &plan.QueryPlan{
-			AST: syntax.MustParseExpr(query),
-		},
+		Plan:      testutil.MustPlan(query),
 	}
 
 	ctx := querylimits.InjectPlannedQueryRanges(
@@ -1249,7 +1233,7 @@ func Test_MaxQuerierSize_IgnoresPlannedRanges(t *testing.T) {
 		planned,
 	)
 
-	handler := NewQuerierSizeLimiterMiddleware(schemas, testEngineOpts, util_log.Logger, fakeLimits{
+	handler := NewQuerierSizeLimiterMiddleware(testEngineOpts, util_log.Logger, fakeLimits{
 		maxQuerierBytesRead: 1,
 	}, statsHandler).Wrap(queryrangebase.HandlerFunc(func(_ context.Context, _ queryrangebase.Request) (queryrangebase.Response, error) {
 		return &LokiPromResponse{
