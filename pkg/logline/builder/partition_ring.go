@@ -6,87 +6,76 @@ import (
 	"strconv"
 
 	"github.com/go-kit/log"
-	"github.com/grafana/dskit/dns"
-	"github.com/grafana/dskit/kv/codec"
-	"github.com/grafana/dskit/kv/memberlist"
+	"github.com/grafana/dskit/kv"
 	"github.com/grafana/dskit/ring"
 	"github.com/grafana/dskit/services"
-	"github.com/grafana/loki/v3/pkg/analytics"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 )
 
+// partitionRingName labels the builder's view of the producer partition ring.
+//
+// It is deliberately distinct from Loki's own watcher name
+// ("ingester-partitions") so the two sets of series stay separable, and it is
+// exported under the logline_ prefix.
+const partitionRingName = "logline-builder-partitions"
+
+// TODO(segflow): reuse Loki's partition ring watcher instead of running a second one.
+//
+// initPartitionRing already watches the same ring, on the same KV key, and
+// builder.New takes a ring.PartitionRingReader, so it could be handed Loki's
+// watcher directly and this type would go away.
+//
+// It is kept for now so the transition changes no metrics. Loki's watcher is
+// named "ingester-partitions" under the loki_ prefix, this one is
+// "logline-builder-partitions" under logline_, and this one attaches a delegate
+// exporting logline_partition_ring_active_partitions, a per-active-partition
+// gauge with no equivalent in Loki. Switching would rename two series and drop
+// a third.
+//
+// Note the delegate cannot simply be attached to Loki's watcher: that watcher
+// is shared with the ingester and querier paths.
 type PartitionRingWatcher struct {
 	services.Service
 
-	cfg    RingConfig
-	logger log.Logger
-	reg    prometheus.Registerer
+	kvCfg   kv.Config
+	ringKey string
+	logger  log.Logger
+	reg     prometheus.Registerer
 
-	kvInit  *memberlist.KVInitService
 	watcher *ring.PartitionRingWatcher
 }
 
-func NewPartitionRingWatcher(cfg RingConfig, logger log.Logger, reg prometheus.Registerer) *PartitionRingWatcher {
+// NewPartitionRingWatcher returns a watcher over the partition ring stored at
+// ringKey in the given KV store.
+func NewPartitionRingWatcher(kvCfg kv.Config, ringKey string, logger log.Logger, reg prometheus.Registerer) *PartitionRingWatcher {
 	svc := &PartitionRingWatcher{
-		cfg:    cfg,
-		logger: logger,
-		reg:    reg,
+		kvCfg:   kvCfg,
+		ringKey: ringKey,
+		logger:  logger,
+		reg:     reg,
 	}
 	svc.Service = services.NewBasicService(svc.starting, svc.running, svc.stopping).WithName("builder-partition-ring")
 	return svc
 }
 
-// starting initialises the memberlist KV and partition-ring watcher. Both
-// must reach the Running state before this service is considered Running,
-// so the balancer never sees a missing watcher.
+// starting builds the KV client and the partition-ring watcher. The watcher
+// must reach Running before this service does, so the balancer never sees a
+// missing watcher.
 func (s *PartitionRingWatcher) starting(ctx context.Context) error {
-	memberlistCfg := s.cfg.Memberlist
-	memberlistCfg.WatchPrefixBufferSize = s.cfg.WatcherBufferSize
-	// Register every codec used by other gossip participants in the
-	// shared Loki memberlist cluster, even ones we don't read:
-	//
-	//   - partitionRingDesc — the partition ring we actually consume.
-	//   - ringDesc          — Loki's standard rings (parquet/ring,
-	//                         rulers/ring, collectors/querier, ...).
-	//   - usagestats.jsonCodec — Loki analytics' usage stats seed,
-	//                         gossiped on keys like
-	//                         "partition-ingesters/usagestats_token".
-	//
-	// Without each codec, dskit logs
-	//   "failed to parse remote state: unknown codec for key"
-	// at ERROR on every gossip cycle and silently drops the value.
-	// Registering them makes the builder a well-behaved gossip member:
-	// it still doesn't *use* the foreign payloads, but memberlist can
-	// decode and re-broadcast them and the noise disappears. This is
-	// the same codec set log-template-service registers.
-	memberlistCfg.Codecs = []codec.Codec{
-		ring.GetPartitionRingCodec(),
-		ring.GetCodec(),
-		analytics.JSONCodec,
-	}
-
-	resolver := dns.NewProvider(dns.GolangResolverType, 0, log.With(s.logger, "component", "memberlist-dns"), s.reg)
-	s.kvInit = memberlist.NewKVInitService(&memberlistCfg, log.With(s.logger, "component", "memberlist-kv"), resolver, s.reg)
-	if err := s.kvInit.StartAsync(ctx); err != nil {
-		return fmt.Errorf("start memberlist kv init service: %w", err)
-	}
-	if err := s.kvInit.AwaitRunning(ctx); err != nil {
-		return fmt.Errorf("await memberlist kv init service running: %w", err)
-	}
-
-	kvStore, err := s.kvInit.GetMemberlistKV()
-	if err != nil {
-		return fmt.Errorf("get memberlist kv: %w", err)
-	}
-	client, err := memberlist.NewClient(kvStore, ring.GetPartitionRingCodec())
-	if err != nil {
-		return fmt.Errorf("create memberlist kv client: %w", err)
-	}
-
 	reg := prometheus.WrapRegistererWithPrefix("logline_", s.reg)
-	const partitionRingName = "logline-builder-partitions"
-	s.watcher = ring.NewPartitionRingWatcher(partitionRingName, s.cfg.Key, client, log.With(s.logger, "component", "partition-ring"), reg)
+
+	client, err := kv.NewClient(
+		s.kvCfg,
+		ring.GetPartitionRingCodec(),
+		kv.RegistererWithKVName(reg, partitionRingName+"-watcher"),
+		log.With(s.logger, "component", "partition-ring-kv"),
+	)
+	if err != nil {
+		return fmt.Errorf("create partition ring kv client: %w", err)
+	}
+
+	s.watcher = ring.NewPartitionRingWatcher(partitionRingName, s.ringKey, client, log.With(s.logger, "component", "partition-ring"), reg)
 
 	s.watcher.WithDelegate(newPartitionRingMetrics(reg, partitionRingName))
 	if err := s.watcher.StartAsync(ctx); err != nil {
@@ -106,11 +95,6 @@ func (s *PartitionRingWatcher) running(ctx context.Context) error {
 func (s *PartitionRingWatcher) stopping(_ error) error {
 	if s.watcher != nil {
 		if err := services.StopAndAwaitTerminated(context.Background(), s.watcher); err != nil {
-			return err
-		}
-	}
-	if s.kvInit != nil {
-		if err := services.StopAndAwaitTerminated(context.Background(), s.kvInit); err != nil {
 			return err
 		}
 	}

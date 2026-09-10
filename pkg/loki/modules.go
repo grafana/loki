@@ -56,6 +56,8 @@ import (
 	"github.com/grafana/loki/v3/pkg/limits"
 	limits_frontend "github.com/grafana/loki/v3/pkg/limits/frontend"
 	limitsproto "github.com/grafana/loki/v3/pkg/limits/proto"
+	loglinebuilder "github.com/grafana/loki/v3/pkg/logline/builder"
+	loglinestore "github.com/grafana/loki/v3/pkg/logline/store"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql"
 	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
@@ -153,6 +155,8 @@ const (
 	DataObjCompactionPlanner     = "dataobj-compaction-planner"
 	DataObjCompactionWorker      = "dataobj-compaction-worker"
 	ScratchStore                 = "scratch-store"
+	LoglineIndexBuilder          = "logline-index-builder"
+	LoglineBuilderPartitionRing  = "logline-index-builder-partition-ring"
 	UIRing                       = "ui-ring"
 	UI                           = "ui"
 	All                          = "all"
@@ -2675,4 +2679,52 @@ func (dh ignoreSignalHandler) Loop() {
 
 func (dh ignoreSignalHandler) Stop() {
 	close(dh)
+}
+
+func (t *Loki) initLoglineBuilderPartitionRing() (services.Service, error) {
+	logger := log.With(util_log.Logger, "module", LoglineIndexBuilder)
+
+	// The builder reads the producer partition ring the ingesters publish, so
+	// it watches the ingester partition ring key over Loki's memberlist. It
+	// keeps its own watcher rather than reusing t.PartitionRingWatcher so its
+	// logline_partition_ring_* metrics stay unchanged; see the TODO on
+	// builder.PartitionRingWatcher.
+	t.loglinePartitionRing = loglinebuilder.NewPartitionRingWatcher(
+		t.Cfg.Ingester.KafkaIngestion.PartitionRingConfig.KVStore,
+		ingester.PartitionRingKey,
+		logger,
+		prometheus.DefaultRegisterer,
+	)
+	return t.loglinePartitionRing, nil
+}
+
+func (t *Loki) initLoglineIndexBuilder() (services.Service, error) {
+	logger := log.With(util_log.Logger, "module", LoglineIndexBuilder)
+
+	indexStore, err := loglinestore.New(
+		context.Background(),
+		t.Cfg.SchemaConfig,
+		t.Cfg.StorageConfig.ObjectStore,
+		t.Cfg.Logline.Store,
+		logger,
+		prometheus.DefaultRegisterer,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("creating logline index store: %w", err)
+	}
+
+	// Kafka is copied in from the root kafka_config by applyLoglineKafkaConfig,
+	// so there is a single kafka section and a single set of -kafka.* flags.
+	svc, err := loglinebuilder.New(
+		indexStore,
+		t.Cfg.Logline.IndexBuilder,
+		t.Cfg.Logline.Store.MinDate,
+		t.loglinePartitionRing,
+		logger,
+		prometheus.DefaultRegisterer,
+	)
+	if err != nil {
+		return nil, err
+	}
+	return svc, nil
 }
