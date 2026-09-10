@@ -30,6 +30,18 @@ func TestNewStreamOrderKey_UsesShardBucket(t *testing.T) {
 	key, err := NewStreamOrderKey(ls, []string{"label:app"})
 	require.NoError(t, err)
 	require.Equal(t, streams.ShardBucket(ls), key.Shard)
+	require.Equal(t, streams.ShardBucketFromHash(key.Hash), key.Shard)
 	require.Equal(t, "auth", key.SchemaKey)
 	require.Equal(t, labels.StableHash(ls), key.Hash)
+}
+
+func TestNewStreamRemap_FillsSortFromOneHash(t *testing.T) {
+	ls := labels.FromStrings("app", "auth")
+	r, err := newStreamRemap(ls, []string{"label:app"})
+	require.NoError(t, err)
+	require.Zero(t, r.newID)
+	require.Equal(t, streams.ShardBucket(ls), r.Shard)
+	require.Equal(t, "auth", r.Key)
+	require.Equal(t, labels.StableHash(ls), r.Hash)
+	require.Equal(t, streams.ShardBucketFromHash(r.Hash), r.Shard)
 }
