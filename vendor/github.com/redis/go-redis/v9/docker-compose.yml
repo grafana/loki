@@ -1,6 +1,6 @@
 ---
 
-x-default-image: &default-image ${CLIENT_LIBS_TEST_IMAGE:-redislabs/client-libs-test:8.8.0}
+x-default-image: &default-image ${CLIENT_LIBS_TEST_IMAGE:-redislabs/client-libs-test:8.10.0}
 
 services:
   redis:

@@ -12,7 +12,7 @@ import (
 //
 // Validation allocates a validator per schema node and a result per check, so
 // the same handful of types are built and thrown away constantly. Recycling
-// them is what keeps validating a large specification affordable.
+// them keeps validating a large specification affordable.
 //
 // Build with the "poolsdebug" tag to have every borrow and redeem tracked:
 // misuse then panics where it happens rather than corrupting a pool, and

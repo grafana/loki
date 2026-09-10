@@ -26,23 +26,28 @@ import (
 var epoch = time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
 
 var (
-	// reInstant and reRange match the remainder of an `eval instant`/`eval range` line (after the
-	// mode keyword), capturing the trailing query to end of line.
+	// reInstant, reRange, and reSelect match the remainder of an `eval instant`/`eval range`/
+	// `eval select` line (after the mode keyword), capturing the trailing query to end of line.
 	reInstant = regexp.MustCompile(`^at\s+(\S+)\s+(.+)$`)
 	reRange   = regexp.MustCompile(`^from\s+(\S+)\s+to\s+(\S+)\s+step\s+(\S+)\s+(.+)$`)
+	reSelect  = regexp.MustCompile(`^from\s+(\S+)\s+to\s+(\S+)\s+((?i:forward|backward))\s+(.+)$`)
 
-	// reAt, reRepeat and reMetadata are anchored to the head so each load-line directive matches
+	// reAt, reRepeat, reMetadata and reParsed are anchored to the head so each line directive matches
 	// only its own leading segment and can never reach into a later [metadata …] value.
 	reAt       = regexp.MustCompile(`^\s*@\s*(\S+)`)
 	reRepeat   = regexp.MustCompile(`^\s*\[repeat every\s+(\S+)\s+for\s+(\d+)\]`)
 	reMetadata = regexp.MustCompile(`^\s*\[metadata\s+(.*?)\]`)
+	reParsed   = regexp.MustCompile(`^\s*\[parsed\s+(.*?)\]`)
 
 	// reSkip matches a `skip <what> on "<stack>"` directive in an expectation block.
 	reSkip = regexp.MustCompile(`^skip\s+(\S+)\s+on\s+"([^"]+)"$`)
 
-	// reMetadataKeyValue scans the key="value" pairs inside an already-extracted metadata block; it
-	// is intentionally not anchored.
-	reMetadataKeyValue = regexp.MustCompile(`(?:"([^"]*)"|([^\s"=]+))="([^"]*)"`)
+	// reValuesToleration matches an `expect values-toleration <epsilon> on "<stack>"` directive.
+	reValuesToleration = regexp.MustCompile(`^expect\s+values-toleration\s+(\S+)\s+on\s+"([^"]+)"$`)
+
+	// reKeyValuePairs scans the key="value" pairs inside an already-extracted [metadata …] or
+	// [parsed …] block; it is intentionally not anchored.
+	reKeyValuePairs = regexp.MustCompile(`(?:"([^"]*)"|([^\s"=]+))="([^"]*)"`)
 )
 
 type streamsParser struct {
@@ -173,48 +178,89 @@ func splitQuoted(s string) (text, rest string, err error) {
 }
 
 // parseMetadata extracts the optional `[metadata key="value" ...]` block, returning the parsed
-// metadata and `rest` with that block removed. A block that is present but malformed (e.g. an
-// unquoted value) is an error rather than silently dropped.
+// metadata and `rest` with that block removed.
 func parseMetadata(rest string) ([]logproto.LabelAdapter, string, error) {
-	m := reMetadata.FindStringSubmatch(rest)
+	metadata, rest, err := parseLabelClause(rest, reMetadata)
+	if err != nil {
+		return nil, rest, fmt.Errorf("[metadata ...]: %w", err)
+	}
+	return metadata, rest, nil
+}
+
+// parseParsed extracts the optional `[parsed key="value" ...]` block, returning the parsed labels
+// and `rest` with that block removed. Unlike metadata, parsed labels are produced by the query
+// pipeline rather than loaded, so this clause is valid only on an expectation line.
+func parseParsed(rest string) ([]logproto.LabelAdapter, string, error) {
+	parsed, rest, err := parseLabelClause(rest, reParsed)
+	if err != nil {
+		return nil, rest, fmt.Errorf("[parsed ...]: %w", err)
+	}
+	return parsed, rest, nil
+}
+
+// parseLabelClause extracts an optional `[<clause> key="value" ...]` block matched by re, returning
+// its labels and `rest` with that block removed. A block that is present but malformed (e.g. an
+// unquoted value) is an error rather than silently dropped.
+//
+// Errors name only what is wrong inside the block; the caller wraps them with the clause it was
+// reading.
+func parseLabelClause(rest string, re *regexp.Regexp) ([]logproto.LabelAdapter, string, error) {
+	m := re.FindStringSubmatch(rest)
 	if m == nil {
 		return nil, rest, nil
 	}
 	inner := strings.TrimSpace(m[1])
 	var out []logproto.LabelAdapter
-	for _, kv := range reMetadataKeyValue.FindAllStringSubmatch(inner, -1) {
+	for _, kv := range reKeyValuePairs.FindAllStringSubmatch(inner, -1) {
 		key := kv[1]
 		if key == "" {
 			key = kv[2]
 		}
 		if key == "" {
-			return nil, rest, fmt.Errorf("empty metadata key in %q", inner)
+			return nil, rest, fmt.Errorf("empty key in %q", inner)
 		}
 		out = append(out, logproto.LabelAdapter{Name: key, Value: kv[3]})
 	}
 	// Every token inside the block must be a key="value" pair; anything left over is malformed.
-	if leftover := strings.TrimSpace(reMetadataKeyValue.ReplaceAllString(inner, "")); leftover != "" {
-		return nil, rest, fmt.Errorf("invalid metadata %q: expected key=\"value\" pairs", inner)
+	if leftover := strings.TrimSpace(reKeyValuePairs.ReplaceAllString(inner, "")); leftover != "" {
+		return nil, rest, fmt.Errorf("invalid %q: expected key=\"value\" pairs", inner)
 	}
 	if len(out) == 0 {
-		return nil, rest, fmt.Errorf("empty [metadata ...] block")
+		return nil, rest, fmt.Errorf("block is empty")
 	}
 	return out, rest[len(m[0]):], nil
 }
 
+// evalMode is the kind of `eval` command: `instant`, `range` (both metric queries), or `select`
+// (a log-selection query, which has no notion of a step).
+type evalMode int
+
+const (
+	evalInstant evalMode = iota
+	evalRange
+	evalSelect
+)
+
 type evalCmd struct {
-	instant          bool
-	ts               time.Duration // instant queries
-	start, end, step time.Duration // range queries
+	mode             evalMode
+	ts               time.Duration      // instant queries
+	start, end, step time.Duration      // range and select queries
+	direction        logproto.Direction // select queries
 	query            string
 }
 
 // getTimeRange returns the query's [start, end] range and step.
 func (c evalCmd) getTimeRange() (start, end, step time.Duration) {
-	if c.instant {
+	switch c.mode {
+	case evalInstant:
 		return c.ts, c.ts, 0
+	case evalRange:
+		return c.start, c.end, c.step
+	case evalSelect:
+		return c.start, c.end, c.step
+	default:
+		panic(fmt.Sprintf("unknown eval mode %v", c.mode))
 	}
-	return c.start, c.end, c.step
 }
 
 func parseEval(line string) (evalCmd, error) {
@@ -229,7 +275,7 @@ func parseEval(line string) (evalCmd, error) {
 		if err != nil {
 			return evalCmd{}, fmt.Errorf("invalid instant time %q: %w", m[1], err)
 		}
-		return evalCmd{instant: true, ts: ts, query: strings.TrimSpace(m[2])}, nil
+		return evalCmd{mode: evalInstant, ts: ts, query: strings.TrimSpace(m[2])}, nil
 	case strings.HasPrefix(rest, "range"):
 		m := reRange.FindStringSubmatch(strings.TrimSpace(strings.TrimPrefix(rest, "range")))
 		if m == nil {
@@ -253,9 +299,33 @@ func parseEval(line string) (evalCmd, error) {
 		if end < start {
 			return evalCmd{}, fmt.Errorf("range end %q is before start %q", m[2], m[1])
 		}
-		return evalCmd{start: start, end: end, step: step, query: strings.TrimSpace(m[4])}, nil
+		return evalCmd{mode: evalRange, start: start, end: end, step: step, query: strings.TrimSpace(m[4])}, nil
+	case strings.HasPrefix(rest, "select"):
+		m := reSelect.FindStringSubmatch(strings.TrimSpace(strings.TrimPrefix(rest, "select")))
+		if m == nil {
+			return evalCmd{}, fmt.Errorf("malformed 'eval select': %q", line)
+		}
+		start, err := time.ParseDuration(m[1])
+		if err != nil {
+			return evalCmd{}, fmt.Errorf("invalid select start %q: %w", m[1], err)
+		}
+		end, err := time.ParseDuration(m[2])
+		if err != nil {
+			return evalCmd{}, fmt.Errorf("invalid select end %q: %w", m[2], err)
+		}
+		if end <= start {
+			return evalCmd{}, fmt.Errorf("select end %q must be after start %q", m[2], m[1])
+		}
+		direction := logproto.FORWARD
+		if strings.EqualFold(m[3], "backward") {
+			direction = logproto.BACKWARD
+		}
+		// A log-selection query has no notion of a step; use one step covering the whole
+		// window so a query that unexpectedly turns out to be a metric query fails fast
+		// (wrong result shape) instead of hanging the step evaluator on a zero step.
+		return evalCmd{mode: evalSelect, start: start, end: end, step: end - start, direction: direction, query: strings.TrimSpace(m[4])}, nil
 	default:
-		return evalCmd{}, fmt.Errorf("expected 'instant' or 'range' after eval: %q", line)
+		return evalCmd{}, fmt.Errorf("expected 'instant', 'range', or 'select' after eval: %q", line)
 	}
 }
 
@@ -274,29 +344,36 @@ const (
 )
 
 // expectations is the parsed expected result of an `eval` command: either a failure
-// assertion, a scalar value, an empty-result assertion, or a set of series (for
-// vector/matrix results).
+// assertion, a scalar value, an empty-result assertion, a set of series (for vector/matrix
+// results), or a set of log streams (for log-selection results).
 type expectations struct {
 	fail     bool
 	failKind failMatch
 	failText string
-	empty    bool // when set, the result must contain no series (`expect empty`)
+	empty    bool // when set, the result must contain no series/streams (`expect empty`)
 	ordered  bool // when set, series are compared positionally (for sort/sort_desc); instant only
 	scalar   *float64
 	series   []expectedSeries
+	streams  []expectedStream
 
 	// isValueComparisonSkipped holds the execution stacks (by name) whose result values are not
 	// compared, set by a `skip values-comparison on "<stack>"` directive. The stack still runs and
 	// must not error; only the value/series comparison is skipped.
 	isValueComparisonSkipped map[string]bool
+
+	// valuesToleration holds, for a stack named by an `expect values-toleration <epsilon> on
+	// "<stack>"` directive, the relative tolerance to use for that stack's value comparison
+	// instead of defaultEpsilon.
+	valuesToleration map[string]float64
 }
 
-// validate ensures an eval asserts exactly one result kind: series, a scalar, `expect empty`,
-// or `expect fail`. This catches a forgotten expectation block (which would otherwise pass
-// vacuously on an empty result) and contradictory combinations that would be silently ignored.
+// validate ensures an eval asserts exactly one result kind: series, log streams, a scalar,
+// `expect empty`, or `expect fail`. This catches a forgotten expectation block (which would
+// otherwise pass vacuously on an empty result) and contradictory combinations that would be
+// silently ignored.
 func (e expectations) validate() error {
 	kinds := 0
-	for _, set := range []bool{e.fail, e.empty, e.scalar != nil, len(e.series) > 0} {
+	for _, set := range []bool{e.fail, e.empty, e.scalar != nil, len(e.series) > 0, len(e.streams) > 0} {
 		if set {
 			kinds++
 		}
@@ -305,9 +382,9 @@ func (e expectations) validate() error {
 	case e.failKind != failAny && !e.fail:
 		return fmt.Errorf("failure qualifier set without `expect fail`")
 	case kinds == 0:
-		return fmt.Errorf("eval has no expectation: provide series, a scalar, `expect empty`, or `expect fail`")
+		return fmt.Errorf("eval has no expectation: provide series, log streams, a scalar, `expect empty`, or `expect fail`")
 	case kinds > 1:
-		return fmt.Errorf("conflicting expectations: use exactly one of series, a scalar, `expect empty`, or `expect fail`")
+		return fmt.Errorf("conflicting expectations: use exactly one of series, log streams, a scalar, `expect empty`, or `expect fail`")
 	case e.ordered && len(e.series) == 0:
 		return fmt.Errorf("`expect ordered` requires series")
 	}
@@ -321,6 +398,22 @@ type expectedSeries struct {
 	samples []sample
 }
 
+// expectedLogEntry is one expected log line within an expectedStream: its timestamp (as a
+// duration offset from the script epoch), text, structured metadata, and parsed labels.
+type expectedLogEntry struct {
+	ts       time.Duration
+	line     string
+	metadata labels.Labels
+	parsed   labels.Labels
+}
+
+// expectedStream is one expected output log stream (for a log-selection query): its label set
+// (in `{a="b"}` string form) and its expected log lines, in order.
+type expectedStream struct {
+	labels  string
+	entries []expectedLogEntry
+}
+
 type expectationsParser struct {
 	exp expectations
 }
@@ -330,7 +423,9 @@ func newExpectationsParser() *expectationsParser {
 }
 
 // parse consumes one expectation line: an `expect` annotation (`fail [msg:|regex:]` / `empty` /
-// `ordered`), a `{labels} p0 p1 ...` series line, or a bare scalar value.
+// `ordered` / `values-toleration <epsilon> on "<stack>"`), a `skip values-comparison on
+// "<stack>"` directive, a `{labels} p0 p1 ...` series line, a `{labels} "line" @ <ts>` log-stream
+// line, or a bare scalar value.
 func (p *expectationsParser) parse(line string) error {
 	switch {
 	case strings.HasPrefix(line, "expect fail"):
@@ -356,11 +451,34 @@ func (p *expectationsParser) parse(line string) error {
 			return fmt.Errorf("unsupported `expect fail` qualifier %q (use `msg:` or `regex:`)", body)
 		}
 	case line == "expect empty":
-		// The result must contain no series.
+		// The result must contain no series or streams.
 		p.exp.empty = true
 	case line == "expect ordered":
 		// Compare the following series positionally rather than as a set (for sort/sort_desc).
 		p.exp.ordered = true
+	case strings.HasPrefix(line, "expect values-toleration"):
+		m := reValuesToleration.FindStringSubmatch(line)
+		if m == nil {
+			return fmt.Errorf(`invalid values-toleration directive %q (use: expect values-toleration <epsilon> on "<stack>")`, line)
+		}
+		epsilon, err := strconv.ParseFloat(m[1], 64)
+		if err != nil || !(epsilon > 0) || math.IsInf(epsilon, 0) {
+			return fmt.Errorf("invalid values-toleration value %q: must be a positive, finite number", m[1])
+		}
+		stack := m[2]
+		if !isKnownStackName(stack) {
+			return fmt.Errorf("unknown stack %q in values-toleration directive (known: %s)", stack, strings.Join(stackNames, ", "))
+		}
+		if p.exp.isValueComparisonSkipped[stack] {
+			return fmt.Errorf("stack %q already has values-comparison skipped; cannot also set a toleration", stack)
+		}
+		if _, dup := p.exp.valuesToleration[stack]; dup {
+			return fmt.Errorf("duplicate values-toleration directive for stack %q", stack)
+		}
+		if p.exp.valuesToleration == nil {
+			p.exp.valuesToleration = map[string]float64{}
+		}
+		p.exp.valuesToleration[stack] = epsilon
 	case strings.HasPrefix(line, "expect "):
 		// Reject unrecognized `expect` annotations rather than silently skipping them,
 		// which would let a script assert something the harness never actually checks.
@@ -377,10 +495,19 @@ func (p *expectationsParser) parse(line string) error {
 		if !isKnownStackName(stack) {
 			return fmt.Errorf("unknown stack %q in skip directive (known: %s)", stack, strings.Join(stackNames, ", "))
 		}
+		if _, hasToleration := p.exp.valuesToleration[stack]; hasToleration {
+			return fmt.Errorf("stack %q already has a values-toleration; cannot also skip values-comparison", stack)
+		}
 		if p.exp.isValueComparisonSkipped == nil {
 			p.exp.isValueComparisonSkipped = map[string]bool{}
 		}
 		p.exp.isValueComparisonSkipped[stack] = true
+	case strings.HasPrefix(line, "{") && isLogLine(line):
+		lbls, entry, err := parseLogLine(line)
+		if err != nil {
+			return err
+		}
+		p.addLogEntry(lbls.String(), entry)
 	case strings.HasPrefix(line, "{"):
 		lbls, samples, err := parseSeriesLine(line)
 		if err != nil {
@@ -395,6 +522,19 @@ func (p *expectationsParser) parse(line string) error {
 		p.exp.scalar = &v
 	}
 	return nil
+}
+
+// addLogEntry appends one expected log line to the stream keyed by labels, creating it on first
+// use. Streams are compared as a set (see compareStreams), so a linear scan to find the matching
+// stream is fine for the handful of expected lines a test script ever has.
+func (p *expectationsParser) addLogEntry(labels string, entry expectedLogEntry) {
+	for i := range p.exp.streams {
+		if p.exp.streams[i].labels == labels {
+			p.exp.streams[i].entries = append(p.exp.streams[i].entries, entry)
+			return
+		}
+	}
+	p.exp.streams = append(p.exp.streams, expectedStream{labels: labels, entries: []expectedLogEntry{entry}})
 }
 
 // get returns the accumulated expectations.
@@ -428,6 +568,87 @@ func parseSeriesLine(line string) (labels.Labels, []sample, error) {
 		return labels.EmptyLabels(), nil, fmt.Errorf("series line %q has no sample values", line)
 	}
 	return lbls, samples, nil
+}
+
+// isLogLine reports whether an expectation line starting with '{' is a log-stream result line
+// (`{labels} "line" @ <ts>`) rather than a numeric series line (`{labels} p0 p1 ...`). The two
+// are unambiguous: no sample token (a float, `_`, `NaN`, `Inf`, or a `x`-expansion) can start
+// with a quote.
+func isLogLine(line string) bool {
+	_, rest, ok := strings.Cut(line, "}")
+	if !ok {
+		return false
+	}
+	rest = strings.TrimSpace(rest)
+	return strings.HasPrefix(rest, `"`) || strings.HasPrefix(rest, "`")
+}
+
+// parseLogLine parses an expected log-stream result line:
+// `{labels} "line" @ <ts> [metadata key="value" ...] [parsed key="value" ...]` (or a
+// backtick-delimited raw line). Mirrors the `load` line format (selector, quoted line, timestamp,
+// metadata), minus the load-only `[repeat ...]` clause and plus the result-only `[parsed ...]`.
+func parseLogLine(line string) (labels.Labels, expectedLogEntry, error) {
+	var none expectedLogEntry
+
+	line = strings.TrimSpace(line)
+	end := strings.IndexByte(line, '}')
+	if end < 0 {
+		return labels.EmptyLabels(), none, fmt.Errorf("unterminated label set")
+	}
+	lbls, err := parseSeriesLabels(line[:end+1])
+	if err != nil {
+		return labels.EmptyLabels(), none, err
+	}
+
+	text, rest, err := splitQuoted(line[end+1:])
+	if err != nil {
+		return labels.EmptyLabels(), none, err
+	}
+
+	m := reAt.FindStringSubmatch(rest)
+	if m == nil {
+		return labels.EmptyLabels(), none, fmt.Errorf("missing '@ <ts>' timestamp")
+	}
+	ts, err := time.ParseDuration(m[1])
+	if err != nil {
+		return labels.EmptyLabels(), none, fmt.Errorf("invalid timestamp %q: %w", m[1], err)
+	}
+	rest = rest[len(m[0]):]
+
+	// Consume the optional '[metadata key="value" ...]' clause.
+	metadata, rest, err := parseMetadata(rest)
+	if err != nil {
+		return labels.EmptyLabels(), none, err
+	}
+
+	// Consume the optional '[parsed key="value" ...]' clause.
+	parsed, rest, err := parseParsed(rest)
+	if err != nil {
+		return labels.EmptyLabels(), none, err
+	}
+
+	if leftover := strings.TrimSpace(rest); leftover != "" {
+		return labels.EmptyLabels(), none, fmt.Errorf("unexpected content after log line: %q", leftover)
+	}
+	return lbls, expectedLogEntry{
+		ts:       ts,
+		line:     text,
+		metadata: sortedLabels(metadata),
+		parsed:   sortedLabels(parsed),
+	}, nil
+}
+
+// sortedLabels canonicalizes a categorized label set into sorted order, so an expectation and a
+// result compare independently of the order their pairs are written or returned in. Note that when
+// encoded in JSON, the order of labels is not guaranteed, so there is no meaningful output order from
+// the query frontend and sorting before comparing is valid. direct engine output may be assertable
+func sortedLabels(categorized []logproto.LabelAdapter) labels.Labels {
+	b := labels.NewScratchBuilder(len(categorized))
+	for _, l := range categorized {
+		b.Add(l.Name, l.Value)
+	}
+	b.Sort()
+	return b.Labels()
 }
 
 func parseSeriesLabels(s string) (labels.Labels, error) {

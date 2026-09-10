@@ -2,8 +2,10 @@ package indexgateway
 
 import (
 	"context"
+	"fmt"
 	"math"
 	"testing"
+	"time"
 
 	"github.com/grafana/dskit/user"
 	"github.com/prometheus/common/model"
@@ -266,9 +268,12 @@ func TestAccumulateChunksToShards(t *testing.T) {
 		sized(mkRef(7, 10), 25, 1),
 	}
 
-	shards, grps, err := accumulateChunksToShards(&logproto.ShardsRequest{
+	shards, err := accumulateChunksToShards(&logproto.ShardsRequest{
 		TargetBytesPerShard: 100 << 10,
 	}, filtered)
+	require.NoError(t, err)
+
+	grps := chunkGroupsForShards(shards, filtered)
 
 	expectedChks := [][]logproto.ChunkRefWithSizingInfo{
 		filtered[0:3],
@@ -607,4 +612,54 @@ func TestGetShardsWithoutChunkSizingInfo(t *testing.T) {
 	// The gateway must delegate instead of resolving chunk refs itself.
 	indexQuerier.AssertNotCalled(t, "GetChunkRefsWithSizingInfo", mock.Anything, mock.Anything, mock.Anything)
 	indexQuerier.AssertExpectations(t)
+}
+
+// BenchmarkBuildShardsResponse benchmarks building the shards response for a tenant
+// without TSDBPrecomputeChunks enabled, i.e. one where the per-shard chunk groups are
+// not returned.
+func BenchmarkBuildShardsResponse(b *testing.B) {
+	req := &logproto.ShardsRequest{
+		TargetBytesPerShard: 600 << 20,
+	}
+
+	for _, tc := range []struct {
+		series, chunksPerSeries int
+	}{
+		{series: 10_000, chunksPerSeries: 100},
+		{series: 100_000, chunksPerSeries: 10},
+		{series: 1_000_000, chunksPerSeries: 1},
+	} {
+		refs := buildChunkRefs(tc.series, tc.chunksPerSeries)
+
+		b.Run(fmt.Sprintf("series=%d/chunks_per_series=%d", tc.series, tc.chunksPerSeries), func(b *testing.B) {
+			b.ReportAllocs()
+			for b.Loop() {
+				if _, err := buildShardsResponse(req, refs, false); err != nil {
+					b.Fatal(err)
+				}
+			}
+		})
+	}
+}
+
+func buildChunkRefs(series, chunksPerSeries int) []logproto.ChunkRefWithSizingInfo {
+	refs := make([]logproto.ChunkRefWithSizingInfo, 0, series*chunksPerSeries)
+	for i := range series {
+		// leave gaps in the fingerprint space so shard bounds don't line up exactly
+		fp := uint64(i) * 3
+		for j := range chunksPerSeries {
+			refs = append(refs, logproto.ChunkRefWithSizingInfo{
+				ChunkRef: logproto.ChunkRef{
+					Fingerprint: fp,
+					UserID:      "fake",
+					From:        model.Time(j * int(time.Hour/time.Millisecond)),
+					Through:     model.Time((j + 1) * int(time.Hour/time.Millisecond)),
+					Checksum:    uint32(i*chunksPerSeries + j),
+				},
+				KB:      uint32(1024 + (i+j)%1024),
+				Entries: uint32(10_000 + (i+j)%1_000),
+			})
+		}
+	}
+	return refs
 }

@@ -226,6 +226,50 @@ func (e *RangeAggregationExpr) Pretty(level int) string {
 	return s
 }
 
+func (e *LabelAggregationExpr) Pretty(level int) string {
+	s := Indent(level)
+	if !NeedSplit(e) {
+		return s + e.String()
+	}
+
+	s += e.Operation
+	s += "(\n"
+	s += Indent(level+1) + e.Label + ",\n"
+	s += e.Left.Pretty(level+1) + "\n"
+	s += Indent(level) + ")"
+	s += prettyLabelAggregationGrouping(e.Grouping, level)
+	return s
+}
+
+func (e *CountDistinctSketchExpr) Pretty(level int) string {
+	s := Indent(level)
+	if !NeedSplit(e) {
+		return s + e.String()
+	}
+
+	s += OpTypeCountDistinctSketch
+	s += "(\n"
+	s += Indent(level+1) + e.Label + ",\n"
+	s += e.Left.Pretty(level+1) + "\n"
+	s += Indent(level) + ")"
+	s += prettyLabelAggregationGrouping(e.Grouping, level)
+	return s
+}
+
+// prettyLabelAggregationGrouping keeps `by ()` visible. Grouping.Pretty omits
+// empty by-clauses because vector aggregations always have a Grouping and
+// `sum(x)` must not pretty-print as `sum by ()(x)`. Label aggregations treat
+// omitted by and `by ()` as different grouping modes.
+func prettyLabelAggregationGrouping(g *Grouping, level int) string {
+	if g == nil {
+		return ""
+	}
+	if g.Singleton() {
+		return " by ()"
+	}
+	return g.Pretty(level)
+}
+
 // e.g:
 // sum(count_over_time({foo="bar"}[5m])) by (container)
 // topk(10, count_over_time({foo="bar"}[5m])) by (container)

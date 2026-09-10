@@ -291,14 +291,14 @@ func Xsqlite3_preupdate_old(tls *libc.TLS, db uintptr, iIdx int32, ppValue uintp
 	/* Test that this call is being made from within an SQLITE_DELETE or
 	 ** SQLITE_UPDATE pre-update callback, and that iIdx is within range. */
 	if !(p != 0) || (*TPreUpdate)(unsafe.Pointer(p)).Fop == int32(SQLITE_INSERT) {
-		rc = _sqlite3MisuseError(tls, int32(95913))
+		rc = _sqlite3MisuseError(tls, int32(96062))
 		goto preupdate_old_out
 	}
 	if (*TPreUpdate)(unsafe.Pointer(p)).FpPk != 0 {
 		iStore = _sqlite3TableColumnToIndex(tls, (*TPreUpdate)(unsafe.Pointer(p)).FpPk, iIdx)
 	} else {
 		if iIdx >= int32((*TTable)(unsafe.Pointer((*TPreUpdate)(unsafe.Pointer(p)).FpTab)).FnCol) {
-			rc = _sqlite3MisuseError(tls, int32(95919))
+			rc = _sqlite3MisuseError(tls, int32(96068))
 			goto preupdate_old_out
 		} else {
 			iStore = int32(_sqlite3TableColumnToStorage(tls, (*TPreUpdate)(unsafe.Pointer(p)).FpTab, int16(iIdx)))
@@ -358,7 +358,7 @@ func Xsqlite3_preupdate_old(tls *libc.TLS, db uintptr, iIdx int32, ppValue uintp
 					})(unsafe.Pointer((*TPreUpdate)(unsafe.Pointer(p)).FpTab + 64))).FpDfltList + 8 + uintptr(libc.Int32FromUint16((*TColumn)(unsafe.Pointer(pCol)).FiDflt)-int32(1))*32))).FpExpr
 					rc = _sqlite3ValueFromExpr(tls, db, pDflt, (*Tsqlite3)(unsafe.Pointer(db)).Fenc, (*TColumn)(unsafe.Pointer(pCol)).Faffinity, bp)
 					if rc == SQLITE_OK && **(**uintptr)(__ccgo_up(bp)) == uintptr(0) {
-						rc = _sqlite3CorruptError(tls, int32(95975))
+						rc = _sqlite3CorruptError(tls, int32(96124))
 					}
 					**(**uintptr)(__ccgo_up((*TPreUpdate)(unsafe.Pointer(p)).FapDflt + uintptr(iIdx)*8)) = **(**uintptr)(__ccgo_up(bp))
 				}
@@ -3736,17 +3736,18 @@ func _rbuDeltaApply(tls *libc.TLS, zSrc uintptr, lenSrc int32, _zDelta uintptr, 
 	defer tls.Free(16)
 	*(*uintptr)(unsafe.Pointer(bp)) = _zDelta
 	*(*int32)(unsafe.Pointer(bp + 8)) = _lenDelta
-	var cnt, limit, ofst, total uint32
+	var cnt, ofst uint32
+	var limit, total Tsqlite3_uint64
 	_, _, _, _ = cnt, limit, ofst, total
-	total = uint32(0)
-	limit = _rbuDeltaGetInt(tls, bp, bp+8)
+	total = uint64(0)
+	limit = uint64(_rbuDeltaGetInt(tls, bp, bp+8))
 	if **(**int32)(__ccgo_up(bp + 8)) <= 0 || libc.Int32FromUint8(**(**uint8)(__ccgo_up(**(**uintptr)(__ccgo_up(bp))))) != int32('\n') {
 		/* ERROR: size integer not terminated by "\n" */
 		return -int32(1)
 	}
 	**(**uintptr)(__ccgo_up(bp)) = **(**uintptr)(__ccgo_up(bp)) + 1
-	**(**int32)(__ccgo_up(bp + 8)) = **(**int32)(__ccgo_up(bp + 8)) - 1
-	for **(**uint8)(__ccgo_up(**(**uintptr)(__ccgo_up(bp)))) != 0 && **(**int32)(__ccgo_up(bp + 8)) > 0 {
+	**(**int32)(__ccgo_up(bp + 8)) = **(**int32)(__ccgo_up(bp + 8)) - 1 /* Skip the \n */
+	for **(**int32)(__ccgo_up(bp + 8)) > 0 && **(**uint8)(__ccgo_up(**(**uintptr)(__ccgo_up(bp)))) != 0 {
 		cnt = _rbuDeltaGetInt(tls, bp, bp+8)
 		if **(**int32)(__ccgo_up(bp + 8)) <= 0 {
 			return -int32(1)
@@ -3756,13 +3757,13 @@ func _rbuDeltaApply(tls *libc.TLS, zSrc uintptr, lenSrc int32, _zDelta uintptr, 
 			**(**uintptr)(__ccgo_up(bp)) = **(**uintptr)(__ccgo_up(bp)) + 1
 			**(**int32)(__ccgo_up(bp + 8)) = **(**int32)(__ccgo_up(bp + 8)) - 1
 			ofst = _rbuDeltaGetInt(tls, bp, bp+8)
-			if **(**int32)(__ccgo_up(bp + 8)) > 0 || libc.Int32FromUint8(**(**uint8)(__ccgo_up(**(**uintptr)(__ccgo_up(bp))))) != int32(',') {
+			if **(**int32)(__ccgo_up(bp + 8)) > 0 && libc.Int32FromUint8(**(**uint8)(__ccgo_up(**(**uintptr)(__ccgo_up(bp))))) != int32(',') {
 				/* ERROR: copy command not terminated by ',' */
 				return -int32(1)
 			}
 			**(**uintptr)(__ccgo_up(bp)) = **(**uintptr)(__ccgo_up(bp)) + 1
 			**(**int32)(__ccgo_up(bp + 8)) = **(**int32)(__ccgo_up(bp + 8)) - 1
-			total = total + cnt
+			total = total + uint64(cnt)
 			if total > limit {
 				/* ERROR: copy exceeds output file size */
 				return -int32(1)
@@ -3776,12 +3777,12 @@ func _rbuDeltaApply(tls *libc.TLS, zSrc uintptr, lenSrc int32, _zDelta uintptr, 
 		case int32(':'):
 			**(**uintptr)(__ccgo_up(bp)) = **(**uintptr)(__ccgo_up(bp)) + 1
 			**(**int32)(__ccgo_up(bp + 8)) = **(**int32)(__ccgo_up(bp + 8)) - 1
-			total = total + cnt
+			total = total + uint64(cnt)
 			if total > limit {
 				/* ERROR:  insert command gives an output larger than predicted */
 				return -int32(1)
 			}
-			if libc.Int64FromUint32(cnt) > int64(**(**int32)(__ccgo_up(bp + 8))) {
+			if cnt > libc.Uint32FromInt32(**(**int32)(__ccgo_up(bp + 8))) {
 				/* ERROR: insert count exceeds size of delta */
 				return -int32(1)
 			}
@@ -3797,7 +3798,7 @@ func _rbuDeltaApply(tls *libc.TLS, zSrc uintptr, lenSrc int32, _zDelta uintptr, 
 				/* ERROR: generated size does not match predicted size */
 				return -int32(1)
 			}
-			return libc.Int32FromUint32(total)
+			return libc.Int32FromUint64(total)
 		default:
 			/* ERROR: unknown delta operator */
 			return -int32(1)

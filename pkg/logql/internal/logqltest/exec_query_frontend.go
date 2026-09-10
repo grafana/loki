@@ -32,6 +32,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/scheduler/schedulerpb"
 	"github.com/grafana/loki/v3/pkg/storage/config"
 	"github.com/grafana/loki/v3/pkg/util/constants"
+	"github.com/grafana/loki/v3/pkg/util/httpreq"
 	"github.com/grafana/loki/v3/pkg/validation"
 )
 
@@ -218,12 +219,12 @@ func (s *queryFrontendExecutionStack) querier() logql.Querier {
 
 func (s *queryFrontendExecutionStack) eval(cmd evalCmd) (logqlmodel.Result, error) {
 	var lokiReq queryrangebase.Request
-	if cmd.instant {
+	if cmd.mode == evalInstant {
 		lokiReq = &queryrange.LokiInstantRequest{
 			Query:     cmd.query,
 			Limit:     1000,
 			TimeTs:    epoch.Add(cmd.ts),
-			Direction: logproto.FORWARD,
+			Direction: cmd.direction,
 			Path:      "/loki/api/v1/query",
 		}
 	} else {
@@ -233,7 +234,7 @@ func (s *queryFrontendExecutionStack) eval(cmd evalCmd) (logqlmodel.Result, erro
 			Step:      cmd.step.Milliseconds(),
 			StartTs:   epoch.Add(cmd.start),
 			EndTs:     epoch.Add(cmd.end),
-			Direction: logproto.FORWARD,
+			Direction: cmd.direction,
 			Path:      "/loki/api/v1/query_range",
 		}
 	}
@@ -249,7 +250,11 @@ func (s *queryFrontendExecutionStack) eval(cmd evalCmd) (logqlmodel.Result, erro
 	if err != nil {
 		return logqlmodel.Result{}, err
 	}
-	httpReq = httpReq.WithContext(userCtx)
+
+	// Add flag to categorize labels. This is mimicking standard behavior of our most important client: Grafana
+	flags := httpreq.NewEncodingFlags(httpreq.FlagCategorizeLabels)
+	httpreq.AddEncodingFlags(httpReq, flags)
+	httpReq = httpReq.WithContext(httpreq.AddEncodingFlagsToContext(userCtx, flags))
 
 	rec := httptest.NewRecorder()
 	s.handler.ServeHTTP(rec, httpReq)
@@ -350,8 +355,9 @@ func newQueryFrontendTripperware(logger log.Logger, overrides *validation.Overri
 	cfg.ShardedQueries = sharded
 
 	// Enable the aggregations that only shard behind this flag. quantile_over_time uses the
-	// count-min/quantile sketch path; first/last_over_time use the timestamp-carrying merge path.
-	cfg.ShardAggregations = []string{"quantile_over_time", "first_over_time", "last_over_time", "approx_topk"}
+	// count-min/quantile sketch path; first/last_over_time use the timestamp-carrying merge path;
+	// approx_count_distinct uses the HyperLogLog sketch path.
+	cfg.ShardAggregations = []string{"quantile_over_time", "first_over_time", "last_over_time", "approx_topk", "approx_count_distinct"}
 
 	var engineOpts logql.EngineOpts
 	flagext.DefaultValues(&engineOpts)

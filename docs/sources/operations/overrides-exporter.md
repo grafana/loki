@@ -44,33 +44,37 @@ loki_overrides{limit_name="max_chunks_per_query",user="tenant_1"} 100000
 loki_overrides{limit_name="max_streams_per_user",user="tenant_1"} 100000
 # HELP loki_overrides_defaults Default values for resource limit overrides applied to tenants
 # TYPE loki_overrides_defaults gauge
+loki_overrides_defaults{limit_name="block_ingestion_status_code"} 260
 loki_overrides_defaults{limit_name="cardinality_limit"} 100000
 loki_overrides_defaults{limit_name="creation_grace_period"} 6e+11
 loki_overrides_defaults{limit_name="ingestion_burst_size_mb"} 6
 loki_overrides_defaults{limit_name="ingestion_rate_mb"} 4
-loki_overrides_defaults{limit_name="max_cache_freshness_per_query"} 6e+10
+loki_overrides_defaults{limit_name="max_cache_freshness_per_query"} 6e+11
 loki_overrides_defaults{limit_name="max_chunks_per_query"} 2e+06
 loki_overrides_defaults{limit_name="max_concurrent_tail_requests"} 10
 loki_overrides_defaults{limit_name="max_entries_limit_per_query"} 5000
 loki_overrides_defaults{limit_name="max_global_streams_per_user"} 5000
 loki_overrides_defaults{limit_name="max_label_name_length"} 1024
-loki_overrides_defaults{limit_name="max_label_names_per_series"} 30
+loki_overrides_defaults{limit_name="max_label_names_per_series"} 15
 loki_overrides_defaults{limit_name="max_label_value_length"} 2048
-loki_overrides_defaults{limit_name="max_line_size"} 0
+loki_overrides_defaults{limit_name="max_line_size"} 262144
+loki_overrides_defaults{limit_name="max_metadata_cache_freshness"} 8.64e+13
 loki_overrides_defaults{limit_name="max_queriers_per_tenant"} 0
+loki_overrides_defaults{limit_name="max_query_capacity"} 0
 loki_overrides_defaults{limit_name="max_query_length"} 2.5956e+15
 loki_overrides_defaults{limit_name="max_query_lookback"} 0
 loki_overrides_defaults{limit_name="max_query_parallelism"} 32
 loki_overrides_defaults{limit_name="max_query_series"} 500
 loki_overrides_defaults{limit_name="max_streams_matchers_per_query"} 1000
 loki_overrides_defaults{limit_name="max_streams_per_user"} 0
+loki_overrides_defaults{limit_name="max_structured_metadata_size"} 65536
 loki_overrides_defaults{limit_name="min_sharding_lookback"} 0
 loki_overrides_defaults{limit_name="per_stream_rate_limit"} 3.145728e+06
 loki_overrides_defaults{limit_name="per_stream_rate_limit_burst"} 1.572864e+07
 loki_overrides_defaults{limit_name="per_tenant_override_period"} 1e+10
-loki_overrides_defaults{limit_name="reject_old_samples_max_age"} 1.2096e+15
-loki_overrides_defaults{limit_name="retention_period"} 2.6784e+15
-loki_overrides_defaults{limit_name="ruler_evaluation_delay_duration"} 0
+loki_overrides_defaults{limit_name="query_timeout"} 6e+10
+loki_overrides_defaults{limit_name="reject_old_samples_max_age"} 6.048e+14
+loki_overrides_defaults{limit_name="retention_period"} 0
 loki_overrides_defaults{limit_name="ruler_max_rule_groups_per_tenant"} 0
 loki_overrides_defaults{limit_name="ruler_max_rules_per_rule_group"} 0
 loki_overrides_defaults{limit_name="ruler_remote_write_queue_batch_send_deadline"} 0
@@ -81,7 +85,15 @@ loki_overrides_defaults{limit_name="ruler_remote_write_queue_max_shards"} 0
 loki_overrides_defaults{limit_name="ruler_remote_write_queue_min_backoff"} 0
 loki_overrides_defaults{limit_name="ruler_remote_write_queue_min_shards"} 0
 loki_overrides_defaults{limit_name="ruler_remote_write_timeout"} 0
-loki_overrides_defaults{limit_name="split_queries_by_interval"} 0
+loki_overrides_defaults{limit_name="split_queries_by_interval"} 3.6e+12
+loki_overrides_defaults{limit_name="tsdb_max_bytes_per_shard"} 6.291456e+08
+loki_overrides_defaults{limit_name="tsdb_max_query_parallelism"} 128
+loki_overrides_defaults{limit_name="volume_enabled"} 1
+loki_overrides_defaults{limit_name="volume_max_series"} 1000
 ```
+
+{{< admonition type="note" >}}
+This output is a partial example. The exact set of metrics depends on your Loki version, since `loki_overrides_defaults` includes one series for every scalar field in the [`limits_config`](https://grafana.com/docs/loki/<LOKI_VERSION>/configure/#limits_config) block, and that block grows with each release. Query your own instance's `/metrics` endpoint for the authoritative, current list rather than relying on a fixed example.
+{{< /admonition >}}
 
 Alerts can be created based on these metrics to inform operators when tenants are close to hitting their limits allowing for increases to be applied before the tenant limits are exceeded.

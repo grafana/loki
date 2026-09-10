@@ -44,6 +44,11 @@ type HashCmdable interface {
 	HPExpireTime(ctx context.Context, key string, fields ...string) *IntSliceCmd
 	HTTL(ctx context.Context, key string, fields ...string) *IntSliceCmd
 	HPTTL(ctx context.Context, key string, fields ...string) *IntSliceCmd
+	// note: the HIMPORT API is experimental and may be subject to change.
+	HImportPrepare(ctx context.Context, fieldsetName string, fields ...string) *StatusCmd
+	HImportSet(ctx context.Context, key, fieldsetName string, values ...interface{}) *StatusCmd
+	HImportDiscard(ctx context.Context, fieldsetName string) *IntCmd
+	HImportDiscardAll(ctx context.Context) *IntCmd
 }
 
 func (c cmdable) HDel(ctx context.Context, key string, fields ...string) *IntCmd {

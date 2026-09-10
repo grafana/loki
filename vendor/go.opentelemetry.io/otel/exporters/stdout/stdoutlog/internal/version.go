@@ -5,4 +5,4 @@ package internal
 
 // Version is the current release version of the OpenTelemetry stdoutlog
 // exporter in use.
-const Version = "v0.21.0"
+const Version = "v0.22.0"

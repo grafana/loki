@@ -38,21 +38,33 @@ func (f *fileProvider) Read(_ context.Context) ([]byte, error) {
 	return os.ReadFile(f.path)
 }
 
+// sanitizeURLForMetrics drops the parts of a URL that most often carry credentials,
+// so what remains can be a metric label value. The path is kept, so a URL that puts a
+// secret in a path segment still exposes it.
+func sanitizeURLForMetrics(rawURL string) (string, error) {
+	parsed, err := url.Parse(rawURL)
+	if err != nil {
+		return "", fmt.Errorf("parse runtime config URL: %w", err)
+	}
+	parsed.User = nil
+	parsed.RawQuery = ""
+	parsed.ForceQuery = false
+	parsed.Fragment = ""
+	return parsed.String(), nil
+}
+
 // httpProvider fetches config from an HTTP/HTTPS URL with RED metrics.
 type httpProvider struct {
 	url             string
-	urlForMetrics   string // scheme+host+path only, no query/fragment
+	urlForMetrics   string
 	client          *http.Client
 	requestDuration *prometheus.HistogramVec
 }
 
-func newHTTPProvider(rawURL string, client *http.Client, requestDuration *prometheus.HistogramVec) *httpProvider {
-	urlForMetrics := rawURL
-	if parsed, err := url.Parse(rawURL); err == nil {
-		parsed.RawQuery = ""
-		parsed.Fragment = ""
-		urlForMetrics = parsed.Redacted()
-	}
+// newHTTPProvider creates a provider that reads rawURL. urlForMetrics is the label
+// value its metrics report, sanitized by the caller, because only the caller can see
+// whether two sources sanitize to the same string.
+func newHTTPProvider(rawURL, urlForMetrics string, client *http.Client, requestDuration *prometheus.HistogramVec) *httpProvider {
 	return &httpProvider{
 		url:             rawURL,
 		urlForMetrics:   urlForMetrics,

@@ -182,10 +182,11 @@ func (r *LokiStackReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		return ctrl.Result{}, err
 	}
 
-	if degraded != nil {
-		return ctrl.Result{
-			Requeue: degraded.Requeue,
-		}, nil
+	if degraded != nil && degraded.Requeue {
+		// (JoaoBraveCoding) Result.Requeue is deprecated in favor of RequeueAfter, but a fixed interval would
+		// poll forever without backoff when a misconfigured LokiStack stays degraded.
+		// We can still get the old behavior by using something like https://pkg.go.dev/k8s.io/client-go/util/workqueue
+		return ctrl.Result{Requeue: true}, nil //nolint:staticcheck
 	}
 
 	return ctrl.Result{}, nil

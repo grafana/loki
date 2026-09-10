@@ -550,7 +550,6 @@ func buildLogObject(t *testing.T, app string, path string, bucket objstore.Bucke
 			BufferSize:              4 * 1024 * 1024,
 			SectionStripeMergeLimit: 2,
 		},
-		DataobjSortOrder: "stream-asc",
 	}, nil, logsobj.NewBuilderMetrics(), log.NewNopLogger(), nil)
 	require.NoError(t, err)
 

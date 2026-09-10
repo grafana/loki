@@ -13,30 +13,27 @@ import (
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/httpgrpc"
-
-	"github.com/grafana/loki/v3/pkg/logql/syntax"
-	"github.com/grafana/loki/v3/pkg/util/constants"
-
-	"github.com/grafana/loki/v3/pkg/util"
-
 	"github.com/grafana/dskit/tenant"
 
-	push2 "github.com/grafana/loki/pkg/push"
-	"github.com/grafana/loki/v3/pkg/loghttp/push"
+	"github.com/grafana/loki/pkg/push"
+	loghttppush "github.com/grafana/loki/v3/pkg/loghttp/push"
+	"github.com/grafana/loki/v3/pkg/logql/syntax"
+	"github.com/grafana/loki/v3/pkg/util"
+	"github.com/grafana/loki/v3/pkg/util/constants"
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
 	"github.com/grafana/loki/v3/pkg/validation"
 )
 
 // PushHandler reads a snappy-compressed proto from the HTTP body.
 func (d *Distributor) PushHandler(w http.ResponseWriter, r *http.Request) {
-	d.pushHandler(w, r, push.ParseLokiRequest, push.HTTPError, constants.Loki)
+	d.pushHandler(w, r, loghttppush.ParseLokiRequest, loghttppush.HTTPError, constants.Loki)
 }
 
 func (d *Distributor) OTLPPushHandler(w http.ResponseWriter, r *http.Request) {
-	d.pushHandler(w, r, push.ParseOTLPRequest, push.OTLPError, constants.OTLP)
+	d.pushHandler(w, r, loghttppush.ParseOTLPRequest, loghttppush.OTLPError, constants.OTLP)
 }
 
-func (d *Distributor) pushHandler(w http.ResponseWriter, r *http.Request, pushRequestParser push.RequestParser, errorWriter push.ErrorWriter, format string) {
+func (d *Distributor) pushHandler(w http.ResponseWriter, r *http.Request, pushRequestParser loghttppush.RequestParser, errorWriter loghttppush.ErrorWriter, format string) {
 	logger := util_log.WithContext(r.Context(), d.logger)
 	tenantID, err := tenant.TenantID(r.Context())
 	if err != nil {
@@ -69,11 +66,12 @@ func (d *Distributor) pushHandler(w http.ResponseWriter, r *http.Request, pushRe
 	streamResolver := newRequestScopedStreamResolver(tenantID, d.validator.Limits, logger)
 
 	presumedAgentIP := extractPresumedAgentIP(r)
-	req, pushStats, err := push.ParseRequest(logger, tenantID, d.cfg.MaxRecvMsgSize, d.cfg.MaxDecompressedSize, r, d.validator.Limits, d.tenantConfigs,
+	maxPushSize := d.validator.MaxPushSize(tenantID)
+	req, pushStats, err := loghttppush.ParseRequest(logger, tenantID, maxPushSize, int64(maxPushSize), r, d.validator.Limits, d.tenantConfigs,
 		pushRequestParser, d.usageTracker, streamResolver, presumedAgentIP, format)
 	if err != nil {
 		switch {
-		case errors.Is(err, push.ErrRequestBodyTooLarge):
+		case errors.Is(err, loghttppush.ErrRequestBodyTooLarge):
 			if d.tenantConfigs.LogPushRequest(tenantID) {
 				level.Debug(logger).Log(
 					"msg", "push request failed",
@@ -102,7 +100,7 @@ func (d *Distributor) pushHandler(w http.ResponseWriter, r *http.Request, pushRe
 			errorWriter(w, err.Error(), http.StatusRequestEntityTooLarge, logger)
 			return
 
-		case !errors.Is(err, push.ErrAllLogsFiltered):
+		case !errors.Is(err, loghttppush.ErrAllLogsFiltered):
 			if d.tenantConfigs.LogPushRequest(tenantID) {
 				level.Debug(logger).Log(
 					"msg", "push request failed",
@@ -191,9 +189,9 @@ func (d *Distributor) shouldLogPushRequestStreams(tenantID, presumedAgentIP stri
 func (d *Distributor) logPushRequestStreams(
 	ctx context.Context,
 	logger log.Logger,
-	streams []push2.Stream,
+	streams []push.Stream,
 	streamResolver *requestScopedStreamResolver,
-	pushStats *push.Stats,
+	pushStats *loghttppush.Stats,
 	presumedAgentIP string,
 ) {
 	for _, s := range streams {

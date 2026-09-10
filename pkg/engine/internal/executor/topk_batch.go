@@ -198,7 +198,7 @@ func (b *topkBatch) labelHash(rec arrow.RecordBatch, row int) uint64 {
 		}
 	}
 	b.labelsBuilder.Sort()
-	return b.labelsBuilder.Labels().Hash()
+	return labels.StableHash(b.labelsBuilder.Labels())
 }
 
 // findRecordArray finds the array for the given [b.Fields] field index from

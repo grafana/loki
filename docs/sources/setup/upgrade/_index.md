@@ -43,6 +43,10 @@ The default value of `-frontend.encoding` / `frontend.encoding` changed from `js
 
 Schedulers and queriers already accept both encodings, so mixed frontends during a rolling upgrade are safe. To keep the previous behavior, set `frontend.encoding: json` explicitly.
 
+### LogQL rejects numeric, duration, bytes, and `ip()` comparisons against `__error__` and `__error_details__`
+
+A query such as `| __error__ > 0`, `| __error__ != 1s`, `| __error_details__ == 1MB`, or `| __error__ = ip("1.2.3.4")` now fails to parse. These two labels always hold a string (or are unset), so a numeric, duration, bytes, or IP comparison against them could never find a match; such a query used to parse successfully and then silently return no results. This also applies after `| unwrap`. Use a string comparison instead, for example `| __error__ != ""` or `| __error__=""`.
+
 ### `frontend.compress_responses` default changed to `true`
 
 The default value of `frontend.compress_responses` changed to `true`. A bug in Loki 3.4.0 unintentionally switched it to `false`. If you don't want the query-frontend to compress HTTP responses, set `frontend.compress_responses` to `false` explicitly.
@@ -52,6 +56,10 @@ The default value of `frontend.compress_responses` changed to `true`. A bug in L
 The experimental `variants()` LogQL expression is no longer supported.
 
 The per-tenant setting `enable_multi_variant_queries` (`-limits.enable-multi-variant-queries`) that gated it has been removed. A leftover `enable_multi_variant_queries:` key in `limits_config` or in a runtime overrides file is ignored, so it does not block an upgrade, but you should remove it; the `deprecated-config-checker` tool will flag it. The `-limits.enable-multi-variant-queries` command line flag no longer exists and Loki fails to start if it is passed.
+
+### Optional chunk fetch error propagation
+
+`chunk_store_config.propagate_chunk_fetch_errors` setting returns chunk fetch errors instead of incomplete query results. The setting is disabled by default.
 
 ### Breaking change: Removal of the `row_shards` schema setting
 

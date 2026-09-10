@@ -8,7 +8,7 @@ func optimizeSampleExpr(expr syntax.SampleExpr) (syntax.SampleExpr, error) {
 	// we skip sharding AST for now, it's not easy to clone them since they are not part of the language.
 	expr.Walk(func(e syntax.Expr) bool {
 		switch e.(type) {
-		case *ConcatSampleExpr, DownstreamSampleExpr, *QuantileSketchEvalExpr, *QuantileSketchMergeExpr, *MergeFirstOverTimeExpr, *MergeLastOverTimeExpr:
+		case *ConcatSampleExpr, DownstreamSampleExpr, *QuantileSketchEvalExpr, *QuantileSketchMergeExpr, *CountDistinctSketchEvalExpr, *CountDistinctSketchMergeExpr, *MergeFirstOverTimeExpr, *MergeLastOverTimeExpr:
 			skip = true
 		}
 		return true
@@ -39,6 +39,7 @@ func replaceApproxTopK(expr syntax.SampleExpr) {
 
 		vectorExpr.Operation = syntax.OpTypeTopK
 		vectorExpr.Left = &CountMinSketchEvalExpr{
+			operation: syntax.OpTypeApproxTopK,
 			SampleExpr: &syntax.VectorAggregationExpr{
 				Operation: syntax.OpTypeCountMinSketch,
 				Params:    0,

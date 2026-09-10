@@ -2,7 +2,6 @@ package index
 
 import (
 	"fmt"
-	"log"
 	"time"
 
 	"github.com/fatih/color"
@@ -19,8 +18,11 @@ type StatsQuery struct {
 }
 
 // DoStats executes the stats query and prints the results
-func (q *StatsQuery) DoStats(c client.Client) {
-	stats := q.Stats(c)
+func (q *StatsQuery) DoStats(c client.Client) error {
+	stats, err := q.Stats(c)
+	if err != nil {
+		return err
+	}
 	kvs := stats.LoggingKeyValues()
 
 	fmt.Print("{\n")
@@ -35,17 +37,18 @@ func (q *StatsQuery) DoStats(c client.Client) {
 		fmt.Printf("  %s: %d\n", color.BlueString(k), v)
 	}
 	fmt.Print("}\n")
+	return nil
 }
 
 // Stats returns an index stats response
-func (q *StatsQuery) Stats(c client.Client) *logproto.IndexStatsResponse {
+func (q *StatsQuery) Stats(c client.Client) (*logproto.IndexStatsResponse, error) {
 	var statsResponse *logproto.IndexStatsResponse
 	var err error
 
 	statsResponse, err = c.GetStats(q.QueryString, q.Start, q.End, q.Quiet)
 
 	if err != nil {
-		log.Fatalf("Error doing request: %+v", err)
+		return nil, err
 	}
-	return statsResponse
+	return statsResponse, nil
 }

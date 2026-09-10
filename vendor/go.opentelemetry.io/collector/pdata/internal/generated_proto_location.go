@@ -17,10 +17,10 @@ import (
 
 // Location describes function and line table debug information.
 type Location struct {
+	MappingIndex     int32
+	Address          uint64
 	Lines            []*Line
 	AttributeIndices []int32
-	Address          uint64
-	MappingIndex     int32
 }
 
 var (

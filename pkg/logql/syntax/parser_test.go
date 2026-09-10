@@ -2,6 +2,7 @@ package syntax
 
 import (
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -378,6 +379,78 @@ var ParseTestCases = []struct {
 	{
 		in:  `approx_topk(2, count_over_time({ foo = "bar" }[5h])) by (foo)`,
 		err: logqlmodel.NewParseError("grouping not allowed for approx_topk aggregation", 0, 0),
+	},
+	{
+		in: `approx_count_distinct(mac, {foo="bar"} | json [1d]) by (version)`,
+		exp: &LabelAggregationExpr{
+			Operation: OpTypeApproxCountDistinct,
+			Label:     "mac",
+			Left: &LogRangeExpr{
+				Left: newPipelineExpr(
+					newMatcherExpr([]*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")}),
+					MultiStageExpr{newLabelParserExpr(OpParserTypeJSON, "")},
+				),
+				Interval: 24 * time.Hour,
+			},
+			Grouping: &Grouping{Groups: []string{"version"}},
+		},
+	},
+	{
+		in: `approx_count_distinct(mac, {foo="bar"}[1h] offset 5m) by (version)`,
+		exp: &LabelAggregationExpr{
+			Operation: OpTypeApproxCountDistinct,
+			Label:     "mac",
+			Left: &LogRangeExpr{
+				Left:     newMatcherExpr([]*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")}),
+				Interval: time.Hour,
+				Offset:   5 * time.Minute,
+			},
+			Grouping: &Grouping{Groups: []string{"version"}},
+		},
+	},
+	{
+		in: `approx_count_distinct(mac, {foo="bar"}[1d])`,
+		exp: &LabelAggregationExpr{
+			Operation: OpTypeApproxCountDistinct,
+			Label:     "mac",
+			Left: &LogRangeExpr{
+				Left:     newMatcherExpr([]*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")}),
+				Interval: 24 * time.Hour,
+			},
+		},
+	},
+	{
+		in: `approx_count_distinct(mac, {foo="bar"}[1d]) by ()`,
+		exp: &LabelAggregationExpr{
+			Operation: OpTypeApproxCountDistinct,
+			Label:     "mac",
+			Left: &LogRangeExpr{
+				Left:     newMatcherExpr([]*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")}),
+				Interval: 24 * time.Hour,
+			},
+			Grouping: &Grouping{Without: false, Groups: nil},
+		},
+	},
+	{
+		in:  `approx_count_distinct(mac, {foo="bar"}[1d]) without (version)`,
+		err: logqlmodel.NewParseError("without is not supported for approx_count_distinct()", 0, 0),
+	},
+	{
+		in:  `approx_count_distinct(mac, {foo="bar"}[1d]) by (mac)`,
+		err: logqlmodel.NewParseError(`approx_count_distinct() cannot group by the counted field "mac"`, 0, 0),
+	},
+	{
+		in:  `approx_count_distinct(mac, {foo="bar"} | unwrap bar [1d]) by (version)`,
+		err: logqlmodel.NewParseError("unwrap is not supported for approx_count_distinct()", 0, 0),
+	},
+	{
+		// Old split-parenthesis syntax is not supported.
+		in:  `approx_count_distinct(mac) by (version) ({foo="bar"}[1d])`,
+		err: logqlmodel.NewParseError("syntax error: unexpected ), expecting ,", 1, 26),
+	},
+	{
+		in:  `approx_count_distinct(mac, {}[1d]) by (version)`,
+		err: logqlmodel.NewParseError(errAtleastOneEqualityMatcherRequired, 0, 0),
 	},
 	{
 		in:  `rate({ foo = "bar" }[5minutes])`,
@@ -3553,6 +3626,27 @@ func TestParseSampleExpr_equalityMatcher(t *testing.T) {
 			in: `1 + count_over_time({app=~".+"}[5m]) + count_over_time({app=~".+"}[5m]) + 1`,
 		},
 		{
+			in: `approx_count_distinct(mac, {foo="bar"}[1d])`,
+		},
+		{
+			in: `approx_count_distinct(mac, {foo="bar"}[1d]) by ()`,
+		},
+		{
+			in: `approx_count_distinct(mac, {foo="bar"}[1d]) by (version)`,
+		},
+		{
+			in:  `approx_count_distinct(mac, {}[1d])`,
+			err: logqlmodel.NewParseError(errAtleastOneEqualityMatcherRequired, 0, 0),
+		},
+		{
+			in:  `approx_count_distinct(mac, {}[1d]) by (version)`,
+			err: logqlmodel.NewParseError(errAtleastOneEqualityMatcherRequired, 0, 0),
+		},
+		{
+			in:  `approx_count_distinct(mac, {foo!="bar"}[1d]) by (version)`,
+			err: logqlmodel.NewParseError(errAtleastOneEqualityMatcherRequired, 0, 0),
+		},
+		{
 			in:  `count without (rate({namespace="apps"}[15s]))`,
 			err: logqlmodel.NewParseError("syntax error: unexpected RATE, expecting IDENTIFIER or )", 1, 16),
 		},
@@ -3697,4 +3791,91 @@ func TestParseUnreservedWordsAsLabelNames(t *testing.T) {
 			require.NoError(t, err)
 		})
 	}
+}
+
+func TestParseExpr_ShouldValidateLabelComparison(t *testing.T) {
+	t.Run("rejects converting comparisons against __error__ and __error_details__", func(t *testing.T) {
+		operators := []string{">", ">=", "<", "<=", "!=", "==", "="}
+		for _, label := range []string{"__error__", "__error_details__"} {
+			for _, rhs := range []string{"0", "1s", "1MB"} {
+				for _, op := range operators {
+					query := fmt.Sprintf(`{app="foo"} | logfmt | %s %s %s`, label, op, rhs)
+					t.Run(query, func(t *testing.T) {
+						_, err := ParseExpr(query)
+						require.Error(t, err)
+						require.ErrorIs(t, err, logqlmodel.ErrParse)
+						require.Contains(t, err.Error(), label)
+						require.Contains(t, err.Error(), "cannot be compared")
+					})
+				}
+			}
+
+			for _, op := range []string{"=", "!="} {
+				query := fmt.Sprintf(`{app="foo"} | logfmt | %s %s ip("127.0.0.1")`, label, op)
+				t.Run(query, func(t *testing.T) {
+					_, err := ParseExpr(query)
+					require.Error(t, err)
+					require.ErrorIs(t, err, logqlmodel.ErrParse)
+					require.Contains(t, err.Error(), label)
+					require.Contains(t, err.Error(), "cannot be compared")
+				})
+			}
+		}
+
+		for _, query := range []string{
+			`{app="foo"} | logfmt | foo > 1 and __error__ > 0`,
+			`{app="foo"} | logfmt | __error__ > 0 and foo > 1`,
+			`{app="foo"} | logfmt | foo > 1 or __error__ > 0`,
+			`{app="foo"} | logfmt | __error__ > 0 and __error_details__ > 0`,
+			`count_over_time({app="foo"} | logfmt | __error__ > 0 [5m])`,
+			`label_replace(count_over_time({app="foo"} | logfmt | __error__ > 0 [5m]), "foo", "bar", "src", "dst")`,
+		} {
+			t.Run(query, func(t *testing.T) {
+				_, err := ParseExpr(query)
+				require.Error(t, err)
+				require.ErrorIs(t, err, logqlmodel.ErrParse)
+			})
+		}
+	})
+
+	t.Run("rejects converting comparisons after unwrap", func(t *testing.T) {
+		// __error__ is only ever set by the unwrap conversion itself for these
+		// queries, so a filter placed after "| unwrap" is exactly where users
+		// write the predicate.
+		for _, query := range []string{
+			`sum_over_time({app="foo"} | logfmt | unwrap bytes | __error__ > 0 [5m])`,
+			`avg_over_time({app="foo"} | logfmt | unwrap duration(latency) | __error_details__ > 1s [5m])`,
+			`sum_over_time({app="foo"} | logfmt | unwrap bytes | __error__ != ip("127.0.0.1") [5m])`,
+			`quantile_over_time(0.99, {app="foo"} | logfmt | unwrap bytes | __error_details__ >= 1MB [5m])`,
+		} {
+			t.Run(query, func(t *testing.T) {
+				_, err := ParseExpr(query)
+				require.Error(t, err)
+				require.ErrorIs(t, err, logqlmodel.ErrParse)
+				require.Contains(t, err.Error(), "cannot be compared")
+			})
+		}
+	})
+
+	t.Run("allows string comparisons against __error__ and __error_details__, and converting comparisons against ordinary labels", func(t *testing.T) {
+		for _, query := range []string{
+			`{app="foo"} | logfmt | __error__=""`,
+			`{app="foo"} | logfmt | __error__!=""`,
+			`{app="foo"} | logfmt | __error__=~".+"`,
+			`{app="foo"} | logfmt | __error__!~".+"`,
+			`{app="foo"} | logfmt | __error__="JSONParserErr"`,
+			`{app="foo"} | logfmt | __error_details__=""`,
+			`{app="foo"} | logfmt | latency > 1s`,
+			`{app="foo"} | logfmt | latency <= 1s`,
+			`{app="foo"} | logfmt | size == 1MB`,
+			`sum_over_time({app="foo"} | logfmt | unwrap bytes [5m])`,
+			`sum_over_time({app="foo"} | logfmt | unwrap bytes | __error__="" [5m])`,
+			`sum_over_time({app="foo"} | logfmt | unwrap bytes | bytes > 1MB [5m])`,
+		} {
+			t.Run(query, func(t *testing.T) {
+				_, err := ParseExpr(query)
+				require.NoError(t, err)
+			})
+		}
+	})
 }

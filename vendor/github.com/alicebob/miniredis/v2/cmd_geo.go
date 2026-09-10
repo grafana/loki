@@ -20,6 +20,7 @@ func commandsGeo(m *Miniredis) {
 	m.srv.Register("GEORADIUS_RO", m.cmdGeoradius, server.ReadOnlyOption())
 	m.srv.Register("GEORADIUSBYMEMBER", m.cmdGeoradiusbymember)
 	m.srv.Register("GEORADIUSBYMEMBER_RO", m.cmdGeoradiusbymember, server.ReadOnlyOption())
+	m.srv.Register("GEOSEARCH", m.cmdGeosearch, server.ReadOnlyOption())
 }
 
 // GEOADD
@@ -542,6 +543,257 @@ func (m *Miniredis) cmdGeoradiusbymember(c *server.Peer, cmd string, args []stri
 	})
 }
 
+// GEOSEARCH
+func (m *Miniredis) cmdGeosearch(c *server.Peer, cmd string, args []string) {
+	if !m.isValidCMD(c, cmd, args, atLeast(6)) {
+		return
+	}
+
+	key, args := args[0], args[1:]
+
+	var opts struct {
+		fromMember    string
+		hasFromMember bool
+		longitude     float64
+		latitude      float64
+		hasFromLonLat bool
+
+		byRadius    float64
+		hasByRadius bool
+		byWidth     float64
+		byHeight    float64
+		hasByBox    bool
+		toMeter     float64
+
+		withCoord bool
+		withDist  bool
+		withHash  bool
+		direction direction // unsorted
+		count     int
+		any       bool
+	}
+
+	for len(args) > 0 {
+		arg := args[0]
+		args = args[1:]
+		switch strings.ToUpper(arg) {
+		case "FROMMEMBER":
+			if opts.hasFromMember || opts.hasFromLonLat || len(args) < 1 {
+				setDirty(c)
+				c.WriteError(msgSyntaxError)
+				return
+			}
+			opts.fromMember = args[0]
+			opts.hasFromMember = true
+			args = args[1:]
+		case "FROMLONLAT":
+			if opts.hasFromMember || opts.hasFromLonLat || len(args) < 2 {
+				setDirty(c)
+				c.WriteError(msgSyntaxError)
+				return
+			}
+			longitude, err := strconv.ParseFloat(args[0], 64)
+			if err != nil {
+				setDirty(c)
+				c.WriteError("ERR value is not a valid float")
+				return
+			}
+			latitude, err := strconv.ParseFloat(args[1], 64)
+			if err != nil {
+				setDirty(c)
+				c.WriteError("ERR value is not a valid float")
+				return
+			}
+			opts.longitude = longitude
+			opts.latitude = latitude
+			opts.hasFromLonLat = true
+			args = args[2:]
+		case "BYRADIUS":
+			if opts.hasByRadius || opts.hasByBox || len(args) < 2 {
+				setDirty(c)
+				c.WriteError(msgSyntaxError)
+				return
+			}
+			radius, err := strconv.ParseFloat(args[0], 64)
+			if err != nil || radius < 0 {
+				setDirty(c)
+				c.WriteError("ERR value is not a valid float")
+				return
+			}
+			toMeter := parseUnit(args[1])
+			if toMeter == 0 {
+				setDirty(c)
+				c.WriteError(msgUnsupportedUnit)
+				return
+			}
+			opts.byRadius = radius
+			opts.toMeter = toMeter
+			opts.hasByRadius = true
+			args = args[2:]
+		case "BYBOX":
+			if opts.hasByRadius || opts.hasByBox || len(args) < 3 {
+				setDirty(c)
+				c.WriteError(msgSyntaxError)
+				return
+			}
+			width, err := strconv.ParseFloat(args[0], 64)
+			if err != nil || width < 0 {
+				setDirty(c)
+				c.WriteError("ERR value is not a valid float")
+				return
+			}
+			height, err := strconv.ParseFloat(args[1], 64)
+			if err != nil || height < 0 {
+				setDirty(c)
+				c.WriteError("ERR value is not a valid float")
+				return
+			}
+			toMeter := parseUnit(args[2])
+			if toMeter == 0 {
+				setDirty(c)
+				c.WriteError(msgUnsupportedUnit)
+				return
+			}
+			opts.byWidth = width
+			opts.byHeight = height
+			opts.toMeter = toMeter
+			opts.hasByBox = true
+			args = args[3:]
+		case "ASC":
+			opts.direction = asc
+		case "DESC":
+			opts.direction = desc
+		case "WITHCOORD":
+			opts.withCoord = true
+		case "WITHDIST":
+			opts.withDist = true
+		case "WITHHASH":
+			opts.withHash = true
+		case "COUNT":
+			if len(args) == 0 {
+				setDirty(c)
+				c.WriteError(msgSyntaxError)
+				return
+			}
+			n, err := strconv.Atoi(args[0])
+			if err != nil {
+				setDirty(c)
+				c.WriteError(msgInvalidInt)
+				return
+			}
+			if n <= 0 {
+				setDirty(c)
+				c.WriteError("ERR COUNT must be > 0")
+				return
+			}
+			args = args[1:]
+			opts.count = n
+			if len(args) > 0 && strings.ToUpper(args[0]) == "ANY" {
+				opts.any = true
+				args = args[1:]
+			}
+		default:
+			setDirty(c)
+			c.WriteError(msgSyntaxError)
+			return
+		}
+	}
+
+	if !opts.hasFromMember && !opts.hasFromLonLat {
+		setDirty(c)
+		c.WriteError("ERR exactly one of FROMMEMBER or FROMLONLAT can be specified for GEOSEARCH")
+		return
+	}
+	if !opts.hasByRadius && !opts.hasByBox {
+		setDirty(c)
+		c.WriteError("ERR exactly one of BYRADIUS and BYBOX can be specified for GEOSEARCH")
+		return
+	}
+	if opts.any && opts.count == 0 {
+		setDirty(c)
+		c.WriteError("ERR COUNT must be > 0")
+		return
+	}
+
+	withTx(m, c, func(c *server.Peer, ctx *connCtx) {
+		db := m.db(ctx.selectedDB)
+
+		if db.exists(key) && db.t(key) != keyTypeSortedSet {
+			c.WriteError(ErrWrongType.Error())
+			return
+		}
+		if !db.exists(key) {
+			c.WriteLen(0)
+			return
+		}
+
+		longitude, latitude := opts.longitude, opts.latitude
+		if opts.hasFromMember {
+			if !db.ssetExists(key, opts.fromMember) {
+				c.WriteError("ERR could not decode requested zset member")
+				return
+			}
+			longitude, latitude = fromGeohash(uint64(db.ssetScore(key, opts.fromMember)))
+		}
+
+		members := db.ssetElements(key)
+
+		var matches []geoDistance
+		if opts.hasByRadius {
+			matches = withinRadius(members, longitude, latitude, opts.byRadius*opts.toMeter)
+		} else {
+			matches = withinBox(members, longitude, latitude, opts.byWidth*opts.toMeter, opts.byHeight*opts.toMeter)
+		}
+
+		// deal with ASC/DESC
+		if opts.direction != unsorted {
+			sort.Slice(matches, func(i, j int) bool {
+				if opts.direction == desc {
+					return matches[i].Distance > matches[j].Distance
+				}
+				return matches[i].Distance < matches[j].Distance
+			})
+		}
+
+		// deal with COUNT
+		if opts.count > 0 && len(matches) > opts.count {
+			matches = matches[:opts.count]
+		}
+
+		c.WriteLen(len(matches))
+		for _, member := range matches {
+			if !opts.withDist && !opts.withCoord && !opts.withHash {
+				c.WriteBulk(member.Name)
+				continue
+			}
+
+			fields := 1
+			if opts.withDist {
+				fields++
+			}
+			if opts.withHash {
+				fields++
+			}
+			if opts.withCoord {
+				fields++
+			}
+			c.WriteLen(fields)
+			c.WriteBulk(member.Name)
+			if opts.withDist {
+				c.WriteBulk(fmt.Sprintf("%.4f", member.Distance/opts.toMeter))
+			}
+			if opts.withHash {
+				c.WriteInt(int(member.Score))
+			}
+			if opts.withCoord {
+				c.WriteLen(2)
+				c.WriteBulk(fmt.Sprintf("%f", member.Longitude))
+				c.WriteBulk(fmt.Sprintf("%f", member.Latitude))
+			}
+		}
+	})
+}
+
 func withinRadius(members []ssElem, longitude, latitude, radius float64) []geoDistance {
 	matches := []geoDistance{}
 	for _, el := range members {
@@ -557,6 +809,36 @@ func withinRadius(members []ssElem, longitude, latitude, radius float64) []geoDi
 				Latitude:  elLat,
 			})
 		}
+	}
+	return matches
+}
+
+// withinBox filters members inside an axis-aligned box centered on
+// longitude/latitude, with width and height given in meters. It mirrors
+// Redis' geohashGetDistanceIfInRectangle: a member is inside when its
+// latitudinal and longitudinal distances to the center are within half the
+// box height and half the box width respectively.
+func withinBox(members []ssElem, longitude, latitude, width, height float64) []geoDistance {
+	matches := []geoDistance{}
+	for _, el := range members {
+		elLo, elLat := fromGeohash(uint64(el.score))
+
+		latDistance := distance(elLat, elLo, latitude, elLo)
+		if latDistance > height/2 {
+			continue
+		}
+		lonDistance := distance(elLat, elLo, elLat, longitude)
+		if lonDistance > width/2 {
+			continue
+		}
+
+		matches = append(matches, geoDistance{
+			Name:      el.member,
+			Score:     el.score,
+			Distance:  distance(latitude, longitude, elLat, elLo),
+			Longitude: elLo,
+			Latitude:  elLat,
+		})
 	}
 	return matches
 }

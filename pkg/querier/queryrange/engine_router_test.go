@@ -14,10 +14,9 @@ import (
 	"github.com/grafana/loki/v3/pkg/loghttp"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql"
-	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
-	"github.com/grafana/loki/v3/pkg/querier/plan"
 	"github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase"
+	"github.com/grafana/loki/v3/pkg/querier/testutil"
 )
 
 func TestEngineRouter_split(t *testing.T) {
@@ -29,9 +28,7 @@ func TestEngineRouter_split(t *testing.T) {
 		Step:      1000, // 1 second step
 		Direction: logproto.BACKWARD,
 		Path:      "/query",
-		Plan: &plan.QueryPlan{
-			AST: syntax.MustParseExpr(`{app="foo"}`),
-		},
+		Plan:      testutil.MustPlan(`{app="foo"}`),
 	}
 
 	tests := []struct {
@@ -161,9 +158,7 @@ func TestEngineRouter_stepAlignment(t *testing.T) {
 			Step:      step,
 			Direction: logproto.BACKWARD,
 			Path:      "/query",
-			Plan: &plan.QueryPlan{
-				AST: syntax.MustParseExpr(`{app="foo"}`),
-			},
+			Plan:      testutil.MustPlan(`{app="foo"}`),
 		}
 	}
 
@@ -337,9 +332,7 @@ func Test_engineRouter_Do(t *testing.T) {
 				Step:      1000,
 				Direction: logproto.BACKWARD,
 				Path:      "/api/prom/query_range",
-				Plan: &plan.QueryPlan{
-					AST: syntax.MustParseExpr(`{foo="bar"}`),
-				},
+				Plan:      testutil.MustPlan(`{foo="bar"}`),
 			},
 			&LokiResponse{
 				Status:     loghttp.QueryStatusSuccess,

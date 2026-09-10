@@ -153,6 +153,10 @@ func ParseEncryptedJSON(
 	keyEncryptionAlgorithms []KeyAlgorithm,
 	contentEncryption []ContentEncryption,
 ) (*JSONWebEncryption, error) {
+	if len(input) == 0 {
+		return nil, errEmptyInput
+	}
+
 	var parsed rawJSONWebEncryption
 	err := json.Unmarshal([]byte(input), &parsed)
 	if err != nil {
@@ -290,6 +294,10 @@ func ParseEncryptedCompact(
 ) (*JSONWebEncryption, error) {
 	var parts [5]string
 	var ok bool
+
+	if len(input) == 0 {
+		return nil, errEmptyInput
+	}
 
 	for i := range 4 {
 		parts[i], input, ok = strings.Cut(input, ".")

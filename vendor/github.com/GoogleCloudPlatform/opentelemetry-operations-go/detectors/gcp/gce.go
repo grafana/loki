@@ -36,11 +36,15 @@ func (d *Detector) onGCE() bool {
 }
 
 // GCEHostType returns the machine type of the instance on which this program is running.
+//
+// Deprecated: Use [go.opentelemetry.io/contrib/detectors/gcp] instead.
 func (d *Detector) GCEHostType() (string, error) {
 	return d.metadata.GetWithContext(context.TODO(), machineTypeMetadataAttr)
 }
 
 // GCEHostID returns the instance ID of the instance on which this program is running.
+//
+// Deprecated: Use [go.opentelemetry.io/contrib/detectors/gcp] instead.
 func (d *Detector) GCEHostID() (string, error) {
 	return d.instanceID()
 }
@@ -48,6 +52,8 @@ func (d *Detector) GCEHostID() (string, error) {
 // GCEHostName returns the instance name of the instance on which this program is running.
 // Recommended to use GCEInstanceName() or GCEInstanceHostname() to more accurately reflect which
 // value is returned.
+//
+// Deprecated: Use [go.opentelemetry.io/contrib/detectors/gcp] instead.
 func (d *Detector) GCEHostName() (string, error) {
 	return d.metadata.InstanceNameWithContext(context.TODO())
 }
@@ -55,17 +61,23 @@ func (d *Detector) GCEHostName() (string, error) {
 // GCEInstanceName returns the instance name of the instance on which this program is running.
 // This is the value visible in the Cloud Console UI, and the prefix for the default hostname
 // of the instance as defined by the default internal DNS name (see https://cloud.google.com/compute/docs/internal-dns#instance-fully-qualified-domain-names).
+//
+// Deprecated: Use [go.opentelemetry.io/contrib/detectors/gcp] instead.
 func (d *Detector) GCEInstanceName() (string, error) {
 	return d.metadata.InstanceNameWithContext(context.TODO())
 }
 
 // GCEInstanceHostname returns the full value of the default or custom hostname of the instance
 // on which this program is running. See https://cloud.google.com/compute/docs/instances/custom-hostname-vm.
+//
+// Deprecated: Use [go.opentelemetry.io/contrib/detectors/gcp] instead.
 func (d *Detector) GCEInstanceHostname() (string, error) {
 	return d.metadata.HostnameWithContext(context.TODO())
 }
 
 // GCEAvailabilityZoneAndRegion returns the zone and region in which this program is running.
+//
+// Deprecated: Use [go.opentelemetry.io/contrib/detectors/gcp] instead.
 func (d *Detector) GCEAvailabilityZoneAndRegion() (string, string, error) {
 	zone, err := d.metadata.ZoneWithContext(context.TODO())
 	if err != nil {
@@ -81,6 +93,9 @@ func (d *Detector) GCEAvailabilityZoneAndRegion() (string, string, error) {
 	return zone, strings.Join(splitZone[0:2], "-"), nil
 }
 
+// ManagedInstanceGroup describes a Google Compute Engine Managed Instance Group.
+//
+// Deprecated: Use [go.opentelemetry.io/contrib/detectors/gcp] instead.
 type ManagedInstanceGroup struct {
 	Name     string
 	Location string
@@ -89,6 +104,9 @@ type ManagedInstanceGroup struct {
 
 var createdByMIGRE = regexp.MustCompile(`^projects/[^/]+/(zones|regions)/([^/]+)/instanceGroupManagers/([^/]+)$`)
 
+// GCEManagedInstanceGroup returns the managed instance group that created this VM, if any.
+//
+// Deprecated: Use [go.opentelemetry.io/contrib/detectors/gcp] instead.
 func (d *Detector) GCEManagedInstanceGroup() (ManagedInstanceGroup, error) {
 	createdBy, err := d.metadata.InstanceAttributeValueWithContext(context.TODO(), createdByInstanceAttr)
 	if _, ok := err.(metadata.NotDefinedError); ok {
