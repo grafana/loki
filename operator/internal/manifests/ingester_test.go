@@ -202,5 +202,5 @@ func TestNewIngesterStatefulSet_TerminationGracePeriodSeconds(t *testing.T) {
 	})
 
 	require.NotNil(t, ss.Spec.Template.Spec.TerminationGracePeriodSeconds)
-	require.Equal(t, int64(600), *ss.Spec.Template.Spec.TerminationGracePeriodSeconds)
+	require.Equal(t, defaultIngesterTerminationGracePeriodSeconds, *ss.Spec.Template.Spec.TerminationGracePeriodSeconds)
 }
