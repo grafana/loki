@@ -258,12 +258,12 @@ func (b *Builder) IsFull() bool {
 	return b.currentSizeEstimate > int(b.cfg.TargetObjectSize)
 }
 
-func (b *Builder) getSortKey(tenant string, ls labels.Labels) (string, error) {
-	sortKey, err := ComputeSchemaKey(ls, b.schemaLabelsFor(tenant))
+func (b *Builder) getSchemaKey(tenant string, ls labels.Labels) (string, error) {
+	schemaKey, err := ComputeSchemaKey(ls, b.schemaLabelsFor(tenant))
 	if err != nil {
 		return "", fmt.Errorf("compute sort key for tenant %s: %w", tenant, err)
 	}
-	return sortKey, nil
+	return schemaKey, nil
 }
 
 // schemaLabelsFor returns the tenant sort schema from overrides.
@@ -334,7 +334,7 @@ func (b *Builder) AppendRecord(tenant string, ls labels.Labels, record logs.Reco
 }
 
 func (b *Builder) appendAll(tenant string, ls labels.Labels, recordTime time.Time, entriesIter iter.Seq2[logs.Record, int64]) error {
-	streamSortKey, err := b.getSortKey(tenant, ls)
+	streamSortKey, err := b.getSchemaKey(tenant, ls)
 	if err != nil {
 		return err
 	}

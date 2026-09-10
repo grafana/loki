@@ -102,7 +102,7 @@ func buildSourceLogObject(t *testing.T, bucket objstore.Bucket, path string, sor
 	require.NoError(t, err)
 	defer closer.Close()
 
-	// Ingest CopyAndSorts after Flush so source objects are in StreamOrderKey
+	// Ingest CopyAndSorts after Flush so source objects are in SortKey
 	// order. Compaction only merges pre-sorted objects.
 	sorter, err := logsobj.NewBuilder(cfg, scratch.NewMemory(), logsobj.NewBuilderMetrics(), log.NewNopLogger(), sortSchemaOverrides(sortSchema))
 	require.NoError(t, err)
@@ -402,7 +402,7 @@ func TestBuildGlobalStreamTable_SameLabelsShareID(t *testing.T) {
 		prev := table.ByID(id - 1)
 		curr := table.ByID(id)
 		require.Negative(t, streams.CompareSortKey(prev, curr),
-			"global stream IDs must increase in StreamOrderKey order")
+			"global stream IDs must increase in SortKey order")
 	}
 }
 

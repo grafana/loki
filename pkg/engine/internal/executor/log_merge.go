@@ -326,7 +326,7 @@ func resolveStreams(ctx context.Context, section *dataobj.Section) (map[int64]st
 }
 
 // buildGlobalStreamTable ranks unique label sets across sources into one
-// StreamOrderKey ID space. Same labels in two objects share one ID.
+// ID space ranked by SortKey. Same labels in two objects share one ID.
 func buildGlobalStreamTable(sources []*logSource, sortSchema []string) (*logsobj.MultiSourceRankedStreams, error) {
 	maps := make([]map[int64]streams.Stream, 0, len(sources))
 	for _, src := range sources {

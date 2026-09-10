@@ -41,6 +41,6 @@ func TestRankStreams_SameLabelsShareID(t *testing.T) {
 		prev := ranks.ByID(id - 1)
 		curr := ranks.ByID(id)
 		require.Negative(t, streams.CompareSortKey(prev, curr),
-			"global stream IDs must increase in StreamOrderKey order")
+			"global stream IDs must increase in rank order")
 	}
 }

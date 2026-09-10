@@ -14,7 +14,7 @@ import (
 )
 
 // rankedSortKey is the CopyAndSort sidecar for one stream. rank is the rank in this object after sorting by
-// StreamOrderKey; independently written objects do not share rank.
+// SortKey; independently written objects do not share rank.
 type rankedSortKey struct {
 	rank int64
 	streams.SortKey

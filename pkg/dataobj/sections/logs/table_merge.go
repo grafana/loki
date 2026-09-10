@@ -261,7 +261,7 @@ func CompareForSortOrder(sort SortOrder) func(result.Result[dataset.Row], result
 			return result.Compare(a, b, compareRowsTimestamp) < 0
 		}
 	case SortSchemaASC:
-		panic("CompareForSortOrder does not support SortSchemaASC: use CompareForSortSchema instead")
+		panic("CompareForSortOrder does not support SortSchemaASC: use CompareByStreamSchema instead")
 	default:
 		panic("invalid sort order")
 	}

@@ -11,7 +11,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
 )
 
-func TestCompareForSortSchema(t *testing.T) {
+func TestCompareByStreamSchema(t *testing.T) {
 	schemas := []streams.SortKey{
 		{}, // [0] unused
 		{ShardBucket: 1, SchemaKey: "a", Hash: 2},

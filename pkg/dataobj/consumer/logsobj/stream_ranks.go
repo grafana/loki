@@ -47,9 +47,7 @@ func RankMixedStreams(schemaLabels []string, sources ...map[int64]streams.Stream
 	for _, u := range byLabels {
 		unique = append(unique, u)
 	}
-	slices.SortFunc(unique, func(a, b streams.SortKey) int {
-		return streams.CompareSortKey(a, b)
-	})
+	slices.SortFunc(unique, streams.CompareSortKey)
 
 	ranks := &MultiSourceRankedStreams{
 		ordered:  make([]streams.SortKey, len(unique)+1),
