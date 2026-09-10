@@ -61,25 +61,18 @@ type querySizeLimitSpec struct {
 	// errorTmpl is the client-facing message template. It takes two strings: the
 	// bytes the query would read and the configured limit.
 	errorTmpl string
-	// applyPlannedRanges sizes the limit from an injected plan, clipped
-	// to the request range. Used by MaxQueryBytesRead and the sharding-off
-	// MaxQuerierBytesRead middleware. The shard mapper applies the same
-	// plan only to the limit check, not to the shard factor.
-	applyPlannedRanges bool
 }
 
 var (
 	maxQueryBytesReadSpec = querySizeLimitSpec{
-		limitName:          "MaxQueryBytesRead",
-		sentinel:           logqlmodel.ErrMaxQueryBytesRead,
-		errorTmpl:          limErrQueryTooManyBytesTmpl,
-		applyPlannedRanges: true,
+		limitName: "MaxQueryBytesRead",
+		sentinel:  logqlmodel.ErrMaxQueryBytesRead,
+		errorTmpl: limErrQueryTooManyBytesTmpl,
 	}
 	maxQuerierBytesReadSpec = querySizeLimitSpec{
-		limitName:          "MaxQuerierBytesRead",
-		sentinel:           logqlmodel.ErrQuerierTooManyBytes,
-		errorTmpl:          limErrQuerierTooManyBytesTmpl,
-		applyPlannedRanges: true,
+		limitName: "MaxQuerierBytesRead",
+		sentinel:  logqlmodel.ErrQuerierTooManyBytes,
+		errorTmpl: limErrQuerierTooManyBytesTmpl,
 	}
 	maxQuerierBytesReadShardableSpec = querySizeLimitSpec{
 		limitName: "MaxQuerierBytesRead",
@@ -316,28 +309,27 @@ func NewQuerySizeLimiterMiddleware(
 //   - {job="foo"}
 //   - {job="bar"}
 //
-// If a plan is on the context, MaxQueryBytesRead and the sharding-off
-// MaxQuerierBytesRead middleware size the planned windows clipped to the
-// request. They do not use QueryLimitsContext as a floor. A present empty
-// plan is 0 bytes. The shard mapper still picks a factor from the full
-// split and only uses the plan for the limit number.
+// If a plan is on the context, size the planned windows clipped to the
+// request. Do not use QueryLimitsContext as a floor. A present empty
+// plan is 0 bytes. Stats errors are ignored so the query proceeds
+// (same as the no-plan path). The shard mapper still picks a factor
+// from the full split and only uses the plan for the limit number.
 func (q *querySizeLimiter) getBytesReadForRequest(ctx context.Context, r queryrangebase.Request) (uint64, error) {
 	ctx, sp := tracer.Start(ctx, "querySizeLimiter.getBytesReadForRequest")
 	defer sp.End()
 
-	if q.spec.applyPlannedRanges {
-		if planned, ok := querylimits.ExtractPlannedQueryRanges(ctx); ok {
-			bytesRead, err := q.getBytesForPlannedRanges(ctx, r, planned)
-			if err == nil {
-				level.Debug(q.logger).Log(
-					"msg", "sized query using planned ranges",
-					"windows", len(planned),
-					"bytes", bytesRead,
-					"limit_name", q.spec.limitName,
-				)
-			}
-			return bytesRead, err
+	if planned, ok := querylimits.ExtractPlannedQueryRanges(ctx); ok {
+		bytesRead, err := q.getBytesForPlannedRanges(ctx, r, planned)
+		if err != nil {
+			return 0, nil
 		}
+		level.Debug(q.logger).Log(
+			"msg", "sized query using planned ranges",
+			"windows", len(planned),
+			"bytes", bytesRead,
+			"limit_name", q.spec.limitName,
+		)
+		return bytesRead, nil
 	}
 
 	queryLimitCtx := querylimits.ExtractQueryLimitsContextFromContext(ctx)
@@ -363,13 +355,15 @@ func (q *querySizeLimiter) getBytesReadForRequest(ctx context.Context, r queryra
 }
 
 // getBytesForPlannedRanges sizes the query over each planned window
-// that overlaps [r.Start, r.End).
+// that overlaps [r.Start, r.End). The caller handles stats errors:
+// the size-limiter middleware ignores them (query proceeds); the shard
+// mapper keeps the full-range estimate.
 func (q *querySizeLimiter) getBytesForPlannedRanges(ctx context.Context, r queryrangebase.Request, planned []querylimits.TimeRange) (uint64, error) {
 	var total uint64
 	for _, window := range clipPlannedQueryRanges(planned, r.GetStart(), r.GetEnd()) {
 		bytesRead, err := q.getBytesForQueryAndRange(ctx, r.GetQuery(), window.Start, window.End)
 		if err != nil {
-			return 0, nil
+			return 0, err
 		}
 		total += bytesRead
 	}

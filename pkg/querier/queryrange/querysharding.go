@@ -136,9 +136,9 @@ func (ast *astMapperware) checkQuerySizeLimit(ctx context.Context, bytesPerShard
 	return nil
 }
 
-// plannedBytesPerShard returns plan∩request bytes scaled onto the
-// mapper's bytesPerShard so the shard factor is unchanged. ok is false
-// when stats fail so the caller keeps the full-split estimate.
+// plannedBytesPerShard is planned-window bytes divided by the existing
+// shard count, for the MaxQuerierBytesRead check. ok is false if stats
+// fail so the caller keeps the full-range estimate.
 func (ast *astMapperware) plannedBytesPerShard(
 	ctx context.Context,
 	r queryrangebase.Request,
@@ -238,8 +238,9 @@ func (ast *astMapperware) Do(ctx context.Context, r queryrangebase.Request) (que
 	level.Debug(logger).Log("no-op", noop, "mapped", parsed.String())
 
 	// Note, even if noop, bytesPerShard contains the bytes that'd be read for the whole expr without sharding.
-	// A present plan sizes the limit from plan∩split / the already-chosen
-	// factor. GetStats (and thus the factor) still use the full split.
+	// A present plan only changes the MaxQuerierBytesRead number (planned
+	// windows divided by the existing shard count). GetStats and the shard
+	// factor still use the full request range.
 	if planned, ok := querylimits.ExtractPlannedQueryRanges(ctx); ok {
 		if sized, ok := ast.plannedBytesPerShard(ctx, r, planned, bytesPerShard); ok {
 			level.Debug(logger).Log(

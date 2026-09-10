@@ -414,6 +414,57 @@ func Test_astMapper_QuerySizeLimits_PlannedRanges(t *testing.T) {
 		_, err := newWare().Do(ctx, req)
 		require.NoError(t, err)
 	})
+
+	t.Run("planned-window stats failure keeps the full-split estimate", func(t *testing.T) {
+		fullSpan := req.GetEnd().Sub(req.GetStart())
+		failingStats := queryrangebase.HandlerFunc(func(_ context.Context, r queryrangebase.Request) (queryrangebase.Response, error) {
+			if r.GetEnd().Sub(r.GetStart()) < fullSpan {
+				return nil, errors.New("planned window stats failed")
+			}
+			return &IndexStatsResponse{
+				Response: &logproto.IndexStatsResponse{Bytes: 100},
+			}, nil
+		})
+		downstream := queryrangebase.HandlerFunc(func(_ context.Context, req queryrangebase.Request) (queryrangebase.Response, error) {
+			if _, ok := req.(*logproto.IndexStatsRequest); ok {
+				return failingStats.Do(context.Background(), req)
+			}
+			return &LokiResponse{
+				Status:    loghttp.QueryStatusSuccess,
+				Direction: logproto.BACKWARD,
+				Limit:     100,
+				Version:   1,
+				Data: LokiData{
+					ResultType: loghttp.ResultTypeStream,
+				},
+			}, nil
+		})
+		ware := newASTMapperware(
+			[]config.PeriodConfig{{IndexType: types.IndexTypeTSDB}},
+			testEngineOpts,
+			downstream,
+			downstream,
+			failingStats,
+			log.NewNopLogger(),
+			nilShardingMetrics,
+			fakeLimits{
+				maxSeries:               math.MaxInt32,
+				maxQueryParallelism:     1,
+				tsdbMaxQueryParallelism: 1,
+				queryTimeout:            time.Minute,
+				maxQuerierBytesRead:     10,
+			},
+			0,
+			[]string{},
+		)
+		ctx := querylimits.InjectPlannedQueryRanges(user.InjectOrgID(context.Background(), "1"), []querylimits.TimeRange{{
+			Start: req.GetEnd().Add(-30 * time.Minute),
+			End:   req.GetEnd(),
+		}})
+		_, err := ware.Do(ctx, req)
+		require.Error(t, err)
+		require.ErrorContains(t, err, fmt.Sprintf(limErrQuerierTooManyBytesShardableTmpl, "100 B", "10 B"))
+	})
 }
 
 func Test_clipPlannedQueryRanges(t *testing.T) {

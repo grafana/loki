@@ -1398,6 +1398,40 @@ func TestPrefetch_UnderSizeLimit_DoesNotWaitBeforeNext(t *testing.T) {
 	require.False(t, plannedOK, "under MaxQueryBytesRead must not inject a plan")
 }
 
+func TestPrefetch_AtSizeLimit_DoesNotWaitBeforeNext(t *testing.T) {
+	now := time.Now().Truncate(time.Millisecond)
+	hp := &mockHintProvider{
+		delay: 50 * time.Millisecond,
+		hints: &hintprovider.Hints{
+			TimeRanges: []hintprovider.HintTimeRange{
+				{Start: now.Add(-45 * time.Minute), End: now.Add(-30 * time.Minute)},
+			},
+		},
+	}
+
+	var readyAtNext bool
+	var plannedOK bool
+	next := queryrangebase.HandlerFunc(func(ctx context.Context, req queryrangebase.Request) (queryrangebase.Response, error) {
+		if _, ok := req.(*logproto.IndexStatsRequest); ok {
+			return &queryrange.IndexStatsResponse{
+				Response: &logproto.IndexStatsResponse{Bytes: 1000},
+			}, nil
+		}
+		readyAtNext = prefetchHintsReady(ctx)
+		_, plannedOK = querylimits.ExtractPlannedQueryRanges(ctx)
+		return emptyStreamResponse(), nil
+	})
+
+	cfg := MiddlewareConfig{MaxQueryBytesRead: 1000, HintTimeout: time.Second}
+	handler := NewLoglinePrefetchMiddleware(hp, cfg, nil, newTestMetrics(), nil).Wrap(next)
+	req := newTestLokiRequest(`{job="test"} |= "error"`, now.Add(-time.Hour), now)
+
+	_, err := handler.Do(testTenantContextWithLive(), req)
+	require.NoError(t, err)
+	require.False(t, readyAtNext, "at MaxQueryBytesRead the limiter allows the query; do not wait")
+	require.False(t, plannedOK, "at MaxQueryBytesRead must not inject a plan")
+}
+
 func TestPrefetch_BelowMinBytesButOverSizeLimit_StillLooksUpHints(t *testing.T) {
 	now := time.Now().Truncate(time.Millisecond)
 	hp := &mockHintProvider{

@@ -853,7 +853,7 @@ func (h *loglinePrefetchHandler) Do(ctx context.Context, req queryrangebase.Requ
 			)
 			return h.next.Do(ctx, req)
 		}
-		overSizeLimit = maxQueryBytesRead > 0 && queryBytes >= uint64(maxQueryBytesRead)
+		overSizeLimit = maxQueryBytesRead > 0 && queryBytes > uint64(maxQueryBytesRead)
 		belowMinQueryBytes := minQueryBytes > 0 && queryBytes < uint64(minQueryBytes)
 		if belowMinQueryBytes && !overSizeLimit {
 			if h.metrics != nil && h.metrics.hintSkippedSmallQuery != nil {
