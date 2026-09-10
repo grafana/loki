@@ -5,11 +5,11 @@ import (
 	"fmt"
 	"net"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/require"
-	"go.uber.org/atomic"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/test/bufconn"
@@ -32,9 +32,9 @@ type mockBuilder struct {
 
 func (m *mockBuilder) OnJobResponse(res *compactor_grpc.JobResult) error {
 	if res.Error != "" {
-		m.jobsFailed.Inc()
+		m.jobsFailed.Add(1)
 	} else {
-		m.jobsSucceeded.Inc()
+		m.jobsSucceeded.Add(1)
 	}
 
 	return nil
@@ -46,7 +46,7 @@ func (m *mockBuilder) BuildJobs(ctx context.Context, jobsChan chan<- *compactor_
 		case <-ctx.Done():
 			return
 		case jobsChan <- job:
-			m.jobsSentCount.Inc()
+			m.jobsSentCount.Add(1)
 		}
 	}
 
