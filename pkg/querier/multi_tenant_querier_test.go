@@ -199,6 +199,28 @@ func TestMultiTenantQuerier_TenantFilter(t *testing.T) {
 	}
 }
 
+func TestReplaceMatchers(t *testing.T) {
+	matchers, err := syntax.ParseMatchers(`{app="foo"}`, true)
+	require.NoError(t, err)
+
+	t.Run("single stream selector", func(t *testing.T) {
+		expr, err := syntax.ParseExpr(`sum(rate({app="bar", env="prod"}[1m]))`)
+		require.NoError(t, err)
+
+		updated, err := replaceMatchers(expr, matchers)
+		require.NoError(t, err)
+		require.Equal(t, `sum(rate({app="foo"}[1m]))`, updated.String())
+	})
+
+	t.Run("multiple stream selectors are rejected", func(t *testing.T) {
+		expr, err := syntax.ParseExpr(`sum(rate({app="bar"}[1m])) / sum(rate({app="baz"}[1m]))`)
+		require.NoError(t, err)
+
+		_, err = replaceMatchers(expr, matchers)
+		require.ErrorContains(t, err, "more than one stream selector")
+	})
+}
+
 var samples = []logproto.Sample{
 	{Timestamp: time.Unix(2, 0).UnixNano(), Hash: 1, Value: 1.},
 	{Timestamp: time.Unix(5, 0).UnixNano(), Hash: 2, Value: 1.},

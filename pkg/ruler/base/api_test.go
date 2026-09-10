@@ -847,6 +847,59 @@ rules:
 	}
 }
 
+// An expression whose first line begins with whitespace used to be stored verbatim, and
+// every later read of the namespace re-marshalled it into YAML that no parser could read,
+// so the ruler answered 500 for the whole namespace and its rules never loaded. Wider
+// indents took the other branch and silently lost two columns per round trip until they
+// too became unreadable. Same defect as https://github.com/grafana/mimir/issues/6763.
+//
+// The payload below quotes the expression so that what reaches the ruler is unambiguous;
+// what is under test is every read that follows.
+func TestRuler_CreateWithLeadingWhitespaceInExpr(t *testing.T) {
+	const body = "sum by (level) (\n    count_over_time({job=~\".+\"}[1m])\n  )"
+
+	for _, indent := range []string{" ", "  ", "   ", "     ", "\n  "} {
+		t.Run(fmt.Sprintf("%q", indent), func(t *testing.T) {
+			cfg := defaultRulerConfig(t, newMockRuleStore(make(map[string]rulespb.RuleGroupList)))
+
+			r := newTestRuler(t, cfg)
+			defer services.StopAndAwaitTerminated(context.Background(), r) //nolint:errcheck
+
+			a := NewAPI(r, r.store, log.NewNopLogger())
+
+			router := mux.NewRouter()
+			router.Path("/api/v1/rules/{namespace}").Methods(http.MethodPost).HandlerFunc(a.CreateRuleGroup)
+			router.Path("/api/v1/rules/{namespace}/{groupName}").Methods(http.MethodGet).HandlerFunc(a.GetRuleGroup)
+			router.Path("/api/v1/rules").Methods(http.MethodGet).HandlerFunc(a.ListRules)
+
+			input := fmt.Sprintf("name: test\ninterval: 15s\nrules:\n- record: up_rule\n  expr: %q\n", indent+body+"\n")
+
+			req := requestFor(t, http.MethodPost, "https://localhost:8080/api/v1/rules/namespace", strings.NewReader(input), "user1")
+			w := httptest.NewRecorder()
+			router.ServeHTTP(w, req)
+			require.Equal(t, http.StatusAccepted, w.Code, w.Body.String())
+
+			req = requestFor(t, http.MethodGet, "https://localhost:8080/api/v1/rules/namespace/test", nil, "user1")
+			w = httptest.NewRecorder()
+			router.ServeHTTP(w, req)
+			require.Equal(t, http.StatusOK, w.Code)
+
+			var got rulefmt.RuleGroup
+			require.NoError(t, yaml.Unmarshal(w.Body.Bytes(), &got), "rule group must be readable: %s", w.Body.String())
+			require.Equal(t, body, got.Rules[0].Expr)
+
+			req = requestFor(t, http.MethodGet, "https://localhost:8080/api/v1/rules", nil, "user1")
+			w = httptest.NewRecorder()
+			router.ServeHTTP(w, req)
+			require.Equal(t, http.StatusOK, w.Code)
+
+			var namespaces map[string][]rulefmt.RuleGroup
+			require.NoError(t, yaml.Unmarshal(w.Body.Bytes(), &namespaces), "rule list must be readable: %s", w.Body.String())
+			require.Equal(t, body, namespaces["namespace"][0].Rules[0].Expr)
+		})
+	}
+}
+
 func TestRuler_DeleteNamespace(t *testing.T) {
 	cfg := defaultRulerConfig(t, newMockRuleStore(mockRulesNamespaces))
 

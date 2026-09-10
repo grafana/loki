@@ -756,6 +756,91 @@ func TestLimits_PolicyRateOverrides(t *testing.T) {
 	require.False(t, ok)
 }
 
+func TestLimits_PolicyInheritLimits(t *testing.T) {
+	limits := &Limits{
+		IngestionRateMB:         5,
+		IngestionBurstSizeMB:    10,
+		MaxLocalStreamsPerUser:  100,
+		MaxGlobalStreamsPerUser: 1000,
+		PerStreamRateLimit:      flagext.ByteSize(9 * 1024 * 1024),
+		PerStreamRateLimitBurst: flagext.ByteSize(11 * 1024 * 1024),
+		PolicyOverrideLimits: map[string]PolicyOverridableLimits{
+			// Inherit everything: same values as the tenant, but reported as overridden so usage
+			// is tracked in a policy-specific bucket.
+			"inherit-all": {InheritLimits: true},
+			// Explicit fields win; the rest inherit the tenant value (still overridden).
+			"inherit-partial": {InheritLimits: true, IngestionRateMB: ptr(2.0), MaxLocalStreamsPerUser: ptr(7)},
+		},
+	}
+
+	overrides := &Overrides{defaultLimits: limits, tenantLimits: nil}
+
+	// inherit-all: every accessor returns the tenant value with overridden=true.
+	rateBytes, ok := overrides.PolicyIngestionRateBytes("tenant1", "inherit-all")
+	require.True(t, ok)
+	require.Equal(t, float64(5*bytesInMB), rateBytes)
+	burstBytes, ok := overrides.PolicyIngestionBurstSizeBytes("tenant1", "inherit-all")
+	require.True(t, ok)
+	require.Equal(t, 10*bytesInMB, burstBytes)
+	v, ok := overrides.PolicyMaxLocalStreamsPerUser("tenant1", "inherit-all")
+	require.True(t, ok)
+	require.Equal(t, 100, v)
+	v, ok = overrides.PolicyMaxGlobalStreamsPerUser("tenant1", "inherit-all")
+	require.True(t, ok)
+	require.Equal(t, 1000, v)
+	psrl, ok := overrides.PolicyPerStreamRateLimit("tenant1", "inherit-all")
+	require.True(t, ok)
+	require.Equal(t, RateLimit{Limit: rate.Limit(9 * 1024 * 1024), Burst: 11 * 1024 * 1024}, psrl)
+
+	// inherit-partial: explicit fields win, the rest inherit with overridden=true.
+	rateBytes, ok = overrides.PolicyIngestionRateBytes("tenant1", "inherit-partial")
+	require.True(t, ok)
+	require.Equal(t, float64(2*bytesInMB), rateBytes)
+	v, ok = overrides.PolicyMaxLocalStreamsPerUser("tenant1", "inherit-partial")
+	require.True(t, ok)
+	require.Equal(t, 7, v)
+	burstBytes, ok = overrides.PolicyIngestionBurstSizeBytes("tenant1", "inherit-partial")
+	require.True(t, ok)
+	require.Equal(t, 10*bytesInMB, burstBytes)
+	v, ok = overrides.PolicyMaxGlobalStreamsPerUser("tenant1", "inherit-partial")
+	require.True(t, ok)
+	require.Equal(t, 1000, v)
+
+	// Other policies and tenants without an entry are unaffected.
+	_, ok = overrides.PolicyIngestionRateBytes("tenant1", "other")
+	require.False(t, ok)
+	_, ok = overrides.PolicyIngestionRateBytes("tenant1", "")
+	require.False(t, ok)
+}
+
+func TestLimits_PolicyInheritLimitsYAML(t *testing.T) {
+	var limits Limits
+	yamlConfig := `
+ingestion_rate_mb: 5
+max_global_streams_per_user: 1000
+policy_override_limits:
+  finance:
+    inherit_limits: true
+  ops:
+    inherit_limits: true
+    ingestion_rate_mb: 2
+`
+	require.NoError(t, yaml.Unmarshal([]byte(yamlConfig), &limits))
+
+	overrides := &Overrides{defaultLimits: &limits, tenantLimits: nil}
+
+	rateBytes, ok := overrides.PolicyIngestionRateBytes("tenant1", "finance")
+	require.True(t, ok)
+	require.Equal(t, float64(5*bytesInMB), rateBytes)
+	v, ok := overrides.PolicyMaxGlobalStreamsPerUser("tenant1", "finance")
+	require.True(t, ok)
+	require.Equal(t, 1000, v)
+
+	rateBytes, ok = overrides.PolicyIngestionRateBytes("tenant1", "ops")
+	require.True(t, ok)
+	require.Equal(t, float64(2*bytesInMB), rateBytes)
+}
+
 func TestPolicyShardStreams(t *testing.T) {
 	timeOn := true
 	desired := flagext.ByteSize(512 * 1024)

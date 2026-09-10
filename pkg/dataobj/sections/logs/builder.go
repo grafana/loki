@@ -29,6 +29,14 @@ type Record struct {
 	// SortKey is a pre-computed schema sort key. It is not encoded into the section;
 	// it only guides the in-memory sort during building.
 	SortKey string
+
+	// ShardBucket is the physical shard bucket for the record's stream. It is
+	// not encoded into LOG sections; it guides schema-layout sorting.
+	ShardBucket uint32
+
+	// StreamHash is labels.StableHash of the record's stream labels. It is not
+	// encoded into LOG sections; it guides schema-layout sorting.
+	StreamHash uint64
 }
 
 type AppendStrategy int
@@ -103,6 +111,14 @@ type BuilderOptions struct {
 	// metadata so readers can reconstruct the sort key without re-reading the
 	// tenant overrides.
 	SchemaLabels []string
+
+	// StreamOrder identifies how object-local stream IDs were assigned for a
+	// schema-sorted section.
+	StreamOrder StreamOrder
+
+	// ShardCount is the number of physical shard buckets in the sort layout.
+	// Zero means unspecified.
+	ShardCount uint32
 }
 
 // Builder accumulate a set of [Record]s within a data object.
@@ -329,7 +345,7 @@ func (b *Builder) Flush(w dataobj.SectionWriter) (n int64, err error) {
 
 	// The first two columns of each row are *always* stream ID and timestamp.
 	// TODO(ashwanth): Find a safer way to do this. Same as [CompareRows]
-	logsEnc.SetSortInfo(sortInfo(b.opts.SortOrder, b.opts.SchemaLabels))
+	logsEnc.SetSortInfo(sortInfo(b.opts.SortOrder, b.opts.SchemaLabels, b.opts.StreamOrder, b.opts.ShardCount))
 	logsEnc.SetTenant(b.tenant)
 
 	n, err = logsEnc.Flush(w)
@@ -356,7 +372,7 @@ func (b *Builder) encodeSection(enc *columnar.Encoder, section *table) error {
 	return nil
 }
 
-func sortInfo(sort SortOrder, schemaLabels []string) *datasetmd_v2.SortInfo {
+func sortInfo(sort SortOrder, schemaLabels []string, streamOrder StreamOrder, shardCount uint32) *datasetmd_v2.SortInfo {
 	switch sort {
 	case SortStreamASC:
 		return &datasetmd_v2.SortInfo{
@@ -373,12 +389,13 @@ func sortInfo(sort SortOrder, schemaLabels []string) *datasetmd_v2.SortInfo {
 			},
 		}
 	case SortSchemaASC:
-		// Schema sorting clusters rows by the configured sort key. Within each sort-key
-		// cluster, we also order by stream ID and descending timestamp so entries from
-		// the same stream remain localized. This preserves stream-locality benefits for
-		// queries that cannot use the schema sort key.
+		// Schema sorting clusters rows by [shard_bucket, schema key, stream hash].
+		// Stream IDs are assigned in that order so column_sorts [streamID ASC,
+		// timestamp DESC] matches the physical row order after remapping.
 		return &datasetmd_v2.SortInfo{
 			SchemaLabels: schemaLabels,
+			StreamOrder:  streamOrderProto(streamOrder),
+			ShardCount:   shardCount,
 			ColumnSorts: []*datasetmd_v2.SortInfo_ColumnSort{
 				{ColumnIndex: 0, Direction: datasetmd_v2.SORT_DIRECTION_ASCENDING},  // StreamID ASC
 				{ColumnIndex: 1, Direction: datasetmd_v2.SORT_DIRECTION_DESCENDING}, // Timestamp DESC
@@ -386,6 +403,15 @@ func sortInfo(sort SortOrder, schemaLabels []string) *datasetmd_v2.SortInfo {
 		}
 	default:
 		panic("invalid sort order")
+	}
+}
+
+func streamOrderProto(order StreamOrder) datasetmd_v2.StreamOrder {
+	switch order {
+	case StreamOrderStableHashV1:
+		return datasetmd_v2.STREAM_ORDER_STABLE_HASH_V1
+	default:
+		return datasetmd_v2.STREAM_ORDER_UNSPECIFIED
 	}
 }
 

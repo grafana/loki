@@ -2,6 +2,7 @@ package querier
 
 import (
 	"context"
+	"fmt"
 	"sort"
 	"strings"
 
@@ -62,7 +63,10 @@ func (q *MultiTenantQuerier) SelectLogs(ctx context.Context, params logql.Select
 	if err := syntax.ValidateMatchers(filteredMatchers); err != nil {
 		return nil, err
 	}
-	updatedSelector := replaceMatchers(selector, filteredMatchers)
+	updatedSelector, err := replaceMatchers(selector, filteredMatchers)
+	if err != nil {
+		return nil, err
+	}
 
 	// Update Plan with the modified AST directly (no string round-trip)
 	params.Plan = &plan.QueryPlan{
@@ -395,6 +399,8 @@ func (q *MultiTenantQuerier) DetectedLabels(ctx context.Context, req *logproto.D
 //   - matchedTenants: tenant IDs that matched the selector's tenant filter
 //   - filteredMatchers: matchers with __tenant_id__ removed, for validation before use
 //   - updatedExpr: the expression with filteredMatchers already applied
+//
+// The expression must contain exactly one stream selector, see replaceMatchers.
 func removeTenantSelector(params logql.SelectSampleParams, tenantIDs []string) (matchedTenants map[string]struct{}, filteredMatchers []*labels.Matcher, updatedExpr syntax.Expr, err error) {
 	expr, err := params.Expr()
 	if err != nil {
@@ -405,21 +411,43 @@ func removeTenantSelector(params logql.SelectSampleParams, tenantIDs []string) (
 		return nil, nil, nil, err
 	}
 	matchedTenants, filteredMatchers = filterValuesByMatchers(defaultTenantLabel, tenantIDs, selector.Matchers()...)
-	updatedExpr = replaceMatchers(expr, filteredMatchers)
+	updatedExpr, err = replaceMatchers(expr, filteredMatchers)
+	if err != nil {
+		return nil, nil, nil, err
+	}
 	return matchedTenants, filteredMatchers, updatedExpr, nil
 }
 
-// replaceMatchers traverses the passed expression and replaces all matchers.
-func replaceMatchers(expr syntax.Expr, matchers []*labels.Matcher) syntax.Expr {
-	expr, _ = syntax.Clone(expr)
+// replaceMatchers returns a copy of the passed expression with its stream
+// selector replaced by the given matchers.
+//
+// The expression must contain exactly one stream selector, because a single set
+// of matchers cannot describe more than one. Callers in this package satisfy
+// that precondition: the query engine decomposes binary operations into one
+// subquery per operand before calling into the querier, so every expression
+// that reaches here is a leaf with a single selector. An expression with
+// multiple selectors is rejected instead of silently having all of them
+// overwritten with the matchers of the first one.
+func replaceMatchers(expr syntax.Expr, matchers []*labels.Matcher) (syntax.Expr, error) {
+	expr, err := syntax.Clone(expr)
+	if err != nil {
+		return nil, err
+	}
+
+	selectors := 0
 	expr.Walk(func(e syntax.Expr) bool {
 		switch concrete := e.(type) {
 		case *syntax.MatchersExpr:
+			selectors++
 			concrete.Mts = matchers
 		}
 		return true
 	})
-	return expr
+	if selectors > 1 {
+		return nil, fmt.Errorf("multi-tenant queries do not support expressions with more than one stream selector, got %d", selectors)
+	}
+
+	return expr, nil
 }
 
 // See https://github.com/grafana/mimir/blob/114ab88b50638a2047e2ca2a60640f6ca6fe8c17/pkg/querier/tenantfederation/tenant_federation.go#L29-L69

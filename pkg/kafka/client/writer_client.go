@@ -37,7 +37,7 @@ const (
 //
 // The returned Client collects the standard set of *kprom.Metrics, prefixed with
 // `MetricsPrefix`
-func NewWriterClient(component string, kafkaCfg kafka.Config, maxInflightProduceRequests int, logger log.Logger, reg prometheus.Registerer) (*kgo.Client, error) {
+func NewWriterClient(component string, kafkaCfg kafka.Config, logger log.Logger, reg prometheus.Registerer) (*kgo.Client, error) {
 	// Do not export the client ID, because we use it to specify options to the backend.
 	metrics := NewClientMetrics(component, reg, kafkaCfg.EnableKafkaHistograms)
 
@@ -60,13 +60,14 @@ func NewWriterClient(component string, kafkaCfg kafka.Config, maxInflightProduce
 		// next Produce request allows us to reduce the end-to-end latency.
 		//
 		// The result of the multiplication of producer linger and max in-flight requests should match the maximum
-		// Produce latency expected by the Kafka backend in a steady state. For example, 50ms * 20 requests = 1s,
+		// Produce latency expected by the Kafka backend in a steady state. For example, the default 50ms * 20 requests = 1s,
 		// which means the Kafka client will keep issuing a Produce request every 50ms as far as the Kafka backend
 		// doesn't take longer than 1s to process them (if it takes longer, the client will buffer data and stop
-		// issuing new Produce requests until some previous ones complete).
+		// issuing new Produce requests until some previous ones complete). Both are tunable via
+		// -kafka.producer-linger and -kafka.producer-max-inflight-requests-per-broker.
 		kgo.DisableIdempotentWrite(),
-		kgo.ProducerLinger(50*time.Millisecond),
-		kgo.MaxProduceRequestsInflightPerBroker(maxInflightProduceRequests),
+		kgo.ProducerLinger(kafkaCfg.ProducerLinger),
+		kgo.MaxProduceRequestsInflightPerBroker(kafkaCfg.ProducerMaxInflightRequestsPerBroker),
 
 		// Unlimited number of Produce retries but a deadline on the max time a record can take to be delivered.
 		// With the default config it would retry infinitely.

@@ -229,11 +229,15 @@ func (b *Builder) getOrAddStream(streamLabels labels.Labels) *Stream {
 	return b.addStream(hash, streamLabels)
 }
 
+func ShardBucketFromHash(hash uint64) uint32 {
+	return uint32(hash >> (64 - ShardBits))
+}
+
 // ShardBucket returns the physical shard bucket for streamLabels.
 // Buckets are 0-based in [0, ShardFactor).
 func ShardBucket(streamLabels labels.Labels) uint32 {
 	fp := labels.StableHash(streamLabels)
-	return uint32(fp >> (64 - ShardBits))
+	return ShardBucketFromHash(fp)
 }
 
 func (b *Builder) addStream(hash uint64, streamLabels labels.Labels) *Stream {
