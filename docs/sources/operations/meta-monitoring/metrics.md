@@ -132,6 +132,7 @@ Ingester pressure often appears as memory growth, poor chunk utilization, or flu
 Key metrics:
 
 - `loki_ingester_memory_streams`
+- `loki_ingester_memory_stream_shards`
 - `loki_ingester_memory_chunks`
 - `loki_ingester_flush_queue_length`
 - `loki_ingester_chunk_utilization`
@@ -140,6 +141,14 @@ Key metrics:
 Example queries:
 
 ```promql
+sum(loki_ingester_memory_streams{cluster="$cluster", namespace="$namespace"})
+```
+
+The share of in-memory streams that were created by stream sharding in the distributors:
+
+```promql
+sum(loki_ingester_memory_stream_shards{cluster="$cluster", namespace="$namespace"})
+/
 sum(loki_ingester_memory_streams{cluster="$cluster", namespace="$namespace"})
 ```
 

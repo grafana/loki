@@ -132,6 +132,41 @@ func TestRecordBytesProcessedTotal(t *testing.T) {
 	require.Equal(t, float64(0), testutil.ToFloat64(bytesProcessedTotal.WithLabelValues("")))
 }
 
+func TestRecordChunkFetchFailuresTotal(t *testing.T) {
+	util_log.Logger = log.NewNopLogger()
+
+	params := LiteralParams{
+		queryString: `{foo="bar"} |= "buzz"`,
+		direction:   logproto.BACKWARD,
+		limit:       1000,
+		step:        time.Minute,
+		queryExpr:   syntax.MustParseExpr(`{foo="bar"} |= "buzz"`),
+	}
+	now := time.Now()
+	params.start, params.end = now.Add(-1*time.Hour), now
+
+	ctx := context.Background()
+	failuresCounter := chunkFetchFailuresTotal.WithLabelValues("200", QueryTypeFilter, string(RangeType))
+	affectedCounter := queriesWithChunkFetchFailuresTotal.WithLabelValues("200", QueryTypeFilter, string(RangeType))
+
+	// No failures: neither counter moves.
+	RecordRangeAndInstantQueryMetrics(ctx, util_log.Logger, params, "200", stats.Result{}, nil)
+	require.Equal(t, float64(0), testutil.ToFloat64(failuresCounter))
+	require.Equal(t, float64(0), testutil.ToFloat64(affectedCounter))
+
+	// A query with 3 failed chunks: the failure counter accumulates the count,
+	// the affected-queries counter increments by exactly 1.
+	withFailures := stats.Result{Querier: stats.Querier{Store: stats.Store{ChunkFetchFailures: 3}}}
+	RecordRangeAndInstantQueryMetrics(ctx, util_log.Logger, params, "200", withFailures, nil)
+	require.Equal(t, float64(3), testutil.ToFloat64(failuresCounter))
+	require.Equal(t, float64(1), testutil.ToFloat64(affectedCounter))
+
+	// A second affected query: failures accumulate, affected count increments again.
+	RecordRangeAndInstantQueryMetrics(ctx, util_log.Logger, params, "200", withFailures, nil)
+	require.Equal(t, float64(6), testutil.ToFloat64(failuresCounter))
+	require.Equal(t, float64(2), testutil.ToFloat64(affectedCounter))
+}
+
 func TestLogLabelsQuery(t *testing.T) {
 	buf := bytes.NewBufferString("")
 	logger := log.NewLogfmtLogger(buf)

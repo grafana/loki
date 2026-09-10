@@ -1,6 +1,7 @@
 package rulespb
 
 import (
+	"strings"
 	"time"
 
 	"github.com/prometheus/common/model"
@@ -27,7 +28,7 @@ func formattedRuleToProto(rls []rulefmt.Rule) []*RuleDesc {
 	rules := make([]*RuleDesc, len(rls))
 	for i := range rls {
 		rules[i] = &RuleDesc{
-			Expr:        rls[i].Expr,
+			Expr:        normalizeExpr(rls[i].Expr),
 			Record:      rls[i].Record,
 			Alert:       rls[i].Alert,
 			For:         time.Duration(rls[i].For),
@@ -49,10 +50,8 @@ func FromProto(rg *RuleGroupDesc) rulefmt.RuleGroup {
 	}
 
 	for i, rl := range rg.GetRules() {
-		expr := rl.GetExpr()
-
 		newRule := rulefmt.Rule{
-			Expr:        expr,
+			Expr:        normalizeExpr(rl.GetExpr()),
 			Labels:      logproto.FromLabelAdaptersToLabels(rl.Labels).Map(),
 			Annotations: logproto.FromLabelAdaptersToLabels(rl.Annotations).Map(),
 			For:         model.Duration(rl.GetFor()),
@@ -68,4 +67,16 @@ func FromProto(rg *RuleGroupDesc) rulefmt.RuleGroup {
 	}
 
 	return formattedRuleGroup
+}
+
+// normalizeExpr strips whitespace surrounding a rule expression, which is
+// insignificant to LogQL but not to the YAML emitter: when a value's first line
+// begins with whitespace, yaml.v3 writes a block scalar whose indentation
+// indicator disagrees with the indentation it then emits. Nothing can parse the
+// result, so the ruler API returns 500 for the whole namespace and the tenant's
+// rule manager refuses to load any of its files. Applied on the way in so stored
+// groups round trip, and on the way out so groups stored before this fix are
+// still readable.
+func normalizeExpr(expr string) string {
+	return strings.TrimSpace(expr)
 }
