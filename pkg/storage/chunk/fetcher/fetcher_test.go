@@ -18,6 +18,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/chunkenc"
 	"github.com/grafana/loki/v3/pkg/compression"
 	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/v3/pkg/storage/chunk"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/cache"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client"
@@ -249,11 +250,15 @@ func TestFetchChunks_CacheDecodeIsNotLoggedAsDownloadFailure(t *testing.T) {
 
 	beforeFailures := readStorageErrorCounters(t)
 
-	got, err := f.FetchChunks(context.Background(), chunks)
+	statsCtx, ctx := stats.NewContext(context.Background())
+	got, err := f.FetchChunks(ctx, chunks)
 	require.NoError(t, err)
 	require.Empty(t, got)
 
 	require.Empty(t, storageErrorCounterDeltas(t, beforeFailures))
+	// Cache decode failures are silently dropped (never retried from storage,
+	// see processCacheResponse), so they aren't counted as chunk fetch failures.
+	require.Equal(t, int64(0), statsCtx.Store().ChunkFetchFailures)
 }
 
 func TestFetchChunks_HandlesStorageErrors(t *testing.T) {
@@ -287,7 +292,8 @@ func TestFetchChunks_HandlesStorageErrors(t *testing.T) {
 				t.Cleanup(f.Stop)
 
 				before := readStorageErrorCounters(t)
-				got, err := f.FetchChunks(context.Background(), chunks)
+				statsCtx, ctx := stats.NewContext(context.Background())
+				got, err := f.FetchChunks(ctx, chunks)
 
 				if propagate && test.client.err != nil {
 					require.ErrorIs(t, err, test.client.err)
@@ -301,6 +307,15 @@ func TestFetchChunks_HandlesStorageErrors(t *testing.T) {
 				} else {
 					require.Equal(t, map[string]float64{test.wantReason: 1}, storageErrorCounterDeltas(t, before))
 				}
+
+				// One of the two requested chunks fails whenever the client
+				// returns an error, except cancellation/deadline: those aren't
+				// counted as data-loss failures.
+				wantFailures := int64(0)
+				if test.client.err != nil && test.wantReason != "" {
+					wantFailures = 1
+				}
+				require.Equal(t, wantFailures, statsCtx.Store().ChunkFetchFailures)
 			})
 		}
 	}

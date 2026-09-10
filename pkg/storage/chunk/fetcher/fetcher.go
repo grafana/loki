@@ -239,8 +239,12 @@ func (c *Fetcher) FetchChunks(ctx context.Context, chunks []chunk.Chunk) ([]chun
 	if storageErr != nil {
 		if !errors.Is(storageErr, context.Canceled) && !errors.Is(storageErr, context.DeadlineExceeded) {
 			storageErrors.WithLabelValues(c.storageErrorReason(storageErr)).Inc()
+			if failures := len(missing) - len(fromStorage); failures > 0 {
+				st.AddChunkFetchFailures(int64(failures))
+			}
 		}
 		level.Error(log).Log("msg", "failed downloading chunks", "err", storageErr)
+
 		if c.propagateChunkFetchErrors {
 			return nil, storageErr
 		}
