@@ -240,7 +240,7 @@ func TestShardPlanning_MultipleDisjointNarrowHintsRerunWithinThresholds(t *testi
 	_, err := handler.Do(testTenantContextWithLive(), req)
 	require.NoError(t, err)
 	require.Equal(t, int64(2), calls.Load())
-	require.ElementsMatch(t, []time.Time{r1.Start, r2.Start}, gotStarts)
+	require.ElementsMatch(t, []time.Time{r1.Start, r2.Start}, gotStarts, "28m gap exceeds the k-envelope cut, so each hint is its own group")
 }
 
 func TestShardPlanning_BroadOrUnsafeHintsFallBackToFirstQuery(t *testing.T) {
