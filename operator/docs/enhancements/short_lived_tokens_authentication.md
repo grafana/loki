@@ -1,5 +1,6 @@
 ---
 title: Short-Lived Token Authentication
+state: committed
 authors:
   - "@periklis"
 reviewers:

@@ -1,5 +1,6 @@
 ---
 title: neat-enhancement-idea
+state: draft  # One of: draft, discussion, published, committed, abandoned
 authors:
   - TBD
 reviewers: # Include a comment about what domain expertise a reviewer is expected to bring and what area of the enhancement you expect them to focus on. For example: - "@networkguru, for networking aspects, please look at IP bootstrapping aspect"
