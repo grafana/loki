@@ -265,11 +265,11 @@ func TestIsMembershipErr(t *testing.T) {
 // hard to trace — the log said "flush step succeeded" while offsets were
 // not durable.
 func TestCommitOffsets_MembershipErrorPropagates(t *testing.T) {
-	cluster, lokiConfig, cfg := setupKafkaTest(t)
+	cluster, cfg := setupKafkaTest(t)
 	defer cluster.Close()
 
 	_, indexStore := newTestStore(t)
-	svc, err := New(lokiConfig, indexStore, cfg, "2026-01-01", newDefaultFakePartitionRing(), log.NewNopLogger(), prometheus.NewRegistry())
+	svc, err := New(indexStore, cfg, "2026-01-01", newDefaultFakePartitionRing(), log.NewNopLogger(), prometheus.NewRegistry())
 	require.NoError(t, err)
 
 	// Start the service so it joins the consumer group — CommitOffsetsSync
@@ -337,11 +337,11 @@ func TestCommitOffsets_MembershipErrorPropagates(t *testing.T) {
 // filtering: partitions absent from ownedPartitions are not included in
 // the CommitOffsetsSync request, even if they remain in the caller's map.
 func TestCommitOffsets_FiltersToOwnedPartitions(t *testing.T) {
-	cluster, lokiConfig, cfg := setupKafkaTest(t)
+	cluster, cfg := setupKafkaTest(t)
 	defer cluster.Close()
 
 	_, indexStore := newTestStore(t)
-	svc, err := New(lokiConfig, indexStore, cfg, "2026-01-01", newDefaultFakePartitionRing(), log.NewNopLogger(), prometheus.NewRegistry())
+	svc, err := New(indexStore, cfg, "2026-01-01", newDefaultFakePartitionRing(), log.NewNopLogger(), prometheus.NewRegistry())
 	require.NoError(t, err)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
@@ -445,7 +445,7 @@ func (b *blockingUploadBucket) Upload(ctx context.Context, name string, r io.Rea
 //     builderMtx across awaitPendingFlush, or commitOffsets deadlocks until
 //     the 5-minute shutdownTimeout.
 func TestRevokeDuringFlushThenShutdown(t *testing.T) {
-	cluster, lokiConfig, cfg := setupKafkaTest(t)
+	cluster, cfg := setupKafkaTest(t)
 	defer cluster.Close()
 
 	inner := objstore.NewInMemBucket()
@@ -462,7 +462,7 @@ func TestRevokeDuringFlushThenShutdown(t *testing.T) {
 		message:  "waiting for in-progress flush during shutdown",
 		signaled: make(chan struct{}),
 	}
-	svc, err := New(lokiConfig, indexStore, cfg, "2026-01-01", newDefaultFakePartitionRing(), waitLogger, prometheus.NewRegistry())
+	svc, err := New(indexStore, cfg, "2026-01-01", newDefaultFakePartitionRing(), waitLogger, prometheus.NewRegistry())
 	require.NoError(t, err)
 
 	// Join the group so CommitOffsetsSync has a live member/generation.

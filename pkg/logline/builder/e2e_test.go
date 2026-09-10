@@ -66,7 +66,7 @@ func TestE2E(t *testing.T) {
 	lokiConfig.KafkaConfig.Address = addrs[0]
 
 	logger := log.NewLogfmtLogger(os.Stdout)
-	svc, err := New(lokiConfig, indexStore, cfg, "2026-01-01", newDefaultFakePartitionRing(), logger, prometheus.NewRegistry())
+	svc, err := New(indexStore, cfg, "2026-01-01", newDefaultFakePartitionRing(), logger, prometheus.NewRegistry())
 	require.NoError(t, err)
 
 	producer, err := kgo.NewClient(
@@ -162,7 +162,7 @@ func TestE2E_DecodeErrorFailsFast(t *testing.T) {
 	lokiConfig.KafkaConfig.Address = addrs[0]
 
 	logger := log.NewLogfmtLogger(os.Stdout)
-	svc, err := New(lokiConfig, indexStore, cfg, "2026-01-01", newDefaultFakePartitionRing(), logger, prometheus.NewRegistry())
+	svc, err := New(indexStore, cfg, "2026-01-01", newDefaultFakePartitionRing(), logger, prometheus.NewRegistry())
 	require.NoError(t, err)
 
 	producer, err := kgo.NewClient(
@@ -231,7 +231,7 @@ func TestE2E_GracefulShutdownFlush(t *testing.T) {
 	lokiConfig.KafkaConfig.Address = addrs[0]
 
 	logger := log.NewLogfmtLogger(os.Stdout)
-	svc, err := New(lokiConfig, indexStore, cfg, "2026-01-01", newDefaultFakePartitionRing(), logger, prometheus.NewRegistry())
+	svc, err := New(indexStore, cfg, "2026-01-01", newDefaultFakePartitionRing(), logger, prometheus.NewRegistry())
 	require.NoError(t, err)
 
 	producer, err := kgo.NewClient(
@@ -327,7 +327,7 @@ func TestE2E_OffsetCommit(t *testing.T) {
 
 	// --- Service 1: produce, consume, flush, commit, stop ---
 	t.Log("Starting service 1...")
-	svc1, err := New(lokiConfig, indexStore, cfg, "2026-01-01", newDefaultFakePartitionRing(), logger, prometheus.NewRegistry())
+	svc1, err := New(indexStore, cfg, "2026-01-01", newDefaultFakePartitionRing(), logger, prometheus.NewRegistry())
 	require.NoError(t, err)
 
 	ctx1, cancel1 := context.WithCancel(context.Background())
@@ -362,7 +362,7 @@ func TestE2E_OffsetCommit(t *testing.T) {
 	outputDir2 := t.TempDir()
 	cfg.ScratchDir = outputDir2
 
-	svc2, err := New(lokiConfig, indexStore, cfg, "2026-01-01", newDefaultFakePartitionRing(), logger, prometheus.NewRegistry())
+	svc2, err := New(indexStore, cfg, "2026-01-01", newDefaultFakePartitionRing(), logger, prometheus.NewRegistry())
 	require.NoError(t, err)
 
 	ctx2, cancel2 := context.WithCancel(context.Background())

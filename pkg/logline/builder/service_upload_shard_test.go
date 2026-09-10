@@ -11,7 +11,6 @@ import (
 	"github.com/go-kit/log"
 	"github.com/grafana/loki/v3/pkg/logline/store"
 	"github.com/grafana/loki/v3/pkg/logproto"
-	"github.com/grafana/loki/v3/pkg/loki"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/stretchr/testify/require"
 	"github.com/thanos-io/objstore"
@@ -22,7 +21,7 @@ import (
 func TestService_UploadSetsShardMeta(t *testing.T) {
 	tmpDir := t.TempDir()
 
-	cluster, lokiCfg, baseCfg := setupKafkaTest(t)
+	cluster, baseCfg := setupKafkaTest(t)
 	defer cluster.Close()
 
 	cfg := baseCfg
@@ -37,10 +36,7 @@ func TestService_UploadSetsShardMeta(t *testing.T) {
 	indexStore, err := store.NewStore(bucket, store.Config{MinDate: "0001-01-01"}, log.NewNopLogger(), nil)
 	require.NoError(t, err)
 
-	lokiConfig := loki.ConfigWrapper{}
-	lokiConfig.KafkaConfig.Address = lokiCfg.KafkaConfig.Address
-
-	svc, err := New(lokiConfig, indexStore, cfg, "2026-01-01", newDefaultFakePartitionRing(), log.NewNopLogger(), prometheus.NewRegistry())
+	svc, err := New(indexStore, cfg, "2026-01-01", newDefaultFakePartitionRing(), log.NewNopLogger(), prometheus.NewRegistry())
 	require.NoError(t, err)
 	defer svc.client.Close()
 

@@ -20,7 +20,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/logline"
 	"github.com/grafana/loki/v3/pkg/kafka"
 	"github.com/grafana/loki/v3/pkg/logline/store"
-	"github.com/grafana/loki/v3/pkg/loki"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/twmb/franz-go/pkg/kerr"
 	"github.com/twmb/franz-go/pkg/kgo"
@@ -110,7 +109,6 @@ type Service struct {
 
 // New creates a new builder service with Kafka client and index store.
 func New(
-	lokiConfig loki.ConfigWrapper,
 	indexStore *store.Store,
 	cfg Config,
 	minDate string,

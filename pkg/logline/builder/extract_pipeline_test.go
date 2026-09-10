@@ -249,7 +249,7 @@ func TestBuilder_ExtractPipelineWorkerErrorPropagates(t *testing.T) {
 // at-least-once machinery. Run under -race this also exercises enqueue vs
 // worker vs shouldFlush concurrency.
 func TestService_ExtractThreadsFlushCommit(t *testing.T) {
-	cluster, lokiConfig, cfg := setupKafkaTest(t)
+	cluster, cfg := setupKafkaTest(t)
 	defer cluster.Close()
 	cfg.ExtractThreads = 2
 	// Keep the trigger checks below deterministic no-ops (they still read the
@@ -258,7 +258,7 @@ func TestService_ExtractThreadsFlushCommit(t *testing.T) {
 	cfg.FlushOnIdle = time.Hour
 
 	bucket, indexStore := newTestStore(t)
-	svc, err := New(lokiConfig, indexStore, cfg, "2026-01-01", newDefaultFakePartitionRing(), log.NewNopLogger(), prometheus.NewRegistry())
+	svc, err := New(indexStore, cfg, "2026-01-01", newDefaultFakePartitionRing(), log.NewNopLogger(), prometheus.NewRegistry())
 	require.NoError(t, err)
 	defer svc.client.Close()
 
