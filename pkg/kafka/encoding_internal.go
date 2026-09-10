@@ -162,7 +162,7 @@ func marshalInternalToRecord(topic string, partitionID int32, tenantID string, s
 // hasEmptyGroups reports whether the stream holds a resource with no scopes, or a scope with no entries.
 func hasEmptyGroups(stream *logproto.InternalStreamAdapter) bool {
 	for i := range stream.ResourceLogs {
-		resource := &stream.ResourceLogs[i]
+		resource := stream.ResourceLogs[i]
 		if len(resource.ScopeLogs) == 0 {
 			return true
 		}
