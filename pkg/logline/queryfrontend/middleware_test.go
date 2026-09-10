@@ -1355,7 +1355,7 @@ func TestPrefetch_AttachesPlannedRangeSource(t *testing.T) {
 	_, err := handler.Do(testTenantContextWithLive(), req)
 	require.NoError(t, err)
 	require.Equal(t, 1, hp.Calls())
-	require.False(t, snapshotOK, "prefetch must not freeze a plan; the limiter waits")
+	require.False(t, snapshotOK, "prefetch must not inject planned ranges; the limiter waits")
 	require.True(t, gotOK)
 	require.Equal(t, []querylimits.TimeRange{{Start: hintStart.UTC(), End: hintEnd.UTC()}}, got)
 }
@@ -1559,7 +1559,7 @@ func TestPrefetch_OverSizeLimit_FirstDownstreamHasSourceNotSnapshot(t *testing.T
 	_, err := handler.Do(testTenantContextWithLive(), req)
 	require.NoError(t, err)
 	require.GreaterOrEqual(t, lokiCalls, 1)
-	require.False(t, firstHadSnapshot, "prefetch no longer freezes a plan before next.Do")
+	require.False(t, firstHadSnapshot, "prefetch does not inject planned ranges before next.Do")
 	require.True(t, firstHadSource, "the size limiter waits on the attached source")
 }
 

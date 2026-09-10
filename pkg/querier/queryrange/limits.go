@@ -61,7 +61,8 @@ type querySizeLimitSpec struct {
 	// errorTmpl is the client-facing message template. It takes two strings: the
 	// bytes the query would read and the configured limit.
 	errorTmpl string
-	// applyPlannedRanges sizes MaxQueryBytesRead from injected planned windows.
+	// applyPlannedRanges lets MaxQueryBytesRead size from planned windows and
+	// wait on hints when the full span would exceed the limit.
 	// MaxQuerierBytesRead leaves this false and keeps using the split range.
 	applyPlannedRanges bool
 }
@@ -313,11 +314,11 @@ func NewQuerySizeLimiterMiddleware(
 //   - {job="foo"}
 //   - {job="bar"}
 //
-// If a frozen plan is already on the context, MaxQueryBytesRead sizes those
+// If planned ranges are already on the context, MaxQueryBytesRead sizes those
 // windows instead of req.GetStart()/GetEnd() and does not use
 // QueryLimitsContext as a floor. A present empty plan is 0 bytes, not a
-// fallback to the full span. A PlannedRangeSource is not waited on here;
-// Do() waits only when the full-span size would exceed the limit.
+// fallback to the full span. This method never waits on hints;
+// waitForPlannedRanges does that only after a full-span oversize.
 // MaxQuerierBytesRead ignores the plan and keeps using the split/shard
 // request range.
 func (q *querySizeLimiter) getBytesReadForRequest(ctx context.Context, r queryrangebase.Request) (uint64, error) {
@@ -443,25 +444,11 @@ func (q *querySizeLimiter) Do(ctx context.Context, r queryrangebase.Request) (qu
 			return nil, httpgrpc.Errorf(http.StatusInternalServerError, "Failed to get bytes read stats for query: %s", err.Error())
 		}
 
+		// Full span is over the cap. This is the only place we block on hints.
 		if bytesRead > uint64(maxBytesRead) && q.spec.applyPlannedRanges {
-			if _, frozen := querylimits.ExtractPlannedQueryRanges(ctx); !frozen {
-				planned, ready, waitErr := q.waitForPlannedRanges(ctx)
-				if waitErr != nil {
-					return nil, waitErr
-				}
-				if ready {
-					ctx = querylimits.InjectPlannedQueryRanges(ctx, planned)
-					bytesRead, err = q.getBytesForPlannedRanges(ctx, r, planned)
-					if err != nil {
-						return nil, httpgrpc.Errorf(http.StatusInternalServerError, "Failed to get bytes read stats for query: %s", err.Error())
-					}
-					level.Debug(log).Log(
-						"msg", "sized query using waited planned ranges",
-						"windows", len(planned),
-						"bytes", bytesRead,
-						"limit_name", q.spec.limitName,
-					)
-				}
+			ctx, bytesRead, err = q.waitForPlannedRanges(ctx, r, bytesRead)
+			if err != nil {
+				return nil, err
 			}
 		}
 
@@ -477,18 +464,42 @@ func (q *querySizeLimiter) Do(ctx context.Context, r queryrangebase.Request) (qu
 	return q.next.Do(ctx, r)
 }
 
-// waitForPlannedRanges waits on a PlannedRangeSource. ok=false means keep
-// the full-span size. A frozen snapshot is handled by getBytesReadForRequest.
-func (q *querySizeLimiter) waitForPlannedRanges(ctx context.Context) ([]querylimits.TimeRange, bool, error) {
+// waitForPlannedRanges is the only place MaxQueryBytesRead blocks on the
+// logline hint future. Call it only after a full-span size would reject.
+//
+// A plan already on the context is a no-op: getBytesReadForRequest already
+// sized those windows. No source, timeout, or error leaves bytesRead
+// unchanged so the caller still 400s on the full span.
+func (q *querySizeLimiter) waitForPlannedRanges(ctx context.Context, r queryrangebase.Request, bytesRead uint64) (context.Context, uint64, error) {
+	if _, hasPlan := querylimits.ExtractPlannedQueryRanges(ctx); hasPlan {
+		return ctx, bytesRead, nil
+	}
+
 	src, ok := querylimits.ExtractPlannedRangeSource(ctx)
 	if !ok {
-		return nil, false, nil
+		return ctx, bytesRead, nil
 	}
+
 	planned, ready := src.Wait(ctx)
 	if err := ctx.Err(); err != nil {
-		return nil, false, err
+		return ctx, bytesRead, err
 	}
-	return planned, ready, nil
+	if !ready {
+		return ctx, bytesRead, nil
+	}
+
+	ctx = querylimits.InjectPlannedQueryRanges(ctx, planned)
+	plannedBytes, err := q.getBytesForPlannedRanges(ctx, r, planned)
+	if err != nil {
+		return ctx, bytesRead, httpgrpc.Errorf(http.StatusInternalServerError, "Failed to get bytes read stats for query: %s", err.Error())
+	}
+	level.Debug(spanlogger.FromContext(ctx, q.logger)).Log(
+		"msg", "sized query after waiting on hints",
+		"windows", len(planned),
+		"bytes", plannedBytes,
+		"limit_name", q.spec.limitName,
+	)
+	return ctx, plannedBytes, nil
 }
 
 type seriesLimiter struct {
