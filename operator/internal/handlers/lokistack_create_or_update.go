@@ -165,8 +165,7 @@ func CreateOrUpdateLokiStack(
 
 	ll.Info("manifests built", "count", len(objects))
 
-	// We check all resources before creating or updating. This ensures we detect ownership conflicts
-	// early and prevent partial deployments
+	// Check for ownership conflicts before creating or updating resources
 	conflicts, err := checkResourceOwnership(ctx, ll, k, req, &stack, objects)
 	if err != nil {
 		return nil, err
@@ -183,7 +182,11 @@ func CreateOrUpdateLokiStack(
 		}
 	}
 
-	// Set storage schema status
+	// The status is updated before the objects are actually created to
+	// avoid the scenario in which the configmap is successfully created or
+	// updated and another resource is not. This would cause the status to
+	// be possibly misaligned with the configmap, which could lead to
+	// a user possibly being unable to read logs.
 	if err := status.SetStorageSchemaStatus(ctx, k, req, objStore.Schemas); err != nil {
 		ll.Error(err, "failed to set storage schema status")
 		return nil, err
@@ -267,16 +270,25 @@ func checkResourceOwnership(
 		kind := obj.GetObjectKind().GroupVersionKind().Kind
 		existing := obj.DeepCopyObject().(client.Object)
 		err := k.Get(ctx, client.ObjectKeyFromObject(obj), existing)
-		if err == nil {
-			existingOwner := metav1.GetControllerOf(existing)
-			if existingOwner != nil && existingOwner.UID != stack.UID {
-				resourceName := fmt.Sprintf("%s/%s", kind, obj.GetName())
-				ll.Error(nil, "resource exists and is owned by a different controller",
-					"resource", resourceName,
-					"namespace", req.Namespace,
-					"owner", existingOwner.Name)
-				conflicts = append(conflicts, resourceName)
+		if err != nil {
+			if !apierrors.IsNotFound(err) {
+				// Return non-NotFound errors (network, permissions, etc.)
+				// NotFound is expected when resource doesn't exist yet
+				return conflicts, err
 			}
+			// Resource doesn't exist, no conflict possible
+			continue
+		}
+
+		// Resource exists - check if it's owned by a different controller
+		existingOwner := metav1.GetControllerOf(existing)
+		if existingOwner != nil && existingOwner.UID != stack.UID {
+			resourceName := fmt.Sprintf("%s/%s", kind, obj.GetName())
+			ll.Error(nil, "resource exists and is owned by a different controller",
+				"resource", resourceName,
+				"namespace", req.Namespace,
+				"owner", existingOwner.Name)
+			conflicts = append(conflicts, resourceName)
 		}
 	}
 
