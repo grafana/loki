@@ -82,7 +82,7 @@ func writeRun(path string, keys [][8]byte, docs []uint32, counts []int32, swp **
 	}
 	pos := 0
 	var rec [runRecordSize]byte
-	for s := 0; s < shardCount; s++ {
+	for s := range shardCount {
 		c := int(counts[s])
 		if c == 0 {
 			// offset 0 + count 0 => absent.

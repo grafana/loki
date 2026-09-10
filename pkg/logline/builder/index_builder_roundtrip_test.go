@@ -113,7 +113,7 @@ func TestBuilder_RoundTrip(t *testing.T) {
 		"warning disk usage high on node seventeen",
 	}
 	var entries []logproto.Entry
-	for i := 0; i < 60; i++ {
+	for i := range 60 {
 		entries = append(entries, logproto.Entry{
 			Timestamp: base.Add(time.Duration(i) * time.Second),
 			Line:      lines[i%len(lines)],
@@ -252,7 +252,7 @@ func TestBuilder_PrepareIndexesRetryable(t *testing.T) {
 
 	now := time.Now().UTC()
 	var entries []logproto.Entry
-	for i := 0; i < 40; i++ {
+	for i := range 40 {
 		entries = append(entries, logproto.Entry{
 			Timestamp: now.Add(time.Duration(i) * time.Second),
 			Line:      fmt.Sprintf("request %d failed with status 500 at endpoint alpha", i%7),
@@ -290,7 +290,7 @@ func fileKeys(files []fileInfo) []string {
 func retryTestEntries() []logproto.Entry {
 	base := time.Date(2026, 3, 22, 12, 0, 0, 0, time.UTC)
 	var entries []logproto.Entry
-	for i := 0; i < 50; i++ {
+	for i := range 50 {
 		entries = append(entries, logproto.Entry{
 			Timestamp: base.Add(time.Duration(i) * time.Second),
 			Line:      fmt.Sprintf("request %d failed with status 500 at endpoint alpha", i%7),

@@ -163,7 +163,7 @@ func TestBuilder_Sharded_PrepareProducesFiles(t *testing.T) {
 	require.NoError(t, err)
 
 	now := time.Now()
-	for i := 0; i < 20; i++ {
+	for i := range 20 {
 		stream := &logproto.Stream{
 			Entries: []logproto.Entry{
 				{Timestamp: now.Add(time.Duration(i) * time.Millisecond),

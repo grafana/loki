@@ -28,7 +28,7 @@ func radixSortByNgram(keys [][8]byte, docs []uint32, kb [][8]byte, db []uint32, 
 			hist[d][i] = 0
 		}
 	}
-	for i := 0; i < n; i++ {
+	for i := range n {
 		k := binary.BigEndian.Uint64(keys[i][:])
 		hist[0][uint16(k>>16)]++
 		hist[1][uint16(k>>32)]++
@@ -46,7 +46,7 @@ func radixSortByNgram(keys [][8]byte, docs []uint32, kb [][8]byte, db []uint32, 
 		for i := 1; i < (1 << 16); i++ {
 			pos[i] = pos[i-1] + h[i-1]
 		}
-		for i := 0; i < n; i++ {
+		for i := range n {
 			v := uint16(binary.BigEndian.Uint64(fromK[i][:]) >> shift)
 			p := pos[v]
 			toK[p] = fromK[i]

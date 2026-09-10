@@ -1,6 +1,7 @@
 package builder
 
 import (
+	"maps"
 	"sync"
 	"time"
 
@@ -88,9 +89,7 @@ func (f *fakePartitionRing) removePartition(id int32) {
 
 func (f *fakePartitionRing) rebuild() {
 	desc := ring.NewPartitionRingDesc()
-	for id, p := range f.desc.Partitions {
-		desc.Partitions[id] = p
-	}
+	maps.Copy(desc.Partitions, f.desc.Partitions)
 	r, err := ring.NewPartitionRing(*desc)
 	if err != nil {
 		panic(err)

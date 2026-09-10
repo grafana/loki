@@ -459,7 +459,7 @@ func BenchmarkProcessStream_NoFlush(b *testing.B) {
 
 	// Typical production log line (~200 bytes with 5 entries)
 	entries := make([]logproto.Entry, 5)
-	for i := 0; i < 5; i++ {
+	for i := range 5 {
 		entries[i] = logproto.Entry{
 			Timestamp: time.Now(),
 			Line:      generateLogLine(i, 200),
@@ -492,7 +492,7 @@ func BenchmarkProcessStream_ParallelConsumers(b *testing.B) {
 
 	// Create test data once
 	entries := make([]logproto.Entry, 10)
-	for i := 0; i < 10; i++ {
+	for i := range 10 {
 		entries[i] = logproto.Entry{
 			Timestamp: time.Now(),
 			Line:      generateLogLine(i, 150),
@@ -596,7 +596,7 @@ func repeatString(s string, count int) string {
 		return ""
 	}
 	result := make([]byte, count)
-	for i := 0; i < count; i++ {
+	for i := range count {
 		result[i] = s[i%len(s)]
 	}
 	return string(result)
@@ -636,7 +636,7 @@ func TestBuilder_TracksDateRanges(t *testing.T) {
 
 	// Process streams from multiple days
 	now := time.Now()
-	for i := 0; i < 3; i++ {
+	for i := range 3 {
 		stream := &logproto.Stream{
 			Labels: `{job="test"}`,
 			Entries: []logproto.Entry{

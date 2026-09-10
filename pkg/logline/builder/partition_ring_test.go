@@ -41,7 +41,7 @@ func newTestPartitionRingService(t *testing.T) (*PartitionRingWatcher, func(cont
 		watcher: watcher,
 	}
 	write := func(ctx context.Context, desc *ring.PartitionRingDesc) {
-		require.NoError(t, store.CAS(ctx, key, func(_ interface{}) (interface{}, bool, error) {
+		require.NoError(t, store.CAS(ctx, key, func(_ any) (any, bool, error) {
 			return desc, true, nil
 		}))
 	}

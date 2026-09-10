@@ -34,7 +34,7 @@ func pipelineTestEntries(n int) []logproto.Entry {
 		"request %d failed with status 500 at endpoint alpha",
 	}
 	entries := make([]logproto.Entry, 0, n)
-	for i := 0; i < n; i++ {
+	for i := range n {
 		line := lines[i%len(lines)]
 		if strings.Contains(line, "%d") {
 			line = fmt.Sprintf(line, i%13)
@@ -66,10 +66,7 @@ func waitForGoroutineBaseline(t *testing.T, baseline int, msg string) {
 func feedInChunks(t *testing.T, b *indexBuilder, entries []logproto.Entry, chunk int) {
 	t.Helper()
 	for start := 0; start < len(entries); start += chunk {
-		end := start + chunk
-		if end > len(entries) {
-			end = len(entries)
-		}
+		end := min(start+chunk, len(entries))
 		s := logproto.Stream{Entries: entries[start:end]}
 		require.NoError(t, b.processStream(&s, nil, time.Now(), recordRef{}))
 	}
@@ -278,9 +275,9 @@ func TestService_ExtractThreadsFlushCommit(t *testing.T) {
 	defer cancel()
 
 	var lastOffset kafka.Offset
-	for batch := 0; batch < 5; batch++ {
+	for batch := range 5 {
 		var records []rawRecord
-		for i := 0; i < 10; i++ {
+		for i := range 10 {
 			data := mustMarshalStream(t, fmt.Sprintf("error connecting to database server timeout attempt %d", batch*10+i))
 			res := producer.ProduceSync(ctx, &kgo.Record{Topic: testTopic, Value: data, Key: []byte("tenant")})
 			require.NoError(t, res.FirstErr())

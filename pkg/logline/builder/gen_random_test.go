@@ -78,13 +78,13 @@ func TestGenerateSyntheticRandom(t *testing.T) {
 	)
 	for valueBytes < targetBytes {
 		entries := make([]logproto.Entry, entriesPerRecord)
-		for i := 0; i < entriesPerRecord; i++ {
-			for j := 0; j < lineLen; j++ {
+		for i := range entriesPerRecord {
+			for j := range lineLen {
 				lineBuf[j] = alphabet[nextByte()%36]
 			}
 			// Deterministic-but-scattered timestamp from keystream bytes.
 			var r uint64
-			for k := 0; k < 6; k++ {
+			for range 6 {
 				r = (r << 8) | uint64(nextByte())
 			}
 			offset := int64(r % uint64(spanNanos))

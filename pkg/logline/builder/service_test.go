@@ -2,6 +2,7 @@ package builder
 
 import (
 	"context"
+	"maps"
 	"runtime/debug"
 	"testing"
 	"time"
@@ -636,9 +637,7 @@ func snapshotLastConsumedOffsets(svc *Service) map[kafka.PartitionID]kafka.Offse
 	defer svc.builderMtx.Unlock()
 
 	offsets := make(map[kafka.PartitionID]kafka.Offset, len(svc.lastConsumedOffsets))
-	for partition, offset := range svc.lastConsumedOffsets {
-		offsets[partition] = offset
-	}
+	maps.Copy(offsets, svc.lastConsumedOffsets)
 	return offsets
 }
 
@@ -898,8 +897,7 @@ func TestService_ReconcileActiveSetForcesRebalance(t *testing.T) {
 	}
 
 	var rebalances atomic.Int64
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 
 	go svc.reconcileActiveSetLoop(ctx, 20*time.Millisecond, func() {
 		rebalances.Add(1)

@@ -709,7 +709,7 @@ func profTag() string {
 
 func parseShards(s string) []int {
 	var out []int
-	for _, p := range strings.Split(s, ",") {
+	for p := range strings.SplitSeq(s, ",") {
 		p = strings.TrimSpace(p)
 		if p == "" {
 			continue

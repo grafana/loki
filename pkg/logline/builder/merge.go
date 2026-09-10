@@ -89,12 +89,9 @@ func (b *postingsBuffer) mergeRuns(outDir, version string, cfg format.WriterConf
 	// before opening writers so they don't stay pinned through the merge.
 	b.releaseSortBuffers()
 
-	nShards := b.shardCount
-	if nShards < 1 {
-		nShards = 1
-	}
+	nShards := max(b.shardCount, 1)
 	var files []mergedFile
-	for s := 0; s < nShards; s++ {
+	for s := range nShards {
 		mf, err := b.mergeShard(outDir, version, cfg, s, runPaths)
 		if err != nil {
 			// Shards completed before the failure already produced .lidx files

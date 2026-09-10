@@ -26,7 +26,7 @@ func randomPairs(t *testing.T, n int, dupDocs bool) []pair {
 	}
 	out := make([]pair, n)
 	for i := range out {
-		for b := 0; b < 6; b++ {
+		for b := range 6 {
 			out[i].key[b] = byte('a' + rng.Intn(4))
 		}
 		out[i].doc = rng.Uint32() % docSpace

@@ -276,7 +276,7 @@ func (b *postingsBuffer) spillSorted() error {
 func (b *postingsBuffer) shardSortAndTrack(n int) ([][8]byte, []uint32, []int32) {
 	src, srcD := b.keys[:n], b.docs[:n]
 	if b.shardCount <= 1 {
-		for i := 0; i < n; i++ {
+		for i := range n {
 			b.recordDocumentTick(0, srcD[i])
 		}
 		return src, srcD, []int32{int32(n)}
@@ -288,7 +288,7 @@ func (b *postingsBuffer) shardSortAndTrack(n int) ([][8]byte, []uint32, []int32)
 	}
 	shards := b.shardScratch[:n]
 	cnt := make([]int32, b.shardCount)
-	for i := 0; i < n; i++ {
+	for i := range n {
 		s := uint8(b.shardFn(src[i], b.shardCount))
 		shards[i] = s
 		cnt[s]++
@@ -299,7 +299,7 @@ func (b *postingsBuffer) shardSortAndTrack(n int) ([][8]byte, []uint32, []int32)
 		pos[i] = pos[i-1] + cnt[i-1]
 	}
 	dstK, dstD := b.keyBuf[:n], b.docBuf[:n]
-	for i := 0; i < n; i++ {
+	for i := range n {
 		p := pos[shards[i]]
 		dstK[p] = src[i]
 		dstD[p] = srcD[i]

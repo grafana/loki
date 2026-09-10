@@ -654,10 +654,7 @@ func (s *indexBuilder) estimatedMemoryBytes() uint64 {
 // running it returns the busiest worker's date count (reading the maps would
 // race); after the drain barrier it is the exact union.
 func (s *indexBuilder) bucketCount() int {
-	shards := s.cfg.Logline.ShardCount
-	if shards < 1 {
-		shards = 1
-	}
+	shards := max(s.cfg.Logline.ShardCount, 1)
 	if s.pipeline != nil {
 		if s.pipeline.drained() {
 			return len(s.unionDateRanges()) * shards
