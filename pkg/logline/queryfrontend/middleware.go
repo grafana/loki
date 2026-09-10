@@ -33,8 +33,8 @@ import (
 //
 // 1. Prefetch MW (above SplitByInterval): parses query, kicks off async
 //    logline index lookup, stores results + ingester cutoff in context, and
-//    attaches a PlannedRangeSource. The size limiter waits on that source
-//    only when the full-span query would exceed MaxQueryBytesRead.
+//    If index-stats bytes are at or above MaxQueryBytesRead, prefetch waits
+//    for that lookup before calling next so hints are ready when Loki runs.
 //
 // 2. Filter MW (below SplitByInterval, below cache): for each interval
 //    sub-request, consults the prefetched hints to skip empty intervals
@@ -84,8 +84,7 @@ type provisionalQueryResult struct {
 // hintPrefetchResult holds pre-computed logline index lookup results, shared
 // between the prefetch and filter middleware layers via context.
 type hintPrefetchResult struct {
-	ranges         []hintprovider.HintTimeRange // normalized, sorted by start
-	planned        []querylimits.TimeRange      // query-clipped store windows + ingester
+	ranges         []hintprovider.HintTimeRange // store hits from the index
 	err            error
 	stats          *hintprovider.QueryStats
 	queryBytes     uint64
@@ -212,6 +211,25 @@ func withHintPrefetch(ctx context.Context, r *hintPrefetchResult) context.Contex
 func hintPrefetchFromContext(ctx context.Context) *hintPrefetchResult {
 	v, _ := ctx.Value(hintPrefetchKeyType{}).(*hintPrefetchResult)
 	return v
+}
+
+// waitForHints blocks until the prefetch lookup finishes, the request is
+// cancelled, or HintTimeout fires. Timeout is not an error: callers proceed
+// and the filter falls back to passthrough.
+func (h *loglinePrefetchHandler) waitForHints(ctx context.Context, result *hintPrefetchResult) error {
+	if result == nil {
+		return nil
+	}
+	timer := time.NewTimer(h.hintTimeout)
+	defer timer.Stop()
+	select {
+	case <-result.done:
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-timer.C:
+		return nil
+	}
 }
 
 func withShardPlanningRerunGuard(ctx context.Context) context.Context {
@@ -819,8 +837,7 @@ func (h *loglinePrefetchHandler) Do(ctx context.Context, req queryrangebase.Requ
 
 	// Shared eligibility: stats-based byte threshold. Also fetch stats when
 	// MaxQueryBytesRead is set so over-limit queries still start a hint
-	// lookup (and attach a PlannedRangeSource) even if they are under
-	// min_query_bytes.
+	// lookup (and wait for it) even if they are under min_query_bytes.
 	from := lokiReq.StartTs.UTC()
 	through := lokiReq.EndTs.UTC()
 	queryBytes := uint64(0)
@@ -879,7 +896,6 @@ func (h *loglinePrefetchHandler) Do(ctx context.Context, req queryrangebase.Requ
 	prefetchCtx := ctx
 	go func() {
 		defer close(result.done)
-		defer result.setPlannedRanges()
 
 		start := time.Now()
 		defer func() {
@@ -958,10 +974,12 @@ func (h *loglinePrefetchHandler) Do(ctx context.Context, req queryrangebase.Requ
 	}()
 
 	ctx = withHintPrefetch(ctx, result)
-	ctx = querylimits.InjectPlannedRangeSource(ctx, &plannedRangeSource{
-		result:  result,
-		timeout: h.hintTimeout,
-	})
+	if overSizeLimit {
+		if err := h.waitForHints(ctx, result); err != nil {
+			return nil, err
+		}
+		ctx = injectPlannedQueryRanges(ctx, result)
+	}
 	if !h.shardPlanning.Enabled {
 		resp, err := h.next.Do(ctx, req)
 		if err != nil {

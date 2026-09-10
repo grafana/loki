@@ -17,43 +17,20 @@ type plannedQueryRanges struct {
 	ranges []TimeRange
 }
 
-// InjectPlannedQueryRanges attaches in-process planned ranges for the query
-// size limiter. This is server-only: do not serialize it onto HTTP or gRPC
-// headers. A present empty slice means "scan nothing" (0 bytes). Omitting
-// the value means the limiter should fall back to the request range.
+// InjectPlannedQueryRanges attaches a finished plan for the size limiter.
+// Keep it on the in-process context only; it is not an HTTP or gRPC header.
+// A present empty slice means "scan nothing" (0 bytes). Omitting the value
+// means size the request range.
 func InjectPlannedQueryRanges(ctx context.Context, ranges []TimeRange) context.Context {
 	copied := append([]TimeRange(nil), ranges...)
 	return context.WithValue(ctx, plannedQueryRangesCtxKey, &plannedQueryRanges{ranges: copied})
 }
 
 // ExtractPlannedQueryRanges returns planned ranges and whether they were set.
-// ok is false when no server middleware attached a plan.
 func ExtractPlannedQueryRanges(ctx context.Context) ([]TimeRange, bool) {
 	v, ok := ctx.Value(plannedQueryRangesCtxKey).(*plannedQueryRanges)
 	if !ok || v == nil {
 		return nil, false
 	}
 	return v.ranges, true
-}
-
-// PlannedRangeSource is a one-shot future for planned scan windows.
-// Wait is safe for concurrent callers. ok=false means treat as absent
-// (timeout or error): size the full request range.
-type PlannedRangeSource interface {
-	Wait(ctx context.Context) (ranges []TimeRange, ok bool)
-}
-
-// InjectPlannedRangeSource attaches a server-only plan future.
-// Do not serialize it onto HTTP or gRPC headers.
-func InjectPlannedRangeSource(ctx context.Context, src PlannedRangeSource) context.Context {
-	return context.WithValue(ctx, plannedRangeSourceCtxKey, src)
-}
-
-// ExtractPlannedRangeSource returns the plan future, if any.
-func ExtractPlannedRangeSource(ctx context.Context) (PlannedRangeSource, bool) {
-	v, ok := ctx.Value(plannedRangeSourceCtxKey).(PlannedRangeSource)
-	if !ok || v == nil {
-		return nil, false
-	}
-	return v, true
 }

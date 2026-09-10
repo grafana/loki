@@ -1002,386 +1002,6 @@ func Test_MaxQuerySize_WithQueryLimitsContext(t *testing.T) {
 	}
 }
 
-func Test_MaxQuerySize_WithPlannedRanges(t *testing.T) {
-	query := `{app="foo"} |= "foo"`
-	reqStart := testTime.Add(-24 * time.Hour)
-	reqEnd := testTime
-	smallWindow := querylimits.TimeRange{Start: testTime.Add(-30 * time.Minute), End: testTime}
-	disjointWindows := []querylimits.TimeRange{
-		{Start: testTime.Add(-2 * time.Hour), End: testTime.Add(-time.Hour)},
-		{Start: testTime.Add(-30 * time.Minute), End: testTime},
-	}
-
-	for _, tc := range []struct {
-		desc              string
-		planned           []querylimits.TimeRange
-		injectPlan        bool
-		withParentRange   bool
-		queryBytes        uint64
-		limit             int
-		shouldErr         bool
-		expectedStatsHits int
-		expectStatsRanges []querylimits.TimeRange
-	}{
-		{
-			desc:              "absent plan uses the request range",
-			injectPlan:        false,
-			queryBytes:        500,
-			limit:             1000,
-			shouldErr:         false,
-			expectedStatsHits: 1,
-		},
-		{
-			desc:              "absent plan still uses QueryLimitsContext as a floor",
-			injectPlan:        false,
-			withParentRange:   true,
-			queryBytes:        500,
-			limit:             1000,
-			shouldErr:         false,
-			expectedStatsHits: 2,
-		},
-		{
-			desc:              "present empty plan is zero bytes and does not query stats",
-			injectPlan:        true,
-			planned:           nil,
-			queryBytes:        5000,
-			limit:             1,
-			shouldErr:         false,
-			expectedStatsHits: 0,
-		},
-		{
-			desc:              "one planned window replaces the request span",
-			injectPlan:        true,
-			planned:           []querylimits.TimeRange{smallWindow},
-			queryBytes:        200,
-			limit:             1000,
-			shouldErr:         false,
-			expectedStatsHits: 1,
-			expectStatsRanges: []querylimits.TimeRange{smallWindow},
-		},
-		{
-			desc:              "disjoint planned windows are summed not covered",
-			injectPlan:        true,
-			planned:           disjointWindows,
-			queryBytes:        400,
-			limit:             1000,
-			shouldErr:         false,
-			expectedStatsHits: 2,
-			expectStatsRanges: disjointWindows,
-		},
-		{
-			desc:              "sum of planned windows can still exceed the limit",
-			injectPlan:        true,
-			planned:           disjointWindows,
-			queryBytes:        400,
-			limit:             700,
-			shouldErr:         true,
-			expectedStatsHits: 2,
-			expectStatsRanges: disjointWindows,
-		},
-		{
-			desc:              "parent QueryLimitsContext is not a floor once a plan is present",
-			injectPlan:        true,
-			withParentRange:   true,
-			planned:           []querylimits.TimeRange{smallWindow},
-			queryBytes:        200,
-			limit:             1000,
-			shouldErr:         false,
-			expectedStatsHits: 1,
-			expectStatsRanges: []querylimits.TimeRange{smallWindow},
-		},
-		{
-			desc:              "empty plan ignores a parent range that would have exceeded the limit",
-			injectPlan:        true,
-			withParentRange:   true,
-			planned:           []querylimits.TimeRange{},
-			queryBytes:        5000,
-			limit:             1,
-			shouldErr:         false,
-			expectedStatsHits: 0,
-		},
-		{
-			desc:       "empty planned windows are skipped",
-			injectPlan: true,
-			planned: []querylimits.TimeRange{
-				{Start: testTime, End: testTime},
-				smallWindow,
-			},
-			queryBytes:        200,
-			limit:             1000,
-			shouldErr:         false,
-			expectedStatsHits: 1,
-			expectStatsRanges: []querylimits.TimeRange{smallWindow},
-		},
-		{
-			desc:       "query limiter does not clip planned windows to the request range",
-			injectPlan: true,
-			planned: []querylimits.TimeRange{
-				{Start: testTime.Add(-48 * time.Hour), End: testTime.Add(-36 * time.Hour)},
-			},
-			queryBytes:        200,
-			limit:             1000,
-			shouldErr:         false,
-			expectedStatsHits: 1,
-			expectStatsRanges: []querylimits.TimeRange{
-				{Start: testTime.Add(-48 * time.Hour), End: testTime.Add(-36 * time.Hour)},
-			},
-		},
-	} {
-		t.Run(tc.desc, func(t *testing.T) {
-			statsHits := atomic.NewInt32(0)
-			var gotStatsRanges []querylimits.TimeRange
-
-			statsHandler := queryrangebase.HandlerFunc(func(_ context.Context, req queryrangebase.Request) (queryrangebase.Response, error) {
-				statsHits.Inc()
-				gotStatsRanges = append(gotStatsRanges, querylimits.TimeRange{
-					Start: req.GetStart(),
-					End:   req.GetEnd(),
-				})
-				return &IndexStatsResponse{
-					Response: &logproto.IndexStatsResponse{
-						Bytes: tc.queryBytes,
-					},
-				}, nil
-			})
-
-			promHandler := queryrangebase.HandlerFunc(func(_ context.Context, req queryrangebase.Request) (queryrangebase.Response, error) {
-				require.Equal(t, reqStart.UnixMilli(), req.GetStart().UnixMilli())
-				require.Equal(t, reqEnd.UnixMilli(), req.GetEnd().UnixMilli())
-				return &LokiPromResponse{
-					Response: &queryrangebase.PrometheusResponse{
-						Status: "success",
-					},
-				}, nil
-			})
-
-			lokiReq := &LokiRequest{
-				Query:     query,
-				StartTs:   reqStart,
-				EndTs:     reqEnd,
-				Direction: logproto.FORWARD,
-				Path:      "/query_range",
-				Plan:      testutil.MustPlan(query),
-			}
-
-			ctx := user.InjectOrgID(context.Background(), "foo")
-			if tc.withParentRange {
-				ctx = querylimits.InjectQueryLimitsContextIntoContext(ctx, querylimits.Context{
-					Expr: `{context="true"}`,
-					From: testTime.Add(-7 * 24 * time.Hour),
-					To:   testTime,
-				})
-			}
-			if tc.injectPlan {
-				ctx = querylimits.InjectPlannedQueryRanges(ctx, tc.planned)
-			}
-
-			handler := NewQuerySizeLimiterMiddleware(testEngineOpts, util_log.Logger, fakeLimits{
-				maxQueryBytesRead: tc.limit,
-			}, statsHandler).Wrap(promHandler)
-
-			_, err := handler.Do(ctx, lokiReq)
-			if tc.shouldErr {
-				require.Error(t, err)
-			} else {
-				require.NoError(t, err)
-			}
-			require.Equal(t, tc.expectedStatsHits, int(statsHits.Load()))
-
-			if tc.expectStatsRanges != nil {
-				require.Equal(t, len(tc.expectStatsRanges), len(gotStatsRanges))
-				lookback := testEngineOpts.MaxLookBackPeriod
-				for i, want := range tc.expectStatsRanges {
-					// Log selectors have Interval=0, so getStatsForMatchers applies MaxLookBackPeriod.
-					require.Equal(t, want.Start.Add(-lookback).UnixMilli(), gotStatsRanges[i].Start.UnixMilli())
-					require.Equal(t, want.End.UnixMilli(), gotStatsRanges[i].End.UnixMilli())
-				}
-			}
-		})
-	}
-}
-
-type countingPlanSource struct {
-	ranges []querylimits.TimeRange
-	ok     bool
-	waits  atomic.Int32
-}
-
-func (s *countingPlanSource) Wait(context.Context) ([]querylimits.TimeRange, bool) {
-	s.waits.Add(1)
-	return s.ranges, s.ok
-}
-
-func Test_MaxQuerySize_WaitsOnPlannedRangeSource(t *testing.T) {
-	query := `{app="foo"} |= "foo"`
-	reqStart := testTime.Add(-24 * time.Hour)
-	reqEnd := testTime
-	smallWindow := querylimits.TimeRange{Start: testTime.Add(-30 * time.Minute), End: testTime}
-
-	newReq := func() *LokiRequest {
-		return &LokiRequest{
-			Query:     query,
-			StartTs:   reqStart,
-			EndTs:     reqEnd,
-			Direction: logproto.FORWARD,
-			Path:      "/query_range",
-			Plan:      testutil.MustPlan(query),
-		}
-	}
-
-	t.Run("does not wait when the full span is under the limit", func(t *testing.T) {
-		src := &countingPlanSource{ranges: []querylimits.TimeRange{smallWindow}, ok: true}
-		statsHandler := queryrangebase.HandlerFunc(func(_ context.Context, _ queryrangebase.Request) (queryrangebase.Response, error) {
-			return &IndexStatsResponse{Response: &logproto.IndexStatsResponse{Bytes: 200}}, nil
-		})
-		handler := NewQuerySizeLimiterMiddleware(testEngineOpts, util_log.Logger, fakeLimits{
-			maxQueryBytesRead: 1000,
-		}, statsHandler).Wrap(queryrangebase.HandlerFunc(func(_ context.Context, _ queryrangebase.Request) (queryrangebase.Response, error) {
-			return &LokiPromResponse{Response: &queryrangebase.PrometheusResponse{Status: "success"}}, nil
-		}))
-
-		ctx := querylimits.InjectPlannedRangeSource(user.InjectOrgID(context.Background(), "foo"), src)
-		_, err := handler.Do(ctx, newReq())
-		require.NoError(t, err)
-		require.Equal(t, int32(0), src.waits.Load())
-	})
-
-	t.Run("waits and injects a snapshot when the full span would 400", func(t *testing.T) {
-		src := &countingPlanSource{ranges: []querylimits.TimeRange{smallWindow}, ok: true}
-		statsHandler := queryrangebase.HandlerFunc(func(_ context.Context, req queryrangebase.Request) (queryrangebase.Response, error) {
-			bytes := uint64(5000)
-			if req.GetEnd().Sub(req.GetStart()) <= time.Hour {
-				bytes = 100
-			}
-			return &IndexStatsResponse{Response: &logproto.IndexStatsResponse{Bytes: bytes}}, nil
-		})
-		var got []querylimits.TimeRange
-		var gotOK bool
-		handler := NewQuerySizeLimiterMiddleware(testEngineOpts, util_log.Logger, fakeLimits{
-			maxQueryBytesRead: 1000,
-		}, statsHandler).Wrap(queryrangebase.HandlerFunc(func(ctx context.Context, _ queryrangebase.Request) (queryrangebase.Response, error) {
-			got, gotOK = querylimits.ExtractPlannedQueryRanges(ctx)
-			return &LokiPromResponse{Response: &queryrangebase.PrometheusResponse{Status: "success"}}, nil
-		}))
-
-		ctx := querylimits.InjectPlannedRangeSource(user.InjectOrgID(context.Background(), "foo"), src)
-		_, err := handler.Do(ctx, newReq())
-		require.NoError(t, err)
-		require.Equal(t, int32(1), src.waits.Load())
-		require.True(t, gotOK)
-		require.Equal(t, []querylimits.TimeRange{smallWindow}, got)
-	})
-
-	t.Run("absent source result still 400s on the full span", func(t *testing.T) {
-		src := &countingPlanSource{ok: false}
-		statsHandler := queryrangebase.HandlerFunc(func(_ context.Context, _ queryrangebase.Request) (queryrangebase.Response, error) {
-			return &IndexStatsResponse{Response: &logproto.IndexStatsResponse{Bytes: 5000}}, nil
-		})
-		nextCalled := false
-		handler := NewQuerySizeLimiterMiddleware(testEngineOpts, util_log.Logger, fakeLimits{
-			maxQueryBytesRead: 1000,
-		}, statsHandler).Wrap(queryrangebase.HandlerFunc(func(_ context.Context, _ queryrangebase.Request) (queryrangebase.Response, error) {
-			nextCalled = true
-			return &LokiPromResponse{Response: &queryrangebase.PrometheusResponse{Status: "success"}}, nil
-		}))
-
-		ctx := querylimits.InjectPlannedRangeSource(user.InjectOrgID(context.Background(), "foo"), src)
-		_, err := handler.Do(ctx, newReq())
-		require.Error(t, err)
-		require.Equal(t, int32(1), src.waits.Load())
-		require.False(t, nextCalled)
-	})
-
-	t.Run("present empty source plan is zero bytes", func(t *testing.T) {
-		src := &countingPlanSource{ranges: nil, ok: true}
-		statsHandler := queryrangebase.HandlerFunc(func(_ context.Context, _ queryrangebase.Request) (queryrangebase.Response, error) {
-			return &IndexStatsResponse{Response: &logproto.IndexStatsResponse{Bytes: 5000}}, nil
-		})
-		var gotOK bool
-		handler := NewQuerySizeLimiterMiddleware(testEngineOpts, util_log.Logger, fakeLimits{
-			maxQueryBytesRead: 1,
-		}, statsHandler).Wrap(queryrangebase.HandlerFunc(func(ctx context.Context, _ queryrangebase.Request) (queryrangebase.Response, error) {
-			_, gotOK = querylimits.ExtractPlannedQueryRanges(ctx)
-			return &LokiPromResponse{Response: &queryrangebase.PrometheusResponse{Status: "success"}}, nil
-		}))
-
-		ctx := querylimits.InjectPlannedRangeSource(user.InjectOrgID(context.Background(), "foo"), src)
-		_, err := handler.Do(ctx, newReq())
-		require.NoError(t, err)
-		require.True(t, gotOK)
-	})
-}
-
-func Test_MaxQuerierSize_IgnoresPlannedRangeSource(t *testing.T) {
-	query := `{app="foo"} |= "foo"`
-	src := &countingPlanSource{ranges: nil, ok: true}
-	statsHandler := queryrangebase.HandlerFunc(func(_ context.Context, _ queryrangebase.Request) (queryrangebase.Response, error) {
-		return &IndexStatsResponse{Response: &logproto.IndexStatsResponse{Bytes: 5000}}, nil
-	})
-	handler := NewQuerierSizeLimiterMiddleware(testEngineOpts, util_log.Logger, fakeLimits{
-		maxQuerierBytesRead: 1,
-	}, statsHandler).Wrap(queryrangebase.HandlerFunc(func(_ context.Context, _ queryrangebase.Request) (queryrangebase.Response, error) {
-		return &LokiPromResponse{Response: &queryrangebase.PrometheusResponse{Status: "success"}}, nil
-	}))
-
-	ctx := querylimits.InjectPlannedRangeSource(user.InjectOrgID(context.Background(), "foo"), src)
-	_, err := handler.Do(ctx, &LokiRequest{
-		Query:     query,
-		StartTs:   testTime.Add(-time.Hour),
-		EndTs:     testTime,
-		Direction: logproto.FORWARD,
-		Path:      "/query_range",
-		Plan:      testutil.MustPlan(query),
-	})
-	require.Error(t, err)
-	require.Equal(t, int32(0), src.waits.Load())
-}
-
-func Test_MaxQuerierSize_IgnoresPlannedRanges(t *testing.T) {
-	query := `{app="foo"} |= "foo"`
-	splitStart := testTime.Add(-time.Hour)
-	splitEnd := testTime
-	// A plan that would be 0 bytes if applied. The querier limiter must still
-	// size the split range and reject.
-	planned := []querylimits.TimeRange{}
-
-	statsHits := atomic.NewInt32(0)
-	statsHandler := queryrangebase.HandlerFunc(func(_ context.Context, req queryrangebase.Request) (queryrangebase.Response, error) {
-		statsHits.Inc()
-		require.Equal(t, splitStart.Add(-testEngineOpts.MaxLookBackPeriod).UnixMilli(), req.GetStart().UnixMilli())
-		require.Equal(t, splitEnd.UnixMilli(), req.GetEnd().UnixMilli())
-		return &IndexStatsResponse{
-			Response: &logproto.IndexStatsResponse{Bytes: 5000},
-		}, nil
-	})
-
-	lokiReq := &LokiRequest{
-		Query:     query,
-		StartTs:   splitStart,
-		EndTs:     splitEnd,
-		Direction: logproto.FORWARD,
-		Path:      "/query_range",
-		Plan:      testutil.MustPlan(query),
-	}
-
-	ctx := querylimits.InjectPlannedQueryRanges(
-		user.InjectOrgID(context.Background(), "foo"),
-		planned,
-	)
-
-	handler := NewQuerierSizeLimiterMiddleware(testEngineOpts, util_log.Logger, fakeLimits{
-		maxQuerierBytesRead: 1,
-	}, statsHandler).Wrap(queryrangebase.HandlerFunc(func(_ context.Context, _ queryrangebase.Request) (queryrangebase.Response, error) {
-		return &LokiPromResponse{
-			Response: &queryrangebase.PrometheusResponse{Status: "success"},
-		}, nil
-	}))
-
-	_, err := handler.Do(ctx, lokiReq)
-	require.Error(t, err)
-	require.Equal(t, int32(1), statsHits.Load())
-}
-
 func Test_MaxQuerySize_MaxLookBackPeriod(t *testing.T) {
 	engineOpts := testEngineOpts
 	engineOpts.MaxLookBackPeriod = 1 * time.Hour
@@ -1490,4 +1110,106 @@ func TestAcquireWithTiming(t *testing.T) {
 	// Check that the waiting time for the third request is larger than 0 milliseconds and less than 10 milliseconds
 	require.Greater(t, waiting3, 0*time.Nanosecond)
 	require.Less(t, waiting3, 10*time.Millisecond)
+}
+
+func Test_MaxQuerySize_PlannedRanges(t *testing.T) {
+	query := `{app="foo"} |= "foo"`
+	lokiReq := &LokiRequest{
+		Query:     query,
+		Limit:     1000,
+		StartTs:   testTime.Add(-48 * time.Hour),
+		EndTs:     testTime,
+		Direction: logproto.FORWARD,
+		Path:      "/query_range",
+		Plan:      testutil.MustPlan(query),
+	}
+	promHandler := queryrangebase.HandlerFunc(func(_ context.Context, _ queryrangebase.Request) (queryrangebase.Response, error) {
+		return &LokiPromResponse{
+			Response: &queryrangebase.PrometheusResponse{Status: "success"},
+		}, nil
+	})
+	statsForDuration := func(hits *atomic.Int32) queryrangebase.Handler {
+		return queryrangebase.HandlerFunc(func(_ context.Context, req queryrangebase.Request) (queryrangebase.Response, error) {
+			hits.Inc()
+			bytes := uint64(10_000)
+			// Planned windows in these cases start near testTime; the full
+			// request (and QueryLimitsContext) starts 48h earlier.
+			if req.GetStart().After(testTime.Add(-2 * time.Hour)) {
+				bytes = 100
+			}
+			return &IndexStatsResponse{
+				Response: &logproto.IndexStatsResponse{Bytes: bytes},
+			}, nil
+		})
+	}
+
+	t.Run("empty plan is zero bytes", func(t *testing.T) {
+		hits := atomic.NewInt32(0)
+		ctx := user.InjectOrgID(context.Background(), "foo")
+		ctx = querylimits.InjectPlannedQueryRanges(ctx, nil)
+
+		_, err := NewQuerySizeLimiterMiddleware(testEngineOpts, util_log.Logger, fakeLimits{
+			maxQueryBytesRead: 1,
+		}, statsForDuration(hits)).Wrap(promHandler).Do(ctx, lokiReq)
+		require.NoError(t, err)
+		require.Equal(t, int32(0), hits.Load())
+	})
+
+	t.Run("sizes planned windows instead of the request span", func(t *testing.T) {
+		hits := atomic.NewInt32(0)
+		ctx := user.InjectOrgID(context.Background(), "foo")
+		ctx = querylimits.InjectPlannedQueryRanges(ctx, []querylimits.TimeRange{{
+			Start: testTime.Add(-30 * time.Minute),
+			End:   testTime,
+		}})
+
+		_, err := NewQuerySizeLimiterMiddleware(testEngineOpts, util_log.Logger, fakeLimits{
+			maxQueryBytesRead: 500,
+		}, statsForDuration(hits)).Wrap(promHandler).Do(ctx, lokiReq)
+		require.NoError(t, err)
+		require.Equal(t, int32(1), hits.Load())
+	})
+
+	t.Run("present plan is not floored by QueryLimitsContext", func(t *testing.T) {
+		hits := atomic.NewInt32(0)
+		ctx := user.InjectOrgID(context.Background(), "foo")
+		ctx = querylimits.InjectPlannedQueryRanges(ctx, []querylimits.TimeRange{{
+			Start: testTime.Add(-30 * time.Minute),
+			End:   testTime,
+		}})
+		ctx = querylimits.InjectQueryLimitsContextIntoContext(ctx, querylimits.Context{
+			Expr: query,
+			From: testTime.Add(-48 * time.Hour),
+			To:   testTime,
+		})
+
+		_, err := NewQuerySizeLimiterMiddleware(testEngineOpts, util_log.Logger, fakeLimits{
+			maxQueryBytesRead: 500,
+		}, statsForDuration(hits)).Wrap(promHandler).Do(ctx, lokiReq)
+		require.NoError(t, err)
+		require.Equal(t, int32(1), hits.Load())
+	})
+
+	t.Run("MaxQuerierBytesRead ignores the plan", func(t *testing.T) {
+		queryHits := atomic.NewInt32(0)
+		querierHits := atomic.NewInt32(0)
+		ctx := user.InjectOrgID(context.Background(), "foo")
+		ctx = querylimits.InjectPlannedQueryRanges(ctx, []querylimits.TimeRange{{
+			Start: testTime.Add(-30 * time.Minute),
+			End:   testTime,
+		}})
+
+		middlewares := []queryrangebase.Middleware{
+			NewQuerySizeLimiterMiddleware(testEngineOpts, util_log.Logger, fakeLimits{
+				maxQueryBytesRead: 500,
+			}, statsForDuration(queryHits)),
+			NewQuerierSizeLimiterMiddleware(testEngineOpts, util_log.Logger, fakeLimits{
+				maxQuerierBytesRead: 500,
+			}, statsForDuration(querierHits)),
+		}
+		_, err := queryrangebase.MergeMiddlewares(middlewares...).Wrap(promHandler).Do(ctx, lokiReq)
+		require.Error(t, err)
+		require.Equal(t, int32(1), queryHits.Load())
+		require.Equal(t, int32(1), querierHits.Load())
+	})
 }

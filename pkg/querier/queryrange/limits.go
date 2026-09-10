@@ -61,8 +61,7 @@ type querySizeLimitSpec struct {
 	// errorTmpl is the client-facing message template. It takes two strings: the
 	// bytes the query would read and the configured limit.
 	errorTmpl string
-	// applyPlannedRanges lets MaxQueryBytesRead size from planned windows and
-	// wait on hints when the full span would exceed the limit.
+	// applyPlannedRanges sizes MaxQueryBytesRead from an injected plan.
 	// MaxQuerierBytesRead leaves this false and keeps using the split range.
 	applyPlannedRanges bool
 }
@@ -314,13 +313,9 @@ func NewQuerySizeLimiterMiddleware(
 //   - {job="foo"}
 //   - {job="bar"}
 //
-// If planned ranges are already on the context, MaxQueryBytesRead sizes those
-// windows instead of req.GetStart()/GetEnd() and does not use
-// QueryLimitsContext as a floor. A present empty plan is 0 bytes, not a
-// fallback to the full span. This method never waits on hints;
-// waitForPlannedRanges does that only after a full-span oversize.
-// MaxQuerierBytesRead ignores the plan and keeps using the split/shard
-// request range.
+// If a plan is on the context, MaxQueryBytesRead sizes those windows and
+// does not use QueryLimitsContext as a floor. A present empty plan is 0
+// bytes. MaxQuerierBytesRead ignores the plan.
 func (q *querySizeLimiter) getBytesReadForRequest(ctx context.Context, r queryrangebase.Request) (uint64, error) {
 	ctx, sp := tracer.Start(ctx, "querySizeLimiter.getBytesReadForRequest")
 	defer sp.End()
@@ -362,11 +357,7 @@ func (q *querySizeLimiter) getBytesReadForRequest(ctx context.Context, r queryra
 	return queryBytes, nil
 }
 
-// getBytesForPlannedRanges sizes the query over each planned window. The plan
-// is the final scan set: windows are not clipped to the request range, and
-// QueryLimitsContext is not applied as a floor. Matcher offsets and lookback
-// are still applied inside getBytesForQueryAndRange. Callers should merge
-// adjacent ranges before injecting.
+// getBytesForPlannedRanges sizes the query over each planned window.
 func (q *querySizeLimiter) getBytesForPlannedRanges(ctx context.Context, r queryrangebase.Request, planned []querylimits.TimeRange) (uint64, error) {
 	var total uint64
 	for _, window := range planned {
@@ -444,14 +435,6 @@ func (q *querySizeLimiter) Do(ctx context.Context, r queryrangebase.Request) (qu
 			return nil, httpgrpc.Errorf(http.StatusInternalServerError, "Failed to get bytes read stats for query: %s", err.Error())
 		}
 
-		// Full span is over the cap. This is the only place we block on hints.
-		if bytesRead > uint64(maxBytesRead) && q.spec.applyPlannedRanges {
-			ctx, bytesRead, err = q.waitForPlannedRanges(ctx, r, bytesRead)
-			if err != nil {
-				return nil, err
-			}
-		}
-
 		statsBytesStr := humanize.IBytes(bytesRead)
 		maxBytesReadStr := humanize.IBytes(uint64(maxBytesRead))
 
@@ -462,44 +445,6 @@ func (q *querySizeLimiter) Do(ctx context.Context, r queryrangebase.Request) (qu
 	}
 
 	return q.next.Do(ctx, r)
-}
-
-// waitForPlannedRanges is the only place MaxQueryBytesRead blocks on the
-// logline hint future. Call it only after a full-span size would reject.
-//
-// A plan already on the context is a no-op: getBytesReadForRequest already
-// sized those windows. No source, timeout, or error leaves bytesRead
-// unchanged so the caller still 400s on the full span.
-func (q *querySizeLimiter) waitForPlannedRanges(ctx context.Context, r queryrangebase.Request, bytesRead uint64) (context.Context, uint64, error) {
-	if _, hasPlan := querylimits.ExtractPlannedQueryRanges(ctx); hasPlan {
-		return ctx, bytesRead, nil
-	}
-
-	src, ok := querylimits.ExtractPlannedRangeSource(ctx)
-	if !ok {
-		return ctx, bytesRead, nil
-	}
-
-	planned, ready := src.Wait(ctx)
-	if err := ctx.Err(); err != nil {
-		return ctx, bytesRead, err
-	}
-	if !ready {
-		return ctx, bytesRead, nil
-	}
-
-	ctx = querylimits.InjectPlannedQueryRanges(ctx, planned)
-	plannedBytes, err := q.getBytesForPlannedRanges(ctx, r, planned)
-	if err != nil {
-		return ctx, bytesRead, httpgrpc.Errorf(http.StatusInternalServerError, "Failed to get bytes read stats for query: %s", err.Error())
-	}
-	level.Debug(spanlogger.FromContext(ctx, q.logger)).Log(
-		"msg", "sized query after waiting on hints",
-		"windows", len(planned),
-		"bytes", plannedBytes,
-		"limit_name", q.spec.limitName,
-	)
-	return ctx, plannedBytes, nil
 }
 
 type seriesLimiter struct {

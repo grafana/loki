@@ -18,7 +18,6 @@ const (
 	queryLimitsCtxKey        key = 1
 	queryLimitsContextCtxKey key = 2
 	plannedQueryRangesCtxKey key = 3
-	plannedRangeSourceCtxKey key = 4
 
 	HTTPHeaderQueryLimitsKey        = "X-Loki-Query-Limits"
 	HTTPHeaderQueryLimitsContextKey = "X-Loki-Query-Limits-Context"

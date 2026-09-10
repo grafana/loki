@@ -2,7 +2,6 @@ package querylimits
 
 import (
 	"context"
-	"net/http"
 	"testing"
 	"time"
 
@@ -34,60 +33,4 @@ func TestPlannedQueryRanges_InjectCopies(t *testing.T) {
 	got, ok := ExtractPlannedQueryRanges(ctx)
 	require.True(t, ok)
 	require.Equal(t, start.Add(time.Hour), got[0].End)
-}
-
-func TestPlannedQueryRanges_NotSetFromHTTPHeaders(t *testing.T) {
-	r, err := http.NewRequest(http.MethodGet, "http://example.com", nil)
-	require.NoError(t, err)
-
-	from := time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)
-	to := time.Date(2024, 1, 8, 0, 0, 0, 0, time.UTC)
-	require.NoError(t, InjectQueryLimitsContextHTTP(r, &Context{
-		Expr: `{app="foo"}`,
-		From: from,
-		To:   to,
-	}))
-	require.NoError(t, InjectQueryLimitsHTTP(r, &QueryLimits{}))
-
-	ctx := context.Background()
-
-	limitsCtx, err := ExtractQueryLimitsContextHTTP(r)
-	require.NoError(t, err)
-	require.NotNil(t, limitsCtx)
-	ctx = InjectQueryLimitsContextIntoContext(ctx, *limitsCtx)
-
-	limits, err := ExtractQueryLimitsHTTP(r)
-	require.NoError(t, err)
-	require.NotNil(t, limits)
-	ctx = InjectQueryLimitsIntoContext(ctx, *limits)
-
-	_, ok := ExtractPlannedQueryRanges(ctx)
-	require.False(t, ok)
-	_, ok = ExtractPlannedRangeSource(ctx)
-	require.False(t, ok)
-}
-
-type staticPlannedRangeSource struct {
-	ranges []TimeRange
-	ok     bool
-}
-
-func (s staticPlannedRangeSource) Wait(context.Context) ([]TimeRange, bool) {
-	return s.ranges, s.ok
-}
-
-func TestPlannedRangeSource_InjectExtract(t *testing.T) {
-	_, ok := ExtractPlannedRangeSource(context.Background())
-	require.False(t, ok)
-
-	src := staticPlannedRangeSource{
-		ranges: []TimeRange{{Start: time.Unix(1, 0), End: time.Unix(2, 0)}},
-		ok:     true,
-	}
-	ctx := InjectPlannedRangeSource(context.Background(), src)
-	got, ok := ExtractPlannedRangeSource(ctx)
-	require.True(t, ok)
-	ranges, ready := got.Wait(context.Background())
-	require.True(t, ready)
-	require.Equal(t, src.ranges, ranges)
 }

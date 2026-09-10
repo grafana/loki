@@ -9,50 +9,9 @@ import (
 	"github.com/grafana/loki/v3/pkg/logline/hintprovider"
 )
 
-// plannedRangeSource lets Loki's size limiter wait on hint prefetch only
-// when the full-span query would exceed MaxQueryBytesRead. Wait only
-// blocks; the scan plan is built when the lookup finishes.
-type plannedRangeSource struct {
-	result  *hintPrefetchResult
-	timeout time.Duration
-}
-
-func (s *plannedRangeSource) Wait(ctx context.Context) ([]querylimits.TimeRange, bool) {
-	if s == nil || s.result == nil {
-		return nil, false
-	}
-	timer := time.NewTimer(s.timeout)
-	defer timer.Stop()
-	select {
-	case <-s.result.done:
-	case <-ctx.Done():
-		return nil, false
-	case <-timer.C:
-		return nil, false
-	}
-	if s.result.err != nil {
-		return nil, false
-	}
-	return s.result.planned, true
-}
-
-// setPlannedRanges builds the Loki scan plan after the hint lookup finishes.
-// Call before closing done. A lookup error leaves planned unset so Wait is absent.
-func (r *hintPrefetchResult) setPlannedRanges() {
-	if r == nil || r.err != nil {
-		return
-	}
-	r.planned = buildPlannedQueryRanges(r.ranges, r.queryStart, r.queryEnd, r.ingesterCutoff)
-}
-
 // buildPlannedQueryRanges is the time that will actually be queried:
 // store windows from hints, plus the ingester window if the query reaches it.
 // Index-empty holes are omitted.
-//
-// hints are already sorted and adjacent-merged by the provider. Store hits are
-// intersected with [queryStart, min(queryEnd, cutoff)) the same way filter
-// clips to a shard; max(zero, queryStart) rewrites the pre-min_date sentinel.
-// Ingester time is attached after; hints never include it.
 func buildPlannedQueryRanges(
 	hints []hintprovider.HintTimeRange,
 	queryStart, queryEnd, ingesterCutoff time.Time,
@@ -79,9 +38,7 @@ func buildPlannedQueryRanges(
 }
 
 // attachIngesterRange adds [max(queryStart, cutoff), queryEnd). Hints are
-// store-only, so this window is never in the list. If the last store window
-// already touches cutoff, extend it instead of appending a twin for Loki to
-// stats separately.
+// store-only. If the last store window already touches cutoff, extend it.
 func attachIngesterRange(store []querylimits.TimeRange, queryStart, queryEnd, ingesterCutoff time.Time) []querylimits.TimeRange {
 	if !queryEnd.After(ingesterCutoff) {
 		return store
@@ -99,4 +56,21 @@ func attachIngesterRange(store []querylimits.TimeRange, queryStart, queryEnd, in
 		return store
 	}
 	return append(store, ingester)
+}
+
+// injectPlannedQueryRanges puts a finished plan on ctx when the lookup
+// completed without error. Timeout (done still open) or error leaves ctx
+// unchanged so the size limiter uses the full request range.
+func injectPlannedQueryRanges(ctx context.Context, result *hintPrefetchResult) context.Context {
+	if result == nil || result.err != nil {
+		return ctx
+	}
+	select {
+	case <-result.done:
+	default:
+		return ctx
+	}
+	return querylimits.InjectPlannedQueryRanges(ctx, buildPlannedQueryRanges(
+		result.ranges, result.queryStart, result.queryEnd, result.ingesterCutoff,
+	))
 }
