@@ -189,6 +189,26 @@ func TestSortRecords_SortSchemaASC(t *testing.T) {
 			expectedLineOrder: []string{"D", "B", "C", "F", "A", "E"},
 		},
 		{
+			// Shard bucket precedes the tenant sort-schema key.
+			name:      "SortSchemaASC_shardPrecedesSortKey",
+			sortOrder: SortSchemaASC,
+			input: []Record{
+				{ShardBucket: 1, SortKey: "app-a", Line: []byte("A")},
+				{ShardBucket: 0, SortKey: "app-z", Line: []byte("Z")},
+			},
+			expectedLineOrder: []string{"Z", "A"},
+		},
+		{
+			// Stream hash precedes stream ID within the same shard and sort key.
+			name:      "SortSchemaASC_hashPrecedesStreamID",
+			sortOrder: SortSchemaASC,
+			input: []Record{
+				{ShardBucket: 0, SortKey: "app-a", StreamHash: 2, StreamID: 1, Timestamp: t1, Line: []byte("later-hash")},
+				{ShardBucket: 0, SortKey: "app-a", StreamHash: 1, StreamID: 9, Timestamp: t1, Line: []byte("earlier-hash")},
+			},
+			expectedLineOrder: []string{"earlier-hash", "later-hash"},
+		},
+		{
 			// SortSchemaASC with equal timestamps uses primary ordering
 			name:      "SortSchemaASC_equalTimestamps",
 			sortOrder: SortSchemaASC,

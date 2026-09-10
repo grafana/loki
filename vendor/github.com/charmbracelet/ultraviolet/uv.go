@@ -25,7 +25,7 @@ type Drawable interface {
 // DrawableFunc is a function that implements the [Drawable] interface.
 type DrawableFunc func(scr Screen, rect Rectangle)
 
-var _ Drawable = (DrawableFunc)(nil)
+var _ Drawable = DrawableFunc(nil)
 
 // Draw implements the [Drawable] interface.
 func (f DrawableFunc) Draw(scr Screen, rect Rectangle) {

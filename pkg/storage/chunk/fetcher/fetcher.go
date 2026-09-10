@@ -43,7 +43,7 @@ var (
 		Namespace: constants.Loki,
 		Subsystem: "chunk_fetcher",
 		Name:      "storage_errors_total",
-		Help:      "Storage errors suppressed by the chunk fetcher.",
+		Help:      "Storage errors encountered by the chunk fetcher.",
 	}, []string{"reason"})
 )
 
@@ -67,6 +67,7 @@ type Fetcher struct {
 
 	l2CacheHandoff                   time.Duration
 	skipQueryWritebackCacheOlderThan time.Duration
+	propagateChunkFetchErrors        bool
 
 	wait           sync.WaitGroup
 	decodeRequests chan decodeRequest
@@ -86,7 +87,7 @@ type decodeResponse struct {
 }
 
 // New makes a new ChunkFetcher.
-func New(cache cache.Cache, cachel2 cache.Cache, cacheStubs bool, schema config.SchemaConfig, storage client.Client, l2CacheHandoff time.Duration, skipQueryWritebackOlderThan time.Duration) (*Fetcher, error) {
+func New(cache cache.Cache, cachel2 cache.Cache, cacheStubs bool, schema config.SchemaConfig, storage client.Client, l2CacheHandoff time.Duration, skipQueryWritebackOlderThan time.Duration, propagateChunkFetchErrors bool) (*Fetcher, error) {
 	c := &Fetcher{
 		schema:                           schema,
 		storage:                          storage,
@@ -95,6 +96,7 @@ func New(cache cache.Cache, cachel2 cache.Cache, cacheStubs bool, schema config.
 		l2CacheHandoff:                   l2CacheHandoff,
 		cacheStubs:                       cacheStubs,
 		skipQueryWritebackCacheOlderThan: skipQueryWritebackOlderThan,
+		propagateChunkFetchErrors:        propagateChunkFetchErrors,
 		decodeRequests:                   make(chan decodeRequest),
 	}
 
@@ -212,9 +214,6 @@ func (c *Fetcher) FetchChunks(ctx context.Context, chunks []chunk.Chunk) ([]chun
 		level.Warn(log).Log("msg", "error process response from cache", "err", cacheDecodeErr)
 	}
 
-	// Fetch missing from storage. Keep this error apart from the cache errors above.
-	// A later change that returns an error must return only this one. A cache decode
-	// failure is not fatal, because storage still holds the chunk.
 	var (
 		fromStorage []chunk.Chunk
 		storageErr  error
@@ -237,21 +236,21 @@ func (c *Fetcher) FetchChunks(ctx context.Context, chunks []chunk.Chunk) ([]chun
 	st.AddCacheEntriesStored(stats.ChunkCache, len(fromStorage))
 	st.AddCacheBytesSent(stats.ChunkCache, bytes)
 
-	// Always cache any chunks we did get
-
-	if cacheErr := c.WriteBackCache(ctx, fromStorage); cacheErr != nil {
-		level.Warn(log).Log("msg", "could not store chunks in chunk cache", "err", cacheErr)
-	}
-
 	if storageErr != nil {
 		if !errors.Is(storageErr, context.Canceled) && !errors.Is(storageErr, context.DeadlineExceeded) {
 			storageErrors.WithLabelValues(c.storageErrorReason(storageErr)).Inc()
 		}
 		level.Error(log).Log("msg", "failed downloading chunks", "err", storageErr)
+		if c.propagateChunkFetchErrors {
+			return nil, storageErr
+		}
 	}
 
-	allChunks := append(fromCache, fromStorage...)
-	return allChunks, nil
+	if cacheErr := c.WriteBackCache(ctx, fromStorage); cacheErr != nil {
+		level.Warn(log).Log("msg", "could not store chunks in chunk cache", "err", cacheErr)
+	}
+
+	return append(fromCache, fromStorage...), nil
 }
 
 func (c *Fetcher) WriteBackCache(ctx context.Context, chunks []chunk.Chunk) error {
