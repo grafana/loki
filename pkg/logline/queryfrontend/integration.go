@@ -82,12 +82,15 @@ func WrapMiddleware(
 	if lokiQIW == 0 {
 		lokiQIW = store.DefaultQueryIngestersWithin
 	}
-	cfg.Store.QueryIngestersWithin = lokiQIW
+	// The store comes from Loki's logline section, the single owner of it, so
+	// the read path cannot drift from the index the builder writes.
+	storeCfg := lokiCfg.Logline.Store
+	storeCfg.QueryIngestersWithin = lokiQIW
 	indexStore, err := store.New(
 		context.Background(),
 		lokiCfg.SchemaConfig,
 		lokiCfg.StorageConfig.ObjectStore,
-		cfg.Store,
+		storeCfg,
 		logger,
 		reg,
 	)

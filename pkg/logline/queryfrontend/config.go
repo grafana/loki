@@ -4,8 +4,6 @@ import (
 	"flag"
 	"fmt"
 	"time"
-
-	"github.com/grafana/loki/v3/pkg/logline/store"
 )
 
 const (
@@ -162,9 +160,13 @@ func (c *ShardPlanningConfig) Validate() error {
 }
 
 // Config controls logline query frontend middleware injection.
+//
+// The index store is deliberately absent. The read path must resolve the same
+// index as the builder, and Loki's own logline section owns that config, so
+// WrapMiddleware takes the store from there. Registering a second store here
+// would also redefine every -logline-store.* flag.
 type Config struct {
 	Enabled       bool             `yaml:"enabled"`
-	Store         store.Config     `yaml:"store"`
 	QueryFrontend MiddlewareConfig `yaml:"query_frontend"`
 }
 
@@ -175,15 +177,11 @@ func (c *Config) RegisterFlags(f *flag.FlagSet) {
 	}
 
 	f.BoolVar(&c.Enabled, "logline.enabled", false, "Enable logline query frontend middleware injection")
-	c.Store.RegisterFlags(f)
 	c.QueryFrontend.RegisterFlagsWithPrefix("logline-query-frontend", f)
 }
 
 // Validate checks constraints and applies defaults.
 func (c *Config) Validate() error {
-	if err := c.Store.Validate(); err != nil {
-		return fmt.Errorf("invalid store config: %w", err)
-	}
 	if err := c.QueryFrontend.Validate(); err != nil {
 		return fmt.Errorf("invalid query frontend config: %w", err)
 	}
