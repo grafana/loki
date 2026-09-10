@@ -7,7 +7,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/grafana/dskit/kv/memberlist"
 	"github.com/grafana/loki/v3/pkg/kafka"
 
 	"github.com/grafana/loki/v3/pkg/logline"
@@ -113,10 +112,6 @@ type Config struct {
 	// must be at least this value or JoinGroup is rejected.
 	KafkaSessionTimeout time.Duration `yaml:"kafka_session_timeout"`
 
-	// Ring configures access to the producer partition ring,
-	// which the builder reads to discover active partitions.
-	Ring RingConfig `yaml:"ring"`
-
 	// WaitRingPopulatedTimeout bounds how long the builder will wait at
 	// startup for the partition ring to be populated (PartitionsCount > 0)
 	// before failing service startup. This is intentionally a hard failure:
@@ -129,12 +124,6 @@ type Config struct {
 	// unit tests) rejects every JoinGroup that carries an InstanceID with
 	// INVALID_GROUP_ID. Tests set this to true; production code must not.
 	disableStaticMembership bool `yaml:"-"`
-}
-
-type RingConfig struct {
-	Key               string              `yaml:"key"`
-	Memberlist        memberlist.KVConfig `yaml:"memberlist"`
-	WatcherBufferSize int                 `yaml:"watcher_buffer_size"`
 }
 
 type LoglineConfig struct {
@@ -222,14 +211,9 @@ func (c *Config) RegisterFlags(f *flag.FlagSet) {
 			"Peak scratch usage reaches 2-3x this value during a flush (retiring builder's runs + its merged .lidx output + the fresh builder's runs), "+
 			"so size the scratch volume with that headroom.")
 
-	f.StringVar(&c.Ring.Key, "logline-index-builder.ring.key", "ingester-partitions-key",
-		"KV key containing the producer partition ring descriptor.")
-	f.IntVar(&c.Ring.WatcherBufferSize, "logline-index-builder.ring.watcher-buffer-size", 128,
-		"Buffered channel size for memberlist key watchers used by the partition ring reader.")
 	f.DurationVar(&c.WaitRingPopulatedTimeout, "logline-index-builder.wait-ring-populated-timeout", 60*time.Second,
 		"Maximum time to wait at startup for the partition ring to be populated. "+
 			"Service startup fails if the ring is still empty after this — there is no silent fallback.")
-	c.Ring.Memberlist.RegisterFlagsWithPrefix(f, "logline-index-builder.ring.")
 }
 
 // Validate validates the configuration and applies defaults.
@@ -347,23 +331,12 @@ func (c *Config) Validate() error {
 		c.InstanceID = hostname
 	}
 
-	if c.Ring.Key == "" {
-		c.Ring.Key = "ingester-partitions-key"
-	}
-	if c.Ring.WatcherBufferSize == 0 {
-		c.Ring.WatcherBufferSize = 128
-	}
-	if c.Ring.WatcherBufferSize < 0 {
-		return fmt.Errorf("ring.watcher_buffer_size must be > 0, got %d", c.Ring.WatcherBufferSize)
-	}
 	if c.WaitRingPopulatedTimeout == 0 {
 		c.WaitRingPopulatedTimeout = 60 * time.Second
 	}
 	if c.WaitRingPopulatedTimeout < 0 {
 		return fmt.Errorf("wait_ring_populated_timeout must be > 0, got %v", c.WaitRingPopulatedTimeout)
 	}
-	c.Ring.Memberlist.WatchPrefixBufferSize = c.Ring.WatcherBufferSize
-
 	return nil
 }
 

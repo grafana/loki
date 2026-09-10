@@ -35,9 +35,7 @@ func newTestPartitionRingService(t *testing.T) (*PartitionRingWatcher, func(cont
 	})
 
 	s := &PartitionRingWatcher{
-		cfg: RingConfig{
-			Key: key,
-		},
+		ringKey: key,
 		logger:  logger,
 		reg:     prometheus.NewPedanticRegistry(),
 		watcher: watcher,
