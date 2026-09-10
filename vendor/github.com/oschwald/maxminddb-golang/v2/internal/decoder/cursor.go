@@ -2,6 +2,7 @@ package decoder
 
 import (
 	"errors"
+	"fmt"
 	"reflect"
 
 	"github.com/oschwald/maxminddb-golang/v2/internal/mmdberrors"
@@ -11,6 +12,10 @@ var (
 	errInvalidZeroMapCursor   = errors.New("invalid zero map cursor")
 	errInvalidZeroMapReader   = errors.New("invalid zero map reader")
 	errInvalidZeroSliceCursor = errors.New("invalid zero slice cursor")
+)
+
+const supportedMaxSizeKinds = KindSet(
+	1<<KindMap | 1<<KindSlice | 1<<KindString | 1<<KindBytes,
 )
 
 // Cursor identifies one value in the decoder's input. Cursor values are
@@ -81,6 +86,41 @@ func (d *Decoder) Advance(next Cursor) error {
 	return nil
 }
 
+// Offset returns the current value's control-byte offset without consuming it.
+// It resolves one pointer so values in the same database can be cached by their
+// shared offset. It returns an error for a zero cursor, malformed control data,
+// or a pointer that cannot be resolved, including a pointer-to-pointer chain.
+// A successful call does not validate the value's payload.
+func (c Cursor) Offset() (uint, error) {
+	if err := c.validate(); err != nil {
+		return 0, err
+	}
+	// resolveCtrlData returns the payload offset, but cache keys need the
+	// control-byte offset, including for values with extended headers.
+	kind, size, ctrlEnd, err := c.decoder.decodeCtrlData(c.offset)
+	if err != nil {
+		return 0, c.wrapError(err)
+	}
+	if kind != KindPointer {
+		return c.offset, nil
+	}
+
+	pointer, _, err := c.decoder.decodePointer(size, ctrlEnd)
+	if err != nil {
+		return 0, c.wrapError(err)
+	}
+	kind, _, _, err = c.decoder.decodeCtrlData(pointer)
+	if err != nil {
+		return 0, c.wrapError(err)
+	}
+	if kind == KindPointer {
+		return 0, c.wrapError(
+			mmdberrors.NewInvalidDatabaseError("pointer-to-pointer chain detected"),
+		)
+	}
+	return pointer, nil
+}
+
 // Kind returns the resolved kind at the cursor without consuming it.
 func (c Cursor) Kind() (Kind, error) {
 	if err := c.validate(); err != nil {
@@ -121,18 +161,130 @@ func (c Cursor) ReadBool() (bool, Cursor, error) {
 
 // ReadString reads a string and returns its successor cursor.
 func (c Cursor) ReadString() (string, Cursor, error) {
-	if err := c.validate(); err != nil {
-		return "", Cursor{}, err
+	return c.ReadStringMaxSize(maxValueSize)
+}
+
+// ReadStringMaxSize reads a string and returns its successor cursor. It
+// rejects strings larger than maximum before returning the value.
+//
+//nolint:nestif,revive // Keep compact direct and pointer encodings on the hot path.
+func (c Cursor) ReadStringMaxSize(maximum uint64) (string, Cursor, error) {
+	// Keep compact decoding here to avoid an extra call from generated decoders.
+	if c.decoder == nil {
+		return "", Cursor{}, c.validate()
 	}
-	value, next, err := c.decoder.decodeStringValue(c.offset)
-	if err != nil {
-		var mismatch UnexpectedKindError
-		if errors.As(err, &mismatch) {
-			return "", Cursor{}, c.unexpectedKinds(mismatch.Expected, mismatch.Actual)
+	d, offset := c.decoder, c.offset
+
+	bufferLen := uint(len(d.buffer))
+	if offset < bufferLen {
+		ctrlByte := d.buffer[offset]
+		kind := Kind(ctrlByte >> 5)
+		size := uint(ctrlByte & 0x1f)
+		switch kind {
+		case KindString:
+			if size < 29 {
+				dataOffset := offset + 1
+				nextOffset := dataOffset + size
+				if nextOffset <= bufferLen {
+					if uint64(size) > maximum {
+						return "", Cursor{}, c.maxSizeError(KindString, size, maximum)
+					}
+					return d.decodeStringBytes(
+						dataOffset-1,
+						d.buffer[dataOffset:dataOffset+size],
+					), c.successor(nextOffset), nil
+				}
+			}
+		case KindPointer:
+			if size < 8 && offset+2 <= bufferLen {
+				pointer := (size&0x7)<<8 | uint(d.buffer[offset+1])
+				if pointer < bufferLen {
+					pointedCtrlByte := d.buffer[pointer]
+					if Kind(pointedCtrlByte>>5) == KindString {
+						pointedSize := uint(pointedCtrlByte & 0x1f)
+						dataOffset := pointer + 1
+						if pointedSize < 29 && dataOffset+pointedSize <= bufferLen {
+							if uint64(pointedSize) > maximum {
+								return "", Cursor{}, c.maxSizeError(
+									KindString,
+									pointedSize,
+									maximum,
+								)
+							}
+							return d.decodeStringBytes(
+								dataOffset-1,
+								d.buffer[dataOffset:dataOffset+pointedSize],
+							), c.successor(offset + 2), nil
+						}
+					}
+				}
+			}
+			if size >= 8 {
+				payloadOffset := offset + 1
+				pointerSize := ((size >> 3) & 0x3) + 1
+				pointerEnd := payloadOffset + pointerSize
+				if pointerEnd <= bufferLen {
+					var pointer uint
+					switch pointerSize {
+					case 2:
+						pointer = ((size&0x7)<<16 |
+							uint(d.buffer[payloadOffset])<<8 |
+							uint(d.buffer[payloadOffset+1])) + pointerBase2
+					case 3:
+						pointer = ((size&0x7)<<24 |
+							uint(d.buffer[payloadOffset])<<16 |
+							uint(d.buffer[payloadOffset+1])<<8 |
+							uint(d.buffer[payloadOffset+2])) + pointerBase3
+					case 4:
+						pointer = uint(d.buffer[payloadOffset])<<24 |
+							uint(d.buffer[payloadOffset+1])<<16 |
+							uint(d.buffer[payloadOffset+2])<<8 |
+							uint(d.buffer[payloadOffset+3])
+					}
+					if pointer < bufferLen {
+						pointedCtrlByte := d.buffer[pointer]
+						if Kind(pointedCtrlByte>>5) == KindString {
+							pointedSize := uint(pointedCtrlByte & 0x1f)
+							dataOffset := pointer + 1
+							if pointedSize < 29 && pointedSize <= bufferLen-dataOffset {
+								if uint64(pointedSize) > maximum {
+									return "", Cursor{}, c.maxSizeError(
+										KindString,
+										pointedSize,
+										maximum,
+									)
+								}
+								return d.decodeStringBytes(
+									dataOffset-1,
+									d.buffer[dataOffset:dataOffset+pointedSize],
+								), c.successor(pointerEnd), nil
+							}
+						}
+					}
+				}
+			}
+		default:
 		}
+	}
+
+	kind, size, dataOffset, nextOffset, err := d.resolveCtrlData(offset)
+	if err != nil {
 		return "", Cursor{}, c.wrapError(err)
 	}
-	return value, c.successor(next), nil
+	if nextOffset == 0 {
+		nextOffset = dataOffset + size
+	}
+	if kind != KindString {
+		return "", Cursor{}, c.unexpectedKind(KindString, kind)
+	}
+	if uint64(size) > maximum {
+		return "", Cursor{}, c.maxSizeError(KindString, size, maximum)
+	}
+	value, _, err := d.decodeString(size, dataOffset)
+	if err != nil {
+		return "", Cursor{}, c.wrapError(err)
+	}
+	return value, c.successor(nextOffset), nil
 }
 
 // ReadBytes reads bytes and returns its successor cursor. The returned bytes
@@ -577,6 +729,55 @@ func (c Cursor) Slice() (SliceCursor, error) {
 	}, nil
 }
 
+// SliceMaxSize opens the current value as a slice and rejects it when its
+// declared entry count is larger than maximum.
+func (c Cursor) SliceMaxSize(maximum uint64) (SliceCursor, error) {
+	values, err := c.Slice()
+	if err != nil {
+		return SliceCursor{}, err
+	}
+	if uint64(values.size) > maximum {
+		return SliceCursor{}, c.maxSizeError(KindSlice, values.size, maximum)
+	}
+	return values, nil
+}
+
+// CheckMaxSize rejects the current value when its kind is in expected and its
+// byte or entry count exceeds maximum. It supports maps, slices, strings, and
+// bytes, follows a pointer to the value, and performs no allocation. Expected
+// must include every kind accepted by the immediately following decode. Other
+// kinds remain unchecked so that decode can report its usual mismatch error.
+// For example, a []byte decoder that accepts both Bytes and Slice must include
+// both kinds.
+func (c Cursor) CheckMaxSize(expected KindSet, maximum uint64) error {
+	if err := c.validate(); err != nil {
+		return err
+	}
+	if expected == 0 || expected & ^supportedMaxSizeKinds != 0 {
+		return fmt.Errorf("maxsize is not supported for %s", expected)
+	}
+	if c.offset < uint(len(c.decoder.buffer)) {
+		ctrlByte := c.decoder.buffer[c.offset]
+		actual := Kind(ctrlByte >> 5)
+		size := uint(ctrlByte & 0x1f)
+		if actual != KindPointer && actual != KindExtended && size < 29 {
+			if expected.Contains(actual) && uint64(size) > maximum {
+				return c.maxSizeError(actual, size, maximum)
+			}
+			return nil
+		}
+	}
+
+	actual, size, _, _, err := c.decoder.resolveCtrlData(c.offset)
+	if err != nil {
+		return c.wrapError(err)
+	}
+	if expected.Contains(actual) && uint64(size) > maximum {
+		return c.maxSizeError(actual, size, maximum)
+	}
+	return nil
+}
+
 // Unmarshal invokes an existing custom unmarshaler at the cursor and returns
 // a validated successor cursor. It is intended for generated decoders with
 // nested fields that already implement Unmarshaler. A nil interface or an
@@ -722,6 +923,16 @@ func (c Cursor) ReadMapKey() ([]byte, Cursor, error) {
 		return nil, Cursor{}, c.wrapError(err)
 	}
 	return key, Cursor{decoder: c.decoder, offset: valueOffset}, nil
+}
+
+//go:noinline
+func (c Cursor) maxSizeError(actual Kind, size uint, maximum uint64) error {
+	return c.wrapError(mmdberrors.NewInvalidDatabaseError(
+		"%s size %d exceeds maxsize %d",
+		actual,
+		size,
+		maximum,
+	))
 }
 
 // Size validates and returns the number of elements declared by the slice.
@@ -882,8 +1093,12 @@ func (c Cursor) unexpectedKinds(expected KindSet, actual Kind) error {
 	// validating small container contents. Scalars, however, are decoded and
 	// bounds-checked before their destination type is rejected.
 	if !actual.IsContainer() {
-		validator := ReflectionDecoder{DataDecoder: *c.decoder}
-		if _, err := validator.validateValueForAllocation(c.offset, 0, false); err != nil {
+		validator := newStructuralValidator(c.decoder)
+		if _, err := validator.validateValue(
+			c.offset,
+			0,
+			false,
+		); err != nil {
 			return c.wrapError(err)
 		}
 	}
