@@ -10,6 +10,8 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
 
 	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/v3/pkg/storage/chunk"
@@ -54,6 +56,19 @@ const (
 )
 
 const chunkDecodeParallelism = 16
+
+const (
+	traceRequestedChunks        = "chunkstore.requested_chunks"
+	traceReturnedChunks         = "chunkstore.returned_chunks"
+	traceCacheHits              = "chunkstore.cache_hits"
+	traceCacheMisses            = "chunkstore.cache_misses"
+	traceCacheBytes             = "chunkstore.cache_bytes"
+	traceStorageRequestedChunks = "chunkstore.storage_requested_chunks"
+	traceStorageFetchedChunks   = "chunkstore.storage_fetched_chunks"
+	traceStorageBytes           = "chunkstore.storage_bytes"
+	traceCacheErrors            = "chunkstore.cache_errors"
+	traceStorageErrors          = "chunkstore.storage_errors"
+)
 
 // Fetcher deals with fetching chunk contents from the cache/store,
 // and writing back any misses to the cache.  Also responsible for decoding
@@ -141,15 +156,35 @@ func (c *Fetcher) Client() client.Client {
 }
 
 // FetchChunks fetches a set of chunks from cache and store. Note, returned chunks are not in the same order they are passed in
-func (c *Fetcher) FetchChunks(ctx context.Context, chunks []chunk.Chunk) ([]chunk.Chunk, error) {
+func (c *Fetcher) FetchChunks(ctx context.Context, chunks []chunk.Chunk) (result []chunk.Chunk, operationErr error) {
 	if ctx.Err() != nil {
 		return nil, ctx.Err()
 	}
 	ctx, sp := tracer.Start(ctx, "ChunkStore.FetchChunks")
-	defer sp.End()
-
 	log := spanlogger.FromContext(ctx, util_log.Logger)
 	defer log.Finish()
+
+	var traceStats fetchTraceStats
+	traceStats.requestedChunks = len(chunks)
+	defer func() {
+		sp.SetAttributes(
+			attribute.Int(traceRequestedChunks, traceStats.requestedChunks),
+			attribute.Int(traceReturnedChunks, len(result)),
+			attribute.Int(traceCacheHits, traceStats.cacheHits),
+			attribute.Int(traceCacheMisses, traceStats.cacheMisses),
+			attribute.Int(traceCacheBytes, traceStats.cacheBytes),
+			attribute.Int(traceStorageRequestedChunks, traceStats.storageRequestedChunks),
+			attribute.Int(traceStorageFetchedChunks, traceStats.storageFetchedChunks),
+			attribute.Int(traceStorageBytes, traceStats.storageBytes),
+			attribute.Int(traceCacheErrors, traceStats.cacheErrors),
+			attribute.Int(traceStorageErrors, traceStats.storageErrors),
+		)
+		if operationErr != nil {
+			sp.SetStatus(codes.Error, operationErr.Error())
+			sp.RecordError(operationErr)
+		}
+		sp.End()
+	}()
 
 	// Extend the extendedHandoff to be 10% larger to allow for some overlap because this is a sliding window
 	// and the l1 cache may be oversized enough to allow for some extra chunks
@@ -175,8 +210,11 @@ func (c *Fetcher) FetchChunks(ctx context.Context, chunks []chunk.Chunk) ([]chun
 	// Fetch from L1 chunk cache
 	cacheHits, cacheBufs, _, l1CacheErr := c.cache.Fetch(ctx, keys)
 	if l1CacheErr != nil {
+		traceStats.cacheErrors++
 		level.Warn(log).Log("msg", "error fetching from cache", "err", l1CacheErr)
 	}
+	traceStats.cacheHits += len(cacheHits)
+	traceStats.cacheBytes += cacheBufferBytes(cacheBufs)
 
 	for _, buf := range cacheBufs {
 		chunkFetchedSize.WithLabelValues("cache").Observe(float64(len(buf)))
@@ -196,8 +234,11 @@ func (c *Fetcher) FetchChunks(ctx context.Context, chunks []chunk.Chunk) ([]chun
 
 		cacheHitsL2, cacheBufsL2, _, err := c.cachel2.Fetch(ctx, missingL1Keys)
 		if err != nil {
+			traceStats.cacheErrors++
 			level.Warn(log).Log("msg", "error fetching from cache", "err", err)
 		}
+		traceStats.cacheHits += len(cacheHitsL2)
+		traceStats.cacheBytes += cacheBufferBytes(cacheBufsL2)
 
 		for _, buf := range cacheBufsL2 {
 			chunkFetchedSize.WithLabelValues("cache_l2").Observe(float64(len(buf)))
@@ -211,8 +252,11 @@ func (c *Fetcher) FetchChunks(ctx context.Context, chunks []chunk.Chunk) ([]chun
 	// missing chunks that we need to fetch from the storage layer
 	fromCache, missing, cacheDecodeErr := c.processCacheResponse(ctx, chunks, cacheHits, cacheBufs)
 	if cacheDecodeErr != nil {
+		traceStats.cacheErrors++
 		level.Warn(log).Log("msg", "error process response from cache", "err", cacheDecodeErr)
 	}
+	traceStats.cacheMisses = len(missing)
+	traceStats.storageRequestedChunks = len(missing)
 
 	var (
 		fromStorage []chunk.Chunk
@@ -231,12 +275,15 @@ func (c *Fetcher) FetchChunks(ctx context.Context, chunks []chunk.Chunk) ([]chun
 
 		chunkFetchedSize.WithLabelValues("store").Observe(float64(size))
 	}
+	traceStats.storageFetchedChunks = len(fromStorage)
+	traceStats.storageBytes = bytes
 
 	st := stats.FromContext(ctx)
 	st.AddCacheEntriesStored(stats.ChunkCache, len(fromStorage))
 	st.AddCacheBytesSent(stats.ChunkCache, bytes)
 
 	if storageErr != nil {
+		traceStats.storageErrors++
 		if !errors.Is(storageErr, context.Canceled) && !errors.Is(storageErr, context.DeadlineExceeded) {
 			storageErrors.WithLabelValues(c.storageErrorReason(storageErr)).Inc()
 			if failures := len(missing) - len(fromStorage); failures > 0 {
@@ -246,18 +293,47 @@ func (c *Fetcher) FetchChunks(ctx context.Context, chunks []chunk.Chunk) ([]chun
 		level.Error(log).Log("msg", "failed downloading chunks", "err", storageErr)
 
 		if c.propagateChunkFetchErrors {
-			return nil, storageErr
+			operationErr = storageErr
+			return nil, operationErr
 		}
 	}
 
-	if cacheErr := c.WriteBackCache(ctx, fromStorage); cacheErr != nil {
+	cacheStoreErrors, cacheErr := c.writeBackCache(ctx, fromStorage)
+	traceStats.cacheErrors += cacheStoreErrors
+	if cacheErr != nil {
+		traceStats.cacheErrors++
 		level.Warn(log).Log("msg", "could not store chunks in chunk cache", "err", cacheErr)
 	}
 
 	return append(fromCache, fromStorage...), nil
 }
 
+type fetchTraceStats struct {
+	requestedChunks        int
+	cacheHits              int
+	cacheMisses            int
+	cacheBytes             int
+	storageRequestedChunks int
+	storageFetchedChunks   int
+	storageBytes           int
+	cacheErrors            int
+	storageErrors          int
+}
+
+func cacheBufferBytes(bufs [][]byte) int {
+	bytes := 0
+	for _, buf := range bufs {
+		bytes += len(buf)
+	}
+	return bytes
+}
+
 func (c *Fetcher) WriteBackCache(ctx context.Context, chunks []chunk.Chunk) error {
+	_, err := c.writeBackCache(ctx, chunks)
+	return err
+}
+
+func (c *Fetcher) writeBackCache(ctx context.Context, chunks []chunk.Chunk) (int, error) {
 	keys := make([]string, 0, len(chunks))
 	bufs := make([][]byte, 0, len(chunks))
 	keysL2 := make([]string, 0, len(chunks))
@@ -273,7 +349,7 @@ func (c *Fetcher) WriteBackCache(ctx context.Context, chunks []chunk.Chunk) erro
 			encoded, err = chunks[i].Encoded()
 			// TODO don't fail, just log and continue?
 			if err != nil {
-				return err
+				return 0, err
 			}
 		}
 		// Determine which cache we should write to
@@ -288,18 +364,21 @@ func (c *Fetcher) WriteBackCache(ctx context.Context, chunks []chunk.Chunk) erro
 		}
 	}
 
+	storeErrors := 0
 	err := c.cache.Store(ctx, keys, bufs)
 	if err != nil {
+		storeErrors++
 		level.Warn(util_log.Logger).Log("msg", "writeBackCache cache store fail", "err", err)
 	}
 	if len(keysL2) > 0 {
 		err = c.cachel2.Store(ctx, keysL2, bufsL2)
 		if err != nil {
+			storeErrors++
 			level.Warn(util_log.Logger).Log("msg", "writeBackCacheL2 cache store fail", "err", err)
 		}
 	}
 
-	return nil
+	return storeErrors, nil
 }
 
 // ProcessCacheResponse decodes the chunks coming back from the cache, separating

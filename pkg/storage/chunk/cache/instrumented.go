@@ -6,11 +6,9 @@ import (
 	instr "github.com/grafana/dskit/instrument"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
-	attribute "go.opentelemetry.io/otel/attribute"
-	"go.opentelemetry.io/otel/codes"
-	"go.opentelemetry.io/otel/trace"
 
 	"github.com/grafana/loki/v3/pkg/util/constants"
+	loki_instrument "github.com/grafana/loki/v3/pkg/util/instrument"
 )
 
 // Instrument returns an instrumented cache.
@@ -73,15 +71,8 @@ func (i *instrumentedCache) Store(ctx context.Context, keys []string, bufs [][]b
 	}
 
 	method := i.name + ".store"
-	return instr.CollectedRequest(ctx, method, i.requestDuration, instr.ErrorCode, func(ctx context.Context) error {
-		sp := trace.SpanFromContext(ctx)
-		sp.SetAttributes(attribute.Int("keys", len(keys)))
-		storeErr := i.Cache.Store(ctx, keys, bufs)
-		if storeErr != nil {
-			sp.SetStatus(codes.Error, storeErr.Error())
-			sp.RecordError(storeErr)
-		}
-		return storeErr
+	return loki_instrument.TimeRequest(ctx, method, i.requestDuration, instr.ErrorCode, func(ctx context.Context) error {
+		return i.Cache.Store(ctx, keys, bufs)
 	})
 }
 
@@ -94,21 +85,9 @@ func (i *instrumentedCache) Fetch(ctx context.Context, keys []string) ([]string,
 		method   = i.name + ".fetch"
 	)
 
-	err := instr.CollectedRequest(ctx, method, i.requestDuration, instr.ErrorCode, func(ctx context.Context) error {
-		sp := trace.SpanFromContext(ctx)
-		sp.SetAttributes(attribute.Int("keys requested", len(keys)))
+	err := loki_instrument.TimeRequest(ctx, method, i.requestDuration, instr.ErrorCode, func(ctx context.Context) error {
 		found, bufs, missing, fetchErr = i.Cache.Fetch(ctx, keys)
-		if fetchErr != nil {
-			sp.SetStatus(codes.Error, fetchErr.Error())
-			sp.RecordError(fetchErr)
-			return fetchErr
-		}
-
-		sp.SetAttributes(
-			attribute.Int("keys found", len(found)),
-			attribute.Int("keys missing", len(keys)-len(found)),
-		)
-		return nil
+		return fetchErr
 	})
 
 	i.fetchedKeys.Add(float64(len(keys)))

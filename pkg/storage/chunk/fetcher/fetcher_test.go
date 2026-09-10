@@ -9,11 +9,16 @@ import (
 	"testing"
 	"time"
 
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/codes"
+	sdktrace "go.opentelemetry.io/otel/sdk/trace"
+	"go.opentelemetry.io/otel/sdk/trace/tracetest"
 
 	"github.com/grafana/loki/v3/pkg/chunkenc"
 	"github.com/grafana/loki/v3/pkg/compression"
@@ -321,6 +326,156 @@ func TestFetchChunks_HandlesStorageErrors(t *testing.T) {
 	}
 }
 
+func TestFetchChunksTracing(t *testing.T) {
+	previousProvider := otel.GetTracerProvider()
+	previousTracer := tracer
+	recorder := tracetest.NewSpanRecorder()
+	provider := sdktrace.NewTracerProvider(sdktrace.WithSpanProcessor(recorder))
+	otel.SetTracerProvider(provider)
+	tracer = provider.Tracer("pkg/storage/chunk/fetcher")
+	t.Cleanup(func() {
+		otel.SetTracerProvider(previousProvider)
+		tracer = previousTracer
+		_ = provider.Shutdown(context.Background())
+	})
+
+	t.Run("aggregate attributes stay bounded", func(t *testing.T) {
+		for _, count := range []int{2, 64} {
+			t.Run(strconv.Itoa(count), func(t *testing.T) {
+				now := time.Now()
+				fetch := make([]chunk.Chunk, 0, count)
+				for i := 0; i < count; i++ {
+					fetch = append(fetch, makeChunks(now, c{time.Duration(i) * time.Hour, time.Duration(i+1) * time.Hour})...)
+				}
+				sc := testSchemaConfig()
+				rawCache := cache.NewMockCache()
+				cacheChunks := fetch[:count/2]
+				storageChunks := fetch[count/2:]
+				keys := make([]string, 0, len(cacheChunks))
+				bufs := make([][]byte, 0, len(cacheChunks))
+				for _, chk := range cacheChunks {
+					buf, err := chk.Encoded()
+					require.NoError(t, err)
+					keys = append(keys, sc.ExternalKey(chk.ChunkRef))
+					bufs = append(bufs, buf)
+				}
+				require.NoError(t, rawCache.Store(context.Background(), keys, bufs))
+				instrumentedCache := cache.Instrument("fetcher-test", rawCache, prometheus.NewRegistry())
+				rawStorage := testutils.NewInMemoryObjectClient()
+				storage := client.NewClientWithMaxParallel(rawStorage, nil, 1, sc)
+				require.NoError(t, storage.PutChunks(context.Background(), storageChunks))
+				fetcher, err := New(instrumentedCache, cache.NewMockCache(), false, sc, storage, 0, 0, false)
+				require.NoError(t, err)
+				t.Cleanup(fetcher.Stop)
+
+				recorder.Reset()
+				got, err := fetcher.FetchChunks(context.Background(), fetch)
+				require.NoError(t, err)
+				require.Len(t, got, count)
+
+				spans := recorder.Ended()
+				require.Len(t, spans, 1)
+				span := spans[0]
+				require.Equal(t, "ChunkStore.FetchChunks", span.Name())
+				require.Empty(t, span.Events())
+				require.Equal(t, codes.Unset, span.Status().Code)
+				require.Len(t, span.Attributes(), 10)
+				attrs := spanAttributeInts(span)
+				require.Equal(t, int64(count), attrs[traceRequestedChunks])
+				require.Equal(t, int64(count), attrs[traceReturnedChunks])
+				require.Equal(t, int64(count/2), attrs[traceCacheHits])
+				require.Equal(t, int64(count/2), attrs[traceCacheMisses])
+				require.Greater(t, attrs[traceCacheBytes], int64(0))
+				require.Equal(t, int64(count/2), attrs[traceStorageRequestedChunks])
+				require.Equal(t, int64(count/2), attrs[traceStorageFetchedChunks])
+				require.Greater(t, attrs[traceStorageBytes], int64(0))
+				require.Equal(t, int64(0), attrs[traceCacheErrors])
+				require.Equal(t, int64(0), attrs[traceStorageErrors])
+			})
+		}
+	})
+
+	t.Run("propagated storage error", func(t *testing.T) {
+		recorder.Reset()
+		chunks := makeChunks(time.Now(), c{time.Hour, 2 * time.Hour}, c{2 * time.Hour, 3 * time.Hour})
+		storageErr := errors.New("storage failed")
+		storage := &storageErrorClient{err: storageErr, chunks: chunks[:1]}
+		fetcher, err := New(cache.NewMockCache(), cache.NewMockCache(), false, testSchemaConfig(), storage, 0, 0, true)
+		require.NoError(t, err)
+		t.Cleanup(fetcher.Stop)
+
+		got, err := fetcher.FetchChunks(context.Background(), chunks)
+		require.ErrorIs(t, err, storageErr)
+		require.Nil(t, got)
+
+		spans := recorder.Ended()
+		require.Len(t, spans, 1)
+		span := spans[0]
+		require.Equal(t, codes.Error, span.Status().Code)
+		require.Equal(t, storageErr.Error(), span.Status().Description)
+		var recordedException bool
+		for _, event := range span.Events() {
+			if event.Name == "exception" {
+				recordedException = true
+			}
+			require.NotContains(t, event.Name, "chunk")
+		}
+		require.True(t, recordedException)
+		attrs := spanAttributeInts(span)
+		require.Equal(t, int64(2), attrs[traceRequestedChunks])
+		require.Equal(t, int64(0), attrs[traceReturnedChunks])
+		require.Equal(t, int64(2), attrs[traceCacheMisses])
+		require.Equal(t, int64(2), attrs[traceStorageRequestedChunks])
+		require.Equal(t, int64(1), attrs[traceStorageFetchedChunks])
+		require.Equal(t, int64(1), attrs[traceStorageErrors])
+	})
+
+	t.Run("cache store failure is aggregated without changing fetch result", func(t *testing.T) {
+		recorder.Reset()
+		chunks := makeChunks(time.Now(), c{time.Hour, 2 * time.Hour})
+		sc := testSchemaConfig()
+		rawStorage := testutils.NewInMemoryObjectClient()
+		storage := client.NewClientWithMaxParallel(rawStorage, nil, 1, sc)
+		require.NoError(t, storage.PutChunks(context.Background(), chunks))
+		storeErr := errors.New("cache store failed")
+		failingCache := cache.Instrument("fetcher-test-store-error", &storeErrorCache{Cache: cache.NewMockCache(), err: storeErr}, prometheus.NewRegistry())
+		fetcher, err := New(failingCache, cache.NewMockCache(), false, sc, storage, 0, 0, false)
+		require.NoError(t, err)
+		t.Cleanup(fetcher.Stop)
+
+		got, err := fetcher.FetchChunks(context.Background(), chunks)
+		require.NoError(t, err)
+		assertChunks(t, chunks, got)
+
+		spans := recorder.Ended()
+		require.Len(t, spans, 1)
+		span := spans[0]
+		require.Equal(t, "ChunkStore.FetchChunks", span.Name())
+		require.Equal(t, codes.Unset, span.Status().Code)
+		require.Empty(t, span.Events())
+		require.Len(t, span.Attributes(), 10)
+		attrs := spanAttributeInts(span)
+		require.Equal(t, int64(1), attrs[traceRequestedChunks])
+		require.Equal(t, int64(1), attrs[traceReturnedChunks])
+		require.Equal(t, int64(0), attrs[traceCacheHits])
+		require.Equal(t, int64(1), attrs[traceCacheMisses])
+		require.Equal(t, int64(0), attrs[traceCacheBytes])
+		require.Equal(t, int64(1), attrs[traceStorageRequestedChunks])
+		require.Equal(t, int64(1), attrs[traceStorageFetchedChunks])
+		require.Greater(t, attrs[traceStorageBytes], int64(0))
+		require.Equal(t, int64(1), attrs[traceCacheErrors])
+		require.Equal(t, int64(0), attrs[traceStorageErrors])
+	})
+}
+
+func spanAttributeInts(span sdktrace.ReadOnlySpan) map[string]int64 {
+	attrs := make(map[string]int64, len(span.Attributes()))
+	for _, attr := range span.Attributes() {
+		attrs[string(attr.Key)] = attr.Value.AsInt64()
+	}
+	return attrs
+}
+
 func readStorageErrorCounters(t *testing.T) map[string]float64 {
 	t.Helper()
 
@@ -348,6 +503,15 @@ type storageErrorClient struct {
 	err                 error
 	chunks              []chunk.Chunk
 	notFound, retryable bool
+}
+
+type storeErrorCache struct {
+	cache.Cache
+	err error
+}
+
+func (c *storeErrorCache) Store(context.Context, []string, [][]byte) error {
+	return c.err
 }
 
 func (s *storageErrorClient) GetChunks(context.Context, []chunk.Chunk) ([]chunk.Chunk, error) {
