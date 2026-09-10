@@ -1190,14 +1190,19 @@ func Test_MaxQuerySize_PlannedRanges(t *testing.T) {
 		require.Equal(t, int32(1), hits.Load())
 	})
 
-	t.Run("MaxQuerierBytesRead ignores the plan", func(t *testing.T) {
+	t.Run("MaxQuerierBytesRead sizes plan clipped to the request", func(t *testing.T) {
 		queryHits := atomic.NewInt32(0)
 		querierHits := atomic.NewInt32(0)
 		ctx := user.InjectOrgID(context.Background(), "foo")
-		ctx = querylimits.InjectPlannedQueryRanges(ctx, []querylimits.TimeRange{{
-			Start: testTime.Add(-30 * time.Minute),
-			End:   testTime,
-		}})
+		ctx = querylimits.InjectPlannedQueryRanges(ctx, []querylimits.TimeRange{
+			{Start: testTime.Add(-48 * time.Hour), End: testTime.Add(-47 * time.Hour)},
+			{Start: testTime.Add(-30 * time.Minute), End: testTime},
+		})
+
+		// A 1h split: only the second window overlaps. Without clipping,
+		// the first window would be sized as 10_000 bytes and 400.
+		splitReq := *lokiReq
+		splitReq.StartTs = testTime.Add(-time.Hour)
 
 		middlewares := []queryrangebase.Middleware{
 			NewQuerySizeLimiterMiddleware(testEngineOpts, util_log.Logger, fakeLimits{
@@ -1207,8 +1212,8 @@ func Test_MaxQuerySize_PlannedRanges(t *testing.T) {
 				maxQuerierBytesRead: 500,
 			}, statsForDuration(querierHits)),
 		}
-		_, err := queryrangebase.MergeMiddlewares(middlewares...).Wrap(promHandler).Do(ctx, lokiReq)
-		require.Error(t, err)
+		_, err := queryrangebase.MergeMiddlewares(middlewares...).Wrap(promHandler).Do(ctx, &splitReq)
+		require.NoError(t, err)
 		require.Equal(t, int32(1), queryHits.Load())
 		require.Equal(t, int32(1), querierHits.Load())
 	})

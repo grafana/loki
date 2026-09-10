@@ -61,8 +61,10 @@ type querySizeLimitSpec struct {
 	// errorTmpl is the client-facing message template. It takes two strings: the
 	// bytes the query would read and the configured limit.
 	errorTmpl string
-	// applyPlannedRanges sizes MaxQueryBytesRead from an injected plan.
-	// MaxQuerierBytesRead leaves this false and keeps using the split range.
+	// applyPlannedRanges sizes the limit from an injected plan, clipped
+	// to the request range. Used by MaxQueryBytesRead and the sharding-off
+	// MaxQuerierBytesRead middleware. The shard mapper applies the same
+	// plan only to the limit check, not to the shard factor.
 	applyPlannedRanges bool
 }
 
@@ -74,9 +76,10 @@ var (
 		applyPlannedRanges: true,
 	}
 	maxQuerierBytesReadSpec = querySizeLimitSpec{
-		limitName: "MaxQuerierBytesRead",
-		sentinel:  logqlmodel.ErrQuerierTooManyBytes,
-		errorTmpl: limErrQuerierTooManyBytesTmpl,
+		limitName:          "MaxQuerierBytesRead",
+		sentinel:           logqlmodel.ErrQuerierTooManyBytes,
+		errorTmpl:          limErrQuerierTooManyBytesTmpl,
+		applyPlannedRanges: true,
 	}
 	maxQuerierBytesReadShardableSpec = querySizeLimitSpec{
 		limitName: "MaxQuerierBytesRead",
@@ -313,9 +316,11 @@ func NewQuerySizeLimiterMiddleware(
 //   - {job="foo"}
 //   - {job="bar"}
 //
-// If a plan is on the context, MaxQueryBytesRead sizes those windows and
-// does not use QueryLimitsContext as a floor. A present empty plan is 0
-// bytes. MaxQuerierBytesRead ignores the plan.
+// If a plan is on the context, MaxQueryBytesRead and the sharding-off
+// MaxQuerierBytesRead middleware size the planned windows clipped to the
+// request. They do not use QueryLimitsContext as a floor. A present empty
+// plan is 0 bytes. The shard mapper still picks a factor from the full
+// split and only uses the plan for the limit number.
 func (q *querySizeLimiter) getBytesReadForRequest(ctx context.Context, r queryrangebase.Request) (uint64, error) {
 	ctx, sp := tracer.Start(ctx, "querySizeLimiter.getBytesReadForRequest")
 	defer sp.End()
@@ -357,14 +362,11 @@ func (q *querySizeLimiter) getBytesReadForRequest(ctx context.Context, r queryra
 	return queryBytes, nil
 }
 
-// getBytesForPlannedRanges sizes the query over each planned window.
+// getBytesForPlannedRanges sizes the query over each planned window
+// that overlaps [r.Start, r.End).
 func (q *querySizeLimiter) getBytesForPlannedRanges(ctx context.Context, r queryrangebase.Request, planned []querylimits.TimeRange) (uint64, error) {
 	var total uint64
-	for _, window := range planned {
-		if !window.Start.Before(window.End) {
-			continue
-		}
-
+	for _, window := range clipPlannedQueryRanges(planned, r.GetStart(), r.GetEnd()) {
 		bytesRead, err := q.getBytesForQueryAndRange(ctx, r.GetQuery(), window.Start, window.End)
 		if err != nil {
 			return 0, nil
@@ -373,6 +375,37 @@ func (q *querySizeLimiter) getBytesForPlannedRanges(ctx context.Context, r query
 	}
 
 	return total, nil
+}
+
+// clipPlannedQueryRanges returns planned windows overlapping [from, to).
+func clipPlannedQueryRanges(planned []querylimits.TimeRange, from, to time.Time) []querylimits.TimeRange {
+	if !from.Before(to) {
+		return nil
+	}
+	out := make([]querylimits.TimeRange, 0, len(planned))
+	for _, window := range planned {
+		start := window.Start
+		if start.Before(from) {
+			start = from
+		}
+		end := window.End
+		if end.After(to) {
+			end = to
+		}
+		if start.Before(end) {
+			out = append(out, querylimits.TimeRange{Start: start, End: end})
+		}
+	}
+	return out
+}
+
+// scaleBytesToShard scales part/total onto an already-computed per-shard
+// estimate so the shard factor is unchanged.
+func scaleBytesToShard(part, total, bytesPerShard uint64) uint64 {
+	if total == 0 {
+		return 0
+	}
+	return uint64(float64(part) / float64(total) * float64(bytesPerShard))
 }
 
 func (q *querySizeLimiter) getBytesForQueryAndRange(ctx context.Context, query string, from, to time.Time) (uint64, error) {
