@@ -159,6 +159,10 @@ type Limits struct {
 	VolumeEnabled                        bool             `yaml:"volume_enabled" json:"volume_enabled" doc:"description=Enable log-volume endpoints."`
 	VolumeMaxSeries                      int              `yaml:"volume_max_series" json:"volume_max_series" doc:"description=The maximum number of aggregated series in a log-volume response"`
 
+	// Logline index. Experimental and hidden while the feature is being rolled out.
+	LoglineMode                  string `yaml:"logline_mode" json:"logline_mode" doc:"hidden"`
+	LoglineMinQueryBytesForIndex *int64 `yaml:"logline_min_query_bytes_for_index" json:"logline_min_query_bytes_for_index" doc:"hidden"`
+
 	// Ruler defaults and limits.
 	RulerMaxRulesPerRuleGroup   int                             `yaml:"ruler_max_rules_per_rule_group" json:"ruler_max_rules_per_rule_group"`
 	RulerMaxRuleGroupsPerTenant int                             `yaml:"ruler_max_rule_groups_per_tenant" json:"ruler_max_rule_groups_per_tenant"`
@@ -438,6 +442,8 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 
 	_ = l.MaxQuerierBytesRead.Set("150GB")
 	f.Var(&l.MaxQuerierBytesRead, "frontend.max-querier-bytes-read", "Max number of bytes a query can fetch after splitting and sharding. Enforced in log and metric queries only when TSDB is used. This limit is not enforced on log queries without filters. The default value of 0 disables this limit.")
+
+	f.StringVar(&l.LoglineMode, "logline.tenant-mode", "", "Per-tenant logline index mode: \"\" (unset, use the deployment default), \"off\", \"dry_run\" or \"live\". Experimental.")
 
 	_ = l.MaxCacheFreshness.Set("10m")
 	f.Var(&l.MaxCacheFreshness, "frontend.max-cache-freshness", "Most recent allowed cacheable result per-tenant, to prevent caching very recent results that might still be in flux.")
@@ -928,6 +934,23 @@ func (o *Overrides) IngesterQuerySplitDuration(userID string) time.Duration {
 // MaxQueryBytesRead returns the maximum bytes a query can read.
 func (o *Overrides) MaxQueryBytesRead(_ context.Context, userID string) int {
 	return o.getOverridesForUser(userID).MaxQueryBytesRead.Val()
+}
+
+// LoglineMode returns the tenant's logline index mode, or "" when unset.
+func (o *Overrides) LoglineMode(userID string) string {
+	return o.getOverridesForUser(userID).LoglineMode
+}
+
+// LoglineMinQueryBytesForIndex returns the tenant's stats-gating threshold for
+// logline index lookups, and whether it is configured at all.
+//
+// The distinction matters: 0 is a meaningful value that disables the gate, so
+// it cannot double as "unset". Hence the pointer field and the second return.
+func (o *Overrides) LoglineMinQueryBytesForIndex(userID string) (int64, bool) {
+	if v := o.getOverridesForUser(userID).LoglineMinQueryBytesForIndex; v != nil {
+		return *v, true
+	}
+	return 0, false
 }
 
 // MaxQuerierBytesRead returns the maximum bytes a sub query can read after splitting and sharding.

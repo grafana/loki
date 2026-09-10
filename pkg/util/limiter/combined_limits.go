@@ -8,6 +8,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/distributor"
 	"github.com/grafana/loki/v3/pkg/indexgateway"
 	"github.com/grafana/loki/v3/pkg/ingester"
+	loglinelimits "github.com/grafana/loki/v3/pkg/logline/queryfrontend/limits"
 	"github.com/grafana/loki/v3/pkg/pattern"
 	querier_limits "github.com/grafana/loki/v3/pkg/querier/limits"
 	queryrange_limits "github.com/grafana/loki/v3/pkg/querier/queryrange/limits"
@@ -31,6 +32,7 @@ type CombinedLimits interface {
 	bloomplanner.Limits
 	bloombuilder.Limits
 	pattern.Limits
+	loglinelimits.Limits
 	bucket.SSEConfigProvider
 	SortSchemaLabels(userID string) []string
 	CompactionPhases(userID string) (runIndex, runLog bool)
