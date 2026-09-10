@@ -76,6 +76,11 @@ type MiddlewareConfig struct {
 	// required before running logline index hint lookup.
 	// Set to 0 to disable stats-based gating.
 	MinQueryBytesForIndex int64 `yaml:"min_query_bytes_for_index"`
+	// MaxQueryBytesRead is copied from Loki limits_config.max_query_bytes_read
+	// (global default) at wrap time. It is not a logline YAML knob. Zero means
+	// the limit is disabled; prefetch stays async. Per-tenant overrides are
+	// used when TenantSettings implements maxQueryBytesReader.
+	MaxQueryBytesRead int64 `yaml:"-"`
 	// ShardPlanning controls optional live-query reruns that force Loki's TSDB
 	// shard planner to use a configured strategy when hints prove the request is narrow.
 	ShardPlanning ShardPlanningConfig `yaml:"shard_planning"`

@@ -32,7 +32,9 @@ import (
 // Two-layer logline index middleware:
 //
 // 1. Prefetch MW (above SplitByInterval): parses query, kicks off async
-//    logline index lookup, stores results + ingester cutoff in context.
+//    logline index lookup, stores results + ingester cutoff in context, and
+//    attaches a PlannedRangeSource. The size limiter waits on that source
+//    only when the full-span query would exceed MaxQueryBytesRead.
 //
 // 2. Filter MW (below SplitByInterval, below cache): for each interval
 //    sub-request, consults the prefetched hints to skip empty intervals
@@ -251,6 +253,9 @@ func NewLoglinePrefetchMiddleware(
 	if tenantSettings == nil {
 		tenantSettings = staticTenantSettings{}
 	}
+	if cfg.HintTimeout <= 0 {
+		cfg.HintTimeout = defaultHintTimeout
+	}
 	if cfg.ShardPlanning == (ShardPlanningConfig{}) {
 		cfg.ShardPlanning.Enabled = defaultShardPlanningEnabled
 	}
@@ -264,6 +269,7 @@ func NewLoglinePrefetchMiddleware(
 			ngramLength:          cfg.NgramLength,
 			hintTimeout:          cfg.HintTimeout,
 			minQueryBytes:        cfg.MinQueryBytesForIndex,
+			maxQueryBytesRead:    cfg.MaxQueryBytesRead,
 			queryIngestersWithin: cfg.QueryIngestersWithin,
 			shardPlanning:        cfg.ShardPlanning,
 			tenantSettings:       tenantSettings,
@@ -282,6 +288,7 @@ type loglinePrefetchHandler struct {
 	hintTimeout          time.Duration
 	dryRunInflight       atomic.Int32
 	minQueryBytes        int64
+	maxQueryBytesRead    int64
 	queryIngestersWithin time.Duration
 	shardPlanning        ShardPlanningConfig
 	tenantSettings       TenantSettings
@@ -320,6 +327,21 @@ func resolveMode(header string, tenantMode, defaultMode Mode, requireOptInHeader
 	}
 
 	return mode, false
+}
+
+// resolveMaxQueryBytesRead is used only to decide whether to start a hint
+// lookup when the query is under min_query_bytes but would still 400.
+// The size limiter owns waiting on the resulting PlannedRangeSource.
+func (h *loglinePrefetchHandler) resolveMaxQueryBytesRead(tenant string) int64 {
+	if r, ok := h.tenantSettings.(maxQueryBytesReader); ok {
+		if v := r.MaxQueryBytesRead(tenant); v > 0 {
+			return int64(v)
+		}
+	}
+	if h.maxQueryBytesRead > 0 {
+		return h.maxQueryBytesRead
+	}
+	return 0
 }
 
 func (h *loglinePrefetchHandler) getQueryBytes(ctx context.Context, expr syntax.Expr, from, through time.Time) (uint64, error) {
@@ -765,6 +787,7 @@ func (h *loglinePrefetchHandler) Do(ctx context.Context, req queryrangebase.Requ
 	tenant, _ := user.ExtractOrgID(ctx)
 	tenantMode := ModeUnset
 	minQueryBytes := h.minQueryBytes
+	maxQueryBytesRead := h.resolveMaxQueryBytesRead(tenant)
 	if h.tenantSettings != nil {
 		tenantMode = h.tenantSettings.Mode(tenant)
 		if tenantMinQueryBytes, ok := h.tenantSettings.MinQueryBytesForIndex(tenant); ok {
@@ -794,11 +817,16 @@ func (h *loglinePrefetchHandler) Do(ctx context.Context, req queryrangebase.Requ
 		return h.next.Do(ctx, req)
 	}
 
-	// Shared eligibility: stats-based byte threshold.
+	// Shared eligibility: stats-based byte threshold. Also fetch stats when
+	// MaxQueryBytesRead is set so over-limit queries still start a hint
+	// lookup (and attach a PlannedRangeSource) even if they are under
+	// min_query_bytes.
 	from := lokiReq.StartTs.UTC()
 	through := lokiReq.EndTs.UTC()
 	queryBytes := uint64(0)
-	if minQueryBytes > 0 {
+	overSizeLimit := false
+	needStats := minQueryBytes > 0 || maxQueryBytesRead > 0
+	if needStats {
 		queryBytes, err = h.getQueryBytes(ctx, expr, from, through)
 		if err != nil {
 			level.Warn(logger).Log(
@@ -808,7 +836,9 @@ func (h *loglinePrefetchHandler) Do(ctx context.Context, req queryrangebase.Requ
 			)
 			return h.next.Do(ctx, req)
 		}
-		if queryBytes < uint64(minQueryBytes) {
+		overSizeLimit = maxQueryBytesRead > 0 && queryBytes >= uint64(maxQueryBytesRead)
+		belowMinQueryBytes := minQueryBytes > 0 && queryBytes < uint64(minQueryBytes)
+		if belowMinQueryBytes && !overSizeLimit {
 			if h.metrics != nil && h.metrics.hintSkippedSmallQuery != nil {
 				h.metrics.hintSkippedSmallQuery.Inc()
 			}
@@ -927,6 +957,10 @@ func (h *loglinePrefetchHandler) Do(ctx context.Context, req queryrangebase.Requ
 	}()
 
 	ctx = withHintPrefetch(ctx, result)
+	ctx = querylimits.InjectPlannedRangeSource(ctx, &plannedRangeSource{
+		result:  result,
+		timeout: h.hintTimeout,
+	})
 	if !h.shardPlanning.Enabled {
 		resp, err := h.next.Do(ctx, req)
 		if err != nil {

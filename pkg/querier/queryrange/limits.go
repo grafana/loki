@@ -61,13 +61,17 @@ type querySizeLimitSpec struct {
 	// errorTmpl is the client-facing message template. It takes two strings: the
 	// bytes the query would read and the configured limit.
 	errorTmpl string
+	// applyPlannedRanges sizes MaxQueryBytesRead from injected planned windows.
+	// MaxQuerierBytesRead leaves this false and keeps using the split range.
+	applyPlannedRanges bool
 }
 
 var (
 	maxQueryBytesReadSpec = querySizeLimitSpec{
-		limitName: "MaxQueryBytesRead",
-		sentinel:  logqlmodel.ErrMaxQueryBytesRead,
-		errorTmpl: limErrQueryTooManyBytesTmpl,
+		limitName:          "MaxQueryBytesRead",
+		sentinel:           logqlmodel.ErrMaxQueryBytesRead,
+		errorTmpl:          limErrQueryTooManyBytesTmpl,
+		applyPlannedRanges: true,
 	}
 	maxQuerierBytesReadSpec = querySizeLimitSpec{
 		limitName: "MaxQuerierBytesRead",
@@ -308,9 +312,32 @@ func NewQuerySizeLimiterMiddleware(
 // individual intervals and offsets
 //   - {job="foo"}
 //   - {job="bar"}
+//
+// If a frozen plan is already on the context, MaxQueryBytesRead sizes those
+// windows instead of req.GetStart()/GetEnd() and does not use
+// QueryLimitsContext as a floor. A present empty plan is 0 bytes, not a
+// fallback to the full span. A PlannedRangeSource is not waited on here;
+// Do() waits only when the full-span size would exceed the limit.
+// MaxQuerierBytesRead ignores the plan and keeps using the split/shard
+// request range.
 func (q *querySizeLimiter) getBytesReadForRequest(ctx context.Context, r queryrangebase.Request) (uint64, error) {
 	ctx, sp := tracer.Start(ctx, "querySizeLimiter.getBytesReadForRequest")
 	defer sp.End()
+
+	if q.spec.applyPlannedRanges {
+		if planned, ok := querylimits.ExtractPlannedQueryRanges(ctx); ok {
+			bytesRead, err := q.getBytesForPlannedRanges(ctx, r, planned)
+			if err == nil {
+				level.Debug(q.logger).Log(
+					"msg", "sized query using planned ranges",
+					"windows", len(planned),
+					"bytes", bytesRead,
+					"limit_name", q.spec.limitName,
+				)
+			}
+			return bytesRead, err
+		}
+	}
 
 	queryLimitCtx := querylimits.ExtractQueryLimitsContextFromContext(ctx)
 	fullCtxBytes := uint64(0)
@@ -332,6 +359,28 @@ func (q *querySizeLimiter) getBytesReadForRequest(ctx context.Context, r queryra
 	}
 
 	return queryBytes, nil
+}
+
+// getBytesForPlannedRanges sizes the query over each planned window. The plan
+// is the final scan set: windows are not clipped to the request range, and
+// QueryLimitsContext is not applied as a floor. Matcher offsets and lookback
+// are still applied inside getBytesForQueryAndRange. Callers should merge
+// adjacent ranges before injecting.
+func (q *querySizeLimiter) getBytesForPlannedRanges(ctx context.Context, r queryrangebase.Request, planned []querylimits.TimeRange) (uint64, error) {
+	var total uint64
+	for _, window := range planned {
+		if !window.Start.Before(window.End) {
+			continue
+		}
+
+		bytesRead, err := q.getBytesForQueryAndRange(ctx, r.GetQuery(), window.Start, window.End)
+		if err != nil {
+			return 0, nil
+		}
+		total += bytesRead
+	}
+
+	return total, nil
 }
 
 func (q *querySizeLimiter) getBytesForQueryAndRange(ctx context.Context, query string, from, to time.Time) (uint64, error) {
@@ -394,6 +443,28 @@ func (q *querySizeLimiter) Do(ctx context.Context, r queryrangebase.Request) (qu
 			return nil, httpgrpc.Errorf(http.StatusInternalServerError, "Failed to get bytes read stats for query: %s", err.Error())
 		}
 
+		if bytesRead > uint64(maxBytesRead) && q.spec.applyPlannedRanges {
+			if _, frozen := querylimits.ExtractPlannedQueryRanges(ctx); !frozen {
+				planned, ready, waitErr := q.waitForPlannedRanges(ctx)
+				if waitErr != nil {
+					return nil, waitErr
+				}
+				if ready {
+					ctx = querylimits.InjectPlannedQueryRanges(ctx, planned)
+					bytesRead, err = q.getBytesForPlannedRanges(ctx, r, planned)
+					if err != nil {
+						return nil, httpgrpc.Errorf(http.StatusInternalServerError, "Failed to get bytes read stats for query: %s", err.Error())
+					}
+					level.Debug(log).Log(
+						"msg", "sized query using waited planned ranges",
+						"windows", len(planned),
+						"bytes", bytesRead,
+						"limit_name", q.spec.limitName,
+					)
+				}
+			}
+		}
+
 		statsBytesStr := humanize.IBytes(bytesRead)
 		maxBytesReadStr := humanize.IBytes(uint64(maxBytesRead))
 
@@ -404,6 +475,20 @@ func (q *querySizeLimiter) Do(ctx context.Context, r queryrangebase.Request) (qu
 	}
 
 	return q.next.Do(ctx, r)
+}
+
+// waitForPlannedRanges waits on a PlannedRangeSource. ok=false means keep
+// the full-span size. A frozen snapshot is handled by getBytesReadForRequest.
+func (q *querySizeLimiter) waitForPlannedRanges(ctx context.Context) ([]querylimits.TimeRange, bool, error) {
+	src, ok := querylimits.ExtractPlannedRangeSource(ctx)
+	if !ok {
+		return nil, false, nil
+	}
+	planned, ready := src.Wait(ctx)
+	if err := ctx.Err(); err != nil {
+		return nil, false, err
+	}
+	return planned, ready, nil
 }
 
 type seriesLimiter struct {
