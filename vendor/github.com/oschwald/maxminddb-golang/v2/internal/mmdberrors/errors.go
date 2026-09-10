@@ -7,8 +7,8 @@ import (
 	"reflect"
 )
 
-// InvalidDatabaseError is returned when the database contains invalid data
-// and cannot be parsed.
+// InvalidDatabaseError is returned when database data is malformed or is
+// rejected by decoder structural, resource, or schema validation.
 type InvalidDatabaseError struct {
 	message string
 }
