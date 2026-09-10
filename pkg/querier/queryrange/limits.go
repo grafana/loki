@@ -14,7 +14,6 @@ import (
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/httpgrpc"
 	"github.com/grafana/dskit/tenant"
-	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/model/timestamp"
@@ -249,7 +248,6 @@ type querySizeLimiter struct {
 	logger            log.Logger
 	next              queryrangebase.Handler
 	statsHandler      queryrangebase.Handler
-	cfg               []config.PeriodConfig
 	maxLookBackPeriod time.Duration
 	limitFunc         func(context.Context, string) int
 	spec              querySizeLimitSpec
@@ -257,7 +255,6 @@ type querySizeLimiter struct {
 
 func newQuerySizeLimiter(
 	next queryrangebase.Handler,
-	cfg []config.PeriodConfig,
 	engineOpts logql.EngineOpts,
 	logger log.Logger,
 	limitFunc func(context.Context, string) int,
@@ -267,7 +264,6 @@ func newQuerySizeLimiter(
 	q := &querySizeLimiter{
 		logger:            logger,
 		next:              next,
-		cfg:               cfg,
 		maxLookBackPeriod: engineOpts.MaxLookBackPeriod,
 		limitFunc:         limitFunc,
 		spec:              spec,
@@ -283,27 +279,25 @@ func newQuerySizeLimiter(
 
 // NewQuerierSizeLimiterMiddleware creates a new Middleware that enforces query size limits after sharding and splitting.
 func NewQuerierSizeLimiterMiddleware(
-	cfg []config.PeriodConfig,
 	engineOpts logql.EngineOpts,
 	logger log.Logger,
 	limits Limits,
 	statsHandler ...queryrangebase.Handler,
 ) queryrangebase.Middleware {
 	return queryrangebase.MiddlewareFunc(func(next queryrangebase.Handler) queryrangebase.Handler {
-		return newQuerySizeLimiter(next, cfg, engineOpts, logger, limits.MaxQuerierBytesRead, maxQuerierBytesReadSpec, statsHandler...)
+		return newQuerySizeLimiter(next, engineOpts, logger, limits.MaxQuerierBytesRead, maxQuerierBytesReadSpec, statsHandler...)
 	})
 }
 
 // NewQuerySizeLimiterMiddleware creates a new Middleware that enforces query size limits.
 func NewQuerySizeLimiterMiddleware(
-	cfg []config.PeriodConfig,
 	engineOpts logql.EngineOpts,
 	logger log.Logger,
 	limits Limits,
 	statsHandler ...queryrangebase.Handler,
 ) queryrangebase.Middleware {
 	return queryrangebase.MiddlewareFunc(func(next queryrangebase.Handler) queryrangebase.Handler {
-		return newQuerySizeLimiter(next, cfg, engineOpts, logger, limits.MaxQueryBytesRead, maxQueryBytesReadSpec, statsHandler...)
+		return newQuerySizeLimiter(next, engineOpts, logger, limits.MaxQueryBytesRead, maxQueryBytesReadSpec, statsHandler...)
 	})
 }
 
@@ -432,30 +426,8 @@ func (q *querySizeLimiter) getBytesForQueryAndRange(ctx context.Context, query s
 	return combinedStats.Bytes, nil
 }
 
-func (q *querySizeLimiter) getSchemaCfg(r queryrangebase.Request) (config.PeriodConfig, error) {
-	maxRVDuration, maxOffset, err := maxRangeVectorAndOffsetDurationFromQueryString(r.GetQuery())
-	if err != nil {
-		return config.PeriodConfig{}, errors.New("failed to get range-vector and offset duration: " + err.Error())
-	}
-
-	adjustedStart := int64(model.Time(r.GetStart().UnixMilli()).Add(-maxRVDuration).Add(-maxOffset))
-	adjustedEnd := int64(model.Time(r.GetEnd().UnixMilli()).Add(-maxOffset))
-
-	return ShardingConfigs(q.cfg).ValidRange(adjustedStart, adjustedEnd)
-}
-
 func (q *querySizeLimiter) Do(ctx context.Context, r queryrangebase.Request) (queryrangebase.Response, error) {
 	log := spanlogger.FromContext(ctx, q.logger)
-
-	// Only support TSDB
-	schemaCfg, err := q.getSchemaCfg(r)
-	if err != nil {
-		level.Warn(log).Log("msg", "failed to get schema config, not applying querySizeLimit", "err", err)
-		return q.next.Do(ctx, r)
-	}
-	if schemaCfg.IndexType != types.IndexTypeTSDB {
-		return q.next.Do(ctx, r)
-	}
 
 	tenantIDs, err := tenant.TenantIDs(ctx)
 	if err != nil {

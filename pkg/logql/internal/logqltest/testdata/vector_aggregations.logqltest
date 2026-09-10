@@ -40,6 +40,26 @@ eval instant at 90s sum(count_over_time({app=~"foo|bar"} |~".+bar" [1m] offset 3
   {app="foo", namespace="a"} 18
   {app="bar", namespace="b"} 6
 
+# sum() grouping on structured metadata.
+clear
+load
+  {app="foo"} "xbar"  @ 10s [repeat every 10s for 18] [metadata cluster="c1"]
+  {app="foo"} "noise" @ 15s [repeat every 10s for 18] [metadata cluster="c1"]
+  {app="foo"} "xbar"  @ 5s  [repeat every 5s  for 36] [metadata cluster="c2"]
+  {app="foo"} "noise" @ 7s  [repeat every 5s  for 36] [metadata cluster="c2"]
+  {app="bar"} "xbar"  @ 10s [repeat every 10s for 18] [metadata cluster="c2"]
+  {app="bar"} "noise" @ 15s [repeat every 10s for 18] [metadata cluster="c2"]
+
+eval instant at 60s sum(count_over_time({app=~"foo|bar"} |~".+bar" [1m])) by (cluster)
+  {cluster="c1"} 6
+  {cluster="c2"} 18
+eval range from 20s to 60s step 20s sum(count_over_time({app=~"foo|bar"} |~".+bar" [1m])) by (cluster)
+  {cluster="c1"} 2 4 6
+  {cluster="c2"} 6 12 18
+eval instant at 60s sum(count_over_time({app=~"foo|bar"} |~".+bar" [1m])) without (cluster)
+  {app="foo"} 18
+  {app="bar"} 6
+
 # sum() with special inputs.
 clear
 load
@@ -97,6 +117,28 @@ eval instant at 60s avg without () (count_over_time({app=~"foo|bar"} |~".+bar" [
   {app="foo", pod="b", zone="eu"} 12
   {app="bar", pod="a", zone="us"} 12
   {app="bar", pod="b", zone="us"} 30
+
+# avg() grouping on structured metadata.
+clear
+load
+  {app="foo", pod="a"} "xbar"  @ 10s [repeat every 10s for 18] [metadata zone="eu"]
+  {app="foo", pod="a"} "noise" @ 15s [repeat every 10s for 18] [metadata zone="eu"]
+  {app="foo", pod="b"} "xbar"  @ 5s  [repeat every 5s  for 36] [metadata zone="eu"]
+  {app="foo", pod="b"} "noise" @ 7s  [repeat every 5s  for 36] [metadata zone="eu"]
+  {app="bar", pod="a"} "xbar"  @ 5s  [repeat every 5s  for 36] [metadata zone="us"]
+  {app="bar", pod="a"} "noise" @ 7s  [repeat every 5s  for 36] [metadata zone="us"]
+  {app="bar", pod="b"} "xbar"  @ 2s  [repeat every 2s  for 90] [metadata zone="us"]
+  {app="bar", pod="b"} "noise" @ 1s  [repeat every 2s  for 90] [metadata zone="us"]
+
+eval instant at 60s avg by (zone) (count_over_time({app=~"foo|bar"} |~".+bar" [1m]))
+  {zone="eu"} 9
+  {zone="us"} 21
+eval range from 20s to 60s step 20s avg by (zone) (count_over_time({app=~"foo|bar"} |~".+bar" [1m]))
+  {zone="eu"} 3 6 9
+  {zone="us"} 7 14 21
+eval instant at 60s avg without (pod) (count_over_time({app=~"foo|bar"} |~".+bar" [1m]))
+  {app="foo", zone="eu"} 9
+  {app="bar", zone="us"} 21
 
 # avg() with special inputs.
 clear
@@ -156,6 +198,28 @@ eval instant at 60s min without () (count_over_time({app=~"foo|bar"} |~".+bar" [
   {app="bar", pod="a", zone="us"} 12
   {app="bar", pod="b", zone="us"} 30
 
+# min() grouping on structured metadata.
+clear
+load
+  {app="foo", pod="a"} "xbar"  @ 10s [repeat every 10s for 18] [metadata zone="eu"]
+  {app="foo", pod="a"} "noise" @ 15s [repeat every 10s for 18] [metadata zone="eu"]
+  {app="foo", pod="b"} "xbar"  @ 5s  [repeat every 5s  for 36] [metadata zone="eu"]
+  {app="foo", pod="b"} "noise" @ 7s  [repeat every 5s  for 36] [metadata zone="eu"]
+  {app="bar", pod="a"} "xbar"  @ 5s  [repeat every 5s  for 36] [metadata zone="us"]
+  {app="bar", pod="a"} "noise" @ 7s  [repeat every 5s  for 36] [metadata zone="us"]
+  {app="bar", pod="b"} "xbar"  @ 2s  [repeat every 2s  for 90] [metadata zone="us"]
+  {app="bar", pod="b"} "noise" @ 1s  [repeat every 2s  for 90] [metadata zone="us"]
+
+eval instant at 60s min by (zone) (count_over_time({app=~"foo|bar"} |~".+bar" [1m]))
+  {zone="eu"} 6
+  {zone="us"} 12
+eval range from 20s to 60s step 20s min by (zone) (count_over_time({app=~"foo|bar"} |~".+bar" [1m]))
+  {zone="eu"} 2 4 6
+  {zone="us"} 4 8 12
+eval instant at 60s min without (pod) (count_over_time({app=~"foo|bar"} |~".+bar" [1m]))
+  {app="foo", zone="eu"} 6
+  {app="bar", zone="us"} 12
+
 # min() with special inputs.
 clear
 load
@@ -214,6 +278,28 @@ eval instant at 60s max without () (count_over_time({app=~"foo|bar"} |~".+bar" [
   {app="bar", pod="a", zone="us"} 12
   {app="bar", pod="b", zone="us"} 30
 
+# max() grouping on structured metadata.
+clear
+load
+  {app="foo", pod="a"} "xbar"  @ 10s [repeat every 10s for 18] [metadata zone="eu"]
+  {app="foo", pod="a"} "noise" @ 15s [repeat every 10s for 18] [metadata zone="eu"]
+  {app="foo", pod="b"} "xbar"  @ 5s  [repeat every 5s  for 36] [metadata zone="eu"]
+  {app="foo", pod="b"} "noise" @ 7s  [repeat every 5s  for 36] [metadata zone="eu"]
+  {app="bar", pod="a"} "xbar"  @ 5s  [repeat every 5s  for 36] [metadata zone="us"]
+  {app="bar", pod="a"} "noise" @ 7s  [repeat every 5s  for 36] [metadata zone="us"]
+  {app="bar", pod="b"} "xbar"  @ 2s  [repeat every 2s  for 90] [metadata zone="us"]
+  {app="bar", pod="b"} "noise" @ 1s  [repeat every 2s  for 90] [metadata zone="us"]
+
+eval instant at 60s max by (zone) (count_over_time({app=~"foo|bar"} |~".+bar" [1m]))
+  {zone="eu"} 12
+  {zone="us"} 30
+eval range from 20s to 60s step 20s max by (zone) (count_over_time({app=~"foo|bar"} |~".+bar" [1m]))
+  {zone="eu"} 4 8 12
+  {zone="us"} 10 20 30
+eval instant at 60s max without (pod) (count_over_time({app=~"foo|bar"} |~".+bar" [1m]))
+  {app="foo", zone="eu"} 12
+  {app="bar", zone="us"} 30
+
 # max() with special inputs.
 clear
 load
@@ -269,6 +355,26 @@ eval instant at 60s count without () (count_over_time({app=~"foo|bar"} |~".+bar"
   {app="foo", pod="a", zone="eu"} 1
   {app="foo", pod="b", zone="eu"} 1
   {app="bar", pod="a", zone="us"} 1
+
+# count() grouping on structured metadata.
+clear
+load
+  {app="foo", pod="a"} "xbar"  @ 10s [repeat every 10s for 18] [metadata zone="eu"]
+  {app="foo", pod="a"} "noise" @ 15s [repeat every 10s for 18] [metadata zone="eu"]
+  {app="foo", pod="b"} "xbar"  @ 30s [repeat every 10s for 16] [metadata zone="eu"]
+  {app="foo", pod="b"} "noise" @ 35s [repeat every 10s for 16] [metadata zone="eu"]
+  {app="bar", pod="a"} "xbar"  @ 50s [repeat every 10s for 14] [metadata zone="us"]
+  {app="bar", pod="a"} "noise" @ 55s [repeat every 10s for 14] [metadata zone="us"]
+
+eval instant at 60s count by (zone) (count_over_time({app=~"foo|bar"} |~".+bar" [1m]))
+  {zone="eu"} 2
+  {zone="us"} 1
+eval range from 20s to 60s step 20s count by (zone) (count_over_time({app=~"foo|bar"} |~".+bar" [1m]))
+  {zone="eu"} 1 2 2
+  {zone="us"} _ _ 1
+eval instant at 60s count without (pod) (count_over_time({app=~"foo|bar"} |~".+bar" [1m]))
+  {app="foo", zone="eu"} 2
+  {app="bar", zone="us"} 1
 
 # count() with special inputs.
 clear
@@ -326,6 +432,28 @@ eval instant at 60s stddev without () (count_over_time({app=~"foo|bar"} |~".+bar
   {app="foo", pod="b", zone="eu"} 0
   {app="bar", pod="a", zone="us"} 0
   {app="bar", pod="b", zone="us"} 0
+
+# stddev() grouping on structured metadata.
+clear
+load
+  {app="foo", pod="a"} "xbar"  @ 10s [repeat every 10s for 18] [metadata zone="eu"]
+  {app="foo", pod="a"} "noise" @ 15s [repeat every 10s for 18] [metadata zone="eu"]
+  {app="foo", pod="b"} "xbar"  @ 5s  [repeat every 5s  for 36] [metadata zone="eu"]
+  {app="foo", pod="b"} "noise" @ 7s  [repeat every 5s  for 36] [metadata zone="eu"]
+  {app="bar", pod="a"} "xbar"  @ 5s  [repeat every 5s  for 36] [metadata zone="us"]
+  {app="bar", pod="a"} "noise" @ 7s  [repeat every 5s  for 36] [metadata zone="us"]
+  {app="bar", pod="b"} "xbar"  @ 2s  [repeat every 2s  for 90] [metadata zone="us"]
+  {app="bar", pod="b"} "noise" @ 1s  [repeat every 2s  for 90] [metadata zone="us"]
+
+eval instant at 60s stddev by (zone) (count_over_time({app=~"foo|bar"} |~".+bar" [1m]))
+  {zone="eu"} 3
+  {zone="us"} 9
+eval range from 20s to 60s step 20s stddev by (zone) (count_over_time({app=~"foo|bar"} |~".+bar" [1m]))
+  {zone="eu"} 1 2 3
+  {zone="us"} 3 6 9
+eval instant at 60s stddev without (pod) (count_over_time({app=~"foo|bar"} |~".+bar" [1m]))
+  {app="foo", zone="eu"} 3
+  {app="bar", zone="us"} 9
 
 # stddev() with special inputs.
 clear
@@ -385,6 +513,28 @@ eval instant at 60s stdvar without () (count_over_time({app=~"foo|bar"} |~".+bar
   {app="foo", pod="b", zone="eu"} 0
   {app="bar", pod="a", zone="us"} 0
   {app="bar", pod="b", zone="us"} 0
+
+# stdvar() grouping on structured metadata.
+clear
+load
+  {app="foo", pod="a"} "xbar"  @ 10s [repeat every 10s for 18] [metadata zone="eu"]
+  {app="foo", pod="a"} "noise" @ 15s [repeat every 10s for 18] [metadata zone="eu"]
+  {app="foo", pod="b"} "xbar"  @ 5s  [repeat every 5s  for 36] [metadata zone="eu"]
+  {app="foo", pod="b"} "noise" @ 7s  [repeat every 5s  for 36] [metadata zone="eu"]
+  {app="bar", pod="a"} "xbar"  @ 5s  [repeat every 5s  for 36] [metadata zone="us"]
+  {app="bar", pod="a"} "noise" @ 7s  [repeat every 5s  for 36] [metadata zone="us"]
+  {app="bar", pod="b"} "xbar"  @ 2s  [repeat every 2s  for 90] [metadata zone="us"]
+  {app="bar", pod="b"} "noise" @ 1s  [repeat every 2s  for 90] [metadata zone="us"]
+
+eval instant at 60s stdvar by (zone) (count_over_time({app=~"foo|bar"} |~".+bar" [1m]))
+  {zone="eu"} 9
+  {zone="us"} 81
+eval range from 20s to 60s step 20s stdvar by (zone) (count_over_time({app=~"foo|bar"} |~".+bar" [1m]))
+  {zone="eu"} 1 4 9
+  {zone="us"} 9 36 81
+eval instant at 60s stdvar without (pod) (count_over_time({app=~"foo|bar"} |~".+bar" [1m]))
+  {app="foo", zone="eu"} 9
+  {app="bar", zone="us"} 81
 
 # stdvar() with special inputs.
 clear
@@ -450,6 +600,27 @@ eval instant at 60s topk(1.5, count_over_time({app=~"foo|bar"} |~".+bar" [1m]))
 eval instant at 60s topk(count_over_time({app=~"foo|bar"} |~".+bar" [1m]))
   expect fail msg: parameter required
 
+# topk() grouping on structured metadata. topk() selects rather than aggregates, so the
+# winning series keeps its full label set either way; grouping decides only which series
+# compete against which.
+clear
+load
+  {app="foo"} "xbar"  @ 10s [repeat every 10s for 18] [metadata pod="a"]
+  {app="foo"} "noise" @ 15s [repeat every 10s for 18] [metadata pod="a"]
+  {app="foo"} "xbar"  @ 5s  [repeat every 5s  for 36] [metadata pod="b"]
+  {app="foo"} "noise" @ 7s  [repeat every 5s  for 36] [metadata pod="b"]
+  {app="bar"} "xbar"  @ 4s  [repeat every 4s  for 45] [metadata pod="a"]
+  {app="bar"} "noise" @ 2s  [repeat every 4s  for 45] [metadata pod="a"]
+  {app="bar"} "xbar"  @ 2s  [repeat every 2s  for 90] [metadata pod="b"]
+  {app="bar"} "noise" @ 1s  [repeat every 2s  for 90] [metadata pod="b"]
+
+eval instant at 60s topk(1, count_over_time({app=~"foo|bar"} |~".+bar" [1m])) by (app)
+  {app="foo", pod="b"} 12
+  {app="bar", pod="b"} 30
+eval instant at 60s topk(1, count_over_time({app=~"foo|bar"} |~".+bar" [1m])) without (app)
+  {app="bar", pod="a"} 15
+  {app="bar", pod="b"} 30
+
 # topk() with special inputs.
 clear
 load
@@ -508,6 +679,27 @@ eval instant at 60s bottomk(1, count_over_time({app=~"foo|bar"} |~".+bar" [1m]))
   {app="foo", pod="b"} 12
   {app="bar", pod="a"} 15
   {app="bar", pod="b"} 30
+
+# bottomk() grouping on structured metadata. bottomk() selects rather than aggregates, so the
+# winning series keeps its full label set either way; grouping decides only which series
+# compete against which.
+clear
+load
+  {app="foo"} "xbar"  @ 10s [repeat every 10s for 18] [metadata pod="a"]
+  {app="foo"} "noise" @ 15s [repeat every 10s for 18] [metadata pod="a"]
+  {app="foo"} "xbar"  @ 5s  [repeat every 5s  for 36] [metadata pod="b"]
+  {app="foo"} "noise" @ 7s  [repeat every 5s  for 36] [metadata pod="b"]
+  {app="bar"} "xbar"  @ 4s  [repeat every 4s  for 45] [metadata pod="a"]
+  {app="bar"} "noise" @ 2s  [repeat every 4s  for 45] [metadata pod="a"]
+  {app="bar"} "xbar"  @ 2s  [repeat every 2s  for 90] [metadata pod="b"]
+  {app="bar"} "noise" @ 1s  [repeat every 2s  for 90] [metadata pod="b"]
+
+eval instant at 60s bottomk(1, count_over_time({app=~"foo|bar"} |~".+bar" [1m])) by (app)
+  {app="foo", pod="a"} 6
+  {app="bar", pod="a"} 15
+eval instant at 60s bottomk(1, count_over_time({app=~"foo|bar"} |~".+bar" [1m])) without (app)
+  {app="foo", pod="a"} 6
+  {app="foo", pod="b"} 12
 
 # bottomk() with special inputs.
 clear

@@ -135,7 +135,7 @@ func (s *mrdStream) updateCapacity(m *multiRangeDownloaderManager, deltaRanges i
 // Top level entry point into the MultiRangeDownloader via the storageClient interface.
 func (c *grpcStorageClient) NewMultiRangeDownloader(ctx context.Context, params *newMultiRangeDownloaderParams, opts ...storageOption) (*MultiRangeDownloader, error) {
 	if !c.config.grpcBidiReads {
-		return nil, errors.New("storage: MultiRangeDownloader requires the experimental.WithGRPCBidiReads option")
+		return nil, errors.New("storage: MultiRangeDownloader requires the WithGRPCBidiReads option")
 	}
 	s := callSettings(c.settings, opts...)
 	// Force the use of the custom codec to enable zero-copy reads.

@@ -237,9 +237,7 @@ func (e *LabelAggregationExpr) Pretty(level int) string {
 	s += Indent(level+1) + e.Label + ",\n"
 	s += e.Left.Pretty(level+1) + "\n"
 	s += Indent(level) + ")"
-	if e.Grouping != nil {
-		s += e.Grouping.Pretty(level)
-	}
+	s += prettyLabelAggregationGrouping(e.Grouping, level)
 	return s
 }
 
@@ -254,10 +252,22 @@ func (e *CountDistinctSketchExpr) Pretty(level int) string {
 	s += Indent(level+1) + e.Label + ",\n"
 	s += e.Left.Pretty(level+1) + "\n"
 	s += Indent(level) + ")"
-	if e.Grouping != nil {
-		s += e.Grouping.Pretty(level)
-	}
+	s += prettyLabelAggregationGrouping(e.Grouping, level)
 	return s
+}
+
+// prettyLabelAggregationGrouping keeps `by ()` visible. Grouping.Pretty omits
+// empty by-clauses because vector aggregations always have a Grouping and
+// `sum(x)` must not pretty-print as `sum by ()(x)`. Label aggregations treat
+// omitted by and `by ()` as different grouping modes.
+func prettyLabelAggregationGrouping(g *Grouping, level int) string {
+	if g == nil {
+		return ""
+	}
+	if g.Singleton() {
+		return " by ()"
+	}
+	return g.Pretty(level)
 }
 
 // e.g:

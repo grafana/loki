@@ -73,7 +73,7 @@ func put[T any](p *sync.Pool, s *[]T) {
 	p.Put(s)
 }
 
-// GetComponentName returns the constant name for the exporter with the
+// GetComponentName returns the component name for the exporter with the
 // provided id.
 func GetComponentName(id int64) string {
 	return fmt.Sprintf("%s/%d", otelconv.ComponentTypeOtlpGRPCLogExporter, id)
@@ -105,7 +105,7 @@ type Instrumentation struct {
 	recOpt      metric.RecordOption
 }
 
-// NewInstrumentation returns instrumentation for otlplog grpc exporter.
+// NewInstrumentation returns instrumentation for the otlplog gRPC exporter.
 func NewInstrumentation(id int64, target string) (*Instrumentation, error) {
 	if !x.Observability.Enabled() {
 		return nil, nil
@@ -190,7 +190,7 @@ type ExportOp struct {
 // [Instrumentation.ExportLogs].
 // Any error that is encountered is provided as err.
 //
-// If err is not nil, all logs will be recorded as failures unless error is of
+// If err is not nil, all logs will be recorded as failures unless the error is of
 // type [internal.PartialSuccess]. In the case of a PartialSuccess, the number
 // of successfully exported logs will be determined by inspecting the
 // RejectedItems field of the PartialSuccess.
@@ -245,8 +245,8 @@ func (i *Instrumentation) recordOption(err error) metric.RecordOption {
 	return metric.WithAttributeSet(attribute.NewSet(*attrs...))
 }
 
-// successful returns the number of successfully exported logs out of the n
-// that were exported based on the provided error.
+// successful returns the number of successfully exported log records from a
+// batch of n records, as determined from err.
 //
 // If err is nil, n is returned. All logs were successfully exported.
 //
@@ -271,8 +271,8 @@ var errPool = sync.Pool{
 	},
 }
 
-// rejectedCount returns how many out of the n logs exporter were rejected based on
-// the provided non-nil err.
+// rejectedCount returns the number of rejected log records from a batch of n
+// records, as determined from the non-nil err.
 func rejectedCount(n int64, err error) int64 {
 	ps := errPool.Get().(*internal.PartialSuccess)
 	defer func() {
@@ -284,7 +284,7 @@ func rejectedCount(n int64, err error) int64 {
 	if errors.As(err, ps) {
 		return min(max(ps.RejectedItems, 0), n)
 	}
-	// all logs exporter
+	// All logs were rejected.
 	return n
 }
 

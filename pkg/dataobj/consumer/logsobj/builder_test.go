@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"math"
 	"math/rand"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -580,7 +581,7 @@ func TestBuilder_CopyAndSort_SortSchema(t *testing.T) {
 
 		obj2 := copyAndSort(t, cfg, obj1, overrides)
 
-		require.Equal(t, []string{"alpha", "middle", "zoo"}, appOrder(t, obj2, "schema-tenant"))
+		require.Equal(t, expectedLabelOrder(t, []string{"zoo", "alpha", "middle"}, "app", []string{"label:app"}), appOrder(t, obj2, "schema-tenant"))
 		timestampsDescWithinGroups(t, obj2, "schema-tenant")
 
 		// default-tenant has no per-tenant override, so Overrides.SortSchemaLabels
@@ -612,7 +613,7 @@ func TestBuilder_CopyAndSort_SortSchema(t *testing.T) {
 				}
 			}
 		}
-		require.Equal(t, []string{"alpha", "middle", "zoo"}, svcOrder)
+		require.Equal(t, expectedLabelOrder(t, []string{"alpha", "middle", "zoo"}, "service_name", []string{"label:service_name"}), svcOrder)
 	})
 
 	t.Run("schema labels persisted in section metadata", func(t *testing.T) {
@@ -629,9 +630,14 @@ func TestBuilder_CopyAndSort_SortSchema(t *testing.T) {
 			labels, err := logsSection.SchemaLabels()
 			require.NoError(t, err)
 			require.Equal(t, []string{"label:app"}, labels, "SchemaLabels must be persisted in section metadata")
+			require.Equal(t, logs.SortLayout{
+				SchemaLabels: []string{"label:app"},
+				StreamOrder:  logs.StreamOrderStableHashV1,
+				ShardCount:   streams.ShardFactor,
+			}, logsSection.SortLayout())
 		}
 
-		require.Equal(t, []string{"a", "b"}, appOrder(t, obj2, "t1"))
+		require.Equal(t, expectedLabelOrder(t, []string{"b", "a"}, "app", []string{"label:app"}), appOrder(t, obj2, "t1"))
 		timestampsDescWithinGroups(t, obj2, "t1")
 	})
 
@@ -641,6 +647,7 @@ func TestBuilder_CopyAndSort_SortSchema(t *testing.T) {
 		obj := buildObj(t, cfg, "t1", []string{"zoo", "alpha", "middle"}, overrides)
 
 		streamToApp := make(map[int64]string)
+		streamToShard := make(map[int64]uint32)
 		for _, sec := range obj.Sections().Filter(func(s *dataobj.Section) bool {
 			return streams.CheckSection(s) && s.Tenant == "t1"
 		}) {
@@ -650,6 +657,7 @@ func TestBuilder_CopyAndSort_SortSchema(t *testing.T) {
 				val, err := res.Value()
 				require.NoError(t, err)
 				streamToApp[val.ID] = val.Labels.Get("app")
+				streamToShard[val.ID] = uint32(val.ShardBucket)
 			}
 		}
 
@@ -661,9 +669,15 @@ func TestBuilder_CopyAndSort_SortSchema(t *testing.T) {
 			schemaLabels, err := logsSection.SchemaLabels()
 			require.NoError(t, err)
 			require.Equal(t, []string{"label:app"}, schemaLabels)
+			require.Equal(t, logs.SortLayout{
+				SchemaLabels: []string{"label:app"},
+				StreamOrder:  logs.StreamOrderStableHashV1,
+				ShardCount:   streams.ShardFactor,
+			}, logsSection.SortLayout())
 
 			var (
 				prevApp      string
+				prevShard    uint32
 				prevStreamID int64
 				prevTS       time.Time
 				firstRecord  = true
@@ -672,8 +686,11 @@ func TestBuilder_CopyAndSort_SortSchema(t *testing.T) {
 				val, err := res.Value()
 				require.NoError(t, err)
 				app := streamToApp[val.StreamID]
+				shard := streamToShard[val.StreamID]
 				if !firstRecord {
 					switch {
+					case shard != prevShard:
+						require.GreaterOrEqual(t, shard, prevShard)
 					case app != prevApp:
 						require.GreaterOrEqual(t, app, prevApp)
 					case val.StreamID != prevStreamID:
@@ -683,6 +700,7 @@ func TestBuilder_CopyAndSort_SortSchema(t *testing.T) {
 					}
 				}
 				prevApp = app
+				prevShard = shard
 				prevStreamID = val.StreamID
 				prevTS = val.Timestamp
 				firstRecord = false
@@ -697,7 +715,7 @@ func TestBuilder_CopyAndSort_SortSchema(t *testing.T) {
 		obj2 := copyAndSort(t, cfg, obj1, overrides)
 		obj3 := copyAndSort(t, cfg, obj2, overrides)
 
-		require.Equal(t, []string{"alpha", "middle", "zoo"}, appOrder(t, obj3, "t1"))
+		require.Equal(t, expectedLabelOrder(t, []string{"zoo", "alpha", "middle"}, "app", []string{"label:app"}), appOrder(t, obj3, "t1"))
 		timestampsDescWithinGroups(t, obj3, "t1")
 	})
 
@@ -749,7 +767,14 @@ func TestBuilder_CopyAndSort_SortSchema(t *testing.T) {
 				}
 			}
 		}
-		require.Equal(t, []pair{{"ns-a", "app-a"}, {"ns-a", "app-z"}, {"ns-b", "app-a"}, {"ns-b", "app-z"}}, got)
+		want := expectedPairsOrder(t, [][2]string{
+			{"ns-b", "app-z"}, {"ns-a", "app-z"}, {"ns-a", "app-a"}, {"ns-b", "app-a"},
+		}, []string{"label:namespace", "label:app"})
+		gotPairs := make([][2]string, len(got))
+		for i, p := range got {
+			gotPairs[i] = p
+		}
+		require.Equal(t, want, gotPairs)
 	})
 
 	t.Run("stream IDs remapped to sort key order", func(t *testing.T) {
@@ -866,11 +891,11 @@ func TestBuilder_CopyAndSort_SortSchema(t *testing.T) {
 			streamIDsAfter[stream.id] = struct{}{}
 
 			if i > 0 {
-				prevKey, err := ComputeSortKey(streamsAfter[i-1].labels, schemaLabels)
+				prevKey, err := NewStreamOrderKey(streamsAfter[i-1].labels, schemaLabels)
 				require.NoError(t, err)
-				currKey, err := ComputeSortKey(stream.labels, schemaLabels)
+				currKey, err := NewStreamOrderKey(stream.labels, schemaLabels)
 				require.NoError(t, err)
-				require.LessOrEqual(t, prevKey, currKey)
+				require.LessOrEqual(t, CompareStreamOrderKey(prevKey, currKey), 0)
 			}
 		}
 		require.ElementsMatch(t, beforeLabels, afterLabels)
@@ -908,14 +933,14 @@ func TestBuilder_CopyAndSort_SortSchema(t *testing.T) {
 				continue
 			}
 			prev := logsAfter[i-1]
-			prevKey, err := ComputeSortKey(prev.labels, schemaLabels)
+			prevKey, err := NewStreamOrderKey(prev.labels, schemaLabels)
 			require.NoError(t, err)
-			currKey, err := ComputeSortKey(record.labels, schemaLabels)
+			currKey, err := NewStreamOrderKey(record.labels, schemaLabels)
 			require.NoError(t, err)
 
 			switch {
-			case prevKey != currKey:
-				require.LessOrEqual(t, prevKey, currKey)
+			case CompareStreamOrderKey(prevKey, currKey) != 0:
+				require.LessOrEqual(t, CompareStreamOrderKey(prevKey, currKey), 0)
 			case prev.streamID != record.streamID:
 				require.LessOrEqual(t, prev.streamID, record.streamID)
 			default:
@@ -924,6 +949,38 @@ func TestBuilder_CopyAndSort_SortSchema(t *testing.T) {
 		}
 	})
 
+}
+
+func expectedLabelOrder(t *testing.T, values []string, labelName string, schemaLabels []string) []string {
+	t.Helper()
+	keys := make([]StreamOrderKey, 0, len(values))
+	for _, v := range values {
+		k, err := NewStreamOrderKey(labels.FromStrings(labelName, v), schemaLabels)
+		require.NoError(t, err)
+		keys = append(keys, k)
+	}
+	slices.SortFunc(keys, CompareStreamOrderKey)
+	out := make([]string, len(keys))
+	for i, k := range keys {
+		out[i] = k.Labels.Get(labelName)
+	}
+	return out
+}
+
+func expectedPairsOrder(t *testing.T, values [][2]string, schemaLabels []string) [][2]string {
+	t.Helper()
+	keys := make([]StreamOrderKey, 0, len(values))
+	for _, v := range values {
+		k, err := NewStreamOrderKey(labels.FromStrings("namespace", v[0], "app", v[1]), schemaLabels)
+		require.NoError(t, err)
+		keys = append(keys, k)
+	}
+	slices.SortFunc(keys, CompareStreamOrderKey)
+	out := make([][2]string, len(keys))
+	for i, k := range keys {
+		out[i] = [2]string{k.Labels.Get("namespace"), k.Labels.Get("app")}
+	}
+	return out
 }
 
 func TestComputeSortKey(t *testing.T) {

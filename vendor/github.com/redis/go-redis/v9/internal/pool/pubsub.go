@@ -7,6 +7,10 @@ import (
 	"sync/atomic"
 )
 
+// PubSubStats contains pub/sub connection pool stats.
+//
+// TODO(cxl): the uint32 fields below will be changed to atomic.Uint32 in v10,
+// which is a breaking API change.
 type PubSubStats struct {
 	Created   uint32
 	Untracked uint32

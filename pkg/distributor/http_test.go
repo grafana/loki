@@ -82,8 +82,8 @@ func TestPushHandlerMaxPushSize(t *testing.T) {
 	limits := &validation.Limits{}
 	flagext.DefaultValues(limits)
 	limits.RejectOldSamples = false
+	_ = limits.MaxPushSize.Set("1000")
 	distributors, _ := prepare(t, 1, 3, limits, nil)
-	distributors[0].cfg.MaxPushSizeBytes = 1000
 
 	newPushRequest := func() *logproto.PushRequest {
 		return &logproto.PushRequest{

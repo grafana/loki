@@ -4,6 +4,7 @@ linters:
     - errorlint
     - gocritic
     - misspell
+    - modernize
     - revive
     - testifylint
   settings:
@@ -11,11 +12,6 @@ linters:
       enable-all: true
       disabled-checks:
         - whyNoLint
-    revive:
-      rules:
-        - name: unused-parameter
-          severity: warning
-          disabled: true
     testifylint:
       enable-all: true
       disable:

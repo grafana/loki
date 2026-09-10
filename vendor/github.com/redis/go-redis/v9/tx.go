@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 
-	"github.com/redis/go-redis/v9/internal/pool"
 	"github.com/redis/go-redis/v9/internal/proto"
 )
 
@@ -44,10 +43,20 @@ func (c *Client) newTx() *Tx {
 	tx := Tx{
 		baseClient: baseClient{
 			opt:           c.cloneOpt(), // Clone options under optLock to avoid race with initConn
-			connPool:      pool.NewStickyConnPool(c.connPool),
+			connPool:      c.baseClient.newStickyConnPool(),
 			hooksMixin:    c.hooksMixin.clone(),
 			pushProcessor: c.pushProcessor, // Copy push processor from parent client
 			onClose:       &onCloseHooks{},
+			// Share the HIMPORT fieldset registry: the sticky pool borrows
+			// connections from the parent client's pool, so fieldsets
+			// prepared on them stay valid after the connections are
+			// returned.
+			himport: c.himport,
+			// Carry the shared eviction hook (not csc: a sticky Tx must not serve
+			// cached reads) so close/reinit hooks on a Watch-initialized conn still
+			// evict from the parent cache.
+			cscPoolHook: c.cscPoolHook,
+			cscActive:   c.cscActive,
 		},
 	}
 	tx.init()

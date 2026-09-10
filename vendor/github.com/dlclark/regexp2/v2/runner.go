@@ -94,26 +94,12 @@ func (re *Regexp) run(quick bool, textstart, previousMatchLength int, input []ru
 		runner.code = re.quickCode
 	}
 
-	return runner.scan(input, textInfo, textstart, previousMatchLength, quick, re.MatchTimeout)
+	return runner.scan(input, textInfo, textstart, textstart, previousMatchLength, quick, re.MatchTimeout)
 }
 
-// Scans the string to find the first match. Uses the Match object
-// both to feed text in and as a place to store matches that come out.
-//
-// All the action is in the Go() method. Our
-// responsibility is to load up the class members before
-// calling Go.
-//
-// The optimizer can compute a set of candidate starting characters,
-// and we could use a separate method Skip() that will quickly scan past
-// any characters that we know can't match.
-//
-// The input slice is passed separately from matchText so quick scans can avoid
-// allocating match metadata. When textInfo is nil, successful matches are only
-// used as a boolean result and capture text is intentionally unavailable. If
-// we collapsed down to just textInfo it would "escape" and hit the GC for fast
-// scans without captures.
-func (r *Runner) scan(rt []rune, textInfo *matchText, textstart, previousMatchLength int, quick bool, timeout time.Duration) (*Match, error) {
+// scan starts at candidate while preserving textstart for \G. Both are rune
+// indexes in rt. A nil textInfo allows quick scans to omit capture metadata.
+func (r *Runner) scan(rt []rune, textInfo *matchText, textstart, candidate, previousMatchLength int, quick bool, timeout time.Duration) (*Match, error) {
 	r.timeout = timeout
 	r.ignoreTimeout = (time.Duration(math.MaxInt64) == timeout)
 	r.debug = r.re.Debug()
@@ -132,8 +118,7 @@ func (r *Runner) scan(rt []rune, textInfo *matchText, textstart, previousMatchLe
 		stoppos = 0
 	}
 
-	r.Runtextpos = textstart
-	//initted := false
+	r.Runtextpos = candidate
 
 	// setup our scanner functions
 	findFirstChar := r.re.findFirstChar
@@ -290,7 +275,7 @@ func executeDefault(r *Runner) error {
 			} else {
 				// Non-ASCII runes fall back to the complete character sets.
 				for i, setIndex := range table.Sets {
-					if r.code.Sets[setIndex].CharIn(ch) {
+					if r.code.Sets[setIndex].Contains(ch) {
 						branch = i
 						break
 					}
@@ -719,7 +704,7 @@ func executeDefault(r *Runner) error {
 
 		case syntax.Set:
 
-			if r.forwardchars() < 1 || !r.code.Sets[r.operand(0)].CharIn(r.forwardcharnext()) {
+			if r.forwardchars() < 1 || !r.code.Sets[r.operand(0)].Contains(r.forwardcharnext()) {
 				break
 			}
 
@@ -808,7 +793,7 @@ func executeDefault(r *Runner) error {
 			set := r.code.Sets[r.operand(0)]
 
 			for c > 0 {
-				if !set.CharIn(r.forwardcharnext()) {
+				if !set.Contains(r.forwardcharnext()) {
 					goto BreakBackward
 				}
 				c--
@@ -879,7 +864,7 @@ func executeDefault(r *Runner) error {
 			i := c
 
 			for ; i > 0; i-- {
-				if !set.CharIn(r.forwardcharnext()) {
+				if !set.Contains(r.forwardcharnext()) {
 					r.backwardnext()
 					break
 				}
@@ -996,7 +981,7 @@ func executeDefault(r *Runner) error {
 			pos := r.trackPeekN(1)
 			r.textto(pos)
 
-			if !r.code.Sets[r.operand(0)].CharIn(r.forwardcharnext()) {
+			if !r.code.Sets[r.operand(0)].Contains(r.forwardcharnext()) {
 				break
 			}
 
@@ -1519,8 +1504,8 @@ func findFirstCharDefault(r *Runner) bool {
 	} else {
 		for i := r.forwardchars(); i > 0; i-- {
 			n := r.forwardcharnext()
-			//fmt.Printf("%v in %v: %v\n", string(n), set.String(), set.CharIn(n))
-			if set.CharIn(n) {
+			//fmt.Printf("%v in %v: %v\n", string(n), set.String(), set.Contains(n))
+			if set.Contains(n) {
 				r.backwardnext()
 				return true
 			}
@@ -1792,7 +1777,7 @@ func findLiteralAfterLoopLeftToRight(r *Runner, literal *syntax.LiteralAfterLoop
 		}
 
 		start := literalIndex
-		for start > r.Runtextpos && literal.LoopNode.Set.CharIn(r.Runtext[start-1]) {
+		for start > r.Runtextpos && literal.LoopNode.Set.Contains(r.Runtext[start-1]) {
 			start--
 		}
 		if hasRequiredLengthAt(r, start) {
@@ -1832,7 +1817,7 @@ func findRequiredLandmarkChainLeftToRight(r *Runner, chain *syntax.RequiredLandm
 		if candidate < r.Runtextpos {
 			candidate = r.Runtextpos
 		}
-		for candidate > r.Runtextpos && chain.LeadingLoopSet.CharIn(r.Runtext[candidate-1]) {
+		for candidate > r.Runtextpos && chain.LeadingLoopSet.Contains(r.Runtext[candidate-1]) {
 			candidate--
 		}
 		if hasRequiredLengthAt(r, candidate) {
@@ -1866,7 +1851,7 @@ func findNextRequiredLandmarkRunes(input []rune, startAt, endAt int, landmark sy
 
 func requiredLandmarkAlternativeMatch(input []rune, start, endAt int, alt syntax.RequiredLandmarkAlternative) (requiredLandmarkMatch, bool) {
 	if alt.RequireWhitespaceBefore &&
-		(start == 0 || alt.LeadingWhitespaceSet == nil || !alt.LeadingWhitespaceSet.CharIn(input[start-1])) {
+		(start == 0 || alt.LeadingWhitespaceSet == nil || !alt.LeadingWhitespaceSet.Contains(input[start-1])) {
 		return requiredLandmarkMatch{}, false
 	}
 
@@ -1882,7 +1867,7 @@ func requiredLandmarkAlternativeMatch(input []rune, start, endAt int, alt syntax
 		if maxRepeat <= 0 {
 			maxRepeat = alt.MinRepeat
 		}
-		for end < endAt && end-start < maxRepeat && alt.Set.CharIn(input[end]) {
+		for end < endAt && end-start < maxRepeat && alt.Set.Contains(input[end]) {
 			end++
 		}
 		if end-start < alt.MinRepeat {
@@ -1893,12 +1878,12 @@ func requiredLandmarkAlternativeMatch(input []rune, start, endAt int, alt syntax
 	}
 
 	if alt.RequireWhitespaceAfter &&
-		(end >= endAt || alt.TrailingWhitespaceSet == nil || !alt.TrailingWhitespaceSet.CharIn(input[end])) {
+		(end >= endAt || alt.TrailingWhitespaceSet == nil || !alt.TrailingWhitespaceSet.Contains(input[end])) {
 		return requiredLandmarkMatch{}, false
 	}
 
 	matchStart := start
-	for matchStart > 0 && alt.LeadingWhitespaceSet != nil && alt.LeadingWhitespaceSet.CharIn(input[matchStart-1]) {
+	for matchStart > 0 && alt.LeadingWhitespaceSet != nil && alt.LeadingWhitespaceSet.Contains(input[matchStart-1]) {
 		matchStart--
 	}
 	return requiredLandmarkMatch{Start: matchStart, CoreStart: start, End: end}, true
@@ -1985,7 +1970,7 @@ func charInFixedDistanceSet(set syntax.FixedDistanceSet, ch rune) bool {
 		}
 		return found
 	}
-	return set.Set != nil && set.Set.CharIn(ch)
+	return set.Set != nil && set.Set.Contains(ch)
 }
 
 func latestPossibleStart(r *Runner) int {

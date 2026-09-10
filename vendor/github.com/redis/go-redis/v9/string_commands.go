@@ -194,6 +194,12 @@ func (c cmdable) GetDel(ctx context.Context, key string) *StringCmd {
 // (including redis.Nil when the key does not exist) via Err(). If buf is too
 // small to hold the value, Err() returns a "buffer too small" error.
 //
+// Nothing is ever written past len(buf). When len(buf) >= value length + 2,
+// the read takes a fast path that pulls the payload and the protocol's
+// trailing CRLF in a single socket read, using the two bytes after the
+// payload as scratch — size buffers with 2 spare bytes to opt in (see
+// example/zerocopy-buffer).
+//
 // This command opts out of automatic retries because partial data from a
 // failed attempt would already be sitting in the caller's buffer.
 func (c cmdable) GetToBuffer(ctx context.Context, key string, buf []byte) *ZeroCopyStringCmd {

@@ -89,6 +89,10 @@ test-clickhouse: add-gowork
 	go test $(GO_TEST_FLAGS) ./internal/testing/integration -run='(TestClickhouse|TestClickhouseRemote)' |\
 		tparse --follow -sort=elapsed
 
+test-mysql-long: add-gowork test-mysql
+	go test $(GO_TEST_FLAGS) ./internal/testing/integration/locking -run='TestMySQL' |\
+		tparse --follow -sort=elapsed
+
 test-mysql: add-gowork
 	go test $(GO_TEST_FLAGS) ./internal/testing/integration -run='TestMySQL' | tparse --follow -sort=elapsed
 

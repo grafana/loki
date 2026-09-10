@@ -53,7 +53,6 @@ func traceAttributesFromContext(ctx context.Context) ([]attribute.KeyValue, bool
 
 const (
 	defaultTracerName = "cloud.google.com/go/storage"
-	gcpClientRepo     = "googleapis/google-cloud-go"
 	gcpClientArtifact = "cloud.google.com/go/storage"
 )
 
@@ -172,7 +171,6 @@ func getCommonTraceOptions() []trace.SpanStartOption {
 func getCommonAttributes() []attribute.KeyValue {
 	return []attribute.KeyValue{
 		attribute.String("gcp.client.version", internal.Version),
-		attribute.String("gcp.client.repo", gcpClientRepo),
 		attribute.String("gcp.client.artifact", gcpClientArtifact),
 	}
 }

@@ -23,11 +23,10 @@ import (
 	"github.com/grafana/loki/v3/pkg/loghttp"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql"
-	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	"github.com/grafana/loki/v3/pkg/logqlmodel"
 	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
-	"github.com/grafana/loki/v3/pkg/querier/plan"
 	base "github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase"
+	"github.com/grafana/loki/v3/pkg/querier/testutil"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/cache"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/cache/resultscache"
 	"github.com/grafana/loki/v3/pkg/storage/config"
@@ -209,9 +208,7 @@ func TestMetricsTripperware(t *testing.T) {
 		EndTs:     testTime,
 		Direction: logproto.FORWARD,
 		Path:      "/query_range",
-		Plan: &plan.QueryPlan{
-			AST: syntax.MustParseExpr(`rate({app="foo"} |= "foo"[1m])`),
-		},
+		Plan:      testutil.MustPlan(`rate({app="foo"} |= "foo"[1m])`),
 	}
 
 	ctx := user.InjectOrgID(context.Background(), "1")
@@ -295,9 +292,7 @@ func TestLogFilterTripperware(t *testing.T) {
 		EndTs:     testTime,
 		Direction: logproto.FORWARD,
 		Path:      "/loki/api/v1/query_range",
-		Plan: &plan.QueryPlan{
-			AST: syntax.MustParseExpr(`{app="foo"} |= "foo"`),
-		},
+		Plan:      testutil.MustPlan(`{app="foo"} |= "foo"`),
 	}
 
 	ctx := user.InjectOrgID(context.Background(), "1")
@@ -370,9 +365,7 @@ func TestInstantQueryTripperwareResultCaching(t *testing.T) {
 		TimeTs:    testTime.Add(-4 * time.Hour),
 		Direction: logproto.FORWARD,
 		Path:      "/loki/api/v1/query",
-		Plan: &plan.QueryPlan{
-			AST: syntax.MustParseExpr(q),
-		},
+		Plan:      testutil.MustPlan(q),
 	}
 
 	ctx := user.InjectOrgID(context.Background(), "1")
@@ -485,9 +478,7 @@ func TestInstantQueryTripperware(t *testing.T) {
 		TimeTs:    testTime.Add(-4 * time.Hour), // because vector data we return from mock handler has that time.
 		Direction: logproto.FORWARD,
 		Path:      "/loki/api/v1/query",
-		Plan: &plan.QueryPlan{
-			AST: syntax.MustParseExpr(q),
-		},
+		Plan:      testutil.MustPlan(q),
 	}
 
 	ctx := user.InjectOrgID(context.Background(), "1")
@@ -954,9 +945,7 @@ func TestLogNoFilter(t *testing.T) {
 		EndTs:     testTime,
 		Direction: logproto.FORWARD,
 		Path:      "/loki/api/v1/query_range",
-		Plan: &plan.QueryPlan{
-			AST: syntax.MustParseExpr(`{app="foo"}`),
-		},
+		Plan:      testutil.MustPlan(`{app="foo"}`),
 	}
 
 	ctx := user.InjectOrgID(context.Background(), "1")
@@ -970,9 +959,7 @@ func TestLogNoFilter(t *testing.T) {
 func TestPostQueries(t *testing.T) {
 	lreq := &LokiRequest{
 		Query: `{app="foo"} |~ "foo"`,
-		Plan: &plan.QueryPlan{
-			AST: syntax.MustParseExpr(`{app="foo"} |~ "foo"`),
-		},
+		Plan:  testutil.MustPlan(`{app="foo"} |~ "foo"`),
 	}
 	ctx := user.InjectOrgID(context.Background(), "1")
 	handler := base.HandlerFunc(func(context.Context, base.Request) (base.Response, error) {
@@ -1014,9 +1001,7 @@ func TestTripperware_EntriesLimit(t *testing.T) {
 		EndTs:     testTime,
 		Direction: logproto.FORWARD,
 		Path:      "/loki/api/v1/query_range",
-		Plan: &plan.QueryPlan{
-			AST: syntax.MustParseExpr(`{app="foo"}`),
-		},
+		Plan:      testutil.MustPlan(`{app="foo"}`),
 	}
 
 	// The queryData value statsHTTPMiddleware installs marks this as a real user
@@ -1087,9 +1072,7 @@ func TestTripperware_RequiredLabels(t *testing.T) {
 				EndTs:     testTime,
 				Direction: logproto.FORWARD,
 				Path:      "/loki/api/v1/query_range",
-				Plan: &plan.QueryPlan{
-					AST: syntax.MustParseExpr(test.qs),
-				},
+				Plan:      testutil.MustPlan(test.qs),
 			}
 			// See loghttp.step
 			step := time.Duration(int(math.Max(math.Floor(lreq.EndTs.Sub(lreq.StartTs).Seconds()/250), 1))) * time.Second
@@ -1194,9 +1177,7 @@ func TestTripperware_RequiredNumberLabels(t *testing.T) {
 				EndTs:     testTime,
 				Direction: logproto.FORWARD,
 				Path:      "/loki/api/v1/query_range",
-				Plan: &plan.QueryPlan{
-					AST: syntax.MustParseExpr(tc.query),
-				},
+				Plan:      testutil.MustPlan(tc.query),
 			}
 			// See loghttp.step
 			step := time.Duration(int(math.Max(math.Floor(lreq.EndTs.Sub(lreq.StartTs).Seconds()/250), 1))) * time.Second
@@ -1327,9 +1308,7 @@ func TestMetricsTripperware_SplitShardStats(t *testing.T) {
 				TimeTs:    testTime,
 				Direction: logproto.FORWARD,
 				Path:      "/loki/api/v1/query",
-				Plan: &plan.QueryPlan{
-					AST: syntax.MustParseExpr(`sum by (app) (rate({app="foo"} |= "foo"[2h]))`),
-				},
+				Plan:      testutil.MustPlan(`sum by (app) (rate({app="foo"} |= "foo"[2h]))`),
 			},
 			// [2h] interval split by 1h configured split interval.
 			// Also since we split align(testConfig.InstantQuerySplitAlign=true) with split interval (1h).
@@ -1345,9 +1324,7 @@ func TestMetricsTripperware_SplitShardStats(t *testing.T) {
 				TimeTs:    testTime,
 				Direction: logproto.FORWARD,
 				Path:      "/loki/api/v1/query",
-				Plan: &plan.QueryPlan{
-					AST: syntax.MustParseExpr(`sum by (app) (rate({app="foo"} |= "foo"[1h]))`),
-				},
+				Plan:      testutil.MustPlan(`sum by (app) (rate({app="foo"} |= "foo"[1h]))`),
 			},
 			expectedSplitStats: 0, // [1h] interval not split
 			expectedShardStats: 4, // 4 row shards
@@ -1362,9 +1339,7 @@ func TestMetricsTripperware_SplitShardStats(t *testing.T) {
 				EndTs:     testTime,
 				Direction: logproto.FORWARD,
 				Path:      "/query_range",
-				Plan: &plan.QueryPlan{
-					AST: syntax.MustParseExpr(`sum by (app) (rate({app="foo"} |= "foo"[1h]))`),
-				},
+				Plan:      testutil.MustPlan(`sum by (app) (rate({app="foo"} |= "foo"[1h]))`),
 			},
 			expectedSplitStats: 3,  // 2 hour range interval split based on the base hour + the remainder
 			expectedShardStats: 20, // range query with a [1h] range vector resolves shards over 5 sharded subqueries * 4 shards each
@@ -1379,9 +1354,7 @@ func TestMetricsTripperware_SplitShardStats(t *testing.T) {
 				EndTs:     testTime,
 				Direction: logproto.FORWARD,
 				Path:      "/query_range",
-				Plan: &plan.QueryPlan{
-					AST: syntax.MustParseExpr(`sum by (app) (rate({app="foo"} |= "foo"[1h]))`),
-				},
+				Plan:      testutil.MustPlan(`sum by (app) (rate({app="foo"} |= "foo"[1h]))`),
 			},
 			expectedSplitStats: 0, // 1 minute range interval not split
 			expectedShardStats: 4, // 4 row shards

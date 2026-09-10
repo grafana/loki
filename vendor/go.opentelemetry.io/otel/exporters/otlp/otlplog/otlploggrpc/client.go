@@ -36,9 +36,9 @@ type client struct {
 	requestFunc    retry.RequestFunc
 
 	// ourConn keeps track of where conn was created: true if created here in
-	// NewClient, or false if passed with an option. This is important on
-	// Shutdown as conn should only be closed if we created it. Otherwise,
-	// it is up to the processes that passed conn to close it.
+	// NewClient, or false if passed with an option. This is important during
+	// Shutdown because conn should only be closed if we created it. Otherwise,
+	// the caller that passed conn is responsible for closing it.
 	ourConn bool
 	conn    *grpc.ClientConn
 	lsc     collogpb.LogsServiceClient
@@ -133,13 +133,13 @@ func newGRPCDialOptions(cfg config) []grpc.DialOption {
 	return dialOpts
 }
 
-// UploadLogs sends proto logs to connected endpoint.
+// UploadLogs sends proto logs to the connected endpoint.
 //
 // Retryable errors from the server will be handled according to any
 // RetryConfig the client was created with.
 //
-// The otlplog.Exporter synchronizes access to client methods, and
-// ensures this is not called after the Exporter is shutdown. Only thing
+// The [Exporter] synchronizes access to client methods and
+// ensures this is not called after the Exporter is shut down. The only thing
 // to do here is send data.
 func (c *client) UploadLogs(ctx context.Context, rl []*logpb.ResourceLogs) (uploadErr error) {
 	select {
@@ -196,7 +196,7 @@ func (c *client) UploadLogs(ctx context.Context, rl []*logpb.ResourceLogs) (uplo
 // WithGRPCConn will not be closed. It is the caller's responsibility to
 // handle cleanup of that resource.
 //
-// The otlplog.Exporter synchronizes access to client methods and
+// The [Exporter] synchronizes access to client methods and
 // ensures this is called only once. The only thing that needs to be done
 // here is to release any computational resources the client holds.
 func (c *client) Shutdown(ctx context.Context) error {
@@ -218,9 +218,9 @@ func (c *client) Shutdown(ctx context.Context) error {
 }
 
 // exportContext returns a copy of parent with an appropriate deadline and
-// cancellation function based on the clients configured export timeout.
+// cancellation function based on the client's configured export timeout.
 //
-// It is the callers responsibility to cancel the returned context once its
+// It is the caller's responsibility to cancel the returned context once its
 // use is complete, via the parent or directly with the returned CancelFunc, to
 // ensure all resources are correctly released.
 func (c *client) exportContext(parent context.Context) (context.Context, context.CancelFunc) {
@@ -257,8 +257,8 @@ func (*noopClient) UploadLogs(context.Context, []*logpb.ResourceLogs) error { re
 
 func (*noopClient) Shutdown(context.Context) error { return nil }
 
-// retryable returns if err identifies a request that can be retried and a
-// duration to wait for if an explicit throttle time is included in err.
+// retryable reports whether err identifies a request that can be retried and
+// returns a duration to wait if an explicit throttle time is included in err.
 func retryable(err error) (bool, time.Duration) {
 	s := status.Convert(err)
 	return retryableGRPCStatus(s)
@@ -282,12 +282,12 @@ func retryableGRPCStatus(s *status.Status) (bool, time.Duration) {
 		return throttleDelay(s)
 	}
 
-	// Not a retry-able error.
+	// Not a retryable error.
 	return false, 0
 }
 
-// throttleDelay returns if the status is RetryInfo
-// and the duration to wait for if an explicit throttle time is included.
+// throttleDelay reports whether the status contains RetryInfo and returns the
+// duration to wait if an explicit throttle time is included.
 func throttleDelay(s *status.Status) (bool, time.Duration) {
 	for _, detail := range s.Details() {
 		if t, ok := detail.(*errdetails.RetryInfo); ok {
