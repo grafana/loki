@@ -149,8 +149,7 @@ func (g *Gateway) SyncIndexStatusHandler(w http.ResponseWriter, _ *http.Request)
 
 func (g *Gateway) GetChunkRef(ctx context.Context, req *logproto.GetChunkRefRequest) (result *logproto.GetChunkRefResponse, err error) {
 	logger := util_log.WithContext(ctx, g.log)
-	ctx, sp := tracer.Start(ctx, "indexgateway.GetChunkRef")
-	defer sp.End()
+	sp := trace.SpanFromContext(ctx)
 
 	instanceID, err := tenant.TenantID(ctx)
 	if err != nil {
