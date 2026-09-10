@@ -15,16 +15,17 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/grafana/dskit/services"
-	"github.com/grafana/loki/v3/pkg/logline"
-	"github.com/grafana/loki/v3/pkg/kafka"
-	"github.com/grafana/loki/v3/pkg/logline/store"
-	"github.com/grafana/loki/v3/pkg/logproto"
-	"github.com/grafana/loki/v3/pkg/loki"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/stretchr/testify/require"
 	"github.com/thanos-io/objstore"
 	"github.com/twmb/franz-go/pkg/kfake"
 	"github.com/twmb/franz-go/pkg/kgo"
+
+	"github.com/grafana/loki/v3/pkg/kafka"
+	"github.com/grafana/loki/v3/pkg/logline"
+	"github.com/grafana/loki/v3/pkg/logline/store"
+	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/loki"
 )
 
 // TestE2E validates the complete flow: produce logs → flush → verify → repeat
@@ -66,7 +67,7 @@ func TestE2E(t *testing.T) {
 	lokiConfig.KafkaConfig.Address = addrs[0]
 
 	logger := log.NewLogfmtLogger(os.Stdout)
-	svc, err := New(lokiConfig, indexStore, cfg, "2026-01-01", newDefaultFakePartitionRing(), logger, prometheus.NewRegistry())
+	svc, err := New(indexStore, cfg, "2026-01-01", newDefaultFakePartitionRing(), logger, prometheus.NewRegistry())
 	require.NoError(t, err)
 
 	producer, err := kgo.NewClient(
@@ -162,7 +163,7 @@ func TestE2E_DecodeErrorFailsFast(t *testing.T) {
 	lokiConfig.KafkaConfig.Address = addrs[0]
 
 	logger := log.NewLogfmtLogger(os.Stdout)
-	svc, err := New(lokiConfig, indexStore, cfg, "2026-01-01", newDefaultFakePartitionRing(), logger, prometheus.NewRegistry())
+	svc, err := New(indexStore, cfg, "2026-01-01", newDefaultFakePartitionRing(), logger, prometheus.NewRegistry())
 	require.NoError(t, err)
 
 	producer, err := kgo.NewClient(
@@ -231,7 +232,7 @@ func TestE2E_GracefulShutdownFlush(t *testing.T) {
 	lokiConfig.KafkaConfig.Address = addrs[0]
 
 	logger := log.NewLogfmtLogger(os.Stdout)
-	svc, err := New(lokiConfig, indexStore, cfg, "2026-01-01", newDefaultFakePartitionRing(), logger, prometheus.NewRegistry())
+	svc, err := New(indexStore, cfg, "2026-01-01", newDefaultFakePartitionRing(), logger, prometheus.NewRegistry())
 	require.NoError(t, err)
 
 	producer, err := kgo.NewClient(
@@ -327,7 +328,7 @@ func TestE2E_OffsetCommit(t *testing.T) {
 
 	// --- Service 1: produce, consume, flush, commit, stop ---
 	t.Log("Starting service 1...")
-	svc1, err := New(lokiConfig, indexStore, cfg, "2026-01-01", newDefaultFakePartitionRing(), logger, prometheus.NewRegistry())
+	svc1, err := New(indexStore, cfg, "2026-01-01", newDefaultFakePartitionRing(), logger, prometheus.NewRegistry())
 	require.NoError(t, err)
 
 	ctx1, cancel1 := context.WithCancel(context.Background())
@@ -362,7 +363,7 @@ func TestE2E_OffsetCommit(t *testing.T) {
 	outputDir2 := t.TempDir()
 	cfg.ScratchDir = outputDir2
 
-	svc2, err := New(lokiConfig, indexStore, cfg, "2026-01-01", newDefaultFakePartitionRing(), logger, prometheus.NewRegistry())
+	svc2, err := New(indexStore, cfg, "2026-01-01", newDefaultFakePartitionRing(), logger, prometheus.NewRegistry())
 	require.NoError(t, err)
 
 	ctx2, cancel2 := context.WithCancel(context.Background())

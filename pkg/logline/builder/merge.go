@@ -141,7 +141,9 @@ func (b *postingsBuffer) mergeShard(outDir, version string, cfg format.WriterCon
 		// would be invisible to discardIndexes and to disk accounting for the
 		// whole retry window.
 		if err != nil {
-			sm.closeAll()
+			// Best effort: we are already returning err, so a close failure
+			// here would only mask it.
+			_ = sm.closeAll()
 			for _, f := range sm.files {
 				os.Remove(f.path)
 			}

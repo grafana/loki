@@ -5,11 +5,12 @@ import (
 	"time"
 
 	"github.com/go-kit/log"
-	"github.com/grafana/loki/v3/pkg/logline"
-	"github.com/grafana/loki/v3/pkg/kafka"
-	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/stretchr/testify/require"
+
+	"github.com/grafana/loki/v3/pkg/kafka"
+	"github.com/grafana/loki/v3/pkg/logline"
+	"github.com/grafana/loki/v3/pkg/logproto"
 )
 
 func makeShardedConfig(t *testing.T, shardCount int) Config {
@@ -48,7 +49,7 @@ func TestBuilder_Sharded_BucketCount(t *testing.T) {
 			{Timestamp: now, Line: "info: successfully established connection"},
 		},
 	}
-	b.processStream(stream, parseLabelsOrNil(stream.Labels), now, recordRef{})
+	_ = b.processStream(stream, parseLabelsOrNil(stream.Labels), now, recordRef{})
 
 	// With 4 shards, the merge produces 1-4 files for today's date, depending
 	// on which shards the ngrams route to.
@@ -70,7 +71,7 @@ func TestBuilder_Sharded_UnshardedFallback(t *testing.T) {
 			{Timestamp: now, Line: "error: connection failed"},
 		},
 	}
-	b.processStream(stream, parseLabelsOrNil(stream.Labels), now, recordRef{})
+	_ = b.processStream(stream, parseLabelsOrNil(stream.Labels), now, recordRef{})
 
 	files, err := b.prepareIndexes()
 	require.NoError(t, err)
@@ -89,7 +90,7 @@ func TestBuilder_Sharded_PrepareIndexes_ShardFields(t *testing.T) {
 			{Timestamp: now, Line: "error: connection failed to database server with timeout"},
 		},
 	}
-	b.processStream(stream, parseLabelsOrNil(stream.Labels), now, recordRef{})
+	_ = b.processStream(stream, parseLabelsOrNil(stream.Labels), now, recordRef{})
 
 	files, err := b.prepareIndexes()
 	require.NoError(t, err)
@@ -113,7 +114,7 @@ func TestBuilder_Sharded_NgramRouting(t *testing.T) {
 			{Timestamp: now, Line: "AAAAAA BBBBBB error connection"},
 		},
 	}
-	b.processStream(stream, parseLabelsOrNil(stream.Labels), now, recordRef{})
+	_ = b.processStream(stream, parseLabelsOrNil(stream.Labels), now, recordRef{})
 
 	files, err := b.prepareIndexes()
 	require.NoError(t, err)
@@ -139,7 +140,7 @@ func TestBuilder_Sharded_LabelValueRouting(t *testing.T) {
 			{Timestamp: now, Line: "x"},
 		},
 	}
-	b.processStream(stream, parseLabelsOrNil(stream.Labels), now, recordRef{})
+	_ = b.processStream(stream, parseLabelsOrNil(stream.Labels), now, recordRef{})
 
 	files, err := b.prepareIndexes()
 	require.NoError(t, err)
@@ -169,7 +170,7 @@ func TestBuilder_Sharded_PrepareProducesFiles(t *testing.T) {
 					Line: "error: request failed with status 500 at endpoint /api/v1/resource"},
 			},
 		}
-		b.processStream(stream, parseLabelsOrNil(stream.Labels), now, recordRef{})
+		_ = b.processStream(stream, parseLabelsOrNil(stream.Labels), now, recordRef{})
 	}
 
 	files, err := b.prepareIndexes()

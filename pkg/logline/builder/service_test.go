@@ -3,16 +3,15 @@ package builder
 import (
 	"context"
 	"runtime/debug"
-	"sync/atomic"
 	"testing"
 	"time"
 
+	"go.uber.org/atomic"
+
 	"github.com/go-kit/log"
+
 	"github.com/grafana/loki/v3/pkg/kafka"
 
-	"github.com/grafana/loki/v3/pkg/logline/store"
-	"github.com/grafana/loki/v3/pkg/logproto"
-	"github.com/grafana/loki/v3/pkg/loki"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/stretchr/testify/require"
@@ -22,6 +21,9 @@ import (
 	"github.com/twmb/franz-go/pkg/kfake"
 	"github.com/twmb/franz-go/pkg/kgo"
 	"github.com/twmb/franz-go/pkg/kmsg"
+
+	"github.com/grafana/loki/v3/pkg/logline/store"
+	"github.com/grafana/loki/v3/pkg/logproto"
 )
 
 const testTopic = "test-topic"
@@ -36,8 +38,8 @@ func newTestStore(t *testing.T) (*objstore.InMemBucket, *store.Store) {
 	return bucket, s
 }
 
-// setupKafkaTest creates a fake Kafka cluster and returns the cluster, loki config, and builder config
-func setupKafkaTest(t *testing.T) (*kfake.Cluster, loki.ConfigWrapper, Config) {
+// setupKafkaTest creates a fake Kafka cluster and returns the cluster and builder config
+func setupKafkaTest(t *testing.T) (*kfake.Cluster, Config) {
 	tmpDir := t.TempDir()
 
 	// Single-broker fake cluster with one partition.
@@ -53,10 +55,6 @@ func setupKafkaTest(t *testing.T) (*kfake.Cluster, loki.ConfigWrapper, Config) {
 
 	// Get broker addresses
 	addrs := cluster.ListenAddrs()
-
-	// Create loki config with Kafka address
-	lokiConfig := loki.ConfigWrapper{}
-	lokiConfig.KafkaConfig.Address = addrs[0]
 
 	cfg := Config{
 		Kafka: kafka.Config{
@@ -82,7 +80,7 @@ func setupKafkaTest(t *testing.T) (*kfake.Cluster, loki.ConfigWrapper, Config) {
 		ScratchDir:              tmpDir,
 	}
 
-	return cluster, lokiConfig, cfg
+	return cluster, cfg
 }
 
 // TestConsumerLag verifies the per-partition lag calculation.
@@ -179,14 +177,14 @@ func TestConsumerLag(t *testing.T) {
 }
 
 func TestService_New(t *testing.T) {
-	cluster, lokiConfig, cfg := setupKafkaTest(t)
+	cluster, cfg := setupKafkaTest(t)
 	defer cluster.Close()
 
 	logger := log.NewNopLogger()
 	reg := prometheus.NewRegistry()
 	_, indexStore := newTestStore(t)
 
-	svc, err := New(lokiConfig, indexStore, cfg, "2026-01-01", newDefaultFakePartitionRing(), logger, reg)
+	svc, err := New(indexStore, cfg, "2026-01-01", newDefaultFakePartitionRing(), logger, reg)
 	require.NoError(t, err)
 	require.NotNil(t, svc)
 
@@ -230,34 +228,33 @@ func TestService_New_MissingKafkaAddress(t *testing.T) {
 	_, indexStore := newTestStore(t)
 
 	// Empty loki config (no Kafka address)
-	lokiConfig := loki.ConfigWrapper{}
 
-	_, err := New(lokiConfig, indexStore, cfg, "2026-01-01", newDefaultFakePartitionRing(), logger, reg)
+	_, err := New(indexStore, cfg, "2026-01-01", newDefaultFakePartitionRing(), logger, reg)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "the Kafka address has not been configured")
 }
 
 func TestService_New_NilStore(t *testing.T) {
-	cluster, lokiConfig, cfg := setupKafkaTest(t)
+	cluster, cfg := setupKafkaTest(t)
 	defer cluster.Close()
 
 	logger := log.NewNopLogger()
 	reg := prometheus.NewRegistry()
 
-	_, err := New(lokiConfig, nil, cfg, "2026-01-01", newDefaultFakePartitionRing(), logger, reg)
+	_, err := New(nil, cfg, "2026-01-01", newDefaultFakePartitionRing(), logger, reg)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "indexStore cannot be nil")
 }
 
 func TestService_StartStop(t *testing.T) {
-	cluster, lokiConfig, cfg := setupKafkaTest(t)
+	cluster, cfg := setupKafkaTest(t)
 	defer cluster.Close()
 
 	logger := log.NewNopLogger()
 	reg := prometheus.NewRegistry()
 	_, indexStore := newTestStore(t)
 
-	svc, err := New(lokiConfig, indexStore, cfg, "2026-01-01", newDefaultFakePartitionRing(), logger, reg)
+	svc, err := New(indexStore, cfg, "2026-01-01", newDefaultFakePartitionRing(), logger, reg)
 	require.NoError(t, err)
 
 	// Start service
@@ -281,7 +278,7 @@ func TestService_StartStop(t *testing.T) {
 // consumer group, is assigned the topic's single partition by the coordinator,
 // and consumes records produced to it.
 func TestService_ConsumerGroupAssignment(t *testing.T) {
-	cluster, lokiConfig, cfg := setupKafkaTest(t)
+	cluster, cfg := setupKafkaTest(t)
 	defer cluster.Close()
 
 	addrs := cluster.ListenAddrs()
@@ -289,7 +286,7 @@ func TestService_ConsumerGroupAssignment(t *testing.T) {
 	reg := prometheus.NewRegistry()
 	_, indexStore := newTestStore(t)
 
-	svc, err := New(lokiConfig, indexStore, cfg, "2026-01-01", newDefaultFakePartitionRing(), logger, reg)
+	svc, err := New(indexStore, cfg, "2026-01-01", newDefaultFakePartitionRing(), logger, reg)
 	require.NoError(t, err)
 
 	// Produce records to partition 0 (the only partition in the single-partition kfake cluster).
@@ -312,10 +309,10 @@ func TestService_ConsumerGroupAssignment(t *testing.T) {
 	startCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	err = svc.Service.StartAsync(startCtx)
+	err = svc.StartAsync(startCtx)
 	require.NoError(t, err)
 
-	err = svc.Service.AwaitRunning(startCtx)
+	err = svc.AwaitRunning(startCtx)
 	require.NoError(t, err)
 
 	// Give it time to process.
@@ -323,8 +320,8 @@ func TestService_ConsumerGroupAssignment(t *testing.T) {
 
 	t.Log("Direct partition assignment test completed successfully")
 
-	svc.Service.StopAsync()
-	err = svc.Service.AwaitTerminated(startCtx)
+	svc.StopAsync()
+	err = svc.AwaitTerminated(startCtx)
 	require.NoError(t, err)
 }
 
@@ -332,14 +329,14 @@ func TestService_ConsumerGroupAssignment(t *testing.T) {
 // replaces the active set with a fresh one and respects backpressure when a
 // flush is already in progress.
 func TestService_FlushSwap(t *testing.T) {
-	cluster, lokiConfig, cfg := setupKafkaTest(t)
+	cluster, cfg := setupKafkaTest(t)
 	defer cluster.Close()
 
 	logger := log.NewNopLogger()
 	reg := prometheus.NewRegistry()
 	_, indexStore := newTestStore(t)
 
-	svc, err := New(lokiConfig, indexStore, cfg, "2026-01-01", newDefaultFakePartitionRing(), logger, reg)
+	svc, err := New(indexStore, cfg, "2026-01-01", newDefaultFakePartitionRing(), logger, reg)
 	require.NoError(t, err)
 	defer svc.client.Close()
 
@@ -404,14 +401,14 @@ func TestService_FlushSwap(t *testing.T) {
 // that blocks Kafka consumption when a flush is pending and the current
 // builder has hit a flush trigger
 func TestService_WaitForFlushBackpressure(t *testing.T) {
-	cluster, lokiConfig, cfg := setupKafkaTest(t)
+	cluster, cfg := setupKafkaTest(t)
 	defer cluster.Close()
 
 	logger := log.NewNopLogger()
 	reg := prometheus.NewRegistry()
 	_, indexStore := newTestStore(t)
 
-	svc, err := New(lokiConfig, indexStore, cfg, "2026-01-01", newDefaultFakePartitionRing(), logger, reg)
+	svc, err := New(indexStore, cfg, "2026-01-01", newDefaultFakePartitionRing(), logger, reg)
 	require.NoError(t, err)
 	defer svc.client.Close()
 
@@ -488,7 +485,7 @@ func TestService_WaitForFlushBackpressure(t *testing.T) {
 // is started with a very short max age and flush check interval so the
 // ticker fires before the test times out.
 func TestService_FlushTickerTriggersMaxAge(t *testing.T) {
-	cluster, lokiConfig, cfg := setupKafkaTest(t)
+	cluster, cfg := setupKafkaTest(t)
 	defer cluster.Close()
 
 	cfg.FlushOnMaxAge = 200 * time.Millisecond
@@ -500,14 +497,14 @@ func TestService_FlushTickerTriggersMaxAge(t *testing.T) {
 	logger := log.NewNopLogger()
 	reg := prometheus.NewRegistry()
 
-	svc, err := New(lokiConfig, indexStore, cfg, "2026-01-01", newDefaultFakePartitionRing(), logger, reg)
+	svc, err := New(indexStore, cfg, "2026-01-01", newDefaultFakePartitionRing(), logger, reg)
 	require.NoError(t, err)
 
 	ctx := t.Context()
 
 	// Start the service — this launches the poll loop and flush ticker.
-	go svc.Service.StartAsync(ctx)
-	require.NoError(t, svc.Service.AwaitRunning(ctx))
+	go func() { _ = svc.StartAsync(ctx) }()
+	require.NoError(t, svc.AwaitRunning(ctx))
 
 	// Produce a single record so the builder has data with firstAppend set.
 	producer, err := kgo.NewClient(
@@ -534,8 +531,8 @@ func TestService_FlushTickerTriggersMaxAge(t *testing.T) {
 		return len(bucket.Objects()) > 0
 	}, 5*time.Second, 50*time.Millisecond, "expected flush ticker to produce index files via max_age")
 
-	svc.Service.StopAsync()
-	require.NoError(t, svc.Service.AwaitTerminated(ctx))
+	svc.StopAsync()
+	require.NoError(t, svc.AwaitTerminated(ctx))
 }
 
 // TestService_PreMinDateOffsetCommit verifies that Kafka offsets are committed
@@ -544,7 +541,7 @@ func TestService_FlushTickerTriggersMaxAge(t *testing.T) {
 // early-return in executeFlush discarded lastConsumedOffsets without committing,
 // causing infinite re-consumption on restart.
 func TestService_PreMinDateOffsetCommit(t *testing.T) {
-	cluster, lokiConfig, cfg := setupKafkaTest(t)
+	cluster, cfg := setupKafkaTest(t)
 	defer cluster.Close()
 
 	// Set minDate to tomorrow so all real records (timestamped in the past) are filtered.
@@ -559,7 +556,7 @@ func TestService_PreMinDateOffsetCommit(t *testing.T) {
 	cfg.FlushOnMaxAge = 500 * time.Millisecond
 	cfg.FlushCheckInterval = 100 * time.Millisecond
 
-	svc, err := New(lokiConfig, indexStore, cfg, tomorrow, newDefaultFakePartitionRing(), logger, reg)
+	svc, err := New(indexStore, cfg, tomorrow, newDefaultFakePartitionRing(), logger, reg)
 	require.NoError(t, err)
 	defer svc.client.Close()
 
@@ -592,7 +589,7 @@ func TestService_PreMinDateOffsetCommit(t *testing.T) {
 	lastProducedOffset := results[0].Record.Offset
 
 	// Manually drive the service: simulate consuming the record via processRecordBatch.
-	svc.processRecordBatch([]rawRecord{
+	_ = svc.processRecordBatch([]rawRecord{
 		{
 			value:     data,
 			timestamp: time.Now(),
@@ -648,14 +645,14 @@ func snapshotLastConsumedOffsets(svc *Service) map[kafka.PartitionID]kafka.Offse
 // TestMultiPartitionOffsetTracking verifies that processRecordBatch tracks
 // the highest consumed offset independently per partition.
 func TestMultiPartitionOffsetTracking(t *testing.T) {
-	cluster, lokiConfig, cfg := setupKafkaTest(t)
+	cluster, cfg := setupKafkaTest(t)
 	defer cluster.Close()
 
 	logger := log.NewNopLogger()
 	reg := prometheus.NewRegistry()
 	_, indexStore := newTestStore(t)
 
-	svc, err := New(lokiConfig, indexStore, cfg, "2026-01-01", newDefaultFakePartitionRing(), logger, reg)
+	svc, err := New(indexStore, cfg, "2026-01-01", newDefaultFakePartitionRing(), logger, reg)
 	require.NoError(t, err)
 	defer svc.client.Close()
 
@@ -680,14 +677,14 @@ func TestMultiPartitionOffsetTracking(t *testing.T) {
 // and leaves offset tracking untouched so the restarted pod re-encounters the
 // poison record.
 func TestProcessRecordBatch_DecodeErrorFailsFast(t *testing.T) {
-	cluster, lokiConfig, cfg := setupKafkaTest(t)
+	cluster, cfg := setupKafkaTest(t)
 	defer cluster.Close()
 
 	logger := log.NewNopLogger()
 	reg := prometheus.NewRegistry()
 	_, indexStore := newTestStore(t)
 
-	svc, err := New(lokiConfig, indexStore, cfg, "2026-01-01", newDefaultFakePartitionRing(), logger, reg)
+	svc, err := New(indexStore, cfg, "2026-01-01", newDefaultFakePartitionRing(), logger, reg)
 	require.NoError(t, err)
 	defer svc.client.Close()
 
@@ -787,25 +784,22 @@ func TestService_PollErrorDoesNotDropHealthyPartitionRecords(t *testing.T) {
 		FlushCheckInterval:      50 * time.Millisecond,
 		ScratchDir:              tmpDir,
 	}
-	lokiConfig := loki.ConfigWrapper{}
-	lokiConfig.KafkaConfig.Address = addrs[0]
-
 	bucket, indexStore := newTestStore(t)
-	svc, err := New(lokiConfig, indexStore, cfg, "2026-01-01", newDefaultFakePartitionRing(), log.NewNopLogger(), prometheus.NewRegistry())
+	svc, err := New(indexStore, cfg, "2026-01-01", newDefaultFakePartitionRing(), log.NewNopLogger(), prometheus.NewRegistry())
 	require.NoError(t, err)
 
 	startCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
-	require.NoError(t, svc.Service.StartAsync(startCtx))
-	require.NoError(t, svc.Service.AwaitRunning(startCtx))
+	require.NoError(t, svc.StartAsync(startCtx))
+	require.NoError(t, svc.AwaitRunning(startCtx))
 
 	require.Eventually(t, func() bool {
 		return len(bucket.Objects()) > 0
 	}, 3*time.Second, 50*time.Millisecond,
 		"partition-0 record should be indexed despite the partition-1 error in the same fetch")
 
-	svc.Service.StopAsync()
-	require.NoError(t, svc.Service.AwaitTerminated(startCtx))
+	svc.StopAsync()
+	require.NoError(t, svc.AwaitTerminated(startCtx))
 }
 
 func mustMarshalStream(t *testing.T, line string) []byte {
@@ -853,14 +847,11 @@ func TestService_MultiPartitionConsumption(t *testing.T) {
 		ScratchDir:              tmpDir,
 	}
 
-	lokiConfig := loki.ConfigWrapper{}
-	lokiConfig.KafkaConfig.Address = addrs[0]
-
 	logger := log.NewNopLogger()
 	reg := prometheus.NewRegistry()
 	_, indexStore := newTestStore(t)
 
-	svc, err := New(lokiConfig, indexStore, cfg, "2026-01-01", newFakePartitionRing(0, 1, 2, 3, 4, 5), logger, reg)
+	svc, err := New(indexStore, cfg, "2026-01-01", newFakePartitionRing(0, 1, 2, 3, 4, 5), logger, reg)
 	require.NoError(t, err)
 
 	// Produce one record to each of three partitions; the service should
@@ -883,16 +874,16 @@ func TestService_MultiPartitionConsumption(t *testing.T) {
 	startCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	require.NoError(t, svc.Service.StartAsync(startCtx))
-	require.NoError(t, svc.Service.AwaitRunning(startCtx))
+	require.NoError(t, svc.StartAsync(startCtx))
+	require.NoError(t, svc.AwaitRunning(startCtx))
 
 	// Wait for the rebalance to complete and the service to own all partitions.
 	require.Eventually(t, func() bool {
 		return len(svc.snapshotOwnedPartitions()) == 6
 	}, 5*time.Second, 50*time.Millisecond, "service should own all six partitions")
 
-	svc.Service.StopAsync()
-	require.NoError(t, svc.Service.AwaitTerminated(startCtx))
+	svc.StopAsync()
+	require.NoError(t, svc.AwaitTerminated(startCtx))
 }
 
 // TestService_ReconcileActiveSetForcesRebalance checks that a rebalance is
@@ -983,7 +974,7 @@ func TestShouldFlush_MemoryBytes(t *testing.T) {
 	threshold := base + 2<<20
 	debug.SetMemoryLimit(int64(float64(threshold) / 0.7))
 
-	ok, reason := svc.shouldFlush()
+	ok, _ := svc.shouldFlush()
 	require.False(t, ok, "buffer floor alone must not cross the threshold")
 
 	// Each first touch of a (shard, day) allocates its dense tick bitset
@@ -994,7 +985,7 @@ func TestShouldFlush_MemoryBytes(t *testing.T) {
 		builder.ing.postings.recordDocumentTick(0, uint32(i*ticksPerDay))
 	}
 
-	ok, reason = svc.shouldFlush()
+	ok, reason := svc.shouldFlush()
 	require.True(t, ok)
 	require.Equal(t, reasonMemory, reason)
 

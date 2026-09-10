@@ -9,12 +9,12 @@ import (
 	"time"
 
 	"github.com/go-kit/log"
-	"github.com/grafana/loki/v3/pkg/logline/store"
-	"github.com/grafana/loki/v3/pkg/logproto"
-	"github.com/grafana/loki/v3/pkg/loki"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/stretchr/testify/require"
 	"github.com/thanos-io/objstore"
+
+	"github.com/grafana/loki/v3/pkg/logline/store"
+	"github.com/grafana/loki/v3/pkg/logproto"
 )
 
 // TestService_UploadSetsShardMeta verifies that shard fields from fileInfo are
@@ -22,7 +22,7 @@ import (
 func TestService_UploadSetsShardMeta(t *testing.T) {
 	tmpDir := t.TempDir()
 
-	cluster, lokiCfg, baseCfg := setupKafkaTest(t)
+	cluster, baseCfg := setupKafkaTest(t)
 	defer cluster.Close()
 
 	cfg := baseCfg
@@ -37,10 +37,7 @@ func TestService_UploadSetsShardMeta(t *testing.T) {
 	indexStore, err := store.NewStore(bucket, store.Config{MinDate: "0001-01-01"}, log.NewNopLogger(), nil)
 	require.NoError(t, err)
 
-	lokiConfig := loki.ConfigWrapper{}
-	lokiConfig.KafkaConfig.Address = lokiCfg.KafkaConfig.Address
-
-	svc, err := New(lokiConfig, indexStore, cfg, "2026-01-01", newDefaultFakePartitionRing(), log.NewNopLogger(), prometheus.NewRegistry())
+	svc, err := New(indexStore, cfg, "2026-01-01", newDefaultFakePartitionRing(), log.NewNopLogger(), prometheus.NewRegistry())
 	require.NoError(t, err)
 	defer svc.client.Close()
 
@@ -50,7 +47,7 @@ func TestService_UploadSetsShardMeta(t *testing.T) {
 			{Timestamp: now, Line: "error: connection failed to primary database server"},
 		},
 	}
-	svc.activeBuilder.processStream(stream, parseLabelsOrNil(stream.Labels), now, recordRef{})
+	_ = svc.activeBuilder.processStream(stream, parseLabelsOrNil(stream.Labels), now, recordRef{})
 
 	files, err := svc.activeBuilder.prepareIndexes()
 	require.NoError(t, err)

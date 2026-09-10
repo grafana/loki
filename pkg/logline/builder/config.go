@@ -7,7 +7,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/grafana/dskit/kv/memberlist"
 	"github.com/grafana/loki/v3/pkg/kafka"
 
 	"github.com/grafana/loki/v3/pkg/logline"
@@ -62,8 +61,10 @@ const (
 
 // Config holds configuration for the logline index builder service.
 type Config struct {
-	// Kafka configuration - uses Loki's kafka.Config for consistency
-	Kafka   kafka.Config  `yaml:"kafka"`
+	// Kafka is Loki's root kafka_config, injected by the module wiring rather
+	// than configured here, so there is only one kafka section in the config
+	// file and only one set of -kafka.* flags.
+	Kafka   kafka.Config  `yaml:"-"`
 	Logline LoglineConfig `yaml:"logline"`
 
 	FlushOnIdle   time.Duration `yaml:"flush_on_idle"`
@@ -113,10 +114,6 @@ type Config struct {
 	// must be at least this value or JoinGroup is rejected.
 	KafkaSessionTimeout time.Duration `yaml:"kafka_session_timeout"`
 
-	// Ring configures access to the producer partition ring,
-	// which the builder reads to discover active partitions.
-	Ring RingConfig `yaml:"ring"`
-
 	// WaitRingPopulatedTimeout bounds how long the builder will wait at
 	// startup for the partition ring to be populated (PartitionsCount > 0)
 	// before failing service startup. This is intentionally a hard failure:
@@ -129,12 +126,6 @@ type Config struct {
 	// unit tests) rejects every JoinGroup that carries an InstanceID with
 	// INVALID_GROUP_ID. Tests set this to true; production code must not.
 	disableStaticMembership bool `yaml:"-"`
-}
-
-type RingConfig struct {
-	Key               string              `yaml:"key"`
-	Memberlist        memberlist.KVConfig `yaml:"memberlist"`
-	WatcherBufferSize int                 `yaml:"watcher_buffer_size"`
 }
 
 type LoglineConfig struct {
@@ -156,31 +147,6 @@ func (c *Config) RegisterFlags(f *flag.FlagSet) {
 	if f == nil {
 		f = flag.CommandLine
 	}
-
-	// Kafka configuration flags
-	f.StringVar(&c.Kafka.Address, "kafka.address", "localhost:9092",
-		"Comma-separated list of Kafka broker addresses (deprecated, use kafka.reader-config.address)")
-	f.StringVar(&c.Kafka.Topic, "kafka.topic", "",
-		"Kafka topic to consume from (required)")
-	f.StringVar(&c.Kafka.ClientID, "kafka.client-id", "",
-		"Kafka client ID (deprecated, use kafka.reader-config.client-id)")
-	f.DurationVar(&c.Kafka.DialTimeout, "kafka.dial-timeout", 2*time.Second,
-		"Maximum time to wait for a connection to be established")
-
-	// Reader/Writer specific configs
-	f.StringVar(&c.Kafka.ReaderConfig.Address, "kafka.reader-config.address", "localhost:9092",
-		"Kafka broker addresses for consumer")
-	f.StringVar(&c.Kafka.ReaderConfig.ClientID, "kafka.reader-config.client-id", "",
-		"Client ID for Kafka consumer")
-
-	// SASL Authentication
-	f.StringVar(&c.Kafka.SASLUsername, "kafka.sasl-username", "",
-		"SASL username for Kafka authentication")
-	// Note: SASLPassword is flagext.Secret, needs special handling
-
-	// Consumer settings
-	f.StringVar(&c.Kafka.ConsumerGroup, "kafka.consumer-group", "logline-index-builder",
-		"Kafka consumer group ID (used for both partition assignment and offset storage)")
 
 	// Builder-specific flags
 	f.IntVar(&c.Logline.NgramLength, "logline-index-builder.ngram-length", DefaultNgramLength,
@@ -222,23 +188,24 @@ func (c *Config) RegisterFlags(f *flag.FlagSet) {
 			"Peak scratch usage reaches 2-3x this value during a flush (retiring builder's runs + its merged .lidx output + the fresh builder's runs), "+
 			"so size the scratch volume with that headroom.")
 
-	f.StringVar(&c.Ring.Key, "logline-index-builder.ring.key", "ingester-partitions-key",
-		"KV key containing the producer partition ring descriptor.")
-	f.IntVar(&c.Ring.WatcherBufferSize, "logline-index-builder.ring.watcher-buffer-size", 128,
-		"Buffered channel size for memberlist key watchers used by the partition ring reader.")
 	f.DurationVar(&c.WaitRingPopulatedTimeout, "logline-index-builder.wait-ring-populated-timeout", 60*time.Second,
 		"Maximum time to wait at startup for the partition ring to be populated. "+
 			"Service startup fails if the ring is still empty after this — there is no silent fallback.")
-	c.Ring.Memberlist.RegisterFlagsWithPrefix(f, "logline-index-builder.ring.")
 }
 
 // Validate validates the configuration and applies defaults.
 func (c *Config) Validate() error {
-	c.Kafka.ProducerMaxRecordSizeBytes = kafka.MaxProducerRecordDataBytesLimit // we don't use this setting but it has to be set for validate to pass
-	c.Kafka.ProducerMaxInflightRequestsPerBroker = 20                         // also producer-only and unused here, but Validate now requires >= 1
-
-	if err := c.Kafka.Validate(); err != nil {
-		return fmt.Errorf("invalid kafka config: %w", err)
+	// Kafka is Loki's root kafka_config, injected by the module wiring and
+	// validated there as a whole. Only the fields this builder consumes are
+	// checked here.
+	if c.Kafka.ReaderConfig.Address == "" && c.Kafka.Address == "" {
+		return fmt.Errorf("invalid kafka config: %w", kafka.ErrMissingKafkaAddress)
+	}
+	if c.Kafka.Topic == "" {
+		return fmt.Errorf("invalid kafka config: %w", kafka.ErrMissingKafkaTopic)
+	}
+	if (c.Kafka.SASLUsername == "") != (c.Kafka.SASLPassword.String() == "") {
+		return fmt.Errorf("invalid kafka config: %w", kafka.ErrInconsistentSASLUsernameAndPassword)
 	}
 
 	if c.Kafka.ConsumerGroup == "" {
@@ -347,23 +314,12 @@ func (c *Config) Validate() error {
 		c.InstanceID = hostname
 	}
 
-	if c.Ring.Key == "" {
-		c.Ring.Key = "ingester-partitions-key"
-	}
-	if c.Ring.WatcherBufferSize == 0 {
-		c.Ring.WatcherBufferSize = 128
-	}
-	if c.Ring.WatcherBufferSize < 0 {
-		return fmt.Errorf("ring.watcher_buffer_size must be > 0, got %d", c.Ring.WatcherBufferSize)
-	}
 	if c.WaitRingPopulatedTimeout == 0 {
 		c.WaitRingPopulatedTimeout = 60 * time.Second
 	}
 	if c.WaitRingPopulatedTimeout < 0 {
 		return fmt.Errorf("wait_ring_populated_timeout must be > 0, got %v", c.WaitRingPopulatedTimeout)
 	}
-	c.Ring.Memberlist.WatchPrefixBufferSize = c.Ring.WatcherBufferSize
-
 	return nil
 }
 

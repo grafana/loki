@@ -12,18 +12,20 @@ import (
 	"runtime/pprof"
 	"strconv"
 	"strings"
-	"sync/atomic"
 	"testing"
 	"time"
 
+	"go.uber.org/atomic"
+
 	"github.com/go-kit/log"
-	"github.com/grafana/loki/v3/pkg/kafka"
-	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
 	"github.com/twmb/franz-go/pkg/kgo"
 	"github.com/twmb/franz-go/pkg/sasl/plain"
+
+	"github.com/grafana/loki/v3/pkg/kafka"
+	"github.com/grafana/loki/v3/pkg/logproto"
 )
 
 const capturedDataFile = "testdata/kafka_records.bin"
@@ -84,7 +86,7 @@ func TestCaptureKafkaRecords(t *testing.T) {
 	}
 
 	if saslUser != "" {
-		opts = append(opts, kgo.SASL(plain.Plain(func(ctx context.Context) (plain.Auth, error) {
+		opts = append(opts, kgo.SASL(plain.Plain(func(_ context.Context) (plain.Auth, error) {
 			return plain.Auth{User: saslUser, Pass: saslPass}, nil
 		})))
 	}
@@ -317,7 +319,7 @@ func BenchmarkCapturedPipeline(b *testing.B) {
 		for i := 0; i < b.N; i++ {
 			builder := newBuilder(b)
 			for _, rec := range decoded {
-				builder.processStream(&rec.stream, &rec.labels, rec.timestamp, recordRef{})
+				_ = builder.processStream(&rec.stream, &rec.labels, rec.timestamp, recordRef{})
 			}
 		}
 	})
@@ -344,7 +346,7 @@ func BenchmarkCapturedPipeline(b *testing.B) {
 				if err != nil {
 					continue
 				}
-				builder.processStream(&stream, &parsedLabels, rec.timestamp, recordRef{})
+				_ = builder.processStream(&stream, &parsedLabels, rec.timestamp, recordRef{})
 			}
 		}
 	})
@@ -358,7 +360,7 @@ func BenchmarkCapturedPipeline(b *testing.B) {
 		for i := 0; i < b.N; i++ {
 			builder := newBuilder(b)
 			for _, rec := range decoded {
-				builder.processStream(&rec.stream, &rec.labels, rec.timestamp, recordRef{})
+				_ = builder.processStream(&rec.stream, &rec.labels, rec.timestamp, recordRef{})
 			}
 			builder.clear()
 		}
@@ -381,7 +383,7 @@ func BenchmarkCapturedPipeline(b *testing.B) {
 		for i := 0; i < b.N; i++ {
 			builder := newBuilder(b)
 			for _, rec := range decoded[:chunkSize] {
-				builder.processStream(&rec.stream, &rec.labels, rec.timestamp, recordRef{})
+				_ = builder.processStream(&rec.stream, &rec.labels, rec.timestamp, recordRef{})
 			}
 		}
 	})
@@ -478,7 +480,7 @@ func BenchmarkPartitionComparison(b *testing.B) {
 					if err != nil {
 						continue
 					}
-					bld.processStream(&stream, &parsedLabels, rec.timestamp, recordRef{})
+					_ = bld.processStream(&stream, &parsedLabels, rec.timestamp, recordRef{})
 				}
 			}
 		})
@@ -489,7 +491,7 @@ func BenchmarkPartitionComparison(b *testing.B) {
 			for i := 0; i < b.N; i++ {
 				bld := newBld(b)
 				for _, rec := range decoded {
-					bld.processStream(&rec.stream, &rec.labels, rec.timestamp, recordRef{})
+					_ = bld.processStream(&rec.stream, &rec.labels, rec.timestamp, recordRef{})
 				}
 			}
 		})

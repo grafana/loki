@@ -9,11 +9,12 @@ import (
 	"github.com/grafana/loki/v3/pkg/kafka"
 
 	"github.com/go-kit/log"
-	"github.com/grafana/loki/v3/pkg/logline"
-	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/stretchr/testify/require"
+
+	"github.com/grafana/loki/v3/pkg/logline"
+	"github.com/grafana/loki/v3/pkg/logproto"
 )
 
 func TestBuilder_Flush_EmptyBuilder(t *testing.T) {
@@ -88,7 +89,7 @@ func TestBuilder_ProcessStream_WithData(t *testing.T) {
 	}
 
 	// Process the stream
-	builder.processStream(stream, parseLabelsOrNil(stream.Labels), time.Now(), recordRef{})
+	_ = builder.processStream(stream, parseLabelsOrNil(stream.Labels), time.Now(), recordRef{})
 
 	// One date observed → one (date, shard) index will be produced.
 	require.Equal(t, 1, len(builder.ing.dateRanges))
@@ -127,7 +128,7 @@ func TestBuilder_V3ExtractsLabelValues(t *testing.T) {
 			{Timestamp: time.Now().UTC(), Line: "abc"},
 		},
 	}
-	builder.processStream(stream, parseLabelsOrNil(stream.Labels), time.Now().UTC(), recordRef{})
+	_ = builder.processStream(stream, parseLabelsOrNil(stream.Labels), time.Now().UTC(), recordRef{})
 
 	files, err := builder.prepareIndexes()
 	require.NoError(t, err)
@@ -193,7 +194,7 @@ func TestBuilder_FlushIntegration(t *testing.T) {
 			},
 		}
 
-		builder.processStream(stream, parseLabelsOrNil(stream.Labels), time.Now(), recordRef{})
+		_ = builder.processStream(stream, parseLabelsOrNil(stream.Labels), time.Now(), recordRef{})
 	}
 
 	flushFiles, err := builder.prepareIndexes()
@@ -256,7 +257,7 @@ func TestBuilder_ProcessStream_MultipleEntries(t *testing.T) {
 	}
 
 	// Process the stream (single message with 3 log entries)
-	builder.processStream(stream, parseLabelsOrNil(stream.Labels), time.Now(), recordRef{})
+	_ = builder.processStream(stream, parseLabelsOrNil(stream.Labels), time.Now(), recordRef{})
 
 	// All 3 entries share today's date → one index carrying their documents.
 	require.Equal(t, 1, len(builder.ing.dateRanges))
@@ -308,7 +309,7 @@ func TestProcessStream_FutureEntriesGetOwnBucket(t *testing.T) {
 		},
 	}
 
-	builder.processStream(stream, parseLabelsOrNil(stream.Labels), now, recordRef{})
+	_ = builder.processStream(stream, parseLabelsOrNil(stream.Labels), now, recordRef{})
 
 	// The future entry must be tracked under its own date, not today's (no clamping).
 	_, hasFuture := builder.ing.dateRanges[expectedDate]
@@ -407,7 +408,7 @@ func BenchmarkProcessStream(b *testing.B) {
 
 			// Run benchmark
 			for i := 0; i < b.N; i++ {
-				builder.processStream(stream, parseLabelsOrNil(stream.Labels), time.Now(), recordRef{})
+				_ = builder.processStream(stream, parseLabelsOrNil(stream.Labels), time.Now(), recordRef{})
 
 				// Flush periodically to prevent memory exhaustion in long benchmarks
 				if i%1000 == 0 && i > 0 {
@@ -474,7 +475,7 @@ func BenchmarkProcessStream_NoFlush(b *testing.B) {
 	b.ReportAllocs()
 
 	for i := 0; i < b.N; i++ {
-		builder.processStream(stream, parseLabelsOrNil(stream.Labels), time.Now(), recordRef{})
+		_ = builder.processStream(stream, parseLabelsOrNil(stream.Labels), time.Now(), recordRef{})
 	}
 
 	// Calculate approximate bytes
@@ -534,7 +535,7 @@ func BenchmarkProcessStream_ParallelConsumers(b *testing.B) {
 		i := 0
 
 		for pb.Next() {
-			builder.processStream(stream, parseLabelsOrNil(stream.Labels), time.Now(), recordRef{})
+			_ = builder.processStream(stream, parseLabelsOrNil(stream.Labels), time.Now(), recordRef{})
 			i++
 
 			// Periodic flush to prevent OOM
@@ -645,7 +646,7 @@ func TestBuilder_TracksDateRanges(t *testing.T) {
 				},
 			},
 		}
-		builder.processStream(stream, parseLabelsOrNil(stream.Labels), now.Add(-time.Duration(i)*24*time.Hour), recordRef{})
+		_ = builder.processStream(stream, parseLabelsOrNil(stream.Labels), now.Add(-time.Duration(i)*24*time.Hour), recordRef{})
 	}
 
 	// Should have observed 3 distinct dates.
@@ -707,7 +708,7 @@ func TestBuilder_QueueTimestampInObjectKey(t *testing.T) {
 	}
 
 	// Process stream with recent queue timestamp
-	builder.processStream(stream, parseLabelsOrNil(stream.Labels), queueTime, recordRef{})
+	_ = builder.processStream(stream, parseLabelsOrNil(stream.Labels), queueTime, recordRef{})
 
 	files, err := builder.prepareIndexes()
 	require.NoError(t, err)
@@ -831,7 +832,7 @@ func TestBuilder_MinDate_DropsOldEntries(t *testing.T) {
 		},
 	}
 
-	builder.processStream(stream, parseLabelsOrNil(stream.Labels), now, recordRef{})
+	_ = builder.processStream(stream, parseLabelsOrNil(stream.Labels), now, recordRef{})
 
 	// Only dates on or after min_date should be observed.
 	require.Len(t, builder.ing.dateRanges, 2, "expected 2026-03-15 and 2026-03-16 only")

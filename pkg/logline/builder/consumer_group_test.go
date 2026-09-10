@@ -7,20 +7,22 @@ import (
 	"io"
 	"slices"
 	"sync"
-	"sync/atomic"
 	"testing"
 	"time"
 
+	"go.uber.org/atomic"
+
 	"github.com/go-kit/log"
-	"github.com/grafana/loki/v3/pkg/kafka"
-	"github.com/grafana/loki/v3/pkg/logline/store"
-	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/stretchr/testify/require"
 	"github.com/thanos-io/objstore"
 	"github.com/twmb/franz-go/pkg/kerr"
 	"github.com/twmb/franz-go/pkg/kmsg"
+
+	"github.com/grafana/loki/v3/pkg/kafka"
+	"github.com/grafana/loki/v3/pkg/logline/store"
+	"github.com/grafana/loki/v3/pkg/logproto"
 )
 
 // These tests cover the consumer-group machinery.
@@ -265,11 +267,11 @@ func TestIsMembershipErr(t *testing.T) {
 // hard to trace — the log said "flush step succeeded" while offsets were
 // not durable.
 func TestCommitOffsets_MembershipErrorPropagates(t *testing.T) {
-	cluster, lokiConfig, cfg := setupKafkaTest(t)
+	cluster, cfg := setupKafkaTest(t)
 	defer cluster.Close()
 
 	_, indexStore := newTestStore(t)
-	svc, err := New(lokiConfig, indexStore, cfg, "2026-01-01", newDefaultFakePartitionRing(), log.NewNopLogger(), prometheus.NewRegistry())
+	svc, err := New(indexStore, cfg, "2026-01-01", newDefaultFakePartitionRing(), log.NewNopLogger(), prometheus.NewRegistry())
 	require.NoError(t, err)
 
 	// Start the service so it joins the consumer group — CommitOffsetsSync
@@ -278,11 +280,11 @@ func TestCommitOffsets_MembershipErrorPropagates(t *testing.T) {
 	// the per-partition error path.
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	require.NoError(t, svc.Service.StartAsync(ctx))
-	require.NoError(t, svc.Service.AwaitRunning(ctx))
+	require.NoError(t, svc.StartAsync(ctx))
+	require.NoError(t, svc.AwaitRunning(ctx))
 	t.Cleanup(func() {
-		svc.Service.StopAsync()
-		_ = svc.Service.AwaitTerminated(context.Background())
+		svc.StopAsync()
+		_ = svc.AwaitTerminated(context.Background())
 	})
 
 	// Own partition 0 so the owned-partition filter does not drop the commit
@@ -337,20 +339,20 @@ func TestCommitOffsets_MembershipErrorPropagates(t *testing.T) {
 // filtering: partitions absent from ownedPartitions are not included in
 // the CommitOffsetsSync request, even if they remain in the caller's map.
 func TestCommitOffsets_FiltersToOwnedPartitions(t *testing.T) {
-	cluster, lokiConfig, cfg := setupKafkaTest(t)
+	cluster, cfg := setupKafkaTest(t)
 	defer cluster.Close()
 
 	_, indexStore := newTestStore(t)
-	svc, err := New(lokiConfig, indexStore, cfg, "2026-01-01", newDefaultFakePartitionRing(), log.NewNopLogger(), prometheus.NewRegistry())
+	svc, err := New(indexStore, cfg, "2026-01-01", newDefaultFakePartitionRing(), log.NewNopLogger(), prometheus.NewRegistry())
 	require.NoError(t, err)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	require.NoError(t, svc.Service.StartAsync(ctx))
-	require.NoError(t, svc.Service.AwaitRunning(ctx))
+	require.NoError(t, svc.StartAsync(ctx))
+	require.NoError(t, svc.AwaitRunning(ctx))
 	t.Cleanup(func() {
-		svc.Service.StopAsync()
-		_ = svc.Service.AwaitTerminated(context.Background())
+		svc.StopAsync()
+		_ = svc.AwaitTerminated(context.Background())
 	})
 
 	// Own only partition 0; the caller's map still has partition 1 (the
@@ -445,7 +447,7 @@ func (b *blockingUploadBucket) Upload(ctx context.Context, name string, r io.Rea
 //     builderMtx across awaitPendingFlush, or commitOffsets deadlocks until
 //     the 5-minute shutdownTimeout.
 func TestRevokeDuringFlushThenShutdown(t *testing.T) {
-	cluster, lokiConfig, cfg := setupKafkaTest(t)
+	cluster, cfg := setupKafkaTest(t)
 	defer cluster.Close()
 
 	inner := objstore.NewInMemBucket()
@@ -462,7 +464,7 @@ func TestRevokeDuringFlushThenShutdown(t *testing.T) {
 		message:  "waiting for in-progress flush during shutdown",
 		signaled: make(chan struct{}),
 	}
-	svc, err := New(lokiConfig, indexStore, cfg, "2026-01-01", newDefaultFakePartitionRing(), waitLogger, prometheus.NewRegistry())
+	svc, err := New(indexStore, cfg, "2026-01-01", newDefaultFakePartitionRing(), waitLogger, prometheus.NewRegistry())
 	require.NoError(t, err)
 
 	// Join the group so CommitOffsetsSync has a live member/generation.
@@ -470,8 +472,8 @@ func TestRevokeDuringFlushThenShutdown(t *testing.T) {
 	// and flushAndCommit directly so the blocked upload is deterministic.
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
-	require.NoError(t, svc.Service.StartAsync(ctx))
-	require.NoError(t, svc.Service.AwaitRunning(ctx))
+	require.NoError(t, svc.StartAsync(ctx))
+	require.NoError(t, svc.AwaitRunning(ctx))
 
 	require.Eventually(t, func() bool {
 		owned := svc.snapshotOwnedPartitions()
@@ -532,8 +534,8 @@ func TestRevokeDuringFlushThenShutdown(t *testing.T) {
 	// once we unblock and commitOffsets tries to take the same lock.
 	stopErr := make(chan error, 1)
 	go func() {
-		svc.Service.StopAsync()
-		stopErr <- svc.Service.AwaitTerminated(context.Background())
+		svc.StopAsync()
+		stopErr <- svc.AwaitTerminated(context.Background())
 	}()
 
 	select {

@@ -3,11 +3,13 @@ package builder
 import (
 	"fmt"
 	"sync"
-	"sync/atomic"
 	"time"
 
-	"github.com/grafana/loki/v3/pkg/logproto"
+	"go.uber.org/atomic"
+
 	"github.com/prometheus/prometheus/model/labels"
+
+	"github.com/grafana/loki/v3/pkg/logproto"
 )
 
 // extractQueueCapacity bounds the decoded-stream queue between the poll

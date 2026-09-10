@@ -5,10 +5,12 @@ import (
 	"math"
 	"os"
 	"path/filepath"
-	"sync/atomic"
+
+	"go.uber.org/atomic"
+
+	"github.com/klauspost/compress/s2"
 
 	"github.com/grafana/loki/v3/pkg/logline/shard"
-	"github.com/klauspost/compress/s2"
 )
 
 // postingsBuffer buffers (ngram, docID) pairs in one flat SoA buffer, and on

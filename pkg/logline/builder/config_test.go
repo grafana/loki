@@ -5,8 +5,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/grafana/loki/v3/pkg/kafka"
 	"github.com/stretchr/testify/require"
+
+	"github.com/grafana/loki/v3/pkg/kafka"
 )
 
 func TestConfigValidation(t *testing.T) {
@@ -44,23 +45,6 @@ func TestConfigValidation(t *testing.T) {
 				ScratchDir: "/tmp/test",
 			},
 			wantError: false,
-		},
-		{
-			name: "ring rejects negative watcher buffer size",
-			settings: Config{
-				Kafka: kafka.Config{
-					ReaderConfig:               kafka.ClientConfig{Address: "localhost:9092"},
-					Topic:                      "test-topic",
-					ConsumerGroup:              "test-group",
-					ProducerMaxRecordSizeBytes: 15 * 1024 * 1024,
-				},
-				ScratchDir: "/tmp/test",
-				Ring: RingConfig{
-					WatcherBufferSize: -1,
-				},
-			},
-			wantError: true,
-			errorMsg:  "ring.watcher_buffer_size must be > 0",
 		},
 		{
 			name: "missing consumer group applies default",
@@ -567,16 +551,13 @@ func TestConfig_ExtractThreads_ValidRangeAndDefault(t *testing.T) {
 	}
 }
 
-// TestConfig_RegisterFlags_AppliesMemberlistDefaults ensures
-// that dskit memberlist defaults are set.
-func TestConfig_RegisterFlags_AppliesMemberlistDefaults(t *testing.T) {
+// TestConfig_RegisterFlags_AppliesRingWaitDefault ensures the partition-ring
+// startup wait default is set by RegisterFlags.
+func TestConfig_RegisterFlags_AppliesRingWaitDefault(t *testing.T) {
 	var cfg Config
 	fs := flag.NewFlagSet("", flag.PanicOnError)
 	cfg.RegisterFlags(fs)
 
-	require.Equal(t, 7946, cfg.Ring.Memberlist.TCPTransport.BindPort,
-		"RegisterFlags must default memberlist bind_port to 7946; "+
-			"otherwise YAML-only config loads bind a random ephemeral port")
 	require.Equal(t, 60*time.Second, cfg.WaitRingPopulatedTimeout,
 		"RegisterFlags must default wait_ring_populated_timeout to 60s; "+
 			"otherwise YAML-only config loads fail Validate() with "+
