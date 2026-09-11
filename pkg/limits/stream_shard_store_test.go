@@ -28,18 +28,6 @@ func warmRateBuckets(numBuckets int, bucketSize time.Duration, now time.Time) []
 	return buckets
 }
 
-// newShardingEnabledMockLimits returns a mockLimits with sharding enabled
-// and a permissive desired_rate. mockLimits{}'s zero value has sharding
-// *disabled* (Go's zero value for shardstreams.Config.Enabled is false),
-// which would make every checkAndShard call collapse to 1 shard -- easy to
-// trip over when a test only cares about, e.g., replay/eviction behavior
-// and doesn't intend to exercise the sharding-disabled code path at all.
-func newShardingEnabledMockLimits() *mockLimits {
-	cfg := shardstreams.Config{Enabled: true}
-	cfg.DesiredRate.Set("1B") //nolint:errcheck
-	return &mockLimits{ShardStreamsConfig: cfg}
-}
-
 func newTestStreamShardStore(t *testing.T, maxGlobalStreams int, desiredRate string, streamsUsed func(string, int32, string) uint64) *streamShardStore {
 	t.Helper()
 	cfg := shardstreams.Config{Enabled: true}
@@ -432,4 +420,35 @@ func TestStreamShardStore_EvictPartitions(t *testing.T) {
 	require.Len(t, results, 1)
 	require.Equal(t, uint32(1), results[0].Shards)
 	require.Empty(t, results[0].RejectReason)
+}
+
+func TestService_CheckLimitsAndShard_UnownedPartitionStreamsGetAnExplicitFailedResult(t *testing.T) {
+	// Regression guard: a stream whose partition isn't owned by this
+	// instance must not silently vanish from the response -- it must come
+	// back with an explicit ShardDecisionContext=ReasonFailed entry, so the
+	// frontend's fail-open handling can engage for it instead of the caller
+	// getting no answer at all for that stream.
+	store := newTestStreamShardStore(t, 100, "1B", nil)
+	pm, err := newPartitionManager(prometheus.NewRegistry())
+	require.NoError(t, err)
+	// No partitions assigned to pm, so every stream below is "unowned".
+	s := &Service{
+		cfg:              Config{NumPartitions: 1},
+		partitionManager: pm,
+		streamShardStore: store,
+		streamShardStreamsDiscardedTotal: prometheus.NewCounterVec(prometheus.CounterOpts{
+			Name: "test_streams_discarded_total",
+		}, []string{"partition"}),
+	}
+
+	resp, err := s.CheckLimitsAndShard(t.Context(), &proto.CheckLimitsAndShardRequest{
+		Tenant:  "tenant1",
+		Streams: []*proto.StreamMetadata{{StreamHash: 1, TotalSize: 100}},
+	})
+	require.NoError(t, err)
+	require.Equal(t, []*proto.StreamShardResult{{
+		StreamHash:           1,
+		Shards:               1,
+		ShardDecisionContext: uint32(ReasonFailed),
+	}}, resp.Results)
 }

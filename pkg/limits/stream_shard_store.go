@@ -55,14 +55,9 @@ type streamShardStore struct {
 	streamsUsed func(tenant string, partition int32, policyBucket string) uint64
 }
 
-// streamShardTenantUsage is the per-tenant state: partition -> policy -> bucket.
-type streamShardTenantUsage map[int32]map[string]*streamShardBucket
-
-// streamShardBucket holds all streams tracked by streamShardStore for one
-// (tenant, partition, policy bucket).
-type streamShardBucket struct {
-	streams map[uint64]streamShardUsage
-}
+// streamShardTenantUsage is the per-tenant state: partition -> policy ->
+// streamHash -> usage. This mirrors usageStore's tenantUsage shape.
+type streamShardTenantUsage map[int32]map[string]map[uint64]streamShardUsage
 
 // streamShardUsage is the state streamShardStore tracks for a single logical (pre-shard)
 // stream.
@@ -137,18 +132,18 @@ func (s *streamShardStore) checkAndShard(ctx context.Context, tenant string, met
 			partition := s.getPartitionForHash(m.StreamHash)
 			shardCfg, _ := s.limits.PolicyShardStreams(tenant, m.IngestionPolicy)
 			policyBucket, maxStreams := getPolicyBucketAndStreamsLimit(s.limits, s.numPartitions, tenant, m.IngestionPolicy)
-			bucket := s.checkInitMap(i, tenant, partition, policyBucket)
+			streams := s.checkInitMap(i, tenant, partition, policyBucket)
 
-			existing, wasPresent := bucket.streams[m.StreamHash]
+			existing, wasPresent := streams[m.StreamHash]
 			isNewOrExpired := !wasPresent || existing.lastSeenAt < cutoff
 
 			// selfKnown is wasPresent, not "wasPresent and still valid": even
-			// an expired entry is still sitting in bucket.streams (it isn't
+			// an expired entry is still sitting in the map (it isn't
 			// deleted/reset until later in this same call), so bucketSlots
 			// below would otherwise double-count its own stale allocation as
 			// belonging to some other stream, wrongly shrinking room for a
 			// reactivating stream evaluating itself.
-			room := s.room(bucket, tenant, partition, policyBucket, maxStreams, existing, wasPresent)
+			room := s.room(streams, tenant, partition, policyBucket, maxStreams, existing, wasPresent)
 
 			var (
 				stream  streamShardUsage
@@ -161,7 +156,7 @@ func (s *streamShardStore) checkAndShard(ctx context.Context, tenant string, met
 				stream = streamShardUsage{hash: m.StreamHash, policy: policyBucket}
 				if maxStreams > 0 && room < 1 {
 					// No room even for a single slot: reject outright.
-					delete(bucket.streams, m.StreamHash)
+					delete(streams, m.StreamHash)
 					results = append(results, &proto.StreamShardResult{
 						StreamHash:   m.StreamHash,
 						Shards:       0,
@@ -195,10 +190,10 @@ func (s *streamShardStore) checkAndShard(ctx context.Context, tenant string, met
 					// stream before now (e.g. it just took over the
 					// partition). Hold steady rather than recompute from a
 					// rate based on a single, just-started bucket.
-					desired = maxu32(1, stream.shardCount)
+					desired = max(1, stream.shardCount)
 				} else {
 					rate := currentRate(stream.rateBuckets, seenAt, s.rateWindow)
-					desired = maxu32(1, ceilDivU32(rate, uint64(shardCfg.DesiredRate.Val())))
+					desired = max(1, ceilDivU32(rate, uint64(shardCfg.DesiredRate.Val())))
 				}
 			}
 
@@ -225,11 +220,11 @@ func (s *streamShardStore) checkAndShard(ctx context.Context, tenant string, met
 			case maxStreams == 0:
 				granted = desired
 			case isNewOrExpired:
-				granted = minu32(desired, uint32(room))
+				granted = min(desired, uint32(room))
 			case desired <= existing.shardCount:
 				granted = desired
 			default:
-				granted = maxu32(existing.shardCount, minu32(desired, uint32(room)))
+				granted = max(existing.shardCount, min(desired, uint32(room)))
 			}
 
 			shardDecisionContext := ReasonUnknown
@@ -244,7 +239,7 @@ func (s *streamShardStore) checkAndShard(ctx context.Context, tenant string, met
 			if seenAtNano > stream.lastSeenAt {
 				stream.lastSeenAt = seenAtNano
 			}
-			bucket.streams[m.StreamHash] = stream
+			streams[m.StreamHash] = stream
 
 			results = append(results, &proto.StreamShardResult{
 				StreamHash:           m.StreamHash,
@@ -275,17 +270,17 @@ func (s *streamShardStore) checkAndShard(ctx context.Context, tenant string, met
 // max(0, usageStoreCount - knownToStreamShardStore). This is exact in both
 // steady states (all streams known to one store or the other) and
 // self-corrects as a tenant/policy migrates between modes.
-func (s *streamShardStore) room(bucket *streamShardBucket, tenant string, partition int32, policyBucket string, maxStreams uint64, existing streamShardUsage, selfKnown bool) int64 {
+func (s *streamShardStore) room(streams map[uint64]streamShardUsage, tenant string, partition int32, policyBucket string, maxStreams uint64, existing streamShardUsage, selfKnown bool) int64 {
 	if maxStreams == 0 {
 		return 1<<63 - 1
 	}
-	knownToStreamShardStore := uint64(len(bucket.streams))
+	knownToStreamShardStore := uint64(len(streams))
 	usageStoreCount := s.streamsUsed(tenant, partition, policyBucket)
 	var notYetMigrated uint64
 	if usageStoreCount > knownToStreamShardStore {
 		notYetMigrated = usageStoreCount - knownToStreamShardStore
 	}
-	othersSlots := bucketSlots(bucket)
+	othersSlots := bucketSlots(streams)
 	if selfKnown {
 		othersSlots -= streamShardSlots(existing.shardCount)
 	}
@@ -304,10 +299,10 @@ func (s *streamShardStore) Evict() map[string]int {
 	s.forEachLock(func(i int) {
 		for tenant, partitions := range s.stripes[i] {
 			for _, policies := range partitions {
-				for _, bucket := range policies {
-					for streamHash, stream := range bucket.streams {
+				for _, streams := range policies {
+					for streamHash, stream := range streams {
 						if stream.lastSeenAt < cutoff {
-							delete(bucket.streams, streamHash)
+							delete(streams, streamHash)
 							evicted[tenant]++
 						}
 					}
@@ -333,8 +328,8 @@ func (s *streamShardStore) Collect(metrics chan<- prometheus.Metric) {
 	s.forEachRLock(func(i int) {
 		for tenant, partitions := range s.stripes[i] {
 			for _, policies := range partitions {
-				for _, bucket := range policies {
-					for _, stream := range bucket.streams {
+				for _, streams := range policies {
+					for _, stream := range streams {
 						trackedStreams[tenant]++
 						allocatedShards[tenant] += streamShardSlots(stream.shardCount)
 					}
@@ -381,8 +376,8 @@ func (s *streamShardStore) EvictPartitions(partitionsToEvict []int32) {
 // through rate-bucket math. Not goroutine-safe.
 func (s *streamShardStore) setForTests(tenant string, partition int32, policyBucket string, stream streamShardUsage) {
 	s.withLock(tenant, func(i int) {
-		bucket := s.checkInitMap(i, tenant, partition, policyBucket)
-		bucket.streams[stream.hash] = stream
+		streams := s.checkInitMap(i, tenant, partition, policyBucket)
+		streams[stream.hash] = stream
 	})
 }
 
@@ -438,16 +433,16 @@ func (s *streamShardStore) forEachRLock(fn func(i int)) {
 }
 
 // checkInitMap initializes the maps for tenant/partition/policy if needed
-// and returns the bucket. It must not be called without the stripe lock.
-func (s *streamShardStore) checkInitMap(i int, tenant string, partition int32, policy string) *streamShardBucket {
+// and returns the stream map. It must not be called without the stripe lock.
+func (s *streamShardStore) checkInitMap(i int, tenant string, partition int32, policy string) map[uint64]streamShardUsage {
 	if _, ok := s.stripes[i][tenant]; !ok {
 		s.stripes[i][tenant] = make(streamShardTenantUsage)
 	}
 	if _, ok := s.stripes[i][tenant][partition]; !ok {
-		s.stripes[i][tenant][partition] = make(map[string]*streamShardBucket)
+		s.stripes[i][tenant][partition] = make(map[string]map[uint64]streamShardUsage)
 	}
 	if _, ok := s.stripes[i][tenant][partition][policy]; !ok {
-		s.stripes[i][tenant][partition][policy] = &streamShardBucket{streams: make(map[uint64]streamShardUsage)}
+		s.stripes[i][tenant][partition][policy] = make(map[uint64]streamShardUsage)
 	}
 	return s.stripes[i][tenant][partition][policy]
 }
@@ -461,10 +456,10 @@ func streamShardSlots(shardCount uint32) uint64 {
 	return uint64(shardCount)
 }
 
-// bucketSlots returns the total slots consumed by all streams in bucket.
-func bucketSlots(bucket *streamShardBucket) uint64 {
+// bucketSlots returns the total slots consumed by all streams in the map.
+func bucketSlots(streams map[uint64]streamShardUsage) uint64 {
 	var n uint64
-	for _, stream := range bucket.streams {
+	for _, stream := range streams {
 		n += streamShardSlots(stream.shardCount)
 	}
 	return n
@@ -510,22 +505,5 @@ func ceilDivU32(a uint64, b uint64) uint32 {
 	if b == 0 {
 		return 1
 	}
-	if a == 0 {
-		return 0
-	}
 	return uint32((a + b - 1) / b)
-}
-
-func minu32(a, b uint32) uint32 {
-	if a < b {
-		return a
-	}
-	return b
-}
-
-func maxu32(a, b uint32) uint32 {
-	if a > b {
-		return a
-	}
-	return b
 }
