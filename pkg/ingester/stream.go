@@ -48,9 +48,8 @@ type stream struct {
 	cfg     *Config
 	tenant  string
 	// chunks are not necessarily ordered: entries are normally appended to
-	// chunks[n-1], but when ingester-side time-sharding (see shardstreams.Config)
-	// is active, older entries may be routed into any of several other
-	// concurrently open chunks tracked by openHeads.
+	// chunks[n-1], but when ingester-side time-sharding is active, older entries
+	// may be routed into other concurrently open chunks tracked by openHeads.
 	// Not thread-safe; assume accesses to this are locked by caller.
 	chunks   []chunkDesc
 	fp       model.Fingerprint // possibly remapped fingerprint, used in the streams map
@@ -199,11 +198,7 @@ func (s *stream) NewChunk() *chunkenc.MemChunk {
 
 // rebuildOpenHeads recomputes openHeads by scanning chunks for still-open
 // (unclosed) time-shard bucket chunks, also seeding bucketHighestTs for each
-// from the chunk's own bounds. Used both after chunks has been compacted
-// (e.g. flushed chunks removed), which invalidates the indices openHeads
-// previously pointed to, and during checkpoint recovery, where openHeads and
-// bucketHighestTs otherwise start out empty despite chunks carrying restored
-// bucket heads. Callers must hold chunkMtx.
+// from the chunk's own bounds. Callers must hold chunkMtx.
 func (s *stream) rebuildOpenHeads() {
 	prevOpen := len(s.openHeads)
 	s.openHeads = nil

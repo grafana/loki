@@ -467,6 +467,8 @@ func (i *Ingester) shouldFlushChunk(chunk *chunkDesc) (bool, string) {
 	return false, ""
 }
 
+// Remove any flushed chunks from stream whose retention window has expired.
+// If mayRemoveStream is true and stream has no chunks left, remove the stream.
 func (i *Ingester) removeFlushedChunks(instance *instance, stream *stream, mayRemoveStream bool) {
 	now := time.Now()
 
@@ -475,12 +477,6 @@ func (i *Ingester) removeFlushedChunks(instance *instance, stream *stream, mayRe
 	prevNumChunks := len(stream.chunks)
 	var subtracted int
 
-	// Filter out any chunk whose retention window has expired, regardless of
-	// its position in the slice: with ingester-side time-sharding, a chunk
-	// belonging to an older time-bucket can become flush-eligible (and then
-	// expire its retention) before an earlier-inserted-but-still-open bucket
-	// or live chunk does, so this can no longer assume a contiguous
-	// oldest-first prefix like a simple front-trim would.
 	retained := stream.chunks[:0]
 	for idx := range stream.chunks {
 		c := stream.chunks[idx]
