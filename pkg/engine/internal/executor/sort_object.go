@@ -59,18 +59,19 @@ func (c *Context) doSortObject(ctx context.Context, node *physical.SortObject) (
 	if err != nil {
 		return nil, fmt.Errorf("SortObject: sorting source %q: %w", node.SourceObjectPath, err)
 	}
+	defer sortedCloser.Close()
 
 	indexBuilder, err := indexobj.NewBuilder(c.indexobjCfg, c.scratchStore)
 	if err != nil {
-		return nil, errors.Join(fmt.Errorf("SortObject: creating index builder: %w", err), sortedCloser.Close())
+		return nil, fmt.Errorf("SortObject: creating index builder: %w", err)
 	}
 	calculator := dataobjindex.NewCalculator(indexBuilder)
 
-	sortedPath, err := uploader.ObjectKey(ctx, sorted, 2)
+	sortedPath, err := uploader.ObjectKey(ctx, sorted, c.uploaderCfg.SHAPrefixSize)
 	if err != nil {
-		return nil, errors.Join(fmt.Errorf("SortObject: generating sorted object path: %w", err), sortedCloser.Close())
+		return nil, fmt.Errorf("SortObject: generating sorted object path: %w", err)
 	}
-	if _, err := c.uploadAndIndexObject(ctx, sorted, sortedCloser, sortedPath, calculator); err != nil {
+	if _, err := c.uploadAndIndexObject(ctx, sorted, sortedPath, calculator); err != nil {
 		return nil, fmt.Errorf("SortObject: writing sorted object: %w", err)
 	}
 

@@ -604,7 +604,6 @@ func (b *Builder) CopyAndSort(ctx context.Context, obj *dataobj.Object) (*dataob
 // selects a full-object resort when any section differs from its tenant's
 // target layout.
 func (b *Builder) requiresResort(ctx context.Context, obj *dataobj.Object) (bool, error) {
-	var resort bool
 	for _, tenant := range obj.Tenants() {
 		found := false
 		want := TargetSortLayout(b.schemaLabelsFor(tenant))
@@ -617,14 +616,14 @@ func (b *Builder) requiresResort(ctx context.Context, obj *dataobj.Object) (bool
 				return false, fmt.Errorf("opening logs section for tenant %s: %w", tenant, err)
 			}
 			if !CompareSortLayout(opened.SortLayout(), want) {
-				resort = true
+				return true, nil
 			}
 		}
 		if !found {
 			return false, fmt.Errorf("no logs sections found for tenant: %v", tenant)
 		}
 	}
-	return resort, nil
+	return false, nil
 }
 
 func (b *Builder) observeObject(ctx context.Context, obj *dataobj.Object) error {

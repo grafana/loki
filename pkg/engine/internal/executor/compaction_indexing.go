@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io"
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
 	dataobjindex "github.com/grafana/loki/v3/pkg/dataobj/index"
@@ -17,19 +16,15 @@ type indexPathResolver func(context.Context, *dataobj.Object) (string, error)
 func (c *Context) uploadAndIndexObject(
 	ctx context.Context,
 	obj *dataobj.Object,
-	closer io.Closer,
 	uploadDestination string,
 	calc *dataobjindex.Calculator,
 ) (int64, error) {
 	size, err := c.uploadObject(ctx, c.dataObjectBucket(), uploadDestination, obj)
 	if err != nil {
-		return 0, errors.Join(fmt.Errorf("uploading %q: %w", uploadDestination, err), closer.Close())
+		return 0, fmt.Errorf("uploading %q: %w", uploadDestination, err)
 	}
 	if err := calc.Calculate(ctx, c.logger, obj, uploadDestination); err != nil {
-		return 0, errors.Join(fmt.Errorf("indexing %q: %w", uploadDestination, err), closer.Close())
-	}
-	if err := closer.Close(); err != nil {
-		return 0, fmt.Errorf("closing object %q: %w", uploadDestination, err)
+		return 0, fmt.Errorf("indexing %q: %w", uploadDestination, err)
 	}
 	return size, nil
 }
@@ -45,15 +40,16 @@ func (c *Context) flushAndUploadIndex(
 	if err != nil {
 		return "", fmt.Errorf("flushing index: %w", err)
 	}
+	defer func() {
+		_ = closer.Close()
+	}()
+
 	path, err := resolvePath(ctx, obj)
 	if err != nil {
 		return "", errors.Join(fmt.Errorf("generating index path: %w", err), closer.Close())
 	}
 	if _, err := c.uploadObject(ctx, c.bucket, path, obj); err != nil {
 		return "", errors.Join(fmt.Errorf("uploading index %q: %w", path, err), closer.Close())
-	}
-	if err := closer.Close(); err != nil {
-		return "", fmt.Errorf("closing index %q: %w", path, err)
 	}
 	return path, nil
 }

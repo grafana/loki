@@ -429,22 +429,22 @@ func (w *logObjectWriter) finalizeAndUpload(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("flushing logs builder: %w", err)
 	}
+	defer closer.Close()
 
 	pathReader, err := obj.Reader(ctx)
 	if err != nil {
-		return errors.Join(err, closer.Close())
+		return fmt.Errorf("getting object reader: %w", err)
 	}
-	path, hashErr := v2.CompactedLogObjectPath(w.node.Tenant, pathReader)
-	if cerr := pathReader.Close(); cerr != nil && hashErr == nil {
-		hashErr = cerr
-	}
-	if hashErr != nil {
-		return errors.Join(hashErr, closer.Close())
+	defer pathReader.Close()
+
+	path, err := v2.CompactedLogObjectPath(w.node.Tenant, pathReader)
+	if err != nil {
+		return fmt.Errorf("calculating object path: %w", err)
 	}
 
-	size, err := w.c.uploadAndIndexObject(ctx, obj, closer, path, w.calc)
+	size, err := w.c.uploadAndIndexObject(ctx, obj, path, w.calc)
 	if err != nil {
-		return err
+		return fmt.Errorf("uploading index object: %w", err)
 	}
 
 	level.Info(w.c.logger).Log(

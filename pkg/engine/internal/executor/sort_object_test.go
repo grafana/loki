@@ -21,6 +21,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/postings"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/stats"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
+	"github.com/grafana/loki/v3/pkg/dataobj/uploader"
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/scratch"
@@ -59,6 +60,7 @@ func TestDoSortObject_RewritesWholeObjectAndReindexes(t *testing.T) {
 	c.logsobjCfg.TargetObjectSize = 2048 // Output is larger, but SortObject must not split it.
 	c.logsobjCfg.TargetSectionSize = 1500
 	c.logsobjCfg.BufferSize = 700 // Force several independently sorted runs.
+	c.uploaderCfg = uploader.Config{SHAPrefixSize: 4}
 	artifacts, err := c.doSortObject(ctx, &physical.SortObject{
 		SourceObjectPath: sourcePath,
 		SortSchema:       targetSchema,
@@ -89,6 +91,7 @@ func TestDoSortObject_RewritesWholeObjectAndReindexes(t *testing.T) {
 		outputPath = path
 	}
 	require.NotEqual(t, sourcePath, outputPath)
+	require.Len(t, strings.Split(outputPath, "/")[1], c.uploaderCfg.SHAPrefixSize)
 	assertSortObjectIndexContents(t, statsRows, postingsRows, outputPath, tenants, expected)
 
 	output, err := dataobj.FromBucket(ctx, dataBucket, outputPath, 0)
