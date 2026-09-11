@@ -217,6 +217,7 @@ func TestTailQueryClosesReconnectedConnection(t *testing.T) {
 		t.Run(fmt.Sprintf("cancelDuringDial=%t", cancelDuringDial), func(t *testing.T) {
 			stopChan := make(chan os.Signal, 1)
 			connectionClosed := make(chan struct{})
+			closeResult := make(chan error, 1)
 			var requests atomic.Int32
 			upgrader := websocket.Upgrader{}
 			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -233,7 +234,8 @@ func TestTailQueryClosesReconnectedConnection(t *testing.T) {
 						return
 					}
 				}
-				_, _, _ = conn.ReadMessage()
+				_, _, err = conn.ReadMessage()
+				closeResult <- err
 				close(connectionClosed)
 			}))
 			t.Cleanup(server.Close)
@@ -245,7 +247,7 @@ func TestTailQueryClosesReconnectedConnection(t *testing.T) {
 			reconnectingClient := &reconnectingTailClient{
 				Client: c,
 				dial: func(ctx context.Context) (*websocket.Conn, error) {
-					next, err := c.LiveTailQueryConn("", 0, 0, time.Time{}, true)
+					next, err := c.LiveTailQueryConnContext(ctx, "", 0, 0, time.Time{}, true)
 					if err != nil {
 						return nil, err
 					}
@@ -268,6 +270,10 @@ func TestTailQueryClosesReconnectedConnection(t *testing.T) {
 			}
 			select {
 			case <-connectionClosed:
+				if !cancelDuringDial {
+					err := <-closeResult
+					require.True(t, websocket.IsCloseError(err, websocket.CloseNormalClosure), "expected normal close frame, got %v", err)
+				}
 			case <-time.After(5 * time.Second):
 				t.Fatal("reconnected websocket was not closed")
 			}
