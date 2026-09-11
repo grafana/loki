@@ -41,11 +41,8 @@ const (
 	WalRecordSeries RecordType = iota
 	WalRecordChunks
 	WalRecordSeriesWithFingerprint
-	// WalRecordChunksWithIngestedAt carries the same fields as WalRecordChunks
-	// plus each chunk's index.ChunkMeta.IngestedAt. It exists as a separate type
-	// because WalRecordChunks is decoded as a fixed-width stride until the buffer
-	// drains, so growing that layout would make older binaries misparse the
-	// records written by newer ones.
+	// WalRecordChunksWithIngestedAt extends WalRecordChunks
+	// with each chunk's index.ChunkMeta.IngestedAt
 	WalRecordChunksWithIngestedAt
 )
 
@@ -95,9 +92,7 @@ func (r *WALRecord) encodeSeriesWithFingerprint(b []byte) []byte {
 // encodeChunks encodes the record's chunk metas, picking the record type from
 // the data: records holding at least one non-zero IngestedAt use
 // WalRecordChunksWithIngestedAt, all others keep the original WalRecordChunks
-// layout. Only chunks of backfilled streams under schema v14 carry IngestedAt
-// (see Ingester.maybeSetIngestedAt), so every other deployment keeps writing
-// WALs that a binary predating the new record type can still recover.
+// layout.
 func (r *WALRecord) encodeChunks(b []byte) []byte {
 	withIngestedAt := hasIngestedAt(r.Chks.Chks)
 
