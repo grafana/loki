@@ -187,15 +187,30 @@ func extractConfigPaths(cfg any, paths []string) (map[string]any, error) {
 	if err != nil {
 		return nil, err
 	}
-	result := make(map[string]any, len(paths))
+	result := make(map[string]any)
 	for _, path := range paths {
 		val, ok := lookupConfigPath(cfgMap, path)
 		if !ok {
 			return nil, fmt.Errorf("%w: %q", errConfigFieldNotFound, path)
 		}
-		result[path] = val
+		setNestedValue(result, strings.Split(path, "."), val)
 	}
 	return result, nil
+}
+
+// setNestedValue writes val into node at the given path segments, reusing (rather than replacing)
+// any intermediate map already created there by an earlier path, so paths sharing a common ancestor
+// merge into one tree instead of clobbering each other.
+func setNestedValue(node map[string]any, segments []string, val any) {
+	for _, segment := range segments[:len(segments)-1] {
+		next, ok := node[segment].(map[string]any)
+		if !ok {
+			next = make(map[string]any)
+			node[segment] = next
+		}
+		node = next
+	}
+	node[segments[len(segments)-1]] = val
 }
 
 func lookupConfigPath(m map[string]interface{}, path string) (any, bool) {

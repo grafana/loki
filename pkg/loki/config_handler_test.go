@@ -154,7 +154,7 @@ func TestConfigQueryHandler(t *testing.T) {
 
 		body, err := io.ReadAll(resp.Body)
 		assert.NoError(t, err)
-		assert.Equal(t, "my_nested_struct.my_string: string1\n", string(body))
+		assert.Equal(t, "my_nested_struct:\n    my_string: string1\n", string(body))
 	})
 
 	t.Run("multiple paths in one request", func(t *testing.T) {
@@ -169,6 +169,20 @@ func TestConfigQueryHandler(t *testing.T) {
 		body, err := io.ReadAll(resp.Body)
 		assert.NoError(t, err)
 		assert.Equal(t, "my_float: 6.66\nmy_int: 666\n", string(body))
+	})
+
+	t.Run("paths sharing a parent are merged, not overwritten", func(t *testing.T) {
+		req := httptest.NewRequest("GET", "http://test.com/config?q=my_nested_struct.my_string&q=my_nested_struct.my_bool", nil)
+		w := httptest.NewRecorder()
+
+		configHandler(cfg, cfg)(w, req)
+		resp := w.Result()
+		require.Equal(t, 200, resp.StatusCode)
+		assert.ElementsMatch(t, []string{"my_nested_struct.my_string", "my_nested_struct.my_bool"}, resp.Header.Values(ConfigQueryHandledHeader))
+
+		body, err := io.ReadAll(resp.Body)
+		assert.NoError(t, err)
+		assert.Equal(t, "my_nested_struct:\n    my_bool: false\n    my_string: string1\n", string(body))
 	})
 
 	t.Run("unknown path returns 400", func(t *testing.T) {
