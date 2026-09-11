@@ -519,6 +519,9 @@ func (m *multiRangeDownloaderManager) getSpanCtx() context.Context {
 }
 
 func (m *multiRangeDownloaderManager) runCallback(origOffset, numBytes int64, err error, cb func(int64, int64, error)) {
+	if cb == nil {
+		return
+	}
 	m.callbackWg.Add(1)
 	go func() {
 		defer m.callbackWg.Done()
