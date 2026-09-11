@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"net/url"
 	"reflect"
 	"regexp"
 	"strings"
@@ -117,8 +118,17 @@ func diffConfig(defaultConfig, actualConfig map[string]interface{}) (map[string]
 
 func configHandler(actualCfg any, defaultCfg any) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		// r.URL.Query() silently discards a parse error (e.g. a stray `;` in the query string,
+		// rejected as a separator since Go 1.17) and returns an empty Values instead — which would
+		// make a malformed q fall through to the unfiltered, unmarked full-config response below.
+		query, err := url.ParseQuery(r.URL.RawQuery)
+		if err != nil {
+			http.Error(w, fmt.Sprintf("invalid query string: %v", err), http.StatusBadRequest)
+			return
+		}
+
 		var output any
-		switch r.URL.Query().Get("mode") {
+		switch query.Get("mode") {
 		case "diff":
 			defaultCfgObj, err := yamlMarshalUnmarshal(defaultCfg)
 			if err != nil {
@@ -146,7 +156,7 @@ func configHandler(actualCfg any, defaultCfg any) http.HandlerFunc {
 		}
 
 		// Return only the requested fields
-		if paths := r.URL.Query()["q"]; len(paths) > 0 {
+		if paths := query["q"]; len(paths) > 0 {
 			if len(paths) > maxConfigQueryPaths {
 				http.Error(w, fmt.Sprintf("too many q parameters: got %d, max %d", len(paths), maxConfigQueryPaths), http.StatusBadRequest)
 				return

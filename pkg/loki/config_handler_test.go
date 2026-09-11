@@ -185,6 +185,16 @@ func TestConfigQueryHandler(t *testing.T) {
 		assert.Equal(t, "my_nested_struct:\n    my_bool: false\n    my_string: string1\n", string(body))
 	})
 
+	t.Run("malformed query string returns 400, not the unfiltered config", func(t *testing.T) {
+		req := httptest.NewRequest("GET", "http://test.com/config?q=my_int;unexpected", nil)
+		w := httptest.NewRecorder()
+
+		configHandler(cfg, cfg)(w, req)
+		resp := w.Result()
+		assert.Equal(t, 400, resp.StatusCode)
+		assert.Empty(t, resp.Header.Values(ConfigQueryHandledHeader))
+	})
+
 	t.Run("unknown path returns 400", func(t *testing.T) {
 		req := httptest.NewRequest("GET", "http://test.com/config?q=does.not.exist", nil)
 		w := httptest.NewRecorder()
