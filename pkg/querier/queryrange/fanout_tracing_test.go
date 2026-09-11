@@ -400,7 +400,7 @@ func TestFanoutTracingAggregatesStatsAndPreservesLogTraceID(t *testing.T) {
 	fanout.addRequest(3*time.Millisecond, context.Canceled, nil)
 
 	var output bytes.Buffer
-	log.Logger(util_log.WithContext(suppressed, log.NewLogfmtLogger(&output))).Log("msg", "correlated")
+	util_log.WithContext(suppressed, log.NewLogfmtLogger(&output)).Log("msg", "correlated")
 	require.Contains(t, output.String(), root.SpanContext().TraceID().String())
 
 	fanout.finish()
