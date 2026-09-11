@@ -1209,9 +1209,6 @@ func groupHintEnvelopes(ranges []hintprovider.HintTimeRange, intervalStart, inte
 	if len(clipped) == 0 {
 		return nil
 	}
-	if maxGroups < 1 {
-		maxGroups = 1
-	}
 
 	n := len(clipped)
 	cutCount := maxGroups - 1
@@ -1226,9 +1223,6 @@ func groupHintEnvelopes(ranges []hintprovider.HintTimeRange, intervalStart, inte
 	ranked := make([]rankedGap, 0, n-1)
 	for i := 0; i < n-1; i++ {
 		d := clipped[i+1].Start.Sub(clipped[i].End)
-		if d < 0 {
-			d = 0
-		}
 		ranked = append(ranked, rankedGap{after: i, d: d})
 	}
 	sort.Slice(ranked, func(i, j int) bool {
