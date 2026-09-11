@@ -4,9 +4,9 @@
 // both. It's been battle-tested in several large projects and is
 // production-ready.
 //
-// A tutorial is available at https://github.com/charmbracelet/bubbletea/tree/master/tutorials
+// A tutorial is available at https://github.com/charmbracelet/bubbletea/tree/main/tutorials
 //
-// Example programs can be found at https://github.com/charmbracelet/bubbletea/tree/master/examples
+// Example programs can be found at https://github.com/charmbracelet/bubbletea/tree/main/examples
 package tea
 
 import (
@@ -317,15 +317,23 @@ const (
 	ProgressBarWarning
 )
 
-// String return a human-readable value for the given [ProgressBarState].
+// String returns a human-readable name for the given [ProgressBarState].
+// Values outside the known range return "Unknown".
 func (s ProgressBarState) String() string {
-	return [...]string{
-		"None",
-		"Default",
-		"Error",
-		"Indeterminate",
-		"Warning",
-	}[s]
+	switch s {
+	case ProgressBarNone:
+		return "None"
+	case ProgressBarDefault:
+		return "Default"
+	case ProgressBarError:
+		return "Error"
+	case ProgressBarIndeterminate:
+		return "Indeterminate"
+	case ProgressBarWarning:
+		return "Warning"
+	default:
+		return "Unknown"
+	}
 }
 
 // ProgressBar represents the terminal progress bar.
@@ -336,7 +344,7 @@ func (s ProgressBarState) String() string {
 type ProgressBar struct {
 	// State is the current state of the progress bar. It can be one of
 	// [ProgressBarNone], [ProgressBarDefault], [ProgressBarError],
-	// [ProgressBarIndeterminate], and [ProgressBarWarn].
+	// [ProgressBarIndeterminate], and [ProgressBarWarning].
 	State ProgressBarState
 	// Value is the current value of the progress bar. It should be between
 	// 0 and 100.
@@ -1065,6 +1073,7 @@ func (p *Program) Run() (returnModel Model, returnErr error) {
 				p.height,
 			)
 			r.setLogger(p.logger)
+			r.setNoInput(p.disableInput)
 			// XXX: This breaks many things especially when we want the output
 			// to be compatible with terminals that are not necessary a TTY.
 			// This was originally done to work around a Wish emulated-pty

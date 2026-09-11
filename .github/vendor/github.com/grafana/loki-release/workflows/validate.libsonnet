@@ -217,7 +217,7 @@ local validationJob = _validationJob();
                step.new('verify checks passed')
                + step.withRun(|||
                  echo "Some checks have failed!"
-                 exit 1,
+                 exit 1
                |||),
              ]),
 

@@ -169,6 +169,25 @@ func (s *SetLookupState[T]) Init(opts SetLookupOptions) error {
 	if memoType == arrow.EXTENSION {
 		memoType = s.ValueSetType.(arrow.ExtensionType).StorageType().ID()
 	}
+	// FixedSizeBinary with byte-widths 1/2/4/8 takes the numeric fast-path
+	// in CreateSetLookupState (SetLookupState[uintN] + visitNumeric[uintN]),
+	// so the lookup table must be the matching TypedMemoTable[uintN], not
+	// the BinaryMemoTable that newMemoTable would otherwise return for
+	// FIXED_SIZE_BINARY.
+	if memoType == arrow.FIXED_SIZE_BINARY {
+		if fsb, ok := s.ValueSetType.(*arrow.FixedSizeBinaryType); ok {
+			switch fsb.ByteWidth {
+			case 1:
+				memoType = arrow.UINT8
+			case 2:
+				memoType = arrow.UINT16
+			case 4:
+				memoType = arrow.UINT32
+			case 8:
+				memoType = arrow.UINT64
+			}
+		}
+	}
 	lookup, err := newMemoTable(s.Alloc, memoType)
 	if err != nil {
 		return err

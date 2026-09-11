@@ -33,30 +33,75 @@ const (
 	estimatedSizeOfByteArrayValues = 20
 )
 
+// The make* functions below use a single unsigned comparison to bounds-check the
+// index (uint(i) > max catches both i < 0 and i > max), and delegate the failure
+// to a dedicated out-of-line panic helper. This keeps their inline cost low: the
+// previous implementation inlined fmt.Errorf on the failure path, which inflated
+// every caller (Value.Level cost 192) and prevented inlining. Keeping the error
+// construction out of line lets these helpers inline and lets small callers such
+// as Value.WithRepetitionLevel dead-code-eliminate the check when the argument is
+// provably in range.
+
 func makeRepetitionLevel(i int) byte {
-	checkIndexRange("repetition level", i, 0, MaxRepetitionLevel)
+	if uint(i) > MaxRepetitionLevel {
+		panicRepetitionLevelOutOfRange(i)
+	}
 	return byte(i)
 }
 
 func makeDefinitionLevel(i int) byte {
-	checkIndexRange("definition level", i, 0, MaxDefinitionLevel)
+	if uint(i) > MaxDefinitionLevel {
+		panicDefinitionLevelOutOfRange(i)
+	}
 	return byte(i)
 }
 
 func makeColumnIndex(i int) uint16 {
-	checkIndexRange("column index", i, 0, MaxColumnIndex)
+	if uint(i) > MaxColumnIndex {
+		panicColumnIndexOutOfRange(i)
+	}
 	return uint16(i)
 }
 
 func makeNumValues(i int) int32 {
-	checkIndexRange("number of values", i, 0, math.MaxInt32)
+	if uint(i) > math.MaxInt32 {
+		panicNumValuesOutOfRange(i)
+	}
 	return int32(i)
 }
 
-func checkIndexRange(typ string, i, min, max int) {
-	if i < min || i > max {
-		panic(errIndexOutOfRange(typ, i, min, max))
+// The panic helpers are kept out of line (along with the error construction) so
+// the make* functions above stay cheap to inline.
+
+func panicRepetitionLevelOutOfRange(i int) {
+	panic(errIndexOutOfRange("repetition level", i, 0, MaxRepetitionLevel))
+}
+
+func panicDefinitionLevelOutOfRange(i int) {
+	panic(errIndexOutOfRange("definition level", i, 0, MaxDefinitionLevel))
+}
+
+func panicColumnIndexOutOfRange(i int) {
+	panic(errIndexOutOfRange("column index", i, 0, MaxColumnIndex))
+}
+
+func panicNumValuesOutOfRange(i int) {
+	panic(errIndexOutOfRange("number of values", i, 0, math.MaxInt32))
+}
+
+// panicLevelOutOfRange performs the fine-grained range check for Value.Level's
+// combined fast-path test. It is only called when at least one of the three
+// arguments is out of range, so it can afford to recompute which one to produce
+// a precise error message. Keeping it out of line lets Value.Level reduce its
+// hot path to a single combined comparison and stay cheap enough to inline.
+func panicLevelOutOfRange(repetitionLevel, definitionLevel, columnIndex int) {
+	if uint(repetitionLevel) > MaxRepetitionLevel {
+		panicRepetitionLevelOutOfRange(repetitionLevel)
 	}
+	if uint(definitionLevel) > MaxDefinitionLevel {
+		panicDefinitionLevelOutOfRange(definitionLevel)
+	}
+	panicColumnIndexOutOfRange(columnIndex)
 }
 
 func errIndexOutOfRange(typ string, i, min, max int) error {

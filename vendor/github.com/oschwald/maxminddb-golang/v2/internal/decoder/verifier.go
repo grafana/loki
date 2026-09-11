@@ -2,9 +2,21 @@ package decoder
 
 import (
 	"reflect"
+	"unicode/utf8"
 
 	"github.com/oschwald/maxminddb-golang/v2/internal/mmdberrors"
 )
+
+// VerifyMetadata validates the complete metadata map under one decoding budget.
+// Pointer targets may follow the map and are not search-tree data records.
+func VerifyMetadata(buffer []byte) error {
+	d := NewWithoutStringCache(buffer)
+	var metadata any
+	if err := d.DecodeWithBudget(0, &metadata); err != nil {
+		return err
+	}
+	return validateUTF8(metadata)
+}
 
 // VerifyDataSection verifies the data section against the provided
 // offsets from the tree.
@@ -15,11 +27,19 @@ func (d *ReflectionDecoder) VerifyDataSection(offsets map[uint]bool) error {
 	bufferLen := uint(len(d.buffer))
 	for offset < bufferLen {
 		var data any
-		rv := reflect.ValueOf(&data)
-		newOffset, err := d.decode(offset, rv, 0)
+		rv := addressableValue{Value: reflect.ValueOf(&data).Elem()}
+		bounded := newBudgetedDecoder(d)
+		newOffset, err := bounded.decodeValue(offset, rv, 0)
 		if err != nil {
 			return mmdberrors.NewInvalidDatabaseError(
 				"received decoding error (%v) at offset of %v",
+				err,
+				offset,
+			)
+		}
+		if err := validateUTF8(data); err != nil {
+			return mmdberrors.NewInvalidDatabaseError(
+				"received validation error (%v) at offset of %v",
 				err,
 				offset,
 			)
@@ -60,6 +80,33 @@ func (d *ReflectionDecoder) VerifyDataSection(offsets map[uint]bool) error {
 			len(offsets),
 			pointerCount,
 		)
+	}
+	return nil
+}
+
+func validateUTF8(data any) error {
+	switch value := data.(type) {
+	case string:
+		if !utf8.ValidString(value) {
+			return mmdberrors.NewInvalidDatabaseError("invalid UTF-8 string")
+		}
+	case map[string]any:
+		for key, item := range value {
+			if !utf8.ValidString(key) {
+				return mmdberrors.NewInvalidDatabaseError("invalid UTF-8 map key")
+			}
+			if err := validateUTF8(item); err != nil {
+				return err
+			}
+		}
+	case []any:
+		for _, item := range value {
+			if err := validateUTF8(item); err != nil {
+				return err
+			}
+		}
+	default:
+		// Non-string scalar values require no UTF-8 validation.
 	}
 	return nil
 }

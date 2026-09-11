@@ -76,6 +76,20 @@ func Xsqlite3_value_text16(tls *libc.TLS, pVal uintptr) (r uintptr) {
 
 const __BYTE_ORDER__ = 1234
 
+func _freeCursorWithCache(tls *libc.TLS, p uintptr, pCx uintptr) {
+	var pCache uintptr
+	_ = pCache
+	pCache = (*TVdbeCursor)(unsafe.Pointer(pCx)).FpCache
+	libc.SetBitFieldPtr8Uint32(pCx+8, libc.Uint32FromInt32(0), 4, 0x10)
+	(*TVdbeCursor)(unsafe.Pointer(pCx)).FpCache = uintptr(0)
+	if (*TVdbeTxtBlbCache)(unsafe.Pointer(pCache)).FpCValue != 0 {
+		_sqlite3RCStrUnref(tls, (*TVdbeTxtBlbCache)(unsafe.Pointer(pCache)).FpCValue)
+		(*TVdbeTxtBlbCache)(unsafe.Pointer(pCache)).FpCValue = uintptr(0)
+	}
+	_sqlite3DbFree(tls, (*TVdbe)(unsafe.Pointer(p)).Fdb, pCache)
+	_sqlite3VdbeFreeCursorNN(tls, p, pCx)
+}
+
 func _readCoord(tls *libc.TLS, p uintptr, pCoord uintptr) {
 	*(*Tu32)(unsafe.Pointer(pCoord)) = uint32(**(**Tu8)(__ccgo_up(p)))<<libc.Int32FromInt32(24) + uint32(**(**Tu8)(__ccgo_up(p + 1)))<<libc.Int32FromInt32(16) + uint32(**(**Tu8)(__ccgo_up(p + 2)))<<libc.Int32FromInt32(8) + uint32(**(**Tu8)(__ccgo_up(p + 3)))<<libc.Int32FromInt32(0)
 }
@@ -85,6 +99,28 @@ func _sqlite3Put4byte(tls *libc.TLS, p uintptr, v Tu32) {
 	**(**uint8)(__ccgo_up(p + 1)) = uint8(v >> libc.Int32FromInt32(16))
 	**(**uint8)(__ccgo_up(p + 2)) = uint8(v >> libc.Int32FromInt32(8))
 	**(**uint8)(__ccgo_up(p + 3)) = uint8(v)
+}
+
+// C documentation
+//
+//	/*
+//	**    unixepoch( TIMESTRING, MOD, MOD, ...)
+//	**
+//	** Return the number of seconds (including fractional seconds) since
+//	** the unix epoch of 1970-01-01 00:00:00 GMT.
+//	*/
+func _unixepochFunc(tls *libc.TLS, context uintptr, argc int32, argv uintptr) {
+	bp := tls.Alloc(48)
+	defer tls.Free(48)
+	var _ /* x at bp+0 */ TDateTime
+	if _isDate(tls, context, argc, argv, bp) == 0 {
+		_computeJD(tls, bp)
+		if int32(uint32(*(*uint8)(unsafe.Pointer(bp + 44))&0x4>>2)) != 0 {
+			Xsqlite3_result_double(tls, context, float64((**(**TDateTime)(__ccgo_up(bp))).FiJD-libc.Int64FromInt32(21086676)*libc.Int64FromInt32(10000000))/float64(1000))
+		} else {
+			Xsqlite3_result_int64(tls, context, (**(**TDateTime)(__ccgo_up(bp))).FiJD/int64(1000)-libc.Int64FromInt32(21086676)*libc.Int64FromInt32(10000))
+		}
+	}
 }
 
 func _writeCoord(tls *libc.TLS, p uintptr, pCoord uintptr) (r int32) {

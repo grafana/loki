@@ -282,7 +282,8 @@ func concatDictIndices(mem memory.Allocator, data []arrow.ArrayData, idxType arr
 						return
 					}
 				} else {
-					memory.Set(outData[pos:pos+(int(run.Len)*idxWidth)], 0x00)
+					bytePos := pos * idxWidth
+					memory.Set(outData[bytePos:bytePos+(int(run.Len)*idxWidth)], 0x00)
 				}
 
 				pos += int(run.Len)

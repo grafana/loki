@@ -99,7 +99,7 @@ func (m *genMono) do(hname string, fnames, tnames []string, fnameInfx string, bu
 	defer f.Close()
 
 	var s genMonoStrBuilder
-	s.s(`//go:build !notmono && !codec.notmono `).s(buildTagsSfx).s(`
+	s.s(`//go:build !notmono && !codec.notmono`).s(buildTagsSfx).s(`
 
 // Copyright (c) 2012-2020 Ugorji Nwoke. All rights reserved.
 // Use of this source code is governed by a MIT license found in the LICENSE file.

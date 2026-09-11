@@ -3,6 +3,7 @@ package magic
 import (
 	"bytes"
 	"encoding/binary"
+	"slices"
 )
 
 // Woff matches a Web Open Font Format file.
@@ -29,12 +30,13 @@ func Ttf(raw []byte, limit uint32) bool {
 	if !bytes.HasPrefix(raw, []byte{0x00, 0x01, 0x00, 0x00}) {
 		return false
 	}
+	// We cannot rely on the first 4 bytes because of false-positives.
+	// We have to digg deeper into the SFNT tables.
 	return hasSFNTTable(raw)
 }
 
 func hasSFNTTable(raw []byte) bool {
-	// 49 possible tables as explained below
-	if len(raw) < 16 || binary.BigEndian.Uint16(raw[4:]) >= 49 {
+	if len(raw) < 16 {
 		return false
 	}
 
@@ -87,14 +89,45 @@ func hasSFNTTable(raw []byte) bool {
 		0x6e616d65, // "name"
 		0x6f706264, // "opbd"
 		0x4f532f32, // "OS/2"
+		// The above tables come from the original Apple TTF specification,
+		// but the later Microsoft specification has additional tables.
+		// Common tables: https://learn.microsoft.com/en-us/typography/opentype/spec/otvarcommonformats
+		// Layout tables: https://learn.microsoft.com/en-us/typography/opentype/spec/chapter2
+		// Even if the Microsoft specification says OpenType, the tables are
+		// valid for TrueType as well.
+		0x47535542, // "GSUB"
+		0x47504f53, // "GPOS"
+		0x42415345, // "BASE"
+		0x4a535446, // "JSTF"
+		0x47444546, // "GDEF"
+		0x4d415448, // "MATH"
+		0x43424454, // "CBDT"
+		0x43424c43, // "CBLC"
+		0x43464620, // "CFF "
+		0x43464632, // "CFF2"
+		0x434f4c52, // "COLR"
+		0x4350414c, // "CPAL"
+		0x44534947, // "DSIG"
+		0x45424454, // "EBDT"
+		0x45424c43, // "EBLC"
+		0x48564152, // "HVAR"
+		0x4c545348, // "LTSH"
+		0x4d455247, // "MERG"
+		0x4d564152, // "MVAR"
+		0x50434c54, // "PCLT"
+		0x706f7374, // "post"
+		0x70726570, // "prep"
+		0x73626978, // "sbix"
+		0x53544154, // "STAT"
+		0x53564720, // "SVG "
+		0x56444d58, // "VDMX"
+		0x76686561, // "vhea"
+		0x766d7478, // "vmtx"
+		0x564f5247, // "VORG"
+		0x56564152, // "VVAR"
 	}
 	ourTable := binary.BigEndian.Uint32(raw[12:16])
-	for _, t := range possibleTables {
-		if ourTable == t {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(possibleTables, ourTable)
 }
 
 // Eot matches an Embedded OpenType font file.

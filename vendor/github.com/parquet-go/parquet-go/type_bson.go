@@ -14,7 +14,7 @@ import (
 func BSON() Node { return Leaf(&bsonType{}) }
 
 var bsonLogicalType = format.LogicalType{
-	Bson: new(format.BsonType),
+	Value: new(format.BsonType),
 }
 
 type bsonType format.BsonType

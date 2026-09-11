@@ -2,6 +2,7 @@ package compression
 
 import (
 	"fmt"
+	"slices"
 	"strings"
 )
 
@@ -60,6 +61,16 @@ func (e Codec) String() string {
 	default:
 		return "unknown"
 	}
+}
+
+// IsSupported reports whether the codec is one this package can read and write.
+func (e Codec) IsSupported() bool {
+	return slices.Contains(supportedCodecs, e)
+}
+
+// Codecs returns the list of supported codecs.
+func Codecs() []Codec {
+	return slices.Clone(supportedCodecs)
 }
 
 // ParseCodec parses a chunk encoding (compression codec) by its name.

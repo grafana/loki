@@ -295,13 +295,20 @@ func NewCharSetRuntime(buf string) CharSet {
 // CharIn returns true if the rune is in our character set (either ranges or categories).
 // It handles negations and subtracted sub-charsets.
 func (c CharSet) CharIn(ch rune) bool {
+	return c.Contains(ch)
+}
+
+// Contains reports whether ch is in the character set, including negation and
+// subtraction. It is equivalent to CharIn but avoids copying the set on each
+// call when testing many runes.
+func (c *CharSet) Contains(ch rune) bool {
 	if ch >= 0 && ch < 128 && c.ascii != nil {
 		return (c.ascii.bits[ch/64] & (1 << (uint(ch) % 64))) != 0
 	}
 	return c.charInSlow(ch)
 }
 
-func (c CharSet) charInSlow(ch rune) bool {
+func (c *CharSet) charInSlow(ch rune) bool {
 	val := false
 	// in s && !s.subtracted
 
@@ -346,7 +353,7 @@ func (c CharSet) charInSlow(ch rune) bool {
 
 	// get subtracted recurse
 	if val && c.sub != nil {
-		val = !c.sub.CharIn(ch)
+		val = !c.sub.Contains(ch)
 	}
 
 	//log.Printf("Char '%v' in %v == %v", string(ch), c.String(), val)
@@ -688,11 +695,6 @@ func canonicalUnicodeCatName(catName string) (string, bool) {
 	return "", false
 }
 
-func isValidUnicodeCat(catName string) bool {
-	_, ok := canonicalUnicodeCatName(catName)
-	return ok
-}
-
 func (c *CharSet) addCategory(categoryName string, negate, caseInsensitive bool) {
 	var ok bool
 	categoryName, ok = canonicalUnicodeCatName(categoryName)
@@ -719,28 +721,19 @@ func (c *CharSet) addCaseEquivalences() {
 	if c.anything {
 		return
 	}
-	for i := 0; i < len(c.ranges); i++ {
+	rangeCount := len(c.ranges)
+	for i := 0; i < rangeCount; i++ {
 		r := c.ranges[i]
-		if r.First == r.Last {
-			equiv := tryFindCaseEquivalences(r.First)
+		// For a single range that's in the set, adds any additional ranges
+		// necessary to ensure that lowercase equivalents are also included.
+		for i := r.First; i <= r.Last; i++ {
+			equiv := tryFindCaseEquivalences(i)
 			for _, eq := range equiv {
-				c.addChar(eq)
+				c.ranges = append(c.ranges, SingleRange{First: eq, Last: eq})
 			}
-		} else {
-			c.addCaseEquivalenceRange(r.First, r.Last)
 		}
 	}
-}
-
-// For a single range that's in the set, adds any additional ranges
-// necessary to ensure that lowercase equivalents are also included.
-func (c *CharSet) addCaseEquivalenceRange(chMin, chMax rune) {
-	for i := chMin; i <= chMax; i++ {
-		equiv := tryFindCaseEquivalences(i)
-		for _, eq := range equiv {
-			c.addChar(eq)
-		}
-	}
+	c.canonicalize()
 }
 
 // Performs a fast lookup which determines if a character is involved in case conversion, as well as
@@ -1141,7 +1134,7 @@ func (c *CharSet) addLowercaseRange(chMin, chMax rune) {
 		}
 
 		if chMinT < chMin || chMaxT > chMax {
-			c.addRange(chMinT, chMaxT)
+			c.ranges = append(c.ranges, SingleRange{First: chMinT, Last: chMaxT})
 		}
 	}
 }

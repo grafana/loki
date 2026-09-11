@@ -7,7 +7,7 @@ weight:
 
 # Ensure query fairness within tenants using actors
 
-Loki uses [shuffle sharding](../shuffle-sharding/)
+Loki uses [shuffle sharding](https://grafana.com/docs/loki/<LOKI_VERSION>/operations/shuffle-sharding/)
 to minimize impact across tenants in case of querier failures or misbehaving
 neighboring tenants.
 
@@ -20,7 +20,7 @@ In that case, as an operator, you would also want to ensure some sort of query
 fairness across these actors within the tenants. An actor could be a Grafana user,
 a CLI user, or an application accessing the API. To achieve that, Loki
 introduced hierarchical scheduler queues in version 2.9 based on
-[LID 0003: Query fairness across users within tenants](../../community/lids/0003-queryfairnessinscheduler/)
+[LID 0003: Query fairness across users within tenants](https://grafana.com/docs/loki/<LOKI_VERSION>/community/lids/0003-queryfairnessinscheduler/)
 and they are enabled by default.
 
 ## What are hierarchical queues and how do they work
@@ -75,9 +75,12 @@ Since the scheduler chooses the next task for a tenant in a round-robin manner,
 both actors (in our case human users) get their 50% share when the scheduler
 dequeues a sub-query to send to the querier.
 
-With N actors, each actor gets 1/Nth of their share. In our example with two
-users, even when there are sub-queries in the local queue of the tenant, the
-local queue gets 1/3 and each sub-queue gets 1/3 of their share.
+The tenant's local queue takes part in the same round-robin rotation as the
+sub-queues, so with N actor sub-queues and sub-queries also waiting in the
+tenant's local queue, each of the N+1 queues gets 1/(N+1) of the share. In our
+example with two users, the local queue gets 1/3 and each sub-queue gets 1/3
+of their share. A sub-queue drops out of the rotation once it drains, so the
+remaining queues' shares increase as actors go idle.
 
 As the explained implementation and the header name already suggest, it is
 possible to enqueue queries several levels deep. To do so, you can construct a
@@ -107,6 +110,24 @@ It is advised to keep the levels at a reasonable level (ideally 1 to 3 levels),
 both for performance reasons as well as for the understanding of how query
 fairness is ensured across all sub-queues.
 
+{{< admonition type="note" >}}
+`max_queue_hierarchy_levels` counts only the `|`-separated segments in the
+`X-Loki-Actor-Path` header value, not the tenant level. With the default of
+`3`, a header value can have up to three segments, for example
+`users|team|joe`.
+
+If a request's `X-Loki-Actor-Path` has more segments than
+`max_queue_hierarchy_levels` allows, Loki doesn't truncate it or fall back to
+the tenant queue. The scheduler rejects the query, and Loki returns an HTTP
+500 error whose message names both the header and the
+`-query-scheduler.max-queue-hierarchy-levels` setting. Only that query fails;
+other queries from the same client are not affected.
+
+Setting `max_queue_hierarchy_levels` to `0` disables hierarchical queues.
+The scheduler then ignores the `X-Loki-Actor-Path` header and enqueues all of
+a tenant's sub-queries in the tenant's local queue.
+{{< /admonition >}}
+
 ## Enforcing headers
 
 In the examples above the client that invoked the query directly against Loki also provided the
@@ -119,3 +140,12 @@ with the same tenant, but with a different additional HTTP header
 
 Alternatively, if you have a proxy for authentication in front of Loki, you can
 pass the (hashed) user from the authentication as downstream header to Loki.
+
+{{< admonition type="note" >}}
+Loki has an experimental next-generation query engine for querying data
+objects (dataobj/columnar storage), enabled with `query_engine.enable: true`.
+That engine also reads `X-Loki-Actor-Path` and uses it, together with the
+tenant, to schedule its own internal tasks fairly. However, that fairness
+mechanism is separate from the hierarchical queues described on this page, and
+`-query-scheduler.max-queue-hierarchy-levels` does not apply to it.
+{{< /admonition >}}

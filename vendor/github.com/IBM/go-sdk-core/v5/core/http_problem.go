@@ -68,7 +68,7 @@ func (e *HTTPProblem) getErrorCode() string {
 	// If the error response was a standard JSON body, the result will
 	// be a map and we can do a decent job of guessing the code.
 	if e.Response.Result != nil {
-		if resultMap, ok := e.Response.Result.(map[string]interface{}); ok {
+		if resultMap, ok := e.Response.Result.(map[string]any); ok {
 			return getErrorCode(resultMap)
 		}
 	}

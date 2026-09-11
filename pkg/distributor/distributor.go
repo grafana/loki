@@ -51,6 +51,7 @@ import (
 	limits_frontend "github.com/grafana/loki/v3/pkg/limits/frontend"
 	limits_frontend_client "github.com/grafana/loki/v3/pkg/limits/frontend/client"
 	"github.com/grafana/loki/v3/pkg/loghttp/push"
+	"github.com/grafana/loki/v3/pkg/loghttp/push/otlpattrs"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	"github.com/grafana/loki/v3/pkg/runtime"
@@ -91,9 +92,7 @@ type Config struct {
 	PushWorkerCount int        `yaml:"push_worker_count"`
 
 	// Request parser
-	MaxRecvMsgSize      int   `yaml:"max_recv_msg_size"`
-	MaxDecompressedSize int64 `yaml:"max_decompressed_size"`
-	MaxInflightBytes    int   `yaml:"max_inflight_bytes"`
+	MaxInflightBytes int `yaml:"max_inflight_bytes"`
 
 	// For testing.
 	factory ring_client.PoolFactory `yaml:"-"`
@@ -103,6 +102,10 @@ type Config struct {
 
 	// WriteFailuresLoggingCfg customizes write failures logging behavior.
 	WriteFailuresLogging writefailures.Cfg `yaml:"write_failures_logging" doc:"description=Customize the logging of write failures."`
+
+	// OTLPAttributeLogging configures the sampled logging of OTLP attribute expansion
+	// which is enabled per tenant with the log_otlp_attribute_expansion runtime config.
+	OTLPAttributeLogging otlpattrs.Cfg `yaml:"otlp_attribute_logging" doc:"description=Customize the logging of OTLP attribute expansion."`
 
 	OTLPConfig push.GlobalOTLPConfig `yaml:"otlp_config"`
 
@@ -128,8 +131,7 @@ func (cfg *Config) RegisterFlags(fs *flag.FlagSet) {
 	cfg.CircuitBreaker.RegisterFlags(fs)
 	cfg.RateStore.RegisterFlagsWithPrefix("distributor.rate-store", fs)
 	cfg.WriteFailuresLogging.RegisterFlagsWithPrefix("distributor.write-failures-logging", fs)
-	fs.IntVar(&cfg.MaxRecvMsgSize, "distributor.max-recv-msg-size", 100<<20, "The maximum size of a received message.")
-	fs.Int64Var(&cfg.MaxDecompressedSize, "distributor.max-decompressed-size", 5000<<20, "The maximum size of a decompressed message. Defaults to 50x max-recv-msg-size.")
+	cfg.OTLPAttributeLogging.RegisterFlagsWithPrefix("distributor.otlp-attribute-logging", fs)
 	fs.IntVar(&cfg.MaxInflightBytes, "distributor.max-inflight-bytes", 0, "The maximum number of inflight bytes at a time. 0 means disabled.")
 	fs.IntVar(&cfg.PushWorkerCount, "distributor.push-worker-count", 256, "Number of workers to push batches to ingesters.")
 	fs.BoolVar(&cfg.KafkaEnabled, "distributor.kafka-writes-enabled", false, "Enable writes to Kafka during Push requests.")
@@ -147,10 +149,6 @@ func (cfg *Config) Validate() error {
 	}
 	if err := cfg.CircuitBreaker.Validate(); err != nil {
 		return err
-	}
-	// Set default maxDecompressedSize if not configured (50x maxRecvMsgSize)
-	if cfg.MaxDecompressedSize == 0 && cfg.MaxRecvMsgSize > 0 {
-		cfg.MaxDecompressedSize = int64(cfg.MaxRecvMsgSize) * 50
 	}
 	if cfg.MaxInflightBytes < 0 {
 		return errors.New("max inflight bytes cannot be less than zero")
@@ -213,52 +211,56 @@ type metrics struct {
 	kafkaWriteBytesTotal   prometheus.Counter
 	kafkaWriteLatency      prometheus.Histogram
 	kafkaRecordsPerRequest prometheus.Histogram
+
+	// Track the max inflight bytes in the last 1 minute.
+	maxInflightBytes           prometheus.Gauge
+	inflightBytesHighWatermark prometheus.Summary
 }
 
-func newMetrics(registerer prometheus.Registerer) *metrics {
+func newMetrics(reg prometheus.Registerer) *metrics {
 	return &metrics{
-		ingesterAppends: promauto.With(registerer).NewCounterVec(prometheus.CounterOpts{
+		ingesterAppends: promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
 			Namespace: constants.Loki,
 			Name:      "distributor_ingester_appends_total",
 			Help:      "The total number of batch appends sent to ingesters.",
 		}, []string{"ingester"}),
-		ingesterAppendTimeouts: promauto.With(registerer).NewCounterVec(prometheus.CounterOpts{
+		ingesterAppendTimeouts: promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
 			Namespace: constants.Loki,
 			Name:      "distributor_ingester_append_timeouts_total",
 			Help:      "The total number of failed batch appends sent to ingesters due to timeouts.",
 		}, []string{"ingester"}),
-		replicationFactor: promauto.With(registerer).NewGauge(prometheus.GaugeOpts{
+		replicationFactor: promauto.With(reg).NewGauge(prometheus.GaugeOpts{
 			Namespace: constants.Loki,
 			Name:      "distributor_replication_factor",
 			Help:      "The configured replication factor.",
 		}),
-		streamShardCount: promauto.With(registerer).NewCounter(prometheus.CounterOpts{
+		streamShardCount: promauto.With(reg).NewCounter(prometheus.CounterOpts{
 			Namespace: constants.Loki,
 			Name:      "stream_sharding_count",
 			Help:      "Total number of times the distributor has sharded streams",
 		}),
-		zeroStreamCount: promauto.With(registerer).NewCounterVec(prometheus.CounterOpts{
+		zeroStreamCount: promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
 			Namespace: constants.Loki,
 			Name:      "distributor_push_zero_streams_count",
 			Help:      "Total number of push requests with 0 streams",
 		}, []string{"tenant", "stage"}),
-		pushStatsCount: promauto.With(registerer).NewCounterVec(prometheus.CounterOpts{
+		pushStatsCount: promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
 			Namespace: constants.Loki,
 			Name:      "distributor_push_stats_count",
 			Help:      "Total number of successfully parsed push requests aggregated by tenant, content-type, encoding, version, format",
 		}, []string{"tenant", "content_type", "content_encoding", "content_version", "format"}),
-		tenantPushSanitizedStructuredMetadata: promauto.With(registerer).NewCounterVec(prometheus.CounterOpts{
+		tenantPushSanitizedStructuredMetadata: promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
 			Namespace: constants.Loki,
 			Name:      "distributor_push_structured_metadata_sanitized_total",
 			Help:      "The total number of times we've had to sanitize structured metadata (names or values) at ingestion time per tenant.",
 		}, []string{"tenant", "format"}),
 
-		kafkaAppends: promauto.With(registerer).NewCounterVec(prometheus.CounterOpts{
+		kafkaAppends: promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
 			Namespace: constants.Loki,
 			Name:      "distributor_kafka_appends_total",
 			Help:      "The total number of appends sent to kafka ingest path.",
 		}, []string{"partition", "status"}),
-		kafkaWriteLatency: promauto.With(registerer).NewHistogram(prometheus.HistogramOpts{
+		kafkaWriteLatency: promauto.With(reg).NewHistogram(prometheus.HistogramOpts{
 			Namespace:                       constants.Loki,
 			Name:                            "distributor_kafka_latency_seconds",
 			Help:                            "Latency to write an incoming request to the ingest storage.",
@@ -267,16 +269,27 @@ func newMetrics(registerer prometheus.Registerer) *metrics {
 			NativeHistogramMaxBucketNumber:  100,
 			Buckets:                         prometheus.DefBuckets,
 		}),
-		kafkaWriteBytesTotal: promauto.With(registerer).NewCounter(prometheus.CounterOpts{
+		kafkaWriteBytesTotal: promauto.With(reg).NewCounter(prometheus.CounterOpts{
 			Namespace: constants.Loki,
 			Name:      "distributor_kafka_sent_bytes_total",
 			Help:      "Total number of bytes sent to the ingest storage.",
 		}),
-		kafkaRecordsPerRequest: promauto.With(registerer).NewHistogram(prometheus.HistogramOpts{
+		kafkaRecordsPerRequest: promauto.With(reg).NewHistogram(prometheus.HistogramOpts{
 			Namespace: constants.Loki,
 			Name:      "distributor_kafka_records_per_write_request",
 			Help:      "The number of records a single per-partition write request has been split into.",
 			Buckets:   prometheus.ExponentialBuckets(1, 2, 8),
+		}),
+
+		maxInflightBytes: promauto.With(reg).NewGauge(prometheus.GaugeOpts{
+			Name: "loki_distributor_max_inflight_bytes",
+			Help: "The max permitted inflight bytes. 0 if disabled.",
+		}),
+		inflightBytesHighWatermark: promauto.With(reg).NewSummary(prometheus.SummaryOpts{
+			Name:       "loki_distributor_inflight_bytes_high_watermark",
+			Help:       "The most observed inflight bytes in the last 1 minute.",
+			Objectives: map[float64]float64{1.0: 0.1},
+			MaxAge:     time.Minute,
 		}),
 	}
 }
@@ -317,7 +330,8 @@ type Distributor struct {
 	// Push failures rate limiter.
 	writeFailuresManager *writefailures.Manager
 
-	RequestParserWrapper push.RequestParserWrapper
+	// Rate limited reporter for OTLP resource and scope attribute expansion.
+	otlpAttrReporter *otlpattrs.Reporter
 
 	usageTracker   push.UsageTracker
 	ingesterTasks  chan pushIngesterTask
@@ -336,10 +350,8 @@ type Distributor struct {
 	// are consumed.
 	numMetadataPartitions int
 
-	// Track the max inflight bytes in the last 1 minute.
-	inflightBytesHighWatermark prometheus.Summary
-	inflightBytes              atomic.Int64
-	circuitBreaker             circuitBreaker
+	inflightBytes  atomic.Int64
+	circuitBreaker circuitBreaker
 }
 
 // New a distributor creates.
@@ -417,7 +429,7 @@ func New(
 
 	var kafkaWriter KafkaProducer
 	if cfg.KafkaEnabled {
-		kafkaClient, err := kafka_client.NewWriterClient("distributor", cfg.KafkaConfig, 20, logger, registerer)
+		kafkaClient, err := kafka_client.NewWriterClient("distributor", cfg.KafkaConfig, logger, registerer)
 		if err != nil {
 			return nil, fmt.Errorf("failed to start kafka client: %w", err)
 		}
@@ -483,16 +495,11 @@ func New(
 		ingesterTasks:         make(chan pushIngesterTask),
 		m:                     newMetrics(registerer),
 		writeFailuresManager:  writefailures.NewManager(logger, registerer, cfg.WriteFailuresLogging, configs, "distributor"),
+		otlpAttrReporter:      otlpattrs.NewReporter(cfg.OTLPAttributeLogging, configs),
 		kafkaWriter:           kafkaWriter,
 		partitionRing:         partitionRing,
 		ingestLimits:          ingestLimits,
 		numMetadataPartitions: numMetadataPartitions,
-		inflightBytesHighWatermark: promauto.With(registerer).NewSummary(prometheus.SummaryOpts{
-			Name:       "loki_distributor_inflight_bytes_high_watermark",
-			Help:       "The max inflight bytes in the last 1 minute.",
-			Objectives: map[float64]float64{1.0: 0.1},
-			MaxAge:     time.Minute,
-		}),
 	}
 
 	if cfg.CircuitBreaker.Enabled {
@@ -529,6 +536,8 @@ func New(
 
 	d.m.replicationFactor.Set(float64(ingestersRing.ReplicationFactor()))
 	rfStats.Set(int64(ingestersRing.ReplicationFactor()))
+
+	d.m.maxInflightBytes.Set(float64(d.cfg.MaxInflightBytes))
 
 	rs := NewRateStore(
 		d.cfg.RateStore,
@@ -651,16 +660,16 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 	if err != nil {
 		return nil, err
 	}
-	return d.PushWithResolver(ctx, req, newRequestScopedStreamResolver(tenantID, d.validator.Limits, d.logger), constants.Loki)
+	return d.pushWithResolver(ctx, req, newRequestScopedStreamResolver(tenantID, d.validator.Limits, d.logger), constants.Loki)
 }
 
 // Push a set of streams.
 // Can modify the input req parameter.
 // The returned error is the last one seen.
-func (d *Distributor) PushWithResolver(ctx context.Context, req *logproto.PushRequest, streamResolver *requestScopedStreamResolver, format string) (*logproto.PushResponse, error) {
+func (d *Distributor) pushWithResolver(ctx context.Context, req *logproto.PushRequest, streamResolver *requestScopedStreamResolver, format string) (*logproto.PushResponse, error) {
 	requestSize := int64(req.Size())
 	newInflightBytes := d.inflightBytes.Add(requestSize)
-	d.inflightBytesHighWatermark.Observe(float64(newInflightBytes))
+	d.m.inflightBytesHighWatermark.Observe(float64(newInflightBytes))
 	defer d.inflightBytes.Add(-requestSize)
 
 	maxInflightBytes := int64(d.cfg.MaxInflightBytes)
@@ -797,9 +806,18 @@ func (d *Distributor) PushWithResolver(ctx context.Context, req *logproto.PushRe
 			prevTs := stream.Entries[0].Timestamp
 			streamEntriesSize := 0
 
+			// Backfilled data is expected to be older than reject_old_samples_max_age. The backfill
+			// label is reserved: the push parsers reject streams that already carry it, so it can
+			// only originate from the X-Loki-Backfill-Shard header and cannot be spoofed to bypass
+			// validation. Entries too far in the future are still rejected.
+			entryValidationContext := validationContext
+			if lbs.Has(constants.BackfillLabel) {
+				entryValidationContext.rejectOldSample = false
+			}
+
 			labelNamer := otlptranslator.LabelNamer{}
 			for _, entry := range stream.Entries {
-				if err := d.validator.ValidateEntry(ctx, validationContext, lbs, entry, retentionHours, policy, format); err != nil {
+				if err := d.validator.ValidateEntry(ctx, entryValidationContext, lbs, entry, retentionHours, policy, format); err != nil {
 					d.writeFailuresManager.Log(tenantID, err)
 					validationErrors.Add(err)
 					continue

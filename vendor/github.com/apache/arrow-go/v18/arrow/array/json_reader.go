@@ -103,6 +103,8 @@ func NewJSONReader(r io.Reader, schema *arrow.Schema, opts ...Option) *JSONReade
 		o(rr)
 	}
 
+	rr.r.UseNumber()
+
 	if rr.mem == nil {
 		rr.mem = memory.DefaultAllocator
 	}
@@ -166,7 +168,7 @@ func (r *JSONReader) Next() bool {
 }
 
 func (r *JSONReader) readNext() bool {
-	r.err = r.r.Decode(r.bldr)
+	r.err = r.bldr.UnmarshalOne(r.r)
 	if r.err != nil {
 		r.done = true
 		if errors.Is(r.err, io.EOF) {

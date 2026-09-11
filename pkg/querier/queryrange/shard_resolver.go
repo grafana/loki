@@ -19,18 +19,15 @@ import (
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	logqlstats "github.com/grafana/loki/v3/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase"
-	"github.com/grafana/loki/v3/pkg/storage/config"
 	"github.com/grafana/loki/v3/pkg/storage/stores/index/stats"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/sharding"
-	"github.com/grafana/loki/v3/pkg/storage/types"
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
 	"github.com/grafana/loki/v3/pkg/util/spanlogger"
 	"github.com/grafana/loki/v3/pkg/util/validation"
 )
 
-func shardResolverForConf(
+func newDynamicShardResolver(
 	ctx context.Context,
-	conf config.PeriodConfig,
 	defaultLookback time.Duration,
 	logger log.Logger,
 	maxParallelism int,
@@ -39,25 +36,19 @@ func shardResolverForConf(
 	statsHandler, next, retryNext queryrangebase.Handler,
 	limits Limits,
 ) (logql.ShardResolver, bool) {
-	if conf.IndexType == types.IndexTypeTSDB {
-		return &dynamicShardResolver{
-			ctx:              ctx,
-			logger:           logger,
-			statsHandler:     statsHandler,
-			retryNextHandler: retryNext,
-			next:             next,
-			limits:           limits,
-			from:             model.Time(r.GetStart().UnixMilli()),
-			through:          model.Time(r.GetEnd().UnixMilli()),
-			maxParallelism:   maxParallelism,
-			maxShards:        maxShards,
-			defaultLookback:  defaultLookback,
-		}, true
-	}
-	if conf.RowShards < 2 {
-		return nil, false
-	}
-	return logql.ConstantShards(conf.RowShards), true
+	return &dynamicShardResolver{
+		ctx:              ctx,
+		logger:           logger,
+		statsHandler:     statsHandler,
+		retryNextHandler: retryNext,
+		next:             next,
+		limits:           limits,
+		from:             model.Time(r.GetStart().UnixMilli()),
+		through:          model.Time(r.GetEnd().UnixMilli()),
+		maxParallelism:   maxParallelism,
+		maxShards:        maxShards,
+		defaultLookback:  defaultLookback,
+	}, true
 }
 
 type dynamicShardResolver struct {

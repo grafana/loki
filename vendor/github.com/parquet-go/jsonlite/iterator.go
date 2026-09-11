@@ -263,7 +263,9 @@ func (it *Iterator) value() (Value, error) {
 	case Array:
 		delimi := len(it.token)
 		offset := len(it.json) - len(it.tokens.json) - delimi
-		val, rest, err := parseArray(it.json[offset:], it.tokens.json, DefaultMaxDepth)
+		p := getParser()
+		val, rest, err := parseArray(it.json[offset:], it.tokens.json, DefaultMaxDepth, p)
+		putParser(p)
 		it.tokens.json, it.consumed = rest, true
 		if err != nil {
 			it.setError(err)
@@ -273,7 +275,9 @@ func (it *Iterator) value() (Value, error) {
 	case Object:
 		delimi := len(it.token)
 		offset := len(it.json) - len(it.tokens.json) - delimi
-		val, rest, err := parseObject(it.json[offset:], it.tokens.json, DefaultMaxDepth)
+		p := getParser()
+		val, rest, err := parseObject(it.json[offset:], it.tokens.json, DefaultMaxDepth, p)
+		putParser(p)
 		it.tokens.json, it.consumed = rest, true
 		if err != nil {
 			it.setError(err)

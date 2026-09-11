@@ -23,8 +23,8 @@ import (
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	"github.com/grafana/loki/v3/pkg/logqlmodel"
 	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
-	"github.com/grafana/loki/v3/pkg/querier/plan"
 	"github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase"
+	"github.com/grafana/loki/v3/pkg/querier/testutil"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/cache/resultscache"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/index"
 )
@@ -357,9 +357,7 @@ func TestParamsToLokiRequest(t *testing.T) {
 				Path:        "/loki/api/v1/query",
 				Shards:      nil,
 				StoreChunks: nil,
-				Plan: &plan.QueryPlan{
-					AST: syntax.MustParseExpr(qs),
-				},
+				Plan:        testutil.MustPlan(qs),
 				CachingOptions: resultscache.CachingOptions{
 					Disabled: false,
 				},
@@ -378,9 +376,7 @@ func TestParamsToLokiRequest(t *testing.T) {
 				Path:        "/loki/api/v1/query",
 				Shards:      nil,
 				StoreChunks: nil,
-				Plan: &plan.QueryPlan{
-					AST: syntax.MustParseExpr(qs),
-				},
+				Plan:        testutil.MustPlan(qs),
 				CachingOptions: resultscache.CachingOptions{
 					Disabled: true,
 				},

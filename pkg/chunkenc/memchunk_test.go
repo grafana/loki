@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"encoding/binary"
-	"errors"
 	"fmt"
 	"hash"
 	"math"
@@ -31,33 +30,16 @@ import (
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/v3/pkg/storage/chunk"
-	"github.com/grafana/loki/v3/pkg/util/constants"
 	"github.com/grafana/loki/v3/pkg/util/filter"
 )
 
-var testEncodings = []compression.Codec{
-	compression.None,
-	compression.GZIP,
-	compression.LZ4_64k,
-	compression.LZ4_256k,
-	compression.LZ4_1M,
-	compression.LZ4_4M,
-	compression.Snappy,
-	compression.Flate,
-	compression.Zstd,
-}
+var testEncodings = compression.Codecs()
 
 var (
-	testBlockSize     = 256 * 1024
-	testTargetSize    = 1500 * 1024
-	testBlockSizes    = []int{64 * 1024, 256 * 1024, 512 * 1024}
-	multiVariantQuery = `variants(
-    count_over_time({app="myapp"} [5m]),
-    bytes_over_time({app="myapp"} [5m])
-  ) of ({app="foo"} [5m])`
-	multiVariantCountOnlyQuery = `variants(
-    count_over_time({app="myapp"} [5m])
-  ) of ({app="foo"} [5m])`
+	testBlockSize  = 256 * 1024
+	testTargetSize = 1500 * 1024
+	testBlockSizes = []int{64 * 1024, 256 * 1024, 512 * 1024}
+	countQuery     = `count_over_time({app="myapp"}[5m])`
 
 	allPossibleFormats = []struct {
 		headBlockFmt HeadBlockFmt
@@ -231,9 +213,8 @@ func TestBlock(t *testing.T) {
 				require.NoError(t, it.Close())
 				require.Equal(t, len(cases), idx)
 
-				extractors, err := getMultiVariantExtractors(multiVariantCountOnlyQuery, labels.FromStrings("app", "myapp"))
+				countExtractor, err := getStreamExtractor(countQuery, labels.FromStrings("app", "myapp"))
 				require.NoError(t, err)
-				countExtractor := extractors[0]
 				sampleIt := chk.SampleIterator(context.Background(), time.Unix(0, 0), time.Unix(0, math.MaxInt64), countExtractor)
 				idx = 0
 				for sampleIt.Next() {
@@ -247,59 +228,6 @@ func TestBlock(t *testing.T) {
 				require.NoError(t, sampleIt.Err())
 				require.NoError(t, sampleIt.Close())
 				require.Equal(t, len(cases), idx)
-
-				t.Run("multi-extractor", func(t *testing.T) {
-					extractors, err := getMultiVariantExtractors(multiVariantQuery, labels.FromStrings("app", "foo"))
-					require.NoError(t, err)
-
-					sampleIt = chk.SampleIterator(context.Background(), time.Unix(0, 0), time.Unix(0, math.MaxInt64), extractors...)
-					idx = 0
-
-					// variadic arguments can't guarantee order, so we're going to store the expected and actual values
-					// and do an ElementsMatch on them.
-					var actualCounts = make([]float64, 0, len(cases))
-					var actualBytes = make([]float64, 0, len(cases))
-
-					var expectedCounts = make([]float64, 0, len(cases))
-					var expectedBytes = make([]float64, 0, len(cases))
-					for _, c := range cases {
-						expectedCounts = append(expectedCounts, 1.)
-						expectedBytes = append(expectedBytes, c.bytes)
-					}
-
-					// 2 extractors, expect 2 samples per original timestamp
-					for sampleIt.Next() {
-						s := sampleIt.At()
-						require.Equal(t, cases[idx].ts, s.Timestamp)
-						require.NotEmpty(t, s.Hash)
-						lbls := sampleIt.Labels()
-						if strings.Contains(lbls, fmt.Sprintf(`%s="0"`, constants.VariantLabel)) {
-							actualCounts = append(actualCounts, s.Value)
-						} else {
-							actualBytes = append(actualBytes, s.Value)
-						}
-
-						require.True(t, sampleIt.Next())
-						s = sampleIt.At()
-						require.Equal(t, cases[idx].ts, s.Timestamp)
-						require.NotEmpty(t, s.Hash)
-						lbls = sampleIt.Labels()
-						if strings.Contains(lbls, fmt.Sprintf(`%s="0"`, constants.VariantLabel)) {
-							actualCounts = append(actualCounts, s.Value)
-						} else {
-							actualBytes = append(actualBytes, s.Value)
-						}
-
-						idx++
-					}
-
-					require.ElementsMatch(t, expectedCounts, actualCounts)
-					require.ElementsMatch(t, expectedBytes, actualBytes)
-
-					require.NoError(t, sampleIt.Err())
-					require.NoError(t, sampleIt.Close())
-					require.Equal(t, len(cases), idx)
-				})
 
 				t.Run("bounded-iteration", func(t *testing.T) {
 					it, err := chk.Iterator(context.Background(), time.Unix(0, 3), time.Unix(0, 7), logproto.FORWARD, noopStreamPipeline)
@@ -540,9 +468,7 @@ func TestSerialization(t *testing.T) {
 						}
 						return ex.ForStream(labels.Labels{})
 					}()
-					extractors := []log.StreamSampleExtractor{countExtractor, countExtractor}
-
-					sampleIt := bc.SampleIterator(context.Background(), time.Unix(0, 0), time.Unix(0, math.MaxInt64), extractors...)
+					sampleIt := bc.SampleIterator(context.Background(), time.Unix(0, 0), time.Unix(0, math.MaxInt64), countExtractor)
 					for i := 0; i < numSamples; i++ {
 						require.True(t, sampleIt.Next(), i)
 
@@ -554,12 +480,6 @@ func TestSerialization(t *testing.T) {
 						} else {
 							require.Equal(t, labels.EmptyLabels().String(), sampleIt.Labels())
 						}
-
-						// check that the second extractor is returning samples as well
-						require.True(t, sampleIt.Next())
-						s = sampleIt.At()
-						require.Equal(t, int64(i), s.Timestamp)
-						require.Equal(t, 1., s.Value)
 					}
 					require.NoError(t, sampleIt.Err())
 
@@ -871,6 +791,144 @@ func TestChunkStats(t *testing.T) {
 	require.Equal(t, int64(inserted), s.TotalDecompressedLines())
 }
 
+// TestPostFilterLinesCountsMatchingLinesOnly ensures that post_filter_lines counts
+// only the lines a query keeps: for log and metric queries, in the head block and in
+// cut blocks, across every head block format. Counting every line read reports lines
+// scanned, which makes every filter look like it matched everything.
+func TestPostFilterLinesCountsMatchingLinesOnly(t *testing.T) {
+	const (
+		matching = 3
+		total    = 10
+	)
+
+	var (
+		streamLabels = labels.FromStrings("app", "foo")
+		logQuery     = `{app="foo"} |= "keep"`
+		metricQuery  = `count_over_time({app="foo"} |= "keep" [5m])`
+	)
+
+	line := func(i int) string {
+		if i < matching {
+			return "keep me"
+		}
+		return "drop me"
+	}
+
+	// Returns post_filter_lines alongside total_lines, so a subtest can pin the ratio
+	// between lines read and lines kept. The bug made the two equal, which reads as a
+	// filter that matched everything.
+	countLines := func(t *testing.T, drain func(ctx context.Context)) (postFilter, total int64) {
+		t.Helper()
+		statsCtx, ctx := stats.NewContext(context.Background())
+		drain(ctx)
+		res := statsCtx.Result(0, 0, 0)
+		return res.Summary.TotalPostFilterLines, res.Summary.TotalLinesProcessed
+	}
+
+	for _, format := range allPossibleFormats {
+		for _, cutBlock := range []bool{false, true} {
+			name := fmt.Sprintf("%s/chunk=v%d/cut=%v", format.headBlockFmt, format.chunkFormat, cutBlock)
+			t.Run(name, func(t *testing.T) {
+				chk := newMemChunkWithFormat(format.chunkFormat, compression.None, format.headBlockFmt, testBlockSize, testTargetSize)
+				for i := 0; i < total; i++ {
+					dup, err := chk.Append(&logproto.Entry{Timestamp: time.Unix(0, int64(i)), Line: line(i)})
+					require.False(t, dup)
+					require.NoError(t, err)
+				}
+				// Cutting moves the entries out of the head block, so the block
+				// iterators are exercised instead.
+				if cutBlock {
+					require.NoError(t, chk.cut())
+				}
+
+				logExpr, err := syntax.ParseLogSelector(logQuery, true)
+				require.NoError(t, err)
+				pipeline, err := logExpr.Pipeline()
+				require.NoError(t, err)
+
+				logLines, logTotal := countLines(t, func(ctx context.Context) {
+					it, err := chk.Iterator(ctx, time.Unix(0, 0), time.Unix(0, total), logproto.FORWARD, pipeline.ForStream(streamLabels))
+					require.NoError(t, err)
+					for it.Next() { //nolint:revive
+					}
+					require.NoError(t, it.Err())
+					require.NoError(t, it.Close())
+				})
+
+				extractor, err := getStreamExtractor(metricQuery, streamLabels)
+				require.NoError(t, err)
+
+				sampleLines, sampleTotal := countLines(t, func(ctx context.Context) {
+					it := chk.SampleIterator(ctx, time.Unix(0, 0), time.Unix(0, total), extractor)
+					for it.Next() { //nolint:revive
+					}
+					require.NoError(t, it.Err())
+					require.NoError(t, it.Close())
+				})
+
+				assert.Equal(t, int64(matching), logLines, "log query post_filter_lines")
+				assert.Equal(t, int64(matching), sampleLines, "metric query post_filter_lines")
+				assert.Equal(t, int64(total), logTotal, "log query total_lines")
+				assert.Equal(t, int64(total), sampleTotal, "metric query total_lines")
+			})
+		}
+	}
+}
+
+// TestPostFilterLinesCountsLinesThatProducedSamples asserts on which rejections stop a line
+// from counting.
+func TestPostFilterLinesCountsLinesThatProducedSamples(t *testing.T) {
+	lines := []string{
+		`{"latency":"1"}`,
+		`{"latency":"2"}`,
+		`{"other":"3"}`, // parses, but carries no latency label
+		`not json`,      // fails to parse, so the pipeline sets __error__
+	}
+
+	for _, tc := range []struct {
+		query string
+		want  int64
+	}{
+		// Every line reaches the extractor, including the one that failed to parse.
+		// A parse error is not a rejection: the pipeline sets __error__ and keeps
+		// the line, so it counts.
+		{query: `count_over_time({app="foo"} | json [5m])`, want: 4},
+
+		// Only the two lines carrying latency yield a sample. A missing unwrap label
+		// is a rejection, so those lines do not count even though no filter excluded them.
+		{query: `sum_over_time({app="foo"} | json | unwrap latency [5m])`, want: 2},
+	} {
+		for _, cutBlock := range []bool{false, true} {
+			t.Run(fmt.Sprintf("%s/cut=%v", tc.query, cutBlock), func(t *testing.T) {
+				chk := newMemChunkWithFormat(ChunkFormatV4, compression.None, UnorderedWithStructuredMetadataHeadBlockFmt, testBlockSize, testTargetSize)
+				for i, l := range lines {
+					dup, err := chk.Append(&logproto.Entry{Timestamp: time.Unix(0, int64(i)), Line: l})
+					require.False(t, dup)
+					require.NoError(t, err)
+				}
+				if cutBlock {
+					require.NoError(t, chk.cut())
+				}
+
+				extractor, err := getStreamExtractor(tc.query, labels.FromStrings("app", "foo"))
+				require.NoError(t, err)
+
+				statsCtx, ctx := stats.NewContext(context.Background())
+				it := chk.SampleIterator(ctx, time.Unix(0, 0), time.Unix(0, int64(len(lines))), extractor)
+				samples := 0
+				for it.Next() {
+					samples++
+				}
+				require.NoError(t, it.Err())
+				require.NoError(t, it.Close())
+
+				require.Equal(t, int(tc.want), samples, "samples")
+				require.Equal(t, tc.want, statsCtx.Result(0, 0, 0).Summary.TotalPostFilterLines, "post_filter_lines")
+			})
+		}
+	}
+}
+
 func TestIteratorClose(t *testing.T) {
 	for _, f := range allPossibleFormats {
 		for _, enc := range testEncodings {
@@ -998,9 +1056,8 @@ func BenchmarkRead(b *testing.B) {
 		}
 	}
 
-	extractors, err := getMultiVariantExtractors(multiVariantCountOnlyQuery, labels.FromStrings("app", "foo"))
+	countExtractor, err := getStreamExtractor(countQuery, labels.FromStrings("app", "foo"))
 	require.NoError(b, err)
-	countExtractor := extractors[0]
 	for _, bs := range testBlockSizes {
 		for _, enc := range testEncodings {
 			name := fmt.Sprintf("sample_%s_%s", enc.String(), humanize.Bytes(uint64(bs)))
@@ -1145,9 +1202,8 @@ func BenchmarkHeadBlockSampleIterator(b *testing.B) {
 
 				b.ResetTimer()
 
-				extractors, err := getMultiVariantExtractors(multiVariantCountOnlyQuery, labels.FromStrings("app", "foo"))
+				countExtractor, err := getStreamExtractor(countQuery, labels.FromStrings("app", "foo"))
 				require.NoError(b, err)
-				countExtractor := extractors[0]
 
 				for n := 0; n < b.N; n++ {
 					iter := h.SampleIterator(context.Background(), 0, math.MaxInt64, countExtractor)
@@ -1162,62 +1218,19 @@ func BenchmarkHeadBlockSampleIterator(b *testing.B) {
 	}
 }
 
-func getMultiVariantExtractors(query string, lbls labels.Labels) ([]log.StreamSampleExtractor, error) {
+// getStreamExtractor returns the StreamSampleExtractor a query extracts samples with.
+func getStreamExtractor(query string, lbls labels.Labels) (log.StreamSampleExtractor, error) {
 	expr, err := syntax.ParseSampleExpr(query)
 	if err != nil {
 		return nil, err
 	}
 
-	multiVariantExpr, ok := expr.(*syntax.MultiVariantExpr)
-	if !ok {
-		return nil, errors.New("expected multi-variant expression")
-	}
-
-	extractors, err := multiVariantExpr.Extractors()
+	extractor, err := expr.Extractor()
 	if err != nil {
 		return nil, err
 	}
 
-	streamExtractors := make([]log.StreamSampleExtractor, len(extractors))
-	for i, extractor := range extractors {
-		streamExtractors[i] = extractor.ForStream(lbls)
-	}
-
-	return streamExtractors, nil
-}
-
-func BenchmarkHeadBlockSampleIterator_WithMultipleExtractors(b *testing.B) {
-	for _, j := range []int{20000, 10000, 8000, 5000} {
-		for _, withStructuredMetadata := range []bool{false, true} {
-			b.Run(fmt.Sprintf("size=%d structuredMetadata=%v", j, withStructuredMetadata), func(b *testing.B) {
-				h := headBlock{}
-
-				var structuredMetadata labels.Labels
-				if withStructuredMetadata {
-					structuredMetadata = labels.FromStrings("foo", "foo")
-				}
-
-				for i := 0; i < j; i++ {
-					if _, err := h.Append(int64(i), "this is the append string", structuredMetadata); err != nil {
-						b.Fatal(err)
-					}
-				}
-
-				b.ResetTimer()
-
-				extractors, err := getMultiVariantExtractors(multiVariantQuery, labels.FromStrings("app", "foo"))
-				require.NoError(b, err)
-				for n := 0; n < b.N; n++ {
-					iter := h.SampleIterator(context.Background(), 0, math.MaxInt64, extractors...)
-
-					for iter.Next() {
-						_ = iter.At()
-					}
-					iter.Close()
-				}
-			})
-		}
-	}
+	return extractor.ForStream(lbls), nil
 }
 
 func TestMemChunk_IteratorBounds(t *testing.T) {
@@ -1481,23 +1494,19 @@ func BenchmarkBufferedIteratorLabels(b *testing.B) {
 					if err != nil {
 						b.Fatal(err)
 					}
-					ex, err := expr.Extractors()
+					ex, err := expr.Extractor()
 					if err != nil {
 						b.Fatal(err)
 					}
 					var iters []iter.SampleIterator
 					for _, lbs := range labelsSet {
-						streamExtractors := make([]log.StreamSampleExtractor, 0, len(ex))
-						for _, extractor := range ex {
-							streamExtractors = append(streamExtractors, extractor.ForStream(lbs))
-						}
 						iters = append(
 							iters,
 							c.SampleIterator(
 								context.Background(),
 								time.Unix(0, 0),
 								time.Now(),
-								streamExtractors...),
+								ex.ForStream(lbs)),
 						)
 					}
 					b.ResetTimer()
@@ -1553,7 +1562,7 @@ func Test_HeadIteratorReverse(t *testing.T) {
 	}
 }
 
-func TestMemChunk_Rebound(t *testing.T) {
+func TestMemChunk_Rewrite(t *testing.T) {
 	for _, format := range allPossibleFormats {
 		chunkfmt, headfmt := format.chunkFormat, format.headBlockFmt
 		chkFrom := time.Unix(0, 0)
@@ -1682,7 +1691,7 @@ func TestMemChunk_Rebound(t *testing.T) {
 	}
 }
 
-func TestMemChunk_ReboundAndFilter_with_filter(t *testing.T) {
+func TestMemChunk_Rewrite_WithFilter(t *testing.T) {
 	chkFrom := time.Unix(1, 0) // headBlock.Append treats Unix time 0 as not set so we have to use a later time
 	chkFromPlus5 := chkFrom.Add(5 * time.Second)
 	chkThrough := chkFrom.Add(10 * time.Second)
@@ -1762,7 +1771,7 @@ func TestMemChunk_ReboundAndFilter_with_filter(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			originalChunk := tc.testMemChunk
-			newChunk, err := originalChunk.Rebound(chkFrom, chkThrough, tc.filterFunc)
+			newChunk, err := originalChunk.Rewrite(tc.filterFunc)
 			if tc.err != nil {
 				require.Equal(t, tc.err, err)
 				return
@@ -1790,8 +1799,495 @@ func TestMemChunk_ReboundAndFilter_with_filter(t *testing.T) {
 	}
 }
 
+// lineFor names the entry at index i. Fixed width so no line is a prefix of
+// another and the removal sets below stay readable.
+func lineFor(i int) string { return fmt.Sprintf("line-%02d", i) }
+
+// distinctMetadata gives an entry metadata no other entry shares. Shared
+// metadata resolves to the same symbols and hides any renumbering.
+func distinctMetadata(i int) []logproto.LabelAdapter {
+	return []logproto.LabelAdapter{{Name: fmt.Sprintf("name_%02d", i), Value: fmt.Sprintf("value_%02d", i)}}
+}
+
+// unnormalizedMetadata uses names normalization rewrites, so the stored form
+// differs from what reads return.
+func unnormalizedMetadata(i int) []logproto.LabelAdapter {
+	return []logproto.LabelAdapter{{Name: fmt.Sprintf("name.%02d", i), Value: fmt.Sprintf("value_%02d", i)}}
+}
+
+// collidingMetadata uses two names that normalize alike, so one entry holds two
+// symbols that read back under a single name.
+func collidingMetadata(i int) []logproto.LabelAdapter {
+	return []logproto.LabelAdapter{
+		{Name: "a.b", Value: fmt.Sprintf("value_%02d", i)},
+		{Name: "a__b", Value: fmt.Sprintf("other_%02d", i)},
+	}
+}
+
+// valueNotALabelNameMetadata stores values that are not valid label names, so a
+// name symbol pointed at one fails the read outright rather than return the
+// wrong string.
+func valueNotALabelNameMetadata(i int) []logproto.LabelAdapter {
+	values := []string{"/", "-", "1", "", "a/b/c"}
+	return []logproto.LabelAdapter{{Name: fmt.Sprintf("name_%02d", i), Value: values[i%len(values)]}}
+}
+
+func buildMetadataChunk(t *testing.T, blockSize, numEntries int, metadata func(int) []logproto.LabelAdapter) *MemChunk {
+	t.Helper()
+
+	chk := NewMemChunk(ChunkFormatV4, compression.Snappy, UnorderedWithStructuredMetadataHeadBlockFmt, blockSize, testTargetSize)
+	for i := 0; i < numEntries; i++ {
+		_, err := chk.Append(&logproto.Entry{
+			Timestamp:          time.Unix(0, int64(i+1)),
+			Line:               lineFor(i),
+			StructuredMetadata: metadata(i),
+		})
+		require.NoError(t, err)
+	}
+	require.NoError(t, chk.Close())
+
+	return chk
+}
+
+// reloadFromStorage round-trips a chunk the way the compactor receives one: the
+// symbolizer comes back read-only and without the symbolsMap add() dedupes
+// through, which is a different half of clone() than an in-memory chunk.
+func reloadFromStorage(t *testing.T, chk *MemChunk, blockSize int) *MemChunk {
+	t.Helper()
+
+	b, err := chk.Bytes()
+	require.NoError(t, err)
+
+	reloaded, err := NewByteChunk(b, blockSize, testTargetSize)
+	require.NoError(t, err)
+
+	// Pin the shape this is here to cover.
+	require.True(t, reloaded.symbolizer.readOnly, "a chunk read back from storage should have a read-only symbolizer")
+	require.Empty(t, reloaded.symbolizer.symbolsMap, "a chunk read back from storage should have no symbolsMap")
+
+	return reloaded
+}
+
+func readEntries(t *testing.T, chk Chunk) []logproto.Entry {
+	t.Helper()
+
+	entries, err := readEntriesErr(chk)
+	require.NoError(t, err)
+
+	return entries
+}
+
+// A chunk the buggy rewrite already touched cites positions past the end of its
+// own shrunken table. Rewriting one has to keep working -- those are the chunks
+// this fix exists for, and an error fails the delete request and the table's
+// retention pass, which no retry clears. A missing position resolves to the
+// empty string, which is what it already read back as.
+func TestMemChunk_Rewrite_SourceCitesPositionsPastItsTable(t *testing.T) {
+	// distinctMetadata puts entry i's name at position 2i and its value at 2i+1,
+	// so trimming an even number of positions loses whole pairs and an odd
+	// number leaves the last entry's name addressable but not its value.
+	for _, tc := range []struct {
+		name      string
+		blockSize int
+		metadata  func(int) []logproto.LabelAdapter
+		trim      int
+		// symbols the rewrite files for the empty string.
+		filed int
+	}{
+		{
+			// One block, so removing an entry re-encodes the rest.
+			name:      "whole pair lost, nothing interns the empty string",
+			blockSize: 1 << 20,
+			metadata:  distinctMetadata,
+			trim:      2,
+			filed:     1,
+		},
+		{
+			name:      "whole pair lost, empty string already interned",
+			blockSize: 1 << 20,
+			metadata: func(i int) []logproto.LabelAdapter {
+				if i == 0 {
+					return []logproto.LabelAdapter{{Name: "empty_valued", Value: ""}}
+				}
+				return distinctMetadata(i)
+			},
+			trim:  2,
+			filed: 0,
+		},
+		{
+			// One entry per block, so the damaged entry's block is copied over
+			// untouched and keeps citing the name. Blanking it would lose a name
+			// that still read back. The filed empty string lands exactly on the
+			// position that block cites for the lost value, so it reads the same.
+			name:      "half a pair lost, block copied verbatim",
+			blockSize: 1,
+			metadata:  distinctMetadata,
+			trim:      1,
+			filed:     1,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			originalChunk := buildMetadataChunk(t, tc.blockSize, 5, tc.metadata)
+
+			// Stand in for the renumbering the old code did: drop the tail of the
+			// table while the blocks carry on citing it.
+			symbols := originalChunk.symbolizer.labels
+			require.Equal(t, []string{"name_04", "value_04"}, symbols[len(symbols)-2:])
+			originalChunk.symbolizer.labels = symbols[:len(symbols)-tc.trim]
+
+			originalChunk = reloadFromStorage(t, originalChunk, tc.blockSize)
+
+			var expected []logproto.Entry
+			for _, e := range readEntries(t, originalChunk) {
+				if e.Line != lineFor(0) {
+					expected = append(expected, e)
+				}
+			}
+			require.Len(t, expected, 4)
+
+			rewritten, err := originalChunk.Rewrite(func(_ time.Time, s string, _ labels.Labels) bool {
+				return s == lineFor(0)
+			})
+			require.NoError(t, err, "a chunk damaged by the old rewrite must still be rewritable")
+
+			requireEntriesEqual(t, expected, readEntries(t, rewritten))
+
+			// One symbol at most, and only ever the empty string.
+			rewrittenSymbols := rewritten.(*MemChunk).symbolizer.labels
+			require.Len(t, rewrittenSymbols, len(originalChunk.symbolizer.labels)+tc.filed)
+			if tc.filed == 1 {
+				require.Empty(t, rewrittenSymbols[len(rewrittenSymbols)-1])
+			}
+
+			// The result carries a blank per erased symbol plus, where one was
+			// filed, the empty string itself. Rewriting a table holding several
+			// has to work and leave the rest alone.
+			second := rewritten.(*MemChunk)
+			require.Greater(t, blankSymbols(second), 1, "expected the first rewrite to leave several empty symbols")
+
+			var expectedAgain []logproto.Entry
+			for _, e := range readEntries(t, second) {
+				if e.Line != lineFor(1) {
+					expectedAgain = append(expectedAgain, e)
+				}
+			}
+
+			rewrittenAgain, err := second.Rewrite(func(_ time.Time, s string, _ labels.Labels) bool {
+				return s == lineFor(1)
+			})
+			require.NoError(t, err)
+			requireEntriesEqual(t, expectedAgain, readEntries(t, rewrittenAgain))
+		})
+	}
+}
+
+// Rewriting again starts from a table holding blanks, where clone() maps the
+// empty string to the first of them. An undamaged chunk must not grow, and the
+// table has to survive each trip through storage.
+func TestMemChunk_Rewrite_RepeatedRewritesOfACleanChunk(t *testing.T) {
+	chk := reloadFromStorage(t, buildMetadataChunk(t, 1<<20, 8, distinctMetadata), 1<<20)
+	symbolCount := len(chk.symbolizer.labels)
+
+	for round := 1; round <= 4; round++ {
+		var expected []logproto.Entry
+		for _, e := range readEntries(t, chk) {
+			if e.Line != lineFor(round) {
+				expected = append(expected, e)
+			}
+		}
+
+		rewritten, err := chk.Rewrite(func(_ time.Time, s string, _ labels.Labels) bool {
+			return s == lineFor(round)
+		})
+		require.NoError(t, err)
+		next := rewritten.(*MemChunk)
+
+		require.Len(t, next.symbolizer.labels, symbolCount, "round %d changed the size of the symbol table", round)
+		requireEntriesEqual(t, expected, readEntries(t, next))
+
+		seen := map[string]struct{}{}
+		for _, lbl := range liveSymbols(next) {
+			_, dup := seen[lbl]
+			require.False(t, dup, "round %d stored %q twice", round, lbl)
+			seen[lbl] = struct{}{}
+		}
+
+		// Round-trip the way the compactor would get it next time.
+		b, err := next.Bytes()
+		require.NoError(t, err)
+		reloaded, err := NewByteChunk(b, 1<<20, testTargetSize)
+		require.NoError(t, err)
+		require.Equal(t, next.symbolizer.labels, reloaded.symbolizer.labels, "round %d: the table changed through storage", round)
+		requireEntriesEqual(t, expected, readEntries(t, reloaded))
+
+		chk = reloaded
+	}
+}
+
+// requireEntriesEqual compares entry by entry: comparing the slices wholesale
+// makes a failure render a diff of every entry in the chunk.
+func requireEntriesEqual(t *testing.T, expected, actual []logproto.Entry) {
+	t.Helper()
+
+	require.Len(t, actual, len(expected))
+	for i := range expected {
+		require.Equal(t, expected[i].Timestamp, actual[i].Timestamp, "entry %d", i)
+		require.Equal(t, expected[i].Line, actual[i].Line, "entry %d", i)
+		require.Equal(t, expected[i].StructuredMetadata, actual[i].StructuredMetadata, "entry %d (%q)", i, expected[i].Line)
+	}
+}
+
+// Blocks Rewrite did not change are copied over still citing the positions they
+// were encoded with, so the new chunk has to number its symbols the same way.
+// Removing an entry used to drop the symbols only it cited, shifting every later
+// position down: entries came back with another entry's metadata, or none.
+func TestMemChunk_Rewrite_PreservesSurvivingStructuredMetadata(t *testing.T) {
+	// A block size of 1 cuts a block after every entry, so each one is either
+	// copied over untouched or dropped. Larger sizes pack several entries per
+	// block, so a block loses some of its entries and is re-encoded while its
+	// neighbours are still copied verbatim.
+	const (
+		blockPerEntry   = 1
+		entriesPerBlock = 60
+	)
+
+	for _, tc := range []struct {
+		name       string
+		blockSize  int
+		numEntries int
+		metadata   func(int) []logproto.LabelAdapter
+		remove     []int
+		minBlocks  int
+	}{
+		{
+			name:       "no removals",
+			blockSize:  blockPerEntry,
+			numEntries: 5,
+			minBlocks:  5,
+		},
+		{
+			name:       "removal in the middle",
+			blockSize:  blockPerEntry,
+			numEntries: 5,
+			remove:     []int{2},
+			minBlocks:  5,
+		},
+		{
+			name:       "removal at the front",
+			blockSize:  blockPerEntry,
+			numEntries: 5,
+			remove:     []int{0},
+			minBlocks:  5,
+		},
+		{
+			name:       "removal at the end",
+			blockSize:  blockPerEntry,
+			numEntries: 5,
+			remove:     []int{4},
+			minBlocks:  5,
+		},
+		{
+			name:       "adjacent removals",
+			blockSize:  blockPerEntry,
+			numEntries: 6,
+			remove:     []int{2, 3},
+			minBlocks:  6,
+		},
+		{
+			name:       "scattered removals",
+			blockSize:  blockPerEntry,
+			numEntries: 12,
+			remove:     []int{1, 4, 5, 9},
+			minBlocks:  12,
+		},
+		{
+			name:       "all but one removed",
+			blockSize:  blockPerEntry,
+			numEntries: 5,
+			remove:     []int{0, 1, 2, 4},
+			minBlocks:  5,
+		},
+		{
+			name:       "everything removed",
+			blockSize:  blockPerEntry,
+			numEntries: 5,
+			remove:     []int{0, 1, 2, 3, 4},
+			minBlocks:  5,
+		},
+		{
+			name:       "partial removal from a block of several entries",
+			blockSize:  entriesPerBlock,
+			numEntries: 12,
+			remove:     []int{1},
+			minBlocks:  3,
+		},
+		{
+			name:       "partial removal from several blocks",
+			blockSize:  entriesPerBlock,
+			numEntries: 12,
+			remove:     []int{1, 8},
+			minBlocks:  3,
+		},
+		{
+			name:       "names that do not survive normalization untouched",
+			blockSize:  blockPerEntry,
+			numEntries: 12,
+			metadata:   unnormalizedMetadata,
+			remove:     []int{1, 4, 9},
+			minBlocks:  12,
+		},
+		{
+			name:       "names that normalize onto each other",
+			blockSize:  blockPerEntry,
+			numEntries: 8,
+			metadata:   collidingMetadata,
+			remove:     []int{1, 4},
+			minBlocks:  8,
+		},
+		{
+			name:       "values that are not valid label names",
+			blockSize:  blockPerEntry,
+			numEntries: 10,
+			metadata:   valueNotALabelNameMetadata,
+			remove:     []int{1, 3, 6},
+			minBlocks:  10,
+		},
+		{
+			name:       "values that are not valid label names, re-encoded blocks",
+			blockSize:  entriesPerBlock,
+			numEntries: 12,
+			metadata:   valueNotALabelNameMetadata,
+			remove:     []int{2, 7},
+			minBlocks:  3,
+		},
+	} {
+		for _, fromStorage := range []bool{false, true} {
+			name := tc.name
+			if fromStorage {
+				name += ", read back from storage"
+			}
+
+			t.Run(name, func(t *testing.T) {
+				metadata := tc.metadata
+				if metadata == nil {
+					metadata = distinctMetadata
+				}
+
+				originalChunk := buildMetadataChunk(t, tc.blockSize, tc.numEntries, metadata)
+				if fromStorage {
+					originalChunk = reloadFromStorage(t, originalChunk, tc.blockSize)
+				}
+				require.GreaterOrEqual(t, originalChunk.BlockCount(), tc.minBlocks, "chunk is not laid out the way this case assumes")
+
+				removed := make(map[string]bool, len(tc.remove))
+				for _, i := range tc.remove {
+					removed[lineFor(i)] = true
+				}
+
+				// Take what the chunk holds as the baseline rather than the metadata
+				// handed to Append, so whatever the write path did to it is already
+				// accounted for and this only measures what the rewrite changed.
+				var expected []logproto.Entry
+				for _, e := range readEntries(t, originalChunk) {
+					if !removed[e.Line] {
+						expected = append(expected, e)
+					}
+				}
+				require.Len(t, expected, tc.numEntries-len(tc.remove))
+
+				rewritten, err := originalChunk.Rewrite(func(_ time.Time, s string, _ labels.Labels) bool {
+					return removed[s]
+				})
+				if len(expected) == 0 {
+					require.Equal(t, chunk.ErrRewriteNoDataLeft, err)
+					return
+				}
+				require.NoError(t, err)
+				newChunk := rewritten.(*MemChunk)
+
+				requireEntriesEqual(t, expected, readEntries(t, newChunk))
+
+				// The rewritten chunk is what gets uploaded, so it has to survive the
+				// encoding too.
+				b, err := newChunk.Bytes()
+				require.NoError(t, err)
+				roundTripped, err := NewByteChunk(b, tc.blockSize, testTargetSize)
+				require.NoError(t, err)
+
+				actual := readEntries(t, roundTripped)
+				requireEntriesEqual(t, expected, actual)
+
+				// No surviving entry resolves a name to a blanked or out of range symbol.
+				for _, e := range actual {
+					for _, lbl := range e.StructuredMetadata {
+						require.NotEmpty(t, lbl.Name, "entry %q resolved a name to a blanked symbol", e.Line)
+					}
+				}
+
+				// Keeping the positions stable must not grow the table or file a second
+				// copy of a symbol: reads normalize label names, so re-encoding from
+				// what a read returns rather than from what is stored would do both.
+				require.Len(t, newChunk.symbolizer.labels, len(originalChunk.symbolizer.labels), "rewrite changed the size of the symbol table")
+
+				seen := map[string]struct{}{}
+				for _, lbl := range liveSymbols(newChunk) {
+					_, dup := seen[lbl]
+					require.False(t, dup, "symbol %q stored twice", lbl)
+					seen[lbl] = struct{}{}
+				}
+			})
+		}
+	}
+}
+
+// Keeping positions stable must not keep the removed entries' names and values
+// with them: a delete request has to erase those.
+func TestMemChunk_Rewrite_DropsStructuredMetadataOfRemovedEntries(t *testing.T) {
+	const secret = "alice@example.com"
+
+	// Uncompressed so the assertions below can look for the value in the bytes
+	// the compactor would upload.
+	originalChunk := NewMemChunk(ChunkFormatV4, compression.None, UnorderedWithStructuredMetadataHeadBlockFmt, 1, testTargetSize)
+	for i, sm := range [][]logproto.LabelAdapter{
+		{{Name: "aaa", Value: "0"}},
+		{{Name: "user_email", Value: secret}},
+		{{Name: "ccc", Value: "2"}},
+	} {
+		_, err := originalChunk.Append(&logproto.Entry{
+			Timestamp:          time.Unix(0, int64(i+1)),
+			Line:               lineFor(i),
+			StructuredMetadata: sm,
+		})
+		require.NoError(t, err)
+	}
+	require.NoError(t, originalChunk.Close())
+	require.Greater(t, originalChunk.BlockCount(), 1)
+
+	originalBytes, err := originalChunk.Bytes()
+	require.NoError(t, err)
+	require.Contains(t, string(originalBytes), secret, "test needs the value to be findable before the rewrite")
+
+	rewritten, err := originalChunk.Rewrite(func(_ time.Time, s string, _ labels.Labels) bool {
+		return s == lineFor(1)
+	})
+	require.NoError(t, err)
+	newChunk := rewritten.(*MemChunk)
+
+	require.NotContains(t, liveSymbols(newChunk), secret, "removed entry's value is still in the symbol table")
+	require.NotContains(t, liveSymbols(newChunk), "user_email", "removed entry's name is still in the symbol table")
+
+	newBytes, err := newChunk.Bytes()
+	require.NoError(t, err)
+	require.NotContains(t, string(newBytes), secret, "removed entry's value is still in the chunk")
+	require.NotContains(t, string(newBytes), "user_email", "removed entry's name is still in the chunk")
+
+	// Symbols an entry that survived still refers to are left alone.
+	require.Contains(t, string(newBytes), "aaa")
+	require.Contains(t, string(newBytes), "ccc")
+}
+
 func buildFilterableTestMemChunk(t *testing.T, from, through time.Time, matchingFrom, matchingTo *time.Time, withStructuredMetadata bool) *MemChunk {
-	chk := NewMemChunk(ChunkFormatV4, compression.GZIP, DefaultTestHeadBlockFmt, defaultBlockSize, 0)
+	chk := NewMemChunk(ChunkFormatV4, compression.GZIP, DefaultTestHeadBlockFmt, testBlockSize, 0)
 	t.Logf("from   : %v", from.String())
 	t.Logf("through: %v", through.String())
 	var structuredMetadata push.LabelsAdapter
@@ -1824,6 +2320,11 @@ func buildFilterableTestMemChunk(t *testing.T, from, through time.Time, matching
 		}
 		from = from.Add(time.Second)
 	}
+
+	// Rewrite only reads cut blocks, so the head block has to be cut before the chunk is
+	// usable. This also matches what Rewrite sees in production, where chunks come from
+	// storage and never carry head block data.
+	require.NoError(t, chk.Close())
 
 	return chk
 }
@@ -2200,7 +2701,7 @@ func TestMemChunk_IteratorWithStructuredMetadata(t *testing.T) {
 						expr, err := syntax.ParseSampleExpr(query)
 						require.NoError(t, err)
 
-						extractors, err := expr.Extractors()
+						extractor, err := expr.Extractor()
 						require.NoError(t, err)
 
 						// We will run the test twice so the iterator will be created twice.
@@ -2208,22 +2709,11 @@ func TestMemChunk_IteratorWithStructuredMetadata(t *testing.T) {
 						for i := 0; i < 2; i++ {
 							sts, ctx := stats.NewContext(context.Background())
 
-							streamExtractors := make(
-								[]log.StreamSampleExtractor,
-								0,
-								len(extractors),
-							)
-							for _, extractor := range extractors {
-								streamExtractors = append(
-									streamExtractors,
-									extractor.ForStream(streamLabels),
-								)
-							}
 							it := chk.SampleIterator(
 								ctx,
 								time.Unix(0, 0),
 								time.Unix(0, math.MaxInt64),
-								streamExtractors...)
+								extractor.ForStream(streamLabels))
 
 							var sumValues int
 							var streams []string

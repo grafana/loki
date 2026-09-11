@@ -28,6 +28,7 @@ import (
 	"github.com/apache/arrow-go/v18/arrow/bitutil"
 	"github.com/apache/arrow-go/v18/arrow/compute/exec"
 	"github.com/apache/arrow-go/v18/arrow/compute/internal/kernels"
+	"github.com/apache/arrow-go/v18/arrow/memory"
 )
 
 var (
@@ -52,6 +53,21 @@ var (
 				return NewDatum(d[0]), nil
 			}
 
+			// Coalesce multi-buffer view inputs. exec.ArraySpan's fixed
+			// [3]BufferSpan cannot carry BinaryView/StringView arrays with
+			// more than one overflow data buffer, so SetMembers would panic
+			// before any kernel runs. Rebuild such inputs with a single data
+			// buffer up front.
+			coalescedDatum, err := coalesceMultiBufferViewDatum(ctx, d[0])
+			if err != nil {
+				return nil, err
+			}
+			if coalescedDatum != nil {
+				defer coalescedDatum.Release()
+				d = append([]Datum(nil), d...)
+				d[0] = coalescedDatum
+			}
+
 			fn, err := getCastFunction(castOpts.ToType)
 			if err != nil {
 				return nil, fmt.Errorf("%w from %s", err, d[0].(ArrayLikeDatum).Type())
@@ -63,6 +79,245 @@ var (
 
 func RegisterScalarCast(reg FunctionRegistry) {
 	reg.AddFunction(castMetaFunc, false)
+}
+
+// coalesceMultiBufferViewDatum returns a new Datum whose view arrays each
+// have a single overflow data buffer, or nil if the input does not need
+// coalescing. Both ArrayDatum and ChunkedDatum view inputs are handled,
+// including dictionaries whose values are multi-buffer view arrays (the
+// recursive check matches what exec.ArraySpan.SetMembers traverses).
+// Other datums are never coalesced. Callers are responsible for
+// releasing the returned datum when it is non-nil.
+func coalesceMultiBufferViewDatum(ctx context.Context, d Datum) (Datum, error) {
+	switch v := d.(type) {
+	case *ArrayDatum:
+		if !needsViewCoalesce(v.Value) {
+			return nil, nil
+		}
+		mem := exec.GetAllocator(ctx)
+		newData, err := coalesceArrayData(mem, v.Value)
+		if err != nil {
+			return nil, err
+		}
+		return &ArrayDatum{Value: newData}, nil
+
+	case *ChunkedDatum:
+		chunks := v.Value.Chunks()
+		needAny := false
+		for _, c := range chunks {
+			if needsViewCoalesce(c.Data()) {
+				needAny = true
+				break
+			}
+		}
+		if !needAny {
+			return nil, nil
+		}
+		mem := exec.GetAllocator(ctx)
+		newChunks := make([]arrow.Array, len(chunks))
+		for i, c := range chunks {
+			if !needsViewCoalesce(c.Data()) {
+				c.Retain()
+				newChunks[i] = c
+				continue
+			}
+			newData, err := coalesceArrayData(mem, c.Data())
+			if err != nil {
+				for j := 0; j < i; j++ {
+					newChunks[j].Release()
+				}
+				return nil, err
+			}
+			newChunks[i] = array.MakeFromData(newData)
+			newData.Release()
+		}
+		chunked := arrow.NewChunked(v.Value.DataType(), newChunks)
+		for _, nc := range newChunks {
+			nc.Release()
+		}
+		return &ChunkedDatum{Value: chunked}, nil
+	}
+	return nil, nil
+}
+
+// needsViewCoalesce reports whether data carries a view array whose
+// payload spans more than the single overflow data buffer exec.ArraySpan
+// can carry. The check recurses into dictionary values and ordinary
+// child arrays because exec.ArraySpan.SetMembers recursively spans both;
+// extension inputs reuse their storage layout in place, so they are
+// treated as their StorageType for this traversal.
+func needsViewCoalesce(data arrow.ArrayData) bool {
+	dt := data.DataType()
+	if ext, ok := dt.(arrow.ExtensionType); ok {
+		dt = ext.StorageType()
+	}
+	switch dt.ID() {
+	case arrow.BINARY_VIEW, arrow.STRING_VIEW:
+		return len(data.Buffers()) > 3
+	case arrow.DICTIONARY:
+		return needsViewCoalesce(data.Dictionary())
+	}
+	for _, c := range data.Children() {
+		if needsViewCoalesce(c) {
+			return true
+		}
+	}
+	return false
+}
+
+// coalesceArrayData rebuilds data so that every view descendant lives in
+// a single overflow buffer. View arrays are rebuilt via
+// rebuildViewSingleBuffer; dictionaries keep their index buffers and
+// recursively rebuild their values; nested types (list, struct, etc.)
+// keep their own buffers and recursively rebuild each child. Extension
+// inputs are rebuilt at their storage layer and then re-wrapped so the
+// original extension datatype survives. Shares already-compliant
+// children by retaining them rather than copying.
+func coalesceArrayData(mem memory.Allocator, data arrow.ArrayData) (arrow.ArrayData, error) {
+	if ext, ok := data.DataType().(arrow.ExtensionType); ok {
+		storageData, err := reshapeArrayDataType(data, ext.StorageType())
+		if err != nil {
+			return nil, err
+		}
+		defer storageData.Release()
+		newStorage, err := coalesceArrayData(mem, storageData)
+		if err != nil {
+			return nil, err
+		}
+		defer newStorage.Release()
+		return reshapeArrayDataType(newStorage, data.DataType())
+	}
+
+	switch data.DataType().ID() {
+	case arrow.BINARY_VIEW, arrow.STRING_VIEW:
+		return rebuildViewSingleBuffer(mem, data)
+	case arrow.DICTIONARY:
+		newValues, err := coalesceArrayData(mem, data.Dictionary())
+		if err != nil {
+			return nil, err
+		}
+		defer newValues.Release()
+		newDict, ok := newValues.(*array.Data)
+		if !ok {
+			return nil, fmt.Errorf("%w: unexpected dictionary values data type %T", arrow.ErrInvalid, newValues)
+		}
+		return array.NewDataWithDictionary(data.DataType(), data.Len(),
+			data.Buffers(), data.NullN(), data.Offset(), newDict), nil
+	}
+
+	children := data.Children()
+	if len(children) == 0 {
+		return nil, fmt.Errorf("%w: coalesceArrayData: no view descendants in %s", arrow.ErrInvalid, data.DataType())
+	}
+	newChildren := make([]arrow.ArrayData, len(children))
+	for i, c := range children {
+		if !needsViewCoalesce(c) {
+			c.Retain()
+			newChildren[i] = c
+			continue
+		}
+		nc, err := coalesceArrayData(mem, c)
+		if err != nil {
+			for j := 0; j < i; j++ {
+				newChildren[j].Release()
+			}
+			return nil, err
+		}
+		newChildren[i] = nc
+	}
+	result := array.NewData(data.DataType(), data.Len(), data.Buffers(),
+		newChildren, data.NullN(), data.Offset())
+	for _, nc := range newChildren {
+		nc.Release()
+	}
+	return result, nil
+}
+
+// reshapeArrayDataType returns a new ArrayData that shares src's buffers,
+// children, nulls, offset, and dictionary but reports the given datatype.
+// Used by the extension unwrap/rewrap path in coalesceArrayData so the
+// Dictionary() member survives both directions (extension<->storage)
+// when the extension's storage type is a dictionary.
+func reshapeArrayDataType(src arrow.ArrayData, dt arrow.DataType) (arrow.ArrayData, error) {
+	if dict := src.Dictionary(); dict != nil {
+		d, ok := dict.(*array.Data)
+		if !ok {
+			return nil, fmt.Errorf("%w: unexpected dictionary data type %T", arrow.ErrInvalid, dict)
+		}
+		return array.NewDataWithDictionary(dt, src.Len(), src.Buffers(),
+			src.NullN(), src.Offset(), d), nil
+	}
+	return array.NewData(dt, src.Len(), src.Buffers(),
+		src.Children(), src.NullN(), src.Offset()), nil
+}
+
+// rebuildViewSingleBuffer rebuilds a BinaryView/StringView ArrayData so that
+// all non-inline payload lives in a single contiguous overflow buffer. The
+// caller owns the returned ArrayData.
+func rebuildViewSingleBuffer(mem memory.Allocator, data arrow.ArrayData) (arrow.ArrayData, error) {
+	arr := array.MakeFromData(data)
+	defer arr.Release()
+
+	var (
+		getLen  func(int) int
+		getInto func(i int, dst func([]byte))
+	)
+	switch a := arr.(type) {
+	case *array.BinaryView:
+		getLen = a.ValueLen
+		getInto = func(i int, dst func([]byte)) { dst(a.Value(i)) }
+	case *array.StringView:
+		getLen = a.ValueLen
+		getInto = func(i int, dst func([]byte)) {
+			s := a.Value(i)
+			dst([]byte(s))
+		}
+	default:
+		return nil, fmt.Errorf("%w: unexpected view array type %T", arrow.ErrInvalid, arr)
+	}
+	total, err := kernels.SumOutOfLineBytes(arr.Len(), arr.IsNull, getLen)
+	if err != nil {
+		return nil, err
+	}
+
+	bldr := array.NewBuilder(mem, arr.DataType())
+	defer bldr.Release()
+	bldr.Reserve(arr.Len())
+
+	switch b := bldr.(type) {
+	case *array.BinaryViewBuilder:
+		if total > 0 {
+			b.ReserveData(int(total))
+		}
+	case *array.StringViewBuilder:
+		if total > 0 {
+			b.ReserveData(int(total))
+		}
+	default:
+		return nil, fmt.Errorf("%w: unexpected view builder type %T", arrow.ErrInvalid, bldr)
+	}
+
+	appendBytes := func([]byte) {}
+	switch b := bldr.(type) {
+	case *array.BinaryViewBuilder:
+		appendBytes = b.Append
+	case *array.StringViewBuilder:
+		appendBytes = b.BinaryViewBuilder.Append
+	}
+
+	for i := 0; i < arr.Len(); i++ {
+		if arr.IsNull(i) {
+			bldr.AppendNull()
+			continue
+		}
+		getInto(i, appendBytes)
+	}
+
+	newArr := bldr.NewArray()
+	defer newArr.Release()
+	result := newArr.Data()
+	result.Retain()
+	return result, nil
 }
 
 type castFunction struct {
@@ -150,7 +405,18 @@ func unpackDictionary(ctx *exec.KernelCtx, batch *exec.ExecSpan, out *exec.ExecR
 			arrow.ErrInvalid, toType, dictType)
 	}
 
-	unpacked, err := TakeArray(ctx.Ctx, dictArr.Dictionary(), dictArr.Indices())
+	var (
+		unpacked arrow.Array
+		err      error
+	)
+	switch dictArr.Dictionary().DataType().ID() {
+	case arrow.STRING_VIEW, arrow.BINARY_VIEW:
+		// array_take has no view kernel, so unpack view-typed dictionaries
+		// directly into a fresh view array instead of going through TakeArray.
+		unpacked, err = unpackViewDictionary(exec.GetAllocator(ctx.Ctx), dictArr)
+	default:
+		unpacked, err = TakeArray(ctx.Ctx, dictArr.Dictionary(), dictArr.Indices())
+	}
 	if err != nil {
 		return err
 	}
@@ -166,6 +432,110 @@ func unpackDictionary(ctx *exec.KernelCtx, batch *exec.ExecSpan, out *exec.ExecR
 
 	out.TakeOwnership(unpacked.Data())
 	return nil
+}
+
+// unpackViewDictionary materializes a dictionary whose values are a view
+// type (string_view or binary_view) into a flat view array of the same
+// type, preserving per-element nulls from the dictionary indices and
+// per-slot nulls from the dictionary values themselves. Out-of-line
+// payload is pre-reserved on the builder so the resulting array lives
+// in a single overflow data buffer; exec.ArraySpan's fixed [3]BufferSpan
+// cannot carry view arrays that span multiple data buffers. This exists
+// because array_take has no view kernel; the cast meta function still
+// needs to expand dictionaries as part of DICTIONARY -> X casts.
+func unpackViewDictionary(mem memory.Allocator, dictArr *array.Dictionary) (arrow.Array, error) {
+	switch vals := dictArr.Dictionary().(type) {
+	case *array.StringView:
+		bldr := array.NewStringViewBuilder(mem)
+		defer bldr.Release()
+		if err := unpackViewDictionaryIntoBuilder(dictArr, vals, vals.ValueLen, viewDictBuilderAdapter{
+			builder:     bldr,
+			reserveData: bldr.ReserveData,
+			appendValue: func(idx int) { bldr.Append(vals.Value(idx)) },
+			appendNull:  bldr.AppendNull,
+		}); err != nil {
+			return nil, err
+		}
+		return bldr.NewArray(), nil
+	case *array.BinaryView:
+		bldr := array.NewBinaryViewBuilder(mem)
+		defer bldr.Release()
+		if err := unpackViewDictionaryIntoBuilder(dictArr, vals, vals.ValueLen, viewDictBuilderAdapter{
+			builder:     bldr,
+			reserveData: bldr.ReserveData,
+			appendValue: func(idx int) { bldr.Append(vals.Value(idx)) },
+			appendNull:  bldr.AppendNull,
+		}); err != nil {
+			return nil, err
+		}
+		return bldr.NewArray(), nil
+	default:
+		return nil, fmt.Errorf("%w: unpackViewDictionary: expected view-typed dictionary values, got %s",
+			arrow.ErrInvalid, vals.DataType())
+	}
+}
+
+// viewValuesNull is the null-check half of the view dictionary values
+// interface; exposed separately because *array.StringView and
+// *array.BinaryView both satisfy it while their Value() return types
+// differ (string vs []byte) and cannot be expressed in one interface.
+type viewValuesNull interface {
+	IsNull(int) bool
+}
+
+// viewDictBuilderAdapter packages the concrete builder + typed closures
+// needed by unpackViewDictionaryIntoBuilder; boxing them keeps the
+// helper's parameter list tight and lets each caller express the
+// builder-specific Append in one place.
+type viewDictBuilderAdapter struct {
+	builder     array.Builder
+	reserveData func(int)
+	appendValue func(idx int)
+	appendNull  func()
+}
+
+// unpackViewDictionaryIntoBuilder runs the shared reserve/walk pipeline
+// for both view-typed dictionary branches of unpackViewDictionary. The
+// caller owns the builder lifecycle and supplies the adapter so Append
+// can stay typed to the concrete builder (StringViewBuilder.Append takes
+// string, BinaryViewBuilder.Append takes []byte).
+func unpackViewDictionaryIntoBuilder(dictArr *array.Dictionary, vals viewValuesNull, valLen func(int) int, adapter viewDictBuilderAdapter) error {
+	outOfLine, err := kernels.SumOutOfLineBytes(dictArr.Len(),
+		func(i int) bool {
+			if dictArr.IsNull(i) {
+				return true
+			}
+			return vals.IsNull(dictArr.GetValueIndex(i))
+		},
+		func(i int) int { return valLen(dictArr.GetValueIndex(i)) },
+	)
+	if err != nil {
+		return err
+	}
+	adapter.builder.Reserve(dictArr.Len())
+	if outOfLine > 0 {
+		adapter.reserveData(int(outOfLine))
+	}
+	buildFromDictionary(dictArr, vals.IsNull, adapter.appendValue, adapter.appendNull)
+	return nil
+}
+
+// buildFromDictionary walks dictArr and routes each position to either
+// appendValue(valueIndex) or appendNull(). A position is null when the
+// dictionary index itself is null or when the referenced value is null.
+func buildFromDictionary(dictArr *array.Dictionary, valIsNull func(int) bool, appendValue func(idx int), appendNull func()) {
+	for i := 0; i < dictArr.Len(); i++ {
+		if dictArr.IsNull(i) {
+			appendNull()
+			continue
+		}
+		idx := dictArr.GetValueIndex(i)
+		if valIsNull(idx) {
+			appendNull()
+			continue
+		}
+		appendValue(idx)
+	}
 }
 
 func CastFromExtension(ctx *exec.KernelCtx, batch *exec.ExecSpan, out *exec.ExecResult) error {
@@ -537,6 +907,8 @@ func getBinaryLikeCasts() []*castFunction {
 	addFn("cast_large_binary", arrow.LARGE_BINARY, kernels.GetToBinaryKernels(arrow.BinaryTypes.LargeBinary))
 	addFn("cast_string", arrow.STRING, kernels.GetToBinaryKernels(arrow.BinaryTypes.String))
 	addFn("cast_large_string", arrow.LARGE_STRING, kernels.GetToBinaryKernels(arrow.BinaryTypes.LargeString))
+	addFn("cast_binary_view", arrow.BINARY_VIEW, kernels.GetToBinaryKernels(arrow.BinaryTypes.BinaryView))
+	addFn("cast_string_view", arrow.STRING_VIEW, kernels.GetToBinaryKernels(arrow.BinaryTypes.StringView))
 	addFn("cast_fixed_sized_binary", arrow.FIXED_SIZE_BINARY, kernels.GetFsbCastKernels())
 	return out
 }

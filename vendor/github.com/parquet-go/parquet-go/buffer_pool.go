@@ -1,6 +1,7 @@
 package parquet
 
 import (
+	"errors"
 	"io"
 	"os"
 	"path/filepath"
@@ -133,8 +134,11 @@ func (r *readerAt) ReadAt(b []byte, off int64) (int, error) {
 		}
 		r.offset = off
 	}
-	n, err := r.reader.Read(b)
+	n, err := io.ReadFull(r.reader, b)
 	r.offset += int64(n)
+	if errors.Is(err, io.ErrUnexpectedEOF) {
+		err = io.EOF
+	}
 	return n, err
 }
 

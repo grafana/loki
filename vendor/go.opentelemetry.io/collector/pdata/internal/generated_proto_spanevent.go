@@ -19,9 +19,9 @@ import (
 // SpanEvent is a time-stamped annotation of the span, consisting of user-supplied
 // text description and key-value pairs. See OTLP for event definition.
 type SpanEvent struct {
+	TimeUnixNano           uint64
 	Name                   string
 	Attributes             []KeyValue
-	TimeUnixNano           uint64
 	DroppedAttributesCount uint32
 }
 

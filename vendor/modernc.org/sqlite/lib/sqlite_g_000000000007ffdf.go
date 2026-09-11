@@ -184,7 +184,7 @@ func _sqlite3OsCurrentTimeInt64(tls *libc.TLS, pVfs uintptr, pTimeOut uintptr) (
 		rc = (*(*func(*libc.TLS, uintptr, uintptr) int32)(unsafe.Pointer(&struct{ uintptr }{(*Tsqlite3_vfs)(unsafe.Pointer(pVfs)).FxCurrentTimeInt64})))(tls, pVfs, pTimeOut)
 	} else {
 		rc = (*(*func(*libc.TLS, uintptr, uintptr) int32)(unsafe.Pointer(&struct{ uintptr }{(*Tsqlite3_vfs)(unsafe.Pointer(pVfs)).FxCurrentTime})))(tls, pVfs, bp)
-		**(**Tsqlite3_int64)(__ccgo_up(pTimeOut)) = int64(float64(**(**float64)(__ccgo_up(bp)) * libc.Float64FromFloat64(8.64e+07)))
+		**(**Tsqlite3_int64)(__ccgo_up(pTimeOut)) = _sqlite3RealToI64(tls, float64(**(**float64)(__ccgo_up(bp))*float64(8.64e+07)))
 	}
 	return rc
 }

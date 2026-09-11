@@ -175,7 +175,7 @@ type Options struct {
 // Global constants.
 const (
 	libraryName    = "minio-go"
-	libraryVersion = "v7.0.98"
+	libraryVersion = "v7.3.0"
 )
 
 // User Agent should always following the below style.
@@ -403,7 +403,7 @@ func (c *Client) TraceOff() {
 // SetS3TransferAccelerate - turns s3 accelerated endpoint on or off for all your
 // requests. This feature is only specific to S3 for all other endpoints this
 // function does nothing. To read further details on s3 transfer acceleration
-// please vist -
+// please visit -
 // http://docs.aws.amazon.com/AmazonS3/latest/dev/transfer-acceleration.html
 func (c *Client) SetS3TransferAccelerate(accelerateEndpoint string) {
 	if s3utils.IsAmazonEndpoint(*c.endpointURL) {
@@ -554,7 +554,7 @@ type requestMetadata struct {
 }
 
 // dumpHTTP - dump HTTP request and response.
-func (c *Client) dumpHTTP(req *http.Request, resp *http.Response) error {
+func (c *Client) dumpHTTP(req *http.Request, resp *http.Response, doErr error) error {
 	// Starts http dump.
 	_, err := fmt.Fprintln(c.traceOutput, "---------START-HTTP---------")
 	if err != nil {
@@ -568,6 +568,9 @@ func (c *Client) dumpHTTP(req *http.Request, resp *http.Response) error {
 	}
 
 	// Only display request header.
+	if req.Body != nil {
+		req.Body = http.NoBody
+	}
 	reqTrace, err := httputil.DumpRequestOut(req, false)
 	if err != nil {
 		return err
@@ -579,28 +582,36 @@ func (c *Client) dumpHTTP(req *http.Request, resp *http.Response) error {
 		return err
 	}
 
-	// Only display response header.
-	var respTrace []byte
+	if resp != nil {
+		// Only display response header.
+		var respTrace []byte
 
-	// For errors we make sure to dump response body as well.
-	if resp.StatusCode != http.StatusOK &&
-		resp.StatusCode != http.StatusPartialContent &&
-		resp.StatusCode != http.StatusNoContent {
-		respTrace, err = httputil.DumpResponse(resp, true)
-		if err != nil {
-			return err
+		// For errors we make sure to dump response body as well.
+		if !successStatus.Contains(resp.StatusCode) {
+			respTrace, err = httputil.DumpResponse(resp, true)
+			if err != nil {
+				return err
+			}
+		} else {
+			respTrace, err = httputil.DumpResponse(resp, false)
+			if err != nil {
+				return err
+			}
 		}
-	} else {
-		respTrace, err = httputil.DumpResponse(resp, false)
+
+		// Write response to trace output.
+		_, err = fmt.Fprint(c.traceOutput, strings.TrimSuffix(string(respTrace), "\r\n"))
 		if err != nil {
 			return err
 		}
 	}
 
-	// Write response to trace output.
-	_, err = fmt.Fprint(c.traceOutput, strings.TrimSuffix(string(respTrace), "\r\n"))
-	if err != nil {
-		return err
+	if doErr != nil {
+		// Write error to trace output.
+		_, err = fmt.Fprintln(c.traceOutput, strings.TrimSuffix(string(doErr.Error()), "\r\n"))
+		if err != nil {
+			return err
+		}
 	}
 
 	// Ends the http dump.
@@ -623,6 +634,9 @@ func (c *Client) do(req *http.Request) (resp *http.Response, err error) {
 
 	resp, err = c.httpClient.Do(req)
 	if err != nil {
+		if c.isTraceEnabled {
+			_ = c.dumpHTTP(req, nil, err)
+		}
 		// Handle this specifically for now until future Golang versions fix this issue properly.
 		if urlErr, ok := err.(*url.Error); ok {
 			if strings.Contains(urlErr.Err.Error(), "EOF") {
@@ -643,9 +657,9 @@ func (c *Client) do(req *http.Request) (resp *http.Response, err error) {
 	}
 
 	// If trace is enabled, dump http request and response,
-	// except when the traceErrorsOnly enabled and the response's status code is ok
-	if c.isTraceEnabled && (!c.traceErrorsOnly || resp.StatusCode != http.StatusOK) {
-		err = c.dumpHTTP(req, resp)
+	// except when traceErrorsOnly is enabled and the response has a success status code
+	if c.isTraceEnabled && (!c.traceErrorsOnly || !successStatus.Contains(resp.StatusCode)) {
+		err = c.dumpHTTP(req, resp, nil)
 		if err != nil {
 			return nil, err
 		}
@@ -657,6 +671,7 @@ func (c *Client) do(req *http.Request) (resp *http.Response, err error) {
 // List of success status.
 var successStatus = set.CreateIntSet(
 	http.StatusOK,
+	http.StatusAccepted,
 	http.StatusNoContent,
 	http.StatusPartialContent,
 )
@@ -833,8 +848,24 @@ func (c *Client) executeMethod(ctx context.Context, method string, metadata requ
 	return res, err
 }
 
+// credsRetrievalPanic carries a panic value out of the de-duplicated
+// credential retrieval goroutine so newRequest can resume it on each
+// caller's goroutine. The value is re-raised verbatim, as if the provider
+// had panicked on the caller's goroutine; the retrieval goroutine's stack
+// is not carried along.
+type credsRetrievalPanic struct{ value any }
+
+func (p credsRetrievalPanic) Error() string {
+	return fmt.Sprintf("credentials retrieval panicked: %v", p.value)
+}
+
 // newRequest - instantiate a new HTTP request for a given method.
 func (c *Client) newRequest(ctx context.Context, method string, metadata requestMetadata) (req *http.Request, err error) {
+	if ctx == nil {
+		// A nil context would be dereferenced below — by the bucket
+		// location lookup, the waiter select, and context.WithoutCancel.
+		return nil, errInvalidArgument("context cannot be nil")
+	}
 	// If no method is supplied default to 'POST'.
 	if method == "" {
 		method = http.MethodPost
@@ -867,21 +898,86 @@ func (c *Client) newRequest(ctx context.Context, method string, metadata request
 		return nil, err
 	}
 
-	if c.httpTrace != nil {
-		ctx = httptrace.WithClientTrace(ctx, c.httpTrace)
+	// Cached, unexpired credentials (or an absent provider — anonymous
+	// access) are served inline; a retrieval that races expiry runs
+	// inline too, with the caller's live context, serialized by the
+	// Credentials mutex. A still-fresh cached S3 Express session is
+	// served inline as well; actual retrievals go through the de-dup
+	// group.
+	express := s3utils.IsS3ExpressBucket(metadata.bucketName) && s3utils.IsAmazonEndpoint(*c.endpointURL)
+	var value credentials.Value
+	var served bool
+	if express {
+		value, served = c.sessionFromCache(metadata.bucketName)
+	} else if c.credsProvider == nil || !c.credsProvider.IsExpired() {
+		value, err = c.credsProvider.GetWithContext(c.credContext(ctx))
+		served = true
 	}
-
-	// make sure to de-dup calls to credential services, this reduces
-	// the overall load to the endpoint generating credential service.
-	value, err, _ := c.credsGroup.Do(metadata.bucketName, func() (credentials.Value, error) {
-		if s3utils.IsS3ExpressBucket(metadata.bucketName) && s3utils.IsAmazonEndpoint(*c.endpointURL) {
-			return c.CreateSession(ctx, metadata.bucketName, SessionReadWrite)
+	if !served {
+		// The provider retrieval is detached (context.WithoutCancel) so
+		// one caller's cancellation cannot fail concurrent waiters; each
+		// waiter stops waiting when its own context ends, though a
+		// caller arriving mid-retrieval blocks in IsExpired on the
+		// Credentials mutex until the retrieval completes. Detachment
+		// strips the caller's deadline along with its cancellation: on
+		// this path the caller context governs only the wait, and reaches
+		// the credential request itself only outside the group — on the
+		// inline not-expired path above and the direct call sites
+		// (presign, bucket location, express CreateSession). The S3
+		// Express session request keeps the caller context: a full S3
+		// operation's retries must stay cancellable, so its waiters
+		// share the winner's fate, and its trace for the same reason:
+		// the round trip was traced before this change.
+		// A retrieval panic resumes on each waiting caller's goroutine
+		// (credsRetrievalPanic); a runtime.Goexit reaches waiters as a
+		// terminal error from the de-dup group, since the retrieval
+		// goroutine cannot return one itself.
+		retrieveCtx := ctx
+		if express {
+			if c.httpTrace != nil {
+				retrieveCtx = httptrace.WithClientTrace(retrieveCtx, c.httpTrace)
+			}
+		} else {
+			retrieveCtx = context.WithoutCancel(ctx)
 		}
-		// Get credentials from the configured credentials provider.
-		return c.credsProvider.GetWithContext(c.CredContext())
-	})
+		resCh := c.credsGroup.DoChan(metadata.bucketName, func() (v credentials.Value, rerr error) {
+			defer func() {
+				if r := recover(); r != nil {
+					rerr = credsRetrievalPanic{value: r}
+				}
+			}()
+			if express {
+				return c.CreateSession(retrieveCtx, metadata.bucketName, SessionReadWrite)
+			}
+			// Get credentials from the configured credentials provider.
+			return c.credsProvider.GetWithContext(c.credContext(retrieveCtx))
+		})
+		var res singleflight.Result[credentials.Value]
+		select {
+		case res = <-resCh:
+		case <-ctx.Done():
+			// A result already delivered when the cancellation fires is
+			// preferred over the caller's context error.
+			select {
+			case res = <-resCh:
+			default:
+				return nil, ctx.Err()
+			}
+		}
+		var cp credsRetrievalPanic
+		if errors.As(res.Err, &cp) {
+			panic(cp.value)
+		}
+		value, err = res.Val, res.Err
+	}
 	if err != nil {
 		return nil, err
+	}
+
+	// Attach the trace after retrieval: provider credential requests were
+	// never traced. The express session request is traced above.
+	if c.httpTrace != nil {
+		ctx = httptrace.WithClientTrace(ctx, c.httpTrace)
 	}
 
 	// Initialize a new HTTP request for the method.
@@ -1155,6 +1251,14 @@ func (c *Client) CredContext() *credentials.CredContext {
 		Client:   httpClient,
 		Endpoint: c.endpointURL.String(),
 	}
+}
+
+// credContext returns the client's CredContext with ctx attached as the
+// caller context for credential retrieval.
+func (c *Client) credContext(ctx context.Context) *credentials.CredContext {
+	cc := c.CredContext()
+	cc.Context = ctx
+	return cc
 }
 
 // GetCreds returns the access creds for the client

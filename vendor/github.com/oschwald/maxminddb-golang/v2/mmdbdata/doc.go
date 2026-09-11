@@ -6,44 +6,35 @@
 //
 // # Manual Decoding Example
 //
-// Custom types can implement the Unmarshaler interface for custom decoding:
+// New custom types should implement CursorUnmarshaler:
 //
-//	type City struct {
-//		Names     map[string]string `maxminddb:"names"`
-//		GeoNameID uint              `maxminddb:"geoname_id"`
-//	}
+//	type Label string
 //
-//	func (c *City) UnmarshalMaxMindDB(d *mmdbdata.Decoder) error {
-//		mapIter, _, err := d.ReadMap()
-//		if err != nil { return err }
-//		for key, err := range mapIter {
-//			if err != nil { return err }
-//			switch string(key) {
-//			case "names":
-//				nameIter, size, err := d.ReadMap()
-//				if err != nil { return err }
-//				names := make(map[string]string, size) // Pre-allocate with size
-//				for nameKey, nameErr := range nameIter {
-//					if nameErr != nil { return nameErr }
-//					value, valueErr := d.ReadString()
-//					if valueErr != nil { return valueErr }
-//					names[string(nameKey)] = value
-//				}
-//				c.Names = names
-//			case "geoname_id":
-//				geoID, err := d.ReadUint32()
-//				if err != nil { return err }
-//				c.GeoNameID = uint(geoID)
-//			default:
-//				if err := d.SkipValue(); err != nil { return err }
-//			}
+//	func (label *Label) UnmarshalMaxMindDBCursor(
+//		cursor mmdbdata.Cursor,
+//	) (mmdbdata.Cursor, error) {
+//		value, next, err := cursor.ReadString()
+//		if err != nil {
+//			return mmdbdata.Cursor{}, mmdbdata.NormalizeUnmarshalError[Label](err)
 //		}
-//		return nil
+//		*label = Label(value)
+//		return next, nil
 //	}
 //
-// Types implementing Unmarshaler will automatically use custom decoding logic
-// instead of reflection when used with maxminddb.Reader.Lookup, similar to how
-// json.Unmarshaler works with encoding/json.
+// Types implementing CursorUnmarshaler automatically use custom decoding logic
+// instead of reflection when decoded by maxminddb.Reader. The older Unmarshaler
+// interface remains supported throughout v2 but is deprecated and planned for
+// removal in v3. When a type implements both interfaces, CursorUnmarshaler takes
+// precedence.
+//
+// The Cursor, MapReader, MapCursor, and SliceCursor APIs support code generated
+// by the maxminddb-gen command. Scalar and container reads use opaque successor
+// cursors to prove that a complete value was consumed without walking it a
+// second time. Applications should normally generate this code rather than use
+// the cursor API directly. Handwritten CursorUnmarshaler implementations return
+// that successor so they can also decode nested fields without rescanning.
+// Bridging a legacy Unmarshaler through Cursor.Unmarshal requires a rescan to
+// determine its successor.
 //
 // # Direct Decoder Usage
 //

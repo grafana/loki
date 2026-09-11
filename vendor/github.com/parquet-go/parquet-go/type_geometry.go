@@ -37,9 +37,9 @@ func (t *geometryType) PhysicalType() *format.Type { return byteArrayType{}.Phys
 
 func (t *geometryType) LogicalType() *format.LogicalType {
 	if t.CRS == "" {
-		return &format.LogicalType{Geometry: &geometryDefaultCRSLogicType}
+		return &format.LogicalType{Value: &geometryDefaultCRSLogicType}
 	}
-	return &format.LogicalType{Geometry: (*format.GeometryType)(t)}
+	return &format.LogicalType{Value: (*format.GeometryType)(t)}
 }
 
 func (t *geometryType) ConvertedType() *deprecated.ConvertedType {
@@ -114,12 +114,14 @@ func (t *geometryType) AssignValue(dst reflect.Value, src Value) error {
 func (t *geometryType) ConvertValue(val Value, typ Type) (Value, error) {
 	switch src := typ.(type) {
 	case *geometryType:
-		if src.LogicalType().Geometry.CRS != t.CRS {
+		srcGeometry, _ := logicalTypeOf[*format.GeometryType](src.LogicalType())
+		if srcGeometry.CRS != t.CRS {
 			return Value{}, errors.New("cannot convert between geometry types with different CRS")
 		}
 		return val, nil
 	case *geographyType:
-		if src.LogicalType().Geography.CRS != t.CRS {
+		srcGeography, _ := logicalTypeOf[*format.GeographyType](src.LogicalType())
+		if srcGeography.CRS != t.CRS {
 			return Value{}, errors.New("cannot convert between geography and geometry types with different CRS")
 		}
 		return val, nil

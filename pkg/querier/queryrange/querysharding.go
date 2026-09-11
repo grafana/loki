@@ -12,7 +12,6 @@ import (
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/httpgrpc"
 	"github.com/grafana/dskit/tenant"
-	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/promql/parser"
 
@@ -23,7 +22,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/querier/astmapper"
 	"github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase"
 	"github.com/grafana/loki/v3/pkg/storage/config"
-	"github.com/grafana/loki/v3/pkg/storage/types"
 	"github.com/grafana/loki/v3/pkg/util"
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
 	"github.com/grafana/loki/v3/pkg/util/marshal"
@@ -31,12 +29,10 @@ import (
 	"github.com/grafana/loki/v3/pkg/util/validation"
 )
 
-var errInvalidShardingRange = errors.New("Query does not fit in a single sharding configuration")
-
 // NewQueryShardMiddleware creates a middleware which downstreams queries after AST mapping and query encoding.
 func NewQueryShardMiddleware(
 	logger log.Logger,
-	confs ShardingConfigs,
+	confs []config.PeriodConfig,
 	engineOpts logql.EngineOpts,
 	middlewareMetrics *queryrangebase.InstrumentMiddlewareMetrics,
 	shardingMetrics *logql.MapperMetrics,
@@ -46,17 +42,6 @@ func NewQueryShardMiddleware(
 	retryNextHandler queryrangebase.Handler,
 	shardAggregation []string,
 ) queryrangebase.Middleware {
-	noshards := !hasShards(confs)
-
-	if noshards {
-		level.Warn(logger).Log(
-			"middleware", "QueryShard",
-			"msg", "no configuration with shard found",
-			"confs", fmt.Sprintf("%+v", confs),
-		)
-		return queryrangebase.PassthroughMiddleware
-	}
-
 	mapperware := queryrangebase.MiddlewareFunc(func(next queryrangebase.Handler) queryrangebase.Handler {
 		return newASTMapperware(confs, engineOpts, next, retryNextHandler, statsHandler, logger, shardingMetrics, limits, maxShards, shardAggregation)
 	})
@@ -75,7 +60,7 @@ func NewQueryShardMiddleware(
 }
 
 func newASTMapperware(
-	confs ShardingConfigs,
+	confs []config.PeriodConfig,
 	engineOpts logql.EngineOpts,
 	next queryrangebase.Handler,
 	retryNextHandler queryrangebase.Handler,
@@ -107,7 +92,7 @@ func newASTMapperware(
 }
 
 type astMapperware struct {
-	confs            ShardingConfigs
+	confs            []config.PeriodConfig
 	logger           log.Logger
 	limits           Limits
 	next             queryrangebase.Handler
@@ -133,18 +118,18 @@ func (ast *astMapperware) checkQuerySizeLimit(ctx context.Context, bytesPerShard
 		statsBytesStr := humanize.IBytes(bytesPerShard)
 		maxBytesReadStr := humanize.IBytes(uint64(maxBytesRead))
 
-		if bytesPerShard > uint64(maxBytesRead) {
-			level.Warn(ast.logger).Log("msg", "Query exceeds limits", "status", "rejected", "limit_name", "MaxQuerierBytesRead", "limit_bytes", maxBytesReadStr, "resolved_bytes", statsBytesStr)
-
-			errorTmpl := limErrQuerierTooManyBytesShardableTmpl
-			if notShardable {
-				errorTmpl = limErrQuerierTooManyBytesUnshardableTmpl
-			}
-
-			return httpgrpc.Errorf(http.StatusBadRequest, errorTmpl, statsBytesStr, maxBytesReadStr)
+		spec := maxQuerierBytesReadShardableSpec
+		if notShardable {
+			spec = maxQuerierBytesReadUnshardableSpec
 		}
 
-		level.Debug(ast.logger).Log("msg", "Query is within limits", "status", "accepted", "limit_name", "MaxQuerierBytesRead", "limit_bytes", maxBytesReadStr, "resolved_bytes", statsBytesStr)
+		if bytesPerShard > uint64(maxBytesRead) {
+			level.Warn(ast.logger).Log("msg", "Query exceeds limits", "status", "rejected", "limit_name", spec.limitName, "limit_bytes", maxBytesReadStr, "resolved_bytes", statsBytesStr)
+
+			return spec.exceededErr(statsBytesStr, maxBytesReadStr)
+		}
+
+		level.Debug(ast.logger).Log("msg", "Query is within limits", "status", "accepted", "limit_name", spec.limitName, "limit_bytes", maxBytesReadStr, "resolved_bytes", statsBytesStr)
 	}
 
 	return nil
@@ -162,15 +147,6 @@ func (ast *astMapperware) Do(ctx context.Context, r queryrangebase.Request) (que
 		return nil, err
 	}
 
-	maxRVDuration, maxOffset := maxRangeVectorAndOffsetDuration(params.GetExpression())
-
-	conf, err := ast.confs.GetConf(int64(model.Time(r.GetStart().UnixMilli()).Add(-maxRVDuration).Add(-maxOffset)), int64(model.Time(r.GetEnd().UnixMilli()).Add(-maxOffset)))
-	// cannot shard with this timerange
-	if err != nil {
-		level.Warn(spLogger).Log("err", err.Error(), "msg", "skipped AST mapper for request")
-		return ast.next.Do(ctx, r)
-	}
-
 	tenants, err := tenant.TenantIDs(ctx)
 	if err != nil {
 		return nil, err
@@ -183,9 +159,8 @@ func (ast *astMapperware) Do(ctx context.Context, r queryrangebase.Request) (que
 	// will merge with the stats returned from the engine.
 	resolverStats, ctx := stats.NewContext(ctx)
 
-	resolver, ok := shardResolverForConf(
+	resolver, ok := newDynamicShardResolver(
 		ctx,
-		conf,
 		ast.ng.Opts().MaxLookBackPeriod,
 		ast.logger,
 		MinWeightedParallelism(ctx, tenants, ast.confs, ast.limits, model.Time(r.GetStart().UnixMilli()), model.Time(r.GetEnd().UnixMilli())),
@@ -200,24 +175,20 @@ func (ast *astMapperware) Do(ctx context.Context, r queryrangebase.Request) (que
 		return ast.next.Do(ctx, r)
 	}
 
-	var strategy logql.ShardingStrategy
-
-	if conf.IndexType == types.IndexTypeTSDB {
-		v := ast.limits.TSDBShardingStrategy(ctx, tenants[0])
-		version, err := logql.ParseShardVersion(v)
-		if err != nil {
-			level.Warn(spLogger).Log(
-				"msg", "failed to parse shard version",
-				"fallback", version.String(),
-				"err", err.Error(),
-				"user", tenants[0],
-				"query", r.GetQuery(),
-			)
-		}
-		strategy = version.Strategy(resolver, uint64(ast.limits.TSDBMaxBytesPerShard(tenants[0])))
-	} else {
-		strategy = logql.NewPowerOfTwoStrategy(resolver)
+	// TSDB is the only supported index type, so the resolver is always dynamic
+	// and the sharding strategy is selected per-tenant.
+	v := ast.limits.TSDBShardingStrategy(ctx, tenants[0])
+	version, err := logql.ParseShardVersion(v)
+	if err != nil {
+		level.Warn(spLogger).Log(
+			"msg", "failed to parse shard version",
+			"fallback", version.String(),
+			"err", err.Error(),
+			"user", tenants[0],
+			"query", r.GetQuery(),
+		)
 	}
+	strategy := version.Strategy(resolver, uint64(ast.limits.TSDBMaxBytesPerShard(tenants[0])))
 
 	// Merge global shard aggregations and tenant overrides.
 	limitShardAggregation := validation.IntersectionPerTenant(tenants, func(tenant string) []string {
@@ -258,6 +229,10 @@ func (ast *astMapperware) Do(ctx context.Context, r queryrangebase.Request) (que
 
 	res, err := query.Exec(ctx)
 	if err != nil {
+		// Keep the usage of the shards and index lookups that completed before
+		// the failure.
+		stats.JoinPartial(ctx, res.Statistics)
+		stats.JoinPartial(ctx, resolverStats.Result(0, 0, 0))
 		return nil, err
 	}
 
@@ -347,73 +322,15 @@ func (splitter *shardSplitter) Do(ctx context.Context, r queryrangebase.Request)
 	return splitter.next.Do(ctx, r)
 }
 
-func hasShards(confs ShardingConfigs) bool {
-	for _, conf := range confs {
-		if conf.RowShards > 0 || conf.IndexType == types.IndexTypeTSDB {
-			return true
-		}
-	}
-	return false
-}
-
-// ShardingConfigs is a slice of chunk shard configs
-type ShardingConfigs []config.PeriodConfig
-
-// ValidRange extracts a non-overlapping sharding configuration from a list of configs and a time range.
-func (confs ShardingConfigs) ValidRange(start, end int64) (config.PeriodConfig, error) {
-	for i, conf := range confs {
-		if start < int64(conf.From.Time) {
-			// the query starts before this config's range
-			return config.PeriodConfig{}, errInvalidShardingRange
-		} else if i == len(confs)-1 {
-			// the last configuration has no upper bound
-			return conf, nil
-		} else if end < int64(confs[i+1].From.Time) {
-			// The request is entirely scoped into this shard config
-			return conf, nil
-		}
-
-		continue
-	}
-
-	return config.PeriodConfig{}, errInvalidShardingRange
-}
-
-// GetConf will extract a shardable config corresponding to a request and the shardingconfigs
-func (confs ShardingConfigs) GetConf(start, end int64) (config.PeriodConfig, error) {
-	conf, err := confs.ValidRange(start, end)
-	// query exists across multiple sharding configs
-	if err != nil {
-		return conf, err
-	}
-
-	// query doesn't have shard factor, so don't try to do AST mapping.
-	if conf.RowShards < 2 && conf.IndexType != types.IndexTypeTSDB {
-		return conf, errors.Errorf("shard factor not high enough: [%d]", conf.RowShards)
-	}
-
-	return conf, nil
-}
-
 // NewSeriesQueryShardMiddleware creates a middleware which shards series queries.
 func NewSeriesQueryShardMiddleware(
 	logger log.Logger,
-	confs ShardingConfigs,
+	confs []config.PeriodConfig,
 	middlewareMetrics *queryrangebase.InstrumentMiddlewareMetrics,
 	shardingMetrics *logql.MapperMetrics,
 	limits Limits,
 	merger queryrangebase.Merger,
 ) queryrangebase.Middleware {
-	noshards := !hasShards(confs)
-
-	if noshards {
-		level.Warn(logger).Log(
-			"middleware", "QueryShard",
-			"msg", "no configuration with shard found",
-			"confs", fmt.Sprintf("%+v", confs),
-		)
-		return queryrangebase.PassthroughMiddleware
-	}
 	return queryrangebase.MiddlewareFunc(func(next queryrangebase.Handler) queryrangebase.Handler {
 		return queryrangebase.InstrumentMiddleware("sharding", middlewareMetrics).Wrap(
 			&seriesShardingHandler{
@@ -429,7 +346,7 @@ func NewSeriesQueryShardMiddleware(
 }
 
 type seriesShardingHandler struct {
-	confs   ShardingConfigs
+	confs   []config.PeriodConfig
 	logger  log.Logger
 	next    queryrangebase.Handler
 	metrics *logql.MapperMetrics
@@ -438,27 +355,20 @@ type seriesShardingHandler struct {
 }
 
 func (ss *seriesShardingHandler) Do(ctx context.Context, r queryrangebase.Request) (queryrangebase.Response, error) {
-	conf, err := ss.confs.GetConf(r.GetStart().UnixMilli(), r.GetEnd().UnixMilli())
-	// cannot shard with this timerange
-	if err != nil {
-		level.Warn(ss.logger).Log("err", err.Error(), "msg", "skipped sharding for request")
-		return ss.next.Do(ctx, r)
-	}
-
 	req, ok := r.(*LokiSeriesRequest)
 	if !ok {
 		return nil, fmt.Errorf("expected *LokiSeriesRequest, got (%T)", r)
 	}
 
 	ss.metrics.DownstreamQueries.WithLabelValues("series").Inc()
-	ss.metrics.DownstreamFactor.Observe(float64(conf.RowShards))
+	ss.metrics.DownstreamFactor.Observe(float64(config.DefaultRowShards))
 
-	requests := make([]queryrangebase.Request, 0, conf.RowShards)
-	for i := 0; i < int(conf.RowShards); i++ {
+	requests := make([]queryrangebase.Request, 0, config.DefaultRowShards)
+	for i := 0; i < config.DefaultRowShards; i++ {
 		shardedRequest := *req
 		shardedRequest.Shards = []string{astmapper.ShardAnnotation{
 			Shard: i,
-			Of:    int(conf.RowShards),
+			Of:    config.DefaultRowShards,
 		}.String()}
 		requests = append(requests, &shardedRequest)
 	}

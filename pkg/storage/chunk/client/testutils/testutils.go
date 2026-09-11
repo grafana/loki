@@ -80,10 +80,6 @@ func SchemaConfig(store, schema string, from model.Time) config.SchemaConfig {
 			IndexType: store,
 			Schema:    schema,
 			From:      config.DayTime{Time: from},
-			ChunkTables: config.PeriodicTableConfig{
-				Prefix: "cortex",
-				Period: 7 * 24 * time.Hour,
-			},
 			IndexTables: config.IndexPeriodicTableConfig{
 				PeriodicTableConfig: config.PeriodicTableConfig{
 					Prefix: "cortex_chunks",

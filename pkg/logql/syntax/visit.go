@@ -8,7 +8,6 @@ type RootVisitor interface {
 	SampleExprVisitor
 	LogSelectorExprVisitor
 	StageExprVisitor
-	VariantsExprVisitor
 
 	VisitLogRange(*LogRangeExpr)
 }
@@ -17,6 +16,8 @@ type SampleExprVisitor interface {
 	VisitBinOp(*BinOpExpr)
 	VisitVectorAggregation(*VectorAggregationExpr)
 	VisitRangeAggregation(*RangeAggregationExpr)
+	VisitLabelAggregation(*LabelAggregationExpr)
+	VisitCountDistinctSketch(*CountDistinctSketchExpr)
 	VisitLabelReplace(*LabelReplaceExpr)
 	VisitLiteral(*LiteralExpr)
 	VisitVector(*VectorExpr)
@@ -43,10 +44,6 @@ type StageExprVisitor interface {
 	VisitLogfmtParser(*LogfmtParserExpr)
 }
 
-type VariantsExprVisitor interface {
-	VisitVariants(*MultiVariantExpr)
-}
-
 var _ RootVisitor = &DepthFirstTraversal{}
 
 type DepthFirstTraversal struct {
@@ -68,9 +65,10 @@ type DepthFirstTraversal struct {
 	VisitMatchersFn               func(v RootVisitor, e *MatchersExpr)
 	VisitPipelineFn               func(v RootVisitor, e *PipelineExpr)
 	VisitRangeAggregationFn       func(v RootVisitor, e *RangeAggregationExpr)
+	VisitLabelAggregationFn       func(v RootVisitor, e *LabelAggregationExpr)
+	VisitCountDistinctSketchFn    func(v RootVisitor, e *CountDistinctSketchExpr)
 	VisitVectorFn                 func(v RootVisitor, e *VectorExpr)
 	VisitVectorAggregationFn      func(v RootVisitor, e *VectorAggregationExpr)
-	VisitVariantsFn               func(v RootVisitor, e *MultiVariantExpr)
 }
 
 // VisitBinOp implements RootVisitor.
@@ -272,6 +270,30 @@ func (v *DepthFirstTraversal) VisitRangeAggregation(e *RangeAggregationExpr) {
 	}
 }
 
+// VisitLabelAggregation implements RootVisitor.
+func (v *DepthFirstTraversal) VisitLabelAggregation(e *LabelAggregationExpr) {
+	if e == nil {
+		return
+	}
+	if v.VisitLabelAggregationFn != nil {
+		v.VisitLabelAggregationFn(v, e)
+	} else {
+		e.Left.Accept(v)
+	}
+}
+
+// VisitCountDistinctSketch implements RootVisitor.
+func (v *DepthFirstTraversal) VisitCountDistinctSketch(e *CountDistinctSketchExpr) {
+	if e == nil {
+		return
+	}
+	if v.VisitCountDistinctSketchFn != nil {
+		v.VisitCountDistinctSketchFn(v, e)
+	} else {
+		e.Left.Accept(v)
+	}
+}
+
 // VisitVector implements RootVisitor.
 func (v *DepthFirstTraversal) VisitVector(e *VectorExpr) {
 	if e == nil {
@@ -291,21 +313,5 @@ func (v *DepthFirstTraversal) VisitVectorAggregation(e *VectorAggregationExpr) {
 		v.VisitVectorAggregationFn(v, e)
 	} else {
 		e.Left.Accept(v)
-	}
-}
-
-func (v *DepthFirstTraversal) VisitVariants(e *MultiVariantExpr) {
-	if e == nil {
-		return
-	}
-
-	if v.VisitVariantsFn != nil {
-		v.VisitVariantsFn(v, e)
-	} else {
-		e.LogRange().Accept(v)
-		variants := e.Variants()
-		for i := range variants {
-			variants[i].Accept(v)
-		}
 	}
 }

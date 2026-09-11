@@ -6,10 +6,6 @@ package sqlite3
 
 const __FLOAT128_TYPE__ = 1
 
-const __GNUC__ = 14
-
-const __GXX_ABI_VERSION = 1019
-
 const __builtin_copysignq = 0
 
 const __builtin_fabsq = 0

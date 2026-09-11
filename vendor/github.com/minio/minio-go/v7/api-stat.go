@@ -57,7 +57,12 @@ func (c *Client) BucketExists(ctx context.Context, bucketName string) (bool, err
 }
 
 // StatObject verifies if object exists, you have permission to access it
-// and returns information about the object.
+// and returns information about the object. When the returned error is
+// non-nil but a response was received, the ObjectInfo still carries the
+// VersionID and IsDeleteMarker values parsed from the response headers,
+// plus ReplicationReady on every error path except the versioned
+// delete-marker 405 (an asymmetry preserved from the pre-v7.0.93
+// behavior, which populated ReplicationReady on the generic branch only).
 func (c *Client) StatObject(ctx context.Context, bucketName, objectName string, opts StatObjectOptions) (ObjectInfo, error) {
 	// Input validation.
 	if err := s3utils.CheckValidBucketName(bucketName); err != nil {
@@ -92,32 +97,32 @@ func (c *Client) StatObject(ctx context.Context, bucketName, objectName string, 
 	})
 	defer closeResponse(resp)
 	if err != nil {
-		return ObjectInfo{}, err
-	}
-
-	if resp != nil {
+		// executeMethod returns a non-nil error for every non-success
+		// status. When a response exists, its headers still carry the
+		// version and delete-marker fields — surface them with the error.
+		if resp == nil {
+			return ObjectInfo{}, err
+		}
 		deleteMarker := resp.Header.Get(amzDeleteMarker) == "true"
 		replicationReady := resp.Header.Get(minioTgtReplicationReady) == "true"
-		if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusPartialContent {
-			if resp.StatusCode == http.StatusMethodNotAllowed && opts.VersionID != "" && deleteMarker {
-				errResp := ErrorResponse{
-					StatusCode: resp.StatusCode,
-					Code:       MethodNotAllowed,
-					Message:    s3ErrorResponseMap[MethodNotAllowed],
-					BucketName: bucketName,
-					Key:        objectName,
-				}
-				return ObjectInfo{
-					VersionID:      resp.Header.Get(amzVersionID),
-					IsDeleteMarker: deleteMarker,
-				}, errResp
+		if resp.StatusCode == http.StatusMethodNotAllowed && opts.VersionID != "" && deleteMarker {
+			errResp := ErrorResponse{
+				StatusCode: resp.StatusCode,
+				Code:       MethodNotAllowed,
+				Message:    s3ErrorResponseMap[MethodNotAllowed],
+				BucketName: bucketName,
+				Key:        objectName,
 			}
 			return ObjectInfo{
-				VersionID:        resp.Header.Get(amzVersionID),
-				IsDeleteMarker:   deleteMarker,
-				ReplicationReady: replicationReady, // whether delete marker can be replicated
-			}, httpRespToErrorResponse(resp, bucketName, objectName)
+				VersionID:      resp.Header.Get(amzVersionID),
+				IsDeleteMarker: deleteMarker,
+			}, errResp
 		}
+		return ObjectInfo{
+			VersionID:        resp.Header.Get(amzVersionID),
+			IsDeleteMarker:   deleteMarker,
+			ReplicationReady: replicationReady, // whether delete marker can be replicated
+		}, err
 	}
 
 	return ToObjectInfo(bucketName, objectName, resp.Header)

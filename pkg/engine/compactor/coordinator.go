@@ -1,14 +1,14 @@
 package compactor
 
 import (
-	"bytes"
 	"context"
 	"fmt"
-	"strconv"
+	"slices"
 	"strings"
 	"sync"
 	"time"
 
+	"github.com/apache/arrow-go/v18/arrow"
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
@@ -21,6 +21,8 @@ import (
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
 	"github.com/grafana/loki/v3/pkg/engine/internal/workflow"
 )
+
+const indexMergeIterations = 3
 
 // tocReplacer is the subset of *metastore.TableOfContentsWriter the
 // coordinator needs.
@@ -37,7 +39,7 @@ type tocReplacer interface {
 // runFunc executes one single-root physical.Plan as a workflow.
 // Injected via the coordinator's runPlan field so unit tests can swap in a
 // recorder without standing up a scheduler + worker pair.
-type runFunc func(ctx context.Context, opts workflow.Options, plan *physical.Plan) error
+type runFunc func(ctx context.Context, opts workflow.Options, plan *physical.Plan) (arrow.RecordBatch, error)
 
 // coordinator drives the per-tenant compaction workers. Each iteration
 // re-reads the ToC and re-plans, so a crash recovers on the next pass.
@@ -71,7 +73,7 @@ func newCoordinator(
 		cfg:    cfg,
 		logger: logger,
 		bucket: bucket,
-		runPlan: func(ctx context.Context, opts workflow.Options, plan *physical.Plan) error {
+		runPlan: func(ctx context.Context, opts workflow.Options, plan *physical.Plan) (arrow.RecordBatch, error) {
 			return runPlan(ctx, logger, runner, opts, plan)
 		},
 		metastoreWriter: metastoreWriter,
@@ -81,9 +83,9 @@ func newCoordinator(
 	}
 }
 
-// Run reconciles the set of per-tenant workers against the current-window ToC
-// and filtered by the per-tenant runtime config every PollingInterval until ctx
-// is cancelled, then drains all workers.
+// Run reconciles the set of per-tenant workers against the compacted windows'
+// ToCs and filtered by the per-tenant runtime config every PollingInterval
+// until ctx is cancelled, then drains all workers.
 func (c *coordinator) Run(ctx context.Context) error {
 	level.Info(c.logger).Log(
 		"msg", "starting dataobj compaction coordinator",
@@ -113,12 +115,23 @@ func (c *coordinator) Run(ctx context.Context) error {
 	}
 }
 
-// reconcile brings the live worker set in line with the current-window ToC and
-// the per-tenant enable override. workers is owned solely by the single Run
+// windows returns the metastore-aligned windows the coordinator compacts on
+// each pass, newest first: the current window followed by cfg.WindowLookback
+// older windows. With the default lookback of 0 this is the current window.
+func (c *coordinator) windows() []time.Time {
+	current := c.clock().UTC().Truncate(metastore.MetastoreWindowSize)
+	out := make([]time.Time, 0, c.cfg.WindowLookback+1)
+	for i := 0; i <= c.cfg.WindowLookback; i++ {
+		out = append(out, current.Add(-time.Duration(i)*metastore.MetastoreWindowSize))
+	}
+	return out
+}
+
+// reconcile brings the live worker set in line with the compacted windows' ToCs
+// and the per-tenant enable override. workers is owned solely by the single Run
 // goroutine, so it needs no synchronization.
 func (c *coordinator) reconcile(ctx context.Context, workers map[string]context.CancelFunc, wg *sync.WaitGroup) {
-	window := c.clock().UTC().Truncate(metastore.MetastoreWindowSize)
-	discovered, ok := c.discover(ctx, window)
+	discovered, allOK := c.discoverUniqueTenants(ctx)
 
 	// Per-tenant metric series are dropped by the worker goroutine on exit (see
 	// startWorker), not here, so a still-draining worker cannot resurrect a
@@ -132,10 +145,10 @@ func (c *coordinator) reconcile(ctx context.Context, workers map[string]context.
 		}
 	}
 
-	if !ok {
-		return
-	}
-
+	// Starting a worker for a discovered tenant is always safe, even when a
+	// window's ToC failed to load (allOK=false): a tenant present in any
+	// successfully-read window has real work. This is what lets a populated
+	// older window run while the current window's ToC does not yet exist.
 	for tenant := range discovered {
 		if _, running := workers[tenant]; running {
 			continue
@@ -144,6 +157,14 @@ func (c *coordinator) reconcile(ctx context.Context, workers map[string]context.
 			continue
 		}
 		c.startWorker(ctx, workers, wg, tenant)
+	}
+
+	// Absence-driven cancellation requires an authoritative picture: only when
+	// every window read cleanly is a tenant's absence from the union conclusive.
+	// A transient read failure on any window leaves the running set untouched so
+	// a tenant present only in the unread window is not spuriously cancelled.
+	if !allOK {
+		return
 	}
 
 	// Workers just started above are all in discovered, so this cancel-absent
@@ -155,6 +176,26 @@ func (c *coordinator) reconcile(ctx context.Context, workers map[string]context.
 			delete(workers, tenant)
 		}
 	}
+}
+
+// discoverUniqueTenants unions the tenant sets of every compacted window's ToC. allOK is
+// true only when every window read cleanly (a missing ToC or transient error on
+// any window clears it); reconcile uses allOK to gate absence-driven
+// cancellation so an unread window never causes a spurious cancel.
+func (c *coordinator) discoverUniqueTenants(ctx context.Context) (map[string]struct{}, bool) {
+	discovered := make(map[string]struct{})
+	allOK := true
+	for _, window := range c.windows() {
+		tenants, ok := c.discover(ctx, window)
+		if !ok {
+			allOK = false
+			continue
+		}
+		for tenant := range tenants {
+			discovered[tenant] = struct{}{}
+		}
+	}
+	return discovered, allOK
 }
 
 // startWorker launches a long-lived runTenantLoop goroutine for tenant and
@@ -169,10 +210,10 @@ func (c *coordinator) startWorker(ctx context.Context, workers map[string]contex
 	})
 }
 
-// discover reads the current-window ToC and returns the set of tenants it
-// references. ok is false on any read error (missing ToC or transient), which
-// tells reconcile to skip new-worker starts and absence-driven cancellation and
-// leave the running set untouched: only a successfully read ToC is authoritative
+// discover reads one window's ToC and returns the set of tenants it references.
+// ok is false on any read error (missing ToC or transient); discoverAll folds
+// that into its allOK result so reconcile can leave the running set untouched
+// when the picture is incomplete. Only a successfully read ToC is authoritative
 // enough to conclude a tenant was removed. Membership is by map key.
 func (c *coordinator) discover(ctx context.Context, window time.Time) (map[string]struct{}, bool) {
 	indexes, err := loadTenantIndexes(ctx, c.bucket, window)
@@ -209,81 +250,95 @@ func (c *coordinator) compactTenantLogs(
 	window time.Time,
 	converged indexEntry,
 ) (compactionStats, error) {
+	entryLogger := log.With(c.logger, "tenant", tenant, "entry", converged.Path)
 	sections, sortSchema, err := logSectionRefsFor(ctx, c.bucket, tenant, converged.Path)
 	if err != nil {
 		return compactionStats{}, fmt.Errorf("reading log section refs: %w", err)
 	}
 
-	runs := v2.CalculateRuns(sections)
-	if v2.IsTerminal(runs, uint64(c.cfg.LogMinCompactionSize)) {
-		level.Debug(c.logger).Log("msg", "log-compaction: window not worth compacting, skipping",
-			"tenant", tenant, "window", window)
+	runs := v2.CalculateRuns(sections, compareSortKey)
+	if v2.IsConverged(sections, compareSortKey) || v2.BelowMinCompactionSize(runs, uint64(c.cfg.LogMinCompactionSize)) {
+		level.Debug(entryLogger).Log("msg", "log-compaction: window not worth compacting, skipping", "window", window)
 		return compactionStats{}, nil
 	}
 
 	tasks := v2.Plan(runs, tenant, c.cfg.LogMaxRunsPerTask, sortSchema)
 
-	var pathBuilder indexMergePath
-	var idBuf bytes.Buffer
-	outputs := make([]string, len(tasks))
-	for i, ts := range tasks {
-		outputs[i] = pathBuilder.Build(tenant, window, c.cfg.PlanVersion, i, logTaskSectionIDs(ts.Runs, &idBuf))
-	}
+	level.Info(entryLogger).Log("msg", "planned log compaction tasks", "input_runs", len(runs), "tasks", len(tasks))
+	logLogTaskDetails(entryLogger, tasks)
 
+	resultEntries := make([]*metastore.TableOfContentsEntry, len(tasks))
 	g, gctx := errgroup.WithContext(ctx)
 	if c.cfg.LogMaxRunningCompactionTasks > 0 {
 		g.SetLimit(c.cfg.LogMaxRunningCompactionTasks)
 	}
 	for i, ts := range tasks {
 		g.Go(func() error {
-			plan := buildLogMergePlan(tenant, window, ts, outputs[i])
-			opts := workflow.Options{
-				Tenant: tenant,
-				Actor:  []string{"compaction", "log-merge"},
+			plan := buildLogMergePlan(tenant, window, ts)
+			opts := workflow.Options{Tenant: tenant, Actor: []string{"compaction", "log-merge"}}
+			rec, err := c.runPlan(gctx, opts, plan)
+			if err != nil {
+				return err
 			}
-			return c.runPlan(gctx, opts, plan)
+			if rec == nil {
+				return nil
+			}
+			artifacts, err := v2.ReadResultRecord(rec)
+			if err != nil {
+				return err
+			}
+			if len(artifacts) == 0 {
+				return nil
+			}
+			if len(artifacts) > 1 {
+				return fmt.Errorf("log-merge job produced %d artifacts, want 1", len(artifacts))
+			}
+			minTS, maxTS := taskBounds(ts)
+			resultEntries[i] = &metastore.TableOfContentsEntry{
+				Path:                 artifacts[0].Path,
+				StartTime:            time.Unix(0, minTS).UTC(),
+				EndTime:              time.Unix(0, maxTS).UTC(),
+				UncompressedLogsSize: taskUncompressedLogsSize(ts),
+			}
+			return nil
 		})
 	}
 	if err := g.Wait(); err != nil {
 		return compactionStats{}, fmt.Errorf("failed to execute log-merge tasks: %w", err)
 	}
 
-	oldPaths := []string{converged.Path}
-	newEntries := makeTocEntries(tasks, outputs)
+	// Replacing the converged index is atomic across all tasks planned from it.
+	// If any task rejects its sources (for example, because their sort layouts
+	// do not match), then return early and discard all work in order to maintain correctness.
+	for _, e := range resultEntries {
+		if e == nil {
+			return compactionStats{}, nil
+		}
+	}
 
-	// makeTocEntries recomputes sizes from the source object's internal section
-	// stats. A converged row of 0 means unknown, but legacy objects carry
-	// positive internal stats from the old statsCalculation that counted only
-	// len(log.Line) and omitted structured metadata. Summing those undercounts
-	// yields a positive total. Persisting 0 keeps the row unknown, which is the
-	// only way to later distinguish indexes written with incorrect line-only
-	// stats and backfill them from authoritative data without rescanning every
-	// object.
+	newEntries := make([]metastore.TableOfContentsEntry, len(resultEntries))
+	for i, e := range resultEntries {
+		newEntries[i] = *e
+	}
+
+	// A converged row of 0 uncompressed size means unknown. Legacy objects
+	// carry positive-but-wrong internal stats (line length only, omitting
+	// structured metadata), so persisting 0 keeps the row unknown and lets us
+	// later distinguish and backfill those indexes without rescanning.
 	if converged.UncompressedLogsSize == 0 {
 		for i := range newEntries {
 			newEntries[i].UncompressedLogsSize = 0
 		}
 	}
 
-	// removed = the single converged index this window replaces; added = the
-	// merged indexes written; dispatched = log-merge tasks run this cycle.
+	oldPaths := []string{converged.Path}
 	stats := compactionStats{
 		removed:    len(oldPaths),
-		added:      len(outputs),
+		added:      len(newEntries),
 		dispatched: len(tasks),
 	}
 
-	level.Debug(c.logger).Log("msg", "log-compacted",
-		"tenant", tenant, "window", window,
-		"dry_run", c.cfg.DryRun,
-		"tasks", len(tasks),
-		"removed_index", converged.Path,
-		"added_indexes", strings.Join(outputs, ","),
-	)
-
 	if c.cfg.DryRun {
-		// Tasks ran but the ToC was left untouched, so no indexes were
-		// added/removed; only report the tasks dispatched.
 		return compactionStats{dispatched: len(tasks)}, nil
 	}
 
@@ -296,71 +351,110 @@ func (c *coordinator) compactTenantLogs(
 		return compactionStats{}, fmt.Errorf("failed to replace index pointers after log-compaction: %w", err)
 	}
 	if !swapped {
-		level.Debug(c.logger).Log("msg", "log-compaction ToC replace race-loss / already-converged",
-			"tenant", tenant, "window", window)
+		level.Debug(entryLogger).Log("msg", "log-compaction ToC replace race-loss / already-converged",
+			"window", window)
 		return compactionStats{}, nil
 	}
+
+	level.Debug(entryLogger).Log("msg", "log-compaction step completed for index", "index_files_added", stats.added, "index_files_removed", stats.removed, "tasks_dispatched", stats.dispatched)
 	return stats, nil
 }
 
-// compactTenant performs the per-(tenant, window) IndexMerge. Stats are
-// zero-valued on any no-op success (no tasks planned or a race-loss swap).
-func (c *coordinator) compactTenant(
-	ctx context.Context,
-	tenant string,
-	window time.Time,
-	entries []indexEntry,
-) (compactionStats, error) {
-	// Plan.
-	sections := sectionRefsFor(entries)
-	runs := v2.CalculateRuns(sections)
-	tasks := v2.Plan(runs, tenant, c.cfg.MaxRunsPerTask, nil)
-	if len(tasks) == 0 {
-		level.Debug(c.logger).Log("msg", "tenant cycle: planner produced no tasks",
-			"tenant", tenant, "window", window)
+func logLogTaskDetails(logger log.Logger, tasks []*compactionv2pb.TaskSpec) {
+	// Only log the first 20 tasks
+	tasksCnt := min(len(tasks), 20)
+	for _, task := range tasks[:tasksCnt] {
+		totalTaskSize := int64(0)
+		sb := strings.Builder{}
+		sb.WriteString("[")
+		for i, run := range task.Runs {
+			fmt.Fprintf(&sb, "%d", len(run.Sections))
+			if i != len(task.Runs)-1 {
+				sb.WriteString(", ")
+			}
+			for j := 0; j < len(run.Sections); j++ {
+				totalTaskSize += run.Sections[j].UncompressedSize
+			}
+		}
+		sb.WriteString("]")
+		level.Debug(logger).Log("msg", "log compaction task snippet", "runs", len(task.Runs), "sections_per_run", sb.String(), "total_uncompressed_logs_size", totalTaskSize)
+	}
+}
+
+// compactTenant performs one index-compaction pass for a tenant and window.
+func (c *coordinator) compactTenant(ctx context.Context, tenant string, window time.Time, entries []indexEntry) (compactionStats, error) {
+	windowLogger := log.With(c.logger, "tenant", tenant, "window", window)
+	sections, err := indexSectionRefsFor(ctx, c.bucket, tenant, entries)
+	if err != nil {
+		return compactionStats{}, fmt.Errorf("discover index section bounds: %w", err)
+	}
+
+	runs := v2.CalculateRuns(sections, compareIndexSortKey)
+	inputRuns := len(runs)
+	c.metrics.observeIndexInputRuns(inputRuns)
+	converged := v2.IsConverged(sections, compareIndexSortKey)
+	c.metrics.observeIndexConvergence(tenant, converged, inputRuns, entries, c.clock())
+	if converged {
+		level.Debug(windowLogger).Log("msg", "index-compaction: window converged, skipping", "input_runs", inputRuns)
 		return compactionStats{}, nil
 	}
 
-	// Compute deterministic output paths per task. A single indexMergePath
-	// is reused across all tasks in this cycle to reduce allocations.
-	var pathBuilder indexMergePath
+	tasks := v2.Plan(runs, tenant, c.cfg.MaxRunsPerTask, nil)
 	outputs := make([]string, len(tasks))
-	for i, ts := range tasks {
-		outputs[i] = pathBuilder.Build(tenant, window, c.cfg.PlanVersion, i, taskSectionIDs(ts.Runs))
-	}
+
+	level.Info(windowLogger).Log("msg", "planned index compaction tasks", "tenant", tenant, "tasks", len(tasks), "input_runs", len(runs))
+	logIndexTaskDetails(windowLogger, tasks)
 
 	g, gctx := errgroup.WithContext(ctx)
 	if c.cfg.MaxRunningCompactionTasks > 0 {
 		g.SetLimit(c.cfg.MaxRunningCompactionTasks)
 	}
-	for i, ts := range tasks {
+	for i, task := range tasks {
 		g.Go(func() error {
-			plan := buildIndexMergePlan(tenant, window, ts, outputs[i])
-			opts := workflow.Options{
-				Tenant: tenant,
-				Actor:  []string{"compaction", "index-merge"},
+			plan := buildIndexMergePlan(tenant, window, task)
+			opts := workflow.Options{Tenant: tenant, Actor: []string{"compaction", "index-merge"}}
+			rec, err := c.runPlan(gctx, opts, plan)
+			if err != nil {
+				return err
 			}
-			return c.runPlan(gctx, opts, plan)
+			if rec == nil {
+				return nil
+			}
+			artifacts, err := v2.ReadResultRecord(rec)
+			if err != nil {
+				return err
+			}
+			if len(artifacts) == 0 {
+				return nil
+			}
+			if len(artifacts) > 1 {
+				return fmt.Errorf("index-merge job produced %d artifacts, want 1", len(artifacts))
+			}
+			outputs[i] = artifacts[0].Path
+			return nil
 		})
 	}
 	if err := g.Wait(); err != nil {
-		return compactionStats{}, fmt.Errorf("failed to execute compaction tasks: %w", err)
+		return compactionStats{}, fmt.Errorf("execute index-compaction tasks: %w", err)
 	}
 
-	// Replace index pointers with new indexes
-	oldPaths := make([]string, len(entries))
-	for i, e := range entries {
-		oldPaths[i] = e.Path
+	completedTasks := make([]*compactionv2pb.TaskSpec, 0, len(tasks))
+	completedOutputs := make([]string, 0, len(tasks))
+	for i, output := range outputs {
+		if output != "" {
+			completedTasks = append(completedTasks, tasks[i])
+			completedOutputs = append(completedOutputs, output)
+		}
 	}
-	newEntries := makeTocEntries(tasks, outputs)
+	if len(completedTasks) == 0 {
+		return compactionStats{}, nil
+	}
 
-	level.Debug(c.logger).Log("msg", "compacted indexes",
-		"tenant", tenant, "window", window,
-		"dry_run", c.cfg.DryRun,
-		"tasks", len(tasks),
-		"removed_indexes", strings.Join(oldPaths, ","),
-		"added_indexes", strings.Join(outputs, ","),
-	)
+	oldPaths := taskObjectPaths(completedTasks)
+	newEntries, err := makeIndexTocEntries(completedTasks, completedOutputs, entries)
+	if err != nil {
+		return compactionStats{}, fmt.Errorf("build index ToC entries: %w", err)
+	}
 
 	if c.cfg.DryRun {
 		return compactionStats{}, nil
@@ -372,60 +466,149 @@ func (c *coordinator) compactTenant(
 	defer cancel()
 	swapped, err := c.metastoreWriter.ReplaceIndexPointers(phase2Ctx, window, tenant, oldPaths, newEntries)
 	if err != nil {
-		return compactionStats{}, fmt.Errorf("failed to replace index pointers after compaction: %w", err)
+		return compactionStats{}, fmt.Errorf("replace index pointers after compaction: %w", err)
 	}
 	if !swapped {
-		level.Debug(c.logger).Log("msg", "ToC replace race-loss / already-converged",
-			"tenant", tenant, "window", window)
+		level.Debug(windowLogger).Log("msg", "index-compaction ToC replace race-loss")
 		return compactionStats{}, nil
 	}
-	level.Info(c.logger).Log("msg", "tenant cycle complete",
-		"tenant", tenant, "window", window,
-		"tasks", len(tasks),
+
+	level.Info(windowLogger).Log("msg", "tenant cycle complete",
 		"removed_indexes", len(oldPaths),
-		"added_indexes", len(outputs),
+		"added_indexes", len(newEntries),
 	)
 	return compactionStats{
 		removed:    len(oldPaths),
-		added:      len(outputs),
+		added:      len(newEntries),
 		dispatched: len(tasks),
 	}, nil
 }
 
-// taskSectionIDs returns canonical "<ObjectPath>#<SectionIndex>" IDs for
-// every section across all Runs in a task. Used as input to
-// indexMergePath.Build. The output is unsorted; Build sorts internally so
-// order here doesn't affect the resulting path.
-func taskSectionIDs(runs []*compactionv2pb.RunRef) []string {
-	var ids []string
-	for _, r := range runs {
-		for _, s := range r.Sections {
-			ids = append(ids, fmt.Sprintf("%s#%d", s.ObjectPath, s.SectionIndex))
+func logIndexTaskDetails(logger log.Logger, tasks []*compactionv2pb.TaskSpec) {
+	// Only log the first 20 tasks
+	tasksCnt := min(len(tasks), 20)
+	for _, task := range tasks[:tasksCnt] {
+		sb := strings.Builder{}
+		sb.WriteString("[")
+		for i, run := range task.Runs {
+			fmt.Fprintf(&sb, "%d", len(run.Sections))
+			if i != len(task.Runs)-1 {
+				sb.WriteString(", ")
+			}
 		}
+		sb.WriteString("]")
+		level.Debug(logger).Log("msg", "index compaction task snippet", "runs", len(task.Runs), "sections_per_run", sb.String())
 	}
-	return ids
 }
 
-// logTaskSectionIDs returns unique IDs for every section across [runs]. A log
-// SectionRef's identity is {ObjectPath, SectionIndex, labelTuple}. Components
-// are separated by \x00 (which cannot occur in object paths or label values) to
-// keep the encoding unambiguous. Callers may reuse the same [buf] across calls.
-func logTaskSectionIDs(runs []*compactionv2pb.RunRef, buf *bytes.Buffer) []string {
-	var ids []string
-	for _, r := range runs {
-		for _, s := range r.Sections {
-			buf.Reset()
-			buf.WriteString(s.ObjectPath)
-			buf.WriteByte(0)
-			buf.WriteString(strconv.FormatInt(s.SectionIndex, 10))
-			for _, v := range s.MinKey {
-				buf.WriteByte(0)
-				buf.WriteString(v)
+// taskBounds returns the min/max timestamp (unix nanos) across all sections
+// in a task's runs.
+func taskBounds(task *compactionv2pb.TaskSpec) (minTS, maxTS int64) {
+	first := true
+	for _, run := range task.Runs {
+		for _, sec := range run.Sections {
+			if first {
+				minTS, maxTS, first = sec.MinTimestamp, sec.MaxTimestamp, false
+				continue
 			}
-			ids = append(ids, buf.String())
+			if sec.MinTimestamp < minTS {
+				minTS = sec.MinTimestamp
+			}
+			if sec.MaxTimestamp > maxTS {
+				maxTS = sec.MaxTimestamp
+			}
 		}
 	}
-	return ids
+	return minTS, maxTS
+}
+
+// taskUncompressedLogsSize sums UncompressedSize across every section in the
+// task. A section size of 0 means "unknown" (e.g. a legacy ToC row written
+// before sizes were recorded); a single unknown input poisons the whole total,
+// so the result is 0 unless every contributing section is known.
+func taskUncompressedLogsSize(task *compactionv2pb.TaskSpec) uint64 {
+	var total uint64
+	for _, run := range task.Runs {
+		for _, sec := range run.Sections {
+			if sec.UncompressedSize == 0 {
+				return 0
+			}
+			total += uint64(sec.UncompressedSize)
+		}
+	}
+	return total
+}
+
+func taskObjectPaths(tasks []*compactionv2pb.TaskSpec) []string {
+	seen := make(map[string]struct{})
+	for _, task := range tasks {
+		for _, run := range task.Runs {
+			for _, section := range run.Sections {
+				seen[section.ObjectPath] = struct{}{}
+			}
+		}
+	}
+
+	paths := make([]string, 0, len(seen))
+	for path := range seen {
+		paths = append(paths, path)
+	}
+	slices.Sort(paths)
+	return paths
+}
+
+// makeIndexTocEntries derives output metadata from each task's source indexes.
+func makeIndexTocEntries(tasks []*compactionv2pb.TaskSpec, outputs []string, inputs []indexEntry) ([]metastore.TableOfContentsEntry, error) {
+	byPath := make(map[string]indexEntry, len(inputs))
+	for _, input := range inputs {
+		byPath[input.Path] = input
+	}
+
+	entries := make([]metastore.TableOfContentsEntry, len(outputs))
+	for i, task := range tasks {
+		var (
+			start, end   time.Time
+			uncompressed uint64
+
+			first     = true
+			sizeKnown = true
+			seen      = make(map[string]struct{})
+		)
+		for _, run := range task.Runs {
+			for _, section := range run.Sections {
+				if _, ok := seen[section.ObjectPath]; ok {
+					continue
+				}
+				seen[section.ObjectPath] = struct{}{}
+
+				input, ok := byPath[section.ObjectPath]
+				if !ok {
+					return nil, fmt.Errorf("task references unknown index %q", section.ObjectPath)
+				}
+				if first || input.Start.Before(start) {
+					start = input.Start
+				}
+				if first || input.End.After(end) {
+					end = input.End
+				}
+				first = false
+				if input.UncompressedLogsSize == 0 {
+					sizeKnown = false
+				}
+				uncompressed += input.UncompressedLogsSize
+			}
+		}
+		if !sizeKnown {
+			uncompressed = 0
+		}
+		entries[i] = metastore.TableOfContentsEntry{
+			Path:                 outputs[i],
+			StartTime:            start.UTC(),
+			EndTime:              end.UTC(),
+			UncompressedLogsSize: uncompressed,
+		}
+	}
+	return entries, nil
 }
 
 // fileSizeStatConcurrency bounds concurrent bucket.Attributes calls when
@@ -461,62 +644,6 @@ func (c *coordinator) fillFileSizes(ctx context.Context, entries []metastore.Tab
 	_ = g.Wait()
 }
 
-// makeTocEntries pairs each output path with the time bounds derived
-// from its task's source SectionRefs. tasks[i] is the TaskSpec that produced
-// outputs[i].
-//
-// Time bounds: min(MinTimestamp) / max(MaxTimestamp) across all SectionRefs
-// in the task. UncompressedLogsSize is the sum of UncompressedSize across all
-// sections in the task.
-//
-// A section size of 0 means "unknown" (e.g. a legacy ToC row written before
-// sizes were recorded). Summing an unknown into a known total would publish a
-// partial sum that looks exact, so a single unknown input poisons the whole
-// task's total: the result is 0 (unknown) unless every contributing section is
-// known.
-func makeTocEntries(
-	tasks []*compactionv2pb.TaskSpec,
-	outputs []string,
-) []metastore.TableOfContentsEntry {
-	entries := make([]metastore.TableOfContentsEntry, len(outputs))
-	for i, ts := range tasks {
-		minTS, maxTS := int64(0), int64(0)
-		var uncompressed uint64
-		sizeKnown := true
-		first := true
-		for _, run := range ts.Runs {
-			for _, sec := range run.Sections {
-				if first {
-					minTS = sec.MinTimestamp
-					maxTS = sec.MaxTimestamp
-					first = false
-				} else {
-					if sec.MinTimestamp < minTS {
-						minTS = sec.MinTimestamp
-					}
-					if sec.MaxTimestamp > maxTS {
-						maxTS = sec.MaxTimestamp
-					}
-				}
-				if sec.UncompressedSize == 0 {
-					sizeKnown = false
-				}
-				uncompressed += uint64(sec.UncompressedSize)
-			}
-		}
-		if !sizeKnown {
-			uncompressed = 0
-		}
-		entries[i] = metastore.TableOfContentsEntry{
-			Path:                 outputs[i],
-			StartTime:            time.Unix(0, minTS).UTC(),
-			EndTime:              time.Unix(0, maxTS).UTC(),
-			UncompressedLogsSize: uncompressed,
-		}
-	}
-	return entries
-}
-
 // phase is the current step of a tenant's flip-flop worker.
 type phase int
 
@@ -532,14 +659,13 @@ func (p phase) flip() phase {
 	return phaseIndexMerge
 }
 
-// phaseOutcome is the result of running one phase; it drives the flip-vs-retry
-// decision.
+// phaseOutcome is the result of running one phase
 type phaseOutcome int
 
 const (
 	phaseOutcomeError   phaseOutcome = iota // re-arm same phase
-	phaseOutcomeNoWork                      // success, nothing to do; flip
-	phaseOutcomeSwapped                     // ToC swap applied/observed; flip
+	phaseOutcomeNoWork                      // success, nothing to do
+	phaseOutcomeSwapped                     // ToC swap applied/observed
 )
 
 // runIndexMergePhase runs IndexMerge for the tenant's current window and swaps
@@ -551,12 +677,7 @@ func (c *coordinator) runIndexMergePhase(ctx context.Context, tenant string, win
 		return phaseOutcomeError
 	}
 
-	c.metrics.observeEntries(tenant, entries, c.clock())
-
-	if len(entries) <= 1 {
-		c.metrics.observeTenantCycle(tenant, "converged", c.clock().Sub(start), compactionStats{})
-		return phaseOutcomeNoWork
-	}
+	c.metrics.observeEntries(tenant, entries)
 
 	stats, err := c.compactTenant(ctx, tenant, window, entries)
 	dur := c.clock().Sub(start)
@@ -616,13 +737,15 @@ func (c *coordinator) runLogMergePhase(ctx context.Context, tenant string, windo
 		return phaseOutcomeNoWork
 	}
 
+	level.Debug(c.logger).Log("msg", "log merge cycle begin", "tenant", tenant, "window", window, "index_entries_to_process", len(entries))
 	var agg compactionStats
 	anySwapped := false
 	anyError := false
-	for _, entry := range entries {
+	for i, entry := range entries {
 		if ctx.Err() != nil {
 			return phaseOutcomeError
 		}
+		level.Debug(c.logger).Log("msg", "log merge cycle iteration", "tenant", tenant, "window", window, "index", entry.Path, "progress", fmt.Sprintf("%d/%d", i+1, len(entries)))
 		stats, err := c.compactTenantLogs(ctx, tenant, window, entry)
 		if err != nil {
 			// Only shut down when the coordinator context is cancelled. A
@@ -666,7 +789,9 @@ func (c *coordinator) runLogMergePhase(ctx context.Context, tenant string, windo
 // is cancelled. It never returns an error and never sleeps: on error it retries
 // the same phase, otherwise it flips. It re-reads the per-tenant phase
 // enablement each iteration and skips the LogMerge phase when log compaction is
-// disabled, so an index-only tenant runs IndexMerge exclusively.
+// disabled, so an index-only tenant runs IndexMerge exclusively. Each phase runs
+// against every window returned by c.windows(); the phase flips only when no
+// window errored so a single failing window retries the whole phase.
 func (c *coordinator) runTenantLoop(ctx context.Context, tenant string) {
 	p := phaseIndexMerge
 	for {
@@ -682,24 +807,60 @@ func (c *coordinator) runTenantLoop(ctx context.Context, tenant string) {
 			continue
 		}
 
-		window := c.clock().UTC().Truncate(metastore.MetastoreWindowSize)
-
-		start := c.clock()
-		var outcome phaseOutcome
-		switch p {
-		case phaseIndexMerge:
-			outcome = c.runIndexMergePhase(ctx, tenant, window)
-		case phaseLogMerge:
-			outcome = c.runLogMergePhase(ctx, tenant, window)
+		iterations := 1
+		if p == phaseIndexMerge {
+			iterations = indexMergeIterations
 		}
+
+		outcome := c.runMultiplePhasesForAllWindows(ctx, tenant, p, iterations)
 		if ctx.Err() != nil {
 			return
 		}
-		c.metrics.observeCycle(cycleOutcome(outcome), c.clock().Sub(start))
 
 		if outcome != phaseOutcomeError {
 			p = p.flip()
 		}
+	}
+}
+
+// runMultiplePhasesForAllWindows runs phase p for the tenant against each compacted window, iterations times,
+// recording the worker-loop cycle metric per window, and returns the worst
+// outcome across them. Error dominates (the caller re-arms the same phase);
+// otherwise swapped (progress) outranks no-work. Windows are independent: a
+// window with no ToC no-ops while a populated one does real work.
+func (c *coordinator) runMultiplePhasesForAllWindows(ctx context.Context, tenant string, p phase, iterations int) phaseOutcome {
+	worst := phaseOutcomeNoWork
+	for range iterations {
+		for _, window := range c.windows() {
+			if ctx.Err() != nil {
+				return worst
+			}
+
+			start := c.clock()
+			var outcome phaseOutcome
+			switch p {
+			case phaseIndexMerge:
+				outcome = c.runIndexMergePhase(ctx, tenant, window)
+			case phaseLogMerge:
+				outcome = c.runLogMergePhase(ctx, tenant, window)
+			}
+			c.metrics.observeCycle(cycleOutcome(outcome), c.clock().Sub(start))
+			worst = worstOutcome(worst, outcome)
+		}
+	}
+	return worst
+}
+
+// worstOutcome ranks phase outcomes so the tenant loop retries on any error and
+// otherwise reports progress: error > swapped > no-work.
+func worstOutcome(a, b phaseOutcome) phaseOutcome {
+	switch {
+	case a == phaseOutcomeError || b == phaseOutcomeError:
+		return phaseOutcomeError
+	case a == phaseOutcomeSwapped || b == phaseOutcomeSwapped:
+		return phaseOutcomeSwapped
+	default:
+		return phaseOutcomeNoWork
 	}
 }
 

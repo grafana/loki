@@ -61,10 +61,10 @@ func getUSStreamLength(dataLen, chunkSize int64, trailers http.Header) int64 {
 	return streamLen
 }
 
-// prepareStreamingRequest - prepares a request with appropriate
-// headers before computing the seed signature.
+// prepareUSStreamingRequest - prepares a request with the headers
+// required for an unsigned aws-chunked streaming upload.
 func prepareUSStreamingRequest(req *http.Request, sessionToken string, dataLen int64, timestamp time.Time) {
-	req.TransferEncoding = []string{"aws-chunked"}
+	setAwsChunkedContentEncoding(req)
 	if sessionToken != "" {
 		req.Header.Set("X-Amz-Security-Token", sessionToken)
 	}

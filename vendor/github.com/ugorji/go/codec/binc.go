@@ -1013,6 +1013,7 @@ func (d *bincEncDriver[T]) init(hh Handle, shared *encoderBase, enc encoderI) (f
 	return
 }
 
+func (e *bincEncDriver[T]) NumBytesWritten() int    { return e.w.numWrite() }
 func (e *bincEncDriver[T]) writeBytesAsis(b []byte) { e.w.writeb(b) }
 
 // func (e *bincEncDriver[T]) writeStringAsisDblQuoted(v string) { e.w.writeqstr(v) }
@@ -1052,7 +1053,7 @@ func (d *bincDecDriver[T]) resetInBytes(in []byte) {
 }
 
 func (d *bincDecDriver[T]) resetInIO(r io.Reader) {
-	d.r.resetIO(r, d.h.ReaderBufferSize, d.h.MaxInitLen, &d.d.blist)
+	d.r.resetIO(r, d.h.ReaderBufferSize, d.h.maxBytes2Read(), &d.d.blist)
 }
 
 // ---- (custom stanza)

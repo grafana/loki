@@ -36,7 +36,8 @@ type (
 )
 
 const (
-	statsKey ctxKeyType = "stats"
+	statsKey        ctxKeyType = "stats"
+	partialStatsKey ctxKeyType = "partial-stats"
 )
 
 // Context is the statistics context. It is passed through the query path and accumulates statistics.
@@ -98,6 +99,43 @@ func FromContext(ctx context.Context) *Context {
 		return &Context{}
 	}
 	return v
+}
+
+// PartialContext accumulates statistics from sub-queries that completed before
+// the overall query failed. It has its own context key so that the nested stats
+// Contexts opened deeper in the query path do not shadow it.
+type PartialContext struct {
+	mtx    sync.Mutex
+	result Result
+}
+
+func NewPartialContext(ctx context.Context) (*PartialContext, context.Context) {
+	pc := &PartialContext{}
+	ctx = context.WithValue(ctx, partialStatsKey, pc)
+	return pc, ctx
+}
+
+func PartialFromContext(ctx context.Context) (*PartialContext, bool) {
+	v, ok := ctx.Value(partialStatsKey).(*PartialContext)
+	return v, ok
+}
+
+// JoinPartial merges res into the PartialContext installed in ctx, and is a
+// no-op if there is none, so fan-out sites can call it unconditionally.
+func JoinPartial(ctx context.Context, res Result) {
+	pc, ok := PartialFromContext(ctx)
+	if !ok {
+		return
+	}
+	pc.mtx.Lock()
+	defer pc.mtx.Unlock()
+	pc.result.Merge(res)
+}
+
+func (pc *PartialContext) Result() Result {
+	pc.mtx.Lock()
+	defer pc.mtx.Unlock()
+	return pc.result
 }
 
 // Ingester returns the ingester statistics accumulated so far.
@@ -264,6 +302,7 @@ func (s *Store) Merge(m Store) {
 	s.Dataobj.TotalPageDownloadTime += m.Dataobj.TotalPageDownloadTime
 	s.Dataobj.TotalRowsAvailable += m.Dataobj.TotalRowsAvailable
 	s.Dataobj.WireBytesTransferred += m.Dataobj.WireBytesTransferred
+	s.ChunkFetchFailures += m.ChunkFetchFailures
 	if m.QueryReferencedStructured {
 		s.QueryReferencedStructured = true
 	}
@@ -393,6 +432,12 @@ func (r Result) TotalChunksRef() int64 {
 	return r.Querier.Store.TotalChunksRef + r.Ingester.Store.TotalChunksRef
 }
 
+// TotalChunkFetchFailures returns the number of chunks that failed to be
+// fetched or decoded for the query, whether or not the failure was tolerated.
+func (r Result) TotalChunkFetchFailures() int64 {
+	return r.Querier.Store.ChunkFetchFailures + r.Ingester.Store.ChunkFetchFailures
+}
+
 func (r Result) TotalDecompressedBytes() int64 {
 	return r.Querier.Store.Chunk.DecompressedBytes + r.Ingester.Store.Chunk.DecompressedBytes
 }
@@ -456,6 +501,8 @@ func (c *Context) AddDecompressedLines(i int64) {
 	atomic.AddInt64(&c.store.Chunk.DecompressedLines, i)
 }
 
+// AddPostFilterLines adds lines that passed the query filters. Call it only after
+// the pipeline or the extractor accepts the line.
 func (c *Context) AddPostFilterLines(i int64) {
 	atomic.AddInt64(&c.store.Chunk.PostFilterLines, i)
 }
@@ -486,6 +533,13 @@ func (c *Context) AddChunksDownloaded(i int64) {
 
 func (c *Context) AddChunksRef(i int64) {
 	atomic.AddInt64(&c.store.TotalChunksRef, i)
+}
+
+// AddChunkFetchFailures counts chunks that could not be fetched or decoded for
+// the query, even when propagateChunkFetchErrors chose to tolerate the
+// failure instead of failing the whole query.
+func (c *Context) AddChunkFetchFailures(i int64) {
+	atomic.AddInt64(&c.store.ChunkFetchFailures, i)
 }
 
 func (c *Context) AddIndexTotalChunkRefs(i int64) {
@@ -714,6 +768,7 @@ func (r Result) KVList() []any {
 		"Querier.TotalDuplicates", r.Querier.Store.Chunk.TotalDuplicates,
 		"Querier.QueryReferencedStructuredMetadata", r.Querier.Store.QueryReferencedStructured,
 		"Querier.QueryUsedV2Engine", r.Querier.Store.QueryUsedV2Engine,
+		"Querier.ChunkFetchFailures", r.Querier.Store.ChunkFetchFailures,
 	}
 
 	if r.QueryUsedV2Engine() {

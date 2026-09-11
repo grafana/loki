@@ -20,10 +20,10 @@ import (
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
-	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/v3/pkg/querier/plan"
 	"github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase"
 	"github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase/definitions"
+	"github.com/grafana/loki/v3/pkg/querier/testutil"
 	"github.com/grafana/loki/v3/pkg/storage/config"
 	"github.com/grafana/loki/v3/pkg/storage/types"
 	"github.com/grafana/loki/v3/pkg/util"
@@ -160,28 +160,33 @@ func Test_astMapper(t *testing.T) {
 		return resp, nil
 	})
 
+	// TSDB is the only index type; sharding is resolved dynamically from index
+	// stats. Return a large byte count and cap the factor via maxShards so the
+	// query deterministically shards into 2.
+	statsHandler := queryrangebase.HandlerFunc(func(_ context.Context, _ queryrangebase.Request) (queryrangebase.Response, error) {
+		return &IndexStatsResponse{
+			Response: &logproto.IndexStatsResponse{Bytes: 1 << 40},
+		}, nil
+	})
+
 	mware := newASTMapperware(
-		ShardingConfigs{
-			config.PeriodConfig{
-				RowShards: 2,
-			},
+		[]config.PeriodConfig{
+			{IndexType: types.IndexTypeTSDB},
 		},
 		testEngineOpts,
 		handler,
 		handler,
-		nil,
+		statsHandler,
 		log.NewNopLogger(),
 		nilShardingMetrics,
-		fakeLimits{maxSeries: math.MaxInt32, maxQueryParallelism: 1, queryTimeout: time.Second},
-		0,
+		fakeLimits{maxSeries: math.MaxInt32, maxQueryParallelism: 1, tsdbMaxQueryParallelism: 1, queryTimeout: time.Second},
+		2,
 		[]string{},
 	)
 
 	req := defaultReq()
 	req.Query = `{foo="bar"}`
-	req.Plan = &plan.QueryPlan{
-		AST: syntax.MustParseExpr(req.Query),
-	}
+	req.Plan = testutil.MustPlan(req.Query)
 	resp, err := mware.Do(user.InjectOrgID(context.Background(), "1"), req)
 	require.Nil(t, err)
 
@@ -300,11 +305,8 @@ func Test_astMapper_QuerySizeLimits(t *testing.T) {
 			})
 
 			mware := newASTMapperware(
-				ShardingConfigs{
-					config.PeriodConfig{
-						RowShards: 2,
-						IndexType: types.IndexTypeTSDB,
-					},
+				[]config.PeriodConfig{
+					{IndexType: types.IndexTypeTSDB},
 				},
 				testEngineOpts,
 				handler,
@@ -325,9 +327,7 @@ func Test_astMapper_QuerySizeLimits(t *testing.T) {
 
 			req := defaultReq()
 			req.Query = tc.query
-			req.Plan = &plan.QueryPlan{
-				AST: syntax.MustParseExpr(tc.query),
-			}
+			req.Plan = testutil.MustPlan(tc.query)
 			_, err := mware.Do(user.InjectOrgID(context.Background(), "1"), req)
 			if err != nil {
 				require.ErrorContains(t, err, tc.err)
@@ -358,10 +358,8 @@ func Test_astMapper_TSDBShardingStrategyUsesContext(t *testing.T) {
 
 	calls := 0
 	mware := newASTMapperware(
-		ShardingConfigs{
-			config.PeriodConfig{
-				IndexType: types.IndexTypeTSDB,
-			},
+		[]config.PeriodConfig{
+			{IndexType: types.IndexTypeTSDB},
 		},
 		testEngineOpts,
 		handler,
@@ -387,9 +385,7 @@ func Test_astMapper_TSDBShardingStrategyUsesContext(t *testing.T) {
 
 	req := defaultReq()
 	req.Query = `{app="foo"}`
-	req.Plan = &plan.QueryPlan{
-		AST: syntax.MustParseExpr(req.Query),
-	}
+	req.Plan = testutil.MustPlan(req.Query)
 	ctx := context.WithValue(context.Background(), strategyContextKey{}, "strategy-context")
 	ctx = user.InjectOrgID(ctx, "tenant-a")
 
@@ -406,10 +402,8 @@ func Test_ShardingByPass(t *testing.T) {
 	})
 
 	mware := newASTMapperware(
-		ShardingConfigs{
-			config.PeriodConfig{
-				RowShards: 2,
-			},
+		[]config.PeriodConfig{
+			{IndexType: types.IndexTypeTSDB},
 		},
 		testEngineOpts,
 		handler,
@@ -417,56 +411,18 @@ func Test_ShardingByPass(t *testing.T) {
 		nil,
 		log.NewNopLogger(),
 		nilShardingMetrics,
-		fakeLimits{maxSeries: math.MaxInt32, maxQueryParallelism: 1},
+		fakeLimits{maxSeries: math.MaxInt32, maxQueryParallelism: 1, tsdbMaxQueryParallelism: 1},
 		0,
 		[]string{},
 	)
 
 	req := defaultReq()
 	req.Query = `1+1`
-	req.Plan = &plan.QueryPlan{
-		AST: syntax.MustParseExpr(req.Query),
-	}
+	req.Plan = testutil.MustPlan(req.Query)
 
 	_, err := mware.Do(user.InjectOrgID(context.Background(), "1"), req)
 	require.Nil(t, err)
 	require.Equal(t, called, 1)
-}
-
-func Test_hasShards(t *testing.T) {
-	for i, tc := range []struct {
-		input    ShardingConfigs
-		expected bool
-	}{
-		{
-			input: ShardingConfigs{
-				{},
-			},
-			expected: false,
-		},
-		{
-			input: ShardingConfigs{
-				{RowShards: 16},
-			},
-			expected: true,
-		},
-		{
-			input: ShardingConfigs{
-				{},
-				{RowShards: 16},
-				{},
-			},
-			expected: true,
-		},
-		{
-			input:    nil,
-			expected: false,
-		},
-	} {
-		t.Run(fmt.Sprintf("%d", i), func(t *testing.T) {
-			require.Equal(t, tc.expected, hasShards(tc.input))
-		})
-	}
 }
 
 // astmapper successful stream & prom conversion
@@ -488,19 +444,28 @@ func Test_InstantSharding(t *testing.T) {
 	called := 0
 	shards := []string{}
 
-	cpyPeriodConf := testSchemas[0]
-	cpyPeriodConf.RowShards = 3
-	sharding := NewQueryShardMiddleware(log.NewNopLogger(), ShardingConfigs{
+	// TSDB is the only index type; sharding is resolved dynamically from index
+	// stats. Return a large byte count and cap the factor via maxShards so the
+	// query deterministically shards into 3.
+	statsHandler := queryrangebase.HandlerFunc(func(_ context.Context, _ queryrangebase.Request) (queryrangebase.Response, error) {
+		return &IndexStatsResponse{
+			Response: &logproto.IndexStatsResponse{Bytes: 1 << 40},
+		}, nil
+	})
+
+	cpyPeriodConf := testSchemasTSDB[0]
+	sharding := NewQueryShardMiddleware(log.NewNopLogger(), []config.PeriodConfig{
 		cpyPeriodConf,
 	}, testEngineOpts, queryrangebase.NewInstrumentMiddlewareMetrics(nil, constants.Loki),
 		nilShardingMetrics,
 		fakeLimits{
-			maxSeries:           math.MaxInt32,
-			maxQueryParallelism: 10,
-			queryTimeout:        time.Second,
+			maxSeries:               math.MaxInt32,
+			maxQueryParallelism:     10,
+			tsdbMaxQueryParallelism: 10,
+			queryTimeout:            time.Second,
 		},
-		0,
-		nil,
+		3,
+		statsHandler,
 		nil,
 		[]string{},
 	)
@@ -524,9 +489,7 @@ func Test_InstantSharding(t *testing.T) {
 		Query:  `rate({app="foo"}[1m])`,
 		TimeTs: util.TimeFromMillis(10),
 		Path:   "/v1/query",
-		Plan: &plan.QueryPlan{
-			AST: syntax.MustParseExpr(`rate({app="foo"}[1m])`),
-		},
+		Plan:   testutil.MustPlan(`rate({app="foo"}[1m])`),
 	})
 	require.NoError(t, err)
 	require.Equal(t, 3, called, "expected 3 calls but got {}", called)
@@ -553,15 +516,16 @@ func Test_InstantSharding(t *testing.T) {
 }
 
 func Test_SeriesShardingHandler(t *testing.T) {
-	sharding := NewSeriesQueryShardMiddleware(log.NewNopLogger(), ShardingConfigs{
-		config.PeriodConfig{
-			RowShards: 3,
+	sharding := NewSeriesQueryShardMiddleware(log.NewNopLogger(), []config.PeriodConfig{
+		{
+			IndexType: types.IndexTypeTSDB,
 		},
 	},
 		queryrangebase.NewInstrumentMiddlewareMetrics(nil, constants.Loki),
 		nilShardingMetrics,
 		fakeLimits{
-			maxQueryParallelism: 10,
+			maxQueryParallelism:     10,
+			tsdbMaxQueryParallelism: 10,
 		},
 		DefaultCodec,
 	)
@@ -595,49 +559,38 @@ func Test_SeriesShardingHandler(t *testing.T) {
 		Path:    "foo",
 	})
 
-	expected := &LokiSeriesResponse{
-		Statistics: stats.Result{Summary: stats.Summary{Splits: 3}},
-		Status:     "success",
-		Version:    1,
-		Data: []logproto.SeriesIdentifier{
-			{
-				Labels: []logproto.SeriesIdentifier_LabelsEntry{
-					{Key: "foo", Value: "bar"},
-				},
-			},
-			{
-				Labels: []logproto.SeriesIdentifier_LabelsEntry{
-					{Key: "shard", Value: "0_of_3"},
-				},
-			},
-			{
-				Labels: []logproto.SeriesIdentifier_LabelsEntry{
-					{Key: "shard", Value: "1_of_3"},
-				},
-			},
-			{
-				Labels: []logproto.SeriesIdentifier_LabelsEntry{
-					{Key: "shard", Value: "2_of_3"},
-				},
+	// Series queries fan out into config.DefaultRowShards shards.
+	expectedData := []logproto.SeriesIdentifier{
+		{
+			Labels: []logproto.SeriesIdentifier_LabelsEntry{
+				{Key: "foo", Value: "bar"},
 			},
 		},
 	}
+	for i := 0; i < config.DefaultRowShards; i++ {
+		expectedData = append(expectedData, logproto.SeriesIdentifier{
+			Labels: []logproto.SeriesIdentifier_LabelsEntry{
+				{Key: "shard", Value: fmt.Sprintf("%d_of_%d", i, config.DefaultRowShards)},
+			},
+		})
+	}
+
 	actual := response.(*LokiSeriesResponse)
 	require.NoError(t, err)
-	require.Equal(t, expected.Status, actual.Status)
-	require.ElementsMatch(t, expected.Data, actual.Data)
+	require.Equal(t, "success", actual.Status)
+	require.ElementsMatch(t, expectedData, actual.Data)
 }
 
 func TestShardingAcrossConfigs_ASTMapper(t *testing.T) {
 	now := model.Now()
-	confs := ShardingConfigs{
+	confs := []config.PeriodConfig{
 		{
 			From:      config.DayTime{Time: now.Add(-30 * 24 * time.Hour)},
-			RowShards: 2,
+			IndexType: types.IndexTypeTSDB,
 		},
 		{
 			From:      config.DayTime{Time: now.Add(-24 * time.Hour)},
-			RowShards: 3,
+			IndexType: types.IndexTypeTSDB,
 		},
 	}
 
@@ -656,7 +609,7 @@ func TestShardingAcrossConfigs_ASTMapper(t *testing.T) {
 					{Name: "Header", Values: []string{"value"}},
 				},
 			},
-			numExpectedShards: 3,
+			numExpectedShards: 2,
 		},
 		{
 			name: "logs query touching just the prev schema config",
@@ -684,7 +637,7 @@ func TestShardingAcrossConfigs_ASTMapper(t *testing.T) {
 					},
 				},
 			},
-			numExpectedShards: 3,
+			numExpectedShards: 2,
 		},
 		{
 			name: "metric query touching just the prev schema config",
@@ -712,7 +665,7 @@ func TestShardingAcrossConfigs_ASTMapper(t *testing.T) {
 					{Name: "Header", Values: []string{"value"}},
 				},
 			},
-			numExpectedShards: 1,
+			numExpectedShards: 2,
 		},
 		{
 			name: "metric query covering both schemas",
@@ -729,11 +682,11 @@ func TestShardingAcrossConfigs_ASTMapper(t *testing.T) {
 					},
 				},
 			},
-			numExpectedShards: 1,
+			numExpectedShards: 2,
 		},
 		{
 			name: "metric query with start/end within first schema but with large enough range to cover previous schema too",
-			req:  defaultReq().WithStartEnd(confs[1].From.Time.Add(5*time.Minute).Time(), confs[1].From.Time.Add(time.Hour).Time()).WithQuery(`rate({foo="bar"}[24h])`),
+			req:  defaultReq().WithStartEnd(confs[1].From.Time.Add(5*time.Minute).Time(), confs[1].From.Time.Add(time.Hour).Time()).WithQuery(`rate({foo="bar"}[30m])`),
 			resp: &LokiPromResponse{
 				Response: &queryrangebase.PrometheusResponse{
 					Status: loghttp.QueryStatusSuccess,
@@ -746,7 +699,7 @@ func TestShardingAcrossConfigs_ASTMapper(t *testing.T) {
 					},
 				},
 			},
-			numExpectedShards: 1,
+			numExpectedShards: 2,
 		},
 		{
 			name: "metric query with start/end within first schema but with large enough offset to shift it to previous schema",
@@ -763,7 +716,7 @@ func TestShardingAcrossConfigs_ASTMapper(t *testing.T) {
 					},
 				},
 			},
-			numExpectedShards: 1,
+			numExpectedShards: 2,
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -777,16 +730,25 @@ func TestShardingAcrossConfigs_ASTMapper(t *testing.T) {
 				return tc.resp, nil
 			})
 
+			// TSDB is the only index type; sharding is resolved dynamically from
+			// index stats. Return a large byte count and cap the factor via
+			// maxShards so all queries deterministically shard into 2.
+			statsHandler := queryrangebase.HandlerFunc(func(_ context.Context, _ queryrangebase.Request) (queryrangebase.Response, error) {
+				return &IndexStatsResponse{
+					Response: &logproto.IndexStatsResponse{Bytes: 1 << 40},
+				}, nil
+			})
+
 			mware := newASTMapperware(
 				confs,
 				testEngineOpts,
 				handler,
 				handler,
-				nil,
+				statsHandler,
 				log.NewNopLogger(),
 				nilShardingMetrics,
-				fakeLimits{maxSeries: math.MaxInt32, maxQueryParallelism: 1, queryTimeout: time.Second},
-				0,
+				fakeLimits{maxSeries: math.MaxInt32, maxQueryParallelism: 1, tsdbMaxQueryParallelism: 1, queryTimeout: time.Second},
+				2,
 				[]string{},
 			)
 
@@ -811,14 +773,14 @@ func TestShardingAcrossConfigs_ASTMapper(t *testing.T) {
 
 func TestShardingAcrossConfigs_SeriesSharding(t *testing.T) {
 	now := model.Now()
-	confs := ShardingConfigs{
+	confs := []config.PeriodConfig{
 		{
 			From:      config.DayTime{Time: now.Add(-30 * 24 * time.Hour)},
-			RowShards: 2,
+			IndexType: types.IndexTypeTSDB,
 		},
 		{
 			From:      config.DayTime{Time: now.Add(-24 * time.Hour)},
-			RowShards: 3,
+			IndexType: types.IndexTypeTSDB,
 		},
 	}
 
@@ -835,7 +797,7 @@ func TestShardingAcrossConfigs_SeriesSharding(t *testing.T) {
 				EndTs:   now.Time(),
 				Path:    "foo",
 			},
-			numExpectedShards: 3,
+			numExpectedShards: 16,
 		},
 		{
 			name: "series query touching just the prev schema config",
@@ -845,7 +807,7 @@ func TestShardingAcrossConfigs_SeriesSharding(t *testing.T) {
 				EndTs:   confs[0].From.Time.Add(time.Hour).Time(),
 				Path:    "foo",
 			},
-			numExpectedShards: 2,
+			numExpectedShards: 16,
 		},
 		{
 			name: "series query covering both schemas",
@@ -854,7 +816,7 @@ func TestShardingAcrossConfigs_SeriesSharding(t *testing.T) {
 				StartTs: confs[0].From.Time.Time(),
 				EndTs:   now.Time(),
 				Path:    "foo",
-			}, numExpectedShards: 1,
+			}, numExpectedShards: 16,
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -868,7 +830,8 @@ func TestShardingAcrossConfigs_SeriesSharding(t *testing.T) {
 				queryrangebase.NewInstrumentMiddlewareMetrics(nil, constants.Loki),
 				nilShardingMetrics,
 				fakeLimits{
-					maxQueryParallelism: 10,
+					maxQueryParallelism:     10,
+					tsdbMaxQueryParallelism: 10,
 				},
 				DefaultCodec,
 			)
@@ -933,72 +896,7 @@ func Test_ASTMapper_MaxLookBackPeriod(t *testing.T) {
 		TimeTs:    testTime,
 		Direction: logproto.FORWARD,
 		Path:      "/loki/api/v1/query",
-		Plan: &plan.QueryPlan{
-			AST: syntax.MustParseExpr(q),
-		},
-	}
-
-	ctx := user.InjectOrgID(context.Background(), "foo")
-	_, err := mware.Do(ctx, lokiReq)
-	require.NoError(t, err)
-}
-
-func Test_ConstantShardingDefaultIndexType(t *testing.T) {
-	engineOpts := testEngineOpts
-
-	queryHandler := queryrangebase.HandlerFunc(func(_ context.Context, req queryrangebase.Request) (queryrangebase.Response, error) {
-		req.(*LokiInstantRequest).Plan.AST = syntax.MustParseExpr(`{cluster="dev-us-central-0"}`)
-		shards, _, err := logql.ParseShards(req.(*LokiInstantRequest).Shards)
-		require.NoError(t, err)
-		require.Equal(t, 1, len(shards))
-		require.Equal(t, logql.PowerOfTwoVersion, shards[0].Variant())
-		require.Equal(t, uint32(32), shards[0].PowerOfTwo.Of)
-		return &LokiResponse{}, nil
-	})
-
-	statsHandler := queryrangebase.HandlerFunc(func(_ context.Context, req queryrangebase.Request) (queryrangebase.Response, error) {
-		// This is the actual check that we're testing.
-		require.Equal(t, testTime.Add(-engineOpts.MaxLookBackPeriod).UnixMilli(), req.GetStart().UnixMilli())
-
-		return &IndexStatsResponse{
-			Response: &logproto.IndexStatsResponse{
-				Bytes: 1 << 10,
-			},
-		}, nil
-	})
-	mware := newASTMapperware(
-		ShardingConfigs{
-			{
-				From:      config.DayTime{Time: model.Now().Add(-2 * 24 * time.Hour)},
-				RowShards: 2,
-				IndexType: "tsdb",
-			},
-			{
-				From:      config.DayTime{Time: model.Now().Add(-1 * 24 * time.Hour)},
-				RowShards: 32,
-			},
-		},
-		engineOpts,
-		queryHandler,
-		queryHandler,
-		statsHandler,
-		log.NewNopLogger(),
-		nilShardingMetrics,
-		fakeLimits{maxSeries: math.MaxInt32, tsdbMaxQueryParallelism: 1, queryTimeout: time.Second},
-		0,
-		[]string{},
-	)
-
-	q := `{cluster="dev-us-central-0"}`
-	lokiReq := &LokiInstantRequest{
-		Query:     q,
-		Limit:     1000,
-		TimeTs:    model.Now().Add(-1 * time.Hour).Time(),
-		Direction: logproto.FORWARD,
-		Path:      "/loki/api/v1/query",
-		Plan: &plan.QueryPlan{
-			AST: syntax.MustParseExpr(q),
-		},
+		Plan:      testutil.MustPlan(q),
 	}
 
 	ctx := user.InjectOrgID(context.Background(), "foo")

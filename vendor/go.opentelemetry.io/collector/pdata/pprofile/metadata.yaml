@@ -1,0 +1,12 @@
+type: pprofile
+github_project: open-telemetry/opentelemetry-collector
+
+status:
+  disable_codecov_badge: true
+  class: pkg
+  codeowners:
+    active:
+      - mx-psi
+      - dmathieu
+  stability:
+    alpha: [profiles]

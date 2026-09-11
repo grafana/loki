@@ -966,16 +966,19 @@ func Xuuid_unparse(t *TLS, uu, out uintptr) {
 	*(*byte)(unsafe.Pointer(out + uintptr(len(s)))) = 0
 }
 
-// no longer used?
-// var staticRandomData = &rand.Rand{}
-
 // char *initstate(unsigned seed, char *state, size_t size);
 func Xinitstate(t *TLS, seed uint32, statebuf uintptr, statelen types.Size_t) uintptr {
 	if __ccgo_strace {
 		trc("t=%v seed=%v statebuf=%v statelen=%v, (%v:)", t, seed, statebuf, statelen, origin(2))
 	}
-	// staticRandomData = rand.New(rand.NewSource(int64(seed)))
-	_ = rand.New(rand.NewSource(int64(seed)))
+	// random(3) is modeled here by a single global math/rand generator (see
+	// randomGen / Xrandom), so the caller-supplied state buffer cannot be
+	// honored. Mirror musl's primary effect by (re)seeding that generator,
+	// matching Xsrandomdev. NULL is returned as there is no previous state
+	// buffer to hand back.
+	randomMu.Lock()
+	randomGen.Seed(int64(seed))
+	randomMu.Unlock()
 	return 0
 }
 
@@ -984,8 +987,11 @@ func Xsetstate(t *TLS, state uintptr) uintptr {
 	if __ccgo_strace {
 		trc("t=%v state=%v, (%v:)", t, state, origin(2))
 	}
-	t.setErrno(errno.EINVAL) //TODO
-	return 0
+	// random(3) is modeled by a single global generator (see randomGen /
+	// Xrandom), so there is no independent saved stream to switch to. Treat
+	// setstate as a no-op rather than failing the caller; return the passed
+	// pointer (non-NULL) to signal success.
+	return state
 }
 
 // The initstate_r() function is like initstate(3) except that it initializes

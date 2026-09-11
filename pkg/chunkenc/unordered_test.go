@@ -358,6 +358,68 @@ func Test_UnorderedBoundedIter(t *testing.T) {
 	}
 }
 
+// TestHeadBlockSampleHashesMatchAcrossFormats ensures we generate the sample hash for the same
+// exact samples in every head block format.
+func TestHeadBlockSampleHashesMatchAcrossFormats(t *testing.T) {
+	streamLabels := labels.FromStrings("app", "foo")
+
+	collect := func(t *testing.T, hb HeadBlock, lbls labels.Labels) []logproto.Sample {
+		t.Helper()
+
+		extractor, err := getStreamExtractor(countQuery, lbls)
+		require.NoError(t, err)
+
+		it := hb.SampleIterator(context.Background(), 0, math.MaxInt64, extractor)
+		defer it.Close()
+
+		var got []logproto.Sample
+		for it.Next() {
+			got = append(got, it.At())
+		}
+		require.NoError(t, it.Err())
+
+		return got
+	}
+
+	// Build one block per format Loki can create, so a format added later is covered without
+	// touching this test.
+	require.NotEmpty(t, HeadBlockFmts)
+	blocks := make(map[HeadBlockFmt]HeadBlock, len(HeadBlockFmts))
+	for _, format := range HeadBlockFmts {
+		blocks[format] = format.NewBlock(newSymbolizer())
+	}
+
+	for i := 0; i < 10; i++ {
+		for _, hb := range blocks {
+			dup, err := hb.Append(int64(i), fmt.Sprintf("line %d", i), labels.EmptyLabels())
+			require.False(t, dup)
+			require.NoError(t, err)
+		}
+	}
+
+	// The newest format is the reference every other one has to match.
+	newest := blocks[HeadBlockFmts[len(HeadBlockFmts)-1]]
+	want := collect(t, newest, streamLabels)
+
+	// Pre-condition: the hash must cover both the line and the stream labels, so
+	// collecting the same lines under a second label set has to yield 20 distinct
+	// hashes. Cross-replica dedup keys on this hash, so a hash that ignored either
+	// input would silently drop one of two genuinely different samples.
+	require.Len(t, want, 10)
+	hashes := map[uint64]struct{}{}
+	for _, s := range append(want, collect(t, newest, labels.FromStrings("app", "bar"))...) {
+		hashes[s.Hash] = struct{}{}
+	}
+	require.Len(t, hashes, 2*len(want))
+
+	// Ensure all other formats return the same exact samples.
+	for _, format := range HeadBlockFmts {
+		t.Run(format.String(), func(t *testing.T) {
+			require.Equal(t, want, collect(t, blocks[format], streamLabels))
+		})
+	}
+}
+
 func TestHeadBlockInterop(t *testing.T) {
 	unordered, ordered := newUnorderedHeadBlock(UnorderedHeadBlockFmt, newSymbolizer()), &headBlock{}
 	unorderedWithStructuredMetadata := newUnorderedHeadBlock(UnorderedWithStructuredMetadataHeadBlockFmt, newSymbolizer())
@@ -544,9 +606,8 @@ func TestUnorderedChunkIterators(t *testing.T) {
 	backward, err := c.Iterator(context.Background(), time.Unix(0, 0), time.Unix(100, 0), logproto.BACKWARD, noopStreamPipeline)
 	require.Nil(t, err)
 
-	extractors, err := getMultiVariantExtractors(multiVariantCountOnlyQuery, labels.FromStrings("app", "foo"))
+	countExtractor, err := getStreamExtractor(countQuery, labels.FromStrings("app", "foo"))
 	require.NoError(t, err)
-	countExtractor := extractors[0]
 
 	smpl := c.SampleIterator(
 		context.Background(),
@@ -594,9 +655,8 @@ func BenchmarkUnorderedRead(b *testing.B) {
 		},
 	}
 
-	extractors, err := getMultiVariantExtractors(multiVariantCountOnlyQuery, labels.FromStrings("app", "foo"))
+	countExtractor, err := getStreamExtractor(countQuery, labels.FromStrings("app", "foo"))
 	require.NoError(b, err)
-	countExtractor := extractors[0]
 
 	b.Run("itr", func(b *testing.B) {
 		for _, tc := range tcs {
@@ -663,9 +723,8 @@ func TestUnorderedIteratorCountsAllEntries(t *testing.T) {
 	ct = 0
 	i = 0
 
-	extractors, err := getMultiVariantExtractors(multiVariantCountOnlyQuery, labels.FromStrings("app", "foo"))
+	countExtractor, err := getStreamExtractor(countQuery, labels.FromStrings("app", "foo"))
 	require.NoError(t, err)
-	countExtractor := extractors[0]
 	smpl := c.SampleIterator(
 		context.Background(),
 		time.Unix(0, 0),
@@ -818,8 +877,6 @@ func Test_HeadIteratorHash(t *testing.T) {
 	lbs := labels.FromStrings("foo", "bar")
 	countEx, err := log.NewLineSampleExtractor(log.CountExtractor, nil, nil, false, false)
 	require.NoError(t, err)
-	bytesEx, err := log.NewLineSampleExtractor(log.BytesExtractor, nil, nil, false, false)
-	require.NoError(t, err)
 
 	for name, b := range map[string]HeadBlock{
 		"unordered":                          newUnorderedHeadBlock(UnorderedHeadBlockFmt, newSymbolizer()),
@@ -837,34 +894,6 @@ func Test_HeadIteratorHash(t *testing.T) {
 			}
 
 			sit := b.SampleIterator(context.TODO(), 0, 2, countEx.ForStream(lbs))
-			for sit.Next() {
-				require.Equal(t, labels.StableHash(lbs), sit.StreamHash())
-			}
-		})
-
-		t.Run(fmt.Sprintf("%s SampleIterator with multiple extractors", name), func(t *testing.T) {
-			dup, err := b.Append(1, "bar", labels.FromStrings("bar", "foo"))
-			require.False(t, dup)
-			require.NoError(t, err)
-			eit := b.Iterator(
-				context.Background(),
-				logproto.BACKWARD,
-				0,
-				2,
-				log.NewNoopPipeline().ForStream(lbs),
-			)
-
-			for eit.Next() {
-				require.Equal(t, labels.StableHash(lbs), eit.StreamHash())
-			}
-
-			sit := b.SampleIterator(
-				context.TODO(),
-				0,
-				2,
-				countEx.ForStream(lbs),
-				bytesEx.ForStream(lbs),
-			)
 			for sit.Next() {
 				require.Equal(t, labels.StableHash(lbs), sit.StreamHash())
 			}

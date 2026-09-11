@@ -163,7 +163,7 @@ func buildBucketFromLokiConfig(ctx context.Context, configFile string, expandEnv
 		"index_prefix", mCfg.IndexStoragePrefix,
 	)
 
-	ib, err := bucket.NewClient(ctx, backend, objCfg.Config, "dataobj-locality", logger)
+	ib, err := bucket.NewClient(ctx, backend, objCfg.Config, "dataobj-locality", logger, nil)
 	if err != nil {
 		return nil, metastore.Config{}, fmt.Errorf("creating bucket client: %w", err)
 	}

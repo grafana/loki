@@ -15,8 +15,6 @@ import (
 	"github.com/go-kit/log/level"
 	"github.com/pkg/errors"
 
-	"github.com/grafana/loki/pkg/push"
-
 	"google.golang.org/grpc/codes"
 	grpcstatus "google.golang.org/grpc/status"
 
@@ -29,6 +27,7 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/analytics"
 	"github.com/grafana/loki/v3/pkg/loghttp"
+	"github.com/grafana/loki/v3/pkg/loghttp/push/otlpattrs"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	"github.com/grafana/loki/v3/pkg/runtime"
@@ -105,6 +104,7 @@ type TenantsRetention interface {
 type Limits interface {
 	OTLPConfig(userID string) OTLPConfig
 	DiscoverServiceName(userID string) []string
+	MaxPushSize(userID string) int
 }
 
 type EmptyLimits struct{}
@@ -122,7 +122,7 @@ func (EmptyLimits) PolicyFor(_ string, _ labels.Labels) string {
 }
 
 // StreamResolver is a request-scoped interface that provides retention period and policy for a given stream.
-// The values returned by the resolver will not chance thought the handling of the request
+// The values returned by the resolver do not change during the lifetime of the request.
 type StreamResolver interface {
 	RetentionPeriodFor(lbs labels.Labels) time.Duration
 	RetentionHoursFor(lbs labels.Labels) string
@@ -130,9 +130,8 @@ type StreamResolver interface {
 }
 
 type (
-	RequestParser        func(userID string, r *http.Request, limits Limits, tenantConfigs *runtime.TenantConfigs, maxRecvMsgSize int, maxDecompressedSize int64, tracker UsageTracker, streamResolver StreamResolver, logger log.Logger) (*logproto.PushRequest, *Stats, error)
-	RequestParserWrapper func(inner RequestParser) RequestParser
-	ErrorWriter          func(w http.ResponseWriter, errorStr string, code int, logger log.Logger)
+	RequestParser func(userID string, r *http.Request, limits Limits, tenantConfigs *runtime.TenantConfigs, maxRecvMsgSize int, maxDecompressedSize int64, tracker UsageTracker, streamResolver StreamResolver, logger log.Logger) (*logproto.PushRequest, *Stats, error)
+	ErrorWriter   func(w http.ResponseWriter, errorStr string, code int, logger log.Logger)
 )
 
 type PolicyWithRetentionWithBytes map[string]map[time.Duration]int64
@@ -142,7 +141,6 @@ func NewPushStats() *Stats {
 		LogLinesBytes:                     map[string]map[time.Duration]int64{},
 		StructuredMetadataBytes:           map[string]map[time.Duration]int64{},
 		PolicyNumLines:                    map[string]int64{},
-		ResourceAndSourceMetadataLabels:   map[string]map[time.Duration]push.LabelsAdapter{},
 		MostRecentEntryTimestampPerStream: map[string]time.Time{},
 		StreamSizeBytes:                   map[string]int64{},
 	}
@@ -158,9 +156,6 @@ type Stats struct {
 	// StructuredMetadataBytes holds the size of the original structured metadata (but after it was enriched by OLTP
 	// parser) per policy per retention. Used in billing.
 	StructuredMetadataBytes PolicyWithRetentionWithBytes
-
-	// ResourceAndSourceMetadataLabels holds structured metadata that was added by OLTP parser (scope and resource attributes)
-	ResourceAndSourceMetadataLabels map[string]map[time.Duration]push.LabelsAdapter
 
 	// StreamLabelsSize holds the total size of stream labels after sanitization (empty labels removed and
 	// non-meaningful whitespaces removed). Not used in billing.
@@ -188,6 +183,10 @@ type Stats struct {
 	// This is the actual size of data that is being ingested and stored in Loki.
 	// For non-OTLP requests, TotalExpandedEntriesSize should be the same as the total size of LogLinesBytes and StructuredMetadataBytes.
 	TotalExpandedEntriesSize int64
+
+	// OTLPAttributes breaks TotalExpandedEntriesSize down per resource and scope attribute.
+	// Is only populated for OTLP requests when logOTLPAttributeExpansion is true.
+	OTLPAttributes *otlpattrs.Accumulator
 }
 
 func ParseRequest(logger log.Logger, userID string, maxRecvMsgSize int, maxDecompressedSize int64, r *http.Request, limits Limits, tenantConfigs *runtime.TenantConfigs, pushRequestParser RequestParser, tracker UsageTracker, streamResolver StreamResolver, presumedAgentIP, format string) (*logproto.PushRequest, *Stats, error) {
@@ -201,7 +200,7 @@ func ParseRequest(logger log.Logger, userID string, maxRecvMsgSize int, maxDecom
 
 	req, pushStats, err := pushRequestParser(userID, r, limits, tenantConfigs, maxRecvMsgSize, maxDecompressedSize, tracker, streamResolver, logger)
 	if err != nil && !errors.Is(err, ErrAllLogsFiltered) {
-		if errors.Is(err, util.ErrMessageSizeTooLarge) {
+		if errors.Is(err, util.ErrMessageSizeTooLarge) || errors.Is(err, util.ErrMessageDecompressedSizeTooLarge) {
 			return nil, nil, fmt.Errorf("%w: %s", ErrRequestBodyTooLarge, err.Error())
 		}
 		return nil, nil, err
@@ -341,10 +340,15 @@ func parsePushRequestBody(r *http.Request, maxRecvMsgSize int, maxDecompressedSi
 	// Body
 	var body io.Reader
 	// bodySize should always reflect the compressed size of the request body
-	bodySize := util.NewSizeReader(r.Body)
+	bodySizeReader := util.NewSizeReader(r.Body)
+	// decompressedSize reflects the decompressed size of the request body. It stays
+	// nil when the body is not decompressed here, either because it is uncompressed
+	// or because ParseProtoReaderWithLimits does the snappy-decoding (and its own
+	// decompressed size check) below.
+	var decompressedSizeReader util.SizeReader
 
 	// Apply compressed size limit
-	body = bodySize
+	body = bodySizeReader
 	if maxRecvMsgSize > 0 {
 		body = io.LimitReader(body, int64(maxRecvMsgSize)+1)
 	}
@@ -364,7 +368,8 @@ func parsePushRequestBody(r *http.Request, maxRecvMsgSize int, maxDecompressedSi
 		defer func(gzipReader *gzip.Reader) {
 			_ = gzipReader.Close()
 		}(gzipReader)
-		body = gzipReader
+		decompressedSizeReader = util.NewSizeReader(gzipReader)
+		body = decompressedSizeReader
 		if maxDecompressedSize > 0 {
 			body = io.LimitReader(body, maxDecompressedSize+1)
 		}
@@ -373,7 +378,8 @@ func parsePushRequestBody(r *http.Request, maxRecvMsgSize int, maxDecompressedSi
 		defer func(flateReader io.ReadCloser) {
 			_ = flateReader.Close()
 		}(flateReader)
-		body = flateReader
+		decompressedSizeReader = util.NewSizeReader(flateReader)
+		body = decompressedSizeReader
 		if maxDecompressedSize > 0 {
 			body = io.LimitReader(body, maxDecompressedSize+1)
 		}
@@ -405,6 +411,12 @@ func parsePushRequestBody(r *http.Request, maxRecvMsgSize int, maxDecompressedSi
 		}
 
 		if err != nil {
+			// The readers above are limited to max+1 bytes, so an oversized body is
+			// truncated and fails to decode. Report that as a size error rather than
+			// as a malformed request.
+			if sizeErr := checkSizeLimits(bodySizeReader, decompressedSizeReader, maxRecvMsgSize, maxDecompressedSize); sizeErr != nil {
+				return nil, sizeErr
+			}
 			return nil, err
 		}
 
@@ -416,14 +428,30 @@ func parsePushRequestBody(r *http.Request, maxRecvMsgSize int, maxDecompressedSi
 		}
 	}
 
-	pushStats.BodySize = bodySize.Size()
+	pushStats.BodySize = bodySizeReader.Size()
 	pushStats.ContentType = contentType
 	pushStats.ContentEncoding = contentEncoding
 
-	if size := bodySize.Size(); size > int64(maxRecvMsgSize) && maxRecvMsgSize > 0 {
-		return nil, fmt.Errorf("compressed message size %d exceeds limit %d", size, maxRecvMsgSize)
+	if err := checkSizeLimits(bodySizeReader, decompressedSizeReader, maxRecvMsgSize, maxDecompressedSize); err != nil {
+		return nil, err
 	}
 	return &req, nil
+}
+
+// checkSizeLimits reports whether the request body exceeded the compressed or the
+// decompressed size limit. The readers wrapping the body are limited to max+1 bytes,
+// so a size greater than max means the body was truncated. decompressedSize may be
+// nil, in which case only the compressed size is checked.
+func checkSizeLimits(bodySizeReader, decompressedSizeReader util.SizeReader, maxRecvMsgSize int, maxDecompressedSize int64) error {
+	if size := bodySizeReader.Size(); maxRecvMsgSize > 0 && size > int64(maxRecvMsgSize) {
+		return fmt.Errorf(messageSizeLargerErrFmt, util.ErrMessageSizeTooLarge, size, maxRecvMsgSize)
+	}
+	if decompressedSizeReader != nil {
+		if size := decompressedSizeReader.Size(); maxDecompressedSize > 0 && size > maxDecompressedSize {
+			return fmt.Errorf(messageSizeLargerErrFmt, util.ErrMessageDecompressedSizeTooLarge, size, maxDecompressedSize)
+		}
+	}
+	return nil
 }
 
 func ParseLokiRequest(userID string, r *http.Request, limits Limits, tenantConfigs *runtime.TenantConfigs, maxRecvMsgSize int, maxDecompressedSize int64, tracker UsageTracker, streamResolver StreamResolver, logger log.Logger) (*logproto.PushRequest, *Stats, error) {
@@ -455,6 +483,12 @@ func ParseLokiRequest(userID string, r *http.Request, limits Limits, tenantConfi
 		lbs, err := syntax.ParseLabels(s.Labels)
 		if err != nil {
 			return nil, nil, fmt.Errorf("couldn't parse labels: %w", err)
+		}
+
+		// The backfill labels are reserved for Loki: they may only be added below, from the
+		// X-Loki-Backfill-Shard header, so clients cannot spoof them to bypass validation.
+		if lbs.Has(constants.BackfillLabel) || lbs.Has(constants.BackfillShardLabel) {
+			return nil, nil, errReservedBackfillLabels()
 		}
 
 		// Check if this is an aggregated metric or pattern stream

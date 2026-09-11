@@ -28,8 +28,8 @@ func (m *mockIndex) Path() string {
 	return m.File.Name()
 }
 
-func (m *mockIndex) Reader() (io.ReadSeeker, error) {
-	return m.File, nil
+func (m *mockIndex) Reader() (io.ReadSeekCloser, error) {
+	return os.Open(m.File.Name())
 }
 
 func setupIndexesAtPath(t *testing.T, userID, path string, start, end int) []string {

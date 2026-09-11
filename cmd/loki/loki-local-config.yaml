@@ -27,7 +27,6 @@ query_range:
 
 limits_config:
   metric_aggregation_enabled: true
-  enable_multi_variant_queries: true
 
 schema_config:
   configs:

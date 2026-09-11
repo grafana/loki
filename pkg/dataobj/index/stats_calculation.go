@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"cmp"
 	"context"
+	"encoding/binary"
 	"fmt"
 	"hash/fnv"
 	"slices"
@@ -20,10 +21,11 @@ import (
 type statsCalculation struct {
 	schema     []string                   // schema is the fully-qualified sort schema ("label:<name>")
 	labelKeys  []string                   // labelKeys are the bare Prometheus label names derived from schema
-	aggregates map[uint64]*statsAggregate // keyed by hash of composite label values
+	aggregates map[uint64]*statsAggregate // keyed by hash of shard + composite label values
 }
 
 type statsAggregate struct {
+	shardBucket      uint32
 	labels           map[string]string // all sort schema key-value pairs
 	minTimestamp     time.Time
 	maxTimestamp     time.Time
@@ -55,17 +57,21 @@ func (c *statsCalculation) ProcessBatch(_ context.Context, calcCtx *logsCalculat
 		h   = fnv.New64a()
 		buf bytes.Buffer
 	)
+	var shardKey [4]byte
 	for _, log := range batch {
 		streamLbls := calcCtx.streamLabels[log.StreamID]
+		shardBucket, ok := calcCtx.streamShardBuckets[log.StreamID]
+		if !ok {
+			return fmt.Errorf("shard bucket not found for stream ID %d", log.StreamID)
+		}
 
-		// Build the composite key from all sort schema keys.
+		// Build the composite key from the shard and all sort schema keys.
 		// Uses key=value pairs separated by \x00 to avoid ambiguity.
 		buf.Reset()
-		for i, key := range c.labelKeys {
-			if i > 0 {
-				buf.WriteByte(0)
-			}
-
+		binary.BigEndian.PutUint32(shardKey[:], shardBucket)
+		buf.Write(shardKey[:])
+		for _, key := range c.labelKeys {
+			buf.WriteByte(0)
 			buf.WriteString(key)
 			buf.WriteByte('=')
 			buf.WriteString(streamLbls.Get(key))
@@ -82,6 +88,7 @@ func (c *statsCalculation) ProcessBatch(_ context.Context, calcCtx *logsCalculat
 				labelMap[key] = streamLbls.Get(key)
 			}
 			agg = &statsAggregate{
+				shardBucket:  shardBucket,
 				labels:       labelMap,
 				minTimestamp: log.Timestamp,
 				maxTimestamp: log.Timestamp,
@@ -115,12 +122,15 @@ func (c *statsCalculation) Flush(_ context.Context, calcCtx *logsCalculationCont
 		return nil
 	}
 
-	// Sort aggregates by label values in schema key order
+	// Sort aggregates by shard, then label values in schema key order.
 	sorted := make([]*statsAggregate, 0, len(c.aggregates))
 	for _, agg := range c.aggregates {
 		sorted = append(sorted, agg)
 	}
 	slices.SortFunc(sorted, func(a, b *statsAggregate) int {
+		if n := cmp.Compare(a.shardBucket, b.shardBucket); n != 0 {
+			return n
+		}
 		for _, key := range c.labelKeys {
 			if n := cmp.Compare(a.labels[key], b.labels[key]); n != 0 {
 				return n
@@ -135,6 +145,7 @@ func (c *statsCalculation) Flush(_ context.Context, calcCtx *logsCalculationCont
 			calcCtx.tenantID,
 			calcCtx.objectPath,
 			calcCtx.sectionIdx,
+			agg.shardBucket,
 			sortSchema,
 			agg.labels,
 			agg.minTimestamp,

@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"encoding/binary"
 	"slices"
+
+	"github.com/gabriel-vasile/mimetype/internal/scan"
 )
 
 // Png matches a Portable Network Graphics file.
@@ -15,7 +17,31 @@ func Png(raw []byte, _ uint32) bool {
 // Apng matches an Animated Portable Network Graphics file.
 // https://wiki.mozilla.org/APNG_Specification
 func Apng(raw []byte, _ uint32) bool {
-	return offset(raw, []byte("acTL"), 37)
+	b := scan.Bytes(raw)
+	b.Advance(8) // the first 8 bytes matched by regular png
+
+	// PNG chunks are composed of:
+	// 4 bytes: length in big endian
+	// 4 bytes: chunk type
+	// length bytes: chunk data
+	// 4 bytes: CRC
+	//
+	// Limit to 32, so we don't waste time on huge inputs.
+	// acTL chunk must come before any IDAT chunks.
+	// https://www.w3.org/TR/png-3/#structure
+	for i := 0; i < 32 && len(b) > 0; i++ {
+		sz, _ := b.Uint32be()
+		if bytes.HasPrefix(b, []byte("acTL")) {
+			return true
+		}
+		if bytes.HasPrefix(b, []byte("IDAT")) {
+			return false
+		}
+		if !b.Advance(int(sz + 8)) {
+			return false
+		}
+	}
+	return false
 }
 
 // Jpg matches a Joint Photographic Experts Group file.

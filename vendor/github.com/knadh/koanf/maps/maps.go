@@ -1,21 +1,22 @@
 // Package maps provides reusable functions for manipulating nested
-// map[string]interface{} maps are common unmarshal products from
+// map[string]any maps are common unmarshal products from
 // various serializers such as json, yaml etc.
 package maps
 
 import (
 	"fmt"
 	"reflect"
+	"sort"
 	"strings"
 
 	"github.com/mitchellh/copystructure"
 )
 
-// Flatten takes a map[string]interface{} and traverses it and flattens
+// Flatten takes a map[string]any and traverses it and flattens
 // nested children into keys delimited by delim.
 //
 // It's important to note that all nested maps should be
-// map[string]interface{} and not map[interface{}]interface{}.
+// map[string]any and not map[any]any.
 // Use IntfaceKeysToStrings() to convert if necessary.
 //
 // eg: `{ "parent": { "child": 123 }}` becomes `{ "parent.child": 123 }`
@@ -23,9 +24,9 @@ import (
 // a slice of key parts, for eg: { "parent.child": ["parent", "child"] }. This
 // parts list is used to remember the key path's original structure to
 // unflatten later.
-func Flatten(m map[string]interface{}, keys []string, delim string) (map[string]interface{}, map[string][]string) {
+func Flatten(m map[string]any, keys []string, delim string) (map[string]any, map[string][]string) {
 	var (
-		out    = make(map[string]interface{})
+		out    = make(map[string]any)
 		keyMap = make(map[string][]string)
 	)
 
@@ -33,7 +34,7 @@ func Flatten(m map[string]interface{}, keys []string, delim string) (map[string]
 	return out, keyMap
 }
 
-func flatten(m map[string]interface{}, keys []string, delim string, out map[string]interface{}, keyMap map[string][]string) {
+func flatten(m map[string]any, keys []string, delim string, out map[string]any, keyMap map[string][]string) {
 	for key, val := range m {
 		// Copy the incoming key paths into a fresh list
 		// and append the current key in the iteration.
@@ -42,7 +43,7 @@ func flatten(m map[string]interface{}, keys []string, delim string, out map[stri
 		kp = append(kp, key)
 
 		switch cur := val.(type) {
-		case map[string]interface{}:
+		case map[string]any:
 			// Empty map.
 			if len(cur) == 0 {
 				newKey := strings.Join(kp, delim)
@@ -65,14 +66,22 @@ func flatten(m map[string]interface{}, keys []string, delim string, out map[stri
 // and returns a nested map where the keys are split into hierarchies by the given
 // delimiter. For instance, `parent.child.key: 1` to `{parent: {child: {key: 1}}}`
 //
+// Keys are sorted by length to make merge-order deterministic so that nested keys
+// don't end up overwriting their parent keys. eg: `parent.child` -> `parent`.
+//
 // It's important to note that all nested maps should be
-// map[string]interface{} and not map[interface{}]interface{}.
+// map[string]any and not map[any]any.
 // Use IntfaceKeysToStrings() to convert if necessary.
-func Unflatten(m map[string]interface{}, delim string) map[string]interface{} {
-	out := make(map[string]interface{})
+func Unflatten(m map[string]any, delim string) map[string]any {
+	out := make(map[string]any)
 
-	// Iterate through the flat conf map.
-	for k, v := range m {
+	ks := make([]string, 0, len(m))
+	for k := range m {
+		ks = append(ks, k)
+	}
+	sort.Strings(ks)
+
+	for _, k := range ks {
 		var (
 			keys []string
 			next = out
@@ -87,19 +96,17 @@ func Unflatten(m map[string]interface{}, delim string) map[string]interface{} {
 		// Iterate through key parts, for eg:, parent.child.key
 		// will be ["parent", "child", "key"]
 		for _, k := range keys[:len(keys)-1] {
-			sub, ok := next[k]
+			// Create the key if it doesn't exist.
+			sub, ok := next[k].(map[string]any)
 			if !ok {
-				// If the key does not exist in the map, create it.
-				sub = make(map[string]interface{})
+				sub = make(map[string]any)
 				next[k] = sub
 			}
-			if n, ok := sub.(map[string]interface{}); ok {
-				next = n
-			}
+			next = sub
 		}
 
 		// Assign the value.
-		next[keys[len(keys)-1]] = v
+		next[keys[len(keys)-1]] = m[k]
 	}
 	return out
 }
@@ -109,9 +116,9 @@ func Unflatten(m map[string]interface{}, delim string) map[string]interface{} {
 // map b will retain references to map a.
 //
 // It's important to note that all nested maps should be
-// map[string]interface{} and not map[interface{}]interface{}.
+// map[string]any and not map[any]any.
 // Use IntfaceKeysToStrings() to convert if necessary.
-func Merge(a, b map[string]interface{}) {
+func Merge(a, b map[string]any) {
 	for key, val := range a {
 		// Does the key exist in the target map?
 		// If no, add it and move on.
@@ -122,15 +129,15 @@ func Merge(a, b map[string]interface{}) {
 		}
 
 		// If the incoming val is not a map, do a direct merge.
-		if _, ok := val.(map[string]interface{}); !ok {
+		if _, ok := val.(map[string]any); !ok {
 			b[key] = val
 			continue
 		}
 
 		// The source key and target keys are both maps. Merge them.
 		switch v := bVal.(type) {
-		case map[string]interface{}:
-			Merge(val.(map[string]interface{}), v)
+		case map[string]any:
+			Merge(val.(map[string]any), v)
 		default:
 			b[key] = val
 		}
@@ -143,13 +150,13 @@ func Merge(a, b map[string]interface{}) {
 // If an equal key in either of the maps has a different value type, it will return the first error.
 //
 // It's important to note that all nested maps should be
-// map[string]interface{} and not map[interface{}]interface{}.
+// map[string]any and not map[any]any.
 // Use IntfaceKeysToStrings() to convert if necessary.
-func MergeStrict(a, b map[string]interface{}) error {
+func MergeStrict(a, b map[string]any) error {
 	return mergeStrict(a, b, "")
 }
 
-func mergeStrict(a, b map[string]interface{}, fullKey string) error {
+func mergeStrict(a, b map[string]any, fullKey string) error {
 	for key, val := range a {
 		// Does the key exist in the target map?
 		// If no, add it and move on.
@@ -165,23 +172,25 @@ func mergeStrict(a, b map[string]interface{}, fullKey string) error {
 		}
 
 		// If the incoming val is not a map, do a direct merge between the same types.
-		if _, ok := val.(map[string]interface{}); !ok {
+		if _, ok := val.(map[string]any); !ok {
 			if reflect.TypeOf(b[key]) == reflect.TypeOf(val) {
 				b[key] = val
 			} else {
-				return fmt.Errorf("incorrect types at key %v, type %T != %T", fullKey, b[key], val)
+				return fmt.Errorf("incorrect types at key %v, type %T != %T", newFullKey, b[key], val)
 			}
 			continue
 		}
 
 		// The source key and target keys are both maps. Merge them.
 		switch v := bVal.(type) {
-		case map[string]interface{}:
-			if err := mergeStrict(val.(map[string]interface{}), v, newFullKey); err != nil {
+		case map[string]any:
+			if err := mergeStrict(val.(map[string]any), v, newFullKey); err != nil {
 				return err
 			}
 		default:
-			b[key] = val
+			// The incoming value is a map but the target value is not,
+			// which is a type mismatch.
+			return fmt.Errorf("incorrect types at key %v, type %T != %T", newFullKey, b[key], val)
 		}
 	}
 	return nil
@@ -192,9 +201,9 @@ func mergeStrict(a, b map[string]interface{}, fullKey string) error {
 // Any empty, nested map on the path, is recursively deleted.
 //
 // It's important to note that all nested maps should be
-// map[string]interface{} and not map[interface{}]interface{}.
+// map[string]any and not map[any]any.
 // Use IntfaceKeysToStrings() to convert if necessary.
-func Delete(mp map[string]interface{}, path []string) {
+func Delete(mp map[string]any, path []string) {
 	next, ok := mp[path[0]]
 	if ok {
 		if len(path) == 1 {
@@ -202,7 +211,7 @@ func Delete(mp map[string]interface{}, path []string) {
 			return
 		}
 		switch nval := next.(type) {
-		case map[string]interface{}:
+		case map[string]any:
 			Delete(nval, path[1:])
 			// Delete map if it has no keys.
 			if len(nval) == 0 {
@@ -216,22 +225,22 @@ func Delete(mp map[string]interface{}, path []string) {
 // the key map slice, for eg:, parent.child.key -> [parent child key].
 //
 // It's important to note that all nested maps should be
-// map[string]interface{} and not map[interface{}]interface{}.
+// map[string]any and not map[any]any.
 // Use IntfaceKeysToStrings() to convert if necessary.
-func Search(mp map[string]interface{}, path []string) interface{} {
+func Search(mp map[string]any, path []string) any {
 	next, ok := mp[path[0]]
 	if ok {
 		if len(path) == 1 {
 			return next
 		}
 		switch m := next.(type) {
-		case map[string]interface{}:
+		case map[string]any:
 			return Search(m, path[1:])
 		default:
 			return nil
 		} //
 		// It's important to note that all nested maps should be
-		// map[string]interface{} and not map[interface{}]interface{}.
+		// map[string]any and not map[any]any.
 		// Use IntfaceKeysToStrings() to convert if necessary.
 	}
 	return nil
@@ -240,43 +249,43 @@ func Search(mp map[string]interface{}, path []string) interface{} {
 // Copy returns a deep copy of a conf map.
 //
 // It's important to note that all nested maps should be
-// map[string]interface{} and not map[interface{}]interface{}.
+// map[string]any and not map[any]any.
 // Use IntfaceKeysToStrings() to convert if necessary.
-func Copy(mp map[string]interface{}) map[string]interface{} {
+func Copy(mp map[string]any) map[string]any {
 	out, _ := copystructure.Copy(&mp)
-	if res, ok := out.(*map[string]interface{}); ok {
+	if res, ok := out.(*map[string]any); ok {
 		return *res
 	}
-	return map[string]interface{}{}
+	return map[string]any{}
 }
 
-// IntfaceKeysToStrings recursively converts map[interface{}]interface{} to
-// map[string]interface{}. Some parses such as YAML unmarshal return this.
-func IntfaceKeysToStrings(mp map[string]interface{}) {
+// IntfaceKeysToStrings recursively converts map[any]any to
+// map[string]any. Some parses such as YAML unmarshal return this.
+func IntfaceKeysToStrings(mp map[string]any) {
 	for key, val := range mp {
 		switch cur := val.(type) {
-		case map[interface{}]interface{}:
-			x := make(map[string]interface{})
+		case map[any]any:
+			x := make(map[string]any)
 			for k, v := range cur {
 				x[fmt.Sprintf("%v", k)] = v
 			}
 			mp[key] = x
 			IntfaceKeysToStrings(x)
-		case []interface{}:
+		case []any:
 			for i, v := range cur {
 				switch sub := v.(type) {
-				case map[interface{}]interface{}:
-					x := make(map[string]interface{})
+				case map[any]any:
+					x := make(map[string]any)
 					for k, v := range sub {
 						x[fmt.Sprintf("%v", k)] = v
 					}
 					cur[i] = x
 					IntfaceKeysToStrings(x)
-				case map[string]interface{}:
+				case map[string]any:
 					IntfaceKeysToStrings(sub)
 				}
 			}
-		case map[string]interface{}:
+		case map[string]any:
 			IntfaceKeysToStrings(cur)
 		}
 	}
@@ -285,17 +294,17 @@ func IntfaceKeysToStrings(mp map[string]interface{}) {
 // StringSliceToLookupMap takes a slice of strings and returns a lookup map
 // with the slice values as keys with true values.
 func StringSliceToLookupMap(s []string) map[string]bool {
-	mp := make(map[string]bool, len(s))
-	for _, v := range s {
-		mp[v] = true
-	}
-	return mp
+	return sliceToLookupMap(s)
 }
 
 // Int64SliceToLookupMap takes a slice of int64s and returns a lookup map
 // with the slice values as keys with true values.
 func Int64SliceToLookupMap(s []int64) map[int64]bool {
-	mp := make(map[int64]bool, len(s))
+	return sliceToLookupMap(s)
+}
+
+func sliceToLookupMap[T string | int64](s []T) map[T]bool {
+	mp := make(map[T]bool, len(s))
 	for _, v := range s {
 		mp[v] = true
 	}

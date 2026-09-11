@@ -51,6 +51,28 @@ func (m *ClientSideWeightedRoundRobin) MarshalToSizedBufferVTStrict(dAtA []byte)
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
 	}
+	if m.OobReportingConfig != nil {
+		if vtmsg, ok := interface{}(m.OobReportingConfig).(interface {
+			MarshalToSizedBufferVTStrict([]byte) (int, error)
+		}); ok {
+			size, err := vtmsg.MarshalToSizedBufferVTStrict(dAtA[:i])
+			if err != nil {
+				return 0, err
+			}
+			i -= size
+			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		} else {
+			encoded, err := proto.Marshal(m.OobReportingConfig)
+			if err != nil {
+				return 0, err
+			}
+			i -= len(encoded)
+			copy(dAtA[i:], encoded)
+			i = protohelpers.EncodeVarint(dAtA, i, uint64(len(encoded)))
+		}
+		i--
+		dAtA[i] = 0x4a
+	}
 	if m.SlowStartConfig != nil {
 		if vtmsg, ok := interface{}(m.SlowStartConfig).(interface {
 			MarshalToSizedBufferVTStrict([]byte) (int, error)
@@ -188,6 +210,16 @@ func (m *ClientSideWeightedRoundRobin) SizeVT() (n int) {
 			l = size.SizeVT()
 		} else {
 			l = proto.Size(m.SlowStartConfig)
+		}
+		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
+	}
+	if m.OobReportingConfig != nil {
+		if size, ok := interface{}(m.OobReportingConfig).(interface {
+			SizeVT() int
+		}); ok {
+			l = size.SizeVT()
+		} else {
+			l = proto.Size(m.OobReportingConfig)
 		}
 		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
 	}

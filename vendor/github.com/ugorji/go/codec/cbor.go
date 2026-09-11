@@ -659,7 +659,7 @@ func (d *cborDecDriver[T]) decTagBigIntAsFloat(neg bool) (f float64) {
 }
 
 func (d *cborDecDriver[T]) decTagBigFloatAsFloat(decimal bool) (f float64) {
-	if nn := d.r.readn1(); nn != 82 {
+	if nn := d.r.readn1(); nn != 0x82 {
 		halt.errorf("(%d) decoding decimal/big.Float: expected 2 numbers", nn)
 	}
 	exp := d.DecodeInt64()
@@ -933,6 +933,7 @@ func (d *cborEncDriver[T]) init(hh Handle, shared *encoderBase, enc encoderI) (f
 	return
 }
 
+func (e *cborEncDriver[T]) NumBytesWritten() int    { return e.w.numWrite() }
 func (e *cborEncDriver[T]) writeBytesAsis(b []byte) { e.w.writeb(b) }
 
 // func (e *cborEncDriver[T]) writeStringAsisDblQuoted(v string) { e.w.writeqstr(v) }
@@ -972,7 +973,7 @@ func (d *cborDecDriver[T]) resetInBytes(in []byte) {
 }
 
 func (d *cborDecDriver[T]) resetInIO(r io.Reader) {
-	d.r.resetIO(r, d.h.ReaderBufferSize, d.h.MaxInitLen, &d.d.blist)
+	d.r.resetIO(r, d.h.ReaderBufferSize, d.h.maxBytes2Read(), &d.d.blist)
 }
 
 // ---- (custom stanza)

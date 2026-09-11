@@ -80,9 +80,8 @@ func buildMockChunkRef(t *testing.T, num int) []chunk.Chunk {
 
 	periodConfig := config.PeriodConfig{
 
-		From:      config.DayTime{Time: 0},
-		Schema:    "v11",
-		RowShards: 16,
+		From:   config.DayTime{Time: 0},
+		Schema: "v11",
 	}
 
 	s := config.SchemaConfig{
@@ -125,9 +124,8 @@ func TestAsyncStore_mergeIngesterAndStoreChunks(t *testing.T) {
 	s := config.SchemaConfig{
 		Configs: []config.PeriodConfig{
 			{
-				From:      config.DayTime{Time: 0},
-				Schema:    "v11",
-				RowShards: 16,
+				From:   config.DayTime{Time: 0},
+				Schema: "v11",
 			},
 		},
 	}

@@ -72,7 +72,7 @@ const (
 	ERRORMSG_PROP_INVALID            = "The %s property is invalid. Please remove any surrounding {, }, or \" characters."
 	ERRORMSG_EXCLUSIVE_PROPS_ERROR   = "Exactly one of %s or %s must be specified."
 	ERRORMSG_ATLEAST_ONE_PROP_ERROR  = "At least one of %s or %s must be specified."
-	ERRORMSG_ATMOST_ONE_PROP_ERROR   = "At most one of %s or %s may be specified."
+	ERRORMSG_ATMOST_ONE_PROP_ERROR   = "At most one of %s, %s, or %s may be specified."
 	ERRORMSG_NO_AUTHENTICATOR        = "Authentication information was not properly configured."
 	ERRORMSG_AUTHTYPE_UNKNOWN        = "Unrecognized authentication type: %s"
 	ERRORMSG_PROPS_MAP_NIL           = "The 'properties' map cannot be nil."

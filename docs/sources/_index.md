@@ -53,18 +53,6 @@ Log data itself is then compressed and stored in chunks in object stores such as
 
 Here are answers to some frequently asked questions about how to configure and run Loki.
 
-### What is Loki and what can it do?
-
-Grafana Loki is a horizontally scalable, highly available, multi-tenant log aggregation system inspired by Prometheus. Unlike traditional log management solutions, Loki indexes only a small set of labels (metadata) for each log stream rather than the full text of every log line. The log data itself is compressed and stored in object storage such as Amazon S3, Google Cloud Storage, or Azure Blob Storage. This design makes Loki significantly cheaper to operate and easier to scale than full-text indexing systems.
-
-With Loki you can:
-
-- **Aggregate and query logs** from applications, infrastructure, and Kubernetes clusters using [LogQL](https://grafana.com/docs/loki/latest/query/), a query language inspired by PromQL.
-- **Correlate logs with metrics and traces** in Grafana alongside Prometheus/Mimir metrics and Tempo traces.
-- **Alert on log patterns** using LogQL-based [recording rules and alerting rules](https://grafana.com/docs/loki/latest/alert/).
-- **Scale from a single binary to a distributed microservices architecture** using the same codebase and configuration format.
-- **Control costs** by storing logs in cheap object storage and keeping the index small.
-
 ### Where should I start if I'm new to Loki?
 
 Start with the [Loki Tutorial](https://grafana.com/docs/loki/latest/get-started/), which walks you through what Loki is, how it works, and how the components fit together. 

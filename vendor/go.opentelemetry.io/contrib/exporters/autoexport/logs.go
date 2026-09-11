@@ -1,7 +1,7 @@
 // Copyright The OpenTelemetry Authors
 // SPDX-License-Identifier: Apache-2.0
 
-package autoexport // import "go.opentelemetry.io/contrib/exporters/autoexport"
+package autoexport
 
 import (
 	"context"

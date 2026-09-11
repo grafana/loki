@@ -248,6 +248,7 @@ var (
 	moducrt             = windows.NewLazySystemDLL("ucrtbase.dll")
 	procFindfirst32     = moducrt.NewProc("_findfirst32")
 	procFindnext32      = moducrt.NewProc("_findnext32")
+	procStat32i64       = moducrt.NewProc("_stat32i64")
 	procStat64i32       = moducrt.NewProc("_stat64i32")
 	procWchmod          = moducrt.NewProc("_wchmod")
 	procWfindfirst32    = moducrt.NewProc("_wfindfirst32")
@@ -7533,6 +7534,18 @@ func X_vscprintf(t *TLS, format uintptr, argptr uintptr) int32 {
 }
 
 // int _stat32i64(const char *path, struct _stat32i64 *buffer);
+func X_stat32i64(t *TLS, path uintptr, buffer uintptr) int32 {
+	if __ccgo_strace {
+		trc("t=%v path=%v buffer=%v, (%v:)", t, path, buffer, origin(2))
+	}
+	r0, _, err := procStat32i64.Call(uintptr(path), uintptr(buffer))
+	if err != windows.NOERROR {
+		t.setErrno(err)
+	}
+	return int32(r0)
+}
+
+// int _stat64i32(const char *path, struct _stat64i32 *buffer);
 func X_stat64i32(t *TLS, path uintptr, buffer uintptr) int32 {
 	if __ccgo_strace {
 		trc("t=%v path=%v buffer=%v, (%v:)", t, path, buffer, origin(2))
@@ -7542,6 +7555,14 @@ func X_stat64i32(t *TLS, path uintptr, buffer uintptr) int32 {
 		t.setErrno(err)
 	}
 	return int32(r0)
+}
+
+func X__stat32i64(t *TLS, path uintptr, buffer uintptr) int32 {
+	return X_stat32i64(t, path, buffer)
+}
+
+func X__stat64i32(t *TLS, path uintptr, buffer uintptr) int32 {
+	return X_stat64i32(t, path, buffer)
 }
 
 func AtomicLoadNUint8(ptr uintptr, memorder int32) uint8 {

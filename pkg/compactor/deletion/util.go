@@ -2,6 +2,7 @@ package deletion
 
 import (
 	"errors"
+	"fmt"
 
 	"github.com/grafana/loki/v3/pkg/compactor/deletionmode"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
@@ -11,11 +12,18 @@ var (
 	errInvalidQuery = errors.New("invalid query expression")
 )
 
-// parseDeletionQuery checks if the given logQL is valid for deletions
+// parseDeletionQuery checks if the given logQL is valid for deletions.
 func parseDeletionQuery(query string) (syntax.LogSelectorExpr, error) {
-	logSelectorExpr, err := syntax.ParseLogSelector(query, false)
+	logSelectorExpr, err := syntax.ParseLogSelector(query, true)
 	if err != nil {
-		return nil, errInvalidQuery
+		return nil, fmt.Errorf("%w: %s", errInvalidQuery, err)
+	}
+
+	// Some stages are only checked when the pipeline gets built, for instance line
+	// filter regexes and ip() patterns. Build it here and throw it away so we reject
+	// the request now, instead of failing every time we try to process it later.
+	if _, err := logSelectorExpr.Pipeline(); err != nil {
+		return nil, fmt.Errorf("%w: %s", errInvalidQuery, err)
 	}
 
 	return logSelectorExpr, nil

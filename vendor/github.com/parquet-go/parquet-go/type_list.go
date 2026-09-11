@@ -21,7 +21,7 @@ func (listNode) Type() Type { return &listType{} }
 
 type listType format.ListType
 
-var listLogicalType = format.LogicalType{List: new(format.ListType)}
+var listLogicalType = format.LogicalType{Value: new(format.ListType)}
 
 func (t *listType) String() string { return (*format.ListType)(t).String() }
 

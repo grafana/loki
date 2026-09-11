@@ -28,11 +28,6 @@ type IndexMerge struct {
 	// The executor sources source-index paths from Runs[*].Sections[*].ObjectPath;
 	// there is no separate SourceIndexPaths field on IndexMerge.
 	Runs []*compactionv2pb.RunRef
-
-	// OutputIndexPath is the deterministic object-storage key where the
-	// executor writes the merged index object. Existence-check at executor
-	// start short-circuits if a previous task already produced this object.
-	OutputIndexPath string
 }
 
 // ID implements the Node interface.
@@ -44,11 +39,10 @@ func (*IndexMerge) Type() NodeType { return NodeTypeIndexMerge }
 // Clone implements the Node interface.
 func (n *IndexMerge) Clone() Node {
 	return &IndexMerge{
-		NodeID:          ulid.Make(),
-		Tenant:          n.Tenant,
-		ToCWindowStart:  n.ToCWindowStart,
-		Runs:            cloneRuns(n.Runs),
-		OutputIndexPath: n.OutputIndexPath,
+		NodeID:         ulid.Make(),
+		Tenant:         n.Tenant,
+		ToCWindowStart: n.ToCWindowStart,
+		Runs:           cloneRuns(n.Runs),
 	}
 }
 

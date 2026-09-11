@@ -3,7 +3,7 @@
 
 // Package observ provides observability for stdout metric exporter.
 // This is an experimental feature controlled by the x.Observability feature flag.
-package observ // import "go.opentelemetry.io/otel/exporters/stdout/stdoutmetric/internal/observ"
+package observ
 
 import (
 	"context"
@@ -17,8 +17,8 @@ import (
 	"go.opentelemetry.io/otel/exporters/stdout/stdoutmetric/internal"
 	"go.opentelemetry.io/otel/exporters/stdout/stdoutmetric/internal/x"
 	"go.opentelemetry.io/otel/metric"
-	semconv "go.opentelemetry.io/otel/semconv/v1.41.0"
-	"go.opentelemetry.io/otel/semconv/v1.41.0/otelconv"
+	semconv "go.opentelemetry.io/otel/semconv/v1.43.0"
+	"go.opentelemetry.io/otel/semconv/v1.43.0/otelconv"
 )
 
 const (

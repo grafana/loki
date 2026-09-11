@@ -26,6 +26,9 @@ func Test(t *testing.T) {
 		{labels.FromStrings("cluster", "test", "app", "bar", "special", "yes"), time.Unix(100, 0), 20},
 		{labels.FromStrings("cluster", "test", "app", "foo"), time.Unix(15, 0), 15},
 		{labels.FromStrings("cluster", "test", "app", "foo"), time.Unix(9, 0), 5},
+		// Zero uncompressed size must survive decode into a reused Stream;
+		// decodeRow skips zero cells, so it has to Reset first.
+		{labels.FromStrings("cluster", "test", "app", "empty"), time.Unix(1, 0), 0},
 	}
 
 	tracker := streams.NewBuilder(nil, 1024, 0)
@@ -45,6 +48,7 @@ func Test(t *testing.T) {
 			MaxTimestamp:     time.Unix(15, 0),
 			Rows:             3,
 			UncompressedSize: 30,
+			ShardBucket:      int64(streams.ShardBucket(labels.FromStrings("cluster", "test", "app", "foo"))),
 		},
 		{
 			ID:               2,
@@ -53,6 +57,16 @@ func Test(t *testing.T) {
 			MaxTimestamp:     time.Unix(100, 0),
 			Rows:             1,
 			UncompressedSize: 20,
+			ShardBucket:      int64(streams.ShardBucket(labels.FromStrings("cluster", "test", "app", "bar", "special", "yes"))),
+		},
+		{
+			ID:               3,
+			Labels:           labels.FromStrings("cluster", "test", "app", "empty"),
+			MinTimestamp:     time.Unix(1, 0),
+			MaxTimestamp:     time.Unix(1, 0),
+			Rows:             1,
+			UncompressedSize: 0,
+			ShardBucket:      int64(streams.ShardBucket(labels.FromStrings("cluster", "test", "app", "empty"))),
 		},
 	}
 
@@ -75,6 +89,11 @@ func Test(t *testing.T) {
 	}
 
 	require.Equal(t, expect, actual)
+}
+
+func TestShardBucketFromHash(t *testing.T) {
+	ls := labels.FromStrings("app", "auth")
+	require.Equal(t, streams.ShardBucket(ls), streams.ShardBucketFromHash(labels.StableHash(ls)))
 }
 
 func copyLabels(in labels.Labels) labels.Labels {

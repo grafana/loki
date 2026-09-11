@@ -16,8 +16,8 @@ Manage your **database schema** by creating incremental SQL changes or Go functi
 #### Features
 
 - Works against multiple databases:
-  - Postgres, MySQL, Spanner, SQLite, YDB, ClickHouse, MSSQL, Vertica, and
-    more.
+  - Postgres, MySQL, MariaDB, Spanner, SQLite,
+    YDB, ClickHouse, MSSQL, Vertica, and more.
 - Supports Go migrations written as plain functions.
 - Supports [embedded](https://pkg.go.dev/embed/) migrations.
 - Out-of-order migrations.
@@ -39,8 +39,11 @@ Binary too big? Build a lite version by excluding the drivers you don't need:
 go build -tags='no_postgres no_mysql no_sqlite3 no_ydb' -o goose ./cmd/goose
 
 # Available build tags:
-#   no_clickhouse  no_libsql   no_mssql    no_mysql
-#   no_postgres    no_sqlite3  no_vertica  no_ydb
+#   no_azuresql    no_clickhouse  no_libsql   no_mssql
+#   no_mysql       no_postgres    no_sqlite3  no_vertica
+#   no_ydb
+#
+# Note: no_mssql also excludes the azuresql driver.
 ```
 
 For macOS users `goose` is available as a [Homebrew
@@ -75,6 +78,7 @@ Drivers:
     sqlite3
     spanner
     mssql
+    azuresql
     redshift
     tidb
     clickhouse
@@ -95,6 +99,7 @@ Examples:
     goose redshift "postgres://user:password@qwerty.us-east-1.redshift.amazonaws.com:5439/db" status
     goose tidb "user:password@/dbname?parseTime=true" status
     goose mssql "sqlserver://user:password@hostname:1433?database=master" status
+    goose azuresql "sqlserver://myserver.database.windows.net?database=mydb&fedauth=ActiveDirectoryDefault" status
     goose clickhouse "tcp://127.0.0.1:9000" status
     goose ydb "grpcs://localhost:2135/local?go_query_mode=scripting&go_fake_tx=scripting&go_query_bind=declare,numeric" status
     goose starrocks "user:password@/dbname?parseTime=true&interpolateParams=true" status
@@ -223,9 +228,9 @@ Print the status of all migrations:
     $   Sun Jan  6 11:25:03 2013 -- 002_next.sql
     $   Pending                  -- 003_and_again.go
 
-Note: for MySQL [parseTime flag](https://github.com/go-sql-driver/mysql#parsetime) must be enabled.
+Note: for MySQL and MariaDB (use the `mysql` driver) [parseTime flag](https://github.com/go-sql-driver/mysql#parsetime) must be enabled.
 
-Note: for MySQL
+Note: for MySQL and MariaDB
 [`multiStatements`](https://github.com/go-sql-driver/mysql?tab=readme-ov-file#multistatements) must
 be enabled. This is required when writing multiple queries separated by ';' characters in a single
 sql file.

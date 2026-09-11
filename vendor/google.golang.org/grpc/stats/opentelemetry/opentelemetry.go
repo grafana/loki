@@ -179,6 +179,9 @@ type callInfo struct {
 	// nameResolutionEventAdded is set when the resolver delay trace event
 	// is added. Prevents duplicate events, since it is reported per-attempt.
 	nameResolutionEventAdded atomic.Bool
+	// previousRPCAttempts holds the count of RPC attempts that have happened
+	// before current attempt. Transparent retries are excluded.
+	previousRPCAttempts atomic.Uint32
 }
 
 type callInfoKey struct{}
@@ -257,9 +260,8 @@ type attemptInfo struct {
 	// message counters for sent and received messages (used for
 	// generating message IDs), and the number of previous RPC attempts for the
 	// associated call.
-	countSentMsg        uint32
-	countRecvMsg        uint32
-	previousRPCAttempts uint32
+	countSentMsg uint32
+	countRecvMsg uint32
 }
 
 type clientMetrics struct {

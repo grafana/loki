@@ -141,7 +141,7 @@ func ChunkedApproxEqual(left, right *arrow.Chunked, opts ...EqualOption) bool {
 		return false
 	}
 
-	var isequal bool
+	var isequal = true
 	chunkedBinaryApply(left, right, func(left arrow.Array, lbeg, lend int64, right arrow.Array, rbeg, rend int64) bool {
 		isequal = SliceApproxEqual(left, lbeg, lend, right, rbeg, rend, opts...)
 		return isequal

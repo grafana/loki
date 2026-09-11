@@ -3,6 +3,9 @@ package loki
 import (
 	"context"
 	"errors"
+	"fmt"
+	"net/url"
+	"strings"
 	"time"
 
 	"github.com/go-logr/logr"
@@ -102,6 +105,16 @@ var (
 		DeleteFunc:  func(e event.DeleteEvent) bool { return true },
 		GenericFunc: func(e event.GenericEvent) bool { return false },
 	})
+	// createOrUpdatePred uses ResourceVersion for update detection instead of Generation,
+	// making it suitable for resources like Services that don't populate Generation.
+	createOrUpdatePred = builder.WithPredicates(predicate.Funcs{
+		UpdateFunc: func(e event.UpdateEvent) bool {
+			return e.ObjectOld.GetResourceVersion() != e.ObjectNew.GetResourceVersion()
+		},
+		CreateFunc:  func(e event.CreateEvent) bool { return true },
+		DeleteFunc:  func(e event.DeleteEvent) bool { return false },
+		GenericFunc: func(e event.GenericEvent) bool { return false },
+	})
 )
 
 // LokiStackReconciler reconciles a LokiStack object
@@ -169,10 +182,11 @@ func (r *LokiStackReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		return ctrl.Result{}, err
 	}
 
-	if degraded != nil {
-		return ctrl.Result{
-			Requeue: degraded.Requeue,
-		}, nil
+	if degraded != nil && degraded.Requeue {
+		// (JoaoBraveCoding) Result.Requeue is deprecated in favor of RequeueAfter, but a fixed interval would
+		// poll forever without backoff when a misconfigured LokiStack stays degraded.
+		// We can still get the old behavior by using something like https://pkg.go.dev/k8s.io/client-go/util/workqueue
+		return ctrl.Result{Requeue: true}, nil //nolint:staticcheck
 	}
 
 	return ctrl.Result{}, nil
@@ -219,9 +233,10 @@ func (r *LokiStackReconciler) buildController(bld k8s.Builder) error {
 		Owns(&rbacv1.Role{}, updateOrDeleteOnlyPred).
 		Owns(&rbacv1.RoleBinding{}, updateOrDeleteOnlyPred).
 		Owns(&networkingv1.NetworkPolicy{}, updateOrDeleteOnlyPred).
+		Watches(&corev1.Service{}, r.enqueueForObjectStorageServices(), createOrUpdatePred).
 		Watches(&corev1.Service{}, r.enqueueForAlertManagerServices(), createUpdateOrDeletePred).
-		Watches(&corev1.Secret{}, r.enqueueForStorageSecret(), createUpdateOrDeletePred).
-		Watches(&corev1.ConfigMap{}, r.enqueueForStorageCA(), createUpdateOrDeletePred)
+		Watches(&corev1.Secret{}, r.enqueueForSecret(), createUpdateOrDeletePred).
+		Watches(&corev1.ConfigMap{}, r.enqueueForConfigMap(), createUpdateOrDeletePred)
 
 	if r.FeatureGates.LokiStackAlerts {
 		bld = bld.Owns(&monitoringv1.PrometheusRule{}, updateOrDeleteOnlyPred)
@@ -316,7 +331,12 @@ func (r *LokiStackReconciler) enqueueForAlertManagerServices() handler.EventHand
 	})
 }
 
-func (r *LokiStackReconciler) enqueueForStorageSecret() handler.EventHandler {
+// enqueueForSecret enqueues a reconcile request for every LokiStack that
+// references the changed Secret as object storage credentials, or as a CA
+// bundle, certificate, or private key for gateway TLS or passthrough gateway
+// TLS. Without this Watch, fixing such a Secret (e.g. adding a missing key)
+// would never retrigger reconciliation on its own.
+func (r *LokiStackReconciler) enqueueForSecret() handler.EventHandler {
 	return handler.EnqueueRequestsFromMapFunc(func(ctx context.Context, obj client.Object) []reconcile.Request {
 		lokiStacks := &lokiv1.LokiStackList{}
 		if err := r.List(ctx, lokiStacks); err != nil {
@@ -326,39 +346,7 @@ func (r *LokiStackReconciler) enqueueForStorageSecret() handler.EventHandler {
 
 		var requests []reconcile.Request
 		for _, stack := range lokiStacks.Items {
-			if obj.GetName() == stack.Spec.Storage.Secret.Name && obj.GetNamespace() == stack.Namespace {
-				requests = append(requests, reconcile.Request{
-					NamespacedName: types.NamespacedName{
-						Namespace: stack.Namespace,
-						Name:      stack.Name,
-					},
-				})
-				r.Log.Info("Enqueued requests for LokiStack because of Storage Secret resource change", "LokiStack", stack.Name, "Secret", obj.GetName())
-
-				return requests
-			}
-		}
-
-		return requests
-	})
-}
-
-func (r *LokiStackReconciler) enqueueForStorageCA() handler.EventHandler {
-	return handler.EnqueueRequestsFromMapFunc(func(ctx context.Context, obj client.Object) []reconcile.Request {
-		lokiStacks := &lokiv1.LokiStackList{}
-		if err := r.List(ctx, lokiStacks, client.InNamespace(obj.GetNamespace())); err != nil {
-			r.Log.Error(err, "Error listing LokiStack resources for storage CA update")
-			return nil
-		}
-
-		var requests []reconcile.Request
-		for _, stack := range lokiStacks.Items {
-			if stack.Spec.Storage.TLS == nil {
-				continue
-			}
-
-			storageTLS := stack.Spec.Storage.TLS
-			if obj.GetName() != storageTLS.CA {
+			if obj.GetNamespace() != stack.Namespace || (obj.GetName() != stack.Spec.Storage.Secret.Name && !stackReferencesSecret(&stack, obj.GetName())) {
 				continue
 			}
 
@@ -368,7 +356,143 @@ func (r *LokiStackReconciler) enqueueForStorageCA() handler.EventHandler {
 					Name:      stack.Name,
 				},
 			})
-			r.Log.Info("Enqueued request for LokiStack because of Storage CA resource change", "LokiStack", stack.Name, "ConfigMap", obj.GetName())
+			r.Log.Info("Enqueued request for LokiStack because of Secret resource change", "LokiStack", stack.Name, "Secret", obj.GetName())
+		}
+
+		return requests
+	})
+}
+
+// enqueueForConfigMap enqueues a reconcile request for every LokiStack that
+// references the changed ConfigMap as a CA bundle or certificate for object
+// storage TLS, gateway TLS, or passthrough gateway TLS. Without this Watch,
+// fixing such a ConfigMap (e.g. adding a missing key) would never retrigger
+// reconciliation on its own.
+func (r *LokiStackReconciler) enqueueForConfigMap() handler.EventHandler {
+	return handler.EnqueueRequestsFromMapFunc(func(ctx context.Context, obj client.Object) []reconcile.Request {
+		lokiStacks := &lokiv1.LokiStackList{}
+		if err := r.List(ctx, lokiStacks, client.InNamespace(obj.GetNamespace())); err != nil {
+			r.Log.Error(err, "Error listing LokiStack resources for ConfigMap update")
+			return nil
+		}
+
+		var requests []reconcile.Request
+		for _, stack := range lokiStacks.Items {
+			if obj.GetNamespace() != stack.Namespace || !stackReferencesConfigMap(&stack, obj.GetName()) {
+				continue
+			}
+
+			requests = append(requests, reconcile.Request{
+				NamespacedName: types.NamespacedName{
+					Namespace: stack.Namespace,
+					Name:      stack.Name,
+				},
+			})
+			r.Log.Info("Enqueued request for LokiStack because of ConfigMap change", "LokiStack", stack.Name, "ConfigMap", obj.GetName())
+		}
+
+		return requests
+	})
+}
+
+// stackReferencesConfigMap reports whether stack references name as a ConfigMap
+// for object storage TLS, gateway TLS, or passthrough gateway TLS.
+func stackReferencesConfigMap(stack *lokiv1.LokiStack, name string) bool {
+	if stack.Spec.Storage.TLS != nil && stack.Spec.Storage.TLS.CA == name {
+		return true
+	}
+
+	tenants := stack.Spec.Tenants
+	if tenants == nil {
+		return false
+	}
+
+	if gw := tenants.Gateway; gw != nil && gw.TLS != nil {
+		if gw.TLS.CA != nil && gw.TLS.CA.ConfigMapName == name {
+			return true
+		}
+		if gw.TLS.Certificate != nil && gw.TLS.Certificate.ConfigMapName == name {
+			return true
+		}
+	}
+
+	if pt := tenants.Passthrough; pt != nil && pt.CA != nil && pt.CA.ConfigMapName == name {
+		return true
+	}
+
+	return false
+}
+
+// stackReferencesSecret reports whether stack references name as a Secret for
+// gateway TLS (CA, certificate, or private key) or passthrough gateway TLS CA.
+func stackReferencesSecret(stack *lokiv1.LokiStack, name string) bool {
+	tenants := stack.Spec.Tenants
+	if tenants == nil {
+		return false
+	}
+
+	if gw := tenants.Gateway; gw != nil && gw.TLS != nil {
+		tls := gw.TLS
+		if tls.CA != nil && tls.CA.SecretName == name {
+			return true
+		}
+		if tls.Certificate != nil && tls.Certificate.SecretName == name {
+			return true
+		}
+		if tls.PrivateKey != nil && tls.PrivateKey.SecretName == name {
+			return true
+		}
+	}
+
+	if pt := tenants.Passthrough; pt != nil && pt.CA != nil && pt.CA.SecretName == name {
+		return true
+	}
+
+	return false
+}
+
+func (r *LokiStackReconciler) enqueueForObjectStorageServices() handler.EventHandler {
+	return handler.EnqueueRequestsFromMapFunc(func(ctx context.Context, obj client.Object) []reconcile.Request {
+		lokiStacks := &lokiv1.LokiStackList{}
+		if err := r.List(ctx, lokiStacks); err != nil {
+			r.Log.Error(err, "Error listing LokiStack resources for object storage service update")
+			return nil
+		}
+
+		var requests []reconcile.Request
+		for _, stack := range lokiStacks.Items {
+			if stack.Spec.NetworkPolicies == nil || stack.Spec.NetworkPolicies.RuleSet == lokiv1.NetworkPolicyRuleSetNone {
+				continue
+			}
+
+			secret := &corev1.Secret{}
+			key := client.ObjectKey{
+				Name:      stack.Spec.Storage.Secret.Name,
+				Namespace: stack.Namespace,
+			}
+			if err := r.Get(ctx, key, secret); err != nil {
+				continue
+			}
+
+			storageEndpoint := string(secret.Data["endpoint"])
+			if storageEndpoint == "" {
+				continue
+			}
+
+			storageURL, err := url.Parse(storageEndpoint)
+			if err != nil || storageURL.Hostname() == "" {
+				continue
+			}
+			svcHostname := fmt.Sprintf("%s.%s.svc", obj.GetName(), obj.GetNamespace())
+			if storageURL.Hostname() == svcHostname || strings.HasPrefix(storageURL.Hostname(), svcHostname+".") {
+				requests = append(requests, reconcile.Request{
+					NamespacedName: types.NamespacedName{
+						Namespace: stack.Namespace,
+						Name:      stack.Name,
+					},
+				})
+				r.Log.Info("Enqueued LokiStack for object storage Service resource change", "LokiStack", stack.Name, "Service", obj.GetName())
+			}
 		}
 
 		return requests

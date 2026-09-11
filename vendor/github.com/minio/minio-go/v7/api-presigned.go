@@ -140,7 +140,7 @@ func (c *Client) PresignedPostPolicy(ctx context.Context, p *PostPolicy) (u *url
 	}
 
 	// Get credentials from the configured credentials provider.
-	credValues, err := c.credsProvider.GetWithContext(c.CredContext())
+	credValues, err := c.credsProvider.GetWithContext(c.credContext(ctx))
 	if err != nil {
 		return nil, nil, err
 	}

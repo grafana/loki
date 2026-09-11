@@ -260,6 +260,9 @@ func decodeBits(dst, src []byte) ([]byte, error) {
 		i += n
 
 		count, bitpacked := uint(u>>1), (u&1) != 0
+		if count == 0 {
+			continue
+		}
 		if count > maxSupportedValueCount {
 			return dst, fmt.Errorf("decoded run-length block cannot have more than %d values", maxSupportedValueCount)
 		}
@@ -305,6 +308,9 @@ func decodeBytes(dst, src []byte, bitWidth uint) ([]byte, error) {
 		i += n
 
 		count, bitpacked := uint(u>>1), (u&1) != 0
+		if count == 0 {
+			continue
+		}
 		if count > maxSupportedValueCount {
 			return dst, fmt.Errorf("decoded run-length block cannot have more than %d values", maxSupportedValueCount)
 		}
@@ -361,6 +367,9 @@ func decodeInt32(dst, src []byte, bitWidth uint) ([]byte, error) {
 		i += n
 
 		count, bitpacked := uint(u>>1), (u&1) != 0
+		if count == 0 {
+			continue
+		}
 		if count > maxSupportedValueCount {
 			return dst, fmt.Errorf("decoded run-length block cannot have more than %d values", maxSupportedValueCount)
 		}

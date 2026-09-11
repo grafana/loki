@@ -19,6 +19,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/logql"
 	"github.com/grafana/loki/v3/pkg/logql/log"
 	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
+	"github.com/grafana/loki/v3/pkg/querier/testutil"
 	"github.com/grafana/loki/v3/pkg/storage/config"
 	"github.com/grafana/loki/v3/pkg/util"
 )
@@ -40,9 +41,8 @@ func Test_batchIterSafeStart(t *testing.T) {
 		},
 	}
 	periodConfig := config.PeriodConfig{
-		From:      config.DayTime{Time: 0},
-		Schema:    "v11",
-		RowShards: 16,
+		From:   config.DayTime{Time: 0},
+		Schema: "v11",
 	}
 
 	chunkfmt, headfmt, err := periodConfig.ChunkFormat()
@@ -73,19 +73,16 @@ func Test_batchIterSafeStart(t *testing.T) {
 func Test_newLogBatchChunkIterator(t *testing.T) {
 	periodConfigs := []config.PeriodConfig{
 		{
-			From:      config.DayTime{Time: 0},
-			Schema:    "v11",
-			RowShards: 16,
+			From:   config.DayTime{Time: 0},
+			Schema: "v11",
 		},
 		{
-			From:      config.DayTime{Time: 0},
-			Schema:    "v12",
-			RowShards: 16,
+			From:   config.DayTime{Time: 0},
+			Schema: "v12",
 		},
 		{
-			From:      config.DayTime{Time: 0},
-			Schema:    "v13",
-			RowShards: 16,
+			From:   config.DayTime{Time: 0},
+			Schema: "v13",
 		},
 	}
 
@@ -1017,9 +1014,8 @@ func Test_newLogBatchChunkIterator(t *testing.T) {
 
 func Test_newSampleBatchChunkIterator(t *testing.T) {
 	periodConfig := config.PeriodConfig{
-		From:      config.DayTime{Time: 0},
-		Schema:    "v11",
-		RowShards: 16,
+		From:   config.DayTime{Time: 0},
+		Schema: "v11",
 	}
 
 	chunkfmt, headfmt, err := periodConfig.ChunkFormat()
@@ -1407,9 +1403,8 @@ func Test_newSampleBatchChunkIterator(t *testing.T) {
 	s := config.SchemaConfig{
 		Configs: []config.PeriodConfig{
 			{
-				From:      config.DayTime{Time: 0},
-				Schema:    "v11",
-				RowShards: 16,
+				From:   config.DayTime{Time: 0},
+				Schema: "v11",
 			},
 		},
 	}
@@ -1419,7 +1414,7 @@ func Test_newSampleBatchChunkIterator(t *testing.T) {
 			ex, err := log.NewLineSampleExtractor(log.CountExtractor, nil, nil, false, false)
 			require.NoError(t, err)
 
-			it, err := newSampleBatchIterator(
+			it, err := newTimestampFirstSampleBatchIterator(
 				context.Background(),
 				s,
 				NilMetrics,
@@ -1445,9 +1440,8 @@ func Test_newSampleBatchChunkIterator(t *testing.T) {
 
 func TestPartitionOverlappingchunks(t *testing.T) {
 	periodConfig := config.PeriodConfig{
-		From:      config.DayTime{Time: 0},
-		Schema:    "v11",
-		RowShards: 16,
+		From:   config.DayTime{Time: 0},
+		Schema: "v11",
 	}
 
 	chunkfmt, headfmt, err := periodConfig.ChunkFormat()
@@ -1536,9 +1530,8 @@ func TestPartitionOverlappingchunks(t *testing.T) {
 func TestBuildHeapIterator(t *testing.T) {
 
 	periodConfig := config.PeriodConfig{
-		From:      config.DayTime{Time: 0},
-		Schema:    "v11",
-		RowShards: 16,
+		From:   config.DayTime{Time: 0},
+		Schema: "v11",
 	}
 
 	chunkfmt, headfmt, err := periodConfig.ChunkFormat()
@@ -1709,9 +1702,8 @@ func Test_IsInvalidChunkError(t *testing.T) {
 
 func TestBatchCancel(t *testing.T) {
 	periodConfig := config.PeriodConfig{
-		From:      config.DayTime{Time: 0},
-		Schema:    "v11",
-		RowShards: 16,
+		From:   config.DayTime{Time: 0},
+		Schema: "v11",
 	}
 
 	chunkfmt, headfmt, err := periodConfig.ChunkFormat()
@@ -1741,9 +1733,8 @@ func TestBatchCancel(t *testing.T) {
 	s := config.SchemaConfig{
 		Configs: []config.PeriodConfig{
 			{
-				From:      config.DayTime{Time: 0},
-				Schema:    "v11",
-				RowShards: 16,
+				From:   config.DayTime{Time: 0},
+				Schema: "v11",
 			},
 		},
 	}
@@ -1761,9 +1752,8 @@ var entry logproto.Entry
 
 func Benchmark_store_OverlappingChunks(b *testing.B) {
 	periodConfig := config.PeriodConfig{
-		From:      config.DayTime{Time: 0},
-		Schema:    "v11",
-		RowShards: 16,
+		From:   config.DayTime{Time: 0},
+		Schema: "v11",
 	}
 
 	chunkfmt, headfmt, err := periodConfig.ChunkFormat()
@@ -1788,6 +1778,7 @@ func Benchmark_store_OverlappingChunks(b *testing.B) {
 			Shards:    nil,
 			Start:     time.Unix(0, 1),
 			End:       time.Unix(0, time.Now().UnixNano()),
+			Plan:      testutil.MustPlan(`{foo="bar"}`),
 		}})
 		if err != nil {
 			b.Fatal(err)

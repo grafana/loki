@@ -154,7 +154,6 @@ func (l *listenerWrapper) maybeUpdateFilterChains() {
 	}
 
 	l.mu.Lock()
-	l.switchModeLocked(connectivity.ServingModeServing, nil)
 	// "Updates to a Listener cause all older connections on that Listener to be
 	// gracefully shut down with a grace period of 10 minutes for long-lived
 	// RPC's, such that clients will reconnect and have the updated
@@ -189,6 +188,7 @@ func (l *listenerWrapper) maybeUpdateFilterChains() {
 			delete(l.httpFilters, key)
 		}
 	}
+	l.switchModeLocked(connectivity.ServingModeServing, nil)
 	l.mu.Unlock()
 
 	go func() {
@@ -210,14 +210,10 @@ func (l *listenerWrapper) handleRDSUpdate(routeName string, rcu rdsWatcherUpdate
 				continue
 			}
 			if rcu.err != nil && rcu.data == nil { // Either NACK before update, or resource not found triggers this conditional.
-				urc := &usableRouteConfiguration{err: rcu.err}
-				urc.nodeID = l.xdsNodeID
-				fc.usableRouteConfiguration.Store(urc)
+				fc.updateUsableRouteConfiguration(nil, rcu.err, l.getOrCreateServerFilterLocked, l.xdsNodeID)
 				continue
 			}
-			urc := fc.constructUsableRouteConfiguration(*rcu.data, l.getOrCreateServerFilterLocked)
-			urc.nodeID = l.xdsNodeID
-			fc.usableRouteConfiguration.Store(urc)
+			fc.updateUsableRouteConfiguration(rcu.data, nil, l.getOrCreateServerFilterLocked, l.xdsNodeID)
 		}
 	}
 	l.mu.Unlock()
@@ -235,21 +231,15 @@ func (l *listenerWrapper) handleRDSUpdate(routeName string, rcu rdsWatcherUpdate
 func (l *listenerWrapper) instantiateFilterChainRoutingConfigurationsLocked() {
 	for _, fc := range l.activeFilterChainManager.filterChains {
 		if fc.inlineRouteConfig != nil {
-			urc := fc.constructUsableRouteConfiguration(*fc.inlineRouteConfig, l.getOrCreateServerFilterLocked)
-			urc.nodeID = l.xdsNodeID
-			fc.usableRouteConfiguration.Store(urc) // Can't race with an RPC coming in but no harm making atomic.
+			fc.updateUsableRouteConfiguration(fc.inlineRouteConfig, nil, l.getOrCreateServerFilterLocked, l.xdsNodeID)
 			continue
 		} // Inline configuration constructed once here, will remain for lifetime of filter chain.
 		rcu := l.rdsHandler.updates[fc.routeConfigName]
 		if rcu.err != nil && rcu.data == nil {
-			urc := &usableRouteConfiguration{err: rcu.err}
-			urc.nodeID = l.xdsNodeID
-			fc.usableRouteConfiguration.Store(urc)
+			fc.updateUsableRouteConfiguration(nil, rcu.err, l.getOrCreateServerFilterLocked, l.xdsNodeID)
 			continue
 		}
-		urc := fc.constructUsableRouteConfiguration(*rcu.data, l.getOrCreateServerFilterLocked)
-		urc.nodeID = l.xdsNodeID
-		fc.usableRouteConfiguration.Store(urc) // Can't race with an RPC coming in but no harm making atomic.
+		fc.updateUsableRouteConfiguration(rcu.data, nil, l.getOrCreateServerFilterLocked, l.xdsNodeID)
 	}
 }
 
@@ -449,7 +439,13 @@ func (lw *ldsWatcher) ResourceChanged(update *xdsresource.ListenerUpdate, onDone
 	}
 	l := lw.parent
 	ilc := update.TCPListener
-	// Make sure that the socket address on the received Listener resource
+
+	// A server-side listener update must contain inbound listener configuration
+	// (TCPListener). If it is nil, it indicates that a client-side listener (API
+	// Listener) resource was received instead. In this case, we transition the
+	// server to non-serving mode.
+	//
+	// Also, make sure that the socket address on the received Listener resource
 	// matches the address of the net.Listener passed to us by the user. This
 	// check is done here instead of at the XDSClient layer because of the
 	// following couple of reasons:
@@ -461,11 +457,16 @@ func (lw *ldsWatcher) ResourceChanged(update *xdsresource.ListenerUpdate, onDone
 	// What this means is that the XDSClient has ACKed a resource which can push
 	// the server into a "not serving" mode. This is not ideal, but this is
 	// what we have decided to do.
-	if ilc.Address != l.addr || ilc.Port != l.port {
+	if ilc == nil || (ilc.Address != l.addr || ilc.Port != l.port) {
 		// TODO(purnesh42h): Are there any other cases where this can be
 		// treated as an ambient error?
 		l.mu.Lock()
-		err := fmt.Errorf("[xDS node id: %v]: %w", l.xdsNodeID, fmt.Errorf("address (%s:%s) in Listener update does not match listening address: (%s:%s)", ilc.Address, ilc.Port, l.addr, l.port))
+		var err error
+		if ilc == nil {
+			err = fmt.Errorf("[xDS node id: %v]: %w", l.xdsNodeID, fmt.Errorf("received client-side listener resource %q on server-side", lw.name))
+		} else {
+			err = fmt.Errorf("[xDS node id: %v]: %w", l.xdsNodeID, fmt.Errorf("address (%s:%s) in Listener update does not match listening address: (%s:%s)", ilc.Address, ilc.Port, l.addr, l.port))
+		}
 		l.switchModeLocked(connectivity.ServingModeNotServing, err)
 		l.mu.Unlock()
 		return

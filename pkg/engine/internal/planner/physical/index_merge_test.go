@@ -21,7 +21,6 @@ func TestIndexMerge_CloneIsDeepCopy(t *testing.T) {
 				},
 			},
 		},
-		OutputIndexPath: "tenants/tenant-29/indexes/abc",
 	}
 
 	clone := orig.Clone().(*IndexMerge)

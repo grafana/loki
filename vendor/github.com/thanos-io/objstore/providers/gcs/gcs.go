@@ -331,7 +331,7 @@ func (b *Bucket) Handle() *storage.BucketHandle {
 func (b *Bucket) Exists(ctx context.Context, name string) (bool, error) {
 	if _, err := b.bkt.Object(name).Attrs(ctx); err == nil {
 		return true, nil
-	} else if err != storage.ErrObjectNotExist {
+	} else if !b.IsObjNotFoundErr(err) {
 		return false, err
 	}
 	return false, nil

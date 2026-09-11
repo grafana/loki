@@ -22,6 +22,8 @@ import (
 	"crypto/sha256"
 	"net/http"
 	"strings"
+
+	"golang.org/x/net/http/httpguts"
 )
 
 // unsignedPayload - value to be set to X-Amz-Content-Sha256 header when
@@ -59,4 +61,27 @@ func signV4TrimAll(input string) string {
 	// Compress adjacent spaces (a space is determined by
 	// unicode.IsSpace() internally here) to one space and return
 	return strings.Join(strings.Fields(input), " ")
+}
+
+// awsChunkedEncoding is the content coding AWS SigV4 streaming uploads
+// declare on the Content-Encoding header.
+const awsChunkedEncoding = "aws-chunked"
+
+// setAwsChunkedContentEncoding marks the request payload as aws-chunked
+// encoded, keeping any content encoding the caller already set, for example
+// "aws-chunked,gzip". AWS SigV4 streaming uploads require this header.
+// Assigning "aws-chunked" to http.Request.TransferEncoding never reaches
+// the wire — net/http silently drops assigned values other than "chunked" —
+// so this header is the only signal that declares the aws-chunked framing.
+func setAwsChunkedContentEncoding(req *http.Request) {
+	encodings := req.Header.Values("Content-Encoding")
+	if httpguts.HeaderValuesContainsToken(encodings, awsChunkedEncoding) {
+		return
+	}
+	existing := strings.TrimSpace(strings.Join(encodings, ","))
+	if existing == "" {
+		req.Header.Set("Content-Encoding", awsChunkedEncoding)
+		return
+	}
+	req.Header.Set("Content-Encoding", awsChunkedEncoding+","+existing)
 }

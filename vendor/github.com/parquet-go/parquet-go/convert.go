@@ -62,8 +62,11 @@ type Conversion interface {
 
 type conversion struct {
 	columns []conversionColumn
-	schema  *Schema
-	buffers memory.Pool[conversionBuffer]
+	// Shredded variant columns of the source being reconstructed to
+	// unshredded variant columns of the target (see convert_variant.go).
+	variants []variantConversion
+	schema   *Schema
+	buffers  memory.Pool[conversionBuffer]
 	// This field is used to size the column buffers held in the memory.Pool since
 	// they are intended to store the source rows being converted from.
 	numberOfSourceColumns int
@@ -71,6 +74,9 @@ type conversion struct {
 
 type conversionBuffer struct {
 	columns [][]Value
+	// Per-variant-conversion scratch space, reused across rows (see
+	// convert_variant.go).
+	variants []variantScratch
 }
 
 type conversionColumn struct {
@@ -78,6 +84,11 @@ type conversionColumn struct {
 	convertValues conversionFunc
 	targetKind    Kind // Target column kind for creating proper null values
 	isOptional    bool // Whether the target column is optional (for null handling)
+	// Index in conversion.variants of the variant conversion producing this
+	// column, or -1; variantOutput selects its metadata (0) or value (1)
+	// output column.
+	variantIndex  int
+	variantOutput int
 }
 
 type conversionFunc func([]Value) error
@@ -189,6 +200,17 @@ func convertToLevels(repetitionLevels, definitionLevels []byte) conversionFunc {
 		for i := range column {
 			r := column[i].repetitionLevel
 			d := column[i].definitionLevel
+			// Source levels that exceed the lookup-table size can be produced
+			// when maskMissingRowGroupColumns or sibling-fallback synthesizes
+			// values for schemas where source and target disagree on optionality
+			// or nesting depth. Without this guard, the convertedRows reader
+			// panics with "index out of range" inside this hot loop. Treat the
+			// value as null so downstream Reconstruct skips it instead of
+			// dereferencing a placeholder's nil byte-array pointer.
+			if int(r) >= len(repetitionLevels) || int(d) >= len(definitionLevels) {
+				column[i] = Value{}
+				continue
+			}
 			column[i].repetitionLevel = repetitionLevels[r]
 			column[i].definitionLevel = definitionLevels[d]
 		}
@@ -218,7 +240,8 @@ func (c *conversion) getBuffer() *conversionBuffer {
 	return c.buffers.Get(
 		func() *conversionBuffer {
 			b := &conversionBuffer{
-				columns: make([][]Value, c.numberOfSourceColumns),
+				columns:  make([][]Value, c.numberOfSourceColumns),
+				variants: make([]variantScratch, len(c.variants)),
 			}
 			values := make([]Value, c.numberOfSourceColumns)
 			for i := range b.columns {
@@ -250,7 +273,26 @@ func (c *conversion) Convert(rows []Row) (int, error) {
 		})
 		row = row[:0]
 
+		// Reconstruct shredded variant columns once per row; the column
+		// loop below picks up the metadata and value outputs.
+		for k := range c.variants {
+			if err := c.variants[k].convert(source.columns, &source.variants[k]); err != nil {
+				return n, err
+			}
+		}
+
 		for columnIndex, conv := range c.columns {
+			if conv.variantIndex >= 0 {
+				// Values already carry final levels and column indexes.
+				scratch := &source.variants[conv.variantIndex]
+				if conv.variantOutput == 0 {
+					row = append(row, scratch.metas...)
+				} else {
+					row = append(row, scratch.values...)
+				}
+				continue
+			}
+
 			columnOffset := len(row)
 
 			// Get source values if available
@@ -318,6 +360,11 @@ func (id identity) Schema() *Schema                 { return id.schema }
 // stripped out of the rows. Extra columns in the target schema will be set to
 // null or zero values.
 //
+// Variant columns that the target declares unshredded but the source stores
+// shredded are reconstructed with the construct_variant algorithm of the
+// Variant Shredding specification instead of being mapped column-by-column
+// (see convert_variant.go).
+//
 // The returned function is intended to be used to append the converted source
 // row to the destination buffer.
 func Convert(to, from Node) (conv Conversion, err error) {
@@ -328,6 +375,34 @@ func Convert(to, from Node) (conv Conversion, err error) {
 
 	if EqualNodes(to, from) {
 		return identity{schema}, nil
+	}
+
+	// Variant columns that the target declares unshredded but the source
+	// stores shredded are reconstructed, not mapped column-by-column (see
+	// convert_variant.go).
+	variants := findVariantConversions(to, from)
+	variantColumns := make(map[int]conversionColumn, 2*len(variants))
+	for k := range variants {
+		vc := &variants[k]
+		metaSource, valueSource := 0, 0
+		if vc.group != nil {
+			metaSource = vc.group.metadataCol
+			// Shredded groups without a value column are legal; any column
+			// of the group keeps the source chunk mapping meaningful.
+			valueSource = max(vc.group.valueCol, 0)
+		}
+		variantColumns[vc.targetMetaCol] = conversionColumn{
+			sourceIndex:   vc.sourceStart + metaSource,
+			targetKind:    ByteArray,
+			variantIndex:  k,
+			variantOutput: 0,
+		}
+		variantColumns[vc.targetValueCol] = conversionColumn{
+			sourceIndex:   vc.sourceStart + valueSource,
+			targetKind:    ByteArray,
+			variantIndex:  k,
+			variantOutput: 1,
+		}
 	}
 
 	targetMapping, targetColumns := columnMappingOf(to)
@@ -352,6 +427,11 @@ func Convert(to, from Node) (conv Conversion, err error) {
 	}
 
 	for i, path := range targetColumns {
+		if cc, ok := variantColumns[i]; ok {
+			columns[i] = cc
+			continue
+		}
+
 		targetColumn := targetMapping.lookup(path)
 		sourceColumn := sourceMapping.lookup(path)
 
@@ -455,11 +535,13 @@ func Convert(to, from Node) (conv Conversion, err error) {
 			convertValues: multiConversionFunc(conversions),
 			targetKind:    targetType.Kind(), // Store target kind for null value creation
 			isOptional:    isOptional,
+			variantIndex:  -1,
 		}
 	}
 
 	c := &conversion{
 		columns:               columns,
+		variants:              variants,
 		schema:                schema,
 		numberOfSourceColumns: len(sourceColumns),
 	}
@@ -645,6 +727,17 @@ func maskMissingRowGroupColumns(r RowGroup, numColumns int, conv Conversion) Row
 		j := conv.Column(i)
 		if j >= 0 && j < len(columns) {
 			columns[j] = rowGroupColumns[j]
+		}
+	}
+
+	// Shredded variant reconstruction reads every leaf column of the
+	// variant group, not just the ones mapped to target columns.
+	if c, ok := conv.(*conversion); ok {
+		for k := range c.variants {
+			vc := &c.variants[k]
+			for j := vc.sourceStart; j < vc.sourceStart+vc.numCols && j < len(columns); j++ {
+				columns[j] = rowGroupColumns[j]
+			}
 		}
 	}
 
@@ -1570,15 +1663,13 @@ func timestamp(v Value, u format.TimeUnit, tz *time.Location) time.Time {
 	return unixEpoch.In(tz).Add(time.Duration(v.int64()) * timeUnitDuration(u))
 }
 
+// timeUnitDuration returns the precision of unit, defaulting to nanoseconds
+// when the unit is unset (an unknown unit written by a newer implementation).
 func timeUnitDuration(unit format.TimeUnit) time.Duration {
-	switch {
-	case unit.Millis != nil:
-		return time.Millisecond
-	case unit.Micros != nil:
-		return time.Microsecond
-	default:
+	if unit.Value == nil {
 		return time.Nanosecond
 	}
+	return unit.Value.Duration()
 }
 
 func invalidConversion(value Value, from, to string) error {

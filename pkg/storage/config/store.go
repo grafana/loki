@@ -4,8 +4,6 @@ import (
 	"flag"
 	"time"
 
-	"github.com/prometheus/common/model"
-
 	"github.com/grafana/loki/v3/pkg/storage/chunk/cache"
 )
 
@@ -13,9 +11,9 @@ type ChunkStoreConfig struct {
 	ChunkCacheConfig            cache.Config  `yaml:"chunk_cache_config"`
 	ChunkCacheConfigL2          cache.Config  `yaml:"chunk_cache_config_l2"`
 	SkipQueryWritebackOlderThan time.Duration `yaml:"skip_query_writeback_cache_older_than"`
+	PropagateChunkFetchErrors   bool          `yaml:"propagate_chunk_fetch_errors" category:"experimental"`
 
-	L2ChunkCacheHandoff   time.Duration  `yaml:"l2_chunk_cache_handoff"`
-	CacheLookupsOlderThan model.Duration `yaml:"cache_lookups_older_than"`
+	L2ChunkCacheHandoff time.Duration `yaml:"l2_chunk_cache_handoff"`
 
 	// Not visible in yaml because the setting shouldn't be common between ingesters and queriers.
 	// This exists in case we don't want to cache all the chunks but still want to take advantage of
@@ -38,8 +36,7 @@ func (cfg *ChunkStoreConfig) RegisterFlags(f *flag.FlagSet) {
 	f.DurationVar(&cfg.L2ChunkCacheHandoff, "store.chunks-cache-l2.handoff", 0, "Chunks will be handed off to the L2 cache after this duration. 0 to disable L2 cache.")
 	f.BoolVar(&cfg.chunkCacheStubs, "store.chunks-cache.cache-stubs", false, "If true, don't write the full chunk to cache, just a stub entry.")
 	f.DurationVar(&cfg.SkipQueryWritebackOlderThan, "store.skip-query-writeback-older-than", 0, "Chunks fetched from queriers before this duration will not be written to the cache. A value of 0 will write all chunks to the cache")
-
-	f.Var(&cfg.CacheLookupsOlderThan, "store.cache-lookups-older-than", "Cache index entries older than this period. 0 to disable.")
+	f.BoolVar(&cfg.PropagateChunkFetchErrors, "chunk-store.propagate-chunk-fetch-errors", false, "Experimental. Return an object-storage chunk fetch error instead of incomplete results. Applies to queries, bloom builds, and migration, including checksum failures.")
 }
 
 func (cfg *ChunkStoreConfig) Validate() error {

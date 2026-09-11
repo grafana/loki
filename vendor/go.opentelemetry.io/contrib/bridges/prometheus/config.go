@@ -1,7 +1,7 @@
 // Copyright The OpenTelemetry Authors
 // SPDX-License-Identifier: Apache-2.0
 
-package prometheus // import "go.opentelemetry.io/contrib/bridges/prometheus"
+package prometheus
 
 import (
 	"github.com/prometheus/client_golang/prometheus"

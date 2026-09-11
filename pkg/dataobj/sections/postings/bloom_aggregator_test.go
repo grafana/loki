@@ -15,7 +15,7 @@ func TestBloomAggregator_TimeRange(t *testing.T) {
 	require.True(t, gotMax.IsZero(), "empty aggregator max must be zero")
 
 	// Prepared but never observed: must NOT contribute a range.
-	a.PrepareColumn("/a", 0, "svc", 16)
+	a.PrepareColumn("/a", 0, "svc", 16, 0)
 	gotMin, gotMax = a.TimeRange()
 	require.True(t, gotMin.IsZero(), "prepared-but-unobserved min must be zero")
 	require.True(t, gotMax.IsZero(), "prepared-but-unobserved max must be zero")
@@ -38,7 +38,7 @@ func TestBloomAggregator_TimeRange_ObserveAtUnixEpoch(t *testing.T) {
 	a := newBloomAggregator()
 	epoch := time.Unix(0, 0).UTC()
 
-	a.PrepareColumn("/a", 0, "svc", 16)
+	a.PrepareColumn("/a", 0, "svc", 16, 0)
 	require.NoError(t, a.Observe(BloomObservation{ObjectPath: "/a", SectionIndex: 0, ColumnName: "svc", Value: "v", StreamID: 1, Timestamp: epoch}))
 
 	gotMin, gotMax := a.TimeRange()

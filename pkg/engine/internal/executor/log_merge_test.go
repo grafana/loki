@@ -3,18 +3,21 @@ package executor
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/go-kit/log"
+	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
 	"github.com/thanos-io/objstore"
 
 	"github.com/grafana/loki/pkg/push"
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
+	v2 "github.com/grafana/loki/v3/pkg/dataobj/compaction/v2"
 	compactionv2pb "github.com/grafana/loki/v3/pkg/dataobj/compaction/v2/proto"
 	"github.com/grafana/loki/v3/pkg/dataobj/consumer/logsobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/logs"
@@ -79,16 +82,14 @@ func buildSourceLogObject(t *testing.T, bucket objstore.Bucket, path string, sor
 			SectionStripeMergeLimit:   2,
 			EstimatedCompressionRatio: 8,
 		},
-		DataobjSortOrder:     "timestamp-desc",
 		AppendOrderedEnabled: true,
-		DataobjUseSortSchema: len(sortSchema) > 0,
 	}
 
 	b, err := logsobj.NewBuilder(cfg, scratch.NewMemory(), logsobj.NewBuilderMetrics(), log.NewNopLogger(), sortSchemaOverrides(sortSchema))
 	require.NoError(t, err)
 
-	for tenant, streams := range byTenant {
-		for _, s := range streams {
+	for tenant, streamSet := range byTenant {
+		for _, s := range streamSet {
 			require.NotEmpty(t, s.entries, "test stream must have at least one entry")
 			require.NoError(t, b.Append(tenant, logproto.Stream{
 				Labels:  s.labels,
@@ -101,7 +102,15 @@ func buildSourceLogObject(t *testing.T, bucket objstore.Bucket, path string, sor
 	require.NoError(t, err)
 	defer closer.Close()
 
-	require.NoError(t, uploadObjectToBucket(context.Background(), bucket, path, obj))
+	// Ingest CopyAndSorts after Flush so source objects are in StreamOrderKey
+	// order. Compaction only merges pre-sorted objects.
+	sorter, err := logsobj.NewBuilder(cfg, scratch.NewMemory(), logsobj.NewBuilderMetrics(), log.NewNopLogger(), sortSchemaOverrides(sortSchema))
+	require.NoError(t, err)
+	sorted, sortedCloser, err := sorter.CopyAndSort(context.Background(), obj)
+	require.NoError(t, err)
+	defer sortedCloser.Close()
+
+	require.NoError(t, uploadObjectToBucket(context.Background(), bucket, path, sorted))
 }
 
 func TestCollectLogSources_DedupsAndResolvesLabels(t *testing.T) {
@@ -169,7 +178,7 @@ func TestCollectLogSources_ExcludesOtherTenants(t *testing.T) {
 	base := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
 
 	// One multi-tenant object: only tenant T's sections should be collected.
-	buildSourceLogObject(t, bucket, "objMulti", sortSchema, map[string][]testStream{
+	buildSourceLogObject(t, bucket, "multi", sortSchema, map[string][]testStream{
 		tenant:  {{labels: `{app="a"}`, entries: linesAt(base, 3)}},
 		"other": {{labels: `{app="z"}`, entries: linesAt(base, 3)}},
 	})
@@ -179,7 +188,7 @@ func TestCollectLogSources_ExcludesOtherTenants(t *testing.T) {
 		Tenant:     tenant,
 		SortSchema: sortSchema,
 		Runs: []*compactionv2pb.RunRef{
-			{Sections: []*compactionv2pb.SectionRef{{ObjectPath: "objMulti"}}},
+			{Sections: []*compactionv2pb.SectionRef{{ObjectPath: "multi"}}},
 		},
 	}
 
@@ -209,7 +218,7 @@ func TestCollectLogSources_ReadsFromUnprefixedDataBucket(t *testing.T) {
 	// Source log objects are written at the unprefixed root, exactly as the
 	// uploader writes them (objects/<sha>/<sha>).
 	root := objstore.NewInMemBucket()
-	buildSourceLogObject(t, root, "objects/09/abcdef", sortSchema, map[string][]testStream{
+	buildSourceLogObject(t, root, "objects/aa/bb", sortSchema, map[string][]testStream{
 		tenant: {{labels: `{app="a"}`, entries: linesAt(base, 3)}},
 	})
 
@@ -222,14 +231,14 @@ func TestCollectLogSources_ReadsFromUnprefixedDataBucket(t *testing.T) {
 		Tenant:     tenant,
 		SortSchema: sortSchema,
 		Runs: []*compactionv2pb.RunRef{
-			{Sections: []*compactionv2pb.SectionRef{{ObjectPath: "objects/09/abcdef"}}},
+			{Sections: []*compactionv2pb.SectionRef{{ObjectPath: "objects/aa/bb"}}},
 		},
 	}
 
 	sources, err := c.collectLogSources(ctx, node)
 	require.NoError(t, err, "source objects must resolve against the unprefixed data bucket")
 	require.Len(t, sources, 1)
-	require.Equal(t, "objects/09/abcdef", sources[0].path)
+	require.Equal(t, "objects/aa/bb", sources[0].path)
 }
 
 // TestDoLogObjectMerge_WritesCompactedLogsToDataBucket reproduces the bug where
@@ -239,72 +248,14 @@ func TestCollectLogSources_ReadsFromUnprefixedDataBucket(t *testing.T) {
 // paths recorded in an index against the unprefixed data bucket, a compacted log
 // written under the index prefix is unreadable at query time. Compacted logs must
 // land in the data bucket under objects/, and the index must reference that path.
-func TestDoLogObjectMerge_WritesCompactedLogsToDataBucket(t *testing.T) {
-	ctx := context.Background()
-
-	const tenant = "T"
-	sortSchema := []string{"label:app"}
-	base := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
-
-	// root is the unprefixed data bucket; indexBucket is the index-prefixed view
-	// the compaction wiring hands the executor for index I/O.
-	root := objstore.NewInMemBucket()
-	indexBucket := objstore.NewPrefixedBucket(root, "dataobj/index/v0")
-
-	buildSourceLogObject(t, root, "objects/09/abcdef", sortSchema, map[string][]testStream{
-		tenant: {{labels: `{app="a"}`, entries: linesAt(base, 3)}},
-	})
-
-	c := newTestExecutorContext(t, indexBucket)
-	c.dataBucket = root
-
-	node := &physical.LogMerge{
-		Tenant:          tenant,
-		SortSchema:      sortSchema,
-		OutputIndexPath: "indexes/tenants/T/ab/cdef",
-		Runs: []*compactionv2pb.RunRef{
-			{Sections: []*compactionv2pb.SectionRef{{ObjectPath: "objects/09/abcdef"}}},
-		},
-	}
-
-	require.NoError(t, c.doLogObjectMerge(ctx, node))
-
-	compactedPath := logMergeOutputPath(node.OutputIndexPath, 0)
-	require.True(t, strings.HasPrefix(compactedPath, "objects/"),
-		"compacted log path must live in the objects/ namespace, got %q", compactedPath)
-	require.False(t, strings.HasPrefix(compactedPath, "indexes/"),
-		"compacted log path must not live in the indexes/ namespace, got %q", compactedPath)
-
-	// The compacted log object lands in the data bucket, alongside source objects.
-	ok, err := root.Exists(ctx, compactedPath)
-	require.NoError(t, err)
-	require.True(t, ok, "compacted log object must be written to the data bucket at %q", compactedPath)
-
-	// It must not leak into the index-prefixed bucket next to the index object.
-	ok, err = indexBucket.Exists(ctx, compactedPath)
-	require.NoError(t, err)
-	require.False(t, ok, "compacted log object must not be written through the index-prefixed bucket")
-
-	// The index object itself is still written to the index bucket.
-	ok, err = indexBucket.Exists(ctx, node.OutputIndexPath)
-	require.NoError(t, err)
-	require.True(t, ok, "index object must be written to the index bucket at OutputIndexPath")
-
-	// The index references the compacted log by its data-bucket path, so a query
-	// worker resolving that path against the unprefixed data bucket finds it.
-	_, postingsPaths := collectIndexSections(ctx, t, indexBucket, node)
-	require.Equal(t, map[string]bool{compactedPath: true}, postingsPaths,
-		"index postings must reference the compacted log's data-bucket path")
-}
-
 // newSmallObjectExecutorContext is like newTestExecutorContext but with a tiny
 // TargetObjectSize so the merge splits its output across multiple objects.
 func newSmallObjectExecutorContext(t *testing.T, bucket objstore.Bucket) *Context {
 	t.Helper()
 	c := newTestExecutorContext(t, bucket)
-	c.indexobjCfg.TargetPageSize = 512
-	c.indexobjCfg.TargetObjectSize = 1000 // bytes; forces splitting
-	c.indexobjCfg.TargetSectionSize = 800
+	c.logsobjCfg.TargetPageSize = 512
+	c.logsobjCfg.TargetObjectSize = 1000 // bytes; forces splitting
+	c.logsobjCfg.TargetSectionSize = 800
 	return c
 }
 
@@ -315,34 +266,65 @@ type outputRecord struct {
 	ts       time.Time
 }
 
-// readCompactedObjects loads every compacted log object the merge wrote for node
-// (paths logMergeOutputPath(node.OutputIndexPath, 0..)), stopping at the first
-// missing index. For each object it returns the streamID->app map and the
-// records in stored (schema-sorted) order.
-func readCompactedObjects(ctx context.Context, t *testing.T, bucket objstore.Bucket, node *physical.LogMerge) []struct {
-	streamApp map[int64]string
-	records   []outputRecord
+// readCompactedObjectsFromIndex reads the index at indexPath from the index bucket,
+// extracts the embedded compacted log object paths, and loads each object from
+// the data bucket. Returns the streamID->app map and records for each object.
+func readCompactedObjectsFromIndex(ctx context.Context, t *testing.T, dataBucket objstore.Bucket, indexBucket objstore.Bucket, indexPath, tenant string) []struct {
+	streamApp    map[int64]string
+	streamLabels map[int64]labels.Labels
+	records      []outputRecord
 } {
 	t.Helper()
 
-	var out []struct {
-		streamApp map[int64]string
-		records   []outputRecord
-	}
-	for i := 0; ; i++ {
-		path := logMergeOutputPath(node.OutputIndexPath, i)
-		ok, err := bucket.Exists(ctx, path)
-		require.NoError(t, err)
-		if !ok {
-			break
-		}
+	// Load the index from the index bucket
+	indexObj, err := dataobj.FromBucket(ctx, indexBucket, indexPath, 0)
+	require.NoError(t, err)
 
-		obj, err := dataobj.FromBucket(ctx, bucket, path, 0)
+	// Extract the compacted log object paths from the postings section
+	var logObjectPaths []string
+	for _, sec := range indexObj.Sections().Filter(postings.CheckSection) {
+		if sec.Tenant != tenant {
+			continue
+		}
+		ps, err := postings.Open(ctx, sec)
 		require.NoError(t, err)
+		reader := postings.NewReader(postings.ReaderOptions{Columns: ps.Columns()})
+		require.NoError(t, reader.Open(ctx))
+		rr := postings.NewRowReader(ctx, reader)
+		for rr.Next() {
+			row := rr.At()
+			if row.ObjectPath != "" {
+				// Avoid duplicates
+				found := false
+				for _, p := range logObjectPaths {
+					if p == row.ObjectPath {
+						found = true
+						break
+					}
+				}
+				if !found {
+					logObjectPaths = append(logObjectPaths, row.ObjectPath)
+				}
+			}
+		}
+		rr.Close()
+	}
+
+	// Now load each compacted log object from the data bucket
+	var out []struct {
+		streamApp    map[int64]string
+		streamLabels map[int64]labels.Labels
+		records      []outputRecord
+	}
+
+	for _, logPath := range logObjectPaths {
+		logObj, err := dataobj.FromBucket(ctx, dataBucket, logPath, 0)
+		require.NoError(t, err, "compacted log object must exist at %s", logPath)
 
 		streamApp := make(map[int64]string)
-		for _, sec := range obj.Sections().Filter(streams.CheckSection) {
-			if sec.Tenant != node.Tenant {
+		streamLabels := make(map[int64]labels.Labels)
+		for _, sec := range logObj.Sections().Filter(streams.CheckSection) {
+			if sec.Tenant != tenant {
 				continue
 			}
 			ss, err := streams.Open(ctx, sec)
@@ -351,12 +333,13 @@ func readCompactedObjects(ctx context.Context, t *testing.T, bucket objstore.Buc
 				s, err := res.Value()
 				require.NoError(t, err)
 				streamApp[s.ID] = s.Labels.Get("app")
+				streamLabels[s.ID] = s.Labels.Copy()
 			}
 		}
 
 		var records []outputRecord
-		for _, sec := range obj.Sections().Filter(logs.CheckSection) {
-			if sec.Tenant != node.Tenant {
+		for _, sec := range logObj.Sections().Filter(logs.CheckSection) {
+			if sec.Tenant != tenant {
 				continue
 			}
 			ls, err := logs.Open(ctx, sec)
@@ -373,16 +356,60 @@ func readCompactedObjects(ctx context.Context, t *testing.T, bucket objstore.Buc
 		}
 
 		out = append(out, struct {
-			streamApp map[int64]string
-			records   []outputRecord
-		}{streamApp: streamApp, records: records})
+			streamApp    map[int64]string
+			streamLabels map[int64]labels.Labels
+			records      []outputRecord
+		}{streamApp: streamApp, streamLabels: streamLabels, records: records})
 	}
 	return out
 }
 
+func TestBuildGlobalStreamTable_SameLabelsShareID(t *testing.T) {
+	sortSchema := []string{"label:app"}
+	ls := labels.FromStrings("app", "auth")
+	other := labels.FromStrings("app", "web")
+	sources := []*logSource{
+		{
+			path: "a",
+			streams: map[int64]streams.Stream{
+				2: {ID: 2, Labels: ls, ShardBucket: int64(streams.ShardBucket(ls))},
+				7: {ID: 7, Labels: other, ShardBucket: int64(streams.ShardBucket(other))},
+			},
+		},
+		{
+			path: "b",
+			streams: map[int64]streams.Stream{
+				5: {ID: 5, Labels: ls.Copy(), ShardBucket: int64(streams.ShardBucket(ls))},
+			},
+		},
+	}
+
+	table, err := buildGlobalStreamTable(sources, sortSchema)
+	require.NoError(t, err)
+
+	aID, err := table.Resolve(0, 2)
+	require.NoError(t, err)
+	bID, err := table.Resolve(1, 5)
+	require.NoError(t, err)
+	require.Equal(t, aID, bID, "same labels across objects must share one global ID")
+	aID2, err := table.Resolve(0, 7)
+	require.NoError(t, err)
+	require.NotEqual(t, aID, aID2)
+
+	count := table.Size()
+	require.Equal(t, count, 2)
+	for id := int64(2); id <= int64(count); id++ {
+		prev := table.ByID(id - 1)
+		curr := table.ByID(id)
+		require.Negative(t, logsobj.CompareStreamOrderKey(prev, curr),
+			"global stream IDs must increase in StreamOrderKey order")
+	}
+}
+
 func TestDoLogObjectMerge_MergesAndSplits(t *testing.T) {
 	ctx := context.Background()
-	bucket := objstore.NewInMemBucket()
+	dataBucket := objstore.NewInMemBucket()
+	indexBucket := objstore.NewInMemBucket()
 
 	const tenant = "T"
 	sortSchema := []string{"label:app"}
@@ -390,24 +417,24 @@ func TestDoLogObjectMerge_MergesAndSplits(t *testing.T) {
 	tb := time.Date(2026, 1, 2, 0, 0, 0, 0, time.UTC)
 	tc := time.Date(2026, 1, 3, 0, 0, 0, 0, time.UTC)
 
-	// Overlapping label sets across objects (a,b,c / b,c,d / c,d,e). With the
-	// k-way merge (no cross-object stream dedup) every source stream becomes its
-	// own output stream: 9 source streams -> 9 output streams.
-	buildSourceLogObject(t, bucket, "objA", sortSchema, map[string][]testStream{
+	// Overlapping label sets across objects (a,b,c / b,c,d / c,d,e). The
+	// logsobj output builder deduplicates the 9 source stream occurrences into
+	// 5 logical streams.
+	buildSourceLogObject(t, dataBucket, "objA", sortSchema, map[string][]testStream{
 		tenant: {
 			{labels: `{app="a"}`, entries: wideLinesAt(ta, 4)},
 			{labels: `{app="b"}`, entries: wideLinesAt(ta, 4)},
 			{labels: `{app="c"}`, entries: wideLinesAt(ta, 4)},
 		},
 	})
-	buildSourceLogObject(t, bucket, "objB", sortSchema, map[string][]testStream{
+	buildSourceLogObject(t, dataBucket, "objB", sortSchema, map[string][]testStream{
 		tenant: {
 			{labels: `{app="b"}`, entries: wideLinesAt(tb, 4)},
 			{labels: `{app="c"}`, entries: wideLinesAt(tb, 4)},
 			{labels: `{app="d"}`, entries: wideLinesAt(tb, 4)},
 		},
 	})
-	buildSourceLogObject(t, bucket, "objC", sortSchema, map[string][]testStream{
+	buildSourceLogObject(t, dataBucket, "objC", sortSchema, map[string][]testStream{
 		tenant: {
 			{labels: `{app="c"}`, entries: wideLinesAt(tc, 4)},
 			{labels: `{app="d"}`, entries: wideLinesAt(tc, 4)},
@@ -415,37 +442,45 @@ func TestDoLogObjectMerge_MergesAndSplits(t *testing.T) {
 		},
 	})
 
-	c := newSmallObjectExecutorContext(t, bucket)
+	c := newSmallObjectExecutorContext(t, indexBucket)
+	c.dataBucket = dataBucket
 	node := &physical.LogMerge{
-		Tenant:          tenant,
-		SortSchema:      sortSchema,
-		OutputIndexPath: "out/index",
+		Tenant:     tenant,
+		SortSchema: sortSchema,
 		Runs: []*compactionv2pb.RunRef{
 			{Sections: []*compactionv2pb.SectionRef{{ObjectPath: "objA"}, {ObjectPath: "objB"}, {ObjectPath: "objC"}}},
 		},
 	}
 
-	require.NoError(t, c.doLogObjectMerge(ctx, node))
+	arts, err := c.doLogObjectMerge(ctx, node)
+	require.NoError(t, err)
+	require.NotEmpty(t, arts, "merge must return artifacts")
+	require.Len(t, arts, 1, "log-merge produces one index artifact")
 
-	objs := readCompactedObjects(ctx, t, bucket, node)
+	indexPath := arts[0].Path
+	objs := readCompactedObjectsFromIndex(ctx, t, dataBucket, indexBucket, indexPath, tenant)
 	require.GreaterOrEqual(t, len(objs), 2, "output must be split into multiple objects")
 
 	totalStreams := 0
 	totalRecords := 0
 	distinctApps := make(map[string]bool)
 	for objIdx, o := range objs {
-		totalStreams += len(o.streamApp)
 		totalRecords += len(o.records)
+		totalStreams += len(o.streamApp)
 		for _, app := range o.streamApp {
 			distinctApps[app] = true
 		}
 
-		// Each object is schema-sorted by [app ASC, streamID ASC, timestamp DESC].
+		// Each object is sorted by [shard, schema, hash, streamID, timestamp DESC].
 		for i := 1; i < len(o.records); i++ {
 			prev, curr := o.records[i-1], o.records[i]
-			require.LessOrEqual(t, prev.app, curr.app, "apps must be non-decreasing within object %d", objIdx)
-			if prev.app == curr.app {
-				require.LessOrEqual(t, prev.streamID, curr.streamID, "streamIDs must be non-decreasing within an app")
+			prevKey, err := logsobj.NewStreamOrderKey(o.streamLabels[prev.streamID], sortSchema)
+			require.NoError(t, err)
+			currKey, err := logsobj.NewStreamOrderKey(o.streamLabels[curr.streamID], sortSchema)
+			require.NoError(t, err)
+			require.LessOrEqual(t, logsobj.CompareStreamOrderKey(prevKey, currKey), 0, "stream order must be non-decreasing within object %d", objIdx)
+			if logsobj.CompareStreamOrderKey(prevKey, currKey) == 0 {
+				require.LessOrEqual(t, prev.streamID, curr.streamID, "streamIDs must be non-decreasing within a stream-order group")
 				if prev.streamID == curr.streamID {
 					require.False(t, curr.ts.After(prev.ts), "timestamps must be non-increasing within a stream")
 				}
@@ -453,210 +488,278 @@ func TestDoLogObjectMerge_MergesAndSplits(t *testing.T) {
 		}
 	}
 
-	// No cross-object dedup: 9 source streams => 9 output streams.
-	require.Equal(t, 9, totalStreams)
+	// Cross-object dedup: 9 source stream occurrences => 5 logical streams.
+	require.Equal(t, 5, totalStreams)
 	// The 5 distinct label sets are all present.
 	require.Equal(t, map[string]bool{"a": true, "b": true, "c": true, "d": true, "e": true}, distinctApps)
 	// 9 stream-appends x 4 entries = 36 records.
 	require.Equal(t, 36, totalRecords)
 }
 
-func TestDoLogObjectMerge_ExistingOutputShortCircuits(t *testing.T) {
+func TestDoLogObjectMerge_DeduplicatesConflictingSourceStreamOrder(t *testing.T) {
 	ctx := context.Background()
-	bucket := objstore.NewInMemBucket()
+	dataBucket := objstore.NewInMemBucket()
+	indexBucket := objstore.NewInMemBucket()
 
 	const tenant = "T"
 	sortSchema := []string{"label:app"}
-	base := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
-	buildSourceLogObject(t, bucket, "objA", sortSchema, map[string][]testStream{
-		tenant: {{labels: `{app="a"}`, entries: linesAt(base, 3)}},
-	})
+	early := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	late := early.Add(time.Hour)
 
-	c := newTestExecutorContext(t, bucket)
-	node := &physical.LogMerge{
-		Tenant:          tenant,
-		SortSchema:      sortSchema,
-		OutputIndexPath: "out/index",
-		Runs: []*compactionv2pb.RunRef{
-			{Sections: []*compactionv2pb.SectionRef{{ObjectPath: "objA"}}},
-		},
-	}
-
-	// Pre-seed the output index path: the merge must short-circuit and not build.
-	require.NoError(t, bucket.Upload(ctx, node.OutputIndexPath, strings.NewReader("sentinel")))
-
-	require.NoError(t, c.doLogObjectMerge(ctx, node))
-
-	got, err := bucket.Get(ctx, node.OutputIndexPath)
-	require.NoError(t, err)
-	buf := new(strings.Builder)
-	_, err = io.Copy(buf, got)
-	require.NoError(t, err)
-	require.NoError(t, got.Close())
-	require.Equal(t, "sentinel", buf.String(), "existing output must be left untouched")
-
-	ok, err := bucket.Exists(ctx, logMergeOutputPath(node.OutputIndexPath, 0))
-	require.NoError(t, err)
-	require.False(t, ok, "compacted log objects must not be written when output index already exists")
-}
-
-// collectIndexSections opens the index object at node.OutputIndexPath and
-// returns the postings/stats section kinds present for the tenant plus the set
-// of object paths referenced by KindLabel postings rows.
-func collectIndexSections(ctx context.Context, t *testing.T, bucket objstore.Bucket, node *physical.LogMerge) (kinds map[string]bool, postingsPaths map[string]bool) {
-	t.Helper()
-
-	obj, err := dataobj.FromBucket(ctx, bucket, node.OutputIndexPath, 0)
-	require.NoError(t, err)
-
-	kinds = make(map[string]bool)
-	postingsPaths = make(map[string]bool)
-
-	for _, sec := range obj.Sections() {
-		if sec.Tenant != node.Tenant {
-			continue
-		}
-		switch {
-		case stats.CheckSection(sec):
-			kinds["stats"] = true
-		case postings.CheckSection(sec):
-			kinds["postings"] = true
-
-			ps, err := postings.Open(ctx, sec)
-			require.NoError(t, err)
-			func() {
-				reader := postings.NewReader(postings.ReaderOptions{Columns: ps.Columns()})
-				require.NoError(t, reader.Open(ctx))
-				rr := postings.NewRowReader(ctx, reader)
-				defer rr.Close()
-				for rr.Next() {
-					if row := rr.At(); row.ObjectPath != "" {
-						postingsPaths[row.ObjectPath] = true
-					}
-				}
-				require.NoError(t, rr.Err())
-			}()
-		}
-	}
-	return kinds, postingsPaths
-}
-
-func TestDoLogObjectMerge_WritesIndexOverCompactedObjects(t *testing.T) {
-	ctx := context.Background()
-	bucket := objstore.NewInMemBucket()
-
-	const tenant = "T"
-	sortSchema := []string{"label:app"}
-	base := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
-
-	buildSourceLogObject(t, bucket, "objA", sortSchema, map[string][]testStream{
+	// Same schema key, different local stream ID order. Unique-label global IDs
+	// make the tree timestamp-merge each full-label stream instead of treating
+	// the two objects as distinct streams.
+	buildSourceLogObject(t, dataBucket, "objA", sortSchema, map[string][]testStream{
 		tenant: {
-			{labels: `{app="a"}`, entries: linesAt(base, 3)},
-			{labels: `{app="b"}`, entries: linesAt(base, 2)},
+			{labels: `{app="a",instance="1"}`, entries: linesAt(early, 1)},
+			{labels: `{app="a",instance="2"}`, entries: linesAt(early.Add(time.Second), 1)},
 		},
 	})
-	buildSourceLogObject(t, bucket, "objB", sortSchema, map[string][]testStream{
+	buildSourceLogObject(t, dataBucket, "objB", sortSchema, map[string][]testStream{
 		tenant: {
-			{labels: `{app="c"}`, entries: linesAt(base.Add(time.Hour), 4)},
+			{labels: `{app="a",instance="2"}`, entries: linesAt(late, 1)},
+			{labels: `{app="a",instance="1"}`, entries: linesAt(late.Add(time.Second), 1)},
 		},
 	})
 
-	c := newTestExecutorContext(t, bucket)
+	c := newTestExecutorContext(t, indexBucket)
+	c.dataBucket = dataBucket
 	node := &physical.LogMerge{
-		Tenant:          tenant,
-		SortSchema:      sortSchema,
-		OutputIndexPath: "index/out",
+		Tenant:     tenant,
+		SortSchema: sortSchema,
 		Runs: []*compactionv2pb.RunRef{
 			{Sections: []*compactionv2pb.SectionRef{{ObjectPath: "objA"}, {ObjectPath: "objB"}}},
 		},
 	}
 
-	require.NoError(t, c.doLogObjectMerge(ctx, node))
-
-	ok, err := bucket.Exists(ctx, node.OutputIndexPath)
+	arts, err := c.doLogObjectMerge(ctx, node)
 	require.NoError(t, err)
-	require.True(t, ok, "index object must be written at OutputIndexPath")
+	require.Len(t, arts, 1)
 
-	kinds, postingsPaths := collectIndexSections(ctx, t, bucket, node)
-	require.True(t, kinds["stats"], "index must contain a stats section")
-	require.True(t, kinds["postings"], "index must contain a postings section")
+	objs := readCompactedObjectsFromIndex(ctx, t, dataBucket, indexBucket, arts[0].Path, tenant)
+	require.Len(t, objs, 1)
+	require.Len(t, objs[0].streamApp, 2, "two full-label streams must remain after cross-object deduplication")
+	require.Len(t, objs[0].records, 4)
 
-	compacted := make(map[string]bool)
-	for i := 0; ; i++ {
-		p := logMergeOutputPath(node.OutputIndexPath, i)
-		exists, err := bucket.Exists(ctx, p)
-		require.NoError(t, err)
-		if !exists {
-			break
+	counts := make(map[int64]int)
+	for i, record := range objs[0].records {
+		counts[record.streamID]++
+		if i == 0 {
+			continue
 		}
-		compacted[p] = true
+		prev := objs[0].records[i-1]
+		require.LessOrEqual(t, prev.streamID, record.streamID)
+		if prev.streamID == record.streamID {
+			require.False(t, record.ts.After(prev.ts), "timestamps must be descending within the deduplicated stream")
+		}
 	}
-	require.NotEmpty(t, compacted, "at least one compacted object must exist")
-	require.NotEmpty(t, postingsPaths, "postings must reference at least one object path")
-	for p := range postingsPaths {
-		require.True(t, compacted[p], "postings object_path %q must be a compacted object", p)
-		require.False(t, p == "objA" || p == "objB", "postings must not reference source object paths")
+	require.Equal(t, map[int64]int{1: 2, 2: 2}, counts)
+}
+
+func TestSortLayoutEqual_DetectsMismatchedComponents(t *testing.T) {
+	want := logs.SortLayout{
+		SchemaLabels: []string{"label:app"},
+		StreamOrder:  logs.StreamOrderStableHashV1,
+		ShardCount:   streams.ShardFactor,
 	}
+
+	tests := []struct {
+		name string
+		got  logs.SortLayout
+	}{
+		{
+			name: "schema labels",
+			got: logs.SortLayout{
+				SchemaLabels: []string{"label:cluster"},
+				StreamOrder:  logs.StreamOrderStableHashV1,
+				ShardCount:   streams.ShardFactor,
+			},
+		},
+		{
+			name: "stream order",
+			got: logs.SortLayout{
+				SchemaLabels: []string{"label:app"},
+				StreamOrder:  logs.StreamOrderUnspecified,
+				ShardCount:   streams.ShardFactor,
+			},
+		},
+		{
+			name: "shard count",
+			got: logs.SortLayout{
+				SchemaLabels: []string{"label:app"},
+				StreamOrder:  logs.StreamOrderStableHashV1,
+				ShardCount:   streams.ShardFactor / 2,
+			},
+		},
+	}
+
+	require.True(t, sortLayoutEqual(want, want), "identical layouts must match")
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			require.False(t, sortLayoutEqual(test.got, want))
+		})
+	}
+}
+
+func TestDoLogObjectMerge_NoopsOnSortLayoutMismatch(t *testing.T) {
+	ctx := context.Background()
+	dataBucket := objstore.NewInMemBucket()
+	indexBucket := objstore.NewInMemBucket()
+
+	const tenant = "T"
+	base := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+
+	buildSourceLogObject(t, dataBucket, "objA", []string{"label:cluster"}, map[string][]testStream{
+		tenant: {{labels: `{app="a",cluster="c"}`, entries: linesAt(base, 2)}},
+	})
+	buildSourceLogObject(t, dataBucket, "objB", []string{"label:app"}, map[string][]testStream{
+		tenant: {{labels: `{app="a"}`, entries: linesAt(base, 2)}},
+	})
+
+	c := newTestExecutorContext(t, indexBucket)
+	c.dataBucket = dataBucket
+	node := &physical.LogMerge{
+		Tenant:     tenant,
+		SortSchema: []string{"label:app"},
+		Runs: []*compactionv2pb.RunRef{
+			{Sections: []*compactionv2pb.SectionRef{{ObjectPath: "objA"}, {ObjectPath: "objB"}}},
+		},
+	}
+
+	arts, err := c.doLogObjectMerge(ctx, node)
+	require.NoError(t, err)
+	require.Empty(t, arts, "mismatched sort layout must no-op the whole task")
+}
+
+func TestDoLogObjectMerge_WritesIndexOverCompactedObjects(t *testing.T) {
+	ctx := context.Background()
+	dataBucket := objstore.NewInMemBucket()
+	indexBucket := objstore.NewInMemBucket()
+
+	const tenant = "T"
+	sortSchema := []string{"label:app"}
+	base := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+
+	buildSourceLogObject(t, dataBucket, "objA", sortSchema, map[string][]testStream{
+		tenant: {
+			{labels: `{app="x"}`, entries: linesAt(base, 2)},
+			{labels: `{app="y"}`, entries: linesAt(base, 3)},
+		},
+	})
+
+	c := newTestExecutorContext(t, indexBucket)
+	c.dataBucket = dataBucket
+	node := &physical.LogMerge{
+		Tenant:     tenant,
+		SortSchema: sortSchema,
+		Runs: []*compactionv2pb.RunRef{
+			{Sections: []*compactionv2pb.SectionRef{{ObjectPath: "objA"}}},
+		},
+	}
+
+	arts, err := c.doLogObjectMerge(ctx, node)
+	require.NoError(t, err)
+	require.Len(t, arts, 1, "produce one index")
+
+	indexPath := arts[0].Path
+
+	// Index exists at the content-hash path in the index bucket
+	ok, err := indexBucket.Exists(ctx, indexPath)
+	require.NoError(t, err)
+	require.True(t, ok, "index object must be written at %s", indexPath)
+
+	// Index contains sections for the tenant
+	indexObj, err := dataobj.FromBucket(ctx, indexBucket, indexPath, 0)
+	require.NoError(t, err)
+	kinds := make(map[string]bool)
+	for _, sec := range indexObj.Sections() {
+		if sec.Tenant != tenant {
+			continue
+		}
+		if stats.CheckSection(sec) {
+			kinds["stats"] = true
+		}
+		if postings.CheckSection(sec) {
+			kinds["postings"] = true
+		}
+	}
+	require.Contains(t, kinds, "stats", "index must contain stats section")
+	require.Contains(t, kinds, "postings", "index must contain postings section")
+
+	// Compacted log object exists in data bucket
+	objs := readCompactedObjectsFromIndex(ctx, t, dataBucket, indexBucket, indexPath, tenant)
+	require.Equal(t, 1, len(objs), "single source -> single compacted object")
 }
 
 func TestDoLogObjectMerge_IndexCoversAllSplitObjects(t *testing.T) {
 	ctx := context.Background()
-	bucket := objstore.NewInMemBucket()
+	dataBucket := objstore.NewInMemBucket()
+	indexBucket := objstore.NewInMemBucket()
 
 	const tenant = "T"
 	sortSchema := []string{"label:app"}
 	ta := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
 	tb := time.Date(2026, 1, 2, 0, 0, 0, 0, time.UTC)
-	tc := time.Date(2026, 1, 3, 0, 0, 0, 0, time.UTC)
 
-	buildSourceLogObject(t, bucket, "objA", sortSchema, map[string][]testStream{
+	// Two objects with overlapping label sets to force multiple output objects
+	buildSourceLogObject(t, dataBucket, "objA", sortSchema, map[string][]testStream{
 		tenant: {
-			{labels: `{app="a"}`, entries: wideLinesAt(ta, 4)},
-			{labels: `{app="b"}`, entries: wideLinesAt(ta, 4)},
-			{labels: `{app="c"}`, entries: wideLinesAt(ta, 4)},
+			{labels: `{app="a"}`, entries: wideLinesAt(ta, 5)},
+			{labels: `{app="b"}`, entries: wideLinesAt(ta, 5)},
 		},
 	})
-	buildSourceLogObject(t, bucket, "objB", sortSchema, map[string][]testStream{
+	buildSourceLogObject(t, dataBucket, "objB", sortSchema, map[string][]testStream{
 		tenant: {
-			{labels: `{app="b"}`, entries: wideLinesAt(tb, 4)},
-			{labels: `{app="c"}`, entries: wideLinesAt(tb, 4)},
-			{labels: `{app="d"}`, entries: wideLinesAt(tb, 4)},
-		},
-	})
-	buildSourceLogObject(t, bucket, "objC", sortSchema, map[string][]testStream{
-		tenant: {
-			{labels: `{app="c"}`, entries: wideLinesAt(tc, 4)},
-			{labels: `{app="d"}`, entries: wideLinesAt(tc, 4)},
-			{labels: `{app="e"}`, entries: wideLinesAt(tc, 4)},
+			{labels: `{app="b"}`, entries: wideLinesAt(tb, 5)},
+			{labels: `{app="c"}`, entries: wideLinesAt(tb, 5)},
 		},
 	})
 
-	c := newSmallObjectExecutorContext(t, bucket)
+	c := newSmallObjectExecutorContext(t, indexBucket)
+	c.dataBucket = dataBucket
 	node := &physical.LogMerge{
-		Tenant:          tenant,
-		SortSchema:      sortSchema,
-		OutputIndexPath: "index/out",
+		Tenant:     tenant,
+		SortSchema: sortSchema,
 		Runs: []*compactionv2pb.RunRef{
-			{Sections: []*compactionv2pb.SectionRef{{ObjectPath: "objA"}, {ObjectPath: "objB"}, {ObjectPath: "objC"}}},
+			{Sections: []*compactionv2pb.SectionRef{{ObjectPath: "objA"}, {ObjectPath: "objB"}}},
 		},
 	}
 
-	require.NoError(t, c.doLogObjectMerge(ctx, node))
+	arts, err := c.doLogObjectMerge(ctx, node)
+	require.NoError(t, err)
+	require.Len(t, arts, 1, "produce one index")
 
-	compacted := make(map[string]bool)
-	for i := 0; ; i++ {
-		p := logMergeOutputPath(node.OutputIndexPath, i)
-		exists, err := bucket.Exists(ctx, p)
-		require.NoError(t, err)
-		if !exists {
-			break
+	indexPath := arts[0].Path
+	objs := readCompactedObjectsFromIndex(ctx, t, dataBucket, indexBucket, indexPath, tenant)
+
+	// With small TargetObjectSize, the merge should split into multiple objects
+	require.GreaterOrEqual(t, len(objs), 2, "merge should split into multiple objects")
+
+	// Index postings section must reference all compacted log objects by path
+	indexObj, err := dataobj.FromBucket(ctx, indexBucket, indexPath, 0)
+	require.NoError(t, err)
+
+	referencedPaths := make(map[string]bool)
+	for _, sec := range indexObj.Sections().Filter(postings.CheckSection) {
+		if sec.Tenant != tenant {
+			continue
 		}
-		compacted[p] = true
+		ps, err := postings.Open(ctx, sec)
+		require.NoError(t, err)
+		reader := postings.NewReader(postings.ReaderOptions{Columns: ps.Columns()})
+		require.NoError(t, reader.Open(ctx))
+		rr := postings.NewRowReader(ctx, reader)
+		for rr.Next() {
+			row := rr.At()
+			if row.ObjectPath != "" {
+				referencedPaths[row.ObjectPath] = true
+			}
+		}
+		rr.Close()
 	}
-	require.GreaterOrEqual(t, len(compacted), 2, "output must be split into multiple objects")
 
-	_, postingsPaths := collectIndexSections(ctx, t, bucket, node)
-	require.Equal(t, compacted, postingsPaths, "postings must reference every compacted object")
+	// All compacted objects must be referenced in the index
+	require.Equal(t, len(objs), len(referencedPaths), "index must reference all compacted objects")
 }
 
 func TestDoLogObjectMerge_EmptyRunsErrors(t *testing.T) {
@@ -664,17 +767,10 @@ func TestDoLogObjectMerge_EmptyRunsErrors(t *testing.T) {
 	bucket := objstore.NewInMemBucket()
 
 	c := newTestExecutorContext(t, bucket)
-	node := &physical.LogMerge{Tenant: "T", SortSchema: []string{"label:app"}, OutputIndexPath: "index/out"}
+	node := &physical.LogMerge{Tenant: "T", SortSchema: []string{"label:app"}}
 
-	require.Error(t, c.doLogObjectMerge(ctx, node), "empty runs must error so the coordinator skips the ToC swap")
-
-	ok, err := bucket.Exists(ctx, node.OutputIndexPath)
-	require.NoError(t, err)
-	require.False(t, ok, "no index object should be written when there are no sources")
-
-	ok, err = bucket.Exists(ctx, logMergeOutputPath(node.OutputIndexPath, 0))
-	require.NoError(t, err)
-	require.False(t, ok, "no compacted object should be written for an empty merge")
+	_, err := c.doLogObjectMerge(ctx, node)
+	require.Error(t, err, "empty runs must error so the coordinator skips the ToC swap")
 }
 
 func TestDoLogObjectMerge_ZeroOutputObjectsErrors(t *testing.T) {
@@ -692,19 +788,15 @@ func TestDoLogObjectMerge_ZeroOutputObjectsErrors(t *testing.T) {
 
 	c := newTestExecutorContext(t, bucket)
 	node := &physical.LogMerge{
-		Tenant:          "T",
-		SortSchema:      sortSchema,
-		OutputIndexPath: "index/out",
+		Tenant:     "T",
+		SortSchema: sortSchema,
 		Runs: []*compactionv2pb.RunRef{
 			{Sections: []*compactionv2pb.SectionRef{{ObjectPath: "objA"}}},
 		},
 	}
 
-	require.Error(t, c.doLogObjectMerge(ctx, node), "zero output objects must error")
-
-	ok, err := bucket.Exists(ctx, node.OutputIndexPath)
-	require.NoError(t, err)
-	require.False(t, ok, "no index object should be written when no output was produced")
+	_, err := c.doLogObjectMerge(ctx, node)
+	require.Error(t, err, "zero output objects must error")
 }
 
 // removeFailingStore wraps a scratch.Store and fails every Remove, simulating a
@@ -719,38 +811,91 @@ func (removeFailingStore) Remove(scratch.Handle) error {
 
 func TestDoLogObjectMerge_CompactedObjectCloseErrorPropagates(t *testing.T) {
 	ctx := context.Background()
-	bucket := objstore.NewInMemBucket()
+	dataBucket := objstore.NewInMemBucket()
+	indexBucket := objstore.NewInMemBucket()
 
 	const tenant = "T"
 	sortSchema := []string{"label:app"}
 	base := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
 
-	buildSourceLogObject(t, bucket, "objA", sortSchema, map[string][]testStream{
+	buildSourceLogObject(t, dataBucket, "objA", sortSchema, map[string][]testStream{
 		tenant: {{labels: `{app="a"}`, entries: linesAt(base, 3)}},
 	})
 
-	c := newTestExecutorContext(t, bucket)
+	c := newTestExecutorContext(t, indexBucket)
+	c.dataBucket = dataBucket
 	c.scratchStore = removeFailingStore{c.scratchStore}
 	node := &physical.LogMerge{
-		Tenant:          tenant,
-		SortSchema:      sortSchema,
-		OutputIndexPath: "index/out",
+		Tenant:     tenant,
+		SortSchema: sortSchema,
 		Runs: []*compactionv2pb.RunRef{
 			{Sections: []*compactionv2pb.SectionRef{{ObjectPath: "objA"}}},
 		},
 	}
 
-	err := c.doLogObjectMerge(ctx, node)
+	_, err := c.doLogObjectMerge(ctx, node)
 	require.Error(t, err, "a failing closer must surface as an error, not be dropped")
 	require.ErrorContains(t, err, "scratch remove failed")
 
-	ok, err := bucket.Exists(ctx, node.OutputIndexPath)
-	require.NoError(t, err)
-	require.False(t, ok, "no index should be written when a compacted object fails to close")
+	// No index should be written when a compacted object fails to close.
+	// (The index path is content-addressed, so assert nothing landed in the
+	// index bucket.)
+	require.NoError(t, indexBucket.Iter(ctx, "", func(string) error {
+		return fmt.Errorf("unexpected object written to index bucket")
+	}))
+}
+func TestExecuteLogMerge_ContentHashAndRecord(t *testing.T) {
+	ctx := context.Background()
+	dataBucket := objstore.NewInMemBucket()
+	indexBucket := objstore.NewInMemBucket()
 
-	// The compacted object is uploaded before its closer runs, so it lands even
-	// though the close failure aborts the merge before the index is built.
-	ok, err = bucket.Exists(ctx, logMergeOutputPath(node.OutputIndexPath, 0))
+	const tenant = "T"
+	sortSchema := []string{"label:app"}
+	base := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+
+	buildSourceLogObject(t, dataBucket, "objA", sortSchema, map[string][]testStream{
+		tenant: {{labels: `{app="a"}`, entries: linesAt(base, 2)}},
+	})
+
+	c := newTestExecutorContext(t, indexBucket)
+	c.dataBucket = dataBucket
+	node := &physical.LogMerge{
+		Tenant:     tenant,
+		SortSchema: sortSchema,
+		Runs: []*compactionv2pb.RunRef{
+			{Sections: []*compactionv2pb.SectionRef{{ObjectPath: "objA"}}},
+		},
+	}
+
+	// executeLogMerge emits a result record batch
+	pipeline := c.executeLogMerge(node)
+	require.NotNil(t, pipeline)
+
+	// Open the pipeline first
+	err := pipeline.Open(ctx)
 	require.NoError(t, err)
-	require.True(t, ok, "the compacted object is uploaded before the failing close")
+	defer pipeline.Close()
+
+	// The pipeline should contain a result record when read
+	rec, err := pipeline.Read(ctx)
+	require.NoError(t, err)
+	require.NotNil(t, rec, "pipeline must yield a result record")
+
+	// Deserialize the result artifacts
+	arts, err := v2.ReadResultRecord(rec)
+	require.NoError(t, err)
+	require.Len(t, arts, 1, "produce one index artifact")
+
+	indexPath := arts[0].Path
+	// Index path follows content-hash format: indexes/tenants/<tenant>/<h2>/<hrest>
+	require.Contains(t, indexPath, "indexes/tenants/T/", "index path must follow content-hash format")
+
+	// Index exists in the index bucket
+	ok, err := indexBucket.Exists(ctx, indexPath)
+	require.NoError(t, err)
+	require.True(t, ok, "index must exist at %s", indexPath)
+
+	// Read EOF to close the pipeline
+	_, err = pipeline.Read(ctx)
+	require.ErrorIs(t, err, io.EOF)
 }

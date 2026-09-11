@@ -21,8 +21,12 @@ import (
 	"io"
 	"log"
 	"sync"
+	"sync/atomic"
 	"time"
 	"unicode/utf8"
+
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/metric"
 )
 
 // Interface internalWriter wraps low-level implementations which may vary
@@ -33,6 +37,9 @@ type internalWriter interface {
 	// CloseWithError terminates the write operation and sets its status.
 	// Note that CloseWithError always returns nil.
 	CloseWithError(error) error
+	// Set final object checksum for appendable objects after write
+	// and before finalization.
+	setAppendFinalCRC32C(sendAppendFinalCRC32C bool, c uint32)
 }
 
 // A Writer writes a Cloud Storage object.
@@ -106,18 +113,26 @@ type Writer struct {
 	// ChunkSize must be set before the first Write call.
 	ChunkSize int
 
-	// ChunkRetryDeadline sets a per-chunk retry deadline for multi-chunk
-	// resumable uploads.
+	// ChunkRetryDeadline sets a per-chunk retry deadline for uploads.
 	//
 	// For uploads of larger files, the Writer will attempt to retry if the
 	// request to upload a particular chunk fails with a transient error.
 	// If a single chunk has been attempting to upload for longer than this
 	// deadline and the request fails, it will no longer be retried, and the
-	// error will be returned to the caller. This is only applicable for files
-	// which are large enough to require a multi-chunk resumable upload. The
-	// default value is 32s. Users may want to pick a longer deadline if they
-	// are using larger values for ChunkSize or if they expect to have a slow or
-	// unreliable internet connection.
+	// error will be returned to the caller. This deadline measures the total
+	// time spent queuing, transmitting, and retrying a single chunk.
+	//
+	// For HTTP clients, a chunk is defined by the ChunkSize, so this deadline
+	// is only applicable to files large enough to require a multi-chunk upload.
+	// Users may also want to pick a longer deadline if they are using larger
+	// values for ChunkSize.
+	//
+	// For gRPC clients, data is streamed internally in 2 MiB quantums,
+	// and this deadline applies to each individual quantum. Therefore, it applies
+	// to all uploads, and the deadline does not need to scale with the ChunkSize.
+	//
+	// The default value is 32s. Users may want to pick a longer deadline if they
+	// expect to have a slow or unreliable internet connection.
 	//
 	// To set a deadline on the entire upload, use context timeout or
 	// cancellation.
@@ -146,11 +161,9 @@ type Writer struct {
 	// when Writer.Close() is called; otherwise, the object is left unfinalized
 	// and can be appended to later.
 	//
-	// Defaults to false unless the experiemental WithZonalBucketAPIs option was
-	// set.
+	// Defaults to false unless the [WithAppendableUploads] option was set.
 	//
-	// Append is only supported for gRPC. This feature is in preview and is not
-	// yet available for general use.
+	// Append is only supported for gRPC.
 	Append bool
 
 	// FinalizeOnClose indicates whether the Writer should finalize an object when
@@ -160,8 +173,6 @@ type Writer struct {
 	// finalized, which means they can be appended to later. If Append is set
 	// to false, this parameter will be ignored; non-appendable objects will
 	// always be finalized when Writer.Close returns without error.
-	//
-	// This feature is in preview and is not yet available for general use.
 	FinalizeOnClose bool
 
 	// ProgressFunc can be used to monitor the progress of a large write
@@ -200,6 +211,28 @@ type Writer struct {
 	// in future releases. It is not yet recommended for production use.
 	ParallelUploadConfig ParallelUploadConfig
 
+	// SendAppendFinalCRC32C indicates that AppendFinalCRC32C should be sent as the
+	// full-object checksum when finalizing an appendable object.
+	//
+	// This field is only supported for gRPC clients and appendable objects.
+	SendAppendFinalCRC32C bool
+
+	// AppendFinalCRC32C is the expected full-object CRC32C checksum to be validated
+	// by the server when finalizing an appendable object.
+	//
+	// This field must be set on the Writer, along with SendAppendFinalCRC32C = true,
+	// before calling Close(). It allows callers to defer providing the checksum
+	// until the final write is complete.
+	//
+	// If SendAppendFinalCRC32C is false, checksum validation for the full object will
+	// fall back to using ObjectAttrs.CRC32C if Writer.SendCRC32C is true. If both are
+	// configured, AppendFinalCRC32C takes precedence.
+	//
+	// This field is ignored if Writer.Append is false or if using the JSON API.
+	// Chunk-level validation will still be performed for all chunks during upload if
+	// Writer.DisableAutoChecksum is false.
+	AppendFinalCRC32C uint32
+
 	ctx context.Context
 	o   *ObjectHandle
 
@@ -215,6 +248,9 @@ type Writer struct {
 	mu                sync.Mutex
 	err               error
 	setTakeoverOffset func(int64)
+
+	// bytesWritten is the cumulative bytes written for request size metric.
+	bytesWritten int64
 }
 
 func (w *Writer) wrapWriteError(n int, err error) (int, error) {
@@ -280,27 +316,36 @@ func (w *Writer) Write(p []byte) (int, error) {
 		return 0, fmt.Errorf("storage: Writer is closed")
 	}
 
+	var n int
+	var err error
 	if pcu != nil {
-		return w.wrapWriteError(pcu.write(p))
-	}
-
-	if !w.opened {
-		// First time initialization: freeze the configuration to either PCU or standard.
-		if w.EnableParallelUpload {
-			var err error
-			if pcu, err = w.getOrInitPCU(); err != nil {
-				return 0, err
+		n, err = pcu.write(p)
+	} else {
+		if !w.opened {
+			// First time initialization: freeze the configuration to either PCU or standard.
+			if w.EnableParallelUpload {
+				if pcu, err = w.getOrInitPCU(); err != nil {
+					return 0, err
+				}
 			}
-			if pcu != nil {
-				return w.wrapWriteError(pcu.write(p))
+			if pcu == nil {
+				if err = w.openWriter(); err != nil {
+					return 0, err
+				}
 			}
 		}
-		if err := w.openWriter(); err != nil {
-			return 0, err
+		if pcu != nil {
+			n, err = pcu.write(p)
+		} else {
+			n, err = w.iw.Write(p)
 		}
 	}
 
-	return w.wrapWriteError(w.iw.Write(p))
+	if n > 0 {
+		atomic.AddInt64(&w.bytesWritten, int64(n))
+	}
+
+	return w.wrapWriteError(n, err)
 }
 
 // Flush syncs all bytes currently in the Writer's buffer to Cloud Storage.
@@ -319,7 +364,7 @@ func (w *Writer) Write(p []byte) (int, error) {
 // automatic content sniffing in the Writer.
 //
 // Flush is supported only on gRPC clients where [Writer.Append] is set
-// to true. This feature is in preview and is not yet available for general use.
+// to true.
 func (w *Writer) Flush() (int64, error) {
 	// Return error if Append is not true.
 	if !w.Append {
@@ -361,38 +406,54 @@ func (w *Writer) Close() error {
 	if pcu != nil || (!w.opened && w.EnableParallelUpload) {
 		var err error
 		if pcu, err = w.getOrInitPCU(); err != nil {
-			return err
+			return w.markClosed(err)
 		}
 
 		if pcu != nil {
-			err = pcu.close()
-			w.mu.Lock()
-			defer w.mu.Unlock()
-			w.closed = true
-			if w.err == nil && err != nil {
-				w.err = err
-			}
-			endSpan(w.ctx, w.err)
-			return w.err
+			return w.markClosed(pcu.close())
 		}
 	}
 
 	if !w.opened {
 		if err := w.openWriter(); err != nil {
-			return err
+			return w.markClosed(err)
 		}
 	}
 
+	if w.Append {
+		w.iw.setAppendFinalCRC32C(w.SendAppendFinalCRC32C, w.AppendFinalCRC32C)
+	}
+
 	if err := w.iw.Close(); err != nil {
-		return err
+		return w.markClosed(err)
 	}
 
 	<-w.donec
+	return w.markClosed(nil)
+}
+
+// markClosed marks the Writer as closed, records any closing error on Writer.err,
+// and records request body size metrics and trace span completion.
+func (w *Writer) markClosed(err error) error {
 	w.mu.Lock()
-	defer w.mu.Unlock()
 	w.closed = true
-	endSpan(w.ctx, w.err)
-	return w.err
+	if w.err == nil && err != nil {
+		w.err = err
+	}
+	closingErr := w.err
+	total := atomic.LoadInt64(&w.bytesWritten)
+	w.mu.Unlock()
+
+	if state := metricsStateFromContext(w.ctx); state != nil {
+		if state.metrics != nil && total > 0 {
+			state.metrics.requestBodySize.Record(w.ctx, total, metric.WithAttributes(attribute.String("rpc.method", "WriteObject")))
+		}
+		if state.record != nil {
+			state.record(closingErr)
+		}
+	}
+	endSpan(w.ctx, closingErr)
+	return closingErr
 }
 
 func (w *Writer) openWriter() (err error) {
@@ -440,6 +501,7 @@ func (w *Writer) openWriter() (err error) {
 	if err != nil {
 		return err
 	}
+	w.ctx = params.ctx
 	w.opened = true
 	go w.monitorCancel()
 

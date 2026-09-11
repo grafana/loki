@@ -227,20 +227,30 @@ func (c cmdable) XRevRangeN(ctx context.Context, stream, start, stop string, cou
 }
 
 type XReadArgs struct {
-	Streams []string // list of streams and ids, e.g. stream1 stream2 id1 id2
-	Count   int64
-	Block   time.Duration
-	ID      string
+	Streams  []string // list of streams and ids, e.g. stream1 stream2 id1 id2
+	Count    int64
+	MaxCount int64 // cumulative cap on total entries across all streams (Redis >= 8.10)
+	MaxSize  int64 // soft cumulative cap on total reply size in bytes across all streams (Redis >= 8.10)
+	Block    time.Duration
+	ID       string
 }
 
 func (c cmdable) XRead(ctx context.Context, a *XReadArgs) *XStreamSliceCmd {
-	args := make([]interface{}, 0, 2*len(a.Streams)+6)
+	args := make([]interface{}, 0, 2*len(a.Streams)+10)
 	args = append(args, "xread")
 
 	keyPos := int8(1)
 	if a.Count > 0 {
 		args = append(args, "count")
 		args = append(args, a.Count)
+		keyPos += 2
+	}
+	if a.MaxCount > 0 {
+		args = append(args, "maxcount", a.MaxCount)
+		keyPos += 2
+	}
+	if a.MaxSize > 0 {
+		args = append(args, "maxsize", a.MaxSize)
 		keyPos += 2
 	}
 	if a.Block >= 0 {
@@ -322,18 +332,28 @@ type XReadGroupArgs struct {
 	Consumer string
 	Streams  []string // list of streams and ids, e.g. stream1 stream2 id1 id2
 	Count    int64
+	MaxCount int64 // cumulative cap on total entries across all streams (Redis >= 8.10)
+	MaxSize  int64 // soft cumulative cap on total reply size in bytes across all streams (Redis >= 8.10)
 	Block    time.Duration
 	NoAck    bool
 	Claim    time.Duration // Claim idle pending entries older than this duration
 }
 
 func (c cmdable) XReadGroup(ctx context.Context, a *XReadGroupArgs) *XStreamSliceCmd {
-	args := make([]interface{}, 0, 10+len(a.Streams))
+	args := make([]interface{}, 0, 14+len(a.Streams))
 	args = append(args, "xreadgroup", "group", a.Group, a.Consumer)
 
 	keyPos := int8(4)
 	if a.Count > 0 {
 		args = append(args, "count", a.Count)
+		keyPos += 2
+	}
+	if a.MaxCount > 0 {
+		args = append(args, "maxcount", a.MaxCount)
+		keyPos += 2
+	}
+	if a.MaxSize > 0 {
+		args = append(args, "maxsize", a.MaxSize)
 		keyPos += 2
 	}
 	if a.Block >= 0 {
@@ -361,8 +381,15 @@ func (c cmdable) XReadGroup(ctx context.Context, a *XReadGroupArgs) *XStreamSlic
 	cmd.SetFirstKeyPos(keyPos)
 	_ = c(ctx, cmd)
 
-	// Record stream lag for each message (if command succeeded)
-	if cmd.Err() == nil {
+	// Record stream lag for each message (if command succeeded). Gated on the
+	// result being readable WITHOUT blocking: this command carries a
+	// read-timeout marker, so on the deferred autopipeline face it is diverted
+	// and still running when we get here — and the default Block: 0 form can
+	// wait indefinitely for messages, so reading the outcome would block the
+	// submit call instead of returning a future (review finding by codex on
+	// #3942). Skipped for a submission that has not executed yet; emitting
+	// this from the execution path is a follow-up in the OTel wiring.
+	if otel.Enabled() && cmd.resultReady() && cmd.rawErr() == nil {
 		streams := cmd.Val()
 		for _, stream := range streams {
 			for _, msg := range stream.Messages {

@@ -127,6 +127,9 @@ func (c *Client) listObjectsV2(ctx context.Context, bucketName string, opts List
 
 	// Return object owner information by default
 	fetchOwner := true
+	if opts.FetchOwner != nil {
+		fetchOwner = *opts.FetchOwner
+	}
 
 	return func(yield func(ObjectInfo) bool) {
 		if contextCanceled(ctx) {
@@ -296,6 +299,7 @@ func (c *Client) listObjectsV2Query(ctx context.Context, bucketName, objectPrefi
 			return listBucketResult, err
 		}
 		listBucketResult.Contents[i].LastModified = listBucketResult.Contents[i].LastModified.Truncate(time.Millisecond)
+		listBucketResult.Contents[i].UserMetadataStripped = stripUserMetadata(obj.UserMetadata)
 	}
 
 	for i, obj := range listBucketResult.CommonPrefixes {
@@ -419,31 +423,32 @@ func (c *Client) listObjectVersions(ctx context.Context, bucketName string, opts
 			}
 			for _, version := range vers {
 				info := ObjectInfo{
-					ETag:              trimEtag(version.ETag),
-					Key:               version.Key,
-					LastModified:      version.LastModified.Truncate(time.Millisecond),
-					Size:              version.Size,
-					Owner:             version.Owner,
-					StorageClass:      version.StorageClass,
-					IsLatest:          version.IsLatest,
-					VersionID:         version.VersionID,
-					IsDeleteMarker:    version.isDeleteMarker,
-					UserTags:          version.UserTags,
-					UserMetadata:      version.UserMetadata,
-					Internal:          version.Internal,
-					NumVersions:       numVersions,
-					ChecksumAlgorithm: version.ChecksumAlgorithm,
-					ChecksumMode:      version.ChecksumType,
-					ChecksumCRC32:     version.ChecksumCRC32,
-					ChecksumCRC32C:    version.ChecksumCRC32C,
-					ChecksumSHA1:      version.ChecksumSHA1,
-					ChecksumSHA256:    version.ChecksumSHA256,
-					ChecksumCRC64NVME: version.ChecksumCRC64NVME,
-					ChecksumMD5:       version.ChecksumMD5,
-					ChecksumSHA512:    version.ChecksumSHA512,
-					ChecksumXXHash64:  version.ChecksumXXHash64,
-					ChecksumXXHash3:   version.ChecksumXXHash3,
-					ChecksumXXHash128: version.ChecksumXXHash128,
+					ETag:                 trimEtag(version.ETag),
+					Key:                  version.Key,
+					LastModified:         version.LastModified.Truncate(time.Millisecond),
+					Size:                 version.Size,
+					Owner:                version.Owner,
+					StorageClass:         version.StorageClass,
+					IsLatest:             version.IsLatest,
+					VersionID:            version.VersionID,
+					IsDeleteMarker:       version.isDeleteMarker,
+					UserTags:             version.UserTags,
+					UserMetadata:         version.UserMetadata,
+					UserMetadataStripped: version.UserMetadataStripped,
+					Internal:             version.Internal,
+					NumVersions:          numVersions,
+					ChecksumAlgorithm:    version.ChecksumAlgorithm,
+					ChecksumMode:         version.ChecksumType,
+					ChecksumCRC32:        version.ChecksumCRC32,
+					ChecksumCRC32C:       version.ChecksumCRC32C,
+					ChecksumSHA1:         version.ChecksumSHA1,
+					ChecksumSHA256:       version.ChecksumSHA256,
+					ChecksumCRC64NVME:    version.ChecksumCRC64NVME,
+					ChecksumMD5:          version.ChecksumMD5,
+					ChecksumSHA512:       version.ChecksumSHA512,
+					ChecksumXXHash64:     version.ChecksumXXHash64,
+					ChecksumXXHash3:      version.ChecksumXXHash3,
+					ChecksumXXHash128:    version.ChecksumXXHash128,
 				}
 				if !yield(info) {
 					return false
@@ -606,6 +611,7 @@ func (c *Client) listObjectVersionsQuery(ctx context.Context, bucketName string,
 		if err != nil {
 			return listObjectVersionsOutput, err
 		}
+		listObjectVersionsOutput.Versions[i].UserMetadataStripped = stripUserMetadata(obj.UserMetadata)
 	}
 
 	for i, obj := range listObjectVersionsOutput.CommonPrefixes {
@@ -737,6 +743,10 @@ type ListObjectsOptions struct {
 
 	// Use the deprecated list objects V1 API
 	UseV1 bool
+
+	// FetchOwner indicates whether to return object owner information.
+	// It defaults to true when unset.
+	FetchOwner *bool
 
 	headers http.Header
 }

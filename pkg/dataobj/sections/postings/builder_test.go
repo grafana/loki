@@ -47,9 +47,9 @@ func TestBuilder_LabelPostingRoundTrip(t *testing.T) {
 	b := NewBuilder(nil, 0, 0, 1<<20)
 
 	ts := time.Unix(0, 1000).UTC()
-	b.ObserveLabelPosting(LabelObservation{ObjectPath: "/tenant/abc/obj1", SectionIndex: 0, ColumnName: "env", LabelValue: "value1", StreamID: 3, Timestamp: ts, UncompressedSize: 4096})
-	b.ObserveLabelPosting(LabelObservation{ObjectPath: "/tenant/abc/obj1", SectionIndex: 0, ColumnName: "env", LabelValue: "value1", StreamID: 7, Timestamp: ts, UncompressedSize: 0})
-	b.ObserveLabelPosting(LabelObservation{ObjectPath: "/tenant/abc/obj1", SectionIndex: 0, ColumnName: "env", LabelValue: "value1", StreamID: 15, Timestamp: ts, UncompressedSize: 0})
+	b.ObserveLabelPosting(LabelObservation{ObjectPath: "/tenant/abc/obj1", ShardBuckets: 16, SectionIndex: 0, ColumnName: "env", LabelValue: "value1", StreamID: 3, Timestamp: ts, UncompressedSize: 4096, ShardBucket: 2})
+	b.ObserveLabelPosting(LabelObservation{ObjectPath: "/tenant/abc/obj1", ShardBuckets: 16, SectionIndex: 0, ColumnName: "env", LabelValue: "value1", StreamID: 7, Timestamp: ts, UncompressedSize: 0, ShardBucket: 7})
+	b.ObserveLabelPosting(LabelObservation{ObjectPath: "/tenant/abc/obj1", ShardBuckets: 16, SectionIndex: 0, ColumnName: "env", LabelValue: "value1", StreamID: 15, Timestamp: ts, UncompressedSize: 0, ShardBucket: 4})
 
 	sections := flushAndOpenSections(t, b)
 	require.Len(t, sections, 1)
@@ -62,6 +62,7 @@ func TestBuilder_LabelPostingRoundTrip(t *testing.T) {
 		{
 			"kind.int64":              int64(KindLabel),
 			"object_path.utf8":        "/tenant/abc/obj1",
+			"shard_buckets.int64":     int64(16),
 			"section_index.int64":     int64(0),
 			"column_name.utf8":        "env",
 			"label_value.utf8":        "value1",
@@ -69,6 +70,8 @@ func TestBuilder_LabelPostingRoundTrip(t *testing.T) {
 			"uncompressed_size.int64": int64(4096),
 			"min_timestamp.timestamp": ts,
 			"max_timestamp.timestamp": ts,
+			"min_shard_bucket.int64":  int64(2),
+			"max_shard_bucket.int64":  int64(7),
 		},
 	}
 
@@ -90,12 +93,12 @@ func TestBuilder_BloomPostingRoundTrip(t *testing.T) {
 	b := NewBuilder(nil, 0, 0, 1<<20)
 
 	ts := time.Unix(0, 500).UTC()
-	b.PrepareBloomColumn("/tenant/abc/obj2", 1, "service_name", 100)
-	err := b.ObserveBloomPosting(BloomObservation{ObjectPath: "/tenant/abc/obj2", SectionIndex: 1, ColumnName: "service_name", Value: "my-service", StreamID: 0, Timestamp: ts, UncompressedSize: 8192})
+	b.PrepareBloomColumn("/tenant/abc/obj2", 1, "service_name", 100, 0)
+	err := b.ObserveBloomPosting(BloomObservation{ObjectPath: "/tenant/abc/obj2", ShardBuckets: 16, SectionIndex: 1, ColumnName: "service_name", Value: "my-service", StreamID: 0, Timestamp: ts, UncompressedSize: 8192})
 	require.NoError(t, err)
-	err = b.ObserveBloomPosting(BloomObservation{ObjectPath: "/tenant/abc/obj2", SectionIndex: 1, ColumnName: "service_name", Value: "my-service", StreamID: 2, Timestamp: ts, UncompressedSize: 0})
+	err = b.ObserveBloomPosting(BloomObservation{ObjectPath: "/tenant/abc/obj2", ShardBuckets: 16, SectionIndex: 1, ColumnName: "service_name", Value: "my-service", StreamID: 2, Timestamp: ts, UncompressedSize: 0})
 	require.NoError(t, err)
-	err = b.ObserveBloomPosting(BloomObservation{ObjectPath: "/tenant/abc/obj2", SectionIndex: 1, ColumnName: "service_name", Value: "my-service", StreamID: 8, Timestamp: ts, UncompressedSize: 0})
+	err = b.ObserveBloomPosting(BloomObservation{ObjectPath: "/tenant/abc/obj2", ShardBuckets: 16, SectionIndex: 1, ColumnName: "service_name", Value: "my-service", StreamID: 8, Timestamp: ts, UncompressedSize: 0})
 	require.NoError(t, err)
 
 	sections := flushAndOpenSections(t, b)
@@ -112,6 +115,7 @@ func TestBuilder_BloomPostingRoundTrip(t *testing.T) {
 		{
 			"kind.int64":              int64(KindBloom),
 			"object_path.utf8":        "/tenant/abc/obj2",
+			"shard_buckets.int64":     int64(16),
 			"section_index.int64":     int64(1),
 			"column_name.utf8":        "service_name",
 			"label_value.utf8":        nil,
@@ -119,6 +123,8 @@ func TestBuilder_BloomPostingRoundTrip(t *testing.T) {
 			"uncompressed_size.int64": int64(8192),
 			"min_timestamp.timestamp": ts,
 			"max_timestamp.timestamp": ts,
+			"min_shard_bucket.int64":  nil,
+			"max_shard_bucket.int64":  nil,
 		},
 	}
 
@@ -142,7 +148,7 @@ func TestBuilder_MixedPostings(t *testing.T) {
 
 	ts := time.Unix(0, 100).UTC()
 	ts2 := time.Unix(0, 300).UTC()
-	b.PrepareBloomColumn("/obj1", 0, "col_a", 10)
+	b.PrepareBloomColumn("/obj1", 0, "col_a", 10, 0)
 	err := b.ObserveBloomPosting(BloomObservation{ObjectPath: "/obj1", SectionIndex: 0, ColumnName: "col_a", Value: "val", StreamID: 0, Timestamp: ts, UncompressedSize: 0})
 	require.NoError(t, err)
 
@@ -175,10 +181,10 @@ func TestBuilder_SortOrder(t *testing.T) {
 	b := NewBuilder(nil, 0, 0, 1<<20)
 
 	// Prepare and add bloom entries.
-	b.PrepareBloomColumn("", 0, "col_a", 10)
+	b.PrepareBloomColumn("", 0, "col_a", 10, 0)
 	_ = b.ObserveBloomPosting(BloomObservation{ObjectPath: "", SectionIndex: 0, ColumnName: "col_a", Value: "v", StreamID: 0, Timestamp: time.Unix(0, 50), UncompressedSize: 0})
 
-	b.PrepareBloomColumn("", 0, "col_b", 10)
+	b.PrepareBloomColumn("", 0, "col_b", 10, 0)
 	_ = b.ObserveBloomPosting(BloomObservation{ObjectPath: "", SectionIndex: 0, ColumnName: "col_b", Value: "v", StreamID: 0, Timestamp: time.Unix(0, 10), UncompressedSize: 0})
 
 	// Label entries.
@@ -247,7 +253,7 @@ func TestBuilder_NullableHandling(t *testing.T) {
 
 	ts := time.Unix(0, 0).UTC()
 
-	b.PrepareBloomColumn("", 0, "col", 10)
+	b.PrepareBloomColumn("", 0, "col", 10, 0)
 	_ = b.ObserveBloomPosting(BloomObservation{ObjectPath: "", SectionIndex: 0, ColumnName: "col", Value: "val", StreamID: 0, Timestamp: ts, UncompressedSize: 0})
 
 	b.ObserveLabelPosting(LabelObservation{ObjectPath: "", SectionIndex: 0, ColumnName: "col", LabelValue: "val", StreamID: 0, Timestamp: ts, UncompressedSize: 0})
@@ -281,7 +287,7 @@ func TestBuilder_BitmapCorrectness(t *testing.T) {
 	b := NewBuilder(nil, 0, 0, 1<<20)
 
 	ts := time.Unix(0, 0).UTC()
-	b.PrepareBloomColumn("", 0, "col", 10)
+	b.PrepareBloomColumn("", 0, "col", 10, 0)
 	// Observe stream IDs 0, 3, 7.
 	_ = b.ObserveBloomPosting(BloomObservation{ObjectPath: "", SectionIndex: 0, ColumnName: "col", Value: "v", StreamID: 0, Timestamp: ts, UncompressedSize: 0})
 	_ = b.ObserveBloomPosting(BloomObservation{ObjectPath: "", SectionIndex: 0, ColumnName: "col", Value: "v", StreamID: 3, Timestamp: ts, UncompressedSize: 0})
@@ -362,7 +368,7 @@ func TestBuilder_AllBloom(t *testing.T) {
 	ts := time.Unix(0, 0).UTC()
 	for i := range 3 {
 		colName := fmt.Sprintf("col%d", i)
-		b.PrepareBloomColumn("", 0, colName, 10)
+		b.PrepareBloomColumn("", 0, colName, 10, 0)
 		_ = b.ObserveBloomPosting(BloomObservation{ObjectPath: "", SectionIndex: 0, ColumnName: colName, Value: "val", StreamID: 0, Timestamp: ts, UncompressedSize: 0})
 	}
 
@@ -426,7 +432,7 @@ func TestBuilder_KindColumnRangeStats(t *testing.T) {
 	b := NewBuilder(nil, 0, 0, 1<<20)
 
 	ts := time.Unix(0, 1000).UTC()
-	b.PrepareBloomColumn("/a", 0, "svc", 16)
+	b.PrepareBloomColumn("/a", 0, "svc", 16, 0)
 	require.NoError(t, b.ObserveBloomPosting(BloomObservation{ObjectPath: "/a", SectionIndex: 0, ColumnName: "svc", Value: "v", StreamID: 1, Timestamp: ts}))
 	b.ObserveLabelPosting(LabelObservation{ObjectPath: "/a", SectionIndex: 0, ColumnName: "env", LabelValue: "x", StreamID: 2, Timestamp: ts})
 
@@ -481,7 +487,7 @@ func TestBuilder_KindColumnPruning(t *testing.T) {
 	b := NewBuilder(nil, 0, 0, 1<<20)
 
 	ts := time.Unix(0, 1000).UTC()
-	b.PrepareBloomColumn("/a", 0, "svc", 16)
+	b.PrepareBloomColumn("/a", 0, "svc", 16, 0)
 	require.NoError(t, b.ObserveBloomPosting(BloomObservation{ObjectPath: "/a", SectionIndex: 0, ColumnName: "svc", Value: "v", StreamID: 1, Timestamp: ts}))
 	b.ObserveLabelPosting(LabelObservation{ObjectPath: "/a", SectionIndex: 0, ColumnName: "env", LabelValue: "x", StreamID: 2, Timestamp: ts})
 
@@ -639,9 +645,9 @@ func TestBuilder_ObserveLabelPosting(t *testing.T) {
 	midTs := time.Unix(0, 200).UTC()
 	maxTs := time.Unix(0, 300).UTC()
 
-	b.ObserveLabelPosting(LabelObservation{ObjectPath: "/obj", SectionIndex: 0, ColumnName: "env", LabelValue: "prod", StreamID: 1, Timestamp: minTs, UncompressedSize: 100})
-	b.ObserveLabelPosting(LabelObservation{ObjectPath: "/obj", SectionIndex: 0, ColumnName: "env", LabelValue: "prod", StreamID: 5, Timestamp: midTs, UncompressedSize: 200})
-	b.ObserveLabelPosting(LabelObservation{ObjectPath: "/obj", SectionIndex: 0, ColumnName: "env", LabelValue: "prod", StreamID: 10, Timestamp: maxTs, UncompressedSize: 300})
+	b.ObserveLabelPosting(LabelObservation{ObjectPath: "/obj", SectionIndex: 0, ColumnName: "env", LabelValue: "prod", StreamID: 1, Timestamp: minTs, UncompressedSize: 100, ShardBucket: 1})
+	b.ObserveLabelPosting(LabelObservation{ObjectPath: "/obj", SectionIndex: 0, ColumnName: "env", LabelValue: "prod", StreamID: 5, Timestamp: midTs, UncompressedSize: 200, ShardBucket: 5})
+	b.ObserveLabelPosting(LabelObservation{ObjectPath: "/obj", SectionIndex: 0, ColumnName: "env", LabelValue: "prod", StreamID: 10, Timestamp: maxTs, UncompressedSize: 300, ShardBucket: 3})
 
 	sections := flushAndOpenSections(t, b)
 	require.Len(t, sections, 1)
@@ -656,6 +662,7 @@ func TestBuilder_ObserveLabelPosting(t *testing.T) {
 		{
 			"kind.int64":              int64(KindLabel),
 			"object_path.utf8":        "/obj",
+			"shard_buckets.int64":     int64(0),
 			"section_index.int64":     int64(0),
 			"column_name.utf8":        "env",
 			"label_value.utf8":        "prod",
@@ -663,6 +670,8 @@ func TestBuilder_ObserveLabelPosting(t *testing.T) {
 			"uncompressed_size.int64": int64(600),
 			"min_timestamp.timestamp": minTs,
 			"max_timestamp.timestamp": maxTs,
+			"min_shard_bucket.int64":  int64(1),
+			"max_shard_bucket.int64":  int64(5),
 		},
 	}
 
@@ -683,7 +692,7 @@ func TestBuilder_ObserveBloomPosting(t *testing.T) {
 	b := NewBuilder(nil, 0, 0, 1<<20)
 
 	ts := time.Unix(0, 100)
-	b.PrepareBloomColumn("/obj", 0, "service_name", 100)
+	b.PrepareBloomColumn("/obj", 0, "service_name", 100, 0)
 
 	values := []string{"alpha", "beta", "gamma"}
 	for i, v := range values {
@@ -735,7 +744,7 @@ func TestBuilder_MixedObservations(t *testing.T) {
 	b.ObserveLabelPosting(LabelObservation{ObjectPath: "/obj", SectionIndex: 0, ColumnName: "col_b", LabelValue: "v", StreamID: 0, Timestamp: ts, UncompressedSize: 0})
 
 	// Add bloom second.
-	b.PrepareBloomColumn("/obj", 0, "col_a", 10)
+	b.PrepareBloomColumn("/obj", 0, "col_a", 10, 0)
 	_ = b.ObserveBloomPosting(BloomObservation{ObjectPath: "/obj", SectionIndex: 0, ColumnName: "col_a", Value: "v", StreamID: 0, Timestamp: ts, UncompressedSize: 0})
 
 	sections := flushAndOpenSections(t, b)
@@ -830,7 +839,7 @@ func TestBuilder_BloomBytes(t *testing.T) {
 	b := NewBuilder(nil, 0, 0, 1<<20)
 
 	ts := time.Unix(0, 0)
-	b.PrepareBloomColumn("/obj", 0, "col", 50)
+	b.PrepareBloomColumn("/obj", 0, "col", 50, 0)
 
 	values := []string{"foo", "bar", "baz"}
 	for _, v := range values {
@@ -863,7 +872,7 @@ func TestBuilder_BloomBytes(t *testing.T) {
 func mustBuildBloomBytes(t *testing.T, objectPath string, sectionIndex int64, columnName, value string, ts time.Time) []byte {
 	t.Helper()
 	tempBuilder := NewBuilder(nil, 0, 0, 1<<20)
-	tempBuilder.PrepareBloomColumn(objectPath, sectionIndex, columnName, 100)
+	tempBuilder.PrepareBloomColumn(objectPath, sectionIndex, columnName, 100, 0)
 	err := tempBuilder.ObserveBloomPosting(BloomObservation{
 		ObjectPath:       objectPath,
 		SectionIndex:     sectionIndex,
@@ -1034,7 +1043,7 @@ func TestBuilder_SplitsBloomAndLabelIntoSeparateSections(t *testing.T) {
 
 	for i := range 4 {
 		col := fmt.Sprintf("bcol%d", i)
-		b.PrepareBloomColumn("/o", 0, col, 10)
+		b.PrepareBloomColumn("/o", 0, col, 10, 0)
 		require.NoError(t, b.ObserveBloomPosting(BloomObservation{ObjectPath: "/o", SectionIndex: 0, ColumnName: col, Value: "v", StreamID: 0, Timestamp: ts, UncompressedSize: 0}))
 	}
 	for _, lv := range []string{"a", "b", "c", "d"} {
@@ -1177,7 +1186,7 @@ func TestBuilder_TimeRange(t *testing.T) {
 	require.Equal(t, base, gotMax)
 
 	// Bloom observation extends the range on both ends.
-	b.PrepareBloomColumn("/a", 0, "svc", 16)
+	b.PrepareBloomColumn("/a", 0, "svc", 16, 0)
 	require.NoError(t, b.ObserveBloomPosting(BloomObservation{ObjectPath: "/a", SectionIndex: 0, ColumnName: "svc", Value: "v", StreamID: 2, Timestamp: base.Add(-time.Hour)}))
 	require.NoError(t, b.ObserveBloomPosting(BloomObservation{ObjectPath: "/a", SectionIndex: 0, ColumnName: "svc", Value: "w", StreamID: 3, Timestamp: base.Add(time.Hour)}))
 
@@ -1197,7 +1206,7 @@ func TestBuilder_TimeRange_BloomOnly(t *testing.T) {
 	b := NewBuilder(nil, 0, 0, 1024)
 	base := time.Unix(6000, 0).UTC()
 
-	b.PrepareBloomColumn("/a", 0, "svc", 16)
+	b.PrepareBloomColumn("/a", 0, "svc", 16, 0)
 	require.NoError(t, b.ObserveBloomPosting(BloomObservation{ObjectPath: "/a", SectionIndex: 0, ColumnName: "svc", Value: "v", StreamID: 1, Timestamp: base}))
 
 	gotMin, gotMax := b.TimeRange()
@@ -1212,7 +1221,7 @@ func TestBuilder_TimeRange_PreparedBloomNoObservation(t *testing.T) {
 	// Label observation sets the range.
 	b.ObserveLabelPosting(LabelObservation{ObjectPath: "/a", SectionIndex: 0, ColumnName: "app", LabelValue: "x", StreamID: 1, Timestamp: base})
 	// Prepared-but-unobserved bloom column must not widen the range.
-	b.PrepareBloomColumn("/a", 0, "svc", 16)
+	b.PrepareBloomColumn("/a", 0, "svc", 16, 0)
 
 	gotMin, gotMax := b.TimeRange()
 	require.Equal(t, base, gotMin)

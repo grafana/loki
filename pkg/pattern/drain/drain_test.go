@@ -711,8 +711,8 @@ func TestDrain_PruneTreeClearsOldBranches(t *testing.T) {
 
 func countNodes(node *Node) int {
 	total := 1
-	for _, child := range node.keyToChildNode {
-		total += countNodes(child)
+	for _, c := range node.children {
+		total += countNodes(c.child)
 	}
 	return total
 }

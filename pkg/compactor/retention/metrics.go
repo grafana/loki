@@ -66,6 +66,7 @@ type markerMetrics struct {
 	tableProcessedTotal           *prometheus.CounterVec
 	tableMarksCreatedTotal        *prometheus.CounterVec
 	tableProcessedDurationSeconds *prometheus.HistogramVec
+	missingChunksTotal            *prometheus.CounterVec
 }
 
 func newMarkerMetrics(r prometheus.Registerer) *markerMetrics {
@@ -86,5 +87,10 @@ func newMarkerMetrics(r prometheus.Registerer) *markerMetrics {
 			Help:      "Time (in seconds) spent in marking table for chunks to delete",
 			Buckets:   []float64{1, 2.5, 5, 10, 20, 40, 90, 360, 600, 1800},
 		}, []string{"table", "status"}),
+		missingChunksTotal: promauto.With(r).NewCounterVec(prometheus.CounterOpts{
+			Namespace: "loki_compactor",
+			Name:      "deletion_missing_chunks_total",
+			Help:      "Total count of chunks which were indexed but missing from the object storage while processing a delete request with a line filter. Only incremented when -compactor.deletion-ignore-missing-chunks is enabled.",
+		}, []string{"table", "user_id"}),
 	}
 }

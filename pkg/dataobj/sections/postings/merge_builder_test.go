@@ -51,6 +51,7 @@ func TestMergeBuilder_AppendLabelEntry_RoundTrip(t *testing.T) {
 		{
 			"kind.int64":              int64(KindLabel),
 			"object_path.utf8":        "/tenant/abc/obj1",
+			"shard_buckets.int64":     int64(0),
 			"section_index.int64":     int64(0),
 			"column_name.utf8":        "env",
 			"label_value.utf8":        "value1",
@@ -58,6 +59,8 @@ func TestMergeBuilder_AppendLabelEntry_RoundTrip(t *testing.T) {
 			"uncompressed_size.int64": int64(4096),
 			"min_timestamp.timestamp": timeVal,
 			"max_timestamp.timestamp": timeVal,
+			"min_shard_bucket.int64":  int64(0),
+			"max_shard_bucket.int64":  int64(0),
 		},
 	}
 
@@ -117,6 +120,7 @@ func TestMergeBuilder_AppendBloomEntry_RoundTrip(t *testing.T) {
 		{
 			"kind.int64":              int64(KindBloom),
 			"object_path.utf8":        "/tenant/abc/obj2",
+			"shard_buckets.int64":     int64(0),
 			"section_index.int64":     int64(1),
 			"column_name.utf8":        "service_name",
 			"label_value.utf8":        nil,
@@ -124,6 +128,8 @@ func TestMergeBuilder_AppendBloomEntry_RoundTrip(t *testing.T) {
 			"uncompressed_size.int64": int64(8192),
 			"min_timestamp.timestamp": timeVal,
 			"max_timestamp.timestamp": timeVal,
+			"min_shard_bucket.int64":  nil,
+			"max_shard_bucket.int64":  nil,
 		},
 	}
 

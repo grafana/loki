@@ -331,7 +331,7 @@ func signV4(req http.Request, accessKeyID, secretAccessKey, sessionToken, locati
 			req.Header.Add("X-Amz-Trailer", strings.ToLower(k))
 		}
 
-		req.Header.Set("Content-Encoding", "aws-chunked")
+		setAwsChunkedContentEncoding(&req)
 		req.Header.Set("x-amz-decoded-content-length", strconv.FormatInt(req.ContentLength, 10))
 	}
 
@@ -395,7 +395,7 @@ func UnsignedTrailer(req http.Request, trailer http.Header) *http.Request {
 		req.Header.Add("X-Amz-Trailer", strings.ToLower(k))
 	}
 
-	req.Header.Set("Content-Encoding", "aws-chunked")
+	setAwsChunkedContentEncoding(&req)
 	req.Header.Set("x-amz-decoded-content-length", strconv.FormatInt(req.ContentLength, 10))
 
 	// Use custom chunked encoding.

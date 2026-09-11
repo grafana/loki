@@ -189,6 +189,7 @@ func getLocalStore(t *testing.T) storage.Store {
 			IngesterName:         "test-ingester",
 			ResyncInterval:       5 * time.Minute,
 			CacheTTL:             24 * time.Hour,
+			IndexReaderMode:      indexshipper.DefaultIndexReaderMode,
 		},
 	}
 
@@ -199,7 +200,6 @@ func getLocalStore(t *testing.T) storage.Store {
 				IndexType:  loki_types.IndexTypeTSDB,
 				ObjectType: loki_types.StorageTypeFileSystem,
 				Schema:     "v13",
-				RowShards:  16,
 				IndexTables: storage_config.IndexPeriodicTableConfig{
 					PeriodicTableConfig: storage_config.PeriodicTableConfig{
 						Prefix: "index_",

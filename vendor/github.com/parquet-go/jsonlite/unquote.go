@@ -53,8 +53,10 @@ func escaped(s string) bool {
 	if len(s) >= 8 {
 		chunks := unsafe.Slice((*uint64)(unsafe.Pointer(unsafe.StringData(s))), len(s)/8)
 		for _, n := range chunks {
-			// Check for high bytes (>= 0x80), backslash, or control chars
-			mask := n | below(n, 0x20) | contains(n, '\\')
+			// Check for backslash or control chars. High bytes (>= 0x80)
+			// are masked out with `&^ n` (see escapeIndex): UTF-8 sequences
+			// never need unescaping, so they must not trigger the slow path.
+			mask := (below(n, 0x20) | contains(n, '\\')) &^ n
 			if (mask & msb) != 0 {
 				return true
 			}

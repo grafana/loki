@@ -20,7 +20,6 @@ package clusterimpl
 
 import (
 	"context"
-	"maps"
 
 	v3orcapb "github.com/cncf/xds/go/xds/data/orca/v3"
 	"google.golang.org/grpc/balancer"
@@ -95,24 +94,10 @@ type picker struct {
 	metrics         *xdsresource.LRSReportEndpointMetricsConfig
 }
 
-func telemetryLabels(ctx context.Context) map[string]string {
-	if ctx == nil {
-		return nil
-	}
-	labels := stats.GetLabels(ctx)
-	if labels == nil {
-		return nil
-	}
-	return labels.TelemetryLabels
-}
-
 func (d *picker) Pick(info balancer.PickInfo) (balancer.PickResult, error) {
-	// Unconditionally set labels if present, even dropped or queued RPC's can
+	// Unconditionally update labels if present, even dropped or queued RPC's can
 	// use these labels.
-	labels := telemetryLabels(info.Ctx)
-	if labels != nil {
-		maps.Copy(labels, d.telemetryLabels)
-	}
+	stats.UpdateLabels(info.Ctx, d.telemetryLabels)
 
 	// Don't drop unless the inner picker is READY. Similar to
 	// https://github.com/grpc/grpc-go/issues/2622.
@@ -167,10 +152,13 @@ func (d *picker) Pick(info balancer.PickInfo) (balancer.PickResult, error) {
 		return pr, err
 	}
 
-	if labels != nil {
-		labels["grpc.lb.locality"] = xdsinternal.LocalityString(lID)
-		labels["grpc.lb.backend_service"] = d.clusterName
-	}
+	stats.UpdateLabels(
+		info.Ctx,
+		map[string]string{
+			"grpc.lb.locality":        xdsinternal.LocalityString(lID),
+			"grpc.lb.backend_service": d.clusterName,
+		},
+	)
 
 	if d.loadStore != nil {
 		locality := clients.Locality{Region: lID.Region, Zone: lID.Zone, SubZone: lID.SubZone}

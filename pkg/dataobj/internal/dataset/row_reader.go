@@ -33,10 +33,14 @@ type RowReaderOptions struct {
 	// Holds a list of predicates that can be sequentially applied to the dataset.
 	Predicates []Predicate
 
-	// Prefetch enables bulk retrieving pages from the dataset when reading
-	// starts. To reduce read latency, this option should only be disabled when
-	// the entire Dataset is already held in memory.
-	Prefetch bool
+	// PrefetchAllOnOpen controls when pages are downloaded.
+	//
+	// If true, all pages are downloaded when the reader is opened.
+	// If false, pages are downloaded lazily as they are read, targeting
+	// [defaultTargetDownloadedBytes] bytes of cached pages at a time. Pages
+	// required for the current read range are always downloaded even if they
+	// exceed the target.
+	PrefetchAllOnOpen bool
 
 	// StatsTracker keeps track of the various reader internal stats.
 	StatsTracker RowReaderStatsTracker
@@ -493,40 +497,25 @@ func (r *RowReader) init(ctx context.Context) error {
 }
 
 func (r *RowReader) prefetchPages(ctx context.Context) error {
-	if !r.opts.Prefetch {
+	if !r.opts.PrefetchAllOnOpen {
 		return nil
 	}
 	return r.dl.Prefetch(ctx)
 }
 
-// allColumns returns the full set of column to read. If r was configured with
-// prefetching, wrapped columns from [rowReaderDownloader] are returned. Otherwise,
-// the columns of the original dataset are returned.
+// allColumns returns the full set of columns to read.
 func (r *RowReader) allColumns() []Column {
-	if r.opts.Prefetch {
-		return r.dl.AllColumns()
-	}
-	return r.dl.OrigColumns()
+	return r.dl.AllColumns()
 }
 
-// primaryColumns returns the primary columns to read. If r was configured with
-// prefetching, wrapped columns from [rowReaderDownloader] are returned. Otherwise,
-// the primary columns of the original dataset are returned.
+// primaryColumns returns the primary columns to read.
 func (r *RowReader) primaryColumns() []Column {
-	if r.opts.Prefetch {
-		return r.dl.PrimaryColumns()
-	}
-	return r.dl.OrigPrimaryColumns()
+	return r.dl.PrimaryColumns()
 }
 
-// secondaryColumns returns the secondary columns to read. If r was configured with
-// prefetching, wrapped columns from [rowReaderDownloader] are returned. Otherwise,
-// the secondary columns of the original dataset are returned.
+// secondaryColumns returns the secondary columns to read.
 func (r *RowReader) secondaryColumns() []Column {
-	if r.opts.Prefetch {
-		return r.dl.SecondaryColumns()
-	}
-	return r.dl.OrigSecondaryColumns()
+	return r.dl.SecondaryColumns()
 }
 
 // validatePredicate ensures that all columns used in a predicate have been
@@ -587,6 +576,11 @@ func (r *RowReader) initDownloader(ctx context.Context) error {
 		r.dl = newRowReaderDownloader(r.opts.Dataset)
 	} else {
 		r.dl.Reset(r.opts.Dataset)
+	}
+
+	r.dl.targetCompressedBytes = defaultTargetDownloadedBytes
+	if r.opts.PrefetchAllOnOpen {
+		r.dl.targetCompressedBytes = 0
 	}
 
 	mask := bitmask.New(len(r.opts.Columns))

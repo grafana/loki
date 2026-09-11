@@ -209,6 +209,58 @@ func (t Transition) MarshalXML(en *xml.Encoder, startElement xml.StartElement) e
 	return en.EncodeElement(transitionWrapper(t), startElement)
 }
 
+// Compression is a MinIO AIStor extension with no S3 equivalent: it compresses
+// matching current object versions in place. Presence of the element enables the
+// action, so Rule carries it as a pointer — unlike Transition, there is no
+// StorageClass to key presence off and Days: 0 legitimately means "immediately".
+//
+// HighCompression selects the strongest level the server offers; without it the
+// rule writes the level ingest uses and only compresses objects stored
+// uncompressed.
+//
+// Unlike Transition and Expiration there is no absolute Date trigger — a one-off
+// sweep is what the compress batch job is for. That also means no custom
+// MarshalJSON: with no embedded time.Time to suppress, every field honors
+// omitempty, and a zero element still marshals as {} because Rule holds it as a
+// pointer and its presence alone enables the action.
+type Compression struct {
+	XMLName          xml.Name       `xml:"Compression" json:"-"`
+	Days             ExpirationDays `xml:"Days,omitempty" json:"Days,omitempty"`
+	HighCompression  bool           `xml:"HighCompression,omitempty" json:"HighCompression,omitempty"`
+	SkipCompressed   bool           `xml:"SkipCompressed,omitempty" json:"SkipCompressed,omitempty"`
+	IncludeEncrypted bool           `xml:"IncludeEncrypted,omitempty" json:"IncludeEncrypted,omitempty"`
+}
+
+// IsDaysNull returns true if days field is null
+func (c *Compression) IsDaysNull() bool {
+	return c == nil || c.Days == ExpirationDays(0)
+}
+
+// IsNull returns true if the element is absent.
+func (c *Compression) IsNull() bool {
+	return c == nil
+}
+
+// NoncurrentVersionCompression is the Compression counterpart for noncurrent
+// object versions. See Compression for why Rule holds it as a pointer.
+type NoncurrentVersionCompression struct {
+	XMLName          xml.Name       `xml:"NoncurrentVersionCompression" json:"-"`
+	NoncurrentDays   ExpirationDays `xml:"NoncurrentDays,omitempty" json:"NoncurrentDays,omitempty"`
+	HighCompression  bool           `xml:"HighCompression,omitempty" json:"HighCompression,omitempty"`
+	SkipCompressed   bool           `xml:"SkipCompressed,omitempty" json:"SkipCompressed,omitempty"`
+	IncludeEncrypted bool           `xml:"IncludeEncrypted,omitempty" json:"IncludeEncrypted,omitempty"`
+}
+
+// IsDaysNull returns true if noncurrent days field is null
+func (n *NoncurrentVersionCompression) IsDaysNull() bool {
+	return n == nil || n.NoncurrentDays == ExpirationDays(0)
+}
+
+// IsNull returns true if the element is absent.
+func (n *NoncurrentVersionCompression) IsNull() bool {
+	return n == nil
+}
+
 // And And Rule for LifecycleTag, to be used in LifecycleRuleFilter
 type And struct {
 	XMLName               xml.Name `xml:"And" json:"-"`
@@ -265,12 +317,11 @@ func (f Filter) MarshalJSON() ([]byte, error) {
 }
 
 // MarshalXML - produces the xml representation of the Filter struct
-// only one of Prefix, And and Tag should be present in the output.
+// at most one of Prefix, And, Tag, ObjectSizeGreaterThan and
+// ObjectSizeLessThan is present in the output.
+// A zero-value Filter marshals as <Filter><Prefix></Prefix></Filter>;
+// suppressing the element entirely is the caller's responsibility.
 func (f Filter) MarshalXML(e *xml.Encoder, start xml.StartElement) error {
-	if f.IsNull() {
-		return nil
-	}
-
 	if err := e.EncodeToken(start); err != nil {
 		return err
 	}
@@ -473,6 +524,8 @@ func (r Rule) MarshalJSON() ([]byte, error) {
 		Prefix                         string                          `json:"Prefix,omitempty"`
 		Status                         string                          `json:"Status"`
 		Transition                     *Transition                     `json:"Transition,omitempty"`
+		Compression                    *Compression                    `json:"Compression,omitempty"`
+		NoncurrentVersionCompression   *NoncurrentVersionCompression   `json:"NoncurrentVersionCompression,omitempty"`
 	}
 	newr := rule{
 		Prefix: r.Prefix,
@@ -504,8 +557,43 @@ func (r Rule) MarshalJSON() ([]byte, error) {
 	if !r.AllVersionsExpiration.IsNull() {
 		newr.AllVersionsExpiration = &r.AllVersionsExpiration
 	}
+	newr.Compression = r.Compression
+	newr.NoncurrentVersionCompression = r.NoncurrentVersionCompression
 
 	return json.Marshal(newr)
+}
+
+// ruleAlias drops Rule's methods so EncodeElement falls back to the default
+// struct-tag encoding.
+type ruleAlias Rule
+
+// ruleWrapper embeds ruleAlias, so it needs no updating when Rule gains a
+// field. Its RuleFilter is shallower than the embedded one, and encoding/xml's
+// depth-based field shadowing suppresses the deeper field, so <Filter> is
+// emitted only through this pointer: nil omits the element, a set pointer
+// emits it (empty) as the last child of <Rule>.
+type ruleWrapper struct {
+	ruleAlias
+	RuleFilter *Filter `xml:"Filter,omitempty"`
+}
+
+// MarshalXML customizes XML encoding of Rule: a rule with neither Filter nor
+// Prefix set emits an empty <Filter><Prefix></Prefix></Filter> as the last
+// child of <Rule> — S3 requires a Filter when no Prefix element is present;
+// the empty <Prefix> child is this library's representation of an empty
+// filter. A rule with only a top-level Prefix omits the Filter element; a
+// non-null Filter marshals through the default encoding in its declared
+// field position. MarshalJSON is unaffected and still omits a null Filter.
+func (r Rule) MarshalXML(e *xml.Encoder, start xml.StartElement) error {
+	if !r.RuleFilter.IsNull() {
+		return e.EncodeElement(ruleAlias(r), start)
+	}
+
+	w := ruleWrapper{ruleAlias: ruleAlias(r)}
+	if r.Prefix == "" {
+		w.RuleFilter = &w.ruleAlias.RuleFilter
+	}
+	return e.EncodeElement(w, start)
 }
 
 // Rule represents a single rule in lifecycle configuration
@@ -522,6 +610,8 @@ type Rule struct {
 	Prefix                         string                         `xml:"Prefix,omitempty" json:"Prefix,omitempty"`
 	Status                         string                         `xml:"Status" json:"Status"`
 	Transition                     Transition                     `xml:"Transition,omitempty" json:"Transition,omitempty"`
+	Compression                    *Compression                   `xml:"Compression,omitempty" json:"Compression,omitempty"`
+	NoncurrentVersionCompression   *NoncurrentVersionCompression  `xml:"NoncurrentVersionCompression,omitempty" json:"NoncurrentVersionCompression,omitempty"`
 }
 
 // Configuration is a collection of Rule objects.

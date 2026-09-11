@@ -503,6 +503,35 @@ func (m *HttpConnectionManager) validate(all bool) error {
 	}
 
 	if all {
+		switch v := interface{}(m.GetDrainTimeoutJitter()).(type) {
+		case interface{ ValidateAll() error }:
+			if err := v.ValidateAll(); err != nil {
+				errors = append(errors, HttpConnectionManagerValidationError{
+					field:  "DrainTimeoutJitter",
+					reason: "embedded message failed validation",
+					cause:  err,
+				})
+			}
+		case interface{ Validate() error }:
+			if err := v.Validate(); err != nil {
+				errors = append(errors, HttpConnectionManagerValidationError{
+					field:  "DrainTimeoutJitter",
+					reason: "embedded message failed validation",
+					cause:  err,
+				})
+			}
+		}
+	} else if v, ok := interface{}(m.GetDrainTimeoutJitter()).(interface{ Validate() error }); ok {
+		if err := v.Validate(); err != nil {
+			return HttpConnectionManagerValidationError{
+				field:  "DrainTimeoutJitter",
+				reason: "embedded message failed validation",
+				cause:  err,
+			}
+		}
+	}
+
+	if all {
 		switch v := interface{}(m.GetDelayedCloseTimeout()).(type) {
 		case interface{ ValidateAll() error }:
 			if err := v.ValidateAll(); err != nil {
@@ -1151,6 +1180,35 @@ func (m *HttpConnectionManager) validate(all bool) error {
 		}
 	}
 
+	if all {
+		switch v := interface{}(m.GetForwardProtoConfig()).(type) {
+		case interface{ ValidateAll() error }:
+			if err := v.ValidateAll(); err != nil {
+				errors = append(errors, HttpConnectionManagerValidationError{
+					field:  "ForwardProtoConfig",
+					reason: "embedded message failed validation",
+					cause:  err,
+				})
+			}
+		case interface{ Validate() error }:
+			if err := v.Validate(); err != nil {
+				errors = append(errors, HttpConnectionManagerValidationError{
+					field:  "ForwardProtoConfig",
+					reason: "embedded message failed validation",
+					cause:  err,
+				})
+			}
+		}
+	} else if v, ok := interface{}(m.GetForwardProtoConfig()).(interface{ Validate() error }); ok {
+		if err := v.Validate(); err != nil {
+			return HttpConnectionManagerValidationError{
+				field:  "ForwardProtoConfig",
+				reason: "embedded message failed validation",
+				cause:  err,
+			}
+		}
+	}
+
 	oneofRouteSpecifierPresent := false
 	switch v := m.RouteSpecifier.(type) {
 	case *HttpConnectionManager_Rds:
@@ -1392,6 +1450,108 @@ var _ interface {
 var _HttpConnectionManager_ServerName_Pattern = regexp.MustCompile("^[^\x00\n\r]*$")
 
 var _HttpConnectionManager_Via_Pattern = regexp.MustCompile("^[^\x00\n\r]*$")
+
+// Validate checks the field values on ForwardProtoConfig with the rules
+// defined in the proto definition for this message. If any rules are
+// violated, the first error encountered is returned, or nil if there are no violations.
+func (m *ForwardProtoConfig) Validate() error {
+	return m.validate(false)
+}
+
+// ValidateAll checks the field values on ForwardProtoConfig with the rules
+// defined in the proto definition for this message. If any rules are
+// violated, the result is a list of violation errors wrapped in
+// ForwardProtoConfigMultiError, or nil if none found.
+func (m *ForwardProtoConfig) ValidateAll() error {
+	return m.validate(true)
+}
+
+func (m *ForwardProtoConfig) validate(all bool) error {
+	if m == nil {
+		return nil
+	}
+
+	var errors []error
+
+	if len(errors) > 0 {
+		return ForwardProtoConfigMultiError(errors)
+	}
+
+	return nil
+}
+
+// ForwardProtoConfigMultiError is an error wrapping multiple validation errors
+// returned by ForwardProtoConfig.ValidateAll() if the designated constraints
+// aren't met.
+type ForwardProtoConfigMultiError []error
+
+// Error returns a concatenation of all the error messages it wraps.
+func (m ForwardProtoConfigMultiError) Error() string {
+	msgs := make([]string, 0, len(m))
+	for _, err := range m {
+		msgs = append(msgs, err.Error())
+	}
+	return strings.Join(msgs, "; ")
+}
+
+// AllErrors returns a list of validation violation errors.
+func (m ForwardProtoConfigMultiError) AllErrors() []error { return m }
+
+// ForwardProtoConfigValidationError is the validation error returned by
+// ForwardProtoConfig.Validate if the designated constraints aren't met.
+type ForwardProtoConfigValidationError struct {
+	field  string
+	reason string
+	cause  error
+	key    bool
+}
+
+// Field function returns field value.
+func (e ForwardProtoConfigValidationError) Field() string { return e.field }
+
+// Reason function returns reason value.
+func (e ForwardProtoConfigValidationError) Reason() string { return e.reason }
+
+// Cause function returns cause value.
+func (e ForwardProtoConfigValidationError) Cause() error { return e.cause }
+
+// Key function returns key value.
+func (e ForwardProtoConfigValidationError) Key() bool { return e.key }
+
+// ErrorName returns error name.
+func (e ForwardProtoConfigValidationError) ErrorName() string {
+	return "ForwardProtoConfigValidationError"
+}
+
+// Error satisfies the builtin error interface
+func (e ForwardProtoConfigValidationError) Error() string {
+	cause := ""
+	if e.cause != nil {
+		cause = fmt.Sprintf(" | caused by: %v", e.cause)
+	}
+
+	key := ""
+	if e.key {
+		key = "key for "
+	}
+
+	return fmt.Sprintf(
+		"invalid %sForwardProtoConfig.%s: %s%s",
+		key,
+		e.field,
+		e.reason,
+		cause)
+}
+
+var _ error = ForwardProtoConfigValidationError{}
+
+var _ interface {
+	Field() string
+	Reason() string
+	Key() bool
+	Cause() error
+	ErrorName() string
+} = ForwardProtoConfigValidationError{}
 
 // Validate checks the field values on LocalReplyConfig with the rules defined
 // in the proto definition for this message. If any rules are violated, the
@@ -3213,6 +3373,8 @@ func (m *HttpConnectionManager_Tracing) validate(all bool) error {
 
 	// no validation rules for UpstreamOperation
 
+	// no validation rules for NoContextPropagation
+
 	if len(errors) > 0 {
 		return HttpConnectionManager_TracingMultiError(errors)
 	}
@@ -3496,6 +3658,8 @@ func (m *HttpConnectionManager_SetCurrentClientCertDetails) validate(all bool) e
 	// no validation rules for Dns
 
 	// no validation rules for Uri
+
+	// no validation rules for Format
 
 	if len(errors) > 0 {
 		return HttpConnectionManager_SetCurrentClientCertDetailsMultiError(errors)

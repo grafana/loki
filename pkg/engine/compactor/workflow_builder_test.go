@@ -19,9 +19,8 @@ func TestBuildIndexMergePlan_SingleRoot(t *testing.T) {
 			{Sections: []*compactionv2pb.SectionRef{{ObjectPath: "i1", SectionIndex: 0}}},
 		},
 	}
-	output := "indexes/tenants/t1/aa/aaaa"
 
-	plan := buildIndexMergePlan("t1", window, task, output)
+	plan := buildIndexMergePlan("t1", window, task)
 
 	root, err := plan.Root()
 	require.NoError(t, err, "plan must have exactly one root node")
@@ -30,7 +29,6 @@ func TestBuildIndexMergePlan_SingleRoot(t *testing.T) {
 	require.True(t, ok, "root is %T, want *physical.IndexMerge", root)
 	require.Equal(t, "t1", node.Tenant)
 	require.Equal(t, window.UnixNano(), node.ToCWindowStart)
-	require.Equal(t, output, node.OutputIndexPath)
 	require.Equal(t, task.Runs, node.Runs)
 }
 
@@ -45,8 +43,8 @@ func TestBuildIndexMergePlan_AssignsFreshNodeID(t *testing.T) {
 		Runs:   []*compactionv2pb.RunRef{{Sections: []*compactionv2pb.SectionRef{{ObjectPath: "i0", SectionIndex: 0}}}},
 	}
 
-	p1 := buildIndexMergePlan("t1", window, task, "out1")
-	p2 := buildIndexMergePlan("t1", window, task, "out2")
+	p1 := buildIndexMergePlan("t1", window, task)
+	p2 := buildIndexMergePlan("t1", window, task)
 
 	n1, err := p1.Root()
 	require.NoError(t, err)
@@ -66,7 +64,7 @@ func TestBuildLogMergePlan(t *testing.T) {
 		},
 	}
 
-	plan := buildLogMergePlan("t1", window, task, "indexes/bb/out")
+	plan := buildLogMergePlan("t1", window, task)
 
 	root, err := plan.Root()
 	require.NoError(t, err, "plan must have exactly one root node")
@@ -76,14 +74,13 @@ func TestBuildLogMergePlan(t *testing.T) {
 	require.Equal(t, "t1", node.Tenant)
 	require.Equal(t, window.UnixNano(), node.ToCWindowStart)
 	require.Equal(t, task.Runs, node.Runs)
-	require.Equal(t, []string{"label:service_name"}, node.SortSchema)
-	require.Equal(t, "indexes/bb/out", node.OutputIndexPath)
+	require.Equal(t, task.SortSchema, node.SortSchema)
 
 	task2 := &compactionv2pb.TaskSpec{
 		Tenant: "t1",
-		Runs:   []*compactionv2pb.RunRef{{Sections: []*compactionv2pb.SectionRef{{ObjectPath: "logs/log-0"}}}},
+		Runs:   []*compactionv2pb.RunRef{{Sections: []*compactionv2pb.SectionRef{{ObjectPath: "obj2"}}}},
 	}
-	p2 := buildLogMergePlan("t1", window, task2, "out2")
+	p2 := buildLogMergePlan("t1", window, task2)
 	p2Root, err := p2.Root()
 	require.NoError(t, err, "plan must have exactly one root node")
 

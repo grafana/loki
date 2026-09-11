@@ -16,13 +16,13 @@ This is not an official MaxMind API.
 go get github.com/oschwald/maxminddb-golang/v2
 ```
 
-## Version 2.0 Features
+## Version 2 Features
 
-Version 2.0 includes significant improvements:
+Version 2 includes significant improvements:
 
 - **Modern API**: Uses `netip.Addr` instead of `net.IP` for better performance
-- **Custom Unmarshaling**: Implement `Unmarshaler` interface for
-  zero-allocation decoding
+- **Custom Unmarshaling**: Implement `CursorUnmarshaler` for
+  reflection-free custom decoding
 - **Network Iteration**: Iterate over all networks in a database with
   `Networks()` and `NetworksWithin()`
 - **Enhanced Performance**: Optimized data structures and decoding paths
@@ -93,6 +93,40 @@ ip := netip.MustParseAddr("1.2.3.4")
 err = db.Lookup(ip).Decode(&record)
 ```
 
+### Untrusted Database Files
+
+Call `Reader.Verify` once immediately after opening an untrusted database and
+before performing lookups or decoding records:
+
+```go
+if err := db.Verify(); err != nil {
+	log.Fatal(err)
+}
+```
+
+Verification applies to the database contents at the time of the call. Keep
+those contents immutable for the Reader's lifetime: do not modify a slice
+passed to `OpenBytes` or rewrite or truncate a memory-mapped file in place.
+Open and verify a new Reader when publishing an updated database.
+
+Reflection decoding limits each operation to 32,768 declared container child
+slots; map keys and values each consume one slot. Maps and slices reserve their
+children before allocation or traversal. Materialized string and byte payloads
+also have an operation-wide bound: every delivered payload byte draws from a
+shared 2 MiB allowance. Materialized map keys and keys inspected by `DecodePath`
+draw their full size from the same payload allowance.
+
+Decoding into `any` activates these limits even when the root is a scalar. A
+standalone scalar decoded into a directly typed destination or a named
+empty-interface type remains unbudgeted because it cannot amplify.
+A non-empty `DecodePath` shares one set of limits between path navigation and
+the selected value. Skipping an unknown field still charges any inline
+containers, but does not follow pointer targets or charge payload that is not
+materialized. Custom unmarshalers and low-level cursor traversal control and
+must bound their own work; `Reader.Verify` validates the complete data section
+and the original metadata graph, including unknown metadata fields, before
+those APIs are used with untrusted input.
+
 ### Custom Struct Decoding
 
 ```go
@@ -104,59 +138,81 @@ type City struct {
 			German  string `maxminddb:"de"`
 		} `maxminddb:"names"`
 	} `maxminddb:"country"`
+	Subdivisions []struct {
+		ISOCode string `maxminddb:"iso_code"`
+	} `maxminddb:"subdivisions,maxsize:32"`
 }
 
 var city City
 err = db.Lookup(ip).Decode(&city)
 ```
 
+The `maxsize:N` tag option rejects a matching MMDB map or array with more than
+`N` entries, or a matching string or byte value with more than `N` bytes. An
+MMDB array decoded into `[]byte` is covered as well. The check happens before
+the matching field is allocated or mutated and is supported by both reflection
+decoding and `maxminddb-gen`. Tag options use the `encoding/json/v2` comma and
+colon grammar, for example `maxminddb:"subdivisions,maxsize:32"`. Because a
+comma delimits options, quote a literal field name containing a comma with the
+same grammar, for example `maxminddb:"'city,name'"`. For a supported custom
+field type, `maxsize` checks every size-bearing MMDB kind (map, array, string,
+and bytes) before invoking the unmarshaler because the encodings accepted by a
+callback cannot be inferred from its Go type.
+
 ### High-Performance Custom Unmarshaling
 
-```go
-type FastCity struct {
-	CountryISO string
-	CityName   string
-}
+For application-owned structs, `maxminddb-gen` can generate an
+`UnmarshalMaxMindDBCursor` method that avoids reflection. The generator is
+versioned with this module and remains optional; types with neither generated
+nor handwritten custom unmarshaling methods continue to use reflection.
 
-func (c *FastCity) UnmarshalMaxMindDB(d *maxminddb.Decoder) error {
-	mapIter, size, err := d.ReadMap()
+Add the tool to the consuming module's `go.mod` and add a generation directive
+in the package that owns the target types:
+
+```go.mod
+tool github.com/oschwald/maxminddb-golang/v2/maxminddb-gen
+```
+
+```go
+//go:generate go tool maxminddb-gen $GOFILE
+```
+
+This discovers the exported structs declared in the directive's source file.
+For `models.go`, it writes `models_maxminddb.go`; recognized build suffixes and
+source build constraints are preserved. Constrained inputs must match the
+generation environment; multiple inputs share the intersection of their
+constraints. Use `-output` to override the default. Run `go generate ./...` and
+check the generated file into source control. See
+[`maxminddb-gen/README.md`](maxminddb-gen/README.md) for supported types,
+diagnostics, and reproducible CI usage.
+
+For new handwritten decoders, implement `mmdbdata.CursorUnmarshaler`. Cursor
+reads return an opaque successor positioned after the decoded value, allowing
+nested custom decoding to continue without rescanning it.
+
+The older `UnmarshalMaxMindDB(*mmdbdata.Decoder) error` callback is deprecated.
+It remains supported throughout v2 but is planned for removal in v3; see
+[GitHub #224](https://github.com/oschwald/maxminddb-golang/issues/224). When a
+type implements both callbacks, `UnmarshalMaxMindDBCursor` takes precedence.
+
+Custom unmarshalers control their own traversal and allocation. If a database
+is not trusted, an implementation should use one aggregate per-record work
+budget across nested calls. The budget should cover recursion, collection
+entries, repeated pointer targets, and produced string or byte payloads; the
+reflection decoder's expansion guard is not applied inside custom callbacks.
+
+```go
+type Label string
+
+func (label *Label) UnmarshalMaxMindDBCursor(
+	cursor mmdbdata.Cursor,
+) (mmdbdata.Cursor, error) {
+	value, next, err := cursor.ReadString()
 	if err != nil {
-		return err
+		return mmdbdata.Cursor{}, mmdbdata.NormalizeUnmarshalError[Label](err)
 	}
-	// Pre-allocate with correct capacity for better performance
-	_ = size // Use for pre-allocation if storing map data
-	for key, err := range mapIter {
-		if err != nil {
-			return err
-		}
-		switch string(key) {
-		case "country":
-			countryIter, _, err := d.ReadMap()
-			if err != nil {
-				return err
-			}
-			for countryKey, countryErr := range countryIter {
-				if countryErr != nil {
-					return countryErr
-				}
-				if string(countryKey) == "iso_code" {
-					c.CountryISO, err = d.ReadString()
-					if err != nil {
-						return err
-					}
-				} else {
-					if err := d.SkipValue(); err != nil {
-						return err
-					}
-				}
-			}
-		default:
-			if err := d.SkipValue(); err != nil {
-				return err
-			}
-		}
-	}
-	return nil
+	*label = Label(value)
+	return next, nil
 }
 ```
 
@@ -222,12 +278,14 @@ regardless of the data provider.
 
 ## Performance Tips
 
-1. **Reuse Reader instances**: The `Reader` is thread-safe and should be reused
-   across goroutines
+1. **Reuse Reader instances**: Lookups, decoding, and iteration are safe to run
+   concurrently. `Close` invalidates outstanding results, Reader-backed cursors,
+   and their derived traversal handles; it must not run concurrently with their
+   use and should run only after readers are done.
 2. **Use specific structs**: Only decode the fields you need rather than using
    `any`
-3. **Implement Unmarshaler**: For high-throughput applications, implement
-   custom unmarshaling
+3. **Generate a decoder**: For high-throughput applications, use
+   `maxminddb-gen`, or implement `CursorUnmarshaler` for custom decoding
 4. **Consider caching**: Use `Result.Offset()` as a cache key for database
    records
 

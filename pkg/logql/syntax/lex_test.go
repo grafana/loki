@@ -15,6 +15,8 @@ func TestLex(t *testing.T) {
 		expected []int
 	}{
 		{`{foo="bar"}`, []int{OPEN_BRACE, IDENTIFIER, EQ, STRING, CLOSE_BRACE}},
+		{`{variants="bar"}`, []int{OPEN_BRACE, IDENTIFIER, EQ, STRING, CLOSE_BRACE}},
+		{`{of="bar"}`, []int{OPEN_BRACE, IDENTIFIER, EQ, STRING, CLOSE_BRACE}},
 		{"{foo=\"bar\"} |~  `\\w+`", []int{OPEN_BRACE, IDENTIFIER, EQ, STRING, CLOSE_BRACE, PIPE_MATCH, STRING}},
 		{`{foo="bar"} |~ "\\w+"`, []int{OPEN_BRACE, IDENTIFIER, EQ, STRING, CLOSE_BRACE, PIPE_MATCH, STRING}},
 		{`{foo="bar"} |~ "\\w+" | latency > 250ms`, []int{OPEN_BRACE, IDENTIFIER, EQ, STRING, CLOSE_BRACE, PIPE_MATCH, STRING, PIPE, IDENTIFIER, GT, DURATION}},
@@ -100,8 +102,11 @@ func TestLex(t *testing.T) {
 		{`123.45`, []int{NUMBER}},
 		{`-123.45`, []int{SUB, NUMBER}},
 		{`123KB`, []int{BYTES}},
+		{`123PB`, []int{BYTES}},
+		{`123PiB`, []int{BYTES}},
 		// Skip -123KB: Negative bytes are explicitly not supported in the Lexer.
 		{`123ms`, []int{DURATION}},
+		{`1e6`, []int{NUMBER}},
 		{`-123ms`, []int{DURATION}},
 		{`34 + - 123`, []int{NUMBER, ADD, SUB, NUMBER}},
 		{`34 + -123`, []int{NUMBER, ADD, SUB, NUMBER}},
@@ -112,6 +117,9 @@ func TestLex(t *testing.T) {
 		{`{foo="bar"} | logfmt | bytes  < 1B`, []int{OPEN_BRACE, IDENTIFIER, EQ, STRING, CLOSE_BRACE, PIPE, LOGFMT, PIPE, IDENTIFIER, LT, BYTES}},
 		{`0b01`, []int{NUMBER}},
 		{`0b10`, []int{NUMBER}},
+		{`0x1A`, []int{NUMBER}},
+		{`0x1p3`, []int{NUMBER}},
+		{`0x1P3`, []int{NUMBER}},
 	} {
 		t.Run(tc.input, func(t *testing.T) {
 			actual := []int{}
@@ -202,55 +210,5 @@ func Test_parseDuration(t *testing.T) {
 
 		require.Equal(t, err, nil)
 		require.Equal(t, tc.expected, actual)
-	}
-}
-
-func TestLex_Variants(t *testing.T) {
-	for _, tc := range []struct {
-		input    string
-		expected []int
-	}{
-		{
-			`variants(count_over_time({foo="bar"}[5m])) of ({foo="bar"}[5m])`,
-			[]int{VARIANTS, OPEN_PARENTHESIS, COUNT_OVER_TIME, OPEN_PARENTHESIS, OPEN_BRACE, IDENTIFIER, EQ, STRING, CLOSE_BRACE, RANGE, CLOSE_PARENTHESIS, CLOSE_PARENTHESIS, OF,
-				OPEN_PARENTHESIS, OPEN_BRACE, IDENTIFIER, EQ, STRING, CLOSE_BRACE, RANGE, CLOSE_PARENTHESIS},
-		},
-		{
-			`variants(bytes_over_time({foo="bar"}[5m]), count_over_time({foo="bar"}[5m])) of ({foo="bar"}[5m])`,
-			[]int{VARIANTS, OPEN_PARENTHESIS, BYTES_OVER_TIME, OPEN_PARENTHESIS, OPEN_BRACE, IDENTIFIER, EQ, STRING, CLOSE_BRACE, RANGE, CLOSE_PARENTHESIS, COMMA,
-				COUNT_OVER_TIME, OPEN_PARENTHESIS, OPEN_BRACE, IDENTIFIER, EQ, STRING, CLOSE_BRACE, RANGE, CLOSE_PARENTHESIS, CLOSE_PARENTHESIS,
-				OF, OPEN_PARENTHESIS, OPEN_BRACE, IDENTIFIER, EQ, STRING, CLOSE_BRACE, RANGE, CLOSE_PARENTHESIS},
-		},
-		{
-			`variants(count_over_time({foo="bar"}[5m]), rate({foo="bar"}[5m])) of ({foo="bar"} | logfmt | number="42"[5m])`,
-			[]int{VARIANTS, OPEN_PARENTHESIS, COUNT_OVER_TIME, OPEN_PARENTHESIS, OPEN_BRACE, IDENTIFIER, EQ, STRING, CLOSE_BRACE, RANGE, CLOSE_PARENTHESIS, COMMA,
-				RATE, OPEN_PARENTHESIS, OPEN_BRACE, IDENTIFIER, EQ, STRING, CLOSE_BRACE, RANGE, CLOSE_PARENTHESIS, CLOSE_PARENTHESIS, OF,
-				OPEN_PARENTHESIS, OPEN_BRACE, IDENTIFIER, EQ, STRING, CLOSE_BRACE, PIPE, LOGFMT, PIPE, IDENTIFIER, EQ, STRING, RANGE, CLOSE_PARENTHESIS},
-		},
-		{
-			`variants(sum by (app) (count_over_time({foo="bar"}[5m])), rate({foo="bar"}[5m])) of ({foo="bar"} | logfmt | number="42"[5m])`,
-			[]int{VARIANTS, OPEN_PARENTHESIS, SUM, BY, OPEN_PARENTHESIS, IDENTIFIER, CLOSE_PARENTHESIS, OPEN_PARENTHESIS, COUNT_OVER_TIME, OPEN_PARENTHESIS, OPEN_BRACE, IDENTIFIER, EQ, STRING, CLOSE_BRACE, RANGE, CLOSE_PARENTHESIS, CLOSE_PARENTHESIS, COMMA,
-				RATE, OPEN_PARENTHESIS, OPEN_BRACE, IDENTIFIER, EQ, STRING, CLOSE_BRACE, RANGE, CLOSE_PARENTHESIS, CLOSE_PARENTHESIS, OF,
-				OPEN_PARENTHESIS, OPEN_BRACE, IDENTIFIER, EQ, STRING, CLOSE_BRACE, PIPE, LOGFMT, PIPE, IDENTIFIER, EQ, STRING, RANGE, CLOSE_PARENTHESIS},
-		},
-	} {
-		t.Run(tc.input, func(t *testing.T) {
-			actual := []int{}
-			l := lexer{
-				Scanner: Scanner{
-					Mode: scanner.SkipComments | scanner.ScanStrings,
-				},
-			}
-			l.Init(strings.NewReader(tc.input))
-			var lval syntaxSymType
-			for {
-				tok := l.Lex(&lval)
-				if tok == 0 {
-					break
-				}
-				actual = append(actual, tok)
-			}
-			require.Equal(t, tc.expected, actual)
-		})
 	}
 }

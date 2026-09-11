@@ -735,7 +735,12 @@ func newProxyProtocolListener(httpListener net.Listener, readHeaderTimeout time.
 	// NOTE: go-proxyproto supports non-PROXY, PROXY v1 and PROXY v2 protocols via the same listener.
 	// Therefore, enabling this feature does not break existing setups.
 	return &proxyproto.Listener{
-		Listener:          httpListener,
+		Listener: httpListener,
+		// go-proxyproto defaults to requiring a PROXY header. Dskit deliberately supports
+		// mixed PROXY and non-PROXY connections when this listener is enabled.
+		ConnPolicy: func(proxyproto.ConnPolicyOptions) (proxyproto.Policy, error) {
+			return proxyproto.USE, nil
+		},
 		ReadHeaderTimeout: readHeaderTimeout,
 	}
 }

@@ -34,6 +34,9 @@ install_dist_dependencies() {
     # Install gox and zip for loki `dist` target
     GO111MODULE=on go install github.com/mitchellh/gox@9f71238
     apt-get install -qy zip
+
+    # Install nfpm for building .deb/.rpm packages
+    GO111MODULE=on go install github.com/goreleaser/nfpm/v2/cmd/nfpm@v2.45.2
 }
 
 install_lint_dependencies() {

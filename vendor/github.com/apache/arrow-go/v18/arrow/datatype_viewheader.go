@@ -31,7 +31,7 @@ const (
 )
 
 func IsViewInline(length int) bool {
-	return length < viewInlineSize
+	return length <= viewInlineSize
 }
 
 // ViewHeader is a variable length string (utf8) or byte slice with

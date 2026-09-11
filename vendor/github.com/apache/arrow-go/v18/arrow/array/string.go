@@ -57,6 +57,9 @@ func (a *String) Reset(data arrow.ArrayData) {
 
 // Value returns the slice at index i. This value should not be mutated.
 func (a *String) Value(i int) string {
+	if i < 0 || i >= a.data.length {
+		panic("arrow/array: index out of range")
+	}
 	i = i + a.data.offset
 	return a.values[a.offsets[i]:a.offsets[i+1]]
 }
@@ -262,6 +265,9 @@ func (a *LargeString) Reset(data arrow.ArrayData) {
 
 // Value returns the slice at index i. This value should not be mutated.
 func (a *LargeString) Value(i int) string {
+	if i < 0 || i >= a.data.length {
+		panic("arrow/array: index out of range")
+	}
 	i = i + a.data.offset
 	return a.values[a.offsets[i]:a.offsets[i+1]]
 }
@@ -629,6 +635,7 @@ func (b *StringBuilder) Unmarshal(dec *json.Decoder) error {
 
 func (b *StringBuilder) UnmarshalJSON(data []byte) error {
 	dec := json.NewDecoder(bytes.NewReader(data))
+	dec.UseNumber()
 	t, err := dec.Token()
 	if err != nil {
 		return err
@@ -722,6 +729,7 @@ func (b *LargeStringBuilder) Unmarshal(dec *json.Decoder) error {
 
 func (b *LargeStringBuilder) UnmarshalJSON(data []byte) error {
 	dec := json.NewDecoder(bytes.NewReader(data))
+	dec.UseNumber()
 	t, err := dec.Token()
 	if err != nil {
 		return err
@@ -770,7 +778,7 @@ func (b *StringViewBuilder) UnmarshalOne(dec *json.Decoder) error {
 	default:
 		return &json.UnmarshalTypeError{
 			Value:  fmt.Sprint(t),
-			Type:   reflect.TypeOf([]byte{}),
+			Type:   reflect.TypeOf(string("")),
 			Offset: dec.InputOffset(),
 		}
 	}
@@ -788,13 +796,14 @@ func (b *StringViewBuilder) Unmarshal(dec *json.Decoder) error {
 
 func (b *StringViewBuilder) UnmarshalJSON(data []byte) error {
 	dec := json.NewDecoder(bytes.NewReader(data))
+	dec.UseNumber()
 	t, err := dec.Token()
 	if err != nil {
 		return err
 	}
 
 	if delim, ok := t.(json.Delim); !ok || delim != '[' {
-		return fmt.Errorf("binary view builder must unpack from json array, found %s", delim)
+		return fmt.Errorf("string view builder must unpack from json array, found %s", delim)
 	}
 
 	return b.Unmarshal(dec)

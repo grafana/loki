@@ -23,6 +23,7 @@ func TestConfig_ValidateRejectsBadValues(t *testing.T) {
 		{"toc consolidate timeout zero", func(c *Config) { c.ToCConsolidateTimeout = 0 }, errInvalidToCConsolidateTimeout},
 		{"max runs zero", func(c *Config) { c.MaxRunsPerTask = 0 }, errInvalidMaxRunsPerTask},
 		{"max runs negative", func(c *Config) { c.MaxRunsPerTask = -1 }, errInvalidMaxRunsPerTask},
+		{"window lookback negative", func(c *Config) { c.WindowLookback = -1 }, errInvalidWindowLookback},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {

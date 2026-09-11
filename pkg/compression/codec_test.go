@@ -1,6 +1,18 @@
 package compression
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/stretchr/testify/require"
+)
+
+func TestCodecs(t *testing.T) {
+	got := Codecs()
+	require.Equal(t, supportedCodecs, got)
+
+	got[0] = Zstd
+	require.Equal(t, None, supportedCodecs[0], "mutating the returned slice must not affect supportedCodecs")
+}
 
 func TestParseEncoding(t *testing.T) {
 	tests := []struct {

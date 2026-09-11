@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
-	"strings"
 	"sync"
 	"time"
 )
@@ -78,9 +77,8 @@ func (b *ExternalCredentialsProviderBuilder) Build() (provider *ExternalCredenti
 }
 
 func (provider *ExternalCredentialsProvider) getCredentials() (session *sessionCredentials, err error) {
-	args := strings.Fields(provider.processCommand)
-	if len(args) == 0 {
-		err = errors.New("process_command is empty")
+	args, err := splitProcessCommand(provider.processCommand)
+	if err != nil {
 		return
 	}
 

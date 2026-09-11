@@ -58,6 +58,17 @@ type IAM struct {
 	// Region configurable custom region for STS
 	Region string
 
+	// ExpiryWindow configures how long before the actual credential
+	// expiration the credentials are considered expired and refreshed.
+	// The zero value keeps the default behavior of refreshing once 80%
+	// of the credential lifetime has elapsed. A positive value refreshes
+	// that long before the actual expiration; a value that meets or
+	// exceeds the credential lifetime places the effective expiration at
+	// or before the moment of retrieval, so the credentials are refreshed
+	// on every subsequent retrieval. A negative value behaves like the
+	// default.
+	ExpiryWindow time.Duration
+
 	// Support for container authorization token https://docs.aws.amazon.com/sdkref/latest/guide/feature-container-credentials.html
 	Container struct {
 		AuthorizationToken     string
@@ -92,6 +103,15 @@ func NewIAM(endpoint string) *Credentials {
 	return New(&IAM{
 		Endpoint: endpoint,
 	})
+}
+
+// expiryWindow returns the configured ExpiryWindow, falling back to
+// DefaultExpiryWindow when unset or negative.
+func (m *IAM) expiryWindow() time.Duration {
+	if m.ExpiryWindow <= 0 {
+		return DefaultExpiryWindow
+	}
+	return m.ExpiryWindow
 }
 
 // RetrieveWithCredContext is like Retrieve with Cred Context
@@ -151,6 +171,8 @@ func (m *IAM) RetrieveWithCredContext(cc *CredContext) (Value, error) {
 		client = defaultCredContext.Client
 	}
 
+	ctx := cc.requestContext()
+
 	endpoint := m.Endpoint
 
 	switch {
@@ -184,7 +206,11 @@ func (m *IAM) RetrieveWithCredContext(cc *CredContext) (Value, error) {
 
 		stsWebIdentityCreds, err := creds.RetrieveWithCredContext(cc)
 		if err == nil {
-			m.SetExpiration(creds.Expiration(), DefaultExpiryWindow)
+			// Use the raw credential expiration, not creds.Expiration():
+			// the inner provider has already reduced its own expiration by
+			// DefaultExpiryWindow, and applying a window to the reduced
+			// value would compound the two.
+			m.SetExpiration(stsWebIdentityCreds.Expiration, m.expiryWindow())
 		}
 		return stsWebIdentityCreds, err
 
@@ -193,11 +219,11 @@ func (m *IAM) RetrieveWithCredContext(cc *CredContext) (Value, error) {
 			endpoint = fmt.Sprintf("%s%s", DefaultECSRoleEndpoint, relativeURI)
 		}
 
-		roleCreds, err = getEcsTaskCredentials(client, endpoint, token)
+		roleCreds, err = getEcsTaskCredentials(ctx, client, endpoint, token)
 
 	case tokenFile != "" && fullURI != "":
 		endpoint = fullURI
-		roleCreds, err = getEKSPodIdentityCredentials(client, endpoint, tokenFile)
+		roleCreds, err = getEKSPodIdentityCredentials(ctx, client, endpoint, tokenFile)
 
 	case fullURI != "":
 		if len(endpoint) == 0 {
@@ -211,17 +237,16 @@ func (m *IAM) RetrieveWithCredContext(cc *CredContext) (Value, error) {
 			}
 		}
 
-		roleCreds, err = getEcsTaskCredentials(client, endpoint, token)
+		roleCreds, err = getEcsTaskCredentials(ctx, client, endpoint, token)
 
 	default:
-		roleCreds, err = getCredentials(client, endpoint)
+		roleCreds, err = getCredentials(ctx, client, endpoint)
 	}
 
 	if err != nil {
 		return Value{}, err
 	}
-	// Expiry window is set to 10secs.
-	m.SetExpiration(roleCreds.Expiration, DefaultExpiryWindow)
+	m.SetExpiration(roleCreds.Expiration, m.expiryWindow())
 
 	return Value{
 		AccessKeyID:     roleCreds.AccessKeyID,
@@ -273,8 +298,8 @@ func getIAMRoleURL(endpoint string) (*url.URL, error) {
 // with the current EC2 service. If there are no credentials,
 // or there is an error making or receiving the request.
 // http://docs.aws.amazon.com/AWSEC2/latest/UserGuide/iam-roles-for-amazon-ec2.html
-func listRoleNames(client *http.Client, u *url.URL, token string) ([]string, error) {
-	req, err := http.NewRequest(http.MethodGet, u.String(), nil)
+func listRoleNames(ctx context.Context, client *http.Client, u *url.URL, token string) ([]string, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u.String(), nil)
 	if err != nil {
 		return nil, err
 	}
@@ -303,8 +328,8 @@ func listRoleNames(client *http.Client, u *url.URL, token string) ([]string, err
 	return credsList, nil
 }
 
-func getEcsTaskCredentials(client *http.Client, endpoint, token string) (ec2RoleCredRespBody, error) {
-	req, err := http.NewRequest(http.MethodGet, endpoint, nil)
+func getEcsTaskCredentials(ctx context.Context, client *http.Client, endpoint, token string) (ec2RoleCredRespBody, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
 	if err != nil {
 		return ec2RoleCredRespBody{}, err
 	}
@@ -330,20 +355,20 @@ func getEcsTaskCredentials(client *http.Client, endpoint, token string) (ec2Role
 	return respCreds, nil
 }
 
-func getEKSPodIdentityCredentials(client *http.Client, endpoint string, tokenFile string) (ec2RoleCredRespBody, error) {
+func getEKSPodIdentityCredentials(ctx context.Context, client *http.Client, endpoint string, tokenFile string) (ec2RoleCredRespBody, error) {
 	if tokenFile != "" {
 		bytes, err := os.ReadFile(tokenFile)
 		if err != nil {
 			return ec2RoleCredRespBody{}, fmt.Errorf("getEKSPodIdentityCredentials: failed to read token file:%s", err)
 		}
 		token := string(bytes)
-		return getEcsTaskCredentials(client, endpoint, token)
+		return getEcsTaskCredentials(ctx, client, endpoint, token)
 	}
 	return ec2RoleCredRespBody{}, fmt.Errorf("getEKSPodIdentityCredentials: no tokenFile found")
 }
 
-func fetchIMDSToken(client *http.Client, endpoint string) (string, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+func fetchIMDSToken(ctx context.Context, client *http.Client, endpoint string) (string, error) {
+	ctx, cancel := context.WithTimeout(ctx, time.Second)
 	defer cancel()
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodPut, endpoint+TokenPath, nil)
@@ -371,14 +396,18 @@ func fetchIMDSToken(client *http.Client, endpoint string) (string, error) {
 //
 // If the credentials cannot be found, or there is an error
 // reading the response an error will be returned.
-func getCredentials(client *http.Client, endpoint string) (ec2RoleCredRespBody, error) {
+func getCredentials(ctx context.Context, client *http.Client, endpoint string) (ec2RoleCredRespBody, error) {
 	if endpoint == "" {
 		endpoint = DefaultIAMRoleEndpoint
 	}
 
 	// https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/configuring-instance-metadata-service.html
-	token, err := fetchIMDSToken(client, endpoint)
+	token, err := fetchIMDSToken(ctx, client, endpoint)
 	if err != nil {
+		// A dead caller context is not an IMDSv2 availability signal.
+		if cerr := ctx.Err(); cerr != nil {
+			return ec2RoleCredRespBody{}, fmt.Errorf("%w (imds token fetch: %v)", cerr, err)
+		}
 		// Return only errors for valid situations, if the IMDSv2 is not enabled
 		// we will not be able to get the token, in such a situation we have
 		// to rely on IMDSv1 behavior as a fallback, this check ensures that.
@@ -395,7 +424,7 @@ func getCredentials(client *http.Client, endpoint string) (ec2RoleCredRespBody, 
 	}
 
 	// http://docs.aws.amazon.com/AWSEC2/latest/UserGuide/iam-roles-for-amazon-ec2.html
-	roleNames, err := listRoleNames(client, u, token)
+	roleNames, err := listRoleNames(ctx, client, u, token)
 	if err != nil {
 		return ec2RoleCredRespBody{}, err
 	}
@@ -415,7 +444,7 @@ func getCredentials(client *http.Client, endpoint string) (ec2RoleCredRespBody, 
 	//    $ curl http://169.254.169.254/latest/meta-data/iam/security-credentials/s3access
 	//
 	u.Path = path.Join(u.Path, roleName)
-	req, err := http.NewRequest(http.MethodGet, u.String(), nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u.String(), nil)
 	if err != nil {
 		return ec2RoleCredRespBody{}, err
 	}

@@ -62,8 +62,6 @@ func TestMetasFetcher(t *testing.T) {
 						Period: 24 * time.Hour,
 					},
 				},
-				ChunkTables: config.PeriodicTableConfig{},
-				RowShards:   16,
 			},
 		},
 	}

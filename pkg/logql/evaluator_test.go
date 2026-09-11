@@ -1,6 +1,7 @@
 package logql
 
 import (
+	"context"
 	"math"
 	"testing"
 	"time"
@@ -329,6 +330,27 @@ func TestLiteralStepEvaluator(t *testing.T) {
 			assert.Equal(t, tc.expected, gotSamples)
 		})
 	}
+}
+
+// TestNewVectorAggEvaluator_DoesNotMutateGroupingInPlace ensure the expression
+// groups are not mutated in place. Another VectorAggregationExpr evaluated concurrently
+// (e.g. the sum/count legs of a sharded avg_over_time) may hold the same
+// Grouping.Groups backing slice, so newVectorAggEvaluator() must sort a
+// private copy rather than the AST node's own slice.
+func TestNewVectorAggEvaluator_DoesNotMutateGroupingInPlace(t *testing.T) {
+	expr := &syntax.VectorAggregationExpr{
+		Left:      &syntax.VectorExpr{Val: 1},
+		Operation: syntax.OpTypeSum,
+		Grouping:  &syntax.Grouping{Groups: []string{"b", "a"}},
+	}
+
+	nextEvFactory := SampleEvaluatorFunc(func(_ context.Context, _ SampleEvaluatorFactory, _ syntax.SampleExpr, _ Params) (StepEvaluator, error) {
+		return &emptyEvaluator{}, nil
+	})
+
+	_, err := newVectorAggEvaluator(context.Background(), nextEvFactory, expr, nil, 0)
+	require.NoError(t, err)
+	require.Equal(t, []string{"b", "a"}, expr.Grouping.Groups)
 }
 
 type emptyEvaluator struct{}
