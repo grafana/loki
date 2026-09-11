@@ -41,10 +41,14 @@ const (
 	WalRecordSeries RecordType = iota
 	WalRecordChunks
 	WalRecordSeriesWithFingerprint
-	// WalRecordChunksWithIngestedAt extends WalRecordChunks
-	// with each chunk's index.ChunkMeta.IngestedAt
-	WalRecordChunksWithIngestedAt
+	// WalRecordChunksV2 is WalRecordChunks plus each chunk's
+	// index.ChunkMeta.IngestedAt.
+	WalRecordChunksV2
 )
+
+// CurrentChunksRec is the chunks record version this binary writes. Older
+// versions remain readable.
+const CurrentChunksRec = WalRecordChunksV2
 
 type WALRecord struct {
 	UserID      string
@@ -89,19 +93,12 @@ func (r *WALRecord) encodeSeriesWithFingerprint(b []byte) []byte {
 	return encoded
 }
 
-// encodeChunks encodes the record's chunk metas, picking the record type from
-// the data: records holding at least one non-zero IngestedAt use
-// WalRecordChunksWithIngestedAt, all others keep the original WalRecordChunks
-// layout.
-func (r *WALRecord) encodeChunks(b []byte) []byte {
-	withIngestedAt := hasIngestedAt(r.Chks.Chks)
-
+// encodeChunks encodes the record's chunk metas in the given version's layout.
+// Callers writing to the WAL pass CurrentChunksRec; older versions are only
+// encoded by tests that pin their layout.
+func (r *WALRecord) encodeChunks(version RecordType, b []byte) []byte {
 	buf := encoding.EncWith(b)
-	if withIngestedAt {
-		buf.PutByte(byte(WalRecordChunksWithIngestedAt))
-	} else {
-		buf.PutByte(byte(WalRecordChunks))
-	}
+	buf.PutByte(byte(version))
 	buf.PutUvarintStr(r.UserID)
 	buf.PutBE64(r.Chks.Ref)
 	buf.PutUvarint(len(r.Chks.Chks))
@@ -112,24 +109,15 @@ func (r *WALRecord) encodeChunks(b []byte) []byte {
 		buf.PutBE32(chk.Checksum)
 		buf.PutBE32(chk.KB)
 		buf.PutBE32(chk.Entries)
-		if withIngestedAt {
-			buf.PutUvarint64(uint64(chk.IngestedAt))
+		if version >= WalRecordChunksV2 {
+			buf.PutBE64(uint64(chk.IngestedAt))
 		}
 	}
 
 	return buf.Get()
 }
 
-func hasIngestedAt(chks index.ChunkMetas) bool {
-	for i := range chks {
-		if chks[i].IngestedAt != 0 {
-			return true
-		}
-	}
-	return false
-}
-
-func decodeChunks(b []byte, rec *WALRecord, withIngestedAt bool) error {
+func decodeChunks(b []byte, version RecordType, rec *WALRecord) error {
 	if len(b) == 0 {
 		return nil
 	}
@@ -156,8 +144,8 @@ func decodeChunks(b []byte, rec *WALRecord, withIngestedAt bool) error {
 			KB:       dec.Be32(),
 			Entries:  dec.Be32(),
 		}
-		if withIngestedAt {
-			chk.IngestedAt = int64(dec.Uvarint64())
+		if version >= WalRecordChunksV2 {
+			chk.IngestedAt = dec.Be64int64()
 		}
 		rec.Chks.Chks = append(rec.Chks.Chks, chk)
 	}
@@ -206,9 +194,9 @@ func decodeWALRecord(b []byte, walRec *WALRecord) error {
 		if len(rSeries) == 1 {
 			walRec.Series = rSeries[0]
 		}
-	case WalRecordChunks, WalRecordChunksWithIngestedAt:
+	case WalRecordChunks, WalRecordChunksV2:
 		userID = decbuf.UvarintStr()
-		if err := decodeChunks(decbuf.B, walRec, t == WalRecordChunksWithIngestedAt); err != nil {
+		if err := decodeChunks(decbuf.B, t, walRec); err != nil {
 			return err
 		}
 	default:
@@ -267,7 +255,7 @@ func (w *headWAL) Log(record *WALRecord) error {
 	}
 
 	if len(record.Chks.Chks) > 0 {
-		buf = record.encodeChunks(buf[:0])
+		buf = record.encodeChunks(CurrentChunksRec, buf[:0])
 		if err := w.wal.Log(buf); err != nil {
 			return err
 		}
