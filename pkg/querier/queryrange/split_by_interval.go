@@ -144,8 +144,9 @@ func (h *splitByInterval) Process(
 
 	// per request wrapped handler for limiting the amount of series.
 	next := newSeriesLimiter(maxSeries).Wrap(h.next)
+	requestTracer := tracer
 	for i := 0; i < p; i++ {
-		go h.loop(ctx, ch, next)
+		go h.loop(ctx, ch, next, requestTracer)
 	}
 	recorder, _ := ctx.Value(fanoutContextKey{}).(*fanoutRecorder)
 	recordResults, _ := ctx.Value(fanoutResultOwnerKey{}).(bool)
@@ -205,10 +206,10 @@ func (h *splitByInterval) Process(
 	return responses, nil
 }
 
-func (h *splitByInterval) loop(ctx context.Context, ch <-chan *lokiResult, next queryrangebase.Handler) {
+func (h *splitByInterval) loop(ctx context.Context, ch <-chan *lokiResult, next queryrangebase.Handler, requestTracer trace.Tracer) {
 	for data := range ch {
 		start := time.Now()
-		ctx, sp := tracer.Start(ctx, "interval")
+		ctx, sp := requestTracer.Start(ctx, "interval")
 		if sp.SpanContext().IsSampled() {
 			data.req.LogToSpan(sp)
 		}
