@@ -176,14 +176,7 @@ func newStream(
 	}
 }
 
-// setChunks is used during checkpoint recovery. Note that the checkpoint
-// format does not currently persist which chunks were open time-shard
-// bucket heads (chunkDesc.bucketStart), so openHeads/bucketHighestTs are not
-// reconstructed here. Any bucket chunk that was still open at checkpoint
-// time comes back with bucketStart zero and outside openHeads: it is safe
-// (it will still flush normally via the idle/max-age path, using its
-// preserved lastUpdated/bounds) but a subsequent push for the same historical
-// bucket will open a new chunk alongside it rather than reusing it.
+// setChunks is used during checkpoint recovery.
 func (s *stream) setChunks(chunks []Chunk) (bytesAdded, entriesAdded int, err error) {
 	s.chunkMtx.Lock()
 	defer s.chunkMtx.Unlock()
@@ -196,6 +189,7 @@ func (s *stream) setChunks(chunks []Chunk) (bytesAdded, entriesAdded int, err er
 		entriesAdded += c.chunk.Size()
 		bytesAdded += c.chunk.UncompressedSize()
 	}
+	s.rebuildOpenHeads()
 	return bytesAdded, entriesAdded, nil
 }
 
@@ -204,9 +198,12 @@ func (s *stream) NewChunk() *chunkenc.MemChunk {
 }
 
 // rebuildOpenHeads recomputes openHeads by scanning chunks for still-open
-// (unclosed) time-shard bucket chunks. Used after chunks has been compacted
-// (e.g. flushed chunks removed) since that invalidates the indices openHeads
-// previously pointed to. Callers must hold chunkMtx.
+// (unclosed) time-shard bucket chunks, also seeding bucketHighestTs for each
+// from the chunk's own bounds. Used both after chunks has been compacted
+// (e.g. flushed chunks removed), which invalidates the indices openHeads
+// previously pointed to, and during checkpoint recovery, where openHeads and
+// bucketHighestTs otherwise start out empty despite chunks carrying restored
+// bucket heads. Callers must hold chunkMtx.
 func (s *stream) rebuildOpenHeads() {
 	prevOpen := len(s.openHeads)
 	s.openHeads = nil
@@ -216,7 +213,15 @@ func (s *stream) rebuildOpenHeads() {
 			if s.openHeads == nil {
 				s.openHeads = map[int64]int{}
 			}
-			s.openHeads[c.bucketStart.Unix()] = idx
+			key := c.bucketStart.Unix()
+			s.openHeads[key] = idx
+
+			if _, maxTs := c.chunk.Bounds(); s.bucketHighestTs[key].Before(maxTs) {
+				if s.bucketHighestTs == nil {
+					s.bucketHighestTs = map[int64]time.Time{}
+				}
+				s.bucketHighestTs[key] = maxTs
+			}
 		}
 	}
 	if delta := len(s.openHeads) - prevOpen; delta != 0 {

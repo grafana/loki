@@ -866,3 +866,66 @@ type providerMock struct {
 func (m *providerMock) TenantConfig(userID string) *runtime.Config {
 	return m.tenantConfig(userID)
 }
+
+// TestIngesterTimeSharding_CheckpointRoundTrip verifies that a stream's open
+// time-shard buckets survive a checkpoint round-trip: openHeads and
+// bucketHighestTs are correctly reconstructed on a freshly recovered stream
+// (simulating an ingester restart), so a subsequent push for the same
+// historical bucket reuses the recovered chunk instead of opening a new one.
+func TestIngesterTimeSharding_CheckpointRoundTrip(t *testing.T) {
+	chunkfmt, headfmt := defaultChunkFormat(t)
+	cfg := defaultConfig()
+	cfg.MaxChunkAge = 2 * time.Hour // bucket width = 1h
+
+	limiter := newTimeShardingLimiter(t, streamsharding.Config{
+		Enabled:        true,
+		IgnoreRecent:   40 * time.Minute,
+		MaxOpenBuckets: 16,
+	})
+	retentionHours := util.RetentionHours(limiter.limits.RetentionPeriod("fake"))
+	lbs := labels.FromStrings("foo", "bar")
+
+	orig := newStream(chunkfmt, headfmt, cfg, limiter.rateLimitStrategy, "fake", model.Fingerprint(0), lbs, NewStreamRateCalculator(), NilMetrics, nil, nil, retentionHours, noPolicy, limiter.limits)
+
+	now := time.Now().Round(0)
+	entries := []logproto.Entry{
+		{Timestamp: now.Add(-5 * time.Hour), Line: "bucket-a"},
+		{Timestamp: now.Add(-3 * time.Hour), Line: "bucket-b"},
+		{Timestamp: now, Line: "live"},
+	}
+	_, err := orig.Push(context.Background(), entries, recordPool.GetRecord(), 0, true, false, nil, "loki")
+	require.NoError(t, err)
+	require.Len(t, orig.openHeads, 2)
+
+	// Serialize, exactly as a checkpoint write would.
+	wire, err := toWireChunks(orig.chunks, nil)
+	require.NoError(t, err)
+	chunks := make([]Chunk, 0, len(wire))
+	for _, wc := range wire {
+		chunks = append(chunks, wc.Chunk)
+	}
+
+	// Recover into a brand new stream, simulating an ingester restart.
+	recovered := newStream(chunkfmt, headfmt, cfg, limiter.rateLimitStrategy, "fake", model.Fingerprint(0), lbs, NewStreamRateCalculator(), NilMetrics, nil, nil, retentionHours, noPolicy, limiter.limits)
+	_, _, err = recovered.setChunks(chunks)
+	require.NoError(t, err)
+
+	require.Len(t, recovered.openHeads, 2)
+	for bucketStart, origIdx := range orig.openHeads {
+		recIdx, ok := recovered.openHeads[bucketStart]
+		require.True(t, ok, "bucket %d missing after recovery", bucketStart)
+		require.Equal(t, orig.chunks[origIdx].bucketStart.Unix(), recovered.chunks[recIdx].bucketStart.Unix())
+		require.False(t, recovered.chunks[recIdx].closed)
+	}
+	// bucketHighestTs should be seeded from each recovered chunk's own bounds.
+	for bucketStart := range orig.openHeads {
+		require.False(t, recovered.bucketHighestTs[bucketStart].IsZero())
+	}
+
+	// A further push into the same historical bucket must reuse the
+	// recovered head rather than opening a new one.
+	moreBackfill := now.Add(-5 * time.Hour).Add(time.Minute)
+	_, err = recovered.Push(context.Background(), []logproto.Entry{{Timestamp: moreBackfill, Line: "more-bucket-a"}}, recordPool.GetRecord(), 0, true, false, nil, "loki")
+	require.NoError(t, err)
+	require.Len(t, recovered.openHeads, 2, "no new bucket should have been opened for a timestamp within an already-recovered bucket")
+}

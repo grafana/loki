@@ -33,6 +33,13 @@ message Chunk {
   bytes data = 7;
   // data to be unmarshaled into a MemChunk's headBlock
   bytes head = 8;
+  // bucketStart is non-zero when this chunk was an open ingester-side
+  // time-shard bucket head (see streamsharding.Config) at checkpoint time.
+  // Zero for chunks created via the normal single-head append path.
+  google.protobuf.Timestamp bucketStart = 9 [
+    (gogoproto.stdtime) = true,
+    (gogoproto.nullable) = false
+  ];
 }
 
 // Series is a {de,}serializable intermediate type for Series.
