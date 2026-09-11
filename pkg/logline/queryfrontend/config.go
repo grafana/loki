@@ -60,6 +60,11 @@ type MiddlewareConfig struct {
 	// cover this window, so it is always passed through to the Loki pipeline.
 	// Populated from Loki's querier.query_ingesters_within at assembly time.
 	QueryIngestersWithin time.Duration `yaml:"query_ingesters_within"`
+	// QuerySplitDuration is Loki's split_queries_by_interval. Prefetch sits
+	// above SplitByInterval and uses this to apply the filter's k-budget per
+	// slice. Populated from limits_config.split_queries_by_interval at assembly
+	// time. Zero disables splitting, matching Loki.
+	QuerySplitDuration time.Duration `yaml:"-"`
 	// HintTimeout is the maximum time to wait for the logline index hint
 	// lookup before falling back to passthrough. Defaults to 15s when zero.
 	HintTimeout time.Duration `yaml:"hint_timeout"`

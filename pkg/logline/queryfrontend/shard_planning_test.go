@@ -27,6 +27,7 @@ func defaultShardPlanningTestConfig() MiddlewareConfig {
 		NgramLength:           3,
 		MinQueryBytesForIndex: 0,
 		HintTimeout:           time.Second,
+		QuerySplitDuration:    time.Hour,
 		ShardPlanning: ShardPlanningConfig{
 			Enabled:               true,
 			MinTimeReductionRatio: 0.75,
@@ -245,10 +246,13 @@ func TestShardPlanning_MultipleDisjointNarrowHintsRerunWithinThresholds(t *testi
 
 func TestShardPlanningDecision_UsesEnvelopeDuration(t *testing.T) {
 	start := time.Date(2026, 9, 8, 12, 0, 0, 0, time.UTC)
-	h := &loglinePrefetchHandler{shardPlanning: ShardPlanningConfig{
-		Enabled:               true,
-		MinTimeReductionRatio: 0.75,
-	}}
+	h := &loglinePrefetchHandler{
+		querySplitDuration: time.Hour,
+		shardPlanning: ShardPlanningConfig{
+			Enabled:               true,
+			MinTimeReductionRatio: 0.75,
+		},
+	}
 
 	t.Run("bookend hints on a 15m range fail after k=1 union", func(t *testing.T) {
 		end := start.Add(15 * time.Minute)
@@ -278,10 +282,47 @@ func TestShardPlanningDecision_UsesEnvelopeDuration(t *testing.T) {
 		require.True(t, got.eligible)
 		require.Equal(t, "eligible", got.reason)
 	})
+
+	t.Run("sparse hourly hints on an 8h range stay eligible after per-split budgets", func(t *testing.T) {
+		end := start.Add(8 * time.Hour)
+		var ranges []hintprovider.HintTimeRange
+		for i := 0; i < 16; i++ {
+			hintStart := start.Add(time.Duration(i) * 30 * time.Minute)
+			ranges = append(ranges, hintprovider.HintTimeRange{
+				Start: hintStart,
+				End:   hintStart.Add(time.Minute),
+			})
+		}
+		result := &hintPrefetchResult{ranges: ranges, ingesterCutoff: end}
+		// Unsplit k=8 fills eight 29m gaps (~4.1h, ratio 0.48). After 1h
+		// splits, each slice keeps both 1m hints (16m, ratio 0.97).
+		require.Greater(t, intervalEnvelopeDuration(ranges, start, end), 4*time.Hour)
+		require.Equal(t, 16*time.Minute, envelopeQueriedDuration(ranges, start, end, time.Hour))
+		got := h.shardPlanningDecision(result, start, end)
+		require.True(t, got.eligible)
+		require.Equal(t, "eligible", got.reason)
+	})
+
+	t.Run("unsplit configured interval keeps the 8h sparse case ineligible", func(t *testing.T) {
+		end := start.Add(8 * time.Hour)
+		var ranges []hintprovider.HintTimeRange
+		for i := 0; i < 16; i++ {
+			hintStart := start.Add(time.Duration(i) * 30 * time.Minute)
+			ranges = append(ranges, hintprovider.HintTimeRange{
+				Start: hintStart,
+				End:   hintStart.Add(time.Minute),
+			})
+		}
+		unsplit := &loglinePrefetchHandler{shardPlanning: h.shardPlanning}
+		got := unsplit.shardPlanningDecision(&hintPrefetchResult{ranges: ranges, ingesterCutoff: end}, start, end)
+		require.False(t, got.eligible)
+		require.Equal(t, "time_reduction_too_small", got.reason)
+	})
 }
 
 func TestShardPlanning_BroadOrUnsafeHintsFallBackToFirstQuery(t *testing.T) {
 	now := time.Now().Truncate(time.Millisecond)
+	hour := now.Truncate(time.Hour)
 	baseCfg := defaultShardPlanningTestConfig()
 	firstResp := streamResponseWithEntries(logproto.Entry{Timestamp: now.Add(-10 * time.Minute), Line: "first"})
 
@@ -303,10 +344,11 @@ func TestShardPlanning_BroadOrUnsafeHintsFallBackToFirstQuery(t *testing.T) {
 			name: "envelope fill drops reduction below threshold",
 			cfg:  baseCfg,
 			hp: &mockHintProvider{hints: &hintprovider.Hints{TimeRanges: []hintprovider.HintTimeRange{
-				{Start: now.Add(-14 * time.Minute), End: now.Add(-13 * time.Minute)},
-				{Start: now.Add(-2 * time.Minute), End: now.Add(-time.Minute)},
+				{Start: hour.Add(-14 * time.Minute), End: hour.Add(-13 * time.Minute)},
+				{Start: hour.Add(-2 * time.Minute), End: hour.Add(-time.Minute)},
 			}}},
-			req: newTestLokiRequest(`{job="test"} |= "error"`, now.Add(-15*time.Minute), now),
+			// Stay inside one SplitByInterval hour so k=1 unions the bookends.
+			req: newTestLokiRequest(`{job="test"} |= "error"`, hour.Add(-15*time.Minute), hour),
 		},
 		{
 			name: "hint provider error falls back",

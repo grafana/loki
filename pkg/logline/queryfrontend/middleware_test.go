@@ -1624,6 +1624,26 @@ func TestEnvelopeBudget(t *testing.T) {
 	require.Equal(t, 1, envelopeBudget(0))
 }
 
+func TestEnvelopeQueriedDuration_AppliesBudgetPerSplitInterval(t *testing.T) {
+	start := time.Date(2026, 9, 8, 12, 0, 0, 0, time.UTC)
+	end := start.Add(8 * time.Hour)
+	var ranges []hintprovider.HintTimeRange
+	for i := 0; i < 16; i++ {
+		hintStart := start.Add(time.Duration(i) * 30 * time.Minute)
+		ranges = append(ranges, hintprovider.HintTimeRange{
+			Start: hintStart,
+			End:   hintStart.Add(time.Minute),
+		})
+	}
+
+	// One k=8 budget on the unsplit 8h range unions eight 29m gaps.
+	require.Equal(t, 16*time.Minute+8*29*time.Minute, intervalEnvelopeDuration(ranges, start, end))
+	require.Equal(t, 16*time.Minute+8*29*time.Minute, envelopeQueriedDuration(ranges, start, end, 0))
+	// After the configured 1h SplitByInterval slices, each hour keeps both 1m hints.
+	require.Equal(t, 16*time.Minute, envelopeQueriedDuration(ranges, start, end, time.Hour))
+	require.Equal(t, 16*time.Minute, envelopeQueriedDuration(ranges, start, end, 30*time.Minute))
+}
+
 func TestPrefetchFilter_MultipleHintRanges(t *testing.T) {
 	// 12:00–12:59 / 15m target → k=4. Five disjoint hints cut at the three
 	// largest gaps: isolate the far ones, keep 12:35–12:42 together.

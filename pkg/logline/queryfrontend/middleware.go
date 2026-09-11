@@ -274,6 +274,7 @@ func NewLoglinePrefetchMiddleware(
 			hintTimeout:          cfg.HintTimeout,
 			minQueryBytes:        cfg.MinQueryBytesForIndex,
 			queryIngestersWithin: cfg.QueryIngestersWithin,
+			querySplitDuration:   cfg.QuerySplitDuration,
 			shardPlanning:        cfg.ShardPlanning,
 			tenantSettings:       tenantSettings,
 			metrics:              metrics,
@@ -292,6 +293,7 @@ type loglinePrefetchHandler struct {
 	dryRunInflight       atomic.Int32
 	minQueryBytes        int64
 	queryIngestersWithin time.Duration
+	querySplitDuration   time.Duration
 	shardPlanning        ShardPlanningConfig
 	tenantSettings       TenantSettings
 	metrics              *Metrics
@@ -404,10 +406,11 @@ func (h *loglinePrefetchHandler) shardPlanningDecision(result *hintPrefetchResul
 	if queryDuration == 0 {
 		return shardPlanningDecision{reason: "time_reduction_too_small", overlaps: overlaps}
 	}
-	// Use k-envelope coverage, not raw hint duration. The filter scans the
-	// filled gaps, so hint-only math overstates time reduction and can trip
-	// a power_of_two rerun when the actual scan would miss the threshold.
-	cumulative := envelopeQueriedDuration(overlaps, from, through)
+	// Use k-envelope coverage after the same SplitByInterval slices the
+	// filter will see. Hint-only math, or a single k-budget on the unsplit
+	// range, overstates scanned time once the cap of 8 unions distant
+	// clusters the filter would keep separate.
+	cumulative := envelopeQueriedDuration(overlaps, from, through, h.querySplitDuration)
 	timeReductionRatio := float64(queryDuration-cumulative) / float64(queryDuration)
 	if timeReductionRatio < 0 {
 		timeReductionRatio = 0
@@ -1176,7 +1179,17 @@ type hintEnvelope struct {
 	End   time.Time
 }
 
-func envelopeQueriedDuration(ranges []hintprovider.HintTimeRange, start, end time.Time) time.Duration {
+func envelopeQueriedDuration(ranges []hintprovider.HintTimeRange, start, end time.Time, split time.Duration) time.Duration {
+	var queried time.Duration
+	// LokiRequest splits are half-open [start, end). Zero split disables
+	// splitting, matching querier.split-queries-by-interval.
+	util.ForInterval(split, start, end, false, func(sliceStart, sliceEnd time.Time) {
+		queried += intervalEnvelopeDuration(ranges, sliceStart, sliceEnd)
+	})
+	return queried
+}
+
+func intervalEnvelopeDuration(ranges []hintprovider.HintTimeRange, start, end time.Time) time.Duration {
 	var queried time.Duration
 	for _, g := range groupHintEnvelopes(ranges, start, end, envelopeBudget(intervalDuration(start, end))) {
 		queried += intervalDuration(g.Start, g.End)
