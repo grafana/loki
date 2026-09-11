@@ -25,7 +25,7 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/chunkenc"
 	"github.com/grafana/loki/v3/pkg/distributor/writefailures"
-	"github.com/grafana/loki/v3/pkg/ingester/streamsharding"
+	"github.com/grafana/loki/v3/pkg/ingester/shardstreams"
 	"github.com/grafana/loki/v3/pkg/iter"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql/log"
@@ -360,7 +360,7 @@ func TestEntryErrorCorrectlyReported(t *testing.T) {
 	}
 	tracker := &mockUsageTracker{}
 
-	_, failed := s.validateEntries(context.Background(), entries, false, true, tracker, "loki", time.Now(), streamsharding.Config{})
+	_, failed := s.validateEntries(context.Background(), entries, false, true, tracker, "loki", time.Now(), shardstreams.Config{})
 	require.NotEmpty(t, failed)
 	require.False(t, hasRateLimitErr(failed))
 	require.Equal(t, 13.0, tracker.discardedBytes)
@@ -662,7 +662,7 @@ func iterEq(t *testing.T, exp []logproto.Entry, got iter.EntryIterator) {
 
 // newTimeShardingLimiter builds a Limiter whose tenant "fake" resolves the
 // given ingester-side time-sharding config via IngesterTimeSharding.
-func newTimeShardingLimiter(t *testing.T, cfg streamsharding.Config) *Limiter {
+func newTimeShardingLimiter(t *testing.T, cfg shardstreams.Config) *Limiter {
 	t.Helper()
 	l := defaultLimitsTestConfig()
 	l.IngesterTimeSharding = cfg
@@ -676,7 +676,7 @@ func TestIngesterTimeSharding_DisabledPreservesExactCurrentBehavior(t *testing.T
 	cfg := defaultConfig()
 	cfg.MaxChunkAge = 2 * time.Hour
 
-	limiter := newTimeShardingLimiter(t, streamsharding.Config{Enabled: false})
+	limiter := newTimeShardingLimiter(t, shardstreams.Config{Enabled: false})
 	retentionHours := util.RetentionHours(limiter.limits.RetentionPeriod("fake"))
 
 	s := newStream(chunkfmt, headfmt, cfg, limiter.rateLimitStrategy, "fake", model.Fingerprint(0), labels.FromStrings("foo", "bar"), NewStreamRateCalculator(), NilMetrics, nil, nil, retentionHours, noPolicy, limiter.limits)
@@ -702,7 +702,7 @@ func TestIngesterTimeSharding_OpensSeparateBucketsForOldEntries(t *testing.T) {
 	cfg := defaultConfig()
 	cfg.MaxChunkAge = 2 * time.Hour // bucket width = 1h
 
-	limiter := newTimeShardingLimiter(t, streamsharding.Config{
+	limiter := newTimeShardingLimiter(t, shardstreams.Config{
 		Enabled:        true,
 		IgnoreRecent:   40 * time.Minute,
 		MaxOpenBuckets: 16,
@@ -734,7 +734,7 @@ func TestIngesterTimeSharding_PerBucketCutoffAllowsOldBackfillAfterRecentWrites(
 	cfg := defaultConfig()
 	cfg.MaxChunkAge = 2 * time.Hour
 
-	limiter := newTimeShardingLimiter(t, streamsharding.Config{
+	limiter := newTimeShardingLimiter(t, shardstreams.Config{
 		Enabled:        true,
 		IgnoreRecent:   40 * time.Minute,
 		MaxOpenBuckets: 16,
@@ -762,7 +762,7 @@ func TestIngesterTimeSharding_MaxOpenBucketsEnforced(t *testing.T) {
 	cfg := defaultConfig()
 	cfg.MaxChunkAge = 2 * time.Hour // bucket width = 1h
 
-	limiter := newTimeShardingLimiter(t, streamsharding.Config{
+	limiter := newTimeShardingLimiter(t, shardstreams.Config{
 		Enabled:        true,
 		IgnoreRecent:   40 * time.Minute,
 		MaxOpenBuckets: 2,
@@ -789,7 +789,7 @@ func TestIngesterTimeSharding_SkipsWhenBackfillLabelPresent(t *testing.T) {
 	cfg := defaultConfig()
 	cfg.MaxChunkAge = 2 * time.Hour
 
-	limiter := newTimeShardingLimiter(t, streamsharding.Config{
+	limiter := newTimeShardingLimiter(t, shardstreams.Config{
 		Enabled:        true,
 		IgnoreRecent:   40 * time.Minute,
 		MaxOpenBuckets: 16,
@@ -877,7 +877,7 @@ func TestIngesterTimeSharding_CheckpointRoundTrip(t *testing.T) {
 	cfg := defaultConfig()
 	cfg.MaxChunkAge = 2 * time.Hour // bucket width = 1h
 
-	limiter := newTimeShardingLimiter(t, streamsharding.Config{
+	limiter := newTimeShardingLimiter(t, shardstreams.Config{
 		Enabled:        true,
 		IgnoreRecent:   40 * time.Minute,
 		MaxOpenBuckets: 16,

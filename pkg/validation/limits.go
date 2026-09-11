@@ -22,7 +22,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/compactor/deletionmode"
 	"github.com/grafana/loki/v3/pkg/compression"
 	"github.com/grafana/loki/v3/pkg/distributor/shardstreams"
-	"github.com/grafana/loki/v3/pkg/ingester/streamsharding"
+	ingesterTimeSharding "github.com/grafana/loki/v3/pkg/ingester/shardstreams"
 	"github.com/grafana/loki/v3/pkg/loghttp/push"
 	"github.com/grafana/loki/v3/pkg/logql"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
@@ -188,7 +188,7 @@ type Limits struct {
 
 	ShardStreams shardstreams.Config `yaml:"shard_streams" json:"shard_streams" doc:"description=Define streams sharding behavior."`
 
-	IngesterTimeSharding streamsharding.Config `yaml:"ingester_time_sharding" json:"ingester_time_sharding" doc:"description=Allow the ingester to accept out-of-order/backfilled logs for one stream across multiple concurrently open time-bucketed chunks, instead of the distributor's shard_streams.time_sharding_enabled __time_shard__ label sharding."`
+	IngesterTimeSharding ingesterTimeSharding.Config `yaml:"ingester_time_sharding" json:"ingester_time_sharding" doc:"description=Allow the ingester to accept out-of-order/backfilled logs for one stream across multiple concurrently open time-bucketed chunks, instead of the distributor's shard_streams.time_sharding_enabled __time_shard__ label sharding."`
 
 	BlockedQueries []*validation.BlockedQuery `yaml:"blocked_queries,omitempty" json:"blocked_queries,omitempty"`
 
@@ -1062,7 +1062,7 @@ func (o *Overrides) ShardStreams(userID string) shardstreams.Config {
 	return o.getOverridesForUser(userID).ShardStreams
 }
 
-func (o *Overrides) IngesterTimeSharding(userID string) streamsharding.Config {
+func (o *Overrides) IngesterTimeSharding(userID string) ingesterTimeSharding.Config {
 	return o.getOverridesForUser(userID).IngesterTimeSharding
 }
 

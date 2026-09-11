@@ -19,7 +19,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/compactor/deletionmode"
 	"github.com/grafana/loki/v3/pkg/compression"
 	"github.com/grafana/loki/v3/pkg/distributor/shardstreams"
-	"github.com/grafana/loki/v3/pkg/ingester/streamsharding"
+	ingesterTimeSharding "github.com/grafana/loki/v3/pkg/ingester/shardstreams"
 	"github.com/grafana/loki/v3/pkg/loghttp/push"
 	"github.com/grafana/loki/v3/pkg/logql"
 	"github.com/grafana/loki/v3/pkg/util/flagext"
@@ -1213,7 +1213,7 @@ func TestIngesterTimeSharding_PerTenantOverride(t *testing.T) {
 
 	tenantLimits := map[string]*Limits{
 		"tenant-29": {
-			IngesterTimeSharding: streamsharding.Config{
+			IngesterTimeSharding: ingesterTimeSharding.Config{
 				Enabled:        true,
 				IgnoreRecent:   time.Hour,
 				MaxOpenBuckets: 4,

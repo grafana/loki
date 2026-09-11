@@ -18,7 +18,7 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/chunkenc"
 	"github.com/grafana/loki/v3/pkg/distributor/writefailures"
-	"github.com/grafana/loki/v3/pkg/ingester/streamsharding"
+	"github.com/grafana/loki/v3/pkg/ingester/shardstreams"
 	"github.com/grafana/loki/v3/pkg/ingester/wal"
 	"github.com/grafana/loki/v3/pkg/iter"
 	"github.com/grafana/loki/v3/pkg/loghttp/push"
@@ -48,7 +48,7 @@ type stream struct {
 	cfg     *Config
 	tenant  string
 	// chunks are not necessarily ordered: entries are normally appended to
-	// chunks[n-1], but when ingester-side time-sharding (see streamsharding.Config)
+	// chunks[n-1], but when ingester-side time-sharding (see shardstreams.Config)
 	// is active, older entries may be routed into any of several other
 	// concurrently open chunks tracked by openHeads.
 	// Not thread-safe; assume accesses to this are locked by caller.
@@ -123,7 +123,7 @@ type chunkDesc struct {
 	lastUpdated time.Time
 
 	// bucketStart is non-zero when this chunk was created as a time-sharded
-	// bucket for out-of-order/backfilled entries (see streamsharding.Config).
+	// bucket for out-of-order/backfilled entries (see shardstreams.Config).
 	// Zero for chunks created via the normal single-head append path.
 	bucketStart time.Time
 }
@@ -389,9 +389,9 @@ func (s *stream) recordAndSendToTailers(record *wal.Record, entries []logproto.E
 // effect without recreating the stream. Returns the zero value (disabled) if
 // s.limits is nil, which should only happen in tests that don't exercise this
 // feature.
-func (s *stream) ingesterTimeShardingConfig() streamsharding.Config {
+func (s *stream) ingesterTimeShardingConfig() shardstreams.Config {
 	if s.limits == nil {
-		return streamsharding.Config{}
+		return shardstreams.Config{}
 	}
 	return s.limits.IngesterTimeSharding(s.tenant)
 }
@@ -402,7 +402,7 @@ func bucketStartFor(ts time.Time, width time.Duration) time.Time {
 	return ts.Truncate(width)
 }
 
-func (s *stream) storeEntries(ctx context.Context, entries []logproto.Entry, usageTracker push.UsageTracker, format string, now time.Time, tsCfg streamsharding.Config) (int, []logproto.Entry, []entryWithError) {
+func (s *stream) storeEntries(ctx context.Context, entries []logproto.Entry, usageTracker push.UsageTracker, format string, now time.Time, tsCfg shardstreams.Config) (int, []logproto.Entry, []entryWithError) {
 	sp := trace.SpanFromContext(ctx)
 	sp.AddEvent("stream started to store entries", trace.WithAttributes(
 		attribute.String("labels", s.labelsString)),
@@ -490,7 +490,7 @@ func (s *stream) handleLoggingOfDuplicateEntry(entry logproto.Entry) {
 
 }
 
-func (s *stream) validateEntries(ctx context.Context, entries []logproto.Entry, isReplay, rateLimitWholeStream bool, usageTracker push.UsageTracker, format string, now time.Time, tsCfg streamsharding.Config) ([]logproto.Entry, []entryWithError) {
+func (s *stream) validateEntries(ctx context.Context, entries []logproto.Entry, isReplay, rateLimitWholeStream bool, usageTracker push.UsageTracker, format string, now time.Time, tsCfg shardstreams.Config) ([]logproto.Entry, []entryWithError) {
 
 	var (
 		outOfOrderSamples, outOfOrderBytes         int

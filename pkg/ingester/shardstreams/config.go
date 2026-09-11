@@ -1,4 +1,4 @@
-package streamsharding
+package shardstreams
 
 import (
 	"flag"

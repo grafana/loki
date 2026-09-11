@@ -45,8 +45,7 @@ type Chunk struct {
 	Data []byte `protobuf:"bytes,7,opt,name=data,proto3" json:"data,omitempty"`
 	// data to be unmarshaled into a MemChunk's headBlock
 	Head []byte `protobuf:"bytes,8,opt,name=head,proto3" json:"head,omitempty"`
-	// bucketStart is non-zero when this chunk was an open ingester-side
-	// time-shard bucket head (see streamsharding.Config) at checkpoint time.
+	// bucketStart is for ingester time-sharding.
 	// Zero for chunks created via the normal single-head append path.
 	BucketStart time.Time `protobuf:"bytes,9,opt,name=bucketStart,proto3,stdtime" json:"bucketStart"`
 }
