@@ -174,12 +174,12 @@ func (c *DefaultClient) Series(matchers []string, start, end time.Time, quiet bo
 	return &seriesResponse, nil
 }
 
-// LiveTailQueryConn uses /api/prom/tail to set up a websocket connection and returns it
+// LiveTailQueryConn uses /loki/api/v1/tail to set up a websocket connection and returns it.
 func (c *DefaultClient) LiveTailQueryConn(queryStr string, delayFor time.Duration, limit int, start time.Time, quiet bool) (*websocket.Conn, error) {
 	return c.LiveTailQueryConnContext(context.Background(), queryStr, delayFor, limit, start, quiet)
 }
 
-// LiveTailQueryConnContext uses /api/prom/tail to set up a websocket connection and returns it.
+// LiveTailQueryConnContext uses /loki/api/v1/tail to set up a websocket connection and returns it.
 // Canceling ctx interrupts connection setup but does not close an established connection.
 // The caller must close the returned connection when it is no longer needed.
 func (c *DefaultClient) LiveTailQueryConnContext(
