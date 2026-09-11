@@ -28,6 +28,10 @@ type RouterConfig struct {
 	// Validate function to check if the query is supported by the engine.
 	Validate func(params logql.Params) bool
 
+	// ForceV1 is an optional function that, when it returns true, forces the
+	// whole query to be executed by the v1 engine without splitting.
+	ForceV1 func(params logql.Params) bool
+
 	// Handler to execute queries against the engine.
 	Handler queryrangebase.Handler
 }
@@ -47,6 +51,7 @@ type engineRouter struct {
 
 	v2Range      func() (start, end time.Time)
 	validV2Query func(params logql.Params) bool
+	forceV1      func(params logql.Params) bool
 
 	merger queryrangebase.Merger
 
@@ -72,6 +77,7 @@ func NewEngineRouterMiddleware(
 			v1Next:         queryrangebase.MergeMiddlewares(v1Chain...).Wrap(next),
 			v2Next:         v2RouterConfig.Handler,
 			validV2Query:   v2RouterConfig.Validate,
+			forceV1:        v2RouterConfig.ForceV1,
 			merger:         merger,
 			logger:         logger,
 			forMetricQuery: metricQuery,
@@ -90,6 +96,12 @@ func (e *engineRouter) Do(ctx context.Context, r queryrangebase.Request) (queryr
 	params, err := ParamsFromRequest(r)
 	if err != nil {
 		return nil, err
+	}
+
+	// Queries matching the configured v1-only stream selector must be entirely
+	// executed by chunks.
+	if e.forceV1 != nil && e.forceV1(params) {
+		return e.v1Next.Do(ctx, r)
 	}
 
 	// Unsupported queries should be entirely executed by chunks.

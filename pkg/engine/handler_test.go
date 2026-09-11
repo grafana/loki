@@ -516,6 +516,97 @@ func TestQueryHandler_ValidTimeRange(t *testing.T) {
 	}
 }
 
+func TestQueryHandler_V1OnlyStreamSelector(t *testing.T) {
+	now := time.Now()
+
+	cfg := Config{
+		StorageLag:           time.Hour,
+		V1OnlyStreamSelector: `{app="foo"}`,
+	}
+	require.NoError(t, cfg.Validate())
+
+	newHandler := func(executed *bool) queryrangebase.Handler {
+		eng := &mockEngine{
+			executeFunc: func(_ context.Context, _ logql.Params) (logqlmodel.Result, error) {
+				*executed = true
+				return logqlmodel.Result{Data: logqlmodel.Streams{}}, nil
+			},
+		}
+		return newTestHandler(cfg, eng, &querytest.MockLimits{MaxEntriesLimitPerQueryVal: 1000})
+	}
+
+	requireV1OnlyError := func(t *testing.T, err error) {
+		t.Helper()
+		require.Error(t, err)
+		httpErr, ok := httpgrpc.HTTPResponseFromError(err)
+		require.True(t, ok)
+		require.Equal(t, int32(http.StatusNotImplemented), httpErr.Code)
+		require.Contains(t, string(httpErr.Body), "v1-only stream selector")
+	}
+
+	t.Run("matching range query returns 501", func(t *testing.T) {
+		var executed bool
+		handler := newHandler(&executed)
+
+		query := `{app="foo", env="prod"}`
+		req := &queryrange.LokiRequest{
+			Query:   query,
+			Limit:   100,
+			StartTs: now.Add(-4 * time.Hour),
+			EndTs:   now.Add(-2 * time.Hour),
+			Plan: &plan.QueryPlan{
+				AST: syntax.MustParseExpr(query),
+			},
+		}
+
+		ctx := user.InjectOrgID(context.Background(), "fake")
+		_, err := handler.Do(ctx, req)
+		requireV1OnlyError(t, err)
+		require.False(t, executed)
+	})
+
+	t.Run("matching instant query returns 501", func(t *testing.T) {
+		var executed bool
+		handler := newHandler(&executed)
+
+		query := `count_over_time({app="foo"}[5m])`
+		req := &queryrange.LokiInstantRequest{
+			Query:  query,
+			Limit:  100,
+			TimeTs: now.Add(-2 * time.Hour),
+			Plan: &plan.QueryPlan{
+				AST: syntax.MustParseExpr(query),
+			},
+		}
+
+		ctx := user.InjectOrgID(context.Background(), "fake")
+		_, err := handler.Do(ctx, req)
+		requireV1OnlyError(t, err)
+		require.False(t, executed)
+	})
+
+	t.Run("non-matching query executes normally", func(t *testing.T) {
+		var executed bool
+		handler := newHandler(&executed)
+
+		query := `{app="test"}`
+		req := &queryrange.LokiRequest{
+			Query:   query,
+			Limit:   100,
+			StartTs: now.Add(-4 * time.Hour),
+			EndTs:   now.Add(-2 * time.Hour),
+			Plan: &plan.QueryPlan{
+				AST: syntax.MustParseExpr(query),
+			},
+		}
+
+		ctx := user.InjectOrgID(context.Background(), "fake")
+		_, err := handler.Do(ctx, req)
+		require.NoError(t, err)
+		require.True(t, executed)
+	})
+}
+
 func TestQueryHandler_ValidateMaxEntriesLimits(t *testing.T) {
 	now := time.Now()
 	startTime := now.Add(-1 * time.Hour)
