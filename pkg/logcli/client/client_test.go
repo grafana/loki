@@ -158,6 +158,13 @@ func TestLiveTailQueryConnContextEstablishedConnection(t *testing.T) {
 				if err := conn.WriteMessage(websocket.TextMessage, []byte("connected")); err != nil {
 					return
 				}
+				messageType, message, err := conn.ReadMessage()
+				if err != nil {
+					return
+				}
+				if err := conn.WriteMessage(messageType, message); err != nil {
+					return
+				}
 				_, _, _ = conn.ReadMessage()
 				close(closed)
 			}))
@@ -168,22 +175,24 @@ func TestLiveTailQueryConnContextEstablishedConnection(t *testing.T) {
 			conn, err := c.LiveTailQueryConnContext(ctx, "", 0, 0, time.Time{}, true)
 			require.NoError(t, err)
 			t.Cleanup(func() { _ = conn.Close() })
+			if cancelConnection {
+				cancel()
+			}
 			require.NoError(t, conn.SetReadDeadline(time.Now().Add(5*time.Second)))
 			_, message, err := conn.ReadMessage()
 			require.NoError(t, err)
 			require.Equal(t, "connected", string(message))
-			if cancelConnection {
-				cancel()
-			} else {
-				require.NoError(t, conn.Close())
-			}
+			require.NoError(t, conn.WriteMessage(websocket.TextMessage, []byte("still connected")))
+			_, message, err = conn.ReadMessage()
+			require.NoError(t, err)
+			require.Equal(t, "still connected", string(message))
+			require.NoError(t, conn.Close())
 			select {
 			case <-closed:
 			case <-time.After(5 * time.Second):
 				t.Fatal("established websocket was not closed")
 			}
-			// The connection's cancellation watcher must stop even if the
-			// caller closes the socket without canceling the context.
+			// Connection setup must leave no cancellation watcher behind.
 			server.Close()
 			goleak.VerifyNone(t, leaks)
 		})
