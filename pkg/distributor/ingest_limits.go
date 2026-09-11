@@ -20,6 +20,7 @@ import (
 type ingestLimitsFrontendClient interface {
 	ExceedsLimits(context.Context, *proto.ExceedsLimitsRequest) (*proto.ExceedsLimitsResponse, error)
 	UpdateRates(context.Context, *proto.UpdateRatesRequest) (*proto.UpdateRatesResponse, error)
+	CheckLimitsAndShard(context.Context, *proto.CheckLimitsAndShardRequest) (*proto.CheckLimitsAndShardResponse, error)
 }
 
 // ingestLimitsFrontendRingClient uses the ring to discover ingest-limits-frontend
@@ -57,6 +58,25 @@ func (c *ingestLimitsFrontendRingClient) ExceedsLimits(ctx context.Context, req 
 		err = c.withTenantShuffleShard(ctx, req.Tenant, doExceedsLimitsFn)
 	} else {
 		err = c.withRandomShuffle(ctx, doExceedsLimitsFn)
+	}
+	return resp, err
+}
+
+// Implements the [ingestLimitsFrontendClient] interface.
+func (c *ingestLimitsFrontendRingClient) CheckLimitsAndShard(ctx context.Context, req *proto.CheckLimitsAndShardRequest) (*proto.CheckLimitsAndShardResponse, error) {
+	var (
+		err                     error
+		resp                    *proto.CheckLimitsAndShardResponse
+		doCheckLimitsAndShardFn = func(ctx context.Context, client proto.IngestLimitsFrontendClient) error {
+			var clientErr error
+			resp, clientErr = client.CheckLimitsAndShard(ctx, req)
+			return clientErr
+		}
+	)
+	if c.shuffleShardEnabled {
+		err = c.withTenantShuffleShard(ctx, req.Tenant, doCheckLimitsAndShardFn)
+	} else {
+		err = c.withRandomShuffle(ctx, doCheckLimitsAndShardFn)
 	}
 	return resp, err
 }
@@ -228,6 +248,53 @@ func newExceedsLimitsRequest(tenant string, streams []KeyedStream) (*proto.Excee
 		})
 	}
 	return &proto.ExceedsLimitsRequest{
+		Tenant:  tenant,
+		Streams: streamMetadata,
+	}, nil
+}
+
+// CheckLimitsAndShard checks limits and returns a shard-count recommendation
+// for each candidate stream. It returns a map from each candidate's
+// pre-shard stream hash to its result. A candidate absent from the map (e.g.
+// because the whole call failed, or the frontend never got an answer for
+// it) must be treated by the caller as accepted with 1 shard -- fail open to
+// "don't shard this push", never to "reject it".
+func (l *ingestLimits) CheckLimitsAndShard(ctx context.Context, tenant string, candidates []limitsServiceShardCandidate) (map[uint64]*proto.StreamShardResult, error) {
+	l.requests.WithLabelValues("CheckLimitsAndShard").Inc()
+	req, err := newCheckLimitsAndShardRequest(tenant, candidates)
+	if err != nil {
+		l.requestsFailed.WithLabelValues("CheckLimitsAndShard").Inc()
+		return nil, err
+	}
+	resp, err := l.client.CheckLimitsAndShard(ctx, req)
+	if err != nil {
+		l.requestsFailed.WithLabelValues("CheckLimitsAndShard").Inc()
+		return nil, err
+	}
+
+	results := make(map[uint64]*proto.StreamShardResult, len(resp.Results))
+	for _, r := range resp.Results {
+		results[r.StreamHash] = r
+	}
+
+	return results, nil
+}
+
+func newCheckLimitsAndShardRequest(tenant string, candidates []limitsServiceShardCandidate) (*proto.CheckLimitsAndShardRequest, error) {
+	streamMetadata := make([]*proto.StreamMetadata, 0, len(candidates))
+	for _, c := range candidates {
+		// c.totalSize is the exact pushSize the rate store used for this
+		// stream, reused here so the comparison stays apples-to-apples. It
+		// is line+structured-metadata for non-time-sharded streams, but
+		// deliberately line-only for time-sharded ones (see
+		// streamWithTimeShard.linesTotalLen).
+		streamMetadata = append(streamMetadata, &proto.StreamMetadata{
+			StreamHash:      c.stream.Hash,
+			TotalSize:       c.totalSize,
+			IngestionPolicy: c.policy,
+		})
+	}
+	return &proto.CheckLimitsAndShardRequest{
 		Tenant:  tenant,
 		Streams: streamMetadata,
 	}, nil

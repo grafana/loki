@@ -75,6 +75,36 @@ func TestCacheLimitsClient(t *testing.T) {
 	})
 }
 
+func TestCacheLimitsClient_CheckLimitsAndShard_NeverCached(t *testing.T) {
+	// CheckLimitsAndShard must always forward to the backend uncached: its
+	// shard-count decisions depend on a live, continuously-updated rate
+	// estimate that must see every push, unlike ExceedsLimits's stable
+	// accept/reject fact. A cache that skipped forwarding known streams
+	// would starve the backend of the very signal this RPC depends on.
+	cache := newAcceptedStreamsCache(time.Minute, 15*time.Second, prometheus.NewRegistry())
+	// Pre-populate the accepted-streams cache with the same stream hash, to
+	// prove CheckLimitsAndShard ignores it entirely (a cache hit here would
+	// otherwise short-circuit the call).
+	cache.Update("test", []*proto.StreamMetadata{{StreamHash: 0x1}})
+
+	req := &proto.CheckLimitsAndShardRequest{
+		Tenant:  "test",
+		Streams: []*proto.StreamMetadata{{StreamHash: 0x1}},
+	}
+	onMiss := &mockLimitsClient{
+		t:                                  t,
+		expectedCheckLimitsAndShardRequest: req,
+		checkLimitsAndShardResponse: &proto.CheckLimitsAndShardResponse{
+			Results: []*proto.StreamShardResult{{StreamHash: 0x1, Shards: 3}},
+		},
+	}
+	client := newCacheLimitsClient(cache, onMiss)
+	resp, err := client.CheckLimitsAndShard(t.Context(), req)
+	require.NoError(t, err)
+	require.Equal(t, uint32(3), resp.Results[0].Shards)
+	require.Equal(t, 1, onMiss.checkLimitsAndShardCalls)
+}
+
 func TestAcceptedStreamsCache(t *testing.T) {
 	t.Run("cache is cleared after TTL elapsed", func(t *testing.T) {
 		synctest.Test(t, func(t *testing.T) {

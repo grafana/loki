@@ -18,6 +18,7 @@ import (
 
 	"github.com/c2h5oh/datasize"
 	"github.com/go-kit/log"
+	"github.com/gogo/status"
 	"github.com/grafana/dskit/flagext"
 	"github.com/grafana/dskit/httpgrpc"
 	"github.com/grafana/dskit/kv"
@@ -34,6 +35,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/twmb/franz-go/pkg/kgo"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/health/grpc_health_v1"
 
 	"github.com/grafana/loki/v3/pkg/ingester"
@@ -864,59 +866,73 @@ func TestStreamShard(t *testing.T) {
 		streamSize int
 
 		wantDerivedStreamSize int
+		wantShardCount        int
 	}{
 		{
 			name:                  "zero shard because no entries",
 			entries:               nil,
 			streamSize:            50,
 			wantDerivedStreamSize: 1,
+			wantShardCount:        1,
 		},
 		{
 			name:                  "one shard with one entry",
 			streamSize:            1,
 			entries:               totalEntries[0:1],
 			wantDerivedStreamSize: 1,
+			wantShardCount:        1,
 		},
 		{
 			name:                  "two shards with 3 entries",
 			streamSize:            desiredRate.Val() + 1, // pass the desired rate by 1 byte to force two shards.
 			entries:               totalEntries[0:3],
 			wantDerivedStreamSize: 2,
+			wantShardCount:        2,
 		},
 		{
 			name:                  "two shards with 5 entries",
 			entries:               totalEntries[0:5],
 			streamSize:            desiredRate.Val() + 1, // pass the desired rate for 1 byte to force two shards.
 			wantDerivedStreamSize: 2,
+			wantShardCount:        2,
 		},
 		{
 			name:                  "one shard with 20 entries",
 			entries:               totalEntries[0:20],
 			streamSize:            1,
 			wantDerivedStreamSize: 1,
+			wantShardCount:        1,
 		},
 		{
 			name:                  "two shards with 20 entries",
 			entries:               totalEntries[0:20],
 			streamSize:            desiredRate.Val() + 1, // pass desired rate by 1 to force two shards.
 			wantDerivedStreamSize: 2,
+			wantShardCount:        2,
 		},
 		{
 			name:                  "four shards with 20 entries",
 			entries:               totalEntries[0:20],
 			streamSize:            1 + (desiredRate.Val() * 3), // force 4 shards.
 			wantDerivedStreamSize: 4,
+			wantShardCount:        4,
 		},
 		{
+			// Regression guard for the "recommendation vs. physically-realized
+			// shard count" distinction: the raw recommendation (wantShardCount)
+			// stays 4 even though only 2 physical shards are actually created,
+			// since createShards caps the physical count at len(stream.Entries).
 			name:                  "size for four shards with 2 entries, ends up with 4 shards ",
 			streamSize:            1 + (desiredRate.Val() * 3), // force 4 shards.
 			entries:               totalEntries[0:2],
 			wantDerivedStreamSize: 2,
+			wantShardCount:        4,
 		},
 		{
 			name:                  "four shards with 1 entry, ends up with 1 shard only",
 			entries:               totalEntries[0:1],
 			wantDerivedStreamSize: 1,
+			wantShardCount:        1,
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -939,8 +955,9 @@ func TestStreamShard(t *testing.T) {
 				shardTracker: NewShardTracker(),
 			}
 
-			derivedStreams := d.shardStream(baseStream, tc.streamSize, "fake", "", d.validator.ShardStreams("fake"))
+			derivedStreams, shardCount := d.shardStream(baseStream, tc.streamSize, "fake", "", d.validator.ShardStreams("fake"))
 			require.Len(t, derivedStreams, tc.wantDerivedStreamSize)
+			require.Equal(t, tc.wantShardCount, shardCount)
 
 			for _, s := range derivedStreams {
 				// Generate sorted labels
@@ -984,7 +1001,7 @@ func TestStreamShardAcrossCalls(t *testing.T) {
 			shardTracker: NewShardTracker(),
 		}
 
-		derivedStreams := d.shardStream(baseStream, streamRate, "fake", "", d.validator.ShardStreams("fake"))
+		derivedStreams, _ := d.shardStream(baseStream, streamRate, "fake", "", d.validator.ShardStreams("fake"))
 		require.Len(t, derivedStreams, 2)
 
 		for i, s := range derivedStreams {
@@ -995,7 +1012,7 @@ func TestStreamShardAcrossCalls(t *testing.T) {
 			require.Equal(t, lbls.Get(ingester.ShardLbName), fmt.Sprint(i))
 		}
 
-		derivedStreams = d.shardStream(baseStream, streamRate, "fake", "", d.validator.ShardStreams("fake"))
+		derivedStreams, _ = d.shardStream(baseStream, streamRate, "fake", "", d.validator.ShardStreams("fake"))
 		require.Len(t, derivedStreams, 2)
 
 		for i, s := range derivedStreams {
@@ -1038,6 +1055,29 @@ func TestStreamShardByTime(t *testing.T) {
 			expResult: []streamWithTimeShard{
 				{Stream: logproto.Stream{Labels: `{__time_shard__="1730376000_1730379600", app="myapp"}`, Entries: []logproto.Entry{
 					{Timestamp: baseTimestamp, Line: "foo"},
+				}}, linesTotalLen: 3},
+			},
+		},
+		{
+			// Regression guard for the deliberate (line-only) sizing
+			// documented on streamWithTimeShard.linesTotalLen: structured
+			// metadata bytes must NOT be counted here, to match
+			// maybeShardByRate's non-time-sharded pushSize input to the
+			// legacy rate store. See that field's doc comment for why.
+			test:   "single shard with structured metadata: metadata bytes excluded",
+			labels: `{app="myapp"}`,
+			entries: []logproto.Entry{
+				{Timestamp: baseTimestamp, Line: "foo", StructuredMetadata: push.LabelsAdapter{
+					{Name: "traceID", Value: "deadbeef"},
+				}},
+			},
+			timeShardLen: time.Hour,
+			ignoreFrom:   baseTimestamp.Add(1 * time.Second),
+			expResult: []streamWithTimeShard{
+				{Stream: logproto.Stream{Labels: `{__time_shard__="1730376000_1730379600", app="myapp"}`, Entries: []logproto.Entry{
+					{Timestamp: baseTimestamp, Line: "foo", StructuredMetadata: push.LabelsAdapter{
+						{Name: "traceID", Value: "deadbeef"},
+					}},
 				}}, linesTotalLen: 3},
 			},
 		},
@@ -3121,6 +3161,197 @@ func TestDistributor_PushIngestLimits(t *testing.T) {
 
 				assert.Equal(t, test.expectedDiscardedSamples, discardedSamples, "DiscardedSamples should match expected value")
 				assert.Equal(t, test.expectedDiscardedBytes, discardedBytes, "DiscardedBytes should match expected value")
+			}
+		})
+	}
+}
+
+func TestDistributor_ObserveLimitsServiceShardShadow(t *testing.T) {
+	tests := []struct {
+		name string
+		// shardStreamsEnabled controls the legacy (real) rate-based sharding
+		// path. It must be true for shadow-mode candidates to be
+		// accumulated at all (see maybeShardByRate): shadow observation is
+		// only meaningful when the legacy path is actually making a
+		// rate-based decision to compare against.
+		shardStreamsEnabled            bool
+		checkLimitsAndShardResponse    *limitsproto.CheckLimitsAndShardResponse
+		checkLimitsAndShardResponseErr error
+		expectDivergence               bool
+		expectUnimplemented            bool
+		expectFailed                   bool
+		expectRejected                 bool
+		expectCompared                 bool
+		expectCapped                   bool
+	}{
+		{
+			// Shadow mode must never influence what's actually pushed: the
+			// push must succeed exactly as it would with the mode disabled,
+			// regardless of the (mocked, failing) shard RPC.
+			name:                           "shadow RPC fails entirely: push still succeeds, never affects real output",
+			shardStreamsEnabled:            true,
+			checkLimitsAndShardResponseErr: errors.New("shadow RPC unavailable"),
+			expectDivergence:               false,
+			// A whole-RPC failure means no candidates were observed at all;
+			// this must still count against the comparison-coverage
+			// metrics, not silently vanish from them.
+			expectFailed: true,
+		},
+		{
+			// The backend responds Unimplemented (e.g. an old version that
+			// predates the RPC, mid-rollout): this must be surfaced via a
+			// dedicated metric, not silently swallowed like a normal
+			// transient error.
+			name:                           "backend returns Unimplemented: surfaced via dedicated metric",
+			shardStreamsEnabled:            true,
+			checkLimitsAndShardResponseErr: status.Error(codes.Unimplemented, "unknown method CheckLimitsAndShard"),
+			expectDivergence:               false,
+			expectUnimplemented:            true,
+			expectFailed:                   true,
+		},
+		{
+			// Legacy says 1 shard (the local rate store has no history yet
+			// for this stream, so shardCountFor's "first push, don't shard
+			// until the rate is understood" rule applies regardless of
+			// shardStreamsEnabled); the shadow RPC says 3 -- this
+			// divergence must be recorded, but must still never affect what's
+			// written. shardStreamsEnabled must be true here: shadow
+			// candidates are only accumulated (and thus only compared) when
+			// rate-based sharding is actually enabled -- see
+			// maybeShardByRate.
+			name:                "shadow RPC diverges from the legacy decision: divergence recorded",
+			shardStreamsEnabled: true,
+			checkLimitsAndShardResponse: &limitsproto.CheckLimitsAndShardResponse{
+				Results: []*limitsproto.StreamShardResult{{StreamHash: 0x90eb45def17f924, Shards: 3}},
+			},
+			expectDivergence: true,
+			expectCompared:   true,
+		},
+		{
+			// The stream is missing from the response entirely (e.g. the
+			// frontend never got an answer for it from any zone): this must
+			// not be compared as if it were a real recommendation.
+			name:                "shadow RPC response has no result for the stream: not compared",
+			shardStreamsEnabled: true,
+			checkLimitsAndShardResponse: &limitsproto.CheckLimitsAndShardResponse{
+				Results: []*limitsproto.StreamShardResult{},
+			},
+			expectFailed: true,
+		},
+		{
+			// An explicit ReasonFailed result (e.g. the stream's partition
+			// isn't owned by any answering instance) must likewise be
+			// excluded from the numeric comparison, not treated as
+			// "recommended 1 shard".
+			name:                "shadow RPC reports ReasonFailed for the stream: not compared",
+			shardStreamsEnabled: true,
+			checkLimitsAndShardResponse: &limitsproto.CheckLimitsAndShardResponse{
+				Results: []*limitsproto.StreamShardResult{{
+					StreamHash:           0x90eb45def17f924,
+					Shards:               1,
+					ShardDecisionContext: uint32(limits.ReasonFailed),
+				}},
+			},
+			expectFailed: true,
+		},
+		{
+			// A rejection is a divergence in kind, not a shard-count
+			// mismatch -- the legacy path never rejects a stream outright --
+			// so it must be tracked separately from the numeric comparison.
+			name:                "shadow RPC rejects the stream: tracked separately from shard-count divergence",
+			shardStreamsEnabled: true,
+			checkLimitsAndShardResponse: &limitsproto.CheckLimitsAndShardResponse{
+				Results: []*limitsproto.StreamShardResult{{
+					StreamHash:   0x90eb45def17f924,
+					Shards:       0,
+					RejectReason: limits.ReasonMaxStreams.String(),
+				}},
+			},
+			expectRejected: true,
+		},
+		{
+			// A capped decision that happens to still match the legacy
+			// count is a real, comparable observation -- it must be counted
+			// as both "compared" and "capped", but not as a divergence.
+			name:                "shadow RPC caps the shard count but agrees with the legacy decision: compared and capped, no divergence",
+			shardStreamsEnabled: true,
+			checkLimitsAndShardResponse: &limitsproto.CheckLimitsAndShardResponse{
+				Results: []*limitsproto.StreamShardResult{{
+					StreamHash:           0x90eb45def17f924,
+					Shards:               1,
+					ShardDecisionContext: uint32(limits.ReasonStreamShardsCapped),
+				}},
+			},
+			expectCompared:   true,
+			expectCapped:     true,
+			expectDivergence: false,
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			validationLimits := &validation.Limits{}
+			flagext.DefaultValues(validationLimits)
+			validationLimits.ShardStreams.LimitsServiceStreamShardingMode = "shadow"
+			validationLimits.ShardStreams.Enabled = test.shardStreamsEnabled
+			distributors, _ := prepare(t, 1, 3, validationLimits, nil)
+			d := distributors[0]
+			// Shadow-mode observation is gated on this: it shares the "is
+			// the ingest-limits service available at all for this
+			// distributor" switch with the (separate, pre-existing)
+			// EnforceLimits/ExceedsLimits check below.
+			d.cfg.IngestLimitsEnabled = true
+
+			mockClient := mockIngestLimitsFrontendClient{
+				t: t,
+				// A non-nil, empty response so the real (unrelated)
+				// EnforceLimits call -- which now also runs, since it's
+				// gated by the same IngestLimitsEnabled switch -- is a
+				// no-op that accepts every stream, rather than crashing on
+				// a nil response.
+				exceedsLimitsResponse:          &limitsproto.ExceedsLimitsResponse{},
+				checkLimitsAndShardResponse:    test.checkLimitsAndShardResponse,
+				checkLimitsAndShardResponseErr: test.checkLimitsAndShardResponseErr,
+			}
+			d.ingestLimits = newIngestLimits(&mockClient, prometheus.NewRegistry())
+
+			req := &logproto.PushRequest{
+				Streams: []logproto.Stream{{
+					Labels: `{foo="bar"}`,
+					Entries: []logproto.Entry{{
+						Timestamp: time.Now(),
+						Line:      "baz",
+					}},
+				}},
+			}
+			resp, err := d.Push(ctx, req)
+			require.NoError(t, err)
+			require.Equal(t, success, resp)
+
+			// Assert every counter against its exact expected value, not just
+			// the one this case expects to increment. The classification is
+			// mutually exclusive (a stream is failed XOR rejected XOR
+			// compared), so a regression that double-counts a stream into an
+			// unexpected counter must fail here rather than slip through.
+			want := func(b bool) float64 {
+				if b {
+					return 1
+				}
+				return 0
+			}
+			for _, c := range []struct {
+				name    string
+				counter *prometheus.CounterVec
+				expect  bool
+			}{
+				{"divergence", d.m.limitsServiceShardShadowDivergence, test.expectDivergence},
+				{"unimplemented", d.m.limitsServiceShardShadowUnimplemented, test.expectUnimplemented},
+				{"failed", d.m.limitsServiceShardShadowFailed, test.expectFailed},
+				{"rejected", d.m.limitsServiceShardShadowRejected, test.expectRejected},
+				{"compared", d.m.limitsServiceShardShadowCompared, test.expectCompared},
+				{"capped", d.m.limitsServiceShardShadowCapped, test.expectCapped},
+			} {
+				require.Equal(t, want(c.expect), testutil.ToFloat64(c.counter.WithLabelValues("test")), "counter %s", c.name)
 			}
 		})
 	}

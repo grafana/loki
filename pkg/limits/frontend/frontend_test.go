@@ -185,3 +185,81 @@ func TestFrontend_ExceedsLimits(t *testing.T) {
 		})
 	}
 }
+
+func newTestFrontend(t *testing.T) *Frontend {
+	t.Helper()
+	readRing, _ := newMockRingWithClientPool(t, "test", nil, nil)
+	f, err := New(Config{
+		LifecyclerConfig: ring.LifecyclerConfig{
+			RingConfig: ring.Config{
+				KVStore: kv.Config{
+					Store: "inmemory",
+				},
+			},
+			HeartbeatPeriod:  time.Second,
+			HeartbeatTimeout: time.Minute,
+		},
+	}, "test", readRing, log.NewNopLogger(), prometheus.NewRegistry())
+	require.NoError(t, err)
+	return f
+}
+
+func TestFrontend_CheckLimitsAndShard_FailsOpenToOneShard(t *testing.T) {
+	f := newTestFrontend(t)
+	f.limitsClient = &mockLimitsClient{t: t, err: errors.New("boom")}
+	req := &proto.CheckLimitsAndShardRequest{
+		Tenant:  "test",
+		Streams: []*proto.StreamMetadata{{StreamHash: 0x1}},
+	}
+	resp, err := f.CheckLimitsAndShard(t.Context(), req)
+	require.NoError(t, err)
+	require.Equal(t, []*proto.StreamShardResult{{
+		StreamHash:           0x1,
+		Shards:               1,
+		ShardDecisionContext: uint32(limits.ReasonFailed),
+	}}, resp.Results)
+}
+
+func TestFrontend_CheckLimitsAndShard_NoCaching(t *testing.T) {
+	// Regression guard: there is no fail-open cache. A real decision from
+	// one call must never be remembered and replayed on a later failure --
+	// every total failure collapses to 1 shard, and every per-stream
+	// failure/rejection is passed straight through from the backend/ring,
+	// regardless of what any earlier call returned for the same stream.
+	f := newTestFrontend(t)
+	req := &proto.CheckLimitsAndShardRequest{
+		Tenant:  "test",
+		Streams: []*proto.StreamMetadata{{StreamHash: 0x1}},
+	}
+
+	mockClient := &mockLimitsClient{
+		t: t,
+		checkLimitsAndShardResponse: &proto.CheckLimitsAndShardResponse{
+			Results: []*proto.StreamShardResult{{StreamHash: 0x1, Shards: 20}},
+		},
+	}
+	f.limitsClient = mockClient
+	resp, err := f.CheckLimitsAndShard(t.Context(), req)
+	require.NoError(t, err)
+	require.Equal(t, uint32(20), resp.Results[0].Shards)
+
+	// A per-stream failure placeholder (RPC succeeds overall, but this
+	// stream's own partition went unanswered) passes through as 1 shard,
+	// not the earlier 20.
+	mockClient.checkLimitsAndShardResponse = &proto.CheckLimitsAndShardResponse{
+		Results: []*proto.StreamShardResult{{
+			StreamHash:           0x1,
+			Shards:               1,
+			ShardDecisionContext: uint32(limits.ReasonFailed),
+		}},
+	}
+	resp, err = f.CheckLimitsAndShard(t.Context(), req)
+	require.NoError(t, err)
+	require.Equal(t, uint32(1), resp.Results[0].Shards)
+
+	// A total RPC failure also collapses to 1 shard, not the earlier 20.
+	mockClient.err = errors.New("boom")
+	resp, err = f.CheckLimitsAndShard(t.Context(), req)
+	require.NoError(t, err)
+	require.Equal(t, uint32(1), resp.Results[0].Shards)
+}

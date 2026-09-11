@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strconv"
 	"sync"
 	"time"
 
@@ -51,8 +52,14 @@ type Service struct {
 	usage               *usageStore
 	logger              log.Logger
 
+	// The stream-shard-tracking pipeline (see stream_shard_store.go). Shares
+	// partitionManager with the primary pipeline above.
+	streamShardStore *streamShardStore
+
 	// Metrics.
-	streamEvictionsTotal *prometheus.CounterVec
+	streamEvictionsTotal             *prometheus.CounterVec
+	streamShardEvictionsTotal        *prometheus.CounterVec
+	streamShardStreamsDiscardedTotal *prometheus.CounterVec
 
 	// Readiness check, see [Service.CheckReady].
 	partitionReadinessPassed          bool
@@ -108,10 +115,24 @@ func New(cfg Config, limits Limits, logger log.Logger, reg prometheus.Registerer
 	if err != nil {
 		return nil, fmt.Errorf("failed to create offset manager: %w", err)
 	}
+	s.streamShardStore, err = newStreamShardStore(cfg.ActiveWindow, cfg.RateWindow, cfg.BucketSize, cfg.NumPartitions, limits, s.usage.StreamsUsed, reg)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create stream shard store: %w", err)
+	}
+	s.streamShardStreamsDiscardedTotal = promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
+		Name: "loki_ingest_limits_stream_shard_streams_discarded_total",
+		Help: "Total number of times streams were discarded by CheckLimitsAndShard because their partition is not assigned to this instance.",
+	}, []string{"partition"})
+	s.streamShardEvictionsTotal = promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
+		Namespace: constants.Loki,
+		Name:      "ingest_limits_stream_shard_evictions_total",
+		Help:      "The total number of shard-tracked streams evicted due to age per tenant. This is not a global total, as tenants can be sharded over multiple pods.",
+	}, []string{"tenant"})
 	s.partitionLifecycler = newPartitionLifecycler(
 		s.partitionManager,
 		offsetManager,
 		s.usage,
+		s.streamShardStore,
 		cfg.ActiveWindow,
 		logger,
 	)
@@ -186,6 +207,41 @@ func (s *Service) ExceedsLimits(
 	req *proto.ExceedsLimitsRequest,
 ) (*proto.ExceedsLimitsResponse, error) {
 	return s.limitsChecker.ExceedsLimits(ctx, req)
+}
+
+// CheckLimitsAndShard implements the [proto.IngestLimitsServer] interface. It
+// filters out streams whose partition isn't owned by this instance, then
+// delegates the shard-count decision for the rest to streamShardStore.
+func (s *Service) CheckLimitsAndShard(
+	ctx context.Context,
+	req *proto.CheckLimitsAndShardRequest,
+) (*proto.CheckLimitsAndShardResponse, error) {
+	streams := req.Streams
+	valid := 0
+	// Streams whose partition isn't owned by this instance get an explicit
+	// ReasonFailed entry rather than being silently dropped: the frontend's
+	// dispatch marks a stream "answered" once any instance responds, so a
+	// dropped stream would never be retried against another zone.
+	results := make([]*proto.StreamShardResult, 0, len(streams))
+	for _, stream := range streams {
+		partition := int32(stream.StreamHash % uint64(s.cfg.NumPartitions))
+		if !s.partitionManager.Has(partition) {
+			s.streamShardStreamsDiscardedTotal.WithLabelValues(strconv.Itoa(int(partition))).Inc()
+			results = append(results, &proto.StreamShardResult{
+				StreamHash:           stream.StreamHash,
+				Shards:               1,
+				ShardDecisionContext: uint32(ReasonFailed),
+			})
+			continue
+		}
+		streams[valid] = stream
+		valid++
+	}
+	streams = streams[:valid]
+
+	results = append(results, s.streamShardStore.checkAndShard(ctx, req.Tenant, streams, time.Now())...)
+
+	return &proto.CheckLimitsAndShardResponse{Results: results}, nil
 }
 
 // UpdateRates implements the [proto.IngestLimitsServer] interface.
@@ -329,6 +385,10 @@ func (s *Service) evictOldStreamsPeriodic(ctx context.Context) {
 			evicted := s.usage.Evict()
 			for tenant, numEvicted := range evicted {
 				s.streamEvictionsTotal.WithLabelValues(tenant).Add(float64(numEvicted))
+			}
+			shardEvicted := s.streamShardStore.Evict()
+			for tenant, numEvicted := range shardEvicted {
+				s.streamShardEvictionsTotal.WithLabelValues(tenant).Add(float64(numEvicted))
 			}
 		}
 	}
