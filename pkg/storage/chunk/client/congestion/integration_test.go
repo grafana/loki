@@ -113,7 +113,7 @@ func newCongestionControlledS3(t *testing.T, handler http.HandlerFunc) congestio
 		Retry: congestion.RetrierConfig{Strategy: "limited", Limit: 2},
 	}
 
-	metrics := congestion.NewMetrics(t.Name(), cfg)
+	metrics := congestion.NewMetrics(t.Name(), cfg, nil)
 	t.Cleanup(metrics.Unregister)
 
 	ctrl := congestion.NewController(cfg, log.NewNopLogger(), metrics)
