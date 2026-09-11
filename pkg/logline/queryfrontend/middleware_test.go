@@ -12,6 +12,7 @@ import (
 	"github.com/go-kit/log"
 	"github.com/grafana/dskit/user"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/require"
 
@@ -1522,35 +1523,300 @@ func TestPrefetchFilter_QueryStatsCountsTimeout(t *testing.T) {
 	require.Equal(t, int32(1), snap.PrefetchTimeouts)
 }
 
-func TestPrefetchFilter_MultipleHintRanges(t *testing.T) {
-	now := time.Now().Truncate(time.Millisecond)
-	r1 := hintprovider.HintTimeRange{Start: now.Add(-50 * time.Minute), End: now.Add(-45 * time.Minute)}
-	r2 := hintprovider.HintTimeRange{Start: now.Add(-20 * time.Minute), End: now.Add(-10 * time.Minute)}
+func TestGroupHintEnvelopes(t *testing.T) {
+	utc := func(h, m int) time.Time {
+		return time.Date(2026, 9, 8, h, m, 0, 0, time.UTC)
+	}
+	hint := func(sh, sm, eh, em int) hintprovider.HintTimeRange {
+		return hintprovider.HintTimeRange{Start: utc(sh, sm), End: utc(eh, em)}
+	}
+	env := func(sh, sm, eh, em int) hintEnvelope {
+		return hintEnvelope{Start: utc(sh, sm), End: utc(eh, em)}
+	}
 
-	hp := &mockHintProvider{
-		hints: &hintprovider.Hints{
-			TimeRanges: []hintprovider.HintTimeRange{r1, r2},
+	intervalStart := utc(12, 0)
+	intervalEnd := utc(12, 59)
+
+	tests := []struct {
+		name      string
+		start     time.Time
+		end       time.Time
+		hints     []hintprovider.HintTimeRange
+		maxGroups int
+		want      []hintEnvelope
+	}{
+		{
+			name:  "five hints k=4 cuts the three largest gaps",
+			start: intervalStart,
+			end:   intervalEnd,
+			hints: []hintprovider.HintTimeRange{
+				hint(12, 5, 12, 6),
+				hint(12, 21, 12, 22),
+				hint(12, 35, 12, 36),
+				hint(12, 41, 12, 42),
+				hint(12, 51, 12, 52),
+			},
+			maxGroups: 4,
+			want: []hintEnvelope{
+				env(12, 5, 12, 6),
+				env(12, 21, 12, 22),
+				env(12, 35, 12, 42),
+				env(12, 51, 12, 52),
+			},
+		},
+		{
+			name:  "k=1 unions all hints",
+			start: intervalStart,
+			end:   intervalEnd,
+			hints: []hintprovider.HintTimeRange{
+				hint(12, 5, 12, 6),
+				hint(12, 21, 12, 22),
+				hint(12, 35, 12, 36),
+			},
+			maxGroups: 1,
+			want:      []hintEnvelope{env(12, 5, 12, 36)},
+		},
+		{
+			name:  "overlapping hints are never split",
+			start: intervalStart,
+			end:   intervalEnd,
+			hints: []hintprovider.HintTimeRange{
+				hint(12, 5, 12, 20),
+				hint(12, 18, 12, 22),
+				hint(12, 40, 12, 41),
+			},
+			maxGroups: 4,
+			want: []hintEnvelope{
+				env(12, 5, 12, 22),
+				env(12, 40, 12, 41),
+			},
+		},
+		{
+			name:  "clips to the request interval",
+			start: utc(12, 10),
+			end:   utc(12, 40),
+			hints: []hintprovider.HintTimeRange{
+				hint(12, 0, 12, 20),
+				hint(12, 30, 12, 50),
+			},
+			maxGroups: 2,
+			want: []hintEnvelope{
+				env(12, 10, 12, 20),
+				env(12, 30, 12, 40),
+			},
 		},
 	}
 
-	var mu sync.Mutex
-	var gotStarts []time.Time
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got := groupHintEnvelopes(tc.hints, tc.start, tc.end, tc.maxGroups)
+			require.Equal(t, tc.want, got)
+		})
+	}
+}
+
+func TestEnvelopeBudget(t *testing.T) {
+	require.Equal(t, 1, envelopeBudget(15*time.Minute))
+	require.Equal(t, 2, envelopeBudget(15*time.Minute+time.Nanosecond))
+	require.Equal(t, 4, envelopeBudget(59*time.Minute))
+	require.Equal(t, 4, envelopeBudget(time.Hour))
+	require.Equal(t, maxEnvelopesPerInterval, envelopeBudget(24*time.Hour))
+	require.Equal(t, 1, envelopeBudget(0))
+}
+
+func TestEnvelopeQueriedDuration_AppliesBudgetPerSplitInterval(t *testing.T) {
+	start := time.Date(2026, 9, 8, 12, 0, 0, 0, time.UTC)
+	end := start.Add(8 * time.Hour)
+	var ranges []hintprovider.HintTimeRange
+	for i := 0; i < 16; i++ {
+		hintStart := start.Add(time.Duration(i) * 30 * time.Minute)
+		ranges = append(ranges, hintprovider.HintTimeRange{
+			Start: hintStart,
+			End:   hintStart.Add(time.Minute),
+		})
+	}
+
+	// One k=8 budget on the unsplit 8h range unions eight 29m gaps.
+	require.Equal(t, 16*time.Minute+8*29*time.Minute, intervalEnvelopeDuration(ranges, start, end))
+	require.Equal(t, 16*time.Minute+8*29*time.Minute, envelopeQueriedDuration(ranges, start, end, 0))
+	// After the configured 1h SplitByInterval slices, each hour keeps both 1m hints.
+	require.Equal(t, 16*time.Minute, envelopeQueriedDuration(ranges, start, end, time.Hour))
+	require.Equal(t, 16*time.Minute, envelopeQueriedDuration(ranges, start, end, 30*time.Minute))
+}
+
+func TestPrefetchFilter_MultipleHintRanges(t *testing.T) {
+	// 12:00–12:59 / 15m target → k=4. Five disjoint hints cut at the three
+	// largest gaps: isolate the far ones, keep 12:35–12:42 together.
+	intervalStart := time.Date(2026, 9, 8, 12, 0, 0, 0, time.UTC)
+	intervalEnd := time.Date(2026, 9, 8, 12, 59, 0, 0, time.UTC)
+	hints := []hintprovider.HintTimeRange{
+		{Start: time.Date(2026, 9, 8, 12, 5, 0, 0, time.UTC), End: time.Date(2026, 9, 8, 12, 6, 0, 0, time.UTC)},
+		{Start: time.Date(2026, 9, 8, 12, 21, 0, 0, time.UTC), End: time.Date(2026, 9, 8, 12, 22, 0, 0, time.UTC)},
+		{Start: time.Date(2026, 9, 8, 12, 35, 0, 0, time.UTC), End: time.Date(2026, 9, 8, 12, 36, 0, 0, time.UTC)},
+		{Start: time.Date(2026, 9, 8, 12, 41, 0, 0, time.UTC), End: time.Date(2026, 9, 8, 12, 42, 0, 0, time.UTC)},
+		{Start: time.Date(2026, 9, 8, 12, 51, 0, 0, time.UTC), End: time.Date(2026, 9, 8, 12, 52, 0, 0, time.UTC)},
+	}
+
+	hp := &mockHintProvider{hints: &hintprovider.Hints{TimeRanges: hints}}
+
+	var got [][2]time.Time
+	var prefetchResult *hintPrefetchResult
+	next := queryrangebase.HandlerFunc(func(ctx context.Context, req queryrangebase.Request) (queryrangebase.Response, error) {
+		lokiReq := req.(*queryrange.LokiRequest)
+		got = append(got, [2]time.Time{lokiReq.StartTs, lokiReq.EndTs})
+		prefetchResult = hintPrefetchFromContext(ctx)
+		return emptyStreamResponse(), nil
+	})
+
+	metrics := newTestMetrics()
+	handler := buildStack(hp, MiddlewareConfig{RequireOptInHeader: true}, metrics, next)
+	req := newTestLokiRequest(`{job="test"} |= "error"`, intervalStart, intervalEnd)
+	_, err := handler.Do(testTenantContextWithLive(), req)
+	require.NoError(t, err)
+	require.Equal(t, [][2]time.Time{
+		{hints[0].Start, hints[0].End},
+		{hints[1].Start, hints[1].End},
+		{hints[2].Start, hints[3].End},
+		{hints[4].Start, hints[4].End},
+	}, got)
+
+	require.NotNil(t, prefetchResult)
+	impact := prefetchResult.impactSnapshot()
+	require.Equal(t, int64(1), impact.totalIntervals)
+	require.Equal(t, int64(1), impact.narrowedIntervals)
+	require.Equal(t, 59*time.Minute, impact.originalDuration)
+	require.Equal(t, 10*time.Minute, impact.queryDuration, "queried duration must be the sum of k envelopes")
+	require.Equal(t, 1.0, testutil.ToFloat64(metrics.hintSubRequests.WithLabelValues("narrowed")))
+	require.Equal(t, 0.0, testutil.ToFloat64(metrics.hintSubRequests.WithLabelValues("skipped")))
+}
+
+func TestPrefetchFilter_EnvelopeClippedToRequest(t *testing.T) {
+	intervalStart := time.Date(2026, 9, 8, 12, 10, 0, 0, time.UTC)
+	intervalEnd := time.Date(2026, 9, 8, 12, 40, 0, 0, time.UTC)
+	hp := &mockHintProvider{
+		hints: &hintprovider.Hints{TimeRanges: []hintprovider.HintTimeRange{
+			{Start: time.Date(2026, 9, 8, 12, 0, 0, 0, time.UTC), End: time.Date(2026, 9, 8, 12, 20, 0, 0, time.UTC)},
+			{Start: time.Date(2026, 9, 8, 12, 30, 0, 0, time.UTC), End: time.Date(2026, 9, 8, 12, 50, 0, 0, time.UTC)},
+		}},
+	}
+
+	var got [][2]time.Time
 	next := queryrangebase.HandlerFunc(func(_ context.Context, req queryrangebase.Request) (queryrangebase.Response, error) {
 		lokiReq := req.(*queryrange.LokiRequest)
-		mu.Lock()
-		gotStarts = append(gotStarts, lokiReq.StartTs)
-		mu.Unlock()
+		got = append(got, [2]time.Time{lokiReq.StartTs, lokiReq.EndTs})
 		return emptyStreamResponse(), nil
 	})
 
 	handler := buildStack(hp, MiddlewareConfig{RequireOptInHeader: true}, newTestMetrics(), next)
-	ctx := testTenantContextWithLive()
-	req := newTestLokiRequest(`{job="test"} |= "error"`, now.Add(-1*time.Hour), now)
-	_, err := handler.Do(ctx, req)
+	req := newTestLokiRequest(`{job="test"} |= "error"`, intervalStart, intervalEnd)
+	_, err := handler.Do(testTenantContextWithLive(), req)
 	require.NoError(t, err)
-	require.Len(t, gotStarts, 2, "should dispatch one sub-request per hint range")
-	require.Contains(t, gotStarts, r1.Start)
-	require.Contains(t, gotStarts, r2.Start)
+	require.Equal(t, [][2]time.Time{
+		{intervalStart, time.Date(2026, 9, 8, 12, 20, 0, 0, time.UTC)},
+		{time.Date(2026, 9, 8, 12, 30, 0, 0, time.UTC), intervalEnd},
+	}, got)
+}
+
+func TestPrefetchFilter_HintsOutsideIntervalIgnored(t *testing.T) {
+	intervalStart := time.Date(2026, 9, 8, 12, 0, 0, 0, time.UTC)
+	intervalEnd := time.Date(2026, 9, 8, 13, 0, 0, 0, time.UTC)
+	inside := hintprovider.HintTimeRange{Start: time.Date(2026, 9, 8, 12, 20, 0, 0, time.UTC), End: time.Date(2026, 9, 8, 12, 21, 0, 0, time.UTC)}
+	hp := &mockHintProvider{
+		hints: &hintprovider.Hints{TimeRanges: []hintprovider.HintTimeRange{
+			{Start: time.Date(2026, 9, 8, 11, 0, 0, 0, time.UTC), End: time.Date(2026, 9, 8, 11, 5, 0, 0, time.UTC)},
+			inside,
+			{Start: time.Date(2026, 9, 8, 13, 10, 0, 0, time.UTC), End: time.Date(2026, 9, 8, 13, 15, 0, 0, time.UTC)},
+		}},
+	}
+
+	var gotStart, gotEnd time.Time
+	nextCalled := 0
+	next := queryrangebase.HandlerFunc(func(_ context.Context, req queryrangebase.Request) (queryrangebase.Response, error) {
+		nextCalled++
+		lokiReq := req.(*queryrange.LokiRequest)
+		gotStart = lokiReq.StartTs
+		gotEnd = lokiReq.EndTs
+		return emptyStreamResponse(), nil
+	})
+
+	handler := buildStack(hp, MiddlewareConfig{RequireOptInHeader: true}, newTestMetrics(), next)
+	req := newTestLokiRequest(`{job="test"} |= "error"`, intervalStart, intervalEnd)
+	_, err := handler.Do(testTenantContextWithLive(), req)
+	require.NoError(t, err)
+	require.Equal(t, 1, nextCalled)
+	require.Equal(t, inside.Start, gotStart)
+	require.Equal(t, inside.End, gotEnd)
+}
+
+func TestPrefetchFilter_DownstreamErrorPropagated(t *testing.T) {
+	now := time.Now().Truncate(time.Millisecond)
+	hp := &mockHintProvider{
+		hints: &hintprovider.Hints{TimeRanges: []hintprovider.HintTimeRange{
+			{Start: now.Add(-45 * time.Minute), End: now.Add(-40 * time.Minute)},
+			{Start: now.Add(-20 * time.Minute), End: now.Add(-15 * time.Minute)},
+		}},
+	}
+
+	nextCalled := 0
+	next := queryrangebase.HandlerFunc(func(_ context.Context, _ queryrangebase.Request) (queryrangebase.Response, error) {
+		nextCalled++
+		return nil, errors.New("querier boom")
+	})
+
+	handler := buildStack(hp, MiddlewareConfig{RequireOptInHeader: true}, newTestMetrics(), next)
+	req := newTestLokiRequest(`{job="test"} |= "error"`, now.Add(-1*time.Hour), now)
+	_, err := handler.Do(testTenantContextWithLive(), req)
+	require.EqualError(t, err, "querier boom")
+	require.Equal(t, 1, nextCalled)
+}
+
+func TestPrefetchFilter_PreservesRequestFields(t *testing.T) {
+	intervalStart := time.Date(2026, 9, 8, 12, 0, 0, 0, time.UTC)
+	intervalEnd := time.Date(2026, 9, 8, 13, 0, 0, 0, time.UTC)
+	storeChunks := &logproto.ChunkRefGroup{}
+	hp := &mockHintProvider{
+		hints: &hintprovider.Hints{TimeRanges: []hintprovider.HintTimeRange{
+			{Start: time.Date(2026, 9, 8, 12, 5, 0, 0, time.UTC), End: time.Date(2026, 9, 8, 12, 6, 0, 0, time.UTC)},
+			{Start: time.Date(2026, 9, 8, 12, 35, 0, 0, time.UTC), End: time.Date(2026, 9, 8, 12, 36, 0, 0, time.UTC)},
+		}},
+	}
+
+	var got []*queryrange.LokiRequest
+	next := queryrangebase.HandlerFunc(func(_ context.Context, req queryrangebase.Request) (queryrangebase.Response, error) {
+		got = append(got, req.(*queryrange.LokiRequest))
+		return emptyStreamResponse(), nil
+	})
+
+	handler := buildStack(hp, MiddlewareConfig{RequireOptInHeader: true}, newTestMetrics(), next)
+	req := &queryrange.LokiRequest{
+		Query:       `{job="test"} |= "error"`,
+		Limit:       42,
+		Step:        1000,
+		Interval:    2000,
+		StartTs:     intervalStart,
+		EndTs:       intervalEnd,
+		Direction:   logproto.FORWARD,
+		Path:        "/loki/api/v1/query_range",
+		Shards:      []string{"0_of_4"},
+		StoreChunks: storeChunks,
+	}
+	_, err := handler.Do(testTenantContextWithLive(), req)
+	require.NoError(t, err)
+	require.Len(t, got, 2)
+	require.Equal(t, time.Date(2026, 9, 8, 12, 5, 0, 0, time.UTC), got[0].StartTs)
+	require.Equal(t, time.Date(2026, 9, 8, 12, 6, 0, 0, time.UTC), got[0].EndTs)
+	require.Equal(t, time.Date(2026, 9, 8, 12, 35, 0, 0, time.UTC), got[1].StartTs)
+	require.Equal(t, time.Date(2026, 9, 8, 12, 36, 0, 0, time.UTC), got[1].EndTs)
+	for _, g := range got {
+		require.Equal(t, req.Query, g.Query)
+		require.Equal(t, req.Limit, g.Limit)
+		require.Equal(t, req.Step, g.Step)
+		require.Equal(t, req.Interval, g.Interval)
+		require.Equal(t, req.Direction, g.Direction)
+		require.Equal(t, req.Path, g.Path)
+		require.Equal(t, req.Shards, g.Shards)
+		require.Equal(t, req.StoreChunks, g.StoreChunks)
+	}
 }
 
 // --- Ingester window tests ---

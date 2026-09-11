@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"sync"
+	"time"
 
 	"github.com/go-kit/log"
 	"github.com/grafana/dskit/services"
@@ -200,6 +201,9 @@ func WrapMiddlewareWithStore(
 	hp := hintprovider.NewCachingHintProvider(baseHintProvider, hintCache, reg)
 	if cfg.QueryIngestersWithin == 0 {
 		cfg.QueryIngestersWithin = lokiCfg.Querier.QueryIngestersWithin
+	}
+	if cfg.QuerySplitDuration == 0 {
+		cfg.QuerySplitDuration = time.Duration(lokiCfg.LimitsConfig.QuerySplitDuration)
 	}
 
 	prefetchMW := NewLoglinePrefetchMiddleware(hp, cfg, tenantSettings, metrics, logger)
