@@ -5,7 +5,7 @@ go 1.26.6
 ignore ./tools/dev
 
 require (
-	cloud.google.com/go/storage v1.67.0
+	cloud.google.com/go/storage v1.67.1
 	dario.cat/mergo v1.0.2
 	github.com/Azure/azure-sdk-for-go/sdk/azcore v1.23.1
 	github.com/Azure/azure-sdk-for-go/sdk/azidentity v1.14.1
@@ -65,7 +65,7 @@ require (
 	github.com/opentracing-contrib/go-grpc v0.1.4 // indirect
 	github.com/opentracing-contrib/go-stdlib v1.1.1 // indirect
 	github.com/opentracing/opentracing-go v1.2.1-0.20220228012449-10b1cf09e00b
-	github.com/oschwald/geoip2-golang/v2 v2.3.0
+	github.com/oschwald/geoip2-golang/v2 v2.4.0
 	// github.com/pierrec/lz4 v2.0.5+incompatible
 	github.com/pierrec/lz4/v4 v4.1.29
 	github.com/pkg/errors v0.9.1
@@ -127,7 +127,7 @@ require (
 	github.com/richardartoul/molecule v1.0.0
 	github.com/schollz/progressbar/v3 v3.19.1
 	github.com/shirou/gopsutil/v4 v4.26.8
-	github.com/thanos-io/objstore v0.0.0-20260828142402-4b0f36756cea
+	github.com/thanos-io/objstore v0.0.0-20260907152334-44aca71316b7
 	github.com/tjhop/slog-gokit v0.2.0
 	github.com/twmb/franz-go v1.21.3
 	github.com/twmb/franz-go/pkg/kadm v1.18.0
@@ -150,7 +150,7 @@ require (
 
 require (
 	github.com/containerd/ttrpc v1.2.9 // indirect
-	github.com/dlclark/regexp2/v2 v2.7.2 // indirect
+	github.com/dlclark/regexp2/v2 v2.8.0 // indirect
 	github.com/go-openapi/swag/pools v0.29.2 // indirect
 	github.com/mschoch/smat v0.2.0 // indirect
 	go.opentelemetry.io/collector/consumer/xconsumer v0.160.0 // indirect
@@ -243,7 +243,7 @@ require (
 	github.com/open-telemetry/opentelemetry-collector-contrib/internal/exp/metrics v0.160.0 // indirect
 	github.com/open-telemetry/opentelemetry-collector-contrib/pkg/pdatautil v0.160.0 // indirect
 	github.com/open-telemetry/opentelemetry-collector-contrib/processor/deltatocumulativeprocessor v0.160.0 // indirect
-	github.com/oschwald/maxminddb-golang/v2 v2.5.0 // indirect
+	github.com/oschwald/maxminddb-golang/v2 v2.6.0 // indirect
 	github.com/parquet-go/bitpack v1.1.0 // indirect
 	github.com/parquet-go/jsonlite v1.5.5 // indirect
 	github.com/philhofer/fwd v1.2.0 // indirect
@@ -417,9 +417,9 @@ require (
 	go.uber.org/zap v1.28.0 // indirect
 	golang.org/x/term v0.45.0 // indirect
 	golang.org/x/tools v0.49.0
-	google.golang.org/genproto v0.0.0-20260904194346-d0f1323225a4 // indirect
-	google.golang.org/genproto/googleapis/api v0.0.0-20260831171406-18b4a7587f8a // indirect
-	google.golang.org/genproto/googleapis/rpc v0.0.0-20260904194346-d0f1323225a4
+	google.golang.org/genproto v0.0.0-20260908043556-f8649ddbbfe6 // indirect
+	google.golang.org/genproto/googleapis/api v0.0.0-20260904194346-d0f1323225a4 // indirect
+	google.golang.org/genproto/googleapis/rpc v0.0.0-20260908043556-f8649ddbbfe6
 	gopkg.in/inf.v0 v0.9.1 // indirect
 	k8s.io/client-go v0.37.0 // indirect
 	k8s.io/kube-openapi v0.0.0-20260821135717-be32def86098 // indirect

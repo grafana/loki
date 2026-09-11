@@ -26,9 +26,9 @@ type Record struct {
 	Metadata  labels.Labels
 	Line      []byte
 
-	// SortKey is a pre-computed schema sort key. It is not encoded into the section;
+	// SchemaKey is a pre-computed schema sort key. It is not encoded into the section;
 	// it only guides the in-memory sort during building.
-	SortKey string
+	SchemaKey string
 
 	// ShardBucket is the physical shard bucket for the record's stream. It is
 	// not encoded into LOG sections; it guides schema-layout sorting.

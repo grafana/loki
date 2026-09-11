@@ -61,7 +61,7 @@ cloud.google.com/go/iam/apiv1/iampb
 cloud.google.com/go/monitoring/apiv3/v2
 cloud.google.com/go/monitoring/apiv3/v2/monitoringpb
 cloud.google.com/go/monitoring/internal
-# cloud.google.com/go/storage v1.67.0
+# cloud.google.com/go/storage v1.67.1
 ## explicit; go 1.25.0
 cloud.google.com/go/storage
 cloud.google.com/go/storage/experimental
@@ -595,7 +595,7 @@ github.com/dgryski/go-metro
 # github.com/distribution/reference v0.6.0
 ## explicit; go 1.20
 github.com/distribution/reference
-# github.com/dlclark/regexp2/v2 v2.7.2
+# github.com/dlclark/regexp2/v2 v2.8.0
 ## explicit; go 1.25
 github.com/dlclark/regexp2/v2
 github.com/dlclark/regexp2/v2/helpers
@@ -1321,13 +1321,14 @@ github.com/opentracing-contrib/go-stdlib/nethttp
 github.com/opentracing/opentracing-go
 github.com/opentracing/opentracing-go/ext
 github.com/opentracing/opentracing-go/log
-# github.com/oschwald/geoip2-golang/v2 v2.3.0
-## explicit; go 1.25.0
+# github.com/oschwald/geoip2-golang/v2 v2.4.0
+## explicit; go 1.26.0
 github.com/oschwald/geoip2-golang/v2
-# github.com/oschwald/maxminddb-golang/v2 v2.5.0
+# github.com/oschwald/maxminddb-golang/v2 v2.6.0
 ## explicit; go 1.25.0
 github.com/oschwald/maxminddb-golang/v2
 github.com/oschwald/maxminddb-golang/v2/internal/decoder
+github.com/oschwald/maxminddb-golang/v2/internal/maxminddbtag
 github.com/oschwald/maxminddb-golang/v2/internal/mmdberrors
 github.com/oschwald/maxminddb-golang/v2/mmdbdata
 # github.com/parquet-go/bitpack v1.1.0
@@ -1622,7 +1623,7 @@ github.com/stretchr/testify/internal/difflib
 github.com/stretchr/testify/internal/spew
 github.com/stretchr/testify/mock
 github.com/stretchr/testify/require
-# github.com/thanos-io/objstore v0.0.0-20260828142402-4b0f36756cea => github.com/grafana/objstore v0.0.0-20260721130030-becd33cc63ff
+# github.com/thanos-io/objstore v0.0.0-20260907152334-44aca71316b7 => github.com/grafana/objstore v0.0.0-20260721130030-becd33cc63ff
 ## explicit; go 1.22
 github.com/thanos-io/objstore
 github.com/thanos-io/objstore/clientutil
@@ -2165,13 +2166,13 @@ google.golang.org/api/storage/v1
 google.golang.org/api/transport
 google.golang.org/api/transport/grpc
 google.golang.org/api/transport/http
-# google.golang.org/genproto v0.0.0-20260904194346-d0f1323225a4
+# google.golang.org/genproto v0.0.0-20260908043556-f8649ddbbfe6
 ## explicit; go 1.25.0
 google.golang.org/genproto/googleapis/type/calendarperiod
 google.golang.org/genproto/googleapis/type/date
 google.golang.org/genproto/googleapis/type/expr
 google.golang.org/genproto/googleapis/type/timeofday
-# google.golang.org/genproto/googleapis/api v0.0.0-20260831171406-18b4a7587f8a
+# google.golang.org/genproto/googleapis/api v0.0.0-20260904194346-d0f1323225a4
 ## explicit; go 1.25.0
 google.golang.org/genproto/googleapis/api
 google.golang.org/genproto/googleapis/api/annotations
@@ -2181,7 +2182,7 @@ google.golang.org/genproto/googleapis/api/httpbody
 google.golang.org/genproto/googleapis/api/label
 google.golang.org/genproto/googleapis/api/metric
 google.golang.org/genproto/googleapis/api/monitoredres
-# google.golang.org/genproto/googleapis/rpc v0.0.0-20260904194346-d0f1323225a4
+# google.golang.org/genproto/googleapis/rpc v0.0.0-20260908043556-f8649ddbbfe6
 ## explicit; go 1.25.0
 google.golang.org/genproto/googleapis/rpc/code
 google.golang.org/genproto/googleapis/rpc/errdetails
