@@ -41,6 +41,12 @@ const (
 	WalRecordSeries RecordType = iota
 	WalRecordChunks
 	WalRecordSeriesWithFingerprint
+	// WalRecordChunksWithIngestedAt carries the same fields as WalRecordChunks
+	// plus each chunk's index.ChunkMeta.IngestedAt. It exists as a separate type
+	// because WalRecordChunks is decoded as a fixed-width stride until the buffer
+	// drains, so growing that layout would make older binaries misparse the
+	// records written by newer ones.
+	WalRecordChunksWithIngestedAt
 )
 
 type WALRecord struct {
@@ -86,9 +92,21 @@ func (r *WALRecord) encodeSeriesWithFingerprint(b []byte) []byte {
 	return encoded
 }
 
+// encodeChunks encodes the record's chunk metas, picking the record type from
+// the data: records holding at least one non-zero IngestedAt use
+// WalRecordChunksWithIngestedAt, all others keep the original WalRecordChunks
+// layout. Only chunks of backfilled streams under schema v14 carry IngestedAt
+// (see Ingester.maybeSetIngestedAt), so every other deployment keeps writing
+// WALs that a binary predating the new record type can still recover.
 func (r *WALRecord) encodeChunks(b []byte) []byte {
+	withIngestedAt := hasIngestedAt(r.Chks.Chks)
+
 	buf := encoding.EncWith(b)
-	buf.PutByte(byte(WalRecordChunks))
+	if withIngestedAt {
+		buf.PutByte(byte(WalRecordChunksWithIngestedAt))
+	} else {
+		buf.PutByte(byte(WalRecordChunks))
+	}
 	buf.PutUvarintStr(r.UserID)
 	buf.PutBE64(r.Chks.Ref)
 	buf.PutUvarint(len(r.Chks.Chks))
@@ -99,12 +117,24 @@ func (r *WALRecord) encodeChunks(b []byte) []byte {
 		buf.PutBE32(chk.Checksum)
 		buf.PutBE32(chk.KB)
 		buf.PutBE32(chk.Entries)
+		if withIngestedAt {
+			buf.PutUvarint64(uint64(chk.IngestedAt))
+		}
 	}
 
 	return buf.Get()
 }
 
-func decodeChunks(b []byte, rec *WALRecord) error {
+func hasIngestedAt(chks index.ChunkMetas) bool {
+	for i := range chks {
+		if chks[i].IngestedAt != 0 {
+			return true
+		}
+	}
+	return false
+}
+
+func decodeChunks(b []byte, rec *WALRecord, withIngestedAt bool) error {
 	if len(b) == 0 {
 		return nil
 	}
@@ -124,13 +154,17 @@ func decodeChunks(b []byte, rec *WALRecord) error {
 	rec.Chks.Chks = make(index.ChunkMetas, 0, ln)
 
 	for len(dec.B) > 0 && dec.Err() == nil {
-		rec.Chks.Chks = append(rec.Chks.Chks, index.ChunkMeta{
+		chk := index.ChunkMeta{
 			MinTime:  dec.Be64int64(),
 			MaxTime:  dec.Be64int64(),
 			Checksum: dec.Be32(),
 			KB:       dec.Be32(),
 			Entries:  dec.Be32(),
-		})
+		}
+		if withIngestedAt {
+			chk.IngestedAt = int64(dec.Uvarint64())
+		}
+		rec.Chks.Chks = append(rec.Chks.Chks, chk)
 	}
 
 	if err := dec.Err(); err != nil {
@@ -177,9 +211,9 @@ func decodeWALRecord(b []byte, walRec *WALRecord) error {
 		if len(rSeries) == 1 {
 			walRec.Series = rSeries[0]
 		}
-	case WalRecordChunks:
+	case WalRecordChunks, WalRecordChunksWithIngestedAt:
 		userID = decbuf.UvarintStr()
-		if err := decodeChunks(decbuf.B, walRec); err != nil {
+		if err := decodeChunks(decbuf.B, walRec, t == WalRecordChunksWithIngestedAt); err != nil {
 			return err
 		}
 	default:
