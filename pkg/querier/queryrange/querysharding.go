@@ -25,6 +25,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/util"
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
 	"github.com/grafana/loki/v3/pkg/util/marshal"
+	"github.com/grafana/loki/v3/pkg/util/querylimits"
 	"github.com/grafana/loki/v3/pkg/util/spanlogger"
 	"github.com/grafana/loki/v3/pkg/util/validation"
 )
@@ -135,6 +136,37 @@ func (ast *astMapperware) checkQuerySizeLimit(ctx context.Context, bytesPerShard
 	return nil
 }
 
+// plannedBytesPerShard is planned-window bytes divided by the existing
+// shard count, for the MaxQuerierBytesRead check. ok is false if stats
+// fail so the caller keeps the full-range estimate.
+func (ast *astMapperware) plannedBytesPerShard(
+	ctx context.Context,
+	r queryrangebase.Request,
+	planned []querylimits.TimeRange,
+	bytesPerShard uint64,
+) (uint64, bool) {
+	limiter := newQuerySizeLimiter(
+		ast.next,
+		ast.ng.Opts(),
+		ast.logger,
+		ast.limits.MaxQuerierBytesRead,
+		maxQuerierBytesReadSpec,
+		ast.statsHandler,
+	)
+	plannedBytes, err := limiter.getBytesForPlannedRanges(ctx, r, planned)
+	if err != nil {
+		return 0, false
+	}
+	if plannedBytes == 0 {
+		return 0, true
+	}
+	fullBytes, err := limiter.getBytesForQueryAndRange(ctx, r.GetQuery(), r.GetStart(), r.GetEnd())
+	if err != nil {
+		return 0, false
+	}
+	return scaleBytesToShard(plannedBytes, fullBytes, bytesPerShard), true
+}
+
 func (ast *astMapperware) Do(ctx context.Context, r queryrangebase.Request) (queryrangebase.Response, error) {
 	logger := util_log.WithContext(ctx, ast.logger)
 	spLogger := spanlogger.FromContext(
@@ -205,7 +237,20 @@ func (ast *astMapperware) Do(ctx context.Context, r queryrangebase.Request) (que
 	}
 	level.Debug(logger).Log("no-op", noop, "mapped", parsed.String())
 
-	// Note, even if noop, bytesPerShard contains the bytes that'd be read for the whole expr without sharding
+	// Note, even if noop, bytesPerShard contains the bytes that'd be read for the whole expr without sharding.
+	// A present plan only changes the MaxQuerierBytesRead number (planned
+	// windows divided by the existing shard count). GetStats and the shard
+	// factor still use the full request range.
+	if planned, ok := querylimits.ExtractPlannedQueryRanges(ctx); ok {
+		if sized, ok := ast.plannedBytesPerShard(ctx, r, planned, bytesPerShard); ok {
+			level.Debug(logger).Log(
+				"msg", "sized MaxQuerierBytesRead using planned ranges",
+				"windows", len(planned),
+				"bytes_per_shard", sized,
+			)
+			bytesPerShard = sized
+		}
+	}
 	if err = ast.checkQuerySizeLimit(ctx, bytesPerShard, noop); err != nil {
 		return nil, err
 	}

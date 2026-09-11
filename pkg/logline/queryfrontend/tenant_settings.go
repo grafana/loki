@@ -19,6 +19,14 @@ type TenantSettings interface {
 	MinQueryBytesForIndex(tenant string) (int64, bool)
 }
 
+// maxQueryBytesReader is an optional TenantSettings extension. GEL can
+// implement this (wrapping Loki overrides) without changing
+// WrapMiddleware's signature. When absent, prefetch uses
+// MiddlewareConfig.MaxQueryBytesRead.
+type maxQueryBytesReader interface {
+	MaxQueryBytesRead(tenant string) int
+}
+
 type staticTenantSettings struct{}
 
 func (staticTenantSettings) Mode(string) Mode { return ModeUnset }

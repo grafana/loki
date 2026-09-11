@@ -201,6 +201,9 @@ func WrapMiddlewareWithStore(
 	if cfg.QueryIngestersWithin == 0 {
 		cfg.QueryIngestersWithin = lokiCfg.Querier.QueryIngestersWithin
 	}
+	if cfg.MaxQueryBytesRead == 0 {
+		cfg.MaxQueryBytesRead = int64(lokiCfg.LimitsConfig.MaxQueryBytesRead.Val())
+	}
 
 	prefetchMW := NewLoglinePrefetchMiddleware(hp, cfg, tenantSettings, metrics, logger)
 	filterMW := NewLoglineFilterMiddleware(cfg.HintTimeout, metrics, logger)

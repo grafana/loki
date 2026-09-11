@@ -28,6 +28,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/storage/types"
 	"github.com/grafana/loki/v3/pkg/util"
 	"github.com/grafana/loki/v3/pkg/util/constants"
+	"github.com/grafana/loki/v3/pkg/util/querylimits"
 )
 
 var (
@@ -336,6 +337,154 @@ func Test_astMapper_QuerySizeLimits(t *testing.T) {
 			require.Equal(t, tc.expectedStatsHandlerHits, statsCalled)
 		})
 	}
+}
+
+func Test_astMapper_QuerySizeLimits_PlannedRanges(t *testing.T) {
+	query := `{app="foo"} |= "foo"`
+	req := defaultReq()
+	req.Query = query
+	req.Plan = testutil.MustPlan(query)
+
+	statsHandler := queryrangebase.HandlerFunc(func(_ context.Context, r queryrangebase.Request) (queryrangebase.Response, error) {
+		bytes := uint64(100)
+		if r.GetStart().After(start.Add(20 * time.Minute)) {
+			bytes = 5
+		}
+		return &IndexStatsResponse{
+			Response: &logproto.IndexStatsResponse{Bytes: bytes},
+		}, nil
+	})
+	downstream := queryrangebase.HandlerFunc(func(_ context.Context, req queryrangebase.Request) (queryrangebase.Response, error) {
+		if _, ok := req.(*logproto.IndexStatsRequest); ok {
+			return statsHandler.Do(context.Background(), req)
+		}
+		limit := uint32(100)
+		if lokiReq, ok := req.(*LokiRequest); ok {
+			limit = lokiReq.Limit
+		}
+		return &LokiResponse{
+			Status:    loghttp.QueryStatusSuccess,
+			Direction: logproto.BACKWARD,
+			Limit:     limit,
+			Version:   1,
+			Data: LokiData{
+				ResultType: loghttp.ResultTypeStream,
+			},
+		}, nil
+	})
+
+	newWare := func() *astMapperware {
+		return newASTMapperware(
+			[]config.PeriodConfig{{IndexType: types.IndexTypeTSDB}},
+			testEngineOpts,
+			downstream,
+			downstream,
+			statsHandler,
+			log.NewNopLogger(),
+			nilShardingMetrics,
+			fakeLimits{
+				maxSeries:               math.MaxInt32,
+				maxQueryParallelism:     1,
+				tsdbMaxQueryParallelism: 1,
+				queryTimeout:            time.Minute,
+				maxQuerierBytesRead:     10,
+			},
+			0,
+			[]string{},
+		)
+	}
+
+	t.Run("full split exceeds the limit without a plan", func(t *testing.T) {
+		_, err := newWare().Do(user.InjectOrgID(context.Background(), "1"), req)
+		require.Error(t, err)
+		require.ErrorContains(t, err, fmt.Sprintf(limErrQuerierTooManyBytesShardableTmpl, "100 B", "10 B"))
+	})
+
+	t.Run("plan overlap is scaled onto the existing shard estimate", func(t *testing.T) {
+		ctx := querylimits.InjectPlannedQueryRanges(user.InjectOrgID(context.Background(), "1"), []querylimits.TimeRange{{
+			Start: req.GetEnd().Add(-30 * time.Minute),
+			End:   req.GetEnd(),
+		}})
+		_, err := newWare().Do(ctx, req)
+		require.NoError(t, err)
+	})
+
+	t.Run("empty plan is zero bytes", func(t *testing.T) {
+		ctx := querylimits.InjectPlannedQueryRanges(user.InjectOrgID(context.Background(), "1"), nil)
+		_, err := newWare().Do(ctx, req)
+		require.NoError(t, err)
+	})
+
+	t.Run("planned-window stats failure keeps the full-split estimate", func(t *testing.T) {
+		fullSpan := req.GetEnd().Sub(req.GetStart())
+		failingStats := queryrangebase.HandlerFunc(func(_ context.Context, r queryrangebase.Request) (queryrangebase.Response, error) {
+			if r.GetEnd().Sub(r.GetStart()) < fullSpan {
+				return nil, errors.New("planned window stats failed")
+			}
+			return &IndexStatsResponse{
+				Response: &logproto.IndexStatsResponse{Bytes: 100},
+			}, nil
+		})
+		downstream := queryrangebase.HandlerFunc(func(_ context.Context, req queryrangebase.Request) (queryrangebase.Response, error) {
+			if _, ok := req.(*logproto.IndexStatsRequest); ok {
+				return failingStats.Do(context.Background(), req)
+			}
+			return &LokiResponse{
+				Status:    loghttp.QueryStatusSuccess,
+				Direction: logproto.BACKWARD,
+				Limit:     100,
+				Version:   1,
+				Data: LokiData{
+					ResultType: loghttp.ResultTypeStream,
+				},
+			}, nil
+		})
+		ware := newASTMapperware(
+			[]config.PeriodConfig{{IndexType: types.IndexTypeTSDB}},
+			testEngineOpts,
+			downstream,
+			downstream,
+			failingStats,
+			log.NewNopLogger(),
+			nilShardingMetrics,
+			fakeLimits{
+				maxSeries:               math.MaxInt32,
+				maxQueryParallelism:     1,
+				tsdbMaxQueryParallelism: 1,
+				queryTimeout:            time.Minute,
+				maxQuerierBytesRead:     10,
+			},
+			0,
+			[]string{},
+		)
+		ctx := querylimits.InjectPlannedQueryRanges(user.InjectOrgID(context.Background(), "1"), []querylimits.TimeRange{{
+			Start: req.GetEnd().Add(-30 * time.Minute),
+			End:   req.GetEnd(),
+		}})
+		_, err := ware.Do(ctx, req)
+		require.Error(t, err)
+		require.ErrorContains(t, err, fmt.Sprintf(limErrQuerierTooManyBytesShardableTmpl, "100 B", "10 B"))
+	})
+}
+
+func Test_clipPlannedQueryRanges(t *testing.T) {
+	start := time.Date(2024, 6, 1, 0, 0, 0, 0, time.UTC)
+	end := start.Add(time.Hour)
+
+	got := clipPlannedQueryRanges([]querylimits.TimeRange{
+		{Start: start.Add(-time.Hour), End: start.Add(15 * time.Minute)},
+		{Start: start.Add(2 * time.Hour), End: start.Add(3 * time.Hour)},
+		{Start: start.Add(20 * time.Minute), End: start.Add(40 * time.Minute)},
+	}, start, end)
+	require.Equal(t, []querylimits.TimeRange{
+		{Start: start, End: start.Add(15 * time.Minute)},
+		{Start: start.Add(20 * time.Minute), End: start.Add(40 * time.Minute)},
+	}, got)
+}
+
+func Test_scaleBytesToShard(t *testing.T) {
+	require.Equal(t, uint64(0), scaleBytesToShard(100, 0, 50))
+	require.Equal(t, uint64(25), scaleBytesToShard(100, 400, 100))
 }
 
 func Test_astMapper_TSDBShardingStrategyUsesContext(t *testing.T) {
