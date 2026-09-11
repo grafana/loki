@@ -125,11 +125,8 @@ func (c *Context) doLogObjectMerge(ctx context.Context, node *physical.LogMerge)
 		if err != nil {
 			return "", err
 		}
-		path, pathErr := v2.CompactedIndexPath(node.Tenant, reader)
-		if closeErr := reader.Close(); closeErr != nil && pathErr == nil {
-			pathErr = closeErr
-		}
-		return path, pathErr
+		defer reader.Close()
+		return v2.CompactedIndexPath(node.Tenant, reader)
 	})
 	if err != nil {
 		return nil, err
