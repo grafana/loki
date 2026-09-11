@@ -671,8 +671,8 @@ github.com/moby/moby/client v0.6.0 h1:AJjEB21QPbXSXjDsZorFBoDZPhMrfbpaPLgSMAW9Bg
 github.com/moby/moby/client v0.6.0/go.mod h1:OCo00wNRyA3m4lmJ228W3JbyCN4ZNNYjpOXiJydBdcQ=
 github.com/moby/moby/v2 v2.0.0-beta.23 h1:vDK8/40mF1U1neLp6XOttWuSDeTMFgIODXFeOsgo2Uw=
 github.com/moby/moby/v2 v2.0.0-beta.23/go.mod h1:CtC7n8ozJwwpHGGjNg6md+GBMuYhh7nVwuOmhmYEegY=
-github.com/moby/sys/userns v0.2.0 h1:nEtDtp7NCV/6dutSklNe8FrENPwFdc4mXnZqC/JWgXM=
-github.com/moby/sys/userns v0.2.0/go.mod h1:IHUYgu/kao6N8YZlp9Cf444ySSvCmDlmzUcYfDHOl28=
+github.com/moby/sys/userns v0.2.1 h1:4OvdM7BcPkASbuouHsbW3aeMJSFlYDldBRnXVZhaRk8=
+github.com/moby/sys/userns v0.2.1/go.mod h1:IHUYgu/kao6N8YZlp9Cf444ySSvCmDlmzUcYfDHOl28=
 github.com/modern-go/concurrent v0.0.0-20180228061459-e0a39a4cb421/go.mod h1:6dJC0mAP4ikYIbvyc7fijjWJddQyLn8Ig3JB5CqoB9Q=
 github.com/modern-go/concurrent v0.0.0-20180306012644-bacd9c7ef1dd h1:TRLaZ9cD/w8PVh93nsPXa1VrQ6jlwL5oN8l14QlcNfg=
 github.com/modern-go/concurrent v0.0.0-20180306012644-bacd9c7ef1dd/go.mod h1:6dJC0mAP4ikYIbvyc7fijjWJddQyLn8Ig3JB5CqoB9Q=
