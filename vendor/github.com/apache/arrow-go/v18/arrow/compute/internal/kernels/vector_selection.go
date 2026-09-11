@@ -21,6 +21,7 @@ package kernels
 import (
 	"fmt"
 	"math"
+	"unsafe"
 
 	"github.com/apache/arrow-go/v18/arrow"
 	"github.com/apache/arrow-go/v18/arrow/array"
@@ -129,6 +130,7 @@ func getTakeIndices[T arrow.IntType | arrow.UintType](mem memory.Allocator, filt
 			// true OR NOT valid
 			selectedOrNullBlock := filterCounter.NextOrNotWord()
 			if selectedOrNullBlock.NoneSet() {
+				isValidCounter.NextWord()
 				pos += T(selectedOrNullBlock.Len)
 				posWithOffset += int64(selectedOrNullBlock.Len)
 				continue
@@ -169,11 +171,15 @@ func getTakeIndices[T arrow.IntType | arrow.UintType](mem memory.Allocator, filt
 		return result.Data()
 	}
 
-	bldr := newBufferBuilder[T](mem)
 	if haveFilterNulls {
 		// the filter may have nulls, so we scan the validity bitmap
 		// and the filter data bitmap together
 		debug.Assert(nullSelect == DropNulls, "incorrect nullselect logic")
+		length := getFilterOutputSize(filter, DropNulls)
+		outBuf := memory.NewBufferWithAllocator(mem.Allocate(int(length)*int(unsafe.Sizeof(*new(T)))), mem)
+		defer outBuf.Release()
+		out := arrow.GetData[T](outBuf.Bytes())
+		outPos := 0
 
 		// position relative to start of the filter
 		var pos T
@@ -183,11 +189,11 @@ func getTakeIndices[T arrow.IntType | arrow.UintType](mem memory.Allocator, filt
 		filterCounter := bitutils.NewBinaryBitBlockCounter(filterData, filterIsValid, filter.Offset, filter.Offset, filter.Len)
 		for int64(pos) < filter.Len {
 			andBlock := filterCounter.NextAndWord()
-			bldr.reserve(int(andBlock.Popcnt))
 			if andBlock.AllSet() {
 				// all the values are selected and non-null
 				for i := 0; i < int(andBlock.Len); i++ {
-					bldr.unsafeAppend(pos)
+					out[outPos] = pos
+					outPos++
 					pos++
 				}
 				posWithOffset += int64(andBlock.Len)
@@ -195,7 +201,8 @@ func getTakeIndices[T arrow.IntType | arrow.UintType](mem memory.Allocator, filt
 				// some values are false or null
 				for i := 0; i < int(andBlock.Len); i++ {
 					if bitutil.BitIsSet(filterIsValid, int(posWithOffset)) && bitutil.BitIsSet(filterData, int(posWithOffset)) {
-						bldr.unsafeAppend(pos)
+						out[outPos] = pos
+						outPos++
 					}
 					pos++
 					posWithOffset++
@@ -205,23 +212,25 @@ func getTakeIndices[T arrow.IntType | arrow.UintType](mem memory.Allocator, filt
 				posWithOffset += int64(andBlock.Len)
 			}
 		}
+		return array.NewData(idxType, int(length), []*memory.Buffer{nil, outBuf}, nil, 0, 0)
 	} else {
 		// filter has no nulls, so we only need to look for true values
+		length := int64(bitutil.CountSetBits(filterData, int(filter.Offset), int(filter.Len)))
+		outBuf := memory.NewBufferWithAllocator(mem.Allocate(int(length)*int(unsafe.Sizeof(*new(T)))), mem)
+		defer outBuf.Release()
+		out := arrow.GetData[T](outBuf.Bytes())
+		outPos := 0
 		bitutils.VisitSetBitRuns(filterData, filter.Offset, filter.Len,
-			func(pos, length int64) error {
+			func(pos, runLength int64) error {
 				// append consecutive run of indices
-				bldr.reserve(int(length))
-				for i := int64(0); i < length; i++ {
-					bldr.unsafeAppend(T(pos + i))
+				for i := int64(0); i < runLength; i++ {
+					out[outPos] = T(pos + i)
+					outPos++
 				}
 				return nil
 			})
+		return array.NewData(idxType, int(length), []*memory.Buffer{nil, outBuf}, nil, 0, 0)
 	}
-
-	length := bldr.len()
-	outBuf := bldr.finish()
-	defer outBuf.Release()
-	return array.NewData(idxType, length, []*memory.Buffer{nil, outBuf}, nil, 0, 0)
 }
 
 func GetTakeIndices(mem memory.Allocator, filter *exec.ArraySpan, nullSelect NullSelectionBehavior) (arrow.ArrayData, error) {
@@ -229,6 +238,11 @@ func GetTakeIndices(mem memory.Allocator, filter *exec.ArraySpan, nullSelect Nul
 	if filter.Len < math.MaxUint16 {
 		return getTakeIndices[uint16](mem, filter, nullSelect), nil
 	} else if filter.Len < math.MaxUint32 {
+		if nullSelect == DropNulls {
+			if result, ok := getTakeIndicesUint32NEON(mem, filter); ok {
+				return result, nil
+			}
+		}
 		return getTakeIndices[uint32](mem, filter, nullSelect), nil
 	}
 	return nil, fmt.Errorf("%w: filter length exceeds UINT32_MAX, consider a different strategy for selecting elements",
@@ -473,6 +487,14 @@ func PrimitiveFilter(ctx *exec.KernelCtx, batch *exec.ExecSpan, out *exec.ExecRe
 	allocateValidity := values.Nulls != 0 || filter.Nulls != 0
 	bitWidth := values.Type.(arrow.FixedWidthDataType).BitWidth()
 	preallocateData(ctx, outputLength, bitWidth, allocateValidity, out)
+	if bitWidth == 32 && values.Nulls == 0 && filter.Nulls == 0 {
+		valuesData := exec.GetSpanValues[uint32](values, 1)
+		outData := exec.GetSpanValues[uint32](out, 1)
+		if filterUint32Avx2(valuesData, outData, filter.Buffers[1].Buf, filter.Offset, values.Len) ||
+			filterUint32Neon(valuesData, outData, filter.Buffers[1].Buf, filter.Offset, values.Len) {
+			return nil
+		}
+	}
 
 	var wr writeFiltered
 	switch bitWidth {
@@ -661,6 +683,72 @@ func (c *chunkedPrimitiveGetter[T]) GetValue(i int64) T {
 
 func (c *chunkedPrimitiveGetter[T]) NullCount() int64 { return c.nulls }
 func (c *chunkedPrimitiveGetter[T]) Len() int64       { return c.len }
+
+type binaryGetter interface {
+	IsValid(int64) bool
+	GetValue(int64) []byte
+	NullCount() int64
+	Len() int64
+	DataLen() int64
+}
+
+type chunkedBinaryGetter[OffsetT int32 | int64] struct {
+	resolver      *exec.ChunkResolver
+	offsets       [][]OffsetT
+	values        [][]byte
+	valuesIsValid [][]byte
+	valuesOffset  []int64
+	nulls         int64
+	length        int64
+	dataLen       int64
+}
+
+func newChunkedBinaryGetter[OffsetT int32 | int64](arr *arrow.Chunked) *chunkedBinaryGetter[OffsetT] {
+	chunks := make([]arrow.Array, 0, len(arr.Chunks()))
+	for _, chunk := range arr.Chunks() {
+		if chunk.Len() > 0 {
+			chunks = append(chunks, chunk)
+		}
+	}
+	getter := &chunkedBinaryGetter[OffsetT]{
+		resolver:      exec.NewChunkResolver(chunks),
+		offsets:       make([][]OffsetT, len(chunks)),
+		values:        make([][]byte, len(chunks)),
+		valuesIsValid: make([][]byte, len(chunks)),
+		valuesOffset:  make([]int64, len(chunks)),
+		nulls:         int64(arr.NullN()),
+		length:        int64(arr.Len()),
+	}
+
+	var span exec.ArraySpan
+	for i, chunk := range chunks {
+		span.SetMembers(chunk.Data())
+		getter.values[i] = span.Buffers[2].Buf
+		getter.valuesIsValid[i] = span.Buffers[0].Buf
+		getter.valuesOffset[i] = span.Offset
+		if span.Len > 0 {
+			getter.offsets[i] = exec.GetSpanOffsets[OffsetT](&span, 1)
+			getter.dataLen += int64(getter.offsets[i][span.Len] - getter.offsets[i][0])
+		}
+	}
+	return getter
+}
+
+func (c *chunkedBinaryGetter[OffsetT]) IsValid(i int64) bool {
+	chunk, index := c.resolver.Resolve(i)
+	bitmap := c.valuesIsValid[chunk]
+	return bitmap == nil || bitutil.BitIsSet(bitmap, int(c.valuesOffset[chunk]+index))
+}
+
+func (c *chunkedBinaryGetter[OffsetT]) GetValue(i int64) []byte {
+	chunk, index := c.resolver.Resolve(i)
+	offsets := c.offsets[chunk]
+	return c.values[chunk][offsets[index]:offsets[index+1]]
+}
+
+func (c *chunkedBinaryGetter[OffsetT]) NullCount() int64 { return c.nulls }
+func (c *chunkedBinaryGetter[OffsetT]) Len() int64       { return c.length }
+func (c *chunkedBinaryGetter[OffsetT]) DataLen() int64   { return c.dataLen }
 
 // isSorted checks if indices are monotonically increasing (sorted)
 // Returns true if sorted, false otherwise
@@ -1159,6 +1247,216 @@ func ChunkedPrimitiveTake(ctx *exec.KernelCtx, batch []*arrow.Chunked, out *exec
 	default:
 		return nil, fmt.Errorf("%w: invalid values byte width for take", arrow.ErrInvalid)
 	}
+}
+
+func binaryTakeOffsetLimits[OffsetT int32 | int64]() (int64, int) {
+	var zero OffsetT
+	switch any(zero).(type) {
+	case int32:
+		return math.MaxInt32, 4
+	case int64:
+		return math.MaxInt64, 8
+	default:
+		panic("unsupported binary offset type")
+	}
+}
+
+func checkBinaryTakeOffset[OffsetT int32 | int64](offset OffsetT, valueLen int64) error {
+	maxOffset, _ := binaryTakeOffsetLimits[OffsetT]()
+	if offset < 0 || valueLen < 0 || valueLen > maxOffset-int64(offset) {
+		return fmt.Errorf("%w: binary output offset overflow", arrow.ErrInvalid)
+	}
+	return nil
+}
+
+func takeChunkedBinaryImpl[IdxT arrow.UintType, OffsetT int32 | int64](ctx *exec.KernelCtx, indices *exec.ArraySpan, values binaryGetter, out *exec.ExecResult) error {
+	var (
+		indicesValues   = exec.GetSpanValues[IdxT](indices, 1)
+		indicesIsValid  = bitutil.OptionalBitIndexer{Bitmap: indices.Buffers[0].Buf, Offset: int(indices.Offset)}
+		bitCounter      = bitutils.NewOptionalBitBlockCounter(indices.Buffers[0].Buf, indices.Offset, indices.Len)
+		validityBuilder = validityBuilder{mem: exec.GetAllocator(ctx.Ctx)}
+		offsetBuilder   = newBufferBuilder[OffsetT](exec.GetAllocator(ctx.Ctx))
+		dataBuilder     = newBufferBuilder[uint8](exec.GetAllocator(ctx.Ctx))
+		valuesHaveNulls = values.NullCount() != 0
+		pos             int64
+		offset          OffsetT
+	)
+
+	maxInt := int(^uint(0) >> 1)
+	if indices.Len >= int64(maxInt) || indices.Len > math.MaxInt64-7 {
+		return fmt.Errorf("%w: binary take input length exceeds capacity", arrow.ErrInvalid)
+	}
+	offsetElements := int(indices.Len) + 1
+	_, offsetSize := binaryTakeOffsetLimits[OffsetT]()
+	if offsetElements > maxInt/offsetSize {
+		return fmt.Errorf("%w: binary take offset buffer exceeds capacity", arrow.ErrInvalid)
+	}
+
+	defer func() {
+		if validityBuilder.buffer != nil {
+			validityBuilder.buffer.Release()
+		}
+		if offsetBuilder.buffer != nil {
+			offsetBuilder.buffer.Release()
+		}
+		if dataBuilder.buffer != nil {
+			dataBuilder.buffer.Release()
+		}
+	}()
+
+	validityBuilder.Reserve(indices.Len)
+	offsetBuilder.reserve(offsetElements)
+	if values.Len() > 0 && values.DataLen() > 0 && indices.Len > 0 {
+		const maxPrealloc = int64(16777216)
+		meanValueLen := values.DataLen() / values.Len()
+		estimatedTotalSize := int64(0)
+		if meanValueLen > 0 {
+			if meanValueLen >= maxPrealloc || indices.Len > maxPrealloc/meanValueLen {
+				estimatedTotalSize = maxPrealloc
+			} else {
+				estimatedTotalSize = meanValueLen * indices.Len
+			}
+		}
+		dataBuilder.reserve(int(estimatedTotalSize))
+	}
+
+	spaceAvail := dataBuilder.cap()
+	appendValue := func(idx int64) error {
+		value := values.GetValue(idx)
+		valueLen := int64(len(value))
+		if err := checkBinaryTakeOffset(offset, valueLen); err != nil {
+			return err
+		}
+
+		dataLen := dataBuilder.len()
+		if len(value) > maxInt-dataLen {
+			return fmt.Errorf("%w: binary output size exceeds capacity", arrow.ErrInvalid)
+		}
+
+		offsetBuilder.unsafeAppend(offset)
+		if len(value) > spaceAvail {
+			needed := dataLen + len(value)
+			newCap := dataBuilder.cap()
+			if newCap < dataLen {
+				newCap = dataLen
+			}
+			if newCap == 0 {
+				newCap = len(value)
+			}
+			for newCap < needed {
+				if newCap > maxInt/2 {
+					newCap = needed
+					break
+				}
+				newCap *= 2
+			}
+			dataBuilder.reserve(newCap - dataLen)
+			spaceAvail = dataBuilder.cap() - dataBuilder.len()
+		}
+		dataBuilder.unsafeAppendSlice(value)
+		spaceAvail -= len(value)
+		offset += OffsetT(valueLen)
+		return nil
+	}
+	appendNull := func() {
+		offsetBuilder.unsafeAppend(offset)
+	}
+
+	for pos < indices.Len {
+		block := bitCounter.NextBlock()
+		indicesHaveNulls := block.Popcnt < block.Len
+		switch {
+		case !indicesHaveNulls && !valuesHaveNulls:
+			validityBuilder.UnsafeAppendN(int64(block.Len), true)
+			for i := 0; i < int(block.Len); i++ {
+				if err := appendValue(int64(indicesValues[pos])); err != nil {
+					return err
+				}
+				pos++
+			}
+		case block.Popcnt > 0:
+			for i := 0; i < int(block.Len); i++ {
+				idxValid := !indicesHaveNulls || indicesIsValid.GetBit(int(pos))
+				if idxValid && (!valuesHaveNulls || values.IsValid(int64(indicesValues[pos]))) {
+					validityBuilder.UnsafeAppend(true)
+					if err := appendValue(int64(indicesValues[pos])); err != nil {
+						return err
+					}
+				} else {
+					validityBuilder.UnsafeAppend(false)
+					appendNull()
+				}
+				pos++
+			}
+		default:
+			validityBuilder.UnsafeAppendN(int64(block.Len), false)
+			for i := 0; i < int(block.Len); i++ {
+				appendNull()
+			}
+			pos += int64(block.Len)
+		}
+	}
+
+	offsetBuilder.unsafeAppend(offset)
+	out.Len = indices.Len
+	out.Nulls = int64(validityBuilder.falseCount)
+	out.Buffers[0].WrapBuffer(validityBuilder.Finish())
+	out.Buffers[1].WrapBuffer(offsetBuilder.finish())
+	out.Buffers[2].WrapBuffer(dataBuilder.finish())
+	return nil
+}
+
+func takeChunkedBinaryDispatch[IdxT arrow.UintType, OffsetT int32 | int64](ctx *exec.KernelCtx, values binaryGetter, indices *arrow.Chunked, out []*exec.ExecResult) error {
+	var span exec.ArraySpan
+	for i, chunk := range indices.Chunks() {
+		span.SetMembers(chunk.Data())
+		if err := takeChunkedBinaryImpl[IdxT, OffsetT](ctx, &span, values, out[i]); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func ChunkedVarBinaryTake[OffsetT int32 | int64](ctx *exec.KernelCtx, batch []*arrow.Chunked, out *exec.ExecResult) ([]*exec.ExecResult, error) {
+	values, indices := batch[0], batch[1]
+	if ctx.State.(TakeState).BoundsCheck {
+		if err := checkIndexBoundsChunked(indices, uint64(values.Len())); err != nil {
+			return nil, err
+		}
+	}
+
+	outData := make([]*exec.ExecResult, len(indices.Chunks()))
+	for i := range outData {
+		outData[i] = &exec.ExecResult{Type: out.Type}
+	}
+
+	cleanup := func() {
+		for _, result := range outData {
+			if result != nil {
+				result.Release()
+			}
+		}
+	}
+
+	valuesGetter := newChunkedBinaryGetter[OffsetT](values)
+	var err error
+	switch indices.DataType().(arrow.FixedWidthDataType).Bytes() {
+	case 1:
+		err = takeChunkedBinaryDispatch[uint8, OffsetT](ctx, valuesGetter, indices, outData)
+	case 2:
+		err = takeChunkedBinaryDispatch[uint16, OffsetT](ctx, valuesGetter, indices, outData)
+	case 4:
+		err = takeChunkedBinaryDispatch[uint32, OffsetT](ctx, valuesGetter, indices, outData)
+	case 8:
+		err = takeChunkedBinaryDispatch[uint64, OffsetT](ctx, valuesGetter, indices, outData)
+	default:
+		err = fmt.Errorf("%w: invalid byte width for indices", arrow.ErrIndex)
+	}
+	if err != nil {
+		cleanup()
+		return nil, err
+	}
+	return outData, nil
 }
 
 func NullTake(ctx *exec.KernelCtx, batch *exec.ExecSpan, out *exec.ExecResult) error {
@@ -2058,7 +2356,7 @@ type SelectionKernelData struct {
 }
 
 func ChunkedTakeSupported(dt arrow.DataType) bool {
-	return arrow.IsPrimitive(dt.ID())
+	return arrow.IsPrimitive(dt.ID()) || arrow.IsBaseBinary(dt.ID())
 }
 
 func GetVectorSelectionKernels() (filterkernels, takeKernels []SelectionKernelData) {
@@ -2078,8 +2376,8 @@ func GetVectorSelectionKernels() (filterkernels, takeKernels []SelectionKernelDa
 		{In: exec.NewIDInput(arrow.DECIMAL128), Exec: TakeExec(FSBImpl)},
 		{In: exec.NewIDInput(arrow.DECIMAL256), Exec: TakeExec(FSBImpl)},
 		{In: exec.NewIDInput(arrow.FIXED_SIZE_BINARY), Exec: TakeExec(FSBImpl)},
-		{In: exec.NewMatchedInput(exec.BinaryLike()), Exec: TakeExec(VarBinaryImpl[int32])},
-		{In: exec.NewMatchedInput(exec.LargeBinaryLike()), Exec: TakeExec(VarBinaryImpl[int64])},
+		{In: exec.NewMatchedInput(exec.BinaryLike()), Exec: TakeExec(VarBinaryImpl[int32]), Chunked: ChunkedVarBinaryTake[int32]},
+		{In: exec.NewMatchedInput(exec.LargeBinaryLike()), Exec: TakeExec(VarBinaryImpl[int64]), Chunked: ChunkedVarBinaryTake[int64]},
 	}
 	return
 }

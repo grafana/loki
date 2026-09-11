@@ -22,6 +22,7 @@ import (
 	"math"
 	"math/big"
 	"math/bits"
+	"strings"
 
 	"github.com/apache/arrow-go/v18/arrow/decimal128"
 	"github.com/apache/arrow-go/v18/arrow/internal/debug"
@@ -526,13 +527,41 @@ func (n Num) FitsInPrecision(prec int32) bool {
 }
 
 func (n Num) ToString(scale int32) string {
-	f := (&big.Float{}).SetInt(n.BigInt())
-	if scale < 0 {
-		f.SetPrec(256).Mul(f, (&big.Float{}).SetInt(scaleMultipliers[-scale].BigInt()))
-	} else {
-		f.SetPrec(256).Quo(f, (&big.Float{}).SetInt(scaleMultipliers[scale].BigInt()))
+	if scale < -MaxScale || scale > MaxScale {
+		panic("arrow/decimal256: scale out of range")
 	}
-	return f.Text('f', int(scale))
+
+	value := n.BigInt().String()
+	digits := len(value)
+	if value[0] == '-' {
+		digits--
+	}
+	if digits > MaxPrecision {
+		return n.ToBigFloat(scale).Text('f', int(scale))
+	}
+	if scale <= 0 {
+		if scale < 0 && value != "0" {
+			value += strings.Repeat("0", int(-scale))
+		}
+		return value
+	}
+
+	negative := value[0] == '-'
+	if negative {
+		value = value[1:]
+	}
+	places := int(scale)
+	var result string
+	if len(value) <= places {
+		result = "0." + strings.Repeat("0", places-len(value)) + value
+	} else {
+		at := len(value) - places
+		result = value[:at] + "." + value[at:]
+	}
+	if negative {
+		return "-" + result
+	}
+	return result
 }
 
 func GetScaleMultiplier(pow int) Num { return scaleMultipliers[pow] }

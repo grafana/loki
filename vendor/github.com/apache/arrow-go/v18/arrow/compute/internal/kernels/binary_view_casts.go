@@ -250,6 +250,14 @@ func CastBinaryViewToBinary[OutOffsetT int32 | int64](ctx *exec.KernelCtx, batch
 		return fmt.Errorf("%w: failed casting from %s to %s: input array too large",
 			arrow.ErrInvalid, input.Type, out.Type)
 	}
+	maxInt := int64(^uint(0) >> 1)
+	if totalBytes > maxInt {
+		return fmt.Errorf("%w: failed casting from %s to %s: output data buffer too large for this platform",
+			arrow.ErrInvalid, input.Type, out.Type)
+	}
+	if totalBytes > 0 {
+		ba.reserveData(int(totalBytes))
+	}
 
 	appendBinaryValues(arr, getVal, ba)
 

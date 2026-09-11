@@ -112,6 +112,10 @@ func (a *List) GetOneForMarshal(i int) interface{} {
 	return json.RawMessage(v)
 }
 
+func (a *List) ValueAsAny(i int) any {
+	return valueAsAnyFromListLike(a, i)
+}
+
 func (a *List) Validate() error     { return validateListArray(a, false) }
 func (a *List) ValidateFull() error { return validateListArray(a, true) }
 
@@ -133,22 +137,8 @@ func (a *List) MarshalJSON() ([]byte, error) {
 }
 
 func arrayEqualList(left, right *List) bool {
-	for i := 0; i < left.Len(); i++ {
-		if left.IsNull(i) {
-			continue
-		}
-		o := func() bool {
-			l := left.newListValue(i)
-			defer l.Release()
-			r := right.newListValue(i)
-			defer r.Release()
-			return Equal(l, r)
-		}()
-		if !o {
-			return false
-		}
-	}
-	return true
+	return arrayEqualListOffsets(left.values, right.values, left.offsets, right.offsets,
+		left.data.offset, right.data.offset, left.Len(), left.NullBitmapBytes())
 }
 
 // Len returns the number of elements in the array.
@@ -247,6 +237,10 @@ func (a *LargeList) GetOneForMarshal(i int) interface{} {
 	return json.RawMessage(v)
 }
 
+func (a *LargeList) ValueAsAny(i int) any {
+	return valueAsAnyFromListLike(a, i)
+}
+
 func (a *LargeList) Validate() error     { return validateLargeListArray(a, false) }
 func (a *LargeList) ValidateFull() error { return validateLargeListArray(a, true) }
 
@@ -268,22 +262,8 @@ func (a *LargeList) MarshalJSON() ([]byte, error) {
 }
 
 func arrayEqualLargeList(left, right *LargeList) bool {
-	for i := 0; i < left.Len(); i++ {
-		if left.IsNull(i) {
-			continue
-		}
-		o := func() bool {
-			l := left.newListValue(i)
-			defer l.Release()
-			r := right.newListValue(i)
-			defer r.Release()
-			return Equal(l, r)
-		}()
-		if !o {
-			return false
-		}
-	}
-	return true
+	return arrayEqualListOffsets(left.values, right.values, left.offsets, right.offsets,
+		left.data.offset, right.data.offset, left.Len(), left.NullBitmapBytes())
 }
 
 // Len returns the number of elements in the array.
@@ -439,6 +419,25 @@ func (b *baseListBuilder) appendNextOffset() {
 	b.appendOffsetVal(b.values.Len())
 }
 
+func unsafeAppendRepeatedInt(builder Builder, value, n int) {
+	switch builder := builder.(type) {
+	case *Int32Builder:
+		end := builder.length + n
+		for i := builder.length; i < end; i++ {
+			builder.rawData[i] = int32(value)
+		}
+		builder.unsafeAppendBoolsToBitmap(nil, n)
+	case *Int64Builder:
+		end := builder.length + n
+		for i := builder.length; i < end; i++ {
+			builder.rawData[i] = int64(value)
+		}
+		builder.unsafeAppendBoolsToBitmap(nil, n)
+	default:
+		panic(fmt.Sprintf("arrow/array: unsupported list dimension builder %T", builder))
+	}
+}
+
 func (b *baseListBuilder) Append(v bool) {
 	b.Reserve(1)
 	b.unsafeAppendBoolToBitmap(v)
@@ -456,9 +455,15 @@ func (b *baseListBuilder) AppendNull() {
 }
 
 func (b *baseListBuilder) AppendNulls(n int) {
-	for i := 0; i < n; i++ {
-		b.AppendNull()
+	if n <= 0 {
+		return
 	}
+
+	b.Reserve(n)
+	bitutil.SetBitsTo(b.nullBitmap.Bytes(), int64(b.length), int64(n), false)
+	b.length += n
+	b.nulls += n
+	unsafeAppendRepeatedInt(b.offsets, b.values.Len(), n)
 }
 
 func (b *baseListBuilder) AppendEmptyValue() {
@@ -466,9 +471,13 @@ func (b *baseListBuilder) AppendEmptyValue() {
 }
 
 func (b *baseListBuilder) AppendEmptyValues(n int) {
-	for i := 0; i < n; i++ {
-		b.AppendEmptyValue()
+	if n <= 0 {
+		return
 	}
+
+	b.Reserve(n)
+	b.unsafeAppendBoolsToBitmap(nil, n)
+	unsafeAppendRepeatedInt(b.offsets, b.values.Len(), n)
 }
 
 func (b *ListBuilder) AppendValues(offsets []int32, valid []bool) {
@@ -509,6 +518,13 @@ func (b *baseListBuilder) Reserve(n int) {
 func (b *baseListBuilder) Resize(n int) {
 	b.resizeHelper(n)
 	b.offsets.Resize(n)
+}
+
+func (b *baseListBuilder) truncate(n int) {
+	b.builder.truncate(n)
+	if b.offsets != nil {
+		b.offsets.truncate(n)
+	}
 }
 
 func (b *baseListBuilder) resizeHelper(n int) {
@@ -725,6 +741,10 @@ func (a *ListView) GetOneForMarshal(i int) interface{} {
 	return json.RawMessage(v)
 }
 
+func (a *ListView) ValueAsAny(i int) any {
+	return valueAsAnyFromListLike(a, i)
+}
+
 func (a *ListView) MarshalJSON() ([]byte, error) {
 	var buf bytes.Buffer
 	enc := json.NewEncoder(&buf)
@@ -870,6 +890,10 @@ func (a *LargeListView) GetOneForMarshal(i int) interface{} {
 		panic(err)
 	}
 	return json.RawMessage(v)
+}
+
+func (a *LargeListView) ValueAsAny(i int) any {
+	return valueAsAnyFromListLike(a, i)
 }
 
 func (a *LargeListView) MarshalJSON() ([]byte, error) {
@@ -1226,9 +1250,15 @@ func (b *baseListViewBuilder) AppendNull() {
 }
 
 func (b *baseListViewBuilder) AppendNulls(n int) {
-	for i := 0; i < n; i++ {
-		b.AppendNull()
+	if n <= 0 {
+		return
 	}
+
+	b.Reserve(n)
+	bitutil.SetBitsTo(b.nullBitmap.Bytes(), int64(b.length), int64(n), false)
+	b.length += n
+	b.nulls += n
+	b.unsafeAppendEmptyDimensions(n)
 }
 
 func (b *baseListViewBuilder) AppendEmptyValue() {
@@ -1236,9 +1266,18 @@ func (b *baseListViewBuilder) AppendEmptyValue() {
 }
 
 func (b *baseListViewBuilder) AppendEmptyValues(n int) {
-	for i := 0; i < n; i++ {
-		b.AppendEmptyValue()
+	if n <= 0 {
+		return
 	}
+
+	b.Reserve(n)
+	b.unsafeAppendBoolsToBitmap(nil, n)
+	b.unsafeAppendEmptyDimensions(n)
+}
+
+func (b *baseListViewBuilder) unsafeAppendEmptyDimensions(n int) {
+	unsafeAppendRepeatedInt(b.offsets, b.values.Len(), n)
+	unsafeAppendRepeatedInt(b.sizes, 0, n)
 }
 
 func (b *ListViewBuilder) AppendValuesWithSizes(offsets []int32, sizes []int32, valid []bool) {
@@ -1284,6 +1323,12 @@ func (b *baseListViewBuilder) Resize(n int) {
 	b.resizeHelper(n)
 	b.offsets.Resize(n)
 	b.sizes.Resize(n)
+}
+
+func (b *baseListViewBuilder) truncate(n int) {
+	b.builder.truncate(n)
+	b.offsets.truncate(n)
+	b.sizes.truncate(n)
 }
 
 func (b *baseListViewBuilder) resizeHelper(n int) {

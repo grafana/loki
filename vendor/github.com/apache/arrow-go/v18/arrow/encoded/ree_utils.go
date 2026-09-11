@@ -125,6 +125,10 @@ func getRunEnds(arr arrow.ArrayData) func(int64) int64 {
 	}
 }
 
+func GetRunEnds(arr arrow.ArrayData) func(int64) int64 {
+	return getRunEnds(arr)
+}
+
 // MergedRuns is used to take two Run End Encoded arrays and iterate
 // them, finding the correct physical indices to correspond with the
 // runs.

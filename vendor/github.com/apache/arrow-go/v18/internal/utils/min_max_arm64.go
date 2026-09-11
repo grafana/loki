@@ -47,20 +47,22 @@ func init() {
 		}
 	}
 	if cpu.ARM64.HasASIMD {
+		minmaxFuncs.i8 = int8MaxMinNEON
+		minmaxFuncs.ui8 = uint8MaxMinNEON
+		minmaxFuncs.i16 = int16MaxMinNEON
+		minmaxFuncs.ui16 = uint16MaxMinNEON
 		minmaxFuncs.i32 = int32MaxMinNEON
 		minmaxFuncs.ui32 = uint32MaxMinNEON
 		minmaxFuncs.i64 = int64MaxMinNEON
 		minmaxFuncs.ui64 = uint64MaxMinNEON
 	} else {
+		minmaxFuncs.i8 = int8MinMax
+		minmaxFuncs.ui8 = uint8MinMax
+		minmaxFuncs.i16 = int16MinMax
+		minmaxFuncs.ui16 = uint16MinMax
 		minmaxFuncs.i32 = int32MinMax
 		minmaxFuncs.ui32 = uint32MinMax
 		minmaxFuncs.i64 = int64MinMax
 		minmaxFuncs.ui64 = uint64MinMax
 	}
-
-	// haven't yet generated the NEON arm64 for these
-	minmaxFuncs.i8 = int8MinMax
-	minmaxFuncs.ui8 = uint8MinMax
-	minmaxFuncs.i16 = int16MinMax
-	minmaxFuncs.ui16 = uint16MinMax
 }

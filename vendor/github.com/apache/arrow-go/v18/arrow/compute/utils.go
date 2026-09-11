@@ -22,7 +22,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"time"
 
 	"github.com/apache/arrow-go/v18/arrow"
 	"github.com/apache/arrow-go/v18/arrow/bitutil"
@@ -330,7 +329,6 @@ func commonTemporal(vals ...arrow.DataType) arrow.DataType {
 	var (
 		finestUnit           = arrow.Second
 		zone                 *string
-		loc                  *time.Location
 		sawDate32, sawDate64 bool
 		sawDuration, sawTime bool
 	)
@@ -345,13 +343,9 @@ func commonTemporal(vals ...arrow.DataType) arrow.DataType {
 			sawDate64 = true
 		case arrow.TIMESTAMP:
 			ts := ty.(*arrow.TimestampType)
-			if ts.TimeZone != "" {
-				tz, _ := ts.GetZone()
-				if loc != nil && loc != tz {
-					return nil
-				}
-				loc = tz
-			}
+			// Timezone-aware timestamp values are normalized to the UTC epoch,
+			// so their location metadata does not prevent promotion for comparison.
+			// compareTimestampKernel rejects mixing aware and naive timestamps.
 			zone = &ts.TimeZone
 			finestUnit = max(finestUnit, ts.Unit)
 		case arrow.TIME32, arrow.TIME64:

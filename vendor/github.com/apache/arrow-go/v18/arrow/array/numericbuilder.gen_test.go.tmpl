@@ -161,7 +161,7 @@ func TestNew{{.Name}}Builder(t *testing.T) {
 		t.Fatalf("could not type-assert to array.{{.Name}}")
 	}
 
-	if got, want := a.String(), `[1 2 (null) 4]`; got != want {
+	if got, want := a.String(), `{{if eq .Name "Date32"}}[1970-01-02 1970-01-03 (null) 1970-01-05]{{else if eq .Name "Date64"}}[1970-01-01 1970-01-01 (null) 1970-01-01]{{else}}[1 2 (null) 4]{{end}}`; got != want {
 		t.Fatalf("got=%q, want=%q", got, want)
 	}
 
@@ -176,7 +176,7 @@ func TestNew{{.Name}}Builder(t *testing.T) {
 		t.Fatalf("could not type-assert to array.{{.Name}}")
 	}
 
-	if got, want := v.String(), `[(null) 4]`; got != want {
+	if got, want := v.String(), `{{if eq .Name "Date32"}}[(null) 1970-01-05]{{else if eq .Name "Date64"}}[(null) 1970-01-01]{{else}}[(null) 4]{{end}}`; got != want {
 		t.Fatalf("got=%q, want=%q", got, want)
 	}
 
@@ -272,6 +272,23 @@ func Test{{.Name}}Builder_Resize(t *testing.T) {
 	assert.Equal(t, 5, ab.Len())
 }
 
+func Test{{.Name}}Builder_ResizeToZeroThenAppend(t *testing.T) {
+	mem := memory.NewCheckedAllocator(memory.NewGoAllocator())
+	defer mem.AssertSize(t, 0)
+
+{{if .Opt.Parametric -}}
+	dtype := &arrow.{{.Name}}Type{Unit: arrow.Second}
+	ab := array.New{{.Name}}Builder(mem, dtype)
+{{else}}
+	ab := array.New{{.Name}}Builder(mem)
+{{end -}}
+	defer ab.Release()
+
+	ab.Append(0)
+	ab.Resize(0)
+	ab.Append(0)
+}
+
 func Test{{.Name}}BuilderUnmarshalJSON(t *testing.T) {
 	mem := memory.NewCheckedAllocator(memory.NewGoAllocator())
 	defer mem.AssertSize(t, 0)
@@ -322,5 +339,3 @@ func Test{{.Name}}BuilderUnmarshalJSON(t *testing.T) {
 }
 
 {{end}}
-
-

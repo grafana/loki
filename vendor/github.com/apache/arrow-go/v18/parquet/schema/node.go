@@ -319,10 +319,13 @@ func (p *PrimitiveNode) Equals(rhs Node) bool {
 // to store the values in this column.
 func (p *PrimitiveNode) PhysicalType() parquet.Type { return p.physicalType }
 
-// SetTypeLength will change the type length of the node, has no effect if the
-// physical type is not FixedLength Byte Array
+// SetTypeLength will change the type length of the node, and has no effect if the
+// physical type is not FixedLength Byte Array. It panics if length is not positive.
 func (p *PrimitiveNode) SetTypeLength(length int) {
 	if p.PhysicalType() == parquet.Types.FixedLenByteArray {
+		if length <= 0 {
+			panic("parquet: fixed length byte array length must be positive")
+		}
 		p.typeLen = length
 	}
 }
