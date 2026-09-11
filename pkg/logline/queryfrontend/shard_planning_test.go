@@ -243,6 +243,43 @@ func TestShardPlanning_MultipleDisjointNarrowHintsRerunWithinThresholds(t *testi
 	require.ElementsMatch(t, []time.Time{r1.Start, r2.Start}, gotStarts, "28m gap exceeds the k-envelope cut, so each hint is its own group")
 }
 
+func TestShardPlanningDecision_UsesEnvelopeDuration(t *testing.T) {
+	start := time.Date(2026, 9, 8, 12, 0, 0, 0, time.UTC)
+	h := &loglinePrefetchHandler{shardPlanning: ShardPlanningConfig{
+		Enabled:               true,
+		MinTimeReductionRatio: 0.75,
+	}}
+
+	t.Run("bookend hints on a 15m range fail after k=1 union", func(t *testing.T) {
+		end := start.Add(15 * time.Minute)
+		result := &hintPrefetchResult{
+			ranges: []hintprovider.HintTimeRange{
+				{Start: start.Add(time.Minute), End: start.Add(2 * time.Minute)},
+				{Start: end.Add(-2 * time.Minute), End: end.Add(-time.Minute)},
+			},
+			ingesterCutoff: end,
+		}
+		// Raw hints cover 2m (ratio 0.867). One envelope covers 12m (ratio 0.2).
+		got := h.shardPlanningDecision(result, start, end)
+		require.False(t, got.eligible)
+		require.Equal(t, "time_reduction_too_small", got.reason)
+	})
+
+	t.Run("distant clusters on a 1h range stay eligible", func(t *testing.T) {
+		end := start.Add(time.Hour)
+		result := &hintPrefetchResult{
+			ranges: []hintprovider.HintTimeRange{
+				{Start: start.Add(5 * time.Minute), End: start.Add(6 * time.Minute)},
+				{Start: start.Add(50 * time.Minute), End: start.Add(51 * time.Minute)},
+			},
+			ingesterCutoff: end,
+		}
+		got := h.shardPlanningDecision(result, start, end)
+		require.True(t, got.eligible)
+		require.Equal(t, "eligible", got.reason)
+	})
+}
+
 func TestShardPlanning_BroadOrUnsafeHintsFallBackToFirstQuery(t *testing.T) {
 	now := time.Now().Truncate(time.Millisecond)
 	baseCfg := defaultShardPlanningTestConfig()
@@ -261,6 +298,15 @@ func TestShardPlanning_BroadOrUnsafeHintsFallBackToFirstQuery(t *testing.T) {
 				{Start: now.Add(-50 * time.Minute), End: now.Add(-20 * time.Minute)},
 			}}},
 			req: newTestLokiRequest(`{job="test"} |= "error"`, now.Add(-1*time.Hour), now),
+		},
+		{
+			name: "envelope fill drops reduction below threshold",
+			cfg:  baseCfg,
+			hp: &mockHintProvider{hints: &hintprovider.Hints{TimeRanges: []hintprovider.HintTimeRange{
+				{Start: now.Add(-14 * time.Minute), End: now.Add(-13 * time.Minute)},
+				{Start: now.Add(-2 * time.Minute), End: now.Add(-time.Minute)},
+			}}},
+			req: newTestLokiRequest(`{job="test"} |= "error"`, now.Add(-15*time.Minute), now),
 		},
 		{
 			name: "hint provider error falls back",

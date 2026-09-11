@@ -400,17 +400,14 @@ func (h *loglinePrefetchHandler) shardPlanningDecision(result *hintPrefetchResul
 
 	overlaps := rangesOverlapping(result.ranges, from, through)
 
-	var cumulative time.Duration
-	for _, hint := range overlaps {
-		start := maxTime(hint.Start, from)
-		end := minTime(hint.End, through)
-		cumulative += intervalDuration(start, end)
-	}
-
 	queryDuration := intervalDuration(from, through)
 	if queryDuration == 0 {
 		return shardPlanningDecision{reason: "time_reduction_too_small", overlaps: overlaps}
 	}
+	// Use k-envelope coverage, not raw hint duration. The filter scans the
+	// filled gaps, so hint-only math overstates time reduction and can trip
+	// a power_of_two rerun when the actual scan would miss the threshold.
+	cumulative := envelopeQueriedDuration(overlaps, from, through)
 	timeReductionRatio := float64(queryDuration-cumulative) / float64(queryDuration)
 	if timeReductionRatio < 0 {
 		timeReductionRatio = 0
@@ -1177,6 +1174,14 @@ func (h *loglineFilterHandler) Do(ctx context.Context, req queryrangebase.Reques
 type hintEnvelope struct {
 	Start time.Time
 	End   time.Time
+}
+
+func envelopeQueriedDuration(ranges []hintprovider.HintTimeRange, start, end time.Time) time.Duration {
+	var queried time.Duration
+	for _, g := range groupHintEnvelopes(ranges, start, end, envelopeBudget(intervalDuration(start, end))) {
+		queried += intervalDuration(g.Start, g.End)
+	}
+	return queried
 }
 
 func envelopeBudget(interval time.Duration) int {
