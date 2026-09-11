@@ -367,15 +367,7 @@ func ValidateSchemas(v *lokiv1.ObjectStorageSpec, utcTime time.Time, status loki
 		}
 
 		// Non-expired schema must be present in spec
-		schemaFound := false
-		for _, sc := range v.Schemas {
-			if sc.EffectiveDate == effectiveDate {
-				schemaFound = true
-				break
-			}
-		}
-
-		if !schemaFound {
+		if !found[effectiveDate] {
 			allErrs = append(allErrs, field.Invalid(
 				field.NewPath("spec").Child("storage").Child("schemas"),
 				v.Schemas,
@@ -461,34 +453,33 @@ func buildExpiredSchemaSet(schemas []lokiv1.ObjectStorageSchema, currentTime tim
 // This ensures we honor the longest retention period, whether global or per-tenant, including
 // per-stream retention which can exceed the default retention period.
 func getRetentionDays(limits *lokiv1.LimitsSpec) int {
+	discoverMaxRetention := func(retentionSpec *lokiv1.RetentionLimitSpec) int {
+		maxDays := int(retentionSpec.Days)
+		for _, stream := range retentionSpec.Streams {
+			if stream != nil && int(stream.Days) > maxDays {
+				maxDays = int(stream.Days)
+			}
+		}
+		return maxDays
+	}
+
+	if limits == nil {
+		return 0
+	}
+
 	maxRetention := 0
 
 	// Check global retention (both default and per-stream)
-	if limits != nil && limits.Global != nil && limits.Global.Retention != nil {
-		maxRetention = int(limits.Global.Retention.Days)
-
-		// Check per-stream retention in global limits
-		for _, stream := range limits.Global.Retention.Streams {
-			if stream != nil && int(stream.Days) > maxRetention {
-				maxRetention = int(stream.Days)
-			}
-		}
+	if limits.Global != nil && limits.Global.Retention != nil {
+		maxRetention = discoverMaxRetention(limits.Global.Retention)
 	}
 
 	// Check all tenant retention periods (both default and per-stream) and use the maximum
-	if limits != nil && limits.Tenants != nil {
+	if limits.Tenants != nil {
 		for _, tenantLimits := range limits.Tenants {
 			if tenantLimits.Retention != nil {
-				tenantRetention := int(tenantLimits.Retention.Days)
-				if tenantRetention > maxRetention {
+				if tenantRetention := discoverMaxRetention(tenantLimits.Retention); tenantRetention > maxRetention {
 					maxRetention = tenantRetention
-				}
-
-				// Check per-stream retention in tenant limits
-				for _, stream := range tenantLimits.Retention.Streams {
-					if stream != nil && int(stream.Days) > maxRetention {
-						maxRetention = int(stream.Days)
-					}
 				}
 			}
 		}
