@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"io"
 	"math"
+	"net/http"
+	"sync"
 	"testing"
 	"time"
 
@@ -21,9 +23,12 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/health/grpc_health_v1"
+	grpcstatus "google.golang.org/grpc/status"
 
 	"github.com/grafana/loki/v3/pkg/util/discovery"
+	"github.com/grafana/loki/v3/pkg/util/server"
 
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/util/constants"
@@ -475,6 +480,94 @@ func Test_jumpHashShuffleSharding(t *testing.T) {
 		require.Equal(t, []string{"gateway-7", "gateway-8", "gateway-0"}, result3)
 	})
 
+}
+
+func TestPoolDo_RejectsWhenAtInFlightCap(t *testing.T) {
+	client := &GatewayClient{
+		cfg:                   ClientConfig{MaxInFlightRequests: 2},
+		inFlightCapRejections: prometheus.NewCounter(prometheus.CounterOpts{Name: "test_rejections"}),
+		logger:                log.NewNopLogger(),
+	}
+	client.inFlightRequests.Store(2)
+
+	// No tenant ID injected into the context, so if the cap check did not run first,
+	// poolDo would instead fail with a tenant ID lookup error.
+	err := client.poolDo(context.Background(), func(logproto.IndexGatewayClient) error {
+		return nil
+	}, func(addrs []string) []string { return addrs }, 0)
+
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "index gateway pool at capacity")
+	require.NotContains(t, err.Error(), "tenant ID")
+
+	// Client-side shedding must surface as a 503, matching server-side admission-control
+	// shedding, rather than falling through to a generic 500.
+	httpStatus, _ := server.ClientHTTPStatusAndError(err)
+	require.Equal(t, http.StatusServiceUnavailable, httpStatus)
+
+	s, ok := grpcstatus.FromError(err)
+	require.True(t, ok, "expected err to carry a gRPC status")
+	require.Equal(t, codes.Code(http.StatusServiceUnavailable), s.Code())
+}
+
+// TestPoolDo_ConcurrentRequestsRespectInFlightCap exercises real concurrent behavior: it
+// holds the single in-flight slot open with a blocked callback and asserts a second,
+// concurrent poolDo call is rejected while the first is still running (and succeeds once
+// released). Asserting on the counter's value alone wouldn't catch a broken/removed
+// increment-decrement, since a no-op counter would also read back to 0 after a successful call.
+func TestPoolDo_ConcurrentRequestsRespectInFlightCap(t *testing.T) {
+	_, _, client := createSimpleGatewayClient(t, []string{"0.0.0.0", "1.1.1.1"})
+	client.cfg.MaxInFlightRequests = 1
+
+	ctx := user.InjectOrgID(context.Background(), "tenant-123")
+
+	started := make(chan struct{})
+	release := make(chan struct{})
+
+	var wg sync.WaitGroup
+	wg.Add(1)
+	var firstErr error
+	go func() {
+		defer wg.Done()
+		firstErr = client.poolDo(ctx, func(logproto.IndexGatewayClient) error {
+			close(started)
+			<-release
+			return nil
+		}, func(addrs []string) []string { return addrs }, -1)
+	}()
+
+	<-started // the first call now holds the one in-flight slot
+
+	err := client.poolDo(ctx, func(logproto.IndexGatewayClient) error {
+		t.Error("callback should not run while the in-flight cap is already reached")
+		return nil
+	}, func(addrs []string) []string { return addrs }, -1)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "index gateway pool at capacity")
+
+	close(release)
+	wg.Wait()
+
+	require.NoError(t, firstErr)
+	require.Equal(t, int64(0), client.inFlightRequests.Load())
+}
+
+func TestPoolDo_ZeroMeansUnlimited(t *testing.T) {
+	client := &GatewayClient{
+		cfg:                   ClientConfig{MaxInFlightRequests: 0},
+		inFlightCapRejections: prometheus.NewCounter(prometheus.CounterOpts{Name: "test_rejections_unlimited"}),
+		logger:                log.NewNopLogger(),
+	}
+	client.inFlightRequests.Store(999999)
+
+	// No tenant ID injected, so the cap check being bypassed surfaces as a tenant ID
+	// lookup error rather than the "at capacity" rejection.
+	err := client.poolDo(context.Background(), func(logproto.IndexGatewayClient) error {
+		return nil
+	}, func(addrs []string) []string { return addrs }, 0)
+
+	require.Error(t, err)
+	require.NotContains(t, err.Error(), "at capacity")
 }
 
 func Test_addressesForQueryEndTime(t *testing.T) {

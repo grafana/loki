@@ -160,6 +160,14 @@ func (cfg *Config) Validate() error {
 		return fmt.Errorf("shipper.download-timeout must be greater than zero, got %s", cfg.DownloadTimeout)
 	}
 
+	if err := cfg.IndexGatewayClientConfig.Validate(); err != nil {
+		return fmt.Errorf("invalid shipper.index-gateway-client config: %w", err)
+	}
+
+	if err := cfg.ShadowIndexGatewayClientConfig.Validate(); err != nil {
+		return fmt.Errorf("invalid shipper.shadow-index-gateway-client config: %w", err)
+	}
+
 	return nil
 }
 
