@@ -134,12 +134,12 @@ func TestConfigQueryHandler(t *testing.T) {
 		configHandler(cfg, cfg)(w, req)
 		resp := w.Result()
 		require.Equal(t, 200, resp.StatusCode)
-		assert.Equal(t, "application/json", resp.Header.Get("Content-Type"))
+		assert.Equal(t, "text/plain; charset=utf-8", resp.Header.Get("Content-Type"))
 		assert.Equal(t, []string{"my_int"}, resp.Header.Values(ConfigQueryHandledHeader))
 
-		var body map[string]any
-		require.NoError(t, json.NewDecoder(resp.Body).Decode(&body))
-		assert.Equal(t, float64(666), body["my_int"])
+		body, err := io.ReadAll(resp.Body)
+		assert.NoError(t, err)
+		assert.Equal(t, "my_int: 666\n", string(body))
 	})
 
 	t.Run("nested path", func(t *testing.T) {
@@ -149,12 +149,12 @@ func TestConfigQueryHandler(t *testing.T) {
 		configHandler(cfg, cfg)(w, req)
 		resp := w.Result()
 		require.Equal(t, 200, resp.StatusCode)
-		assert.Equal(t, "application/json", resp.Header.Get("Content-Type"))
+		assert.Equal(t, "text/plain; charset=utf-8", resp.Header.Get("Content-Type"))
 		assert.Equal(t, []string{"my_nested_struct.my_string"}, resp.Header.Values(ConfigQueryHandledHeader))
 
-		var body map[string]any
-		require.NoError(t, json.NewDecoder(resp.Body).Decode(&body))
-		assert.Equal(t, "string1", body["my_nested_struct.my_string"])
+		body, err := io.ReadAll(resp.Body)
+		assert.NoError(t, err)
+		assert.Equal(t, "my_nested_struct.my_string: string1\n", string(body))
 	})
 
 	t.Run("multiple paths in one request", func(t *testing.T) {
@@ -166,10 +166,9 @@ func TestConfigQueryHandler(t *testing.T) {
 		require.Equal(t, 200, resp.StatusCode)
 		assert.ElementsMatch(t, []string{"my_int", "my_float"}, resp.Header.Values(ConfigQueryHandledHeader))
 
-		var body map[string]any
-		require.NoError(t, json.NewDecoder(resp.Body).Decode(&body))
-		assert.Equal(t, float64(666), body["my_int"])
-		assert.Equal(t, 6.66, body["my_float"])
+		body, err := io.ReadAll(resp.Body)
+		assert.NoError(t, err)
+		assert.Equal(t, "my_float: 6.66\nmy_int: 666\n", string(body))
 	})
 
 	t.Run("unknown path returns 400", func(t *testing.T) {

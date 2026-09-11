@@ -174,10 +174,7 @@ func configHandler(actualCfg any, defaultCfg any) http.HandlerFunc {
 				http.Error(w, err.Error(), status)
 				return
 			}
-			w.Header().Set("Content-Type", "application/json")
-			if err := json.NewEncoder(w).Encode(result); err != nil {
-				http.Error(w, err.Error(), http.StatusInternalServerError)
-			}
+			writeYAMLResponse(w, result)
 			return
 		}
 
