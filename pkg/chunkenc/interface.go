@@ -48,8 +48,8 @@ type errTooManyTimeShardBuckets struct {
 	// original timestamp of the entry itself.
 	entryTs time.Time
 
-	// max is the configured maximum number of concurrently open time-shard buckets.
-	max int
+	// maximum is the configured maximum number of concurrently open time-shard buckets.
+	maximum int
 }
 
 func IsErrTooManyTimeShardBuckets(err error) bool {
@@ -57,12 +57,12 @@ func IsErrTooManyTimeShardBuckets(err error) bool {
 	return ok
 }
 
-func ErrTooManyTimeShardBuckets(entryTs time.Time, max int) error {
-	return &errTooManyTimeShardBuckets{entryTs: entryTs, max: max}
+func ErrTooManyTimeShardBuckets(entryTs time.Time, maximum int) error {
+	return &errTooManyTimeShardBuckets{entryTs: entryTs, maximum: maximum}
 }
 
 func (m *errTooManyTimeShardBuckets) Error() string {
-	return fmt.Sprintf("entry timestamp %s would open a new time-shard bucket beyond the limit of %d concurrently open buckets", m.entryTs.Format(time.RFC3339), m.max)
+	return fmt.Sprintf("entry timestamp %s would open a new time-shard bucket beyond the limit of %d concurrently open buckets", m.entryTs.Format(time.RFC3339), m.maximum)
 }
 
 func IsOutOfOrderErr(err error) bool {
