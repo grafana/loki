@@ -150,7 +150,7 @@ require (
 
 require (
 	github.com/containerd/ttrpc v1.2.9 // indirect
-	github.com/dlclark/regexp2/v2 v2.7.2 // indirect
+	github.com/dlclark/regexp2/v2 v2.8.0 // indirect
 	github.com/go-openapi/swag/pools v0.29.2 // indirect
 	github.com/mschoch/smat v0.2.0 // indirect
 	go.opentelemetry.io/collector/consumer/xconsumer v0.160.0 // indirect

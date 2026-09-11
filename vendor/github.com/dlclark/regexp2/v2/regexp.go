@@ -62,7 +62,8 @@ type Regexp struct {
 	execute            func(r *Runner) error
 	executeQuick       func(r *Runner) error
 	stringPrefixFilter StringPrefixFilter
-	quickCode          *syntax.Code // bool-only program with unobservable captures removed
+	prefixSearch       *equalASCIIPrefixSearch // immutable search masks shared by string and rune finders
+	quickCode          *syntax.Code            // bool-only program with unobservable captures removed
 	// leftContextRunes is used when code is nil (registered engines).
 	// The interpreter reads the same value from code.LeftContextRunes.
 	leftContextRunes int
@@ -118,6 +119,12 @@ func compile(expr string, c compileConfig) (*Regexp, error) {
 		optimizations: c.optimizations,
 	}
 	re.stringPrefixFilter = newStringPrefixFilter(code)
+	if opts := code.FindOptimizations; opts != nil && opts.FindMode == syntax.LeadingStrings_LeftToRight {
+		re.prefixSearch = compileEqualASCIIPrefixSearch(opts.LeadingPrefixes)
+		if re.prefixSearch != nil && re.prefixSearch.sharedFirst && re.stringPrefixFilter != nil {
+			re.stringPrefixFilter = withEqualASCIIPrefixSearch(re.stringPrefixFilter, re.prefixSearch, opts.MinRequiredLength)
+		}
+	}
 	re.initCaches()
 	return re, nil
 }
