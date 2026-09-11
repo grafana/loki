@@ -44,6 +44,10 @@ Automatic stream sharding is enabled by default (`shard_streams.enabled` default
 
    Time-based sharding adds a `__time_shard__` label to streams, splitting log entries into buckets based on their timestamp. Log entries with a timestamp newer than `time_sharding_ignore_recent` (40 minutes by default) are still ingested, but Loki does not add the `__time_shard__` label to them. This lets very old logs be ingested without triggering out-of-order errors. Refer to [How automatic stream sharding works](#how-automatic-stream-sharding-works) for more detail.
 
+  {{< admonition type="note" >}}
+  `time_sharding_enabled` will be replaced by `ingester_time_sharding`.
+  {{< /admonition >}}
+
 1. Optionally enable `logging_enabled` for debugging stream sharding.
   {{< admonition type="note" >}}
   This may affect the ingestion performance of Loki.
