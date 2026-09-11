@@ -485,6 +485,64 @@ var ltt = []struct {
 		err: nil,
 	},
 	{
+		desc: "removing schema when tenant has no retention and no global - should fail",
+		spec: lokiv1.LokiStack{
+			Spec: lokiv1.LokiStackSpec{
+				Limits: &lokiv1.LimitsSpec{
+					// No global retention
+					Tenants: map[string]lokiv1.PerTenantLimitsTemplateSpec{
+						"tenant-a": {
+							Retention: &lokiv1.RetentionLimitSpec{
+								Days: 30, // This tenant has 30 days
+							},
+						},
+						"tenant-b": {
+							// This tenant has no retention config = infinite retention
+						},
+					},
+				},
+				Storage: lokiv1.ObjectStorageSpec{
+					Schemas: []lokiv1.ObjectStorageSchema{
+						{
+							Version:       lokiv1.ObjectStorageSchemaV12,
+							EffectiveDate: "2020-10-14",
+						},
+					},
+				},
+			},
+			Status: lokiv1.LokiStackStatus{
+				Storage: lokiv1.LokiStackStorageStatus{
+					Schemas: []lokiv1.ObjectStorageSchema{
+						{
+							Version:       lokiv1.ObjectStorageSchemaV11,
+							EffectiveDate: "2020-10-11",
+						},
+						{
+							Version:       lokiv1.ObjectStorageSchemaV12,
+							EffectiveDate: "2020-10-14",
+						},
+					},
+				},
+			},
+		},
+		err: apierrors.NewInvalid(
+			schema.GroupKind{Group: "loki.grafana.com", Kind: "LokiStack"},
+			"testing-stack",
+			field.ErrorList{
+				field.Invalid(
+					field.NewPath("spec").Child("storage").Child("schemas"),
+					[]lokiv1.ObjectStorageSchema{
+						{
+							Version:       lokiv1.ObjectStorageSchemaV12,
+							EffectiveDate: "2020-10-14",
+						},
+					},
+					lokiv1.ErrSchemaRetroactivelyRemoved.Error(),
+				),
+			},
+		),
+	},
+	{
 		desc: "retroactively changing schema",
 		spec: lokiv1.LokiStack{
 			Spec: lokiv1.LokiStackSpec{
