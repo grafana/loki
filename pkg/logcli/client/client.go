@@ -12,7 +12,6 @@ import (
 	"os"
 	"path"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/gorilla/websocket"
@@ -52,36 +51,6 @@ const (
 )
 
 var userAgent = fmt.Sprintf("loki-logcli/%s", build.Version)
-
-type contextConn struct {
-	net.Conn
-	done     chan struct{}
-	once     sync.Once
-	closeErr error
-}
-
-func newContextConn(ctx context.Context, conn net.Conn) *contextConn {
-	c := &contextConn{
-		Conn: conn,
-		done: make(chan struct{}),
-	}
-	go func() {
-		select {
-		case <-ctx.Done():
-			_ = c.Close()
-		case <-c.done:
-		}
-	}()
-	return c
-}
-
-func (c *contextConn) Close() error {
-	c.once.Do(func() {
-		close(c.done)
-		c.closeErr = c.Conn.Close()
-	})
-	return c.closeErr
-}
 
 // Client contains all the methods to query a Loki instance, it's an interface to allow multiple implementations.
 type Client interface {
@@ -211,7 +180,7 @@ func (c *DefaultClient) LiveTailQueryConn(queryStr string, delayFor time.Duratio
 }
 
 // LiveTailQueryConnContext uses /api/prom/tail to set up a websocket connection and returns it.
-// Canceling ctx interrupts connection setup and closes the established connection.
+// Canceling ctx interrupts connection setup but does not close an established connection.
 // The caller must close the returned connection when it is no longer needed.
 func (c *DefaultClient) LiveTailQueryConnContext(
 	ctx context.Context,
@@ -769,6 +738,9 @@ func (c *DefaultClient) wsConnect(ctx context.Context, path, query string, quiet
 		return nil, err
 	}
 
+	dialCtx, cancelDial := context.WithCancel(ctx)
+	defer cancelDial()
+	stopWatching := func() {}
 	ws := websocket.Dialer{
 		TLSClientConfig: tlsConfig,
 		NetDialContext: func(ctx context.Context, network, address string) (net.Conn, error) {
@@ -778,7 +750,17 @@ func (c *DefaultClient) wsConnect(ctx context.Context, path, query string, quiet
 			}
 			// DialContext alone does not interrupt a blocked HTTP upgrade read
 			// when a context without a deadline is canceled.
-			return newContextConn(ctx, conn), nil
+			done := make(chan struct{})
+			stop := context.AfterFunc(ctx, func() {
+				_ = conn.Close()
+				close(done)
+			})
+			stopWatching = func() {
+				if !stop() {
+					<-done
+				}
+			}
+			return conn, nil
 		},
 	}
 
@@ -788,11 +770,16 @@ func (c *DefaultClient) wsConnect(ctx context.Context, path, query string, quiet
 		}
 	}
 
-	conn, resp, err := ws.DialContext(ctx, us, h)
-	if err != nil {
-		if ctx.Err() != nil {
-			return nil, ctx.Err()
+	conn, resp, err := ws.DialContext(dialCtx, us, h)
+	// Transfer ownership only after any cancellation callback has finished.
+	stopWatching()
+	if ctx.Err() != nil {
+		if conn != nil {
+			_ = conn.Close()
 		}
+		return nil, ctx.Err()
+	}
+	if err != nil {
 		if resp == nil {
 			return nil, err
 		}
