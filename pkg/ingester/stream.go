@@ -18,6 +18,7 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/chunkenc"
 	"github.com/grafana/loki/v3/pkg/distributor/writefailures"
+	"github.com/grafana/loki/v3/pkg/ingester/streamsharding"
 	"github.com/grafana/loki/v3/pkg/ingester/wal"
 	"github.com/grafana/loki/v3/pkg/iter"
 	"github.com/grafana/loki/v3/pkg/loghttp/push"
@@ -26,6 +27,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/v3/pkg/runtime"
 	"github.com/grafana/loki/v3/pkg/util"
+	"github.com/grafana/loki/v3/pkg/util/constants"
 	"github.com/grafana/loki/v3/pkg/util/flagext"
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
 	"github.com/grafana/loki/v3/pkg/validation"
@@ -45,11 +47,32 @@ type stream struct {
 	limiter *StreamRateLimiter
 	cfg     *Config
 	tenant  string
-	// Newest chunk at chunks[n-1].
+	// chunks are not necessarily ordered: entries are normally appended to
+	// chunks[n-1], but when ingester-side time-sharding (see streamsharding.Config)
+	// is active, older entries may be routed into any of several other
+	// concurrently open chunks tracked by openHeads.
 	// Not thread-safe; assume accesses to this are locked by caller.
 	chunks   []chunkDesc
 	fp       model.Fingerprint // possibly remapped fingerprint, used in the streams map
 	chunkMtx sync.RWMutex
+
+	// limits is used to resolve the tenant's ingester-side time-sharding
+	// config on every push, so runtime overrides changes take effect without
+	// recreating the stream.
+	limits Limits
+	// skipTimeSharding is true for client-managed backfill streams
+	// (constants.BackfillLabel present), which already self-shard by time, so
+	// the ingester's own time-bucketing is skipped to avoid double-bucketing.
+	skipTimeSharding bool
+	// openHeads maps a time-bucket's start (unix seconds) to the index in
+	// chunks of that bucket's current appendable head chunk. Only populated
+	// while ingester-side time-sharding is enabled and active for this stream.
+	openHeads map[int64]int
+	// bucketHighestTs tracks, per open time-bucket (keyed the same as
+	// openHeads), the highest entry timestamp accepted so far. This is the
+	// per-bucket analogue of highestTs below, used to bound out-of-order
+	// tolerance relative to each bucket rather than to the stream as a whole.
+	bucketHighestTs map[int64]time.Time
 
 	labels           labels.Labels
 	labelsString     string
@@ -98,6 +121,11 @@ type chunkDesc struct {
 	reason  string
 
 	lastUpdated time.Time
+
+	// bucketStart is non-zero when this chunk was created as a time-sharded
+	// bucket for out-of-order/backfilled entries (see streamsharding.Config).
+	// Zero for chunks created via the normal single-head append path.
+	bucketStart time.Time
 }
 
 type entryWithError struct {
@@ -109,7 +137,7 @@ func newStream(
 	chunkFormat byte,
 	headBlockFmt chunkenc.HeadBlockFmt,
 	cfg *Config,
-	limits RateLimiterStrategy,
+	rateLimitStrategy RateLimiterStrategy,
 	tenant string,
 	fp model.Fingerprint,
 	ls labels.Labels,
@@ -119,10 +147,11 @@ func newStream(
 	configs *runtime.TenantConfigs,
 	retentionHours string,
 	policy string,
+	limits Limits,
 ) *stream {
 	hashNoShard, _ := ls.HashWithoutLabels(make([]byte, 0, 1024), ShardLbName)
 	return &stream{
-		limiter:              NewStreamRateLimiter(limits, tenant, policy, 10*time.Second),
+		limiter:              NewStreamRateLimiter(rateLimitStrategy, tenant, policy, 10*time.Second),
 		cfg:                  cfg,
 		fp:                   fp,
 		labels:               ls,
@@ -141,10 +170,20 @@ func newStream(
 		configs:        configs,
 		retentionHours: retentionHours,
 		policy:         policy,
+
+		limits:           limits,
+		skipTimeSharding: ls.Has(constants.BackfillLabel),
 	}
 }
 
-// setChunks is used during checkpoint recovery
+// setChunks is used during checkpoint recovery. Note that the checkpoint
+// format does not currently persist which chunks were open time-shard
+// bucket heads (chunkDesc.bucketStart), so openHeads/bucketHighestTs are not
+// reconstructed here. Any bucket chunk that was still open at checkpoint
+// time comes back with bucketStart zero and outside openHeads: it is safe
+// (it will still flush normally via the idle/max-age path, using its
+// preserved lastUpdated/bounds) but a subsequent push for the same historical
+// bucket will open a new chunk alongside it rather than reusing it.
 func (s *stream) setChunks(chunks []Chunk) (bytesAdded, entriesAdded int, err error) {
 	s.chunkMtx.Lock()
 	defer s.chunkMtx.Unlock()
@@ -162,6 +201,27 @@ func (s *stream) setChunks(chunks []Chunk) (bytesAdded, entriesAdded int, err er
 
 func (s *stream) NewChunk() *chunkenc.MemChunk {
 	return chunkenc.NewMemChunk(s.chunkFormat, s.cfg.parsedEncoding, s.chunkHeadBlockFormat, s.cfg.BlockSize, s.cfg.TargetChunkSize)
+}
+
+// rebuildOpenHeads recomputes openHeads by scanning chunks for still-open
+// (unclosed) time-shard bucket chunks. Used after chunks has been compacted
+// (e.g. flushed chunks removed) since that invalidates the indices openHeads
+// previously pointed to. Callers must hold chunkMtx.
+func (s *stream) rebuildOpenHeads() {
+	prevOpen := len(s.openHeads)
+	s.openHeads = nil
+	for idx := range s.chunks {
+		c := &s.chunks[idx]
+		if !c.closed && !c.bucketStart.IsZero() {
+			if s.openHeads == nil {
+				s.openHeads = map[int64]int{}
+			}
+			s.openHeads[c.bucketStart.Unix()] = idx
+		}
+	}
+	if delta := len(s.openHeads) - prevOpen; delta != 0 {
+		s.metrics.streamTimeShardOpenBuckets.Add(float64(delta))
+	}
 }
 
 func (s *stream) Push(
@@ -203,21 +263,23 @@ func (s *stream) Push(
 		return 0, ErrEntriesExist
 	}
 
-	toStore, invalid := s.validateEntries(ctx, entries, isReplay, rateLimitWholeStream, usageTracker, format)
+	// Resolved once per push (rather than separately in validateEntries and
+	// storeEntries) so both agree on exactly the same ignore-recent boundary
+	// for every entry in this batch.
+	now := time.Now()
+	tsCfg := s.ingesterTimeShardingConfig()
+
+	toStore, invalid := s.validateEntries(ctx, entries, isReplay, rateLimitWholeStream, usageTracker, format, now, tsCfg)
 	if rateLimitWholeStream && hasRateLimitErr(invalid) {
 		return 0, errorForFailedEntries(s, invalid, len(entries))
 	}
 
 	prevNumChunks := len(s.chunks)
 	if prevNumChunks == 0 {
-		s.chunks = append(s.chunks, chunkDesc{
-			chunk: s.NewChunk(),
-		})
-		s.metrics.chunksCreatedTotal.Inc()
-		s.metrics.chunkCreatedStats.Inc(1)
+		s.appendNewChunk(time.Time{})
 	}
 
-	bytesAdded, storedEntries, entriesWithErr := s.storeEntries(ctx, toStore, usageTracker, format)
+	bytesAdded, storedEntries, entriesWithErr := s.storeEntries(ctx, toStore, usageTracker, format, now, tsCfg)
 	s.recordAndSendToTailers(record, storedEntries)
 
 	if len(s.chunks) != prevNumChunks {
@@ -317,7 +379,25 @@ func (s *stream) recordAndSendToTailers(record *wal.Record, entries []logproto.E
 	}
 }
 
-func (s *stream) storeEntries(ctx context.Context, entries []logproto.Entry, usageTracker push.UsageTracker, format string) (int, []logproto.Entry, []entryWithError) {
+// ingesterTimeShardingConfig resolves this stream's tenant's ingester-side
+// time-sharding config on every call, so runtime overrides changes take
+// effect without recreating the stream. Returns the zero value (disabled) if
+// s.limits is nil, which should only happen in tests that don't exercise this
+// feature.
+func (s *stream) ingesterTimeShardingConfig() streamsharding.Config {
+	if s.limits == nil {
+		return streamsharding.Config{}
+	}
+	return s.limits.IngesterTimeSharding(s.tenant)
+}
+
+// bucketStartFor returns the start of the time-bucket of the given width that
+// ts falls into.
+func bucketStartFor(ts time.Time, width time.Duration) time.Time {
+	return ts.Truncate(width)
+}
+
+func (s *stream) storeEntries(ctx context.Context, entries []logproto.Entry, usageTracker push.UsageTracker, format string, now time.Time, tsCfg streamsharding.Config) (int, []logproto.Entry, []entryWithError) {
 	sp := trace.SpanFromContext(ctx)
 	sp.AddEvent("stream started to store entries", trace.WithAttributes(
 		attribute.String("labels", s.labelsString)),
@@ -326,12 +406,28 @@ func (s *stream) storeEntries(ctx context.Context, entries []logproto.Entry, usa
 
 	var bytesAdded, outOfOrderSamples, outOfOrderBytes int
 
+	timeShardingActive := tsCfg.Enabled && !s.skipTimeSharding
+	bucketWidth := s.cfg.MaxChunkAge / 2
+	var ignoreRecentFrom time.Time
+	if timeShardingActive {
+		ignoreRecentFrom = now.Add(-tsCfg.IgnoreRecent)
+	}
+
 	var invalid []entryWithError
 	storedEntries := make([]logproto.Entry, 0, len(entries))
 	for i := 0; i < len(entries); i++ {
-		chunk := &s.chunks[len(s.chunks)-1]
-		if chunk.closed || !chunk.chunk.SpaceFor(&entries[i]) || s.cutChunkForSynchronization(entries[i].Timestamp, s.highestTs, chunk, s.cfg.SyncPeriod, s.cfg.SyncMinUtilization) {
-			chunk = s.cutChunk(ctx)
+		var (
+			chunk       *chunkDesc
+			bucketStart time.Time
+		)
+		if timeShardingActive && entries[i].Timestamp.Before(ignoreRecentFrom) {
+			bucketStart = bucketStartFor(entries[i].Timestamp, bucketWidth)
+			chunk = s.headForBucket(ctx, bucketStart, &entries[i])
+		} else {
+			chunk = &s.chunks[len(s.chunks)-1]
+			if chunk.closed || !chunk.chunk.SpaceFor(&entries[i]) || s.cutChunkForSynchronization(entries[i].Timestamp, s.highestTs, chunk, s.cfg.SyncPeriod, s.cfg.SyncMinUtilization) {
+				chunk = s.cutChunk(ctx)
+			}
 		}
 
 		chunk.lastUpdated = time.Now()
@@ -353,14 +449,24 @@ func (s *stream) storeEntries(ctx context.Context, entries []logproto.Entry, usa
 		s.lastLine.ts = entries[i].Timestamp
 		s.lastLine.content = entries[i].Line
 		s.lastLine.structuredMetadata = entries[i].StructuredMetadata
-		if s.highestTs.Before(entries[i].Timestamp) {
+		if !bucketStart.IsZero() {
+			if s.bucketHighestTs == nil {
+				s.bucketHighestTs = map[int64]time.Time{}
+			}
+			key := bucketStart.Unix()
+			if s.bucketHighestTs[key].Before(entries[i].Timestamp) {
+				s.bucketHighestTs[key] = entries[i].Timestamp
+			}
+			s.metrics.timeShardedSamplesTotal.WithLabelValues(s.tenant).Inc()
+			s.metrics.timeShardedBytesTotal.WithLabelValues(s.tenant).Add(float64(len(entries[i].Line)))
+		} else if s.highestTs.Before(entries[i].Timestamp) {
 			s.highestTs = entries[i].Timestamp
 		}
 
 		bytesAdded += len(entries[i].Line)
 		storedEntries = append(storedEntries, entries[i])
 	}
-	s.reportMetrics(ctx, outOfOrderSamples, outOfOrderBytes, 0, 0, usageTracker, format)
+	s.reportMetrics(ctx, outOfOrderSamples, outOfOrderBytes, 0, 0, 0, 0, usageTracker, format)
 	return bytesAdded, storedEntries, invalid
 }
 
@@ -379,18 +485,32 @@ func (s *stream) handleLoggingOfDuplicateEntry(entry logproto.Entry) {
 
 }
 
-func (s *stream) validateEntries(ctx context.Context, entries []logproto.Entry, isReplay, rateLimitWholeStream bool, usageTracker push.UsageTracker, format string) ([]logproto.Entry, []entryWithError) {
+func (s *stream) validateEntries(ctx context.Context, entries []logproto.Entry, isReplay, rateLimitWholeStream bool, usageTracker push.UsageTracker, format string, now time.Time, tsCfg streamsharding.Config) ([]logproto.Entry, []entryWithError) {
 
 	var (
-		outOfOrderSamples, outOfOrderBytes   int
-		rateLimitedSamples, rateLimitedBytes int
-		validBytes, totalBytes               int
-		failedEntriesWithError               []entryWithError
-		limit                                = s.limiter.lim.Limit()
-		lastLine                             = s.lastLine
-		highestTs                            = s.highestTs
-		toStore                              = make([]logproto.Entry, 0, len(entries))
+		outOfOrderSamples, outOfOrderBytes         int
+		rateLimitedSamples, rateLimitedBytes       int
+		tooManyBucketsSamples, tooManyBucketsBytes int
+		validBytes, totalBytes                     int
+		failedEntriesWithError                     []entryWithError
+		limit                                      = s.limiter.lim.Limit()
+		lastLine                                   = s.lastLine
+		highestTs                                  = s.highestTs
+		toStore                                    = make([]logproto.Entry, 0, len(entries))
 	)
+
+	timeShardingActive := tsCfg.Enabled && !s.skipTimeSharding
+	bucketWidth := s.cfg.MaxChunkAge / 2
+	var ignoreRecentFrom time.Time
+	var openBuckets map[int64]struct{}
+	bucketHighest := map[int64]time.Time{}
+	if timeShardingActive {
+		ignoreRecentFrom = now.Add(-tsCfg.IgnoreRecent)
+		openBuckets = make(map[int64]struct{}, len(s.openHeads))
+		for k := range s.openHeads {
+			openBuckets[k] = struct{}{}
+		}
+	}
 
 	for i := range entries {
 		// If this entry matches our last appended line's timestamp and contents,
@@ -419,14 +539,56 @@ func (s *stream) validateEntries(ctx context.Context, entries []logproto.Entry, 
 			continue
 		}
 
-		// The validity window for unordered writes is the highest timestamp present minus 1/2 * max-chunk-age.
-		cutoff := highestTs.Add(-s.cfg.MaxChunkAge / 2)
-		if !isReplay && !highestTs.IsZero() && cutoff.After(entries[i].Timestamp) {
-			failedEntriesWithError = append(failedEntriesWithError, entryWithError{&entries[i], chunkenc.ErrTooFarBehind(entries[i].Timestamp, cutoff)})
-			s.writeFailures.Log(s.tenant, fmt.Errorf("%w for stream %s", failedEntriesWithError[len(failedEntriesWithError)-1].e, s.labels))
-			outOfOrderSamples++
-			outOfOrderBytes += entryBytes
-			continue
+		if timeShardingActive && entries[i].Timestamp.Before(ignoreRecentFrom) {
+			// This entry is old enough to be routed to a time-bucketed chunk
+			// rather than the stream's live head. Validate it against that
+			// bucket's own high-water mark instead of the stream-wide one, so
+			// backfilling old data doesn't get rejected just because the
+			// stream has since received much more recent entries.
+			bucketStart := bucketStartFor(entries[i].Timestamp, bucketWidth)
+			key := bucketStart.Unix()
+
+			if _, seen := openBuckets[key]; !seen {
+				if len(openBuckets) >= tsCfg.MaxOpenBuckets {
+					failedEntriesWithError = append(failedEntriesWithError, entryWithError{&entries[i], chunkenc.ErrTooManyTimeShardBuckets(entries[i].Timestamp, tsCfg.MaxOpenBuckets)})
+					s.writeFailures.Log(s.tenant, fmt.Errorf("%w for stream %s", failedEntriesWithError[len(failedEntriesWithError)-1].e, s.labels))
+					tooManyBucketsSamples++
+					tooManyBucketsBytes += entryBytes
+					continue
+				}
+				openBuckets[key] = struct{}{}
+			}
+
+			bHighest, ok := bucketHighest[key]
+			if !ok {
+				bHighest = s.bucketHighestTs[key]
+			}
+			cutoff := bHighest.Add(-bucketWidth)
+			if !isReplay && !bHighest.IsZero() && cutoff.After(entries[i].Timestamp) {
+				failedEntriesWithError = append(failedEntriesWithError, entryWithError{&entries[i], chunkenc.ErrTooFarBehind(entries[i].Timestamp, cutoff)})
+				s.writeFailures.Log(s.tenant, fmt.Errorf("%w for stream %s", failedEntriesWithError[len(failedEntriesWithError)-1].e, s.labels))
+				outOfOrderSamples++
+				outOfOrderBytes += entryBytes
+				continue
+			}
+
+			if bHighest.Before(entries[i].Timestamp) {
+				bucketHighest[key] = entries[i].Timestamp
+			}
+		} else {
+			// The validity window for unordered writes is the highest timestamp present minus 1/2 * max-chunk-age.
+			cutoff := highestTs.Add(-s.cfg.MaxChunkAge / 2)
+			if !isReplay && !highestTs.IsZero() && cutoff.After(entries[i].Timestamp) {
+				failedEntriesWithError = append(failedEntriesWithError, entryWithError{&entries[i], chunkenc.ErrTooFarBehind(entries[i].Timestamp, cutoff)})
+				s.writeFailures.Log(s.tenant, fmt.Errorf("%w for stream %s", failedEntriesWithError[len(failedEntriesWithError)-1].e, s.labels))
+				outOfOrderSamples++
+				outOfOrderBytes += entryBytes
+				continue
+			}
+
+			if highestTs.Before(entries[i].Timestamp) {
+				highestTs = entries[i].Timestamp
+			}
 		}
 
 		validBytes += entryBytes
@@ -434,9 +596,6 @@ func (s *stream) validateEntries(ctx context.Context, entries []logproto.Entry, 
 		lastLine.ts = entries[i].Timestamp
 		lastLine.content = entries[i].Line
 		lastLine.structuredMetadata = entries[i].StructuredMetadata
-		if highestTs.Before(entries[i].Timestamp) {
-			highestTs = entries[i].Timestamp
-		}
 
 		toStore = append(toStore, entries[i])
 	}
@@ -444,7 +603,6 @@ func (s *stream) validateEntries(ctx context.Context, entries []logproto.Entry, 
 	// Each successful call to 'AllowN' advances the limiter. With all-or-nothing
 	// ingestion, the limiter should only be advanced when the whole stream can be
 	// sent
-	now := time.Now()
 	if rateLimitWholeStream && !s.limiter.AllowN(now, validBytes) {
 		// Report that the whole stream was rate limited
 		rateLimitedSamples = len(toStore)
@@ -466,11 +624,11 @@ func (s *stream) validateEntries(ctx context.Context, entries []logproto.Entry, 
 	}
 
 	s.streamRateCalculator.Record(s.tenant, s.labelHash, s.labelHashNoShard, totalBytes)
-	s.reportMetrics(ctx, outOfOrderSamples, outOfOrderBytes, rateLimitedSamples, rateLimitedBytes, usageTracker, format)
+	s.reportMetrics(ctx, outOfOrderSamples, outOfOrderBytes, rateLimitedSamples, rateLimitedBytes, tooManyBucketsSamples, tooManyBucketsBytes, usageTracker, format)
 	return toStore, failedEntriesWithError
 }
 
-func (s *stream) reportMetrics(ctx context.Context, outOfOrderSamples, outOfOrderBytes, rateLimitedSamples, rateLimitedBytes int, usageTracker push.UsageTracker, format string) {
+func (s *stream) reportMetrics(ctx context.Context, outOfOrderSamples, outOfOrderBytes, rateLimitedSamples, rateLimitedBytes, tooManyBucketsSamples, tooManyBucketsBytes int, usageTracker push.UsageTracker, format string) {
 	if outOfOrderSamples > 0 {
 		name := validation.TooFarBehind
 		validation.DiscardedSamples.WithLabelValues(name, s.tenant, s.retentionHours, s.policy, format).Add(float64(outOfOrderSamples))
@@ -486,15 +644,24 @@ func (s *stream) reportMetrics(ctx context.Context, outOfOrderSamples, outOfOrde
 			usageTracker.DiscardedBytesAdd(ctx, s.tenant, validation.StreamRateLimit, s.labels, float64(rateLimitedBytes), format)
 		}
 	}
+	if tooManyBucketsSamples > 0 {
+		name := validation.TooManyTimeShardBuckets
+		validation.DiscardedSamples.WithLabelValues(name, s.tenant, s.retentionHours, s.policy, format).Add(float64(tooManyBucketsSamples))
+		validation.DiscardedBytes.WithLabelValues(name, s.tenant, s.retentionHours, s.policy, format).Add(float64(tooManyBucketsBytes))
+		if usageTracker != nil {
+			usageTracker.DiscardedBytesAdd(ctx, s.tenant, name, s.labels, float64(tooManyBucketsBytes), format)
+		}
+	}
 }
 
-func (s *stream) cutChunk(ctx context.Context) *chunkDesc {
+// closeChunk closes the given chunk (making sure anything in the head block
+// is cut and compressed) and records its final per-chunk stats. It does not
+// create a replacement chunk; callers do that via appendNewChunk.
+func (s *stream) closeChunk(ctx context.Context, chunk *chunkDesc) {
 	sp := trace.SpanFromContext(ctx)
 	sp.AddEvent("stream started to cut chunk")
 	defer sp.AddEvent("stream finished to cut chunk")
 
-	// If the chunk has no more space call Close to make sure anything in the head block is cut and compressed
-	chunk := &s.chunks[len(s.chunks)-1]
 	err := chunk.chunk.Close()
 	if err != nil {
 		// This should be an unlikely situation, returning an error up the stack doesn't help much here
@@ -505,13 +672,57 @@ func (s *stream) cutChunk(ctx context.Context) *chunkDesc {
 
 	s.metrics.samplesPerChunk.Observe(float64(chunk.chunk.Size()))
 	s.metrics.blocksPerChunk.Observe(float64(chunk.chunk.BlockCount()))
+}
+
+// appendNewChunk appends a new, empty appendable chunk to s.chunks and
+// returns it. bucketStart is zero for the normal single-head path; when
+// non-zero, the new chunk is tracked in openHeads as that bucket's current
+// head.
+func (s *stream) appendNewChunk(bucketStart time.Time) *chunkDesc {
+	s.chunks = append(s.chunks, chunkDesc{
+		chunk:       s.NewChunk(),
+		bucketStart: bucketStart,
+	})
+	idx := len(s.chunks) - 1
+
+	if !bucketStart.IsZero() {
+		if s.openHeads == nil {
+			s.openHeads = map[int64]int{}
+		}
+		key := bucketStart.Unix()
+		if _, existed := s.openHeads[key]; !existed {
+			s.metrics.streamTimeShardOpenBuckets.Inc()
+		}
+		s.openHeads[key] = idx
+	}
+
 	s.metrics.chunksCreatedTotal.Inc()
 	s.metrics.chunkCreatedStats.Inc(1)
 
-	s.chunks = append(s.chunks, chunkDesc{
-		chunk: s.NewChunk(),
-	})
-	return &s.chunks[len(s.chunks)-1]
+	return &s.chunks[idx]
+}
+
+func (s *stream) cutChunk(ctx context.Context) *chunkDesc {
+	// If the chunk has no more space call Close to make sure anything in the head block is cut and compressed
+	s.closeChunk(ctx, &s.chunks[len(s.chunks)-1])
+	return s.appendNewChunk(time.Time{})
+}
+
+// headForBucket returns the current appendable head chunk for the given
+// time-bucket, creating one (or replacing a full/closed one) as needed. Used
+// only when ingester-side time-sharding is active for this stream.
+func (s *stream) headForBucket(ctx context.Context, bucketStart time.Time, entry *logproto.Entry) *chunkDesc {
+	key := bucketStart.Unix()
+	if idx, ok := s.openHeads[key]; ok {
+		c := &s.chunks[idx]
+		if !c.closed && c.chunk.SpaceFor(entry) {
+			return c
+		}
+		if !c.closed {
+			s.closeChunk(ctx, c)
+		}
+	}
+	return s.appendNewChunk(bucketStart)
 }
 
 // Returns true, if chunk should be cut before adding new entry. This is done to make ingesters

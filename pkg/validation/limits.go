@@ -22,6 +22,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/compactor/deletionmode"
 	"github.com/grafana/loki/v3/pkg/compression"
 	"github.com/grafana/loki/v3/pkg/distributor/shardstreams"
+	"github.com/grafana/loki/v3/pkg/ingester/streamsharding"
 	"github.com/grafana/loki/v3/pkg/loghttp/push"
 	"github.com/grafana/loki/v3/pkg/logql"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
@@ -186,6 +187,8 @@ type Limits struct {
 	StreamRetention []StreamRetention `yaml:"retention_stream,omitempty" json:"retention_stream,omitempty" doc:"description=Per-stream retention to apply, if the retention is enabled on the compactor side.\nExample:\n retention_stream:\n - selector: '{namespace=\"dev\"}'\n priority: 1\n period: 24h\n- selector: '{container=\"nginx\"}'\n priority: 1\n period: 744h\nSelector is a Prometheus labels matchers that will apply the 'period' retention only if the stream is matching. In case multiple streams are matching, the highest priority will be picked. If no rule is matched the 'retention_period' is used."`
 
 	ShardStreams shardstreams.Config `yaml:"shard_streams" json:"shard_streams" doc:"description=Define streams sharding behavior."`
+
+	IngesterTimeSharding streamsharding.Config `yaml:"ingester_time_sharding" json:"ingester_time_sharding" doc:"description=Allow the ingester to accept out-of-order/backfilled logs for one stream across multiple concurrently open time-bucketed chunks, instead of the distributor's shard_streams.time_sharding_enabled __time_shard__ label sharding."`
 
 	BlockedQueries []*validation.BlockedQuery `yaml:"blocked_queries,omitempty" json:"blocked_queries,omitempty"`
 
@@ -515,6 +518,7 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 	)
 
 	l.ShardStreams.RegisterFlagsWithPrefix("shard-streams", f)
+	l.IngesterTimeSharding.RegisterFlagsWithPrefix("ingester.time-sharding", f)
 	f.IntVar(&l.VolumeMaxSeries, "limits.volume-max-series", 1000, "The default number of aggregated series or labels that can be returned from a log-volume endpoint")
 
 	f.BoolVar(&l.AllowStructuredMetadata, "validation.allow-structured-metadata", true, "Allow user to send structured metadata (non-indexed labels) in push payload.")
@@ -1056,6 +1060,10 @@ func (o *Overrides) DeletionMode(userID string) string {
 
 func (o *Overrides) ShardStreams(userID string) shardstreams.Config {
 	return o.getOverridesForUser(userID).ShardStreams
+}
+
+func (o *Overrides) IngesterTimeSharding(userID string) streamsharding.Config {
+	return o.getOverridesForUser(userID).IngesterTimeSharding
 }
 
 func (o *Overrides) BlockedQueries(_ context.Context, userID string) []*validation.BlockedQuery {

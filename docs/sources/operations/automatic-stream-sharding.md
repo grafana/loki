@@ -95,6 +95,35 @@ Loki does not apply time-based sharding to log entries with a timestamp newer th
 
 If you enable both rate-based sharding and time-based sharding, Loki applies time-based sharding first, and then applies rate-based sharding to each of the resulting time-sharded streams.
 
+### Ingester-side time-bucketing (experimental)
+
+As an alternative to the distributor's `shard_streams.time_sharding_enabled`, Loki can instead let the Ingester itself
+keep several time-bucketed chunks open at once for a single logical stream, rather than the distributor splitting a
+stream into separate `__time_shard__` streams. With this mechanism, old and new entries for a stream always keep the
+stream's original labels and land on the same Ingesters, and are not counted as extra streams against
+`max_streams_per_user`/`max_global_streams_per_user`.
+
+This is a separate, independently configured mechanism and does not replace `shard_streams.time_sharding_enabled` yet.
+Enable only one of the two for a given tenant; running both at once is not currently prevented, but is not a supported
+combination.
+
+```yaml
+limits_config:
+  ingester_time_sharding:
+    enabled: true
+    ignore_recent: 40m
+    max_open_buckets: 16
+```
+
+- `ignore_recent` behaves the same as `shard_streams.time_sharding_ignore_recent`: entries newer than this are always
+  appended to the stream's current chunk.
+- `max_open_buckets` bounds how many distinct historical time-buckets a single stream can have open at once, to cap
+  the worst-case memory impact of a single push that spans a very wide time range. Entries that would open a bucket
+  beyond this limit are discarded with reason `too_many_time_shard_buckets`.
+
+Because bucketed chunks keep the stream's original labels, no `__time_shard__` label appears in query results, and
+`/labels`/`/series` output is unaffected.
+
 ## Automatic stream sharding metrics
 
 Use these metrics to help tune Loki so that it is sharding streams aggressively enough to avoid the per-stream rate
@@ -114,3 +143,10 @@ limit:
   bytes/second.
 - `loki_stream_sharding_count`: The total number of times that streams have been sharded. Useful for calculating the
   sharding rate.
+
+Use these metrics to observe ingester-side time-bucketing (`ingester_time_sharding`):
+
+- `loki_ingester_stream_open_time_buckets`: The total number of open ingester-side time-shard buckets across all
+  streams handled by this Ingester.
+- `loki_ingester_time_sharded_samples_total` / `loki_ingester_time_sharded_bytes_total`: The total number of samples
+  and bytes routed to an ingester-side time-shard bucket rather than a stream's live chunk, per tenant.
