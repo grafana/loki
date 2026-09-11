@@ -1266,7 +1266,7 @@ still gets the header, since the path was recognized and attempted.
 Each requested path that was recognized and attempted — whether or not it resolved to a value — is echoed
 back via the `X-Loki-Config-Query` response header. This lets a caller confirm that `q` was supported and
 considered — its absence, together with a full, unfiltered config in the response body, means an older
-Loki that doesn't understand `q` yet.
+Loki that doesn't understand `q` yet and may be returning more fields than requested.
 
 In microservices mode, the `/config` endpoint is exposed by all components.
 
