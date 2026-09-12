@@ -2518,7 +2518,8 @@ func (t *Loki) getDataObjBucket(clientName string) (objstore.Bucket, error) {
 	}
 
 	var objstoreBucket objstore.Bucket
-	objstoreBucket, err = bucket.NewClient(context.Background(), backend, cfg.Config, clientName, util_log.Logger, nil)
+	// TODO: MaxParallelGetChunk seems ok for now for the connection pool size but try to find a better match.
+	objstoreBucket, err = bucket.NewClient(context.Background(), backend, cfg.Config, clientName, util_log.Logger, t.Cfg.StorageConfig.MaxParallelGetChunk, nil)
 	if err != nil {
 		return nil, err
 	}

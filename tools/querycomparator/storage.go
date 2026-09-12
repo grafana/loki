@@ -29,7 +29,7 @@ func MustS3DataobjBucket(bucketName string, regionEndpoint string) objstore.Buck
 		AccessKeyID:     accessKeyID,
 		SecretAccessKey: flagext.SecretWithValue(secretAccessKey),
 		SessionToken:    flagext.SecretWithValue(sessionToken),
-	}, "querycomparator", glog.NewNopLogger(), nil)
+	}, "querycomparator", 0, glog.NewNopLogger(), nil)
 	if err != nil {
 		log.Fatal(err)
 	}
