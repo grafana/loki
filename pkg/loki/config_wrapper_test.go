@@ -2452,3 +2452,34 @@ func TestBucketNamedStores_applyDefaults(t *testing.T) {
 		assert.Equal(t, expected, (swift.Config)(nsCfg.Swift["store-5"]))
 	})
 }
+
+func TestListTargetsRequested(t *testing.T) {
+	cases := []struct {
+		name string
+		args []string
+		want bool
+	}{
+		{name: "bare single dash", args: []string{"-list-targets"}, want: true},
+		{name: "bare double dash", args: []string{"--list-targets"}, want: true},
+		{name: "explicit true", args: []string{"--list-targets=true"}, want: true},
+		{name: "explicit t", args: []string{"-list-targets=t"}, want: true},
+		{name: "explicit T", args: []string{"-list-targets=T"}, want: true},
+		{name: "explicit TRUE", args: []string{"-list-targets=TRUE"}, want: true},
+		{name: "explicit True", args: []string{"-list-targets=True"}, want: true},
+		{name: "explicit one", args: []string{"-list-targets=1"}, want: true},
+		{name: "explicit False", args: []string{"-list-targets=false"}, want: false},
+		{name: "explicit f", args: []string{"-list-targets=f"}, want: false},
+		{name: "explicit zero", args: []string{"--list-targets=0"}, want: false},
+		{name: "among other flags", args: []string{"-target=all", "-list-targets", "-config.file=foo.yaml"}, want: true},
+		{name: "missing flag", args: []string{"-target=all", "-config.file=foo.yaml"}, want: false},
+		{name: "unrelated flag containing substring", args: []string{"-config.file=list-targets.yaml"}, want: false},
+		{name: "no args", args: nil, want: false},
+		{name: "last wins false", args: []string{"-list-targets=true", "-list-targets=false"}, want: false},
+		{name: "last wins true", args: []string{"-list-targets=false", "-list-targets"}, want: true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			require.Equal(t, tc.want, ListTargetsRequested(tc.args))
+		})
+	}
+}
