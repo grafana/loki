@@ -761,6 +761,18 @@ type QueryLimitSpec struct {
 	// +kubebuilder:validation:Optional
 	// +operator-sdk:csv:customresourcedefinitions:type=spec,xDescriptors="urn:alm:descriptor:com.tectonic.ui:number",displayName="Max Volume Series"
 	MaxVolumeSeries int32 `json:"maxVolumeSeries,omitempty"`
+
+	// MaxQueryLength is the maximum timespan covered by a single query (e.g. 721h, 90d, 2160h).
+    // Must be a valid Go duration or Loki duration string format.
+    // +optional
+    // +kubebuilder:validation:Pattern="^[0-9]+(s|m|h|d|w|y)$"
+    MaxQueryLength string `json:"maxQueryLength,omitempty"`
+
+    // MaxQueryLookback is the maximum duration in the past from which queries can read data (e.g. 721h, 90d, 2160h).
+    // Must be a valid Go duration or Loki duration string format.
+    // +optional
+    // +kubebuilder:validation:Pattern="^[0-9]+(s|m|h|d|w|y)$"
+    MaxQueryLookback string `json:"maxQueryLookback,omitempty"`
 }
 
 // BlockedQueryType defines which type of query a blocked query should apply to.
