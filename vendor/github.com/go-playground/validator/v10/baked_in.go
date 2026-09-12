@@ -143,6 +143,7 @@ var (
 		"https_url":                     isHttpsURL,
 		"uri":                           isURI,
 		"origin":                        isOrigin,
+		"urn_rfc8141":                   isUrnRFC8141, // RFC 8141
 		"urn_rfc2141":                   isUrnRFC2141, // RFC 2141
 		"file":                          isFile,
 		"filepath":                      isFilePath,
@@ -1695,6 +1696,26 @@ func isHttpsURL(fl FieldLevel) bool {
 	panic(fmt.Sprintf("Bad field type %s", field.Type()))
 }
 
+// isUrnRFC8141 is the validation function for validating if the current field's value is a valid URN as per RFC 8141.
+func isUrnRFC8141(fl FieldLevel) bool {
+	field := fl.Field()
+
+	switch field.Kind() {
+	case reflect.String:
+
+		str := field.String()
+		if str == "" {
+			return false
+		}
+
+		_, match := urn.Parse([]byte(str), urn.WithParsingMode(urn.RFC8141Only))
+
+		return match
+	}
+
+	panic(fmt.Sprintf("Bad field type %T", field.Interface()))
+}
+
 // isUrnRFC2141 is the validation function for validating if the current field's value is a valid URN as per RFC 2141.
 func isUrnRFC2141(fl FieldLevel) bool {
 	field := fl.Field()
@@ -2896,7 +2917,7 @@ func isHostnameRFC1123(fl FieldLevel) bool {
 func isFQDN(fl FieldLevel) bool {
 	val := fl.Field().String()
 
-	if val == "" {
+	if val == "" || len(strings.TrimSuffix(val, ".")) > 253 {
 		return false
 	}
 
@@ -3510,4 +3531,3 @@ var (
 	errMethodReturnNoValues    = errors.New(`method return o values (void)`)
 	errMethodReturnInvalidType = errors.New(`method should return invalid type`)
 )
-

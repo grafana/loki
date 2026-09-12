@@ -128,8 +128,8 @@ func validateExpr(expr Expr) error {
 	}
 }
 
-// validateMatchers checks whether a query would touch all the streams in the query range or uses at least one matcher to select specific streams.
-func validateMatchers(matchers []*labels.Matcher) error {
+// ValidateMatchers checks whether a query would touch all the streams in the query range or uses at least one matcher to select specific streams.
+func ValidateMatchers(matchers []*labels.Matcher) error {
 	_, matchers = util.SplitFiltersAndMatchers(matchers)
 	if len(matchers) == 0 {
 		return logqlmodel.NewParseError(errAtleastOneEqualityMatcherRequired, 0, 0)
@@ -248,7 +248,7 @@ func validateLogSelectorExpression(expr LogSelectorExpr) error {
 	case *VectorExpr:
 		return nil
 	default:
-		return validateMatchers(e.Matchers())
+		return ValidateMatchers(e.Matchers())
 	}
 }
 

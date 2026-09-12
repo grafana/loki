@@ -101,7 +101,7 @@ func main() {
 
 ## Requirements
 
-- Go 1.25 or later
+- Go 1.26 or later
 - MaxMind GeoIP2 or GeoLite2 database files (.mmdb format)
 
 ## Generated Decoders

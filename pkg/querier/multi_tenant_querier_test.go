@@ -192,11 +192,33 @@ func TestMultiTenantQuerier_TenantFilter(t *testing.T) {
 				Selector: tc.selector,
 				Plan:     testutil.MustPlan(tc.selector),
 			}}
-			_, updatedSelector, err := removeTenantSelector(params, []string{})
+			_, _, updatedSelector, err := removeTenantSelector(params, []string{})
 			require.NoError(t, err)
 			require.Equal(t, removeWhiteSpace(tc.expected), removeWhiteSpace(updatedSelector.String()))
 		})
 	}
+}
+
+func TestReplaceMatchers(t *testing.T) {
+	matchers, err := syntax.ParseMatchers(`{app="foo"}`, true)
+	require.NoError(t, err)
+
+	t.Run("single stream selector", func(t *testing.T) {
+		expr, err := syntax.ParseExpr(`sum(rate({app="bar", env="prod"}[1m]))`)
+		require.NoError(t, err)
+
+		updated, err := replaceMatchers(expr, matchers)
+		require.NoError(t, err)
+		require.Equal(t, `sum(rate({app="foo"}[1m]))`, updated.String())
+	})
+
+	t.Run("multiple stream selectors are rejected", func(t *testing.T) {
+		expr, err := syntax.ParseExpr(`sum(rate({app="bar"}[1m])) / sum(rate({app="baz"}[1m]))`)
+		require.NoError(t, err)
+
+		_, err = replaceMatchers(expr, matchers)
+		require.ErrorContains(t, err, "more than one stream selector")
+	})
 }
 
 var samples = []logproto.Sample{
@@ -699,6 +721,116 @@ func TestMultiTenantQuerier_DetectedLabels(t *testing.T) {
 				// Allow for some error in cardinality estimation due to HyperLogLog approximation
 				require.InDelta(t, tc.expected[i].Cardinality, resp.DetectedLabels[i].Cardinality, float64(tc.expected[i].Cardinality)*0.02)
 			}
+		})
+	}
+}
+
+// TestSelectLogs_TenantIDOnlySelector verifies that SelectLogs validates the
+// rewritten selector after __tenant_id__ matchers are stripped. A query left
+// with no equality or regexp matcher should be rejected to prevent scanning
+// every stream for the matched tenant.
+func TestSelectLogs_TenantIDOnlySelector(t *testing.T) {
+	for _, tc := range []struct {
+		desc     string
+		orgID    string
+		selector string
+	}{
+		{
+			desc:     "tenant ID only selector becomes empty after stripping",
+			orgID:    "1|2",
+			selector: `{__tenant_id__="1"}`,
+		},
+		{
+			desc:     "tenant ID with negation matcher leaves no equality matcher",
+			orgID:    "1|2",
+			selector: `{__tenant_id__="1", foo!="bar"}`,
+		},
+		{
+			desc:     "tenant ID with regex-all matcher leaves no equality matcher",
+			orgID:    "1|2",
+			selector: `{__tenant_id__="1", foo=~".*"}`,
+		},
+	} {
+		t.Run(tc.desc, func(t *testing.T) {
+			// Validate that the original selector would pass ParseLogSelector
+			// validation (has at least one equality/regexp matcher).
+			_, err := syntax.ParseLogSelector(tc.selector, true)
+			require.NoError(t, err, "original selector should be valid")
+
+			querier := newQuerierMock()
+			querier.On("SelectLogs", mock.Anything, mock.Anything).Return(func() iter.EntryIterator { return mockStreamIterator(1, 2) }, nil)
+
+			multiTenantQuerier := NewMultiTenantQuerier(querier, log.NewNopLogger())
+			ctx := user.InjectOrgID(context.Background(), tc.orgID)
+
+			params := logql.SelectLogParams{QueryRequest: &logproto.QueryRequest{
+				Selector:  tc.selector,
+				Direction: logproto.BACKWARD,
+				Limit:     0,
+				Shards:    nil,
+				Start:     time.Unix(0, 1),
+				End:       time.Unix(0, time.Now().UnixNano()),
+				Plan:      testutil.MustPlan(tc.selector),
+			}}
+
+			// SelectLogs should fail because the rewritten selector has no
+			// equality or regexp matcher after stripping __tenant_id__.
+			_, err = multiTenantQuerier.SelectLogs(ctx, params)
+			require.Error(t, err)
+			require.Contains(t, err.Error(), "at least one regexp or equality matcher")
+
+			// Verify the underlying querier was NOT called.
+			querier.AssertNotCalled(t, "SelectLogs", mock.Anything, mock.Anything)
+		})
+	}
+}
+
+// TestSelectSamples_TenantIDOnlySelector verifies that SelectSamples validates
+// the rewritten selector after __tenant_id__ matchers are stripped. A query
+// left with no equality or regexp matcher should be rejected to prevent
+// scanning every stream for the matched tenant.
+func TestSelectSamples_TenantIDOnlySelector(t *testing.T) {
+	for _, tc := range []struct {
+		desc     string
+		orgID    string
+		selector string
+	}{
+		{
+			desc:     "tenant ID only selector becomes empty after stripping",
+			orgID:    "1|2",
+			selector: `count_over_time({__tenant_id__="1"}[1m])`,
+		},
+		{
+			desc:     "tenant ID with negation matcher leaves no equality matcher",
+			orgID:    "1|2",
+			selector: `count_over_time({__tenant_id__="1", foo!="bar"}[1m])`,
+		},
+		{
+			desc:     "tenant ID with regex-all matcher leaves no equality matcher",
+			orgID:    "1|2",
+			selector: `count_over_time({__tenant_id__="1", foo=~".*"}[1m])`,
+		},
+	} {
+		t.Run(tc.desc, func(t *testing.T) {
+			querier := newQuerierMock()
+			querier.On("SelectSamples", mock.Anything, mock.Anything).Return(func() iter.SampleIterator { return newSampleIterator() }, nil)
+
+			multiTenantQuerier := NewMultiTenantQuerier(querier, log.NewNopLogger())
+			ctx := user.InjectOrgID(context.Background(), tc.orgID)
+
+			params := logql.SelectSampleParams{SampleQueryRequest: &logproto.SampleQueryRequest{
+				Selector: tc.selector,
+				Plan:     testutil.MustPlan(tc.selector),
+			}}
+
+			// SelectSamples should fail because the rewritten selector has no
+			// equality or regexp matcher after stripping __tenant_id__.
+			_, err := multiTenantQuerier.SelectSamples(ctx, params)
+			require.Error(t, err)
+			require.Contains(t, err.Error(), "at least one regexp or equality matcher")
+
+			// Verify the underlying querier was NOT called.
+			querier.AssertNotCalled(t, "SelectSamples", mock.Anything, mock.Anything)
 		})
 	}
 }

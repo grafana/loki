@@ -125,11 +125,11 @@ func strlen(s uintptr) (r Tsize_t) {
 		return 0
 	}
 
-	for ; *(*int8)(unsafe.Pointer(s)) != 0; s++ {
-		r++
+	if strlenUseIndexByte {
+		return strlenIndexByte(s)
 	}
 
-	return r
+	return strlenWords(s)
 }
 
 // size_t strlen(const char *s)

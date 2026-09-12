@@ -17,9 +17,9 @@ import (
 
 // ScopeMetrics is a collection of metrics from a LibraryInstrumentation.
 type ScopeMetrics struct {
-	SchemaUrl string
-	Metrics   []*Metric
 	Scope     InstrumentationScope
+	Metrics   []*Metric
+	SchemaUrl string
 }
 
 var (

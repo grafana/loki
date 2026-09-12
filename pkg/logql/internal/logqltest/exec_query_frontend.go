@@ -32,6 +32,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/scheduler/schedulerpb"
 	"github.com/grafana/loki/v3/pkg/storage/config"
 	"github.com/grafana/loki/v3/pkg/util/constants"
+	"github.com/grafana/loki/v3/pkg/util/httpreq"
 	"github.com/grafana/loki/v3/pkg/validation"
 )
 
@@ -249,7 +250,11 @@ func (s *queryFrontendExecutionStack) eval(cmd evalCmd) (logqlmodel.Result, erro
 	if err != nil {
 		return logqlmodel.Result{}, err
 	}
-	httpReq = httpReq.WithContext(userCtx)
+
+	// Add flag to categorize labels. This is mimicking standard behavior of our most important client: Grafana
+	flags := httpreq.NewEncodingFlags(httpreq.FlagCategorizeLabels)
+	httpreq.AddEncodingFlags(httpReq, flags)
+	httpReq = httpReq.WithContext(httpreq.AddEncodingFlagsToContext(userCtx, flags))
 
 	rec := httptest.NewRecorder()
 	s.handler.ServeHTTP(rec, httpReq)

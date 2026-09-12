@@ -227,9 +227,9 @@ func consumeBlock(lines []string, i int, fn func(content string)) int {
 //
 // Each compare* function below self-guards against every other expectation kind (so it gives a
 // clear "expected X, got Y" error even when called directly, as the tests do). With skipValues
-// true the comparators check result shape only — series count, timestamps, and present/absent
-// samples (or log lines) — and skip value equality. Otherwise, values are compared within epsilon
-// (see floatsEqual).
+// true the comparators check result shape only — series count, timestamps, structured metadata,
+// and present/absent samples (or log lines) — and skip value equality. Otherwise, values are
+// compared within epsilon (see floatsEqual).
 func compareResult(name string, cmd evalCmd, exp expectations, data any, skipValues bool, epsilon float64) error {
 	switch v := data.(type) {
 	case promql.Scalar:
@@ -445,6 +445,10 @@ func compareMatrix(name string, cmd evalCmd, exp expectations, m promql.Matrix, 
 // matched as a set keyed by label string (like vector/matrix series); the log lines within a
 // matched stream are compared as an exact, ordered sequence, since a stream's line order is
 // meaningful (chronological, per the query direction) rather than incidental.
+//
+// Every stack runs a log-selection query with the `categorize-labels` response encoding, so a
+// result stream's labels are its stream labels alone and each line carries its own structured
+// metadata and parsed labels. Both categories are compared per line.
 func compareStreams(name string, exp expectations, got logqlmodel.Streams, skipValues bool) error {
 	if exp.scalar != nil {
 		return fmt.Errorf("%s: expected a scalar, got log streams", name)
@@ -485,6 +489,16 @@ func compareStreams(name string, exp expectations, got logqlmodel.Streams, skipV
 			wantTS := epoch.Add(we.ts).UnixMilli()
 			if gotTS := ge.Timestamp.UnixMilli(); gotTS != wantTS {
 				return fmt.Errorf("%s: stream %s line %d has timestamp %dms, expected %dms", name, lbls, i, gotTS, wantTS)
+			}
+			// A categorized label is part of an entry's identity, not its value, so both categories
+			// are checked even on a stack whose value comparison is skipped.
+			wantMetadata, gotMetadata := we.metadata.String(), sortedLabels(ge.StructuredMetadata).String()
+			if gotMetadata != wantMetadata {
+				return fmt.Errorf("%s: stream %s line %d structured metadata mismatch: want %s, got %s", name, lbls, i, wantMetadata, gotMetadata)
+			}
+			wantParsed, gotParsed := we.parsed.String(), sortedLabels(ge.Parsed).String()
+			if gotParsed != wantParsed {
+				return fmt.Errorf("%s: stream %s line %d parsed labels mismatch: want %s, got %s", name, lbls, i, wantParsed, gotParsed)
 			}
 			if !skipValues && ge.Line != we.line {
 				return fmt.Errorf("%s: stream %s line %d mismatch: want %q, got %q", name, lbls, i, we.line, ge.Line)

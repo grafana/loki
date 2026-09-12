@@ -7514,7 +7514,12 @@ func _sessionChangesetToHash(tls *libc.TLS, pIter uintptr, pGrp uintptr, bRebase
 	rc = SQLITE_OK
 	(*Tsqlite3_changeset_iter)(unsafe.Pointer(pIter)).Fin.FbNoDiscard = int32(1)
 	for int32(SQLITE_ROW) == _sessionChangesetNext(tls, pIter, bp, bp+4, uintptr(0)) {
-		rc = _sessionOneChangeIterToHash(tls, pGrp, pIter, bRebase)
+		if bRebase != 0 && (*Tsqlite3_changeset_iter)(unsafe.Pointer(pIter)).FbPatchset != 0 {
+			/* A patchset may not be used as a rebase */
+			rc = int32(SQLITE_ERROR)
+		} else {
+			rc = _sessionOneChangeIterToHash(tls, pGrp, pIter, bRebase)
+		}
 		if rc != SQLITE_OK {
 			break
 		}
@@ -10925,7 +10930,7 @@ func _sqlite3VdbeFinishMoveto(tls *libc.TLS, p uintptr) (r int32) {
 		return rc
 	}
 	if **(**int32)(__ccgo_up(bp)) != 0 {
-		return _sqlite3CorruptError(tls, int32(91686))
+		return _sqlite3CorruptError(tls, int32(91835))
 	}
 	(*TVdbeCursor)(unsafe.Pointer(p)).FdeferredMoveto = uint8(0)
 	(*TVdbeCursor)(unsafe.Pointer(p)).FcacheStatus = uint32(CACHE_STALE)
