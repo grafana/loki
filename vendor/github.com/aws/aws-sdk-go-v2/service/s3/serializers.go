@@ -513,6 +513,21 @@ func awsRestxml_serializeOpHttpBindingsCopyObjectInput(v *CopyObjectInput, encod
 		encoder.SetHeader(locationName).String(string(v.MetadataDirective))
 	}
 
+	if len(v.ObjectLockEventHold) > 0 {
+		locationName := "X-Amz-Object-Lock-Event-Hold"
+		encoder.SetHeader(locationName).String(string(v.ObjectLockEventHold))
+	}
+
+	if v.ObjectLockEventHoldDurationDays != nil {
+		locationName := "X-Amz-Object-Lock-Event-Hold-Duration-Days"
+		encoder.SetHeader(locationName).Integer(*v.ObjectLockEventHoldDurationDays)
+	}
+
+	if v.ObjectLockEventHoldDurationYears != nil {
+		locationName := "X-Amz-Object-Lock-Event-Hold-Duration-Years"
+		encoder.SetHeader(locationName).Integer(*v.ObjectLockEventHoldDurationYears)
+	}
+
 	if len(v.ObjectLockLegalHoldStatus) > 0 {
 		locationName := "X-Amz-Object-Lock-Legal-Hold"
 		encoder.SetHeader(locationName).String(string(v.ObjectLockLegalHoldStatus))
@@ -1067,6 +1082,21 @@ func awsRestxml_serializeOpHttpBindingsCreateMultipartUploadInput(v *CreateMulti
 		for mapKey, mapVal := range v.Metadata {
 			hv.SetHeader(http.CanonicalHeaderKey(mapKey)).String(mapVal)
 		}
+	}
+
+	if len(v.ObjectLockEventHold) > 0 {
+		locationName := "X-Amz-Object-Lock-Event-Hold"
+		encoder.SetHeader(locationName).String(string(v.ObjectLockEventHold))
+	}
+
+	if v.ObjectLockEventHoldDurationDays != nil {
+		locationName := "X-Amz-Object-Lock-Event-Hold-Duration-Days"
+		encoder.SetHeader(locationName).Integer(*v.ObjectLockEventHoldDurationDays)
+	}
+
+	if v.ObjectLockEventHoldDurationYears != nil {
+		locationName := "X-Amz-Object-Lock-Event-Hold-Duration-Years"
+		encoder.SetHeader(locationName).Integer(*v.ObjectLockEventHoldDurationYears)
 	}
 
 	if len(v.ObjectLockLegalHoldStatus) > 0 {
@@ -8645,6 +8675,21 @@ func awsRestxml_serializeOpHttpBindingsPutObjectInput(v *PutObjectInput, encoder
 		}
 	}
 
+	if len(v.ObjectLockEventHold) > 0 {
+		locationName := "X-Amz-Object-Lock-Event-Hold"
+		encoder.SetHeader(locationName).String(string(v.ObjectLockEventHold))
+	}
+
+	if v.ObjectLockEventHoldDurationDays != nil {
+		locationName := "X-Amz-Object-Lock-Event-Hold-Duration-Days"
+		encoder.SetHeader(locationName).Integer(*v.ObjectLockEventHoldDurationDays)
+	}
+
+	if v.ObjectLockEventHoldDurationYears != nil {
+		locationName := "X-Amz-Object-Lock-Event-Hold-Duration-Years"
+		encoder.SetHeader(locationName).Integer(*v.ObjectLockEventHoldDurationYears)
+	}
+
 	if len(v.ObjectLockLegalHoldStatus) > 0 {
 		locationName := "X-Amz-Object-Lock-Legal-Hold"
 		encoder.SetHeader(locationName).String(string(v.ObjectLockLegalHoldStatus))
@@ -12087,6 +12132,19 @@ func awsRestxml_serializeDocumentDefaultRetention(v *types.DefaultRetention, val
 		el := value.MemberElement(root)
 		el.Integer(*v.Days)
 	}
+	if v.DefaultEventHold != nil {
+		rootAttr := []smithyxml.Attr{}
+		root := smithyxml.StartElement{
+			Name: smithyxml.Name{
+				Local: "DefaultEventHold",
+			},
+			Attr: rootAttr,
+		}
+		el := value.MemberElement(root)
+		if err := awsRestxml_serializeDocumentEventHoldDuration(v.DefaultEventHold, el); err != nil {
+			return err
+		}
+	}
 	if len(v.Mode) > 0 {
 		rootAttr := []smithyxml.Attr{}
 		root := smithyxml.StartElement{
@@ -12339,6 +12397,33 @@ func awsRestxml_serializeDocumentErrorDocument(v *types.ErrorDocument, value smi
 
 func awsRestxml_serializeDocumentEventBridgeConfiguration(v *types.EventBridgeConfiguration, value smithyxml.Value) error {
 	defer value.Close()
+	return nil
+}
+
+func awsRestxml_serializeDocumentEventHoldDuration(v *types.EventHoldDuration, value smithyxml.Value) error {
+	defer value.Close()
+	if v.Days != nil {
+		rootAttr := []smithyxml.Attr{}
+		root := smithyxml.StartElement{
+			Name: smithyxml.Name{
+				Local: "Days",
+			},
+			Attr: rootAttr,
+		}
+		el := value.MemberElement(root)
+		el.Integer(*v.Days)
+	}
+	if v.Years != nil {
+		rootAttr := []smithyxml.Attr{}
+		root := smithyxml.StartElement{
+			Name: smithyxml.Name{
+				Local: "Years",
+			},
+			Attr: rootAttr,
+		}
+		el := value.MemberElement(root)
+		el.Integer(*v.Years)
+	}
 	return nil
 }
 
@@ -14139,6 +14224,30 @@ func awsRestxml_serializeDocumentObjectLockLegalHold(v *types.ObjectLockLegalHol
 
 func awsRestxml_serializeDocumentObjectLockRetention(v *types.ObjectLockRetention, value smithyxml.Value) error {
 	defer value.Close()
+	if len(v.EventHold) > 0 {
+		rootAttr := []smithyxml.Attr{}
+		root := smithyxml.StartElement{
+			Name: smithyxml.Name{
+				Local: "EventHold",
+			},
+			Attr: rootAttr,
+		}
+		el := value.MemberElement(root)
+		el.String(string(v.EventHold))
+	}
+	if v.EventHoldDuration != nil {
+		rootAttr := []smithyxml.Attr{}
+		root := smithyxml.StartElement{
+			Name: smithyxml.Name{
+				Local: "EventHoldDuration",
+			},
+			Attr: rootAttr,
+		}
+		el := value.MemberElement(root)
+		if err := awsRestxml_serializeDocumentEventHoldDuration(v.EventHoldDuration, el); err != nil {
+			return err
+		}
+	}
 	if len(v.Mode) > 0 {
 		rootAttr := []smithyxml.Attr{}
 		root := smithyxml.StartElement{

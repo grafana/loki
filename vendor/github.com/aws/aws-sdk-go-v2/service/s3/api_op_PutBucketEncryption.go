@@ -10,7 +10,6 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/s3/types"
 	"github.com/aws/smithy-go/middleware"
 	"github.com/aws/smithy-go/ptr"
-	smithyhttp "github.com/aws/smithy-go/transport/http"
 )
 
 // This operation configures default encryption and Amazon S3 Bucket Keys for an
@@ -227,12 +226,6 @@ func (c *Client) addOperationPutBucketEncryptionMiddlewares(stack *middleware.St
 		return err
 	}
 
-	if err = addlegacyEndpointContextSetter(stack, options); err != nil {
-		return err
-	}
-	if err = addComputeContentLength(stack); err != nil {
-		return err
-	}
 	if err = addResolveEndpointMiddleware(stack, options); err != nil {
 		return err
 	}
@@ -240,12 +233,6 @@ func (c *Client) addOperationPutBucketEncryptionMiddlewares(stack *middleware.St
 		return err
 	}
 	if err = addRecordResponseTiming(stack, options); err != nil {
-		return err
-	}
-	if err = smithyhttp.AddErrorCloseResponseBodyMiddleware(stack); err != nil {
-		return err
-	}
-	if err = smithyhttp.AddCloseResponseBodyMiddleware(stack); err != nil {
 		return err
 	}
 	if err = addPutBucketContextMiddleware(stack); err != nil {
@@ -261,9 +248,6 @@ func (c *Client) addOperationPutBucketEncryptionMiddlewares(stack *middleware.St
 		return err
 	}
 	if err = addOpPutBucketEncryptionValidationMiddleware(stack); err != nil {
-		return err
-	}
-	if err = stack.Initialize.Add(newServiceMetadataMiddleware(options.Region, "PutBucketEncryption"), middleware.Before); err != nil {
 		return err
 	}
 	if err = addMetadataRetrieverMiddleware(stack); err != nil {
@@ -282,6 +266,9 @@ func (c *Client) addOperationPutBucketEncryptionMiddlewares(stack *middleware.St
 		return err
 	}
 	if err = disableAcceptEncodingGzip(stack); err != nil {
+		return err
+	}
+	if err = s3cust.HandleResponseErrorWith200Status(stack); err != nil {
 		return err
 	}
 	if err = addRequestResponseLogging(stack, options); err != nil {

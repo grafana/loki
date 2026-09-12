@@ -668,7 +668,7 @@ type ContinuationEvent struct {
 type CopyObjectResult struct {
 
 	// The Base64 encoded, 32-bit CRC32 checksum of the object. This checksum is only
-	// present if the object was uploaded with the object. For more information, see [Checking object integrity]
+	// present if the checksum was uploaded with the object. For more information, see [Checking object integrity]
 	// in the Amazon S3 User Guide.
 	//
 	// [Checking object integrity]: https://docs.aws.amazon.com/AmazonS3/latest/userguide/checking-object-integrity.html
@@ -1038,6 +1038,11 @@ type DefaultRetention struct {
 	// The number of days that you want to specify for the default retention period.
 	// Must be used with Mode .
 	Days *int32
+
+	// The default event hold duration to be applied to new objects placed in the
+	// specified bucket. When configured, new objects will automatically have an event
+	// hold enabled with this duration.
+	DefaultEventHold *EventHoldDuration
 
 	// The default Object Lock retention mode you want to apply to new objects placed
 	// in the specified bucket. Must be used with either Days or Years .
@@ -2267,6 +2272,21 @@ type ErrorDocument struct {
 
 // A container for specifying the configuration for Amazon EventBridge.
 type EventBridgeConfiguration struct {
+	noSmithyDocumentSerde
+}
+
+// Contains the event hold duration configuration, specified in either days or
+// years.
+type EventHoldDuration struct {
+
+	// The number of days for the event hold duration. The minimum value is 1 and the
+	// maximum value is 36,500.
+	Days *int32
+
+	// The number of years for the event hold duration. The minimum value is 1 and the
+	// maximum value is 100.
+	Years *int32
+
 	noSmithyDocumentSerde
 }
 
@@ -3661,6 +3681,14 @@ type ObjectLockLegalHold struct {
 
 // A Retention configuration for an object.
 type ObjectLockRetention struct {
+
+	// The event hold status for the object. Set to ON to enable an event hold or OFF
+	// to disable it.
+	EventHold ObjectLockEventHold
+
+	// The event hold duration for the object. Specifies how long the object remains
+	// protected after the event hold is released.
+	EventHoldDuration *EventHoldDuration
 
 	// Indicates the Retention mode for the specified object.
 	Mode ObjectLockRetentionMode

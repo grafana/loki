@@ -10,7 +10,6 @@ import (
 	s3cust "github.com/aws/aws-sdk-go-v2/service/s3/internal/customizations"
 	"github.com/aws/aws-sdk-go-v2/service/s3/types"
 	"github.com/aws/smithy-go/middleware"
-	smithyhttp "github.com/aws/smithy-go/transport/http"
 	"io"
 	"time"
 )
@@ -516,6 +515,22 @@ type PutObjectInput struct {
 	// A map of metadata to store with the object in S3.
 	Metadata map[string]string
 
+	// Specifies the event hold status to apply to this object. Set to ON to enable or
+	// OFF to disable.
+	//
+	// This functionality is not supported for directory buckets.
+	ObjectLockEventHold types.ObjectLockEventHold
+
+	// Specifies the event hold duration in days to apply to this object.
+	//
+	// This functionality is not supported for directory buckets.
+	ObjectLockEventHoldDurationDays *int32
+
+	// Specifies the event hold duration in years to apply to this object.
+	//
+	// This functionality is not supported for directory buckets.
+	ObjectLockEventHoldDurationYears *int32
+
 	// Specifies whether a legal hold will be applied to this object. For more
 	// information about S3 Object Lock, see [Object Lock]in the Amazon S3 User Guide.
 	//
@@ -938,12 +953,6 @@ func (c *Client) addOperationPutObjectMiddlewares(stack *middleware.Stack, optio
 		return err
 	}
 
-	if err = addlegacyEndpointContextSetter(stack, options); err != nil {
-		return err
-	}
-	if err = addComputeContentLength(stack); err != nil {
-		return err
-	}
 	if err = addResolveEndpointMiddleware(stack, options); err != nil {
 		return err
 	}
@@ -951,12 +960,6 @@ func (c *Client) addOperationPutObjectMiddlewares(stack *middleware.Stack, optio
 		return err
 	}
 	if err = addRecordResponseTiming(stack, options); err != nil {
-		return err
-	}
-	if err = smithyhttp.AddErrorCloseResponseBodyMiddleware(stack); err != nil {
-		return err
-	}
-	if err = smithyhttp.AddCloseResponseBodyMiddleware(stack); err != nil {
 		return err
 	}
 	if err = addPutBucketContextMiddleware(stack); err != nil {
@@ -972,9 +975,6 @@ func (c *Client) addOperationPutObjectMiddlewares(stack *middleware.Stack, optio
 		return err
 	}
 	if err = addOpPutObjectValidationMiddleware(stack); err != nil {
-		return err
-	}
-	if err = stack.Initialize.Add(newServiceMetadataMiddleware(options.Region, "PutObject"), middleware.Before); err != nil {
 		return err
 	}
 	if err = addMetadataRetrieverMiddleware(stack); err != nil {
