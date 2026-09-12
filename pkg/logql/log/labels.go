@@ -191,7 +191,11 @@ func (b *BaseLabelsBuilder) ForLabels(lbs labels.Labels, hash uint64) *LabelsBui
 	return res
 }
 
-// Reset clears all current state for the builder.
+// Reset clears all current state for the builder. It does not clear
+// resultCache: Reset runs once per line, and resultCache entries are keyed
+// by label set hash so they are safely reused across lines within the same
+// pipeline. Use ResetCache to also evict resultCache, which should only
+// happen on a pipeline-level reset (e.g. once per push in a tailer).
 func (b *BaseLabelsBuilder) Reset() {
 	b.del = b.del[:0]
 	for k := range b.add {
@@ -201,6 +205,17 @@ func (b *BaseLabelsBuilder) Reset() {
 	b.errDetails = ""
 	b.baseMap = nil
 	b.parserKeyHints.Reset()
+}
+
+// ResetCache clears resultCache in addition to everything Reset clears.
+// Long lived pipelines (e.g. tailers) reuse the same builder across pushes
+// via Pipeline.Reset, so stale cached LabelsResult entries must be evicted
+// there to prevent unbounded growth. Do not call this per line: streamPipeline
+// and noopStreamPipeline rely on resultCache surviving across lines within
+// the same push for cheap LabelsResult reuse.
+func (b *BaseLabelsBuilder) ResetCache() {
+	b.Reset()
+	clear(b.resultCache)
 }
 
 // ParserLabelHints returns a limited list of expected labels to extract for metric queries.
