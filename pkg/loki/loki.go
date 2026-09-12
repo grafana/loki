@@ -54,6 +54,8 @@ import (
 	limits_frontend "github.com/grafana/loki/v3/pkg/limits/frontend"
 	limits_frontend_client "github.com/grafana/loki/v3/pkg/limits/frontend/client"
 	"github.com/grafana/loki/v3/pkg/loghttp/push"
+	loglinebuilder "github.com/grafana/loki/v3/pkg/logline/builder"
+	loglineconfig "github.com/grafana/loki/v3/pkg/logline/config"
 	"github.com/grafana/loki/v3/pkg/loki/codec"
 	"github.com/grafana/loki/v3/pkg/loki/common"
 	"github.com/grafana/loki/v3/pkg/lokifrontend"
@@ -122,6 +124,7 @@ type Config struct {
 	MemberlistKV        memberlist.KVConfig        `yaml:"memberlist"`
 	KafkaConfig         kafka.Config               `yaml:"kafka_config,omitempty" category:"experimental"`
 	DataObj             dataobjconfig.Config       `yaml:"dataobj,omitempty" category:"experimental"`
+	Logline             loglineconfig.Config       `yaml:"logline,omitempty" category:"experimental"`
 
 	IngestLimits               limits.Config                 `yaml:"ingest_limits,omitempty" category:"experimental"`
 	IngestLimitsFrontend       limits_frontend.Config        `yaml:"ingest_limits_frontend,omitempty" category:"experimental"`
@@ -239,6 +242,7 @@ func (c *Config) RegisterFlags(f *flag.FlagSet) {
 	c.IngestLimitsFrontendClient.RegisterFlags(f)
 	c.UI.RegisterFlags(f)
 	c.DataObj.RegisterFlags(f)
+	c.Logline.RegisterFlags(f)
 }
 
 func (c *Config) registerServerFlagsWithChangedDefaultValues(fs *flag.FlagSet) {
@@ -360,6 +364,14 @@ func (c *Config) Validate() error {
 			errs = append(errs, errors.Wrap(err, "CONFIG ERROR: invalid dataobj config"))
 		}
 	}
+	// Only validated for the selected target. The builder's config has required
+	// fields with no sensible defaults, so validating it unconditionally would
+	// break every deployment that does not run logline.
+	if c.isTarget(LoglineIndexBuilder) {
+		if err := c.Logline.ValidateIndexBuilder(); err != nil {
+			errs = append(errs, errors.Wrap(err, "CONFIG ERROR: invalid logline config"))
+		}
+	}
 	if err := c.Distributor.Validate(); err != nil {
 		errs = append(errs, errors.Wrap(err, "CONFIG ERROR: invalid distributor config"))
 	}
@@ -453,6 +465,7 @@ type Loki struct {
 	dataObjConsumerRing                 *ring.Ring
 	dataObjConsumerPartitionRing        *ring.PartitionInstanceRing
 	DataObjConsumerPartitionRingWatcher *ring.PartitionRingWatcher
+	loglinePartitionRing                *loglinebuilder.PartitionRingWatcher
 	dataObjConsumerPartitionKVClient    kv.Client
 	dataObjIndexBuilder                 *dataobjindex.Builder
 	dataObjCompactionPlanner            *enginecompactor.Planner
@@ -814,6 +827,10 @@ func (t *Loki) setupModuleManager() error {
 	mm.RegisterModule(DataObjIndexBuilder, t.initDataObjIndexBuilder, modules.UserInvisibleTargetableModule)
 	mm.RegisterModule(DataObjCompactionPlanner, t.initDataObjCompactionPlanner, modules.UserInvisibleTargetableModule)
 	mm.RegisterModule(DataObjCompactionWorker, t.initDataObjCompactionWorker, modules.UserInvisibleTargetableModule)
+
+	// Logline: keep the target invisible while it is experimental.
+	mm.RegisterModule(LoglineIndexBuilder, t.initLoglineIndexBuilder, modules.UserInvisibleTargetableModule)
+	mm.RegisterModule(LoglineBuilderPartitionRing, t.initLoglineBuilderPartitionRing, modules.UserInvisibleModule)
 	mm.RegisterModule(DataObjExplorer, t.initDataObjExplorer, modules.UserInvisibleTargetableModule)
 	mm.RegisterModule(QueryEngine, t.initV2QueryEngine, modules.UserInvisibleTargetableModule)
 	mm.RegisterModule(QueryEngineScheduler, t.initV2QueryEngineScheduler, modules.UserInvisibleTargetableModule)
@@ -869,6 +886,9 @@ func (t *Loki) setupModuleManager() error {
 		DataObjCompactionPlanner:     {Server, UIRing, Overrides},
 		DataObjCompactionWorker:      {ScratchStore, Server, UIRing},
 		ScratchStore:                 {},
+
+		LoglineIndexBuilder:         {LoglineBuilderPartitionRing, Server},
+		LoglineBuilderPartitionRing: {MemberlistKV, Server},
 
 		All: {QueryScheduler, QueryFrontend, Querier, Ingester, PatternIngester, Distributor, Ruler, Compactor},
 	}

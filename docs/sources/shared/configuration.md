@@ -1810,6 +1810,124 @@ dataobj:
   # CLI flag: -dataobj.enabled
   [enabled: <boolean> | default = false]
 
+logline:
+  store:
+    # Path prefix for all objects in the bucket
+    # CLI flag: -logline-store.bucket-prefix
+    [bucket_prefix: <string> | default = "logline/"]
+
+    # How often to poll object storage for new indexes
+    # CLI flag: -logline-store.poll-interval
+    [poll_interval: <duration> | default = 15m]
+
+    # Number of concurrent meta.json fetches during poll
+    # CLI flag: -logline-store.poll-concurrency
+    [poll_concurrency: <int> | default = 50]
+
+    # Age after which index files are eligible for deletion
+    # CLI flag: -logline-store.retention-duration
+    [retention_duration: <duration> | default = 168h]
+
+    # How long to retain compacted (source) indexes after compaction before
+    # deletion
+    # CLI flag: -logline-store.compaction-grace-period
+    [compaction_grace_period: <duration> | default = 24h]
+
+    # Earliest trusted index date partition (YYYY-MM-DD) for query-path reads;
+    # required when logline is enabled
+    # CLI flag: -logline-store.min-date
+    [min_date: <string> | default = ""]
+
+  index_builder:
+    index:
+      # N-gram length for feature extraction
+      # CLI flag: -logline-index-builder.ngram-length
+      [ngram_length: <int> | default = 6]
+
+      # Time range each document covers (e.g., 100ms, 1s)
+      # CLI flag: -logline-index-builder.document-interval
+      [document_interval: <duration> | default = 100ms]
+
+      # Number of ngram shards per date bucket. 0 or 1 disables sharding (single
+      # file per date).
+      # CLI flag: -logline-index-builder.shard-count
+      [shard_count: <int> | default = 0]
+
+      # Shard algorithm for ngram routing. Valid values: first_byte,
+      # murmur3_mix.
+      # CLI flag: -logline-index-builder.shard-algorithm
+      [shard_algorithm: <string> | default = "murmur3_mix"]
+
+      # Index format version string written to meta.json (defaults to current
+      # version)
+      # CLI flag: -logline-index-builder.index-version
+      [index_version: <string> | default = ""]
+
+      # Filter n-grams covering more than this fraction of a full day's
+      # documents (0 = use format default; v3 default is 0.20)
+      # CLI flag: -logline-index-builder.density-threshold
+      [density_threshold: <float> | default = 0]
+
+    # Duration of inactivity before flushing
+    # CLI flag: -logline-index-builder.flush-on-idle
+    [flush_on_idle: <duration> | default = 5m]
+
+    # Maximum age of the builder before flushing
+    # CLI flag: -logline-index-builder.flush-on-max-age
+    [flush_on_max_age: <duration> | default = 30m]
+
+    # Full-flush trigger based on cumulative bytes of run files spilled to
+    # scratch disk by the active builder. Peak scratch usage reaches 2-3x this
+    # value during a flush (retiring builder's runs + its merged .lidx output +
+    # the fresh builder's runs), so size the scratch volume with that headroom.
+    # CLI flag: -logline-index-builder.flush-on-max-bytes
+    [flush_on_max_bytes: <int> | default = 21474836480]
+
+    # Interval for periodic flush checks independent of the poll loop
+    # CLI flag: -logline-index-builder.flush-check-interval
+    [flush_check_interval: <duration> | default = 5m]
+
+    # Capacity of the in-memory postings buffer in (ngram, docID) pairs.
+    # Resident memory is ~24 bytes per pair, allocated up front (~460 MiB at the
+    # default), and a builder swap briefly holds two buffers — budget GOMEMLIMIT
+    # accordingly. Minimum 65536.
+    # CLI flag: -logline-index-builder.postings-buffer-pairs
+    [postings_buffer_pairs: <int> | default = 20000000]
+
+    # Fraction of the postings buffer the sorted, deduped head must reach before
+    # a run is spilled to scratch disk. Higher packs runs denser (fewer, larger
+    # runs feed the merge). Must be > 0 and <= 0.95.
+    # CLI flag: -logline-index-builder.postings-spill-watermark
+    [postings_spill_watermark: <float> | default = 0.7]
+
+    # Number of parallel n-gram extract goroutines (1-4). Incident/catchup mode
+    # only: values above 1 multiply the resident sort-buffer floor (~480 MiB per
+    # goroutine at the default postings_buffer_pairs) and CPU demand for higher
+    # ingest throughput. Default 1 is the serial production path.
+    # CLI flag: -logline-index-builder.extract-threads
+    [extract_threads: <int> | default = 1]
+
+    # Kafka static-membership ID (defaults to os.Hostname() if empty). Pod
+    # restarts within session_timeout rejoin without rebalance.
+    # CLI flag: -logline-index-builder.instance-id
+    [instance_id: <string> | default = ""]
+
+    # Directory where intermediate .lidx files are written
+    # CLI flag: -logline-index-builder.scratch-dir
+    [scratch_dir: <string> | default = "./data/partial-indexes"]
+
+    # Kafka consumer-group session timeout. A pod absent for longer than this is
+    # evicted from the group and its partitions rebalanced. Must not exceed
+    # broker's group.max.session.timeout.ms.
+    # CLI flag: -logline-index-builder.kafka-session-timeout
+    [kafka_session_timeout: <duration> | default = 2m]
+
+    # Maximum time to wait at startup for the partition ring to be populated.
+    # Service startup fails if the ring is still empty after this — there is no
+    # silent fallback.
+    # CLI flag: -logline-index-builder.wait-ring-populated-timeout
+    [wait_ring_populated_timeout: <duration> | default = 1m]
+
 ingest_limits:
   # Enable the ingest limits service.
   # CLI flag: -ingest-limits.enabled
