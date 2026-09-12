@@ -1053,6 +1053,31 @@ func Test_store_GetSeries(t *testing.T) {
 			},
 			1,
 		},
+		{
+			"plan without deprecated selector",
+			withoutSelector(newQuery("{foo=\"bar\"}", from, from.Add(6*time.Millisecond), nil, nil)),
+			[]logproto.SeriesIdentifier{
+				{Labels: mustParseLabels("{foo=\"bar\"}")},
+			},
+			1,
+		},
+		{
+			"deprecated selector without plan",
+			withoutPlan(newQuery("{foo=\"bar\"}", from, from.Add(6*time.Millisecond), nil, nil)),
+			[]logproto.SeriesIdentifier{
+				{Labels: mustParseLabels("{foo=\"bar\"}")},
+			},
+			1,
+		},
+		{
+			"neither selector nor plan selects all series",
+			withoutPlan(withoutSelector(newQuery("{foo=\"bar\"}", from, from.Add(6*time.Millisecond), nil, nil))),
+			[]logproto.SeriesIdentifier{
+				{Labels: mustParseLabels("{foo=\"bar\"}")},
+				{Labels: mustParseLabels("{foo=\"bazz\"}")},
+			},
+			1,
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
