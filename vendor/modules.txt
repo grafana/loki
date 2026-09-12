@@ -2531,7 +2531,7 @@ modernc.org/memory
 # modernc.org/sqlite v1.58.0
 ## explicit; go 1.25.0
 modernc.org/sqlite/lib
-# sigs.k8s.io/json v0.0.0-20250730193827-2d320260d730
+# sigs.k8s.io/json v0.0.0-20260909141634-11ed52e25bc5
 ## explicit; go 1.23
 sigs.k8s.io/json
 sigs.k8s.io/json/internal/golang/encoding/json
