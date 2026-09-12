@@ -1,6 +1,7 @@
 package log
 
 import (
+	"fmt"
 	"testing"
 	"time"
 
@@ -100,6 +101,63 @@ func TestPipeline(t *testing.T) {
 	require.Len(t, p.baseBuilder.del, 0)
 	for _, v := range p.baseBuilder.add {
 		require.Len(t, v, 0)
+	}
+}
+
+// Reset must leave a pipeline in the state of a freshly built one, including the
+// LabelsResult cache shared by all of its stream pipelines. An ingester tailer keeps
+// one pipeline for the whole tail session and calls Reset once per push; with
+// structured metadata every distinct label set is another cache entry (#24031).
+func TestPipeline_ResetClearsResultCache(t *testing.T) {
+	lbs := labels.FromStrings("app", "x")
+	noop := NewNoopPipeline().(*noopPipeline)
+	filter := NewPipeline([]Stage{mustFilter(NewFilter("foo", LineMatchEqual)).ToStage()}).(*pipeline)
+
+	for _, tc := range []struct {
+		name  string
+		p     Pipeline
+		cache map[uint64]LabelsResult
+	}{
+		{name: "noop", p: noop, cache: noop.baseBuilder.resultCache},
+		{name: "filter", p: filter, cache: filter.baseBuilder.resultCache},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			for i := 0; i < 100; i++ {
+				structuredMetadata := labels.FromStrings("trace_id", fmt.Sprintf("%032d", i))
+				_, _, ok := tc.p.ForStream(lbs).ProcessString(0, "foo", structuredMetadata)
+				require.True(t, ok)
+			}
+			// One entry for the stream itself plus one per distinct structured metadata set.
+			require.Len(t, tc.cache, 101)
+
+			tc.p.Reset()
+			require.Empty(t, tc.cache)
+		})
+	}
+}
+
+// The per-line Reset in streamPipeline.Process must keep the cache: lines that
+// produce the same label set are expected to share a single LabelsResult.
+func TestStreamPipeline_ReusesLabelsResultAcrossLines(t *testing.T) {
+	lbs := labels.FromStrings("app", "x")
+	structuredMetadata := labels.FromStrings("service_name", "svc")
+
+	for _, tc := range []struct {
+		name string
+		p    Pipeline
+	}{
+		{name: "noop", p: NewNoopPipeline()},
+		{name: "filter", p: NewPipeline([]Stage{mustFilter(NewFilter("foo", LineMatchEqual)).ToStage()})},
+		{name: "parser", p: NewPipeline([]Stage{NewJSONParser(false)})},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			sp := tc.p.ForStream(lbs)
+			_, first, ok := sp.ProcessString(0, `{"msg":"foo"}`, structuredMetadata)
+			require.True(t, ok)
+			_, second, ok := sp.ProcessString(0, `{"msg":"foo"}`, structuredMetadata)
+			require.True(t, ok)
+			require.Same(t, first, second)
+		})
 	}
 }
 
