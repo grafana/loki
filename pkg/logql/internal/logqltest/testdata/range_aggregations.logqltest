@@ -690,6 +690,37 @@ eval instant at 60s count_over_time({app="a"} | logfmt | unwrap v [1m])
 eval instant at 60s count_over_time({app="a"} |= "keep" [1m]) by (app)
   expect fail msg: grouping not allowed for count_over_time aggregation
 
+# count_over_time() over log streams with structured metadata.
+#
+# - Metadata merges into the result label set.
+# - Distinct values split into separate series.
+# - Matching values aggregate into one series.
+# - An empty value is present, not omitted.
+# - A stream/metadata clash spills to `_extracted`.
+clear
+load
+  {app="a", env="prod"} "code=200" @ 10s [metadata detected_level="info" lvl="" env="staging"]
+  {app="a", env="prod"} "code=200" @ 20s [metadata detected_level="info" lvl="" env="staging"]
+  {app="a", env="prod"} "code=200" @ 30s [metadata detected_level="error" lvl="" env="staging"]
+  {app="noise"} "code=200" @ 10s
+
+eval instant at 60s count_over_time({app="a"}[1m])
+  {app="a", env="prod", env_extracted="staging", detected_level="info", lvl=""} 2
+  {app="a", env="prod", env_extracted="staging", detected_level="error", lvl=""} 1
+eval range from 40s to 60s step 20s count_over_time({app="a"}[1m])   # overlapping
+  {app="a", env="prod", env_extracted="staging", detected_level="info", lvl=""} 2 2
+  {app="a", env="prod", env_extracted="staging", detected_level="error", lvl=""} 1 1
+eval range from 60s to 180s step 120s count_over_time({app="a"}[1m]) # non-overlapping
+  {app="a", env="prod", env_extracted="staging", detected_level="info", lvl=""} 2 _
+  {app="a", env="prod", env_extracted="staging", detected_level="error", lvl=""} 1 _
+# A parsed field merges in too, alongside metadata, with no clash.
+eval instant at 60s count_over_time({app="a"} | logfmt [1m])
+  {app="a", env="prod", env_extracted="staging", detected_level="info", lvl="", code="200"} 2
+  {app="a", env="prod", env_extracted="staging", detected_level="error", lvl="", code="200"} 1
+eval range from 40s to 60s step 20s count_over_time({app="a"} | logfmt [1m]) # overlapping
+  {app="a", env="prod", env_extracted="staging", detected_level="info", lvl="", code="200"} 2 2
+  {app="a", env="prod", env_extracted="staging", detected_level="error", lvl="", code="200"} 1 1
+
 # bytes_over_time()
 clear
 load
@@ -1293,6 +1324,41 @@ eval instant at 60s sum_over_time({app="a"} | unwrap v [1m])
   {app="a"} 12
 eval range from 40s to 60s step 20s sum_over_time({app="a"} | unwrap v [1m])
   {app="a"} 12 12
+
+# sum_over_time() keeps every label except the unwrapped one.
+#
+# - The unwrapped field leaves the label set.
+# - Distinct label values split into separate series.
+# - A stream/metadata clash still spills to `_extracted`.
+# - An empty metadata value survives.
+clear
+load
+  {app="a", env="prod"} "msg" @ 10s [metadata v="2" env="staging" region="eu" lvl=""]
+  {app="a", env="prod"} "msg" @ 20s [metadata v="3" env="staging" region="eu" lvl=""]
+  {app="a", env="prod"} "msg" @ 15s [metadata v="7" env="staging" region="us" lvl=""]
+  {app="noise"} "msg" @ 10s [metadata v="9" env="other" region="other" lvl="x"]
+
+eval instant at 60s sum_over_time({app="a"} | unwrap v [1m])
+  {app="a", env="prod", env_extracted="staging", region="eu", lvl=""} 5
+  {app="a", env="prod", env_extracted="staging", region="us", lvl=""} 7
+eval range from 40s to 60s step 20s sum_over_time({app="a"} | unwrap v [1m])   # overlapping
+  {app="a", env="prod", env_extracted="staging", region="eu", lvl=""} 5 5
+  {app="a", env="prod", env_extracted="staging", region="us", lvl=""} 7 7
+eval range from 60s to 180s step 120s sum_over_time({app="a"} | unwrap v [1m]) # non-overlapping
+  {app="a", env="prod", env_extracted="staging", region="eu", lvl=""} 5 _
+  {app="a", env="prod", env_extracted="staging", region="us", lvl=""} 7 _
+
+# sum_over_time() with `| logfmt`: an untouched parsed field survives unwrapping.
+clear
+load
+  {app="a"} "v=2 code=200" @ 10s
+  {app="a"} "v=3 code=200" @ 20s
+  {app="noise"} "v=9 code=500" @ 10s
+
+eval instant at 60s sum_over_time({app="a"} | logfmt | unwrap v [1m])
+  {app="a", code="200"} 5
+eval range from 40s to 60s step 20s sum_over_time({app="a"} | logfmt | unwrap v [1m])  # overlapping
+  {app="a", code="200"} 5 5
 
 # stddev_over_time() / stdvar_over_time()
 clear
