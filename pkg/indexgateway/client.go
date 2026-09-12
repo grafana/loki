@@ -15,6 +15,7 @@ import (
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/flagext"
+	"github.com/grafana/dskit/gate"
 	"github.com/grafana/dskit/grpcclient"
 	"github.com/grafana/dskit/instrument"
 	"github.com/grafana/dskit/middleware"
@@ -80,6 +81,14 @@ type ClientConfig struct {
 	// MinShuffleShardSize is the minimum number of index gateway instances included in the
 	// shuffle shard, regardless of the max-capacity setting. Only applies to simple mode.
 	MinShuffleShardSize int `yaml:"min_shuffle_shard_size"`
+
+	// MaxInFlightRequests caps how many requests this client may have in flight at once.
+	// Zero disables the cap.
+	MaxInFlightRequests int `yaml:"max_in_flight_requests" category:"experimental"`
+
+	// MaxRetries caps how many further index gateway instances a failed request is tried
+	// against. Zero disables retries, leaving a single attempt.
+	MaxRetries int `yaml:"max_retries" category:"experimental"`
 }
 
 // RegisterFlagsWithPrefix register client-specific flags with the given prefix.
@@ -97,10 +106,23 @@ func (i *ClientConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 		"Experimental: Defines buckets for time-based sharding. Time based sharding only takes affect when index gateways run in simple mode. To enable client side time-based sharding of queries across index gateway instances set at least one bucket in the format of a string representation of a time.Duration, e.g. ['168h', '336h', '504h']",
 	)
 	f.IntVar(&i.MinShuffleShardSize, prefix+".min-shuffle-shard-size", 3, "Minimum number of index gateway instances included in the shuffle shard, regardless of the max-capacity setting. A value of 0 disables the minimum. Only applies to simple mode.")
+	f.IntVar(&i.MaxInFlightRequests, prefix+".max-in-flight-requests", 2048, "Experimental: Maximum number of requests this index gateway client may have in flight at once. Requests arriving when the limit is reached are rejected immediately with an HTTP 503 status instead of waiting, which bounds the resources this process commits to an index gateway that is slow, saturated, or unreachable. The limit applies per client: one client is built per schema period config, doubled when the shadow index gateway client is enabled, so the process-wide number of in-flight requests can reach this value multiplied by the number of clients. 0 disables the limit.")
+	f.IntVar(&i.MaxRetries, prefix+".max-retries", 2, "Experimental: Maximum number of other index gateway instances a failed request is retried against. Each instance is tried at most once, so a request makes at most this many retries plus one attempt in total. Bounding this stops a single request from walking every replica, which can otherwise block the calling goroutine for the sum of every replica's timeout. 0 disables retries.")
 }
 
 func (i *ClientConfig) RegisterFlags(f *flag.FlagSet) {
 	i.RegisterFlagsWithPrefix("index-gateway-client", f)
+}
+
+// Validate returns an error if the configuration is not usable.
+func (i *ClientConfig) Validate() error {
+	if i.MaxInFlightRequests < 0 {
+		return errors.New("index gateway client max-in-flight-requests must be greater than or equal to 0")
+	}
+	if i.MaxRetries < 0 {
+		return errors.New("index gateway client max-retries must be greater than or equal to 0")
+	}
+	return nil
 }
 
 type GatewayClient struct {
@@ -108,6 +130,7 @@ type GatewayClient struct {
 	cfg                               ClientConfig
 	storeGatewayClientRequestDuration *prometheus.HistogramVec
 	retriesHistogram                  *prometheus.HistogramVec
+	inFlight                          gate.Gate
 	dnsProvider                       discovery.DNS
 	pool                              *client.Pool
 	ring                              ring.ReadRing
@@ -120,7 +143,9 @@ type GatewayClient struct {
 //
 // If it is configured to be in ring mode, a pool of GRPC connections to all Index Gateway instances is created using a ring.
 // Otherwise, it creates a GRPC connection pool to as many addresses as can be resolved from the given address.
-func NewGatewayClient(cfg ClientConfig, r prometheus.Registerer, limits Limits, logger log.Logger, metricsNamespace string) (*GatewayClient, error) {
+//
+// name distinguishes gate metrics for clients sharing a registerer.
+func NewGatewayClient(name string, cfg ClientConfig, r prometheus.Registerer, limits Limits, logger log.Logger, metricsNamespace string) (*GatewayClient, error) {
 	latency := prometheus.NewHistogramVec(prometheus.HistogramOpts{
 		Namespace: constants.Loki,
 		Name:      "index_gateway_request_duration_seconds",
@@ -167,11 +192,17 @@ func NewGatewayClient(cfg ClientConfig, r prometheus.Registerer, limits Limits, 
 	// Sort descending, since we have negative duration values
 	slices.SortFunc(buckets, func(a, b time.Duration) int { return cmp.Compare(b, a) })
 
+	gateReg := prometheus.WrapRegistererWithPrefix(
+		"loki_index_gateway_client_",
+		prometheus.WrapRegistererWith(prometheus.Labels{"client": name}, r),
+	)
+
 	sgClient := &GatewayClient{
 		logger:                            logger,
 		cfg:                               cfg,
 		storeGatewayClientRequestDuration: latency,
 		retriesHistogram:                  retries,
+		inFlight:                          newInFlightGate(cfg.MaxInFlightRequests, gateReg),
 		ring:                              cfg.Ring,
 		limits:                            limits,
 		buckets:                           buckets,
@@ -266,7 +297,7 @@ func (s *GatewayClient) GetChunkRef(ctx context.Context, in *logproto.GetChunkRe
 		return err
 	}, func(addrs []string) []string {
 		return addressesForQueryEndTime(addrs, in.Through.Time(), s.buckets, time.Now().UTC())
-	}, -1)
+	})
 	return resp, err
 }
 
@@ -280,7 +311,7 @@ func (s *GatewayClient) GetSeries(ctx context.Context, in *logproto.GetSeriesReq
 		return err
 	}, func(addrs []string) []string {
 		return addressesForQueryEndTime(addrs, in.Through.Time(), s.buckets, time.Now().UTC())
-	}, -1)
+	})
 	return resp, err
 }
 
@@ -294,7 +325,7 @@ func (s *GatewayClient) LabelNamesForMetricName(ctx context.Context, in *logprot
 		return err
 	}, func(addrs []string) []string {
 		return addressesForQueryEndTime(addrs, in.Through.Time(), s.buckets, time.Now().UTC())
-	}, -1)
+	})
 	return resp, err
 }
 
@@ -308,7 +339,7 @@ func (s *GatewayClient) LabelValuesForMetricName(ctx context.Context, in *logpro
 		return err
 	}, func(addrs []string) []string {
 		return addressesForQueryEndTime(addrs, in.Through.Time(), s.buckets, time.Now().UTC())
-	}, -1)
+	})
 	return resp, err
 }
 
@@ -322,7 +353,7 @@ func (s *GatewayClient) GetStats(ctx context.Context, in *logproto.IndexStatsReq
 		return err
 	}, func(addrs []string) []string {
 		return addressesForQueryEndTime(addrs, in.Through.Time(), s.buckets, time.Now().UTC())
-	}, -1)
+	})
 	return resp, err
 }
 
@@ -336,7 +367,7 @@ func (s *GatewayClient) GetVolume(ctx context.Context, in *logproto.VolumeReques
 		return err
 	}, func(addrs []string) []string {
 		return addressesForQueryEndTime(addrs, in.Through.Time(), s.buckets, time.Now().UTC())
-	}, -1)
+	})
 	return resp, err
 }
 
@@ -372,21 +403,23 @@ func (s *GatewayClient) GetShards(ctx context.Context, in *logproto.ShardsReques
 		func(addrs []string) []string {
 			return addressesForQueryEndTime(addrs, in.Through.Time(), s.buckets, time.Now().UTC())
 		},
-		2,
 	); err != nil {
 		return nil, err
 	}
 	return res, nil
 }
 
-// poolDo executes the given function for each Index Gateway instance in the ring mapping to the correct tenant in the index.
-// In case of callback failure, we'll try another member of the ring for that tenant ID.
+// poolDo tries each gateway once, up to cfg.MaxRetries retries.
 func (s *GatewayClient) poolDo(
 	ctx context.Context,
 	callback func(client logproto.IndexGatewayClient) error,
 	filterServerList func([]string) []string,
-	maxRetries int, // -1 for unlimited retries, 0 to disable retries
 ) error {
+	if err := s.inFlight.Start(ctx); err != nil {
+		return mapInFlightGateError(err)
+	}
+	defer s.inFlight.Done()
+
 	userID, err := tenant.TenantID(ctx)
 	if err != nil {
 		return errors.Wrap(err, "index gateway client get tenant ID")
@@ -412,38 +445,47 @@ func (s *GatewayClient) poolDo(
 		addrs[i], addrs[j] = addrs[j], addrs[i]
 	})
 
-	errCount := 0
-	var lastErr error
+	var (
+		errCount int
+		lastErr  error
+		status   = "failure"
+	)
+	defer func() { s.retriesHistogram.WithLabelValues(status).Observe(float64(errCount)) }()
+
 	for _, addr := range addrs {
 		if s.cfg.LogGatewayRequests {
 			level.Debug(s.logger).Log("msg", "sending request to gateway", "gateway", addr, "tenant", userID)
 		}
 
-		genericClient, err := s.pool.GetClientFor(addr)
-		if err != nil {
-			level.Error(s.logger).Log("msg", fmt.Sprintf("failed to get client for instance %s", addr), "err", err)
-			continue
+		err := s.do(addr, callback)
+		if err == nil {
+			status = "success"
+			return nil
 		}
 
-		client := (genericClient.(logproto.IndexGatewayClient))
-		if err := callback(client); err != nil {
-			lastErr = err
-			errCount++
-			level.Error(s.logger).Log("msg", fmt.Sprintf("client do failed for instance %s", addr), "err", err)
+		lastErr = err
+		errCount++
 
-			if maxRetries >= 0 && errCount > maxRetries {
-				s.retriesHistogram.WithLabelValues("failure").Observe(float64(errCount))
-				return err
-			}
-			continue
+		if isLoadShed(err) {
+			level.Warn(s.logger).Log("msg", "index gateway shed the request, trying another instance", "gateway", addr, "tenant", userID, "err", err)
+		} else {
+			level.Error(s.logger).Log("msg", "index gateway request failed, trying another instance", "gateway", addr, "tenant", userID, "err", err)
 		}
 
-		s.retriesHistogram.WithLabelValues("success").Observe(float64(errCount))
-		return nil
+		if errCount > s.cfg.MaxRetries {
+			break
+		}
 	}
 
-	s.retriesHistogram.WithLabelValues("failure").Observe(float64(errCount))
 	return lastErr
+}
+
+func (s *GatewayClient) do(addr string, callback func(client logproto.IndexGatewayClient) error) error {
+	genericClient, err := s.pool.GetClientFor(addr)
+	if err != nil {
+		return errors.Wrapf(err, "get client for index gateway %s", addr)
+	}
+	return callback(genericClient.(logproto.IndexGatewayClient))
 }
 
 // jumpHashShuffleSharding uses jump hash to consistently select a subset of index gateway instances for a tenant.
@@ -497,7 +539,21 @@ func (s *GatewayClient) getServerAddresses(tenantID string) ([]string, error) {
 		addrs = s.dnsProvider.Addresses()
 	}
 
-	return addrs, nil
+	// DNS and ring discovery can return duplicate addresses.
+	return dedupe(addrs), nil
+}
+
+func dedupe(addrs []string) []string {
+	seen := make(map[string]struct{}, len(addrs))
+	unique := addrs[:0:0]
+	for _, addr := range addrs {
+		if _, ok := seen[addr]; ok {
+			continue
+		}
+		seen[addr] = struct{}{}
+		unique = append(unique, addr)
+	}
+	return unique
 }
 
 func instrumentation(cfg ClientConfig, clientRequestDuration *prometheus.HistogramVec) ([]grpc.UnaryClientInterceptor, []grpc.StreamClientInterceptor) {

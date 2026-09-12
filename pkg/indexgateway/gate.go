@@ -26,3 +26,25 @@ func mapGateError(err error) error {
 	}
 	return err
 }
+
+// newInFlightGate creates a non-blocking gate. A max of zero disables it.
+func newInFlightGate(maxConcurrent int, reg prometheus.Registerer) gate.Gate {
+	if maxConcurrent <= 0 {
+		return gate.NewNoop()
+	}
+	return gate.NewInstrumented(reg, maxConcurrent, gate.NewRejecting(maxConcurrent))
+}
+
+// mapInFlightGateError maps a capacity rejection to HTTP 503.
+func mapInFlightGateError(err error) error {
+	if errors.Is(err, gate.ErrMaxConcurrent) {
+		return httpgrpc.Error(http.StatusServiceUnavailable, "the index gateway client is at its in-flight request limit")
+	}
+	return err
+}
+
+// isLoadShed reports whether err carries a 503.
+func isLoadShed(err error) bool {
+	resp, ok := httpgrpc.HTTPResponseFromError(err)
+	return ok && resp.Code == http.StatusServiceUnavailable
+}

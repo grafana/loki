@@ -6953,6 +6953,27 @@ tsdb_shipper:
     # CLI flag: -tsdb.shipper.index-gateway-client.min-shuffle-shard-size
     [min_shuffle_shard_size: <int> | default = 3]
 
+    # Experimental: Maximum number of requests this index gateway client may
+    # have in flight at once. Requests arriving when the limit is reached are
+    # rejected immediately with an HTTP 503 status instead of waiting, which
+    # bounds the resources this process commits to an index gateway that is
+    # slow, saturated, or unreachable. The limit applies per client: one client
+    # is built per schema period config, doubled when the shadow index gateway
+    # client is enabled, so the process-wide number of in-flight requests can
+    # reach this value multiplied by the number of clients. 0 disables the
+    # limit.
+    # CLI flag: -tsdb.shipper.index-gateway-client.max-in-flight-requests
+    [max_in_flight_requests: <int> | default = 2048]
+
+    # Experimental: Maximum number of other index gateway instances a failed
+    # request is retried against. Each instance is tried at most once, so a
+    # request makes at most this many retries plus one attempt in total.
+    # Bounding this stops a single request from walking every replica, which can
+    # otherwise block the calling goroutine for the sum of every replica's
+    # timeout. 0 disables retries.
+    # CLI flag: -tsdb.shipper.index-gateway-client.max-retries
+    [max_retries: <int> | default = 2]
+
   # Experimental. Number of idle file handles the stream index reader keeps open
   # per index file. Only applies when -shipper.index-reader-mode=stream. Set to
   # 0 to disable pooling.
