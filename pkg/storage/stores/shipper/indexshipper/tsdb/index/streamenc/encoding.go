@@ -123,18 +123,12 @@ func (d *Decbuf) SkipUvarintBytes() {
 }
 
 // ResetAt sets the pointer of the underlying BufReader to the absolute
-// offset and discards any buffered data. If E is non-nil, this method has
-// no effect. ResetAt-ing beyond the end of the underlying BufReader will set
-// E to an error and not advance the pointer of BufReader.
+// offset.
+// If E is non-nil, this method has no effect.
+// ResetAt-ing beyond the end of the underlying BufReader will set E to an error and
+// not advance the pointer of BufReader.
 func (d *Decbuf) ResetAt(off int) {
 	if d.E != nil {
-		return
-	}
-
-	// If we are trying to reset at an offset which is already buffered,
-	// we can avoid resetting the BufReader and just discard some of the buffer instead.
-	if dist := off - d.Offset(); dist >= 0 && dist < d.r.Buffered() {
-		d.E = d.r.Skip(dist)
 		return
 	}
 

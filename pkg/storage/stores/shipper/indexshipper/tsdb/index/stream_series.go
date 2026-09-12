@@ -53,17 +53,7 @@ func (sc *seriesScan) Close() error {
 }
 
 // seek positions the scan's reader at the given absolute file offset.
-//
-// A short forward step is served by discarding bytes, which will often come
-// straight out of the read-ahead buffer and cost nothing; anything else falls
-// back to repositioning the file.
-// Backwards steps are always a reposition, so out-of-order refs stay correct
-// and merely incur the cost of ResetAt.
 func (sc *seriesScan) seek(offset int) {
-	if distance := offset - sc.decbuf.Offset(); distance >= 0 && distance <= streamenc.ReaderBufferSize {
-		sc.decbuf.Skip(distance)
-		return
-	}
 	sc.decbuf.ResetAt(offset)
 }
 
