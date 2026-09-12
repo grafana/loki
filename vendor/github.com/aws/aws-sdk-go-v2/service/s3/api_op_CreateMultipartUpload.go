@@ -8,7 +8,6 @@ import (
 	s3cust "github.com/aws/aws-sdk-go-v2/service/s3/internal/customizations"
 	"github.com/aws/aws-sdk-go-v2/service/s3/types"
 	"github.com/aws/smithy-go/middleware"
-	smithyhttp "github.com/aws/smithy-go/transport/http"
 	"time"
 )
 
@@ -601,6 +600,22 @@ type CreateMultipartUploadInput struct {
 	// A map of metadata to store with the object in S3.
 	Metadata map[string]string
 
+	// Specifies the event hold status to apply to the uploaded object. Set to ON to
+	// enable or OFF to disable.
+	//
+	// This functionality is not supported for directory buckets.
+	ObjectLockEventHold types.ObjectLockEventHold
+
+	// Specifies the event hold duration in days to apply to the uploaded object.
+	//
+	// This functionality is not supported for directory buckets.
+	ObjectLockEventHoldDurationDays *int32
+
+	// Specifies the event hold duration in years to apply to the uploaded object.
+	//
+	// This functionality is not supported for directory buckets.
+	ObjectLockEventHoldDurationYears *int32
+
 	// Specifies whether you want to apply a legal hold to the uploaded object.
 	//
 	// This functionality is not supported for directory buckets.
@@ -869,12 +884,6 @@ func (c *Client) addOperationCreateMultipartUploadMiddlewares(stack *middleware.
 		return err
 	}
 
-	if err = addlegacyEndpointContextSetter(stack, options); err != nil {
-		return err
-	}
-	if err = addComputeContentLength(stack); err != nil {
-		return err
-	}
 	if err = addResolveEndpointMiddleware(stack, options); err != nil {
 		return err
 	}
@@ -882,12 +891,6 @@ func (c *Client) addOperationCreateMultipartUploadMiddlewares(stack *middleware.
 		return err
 	}
 	if err = addRecordResponseTiming(stack, options); err != nil {
-		return err
-	}
-	if err = smithyhttp.AddErrorCloseResponseBodyMiddleware(stack); err != nil {
-		return err
-	}
-	if err = smithyhttp.AddCloseResponseBodyMiddleware(stack); err != nil {
 		return err
 	}
 	if err = addPutBucketContextMiddleware(stack); err != nil {
@@ -900,9 +903,6 @@ func (c *Client) addOperationCreateMultipartUploadMiddlewares(stack *middleware.
 		return err
 	}
 	if err = addOpCreateMultipartUploadValidationMiddleware(stack); err != nil {
-		return err
-	}
-	if err = stack.Initialize.Add(newServiceMetadataMiddleware(options.Region, "CreateMultipartUpload"), middleware.Before); err != nil {
 		return err
 	}
 	if err = addMetadataRetrieverMiddleware(stack); err != nil {
@@ -918,6 +918,9 @@ func (c *Client) addOperationCreateMultipartUploadMiddlewares(stack *middleware.
 		return err
 	}
 	if err = disableAcceptEncodingGzip(stack); err != nil {
+		return err
+	}
+	if err = s3cust.HandleResponseErrorWith200Status(stack); err != nil {
 		return err
 	}
 	if err = addRequestResponseLogging(stack, options); err != nil {
