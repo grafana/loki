@@ -59,9 +59,27 @@ type producer struct {
 
 	batchPromises ring[batchPromise] // we never call die() on it
 
+	// onBatchPromiseBroadcast, if non-nil, is invoked from finishPromises
+	// immediately before the per-batch p.c.Broadcast() fires, with moreQueued
+	// reporting whether further promise elements are still queued in the ring
+	// (i.e. the broadcast is firing mid-drain rather than at ring exit). It
+	// exists purely so tests can observe the broadcast deterministically at
+	// its source instead of racing a woken goroutine; it is always nil in
+	// production.
+	onBatchPromiseBroadcast func(moreQueued bool)
+
 	txnMu   xsync.Mutex
 	inTxn   bool
 	tx890p2 atomic.Bool
+
+	// producedInTxn is set when a record is buffered within the current
+	// transaction and reset by BeginTransaction. EndTransaction consults
+	// it under KIP-890 part 2, where produce requests implicitly add
+	// partitions broker-side before the data append: a transaction whose
+	// every produce FAILED still needs an EndTxn abort even though no
+	// partition was marked addedToTxn client-side (marking happens only
+	// on produce success).
+	producedInTxn atomic.Bool
 }
 
 // BufferedProduceRecords returns the number of records currently buffered for
@@ -87,6 +105,7 @@ func (cl *Client) BufferedProduceBytes() int64 {
 
 // EnsureProduceConnectionIsOpen attempts to open a produce connection to all
 // specified brokers, or all brokers if `brokers` is empty or contains -1.
+// Broker IDs less than -1 are ignored.
 //
 // This can be used in an attempt to reduce the latency when producing if your
 // application produces infrequently: you can force open a produce connection a
@@ -127,7 +146,7 @@ func (cl *Client) EnsureProduceConnectionIsOpen(ctx context.Context, brokers ...
 		}
 		cl.brokersMu.RUnlock()
 	} else {
-		for _, b := range brokers {
+		for _, b := range keep {
 			wg.Add(1)
 			go func() {
 				defer wg.Done()
@@ -211,6 +230,20 @@ func (p *producer) purgeTopics(topics []string) {
 	p.topicsMu.Lock()
 	defer p.topicsMu.Unlock()
 
+	// We sweep unknown-topic waiters AND store the cleaned topics map
+	// while unknownTopicsMu is held. The store must not happen after the
+	// mu is released: partitionsForTopicProduce re-checks the topic's
+	// presence in p.topics under this mu before (re)creating an
+	// unknown-topic waiter, so holding the mu across both steps means a
+	// concurrent produce either sees the topic still present - and its
+	// just-added waiter is then swept by us - or sees it gone and
+	// re-registers the topic properly. If we instead released the mu
+	// between the sweep and the store (old behavior), a produce could
+	// land in that window: it saw the topic in p.topics, re-created a
+	// waiter, and we then removed the topic from the map - orphaning the
+	// waiter, which no metadata update would ever notify (the request set
+	// is built from p.topics), silently hanging the record forever. This
+	// mirrors storePartitionsUpdate's store-before-unlock requirement.
 	p.unknownTopicsMu.Lock()
 	for _, topic := range topics {
 		if unknown, exists := p.unknownTopics[topic]; exists {
@@ -222,17 +255,20 @@ func (p *producer) purgeTopics(topics []string) {
 			})
 		}
 	}
-	p.unknownTopicsMu.Unlock()
-
 	toStore := p.topics.clone()
-	defer p.topics.storeData(toStore)
-
+	var purged []*topicPartitionsData
 	for _, topic := range topics {
 		d := toStore.loadTopic(topic)
 		if d == nil {
 			continue
 		}
 		delete(toStore, topic)
+		purged = append(purged, d)
+	}
+	p.topics.storeData(toStore)
+	p.unknownTopicsMu.Unlock()
+
+	for _, d := range purged {
 		for _, p := range d.partitions {
 			r := p.records
 
@@ -296,7 +332,7 @@ func (rs ProduceResults) FirstErr() error {
 	return nil
 }
 
-// First the first record and error in the produce results.
+// First returns the first record and error in the produce results.
 //
 // This function is useful if you only passed one record to ProduceSync.
 func (rs ProduceResults) First() (*Record, error) {
@@ -476,16 +512,26 @@ func (cl *Client) TryProduce(
 // Kafka replies. For a synchronous produce, see ProduceSync. Records are
 // produced in order per partition if the record is produced successfully.
 // Successfully produced records will have their attributes, offset, and
-// partition set before the promise is called. All promises are called serially
-// (and should be relatively fast). If a record's timestamp is unset, this
-// sets the timestamp to time.Now.
+// partition set before the promise is called. All promises are called
+// serially, so they should be relatively fast and must not block: a promise
+// that blocks on the client itself -- for example, a blocking Produce while
+// the client is at its max-buffered limits, or a Flush -- waits on progress
+// that only later promises can deliver and can deadlock the client. To
+// produce from within a promise, spawn a goroutine (as
+// AbortingFirstErrPromise does for aborting): a goroutine'd produce that
+// blocks simply waits for the promise worker to make space. A direct
+// TryProduce inside a promise is safe only while promise delivery is keeping
+// up; if the record fails before buffering while the client is saturated
+// with an extreme backlog of failing records, delivering that failure blocks
+// the promise worker on itself. If a record's timestamp is unset, this sets
+// the timestamp to time.Now.
 //
 // If the topic field is empty, the client will use the DefaultProduceTopic; if
 // that is also empty, the record is failed immediately. If the record is too
 // large to fit in a batch on its own in a produce request, the record will be
-// failed with immediately kerr.MessageTooLarge.
+// failed immediately with kerr.MessageTooLarge.
 //
-// If the client is configured to automatically flush the client currently has
+// If the client is configured to automatically flush and the client currently has
 // the configured maximum amount of records buffered, Produce will block. The
 // context can be used to cancel waiting while records flush to make space. In
 // contrast, if manual flushing is configured, the record will be failed
@@ -625,6 +671,18 @@ func (cl *Client) produce(
 			}()
 			<-wait // we wait for the goroutine to exit, then unlock again (since the goroutine leaves the mutex locked)
 			p.mu.Unlock()
+			// The goroutine above decremented p.blocked, but this is the
+			// cancel path: the record is failed, not buffered, so there is
+			// no compensating bufferedRecords++ (the success path below
+			// has one, keeping the sum unchanged). The bufferedRecords +
+			// blocked sum that Flush waits on therefore just dropped, and
+			// the only broadcast on this path - the one that woke the
+			// goroutine above - fired BEFORE its decrement, so a Flush that
+			// re-checked its predicate in between observed the stale
+			// pre-decrement sum and went back to waiting. Broadcast now,
+			// after the decrement is visible, so a Flush whose sum reached
+			// zero is woken; without this it can hang forever.
+			p.c.Broadcast()
 			p.promiseRecordBeforeBuf(promisedRec{ctx, promise, r}, err)
 		}
 
@@ -645,6 +703,16 @@ func (cl *Client) produce(
 	p.bufferedBytes += userSize
 	p.mu.Unlock()
 
+	// Set at buffer time, before any produce reaches the broker, so this can
+	// over-set: a record counted here may still be failed locally (client
+	// close, unknown-topic timeout) before it is ever sent. The only
+	// consequence is an unnecessary EndTxn abort, which is always legal under
+	// KIP-890p2 -- an empty abort succeeds, bumps the epoch, and has nothing to
+	// commit. See the producedInTxn field doc and EndTransaction.
+	if cl.cfg.txnID != nil && !p.producedInTxn.Load() {
+		p.producedInTxn.Store(true)
+	}
+
 	cl.loadPartsAndPartition(promisedRec{ctx, promise, r})
 }
 
@@ -658,8 +726,18 @@ type batchPromise struct {
 	err        error
 }
 
+// promiseBatch finishes a batch of records. This never parks on the ring's
+// maxLen: every caller either carries records already admitted under the
+// max-buffered accounting (sink responses, fail/purge paths) or holds a
+// client lock (purgeTopics and failBufferedRecords under topicsMu and
+// unknownTopicsMu, storePartitionsUpdate under unknownTopicsMu, recBuf
+// failure paths under recBuf.mu). A parked lock-holder can deadlock: the
+// promise worker is the only goroutine that frees ring space, and a user
+// promise may re-enter the client (TryProduce) and need the very lock the
+// parked pusher holds, so the worker would wait on the lock while the lock
+// holder waits on the worker.
 func (p *producer) promiseBatch(b batchPromise) {
-	if first, _ := p.batchPromises.push(b); first {
+	if first, _ := p.batchPromises.pushForce(b); first {
 		go p.finishPromises(b)
 	}
 }
@@ -668,38 +746,82 @@ func (p *producer) promiseRecord(pr promisedRec, err error) {
 	p.promiseBatch(batchPromise{recs: []promisedRec{pr}, err: err})
 }
 
+// promiseRecordBeforeBuf finishes a record that failed before it was ever
+// buffered (and before it counted toward bufferedRecords). Only this entry
+// applies the ring's maxLen backpressure: pre-buffer failures are the one
+// promise source not bounded by the max-buffered admission, so a spin loop
+// of failing produces - blocking Produce or TryProduce alike - could
+// otherwise grow the ring without bound (#1194). Parking here is the
+// deliberate trade: every accepted record costs memory until its promise
+// runs and the promise is the only completion channel, so a caller outpacing
+// the promise worker must be blocked, not absorbed. The one caller that can
+// never park is the promise worker itself (a promise calling TryProduce with
+// a record that fails pre-buffer); produce-from-promise is documented to
+// spawn a goroutine, whose park is safe: the worker keeps draining and the
+// goroutine proceeds when space frees.
 func (p *producer) promiseRecordBeforeBuf(pr promisedRec, err error) {
-	p.promiseBatch(batchPromise{recs: []promisedRec{pr}, beforeBuf: true, err: err})
+	b := batchPromise{recs: []promisedRec{pr}, beforeBuf: true, err: err}
+	if first, _ := p.batchPromises.push(b); first {
+		go p.finishPromises(b)
+	}
 }
 
 func (p *producer) finishPromises(b batchPromise) {
 	cl := p.cl
 	var more bool
 	var broadcast bool
-	defer func() {
-		if broadcast {
-			p.c.Broadcast()
-		}
-	}()
 start:
 	for i, pr := range b.recs {
 		pr.LeaderEpoch = -1
-		if b.baseOffset == -1 {
-			// if the base offset is invalid/unknown (-1), all record offsets should
-			// be treated as unknown
+		if b.err != nil {
+			// Failed records carry unknown-sentinels, not the
+			// batchPromise zero values: without this, a failed
+			// record's offset was its index within the failed
+			// batch and its producer id/epoch were 0 -
+			// plausible-looking garbage.
 			pr.Offset = -1
+			pr.ProducerID = -1
+			pr.ProducerEpoch = -1
 		} else {
-			pr.Offset = b.baseOffset + int64(i)
+			if b.baseOffset == -1 {
+				// if the base offset is invalid/unknown (-1), all record offsets should
+				// be treated as unknown
+				pr.Offset = -1
+			} else {
+				pr.Offset = b.baseOffset + int64(i)
+			}
+			pr.ProducerID = b.pid
+			pr.ProducerEpoch = b.epoch
+			pr.Attrs = b.attrs
 		}
-		pr.ProducerID = b.pid
-		pr.ProducerEpoch = b.epoch
-		pr.Attrs = b.attrs
 		recBroadcast := cl.finishRecordPromise(pr, b.err, b.beforeBuf)
 		broadcast = broadcast || recBroadcast
 	}
 	clear(b.recs) // drop references so the pooled slice does not retain them
 	if cap(b.recs) > 4 {
 		cl.prsPool.put(b.recs)
+	}
+
+	// We broadcast per batch, not per record (waking blocked producers on
+	// every record forces tiny one-record batches; see ead18d3c) - but
+	// also not once per ring drain: while pre-buffer failure promises keep
+	// arriving from other goroutines, this loop never observes an empty
+	// ring and never exits, and a deferred-to-exit broadcast would starve
+	// a Flush whose condition (bufferedRecords == 0) became true mid-drain
+	// and blocked Produce calls whose space opened.
+	if broadcast {
+		if p.onBatchPromiseBroadcast != nil {
+			// The current (just-processed) element is still in the ring
+			// here, since dropPeek runs below; l > 1 thus means more
+			// elements are queued behind it and the broadcast is firing
+			// mid-drain rather than at ring exit.
+			p.batchPromises.mu.Lock()
+			moreQueued := p.batchPromises.l > 1
+			p.batchPromises.mu.Unlock()
+			p.onBatchPromiseBroadcast(moreQueued)
+		}
+		p.c.Broadcast()
+		broadcast = false
 	}
 
 	b, more, _ = p.batchPromises.dropPeek()
@@ -858,7 +980,7 @@ type producerID struct {
 
 var errReloadProducerID = errors.New("producer id needs reloading")
 
-// initProducerID initializes the client's producer ID for idempotent
+// producerID returns, loading if necessary, the client's producer ID for idempotent
 // producing only (no transactions, which are more special). After the first
 // load, this clears all buffered unknown topics.
 func (cl *Client) producerID(ctxFn func() context.Context) (int64, int16, error) {
@@ -1009,7 +1131,21 @@ func (cl *Client) doInitProducerID(ctxFn func() context.Context, lastID int64, l
 		if err != nil {
 			return err
 		}
-		return nil // resp.ErrorCode handled below
+		// We return ConcurrentTransactions so that our wrapping
+		// doWithConcurrentTransactions retries in place: the
+		// coordinator replies with it while still completing (or
+		// fence-aborting) a previous transaction for this
+		// transactional ID. Notably, taking over a crashed
+		// incarnation's ongoing transaction ALWAYS receives it at
+		// least once: the broker internally aborts the old
+		// transaction and tells us to retry. Surfacing the error
+		// instead would bubble a routine, transient condition up as a
+		// BeginTransaction failure. All other response error codes
+		// are classified below.
+		if err := kerr.ErrorForCode(resp.ErrorCode); errors.Is(err, kerr.ConcurrentTransactions) {
+			return err
+		}
+		return nil
 	})
 	if err != nil {
 		if errors.Is(err, errUnknownRequestKey) || errors.Is(err, errBrokerTooOld) {
@@ -1058,47 +1194,68 @@ func (cl *Client) partitionsForTopicProduce(pr promisedRec) (*topicPartitions, *
 	p := &cl.producer
 	topic := pr.Topic
 
-	topics := p.topics.load()
-	parts, exists := topics[topic]
-	if exists {
+	for {
+		topics := p.topics.load()
+		parts, exists := topics[topic]
+		if exists {
+			if v := parts.load(); len(v.partitions) > 0 {
+				return parts, v
+			}
+		}
+
+		if !exists { // topic did not exist: check again under mu and potentially create it
+			p.topicsMu.Lock()
+			if _, exists = p.topics.load()[topic]; !exists {
+				// Before we store the new topic, we lock unknown
+				// topics to prevent a concurrent metadata update
+				// seeing our new topic before we are waiting from the
+				// addUnknownTopicRecord fn. Otherwise, we would wait
+				// and never be re-notified.
+				p.unknownTopicsMu.Lock()
+				p.topics.storeTopics([]string{topic})
+				cl.addUnknownTopicRecord(pr)
+				cl.triggerUpdateMetadataNow("forced load because we are producing to a topic for the first time")
+				p.unknownTopicsMu.Unlock()
+				p.topicsMu.Unlock()
+				return nil, nil
+			}
+			p.topicsMu.Unlock()
+		}
+
+		// Here, the topic existed, but maybe has not loaded partitions
+		// yet. We have to lock unknown topics first to ensure ordering
+		// just in case a load has not happened.
+		p.unknownTopicsMu.Lock()
+
+		// Re-resolve the topic now that we hold the mu. Both sides of
+		// the entry's lifecycle change only under unknownTopicsMu:
+		// storePartitionsUpdate stores loaded partitions before
+		// releasing it, and purgeTopics stores the topic's removal
+		// from p.topics before releasing it. Without the re-check we
+		// could add a waiter for a topic a concurrent purge already
+		// swept: the purge then removes the topic from p.topics, no
+		// metadata update ever requests it (the request set is built
+		// from p.topics), and the waiter - and its records - silently
+		// hang forever. Re-resolving from the current map (not the
+		// `parts` pointer loaded above) also covers a purge+recreate
+		// swapping the topicPartitions object in between.
+		parts, exists = p.topics.load()[topic]
+		if !exists {
+			// Purged between our load and the lock; retry from the
+			// top, which re-creates the topic properly.
+			p.unknownTopicsMu.Unlock()
+			continue
+		}
 		if v := parts.load(); len(v.partitions) > 0 {
+			p.unknownTopicsMu.Unlock()
 			return parts, v
 		}
+		cl.addUnknownTopicRecord(pr)
+		cl.triggerUpdateMetadata(false, "reload trigger due to produce topic still not known")
+		p.unknownTopicsMu.Unlock()
+
+		return nil, nil // our record is buffered waiting for metadata update; nothing to return
 	}
-
-	if !exists { // topic did not exist: check again under mu and potentially create it
-		p.topicsMu.Lock()
-		defer p.topicsMu.Unlock()
-
-		if parts, exists = p.topics.load()[topic]; !exists { // update parts for below
-			// Before we store the new topic, we lock unknown
-			// topics to prevent a concurrent metadata update
-			// seeing our new topic before we are waiting from the
-			// addUnknownTopicRecord fn. Otherwise, we would wait
-			// and never be re-notified.
-			p.unknownTopicsMu.Lock()
-			defer p.unknownTopicsMu.Unlock()
-
-			p.topics.storeTopics([]string{topic})
-			cl.addUnknownTopicRecord(pr)
-			cl.triggerUpdateMetadataNow("forced load because we are producing to a topic for the first time")
-			return nil, nil
-		}
-	}
-
-	// Here, the topic existed, but maybe has not loaded partitions yet. We
-	// have to lock unknown topics first to ensure ordering just in case a
-	// load has not happened.
-	p.unknownTopicsMu.Lock()
-	defer p.unknownTopicsMu.Unlock()
-
-	if v := parts.load(); len(v.partitions) > 0 {
-		return parts, v
-	}
-	cl.addUnknownTopicRecord(pr)
-	cl.triggerUpdateMetadata(false, "reload trigger due to produce topic still not known")
-
-	return nil, nil // our record is buffered waiting for metadata update; nothing to return
 }
 
 // addUnknownTopicRecord adds a record to a topic whose partitions are
@@ -1119,7 +1276,11 @@ func (cl *Client) addUnknownTopicRecord(pr promisedRec) {
 	}
 }
 
-// waitUnknownTopic waits for a notification
+// waitUnknownTopic waits for the topic to be resolved by a metadata update
+// (the wait channel is closed, or receives retryable load errors that count
+// toward the retry limits), or for the record/produce contexts, the client,
+// the record timeout, or an abort (the fatal channel) to end the wait and
+// fail all buffered records.
 func (cl *Client) waitUnknownTopic(
 	pctx context.Context, // context passed to Produce
 	rctx context.Context, // context on the record itself
@@ -1166,7 +1327,11 @@ func (cl *Client) waitUnknownTopic(
 		case err = <-unknown.fatal:
 		case retryableErr, ok := <-unknown.wait:
 			if !ok {
-				cl.cfg.logger.Log(LogLevelInfo, "done waiting for metadata for new topic", "topic", topic)
+				// The channel is closed when the topic's partitions
+				// load, but also when the topic is purged or all
+				// buffered records are failed; whoever closed it
+				// already handled the buffered records.
+				cl.cfg.logger.Log(LogLevelInfo, "done waiting on metadata for new topic", "topic", topic)
 				return // metadata was successful!
 			}
 			cl.cfg.logger.Log(LogLevelInfo, "new topic metadata wait failed, retrying wait", "topic", topic, "err", retryableErr)
@@ -1226,7 +1391,7 @@ func (cl *Client) unlingerDueToMaxRecsBuffered() {
 // If the context finishes (Done), this returns the context's error.
 //
 // This function is safe to call multiple times concurrently, and safe to call
-// concurrent with Flush.
+// concurrent with AbortBufferedRecords.
 func (cl *Client) Flush(ctx context.Context) error {
 	p := &cl.producer
 
