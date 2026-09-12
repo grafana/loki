@@ -18,8 +18,8 @@ import (
 // Resource is a message representing the resource information.
 type Resource struct {
 	Attributes             []KeyValue
-	EntityRefs             []*EntityRef
 	DroppedAttributesCount uint32
+	EntityRefs             []*EntityRef
 }
 
 var (

@@ -22,6 +22,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"unicode"
 
 	"github.com/go-jose/go-jose/v4/json"
 )
@@ -89,12 +90,12 @@ func ParseSigned(
 	signature string,
 	signatureAlgorithms []SignatureAlgorithm,
 ) (*JSONWebSignature, error) {
-	signature = stripWhitespace(signature)
-	if strings.HasPrefix(signature, "{") {
+	trimmed := strings.TrimLeftFunc(signature, unicode.IsSpace)
+	if strings.HasPrefix(trimmed, "{") {
 		return ParseSignedJSON(signature, signatureAlgorithms)
 	}
 
-	return parseSignedCompact(signature, nil, signatureAlgorithms)
+	return parseSignedCompact(stripWhitespace(signature), nil, signatureAlgorithms)
 }
 
 // ParseSignedCompact parses a message in JWS Compact Serialization. Validation fails if the JWS is
@@ -186,6 +187,10 @@ func ParseSignedJSON(
 	input string,
 	signatureAlgorithms []SignatureAlgorithm,
 ) (*JSONWebSignature, error) {
+	if len(input) == 0 {
+		return nil, errEmptyInput
+	}
+
 	var parsed rawJSONWebSignature
 	err := json.Unmarshal([]byte(input), &parsed)
 	if err != nil {
@@ -369,6 +374,10 @@ func parseSignedCompact(
 	payload []byte,
 	signatureAlgorithms []SignatureAlgorithm,
 ) (*JSONWebSignature, error) {
+	if len(input) == 0 {
+		return nil, errEmptyInput
+	}
+
 	protected, s, ok := strings.Cut(input, tokenDelim)
 	if !ok { // no period found
 		return nil, fmt.Errorf("go-jose/go-jose: compact JWS format must have three parts")

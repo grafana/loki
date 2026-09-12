@@ -307,14 +307,18 @@ func (c *coordinator) compactTenantLogs(
 		return compactionStats{}, fmt.Errorf("failed to execute log-merge tasks: %w", err)
 	}
 
-	newEntries := make([]metastore.TableOfContentsEntry, 0, len(resultEntries))
+	// Replacing the converged index is atomic across all tasks planned from it.
+	// If any task rejects its sources (for example, because their sort layouts
+	// do not match), then return early and discard all work in order to maintain correctness.
 	for _, e := range resultEntries {
-		if e != nil {
-			newEntries = append(newEntries, *e)
+		if e == nil {
+			return compactionStats{}, nil
 		}
 	}
-	if len(newEntries) == 0 {
-		return compactionStats{}, nil
+
+	newEntries := make([]metastore.TableOfContentsEntry, len(resultEntries))
+	for i, e := range resultEntries {
+		newEntries[i] = *e
 	}
 
 	// A converged row of 0 uncompressed size means unknown. Legacy objects

@@ -332,3 +332,35 @@ func TestSymbolizerLabelNormalizationSameNameValue(t *testing.T) {
 	require.False(t, result.Has("foo-bar"), "metric should not contain unnormalized label")
 	require.False(t, result.Has("test-label"), "metric should not contain unnormalized label")
 }
+
+// used is indexed by symbol position, so a caller filing a symbol without
+// accounting for it has to fail loudly rather than have it blanked out from
+// under whatever cites it.
+func TestSymbolizerRetainOnly(t *testing.T) {
+	for _, tc := range []struct {
+		name     string
+		used     int
+		readOnly bool
+		err      string
+	}{
+		{name: "covers the table", used: 2},
+		{name: "shorter than the table", used: 1, err: "used covers 1 symbols, table holds 2"},
+		{name: "longer than the table", used: 3, err: "used covers 3 symbols, table holds 2"},
+		{name: "table read back from a flushed chunk", used: 2, readOnly: true, err: errSymbolizerReadOnly.Error()},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			s := newSymbolizer()
+			_, err := s.Add(labels.FromStrings("foo", "bar"))
+			require.NoError(t, err)
+			require.Len(t, s.labels, 2)
+			s.readOnly = tc.readOnly
+
+			err = s.retainOnly(make([]bool, tc.used))
+			if tc.err == "" {
+				require.NoError(t, err)
+				return
+			}
+			require.ErrorContains(t, err, tc.err)
+		})
+	}
+}

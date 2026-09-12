@@ -145,13 +145,15 @@
     },
 
     "result-expectation": {
-      "comment": "A series line (`{labels} p0 p1 ...`) or a log-stream line (`{labels} \"line\" @ ts`); both start with a label set, so both token kinds are included here.",
+      "comment": "A series line (`{labels} p0 p1 ...`) or a log-stream line (`{labels} \"line\" @ ts [metadata k=\"v\"] [parsed k=\"v\"]`); both start with a label set, so both token kinds are included here.",
       "name": "meta.expectation.result.logqltest",
       "begin": "^[ \\t]*(?=\\{)",
       "end": "$",
       "patterns": [
         { "include": "#label-set" },
         { "include": "#comment" },
+        { "include": "#metadata-clause" },
+        { "include": "#parsed-clause" },
         { "include": "#at-clause" },
         { "include": "#log-line" },
         { "include": "#raw-log-line" },
@@ -236,6 +238,30 @@
           "match": "[^\\s\\]]+",
           "name": "constant.numeric.duration.logqltest"
         }
+      ]
+    },
+
+    "parsed-clause": {
+      "comment": "A `[parsed key=\"value\" ...]` clause on a log-stream expectation line. Result-only: parsed labels come from the query pipeline, so `load` never writes one.",
+      "name": "meta.clause.parsed.logqltest",
+      "begin": "(\\[)[ \\t]*(parsed)\\b",
+      "beginCaptures": {
+        "1": { "name": "punctuation.section.brackets.begin.logqltest" },
+        "2": { "name": "keyword.other.parsed.logqltest" }
+      },
+      "end": "\\]",
+      "endCaptures": {
+        "0": { "name": "punctuation.section.brackets.end.logqltest" }
+      },
+      "patterns": [
+        {
+          "match": "(\"[^\"]*\"|[^\\s\"=\\]]+)[ \\t]*(=)",
+          "captures": {
+            "1": { "name": "entity.other.attribute-name.logqltest" },
+            "2": { "name": "keyword.operator.assignment.logqltest" }
+          }
+        },
+        { "include": "#log-line" }
       ]
     },
 

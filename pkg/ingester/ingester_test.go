@@ -1081,9 +1081,9 @@ func Test_DedupeIngester(t *testing.T) {
 				Plan:     testutil.MustPlan(`sum(rate({foo="bar"}[1m])) by (bar)`),
 			})
 			require.NoError(t, err)
-			iterators = append(iterators, iter.NewSampleQueryClientIterator(stream))
+			iterators = append(iterators, iter.NewTimestampFirstSampleQueryClientIterator(stream))
 		}
-		it := iter.NewMergeSampleIterator(ctx, iterators)
+		it := iter.NewTimestampFirstMergeSampleIterator(ctx, iterators)
 		var expectedLabels []string
 		for _, s := range streams {
 			expectedLabels = append(expectedLabels, labels.NewBuilder(s).Del("foo").Labels().String())
@@ -1117,9 +1117,9 @@ func Test_DedupeIngester(t *testing.T) {
 				Plan:     testutil.MustPlan(`sum(rate({foo="bar"}[1m]))`),
 			})
 			require.NoError(t, err)
-			iterators = append(iterators, iter.NewSampleQueryClientIterator(stream))
+			iterators = append(iterators, iter.NewTimestampFirstSampleQueryClientIterator(stream))
 		}
-		it := iter.NewMergeSampleIterator(ctx, iterators)
+		it := iter.NewTimestampFirstMergeSampleIterator(ctx, iterators)
 		for i := int64(0); i < requests; i++ {
 			actualHashes := []uint64{}
 			for j := 0; j < int(streamCount); j++ {
@@ -1231,9 +1231,9 @@ func Test_DedupeIngesterParser(t *testing.T) {
 				Plan:     testutil.MustPlan(`rate({foo="bar"} | json [1m])`),
 			})
 			require.NoError(t, err)
-			iterators = append(iterators, iter.NewSampleQueryClientIterator(stream))
+			iterators = append(iterators, iter.NewTimestampFirstSampleQueryClientIterator(stream))
 		}
-		it := iter.NewMergeSampleIterator(ctx, iterators)
+		it := iter.NewTimestampFirstMergeSampleIterator(ctx, iterators)
 
 		for i := 0; i < requests; i++ {
 			for j := 0; j < streamCount; j++ {
@@ -1257,9 +1257,9 @@ func Test_DedupeIngesterParser(t *testing.T) {
 				Plan:     testutil.MustPlan(`sum by (c,d,e,foo) (rate({foo="bar"} | json [1m]))`),
 			})
 			require.NoError(t, err)
-			iterators = append(iterators, iter.NewSampleQueryClientIterator(stream))
+			iterators = append(iterators, iter.NewTimestampFirstSampleQueryClientIterator(stream))
 		}
-		it := iter.NewMergeSampleIterator(ctx, iterators)
+		it := iter.NewTimestampFirstMergeSampleIterator(ctx, iterators)
 
 		for i := 0; i < requests; i++ {
 			for j := 0; j < streamCount; j++ {

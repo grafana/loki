@@ -161,11 +161,9 @@ type Writer struct {
 	// when Writer.Close() is called; otherwise, the object is left unfinalized
 	// and can be appended to later.
 	//
-	// Defaults to false unless the experiemental WithZonalBucketAPIs option was
-	// set.
+	// Defaults to false unless the [WithAppendableUploads] option was set.
 	//
-	// Append is only supported for gRPC. This feature is in preview and is not
-	// yet available for general use.
+	// Append is only supported for gRPC.
 	Append bool
 
 	// FinalizeOnClose indicates whether the Writer should finalize an object when
@@ -175,8 +173,6 @@ type Writer struct {
 	// finalized, which means they can be appended to later. If Append is set
 	// to false, this parameter will be ignored; non-appendable objects will
 	// always be finalized when Writer.Close returns without error.
-	//
-	// This feature is in preview and is not yet available for general use.
 	FinalizeOnClose bool
 
 	// ProgressFunc can be used to monitor the progress of a large write
@@ -368,7 +364,7 @@ func (w *Writer) Write(p []byte) (int, error) {
 // automatic content sniffing in the Writer.
 //
 // Flush is supported only on gRPC clients where [Writer.Append] is set
-// to true. This feature is in preview and is not yet available for general use.
+// to true.
 func (w *Writer) Flush() (int64, error) {
 	// Return error if Append is not true.
 	if !w.Append {

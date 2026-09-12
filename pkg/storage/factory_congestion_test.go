@@ -24,9 +24,8 @@ import (
 	"github.com/grafana/loki/v3/pkg/logproto"
 )
 
-// Each test here that calls NewChunkClient must use a unique PeriodConfig.From date.
-// NewChunkClient registers congestion metrics under a name built from that date and
-// never unregisters them, so a shared date panics the second test.
+// Each test here that calls NewChunkClient uses a unique PeriodConfig.From date
+// so congestion metric names do not collide when sharing a registerer.
 
 // The XML body must keep this shape. minio-go maps it to a retryable SlowDown.
 func writeS3SlowDown(w http.ResponseWriter, key string) {

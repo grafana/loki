@@ -54,12 +54,21 @@ type Decoder = decoder.Decoder
 // None may be used after or concurrently with the Reader's Close method.
 // Cursors obtained from NewDecoder are backed by its caller-provided buffer.
 //
+// Cursor traversal is caller-managed. This includes cursors supplied to custom
+// unmarshalers during Reader decoding and cursors obtained from NewDecoder.
+// Code that drives a cursor over an untrusted database is responsible for
+// sharing one aggregate per-record work budget across nested traversal. It
+// should bound recursion, iteration, repeated pointer targets, allocation, and
+// produced string or byte payloads.
+//
 // Cursor provides these operations:
 //
+//	func (Cursor) Offset() (uint, error)
 //	func (Cursor) Kind() (Kind, error)
 //	func (Cursor) Skip() (Cursor, error)
 //	func (Cursor) ReadBool() (bool, Cursor, error)
 //	func (Cursor) ReadString() (string, Cursor, error)
+//	func (Cursor) ReadStringMaxSize(uint64) (string, Cursor, error)
 //	func (Cursor) ReadBytes() ([]byte, Cursor, error)
 //	func (Cursor) ReadFloat32() (float32, Cursor, error)
 //	func (Cursor) ReadFloat64() (float64, Cursor, error)
@@ -71,9 +80,17 @@ type Decoder = decoder.Decoder
 //	func (Cursor) Map() (MapCursor, error)
 //	func (Cursor) MapReader() (MapReader, error)
 //	func (Cursor) Slice() (SliceCursor, error)
+//	func (Cursor) SliceMaxSize(uint64) (SliceCursor, error)
+//	func (Cursor) CheckMaxSize(expected KindSet, maximum uint64) error
 //	func (Cursor) ReadMapKey() ([]byte, Cursor, error)
 //	func (Cursor) Unmarshal(Unmarshaler) (Cursor, error)
 //	func (Cursor) UnmarshalCursor(CursorUnmarshaler) (Cursor, error)
+//
+// Offset returns the current value's control-byte offset without consuming it.
+// It resolves one pointer so callers can cache values by offset within one
+// database. It returns an error for a zero cursor, malformed control data, or a
+// pointer that cannot be resolved, including a pointer-to-pointer chain.
+// Successful resolution does not validate the value's payload.
 //
 // Kind resolves a valid pointer and reports its target kind without consuming
 // the cursor.
@@ -85,9 +102,15 @@ type Decoder = decoder.Decoder
 //
 // ReadBytes and ReadMapKey return slices that alias the decoder's input buffer.
 // They must not be modified and should be copied before being retained. Other
-// scalar results do not alias the input. Unmarshal and UnmarshalCursor reject
-// nil implementations. UnmarshalCursor validates its callback's returned
-// successor; legacy Unmarshal derives a successor by rescanning the value.
+// scalar results do not alias the input. ReadStringMaxSize and SliceMaxSize
+// combine a size check with their corresponding operation. CheckMaxSize
+// supports maps, slices, strings, and bytes; expected must include every kind
+// accepted by the immediately following decode. Kinds not in expected are left
+// unchecked so the subsequent typed read can report its usual mismatch. For
+// example, a []byte decoder that accepts both Bytes and Slice must include both.
+// Unmarshal and UnmarshalCursor reject nil implementations.
+// UnmarshalCursor validates its callback's returned successor; legacy
+// Unmarshal derives a successor by rescanning the value.
 type Cursor = decoder.Cursor
 
 // MapReader provides counted map traversal. Its zero value is invalid.
@@ -157,6 +180,11 @@ type DecoderOption = decoder.DecoderOption
 
 // NewDecoder creates a new Decoder with the given buffer, offset, and options.
 // Error messages include contextual offset information.
+//
+// This low-level decoder is caller-managed. Unlike reflection decoding into a
+// dynamically shaped result, it does not apply an expansion budget. Code that
+// drives it over untrusted data is responsible for bounding recursion,
+// iteration, and allocation.
 func NewDecoder(buffer []byte, offset uint, options ...DecoderOption) *Decoder {
 	d := decoder.NewDataDecoder(buffer)
 	return decoder.NewDecoder(d, offset, options...)

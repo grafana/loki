@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/v3/pkg/logproto"
@@ -117,15 +118,16 @@ func TestParseMetadata(t *testing.T) {
 	}, md)
 	require.Equal(t, ` rest`, rest)
 
-	// Malformed or empty metadata is rejected, not silently dropped.
+	// Malformed or empty metadata is rejected, not silently dropped, and every message names the
+	// clause it was reading.
 	_, _, err = parseMetadata(`[metadata trace_id=abc]`) // unquoted value
-	require.Error(t, err)
+	require.ErrorContains(t, err, `[metadata ...]: invalid "trace_id=abc"`)
 	_, _, err = parseMetadata(`[metadata k="v" junk]`) // stray token
-	require.Error(t, err)
+	require.ErrorContains(t, err, `[metadata ...]: invalid `)
 	_, _, err = parseMetadata(`[metadata ]`) // empty block
-	require.Error(t, err)
+	require.ErrorContains(t, err, `[metadata ...]: block is empty`)
 	_, _, err = parseMetadata(`[metadata ""="v"]`) // empty key
-	require.Error(t, err)
+	require.ErrorContains(t, err, `[metadata ...]: empty key in `)
 }
 
 func TestStreamsParser_RejectsMalformedDirectives(t *testing.T) {
@@ -446,23 +448,76 @@ func TestIsLogLine(t *testing.T) {
 }
 
 func TestParseLogLine(t *testing.T) {
-	lbls, ts, text, err := parseLogLine(`{app="foo", env="prod"} "hello world" @ 90s`)
+	lbls, entry, err := parseLogLine(`{app="foo", env="prod"} "hello world" @ 90s`)
 	require.NoError(t, err)
 	require.Equal(t, `{app="foo", env="prod"}`, lbls.String())
-	require.Equal(t, 90*time.Second, ts)
-	require.Equal(t, "hello world", text)
+	require.Equal(t, 90*time.Second, entry.ts)
+	require.Equal(t, "hello world", entry.line)
+	// Without a `[metadata ...]` clause the line asserts the entry carries no structured metadata.
+	require.Equal(t, "{}", entry.metadata.String())
 
 	// A backtick raw line keeps its double quotes.
 	bt := "`"
-	_, _, text, err = parseLogLine(`{app="foo"} ` + bt + `{"a":"b"}` + bt + ` @ 0s`)
+	_, entry, err = parseLogLine(`{app="foo"} ` + bt + `{"a":"b"}` + bt + ` @ 0s`)
 	require.NoError(t, err)
-	require.Equal(t, `{"a":"b"}`, text)
+	require.Equal(t, `{"a":"b"}`, entry.line)
 
-	_, _, _, err = parseLogLine(`{app="foo"} "line"`) // missing timestamp
+	_, _, err = parseLogLine(`{app="foo"} "line"`) // missing timestamp
 	require.Error(t, err)
 
-	_, _, _, err = parseLogLine(`{app="foo"} "line" @ 0s trailing junk`)
+	_, _, err = parseLogLine(`{app="foo"} "line" @ 0s trailing junk`)
 	require.Error(t, err)
+}
+
+func TestParseLogLine_Metadata(t *testing.T) {
+	// A `[metadata ...]` clause is canonicalized to a sorted label set, so the order the pairs are
+	// written in does not matter.
+	lbls, entry, err := parseLogLine(`{app="foo", lvl="error"} "boom" @ 10s [metadata "svc name"="api" lvl="error"]`)
+	require.NoError(t, err)
+	require.Equal(t, `{app="foo", lvl="error"}`, lbls.String())
+	require.Equal(t, 10*time.Second, entry.ts)
+	require.Equal(t, "boom", entry.line)
+	require.Equal(t, `{lvl="error", "svc name"="api"}`, entry.metadata.String())
+
+	// An empty metadata value is significant: it asserts the key is present and empty.
+	_, entry, err = parseLogLine(`{app="foo", lvl=""} "x" @ 0s [metadata lvl=""]`)
+	require.NoError(t, err)
+	require.Equal(t, `{lvl=""}`, entry.metadata.String())
+
+	// A malformed clause is an error, not silently dropped.
+	_, _, err = parseLogLine(`{app="foo"} "x" @ 0s [metadata lvl=error]`) // unquoted value
+	require.Error(t, err)
+	_, _, err = parseLogLine(`{app="foo"} "x" @ 0s [metadata ]`) // empty block
+	require.Error(t, err)
+
+	// The load-only `[repeat ...]` clause is not accepted on an expectation line.
+	_, _, err = parseLogLine(`{app="foo"} "x" @ 0s [repeat every 10s for 3]`)
+	require.ErrorContains(t, err, "unexpected content after log line")
+}
+
+func TestParseLogLine_Parsed(t *testing.T) {
+	// Both clauses on one line: a categorized result keeps them apart from the stream labels.
+	_, entry, err := parseLogLine(`{app="foo"} "boom" @ 10s [metadata trace_id="abc"] [parsed msg="boom" level="error"]`)
+	require.NoError(t, err)
+	require.Equal(t, `{trace_id="abc"}`, entry.metadata.String())
+	require.Equal(t, `{level="error", msg="boom"}`, entry.parsed.String())
+
+	// `[parsed ...]` stands alone, and without it a line asserts the entry has no parsed labels.
+	_, entry, err = parseLogLine(`{app="foo"} "x" @ 0s [parsed level="error"]`)
+	require.NoError(t, err)
+	require.Equal(t, "{}", entry.metadata.String())
+	require.Equal(t, `{level="error"}`, entry.parsed.String())
+
+	// The clauses are ordered, metadata before parsed; the other way round is rejected rather than
+	// silently dropping one.
+	_, _, err = parseLogLine(`{app="foo"} "x" @ 0s [parsed level="error"] [metadata trace_id="abc"]`)
+	require.ErrorContains(t, err, "unexpected content after log line")
+
+	// A malformed clause is an error, and the message names the clause it was reading.
+	_, _, err = parseLogLine(`{app="foo"} "x" @ 0s [parsed level=error]`) // unquoted value
+	require.ErrorContains(t, err, `[parsed ...]: invalid "level=error"`)
+	_, _, err = parseLogLine(`{app="foo"} "x" @ 0s [parsed ]`)
+	require.ErrorContains(t, err, "[parsed ...]: block is empty")
 }
 
 func TestExpectationsParser_LogStreams(t *testing.T) {
@@ -474,12 +529,31 @@ func TestExpectationsParser_LogStreams(t *testing.T) {
 
 	require.Len(t, exp.streams, 2)
 	require.Equal(t, `{app="foo"}`, exp.streams[0].labels)
-	require.Equal(t, []expectedLogEntry{{ts: 0, line: "1st"}, {ts: 10 * time.Second, line: "2nd"}}, exp.streams[0].entries)
+	require.Equal(t, []expectedLogEntry{
+		{ts: 0, line: "1st", metadata: labels.EmptyLabels()},
+		{ts: 10 * time.Second, line: "2nd", metadata: labels.EmptyLabels()},
+	}, exp.streams[0].entries)
 	require.Equal(t, `{app="bar"}`, exp.streams[1].labels)
-	require.Equal(t, []expectedLogEntry{{ts: 5 * time.Second, line: "x"}}, exp.streams[1].entries)
+	require.Equal(t, []expectedLogEntry{{ts: 5 * time.Second, line: "x", metadata: labels.EmptyLabels()}}, exp.streams[1].entries)
 
 	// A malformed log line (missing timestamp) is surfaced, not silently dropped.
 	require.Error(t, newExpectationsParser().parse(`{app="foo"} "no timestamp"`))
+}
+
+func TestExpectationsParser_LogStreamsWithMetadata(t *testing.T) {
+	// Structured metadata joins the result label set, so an expected line repeats it in `{labels}`
+	// and pins its category with the `[metadata ...]` clause.
+	p := newExpectationsParser()
+	require.NoError(t, p.parse(`{app="foo", lvl="error"} "boom" @ 0s [metadata lvl="error"]`))
+	require.NoError(t, p.parse(`{app="foo", lvl="error"} "bang" @ 10s [metadata lvl="error"]`))
+	exp := p.get()
+
+	require.Len(t, exp.streams, 1)
+	require.Equal(t, `{app="foo", lvl="error"}`, exp.streams[0].labels)
+	require.Len(t, exp.streams[0].entries, 2)
+	for _, e := range exp.streams[0].entries {
+		require.Equal(t, `{lvl="error"}`, e.metadata.String())
+	}
 }
 
 func TestParseSeriesLabels(t *testing.T) {

@@ -73,7 +73,8 @@ func (m Map) Get(key string) (Value, bool) {
 }
 
 // Remove removes the entry associated with the key and returns true if the key
-// was present in the map, otherwise returns false.
+// was present in the map, otherwise returns false. Removing an entry
+// invalidates any Value previously returned by Get from this Map.
 func (m Map) Remove(key string) bool {
 	m.getState().AssertMutable()
 	for i := range *m.getOrig() {
