@@ -4929,6 +4929,28 @@ shard_streams:
   # CLI flag: -shard-streams.desired-rate
   [desired_rate: <int> | default = 1536KB]
 
+# Allow the ingester to accept out-of-order/backfilled logs for one stream
+# across multiple concurrently open time-bucketed chunks, instead of the
+# distributor's shard_streams.time_sharding_enabled __time_shard__ label
+# sharding.
+ingester_time_sharding:
+  # Allow the ingester to accept out-of-order/backfilled logs for a stream by
+  # keeping multiple time-bucketed chunks open concurrently, instead of
+  # rejecting entries older than half of max_chunk_age relative to the stream's
+  # most recent entry.
+  # CLI flag: -ingester.time-sharding.enabled
+  [enabled: <boolean> | default = false]
+
+  # Entries with timestamps newer than this value are never time-bucketed; they
+  # always go to the stream's current (live) chunk.
+  # CLI flag: -ingester.time-sharding.ignore-recent
+  [ignore_recent: <duration> | default = 40m]
+
+  # Maximum number of concurrently open time-buckets per stream. Entries that
+  # would open a new bucket beyond this limit are rejected.
+  # CLI flag: -ingester.time-sharding.max-open-buckets
+  [max_open_buckets: <int> | default = 16]
+
 [blocked_queries: <blocked_query...>]
 
 # Define a list of required selector labels.

@@ -19,6 +19,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/compactor/deletionmode"
 	"github.com/grafana/loki/v3/pkg/compression"
 	"github.com/grafana/loki/v3/pkg/distributor/shardstreams"
+	ingesterTimeSharding "github.com/grafana/loki/v3/pkg/ingester/shardstreams"
 	"github.com/grafana/loki/v3/pkg/loghttp/push"
 	"github.com/grafana/loki/v3/pkg/logql"
 	"github.com/grafana/loki/v3/pkg/util/flagext"
@@ -1194,6 +1195,40 @@ otlp_config:
 			require.Equal(t, tc.exp, out)
 		})
 	}
+}
+
+func TestIngesterTimeSharding_DefaultsDisabled(t *testing.T) {
+	var defaults Limits
+	defaults.RegisterFlags(flag.NewFlagSet("test", flag.PanicOnError))
+
+	ov, err := NewOverrides(defaults, nil)
+	require.NoError(t, err)
+
+	require.False(t, ov.IngesterTimeSharding("tenant-1").Enabled)
+}
+
+func TestIngesterTimeSharding_PerTenantOverride(t *testing.T) {
+	var defaults Limits
+	defaults.RegisterFlags(flag.NewFlagSet("test", flag.PanicOnError))
+
+	tenantLimits := map[string]*Limits{
+		"tenant-29": {
+			IngesterTimeSharding: ingesterTimeSharding.Config{
+				Enabled:        true,
+				IgnoreRecent:   time.Hour,
+				MaxOpenBuckets: 4,
+			},
+		},
+	}
+	ov, err := NewOverrides(defaults, newMockTenantLimits(tenantLimits))
+	require.NoError(t, err)
+
+	cfg := ov.IngesterTimeSharding("tenant-29")
+	require.True(t, cfg.Enabled)
+	require.Equal(t, time.Hour, cfg.IgnoreRecent)
+	require.Equal(t, 4, cfg.MaxOpenBuckets)
+
+	require.False(t, ov.IngesterTimeSharding("tenant-1").Enabled, "unrelated tenant keeps the default")
 }
 
 func TestDataObjCompaction_DefaultsFalse(t *testing.T) {

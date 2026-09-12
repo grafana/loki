@@ -467,6 +467,8 @@ func (i *Ingester) shouldFlushChunk(chunk *chunkDesc) (bool, string) {
 	return false, ""
 }
 
+// Remove any flushed chunks from stream whose retention window has expired.
+// If mayRemoveStream is true and stream has no chunks left, remove the stream.
 func (i *Ingester) removeFlushedChunks(instance *instance, stream *stream, mayRemoveStream bool) {
 	now := time.Now()
 
@@ -474,15 +476,23 @@ func (i *Ingester) removeFlushedChunks(instance *instance, stream *stream, mayRe
 	defer stream.chunkMtx.Unlock()
 	prevNumChunks := len(stream.chunks)
 	var subtracted int
-	for len(stream.chunks) > 0 {
-		if stream.chunks[0].flushed.IsZero() || now.Sub(stream.chunks[0].flushed) < i.cfg.RetainPeriod {
-			break
-		}
 
-		subtracted += stream.chunks[0].chunk.UncompressedSize()
-		stream.chunks[0].chunk = nil // erase reference so the chunk can be garbage-collected
-		stream.chunks = stream.chunks[1:]
+	retained := stream.chunks[:0]
+	for idx := range stream.chunks {
+		c := stream.chunks[idx]
+		if !c.flushed.IsZero() && now.Sub(c.flushed) >= i.cfg.RetainPeriod {
+			subtracted += c.chunk.UncompressedSize()
+			stream.chunks[idx].chunk = nil // erase reference so the chunk can be garbage-collected
+			continue
+		}
+		retained = append(retained, c)
 	}
+	stream.chunks = retained
+
+	if len(stream.chunks) != prevNumChunks {
+		stream.rebuildOpenHeads()
+	}
+
 	i.metrics.memoryChunks.Sub(float64(prevNumChunks - len(stream.chunks)))
 
 	// Signal how much data has been flushed to lessen any WAL replay pressure.

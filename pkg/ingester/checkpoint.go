@@ -70,6 +70,7 @@ func toWireChunks(descs []chunkDesc, wireChunks []chunkWithBuffer) ([]chunkWithB
 				FlushedAt:   d.flushed,
 				LastUpdated: d.lastUpdated,
 				Synced:      d.synced,
+				BucketStart: d.bucketStart,
 			},
 			blocks: chunksBufferPool.Get(chunkSize),
 			head:   headBufferPool.Get(headSize),
@@ -98,6 +99,7 @@ func fromWireChunks(conf *Config, headfmt chunkenc.HeadBlockFmt, wireChunks []Ch
 			synced:      c.Synced,
 			flushed:     c.FlushedAt,
 			lastUpdated: c.LastUpdated,
+			bucketStart: c.BucketStart,
 		}
 
 		mc, err := chunkenc.MemchunkFromCheckpoint(c.Data, c.Head, headfmt, conf.BlockSize, conf.TargetChunkSize)
