@@ -5,12 +5,14 @@ package proto;
 service IngestLimitsFrontend {
   rpc ExceedsLimits(ExceedsLimitsRequest) returns (ExceedsLimitsResponse) {}
   rpc UpdateRates(UpdateRatesRequest) returns (UpdateRatesResponse) {}
+  rpc CheckLimitsAndShard(CheckLimitsAndShardRequest) returns (CheckLimitsAndShardResponse) {}
 }
 
 service IngestLimits {
   rpc ExceedsLimits(ExceedsLimitsRequest) returns (ExceedsLimitsResponse) {}
   rpc GetAssignedPartitions(GetAssignedPartitionsRequest) returns (GetAssignedPartitionsResponse) {}
   rpc UpdateRates(UpdateRatesRequest) returns (UpdateRatesResponse) {}
+  rpc CheckLimitsAndShard(CheckLimitsAndShardRequest) returns (CheckLimitsAndShardResponse) {}
 }
 
 message ExceedsLimitsRequest {
@@ -58,4 +60,34 @@ message UpdateRatesResponse {
 message UpdateRatesResult {
   uint64 streamHash = 1;
   uint64 rate = 2;
+}
+
+message CheckLimitsAndShardRequest {
+  string tenant = 1;
+  // streamHash must be the pre-shard hash of the logical stream, and
+  // totalSize the full byte size observed for it in this push (i.e. before
+  // any distributor-side sharding has split it into sub-streams).
+  repeated StreamMetadata streams = 2;
+}
+
+message CheckLimitsAndShardResponse {
+  repeated StreamShardResult results = 1;
+}
+
+message StreamShardResult {
+  uint64 streamHash = 1;
+  // The number of shards the distributor should create for this stream on
+  // this push. 0 and 1 both mean no sharding is needed -- whether the
+  // stream was rejected is signaled independently via rejectReason, not by
+  // this value.
+  uint32 shards = 2;
+  // Reason enum, see reason.go. Populated only when shards was capped below
+  // the rate-justified ideal (ShardsCapped), or when the decision could not
+  // be made (Failed). Never set merely because the stream was rejected --
+  // see rejectReason for that.
+  uint32 shardDecisionContext = 3;
+  // Non-empty when the stream was rejected outright (only possible for a
+  // brand-new stream with no room left in the tenant's stream-count
+  // budget). Empty means the stream was accepted, regardless of shards.
+  string rejectReason = 4;
 }

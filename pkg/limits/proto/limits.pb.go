@@ -516,6 +516,181 @@ func (m *UpdateRatesResult) GetRate() uint64 {
 	return 0
 }
 
+type CheckLimitsAndShardRequest struct {
+	Tenant string `protobuf:"bytes,1,opt,name=tenant,proto3" json:"tenant,omitempty"`
+	// streamHash must be the pre-shard hash of the logical stream, and
+	// totalSize the full byte size observed for it in this push (i.e. before
+	// any distributor-side sharding has split it into sub-streams).
+	Streams []*StreamMetadata `protobuf:"bytes,2,rep,name=streams,proto3" json:"streams,omitempty"`
+}
+
+func (m *CheckLimitsAndShardRequest) Reset()      { *m = CheckLimitsAndShardRequest{} }
+func (*CheckLimitsAndShardRequest) ProtoMessage() {}
+func (*CheckLimitsAndShardRequest) Descriptor() ([]byte, []int) {
+	return fileDescriptor_aaed9e7d5298ac0f, []int{10}
+}
+func (m *CheckLimitsAndShardRequest) XXX_Unmarshal(b []byte) error {
+	return m.Unmarshal(b)
+}
+func (m *CheckLimitsAndShardRequest) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
+	if deterministic {
+		return xxx_messageInfo_CheckLimitsAndShardRequest.Marshal(b, m, deterministic)
+	} else {
+		b = b[:cap(b)]
+		n, err := m.MarshalToSizedBuffer(b)
+		if err != nil {
+			return nil, err
+		}
+		return b[:n], nil
+	}
+}
+func (m *CheckLimitsAndShardRequest) XXX_Merge(src proto.Message) {
+	xxx_messageInfo_CheckLimitsAndShardRequest.Merge(m, src)
+}
+func (m *CheckLimitsAndShardRequest) XXX_Size() int {
+	return m.Size()
+}
+func (m *CheckLimitsAndShardRequest) XXX_DiscardUnknown() {
+	xxx_messageInfo_CheckLimitsAndShardRequest.DiscardUnknown(m)
+}
+
+var xxx_messageInfo_CheckLimitsAndShardRequest proto.InternalMessageInfo
+
+func (m *CheckLimitsAndShardRequest) GetTenant() string {
+	if m != nil {
+		return m.Tenant
+	}
+	return ""
+}
+
+func (m *CheckLimitsAndShardRequest) GetStreams() []*StreamMetadata {
+	if m != nil {
+		return m.Streams
+	}
+	return nil
+}
+
+type CheckLimitsAndShardResponse struct {
+	Results []*StreamShardResult `protobuf:"bytes,1,rep,name=results,proto3" json:"results,omitempty"`
+}
+
+func (m *CheckLimitsAndShardResponse) Reset()      { *m = CheckLimitsAndShardResponse{} }
+func (*CheckLimitsAndShardResponse) ProtoMessage() {}
+func (*CheckLimitsAndShardResponse) Descriptor() ([]byte, []int) {
+	return fileDescriptor_aaed9e7d5298ac0f, []int{11}
+}
+func (m *CheckLimitsAndShardResponse) XXX_Unmarshal(b []byte) error {
+	return m.Unmarshal(b)
+}
+func (m *CheckLimitsAndShardResponse) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
+	if deterministic {
+		return xxx_messageInfo_CheckLimitsAndShardResponse.Marshal(b, m, deterministic)
+	} else {
+		b = b[:cap(b)]
+		n, err := m.MarshalToSizedBuffer(b)
+		if err != nil {
+			return nil, err
+		}
+		return b[:n], nil
+	}
+}
+func (m *CheckLimitsAndShardResponse) XXX_Merge(src proto.Message) {
+	xxx_messageInfo_CheckLimitsAndShardResponse.Merge(m, src)
+}
+func (m *CheckLimitsAndShardResponse) XXX_Size() int {
+	return m.Size()
+}
+func (m *CheckLimitsAndShardResponse) XXX_DiscardUnknown() {
+	xxx_messageInfo_CheckLimitsAndShardResponse.DiscardUnknown(m)
+}
+
+var xxx_messageInfo_CheckLimitsAndShardResponse proto.InternalMessageInfo
+
+func (m *CheckLimitsAndShardResponse) GetResults() []*StreamShardResult {
+	if m != nil {
+		return m.Results
+	}
+	return nil
+}
+
+type StreamShardResult struct {
+	StreamHash uint64 `protobuf:"varint,1,opt,name=streamHash,proto3" json:"streamHash,omitempty"`
+	// The number of shards the distributor should create for this stream on
+	// this push. 0 and 1 both mean no sharding is needed -- whether the
+	// stream was rejected is signaled independently via rejectReason, not by
+	// this value.
+	Shards uint32 `protobuf:"varint,2,opt,name=shards,proto3" json:"shards,omitempty"`
+	// Reason enum, see reason.go. Populated only when shards was capped below
+	// the rate-justified ideal (ShardsCapped), or when the decision could not
+	// be made (Failed). Never set merely because the stream was rejected --
+	// see rejectReason for that.
+	ShardDecisionContext uint32 `protobuf:"varint,3,opt,name=shardDecisionContext,proto3" json:"shardDecisionContext,omitempty"`
+	// Non-empty when the stream was rejected outright (only possible for a
+	// brand-new stream with no room left in the tenant's stream-count
+	// budget). Empty means the stream was accepted, regardless of shards.
+	RejectReason string `protobuf:"bytes,4,opt,name=rejectReason,proto3" json:"rejectReason,omitempty"`
+}
+
+func (m *StreamShardResult) Reset()      { *m = StreamShardResult{} }
+func (*StreamShardResult) ProtoMessage() {}
+func (*StreamShardResult) Descriptor() ([]byte, []int) {
+	return fileDescriptor_aaed9e7d5298ac0f, []int{12}
+}
+func (m *StreamShardResult) XXX_Unmarshal(b []byte) error {
+	return m.Unmarshal(b)
+}
+func (m *StreamShardResult) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
+	if deterministic {
+		return xxx_messageInfo_StreamShardResult.Marshal(b, m, deterministic)
+	} else {
+		b = b[:cap(b)]
+		n, err := m.MarshalToSizedBuffer(b)
+		if err != nil {
+			return nil, err
+		}
+		return b[:n], nil
+	}
+}
+func (m *StreamShardResult) XXX_Merge(src proto.Message) {
+	xxx_messageInfo_StreamShardResult.Merge(m, src)
+}
+func (m *StreamShardResult) XXX_Size() int {
+	return m.Size()
+}
+func (m *StreamShardResult) XXX_DiscardUnknown() {
+	xxx_messageInfo_StreamShardResult.DiscardUnknown(m)
+}
+
+var xxx_messageInfo_StreamShardResult proto.InternalMessageInfo
+
+func (m *StreamShardResult) GetStreamHash() uint64 {
+	if m != nil {
+		return m.StreamHash
+	}
+	return 0
+}
+
+func (m *StreamShardResult) GetShards() uint32 {
+	if m != nil {
+		return m.Shards
+	}
+	return 0
+}
+
+func (m *StreamShardResult) GetShardDecisionContext() uint32 {
+	if m != nil {
+		return m.ShardDecisionContext
+	}
+	return 0
+}
+
+func (m *StreamShardResult) GetRejectReason() string {
+	if m != nil {
+		return m.RejectReason
+	}
+	return ""
+}
+
 func init() {
 	proto.RegisterType((*ExceedsLimitsRequest)(nil), "proto.ExceedsLimitsRequest")
 	proto.RegisterType((*ExceedsLimitsResponse)(nil), "proto.ExceedsLimitsResponse")
@@ -528,48 +703,58 @@ func init() {
 	proto.RegisterType((*UpdateRatesRequest)(nil), "proto.UpdateRatesRequest")
 	proto.RegisterType((*UpdateRatesResponse)(nil), "proto.UpdateRatesResponse")
 	proto.RegisterType((*UpdateRatesResult)(nil), "proto.UpdateRatesResult")
+	proto.RegisterType((*CheckLimitsAndShardRequest)(nil), "proto.CheckLimitsAndShardRequest")
+	proto.RegisterType((*CheckLimitsAndShardResponse)(nil), "proto.CheckLimitsAndShardResponse")
+	proto.RegisterType((*StreamShardResult)(nil), "proto.StreamShardResult")
 }
 
 func init() { proto.RegisterFile("pkg/limits/proto/limits.proto", fileDescriptor_aaed9e7d5298ac0f) }
 
 var fileDescriptor_aaed9e7d5298ac0f = []byte{
-	// 569 bytes of a gzipped FileDescriptorProto
-	0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0xff, 0xac, 0x53, 0x3d, 0x6f, 0xd3, 0x40,
-	0x18, 0xf6, 0x25, 0x69, 0x4b, 0xdf, 0x52, 0x3e, 0xae, 0x09, 0x98, 0x90, 0x9e, 0x22, 0xc3, 0x90,
-	0x29, 0x11, 0xa1, 0x03, 0x42, 0x2c, 0x20, 0xa5, 0xa5, 0x52, 0x23, 0x55, 0x57, 0x31, 0x22, 0x74,
-	0xc4, 0xa7, 0x60, 0xd5, 0x39, 0x07, 0xdf, 0x05, 0x35, 0x9d, 0x98, 0x99, 0xf8, 0x19, 0x0c, 0xfc,
-	0x10, 0xc6, 0x0c, 0x0c, 0x1d, 0x89, 0xb3, 0x30, 0xf6, 0x27, 0xa0, 0x9c, 0x2f, 0x10, 0x3b, 0x4e,
-	0xcb, 0x90, 0xc9, 0xf7, 0x7e, 0xf8, 0xb9, 0xf7, 0x79, 0xef, 0x79, 0x60, 0xb7, 0x7f, 0xda, 0x6d,
-	0xf8, 0x5e, 0xcf, 0x53, 0xb2, 0xd1, 0x0f, 0x03, 0x15, 0x98, 0xa0, 0xae, 0x03, 0xbc, 0xa6, 0x3f,
-	0xce, 0x3b, 0x28, 0xb6, 0xce, 0x3a, 0x9c, 0xbb, 0xf2, 0x48, 0x57, 0x29, 0xff, 0x38, 0xe0, 0x52,
-	0xe1, 0x7b, 0xb0, 0xae, 0xb8, 0x60, 0x42, 0xd9, 0xa8, 0x8a, 0x6a, 0x9b, 0xd4, 0x44, 0xb8, 0x01,
-	0x1b, 0x52, 0x85, 0x9c, 0xf5, 0xa4, 0x9d, 0xab, 0xe6, 0x6b, 0x5b, 0xcd, 0x52, 0x8c, 0x57, 0x3f,
-	0xd1, 0xd9, 0x36, 0x57, 0xcc, 0x65, 0x8a, 0xd1, 0x59, 0x97, 0xd3, 0x86, 0x52, 0xea, 0x02, 0xd9,
-	0x0f, 0x84, 0xe4, 0x78, 0x0f, 0x36, 0x42, 0x2e, 0x07, 0xbe, 0x92, 0x36, 0xd2, 0x48, 0x65, 0x83,
-	0x94, 0x6e, 0x1f, 0xf8, 0x8a, 0xce, 0x5a, 0x9d, 0x36, 0xec, 0x64, 0xd4, 0x31, 0x01, 0x88, 0x2f,
-	0x7c, 0xcd, 0xe4, 0x07, 0x3d, 0x72, 0x81, 0xce, 0x65, 0xa6, 0x74, 0x42, 0xce, 0x64, 0x20, 0xec,
-	0x5c, 0x15, 0xd5, 0xb6, 0xa9, 0x89, 0x1c, 0x02, 0x95, 0x03, 0xae, 0x5e, 0x4a, 0xe9, 0x75, 0x05,
-	0x77, 0x8f, 0x59, 0xa8, 0x3c, 0xe5, 0x05, 0x62, 0xb6, 0x06, 0xe7, 0x27, 0x82, 0xdd, 0x25, 0x0d,
-	0x86, 0x86, 0x0f, 0x98, 0x2d, 0x54, 0x0d, 0xa3, 0x17, 0x86, 0xd1, 0x95, 0x08, 0xf5, 0xc5, 0x52,
-	0x4b, 0xa8, 0x70, 0x48, 0x33, 0x70, 0xcb, 0x2d, 0xb8, 0xbf, 0xa4, 0x1d, 0xdf, 0x81, 0xfc, 0x29,
-	0x1f, 0x6a, 0xee, 0x6b, 0x74, 0x7a, 0xc4, 0x45, 0x58, 0xfb, 0xc4, 0xfc, 0x01, 0xd7, 0x9c, 0xf3,
-	0x34, 0x0e, 0x9e, 0xe7, 0x9e, 0x21, 0xe7, 0x0c, 0x6e, 0x25, 0xdf, 0xeb, 0xda, 0x05, 0x56, 0x60,
-	0x53, 0x05, 0x8a, 0xf9, 0x27, 0xde, 0x79, 0x8c, 0x57, 0xa0, 0xff, 0x12, 0xb8, 0x06, 0xb7, 0x3d,
-	0xd1, 0xe5, 0x72, 0x3a, 0xce, 0x71, 0xe0, 0x7b, 0x9d, 0xa1, 0x9d, 0xd7, 0xb2, 0x49, 0xa7, 0x9d,
-	0x01, 0x14, 0x53, 0x4a, 0xe1, 0x9d, 0x20, 0x74, 0x31, 0x86, 0xc2, 0x79, 0x20, 0xb8, 0x51, 0x9b,
-	0x3e, 0xcf, 0x69, 0x30, 0x97, 0xd0, 0xe0, 0x13, 0xb8, 0xd1, 0x33, 0x7f, 0xeb, 0x6b, 0x96, 0x8a,
-	0xf0, 0x6f, 0x9b, 0xf3, 0x16, 0xf0, 0x9b, 0xbe, 0xcb, 0x14, 0xa7, 0x4c, 0xf1, 0xd5, 0x8b, 0xfc,
-	0x10, 0x76, 0x12, 0xf0, 0x46, 0x1b, 0xcd, 0xb4, 0xc4, 0x6d, 0x83, 0x93, 0x6c, 0x4e, 0x08, 0xfc,
-	0x00, 0xee, 0x2e, 0x54, 0xaf, 0x7d, 0x1d, 0x0c, 0x85, 0x90, 0xa9, 0xd9, 0xc3, 0xe8, 0x73, 0xf3,
-	0x3b, 0x82, 0xe2, 0xa1, 0xde, 0x7e, 0xec, 0x94, 0xfd, 0x30, 0x10, 0x8a, 0x0b, 0x17, 0x1f, 0xc1,
-	0x76, 0xc2, 0x42, 0xf8, 0x61, 0xb6, 0xf1, 0xf4, 0x8e, 0xca, 0x95, 0x25, 0xae, 0xd4, 0x0c, 0x1d,
-	0x0b, 0xef, 0xc3, 0xd6, 0xdc, 0xbc, 0xf8, 0x41, 0x16, 0xc3, 0x18, 0xa9, 0x9c, 0x49, 0xde, 0xe0,
-	0x34, 0xbf, 0xe4, 0xe0, 0xe6, 0xfc, 0xb8, 0x2b, 0x1e, 0xd3, 0x85, 0x52, 0xa6, 0x0b, 0xf1, 0xa3,
-	0xab, 0x3d, 0x1a, 0xa3, 0x3f, 0xfe, 0x1f, 0x23, 0xaf, 0x6e, 0x19, 0xaf, 0xf6, 0x46, 0x63, 0x62,
-	0x5d, 0x8c, 0x89, 0x75, 0x39, 0x26, 0xe8, 0x73, 0x44, 0xd0, 0xb7, 0x88, 0xa0, 0x1f, 0x11, 0x41,
-	0xa3, 0x88, 0xa0, 0x5f, 0x11, 0x41, 0xbf, 0x23, 0x62, 0x5d, 0x46, 0x04, 0x7d, 0x9d, 0x10, 0x6b,
-	0x34, 0x21, 0xd6, 0xc5, 0x84, 0x58, 0xef, 0xd7, 0x35, 0xe4, 0xd3, 0x3f, 0x01, 0x00, 0x00, 0xff,
-	0xff, 0x8a, 0x61, 0x2d, 0x75, 0xfa, 0x05, 0x00, 0x00,
+	// 676 bytes of a gzipped FileDescriptorProto
+	0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0xff, 0xd4, 0x54, 0x31, 0x53, 0x13, 0x4f,
+	0x14, 0xbf, 0x4d, 0x02, 0xfc, 0x79, 0xc0, 0x5f, 0x59, 0x82, 0xc6, 0x00, 0x3b, 0x78, 0x5a, 0xa4,
+	0x82, 0x31, 0x52, 0x38, 0x8e, 0x0d, 0x22, 0x20, 0x33, 0x30, 0x83, 0xcb, 0x58, 0xaa, 0xb3, 0xe6,
+	0xde, 0xc0, 0xc9, 0xb1, 0x17, 0x6f, 0x37, 0x0e, 0x50, 0xf9, 0x01, 0x2c, 0xfc, 0x0e, 0x36, 0x7e,
+	0x14, 0x4b, 0x0a, 0x0b, 0x4a, 0x39, 0x1a, 0xc7, 0x8a, 0x8f, 0xe0, 0x64, 0x6f, 0x4f, 0x73, 0xc9,
+	0x05, 0x28, 0xd2, 0x58, 0xdd, 0xbe, 0x7d, 0xbf, 0xfd, 0xed, 0xbd, 0xdf, 0xfb, 0xed, 0x83, 0xb9,
+	0xe6, 0xfe, 0xee, 0x62, 0xe0, 0x1f, 0xf8, 0x5a, 0x2d, 0x36, 0xa3, 0x50, 0x87, 0x36, 0x58, 0x30,
+	0x01, 0x1d, 0x32, 0x1f, 0xf7, 0x0d, 0x94, 0x57, 0x0f, 0x1b, 0x88, 0x9e, 0xda, 0x34, 0x59, 0x8e,
+	0xef, 0x5b, 0xa8, 0x34, 0xbd, 0x05, 0xc3, 0x1a, 0xa5, 0x90, 0xba, 0x42, 0xe6, 0x49, 0x6d, 0x94,
+	0xdb, 0x88, 0x2e, 0xc2, 0x88, 0xd2, 0x11, 0x8a, 0x03, 0x55, 0x29, 0xcc, 0x17, 0x6b, 0x63, 0xf5,
+	0xe9, 0x84, 0x6f, 0x61, 0xc7, 0xec, 0x6e, 0xa1, 0x16, 0x9e, 0xd0, 0x82, 0xa7, 0x28, 0x77, 0x0b,
+	0xa6, 0xbb, 0x2e, 0x50, 0xcd, 0x50, 0x2a, 0xa4, 0x4b, 0x30, 0x12, 0xa1, 0x6a, 0x05, 0x5a, 0x55,
+	0x88, 0x61, 0xaa, 0x5a, 0xa6, 0x6e, 0x78, 0x2b, 0xd0, 0x3c, 0x85, 0xba, 0x5b, 0x30, 0x95, 0x93,
+	0xa7, 0x0c, 0x20, 0xb9, 0xf0, 0xb9, 0x50, 0x7b, 0xe6, 0x97, 0x4b, 0xbc, 0x63, 0xa7, 0x5d, 0x4e,
+	0x84, 0x42, 0x85, 0xb2, 0x52, 0x98, 0x27, 0xb5, 0x09, 0x6e, 0x23, 0x97, 0xc1, 0xec, 0x3a, 0xea,
+	0x65, 0xa5, 0xfc, 0x5d, 0x89, 0xde, 0xb6, 0x88, 0xb4, 0xaf, 0xfd, 0x50, 0xa6, 0x32, 0xb8, 0xdf,
+	0x09, 0xcc, 0xf5, 0x01, 0xd8, 0x32, 0x02, 0xa0, 0xa2, 0x27, 0x6b, 0x2b, 0x7a, 0x62, 0x2b, 0xba,
+	0x94, 0x61, 0xa1, 0x37, 0xb5, 0x2a, 0x75, 0x74, 0xc4, 0x73, 0x78, 0xab, 0xab, 0x70, 0xbb, 0x0f,
+	0x9c, 0xde, 0x84, 0xe2, 0x3e, 0x1e, 0x99, 0xda, 0x87, 0x78, 0x7b, 0x49, 0xcb, 0x30, 0xf4, 0x41,
+	0x04, 0x2d, 0x34, 0x35, 0x17, 0x79, 0x12, 0x3c, 0x2e, 0x3c, 0x22, 0xee, 0x21, 0xfc, 0x9f, 0xed,
+	0xd7, 0x95, 0x02, 0xce, 0xc2, 0xa8, 0x0e, 0xb5, 0x08, 0x76, 0xfc, 0xe3, 0x84, 0xaf, 0xc4, 0xff,
+	0x6e, 0xd0, 0x1a, 0xdc, 0xf0, 0xe5, 0x2e, 0xaa, 0xf6, 0xef, 0x6c, 0x87, 0x81, 0xdf, 0x38, 0xaa,
+	0x14, 0x8d, 0x6d, 0xba, 0xb7, 0xdd, 0x16, 0x94, 0xbb, 0x9c, 0x82, 0x8d, 0x30, 0xf2, 0x28, 0x85,
+	0xd2, 0x71, 0x28, 0xd1, 0xba, 0xcd, 0xac, 0x3b, 0x3c, 0x58, 0xc8, 0x78, 0xf0, 0x01, 0xfc, 0x77,
+	0x60, 0x4f, 0x9b, 0x6b, 0xfa, 0x9a, 0xf0, 0x0f, 0xcc, 0x7d, 0x05, 0xf4, 0x65, 0xd3, 0x13, 0x1a,
+	0xb9, 0xd0, 0x38, 0x78, 0x93, 0x6f, 0xc0, 0x54, 0x86, 0xde, 0x7a, 0xa3, 0xde, 0x6d, 0xf1, 0x8a,
+	0xe5, 0xc9, 0x82, 0x33, 0x06, 0x5f, 0x87, 0xc9, 0x9e, 0xec, 0x95, 0xdd, 0xa1, 0x50, 0x8a, 0x84,
+	0x4e, 0x1b, 0x63, 0xd6, 0x2e, 0x42, 0x75, 0x65, 0x0f, 0x1b, 0xfb, 0xc9, 0x3b, 0x59, 0x96, 0xde,
+	0xce, 0x9e, 0x88, 0xbc, 0x81, 0x97, 0xfe, 0x02, 0x66, 0x72, 0xaf, 0xb9, 0x4a, 0x82, 0x84, 0x2f,
+	0x05, 0x67, 0x24, 0xf8, 0x42, 0x60, 0xb2, 0x27, 0x7d, 0x9d, 0x27, 0xae, 0xda, 0x70, 0x95, 0x3e,
+	0xf1, 0x24, 0xa2, 0x75, 0x28, 0x9b, 0xd5, 0x33, 0x6c, 0xf8, 0xca, 0x0f, 0xe5, 0x4a, 0x28, 0x35,
+	0x1e, 0x6a, 0xe3, 0x9c, 0x09, 0x9e, 0x9b, 0xa3, 0x2e, 0x8c, 0x47, 0xf8, 0x0e, 0x1b, 0x9a, 0x27,
+	0x43, 0xa3, 0x64, 0x34, 0xca, 0xec, 0xd5, 0x3f, 0x15, 0xa0, 0xbc, 0x61, 0xdc, 0x9d, 0x94, 0xbe,
+	0x16, 0xb5, 0x0f, 0x4b, 0x8f, 0x6e, 0xc2, 0x44, 0x66, 0x44, 0xd1, 0x99, 0xfc, 0xc1, 0x66, 0x1a,
+	0x51, 0x9d, 0xed, 0x33, 0xf5, 0x8c, 0x7c, 0xae, 0x43, 0xd7, 0x60, 0xac, 0xc3, 0x0f, 0xf4, 0x4e,
+	0x9e, 0x83, 0x12, 0xa6, 0x6a, 0xae, 0xb9, 0x52, 0x9e, 0xd7, 0x30, 0x95, 0xd3, 0x27, 0x7a, 0xd7,
+	0x1e, 0xea, 0x6f, 0x95, 0xaa, 0x7b, 0x19, 0x24, 0xe5, 0xaf, 0xff, 0x2a, 0xc0, 0x78, 0xa7, 0x1c,
+	0x03, 0x96, 0xc1, 0x83, 0xe9, 0xdc, 0x29, 0x4a, 0xef, 0x5d, 0x3e, 0x63, 0x13, 0xf6, 0xfb, 0xd7,
+	0x19, 0xc4, 0xff, 0x8e, 0xd8, 0x4f, 0x97, 0x4e, 0xce, 0x98, 0x73, 0x7a, 0xc6, 0x9c, 0x8b, 0x33,
+	0x46, 0x3e, 0xc6, 0x8c, 0x7c, 0x8d, 0x19, 0xf9, 0x16, 0x33, 0x72, 0x12, 0x33, 0xf2, 0x23, 0x66,
+	0xe4, 0x67, 0xcc, 0x9c, 0x8b, 0x98, 0x91, 0xcf, 0xe7, 0xcc, 0x39, 0x39, 0x67, 0xce, 0xe9, 0x39,
+	0x73, 0xde, 0x0e, 0x1b, 0xea, 0x87, 0xbf, 0x03, 0x00, 0x00, 0xff, 0xff, 0x60, 0x54, 0xf1, 0xae,
+	0x1a, 0x08, 0x00, 0x00,
 }
 
 func (this *ExceedsLimitsRequest) Equal(that interface{}) bool {
@@ -858,6 +1043,100 @@ func (this *UpdateRatesResult) Equal(that interface{}) bool {
 	}
 	return true
 }
+func (this *CheckLimitsAndShardRequest) Equal(that interface{}) bool {
+	if that == nil {
+		return this == nil
+	}
+
+	that1, ok := that.(*CheckLimitsAndShardRequest)
+	if !ok {
+		that2, ok := that.(CheckLimitsAndShardRequest)
+		if ok {
+			that1 = &that2
+		} else {
+			return false
+		}
+	}
+	if that1 == nil {
+		return this == nil
+	} else if this == nil {
+		return false
+	}
+	if this.Tenant != that1.Tenant {
+		return false
+	}
+	if len(this.Streams) != len(that1.Streams) {
+		return false
+	}
+	for i := range this.Streams {
+		if !this.Streams[i].Equal(that1.Streams[i]) {
+			return false
+		}
+	}
+	return true
+}
+func (this *CheckLimitsAndShardResponse) Equal(that interface{}) bool {
+	if that == nil {
+		return this == nil
+	}
+
+	that1, ok := that.(*CheckLimitsAndShardResponse)
+	if !ok {
+		that2, ok := that.(CheckLimitsAndShardResponse)
+		if ok {
+			that1 = &that2
+		} else {
+			return false
+		}
+	}
+	if that1 == nil {
+		return this == nil
+	} else if this == nil {
+		return false
+	}
+	if len(this.Results) != len(that1.Results) {
+		return false
+	}
+	for i := range this.Results {
+		if !this.Results[i].Equal(that1.Results[i]) {
+			return false
+		}
+	}
+	return true
+}
+func (this *StreamShardResult) Equal(that interface{}) bool {
+	if that == nil {
+		return this == nil
+	}
+
+	that1, ok := that.(*StreamShardResult)
+	if !ok {
+		that2, ok := that.(StreamShardResult)
+		if ok {
+			that1 = &that2
+		} else {
+			return false
+		}
+	}
+	if that1 == nil {
+		return this == nil
+	} else if this == nil {
+		return false
+	}
+	if this.StreamHash != that1.StreamHash {
+		return false
+	}
+	if this.Shards != that1.Shards {
+		return false
+	}
+	if this.ShardDecisionContext != that1.ShardDecisionContext {
+		return false
+	}
+	if this.RejectReason != that1.RejectReason {
+		return false
+	}
+	return true
+}
 func (this *ExceedsLimitsRequest) GoString() string {
 	if this == nil {
 		return "nil"
@@ -987,6 +1266,44 @@ func (this *UpdateRatesResult) GoString() string {
 	s = append(s, "}")
 	return strings.Join(s, "")
 }
+func (this *CheckLimitsAndShardRequest) GoString() string {
+	if this == nil {
+		return "nil"
+	}
+	s := make([]string, 0, 6)
+	s = append(s, "&proto.CheckLimitsAndShardRequest{")
+	s = append(s, "Tenant: "+fmt.Sprintf("%#v", this.Tenant)+",\n")
+	if this.Streams != nil {
+		s = append(s, "Streams: "+fmt.Sprintf("%#v", this.Streams)+",\n")
+	}
+	s = append(s, "}")
+	return strings.Join(s, "")
+}
+func (this *CheckLimitsAndShardResponse) GoString() string {
+	if this == nil {
+		return "nil"
+	}
+	s := make([]string, 0, 5)
+	s = append(s, "&proto.CheckLimitsAndShardResponse{")
+	if this.Results != nil {
+		s = append(s, "Results: "+fmt.Sprintf("%#v", this.Results)+",\n")
+	}
+	s = append(s, "}")
+	return strings.Join(s, "")
+}
+func (this *StreamShardResult) GoString() string {
+	if this == nil {
+		return "nil"
+	}
+	s := make([]string, 0, 8)
+	s = append(s, "&proto.StreamShardResult{")
+	s = append(s, "StreamHash: "+fmt.Sprintf("%#v", this.StreamHash)+",\n")
+	s = append(s, "Shards: "+fmt.Sprintf("%#v", this.Shards)+",\n")
+	s = append(s, "ShardDecisionContext: "+fmt.Sprintf("%#v", this.ShardDecisionContext)+",\n")
+	s = append(s, "RejectReason: "+fmt.Sprintf("%#v", this.RejectReason)+",\n")
+	s = append(s, "}")
+	return strings.Join(s, "")
+}
 func valueToGoStringLimits(v interface{}, typ string) string {
 	rv := reflect.ValueOf(v)
 	if rv.IsNil() {
@@ -1010,6 +1327,7 @@ const _ = grpc.SupportPackageIsVersion4
 type IngestLimitsFrontendClient interface {
 	ExceedsLimits(ctx context.Context, in *ExceedsLimitsRequest, opts ...grpc.CallOption) (*ExceedsLimitsResponse, error)
 	UpdateRates(ctx context.Context, in *UpdateRatesRequest, opts ...grpc.CallOption) (*UpdateRatesResponse, error)
+	CheckLimitsAndShard(ctx context.Context, in *CheckLimitsAndShardRequest, opts ...grpc.CallOption) (*CheckLimitsAndShardResponse, error)
 }
 
 type ingestLimitsFrontendClient struct {
@@ -1038,10 +1356,20 @@ func (c *ingestLimitsFrontendClient) UpdateRates(ctx context.Context, in *Update
 	return out, nil
 }
 
+func (c *ingestLimitsFrontendClient) CheckLimitsAndShard(ctx context.Context, in *CheckLimitsAndShardRequest, opts ...grpc.CallOption) (*CheckLimitsAndShardResponse, error) {
+	out := new(CheckLimitsAndShardResponse)
+	err := c.cc.Invoke(ctx, "/proto.IngestLimitsFrontend/CheckLimitsAndShard", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // IngestLimitsFrontendServer is the server API for IngestLimitsFrontend service.
 type IngestLimitsFrontendServer interface {
 	ExceedsLimits(context.Context, *ExceedsLimitsRequest) (*ExceedsLimitsResponse, error)
 	UpdateRates(context.Context, *UpdateRatesRequest) (*UpdateRatesResponse, error)
+	CheckLimitsAndShard(context.Context, *CheckLimitsAndShardRequest) (*CheckLimitsAndShardResponse, error)
 }
 
 // UnimplementedIngestLimitsFrontendServer can be embedded to have forward compatible implementations.
@@ -1053,6 +1381,9 @@ func (*UnimplementedIngestLimitsFrontendServer) ExceedsLimits(ctx context.Contex
 }
 func (*UnimplementedIngestLimitsFrontendServer) UpdateRates(ctx context.Context, req *UpdateRatesRequest) (*UpdateRatesResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method UpdateRates not implemented")
+}
+func (*UnimplementedIngestLimitsFrontendServer) CheckLimitsAndShard(ctx context.Context, req *CheckLimitsAndShardRequest) (*CheckLimitsAndShardResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method CheckLimitsAndShard not implemented")
 }
 
 func RegisterIngestLimitsFrontendServer(s *grpc.Server, srv IngestLimitsFrontendServer) {
@@ -1095,6 +1426,24 @@ func _IngestLimitsFrontend_UpdateRates_Handler(srv interface{}, ctx context.Cont
 	return interceptor(ctx, in, info, handler)
 }
 
+func _IngestLimitsFrontend_CheckLimitsAndShard_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(CheckLimitsAndShardRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(IngestLimitsFrontendServer).CheckLimitsAndShard(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/proto.IngestLimitsFrontend/CheckLimitsAndShard",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(IngestLimitsFrontendServer).CheckLimitsAndShard(ctx, req.(*CheckLimitsAndShardRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 var _IngestLimitsFrontend_serviceDesc = grpc.ServiceDesc{
 	ServiceName: "proto.IngestLimitsFrontend",
 	HandlerType: (*IngestLimitsFrontendServer)(nil),
@@ -1106,6 +1455,10 @@ var _IngestLimitsFrontend_serviceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "UpdateRates",
 			Handler:    _IngestLimitsFrontend_UpdateRates_Handler,
+		},
+		{
+			MethodName: "CheckLimitsAndShard",
+			Handler:    _IngestLimitsFrontend_CheckLimitsAndShard_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},
@@ -1119,6 +1472,7 @@ type IngestLimitsClient interface {
 	ExceedsLimits(ctx context.Context, in *ExceedsLimitsRequest, opts ...grpc.CallOption) (*ExceedsLimitsResponse, error)
 	GetAssignedPartitions(ctx context.Context, in *GetAssignedPartitionsRequest, opts ...grpc.CallOption) (*GetAssignedPartitionsResponse, error)
 	UpdateRates(ctx context.Context, in *UpdateRatesRequest, opts ...grpc.CallOption) (*UpdateRatesResponse, error)
+	CheckLimitsAndShard(ctx context.Context, in *CheckLimitsAndShardRequest, opts ...grpc.CallOption) (*CheckLimitsAndShardResponse, error)
 }
 
 type ingestLimitsClient struct {
@@ -1156,11 +1510,21 @@ func (c *ingestLimitsClient) UpdateRates(ctx context.Context, in *UpdateRatesReq
 	return out, nil
 }
 
+func (c *ingestLimitsClient) CheckLimitsAndShard(ctx context.Context, in *CheckLimitsAndShardRequest, opts ...grpc.CallOption) (*CheckLimitsAndShardResponse, error) {
+	out := new(CheckLimitsAndShardResponse)
+	err := c.cc.Invoke(ctx, "/proto.IngestLimits/CheckLimitsAndShard", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // IngestLimitsServer is the server API for IngestLimits service.
 type IngestLimitsServer interface {
 	ExceedsLimits(context.Context, *ExceedsLimitsRequest) (*ExceedsLimitsResponse, error)
 	GetAssignedPartitions(context.Context, *GetAssignedPartitionsRequest) (*GetAssignedPartitionsResponse, error)
 	UpdateRates(context.Context, *UpdateRatesRequest) (*UpdateRatesResponse, error)
+	CheckLimitsAndShard(context.Context, *CheckLimitsAndShardRequest) (*CheckLimitsAndShardResponse, error)
 }
 
 // UnimplementedIngestLimitsServer can be embedded to have forward compatible implementations.
@@ -1175,6 +1539,9 @@ func (*UnimplementedIngestLimitsServer) GetAssignedPartitions(ctx context.Contex
 }
 func (*UnimplementedIngestLimitsServer) UpdateRates(ctx context.Context, req *UpdateRatesRequest) (*UpdateRatesResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method UpdateRates not implemented")
+}
+func (*UnimplementedIngestLimitsServer) CheckLimitsAndShard(ctx context.Context, req *CheckLimitsAndShardRequest) (*CheckLimitsAndShardResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method CheckLimitsAndShard not implemented")
 }
 
 func RegisterIngestLimitsServer(s *grpc.Server, srv IngestLimitsServer) {
@@ -1235,6 +1602,24 @@ func _IngestLimits_UpdateRates_Handler(srv interface{}, ctx context.Context, dec
 	return interceptor(ctx, in, info, handler)
 }
 
+func _IngestLimits_CheckLimitsAndShard_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(CheckLimitsAndShardRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(IngestLimitsServer).CheckLimitsAndShard(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/proto.IngestLimits/CheckLimitsAndShard",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(IngestLimitsServer).CheckLimitsAndShard(ctx, req.(*CheckLimitsAndShardRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 var _IngestLimits_serviceDesc = grpc.ServiceDesc{
 	ServiceName: "proto.IngestLimits",
 	HandlerType: (*IngestLimitsServer)(nil),
@@ -1250,6 +1635,10 @@ var _IngestLimits_serviceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "UpdateRates",
 			Handler:    _IngestLimits_UpdateRates_Handler,
+		},
+		{
+			MethodName: "CheckLimitsAndShard",
+			Handler:    _IngestLimits_CheckLimitsAndShard_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},
@@ -1634,6 +2023,132 @@ func (m *UpdateRatesResult) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	return len(dAtA) - i, nil
 }
 
+func (m *CheckLimitsAndShardRequest) Marshal() (dAtA []byte, err error) {
+	size := m.Size()
+	dAtA = make([]byte, size)
+	n, err := m.MarshalToSizedBuffer(dAtA[:size])
+	if err != nil {
+		return nil, err
+	}
+	return dAtA[:n], nil
+}
+
+func (m *CheckLimitsAndShardRequest) MarshalTo(dAtA []byte) (int, error) {
+	size := m.Size()
+	return m.MarshalToSizedBuffer(dAtA[:size])
+}
+
+func (m *CheckLimitsAndShardRequest) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	_ = i
+	var l int
+	_ = l
+	if len(m.Streams) > 0 {
+		for iNdEx := len(m.Streams) - 1; iNdEx >= 0; iNdEx-- {
+			{
+				size, err := m.Streams[iNdEx].MarshalToSizedBuffer(dAtA[:i])
+				if err != nil {
+					return 0, err
+				}
+				i -= size
+				i = encodeVarintLimits(dAtA, i, uint64(size))
+			}
+			i--
+			dAtA[i] = 0x12
+		}
+	}
+	if len(m.Tenant) > 0 {
+		i -= len(m.Tenant)
+		copy(dAtA[i:], m.Tenant)
+		i = encodeVarintLimits(dAtA, i, uint64(len(m.Tenant)))
+		i--
+		dAtA[i] = 0xa
+	}
+	return len(dAtA) - i, nil
+}
+
+func (m *CheckLimitsAndShardResponse) Marshal() (dAtA []byte, err error) {
+	size := m.Size()
+	dAtA = make([]byte, size)
+	n, err := m.MarshalToSizedBuffer(dAtA[:size])
+	if err != nil {
+		return nil, err
+	}
+	return dAtA[:n], nil
+}
+
+func (m *CheckLimitsAndShardResponse) MarshalTo(dAtA []byte) (int, error) {
+	size := m.Size()
+	return m.MarshalToSizedBuffer(dAtA[:size])
+}
+
+func (m *CheckLimitsAndShardResponse) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	_ = i
+	var l int
+	_ = l
+	if len(m.Results) > 0 {
+		for iNdEx := len(m.Results) - 1; iNdEx >= 0; iNdEx-- {
+			{
+				size, err := m.Results[iNdEx].MarshalToSizedBuffer(dAtA[:i])
+				if err != nil {
+					return 0, err
+				}
+				i -= size
+				i = encodeVarintLimits(dAtA, i, uint64(size))
+			}
+			i--
+			dAtA[i] = 0xa
+		}
+	}
+	return len(dAtA) - i, nil
+}
+
+func (m *StreamShardResult) Marshal() (dAtA []byte, err error) {
+	size := m.Size()
+	dAtA = make([]byte, size)
+	n, err := m.MarshalToSizedBuffer(dAtA[:size])
+	if err != nil {
+		return nil, err
+	}
+	return dAtA[:n], nil
+}
+
+func (m *StreamShardResult) MarshalTo(dAtA []byte) (int, error) {
+	size := m.Size()
+	return m.MarshalToSizedBuffer(dAtA[:size])
+}
+
+func (m *StreamShardResult) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	_ = i
+	var l int
+	_ = l
+	if len(m.RejectReason) > 0 {
+		i -= len(m.RejectReason)
+		copy(dAtA[i:], m.RejectReason)
+		i = encodeVarintLimits(dAtA, i, uint64(len(m.RejectReason)))
+		i--
+		dAtA[i] = 0x22
+	}
+	if m.ShardDecisionContext != 0 {
+		i = encodeVarintLimits(dAtA, i, uint64(m.ShardDecisionContext))
+		i--
+		dAtA[i] = 0x18
+	}
+	if m.Shards != 0 {
+		i = encodeVarintLimits(dAtA, i, uint64(m.Shards))
+		i--
+		dAtA[i] = 0x10
+	}
+	if m.StreamHash != 0 {
+		i = encodeVarintLimits(dAtA, i, uint64(m.StreamHash))
+		i--
+		dAtA[i] = 0x8
+	}
+	return len(dAtA) - i, nil
+}
+
 func encodeVarintLimits(dAtA []byte, offset int, v uint64) int {
 	offset -= sovLimits(v)
 	base := offset
@@ -1809,6 +2324,62 @@ func (m *UpdateRatesResult) Size() (n int) {
 	return n
 }
 
+func (m *CheckLimitsAndShardRequest) Size() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	l = len(m.Tenant)
+	if l > 0 {
+		n += 1 + l + sovLimits(uint64(l))
+	}
+	if len(m.Streams) > 0 {
+		for _, e := range m.Streams {
+			l = e.Size()
+			n += 1 + l + sovLimits(uint64(l))
+		}
+	}
+	return n
+}
+
+func (m *CheckLimitsAndShardResponse) Size() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	if len(m.Results) > 0 {
+		for _, e := range m.Results {
+			l = e.Size()
+			n += 1 + l + sovLimits(uint64(l))
+		}
+	}
+	return n
+}
+
+func (m *StreamShardResult) Size() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	if m.StreamHash != 0 {
+		n += 1 + sovLimits(uint64(m.StreamHash))
+	}
+	if m.Shards != 0 {
+		n += 1 + sovLimits(uint64(m.Shards))
+	}
+	if m.ShardDecisionContext != 0 {
+		n += 1 + sovLimits(uint64(m.ShardDecisionContext))
+	}
+	l = len(m.RejectReason)
+	if l > 0 {
+		n += 1 + l + sovLimits(uint64(l))
+	}
+	return n
+}
+
 func sovLimits(x uint64) (n int) {
 	return (math_bits.Len64(x|1) + 6) / 7
 }
@@ -1948,6 +2519,50 @@ func (this *UpdateRatesResult) String() string {
 	s := strings.Join([]string{`&UpdateRatesResult{`,
 		`StreamHash:` + fmt.Sprintf("%v", this.StreamHash) + `,`,
 		`Rate:` + fmt.Sprintf("%v", this.Rate) + `,`,
+		`}`,
+	}, "")
+	return s
+}
+func (this *CheckLimitsAndShardRequest) String() string {
+	if this == nil {
+		return "nil"
+	}
+	repeatedStringForStreams := "[]*StreamMetadata{"
+	for _, f := range this.Streams {
+		repeatedStringForStreams += strings.Replace(f.String(), "StreamMetadata", "StreamMetadata", 1) + ","
+	}
+	repeatedStringForStreams += "}"
+	s := strings.Join([]string{`&CheckLimitsAndShardRequest{`,
+		`Tenant:` + fmt.Sprintf("%v", this.Tenant) + `,`,
+		`Streams:` + repeatedStringForStreams + `,`,
+		`}`,
+	}, "")
+	return s
+}
+func (this *CheckLimitsAndShardResponse) String() string {
+	if this == nil {
+		return "nil"
+	}
+	repeatedStringForResults := "[]*StreamShardResult{"
+	for _, f := range this.Results {
+		repeatedStringForResults += strings.Replace(f.String(), "StreamShardResult", "StreamShardResult", 1) + ","
+	}
+	repeatedStringForResults += "}"
+	s := strings.Join([]string{`&CheckLimitsAndShardResponse{`,
+		`Results:` + repeatedStringForResults + `,`,
+		`}`,
+	}, "")
+	return s
+}
+func (this *StreamShardResult) String() string {
+	if this == nil {
+		return "nil"
+	}
+	s := strings.Join([]string{`&StreamShardResult{`,
+		`StreamHash:` + fmt.Sprintf("%v", this.StreamHash) + `,`,
+		`Shards:` + fmt.Sprintf("%v", this.Shards) + `,`,
+		`ShardDecisionContext:` + fmt.Sprintf("%v", this.ShardDecisionContext) + `,`,
+		`RejectReason:` + fmt.Sprintf("%v", this.RejectReason) + `,`,
 		`}`,
 	}, "")
 	return s
@@ -3011,6 +3626,354 @@ func (m *UpdateRatesResult) Unmarshal(dAtA []byte) error {
 					break
 				}
 			}
+		default:
+			iNdEx = preIndex
+			skippy, err := skipLimits(dAtA[iNdEx:])
+			if err != nil {
+				return err
+			}
+			if skippy < 0 {
+				return ErrInvalidLengthLimits
+			}
+			if (iNdEx + skippy) < 0 {
+				return ErrInvalidLengthLimits
+			}
+			if (iNdEx + skippy) > l {
+				return io.ErrUnexpectedEOF
+			}
+			iNdEx += skippy
+		}
+	}
+
+	if iNdEx > l {
+		return io.ErrUnexpectedEOF
+	}
+	return nil
+}
+func (m *CheckLimitsAndShardRequest) Unmarshal(dAtA []byte) error {
+	l := len(dAtA)
+	iNdEx := 0
+	for iNdEx < l {
+		preIndex := iNdEx
+		var wire uint64
+		for shift := uint(0); ; shift += 7 {
+			if shift >= 64 {
+				return ErrIntOverflowLimits
+			}
+			if iNdEx >= l {
+				return io.ErrUnexpectedEOF
+			}
+			b := dAtA[iNdEx]
+			iNdEx++
+			wire |= uint64(b&0x7F) << shift
+			if b < 0x80 {
+				break
+			}
+		}
+		fieldNum := int32(wire >> 3)
+		wireType := int(wire & 0x7)
+		if wireType == 4 {
+			return fmt.Errorf("proto: CheckLimitsAndShardRequest: wiretype end group for non-group")
+		}
+		if fieldNum <= 0 {
+			return fmt.Errorf("proto: CheckLimitsAndShardRequest: illegal tag %d (wire type %d)", fieldNum, wire)
+		}
+		switch fieldNum {
+		case 1:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Tenant", wireType)
+			}
+			var stringLen uint64
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowLimits
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				stringLen |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			intStringLen := int(stringLen)
+			if intStringLen < 0 {
+				return ErrInvalidLengthLimits
+			}
+			postIndex := iNdEx + intStringLen
+			if postIndex < 0 {
+				return ErrInvalidLengthLimits
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.Tenant = string(dAtA[iNdEx:postIndex])
+			iNdEx = postIndex
+		case 2:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Streams", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowLimits
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return ErrInvalidLengthLimits
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return ErrInvalidLengthLimits
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.Streams = append(m.Streams, &StreamMetadata{})
+			if err := m.Streams[len(m.Streams)-1].Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
+				return err
+			}
+			iNdEx = postIndex
+		default:
+			iNdEx = preIndex
+			skippy, err := skipLimits(dAtA[iNdEx:])
+			if err != nil {
+				return err
+			}
+			if skippy < 0 {
+				return ErrInvalidLengthLimits
+			}
+			if (iNdEx + skippy) < 0 {
+				return ErrInvalidLengthLimits
+			}
+			if (iNdEx + skippy) > l {
+				return io.ErrUnexpectedEOF
+			}
+			iNdEx += skippy
+		}
+	}
+
+	if iNdEx > l {
+		return io.ErrUnexpectedEOF
+	}
+	return nil
+}
+func (m *CheckLimitsAndShardResponse) Unmarshal(dAtA []byte) error {
+	l := len(dAtA)
+	iNdEx := 0
+	for iNdEx < l {
+		preIndex := iNdEx
+		var wire uint64
+		for shift := uint(0); ; shift += 7 {
+			if shift >= 64 {
+				return ErrIntOverflowLimits
+			}
+			if iNdEx >= l {
+				return io.ErrUnexpectedEOF
+			}
+			b := dAtA[iNdEx]
+			iNdEx++
+			wire |= uint64(b&0x7F) << shift
+			if b < 0x80 {
+				break
+			}
+		}
+		fieldNum := int32(wire >> 3)
+		wireType := int(wire & 0x7)
+		if wireType == 4 {
+			return fmt.Errorf("proto: CheckLimitsAndShardResponse: wiretype end group for non-group")
+		}
+		if fieldNum <= 0 {
+			return fmt.Errorf("proto: CheckLimitsAndShardResponse: illegal tag %d (wire type %d)", fieldNum, wire)
+		}
+		switch fieldNum {
+		case 1:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Results", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowLimits
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return ErrInvalidLengthLimits
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return ErrInvalidLengthLimits
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.Results = append(m.Results, &StreamShardResult{})
+			if err := m.Results[len(m.Results)-1].Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
+				return err
+			}
+			iNdEx = postIndex
+		default:
+			iNdEx = preIndex
+			skippy, err := skipLimits(dAtA[iNdEx:])
+			if err != nil {
+				return err
+			}
+			if skippy < 0 {
+				return ErrInvalidLengthLimits
+			}
+			if (iNdEx + skippy) < 0 {
+				return ErrInvalidLengthLimits
+			}
+			if (iNdEx + skippy) > l {
+				return io.ErrUnexpectedEOF
+			}
+			iNdEx += skippy
+		}
+	}
+
+	if iNdEx > l {
+		return io.ErrUnexpectedEOF
+	}
+	return nil
+}
+func (m *StreamShardResult) Unmarshal(dAtA []byte) error {
+	l := len(dAtA)
+	iNdEx := 0
+	for iNdEx < l {
+		preIndex := iNdEx
+		var wire uint64
+		for shift := uint(0); ; shift += 7 {
+			if shift >= 64 {
+				return ErrIntOverflowLimits
+			}
+			if iNdEx >= l {
+				return io.ErrUnexpectedEOF
+			}
+			b := dAtA[iNdEx]
+			iNdEx++
+			wire |= uint64(b&0x7F) << shift
+			if b < 0x80 {
+				break
+			}
+		}
+		fieldNum := int32(wire >> 3)
+		wireType := int(wire & 0x7)
+		if wireType == 4 {
+			return fmt.Errorf("proto: StreamShardResult: wiretype end group for non-group")
+		}
+		if fieldNum <= 0 {
+			return fmt.Errorf("proto: StreamShardResult: illegal tag %d (wire type %d)", fieldNum, wire)
+		}
+		switch fieldNum {
+		case 1:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field StreamHash", wireType)
+			}
+			m.StreamHash = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowLimits
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.StreamHash |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+		case 2:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Shards", wireType)
+			}
+			m.Shards = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowLimits
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.Shards |= uint32(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+		case 3:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field ShardDecisionContext", wireType)
+			}
+			m.ShardDecisionContext = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowLimits
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.ShardDecisionContext |= uint32(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+		case 4:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field RejectReason", wireType)
+			}
+			var stringLen uint64
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowLimits
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				stringLen |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			intStringLen := int(stringLen)
+			if intStringLen < 0 {
+				return ErrInvalidLengthLimits
+			}
+			postIndex := iNdEx + intStringLen
+			if postIndex < 0 {
+				return ErrInvalidLengthLimits
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.RejectReason = string(dAtA[iNdEx:postIndex])
+			iNdEx = postIndex
 		default:
 			iNdEx = preIndex
 			skippy, err := skipLimits(dAtA[iNdEx:])

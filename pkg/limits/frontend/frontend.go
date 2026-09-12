@@ -39,6 +39,17 @@ type Frontend struct {
 	streams         prometheus.Counter
 	streamsFailed   prometheus.Counter
 	streamsRejected prometheus.Counter
+
+	// checkLimitsAndShardStreams, checkLimitsAndShardShards,
+	// checkLimitsAndShardFailed, and checkLimitsAndShardRejected are all
+	// dedicated to CheckLimitsAndShard rather than reusing
+	// streams/streamsFailed/streamsRejected above: in shadow mode, a push's
+	// streams are also sent through ExceedsLimits, so folding both
+	// endpoints into the same counters would double-count.
+	checkLimitsAndShardStreams  *prometheus.CounterVec
+	checkLimitsAndShardShards   *prometheus.CounterVec
+	checkLimitsAndShardFailed   *prometheus.CounterVec
+	checkLimitsAndShardRejected *prometheus.CounterVec
 }
 
 // New returns a new Frontend.
@@ -63,6 +74,30 @@ func New(cfg Config, ringName string, limitsRing ring.ReadRing, logger log.Logge
 				Name: "loki_ingest_limits_frontend_streams_rejected_total",
 				Help: "The total number of rejected streams.",
 			},
+		),
+		checkLimitsAndShardStreams: promauto.With(reg).NewCounterVec(
+			prometheus.CounterOpts{
+				Name: "loki_ingest_limits_frontend_check_limits_and_shard_streams_total",
+				Help: "The total number of logical (pre-shard) streams received via CheckLimitsAndShard.",
+			}, []string{"tenant"},
+		),
+		checkLimitsAndShardShards: promauto.With(reg).NewCounterVec(
+			prometheus.CounterOpts{
+				Name: "loki_ingest_limits_frontend_check_limits_and_shard_shards_total",
+				Help: "The total number of shards granted via CheckLimitsAndShard, i.e. the total physical stream count (unsharded and sharded) implied by these decisions.",
+			}, []string{"tenant"},
+		),
+		checkLimitsAndShardFailed: promauto.With(reg).NewCounterVec(
+			prometheus.CounterOpts{
+				Name: "loki_ingest_limits_frontend_check_limits_and_shard_failed_total",
+				Help: "The total number of streams received via CheckLimitsAndShard that could not be checked.",
+			}, []string{"tenant"},
+		),
+		checkLimitsAndShardRejected: promauto.With(reg).NewCounterVec(
+			prometheus.CounterOpts{
+				Name: "loki_ingest_limits_frontend_check_limits_and_shard_rejected_total",
+				Help: "The total number of streams rejected via CheckLimitsAndShard.",
+			}, []string{"tenant"},
 		),
 	}
 	// Set up a client pool for the limits service. The frontend will use this
@@ -138,6 +173,41 @@ func (f *Frontend) ExceedsLimits(ctx context.Context, req *proto.ExceedsLimitsRe
 				f.streamsFailed.Inc()
 			} else {
 				f.streamsRejected.Inc()
+			}
+		}
+	}
+	return resp, nil
+}
+
+// CheckLimitsAndShard implements proto.IngestLimitsFrontendClient.
+func (f *Frontend) CheckLimitsAndShard(ctx context.Context, req *proto.CheckLimitsAndShardRequest) (*proto.CheckLimitsAndShardResponse, error) {
+	f.checkLimitsAndShardStreams.WithLabelValues(req.Tenant).Add(float64(len(req.Streams)))
+	resp, err := f.limitsClient.CheckLimitsAndShard(ctx, req)
+	if err != nil {
+		// If the entire call failed, degrade to "don't shard this push" for
+		// every stream rather than rejecting it -- a materially safer
+		// failure mode for a throughput optimization than dropping data.
+		resp = &proto.CheckLimitsAndShardResponse{
+			Results: make([]*proto.StreamShardResult, 0, len(req.Streams)),
+		}
+		for _, stream := range req.Streams {
+			resp.Results = append(resp.Results, &proto.StreamShardResult{
+				StreamHash:           stream.StreamHash,
+				Shards:               1,
+				ShardDecisionContext: uint32(limits.ReasonFailed),
+			})
+		}
+		f.checkLimitsAndShardShards.WithLabelValues(req.Tenant).Add(float64(len(req.Streams)))
+		f.checkLimitsAndShardFailed.WithLabelValues(req.Tenant).Add(float64(len(req.Streams)))
+		level.Error(f.logger).Log("msg", "failed to check limits and shard", "err", err)
+	} else {
+		for _, res := range resp.Results {
+			f.checkLimitsAndShardShards.WithLabelValues(req.Tenant).Add(float64(res.Shards))
+			switch {
+			case res.ShardDecisionContext == uint32(limits.ReasonFailed):
+				f.checkLimitsAndShardFailed.WithLabelValues(req.Tenant).Inc()
+			case res.RejectReason != "":
+				f.checkLimitsAndShardRejected.WithLabelValues(req.Tenant).Inc()
 			}
 		}
 	}
