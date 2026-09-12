@@ -2,9 +2,13 @@ package loki
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
+	"net/url"
 	"reflect"
+	"regexp"
+	"strings"
 
 	"github.com/grafana/dskit/tenant"
 	"go.yaml.in/yaml/v4"
@@ -12,6 +16,33 @@ import (
 	"github.com/grafana/loki/v3/pkg/util/build"
 	"github.com/grafana/loki/v3/pkg/validation"
 )
+
+var errConfigFieldNotFound = errors.New("config field not found")
+
+// Bounds on the q query parameter to prevent unbounded header values and work per request.
+const (
+	maxConfigQueryPaths      = 20
+	maxConfigQueryPathLength = 512
+)
+
+// configQueryPathSegmentRe matches a single dot-separated segment of a q path: letters, digits, and
+// underscores only. Rejects empty, leading/trailing/double dots, and control characters before a
+// path is ever echoed into a response header.
+var configQueryPathSegmentRe = regexp.MustCompile(`^[A-Za-z0-9_]+$`)
+
+func validConfigQueryPath(path string) bool {
+	for _, segment := range strings.Split(path, ".") {
+		if !configQueryPathSegmentRe.MatchString(segment) {
+			return false
+		}
+	}
+	return true
+}
+
+// ConfigQueryHandledHeader lists each q path this Loki recognized and processed. Its absence implies
+// an old Loki predating q support only when the request actually included q — when q is omitted
+// there's simply nothing to echo.
+const ConfigQueryHandledHeader = "X-Loki-Config-Query"
 
 func yamlMarshalUnmarshal(in interface{}) (map[string]interface{}, error) {
 	yamlBytes, err := yaml.Marshal(in)
@@ -87,8 +118,17 @@ func diffConfig(defaultConfig, actualConfig map[string]interface{}) (map[string]
 
 func configHandler(actualCfg any, defaultCfg any) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		// r.URL.Query() silently discards a parse error (e.g. a stray `;` in the query string,
+		// rejected as a separator since Go 1.17) and returns an empty Values instead — which would
+		// make a malformed q fall through to the unfiltered, unmarked full-config response below.
+		query, err := url.ParseQuery(r.URL.RawQuery)
+		if err != nil {
+			http.Error(w, fmt.Sprintf("invalid query string: %v", err), http.StatusBadRequest)
+			return
+		}
+
 		var output any
-		switch r.URL.Query().Get("mode") {
+		switch query.Get("mode") {
 		case "diff":
 			defaultCfgObj, err := yamlMarshalUnmarshal(defaultCfg)
 			if err != nil {
@@ -115,8 +155,87 @@ func configHandler(actualCfg any, defaultCfg any) http.HandlerFunc {
 			output = actualCfg
 		}
 
+		// Return only the requested fields
+		if paths := query["q"]; len(paths) > 0 {
+			if len(paths) > maxConfigQueryPaths {
+				http.Error(w, fmt.Sprintf("too many q parameters: got %d, max %d", len(paths), maxConfigQueryPaths), http.StatusBadRequest)
+				return
+			}
+			for _, path := range paths {
+				if len(path) > maxConfigQueryPathLength {
+					http.Error(w, fmt.Sprintf("q parameter too long: max %d characters", maxConfigQueryPathLength), http.StatusBadRequest)
+					return
+				}
+				if !validConfigQueryPath(path) {
+					http.Error(w, fmt.Sprintf("invalid q parameter: %q", path), http.StatusBadRequest)
+					return
+				}
+			}
+
+			for _, path := range paths {
+				w.Header().Add(ConfigQueryHandledHeader, path)
+			}
+			result, err := extractConfigPaths(output, paths)
+			if err != nil {
+				status := http.StatusInternalServerError
+				if errors.Is(err, errConfigFieldNotFound) {
+					status = http.StatusBadRequest
+				}
+				http.Error(w, err.Error(), status)
+				return
+			}
+			writeYAMLResponse(w, result)
+			return
+		}
+
 		writeYAMLResponse(w, output)
 	}
+}
+
+func extractConfigPaths(cfg any, paths []string) (map[string]any, error) {
+	cfgMap, err := yamlMarshalUnmarshal(cfg)
+	if err != nil {
+		return nil, err
+	}
+	result := make(map[string]any)
+	for _, path := range paths {
+		val, ok := lookupConfigPath(cfgMap, path)
+		if !ok {
+			return nil, fmt.Errorf("%w: %q", errConfigFieldNotFound, path)
+		}
+		setNestedValue(result, strings.Split(path, "."), val)
+	}
+	return result, nil
+}
+
+// setNestedValue writes val into node at the given path segments, reusing (rather than replacing)
+// any intermediate map already created there by an earlier path, so paths sharing a common ancestor
+// merge into one tree instead of clobbering each other.
+func setNestedValue(node map[string]any, segments []string, val any) {
+	for _, segment := range segments[:len(segments)-1] {
+		next, ok := node[segment].(map[string]any)
+		if !ok {
+			next = make(map[string]any)
+			node[segment] = next
+		}
+		node = next
+	}
+	node[segments[len(segments)-1]] = val
+}
+
+func lookupConfigPath(m map[string]interface{}, path string) (any, bool) {
+	var cur any = m
+	for _, segment := range strings.Split(path, ".") {
+		asMap, ok := cur.(map[string]interface{})
+		if !ok {
+			return nil, false
+		}
+		cur, ok = asMap[segment]
+		if !ok {
+			return nil, false
+		}
+	}
+	return cur, true
 }
 
 func filterLimitFields(limits any, allowlist []string) (map[string]any, error) {
