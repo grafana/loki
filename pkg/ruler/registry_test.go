@@ -259,6 +259,38 @@ func setupRegistry(t *testing.T, cfg Config, limits fakeLimits) *walRegistry {
 	return reg.(*walRegistry)
 }
 
+// TestTenantRemoteWriteOAuth2SecretSurvivesClone reproduces CVE-2026-42151 via the real getTenantConfig path, not a direct Clone call.
+func TestTenantRemoteWriteOAuth2SecretSurvivesClone(t *testing.T) {
+	oauth2Cfg := Config{
+		RemoteWrite: RemoteWriteConfig{
+			Clients: map[string]promconfig.RemoteWriteConfig{
+				"default": {
+					URL: &commonconfig.URL{URL: remoteURL},
+					HTTPClientConfig: commonconfig.HTTPClientConfig{
+						OAuth2: &commonconfig.OAuth2{
+							ClientID:     "client-id",
+							ClientSecret: "real-oauth2-secret",
+							TokenURL:     "http://remote-write/token",
+						},
+					},
+				},
+			},
+			Enabled:             true,
+			ConfigRefreshPeriod: 5 * time.Second,
+		},
+	}
+
+	reg := setupRegistry(t, oauth2Cfg, newFakeLimits())
+
+	// "unrelated-tenant" has no fakeLimits entry, so no override merging is involved.
+	tenantCfg, err := reg.getTenantConfig("unrelated-tenant")
+	require.NoError(t, err)
+
+	require.Len(t, tenantCfg.RemoteWrite, 1)
+	require.NotNil(t, tenantCfg.RemoteWrite[0].HTTPClientConfig.OAuth2)
+	require.Equal(t, commonconfig.Secret("real-oauth2-secret"), tenantCfg.RemoteWrite[0].HTTPClientConfig.OAuth2.ClientSecret)
+}
+
 func TestTenantRemoteWriteConfigWithOverrideConcurrentAccess(t *testing.T) {
 	require.NotPanics(t, func() {
 		reg := setupRegistry(t, cfg, newFakeLimits())
