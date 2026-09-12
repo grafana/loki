@@ -128,6 +128,54 @@ func Test_markerProcessor_StartDeleteOnSuccess(t *testing.T) {
 	}, 10*time.Second, 100*time.Microsecond)
 }
 
+func Test_markerProcessor_Restart(t *testing.T) {
+	minListMarkDelay = time.Second
+	dir := t.TempDir()
+
+	markerStorageClient, err := local.NewFSObjectClient(local.FSConfig{Directory: dir})
+	require.NoError(t, err)
+
+	p, err := newMarkerReader(markerStorageClient, 5, 0, sweepMetrics)
+	require.NoError(t, err)
+
+	seen := map[string]struct{}{}
+	l := sync.Mutex{}
+	deleteFunc := func(_ context.Context, id []byte) error {
+		l.Lock()
+		defer l.Unlock()
+		seen[string(id)] = struct{}{}
+		return nil
+	}
+	sawKey := func(key string) func() bool {
+		return func() bool {
+			l.Lock()
+			defer l.Unlock()
+			_, ok := seen[key]
+			return ok
+		}
+	}
+
+	putMark := func(chunkID string) {
+		w, err := NewMarkerWriter(markerStorageClient)
+		require.NoError(t, err)
+		require.NoError(t, w.Put([]byte(chunkID)))
+		require.NoError(t, w.Close())
+	}
+
+	putMark("1")
+	p.Start(deleteFunc)
+	require.Eventually(t, sawKey("1"), 10*time.Second, 10*time.Millisecond)
+
+	// Compactors stop the marker processor when they lose the leader election and
+	// start it again if they win it back. The processor must resume processing marks.
+	p.Stop()
+
+	putMark("2")
+	p.Start(deleteFunc)
+	defer p.Stop()
+	require.Eventually(t, sawKey("2"), 10*time.Second, 10*time.Millisecond)
+}
+
 func Test_markerProcessor_availablePath(t *testing.T) {
 	now := time.Now()
 	for _, tt := range []struct {

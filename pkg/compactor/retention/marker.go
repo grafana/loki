@@ -179,6 +179,11 @@ func newMarkerReader(markerStorageClient client.ObjectClient, maxParallelism int
 func (r *markerProcessor) Start(deleteFunc func(ctx context.Context, chunkId []byte) error) {
 	level.Info(util_log.Logger).Log("msg", "mark processor started", "workers", r.maxParallelism, "delay", r.minAgeFile)
 	r.wg.Wait() // only one start at a time.
+	// Stop cancels the context shared by the goroutines below, so a fresh one is
+	// required here to make the processor restartable. Compactors stop the marker
+	// processor when they lose the compactor leader election and start it again if
+	// they win it back.
+	r.ctx, r.cancel = context.WithCancel(context.Background())
 	r.wg.Add(1)
 	go func() {
 		defer r.wg.Done()
