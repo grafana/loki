@@ -233,6 +233,8 @@ We support multiple **value** types which are automatically inferred from the qu
 
 String type work exactly like Prometheus label matchers use in [log stream selector](#log-stream-selector). This means you can use the same operations (`=`,`!=`,`=~`,`!~`).
 
+**Note:** As in the [log stream selector](#log-stream-selector), and unlike the [line filter regex expressions](#line-filter-expression), the `=~` and `!~` operators in a label filter are fully anchored: the pattern has to match the whole label value. `| name=~"al.*"` matches `alpha` but not `prealpha`. Use `| name=~".*al.*"` for a substring match.
+
 > The string type is the only one that can test the `__error__` label, as in `| __error__=""`. The other comparison operators convert the label value before they compare it, and cannot read `__error__` or `__error_details__`. A predicate such as `| __error__ > 0` fails to parse; use a string comparison instead, such as `| __error__ != ""`.
 
 Using Duration, Number and Bytes will convert the label value prior to comparison and support the following comparators:

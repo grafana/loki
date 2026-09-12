@@ -2,8 +2,10 @@ package log
 
 import (
 	"fmt"
+	"regexp"
 	"testing"
 
+	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
 )
 
@@ -386,4 +388,83 @@ func BenchmarkContainsLower(b *testing.B) {
 		})
 	}
 	res = m // Avoid compiler optimization
+}
+
+// A label filter regex is anchored at both ends, exactly like a stream selector
+// matcher. Simplification must preserve that: `foo.*` is a prefix match, `.*foo`
+// a suffix, `.*foo.*` a contains, and a bare literal an equality.
+//
+// The regression in issue #23892 was that the OpConcat branch of Simplify
+// dropped isLabel, so every one of those collapsed to a contains. The same drop
+// affected alternations that Go factors into a shared literal prefix, which is
+// why `warn|warning` is covered here: it parses as `warn(?:(?:)|ing)`, a concat
+// with an alternate, not as a top level alternate.
+func TestLabelFilterRegexIsAnchored(t *testing.T) {
+	for _, re := range []string{
+		// one sided stars
+		"al.*", ".*al", ".*al.*", "(?i)al.*", "(?i).*al",
+		// literals and alternations without a shared prefix
+		"alpha", "alpha|beta", "400|404",
+		// alternations Go factors into a shared literal prefix
+		"warn|warning", "prod|preprod", "bar|buzz", "b(ar|uzz)", "GET|GETALL",
+		"a|ab|abc", "al.*|be.*",
+		// shapes that were already correct, kept as regression cover
+		"pre.*ha", "al[a-z]*", "a.*a", "foo.*bar", ".*", ".+",
+		// an alternation beside a `.*` widens every branch, so it must not fold
+		// to per-branch equalities (review on #24421)
+		"a(bb|cc).*", "(?i)a(bb|cc).*", "foo(bar|baz).*", "(bar|baz).*",
+		// a literal separated from an earlier one by `.*` is not contiguous
+		"a(.*c|d)", "a(b|.*c)", "pre(.*x|y)", "a(.*c|.*d)",
+		// non-ascii case folding must match the existing filters
+		"(?i)ünf.*", "(?i).*ÜNF", "(?i)Ünf", "(?i).*ünf.*",
+	} {
+		t.Run(re, func(t *testing.T) {
+			anchored := regexp.MustCompile("^(?:" + re + ")$")
+
+			for _, matchType := range []labels.MatchType{labels.MatchRegexp, labels.MatchNotRegexp} {
+				f, err := NewLabelFilter(re, matchType)
+				require.NoError(t, err)
+
+				for _, v := range []string{
+					"", "a", "ab", "abc", "abcd", "al", "AL", "alpha", "ALPHA",
+					"prealpha", "alphabet", "beta", "bar", "buzz", "barbell", "rebar",
+					"warn", "warning", "prewarn", "warnings",
+					"prod", "preprod", "nonprod", "production",
+					"GET", "GETALL", "TARGET", "400", "404", "4041", "foobar", "xfoobary",
+					"foobarX", "foobaz", "ac", "axc", "acb", "ad", "abd", "abdX",
+					"prex", "preXx", "prey", "abb", "abbX", "acc", "accX",
+					"ünf", "ÜNF", "Ünf", "ünfoo", "ÜNFOO", "xünf", "UNF",
+				} {
+					want := anchored.MatchString(v)
+					if matchType == labels.MatchNotRegexp {
+						want = !want
+					}
+					require.Equalf(t, want, f.Filter([]byte(v)),
+						"label filter %q (%v) on value %q", re, matchType, v)
+				}
+			}
+		})
+	}
+}
+
+// Line filters are not anchored, so the same patterns must keep substring
+// semantics. This is the guard against over-correcting the fix onto the line
+// path, which shares the simplifier.
+func TestLineFilterRegexStaysUnanchored(t *testing.T) {
+	for _, re := range []string{
+		"al.*", ".*al", "alpha", "warn|warning", "prod|preprod", "bar|buzz", "b(ar|uzz)",
+		"a(bb|cc).*", "a(.*c|d)", "a(b|.*c)", "(?i)ünf.*",
+	} {
+		t.Run(re, func(t *testing.T) {
+			unanchored := regexp.MustCompile(re)
+			f, err := NewFilter(re, LineMatchRegexp)
+			require.NoError(t, err)
+
+			for _, v := range []string{"alpha", "prealpha", "barbell", "rebar", "prewarn", "nonprod",
+				"xfoobary", "abbX", "axc", "acb", "zzaxczz", "ÜNFOO"} {
+				require.Equalf(t, unanchored.MatchString(v), f.Filter([]byte(v)),
+					"line filter %q on value %q", re, v)
+			}
+		})
+	}
 }
