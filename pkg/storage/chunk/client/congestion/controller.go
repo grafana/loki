@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/go-kit/log"
+	"github.com/go-kit/log/level"
 	"golang.org/x/time/rate"
 
 	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
@@ -83,14 +84,32 @@ func (a *AIMDController) withLogger(logger log.Logger) Controller {
 	return a
 }
 
+// PutObject is not retried at this layer: the request body is a single-pass io.Reader, and re-issuing the
+// request after a partial read would silently upload truncated or wrong data. Retries for the write itself are
+// left to the inner client. What congestion control adds here is admission pacing and AIMD feedback: writes wait
+// on the same shared rate limiter as reads, and a throttling error on a write shrinks that limit just like one on
+// a read does, so concurrent writers back off together instead of independently hammering the backend.
 func (a *AIMDController) PutObject(ctx context.Context, objectKey string, object io.Reader) error {
-	return a.inner.PutObject(ctx, objectKey, object)
+	a.metrics.requests.Add(1)
+	a.awaitCapacity()
+
+	err := a.inner.PutObject(ctx, objectKey, object)
+	a.recordOutcome(err)
+	return err
+}
+
+// DeleteObject shares PutObject's reasoning: no retry loop here, just admission pacing and AIMD feedback so
+// deletes and other operations stay coordinated with each other through the shared limiter.
+func (a *AIMDController) DeleteObject(ctx context.Context, objectKey string) error {
+	a.metrics.requests.Add(1)
+	a.awaitCapacity()
+
+	err := a.inner.DeleteObject(ctx, objectKey)
+	a.recordOutcome(err)
+	return err
 }
 
 func (a *AIMDController) GetObject(ctx context.Context, objectKey string) (io.ReadCloser, int64, error) {
-	// Only GetObject implements congestion avoidance; the other methods are either non-idempotent which means they
-	// cannot be retried, or are too low volume to care about
-
 	// TODO(dannyk): use hedging client to handle requests, do NOT hedge retries
 
 	start := time.Now()
@@ -105,15 +124,7 @@ func (a *AIMDController) GetObject(ctx context.Context, objectKey string) (io.Re
 				a.metrics.retries.Add(1)
 			}
 
-			// apply back-pressure while rate-limit has been exceeded
-			//
-			// using Reserve() is slower because it assumes a constant wait time as tokens are replenished, but in experimentation
-			// it's faster to sit in a hot loop and probe every so often if there are tokens available
-			for !a.limiter.Allow() {
-				delay := time.Millisecond * 10
-				time.Sleep(delay)
-				a.metrics.backoffSec.Add(delay.Seconds())
-			}
+			a.awaitCapacity()
 
 			statsCtx.AddCongestionControlLatency(time.Since(start))
 
@@ -133,6 +144,36 @@ func (a *AIMDController) GetObject(ctx context.Context, objectKey string) (io.Re
 	return rc, sz, err
 }
 
+// awaitCapacity blocks until the shared rate limiter has room for another request, applying back-pressure while
+// the throughput limit is exceeded.
+//
+// using Reserve() is slower because it assumes a constant wait time as tokens are replenished, but in
+// experimentation it's faster to sit in a hot loop and probe every so often if there are tokens available.
+func (a *AIMDController) awaitCapacity() {
+	for !a.limiter.Allow() {
+		delay := time.Millisecond * 10
+		time.Sleep(delay)
+		a.metrics.backoffSec.Add(delay.Seconds())
+	}
+}
+
+// recordOutcome feeds a non-retried request's result into the AIMD signal: success grows the shared rate limit,
+// a retryable error shrinks it, and a non-retryable error is left alone since it's not a sign of congestion.
+func (a *AIMDController) recordOutcome(err error) {
+	switch {
+	case err == nil:
+		a.additiveIncrease()
+	case a.IsRetryableErr(err):
+		level.Debug(a.logger).Log("msg", "error is retryable", "err", err)
+		a.multiplicativeDecrease()
+	default:
+		if !errors.Is(err, context.Canceled) {
+			a.metrics.nonRetryableErrors.Add(1)
+			level.Debug(a.logger).Log("msg", "store error is not retryable", "err", err)
+		}
+	}
+}
+
 func (a *AIMDController) GetObjectRange(ctx context.Context, objectKey string, offset, length int64) (io.ReadCloser, error) {
 	return a.inner.GetObjectRange(ctx, objectKey, offset, length)
 }
@@ -147,10 +188,6 @@ func (a *AIMDController) ObjectExists(ctx context.Context, objectKey string) (bo
 
 func (a *AIMDController) GetAttributes(ctx context.Context, objectKey string) (client.ObjectAttributes, error) {
 	return a.inner.GetAttributes(ctx, objectKey)
-}
-
-func (a *AIMDController) DeleteObject(ctx context.Context, objectKey string) error {
-	return a.inner.DeleteObject(ctx, objectKey)
 }
 
 func (a *AIMDController) IsObjectNotFoundErr(err error) bool {
