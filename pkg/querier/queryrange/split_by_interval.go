@@ -20,6 +20,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase"
 	"github.com/grafana/loki/v3/pkg/storage/config"
 	"github.com/grafana/loki/v3/pkg/util/constants"
+	"github.com/grafana/loki/v3/pkg/util/querylimits"
 	"github.com/grafana/loki/v3/pkg/util/validation"
 )
 
@@ -233,12 +234,20 @@ func (h *splitByInterval) Do(ctx context.Context, r queryrangebase.Request) (que
 		interval = validation.SmallestPositiveNonZeroDurationPerTenant(tenantIDs, h.limits.QuerySplitDuration)
 	}
 
-	// skip split by if unset
-	if interval == 0 {
-		return h.next.Do(ctx, r)
+	var intervals []queryrangebase.Request
+	if planned, ok := querylimits.ExtractPlannedQueryRanges(ctx); ok {
+		// A present plan is the scan set. Do not fall back to the full span.
+		intervals = splitByPlannedRanges(h.splitter, time.Now().UTC(), tenantIDs, r, interval, planned)
+		if len(intervals) == 0 {
+			return NewEmptyResponse(r)
+		}
+	} else {
+		// skip split by if unset
+		if interval == 0 {
+			return h.next.Do(ctx, r)
+		}
+		intervals = h.splitter.split(time.Now().UTC(), tenantIDs, r, interval)
 	}
-
-	intervals := h.splitter.split(time.Now().UTC(), tenantIDs, r, interval)
 
 	h.metrics.splits.Observe(float64(len(intervals)))
 
@@ -296,6 +305,32 @@ func (h *splitByInterval) Do(ctx context.Context, r queryrangebase.Request) (que
 		return resps[0], nil
 	}
 	return h.merger.MergeResponse(resps...)
+}
+
+// splitByPlannedRanges turns injected planned windows into downstream requests.
+// The plan is treated as already clipped to the query. When interval > 0, each
+// window is split further by the existing splitter.
+func splitByPlannedRanges(
+	s splitter,
+	execTime time.Time,
+	tenantIDs []string,
+	r queryrangebase.Request,
+	interval time.Duration,
+	planned []querylimits.TimeRange,
+) []queryrangebase.Request {
+	var out []queryrangebase.Request
+	for _, window := range planned {
+		if !window.Start.Before(window.End) {
+			continue
+		}
+		windowReq := r.WithStartEnd(window.Start, window.End)
+		if interval == 0 {
+			out = append(out, windowReq)
+			continue
+		}
+		out = append(out, s.split(execTime, tenantIDs, windowReq, interval)...)
+	}
+	return out
 }
 
 func allLokiResponses(responses []queryrangebase.Response) bool {

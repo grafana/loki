@@ -26,6 +26,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/storage/config"
 	"github.com/grafana/loki/v3/pkg/storage/stores/index/seriesvolume"
 	"github.com/grafana/loki/v3/pkg/util"
+	"github.com/grafana/loki/v3/pkg/util/querylimits"
 )
 
 var nilMetrics = NewSplitByMetrics(nil)
@@ -2135,4 +2136,92 @@ func assertSplits(t *testing.T, want, splits []queryrangebase.Request) {
 			t.Logf("\t#%d [matches: %v]: expected %q/%q got %q/%q\n", j, equal, exp.GetStart(), exp.GetEnd(), act.GetStart(), act.GetEnd())
 		}
 	}
+}
+
+func Test_splitByInterval_PlannedRanges(t *testing.T) {
+	start := time.Unix(0, 0).UTC()
+	end := start.Add(4 * time.Hour)
+	query := `{app="foo"} |= "timeout"`
+
+	var mu sync.Mutex
+	var got []queryrangebase.Request
+	next := queryrangebase.HandlerFunc(func(_ context.Context, r queryrangebase.Request) (queryrangebase.Response, error) {
+		mu.Lock()
+		got = append(got, r)
+		mu.Unlock()
+		return &LokiResponse{
+			Status:    loghttp.QueryStatusSuccess,
+			Direction: logproto.FORWARD,
+			Limit:     1000,
+			Version:   uint32(loghttp.VersionV1),
+		}, nil
+	})
+
+	handler := SplitByIntervalMiddleware(
+		testSchemas,
+		WithSplitByLimits(fakeLimits{maxQueryParallelism: 1}, time.Hour),
+		DefaultCodec,
+		newDefaultSplitter(fakeLimits{}, nil),
+		nilMetrics,
+	).Wrap(next)
+
+	req := &LokiRequest{
+		StartTs:   start,
+		EndTs:     end,
+		Query:     query,
+		Limit:     1000,
+		Direction: logproto.FORWARD,
+		Path:      "/loki/api/v1/query_range",
+		Plan:      &plan.QueryPlan{AST: syntax.MustParseExpr(query)},
+	}
+
+	t.Run("absent plan splits the full span", func(t *testing.T) {
+		got = nil
+		ctx := user.InjectOrgID(context.Background(), "1")
+		_, err := handler.Do(ctx, req)
+		require.NoError(t, err)
+		require.Len(t, got, 4)
+		require.Equal(t, start, got[0].GetStart().UTC())
+		require.Equal(t, end, got[3].GetEnd().UTC())
+	})
+
+	t.Run("present empty plan does not query downstream", func(t *testing.T) {
+		got = nil
+		ctx := querylimits.InjectPlannedQueryRanges(user.InjectOrgID(context.Background(), "1"), nil)
+		resp, err := handler.Do(ctx, req)
+		require.NoError(t, err)
+		require.Empty(t, got)
+		_, ok := resp.(*LokiResponse)
+		require.True(t, ok)
+	})
+
+	t.Run("planned windows replace the full span", func(t *testing.T) {
+		got = nil
+		ctx := querylimits.InjectPlannedQueryRanges(user.InjectOrgID(context.Background(), "1"), []querylimits.TimeRange{
+			{Start: start.Add(30 * time.Minute), End: start.Add(45 * time.Minute)},
+			{Start: start.Add(3 * time.Hour), End: start.Add(3*time.Hour + 20*time.Minute)},
+		})
+		_, err := handler.Do(ctx, req)
+		require.NoError(t, err)
+		require.Len(t, got, 2)
+		require.Equal(t, start.Add(30*time.Minute), got[0].GetStart().UTC())
+		require.Equal(t, start.Add(45*time.Minute), got[0].GetEnd().UTC())
+		require.Equal(t, start.Add(3*time.Hour), got[1].GetStart().UTC())
+		require.Equal(t, start.Add(3*time.Hour+20*time.Minute), got[1].GetEnd().UTC())
+	})
+
+	t.Run("a long planned window is still split by interval", func(t *testing.T) {
+		got = nil
+		ctx := querylimits.InjectPlannedQueryRanges(user.InjectOrgID(context.Background(), "1"), []querylimits.TimeRange{
+			{Start: start, End: start.Add(150 * time.Minute)},
+		})
+		_, err := handler.Do(ctx, req)
+		require.NoError(t, err)
+		require.Len(t, got, 3)
+		require.Equal(t, start, got[0].GetStart().UTC())
+		require.Equal(t, start.Add(time.Hour), got[0].GetEnd().UTC())
+		require.Equal(t, start.Add(2*time.Hour), got[1].GetEnd().UTC())
+		require.Equal(t, start.Add(150*time.Minute), got[2].GetEnd().UTC())
+	})
+
 }
