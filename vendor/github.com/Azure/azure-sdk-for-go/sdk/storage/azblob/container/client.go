@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"strings"
 	"time"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore"
@@ -20,6 +21,7 @@ import (
 	"github.com/Azure/azure-sdk-for-go/sdk/storage/azblob/blob"
 	"github.com/Azure/azure-sdk-for-go/sdk/storage/azblob/bloberror"
 	"github.com/Azure/azure-sdk-for-go/sdk/storage/azblob/blockblob"
+	"github.com/Azure/azure-sdk-for-go/sdk/storage/azblob/internal/arrow"
 	"github.com/Azure/azure-sdk-for-go/sdk/storage/azblob/internal/base"
 	"github.com/Azure/azure-sdk-for-go/sdk/storage/azblob/internal/exported"
 	"github.com/Azure/azure-sdk-for-go/sdk/storage/azblob/internal/generated"
@@ -42,7 +44,7 @@ func NewClient(containerURL string, cred azcore.TokenCredential, options *Client
 	audience := base.GetAudience((*base.ClientOptions)(options))
 	conOptions := shared.GetClientOptions(options)
 	authPolicy := shared.NewStorageChallengePolicy(cred, audience, conOptions.InsecureAllowCredentialWithHTTP)
-	plOpts := runtime.PipelineOptions{PerRetry: []policy.Policy{authPolicy}}
+	plOpts := runtime.PipelineOptions{PerCall: []policy.Policy{shared.NewRangePolicy()}, PerRetry: []policy.Policy{authPolicy}}
 	if p := base.NewExpectContinuePolicy(conOptions.ExpectContinueBehavior); p != nil {
 		plOpts.PerRetry = append(plOpts.PerRetry, p)
 	}
@@ -60,7 +62,7 @@ func NewClient(containerURL string, cred azcore.TokenCredential, options *Client
 //   - options - client options; pass nil to accept the default values
 func NewClientWithNoCredential(containerURL string, options *ClientOptions) (*Client, error) {
 	conOptions := shared.GetClientOptions(options)
-	plOpts := runtime.PipelineOptions{}
+	plOpts := runtime.PipelineOptions{PerCall: []policy.Policy{shared.NewRangePolicy()}}
 	if p := base.NewExpectContinuePolicy(conOptions.ExpectContinueBehavior); p != nil {
 		plOpts.PerRetry = append(plOpts.PerRetry, p)
 	}
@@ -79,7 +81,7 @@ func NewClientWithNoCredential(containerURL string, options *ClientOptions) (*Cl
 func NewClientWithSharedKeyCredential(containerURL string, cred *SharedKeyCredential, options *ClientOptions) (*Client, error) {
 	authPolicy := exported.NewSharedKeyCredPolicy(cred)
 	conOptions := shared.GetClientOptions(options)
-	plOpts := runtime.PipelineOptions{PerRetry: []policy.Policy{authPolicy}}
+	plOpts := runtime.PipelineOptions{PerCall: []policy.Policy{shared.NewRangePolicy()}, PerRetry: []policy.Policy{authPolicy}}
 	if p := base.NewExpectContinuePolicy(conOptions.ExpectContinueBehavior); p != nil {
 		plOpts.PerRetry = append(plOpts.PerRetry, p)
 	}
@@ -178,27 +180,13 @@ func (c *Client) NewPageBlobClient(blobName string) *pageblob.Client {
 // Create creates a new container within a storage account. If a container with the same name already exists, the operation fails.
 // For more information, see https://docs.microsoft.com/rest/api/storageservices/create-container.
 func (c *Client) Create(ctx context.Context, options *CreateOptions) (CreateResponse, error) {
-	var opts *generated.ContainerClientCreateOptions
-	var cpkScopes *generated.ContainerCPKScopeInfo
-	if options != nil {
-		opts = &generated.ContainerClientCreateOptions{
-			Access:   options.Access,
-			Metadata: options.Metadata,
-		}
-		cpkScopes = options.CPKScopeInfo
-	}
-	resp, err := c.generated().Create(ctx, opts, cpkScopes)
-
-	return resp, err
+	return c.generated().Create(ctx, options.format())
 }
 
 // Delete marks the specified container for deletion. The container and any blobs contained within it are later deleted during garbage collection.
 // For more information, see https://docs.microsoft.com/rest/api/storageservices/delete-container.
 func (c *Client) Delete(ctx context.Context, options *DeleteOptions) (DeleteResponse, error) {
-	opts, leaseAccessConditions, modifiedAccessConditions := options.format()
-	resp, err := c.generated().Delete(ctx, opts, leaseAccessConditions, modifiedAccessConditions)
-
-	return resp, err
+	return c.generated().Delete(ctx, options.format())
 }
 
 // Restore operation restore the contents and properties of a soft deleted container to a specified container.
@@ -224,46 +212,41 @@ func (c *Client) GetProperties(ctx context.Context, o *GetPropertiesOptions) (Ge
 	// NOTE: GetMetadata actually calls GetProperties internally because GetProperties returns the metadata AND the properties.
 	// This allows us to not expose a GetMetadata method at all simplifying the API.
 	// The optionals are nil, like they were in track 1.5
-	opts, leaseAccessConditions := o.format()
-
-	resp, err := c.generated().GetProperties(ctx, opts, leaseAccessConditions)
-	return resp, err
+	return c.generated().GetProperties(ctx, o.format())
 }
 
 // SetMetadata sets the container's metadata.
 // For more information, see https://docs.microsoft.com/rest/api/storageservices/set-container-metadata.
 func (c *Client) SetMetadata(ctx context.Context, o *SetMetadataOptions) (SetMetadataResponse, error) {
-	metadataOptions, lac, mac := o.format()
-	resp, err := c.generated().SetMetadata(ctx, metadataOptions, lac, mac)
-
-	return resp, err
+	return c.generated().SetMetadata(ctx, o.format())
 }
 
 // GetAccessPolicy returns the container's access policy. The access policy indicates whether container's blobs may be accessed publicly.
 // For more information, see https://docs.microsoft.com/rest/api/storageservices/get-container-acl.
 func (c *Client) GetAccessPolicy(ctx context.Context, o *GetAccessPolicyOptions) (GetAccessPolicyResponse, error) {
-	options, ac := o.format()
-	resp, err := c.generated().GetAccessPolicy(ctx, options, ac)
-	return resp, err
+	return c.generated().GetAccessPolicy(ctx, o.format())
 }
 
 // SetAccessPolicy sets the container's permissions. The access policy indicates whether blobs in a container may be accessed publicly.
 // For more information, see https://docs.microsoft.com/rest/api/storageservices/set-container-acl.
 func (c *Client) SetAccessPolicy(ctx context.Context, o *SetAccessPolicyOptions) (SetAccessPolicyResponse, error) {
-	accessPolicy, mac, lac, acl, err := o.format()
-	if err != nil {
-		return SetAccessPolicyResponse{}, err
+	var containerACL []*SignedIdentifier
+	if o != nil && o.ContainerACL != nil {
+		containerACL = o.ContainerACL
+		for _, c := range containerACL {
+			err := formatTime(c)
+			if err != nil {
+				return SetAccessPolicyResponse{}, err
+			}
+		}
 	}
-	resp, err := c.generated().SetAccessPolicy(ctx, acl, accessPolicy, mac, lac)
-	return resp, err
+	return c.generated().SetAccessPolicy(ctx, containerACL, o.format())
 }
 
 // GetAccountInfo provides account level information
 // For more information, see https://learn.microsoft.com/en-us/rest/api/storageservices/get-account-information?tabs=shared-access-signatures.
 func (c *Client) GetAccountInfo(ctx context.Context, o *GetAccountInfoOptions) (GetAccountInfoResponse, error) {
-	getAccountInfoOptions := o.format()
-	resp, err := c.generated().GetAccountInfo(ctx, getAccountInfoOptions)
-	return resp, err
+	return c.generated().GetAccountInfo(ctx, o.format())
 }
 
 // NewListBlobsFlatPager returns a pager for blobs starting from the specified Marker. Use an empty
@@ -271,23 +254,30 @@ func (c *Client) GetAccountInfo(ctx context.Context, o *GetAccountInfoOptions) (
 // For more information, see https://docs.microsoft.com/rest/api/storageservices/list-blobs.
 func (c *Client) NewListBlobsFlatPager(o *ListBlobsFlatOptions) *runtime.Pager[ListBlobsFlatResponse] {
 	listOptions := generated.ContainerClientListBlobFlatSegmentOptions{}
+	arrowOptions := o.formatArrow()
+	var useArrow bool
 	if o != nil {
 		listOptions.Include = o.Include.format()
 		listOptions.Marker = o.Marker
 		listOptions.Maxresults = o.MaxResults
 		listOptions.Prefix = o.Prefix
+		listOptions.StartFrom = o.StartFrom
+		useArrow = exported.ResolveAutoFormat(o.ResponseFormat) == exported.StorageResponseFormatArrow
 	}
 	return runtime.NewPager(runtime.PagingHandler[ListBlobsFlatResponse]{
 		More: func(page ListBlobsFlatResponse) bool {
 			return page.NextMarker != nil && len(*page.NextMarker) > 0
 		},
 		Fetcher: func(ctx context.Context, page *ListBlobsFlatResponse) (ListBlobsFlatResponse, error) {
+			if page != nil {
+				listOptions.Marker = page.NextMarker
+				arrowOptions.Marker = page.NextMarker
+			}
 			var req *policy.Request
 			var err error
-			if page == nil {
-				req, err = c.generated().ListBlobFlatSegmentCreateRequest(ctx, &listOptions)
+			if useArrow {
+				req, err = c.generated().ListBlobFlatSegmentApacheArrowCreateRequest(ctx, &arrowOptions)
 			} else {
-				listOptions.Marker = page.NextMarker
 				req, err = c.generated().ListBlobFlatSegmentCreateRequest(ctx, &listOptions)
 			}
 			if err != nil {
@@ -297,11 +287,13 @@ func (c *Client) NewListBlobsFlatPager(o *ListBlobsFlatOptions) *runtime.Pager[L
 			if err != nil {
 				return ListBlobsFlatResponse{}, err
 			}
-			if !runtime.HasStatusCode(resp, http.StatusOK) {
-				// TOOD: storage error?
-				return ListBlobsFlatResponse{}, runtime.NewResponseError(resp)
+			// If Arrow was requested and the service returned Arrow, parse it.
+			// Otherwise fall back to XML parsing (handles Photon-not-enabled case).
+			arrowResp := useArrow && strings.HasPrefix(resp.Header.Get(shared.HeaderContentType), arrow.ArrowContentType)
+			if arrowResp && runtime.HasStatusCode(resp, http.StatusOK) {
+				return arrow.HandleFlatListResponse(resp)
 			}
-			return c.generated().ListBlobFlatSegmentHandleResponse(resp)
+			return c.generated().ListBlobFlatSegmentHandleResponse(resp, http.StatusOK)
 		},
 	})
 }
@@ -313,17 +305,25 @@ func (c *Client) NewListBlobsFlatPager(o *ListBlobsFlatOptions) *runtime.Pager[L
 // For more information, see https://docs.microsoft.com/rest/api/storageservices/list-blobs.
 func (c *Client) NewListBlobsHierarchyPager(delimiter string, o *ListBlobsHierarchyOptions) *runtime.Pager[ListBlobsHierarchyResponse] {
 	listOptions := o.format()
+	arrowOptions := o.formatArrow()
+	var useArrow bool
+	if o != nil {
+		useArrow = exported.ResolveAutoFormat(o.ResponseFormat) == exported.StorageResponseFormatArrow
+	}
 	return runtime.NewPager(runtime.PagingHandler[ListBlobsHierarchyResponse]{
 		More: func(page ListBlobsHierarchyResponse) bool {
 			return page.NextMarker != nil && len(*page.NextMarker) > 0
 		},
 		Fetcher: func(ctx context.Context, page *ListBlobsHierarchyResponse) (ListBlobsHierarchyResponse, error) {
+			if page != nil {
+				listOptions.Marker = page.NextMarker
+				arrowOptions.Marker = page.NextMarker
+			}
 			var req *policy.Request
 			var err error
-			if page == nil {
-				req, err = c.generated().ListBlobHierarchySegmentCreateRequest(ctx, delimiter, &listOptions)
+			if useArrow {
+				req, err = c.generated().ListBlobHierarchySegmentApacheArrowCreateRequest(ctx, delimiter, &arrowOptions)
 			} else {
-				listOptions.Marker = page.NextMarker
 				req, err = c.generated().ListBlobHierarchySegmentCreateRequest(ctx, delimiter, &listOptions)
 			}
 			if err != nil {
@@ -333,10 +333,11 @@ func (c *Client) NewListBlobsHierarchyPager(delimiter string, o *ListBlobsHierar
 			if err != nil {
 				return ListBlobsHierarchyResponse{}, err
 			}
-			if !runtime.HasStatusCode(resp, http.StatusOK) {
-				return ListBlobsHierarchyResponse{}, runtime.NewResponseError(resp)
+			arrowResp := useArrow && strings.HasPrefix(resp.Header.Get(shared.HeaderContentType), arrow.ArrowContentType)
+			if arrowResp && runtime.HasStatusCode(resp, http.StatusOK) {
+				return arrow.HandleHierarchyListResponse(resp)
 			}
-			return c.generated().ListBlobHierarchySegmentHandleResponse(resp)
+			return c.generated().ListBlobHierarchySegmentHandleResponse(resp, http.StatusOK)
 		},
 	})
 }
@@ -416,7 +417,7 @@ func (c *Client) SubmitBatch(ctx context.Context, bb *BatchBuilder, options *Sub
 	rsc := streaming.NopCloser(reader)
 	multipartContentType := "multipart/mixed; boundary=" + batchID
 
-	resp, err := c.generated().SubmitBatch(ctx, int64(len(batchReq)), multipartContentType, rsc, options.format())
+	resp, err := c.generated().SubmitBatch(ctx, multipartContentType, int64(len(batchReq)), rsc, options.format())
 	if err != nil {
 		return SubmitBatchResponse{}, err
 	}
@@ -438,7 +439,5 @@ func (c *Client) SubmitBatch(ctx context.Context, bb *BatchBuilder, options *Sub
 // https://docs.microsoft.com/en-us/rest/api/storageservices/find-blobs-by-tags-container
 // eg. "dog='germanshepherd' and penguin='emperorpenguin'"
 func (c *Client) FilterBlobs(ctx context.Context, where string, o *FilterBlobsOptions) (FilterBlobsResponse, error) {
-	containerClientFilterBlobsOptions := o.format()
-	resp, err := c.generated().FilterBlobs(ctx, where, containerClientFilterBlobsOptions)
-	return resp, err
+	return c.generated().FilterBlobs(ctx, where, o.format())
 }
