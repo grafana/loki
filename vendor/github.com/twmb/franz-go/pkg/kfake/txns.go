@@ -737,25 +737,39 @@ func (pidinf *pidinfo) endTx(commit bool) {
 	b.Length = int32(len(benc) - 12)
 	b.CRC = int32(crc32.Checksum(benc[21:], crc32c))
 
-	pidinf.txParts.each(func(t string, p int32, pd *partData) {
+	pidinf.txParts.each(func(t string, p int32, _ *partData) {
+		c := pidinf.pids.c
+		// Markers resolve the partition by name at write time, like the
+		// coordinator's marker writes on a real broker: if the topic
+		// was deleted there is nowhere to write, and if it was deleted
+		// and recreated the marker belongs to the CURRENT log at the
+		// current log's offsets (where any post-recreation by-name
+		// writes of this transaction landed). Writing through the
+		// registration-time pointer would corrupt a recreated topic's
+		// fresh log via the shared on-disk path.
+		pd, ok := c.data.tps.getp(t, p)
+		if !ok {
+			return
+		}
+
+		firstUncommitted, hadUncommitted := pd.uncommittedPIDs[pidinf.id]
 		delete(pd.uncommittedPIDs, pidinf.id)
 
-		c := pidinf.pids.c
 		controlOffset := c.pushBatch(pd, len(benc), b, false) // control record is not itself transactional
 		if controlOffset < 0 {
 			c.cfg.logger.Logf(LogLevelError, "endTx: failed to persist control batch for %s p%d pid %d", t, p, pidinf.id)
 			pd.recalculateLSO()
 			return
 		}
-		if !commit {
-			firstOffset, ok := pidinf.txPartFirstOffsets.getp(t, p)
-			if ok {
-				pd.abortedTxns = append(pd.abortedTxns, abortedTxnEntry{
-					producerID:  pidinf.id,
-					firstOffset: *firstOffset,
-					lastOffset:  controlOffset,
-				})
-			}
+		// The aborted range comes from this log's own uncommitted
+		// bookkeeping, not the transaction's registration-time offsets,
+		// which can reference a dead incarnation.
+		if !commit && hadUncommitted {
+			pd.abortedTxns = append(pd.abortedTxns, abortedTxnEntry{
+				producerID:  pidinf.id,
+				firstOffset: firstUncommitted,
+				lastOffset:  controlOffset,
+			})
 		}
 		pd.recalculateLSO()
 		// Count the now-committed bytes for readCommitted watchers.

@@ -708,11 +708,12 @@ var validTopicConfigs = map[string]string{
 // All valid broker configs we support, as well as their equivalent
 // topic config if there is one.
 var validBrokerConfigs = map[string]string{
-	"broker.id":                  "",
-	"broker.rack":                "",
-	"compression.type":           "compression.type",
-	"default.replication.factor": "",
-	"fetch.max.bytes":            "",
+	"broker.id":                                 "",
+	"broker.rack":                               "",
+	"compression.type":                          "compression.type",
+	"connections.max.reauth.ms":                 "",
+	"default.replication.factor":                "",
+	"fetch.max.bytes":                           "",
 	"max.incremental.fetch.session.cache.slots": "",
 	"group.consumer.heartbeat.interval.ms":      "",
 	"group.consumer.session.timeout.ms":         "",
@@ -800,6 +801,7 @@ var configDefaults = map[string]string{
 
 	"state.log.compact.bytes": "10485760",
 
+	"connections.max.reauth.ms":                 "0",
 	"default.replication.factor":                "3",
 	"fetch.max.bytes":                           "57671680",
 	"log.cleaner.backoff.ms":                    "3600000",
@@ -830,13 +832,14 @@ var configDefaults = map[string]string{
 
 // configTypes maps config names to their data types for DescribeConfigs v3+.
 var configTypes = map[string]kmsg.ConfigType{
-	"broker.id":                  kmsg.ConfigTypeInt,
-	"broker.rack":                kmsg.ConfigTypeString,
-	"cleanup.policy":             kmsg.ConfigTypeList,
-	"compression.type":           kmsg.ConfigTypeString,
-	"default.replication.factor": kmsg.ConfigTypeInt,
-	"delete.retention.ms":        kmsg.ConfigTypeLong,
-	"fetch.max.bytes":            kmsg.ConfigTypeInt,
+	"broker.id":                                 kmsg.ConfigTypeInt,
+	"broker.rack":                               kmsg.ConfigTypeString,
+	"cleanup.policy":                            kmsg.ConfigTypeList,
+	"compression.type":                          kmsg.ConfigTypeString,
+	"connections.max.reauth.ms":                 kmsg.ConfigTypeLong,
+	"default.replication.factor":                kmsg.ConfigTypeInt,
+	"delete.retention.ms":                       kmsg.ConfigTypeLong,
+	"fetch.max.bytes":                           kmsg.ConfigTypeInt,
 	"max.incremental.fetch.session.cache.slots": kmsg.ConfigTypeInt,
 	"group.consumer.heartbeat.interval.ms":      kmsg.ConfigTypeInt,
 	"group.consumer.session.timeout.ms":         kmsg.ConfigTypeInt,
@@ -884,6 +887,18 @@ func (c *Cluster) brokerConfigInt(key string, def int) int32 {
 		return int32(n)
 	}
 	return int32(def)
+}
+
+// connectionsMaxReauthMs returns connections.max.reauth.ms; a positive value
+// enables SASL re-authentication (KIP-368): SaslAuthenticate responses carry
+// the value as SessionLifetimeMillis, and an authenticated connection may
+// re-handshake. Zero (the default, matching real Kafka) disables it.
+func (c *Cluster) connectionsMaxReauthMs() int64 {
+	if v, ok := c.loadBcfgs()["connections.max.reauth.ms"]; ok && v != nil {
+		n, _ := strconv.ParseInt(*v, 10, 64)
+		return n
+	}
+	return 0
 }
 
 // segmentBytes returns the max segment size for a topic.

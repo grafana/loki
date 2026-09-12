@@ -90,6 +90,11 @@ func (c *Cluster) handleShareAcknowledge(creq *clientReq) (kmsg.Response, error)
 		sp := kmsg.NewShareAcknowledgeResponseTopicPartition()
 		sp.Partition = p
 		sp.ErrorCode = ec
+		// Real brokers serialize the Java schema default -1/-1 when
+		// they do not populate a leader hint; the Go zero value 0/0
+		// would be read by clients as a valid hint to node 0.
+		sp.CurrentLeader.LeaderID = -1
+		sp.CurrentLeader.LeaderEpoch = -1
 		resp.Topics[i].Partitions = append(resp.Topics[i].Partitions, sp)
 		return &resp.Topics[i].Partitions[len(resp.Topics[i].Partitions)-1]
 	}

@@ -116,7 +116,7 @@ type (
 	// (incremental), the request's Topics are ADDED to the session and
 	// ForgottenTopicsData are REMOVED (matching Kafka's ShareSession.update).
 	//
-	// partitions maps topicID → partition → requiresUpdate. The bool is
+	// partitions maps topicID -> partition -> requiresUpdate. The bool is
 	// true when the partition must appear in the next incremental response
 	// even if it has no data (new partition, or previous response had an
 	// error). Matching Java's CachedSharePartition.requiresUpdateInResponse.
@@ -674,7 +674,7 @@ func (g *shareGroup) recomputeAssignments() {
 
 	memberIDs := slices.Sorted(maps.Keys(g.members))
 
-	// Build topic→subscribers index.
+	// Build topic->subscribers index.
 	topicSubs := make(map[string][]string)
 	for _, id := range memberIDs {
 		for _, topic := range g.members[id].subscribedTopics {
@@ -682,7 +682,7 @@ func (g *shareGroup) recomputeAssignments() {
 		}
 	}
 
-	// Reverse lookup: topicID → topicName.
+	// Reverse lookup: topicID -> topicName.
 	topicForID := make(map[uuid]string)
 	for topic, si := range snap {
 		topicForID[si.id] = topic
