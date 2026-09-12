@@ -310,6 +310,44 @@ func TestPutObjectNonRetryableErrDoesNotAffectLimit(t *testing.T) {
 	metrics.Unregister()
 }
 
+func TestAwaitCapacityRespectsContextCancellation(t *testing.T) {
+	cfg := Config{
+		Controller: ControllerConfig{
+			Strategy: "aimd",
+			AIMD: AIMD{
+				Start:      1,
+				UpperBound: 1,
+			},
+		},
+	}
+
+	metrics := NewMetrics(t.Name(), cfg, nil)
+	ctrl := NewController(cfg, log.NewNopLogger(), metrics)
+
+	// never fails; we only care about admission pacing here
+	cli := newMockObjectClient(maxFailer{max: 1000})
+	ctrl.Wrap(cli)
+
+	// consume the only token in the bucket
+	require.NoError(t, ctrl.PutObject(context.Background(), "foo", strings.NewReader("body")))
+	require.EqualValues(t, 1, cli.reqCounter.Load())
+
+	// the limiter now has no capacity for ~1s; a context that's about to be cancelled must not
+	// block that long waiting for a token that will arrive well after the caller has given up
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Millisecond)
+	defer cancel()
+
+	start := time.Now()
+	err := ctrl.PutObject(ctx, "foo", strings.NewReader("body"))
+	elapsed := time.Since(start)
+
+	require.ErrorIs(t, err, context.DeadlineExceeded)
+	require.Less(t, elapsed, 500*time.Millisecond, "must give up once the context is done rather than wait out the full backoff")
+	// the inner client must never see a request we already gave up on
+	require.EqualValues(t, 1, cli.reqCounter.Load())
+	metrics.Unregister()
+}
+
 func TestPutObjectSharesLimiterWithGetObject(t *testing.T) {
 	cfg := Config{
 		Controller: ControllerConfig{

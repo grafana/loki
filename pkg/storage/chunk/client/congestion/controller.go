@@ -91,7 +91,9 @@ func (a *AIMDController) withLogger(logger log.Logger) Controller {
 // a read does, so concurrent writers back off together instead of independently hammering the backend.
 func (a *AIMDController) PutObject(ctx context.Context, objectKey string, object io.Reader) error {
 	a.metrics.requests.Add(1)
-	a.awaitCapacity()
+	if err := a.awaitCapacity(ctx); err != nil {
+		return err
+	}
 
 	err := a.inner.PutObject(ctx, objectKey, object)
 	a.recordOutcome(err)
@@ -102,7 +104,9 @@ func (a *AIMDController) PutObject(ctx context.Context, objectKey string, object
 // deletes and other operations stay coordinated with each other through the shared limiter.
 func (a *AIMDController) DeleteObject(ctx context.Context, objectKey string) error {
 	a.metrics.requests.Add(1)
-	a.awaitCapacity()
+	if err := a.awaitCapacity(ctx); err != nil {
+		return err
+	}
 
 	err := a.inner.DeleteObject(ctx, objectKey)
 	a.recordOutcome(err)
@@ -124,7 +128,9 @@ func (a *AIMDController) GetObject(ctx context.Context, objectKey string) (io.Re
 				a.metrics.retries.Add(1)
 			}
 
-			a.awaitCapacity()
+			if err := a.awaitCapacity(ctx); err != nil {
+				return nil, 0, err
+			}
 
 			statsCtx.AddCongestionControlLatency(time.Since(start))
 
@@ -145,16 +151,22 @@ func (a *AIMDController) GetObject(ctx context.Context, objectKey string) (io.Re
 }
 
 // awaitCapacity blocks until the shared rate limiter has room for another request, applying back-pressure while
-// the throughput limit is exceeded.
+// the throughput limit is exceeded. It gives up early if ctx is done, since under a shrunk limit this can block
+// for a while and the caller may no longer be waiting for the result.
 //
 // using Reserve() is slower because it assumes a constant wait time as tokens are replenished, but in
 // experimentation it's faster to sit in a hot loop and probe every so often if there are tokens available.
-func (a *AIMDController) awaitCapacity() {
+func (a *AIMDController) awaitCapacity(ctx context.Context) error {
 	for !a.limiter.Allow() {
 		delay := time.Millisecond * 10
-		time.Sleep(delay)
-		a.metrics.backoffSec.Add(delay.Seconds())
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(delay):
+			a.metrics.backoffSec.Add(delay.Seconds())
+		}
 	}
+	return nil
 }
 
 // recordOutcome feeds a non-retried request's result into the AIMD signal: success grows the shared rate limit,
