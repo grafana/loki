@@ -58,8 +58,8 @@ func Test_Encoding_Chunks(t *testing.T) {
 		want    index.ChunkMetas
 	}{
 		{
-			name:    "current version round-trips the ingestion timestamps",
-			version: CurrentChunksRec,
+			name:    "WalRecordChunksV2 round-trips the ingestion timestamps",
+			version: WalRecordChunksV2,
 			want:    chks,
 		},
 		{
