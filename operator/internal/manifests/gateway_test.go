@@ -14,7 +14,6 @@ import (
 	networkingv1 "k8s.io/api/networking/v1"
 	policyv1 "k8s.io/api/policy/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/utils/ptr"
 
 	configv1 "github.com/grafana/loki/operator/api/config/v1"
 	lokiv1 "github.com/grafana/loki/operator/api/loki/v1"
@@ -174,7 +173,7 @@ func TestNewGatewayDeployment_HasTemplateCertRotationRequiredAtAnnotation(t *tes
 
 	annotations := ss.Spec.Template.Annotations
 	require.Contains(t, annotations, AnnotationCertRotationRequiredAt)
-	require.Equal(t, annotations[AnnotationCertRotationRequiredAt], "deadbeef")
+	require.Equal(t, "deadbeef", annotations[AnnotationCertRotationRequiredAt])
 }
 
 func TestGatewayConfigMap_ReturnsSHA1OfBinaryContents(t *testing.T) {
@@ -1484,7 +1483,7 @@ func TestBuildGateway_TopologySpreadConstraint(t *testing.T) {
 	})
 
 	dpl := obj[2].(*appsv1.Deployment)
-	require.EqualValues(t, dpl.Spec.Template.Spec.TopologySpreadConstraints, []corev1.TopologySpreadConstraint{
+	require.Equal(t, []corev1.TopologySpreadConstraint{
 		{
 			MaxSkew:           2,
 			TopologyKey:       "zone",
@@ -1507,7 +1506,7 @@ func TestBuildGateway_TopologySpreadConstraint(t *testing.T) {
 				},
 			},
 		},
-	})
+	}, dpl.Spec.Template.Spec.TopologySpreadConstraints)
 }
 
 func TestBuildGateway_ExternalAccessControl(t *testing.T) {
@@ -1523,12 +1522,12 @@ func TestBuildGateway_ExternalAccessControl(t *testing.T) {
 		},
 		{
 			desc:                   "external access explicitly enabled - Kubernetes",
-			externalAccessDisabled: ptr.To(false),
+			externalAccessDisabled: new(false),
 			expectIngress:          true,
 		},
 		{
 			desc:                   "external access disabled - Kubernetes",
-			externalAccessDisabled: ptr.To(true),
+			externalAccessDisabled: new(true),
 			expectIngress:          false,
 		},
 	}
@@ -1817,7 +1816,7 @@ func TestBuildGateway_PassthroughMode_TopologySpreadConstraint(t *testing.T) {
 
 	dpl := objs[0].(*appsv1.Deployment)
 	require.NotNil(t, dpl)
-	require.EqualValues(t, dpl.Spec.Template.Spec.TopologySpreadConstraints, []corev1.TopologySpreadConstraint{
+	require.Equal(t, []corev1.TopologySpreadConstraint{
 		{
 			MaxSkew:           2,
 			TopologyKey:       "zone",
@@ -1840,7 +1839,7 @@ func TestBuildGateway_PassthroughMode_TopologySpreadConstraint(t *testing.T) {
 				},
 			},
 		},
-	})
+	}, dpl.Spec.Template.Spec.TopologySpreadConstraints)
 }
 
 func TestBuildGateway_PassthroughMode_WithHTTPEncryption_WithCustomTLS(t *testing.T) {

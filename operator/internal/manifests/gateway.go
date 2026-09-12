@@ -15,7 +15,6 @@ import (
 	policyv1 "k8s.io/api/policy/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/intstr"
-	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	lokiv1 "github.com/grafana/loki/operator/api/loki/v1"
@@ -275,7 +274,7 @@ func NewGatewayDeployment(opts Options, sha1C string) *appsv1.Deployment {
 			Labels: l,
 		},
 		Spec: appsv1.DeploymentSpec{
-			Replicas: ptr.To(opts.Stack.Template.Gateway.Replicas),
+			Replicas: new(opts.Stack.Template.Gateway.Replicas),
 			Selector: &metav1.LabelSelector{
 				MatchLabels: l,
 			},
@@ -375,7 +374,7 @@ func NewPassthroughGatewayDeployment(opts Options) *appsv1.Deployment {
 			Labels: l,
 		},
 		Spec: appsv1.DeploymentSpec{
-			Replicas: ptr.To(opts.Stack.Template.Gateway.Replicas),
+			Replicas: new(opts.Stack.Template.Gateway.Replicas),
 			Selector: &metav1.LabelSelector{
 				MatchLabels: l,
 			},
@@ -490,7 +489,7 @@ func NewServiceAccount(opts Options) client.Object {
 			Name:      GatewayName(opts.Name),
 			Namespace: opts.Namespace,
 		},
-		AutomountServiceAccountToken: ptr.To(true),
+		AutomountServiceAccountToken: new(true),
 	}
 }
 
@@ -534,7 +533,7 @@ func NewGatewayPodDisruptionBudget(opts Options) *policyv1.PodDisruptionBudget {
 			Selector: &metav1.LabelSelector{
 				MatchLabels: l,
 			},
-			MaxUnavailable: ptr.To(intstr.FromInt32(1)),
+			MaxUnavailable: new(intstr.FromInt32(1)),
 		},
 	}
 }

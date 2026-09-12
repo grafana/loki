@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/require"
-	"k8s.io/utils/ptr"
 
 	configv1 "github.com/grafana/loki/operator/api/config/v1"
 	lokiv1 "github.com/grafana/loki/operator/api/loki/v1"
@@ -1353,20 +1352,20 @@ func TestBuild_ConfigAndRuntimeConfig_RulerConfigGenerated_WithAlertmanagerOverr
 						},
 						Notifier: &NotifierConfig{
 							TLS: TLSConfig{
-								ServerName:         ptr.To("custom-servername"),
-								CertPath:           ptr.To("custom/path"),
-								KeyPath:            ptr.To("custom/key"),
-								CAPath:             ptr.To("custom/CA"),
-								InsecureSkipVerify: ptr.To(false),
+								ServerName:         new("custom-servername"),
+								CertPath:           new("custom/path"),
+								KeyPath:            new("custom/key"),
+								CAPath:             new("custom/CA"),
+								InsecureSkipVerify: new(false),
 							},
 							BasicAuth: BasicAuth{
-								Username: ptr.To("user"),
-								Password: ptr.To("pass"),
+								Username: new("user"),
+								Password: new("pass"),
 							},
 							HeaderAuth: HeaderAuth{
-								CredentialsFile: ptr.To("cred/file"),
-								Type:            ptr.To("auth"),
-								Credentials:     ptr.To("creds"),
+								CredentialsFile: new("cred/file"),
+								Type:            new("auth"),
+								Credentials:     new("creds"),
 							},
 						},
 					},
@@ -2476,20 +2475,20 @@ func TestBuild_ConfigAndRuntimeConfig_RulerConfigGenerated_WithAlertmanagerClien
 			AlertManager: &AlertManagerConfig{
 				Notifier: &NotifierConfig{
 					TLS: TLSConfig{
-						ServerName:         ptr.To("custom-servername"),
-						CertPath:           ptr.To("custom/path"),
-						KeyPath:            ptr.To("custom/key"),
-						CAPath:             ptr.To("custom/CA"),
-						InsecureSkipVerify: ptr.To(false),
+						ServerName:         new("custom-servername"),
+						CertPath:           new("custom/path"),
+						KeyPath:            new("custom/key"),
+						CAPath:             new("custom/CA"),
+						InsecureSkipVerify: new(false),
 					},
 					BasicAuth: BasicAuth{
-						Username: ptr.To("user"),
-						Password: ptr.To("pass"),
+						Username: new("user"),
+						Password: new("pass"),
 					},
 					HeaderAuth: HeaderAuth{
-						CredentialsFile: ptr.To("cred/file"),
-						Type:            ptr.To("auth"),
-						Credentials:     ptr.To("creds"),
+						CredentialsFile: new("cred/file"),
+						Type:            new("auth"),
+						Credentials:     new("creds"),
 					},
 				},
 				ExternalURL: "http://alert.me/now",
@@ -2634,20 +2633,20 @@ func TestBuild_ConfigAndRuntimeConfig_OTLPConfigGenerated(t *testing.T) {
 			AlertManager: &AlertManagerConfig{
 				Notifier: &NotifierConfig{
 					TLS: TLSConfig{
-						ServerName:         ptr.To("custom-servername"),
-						CertPath:           ptr.To("custom/path"),
-						KeyPath:            ptr.To("custom/key"),
-						CAPath:             ptr.To("custom/CA"),
-						InsecureSkipVerify: ptr.To(false),
+						ServerName:         new("custom-servername"),
+						CertPath:           new("custom/path"),
+						KeyPath:            new("custom/key"),
+						CAPath:             new("custom/CA"),
+						InsecureSkipVerify: new(false),
 					},
 					BasicAuth: BasicAuth{
-						Username: ptr.To("user"),
-						Password: ptr.To("pass"),
+						Username: new("user"),
+						Password: new("pass"),
 					},
 					HeaderAuth: HeaderAuth{
-						CredentialsFile: ptr.To("cred/file"),
-						Type:            ptr.To("auth"),
-						Credentials:     ptr.To("creds"),
+						CredentialsFile: new("cred/file"),
+						Type:            new("auth"),
+						Credentials:     new("creds"),
 					},
 				},
 				ExternalURL: "http://alert.me/now",

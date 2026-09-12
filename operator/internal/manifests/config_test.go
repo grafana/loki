@@ -10,7 +10,6 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	corev1 "k8s.io/api/core/v1"
-	"k8s.io/utils/ptr"
 
 	lokiv1 "github.com/grafana/loki/operator/api/loki/v1"
 	"github.com/grafana/loki/operator/internal/manifests/internal/config"
@@ -118,7 +117,7 @@ func randomConfigOptions() Options {
 							Operator:          corev1.TolerationOpEqual,
 							Value:             uuid.New().String(),
 							Effect:            corev1.TaintEffectNoExecute,
-							TolerationSeconds: ptr.To[int64](rand.Int63()),
+							TolerationSeconds: new(rand.Int63()),
 						},
 					},
 				},
@@ -133,7 +132,7 @@ func randomConfigOptions() Options {
 							Operator:          corev1.TolerationOpEqual,
 							Value:             uuid.New().String(),
 							Effect:            corev1.TaintEffectNoExecute,
-							TolerationSeconds: ptr.To[int64](rand.Int63()),
+							TolerationSeconds: new(rand.Int63()),
 						},
 					},
 				},
@@ -148,7 +147,7 @@ func randomConfigOptions() Options {
 							Operator:          corev1.TolerationOpEqual,
 							Value:             uuid.New().String(),
 							Effect:            corev1.TaintEffectNoExecute,
-							TolerationSeconds: ptr.To[int64](rand.Int63()),
+							TolerationSeconds: new(rand.Int63()),
 						},
 					},
 				},
@@ -163,7 +162,7 @@ func randomConfigOptions() Options {
 							Operator:          corev1.TolerationOpEqual,
 							Value:             uuid.New().String(),
 							Effect:            corev1.TaintEffectNoExecute,
-							TolerationSeconds: ptr.To[int64](rand.Int63()),
+							TolerationSeconds: new(rand.Int63()),
 						},
 					},
 				},
@@ -178,7 +177,7 @@ func randomConfigOptions() Options {
 							Operator:          corev1.TolerationOpEqual,
 							Value:             uuid.New().String(),
 							Effect:            corev1.TaintEffectNoExecute,
-							TolerationSeconds: ptr.To[int64](rand.Int63()),
+							TolerationSeconds: new(rand.Int63()),
 						},
 					},
 				},
@@ -193,7 +192,7 @@ func randomConfigOptions() Options {
 							Operator:          corev1.TolerationOpEqual,
 							Value:             uuid.New().String(),
 							Effect:            corev1.TaintEffectNoExecute,
-							TolerationSeconds: ptr.To[int64](rand.Int63()),
+							TolerationSeconds: new(rand.Int63()),
 						},
 					},
 				},
@@ -524,7 +523,7 @@ func TestConfigOptions_RulerAlertManager(t *testing.T) {
 			cfg := ConfigOptions(tc.opts)
 			err := ConfigureOptionsForMode(&cfg, tc.opts)
 
-			require.Nil(t, err)
+			require.NoError(t, err)
 			require.Equal(t, tc.wantOptions, cfg.Ruler.AlertManager)
 		})
 	}
@@ -642,7 +641,7 @@ func TestConfigOptions_RulerAlertManager_UserOverride(t *testing.T) {
 
 			cfg := ConfigOptions(tc.opts)
 			err := ConfigureOptionsForMode(&cfg, tc.opts)
-			require.Nil(t, err)
+			require.NoError(t, err)
 			require.Equal(t, tc.wantOptions, cfg.Ruler.AlertManager)
 		})
 	}
@@ -719,12 +718,12 @@ func TestConfigOptions_RulerOverrides_OCPApplicationTenant(t *testing.T) {
 							RefreshInterval: "1m",
 							Notifier: &config.NotifierConfig{
 								TLS: config.TLSConfig{
-									ServerName: ptr.To("alertmanager-user-workload.openshift-user-workload-monitoring.svc.cluster.local"),
-									CAPath:     ptr.To("/var/run/ca/alertmanager/service-ca.crt"),
+									ServerName: new("alertmanager-user-workload.openshift-user-workload-monitoring.svc.cluster.local"),
+									CAPath:     new("/var/run/ca/alertmanager/service-ca.crt"),
 								},
 								HeaderAuth: config.HeaderAuth{
-									Type:            ptr.To("Bearer"),
-									CredentialsFile: ptr.To("/var/run/secrets/kubernetes.io/serviceaccount/token"),
+									Type:            new("Bearer"),
+									CredentialsFile: new("/var/run/secrets/kubernetes.io/serviceaccount/token"),
 								},
 							},
 						},
@@ -772,8 +771,8 @@ func TestConfigOptions_RulerOverrides_OCPApplicationTenant(t *testing.T) {
 
 			cfg := ConfigOptions(tc.opts)
 			err := ConfigureOptionsForMode(&cfg, tc.opts)
-			require.Nil(t, err)
-			require.EqualValues(t, tc.wantOptions, cfg.Overrides)
+			require.NoError(t, err)
+			require.Equal(t, tc.wantOptions, cfg.Overrides)
 		})
 	}
 }
@@ -843,14 +842,14 @@ func TestConfigOptions_RulerOverrides(t *testing.T) {
 									},
 									Client: &lokiv1.AlertManagerClientConfig{
 										TLS: &lokiv1.AlertManagerClientTLSConfig{
-											ServerName: ptr.To("application.svc"),
-											CAPath:     ptr.To("/tenant/application/alertmanager/ca.crt"),
-											CertPath:   ptr.To("/tenant/application/alertmanager/cert.crt"),
-											KeyPath:    ptr.To("/tenant/application/alertmanager/cert.key"),
+											ServerName: new("application.svc"),
+											CAPath:     new("/tenant/application/alertmanager/ca.crt"),
+											CertPath:   new("/tenant/application/alertmanager/cert.crt"),
+											KeyPath:    new("/tenant/application/alertmanager/cert.key"),
 										},
 										HeaderAuth: &lokiv1.AlertManagerClientHeaderAuth{
-											Type:        ptr.To("Bearer"),
-											Credentials: ptr.To("letmeinplz"),
+											Type:        new("Bearer"),
+											Credentials: new("letmeinplz"),
 										},
 									},
 								},
@@ -867,14 +866,14 @@ func TestConfigOptions_RulerOverrides(t *testing.T) {
 									},
 									Client: &lokiv1.AlertManagerClientConfig{
 										TLS: &lokiv1.AlertManagerClientTLSConfig{
-											ServerName: ptr.To("other.svc"),
-											CAPath:     ptr.To("/tenant/other/alertmanager/ca.crt"),
-											CertPath:   ptr.To("/tenant/other/alertmanager/cert.crt"),
-											KeyPath:    ptr.To("/tenant/other/alertmanager/cert.key"),
+											ServerName: new("other.svc"),
+											CAPath:     new("/tenant/other/alertmanager/ca.crt"),
+											CertPath:   new("/tenant/other/alertmanager/cert.crt"),
+											KeyPath:    new("/tenant/other/alertmanager/cert.key"),
 										},
 										BasicAuth: &lokiv1.AlertManagerClientBasicAuth{
-											Username: ptr.To("user"),
-											Password: ptr.To("pass"),
+											Username: new("user"),
+											Password: new("pass"),
 										},
 									},
 								},
@@ -901,14 +900,14 @@ func TestConfigOptions_RulerOverrides(t *testing.T) {
 							ExternalLabels:  map[string]string{"external": "label"},
 							Notifier: &config.NotifierConfig{
 								TLS: config.TLSConfig{
-									ServerName: ptr.To("application.svc"),
-									CAPath:     ptr.To("/tenant/application/alertmanager/ca.crt"),
-									CertPath:   ptr.To("/tenant/application/alertmanager/cert.crt"),
-									KeyPath:    ptr.To("/tenant/application/alertmanager/cert.key"),
+									ServerName: new("application.svc"),
+									CAPath:     new("/tenant/application/alertmanager/ca.crt"),
+									CertPath:   new("/tenant/application/alertmanager/cert.crt"),
+									KeyPath:    new("/tenant/application/alertmanager/cert.key"),
 								},
 								HeaderAuth: config.HeaderAuth{
-									Type:        ptr.To("Bearer"),
-									Credentials: ptr.To("letmeinplz"),
+									Type:        new("Bearer"),
+									Credentials: new("letmeinplz"),
 								},
 							},
 						},
@@ -925,14 +924,14 @@ func TestConfigOptions_RulerOverrides(t *testing.T) {
 							ExternalLabels:  map[string]string{"external1": "label1"},
 							Notifier: &config.NotifierConfig{
 								TLS: config.TLSConfig{
-									ServerName: ptr.To("other.svc"),
-									CAPath:     ptr.To("/tenant/other/alertmanager/ca.crt"),
-									CertPath:   ptr.To("/tenant/other/alertmanager/cert.crt"),
-									KeyPath:    ptr.To("/tenant/other/alertmanager/cert.key"),
+									ServerName: new("other.svc"),
+									CAPath:     new("/tenant/other/alertmanager/ca.crt"),
+									CertPath:   new("/tenant/other/alertmanager/cert.crt"),
+									KeyPath:    new("/tenant/other/alertmanager/cert.key"),
 								},
 								BasicAuth: config.BasicAuth{
-									Username: ptr.To("user"),
-									Password: ptr.To("pass"),
+									Username: new("user"),
+									Password: new("pass"),
 								},
 							},
 						},
@@ -980,8 +979,8 @@ func TestConfigOptions_RulerOverrides(t *testing.T) {
 
 			cfg := ConfigOptions(tc.opts)
 			err := ConfigureOptionsForMode(&cfg, tc.opts)
-			require.Nil(t, err)
-			require.EqualValues(t, tc.wantOptions, cfg.Overrides)
+			require.NoError(t, err)
+			require.Equal(t, tc.wantOptions, cfg.Overrides)
 		})
 	}
 }
@@ -1066,12 +1065,12 @@ func TestConfigOptions_RulerOverrides_OCPUserWorkloadOnlyEnabled(t *testing.T) {
 							RefreshInterval: "1m",
 							Notifier: &config.NotifierConfig{
 								TLS: config.TLSConfig{
-									ServerName: ptr.To("alertmanager-user-workload.openshift-user-workload-monitoring.svc.cluster.local"),
-									CAPath:     ptr.To("/var/run/ca/alertmanager/service-ca.crt"),
+									ServerName: new("alertmanager-user-workload.openshift-user-workload-monitoring.svc.cluster.local"),
+									CAPath:     new("/var/run/ca/alertmanager/service-ca.crt"),
 								},
 								HeaderAuth: config.HeaderAuth{
-									Type:            ptr.To("Bearer"),
-									CredentialsFile: ptr.To("/var/run/secrets/kubernetes.io/serviceaccount/token"),
+									Type:            new("Bearer"),
+									CredentialsFile: new("/var/run/secrets/kubernetes.io/serviceaccount/token"),
 								},
 							},
 						},
@@ -1144,12 +1143,12 @@ func TestConfigOptions_RulerOverrides_OCPUserWorkloadOnlyEnabled(t *testing.T) {
 							RefreshInterval: "1m",
 							Notifier: &config.NotifierConfig{
 								TLS: config.TLSConfig{
-									ServerName: ptr.To("alertmanager-user-workload.openshift-user-workload-monitoring.svc.cluster.local"),
-									CAPath:     ptr.To("/var/run/ca/alertmanager/service-ca.crt"),
+									ServerName: new("alertmanager-user-workload.openshift-user-workload-monitoring.svc.cluster.local"),
+									CAPath:     new("/var/run/ca/alertmanager/service-ca.crt"),
 								},
 								HeaderAuth: config.HeaderAuth{
-									Type:            ptr.To("Bearer"),
-									CredentialsFile: ptr.To("/var/run/secrets/kubernetes.io/serviceaccount/token"),
+									Type:            new("Bearer"),
+									CredentialsFile: new("/var/run/secrets/kubernetes.io/serviceaccount/token"),
 								},
 							},
 						},
@@ -1204,9 +1203,9 @@ func TestConfigOptions_RulerOverrides_OCPUserWorkloadOnlyEnabled(t *testing.T) {
 
 			cfg := ConfigOptions(tc.opts)
 			err := ConfigureOptionsForMode(&cfg, tc.opts)
-			require.Nil(t, err)
-			require.EqualValues(t, tc.wantOverridesOptions, cfg.Overrides)
-			require.EqualValues(t, tc.wantOptions, cfg.Ruler.AlertManager)
+			require.NoError(t, err)
+			require.Equal(t, tc.wantOverridesOptions, cfg.Overrides)
+			require.Equal(t, tc.wantOptions, cfg.Ruler.AlertManager)
 		})
 	}
 }

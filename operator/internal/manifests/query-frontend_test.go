@@ -48,7 +48,7 @@ func TestNewQueryFrontendDeployment_HasTemplateConfigHashAnnotation(t *testing.T
 
 	annotations := ss.Spec.Template.Annotations
 	require.Contains(t, annotations, AnnotationLokiConfigHash)
-	require.Equal(t, annotations[AnnotationLokiConfigHash], "deadbeef")
+	require.Equal(t, "deadbeef", annotations[AnnotationLokiConfigHash])
 }
 
 func TestNewQueryFrontendDeployment_HasTemplateObjectStoreHashAnnotation(t *testing.T) {
@@ -69,7 +69,7 @@ func TestNewQueryFrontendDeployment_HasTemplateObjectStoreHashAnnotation(t *test
 
 	annotations := ss.Spec.Template.Annotations
 	require.Contains(t, annotations, AnnotationLokiObjectStoreHash)
-	require.Equal(t, annotations[AnnotationLokiObjectStoreHash], "deadbeef")
+	require.Equal(t, "deadbeef", annotations[AnnotationLokiObjectStoreHash])
 }
 
 func TestNewQueryFrontendDeployment_HasTemplateCertRotationRequiredAtAnnotation(t *testing.T) {
@@ -88,7 +88,7 @@ func TestNewQueryFrontendDeployment_HasTemplateCertRotationRequiredAtAnnotation(
 
 	annotations := ss.Spec.Template.Annotations
 	require.Contains(t, annotations, AnnotationCertRotationRequiredAt)
-	require.Equal(t, annotations[AnnotationCertRotationRequiredAt], "deadbeef")
+	require.Equal(t, "deadbeef", annotations[AnnotationCertRotationRequiredAt])
 }
 
 func TestBuildQueryFrontend_PodDisruptionBudget(t *testing.T) {

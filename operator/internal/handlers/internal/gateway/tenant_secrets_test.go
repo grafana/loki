@@ -181,7 +181,7 @@ func TestExtractOIDCSecret(t *testing.T) {
 				require.NoError(t, err)
 			}
 			if tst.wantErr {
-				require.NotNil(t, err)
+				require.Error(t, err)
 			}
 		})
 	}
@@ -220,7 +220,7 @@ func TestCheckKeyIsPresent(t *testing.T) {
 				require.NoError(t, err)
 			}
 			if tst.wantErr {
-				require.NotNil(t, err)
+				require.Error(t, err)
 			}
 		})
 	}
