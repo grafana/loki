@@ -1,8 +1,6 @@
 package syntax
 
 import (
-	"slices"
-
 	"github.com/prometheus/prometheus/model/labels"
 
 	"github.com/grafana/loki/v3/pkg/logql/log"
@@ -26,13 +24,9 @@ func cloneGrouping(g *Grouping) *Grouping {
 }
 
 func cloneVectorMatching(v *VectorMatching) *VectorMatching {
-	if v == nil {
-		return nil
-	}
-
 	copied := *v
-	copied.Include = slices.Clone(v.Include)
-	copied.MatchingLabels = slices.Clone(v.MatchingLabels)
+	copy(copied.Include, v.Include)
+	copy(copied.MatchingLabels, v.MatchingLabels)
 
 	return &copied
 }
