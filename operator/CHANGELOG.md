@@ -1,5 +1,26 @@
 ## Main
 
+## [0.11.1](https://github.com/grafana/loki/compare/operator/v0.11.0...operator/v0.11.1) (2026-09-11)
+
+
+### Features
+
+* **operator:** Add CPU and memory utilization ratio telemetry recording rules ([#23379](https://github.com/grafana/loki/issues/23379)) ([4cc1c43](https://github.com/grafana/loki/commit/4cc1c43ebcce6ddb9daa9c2790def321aa292118))
+* **operator:** Allow custom certs to be used by the passthrough gateway tenancy ([#23896](https://github.com/grafana/loki/issues/23896)) ([abf69d1](https://github.com/grafana/loki/commit/abf69d149da664e2d373eab5db1aaf75229ebc7c))
+* **operator:** Update Loki operand to 3.7.7 ([#24448](https://github.com/grafana/loki/issues/24448)) ([04417f4](https://github.com/grafana/loki/commit/04417f4851c5bf0bf826130242f2e083be516de9))
+
+
+### Bug Fixes
+
+* **operator:** Fix Go module and golangci-lint configuration ([#24346](https://github.com/grafana/loki/issues/24346)) ([101e8c4](https://github.com/grafana/loki/commit/101e8c4fece33f496e086f6369d738980aeba014))
+* **operator:** Remove BoltDB alerts, recording rules, and Grafana dashboards ([#23884](https://github.com/grafana/loki/issues/23884)) ([260115c](https://github.com/grafana/loki/commit/260115c3a0847f227e3080e0f43dd0b174515276))
+* **operator:** Set ingester terminationGracePeriodSeconds to 300s ([#24324](https://github.com/grafana/loki/issues/24324)) ([c0e79ac](https://github.com/grafana/loki/commit/c0e79ac4191f6171d16abdf779a5456d2b49e6dd))
+* **operator:** Validate passthrough gateway CA exists ([#23800](https://github.com/grafana/loki/issues/23800)) ([4e3fb38](https://github.com/grafana/loki/commit/4e3fb3853420f9b4794e8697f70e40ebc775959d))
+* **security/HIGH/operator:** Update module google.golang.org/grpc to v1.83.1 [SECURITY] (main) ([#24326](https://github.com/grafana/loki/issues/24326)) ([e9831ee](https://github.com/grafana/loki/commit/e9831eedac3f76a4eaee7c2929c07db520e7baee))
+* **security/HIGH/operator:** Update module google.golang.org/grpc to v1.83.2 [SECURITY] (main) ([#24427](https://github.com/grafana/loki/issues/24427)) ([89c21be](https://github.com/grafana/loki/commit/89c21becce99c9c4ca3da18beefe57599b4fb8bd))
+* **security/UNKNOWN/operator:** Update module go.etcd.io/etcd/client/pkg/v3 to v3.6.14 [SECURITY] (main) ([#24059](https://github.com/grafana/loki/issues/24059)) ([a912e03](https://github.com/grafana/loki/commit/a912e03797de6827ed83c249e84f3d41c46cbcec))
+* **security/UNKNOWN/operator:** Update module golang.org/x/crypto to v0.56.0 [SECURITY] (main) ([#24334](https://github.com/grafana/loki/issues/24334)) ([185e3ae](https://github.com/grafana/loki/commit/185e3aea0ece2810dba04591b01575dd1263b005))
+
 ## [0.11.0](https://github.com/grafana/loki/compare/operator/v0.10.2...operator/v0.11.0) (2026-08-18)
 
 
