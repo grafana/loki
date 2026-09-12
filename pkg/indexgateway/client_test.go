@@ -315,6 +315,7 @@ func TestGatewayClient_SimpleMode_ShuffleSharding(t *testing.T) {
 	require.Len(t, pool.RegisteredAddresses(), 5)
 }
 
+
 func TestDoubleRegistration(t *testing.T) {
 	logger := log.NewNopLogger()
 	r := prometheus.NewRegistry()
