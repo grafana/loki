@@ -25,6 +25,7 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/dataobj/consumer/logsobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
+	"github.com/grafana/loki/v3/pkg/dataobj/uploader"
 	"github.com/grafana/loki/v3/pkg/engine/internal/executor"
 	"github.com/grafana/loki/v3/pkg/engine/internal/metrictimer"
 	"github.com/grafana/loki/v3/pkg/engine/internal/obslock"
@@ -109,6 +110,8 @@ type Config struct {
 	// LogsobjCfg is the builder config for compacted log objects
 	// Required for compaction tasks; may be nil for query-only workers.
 	LogsobjCfg logsobj.BuilderBaseConfig
+	// UploaderCfg controls object key generation for compacted log objects.
+	UploaderCfg uploader.Config
 
 	// IndexMergeObserver is used  by compaction to populate output-size
 	// histograms. Optional; nil disables observation.
@@ -220,6 +223,7 @@ func (w *Worker) run(ctx context.Context) error {
 			ScratchStore:   w.config.ScratchStore,
 			IndexobjCfg:    w.config.IndexobjCfg,
 			LogsobjCfg:     w.config.LogsobjCfg,
+			UploaderCfg:    w.config.UploaderCfg,
 
 			IndexMergeObserver: w.config.IndexMergeObserver,
 			LogMergeObserver:   w.config.LogMergeObserver,

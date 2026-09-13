@@ -20,13 +20,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/util/loser"
 )
 
-// SimpleSortedIterator returns an iterator that performs a k-way merge of records from
-// multiple logs sections. It requires that the input sections are sorted
-// according to sort.
-func SimpleSortedIterator(ctx context.Context, sections []*dataobj.Section, sort logs.SortOrder) (result.Seq[logs.Record], error) {
-	return iterator(ctx, sections, iteratorOptions{less: logs.CompareForSortOrder(sort)})
-}
-
 // SchemaSortedIterator returns an iterator that performs a k-way merge of records
 // from multiple schema-sorted logs sections.
 // The input sections must belong to the same object and must therefore have the same StreamID key space.

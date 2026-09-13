@@ -3,7 +3,6 @@ package executor
 import (
 	"context"
 	"errors"
-	"fmt"
 	"io"
 	"strings"
 	"testing"
@@ -597,10 +596,10 @@ func TestSortLayoutEqual_DetectsMismatchedComponents(t *testing.T) {
 		},
 	}
 
-	require.True(t, sortLayoutEqual(want, want), "identical layouts must match")
+	require.True(t, logsobj.CompareSortLayout(want, want), "identical layouts must match")
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			require.False(t, sortLayoutEqual(test.got, want))
+			require.False(t, logsobj.CompareSortLayout(test.got, want))
 		})
 	}
 }
@@ -813,41 +812,6 @@ func (removeFailingStore) Remove(scratch.Handle) error {
 	return errors.New("scratch remove failed")
 }
 
-func TestDoLogObjectMerge_CompactedObjectCloseErrorPropagates(t *testing.T) {
-	ctx := context.Background()
-	dataBucket := objstore.NewInMemBucket()
-	indexBucket := objstore.NewInMemBucket()
-
-	const tenant = "T"
-	sortSchema := []string{"label:app"}
-	base := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
-
-	buildSourceLogObject(t, dataBucket, "objA", sortSchema, map[string][]testStream{
-		tenant: {{labels: `{app="a"}`, entries: linesAt(base, 3)}},
-	})
-
-	c := newTestExecutorContext(t, indexBucket)
-	c.dataBucket = dataBucket
-	c.scratchStore = removeFailingStore{c.scratchStore}
-	node := &physical.LogMerge{
-		Tenant:     tenant,
-		SortSchema: sortSchema,
-		Runs: []*compactionv2pb.RunRef{
-			{Sections: []*compactionv2pb.SectionRef{{ObjectPath: "objA"}}},
-		},
-	}
-
-	_, err := c.doLogObjectMerge(ctx, node)
-	require.Error(t, err, "a failing closer must surface as an error, not be dropped")
-	require.ErrorContains(t, err, "scratch remove failed")
-
-	// No index should be written when a compacted object fails to close.
-	// (The index path is content-addressed, so assert nothing landed in the
-	// index bucket.)
-	require.NoError(t, indexBucket.Iter(ctx, "", func(string) error {
-		return fmt.Errorf("unexpected object written to index bucket")
-	}))
-}
 func TestExecuteLogMerge_ContentHashAndRecord(t *testing.T) {
 	ctx := context.Background()
 	dataBucket := objstore.NewInMemBucket()

@@ -50,6 +50,8 @@ func (n *Node) UnmarshalPhysical(from physical.Node) error {
 		n.Kind = &Node_IndexMerge{}
 	case *physical.LogMerge:
 		n.Kind = &Node_LogMerge{}
+	case *physical.SortObject:
+		n.Kind = &Node_SortObject{}
 	default:
 		return fmt.Errorf("unsupported physical node type: %T", from)
 	}
@@ -621,6 +623,28 @@ func (n *LogMerge) UnmarshalPhysical(from physical.Node) error {
 		TocWindowStartUnixNanos: logMerge.ToCWindowStart,
 		Runs:                    copyRunRefs(logMerge.Runs),
 		SortSchema:              logMerge.SortSchema,
+	}
+	return nil
+}
+
+// UnmarshalPhysical reads from into n. Returns an error if the conversion fails
+// or is unsupported.
+func (n *Node_SortObject) UnmarshalPhysical(from physical.Node) error {
+	n.SortObject = new(SortObject)
+	return n.SortObject.UnmarshalPhysical(from)
+}
+
+// UnmarshalPhysical reads from into n. Returns an error if the conversion fails
+// or is unsupported.
+func (n *SortObject) UnmarshalPhysical(from physical.Node) error {
+	sortObject, ok := from.(*physical.SortObject)
+	if !ok {
+		return fmt.Errorf("unsupported physical node type: %T", from)
+	}
+
+	*n = SortObject{
+		SourceObjectPath: sortObject.SourceObjectPath,
+		SortSchema:       sortObject.SortSchema,
 	}
 	return nil
 }
