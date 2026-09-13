@@ -36,6 +36,8 @@ const (
 
 	lokiFrontendContainerName = "loki-query-frontend"
 
+	defaultIngesterTerminationGracePeriodSeconds = int64(300)
+
 	gatewayContainerName    = "gateway"
 	gatewayHTTPPort         = 8080
 	gatewayInternalPort     = 8081
@@ -65,7 +67,7 @@ const (
 	EnvRelatedImagePassthroughGateway = "RELATED_IMAGE_PASSTHROUGH_GATEWAY"
 
 	// DefaultContainerImage declares the default fallback for loki image.
-	DefaultContainerImage = "docker.io/grafana/loki:3.7.3"
+	DefaultContainerImage = "docker.io/grafana/loki:3.7.7"
 	// DefaultOperatorImage declares the default fallback for the Loki Operator image.
 	DefaultOperatorImage = "docker.io/grafana/loki-operator:0.11.0"
 

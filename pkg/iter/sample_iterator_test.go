@@ -107,9 +107,9 @@ var carSeries = logproto.Series{
 	},
 }
 
-func TestNewMergeSampleIterator(t *testing.T) {
+func TestNewTimestampFirstMergeSampleIterator(t *testing.T) {
 	t.Run("with labels", func(t *testing.T) {
-		it := NewMergeSampleIterator(context.Background(),
+		it := NewTimestampFirstMergeSampleIterator(context.Background(),
 			[]SampleIterator{
 				NewSeriesIterator(varSeries),
 				NewSeriesIterator(carSeries),
@@ -133,7 +133,7 @@ func TestNewMergeSampleIterator(t *testing.T) {
 		require.NoError(t, it.Close())
 	})
 	t.Run("no labels", func(t *testing.T) {
-		it := NewMergeSampleIterator(context.Background(),
+		it := NewTimestampFirstMergeSampleIterator(context.Background(),
 			[]SampleIterator{
 				NewSeriesIterator(logproto.Series{
 					Labels:     ``,
@@ -198,8 +198,8 @@ func (f *fakeSampleClient) Recv() (*logproto.SampleQueryResponse, error) {
 
 func (fakeSampleClient) Context() context.Context { return context.Background() }
 func (fakeSampleClient) CloseSend() error         { return nil }
-func TestNewSampleQueryClientIterator(t *testing.T) {
-	it := NewSampleQueryClientIterator(&fakeSampleClient{
+func TestNewTimestampFirstSampleQueryClientIterator(t *testing.T) {
+	it := NewTimestampFirstSampleQueryClientIterator(&fakeSampleClient{
 		series: [][]logproto.Series{
 			{varSeries},
 			{carSeries},
@@ -294,7 +294,7 @@ func TestMergeSampleIterator_ShouldCloseEverySource(t *testing.T) {
 		b := &erroringSampleIterator{samples: []logproto.Sample{sample(2), sample(5)}, labels: `{s="b"}`}
 		c := &erroringSampleIterator{samples: []logproto.Sample{sample(3)}, labels: `{s="c"}`}
 
-		it := NewMergeSampleIterator(ctx, []SampleIterator{a, b, c})
+		it := NewTimestampFirstMergeSampleIterator(ctx, []SampleIterator{a, b, c})
 		var got int
 		for it.Next() {
 			got++
@@ -311,7 +311,7 @@ func TestMergeSampleIterator_ShouldCloseEverySource(t *testing.T) {
 	t.Run("single source drained through the shortcut is closed once", func(t *testing.T) {
 		a := &erroringSampleIterator{samples: []logproto.Sample{sample(1), sample(2)}, labels: `{s="a"}`}
 
-		it := NewMergeSampleIterator(ctx, []SampleIterator{a})
+		it := NewTimestampFirstMergeSampleIterator(ctx, []SampleIterator{a})
 		for it.Next() { //nolint:revive
 		}
 		require.NoError(t, it.Close())
@@ -323,7 +323,7 @@ func TestMergeSampleIterator_ShouldCloseEverySource(t *testing.T) {
 		empty := &erroringSampleIterator{labels: `{s="empty"}`}
 		a := &erroringSampleIterator{samples: []logproto.Sample{sample(1)}, labels: `{s="a"}`}
 
-		it := NewMergeSampleIterator(ctx, []SampleIterator{empty, a})
+		it := NewTimestampFirstMergeSampleIterator(ctx, []SampleIterator{empty, a})
 		for it.Next() { //nolint:revive
 		}
 		require.NoError(t, it.Close())
@@ -336,7 +336,7 @@ func TestMergeSampleIterator_ShouldCloseEverySource(t *testing.T) {
 		a := &erroringSampleIterator{samples: []logproto.Sample{sample(1)}, labels: `{s="a"}`}
 		b := &erroringSampleIterator{samples: []logproto.Sample{sample(2)}, labels: `{s="b"}`}
 
-		it := NewMergeSampleIterator(ctx, []SampleIterator{a, b})
+		it := NewTimestampFirstMergeSampleIterator(ctx, []SampleIterator{a, b})
 		require.True(t, it.Next()) // drains a; b stays on the heap
 		require.NoError(t, it.Close())
 
@@ -350,7 +350,7 @@ func TestMergeSampleIterator_ShouldCloseEverySource(t *testing.T) {
 		a := &erroringSampleIterator{samples: []logproto.Sample{sample(1), sample(3)}, labels: `{s="a"}`, closeErr: errors.New("close a")}
 		b := &erroringSampleIterator{samples: []logproto.Sample{sample(2), sample(4)}, labels: `{s="b"}`, closeErr: errors.New("close b")}
 
-		it := NewMergeSampleIterator(ctx, []SampleIterator{a, b})
+		it := NewTimestampFirstMergeSampleIterator(ctx, []SampleIterator{a, b})
 		require.True(t, it.Next()) // prefetch both onto the heap
 		it.Close()
 
@@ -363,7 +363,7 @@ func TestMergeSampleIterator_ShouldCloseEverySource(t *testing.T) {
 		a := &erroringSampleIterator{samples: []logproto.Sample{sample(1)}, labels: `{s="a"}`}
 		b := &erroringSampleIterator{samples: []logproto.Sample{sample(2)}, labels: `{s="b"}`}
 
-		it := NewMergeSampleIterator(ctx, []SampleIterator{a, b})
+		it := NewTimestampFirstMergeSampleIterator(ctx, []SampleIterator{a, b})
 		require.NoError(t, it.Close())
 
 		require.Equal(t, 1, a.closed, "an un-prefetched source is closed by Close")
@@ -383,7 +383,7 @@ func TestMergeSampleIterator_ShouldSurfaceDrainError(t *testing.T) {
 		errored := &erroringSampleIterator{samples: []logproto.Sample{sample(1), sample(2)}, labels: `{s="a"}`, err: wantErr}
 		healthy := &erroringSampleIterator{samples: []logproto.Sample{sample(3)}, labels: `{s="b"}`}
 
-		it := NewMergeSampleIterator(ctx, []SampleIterator{errored, healthy})
+		it := NewTimestampFirstMergeSampleIterator(ctx, []SampleIterator{errored, healthy})
 		for it.Next() { //nolint:revive
 		}
 		require.ErrorIs(t, it.Err(), wantErr)
@@ -396,7 +396,7 @@ func TestMergeSampleIterator_ShouldSurfaceDrainError(t *testing.T) {
 		// A lone source that fails at EOF drains through the heap.Len()==1 shortcut.
 		errored := &erroringSampleIterator{samples: []logproto.Sample{sample(1), sample(2)}, labels: `{s="a"}`, err: wantErr}
 
-		it := NewMergeSampleIterator(ctx, []SampleIterator{errored})
+		it := NewTimestampFirstMergeSampleIterator(ctx, []SampleIterator{errored})
 		for it.Next() { //nolint:revive
 		}
 		require.ErrorIs(t, it.Err(), wantErr)
@@ -583,7 +583,7 @@ func BenchmarkSortSampleIterator(b *testing.B) {
 				itrs = append(itrs, NewSeriesIterator(series[i]))
 			}
 			b.StartTimer()
-			it := NewMergeSampleIterator(ctx, itrs)
+			it := NewTimestampFirstMergeSampleIterator(ctx, itrs)
 			for it.Next() {
 				it.At()
 			}
@@ -675,7 +675,7 @@ func Test_SampleSortIterator(t *testing.T) {
 }
 
 func TestDedupeMergeSampleIterator(t *testing.T) {
-	it := NewMergeSampleIterator(context.Background(),
+	it := NewTimestampFirstMergeSampleIterator(context.Background(),
 		[]SampleIterator{
 			NewSeriesIterator(logproto.Series{
 				Labels: ``,
@@ -746,7 +746,7 @@ func TestMergeSampleIteratorZeroHash(t *testing.T) {
 		},
 	}
 
-	it := NewMergeSampleIterator(context.Background(), []SampleIterator{
+	it := NewTimestampFirstMergeSampleIterator(context.Background(), []SampleIterator{
 		NewSeriesIterator(series1),
 		NewSeriesIterator(series2),
 	})

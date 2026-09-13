@@ -9,7 +9,7 @@ spec:
         - name: manager
           env:
           - name: RELATED_IMAGE_LOKI
-            value: quay.io/openshift-logging/loki:v3.7.3
+            value: quay.io/openshift-logging/loki:v3.7.7
           - name: RELATED_IMAGE_OPERATOR
             value: quay.io/openshift-logging/loki-operator:0.1.0
           - name: RELATED_IMAGE_GATEWAY

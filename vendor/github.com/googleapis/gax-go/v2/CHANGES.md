@@ -1,5 +1,12 @@
 # Changes
 
+## [2.24.1](https://github.com/googleapis/gax-go/compare/v2.24.0...v2.24.1) (2026-09-03)
+
+
+### Bug Fixes
+
+* split implementation of ProtoJSONStream for 1.27 and later ([#532](https://github.com/googleapis/gax-go/issues/532)) ([d0623a1](https://github.com/googleapis/gax-go/commit/d0623a1d3c843a64e85ad8b4d4ea37695a668868))
+
 ## [2.24.0](https://github.com/googleapis/gax-go/compare/v2.23.0...v2.24.0) (2026-08-20)
 
 

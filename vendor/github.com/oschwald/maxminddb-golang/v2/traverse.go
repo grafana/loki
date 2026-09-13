@@ -216,7 +216,8 @@ func (r *Reader) NetworksWithin(prefix netip.Prefix, options ...NetworksOption) 
 						prefixLen: uint8(node.bit),
 					}
 					res.err = mmdberrors.NewInvalidDatabaseError(
-						"invalid search tree at %s", res.Prefix())
+						"invalid search tree at %s", res.Prefix(),
+					)
 
 					yield(res)
 

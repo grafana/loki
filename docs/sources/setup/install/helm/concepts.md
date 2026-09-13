@@ -110,3 +110,11 @@ If NetworkPolicies are enabled, they are more restrictive if the gateway is enab
 ## Caching
 
 By default, the chart deploys Memcached-based **chunks cache** (`chunksCache.enabled: true`) and **results cache** (`resultsCache.enabled: true`). To use an externally managed Memcached instead, disable the built-in caches and point `chunksCache.addresses` / `resultsCache.addresses` at your service. See [caching](https://grafana.com/docs/loki/<LOKI_VERSION>/operations/caching/) for tuning guidance.
+
+## StatefulSet persistence
+
+Several components in this chart run as Kubernetes StatefulSets, including `ingester`, `write`, `backend`, and `singleBinary`, which all use `kind: StatefulSet` by default. Some Helm values map to StatefulSet fields that Kubernetes treats as immutable after the StatefulSet is created, such as storage class, persistent volume claim (PVC) size, access modes, and `podManagementPolicy`. If you change one of these values and run `helm upgrade`, the upgrade can fail.
+
+For a few of these values, including PVC size and `podManagementPolicy`, you can set `*.statefulSetRecreateJob.enabled` on a Loki component. This runs an experimental job before the upgrade that deletes the StatefulSet but keeps its pods and PVCs, so no data is lost. The job does not handle other changes, such as storage class or access modes. Those still require a manual migration.
+
+For the full list of affected values, which components render StatefulSets in each deployment mode, and how the recreate job works, see the "StatefulSet immutability" section of the [chart's README](https://github.com/grafana-community/helm-charts/tree/main/charts/loki#statefulset-immutability) on GitHub.

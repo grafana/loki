@@ -9,7 +9,7 @@ spec:
         - name: manager
           env:
           - name: RELATED_IMAGE_LOKI
-            value: docker.io/grafana/loki:3.7.3
+            value: docker.io/grafana/loki:3.7.7
           - name: RELATED_IMAGE_OPERATOR
             value: docker.io/grafana/loki-operator:0.11.0
           - name: RELATED_IMAGE_GATEWAY
