@@ -14,9 +14,11 @@ import (
 	"github.com/go-kit/log/level"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
+	"github.com/prometheus/prometheus/storage"
 
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/storage/chunk"
+	chunkcache "github.com/grafana/loki/v3/pkg/storage/chunk/cache"
 	"github.com/grafana/loki/v3/pkg/storage/stores/index/seriesvolume"
 	shipperindex "github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/index"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/index"
@@ -97,16 +99,46 @@ type TSDBFile struct {
 }
 
 func NewShippableTSDBFile(id Identifier, opts index.ReaderOptions) (*TSDBFile, error) {
+	return newShippableTSDBFile(id, opts, nil, "")
+}
+
+func postingsObjectIdentity(indexCacheLocation, filePath, storagePrefix string) (string, bool) {
+	relative, err := filepath.Rel(indexCacheLocation, filePath)
+	if err != nil || !filepath.IsLocal(relative) {
+		return "", false
+	}
+	parts := strings.Split(filepath.ToSlash(relative), "/")
+	if len(parts) != 3 {
+		return "", false
+	}
+	return objectIdentity(storagePrefix, parts[0], parts[1], parts[2]), true
+}
+
+func openShippableTSDBWithPostingsCache(p string, opts index.ReaderOptions, postingsCache chunkcache.Cache, storagePrefix, indexCacheLocation string) (shipperindex.Index, error) {
+	id, err := identifierFromPath(p)
+	if err != nil {
+		return nil, err
+	}
+	identity, ok := postingsObjectIdentity(indexCacheLocation, p, storagePrefix)
+	if !ok {
+		postingsCache = nil
+	}
+	return newShippableTSDBFile(id, opts, postingsCache, identity)
+}
+
+func newShippableTSDBFile(id Identifier, opts index.ReaderOptions, postingsCache chunkcache.Cache, identity string) (*TSDBFile, error) {
 	idx, getRawFileReader, err := NewTSDBIndexFromFile(id.Path(), opts)
 	if err != nil {
 		return nil, err
 	}
+	idx.setPostingsCache(postingsCache, identity)
 
-	return &TSDBFile{
+	file := &TSDBFile{
 		Identifier:       id,
 		Index:            idx,
 		getRawFileReader: getRawFileReader,
-	}, err
+	}
+	return file, err
 }
 
 func (f *TSDBFile) Close() error {
@@ -122,9 +154,22 @@ func (f *TSDBFile) Reader() (io.ReadSeekCloser, error) {
 // and translates the IndexReader to an Index implementation
 // It loads the file into memory and doesn't keep a file descriptor open
 type TSDBIndex struct {
-	reader        IndexReader
-	chunkFilterMu sync.Mutex
-	chunkFilter   chunk.RequestChunkFilterer
+	reader         IndexReader
+	chunkFilterMu  sync.Mutex
+	chunkFilter    chunk.RequestChunkFilterer
+	postingsCache  chunkcache.Cache
+	postingsID     string
+	postingsMaxRef storage.SeriesRef
+}
+
+func (i *TSDBIndex) setPostingsCache(c chunkcache.Cache, identity string) {
+	sized, ok := i.reader.(interface{ Size() int64 })
+	if c == nil || !ok || sized.Size() <= 0 {
+		return
+	}
+	i.postingsCache = c
+	i.postingsID = identity
+	i.postingsMaxRef = storage.SeriesRef(sized.Size()-1) / 16
 }
 
 // Return the index as well as the underlying raw file reader which isn't exposed as an index
@@ -245,13 +290,23 @@ func (i *TSDBIndex) forSeriesNoLabels(ctx context.Context, fpFilter index.Finger
 }
 
 func (i *TSDBIndex) forPostings(
-	_ context.Context,
+	ctx context.Context,
 	fpFilter index.FingerprintFilter,
 	_, _ model.Time,
 	matchers []*labels.Matcher,
 	fn func(index.Postings) error,
 ) error {
-	p, err := PostingsForMatchers(i.reader, fpFilter, matchers...)
+	compute := func() (index.Postings, error) {
+		return PostingsForMatchers(i.reader, fpFilter, matchers...)
+	}
+	var p index.Postings
+	var err error
+	postingsCache, postingsID := i.postingsCache, i.postingsID
+	if postingsCache != nil {
+		p, err = cachedPostings(ctx, postingsCache, postingsKey(postingsID, fpFilter, matchers), i.postingsMaxRef, compute)
+	} else {
+		p, err = compute()
+	}
 	if err != nil {
 		return err
 	}
