@@ -4,8 +4,10 @@ import (
 	"bytes"
 	"context"
 	"flag"
+	"fmt"
 	"io"
 	"math"
+	"strings"
 	"testing"
 	"time"
 
@@ -17,8 +19,6 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
 	"github.com/thanos-io/objstore"
-
-	"github.com/grafana/loki/pkg/push"
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/consumer/logsobj"
@@ -32,7 +32,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/engine/internal/scheduler/wire"
 	"github.com/grafana/loki/v3/pkg/engine/internal/worker"
 	"github.com/grafana/loki/v3/pkg/engine/internal/workflow"
-	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/scratch"
 )
 
@@ -107,7 +106,7 @@ func TestCoordinator_EndToEnd(t *testing.T) {
 	// --- Cycle 1: 3 sources → ⌈P/K⌉ outputs ---
 	preCycle1 := mustLoadTenant(ctx, t, bucket, window, "acme")
 	require.Len(t, preCycle1, 3, "sanity: 3 source indexes seeded")
-	_, runErr := c.compactTenant(ctx, "acme", window, preCycle1)
+	_, runErr := c.compactTenantIndexes(ctx, "acme", window, preCycle1)
 	require.NoError(t, runErr)
 
 	postCycle1 := mustLoadTenants(ctx, t, bucket, window)
@@ -142,7 +141,7 @@ func TestCoordinator_EndToEnd(t *testing.T) {
 	// --- Cycle 2: drive against the post-swap ToC. Should converge further. ---
 	indexesC2 := mustLoadTenant(ctx, t, bucket, window, "acme")
 	if len(indexesC2) > 1 {
-		_, runErr := c.compactTenant(ctx, "acme", window, indexesC2)
+		_, runErr := c.compactTenantIndexes(ctx, "acme", window, indexesC2)
 		require.NoError(t, runErr)
 		postCycle2 := mustLoadTenants(ctx, t, bucket, window)
 		t.Logf("cycle 2: acme went from %d → %d indexes", len(indexesC2), len(postCycle2["acme"]))
@@ -157,7 +156,7 @@ func TestCoordinator_EndToEnd(t *testing.T) {
 		if len(acmeIdx) <= 1 {
 			break
 		}
-		_, runErr := c.compactTenant(ctx, "acme", window, acmeIdx)
+		_, runErr := c.compactTenantIndexes(ctx, "acme", window, acmeIdx)
 		require.NoError(t, runErr)
 		t.Logf("convergence loop iter %d: acme → %d indexes", i,
 			len(mustLoadTenant(ctx, t, bucket, window, "acme")))
@@ -172,30 +171,81 @@ func TestCoordinator_EndToEnd(t *testing.T) {
 }
 
 func TestCoordinator_LogCompactionSortSchemaCompatibility(t *testing.T) {
+	targetSchema := []string{"label:app"}
+	type indexGroup struct {
+		schema        []string
+		shardCount    int64
+		sourceIndexes []int
+	}
 	tests := []struct {
 		name            string
-		sourceSchemas   [][]string
-		expectCompacted bool
+		sourceLayouts   []logs.SortLayout
+		indexGroups     []indexGroup
+		expectedIndexes int
 	}{
 		{
-			name:            "matching schemas compact and replace ToC entry",
-			sourceSchemas:   [][]string{{"label:app"}, {"label:app"}},
-			expectCompacted: true,
-		},
-		{
-			name:            "mismatched schemas leave ToC unchanged",
-			sourceSchemas:   [][]string{{"label:cluster"}, {"label:cluster"}},
-			expectCompacted: false,
-		},
-		{
-			name: "mixed task schemas leave ToC unchanged",
-			sourceSchemas: [][]string{
-				{"label:app"},
-				{"label:app"},
-				{"label:cluster"},
-				{"label:cluster"},
+			name: "matching schemas compact",
+			sourceLayouts: []logs.SortLayout{
+				logsobj.TargetSortLayout([]string{"label:app"}),
+				logsobj.TargetSortLayout([]string{"label:app"}),
 			},
-			expectCompacted: false,
+			indexGroups: []indexGroup{{
+				schema:        []string{"label:app"},
+				shardCount:    streams.ShardFactor,
+				sourceIndexes: []int{0, 1},
+			}},
+			expectedIndexes: 1,
+		},
+		{
+			name: "mismatched schemas sort each object",
+			sourceLayouts: []logs.SortLayout{
+				logsobj.TargetSortLayout([]string{"label:cluster"}),
+				logsobj.TargetSortLayout([]string{"label:cluster"}),
+			},
+			indexGroups: []indexGroup{{
+				schema:        []string{"label:cluster"},
+				shardCount:    streams.ShardFactor,
+				sourceIndexes: []int{0, 1},
+			}},
+			expectedIndexes: 2,
+		},
+		{
+			name: "matching and mismatched indexes progress together",
+			sourceLayouts: []logs.SortLayout{
+				logsobj.TargetSortLayout([]string{"label:app"}),
+				logsobj.TargetSortLayout([]string{"label:app"}),
+				logsobj.TargetSortLayout([]string{"label:cluster"}),
+				logsobj.TargetSortLayout([]string{"label:cluster"}),
+			},
+			indexGroups: []indexGroup{
+				{schema: []string{"label:app"}, shardCount: streams.ShardFactor, sourceIndexes: []int{0, 1}},
+				{schema: []string{"label:cluster"}, shardCount: streams.ShardFactor, sourceIndexes: []int{2, 3}},
+			},
+			expectedIndexes: 3,
+		},
+		{
+			name: "single legacy object is sorted despite being converged",
+			sourceLayouts: []logs.SortLayout{
+				{SchemaLabels: []string{"label:app"}, StreamOrder: logs.StreamOrderUnspecified, ShardCount: streams.ShardFactor},
+			},
+			indexGroups: []indexGroup{{
+				schema:        []string{"label:app"},
+				sourceIndexes: []int{0},
+			}},
+			expectedIndexes: 1,
+		},
+		{
+			name: "legacy shard count triggers sorting",
+			sourceLayouts: []logs.SortLayout{
+				{SchemaLabels: []string{"label:app"}, StreamOrder: logs.StreamOrderStableHashV1, ShardCount: streams.ShardFactor / 2},
+				{SchemaLabels: []string{"label:app"}, StreamOrder: logs.StreamOrderStableHashV1, ShardCount: streams.ShardFactor / 2},
+			},
+			indexGroups: []indexGroup{{
+				schema:        []string{"label:app"},
+				shardCount:    streams.ShardFactor / 2,
+				sourceIndexes: []int{0, 1},
+			}},
+			expectedIndexes: 2,
 		},
 	}
 
@@ -208,26 +258,35 @@ func TestCoordinator_LogCompactionSortSchemaCompatibility(t *testing.T) {
 			bucket := objstore.NewInMemBucket()
 			window := time.Date(2026, 5, 14, 0, 0, 0, 0, time.UTC).Truncate(metastore.MetastoreWindowSize)
 			base := window.Add(time.Hour)
-			indexPath := "indexes/aa/log-sources"
 			allSourcePaths := []string{
 				"objects/aa/source-a",
 				"objects/bb/source-b",
 				"objects/cc/source-c",
 				"objects/dd/source-d",
 			}
-			sourcePaths := allSourcePaths[:len(test.sourceSchemas)]
+			sourcePaths := allSourcePaths[:len(test.sourceLayouts)]
 
 			for i, sourcePath := range sourcePaths {
-				seedSourceLogObject(ctx, t, bucket, sourcePath, tenant, test.sourceSchemas[i], base)
+				seedSourceLogObject(ctx, t, bucket, sourcePath, tenant, test.sourceLayouts[i], base)
 			}
-			seedLogCompactionIndex(ctx, t, bucket, indexPath, tenant, sourcePaths, base)
-			writeToCWithIndexes(ctx, t, bucket, map[string][]testIndex{
-				tenant: {{
+
+			var tocIndexes []testIndex
+			for i, group := range test.indexGroups {
+				indexPath := fmt.Sprintf("indexes/%02d/log-sources", i)
+				var groupSources []string
+				for _, sourceIndex := range group.sourceIndexes {
+					groupSources = append(groupSources, sourcePaths[sourceIndex])
+				}
+				seedLogCompactionIndex(ctx, t, bucket, indexPath, tenant, groupSources, group.schema, group.shardCount, base)
+				tocIndexes = append(tocIndexes, testIndex{
 					path:                 indexPath,
 					start:                base,
 					end:                  base.Add(time.Second),
-					uncompressedLogsSize: uint64(len(sourcePaths) * 100),
-				}},
+					uncompressedLogsSize: uint64(len(groupSources) * 100),
+				})
+			}
+			writeToCWithIndexes(ctx, t, bucket, map[string][]testIndex{
+				tenant: tocIndexes,
 			})
 
 			sched, _ := startInProcessSchedulerAndWorker(ctx, t, bucket)
@@ -245,16 +304,17 @@ func TestCoordinator_LogCompactionSortSchemaCompatibility(t *testing.T) {
 				},
 				metastoreWriter: tocWriter,
 				clock:           func() time.Time { return base },
+				metrics:         newCoordinatorMetrics(prometheus.NewRegistry()),
+				limits:          integrationSortSchema(targetSchema),
 			}
 
 			before := mustLoadTenant(ctx, t, bucket, window, tenant)
-			requireIndexPaths(t, before, indexPath)
+			require.Len(t, before, len(test.indexGroups))
 
-			stats, err := c.compactTenantLogs(ctx, tenant, window, before[0])
-			require.NoError(t, err)
+			require.Equal(t, phaseOutcomeSwapped, c.runLogMergePhase(ctx, tenant, window))
 
 			after := mustLoadTenant(ctx, t, bucket, window, tenant)
-			require.Len(t, after, 1)
+			require.Len(t, after, test.expectedIndexes)
 			contents := readLogCompactionContents(ctx, t, bucket, after, tenant)
 			require.ElementsMatch(t, expectedSourceLogLines(sourcePaths), contents.lines,
 				"every source log line must remain reachable through the ToC and index")
@@ -262,26 +322,18 @@ func TestCoordinator_LogCompactionSortSchemaCompatibility(t *testing.T) {
 				"index stats must account for every reachable log row")
 			require.Equal(t, contents.statsObjectPaths, contents.postingsObjectPaths,
 				"stats and postings must reference the same log objects")
-
-			if !test.expectCompacted {
-				require.Equal(t, compactionStats{}, stats)
-				require.Equal(t, before, after, "a rejected compaction must not change the ToC entry")
-				require.Equal(t, pathSet(sourcePaths), contents.statsObjectPaths,
-					"the unchanged index must retain every source object")
-				return
+			require.Equal(t, map[string]bool{"label:app": true}, contents.sortSchemas)
+			for _, layout := range contents.layouts {
+				require.True(t, logsobj.CompareSortLayout(logsobj.TargetSortLayout(targetSchema), layout))
 			}
-
-			require.Equal(t, compactionStats{removed: 1, added: 1, dispatched: 1}, stats)
-			require.NotEqual(t, indexPath, after[0].Path)
-			require.True(t, after[0].Start.Equal(base))
-			require.True(t, after[0].End.Equal(base.Add(time.Second)))
-			require.Equal(t, uint64(200), after[0].UncompressedLogsSize)
-			require.Positive(t, after[0].FileSize)
-			exists, err := bucket.Exists(ctx, after[0].Path)
-			require.NoError(t, err)
-			require.True(t, exists, "replacement index must exist")
-			require.NotEqual(t, pathSet(sourcePaths), contents.statsObjectPaths,
-				"replacement index must point at compacted log objects")
+			for _, entry := range after {
+				require.True(t, entry.Start.Equal(base))
+				require.True(t, entry.End.Equal(base.Add(time.Second)))
+				require.Positive(t, entry.FileSize)
+				exists, err := bucket.Exists(ctx, entry.Path)
+				require.NoError(t, err)
+				require.True(t, exists, "replacement index must exist")
+			}
 		})
 	}
 }
@@ -341,6 +393,9 @@ func startInProcessSchedulerAndWorker(ctx context.Context, t *testing.T, bucket 
 type integrationSortSchema []string
 
 func (s integrationSortSchema) SortSchemaLabels(string) []string { return s }
+func (integrationSortSchema) CompactionPhases(string) (bool, bool) {
+	return true, true
+}
 
 func seedSourceLogObject(
 	ctx context.Context,
@@ -348,53 +403,62 @@ func seedSourceLogObject(
 	bucket objstore.Bucket,
 	path string,
 	tenant string,
-	sortSchema []string,
+	layout logs.SortLayout,
 	ts time.Time,
 ) {
 	t.Helper()
 
-	cfg := logsobj.BuilderConfig{
-		BuilderBaseConfig: logsobj.BuilderBaseConfig{
-			TargetPageSize:            2048,
-			MaxPageRows:               10000,
-			TargetObjectSize:          1 << 22,
-			TargetSectionSize:         1 << 21,
-			BufferSize:                2048 * 8,
-			SectionStripeMergeLimit:   2,
-			EstimatedCompressionRatio: 8,
-		},
-		AppendOrderedEnabled: true,
+	streamLabels := labels.FromStrings("app", "api", "cluster", "prod")
+	streamHash := labels.StableHash(streamLabels)
+	shardBucket := streams.ShardBucket(streamLabels)
+	if layout.ShardCount > 0 {
+		shardBucket %= layout.ShardCount
 	}
-	newBuilder := func() *logsobj.Builder {
-		builder, err := logsobj.NewBuilder(
-			cfg,
-			scratch.NewMemory(),
-			logsobj.NewBuilderMetrics(),
-			log.NewNopLogger(),
-			integrationSortSchema(sortSchema),
-		)
-		require.NoError(t, err)
-		return builder
+	schemaKey, err := logsobj.ComputeSchemaKey(streamLabels, layout.SchemaLabels)
+	require.NoError(t, err)
+
+	streamsBuilder := streams.NewBuilder(nil, 2048, 10000)
+	streamsBuilder.SetTenant(tenant)
+	logsBuilder := logs.NewBuilder(nil, logs.BuilderOptions{
+		PageSizeHint:     2048,
+		PageMaxRowCount:  10000,
+		BufferSize:       2048 * 8,
+		StripeMergeLimit: 2,
+		AppendStrategy:   logs.AppendOrdered,
+		SortOrder:        logs.SortSchemaASC,
+		SchemaLabels:     layout.SchemaLabels,
+		StreamOrder:      layout.StreamOrder,
+		ShardCount:       layout.ShardCount,
+	})
+	logsBuilder.SetTenant(tenant)
+
+	for _, entry := range []struct {
+		timestamp time.Time
+		line      string
+	}{
+		{timestamp: ts.Add(time.Second), line: path + "/second"},
+		{timestamp: ts, line: path + "/first"},
+	} {
+		size := int64(len(entry.line))
+		streamID := streamsBuilder.Record(streamLabels, entry.timestamp, size)
+		logsBuilder.Append(logs.Record{
+			StreamID:    streamID,
+			StreamHash:  streamHash,
+			ShardBucket: shardBucket,
+			SchemaKey:   schemaKey,
+			Timestamp:   entry.timestamp,
+			Line:        []byte(entry.line),
+		})
 	}
 
-	builder := newBuilder()
-	require.NoError(t, builder.Append(tenant, logproto.Stream{
-		Labels: `{app="api",cluster="prod"}`,
-		Entries: []push.Entry{
-			{Timestamp: ts, Line: path + "/first"},
-			{Timestamp: ts.Add(time.Second), Line: path + "/second"},
-		},
-	}, ts))
-
-	obj, closer, err := builder.Flush()
+	builder := dataobj.NewBuilder(nil)
+	require.NoError(t, builder.Append(streamsBuilder))
+	require.NoError(t, builder.Append(logsBuilder))
+	object, closer, err := builder.Flush()
 	require.NoError(t, err)
 	defer closer.Close()
 
-	sorted, sortedCloser, err := newBuilder().CopyAndSort(ctx, obj)
-	require.NoError(t, err)
-	defer sortedCloser.Close()
-
-	reader, err := sorted.Reader(ctx)
+	reader, err := object.Reader(ctx)
 	require.NoError(t, err)
 	defer reader.Close()
 	require.NoError(t, bucket.Upload(ctx, path, reader))
@@ -407,6 +471,8 @@ func seedLogCompactionIndex(
 	path string,
 	tenant string,
 	sourcePaths []string,
+	sortSchema []string,
+	shardCount int64,
 	ts time.Time,
 ) {
 	t.Helper()
@@ -416,15 +482,18 @@ func seedLogCompactionIndex(
 	postingsBuilder.SetTenant(tenant)
 	statsBuilder := stats.NewBuilder(nil, stats.ColumnarSectionEncoder(2048, 1000))
 	statsBuilder.SetTenant(tenant)
+	schemaName := strings.Join(sortSchema, ",")
+	schemaLabels := make(map[string]string, len(sortSchema))
+	for _, key := range sortSchema {
+		_, name, _ := strings.Cut(key, ":")
+		schemaLabels[name] = streamLabels.Get(name)
+	}
 	for _, sourcePath := range sourcePaths {
-		// The converged index defines the target schema used to plan LogMerge.
-		// The worker independently checks this against each source object's
-		// persisted layout before producing a replacement.
 		statsBuilder.Append(stats.Stat{
 			ObjectPath:       sourcePath,
 			SectionIndex:     0,
-			SortSchema:       "label:app",
-			Labels:           map[string]string{"app": "api"},
+			SortSchema:       schemaName,
+			Labels:           schemaLabels,
 			MinTimestamp:     ts.UnixNano(),
 			MaxTimestamp:     ts.Add(time.Second).UnixNano(),
 			RowCount:         2,
@@ -433,6 +502,7 @@ func seedLogCompactionIndex(
 		})
 		postingsBuilder.ObserveLabelPosting(postings.LabelObservation{
 			ObjectPath:       sourcePath,
+			ShardBuckets:     shardCount,
 			SectionIndex:     0,
 			ColumnName:       "app",
 			LabelValue:       "api",
@@ -458,6 +528,8 @@ func seedLogCompactionIndex(
 type logCompactionContents struct {
 	statsObjectPaths    map[string]bool
 	postingsObjectPaths map[string]bool
+	sortSchemas         map[string]bool
+	layouts             []logs.SortLayout
 	statsRowCount       int64
 	lines               []string
 }
@@ -474,6 +546,7 @@ func readLogCompactionContents(
 	contents := logCompactionContents{
 		statsObjectPaths:    make(map[string]bool),
 		postingsObjectPaths: make(map[string]bool),
+		sortSchemas:         make(map[string]bool),
 	}
 	for _, tocEntry := range tocEntries {
 		indexObj, err := dataobj.FromBucket(ctx, bucket, tocEntry.Path, 0)
@@ -489,6 +562,7 @@ func readLogCompactionContents(
 			for reader.Next() {
 				row := reader.At()
 				contents.statsObjectPaths[row.ObjectPath] = true
+				contents.sortSchemas[row.SortSchema] = true
 				contents.statsRowCount += row.RowCount
 			}
 			require.NoError(t, reader.Err())
@@ -522,6 +596,7 @@ func readLogCompactionContents(
 			}
 			logsSection, err := logs.Open(ctx, section)
 			require.NoError(t, err)
+			contents.layouts = append(contents.layouts, logsSection.SortLayout())
 			for result := range logs.IterSection(ctx, logsSection) {
 				record, err := result.Value()
 				require.NoError(t, err)
@@ -539,14 +614,6 @@ func expectedSourceLogLines(sourcePaths []string) []string {
 		lines = append(lines, sourcePath+"/first", sourcePath+"/second")
 	}
 	return lines
-}
-
-func pathSet(paths []string) map[string]bool {
-	set := make(map[string]bool, len(paths))
-	for _, path := range paths {
-		set[path] = true
-	}
-	return set
 }
 
 func mustLoadTenants(ctx context.Context, t *testing.T, b objstore.Bucket, window time.Time) tenantIndexes {
