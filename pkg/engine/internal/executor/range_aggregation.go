@@ -115,7 +115,12 @@ func (r *rangeAggregationPipeline) init() {
 		panic(fmt.Sprintf("unknown range aggregation operation: %v", r.opts.operation))
 	}
 
-	r.aggregator = newAggregator(len(windows), op)
+	if r.opts.startTs == r.opts.endTs {
+		// Instant query
+		r.opts.step = 1
+	}
+
+	r.aggregator = newAggregator(op, r.opts.startTs, r.opts.endTs, r.opts.step)
 	r.aggregator.SetMaxSeries(r.opts.maxQuerySeries)
 }
 

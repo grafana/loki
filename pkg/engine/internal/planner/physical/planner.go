@@ -494,6 +494,10 @@ func (p *Planner) processVectorAggregation(lp *logical.VectorAggregation, ctx *C
 		},
 		Operation:      lp.Operation,
 		MaxQuerySeries: ctx.maxQuerySeries,
+		// Query hints for more efficient processing
+		Start: lp.Start,
+		End:   lp.End,
+		Step:  lp.Step,
 	}
 	p.plan.graph.Add(node)
 	child, err := p.process(lp.Table, ctx)
