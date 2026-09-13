@@ -2236,6 +2236,11 @@ func TestDistributor_PushIngestionBlockedByPolicy(t *testing.T) {
 	}
 }
 
+func TestWriteRingOp(t *testing.T) {
+	require.Equal(t, ring.WriteNoExtend, writeRingOp(false))
+	require.Equal(t, ring.Write, writeRingOp(true))
+}
+
 func prepare(t *testing.T, numDistributors, numIngesters int, limits *validation.Limits, factory func(addr string) (ring_client.PoolClient, error)) ([]*Distributor, []mockIngester) {
 	t.Helper()
 	distributors, ingesters := prepareButDontStart(t, numDistributors, numIngesters, limits, factory)
