@@ -145,8 +145,9 @@ func (d *Distributor) pushHandler(w http.ResponseWriter, r *http.Request, pushRe
 		return
 	}
 
+	// circuitBreakerErr must be the raw error, not the mapped one below.
 	circuitBreakerErr = err
-	resp, ok := httpgrpc.HTTPResponseFromError(err)
+	resp, ok := httpgrpc.HTTPResponseFromError(pushErrToStatusErr(err))
 	if ok {
 		body := string(resp.Body)
 		if d.tenantConfigs.LogPushRequest(tenantID) {

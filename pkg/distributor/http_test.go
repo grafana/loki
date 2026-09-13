@@ -16,6 +16,7 @@ import (
 	"github.com/golang/snappy"
 	"github.com/grafana/dskit/concurrency"
 	"github.com/grafana/dskit/user"
+	"github.com/twmb/franz-go/pkg/kgo"
 
 	"github.com/grafana/loki/v3/pkg/runtime"
 	"github.com/grafana/loki/v3/pkg/util/constants"
@@ -227,6 +228,122 @@ func TestPushHandlerMaxPushSize(t *testing.T) {
 
 			require.Equal(t, http.StatusRequestEntityTooLarge, rec.Code)
 			require.Equal(t, float64(req.ContentLength), testutil.ToFloat64(discardedBytes)-before)
+		})
+	}
+}
+
+func TestPushHandlerKafkaBackpressure(t *testing.T) {
+	limits := &validation.Limits{}
+	flagext.DefaultValues(limits)
+	limits.SetGlobalOTLPConfig(push.GlobalOTLPConfig{DefaultOTLPResourceAttributesAsIndexLabels: []string{"service.name"}})
+
+	for _, tc := range []struct {
+		name        string
+		path        string
+		contentType string
+		format      string
+		parser      push.RequestParser
+		errorWriter push.ErrorWriter
+		buildBody   func(t *testing.T) []byte
+	}{
+		{
+			name:        "Loki push",
+			path:        "/loki/api/v1/push",
+			contentType: "application/x-protobuf",
+			format:      constants.Loki,
+			parser:      push.ParseLokiRequest,
+			errorWriter: push.HTTPError,
+			buildBody: func(t *testing.T) []byte {
+				b, err := proto.Marshal(&logproto.PushRequest{
+					Streams: []logproto.Stream{
+						{
+							Labels:  `{foo="bar"}`,
+							Entries: []logproto.Entry{{Timestamp: time.Now(), Line: "hello"}},
+						},
+					},
+				})
+				require.NoError(t, err)
+				return snappy.Encode(nil, b)
+			},
+		},
+		{
+			name:        "OTLP push",
+			path:        "/otlp/v1/logs",
+			contentType: "application/json",
+			format:      constants.OTLP,
+			parser:      push.ParseOTLPRequest,
+			errorWriter: push.OTLPError,
+			buildBody: func(t *testing.T) []byte {
+				otlpLogs := plog.NewLogs()
+				rl := otlpLogs.ResourceLogs().AppendEmpty()
+				rl.Resource().Attributes().PutStr("service.name", "test-service")
+				lr := rl.ScopeLogs().AppendEmpty().LogRecords().AppendEmpty()
+				lr.Body().SetStr("hello")
+				lr.SetTimestamp(pcommon.Timestamp(time.Now().UnixNano()))
+				body, err := plogotlp.NewExportRequestFromLogs(otlpLogs).MarshalJSON()
+				require.NoError(t, err)
+				return body
+			},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			kafkaWriter := &mockKafkaProducer{failOnWrite: true}
+			distributors, _ := prepareButDontStart(t, 1, 0, limits, nil)
+			d := distributors[0]
+			d.cfg.KafkaEnabled = true
+			d.cfg.IngesterEnabled = false
+			d.cfg.KafkaConfig.ProducerMaxRecordSizeBytes = 1000
+			d.kafkaWriter = kafkaWriter
+			startAndWaitRunningDistributors(t, distributors)
+
+			req := httptest.NewRequest(http.MethodPost, tc.path, bytes.NewReader(tc.buildBody(t)))
+			req = req.WithContext(user.InjectOrgID(t.Context(), "test"))
+			req.Header.Set("Content-Type", tc.contentType)
+
+			rec := httptest.NewRecorder()
+			d.pushHandler(rec, req, tc.parser, tc.errorWriter, tc.format)
+
+			require.Equal(t, http.StatusServiceUnavailable, rec.Code)
+		})
+	}
+}
+
+func TestPushHandlerKafkaBackpressureTripsCircuitBreaker(t *testing.T) {
+	for _, writeErr := range []error{kgo.ErrMaxBuffered, kgo.ErrRecordTimeout} {
+		t.Run(writeErr.Error(), func(t *testing.T) {
+			limits := &validation.Limits{}
+			flagext.DefaultValues(limits)
+
+			kafkaWriter := &mockKafkaProducer{failOnWrite: true, writeErr: writeErr}
+			distributors, _ := prepareButDontStart(t, 1, 0, limits, nil)
+			d := distributors[0]
+			d.cfg.KafkaEnabled = true
+			d.cfg.IngesterEnabled = false
+			d.cfg.KafkaConfig.ProducerMaxRecordSizeBytes = 1000
+			d.kafkaWriter = kafkaWriter
+			d.circuitBreaker = newTrialCircuitBreaker(time.Minute, 1, 1, isCircuitBreakerTrialErr)
+			startAndWaitRunningDistributors(t, distributors)
+
+			b, err := proto.Marshal(&logproto.PushRequest{
+				Streams: []logproto.Stream{
+					{
+						Labels:  `{foo="bar"}`,
+						Entries: []logproto.Entry{{Timestamp: time.Now(), Line: "hello"}},
+					},
+				},
+			})
+			require.NoError(t, err)
+
+			req := httptest.NewRequest(http.MethodPost, "/loki/api/v1/push", bytes.NewReader(snappy.Encode(nil, b)))
+			req = req.WithContext(user.InjectOrgID(t.Context(), "test"))
+			req.Header.Set("Content-Type", "application/x-protobuf")
+
+			rec := httptest.NewRecorder()
+			d.pushHandler(rec, req, push.ParseLokiRequest, push.HTTPError, constants.Loki)
+			require.Equal(t, http.StatusServiceUnavailable, rec.Code)
+
+			allow, _ := d.circuitBreaker.Allow()
+			require.False(t, allow, "circuit breaker should have opened on the %s failure", writeErr)
 		})
 	}
 }
