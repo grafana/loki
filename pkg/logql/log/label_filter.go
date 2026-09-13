@@ -99,6 +99,12 @@ func (b *BinaryLabelFilter) Process(ts int64, line []byte, lbs *LabelsBuilder) (
 	return line, lok && rok
 }
 
+// Hints implements Stage.
+func (b *BinaryLabelFilter) Hints() StageHints {
+	// It runs both child filters, so it can change the output labels when either child can.
+	return b.Left.Hints().Merge(b.Right.Hints())
+}
+
 func (b *BinaryLabelFilter) isLabelFilterer() {}
 
 func (b *BinaryLabelFilter) RequiredLabelNames() []string {
@@ -128,6 +134,12 @@ type NoopLabelFilter struct {
 
 func (NoopLabelFilter) Process(_ int64, line []byte, _ *LabelsBuilder) ([]byte, bool) {
 	return line, true
+}
+
+// Hints implements Stage.
+func (NoopLabelFilter) Hints() StageHints {
+	// It does nothing, so it changes no labels.
+	return StageHints{CanModifyLabels: false}
 }
 
 func (NoopLabelFilter) isLabelFilterer() {}
@@ -208,6 +220,12 @@ func (d *BytesLabelFilter) Process(_ int64, line []byte, lbs *LabelsBuilder) ([]
 	}
 }
 
+// Hints implements Stage.
+func (d *BytesLabelFilter) Hints() StageHints {
+	// It sets __error__ when the label value does not parse as bytes, which changes the output labels.
+	return StageHints{CanModifyLabels: true}
+}
+
 func (d *BytesLabelFilter) isLabelFilterer() {}
 
 func (d *BytesLabelFilter) RequiredLabelNames() []string {
@@ -276,6 +294,12 @@ func (d *DurationLabelFilter) Process(_ int64, line []byte, lbs *LabelsBuilder) 
 	}
 }
 
+// Hints implements Stage.
+func (d *DurationLabelFilter) Hints() StageHints {
+	// It sets __error__ when the label value does not parse as a duration, which changes the output labels.
+	return StageHints{CanModifyLabels: true}
+}
+
 func (d *DurationLabelFilter) isLabelFilterer() {}
 
 func (d *DurationLabelFilter) RequiredLabelNames() []string {
@@ -339,6 +363,12 @@ func (n *NumericLabelFilter) Process(_ int64, line []byte, lbs *LabelsBuilder) (
 
 }
 
+// Hints implements Stage.
+func (n *NumericLabelFilter) Hints() StageHints {
+	// It sets __error__ when the label value does not parse as a number, which changes the output labels.
+	return StageHints{CanModifyLabels: true}
+}
+
 func (n *NumericLabelFilter) isLabelFilterer() {}
 
 func (n *NumericLabelFilter) RequiredLabelNames() []string {
@@ -376,6 +406,12 @@ func (s *StringLabelFilter) Process(_ int64, line []byte, lbs *LabelsBuilder) ([
 	return line, s.Matches(labelValue(s.Name, lbs))
 }
 
+// Hints implements Stage.
+func (s *StringLabelFilter) Hints() StageHints {
+	// It only reads a label value to decide the match, never writing a label.
+	return StageHints{CanModifyLabels: false}
+}
+
 func (s *StringLabelFilter) isLabelFilterer() {}
 
 func (s *StringLabelFilter) RequiredLabelNames() []string {
@@ -406,6 +442,12 @@ func (s *LineFilterLabelFilter) String() string {
 func (s *LineFilterLabelFilter) Process(_ int64, line []byte, lbs *LabelsBuilder) ([]byte, bool) {
 	v := labelValue(s.Name, lbs)
 	return line, s.Filter.Filter(unsafeGetBytes(v))
+}
+
+// Hints implements Stage.
+func (s *LineFilterLabelFilter) Hints() StageHints {
+	// It only reads a label value to decide the match, never writing a label.
+	return StageHints{CanModifyLabels: false}
 }
 
 func (s *LineFilterLabelFilter) isLabelFilterer() {}

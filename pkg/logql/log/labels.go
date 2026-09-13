@@ -173,7 +173,9 @@ func NewBaseLabelsBuilder() *BaseLabelsBuilder {
 // ForLabels creates a labels builder for a given labels set as base.
 // The labels cache is shared across all created LabelsBuilders.
 func (b *BaseLabelsBuilder) ForLabels(lbs labels.Labels, hash uint64) *LabelsBuilder {
-	if labelResult, ok := b.resultCache[hash]; ok {
+	// Verify the cached result is for these exact labels: Hash can collide, and serving a colliding
+	// stream's result would attribute this stream's output to the other stream's labels.
+	if labelResult, ok := b.resultCache[hash]; ok && labels.Equal(labelResult.Stream(), lbs) {
 		res := &LabelsBuilder{
 			base:              lbs,
 			currentResult:     labelResult,

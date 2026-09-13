@@ -247,6 +247,11 @@ func (j *JSONParser) buildJSONPathFromPrefixBuffer() []string {
 	return jsonPath
 }
 
+// Hints implements Stage.
+func (j *JSONParser) Hints() StageHints {
+	return StageHints{CanModifyLabels: true}
+}
+
 func (j *JSONParser) RequiredLabelNames() []string { return []string{} }
 
 func readValue(v []byte, dataType jsonparser.ValueType) string {
@@ -356,6 +361,11 @@ func (r *RegexpParser) Process(_ int64, line []byte, lbs *LabelsBuilder) ([]byte
 	return line, true
 }
 
+// Hints implements Stage.
+func (r *RegexpParser) Hints() StageHints {
+	return StageHints{CanModifyLabels: true}
+}
+
 func (r *RegexpParser) RequiredLabelNames() []string { return []string{} }
 
 type LogfmtParser struct {
@@ -446,6 +456,11 @@ func (l *LogfmtParser) Process(_ int64, line []byte, lbs *LabelsBuilder) ([]byte
 	return line, true
 }
 
+// Hints implements Stage.
+func (l *LogfmtParser) Hints() StageHints {
+	return StageHints{CanModifyLabels: true}
+}
+
 func (l *LogfmtParser) RequiredLabelNames() []string { return []string{} }
 
 type PatternParser struct {
@@ -492,6 +507,11 @@ func (l *PatternParser) Process(_ int64, line []byte, lbs *LabelsBuilder) ([]byt
 		}
 	}
 	return line, true
+}
+
+// Hints implements Stage.
+func (l *PatternParser) Hints() StageHints {
+	return StageHints{CanModifyLabels: true}
 }
 
 func (l *PatternParser) RequiredLabelNames() []string { return []string{} }
@@ -623,6 +643,11 @@ func (l *LogfmtExpressionParser) Process(_ int64, line []byte, lbs *LabelsBuilde
 	return line, true
 }
 
+// Hints implements Stage.
+func (l *LogfmtExpressionParser) Hints() StageHints {
+	return StageHints{CanModifyLabels: true}
+}
+
 func (l *LogfmtExpressionParser) RequiredLabelNames() []string { return []string{} }
 
 type JSONExpressionParser struct {
@@ -730,6 +755,11 @@ func isValidJSONStart(data []byte) bool {
 	}
 }
 
+// Hints implements Stage.
+func (j *JSONExpressionParser) Hints() StageHints {
+	return StageHints{CanModifyLabels: true}
+}
+
 func (j *JSONExpressionParser) RequiredLabelNames() []string { return []string{} }
 
 type UnpackParser struct {
@@ -746,6 +776,11 @@ func NewUnpackParser() *UnpackParser {
 		lbsBuffer: make([]string, 0, 16),
 		keys:      internedStringSet{},
 	}
+}
+
+// Hints implements Stage.
+func (u *UnpackParser) Hints() StageHints {
+	return StageHints{CanModifyLabels: true}
 }
 
 func (UnpackParser) RequiredLabelNames() []string { return []string{} }
