@@ -705,8 +705,9 @@ github.com/felixge/fgprof
 # github.com/felixge/httpsnoop v1.1.0
 ## explicit; go 1.25
 github.com/felixge/httpsnoop
-# github.com/fluent/fluent-bit-go v0.0.0-20260825100519-ee23069796c9
+# github.com/fluent/fluent-bit-go v0.0.0-20260909064720-9895046d00ce
 ## explicit; go 1.14
+github.com/fluent/fluent-bit-go/internal/plugin
 github.com/fluent/fluent-bit-go/output
 # github.com/fsnotify/fsnotify v1.10.1
 ## explicit; go 1.23
