@@ -16,7 +16,9 @@ import (
 	"github.com/grafana/loki/v3/pkg/xcap"
 )
 
-func (wf *Workflow) printTaskSummary(task *Task, result TaskResult, onCriticalPath bool) {
+func (wf *Workflow) printTaskSummary(task *Task, summary pendingSummary, onCriticalPath bool) {
+	result := summary.result
+
 	capture := result.Capture
 	if capture == nil {
 		// Every terminal notification carries the per-task capture. Skip
@@ -52,7 +54,7 @@ func (wf *Workflow) printTaskSummary(task *Task, result TaskResult, onCriticalPa
 		"query_id", wf.opts.ID,
 		"parent_task_id", wf.parentTaskID(task),
 		"task_type", taskTypeName(task),
-		"operator_type", taskOperatorType(task),
+		"operator_type", summary.operatorType,
 
 		// Outcome
 		"status", taskOutcomeName(result.Outcome),
@@ -96,9 +98,9 @@ func (wf *Workflow) printTaskSummary(task *Task, result TaskResult, onCriticalPa
 		"cache_check", taskResultCacheOutcome(capture),
 	)
 
-	if isPostingsScanTask(task) {
+	if summary.isPostingsScan {
 		wf.printTaskPostingsLocalitySummary(task, capture)
-	} else if isScanTask(task) {
+	} else if summary.isScanTask {
 		// print log section data locality as a separate log line.
 		wf.printTaskLogLocalitySummary(task, capture)
 	}

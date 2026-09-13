@@ -26,6 +26,13 @@ func Fprint(w io.Writer, wf *Workflow) error {
 		return err
 	}
 
+	// Guard against a concurrent release of task fragments: once a task produces
+	// a terminal result, recordTaskResult nils its Fragment/CachedSources under
+	// tasksMut. Hold the read lock for the duration of the walk so those fields
+	// don't change underneath us.
+	wf.tasksMut.RLock()
+	defer wf.tasksMut.RUnlock()
+
 	visited := make(map[*Task]struct{}, wf.graph.Len())
 
 	roots := wf.graph.Roots()
@@ -38,6 +45,14 @@ func Fprint(w io.Writer, wf *Workflow) error {
 
 			fmt.Fprintf(w, "┌ Task %s\n", n.ID())
 			fmt.Fprintln(w, "│")
+
+			if n.Fragment == nil {
+				// The fragment was released after the task produced a terminal
+				// result (see Workflow.recordTaskResult).
+				fmt.Fprintln(w, "│ <plan released>")
+				fmt.Fprintln(w, "└")
+				return nil
+			}
 
 			var sb strings.Builder
 			for _, root := range n.Fragment.Roots() {

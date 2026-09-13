@@ -374,6 +374,52 @@ func TestScheduler_Listen(t *testing.T) {
 	})
 }
 
+func TestScheduler_ReleasesTerminalResources(t *testing.T) {
+	// A finished task stays registered until its manifest is unregistered so
+	// that deregistration, late worker results, and redundant cancellations
+	// stay well-defined. Its (potentially large) capture, however, is released
+	// as soon as the task produces a terminal result.
+	sched := newTestScheduler(t)
+
+	var notified workflow.TaskResult
+	handler := func(_ context.Context, _ *workflow.Task, result workflow.TaskResult) {
+		notified = result
+	}
+
+	exampleTask := &workflow.Task{ULID: ulid.Make()}
+	manifest := &workflow.Manifest{
+		Tasks:               []*workflow.Task{exampleTask},
+		StreamClosedHandler: nopStreamHandler,
+		TaskResultHandler:   handler,
+	}
+	require.NoError(t, sched.RegisterManifest(t.Context(), manifest), "Scheduler should accept valid manifest")
+
+	// Before the task finishes, the scheduler holds its capture.
+	registered := sched.tasks[exampleTask.ULID]
+	require.NotNil(t, registered, "task should be registered")
+	require.NotNil(t, registered.capture, "capture should be held while the task is live")
+
+	// Cancel a never-started task, driving it synchronously to a terminal result.
+	require.NoError(t, sched.Cancel(t.Context(), exampleTask), "Scheduler should permit cancelling a registered task")
+
+	// The task remains registered so the manifest can still be unregistered.
+	require.Contains(t, sched.tasks, exampleTask.ULID, "finished task should remain registered until the manifest is unregistered")
+	require.True(t, registered.HasResult(), "task should have a terminal result")
+
+	// But its heavy, no-longer-needed state has been released.
+	require.Nil(t, registered.capture, "capture should be released once the task is terminal")
+	require.Nil(t, registered.region, "region should be released once the task is terminal")
+	result, _ := registered.Result()
+	require.Nil(t, result.Capture, "result capture should be released once the task is terminal")
+
+	// The handler still received the capture through the notification.
+	require.NotNil(t, notified.Capture, "handler should still receive the task capture via the notification")
+
+	// The manifest can still be cleanly unregistered afterwards.
+	require.NoError(t, sched.UnregisterManifest(t.Context(), manifest), "Scheduler should unregister the manifest")
+	require.NotContains(t, sched.tasks, exampleTask.ULID, "task should be removed after deregistration")
+}
+
 func TestScheduler_Start(t *testing.T) {
 	t.Run("Starts new tasks without emitting a task result", func(t *testing.T) {
 		var results atomic.Int64
