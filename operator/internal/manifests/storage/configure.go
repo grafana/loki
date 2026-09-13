@@ -107,7 +107,7 @@ func configureDeploymentCA(d *appsv1.Deployment, tls *TLSConfig, secretType loki
 	return nil
 }
 
-// ConfigureStatefulSet merges a the object storage secrect volume into the statefulset spec.
+// ConfigureStatefulSet merges the object storage secret volume into the statefulset spec.
 // With this, the statefulset will expose credentials specific environment variable.
 func configureStatefulSet(s *appsv1.StatefulSet, opts Options) error {
 	p := ensureObjectStoreCredentials(&s.Spec.Template.Spec, opts)

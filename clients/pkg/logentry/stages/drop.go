@@ -208,7 +208,7 @@ func (m *dropStage) shouldDrop(e Entry) bool {
 				level.Debug(m.logger).Log("msg", "line met drop criteria for finding source key in extracted map")
 			}
 		} else {
-			// Not found in extact map, don't drop
+			// Not found in extracted map, don't drop
 			if Debug {
 				level.Debug(m.logger).Log("msg", "line will not be dropped, the provided source was not found in the extracted map")
 			}
