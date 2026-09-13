@@ -598,13 +598,10 @@ func TestCustomTopologySpreadConstraints(t *testing.T) {
 		Spec: corev1.PodSpec{
 			InitContainers: []corev1.Container{
 				{
-					Name:  "az-annotation-check",
-					Image: "an-image:latest",
-					Command: []string{
-						"sh",
-						"-c",
-						"while ! [ -s /etc/az-annotation/az ]; do echo Waiting for availability zone annotation to be set; sleep 2; done; echo availability zone annotation is set; cat /etc/az-annotation/az; echo",
-					},
+					Name:    "az-annotation-check",
+					Image:   "an-operator-image:latest",
+					Command: []string{"/manager"},
+					Args:    []string{"--wait-for-file=/etc/az-annotation/az"},
 					VolumeMounts: []corev1.VolumeMount{
 						{
 							Name:      "az-annotation",
@@ -684,7 +681,122 @@ func TestCustomTopologySpreadConstraints(t *testing.T) {
 		},
 	}
 
-	err := configureReplication(template, spec, "component", "a-stack")
+	err := configureReplication(template, spec, "component", "a-stack", "an-operator-image:latest")
 	require.NoError(t, err)
 	require.Equal(t, expectedTemplate, template)
+}
+
+func TestConfigureReplicationDoesNotUseLokiImageForAnnotationCheck(t *testing.T) {
+	const distrolessLokiImage = "docker.io/grafana/loki:3.7.3"
+
+	template := &corev1.PodTemplateSpec{
+		Spec: corev1.PodSpec{
+			Containers: []corev1.Container{{
+				Name:  "loki-ingester",
+				Image: distrolessLokiImage,
+			}},
+		},
+	}
+	replication := &lokiv1.ReplicationSpec{
+		Zones: []lokiv1.ZoneSpec{{
+			MaxSkew:     1,
+			TopologyKey: "topology.kubernetes.io/zone",
+		}},
+	}
+
+	err := configureReplication(template, replication, LabelIngesterComponent, "test-stack", "docker.io/grafana/loki-operator:0.11.0")
+	require.NoError(t, err)
+	require.Len(t, template.Spec.InitContainers, 1)
+
+	initContainer := template.Spec.InitContainers[0]
+	require.NotEqual(t, distrolessLokiImage, initContainer.Image)
+	require.Equal(t, []string{"/manager"}, initContainer.Command)
+	require.Equal(t, []string{"--wait-for-file=/etc/az-annotation/az"}, initContainer.Args)
+}
+
+func TestInitContainerAZAnnotationCheckImage(t *testing.T) {
+	tests := []struct {
+		name      string
+		image     string
+		wantImage string
+	}{
+		{
+			name:      "default operator image",
+			wantImage: DefaultOperatorImage,
+		},
+		{
+			name:      "operator image override",
+			image:     "example.com/loki-operator:test",
+			wantImage: "example.com/loki-operator:test",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			container := initContainerAZAnnotationCheck(tc.image)
+			require.Equal(t, tc.wantImage, container.Image)
+			require.Equal(t, []string{"/manager"}, container.Command)
+			require.Equal(t, []string{"--wait-for-file=/etc/az-annotation/az"}, container.Args)
+		})
+	}
+}
+
+func TestConfigureReplicationWithoutZonesDoesNotChangePodTemplate(t *testing.T) {
+	tests := []struct {
+		name        string
+		replication *lokiv1.ReplicationSpec
+	}{
+		{
+			name:        "nil replication",
+			replication: nil,
+		},
+		{
+			name:        "empty zones",
+			replication: &lokiv1.ReplicationSpec{},
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			template := &corev1.PodTemplateSpec{
+				Spec: corev1.PodSpec{
+					Containers: []corev1.Container{{
+						Name:  "loki-ingester",
+						Image: "docker.io/grafana/loki:3.7.3",
+					}},
+				},
+			}
+			expected := template.DeepCopy()
+
+			err := configureReplication(template, tc.replication, LabelIngesterComponent, "test-stack", "docker.io/grafana/loki-operator:0.11.0")
+			require.NoError(t, err)
+			require.Equal(t, expected, template)
+		})
+	}
+}
+
+func TestConfigureReplicationForGatewaySkipsAnnotationCheck(t *testing.T) {
+	template := &corev1.PodTemplateSpec{
+		Spec: corev1.PodSpec{
+			Containers: []corev1.Container{{
+				Name:  "gateway",
+				Image: "quay.io/observatorium/api:latest",
+			}},
+		},
+	}
+	replication := &lokiv1.ReplicationSpec{
+		Zones: []lokiv1.ZoneSpec{{
+			MaxSkew:     1,
+			TopologyKey: "topology.kubernetes.io/zone",
+		}},
+	}
+
+	err := configureReplication(template, replication, LabelGatewayComponent, "test-stack", "docker.io/grafana/loki-operator:0.11.0")
+	require.NoError(t, err)
+	require.Empty(t, template.Spec.InitContainers)
+	require.Empty(t, template.Spec.Containers[0].Env)
+	require.Empty(t, template.Spec.Volumes)
+	require.Len(t, template.Spec.TopologySpreadConstraints, 1)
+	require.Equal(t, "topology.kubernetes.io/zone", template.Spec.TopologySpreadConstraints[0].TopologyKey)
+	require.Equal(t, "topology.kubernetes.io/zone", template.Annotations[lokiv1.AnnotationAvailabilityZoneLabels])
 }

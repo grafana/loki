@@ -1,11 +1,14 @@
 package main
 
 import (
+	"context"
 	"flag"
 	"os"
+	"time"
 
 	"github.com/ViaQ/logerr/v2/kverrors"
 	"github.com/ViaQ/logerr/v2/log"
+	"github.com/go-logr/logr"
 	configv1 "github.com/openshift/api/config/v1"
 	routev1 "github.com/openshift/api/route/v1"
 	cloudcredentialv1 "github.com/openshift/cloud-credential-operator/pkg/apis/cloudcredential/v1"
@@ -48,15 +51,24 @@ func init() {
 
 func main() {
 	var configFile string
+	var waitForFilePath string
 	flag.StringVar(&configFile, "config", "",
 		"The controller will load its initial configuration from this file. "+
 			"Omit this flag to use the default configuration values. "+
 			"Command-line flags override configuration from this file.",
 	)
+	flag.StringVar(&waitForFilePath, "wait-for-file", "", "Wait until the file exists and is non-empty, then exit.")
 	flag.Parse()
 
 	logger := log.NewLogger("loki-operator")
 	ctrl.SetLogger(logger)
+	if waitForFilePath != "" {
+		if err := waitForFile(context.Background(), waitForFilePath, 2*time.Second, logger); err != nil {
+			logger.Error(err, "failed while waiting for file", "path", waitForFilePath)
+			os.Exit(1)
+		}
+		return
+	}
 
 	var err error
 
@@ -229,5 +241,25 @@ func main() {
 	if err := mgr.Start(ctrl.SetupSignalHandler()); err != nil {
 		logger.Error(err, "problem running manager")
 		os.Exit(1)
+	}
+}
+
+func waitForFile(ctx context.Context, path string, pollInterval time.Duration, logger logr.Logger) error {
+	ticker := time.NewTicker(pollInterval)
+	defer ticker.Stop()
+
+	for {
+		info, err := os.Stat(path)
+		if err == nil && info.Size() > 0 {
+			logger.Info("file is set", "path", path)
+			return nil
+		}
+
+		logger.Info("waiting for file to be set", "path", path)
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-ticker.C:
+		}
 	}
 }
