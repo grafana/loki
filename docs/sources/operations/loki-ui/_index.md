@@ -79,7 +79,7 @@ The Node table provides the following columns:
 - **Node Name**: The name of the component. This will also include any unique identifiers such as pod hashes or zone information.
 - **Target**: The target is classifies the type of component the node is. This can be a distributor, ingester, querier, etc.
 - **Version**: The version of the component. This is based upon the container image tag.
-- **Build Date**: How old the the container image is.
+- **Build Date**: How old the container image is.
 - **Status**: This provides the current status of each service within a component. Each component can many services this is dependent on the type. 
 - **Ready**: This provides the readiness of the component. This is based on the status of the services within the component. Services should be in a `ready` state for the component to be considered `ready`. Othetwise the component will be considered `not ready`. `Not ready` status will usually display a red icon and an error message.
 - **Actions**: Take you to the Node specific page. This will allow you to view more detailed information about the component.
