@@ -398,6 +398,7 @@ func NewMetaFunction(name string, arity Arity, doc FunctionDoc, impl MetaFunctio
 	return &MetaFunction{
 		baseFunction: baseFunction{
 			name:  name,
+			kind:  FuncMeta,
 			arity: arity,
 			doc:   doc,
 		},

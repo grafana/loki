@@ -21,19 +21,20 @@ import (
 	"encoding/base64"
 	"encoding/csv"
 	"fmt"
-	"math"
-	"math/big"
 	"strconv"
 
 	"github.com/apache/arrow-go/v18/arrow"
 	"github.com/apache/arrow-go/v18/arrow/array"
 )
 
-func (w *Writer) transformColToStringArr(typ arrow.DataType, col arrow.Array, stringsReplacer func(string) string) []string {
+func (w *Writer) transformColToStringArr(typ arrow.DataType, col arrow.Array, stringsReplacer func(string) string) ([]string, error) {
 	if w.customTypeConverter != nil {
 		result, handled := w.customTypeConverter(typ, col)
 		if handled {
-			return result
+			if len(result) != col.Len() {
+				return nil, fmt.Errorf("%w: custom type converter returned %d values for column with %d rows", arrow.ErrInvalid, len(result), col.Len())
+			}
+			return append([]string(nil), result...), nil
 		}
 	}
 
@@ -187,9 +188,26 @@ func (w *Writer) transformColToStringArr(typ arrow.DataType, col arrow.Array, st
 	case *arrow.TimestampType:
 		arr := col.(*array.Timestamp)
 		t := typ.(*arrow.TimestampType)
+		toTime, err := t.GetToTimeFunc()
+		if err != nil {
+			return nil, fmt.Errorf("arrow/csv: invalid timestamp timezone: %w", err)
+		}
+		layout := "2006-01-02 15:04:05.999999999"
+		if t.TimeZone != "" {
+			layout += "Z07:00"
+		}
 		for i := 0; i < arr.Len(); i++ {
 			if arr.IsValid(i) {
-				res[i] = arr.Value(i).ToTime(t.Unit).Format("2006-01-02 15:04:05.999999999")
+				value := toTime(arr.Value(i))
+				if value.Year() < 0 || value.Year() > 9999 {
+					res[i] = strconv.FormatInt(int64(arr.Value(i)), 10)
+					continue
+				}
+				valueLayout := layout
+				if _, offset := value.Zone(); t.TimeZone != "" && offset%60 != 0 {
+					valueLayout += ":00"
+				}
+				res[i] = value.Format(valueLayout)
 			} else {
 				res[i] = w.nullValue
 			}
@@ -197,13 +215,10 @@ func (w *Writer) transformColToStringArr(typ arrow.DataType, col arrow.Array, st
 	case *arrow.Decimal128Type:
 		fieldType := typ.(*arrow.Decimal128Type)
 		scale := fieldType.Scale
-		precision := fieldType.Precision
 		arr := col.(*array.Decimal128)
 		for i := 0; i < arr.Len(); i++ {
 			if arr.IsValid(i) {
-				f := (&big.Float{}).SetInt(arr.Value(i).BigInt())
-				f.Quo(f, big.NewFloat(math.Pow10(int(scale))))
-				res[i] = f.Text('g', int(precision))
+				res[i] = arr.Value(i).ToString(scale)
 			} else {
 				res[i] = w.nullValue
 			}
@@ -211,13 +226,10 @@ func (w *Writer) transformColToStringArr(typ arrow.DataType, col arrow.Array, st
 	case *arrow.Decimal256Type:
 		fieldType := typ.(*arrow.Decimal256Type)
 		scale := fieldType.Scale
-		precision := fieldType.Precision
 		arr := col.(*array.Decimal256)
 		for i := 0; i < arr.Len(); i++ {
 			if arr.IsValid(i) {
-				f := (&big.Float{}).SetInt(arr.Value(i).BigInt())
-				f.Quo(f, big.NewFloat(math.Pow10(int(scale))))
-				res[i] = f.Text('g', int(precision))
+				res[i] = arr.Value(i).ToString(scale)
 			} else {
 				res[i] = w.nullValue
 			}
@@ -235,7 +247,12 @@ func (w *Writer) transformColToStringArr(typ arrow.DataType, col arrow.Array, st
 			var b bytes.Buffer
 			b.Write([]byte{'{'})
 			writer := csv.NewWriter(&b)
-			writer.Write(w.transformColToStringArr(list.DataType(), list, stringsReplacer))
+			values, err := w.transformColToStringArr(list.DataType(), list, stringsReplacer)
+			if err != nil {
+				list.Release()
+				return nil, err
+			}
+			writer.Write(values)
 			writer.Flush()
 			b.Truncate(b.Len() - 1)
 			b.Write([]byte{'}'})
@@ -285,5 +302,5 @@ func (w *Writer) transformColToStringArr(typ arrow.DataType, col arrow.Array, st
 	default:
 		panic(fmt.Errorf("arrow/csv: field has unsupported data type %s", typ.String()))
 	}
-	return res
+	return res, nil
 }

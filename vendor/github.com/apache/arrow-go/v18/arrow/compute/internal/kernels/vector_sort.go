@@ -140,7 +140,7 @@ func extensionStorageFixedSizeBinaryChunks(chunks []arrow.Array) ([]arrow.Array,
 	return out, nil
 }
 
-func newFixedSizeBinaryComparator(chunks []arrow.Array, numRows int, vn bool) (columnComparator, error) {
+func newFixedSizeBinaryComparator(chunks []arrow.Array, numRows int, vn bool, rowMap logicalRowMap) (columnComparator, error) {
 	f0, ok := chunks[0].(*array.FixedSizeBinary)
 	if !ok {
 		return nil, fmt.Errorf("%w: expected *array.FixedSizeBinary chunk", arrow.ErrInvalid)
@@ -157,11 +157,12 @@ func newFixedSizeBinaryComparator(chunks []arrow.Array, numRows int, vn bool) (c
 				arrow.ErrInvalid, w, wi)
 		}
 	}
-	return newPhysicalSortFixedSizeBinaryColumn(chunks, numRows, vn), nil
+	return newPhysicalSortFixedSizeBinaryColumn(chunks, numRows, vn, rowMap), nil
 }
 
 // createChunkedComparator builds a column comparator for these chunks (one Arrow type for all chunks).
-func createChunkedComparator(chunks []arrow.Array, numRows int) (columnComparator, error) {
+// rowMap may be shared by aligned multi-key columns.
+func createChunkedComparator(chunks []arrow.Array, numRows int, rowMap logicalRowMap) (columnComparator, error) {
 	if len(chunks) == 0 {
 		return nil, fmt.Errorf("%w: cannot create comparator for empty chunk list", arrow.ErrInvalid)
 	}
@@ -173,71 +174,71 @@ func createChunkedComparator(chunks []arrow.Array, numRows int) (columnComparato
 	typeID := chunks[0].DataType().ID()
 	switch typeID {
 	case arrow.INT8:
-		return newPhysicalSortInt8Column(chunks, numRows, validityNulls), nil
+		return newPhysicalSortInt8Column(chunks, numRows, validityNulls, rowMap), nil
 	case arrow.INT16:
-		return newPhysicalSortInt16Column(chunks, numRows, validityNulls), nil
+		return newPhysicalSortInt16Column(chunks, numRows, validityNulls, rowMap), nil
 	case arrow.INT32:
-		return newPhysicalSortInt32Column(chunks, numRows, validityNulls), nil
+		return newPhysicalSortInt32Column(chunks, numRows, validityNulls, rowMap), nil
 	case arrow.DATE32:
-		return newPhysicalSortDate32Column(chunks, numRows, validityNulls), nil
+		return newPhysicalSortDate32Column(chunks, numRows, validityNulls, rowMap), nil
 	case arrow.TIME32:
-		return newPhysicalSortTime32Column(chunks, numRows, validityNulls), nil
+		return newPhysicalSortTime32Column(chunks, numRows, validityNulls, rowMap), nil
 	case arrow.INT64:
-		return newPhysicalSortInt64Column(chunks, numRows, validityNulls), nil
+		return newPhysicalSortInt64Column(chunks, numRows, validityNulls, rowMap), nil
 	case arrow.DATE64:
-		return newPhysicalSortDate64Column(chunks, numRows, validityNulls), nil
+		return newPhysicalSortDate64Column(chunks, numRows, validityNulls, rowMap), nil
 	case arrow.TIME64:
-		return newPhysicalSortTime64Column(chunks, numRows, validityNulls), nil
+		return newPhysicalSortTime64Column(chunks, numRows, validityNulls, rowMap), nil
 	case arrow.TIMESTAMP:
-		return newPhysicalSortTimestampColumn(chunks, numRows, validityNulls), nil
+		return newPhysicalSortTimestampColumn(chunks, numRows, validityNulls, rowMap), nil
 	case arrow.DURATION:
-		return newPhysicalSortDurationColumn(chunks, numRows, validityNulls), nil
+		return newPhysicalSortDurationColumn(chunks, numRows, validityNulls, rowMap), nil
 	case arrow.UINT8:
-		return newPhysicalSortUint8Column(chunks, numRows, validityNulls), nil
+		return newPhysicalSortUint8Column(chunks, numRows, validityNulls, rowMap), nil
 	case arrow.UINT16:
-		return newPhysicalSortUint16Column(chunks, numRows, validityNulls), nil
+		return newPhysicalSortUint16Column(chunks, numRows, validityNulls, rowMap), nil
 	case arrow.UINT32:
-		return newPhysicalSortUint32Column(chunks, numRows, validityNulls), nil
+		return newPhysicalSortUint32Column(chunks, numRows, validityNulls, rowMap), nil
 	case arrow.UINT64:
-		return newPhysicalSortUint64Column(chunks, numRows, validityNulls), nil
+		return newPhysicalSortUint64Column(chunks, numRows, validityNulls, rowMap), nil
 	case arrow.FLOAT16:
-		return newPhysicalSortFloat16Column(chunks, numRows, validityNulls), nil
+		return newPhysicalSortFloat16Column(chunks, numRows, validityNulls, rowMap), nil
 	case arrow.FLOAT32:
-		return newPhysicalSortFloat32Column(chunks, numRows, validityNulls), nil
+		return newPhysicalSortFloat32Column(chunks, numRows, validityNulls, rowMap), nil
 	case arrow.FLOAT64:
-		return newPhysicalSortFloat64Column(chunks, numRows, validityNulls), nil
+		return newPhysicalSortFloat64Column(chunks, numRows, validityNulls, rowMap), nil
 	case arrow.DECIMAL32:
-		return newPhysicalSortDecimal32Column(chunks, numRows, validityNulls), nil
+		return newPhysicalSortDecimal32Column(chunks, numRows, validityNulls, rowMap), nil
 	case arrow.DECIMAL64:
-		return newPhysicalSortDecimal64Column(chunks, numRows, validityNulls), nil
+		return newPhysicalSortDecimal64Column(chunks, numRows, validityNulls, rowMap), nil
 	case arrow.DECIMAL128:
-		return newPhysicalSortDecimal128Column(chunks, numRows, validityNulls), nil
+		return newPhysicalSortDecimal128Column(chunks, numRows, validityNulls, rowMap), nil
 	case arrow.DECIMAL256:
-		return newPhysicalSortDecimal256Column(chunks, numRows, validityNulls), nil
+		return newPhysicalSortDecimal256Column(chunks, numRows, validityNulls, rowMap), nil
 	case arrow.INTERVAL_MONTHS:
-		return newPhysicalSortMonthIntervalColumn(chunks, numRows, validityNulls), nil
+		return newPhysicalSortMonthIntervalColumn(chunks, numRows, validityNulls, rowMap), nil
 	case arrow.INTERVAL_DAY_TIME:
-		return newPhysicalSortDayTimeColumn(chunks, numRows, validityNulls), nil
+		return newPhysicalSortDayTimeColumn(chunks, numRows, validityNulls, rowMap), nil
 	case arrow.INTERVAL_MONTH_DAY_NANO:
-		return newPhysicalSortMonthDayNanoColumn(chunks, numRows, validityNulls), nil
+		return newPhysicalSortMonthDayNanoColumn(chunks, numRows, validityNulls, rowMap), nil
 	case arrow.BOOL:
-		return newPhysicalSortBoolColumn(chunks, numRows, validityNulls), nil
+		return newPhysicalSortBoolColumn(chunks, numRows, validityNulls, rowMap), nil
 	case arrow.STRING:
-		return newPhysicalSortStringColumn(chunks, numRows, validityNulls), nil
+		return newPhysicalSortStringColumn(chunks, numRows, validityNulls, rowMap), nil
 	case arrow.LARGE_STRING:
-		return newPhysicalSortLargeStringColumn(chunks, numRows, validityNulls), nil
+		return newPhysicalSortLargeStringColumn(chunks, numRows, validityNulls, rowMap), nil
 	case arrow.BINARY:
-		return newPhysicalSortBinaryColumn(chunks, numRows, validityNulls), nil
+		return newPhysicalSortBinaryColumn(chunks, numRows, validityNulls, rowMap), nil
 	case arrow.LARGE_BINARY:
-		return newPhysicalSortLargeBinaryColumn(chunks, numRows, validityNulls), nil
+		return newPhysicalSortLargeBinaryColumn(chunks, numRows, validityNulls, rowMap), nil
 	case arrow.FIXED_SIZE_BINARY:
-		return newFixedSizeBinaryComparator(chunks, numRows, validityNulls)
+		return newFixedSizeBinaryComparator(chunks, numRows, validityNulls, rowMap)
 	case arrow.EXTENSION:
 		storageChunks, err := extensionStorageFixedSizeBinaryChunks(chunks)
 		if err != nil {
 			return nil, err
 		}
-		return newFixedSizeBinaryComparator(storageChunks, numRows, validityNulls)
+		return newFixedSizeBinaryComparator(storageChunks, numRows, validityNulls, rowMap)
 	default:
 		return nil, fmt.Errorf("%w: sorting not supported for type %s", arrow.ErrNotImplemented, typeID)
 	}
@@ -404,10 +405,22 @@ func SortIndices(ctx *exec.KernelCtx, columns []*arrow.Chunked, keys []SortKey) 
 		}
 	}
 
-	comparators := make([]columnComparator, len(columns))
 	nRows := int(length)
+	var (
+		alignedOffsets []int
+		aligned        bool
+		sharedRowMap   logicalRowMap
+	)
+	if len(keys) > 1 {
+		alignedOffsets, aligned = alignedChunkBoundaries(columns)
+		if aligned && len(alignedOffsets) > 2 {
+			sharedRowMap = newLogicalRowMap(columns[0].Chunks(), nRows)
+		}
+	}
+
+	comparators := make([]columnComparator, len(columns))
 	for i, col := range columns {
-		comp, err := createChunkedComparator(col.Chunks(), nRows)
+		comp, err := createChunkedComparator(col.Chunks(), nRows, sharedRowMap)
 		if err != nil {
 			return nil, err
 		}
@@ -451,7 +464,7 @@ func SortIndices(ctx *exec.KernelCtx, columns []*arrow.Chunked, keys []SortKey) 
 		}
 	} else {
 		useRadix := len(keys) <= maxRadixSortKeys
-		offs, aligned := alignedChunkBoundaries(columns)
+		offs := alignedOffsets
 		nSeg := 1
 		if aligned {
 			nSeg = len(offs) - 1

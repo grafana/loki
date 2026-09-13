@@ -239,7 +239,7 @@ func WithStringsReplacer(replacer *strings.Replacer) Option {
 
 // WithCustomTypeConverter allows specifying a custom type converter for the CSV writer.
 //
-// returns a slice of strings that must match the number of columns in the output csv.
+// The returned slice must contain one string for each value in col.
 // the second return value is a boolean that indicates if the conversion was handled.
 // if it is set to false, the library will attempt to use default conversion.
 //
@@ -304,4 +304,23 @@ func readTypeSupported(dt arrow.DataType) bool {
 		return false
 	}
 	return true
+}
+
+func validateTimestampMetadata(dt arrow.DataType) error {
+	switch dt := dt.(type) {
+	case *arrow.TimestampType:
+		_, err := dt.GetZone()
+		return err
+	case arrow.ExtensionType:
+		return validateTimestampMetadata(dt.StorageType())
+	case arrow.ListLikeType:
+		return validateTimestampMetadata(dt.Elem())
+	case arrow.NestedType:
+		for _, field := range dt.Fields() {
+			if err := validateTimestampMetadata(field.Type); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
 }

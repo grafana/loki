@@ -19,7 +19,6 @@ package extensions
 import (
 	"fmt"
 	"reflect"
-	"slices"
 
 	"github.com/apache/arrow-go/v18/arrow"
 	"github.com/apache/arrow-go/v18/arrow/array"
@@ -46,7 +45,14 @@ func (b *JSONType) ParquetLogicalType() schema.LogicalType {
 // NewJSONType creates a new JSONType with the specified storage type.
 // storageType must be one of String, LargeString, StringView.
 func NewJSONType(storageType arrow.DataType) (*JSONType, error) {
-	if !slices.Contains(jsonSupportedStorageTypes, storageType) {
+	supported := false
+	for _, typ := range jsonSupportedStorageTypes {
+		if arrow.TypeEqual(typ, storageType) {
+			supported = true
+			break
+		}
+	}
+	if !supported {
 		return nil, fmt.Errorf("unsupported storage type for JSON extension type: %s", storageType)
 	}
 	return &JSONType{ExtensionBase: arrow.ExtensionBase{Storage: storageType}}, nil
@@ -140,6 +146,13 @@ func (a *JSONArray) MarshalJSON() ([]byte, error) {
 // GetOneForMarshal implements arrow.Array.
 func (a *JSONArray) GetOneForMarshal(i int) interface{} {
 	return a.ValueJSON(i)
+}
+
+func (a *JSONArray) ValueAsAny(i int) any {
+	if a.IsNull(i) {
+		return nil
+	}
+	return a.Value(i)
 }
 
 var (

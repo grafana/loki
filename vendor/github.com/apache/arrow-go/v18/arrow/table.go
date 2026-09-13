@@ -146,6 +146,12 @@ type Chunked struct {
 //
 // NewChunked panics if the chunks do not have the same data type.
 func NewChunked(dtype DataType, chunks []Array) *Chunked {
+	for _, chunk := range chunks {
+		if chunk != nil && !TypeEqual(chunk.DataType(), dtype) {
+			panic(fmt.Errorf("%w: arrow/array: mismatch data type %s vs %s", ErrInvalid, chunk.DataType().String(), dtype.String()))
+		}
+	}
+
 	arr := &Chunked{
 		chunks: make([]Array, 0, len(chunks)),
 		dtype:  dtype,
@@ -157,9 +163,6 @@ func NewChunked(dtype DataType, chunks []Array) *Chunked {
 			continue
 		}
 
-		if !TypeEqual(chunk.DataType(), dtype) {
-			panic(fmt.Errorf("%w: arrow/array: mismatch data type %s vs %s", ErrInvalid, chunk.DataType().String(), dtype.String()))
-		}
 		chunk.Retain()
 		arr.chunks = append(arr.chunks, chunk)
 		arr.length += chunk.Len()
