@@ -323,6 +323,31 @@ var cases = []struct {
 		expected: false,
 	},
 	{
+		// Regression: the lowercase substr starts with σ (UTF-8 lead byte 0xCF)
+		// while the uppercase Σ in the line has lead byte 0xCE. The candidate
+		// scan must not assume upper/lower case share the same lead byte.
+		name:     "utf8_case_insensitive_lowercase_sigma_start_matches_uppercase",
+		line:     "ΤΟ ΣΥΜΒΟΛΟ Ω", // "THE SYMBOL Ω" in Greek uppercase
+		substr:   "συμβολο",      // "symbol" in Greek lowercase
+		expected: true,
+	},
+	{
+		// Same class of bug, at the end of the line, with another diverging
+		// pair: lowercase ω (0xCF) vs uppercase Ω (0xCE).
+		name:     "utf8_case_insensitive_lowercase_omega_matches_uppercase",
+		line:     "ΤΟ ΣΥΜΒΟΛΟ Ω",
+		substr:   "ω",
+		expected: true,
+	},
+	{
+		// A lowercase 0xCF-lead first rune that is genuinely absent must still
+		// report no match (guards against the fix over-matching).
+		name:     "utf8_case_insensitive_lowercase_omega_start_no_match",
+		line:     "ΤΟ ΣΥΜΒΟΛΟ Ω",
+		substr:   "ωραια", // "nice", not present as a substring
+		expected: false,
+	},
+	{
 		name:     "empty_substr",
 		line:     "any line",
 		substr:   "",
