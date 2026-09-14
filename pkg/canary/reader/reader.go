@@ -157,13 +157,18 @@ func NewReader(writer io.Writer,
 		return nil, err
 	}
 
+	prefix, err := url.JoinPath(pathPrefix)
+	if err != nil {
+		return nil, fmt.Errorf("invalid path prefix %q: %w", pathPrefix, err)
+	}
+
 	rd := Reader{
 		header:          h,
 		useTLS:          useTLS,
 		clientTLSConfig: tlsConfig,
 		caFile:          caFile,
 		addr:            address,
-		pathPrefix:      pathPrefix,
+		pathPrefix:      prefix,
 		user:            user,
 		pass:            pass,
 		tenantID:        tenantID,
@@ -222,15 +227,15 @@ func (r *Reader) QueryCountOverTime(queryRange string, now time.Time, cache bool
 		scheme = "https"
 	}
 
-	queryEndpoint := "/loki/api/v1/query"
-	if r.pathPrefix != "" {
-		queryEndpoint = r.pathPrefix + queryEndpoint
+	queryPath, err := url.JoinPath(r.pathPrefix, "/loki/api/v1/query")
+	if err != nil {
+		return 0, err
 	}
 
 	u := url.URL{
 		Scheme: scheme,
 		Host:   r.addr,
-		Path:   queryEndpoint,
+		Path:   queryPath,
 		RawQuery: "query=" + url.QueryEscape(r.buildMetricQuery(queryRange)) +
 			fmt.Sprintf("&time=%d", now.UnixNano()) +
 			"&limit=1000",
@@ -323,15 +328,15 @@ func (r *Reader) Query(start time.Time, end time.Time) ([]time.Time, error) {
 		scheme = "https"
 	}
 
-	queryRangeEndpoint := "/loki/api/v1/query_range"
-	if r.pathPrefix != "" {
-		queryRangeEndpoint = r.pathPrefix + queryRangeEndpoint
+	queryRangePath, err := url.JoinPath(r.pathPrefix, "/loki/api/v1/query_range")
+	if err != nil {
+		return nil, err
 	}
 
 	u := url.URL{
 		Scheme: scheme,
 		Host:   r.addr,
-		Path:   queryRangeEndpoint,
+		Path:   queryRangePath,
 		RawQuery: fmt.Sprintf("start=%d&end=%d", start.UnixNano(), end.UnixNano()) +
 			"&query=" + url.QueryEscape(fmt.Sprintf("%s %v", r.labelSelector, r.queryAppend)) +
 			"&limit=1000",
@@ -495,15 +500,16 @@ func (r *Reader) closeAndReconnect() {
 			scheme = "wss"
 		}
 
-		tailEndpoint := "/loki/api/v1/tail"
-		if r.pathPrefix != "" {
-			tailEndpoint = r.pathPrefix + tailEndpoint
+		tailPath, err := url.JoinPath(r.pathPrefix, "/loki/api/v1/tail")
+		if err != nil {
+			fmt.Fprintf(r.w, "failed to build tail URL: %v\n", err)
+			return
 		}
 
 		u := url.URL{
 			Scheme:   scheme,
 			Host:     r.addr,
-			Path:     tailEndpoint,
+			Path:     tailPath,
 			RawQuery: "query=" + url.QueryEscape(fmt.Sprintf("%s %v", r.labelSelector, r.queryAppend)),
 		}
 

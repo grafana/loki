@@ -36,7 +36,6 @@ var defaultUserAgent = fmt.Sprintf("canary-push/%s", build.GetVersion().Version)
 // directly to the given loki server URL. Each `Push` instance handles for a single tenant.
 type Push struct {
 	lokiURL     string
-	pathPrefix  string
 	tenantID    string
 	httpClient  *http.Client
 	userAgent   string
@@ -112,15 +111,15 @@ func NewPush(
 		scheme = "https"
 	}
 
+	pushPath, err := url.JoinPath(pathPrefix, pushEndpoint)
+	if err != nil {
+		return nil, fmt.Errorf("invalid path prefix %q: %w", pathPrefix, err)
+	}
+
 	u := url.URL{
 		Scheme: scheme,
 		Host:   lokiAddr,
-	}
-
-	if pathPrefix != "" {
-		u.Path = pathPrefix + pushEndpoint
-	} else {
-		u.Path = pushEndpoint
+		Path:   pushPath,
 	}
 
 	p := &Push{
