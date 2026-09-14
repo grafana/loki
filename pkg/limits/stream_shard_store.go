@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"hash/fnv"
+	"math"
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
@@ -107,12 +108,11 @@ func newStreamShardStore(
 //   - A stream whose policy has sharding disabled returns 1 shard and is
 //     not tracked (no rate to record, and the legacy path accounts for it).
 //   - An existing stream with sharding enabled has its rate recomputed from
-//     the observation in this call, a "desired" shard count derived from
-//     rate/desiredRate, and the result capped to fit the tenant's remaining
-//     budget: granted = max(1, min(desired, room)). This never forces an
-//     active stream down to 0 shards (only a rejection of a brand-new
-//     stream can do that), and never shrinks a stream because *other*
-//     streams grew -- only because its own rate dropped.
+//     the observation in this call and a "desired" shard count derived from
+//     rate/desiredRate. When growing it adds up to the free budget space on
+//     top of what it holds (granted = existing + min(desired-existing,
+//     room)); when its own rate drops it shrinks freely to desired. It is
+//     never forced to shrink because *other* streams grew into the budget.
 //   - If no rate history has been recorded for this stream yet (its rate
 //     buckets are still empty, e.g. this is the first live push since it
 //     was granted its initial shard count), the shard count is held steady
@@ -151,7 +151,10 @@ func (s *streamShardStore) checkAndShard(ctx context.Context, tenant string, met
 			)
 			switch {
 			case !shardCfg.Enabled:
-				// Sharding disabled for this policy: never shard.
+				// Sharding disabled for this policy: never shard, and drop any
+				// tracked state so it stops consuming budget -- a stream whose
+				// policy flipped to disabled must not keep its stale shards.
+				delete(streams, m.StreamHash)
 				results = append(results, &proto.StreamShardResult{
 					StreamHash: m.StreamHash,
 					Shards:     1,
@@ -451,5 +454,8 @@ func ceilDivU32(a uint64, b uint64) uint32 {
 	if b == 0 {
 		return 1
 	}
-	return uint32((a + b - 1) / b)
+	// Clamp to MaxUint32 rather than letting the uint32 conversion wrap: a
+	// huge rate over a tiny desired rate could otherwise overflow to a small
+	// (or zero) shard count, i.e. under-shard the hottest streams.
+	return uint32(min(math.MaxUint32, (a+b-1)/b))
 }

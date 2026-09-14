@@ -34,9 +34,10 @@ type Config struct {
 	// Expected to be in bytes.
 	DesiredRate flagext.ByteSize `yaml:"desired_rate" json:"desired_rate" doc:"description=Threshold used to cut a new shard. Default (1536KB) means if a rate is above 1536KB/s, it will be sharded into two streams."`
 
-	// LimitsServiceStreamShardingMode controls whether shard-count decisions
-	// are computed by the ingest-limits service instead of the distributor's
-	// local rate store.
+	// LimitsServiceStreamShardingMode controls whether the ingest-limits
+	// service is asked for a shard-count recommendation. In "shadow" the
+	// recommendation is only compared against the local rate store for
+	// observability; the local rate store still drives actual sharding.
 	LimitsServiceStreamShardingMode string `yaml:"limits_service_stream_sharding_mode" json:"limits_service_stream_sharding_mode" doc:"description=Experimental. Controls whether the ingest-limits service is asked for a shard-count recommendation for observability purposes. One of 'disabled' (default, unchanged behavior) or 'shadow' (compute via the limits service for comparison only; actual sharding is still driven by the local rate store)."`
 }
 

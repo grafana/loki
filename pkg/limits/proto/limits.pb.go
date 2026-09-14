@@ -518,9 +518,10 @@ func (m *UpdateRatesResult) GetRate() uint64 {
 
 type CheckLimitsAndShardRequest struct {
 	Tenant string `protobuf:"bytes,1,opt,name=tenant,proto3" json:"tenant,omitempty"`
-	// streamHash must be the pre-shard hash of the logical stream, and
-	// totalSize the full byte size observed for it in this push (i.e. before
-	// any distributor-side sharding has split it into sub-streams).
+	// streamHash is the pre-shard hash of the logical stream; totalSize is the
+	// byte size the caller used for its own rate decision for this push (line
+	// bytes only for time-sharded streams). Both are pre-shard, before any
+	// distributor-side sharding has split the stream into sub-streams.
 	Streams []*StreamMetadata `protobuf:"bytes,2,rep,name=streams,proto3" json:"streams,omitempty"`
 }
 
@@ -620,10 +621,11 @@ type StreamShardResult struct {
 	// stream was rejected is signaled independently via rejectReason, not by
 	// this value.
 	Shards uint32 `protobuf:"varint,2,opt,name=shards,proto3" json:"shards,omitempty"`
-	// Reason enum, see reason.go. Populated only when shards was capped below
-	// the rate-justified ideal (ShardsCapped), or when the decision could not
-	// be made (Failed). Never set merely because the stream was rejected --
-	// see rejectReason for that.
+	// Reason enum, see reason.go. Populated when shards was capped below the
+	// rate-justified ideal (ShardsCapped), when the decision could not be made
+	// (Failed), or when the receiving instance did not own the stream's
+	// partition (NotOwned). Never set merely because the stream was rejected
+	// -- see rejectReason for that.
 	ShardDecisionContext uint32 `protobuf:"varint,3,opt,name=shardDecisionContext,proto3" json:"shardDecisionContext,omitempty"`
 	// Non-empty when the stream was rejected outright (only possible for a
 	// brand-new stream with no room left in the tenant's stream-count

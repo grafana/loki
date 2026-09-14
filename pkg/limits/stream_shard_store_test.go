@@ -296,37 +296,70 @@ func TestStreamShardStore_CheckAndShard(t *testing.T) {
 			})
 		})
 	}
-}
 
-func TestStreamShardStore_CheckAndShard_NewStreamSeedsItsFirstRateBucket(t *testing.T) {
-	// Regression guard: a brand-new stream's first push must still start at
-	// 1 shard (no rate history to justify more), but its bytes must be
-	// recorded into the rate buckets rather than dropped -- otherwise only
-	// the SECOND push would initialize the buckets, and a real rate
-	// computation wouldn't happen until the third push, permanently biasing
-	// bursty/infrequent streams low.
-	synctest.Test(t, func(t *testing.T) {
-		s := newTestStreamShardStore(t, 100, "1B")
+	// These scenarios need multiple sequential pushes or gauge inspection,
+	// which the single-push table above can't express, so they run as
+	// subtests of this test rather than table rows.
+	t.Run("new stream seeds its first rate bucket", func(t *testing.T) {
+		// Regression guard: a brand-new stream's first push must still start at
+		// 1 shard (no rate history to justify more), but its bytes must be
+		// recorded into the rate buckets rather than dropped -- otherwise only
+		// the SECOND push would initialize the buckets, and a real rate
+		// computation wouldn't happen until the third push, permanently biasing
+		// bursty/infrequent streams low.
+		synctest.Test(t, func(t *testing.T) {
+			s := newTestStreamShardStore(t, 100, "1B")
 
-		// First push: brand new stream. Must start at 1 shard.
-		results := s.checkAndShard(context.Background(), "tenant1", []*proto.StreamMetadata{
-			{StreamHash: 1, TotalSize: 1500},
-		}, time.Now())
-		require.Len(t, results, 1)
-		require.Equal(t, uint32(1), results[0].Shards)
+			// First push: brand new stream. Must start at 1 shard.
+			results := s.checkAndShard(context.Background(), "tenant1", []*proto.StreamMetadata{
+				{StreamHash: 1, TotalSize: 1500},
+			}, time.Now())
+			require.Len(t, results, 1)
+			require.Equal(t, uint32(1), results[0].Shards)
 
-		// Second push, same instant (same 1-minute bucket, per
-		// newTestStreamShardStore's bucketSize): if the first push's bytes
-		// were recorded, the rate is already computable from BOTH pushes
-		// combined -- 3000 bytes / 300s rate window = 10 B/s, desired 10
-		// shards at desiredRate=1B/s -- instead of being held steady at 1
-		// while "cold" (which would only stop being true on the THIRD push
-		// without this fix).
-		results = s.checkAndShard(context.Background(), "tenant1", []*proto.StreamMetadata{
-			{StreamHash: 1, TotalSize: 1500},
-		}, time.Now())
-		require.Len(t, results, 1)
-		require.Equal(t, uint32(10), results[0].Shards)
+			// Second push, same instant (same 1-minute bucket, per
+			// newTestStreamShardStore's bucketSize): if the first push's bytes
+			// were recorded, the rate is already computable from BOTH pushes
+			// combined -- 3000 bytes / 300s rate window = 10 B/s, desired 10
+			// shards at desiredRate=1B/s -- instead of being held steady at 1
+			// while "cold" (which would only stop being true on the THIRD push
+			// without this fix).
+			results = s.checkAndShard(context.Background(), "tenant1", []*proto.StreamMetadata{
+				{StreamHash: 1, TotalSize: 1500},
+			}, time.Now())
+			require.Len(t, results, 1)
+			require.Equal(t, uint32(10), results[0].Shards)
+		})
+	})
+
+	t.Run("disabled stream is untracked", func(t *testing.T) {
+		// A stream that was tracked while its policy had sharding enabled must be
+		// dropped from the store once sharding is disabled for it, so its stale
+		// shards stop consuming budget and stop showing in the gauges.
+		synctest.Test(t, func(t *testing.T) {
+			cfg := shardstreams.Config{Enabled: false}
+			require.NoError(t, cfg.DesiredRate.Set("1B"))
+			l := &mockLimits{MaxGlobalStreams: 100, ShardStreamsConfig: cfg}
+			s, err := newStreamShardStore(15*time.Minute, 5*time.Minute, time.Minute, 1, l, prometheus.NewRegistry())
+			require.NoError(t, err)
+
+			seedStreamShardStore(s, "tenant1", 0, noPolicy, streamShardUsage{
+				hash: 1, lastSeenAt: time.Now().UnixNano(), shardCount: 5, policy: noPolicy,
+			})
+			tracked, total, _ := collectStreamShardStoreGauges(t, s, "tenant1")
+			require.Equal(t, float64(1), tracked)
+			require.Equal(t, float64(5), total)
+
+			results := s.checkAndShard(context.Background(), "tenant1", []*proto.StreamMetadata{
+				{StreamHash: 1, TotalSize: 100},
+			}, time.Now())
+			require.Len(t, results, 1)
+			require.Equal(t, uint32(1), results[0].Shards)
+
+			tracked, total, _ = collectStreamShardStoreGauges(t, s, "tenant1")
+			require.Equal(t, float64(0), tracked, "disabled stream must be untracked")
+			require.Equal(t, float64(0), total)
+		})
 	})
 }
 
