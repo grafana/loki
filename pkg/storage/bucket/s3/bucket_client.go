@@ -4,6 +4,7 @@ import (
 	"net/http"
 
 	"github.com/go-kit/log"
+	conntrack "github.com/mwitkow/go-conntrack"
 	"github.com/prometheus/common/model"
 	"github.com/thanos-io/objstore"
 	"github.com/thanos-io/objstore/exthttp"
@@ -17,7 +18,7 @@ const (
 
 // NewBucketClient creates a new S3 bucket client
 func NewBucketClient(cfg Config, name string, logger log.Logger, wrapRT func(http.RoundTripper) http.RoundTripper) (objstore.Bucket, error) {
-	s3Cfg, err := newS3Config(cfg)
+	s3Cfg, err := newS3Config(cfg, name)
 	if err != nil {
 		return nil, err
 	}
@@ -27,7 +28,7 @@ func NewBucketClient(cfg Config, name string, logger log.Logger, wrapRT func(htt
 
 // NewBucketReaderClient creates a new S3 bucket client
 func NewBucketReaderClient(cfg Config, name string, logger log.Logger, wrapRT func(http.RoundTripper) http.RoundTripper) (objstore.BucketReader, error) {
-	s3Cfg, err := newS3Config(cfg)
+	s3Cfg, err := newS3Config(cfg, name)
 	if err != nil {
 		return nil, err
 	}
@@ -35,7 +36,7 @@ func NewBucketReaderClient(cfg Config, name string, logger log.Logger, wrapRT fu
 	return s3.NewBucketWithConfig(logger, s3Cfg, name, wrapRT)
 }
 
-func newS3Config(cfg Config) (s3.Config, error) {
+func newS3Config(cfg Config, name string) (s3.Config, error) {
 	sseCfg, err := cfg.SSE.BuildThanosConfig()
 	if err != nil {
 		return s3.Config{}, err
@@ -45,6 +46,45 @@ func newS3Config(cfg Config) (s3.Config, error) {
 
 	if cfg.StorageClass != "" {
 		putUserMetadata[awsStorageClassHeader] = cfg.StorageClass
+	}
+
+	httpCfg := s3.HTTPConfig{
+		IdleConnTimeout:       model.Duration(cfg.HTTP.IdleConnTimeout),
+		ResponseHeaderTimeout: model.Duration(cfg.HTTP.ResponseHeaderTimeout),
+		InsecureSkipVerify:    cfg.HTTP.InsecureSkipVerify,
+		TLSHandshakeTimeout:   model.Duration(cfg.HTTP.TLSHandshakeTimeout),
+		ExpectContinueTimeout: model.Duration(cfg.HTTP.ExpectContinueTimeout),
+		MaxIdleConns:          cfg.HTTP.MaxIdleConns,
+		MaxIdleConnsPerHost:   cfg.HTTP.MaxIdleConnsPerHost,
+		MaxConnsPerHost:       cfg.HTTP.MaxConnsPerHost,
+		Transport:             cfg.HTTP.Transport,
+		TLSConfig: exthttp.TLSConfig{
+			CAFile:     cfg.HTTP.TLSConfig.CAPath,
+			CertFile:   cfg.HTTP.TLSConfig.CertPath,
+			KeyFile:    cfg.HTTP.TLSConfig.KeyPath,
+			ServerName: cfg.HTTP.TLSConfig.ServerName,
+		},
+	}
+
+	if httpCfg.Transport == nil {
+		transport, err := exthttp.DefaultTransport(httpCfg)
+		if err != nil {
+			return s3.Config{}, err
+		}
+		// AddressTracker counts distinct remote addresses.
+		tracked := newAddressTracker("s3-" + name).wrap(transport.DialContext)
+		// conntrack counts every connection attempted, established, failed and closed.
+		dialFn := conntrack.NewDialContextFunc(
+			conntrack.DialWithName("s3-"+name),
+			conntrack.DialWithDialContextFunc(tracked),
+		)
+		if cfg.ShuffleAddresses {
+			d := newShufflingDialer()
+			d.dialContext = dialFn
+			dialFn = d.DialContext
+		}
+		transport.DialContext = dialFn
+		httpCfg.Transport = transport
 	}
 
 	return s3.Config{
@@ -63,23 +103,7 @@ func newS3Config(cfg Config) (s3.Config, error) {
 		BucketLookupType:   cfg.BucketLookupType,
 		AWSSDKAuth:         cfg.NativeAWSAuthEnabled,
 		PartSize:           cfg.PartSize,
-		HTTPConfig: s3.HTTPConfig{
-			IdleConnTimeout:       model.Duration(cfg.HTTP.IdleConnTimeout),
-			ResponseHeaderTimeout: model.Duration(cfg.HTTP.ResponseHeaderTimeout),
-			InsecureSkipVerify:    cfg.HTTP.InsecureSkipVerify,
-			TLSHandshakeTimeout:   model.Duration(cfg.HTTP.TLSHandshakeTimeout),
-			ExpectContinueTimeout: model.Duration(cfg.HTTP.ExpectContinueTimeout),
-			MaxIdleConns:          cfg.HTTP.MaxIdleConns,
-			MaxIdleConnsPerHost:   cfg.HTTP.MaxIdleConnsPerHost,
-			MaxConnsPerHost:       cfg.HTTP.MaxConnsPerHost,
-			Transport:             cfg.HTTP.Transport,
-			TLSConfig: exthttp.TLSConfig{
-				CAFile:     cfg.HTTP.TLSConfig.CAPath,
-				CertFile:   cfg.HTTP.TLSConfig.CertPath,
-				KeyFile:    cfg.HTTP.TLSConfig.KeyPath,
-				ServerName: cfg.HTTP.TLSConfig.ServerName,
-			},
-		},
+		HTTPConfig:         httpCfg,
 		TraceConfig: s3.TraceConfig{
 			Enable: cfg.TraceConfig.Enabled,
 		},
