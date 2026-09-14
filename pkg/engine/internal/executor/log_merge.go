@@ -272,7 +272,7 @@ func sourcesMatchSortLayout(ctx context.Context, sources []*logSource, sortSchem
 				return false, src.path, fmt.Errorf("opening logs section in %q: %w", src.path, err)
 			}
 			got := opened.SortLayout()
-			if !logsobj.CompareSortLayout(got, want) {
+			if !logsobj.EqualSortLayout(got, want) {
 				return false, src.path, nil
 			}
 		}
@@ -355,7 +355,7 @@ func (c *Context) newLogObjectWriter(node *physical.LogMerge, table *logsobj.Mul
 		node:           node,
 		table:          table,
 		calc:           calc,
-		builderMetrics: logsobj.NewBuilderMetrics(),
+		builderMetrics: c.builderMetrics,
 	}
 	err := w.startNewObject()
 	if err != nil {

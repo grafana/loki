@@ -97,9 +97,10 @@ type WorkerParams struct {
 type Worker struct {
 	// Our public API is a lightweight wrapper around the internal API.
 
-	inner    *worker.Worker
-	endpoint string
-	handler  http.Handler
+	inner          *worker.Worker
+	endpoint       string
+	handler        http.Handler
+	builderMetrics *logsobj.BuilderMetrics
 }
 
 // NewWorker creates a new Worker instance. Use [Worker.Service] to manage the
@@ -157,6 +158,10 @@ func NewWorker(params WorkerParams, reg prometheus.Registerer) (*Worker, error) 
 	if err != nil {
 		return nil, fmt.Errorf("creating task results cache: %w", err)
 	}
+	builderMetrics := logsobj.NewBuilderMetrics()
+	if err := builderMetrics.Register(reg); err != nil {
+		return nil, fmt.Errorf("registering logs object builder metrics: %w", err)
+	}
 
 	inner, err := worker.New(worker.Config{
 		Logger:     params.Logger,
@@ -183,6 +188,7 @@ func NewWorker(params WorkerParams, reg prometheus.Registerer) (*Worker, error) 
 		IndexobjCfg:    params.IndexobjCfg,
 		LogsobjCfg:     params.LogsobjCfg,
 		UploaderCfg:    params.UploaderCfg,
+		BuilderMetrics: builderMetrics,
 
 		IndexMergeObserver: params.IndexMergeObserver,
 		LogMergeObserver:   params.LogMergeObserver,
@@ -192,9 +198,10 @@ func NewWorker(params WorkerParams, reg prometheus.Registerer) (*Worker, error) 
 	}
 
 	return &Worker{
-		inner:    inner,
-		endpoint: params.Endpoint,
-		handler:  handler,
+		inner:          inner,
+		endpoint:       params.Endpoint,
+		handler:        handler,
+		builderMetrics: builderMetrics,
 	}, nil
 }
 
@@ -222,4 +229,5 @@ func (w *Worker) RegisterMetrics(reg prometheus.Registerer) error {
 // UnregisterMetrics unregisters metrics about w from reg.
 func (w *Worker) UnregisterMetrics(reg prometheus.Registerer) {
 	w.inner.UnregisterMetrics(reg)
+	w.builderMetrics.Unregister(reg)
 }

@@ -44,8 +44,8 @@ func TargetSortLayout(schemaLabels []string) logs.SortLayout {
 	}
 }
 
-// CompareSortLayout reports whether two physical logs layouts are identical.
-func CompareSortLayout(a, b logs.SortLayout) bool {
+// EqualSortLayout reports whether two physical logs layouts are identical.
+func EqualSortLayout(a, b logs.SortLayout) bool {
 	return slices.Equal(a.SchemaLabels, b.SchemaLabels) &&
 		a.StreamOrder == b.StreamOrder &&
 		a.ShardCount == b.ShardCount
@@ -65,6 +65,9 @@ func remapByRank(remap []rankedSortKey) []rankedSortKey {
 	byRank := make([]rankedSortKey, len(remap))
 	for _, mapping := range remap {
 		if mapping.rank > 0 {
+			if byRank[mapping.rank].rank != 0 {
+				panic(fmt.Sprintf("duplicate rank %d", mapping.rank))
+			}
 			byRank[mapping.rank] = mapping
 		}
 	}
@@ -146,10 +149,11 @@ func (b *Builder) replaySections(ctx context.Context,
 			if rec.StreamID <= 0 || rec.StreamID >= int64(len(remap)) || remap[rec.StreamID].rank == 0 {
 				return nil, nil, nil, fmt.Errorf("missing stream ID remap for stream ID %d", rec.StreamID)
 			}
-			rec.StreamID = remap[rec.StreamID].rank
-			rec.Line = append([]byte(nil), rec.Line...)
-			rec.Metadata = rec.Metadata.Copy()
-			intermediateSectionBuilder.Append(rec)
+
+			// Copy the Record because builder.Append retains a reference to the input Record while logs.IterSection re-uses it,
+			recCopy := rec.Copy()
+			recCopy.StreamID = remap[rec.StreamID].rank
+			intermediateSectionBuilder.Append(recCopy)
 
 			// Intermediate builder uses smaller sections (of BufferSize) so they can be independently compressed
 			if intermediateSectionBuilder.UncompressedSize() >= int(b.cfg.BufferSize) {

@@ -121,3 +121,16 @@ func newPhysicalFiller() *testutils.Filler {
 
 	return f
 }
+
+func TestSortObjectMarshalPhysicalIsDeepCopy(t *testing.T) {
+	original := &physicalpb.SortObject{
+		SourceObjectPath: "objects/aa/bb",
+		SortSchema:       []string{"label:app"},
+	}
+
+	marshaled, err := original.MarshalPhysical(ulid.Make())
+	require.NoError(t, err)
+	marshaled.(*physical.SortObject).SortSchema[0] = "label:cluster"
+
+	require.Equal(t, "label:app", original.SortSchema[0])
+}

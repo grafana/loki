@@ -100,6 +100,7 @@ type thread struct {
 	IndexobjCfg    logsobj.BuilderBaseConfig
 	LogsobjCfg     logsobj.BuilderBaseConfig
 	UploaderCfg    uploader.Config
+	BuilderMetrics *logsobj.BuilderMetrics
 
 	// IndexMergeObserver is optional; nil for query-only workers.
 	IndexMergeObserver executor.IndexMergeObserver
@@ -230,6 +231,7 @@ func (t *thread) runJob(ctx context.Context, job *threadJob) {
 		IndexobjCfg:    t.IndexobjCfg,
 		LogsobjCfg:     t.LogsobjCfg,
 		UploaderCfg:    t.UploaderCfg,
+		BuilderMetrics: t.BuilderMetrics,
 
 		IndexMergeObserver: t.IndexMergeObserver,
 		LogMergeObserver:   t.LogMergeObserver,

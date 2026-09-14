@@ -596,10 +596,10 @@ func TestSortLayoutEqual_DetectsMismatchedComponents(t *testing.T) {
 		},
 	}
 
-	require.True(t, logsobj.CompareSortLayout(want, want), "identical layouts must match")
+	require.True(t, logsobj.EqualSortLayout(want, want), "identical layouts must match")
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			require.False(t, logsobj.CompareSortLayout(test.got, want))
+			require.False(t, logsobj.EqualSortLayout(test.got, want))
 		})
 	}
 }

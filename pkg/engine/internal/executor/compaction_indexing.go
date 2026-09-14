@@ -2,7 +2,6 @@ package executor
 
 import (
 	"context"
-	"errors"
 	"fmt"
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
@@ -30,26 +29,29 @@ func (c *Context) uploadAndIndexObject(
 }
 
 // flushAndUploadIndex flushes calc, resolves the content-addressed index path,
-// uploads the index, and closes its backing resources.
+// uploads the index, and closes the provided Calculator.
 func (c *Context) flushAndUploadIndex(
 	ctx context.Context,
 	calc *dataobjindex.Calculator,
 	resolvePath indexPathResolver,
-) (string, error) {
+) (output string, flushErr error) {
 	obj, closer, _, err := calc.Flush()
 	if err != nil {
 		return "", fmt.Errorf("flushing index: %w", err)
 	}
 	defer func() {
-		_ = closer.Close()
+		closeErr := closer.Close()
+		if flushErr == nil {
+			flushErr = closeErr
+		}
 	}()
 
 	path, err := resolvePath(ctx, obj)
 	if err != nil {
-		return "", errors.Join(fmt.Errorf("generating index path: %w", err), closer.Close())
+		return "", fmt.Errorf("generating index path: %w", err)
 	}
 	if _, err := c.uploadObject(ctx, c.bucket, path, obj); err != nil {
-		return "", errors.Join(fmt.Errorf("uploading index %q: %w", path, err), closer.Close())
+		return "", fmt.Errorf("uploading index %q: %w", path, err)
 	}
 	return path, nil
 }

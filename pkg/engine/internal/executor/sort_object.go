@@ -48,13 +48,14 @@ func (c *Context) doSortObject(ctx context.Context, node *physical.SortObject) (
 			AppendOrderedEnabled: true,
 		},
 		c.scratchStore,
-		logsobj.NewBuilderMetrics(),
+		c.builderMetrics,
 		c.logger,
 		fixedSortSchema(node.SortSchema),
 	)
 	if err != nil {
 		return nil, fmt.Errorf("SortObject: creating sorter: %w", err)
 	}
+
 	sorted, sortedCloser, err := builder.CopyAndSort(ctx, source)
 	if err != nil {
 		return nil, fmt.Errorf("SortObject: sorting source %q: %w", node.SourceObjectPath, err)

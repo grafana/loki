@@ -55,6 +55,8 @@ type Config struct {
 	LogsobjCfg logsobj.BuilderBaseConfig
 	// UploaderCfg controls object key generation for compacted log objects.
 	UploaderCfg uploader.Config
+	// BuilderMetrics is shared by logs object builders across worker tasks.
+	BuilderMetrics *logsobj.BuilderMetrics
 
 	// IndexMergeObserver is used  by compaction to populate output-size
 	// histograms. Optional; nil disables observation.
@@ -115,6 +117,7 @@ func Run(ctx context.Context, cfg Config, plan *physical.Plan, logger log.Logger
 		indexobjCfg:        cfg.IndexobjCfg,
 		logsobjCfg:         cfg.LogsobjCfg,
 		uploaderCfg:        cfg.UploaderCfg,
+		builderMetrics:     cfg.BuilderMetrics,
 		indexMergeObserver: cfg.IndexMergeObserver,
 		logMergeObserver:   cfg.LogMergeObserver,
 	}
@@ -148,10 +151,11 @@ type Context struct {
 	streamFilterer RequestStreamFilterer
 	taskCaches     TaskCacheRegistry
 
-	scratchStore scratch.Store
-	indexobjCfg  logsobj.BuilderBaseConfig
-	logsobjCfg   logsobj.BuilderBaseConfig
-	uploaderCfg  uploader.Config
+	scratchStore   scratch.Store
+	indexobjCfg    logsobj.BuilderBaseConfig
+	logsobjCfg     logsobj.BuilderBaseConfig
+	uploaderCfg    uploader.Config
+	builderMetrics *logsobj.BuilderMetrics
 
 	indexMergeObserver IndexMergeObserver
 	logMergeObserver   LogMergeObserver

@@ -546,48 +546,49 @@ func (b *Builder) CopyAndSort(ctx context.Context, obj *dataobj.Object) (*dataob
 
 		mergeSections := sections
 		mergeRemap := remappedStreams
-		var intermediateCloser io.Closer
-		if requiresSort {
-			replayedSections, replayedRemap, closer, err := b.replaySections(ctx, tenant, sections, remappedStreams)
-			if err != nil {
-				return nil, nil, fmt.Errorf("replaying logs sections for tenant %s: %w", tenant, err)
+		// Wrap replay & drain with an inner func to close resources after each tenant
+		replayErr := func() (replayErr error) {
+			if requiresSort {
+				replayedSections, replayedRemap, closer, err := b.replaySections(ctx, tenant, sections, remappedStreams)
+				if err != nil {
+					return fmt.Errorf("replaying logs sections for tenant %s: %w", tenant, err)
+				}
+				mergeSections = replayedSections
+				mergeRemap = replayedRemap
+				defer func() {
+					closeErr := closer.Close()
+					if replayErr == nil {
+						replayErr = closeErr
+					}
+				}()
 			}
-			intermediateCloser = closer
-			mergeSections = replayedSections
-			mergeRemap = replayedRemap
-		}
 
-		logsIter, iterErr := mergeAndRemapLogsIter(ctx, mergeSections, mergeRemap)
-		if iterErr != nil {
-			if intermediateCloser != nil {
-				_ = intermediateCloser.Close()
+			logsIter, iterErr := mergeAndRemapLogsIter(ctx, mergeSections, mergeRemap)
+			if iterErr != nil {
+				return fmt.Errorf("creating sort iterator for tenant %s: %w", tenant, iterErr)
 			}
-			return nil, nil, fmt.Errorf("creating sort iterator for tenant %s: %w", tenant, iterErr)
-		}
 
-		lb := logs.NewBuilder(b.metrics.logs, logs.BuilderOptions{
-			PageSizeHint:     int(b.cfg.TargetPageSize),
-			PageMaxRowCount:  b.cfg.MaxPageRows,
-			BufferSize:       int(b.cfg.BufferSize),
-			StripeMergeLimit: b.cfg.SectionStripeMergeLimit,
-			AppendStrategy:   logs.AppendOrdered,
-			SortOrder:        logs.SortSchemaASC,
-			SchemaLabels:     schemaLabels,
-			StreamOrder:      logs.StreamOrderStableHashV1,
-			ShardCount:       streams.ShardFactor,
-		})
-		lb.SetTenant(tenant)
+			lb := logs.NewBuilder(b.metrics.logs, logs.BuilderOptions{
+				PageSizeHint:     int(b.cfg.TargetPageSize),
+				PageMaxRowCount:  b.cfg.MaxPageRows,
+				BufferSize:       int(b.cfg.BufferSize),
+				StripeMergeLimit: b.cfg.SectionStripeMergeLimit,
+				AppendStrategy:   logs.AppendOrdered,
+				SortOrder:        logs.SortSchemaASC,
+				SchemaLabels:     schemaLabels,
+				StreamOrder:      logs.StreamOrderStableHashV1,
+				ShardCount:       streams.ShardFactor,
+			})
+			lb.SetTenant(tenant)
 
-		if err := b.drainLogsIter(ctx, logsIter, lb, tenant); err != nil {
-			if intermediateCloser != nil {
-				_ = intermediateCloser.Close()
+			// Drain logs iter and append section from lb into the object stored on the builder.
+			if err := b.drainLogsIter(ctx, logsIter, lb, tenant); err != nil {
+				return err
 			}
-			return nil, nil, err
-		}
-		if intermediateCloser != nil {
-			if err := intermediateCloser.Close(); err != nil {
-				return nil, nil, fmt.Errorf("closing temporary sort runs for tenant %s: %w", tenant, err)
-			}
+			return nil
+		}()
+		if replayErr != nil {
+			return nil, nil, replayErr
 		}
 	}
 
@@ -615,7 +616,7 @@ func (b *Builder) requiresResort(ctx context.Context, obj *dataobj.Object) (bool
 			if err != nil {
 				return false, fmt.Errorf("opening logs section for tenant %s: %w", tenant, err)
 			}
-			if !CompareSortLayout(opened.SortLayout(), want) {
+			if !EqualSortLayout(opened.SortLayout(), want) {
 				return true, nil
 			}
 		}

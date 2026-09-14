@@ -215,6 +215,7 @@ func buildUnorderedObject(
 				key:    streams.NewSortKey(parsed, schemaKey),
 			})
 		}
+		// Explicitly sort in reverse order to force an "unsorted" object
 		slices.SortFunc(sourceStreams, func(a, b sourceStream) int {
 			return streams.CompareSortKey(b.key, a.key)
 		})

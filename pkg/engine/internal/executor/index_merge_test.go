@@ -728,11 +728,12 @@ func newTestExecutorContext(t *testing.T, bucket objstore.Bucket) *Context {
 	}
 
 	return &Context{
-		bucket:       bucket,
-		scratchStore: scratch.NewMemory(),
-		indexobjCfg:  testBuilderCfg,
-		logsobjCfg:   testBuilderCfg,
-		uploaderCfg:  uploader.Config{SHAPrefixSize: 2},
+		bucket:         bucket,
+		scratchStore:   scratch.NewMemory(),
+		indexobjCfg:    testBuilderCfg,
+		logsobjCfg:     testBuilderCfg,
+		uploaderCfg:    uploader.Config{SHAPrefixSize: 2},
+		builderMetrics: logsobj.NewBuilderMetrics(),
 
 		logger: log.NewNopLogger(),
 	}
