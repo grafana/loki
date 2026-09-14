@@ -1483,8 +1483,8 @@ func (d *Distributor) observeLimitsServiceShardShadow(ctx context.Context, tenan
 	for _, c := range candidates {
 		result, ok := results[c.stream.Hash]
 		switch {
-		case !ok ||
-			result.ShardDecisionContext == uint32(limits.ReasonFailed) ||
+		case !ok,
+			result.ShardDecisionContext == uint32(limits.ReasonFailed),
 			result.ShardDecisionContext == uint32(limits.ReasonNotOwned):
 			// Not a usable observation (no answer, the backend couldn't check
 			// it, or the answering instance didn't own its partition):

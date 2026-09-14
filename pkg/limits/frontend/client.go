@@ -82,11 +82,7 @@ func (c *cacheLimitsClient) UpdateRates(ctx context.Context, req *proto.UpdateRa
 	return c.onMiss.UpdateRates(ctx, req)
 }
 
-// CheckLimitsAndShard implements the [limitsClient] interface. It is
-// deliberately never routed through acceptedStreamsCache: that cache exists
-// to skip re-checking known-accepted streams, but shard-count decisions
-// depend on a live, continuously-updated rate estimate that must see every
-// push -- caching it here would starve the very signal this RPC depends on.
+// CheckLimitsAndShard implements the [limitsClient] interface.
 func (c *cacheLimitsClient) CheckLimitsAndShard(ctx context.Context, req *proto.CheckLimitsAndShardRequest) (*proto.CheckLimitsAndShardResponse, error) {
 	return c.onMiss.CheckLimitsAndShard(ctx, req)
 }

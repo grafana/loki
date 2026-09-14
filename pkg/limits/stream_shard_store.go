@@ -42,10 +42,10 @@ var (
 // scratch (see checkAndShard's "brand-new or expired" case).
 //
 // It caps shard growth against max_global_streams_per_user using only the
-// streams it has itself evaluated (see room). A tenant whose streams predate
-// shadow mode simply warms up until it has seen them, so the cap may be
-// looser than reality during that window -- an accepted approximation while
-// the feature is observation-only.
+// streams it has itself evaluated (see checkAndShard). A tenant whose streams
+// predate shadow mode simply warms up until it has seen them, so the cap may
+// be looser than reality during that window -- an accepted approximation
+// while the feature is observation-only.
 type streamShardStore struct {
 	activeWindow  time.Duration
 	rateWindow    time.Duration
@@ -104,8 +104,8 @@ func newStreamShardStore(
 //   - A brand-new or expired stream always starts at 1 shard (no rate
 //     history exists yet to justify more), and is rejected outright (0
 //     shards) if there is no room left even for 1.
-//   - An existing stream whose policy has sharding disabled is held at 1
-//     shard regardless of rate.
+//   - A stream whose policy has sharding disabled returns 1 shard and is
+//     not tracked (no rate to record, and the legacy path accounts for it).
 //   - An existing stream with sharding enabled has its rate recomputed from
 //     the observation in this call, a "desired" shard count derived from
 //     rate/desiredRate, and the result capped to fit the tenant's remaining
@@ -135,14 +135,15 @@ func (s *streamShardStore) checkAndShard(ctx context.Context, tenant string, met
 
 			existing, wasPresent := streams[m.StreamHash]
 			isNewOrExpired := !wasPresent || existing.lastSeenAt < cutoff
+			if isNewOrExpired {
+				// Free any stale entry up front so its slots stop counting
+				// against the budget
+				delete(streams, m.StreamHash)
+			}
 
-			// selfKnown is wasPresent, not "wasPresent and still valid": even
-			// an expired entry is still sitting in the map (it isn't
-			// deleted/reset until later in this same call), so bucketSlots
-			// below would otherwise double-count its own stale allocation as
-			// belonging to some other stream, wrongly shrinking room for a
-			// reactivating stream evaluating itself.
-			room := s.room(streams, maxStreams, existing, wasPresent)
+			// room is the free budget space left in the bucket, counting every
+			// tracked stream (this one included).
+			room := max(0, int64(maxStreams)-int64(bucketSlots(streams)))
 
 			var (
 				stream  streamShardUsage
@@ -150,12 +151,15 @@ func (s *streamShardStore) checkAndShard(ctx context.Context, tenant string, met
 			)
 			switch {
 			case !shardCfg.Enabled:
-				stream = existing
-				desired = 1
+				// Sharding disabled for this policy: never shard.
+				results = append(results, &proto.StreamShardResult{
+					StreamHash: m.StreamHash,
+					Shards:     1,
+				})
+				continue
 			case isNewOrExpired:
 				if maxStreams > 0 && room < 1 {
 					// No room even for a single slot: reject outright.
-					delete(streams, m.StreamHash)
 					results = append(results, &proto.StreamShardResult{
 						StreamHash:   m.StreamHash,
 						Shards:       0,
@@ -198,13 +202,15 @@ func (s *streamShardStore) checkAndShard(ctx context.Context, tenant string, met
 				}
 			}
 
-			// Cap the rate-justified count to the tenant's remaining budget,
-			// but never below what the stream already holds: an active stream
-			// only shrinks when its own rate drops, never because other
-			// streams grew.
+			// A growing stream adds shards on top of what it already holds,
+			// capped to the free budget space. Shrinking (desired <=
+			// existing.shardCount) and unlimited (maxStreams == 0) leave
+			// desired untouched: an active stream only shrinks when its own
+			// rate drops, never because other streams grew into the budget.
 			granted := desired
 			if maxStreams != 0 && desired > existing.shardCount {
-				granted = max(existing.shardCount, min(desired, uint32(room)))
+				growth := min(desired-existing.shardCount, uint32(room))
+				granted = existing.shardCount + growth
 			}
 
 			shardDecisionContext := ReasonUnknown
@@ -226,29 +232,6 @@ func (s *streamShardStore) checkAndShard(ctx context.Context, tenant string, met
 		}
 	})
 	return results
-}
-
-// room returns how many additional slots are available in the bucket for
-// maxStreams, excluding whatever the stream identified by existing/selfKnown
-// already holds. maxStreams == 0 (unlimited) is handled by callers, not
-// here.
-//
-// It counts only the streams streamShardStore has itself evaluated, weighted
-// by their granted shard counts (bucketSlots). Streams it hasn't seen yet
-// (e.g. because shadow mode was only just enabled for the tenant, or a stream
-// hasn't pushed since) don't count against the budget, so the cap can be
-// looser than reality until the store warms up -- an accepted approximation
-// while the feature is observation-only.
-func (s *streamShardStore) room(streams map[uint64]streamShardUsage, maxStreams uint64, existing streamShardUsage, selfKnown bool) int64 {
-	if maxStreams == 0 {
-		return 1<<63 - 1
-	}
-	othersSlots := bucketSlots(streams)
-	if selfKnown {
-		othersSlots -= streamShardSlots(existing.shardCount)
-	}
-
-	return max(0, int64(maxStreams)-int64(othersSlots))
 }
 
 // Evict evicts all streams that have not been seen within the active
