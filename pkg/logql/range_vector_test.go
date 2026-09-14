@@ -41,7 +41,7 @@ var (
 )
 
 func newSampleIterator(samples []logproto.Sample) iter.SampleIterator {
-	return iter.NewSortSampleIterator([]iter.SampleIterator{
+	return iter.NewTimestampFirstSortSampleIterator([]iter.SampleIterator{
 		iter.NewSeriesIterator(logproto.Series{
 			Labels:     labelFoo.String(),
 			Samples:    samples,
@@ -553,7 +553,7 @@ func Test_InstantQueryRangeVectorAggregations(t *testing.T) {
 
 func sampleIter(negative bool) iter.PeekingSampleIterator {
 	return iter.NewPeekingSampleIterator(
-		iter.NewSortSampleIterator([]iter.SampleIterator{
+		iter.NewTimestampFirstSortSampleIterator([]iter.SampleIterator{
 			iter.NewSeriesIterator(logproto.Series{
 				Labels: labelFoo.String(),
 				Samples: []logproto.Sample{
