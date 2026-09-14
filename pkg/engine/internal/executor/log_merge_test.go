@@ -3,6 +3,7 @@ package executor
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"strings"
 	"testing"
@@ -103,9 +104,7 @@ func buildMultiSectionSourceLogObject(t *testing.T, bucket objstore.Bucket, path
 			SectionStripeMergeLimit:   2,
 			EstimatedCompressionRatio: 8,
 		},
-		DataobjSortOrder:     "timestamp-desc",
 		AppendOrderedEnabled: true,
-		DataobjUseSortSchema: len(sortSchema) > 0,
 	}
 	buildSourceLogObjectWithConfig(t, bucket, path, cfg, sortSchema, byTenant)
 }
