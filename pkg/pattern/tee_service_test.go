@@ -21,6 +21,27 @@ import (
 	"github.com/grafana/loki/pkg/push"
 )
 
+func TestPatternTee_NilTenantCfgs(t *testing.T) {
+	tee, _ := getTestTee(t)
+	tee.tenantCfgs = nil
+
+	ctx := context.Background()
+	clientReq := clientRequest{
+		ingesterAddr: "ingester0",
+		tenant:       "test-tenant",
+		reqs: []*logproto.PushRequest{{
+			Streams: []logproto.Stream{{
+				Labels:  `{foo="bar"}`,
+				Entries: []logproto.Entry{{Timestamp: time.Now(), Line: "test line"}},
+			}},
+		}},
+	}
+
+	require.NotPanics(t, func() {
+		tee.sendBatch(ctx, clientReq)
+	})
+}
+
 func getTestTee(t *testing.T) (*TeeService, *mockPoolClient) {
 	cfg := Config{}
 	cfg.RegisterFlags(flag.NewFlagSet("test", flag.PanicOnError)) // set up defaults
