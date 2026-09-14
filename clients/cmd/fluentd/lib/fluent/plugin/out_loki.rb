@@ -19,7 +19,7 @@ require 'fluent/env'
 require 'fluent/plugin/output'
 require 'net/http'
 require 'rubygems/version'
-require 'yajl'
+require 'json'
 require 'time'
 require 'zlib'
 require 'stringio'
@@ -209,7 +209,7 @@ module Fluent
 
         res_summary = "#{res.code} #{res.message} #{res.body}"
         log.warn "failed to write post to #{@uri} (#{res_summary})"
-        log.debug Yajl.dump(body)
+        log.debug sanitized_json(body)
 
         # Only retry 429 and 500s
         raise(LogPostError, res_summary) if res.is_a?(Net::HTTPTooManyRequests) || res.is_a?(Net::HTTPServerError)
@@ -281,7 +281,7 @@ module Fluent
         req.add_field('Content-Type', 'application/json')
         req.add_field('Authorization', "Bearer #{@auth_token_bearer}") unless @auth_token_bearer.nil?
         req.add_field('X-Scope-OrgID', tenant) if tenant
-        payload = Yajl.dump(body)
+        payload = sanitized_json(body)
         if @compress == :gzip
           req.add_field('Content-Encoding', 'gzip')
           compressed = StringIO.new
@@ -342,6 +342,37 @@ module Fluent
         end
       end
 
+      def sanitized_json(payload)
+        JSON.generate(payload)
+      rescue JSON::GeneratorError, EncodingError
+        JSON.generate(scrub_invalid_utf8(payload))
+      end
+
+      # Recursively replace invalid UTF-8 byte sequences with '?' so JSON.generate does
+      # not raise on them. yajl used to pass such bytes through unchanged; JSON.generate
+      # validates encoding, so labels and log lines are sanitized before serialization.
+      def scrub_invalid_utf8(value)
+        case value
+        when String
+          if value.encoding == Encoding::UTF_8
+            value.valid_encoding? ? value : value.scrub('?')
+          elsif value.encoding == Encoding::ASCII_8BIT
+            # Treat binary as UTF-8 bytes: encode() would replace every byte >= 0x80,
+            # while scrubbing preserves any valid UTF-8 sequences in the string.
+            s = value.dup.force_encoding(Encoding::UTF_8)
+            s.valid_encoding? ? s : s.scrub!('?')
+          else
+            value.encode(Encoding::UTF_8, invalid: :replace, undef: :replace, replace: '?')
+          end
+        when Hash
+          value.each_with_object({}) { |(k, v), h| h[scrub_invalid_utf8(k)] = scrub_invalid_utf8(v) }
+        when Array
+          value.map { |v| scrub_invalid_utf8(v) }
+        else
+          value
+        end
+      end
+
       # rubocop:disable Metrics/CyclomaticComplexity, Metrics/PerceivedComplexity
       def record_to_line(record)
         line = ''
@@ -350,7 +381,7 @@ module Fluent
         else
           case @line_format
           when :json
-            line = Yajl.dump(record)
+            line = sanitized_json(record)
           when :key_value
             formatted_labels = []
             record.each do |k, v|
