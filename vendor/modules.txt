@@ -290,7 +290,7 @@ github.com/aliyun/credentials-go/credentials/providers
 github.com/aliyun/credentials-go/credentials/request
 github.com/aliyun/credentials-go/credentials/response
 github.com/aliyun/credentials-go/credentials/utils
-# github.com/andybalholm/brotli v1.2.3
+# github.com/andybalholm/brotli v1.2.4
 ## explicit; go 1.22
 github.com/andybalholm/brotli
 github.com/andybalholm/brotli/matchfinder
