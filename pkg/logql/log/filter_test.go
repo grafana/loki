@@ -454,6 +454,9 @@ func TestLineFilterRegexStaysUnanchored(t *testing.T) {
 	for _, re := range []string{
 		"al.*", ".*al", "alpha", "warn|warning", "prod|preprod", "bar|buzz", "b(ar|uzz)",
 		"a(bb|cc).*", "a(.*c|d)", "a(b|.*c)", "(?i)ünf.*",
+		// Two top-level branches sharing a literal prefix, each with its own
+		// wildcard: the prefix factoring has to keep the wildcard (issue #24421).
+		"argv=.*chmod|argv=.*chown",
 	} {
 		t.Run(re, func(t *testing.T) {
 			unanchored := regexp.MustCompile(re)
@@ -461,7 +464,9 @@ func TestLineFilterRegexStaysUnanchored(t *testing.T) {
 			require.NoError(t, err)
 
 			for _, v := range []string{"alpha", "prealpha", "barbell", "rebar", "prewarn", "nonprod",
-				"xfoobary", "abbX", "axc", "acb", "zzaxczz", "ÜNFOO"} {
+				"xfoobary", "abbX", "axc", "acb", "zzaxczz", "ÜNFOO",
+				"argv=/bin/sh -c chmod 777 /tmp", "argv=/usr/bin/env chown root /tmp",
+				"argv=chmod 600 x", "argv=/bin/ls", "chmod without argv"} {
 				require.Equalf(t, unanchored.MatchString(v), f.Filter([]byte(v)),
 					"line filter %q on value %q", re, v)
 			}
