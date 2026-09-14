@@ -18,9 +18,15 @@ var (
 		[]string{"tenant"},
 		nil,
 	)
-	streamShardAllocatedShardsDesc = prometheus.NewDesc(
-		"loki_ingest_limits_stream_shard_allocated_shards",
-		"The current sum of shard counts granted by the stream-shard-tracking pipeline per tenant. This is a prediction, not a live count: a stream that shrinks here doesn't retroactively shrink in ingesters, which are still driven by the legacy rate-store path during shadow mode, so there is an inherent lag. Compare against loki_ingester_memory_streams for the real, physical per-tenant stream count.",
+	streamShardTotalStreamsDesc = prometheus.NewDesc(
+		"loki_ingest_limits_stream_shard_total_streams",
+		"The current predicted total number of physical streams (unsharded plus sharded pieces) per tenant, i.e. the sum of granted shard counts. This is a prediction, not a live count: a stream that shrinks here doesn't retroactively shrink in ingesters, which are still driven by the legacy rate-store path during shadow mode, so there is an inherent lag. Compare against loki_ingester_memory_streams for the real, physical per-tenant stream count.",
+		[]string{"tenant"},
+		nil,
+	)
+	streamShardTotalShardsDesc = prometheus.NewDesc(
+		"loki_ingest_limits_stream_shard_total_shards",
+		"The current predicted number of physical streams that are shards (pieces of streams sharded into two or more) per tenant. Subtracting this from loki_ingest_limits_stream_shard_total_streams gives the number of unsharded streams. Same shadow-mode prediction caveat as that metric.",
 		[]string{"tenant"},
 		nil,
 	)
@@ -50,6 +56,7 @@ type streamShardStore struct {
 	locks   []stripeLock
 
 	limits Limits
+
 	// streamsUsed returns the number of streams usageStore currently tracks
 	// for a tenant/partition/policy bucket. Wired to usageStore.StreamsUsed.
 	streamsUsed func(tenant string, partition int32, policyBucket string) uint64
@@ -316,14 +323,20 @@ func (s *streamShardStore) Evict() map[string]int {
 // Describe implements [prometheus.Collector].
 func (s *streamShardStore) Describe(descs chan<- *prometheus.Desc) {
 	descs <- streamShardTrackedStreamsDesc
-	descs <- streamShardAllocatedShardsDesc
+	descs <- streamShardTotalStreamsDesc
+	descs <- streamShardTotalShardsDesc
 }
 
 // Collect implements [prometheus.Collector].
 func (s *streamShardStore) Collect(metrics chan<- prometheus.Metric) {
 	var (
-		trackedStreams  = make(map[string]int)
-		allocatedShards = make(map[string]uint64)
+		// trackedStreams: distinct logical (pre-shard) streams.
+		// totalStreams: physical streams (unsharded + sharded pieces).
+		// totalShards: physical pieces belonging to sharded streams only
+		// (shardCount >= 2); totalStreams - totalShards = unsharded streams.
+		trackedStreams = make(map[string]int)
+		totalStreams   = make(map[string]uint64)
+		totalShards    = make(map[string]uint64)
 	)
 	s.forEachRLock(func(i int) {
 		for tenant, partitions := range s.stripes[i] {
@@ -331,7 +344,10 @@ func (s *streamShardStore) Collect(metrics chan<- prometheus.Metric) {
 				for _, streams := range policies {
 					for _, stream := range streams {
 						trackedStreams[tenant]++
-						allocatedShards[tenant] += streamShardSlots(stream.shardCount)
+						totalStreams[tenant] += streamShardSlots(stream.shardCount)
+						if stream.shardCount >= 2 {
+							totalShards[tenant] += uint64(stream.shardCount)
+						}
 					}
 				}
 			}
@@ -345,9 +361,17 @@ func (s *streamShardStore) Collect(metrics chan<- prometheus.Metric) {
 			tenant,
 		)
 	}
-	for tenant, n := range allocatedShards {
+	for tenant, n := range totalStreams {
 		metrics <- prometheus.MustNewConstMetric(
-			streamShardAllocatedShardsDesc,
+			streamShardTotalStreamsDesc,
+			prometheus.GaugeValue,
+			float64(n),
+			tenant,
+		)
+	}
+	for tenant, n := range totalShards {
+		metrics <- prometheus.MustNewConstMetric(
+			streamShardTotalShardsDesc,
 			prometheus.GaugeValue,
 			float64(n),
 			tenant,

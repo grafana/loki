@@ -322,9 +322,9 @@ func TestStreamShardStore_CheckAndShard_NewStreamSeedsItsFirstRateBucket(t *test
 
 // collectStreamShardStoreGauges reads streamShardStore's own Collector
 // output directly (bypassing a full registry Gather), returning the
-// per-tenant tracked-streams/allocated-shards gauge values it currently
-// reports.
-func collectStreamShardStoreGauges(t *testing.T, s *streamShardStore, tenant string) (trackedStreams, allocatedShards float64) {
+// per-tenant tracked-streams / total-streams / total-shards gauge values it
+// currently reports.
+func collectStreamShardStoreGauges(t *testing.T, s *streamShardStore, tenant string) (trackedStreams, totalStreams, totalShards float64) {
 	t.Helper()
 	ch := make(chan prometheus.Metric, 16)
 	go func() {
@@ -342,11 +342,13 @@ func collectStreamShardStoreGauges(t *testing.T, s *streamShardStore, tenant str
 		switch m.Desc() {
 		case streamShardTrackedStreamsDesc:
 			trackedStreams = pb.GetGauge().GetValue()
-		case streamShardAllocatedShardsDesc:
-			allocatedShards = pb.GetGauge().GetValue()
+		case streamShardTotalStreamsDesc:
+			totalStreams = pb.GetGauge().GetValue()
+		case streamShardTotalShardsDesc:
+			totalShards = pb.GetGauge().GetValue()
 		}
 	}
-	return trackedStreams, allocatedShards
+	return trackedStreams, totalStreams, totalShards
 }
 
 func TestStreamShardStore_Collect_ReflectsCurrentStateNotCumulative(t *testing.T) {
@@ -354,34 +356,40 @@ func TestStreamShardStore_Collect_ReflectsCurrentStateNotCumulative(t *testing.T
 		s := newTestStreamShardStore(t, 100, "1B", nil)
 
 		// Nothing tracked yet.
-		trackedStreams, allocatedShards := collectStreamShardStoreGauges(t, s, "tenant1")
+		trackedStreams, totalStreams, totalShards := collectStreamShardStoreGauges(t, s, "tenant1")
 		require.Equal(t, float64(0), trackedStreams)
-		require.Equal(t, float64(0), allocatedShards)
+		require.Equal(t, float64(0), totalStreams)
+		require.Equal(t, float64(0), totalShards)
 
-		// First push: brand new stream, always starts at 1 shard.
+		// First push: brand new stream, always starts at 1 shard. Unsharded
+		// (shardCount 1): it counts as 1 logical and 1 physical stream, but
+		// contributes 0 to total_shards.
 		results := s.checkAndShard(context.Background(), "tenant1", []*proto.StreamMetadata{
 			{StreamHash: 1, TotalSize: 1500},
 		}, time.Now())
 		require.Len(t, results, 1)
 		require.Equal(t, uint32(1), results[0].Shards)
 
-		trackedStreams, allocatedShards = collectStreamShardStoreGauges(t, s, "tenant1")
+		trackedStreams, totalStreams, totalShards = collectStreamShardStoreGauges(t, s, "tenant1")
 		require.Equal(t, float64(1), trackedStreams)
-		require.Equal(t, float64(1), allocatedShards)
+		require.Equal(t, float64(1), totalStreams)
+		require.Equal(t, float64(0), totalShards, "an unsharded stream is not a shard")
 
 		// Second push, same stream: its rate now justifies 10 shards. Collect
 		// must reflect the CURRENT allocation (10), not accumulate the two
 		// pushes' shard counts (1 + 10 = 11) -- these are lazily-aggregated
-		// gauges over live state, not counters.
+		// gauges over live state, not counters. Now sharded (shardCount 10):
+		// still 1 logical stream, 10 physical streams, all 10 of them shards.
 		results = s.checkAndShard(context.Background(), "tenant1", []*proto.StreamMetadata{
 			{StreamHash: 1, TotalSize: 1500},
 		}, time.Now())
 		require.Len(t, results, 1)
 		require.Equal(t, uint32(10), results[0].Shards)
 
-		trackedStreams, allocatedShards = collectStreamShardStoreGauges(t, s, "tenant1")
+		trackedStreams, totalStreams, totalShards = collectStreamShardStoreGauges(t, s, "tenant1")
 		require.Equal(t, float64(1), trackedStreams, "still exactly one distinct logical stream")
-		require.Equal(t, float64(10), allocatedShards, "reflects the current allocation, not the sum across pushes")
+		require.Equal(t, float64(10), totalStreams, "reflects the current allocation, not the sum across pushes")
+		require.Equal(t, float64(10), totalShards, "all 10 physical streams are shards of the sharded stream")
 	})
 }
 
