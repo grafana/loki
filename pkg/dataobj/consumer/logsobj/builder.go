@@ -169,6 +169,7 @@ type Builder struct {
 	metrics   *BuilderMetrics
 	overrides TenantOverrides
 	logger    log.Logger
+	scratch   scratch.Store
 
 	labelCache *lru.Cache[string, labels.Labels]
 
@@ -208,6 +209,7 @@ func NewBuilder(cfg BuilderConfig, scratchStore scratch.Store, metrics *BuilderM
 		cfg:        cfg,
 		metrics:    metrics,
 		logger:     logger,
+		scratch:    scratchStore,
 		overrides:  overrides,
 		labelCache: labelCache,
 		builder:    dataobj.NewBuilder(scratchStore),
@@ -467,6 +469,10 @@ func (b *Builder) Flush() (*dataobj.Object, io.Closer, error) {
 // so the logs are sorted object-wide. The order of the sections is deterministic.
 // For each tenant, first comes the streams section, and second come the
 // new, rewritten logs sections. Tenants are sorted in natural order.
+//
+// CopyAndSort uses the persisted SortLayout to choose implementation. If every logs section
+// already follows its tenant's target layout, it performs only a k-way merge
+// and stream-ID remap. If any section differs, it re-sorts the entire object.
 func (b *Builder) CopyAndSort(ctx context.Context, obj *dataobj.Object) (*dataobj.Object, io.Closer, error) {
 	// Must reset builder when done.
 	defer b.Reset()
@@ -479,6 +485,11 @@ func (b *Builder) CopyAndSort(ctx context.Context, obj *dataobj.Object) (*dataob
 	case <-ctx.Done():
 		return nil, nil, ctx.Err()
 	default:
+	}
+
+	requiresSort, err := b.requiresResort(ctx, obj)
+	if err != nil {
+		return nil, nil, err
 	}
 
 	sb := streams.NewBuilder(b.metrics.streams, int(b.cfg.TargetPageSize), b.cfg.MaxPageRows)
@@ -533,26 +544,51 @@ func (b *Builder) CopyAndSort(ctx context.Context, obj *dataobj.Object) (*dataob
 			return nil, nil, err
 		}
 
-		logsIter, iterErr := sortedLogsIter(ctx, sections, remappedStreams)
-		if iterErr != nil {
-			return nil, nil, fmt.Errorf("creating sort iterator: %w", iterErr)
-		}
+		mergeSections := sections
+		mergeRemap := remappedStreams
+		// Wrap replay & drain with an inner func to close resources after each tenant
+		replayErr := func() (replayErr error) {
+			if requiresSort {
+				replayedSections, replayedRemap, closer, err := b.replaySections(ctx, tenant, sections, remappedStreams)
+				if err != nil {
+					return fmt.Errorf("replaying logs sections for tenant %s: %w", tenant, err)
+				}
+				mergeSections = replayedSections
+				mergeRemap = replayedRemap
+				defer func() {
+					closeErr := closer.Close()
+					if replayErr == nil {
+						replayErr = closeErr
+					}
+				}()
+			}
 
-		lb := logs.NewBuilder(b.metrics.logs, logs.BuilderOptions{
-			PageSizeHint:     int(b.cfg.TargetPageSize),
-			PageMaxRowCount:  b.cfg.MaxPageRows,
-			BufferSize:       int(b.cfg.BufferSize),
-			StripeMergeLimit: b.cfg.SectionStripeMergeLimit,
-			AppendStrategy:   logs.AppendOrdered,
-			SortOrder:        logs.SortSchemaASC,
-			SchemaLabels:     schemaLabels,
-			StreamOrder:      logs.StreamOrderStableHashV1,
-			ShardCount:       streams.ShardFactor,
-		})
-		lb.SetTenant(tenant)
+			logsIter, iterErr := mergeAndRemapLogsIter(ctx, mergeSections, mergeRemap)
+			if iterErr != nil {
+				return fmt.Errorf("creating sort iterator for tenant %s: %w", tenant, iterErr)
+			}
 
-		if err := b.drainLogsIter(ctx, logsIter, lb, tenant); err != nil {
-			return nil, nil, err
+			lb := logs.NewBuilder(b.metrics.logs, logs.BuilderOptions{
+				PageSizeHint:     int(b.cfg.TargetPageSize),
+				PageMaxRowCount:  b.cfg.MaxPageRows,
+				BufferSize:       int(b.cfg.BufferSize),
+				StripeMergeLimit: b.cfg.SectionStripeMergeLimit,
+				AppendStrategy:   logs.AppendOrdered,
+				SortOrder:        logs.SortSchemaASC,
+				SchemaLabels:     schemaLabels,
+				StreamOrder:      logs.StreamOrderStableHashV1,
+				ShardCount:       streams.ShardFactor,
+			})
+			lb.SetTenant(tenant)
+
+			// Drain logs iter and append section from lb into the object stored on the builder.
+			if err := b.drainLogsIter(ctx, logsIter, lb, tenant); err != nil {
+				return err
+			}
+			return nil
+		}()
+		if replayErr != nil {
+			return nil, nil, replayErr
 		}
 	}
 
@@ -563,6 +599,32 @@ func (b *Builder) CopyAndSort(ctx context.Context, obj *dataobj.Object) (*dataob
 	}
 
 	return b.builder.Flush()
+}
+
+// requiresResort trusts each logs section's persisted layout contract and
+// selects a full-object resort when any section differs from its tenant's
+// target layout.
+func (b *Builder) requiresResort(ctx context.Context, obj *dataobj.Object) (bool, error) {
+	for _, tenant := range obj.Tenants() {
+		found := false
+		want := TargetSortLayout(b.schemaLabelsFor(tenant))
+		for _, section := range obj.Sections().Filter(func(section *dataobj.Section) bool {
+			return logs.CheckSection(section) && section.Tenant == tenant
+		}) {
+			found = true
+			opened, err := logs.Open(ctx, section)
+			if err != nil {
+				return false, fmt.Errorf("opening logs section for tenant %s: %w", tenant, err)
+			}
+			if !EqualSortLayout(opened.SortLayout(), want) {
+				return true, nil
+			}
+		}
+		if !found {
+			return false, fmt.Errorf("no logs sections found for tenant: %v", tenant)
+		}
+	}
+	return false, nil
 }
 
 func (b *Builder) observeObject(ctx context.Context, obj *dataobj.Object) error {
