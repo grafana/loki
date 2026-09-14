@@ -127,140 +127,118 @@ func TestConfigDiffHandler(t *testing.T) {
 func TestConfigQueryHandler(t *testing.T) {
 	cfg := newDefaultDiffConfigMock()
 
-	t.Run("single top-level path", func(t *testing.T) {
-		req := httptest.NewRequest("GET", "http://test.com/config?q=my_int", nil)
-		w := httptest.NewRecorder()
-
-		configHandler(cfg, cfg)(w, req)
-		resp := w.Result()
-		require.Equal(t, 200, resp.StatusCode)
-		assert.Equal(t, "text/plain; charset=utf-8", resp.Header.Get("Content-Type"))
-		assert.Equal(t, []string{"my_int"}, resp.Header.Values(ConfigQueryHandledHeader))
-
-		body, err := io.ReadAll(resp.Body)
-		assert.NoError(t, err)
-		assert.Equal(t, "my_int: 666\n", string(body))
-	})
-
-	t.Run("nested path", func(t *testing.T) {
-		req := httptest.NewRequest("GET", "http://test.com/config?q=my_nested_struct.my_string", nil)
-		w := httptest.NewRecorder()
-
-		configHandler(cfg, cfg)(w, req)
-		resp := w.Result()
-		require.Equal(t, 200, resp.StatusCode)
-		assert.Equal(t, "text/plain; charset=utf-8", resp.Header.Get("Content-Type"))
-		assert.Equal(t, []string{"my_nested_struct.my_string"}, resp.Header.Values(ConfigQueryHandledHeader))
-
-		body, err := io.ReadAll(resp.Body)
-		assert.NoError(t, err)
-		assert.Equal(t, "my_nested_struct:\n    my_string: string1\n", string(body))
-	})
-
-	t.Run("multiple paths in one request", func(t *testing.T) {
-		req := httptest.NewRequest("GET", "http://test.com/config?q=my_int&q=my_float", nil)
-		w := httptest.NewRecorder()
-
-		configHandler(cfg, cfg)(w, req)
-		resp := w.Result()
-		require.Equal(t, 200, resp.StatusCode)
-		assert.ElementsMatch(t, []string{"my_int", "my_float"}, resp.Header.Values(ConfigQueryHandledHeader))
-
-		body, err := io.ReadAll(resp.Body)
-		assert.NoError(t, err)
-		assert.Equal(t, "my_float: 6.66\nmy_int: 666\n", string(body))
-	})
-
-	t.Run("paths sharing a parent are merged, not overwritten", func(t *testing.T) {
-		req := httptest.NewRequest("GET", "http://test.com/config?q=my_nested_struct.my_string&q=my_nested_struct.my_bool", nil)
-		w := httptest.NewRecorder()
-
-		configHandler(cfg, cfg)(w, req)
-		resp := w.Result()
-		require.Equal(t, 200, resp.StatusCode)
-		assert.ElementsMatch(t, []string{"my_nested_struct.my_string", "my_nested_struct.my_bool"}, resp.Header.Values(ConfigQueryHandledHeader))
-
-		body, err := io.ReadAll(resp.Body)
-		assert.NoError(t, err)
-		assert.Equal(t, "my_nested_struct:\n    my_bool: false\n    my_string: string1\n", string(body))
-	})
-
-	t.Run("malformed query string returns 400, not the unfiltered config", func(t *testing.T) {
-		req := httptest.NewRequest("GET", "http://test.com/config?q=my_int;unexpected", nil)
-		w := httptest.NewRecorder()
-
-		configHandler(cfg, cfg)(w, req)
-		resp := w.Result()
-		assert.Equal(t, 400, resp.StatusCode)
-		assert.Empty(t, resp.Header.Values(ConfigQueryHandledHeader))
-	})
-
-	t.Run("unknown path returns 400", func(t *testing.T) {
-		req := httptest.NewRequest("GET", "http://test.com/config?q=does.not.exist", nil)
-		w := httptest.NewRecorder()
-
-		configHandler(cfg, cfg)(w, req)
-		resp := w.Result()
-		assert.Equal(t, 400, resp.StatusCode)
-		// The header still reflects what was recognized/attempted, even though it didn't resolve.
-		assert.Equal(t, []string{"does.not.exist"}, resp.Header.Values(ConfigQueryHandledHeader))
-	})
-
-	t.Run("no q param leaves the header unset and behaves as before", func(t *testing.T) {
-		req := httptest.NewRequest("GET", "http://test.com/config", nil)
-		w := httptest.NewRecorder()
-
-		configHandler(cfg, cfg)(w, req)
-		resp := w.Result()
-		assert.Equal(t, 200, resp.StatusCode)
-		assert.Empty(t, resp.Header.Values(ConfigQueryHandledHeader))
-	})
-
-	t.Run("too many q parameters returns 400", func(t *testing.T) {
-		query := make(url.Values)
-		for i := 0; i < maxConfigQueryPaths+1; i++ {
-			query.Add("q", "my_int")
-		}
-		req := httptest.NewRequest("GET", "http://test.com/config?"+query.Encode(), nil)
-		w := httptest.NewRecorder()
-
-		configHandler(cfg, cfg)(w, req)
-		resp := w.Result()
-		assert.Equal(t, 400, resp.StatusCode)
-		assert.Empty(t, resp.Header.Values(ConfigQueryHandledHeader))
-	})
-
-	t.Run("q parameter too long returns 400", func(t *testing.T) {
-		req := httptest.NewRequest("GET", "http://test.com/config?q="+strings.Repeat("a", maxConfigQueryPathLength+1), nil)
-		w := httptest.NewRecorder()
-
-		configHandler(cfg, cfg)(w, req)
-		resp := w.Result()
-		assert.Equal(t, 400, resp.StatusCode)
-		assert.Empty(t, resp.Header.Values(ConfigQueryHandledHeader))
-	})
+	tooManyPaths := make(url.Values)
+	for i := 0; i < maxConfigQueryPaths+1; i++ {
+		tooManyPaths.Add("q", "my_int")
+	}
 
 	for _, tc := range []struct {
-		name string
-		path string
+		name               string
+		query              string
+		expectedStatusCode int
+		expectedHeader     []string
+		expectedBody       string
 	}{
-		{"empty", ""},
-		{"trailing dot", "my_int."},
-		{"leading dot", ".my_int"},
-		{"double dot", "my_int..my_float"},
-		{"control characters", "my_int\r\nX-Injected: evil"},
-		{"space", "my int"},
+		{
+			name:               "single top-level path",
+			query:              "q=my_int",
+			expectedStatusCode: 200,
+			expectedHeader:     []string{"my_int"},
+			expectedBody:       "my_int: 666\n",
+		},
+		{
+			name:               "nested path",
+			query:              "q=my_nested_struct.my_string",
+			expectedStatusCode: 200,
+			expectedHeader:     []string{"my_nested_struct.my_string"},
+			expectedBody:       "my_nested_struct:\n    my_string: string1\n",
+		},
+		{
+			name:               "multiple paths in one request",
+			query:              "q=my_int&q=my_float",
+			expectedStatusCode: 200,
+			expectedHeader:     []string{"my_int", "my_float"},
+			expectedBody:       "my_float: 6.66\nmy_int: 666\n",
+		},
+		{
+			name:               "paths sharing a parent are merged, not overwritten",
+			query:              "q=my_nested_struct.my_string&q=my_nested_struct.my_bool",
+			expectedStatusCode: 200,
+			expectedHeader:     []string{"my_nested_struct.my_string", "my_nested_struct.my_bool"},
+			expectedBody:       "my_nested_struct:\n    my_bool: false\n    my_string: string1\n",
+		},
+		{
+			name:               "malformed query string returns 400, not the unfiltered config",
+			query:              "q=my_int;unexpected",
+			expectedStatusCode: 400,
+		},
+		{
+			name:               "unknown path returns 400",
+			query:              "q=does.not.exist",
+			expectedStatusCode: 400,
+			// The header still reflects what was recognized/attempted, even though it didn't resolve.
+			expectedHeader: []string{"does.not.exist"},
+		},
+		{
+			name:               "no q param leaves the header unset and behaves as before",
+			query:              "",
+			expectedStatusCode: 200,
+		},
+		{
+			name:               "too many q parameters returns 400",
+			query:              tooManyPaths.Encode(),
+			expectedStatusCode: 400,
+		},
+		{
+			name:               "q parameter too long returns 400",
+			query:              "q=" + strings.Repeat("a", maxConfigQueryPathLength+1),
+			expectedStatusCode: 400,
+		},
+		{
+			name:               "malformed q parameter/empty",
+			query:              url.Values{"q": {""}}.Encode(),
+			expectedStatusCode: 400,
+		},
+		{
+			name:               "malformed q parameter/trailing dot",
+			query:              url.Values{"q": {"my_int."}}.Encode(),
+			expectedStatusCode: 400,
+		},
+		{
+			name:               "malformed q parameter/leading dot",
+			query:              url.Values{"q": {".my_int"}}.Encode(),
+			expectedStatusCode: 400,
+		},
+		{
+			name:               "malformed q parameter/double dot",
+			query:              url.Values{"q": {"my_int..my_float"}}.Encode(),
+			expectedStatusCode: 400,
+		},
+		{
+			name:               "malformed q parameter/control characters",
+			query:              url.Values{"q": {"my_int\r\nX-Injected: evil"}}.Encode(),
+			expectedStatusCode: 400,
+		},
+		{
+			name:               "malformed q parameter/space",
+			query:              url.Values{"q": {"my int"}}.Encode(),
+			expectedStatusCode: 400,
+		},
 	} {
-		t.Run("malformed q parameter returns 400/"+tc.name, func(t *testing.T) {
-			query := make(url.Values)
-			query.Set("q", tc.path)
-			req := httptest.NewRequest("GET", "http://test.com/config?"+query.Encode(), nil)
+		t.Run(tc.name, func(t *testing.T) {
+			req := httptest.NewRequest("GET", "http://test.com/config?"+tc.query, nil)
 			w := httptest.NewRecorder()
 
 			configHandler(cfg, cfg)(w, req)
 			resp := w.Result()
-			assert.Equal(t, 400, resp.StatusCode)
-			assert.Empty(t, resp.Header.Values(ConfigQueryHandledHeader))
+			assert.Equal(t, tc.expectedStatusCode, resp.StatusCode)
+			assert.Equal(t, tc.expectedHeader, resp.Header.Values(ConfigQueryHandledHeader))
+
+			if tc.expectedBody != "" {
+				body, err := io.ReadAll(resp.Body)
+				assert.NoError(t, err)
+				assert.Equal(t, tc.expectedBody, string(body))
+			}
 		})
 	}
 }
