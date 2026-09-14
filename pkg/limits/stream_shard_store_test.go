@@ -43,8 +43,18 @@ func newTestStreamShardStore(t *testing.T, maxGlobalStreams int, desiredRate str
 	return s
 }
 
+// seedStreamShardStore directly seeds a stream's state, to set up
+// capacity/room scenarios precisely without indirectly driving them through
+// rate-bucket math. Not goroutine-safe.
+func seedStreamShardStore(s *streamShardStore, tenant string, partition int32, policyBucket string, stream streamShardUsage) {
+	s.withLock(tenant, func(i int) {
+		streams := s.checkInitMap(i, tenant, partition, policyBucket)
+		streams[stream.hash] = stream
+	})
+}
+
 func TestStreamShardStore_CheckAndShard(t *testing.T) {
-	// seedStream pre-populates a stream via setForTests before the push
+	// seedStream pre-populates a stream via seedStreamShardStore before the push
 	// being asserted on. warm controls whether it has an already-populated
 	// rate bucket (rateBucketsCold == false, so the push's rate is computed
 	// normally) or not (cold: the shard count is held steady instead).
@@ -269,7 +279,7 @@ func TestStreamShardStore_CheckAndShard(t *testing.T) {
 					if seed.warm {
 						usage.rateBuckets = warmRateBuckets(s.numBuckets, s.bucketSize, now)
 					}
-					s.setForTests("tenant1", 0, noPolicy, usage)
+					seedStreamShardStore(s, "tenant1", 0, noPolicy, usage)
 				}
 
 				if test.advanceBeforeCall > 0 {
@@ -397,7 +407,7 @@ func TestStreamShardStore_Evict_FreesAllOfAStreamsSlots(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		s := newTestStreamShardStore(t, 5, "1B")
 		now := time.Now()
-		s.setForTests("tenant1", 0, noPolicy, streamShardUsage{
+		seedStreamShardStore(s, "tenant1", 0, noPolicy, streamShardUsage{
 			hash: 1, lastSeenAt: now.UnixNano(), shardCount: 5, policy: noPolicy,
 		})
 		time.Sleep(15*time.Minute + time.Second)
@@ -417,7 +427,7 @@ func TestStreamShardStore_Evict_FreesAllOfAStreamsSlots(t *testing.T) {
 func TestStreamShardStore_EvictPartitions(t *testing.T) {
 	s := newTestStreamShardStore(t, 5, "1B")
 	now := time.Now()
-	s.setForTests("tenant1", 0, noPolicy, streamShardUsage{
+	seedStreamShardStore(s, "tenant1", 0, noPolicy, streamShardUsage{
 		hash: 1, lastSeenAt: now.UnixNano(), shardCount: 5, policy: noPolicy,
 	})
 	s.EvictPartitions([]int32{0})

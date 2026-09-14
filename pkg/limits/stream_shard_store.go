@@ -348,16 +348,6 @@ func (s *streamShardStore) EvictPartitions(partitionsToEvict []int32) {
 	})
 }
 
-// setForTests directly seeds a stream's state. Used in tests only, to set
-// up capacity/room scenarios precisely without indirectly driving them
-// through rate-bucket math. Not goroutine-safe.
-func (s *streamShardStore) setForTests(tenant string, partition int32, policyBucket string, stream streamShardUsage) {
-	s.withLock(tenant, func(i int) {
-		streams := s.checkInitMap(i, tenant, partition, policyBucket)
-		streams[stream.hash] = stream
-	})
-}
-
 func (s *streamShardStore) updateRateBucket(stream *streamShardUsage, sizeDelta uint64, seenAt time.Time) {
 	if len(stream.rateBuckets) == 0 {
 		stream.rateBuckets = make([]rateBucket, s.numBuckets)
@@ -457,20 +447,19 @@ func rateBucketsCold(buckets []rateBucket) bool {
 // buckets that fall within the rate window, divided by the rate window
 // duration.
 func currentRate(buckets []rateBucket, now time.Time, rateWindow time.Duration) uint64 {
-	withinWindow := func(t int64) bool {
-		return now.Add(-rateWindow).UnixNano() <= t
-	}
-	active := getActiveRateBuckets(buckets, withinWindow)
-	if len(active) == 0 {
-		return 0
-	}
-	var total uint64
-	for _, b := range active {
-		total += b.size
-	}
 	seconds := rateWindow.Seconds()
 	if seconds <= 0 {
 		return 0
+	}
+	// Sum only the buckets still inside the rate window. The ring buffer
+	// resets a slot lazily, on reuse, so slots not touched this window still
+	// hold stale data that must be skipped here rather than counted.
+	cutoff := now.Add(-rateWindow).UnixNano()
+	var total uint64
+	for _, b := range buckets {
+		if b.timestamp >= cutoff {
+			total += b.size
+		}
 	}
 	return uint64(float64(total) / seconds)
 }
