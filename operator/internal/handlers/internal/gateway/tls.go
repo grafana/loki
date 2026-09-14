@@ -2,9 +2,9 @@ package gateway
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
-	"github.com/ViaQ/logerr/v2/kverrors"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -15,10 +15,28 @@ import (
 )
 
 const (
-	fieldNameCA          = "ca"
-	fieldNameCertificate = "certificate"
-	fieldNameKey         = "privateKey"
+	specPathGatewayTLS           = "spec.tenants.gateway.tls"
+	specPathGatewayTLSCA         = "spec.tenants.gateway.tls.ca"
+	specPathGatewayTLSCert       = "spec.tenants.gateway.tls.certificate"
+	specPathGatewayTLSPrivateKey = "spec.tenants.gateway.tls.privateKey"
+	specPathPassthroughCA        = "spec.tenants.passthrough.ca"
 )
+
+var (
+	errMissing = errors.New("missing resource")
+	errInvalid = errors.New("invalid config")
+)
+
+func asDegraded(err error, missing, invalid lokiv1.LokiStackConditionReason) error {
+	switch {
+	case errors.Is(err, errMissing):
+		return &status.DegradedError{Message: err.Error(), Reason: missing, Requeue: false}
+	case errors.Is(err, errInvalid):
+		return &status.DegradedError{Message: err.Error(), Reason: invalid, Requeue: false}
+	default:
+		return err
+	}
+}
 
 func validateTLSConfig(ctx context.Context, k k8s.Client, stack *lokiv1.LokiStack) error {
 	if stack.Spec.Tenants == nil || stack.Spec.Tenants.Gateway == nil || stack.Spec.Tenants.Gateway.TLS == nil {
@@ -28,91 +46,102 @@ func validateTLSConfig(ctx context.Context, k k8s.Client, stack *lokiv1.LokiStac
 	tls := stack.Spec.Tenants.Gateway.TLS
 	if tls.Certificate == nil || tls.PrivateKey == nil {
 		return &status.DegradedError{
-			Message: "Missing certificate or key in gateway TLS configuration. Please provide both certificate and key.",
+			Message: fmt.Sprintf("Invalid configuration, field %s: certificate and privateKey must both be set", specPathGatewayTLS),
 			Reason:  lokiv1.ReasonInvalidGatewayTLSConfig,
 			Requeue: false,
 		}
 	}
 
+	missingReason := lokiv1.ReasonMissingGatewayTLSConfig
+	invalidReason := lokiv1.ReasonInvalidGatewayTLSConfig
+
 	if tls.CA != nil {
-		if err := validateValueRef(ctx, k, fieldNameCA, stack.Namespace, tls.CA); err != nil {
-			return err
+		if err := validateValueRef(ctx, k, specPathGatewayTLSCA, stack.Namespace, tls.CA); err != nil {
+			return asDegraded(err, missingReason, invalidReason)
 		}
 	}
 
-	if tls.Certificate != nil {
-		if err := validateValueRef(ctx, k, fieldNameCertificate, stack.Namespace, tls.Certificate); err != nil {
-			return err
-		}
+	if err := validateValueRef(ctx, k, specPathGatewayTLSCert, stack.Namespace, tls.Certificate); err != nil {
+		return asDegraded(err, missingReason, invalidReason)
 	}
 
-	if tls.PrivateKey != nil {
-		if err := validateSecretRef(ctx, k, fieldNameKey, stack.Namespace, tls.PrivateKey.SecretName, tls.PrivateKey.Key); err != nil {
-			return err
-		}
+	if err := validateSecretRef(ctx, k, specPathGatewayTLSPrivateKey, stack.Namespace, tls.PrivateKey.SecretName, tls.PrivateKey.Key); err != nil {
+		return asDegraded(err, missingReason, invalidReason)
 	}
 
 	return nil
 }
 
-func validateValueRef(ctx context.Context, k k8s.Client, fieldName, namespace string, ref *lokiv1.ValueReference) error {
-	if ref.ConfigMapName != "" {
-		return validateConfigRef(ctx, k, fieldName, namespace, ref.ConfigMapName, ref.Key)
-	}
-	if ref.SecretName != "" {
-		return validateSecretRef(ctx, k, fieldName, namespace, ref.SecretName, ref.Key)
+func validatePassthroughCA(ctx context.Context, k k8s.Client, httpEncryption bool, stack *lokiv1.LokiStack) error {
+	if !httpEncryption {
+		// TODO(JoaoBraveCoding): Discuss with @xperimental if this makes sense or if we should always require
+		// mTLS with the client
+		return nil // If HTTP encryption is not enabled, we do not require clients to provide a certificate
 	}
 
-	return kverrors.New("invalid call to validateValueRef configmap and secret not set", "field", fieldName, "ref", ref)
+	if stack.Spec.Tenants.Passthrough == nil || stack.Spec.Tenants.Passthrough.CA == nil {
+		return &status.DegradedError{
+			Message: fmt.Sprintf("Invalid configuration, field %s must be configured", specPathPassthroughCA),
+			Reason:  lokiv1.ReasonInvalidPassthroughConfiguration,
+			Requeue: false,
+		}
+	}
+
+	err := validateValueRef(ctx, k, specPathPassthroughCA, stack.Namespace, stack.Spec.Tenants.Passthrough.CA)
+	if err != nil {
+		return asDegraded(err, lokiv1.ReasonMissingPassthroughConfiguration, lokiv1.ReasonInvalidPassthroughConfiguration)
+	}
+
+	return nil
 }
 
-func validateConfigRef(ctx context.Context, k k8s.Client, fieldName, namespace, name, key string) error {
+func validateValueRef(ctx context.Context, k k8s.Client, specPath, namespace string, ref *lokiv1.ValueReference) error {
+	if ref.ConfigMapName != "" {
+		return validateConfigRef(ctx, k, specPath, namespace, ref.ConfigMapName, ref.Key)
+	}
+	if ref.SecretName != "" {
+		return validateSecretRef(ctx, k, specPath, namespace, ref.SecretName, ref.Key)
+	}
+
+	//nolint:staticcheck // capitalized for LokiStack status message
+	return fmt.Errorf("Invalid config, configMapName and secretName are not set in field %s: %w", specPath, errInvalid)
+}
+
+func validateConfigRef(ctx context.Context, k k8s.Client, specPath, namespace, name, key string) error {
 	var cm corev1.ConfigMap
 
 	objKey := client.ObjectKey{Name: name, Namespace: namespace}
 	if err := k.Get(ctx, objKey, &cm); err != nil {
 		if apierrors.IsNotFound(err) {
-			return &status.DegradedError{
-				Message: fmt.Sprintf("Missing configmap for field %q in gateway TLS configuration: %s", fieldName, name),
-				Reason:  lokiv1.ReasonMissingGatewayTLSConfig,
-				Requeue: false,
-			}
+			//nolint:staticcheck // capitalized for LokiStack status message
+			return fmt.Errorf("Missing ConfigMap %q referenced by field %s: %w", name, specPath, errMissing)
 		}
-		return kverrors.Wrap(err, fmt.Sprintf("failed to lookup configmap for field %q in gateway TLS configuration", fieldName), "key", objKey.String())
+		return err
 	}
 
 	if cm.Data[key] == "" && len(cm.BinaryData[key]) == 0 {
-		return &status.DegradedError{
-			Message: fmt.Sprintf("Invalid configmap %s for field %q in gateway TLS configuration, missing key: %s", name, fieldName, key),
-			Reason:  lokiv1.ReasonInvalidGatewayTLSConfig,
-			Requeue: false,
-		}
+		//nolint:staticcheck // capitalized for LokiStack status message
+		return fmt.Errorf("Invalid key %q in ConfigMap %q referenced by field %s, missing or empty: %w", key, name, specPath, errInvalid)
 	}
 
 	return nil
 }
 
-func validateSecretRef(ctx context.Context, k k8s.Client, fieldName, namespace, name, key string) error {
+func validateSecretRef(ctx context.Context, k k8s.Client, specPath, namespace, name, key string) error {
 	var secret corev1.Secret
 
 	objKey := client.ObjectKey{Name: name, Namespace: namespace}
 	if err := k.Get(ctx, objKey, &secret); err != nil {
 		if apierrors.IsNotFound(err) {
-			return &status.DegradedError{
-				Message: fmt.Sprintf("Missing secret for field %q in gateway TLS configuration: %s", fieldName, name),
-				Reason:  lokiv1.ReasonMissingGatewayTLSConfig,
-				Requeue: false,
-			}
+			//nolint:staticcheck // capitalized for LokiStack status message
+			return fmt.Errorf("Missing Secret %q referenced by field %s: %w", name, specPath, errMissing)
 		}
-		return kverrors.Wrap(err, fmt.Sprintf("failed to lookup secret for field %q in gateway TLS configuration", fieldName), "key", objKey.String())
+		return err
 	}
 
 	if len(secret.Data[key]) == 0 {
-		return &status.DegradedError{
-			Message: fmt.Sprintf("Invalid secret %s for field %q in gateway TLS configuration, missing key: %s", name, fieldName, key),
-			Reason:  lokiv1.ReasonInvalidGatewayTLSConfig,
-			Requeue: false,
-		}
+		//nolint:staticcheck // capitalized for LokiStack status message
+		return fmt.Errorf("Invalid key %q in Secret %q referenced by field %s, missing or empty: %w", key, name, specPath, errInvalid)
 	}
 
 	return nil

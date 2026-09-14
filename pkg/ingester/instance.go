@@ -3,6 +3,7 @@ package ingester
 import (
 	"context"
 	"errors"
+	"expvar"
 	"fmt"
 	"math"
 	"net/http"
@@ -62,30 +63,47 @@ const (
 	queryBatchSampleSize = 512
 )
 
-var (
-	memoryStreams = promauto.NewGaugeVec(prometheus.GaugeOpts{
-		Namespace: constants.Loki,
-		Name:      "ingester_memory_streams",
-		Help:      "The total number of streams in memory per tenant.",
-	}, []string{"tenant"})
-	memoryStreamsLabelsBytes = promauto.NewGauge(prometheus.GaugeOpts{
-		Namespace: constants.Loki,
-		Name:      "ingester_memory_streams_labels_bytes",
-		Help:      "Total bytes of labels of the streams in memory.",
-	})
-	streamsCreatedTotal = promauto.NewCounterVec(prometheus.CounterOpts{
-		Namespace: constants.Loki,
-		Name:      "ingester_streams_created_total",
-		Help:      "The total number of streams created per tenant.",
-	}, []string{"tenant"})
-	streamsRemovedTotal = promauto.NewCounterVec(prometheus.CounterOpts{
-		Namespace: constants.Loki,
-		Name:      "ingester_streams_removed_total",
-		Help:      "The total number of streams removed per tenant.",
-	}, []string{"tenant"})
+type instanceMetrics struct {
+	memoryStreams            *prometheus.GaugeVec
+	memoryStreamShards       *prometheus.GaugeVec
+	memoryStreamsLabelsBytes prometheus.Gauge
+	streamsCreatedTotal      *prometheus.CounterVec
+	streamsRemovedTotal      *prometheus.CounterVec
+	streamsCountStats        *expvar.Int
+}
 
-	streamsCountStats = analytics.NewInt("ingester_streams_count")
-)
+func newInstanceMetrics(reg prometheus.Registerer) *instanceMetrics {
+	return &instanceMetrics{
+		memoryStreams: promauto.With(reg).NewGaugeVec(prometheus.GaugeOpts{
+			Namespace: constants.Loki,
+			Name:      "ingester_memory_streams",
+			Help:      "The total number of streams in memory per tenant.",
+		}, []string{"tenant"}),
+		memoryStreamShards: promauto.With(reg).NewGaugeVec(prometheus.GaugeOpts{
+			Namespace: constants.Loki,
+			Name:      "ingester_memory_stream_shards",
+			Help:      "The total number of stream shards in memory per tenant, meaning streams that carry the __stream_shard__ label. This is a subset of loki_ingester_memory_streams.",
+		}, []string{"tenant"}),
+		memoryStreamsLabelsBytes: promauto.With(reg).NewGauge(prometheus.GaugeOpts{
+			Namespace: constants.Loki,
+			Name:      "ingester_memory_streams_labels_bytes",
+			Help:      "Total bytes of labels of the streams in memory.",
+		}),
+		streamsCreatedTotal: promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
+			Namespace: constants.Loki,
+			Name:      "ingester_streams_created_total",
+			Help:      "The total number of streams created per tenant.",
+		}, []string{"tenant"}),
+		streamsRemovedTotal: promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
+			Namespace: constants.Loki,
+			Name:      "ingester_streams_removed_total",
+			Help:      "The total number of streams removed per tenant.",
+		}, []string{"tenant"}),
+
+		// analytics.NewInt() call is idempotent so it's safe to call it multiple times
+		streamsCountStats: analytics.NewInt("ingester_streams_count"),
+	}
+}
 
 type instance struct {
 	cfg *Config
@@ -98,8 +116,13 @@ type instance struct {
 
 	instanceID string
 
+	// global ingester metrics
+	metrics *ingesterMetrics
+	// per-tenant ingester metrics that are initialized at construction time
 	streamsCreatedTotal prometheus.Counter
 	streamsRemovedTotal prometheus.Counter
+	memoryStreams       prometheus.Gauge
+	memoryStreamShards  prometheus.Gauge
 
 	tailers   map[uint32]*tailer
 	tailerMtx sync.RWMutex
@@ -115,8 +138,6 @@ type instance struct {
 	// Denotes whether the ingester should flush on shutdown.
 	// Currently only used by the WAL to signal when the disk is full.
 	flushOnShutdownSwitch *OnceSwitch
-
-	metrics *ingesterMetrics
 
 	chunkFilter          chunk.RequestChunkFilterer
 	pipelineWrapper      log.PipelineWrapper
@@ -163,8 +184,11 @@ func newInstance(
 		index:      invertedIndex,
 		instanceID: instanceID,
 
-		streamsCreatedTotal: streamsCreatedTotal.WithLabelValues(instanceID),
-		streamsRemovedTotal: streamsRemovedTotal.WithLabelValues(instanceID),
+		metrics:             metrics,
+		streamsCreatedTotal: metrics.instance.streamsCreatedTotal.WithLabelValues(instanceID),
+		streamsRemovedTotal: metrics.instance.streamsRemovedTotal.WithLabelValues(instanceID),
+		memoryStreams:       metrics.instance.memoryStreams.WithLabelValues(instanceID),
+		memoryStreamShards:  metrics.instance.memoryStreamShards.WithLabelValues(instanceID),
 
 		tailers:            map[uint32]*tailer{},
 		limiter:            limiter,
@@ -173,7 +197,6 @@ func newInstance(
 		configs:            configs,
 
 		wal:                   wal,
-		metrics:               metrics,
 		flushOnShutdownSwitch: flushOnShutdownSwitch,
 
 		chunkFilter:      chunkFilter,
@@ -355,11 +378,14 @@ func (i *instance) onStreamCreationError(ctx context.Context, pushReqStream logp
 }
 
 func (i *instance) onStreamCreated(s *stream) {
-	memoryStreams.WithLabelValues(i.instanceID).Inc()
-	memoryStreamsLabelsBytes.Add(float64(len(s.labels.String())))
+	i.memoryStreams.Inc()
+	if s.labels.Has(ShardLbName) {
+		i.memoryStreamShards.Inc()
+	}
+	i.metrics.instance.memoryStreamsLabelsBytes.Add(float64(len(s.labels.String())))
 	i.streamsCreatedTotal.Inc()
 	i.addTailersToNewStream(s)
-	streamsCountStats.Add(1)
+	i.metrics.instance.streamsCountStats.Add(1)
 	// we count newly created stream as owned
 	i.ownedStreamsSvc.trackStreamOwnership(s.fp, true, s.policy)
 	if i.configs.LogStreamCreation(i.instanceID) {
@@ -426,9 +452,12 @@ func (i *instance) removeStream(s *stream) {
 	if i.streams.Delete(s) {
 		i.index.Delete(s.labels, s.fp)
 		i.streamsRemovedTotal.Inc()
-		memoryStreams.WithLabelValues(i.instanceID).Dec()
-		memoryStreamsLabelsBytes.Sub(float64(len(s.labels.String())))
-		streamsCountStats.Add(-1)
+		i.memoryStreams.Dec()
+		if s.labels.Has(ShardLbName) {
+			i.memoryStreamShards.Dec()
+		}
+		i.metrics.instance.memoryStreamsLabelsBytes.Sub(float64(len(s.labels.String())))
+		i.metrics.instance.streamsCountStats.Add(-1)
 		i.ownedStreamsSvc.trackRemovedStream(s.fp, s.policy)
 	}
 }

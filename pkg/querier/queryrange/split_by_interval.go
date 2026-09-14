@@ -307,16 +307,6 @@ func allLokiResponses(responses []queryrangebase.Response) bool {
 	return true
 }
 
-// maxRangeVectorAndOffsetDurationFromQueryString
-func maxRangeVectorAndOffsetDurationFromQueryString(q string) (time.Duration, time.Duration, error) {
-	parsed, err := syntax.ParseExpr(q)
-	if err != nil {
-		return 0, 0, err
-	}
-	dur, offset := maxRangeVectorAndOffsetDuration(parsed)
-	return dur, offset, nil
-}
-
 // maxRangeVectorAndOffsetDuration returns the maximum range vector and offset duration within a LogQL query.
 func maxRangeVectorAndOffsetDuration(expr syntax.Expr) (time.Duration, time.Duration) {
 	if _, ok := expr.(syntax.SampleExpr); !ok {

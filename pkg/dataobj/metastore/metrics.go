@@ -226,18 +226,29 @@ func (p *ObjectMetastoreMetrics) register(reg prometheus.Registerer) {
 	if reg == nil {
 		return
 	}
-	reg.MustRegister(p.indexObjectsTotal)
-	reg.MustRegister(p.streamFilterTotalDuration)
-	reg.MustRegister(p.streamFilterSections)
-	reg.MustRegister(p.streamFilterStreamsReadDuration)
-	reg.MustRegister(p.streamFilterPointersReadDuration)
-	reg.MustRegister(p.estimateSectionsTotalDuration)
-	reg.MustRegister(p.estimateSectionsPointerReadDuration)
-	reg.MustRegister(p.estimateSectionsSections)
-	reg.MustRegister(p.resolvedSectionsTotalDuration)
-	reg.MustRegister(p.resolvedSectionsTotal)
-	reg.MustRegister(p.resolvedSectionsRatio)
-	reg.MustRegister(p.indexReadFlowTotal)
-	reg.MustRegister(p.indexReadRowsPerObject)
-	reg.MustRegister(p.resolvedSectionsPerObject)
+
+	collectors := []prometheus.Collector{
+		p.indexObjectsTotal,
+		p.streamFilterTotalDuration,
+		p.streamFilterSections,
+		p.streamFilterStreamsReadDuration,
+		p.streamFilterPointersReadDuration,
+		p.estimateSectionsTotalDuration,
+		p.estimateSectionsPointerReadDuration,
+		p.estimateSectionsSections,
+		p.resolvedSectionsTotalDuration,
+		p.resolvedSectionsTotal,
+		p.resolvedSectionsRatio,
+		p.indexReadFlowTotal,
+		p.indexReadRowsPerObject,
+		p.resolvedSectionsPerObject,
+	}
+
+	for _, collector := range collectors {
+		if err := reg.Register(collector); err != nil {
+			if _, ok := err.(prometheus.AlreadyRegisteredError); !ok {
+				panic(err)
+			}
+		}
+	}
 }
