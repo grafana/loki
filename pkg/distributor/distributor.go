@@ -213,6 +213,7 @@ type metrics struct {
 	limitsServiceShardShadowRejected      *prometheus.CounterVec
 	limitsServiceShardShadowCompared      *prometheus.CounterVec
 	limitsServiceShardShadowCapped        *prometheus.CounterVec
+	limitsServiceShardDuration            prometheus.Histogram
 
 	// kafka metrics
 	kafkaAppends           *prometheus.CounterVec
@@ -298,6 +299,15 @@ func newMetrics(reg prometheus.Registerer) *metrics {
 			Name:      "distributor_limits_service_shard_shadow_capped_total",
 			Help:      "For tenants/policies in 'shadow' mode, the total number of comparable observations where the ingest-limits service capped the recommended shard count below the rate-justified ideal to fit the tenant's remaining stream-count budget. Capping is expected/explainable, not necessarily a rate-estimate disagreement.",
 		}, []string{"tenant"}),
+		limitsServiceShardDuration: promauto.With(reg).NewHistogram(prometheus.HistogramOpts{
+			Namespace:                       constants.Loki,
+			Name:                            "distributor_limits_service_shard_duration_seconds",
+			Help:                            "Wall-clock time the distributor spends in the synchronous CheckLimitsAndShard call on the push path, i.e. the extra push latency added for tenants/policies in 'shadow' mode. Bounded by the 2s call timeout.",
+			NativeHistogramBucketFactor:     1.1,
+			NativeHistogramMinResetDuration: 1 * time.Hour,
+			NativeHistogramMaxBucketNumber:  100,
+			Buckets:                         prometheus.DefBuckets,
+		}),
 
 		kafkaAppends: promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
 			Namespace: constants.Loki,
@@ -1434,6 +1444,11 @@ type limitsServiceShardCandidate struct {
 //
 // This runs synchronously with a short timeout
 func (d *Distributor) observeLimitsServiceShardShadow(ctx context.Context, tenantID string, candidates []limitsServiceShardCandidate) {
+	// Record the wall-clock time spent here: this is the extra latency the
+	// shadow call adds to the push path. Deferred so every return path
+	// (success, failure, Unimplemented) is measured.
+	defer prometheus.NewTimer(d.m.limitsServiceShardDuration).ObserveDuration()
+
 	shadowCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
 	defer cancel()
 	results, err := d.ingestLimits.CheckLimitsAndShard(shadowCtx, tenantID, candidates)

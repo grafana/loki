@@ -28,6 +28,7 @@ import (
 	"github.com/grafana/dskit/services"
 	"github.com/grafana/dskit/user"
 	"github.com/prometheus/client_golang/prometheus"
+	dto "github.com/prometheus/client_model/go"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/otlptranslator"
 	"github.com/prometheus/prometheus/model/labels"
@@ -3353,6 +3354,13 @@ func TestDistributor_ObserveLimitsServiceShardShadow(t *testing.T) {
 			} {
 				require.Equal(t, want(c.expect), testutil.ToFloat64(c.counter.WithLabelValues("test")), "counter %s", c.name)
 			}
+
+			// The synchronous shadow call must always record its added
+			// latency, regardless of outcome (success, failure, or
+			// Unimplemented). Exactly one observation per push.
+			var m dto.Metric
+			require.NoError(t, d.m.limitsServiceShardDuration.Write(&m))
+			require.Equal(t, uint64(1), m.GetHistogram().GetSampleCount())
 		})
 	}
 }
