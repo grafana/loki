@@ -379,7 +379,7 @@ func NewChunkClient(name, component string, cfg Config, schemaCfg config.SchemaC
 		cc := congestion.NewController(
 			ccCfg,
 			logger,
-			congestion.NewMetrics(fmt.Sprintf("%s-%s", name, p.From.String()), ccCfg),
+			congestion.NewMetrics(fmt.Sprintf("%s-%s", name, p.From.String()), ccCfg, registerer),
 		)
 		c = cc.Wrap(c)
 	}

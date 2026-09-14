@@ -41,7 +41,17 @@ const (
 	WalRecordSeries RecordType = iota
 	WalRecordChunks
 	WalRecordSeriesWithFingerprint
+	// WalRecordChunksV2 is WalRecordChunks plus each chunk's
+	// index.ChunkMeta.IngestedAt.
+	WalRecordChunksV2
 )
+
+// CurrentChunksRec is the chunks record version this binary writes.
+// Older versions remain readable.
+// To enable safe rollback, the version needs to be change in 2 steps:
+// First, allow v2 decoding but keep v1 encoding.
+// Second, switch current record version to v2 to enable v2 encoding.
+const CurrentChunksRec = WalRecordChunks
 
 type WALRecord struct {
 	UserID      string
@@ -86,9 +96,12 @@ func (r *WALRecord) encodeSeriesWithFingerprint(b []byte) []byte {
 	return encoded
 }
 
-func (r *WALRecord) encodeChunks(b []byte) []byte {
+// encodeChunks encodes the record's chunk metas in the given version's layout.
+// Callers writing to the WAL pass CurrentChunksRec; older versions are only
+// encoded by tests that pin their layout.
+func (r *WALRecord) encodeChunks(version RecordType, b []byte) []byte {
 	buf := encoding.EncWith(b)
-	buf.PutByte(byte(WalRecordChunks))
+	buf.PutByte(byte(version))
 	buf.PutUvarintStr(r.UserID)
 	buf.PutBE64(r.Chks.Ref)
 	buf.PutUvarint(len(r.Chks.Chks))
@@ -99,12 +112,15 @@ func (r *WALRecord) encodeChunks(b []byte) []byte {
 		buf.PutBE32(chk.Checksum)
 		buf.PutBE32(chk.KB)
 		buf.PutBE32(chk.Entries)
+		if version >= WalRecordChunksV2 {
+			buf.PutBE64(uint64(chk.IngestedAt))
+		}
 	}
 
 	return buf.Get()
 }
 
-func decodeChunks(b []byte, rec *WALRecord) error {
+func decodeChunks(b []byte, version RecordType, rec *WALRecord) error {
 	if len(b) == 0 {
 		return nil
 	}
@@ -124,13 +140,17 @@ func decodeChunks(b []byte, rec *WALRecord) error {
 	rec.Chks.Chks = make(index.ChunkMetas, 0, ln)
 
 	for len(dec.B) > 0 && dec.Err() == nil {
-		rec.Chks.Chks = append(rec.Chks.Chks, index.ChunkMeta{
+		chk := index.ChunkMeta{
 			MinTime:  dec.Be64int64(),
 			MaxTime:  dec.Be64int64(),
 			Checksum: dec.Be32(),
 			KB:       dec.Be32(),
 			Entries:  dec.Be32(),
-		})
+		}
+		if version >= WalRecordChunksV2 {
+			chk.IngestedAt = dec.Be64int64()
+		}
+		rec.Chks.Chks = append(rec.Chks.Chks, chk)
 	}
 
 	if err := dec.Err(); err != nil {
@@ -177,9 +197,9 @@ func decodeWALRecord(b []byte, walRec *WALRecord) error {
 		if len(rSeries) == 1 {
 			walRec.Series = rSeries[0]
 		}
-	case WalRecordChunks:
+	case WalRecordChunks, WalRecordChunksV2:
 		userID = decbuf.UvarintStr()
-		if err := decodeChunks(decbuf.B, walRec); err != nil {
+		if err := decodeChunks(decbuf.B, t, walRec); err != nil {
 			return err
 		}
 	default:
@@ -238,7 +258,7 @@ func (w *headWAL) Log(record *WALRecord) error {
 	}
 
 	if len(record.Chks.Chks) > 0 {
-		buf = record.encodeChunks(buf[:0])
+		buf = record.encodeChunks(CurrentChunksRec, buf[:0])
 		if err := w.wal.Log(buf); err != nil {
 			return err
 		}

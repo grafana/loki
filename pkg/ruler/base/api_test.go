@@ -581,7 +581,7 @@ func TestRuler_PrometheusRules(t *testing.T) {
 }
 
 func TestRuler_PrometheusAlerts(t *testing.T) {
-	cfg := defaultRulerConfig(t, newMockRuleStore(mockRules))
+	cfg := defaultRulerConfig(t, newMockRuleStore(cloneMockRules(mockRules)))
 
 	tests := []struct {
 		name               string
@@ -643,7 +643,7 @@ func TestRuler_PrometheusAlerts(t *testing.T) {
 }
 
 func TestRuler_GetRulesLabelFilter(t *testing.T) {
-	cfg := defaultRulerConfig(t, newMockRuleStore(mockRules))
+	cfg := defaultRulerConfig(t, newMockRuleStore(cloneMockRules(mockRules)))
 
 	r := newTestRuler(t, cfg)
 	defer services.StopAndAwaitTerminated(context.Background(), r) //nolint:errcheck
@@ -901,7 +901,7 @@ func TestRuler_CreateWithLeadingWhitespaceInExpr(t *testing.T) {
 }
 
 func TestRuler_DeleteNamespace(t *testing.T) {
-	cfg := defaultRulerConfig(t, newMockRuleStore(mockRulesNamespaces))
+	cfg := defaultRulerConfig(t, newMockRuleStore(cloneMockRules(mockRulesNamespaces)))
 
 	r := newTestRuler(t, cfg)
 	defer services.StopAndAwaitTerminated(context.Background(), r) //nolint:errcheck

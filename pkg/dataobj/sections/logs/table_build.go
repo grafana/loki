@@ -8,6 +8,7 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/dataset"
+	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
 )
 
 // buildTable builds a table from the set of provided records. The records are
@@ -75,8 +76,8 @@ func sortRecords(records []Record, sortOrder SortOrder) {
 			return reverseOrderIfEqual(cmp.Compare(a.StreamID, b.StreamID))
 		case SortSchemaASC:
 			// Sort by [shard_bucket ASC, schema sort key ASC, stream hash ASC, streamID ASC, timestamp DESC].
-			aSort := StreamSort{Shard: a.ShardBucket, Key: a.SortKey, Hash: a.StreamHash}
-			bSort := StreamSort{Shard: b.ShardBucket, Key: b.SortKey, Hash: b.StreamHash}
+			aSort := streams.SortKey{ShardBucket: a.ShardBucket, SchemaKey: a.SchemaKey, Hash: a.StreamHash}
+			bSort := streams.SortKey{ShardBucket: b.ShardBucket, SchemaKey: b.SchemaKey, Hash: b.StreamHash}
 			if res := aSort.Compare(bSort); res != 0 {
 				return res
 			}

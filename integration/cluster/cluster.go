@@ -77,13 +77,19 @@ limits_config:
 #     directory: {{.sharedDataPath}}/rules
 
 storage_config:
-  # Legacy config
+  # Legacy default store (schema object_store: filesystem). Must live under
+  # sharedPath so Cluster.Cleanup removes it; an empty directory becomes ".".
+  filesystem:
+    directory: {{.sharedDataPath}}/chunks
   named_stores:
     filesystem:
       store-1:
         directory: {{.sharedDataPath}}/fs-store-1
-  # Thanos config
+  # Thanos default store. use_thanos_objstore defaults to true and does not
+  # inherit common.storage.filesystem.chunks_directory.
   object_store:
+    filesystem:
+      dir: {{.sharedDataPath}}/chunks
     named_stores:
       filesystem:
         store-1:

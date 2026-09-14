@@ -16,31 +16,33 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/result"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/util/symbolizer"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/logs"
+	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
 	"github.com/grafana/loki/v3/pkg/util/loser"
 )
 
-// Iterator returns an iterator that performs a k-way merge of records from
+// SimpleSortedIterator returns an iterator that performs a k-way merge of records from
 // multiple logs sections. It requires that the input sections are sorted
 // according to sort.
-func Iterator(ctx context.Context, sections []*dataobj.Section, sort logs.SortOrder) (result.Seq[logs.Record], error) {
+func SimpleSortedIterator(ctx context.Context, sections []*dataobj.Section, sort logs.SortOrder) (result.Seq[logs.Record], error) {
 	return iterator(ctx, sections, iteratorOptions{less: logs.CompareForSortOrder(sort)})
 }
 
-// IteratorForSchema returns an iterator that performs a k-way merge of records
-// from multiple schema-sorted logs sections. The input sections must be sorted
-// by [shard ASC, schema sort key ASC, hash ASC, streamID ASC, timestamp DESC].
+// SchemaSortedIterator returns an iterator that performs a k-way merge of records
+// from multiple schema-sorted logs sections.
+// The input sections must belong to the same object and must therefore have the same StreamID key space.
+// The input sections must be sorted by the schema method: [shard ASC, schema key ASC, hash ASC, streamID ASC, timestamp DESC].
 //
-// order maps StreamID to the corresponding sort tuple ([0] unused).
-func IteratorForSchema(ctx context.Context, sections []*dataobj.Section, order []logs.StreamSort) (result.Seq[logs.Record], error) {
-	return iterator(ctx, sections, iteratorOptions{less: logs.CompareForSortSchema(order)})
+// An additional ordering input is required to map StreamID to the corresponding external sort tuple ([0] unused).
+func SchemaSortedIterator(ctx context.Context, sections []*dataobj.Section, ordering []streams.SortKey) (result.Seq[logs.Record], error) {
+	return iterator(ctx, sections, iteratorOptions{less: logs.CompareByStreamSchema(ordering)})
 }
 
-// IteratorWithStreamRemap performs a k-way merge over logs sections drawn from
+// MixedObjectIterator performs a k-way merge over logs sections drawn from
 // multiple source objects. Each section's stream IDs are rewritten into a single
 // global space via remaps[i] (the map for sections[i]) before records are
 // compared. Global IDs must already be assigned in stream-order so that
 // [streamID ASC, timestamp DESC] matches the physical sort contract.
-func IteratorWithStreamRemap(ctx context.Context, sections []*dataobj.Section, remaps []map[int64]int64, expectedSchema []string) (result.Seq[logs.Record], error) {
+func MixedObjectIterator(ctx context.Context, sections []*dataobj.Section, remaps []map[int64]int64, expectedSchema []string) (result.Seq[logs.Record], error) {
 	return iterator(ctx, sections, iteratorOptions{
 		less:   logs.CompareForSortOrder(logs.SortStreamASC),
 		remaps: remaps,

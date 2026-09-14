@@ -1,6 +1,13 @@
 # Changes
 
 
+## [1.67.1](https://github.com/googleapis/google-cloud-go/compare/storage/v1.67.0...storage/v1.67.1) (2026-09-07)
+
+
+### Bug Fixes
+
+* **storage:** Prevent panic when MultiRangeDownloader callback is nil ([#20377](https://github.com/googleapis/google-cloud-go/issues/20377)) ([a85e955](https://github.com/googleapis/google-cloud-go/commit/a85e955cacb0e4c9dd05165b8b3c02049e9e3a47))
+
 ## [1.67.0](https://github.com/googleapis/google-cloud-go/compare/storage/v1.66.0...storage/v1.67.0) (2026-09-03)
 
 

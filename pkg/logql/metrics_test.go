@@ -110,6 +110,7 @@ func TestRecordBytesProcessedTotal(t *testing.T) {
 	now := time.Now()
 	params.start, params.end = now.Add(-1*time.Hour), now
 
+	bytesProcessedTotal.DeleteLabelValues(tenantID)
 	counter := bytesProcessedTotal.WithLabelValues(tenantID)
 
 	RecordRangeAndInstantQueryMetrics(ctx, util_log.Logger, params, "200", result, nil)
@@ -121,6 +122,8 @@ func TestRecordBytesProcessedTotal(t *testing.T) {
 
 	// Federated multi-tenant queries divide the byte total evenly across tenants.
 	fedA, fedB := "record-bytes-fed-a", "record-bytes-fed-b"
+	bytesProcessedTotal.DeleteLabelValues(fedA)
+	bytesProcessedTotal.DeleteLabelValues(fedB)
 	fedCtx := user.InjectOrgID(context.Background(), fmt.Sprintf("%s|%s", fedA, fedB))
 	RecordRangeAndInstantQueryMetrics(fedCtx, util_log.Logger, params, "200", result, nil)
 	require.Equal(t, float64(50000), testutil.ToFloat64(bytesProcessedTotal.WithLabelValues(fedA)))
@@ -146,7 +149,9 @@ func TestRecordChunkFetchFailuresTotal(t *testing.T) {
 	params.start, params.end = now.Add(-1*time.Hour), now
 
 	ctx := context.Background()
+	chunkFetchFailuresTotal.DeleteLabelValues("200", QueryTypeFilter, string(RangeType))
 	failuresCounter := chunkFetchFailuresTotal.WithLabelValues("200", QueryTypeFilter, string(RangeType))
+	queriesWithChunkFetchFailuresTotal.DeleteLabelValues("200", QueryTypeFilter, string(RangeType))
 	affectedCounter := queriesWithChunkFetchFailuresTotal.WithLabelValues("200", QueryTypeFilter, string(RangeType))
 
 	// No failures: neither counter moves.

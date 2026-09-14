@@ -27,7 +27,7 @@ func TestRequestNoopRetry(t *testing.T) {
 		},
 	}
 
-	metrics := NewMetrics(t.Name(), cfg)
+	metrics := NewMetrics(t.Name(), cfg, nil)
 	ctrl := NewController(cfg, log.NewNopLogger(), metrics)
 
 	// allow 1 request through, fail the rest
@@ -60,7 +60,7 @@ func TestRequestZeroLimitedRetry(t *testing.T) {
 		},
 	}
 
-	metrics := NewMetrics(t.Name(), cfg)
+	metrics := NewMetrics(t.Name(), cfg, nil)
 	ctrl := NewController(cfg, log.NewNopLogger(), metrics)
 
 	// fail all requests
@@ -89,7 +89,7 @@ func TestRequestLimitedRetry(t *testing.T) {
 		},
 	}
 
-	metrics := NewMetrics(t.Name(), cfg)
+	metrics := NewMetrics(t.Name(), cfg, nil)
 	ctrl := NewController(cfg, log.NewNopLogger(), metrics)
 
 	// allow 1 request through, fail the rest
@@ -125,7 +125,7 @@ func TestRequestLimitedRetryNonRetryableErr(t *testing.T) {
 		},
 	}
 
-	metrics := NewMetrics(t.Name(), cfg)
+	metrics := NewMetrics(t.Name(), cfg, nil)
 	ctrl := NewController(cfg, log.NewNopLogger(), metrics)
 
 	// fail all requests
@@ -168,7 +168,7 @@ func TestAIMDReducedThroughput(t *testing.T) {
 
 	var trigger atomic.Bool
 
-	metrics := NewMetrics(t.Name(), cfg)
+	metrics := NewMetrics(t.Name(), cfg, nil)
 	ctrl := NewController(cfg, log.NewNopLogger(), metrics)
 
 	// fail requests only when triggered

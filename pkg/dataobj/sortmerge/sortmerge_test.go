@@ -71,7 +71,7 @@ func collectSections(t *testing.T, obj *dataobj.Object) []*dataobj.Section {
 
 // TestIterator_MergesAndOrdersByTimestamp builds two single-stream data
 // objects whose timestamp ranges interleave, then verifies that
-// sortmerge.Iterator merges them into a single non-increasing-timestamp
+// sortmerge.SimpleSortedIterator merges them into a single non-increasing-timestamp
 // stream (SortTimestampDESC) and emits every input record exactly once.
 func TestIterator_MergesAndOrdersByTimestamp(t *testing.T) {
 	now := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
@@ -85,7 +85,7 @@ func TestIterator_MergesAndOrdersByTimestamp(t *testing.T) {
 	sections = append(sections, collectSections(t, objA)...)
 	sections = append(sections, collectSections(t, objB)...)
 
-	iter, err := sortmerge.Iterator(context.Background(), sections, logs.SortTimestampDESC)
+	iter, err := sortmerge.SimpleSortedIterator(context.Background(), sections, logs.SortTimestampDESC)
 	require.NoError(t, err)
 
 	var (
@@ -118,7 +118,7 @@ func TestIterator_SingleSection_DegenerateIdentity(t *testing.T) {
 
 	sections := collectSections(t, obj)
 
-	iter, err := sortmerge.Iterator(context.Background(), sections, logs.SortStreamASC)
+	iter, err := sortmerge.SimpleSortedIterator(context.Background(), sections, logs.SortStreamASC)
 	require.NoError(t, err)
 
 	var count int
@@ -133,7 +133,7 @@ func TestIterator_SingleSection_DegenerateIdentity(t *testing.T) {
 // TestIterator_NoSections returns an iterator over zero sections — should
 // terminate immediately without error.
 func TestIterator_NoSections(t *testing.T) {
-	iter, err := sortmerge.Iterator(context.Background(), nil, logs.SortStreamASC)
+	iter, err := sortmerge.SimpleSortedIterator(context.Background(), nil, logs.SortStreamASC)
 	require.NoError(t, err)
 	for res := range iter {
 		_, err := res.Value()
@@ -176,7 +176,7 @@ func planGlobalStreams(ctx context.Context, t *testing.T, objs []*dataobj.Object
 	type entry struct {
 		sourceIdx      int
 		sourceStreamID int64
-		key            logsobj.StreamOrderKey
+		key            streams.SortKey
 	}
 	var all []entry
 	perObjLogs := make([][]*dataobj.Section, len(objs))
@@ -190,8 +190,10 @@ func planGlobalStreams(ctx context.Context, t *testing.T, objs []*dataobj.Object
 			for res := range streams.IterSection(ctx, ss) {
 				stream, err := res.Value()
 				require.NoError(t, err)
-				key, err := logsobj.NewStreamOrderKey(stream.Labels, sortSchema)
+				schemaKey, err := logsobj.ComputeSchemaKey(stream.Labels, sortSchema)
 				require.NoError(t, err)
+				key := streams.NewSortKey(stream.Labels, schemaKey)
+
 				all = append(all, entry{sourceIdx: sourceIdx, sourceStreamID: stream.ID, key: key})
 			}
 		}
@@ -203,7 +205,7 @@ func planGlobalStreams(ctx context.Context, t *testing.T, objs []*dataobj.Object
 	}
 
 	slices.SortFunc(all, func(a, b entry) int {
-		if r := logsobj.CompareStreamOrderKey(a.key, b.key); r != 0 {
+		if r := streams.CompareSortKey(a.key, b.key); r != 0 {
 			return r
 		}
 		if r := cmp.Compare(a.sourceIdx, b.sourceIdx); r != 0 {
@@ -263,7 +265,7 @@ func TestIteratorWithStreamRemap_MergesAcrossObjects(t *testing.T) {
 
 	sections, remaps := planGlobalStreams(ctx, t, []*dataobj.Object{objA, objB}, sortSchema)
 
-	iter, err := sortmerge.IteratorWithStreamRemap(ctx, sections, remaps, sortSchema)
+	iter, err := sortmerge.MixedObjectIterator(ctx, sections, remaps, sortSchema)
 	require.NoError(t, err)
 
 	var (
