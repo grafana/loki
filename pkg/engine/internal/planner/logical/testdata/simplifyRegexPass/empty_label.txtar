@@ -1,0 +1,11 @@
+An empty regex on a non-message column only matches an empty value.
+
+-- column --
+utf8.label.foo
+
+-- regex --
+
+
+-- expect --
+%1 = EQ label.foo ""
+RETURN %1
