@@ -214,6 +214,7 @@ type metrics struct {
 	limitsServiceShardShadowCompared      *prometheus.CounterVec
 	limitsServiceShardShadowCapped        *prometheus.CounterVec
 	limitsServiceShardDuration            prometheus.Histogram
+	limitsServiceExceedsLimitsDuration    prometheus.Histogram
 
 	// kafka metrics
 	kafkaAppends           *prometheus.CounterVec
@@ -303,6 +304,15 @@ func newMetrics(reg prometheus.Registerer) *metrics {
 			Namespace:                       constants.Loki,
 			Name:                            "distributor_limits_service_shard_duration_seconds",
 			Help:                            "Wall-clock time the distributor spends in the synchronous CheckLimitsAndShard call on the push path, i.e. the extra push latency added for tenants/policies in 'shadow' mode. Bounded by the 2s call timeout.",
+			NativeHistogramBucketFactor:     1.1,
+			NativeHistogramMinResetDuration: 1 * time.Hour,
+			NativeHistogramMaxBucketNumber:  100,
+			Buckets:                         prometheus.DefBuckets,
+		}),
+		limitsServiceExceedsLimitsDuration: promauto.With(reg).NewHistogram(prometheus.HistogramOpts{
+			Namespace:                       constants.Loki,
+			Name:                            "distributor_limits_service_exceeds_limits_duration_seconds",
+			Help:                            "Wall-clock time the distributor spends in the ExceedsLimits (EnforceLimits) call on the push path. Reported alongside loki_distributor_limits_service_shard_duration_seconds so the two limits-service calls can be compared: once CheckLimitsAndShard subsumes ExceedsLimits, the net added latency is the difference between the two.",
 			NativeHistogramBucketFactor:     1.1,
 			NativeHistogramMinResetDuration: 1 * time.Hour,
 			NativeHistogramMaxBucketNumber:  100,
@@ -1021,7 +1031,9 @@ func (d *Distributor) pushWithResolver(ctx context.Context, req *logproto.PushRe
 			d.observeLimitsServiceShardShadow(ctx, tenantID, shadowCandidates)
 		}
 
+		enforceTimer := prometheus.NewTimer(d.m.limitsServiceExceedsLimitsDuration)
 		accepted, rejected, err := d.ingestLimits.EnforceLimits(ctx, tenantID, streams)
+		enforceTimer.ObserveDuration()
 		if err == nil && !d.cfg.IngestLimitsDryRunEnabled {
 			if len(rejected) > 0 {
 				discardedStreams := make([]logproto.Stream, 0, len(rejected))

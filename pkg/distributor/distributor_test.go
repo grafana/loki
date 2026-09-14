@@ -3361,6 +3361,12 @@ func TestDistributor_ObserveLimitsServiceShardShadow(t *testing.T) {
 			var m dto.Metric
 			require.NoError(t, d.m.limitsServiceShardDuration.Write(&m))
 			require.Equal(t, uint64(1), m.GetHistogram().GetSampleCount())
+
+			// The EnforceLimits (ExceedsLimits) call is likewise timed once
+			// per push, so its latency can be compared against the shard call.
+			var em dto.Metric
+			require.NoError(t, d.m.limitsServiceExceedsLimitsDuration.Write(&em))
+			require.Equal(t, uint64(1), em.GetHistogram().GetSampleCount())
 		})
 	}
 }
