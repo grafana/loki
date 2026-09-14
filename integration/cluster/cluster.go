@@ -345,7 +345,27 @@ func (c *Component) WithExtraConfig(cfg string) {
 	c.extraConfigs = append(c.extraConfigs, cfg)
 }
 
-func (c *Component) setPorts() error {
+func (c *Component) writeConfig() error {
+	var err error
+
+	if c.configFile != "" {
+		// remove previous config file
+		if err = os.Remove(c.configFile); err != nil {
+			return err
+		}
+		c.configFile = ""
+	}
+	if c.dataPath != "" {
+		if err = os.RemoveAll(c.dataPath); err != nil {
+			return err
+		}
+		c.dataPath = ""
+	}
+	configFile, err := os.CreateTemp("", fmt.Sprintf("loki-%s-config-*.yaml", c.name))
+	if err != nil {
+		return fmt.Errorf("error creating config file: %w", err)
+	}
+
 	// Listen ports are picked by the harness rather than by the server, so that
 	// the harness can probe readiness over the network.
 	ports, err := reservePorts(2)
@@ -354,20 +374,6 @@ func (c *Component) setPorts() error {
 	}
 	c.httpPort = ports[0]
 	c.grpcPort = ports[1]
-	return nil
-}
-
-func (c *Component) writeConfig() error {
-	var err error
-
-	configFile, err := os.CreateTemp("", fmt.Sprintf("loki-%s-config-*.yaml", c.name))
-	if err != nil {
-		return fmt.Errorf("error creating config file: %w", err)
-	}
-
-	if err := c.setPorts(); err != nil {
-		return err
-	}
 
 	c.dataPath, err = os.MkdirTemp("", fmt.Sprintf("loki-%s-data-", c.name))
 	if err != nil {
@@ -440,24 +446,16 @@ func (c *Component) MergedConfig() ([]byte, error) {
 }
 
 func (c *Component) run() error {
+	var err error
 	c.running = true
-	if err := c.writeConfig(); err != nil {
-		return err
-	}
 
 	// retry multiple times if we get an EADDRINUSE error
 	for i := 0; i < 5; i++ {
-		if i > 0 {
-			// re-reserve the ports if the address is already in use
-			if err := c.setPorts(); err != nil {
-				return err
-			}
+		if err := c.writeConfig(); err != nil {
+			return err
 		}
 
 		var config loki.ConfigWrapper
-		// make sure Loki binds the same interface `reservePorts` reserved.
-		config.Server.HTTPListenAddress = "127.0.0.1"
-		config.Server.GRPCListenAddress = "127.0.0.1"
 
 		flagset := flag.NewFlagSet("test-flags", flag.ExitOnError)
 
@@ -534,14 +532,14 @@ func (c *Component) run() error {
 		select {
 		case <-readyCh:
 			return nil
-		case err := <-errCh:
+		case err = <-errCh:
 			if strings.Contains(err.Error(), "address already in use") {
 				continue
 			}
 			return err
 		}
 	}
-	return nil
+	return err
 }
 
 // cleanup calls the stop handler and returns files and directories to be cleaned up
