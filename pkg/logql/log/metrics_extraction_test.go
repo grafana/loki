@@ -9,6 +9,8 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/grafana/loki/v3/pkg/logqlmodel"
 )
 
 func Test_labelSampleExtractor_Extract(t *testing.T) {
@@ -822,6 +824,72 @@ func TestLineSampleExtractor_ForStream_FilteredConstantIsolatesFromSiblingStream
 	require.True(t, ok, "stream A must match its own namespace stream label, not stream B's leftover metadata")
 	require.Equal(t, 1., ra.Value)
 	assertLabelResult(t, labels.FromStrings("app", "a"), ra.Labels)
+}
+
+// TestLineSampleExtractor_ForStream_ConstantPathFallsBackOnStructuredMetadataError verifies that a line
+// whose structured metadata carries __error__ still surfaces the __error__ as series labels.
+func TestLineSampleExtractor_ForStream_ConstantPathFallsBackOnStructuredMetadataError(t *testing.T) {
+	var (
+		// cluster is a stream label outside the grouping, so the cached grouped labels (namespace
+		// only) and the error fallback's full label set (both) are never accidentally equal.
+		streamLabels = labels.FromStrings("namespace", "dev", "cluster", "us-central1")
+		errLabel     = labels.FromStrings(logqlmodel.ErrorLabel, "SampleExtractionErr")
+	)
+
+	t.Run("noop constant path", func(t *testing.T) {
+		se, err := NewLineSampleExtractor(CountExtractor, nil, []string{"namespace"}, false, false)
+		require.NoError(t, err)
+		sse := se.ForStream(streamLabels)
+		require.IsType(t, &noopConstantLabelStreamExtractor{}, sse)
+
+		// A normal line still takes the fast, constant-label path.
+		s, ok := sse.Process(0, []byte("line"), labels.EmptyLabels())
+		require.True(t, ok)
+		assertLabelResult(t, labels.FromStrings("namespace", "dev"), s.Labels)
+
+		// A line whose structured metadata carries __error__ must surface it, bypassing the cached
+		// grouped labels, exactly like the per-line builder path does.
+		s, ok = sse.Process(0, []byte("line"), errLabel)
+		require.True(t, ok)
+		assertLabelResult(t, appendLabels(streamLabels, errLabel), s.Labels)
+
+		// ProcessString takes the same fallback as Process.
+		s, ok = sse.ProcessString(0, "line", errLabel)
+		require.True(t, ok)
+		assertLabelResult(t, appendLabels(streamLabels, errLabel), s.Labels)
+
+		// The cached constant path still serves the next normal line unaffected by the error line.
+		s, ok = sse.Process(0, []byte("line"), labels.EmptyLabels())
+		require.True(t, ok)
+		assertLabelResult(t, labels.FromStrings("namespace", "dev"), s.Labels)
+	})
+
+	t.Run("filtered constant path", func(t *testing.T) {
+		se, err := NewLineSampleExtractor(CountExtractor,
+			[]Stage{mustFilter(NewFilter("keep", LineMatchEqual)).ToStage()},
+			[]string{"namespace"}, false, false)
+		require.NoError(t, err)
+		sse := se.ForStream(streamLabels)
+		require.IsType(t, &filteredConstantLabelStreamExtractor{}, sse)
+
+		s, ok := sse.Process(0, []byte("keep me"), errLabel)
+		require.True(t, ok)
+		assertLabelResult(t, appendLabels(streamLabels, errLabel), s.Labels)
+
+		// ProcessString takes the same fallback as Process.
+		s, ok = sse.ProcessString(0, "keep me", errLabel)
+		require.True(t, ok)
+		assertLabelResult(t, appendLabels(streamLabels, errLabel), s.Labels)
+
+		// The stage still drops a line it rejects, even one whose structured metadata carries __error__.
+		_, ok = sse.Process(0, []byte("drop me"), errLabel)
+		require.False(t, ok)
+
+		// The cached constant path still serves the next normal line unaffected by the error line.
+		s, ok = sse.Process(0, []byte("keep me"), labels.EmptyLabels())
+		require.True(t, ok)
+		assertLabelResult(t, labels.FromStrings("namespace", "dev"), s.Labels)
+	})
 }
 
 func TestStageHints_Merge(t *testing.T) {

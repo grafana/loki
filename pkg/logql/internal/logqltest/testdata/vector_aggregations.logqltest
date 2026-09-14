@@ -60,6 +60,24 @@ eval instant at 60s sum(count_over_time({app=~"foo|bar"} |~".+bar" [1m])) withou
   {app="foo"} 18
   {app="bar"} 6
 
+# A __error__ set directly as structured metadata is an extraction error too. It still fails the
+# query, and a __error__ filter still drops it.
+clear
+load
+  {app="a"} "1" @ 10s [repeat every 10s for 6]
+  {app="a"} "2" @ 15s [repeat every 10s for 6] [metadata __error__="malformed"]
+
+eval instant at 60s sum(count_over_time({app="a"}[1m]))
+  expect fail
+eval instant at 60s sum(count_over_time({app="a"} | __error__="" [1m]))
+  {} 6
+# A line filter still fails the query on the errored line it keeps, and still counts correctly once
+# it drops that line instead.
+eval instant at 60s sum(count_over_time({app="a"} |= "2" [1m]))
+  expect fail
+eval instant at 60s sum(count_over_time({app="a"} |= "1" [1m]))
+  {} 6
+
 # sum() with special inputs.
 clear
 load
