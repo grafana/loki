@@ -307,11 +307,16 @@ type orFilter struct {
 
 // newOrFilter creates a new filter which matches only if left or right matches.
 func newOrFilter(left MatcherFilterer, right MatcherFilterer) MatcherFilterer {
-	if left == nil || isTrueFilter(left) {
-		return right
+	// If either side matches all, OR matches all.
+	if isTrueFilter(left) || isTrueFilter(right) {
+		return TrueFilter
 	}
 
-	if right == nil || isTrueFilter(right) {
+	// nil behaves as false: nil OR X = X.
+	if left == nil {
+		return right
+	}
+	if right == nil {
 		return left
 	}
 
