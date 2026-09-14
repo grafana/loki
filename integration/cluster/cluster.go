@@ -476,7 +476,6 @@ func (c *Component) run() error {
 		if err := config.LimitsConfig.SetDefaultPolicyStreamMapping(config.Distributor.DefaultPolicyStreamMappings); err != nil {
 			return err
 		}
-		var err error
 		c.loki, err = loki.New(config.Config)
 		if err != nil {
 			return err
