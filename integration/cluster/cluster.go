@@ -11,6 +11,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"text/template"
 	"time"
@@ -344,6 +345,18 @@ func (c *Component) WithExtraConfig(cfg string) {
 	c.extraConfigs = append(c.extraConfigs, cfg)
 }
 
+func (c *Component) setPorts() error {
+	// Listen ports are picked by the harness rather than by the server, so that
+	// the harness can probe readiness over the network.
+	ports, err := reservePorts(2)
+	if err != nil {
+		return fmt.Errorf("error reserving ports: %w", err)
+	}
+	c.httpPort = ports[0]
+	c.grpcPort = ports[1]
+	return nil
+}
+
 func (c *Component) writeConfig() error {
 	var err error
 
@@ -352,14 +365,8 @@ func (c *Component) writeConfig() error {
 		return fmt.Errorf("error creating config file: %w", err)
 	}
 
-	// Listen ports are picked by the harness rather than by the server, so that
-	// the harness can probe readiness over the network.
-	if c.httpPort, err = freePort(); err != nil {
-		return fmt.Errorf("error allocating http port: %w", err)
-	}
-
-	if c.grpcPort, err = freePort(); err != nil {
-		return fmt.Errorf("error allocating grpc port: %w", err)
+	if err := c.setPorts(); err != nil {
+		return err
 	}
 
 	c.dataPath, err = os.MkdirTemp("", fmt.Sprintf("loki-%s-data-", c.name))
@@ -434,89 +441,106 @@ func (c *Component) MergedConfig() ([]byte, error) {
 
 func (c *Component) run() error {
 	c.running = true
-
 	if err := c.writeConfig(); err != nil {
 		return err
 	}
 
-	var config loki.ConfigWrapper
+	// retry multiple times if we get an EADDRINUSE error
+	for i := 0; i < 5; i++ {
+		if i > 0 {
+			// re-reserve the ports if the address is already in use
+			if err := c.setPorts(); err != nil {
+				return err
+			}
+		}
 
-	flagset := flag.NewFlagSet("test-flags", flag.ExitOnError)
+		var config loki.ConfigWrapper
+		// make sure Loki binds the same interface `reservePorts` reserved.
+		config.Server.HTTPListenAddress = "127.0.0.1"
+		config.Server.GRPCListenAddress = "127.0.0.1"
 
-	if err := cfg.DynamicUnmarshal(&config, append(
-		c.flags,
-		"-config.file", c.configFile,
-		"-runtime-config.file", c.overridesFile,
-		"-runtime-config.reload-period", "1s",
-	), flagset); err != nil {
-		return err
-	}
+		flagset := flag.NewFlagSet("test-flags", flag.ExitOnError)
 
-	if err := config.Validate(); err != nil {
-		return err
-	}
+		if err := cfg.DynamicUnmarshal(&config, append(
+			c.flags,
+			"-config.file", c.configFile,
+			"-runtime-config.file", c.overridesFile,
+			"-runtime-config.reload-period", "1s",
+		), flagset); err != nil {
+			return err
+		}
 
-	config.LimitsConfig.SetGlobalOTLPConfig(config.Distributor.OTLPConfig)
-	if err := config.LimitsConfig.SetDefaultPolicyStreamMapping(config.Distributor.DefaultPolicyStreamMappings); err != nil {
-		return err
-	}
-	var err error
-	c.loki, err = loki.New(config.Config)
-	if err != nil {
-		return err
-	}
+		if err := config.Validate(); err != nil {
+			return err
+		}
 
-	var (
-		readyCh = make(chan struct{})
-		errCh   = make(chan error, 1)
-	)
+		config.LimitsConfig.SetGlobalOTLPConfig(config.Distributor.OTLPConfig)
+		if err := config.LimitsConfig.SetDefaultPolicyStreamMapping(config.Distributor.DefaultPolicyStreamMappings); err != nil {
+			return err
+		}
+		var err error
+		c.loki, err = loki.New(config.Config)
+		if err != nil {
+			return err
+		}
 
-	// Probe readiness over the network to guarantee the component is ready before
-	// the test proceeds.
-	//
-	// We don't check readiness by calling ServeHTTP on the router directly because
-	// the component may still initialize even if the readiness check passes
-	// (e.g. the server only accepts connections once initialization has completed,
-	// while directly calling ServeHTTP may pass the readiness probe even if the
-	// initialization has not completed yet).
-	readyURL := fmt.Sprintf("%s/ready", c.HTTPURL())
-	go func() {
-		for {
-			time.Sleep(time.Millisecond * 200)
+		var (
+			readyCh = make(chan struct{})
+			errCh   = make(chan error, 1)
+		)
 
-			resp, err := http.Get(readyURL) // #nosec G107 -- local test server
-			if err != nil {
+		// Probe readiness over the network to guarantee the component is ready before
+		// the test proceeds.
+		//
+		// We don't check readiness by calling ServeHTTP on the router directly because
+		// the component may still initialize even if the readiness check passes
+		// (e.g. the server only accepts connections once initialization has completed,
+		// while directly calling ServeHTTP may pass the readiness probe even if the
+		// initialization has not completed yet).
+		readyURL := fmt.Sprintf("%s/ready", c.HTTPURL())
+		go func() {
+			for {
+				time.Sleep(time.Millisecond * 200)
+
+				resp, err := http.Get(readyURL) // #nosec G107 -- local test server
+				if err != nil {
+					continue
+				}
+				_ = resp.Body.Close()
+
+				if resp.StatusCode == http.StatusOK {
+					close(readyCh)
+					return
+				}
+			}
+		}()
+
+		c.cluster.waitGroup.Add(1)
+		c.wg.Add(1)
+
+		go func() {
+			defer c.cluster.waitGroup.Done()
+			defer c.wg.Done()
+
+			err := c.loki.Run(loki.RunOpts{})
+			if err != nil && strings.Contains(err.Error(), "address already in use") {
+				errCh <- err
+			} else if err != nil {
+				newErr := fmt.Errorf("error starting component %v: %w", c.name, err)
+				errCh <- newErr
+			}
+		}()
+
+		select {
+		case <-readyCh:
+			return nil
+		case err := <-errCh:
+			if strings.Contains(err.Error(), "address already in use") {
 				continue
 			}
-			_ = resp.Body.Close()
-
-			if resp.StatusCode == http.StatusOK {
-				close(readyCh)
-				return
-			}
+			return err
 		}
-	}()
-
-	c.cluster.waitGroup.Add(1)
-	c.wg.Add(1)
-
-	go func() {
-		defer c.cluster.waitGroup.Done()
-		defer c.wg.Done()
-		err := c.loki.Run(loki.RunOpts{})
-		if err != nil {
-			newErr := fmt.Errorf("error starting component %v: %w", c.name, err)
-			errCh <- newErr
-		}
-	}()
-
-	select {
-	case <-readyCh:
-		break
-	case err := <-errCh:
-		return err
 	}
-
 	return nil
 }
 
@@ -584,15 +608,22 @@ func NewRemoteWriteServer(handler *http.HandlerFunc) *httptest.Server {
 	return server
 }
 
-// freePort asks the kernel for an unused port. There is an inherent gap between
-// releasing it here and the server binding it, but the integration tests start
-// components one at a time, so nothing else in the suite should compete for it.
-func freePort() (int, error) {
-	l, err := net.Listen("tcp", "127.0.0.1:0")
-	if err != nil {
-		return 0, err
+// reservePorts asks the kernel for n unused ports and returns them.
+func reservePorts(n int) ([]int, error) {
+	listeners := make([]net.Listener, 0, n)
+	defer func() {
+		for _, l := range listeners {
+			_ = l.Close()
+		}
+	}()
+	ports := make([]int, 0, n)
+	for i := 0; i < n; i++ {
+		l, err := net.Listen("tcp", "127.0.0.1:0")
+		if err != nil {
+			return nil, err
+		}
+		listeners = append(listeners, l)
+		ports = append(ports, l.Addr().(*net.TCPAddr).Port)
 	}
-	defer l.Close()
-
-	return l.Addr().(*net.TCPAddr).Port, nil
+	return ports, nil
 }
