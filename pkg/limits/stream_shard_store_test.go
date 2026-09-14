@@ -28,20 +28,17 @@ func warmRateBuckets(numBuckets int, bucketSize time.Duration, now time.Time) []
 	return buckets
 }
 
-func newTestStreamShardStore(t *testing.T, maxGlobalStreams int, desiredRate string, streamsUsed func(string, int32, string) uint64) *streamShardStore {
+func newTestStreamShardStore(t *testing.T, maxGlobalStreams int, desiredRate string) *streamShardStore {
 	t.Helper()
 	cfg := shardstreams.Config{Enabled: true}
 	require.NoError(t, cfg.DesiredRate.Set(desiredRate))
-	if streamsUsed == nil {
-		streamsUsed = func(string, int32, string) uint64 { return 0 }
-	}
 	l := &mockLimits{
 		MaxGlobalStreams:   maxGlobalStreams,
 		ShardStreamsConfig: cfg,
 	}
 	// numPartitions=1 so every test stream hash lands in partition 0,
 	// keeping test setup simple.
-	s, err := newStreamShardStore(15*time.Minute, 5*time.Minute, time.Minute, 1, l, streamsUsed, prometheus.NewRegistry())
+	s, err := newStreamShardStore(15*time.Minute, 5*time.Minute, time.Minute, 1, l, prometheus.NewRegistry())
 	require.NoError(t, err)
 	return s
 }
@@ -60,7 +57,6 @@ func TestStreamShardStore_CheckAndShard(t *testing.T) {
 		name                     string
 		maxGlobalStreams         int
 		shardStreamsEnabled      bool
-		streamsUsed              func(tenant string, partition int32, policyBucket string) uint64
 		seed                     []seedStream
 		advanceBeforeCall        time.Duration
 		pushHash                 uint64
@@ -82,16 +78,24 @@ func TestStreamShardStore_CheckAndShard(t *testing.T) {
 			wantShardDecisionContext: ReasonUnknown,
 		},
 		{
-			// usageStore (via streamsUsed) reports the bucket is already
-			// fully at the tenant's real budget.
+			// Five other single-shard streams already fill the whole budget
+			// (5 slots), so a brand-new stream has no room and is rejected.
+			// Distinct from "existing stream's granted shards fully consume
+			// the budget", which fills the same budget with one 5-shard stream.
 			name:                "new stream rejected when no room",
 			maxGlobalStreams:    5,
 			shardStreamsEnabled: true,
-			streamsUsed:         func(string, int32, string) uint64 { return 5 },
-			pushHash:            1,
-			pushTotalSize:       100,
-			wantShards:          0,
-			wantRejectReason:    ReasonMaxStreams.String(),
+			seed: []seedStream{
+				{hash: 100, shardCount: 1},
+				{hash: 101, shardCount: 1},
+				{hash: 102, shardCount: 1},
+				{hash: 103, shardCount: 1},
+				{hash: 104, shardCount: 1},
+			},
+			pushHash:         1,
+			pushTotalSize:    100,
+			wantShards:       0,
+			wantRejectReason: ReasonMaxStreams.String(),
 		},
 		{
 			// Three other streams occupy 6 slots total (2 each); the target
@@ -254,13 +258,9 @@ func TestStreamShardStore_CheckAndShard(t *testing.T) {
 			synctest.Test(t, func(t *testing.T) {
 				cfg := shardstreams.Config{Enabled: test.shardStreamsEnabled}
 				require.NoError(t, cfg.DesiredRate.Set("1B"))
-				streamsUsed := test.streamsUsed
-				if streamsUsed == nil {
-					streamsUsed = func(string, int32, string) uint64 { return 0 }
-				}
 				l := &mockLimits{MaxGlobalStreams: test.maxGlobalStreams, ShardStreamsConfig: cfg}
 				// numPartitions=1 so every test stream hash lands in partition 0.
-				s, err := newStreamShardStore(15*time.Minute, 5*time.Minute, time.Minute, 1, l, streamsUsed, prometheus.NewRegistry())
+				s, err := newStreamShardStore(15*time.Minute, 5*time.Minute, time.Minute, 1, l, prometheus.NewRegistry())
 				require.NoError(t, err)
 				now := time.Now()
 
@@ -296,7 +296,7 @@ func TestStreamShardStore_CheckAndShard_NewStreamSeedsItsFirstRateBucket(t *test
 	// computation wouldn't happen until the third push, permanently biasing
 	// bursty/infrequent streams low.
 	synctest.Test(t, func(t *testing.T) {
-		s := newTestStreamShardStore(t, 100, "1B", nil)
+		s := newTestStreamShardStore(t, 100, "1B")
 
 		// First push: brand new stream. Must start at 1 shard.
 		results := s.checkAndShard(context.Background(), "tenant1", []*proto.StreamMetadata{
@@ -353,7 +353,7 @@ func collectStreamShardStoreGauges(t *testing.T, s *streamShardStore, tenant str
 
 func TestStreamShardStore_Collect_ReflectsCurrentStateNotCumulative(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
-		s := newTestStreamShardStore(t, 100, "1B", nil)
+		s := newTestStreamShardStore(t, 100, "1B")
 
 		// Nothing tracked yet.
 		trackedStreams, totalStreams, totalShards := collectStreamShardStoreGauges(t, s, "tenant1")
@@ -395,7 +395,7 @@ func TestStreamShardStore_Collect_ReflectsCurrentStateNotCumulative(t *testing.T
 
 func TestStreamShardStore_Evict_FreesAllOfAStreamsSlots(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
-		s := newTestStreamShardStore(t, 5, "1B", nil)
+		s := newTestStreamShardStore(t, 5, "1B")
 		now := time.Now()
 		s.setForTests("tenant1", 0, noPolicy, streamShardUsage{
 			hash: 1, lastSeenAt: now.UnixNano(), shardCount: 5, policy: noPolicy,
@@ -415,7 +415,7 @@ func TestStreamShardStore_Evict_FreesAllOfAStreamsSlots(t *testing.T) {
 }
 
 func TestStreamShardStore_EvictPartitions(t *testing.T) {
-	s := newTestStreamShardStore(t, 5, "1B", nil)
+	s := newTestStreamShardStore(t, 5, "1B")
 	now := time.Now()
 	s.setForTests("tenant1", 0, noPolicy, streamShardUsage{
 		hash: 1, lastSeenAt: now.UnixNano(), shardCount: 5, policy: noPolicy,
@@ -430,13 +430,13 @@ func TestStreamShardStore_EvictPartitions(t *testing.T) {
 	require.Empty(t, results[0].RejectReason)
 }
 
-func TestService_CheckLimitsAndShard_UnownedPartitionStreamsGetAnExplicitFailedResult(t *testing.T) {
+func TestService_CheckLimitsAndShard_UnownedPartitionStreamsGetAnExplicitNotOwnedResult(t *testing.T) {
 	// Regression guard: a stream whose partition isn't owned by this
 	// instance must not silently vanish from the response -- it must come
-	// back with an explicit ShardDecisionContext=ReasonFailed entry, so the
+	// back with an explicit ShardDecisionContext=ReasonNotOwned entry, so the
 	// frontend's fail-open handling can engage for it instead of the caller
 	// getting no answer at all for that stream.
-	store := newTestStreamShardStore(t, 100, "1B", nil)
+	store := newTestStreamShardStore(t, 100, "1B")
 	pm, err := newPartitionManager(prometheus.NewRegistry())
 	require.NoError(t, err)
 	// No partitions assigned to pm, so every stream below is "unowned".
@@ -457,6 +457,6 @@ func TestService_CheckLimitsAndShard_UnownedPartitionStreamsGetAnExplicitFailedR
 	require.Equal(t, []*proto.StreamShardResult{{
 		StreamHash:           1,
 		Shards:               1,
-		ShardDecisionContext: uint32(ReasonFailed),
+		ShardDecisionContext: uint32(ReasonNotOwned),
 	}}, resp.Results)
 }

@@ -3256,6 +3256,21 @@ func TestDistributor_ObserveLimitsServiceShardShadow(t *testing.T) {
 			expectFailed: true,
 		},
 		{
+			// A ReasonNotOwned result (the answering instance didn't own the
+			// stream's partition) is likewise not a usable observation and is
+			// counted as failed, not compared.
+			name:                "shadow RPC reports ReasonNotOwned for the stream: not compared",
+			shardStreamsEnabled: true,
+			checkLimitsAndShardResponse: &limitsproto.CheckLimitsAndShardResponse{
+				Results: []*limitsproto.StreamShardResult{{
+					StreamHash:           0x90eb45def17f924,
+					Shards:               1,
+					ShardDecisionContext: uint32(limits.ReasonNotOwned),
+				}},
+			},
+			expectFailed: true,
+		},
+		{
 			// A rejection is a divergence in kind, not a shard-count
 			// mismatch -- the legacy path never rejects a stream outright --
 			// so it must be tracked separately from the numeric comparison.

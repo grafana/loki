@@ -115,7 +115,7 @@ func New(cfg Config, limits Limits, logger log.Logger, reg prometheus.Registerer
 	if err != nil {
 		return nil, fmt.Errorf("failed to create offset manager: %w", err)
 	}
-	s.streamShardStore, err = newStreamShardStore(cfg.ActiveWindow, cfg.RateWindow, cfg.BucketSize, cfg.NumPartitions, limits, s.usage.StreamsUsed, reg)
+	s.streamShardStore, err = newStreamShardStore(cfg.ActiveWindow, cfg.RateWindow, cfg.BucketSize, cfg.NumPartitions, limits, reg)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create stream shard store: %w", err)
 	}
@@ -219,7 +219,7 @@ func (s *Service) CheckLimitsAndShard(
 	streams := req.Streams
 	valid := 0
 	// Streams whose partition isn't owned by this instance get an explicit
-	// ReasonFailed entry rather than being silently dropped: the frontend's
+	// ReasonNotOwned entry rather than being silently dropped: the frontend's
 	// dispatch marks a stream "answered" once any instance responds, so a
 	// dropped stream would never be retried against another zone.
 	results := make([]*proto.StreamShardResult, 0, len(streams))
@@ -230,7 +230,7 @@ func (s *Service) CheckLimitsAndShard(
 			results = append(results, &proto.StreamShardResult{
 				StreamHash:           stream.StreamHash,
 				Shards:               1,
-				ShardDecisionContext: uint32(ReasonFailed),
+				ShardDecisionContext: uint32(ReasonNotOwned),
 			})
 			continue
 		}

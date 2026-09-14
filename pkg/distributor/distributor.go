@@ -280,7 +280,7 @@ func newMetrics(reg prometheus.Registerer) *metrics {
 		limitsServiceShardShadowFailed: promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
 			Namespace: constants.Loki,
 			Name:      "distributor_limits_service_shard_shadow_failed_total",
-			Help:      "For tenants/policies in 'shadow' mode, the total number of shadow-mode observations that could not be compared because the ingest-limits service either didn't answer for the stream or explicitly reported it couldn't check it (ReasonFailed).",
+			Help:      "For tenants/policies in 'shadow' mode, the total number of shadow-mode observations that could not be compared because the ingest-limits service didn't answer for the stream, explicitly reported it couldn't check it (ReasonFailed), or the answering instance didn't own the stream's partition (ReasonNotOwned).",
 		}, []string{"tenant"}),
 
 		limitsServiceShardShadowRejected: promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
@@ -1483,9 +1483,13 @@ func (d *Distributor) observeLimitsServiceShardShadow(ctx context.Context, tenan
 	for _, c := range candidates {
 		result, ok := results[c.stream.Hash]
 		switch {
-		case !ok || result.ShardDecisionContext == uint32(limits.ReasonFailed):
-			// Not a usable observation: comparing it as a real
-			// recommendation would spuriously agree or diverge.
+		case !ok ||
+			result.ShardDecisionContext == uint32(limits.ReasonFailed) ||
+			result.ShardDecisionContext == uint32(limits.ReasonNotOwned):
+			// Not a usable observation (no answer, the backend couldn't check
+			// it, or the answering instance didn't own its partition):
+			// comparing it as a real recommendation would spuriously agree or
+			// diverge.
 			d.m.limitsServiceShardShadowFailed.WithLabelValues(tenantID).Inc()
 		case result.RejectReason != "":
 			// A rejection is a divergence in kind, not a shard-count

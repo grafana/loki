@@ -40,8 +40,9 @@ var (
 // for a given tenant and policy. Returns the policy bucket name and the max streams limit.
 // The policy bucket will be the input policy name only if the max streams limit is overridden for the policy.
 //
-// Shared between usageStore and streamShardStore, which must agree on it
-// exactly since streamShardStore.room cross-references usageStore's budget.
+// Shared between usageStore and streamShardStore so both derive the same
+// per-partition max-streams budget and policy bucket from the tenant/policy
+// config.
 func getPolicyBucketAndStreamsLimit(limits Limits, numPartitions int, tenant, policy string) (policyBucket string, maxStreams uint64) {
 	defaultMaxStreams := uint64(limits.MaxGlobalStreamsPerUser(tenant) / numPartitions)
 
@@ -562,22 +563,6 @@ func getActiveRateBuckets(buckets []rateBucket, withinRateWindow func(int64) boo
 		}
 	}
 	return result
-}
-
-// StreamsUsed returns the number of logical (pre-shard) streams currently
-// tracked for the given tenant, partition, and policy bucket, including
-// streams outside the active window that have not yet been evicted.
-//
-// This count is NOT shard-aware: a stream split into N shards still occupies
-// exactly one entry here. A caller that needs the real, shard-inclusive
-// count must combine this with its own shard-aware bookkeeping -- see
-// streamShardStore.room.
-func (s *usageStore) StreamsUsed(tenant string, partition int32, policyBucket string) uint64 {
-	var n uint64
-	s.withRLock(tenant, func(i int) {
-		n = uint64(len(s.stripes[i][tenant][partition][policyBucket]))
-	})
-	return n
 }
 
 func (s *usageStore) get(i int, tenant string, partition int32, streamHash uint64) (stream streamUsage, ok bool) {

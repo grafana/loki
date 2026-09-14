@@ -204,7 +204,8 @@ func (f *Frontend) CheckLimitsAndShard(ctx context.Context, req *proto.CheckLimi
 		for _, res := range resp.Results {
 			f.checkLimitsAndShardShards.WithLabelValues(req.Tenant).Add(float64(res.Shards))
 			switch {
-			case res.ShardDecisionContext == uint32(limits.ReasonFailed):
+			case res.ShardDecisionContext == uint32(limits.ReasonFailed),
+				res.ShardDecisionContext == uint32(limits.ReasonNotOwned):
 				f.checkLimitsAndShardFailed.WithLabelValues(req.Tenant).Inc()
 			case res.RejectReason != "":
 				f.checkLimitsAndShardRejected.WithLabelValues(req.Tenant).Inc()
