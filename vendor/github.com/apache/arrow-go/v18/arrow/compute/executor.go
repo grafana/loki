@@ -246,10 +246,14 @@ func propagateNulls(ctx *exec.KernelCtx, batch *exec.ExecSpan, out *exec.ArraySp
 		return fmt.Errorf("%w: can only propagate nulls into pre-allocated memory when output offset is non-zero", arrow.ErrInvalid)
 	}
 
-	var (
+	var scratch [8]*exec.ArraySpan
+	arrsWithNulls := scratch[:0]
+	if len(batch.Values) > len(scratch) {
 		arrsWithNulls = make([]*exec.ArraySpan, 0, len(batch.Values))
-		isAllNull     bool
-		prealloc      = out.Buffers[0].Buf != nil
+	}
+	var (
+		isAllNull bool
+		prealloc  = out.Buffers[0].Buf != nil
 	)
 
 	for i := range batch.Values {
@@ -522,7 +526,21 @@ func (s *scalarExecutor) WrapResults(ctx context.Context, out <-chan Datum, hasC
 	var (
 		output Datum
 		acc    []arrow.Array
+		ok     bool
 	)
+	releaseAccumulated := func() {
+		for _, c := range acc {
+			c.Release()
+		}
+		acc = nil
+	}
+	releaseOutput := func() {
+		if output != nil {
+			output.Release()
+			output = nil
+		}
+		releaseAccumulated()
+	}
 
 	toChunked := func() {
 		acc = output.(ArrayLikeDatum).Chunks()
@@ -534,7 +552,13 @@ func (s *scalarExecutor) WrapResults(ctx context.Context, out <-chan Datum, hasC
 	select {
 	case <-ctx.Done():
 		return nil
-	case output = <-out:
+	case output, ok = <-out:
+		if !ok || output == nil || ctx.Err() != nil {
+			if output != nil {
+				output.Release()
+			}
+			return nil
+		}
 		// if the inputs contained at least one chunked array
 		// then we want to return chunked output
 		if hasChunked {
@@ -545,18 +569,23 @@ func (s *scalarExecutor) WrapResults(ctx context.Context, out <-chan Datum, hasC
 	for {
 		select {
 		case <-ctx.Done():
-			// context is done, either cancelled or a timeout.
-			// either way, we end early and return what we've got so far.
-			return output
+			// A canceled call must not return a partial result.
+			releaseOutput()
+			return nil
 		case o, ok := <-out:
 			if !ok { // channel closed, wrap it up
+				// Cancellation and channel closure can become ready together.
+				// Recheck the context so selecting the channel cannot make a
+				// canceled call return a result nondeterministically.
+				if ctx.Err() != nil {
+					releaseOutput()
+					return nil
+				}
 				if output != nil {
 					return output
 				}
 
-				for _, c := range acc {
-					defer c.Release()
-				}
+				defer releaseAccumulated()
 
 				chkd := arrow.NewChunked(s.outType, acc)
 				defer chkd.Release()
@@ -766,42 +795,61 @@ func iterateExecSpans(batch *ExecBatch, maxChunkSize int64, promoteIfAllScalar b
 	}
 
 	var (
-		args           = batch.Values
-		haveChunked    bool
-		chunkIdxes           = make([]int, len(args))
-		valuePositions       = make([]int64, len(args))
-		valueOffsets         = make([]int64, len(args))
-		pos, length    int64 = 0, batch.Len
+		args              = batch.Values
+		pos, length int64 = 0, batch.Len
 	)
 	haveAllScalars = checkIfAllScalar(batch)
 	maxChunkSize = exec.Min(length, maxChunkSize)
 
 	span := exec.ExecSpan{Values: make([]exec.ExecValue, len(args)), Len: 0}
+	haveChunked := false
 	for i, a := range args {
 		switch arg := a.(type) {
 		case *ScalarDatum:
 			span.Values[i].Scalar = arg.Value
 		case *ArrayDatum:
 			span.Values[i].Array.SetMembers(arg.Value)
-			valueOffsets[i] = int64(arg.Value.Offset())
 		case *ChunkedDatum:
+			haveChunked = true
 			// populate from first chunk
 			carr := arg.Value
 			if len(carr.Chunks()) > 0 {
 				arr := carr.Chunk(0).Data()
 				span.Values[i].Array.SetMembers(arr)
-				valueOffsets[i] = int64(arr.Offset())
 			} else {
 				// fill as zero len
 				exec.FillZeroLength(carr.DataType(), &span.Values[i].Array)
 			}
-			haveChunked = true
+		}
+	}
+
+	singleSpan := !haveChunked && length > 0 && length <= maxChunkSize
+	var valueOffsets []int64
+	if !singleSpan {
+		valueOffsets = make([]int64, len(args))
+		for i := range args {
+			valueOffsets[i] = span.Values[i].Array.Offset
 		}
 	}
 
 	if haveAllScalars && promoteIfAllScalar {
 		exec.PromoteExecSpanScalars(span)
 	}
+
+	if singleSpan {
+		span.Len = length
+		returned := false
+		return haveAllScalars, func() (exec.ExecSpan, int64, bool) {
+			if returned {
+				return exec.ExecSpan{}, length, false
+			}
+			returned = true
+			return span, length, true
+		}, nil
+	}
+
+	chunkIdxes := make([]int, len(args))
+	valuePositions := make([]int64, len(args))
 
 	nextChunkSpan := func(iterSz int64, span exec.ExecSpan) int64 {
 		for i := 0; i < len(args) && iterSz > 0; i++ {
@@ -984,6 +1032,12 @@ func (v *vectorExecutor) WrapResults(ctx context.Context, out <-chan Datum, hasC
 		case <-ctx.Done():
 			return nil
 		case output = <-out:
+			if output == nil || ctx.Err() != nil {
+				if output != nil {
+					output.Release()
+				}
+				return nil
+			}
 		}
 
 		// we got an output datum, but let's wait for the channel to
@@ -993,6 +1047,10 @@ func (v *vectorExecutor) WrapResults(ctx context.Context, out <-chan Datum, hasC
 			output.Release()
 			return nil
 		case <-out:
+			if ctx.Err() != nil {
+				output.Release()
+				return nil
+			}
 			return output
 		}
 	}
@@ -1002,18 +1060,37 @@ func (v *vectorExecutor) WrapResults(ctx context.Context, out <-chan Datum, hasC
 		output Datum
 		acc    []arrow.Array
 	)
+	releaseAccumulated := func() {
+		for _, c := range acc {
+			c.Release()
+		}
+		acc = nil
+	}
+	releaseOutput := func() {
+		if output != nil {
+			output.Release()
+			output = nil
+		}
+		releaseAccumulated()
+	}
 
 	toChunked := func() {
 		out := output.(ArrayLikeDatum).Chunks()
 		acc = make([]arrow.Array, 0, len(out))
+		isChunked := output.Kind() == KindChunked
 		for _, o := range out {
 			if o.Len() > 0 {
+				if isChunked {
+					// ChunkedDatum.Chunks returns borrowed references.
+					o.Retain()
+				}
 				acc = append(acc, o)
+			} else if !isChunked {
+				// ArrayDatum.Chunks creates an owned array.
+				o.Release()
 			}
 		}
-		if output.Kind() != KindChunked {
-			output.Release()
-		}
+		output.Release()
 		output = nil
 	}
 
@@ -1023,6 +1100,9 @@ func (v *vectorExecutor) WrapResults(ctx context.Context, out <-chan Datum, hasC
 		return nil
 	case output = <-out:
 		if output == nil || ctx.Err() != nil {
+			if output != nil {
+				output.Release()
+			}
 			return nil
 		}
 
@@ -1036,18 +1116,23 @@ func (v *vectorExecutor) WrapResults(ctx context.Context, out <-chan Datum, hasC
 	for {
 		select {
 		case <-ctx.Done():
-			// context is done, either cancelled or a timeout.
-			// either way, we end early and return what we've got so far.
-			return output
+			// A canceled call must not return a partial result.
+			releaseOutput()
+			return nil
 		case o, ok := <-out:
 			if !ok { // channel closed, wrap it up
+				// Cancellation and channel closure can become ready together.
+				// Recheck the context so selecting the channel cannot make a
+				// canceled call return a result nondeterministically.
+				if ctx.Err() != nil {
+					releaseOutput()
+					return nil
+				}
 				if output != nil {
 					return output
 				}
 
-				for _, c := range acc {
-					defer c.Release()
-				}
+				defer releaseAccumulated()
 
 				chkd := arrow.NewChunked(v.outType, acc)
 				defer chkd.Release()
@@ -1120,9 +1205,11 @@ func (v *vectorExecutor) execChunked(batch *ExecBatch, out chan<- Datum) error {
 	}
 
 	if len(result) == 0 {
-		empty := output.MakeArray()
+		outType := output.Type
+		empty := array.MakeArrayOfNull(exec.GetAllocator(v.ctx.Ctx), outType, 0)
 		defer empty.Release()
-		out <- &ChunkedDatum{Value: arrow.NewChunked(output.Type, []arrow.Array{empty})}
+		output.Release()
+		out <- &ChunkedDatum{Value: arrow.NewChunked(outType, []arrow.Array{empty})}
 		return nil
 	}
 
