@@ -87,7 +87,7 @@ type ClientConfig struct {
 	MaxInFlightRequests int `yaml:"max_in_flight_requests" category:"experimental"`
 
 	// MaxRetries caps how many further index gateway instances a failed request is tried
-	// against. Zero disables retries, leaving a single attempt.
+	// against. -1 preserves the legacy retry limits; zero disables retries.
 	MaxRetries int `yaml:"max_retries" category:"experimental"`
 }
 
@@ -106,8 +106,8 @@ func (i *ClientConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 		"Experimental: Defines buckets for time-based sharding. Time based sharding only takes affect when index gateways run in simple mode. To enable client side time-based sharding of queries across index gateway instances set at least one bucket in the format of a string representation of a time.Duration, e.g. ['168h', '336h', '504h']",
 	)
 	f.IntVar(&i.MinShuffleShardSize, prefix+".min-shuffle-shard-size", 3, "Minimum number of index gateway instances included in the shuffle shard, regardless of the max-capacity setting. A value of 0 disables the minimum. Only applies to simple mode.")
-	f.IntVar(&i.MaxInFlightRequests, prefix+".max-in-flight-requests", 2048, "Experimental: Maximum number of requests this index gateway client may have in flight at once. Requests arriving when the limit is reached are rejected immediately with an HTTP 503 status instead of waiting, which bounds the resources this process commits to an index gateway that is slow, saturated, or unreachable. The limit applies per client: one client is built per schema period config, doubled when the shadow index gateway client is enabled, so the process-wide number of in-flight requests can reach this value multiplied by the number of clients. 0 disables the limit.")
-	f.IntVar(&i.MaxRetries, prefix+".max-retries", 2, "Experimental: Maximum number of other index gateway instances a failed request is retried against. Each instance is tried at most once, so a request makes at most this many retries plus one attempt in total. Bounding this stops a single request from walking every replica, which can otherwise block the calling goroutine for the sum of every replica's timeout. 0 disables retries.")
+	f.IntVar(&i.MaxInFlightRequests, prefix+".max-in-flight-requests", 0, "Experimental: Maximum number of requests this index gateway client may have in flight at once. Requests arriving when the limit is reached are rejected immediately with an HTTP 503 status instead of waiting, which bounds the resources this process commits to an index gateway that is slow, saturated, or unreachable. The limit applies per client: one client is built per schema period config, doubled when the shadow index gateway client is enabled, so the process-wide number of in-flight requests can reach this value multiplied by the number of clients. 0 disables the limit.")
+	f.IntVar(&i.MaxRetries, prefix+".max-retries", -1, "Experimental: Maximum number of other index gateway instances a failed request is retried against. Each instance is tried at most once, so a request makes at most this many retries plus one attempt in total. Bounding this stops a single request from walking every replica, which can otherwise block the calling goroutine for the sum of every replica's timeout. -1 preserves the existing behavior: up to 2 retries for GetShards and all candidate instances for other requests. 0 disables retries. GetShards always retries at most 2 times.")
 }
 
 func (i *ClientConfig) RegisterFlags(f *flag.FlagSet) {
@@ -119,8 +119,8 @@ func (i *ClientConfig) Validate() error {
 	if i.MaxInFlightRequests < 0 {
 		return errors.New("index gateway client max-in-flight-requests must be greater than or equal to 0")
 	}
-	if i.MaxRetries < 0 {
-		return errors.New("index gateway client max-retries must be greater than or equal to 0")
+	if i.MaxRetries < -1 {
+		return errors.New("index gateway client max-retries must be greater than or equal to -1")
 	}
 	return nil
 }
@@ -144,7 +144,8 @@ type GatewayClient struct {
 // If it is configured to be in ring mode, a pool of GRPC connections to all Index Gateway instances is created using a ring.
 // Otherwise, it creates a GRPC connection pool to as many addresses as can be resolved from the given address.
 //
-// name distinguishes gate metrics for clients sharing a registerer.
+// name must be unique among clients sharing a registerer and its labels so that
+// each client's gate metrics remain distinct.
 func NewGatewayClient(name string, cfg ClientConfig, r prometheus.Registerer, limits Limits, logger log.Logger, metricsNamespace string) (*GatewayClient, error) {
 	latency := prometheus.NewHistogramVec(prometheus.HistogramOpts{
 		Namespace: constants.Loki,
@@ -372,8 +373,14 @@ func (s *GatewayClient) GetVolume(ctx context.Context, in *logproto.VolumeReques
 }
 
 func (s *GatewayClient) GetShards(ctx context.Context, in *logproto.ShardsRequest) (res *logproto.ShardsResponse, err error) {
-	if err := s.poolDo(
+	maxRetries := s.cfg.MaxRetries
+	// Keep the existing GetShards ceiling when the general retry budget is higher.
+	if maxRetries < 0 || maxRetries > 2 {
+		maxRetries = 2
+	}
+	if err := s.poolDoWithMaxRetries(
 		ctx,
+		maxRetries,
 		func(client logproto.IndexGatewayClient) error {
 			perReplicaResult := &logproto.ShardsResponse{}
 			streamer, err := client.GetShards(ctx, in)
@@ -409,9 +416,18 @@ func (s *GatewayClient) GetShards(ctx context.Context, in *logproto.ShardsReques
 	return res, nil
 }
 
-// poolDo tries each gateway once, up to cfg.MaxRetries retries.
+// poolDo tries each gateway once, up to cfg.MaxRetries retries when configured.
 func (s *GatewayClient) poolDo(
 	ctx context.Context,
+	callback func(client logproto.IndexGatewayClient) error,
+	filterServerList func([]string) []string,
+) error {
+	return s.poolDoWithMaxRetries(ctx, s.cfg.MaxRetries, callback, filterServerList)
+}
+
+func (s *GatewayClient) poolDoWithMaxRetries(
+	ctx context.Context,
+	maxRetries int,
 	callback func(client logproto.IndexGatewayClient) error,
 	filterServerList func([]string) []string,
 ) error {
@@ -466,13 +482,13 @@ func (s *GatewayClient) poolDo(
 		lastErr = err
 		errCount++
 
-		if isLoadShed(err) {
-			level.Warn(s.logger).Log("msg", "index gateway shed the request, trying another instance", "gateway", addr, "tenant", userID, "err", err)
+		if isServiceUnavailable(err) {
+			level.Warn(s.logger).Log("msg", "index gateway request returned HTTP 503", "gateway", addr, "tenant", userID, "err", err)
 		} else {
 			level.Error(s.logger).Log("msg", "index gateway request failed, trying another instance", "gateway", addr, "tenant", userID, "err", err)
 		}
 
-		if errCount > s.cfg.MaxRetries {
+		if maxRetries >= 0 && errCount > maxRetries {
 			break
 		}
 	}
@@ -543,9 +559,11 @@ func (s *GatewayClient) getServerAddresses(tenantID string) ([]string, error) {
 	return dedupe(addrs), nil
 }
 
+// dedupe removes duplicate addresses in place, preserving their first occurrence.
+// Discovery returns a fresh slice, so its backing array can be reused.
 func dedupe(addrs []string) []string {
 	seen := make(map[string]struct{}, len(addrs))
-	unique := addrs[:0:0]
+	unique := addrs[:0]
 	for _, addr := range addrs {
 		if _, ok := seen[addr]; ok {
 			continue

@@ -18,6 +18,8 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logqlmodel"
@@ -82,7 +84,7 @@ func TestMapInFlightGateError(t *testing.T) {
 	require.Equal(t, sentinel, mapInFlightGateError(sentinel))
 }
 
-func TestIsLoadShed(t *testing.T) {
+func TestIsServiceUnavailable(t *testing.T) {
 	for _, tc := range []struct {
 		name string
 		err  error
@@ -91,6 +93,8 @@ func TestIsLoadShed(t *testing.T) {
 		{name: "nil", err: nil, want: false},
 		{name: "plain error", err: errors.New("boom"), want: false},
 		{name: "503", err: httpgrpc.Error(http.StatusServiceUnavailable, "shed"), want: true},
+		{name: "503 unrelated to load shedding", err: httpgrpc.Error(http.StatusServiceUnavailable, "dependency unavailable"), want: true},
+		{name: "transport unavailable", err: status.Error(codes.Unavailable, "connection refused"), want: false},
 		{name: "500", err: httpgrpc.Error(http.StatusInternalServerError, "boom"), want: false},
 		{name: "400", err: httpgrpc.Error(http.StatusBadRequest, "bad"), want: false},
 		{
@@ -100,7 +104,7 @@ func TestIsLoadShed(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			require.Equal(t, tc.want, isLoadShed(tc.err))
+			require.Equal(t, tc.want, isServiceUnavailable(tc.err))
 		})
 	}
 }

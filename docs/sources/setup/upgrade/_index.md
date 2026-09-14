@@ -37,13 +37,15 @@ The output is incredibly verbose as it shows the entire internal config struct u
 
 ## Main / Unreleased
 
-### Index gateway client requests are now bounded
+### Optional index gateway client request limits
 
-An index gateway client request no longer retries against every index gateway instance until one answers. It now retries against at most `-tsdb.shipper.index-gateway-client.max-retries` further instances, which defaults to `2`, and each instance is tried at most once. The previous behavior let a single request occupy a goroutine for the sum of every instance's timeout, so a querier could stall when many instances were slow or unreachable.
+Index gateway clients support two experimental limits that are disabled by default, preserving the existing request limits.
 
-The candidate instances are the healthy instances the ring or DNS reports, so an instance that already failed its heartbeat is not counted against the budget. If you leave `-index-gateway.shard-size` at its default of `0`, a request can choose from the whole index gateway fleet, and the budget bounds how much of that fleet one request explores. Raise `-tsdb.shipper.index-gateway-client.max-retries` if your instances fail faster than the ring notices.
+Set `-tsdb.shipper.index-gateway-client.max-retries` to a non-negative value to limit the number of further instances a failed request is retried against. The default of `-1` preserves up to two retries for `GetShards` and retries across all candidate instances for other requests. A value of `0` disables retries. `GetShards` retains its ceiling of two retries even when this setting is higher. Each candidate instance is tried at most once. Enabling a retry limit bounds how long a request can occupy a goroutine when many instances are slow or unreachable.
 
-Each index gateway client also has a new in-flight request limit, `-tsdb.shipper.index-gateway-client.max-in-flight-requests`, which defaults to `2048`. Requests that arrive when the limit is reached fail immediately with an HTTP 503 status, the same status an index gateway returns when it sheds load, so the query-frontend retries them. The limit applies per client, and Loki builds one client for each `schema_config` period, so the process-wide limit is this value multiplied by the number of periods. Set the flag to `0` to disable the limit.
+The candidate instances are the healthy instances the ring or DNS reports, so an instance that already failed its heartbeat is not counted against the budget. If you leave `-index-gateway.shard-size` at its default of `0`, a request can choose from the whole index gateway fleet.
+
+Set `-tsdb.shipper.index-gateway-client.max-in-flight-requests` to a positive value to limit in-flight requests. The default of `0` disables this limit. Requests that arrive when the limit is reached fail immediately with an HTTP 503 status, so the query-frontend retries them. The limit applies per client: Loki builds one client for each `schema_config` period, doubled when the shadow index gateway client is enabled, so the process-wide limit is this value multiplied by the number of clients.
 
 ### `frontend.encoding` default changed to `protobuf`
 

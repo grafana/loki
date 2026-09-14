@@ -46,7 +46,7 @@ func newMockDNSProvider(addrs []string) discovery.DNS {
 }
 
 func (m *mockDNSProvider) Addresses() []string {
-	return m.addrs
+	return slices.Clone(m.addrs)
 }
 
 func (m *mockDNSProvider) Stop() {}
@@ -270,23 +270,30 @@ func configurePool(t *testing.T, client *GatewayClient, logger log.Logger, numEr
 
 // The streaming callback wraps errors before returning them to poolDo.
 func TestGatewayClient_SimpleMode_RetriesGetShards(t *testing.T) {
-	logger, _, client := createSimpleGatewayClient(t, []string{
-		"0.0.0.0", "1.1.1.1", "2.2.2.2", "3.3.3.3", "4.4.4.4",
-		"5.5.5.5", "6.6.6.6", "7.7.7.7", "8.8.8.8", "9.9.9.9",
-	}, 2)
-	ctx := user.InjectOrgID(context.Background(), "tenant-123")
+	for _, maxRetries := range []int{-1, 0, 1, 2, 5} {
+		t.Run(fmt.Sprint(maxRetries), func(t *testing.T) {
+			logger, _, client := createSimpleGatewayClient(t, []string{
+				"0.0.0.0", "1.1.1.1", "2.2.2.2", "3.3.3.3", "4.4.4.4",
+				"5.5.5.5", "6.6.6.6", "7.7.7.7", "8.8.8.8", "9.9.9.9",
+			}, maxRetries)
+			ctx := user.InjectOrgID(context.Background(), "tenant-123")
 
-	// Retry up to 2 errors
-	for numErrorsToReturn := 0; numErrorsToReturn <= 2; numErrorsToReturn++ {
-		configurePool(t, client, logger, numErrorsToReturn)
-		_, err := client.GetShards(ctx, &logproto.ShardsRequest{})
-		require.NoError(t, err)
+			wantRetries := 2
+			if maxRetries >= 0 {
+				wantRetries = min(maxRetries, wantRetries)
+			}
+			for numErrorsToReturn := 0; numErrorsToReturn <= wantRetries; numErrorsToReturn++ {
+				configurePool(t, client, logger, numErrorsToReturn)
+				_, err := client.GetShards(ctx, &logproto.ShardsRequest{})
+				require.NoError(t, err)
+			}
+
+			// One more error exhausts the effective retry budget.
+			configurePool(t, client, logger, wantRetries+1)
+			_, err := client.GetShards(ctx, &logproto.ShardsRequest{})
+			require.Error(t, err)
+		})
 	}
-
-	// Fail after 3 errors
-	configurePool(t, client, logger, 3)
-	_, err := client.GetShards(ctx, &logproto.ShardsRequest{})
-	require.Error(t, err)
 }
 
 func TestGatewayClient_SimpleMode_ShuffleSharding(t *testing.T) {
@@ -312,13 +319,24 @@ func TestDoubleRegistration(t *testing.T) {
 		Address: "my-store-address:1234",
 	}
 
-	client, err := NewGatewayClient("primary", clientCfg, r, o, logger, constants.Loki)
+	primary, err := NewGatewayClient("primary", clientCfg, r, o, logger, constants.Loki)
 	require.NoError(t, err)
-	defer client.Stop()
+	defer primary.Stop()
 
-	client, err = NewGatewayClient("primary", clientCfg, r, o, logger, constants.Loki)
+	secondary, err := NewGatewayClient("secondary", clientCfg, r, o, logger, constants.Loki)
 	require.NoError(t, err)
-	defer client.Stop()
+	defer secondary.Stop()
+
+	// Request metrics are shared, while each client's gate is tracked separately.
+	require.Same(t, primary.storeGatewayClientRequestDuration, secondary.storeGatewayClientRequestDuration)
+	require.Same(t, primary.retriesHistogram, secondary.retriesHistogram)
+	require.NoError(t, primary.inFlight.Start(context.Background()))
+	defer primary.inFlight.Done()
+	for name, want := range map[string]float64{"primary": 1, "secondary": 0} {
+		inFlight := findMetric(t, r, "loki_index_gateway_client_gate_queries_in_flight", map[string]string{"client": name})
+		require.NotNil(t, inFlight)
+		require.Equal(t, want, inFlight.GetGauge().GetValue())
+	}
 }
 
 // gate.NewInstrumented panics when two clients register indistinguishable metrics.
@@ -452,6 +470,12 @@ func TestGatewayClient_RetryBudget(t *testing.T) {
 		gateways     *fakeGateways
 		wantAttempts int
 	}{
+		{
+			name:         "disabled budget tries all candidates",
+			maxRetries:   -1,
+			gateways:     &fakeGateways{rpcErr: failEvery(addrs, errors.New("boom"))},
+			wantAttempts: len(addrs),
+		},
 		{
 			name:         "zero retries means a single attempt",
 			maxRetries:   0,
@@ -601,7 +625,27 @@ func TestGatewayClient_InFlightCap(t *testing.T) {
 		_, err := client.GetChunkRef(ctx, &logproto.GetChunkRefRequest{})
 		require.NoError(t, err)
 
-		require.Nil(t, findMetric(t, reg, "loki_index_gateway_client_gate_queries_in_flight", nil))
+		metricLabels := map[string]string{"client": "test"}
+		maxConcurrent := findMetric(t, reg, "loki_index_gateway_client_gate_queries_concurrent_max", metricLabels)
+		require.NotNil(t, maxConcurrent)
+		require.Zero(t, maxConcurrent.GetGauge().GetValue())
+
+		inFlight := findMetric(t, reg, "loki_index_gateway_client_gate_queries_in_flight", metricLabels)
+		require.NotNil(t, inFlight)
+		require.Equal(t, float64(100), inFlight.GetGauge().GetValue())
+
+		for range 100 {
+			client.inFlight.Done()
+		}
+		inFlight = findMetric(t, reg, "loki_index_gateway_client_gate_queries_in_flight", metricLabels)
+		require.NotNil(t, inFlight)
+		require.Zero(t, inFlight.GetGauge().GetValue())
+
+		permitted := findMetric(t, reg, "loki_index_gateway_client_gate_duration_seconds", map[string]string{
+			"client": "test", "outcome": "permitted",
+		})
+		require.NotNil(t, permitted)
+		require.Equal(t, uint64(101), permitted.GetHistogram().GetSampleCount())
 	})
 }
 
@@ -663,7 +707,7 @@ func TestClientConfig_Validate(t *testing.T) {
 		},
 		{
 			name:    "negative retries",
-			mutate:  func(cfg *ClientConfig) { cfg.MaxRetries = -1 },
+			mutate:  func(cfg *ClientConfig) { cfg.MaxRetries = -2 },
 			wantErr: "max-retries",
 		},
 	} {
@@ -686,8 +730,8 @@ func TestClientConfig_Defaults(t *testing.T) {
 	cfg := ClientConfig{}
 	flagext.DefaultValues(&cfg)
 
-	require.Equal(t, 2048, cfg.MaxInFlightRequests)
-	require.Equal(t, 2, cfg.MaxRetries)
+	require.Zero(t, cfg.MaxInFlightRequests)
+	require.Equal(t, -1, cfg.MaxRetries)
 }
 
 func Test_jumpHashShuffleSharding(t *testing.T) {

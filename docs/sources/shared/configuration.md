@@ -6940,16 +6940,18 @@ tsdb_shipper:
     # reach this value multiplied by the number of clients. 0 disables the
     # limit.
     # CLI flag: -tsdb.shipper.index-gateway-client.max-in-flight-requests
-    [max_in_flight_requests: <int> | default = 2048]
+    [max_in_flight_requests: <int> | default = 0]
 
     # Experimental: Maximum number of other index gateway instances a failed
     # request is retried against. Each instance is tried at most once, so a
     # request makes at most this many retries plus one attempt in total.
     # Bounding this stops a single request from walking every replica, which can
     # otherwise block the calling goroutine for the sum of every replica's
-    # timeout. 0 disables retries.
+    # timeout. -1 preserves the existing behavior: up to 2 retries for GetShards
+    # and all candidate instances for other requests. 0 disables retries.
+    # GetShards always retries at most 2 times.
     # CLI flag: -tsdb.shipper.index-gateway-client.max-retries
-    [max_retries: <int> | default = 2]
+    [max_retries: <int> | default = -1]
 
   # Experimental. Number of idle file handles the stream index reader keeps open
   # per index file. Only applies when -shipper.index-reader-mode=stream. Set to
