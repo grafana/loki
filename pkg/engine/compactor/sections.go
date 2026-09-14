@@ -452,40 +452,11 @@ func logSectionRefsFor(ctx context.Context, bucket objstore.Bucket, tenant, idxP
 		}
 	}
 
-	var (
-		shardCount     int64
-		haveShardCount bool
-	)
-	for _, section := range obj.Sections().Filter(postings.CheckSection) {
-		if section.Tenant != tenant {
-			continue
-		}
-		opened, err := postings.Open(ctx, section)
-		if err != nil {
-			return nil, nil, 0, fmt.Errorf("open postings section tenant=%s index=%s: %w", tenant, idxPath, err)
-		}
-		inner := postings.NewReader(postings.ReaderOptions{Columns: opened.Columns()})
-		if err := inner.Open(ctx); err != nil {
-			return nil, nil, 0, fmt.Errorf("opening postings reader tenant=%s index=%s: %w", tenant, idxPath, err)
-		}
-		rowReader := postings.NewRowReader(ctx, inner)
-		for rowReader.Next() {
-			row := rowReader.At()
-			if !haveShardCount {
-				shardCount = row.ShardBuckets
-				haveShardCount = true
-			} else if row.ShardBuckets != shardCount {
-				_ = rowReader.Close()
-				return nil, nil, 0, fmt.Errorf("index %s contains shard counts %d and %d", idxPath, shardCount, row.ShardBuckets)
-			}
-		}
-		if err := rowReader.Err(); err != nil {
-			_ = rowReader.Close()
-			return nil, nil, 0, fmt.Errorf("reading postings tenant=%s index=%s: %w", tenant, idxPath, err)
-		}
-		if err := rowReader.Close(); err != nil {
-			return nil, nil, 0, fmt.Errorf("closing postings reader tenant=%s index=%s: %w", tenant, idxPath, err)
-		}
+	// Scan the postings section to determine the shard count
+	// TODO(benclive): Copy the shard count to the stats section to avoid this step
+	shardCount, err := getShardCount(ctx, obj, tenant)
+	if err != nil {
+		return nil, nil, 0, fmt.Errorf("get shard count tenant=%s index=%s: %w", tenant, idxPath, err)
 	}
 
 	refs := make([]v2.Section[logSortPrefix], 0, len(bySection))
@@ -499,6 +470,71 @@ func logSectionRefsFor(ctx context.Context, bucket objstore.Bucket, tenant, idxP
 		return cmp.Compare(a.Ref.SectionIndex, b.Ref.SectionIndex)
 	})
 	return refs, schema, shardCount, nil
+}
+
+func getShardCount(ctx context.Context, obj *dataobj.Object, tenant string) (shardCount int64, finalErr error) {
+	var (
+		haveShardCount bool
+	)
+	for _, section := range obj.Sections().Filter(postings.CheckSection) {
+		if section.Tenant != tenant {
+			continue
+		}
+		opened, err := postings.Open(ctx, section)
+		if err != nil {
+			return 0, fmt.Errorf("open postings section: %w", err)
+		}
+
+		shardBucketColumns := columnsOfType(opened.Columns(), postings.ColumnTypeShardBuckets)
+		if len(shardBucketColumns) != 1 {
+			return 0, fmt.Errorf("postings section has no ShardBuckets column")
+		}
+
+		inner := postings.NewReader(postings.ReaderOptions{Columns: shardBucketColumns})
+		if err := inner.Open(ctx); err != nil {
+			return 0, fmt.Errorf("opening postings reader: %w", err)
+		}
+
+		// Wrap the read in an inline func to close the reader after each loop
+		err = func() error {
+			rowReader := postings.NewRowReader(ctx, inner)
+			defer func() {
+				closeErr := rowReader.Close()
+				if finalErr == nil {
+					finalErr = closeErr
+				}
+			}()
+
+			for rowReader.Next() {
+				row := rowReader.At()
+				if !haveShardCount {
+					shardCount = row.ShardBuckets
+					haveShardCount = true
+				} else if row.ShardBuckets != shardCount {
+					return fmt.Errorf("detected multiple shard counts within index file: %d and %d", shardCount, row.ShardBuckets)
+				}
+			}
+			if err := rowReader.Err(); err != nil {
+				return fmt.Errorf("reading postings: %w", err)
+			}
+			return nil
+		}()
+		if err != nil {
+			return 0, err
+		}
+	}
+
+	return shardCount, nil
+}
+
+func columnsOfType(columns []*postings.Column, typ postings.ColumnType) []*postings.Column {
+	var foundColumns []*postings.Column
+	for _, column := range columns {
+		if column.Type == typ {
+			foundColumns = append(foundColumns, column)
+		}
+	}
+	return foundColumns
 }
 
 func parseSortSchema(value string) (schema, labelNames []string, _ error) {

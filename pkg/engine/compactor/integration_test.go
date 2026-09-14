@@ -324,7 +324,7 @@ func TestCoordinator_LogCompactionSortSchemaCompatibility(t *testing.T) {
 				"stats and postings must reference the same log objects")
 			require.Equal(t, map[string]bool{"label:app": true}, contents.sortSchemas)
 			for _, layout := range contents.layouts {
-				require.True(t, logsobj.CompareSortLayout(logsobj.TargetSortLayout(targetSchema), layout))
+				require.True(t, logsobj.EqualSortLayout(logsobj.TargetSortLayout(targetSchema), layout))
 			}
 			for _, entry := range after {
 				require.True(t, entry.Start.Equal(base))

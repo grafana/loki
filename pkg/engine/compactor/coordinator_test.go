@@ -310,16 +310,22 @@ func TestCompactTenantLogs_DispatchesSortObjectPlans(t *testing.T) {
 	bucket := objstore.NewInMemBucket()
 	window := time.Date(2026, 5, 14, 0, 0, 0, 0, time.UTC).Truncate(metastore.MetastoreWindowSize)
 	convergedPath := "indexes/aa/converged"
+	logSortSchema := "label:cluster"
 	buildCurrentIndexWithStats(ctx, t, bucket, "acme", convergedPath, []stats.Stat{
-		{ObjectPath: "logs/log-0", SectionIndex: 0, SortSchema: "label:cluster",
+		{ObjectPath: "logs/log-0", SectionIndex: 0, SortSchema: logSortSchema,
 			Labels: map[string]string{"cluster": "dev"}, MinTimestamp: 10, MaxTimestamp: 30, RowCount: 2, UncompressedSize: 100},
-		{ObjectPath: "logs/log-1", SectionIndex: 0, SortSchema: "label:cluster",
+		{ObjectPath: "logs/log-1", SectionIndex: 0, SortSchema: logSortSchema,
 			Labels: map[string]string{"cluster": "prod"}, MinTimestamp: 20, MaxTimestamp: 40, RowCount: 3, UncompressedSize: 200},
 	})
 
+	// The tenant's requested sort-schema must not match the log schema to trigger a sort.
+	limits := newFakeLimits("acme")
+	require.Equal(t, limits.SortSchemaLabels("acme"), []string{"label:service_name"})
+	require.NotEqual(t, limits.SortSchemaLabels("acme"), logSortSchema)
+
 	runner := &fakeRunner{}
 	replacer := &fakeReplacer{swapped: true}
-	c := newTestCoordinator(t, bucket, runner, replacer, fixedClock(window.Add(time.Hour)), newFakeLimits("acme"))
+	c := newTestCoordinator(t, bucket, runner, replacer, fixedClock(window.Add(time.Hour)), limits)
 
 	result, err := c.compactTenantLogs(ctx, "acme", window, indexEntry{
 		Path:                 convergedPath,
@@ -332,6 +338,7 @@ func TestCompactTenantLogs_DispatchesSortObjectPlans(t *testing.T) {
 	require.Len(t, calls, 2)
 	sources := make(map[string]bool)
 	for _, call := range calls {
+		// Check a sort-object was dispatched with the Tenant's requested sort-schema
 		require.Equal(t, []string{"compaction", "sort-object"}, call.opts.Actor)
 		root, err := call.plan.Root()
 		require.NoError(t, err)

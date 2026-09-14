@@ -368,7 +368,7 @@ func TestLogSectionRefsFor_ReadsAndValidatesShardCount(t *testing.T) {
 		})
 
 		_, _, _, err := logSectionRefsFor(ctx, bucket, tenant, path)
-		require.ErrorContains(t, err, "contains shard counts")
+		require.ErrorContains(t, err, "detected multiple shard counts within index file")
 	})
 }
 
