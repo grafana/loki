@@ -1252,7 +1252,7 @@ GET /config
 ```
 
 `/config` exposes the current configuration. The optional `mode` query parameter can be used to
-modify the output. If it has the value `diffs` only the differences between the default configuration
+modify the output. If it has the value `diff` only the differences between the default configuration
 and the current are returned. A value of `defaults` returns the default configuration.
 
 The optional `q` query parameter returns only the requested field(s) instead of the full configuration.

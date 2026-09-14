@@ -4,18 +4,48 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/prometheus/prometheus/model/labels"
+
 	"github.com/grafana/loki/v3/pkg/dataobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/result"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/logs"
+	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
 	"github.com/grafana/loki/v3/pkg/dataobj/sortmerge"
 )
 
-// sortedSchemaIter merges schema-sorted input sections, injects schema sort
+// rankedSortKey is the CopyAndSort sidecar for one stream. rank is the rank in this object after sorting by
+// SortKey; independently written objects do not share rank.
+type rankedSortKey struct {
+	rank int64
+	streams.SortKey
+}
+
+// emptyRankedSortKey returns an unranked sort key (rank set to 0) for a label set.
+// SortKey fields are calculated from input labels ls.
+func emptyRankedSortKey(ls labels.Labels, schemaLabels []string) (rankedSortKey, error) {
+	schemaKey, err := ComputeSchemaKey(ls, schemaLabels)
+	if err != nil {
+		return rankedSortKey{}, err
+	}
+
+	return rankedSortKey{
+		SortKey: streams.NewSortKey(ls, schemaKey),
+	}, nil
+}
+
+// sortKeys extracts the sort-tuple column for the k-way merge comparator.
+func sortKeys(remap []rankedSortKey) []streams.SortKey {
+	out := make([]streams.SortKey, len(remap))
+	for i, e := range remap {
+		out[i] = e.SortKey
+	}
+	return out
+}
+
+// sortedLogsIter merges schema-sorted input sections, injects schema sort
 // keys, remaps stream IDs, and returns an iterator suitable for AppendOrdered.
-func sortedSchemaIter(
-	ctx context.Context, sections []*dataobj.Section, shards []uint32, sortKeys []string, hashes []uint64, streamIDs []int64,
-) (result.Seq[logs.Record], error) {
-	iter, err := sortmerge.IteratorForSchema(ctx, sections, shards, sortKeys, hashes)
+func sortedLogsIter(ctx context.Context, sections []*dataobj.Section, remap []rankedSortKey) (result.Seq[logs.Record], error) {
+	iter, err := sortmerge.SchemaSortedIterator(ctx, sections, sortKeys(remap))
 	if err != nil {
 		return nil, err
 	}
@@ -28,22 +58,17 @@ func sortedSchemaIter(
 			}
 
 			oldStreamID := rec.StreamID
-			if oldStreamID <= 0 || oldStreamID >= int64(len(sortKeys)) {
-				return fmt.Errorf("missing schema sort key for stream ID %d", oldStreamID)
+			if oldStreamID <= 0 || oldStreamID >= int64(len(remap)) {
+				return fmt.Errorf("missing stream remap for stream ID %d", oldStreamID)
 			}
-			sortKey := sortKeys[oldStreamID]
-
-			if oldStreamID >= int64(len(streamIDs)) {
+			e := remap[oldStreamID]
+			if e.rank == 0 {
 				return fmt.Errorf("missing stream ID remap for stream ID %d", oldStreamID)
 			}
-			streamID := streamIDs[oldStreamID]
-			if streamID == 0 {
-				return fmt.Errorf("missing stream ID remap for stream ID %d", oldStreamID)
-			}
-			rec.SortKey = sortKey
-			rec.ShardBucket = shards[oldStreamID]
-			rec.StreamHash = hashes[oldStreamID]
-			rec.StreamID = streamID
+			rec.SchemaKey = e.SchemaKey
+			rec.ShardBucket = e.ShardBucket
+			rec.StreamHash = e.Hash
+			rec.StreamID = e.rank
 			if !yield(rec) {
 				return nil
 			}
