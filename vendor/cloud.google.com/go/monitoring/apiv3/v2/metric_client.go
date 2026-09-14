@@ -184,7 +184,7 @@ type MetricClient struct {
 
 // Wrapper methods routed to the internal client.
 
-// Close closes the connection to the API service. The user should invoke this when
+// Close closes the connection to the API service. **Always** call Close() when
 // the client is no longer required.
 func (c *MetricClient) Close() error {
 	return c.internalClient.Close()
@@ -375,7 +375,7 @@ func (c *metricGRPCClient) setGoogleClientInfo(keyval ...string) {
 	}
 }
 
-// Close closes the connection to the API service. The user should invoke this when
+// Close closes the connection to the API service. **Always** call Close() when
 // the client is no longer required.
 func (c *metricGRPCClient) Close() error {
 	return c.connPool.Close()

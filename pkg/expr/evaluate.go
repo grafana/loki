@@ -85,7 +85,7 @@ func evaluateWithSelection(alloc *memory.Allocator, expr Expression, input colum
 			return columnar.NewNull(validity), nil
 		}
 
-		return s.Field(columnIndex), nil
+		return projectStructField(alloc, s, columnIndex)
 
 	case *Extract:
 		return evaluateExtract(alloc, expr, input, selection)
@@ -131,7 +131,23 @@ func evaluateExtract(alloc *memory.Allocator, expr *Extract, input columnar.Datu
 		return columnar.NewNull(validity), nil
 	}
 
-	return s.Field(columnIndex), nil
+	return projectStructField(alloc, s, columnIndex)
+}
+
+func projectStructField(alloc *memory.Allocator, s *columnar.Struct, index int) (columnar.Array, error) {
+	var (
+		field    = s.Field(index)
+		validity = s.Validity()
+	)
+	if validity.Len() == 0 {
+		return field, nil
+	}
+
+	projected, err := compute.PropagateNulls(alloc, field, validity)
+	if err != nil {
+		return nil, err
+	}
+	return projected.(columnar.Array), nil
 }
 
 func evaluateInclude(alloc *memory.Allocator, expr *Include, input columnar.Datum, selection memory.Bitmap) (columnar.Datum, error) {

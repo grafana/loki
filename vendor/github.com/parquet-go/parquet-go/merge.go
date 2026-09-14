@@ -84,18 +84,38 @@ func MergeRowGroups(rowGroups []RowGroup, options ...RowGroupOption) (RowGroup, 
 	dropDuplicatedRows := config.Sorting.DropDuplicatedRows
 
 	// Optimization: detect non-overlapping row groups and create segments
+	makeMerged := func(rowGroups []RowGroup) RowGroup {
+		merged := &mergedRowGroup{
+			compare:            mergedCompare,
+			dropDuplicatedRows: dropDuplicatedRows,
+		}
+		merged.init(schema, mergedSortingColumns, rowGroups)
+		return merged
+	}
+
 	rowGroupSegments := make([]RowGroup, 0)
 	for segment := range overlappingRowGroups(mergedRowGroups, schema, mergedSortingColumns, mergedCompare) {
 		if len(segment) == 1 {
-			rowGroupSegments = append(rowGroupSegments, segment[0])
-		} else {
-			merged := &mergedRowGroup{
-				compare:            mergedCompare,
-				dropDuplicatedRows: dropDuplicatedRows,
-			}
-			merged.init(schema, mergedSortingColumns, segment)
-			rowGroupSegments = append(rowGroupSegments, merged)
+			rowGroupSegments = append(rowGroupSegments, segment[0].rowGroup)
+			continue
 		}
+		// Refine partially overlapping segments: stretches of key space
+		// covered by a single row group are sliced off as row-range views,
+		// leaving only the truly overlapping stretches for the merge. Not
+		// applied when dropping duplicated rows: which physical row of an
+		// equal-key run survives depends on the interleaving of ties across
+		// row groups, which refinement does not preserve.
+		if !dropDuplicatedRows && !disableMergeRefinement {
+			if refined := refineSegment(newRefineTargets(segment, schema, mergedSortingColumns), mergedCompare, makeMerged); refined != nil {
+				rowGroupSegments = append(rowGroupSegments, refined...)
+				continue
+			}
+		}
+		rowGroups := make([]RowGroup, len(segment))
+		for i := range segment {
+			rowGroups[i] = segment[i].rowGroup
+		}
+		rowGroupSegments = append(rowGroupSegments, makeMerged(rowGroups))
 	}
 
 	if len(rowGroupSegments) == 1 {
@@ -120,18 +140,20 @@ func MergeRowGroups(rowGroups []RowGroup, options ...RowGroupOption) (RowGroup, 
 	}, nil
 }
 
+// rowGroupRange associates a row group with the bounds of its sorting columns
+// (nil when the bounds could not be determined).
+type rowGroupRange struct {
+	rowGroup RowGroup
+	minRow   Row
+	maxRow   Row
+}
+
 // overlappingRowGroups analyzes row groups to find non-overlapping segments
 // Returns groups of row groups where each group either:
 // 1. Contains a single non-overlapping row group (can be concatenated)
 // 2. Contains multiple overlapping row groups (need to be merged)
-func overlappingRowGroups(rowGroups []RowGroup, schema *Schema, sorting []SortingColumn, compare func(Row, Row) int) iter.Seq[[]RowGroup] {
-	return func(yield func([]RowGroup) bool) {
-		type rowGroupRange struct {
-			rowGroup RowGroup
-			minRow   Row
-			maxRow   Row
-		}
-
+func overlappingRowGroups(rowGroups []RowGroup, schema *Schema, sorting []SortingColumn, compare func(Row, Row) int) iter.Seq[[]rowGroupRange] {
+	return func(yield func([]rowGroupRange) bool) {
 		rowGroupRanges := make([]rowGroupRange, 0, len(rowGroups))
 		for _, rg := range rowGroups {
 			if rg.NumRows() == 0 {
@@ -139,7 +161,13 @@ func overlappingRowGroups(rowGroups []RowGroup, schema *Schema, sorting []Sortin
 			}
 			minRow, maxRow, err := rowGroupRangeOfSortedColumns(rg, schema, sorting)
 			if err != nil {
-				yield(rowGroups)
+				// Bounds unavailable: yield all row groups as a single segment
+				// with nil bounds, which the caller merges without refinement.
+				all := make([]rowGroupRange, len(rowGroups))
+				for i, rg := range rowGroups {
+					all[i] = rowGroupRange{rowGroup: rg}
+				}
+				yield(all)
 				return
 			}
 			rowGroupRanges = append(rowGroupRanges, rowGroupRange{
@@ -152,7 +180,7 @@ func overlappingRowGroups(rowGroups []RowGroup, schema *Schema, sorting []Sortin
 			return
 		}
 		if len(rowGroupRanges) == 1 {
-			yield([]RowGroup{rowGroupRanges[0].rowGroup})
+			yield(rowGroupRanges[:1])
 			return
 		}
 
@@ -162,29 +190,26 @@ func overlappingRowGroups(rowGroups []RowGroup, schema *Schema, sorting []Sortin
 		})
 
 		// Detect overlapping segments
-		currentSegment := []RowGroup{rowGroupRanges[0].rowGroup}
+		segmentStart := 0
 		currentMax := rowGroupRanges[0].maxRow
 
-		for _, rr := range rowGroupRanges[1:] {
+		for i, rr := range rowGroupRanges[1:] {
 			if compare(rr.minRow, currentMax) <= 0 {
-				// Overlapping - add to current segment and extend max if necessary
-				currentSegment = append(currentSegment, rr.rowGroup)
+				// Overlapping - extend max if necessary
 				if compare(rr.maxRow, currentMax) > 0 {
 					currentMax = rr.maxRow
 				}
 			} else {
 				// Non-overlapping - yield current segment
-				if !yield(currentSegment) {
+				if !yield(rowGroupRanges[segmentStart : i+1]) {
 					return
 				}
-				currentSegment = []RowGroup{rr.rowGroup}
+				segmentStart = i + 1
 				currentMax = rr.maxRow
 			}
 		}
 
-		if len(currentSegment) > 0 {
-			yield(currentSegment)
-		}
+		yield(rowGroupRanges[segmentStart:])
 	}
 }
 
@@ -222,18 +247,26 @@ func rowGroupRangeOfSortedColumns(rg RowGroup, schema *Schema, sorting []Sorting
 			return nil, nil, fmt.Errorf("column index not available for sorting column %s", sortingColumnPath)
 		}
 
-		// Since data is sorted by sorting columns, we can efficiently get min/max:
-		// - Min value = min of first non-null page
-		// - Max value = max of last non-null page
+		// Since data is sorted by sorting columns, we can bound the first and
+		// last rows of the row group from the first and last non-null pages of
+		// the column index. The bounds are expressed in sort order: when the
+		// column is sorted in descending order, the first row holds the
+		// largest value and the last row holds the smallest one, so the page
+		// statistics to read are inverted.
 		numPages := columnIndex.NumPages()
+		descending := sortingColumn.Descending()
 
-		// Find first non-null page for min value
-		var globalMin Value
+		// Bound the first row in sort order from the first non-null page
+		var firstValue Value
 		var found bool
 		for pageIdx := range numPages {
 			if !columnIndex.NullPage(pageIdx) {
-				if minValue := columnIndex.MinValue(pageIdx); !minValue.IsNull() {
-					globalMin, found = minValue, true
+				value := columnIndex.MinValue(pageIdx)
+				if descending {
+					value = columnIndex.MaxValue(pageIdx)
+				}
+				if !value.IsNull() {
+					firstValue, found = value, true
 					break
 				}
 			}
@@ -242,20 +275,24 @@ func rowGroupRangeOfSortedColumns(rg RowGroup, schema *Schema, sorting []Sorting
 			return nil, nil, fmt.Errorf("no valid pages found in column index for column %s", sortingColumnPath)
 		}
 
-		// Find last non-null page for max value
-		var globalMax Value
+		// Bound the last row in sort order from the last non-null page
+		var lastValue Value
 		for pageIdx := numPages - 1; pageIdx >= 0; pageIdx-- {
 			if !columnIndex.NullPage(pageIdx) {
-				if maxValue := columnIndex.MaxValue(pageIdx); !maxValue.IsNull() {
-					globalMax = maxValue
+				value := columnIndex.MaxValue(pageIdx)
+				if descending {
+					value = columnIndex.MinValue(pageIdx)
+				}
+				if !value.IsNull() {
+					lastValue = value
 					break
 				}
 			}
 		}
 
 		// Set the min/max values with proper levels
-		minValues[sortingColumnIndex] = globalMin.Level(0, 1, sortingColumnIndex)
-		maxValues[sortingColumnIndex] = globalMax.Level(0, 1, sortingColumnIndex)
+		minValues[sortingColumnIndex] = firstValue.Level(0, 1, sortingColumnIndex)
+		maxValues[sortingColumnIndex] = lastValue.Level(0, 1, sortingColumnIndex)
 	}
 
 	minRow = Row(minValues)
@@ -277,6 +314,12 @@ type mergedRowGroup struct {
 	compare            func(Row, Row) int
 	dropDuplicatedRows bool
 }
+
+// rowGroupSegments opts out of segment splitting: a mergedRowGroup interleaves
+// rows from overlapping row groups via a heap merge, so its row groups cannot be
+// written independently without losing the merged ordering. It overrides the
+// method promoted from the embedded multiRowGroup.
+func (m *mergedRowGroup) rowGroupSegments() []RowGroup { return nil }
 
 func (m *mergedRowGroup) Rows() Rows {
 	// The row group needs to respect a sorting order; the merged row reader
@@ -305,6 +348,18 @@ type sortedSegmentRowGroup struct {
 	segments           []RowGroup
 	compare            func(Row, Row) int
 	dropDuplicatedRows bool
+}
+
+// rowGroupSegments implements orderedRowGroupSegments: the segments are already
+// in sorted order and each segment's own Rows() preserves its internal ordering,
+// so writing them in sequence preserves the global order. It returns nil when
+// dropping duplicates, because deduplication spans segment boundaries and would
+// be lost if segments were written independently.
+func (s *sortedSegmentRowGroup) rowGroupSegments() []RowGroup {
+	if s.dropDuplicatedRows {
+		return nil
+	}
+	return s.segments
 }
 
 func (s *sortedSegmentRowGroup) Rows() Rows {
@@ -489,14 +544,12 @@ func mergeRowReaders[T RowReader](rows []T, compare func(Row, Row) int) RowReade
 		}
 	default:
 		buffers := make([]bufferedRowReader, len(rows))
-		readers := make([]*bufferedRowReader, len(rows))
 		for i, r := range rows {
 			buffers[i].rows = r
-			readers[i] = &buffers[i]
 		}
 		return &mergedRowReader{
 			compare: compare,
-			readers: readers,
+			buffers: buffers,
 		}
 	}
 }
@@ -507,6 +560,8 @@ type mergedRowReader2 struct {
 	compare     func(Row, Row) int
 	readers     [2]*bufferedRowReader
 	buffers     [2]bufferedRowReader
+	prev        int   // <0 if r0 won the previous game, >0 if r1 won, 0 otherwise
+	streak      int32 // consecutive games won by the same reader
 	initialized bool
 }
 
@@ -584,15 +639,42 @@ func (m *mergedRowReader2) ReadRows(rows []Row) (n int, err error) {
 		for n < len(rows) {
 			switch cmp := m.compare(r0.head(), r1.head()); {
 			case cmp < 0:
-				rows[n] = append(rows[n][:0], r0.head()...)
-				n++
-				hasNext0 = r0.next()
-				hasNext1 = true
+				if m.prev < 0 {
+					m.streak++
+				} else {
+					m.streak = 0
+				}
+				m.prev = -1
+				if m.streak >= runDetectionStreak {
+					// r0 has been winning: gallop through its buffered rows
+					// for the run that sorts strictly before r1's head (ties
+					// are emitted pairwise by the case below) and emit it in
+					// bulk. Interleaved inputs rarely reach the streak
+					// threshold and pay only the cost of the counter.
+					n, hasNext0 = m.emitRun(rows, n, r0, r1.head())
+					hasNext1 = true
+				} else {
+					rows[n] = append(rows[n][:0], r0.head()...)
+					n++
+					hasNext0 = r0.next()
+					hasNext1 = true
+				}
 			case cmp > 0:
-				rows[n] = append(rows[n][:0], r1.head()...)
-				n++
-				hasNext0 = true
-				hasNext1 = r1.next()
+				if m.prev > 0 {
+					m.streak++
+				} else {
+					m.streak = 0
+				}
+				m.prev = 1
+				if m.streak >= runDetectionStreak {
+					n, hasNext1 = m.emitRun(rows, n, r1, r0.head())
+					hasNext0 = true
+				} else {
+					rows[n] = append(rows[n][:0], r1.head()...)
+					n++
+					hasNext0 = true
+					hasNext1 = r1.next()
+				}
 			default:
 				rows[n] = append(rows[n][:0], r0.head()...)
 				n++
@@ -602,6 +684,8 @@ func (m *mergedRowReader2) ReadRows(rows []Row) (n int, err error) {
 					n++
 					hasNext1 = r1.next()
 				}
+				m.prev = 0
+				m.streak = 0
 			}
 			if !hasNext0 || !hasNext1 {
 				break
@@ -612,39 +696,83 @@ func (m *mergedRowReader2) ReadRows(rows []Row) (n int, err error) {
 	return n, nil
 }
 
+// emitRun bulk-emits the run of buffered rows of r that sort strictly before
+// bound; the head of r must already be known to. It returns the new number of
+// rows produced and whether r has more rows buffered.
+func (m *mergedRowReader2) emitRun(rows []Row, n int, r *bufferedRowReader, bound Row) (int, bool) {
+	window := r.window()
+	if max := len(rows) - n; len(window) > max {
+		window = window[:max]
+	}
+	run := 1
+	if len(window) > 1 {
+		run += runLength(window[1:], bound, m.compare, -1)
+	}
+	for _, row := range window[:run] {
+		rows[n] = append(rows[n][:0], row...)
+		n++
+	}
+	return n, r.advance(int32(run))
+}
+
+// mergedRowReader merges k buffered row readers using a tournament tree of
+// losers, which performs ~log2(k) comparisons per row instead of the ~2*log2(k)
+// required to sift down a binary min-heap.
+//
+// The tree is laid out as the first k positions of a 2k binary heap: internal
+// node i stores the loser of the game played at that position, identified by
+// the index of its buffer, and the leaf for buffer i sits at implicit position
+// k+i. The overall winner is kept out of the tree in the winner field, and its
+// leaf position in winnerLeaf. Advancing the merge replays the games on the
+// path from the winner's leaf to the root, comparing the new head of the
+// winner against the losers stored along the way. Exhausted readers are
+// represented by a negative value which loses every game it plays.
 type mergedRowReader struct {
 	compare     func(Row, Row) int
-	readers     []*bufferedRowReader
+	buffers     []bufferedRowReader
+	losers      []int32
+	count       int
+	winner      int32
+	winnerLeaf  int32
+	streak      int32 // consecutive games won by the current winner
 	initialized bool
 }
 
+// runDetectionStreak is the number of consecutive games the same reader must
+// win before the merge switches to run mode. When the merged inputs are mostly
+// disjoint (e.g. sorted row groups overlapping only at their boundaries), the
+// same reader wins long streaks and replaying ~log2(k) games per row is wasted
+// work; run mode computes the second-smallest head once and then emits rows
+// with a single comparison each. Interleaved inputs never reach the threshold
+// and pay only the cost of maintaining the streak counter.
+const runDetectionStreak = 3
+
 func (m *mergedRowReader) initialize() error {
-	for i, r := range m.readers {
-		switch err := r.read(); err {
+	k := len(m.buffers)
+	m.losers = make([]int32, k)
+	m.count = k
+
+	leaves := make([]int32, k)
+	for i := range leaves {
+		leaves[i] = int32(i)
+	}
+
+	for i := range m.buffers {
+		switch err := m.buffers[i].read(); err {
 		case nil:
 		case io.EOF:
-			m.readers[i] = nil
+			leaves[i] = -1
+			m.count--
 		default:
-			m.readers = nil
+			m.count = 0
 			return err
 		}
 	}
 
-	n := 0
-	for _, r := range m.readers {
-		if r != nil {
-			m.readers[n] = r
-			n++
-		}
+	if m.count > 0 {
+		m.winner = m.playInitialGames(0, leaves)
+		m.winnerLeaf = int32(k) + m.winner
 	}
-
-	clear := m.readers[n:]
-	for i := range clear {
-		clear[i] = nil
-	}
-
-	m.readers = m.readers[:n]
-	m.heapInit()
 	return nil
 }
 
@@ -657,95 +785,182 @@ func (m *mergedRowReader) ReadRows(rows []Row) (n int, err error) {
 		}
 	}
 
-	for n < len(rows) && len(m.readers) != 0 {
-		r := m.readers[0]
-		if r.empty() { // This readers buffer has been exhausted, repopulate it.
-			if err := r.read(); err != nil {
-				if err == io.EOF {
-					m.heapPop()
-					continue
+	for n < len(rows) && m.count != 0 {
+		c := &m.buffers[m.winner]
+
+		if c.empty() { // This reader's buffer has been exhausted, repopulate it.
+			switch err := c.read(); err {
+			case nil:
+			case io.EOF:
+				m.winner = -1
+				m.count--
+				if m.count == 0 {
+					break
 				}
+			default:
 				return n, err
-			} else {
-				if !m.heapDown(0, len(m.readers)) { // heap.Fix
-					m.heapUp(0)
-				}
-				continue
 			}
+			// The winner's head changed (or the winner was exhausted), replay
+			// the games on the path from its leaf to the root to determine the
+			// new winner.
+			prev := m.winner
+			m.replayGames()
+			if m.winner != prev {
+				m.streak = 0
+			}
+			continue
 		}
 
-		rows[n] = append(rows[n][:0], r.head()...)
+		rows[n] = append(rows[n][:0], c.head()...)
 		n++
 
-		if !r.next() {
+		if !c.next() {
 			return n, nil
 		}
-		if !m.heapDown(0, len(m.readers)) { // heap.Fix
-			m.heapUp(0)
+
+		if m.streak >= runDetectionStreak {
+			// The same reader has been winning; emit its run in bulk. The run
+			// bound is the second-smallest head across all readers, so the
+			// winner keeps winning as long as its head does not exceed it
+			// (ties favor the incumbent, matching the strict comparison in
+			// replayGames). Other readers are not consumed during the run, so
+			// the bound remains valid until it is crossed. The length of the
+			// run within the buffered window is found with O(log n)
+			// comparisons: a single comparison of the last buffered row
+			// settles the common case where the whole window is part of the
+			// run.
+			bound := m.runBound()
+			for n < len(rows) {
+				window := c.window()
+				if max := len(rows) - n; len(window) > max {
+					window = window[:max]
+				}
+				run := len(window)
+				if bound != nil {
+					run = runLength(window, bound, m.compare, 0)
+				}
+				for _, row := range window[:run] {
+					rows[n] = append(rows[n][:0], row...)
+					n++
+				}
+				if !c.advance(int32(run)) {
+					return n, nil
+				}
+				if run < len(window) {
+					break // the run bound was crossed
+				}
+			}
+			m.streak = 0
+			m.replayGames()
+			continue
+		}
+
+		prev := m.winner
+		m.replayGames()
+		if m.winner == prev {
+			m.streak++
+		} else {
+			m.streak = 0
 		}
 	}
 
-	if len(m.readers) == 0 {
+	if m.count == 0 {
 		err = io.EOF
 	}
 
 	return n, err
 }
 
-func (m *mergedRowReader) heapInit() {
-	n := len(m.readers)
-	for i := n/2 - 1; i >= 0; i-- {
-		m.heapDown(i, n)
+// runBound returns the second-smallest head among the merged readers, i.e. the
+// row that the current winner's head must not exceed for the winner to keep
+// winning. In a tournament tree of losers the runner-up necessarily lost its
+// game directly against the overall winner, so it is stored at one of the
+// nodes on the winner's path from leaf to root; the minimum over those players
+// is the runner-up. Returns nil when the winner is the only reader left.
+func (m *mergedRowReader) runBound() (bound Row) {
+	for offset := (m.winnerLeaf - 1) / 2; ; offset = (offset - 1) / 2 {
+		if player := m.losers[offset]; player >= 0 {
+			if head := m.buffers[player].head(); bound == nil || m.compare(head, bound) < 0 {
+				bound = head
+			}
+		}
+		if offset == 0 {
+			return bound
+		}
 	}
 }
 
-func (m *mergedRowReader) heapPop() {
-	n := len(m.readers) - 1
-	m.heapSwap(0, n)
-	m.heapDown(0, n)
-	m.readers = m.readers[:n]
-}
-
-func (m *mergedRowReader) heapUp(j int) {
-	for {
-		i := (j - 1) / 2 // parent
-		if i == j || !(m.compare(m.readers[j].head(), m.readers[i].head()) < 0) {
-			break
+// playInitialGames recursively plays the tournament rooted at position i,
+// storing the loser of each game at the internal node where it was played,
+// and returns the winner of the subtree.
+func (m *mergedRowReader) playInitialGames(i int32, leaves []int32) int32 {
+	k := int32(len(m.buffers))
+	if i >= k { // leaf or out of bounds
+		if i -= k; int(i) < len(leaves) {
+			return leaves[i]
 		}
-		m.heapSwap(i, j)
-		j = i
+		return -1
 	}
+	n1 := m.playInitialGames(2*i+1, leaves)
+	n2 := m.playInitialGames(2*i+2, leaves)
+	loser, winner := m.playGame(n1, n2)
+	m.losers[i] = loser
+	return winner
 }
 
-func (m *mergedRowReader) heapDown(i0, n int) bool {
-	i := i0
-	for {
-		j1 := 2*i + 1
-		if j1 >= n || j1 < 0 { // j1 < 0 after int overflow
-			break
-		}
-		j := j1 // left child
-		if j2 := j1 + 1; j2 < n && m.compare(m.readers[j2].head(), m.readers[j1].head()) < 0 {
-			j = j2 // = 2*i + 2  // right child
-		}
-		if !(m.compare(m.readers[j].head(), m.readers[i].head()) < 0) {
-			break
-		}
-		m.heapSwap(i, j)
-		i = j
+func (m *mergedRowReader) playGame(n1, n2 int32) (loser, winner int32) {
+	if n1 < 0 {
+		return n1, n2
 	}
-	return i > i0
+	if n2 < 0 {
+		return n2, n1
+	}
+	if m.compare(m.buffers[n1].head(), m.buffers[n2].head()) < 0 {
+		return n2, n1
+	}
+	return n1, n2
 }
 
-func (m *mergedRowReader) heapSwap(i, j int) {
-	m.readers[i], m.readers[j] = m.readers[j], m.readers[i]
+// replayGames walks the path from the current winner's leaf to the root,
+// playing the winner against the losers stored along the way and exchanging
+// them when they win, then records the new overall winner.
+func (m *mergedRowReader) replayGames() {
+	winner := m.winner
+	for offset := (m.winnerLeaf - 1) / 2; ; offset = (offset - 1) / 2 {
+		player := m.losers[offset]
+
+		if player >= 0 {
+			if winner < 0 || m.compare(m.buffers[player].head(), m.buffers[winner].head()) < 0 {
+				m.losers[offset] = winner
+				winner = player
+			}
+		}
+
+		if offset == 0 {
+			break
+		}
+	}
+	m.winner = winner
+	m.winnerLeaf = int32(len(m.buffers)) + winner
 }
+
+// minRowBufferSize is the initial buffer size of a bufferedRowReader, and
+// maxRowBufferSize the size it can grow to. Buffers grow exponentially as
+// long as the underlying reader keeps filling them completely, so merges of
+// small row groups do not pay for full-size buffers while sustained merges
+// amortize refills and extend the reach of the bulk run emission paths,
+// which are bounded by the buffered window.
+const (
+	minRowBufferSize = 24
+	maxRowBufferSize = 192
+)
 
 type bufferedRowReader struct {
 	rows RowReader
 	off  int32
 	end  int32
-	buf  [24]Row
+	full bool // the last read filled the buffer completely
+	buf  []Row
 }
 
 func (r *bufferedRowReader) empty() bool {
@@ -757,7 +972,17 @@ func (r *bufferedRowReader) head() Row {
 }
 
 func (r *bufferedRowReader) next() bool {
-	r.off++
+	return r.advance(1)
+}
+
+// window returns the buffered rows that have not been consumed yet.
+func (r *bufferedRowReader) window() []Row {
+	return r.buf[r.off:r.end]
+}
+
+// advance consumes n buffered rows and reports whether more remain buffered.
+func (r *bufferedRowReader) advance(n int32) bool {
+	r.off += n
 	hasNext := r.off < r.end
 	if !hasNext {
 		// We need to read more rows, however it is unsafe to do so here because we haven't
@@ -769,12 +994,53 @@ func (r *bufferedRowReader) next() bool {
 }
 
 func (r *bufferedRowReader) read() error {
+	if r.buf == nil {
+		r.buf = make([]Row, minRowBufferSize)
+	} else if r.full && r.off == 0 && r.end == 0 && len(r.buf) < maxRowBufferSize {
+		// The reader keeps filling the buffer completely: grow it to amortize
+		// refills and extend the bulk run emission paths. The previous rows
+		// are carried over so their backing arrays keep being reused.
+		buf := make([]Row, min(2*len(r.buf), maxRowBufferSize))
+		copy(buf, r.buf)
+		r.buf = buf
+	}
 	n, err := r.rows.ReadRows(r.buf[r.end:])
 	if err != nil && n == 0 {
 		return err
 	}
 	r.end += int32(n)
+	r.full = r.end == int32(len(r.buf))
 	return nil
+}
+
+// runLength returns the number of leading rows of window whose comparison
+// against bound is at most max (0 to include ties, -1 to exclude them). The
+// window must be sorted by the same comparison function, so the qualifying
+// rows form a prefix; the function checks the first and last rows to settle
+// empty and complete runs with a single comparison, then gallops with a
+// binary search refinement, costing O(log n) comparisons instead of the O(n)
+// of a linear scan.
+func runLength(window []Row, bound Row, compare func(Row, Row) int, max int) int {
+	if len(window) == 0 || compare(window[0], bound) > max {
+		return 0
+	}
+	if compare(window[len(window)-1], bound) <= max {
+		return len(window)
+	}
+	lo, hi := 0, 1
+	for hi < len(window) && compare(window[hi], bound) <= max {
+		lo = hi
+		hi *= 2
+	}
+	hi = min(hi, len(window))
+	for lo+1 < hi {
+		if mid := int(uint(lo+hi) >> 1); compare(window[mid], bound) <= max {
+			lo = mid
+		} else {
+			hi = mid
+		}
+	}
+	return hi
 }
 
 var (
@@ -878,12 +1144,12 @@ func mergeTwoNodes(a, b Node) Node {
 		merged = group
 
 		if logicalType := b.Type().LogicalType(); logicalType != nil {
-			switch {
-			case logicalType.List != nil:
+			switch logicalType.Value.(type) {
+			case *format.ListType:
 				merged = &listNode{group}
-			case logicalType.Map != nil:
+			case *format.MapType:
 				merged = &mapNode{group}
-			case logicalType.Variant != nil:
+			case *format.VariantType:
 				merged = &variantNode{group}
 			}
 		}

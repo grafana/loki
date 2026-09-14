@@ -16,6 +16,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/trace"
 
 	"github.com/grafana/loki/v3/pkg/engine/internal/executor"
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
@@ -108,7 +109,7 @@ type Workflow struct {
 	capture      *xcap.Capture
 	parentRegion *xcap.Region
 
-	span *xcap.Span
+	span trace.Span
 
 	tasksMut    sync.RWMutex
 	taskResults map[*Task]pendingSummary // Holds terminal task results until Close.
@@ -277,7 +278,7 @@ func (wf *Workflow) Run(ctx context.Context) (pipeline executor.Pipeline, err er
 	wf.parentRegion = xcap.RegionFromContext(ctx)
 
 	// wf.Run tracks the lifetime of the workflow execution.
-	ctx, wf.span = xcap.StartSpan(ctx, tracer, "wf.Run")
+	ctx, wf.span = tracer.Start(ctx, "wf.Run")
 
 	// Start dispatching in background goroutine
 	gotrace.Log(ctx, "dispatch_tasks", "starting dispatch of "+strconv.Itoa(len(wf.manifest.Tasks))+" tasks")

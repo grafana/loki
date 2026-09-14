@@ -38,14 +38,14 @@ If you are using the `grafana/loki-stack` Helm chart from the grafana repo, plea
 - [compactor](#compactor) — Configuration for the compactor
 - [defaults](#defaults) — Default settings applied to the Loki components only.
 - [distributor](#distributor) — Configuration for the distributor
-- [gateway](#gateway) — Configuration for the gateway, an NGINX reverse proxy that routes incoming read and write requests to the appropriate Lo…
-- [global](#global) — Global values that apply to all components and subcharts, such as image registry, DNS configuration, and common environm…
+- [gateway](#gateway) — Configuration for the gateway, an NGINX reverse proxy that routes incoming read and write requests to the appropriate Loki components.
+- [global](#global) — Global values that apply to all components and subcharts, such as image registry, DNS configuration, and common environment variables.
 - [indexGateway](#indexgateway) — Configuration for the index-gateway
 - [ingester](#ingester) — Configuration for the ingester
 - [ingress](#ingress) — Ingress configuration Use either this ingress or the gateway, but not both at once.
 - [loki](#loki) — Configuration for running Loki
-- [lokiCanary](#lokicanary) — Configuration for the Loki Canary, which continuously pushes logs to and queries them from this Loki installation to ver…
-- [memberlist](#memberlist) — Configuration for the memberlist service, the gossip-based ring Loki components use for service discovery and hash-ring…
+- [lokiCanary](#lokicanary) — Configuration for the Loki Canary, which continuously pushes logs to and queries them from this Loki installation to verify it is working correctly.
+- [memberlist](#memberlist) — Configuration for the memberlist service, the gossip-based ring Loki components use for service discovery and hash-ring coordination.
 - [memcached](#memcached) — Common configuration shared by the Memcached deployments backing Loki's caches.
 - [memcachedExporter](#memcachedexporter) — Configuration for the Prometheus Memcached exporter sidecar that exposes cache metrics.
 - [migrate](#migrate) — Options that may be necessary when performing a migration from another helm chart
@@ -63,8 +63,8 @@ If you are using the `grafana/loki-stack` Helm chart from the grafana repo, plea
 - [route](#route) — Gateway API routes for direct routing to Loki services, bypassing the nginx gateway.
 - [ruler](#ruler) — Configuration for the ruler
 - [serviceAccount](#serviceaccount) — Configuration for the Kubernetes ServiceAccount used by Loki components.
-- [sidecar](#sidecar) — Configuration for the k8s-sidecar container that watches for ConfigMaps and Secrets (such as rules and dashboards) and l…
-- [singleBinary](#singlebinary) — Configuration for the single binary node(s) used in Monolithic deployment mode, where all Loki components run in a singl…
+- [sidecar](#sidecar) — Configuration for the k8s-sidecar container that watches for ConfigMaps and Secrets (such as rules and dashboards) and loads them into Loki.
+- [singleBinary](#singlebinary) — Configuration for the single binary node(s) used in Monolithic deployment mode, where all Loki components run in a single process.
 - [tableManager](#tablemanager) — DEPRECATED Configuration for the table-manager.
 - [test](#test) — Section for configuring optional Helm test
 - [write](#write) — Configuration for the write pod(s) in SimpleScalable mode, which run the distributor and ingester components.
@@ -76,8 +76,8 @@ Values that are not part of a specific component group.
 | Key | Type | Description | Default |
 | --- | --- | --- | --- |
 | `commonLabels` | object | Labels to be added to resources | `{}` |
-| `deploymentMode` | string | Deployment mode lets you specify how to deploy Loki. There are 3 options: - Monolithic (deprecated: SingleBinary): Loki is deployed as a single binary, useful for small installs typically without HA, up to a few tens of GB/day. - SimpleScalable (deprecated, removed in Loki 4): Loki is deployed as 3 targets: read, write, and backend. Useful for medium installs easier to manage than distributed, up to a about 1TB/day. - Distributed: Loki is deployed as individual microservices. The most complicated but most capable, useful for large installs, typically over 1TB/day. There are also 2 additional modes used for migrating between deployment modes: - Monolithic<->SimpleScalable (deprecated: SingleBinary<->SimpleScalable): Migrate from SingleBinary to SimpleScalable (or vice versa) - SimpleScalable<->Distributed: Migrate from SimpleScalable to Distributed (or vice versa) Note: SimpleScalable and Distributed REQUIRE the use of object storage. Ref: https://grafana.com/docs/loki/latest/get-started/deployment-modes/ | `"Monolithic"` |
-| `extraObjects` | string |  | `nil` | 
+| `deploymentMode` | string | Deployment mode lets you specify how to deploy Loki. There are 3 options: - Monolithic (deprecated: SingleBinary): Loki is deployed as a single binary, useful for small installs typically without HA, up to a few tens of GB/day. - SimpleScalable (deprecated, removed in Loki 4): Loki is deployed as 3 targets: read, write, and backend. Useful for medium installs easier to manage than distributed, up to a about 1TB/day. - Distributed: Loki is deployed as individual microservices. The most complicated but most capable, useful for large installs, typically over 1TB/day. There are also 2 additional modes used for migrating between deployment modes: - Monolithic&lt;-&gt;SimpleScalable (deprecated: SingleBinary&lt;-&gt;SimpleScalable): Migrate from SingleBinary to SimpleScalable (or vice versa) - SimpleScalable&lt;-&gt;Distributed: Migrate from SimpleScalable to Distributed (or vice versa) Note: SimpleScalable and Distributed REQUIRE the use of object storage. Ref: https://grafana.com/docs/loki/latest/get-started/deployment-modes/ | `"Monolithic"` |
+| `extraObjects` | string |  | `nil` |
 | `fullnameOverride` | string | Overrides the chart's computed fullname | `""` |
 | `ignoreMinioDeprecation` | bool | Ignore MinIO deprecation validation when `minio.enabled=true`. This is a temporary compatibility escape hatch. | `false` |
 | `imagePullSecrets` | list | Image pull secrets for Docker images | `[]` |
@@ -136,7 +136,7 @@ Configuration for the backend pod(s)
 | `backend.persistence.labels` | object | Labels for volume claim | `{}` |
 | `backend.persistence.selector` | string | Selector for persistent disk | `nil` |
 | `backend.persistence.size` | string | Size of persistent disk | `"10Gi"` |
-| `backend.persistence.storageClass` | string | Storage class to be used. If defined, storageClassName: <storageClass>. If set to "-", storageClassName: "", which disables dynamic provisioning. If empty or set to null, no storageClassName spec is set, choosing the default provisioner (gp2 on AWS, standard on GKE, AWS, and OpenStack). | `nil` |
+| `backend.persistence.storageClass` | string | Storage class to be used. If defined, storageClassName: &lt;storageClass&gt;. If set to "-", storageClassName: "", which disables dynamic provisioning. If empty or set to null, no storageClassName spec is set, choosing the default provisioner (gp2 on AWS, standard on GKE, AWS, and OpenStack). | `nil` |
 | `backend.persistence.volumeAttributesClassName` | string | Volume attributes class name to be used. If empty or set to null, no volumeAttributesClassName spec is set. Requires Kubernetes 1.31 | `nil` |
 | `backend.persistence.volumeClaimsEnabled` | bool | Enable volume claims in pod spec. Deprecated in favor of `persistence.enabled`. | `true` |
 | `backend.persistence.whenDeleted` | string | What to do with the volumes when the StatefulSet is deleted. | `"Delete"` |
@@ -227,7 +227,7 @@ Configuration for the bloom-builder
 | `bloomBuilder.persistence.labels` | object | Labels for the generated volumeClaimTemplate. | `{}` |
 | `bloomBuilder.persistence.selector` | string | Selector for the generated volumeClaimTemplate. | `nil` |
 | `bloomBuilder.persistence.size` | string | Size of the generated volumeClaimTemplate. | `"10Gi"` |
-| `bloomBuilder.persistence.storageClass` | string | Storage class to be used for the generated volumeClaimTemplate. If defined, storageClassName: <storageClass>. If set to "-", storageClassName: "", which disables dynamic provisioning. If empty or set to null, no storageClassName spec is set, choosing the default provisioner. | `nil` |
+| `bloomBuilder.persistence.storageClass` | string | Storage class to be used for the generated volumeClaimTemplate. If defined, storageClassName: &lt;storageClass&gt;. If set to "-", storageClassName: "", which disables dynamic provisioning. If empty or set to null, no storageClassName spec is set, choosing the default provisioner. | `nil` |
 | `bloomBuilder.persistence.type` | string | Storage type for the bloom-builder. pvc and ephemeral are supported. | `"ephemeral"` |
 | `bloomBuilder.persistence.volumeAttributesClassName` | string | Volume attributes class name to be used for the generated volumeClaimTemplate. If empty or set to null, no volumeAttributesClassName spec is set. Requires Kubernetes 1.31 | `nil` |
 | `bloomBuilder.podAnnotations` | object | Annotations for bloom-builder pods | `{}` |
@@ -271,6 +271,7 @@ Configuration for the bloom-gateway
 | Key | Type | Description | Default |
 | --- | --- | --- | --- |
 | `bloomGateway.affinity` | object | Affinity for bloom-gateway pods. The value will be passed through tpl. | `Hard node anti-affinity` |
+| `bloomGateway.annotations` | object | Annotations for bloom-builder | `{}` |
 | `bloomGateway.appProtocol` | object | Set the optional grpc service protocol. Ex: "grpc", "http2" or "https" @deprecated -- This option is deprecated in favor of `bloomGateway.service.appProtocol` | `{"grpc":""}` |
 | `bloomGateway.command` | string | Command to execute instead of defined in Docker image | `nil` |
 | `bloomGateway.dnsConfig` | object | DNSConfig for bloom-gateway pods | `{}` |
@@ -287,6 +288,8 @@ Configuration for the bloom-gateway
 | `bloomGateway.image.repository` | string | Docker image repository for the bloom-gateway image. Overrides `loki.image.repository` | `nil` |
 | `bloomGateway.image.tag` | string | Docker image tag for the bloom-gateway image. Overrides `loki.image.tag` | `nil` |
 | `bloomGateway.initContainers` | list | Init containers to add to the bloom-gateway pods | `[]` |
+| `bloomGateway.kind` | string | Kind of compactor deployment. StatefulSet and Deployment are supported. | `"StatefulSet"` |
+| `bloomGateway.labels` | object | Labels for bloom-builder | `{}` |
 | `bloomGateway.livenessProbe` | object | liveness probe settings for bloom-gateway pods. If empty use `loki.livenessProbe` | `{}` |
 | `bloomGateway.nodeSelector` | object | Node selector for bloom-gateway pods | `{}` |
 | `bloomGateway.persistence.annotations` | object | Annotations for bloom-gateway PVCs | `{}` |
@@ -305,6 +308,7 @@ Configuration for the bloom-gateway
 | `bloomGateway.podDisruptionBudget.minAvailable` | string | Pod Disruption Budget minAvailable | `nil` |
 | `bloomGateway.podDisruptionBudget.unhealthyPodEvictionPolicy` | string | Pod Disruption Budget unhealthyPodEvictionPolicy | `nil` |
 | `bloomGateway.podLabels` | object | Labels for bloom-gateway pods | `{}` |
+| `bloomGateway.podManagementPolicy` | string | The default is to deploy all pods in parallel. | `"Parallel"` |
 | `bloomGateway.priorityClassName` | string | The name of the PriorityClass for bloom-gateway pods | `nil` |
 | `bloomGateway.readinessProbe` | object | readiness probe settings for bloom-gateway pods. If empty, use `loki.readinessProbe` | `{}` |
 | `bloomGateway.replicas` | int | Number of replicas for the bloom-gateway | `0` |
@@ -328,6 +332,8 @@ Configuration for the bloom-gateway
 | `bloomGateway.serviceAnnotations` | object | Annotations for bloom-gateway service @deprecated -- This option is deprecated in favor of `bloomGateway.service.annotations` | `{}` |
 | `bloomGateway.serviceLabels` | object | Labels for bloom-gateway service @deprecated -- This option is deprecated in favor of `bloomGateway.service.labels` | `{}` |
 | `bloomGateway.startupProbe` | object | startup probe settings for bloom-gateway pods. If empty, use `loki.startupProbe` | `{}` |
+| `bloomGateway.statefulSetRecreateJob` | object | Enable creating a Job to recreate the StatefulSet when the StatefulSet configuration is changed. # Only applicable if `compactor.kind` is StatefulSet. Useful for PVC size changes, which require recreating the StatefulSet. | `{"enabled":false}` |
+| `bloomGateway.strategy` | object | UpdateStrategy or Strategy for the pattern ingester. | `{"rollingUpdate":{"partition":0}}` |
 | `bloomGateway.terminationGracePeriodSeconds` | int | Grace period to allow the bloom-gateway to shutdown before it is killed | `30` |
 | `bloomGateway.tolerations` | list | Tolerations for bloom-gateway pods | `[]` |
 
@@ -338,6 +344,7 @@ Configuration for the bloom-planner
 | Key | Type | Description | Default |
 | --- | --- | --- | --- |
 | `bloomPlanner.affinity` | object | Affinity for bloom-planner pods. The value will be passed through tpl. | `Hard node anti-affinity` |
+| `bloomPlanner.annotations` | object | Annotations for bloom-builder | `{}` |
 | `bloomPlanner.appProtocol` | object | Set the optional grpc service protocol. Ex: "grpc", "http2" or "https" @deprecated -- This option is deprecated in favor of `bloomPlanner.service.appProtocol` | `{"grpc":""}` |
 | `bloomPlanner.command` | string | Command to execute instead of defined in Docker image | `nil` |
 | `bloomPlanner.dnsConfig` | object | DNSConfig for bloom-planner pods | `{}` |
@@ -354,6 +361,8 @@ Configuration for the bloom-planner
 | `bloomPlanner.image.repository` | string | Docker image repository for the bloom-planner image. Overrides `loki.image.repository` | `nil` |
 | `bloomPlanner.image.tag` | string | Docker image tag for the bloom-planner image. Overrides `loki.image.tag` | `nil` |
 | `bloomPlanner.initContainers` | list | Init containers to add to the bloom-planner pods | `[]` |
+| `bloomPlanner.kind` | string | Kind of compactor deployment. StatefulSet and Deployment are supported. | `"StatefulSet"` |
+| `bloomPlanner.labels` | object | Labels for bloom-builder | `{}` |
 | `bloomPlanner.livenessProbe` | object | liveness probe settings for bloom-planner pods. If empty use `loki.livenessProbe` | `{}` |
 | `bloomPlanner.nodeSelector` | object | Node selector for bloom-planner pods | `{}` |
 | `bloomPlanner.persistence.claims` | list | List of the bloom-planner PVCs |  |
@@ -372,6 +381,7 @@ Configuration for the bloom-planner
 | `bloomPlanner.podDisruptionBudget.minAvailable` | string | Pod Disruption Budget minAvailable | `nil` |
 | `bloomPlanner.podDisruptionBudget.unhealthyPodEvictionPolicy` | string | Pod Disruption Budget unhealthyPodEvictionPolicy | `nil` |
 | `bloomPlanner.podLabels` | object | Labels for bloom-planner pods | `{}` |
+| `bloomPlanner.podManagementPolicy` | string | The default is to deploy all pods in parallel. | `"Parallel"` |
 | `bloomPlanner.priorityClassName` | string | The name of the PriorityClass for bloom-planner pods | `nil` |
 | `bloomPlanner.readinessProbe` | object | readiness probe settings for bloom-planner pods. If empty, use `loki.readinessProbe` | `{}` |
 | `bloomPlanner.replicas` | int | Number of replicas for the bloom-planner | `0` |
@@ -395,6 +405,8 @@ Configuration for the bloom-planner
 | `bloomPlanner.serviceAnnotations` | object | Annotations for bloom-planner service @deprecated -- This option is deprecated in favor of `bloomPlanner.service.annotations` | `{}` |
 | `bloomPlanner.serviceLabels` | object | Labels for bloom-planner service @deprecated -- This option is deprecated in favor of `bloomPlanner.service.labels` | `{}` |
 | `bloomPlanner.startupProbe` | object | startup probe settings for bloom-planner pods. If empty use `loki.startupProbe` | `{}` |
+| `bloomPlanner.statefulSetRecreateJob` | object | Enable creating a Job to recreate the StatefulSet when the StatefulSet configuration is changed. # Only applicable if `compactor.kind` is StatefulSet. Useful for PVC size changes, which require recreating the StatefulSet. | `{"enabled":false}` |
+| `bloomPlanner.strategy` | object | UpdateStrategy or Strategy for the pattern ingester. | `{"rollingUpdate":{"partition":0}}` |
 | `bloomPlanner.terminationGracePeriodSeconds` | int | Grace period to allow the bloom-planner to shutdown before it is killed | `30` |
 | `bloomPlanner.tolerations` | list | Tolerations for bloom-planner pods | `[]` |
 
@@ -445,7 +457,7 @@ Configuration for the Memcached-based chunks-cache, which caches the log chunks 
 | `chunksCache.l2.parallelism` | int | Parallel threads for sending and receiving chunks from chunks cache | `5` |
 | `chunksCache.l2.persistence.enabled` | bool | Enable creating PVCs for the chunks-cache-l2 | `false` |
 | `chunksCache.l2.persistence.mountPath` | string | Volume mount path | `"/data"` |
-| `chunksCache.l2.persistence.storageClass` | string | Storage class to be used. If defined, storageClassName: <storageClass>. If set to "-", storageClassName: "", which disables dynamic provisioning. If empty or set to null, no storageClassName spec is set, choosing the default provisioner (gp2 on AWS, standard on GKE, AWS, and OpenStack). | `nil` |
+| `chunksCache.l2.persistence.storageClass` | string | Storage class to be used. If defined, storageClassName: &lt;storageClass&gt;. If set to "-", storageClassName: "", which disables dynamic provisioning. If empty or set to null, no storageClassName spec is set, choosing the default provisioner (gp2 on AWS, standard on GKE, AWS, and OpenStack). | `nil` |
 | `chunksCache.l2.persistence.storageSize` | string | Size of persistent disk, must be in G or Gi | `"10G"` |
 | `chunksCache.l2.persistence.volumeAttributesClassName` | string | Volume attributes class name to be used. If empty or set to null, no volumeAttributesClassName spec is set. Requires Kubernetes 1.31 | `nil` |
 | `chunksCache.l2.podAnnotations` | object | Annotations for chunks-cache-l2 pods | `{}` |
@@ -475,7 +487,7 @@ Configuration for the Memcached-based chunks-cache, which caches the log chunks 
 | `chunksCache.parallelism` | int | Parallel threads for sending and receiving chunks from chunks cache | `5` |
 | `chunksCache.persistence.enabled` | bool | Enable creating PVCs for the chunks-cache | `false` |
 | `chunksCache.persistence.mountPath` | string | Volume mount path | `"/data"` |
-| `chunksCache.persistence.storageClass` | string | Storage class to be used. If defined, storageClassName: <storageClass>. If set to "-", storageClassName: "", which disables dynamic provisioning. If empty or set to null, no storageClassName spec is set, choosing the default provisioner (gp2 on AWS, standard on GKE, AWS, and OpenStack). | `nil` |
+| `chunksCache.persistence.storageClass` | string | Storage class to be used. If defined, storageClassName: &lt;storageClass&gt;. If set to "-", storageClassName: "", which disables dynamic provisioning. If empty or set to null, no storageClassName spec is set, choosing the default provisioner (gp2 on AWS, standard on GKE, AWS, and OpenStack). | `nil` |
 | `chunksCache.persistence.storageSize` | string | Size of persistent disk, must be in G or Gi | `"10G"` |
 | `chunksCache.persistence.volumeAttributesClassName` | string | Volume attributes class name to be used. If empty or set to null, no volumeAttributesClassName spec is set. Requires Kubernetes 1.31 | `nil` |
 | `chunksCache.podAnnotations` | object | Annotations for chunks-cache pods | `{}` |
@@ -544,7 +556,7 @@ Configuration for the compactor
 | `compactor.persistence.labels` | object | Labels for the generated volumeClaimTemplate. | `{}` |
 | `compactor.persistence.selector` | string | Selector for the generated volumeClaimTemplate. | `nil` |
 | `compactor.persistence.size` | string | Size of persistent disk | `"10Gi"` |
-| `compactor.persistence.storageClass` | string | Storage class to be used. If defined, storageClassName: <storageClass>. If set to "-", storageClassName: "", which disables dynamic provisioning. If empty or set to null, no storageClassName spec is set, choosing the default provisioner (gp2 on AWS, standard on GKE, AWS, and OpenStack). | `nil` |
+| `compactor.persistence.storageClass` | string | Storage class to be used. If defined, storageClassName: &lt;storageClass&gt;. If set to "-", storageClassName: "", which disables dynamic provisioning. If empty or set to null, no storageClassName spec is set, choosing the default provisioner (gp2 on AWS, standard on GKE, AWS, and OpenStack). | `nil` |
 | `compactor.persistence.type` | string | Storage type for the compactor. pvc and ephemeral are supported. | `"pvc"` |
 | `compactor.persistence.volumeAttributesClassName` | string | Volume attributes class name to be used. If empty or set to null, no volumeAttributesClassName spec is set. Requires Kubernetes 1.31 | `nil` |
 | `compactor.podAnnotations` | object | Annotations for compactor pods | `{}` |
@@ -619,12 +631,13 @@ Default settings applied to the Loki components only. Not applied to loki-canary
 | `defaults.service.ipFamilies` | list | ipFamilies for all services Ref: https://kubernetes.io/docs/concepts/services-networking/dual-stack/#services | `[]` |
 | `defaults.service.ipFamilyPolicy` | string | ipFamilyPolicy for all services Ref: https://kubernetes.io/docs/concepts/services-networking/dual-stack/#services | `""` |
 | `defaults.service.labels` | object | Common labels for all services | `{}` |
+| `defaults.service.publishNotReadyAddresses` | bool | publishNotReadyAddresses for all services. Set to false so a pod's Service endpoint is withdrawn as soon as it becomes unready, instead of staying routable for the full termination window. Overridable per component via &lt;component&gt;.service.publishNotReadyAddresses. | `true` |
 | `defaults.service.trafficDistribution` | string | trafficDistribution for services Ref: https://kubernetes.io/docs/concepts/services-networking/service/#traffic-distribution | `""` |
 | `defaults.startupProbe` | object | Configures the startup probe for loki pods | `{}` |
 | `defaults.statefulSetRecreateJob.image.registry` | string |  | `"registry.k8s.io"` |
 | `defaults.statefulSetRecreateJob.image.repository` | string |  | `"kubectl"` |
 | `defaults.statefulSetRecreateJob.image.tag` | string | Overrides the image tag. Defaults to .Capabilities.KubeVersion.Version | `""` |
-| `defaults.statefulSetRecreateJob.patchPVC` | bool | Enable the PVC resize job for statefulsets. This job will be triggered when the storage size is increased and will recreate the statefulset to allow resizing of PVCs, which is not natively supported by Kubernetes. | `true` |
+| `defaults.statefulSetRecreateJob.patchPVC` | bool | When a component sets `*.statefulSetRecreateJob.enabled`, the pre-upgrade Job can patch PVC storage requests and recreate the StatefulSet for podManagementPolicy, serviceName, or volumeClaimTemplates count/name/size changes. It does not migrate storageClass, accessModes, selectors, or VCT labels. See the chart README section StatefulSet immutability. | `true` |
 | `defaults.terminationGracePeriodSeconds` | int | Grace period to allow the gateway to shutdown before it is killed | `30` |
 | `defaults.tolerations` | list | Tolerations for loki pods | `[]` |
 
@@ -750,7 +763,7 @@ Configuration for the gateway, an NGINX reverse proxy that routes incoming read 
 | `gateway.ingress.annotations` | object | Annotations for the gateway ingress | `{}` |
 | `gateway.ingress.enabled` | bool | Specifies whether an ingress for the gateway should be created | `false` |
 | `gateway.ingress.hosts` | list | Hosts configuration for the gateway ingress, passed through the `tpl` function to allow templating | `[{"host":"gateway.loki.example.com","paths":[{"path":"/"}]}]` |
-| `gateway.ingress.ingressClassName` | string | Ingress Class Name. MAY be required for Kubernetes versions >= 1.18 | `""` |
+| `gateway.ingress.ingressClassName` | string | Ingress Class Name. MAY be required for Kubernetes versions &gt;= 1.18 | `""` |
 | `gateway.ingress.labels` | object | Labels for the gateway ingress | `{}` |
 | `gateway.ingress.tls` | list | TLS configuration for the gateway ingress. Hosts passed through the `tpl` function to allow templating | `[{"hosts":["gateway.loki.example.com"],"secretName":"loki-gateway-tls"}]` |
 | `gateway.kedaAutoscaling.behavior` | object | Behavior configuration for KEDA ScaledObject (horizontalPodAutoscalerConfig.behavior). Ref: https://keda.sh/docs/latest/reference/scaledobject-spec/#advanced | `{}` |
@@ -769,7 +782,7 @@ Configuration for the gateway, an NGINX reverse proxy that routes incoming read 
 | `gateway.metrics.image.pullPolicy` | string |  | `"IfNotPresent"` |
 | `gateway.metrics.image.registry` | string |  | `"ghcr.io"` |
 | `gateway.metrics.image.repository` | string |  | `"jkroepke/access-log-exporter"` |
-| `gateway.metrics.image.tag` | string |  | `"0.4.4"` |
+| `gateway.metrics.image.tag` | string |  | `"0.4.13"` |
 | `gateway.metrics.livenessProbe` | object | Liveness probe for memcached exporter | `{"failureThreshold":3,"httpGet":{"path":"/health","port":"http-metrics"},"initialDelaySeconds":30,"periodSeconds":10,"timeoutSeconds":5}` |
 | `gateway.metrics.readinessProbe` | object | Readiness probe for memcached exporter | `{"failureThreshold":3,"httpGet":{"path":"/health","port":"http-metrics"},"initialDelaySeconds":5,"periodSeconds":5,"timeoutSeconds":3}` |
 | `gateway.metrics.resizePolicy` | list | Container resize policy for the gateway metrics exporter Example: resizePolicy: - resourceName: cpu restartPolicy: NotRequired - resourceName: memory restartPolicy: RestartContainer | `[]` |
@@ -786,7 +799,7 @@ Configuration for the gateway, an NGINX reverse proxy that routes incoming read 
 | `gateway.nginxConfig.file` | string | Config file contents for Nginx. Passed through the `tpl` function to allow templating | `See values.yaml` |
 | `gateway.nginxConfig.httpSnippet` | string | Allows appending custom configuration to the http block, passed through the `tpl` function to allow templating | `""` |
 | `gateway.nginxConfig.locationSnippet` | string | Allows appending custom configuration inside every location block, useful for authentication or setting headers that are not inherited from the server block, passed through the `tpl` function to allow templating. | `"{{ if .Values.loki.tenants }}proxy_set_header X-Scope-OrgID $remote_user;{{ end }}"` |
-| `gateway.nginxConfig.logFormat` | string | NGINX log format | `"main '$remote_addr - $remote_user [$time_local] $status '\n '\"$request\" $body_bytes_sent \"$http_referer\" '\n '\"$http_user_agent\" \"$http_x_forwarded_for\"';"` |
+| `gateway.nginxConfig.logFormat` | string | NGINX log format | `"main '$remote_addr - $remote_user [$time_local]  $status '\n        '\"$request\" $body_bytes_sent \"$http_referer\" '\n        '\"$http_user_agent\" \"$http_x_forwarded_for\"';"` |
 | `gateway.nginxConfig.resolver` | string | Allows overriding the DNS resolver address nginx will use. | `""` |
 | `gateway.nginxConfig.schema` | string | Which schema to be used when building URLs. Can be 'http' or 'https'. | `"http"` |
 | `gateway.nginxConfig.serverSnippet` | string | Allows appending custom configuration to the server block | `""` |
@@ -898,7 +911,7 @@ Configuration for the index-gateway
 | `indexGateway.persistence.enabled` | bool | Enable creating PVCs which is required when using boltdb-shipper | `false` |
 | `indexGateway.persistence.labels` | object | Labels for index gateway PVCs | `{}` |
 | `indexGateway.persistence.size` | string | Size of persistent disk | `"10Gi"` |
-| `indexGateway.persistence.storageClass` | string | Storage class to be used. If defined, storageClassName: <storageClass>. If set to "-", storageClassName: "", which disables dynamic provisioning. If empty or set to null, no storageClassName spec is set, choosing the default provisioner (gp2 on AWS, standard on GKE, AWS, and OpenStack). | `nil` |
+| `indexGateway.persistence.storageClass` | string | Storage class to be used. If defined, storageClassName: &lt;storageClass&gt;. If set to "-", storageClassName: "", which disables dynamic provisioning. If empty or set to null, no storageClassName spec is set, choosing the default provisioner (gp2 on AWS, standard on GKE, AWS, and OpenStack). | `nil` |
 | `indexGateway.persistence.volumeAttributesClassName` | string | Volume attributes class name to be used. If empty or set to null, no volumeAttributesClassName spec is set. Requires Kubernetes 1.31 | `nil` |
 | `indexGateway.podAnnotations` | object | Annotations for index-gateway pods | `{}` |
 | `indexGateway.podDisruptionBudget.annotations` | object | Annotations for Pod Disruption Budget | `{}` |
@@ -985,7 +998,7 @@ Configuration for the ingester
 | `ingester.nodeSelector` | object | Node selector for ingester pods | `{}` |
 | `ingester.persistence.claims` | list | List of the ingester PVCs |  |
 | `ingester.persistence.claims[0].accessModes` | list | Set access modes on the PersistentVolumeClaim | `["ReadWriteOnce"]` |
-| `ingester.persistence.claims[0].storageClass` | string | Storage class to be used. If defined, storageClassName: <storageClass>. If set to "-", storageClassName: "", which disables dynamic provisioning. If empty or set to null, no storageClassName spec is set, choosing the default provisioner (gp2 on AWS, standard on GKE, AWS, and OpenStack). | `nil` |
+| `ingester.persistence.claims[0].storageClass` | string | Storage class to be used. If defined, storageClassName: &lt;storageClass&gt;. If set to "-", storageClassName: "", which disables dynamic provisioning. If empty or set to null, no storageClassName spec is set, choosing the default provisioner (gp2 on AWS, standard on GKE, AWS, and OpenStack). | `nil` |
 | `ingester.persistence.claims[0].volumeAttributesClassName` | string | Volume attributes class name to be used. If empty or set to null, no volumeAttributesClassName spec is set. Requires Kubernetes 1.31 | `nil` |
 | `ingester.persistence.enableStatefulSetAutoDeletePVC` | bool | Enable StatefulSetAutoDeletePVC feature | `false` |
 | `ingester.persistence.enabled` | bool | Enable creating PVCs which is required when using boltdb-shipper | `false` |
@@ -997,7 +1010,7 @@ Configuration for the ingester
 | `ingester.podDisruptionBudget.maxUnavailable` | string | Pod Disruption Budget maxUnavailable | `nil` |
 | `ingester.podDisruptionBudget.minAvailable` | string | Pod Disruption Budget minAvailable | `nil` |
 | `ingester.podDisruptionBudget.unhealthyPodEvictionPolicy` | string | Pod Disruption Budget unhealthyPodEvictionPolicy | `nil` |
-| `ingester.podLabels` | object | Labels for ingester pods | `{}` |
+| `ingester.podLabels` | object | Labels for ingester pods. Keys used by the workload selectors (`app.kubernetes.io/name`, `app.kubernetes.io/instance`, `app.kubernetes.io/component` and, with zoneAwareReplication, `name` and `rollout-group`) are reserved and ignored here: the latter are also used by the per-zone headless Services and grafana/rollout-operator. | `{}` |
 | `ingester.podManagementPolicy` | string | PodManagementPolicy for the ingester StatefulSet. Only applicable if `compactor.kind` is StatefulSet. # OrderedReady and Parallel are supported. | `"Parallel"` |
 | `ingester.priorityClassName` | string | The name of the PriorityClass for ingester pods | `nil` |
 | `ingester.readinessProbe` | object | readiness probe settings for ingester pods. If empty, use `loki.readinessProbe` | `{}` |
@@ -1114,7 +1127,7 @@ Configuration for running Loki
 | `loki.storage.s3.backoff_config` | object | Check https://grafana.com/docs/loki/latest/configure/#s3_storage_config for more info on how to provide a backoff_config | `{}` |
 | `loki.storage_config` | object | Additional storage config | `{"bloom_shipper":{"working_directory":"/var/loki/data/bloomshipper"},"boltdb_shipper":{"index_gateway_client":{"server_address":"{{ include \"loki.indexGatewayAddress\" . }}"}},"hedging":{"at":"250ms","max_per_second":20,"up_to":3},"tsdb_shipper":{"index_gateway_client":{"server_address":"{{ include \"loki.indexGatewayAddress\" . }}"}}}` |
 | `loki.structuredConfig` | object | Structured loki configuration, takes precedence over `loki.config`, `loki.schemaConfig`, `loki.storageConfig` | `{}` |
-| `loki.tenants` | list | Tenants list to be created on nginx htpasswd file, with name and password or passwordHash keys<br><br> Example: <pre> tenants:<br> - name: "test-user-1"<br> password: "test-password-1"<br> - name: "test-user-2"<br> passwordHash: "$2y$10$7O40CaY1yz7fu9O24k2/u.ct/wELYHRBsn25v/7AyuQ8E8hrLqpva" # generated using `htpasswd -nbBC10 test-user-2 test-password-2` </pre> | `[]` |
+| `loki.tenants` | list | Tenants list to be created on nginx htpasswd file, with name and password or passwordHash keys&lt;br&gt;&lt;br&gt; Example: &lt;pre&gt; tenants:&lt;br&gt; - name: "test-user-1"&lt;br&gt; password: "test-password-1"&lt;br&gt; - name: "test-user-2"&lt;br&gt; passwordHash: "$2y$10$7O40CaY1yz7fu9O24k2/u.ct/wELYHRBsn25v/7AyuQ8E8hrLqpva" # generated using `htpasswd -nbBC10 test-user-2 test-password-2` &lt;/pre&gt; | `[]` |
 | `loki.tracing` | object | Enable tracing | `{"enabled":false}` |
 | `loki.ui` | object | Optional Loki UI: Provides access to a operators UI for Loki distributed. When enabled UI will be available at /ui/ of loki-gateway | `{"enabled":false,"gateway":{"enabled":true}}` |
 | `loki.useTestSchema` | bool | a real Loki install requires a proper schemaConfig defined above this, however for testing or playing around you can enable useTestSchema | `false` |
@@ -1196,8 +1209,9 @@ Common configuration shared by the Memcached deployments backing Loki's caches. 
 | `memcached.containerSecurityContext` | object | The SecurityContext for memcached containers | `{"allowPrivilegeEscalation":false,"capabilities":{"drop":["ALL"]},"readOnlyRootFilesystem":true,"runAsNonRoot":true,"seccompProfile":{"type":"RuntimeDefault"}}` |
 | `memcached.enabled` | bool | Enable the built in memcached server provided by the chart | `true` |
 | `memcached.image.pullPolicy` | string | Memcached Docker image pull policy | `"IfNotPresent"` |
-| `memcached.image.repository` | string | Memcached Docker image repository | `"memcached"` |
-| `memcached.image.tag` | string | Memcached Docker image tag | `"1.6.42-alpine"` |
+| `memcached.image.registry` | string | Memcached Docker image registry | `"docker.io"` |
+| `memcached.image.repository` | string | Memcached Docker image repository | `"library/memcached"` |
+| `memcached.image.tag` | string | Memcached Docker image tag | `"1.6.45-alpine"` |
 | `memcached.livenessProbe` | object | Liveness probe for memcached pods | `{"failureThreshold":3,"initialDelaySeconds":30,"periodSeconds":10,"tcpSocket":{"port":"client"},"timeoutSeconds":5}` |
 | `memcached.podSecurityContext` | object | The SecurityContext override for memcached pods | `{"fsGroup":11211,"runAsGroup":11211,"runAsNonRoot":true,"runAsUser":11211,"seccompProfile":{"type":"RuntimeDefault"}}` |
 | `memcached.priorityClassName` | string | The name of the PriorityClass for memcached pods | `nil` |
@@ -1219,9 +1233,10 @@ Configuration for the Prometheus Memcached exporter sidecar that exposes cache m
 | `memcachedExporter.containerSecurityContext` | object | The SecurityContext for memcached exporter containers | `{"allowPrivilegeEscalation":false,"capabilities":{"drop":["ALL"]},"readOnlyRootFilesystem":true,"runAsNonRoot":true,"seccompProfile":{"type":"RuntimeDefault"}}` |
 | `memcachedExporter.enabled` | bool | Whether memcached metrics should be exported | `true` |
 | `memcachedExporter.extraArgs` | object | Extra args to add to the exporter container. Example: extraArgs: memcached.tls.enable: true memcached.tls.cert-file: /certs/cert.crt memcached.tls.key-file: /certs/cert.key memcached.tls.ca-file: /certs/ca.crt memcached.tls.insecure-skip-verify: false memcached.tls.server-name: memcached | `{}` |
-| `memcachedExporter.image.pullPolicy` | string |  | `"IfNotPresent"` |
-| `memcachedExporter.image.repository` | string |  | `"prom/memcached-exporter"` |
-| `memcachedExporter.image.tag` | string |  | `"v0.16.0"` |
+| `memcachedExporter.image.pullPolicy` | string | Memcached exporter Docker image pull policy | `"IfNotPresent"` |
+| `memcachedExporter.image.registry` | string | Memcached exporter Docker image registry | `"docker.io"` |
+| `memcachedExporter.image.repository` | string | Memcached exporter Docker image repository | `"prom/memcached-exporter"` |
+| `memcachedExporter.image.tag` | string | Memcached exporter Docker image tag | `"v0.17.0"` |
 | `memcachedExporter.livenessProbe` | object | Liveness probe for memcached exporter | `{"failureThreshold":3,"httpGet":{"path":"/metrics","port":"http-metrics"},"initialDelaySeconds":30,"periodSeconds":10,"timeoutSeconds":5}` |
 | `memcachedExporter.readinessProbe` | object | Readiness probe for memcached exporter | `{"failureThreshold":3,"httpGet":{"path":"/metrics","port":"http-metrics"},"initialDelaySeconds":5,"periodSeconds":5,"timeoutSeconds":3}` |
 | `memcachedExporter.resizePolicy` | list | Container resize policy for the memcached exporter Example: resizePolicy: - resourceName: cpu restartPolicy: NotRequired - resourceName: memory restartPolicy: RestartContainer | `[]` |
@@ -1266,6 +1281,7 @@ Monitoring section determines which monitoring features to enable
 | `monitoring.dashboards.grafanaOperator.folder` | string | Which folder contains all dashboards in Grafana # This folder will be created on the Root level # Only one of 'folder', 'folderUID' or 'folderRef' can be set # | `"General"` |
 | `monitoring.dashboards.grafanaOperator.folderRef` | string | Which GrafanaFolder reference contains all dashboards in Grafana # This allows you to use subfolder hierarchy. # Only one of 'folder', 'folderUID' or 'folderRef' can be set # | `nil` |
 | `monitoring.dashboards.grafanaOperator.folderUID` | string | Which UID of the target folder contains all dashboards in Grafana # This allows you to use subfolder hierarchy # Only one of 'folder', 'folderUID' or 'folderRef' can be set # | `nil` |
+| `monitoring.dashboards.grafanaOperator.instanceSelector` | object | instanceSelector for the GrafanaDashboard resources # The grafana-operator matches this against the labels on your Grafana CR # An empty selector (the default) matches every Grafana instance | `{}` |
 | `monitoring.dashboards.grafanaOperator.labels` | object | Additional labels for the GrafanaOperator resources | `{}` |
 | `monitoring.dashboards.grafanaOperator.resyncPeriod` | string | How frequently the operator should resync resources (in duration format) | `"10m"` |
 | `monitoring.dashboards.labels` | object | Labels for the dashboards ConfigMap resources | `{"grafana_dashboard":"1"}` |
@@ -1408,7 +1424,7 @@ Configuration for the pattern ingester
 | `patternIngester.persistence.enableStatefulSetAutoDeletePVC` | bool | Enable StatefulSetAutoDeletePVC feature | `false` |
 | `patternIngester.persistence.enabled` | bool | Enable creating PVCs for the pattern ingester | `false` |
 | `patternIngester.persistence.size` | string | Size of persistent disk | `"10Gi"` |
-| `patternIngester.persistence.storageClass` | string | Storage class to be used. If defined, storageClassName: <storageClass>. If set to "-", storageClassName: "", which disables dynamic provisioning. If empty or set to null, no storageClassName spec is set, choosing the default provisioner (gp2 on AWS, standard on GKE, AWS, and OpenStack). | `nil` |
+| `patternIngester.persistence.storageClass` | string | Storage class to be used. If defined, storageClassName: &lt;storageClass&gt;. If set to "-", storageClassName: "", which disables dynamic provisioning. If empty or set to null, no storageClassName spec is set, choosing the default provisioner (gp2 on AWS, standard on GKE, AWS, and OpenStack). | `nil` |
 | `patternIngester.podAnnotations` | object | Annotations for pattern ingester pods | `{}` |
 | `patternIngester.podDisruptionBudget.annotations` | object | Annotations for Pod Disruption Budget | `{}` |
 | `patternIngester.podDisruptionBudget.enabled` | bool | Enable Pod Disruption Budget | `true` |
@@ -1771,7 +1787,7 @@ Configuration for the Memcached-based results-cache, which caches query results 
 | `resultsCache.persistence.enabled` | bool | Enable creating PVCs for the results-cache | `false` |
 | `resultsCache.persistence.labels` | object | PVC additional labels | `{}` |
 | `resultsCache.persistence.mountPath` | string | Volume mount path | `"/data"` |
-| `resultsCache.persistence.storageClass` | string | Storage class to be used. If defined, storageClassName: <storageClass>. If set to "-", storageClassName: "", which disables dynamic provisioning. If empty or set to null, no storageClassName spec is set, choosing the default provisioner (gp2 on AWS, standard on GKE, AWS, and OpenStack). | `nil` |
+| `resultsCache.persistence.storageClass` | string | Storage class to be used. If defined, storageClassName: &lt;storageClass&gt;. If set to "-", storageClassName: "", which disables dynamic provisioning. If empty or set to null, no storageClassName spec is set, choosing the default provisioner (gp2 on AWS, standard on GKE, AWS, and OpenStack). | `nil` |
 | `resultsCache.persistence.storageSize` | string | Size of persistent disk, must be in G or Gi | `"10G"` |
 | `resultsCache.persistence.volumeAttributesClassName` | string | Volume attributes class name to be used. If empty or set to null, no volumeAttributesClassName spec is set. Requires Kubernetes 1.31 | `nil` |
 | `resultsCache.podAnnotations` | object | Annotations for results-cache pods | `{}` |
@@ -1863,7 +1879,7 @@ Configuration for the ruler
 | `ruler.persistence.enabled` | bool | Enable creating PVCs which is required when using recording rules | `false` |
 | `ruler.persistence.labels` | object | Labels for ruler PVCs | `{}` |
 | `ruler.persistence.size` | string | Size of persistent disk | `"10Gi"` |
-| `ruler.persistence.storageClass` | string | Storage class to be used. If defined, storageClassName: <storageClass>. If set to "-", storageClassName: "", which disables dynamic provisioning. If empty or set to null, no storageClassName spec is set, choosing the default provisioner (gp2 on AWS, standard on GKE, AWS, and OpenStack). | `nil` |
+| `ruler.persistence.storageClass` | string | Storage class to be used. If defined, storageClassName: &lt;storageClass&gt;. If set to "-", storageClassName: "", which disables dynamic provisioning. If empty or set to null, no storageClassName spec is set, choosing the default provisioner (gp2 on AWS, standard on GKE, AWS, and OpenStack). | `nil` |
 | `ruler.persistence.volumeAttributesClassName` | string | Volume attributes class name to be used. If empty or set to null, no volumeAttributesClassName spec is set. Requires Kubernetes 1.31 | `nil` |
 | `ruler.podAnnotations` | object | Annotations for ruler pods | `{}` |
 | `ruler.podDisruptionBudget.annotations` | object | Annotations for Pod Disruption Budget | `{}` |
@@ -1924,7 +1940,7 @@ Configuration for the k8s-sidecar container that watches for ConfigMaps and Secr
 | `sidecar.image.registry` | string |  | `"docker.io"` |
 | `sidecar.image.repository` | string | The Docker registry and image for the k8s sidecar | `"kiwigrid/k8s-sidecar"` |
 | `sidecar.image.sha` | string | Docker image sha. If empty, no sha will be used | `""` |
-| `sidecar.image.tag` | string | Docker image tag | `"2.8.0"` |
+| `sidecar.image.tag` | string | Docker image tag | `"2.11.2"` |
 | `sidecar.livenessProbe` | object | Liveness probe definition. | `{"enabled":true,"failureThreshold":3,"httpGet":{"path":"/healthz","port":"http-sidecar"},"initialDelaySeconds":30,"periodSeconds":30,"successThreshold":1,"timeoutSeconds":1}` |
 | `sidecar.readinessProbe` | object | Readiness probe definition. | `{"enabled":true,"failureThreshold":3,"httpGet":{"path":"/healthz","port":"http-sidecar"},"initialDelaySeconds":3,"periodSeconds":10,"successThreshold":1,"timeoutSeconds":1}` |
 | `sidecar.resizePolicy` | list | Container resize policy for the sidecar Example: resizePolicy: - resourceName: cpu restartPolicy: NotRequired - resourceName: memory restartPolicy: RestartContainer | `[]` |
@@ -1995,7 +2011,7 @@ Configuration for the single binary node(s) used in Monolithic deployment mode, 
 | `singleBinary.persistence.labels` | object | Labels for volume claim | `{}` |
 | `singleBinary.persistence.selector` | string | Selector for persistent disk | `nil` |
 | `singleBinary.persistence.size` | string | Size of persistent disk | `"10Gi"` |
-| `singleBinary.persistence.storageClass` | string | Storage class to be used. If defined, storageClassName: <storageClass>. If set to "-", storageClassName: "", which disables dynamic provisioning. If empty or set to null, no storageClassName spec is set, choosing the default provisioner (gp2 on AWS, standard on GKE, AWS, and OpenStack). | `nil` |
+| `singleBinary.persistence.storageClass` | string | Storage class to be used. If defined, storageClassName: &lt;storageClass&gt;. If set to "-", storageClassName: "", which disables dynamic provisioning. If empty or set to null, no storageClassName spec is set, choosing the default provisioner (gp2 on AWS, standard on GKE, AWS, and OpenStack). | `nil` |
 | `singleBinary.persistence.whenDeleted` | string | What to do with the volumes when the StatefulSet is deleted. | `"Delete"` |
 | `singleBinary.persistence.whenScaled` | string | What to do with the volume when the StatefulSet is scaled down. | `"Delete"` |
 | `singleBinary.podAnnotations` | object | Annotations for single binary pods | `{}` |
@@ -2143,9 +2159,11 @@ Configuration for the write pod(s) in SimpleScalable mode, which run the distrib
 | `write.persistence.labels` | object | Labels for volume claim | `{}` |
 | `write.persistence.selector` | string | Selector for persistent disk | `nil` |
 | `write.persistence.size` | string | Size of persistent disk | `"10Gi"` |
-| `write.persistence.storageClass` | string | Storage class to be used. If defined, storageClassName: <storageClass>. If set to "-", storageClassName: "", which disables dynamic provisioning. If empty or set to null, no storageClassName spec is set, choosing the default provisioner (gp2 on AWS, standard on GKE, AWS, and OpenStack). | `nil` |
+| `write.persistence.storageClass` | string | Storage class to be used. If defined, storageClassName: &lt;storageClass&gt;. If set to "-", storageClassName: "", which disables dynamic provisioning. If empty or set to null, no storageClassName spec is set, choosing the default provisioner (gp2 on AWS, standard on GKE, AWS, and OpenStack). | `nil` |
 | `write.persistence.volumeAttributesClassName` | string | Volume attributes class name to be used. If empty or set to null, no volumeAttributesClassName spec is set. Requires Kubernetes 1.31 | `nil` |
 | `write.persistence.volumeClaimsEnabled` | bool | Enable volume claims in pod spec | `true` |
+| `write.persistence.whenDeleted` | string | What to do with the volumes when the StatefulSet is deleted. | `"Delete"` |
+| `write.persistence.whenScaled` | string | What to do with the volume when the StatefulSet is scaled down. | `"Delete"` |
 | `write.podAnnotations` | object | Annotations for write pods | `{}` |
 | `write.podDisruptionBudget.annotations` | object | Annotations for Pod Disruption Budget | `{}` |
 | `write.podDisruptionBudget.enabled` | bool | Enable Pod Disruption Budget | `true` |

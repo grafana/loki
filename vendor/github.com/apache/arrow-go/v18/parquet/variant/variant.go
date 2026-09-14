@@ -231,6 +231,25 @@ func (m Metadata) OffsetSize() uint8 {
 // DictionarySize returns the number of keys in the metadata dictionary.
 func (m Metadata) DictionarySize() uint32 { return uint32(len(m.keys)) }
 
+// SizeBytes returns the metadata's own byte length, so a caller can split a
+// buffer that stores metadata concatenated with a value at data[m.SizeBytes():].
+func (m Metadata) SizeBytes() int {
+	offsetSz := uint32(m.OffsetSize())
+	if uint32(len(m.data)) < uint32(hdrSizeBytes)+offsetSz {
+		return len(m.data)
+	}
+
+	dictSize := readLEU32(m.data[hdrSizeBytes : uint32(hdrSizeBytes)+offsetSz])
+	// Final offset (index dictSize) is the string-region length; it starts at valuesStart.
+	lastOffsetPos := uint32(hdrSizeBytes) + offsetSz*(1+dictSize)
+	valuesStart := lastOffsetPos + offsetSz
+	if valuesStart > uint32(len(m.data)) {
+		return len(m.data)
+	}
+
+	return int(valuesStart + readLEU32(m.data[lastOffsetPos:valuesStart]))
+}
+
 // KeyAt returns the string key at the given dictionary ID.
 // Returns an error if the ID is out of range.
 func (m Metadata) KeyAt(id uint32) (string, error) {
@@ -405,7 +424,7 @@ func (v ObjectValue) ValueByKey(key string) (ObjectField, error) {
 				Key:   key,
 				Value: Value{value: v.value[v.dataStart+offset:], meta: v.meta}}, nil
 		case 1:
-			j = mid - 1
+			j = mid
 		}
 	}
 

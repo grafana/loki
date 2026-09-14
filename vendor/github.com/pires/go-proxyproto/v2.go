@@ -11,13 +11,21 @@ import (
 	"net"
 )
 
-// maxV2HeaderSize is the maximum acceptable size of a V2 header.
+// MaxV2HeaderSize is the maximum accepted value of a v2 header's 16-bit length
+// field, i.e. the number of bytes following the fixed 16-byte prefix (address
+// block plus TLVs).
 //
-// A V2 header may be at most 16 bytes + 64KiB large. We enforce a lower limit
-// to mitigate memory allocation DoS while allowing real-world legitimate
-// headers. PP2_SUBTYPE_SSL_CLIENT_CERT is typically between 1 and 2KiB, so we
-// use a 4KiB limit to leave some room for other TLVs.
-const maxV2HeaderSize = 4096
+// The spec allows up to 65535, but parseVersion2 allocates this many bytes
+// before reading, so a lower limit mitigates memory-allocation DoS from
+// untrusted peers while allowing real-world legitimate headers.
+// PP2_SUBTYPE_SSL_CLIENT_CERT (a DER-encoded certificate) is typically between
+// 1 and 2KiB, so the 4KiB default leaves room for other TLVs; deployments
+// expecting larger headers may raise it.
+//
+// Like DefaultReadHeaderTimeout, this is a package-level variable to keep it
+// easy to override. Set it at program init; it must not be modified
+// concurrently with parsing.
+var MaxV2HeaderSize uint16 = 4096
 
 var (
 	lengthUnspec      = uint16(0)
@@ -97,7 +105,24 @@ func parseVersion2(reader *bufio.Reader) (header *Header, err error) {
 		return nil, fmt.Errorf("%w: %w", ErrCantReadAddressFamilyAndProtocol, err)
 	}
 	header.TransportProtocol = AddressFamilyAndProtocol(b14)
-	// UNSPEC is only supported when LOCAL is set.
+	// Per spec (section 2.2) only the listed address family / transport protocol
+	// combinations are defined; "other values are unspecified and must not be
+	// emitted in version 2 of this protocol and must be rejected as invalid by
+	// receivers". That mandate has no command carve-out, so it applies to LOCAL
+	// too: the family byte is ignored when interpreting a LOCAL address block,
+	// but an undefined byte still makes the frame invalid. Rejecting bytes that
+	// share a known family with an undefined transport — e.g. 0x13 (IPv4
+	// family, transport 3) — also matters for PROXY: such a byte passes the
+	// IsIPv4/IsIPv6 checks below, has an address struct read for it, and then
+	// yields a nil net.Addr from newIPAddr. That nil is stored as
+	// SourceAddr/DestinationAddr and panics any caller that does
+	// RemoteAddr().String() (e.g. logging), a remotely triggerable crash.
+	if !supportedTransportProtocol[header.TransportProtocol] {
+		return nil, ErrUnsupportedAddressFamilyAndProtocol
+	}
+	// UNSPEC carries no address block to trust. For LOCAL it is the family the
+	// spec expects senders to use; for PROXY the spec leaves it to the receiver
+	// to accept or reject, and this library rejects it.
 	if header.TransportProtocol == UNSPEC && header.Command != LOCAL {
 		return nil, ErrUnsupportedAddressFamilyAndProtocol
 	}
@@ -107,7 +132,30 @@ func parseVersion2(reader *bufio.Reader) (header *Header, err error) {
 	if err := binary.Read(reader, binary.BigEndian, &length); err != nil {
 		return nil, fmt.Errorf("%w: %w", ErrCantReadLength, err)
 	}
+
 	if !header.validateLength(length) {
+		// A LOCAL connection is one the proxy opened itself (e.g. health
+		// checks). Per spec (section 2.2) the receiver must use the real
+		// connection endpoints (Conn.RemoteAddr/LocalAddr short-circuit on
+		// IsLocal), must skip exactly `length` bytes, and "must not assume zero
+		// is presented for LOCAL connections". So a LOCAL frame whose length
+		// does not fit its declared family's address-block layout — e.g.
+		// LOCAL + TCPv4 + length 0 — is still valid: skip the block, which the
+		// spec says to discard, and normalize the header to UNSPEC so it stays
+		// serializable via Format/WriteTo. A LOCAL frame whose length does fit
+		// the family layout is instead decoded exactly like a PROXY frame
+		// below, preserving the (informational) addresses and any trailing
+		// TLVs, so the header round-trips byte for byte.
+		if header.Command == LOCAL {
+			if length > MaxV2HeaderSize {
+				return nil, ErrInvalidLength
+			}
+			if _, err := reader.Discard(int(length)); err != nil {
+				return nil, fmt.Errorf("%w: %w", ErrInvalidLength, err)
+			}
+			header.TransportProtocol = UNSPEC
+			return header, nil
+		}
 		return nil, ErrInvalidLength
 	}
 
@@ -117,7 +165,7 @@ func parseVersion2(reader *bufio.Reader) (header *Header, err error) {
 		return header, nil
 	}
 
-	if length > maxV2HeaderSize {
+	if length > MaxV2HeaderSize {
 		return nil, ErrInvalidLength
 	}
 
@@ -148,9 +196,9 @@ func parseVersion2(reader *bufio.Reader) (header *Header, err error) {
 				return nil, fmt.Errorf("%w: %w", ErrInvalidAddress, err)
 			}
 
-			network := "unix"
+			network := networkUnix
 			if header.TransportProtocol.IsDatagram() {
-				network = "unixgram"
+				network = networkUnixgram
 			}
 
 			header.SourceAddr = &net.UnixAddr{
@@ -210,7 +258,11 @@ func (header *Header) formatVersion2() ([]byte, error) {
 			addrSrc = sourceIP.To16()
 			addrDst = destIP.To16()
 		} else if header.TransportProtocol.IsUnix() {
-			buf.Write(lengthUnixBytes)
+			hdrLen, err := addTLVLen(lengthUnixBytes, len(header.rawTLVs))
+			if err != nil {
+				return nil, err
+			}
+			buf.Write(hdrLen)
 			sourceAddr, destAddr, ok := header.UnixAddrs()
 			if !ok {
 				return nil, ErrInvalidAddress

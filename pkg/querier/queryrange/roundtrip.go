@@ -434,31 +434,6 @@ func (r roundTripper) Do(ctx context.Context, req base.Request) (base.Response, 
 		}
 
 		switch e := op.Plan.AST.(type) {
-		case syntax.VariantsExpr:
-			if err := validateMaxEntriesLimits(ctx, op.Limit, r.limits); err != nil {
-				return nil, httpgrpc.Errorf(http.StatusBadRequest, "%s", err.Error())
-			}
-
-			matchers := e.Matchers()
-
-			if err := validateMatchers(ctx, r.limits, matchers); err != nil {
-				return nil, httpgrpc.Errorf(http.StatusBadRequest, "%s", err.Error())
-			}
-
-			for _, v := range e.Variants() {
-				groups, err := v.MatcherGroups()
-				if err != nil {
-					level.Warn(logger).Log("msg", "unexpected matcher groups error in roundtripper", "err", err)
-				}
-
-				for _, g := range groups {
-					if err := validateMatchers(ctx, r.limits, g.Matchers); err != nil {
-						return nil, httpgrpc.Errorf(http.StatusBadRequest, "%s", err.Error())
-					}
-				}
-			}
-
-			return r.metric.Do(ctx, req)
 		case syntax.SampleExpr:
 			// The error will be handled later.
 			groups, err := e.MatcherGroups()
@@ -474,7 +449,9 @@ func (r roundTripper) Do(ctx context.Context, req base.Request) (base.Response, 
 			return r.metric.Do(ctx, req)
 		case syntax.LogSelectorExpr:
 			if err := validateMaxEntriesLimits(ctx, op.Limit, r.limits); err != nil {
-				return nil, httpgrpc.Errorf(http.StatusBadRequest, "%s", err.Error())
+				// Rejected before the middleware chain, so the line is emitted here.
+				logFailedQueryUsageForRejection(ctx, req, err)
+				return nil, err
 			}
 
 			if err := validateMatchers(ctx, r.limits, e.Matchers()); err != nil {
@@ -670,7 +647,7 @@ func NewLogFilterTripperware(cfg Config, engineOpts logql.EngineOpts, routerConf
 			QueryMetricsMiddleware(metrics.QueryMetrics),
 			StatsCollectorMiddleware(),
 			NewLimitsMiddleware(limits),
-			NewQuerySizeLimiterMiddleware(schema.Configs, engineOpts, log, limits, statsHandler),
+			NewQuerySizeLimiterMiddleware(engineOpts, log, limits, statsHandler),
 		}
 
 		// Splitting, sharding, caching and retry middlwares are not added to v2 engine splits
@@ -707,7 +684,7 @@ func NewLogFilterTripperware(cfg Config, engineOpts logql.EngineOpts, routerConf
 			// The sharding middleware takes care of enforcing this limit for both shardable and non-shardable queries.
 			// If we are not using sharding, we enforce the limit by adding this middleware after time splitting.
 			chunksEngineMWs = append(chunksEngineMWs,
-				NewQuerierSizeLimiterMiddleware(schema.Configs, engineOpts, log, limits, statsHandler),
+				NewQuerierSizeLimiterMiddleware(engineOpts, log, limits, statsHandler),
 			)
 		}
 
@@ -1021,7 +998,7 @@ func NewMetricTripperware(cfg Config, engineOpts logql.EngineOpts, routerConfig 
 
 		queryRangeMiddleware = append(
 			queryRangeMiddleware,
-			NewQuerySizeLimiterMiddleware(schema.Configs, engineOpts, log, limits, statsHandler),
+			NewQuerySizeLimiterMiddleware(engineOpts, log, limits, statsHandler),
 		)
 
 		// Splitting, sharding, caching and retry middlwares are not added to v2 engine splits
@@ -1059,7 +1036,7 @@ func NewMetricTripperware(cfg Config, engineOpts logql.EngineOpts, routerConfig 
 
 			// TODO: also add for v2 splits?
 			chunksEngineMWs = append(chunksEngineMWs,
-				NewQuerierSizeLimiterMiddleware(schema.Configs, engineOpts, log, limits, statsHandler),
+				NewQuerierSizeLimiterMiddleware(engineOpts, log, limits, statsHandler),
 			)
 		}
 
@@ -1154,7 +1131,7 @@ func NewInstantMetricTripperware(
 		queryRangeMiddleware := []base.Middleware{
 			StatsCollectorMiddleware(),
 			NewLimitsMiddleware(limits),
-			NewQuerySizeLimiterMiddleware(schema.Configs, engineOpts, log, limits, statsHandler),
+			NewQuerySizeLimiterMiddleware(engineOpts, log, limits, statsHandler),
 			NewSplitByRangeMiddleware(log, engineOpts, limits, cfg.InstantMetricQuerySplitAlign, metrics.rangeMapper),
 		}
 

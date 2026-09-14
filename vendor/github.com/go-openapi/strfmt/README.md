@@ -5,7 +5,7 @@
 <!-- Badges: release & docker images  -->
 <!-- Badges: code quality  -->
 <!-- Badges: license & compliance -->
-[![Release][release-badge]][release-url] [![Go Report Card][gocard-badge]][gocard-url] [![CodeFactor Grade][codefactor-badge]][codefactor-url] [![License][license-badge]][license-url]
+[![Release][release-badge]][release-url] [![CodeFactor Grade][codefactor-badge]][codefactor-url] [![License][license-badge]][license-url]
 <!-- Badges: documentation & support -->
 <!-- Badges: others & stats -->
 [![GoDoc][godoc-badge]][godoc-url] [![Discord Channel][discord-badge]][discord-url] [![go version][goversion-badge]][goversion-url] ![Top language][top-badge] ![Commits since latest release][commits-badge]
@@ -67,7 +67,7 @@ It also provides convenient extensions to go-openapi users.
 - [x] go-openapi custom format extensions
   - bsonobjectid (BSON objectID)
   - creditcard
-  - duration (e.g. "3 weeks", "1ms")
+  - duration (e.g. "3 weeks", "1ms") (aka "duration-human")
   - hexcolor (e.g. "#FFFFFF")
   - isbn, isbn10, isbn13
   - mac (e.g "01:02:03:04:05:06")
@@ -76,10 +76,25 @@ It also provides convenient extensions to go-openapi users.
   - uuid, uuid3, uuid4, uuid5, uuid7
   - cidr (e.g. "192.0.2.1/24", "2001:db8:a0b:12f0::1/32")
   - ulid (e.g. "00000PP9HGSBSSDZ1JTEXBJ0PW", [spec](https://github.com/ulid/spec))
+- [x] JSON-schema draft 2020 formats
+  - duration-iso8601 B(e.g. "P2W")
 
 > NOTE: as the name stands for, this package is intended to support string formatting only.
 > It does not provide validation for numerical values with swagger format extension for JSON types "number" or
 > "integer" (e.g. float, double, int32...).
+
+## Durations
+
+We have 2 very different definitions of the "duration" format: the "human-readable" duration that used to be just "duration",
+and the new "duration-iso8601". There is no "dual" parser that accepts both formats: types are specialized.
+
+To clarify the situation, a new alias for the duration format is introduced "duration-human" (e.g. "1 ms"), as opposed to
+"duration-iso8601".
+
+The `Default` format registry wires "duration-human" as the default mapping for "duration"
+(preexisting behavior, no breaking change - aligned with Swagger 2.0 which did not define "duration").
+
+A new `JSONSchema2020` registry wires "duration-iso8601" as the default mapping for "duration".
 
 ### Type conversion
 
@@ -104,6 +119,7 @@ List of defined types:
 - Date
 - DateTime
 - Duration
+- DurationISO8601 and  `ISODuration[P ISODurationPolicy]` (for optional behavior)
 - Email
 - HexColor
 - Hostname
@@ -197,8 +213,6 @@ Maintainers can cut a new release by either:
 [gomod-badge]: https://badge.fury.io/go/github.com%2Fgo-openapi%2Fstrfmt.svg
 [gomod-url]: https://badge.fury.io/go/github.com%2Fgo-openapi%2Fstrfmt
 <!-- Badges: code quality  -->
-[gocard-badge]: https://goreportcard.com/badge/github.com/go-openapi/strfmt
-[gocard-url]: https://goreportcard.com/report/github.com/go-openapi/strfmt
 [codefactor-badge]: https://img.shields.io/codefactor/grade/github/go-openapi/strfmt
 [codefactor-url]: https://www.codefactor.io/repository/github/go-openapi/strfmt
 <!-- Badges: documentation & support -->

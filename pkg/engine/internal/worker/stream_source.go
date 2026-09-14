@@ -146,7 +146,6 @@ func drainCachedSources(ctx context.Context, input *nodeSource, srcs workflow.Ca
 
 	region := xcap.RegionFromContext(ctx)
 	region.Record(executor.TaskCacheBatches.Observe(totalBatches))
-	region.Record(executor.TaskCacheRows.Observe(totalRows))
 	region.Record(executor.TaskCacheBytes.Observe(totalBytes))
 
 	level.Debug(logger).Log(

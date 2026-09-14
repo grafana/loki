@@ -122,17 +122,7 @@ func (fcm *filterChainManager) filterChainFromConfig(config *xdsresource.Network
 
 func (fcm *filterChainManager) stop() {
 	for _, fc := range fcm.filterChains {
-		urc := fc.usableRouteConfiguration.Load()
-		if urc.err != nil {
-			continue
-		}
-		for _, vh := range urc.vhs {
-			for _, r := range vh.routes {
-				if r.interceptor != nil {
-					r.interceptor.Close()
-				}
-			}
-		}
+		fc.usableRouteConfiguration.Load().stop()
 		fc.stop()
 	}
 }
@@ -172,11 +162,20 @@ type sourcePrefixEntry struct {
 // Listener resource. This struct contains the active state of a filter chain,
 // which includes the usable route configuration.
 type filterChain struct {
-	securityCfg              *xdsresource.SecurityConfig
-	httpFilters              []xdsresource.HTTPFilter
-	serverFilters            []httpfilter.ServerFilter // Server filters with reference counts, stored for cleanup purposes.
-	routeConfigName          string
-	inlineRouteConfig        *xdsresource.RouteConfigUpdate
+	// The following fields are set at initialization time, and are not
+	// updated afterwards.
+	securityCfg       *xdsresource.SecurityConfig
+	httpFilters       []xdsresource.HTTPFilter
+	routeConfigName   string
+	inlineRouteConfig *xdsresource.RouteConfigUpdate
+
+	// Server filters with reference counts. Is updated when a usable route
+	// configuration is set, and when the filter chain is stopped. Both these
+	// operations always happen with the listener wrapper's lock held.
+	serverFilters []httpfilter.ServerFilter
+
+	// The usable route configuration, is passed to the connWrapper, and is used
+	// to route incoming RPCs. Therefore, this needs to be accessed atomically.
 	usableRouteConfiguration *atomic.Pointer[usableRouteConfiguration]
 }
 
@@ -186,6 +185,16 @@ type usableRouteConfiguration struct {
 	vhs    []virtualHostWithInterceptors
 	err    error
 	nodeID string // For logging purposes. Populated by the listener wrapper.
+}
+
+func (rc *usableRouteConfiguration) stop() {
+	for _, vh := range rc.vhs {
+		for _, r := range vh.routes {
+			if r.interceptor != nil {
+				r.interceptor.Close()
+			}
+		}
+	}
 }
 
 // virtualHostWithInterceptors captures information present in a VirtualHost
@@ -397,32 +406,61 @@ func (fc *filterChain) stop() {
 // state across resource updates.
 type serverFilterProvider func(filter xdsresource.HTTPFilter) (httpfilter.ServerFilter, error)
 
-// constructUsableRouteConfiguration takes Route Configuration and converts it
+// updateUsableRouteConfiguration takes Route Configuration and converts it
 // into matchable route configuration, with instantiated HTTP Filters per route.
-func (fc *filterChain) constructUsableRouteConfiguration(config xdsresource.RouteConfigUpdate, provider serverFilterProvider) *usableRouteConfiguration {
-	vhs := make([]virtualHostWithInterceptors, 0, len(config.VirtualHosts))
+func (fc *filterChain) updateUsableRouteConfiguration(config *xdsresource.RouteConfigUpdate, updateErr error, provider serverFilterProvider, nodeID string) {
+	if updateErr != nil {
+		urc := &usableRouteConfiguration{err: updateErr, nodeID: nodeID}
+		fc.applyConfiguration(urc, nil)
+		return
+	}
+
 	var serverFilters []httpfilter.ServerFilter
+	vhs := make([]virtualHostWithInterceptors, 0, len(config.VirtualHosts))
 	for _, vh := range config.VirtualHosts {
 		vhwi, sfs, err := fc.convertVirtualHost(vh, provider)
 		if err != nil {
 			for _, sf := range serverFilters {
 				sf.Close()
 			}
+			// Close interceptors from successfully converted virtual hosts.
+			for _, v := range vhs {
+				for _, r := range v.routes {
+					if r.interceptor != nil {
+						r.interceptor.Close()
+						r.interceptor = nil
+					}
+				}
+			}
 			// Non nil if (lds + rds) fails, shouldn't happen since validated by
 			// xDS Client, treat as L7 error but shouldn't happen.
-			return &usableRouteConfiguration{err: fmt.Errorf("virtual host construction: %v", err)}
+			urc := &usableRouteConfiguration{err: fmt.Errorf("virtual host construction: %v", err), nodeID: nodeID}
+			fc.applyConfiguration(urc, nil)
+			return
 		}
 		vhs = append(vhs, vhwi)
 		serverFilters = append(serverFilters, sfs...)
 	}
 
-	// Release references to old server filters before replacing with new ones.
-	for _, sf := range fc.serverFilters {
-		sf.Close()
-	}
+	urc := &usableRouteConfiguration{vhs: vhs, nodeID: nodeID}
+	fc.applyConfiguration(urc, serverFilters)
+}
+
+func (fc *filterChain) applyConfiguration(urc *usableRouteConfiguration, serverFilters []httpfilter.ServerFilter) {
+	// Swap in the new configuration first so new RPCs use it immediately.
+	oldURC := fc.usableRouteConfiguration.Swap(urc)
+	oldFilters := fc.serverFilters
 	fc.serverFilters = serverFilters
 
-	return &usableRouteConfiguration{vhs: vhs}
+	// Stop the old interceptors before releasing the filters they might depend on.
+	if oldURC != nil {
+		oldURC.stop()
+	}
+
+	// Release references to old server filters.
+	for _, sf := range oldFilters {
+		sf.Close()
+	}
 }
 
 func (fc *filterChain) convertVirtualHost(virtualHost *xdsresource.VirtualHost, provider serverFilterProvider) (_ virtualHostWithInterceptors, _ []httpfilter.ServerFilter, err error) {
@@ -441,6 +479,13 @@ func (fc *filterChain) convertVirtualHost(virtualHost *xdsresource.VirtualHost, 
 		rs[i].matcher = xdsresource.RouteToMatcher(r)
 		interceptor, sfs, err := fc.newInterceptor(r.HTTPFilterConfigOverride, virtualHost.HTTPFilterConfigOverride, provider)
 		if err != nil {
+			// Close interceptors from successfully converted routes.
+			for _, route := range rs {
+				if route.interceptor != nil {
+					route.interceptor.Close()
+					route.interceptor = nil
+				}
+			}
 			return virtualHostWithInterceptors{}, nil, err
 		}
 		serverFilters = append(serverFilters, sfs...)
@@ -476,6 +521,14 @@ func (fc *filterChain) newInterceptor(routeOverride, virtualHostOverride map[str
 		if override == nil {
 			// Virtual Host is second priority.
 			override = virtualHostOverride[filter.Name]
+		}
+
+		disabled := filter.Disabled
+		if override != nil {
+			_, disabled = override.(httpfilter.DisabledFilterConfig)
+		}
+		if disabled {
+			continue
 		}
 
 		serverFilter, err := provider(filter)

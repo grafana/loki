@@ -34,33 +34,32 @@ var (
 	StatObjectBytesDownloaded = xcap.NewStatisticInt64("dataobj.object.bytes.downloaded", xcap.AggregationTypeSum)
 
 	// Dataset column statistics.
-	StatDatasetPrimaryColumns       = xcap.NewStatisticInt64("primary.columns", xcap.AggregationTypeSum)
-	StatDatasetSecondaryColumns     = xcap.NewStatisticInt64("secondary.columns", xcap.AggregationTypeSum)
-	StatDatasetPrimaryColumnPages   = xcap.NewStatisticInt64("primary.column.pages", xcap.AggregationTypeSum)
-	StatDatasetSecondaryColumnPages = xcap.NewStatisticInt64("secondary.column.pages", xcap.AggregationTypeSum)
+	StatDatasetPrimaryColumns       = xcap.NewStatisticInt64("primary.columns", xcap.AggregationTypeSum, xcap.Local())
+	StatDatasetSecondaryColumns     = xcap.NewStatisticInt64("secondary.columns", xcap.AggregationTypeSum, xcap.Local())
+	StatDatasetPrimaryColumnPages   = xcap.NewStatisticInt64("primary.column.pages", xcap.AggregationTypeSum, xcap.Local())
+	StatDatasetSecondaryColumnPages = xcap.NewStatisticInt64("secondary.column.pages", xcap.AggregationTypeSum, xcap.Local())
 
 	// Dataset row statistics.
 	StatDatasetMaxRows           = xcap.NewStatisticInt64("rows.max", xcap.AggregationTypeSum)
-	StatDatasetRowsAfterPruning  = xcap.NewStatisticInt64("rows.after.pruning", xcap.AggregationTypeSum)
+	StatDatasetRowsAfterPruning  = xcap.NewStatisticInt64("rows.after.pruning", xcap.AggregationTypeSum, xcap.Local())
 	StatDatasetPrimaryRowsRead   = xcap.NewStatisticInt64("primary.rows.read", xcap.AggregationTypeSum)
 	StatDatasetSecondaryRowsRead = xcap.NewStatisticInt64("secondary.rows.read", xcap.AggregationTypeSum)
 	StatDatasetPrimaryRowBytes   = xcap.NewStatisticInt64("primary.row.read.bytes", xcap.AggregationTypeSum)
 	StatDatasetSecondaryRowBytes = xcap.NewStatisticInt64("secondary.row.read.bytes", xcap.AggregationTypeSum)
 
 	// Dataset page scan statistics.
-	StatDatasetPagesScanned     = xcap.NewStatisticInt64("pages.scanned", xcap.AggregationTypeSum)
-	StatDatasetPageDownloadTime = xcap.NewStatisticFloat64("pages.download.duration", xcap.AggregationTypeSum)
+	StatDatasetPageDownloadTime = xcap.NewStatisticFloat64("pages.download.duration", xcap.AggregationTypeSum, xcap.Local())
 
 	// Dataset page download byte statistics.
 	StatDatasetPrimaryPagesDownloaded           = xcap.NewStatisticInt64("primary.pages.downloaded", xcap.AggregationTypeSum)
 	StatDatasetSecondaryPagesDownloaded         = xcap.NewStatisticInt64("secondary.pages.downloaded", xcap.AggregationTypeSum)
 	StatDatasetPrimaryColumnBytes               = xcap.NewStatisticInt64("primary.pages.compressed.bytes", xcap.AggregationTypeSum)
 	StatDatasetSecondaryColumnBytes             = xcap.NewStatisticInt64("secondary.pages.compressed.bytes", xcap.AggregationTypeSum)
-	StatDatasetPrimaryColumnUncompressedBytes   = xcap.NewStatisticInt64("primary.column.uncompressed.bytes", xcap.AggregationTypeSum)
-	StatDatasetSecondaryColumnUncompressedBytes = xcap.NewStatisticInt64("secondary.column.uncompressed.bytes", xcap.AggregationTypeSum)
+	StatDatasetPrimaryColumnUncompressedBytes   = xcap.NewStatisticInt64("primary.column.uncompressed.bytes", xcap.AggregationTypeSum, xcap.Local())
+	StatDatasetSecondaryColumnUncompressedBytes = xcap.NewStatisticInt64("secondary.column.uncompressed.bytes", xcap.AggregationTypeSum, xcap.Local())
 
 	// Dataset read operation statistics.
-	StatDatasetReadCalls = xcap.NewStatisticInt64("dataset.read.calls", xcap.AggregationTypeSum)
+	StatDatasetReadCalls = xcap.NewStatisticInt64("dataset.read.calls", xcap.AggregationTypeSum, xcap.Local())
 
 	// -- Following stats are added to understand how data locality affects a query --
 	//

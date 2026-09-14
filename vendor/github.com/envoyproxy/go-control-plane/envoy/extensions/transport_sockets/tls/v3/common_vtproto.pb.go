@@ -625,6 +625,18 @@ func (m *CertificateValidationContext) MarshalToSizedBufferVTStrict(dAtA []byte)
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
 	}
+	if m.SuppressClientCaList {
+		i--
+		if m.SuppressClientCaList {
+			dAtA[i] = 1
+		} else {
+			dAtA[i] = 0
+		}
+		i--
+		dAtA[i] = 0x1
+		i--
+		dAtA[i] = 0x90
+	}
 	if m.SystemRootCerts != nil {
 		size, err := m.SystemRootCerts.MarshalToSizedBufferVTStrict(dAtA[:i])
 		if err != nil {
@@ -1177,6 +1189,9 @@ func (m *CertificateValidationContext) SizeVT() (n int) {
 	if m.SystemRootCerts != nil {
 		l = m.SystemRootCerts.SizeVT()
 		n += 2 + l + protohelpers.SizeOfVarint(uint64(l))
+	}
+	if m.SuppressClientCaList {
+		n += 3
 	}
 	n += len(m.unknownFields)
 	return n

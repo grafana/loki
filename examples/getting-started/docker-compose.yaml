@@ -66,14 +66,15 @@ services:
       - |
         mkdir -p /data/loki-data && \
         mkdir -p /data/loki-ruler && \
-        minio server /data
+        minio server /data --console-address ":9001"
     environment:
       - MINIO_ROOT_USER=loki
       - MINIO_ROOT_PASSWORD=supersecret
       - MINIO_PROMETHEUS_AUTH_TYPE=public
       - MINIO_UPDATE=off
     ports:
-      - 9000
+      - "9000:9000"
+      - "9001:9001"
     volumes:
       - ./.data/minio:/data
     healthcheck:

@@ -49,7 +49,7 @@ type decimalType struct {
 func (t *decimalType) String() string { return t.decimal.String() }
 
 func (t *decimalType) LogicalType() *format.LogicalType {
-	return &format.LogicalType{Decimal: &t.decimal}
+	return &format.LogicalType{Value: &t.decimal}
 }
 
 func (t *decimalType) ConvertedType() *deprecated.ConvertedType {
@@ -77,6 +77,14 @@ func (t *decimalType) AssignValue(dst reflect.Value, src Value) error {
 		if t.Type.Kind() != ByteArray && t.Type.Kind() != FixedLenByteArray {
 			return nil
 		}
+		switch dst.Kind() {
+		case reflect.Slice, reflect.Array, reflect.String:
+			// Destinations like []byte, [N]byte, or string receive the raw
+			// big-endian two's-complement representation of the decimal
+			// value, as they did when decimalType inherited AssignValue
+			// from its underlying byte array type.
+			return t.Type.AssignValue(dst, src)
+		}
 		data := src.ByteArray()
 		val := new(big.Int)
 		if len(data) > 0 && data[0]&0x80 != 0 {
@@ -98,7 +106,13 @@ func (t *decimalType) AssignValue(dst reflect.Value, src Value) error {
 		scaleFactor := new(big.Float).SetPrec(prec)
 		scaleFactor.SetInt(new(big.Int).Exp(big.NewInt(10), big.NewInt(int64(t.decimal.Scale)), nil))
 		f.Quo(f, scaleFactor)
-		dst.Set(reflect.ValueOf(f))
+		switch dst.Kind() {
+		case reflect.Float32, reflect.Float64:
+			v, _ := f.Float64()
+			dst.SetFloat(v)
+		default:
+			dst.Set(reflect.ValueOf(f))
+		}
 	}
 	return nil
 }

@@ -33,11 +33,15 @@ func (snappyCodec) EncodeLevel(dst, src []byte, _ int) []byte {
 }
 
 func (snappyCodec) Decode(dst, src []byte) []byte {
-	dst, err := snappy.Decode(dst, src)
+	dst, err := (snappyCodec{}).DecodeWithError(dst, src)
 	if err != nil {
 		panic(err)
 	}
 	return dst
+}
+
+func (snappyCodec) DecodeWithError(dst, src []byte) ([]byte, error) {
+	return snappy.Decode(dst, src)
 }
 
 func (snappyCodec) NewReader(r io.Reader) io.ReadCloser {

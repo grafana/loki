@@ -1,5 +1,5 @@
 exclude = [
-  "test-data/**/*",
+  "testdata/**/*",
   "vendor/**/*",
   "GeoLite2-ASN.mmdb",
   "GeoLite2-City.mmdb",

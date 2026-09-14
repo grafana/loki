@@ -12,8 +12,9 @@ import (
 )
 
 type ServerInterceptors struct {
-	reqCount              *prometheus.CounterVec
-	PerTenantRequestCount grpc.UnaryServerInterceptor
+	reqCount               *prometheus.CounterVec
+	PerTenantRequestCount  grpc.UnaryServerInterceptor
+	PerTenantStreamRequest grpc.StreamServerInterceptor
 }
 
 func NewServerInterceptors(r prometheus.Registerer) *ServerInterceptors {
@@ -24,24 +25,33 @@ func NewServerInterceptors(r prometheus.Registerer) *ServerInterceptors {
 		Help:      "Total amount of requests served by the index gateway",
 	}, []string{"operation", "status", "tenant"})
 
-	perTenantRequestCount := func(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (resp interface{}, err error) {
-		tenantID, err := tenant.TenantID(ctx)
-		if err != nil {
-			// ignore requests without tenantID
-			return handler(ctx, req)
+	recordMetric := func(ctx context.Context, method string, err error) {
+		tenantID, tenantErr := tenant.TenantID(ctx)
+		if tenantErr != nil {
+			return
 		}
-
-		resp, err = handler(ctx, req)
 		status := "success"
 		if err != nil {
 			status = "error"
 		}
-		requestCount.WithLabelValues(info.FullMethod, status, tenantID).Inc()
+		requestCount.WithLabelValues(method, status, tenantID).Inc()
+	}
+
+	perTenantRequestCount := func(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (resp interface{}, err error) {
+		resp, err = handler(ctx, req)
+		recordMetric(ctx, info.FullMethod, err)
 		return
 	}
 
+	perTenantStreamRequest := func(srv interface{}, ss grpc.ServerStream, info *grpc.StreamServerInfo, handler grpc.StreamHandler) error {
+		err := handler(srv, ss)
+		recordMetric(ss.Context(), info.FullMethod, err)
+		return err
+	}
+
 	return &ServerInterceptors{
-		reqCount:              requestCount,
-		PerTenantRequestCount: perTenantRequestCount,
+		reqCount:               requestCount,
+		PerTenantRequestCount:  perTenantRequestCount,
+		PerTenantStreamRequest: perTenantStreamRequest,
 	}
 }

@@ -10,6 +10,7 @@ import (
 	"github.com/c2h5oh/datasize"
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
+	"github.com/grafana/dskit/tenant"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/prometheus/model/labels"
@@ -70,6 +71,11 @@ var (
 		// 50MB 100MB 200MB 400MB 600MB 800MB 1GB 2GB 3GB 4GB 5GB 6GB 7GB 8GB 9GB 10GB 15GB 20GB 30GB, 40GB 50GB 60GB
 		Buckets: []float64{50 * 1e6, 100 * 1e6, 400 * 1e6, 600 * 1e6, 800 * 1e6, 1 * 1e9, 2 * 1e9, 3 * 1e9, 4 * 1e9, 5 * 1e9, 6 * 1e9, 7 * 1e9, 8 * 1e9, 9 * 1e9, 10 * 1e9, 15 * 1e9, 20 * 1e9, 30 * 1e9, 40 * 1e9, 50 * 1e9, 60 * 1e9},
 	}, []string{"status_code", "type", "range", "latency_type", "sharded"})
+	bytesProcessedTotal = promauto.NewCounterVec(prometheus.CounterOpts{
+		Namespace: constants.Loki,
+		Name:      "logql_querystats_bytes_processed_total",
+		Help:      "Total number of bytes processed by LogQL queries, partitioned by tenant.",
+	}, []string{"tenant"})
 	execLatency = promauto.NewHistogramVec(prometheus.HistogramOpts{
 		Namespace: constants.Loki,
 		Name:      "logql_querystats_latency_seconds",
@@ -93,6 +99,16 @@ var (
 		Namespace: constants.Loki,
 		Name:      "logql_querystats_downloaded_chunk_total",
 		Help:      "Total count of chunks downloaded found while executing LogQL queries.",
+	}, []string{"status_code", "type", "range"})
+	chunkFetchFailuresTotal = promauto.NewCounterVec(prometheus.CounterOpts{
+		Namespace: constants.Loki,
+		Name:      "logql_querystats_chunk_fetch_failures_total",
+		Help:      "Total count of chunks that failed to be fetched while executing LogQL queries.",
+	}, []string{"status_code", "type", "range"})
+	queriesWithChunkFetchFailuresTotal = promauto.NewCounterVec(prometheus.CounterOpts{
+		Namespace: constants.Loki,
+		Name:      "logql_querystats_queries_with_chunk_fetch_failures_total",
+		Help:      "Total count of LogQL queries that had at least one chunk fetch failure.",
 	}, []string{"status_code", "type", "range"})
 	ingesterLineTotal = promauto.NewCounter(prometheus.CounterOpts{
 		Namespace: constants.Loki,
@@ -246,6 +262,7 @@ func RecordRangeAndInstantQueryMetrics(
 		"index_shard_resolver_duration", time.Duration(stats.Index.ShardsDuration),
 		"index_bloom_filter_time", logql_stats.ConvertSecondsToNanoseconds(stats.Index.BloomFilterTime),
 		"index_chunk_refs_lookup_time", logql_stats.ConvertSecondsToNanoseconds(stats.Index.ChunkRefsLookupTime),
+		"chunk_fetch_failures", stats.TotalChunkFetchFailures(),
 	}...)
 
 	if stats.Summary.EstimatedQueryBytes > 0 {
@@ -308,6 +325,16 @@ func RecordRangeAndInstantQueryMetrics(
 
 	bytesPerSecond.WithLabelValues(status, queryType, rt, latencyType, sharded).
 		Observe(float64(stats.Summary.BytesProcessedPerSecond))
+	// Record per-tenant query bytes. For federated multi-tenant queries the aggregated
+	// byte total is divided evenly across the tenants in the request, since the stats are
+	// not broken down per tenant. This keeps the sum across tenants equal to the actual
+	// bytes processed. TenantIDs returns a normalized (sorted, de-duplicated) list.
+	if tenantIDs, err := tenant.TenantIDs(ctx); err == nil && len(tenantIDs) > 0 {
+		bytesPerTenant := float64(stats.Summary.TotalBytesProcessed) / float64(len(tenantIDs))
+		for _, tenantID := range tenantIDs {
+			bytesProcessedTotal.WithLabelValues(tenantID).Add(bytesPerTenant)
+		}
+	}
 	execLatency.WithLabelValues(status, queryType, rt).
 		Observe(stats.Summary.ExecTime)
 	chunkDownloadLatency.WithLabelValues(status, queryType, rt).
@@ -315,6 +342,10 @@ func RecordRangeAndInstantQueryMetrics(
 	duplicatesTotal.Add(float64(stats.TotalDuplicates()))
 	chunkDownloadedTotal.WithLabelValues(status, queryType, rt).
 		Add(float64(stats.TotalChunksDownloaded()))
+	if failures := stats.TotalChunkFetchFailures(); failures > 0 {
+		chunkFetchFailuresTotal.WithLabelValues(status, queryType, rt).Add(float64(failures))
+		queriesWithChunkFetchFailuresTotal.WithLabelValues(status, queryType, rt).Inc()
+	}
 	ingesterLineTotal.Add(float64(stats.Ingester.TotalLinesSent))
 
 	recordUsageStats(queryType, stats)

@@ -46,7 +46,7 @@ func NewColumnSlice(col *arrow.Column, i, j int64) *arrow.Column {
 // NewSlice panics if the slice is outside the valid range of the input array.
 // NewSlice panics if j < i.
 func NewChunkedSlice(a *arrow.Chunked, i, j int64) *arrow.Chunked {
-	if j > int64(a.Len()) || i > j || i > int64(a.Len()) {
+	if i < 0 || j < 0 || j > int64(a.Len()) || i > j || i > int64(a.Len()) {
 		panic("arrow/array: index out of range")
 	}
 
@@ -204,7 +204,7 @@ func (tbl *simpleTable) AddColumn(i int, field arrow.Field, column arrow.Column)
 	if int64(column.Len()) != tbl.rows {
 		return nil, fmt.Errorf("arrow/array: column length mismatch: %d != %d", column.Len(), tbl.rows)
 	}
-	if field.Type != column.DataType() {
+	if !arrow.TypeEqual(field.Type, column.DataType()) {
 		return nil, fmt.Errorf("arrow/array: column type mismatch: %v != %v", field.Type, column.DataType())
 	}
 	newSchema, err := tbl.schema.AddField(i, field)

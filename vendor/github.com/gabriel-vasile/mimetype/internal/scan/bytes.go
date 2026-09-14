@@ -122,32 +122,30 @@ func (b *Bytes) Line() Bytes {
 	return line
 }
 
-// DropLastLine drops the last incomplete line from b.
-//
-// mimetype limits itself to ReadLimit bytes when performing a detection.
-// This means, for file formats like CSV for NDJSON, the last line of the input
-// can be an incomplete line.
-// If b length is less than readLimit, it means we received an incomplete file
-// and proceed with dropping the last line.
-func (b *Bytes) DropLastLine(readLimit uint32) {
-	if readLimit == 0 || uint64(len(*b)) < uint64(readLimit) {
-		return
-	}
-
-	for i := len(*b) - 1; i > 0; i-- {
-		if (*b)[i] == '\n' {
-			*b = (*b)[:i]
-			return
-		}
-	}
-}
-
 func (b *Bytes) Uint16() (uint16, bool) {
 	if len(*b) < 2 {
 		return 0, false
 	}
 	v := binary.LittleEndian.Uint16(*b)
 	*b = (*b)[2:]
+	return v, true
+}
+
+func (b *Bytes) Uint32() (uint32, bool) {
+	if len(*b) < 4 {
+		return 0, false
+	}
+	v := binary.LittleEndian.Uint32(*b)
+	*b = (*b)[4:]
+	return v, true
+}
+
+func (b *Bytes) Uint32be() (uint32, bool) {
+	if len(*b) < 4 {
+		return 0, false
+	}
+	v := binary.BigEndian.Uint32(*b)
+	*b = (*b)[4:]
 	return v, true
 }
 
@@ -205,10 +203,8 @@ func (b Bytes) Match(p []byte, flags Flags) int {
 	if l == 0 {
 		return -1
 	}
-	// If no flags, or scanning for full word at the end of pattern then
-	// do a fast HasPrefix check.
-	// For other flags it's not possible to use HasPrefix.
-	if flags == 0 || flags&FullWord > 0 {
+	// Some cases we can handle with a simple bytes.HasPrefix.
+	if flags == 0 || flags == FullWord {
 		if bytes.HasPrefix(b, p) {
 			b = b[len(p):]
 			p = p[len(p):]
@@ -232,7 +228,7 @@ func (b Bytes) Match(p []byte, flags Flags) int {
 				return -1
 			}
 			b = b[1:]
-			if !ByteIsWS(p[0]) {
+			if len(p) > 0 && !ByteIsWS(p[0]) {
 				b.TrimLWS()
 			}
 		} else {

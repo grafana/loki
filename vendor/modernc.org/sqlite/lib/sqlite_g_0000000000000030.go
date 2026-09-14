@@ -158,7 +158,7 @@ func Xsqlite3_complete(tls *libc.TLS, zSql uintptr) (r int32) {
 				case int32('c'):
 					fallthrough
 				case int32('C'):
-					if nId == int32(6) && Xsqlite3_strnicmp(tls, zSql, __ccgo_ts+25186, int32(6)) == 0 {
+					if nId == int32(6) && Xsqlite3_strnicmp(tls, zSql, __ccgo_ts+25255, int32(6)) == 0 {
 						token = uint8(tkCREATE)
 					} else {
 						token = uint8(tkOTHER)
@@ -166,13 +166,13 @@ func Xsqlite3_complete(tls *libc.TLS, zSql uintptr) (r int32) {
 				case int32('t'):
 					fallthrough
 				case int32('T'):
-					if nId == int32(7) && Xsqlite3_strnicmp(tls, zSql, __ccgo_ts+21840, int32(7)) == 0 {
+					if nId == int32(7) && Xsqlite3_strnicmp(tls, zSql, __ccgo_ts+21884, int32(7)) == 0 {
 						token = uint8(tkTRIGGER)
 					} else {
-						if nId == int32(4) && Xsqlite3_strnicmp(tls, zSql, __ccgo_ts+25193, int32(4)) == 0 {
+						if nId == int32(4) && Xsqlite3_strnicmp(tls, zSql, __ccgo_ts+25262, int32(4)) == 0 {
 							token = uint8(tkTEMP)
 						} else {
-							if nId == int32(9) && Xsqlite3_strnicmp(tls, zSql, __ccgo_ts+25198, int32(9)) == 0 {
+							if nId == int32(9) && Xsqlite3_strnicmp(tls, zSql, __ccgo_ts+25267, int32(9)) == 0 {
 								token = uint8(tkTEMP)
 							} else {
 								token = uint8(tkOTHER)
@@ -182,10 +182,10 @@ func Xsqlite3_complete(tls *libc.TLS, zSql uintptr) (r int32) {
 				case int32('e'):
 					fallthrough
 				case int32('E'):
-					if nId == int32(3) && Xsqlite3_strnicmp(tls, zSql, __ccgo_ts+25208, int32(3)) == 0 {
+					if nId == int32(3) && Xsqlite3_strnicmp(tls, zSql, __ccgo_ts+25277, int32(3)) == 0 {
 						token = uint8(tkEND)
 					} else {
-						if nId == int32(7) && Xsqlite3_strnicmp(tls, zSql, __ccgo_ts+25212, int32(7)) == 0 {
+						if nId == int32(7) && Xsqlite3_strnicmp(tls, zSql, __ccgo_ts+25281, int32(7)) == 0 {
 							token = uint8(tkEXPLAIN)
 						} else {
 							token = uint8(tkOTHER)
@@ -228,8 +228,8 @@ var _aNanInfName = [5]TNanInfName{
 		Fn:      uint8(3),
 		FeType:  uint8(JSONB_FLOAT),
 		FnRepl:  uint8(7),
-		FzMatch: __ccgo_ts + 26406,
-		FzRepl:  __ccgo_ts + 26410,
+		FzMatch: __ccgo_ts + 26475,
+		FzRepl:  __ccgo_ts + 26479,
 	},
 	1: {
 		Fc1:     uint8('i'),
@@ -237,8 +237,8 @@ var _aNanInfName = [5]TNanInfName{
 		Fn:      uint8(8),
 		FeType:  uint8(JSONB_FLOAT),
 		FnRepl:  uint8(7),
-		FzMatch: __ccgo_ts + 26418,
-		FzRepl:  __ccgo_ts + 26410,
+		FzMatch: __ccgo_ts + 26487,
+		FzRepl:  __ccgo_ts + 26479,
 	},
 	2: {
 		Fc1:     uint8('n'),
@@ -253,7 +253,7 @@ var _aNanInfName = [5]TNanInfName{
 		Fc2:     uint8('Q'),
 		Fn:      uint8(4),
 		FnRepl:  uint8(4),
-		FzMatch: __ccgo_ts + 26427,
+		FzMatch: __ccgo_ts + 26496,
 		FzRepl:  __ccgo_ts + 1688,
 	},
 	4: {
@@ -261,7 +261,7 @@ var _aNanInfName = [5]TNanInfName{
 		Fc2:     uint8('S'),
 		Fn:      uint8(4),
 		FnRepl:  uint8(4),
-		FzMatch: __ccgo_ts + 26432,
+		FzMatch: __ccgo_ts + 26501,
 		FzRepl:  __ccgo_ts + 1688,
 	},
 }
@@ -336,14 +336,14 @@ func _fts5SpecialMatch(tls *libc.TLS, pTab uintptr, pCsr uintptr, zQuery uintptr
 		n = n + 1
 	}
 	(*TFts5Cursor)(unsafe.Pointer(pCsr)).FePlan = int32(FTS5_PLAN_SPECIAL)
-	if n == int32(5) && 0 == Xsqlite3_strnicmp(tls, __ccgo_ts+39748, z, n) {
+	if n == int32(5) && 0 == Xsqlite3_strnicmp(tls, __ccgo_ts+39817, z, n) {
 		(*TFts5Cursor)(unsafe.Pointer(pCsr)).FiSpecial = int64(_sqlite3Fts5IndexReads(tls, (*TFts5FullTable)(unsafe.Pointer(pTab)).Fp.FpIndex))
 	} else {
-		if n == int32(2) && 0 == Xsqlite3_strnicmp(tls, __ccgo_ts+5646, z, n) {
+		if n == int32(2) && 0 == Xsqlite3_strnicmp(tls, __ccgo_ts+5650, z, n) {
 			(*TFts5Cursor)(unsafe.Pointer(pCsr)).FiSpecial = (*TFts5Cursor)(unsafe.Pointer(pCsr)).FiCsrId
 		} else {
 			/* An unrecognized directive. Return an error message. */
-			(*TFts5FullTable)(unsafe.Pointer(pTab)).Fp.Fbase.FzErrMsg = Xsqlite3_mprintf(tls, __ccgo_ts+39754, libc.VaList(bp+8, n, z))
+			(*TFts5FullTable)(unsafe.Pointer(pTab)).Fp.Fbase.FzErrMsg = Xsqlite3_mprintf(tls, __ccgo_ts+39823, libc.VaList(bp+8, n, z))
 			rc = int32(SQLITE_ERROR)
 		}
 	}
@@ -361,10 +361,10 @@ func _getTempStore(tls *libc.TLS, z uintptr) (r int32) {
 	if libc.Int32FromUint8(**(**uint8)(__ccgo_up(z))) >= int32('0') && libc.Int32FromUint8(**(**uint8)(__ccgo_up(z))) <= int32('2') {
 		return libc.Int32FromUint8(**(**uint8)(__ccgo_up(z))) - int32('0')
 	} else {
-		if _sqlite3StrICmp(tls, z, __ccgo_ts+17990) == 0 {
+		if _sqlite3StrICmp(tls, z, __ccgo_ts+17994) == 0 {
 			return int32(1)
 		} else {
-			if _sqlite3StrICmp(tls, z, __ccgo_ts+19031) == 0 {
+			if _sqlite3StrICmp(tls, z, __ccgo_ts+19035) == 0 {
 				return int32(2)
 			} else {
 				return 0
@@ -401,7 +401,7 @@ func _jsonConvertTextToBlob(tls *libc.TLS, pParse uintptr, pCtx uintptr) (r int3
 			i = i + _json5Whitespace(tls, zJson+uintptr(i))
 			if **(**uint8)(__ccgo_up(zJson + uintptr(i))) != 0 {
 				if pCtx != 0 {
-					Xsqlite3_result_error(tls, pCtx, __ccgo_ts+26391, -int32(1))
+					Xsqlite3_result_error(tls, pCtx, __ccgo_ts+26460, -int32(1))
 				}
 				_jsonParseReset(tls, pParse)
 				return int32(1)
@@ -414,7 +414,7 @@ func _jsonConvertTextToBlob(tls *libc.TLS, pParse uintptr, pCtx uintptr) (r int3
 			if (*TJsonParse)(unsafe.Pointer(pParse)).Foom != 0 {
 				Xsqlite3_result_error_nomem(tls, pCtx)
 			} else {
-				Xsqlite3_result_error(tls, pCtx, __ccgo_ts+26391, -int32(1))
+				Xsqlite3_result_error(tls, pCtx, __ccgo_ts+26460, -int32(1))
 			}
 		}
 		_jsonParseReset(tls, pParse)
@@ -568,7 +568,7 @@ func _rbuCreateVfs(tls *libc.TLS, p uintptr) {
 	var _ /* zRnd at bp+4 */ [64]uint8
 	_ = pVfs
 	Xsqlite3_randomness(tls, int32(4), bp)
-	Xsqlite3_snprintf(tls, int32(64), bp+4, __ccgo_ts+34259, libc.VaList(bp+80, **(**int32)(__ccgo_up(bp))))
+	Xsqlite3_snprintf(tls, int32(64), bp+4, __ccgo_ts+34328, libc.VaList(bp+80, **(**int32)(__ccgo_up(bp))))
 	(*Tsqlite3rbu)(unsafe.Pointer(p)).Frc = Xsqlite3rbu_create_vfs(tls, bp+4, uintptr(0))
 	if (*Tsqlite3rbu)(unsafe.Pointer(p)).Frc == SQLITE_OK {
 		pVfs = Xsqlite3_vfs_find(tls, bp+4)
@@ -594,11 +594,11 @@ func _renameColumnParseError(tls *libc.TLS, pCtx uintptr, zWhen uintptr, pType u
 	zT = Xsqlite3_value_text(tls, pType)
 	zN = Xsqlite3_value_text(tls, pObject)
 	if **(**uint8)(__ccgo_up(zWhen)) != 0 {
-		v1 = __ccgo_ts + 11539
+		v1 = __ccgo_ts + 11543
 	} else {
 		v1 = __ccgo_ts + 1702
 	}
-	zErr = _sqlite3MPrintf(tls, (*TParse)(unsafe.Pointer(pParse)).Fdb, __ccgo_ts+11541, libc.VaList(bp+8, zT, zN, v1, zWhen, (*TParse)(unsafe.Pointer(pParse)).FzErrMsg))
+	zErr = _sqlite3MPrintf(tls, (*TParse)(unsafe.Pointer(pParse)).Fdb, __ccgo_ts+11545, libc.VaList(bp+8, zT, zN, v1, zWhen, (*TParse)(unsafe.Pointer(pParse)).FzErrMsg))
 	Xsqlite3_result_error(tls, pCtx, zErr, -int32(1))
 	_sqlite3DbFree(tls, (*TParse)(unsafe.Pointer(pParse)).Fdb, zErr)
 }
@@ -671,7 +671,7 @@ func _soundexFunc(tls *libc.TLS, context uintptr, argc int32, argv uintptr) {
 	} else {
 		/* IMP: R-64894-50321 The string "?000" is returned if the argument
 		 ** is NULL or contains no ASCII alphabetic characters. */
-		Xsqlite3_result_text(tls, context, __ccgo_ts+16592, int32(4), libc.UintptrFromInt32(0))
+		Xsqlite3_result_text(tls, context, __ccgo_ts+16596, int32(4), libc.UintptrFromInt32(0))
 	}
 }
 
@@ -691,7 +691,7 @@ func _sqlite3Fts5ParseSetDistance(tls *libc.TLS, pParse uintptr, pNear uintptr, 
 				}
 				c = **(**uint8)(__ccgo_up((*TFts5Token)(unsafe.Pointer(p)).Fp + uintptr(i)))
 				if libc.Int32FromUint8(c) < int32('0') || libc.Int32FromUint8(c) > int32('9') {
-					_sqlite3Fts5ParseError(tls, pParse, __ccgo_ts+38539, libc.VaList(bp+8, (*TFts5Token)(unsafe.Pointer(p)).Fn, (*TFts5Token)(unsafe.Pointer(p)).Fp))
+					_sqlite3Fts5ParseError(tls, pParse, __ccgo_ts+38608, libc.VaList(bp+8, (*TFts5Token)(unsafe.Pointer(p)).Fn, (*TFts5Token)(unsafe.Pointer(p)).Fp))
 					return
 				}
 				if nNear < int32(214748363) {
@@ -732,7 +732,7 @@ func _sqlite3QuoteValue(tls *libc.TLS, pStr uintptr, pValue uintptr, bEscape int
 		 **    |
 		 **    | ,--- 17 precision guarantees round-trip
 		 **    v v                                       */
-		Xsqlite3_str_appendf(tls, pStr, __ccgo_ts+16557, libc.VaList(bp+8, Xsqlite3_value_double(tls, pValue)))
+		Xsqlite3_str_appendf(tls, pStr, __ccgo_ts+16561, libc.VaList(bp+8, Xsqlite3_value_double(tls, pValue)))
 	case int32(SQLITE_INTEGER):
 		Xsqlite3_str_appendf(tls, pStr, __ccgo_ts+1463, libc.VaList(bp+8, Xsqlite3_value_int64(tls, pValue)))
 	case int32(SQLITE_BLOB):
@@ -763,9 +763,9 @@ func _sqlite3QuoteValue(tls *libc.TLS, pStr uintptr, pValue uintptr, bEscape int
 	case int32(SQLITE_TEXT):
 		zArg = Xsqlite3_value_text(tls, pValue)
 		if bEscape != 0 {
-			v2 = __ccgo_ts + 16565
+			v2 = __ccgo_ts + 16569
 		} else {
-			v2 = __ccgo_ts + 11923
+			v2 = __ccgo_ts + 11927
 		}
 		Xsqlite3_str_appendf(tls, pStr, v2, libc.VaList(bp+8, zArg))
 	default:
@@ -836,7 +836,7 @@ func _yy_syntax_error(tls *libc.TLS, yypParser uintptr, yymajor int32, _yyminor 
 	if **(**uint8)(__ccgo_up((**(**TToken)(__ccgo_up(bp))).Fz)) != 0 {
 		_parserSyntaxError(tls, pParse, bp)
 	} else {
-		_sqlite3ErrorMsg(tls, pParse, __ccgo_ts+25133, 0)
+		_sqlite3ErrorMsg(tls, pParse, __ccgo_ts+25202, 0)
 	}
 	/************ End %syntax_error code ******************************************/
 	/* Suppress warning about unused %extra_argument variable */

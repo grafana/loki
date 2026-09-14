@@ -79,6 +79,42 @@ The tenant has exceeded their configured ingestion rate limit. This is a global 
 - HTTP status: 429 Too Many Requests
 - Configurable per tenant: Yes
 
+### Error: `per_stream_rate_limit`
+
+**Error message:**
+
+`Per stream rate limit exceeded (limit: <limit>/sec) while attempting to ingest for stream '<stream_labels>' totaling <bytes>, consider splitting a stream via additional labels or contact your Loki administrator to see if the limit can be increased`
+
+**Cause:**
+
+A single stream has exceeded its own rate limit. Each stream has a rate limit applied to it to prevent individual streams from overwhelming the set of ingesters it is distributed to. This limit is enforced by the ingester, not the distributor.
+
+**Default configuration:**
+
+- `per_stream_rate_limit`: 3 MB/sec
+- `per_stream_rate_limit_burst`: 15 MB
+
+**Resolution:**
+
+* **Split the stream** into several smaller streams by adding more distinguishing labels, so the write volume is spread across more streams.
+
+* **Reduce the rate of writes to the stream**, for example with an Alloy `stage.limit` block.
+
+* **Increase the per-stream limits** (we typically recommend no higher than 5MB for `per_stream_rate_limit` and 20MB for `per_stream_rate_limit_burst`):
+
+   ```yaml
+   limits_config:
+     per_stream_rate_limit: 5MB
+     per_stream_rate_limit_burst: 20MB
+   ```
+
+**Properties:**
+
+- Enforced by: Ingester
+- Retryable: Yes
+- HTTP status: 429 Too Many Requests
+- Configurable per tenant: Yes
+
 ### Error: `stream_limit`
 
 **Error message:**
@@ -88,6 +124,14 @@ The tenant has exceeded their configured ingestion rate limit. This is a global 
 **Cause:**
 
 The tenant has reached the maximum number of active streams. Active streams are held in memory on ingesters, and excessive streams can cause out-of-memory errors.
+
+{{< admonition type="note" >}}
+Under normal conditions, this limit only blocks the creation of genuinely new streams. Log lines for streams that are already active continue to be accepted.
+
+However, during ingester scaling (autoscaling, rollouts, or ring changes such as a partition-ingester migration), streams can be rebalanced to ingesters that were not previously handling them. The new ingester has no record of that stream in memory, so it treats the next write for that stream as a stream creation and checks it against its local share of the limit. If that share is already used up, for example because the same tenant is also adding new high-cardinality streams during the rebalance, writes to the already-active stream can be rejected with `stream_limit`, even though the tenant has not added new label cardinality for it.
+
+This effect is temporary. It is bounded by the number of ingesters added or restarted, and it typically resolves once the ring is stable and stream ownership is recalculated. If you see `stream_limit` errors that line up with ingester scaling or rollouts rather than with new label values, this is the likely cause.
+{{< /admonition >}}
 
 **Default configuration:**
 
@@ -117,6 +161,8 @@ The tenant has reached the maximum number of active streams. Active streams are 
 {{< admonition type="note" >}}
 Do not increase stream limits to accommodate high cardinality labels, this can result in Loki flushing extremely high numbers of small files which will make for extremely poor query performance.  As volume and the size of the infrastructure being monitored increase, it would be expected to increase the stream limit. However even for hundreds of TBs per day of logs you should avoid exceeding 300,000 max global streams per user.
 {{< /admonition >}}
+
+* **Check for a recent ingester rollout or scaling event** before increasing limits. If `stream_limit` errors started when ingesters were added, restarted, or migrated, the tenant may not have a real cardinality problem. Increasing the limit will not prevent this transient effect and can mask genuine cardinality growth.
 
 **Properties:**
 
@@ -300,6 +346,7 @@ Logs are being ingested with timestamps that violate Loki's ordering constraints
 
 **Default configuration:**
 
+- `unordered_writes`: true (since Loki 2.4). This flag, and `-ingester.unordered-writes`, are deprecated and will be removed in a future major release, after which out-of-order writes will be accepted unconditionally.
 - `max_chunk_age`: 2 hours
 - Acceptable timestamp window: 1 hour behind the newest entry (half of `max_chunk_age`)
 
@@ -324,7 +371,7 @@ Logs are being ingested with timestamps that violate Loki's ordering constraints
 - Enforced by: Ingester
 - Retryable: No
 - HTTP status: 400 Bad Request
-- Configurable per tenant: No (for `max_chunk_age`)
+- Configurable per tenant: Yes, for `unordered_writes`. No, for `max_chunk_age` (global only).
 
 ### Error: `greater_than_max_sample_age`
 
@@ -638,13 +685,14 @@ Disk space is not limited by Loki configuration; it depends on your infrastructu
 
 **Cause:**
 
-The disk where the WAL is stored has run out of space. When this occurs, Loki continues accepting writes but doesn't log them to the WAL, losing durability guarantees.
+By default, the ingester monitors disk usage on the volume that stores the WAL and rejects new writes once usage reaches 90% of capacity (`-ingester.wal-disk-full-threshold`), so that it never accepts data it cannot persist. This error and the associated log message describe a different, rarer case: the disk still filled up completely, either because this throttling is disabled (threshold set to `0`), or because a write reached the disk in the short window before the check could catch it. In that case, the ingester continues accepting writes but doesn't log them to the WAL, losing durability guarantees for those entries.
 
 **Default configuration:**
 
 - WAL enabled by default
 - WAL location: configured by `-ingester.wal-dir`
 - Checkpoint interval: `ingester.checkpoint-duration` (default: 5 minutes)
+- Disk full throttling threshold: `ingester.wal-disk-full-threshold` (default: 0.9, meaning 90%)
 
 **Resolution:**
 
@@ -655,6 +703,8 @@ The disk where the WAL is stored has run out of space. When this occurs, Loki co
    ```promql
    loki_ingester_wal_disk_full_failures_total > 0
    ```
+
+   This counter increases both when disk usage crosses the throttling threshold and when a WAL write fails because the disk is completely full. It does not count each individual throttled write, so also watch the gauge `loki_ingester_wal_disk_usage_percent` to see how close the disk is to the threshold.
 
 * **Reduce log volume** to decrease WAL growth.
 
@@ -675,7 +725,7 @@ The disk where the WAL is stored has run out of space. When this occurs, Loki co
 - Configurable per tenant: No
 
 {{< admonition type="note" >}}
-The WAL sacrifices durability for availability - it won't reject writes when the disk is full. After disk space is restored, durability guarantees resume. Use metric `loki_ingester_wal_disk_usage_percent` to monitor disk usage.
+This section describes the disk becoming completely full. In normal operation, the ingester's disk usage throttle (`-ingester.wal-disk-full-threshold`, default 90%) rejects writes to that ingester before the disk actually fills up, so that durability guarantees are preserved. Because Loki replicates each write to multiple ingesters, a client write can still succeed even while one ingester is throttled. Use metric `loki_ingester_wal_disk_usage_percent` to monitor disk usage.
 {{< /admonition >}}
 
 ### Error: WAL corruption
@@ -886,7 +936,7 @@ These errors occur when using structured metadata incorrectly.
 
 **Cause:**
 
-Structured metadata is disabled in the Loki configuration. This feature must be explicitly enabled.
+`allow_structured_metadata` defaults to `true`, so this error usually means it has been explicitly disabled, either globally or as a per-tenant override.
 
 **Default configuration:**
 

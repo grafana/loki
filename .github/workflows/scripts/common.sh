@@ -6,11 +6,27 @@ set -exo pipefail
 # The problem is that yq strips new lines when you update the file.
 # So we use a workaround from https://github.com/mikefarah/yq/issues/515 which:
 # generates the new file, diffs it with the original, removes all non-whitespace changes, and applies that to the original file.
+# If the node already has new_value, diff is empty and we no-op (patch would otherwise fail with "Only garbage").
 update_yaml_node() {
   local filename=$1
   local yaml_node=$2
   local new_value=$3
-  patch "${filename}" <<<"$(diff -U0 -w -b --ignore-blank-lines "${filename}" <(yq eval "${yaml_node} = \"${new_value}\"" "${filename}"))"
+  local patch_content
+  local diff_rc
+  # diff exits 1 when files differ; anything above that is a real error.
+  set +e
+  patch_content="$(diff -U0 -w -b --ignore-blank-lines "${filename}" <(yq eval "${yaml_node} = \"${new_value}\"" "${filename}"))"
+  diff_rc=$?
+  set -e
+  if (( diff_rc > 1 )); then
+    echo "diff failed for ${yaml_node} in ${filename} (exit ${diff_rc})" >&2
+    return "${diff_rc}"
+  fi
+  if [[ -z "${patch_content}" ]]; then
+    echo "No change for ${yaml_node} in ${filename} (already ${new_value})"
+    return 0
+  fi
+  patch "${filename}" <<<"${patch_content}"
 }
 
 get_yaml_node() {

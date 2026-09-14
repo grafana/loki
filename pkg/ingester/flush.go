@@ -539,8 +539,13 @@ func (i *Ingester) flushChunks(ctx context.Context, fp model.Fingerprint, labelP
 		// can be measured from ingestion rather than from the log timestamps.
 		i.maybeSetIngestedAt(&ch, firstTime)
 
-		// encodeChunk mutates the chunk so we must pass by reference
-		if err := i.encodeChunk(ctx, &ch, c); err != nil {
+		// encodeChunk mutates the chunk (writes block offsets) so hold chunkMtx
+		// for the duration of encode. Store Put remains unlocked.
+		if err := func() error {
+			chunkMtx.Lock()
+			defer chunkMtx.Unlock()
+			return i.encodeChunk(ctx, &ch, c)
+		}(); err != nil {
 			return err
 		}
 

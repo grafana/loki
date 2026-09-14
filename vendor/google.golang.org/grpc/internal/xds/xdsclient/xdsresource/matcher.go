@@ -50,14 +50,8 @@ func RouteToMatcher(r *Route) *CompositeMatcher {
 		var matcherT matcher.HeaderMatcher
 		invert := h.InvertMatch != nil && *h.InvertMatch
 		switch {
-		case h.ExactMatch != nil && *h.ExactMatch != "":
-			matcherT = matcher.NewHeaderExactMatcher(h.Name, *h.ExactMatch, invert)
 		case h.RegexMatch != nil:
 			matcherT = matcher.NewHeaderRegexMatcher(h.Name, h.RegexMatch, invert)
-		case h.PrefixMatch != nil && *h.PrefixMatch != "":
-			matcherT = matcher.NewHeaderPrefixMatcher(h.Name, *h.PrefixMatch, invert)
-		case h.SuffixMatch != nil && *h.SuffixMatch != "":
-			matcherT = matcher.NewHeaderSuffixMatcher(h.Name, *h.SuffixMatch, invert)
 		case h.RangeMatch != nil:
 			matcherT = matcher.NewHeaderRangeMatcher(h.Name, h.RangeMatch.Start, h.RangeMatch.End, invert)
 		case h.PresentMatch != nil:

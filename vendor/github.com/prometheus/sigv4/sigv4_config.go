@@ -15,22 +15,30 @@ package sigv4
 
 import (
 	"fmt"
+	"regexp"
 
 	"github.com/prometheus/common/config"
 )
+
+// sessionNamePattern matches the AWS RoleSessionName constraints:
+// 2-64 characters consisting of word characters and +=,.@-
+// See: https://docs.aws.amazon.com/STS/latest/APIReference/API_AssumeRole.html
+var sessionNamePattern = regexp.MustCompile(`^[\w+=,.@-]{2,64}$`)
 
 // SigV4Config is the configuration for signing remote write requests with
 // AWS's SigV4 verification process. Empty values will be retrieved using the
 // AWS default credentials chain.
 type SigV4Config struct { //nolint:revive
-	Region             string        `yaml:"region,omitempty"`
-	AccessKey          string        `yaml:"access_key,omitempty"`
-	SecretKey          config.Secret `yaml:"secret_key,omitempty"`
-	Profile            string        `yaml:"profile,omitempty"`
-	RoleARN            string        `yaml:"role_arn,omitempty"`
-	ExternalID         string        `yaml:"external_id,omitempty"`
-	UseFIPSSTSEndpoint bool          `yaml:"use_fips_sts_endpoint,omitempty"`
-	ServiceName        string        `yaml:"service_name,omitempty"`
+	Region             string            `yaml:"region,omitempty"`
+	AccessKey          string            `yaml:"access_key,omitempty"`
+	SecretKey          config.Secret     `yaml:"secret_key,omitempty"`
+	Profile            string            `yaml:"profile,omitempty"`
+	RoleARN            string            `yaml:"role_arn,omitempty"`
+	ExternalID         string            `yaml:"external_id,omitempty"`
+	SessionName        string            `yaml:"session_name,omitempty"`
+	Tags               map[string]string `yaml:"tags,omitempty"`
+	UseFIPSSTSEndpoint bool              `yaml:"use_fips_sts_endpoint,omitempty"`
+	ServiceName        string            `yaml:"service_name,omitempty"`
 }
 
 func (c *SigV4Config) Validate() error {
@@ -39,6 +47,26 @@ func (c *SigV4Config) Validate() error {
 	}
 	if c.ExternalID != "" && c.RoleARN == "" {
 		return fmt.Errorf("external_id can only be used with role_arn")
+	}
+	if c.SessionName != "" && c.RoleARN == "" {
+		return fmt.Errorf("session_name can only be used with role_arn")
+	}
+	if c.SessionName != "" && !sessionNamePattern.MatchString(c.SessionName) {
+		return fmt.Errorf("session_name must match %s (2-64 alphanumeric and +=,.@- characters)", sessionNamePattern.String())
+	}
+	if len(c.Tags) > 0 && c.RoleARN == "" {
+		return fmt.Errorf("tags can only be used with role_arn")
+	}
+	for k, v := range c.Tags {
+		if k == "" {
+			return fmt.Errorf("tag key must not be empty")
+		}
+		if len(k) > 128 {
+			return fmt.Errorf("tag key %q exceeds maximum length of 128", k)
+		}
+		if len(v) > 256 {
+			return fmt.Errorf("tag value for key %q exceeds maximum length of 256", k)
+		}
 	}
 	return nil
 }

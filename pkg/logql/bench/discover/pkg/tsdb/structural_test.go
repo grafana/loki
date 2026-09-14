@@ -156,7 +156,7 @@ func openStructuralIndexes(t *testing.T, paths ...string) []tsdb.Index {
 
 	res := make([]tsdb.Index, 0, len(paths))
 	for _, path := range paths {
-		idx, _, err := tsdb.NewTSDBIndexFromFile(path)
+		idx, _, err := tsdb.NewTSDBIndexFromFile(path, tsdbindex.MmapOptions{})
 		require.NoError(t, err)
 		t.Cleanup(func() {
 			require.NoError(t, idx.Close())

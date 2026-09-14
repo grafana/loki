@@ -140,37 +140,32 @@ func processStream(in []logproto.Stream, pipeline log.Pipeline) []logproto.Strea
 	return streams
 }
 
-func processSeries(in []logproto.Stream, ex []log.SampleExtractor) ([]logproto.Series, error) {
+func processSeries(in []logproto.Stream, ex log.SampleExtractor) ([]logproto.Series, error) {
 	resBySeries := map[string]*logproto.Series{}
 
 	for _, stream := range in {
-		for _, extractor := range ex {
-			exs := extractor.ForStream(mustParseLabels(stream.Labels))
-			for _, e := range stream.Entries {
-
-				if samples, ok := exs.Process(e.Timestamp.UnixNano(), []byte(e.Line), labels.EmptyLabels()); ok {
-					for _, sample := range samples {
-						lbs := sample.Labels
-						f := sample.Value
-						var s *logproto.Series
-						var found bool
-						s, found = resBySeries[lbs.String()]
-						if !found {
-							s = &logproto.Series{
-								Labels:     lbs.String(),
-								StreamHash: exs.BaseLabels().Hash(),
-							}
-							resBySeries[lbs.String()] = s
-						}
-
-						s.Samples = append(s.Samples, logproto.Sample{
-							Timestamp: e.Timestamp.UnixNano(),
-							Value:     f,
-							Hash:      xxhash.Sum64([]byte(e.Line)),
-						})
-					}
-				}
+		exs := ex.ForStream(mustParseLabels(stream.Labels))
+		for _, e := range stream.Entries {
+			sample, ok := exs.Process(e.Timestamp.UnixNano(), []byte(e.Line), labels.EmptyLabels())
+			if !ok {
+				continue
 			}
+
+			lbs := sample.Labels.String()
+			s, found := resBySeries[lbs]
+			if !found {
+				s = &logproto.Series{
+					Labels:     lbs,
+					StreamHash: exs.BaseLabels().Hash(),
+				}
+				resBySeries[lbs] = s
+			}
+
+			s.Samples = append(s.Samples, logproto.Sample{
+				Timestamp: e.Timestamp.UnixNano(),
+				Value:     sample.Value,
+				Hash:      xxhash.Sum64([]byte(e.Line)),
+			})
 		}
 	}
 
@@ -193,7 +188,7 @@ func (q MockQuerier) SelectSamples(_ context.Context, req SelectSampleParams) (i
 		return nil, err
 	}
 
-	extractors, err := expr.Extractors()
+	extractor, err := expr.Extractor()
 	if err != nil {
 		return nil, err
 	}
@@ -227,7 +222,7 @@ outer:
 		matched = append(matched, stream)
 	}
 
-	filtered, err := processSeries(matched, extractors)
+	filtered, err := processSeries(matched, extractor)
 	if err != nil {
 		return nil, err
 	}

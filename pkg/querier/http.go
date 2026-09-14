@@ -635,7 +635,7 @@ func (q *QuerierAPI) validateMaxEntriesLimits(ctx context.Context, expr syntax.E
 	maxEntriesLimit := util_validation.SmallestPositiveNonZeroIntPerTenant(tenantIDs, maxEntriesCapture)
 	if int(limit) > maxEntriesLimit && maxEntriesLimit != 0 {
 		return httpgrpc.Errorf(http.StatusBadRequest,
-			"max entries limit per query exceeded, limit > max_entries_limit_per_query (%d > %d)", limit, maxEntriesLimit)
+			util_validation.ErrMaxEntriesLimit, limit, maxEntriesLimit)
 	}
 	return nil
 }

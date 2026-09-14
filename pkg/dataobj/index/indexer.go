@@ -5,6 +5,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"io"
 	"sync"
@@ -18,6 +19,7 @@ import (
 	"github.com/twmb/franz-go/pkg/kgo"
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
+	"github.com/grafana/loki/v3/pkg/dataobj/index/indexobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
 )
 
@@ -135,7 +137,7 @@ func (si *serialIndexer) stopping(_ error) error {
 func (si *serialIndexer) submitBuild(ctx context.Context, events []bufferedEvent, partition int32, trigger triggerType) ([]*kgo.Record, error) {
 	// Check if service is running
 	if si.State() != services.Running {
-		return nil, fmt.Errorf("indexer service is not running (state: %s)", si.State())
+		return nil, fmt.Errorf("%w (state: %s)", ErrIndexerNotRunning, si.State())
 	}
 
 	resultChan := make(chan buildResult, 1)
@@ -162,8 +164,13 @@ func (si *serialIndexer) submitBuild(ctx context.Context, events []bufferedEvent
 	select {
 	case result := <-resultChan:
 		if result.err != nil {
-			level.Error(si.logger).Log("msg", "build request failed",
-				"partition", partition, "err", result.err)
+			if errors.Is(result.err, context.Canceled) {
+				level.Debug(si.logger).Log("msg", "build request cancelled",
+					"partition", partition, "err", result.err)
+			} else {
+				level.Error(si.logger).Log("msg", "build request failed",
+					"partition", partition, "err", result.err)
+			}
 		} else {
 			level.Debug(si.logger).Log("msg", "build request completed",
 				"partition", partition, "index_path", result.indexPath)
@@ -222,14 +229,26 @@ func (si *serialIndexer) processBuildRequest(req buildRequest) buildResult {
 
 	// Build the index using internal method
 	indexPath, processed, err := si.buildIndex(req.ctx, events, req.partition)
+	if err != nil {
+		// The calculator is shared across partitions on this serial indexer. Clear
+		// any partial state when a build fails or is cancelled (e.g. partition
+		// revoke) so the next request starts clean. Successful flushes already call
+		// Reset inside flushIndex.
+		si.calculator.Reset()
+	}
 
 	// Update metrics
 	buildTime := time.Since(start)
 	si.updateMetrics(buildTime, getEarliestIndexedRecord(si.logger, events[:processed]))
 
 	if err != nil {
-		level.Error(si.logger).Log("msg", "failed to build index",
-			"partition", req.partition, "err", err, "duration", buildTime, "processed", processed)
+		if errors.Is(err, context.Canceled) {
+			level.Debug(si.logger).Log("msg", "index build cancelled",
+				"partition", req.partition, "err", err, "duration", buildTime, "processed", processed)
+		} else {
+			level.Error(si.logger).Log("msg", "failed to build index",
+				"partition", req.partition, "err", err, "duration", buildTime, "processed", processed)
+		}
 		return buildResult{err: err}
 	}
 
@@ -436,13 +455,11 @@ func (si *serialIndexer) processObject(ctx context.Context, objLogger log.Logger
 
 // flushIndex flushes the current calculator state to an index object
 func (si *serialIndexer) flushIndex(ctx context.Context, partition int32) (string, error) {
-	tenantTimeRanges := si.calculator.TimeRanges()
-	if len(tenantTimeRanges) == 0 {
-		return "", nil // Nothing to flush
-	}
-
-	obj, closer, err := si.calculator.Flush()
+	obj, closer, tenantTimeRanges, err := si.calculator.Flush()
 	if err != nil {
+		if errors.Is(err, indexobj.ErrBuilderEmpty) {
+			return "", nil // Nothing to flush
+		}
 		return "", fmt.Errorf("failed to flush calculator: %w", err)
 	}
 	defer closer.Close()
@@ -462,12 +479,15 @@ func (si *serialIndexer) flushIndex(ctx context.Context, partition int32) (strin
 		return "", fmt.Errorf("failed to upload index: %w", err)
 	}
 
+	fileSize := uint64(obj.Size())
+	for i := range tenantTimeRanges {
+		tenantTimeRanges[i].FileSize = fileSize
+	}
+
 	metastoreTocWriter := metastore.NewTableOfContentsWriter(si.indexStorageBucket, si.logger)
 	if err := metastoreTocWriter.WriteEntry(ctx, key, tenantTimeRanges); err != nil {
 		return "", fmt.Errorf("failed to update metastore ToC file: %w", err)
 	}
-
-	si.calculator.Reset()
 
 	level.Debug(si.logger).Log("msg", "flushed index object", "partition", partition,
 		"path", key, "size", obj.Size(), "tenants", len(tenantTimeRanges))

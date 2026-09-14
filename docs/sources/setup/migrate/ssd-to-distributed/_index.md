@@ -262,7 +262,7 @@ To start the migration process:
 1. Deploy the distributed components using the following command:
 
     ```bash
-    helm upgrade --values values-migration.yaml loki grafana/loki -n loki 
+    helm upgrade --values values-migration.yaml loki grafana-community/loki -n loki 
     ```
 
    {{< admonition type="caution" >}}
@@ -380,7 +380,7 @@ The final stage of the migration involves transitioning all traffic to the distr
 1. Deploy the final configuration using the following command:
 
     ```bash
-    helm upgrade --values values-distributed.yaml loki grafana/loki -n loki 
+    helm upgrade --values values-distributed.yaml loki grafana-community/loki -n loki 
     ```
 
 1. Once the deployment is complete, you can verify that all components are running using the following command:

@@ -13,7 +13,7 @@ type Flags int16
 // Flag constants for struct field handling.
 const (
 	Enum      Flags = 1 << 0
-	Union     Flags = 1 << 1
+	UnionType Flags = 1 << 1 // indicates field implements Union interface
 	Required  Flags = 1 << 2
 	Optional  Flags = 1 << 3
 	Strict    Flags = 1 << 4
@@ -91,8 +91,6 @@ func forEachStructField(t reflect.Type, index []int, do func(structField)) {
 			switch opt {
 			case "enum":
 				flags = flags.With(Enum)
-			case "union":
-				flags = flags.With(Union)
 			case "required":
 				flags = flags.With(Required)
 			case "optional":
@@ -108,21 +106,7 @@ func forEachStructField(t reflect.Type, index []int, do func(structField)) {
 			panic(fmt.Errorf("thrift struct field cannot be both optional and required in `thrift:\"%s\"`", tag))
 		}
 
-		if flags.Have(Union) {
-			if f.Type.Kind() != reflect.Interface {
-				panic(fmt.Errorf("thrift union tag found on a field which is not an interface type `thrift:\"%s\"`", tag))
-			}
-
-			if tags[0] != "" {
-				panic(fmt.Errorf("invalid thrift field id on union field `thrift:\"%s\"`", tag))
-			}
-
-			do(structField{
-				typ:   f.Type,
-				index: fieldIndex,
-				flags: flags,
-			})
-		} else {
+		{
 			if flags.Have(Enum) {
 				switch f.Type.Kind() {
 				case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
@@ -132,8 +116,10 @@ func forEachStructField(t reflect.Type, index []int, do func(structField)) {
 				}
 			}
 
-			// Detect types implementing Value interface
-			if f.Type.Implements(valueType) {
+			// Detect union structs, then types implementing Value interface.
+			if isUnion(f.Type) {
+				flags = flags.With(UnionType)
+			} else if f.Type.Implements(valueType) {
 				flags = flags.With(ValueType)
 			}
 

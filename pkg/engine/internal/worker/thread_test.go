@@ -95,6 +95,25 @@ func (p failingPipeline) Open(context.Context) error                      { retu
 func (p failingPipeline) Read(context.Context) (arrow.RecordBatch, error) { return nil, p.readErr }
 func (p failingPipeline) Close()                                          {}
 
+// panicPipeline panics on Read to exercise drainPipeline's recovery.
+type panicPipeline struct{}
+
+func (panicPipeline) Open(context.Context) error                      { return nil }
+func (panicPipeline) Read(context.Context) (arrow.RecordBatch, error) { panic("boom from pipeline") }
+func (panicPipeline) Close()                                          {}
+
+func TestThread_drainPipeline_RecoversFromPanic(t *testing.T) {
+	th := &thread{Logger: log.NewNopLogger(), Metrics: newMetrics()}
+
+	// A panic while draining must be converted into an error rather than
+	// propagating and crashing the worker process.
+	totalRows, err := th.drainPipeline(t.Context(), taskTypeLeaf, nil, panicPipeline{}, nil, log.NewNopLogger())
+	require.Error(t, err)
+	require.ErrorContains(t, err, "panic while draining pipeline")
+	require.ErrorContains(t, err, "boom from pipeline")
+	require.Equal(t, 0, totalRows)
+}
+
 func TestThread_drainPipeline_RecordsPhasesOnFailure(t *testing.T) {
 	tests := []struct {
 		name     string

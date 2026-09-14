@@ -15,7 +15,7 @@ import (
 func String() Node { return Leaf(&stringType{}) }
 
 var stringLogicalType = format.LogicalType{
-	UTF8: new(format.StringType),
+	Value: new(format.StringType),
 }
 
 type stringType format.StringType
@@ -92,7 +92,7 @@ func (t *stringType) ConvertValue(val Value, typ Type) (Value, error) {
 		return convertDateToString(val)
 	case *timeType:
 		tz := t2.tz()
-		if t2.Unit.Micros != nil {
+		if isMicros(t2.Unit) {
 			return convertTimeMicrosToString(val, tz)
 		} else {
 			return convertTimeMillisToString(val, tz)

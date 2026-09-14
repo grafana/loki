@@ -2,6 +2,7 @@ package push
 
 import (
 	"context"
+	"errors"
 
 	"github.com/redis/go-redis/v9/internal"
 	"github.com/redis/go-redis/v9/internal/proto"
@@ -24,6 +25,15 @@ type NotificationProcessor interface {
 // Processor handles push notifications with a registry of handlers
 type Processor struct {
 	registry *Registry
+}
+
+type timeoutError interface {
+	Timeout() bool
+}
+
+func isTimeoutError(err error) bool {
+	var timeoutErr timeoutError
+	return errors.As(err, &timeoutErr) && timeoutErr.Timeout()
 }
 
 // NewProcessor creates a new push notification processor
@@ -52,17 +62,59 @@ func (p *Processor) UnregisterHandler(pushNotificationName string) error {
 // This method should be called by the client in WithReader before reading the reply
 // It will try to read from the socket and if it is empty - it may block.
 func (p *Processor) ProcessPendingNotifications(ctx context.Context, handlerCtx NotificationHandlerContext, rd *proto.Reader) error {
+	return p.processPendingNotifications(ctx, handlerCtx, rd, false)
+}
+
+// ProcessPendingNotificationsBuffered processes one pending push notification
+// and then continues only through frames already buffered by that read. It is
+// used by callers that have already established socket readiness and must not
+// wait for another frame after draining the current batch.
+func (p *Processor) ProcessPendingNotificationsBuffered(
+	ctx context.Context, handlerCtx NotificationHandlerContext, rd *proto.Reader,
+) error {
+	return p.processPendingNotifications(ctx, handlerCtx, rd, true)
+}
+
+func (p *Processor) processPendingNotifications(
+	ctx context.Context,
+	handlerCtx NotificationHandlerContext,
+	rd *proto.Reader,
+	bufferedContinuation bool,
+) error {
 	if rd == nil {
 		return nil
 	}
 
-	for {
+	processed := false
+	for !bufferedContinuation || !processed || rd.Buffered() > 0 {
 		// Check if there's data available to read
-		replyType, err := rd.PeekReplyType()
-		if err != nil {
-			// No more data available or error reading
-			// if timeout, it will be handled by the caller
-			break
+		var replyType byte
+		if bufferedContinuation {
+			for {
+				b, err := rd.Peek(1)
+				if err != nil {
+					if isTimeoutError(err) {
+						return nil
+					}
+					return err
+				}
+				replyType = b[0]
+				if replyType != proto.RespAttr {
+					break
+				}
+				// Unlike Peek, DiscardNext consumes bytes. Any error here is
+				// fatal because the reader may be left mid-frame.
+				if err := rd.DiscardNext(); err != nil {
+					return err
+				}
+			}
+		} else {
+			var err error
+			replyType, err = rd.PeekReplyType()
+			if err != nil {
+				// No more data available or error reading.
+				break
+			}
 		}
 
 		// Only process push notifications (arrays starting with >)
@@ -73,19 +125,31 @@ func (p *Processor) ProcessPendingNotifications(ctx context.Context, handlerCtx 
 		// see if we should skip this notification
 		notificationName, err := rd.PeekPushNotificationName()
 		if err != nil {
+			// Name too long to peek: consume & dispatch below rather than leave the
+			// frame at the buffer head (which would stall and desync the next reply).
+			if !errors.Is(err, proto.ErrPushNotificationNameTooLong) {
+				if bufferedContinuation {
+					if isTimeoutError(err) {
+						return nil
+					}
+					return err
+				}
+				break
+			}
+		} else if willHandleNotificationInClient(notificationName) {
 			break
 		}
 
-		if willHandleNotificationInClient(notificationName) {
-			break
-		}
-
-		// Read the push notification
+		// Surface a ReadReply error (unlike the boundary peek errors above,
+		// which consumed nothing): it happens mid-frame after bytes are
+		// consumed, so the conn is desynced and the CSC drainer must remove it.
+		// Normal reply-read callers log-and-ignore this and let their own read fail.
 		reply, err := rd.ReadReply()
 		if err != nil {
 			internal.Logger.Printf(ctx, "push: error reading push notification: %v", err)
-			break
+			return err
 		}
+		processed = true
 
 		// Convert to slice of interfaces
 		notification, ok := reply.([]interface{})
@@ -165,10 +229,12 @@ func (v *VoidProcessor) ProcessPendingNotifications(_ context.Context, handlerCt
 		// see if we should skip this notification
 		notificationName, err := rd.PeekPushNotificationName()
 		if err != nil {
-			break
-		}
-
-		if willHandleNotificationInClient(notificationName) {
+			// Name too long to peek: still consume the frame below so it isn't
+			// misread as a reply.
+			if !errors.Is(err, proto.ErrPushNotificationNameTooLong) {
+				break
+			}
+		} else if willHandleNotificationInClient(notificationName) {
 			break
 		}
 

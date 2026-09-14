@@ -28,11 +28,6 @@ type LogMerge struct {
 	// SortSchema is the tenant's resolved sort schema as ordered FQN sort keys
 	// (e.g. "label:service_name")
 	SortSchema []string
-
-	// OutputIndexPath is the deterministic object-storage key of the index
-	// object the worker builds from the newly-created compacted log object and
-	// returns to the planner for the ToC swap
-	OutputIndexPath string
 }
 
 // ID implements the Node interface.
@@ -44,12 +39,11 @@ func (*LogMerge) Type() NodeType { return NodeTypeLogMerge }
 // Clone implements the Node interface.
 func (n *LogMerge) Clone() Node {
 	return &LogMerge{
-		NodeID:          ulid.Make(),
-		Tenant:          n.Tenant,
-		ToCWindowStart:  n.ToCWindowStart,
-		Runs:            cloneRuns(n.Runs),
-		SortSchema:      slices.Clone(n.SortSchema),
-		OutputIndexPath: n.OutputIndexPath,
+		NodeID:         ulid.Make(),
+		Tenant:         n.Tenant,
+		ToCWindowStart: n.ToCWindowStart,
+		Runs:           cloneRuns(n.Runs),
+		SortSchema:     slices.Clone(n.SortSchema),
 	}
 }
 

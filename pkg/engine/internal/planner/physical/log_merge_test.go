@@ -17,12 +17,11 @@ func TestLogMerge_CloneIsDeepCopy(t *testing.T) {
 		Runs: []*compactionv2pb.RunRef{
 			{
 				Sections: []*compactionv2pb.SectionRef{
-					{ObjectPath: "objs/a.dataobj", SectionIndex: 0, MinKey: []string{"a"}, MaxKey: []string{"f"}},
+					{ObjectPath: "objects/aa/bb", SectionIndex: 0, MinKey: []string{"a"}, MaxKey: []string{"f"}},
 				},
 			},
 		},
-		SortSchema:      []string{"label:service_name"},
-		OutputIndexPath: "tenants/tenant-29/objects/abc",
+		SortSchema: []string{"label:service_name"},
 	}
 
 	clone := orig.Clone().(*LogMerge)

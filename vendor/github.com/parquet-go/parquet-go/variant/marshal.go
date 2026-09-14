@@ -5,6 +5,7 @@ import (
 	"math"
 	"reflect"
 	"strings"
+	"time"
 
 	"github.com/google/uuid"
 )
@@ -12,14 +13,28 @@ import (
 // Marshal converts a Go value to variant binary encoding, returning the
 // metadata and value byte slices.
 func Marshal(v any) (metadata, value []byte, err error) {
-	varVal, err := goToVariant(v)
+	var b MetadataBuilder
+	enc := getEncoder(&b)
+
+	start, end, err := enc.encodeReflect(reflect.ValueOf(v))
 	if err != nil {
+		releaseEncoder(enc)
 		return nil, nil, err
 	}
-	var b MetadataBuilder
-	valueBytes := Encode(&b, varVal)
+	valueBytes := make([]byte, end-start)
+	copy(valueBytes, enc.scratch[start:end])
+
+	releaseEncoder(enc)
+
 	_, metadataBytes := b.Build()
 	return metadataBytes, valueBytes, nil
+}
+
+// ValueOf converts a Go value to a variant Value without encoding it. It is
+// useful for callers that need to inspect or partially encode the value,
+// such as shredded variant writers.
+func ValueOf(v any) (Value, error) {
+	return goToVariant(v)
 }
 
 // Unmarshal decodes variant binary data into a Go value.
@@ -35,7 +50,10 @@ func Unmarshal(metadata, value []byte) (any, error) {
 	return v.GoValue(), nil
 }
 
-// goToVariant converts a Go value to a variant Value.
+// goToVariant converts a Go value to a variant Value. Marshal encodes
+// through the streaming encoder instead (see encodeReflect); this tree
+// walk backs ValueOf, whose callers need the Value tree to make per-field
+// decisions before encoding. The two must map Go types identically.
 func goToVariant(v any) (Value, error) {
 	if v == nil {
 		return Null(), nil
@@ -48,7 +66,6 @@ func goToVariantReflect(rv reflect.Value) (Value, error) {
 		return Null(), nil
 	}
 
-	// Dereference pointers/interfaces
 	for rv.Kind() == reflect.Ptr || rv.Kind() == reflect.Interface {
 		if rv.IsNil() {
 			return Null(), nil
@@ -56,11 +73,15 @@ func goToVariantReflect(rv reflect.Value) (Value, error) {
 		rv = rv.Elem()
 	}
 
-	// Check concrete types first
+	// uuid.UUID and time.Time must be recognized before the Kind switch:
+	// uuid.UUID is a [16]byte array and time.Time a struct with no exported
+	// fields, so the generic cases would mishandle them.
 	iface := rv.Interface()
 	switch val := iface.(type) {
 	case uuid.UUID:
 		return UUID(val), nil
+	case time.Time:
+		return timeToVariant(val), nil
 	}
 
 	switch rv.Kind() {
@@ -94,15 +115,19 @@ func goToVariantReflect(rv reflect.Value) (Value, error) {
 		return String(rv.String()), nil
 	case reflect.Slice:
 		if rv.Type().Elem().Kind() == reflect.Uint8 {
-			// []byte
 			return Binary(rv.Bytes()), nil
 		}
 		return goSliceToArray(rv)
 	case reflect.Array:
-		if rv.Type() == reflect.TypeFor[uuid.UUID]() {
-			var u uuid.UUID
-			reflect.ValueOf(&u).Elem().Set(rv)
-			return UUID(u), nil
+		// Byte arrays (including [16]byte) map to Binary. uuid.UUID is
+		// handled above via its concrete type; without a logical UUID
+		// annotation a fixed-length byte array is just bytes.
+		if rv.Type().Elem().Kind() == reflect.Uint8 {
+			b := make([]byte, rv.Len())
+			for i := range b {
+				b[i] = byte(rv.Index(i).Uint())
+			}
+			return Binary(b), nil
 		}
 		return goSliceToArray(rv)
 	case reflect.Map:
@@ -166,6 +191,18 @@ func goStructToObject(rv reflect.Value) (Value, error) {
 		fields = append(fields, Field{Name: name, Value: val})
 	}
 	return MakeObject(fields), nil
+}
+
+// timeToVariant converts a time.Time to a timestamp variant value. The
+// timestamp is stored with time zone (isAdjustedToUTC), which is the natural
+// mapping for time.Time since it represents an instant. Nanosecond precision
+// is used when the value has sub-microsecond components and fits in the
+// nanosecond timestamp range; microsecond precision otherwise.
+func timeToVariant(t time.Time) Value {
+	if t.Nanosecond()%1000 != 0 && t.Year() >= 1678 && t.Year() <= 2261 {
+		return TimestampNanos(t.UnixNano())
+	}
+	return Timestamp(t.UnixMicro())
 }
 
 // fieldName returns the name to use for a struct field, checking variant and

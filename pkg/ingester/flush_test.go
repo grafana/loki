@@ -44,6 +44,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/storage/stores/index/stats"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/sharding"
 	storagetypes "github.com/grafana/loki/v3/pkg/storage/types"
+	"github.com/grafana/loki/v3/pkg/util"
 	"github.com/grafana/loki/v3/pkg/util/constants"
 	"github.com/grafana/loki/v3/pkg/validation"
 )
@@ -109,6 +110,145 @@ func Benchmark_FlushLoop(b *testing.B) {
 		}
 		wg.Wait()
 	}
+}
+
+// Benchmark_EncodeChunk reports the cost of encoding one full closed chunk — an upper
+// bound on how long encode would hold stream.chunkMtx after locking around encodeChunk.
+func Benchmark_EncodeChunk(b *testing.B) {
+	ctx := user.InjectOrgID(context.Background(), "foo")
+	ing := &Ingester{
+		cfg:     *dummyConf(),
+		logger:  gokitlog.NewNopLogger(),
+		metrics: NilMetrics,
+	}
+	desc := buildChunkDesc(b)
+	lbs := labels.FromStrings("app", "bench")
+	labelsBuilder := labels.NewBuilder(lbs)
+	labelsBuilder.Set(nameLabel, logsValue)
+	metric := labelsBuilder.Labels()
+
+	b.ReportAllocs()
+	b.ResetTimer()
+	for n := 0; n < b.N; n++ {
+		firstTime, lastTime := util.RoundToMilliseconds(desc.chunk.Bounds())
+		ch := chunk.NewChunk(
+			"foo", 0, metric,
+			chunkenc.NewFacade(desc.chunk, ing.cfg.BlockSize, ing.cfg.TargetChunkSize),
+			firstTime,
+			lastTime,
+		)
+		require.NoError(b, ing.encodeChunk(ctx, &ch, desc))
+	}
+}
+
+// Benchmark_PushDuringEncode measures Push on a stream while another goroutine
+// repeatedly encodes a closed filled chunk. unlocked_encode matches today's
+// racey flush (encode without chunkMtx); locked_encode is the post-fix shape.
+func Benchmark_PushDuringEncode(b *testing.B) {
+	for _, tc := range []struct {
+		name   string
+		locked bool
+	}{
+		{name: "unlocked_encode", locked: false},
+		{name: "locked_encode", locked: true},
+	} {
+		b.Run(tc.name, func(b *testing.B) {
+			benchmarkPushDuringEncode(b, tc.locked)
+		})
+	}
+}
+
+func benchmarkPushDuringEncode(b *testing.B, lockDuringEncode bool) {
+	ls := labels.FromStrings(
+		"namespace", "loki-dev",
+		"cluster", "dev-us-central1",
+		"job", "loki-dev/ingester",
+		"container", "ingester",
+	)
+
+	limits, err := validation.NewOverrides(defaultLimitsTestConfig(), nil)
+	require.NoError(b, err)
+	limiter := NewLimiter(limits, NilMetrics, newIngesterRingLimiterStrategy(&ringCountMock{count: 1}, 1), &TenantBasedStrategy{limits: limits})
+	chunkfmt, headfmt := defaultChunkFormat(b)
+	retentionHours := util.RetentionHours(limiter.limits.RetentionPeriod("fake"))
+	s := newStream(chunkfmt, headfmt, &Config{MaxChunkAge: 24 * time.Hour}, limiter.rateLimitStrategy, "fake", model.Fingerprint(0), ls, NewStreamRateCalculator(), NilMetrics, nil, nil, retentionHours, noPolicy)
+
+	ing := &Ingester{
+		cfg:     *dummyConf(),
+		logger:  gokitlog.NewNopLogger(),
+		metrics: NilMetrics,
+	}
+	desc := buildChunkDesc(b)
+	labelsBuilder := labels.NewBuilder(ls)
+	labelsBuilder.Set(nameLabel, logsValue)
+	metric := labelsBuilder.Labels()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	var encodes atomic.Int64
+	var encodeErr atomic.Error
+	var wg sync.WaitGroup
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			default:
+			}
+
+			firstTime, lastTime := util.RoundToMilliseconds(desc.chunk.Bounds())
+			ch := chunk.NewChunk(
+				"fake", s.fp, metric,
+				chunkenc.NewFacade(desc.chunk, ing.cfg.BlockSize, ing.cfg.TargetChunkSize),
+				firstTime,
+				lastTime,
+			)
+
+			if lockDuringEncode {
+				s.chunkMtx.Lock()
+			}
+			err := ing.encodeChunk(ctx, &ch, desc)
+			if lockDuringEncode {
+				s.chunkMtx.Unlock()
+			}
+			if err != nil {
+				if ctx.Err() != nil {
+					return
+				}
+				encodeErr.Store(err)
+				cancel()
+				return
+			}
+			encodes.Add(1)
+		}
+	}()
+
+	pushCtx := context.Background()
+	e := entries(10, time.Now())
+	b.ReportAllocs()
+	b.ResetTimer()
+
+	for n := 0; n < b.N; n++ {
+		rec := recordPool.GetRecord()
+		_, err := s.Push(pushCtx, e, rec, 0, true, false, nil, "loki")
+		recordPool.PutRecord(rec)
+		if err != nil {
+			b.Fatal(err)
+		}
+		// Advance timestamps so subsequent pushes are not duplicates.
+		for i := range e {
+			e[i].Timestamp = e[i].Timestamp.Add(time.Millisecond)
+		}
+	}
+
+	b.StopTimer()
+	cancel()
+	wg.Wait()
+	require.NoError(b, encodeErr.Load())
+	b.ReportMetric(float64(encodes.Load())/float64(b.N), "encodes/op")
 }
 
 func Test_FlushOp(t *testing.T) {
@@ -194,14 +334,20 @@ func Test_Flush(t *testing.T) {
 func buildChunkDecs(t testing.TB) []*chunkDesc {
 	res := make([]*chunkDesc, 10)
 	for i := range res {
-		res[i] = &chunkDesc{
-			closed: true,
-			chunk:  chunkenc.NewMemChunk(chunkenc.ChunkFormatV4, compression.Snappy, chunkenc.UnorderedWithStructuredMetadataHeadBlockFmt, dummyConf().BlockSize, dummyConf().TargetChunkSize),
-		}
-		fillChunk(t, res[i].chunk)
-		require.NoError(t, res[i].chunk.Close())
+		res[i] = buildChunkDesc(t)
 	}
 	return res
+}
+
+func buildChunkDesc(t testing.TB) *chunkDesc {
+	t.Helper()
+	desc := &chunkDesc{
+		closed: true,
+		chunk:  chunkenc.NewMemChunk(chunkenc.ChunkFormatV4, compression.Snappy, chunkenc.UnorderedWithStructuredMetadataHeadBlockFmt, dummyConf().BlockSize, dummyConf().TargetChunkSize),
+	}
+	fillChunk(t, desc.chunk)
+	require.NoError(t, desc.chunk.Close())
+	return desc
 }
 
 func TestMaybeSetIngestedAt(t *testing.T) {

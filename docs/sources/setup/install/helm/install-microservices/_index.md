@@ -401,7 +401,7 @@ singleBinary:
 
 {{< /collapse >}}
 
-To configure other storage providers, refer to the [Helm Chart Reference](../reference/).
+To configure other storage providers, refer to the [Helm Chart Reference](https://grafana.com/docs/loki/<LOKI_VERSION>/setup/install/helm/reference/).
 
 ## Gateway API
 
@@ -471,4 +471,4 @@ We recommend running Loki at scale within a cloud environment like AWS, Azure, o
 ## Next Steps
 
 * Configure an agent to [send log data to Loki](/docs/loki/<LOKI_VERSION>/send-data/).
-* Monitor the Loki deployment using the [Meta Monitoring Helm chart](/docs/loki/<LOKI_VERSION>/setup/install/helm/monitor-and-alert/)
+* [Monitor the Loki deployment](/docs/loki/<LOKI_VERSION>/setup/install/helm/monitor-and-alert/), using the recommended Kubernetes monitoring Helm chart.

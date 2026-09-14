@@ -20,7 +20,7 @@ func TestRowReader_RoundTrip(t *testing.T) {
 	b.Append(stats.Stat{
 		ObjectPath:       "/obj1",
 		SectionIndex:     0,
-		SortSchema:       "service_name,job",
+		SortSchema:       "label:service_name,label:job",
 		Labels:           map[string]string{"service_name": "svc1", "job": "job1"},
 		MinTimestamp:     100,
 		MaxTimestamp:     200,
@@ -30,7 +30,7 @@ func TestRowReader_RoundTrip(t *testing.T) {
 	b.Append(stats.Stat{
 		ObjectPath:       "/obj2",
 		SectionIndex:     0,
-		SortSchema:       "service_name,job",
+		SortSchema:       "label:service_name,label:job",
 		Labels:           map[string]string{"service_name": "svc2", "job": "job2"},
 		MinTimestamp:     150,
 		MaxTimestamp:     250,
@@ -73,7 +73,7 @@ func TestRowReader_RoundTrip(t *testing.T) {
 
 	r1, ok := byPath["/obj1"]
 	require.True(t, ok, "expected a row for /obj1")
-	require.Equal(t, "service_name,job", r1.SortSchema)
+	require.Equal(t, "label:service_name,label:job", r1.SortSchema)
 	require.Equal(t, "svc1", r1.Labels["service_name"])
 	require.Equal(t, "job1", r1.Labels["job"])
 	require.Equal(t, int64(100), r1.MinTimestamp)
@@ -81,7 +81,7 @@ func TestRowReader_RoundTrip(t *testing.T) {
 
 	r2, ok := byPath["/obj2"]
 	require.True(t, ok, "expected a row for /obj2")
-	require.Equal(t, "service_name,job", r2.SortSchema)
+	require.Equal(t, "label:service_name,label:job", r2.SortSchema)
 	require.Equal(t, "svc2", r2.Labels["service_name"])
 	require.Equal(t, "job2", r2.Labels["job"])
 	require.Equal(t, int64(150), r2.MinTimestamp)
@@ -96,7 +96,7 @@ func TestRowReader_CloseIdempotent(t *testing.T) {
 	b.Append(stats.Stat{
 		ObjectPath:   "/obj1",
 		SectionIndex: 0,
-		SortSchema:   "service_name",
+		SortSchema:   "label:service_name",
 		Labels:       map[string]string{"service_name": "svc1"},
 		MinTimestamp: 100,
 		MaxTimestamp: 200,

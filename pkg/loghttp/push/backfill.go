@@ -6,11 +6,15 @@ import (
 	"net/http"
 
 	"github.com/prometheus/common/model"
+
+	"github.com/grafana/loki/v3/pkg/util/constants"
 )
 
 // HTTPHeaderBackfillShardKey is the HTTP header set by a backfill worker to mark a push as backfill
 // data. When present and valid, Loki adds the internal labels constants.BackfillLabel and
-// constants.BackfillShardLabel to every stream in the request.
+// constants.BackfillShardLabel to every stream in the request. Those labels are reserved: pushes
+// whose streams already carry them are rejected, so this header is the only way to produce them and
+// the distributor can safely relax validation (reject_old_samples) for streams carrying them.
 //
 // The value is opaque to Loki: it may be a uuid, a hash, a time bucket (e.g. "2026-06-10") or any
 // other identifier. Its only purpose is to implement time sharding on the client side by producing
@@ -57,4 +61,18 @@ func ExtractBackfillShardContext(ctx context.Context) string {
 		return ""
 	}
 	return shard
+}
+
+// errReservedBackfillLabels rejects streams that already carry the internal backfill labels.
+// They are reserved: only Loki itself may add them (from the X-Loki-Backfill-Shard header),
+// since the distributor relaxes validation (e.g. reject_old_samples) for streams carrying them.
+func errReservedBackfillLabels() error {
+	return fmt.Errorf("streams must not contain the reserved labels %s or %s; set the %s header to mark a push as backfill data", constants.BackfillLabel, constants.BackfillShardLabel, HTTPHeaderBackfillShardKey)
+}
+
+// hasReservedBackfillLabels reports whether ls carries either internal backfill label.
+func hasReservedBackfillLabels(ls model.LabelSet) bool {
+	_, hasBackfillLabel := ls[constants.BackfillLabel]
+	_, hasBackfillShardLabel := ls[constants.BackfillShardLabel]
+	return hasBackfillLabel || hasBackfillShardLabel
 }

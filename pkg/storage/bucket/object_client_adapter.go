@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"net/http"
 	"slices"
 	"strings"
 
@@ -13,9 +14,9 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/thanos-io/objstore"
 
+	"github.com/grafana/loki/v3/pkg/storage/bucket/gcs"
+	"github.com/grafana/loki/v3/pkg/storage/bucket/s3"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client"
-	"github.com/grafana/loki/v3/pkg/storage/chunk/client/aws"
-	"github.com/grafana/loki/v3/pkg/storage/chunk/client/gcp"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client/hedging"
 )
 
@@ -29,7 +30,7 @@ type ObjectClientAdapter struct {
 	storeType string
 }
 
-func NewObjectClient(ctx context.Context, backend string, cfg ConfigWithNamedStores, component string, hedgingCfg hedging.Config, disableRetries bool, logger log.Logger) (*ObjectClientAdapter, error) {
+func NewObjectClient(ctx context.Context, backend string, cfg ConfigWithNamedStores, component string, hedgingCfg hedging.Config, logger log.Logger) (*ObjectClientAdapter, error) {
 	var (
 		storeType = backend
 		storeCfg  = cfg.Config
@@ -43,31 +44,32 @@ func NewObjectClient(ctx context.Context, backend string, cfg ConfigWithNamedSto
 		}
 	}
 
-	if disableRetries {
-		if err := storeCfg.disableRetries(storeType); err != nil {
-			return nil, fmt.Errorf("create bucket: %w", err)
-		}
-	}
-
-	bucket, err := NewClient(ctx, storeType, storeCfg, component, logger)
+	bucket, err := NewClient(ctx, storeType, storeCfg, component, logger, nil)
 	if err != nil {
 		return nil, fmt.Errorf("create bucket: %w", err)
 	}
 
 	hedgedBucket := bucket
 	if hedgingCfg.At != 0 {
-		hedgedTrasport, err := hedgingCfg.RoundTripperWithRegisterer(nil, prometheus.WrapRegistererWithPrefix("loki_", prometheus.DefaultRegisterer))
-		if err != nil {
-			return nil, fmt.Errorf("create hedged transport: %w", err)
+		// The library we use for hedging can return an error from NewRoundTripper,
+		// but our wrapper functions don't have an error return. So we assume this
+		// wrapper is called before NewClient returns, and we can stash the error here.
+		var hedgeErr error
+		wrapHedged := func(rt http.RoundTripper) http.RoundTripper {
+			hedgedRT, err := hedgingCfg.RoundTripperWithRegisterer(rt, prometheus.WrapRegistererWithPrefix("loki_", prometheus.DefaultRegisterer))
+			if err != nil {
+				hedgeErr = err
+				return rt
+			}
+			return hedgedRT
 		}
 
-		if err := storeCfg.configureTransport(storeType, hedgedTrasport); err != nil {
-			return nil, fmt.Errorf("create hedged bucket: %w", err)
-		}
-
-		hedgedBucket, err = NewClient(ctx, storeType, storeCfg, component, logger)
+		hedgedBucket, err = NewClient(ctx, storeType, storeCfg, component, logger, wrapHedged)
 		if err != nil {
 			return nil, fmt.Errorf("create hedged bucket: %w", err)
+		}
+		if hedgeErr != nil {
+			return nil, fmt.Errorf("create hedged transport: %w", hedgeErr)
 		}
 	}
 
@@ -85,9 +87,9 @@ func NewObjectClient(ctx context.Context, backend string, cfg ConfigWithNamedSto
 
 	switch storeType {
 	case GCS:
-		o.isRetryableErr = gcp.IsRetryableErr
+		o.isRetryableErr = gcs.IsRetryableErr
 	case S3:
-		o.isRetryableErr = aws.IsRetryableErr
+		o.isRetryableErr = s3.IsRetryableErr
 	}
 
 	return o, nil

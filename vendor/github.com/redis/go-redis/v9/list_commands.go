@@ -34,6 +34,8 @@ type ListCmdable interface {
 	RPushX(ctx context.Context, key string, values ...interface{}) *IntCmd
 	LMove(ctx context.Context, source, destination, srcpos, destpos string) *StringCmd
 	BLMove(ctx context.Context, source, destination, srcpos, destpos string, timeout time.Duration) *StringCmd
+	LMoveM(ctx context.Context, source, destination, srcpos, destpos string, args LMoveMArgs) *StringSliceCmd
+	BLMoveM(ctx context.Context, source, destination, srcpos, destpos string, timeout time.Duration, args LMoveMArgs) *StringSliceCmd
 }
 
 func (c cmdable) BLPop(ctx context.Context, timeout time.Duration, keys ...string) *StringSliceCmd {
@@ -154,6 +156,45 @@ func (c cmdable) LPopCount(ctx context.Context, key string, count int) *StringSl
 
 type LPosArgs struct {
 	Rank, MaxLen int64
+}
+
+// LMoveMMode is the count semantics for LMOVEM/BLMOVEM.
+type LMoveMMode string
+
+const (
+	LMoveMCount   LMoveMMode = "COUNT"   // up to Count
+	LMoveMExactly LMoveMMode = "EXACTLY" // exactly Count, or nothing
+)
+
+// LMoveMOrder is the destination ordering for LMOVEM/BLMOVEM.
+type LMoveMOrder string
+
+const (
+	LMoveMOBO  LMoveMOrder = "OBO"  // one-by-one, order reversed
+	LMoveMBulk LMoveMOrder = "BULK" // preserve order
+)
+
+// LMoveMArgs configures the optional count group of LMOVEM/BLMOVEM.
+// Count <= 0 moves a single element. Mode defaults to COUNT, Order to BULK.
+type LMoveMArgs struct {
+	Mode  LMoveMMode
+	Count int64
+	Order LMoveMOrder
+}
+
+func (a LMoveMArgs) appendArgs(args []interface{}) []interface{} {
+	if a.Count <= 0 {
+		return args
+	}
+	mode := a.Mode
+	if mode == "" {
+		mode = LMoveMCount
+	}
+	order := a.Order
+	if order == "" {
+		order = LMoveMBulk
+	}
+	return append(args, string(mode), a.Count, string(order))
 }
 
 func (c cmdable) LPos(ctx context.Context, key string, value string, a LPosArgs) *IntCmd {
@@ -291,6 +332,30 @@ func (c cmdable) BLMove(
 	ctx context.Context, source, destination, srcpos, destpos string, timeout time.Duration,
 ) *StringCmd {
 	cmd := NewStringCmd(ctx, "blmove", source, destination, srcpos, destpos, formatSec(ctx, timeout))
+	cmd.setReadTimeout(timeout)
+	_ = c(ctx, cmd)
+	return cmd
+}
+
+// LMoveM atomically moves multiple elements between lists (Redis 8.10+).
+// srcpos/destpos are "LEFT" or "RIGHT". Returns moved elements, or redis.Nil if none.
+func (c cmdable) LMoveM(ctx context.Context, source, destination, srcpos, destpos string, a LMoveMArgs) *StringSliceCmd {
+	args := make([]interface{}, 5, 8)
+	args[0], args[1], args[2], args[3], args[4] = "lmovem", source, destination, srcpos, destpos
+	args = a.appendArgs(args)
+	cmd := NewStringSliceCmd(ctx, args...)
+	_ = c(ctx, cmd)
+	return cmd
+}
+
+// BLMoveM is the blocking variant of LMoveM (Redis 8.10+); timeout 0 blocks forever.
+// Returns moved elements, or redis.Nil on timeout.
+func (c cmdable) BLMoveM(ctx context.Context, source, destination, srcpos, destpos string, timeout time.Duration, a LMoveMArgs) *StringSliceCmd {
+	args := make([]interface{}, 6, 9)
+	args[0], args[1], args[2], args[3], args[4] = "blmovem", source, destination, srcpos, destpos
+	args[5] = formatSec(ctx, timeout)
+	args = a.appendArgs(args)
+	cmd := NewStringSliceCmd(ctx, args...)
 	cmd.setReadTimeout(timeout)
 	_ = c(ctx, cmd)
 	return cmd

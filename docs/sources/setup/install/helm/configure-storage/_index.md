@@ -14,7 +14,7 @@ keywords:
 
 # Configure storage
 
-The [scalable](../install-scalable/) installation requires a managed object store such as AWS S3 or Google Cloud Storage or a self-hosted store such as Minio. The [single binary](../install-monolithic/) installation can use the filesystem for storage, but we recommend configuring object storage via cloud provider or pointing Loki at a MinIO cluster for production deployments.
+The [scalable](https://grafana.com/docs/loki/<LOKI_VERSION>/setup/install/helm/install-scalable/) installation requires a managed object store such as AWS S3 or Google Cloud Storage or a self-hosted store such as Minio. The [single binary](https://grafana.com/docs/loki/<LOKI_VERSION>/setup/install/helm/install-monolithic/) installation can use the filesystem for storage, but we recommend configuring object storage via cloud provider or pointing Loki at a MinIO cluster for production deployments.
 
 This guide assumes Loki will be installed in one of the modes above and that a `values.yaml` has been created.
 
@@ -25,6 +25,8 @@ This guide assumes Loki will be installed in one of the modes above and that a `
 1. Configure the storage client under `loki.storage.azure`, `loki.storage.gcs`, or `loki.storage.s3`.
 
 1. Set `loki.storage.bucketNames.chunks` and `loki.storage.bucketNames.ruler` to your bucket or container names.
+
+These values configure the legacy storage clients, which are deprecated. To use the Thanos-based clients instead, refer to the following section.
 
 **To install Minio alongside Loki:**
 
@@ -42,11 +44,13 @@ The built-in MinIO subchart is deprecated and will be removed on 2026-10-31. Set
       enabled: true
     ```
 
-**To use Thanos object store clients (experimental):**
+**To use Thanos object store clients:**
 
-Loki supports using Thanos-compatible storage clients as an alternative to the built-in storage clients. This is configured via `loki.storage.use_thanos_objstore` and will become the default in a future release.
+Loki 4.0 uses object storage clients based on the [Thanos Object Storage Client Go module](https://github.com/thanos-io/objstore) by default, and the legacy storage clients are deprecated. The Helm chart is an exception, because it sets `loki.storage.use_thanos_objstore` to `false`. To use the Thanos-based clients with the chart, you must set this value to `true` yourself.
 
-1. Enable Thanos object store in `values.yaml`:
+To convert an existing storage configuration to the new format, refer to [Migrate to Thanos storage clients](https://grafana.com/docs/loki/<LOKI_VERSION>/setup/migrate/migrate-storage-clients/).
+
+1. Enable the Thanos-based clients in `values.yaml`:
 
    ```yaml
    loki:

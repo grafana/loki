@@ -121,7 +121,8 @@ func testQueryableFunc(q storage.Querier) storage.QueryableFunc {
 func testSetup(t *testing.T, q storage.Querier) (*promql.Engine, storage.QueryableFunc, Pusher, log.Logger, RulesLimits, prometheus.Registerer) {
 	dir := t.TempDir()
 
-	tracker := promql.NewActiveQueryTracker(dir, 20, util_log.SlogFromGoKit(log.NewNopLogger()))
+	tracker, err := promql.NewActiveQueryTracker(dir, 20, util_log.SlogFromGoKit(log.NewNopLogger()))
+	require.NoError(t, err)
 
 	engine := promql.NewEngine(promql.EngineOpts{
 		MaxSamples:         1e6,
@@ -376,7 +377,7 @@ func TestMultiTenantsNotifierSendsUserIDHeader(t *testing.T) {
 }
 
 func TestRuler_Rules(t *testing.T) {
-	cfg := defaultRulerConfig(t, newMockRuleStore(mockRules))
+	cfg := defaultRulerConfig(t, newMockRuleStore(cloneMockRules(mockRules)))
 
 	r := newTestRuler(t, cfg)
 	defer services.StopAndAwaitTerminated(context.Background(), r) //nolint:errcheck
@@ -1699,7 +1700,7 @@ type ruleGroupKey struct {
 }
 
 func TestRuler_ListAllRules(t *testing.T) {
-	cfg := defaultRulerConfig(t, newMockRuleStore(mockRules))
+	cfg := defaultRulerConfig(t, newMockRuleStore(cloneMockRules(mockRules)))
 
 	r := newTestRuler(t, cfg)
 	defer services.StopAndAwaitTerminated(context.Background(), r) //nolint:errcheck
@@ -1842,7 +1843,7 @@ func TestRecoverAlertsPostOutage(t *testing.T) {
 	}
 
 	// NEXT, set up ruler config with outage tolerance = 1hr
-	rulerCfg := defaultRulerConfig(t, newMockRuleStore(mockRules))
+	rulerCfg := defaultRulerConfig(t, newMockRuleStore(cloneMockRules(mockRules)))
 	rulerCfg.OutageTolerance, _ = time.ParseDuration("1h")
 
 	// NEXT, set up mock distributor containing sample,

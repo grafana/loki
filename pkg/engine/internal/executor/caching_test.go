@@ -27,7 +27,6 @@ var testCacheStats = CacheStats{
 	Hits:    TaskCacheHits,
 	Misses:  TaskCacheMisses,
 	Batches: TaskCacheBatches,
-	Rows:    TaskCacheRows,
 	Bytes:   TaskCacheBytes,
 }
 

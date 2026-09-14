@@ -189,6 +189,7 @@ func doLocalQueryWithV1Engine(params logql.LiteralParams, bucketName string) (lo
 			CacheTTL:          time.Hour,
 			ResyncInterval:    time.Hour,
 			QueryReadyNumDays: 7,
+			IndexReaderMode:   indexshipper.DefaultIndexReaderMode,
 		},
 	}, config.ChunkStoreConfig{}, config.SchemaConfig{
 		Configs: []config.PeriodConfig{

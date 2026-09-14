@@ -1251,7 +1251,7 @@ func TestConfigOptions_Replication(t *testing.T) {
 		{
 			desc: "using deprecated ReplicationFactor",
 			spec: lokiv1.LokiStackSpec{
-				ReplicationFactor: 3,
+				ReplicationFactor: 3, //nolint:staticcheck
 			},
 			wantOptions: lokiv1.ReplicationSpec{
 				Factor: 3,
@@ -1260,7 +1260,7 @@ func TestConfigOptions_Replication(t *testing.T) {
 		{
 			desc: "using deprecated ReplicationFactor with ReplicationSpec",
 			spec: lokiv1.LokiStackSpec{
-				ReplicationFactor: 2,
+				ReplicationFactor: 2, //nolint:staticcheck
 				Replication: &lokiv1.ReplicationSpec{
 					Factor: 4,
 					Zones: []lokiv1.ZoneSpec{

@@ -11,8 +11,14 @@ import (
 	"github.com/prometheus/prometheus/util/annotations"
 
 	storage_errors "github.com/grafana/loki/v3/pkg/storage/errors"
-	"github.com/grafana/loki/v3/pkg/validation"
 )
+
+// LimitError are errors that do not comply with the limits specified.
+type LimitError string
+
+func (e LimitError) Error() string {
+	return string(e)
+}
 
 // TranslateToPromqlAPIError converts error to one of promql.Errors for consumption in PromQL API.
 // PromQL API only recognizes few errors, and converts everything else to HTTP status code 422.
@@ -38,7 +44,7 @@ func TranslateToPromqlAPIError(err error) error {
 	case promql.ErrStorage, promql.ErrTooManySamples, promql.ErrQueryCanceled, promql.ErrQueryTimeout:
 		// Don't translate those, just in case we use them internally.
 		return err
-	case storage_errors.QueryError, validation.LimitError:
+	case storage_errors.QueryError, LimitError:
 		// This will be returned with status code 422 by Prometheus API.
 		return err
 	default:

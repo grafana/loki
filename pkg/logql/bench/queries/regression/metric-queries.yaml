@@ -463,3 +463,29 @@ queries:
       log_format: logfmt
       detected_fields:
         - msg
+  - description: sum by (unwrapped_field) preserves the unwrap identifier as a label
+    query: sum by (bytes) (sum_over_time(${SELECTOR} | logfmt | unwrap bytes [${RANGE}]))
+    kind: metric
+    time_range:
+      length: 24h
+      step: 1m
+    tags:
+      - sum_over_time
+      - logfmt
+      - unwrap
+      - grouping
+      - unwrapped-label-preserved
+    notes: >
+      Regression for the v2 conditional-unwrap-drop fix. Pre-fix v2
+      unconditionally dropped the unwrap identifier from the label set
+      after casting it to `value`, so `sum by (bytes) (... | unwrap bytes)`
+      grouped by a label that no longer existed and collapsed every
+      series into a single unlabelled sum. v1 preserves the source
+      column as a label whenever the immediately-enclosing vector
+      aggregation's `by (...)` names the unwrap identifier, so the
+      group-by produces one series per distinct bytes value.
+      The series label set and per-series counts must match v1.
+    requires:
+      log_format: logfmt
+      unwrappable_fields:
+        - bytes

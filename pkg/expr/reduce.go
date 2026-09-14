@@ -14,9 +14,11 @@ import (
 // Reduce is used when the caller wants to hook into evaluating sub-expressions.
 //
 // Leaf expressions (Constant, Identity, Column) have no children to reduce
-// and are evaluated directly via [Evaluate].
+// and are delegated directly to fn.
 func Reduce(alloc *memory.Allocator, e Expression, fn func(Expression) (columnar.Datum, error), selection memory.Bitmap) (columnar.Datum, error) {
 	switch e := e.(type) {
+	case *Constant, *Identity, *Column:
+		return fn(e)
 	case *Binary:
 		return reduceBinary(alloc, e, fn, selection)
 	case *Unary:
@@ -165,7 +167,7 @@ func reduceExtract(alloc *memory.Allocator, e *Extract, fn func(Expression) (col
 		return columnar.NewNull(validity), nil
 	}
 
-	return s.Field(columnIndex), nil
+	return projectStructField(alloc, s, columnIndex)
 }
 
 func reduceInclude(_ *memory.Allocator, e *Include, fn func(Expression) (columnar.Datum, error)) (columnar.Datum, error) {

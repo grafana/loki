@@ -73,6 +73,28 @@ func TestJoinQuantileSketchVectorError(t *testing.T) {
 	require.ErrorContains(t, err, "could not evaluate")
 }
 
+func TestQuantileSketchVectorStepEvaluator_Next_ShouldSurfaceUnderlyingError(t *testing.T) {
+	// DDSketchQuantile.Quantile never errors today (it returns NaN/±Inf at the edges
+	// instead), so this uses a TDigestQuantile sample, whose Quantile still rejects a
+	// quantile outside (0, 1).
+	//
+	// We still want to preserve this test to protect for future regressions in case
+	// DDSketchQuantile.Quantile implementation will change.
+	inner := &QuantileSketchStepEvaluator{
+		iter: errorRangeVectorIterator{
+			result: ProbabilisticQuantileVector{
+				{T: 0, F: sketch.NewTDigestSketch(), Metric: labels.FromStrings("foo", "bar")},
+			},
+		},
+	}
+
+	ev := NewQuantileSketchVectorStepEvaluator(inner, -0.1)
+
+	ok, _, _ := ev.Next()
+	require.False(t, ok)
+	require.Error(t, ev.Error())
+}
+
 type errorRangeVectorIterator struct {
 	err    error
 	result StepResult

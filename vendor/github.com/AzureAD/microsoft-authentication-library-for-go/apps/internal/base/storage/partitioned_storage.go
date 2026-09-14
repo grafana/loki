@@ -59,7 +59,7 @@ func (m *PartitionedManager) Read(ctx context.Context, authParameters authority.
 
 	// errors returned by read* methods indicate a cache miss and are therefore non-fatal. We continue populating
 	// TokenResponse fields so that e.g. lack of an ID token doesn't prevent the caller from receiving a refresh token.
-	accessToken, err := m.readAccessToken(aliases, realm, clientID, userAssertionHash, scopes, partitionKeyFromRequest, tokenType, authnSchemeKeyID)
+	accessToken, err := m.readAccessToken(aliases, realm, clientID, userAssertionHash, scopes, partitionKeyFromRequest, tokenType, authnSchemeKeyID, authParameters.CacheExtKeyGenerator())
 	if err == nil {
 		tr.AccessToken = accessToken
 	}
@@ -125,6 +125,7 @@ func (m *PartitionedManager) Write(authParameters authority.AuthParams, tokenRes
 		if authParameters.AuthorizationType == authority.ATOnBehalfOf {
 			accessToken.UserAssertionHash = userAssertionHash // get Hash method on this
 		}
+		accessToken.ExtCacheKey = authParameters.CacheExtKeyGenerator()
 
 		// Since we have a valid access token, cache it before moving on.
 		if err := accessToken.Validate(); err == nil {
@@ -250,7 +251,7 @@ func (m *PartitionedManager) fallbackMetadata(host string) authority.InstanceDis
 	return fallback
 }
 
-func (m *PartitionedManager) readAccessToken(envAliases []string, realm, clientID, userAssertionHash string, scopes []string, partitionKey, tokenType, authnSchemeKeyID string) (AccessToken, error) {
+func (m *PartitionedManager) readAccessToken(envAliases []string, realm, clientID, userAssertionHash string, scopes []string, partitionKey, tokenType, authnSchemeKeyID, extCacheKey string) (AccessToken, error) {
 	m.contractMu.RLock()
 	defer m.contractMu.RUnlock()
 	if accessTokens, ok := m.contract.AccessTokensPartition[partitionKey]; ok {
@@ -262,6 +263,13 @@ func (m *PartitionedManager) readAccessToken(envAliases []string, realm, clientI
 				if at.TokenType == tokenType && at.AuthnSchemeKeyID == authnSchemeKeyID {
 					if checkAlias(at.Environment, envAliases) {
 						if isMatchingScopes(scopes, at.Scopes) {
+							// Tokens acquired with extra cache-key components (e.g. client claims
+							// via WithClaimsFromClient) are partitioned by ExtCacheKey. Only return a
+							// token whose ExtCacheKey matches the request's; this also ensures a
+							// request without extra components never returns a hashed token.
+							if at.ExtCacheKey != extCacheKey {
+								continue
+							}
 							return at, nil
 						}
 					}

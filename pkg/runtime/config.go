@@ -15,6 +15,7 @@ type Config struct {
 	LogServiceNameDiscovery     bool     `yaml:"log_service_name_discovery"`
 	LogDuplicateMetrics         bool     `yaml:"log_duplicate_metrics"`
 	LogDuplicateStreamInfo      bool     `yaml:"log_duplicate_stream_info"`
+	LogOTLPAttributeExpansion   bool     `yaml:"log_otlp_attribute_expansion"`
 
 	// LimitedLogPushErrors is to be implemented and will allow logging push failures at a controlled pace.
 	LimitedLogPushErrors bool `yaml:"limited_log_push_errors"`
@@ -30,6 +31,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.BoolVar(&cfg.LogServiceNameDiscovery, "operation-config.log-service-name-discovery", false, "Log service name discovery (very verbose, recommend to enable via runtime config only).")
 	f.BoolVar(&cfg.LogDuplicateMetrics, "operation-config.log-duplicate-metrics", false, "Log metrics for duplicate lines received.")
 	f.BoolVar(&cfg.LogDuplicateStreamInfo, "operation-config.log-duplicate-stream-info", false, "Log stream info for duplicate lines received")
+	f.BoolVar(&cfg.LogOTLPAttributeExpansion, "operation-config.log-otlp-attribute-expansion", false, "Log which OTLP resource and scope attributes are expanded into structured metadata, for a rate limited subset of push requests. Only attribute names and sizes are logged, never values.")
 	f.BoolVar(&cfg.LimitedLogPushErrors, "operation-config.limited-log-push-errors", true, "Log push errors with a rate limited logger, will show client push errors without overly spamming logs.")
 }
 
@@ -124,6 +126,10 @@ func (o *TenantConfigs) LogDuplicateMetrics(userID string) bool {
 
 func (o *TenantConfigs) LogDuplicateStreamInfo(userID string) bool {
 	return o.getOverridesForUser(userID).LogDuplicateStreamInfo
+}
+
+func (o *TenantConfigs) LogOTLPAttributeExpansion(userID string) bool {
+	return o.getOverridesForUser(userID).LogOTLPAttributeExpansion
 }
 
 func (o *TenantConfigs) LimitedLogPushErrors(userID string) bool {

@@ -5,6 +5,7 @@ package stats
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/internal/columnar"
@@ -30,6 +31,7 @@ const (
 	ColumnTypeRowCount                           // "row_count"
 	ColumnTypeUncompressedSize                   // "uncompressed_size"
 	ColumnTypeLabel                              // "label" — dynamic; tag carries label name
+	ColumnTypeShardBucket                        // "__shard_bucket__"
 )
 
 var columnTypeNames = map[ColumnType]string{
@@ -42,6 +44,7 @@ var columnTypeNames = map[ColumnType]string{
 	ColumnTypeRowCount:         "row_count",
 	ColumnTypeUncompressedSize: "uncompressed_size",
 	ColumnTypeLabel:            "label",
+	ColumnTypeShardBucket:      "__shard_bucket__",
 }
 
 // ParseColumnType parses a [ColumnType] from a string. The expected string
@@ -66,6 +69,8 @@ func ParseColumnType(text string) (ColumnType, error) {
 		return ColumnTypeUncompressedSize, nil
 	case "label":
 		return ColumnTypeLabel, nil
+	case "__shard_bucket__":
+		return ColumnTypeShardBucket, nil
 	}
 	return ColumnTypeInvalid, fmt.Errorf("invalid column type %q", text)
 }
@@ -88,6 +93,7 @@ func CheckSection(section *dataobj.Section) bool {
 type Stat struct {
 	ObjectPath       string
 	SectionIndex     int64
+	ShardBucket      uint32
 	SortSchema       string
 	Labels           map[string]string // Label values keyed by sort schema key name
 	MinTimestamp     int64             // UnixNano
@@ -98,3 +104,23 @@ type Stat struct {
 
 // SectionEncoder encodes a batch of sorted Stat rows into a columnar encoder.
 type SectionEncoder func(rows []Stat, enc *columnar.Encoder) error
+
+// schemaLabelNames parses a comma-separated fully-qualified sort schema
+// ("label:svc,label:cluster") into its bare label names ("svc", "cluster").
+func schemaLabelNames(sortSchema string) []string {
+	if sortSchema == "" {
+		return nil
+	}
+	var names []string
+	for fqn := range strings.SplitSeq(sortSchema, ",") {
+		if fqn == "" {
+			continue
+		}
+		typ, name, ok := strings.Cut(fqn, ":")
+		if !ok || typ != "label" || name == "" {
+			continue
+		}
+		names = append(names, name)
+	}
+	return names
+}

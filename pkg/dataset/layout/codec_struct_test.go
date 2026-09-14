@@ -62,6 +62,39 @@ func TestCodec_Struct_WriteRead(t *testing.T) {
 	columnartest.RequireArraysEqual(t, input, actual, memory.Bitmap{})
 }
 
+func TestCodec_Struct_RejectsValidityMismatch(t *testing.T) {
+	tests := []struct {
+		name     string
+		nullable bool
+		validity layout.Spec
+	}{
+		{
+			name:     "nullable type without validity spec",
+			nullable: true,
+		},
+		{
+			name:     "non-nullable type with validity spec",
+			validity: &layout.SpecArray{Spec: &array.SpecBool{}},
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			var alloc memory.Allocator
+			var store buffer.MemoryStore
+
+			_, err := layout.NewWriter(&alloc, &store, &layout.SpecStruct{
+				Fields:   []layout.Spec{&layout.SpecArray{Spec: &array.SpecPlain{}}},
+				Validity: tc.validity,
+			}, &types.Struct{
+				Fields:   []types.StructField{{Name: "x", Type: &types.Int64{}}},
+				Nullable: tc.nullable,
+			})
+			require.Error(t, err)
+		})
+	}
+}
+
 func TestCodec_Struct_RejectsUnexpectedValidity(t *testing.T) {
 	var alloc memory.Allocator
 	var store buffer.MemoryStore
@@ -79,21 +112,28 @@ func TestCodec_Struct_RejectsUnexpectedValidity(t *testing.T) {
 	require.Error(t, w.Append(t.Context(), input))
 }
 
-func TestCodec_Struct_ProjectionPreservesValidity(t *testing.T) {
+func TestCodec_Struct_ProjectionValidity(t *testing.T) {
 	var alloc memory.Allocator
 	var store buffer.MemoryStore
 
 	w, err := layout.NewWriter(&alloc, &store, &layout.SpecStruct{
-		Fields:   []layout.Spec{&layout.SpecArray{Spec: &array.SpecPlain{}}},
+		Fields: []layout.Spec{
+			&layout.SpecArray{Spec: &array.SpecPlain{}},
+			&layout.SpecArray{Spec: &array.SpecPlain{}},
+		},
 		Validity: &layout.SpecArray{Spec: &array.SpecBool{}},
 	}, &types.Struct{
-		Fields:   []types.StructField{{Name: "x", Type: &types.Int64{}}},
+		Fields: []types.StructField{
+			{Name: "x", Type: &types.Int64{}},
+			{Name: "y", Type: &types.Int64{}},
+		},
 		Nullable: true,
 	})
 	require.NoError(t, err)
 
 	input := columnartest.StructWithValidity(t, &alloc, []bool{true, false, true},
 		columnartest.Field("x", types.KindInt64, int64(10), int64(20), int64(30)),
+		columnartest.Field("y", types.KindInt64, int64(40), int64(50), int64(60)),
 	)
 	require.NoError(t, w.Append(t.Context(), input))
 	encoded, err := w.Flush(t.Context())
@@ -105,18 +145,126 @@ func TestCodec_Struct_ProjectionPreservesValidity(t *testing.T) {
 	_, err = r.Next(t.Context(), math.MaxInt)
 	require.NoError(t, err)
 
-	actual, err := r.Project(t.Context(), &alloc, &expr.Include{
-		Names: []string{"x"},
-		Value: &expr.Identity{},
+	makeStructProjection := func() *expr.MakeStruct {
+		return &expr.MakeStruct{
+			Names: []string{"constant", "x"},
+			Values: []expr.Expression{
+				&expr.Constant{Value: &columnar.NumberScalar[int64]{Value: 5}},
+				&expr.Column{Name: "x"},
+			},
+		}
+	}
+
+	t.Run("Identity preserves struct validity", func(t *testing.T) {
+		actual, err := r.Project(t.Context(), &alloc, &expr.Identity{}, memory.Bitmap{})
+		require.NoError(t, err)
+
+		columnartest.RequireArraysEqual(t, input, actual, memory.Bitmap{})
+	})
+
+	t.Run("Include preserves struct validity", func(t *testing.T) {
+		actual, err := r.Project(t.Context(), &alloc, &expr.Include{
+			Names: []string{"x", "y"},
+			Value: &expr.Identity{},
+		}, memory.Bitmap{})
+		require.NoError(t, err)
+
+		columnartest.RequireArraysEqual(t, input, actual, memory.Bitmap{})
+	})
+
+	t.Run("Exclude preserves struct validity", func(t *testing.T) {
+		actual, err := r.Project(t.Context(), &alloc, &expr.Exclude{
+			Names: nil,
+			Value: &expr.Identity{},
+		}, memory.Bitmap{})
+		require.NoError(t, err)
+
+		columnartest.RequireArraysEqual(t, input, actual, memory.Bitmap{})
+	})
+
+	t.Run("propagates validity to a field", func(t *testing.T) {
+		actual, err := r.Project(t.Context(), &alloc, &expr.Column{Name: "x"}, memory.Bitmap{})
+		require.NoError(t, err)
+
+		columnartest.RequireArraysEqual(t,
+			columnartest.Array(t, types.KindInt64, &alloc, int64(10), nil, int64(30)),
+			actual,
+			memory.Bitmap{},
+		)
+	})
+
+	t.Run("propagates validity per MakeStruct field", func(t *testing.T) {
+		actual, err := r.Project(t.Context(), &alloc, makeStructProjection(), memory.Bitmap{})
+		require.NoError(t, err)
+
+		columnartest.RequireArraysEqual(t,
+			columnartest.Struct(t, &alloc,
+				columnartest.Field("constant", types.KindInt64, int64(5), int64(5), int64(5)),
+				columnartest.Field("x", types.KindInt64, int64(10), nil, int64(30)),
+			),
+			actual,
+			memory.Bitmap{},
+		)
+	})
+
+	t.Run("preserves MakeStruct validity through Include", func(t *testing.T) {
+		expected, err := r.Project(t.Context(), &alloc, makeStructProjection(), memory.Bitmap{})
+		require.NoError(t, err)
+		actual, err := r.Project(t.Context(), &alloc, &expr.Include{
+			Names: []string{"constant", "x"},
+			Value: makeStructProjection(),
+		}, memory.Bitmap{})
+		require.NoError(t, err)
+
+		columnartest.RequireArraysEqual(t, expected, actual, memory.Bitmap{})
+	})
+}
+
+func TestCodec_Struct_NestedProjectionValidity(t *testing.T) {
+	var alloc memory.Allocator
+	var store buffer.MemoryStore
+
+	nestedType := &types.Struct{
+		Fields:   []types.StructField{{Name: "value", Type: &types.Int64{}}},
+		Nullable: true,
+	}
+	w, err := layout.NewWriter(&alloc, &store, &layout.SpecStruct{
+		Fields: []layout.Spec{&layout.SpecStruct{
+			Fields:   []layout.Spec{&layout.SpecArray{Spec: &array.SpecPlain{}}},
+			Validity: &layout.SpecArray{Spec: &array.SpecBool{}},
+		}},
+		Validity: &layout.SpecArray{Spec: &array.SpecBool{}},
+	}, &types.Struct{
+		Fields:   []types.StructField{{Name: "nested", Type: nestedType}},
+		Nullable: true,
+	})
+	require.NoError(t, err)
+
+	nested := columnartest.StructWithValidity(t, &alloc, []bool{true, true, false, true},
+		columnartest.Field("value", types.KindInt64, int64(10), int64(20), int64(30), int64(40)),
+	)
+	input := columnartest.StructWithValidity(t, &alloc, []bool{true, false, true, true},
+		columnartest.Field("nested", types.KindStruct, nested),
+	)
+	require.NoError(t, w.Append(t.Context(), input))
+	encoded, err := w.Flush(t.Context())
+	require.NoError(t, err)
+
+	r, err := layout.NewReader(&alloc, encoded, &store)
+	require.NoError(t, err)
+	defer r.Close()
+	_, err = r.Next(t.Context(), math.MaxInt)
+	require.NoError(t, err)
+
+	actual, err := r.Project(t.Context(), &alloc, &expr.Extract{
+		Name:  "value",
+		Value: &expr.Column{Name: "nested"},
 	}, memory.Bitmap{})
 	require.NoError(t, err)
-	columnartest.RequireArraysEqual(t, input, actual, memory.Bitmap{})
 
-	field, err := r.Project(t.Context(), &alloc, &expr.Column{Name: "x"}, memory.Bitmap{})
-	require.NoError(t, err)
 	columnartest.RequireArraysEqual(t,
-		columnartest.Array(t, types.KindInt64, &alloc, int64(10), nil, int64(30)),
-		field,
+		columnartest.Array(t, types.KindInt64, &alloc, int64(10), nil, nil, int64(40)),
+		actual,
 		memory.Bitmap{},
 	)
 }
@@ -154,6 +302,64 @@ func TestCodec_Struct_ConstantProjection(t *testing.T) {
 	columnartest.RequireArraysEqual(t,
 		columnartest.Struct(t, &alloc,
 			columnartest.Field("x", types.KindInt64, int64(10), int64(20), int64(30)),
+			columnartest.Field("constant", types.KindInt64, int64(5), int64(5), int64(5)),
+		),
+		actual,
+		memory.Bitmap{},
+	)
+}
+
+func TestCodec_Struct_EmptyMakeStructProjection(t *testing.T) {
+	var alloc memory.Allocator
+	var store buffer.MemoryStore
+
+	r := buildStructReaderXY(t, &alloc, &store,
+		[]int64{10, 20, 30},
+		[]string{"a", "b", "c"},
+	)
+	defer r.Close()
+	_, err := r.Next(t.Context(), math.MaxInt)
+	require.NoError(t, err)
+
+	actual, err := r.Project(t.Context(), &alloc, &expr.MakeStruct{}, memory.Bitmap{})
+	require.NoError(t, err)
+
+	result := actual.(*columnar.Struct)
+	require.Equal(t, 3, result.Len())
+	require.Equal(t, 0, result.NumFields())
+}
+
+func TestCodec_Struct_PrunesExcludedMakeStructFields(t *testing.T) {
+	var alloc memory.Allocator
+	var store buffer.MemoryStore
+
+	r := buildStructReaderXY(t, &alloc, &store,
+		[]int64{10, 20, 30},
+		[]string{"a", "b", "c"},
+	)
+	defer r.Close()
+	_, err := r.Next(t.Context(), math.MaxInt)
+	require.NoError(t, err)
+
+	projection := &expr.Include{
+		Names: []string{"constant"},
+		Value: &expr.MakeStruct{
+			Names: []string{"constant", "unused"},
+			Values: []expr.Expression{
+				&expr.Constant{Value: &columnar.NumberScalar[int64]{Value: 5}},
+				&expr.Unary{Op: expr.UnaryOpInvalid, Value: &expr.Column{Name: "x"}},
+			},
+		},
+	}
+
+	bufs, err := r.AppendBuffers(nil, nil, projection, memory.Bitmap{})
+	require.NoError(t, err)
+	require.Empty(t, bufs)
+	actual, err := r.Project(t.Context(), &alloc, projection, memory.Bitmap{})
+	require.NoError(t, err)
+
+	columnartest.RequireArraysEqual(t,
+		columnartest.Struct(t, &alloc,
 			columnartest.Field("constant", types.KindInt64, int64(5), int64(5), int64(5)),
 		),
 		actual,

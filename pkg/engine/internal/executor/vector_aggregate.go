@@ -14,7 +14,6 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
 	"github.com/grafana/loki/v3/pkg/engine/internal/types"
-	"github.com/grafana/loki/v3/pkg/xcap"
 )
 
 type vectorAggregationOptions struct {
@@ -104,20 +103,13 @@ func (v *vectorAggregationPipeline) Read(ctx context.Context) (arrow.RecordBatch
 }
 
 func (v *vectorAggregationPipeline) read(ctx context.Context) (arrow.RecordBatch, error) {
-	var (
-		inputReadTime time.Duration
-		startedAt     = time.Now()
-	)
-
 	v.aggregator.Reset() // reset before reading new inputs
 	inputsExhausted := false
 	for !inputsExhausted {
 		inputsExhausted = true
 
 		for _, input := range v.inputs {
-			inputStart := time.Now()
 			record, err := input.Read(ctx)
-			inputReadTime += time.Since(inputStart)
 
 			if err != nil {
 				if errors.Is(err, EOF) {
@@ -182,11 +174,6 @@ func (v *vectorAggregationPipeline) read(ctx context.Context) (arrow.RecordBatch
 	v.inputsExhausted = true
 
 	rec, err := v.aggregator.BuildRecord()
-
-	if region := xcap.RegionFromContext(ctx); region != nil {
-		computeTime := time.Since(startedAt) - inputReadTime
-		region.Record(StatPipelineExecDuration.Observe(computeTime.Seconds()))
-	}
 
 	return rec, err
 }

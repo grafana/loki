@@ -7,16 +7,16 @@ import (
 	"time"
 )
 
+var defaultLoggerTemplate = `{time} {channel}: "{method} {uri} HTTP/{version}" {code} {cost} {hostname}`
+var loggerParam = []string{"{time}", "{start_time}", "{ts}", "{channel}", "{pid}", "{host}", "{method}", "{uri}", "{version}", "{target}", "{hostname}", "{code}", "{error}", "{req_headers}", "{res_body}", "{res_headers}", "{cost}"}
+var logChannel string
+
 type Logger struct {
 	*log.Logger
 	formatTemplate string
 	isOpen         bool
 	lastLogMsg     string
 }
-
-var defaultLoggerTemplate = `{time} {channel}: "{method} {uri} HTTP/{version}" {code} {cost} {hostname}`
-var loggerParam = []string{"{time}", "{start_time}", "{ts}", "{channel}", "{pid}", "{host}", "{method}", "{uri}", "{version}", "{target}", "{hostname}", "{code}", "{error}", "{req_headers}", "{res_body}", "{res_headers}", "{cost}"}
-var logChannel string
 
 func InitLogMsg(fieldMap map[string]string) {
 	for _, value := range loggerParam {

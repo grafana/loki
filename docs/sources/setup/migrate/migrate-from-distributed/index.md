@@ -112,7 +112,7 @@ This leverages the fact that the new deployment adds a `app.kubernetes.io/compon
    To apply the new configuration (assuming you installed the new chart as `loki` in the _loki_ namespace):
 
    ```bash
-   helm upgrade -n loki loki grafana/loki --values values.yaml
+   helm upgrade -n loki loki grafana-community/loki --values values.yaml
    ```
 
    The `migrate.fromDistributed.memberlistService` was added as an _additional_ memberlist join member, so once this new config is pushed, the components should roll without interruption.

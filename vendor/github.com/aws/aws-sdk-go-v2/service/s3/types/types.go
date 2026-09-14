@@ -1275,7 +1275,11 @@ type EndEvent struct {
 	noSmithyDocumentSerde
 }
 
+// For information about using the Amazon S3 API—including error handling—see the [Amazon S3 Developer Guide].
+//
 // Container for all error elements.
+//
+// [Amazon S3 Developer Guide]: https://docs.aws.amazon.com/AmazonS3/latest/developerguide/Welcome.html
 type Error struct {
 
 	// The error code is a string that uniquely identifies an error condition. It is
@@ -5249,13 +5253,10 @@ type Transition struct {
 	Date *time.Time
 
 	// Indicates the number of days after creation when objects are transitioned to
-	// the specified storage class. If the specified storage class is
-	// INTELLIGENT_TIERING , GLACIER_IR , GLACIER , or DEEP_ARCHIVE , valid values are
-	// 0 or positive integers. If the specified storage class is STANDARD_IA or
-	// ONEZONE_IA , valid values are positive integers greater than 30 . Be aware that
-	// some storage classes have a minimum storage duration and that you're charged for
-	// transitioning objects before their minimum storage duration. For more
-	// information, see [Constraints and considerations for transitions]in the Amazon S3 User Guide.
+	// the specified storage class. The value can be 0 or any positive integer. Be
+	// aware that some storage classes have a minimum storage duration and that you're
+	// charged for transitioning objects before their minimum storage duration. For
+	// more information, see [Constraints and considerations for transitions]in the Amazon S3 User Guide.
 	//
 	// [Constraints and considerations for transitions]: https://docs.aws.amazon.com/AmazonS3/latest/userguide/lifecycle-transition-general-considerations.html#lifecycle-configuration-constraints
 	Days *int32

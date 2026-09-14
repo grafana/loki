@@ -27,8 +27,6 @@ import (
 	"go.uber.org/atomic"
 	"golang.org/x/sync/errgroup"
 
-	"github.com/grafana/loki/v3/pkg/storage/bucket"
-
 	"github.com/grafana/loki/v3/pkg/dataobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore/multitenancy"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/indexpointers"
@@ -169,7 +167,6 @@ func NewObjectMetastore(b objstore.Bucket, cfg Config, logger log.Logger, metric
 	if cfg.IndexStoragePrefix != "" {
 		b = objstore.NewPrefixedBucket(b, cfg.IndexStoragePrefix)
 	}
-	b = bucket.NewXCapBucket(b)
 
 	store := &ObjectMetastore{
 		readPostingsSections: cfg.ReadPostingsSections,

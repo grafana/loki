@@ -243,8 +243,11 @@ func appendSanitized(to, key []byte) []byte {
 		return to
 	}
 
-	// Add prefix underscore for digit-starting keys (both top-level and nested)
-	if key[0] >= '0' && key[0] <= '9' {
+	// Prepend an underscore only for digit-starting top-level keys — nested keys
+	// already have the parent-separator `_` in `to` from buildSanitizedPrefixFromBuffer,
+	// so adding another underscore here would produce `parent__0` instead of `parent_0`
+	// and diverge from v1's flatten format (see pkg/logql/log/util.go:49).
+	if len(to) == 0 && key[0] >= '0' && key[0] <= '9' {
 		to = append(to, '_')
 	}
 

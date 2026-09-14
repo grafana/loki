@@ -352,6 +352,36 @@ func (m *Cluster) validate(all bool) error {
 		}
 	}
 
+	if d := m.GetPerConnectionBufferHighWatermarkTimeout(); d != nil {
+		dur, err := d.AsDuration(), d.CheckValid()
+		if err != nil {
+			err = ClusterValidationError{
+				field:  "PerConnectionBufferHighWatermarkTimeout",
+				reason: "value is not a valid duration",
+				cause:  err,
+			}
+			if !all {
+				return err
+			}
+			errors = append(errors, err)
+		} else {
+
+			gte := time.Duration(0*time.Second + 0*time.Nanosecond)
+
+			if dur < gte {
+				err := ClusterValidationError{
+					field:  "PerConnectionBufferHighWatermarkTimeout",
+					reason: "value must be greater than or equal to 0s",
+				}
+				if !all {
+					return err
+				}
+				errors = append(errors, err)
+			}
+
+		}
+	}
+
 	if _, ok := Cluster_LbPolicy_name[int32(m.GetLbPolicy())]; !ok {
 		err := ClusterValidationError{
 			field:  "LbPolicy",

@@ -20,6 +20,7 @@ import (
 	"bytes"
 	"fmt"
 	"reflect"
+	"strconv"
 	"strings"
 	"time"
 
@@ -315,6 +316,11 @@ func (b *TimestampBuilder) AppendValueFromString(s string) error {
 		return nil
 	}
 
+	if i, parseErr := strconv.ParseInt(s, 10, 64); parseErr == nil {
+		b.Append(arrow.Timestamp(i))
+		return nil
+	}
+
 	loc, err := b.dtype.GetZone()
 	if err != nil {
 		return err
@@ -330,6 +336,11 @@ func (b *TimestampBuilder) AppendValueFromString(s string) error {
 }
 
 func (b *TimestampBuilder) UnmarshalOne(dec *json.Decoder) error {
+	loc, err := b.dtype.GetZone()
+	if err != nil {
+		return err
+	}
+
 	t, err := dec.Token()
 	if err != nil {
 		return err
@@ -339,7 +350,10 @@ func (b *TimestampBuilder) UnmarshalOne(dec *json.Decoder) error {
 	case nil:
 		b.AppendNull()
 	case string:
-		loc, _ := b.dtype.GetZone()
+		if i, parseErr := strconv.ParseInt(v, 10, 64); parseErr == nil {
+			b.Append(arrow.Timestamp(i))
+			break
+		}
 		tm, _, err := arrow.TimestampFromStringInLocation(v, b.dtype.Unit, loc)
 		if err != nil {
 			return &json.UnmarshalTypeError{
@@ -385,6 +399,7 @@ func (b *TimestampBuilder) Unmarshal(dec *json.Decoder) error {
 
 func (b *TimestampBuilder) UnmarshalJSON(data []byte) error {
 	dec := json.NewDecoder(bytes.NewReader(data))
+	dec.UseNumber()
 	t, err := dec.Token()
 	if err != nil {
 		return err

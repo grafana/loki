@@ -1,5 +1,22 @@
 # Changes
 
+## 2.4.0 - 2026-09-07
+
+- This module now targets Go 1.26+.
+- Updated `github.com/oschwald/maxminddb-golang/v2` to `v2.6.0`, including
+  denial-of-service fixes and performance improvements. Regenerated model
+  decoders now reject duplicate recognized fields with an `InvalidDatabaseError`.
+- Added `maxsize` limits to strings and subdivision arrays in database models,
+  plus a size limit for the custom date decoder. Values exceeding these limits
+  now return an `InvalidDatabaseError`.
+
+## 2.3.0 - 2026-08-08
+
+- Updated `github.com/oschwald/maxminddb-golang/v2` to `v2.5.0` and switched
+  all exported database model structs to generated decoders. This substantially
+  reduces City and Enterprise lookup latency and allocations while preserving
+  the existing lookup APIs and decoded results.
+
 ## 2.2.0 - 2026-05-17
 
 - This module now targets Go 1.25+.

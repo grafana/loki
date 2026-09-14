@@ -1,13 +1,93 @@
 package maxminddb
 
 import (
+	"bytes"
 	"runtime"
+	"unicode/utf8"
 
+	"github.com/oschwald/maxminddb-golang/v2/internal/decoder"
 	"github.com/oschwald/maxminddb-golang/v2/internal/mmdberrors"
 )
 
 type verifier struct {
 	reader *Reader
+}
+
+type searchTreeWalker struct {
+	reader     *Reader
+	offsets    map[uint]bool
+	nodeStates []uint8
+	stateCount uint
+}
+
+const (
+	searchTreeNodeUnvisited = 0
+	searchTreeNodeVisiting  = 255
+)
+
+func (w *searchTreeWalker) verifyNode(node, bitDepth uint) (uint8, error) {
+	if bitDepth >= 128 {
+		return 0, mmdberrors.NewInvalidDatabaseError(
+			"invalid search tree: internal node at bit depth %d",
+			bitDepth,
+		)
+	}
+	switch w.nodeStates[node] {
+	case searchTreeNodeVisiting:
+		return 0, mmdberrors.NewInvalidDatabaseError(
+			"invalid search tree: cycle at node %d",
+			node,
+		)
+	case searchTreeNodeUnvisited:
+		// Visit the node below.
+	default:
+		return w.nodeStates[node], nil
+	}
+	w.nodeStates[node] = searchTreeNodeVisiting
+	w.stateCount++
+
+	base := node * w.reader.nodeOffsetMult
+	left, right, err := readNodePairBySize(
+		w.reader.buffer,
+		base,
+		w.reader.Metadata.RecordSize,
+	)
+	if err != nil {
+		return 0, err
+	}
+
+	leftHeight, err := w.verifyPointer(left, bitDepth+1)
+	if err != nil {
+		return 0, err
+	}
+	rightHeight, err := w.verifyPointer(right, bitDepth+1)
+	if err != nil {
+		return 0, err
+	}
+	maximumChildHeight := max(leftHeight, rightHeight)
+	if maximumChildHeight == 128 {
+		return 0, mmdberrors.NewInvalidDatabaseError(
+			"invalid search tree: path exceeds 128 bits",
+		)
+	}
+	height := maximumChildHeight + 1
+	w.nodeStates[node] = height
+	return height, nil
+}
+
+func (w *searchTreeWalker) verifyPointer(pointer, bitDepth uint) (uint8, error) {
+	if pointer == w.reader.Metadata.NodeCount {
+		return 0, nil
+	}
+	if pointer < w.reader.Metadata.NodeCount {
+		return w.verifyNode(pointer, bitDepth)
+	}
+	offset, err := w.reader.resolveDataPointer(pointer)
+	if err != nil {
+		return 0, err
+	}
+	w.offsets[uint(offset)] = true
+	return 0, nil
 }
 
 // Verify performs comprehensive validation of the MaxMind DB file.
@@ -26,6 +106,11 @@ type verifier struct {
 //   - Ensuring database integrity in critical applications
 //
 // Note: Verification traverses the entire database and may be slow on large files.
+// Each data record and the original metadata graph, including unknown metadata
+// fields, receives an independent set of decoder operation limits while it is
+// materialized for verification.
+// A successful result applies only while the Reader's backing file or byte
+// slice remains unchanged.
 // The method is thread-safe and can be called on an active Reader.
 func (r *Reader) Verify() error {
 	v := verifier{r}
@@ -39,6 +124,17 @@ func (r *Reader) Verify() error {
 }
 
 func (v *verifier) verifyMetadata() error {
+	if len(v.reader.buffer) != 0 {
+		markerOffset := bytes.LastIndex(v.reader.buffer, metadataStartMarker)
+		if markerOffset < 0 {
+			return mmdberrors.NewInvalidDatabaseError("metadata marker not found")
+		}
+		metadataOffset := markerOffset + len(metadataStartMarker)
+		if err := decoder.VerifyMetadata(v.reader.buffer[metadataOffset:]); err != nil {
+			return err
+		}
+	}
+
 	metadata := v.reader.Metadata
 
 	if metadata.BinaryFormatMajorVersion != 2 {
@@ -63,6 +159,19 @@ func (v *verifier) verifyMetadata() error {
 			"non-empty string",
 			metadata.DatabaseType,
 		)
+	}
+	if !utf8.ValidString(metadata.DatabaseType) {
+		return mmdberrors.NewInvalidDatabaseError("database_type contains invalid UTF-8")
+	}
+	for language, description := range metadata.Description {
+		if !utf8.ValidString(language) || !utf8.ValidString(description) {
+			return mmdberrors.NewInvalidDatabaseError("description contains invalid UTF-8")
+		}
+	}
+	for _, language := range metadata.Languages {
+		if !utf8.ValidString(language) {
+			return mmdberrors.NewInvalidDatabaseError("languages contains invalid UTF-8")
+		}
 	}
 
 	if len(metadata.Description) == 0 {
@@ -115,15 +224,44 @@ func (v *verifier) verifyDatabase() error {
 }
 
 func (v *verifier) verifySearchTree() (map[uint]bool, error) {
-	offsets := make(map[uint]bool)
+	offsets, _, err := v.verifySearchTreeWithStateCount()
+	return offsets, err
+}
 
-	for result := range v.reader.Networks() {
-		if err := result.Err(); err != nil {
-			return nil, err
-		}
-		offsets[result.offset] = true
+func (v *verifier) verifySearchTreeWithStateCount() (map[uint]bool, uint, error) {
+	offsets := make(map[uint]bool)
+	reader := v.reader
+	nodeCount := reader.Metadata.NodeCount
+	if reader.Metadata.RecordSize != 24 &&
+		reader.Metadata.RecordSize != 28 &&
+		reader.Metadata.RecordSize != 32 {
+		return nil, 0, mmdberrors.NewInvalidDatabaseError("unsupported record size")
 	}
-	return offsets, nil
+	if reader.nodeOffsetMult == 0 || nodeCount > uint(len(reader.buffer))/reader.nodeOffsetMult {
+		return nil, 0, mmdberrors.NewInvalidDatabaseError(
+			"bounds check failed during search tree verification",
+		)
+	}
+	bitDepth := uint8(0)
+	if reader.Metadata.IPVersion == 4 {
+		bitDepth = 96
+	}
+	walker := searchTreeWalker{
+		reader:     reader,
+		offsets:    offsets,
+		nodeStates: make([]uint8, int(nodeCount)),
+	}
+	height, err := walker.verifyNode(0, uint(bitDepth))
+	if err != nil {
+		return nil, walker.stateCount, err
+	}
+	if uint(bitDepth)+uint(height) > 128 {
+		return nil, walker.stateCount, mmdberrors.NewInvalidDatabaseError(
+			"invalid search tree: path exceeds 128 bits",
+		)
+	}
+
+	return offsets, walker.stateCount, nil
 }
 
 func (v *verifier) verifyDataSectionSeparator() error {

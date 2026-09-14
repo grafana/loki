@@ -303,7 +303,6 @@ message IndexMerge {
   // same window regardless of clock drift between planning and execution.
   int64 toc_window_start_unix_nanos = 2;
   repeated proto.RunRef runs = 3;
-  string output_index_path = 4;
 }
 
 // LogMerge represents one K-way sort-merge task over LOG sections
@@ -313,7 +312,6 @@ message LogMerge {
   int64 toc_window_start_unix_nanos = 2;
   repeated proto.RunRef runs = 3;
   repeated string sort_schema = 4;
-  string output_index_path = 5;
 }
 
 // Cache controls Task-level caching.
