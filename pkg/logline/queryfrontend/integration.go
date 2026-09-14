@@ -64,6 +64,7 @@ func WrapMiddleware(
 	lokiCfg loki.ConfigWrapper,
 	cfg Config,
 	tenantSettings TenantSettings,
+	limits queryBytesLimit,
 	existing queryrangebase.Middleware,
 	logger log.Logger,
 	reg prometheus.Registerer,
@@ -99,6 +100,7 @@ func WrapMiddleware(
 		lokiCfg,
 		cfg.QueryFrontend,
 		tenantSettings,
+		limits,
 		indexStore,
 		existing,
 		logger,
@@ -140,6 +142,7 @@ func WrapMiddlewareWithStore(
 	lokiCfg loki.ConfigWrapper,
 	cfg MiddlewareConfig,
 	tenantSettings TenantSettings,
+	limits queryBytesLimit,
 	indexStore *store.Store,
 	existing queryrangebase.Middleware,
 	logger log.Logger,
@@ -201,11 +204,8 @@ func WrapMiddlewareWithStore(
 	if cfg.QueryIngestersWithin == 0 {
 		cfg.QueryIngestersWithin = lokiCfg.Querier.QueryIngestersWithin
 	}
-	if cfg.MaxQueryBytesRead == 0 {
-		cfg.MaxQueryBytesRead = int64(lokiCfg.LimitsConfig.MaxQueryBytesRead.Val())
-	}
 
-	prefetchMW := NewLoglinePrefetchMiddleware(hp, cfg, tenantSettings, metrics, logger)
+	prefetchMW := NewLoglinePrefetchMiddleware(hp, cfg, tenantSettings, limits, metrics, logger)
 	filterMW := NewLoglineFilterMiddleware(cfg.HintTimeout, metrics, logger)
 
 	if existing == nil {

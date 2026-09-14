@@ -44,7 +44,6 @@ type mockHintProvider struct {
 type mockTenantSettings struct {
 	modes                 map[string]Mode
 	minQueryBytesForIndex map[string]int64
-	maxQueryBytesRead     map[string]int
 }
 
 func (m mockTenantSettings) Mode(tenant string) Mode {
@@ -66,11 +65,10 @@ func (m mockTenantSettings) MinQueryBytesForIndex(tenant string) (int64, bool) {
 	return minQueryBytes, ok
 }
 
-func (m mockTenantSettings) MaxQueryBytesRead(tenant string) int {
-	if m.maxQueryBytesRead == nil {
-		return 0
-	}
-	return m.maxQueryBytesRead[tenant]
+type staticQueryBytesLimit int
+
+func (l staticQueryBytesLimit) MaxQueryBytesRead(context.Context, string) int {
+	return int(l)
 }
 
 func (m *mockHintProvider) ProvideHints(
@@ -178,7 +176,7 @@ func buildStack(
 	if len(tenantSettings) > 0 {
 		settings = tenantSettings[0]
 	}
-	prefetchMW := NewLoglinePrefetchMiddleware(hp, cfg, settings, metrics, nil)
+	prefetchMW := NewLoglinePrefetchMiddleware(hp, cfg, settings, nil, metrics, nil)
 	return prefetchMW.Wrap(filterMW.Wrap(querier))
 }
 
@@ -199,7 +197,7 @@ func buildStackWithLogger(
 	if len(tenantSettings) > 0 {
 		settings = tenantSettings[0]
 	}
-	prefetchMW := NewLoglinePrefetchMiddleware(hp, cfg, settings, metrics, logger)
+	prefetchMW := NewLoglinePrefetchMiddleware(hp, cfg, settings, nil, metrics, logger)
 	return prefetchMW.Wrap(filterMW.Wrap(querier))
 }
 
@@ -992,6 +990,7 @@ func TestWrapMiddleware_Disabled(t *testing.T) {
 		Config{Enabled: false},
 		nil,
 		nil,
+		nil,
 		log.NewNopLogger(),
 		prometheus.NewRegistry(),
 	)
@@ -1350,7 +1349,7 @@ func TestPrefetch_OverSizeLimit_WaitsBeforeNext(t *testing.T) {
 	})
 
 	cfg := MiddlewareConfig{MaxQueryBytesRead: 1000, HintTimeout: time.Second}
-	handler := NewLoglinePrefetchMiddleware(hp, cfg, nil, newTestMetrics(), nil).Wrap(next)
+	handler := NewLoglinePrefetchMiddleware(hp, cfg, nil, nil, newTestMetrics(), nil).Wrap(next)
 	req := newTestLokiRequest(`{job="test"} |= "error"`, now.Add(-time.Hour), now)
 
 	_, err := handler.Do(testTenantContextWithLive(), req)
@@ -1389,7 +1388,7 @@ func TestPrefetch_UnderSizeLimit_DoesNotWaitBeforeNext(t *testing.T) {
 	})
 
 	cfg := MiddlewareConfig{MaxQueryBytesRead: 1000, HintTimeout: time.Second}
-	handler := NewLoglinePrefetchMiddleware(hp, cfg, nil, newTestMetrics(), nil).Wrap(next)
+	handler := NewLoglinePrefetchMiddleware(hp, cfg, nil, nil, newTestMetrics(), nil).Wrap(next)
 	req := newTestLokiRequest(`{job="test"} |= "error"`, now.Add(-time.Hour), now)
 
 	_, err := handler.Do(testTenantContextWithLive(), req)
@@ -1423,7 +1422,7 @@ func TestPrefetch_AtSizeLimit_DoesNotWaitBeforeNext(t *testing.T) {
 	})
 
 	cfg := MiddlewareConfig{MaxQueryBytesRead: 1000, HintTimeout: time.Second}
-	handler := NewLoglinePrefetchMiddleware(hp, cfg, nil, newTestMetrics(), nil).Wrap(next)
+	handler := NewLoglinePrefetchMiddleware(hp, cfg, nil, nil, newTestMetrics(), nil).Wrap(next)
 	req := newTestLokiRequest(`{job="test"} |= "error"`, now.Add(-time.Hour), now)
 
 	_, err := handler.Do(testTenantContextWithLive(), req)
@@ -1458,7 +1457,7 @@ func TestPrefetch_BelowMinBytesButOverSizeLimit_StillLooksUpHints(t *testing.T) 
 		MaxQueryBytesRead:     1000,
 		HintTimeout:           time.Second,
 	}
-	handler := NewLoglinePrefetchMiddleware(hp, cfg, nil, newTestMetrics(), nil).Wrap(next)
+	handler := NewLoglinePrefetchMiddleware(hp, cfg, nil, nil, newTestMetrics(), nil).Wrap(next)
 	req := newTestLokiRequest(`{job="test"} |= "error"`, now.Add(-time.Hour), now)
 
 	_, err := handler.Do(testTenantContextWithLive(), req)
@@ -1492,10 +1491,7 @@ func TestPrefetch_TenantMaxQueryBytesReadStillStartsHints(t *testing.T) {
 		MaxQueryBytesRead: 10_000,
 		HintTimeout:       time.Second,
 	}
-	settings := mockTenantSettings{
-		maxQueryBytesRead: map[string]int{"test": 1000},
-	}
-	handler := NewLoglinePrefetchMiddleware(hp, cfg, settings, newTestMetrics(), nil).Wrap(next)
+	handler := NewLoglinePrefetchMiddleware(hp, cfg, nil, staticQueryBytesLimit(1000), newTestMetrics(), nil).Wrap(next)
 	req := newTestLokiRequest(`{job="test"} |= "error"`, now.Add(-time.Hour), now)
 
 	_, err := handler.Do(testTenantContextWithLive(), req)
@@ -1526,7 +1522,7 @@ func TestPrefetch_OverSizeLimit_TimeoutDoesNotInjectPlan(t *testing.T) {
 	})
 
 	cfg := MiddlewareConfig{MaxQueryBytesRead: 1000, HintTimeout: 20 * time.Millisecond}
-	handler := NewLoglinePrefetchMiddleware(hp, cfg, nil, newTestMetrics(), nil).Wrap(next)
+	handler := NewLoglinePrefetchMiddleware(hp, cfg, nil, nil, newTestMetrics(), nil).Wrap(next)
 	req := newTestLokiRequest(`{job="test"} |= "error"`, now.Add(-time.Hour), now)
 
 	_, err := handler.Do(testTenantContextWithLive(), req)
@@ -1552,7 +1548,7 @@ func TestPrefetch_OverSizeLimit_LookupErrorDoesNotInjectPlan(t *testing.T) {
 	})
 
 	cfg := MiddlewareConfig{MaxQueryBytesRead: 1000, HintTimeout: time.Second}
-	handler := NewLoglinePrefetchMiddleware(hp, cfg, nil, newTestMetrics(), nil).Wrap(next)
+	handler := NewLoglinePrefetchMiddleware(hp, cfg, nil, nil, newTestMetrics(), nil).Wrap(next)
 	req := newTestLokiRequest(`{job="test"} |= "error"`, now.Add(-time.Hour), now)
 
 	_, err := handler.Do(testTenantContextWithLive(), req)
@@ -1579,7 +1575,7 @@ func TestPrefetch_OverSizeLimit_EmptyHintsInjectsPresentPlan(t *testing.T) {
 	})
 
 	cfg := MiddlewareConfig{MaxQueryBytesRead: 1000, HintTimeout: time.Second}
-	handler := NewLoglinePrefetchMiddleware(hp, cfg, nil, newTestMetrics(), nil).Wrap(next)
+	handler := NewLoglinePrefetchMiddleware(hp, cfg, nil, nil, newTestMetrics(), nil).Wrap(next)
 	req := newTestLokiRequest(`{job="test"} |= "error"`, now.Add(-time.Hour), now)
 
 	_, err := handler.Do(testTenantContextWithLive(), req)
@@ -1787,7 +1783,7 @@ func TestPrefetchFilter_QueryStatsCountsTimeout(t *testing.T) {
 	}
 
 	metrics := newTestMetrics()
-	prefetchMW := NewLoglinePrefetchMiddleware(hp, MiddlewareConfig{RequireOptInHeader: true}, nil, metrics, nil)
+	prefetchMW := NewLoglinePrefetchMiddleware(hp, MiddlewareConfig{RequireOptInHeader: true}, nil, nil, metrics, nil)
 	filterMW := NewLoglineFilterMiddleware(10*time.Millisecond, metrics, nil)
 	var prefetchResult *hintPrefetchResult
 	next := queryrangebase.HandlerFunc(func(ctx context.Context, _ queryrangebase.Request) (queryrangebase.Response, error) {
@@ -1884,7 +1880,7 @@ func TestPrefetchFilter_IngesterWindowPassthrough(t *testing.T) {
 	cfg := MiddlewareConfig{QueryIngestersWithin: 3 * time.Hour}
 	metrics := newTestMetrics()
 
-	prefetchMW := NewLoglinePrefetchMiddleware(hp, cfg, nil, metrics, nil)
+	prefetchMW := NewLoglinePrefetchMiddleware(hp, cfg, nil, nil, metrics, nil)
 
 	var mu sync.Mutex
 	type subReqInfo struct {
@@ -1968,7 +1964,7 @@ func TestPrefetchFilter_24hQueryWith3hIngesterWindow(t *testing.T) {
 	cfg := MiddlewareConfig{QueryIngestersWithin: 3 * time.Hour}
 	metrics := newTestMetrics()
 
-	prefetchMW := NewLoglinePrefetchMiddleware(hp, cfg, nil, metrics, nil)
+	prefetchMW := NewLoglinePrefetchMiddleware(hp, cfg, nil, nil, metrics, nil)
 	filterMW := NewLoglineFilterMiddleware(10*time.Second, metrics, nil)
 
 	var mu sync.Mutex
@@ -2035,7 +2031,7 @@ func TestPrefetchFilter_ImpactCountersAcrossSkipNarrowPassthrough(t *testing.T) 
 
 	cfg := MiddlewareConfig{QueryIngestersWithin: 2 * time.Hour}
 	metrics := newTestMetrics()
-	prefetchMW := NewLoglinePrefetchMiddleware(hp, cfg, nil, metrics, nil)
+	prefetchMW := NewLoglinePrefetchMiddleware(hp, cfg, nil, nil, metrics, nil)
 	filterMW := NewLoglineFilterMiddleware(10*time.Second, metrics, nil)
 
 	var prefetchResult *hintPrefetchResult

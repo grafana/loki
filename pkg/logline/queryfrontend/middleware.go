@@ -263,6 +263,7 @@ func NewLoglinePrefetchMiddleware(
 	hp hintprovider.QueryHintProvider,
 	cfg MiddlewareConfig,
 	tenantSettings TenantSettings,
+	limits queryBytesLimit,
 	metrics *Metrics,
 	logger log.Logger,
 ) queryrangebase.Middleware {
@@ -292,6 +293,7 @@ func NewLoglinePrefetchMiddleware(
 			queryIngestersWithin: cfg.QueryIngestersWithin,
 			shardPlanning:        cfg.ShardPlanning,
 			tenantSettings:       tenantSettings,
+			limits:               limits,
 			metrics:              metrics,
 			logger:               logger,
 		}
@@ -311,6 +313,7 @@ type loglinePrefetchHandler struct {
 	queryIngestersWithin time.Duration
 	shardPlanning        ShardPlanningConfig
 	tenantSettings       TenantSettings
+	limits               queryBytesLimit
 	metrics              *Metrics
 	logger               log.Logger
 }
@@ -348,18 +351,14 @@ func resolveMode(header string, tenantMode, defaultMode Mode, requireOptInHeader
 	return mode, false
 }
 
-// resolveMaxQueryBytesRead returns the tenant MaxQueryBytesRead override,
-// else the cell setting, else 0 when neither is set.
-func (h *loglinePrefetchHandler) resolveMaxQueryBytesRead(tenant string) int64 {
-	if r, ok := h.tenantSettings.(maxQueryBytesReader); ok {
-		if v := r.MaxQueryBytesRead(tenant); v > 0 {
-			return int64(v)
-		}
+// resolveMaxQueryBytesRead returns Loki's MaxQueryBytesRead for the
+// request (tenant overrides and request-header limits). When wrap did
+// not pass Overrides, the static config value is used (tests).
+func (h *loglinePrefetchHandler) resolveMaxQueryBytesRead(ctx context.Context, tenant string) int64 {
+	if h.limits != nil {
+		return int64(h.limits.MaxQueryBytesRead(ctx, tenant))
 	}
-	if h.maxQueryBytesRead > 0 {
-		return h.maxQueryBytesRead
-	}
-	return 0
+	return h.maxQueryBytesRead
 }
 
 func (h *loglinePrefetchHandler) getQueryBytes(ctx context.Context, expr syntax.Expr, from, through time.Time) (uint64, error) {
@@ -805,7 +804,7 @@ func (h *loglinePrefetchHandler) Do(ctx context.Context, req queryrangebase.Requ
 	tenant, _ := user.ExtractOrgID(ctx)
 	tenantMode := ModeUnset
 	minQueryBytes := h.minQueryBytes
-	maxQueryBytesRead := h.resolveMaxQueryBytesRead(tenant)
+	maxQueryBytesRead := h.resolveMaxQueryBytesRead(ctx, tenant)
 	if h.tenantSettings != nil {
 		tenantMode = h.tenantSettings.Mode(tenant)
 		if tenantMinQueryBytes, ok := h.tenantSettings.MinQueryBytesForIndex(tenant); ok {
