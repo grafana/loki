@@ -362,9 +362,9 @@ func resolveMode(header string, tenantMode, defaultMode Mode, requireOptInHeader
 	return mode, false
 }
 
-// resolveMaxQueryBytesRead returns Loki's MaxQueryBytesRead for the
-// request (tenant overrides and request-header limits). When wrap did
-// not pass Overrides, the static config value is used (tests).
+// resolveMaxQueryBytesRead returns MaxQueryBytesRead for the tenant.
+// Prefer the Overrides passed into wrap (tenant overrides included).
+// If wrap passed none, use the static config value (tests).
 func (h *loglinePrefetchHandler) resolveMaxQueryBytesRead(ctx context.Context, tenant string) int64 {
 	if h.limits != nil {
 		return int64(h.limits.MaxQueryBytesRead(ctx, tenant))
