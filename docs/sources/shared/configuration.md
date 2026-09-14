@@ -1297,7 +1297,7 @@ dataobj:
       # (for columnar sections). Uncompressed size is used for consistent I/O
       # and planning.
       # CLI flag: -dataobj-consumer.target-page-size
-      [target_page_size: <int> | default = 2MiB]
+      [target_page_size: <int> | default = 1MiB]
 
       # The maximum row count for pages to use for the data object builder. A
       # value of 0 means no limit.
@@ -1307,18 +1307,18 @@ dataobj:
       # The target maximum size of the encoded object and all of its encoded
       # sections (after compression), to limit memory usage of a builder.
       # CLI flag: -dataobj-consumer.target-builder-memory-limit
-      [target_object_size: <int> | default = 1GiB]
+      [target_object_size: <int> | default = 512MiB]
 
       # The target maximum amount of uncompressed data to hold in sections, for
       # sections that support being limited by size. Uncompressed size is used
       # for consistent I/O and planning.
       # CLI flag: -dataobj-consumer.target-section-size
-      [target_section_size: <int> | default = 128MiB]
+      [target_section_size: <int> | default = 512MiB]
 
       # The size of logs to buffer in memory before adding into columnar
       # builders, used to reduce CPU load of sorting.
       # CLI flag: -dataobj-consumer.buffer-size
-      [buffer_size: <int> | default = 16MiB]
+      [buffer_size: <int> | default = 128MiB]
 
       # The maximum number of dataobj section stripes to merge into a section at
       # once. Must be greater than 1.
@@ -1570,18 +1570,18 @@ dataobj:
     # The target maximum size of the encoded object and all of its encoded
     # sections (after compression), to limit memory usage of a builder.
     # CLI flag: -dataobj-index-builder.target-builder-memory-limit
-    [target_object_size: <int> | default = 64MiB]
+    [target_object_size: <int> | default = 512MiB]
 
     # The target maximum amount of uncompressed data to hold in sections, for
     # sections that support being limited by size. Uncompressed size is used for
     # consistent I/O and planning.
     # CLI flag: -dataobj-index-builder.target-section-size
-    [target_section_size: <int> | default = 16MiB]
+    [target_section_size: <int> | default = 512MiB]
 
     # The size of logs to buffer in memory before adding into columnar builders,
     # used to reduce CPU load of sorting.
     # CLI flag: -dataobj-index-builder.buffer-size
-    [buffer_size: <int> | default = 2MiB]
+    [buffer_size: <int> | default = 128MiB]
 
     # The maximum number of dataobj section stripes to merge into a section at
     # once. Must be greater than 1.
@@ -2792,6 +2792,12 @@ The `chunk_store_config` block configures how chunks will be cached and how long
 # cache. A value of 0 will write all chunks to the cache
 # CLI flag: -store.skip-query-writeback-older-than
 [skip_query_writeback_cache_older_than: <duration> | default = 0s]
+
+# Experimental. Return an object-storage chunk fetch error instead of incomplete
+# results. Applies to queries, bloom builds, and migration, including checksum
+# failures.
+# CLI flag: -chunk-store.propagate-chunk-fetch-errors
+[propagate_chunk_fetch_errors: <boolean> | default = false]
 
 # Chunks will be handed off to the L2 cache after this duration. 0 to disable L2
 # cache.
@@ -5358,6 +5364,16 @@ When a memberlist config with atleast 1 join_members is defined, kvstore of type
 # CLI flag: -memberlist.watch-prefix-buffer-size
 [watch_prefix_buffer_size: <int> | default = 128]
 
+# Minimum delay between CAS retries after a version mismatch. 0 disables the
+# delay.
+# CLI flag: -memberlist.cas-retry-min-backoff
+[cas_retry_min_backoff: <duration> | default = 0s]
+
+# Maximum delay between CAS retries after a version mismatch. Only takes effect
+# if cas-retry-min-backoff is also set.
+# CLI flag: -memberlist.cas-retry-max-backoff
+[cas_retry_max_backoff: <duration> | default = 10s]
+
 # IP address to listen on for gossip messages. Multiple addresses may be
 # specified. Defaults to 0.0.0.0
 # CLI flag: -memberlist.bind-addr
@@ -6221,7 +6237,14 @@ Configuration for 'runtime config' module, responsible for reloading runtime con
 [period: <duration> | default = 10s]
 
 # Comma separated list of yaml files or URLs with the configuration that can be
-# updated at runtime. Runtime config files will be merged from left to right.
+# updated at runtime. Runtime config files will be merged from left to right. An
+# entry can end with semicolon-separated parameters that say what happens when
+# it cannot be read: ";optional-on-startup" lets the process start without it,
+# but a later failure still fails the reload;
+# ";optional-keep-last-value-on-failure" also lets the process start without it,
+# and a later failure keeps the value the source supplied last. Without a
+# parameter, a source that cannot be read fails the load. Quote the value in a
+# shell, because ";" starts a new command.
 # CLI flag: -runtime-config.file
 [file: <string> | default = ""]
 

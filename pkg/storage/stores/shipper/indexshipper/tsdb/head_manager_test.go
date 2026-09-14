@@ -282,6 +282,67 @@ func Test_HeadManager_RecoverHead(t *testing.T) {
 
 }
 
+// Test_HeadManager_RecoverHead_IngestedAt asserts that a chunk's ingestion
+// timestamp survives WAL replay once the WAL is written as
+// WalRecordChunksV2. Without it, an index built from a recovered head would
+// drop the timestamp that an index built from the same data without a restart
+// carries, and retention would silently fall back to expiring those chunks by
+// their log timestamps.
+func Test_HeadManager_RecoverHead_IngestedAt(t *testing.T) {
+	now := time.Now()
+	dir := t.TempDir()
+
+	const user = "tenant1"
+	ls := mustParseLabels(`{foo="bar", __backfill__="true"}`)
+	chks := index.ChunkMetas{
+		// A backfilled chunk, stamped at flush time.
+		{MinTime: 1, MaxTime: 10, Checksum: 3, KB: 5, Entries: 6, IngestedAt: now.UnixMilli()},
+		// A live chunk in the same record keeps the zero value.
+		{MinTime: 11, MaxTime: 20, Checksum: 4, KB: 7, Entries: 8},
+	}
+
+	storeName := "store_2010-10-10"
+	mgr := NewHeadManager(storeName, log.NewNopLogger(), dir, NewMetrics(nil), newNoopTSDBManager(storeName, dir))
+	for _, d := range managerRequiredDirs(storeName, dir) {
+		require.Nil(t, util.EnsureDirectory(d))
+	}
+	require.Nil(t, mgr.Rotate(now))
+
+	w, err := newHeadWAL(log.NewNopLogger(), walPath(mgr.name, mgr.dir, now), now)
+	require.Nil(t, err)
+	require.Nil(t, w.Log(&WALRecord{
+		UserID:      user,
+		Fingerprint: labels.StableHash(ls),
+		Series:      record.RefSeries{Ref: chunks.HeadSeriesRef(0), Labels: ls},
+		Chks:        ChunkMetasRecord{Chks: chks, Ref: 0},
+	}))
+	require.Nil(t, w.Stop())
+
+	grp, ok, err := walsForPeriod(managerWalDir(mgr.name, mgr.dir), mgr.period, mgr.period.PeriodFor(now))
+	require.Nil(t, err)
+	require.True(t, ok)
+	require.Nil(t, recoverHead(mgr.name, mgr.dir, mgr.activeHeads, grp.wals, false, log.NewNopLogger(), NewMetrics(nil).walCorruptionsRepairs))
+
+	want := chks
+	if CurrentChunksRec < WalRecordChunksV2 {
+		// The encoder still writes the layout without ingestion timestamps,
+		// so replay zeroes them. Remove once CurrentChunksRec is
+		// WalRecordChunksV2.
+		want = index.ChunkMetas{
+			{MinTime: 1, MaxTime: 10, Checksum: 3, KB: 5, Entries: 6},
+			{MinTime: 11, MaxTime: 20, Checksum: 4, KB: 7, Entries: 8},
+		}
+	}
+
+	var recovered index.ChunkMetas
+	require.Nil(t, mgr.activeHeads.forAll(func(u string, _ labels.Labels, _ uint64, c index.ChunkMetas) error {
+		require.Equal(t, user, u)
+		recovered = append(recovered, c...)
+		return nil
+	}))
+	require.Equal(t, want, recovered)
+}
+
 // test head recover from corrupted wal
 func Test_HeadManager_RecoverHead_CorruptedWAL(t *testing.T) {
 	for _, tc := range []struct {

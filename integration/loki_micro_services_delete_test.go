@@ -336,20 +336,35 @@ func TestMicroServicesDeleteRequest(t *testing.T) {
 			expectedDeleteRequests[i].Status = "processed"
 		}
 
+		// Require the full set of processed requests. Matching only the returned
+		// list lets a partial response (4 of 5) succeed too early, which then
+		// fails the processed-total metric assertion.
 		require.Eventually(t, func() bool {
 			deleteRequests, err := cliCompactor.GetDeleteRequests()
 			require.NoError(t, err)
-
-		outer:
-			for i := range deleteRequests {
-				for j := range expectedDeleteRequests {
-					if deleteRequests[i] == expectedDeleteRequests[j] {
-						continue outer
-					}
-				}
+			if len(deleteRequests) != len(expectedDeleteRequests) {
 				return false
 			}
-			return true
+			for i := range expectedDeleteRequests {
+				found := false
+				for j := range deleteRequests {
+					if deleteRequests[j] == expectedDeleteRequests[i] {
+						found = true
+						break
+					}
+				}
+				if !found {
+					return false
+				}
+			}
+
+			metrics, err := cliCompactor.Metrics()
+			require.NoError(t, err)
+			val, labels, err := extractMetric("loki_compactor_delete_requests_processed_total", metrics)
+			if err != nil {
+				return false
+			}
+			return labels["user"] == tenantID && val == float64(len(expectedDeleteRequests))
 		}, 20*time.Second, 1*time.Second)
 
 		// Check metrics

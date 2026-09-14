@@ -238,13 +238,15 @@ func assertBuilderE2EOrdered(t *testing.T, records []builderE2EResolvedRecord, s
 func compareRecords(t *testing.T, a, b builderE2EResolvedRecord, schemaLabels []string) int {
 	t.Helper()
 
-	aKey, err := ComputeSortKey(a.labels, schemaLabels)
+	aSchemaKey, err := ComputeSchemaKey(a.labels, schemaLabels)
+	require.NoError(t, err)
+	bSchemaKey, err := ComputeSchemaKey(b.labels, schemaLabels)
 	require.NoError(t, err)
 
-	bKey, err := ComputeSortKey(b.labels, schemaLabels)
-	require.NoError(t, err)
+	aKey := streams.NewSortKey(a.labels, aSchemaKey)
+	bKey := streams.NewSortKey(b.labels, bSchemaKey)
 
-	if res := cmp.Compare(aKey, bKey); res != 0 {
+	if res := streams.CompareSortKey(aKey, bKey); res != 0 {
 		return res
 	}
 	if res := cmp.Compare(a.streamID, b.streamID); res != 0 {
@@ -275,5 +277,10 @@ func assertBuilderE2ESchemaLabels(t *testing.T, obj *dataobj.Object, tenant stri
 		got, err := logsSection.SchemaLabels()
 		require.NoError(t, err)
 		require.Equal(t, want, got)
+		require.Equal(t, logs.SortLayout{
+			SchemaLabels: want,
+			StreamOrder:  logs.StreamOrderStableHashV1,
+			ShardCount:   streams.ShardFactor,
+		}, logsSection.SortLayout())
 	}
 }
