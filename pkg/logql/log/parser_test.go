@@ -2049,3 +2049,49 @@ func BenchmarkJsonExpressionParser(b *testing.B) {
 		})
 	}
 }
+
+func TestParserRenameLiteralKeyPrecedence(t *testing.T) {
+	// When a line contains both a key that collides with a stream label (and
+	// is therefore renamed to key_extracted) and a literal key_extracted, both
+	// target the same final label name. JSON does not define key order, so the
+	// outcome must not depend on it: within a parser stage the literal key
+	// always wins and the renamed key is dropped.
+	mustRegexp := func(re string) Stage {
+		p, err := NewRegexpParser(re)
+		require.NoError(t, err)
+		return p
+	}
+	mustPattern := func(pn string) Stage {
+		p, err := NewPatternParser(pn)
+		require.NoError(t, err)
+		return p
+	}
+
+	base := labels.FromStrings("foo", "l")
+	want := labels.FromStrings("foo", "l", "foo_extracted", "lit")
+
+	for _, tt := range []struct {
+		name   string
+		parser Stage
+		line   string
+	}{
+		{"json renamed first", NewJSONParser(false), `{"foo":"p","foo_extracted":"lit"}`},
+		{"json literal first", NewJSONParser(false), `{"foo_extracted":"lit","foo":"p"}`},
+		{"logfmt renamed first", NewLogfmtParser(false, false), `foo=p foo_extracted=lit`},
+		{"logfmt literal first", NewLogfmtParser(false, false), `foo_extracted=lit foo=p`},
+		{"regexp renamed first", mustRegexp(`(?P<foo>\w+)\|(?P<foo_extracted>\w+)`), `p|lit`},
+		{"regexp literal first", mustRegexp(`(?P<foo_extracted>\w+)\|(?P<foo>\w+)`), `lit|p`},
+		{"pattern renamed first", mustPattern(`<foo> <foo_extracted>`), `p lit`},
+		{"pattern literal first", mustPattern(`<foo_extracted> <foo>`), `lit p`},
+		{"unpack renamed first", NewUnpackParser(), `{"foo":"p","foo_extracted":"lit","_entry":"msg"}`},
+		{"unpack literal first", NewUnpackParser(), `{"foo_extracted":"lit","foo":"p","_entry":"msg"}`},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			b := NewBaseLabelsBuilderWithGrouping(nil, NoParserHints(), false, false).
+				ForLabels(base, labels.StableHash(base))
+			b.Reset()
+			_, _ = tt.parser.Process(0, []byte(tt.line), b)
+			require.Equal(t, want, b.LabelsResult().Labels())
+		})
+	}
+}
