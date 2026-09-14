@@ -804,7 +804,7 @@ func (t *Loki) setupModuleManager() error {
 	mm.RegisterModule(PatternIngester, t.initPatternIngester)
 	mm.RegisterModule(PartitionRing, t.initPartitionRing, modules.UserInvisibleModule)
 
-	mm.RegisterModule(UI, t.initUI)
+	mm.RegisterModule(UI, t.initUI, modules.UserInvisibleTargetableModule)
 	mm.RegisterModule(UIRing, t.initUIRing, modules.UserInvisibleModule)
 
 	// Thor related modules: keep targets invisible
