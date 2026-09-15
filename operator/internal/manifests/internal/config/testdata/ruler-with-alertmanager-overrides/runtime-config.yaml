@@ -1,0 +1,31 @@
+
+---
+overrides:
+  test-a:
+    ruler_alertmanager_config:
+      external_url: http://alert.you/later
+      external_labels:
+        specialkey: specialvalue
+      alertmanager_url: http://specialhost
+      enable_alertmanager_v2: true
+      enable_alertmanager_discovery: true
+      alertmanager_refresh_interval: 2m
+      notification_queue_capacity: 2000
+      notification_timeout: 2m
+      alertmanager_client:
+        tls_cert_path: "custom/path"
+        tls_key_path: "custom/key"
+        tls_ca_path: "custom/CA"
+        tls_server_name: "custom-servername"
+        tls_insecure_skip_verify: false
+        basic_auth_password: "pass"
+        basic_auth_username: "user"
+        credentials: "creds"
+        credentials_file: "cred/file"
+        type: "auth"
+      alert_relabel_configs:
+      - source_labels: ["specialsource"]
+        regex: "ALERTS.*"
+        action: "drop"
+        separator: "\\"
+        replacement: "$2"

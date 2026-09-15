@@ -93,7 +93,7 @@ func rebaseProps(dst, src *smithyauth.Option) {
 
 func findScheme(opts []*smithyauth.Option, schemeID string) *smithyauth.Option {
 	for _, opt := range opts {
-		if opt.SchemeID == schemeID {
+		if matchSchemeID(opt.SchemeID, schemeID) {
 			return opt
 		}
 	}

@@ -1,3 +1,102 @@
+# v1.19.1 (2026-08-28)
+
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.19.0 (2026-08-27)
+
+* **Feature**: Support connection read timeouts in the SDK. This is currently available on an opt-in basis by setting env `AWS_ENABLE_DEFAULT_SOCKET_TIMEOUT_2026=true`.
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.18.40 (2026-08-26)
+
+* **Dependency Update**: Update to smithy-go v1.28.0.
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.18.39 (2026-08-25)
+
+* **Dependency Update**: Update to smithy-go v1.27.10.
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.18.38 (2026-08-20)
+
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.18.37 (2026-08-14)
+
+* **Dependency Update**: Update to smithy-go v1.27.8.
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.18.36 (2026-08-10)
+
+* **Dependency Update**: Update to smithy-go v1.27.7.
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.18.35 (2026-08-05)
+
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.18.34 (2026-07-31.2)
+
+* **Dependency Update**: Updated to the latest SDK module versions
+* **Dependency Update**: Upgrade to smithy-go v1.27.6 to fix various serde issues in HTTP binding services.
+
+# v1.18.33 (2026-07-29)
+
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.18.32 (2026-07-28)
+
+* **Dependency Update**: Update to smithy-go v1.27.5.
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.18.31 (2026-07-21)
+
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.18.30 (2026-07-01)
+
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.18.29 (2026-06-08)
+
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.18.28 (2026-06-04)
+
+* **Dependency Update**: Update to smithy-go v1.27.1 to fix several union-related deserialization bugs in schema-serde-enabled services.
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.18.27 (2026-06-03)
+
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.18.26 (2026-06-02)
+
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.18.25 (2026-05-29)
+
+* **Dependency Update**: Update to smithy-go v1.26.0.
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.18.24 (2026-05-28)
+
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.18.23 (2026-04-29)
+
+* **Dependency Update**: Update to smithy-go v1.25.1.
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.18.22 (2026-04-17)
+
+* **Dependency Update**: Bump smithy-go to 1.25.0 to support endpointBdd trait
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.18.21 (2026-03-26)
+
+* **Dependency Update**: Updated to the latest SDK module versions
+
 # v1.18.20 (2026-03-13)
 
 * **Bug Fix**: Replace usages of the old ioutil/ package throughout the SDK.

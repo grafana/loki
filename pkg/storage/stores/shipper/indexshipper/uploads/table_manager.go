@@ -2,6 +2,8 @@ package uploads
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"sync"
 	"time"
 
@@ -22,6 +24,8 @@ type TableManager interface {
 	Stop()
 	AddIndex(tableName, userID string, index index.Index) error
 	ForEach(tableName, userID string, callback index.ForEachIndexCallback) error
+	// UploadTables synchronously uploads all tables to object storage, returning any upload error.
+	UploadTables(ctx context.Context) error
 }
 
 type tableManager struct {
@@ -58,7 +62,9 @@ func (tm *tableManager) loop() {
 	tm.wg.Add(1)
 	defer tm.wg.Done()
 
-	tm.uploadTables(context.Background())
+	if err := tm.UploadTables(context.Background()); err != nil {
+		level.Error(tm.logger).Log("msg", "failed to upload tables", "phase", "startup", "err", err)
+	}
 
 	syncTicker := time.NewTicker(tm.cfg.UploadInterval)
 	defer syncTicker.Stop()
@@ -66,7 +72,9 @@ func (tm *tableManager) loop() {
 	for {
 		select {
 		case <-syncTicker.C:
-			tm.uploadTables(context.Background())
+			if err := tm.UploadTables(context.Background()); err != nil {
+				level.Error(tm.logger).Log("msg", "failed to upload tables", "phase", "periodic", "err", err)
+			}
 		case <-tm.ctx.Done():
 			return
 		}
@@ -79,7 +87,9 @@ func (tm *tableManager) Stop() {
 	tm.cancel()
 	tm.wg.Wait()
 
-	tm.uploadTables(context.Background())
+	if err := tm.UploadTables(context.Background()); err != nil {
+		level.Error(tm.logger).Log("msg", "failed to upload tables", "phase", "shutdown", "err", err)
+	}
 
 	tm.tablesMtx.Lock()
 	defer tm.tablesMtx.Unlock()
@@ -129,28 +139,31 @@ func (tm *tableManager) ForEach(tableName, userID string, callback index.ForEach
 	return table.ForEach(userID, callback)
 }
 
-func (tm *tableManager) uploadTables(ctx context.Context) {
+// UploadTables synchronously uploads all tables to object storage, returning any
+// upload error. It is also invoked periodically by loop().
+func (tm *tableManager) UploadTables(ctx context.Context) error {
 	tm.tablesMtx.RLock()
 	defer tm.tablesMtx.RUnlock()
 
 	level.Info(tm.logger).Log("msg", "uploading tables")
 
 	status := statusSuccess
+	var uploadErr error
 	for _, table := range tm.tables {
-		err := table.Upload(ctx)
-		if err != nil {
+		if err := table.Upload(ctx); err != nil {
 			status = statusFailure
-			level.Error(tm.logger).Log("msg", "failed to upload table", "table", table.Name(), "err", err)
+			// Wrap with the table name and return it; the caller logs it (so we don't log twice).
+			uploadErr = errors.Join(uploadErr, fmt.Errorf("uploading table %s: %w", table.Name(), err))
 			continue
 		}
 
 		// cleanup uploaded dbs from local disk after retain period
-		err = table.Cleanup(tm.cfg.DBRetainPeriod)
-		if err != nil {
+		if err := table.Cleanup(tm.cfg.DBRetainPeriod); err != nil {
 			// we do not want to stop uploading of dbs due to failures in cleaning them up so logging just the error here.
 			level.Error(tm.logger).Log("msg", "failed to cleanup uploaded index past their retention period", "table", table.Name(), "err", err)
 		}
 	}
 
 	tm.metrics.tablesUploadOperationTotal.WithLabelValues(status).Inc()
+	return uploadErr
 }

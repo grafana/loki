@@ -10,8 +10,7 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/v3/clients/pkg/promtail/api"
-
+	"github.com/grafana/loki/v3/clients/pkg/util"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
 )
@@ -146,7 +145,7 @@ func Test_multilineStage_MaxWaitTime(t *testing.T) {
 func simpleEntry(line, label string) Entry {
 	return Entry{
 		Extracted: map[string]interface{}{},
-		Entry: api.Entry{
+		Entry: util.Entry{
 			Labels: model.LabelSet{"value": model.LabelValue(label)},
 			Entry: logproto.Entry{
 				Timestamp: time.Now(),

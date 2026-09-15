@@ -1,6 +1,7 @@
 package uploads
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -32,6 +33,9 @@ func buildTestTableManager(t *testing.T, testDir string) (TableManager, stopFunc
 
 	cfg := Config{
 		UploadInterval: time.Hour,
+		// Ensure we retain longer than any test run so UploadTables' cleanup doesn't
+		// delete indexes that the test just added
+		DBRetainPeriod: time.Hour,
 	}
 	tm, err := NewTableManager(cfg, storageClient, nil, log.NewNopLogger())
 	require.NoError(t, err)
@@ -40,6 +44,33 @@ func buildTestTableManager(t *testing.T, testDir string) (TableManager, stopFunc
 		tm.Stop()
 		require.NoError(t, os.RemoveAll(testDir))
 	}
+}
+
+func TestTableManager_UploadTables(t *testing.T) {
+	testDir := t.TempDir()
+
+	tm, stopFunc := buildTestTableManager(t, testDir)
+	defer stopFunc()
+
+	const tableName = "table-1"
+	const userID = "user-1"
+
+	userIndexPath := filepath.Join(testDir, tableName, userID)
+	require.NoError(t, os.MkdirAll(userIndexPath, 0755))
+
+	testIndexes := buildTestIndexes(t, userIndexPath, 3)
+	for _, testIndex := range testIndexes {
+		require.NoError(t, tm.AddIndex(tableName, userID, testIndex))
+	}
+
+	// Synchronously upload all tables and ensure it surfaces success.
+	require.NoError(t, tm.UploadTables(context.Background()))
+
+	// The indexes should now be present in object storage.
+	uploadedDir := filepath.Join(testDir, objectsStorageDirName, tableName, userID)
+	entries, err := os.ReadDir(uploadedDir)
+	require.NoError(t, err)
+	require.Len(t, entries, len(testIndexes))
 }
 
 func TestTableManager(t *testing.T) {

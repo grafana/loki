@@ -15,7 +15,7 @@ import (
 )
 
 type typeValidator struct {
-	Path     string
+	Path     pathSegments
 	In       string
 	Type     spec.StringOrArray
 	Nullable bool
@@ -23,14 +23,14 @@ type typeValidator struct {
 	Options  *SchemaValidatorOptions
 }
 
-func newTypeValidator(path, in string, typ spec.StringOrArray, nullable bool, format string, opts *SchemaValidatorOptions) *typeValidator {
+func newTypeValidator(path pathSegments, in string, typ spec.StringOrArray, nullable bool, format string, opts *SchemaValidatorOptions) *typeValidator {
 	if opts == nil {
 		opts = new(SchemaValidatorOptions)
 	}
 
 	var t *typeValidator
 	if opts.recycleValidators {
-		t = pools.poolOfTypeValidators.BorrowValidator()
+		t = validatorPools.typeValidators.Borrow()
 	} else {
 		t = new(typeValidator)
 	}
@@ -43,10 +43,6 @@ func newTypeValidator(path, in string, typ spec.StringOrArray, nullable bool, fo
 	t.Options = opts
 
 	return t
-}
-
-func (t *typeValidator) SetPath(path string) {
-	t.Path = path
 }
 
 func (t *typeValidator) Applies(source any, _ reflect.Kind) bool {
@@ -71,8 +67,8 @@ func (t *typeValidator) Validate(data any) *Result {
 
 	if data == nil {
 		// nil or zero value for the passed structure require Type: null
-		if len(t.Type) > 0 && !t.Type.Contains(nullType) && !t.Nullable { // TODO: if a property is not required it also passes this
-			return errorHelp.sErr(errors.InvalidType(t.Path, t.In, strings.Join(t.Type, ","), nullType), t.Options.recycleResult)
+		if len(t.Type) > 0 && !t.Type.Contains(nullType) && !t.Nullable { // NOTE: if a property is not required it also passes this
+			return errorHelp.sErrAt(t.Path, errors.InvalidType(t.Path.dotted(), t.In, strings.Join(t.Type, ","), nullType), t.Options.recycleResult)
 		}
 
 		return emptyResult
@@ -86,16 +82,19 @@ func (t *typeValidator) Validate(data any) *Result {
 	schType, format := t.schemaInfoForType(data)
 
 	// check numerical types
-	// TODO: check unsigned ints
-	// TODO: check json.Number (see schema.go)
+	// Proposal for enhancement: check unsigned ints
+	// Proposal for enhancement: check json.Number (see schema.go)
 	isLowerInt := t.Format == integerFormatInt64 && format == integerFormatInt32
 	isLowerFloat := t.Format == numberFormatFloat64 && format == numberFormatFloat32
 	isFloatInt := schType == numberType && conv.IsFloat64AJSONInteger(val.Float()) && t.Type.Contains(integerType)
 	isIntFloat := schType == integerType && t.Type.Contains(numberType)
 
-	if kind != reflect.String && kind != reflect.Slice && t.Format != "" && !t.Type.Contains(schType) && format != t.Format && !isFloatInt && !isIntFloat && !isLowerInt && !isLowerFloat {
-		// TODO: test case
-		return errorHelp.sErr(errors.InvalidType(t.Path, t.In, t.Format, format), t.Options.recycleResult)
+	formatMismatch := kind != reflect.String && kind != reflect.Slice &&
+		t.Format != "" && !t.Type.Contains(schType) && format != t.Format &&
+		!isFloatInt && !isIntFloat && !isLowerInt && !isLowerFloat
+	if formatMismatch {
+		// NOTE: test case
+		return errorHelp.sErrAt(t.Path, errors.InvalidType(t.Path.dotted(), t.In, t.Format, format), t.Options.recycleResult)
 	}
 
 	if !t.Type.Contains(numberType) && !t.Type.Contains(integerType) && t.Format != "" && (kind == reflect.String || kind == reflect.Slice) {
@@ -103,7 +102,7 @@ func (t *typeValidator) Validate(data any) *Result {
 	}
 
 	if !t.Type.Contains(schType) && !isFloatInt && !isIntFloat {
-		return errorHelp.sErr(errors.InvalidType(t.Path, t.In, strings.Join(t.Type, ","), schType), t.Options.recycleResult)
+		return errorHelp.sErrAt(t.Path, errors.InvalidType(t.Path.dotted(), t.In, strings.Join(t.Type, ","), schType), t.Options.recycleResult)
 	}
 
 	return emptyResult
@@ -112,7 +111,7 @@ func (t *typeValidator) Validate(data any) *Result {
 func (t *typeValidator) schemaInfoForType(data any) (string, string) {
 	// internal type to JSON type with swagger 2.0 format (with go-openapi/strfmt extensions),
 	// see https://github.com/go-openapi/strfmt/blob/master/README.md
-	// TODO: this switch really is some sort of reverse lookup for formats. It should be provided by strfmt.
+	// NOTE: this switch really is some sort of reverse lookup for formats. It should be provided by strfmt.
 	switch data.(type) {
 	case []byte, strfmt.Base64, *strfmt.Base64:
 		return stringType, stringFormatByte
@@ -162,8 +161,8 @@ func (t *typeValidator) schemaInfoForType(data any) (string, string) {
 		return stringType, stringFormatUUID4
 	case strfmt.UUID5, *strfmt.UUID5:
 		return stringType, stringFormatUUID5
-	// TODO: missing binary (io.ReadCloser)
-	// TODO: missing json.Number
+	// Proposal for enhancement: missing binary (io.ReadCloser)
+	// Proposal for enhancement: missing json.Number
 	default:
 		val := reflect.ValueOf(data)
 		tpe := val.Type()
@@ -198,6 +197,10 @@ func (t *typeValidator) schemaInfoForType(data any) (string, string) {
 	return "", ""
 }
 
+func (t *typeValidator) setPath(path pathSegments) {
+	t.Path = path
+}
+
 func (t *typeValidator) redeem() {
-	pools.poolOfTypeValidators.RedeemValidator(t)
+	validatorPools.typeValidators.Redeem(t)
 }

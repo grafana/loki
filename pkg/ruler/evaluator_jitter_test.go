@@ -108,6 +108,24 @@ func TestEvaluationWithHashError(t *testing.T) {
 	eval := NewEvaluatorWithJitter(inner, maxJitter,
 		// provide a hasher that will error when hashing
 		&fakeHasher{err: errors.New("some hash error")},
-		logger)
-	require.EqualValues(t, 0, eval.(*EvaluatorWithJitter).calculateJitter("query C", logger).Seconds())
+		logger).(*EvaluatorWithJitter)
+
+	// A hashing error must still release the mutex, otherwise the next
+	// evaluation deadlocks on the held lock. Call calculateJitter twice from a
+	// goroutine and guard with a timeout so a regression fails fast (and with a
+	// clear message) instead of hanging the whole test suite.
+	results := make(chan time.Duration, 2)
+	go func() {
+		results <- eval.calculateJitter("query C", logger)
+		results <- eval.calculateJitter("query C", logger)
+	}()
+
+	for range 2 {
+		select {
+		case got := <-results:
+			require.EqualValues(t, 0, got.Seconds(), "a hash error should yield zero jitter")
+		case <-time.After(5 * time.Second):
+			t.Fatal("calculateJitter deadlocked after a hash error: the mutex was not released")
+		}
+	}
 }

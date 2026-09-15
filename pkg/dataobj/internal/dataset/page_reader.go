@@ -197,8 +197,12 @@ func materializeSparseArray(alloc *memory.Allocator, typ datasetmd.PhysicalType,
 	switch arr := denseValues.(type) {
 	case *columnar.UTF8:
 		return materializeSparseUTF8(alloc, validity, arr)
+	case *columnar.Number[int32]:
+		return materializeSparseNumber[int32](alloc, validity, arr)
 	case *columnar.Number[int64]:
 		return materializeSparseNumber[int64](alloc, validity, arr)
+	case *columnar.Number[uint32]:
+		return materializeSparseNumber[uint32](alloc, validity, arr)
 	case *columnar.Number[uint64]:
 		return materializeSparseNumber[uint64](alloc, validity, arr)
 	case nil:

@@ -54,12 +54,3 @@ func ParseMode(in string) (Mode, error) {
 	}
 	return 0, fmt.Errorf("%w: must be one of %s", ErrUnknownMode, strings.Join(AllModes(), "|"))
 }
-
-func Enabled(in string) (bool, error) {
-	deleteMode, err := ParseMode(in)
-	if err != nil {
-		return false, err
-	}
-
-	return deleteMode.DeleteEnabled(), nil
-}

@@ -17,7 +17,6 @@ import (
 
 type WorkerServiceConfig struct {
 	AllEnabled            bool
-	ReadEnabled           bool
 	GrpcListenAddress     string
 	GrpcListenPort        int
 	QuerierMaxConcurrent  int
@@ -28,13 +27,12 @@ type WorkerServiceConfig struct {
 }
 
 func (cfg WorkerServiceConfig) QuerierRunningStandalone() bool {
-	runningStandalone := !cfg.QueryFrontendEnabled && !cfg.QuerySchedulerEnabled && !cfg.ReadEnabled && !cfg.AllEnabled
+	runningStandalone := !cfg.QueryFrontendEnabled && !cfg.QuerySchedulerEnabled && !cfg.AllEnabled
 	level.Debug(util_log.Logger).Log(
 		"msg", "determining if querier is running as standalone target",
 		"runningStandalone", runningStandalone,
 		"queryFrontendEnabled", cfg.QueryFrontendEnabled,
 		"queryScheduleEnabled", cfg.QuerySchedulerEnabled,
-		"readEnabled", cfg.ReadEnabled,
 		"allEnabled", cfg.AllEnabled,
 	)
 

@@ -1,8 +1,19 @@
 package kfake
 
-import "sort"
+import "slices"
+
+// tp is a simple topic+partition key for use in maps.
+type tp struct {
+	t string
+	p int32
+}
 
 type tps[V any] map[string]map[int32]*V
+
+func (tps *tps[V]) checkp(t string, p int32) bool {
+	_, ok := tps.getp(t, p)
+	return ok
+}
 
 func (tps *tps[V]) getp(t string, p int32) (*V, bool) {
 	if *tps == nil {
@@ -103,7 +114,7 @@ func (pd *partData) info() *PartitionInfo {
 		LastStableOffset: pd.lastStableOffset,
 		LogStartOffset:   pd.logStartOffset,
 		Epoch:            pd.epoch,
-		MaxTimestamp:     pd.maxTimestamp,
+		MaxTimestamp:     pd.maxFirstTimestamp,
 		NumBytes:         pd.nbytes,
 		Leader:           pd.leader.node,
 	}
@@ -181,17 +192,13 @@ func (c *Cluster) PartitionInfos(topic string) []*PartitionInfo {
 		if !ok {
 			return
 		}
-		partitions := make([]int32, 0, len(t))
-		for p := range t {
-			partitions = append(partitions, p)
-		}
-		sort.Slice(partitions, func(i, j int) bool {
-			return partitions[i] < partitions[j]
-		})
-		for _, p := range partitions {
-			pd, _ := c.data.tps.getp(topic, p)
+		is = make([]*PartitionInfo, 0, len(t))
+		for _, pd := range t {
 			is = append(is, pd.info())
 		}
+		slices.SortFunc(is, func(a, b *PartitionInfo) int {
+			return int(a.Partition - b.Partition)
+		})
 	})
 	return is
 }

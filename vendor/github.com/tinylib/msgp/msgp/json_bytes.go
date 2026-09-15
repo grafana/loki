@@ -144,6 +144,27 @@ func rwMapBytes(w jsWriter, msg []byte, scratch []byte, depth int) ([]byte, []by
 }
 
 func rwMapKeyBytes(w jsWriter, msg []byte, scratch []byte, depth int) ([]byte, []byte, error) {
+	if len(msg) < 1 {
+		return msg, scratch, ErrShortBytes
+	}
+	switch getType(msg[0]) {
+	case IntType:
+		i, msg, err := ReadInt64Bytes(msg)
+		if err != nil {
+			return msg, scratch, err
+		}
+		scratch = strconv.AppendInt(scratch[:0], i, 10)
+		_, err = rwquoted(w, scratch)
+		return msg, scratch, err
+	case UintType:
+		u, msg, err := ReadUint64Bytes(msg)
+		if err != nil {
+			return msg, scratch, err
+		}
+		scratch = strconv.AppendUint(scratch[:0], u, 10)
+		_, err = rwquoted(w, scratch)
+		return msg, scratch, err
+	}
 	msg, scratch, err := rwStringBytes(w, msg, scratch, depth)
 	if err != nil {
 		if tperr, ok := err.(TypeError); ok && tperr.Encoded == BinType {

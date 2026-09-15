@@ -4,22 +4,24 @@ on:
   release:
     types: [created]
 
+permissions:
+  contents: read
+
 jobs:
   syft-sbom:
 
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-x64
     permissions:
-      contents: "read"
-      id-token: "write"
-      pull-requests: "write"
+      actions: read
+      contents: write
 
     steps:
     - name: Checkout
-      uses: actions/checkout@v4
+      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       with:
         persist-credentials: false
 
     - name: Anchore SBOM Action
-      uses: anchore/sbom-action@e11c554f704a0b820cbf8c51673f6945e0731532 # v0.20.0
+      uses: anchore/sbom-action@3ad7283483fc7af8ff2b4ea19663c2d5ca935e26 # v0.24.2
       with:
          artifact-name: ${{ github.event.repository.name }}-spdx.json

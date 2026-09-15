@@ -75,6 +75,7 @@ var queryTests = []struct {
 						"queryReferencedStructuredMetadata": false,
 						"queryUsedV2Engine": false,
 				 		"pipelineWrapperFilteredLines": 0,
+						"chunkFetchFailures": 0,
 						"chunk" :{
 							"compressedBytes": 0,
 							"decompressedBytes": 0,
@@ -99,7 +100,8 @@ var queryTests = []struct {
 							"prePredicateDecompressedBytes": 0,
 							"prePredicateDecompressedStructuredMetadataBytes": 0,
 							"totalPageDownloadTime": 0,
-							"totalRowsAvailable": 0
+							"totalRowsAvailable": 0,
+							"wireBytesTransferred": 0
 						}
 					},
 					"totalBatches": 0,
@@ -118,6 +120,7 @@ var queryTests = []struct {
 						"queryReferencedStructuredMetadata": false,
 						"queryUsedV2Engine": false,
 		                "pipelineWrapperFilteredLines": 0,
+						"chunkFetchFailures": 0,
 						"chunk" :{
 							"compressedBytes": 0,
 							"decompressedBytes": 0,
@@ -142,7 +145,8 @@ var queryTests = []struct {
 							"prePredicateDecompressedBytes": 0,
 							"prePredicateDecompressedStructuredMetadataBytes": 0,
 							"totalPageDownloadTime": 0,
-							"totalRowsAvailable": 0
+							"totalRowsAvailable": 0,
+							"wireBytesTransferred": 0
 						}
 					}
 				},
@@ -218,6 +222,26 @@ var queryTests = []struct {
 						"queryLengthServed": 0
 					},
 					"result": {
+						"entriesFound": 0,
+						"entriesRequested": 0,
+						"entriesStored": 0,
+						"bytesReceived": 0,
+						"bytesSent": 0,
+						"requests": 0,
+						"downloadTime": 0,
+						"queryLengthServed": 0
+					},
+					"logResult": {
+						"entriesFound": 0,
+						"entriesRequested": 0,
+						"entriesStored": 0,
+						"bytesReceived": 0,
+						"bytesSent": 0,
+						"requests": 0,
+						"downloadTime": 0,
+						"queryLengthServed": 0
+					},
+					"taskResult": {
 						"entriesFound": 0,
 						"entriesRequested": 0,
 						"entriesStored": 0,
@@ -364,20 +388,6 @@ func Test_QueryResponseMarshalLoop(t *testing.T) {
 		require.NoError(t, err)
 
 		testJSONBytesEqual(t, []byte(queryTest.expected), jsonOut, "Query Marshal Loop %d failed", i)
-	}
-}
-
-func Test_LabelResponseMarshalLoop(t *testing.T) {
-	for i, labelTest := range labelTests {
-		var r loghttp.LabelResponse
-
-		err := json.Unmarshal([]byte(labelTest.expected), &r)
-		require.NoError(t, err)
-
-		jsonOut, err := json.Marshal(r)
-		require.NoError(t, err)
-
-		testJSONBytesEqual(t, []byte(labelTest.expected), jsonOut, "Label Marshal Loop %d failed", i)
 	}
 }
 

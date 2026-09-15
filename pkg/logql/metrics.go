@@ -10,6 +10,7 @@ import (
 	"github.com/c2h5oh/datasize"
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
+	"github.com/grafana/dskit/tenant"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/prometheus/model/labels"
@@ -70,6 +71,11 @@ var (
 		// 50MB 100MB 200MB 400MB 600MB 800MB 1GB 2GB 3GB 4GB 5GB 6GB 7GB 8GB 9GB 10GB 15GB 20GB 30GB, 40GB 50GB 60GB
 		Buckets: []float64{50 * 1e6, 100 * 1e6, 400 * 1e6, 600 * 1e6, 800 * 1e6, 1 * 1e9, 2 * 1e9, 3 * 1e9, 4 * 1e9, 5 * 1e9, 6 * 1e9, 7 * 1e9, 8 * 1e9, 9 * 1e9, 10 * 1e9, 15 * 1e9, 20 * 1e9, 30 * 1e9, 40 * 1e9, 50 * 1e9, 60 * 1e9},
 	}, []string{"status_code", "type", "range", "latency_type", "sharded"})
+	bytesProcessedTotal = promauto.NewCounterVec(prometheus.CounterOpts{
+		Namespace: constants.Loki,
+		Name:      "logql_querystats_bytes_processed_total",
+		Help:      "Total number of bytes processed by LogQL queries, partitioned by tenant.",
+	}, []string{"tenant"})
 	execLatency = promauto.NewHistogramVec(prometheus.HistogramOpts{
 		Namespace: constants.Loki,
 		Name:      "logql_querystats_latency_seconds",
@@ -93,6 +99,16 @@ var (
 		Namespace: constants.Loki,
 		Name:      "logql_querystats_downloaded_chunk_total",
 		Help:      "Total count of chunks downloaded found while executing LogQL queries.",
+	}, []string{"status_code", "type", "range"})
+	chunkFetchFailuresTotal = promauto.NewCounterVec(prometheus.CounterOpts{
+		Namespace: constants.Loki,
+		Name:      "logql_querystats_chunk_fetch_failures_total",
+		Help:      "Total count of chunks that failed to be fetched while executing LogQL queries.",
+	}, []string{"status_code", "type", "range"})
+	queriesWithChunkFetchFailuresTotal = promauto.NewCounterVec(prometheus.CounterOpts{
+		Namespace: constants.Loki,
+		Name:      "logql_querystats_queries_with_chunk_fetch_failures_total",
+		Help:      "Total count of LogQL queries that had at least one chunk fetch failure.",
 	}, []string{"status_code", "type", "range"})
 	ingesterLineTotal = promauto.NewCounter(prometheus.CounterOpts{
 		Namespace: constants.Loki,
@@ -139,6 +155,11 @@ func RecordRangeAndInstantQueryMetrics(
 		resultCache = stats.Caches.InstantMetricResult
 	}
 
+	// In the Thor engine, we track stats for log queries in a different category
+	if queryType == QueryTypeFilter && stats.QueryUsedV2Engine() {
+		resultCache = stats.Caches.LogResult
+	}
+
 	// Tag throughput metric by latency type based on a threshold.
 	// Latency below the threshold is fast, above is slow.
 	if stats.Summary.ExecTime > slowQueryThresholdSecond {
@@ -163,6 +184,7 @@ func RecordRangeAndInstantQueryMetrics(
 
 	logValues = append(logValues, []interface{}{
 		"latency", latencyType, // this can be used to filter log lines.
+		"user_agent", httpreq.ExtractHeader(ctx, "User-Agent"),
 		"query", query,
 		"query_hash", hashedQuery,
 		"query_type", queryType,
@@ -208,6 +230,11 @@ func RecordRangeAndInstantQueryMetrics(
 		"cache_result_hit", resultCache.EntriesFound,
 		"cache_result_download_time", resultCache.CacheDownloadTime(),
 		"cache_result_query_length_served", resultCache.CacheQueryLengthServed(),
+		"cache_task_result_req", stats.Caches.TaskResult.EntriesRequested,
+		"cache_task_result_hit", stats.Caches.TaskResult.EntriesFound,
+		"cache_task_result_bytes", stats.Caches.TaskResult.BytesReceived,
+		"cache_task_result_download_time", stats.Caches.TaskResult.CacheDownloadTime(),
+		"cache_task_result_query_length_served", stats.Caches.TaskResult.CacheQueryLengthServed(),
 		// The total of chunk reference fetched from index.
 		"ingester_chunk_refs", stats.Ingester.Store.GetTotalChunksRef(),
 		// Total number of chunks fetched.
@@ -235,7 +262,12 @@ func RecordRangeAndInstantQueryMetrics(
 		"index_shard_resolver_duration", time.Duration(stats.Index.ShardsDuration),
 		"index_bloom_filter_time", logql_stats.ConvertSecondsToNanoseconds(stats.Index.BloomFilterTime),
 		"index_chunk_refs_lookup_time", logql_stats.ConvertSecondsToNanoseconds(stats.Index.ChunkRefsLookupTime),
+		"chunk_fetch_failures", stats.TotalChunkFetchFailures(),
 	}...)
+
+	if stats.Summary.EstimatedQueryBytes > 0 {
+		logValues = append(logValues, "estimated_query_bytes", util.HumanizeBytes(uint64(stats.Summary.EstimatedQueryBytes)))
+	}
 
 	if r, ok := result.(CountMinSketchVector); ok {
 		cardinalityEstimate := r.F.HyperLogLog.Estimate()
@@ -293,6 +325,16 @@ func RecordRangeAndInstantQueryMetrics(
 
 	bytesPerSecond.WithLabelValues(status, queryType, rt, latencyType, sharded).
 		Observe(float64(stats.Summary.BytesProcessedPerSecond))
+	// Record per-tenant query bytes. For federated multi-tenant queries the aggregated
+	// byte total is divided evenly across the tenants in the request, since the stats are
+	// not broken down per tenant. This keeps the sum across tenants equal to the actual
+	// bytes processed. TenantIDs returns a normalized (sorted, de-duplicated) list.
+	if tenantIDs, err := tenant.TenantIDs(ctx); err == nil && len(tenantIDs) > 0 {
+		bytesPerTenant := float64(stats.Summary.TotalBytesProcessed) / float64(len(tenantIDs))
+		for _, tenantID := range tenantIDs {
+			bytesProcessedTotal.WithLabelValues(tenantID).Add(bytesPerTenant)
+		}
+	}
 	execLatency.WithLabelValues(status, queryType, rt).
 		Observe(stats.Summary.ExecTime)
 	chunkDownloadLatency.WithLabelValues(status, queryType, rt).
@@ -300,6 +342,10 @@ func RecordRangeAndInstantQueryMetrics(
 	duplicatesTotal.Add(float64(stats.TotalDuplicates()))
 	chunkDownloadedTotal.WithLabelValues(status, queryType, rt).
 		Add(float64(stats.TotalChunksDownloaded()))
+	if failures := stats.TotalChunkFetchFailures(); failures > 0 {
+		chunkFetchFailuresTotal.WithLabelValues(status, queryType, rt).Add(float64(failures))
+		queriesWithChunkFetchFailuresTotal.WithLabelValues(status, queryType, rt).Inc()
+	}
 	ingesterLineTotal.Add(float64(stats.Ingester.TotalLinesSent))
 
 	recordUsageStats(queryType, stats)
@@ -340,6 +386,7 @@ func RecordLabelQueryMetrics(
 	level.Info(logger).Log(
 		"latency", latencyType,
 		"query_type", queryType,
+		"user_agent", httpreq.ExtractHeader(ctx, "User-Agent"),
 		"splits", stats.Summary.Splits,
 		"start", start.Format(time.RFC3339Nano),
 		"end", end.Format(time.RFC3339Nano),
@@ -397,6 +444,7 @@ func RecordSeriesQueryMetrics(ctx context.Context, log log.Logger, start, end ti
 	logValues = append(logValues,
 		"latency", latencyType,
 		"query_type", queryType,
+		"user_agent", httpreq.ExtractHeader(ctx, "User-Agent"),
 		"splits", stats.Summary.Splits,
 		"start", start.Format(time.RFC3339Nano),
 		"end", end.Format(time.RFC3339Nano),
@@ -444,6 +492,7 @@ func RecordStatsQueryMetrics(ctx context.Context, log log.Logger, start, end tim
 	logValues = append(logValues,
 		"latency", latencyType,
 		"query_type", queryType,
+		"user_agent", httpreq.ExtractHeader(ctx, "User-Agent"),
 		"start", start.Format(time.RFC3339Nano),
 		"end", end.Format(time.RFC3339Nano),
 		"start_delta", time.Since(start),
@@ -490,6 +539,7 @@ func RecordShardsQueryMetrics(
 	logValues = append(logValues,
 		"latency", latencyType,
 		"query_type", queryType,
+		"user_agent", httpreq.ExtractHeader(ctx, "User-Agent"),
 		"start", start.Format(time.RFC3339Nano),
 		"end", end.Format(time.RFC3339Nano),
 		"start_delta", time.Since(start),
@@ -533,6 +583,7 @@ func RecordVolumeQueryMetrics(ctx context.Context, log log.Logger, start, end ti
 	level.Info(logger).Log(
 		"latency", latencyType,
 		"query_type", queryType,
+		"user_agent", httpreq.ExtractHeader(ctx, "User-Agent"),
 		"query", query,
 		"query_hash", util.HashedQuery(query),
 		"start", start.Format(time.RFC3339Nano),
@@ -574,6 +625,7 @@ func RecordDetectedFieldsQueryMetrics(ctx context.Context, log log.Logger, start
 	level.Info(logger).Log(
 		"latency", latencyType,
 		"query_type", queryType,
+		"user_agent", httpreq.ExtractHeader(ctx, "User-Agent"),
 		"query", query,
 		"query_hash", util.HashedQuery(query),
 		"start", start.Format(time.RFC3339Nano),
@@ -584,7 +636,7 @@ func RecordDetectedFieldsQueryMetrics(ctx context.Context, log log.Logger, start
 		"status", status,
 		// "duration", time.Duration(int64(stats.Summary.ExecTime*float64(time.Second))),
 	)
-	//TODO(twhitney): add stats and exec time
+	// TODO(twhitney): add stats and exec time
 	// execLatency.WithLabelValues(status, queryType, "").Observe(stats.Summary.ExecTime)
 }
 
@@ -714,6 +766,7 @@ func RecordDetectedLabelsQueryMetrics(ctx context.Context, log log.Logger, start
 		"api", "detected_labels",
 		"latency", latencyType,
 		"query_type", queryType,
+		"user_agent", httpreq.ExtractHeader(ctx, "User-Agent"),
 		"query", query,
 		"query_hash", util.HashedQuery(query),
 		"start", start.Format(time.RFC3339Nano),
@@ -727,11 +780,11 @@ func RecordDetectedLabelsQueryMetrics(ctx context.Context, log log.Logger, start
 		"splits", stats.Summary.Splits,
 		"total_entries", stats.Summary.TotalEntriesReturned,
 		// cache is accumulated by middleware used by the frontend only; logs from the queriers will not show cache stats
-		//"cache_volume_results_req", stats.Caches.VolumeResult.EntriesRequested,
-		//"cache_volume_results_hit", stats.Caches.VolumeResult.EntriesFound,
-		//"cache_volume_results_stored", stats.Caches.VolumeResult.EntriesStored,
-		//"cache_volume_results_download_time", stats.Caches.VolumeResult.CacheDownloadTime(),
-		//"cache_volume_results_query_length_served", stats.Caches.VolumeResult.CacheQueryLengthServed(),
+		// "cache_volume_results_req", stats.Caches.VolumeResult.EntriesRequested,
+		// "cache_volume_results_hit", stats.Caches.VolumeResult.EntriesFound,
+		// "cache_volume_results_stored", stats.Caches.VolumeResult.EntriesStored,
+		// "cache_volume_results_download_time", stats.Caches.VolumeResult.CacheDownloadTime(),
+		// "cache_volume_results_query_length_served", stats.Caches.VolumeResult.CacheQueryLengthServed(),
 	)
 
 	execLatency.WithLabelValues(status, queryType, "").Observe(stats.Summary.ExecTime)

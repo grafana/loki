@@ -24,8 +24,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/ingester/client"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql"
-	"github.com/grafana/loki/v3/pkg/logql/syntax"
-	"github.com/grafana/loki/v3/pkg/querier/plan"
+	"github.com/grafana/loki/v3/pkg/querier/testutil"
 	"github.com/grafana/loki/v3/pkg/storage"
 	"github.com/grafana/loki/v3/pkg/util/constants"
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
@@ -117,9 +116,7 @@ func TestQuerier_validateQueryRequest(t *testing.T) {
 		Start:     time.Now().Add(-1 * time.Minute),
 		End:       time.Now(),
 		Direction: logproto.FORWARD,
-		Plan: &plan.QueryPlan{
-			AST: syntax.MustParseExpr(`{type="test", fail="yes"} |= "foo"`),
-		},
+		Plan:      testutil.MustPlan(`{type="test", fail="yes"} |= "foo"`),
 	}
 
 	store := newStoreMock()
@@ -153,9 +150,7 @@ func TestQuerier_validateQueryRequest(t *testing.T) {
 	require.Equal(t, httpgrpc.Errorf(http.StatusBadRequest, "max streams matchers per query exceeded, matchers-count > limit (2 > 1)"), err)
 
 	request.Selector = `{type="test"}`
-	request.Plan = &plan.QueryPlan{
-		AST: syntax.MustParseExpr(`{type="test"}`),
-	}
+	request.Plan = testutil.MustPlan(`{type="test"}`)
 	_, err = q.SelectLogs(ctx, logql.SelectLogParams{QueryRequest: &request})
 	require.NoError(t, err)
 
@@ -375,9 +370,7 @@ func TestQuerier_IngesterMaxQueryLookback(t *testing.T) {
 				Start:     tc.end.Add(-6 * time.Hour),
 				End:       tc.end,
 				Direction: logproto.FORWARD,
-				Plan: &plan.QueryPlan{
-					AST: syntax.MustParseExpr(`{app="foo"}`),
-				},
+				Plan:      testutil.MustPlan(`{app="foo"}`),
 			}
 
 			queryClient := newQueryClientMock()
@@ -783,9 +776,7 @@ func TestQuerier_RequestingIngesters(t *testing.T) {
 						Start:     start,
 						End:       end,
 						Direction: logproto.FORWARD,
-						Plan: &plan.QueryPlan{
-							AST: syntax.MustParseExpr(`{type="test", fail="yes"} |= "foo"`),
-						},
+						Plan:      testutil.MustPlan(`{type="test", fail="yes"} |= "foo"`),
 					},
 				})
 
@@ -800,9 +791,7 @@ func TestQuerier_RequestingIngesters(t *testing.T) {
 						Selector: `count_over_time({foo="bar"}[5m])`,
 						Start:    start,
 						End:      end,
-						Plan: &plan.QueryPlan{
-							AST: syntax.MustParseExpr(`count_over_time({foo="bar"}[5m])`),
-						},
+						Plan:     testutil.MustPlan(`count_over_time({foo="bar"}[5m])`),
 					},
 				})
 				return err
@@ -1071,9 +1060,7 @@ func TestQuerier_SelectLogWithDeletes(t *testing.T) {
 		Start:     time.Unix(0, 300000000),
 		End:       time.Unix(0, 600000000),
 		Direction: logproto.FORWARD,
-		Plan: &plan.QueryPlan{
-			AST: syntax.MustParseExpr(`{type="test"} |= "foo"`),
-		},
+		Plan:      testutil.MustPlan(`{type="test"} |= "foo"`),
 	}
 
 	_, err = q.SelectLogs(ctx, logql.SelectLogParams{QueryRequest: &request})
@@ -1090,9 +1077,7 @@ func TestQuerier_SelectLogWithDeletes(t *testing.T) {
 			{Selector: "2", Start: 400000000, End: 500000000},
 			{Selector: "3", Start: 500000000, End: 700000000},
 		},
-		Plan: &plan.QueryPlan{
-			AST: syntax.MustParseExpr(request.Selector),
-		},
+		Plan: testutil.MustPlan(request.Selector),
 	}
 
 	require.Contains(t, store.Calls[0].Arguments, logql.SelectLogParams{QueryRequest: expectedRequest})
@@ -1137,9 +1122,7 @@ func TestQuerier_SelectSamplesWithDeletes(t *testing.T) {
 		Selector: `count_over_time({foo="bar"}[5m])`,
 		Start:    time.Unix(0, 300000000),
 		End:      time.Unix(0, 600000000),
-		Plan: &plan.QueryPlan{
-			AST: syntax.MustParseExpr(`count_over_time({foo="bar"}[5m])`),
-		},
+		Plan:     testutil.MustPlan(`count_over_time({foo="bar"}[5m])`),
 	}
 
 	_, err = q.SelectSamples(ctx, logql.SelectSampleParams{SampleQueryRequest: &request})
@@ -1155,9 +1138,7 @@ func TestQuerier_SelectSamplesWithDeletes(t *testing.T) {
 				{Selector: "2", Start: 400000000, End: 500000000},
 				{Selector: "3", Start: 500000000, End: 700000000},
 			},
-			Plan: &plan.QueryPlan{
-				AST: syntax.MustParseExpr(request.Selector),
-			},
+			Plan: testutil.MustPlan(request.Selector),
 		},
 	}
 

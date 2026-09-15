@@ -444,7 +444,7 @@ func (me *metricExporter) recordToMpb(metrics metricdata.Metrics, attributes att
 		iter := attr.Iter()
 		for iter.Next() {
 			kv := iter.Attribute()
-			labels[normalizeLabelKey(string(kv.Key))] = sanitizeUTF8(kv.Value.Emit())
+			labels[normalizeLabelKey(string(kv.Key))] = sanitizeUTF8(kv.Value.String())
 		}
 	}
 	addAttributes(extraLabels)
@@ -817,7 +817,7 @@ func toDistributionExemplar[N int64 | float64](Exemplars []metricdata.Exemplar[N
 func attributesToLabels(attrs []attribute.KeyValue) map[string]string {
 	labels := make(map[string]string, len(attrs))
 	for _, attr := range attrs {
-		labels[normalizeLabelKey(string(attr.Key))] = sanitizeUTF8(attr.Value.Emit())
+		labels[normalizeLabelKey(string(attr.Key))] = sanitizeUTF8(attr.Value.String())
 	}
 	return labels
 }

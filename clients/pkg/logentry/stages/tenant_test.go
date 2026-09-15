@@ -12,7 +12,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/v3/clients/pkg/promtail/client"
+	"github.com/grafana/loki/v3/clients/pkg/util"
 
 	lokiutil "github.com/grafana/loki/v3/pkg/util"
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
@@ -157,7 +157,7 @@ func TestTenantStage_Process(t *testing.T) {
 		},
 		"should not override the tenant if the source field is not defined in the extracted map": {
 			config:         &TenantConfig{Source: "tenant_id"},
-			inputLabels:    model.LabelSet{client.ReservedLabelTenantID: "foo"},
+			inputLabels:    model.LabelSet{util.ReservedLabelTenantID: "foo"},
 			inputExtracted: map[string]interface{}{},
 			expectedTenant: lokiutil.StringRef("foo"),
 		},
@@ -175,7 +175,7 @@ func TestTenantStage_Process(t *testing.T) {
 		},
 		"should override the tenant if the source field is defined in the extracted map": {
 			config:         &TenantConfig{Source: "tenant_id"},
-			inputLabels:    model.LabelSet{client.ReservedLabelTenantID: "foo"},
+			inputLabels:    model.LabelSet{util.ReservedLabelTenantID: "foo"},
 			inputExtracted: map[string]interface{}{"tenant_id": "bar"},
 			expectedTenant: lokiutil.StringRef("bar"),
 		},
@@ -193,7 +193,7 @@ func TestTenantStage_Process(t *testing.T) {
 		},
 		"should override the tenant with the configured static value": {
 			config:         &TenantConfig{Value: "bar"},
-			inputLabels:    model.LabelSet{client.ReservedLabelTenantID: "foo"},
+			inputLabels:    model.LabelSet{util.ReservedLabelTenantID: "foo"},
 			inputExtracted: map[string]interface{}{},
 			expectedTenant: lokiutil.StringRef("bar"),
 		},
@@ -212,7 +212,7 @@ func TestTenantStage_Process(t *testing.T) {
 			assert.Equal(t, time.Unix(1, 1), out.Timestamp)
 			assert.Equal(t, "hello world", out.Line)
 
-			actualTenant, ok := out.Labels[client.ReservedLabelTenantID]
+			actualTenant, ok := out.Labels[util.ReservedLabelTenantID]
 			if testData.expectedTenant == nil {
 				assert.False(t, ok)
 			} else {

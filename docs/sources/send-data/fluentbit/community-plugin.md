@@ -123,7 +123,7 @@ If you also want to host your Loki instance inside the cluster install the [offi
 ### AWS Elastic Container Service (ECS)
 
 You can use the fluent-bit Loki Docker image as a Firelens log router in AWS ECS.
-For more information about this see our [AWS documentation](https://grafana.com/docs/loki/<LOKI_VERSION>/send-data/promtail/cloud/ecs/).
+For more information about this see the [AWS ECS documentation](https://docs.aws.amazon.com/AmazonECS/latest/developerguide/firelens-using-fluentbit.html).
 
 ### Local
 
@@ -189,8 +189,8 @@ Considering the record below :
 ```json
 {
   "kubernetes": {
-    "container_name": "promtail",
-    "pod_name": "promtail-xxx",
+    "container_name": "myapp",
+    "pod_name": "myapp-xxx",
     "namespace_name": "prod",
     "labels" : {
         "team": "x-men"
@@ -217,7 +217,7 @@ and a LabelMap file as follows :
 }
 ```
 
-The labels extracted will be `{team="x-men", container="promtail", pod="promtail-xxx", namespace="prod"}`.
+The labels extracted will be `{team="x-men", container="myapp", pod="myapp-xxx", namespace="prod"}`.
 
 If you don't want the `kubernetes` and `HOSTNAME` fields to appear in the log line you can use the `RemoveKeys` configuration field. For example, `RemoveKeys kubernetes,HOSTNAME`.
 

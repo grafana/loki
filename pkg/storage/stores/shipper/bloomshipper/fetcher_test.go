@@ -62,8 +62,6 @@ func TestMetasFetcher(t *testing.T) {
 						Period: 24 * time.Hour,
 					},
 				},
-				ChunkTables: config.PeriodicTableConfig{},
-				RowShards:   16,
 			},
 		},
 	}
@@ -493,11 +491,6 @@ func metaRefs(metas []Meta) []MetaRef {
 		refs = append(refs, meta.MetaRef)
 	}
 	return refs
-}
-
-func requireEqualMetas(t *testing.T, expected []Meta, actual []MetaRef) {
-	require.Equal(t, len(expected), len(actual))
-	require.ElementsMatch(t, metaRefs(expected), actual)
 }
 
 func requireCachedMetas(t *testing.T, expected []Meta, actual map[string][]byte) {

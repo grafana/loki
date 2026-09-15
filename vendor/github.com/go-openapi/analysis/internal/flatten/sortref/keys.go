@@ -56,7 +56,7 @@ func (k Keys) Less(i, j int) bool {
 	return k[i].Segments > k[j].Segments || (k[i].Segments == k[j].Segments && k[i].Key < k[j].Key)
 }
 
-// KeyParts construct a SplitKey with all its /-separated segments decomposed. It is sortable.
+// KeyParts construct a [SplitKey] with all its /-separated segments decomposed. It is sortable.
 func KeyParts(key string) SplitKey {
 	var res []string
 	for part := range strings.SplitSeq(key[1:], "/") {

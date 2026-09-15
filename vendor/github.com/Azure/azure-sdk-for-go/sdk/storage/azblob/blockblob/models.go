@@ -1,6 +1,3 @@
-//go:build go1.18
-// +build go1.18
-
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License. See License.txt in the project root for license information.
 
@@ -82,6 +79,9 @@ type UploadBlobFromURLOptions struct {
 	// Only Bearer type is supported. Credentials should be a valid OAuth access token to copy source.
 	CopySourceAuthorization *string
 
+	// Valid value is backup
+	FileRequestIntent *blob.FileRequestIntentType
+
 	// Optional, default is true. Indicates if properties from the source blob should be copied.
 	CopySourceBlobProperties *bool
 
@@ -97,6 +97,9 @@ type UploadBlobFromURLOptions struct {
 	// Optional. Indicates the tier to be set on the blob.
 	Tier *blob.AccessTier
 
+	// Optional. Specifies the customer-provided encryption key to use to decrypt the source blob.
+	SourceCustomerProvidedKey *blob.SourceCPKInfo
+
 	// Additional optional headers
 	HTTPHeaders                    *blob.HTTPHeaders
 	AccessConditions               *blob.AccessConditions
@@ -107,14 +110,15 @@ type UploadBlobFromURLOptions struct {
 
 func (o *UploadBlobFromURLOptions) format() (*generated.BlockBlobClientPutBlobFromURLOptions, *generated.BlobHTTPHeaders,
 	*generated.LeaseAccessConditions, *generated.CPKInfo, *generated.CPKScopeInfo, *generated.ModifiedAccessConditions,
-	*generated.SourceModifiedAccessConditions) {
+	*generated.SourceModifiedAccessConditions, *generated.SourceCPKInfo) {
 	if o == nil {
-		return nil, nil, nil, nil, nil, nil, nil
+		return nil, nil, nil, nil, nil, nil, nil, nil
 	}
 
 	options := generated.BlockBlobClientPutBlobFromURLOptions{
 		BlobTagsString:           shared.SerializeBlobTagsToStrPtr(o.Tags),
 		CopySourceAuthorization:  o.CopySourceAuthorization,
+		FileRequestIntent:        o.FileRequestIntent,
 		CopySourceBlobProperties: o.CopySourceBlobProperties,
 		CopySourceTags:           o.CopySourceTags,
 		Metadata:                 o.Metadata,
@@ -123,7 +127,8 @@ func (o *UploadBlobFromURLOptions) format() (*generated.BlockBlobClientPutBlobFr
 	}
 
 	leaseAccessConditions, modifiedAccessConditions := exported.FormatBlobAccessConditions(o.AccessConditions)
-	return &options, o.HTTPHeaders, leaseAccessConditions, o.CPKInfo, o.CPKScopeInfo, modifiedAccessConditions, o.SourceModifiedAccessConditions
+	return &options, o.HTTPHeaders, leaseAccessConditions, o.CPKInfo, o.CPKScopeInfo, modifiedAccessConditions,
+		o.SourceModifiedAccessConditions, o.SourceCustomerProvidedKey
 }
 
 // ---------------------------------------------------------------------------------------------------------------------
@@ -164,29 +169,37 @@ type StageBlockFromURLOptions struct {
 	// SourceContentValidation contains the validation mechanism used on the range of bytes read from the source.
 	SourceContentValidation blob.SourceContentValidationType
 
+	// File request Intent. Valid value is backup.
+	FileRequestIntent *blob.FileRequestIntentType
+
 	// Range specifies a range of bytes.  The default value is all bytes.
 	Range blob.HTTPRange
 
 	CPKInfo *blob.CPKInfo
 
 	CPKScopeInfo *blob.CPKScopeInfo
+
+	// Optional. Specifies the customer-provided encryption key to use to decrypt the source blob.
+	SourceCustomerProvidedKey *blob.SourceCPKInfo
 }
 
-func (o *StageBlockFromURLOptions) format() (*generated.BlockBlobClientStageBlockFromURLOptions, *generated.CPKInfo, *generated.CPKScopeInfo, *generated.LeaseAccessConditions, *generated.SourceModifiedAccessConditions) {
+func (o *StageBlockFromURLOptions) format() (*generated.BlockBlobClientStageBlockFromURLOptions, *generated.CPKInfo, *generated.CPKScopeInfo, *generated.LeaseAccessConditions, *generated.SourceModifiedAccessConditions, *generated.SourceCPKInfo) {
 	if o == nil {
-		return nil, nil, nil, nil, nil
+		return nil, nil, nil, nil, nil, nil
 	}
 
 	options := &generated.BlockBlobClientStageBlockFromURLOptions{
 		CopySourceAuthorization: o.CopySourceAuthorization,
 		SourceRange:             exported.FormatHTTPRange(o.Range),
+		FileRequestIntent:       o.FileRequestIntent,
 	}
 
 	if o.SourceContentValidation != nil {
 		o.SourceContentValidation.Apply(options)
 	}
 
-	return options, o.CPKInfo, o.CPKScopeInfo, o.LeaseAccessConditions, o.SourceModifiedAccessConditions
+	return options, o.CPKInfo, o.CPKScopeInfo, o.LeaseAccessConditions, o.SourceModifiedAccessConditions,
+		o.SourceCustomerProvidedKey
 }
 
 // ---------------------------------------------------------------------------------------------------------------------

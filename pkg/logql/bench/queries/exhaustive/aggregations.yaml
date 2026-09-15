@@ -297,3 +297,23 @@ queries:
       log_format: logfmt
       unwrappable_fields:
         - duration
+  - description: Grouping by absent label does not produce spurious empty-label series
+    query: sum by (app_version, detected_level) (count_over_time(${SELECTOR} | detected_level="info" [${RANGE}]))
+    kind: metric
+    time_range:
+      length: 1h
+      step: 1m
+    tags:
+      - count_over_time
+      - grouping
+      - structured-metadata
+      - absent-label
+    notes: |
+      A label referenced in a "by" clause may be absent from some data objects' Arrow schema.
+      Both engines must agree: grouping by an absent label must not produce a spurious series
+      with label="". "app_version" is not a stream label, structured metadata field, or
+      detected field in the bench dataset, so it is genuinely absent from all data objects,
+      directly exercising the absent-column grouping path.
+    requires:
+      structured_metadata:
+        - detected_level

@@ -80,6 +80,12 @@ var (
 
 	// ErrUnsupportedCriticalHeader is returned when a header is marked critical but not supported by go-jose.
 	ErrUnsupportedCriticalHeader = errors.New("go-jose/go-jose: unsupported critical header")
+
+	// errEmptyInput is returned when go-jose was asked to parse an empty string.
+	errEmptyInput = errors.New("go-jose/go-jose: empty input")
+
+	// ErrNotPublic indicates a private key was passed where a public key was expected
+	ErrNotPublic = errors.New("go-jose/go-jose: public key was unexpectedly not public")
 )
 
 // Key management algorithms

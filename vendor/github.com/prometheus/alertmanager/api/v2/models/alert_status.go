@@ -105,7 +105,7 @@ func (m *AlertStatus) validateSilencedBy(formats strfmt.Registry) error {
 	return nil
 }
 
-var alertStatusTypeStatePropEnum []interface{}
+var alertStatusTypeStatePropEnum []any
 
 func init() {
 	var res []string

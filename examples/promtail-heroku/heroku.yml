@@ -1,4 +1,0 @@
-# Heroku application configuration. It indicates heroku what to deploy
-build:
-  docker:
-    web: Dockerfile

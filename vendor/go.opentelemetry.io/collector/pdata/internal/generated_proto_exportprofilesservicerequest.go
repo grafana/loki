@@ -11,6 +11,7 @@ import (
 	"sync"
 
 	"go.opentelemetry.io/collector/pdata/internal/json"
+	"go.opentelemetry.io/collector/pdata/internal/metadata"
 	"go.opentelemetry.io/collector/pdata/internal/proto"
 )
 
@@ -30,7 +31,7 @@ var (
 )
 
 func NewExportProfilesServiceRequest() *ExportProfilesServiceRequest {
-	if !UseProtoPooling.IsEnabled() {
+	if !metadata.PdataUseProtoPoolingFeatureGate.IsEnabled() {
 		return &ExportProfilesServiceRequest{}
 	}
 	return protoPoolExportProfilesServiceRequest.Get().(*ExportProfilesServiceRequest)
@@ -41,7 +42,7 @@ func DeleteExportProfilesServiceRequest(orig *ExportProfilesServiceRequest, null
 		return
 	}
 
-	if !UseProtoPooling.IsEnabled() {
+	if !metadata.PdataUseProtoPoolingFeatureGate.IsEnabled() {
 		orig.Reset()
 		return
 	}
@@ -159,7 +160,7 @@ func (orig *ExportProfilesServiceRequest) UnmarshalJSON(iter *json.Iterator) {
 
 			orig.Dictionary.UnmarshalJSON(iter)
 		default:
-			iter.Skip()
+			iter.HandleUnknownField(f)
 		}
 	}
 }

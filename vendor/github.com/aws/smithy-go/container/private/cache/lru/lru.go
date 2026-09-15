@@ -45,6 +45,12 @@ func (l *lru) Get(k interface{}) (interface{}, bool) {
 }
 
 func (l *lru) Put(k interface{}, v interface{}) {
+	if e, ok := l.entries[k]; ok {
+		e.Value.(*element).value = v
+		l.mru.MoveToFront(e)
+		return
+	}
+
 	if len(l.entries) == l.cap {
 		l.evict()
 	}

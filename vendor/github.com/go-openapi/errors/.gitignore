@@ -1,3 +1,6 @@
-secrets.yml
 *.out
+*.cov
+.idea
+.env
+.mcp.json
 settings.local.json

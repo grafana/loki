@@ -41,8 +41,7 @@ func (e *StatsExtractor) ExtractResponseData(responseBody []byte, duration int64
 	// Calculate response size
 	responseSize := int64(len(responseBody))
 
-	// Check if new engine was used by looking for the specific warning
-	usedNewEngine := e.checkForNewEngineWarning(queryResp.Warnings)
+	usedNewEngine := queryResp.Data.Statistics.QueryUsedV2Engine()
 
 	return queryStats, responseHash, responseSize, usedNewEngine, queryResp.Data.ResultType, nil
 }
@@ -223,16 +222,4 @@ func (e *StatsExtractor) CompareStats(cellA, cellB goldfish.QueryStats) map[stri
 	}
 
 	return differences
-}
-
-// checkForNewEngineWarning checks if the warnings contain the new engine warning
-func (e *StatsExtractor) checkForNewEngineWarning(warnings []string) bool {
-	const newEngineWarning = "Query was executed using the new experimental query engine and dataobj storage."
-
-	for _, warning := range warnings {
-		if warning == newEngineWarning {
-			return true
-		}
-	}
-	return false
 }

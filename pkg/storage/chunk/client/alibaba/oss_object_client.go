@@ -3,21 +3,38 @@ package alibaba
 import (
 	"context"
 	"flag"
+	"fmt"
 	"io"
 	"net/http"
 	"strconv"
+	"strings"
+	"sync"
 
 	"github.com/aliyun/aliyun-oss-go-sdk/oss"
+	"github.com/aliyun/credentials-go/credentials"
+	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/flagext"
 	"github.com/grafana/dskit/instrument"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client"
+	"github.com/grafana/loki/v3/pkg/util"
 	"github.com/grafana/loki/v3/pkg/util/constants"
+	util_log "github.com/grafana/loki/v3/pkg/util/log"
 )
 
 const NoSuchKeyErr = "NoSuchKey"
+
+const (
+	SignatureVersionV1 = "v1"
+	SignatureVersionV4 = "v4"
+)
+
+var (
+	supportedSignatureVersions     = []string{SignatureVersionV1, SignatureVersionV4}
+	errUnsupportedSignatureVersion = errors.New("unsupported signature version")
+)
 
 var ossRequestDuration = instrument.NewHistogramCollector(prometheus.NewHistogramVec(prometheus.HistogramOpts{
 	Namespace: constants.Loki,
@@ -38,10 +55,24 @@ type OssObjectClient struct {
 type OssConfig struct {
 	Bucket               string         `yaml:"bucket"`
 	Endpoint             string         `yaml:"endpoint"`
+	Region               string         `yaml:"region"`
 	AccessKeyID          string         `yaml:"access_key_id"`
 	SecretAccessKey      flagext.Secret `yaml:"secret_access_key"`
+	RAMRoleName          string         `yaml:"ram_role_name"`
 	ConnectionTimeoutSec int64          `yaml:"conn_timeout_sec"`
 	ReadWriteTimeoutSec  int64          `yaml:"read_write_timeout_sec"`
+	SignatureVersion     string         `yaml:"signature_version"`
+}
+
+type Credentials struct {
+	AccessKeyID     string
+	AccessKeySecret string
+	SecurityToken   string
+}
+
+type CredentialsProvider struct {
+	mu   sync.Mutex
+	cred credentials.Credential
 }
 
 // RegisterFlags registers flags.
@@ -53,8 +84,11 @@ func (cfg *OssConfig) RegisterFlags(f *flag.FlagSet) {
 func (cfg *OssConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	f.StringVar(&cfg.Bucket, prefix+"oss.bucketname", "", "Name of OSS bucket.")
 	f.StringVar(&cfg.Endpoint, prefix+"oss.endpoint", "", "oss Endpoint to connect to.")
+	f.StringVar(&cfg.Region, prefix+"oss.region", "", "Alibabacloud Region to use.")
 	f.StringVar(&cfg.AccessKeyID, prefix+"oss.access-key-id", "", "alibabacloud Access Key ID")
 	f.Var(&cfg.SecretAccessKey, prefix+"oss.secret-access-key", "alibabacloud Secret Access Key")
+	f.StringVar(&cfg.RAMRoleName, prefix+"oss.ram-role-name", "", "Specify the RAM role name of the ECS instance. ECS RAM role authentication is used only when neither access_key_id nor secret_access_key is configured and requires signature_version=v4. If not set, the role name will be automatically retrieved from the ECS instance metadata.")
+	f.StringVar(&cfg.SignatureVersion, prefix+"oss.signature-version", SignatureVersionV1, fmt.Sprintf("The signature version to use for authenticating against OSS. Supported values are: %s. ECS RAM role authentication requires signature_version=v4.", strings.Join(supportedSignatureVersions, ", ")))
 	f.Int64Var(&cfg.ConnectionTimeoutSec, prefix+"oss.conn-timeout-sec", 30, "Connection timeout in seconds")
 	f.Int64Var(&cfg.ReadWriteTimeoutSec, prefix+"oss.read-write-timeout-sec", 60, "Read/Write timeout in seconds")
 }
@@ -63,14 +97,37 @@ func (cfg *OssConfig) Validate() error {
 	if cfg.ReadWriteTimeoutSec <= 0 {
 		return errors.New("read write timeout must be greater than 0")
 	}
+
+	if !util.StringsContain(supportedSignatureVersions, cfg.SignatureVersion) {
+		return errUnsupportedSignatureVersion
+	}
+
 	return nil
 }
 
 // NewOssObjectClient makes a new chunk.Client that writes chunks to OSS.
 func NewOssObjectClient(_ context.Context, cfg OssConfig) (client.ObjectClient, error) {
-	client, err := oss.New(cfg.Endpoint, cfg.AccessKeyID, cfg.SecretAccessKey.String(), oss.Timeout(cfg.ConnectionTimeoutSec, cfg.ReadWriteTimeoutSec))
+	accessKeyID, secretAccessKey, clientOptions, err := buildAuth(&cfg)
 	if err != nil {
 		return nil, err
+	}
+
+	if cfg.SignatureVersion == SignatureVersionV4 {
+		if cfg.Region == "" {
+			return nil, errors.New("region must be specified when signature_version=v4")
+		}
+
+		clientOptions = append(clientOptions,
+			oss.Region(cfg.Region),
+			oss.AuthVersion(oss.AuthV4),
+		)
+	}
+
+	clientOptions = append(clientOptions, oss.Timeout(cfg.ConnectionTimeoutSec, cfg.ReadWriteTimeoutSec))
+
+	client, err := oss.New(cfg.Endpoint, accessKeyID, secretAccessKey, clientOptions...)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to create OSS client")
 	}
 	bucket, err := client.Bucket(cfg.Bucket)
 	if err != nil {
@@ -230,3 +287,79 @@ func (s *OssObjectClient) IsObjectNotFoundErr(err error) bool {
 
 // TODO(dannyk): implement for client
 func (s *OssObjectClient) IsRetryableErr(error) bool { return false }
+
+func (c *Credentials) GetAccessKeyID() string {
+	return c.AccessKeyID
+}
+
+func (c *Credentials) GetAccessKeySecret() string {
+	return c.AccessKeySecret
+}
+
+func (c *Credentials) GetSecurityToken() string {
+	return c.SecurityToken
+}
+
+func (cp *CredentialsProvider) GetCredentials() oss.Credentials {
+	cred, err := cp.GetCredentialsE()
+	if err != nil {
+		level.Error(util_log.Logger).Log("msg", "failed to get OSS credentials", "err", err)
+		return &Credentials{}
+	}
+
+	return cred
+}
+
+func (cp *CredentialsProvider) GetCredentialsE() (oss.Credentials, error) {
+	cp.mu.Lock()
+	defer cp.mu.Unlock()
+
+	cred, err := cp.cred.GetCredential()
+	if err != nil {
+		return nil, err
+	}
+
+	return &Credentials{
+		AccessKeyID:     *cred.AccessKeyId,
+		AccessKeySecret: *cred.AccessKeySecret,
+		SecurityToken:   *cred.SecurityToken,
+	}, nil
+}
+
+func NewEcsCredentialsProvider(credential credentials.Credential) *CredentialsProvider {
+	return &CredentialsProvider{
+		cred: credential,
+	}
+}
+
+func buildAuth(cfg *OssConfig) (ak string, sk string, opts []oss.ClientOption, err error) {
+	if cfg.AccessKeyID != "" || cfg.SecretAccessKey.String() != "" {
+		return cfg.AccessKeyID, cfg.SecretAccessKey.String(), nil, nil
+	}
+
+	if cfg.SignatureVersion == SignatureVersionV1 {
+		return cfg.AccessKeyID, cfg.SecretAccessKey.String(), nil, errors.New("ecs RAM role-based access is enabled only when neither access_key_id nor secret_access_key is configured, and requires signature_version=v4")
+	}
+
+	_, opts, err = buildRAMRoleProvider(cfg.RAMRoleName)
+	return "", "", opts, err
+}
+
+func buildRAMRoleProvider(roleName string) (oss.CredentialsProvider, []oss.ClientOption, error) {
+	credConfig := new(credentials.Config).
+		SetType("ecs_ram_role").
+		SetDisableIMDSv1(true).
+		SetRoleName(roleName)
+
+	ecsCredential, err := credentials.NewCredential(credConfig)
+	if err != nil {
+		return nil, nil, errors.Wrap(err, "init ecs ram role credentials")
+	}
+
+	provider := NewEcsCredentialsProvider(ecsCredential)
+
+	var opts []oss.ClientOption
+	opts = append(opts, oss.SetCredentialsProvider(provider))
+
+	return provider, opts, nil
+}

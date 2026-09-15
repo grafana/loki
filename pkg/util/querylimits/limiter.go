@@ -8,6 +8,7 @@ import (
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 
+	"github.com/grafana/loki/v3/pkg/logql"
 	"github.com/grafana/loki/v3/pkg/util/limiter"
 	logutil "github.com/grafana/loki/v3/pkg/util/log"
 )
@@ -129,4 +130,19 @@ func (l *Limiter) MaxQueryBytesRead(ctx context.Context, userID string) int {
 	}
 	level.Debug(logutil.WithContext(ctx, l.logger)).Log("msg", "using request limit", "limit", "MaxQueryBytesRead", "tenant", userID, "query-limit", requestLimits.MaxQueryBytesRead.Val(), "original-limit", original)
 	return requestLimits.MaxQueryBytesRead.Val()
+}
+
+func (l *Limiter) TSDBShardingStrategy(ctx context.Context, userID string) string {
+	original := l.CombinedLimits.TSDBShardingStrategy(ctx, userID)
+	requestLimits := ExtractQueryLimitsFromContext(ctx)
+	if requestLimits == nil || requestLimits.TSDBShardingStrategy == "" {
+		return original
+	}
+
+	if _, err := logql.ParseShardVersion(requestLimits.TSDBShardingStrategy); err != nil {
+		return original
+	}
+
+	level.Debug(logutil.WithContext(ctx, l.logger)).Log("msg", "using request limit", "limit", "TSDBShardingStrategy", "tenant", userID, "query-limit", requestLimits.TSDBShardingStrategy, "original-limit", original)
+	return requestLimits.TSDBShardingStrategy
 }

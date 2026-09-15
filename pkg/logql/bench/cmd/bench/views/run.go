@@ -24,14 +24,13 @@ const (
 
 // RunView represents the benchmark run view
 type RunView struct {
-	RunConfig         RunConfig
-	Running           bool
-	Output            string
-	Viewport          viewport.Model
-	DiffViewport      viewport.Model
-	showDiff          bool
-	ready             bool   // track if we've received initial window size
-	lastBenchmarkLine string // track the last benchmark line for stats formatting
+	RunConfig    RunConfig
+	Running      bool
+	Output       string
+	Viewport     viewport.Model
+	DiffViewport viewport.Model
+	showDiff     bool
+	ready        bool // track if we've received initial window size
 
 	// Window size tracking
 	width                int

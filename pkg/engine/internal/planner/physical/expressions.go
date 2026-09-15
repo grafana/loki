@@ -226,7 +226,7 @@ type VariadicExpr struct {
 	// Op is the function operation to apply to the parameters
 	Op types.VariadicOp
 
-	// Expressions are the parameters paaws to the function
+	// Expressions are the parameters passed to the function
 	Expressions []Expression
 }
 

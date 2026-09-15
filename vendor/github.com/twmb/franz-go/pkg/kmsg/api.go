@@ -100,6 +100,15 @@ type TxnCoordinatorRequest interface {
 	Request
 }
 
+// ShareCoordinatorRequest represents a request that must be issued to a
+// share coordinator.
+type ShareCoordinatorRequest interface {
+	// IsShareCoordinatorRequest is a method attached to requests that
+	// must be issued to share coordinators.
+	IsShareCoordinatorRequest()
+	Request
+}
+
 // Response represents a type that Kafka responds with.
 type Response interface {
 	// Key returns the protocol key for this message kind.
@@ -127,11 +136,11 @@ type Response interface {
 	RequestKind() Request
 }
 
-// UnsafeReadFrom, implemented by all requests and responses generated in this
-// package, switches to using unsafe slice-to-string conversions when reading.
-// This can be used to avoid a lot of garbage, but it means to have to be
-// careful when using any strings in structs: if you hold onto the string, the
-// underlying response slice will not be garbage collected.
+// UnsafeReadFrom is implemented by all requests and responses generated in
+// this package, and switches to using unsafe slice-to-string conversions when
+// reading. This can be used to avoid a lot of garbage, but it means you have
+// to be careful when using any strings in structs: if you hold onto the
+// string, the underlying response slice will not be garbage collected.
 type UnsafeReadFrom interface {
 	UnsafeReadFrom([]byte) error
 }
@@ -232,8 +241,7 @@ func (f *RequestFormatter) AppendRequest(
 	if r.IsFlexible() {
 		var numTags uint8
 		dst = append(dst, numTags)
-		if numTags != 0 {
-			// TODO when tags are added
+		if numTags != 0 { //nolint:revive,staticcheck // TODO when tags are added
 		}
 	}
 
@@ -346,14 +354,6 @@ func SkipTags(b TagReader) {
 	}
 }
 
-// internalSkipTags skips tags in the duplicated inner kbin.Reader.
-func internalSkipTags(b *kbin.Reader) {
-	for num := b.Uvarint(); num > 0; num-- {
-		_, size := b.Uvarint(), b.Uvarint()
-		b.Span(int(size))
-	}
-}
-
 // ReadTags reads tags in a TagReader and returns the tags.
 func ReadTags(b TagReader) Tags {
 	var t Tags
@@ -426,19 +426,29 @@ func (t *Tags) AppendEach(dst []byte) []byte {
 // DEPRECATED RENAMES //
 ////////////////////////
 
-// Deprecated: this was renamed to ControlRecordKeyTypeSnapshotHeader.
+// ControlRecordKeyTypeLeaderChange was renamed to ControlRecordKeyTypeSnapshotHeader.
+//
+// Deprecated: Use ControlRecordKeyTypeSnapshotHeader.
 const ControlRecordKeyTypeLeaderChange = ControlRecordKeyTypeSnapshotHeader
 
 type (
-	// Deprecated: this was renamed to ListConfigResourcesRequest.
+	// ListClientMetricsResourcesRequest was renamed to ListConfigResourcesRequest.
+	//
+	// Deprecated: Use ListConfigResourcesRequest.
 	ListClientMetricsResourcesRequest = ListConfigResourcesRequest
-	// Deprecated: this was renamed to ListConfigResourcesResponse.
+	// ListClientMetricsResourcesResponse was renamed to ListConfigResourcesResponse.
+	//
+	// Deprecated: Use ListConfigResourcesResponse.
 	ListClientMetricsResourcesResponse = ListConfigResourcesResponse
-	// Deprecated: this was renamed to ListConfigResourcesResponseConfigResource.
+	// ListClientMetricsResourcesResponseClientMetricsResource was renamed to ListConfigResourcesResponseConfigResource.
+	//
+	// Deprecated: Use ListConfigResourcesResponseConfigResource.
 	ListClientMetricsResourcesResponseClientMetricsResource = ListConfigResourcesResponseConfigResource
 )
 
-// Deprecated: this was renamed to ListConfigResources.
+// ListClientMetricsResources was renamed to ListConfigResources.
+//
+// Deprecated: Use ListConfigResources.
 var ListClientMetricsResources Key = 74
 
 // Deprecated: this was renamed to NewPtrListConfigResourcesRequest.

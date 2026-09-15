@@ -11,14 +11,15 @@ import (
 	"sync"
 
 	"go.opentelemetry.io/collector/pdata/internal/json"
+	"go.opentelemetry.io/collector/pdata/internal/metadata"
 	"go.opentelemetry.io/collector/pdata/internal/proto"
 )
 
 // ScopeLogs is a collection of logs from a LibraryInstrumentation.
 type ScopeLogs struct {
-	SchemaUrl  string
-	LogRecords []*LogRecord
 	Scope      InstrumentationScope
+	LogRecords []*LogRecord
+	SchemaUrl  string
 }
 
 var (
@@ -30,7 +31,7 @@ var (
 )
 
 func NewScopeLogs() *ScopeLogs {
-	if !UseProtoPooling.IsEnabled() {
+	if !metadata.PdataUseProtoPoolingFeatureGate.IsEnabled() {
 		return &ScopeLogs{}
 	}
 	return protoPoolScopeLogs.Get().(*ScopeLogs)
@@ -41,7 +42,7 @@ func DeleteScopeLogs(orig *ScopeLogs, nullable bool) {
 		return
 	}
 
-	if !UseProtoPooling.IsEnabled() {
+	if !metadata.PdataUseProtoPoolingFeatureGate.IsEnabled() {
 		orig.Reset()
 		return
 	}
@@ -168,7 +169,7 @@ func (orig *ScopeLogs) UnmarshalJSON(iter *json.Iterator) {
 		case "schemaUrl", "schema_url":
 			orig.SchemaUrl = iter.ReadString()
 		default:
-			iter.Skip()
+			iter.HandleUnknownField(f)
 		}
 	}
 }

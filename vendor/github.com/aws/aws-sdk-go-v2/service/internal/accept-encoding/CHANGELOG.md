@@ -1,3 +1,51 @@
+# v1.13.19 (2026-08-26)
+
+* **Dependency Update**: Update to smithy-go v1.28.0.
+
+# v1.13.18 (2026-08-25)
+
+* **Dependency Update**: Update to smithy-go v1.27.10.
+
+# v1.13.17 (2026-08-14)
+
+* **Dependency Update**: Update to smithy-go v1.27.8.
+
+# v1.13.16 (2026-08-10)
+
+* **Dependency Update**: Update to smithy-go v1.27.7.
+
+# v1.13.15 (2026-07-31.2)
+
+* **Dependency Update**: Upgrade to smithy-go v1.27.6 to fix various serde issues in HTTP binding services.
+
+# v1.13.14 (2026-07-28)
+
+* **Dependency Update**: Update to smithy-go v1.27.5.
+
+# v1.13.13 (2026-07-01)
+
+* No change notes available for this release.
+
+# v1.13.12 (2026-06-04)
+
+* **Dependency Update**: Update to smithy-go v1.27.1 to fix several union-related deserialization bugs in schema-serde-enabled services.
+
+# v1.13.11 (2026-06-03)
+
+* No change notes available for this release.
+
+# v1.13.10 (2026-05-29)
+
+* **Dependency Update**: Update to smithy-go v1.26.0.
+
+# v1.13.9 (2026-04-29)
+
+* **Dependency Update**: Update to smithy-go v1.25.1.
+
+# v1.13.8 (2026-04-17)
+
+* **Dependency Update**: Bump smithy-go to 1.25.0 to support endpointBdd trait
+
 # v1.13.7 (2026-03-13)
 
 * **Bug Fix**: Replace usages of the old ioutil/ package throughout the SDK.

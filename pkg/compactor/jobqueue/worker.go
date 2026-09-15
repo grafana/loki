@@ -64,7 +64,6 @@ type WorkerManager struct {
 	metrics    *workerMetrics
 
 	workers []*worker
-	wg      sync.WaitGroup
 }
 
 func NewWorkerManager(cfg WorkerConfig, grpcClient CompactorClient, r prometheus.Registerer) *WorkerManager {

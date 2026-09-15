@@ -31,9 +31,7 @@ var (
 	}
 )
 
-func buildJSONColumns(input *array.String, requestedKeys []string) ([]string, []arrow.Array) {
-	parser := newJSONParser()
-
+func buildJSONColumns(input arrow.RecordBatch, sourceCol *array.String, requestedKeys []string) ([]string, []arrow.Array) {
 	// Build requestedKeyLookup once instead of for every line
 	var requestedKeyLookup map[string]struct{}
 	if len(requestedKeys) > 0 {
@@ -43,10 +41,18 @@ func buildJSONColumns(input *array.String, requestedKeys []string) ([]string, []
 		}
 	}
 
-	parseFunc := func(line string) (map[string]string, error) {
-		return parser.process(unsafeBytes(line), requestedKeyLookup)
+	parser := newJSONParser()
+	parseFunc := func(_ arrow.RecordBatch, line string) (map[string]string, error) {
+		return parseJSONLine(parser, line, requestedKeyLookup)
 	}
-	return buildColumns(input, requestedKeys, parseFunc, types.JSONParserErrorType)
+	return buildColumns(input, sourceCol, requestedKeys, parseFunc, types.VariadicOpParseJSON, types.JSONParserErrorType)
+}
+
+// parseJSONLine parses a single JSON line and extracts key-value pairs
+// implements ParseFunc
+func parseJSONLine(parser *jsonParser, line string, requestedKeyLookup map[string]struct{}) (map[string]string, error) {
+	// Use the refactored JSONParser for nested object handling and number conversion
+	return parser.process(unsafeBytes(line), requestedKeyLookup)
 }
 
 type jsonParser struct {
@@ -237,8 +243,11 @@ func appendSanitized(to, key []byte) []byte {
 		return to
 	}
 
-	// Add prefix underscore for digit-starting keys (both top-level and nested)
-	if key[0] >= '0' && key[0] <= '9' {
+	// Prepend an underscore only for digit-starting top-level keys — nested keys
+	// already have the parent-separator `_` in `to` from buildSanitizedPrefixFromBuffer,
+	// so adding another underscore here would produce `parent__0` instead of `parent_0`
+	// and diverge from v1's flatten format (see pkg/logql/log/util.go:49).
+	if len(to) == 0 && key[0] >= '0' && key[0] <= '9' {
 		to = append(to, '_')
 	}
 

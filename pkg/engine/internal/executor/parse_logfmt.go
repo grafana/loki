@@ -8,11 +8,11 @@ import (
 	"github.com/grafana/loki/v3/pkg/logql/log/logfmt"
 )
 
-func buildLogfmtColumns(input *array.String, requestedKeys []string, strict bool, keepEmpty bool) ([]string, []arrow.Array) {
-	parseFunc := func(line string) (map[string]string, error) {
+func buildLogfmtColumns(input arrow.RecordBatch, sourceCol *array.String, requestedKeys []string, strict bool, keepEmpty bool) ([]string, []arrow.Array) {
+	parseFunc := func(_ arrow.RecordBatch, line string) (map[string]string, error) {
 		return tokenizeLogfmt(line, requestedKeys, strict, keepEmpty)
 	}
-	return buildColumns(input, requestedKeys, parseFunc, types.LogfmtParserErrorType)
+	return buildColumns(input, sourceCol, requestedKeys, parseFunc, types.VariadicOpParseLogfmt, types.LogfmtParserErrorType)
 }
 
 // tokenizeLogfmt parses logfmt input using the standard decoder
@@ -65,11 +65,10 @@ func tokenizeLogfmt(input string, requestedKeys []string, strict bool, keepEmpty
 	// Check for parsing errors
 	if err := decoder.Err(); err != nil {
 		if strict {
-			// In strict mode, return the error immediately
+			// In strict mode, return the error immediately.
 			return nil, err
 		}
-		// In non-strict mode, return partial results with the error
-		return result, err
+		// Do not return any error in non-strict mode.
 	}
 
 	return result, nil

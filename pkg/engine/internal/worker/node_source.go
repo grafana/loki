@@ -9,6 +9,8 @@ import (
 	"go.uber.org/atomic"
 
 	"github.com/grafana/loki/v3/pkg/engine/internal/executor"
+	"github.com/grafana/loki/v3/pkg/engine/internal/scheduler/wire"
+	"github.com/grafana/loki/v3/pkg/engine/internal/worker/workerstat"
 	"github.com/grafana/loki/v3/pkg/xcap"
 )
 
@@ -17,6 +19,9 @@ import (
 // Records are made available by a [nodeSource] calling [nodeSource.Write],
 // after which each record can be read by the [nodeSource.Read] method.
 type nodeSource struct {
+	Metrics  *metrics
+	TaskType taskType
+
 	initOnce  sync.Once
 	closeOnce sync.Once
 
@@ -26,6 +31,10 @@ type nodeSource struct {
 
 	closed  chan struct{}
 	records chan arrow.RecordBatch
+
+	// failErr is set by Fail before the source is closed. Read returns it
+	// instead of executor.EOF when the source was closed due to a failure.
+	failErr atomic.Pointer[error]
 }
 
 var _ executor.Pipeline = (*nodeSource)(nil)
@@ -41,19 +50,27 @@ func (src *nodeSource) Read(ctx context.Context) (arrow.RecordBatch, error) {
 	region := xcap.RegionFromContext(ctx)
 	startRecv := time.Now()
 	defer func() {
-		region.Record(xcap.TaskRecvDuration.Observe(time.Since(startRecv).Seconds()))
+		recvDuration := time.Since(startRecv)
+		region.Record(workerstat.TaskExecutionReadRecvDuration.Observe(recvDuration.Nanoseconds()))
 	}()
 
-	src.lazyInit()
+	var rec arrow.RecordBatch
+	_, err := src.Metrics.timeCommSite("node_source_read_wait", sendModeInternal, wire.StreamDataMessage{}.Kind(), src.TaskType, func() error {
+		src.lazyInit()
 
-	select {
-	case <-ctx.Done():
-		return nil, ctx.Err()
-	case <-src.closed:
-		return nil, executor.EOF
-	case rec := <-src.records:
-		return rec, nil
-	}
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-src.closed:
+			if ep := src.failErr.Load(); ep != nil {
+				return *ep
+			}
+			return executor.EOF
+		case rec = <-src.records:
+			return nil
+		}
+	})
+	return rec, err
 }
 
 func (src *nodeSource) lazyInit() {
@@ -90,6 +107,17 @@ func (src *nodeSource) Add(delta int64) {
 	} else if newValue < 0 {
 		panic("negative stream count")
 	}
+}
+
+// Fail marks the source as failed with err and closes it. Future Read calls
+// will return err instead of [executor.EOF]. err must not be nil.
+func (src *nodeSource) Fail(err error) {
+	if err == nil {
+		// This panic is required because if nil is passed, Read will return (nil, nil) which breaks the Read contract.
+		panic("nodeSource.Fail called with nil error")
+	}
+	src.failErr.Store(&err)
+	src.Close()
 }
 
 // Close closes the source. All future Reads and Write calls will return

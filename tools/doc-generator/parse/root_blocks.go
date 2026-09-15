@@ -44,7 +44,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client/local"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client/openstack"
 	storage_config "github.com/grafana/loki/v3/pkg/storage/config"
-	"github.com/grafana/loki/v3/pkg/storage/stores/series/index"
 	"github.com/grafana/loki/v3/pkg/tracing"
 	"github.com/grafana/loki/v3/pkg/validation"
 )
@@ -144,11 +143,6 @@ var (
 			StructType: []reflect.Type{reflect.TypeFor[querier_worker.Config]()},
 			Desc:       "The frontend_worker configures the worker - running within the Loki querier - picking up and executing queries enqueued by the query-frontend.",
 		},
-		{
-			Name:       "table_manager",
-			StructType: []reflect.Type{reflect.TypeFor[index.TableManagerConfig]()},
-			Desc:       "The table_manager block configures the table manager for retention.",
-		},
 
 		{
 			Name:       "runtime_config",
@@ -228,14 +222,6 @@ When a memberlist config with atleast 1 join_members is defined, kvstore of type
 
 		// Storage config
 		{
-			Name: "aws_storage_config",
-			// aws.StorageConfig is the underlying type for storage.NamedAWSStorageConfig
-			// having these as separate block entries would result in duplicate storage configs
-			// similar reasoning applies to other storage configs listed below
-			StructType: []reflect.Type{reflect.TypeFor[aws.StorageConfig](), reflect.TypeFor[storage.NamedAWSStorageConfig]()},
-			Desc:       "The aws_storage_config block configures the connection to dynamoDB and S3 object storage. Either one of them or both can be configured.",
-		},
-		{
 			Name:       "azure_storage_config",
 			StructType: []reflect.Type{reflect.TypeFor[azure.BlobStorageConfig](), reflect.TypeFor[storage.NamedBlobStorageConfig]()},
 			Desc:       "The azure_storage_config block configures the connection to Azure object storage backend.",
@@ -252,7 +238,7 @@ When a memberlist config with atleast 1 join_members is defined, kvstore of type
 		},
 		{
 			Name:       "s3_storage_config",
-			StructType: []reflect.Type{reflect.TypeFor[aws.S3Config]()},
+			StructType: []reflect.Type{reflect.TypeFor[aws.S3Config](), reflect.TypeFor[storage.NamedAWSStorageConfig]()},
 			Desc:       "The s3_storage_config block configures the connection to Amazon S3 object storage backend.",
 		},
 		{

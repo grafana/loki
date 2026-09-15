@@ -18,6 +18,7 @@ spec:
   chart:
     spec:
       chart: alloy
+      version: 1.7.0
       sourceRef:
         kind: HelmRepository
         name: grafana

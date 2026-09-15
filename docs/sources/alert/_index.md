@@ -206,9 +206,39 @@ ruler:
 
   remote_write:
     enabled: true
-    client:
-      url: http://localhost:9090/api/v1/write
+    clients:
+      prometheus:
+        url: http://localhost:9090/api/v1/write
 ```
+
+Here is an example of a remote-write configuration for sending data to a Grafana Mimir instance:
+
+```yaml
+ruler:
+  remote_write:
+    enabled: true
+    clients:
+      mimir:
+        url: http://mimir:9009/api/v1/push
+```
+
+If the Mimir endpoint requires authentication, configure it on the remote-write client:
+
+```yaml
+ruler:
+  remote_write:
+    enabled: true
+    clients:
+      mimir:
+        url: https://mimir.example.com/api/v1/push
+        basic_auth:
+          username: <USERNAME>
+          password: <PASSWORD>
+```
+
+By default, Loki adds the `X-Scope-OrgID` header using the tenant ID of the
+recording rules that produced the samples. Do not set `X-Scope-OrgID` manually
+under `headers`; Loki strips that header at runtime before sending remote-write requests.
 
 Further configuration options can be found under [ruler](https://grafana.com/docs/loki/<LOKI_VERSION>/configure/#ruler).
 
@@ -229,8 +259,8 @@ lokitool is intended to run against multi-tenant Loki. The commands need an `--i
 An example workflow is included below:
 
 ```sh
-# lint the rules.yaml file ensuring it's valid and reformatting it if necessary
-lokitool rules lint ./output/rules.yaml
+# format the rules.yaml file, reordering keys and reformatting PromQL expressions
+lokitool rules format ./output/rules.yaml
 
 # diff rules against the currently managed ruleset in Loki
 lokitool rules diff --rule-dirs=./output
@@ -384,6 +414,21 @@ With the above configuration, the Ruler would expect the following layout:
 /tmp/loki/rules/<tenant id>/rules1.yaml
                            /rules2.yaml
 ```
+
+The `<tenant id>` directory name must match the tenant ID under which the Ruler evaluates rules. When `auth_enabled` is `false`, Loki runs in single tenant mode and the tenant ID defaults to `fake` (the default value of the `-auth.no-auth-tenant` flag), so with the configuration above the Ruler reads rule files from:
+
+```bash
+/tmp/loki/rules/fake/rules1.yaml
+                    /rules2.yaml
+```
+
+{{< admonition type="note" >}}
+If Loki is started with `-auth.no-auth-tenant` set to a custom value, use that value as the tenant directory name instead of `fake`.
+{{< /admonition >}}
+
+The local backend reads and parses every non-hidden file in the tenant directory: there is no glob matching (unlike Prometheus' [`rule_file`](https://prometheus.io/docs/prometheus/latest/configuration/configuration/#configuration-file)) and subdirectories are ignored. If the tenant directory does not exist, the Ruler keeps running but logs an error on every rule sync (`level=error msg="unable to list rules" ... unable to read rule dir ...`) and evaluates no rules until the directory is created.
+
+Note that `-ruler.storage.local.directory` is not the same as `rule_path`: the former is where the Ruler reads rule files from, while `rule_path` (default `/rules`) is a scratch directory where the Ruler writes temporary rule files during evaluation.
 
 Yaml files are expected to be [Prometheus-compatible](https://prometheus.io/docs/prometheus/latest/configuration/alerting_rules/) but include LogQL expressions as specified earlier in this topic.
 

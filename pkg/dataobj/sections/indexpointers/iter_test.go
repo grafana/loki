@@ -147,3 +147,54 @@ func TestDecodeRow(t *testing.T) {
 		})
 	}
 }
+
+func TestDecodeRow_NoLeakWhenSizeColumnsAbsent(t *testing.T) {
+	// Test that decoding a row without size columns does not leak previous values.
+	// Regression test for stale-row leak when RowReader reuses buffer across sections.
+
+	// First decode: row WITH size columns (FileSize and UncompressedLogsSize present)
+	firstRow := dataset.Row{
+		Values: []dataset.Value{
+			dataset.BinaryValue([]byte("path1")),
+			dataset.Int64Value(1000),
+			dataset.Int64Value(2000),
+			dataset.Int64Value(5000),  // FileSize
+			dataset.Int64Value(10000), // UncompressedLogsSize
+		},
+	}
+	firstColumns := []*Column{
+		{Name: "path", Type: ColumnTypePath},
+		{Name: "min_timestamp", Type: ColumnTypeMinTimestamp},
+		{Name: "max_timestamp", Type: ColumnTypeMaxTimestamp},
+		{Name: "file_size", Type: ColumnTypeFileSize},
+		{Name: "uncompressed_logs_size", Type: ColumnTypeUncompressedLogsSize},
+	}
+
+	pointer := IndexPointer{}
+	err := decodeRow(firstColumns, firstRow, &pointer, nil)
+	require.NoError(t, err)
+	require.Equal(t, uint64(5000), pointer.FileSize)
+	require.Equal(t, uint64(10000), pointer.UncompressedLogsSize)
+
+	// Second decode: row WITHOUT size columns (only path/min/max, legacy section)
+	secondRow := dataset.Row{
+		Values: []dataset.Value{
+			dataset.BinaryValue([]byte("path2")),
+			dataset.Int64Value(3000),
+			dataset.Int64Value(4000),
+		},
+	}
+	secondColumns := []*Column{
+		{Name: "path", Type: ColumnTypePath},
+		{Name: "min_timestamp", Type: ColumnTypeMinTimestamp},
+		{Name: "max_timestamp", Type: ColumnTypeMaxTimestamp},
+	}
+
+	// Reuse same pointer buffer (as RowReader.Read does across sections)
+	err = decodeRow(secondColumns, secondRow, &pointer, nil)
+	require.NoError(t, err)
+
+	// MUST be zero; without fix, would retain first row's values
+	require.Equal(t, uint64(0), pointer.FileSize, "FileSize should be reset to 0")
+	require.Equal(t, uint64(0), pointer.UncompressedLogsSize, "UncompressedLogsSize should be reset to 0")
+}

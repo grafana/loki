@@ -25,7 +25,7 @@ import "github.com/alicebob/miniredis/v2"
 
 Implemented commands:
 
- - Connection (complete)
+ - Connection
    - AUTH -- see RequireAuth()
    - ECHO
    - HELLO -- see RequireUserAuth()
@@ -58,7 +58,7 @@ Implemented commands:
    - TYPE
    - UNLINK
    - WAIT -- no-op
- - Transactions (complete)
+ - Transactions
    - DISCARD
    - EXEC
    - MULTI
@@ -71,19 +71,20 @@ Implemented commands:
    - TIME -- returns time.Now() or value set by SetTime()
    - COMMAND -- partly
    - INFO -- partly, returns only "clients" section with one field "connected_clients"
- - String keys (complete)
+ - String keys
    - APPEND
    - BITCOUNT
    - BITOP
    - BITPOS
    - DECR
    - DECRBY
+   - DELEX -- partly
    - GET
    - GETBIT
-   - GETRANGE
-   - GETSET
    - GETDEL
    - GETEX
+   - GETRANGE
+   - GETSET
    - INCR
    - INCRBY
    - INCRBYFLOAT
@@ -97,9 +98,10 @@ Implemented commands:
    - SETNX
    - SETRANGE
    - STRLEN
- - Hash keys (complete)
+ - Hash keys
    - HDEL
    - HEXISTS
+   - HEXPIRE
    - HGET
    - HGETALL
    - HINCRBY
@@ -108,13 +110,17 @@ Implemented commands:
    - HLEN
    - HMGET
    - HMSET
+   - HPERSIST
+   - HPTTL
    - HRANDFIELD
    - HSET
+   - HSETEX
    - HSETNX
    - HSTRLEN
+   - HTTL
    - HVALS
    - HSCAN
- - List keys (complete)
+ - List keys
    - BLPOP
    - BRPOP
    - BRPOPLPUSH
@@ -134,14 +140,14 @@ Implemented commands:
    - RPUSHX
    - LMOVE
    - BLMOVE
- - Pub/Sub (complete)
+ - Pub/Sub
    - PSUBSCRIBE
    - PUBLISH
    - PUBSUB
    - PUNSUBSCRIBE
    - SUBSCRIBE
    - UNSUBSCRIBE
- - Set keys (complete)
+ - Set keys
    - SADD
    - SCARD
    - SDIFF
@@ -159,7 +165,9 @@ Implemented commands:
    - SSCAN
    - SUNION
    - SUNIONSTORE
- - Sorted Set keys (complete)
+ - Sorted Set keys
+   - BZPOPMAX
+   - BZPOPMIN
    - ZADD
    - ZCARD
    - ZCOUNT
@@ -221,12 +229,13 @@ Implemented commands:
    - GEORADIUS_RO
    - GEORADIUSBYMEMBER
    - GEORADIUSBYMEMBER_RO
+   - GEOSEARCH
  - Cluster
    - CLUSTER SLOTS
    - CLUSTER KEYSLOT
    - CLUSTER NODES
    - CLUSTER SHARDS
- - HyperLogLog (complete)
+ - HyperLogLog
    - PFADD
    - PFCOUNT
    - PFMERGE

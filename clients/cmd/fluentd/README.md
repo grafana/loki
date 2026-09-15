@@ -4,6 +4,10 @@
 
 See the [Fluentd documentation](../../../docs/sources/send-data/fluentd/_index.md) for detailed information.
 
+## Client certificates (mTLS)
+
+For mutual TLS in front of Loki, configure `cert`, `key`, and optionally `ca_cert`. A PEM `cert` file may include the leaf plus intermediate chain; **sending the full chain requires Ruby 3.0+**. See [Client certificate verification](../../../docs/sources/send-data/fluentd/_index.md#client-certificate-verification) in the Loki docs.
+
 ## Development
 
 After checking out the repo, run `bin/setup` to install dependencies. Then, run `bin/test` to run the tests. You can also run `bin/console` for an interactive prompt that will allow you to experiment.

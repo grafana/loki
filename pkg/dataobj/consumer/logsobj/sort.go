@@ -3,87 +3,177 @@ package logsobj
 import (
 	"context"
 	"fmt"
-	"math"
+	"io"
+	"slices"
+
+	"github.com/prometheus/prometheus/model/labels"
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
-	"github.com/grafana/loki/v3/pkg/dataobj/internal/dataset"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/result"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/logs"
-	"github.com/grafana/loki/v3/pkg/util/loser"
+	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
+	"github.com/grafana/loki/v3/pkg/dataobj/sortmerge"
 )
 
-// sortMergeIterator returns an iterator that performs a k-way merge of records from multiple logs sections.
-// It requires that the input sections are sorted sorted by the same order.
-func sortMergeIterator(ctx context.Context, sections []*dataobj.Section, sort logs.SortOrder) (result.Seq[logs.Record], error) {
-	sequences := make([]*sectionSequence, 0, len(sections))
-	for _, s := range sections {
-		sec, err := logs.Open(ctx, s)
-		if err != nil {
-			return nil, fmt.Errorf("failed to open logs section: %w", err)
-		}
+// rankedSortKey is the CopyAndSort sidecar for one stream. rank is the rank in this object after sorting by
+// SortKey; independently written objects do not share rank.
+type rankedSortKey struct {
+	rank int64
+	streams.SortKey
+}
 
-		ds, err := logs.MakeColumnarDataset(sec)
-		if err != nil {
-			return nil, fmt.Errorf("creating columnar dataset: %w", err)
-		}
-
-		columns, err := result.Collect(ds.ListColumns(ctx))
-		if err != nil {
-			return nil, err
-		}
-
-		r := dataset.NewRowReader(dataset.RowReaderOptions{
-			Dataset:  ds,
-			Columns:  columns,
-			Prefetch: true,
-		})
-		if err := r.Open(ctx); err != nil {
-			return nil, fmt.Errorf("opening dataset row reader: %w", err)
-		}
-
-		sequences = append(sequences, &sectionSequence{
-			section:         sec,
-			DatasetSequence: logs.NewDatasetSequence(r, 8<<10),
-		})
+// emptyRankedSortKey returns an unranked sort key (rank set to 0) for a label set.
+// SortKey fields are calculated from input labels ls.
+func emptyRankedSortKey(ls labels.Labels, schemaLabels []string) (rankedSortKey, error) {
+	schemaKey, err := ComputeSchemaKey(ls, schemaLabels)
+	if err != nil {
+		return rankedSortKey{}, err
 	}
 
-	maxValue := result.Value(dataset.Row{
-		Index: math.MaxInt,
-		Values: []dataset.Value{
-			dataset.Int64Value(math.MaxInt64), // StreamID
-			dataset.Int64Value(math.MinInt64), // Timestamp
-		},
+	return rankedSortKey{
+		SortKey: streams.NewSortKey(ls, schemaKey),
+	}, nil
+}
+
+// TargetSortLayout returns the physical logs layout produced for schemaLabels.
+func TargetSortLayout(schemaLabels []string) logs.SortLayout {
+	return logs.SortLayout{
+		SchemaLabels: slices.Clone(schemaLabels),
+		StreamOrder:  logs.StreamOrderStableHashV1,
+		ShardCount:   streams.ShardFactor,
+	}
+}
+
+// EqualSortLayout reports whether two physical logs layouts are identical.
+func EqualSortLayout(a, b logs.SortLayout) bool {
+	return slices.Equal(a.SchemaLabels, b.SchemaLabels) &&
+		a.StreamOrder == b.StreamOrder &&
+		a.ShardCount == b.ShardCount
+}
+
+// sortKeys extracts the sort-tuple column for the k-way merge comparator.
+func sortKeys(remap []rankedSortKey) []streams.SortKey {
+	out := make([]streams.SortKey, len(remap))
+	for i, entry := range remap {
+		out[i] = entry.SortKey
+	}
+	return out
+}
+
+// remapByRank returns an identity stream-ID remap indexed by rank.
+func remapByRank(remap []rankedSortKey) []rankedSortKey {
+	byRank := make([]rankedSortKey, len(remap))
+	for _, mapping := range remap {
+		if mapping.rank > 0 {
+			if byRank[mapping.rank].rank != 0 {
+				panic(fmt.Sprintf("duplicate rank %d", mapping.rank))
+			}
+			byRank[mapping.rank] = mapping
+		}
+	}
+	return byRank
+}
+
+// mergeAndRemapLogsIter merges sections which are ordered by the sort keys in
+// remap, injects sort-key sidecars, and rewrites their stream IDs to rank.
+func mergeAndRemapLogsIter(ctx context.Context, sections []*dataobj.Section, remap []rankedSortKey) (result.Seq[logs.Record], error) {
+	iter, err := sortmerge.SchemaSortedIterator(ctx, sections, sortKeys(remap))
+	if err != nil {
+		return nil, err
+	}
+
+	return result.Iter(func(yield func(logs.Record) bool) error {
+		for res := range iter {
+			rec, err := res.Value()
+			if err != nil {
+				return err
+			}
+			oldStreamID := rec.StreamID
+			if oldStreamID <= 0 || oldStreamID >= int64(len(remap)) || remap[oldStreamID].rank == 0 {
+				return fmt.Errorf("missing stream ID remap for stream ID %d", oldStreamID)
+			}
+			entry := remap[oldStreamID]
+			rec.SchemaKey = entry.SchemaKey
+			rec.ShardBucket = entry.ShardBucket
+			rec.StreamHash = entry.Hash
+			rec.StreamID = entry.rank
+			if !yield(rec) {
+				return nil
+			}
+		}
+		return nil
+	}), nil
+}
+
+// replaySections rewrites arbitrary records into bounded, individually sorted
+// sections. It returns those sections and their rank-indexed identity remap,
+// ready for mergeAndRemapLogsIter.
+func (b *Builder) replaySections(ctx context.Context,
+	tenant string,
+	sections []*dataobj.Section,
+	remap []rankedSortKey,
+) ([]*dataobj.Section, []rankedSortKey, io.Closer, error) {
+	objBuilder := dataobj.NewBuilder(b.scratch)
+	intermediateSectionBuilder := logs.NewBuilder(b.metrics.logs, logs.BuilderOptions{
+		PageSizeHint:     int(b.cfg.TargetPageSize),
+		PageMaxRowCount:  b.cfg.MaxPageRows,
+		BufferSize:       int(b.cfg.BufferSize),
+		StripeMergeLimit: b.cfg.SectionStripeMergeLimit,
+		AppendStrategy:   logs.AppendOrdered,
+		SortOrder:        logs.SortStreamASC,
 	})
+	intermediateSectionBuilder.SetTenant(tenant)
 
-	tree := loser.New(sequences, maxValue, sectionSequenceAt, logs.CompareForSortOrder(sort), sectionSequenceClose)
+	flushSection := func() error {
+		if intermediateSectionBuilder.UncompressedSize() == 0 {
+			return nil
+		}
+		if err := objBuilder.Append(intermediateSectionBuilder); err != nil {
+			return err
+		}
+		intermediateSectionBuilder.Reset()
+		intermediateSectionBuilder.SetTenant(tenant)
+		return nil
+	}
 
-	return result.Iter(
-		func(yield func(logs.Record) bool) error {
-			defer tree.Close()
-			for tree.Next() {
-				seq := tree.Winner()
+	for _, section := range sections {
+		opened, err := logs.Open(ctx, section)
+		if err != nil {
+			return nil, nil, nil, err
+		}
+		for res := range logs.IterSection(ctx, opened) {
+			rec, err := res.Value()
+			if err != nil {
+				return nil, nil, nil, err
+			}
+			if rec.StreamID <= 0 || rec.StreamID >= int64(len(remap)) || remap[rec.StreamID].rank == 0 {
+				return nil, nil, nil, fmt.Errorf("missing stream ID remap for stream ID %d", rec.StreamID)
+			}
 
-				row, err := sectionSequenceAt(seq).Value()
-				if err != nil {
-					return err
-				}
+			// Copy the Record because builder.Append retains a reference to the input Record while logs.IterSection re-uses it,
+			recCopy := rec.Copy()
+			recCopy.StreamID = remap[rec.StreamID].rank
+			intermediateSectionBuilder.Append(recCopy)
 
-				var record logs.Record
-				err = logs.DecodeRow(seq.section.Columns(), row, &record, nil)
-				if err != nil || !yield(record) {
-					return err
+			// Intermediate builder uses smaller sections (of BufferSize) so they can be independently compressed
+			if intermediateSectionBuilder.UncompressedSize() >= int(b.cfg.BufferSize) {
+				if err := flushSection(); err != nil {
+					return nil, nil, nil, err
 				}
 			}
-			return nil
-		}), nil
+		}
+	}
+	if err := flushSection(); err != nil {
+		return nil, nil, nil, err
+	}
+
+	obj, closer, err := objBuilder.Flush()
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	var replayedSections []*dataobj.Section
+	for _, section := range obj.Sections().Filter(logs.CheckSection) {
+		replayedSections = append(replayedSections, section)
+	}
+	return replayedSections, remapByRank(remap), closer, nil
 }
-
-type sectionSequence struct {
-	logs.DatasetSequence
-	section *logs.Section
-}
-
-var _ loser.Sequence = (*sectionSequence)(nil)
-
-func sectionSequenceAt(seq *sectionSequence) result.Result[dataset.Row] { return seq.At() }
-func sectionSequenceClose(seq *sectionSequence)                         { seq.Close() }

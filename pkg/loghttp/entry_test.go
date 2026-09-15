@@ -1,7 +1,6 @@
 package loghttp
 
 import (
-	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -267,23 +266,6 @@ func TestObjectEachHandlingOfNewlines(t *testing.T) {
 
 	// Verify proper parsing of newlines
 	require.Equal(t, "a\nb\nc", parsedValue)
-}
-
-// debugUnescapeJSONString is a custom debug version of the function in the main codebase
-func debugUnescapeJSONString(b []byte) string {
-	// First log the raw bytes before doing any unescaping
-	fmt.Printf("Raw bytes before unescaping: %v\n", b)
-
-	var stackbuf [1024]byte
-	bU, err := jsonparser.Unescape(b, stackbuf[:])
-	if err != nil {
-		return ""
-	}
-
-	// Log the unescaped bytes
-	fmt.Printf("Bytes after unescaping: %v\n", bU)
-
-	return string(bU)
 }
 
 // Write a custom test showing the different ways escaping can happen

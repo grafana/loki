@@ -1,7 +1,7 @@
 // Copyright The OpenTelemetry Authors
 // SPDX-License-Identifier: Apache-2.0
 
-package otlptracehttp // import "go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp"
+package otlptracehttp
 
 import (
 	"bytes"
@@ -27,10 +27,21 @@ import (
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp/internal/counter"
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp/internal/observ"
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp/internal/otlpconfig"
+	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp/internal/otlpjson"
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp/internal/retry"
 )
 
-const contentTypeProto = "application/x-protobuf"
+const (
+	contentTypeProto = "application/x-protobuf"
+	contentTypeJSON  = "application/json"
+)
+
+// maxResponseBodySize is the maximum number of bytes to read from a response
+// body. It is set to 4 MiB per the OTLP specification recommendation to
+// mitigate excessive memory usage caused by a misconfigured or malicious
+// server. If exceeded, the response is treated as a not-retryable error.
+// This is a variable to allow tests to override it.
+var maxResponseBodySize int64 = 4 * 1024 * 1024
 
 var gzPool = sync.Pool{
 	New: func() any {
@@ -55,6 +66,8 @@ var ourTransport = &http.Transport{
 	TLSHandshakeTimeout:   10 * time.Second,
 	ExpectContinueTimeout: 1 * time.Second,
 }
+
+var errInsecureEndpointWithTLS = errors.New("insecure HTTP endpoint cannot use TLS client configuration")
 
 type client struct {
 	name        string
@@ -110,6 +123,10 @@ func NewClient(opts ...Option) otlptrace.Client {
 
 // Start does nothing in a HTTP client.
 func (c *client) Start(ctx context.Context) error {
+	if c.cfg.Insecure && c.cfg.TLSCfg != nil {
+		return errInsecureEndpointWithTLS
+	}
+
 	// Initialize the instrumentation if not already done.
 	//
 	// Initialize here instead of NewClient to allow any errors to be passed
@@ -130,9 +147,9 @@ func (c *client) Start(ctx context.Context) error {
 }
 
 // Stop shuts down the client and interrupt any in-flight request.
-func (d *client) Stop(ctx context.Context) error {
-	d.stopOnce.Do(func() {
-		close(d.stopCh)
+func (c *client) Stop(ctx context.Context) error {
+	c.stopOnce.Do(func() {
+		close(c.stopCh)
 	})
 	select {
 	case <-ctx.Done():
@@ -143,38 +160,42 @@ func (d *client) Stop(ctx context.Context) error {
 }
 
 // UploadTraces sends a batch of spans to the collector.
-func (d *client) UploadTraces(ctx context.Context, protoSpans []*tracepb.ResourceSpans) (uploadErr error) {
+func (c *client) UploadTraces(ctx context.Context, protoSpans []*tracepb.ResourceSpans) (uploadErr error) {
 	pbRequest := &coltracepb.ExportTraceServiceRequest{
 		ResourceSpans: protoSpans,
 	}
-	rawRequest, err := proto.Marshal(pbRequest)
-	if err != nil {
-		return err
-	}
 
-	ctx, cancel := d.contextWithStop(ctx)
+	ctx, cancel := c.contextWithStop(ctx)
 	defer cancel()
 
-	request, err := d.newRequest(rawRequest)
+	request, err := c.newRequest(pbRequest)
 	if err != nil {
 		return err
 	}
 
 	var statusCode int
-	if d.inst != nil {
-		op := d.inst.ExportSpans(ctx, len(protoSpans))
+	if c.inst != nil {
+		var spanCount int
+		for _, rs := range protoSpans {
+			for _, ss := range rs.ScopeSpans {
+				spanCount += len(ss.Spans)
+			}
+		}
+		op := c.inst.ExportSpans(ctx, spanCount)
 		defer func() { op.End(uploadErr, statusCode) }()
 	}
 
-	return errors.Join(uploadErr, d.requestFunc(ctx, func(ctx context.Context) error {
+	return errors.Join(uploadErr, c.requestFunc(ctx, func(ctx context.Context) error {
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
 		default:
 		}
 
+		statusCode = 0
 		request.reset(ctx)
-		resp, err := d.client.Do(request.Request)
+		// nolint:gosec // URL is constructed from validated OTLP endpoint configuration
+		resp, err := c.client.Do(request.Request)
 		var urlErr *url.Error
 		if errors.As(err, &urlErr) && urlErr.Temporary() {
 			return newResponseError(http.Header{}, err)
@@ -196,26 +217,37 @@ func (d *client) UploadTraces(ctx context.Context, protoSpans []*tracepb.Resourc
 			// Success, do not retry.
 			// Read the partial success message, if any.
 			var respData bytes.Buffer
-			if _, err := io.Copy(&respData, resp.Body); err != nil {
+			if _, err := io.Copy(&respData, http.MaxBytesReader(nil, resp.Body, maxResponseBodySize)); err != nil {
+				var maxBytesErr *http.MaxBytesError
+				if errors.As(err, &maxBytesErr) {
+					return fmt.Errorf("response body too large: exceeded %d bytes", maxBytesErr.Limit)
+				}
 				return err
 			}
 			if respData.Len() == 0 {
 				return nil
 			}
 
-			if resp.Header.Get("Content-Type") == "application/x-protobuf" {
-				var respProto coltracepb.ExportTraceServiceResponse
+			var respProto coltracepb.ExportTraceServiceResponse
+			switch resp.Header.Get("Content-Type") {
+			case contentTypeProto:
 				if err := proto.Unmarshal(respData.Bytes(), &respProto); err != nil {
 					return err
 				}
+			case contentTypeJSON:
+				if err := otlpjson.UnmarshalExportTraceServiceResponse(respData.Bytes(), &respProto); err != nil {
+					return err
+				}
+			default:
+				return nil
+			}
 
-				if respProto.PartialSuccess != nil {
-					msg := respProto.PartialSuccess.GetErrorMessage()
-					n := respProto.PartialSuccess.GetRejectedSpans()
-					if n != 0 || msg != "" {
-						err := internal.TracePartialSuccessError(n, msg)
-						uploadErr = errors.Join(uploadErr, err)
-					}
+			if respProto.PartialSuccess != nil {
+				msg := respProto.PartialSuccess.GetErrorMessage()
+				n := respProto.PartialSuccess.GetRejectedSpans()
+				if n != 0 || msg != "" {
+					err := internal.TracePartialSuccessError(n, msg)
+					uploadErr = errors.Join(uploadErr, err)
 				}
 			}
 			return nil
@@ -227,7 +259,11 @@ func (d *client) UploadTraces(ctx context.Context, protoSpans []*tracepb.Resourc
 		// message to be returned. It will help in
 		// debugging the actual issue.
 		var respData bytes.Buffer
-		if _, err := io.Copy(&respData, resp.Body); err != nil {
+		if _, err := io.Copy(&respData, http.MaxBytesReader(nil, resp.Body, maxResponseBodySize)); err != nil {
+			var maxBytesErr *http.MaxBytesError
+			if errors.As(err, &maxBytesErr) {
+				return fmt.Errorf("response body too large: exceeded %d bytes", maxBytesErr.Limit)
+			}
 			return err
 		}
 		respStr := strings.TrimSpace(respData.String())
@@ -250,9 +286,26 @@ func (d *client) UploadTraces(ctx context.Context, protoSpans []*tracepb.Resourc
 	}))
 }
 
-func (d *client) newRequest(body []byte) (request, error) {
-	u := url.URL{Scheme: d.getScheme(), Host: d.cfg.Endpoint, Path: d.cfg.URLPath}
-	r, err := http.NewRequest(http.MethodPost, u.String(), http.NoBody)
+func (c *client) marshalRequest(pbRequest *coltracepb.ExportTraceServiceRequest) ([]byte, error) {
+	if c.cfg.Protocol == otlpconfig.ProtocolHTTPJSON {
+		rawRequest, err := otlpjson.MarshalExportTraceServiceRequest(pbRequest)
+		if err != nil {
+			return nil, fmt.Errorf("failed to marshal request body in json: %w", err)
+		}
+		return rawRequest, nil
+	}
+
+	rawRequest, err := proto.Marshal(pbRequest)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal request body in protobuf: %w", err)
+	}
+
+	return rawRequest, nil
+}
+
+func (c *client) newRequest(pbRequest *coltracepb.ExportTraceServiceRequest) (request, error) {
+	u := url.URL{Scheme: c.getScheme(), Host: c.cfg.Endpoint, Path: c.cfg.URLPath}
+	r, err := http.NewRequestWithContext(context.Background(), http.MethodPost, u.String(), http.NoBody)
 	if err != nil {
 		return request{Request: r}, err
 	}
@@ -260,13 +313,25 @@ func (d *client) newRequest(body []byte) (request, error) {
 	userAgent := "OTel OTLP Exporter Go/" + otlptrace.Version()
 	r.Header.Set("User-Agent", userAgent)
 
-	for k, v := range d.cfg.Headers {
+	for k, v := range c.cfg.Headers {
 		r.Header.Set(k, v)
 	}
 	r.Header.Set("Content-Type", contentTypeProto)
+	if c.cfg.Protocol == otlpconfig.ProtocolHTTPJSON {
+		r.Header.Set("Content-Type", contentTypeJSON)
+	}
+
+	body, err := c.marshalRequest(pbRequest)
+	if err != nil {
+		return request{Request: r}, err
+	}
+
+	if maxSize := c.cfg.MaxRequestSize; maxSize > 0 && len(body) > maxSize {
+		return request{Request: r}, fmt.Errorf("request body too large: exceeded %d bytes", maxSize)
+	}
 
 	req := request{Request: r}
-	switch Compression(d.cfg.Compression) {
+	switch Compression(c.cfg.Compression) {
 	case NoCompression:
 		r.ContentLength = int64(len(body))
 		req.bodyReader = bodyReader(body)
@@ -277,7 +342,10 @@ func (d *client) newRequest(body []byte) (request, error) {
 		r.Header.Set("Content-Encoding", "gzip")
 
 		gz := gzPool.Get().(*gzip.Writer)
-		defer gzPool.Put(gz)
+		defer func() {
+			gz.Reset(io.Discard)
+			gzPool.Put(gz)
+		}()
 
 		var b bytes.Buffer
 		gz.Reset(&b)
@@ -298,15 +366,11 @@ func (d *client) newRequest(body []byte) (request, error) {
 }
 
 // MarshalLog is the marshaling function used by the logging system to represent this Client.
-func (d *client) MarshalLog() any {
+func (*client) MarshalLog() any {
 	return struct {
-		Type     string
-		Endpoint string
-		Insecure bool
+		Type string
 	}{
-		Type:     "otlptracehttp",
-		Endpoint: d.cfg.Endpoint,
-		Insecure: d.cfg.Insecure,
+		Type: "otlptracehttp",
 	}
 }
 
@@ -340,7 +404,7 @@ func (r *request) reset(ctx context.Context) {
 
 // retryableError represents a request failure that can be retried.
 type retryableError struct {
-	throttle int64
+	throttle time.Duration
 	err      error
 }
 
@@ -349,14 +413,28 @@ type retryableError struct {
 // if it is not nil.
 func newResponseError(header http.Header, wrapped error) error {
 	var rErr retryableError
-	if s, ok := header["Retry-After"]; ok {
-		if t, err := strconv.ParseInt(s[0], 10, 64); err == nil {
-			rErr.throttle = t
-		}
+	if v := header.Get("Retry-After"); v != "" {
+		rErr.throttle = retryAfterDuration(v)
 	}
 
 	rErr.err = wrapped
 	return rErr
+}
+
+func retryAfterDuration(v string) time.Duration {
+	if t, err := strconv.ParseInt(v, 10, 64); err == nil && t >= 0 {
+		const maxRetryAfterSeconds = int64(1<<63-1) / int64(time.Second)
+		if t > maxRetryAfterSeconds {
+			return time.Duration(1<<63 - 1)
+		}
+		return time.Duration(t) * time.Second
+	}
+
+	if date, err := http.ParseTime(v); err == nil {
+		return max(time.Until(date), 0)
+	}
+
+	return 0
 }
 
 func (e retryableError) Error() string {
@@ -400,17 +478,17 @@ func evaluate(err error) (bool, time.Duration) {
 		return false, 0
 	}
 
-	return true, time.Duration(rErr.throttle)
+	return true, rErr.throttle
 }
 
-func (d *client) getScheme() string {
-	if d.cfg.Insecure {
+func (c *client) getScheme() string {
+	if c.cfg.Insecure {
 		return "http"
 	}
 	return "https"
 }
 
-func (d *client) contextWithStop(ctx context.Context) (context.Context, context.CancelFunc) {
+func (c *client) contextWithStop(ctx context.Context) (context.Context, context.CancelFunc) {
 	// Unify the parent context Done signal with the client's stop
 	// channel.
 	ctx, cancel := context.WithCancel(ctx)
@@ -419,7 +497,7 @@ func (d *client) contextWithStop(ctx context.Context) (context.Context, context.
 		case <-ctx.Done():
 			// Nothing to do, either cancelled or deadline
 			// happened.
-		case <-d.stopCh:
+		case <-c.stopCh:
 			cancel()
 		}
 	}(ctx, cancel)

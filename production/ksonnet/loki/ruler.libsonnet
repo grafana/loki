@@ -9,14 +9,6 @@ local k = import 'ksonnet-util/kausal.libsonnet';
 
   ruler_args:: $._config.commonArgs {
     target: 'ruler',
-  } + if $._config.using_boltdb_shipper then {
-    // Use PVC for caching
-    'boltdb.shipper.cache-location': '/data/boltdb-cache',
-  } else {},
-
-  _config+:: {
-    // run rulers as statefulsets when using boltdb-shipper to avoid using node disk for storing the index.
-    stateful_rulers: if self.using_boltdb_shipper && !self.use_index_gateway then true else super.stateful_rulers,
   },
 
   ruler_ports:: $.util.defaultPorts,

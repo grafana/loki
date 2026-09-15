@@ -1270,6 +1270,8 @@ func decodeResponseProtobuf(r *http.Response, req queryrangebase.Request) (query
 		return resp.GetStats().WithHeaders(headers), nil
 	case *logproto.ShardsRequest:
 		return resp.GetShardsResponse().WithHeaders(headers), nil
+	case *DetectedLabelsRequest:
+		return resp.GetDetectedLabels().WithHeaders(headers), nil
 	default:
 		switch concrete := resp.Response.(type) {
 		case *QueryResponse_Prom:
@@ -1280,6 +1282,8 @@ func decodeResponseProtobuf(r *http.Response, req queryrangebase.Request) (query
 			return concrete.TopkSketches.WithHeaders(headers), nil
 		case *QueryResponse_QuantileSketches:
 			return concrete.QuantileSketches.WithHeaders(headers), nil
+		case *QueryResponse_CountDistinctSketches:
+			return concrete.CountDistinctSketches.WithHeaders(headers), nil
 		default:
 			return nil, httpgrpc.Errorf(http.StatusInternalServerError, "unsupported response type, got (%T)", resp.Response)
 		}
@@ -1884,7 +1888,7 @@ func (p paramsRangeWrapper) Shards() []string {
 }
 
 func (p paramsRangeWrapper) CachingOptions() resultscache.CachingOptions {
-	return resultscache.CachingOptions{}
+	return p.LokiRequest.CachingOptions
 }
 
 type paramsInstantWrapper struct {

@@ -53,7 +53,7 @@ Before start patching vulnerabilities, know what are you patching. It can be one
 
 1. [Patch Go compiler](../patch-go-version/).
 
-1. Patch Grafana Loki Docker dependencies, for example: Alphine Linux base images).
+1. Patch Grafana Loki Docker dependencies, for example: Alpine Linux base images).
 
    1. Update Docker image version. [Example PR](https://github.com/grafana/loki/pull/10573).
 

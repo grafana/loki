@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/v3/pkg/loghttp"
 )
@@ -99,7 +100,7 @@ func TestDefaultOutput_Format(t *testing.T) {
 			t.Parallel()
 			writer := &bytes.Buffer{}
 			out := &DefaultOutput{writer, testData.options}
-			out.FormatAndPrintln(testData.timestamp, testData.lbls, testData.maxLabelsLen, testData.line)
+			require.NoError(t, out.FormatAndPrintln(testData.timestamp, testData.lbls, testData.maxLabelsLen, testData.line))
 
 			assert.Equal(t, testData.expected, writer.String())
 		})
@@ -132,7 +133,7 @@ func TestDefaultOutput_FormatLabelsPadding(t *testing.T) {
 	// Format the same log line with different labels
 	formattedEntries := make([]string, 0, len(labelsList))
 	for _, lbls := range labelsList {
-		out.FormatAndPrintln(timestamp, lbls, maxLabelsLen, "XXX")
+		require.NoError(t, out.FormatAndPrintln(timestamp, lbls, maxLabelsLen, "XXX"))
 		formattedEntries = append(formattedEntries, writer.String())
 		writer.Reset()
 	}

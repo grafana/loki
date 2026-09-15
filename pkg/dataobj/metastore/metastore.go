@@ -39,9 +39,16 @@ type GetIndexesRequest struct {
 	End   time.Time
 }
 
+// IndexEntry is a reference to an index object together with the time range it covers.
+type IndexEntry struct {
+	Path  string
+	Start time.Time
+	End   time.Time
+}
+
 type GetIndexesResponse struct {
 	TableOfContentsPaths []string
-	IndexesPaths         []string
+	Indexes              []IndexEntry
 }
 
 type IndexSectionsReaderRequest struct {

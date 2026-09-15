@@ -725,3 +725,28 @@ func Xchflags(t *TLS, path uintptr, flags uint32) int32 {
 	}
 	return 0
 }
+
+// setTmGmtoff stores off into tm.Ftm_gmtoff at the platform-native width.
+func setTmGmtoff(tm *time.Tm, off int) { tm.Ftm_gmtoff = int32(off) }
+
+// Xmmap — see libc_freebsd.go. freebsd/arm: the 64-bit off_t spans two argument
+// words and needs a PAD word before it for EABI 8-byte alignment (matches
+// golang.org/x/sys/unix's freebsd/arm mmap).
+func Xmmap(t *TLS, addr uintptr, length types.Size_t, prot, flags, fd int32, offset types.Off_t) uintptr {
+	if __ccgo_strace {
+		trc("t=%v addr=%v length=%v fd=%v offset=%v, (%v:)", t, addr, length, fd, offset, origin(2))
+	}
+	data, _, err := unix.Syscall9(unix.SYS_MMAP, addr, uintptr(length), uintptr(prot), uintptr(flags), uintptr(fd), 0, uintptr(offset), uintptr(offset>>32), 0)
+	if err != 0 {
+		if dmesgs {
+			dmesg("%v: %v FAIL", origin(1), err)
+		}
+		t.setErrno(err)
+		return ^uintptr(0) // (void*)-1
+	}
+
+	if dmesgs {
+		dmesg("%v: %#x", origin(1), data)
+	}
+	return data
+}

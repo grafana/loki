@@ -11,14 +11,15 @@ import (
 	"sync"
 
 	"go.opentelemetry.io/collector/pdata/internal/json"
+	"go.opentelemetry.io/collector/pdata/internal/metadata"
 	"go.opentelemetry.io/collector/pdata/internal/proto"
 )
 
 // Resource is a message representing the resource information.
 type Resource struct {
 	Attributes             []KeyValue
-	EntityRefs             []*EntityRef
 	DroppedAttributesCount uint32
+	EntityRefs             []*EntityRef
 }
 
 var (
@@ -30,7 +31,7 @@ var (
 )
 
 func NewResource() *Resource {
-	if !UseProtoPooling.IsEnabled() {
+	if !metadata.PdataUseProtoPoolingFeatureGate.IsEnabled() {
 		return &Resource{}
 	}
 	return protoPoolResource.Get().(*Resource)
@@ -41,7 +42,7 @@ func DeleteResource(orig *Resource, nullable bool) {
 		return
 	}
 
-	if !UseProtoPooling.IsEnabled() {
+	if !metadata.PdataUseProtoPoolingFeatureGate.IsEnabled() {
 		orig.Reset()
 		return
 	}
@@ -180,7 +181,7 @@ func (orig *Resource) UnmarshalJSON(iter *json.Iterator) {
 			}
 
 		default:
-			iter.Skip()
+			iter.HandleUnknownField(f)
 		}
 	}
 }

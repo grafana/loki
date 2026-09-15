@@ -41,17 +41,8 @@ corresponding bit is true are selected. Unselected rows are treated as null.
 
 ## Null-Marking Behavior
 
-When a selection vector is applied, unselected rows are marked as null in
-the output. This is implemented by ANDing the data's validity bitmap with
-the selection bitmap:
-
-	result_validity = data_validity AND selection
-
-This approach has important properties:
-  - Already-null rows remain null (null AND true = null)
-  - Unselected rows become null (valid AND false = null)
-  - Selected valid rows remain valid (valid AND true = valid)
-  - No data (array values) copying or array resizing required
+When a selection vector is applied, unselected rows are marked left undefined in
+the output. 
 
 ## Dispatch Pattern
 

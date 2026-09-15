@@ -18,6 +18,7 @@ import (
 	"fmt"
 	"hash/fnv"
 	"net/url"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -32,6 +33,20 @@ import (
 	"github.com/prometheus/prometheus/model/value"
 	"github.com/prometheus/prometheus/storage"
 )
+
+// convertClassicHistogramsToNHCBLabel is the name of the label that holds whether
+// to convert classic histograms to native histograms with custom buckets when
+// scraping a target.
+const convertClassicHistogramsToNHCBLabel = "__convert_classic_histograms_to_nhcb__"
+
+// alwaysScrapeClassicHistogramsLabel is the name of the label that holds whether
+// to always scrape a classic histogram even if it is also exposed as a native
+// histogram when scraping a target.
+const alwaysScrapeClassicHistogramsLabel = "__always_scrape_classic_histograms__"
+
+// scrapeNativeHistogramsLabel is the name of the label that holds whether to
+// scrape native histograms when scraping a target.
+const scrapeNativeHistogramsLabel = "__scrape_native_histograms__"
 
 // TargetHealth describes the health state of a target.
 type TargetHealth string
@@ -306,6 +321,23 @@ func (t *Target) intervalAndTimeout(defaultInterval, defaultDuration time.Durati
 	return time.Duration(interval), time.Duration(timeout), nil
 }
 
+// boolLabel returns the boolean value of the target label named name, falling
+// back to def when the label is unset or its value does not parse as a boolean.
+func (t *Target) boolLabel(name string, def bool) bool {
+	t.mtx.RLock()
+	defer t.mtx.RUnlock()
+
+	v := t.labels.Get(name)
+	if v == "" {
+		return def
+	}
+	b, err := strconv.ParseBool(v)
+	if err != nil {
+		return def
+	}
+	return b
+}
+
 // GetValue gets a label value from the entire label set.
 func (t *Target) GetValue(name string) string {
 	return t.labels.Get(name)
@@ -381,7 +413,7 @@ func (app *timeLimitAppender) Append(ref storage.SeriesRef, lset labels.Labels, 
 	return ref, nil
 }
 
-// bucketLimitAppender limits the number of total appended samples in a batch.
+// bucketLimitAppender limits the number of buckets in appended native histograms, reducing histogram resolution or returning errBucketLimit when the limit is exceeded.
 type bucketLimitAppender struct {
 	storage.Appender
 
@@ -454,7 +486,7 @@ func (app *maxSchemaAppender) AppendHistogram(ref storage.SeriesRef, lset labels
 	return ref, nil
 }
 
-// limitAppender limits the number of total appended samples in a batch.
+// limitAppenderV2 limits the number of total appended samples in a batch.
 type limitAppenderV2 struct {
 	storage.AppenderV2
 
@@ -488,7 +520,7 @@ func (app *timeLimitAppenderV2) Append(ref storage.SeriesRef, ls labels.Labels, 
 	return app.AppenderV2.Append(ref, ls, st, t, v, h, fh, opts)
 }
 
-// bucketLimitAppender limits the number of total appended samples in a batch.
+// bucketLimitAppenderV2 limits the number of buckets in appended native histograms, reducing histogram resolution or returning errBucketLimit when the limit is exceeded.
 type bucketLimitAppenderV2 struct {
 	storage.AppenderV2
 
@@ -573,6 +605,9 @@ func PopulateDiscoveredLabels(lb *labels.Builder, cfg *config.ScrapeConfig, tLab
 		{Name: model.ScrapeTimeoutLabel, Value: cfg.ScrapeTimeout.String()},
 		{Name: model.MetricsPathLabel, Value: cfg.MetricsPath},
 		{Name: model.SchemeLabel, Value: cfg.Scheme},
+		{Name: convertClassicHistogramsToNHCBLabel, Value: strconv.FormatBool(cfg.ConvertClassicHistogramsToNHCBEnabled())},
+		{Name: alwaysScrapeClassicHistogramsLabel, Value: strconv.FormatBool(cfg.AlwaysScrapeClassicHistogramsEnabled())},
+		{Name: scrapeNativeHistogramsLabel, Value: strconv.FormatBool(cfg.ScrapeNativeHistogramsEnabled())},
 	}
 
 	for _, l := range scrapeLabels {
@@ -629,6 +664,18 @@ func PopulateLabels(lb *labels.Builder, cfg *config.ScrapeConfig, tLabels, tgLab
 
 	if timeoutDuration > intervalDuration {
 		return labels.EmptyLabels(), fmt.Errorf("scrape timeout cannot be greater than scrape interval (%q > %q)", timeout, interval)
+	}
+
+	for _, l := range []struct{ name, desc string }{
+		{convertClassicHistogramsToNHCBLabel, "convert classic histograms to nhcb"},
+		{alwaysScrapeClassicHistogramsLabel, "always scrape classic histograms"},
+		{scrapeNativeHistogramsLabel, "scrape native histograms"},
+	} {
+		if v := lb.Get(l.name); v != "" {
+			if _, err := strconv.ParseBool(v); err != nil {
+				return labels.EmptyLabels(), fmt.Errorf("error parsing %s: %w", l.desc, err)
+			}
+		}
 	}
 
 	// Meta labels are deleted after relabelling. Other internal labels propagate to

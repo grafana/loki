@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"io"
 	"net/http/httptest"
+	"net/url"
+	"strings"
 	"testing"
 	"time"
 
@@ -61,9 +63,9 @@ func TestConfigDiffHandler(t *testing.T) {
 			},
 			expectedStatusCode: 200,
 			expectedBody: "my_slice:\n" +
-				"- value1\n" +
-				"- value2\n" +
-				"- value3\n",
+				"    - value1\n" +
+				"    - value2\n" +
+				"    - value3\n",
 		},
 		{
 			name: "string in nested struct changed",
@@ -74,7 +76,7 @@ func TestConfigDiffHandler(t *testing.T) {
 			},
 			expectedStatusCode: 200,
 			expectedBody: "my_nested_struct:\n" +
-				"  my_string: string2\n",
+				"    my_string: string2\n",
 		},
 		{
 			name: "bool in nested struct changed",
@@ -85,7 +87,7 @@ func TestConfigDiffHandler(t *testing.T) {
 			},
 			expectedStatusCode: 200,
 			expectedBody: "my_nested_struct:\n" +
-				"  my_bool: true\n",
+				"    my_bool: true\n",
 		},
 		{
 			name: "test invalid input",
@@ -94,8 +96,7 @@ func TestConfigDiffHandler(t *testing.T) {
 				return &c
 			},
 			expectedStatusCode: 500,
-			expectedBody: "yaml: unmarshal errors:\n" +
-				"  line 1: cannot unmarshal !!str `x` into map[interface {}]interface {}\n",
+			expectedBody:       "yaml: construct errors: line 1: cannot construct !!str `x` into map[string]interface {}\n",
 		},
 	} {
 		defaultCfg := newDefaultDiffConfigMock()
@@ -119,6 +120,125 @@ func TestConfigDiffHandler(t *testing.T) {
 			body, err := io.ReadAll(resp.Body)
 			assert.NoError(t, err)
 			assert.Equal(t, tc.expectedBody, string(body))
+		})
+	}
+}
+
+func TestConfigQueryHandler(t *testing.T) {
+	cfg := newDefaultDiffConfigMock()
+
+	tooManyPaths := make(url.Values)
+	for i := 0; i < maxConfigQueryPaths+1; i++ {
+		tooManyPaths.Add("q", "my_int")
+	}
+
+	for _, tc := range []struct {
+		name               string
+		query              string
+		expectedStatusCode int
+		expectedHeader     []string
+		expectedBody       string
+	}{
+		{
+			name:               "single top-level path",
+			query:              "q=my_int",
+			expectedStatusCode: 200,
+			expectedHeader:     []string{"my_int"},
+			expectedBody:       "my_int: 666\n",
+		},
+		{
+			name:               "nested path",
+			query:              "q=my_nested_struct.my_string",
+			expectedStatusCode: 200,
+			expectedHeader:     []string{"my_nested_struct.my_string"},
+			expectedBody:       "my_nested_struct:\n    my_string: string1\n",
+		},
+		{
+			name:               "multiple paths in one request",
+			query:              "q=my_int&q=my_float",
+			expectedStatusCode: 200,
+			expectedHeader:     []string{"my_int", "my_float"},
+			expectedBody:       "my_float: 6.66\nmy_int: 666\n",
+		},
+		{
+			name:               "paths sharing a parent are merged, not overwritten",
+			query:              "q=my_nested_struct.my_string&q=my_nested_struct.my_bool",
+			expectedStatusCode: 200,
+			expectedHeader:     []string{"my_nested_struct.my_string", "my_nested_struct.my_bool"},
+			expectedBody:       "my_nested_struct:\n    my_bool: false\n    my_string: string1\n",
+		},
+		{
+			name:               "malformed query string returns 400, not the unfiltered config",
+			query:              "q=my_int;unexpected",
+			expectedStatusCode: 400,
+		},
+		{
+			name:               "unknown path returns 400",
+			query:              "q=does.not.exist",
+			expectedStatusCode: 400,
+			// The header still reflects what was recognized/attempted, even though it didn't resolve.
+			expectedHeader: []string{"does.not.exist"},
+		},
+		{
+			name:               "no q param leaves the header unset and behaves as before",
+			query:              "",
+			expectedStatusCode: 200,
+		},
+		{
+			name:               "too many q parameters returns 400",
+			query:              tooManyPaths.Encode(),
+			expectedStatusCode: 400,
+		},
+		{
+			name:               "q parameter too long returns 400",
+			query:              "q=" + strings.Repeat("a", maxConfigQueryPathLength+1),
+			expectedStatusCode: 400,
+		},
+		{
+			name:               "malformed q parameter/empty",
+			query:              url.Values{"q": {""}}.Encode(),
+			expectedStatusCode: 400,
+		},
+		{
+			name:               "malformed q parameter/trailing dot",
+			query:              url.Values{"q": {"my_int."}}.Encode(),
+			expectedStatusCode: 400,
+		},
+		{
+			name:               "malformed q parameter/leading dot",
+			query:              url.Values{"q": {".my_int"}}.Encode(),
+			expectedStatusCode: 400,
+		},
+		{
+			name:               "malformed q parameter/double dot",
+			query:              url.Values{"q": {"my_int..my_float"}}.Encode(),
+			expectedStatusCode: 400,
+		},
+		{
+			name:               "malformed q parameter/control characters",
+			query:              url.Values{"q": {"my_int\r\nX-Injected: evil"}}.Encode(),
+			expectedStatusCode: 400,
+		},
+		{
+			name:               "malformed q parameter/space",
+			query:              url.Values{"q": {"my int"}}.Encode(),
+			expectedStatusCode: 400,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			req := httptest.NewRequest("GET", "http://test.com/config?"+tc.query, nil)
+			w := httptest.NewRecorder()
+
+			configHandler(cfg, cfg)(w, req)
+			resp := w.Result()
+			assert.Equal(t, tc.expectedStatusCode, resp.StatusCode)
+			assert.Equal(t, tc.expectedHeader, resp.Header.Values(ConfigQueryHandledHeader))
+
+			if tc.expectedBody != "" {
+				body, err := io.ReadAll(resp.Body)
+				assert.NoError(t, err)
+				assert.Equal(t, tc.expectedBody, string(body))
+			}
 		})
 	}
 }
@@ -304,40 +424,6 @@ func TestDrilldownConfigTenantLimitsSource(t *testing.T) {
 			assert.Equal(t, tc.expectedLabelLen, response.Limits["max_label_name_length"])
 		})
 	}
-}
-
-// mockTenantLimitsWithDefaults allows us to simulate different tenants having different limits
-// and also acts as Overrides to provide default limits
-type mockTenantLimitsWithDefaults struct {
-	tenantLimits  map[string]*validation.Limits
-	defaultLimits *validation.Limits
-}
-
-func (m *mockTenantLimitsWithDefaults) TenantLimits(userID string) *validation.Limits {
-	// Return per-tenant limits if they exist, otherwise return defaults
-	if limits, ok := m.tenantLimits[userID]; ok {
-		return limits
-	}
-	// For the test scenarios, we want to simulate that some tenants get defaults
-	// through the TenantLimits interface rather than through Overrides
-	if len(m.tenantLimits) == 0 {
-		// Case 1: No runtime config at all, return defaults
-		return m.defaultLimits
-	}
-	// Case 2: Runtime config exists but not for this tenant, return defaults
-	return m.defaultLimits
-}
-
-func (m *mockTenantLimitsWithDefaults) AllByUserID() map[string]*validation.Limits {
-	return m.tenantLimits
-}
-
-func (m *mockTenantLimitsWithDefaults) DefaultLimits() *validation.Limits {
-	return m.defaultLimits
-}
-
-func (m *mockTenantLimitsWithDefaults) AllowStructuredMetadata(_ string) bool {
-	return false
 }
 
 func TestDrilldownConfig(t *testing.T) {

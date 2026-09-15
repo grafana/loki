@@ -4,28 +4,9 @@
 package internal // import "go.opentelemetry.io/collector/pdata/internal"
 import (
 	"sync/atomic"
-
-	"go.opentelemetry.io/collector/featuregate"
 )
 
-var _ = featuregate.GlobalRegistry().MustRegister(
-	"pdata.useCustomProtoEncoding",
-	featuregate.StageStable,
-	featuregate.WithRegisterDescription("When enabled, enable custom proto encoding. This is required step to enable featuregate pdata.useProtoPooling."),
-	featuregate.WithRegisterReferenceURL("https://github.com/open-telemetry/opentelemetry-collector/issues/13631"),
-	featuregate.WithRegisterFromVersion("v0.133.0"),
-	featuregate.WithRegisterToVersion("v0.137.0"),
-)
-
-var UseProtoPooling = featuregate.GlobalRegistry().MustRegister(
-	"pdata.useProtoPooling",
-	featuregate.StageAlpha,
-	featuregate.WithRegisterDescription("When enabled, enable using local memory pools for underlying data that the pdata messages are pushed to."),
-	featuregate.WithRegisterReferenceURL("https://github.com/open-telemetry/opentelemetry-collector/issues/13631"),
-	featuregate.WithRegisterFromVersion("v0.133.0"),
-)
-
-// State defines an ownership state of pmetric.Metrics, plog.Logs or ptrace.Traces.
+// State defines an ownership state of pmetric.Metrics, plog.Logs, ptrace.Traces or pprofile.Profiles.
 type State struct {
 	refs  atomic.Int32
 	state uint32

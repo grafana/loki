@@ -11,13 +11,14 @@ import (
 	"sync"
 
 	"go.opentelemetry.io/collector/pdata/internal/json"
+	"go.opentelemetry.io/collector/pdata/internal/metadata"
 	"go.opentelemetry.io/collector/pdata/internal/proto"
 )
 
 type UDPAddr struct {
-	Zone string
 	IP   []byte
 	Port int64
+	Zone string
 }
 
 var (
@@ -29,7 +30,7 @@ var (
 )
 
 func NewUDPAddr() *UDPAddr {
-	if !UseProtoPooling.IsEnabled() {
+	if !metadata.PdataUseProtoPoolingFeatureGate.IsEnabled() {
 		return &UDPAddr{}
 	}
 	return protoPoolUDPAddr.Get().(*UDPAddr)
@@ -40,7 +41,7 @@ func DeleteUDPAddr(orig *UDPAddr, nullable bool) {
 		return
 	}
 
-	if !UseProtoPooling.IsEnabled() {
+	if !metadata.PdataUseProtoPoolingFeatureGate.IsEnabled() {
 		orig.Reset()
 		return
 	}
@@ -153,7 +154,7 @@ func (orig *UDPAddr) UnmarshalJSON(iter *json.Iterator) {
 		case "zone":
 			orig.Zone = iter.ReadString()
 		default:
-			iter.Skip()
+			iter.HandleUnknownField(f)
 		}
 	}
 }

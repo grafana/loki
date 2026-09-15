@@ -70,7 +70,9 @@ func (a *AggregatedObservation) aggregate(aggType AggregationType, val any) {
 }
 
 func (a *AggregatedObservation) Int64() (int64, bool) {
-	if a.Statistic.DataType() != DataTypeInt64 {
+	if a == nil {
+		return 0, false
+	} else if a.Statistic.DataType() != DataTypeInt64 {
 		return 0, false
 	}
 
@@ -78,7 +80,9 @@ func (a *AggregatedObservation) Int64() (int64, bool) {
 }
 
 func (a *AggregatedObservation) Float64() (float64, bool) {
-	if a.Statistic.DataType() != DataTypeFloat64 {
+	if a == nil {
+		return 0, false
+	} else if a.Statistic.DataType() != DataTypeFloat64 {
 		return 0, false
 	}
 
@@ -86,7 +90,9 @@ func (a *AggregatedObservation) Float64() (float64, bool) {
 }
 
 func (a *AggregatedObservation) Bool() bool {
-	if a.Statistic.DataType() != DataTypeBool {
+	if a == nil {
+		return false
+	} else if a.Statistic.DataType() != DataTypeBool {
 		return false
 	}
 

@@ -2,12 +2,14 @@ package bucket
 
 import (
 	"context"
+	"io"
+	"strings"
 	"testing"
 
 	"github.com/grafana/dskit/flagext"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	yaml "gopkg.in/yaml.v2"
+	yaml "go.yaml.in/yaml/v4"
 
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
 )
@@ -72,11 +74,14 @@ func TestNewClient(t *testing.T) {
 			cfg := Config{}
 			flagext.DefaultValues(&cfg)
 
-			err := yaml.Unmarshal([]byte(testData.config), &cfg)
-			require.NoError(t, err)
+			dec := yaml.NewDecoder(strings.NewReader(testData.config))
+			err := dec.Decode(&cfg)
+			if err != io.EOF {
+				require.NoError(t, err)
+			}
 
 			// Instance a new bucket client from the config
-			bucketClient, err := NewClient(context.Background(), testData.backend, cfg, "test", util_log.Logger)
+			bucketClient, err := NewClient(context.Background(), testData.backend, cfg, "test", util_log.Logger, nil)
 			require.Equal(t, testData.expectedErr, err)
 
 			if testData.expectedErr == nil {

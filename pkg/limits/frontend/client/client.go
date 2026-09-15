@@ -46,6 +46,8 @@ type Config struct {
 	PoolConfig                   PoolConfig                     `yaml:"pool_config,omitempty" doc:"description=Configures client gRPC connections pool to limits service."`
 	GRPCUnaryClientInterceptors  []grpc.UnaryClientInterceptor  `yaml:"-"`
 	GRCPStreamClientInterceptors []grpc.StreamClientInterceptor `yaml:"-"`
+	ShuffleShardEnabled          bool                           `yaml:"shuffle_shard_enabled"`
+	ShuffleShardSize             int                            `yaml:"shuffle_shard_size"`
 
 	// Internal is used to indicate that this client communicates on behalf of
 	// a machine and not a user. When Internal = true, the client won't attempt
@@ -55,6 +57,18 @@ type Config struct {
 
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	cfg.RegisterFlagsWithPrefix("ingest-limits-frontend-client", f)
+	f.BoolVar(
+		&cfg.ShuffleShardEnabled,
+		"ingest-limits-frontend-client.shuffle-shard-enabled",
+		false,
+		"[Experimental]: Enable shuffle sharding.",
+	)
+	f.IntVar(
+		&cfg.ShuffleShardSize,
+		"ingest-limits-frontend-client.shuffle-shard-size",
+		1,
+		"[Experimental]: The number of shards per tenant.",
+	)
 }
 
 func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {

@@ -13,9 +13,9 @@ import (
 )
 
 const (
-	flushReasonMaxAge      = "max_age"
 	flushReasonBuilderFull = "builder_full"
 	flushReasonIdle        = "idle"
+	flushReasonMaxAge      = "max_age"
 )
 
 // A sorter allows mocking of [logsobj.Sorter] in tests.
@@ -80,6 +80,11 @@ func newFlusher(sorter sorter, uploader uploader, logger log.Logger, r prometheu
 			NativeHistogramMinResetDuration: 0,
 		}),
 	}
+	// Initialize each counter to 0, otherwise neither the rate nor increase
+	// PromQL functions detect increases from 0 to 1.
+	f.flushes.WithLabelValues(flushReasonBuilderFull).Add(0)
+	f.flushes.WithLabelValues(flushReasonIdle).Add(0)
+	f.flushes.WithLabelValues(flushReasonMaxAge).Add(0)
 	f.flushFunc = f.flush
 	return f
 }

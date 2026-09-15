@@ -11,10 +11,37 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/internal/columnar"
 )
 
+// schemaSortVersion is the section type version for logs sections written in
+// schema sort order. Must not equal columnar.FormatVersion (currently 2).
+// The bumped version lets callers detect the sort contract from the object
+// header alone, without opening the section.
+const schemaSortVersion uint32 = 3
+
 var sectionType = dataobj.SectionType{
 	Namespace: "github.com/grafana/loki",
 	Kind:      "logs",
 	Version:   columnar.FormatVersion,
+}
+
+var schemaSortSectionType = dataobj.SectionType{
+	Namespace: "github.com/grafana/loki",
+	Kind:      "logs",
+	Version:   schemaSortVersion,
+}
+
+// StreamOrder identifies how object-local stream IDs are assigned.
+type StreamOrder int
+
+const (
+	StreamOrderUnspecified  StreamOrder = 0
+	StreamOrderStableHashV1 StreamOrder = 2
+)
+
+// SortLayout describes the physical ordering contract of a logs section.
+type SortLayout struct {
+	SchemaLabels []string
+	StreamOrder  StreamOrder
+	ShardCount   uint32
 }
 
 // CheckSection returns true if section is a logs section.
@@ -32,11 +59,12 @@ type Section struct {
 func Open(ctx context.Context, section *dataobj.Section) (*Section, error) {
 	if !CheckSection(section) {
 		return nil, fmt.Errorf("section type mismatch: got=%s want=%s", section.Type, sectionType)
-	} else if section.Type.Version != columnar.FormatVersion {
-		return nil, fmt.Errorf("unsupported section version: got=%d want=%d", section.Type.Version, columnar.FormatVersion)
+	}
+	if section.Type.Version != columnar.FormatVersion && section.Type.Version != schemaSortVersion {
+		return nil, fmt.Errorf("unsupported section version: got=%d", section.Type.Version)
 	}
 
-	dec, err := columnar.NewDecoder(section.Reader, section.Type.Version)
+	dec, err := columnar.NewDecoder(section.Reader, columnar.FormatVersion)
 	if err != nil {
 		return nil, fmt.Errorf("creating decoder: %w", err)
 	}
@@ -99,6 +127,36 @@ func (s *Section) PrimarySortOrder() (ColumnType, SortDirection, error) {
 		return ColumnTypeInvalid, SortDirectionUnspecified, err
 	}
 	return colType, dir, nil
+}
+
+// SchemaLabels returns the ordered list of label names used to define the
+// schema sort key for this section. It returns nil, nil if the section was
+// not sorted by schema (i.e., SortInfo is absent or has no SchemaLabels).
+func (s *Section) SchemaLabels() ([]string, error) {
+	si := s.inner.SortInfo()
+	if si == nil || len(si.SchemaLabels) == 0 {
+		return nil, nil
+	}
+	return si.SchemaLabels, nil
+}
+
+// SortLayout returns the physical ordering contract persisted for this section.
+func (s *Section) SortLayout() SortLayout {
+	si := s.inner.SortInfo()
+	if si == nil {
+		return SortLayout{}
+	}
+
+	var streamOrder StreamOrder
+	switch si.StreamOrder {
+	case datasetmd_v2.STREAM_ORDER_STABLE_HASH_V1:
+		streamOrder = StreamOrderStableHashV1
+	}
+	return SortLayout{
+		SchemaLabels: si.SchemaLabels,
+		StreamOrder:  streamOrder,
+		ShardCount:   si.ShardCount,
+	}
 }
 
 // A Column represents one of the columns in the logs section. Valid columns

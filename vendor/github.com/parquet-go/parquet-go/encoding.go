@@ -43,7 +43,7 @@ var (
 	// DeltaByteArray is the delta byte array parquet encoding.
 	DeltaByteArray delta.ByteArrayEncoding
 
-	// ByteStreamSplit is an encoding for floating-point data.
+	// ByteStreamSplit is an encoding for numeric and fixed-length binary data.
 	ByteStreamSplit bytestreamsplit.Encoding
 
 	// Table indexing the encodings supported by this package.

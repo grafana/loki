@@ -39,8 +39,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/atomic"
+	"go.yaml.in/yaml/v4"
 	"google.golang.org/grpc"
-	"gopkg.in/yaml.v2"
 
 	"github.com/grafana/dskit/tenant"
 
@@ -88,7 +88,6 @@ type ruleLimits struct {
 	maxRulesPerRuleGroup int
 	maxRuleGroups        int
 	alertManagerConfig   map[string]*config.AlertManagerConfig
-	enableWALReplay      bool
 }
 
 func (r ruleLimits) RulerTenantShardSize(_ string) int {
@@ -107,10 +106,6 @@ func (r ruleLimits) RulerAlertManagerConfig(tenantID string) *config.AlertManage
 	return r.alertManagerConfig[tenantID]
 }
 
-func (r ruleLimits) RulerEnableWALReplay(_ string) bool {
-	return r.enableWALReplay
-}
-
 func testQueryableFunc(q storage.Querier) storage.QueryableFunc {
 	if q != nil {
 		return func(_, _ int64) (storage.Querier, error) {
@@ -126,7 +121,8 @@ func testQueryableFunc(q storage.Querier) storage.QueryableFunc {
 func testSetup(t *testing.T, q storage.Querier) (*promql.Engine, storage.QueryableFunc, Pusher, log.Logger, RulesLimits, prometheus.Registerer) {
 	dir := t.TempDir()
 
-	tracker := promql.NewActiveQueryTracker(dir, 20, util_log.SlogFromGoKit(log.NewNopLogger()))
+	tracker, err := promql.NewActiveQueryTracker(dir, 20, util_log.SlogFromGoKit(log.NewNopLogger()))
+	require.NoError(t, err)
 
 	engine := promql.NewEngine(promql.EngineOpts{
 		MaxSamples:         1e6,
@@ -144,7 +140,7 @@ func testSetup(t *testing.T, q storage.Querier) (*promql.Engine, storage.Queryab
 	reg := prometheus.NewRegistry()
 	queryable := testQueryableFunc(q)
 
-	return engine, queryable, pusher, l, ruleLimits{maxRuleGroups: 20, maxRulesPerRuleGroup: 15, enableWALReplay: true}, reg
+	return engine, queryable, pusher, l, ruleLimits{maxRuleGroups: 20, maxRulesPerRuleGroup: 15}, reg
 }
 
 func newManager(t *testing.T, cfg Config, q storage.Querier) *DefaultMultiTenantManager {
@@ -381,7 +377,7 @@ func TestMultiTenantsNotifierSendsUserIDHeader(t *testing.T) {
 }
 
 func TestRuler_Rules(t *testing.T) {
-	cfg := defaultRulerConfig(t, newMockRuleStore(mockRules))
+	cfg := defaultRulerConfig(t, newMockRuleStore(cloneMockRules(mockRules)))
 
 	r := newTestRuler(t, cfg)
 	defer services.StopAndAwaitTerminated(context.Background(), r) //nolint:errcheck
@@ -1704,7 +1700,7 @@ type ruleGroupKey struct {
 }
 
 func TestRuler_ListAllRules(t *testing.T) {
-	cfg := defaultRulerConfig(t, newMockRuleStore(mockRules))
+	cfg := defaultRulerConfig(t, newMockRuleStore(cloneMockRules(mockRules)))
 
 	r := newTestRuler(t, cfg)
 	defer services.StopAndAwaitTerminated(context.Background(), r) //nolint:errcheck
@@ -1847,7 +1843,7 @@ func TestRecoverAlertsPostOutage(t *testing.T) {
 	}
 
 	// NEXT, set up ruler config with outage tolerance = 1hr
-	rulerCfg := defaultRulerConfig(t, newMockRuleStore(mockRules))
+	rulerCfg := defaultRulerConfig(t, newMockRuleStore(cloneMockRules(mockRules)))
 	rulerCfg.OutageTolerance, _ = time.ParseDuration("1h")
 
 	// NEXT, set up mock distributor containing sample,

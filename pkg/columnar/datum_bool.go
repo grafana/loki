@@ -1,6 +1,7 @@
 package columnar
 
 import (
+	"github.com/grafana/loki/v3/pkg/columnar/types"
 	"github.com/grafana/loki/v3/pkg/memory"
 )
 
@@ -10,8 +11,11 @@ type BoolScalar struct {
 	Null  bool // True if the scalar is null.
 }
 
-// Kind implements [Datum] and returns [KindBool].
-func (s *BoolScalar) Kind() Kind { return KindBool }
+// Kind implements [Datum] and returns [types.KindBool].
+func (s *BoolScalar) Kind() types.Kind { return types.KindBool }
+
+// Type implements [Datum] and returns a [*types.Bool].
+func (s *BoolScalar) Type() types.Type { return boolType }
 
 // IsNull implements [Scalar] and returns bs.Null.
 func (s *BoolScalar) IsNull() bool { return s.Null }
@@ -87,8 +91,11 @@ func (arr *Bool) Values() memory.Bitmap { return arr.values }
 // element at that position is valid (not null).
 func (arr *Bool) Validity() memory.Bitmap { return arr.validity }
 
-// Kind returns the kind of Array being represented.
-func (arr *Bool) Kind() Kind { return KindBool }
+// Kind implements [Datum] and returns [types.KindBool].
+func (arr *Bool) Kind() types.Kind { return types.KindBool }
+
+// Type returns a [*types.Bool].
+func (arr *Bool) Type() types.Type { return boolType }
 
 // Size returns the size in bytes of arr's buffers.
 func (arr *Bool) Size() int {

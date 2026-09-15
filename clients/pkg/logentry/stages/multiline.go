@@ -13,7 +13,7 @@ import (
 	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
 
-	"github.com/grafana/loki/v3/clients/pkg/promtail/api"
+	"github.com/grafana/loki/v3/clients/pkg/util"
 
 	"github.com/grafana/loki/v3/pkg/logproto"
 )
@@ -211,7 +211,7 @@ func (m *multilineStage) flush(out chan Entry, s *multilineState) {
 	}
 	collapsed := Entry{
 		Extracted: extracted,
-		Entry: api.Entry{
+		Entry: util.Entry{
 			Labels: s.startLineEntry.Labels.Clone(),
 			Entry: logproto.Entry{
 				Timestamp: s.startLineEntry.Timestamp,

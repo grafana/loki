@@ -96,7 +96,7 @@ func TestPartitionReader_BasicFunctionality(t *testing.T) {
 		0,
 	)
 
-	producer, err := client.NewWriterClient("test-client", kafkaCfg, 100, log.NewNopLogger(), prometheus.NewRegistry())
+	producer, err := client.NewWriterClient("test-client", kafkaCfg, log.NewNopLogger(), prometheus.NewRegistry())
 	require.NoError(t, err)
 
 	err = services.StartAndAwaitRunning(context.Background(), partitionReader)
@@ -114,21 +114,25 @@ func TestPartitionReader_BasicFunctionality(t *testing.T) {
 	require.NoError(t, producer.ProduceSync(context.Background(), records...).FirstErr())
 	require.NoError(t, producer.ProduceSync(context.Background(), records...).FirstErr())
 
-	// Wait for records to be processed
-	assert.Eventually(t, func() bool {
-		return len(consumer.recordsChan) == 2
+	// Collect the processed records. The reader may deliver the two produced
+	// records as a single batch or as separate batches depending on fetch
+	// timing, so accumulate across batches and assert on the total.
+	var received []Record
+	require.Eventually(t, func() bool {
+		for {
+			select {
+			case batch := <-consumer.recordsChan:
+				received = append(received, batch...)
+			default:
+				return len(received) == 2
+			}
+		}
 	}, 10*time.Second, 100*time.Millisecond)
 
 	// Verify the records
-	for i := 0; i < 2; i++ {
-		select {
-		case receivedRecords := <-consumer.recordsChan:
-			require.Len(t, receivedRecords, 1)
-			assert.Equal(t, "test-tenant", receivedRecords[0].TenantID)
-			assert.Equal(t, records[0].Value, receivedRecords[0].Content)
-		case <-time.After(1 * time.Second):
-			t.Fatal("Timeout waiting for records")
-		}
+	for _, rec := range received {
+		assert.Equal(t, "test-tenant", rec.TenantID)
+		assert.Equal(t, records[0].Value, rec.Content)
 	}
 
 	err = services.StopAndAwaitTerminated(context.Background(), partitionReader)
@@ -155,7 +159,7 @@ func TestPartitionReader_ProcessCatchUpAtStartup(t *testing.T) {
 		0,
 	)
 
-	producer, err := client.NewWriterClient("test-client", kafkaCfg, 100, log.NewNopLogger(), prometheus.NewRegistry())
+	producer, err := client.NewWriterClient("test-client", kafkaCfg, log.NewNopLogger(), prometheus.NewRegistry())
 	require.NoError(t, err)
 
 	stream := logproto.Stream{
@@ -213,7 +217,7 @@ func TestPartitionReader_ProcessCommits(t *testing.T) {
 		partitionID,
 	)
 
-	producer, err := client.NewWriterClient("test-client", kafkaCfg, 100, log.NewNopLogger(), prometheus.NewRegistry())
+	producer, err := client.NewWriterClient("test-client", kafkaCfg, log.NewNopLogger(), prometheus.NewRegistry())
 	require.NoError(t, err)
 
 	// Init the client: This usually happens in "start" but we want to manage our own lifecycle for this test.
@@ -275,7 +279,7 @@ func TestPartitionReader_StartsAtNextOffset(t *testing.T) {
 	}
 
 	// Produce some records
-	producer, err := client.NewWriterClient("test-client", kafkaCfg, 100, log.NewNopLogger(), prometheus.NewRegistry())
+	producer, err := client.NewWriterClient("test-client", kafkaCfg, log.NewNopLogger(), prometheus.NewRegistry())
 	require.NoError(t, err)
 	stream := logproto.Stream{
 		Labels: labels.FromStrings("foo", "bar").String(),
@@ -337,7 +341,7 @@ func TestPartitionReader_StartsUpIfNoNewRecordsAreAvailable(t *testing.T) {
 	}
 
 	// Produce some records
-	producer, err := client.NewWriterClient("test-client", kafkaCfg, 100, log.NewNopLogger(), prometheus.NewRegistry())
+	producer, err := client.NewWriterClient("test-client", kafkaCfg, log.NewNopLogger(), prometheus.NewRegistry())
 	require.NoError(t, err)
 	stream := logproto.Stream{
 		Labels: labels.FromStrings("foo", "bar").String(),
@@ -398,7 +402,7 @@ func TestKafkaReaderWithHeaderExtractor(t *testing.T) {
 	reader.SetOffsetForConsumption(int64(KafkaStartOffset))
 
 	// Produce records with ingestion policy headers
-	writerClient, err := client.NewWriterClient("test-client", kafkaCfg, 100, log.NewNopLogger(), prometheus.NewRegistry())
+	writerClient, err := client.NewWriterClient("test-client", kafkaCfg, log.NewNopLogger(), prometheus.NewRegistry())
 	require.NoError(t, err)
 
 	producer := client.NewProducer("test-producer", writerClient, 1024*1024, prometheus.NewRegistry())

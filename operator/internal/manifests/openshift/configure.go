@@ -151,17 +151,23 @@ func ConfigureGatewayServiceMonitor(sm *monitoringv1.ServiceMonitor, withTLS boo
 		tlsConfig := sm.Spec.Endpoints[0].TLSConfig
 
 		opaEndpoint = monitoringv1.Endpoint{
-			Port:          opaMetricsPortName,
-			Path:          "/metrics",
-			Scheme:        "https",
-			Authorization: authn,
-			TLSConfig:     tlsConfig,
+			Port:   opaMetricsPortName,
+			Path:   "/metrics",
+			Scheme: ptr.To(monitoringv1.Scheme("https")),
+			HTTPConfigWithProxyAndTLSFiles: monitoringv1.HTTPConfigWithProxyAndTLSFiles{
+				HTTPConfigWithTLSFiles: monitoringv1.HTTPConfigWithTLSFiles{
+					HTTPConfigWithoutTLS: monitoringv1.HTTPConfigWithoutTLS{
+						Authorization: authn,
+					},
+					TLSConfig: tlsConfig,
+				},
+			},
 		}
 	} else {
 		opaEndpoint = monitoringv1.Endpoint{
 			Port:   opaMetricsPortName,
 			Path:   "/metrics",
-			Scheme: "http",
+			Scheme: ptr.To(monitoringv1.Scheme("http")),
 		}
 	}
 

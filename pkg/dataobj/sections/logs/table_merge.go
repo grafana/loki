@@ -12,6 +12,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/dataset"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/datasetmd"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/result"
+	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
 	"github.com/grafana/loki/v3/pkg/util/loser"
 )
 
@@ -73,8 +74,8 @@ func mergeTables(buf *tableBuffer, pageSize, pageRowCount int, compressionOpts *
 			Dataset: t,
 			Columns: dsetColumns,
 
-			// The table is in memory, so don't prefetch.
-			Prefetch: false,
+			// Download pages lazily; the table is already in memory.
+			PrefetchAllOnOpen: false,
 		})
 		if err := r.Open(context.Background()); err != nil {
 			return nil, fmt.Errorf("opening dataset row reader: %w", err)
@@ -204,6 +205,50 @@ func (seq *DatasetSequence) Close() {
 	_ = seq.r.Close()
 }
 
+// CompareByStreamSchema returns a comparison function for k-way merge of log lines using
+// schema key ordering: [shard bucket ASC, schemaKey ASC, stream hash ASC, streamID ASC, timestamp DESC].
+// sortKeys map stream IDs to the corresponding schema information (0th element is unused).
+// math.MaxInt64 is treated as a sentinel (loser-tree maxValue) and always compares greater.
+func CompareByStreamSchema(sortKeys []streams.SortKey) func(result.Result[dataset.Row], result.Result[dataset.Row]) bool {
+	return func(a, b result.Result[dataset.Row]) bool {
+		aVal, aErr := a.Value()
+		bVal, bErr := b.Value()
+
+		// Put errors first so we return errors early.
+		if aErr != nil {
+			return true
+		} else if bErr != nil {
+			return false
+		}
+
+		aStreamID := aVal.Values[0].Int64()
+		bStreamID := bVal.Values[0].Int64()
+
+		// Guard against the loser-tree sentinel (MaxInt64 means sequence exhausted).
+		// The sentinel must never "win" the tournament.
+		if aStreamID == math.MaxInt64 {
+			return false
+		}
+		if bStreamID == math.MaxInt64 {
+			return true
+		}
+
+		aSort := sortKeys[aStreamID]
+		bSort := sortKeys[bStreamID]
+		// No need to compare labels for tie-breaks
+		if res := aSort.Compare(bSort); res != 0 {
+			return res < 0
+		}
+
+		if res := cmp.Compare(aStreamID, bStreamID); res != 0 {
+			return res < 0
+		}
+		aTS := aVal.Values[1].Int64()
+		bTS := bVal.Values[1].Int64()
+		return bTS < aTS
+	}
+}
+
 // CompareForSortOrder returns a comparison function for result rows for the given sort order.
 func CompareForSortOrder(sort SortOrder) func(result.Result[dataset.Row], result.Result[dataset.Row]) bool {
 	switch sort {
@@ -215,6 +260,8 @@ func CompareForSortOrder(sort SortOrder) func(result.Result[dataset.Row], result
 		return func(a, b result.Result[dataset.Row]) bool {
 			return result.Compare(a, b, compareRowsTimestamp) < 0
 		}
+	case SortSchemaASC:
+		panic("CompareForSortOrder does not support SortSchemaASC: use CompareByStreamSchema instead")
 	default:
 		panic("invalid sort order")
 	}

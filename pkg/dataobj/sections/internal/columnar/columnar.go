@@ -67,6 +67,10 @@ func (s *Section) Tenant() string { return s.tenant }
 // sections must not be mutated.
 func (s *Section) Columns() []*Column { return s.columns }
 
+// SortInfo returns the raw SortInfo from the section metadata, or nil if none
+// is present.
+func (s *Section) SortInfo() *datasetmd.SortInfo { return s.sortInfo }
+
 // PrimarySortOrder returns the primary sort order information of the section
 // as a tuple of [ColumnType] and [SortDirection].
 func (s *Section) PrimarySortOrder() (dataset.ColumnType, datasetmd.SortDirection, error) {

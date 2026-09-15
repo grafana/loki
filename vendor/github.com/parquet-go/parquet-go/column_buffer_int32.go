@@ -13,7 +13,7 @@ import (
 
 type int32ColumnBuffer struct{ int32Page }
 
-func newInt32ColumnBuffer(typ Type, columnIndex int16, numValues int32) *int32ColumnBuffer {
+func newInt32ColumnBuffer(typ Type, columnIndex uint16, numValues int32) *int32ColumnBuffer {
 	return &int32ColumnBuffer{
 		int32Page: int32Page{
 			typ:         typ,

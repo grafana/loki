@@ -37,6 +37,9 @@ type DeleteRequestsStore interface {
 	RemoveDeleteRequest(ctx context.Context, userID string, requestID string) error
 	GetDeleteRequest(ctx context.Context, userID, requestID string) (deletionproto.DeleteRequest, error)
 	GetCacheGenerationNumber(ctx context.Context, userID string) (string, error)
+	// UpdateCacheGenerationNumber bumps the cache generation number for the user
+	// so that any query result caches for the user get invalidated.
+	UpdateCacheGenerationNumber(ctx context.Context, userID string) error
 	MergeShardedRequests(ctx context.Context) error
 
 	// ToDo(Sandeep): To keep changeset smaller, below 2 methods treat a single shard as individual request. This can be refactored later in a separate PR.
@@ -196,6 +199,14 @@ func (d deleteRequestsStoreTee) GetDeleteRequest(ctx context.Context, userID, re
 
 func (d deleteRequestsStoreTee) GetCacheGenerationNumber(ctx context.Context, userID string) (string, error) {
 	return d.primaryStore.GetCacheGenerationNumber(ctx, userID)
+}
+
+func (d deleteRequestsStoreTee) UpdateCacheGenerationNumber(ctx context.Context, userID string) error {
+	if err := d.primaryStore.UpdateCacheGenerationNumber(ctx, userID); err != nil {
+		return err
+	}
+
+	return d.backupStore.UpdateCacheGenerationNumber(ctx, userID)
 }
 
 func (d deleteRequestsStoreTee) MergeShardedRequests(ctx context.Context) error {

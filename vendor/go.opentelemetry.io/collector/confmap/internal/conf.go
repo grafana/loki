@@ -12,7 +12,7 @@ import (
 	"github.com/knadh/koanf/providers/confmap"
 	"github.com/knadh/koanf/v2"
 
-	encoder "go.opentelemetry.io/collector/confmap/internal/mapstructure"
+	"go.opentelemetry.io/collector/confmap/internal/metadata"
 )
 
 const (
@@ -67,8 +67,7 @@ func (l *Conf) Marshal(rawVal any, opts ...MarshalOption) error {
 	for _, opt := range opts {
 		opt.apply(&set)
 	}
-	enc := encoder.New(EncoderConfig(rawVal, set))
-	data, err := enc.Encode(rawVal)
+	data, err := Encode(rawVal, set)
 	if err != nil {
 		return err
 	}
@@ -99,8 +98,7 @@ func (l *Conf) IsSet(key string) bool {
 // Merge merges the input given configuration into the existing config.
 // Note that the given map may be modified.
 func (l *Conf) Merge(in *Conf) error {
-	if EnableMergeAppendOption.IsEnabled() {
-		// only use MergeAppend when EnableMergeAppendOption featuregate is enabled.
+	if metadata.ConfmapEnableMergeAppendOptionFeatureGate.IsEnabled() {
 		return l.mergeAppend(in)
 	}
 	l.isNil = l.isNil && in.isNil
@@ -182,6 +180,10 @@ func (l *Conf) ToStringMap() map[string]any {
 	return sanitize(l.toStringMapWithExpand()).(map[string]any)
 }
 
+func ToStringMapRaw(conf *Conf) map[string]any {
+	return conf.toStringMapWithExpand()
+}
+
 func (l *Conf) unsanitizedGet(key string) any {
 	return l.k.Get(key)
 }
@@ -190,12 +192,6 @@ func (l *Conf) unsanitizedGet(key string) any {
 // It uses the expandedValue.Value field to replace the expandedValue references.
 func sanitize(a any) any {
 	return sanitizeExpanded(a, false)
-}
-
-// sanitizeToStringMap recursively removes expandedValue references from the given data.
-// It uses the expandedValue.Original field to replace the expandedValue references.
-func sanitizeToStr(a any) any {
-	return sanitizeExpanded(a, true)
 }
 
 func sanitizeExpanded(a any, useOriginal bool) any {

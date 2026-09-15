@@ -34,6 +34,18 @@ const (
 	AggregationTypeFirst
 )
 
+// ExportScope controls whether statistic observations are serialized when a
+// capture is marshalled.
+type ExportScope int
+
+const (
+	// ExportWire serializes statistic observations when a capture is marshalled.
+	ExportWire ExportScope = iota
+	// ExportLocal keeps statistic observations in the live capture and OTel span
+	// attributes but omits them from the marshalled capture.
+	ExportLocal
+)
+
 // StatisticKey is a comparable struct that uniquely identifies a statistic
 // by its definition (name, data type, and aggregation type).
 type StatisticKey struct {
@@ -48,6 +60,17 @@ type Statistic interface {
 	DataType() DataType
 	Aggregation() AggregationType
 	Key() StatisticKey
+	Scope() ExportScope
+}
+
+// Option configures a statistic.
+type Option func(*statistic)
+
+// Local marks a statistic as local-only.
+func Local() Option {
+	return func(s *statistic) {
+		s.scope = ExportLocal
+	}
 }
 
 // statistic holds the common definition of a statistic.
@@ -55,6 +78,7 @@ type statistic struct {
 	name        string
 	dataType    DataType
 	aggregation AggregationType
+	scope       ExportScope
 }
 
 // Name returns the name of the statistic.
@@ -70,6 +94,11 @@ func (s *statistic) DataType() DataType {
 // Aggregation returns the aggregation type for this statistic.
 func (s *statistic) Aggregation() AggregationType {
 	return s.aggregation
+}
+
+// Scope returns the export scope of the statistic.
+func (s *statistic) Scope() ExportScope {
+	return s.scope
 }
 
 // Key returns a StatisticKey that uniquely identifies this statistic.
@@ -122,35 +151,35 @@ func (s *StatisticFlag) Observe(value bool) Observation {
 }
 
 // NewStatisticInt64 creates a new int64 statistic with the given name and aggregation.
-func NewStatisticInt64(name string, aggregation AggregationType) *StatisticInt64 {
+func NewStatisticInt64(name string, aggregation AggregationType, opts ...Option) *StatisticInt64 {
 	return &StatisticInt64{
-		statistic: statistic{
-			name:        name,
-			dataType:    DataTypeInt64,
-			aggregation: aggregation,
-		},
+		statistic: newStatistic(name, DataTypeInt64, aggregation, opts),
 	}
 }
 
 // NewStatisticFloat64 creates a new float64 statistic with the given name and aggregation.
-func NewStatisticFloat64(name string, aggregation AggregationType) *StatisticFloat64 {
+func NewStatisticFloat64(name string, aggregation AggregationType, opts ...Option) *StatisticFloat64 {
 	return &StatisticFloat64{
-		statistic: statistic{
-			name:        name,
-			dataType:    DataTypeFloat64,
-			aggregation: aggregation,
-		},
+		statistic: newStatistic(name, DataTypeFloat64, aggregation, opts),
 	}
 }
 
 // NewStatisticFlag creates a new bool statistic (flag) with the given name.
 // Flags always use AggregationTypeMax (true > false).
-func NewStatisticFlag(name string) *StatisticFlag {
+func NewStatisticFlag(name string, opts ...Option) *StatisticFlag {
 	return &StatisticFlag{
-		statistic: statistic{
-			name:        name,
-			dataType:    DataTypeBool,
-			aggregation: AggregationTypeMax,
-		},
+		statistic: newStatistic(name, DataTypeBool, AggregationTypeMax, opts),
 	}
+}
+
+func newStatistic(name string, dataType DataType, aggregation AggregationType, opts []Option) statistic {
+	stat := statistic{
+		name:        name,
+		dataType:    dataType,
+		aggregation: aggregation,
+	}
+	for _, opt := range opts {
+		opt(&stat)
+	}
+	return stat
 }

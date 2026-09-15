@@ -70,7 +70,7 @@ func elfBuildID(file string) (string, error) {
 		shnum = int(byteOrder.Uint16(buf[60:]))
 	}
 
-	for i := 0; i < shnum; i++ {
+	for i := range shnum {
 		if _, err := f.ReadAt(buf[:shentsize], shoff+int64(i)*shentsize); err != nil {
 			return "", err
 		}

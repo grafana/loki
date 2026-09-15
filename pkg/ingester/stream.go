@@ -16,7 +16,6 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 
-	pushtypes "github.com/grafana/loki/pkg/push"
 	"github.com/grafana/loki/v3/pkg/chunkenc"
 	"github.com/grafana/loki/v3/pkg/distributor/writefailures"
 	"github.com/grafana/loki/v3/pkg/ingester/wal"
@@ -30,6 +29,8 @@ import (
 	"github.com/grafana/loki/v3/pkg/util/flagext"
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
 	"github.com/grafana/loki/v3/pkg/validation"
+
+	pushtypes "github.com/grafana/loki/pkg/push"
 )
 
 var ErrEntriesExist = errors.New("duplicate push - entries already exist")
@@ -76,7 +77,6 @@ type stream struct {
 	// introduced to facilitate removing the ordering constraint.
 	entryCt int64
 
-	unorderedWrites      bool
 	streamRateCalculator *StreamRateCalculator
 
 	writeFailures *writefailures.Manager
@@ -113,7 +113,6 @@ func newStream(
 	tenant string,
 	fp model.Fingerprint,
 	ls labels.Labels,
-	unorderedWrites bool,
 	streamRateCalculator *StreamRateCalculator,
 	metrics *ingesterMetrics,
 	writeFailures *writefailures.Manager,
@@ -123,7 +122,7 @@ func newStream(
 ) *stream {
 	hashNoShard, _ := ls.HashWithoutLabels(make([]byte, 0, 1024), ShardLbName)
 	return &stream{
-		limiter:              NewStreamRateLimiter(limits, tenant, 10*time.Second),
+		limiter:              NewStreamRateLimiter(limits, tenant, policy, 10*time.Second),
 		cfg:                  cfg,
 		fp:                   fp,
 		labels:               ls,
@@ -135,7 +134,6 @@ func newStream(
 		tenant:               tenant,
 		streamRateCalculator: streamRateCalculator,
 
-		unorderedWrites:      unorderedWrites,
 		writeFailures:        writeFailures,
 		chunkFormat:          chunkFormat,
 		chunkHeadBlockFormat: headBlockFmt,
@@ -144,23 +142,6 @@ func newStream(
 		retentionHours: retentionHours,
 		policy:         policy,
 	}
-}
-
-// consumeChunk manually adds a chunk to the stream that was received during
-// ingester chunk transfer.
-// Must hold chunkMtx
-// DEPRECATED: chunk transfers are no longer suggested and remain for compatibility.
-func (s *stream) consumeChunk(_ context.Context, chunk *logproto.Chunk) error {
-	c, err := chunkenc.NewByteChunk(chunk.Data, s.cfg.BlockSize, s.cfg.TargetChunkSize)
-	if err != nil {
-		return err
-	}
-
-	s.chunks = append(s.chunks, chunkDesc{
-		chunk: c,
-	})
-	s.metrics.chunksCreatedTotal.Inc()
-	return nil
 }
 
 // setChunks is used during checkpoint recovery
@@ -440,7 +421,7 @@ func (s *stream) validateEntries(ctx context.Context, entries []logproto.Entry, 
 
 		// The validity window for unordered writes is the highest timestamp present minus 1/2 * max-chunk-age.
 		cutoff := highestTs.Add(-s.cfg.MaxChunkAge / 2)
-		if !isReplay && s.unorderedWrites && !highestTs.IsZero() && cutoff.After(entries[i].Timestamp) {
+		if !isReplay && !highestTs.IsZero() && cutoff.After(entries[i].Timestamp) {
 			failedEntriesWithError = append(failedEntriesWithError, entryWithError{&entries[i], chunkenc.ErrTooFarBehind(entries[i].Timestamp, cutoff)})
 			s.writeFailures.Log(s.tenant, fmt.Errorf("%w for stream %s", failedEntriesWithError[len(failedEntriesWithError)-1].e, s.labels))
 			outOfOrderSamples++
@@ -491,10 +472,7 @@ func (s *stream) validateEntries(ctx context.Context, entries []logproto.Entry, 
 
 func (s *stream) reportMetrics(ctx context.Context, outOfOrderSamples, outOfOrderBytes, rateLimitedSamples, rateLimitedBytes int, usageTracker push.UsageTracker, format string) {
 	if outOfOrderSamples > 0 {
-		name := validation.OutOfOrder
-		if s.unorderedWrites {
-			name = validation.TooFarBehind
-		}
+		name := validation.TooFarBehind
 		validation.DiscardedSamples.WithLabelValues(name, s.tenant, s.retentionHours, s.policy, format).Add(float64(outOfOrderSamples))
 		validation.DiscardedBytes.WithLabelValues(name, s.tenant, s.retentionHours, s.policy, format).Add(float64(outOfOrderBytes))
 		if usageTracker != nil {
@@ -624,7 +602,7 @@ func (s *stream) Iterator(ctx context.Context, statsCtx *stats.Context, from, th
 }
 
 // Returns an SampleIterator.
-func (s *stream) SampleIterator(ctx context.Context, statsCtx *stats.Context, from, through time.Time, extractors ...log.StreamSampleExtractor) (iter.SampleIterator, error) {
+func (s *stream) SampleIterator(ctx context.Context, statsCtx *stats.Context, from, through time.Time, extractor log.StreamSampleExtractor) (iter.SampleIterator, error) {
 	s.chunkMtx.RLock()
 	defer s.chunkMtx.RUnlock()
 	iterators := make([]iter.SampleIterator, 0, len(s.chunks))
@@ -645,7 +623,7 @@ func (s *stream) SampleIterator(ctx context.Context, statsCtx *stats.Context, fr
 		}
 		lastMax = maxt
 
-		if itr := c.chunk.SampleIterator(ctx, from, through, extractors...); itr != nil {
+		if itr := c.chunk.SampleIterator(ctx, from, through, extractor); itr != nil {
 			iterators = append(iterators, itr)
 		}
 	}
@@ -657,7 +635,7 @@ func (s *stream) SampleIterator(ctx context.Context, statsCtx *stats.Context, fr
 	if ordered {
 		return iter.NewNonOverlappingSampleIterator(iterators), nil
 	}
-	return iter.NewSortSampleIterator(iterators), nil
+	return iter.NewTimestampFirstSortSampleIterator(iterators), nil
 }
 
 func (s *stream) addTailer(t *tailer) {
@@ -665,15 +643,6 @@ func (s *stream) addTailer(t *tailer) {
 	defer s.tailerMtx.Unlock()
 
 	s.tailers[t.getID()] = t
-}
-
-func headBlockType(chunkfmt byte, unorderedWrites bool) chunkenc.HeadBlockFmt {
-	if unorderedWrites {
-		if chunkfmt >= chunkenc.ChunkFormatV3 {
-			return chunkenc.ChunkHeadFormatFor(chunkfmt)
-		}
-	}
-	return chunkenc.OrderedHeadBlockFmt
 }
 
 func labelsEqual(a, b pushtypes.LabelsAdapter) bool {

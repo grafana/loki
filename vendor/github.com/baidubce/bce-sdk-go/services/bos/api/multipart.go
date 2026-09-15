@@ -47,6 +47,8 @@ func InitiateMultipartUpload(cli bce.Client, bucket, object, contentType string,
 	req.SetMethod(http.POST)
 	req.SetParam("uploads", "")
 	req.SetBucket(bucket)
+	req.SetObject(object)
+	req.SetIsObjectReq(true)
 	if len(contentType) == 0 {
 		contentType = RAW_CONTENT_TYPE
 	}
@@ -120,6 +122,7 @@ func InitiateMultipartUpload(cli bce.Client, bucket, object, contentType string,
 		return nil, resp.ServiceError()
 	}
 	result := &InitiateMultipartUploadResult{}
+	retrieveResponseFields(result, resp)
 	if err := resp.ParseJsonBody(result); err != nil {
 		return nil, err
 	}
@@ -150,6 +153,8 @@ func UploadPart(cli bce.Client, bucket, object, uploadId string, partNumber int,
 	req.SetParam("uploadId", uploadId)
 	req.SetParam("partNumber", fmt.Sprintf("%d", partNumber))
 	req.SetBucket(bucket)
+	req.SetObject(object)
+	req.SetIsObjectReq(true)
 	if content == nil {
 		return "", bce.NewBceClientError("upload part content should not be empty")
 	}
@@ -227,6 +232,8 @@ func UploadPartFromBytes(cli bce.Client, bucket, object, uploadId string, partNu
 	req.SetParam("uploadId", uploadId)
 	req.SetParam("partNumber", fmt.Sprintf("%d", partNumber))
 	req.SetBucket(bucket)
+	req.SetObject(object)
+	req.SetIsObjectReq(true)
 	if content == nil {
 		return "", bce.NewBceClientError("upload part content should not be empty")
 	}
@@ -312,6 +319,8 @@ func UploadPartCopy(cli bce.Client, bucket, object, source, uploadId string, par
 	req.SetParam("uploadId", uploadId)
 	req.SetParam("partNumber", fmt.Sprintf("%d", partNumber))
 	req.SetBucket(bucket)
+	req.SetObject(object)
+	req.SetIsObjectReq(true)
 	if len(source) == 0 {
 		return nil, bce.NewBceClientError("upload part copy source should not be empty")
 	}
@@ -353,6 +362,7 @@ func UploadPartCopy(cli bce.Client, bucket, object, source, uploadId string, par
 		return nil, resp.ServiceError()
 	}
 	result := &CopyObjectResult{}
+	retrieveResponseFields(result, resp)
 	if err := resp.ParseJsonBody(result); err != nil {
 		return nil, err
 	}
@@ -385,6 +395,8 @@ func CompleteMultipartUpload(cli bce.Client, bucket, object, uploadId string, bo
 	req.SetMethod(http.POST)
 	req.SetParam("uploadId", uploadId)
 	req.SetBucket(bucket)
+	req.SetObject(object)
+	req.SetIsObjectReq(true)
 	if body == nil {
 		return nil, bce.NewBceClientError("upload body info should not be emtpy")
 	}
@@ -427,6 +439,7 @@ func CompleteMultipartUpload(cli bce.Client, bucket, object, uploadId string, bo
 		return nil, resp.ServiceError()
 	}
 	result := &CompleteMultipartUploadResult{}
+	retrieveResponseFields(result, resp)
 	if err := resp.ParseJsonBody(result); err != nil {
 		return nil, err
 	}
@@ -462,6 +475,8 @@ func AbortMultipartUpload(cli bce.Client, bucket, object, uploadId string, ctx *
 	req.SetMethod(http.DELETE)
 	req.SetParam("uploadId", uploadId)
 	req.SetBucket(bucket)
+	req.SetObject(object)
+	req.SetIsObjectReq(true)
 	if ctx == nil {
 		ctx = newDefaultBosContext()
 	}
@@ -501,6 +516,8 @@ func ListParts(cli bce.Client, bucket, object, uploadId string, args *ListPartsA
 	req.SetMethod(http.GET)
 	req.SetParam("uploadId", uploadId)
 	req.SetBucket(bucket)
+	req.SetObject(object)
+	req.SetIsObjectReq(true)
 	if ctx == nil {
 		ctx = newDefaultBosContext()
 	}
@@ -526,6 +543,7 @@ func ListParts(cli bce.Client, bucket, object, uploadId string, args *ListPartsA
 		return nil, resp.ServiceError()
 	}
 	result := &ListPartsResult{}
+	retrieveResponseFields(result, resp)
 	if err := resp.ParseJsonBody(result); err != nil {
 		return nil, err
 	}
@@ -580,6 +598,7 @@ func ListMultipartUploads(cli bce.Client, bucket string, args *ListMultipartUplo
 		return nil, resp.ServiceError()
 	}
 	result := &ListMultipartUploadsResult{}
+	retrieveResponseFields(result, resp)
 	if err := resp.ParseJsonBody(result); err != nil {
 		return nil, err
 	}

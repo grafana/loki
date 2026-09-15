@@ -1,7 +1,6 @@
 package consumer
 
 import (
-	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -9,110 +8,43 @@ import (
 	"sync"
 	"time"
 
-	"github.com/thanos-io/objstore"
+	"github.com/go-kit/log"
 	"github.com/twmb/franz-go/pkg/kgo"
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/consumer/logsobj"
-	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore/multitenancy"
 	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/scratch"
 )
-
-// A mockBucket mocks an [objstore.Bucket].
-type mockBucket struct {
-	uploads map[string][]byte
-	mu      sync.Mutex
-}
-
-func newMockBucket() *mockBucket {
-	return &mockBucket{
-		uploads: make(map[string][]byte),
-	}
-}
-
-func (m *mockBucket) Close() error                             { return nil }
-func (m *mockBucket) Delete(_ context.Context, _ string) error { return nil }
-func (m *mockBucket) Exists(_ context.Context, name string) (bool, error) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	_, exists := m.uploads[name]
-	return exists, nil
-}
-
-func (m *mockBucket) Get(_ context.Context, name string) (io.ReadCloser, error) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	data, exists := m.uploads[name]
-	if !exists {
-		return nil, errors.New("object not found")
-	}
-	return io.NopCloser(bytes.NewReader(data)), nil
-}
-
-func (m *mockBucket) GetRange(_ context.Context, _ string, _, _ int64) (io.ReadCloser, error) {
-	return nil, nil
-}
-
-func (m *mockBucket) Upload(_ context.Context, name string, r io.Reader) error {
-	data, err := io.ReadAll(r)
-	if err != nil {
-		return err
-	}
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	m.uploads[name] = data
-	return nil
-}
-
-func (m *mockBucket) Iter(_ context.Context, _ string, _ func(string) error, _ ...objstore.IterOption) error {
-	return nil
-}
-func (m *mockBucket) Name() string { return "mock" }
-func (m *mockBucket) Attributes(_ context.Context, _ string) (objstore.ObjectAttributes, error) {
-	return objstore.ObjectAttributes{}, nil
-}
-
-func (m *mockBucket) GetAndReplace(_ context.Context, name string, _ func(io.ReadCloser) (io.ReadCloser, error)) error {
-	return m.Upload(context.Background(), name, io.NopCloser(bytes.NewReader([]byte{})))
-}
-
-func (m *mockBucket) IsAccessDeniedErr(_ error) bool {
-	return false
-}
-
-func (m *mockBucket) IsObjNotFoundErr(err error) bool {
-	return err != nil && err.Error() == "object not found"
-}
-
-func (m *mockBucket) IterWithAttributes(_ context.Context, _ string, _ func(objstore.IterObjectAttributes) error, _ ...objstore.IterOption) error {
-	return nil
-}
-
-func (m *mockBucket) Provider() objstore.ObjProvider {
-	return objstore.ObjProvider("MOCK")
-}
-
-func (m *mockBucket) SupportedIterOptions() []objstore.IterOptionType {
-	return nil
-}
 
 // mockBuilder mocks a [logsobj.Builder].
 type mockBuilder struct {
 	builder *logsobj.Builder
 	nextErr error
+	// full, when true, forces IsFull to report the builder as full regardless
+	// of the underlying builder's estimated size.
+	full bool
 }
 
-func (m *mockBuilder) Append(tenant string, stream logproto.Stream) error {
+func (m *mockBuilder) Append(tenant string, stream logproto.Stream, recTime time.Time) error {
 	if err := m.nextErr; err != nil {
 		m.nextErr = nil
 		return err
 	}
-	return m.builder.Append(tenant, stream)
+	return m.builder.Append(tenant, stream, recTime)
+}
+
+func (m *mockBuilder) GetEarliestRecordTime() time.Time {
+	return m.builder.GetEarliestRecordTime()
 }
 
 func (m *mockBuilder) GetEstimatedSize() int {
 	return m.builder.GetEstimatedSize()
+}
+
+func (m *mockBuilder) IsFull() bool {
+	return m.full || m.builder.IsFull()
 }
 
 func (m *mockBuilder) CopyAndSort(ctx context.Context, obj *dataobj.Object) (*dataobj.Object, io.Closer, error) {
@@ -152,11 +84,68 @@ func (m *mockFlusher) Flush(_ context.Context, _ builder, _ string) (string, err
 
 type mockFlushCommitter struct {
 	flushes int
+	// lastBuilderCount records the number of builders passed to the most
+	// recent Flush call, letting tests assert how a partition was split
+	// across windows.
+	lastBuilderCount int
+	lastReason       string
+	lastOffset       int64
 }
 
-func (m *mockFlushCommitter) Flush(_ context.Context, _ builder, _ string, _ int64, _ time.Time) error {
+func (m *mockFlushCommitter) Flush(_ context.Context, builders []builder, reason string, offset int64) error {
 	m.flushes++
+	m.lastBuilderCount = len(builders)
+	m.lastReason = reason
+	m.lastOffset = offset
 	return nil
+}
+
+// testBuilderFactory creates real [logsobj.Builder] instances backed by an
+// in-memory scratch store. All builders share a single, unregistered
+// [logsobj.BuilderMetrics] instance, mirroring how the production factory
+// shares metrics across the builders it creates.
+type testBuilderFactory struct {
+	metrics *logsobj.BuilderMetrics
+	// created counts how many builders have been handed out. Tests use it to
+	// assert that builders are reused per window rather than recreated.
+	created int
+	// failAt, when non-negative, makes NewBuilder fail once created reaches
+	// this value. A value of -1 (the default) never fails.
+	failAt int
+}
+
+func newTestBuilderFactory() *testBuilderFactory {
+	return &testBuilderFactory{metrics: logsobj.NewBuilderMetrics(), failAt: -1}
+}
+
+func (f *testBuilderFactory) NewBuilder() (*logsobj.Builder, error) {
+	if f.failAt >= 0 && f.created >= f.failAt {
+		return nil, errors.New("boom")
+	}
+	f.created++
+	return logsobj.NewBuilder(testBuilderCfg, scratch.NewMemory(), f.metrics, log.NewNopLogger(), nil)
+}
+
+// mockMultiBuilder wraps the production [TOCAlignedMultiBuilder] so processor
+// tests can drive real builder behaviour while still being able to force the
+// group to report itself as full.
+type mockMultiBuilder struct {
+	*TOCAlignedMultiBuilder
+	forceFull bool
+}
+
+var _ multiBuilder = (*mockMultiBuilder)(nil)
+
+func (m *mockMultiBuilder) IsFull() bool {
+	return m.forceFull || m.TOCAlignedMultiBuilder.IsFull()
+}
+
+// newTestMultiBuilder returns a multiBuilder backed by real per-window
+// builders, suitable for driving the processor in tests.
+func newTestMultiBuilder() *mockMultiBuilder {
+	return &mockMultiBuilder{
+		TOCAlignedMultiBuilder: NewTOCAlignedMultiBuilder(newTestBuilderFactory(), int(testBuilderCfg.TargetObjectSize)),
+	}
 }
 
 // mockKafka mocks a [kgo.Client]. The zero value is usable.
@@ -230,28 +219,4 @@ func (m *mockUploader) Upload(_ context.Context, obj *dataobj.Object) (string, e
 	defer m.mtx.Unlock()
 	m.uploaded = append(m.uploaded, obj)
 	return fmt.Sprintf("object_%03d", len(m.uploaded)), nil
-}
-
-type recordedTocEntry struct {
-	DataObjectPath string
-	MinTimestamp   time.Time
-	MaxTimestamp   time.Time
-}
-
-// A recordingTocWriter wraps a [metastore.TableOfContentsWriter] and records
-// all entries written to it.
-type recordingTocWriter struct {
-	entries []recordedTocEntry
-	*metastore.TableOfContentsWriter
-}
-
-func (m *recordingTocWriter) WriteEntry(ctx context.Context, dataobjPath string, timeRanges []multitenancy.TimeRange) error {
-	for _, timeRange := range timeRanges {
-		m.entries = append(m.entries, recordedTocEntry{
-			DataObjectPath: dataobjPath,
-			MinTimestamp:   timeRange.MinTime,
-			MaxTimestamp:   timeRange.MaxTime,
-		})
-	}
-	return m.TableOfContentsWriter.WriteEntry(ctx, dataobjPath, timeRanges)
 }

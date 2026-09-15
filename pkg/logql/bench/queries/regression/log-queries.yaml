@@ -1,0 +1,118 @@
+# yaml-language-server: $schema=../schema.json
+---
+queries:
+  - description: line_format renders empty template output as empty line, not original raw line
+    query: ${SELECTOR} | logfmt | line_format `{{.error}}`
+    kind: log
+    time_range:
+      length: 24h
+    directions: backward # forward log queries unsupported by v2 engine
+    tags:
+      - logfmt
+      - line_format
+      - absent-field
+      - empty-rendering
+    notes: >
+      Regression for the v2 mergeColumns "empty-as-missing" bug.
+      The `error` logfmt field is only emitted for error-level lines, so its
+      parsed column is null for every non-error row. After PR #22342,
+      valueStrOrEmpty renders null entries as "" at the template-input
+      boundary, so `{{.error}}` renders to "" on non-error rows. Before the
+      mergeColumns fix, the projection layer treated that "" as "missing,
+      keep old" and silently returned the original raw log line for those
+      rows — making line_format appear to have no effect. v1 always
+      overwrites the line with the template output, including an empty
+      result. The returned lines and per-stream counts must match v1 across
+      both error and non-error rows.
+    requires:
+      log_format: logfmt
+      detected_fields:
+        - error
+  - description: filter `field=""` on absent column must match (not silently prune the section)
+    query: ${SELECTOR} | logfmt | field_that_does_not_exist=""
+    kind: log
+    time_range:
+      length: 24h
+    directions: backward # forward log queries unsupported by v2 engine
+    tags:
+      - logfmt
+      - label-filter
+      - absent-field
+      - empty-string
+      - section-prune
+    notes: >
+      Regression for the v2 scan-layer predicate-pushdown bug. LogQL says an
+      absent label compares as "" — the post-scan filter layer already treats
+      null column entries as "". But section-level pruning happens first:
+      `dataobjscan_predicate.go` returned FalsePredicate whenever a referenced
+      column was missing from a section AND the literal was non-null, which
+      silently dropped the section even for `field=""`. v1 returns all rows
+      (the absent label matches the empty literal). v2 must do the same.
+      Catches any regression to the section-prune layer.
+    requires:
+      log_format: logfmt
+  - description: label_format with a literal empty value must emit the new label as parsed (not silently drop it)
+    query: ${SELECTOR} | label_format new_field=""
+    kind: log
+    time_range:
+      length: 24h
+    directions: backward # forward log queries unsupported by v2 engine
+    tags:
+      - label_format
+      - empty-value
+      - absent-field
+    notes: >
+      Regression for the v2 label_format empty-value drop. v1's
+      LabelsFormatter calls lbs.Set(ParsedLabel, "new_field", ""), so the
+      label survives in the parsed category and the streamsResultBuilder's
+      parsedEmptyKeys workaround surfaces it in the response. Pre-fix v2
+      classified labelfmt outputs as the Label category, and the result
+      builder explicitly drops empty Label-category values to match
+      stream-label-empty-drop semantics — silently removing the
+      labelfmt-produced empty. v1 returns rows with new_field="" present in
+      the parsed labels.
+  - description: label_format rename drops the source label and the target carries its value
+    query: ${SELECTOR} | label_format renamed_label=service_name
+    kind: log
+    time_range:
+      length: 24h
+    directions: backward # forward log queries unsupported by v2 engine
+    tags:
+      - label_format
+      - rename
+    requires:
+      labels:
+        - service_name
+    notes: >
+      Baseline guard for v1↔v2 parity on the labelfmt rename semantics:
+      the source label is removed from the label set and the target
+      carries the source's value as a parsed label. Important because the
+      fix also reclassifies labelfmt outputs from Label to Parsed
+      category and extends the input-deletion logic to remove targets in
+      addition to rename sources — a regression here would land at the
+      result-builder boundary, not at the executor unit test.
+  - description: non-strict logfmt on an unparseable line must not add __error__ (matches v1 silent-swallow)
+    query: ${SELECTOR} | logfmt
+    kind: log
+    time_range:
+      length: 24h
+    directions: backward # forward log queries unsupported by v2 engine
+    tags:
+      - logfmt
+      - parser-error
+      - non-strict
+      - stream-identity
+    requires:
+      log_format: unstructured
+    notes: >
+      Regression for the v1↔v2 stream_missing / stream_entry_count_mismatch
+      goldfish reports. v1's [log.LogfmtParser] only sets [__error__] when
+      strict=true (see `l.strict && l.dec.Err() != nil` guard in
+      pkg/logql/log/parser.go); default `| logfmt` is non-strict and
+      silently swallows parse errors. v2's executor used to unconditionally
+      surface parse errors via [__error__] / [__error_details__], which
+      changed stream identity for the same underlying rows and produced
+      per-stream diffs vs v1 whenever the log line wasn't logfmt-formatted
+      (plain-text lines, embedded JSON bodies with `"`, etc). Stream label
+      sets and per-stream entry counts must match v1 across parseable and
+      unparseable lines.

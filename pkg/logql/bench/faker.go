@@ -187,13 +187,6 @@ var (
 		"file not found",
 		"invalid request",
 	}
-	nginxErrors = []string{
-		"access forbidden by rule",
-		"client closed connection while reading request headers",
-		"upstream timed out (110: Connection timed out)",
-		"file not found",
-		"client sent invalid request",
-	}
 	kafkaTopics = []string{
 		"users",
 		"orders",

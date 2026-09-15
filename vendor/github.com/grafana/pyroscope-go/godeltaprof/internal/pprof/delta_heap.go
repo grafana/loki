@@ -23,36 +23,30 @@ type DeltaHeapProfiler struct {
 // WriteHeapProto writes the current heap profile in protobuf format to w.
 //
 //nolint:gocognit
-func (d *DeltaHeapProfiler) WriteHeapProto(b ProfileBuilder, p []runtime.MemProfileRecord, rate int64) error {
+func (d *DeltaHeapProfiler) WriteHeapProto(b ProfileBuilder, p []MemProfileRecord, rate int64) error {
 	values := []int64{0, 0, 0, 0}
 	var locs []uint64
 	// deduplicate: accumulate allocObjects and inuseObjects in entry.acc for equal stacks
 	for i := range p {
 		r := &p[i]
-		if r.AllocBytes == 0 && r.AllocObjects == 0 && r.FreeObjects == 0 && r.FreeBytes == 0 {
+		if memRecordIsFresh(r) {
 			// it is a fresh bucket and it will be published after next 1-2 gc cycles
 			continue
 		}
-		var blockSize int64
-		if r.AllocObjects > 0 {
-			blockSize = r.AllocBytes / r.AllocObjects
-		}
-		entry := d.m.Lookup(r.Stack(), uintptr(blockSize))
+		blockSize := memRecordBlockSize(r)
+		entry := d.m.Lookup(memRecordStack(r), uintptr(blockSize))
 		entry.acc.allocObjects += r.AllocObjects
 		entry.acc.inuseObjects += r.InUseObjects()
 	}
 	// do the delta using the accumulated values and previous values
 	for i := range p {
 		r := &p[i]
-		if r.AllocBytes == 0 && r.AllocObjects == 0 && r.FreeObjects == 0 && r.FreeBytes == 0 {
+		if memRecordIsFresh(r) {
 			// it is a fresh bucket and it will be published after next 1-2 gc cycles
 			continue
 		}
-		var blockSize int64
-		if r.AllocObjects > 0 {
-			blockSize = r.AllocBytes / r.AllocObjects
-		}
-		entry := d.m.Lookup(r.Stack(), uintptr(blockSize))
+		blockSize := memRecordBlockSize(r)
+		entry := d.m.Lookup(memRecordStack(r), uintptr(blockSize))
 		if entry.acc == (heapAccValue{}) {
 			continue
 		}
@@ -80,8 +74,8 @@ func (d *DeltaHeapProfiler) WriteHeapProto(b ProfileBuilder, p []runtime.MemProf
 		}
 
 		hideRuntime := true
-		for tries := 0; tries < 2; tries++ {
-			stk := r.Stack()
+		for range 2 {
+			stk := memRecordStack(r)
 			// For heap profiles, all stack
 			// addresses are return PCs, which is
 			// what appendLocsForStack expects.

@@ -134,9 +134,9 @@ func (rep *Reporter) initLeader(ctx context.Context) *ClusterSeed {
 		{
 			// create a new cluster seed
 			seed := ClusterSeed{
-				UID:               uuid.NewString(),
-				PrometheusVersion: build.GetVersion(),
-				CreatedAt:         time.Now(),
+				UID:         uuid.NewString(),
+				VersionInfo: build.GetVersion(),
+				CreatedAt:   time.Now(),
 			}
 			if err := kvClient.CAS(ctx, seedKey, func(in interface{}) (out interface{}, retry bool, err error) {
 				// The key is already set, so we don't need to do anything

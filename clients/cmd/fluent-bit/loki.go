@@ -17,8 +17,7 @@ import (
 	jsoniter "github.com/json-iterator/go"
 	"github.com/prometheus/common/model"
 
-	"github.com/grafana/loki/v3/clients/pkg/promtail/api"
-	"github.com/grafana/loki/v3/clients/pkg/promtail/client"
+	"github.com/grafana/loki/v3/clients/pkg/util"
 
 	"github.com/grafana/loki/v3/pkg/logproto"
 )
@@ -30,11 +29,11 @@ var (
 
 type loki struct {
 	cfg    *config
-	client client.Client
+	client util.Client
 	logger log.Logger
 }
 
-func newPlugin(cfg *config, logger log.Logger, metrics *client.Metrics) (*loki, error) {
+func newPlugin(cfg *config, logger log.Logger, metrics *util.Metrics) (*loki, error) {
 	client, err := NewClient(cfg, logger, metrics)
 	if err != nil {
 		return nil, err
@@ -67,7 +66,7 @@ func (l *loki) sendRecord(r map[interface{}]interface{}, ts time.Time) error {
 	}
 	if l.cfg.dropSingleKey && len(records) == 1 {
 		for _, v := range records {
-			l.client.Chan() <- api.Entry{
+			l.client.Chan() <- util.Entry{
 				Labels: lbs,
 				Entry: logproto.Entry{
 					Timestamp: ts,
@@ -81,7 +80,7 @@ func (l *loki) sendRecord(r map[interface{}]interface{}, ts time.Time) error {
 	if err != nil {
 		return fmt.Errorf("error creating line: %v", err)
 	}
-	l.client.Chan() <- api.Entry{
+	l.client.Chan() <- util.Entry{
 		Labels: lbs,
 		Entry: logproto.Entry{
 			Timestamp: ts,

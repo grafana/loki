@@ -3,6 +3,7 @@ package columnar
 import (
 	"fmt"
 
+	"github.com/grafana/loki/v3/pkg/columnar/types"
 	"github.com/grafana/loki/v3/pkg/memory"
 )
 
@@ -22,16 +23,22 @@ func Concat(alloc *memory.Allocator, in []Array) (Array, error) {
 	}
 
 	switch kind {
-	case KindNull:
+	case types.KindNull:
 		return concatNull(alloc, in)
-	case KindBool:
+	case types.KindBool:
 		return concatBool(alloc, in)
-	case KindInt64:
+	case types.KindInt32:
+		return concatNumber[int32](alloc, in)
+	case types.KindInt64:
 		return concatNumber[int64](alloc, in)
-	case KindUint64:
+	case types.KindUint32:
+		return concatNumber[uint32](alloc, in)
+	case types.KindUint64:
 		return concatNumber[uint64](alloc, in)
-	case KindUTF8:
+	case types.KindUTF8:
 		return concatUTF8(alloc, in)
+	case types.KindStruct:
+		return concatStruct(alloc, in)
 	default:
 		return nil, fmt.Errorf("unsupported array kind %s", kind)
 	}
@@ -112,6 +119,55 @@ func concatNumber[T Numeric](alloc *memory.Allocator, in []Array) (Array, error)
 
 	cleanValidity(&validity)
 	return NewNumber[T](values.Data(), validity), nil
+}
+
+func concatStruct(alloc *memory.Allocator, in []Array) (Array, error) {
+	first := in[0].(*Struct)
+	numFields := first.NumFields()
+
+	for _, arr := range in[1:] {
+		s := arr.(*Struct)
+		if s.NumFields() != numFields {
+			return nil, fmt.Errorf("concat struct: field count mismatch: %d != %d", s.NumFields(), numFields)
+		}
+		for i := range numFields {
+			if want, got := first.Schema().Column(i).Name, s.Schema().Column(i).Name; want != got {
+				return nil, fmt.Errorf("concat struct: field %d name mismatch: %q != %q", i, want, got)
+			}
+		}
+	}
+	totalLen := getTotalLen(in)
+
+	var (
+		// fields is the final concatenated array for each field.
+		fields = make([]Array, 0, numFields)
+
+		// buf is a temporary buffer used to hold individual field arrays for
+		// concatenation.
+		buf = make([]Array, 0, len(in))
+	)
+
+	for i := range numFields {
+		buf = buf[:0]
+		for _, arr := range in {
+			buf = append(buf, arr.(*Struct).Field(i))
+		}
+
+		res, err := Concat(alloc, buf)
+		if err != nil {
+			return nil, fmt.Errorf("concat struct field %d: %w", i, err)
+		}
+		fields = append(fields, res)
+	}
+
+	validity := memory.NewBitmap(alloc, totalLen)
+	for _, arr := range in {
+		s := arr.(*Struct)
+		appendValidityBitmap(&validity, s)
+	}
+	cleanValidity(&validity)
+
+	return NewStruct(first.Schema(), fields, totalLen, validity), nil
 }
 
 // concatUTF8 concatenates UTF8 arrays, normalizing offsets to be zero-based.

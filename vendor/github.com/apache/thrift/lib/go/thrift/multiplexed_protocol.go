@@ -22,6 +22,7 @@ package thrift
 import (
 	"context"
 	"fmt"
+	"maps"
 	"strings"
 )
 
@@ -136,9 +137,7 @@ func (t *TMultiplexedProcessor) ProcessorMap() map[string]TProcessorFunction {
 		}
 	}
 	if t.DefaultProcessor != nil {
-		for method, processorFunc := range t.DefaultProcessor.ProcessorMap() {
-			processorFuncMap[method] = processorFunc
-		}
+		maps.Copy(processorFuncMap, t.DefaultProcessor.ProcessorMap())
 	}
 	return processorFuncMap
 }
@@ -220,7 +219,7 @@ func (t *TMultiplexedProcessor) Process(ctx context.Context, in, out TProtocol) 
 	return actualProcessor.Process(ctx, smb, out)
 }
 
-//Protocol that use stored message for ReadMessageBegin
+// Protocol that use stored message for ReadMessageBegin
 type storedMessageProtocol struct {
 	TProtocol
 	name   string

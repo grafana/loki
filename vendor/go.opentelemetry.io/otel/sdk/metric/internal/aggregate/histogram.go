@@ -1,7 +1,7 @@
 // Copyright The OpenTelemetry Authors
 // SPDX-License-Identifier: Apache-2.0
 
-package aggregate // import "go.opentelemetry.io/otel/sdk/metric/internal/aggregate"
+package aggregate
 
 import (
 	"context"
@@ -11,13 +11,15 @@ import (
 	"time"
 
 	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/sdk/internal/x"
 	"go.opentelemetry.io/otel/sdk/metric/metricdata"
 )
 
 // histogramPoint is a single histogram point, used in delta aggregations.
 type histogramPoint[N int64 | float64] struct {
-	attrs attribute.Set
-	res   FilteredExemplarReservoir[N]
+	attrs         attribute.Set
+	res           FilteredExemplarReservoir[N]
+	dropExemplars bool
 	histogramPointCounters[N]
 }
 
@@ -27,8 +29,10 @@ type hotColdHistogramPoint[N int64 | float64] struct {
 	hcwg         hotColdWaitGroup
 	hotColdPoint [2]histogramPointCounters[N]
 
-	attrs attribute.Set
-	res   FilteredExemplarReservoir[N]
+	attrs         attribute.Set
+	res           FilteredExemplarReservoir[N]
+	startTime     time.Time
+	dropExemplars bool
 }
 
 // histogramPointCounters contains only the atomic counter data, and is used by
@@ -40,8 +44,6 @@ type histogramPointCounters[N int64 | float64] struct {
 }
 
 func (b *histogramPointCounters[N]) loadCountsInto(into *[]uint64) uint64 {
-	// TODO (#3047): Making copies for counts incurs a large
-	// memory allocation footprint. Alternatives should be explored.
 	counts := reset(*into, len(b.counts), len(b.counts))
 	count := uint64(0)
 	for i := range b.counts {
@@ -93,7 +95,7 @@ func (b *histogramPointCounters[N]) mergeIntoAndReset( // nolint:revive // Inten
 // unused attribute sets do not report in subsequent collect() calls.
 type deltaHistogram[N int64 | float64] struct {
 	hcwg          hotColdWaitGroup
-	hotColdValMap [2]limitedSyncMap
+	hotColdValMap [2]limitedSyncMap[*histogramPoint[N]]
 
 	start    time.Time
 	noMinMax bool
@@ -105,15 +107,17 @@ type deltaHistogram[N int64 | float64] struct {
 func (s *deltaHistogram[N]) measure(
 	ctx context.Context,
 	value N,
-	fltrAttr attribute.Set,
-	droppedAttr []attribute.KeyValue,
+	lazy lazyFilteredAttributes,
 ) {
 	hotIdx := s.hcwg.start()
 	defer s.hcwg.done(hotIdx)
-	h := s.hotColdValMap[hotIdx].LoadOrStoreAttr(fltrAttr, func(attr attribute.Set) any {
+	h := s.hotColdValMap[hotIdx].LoadOrStoreAttr(lazy, func(attr attribute.Set) *histogramPoint[N] {
+		r := s.newRes(attr)
+		_, isDrop := r.(*dropRes[N])
 		hPt := &histogramPoint[N]{
-			res:   s.newRes(attr),
-			attrs: attr,
+			res:           r,
+			attrs:         attr,
+			dropExemplars: isDrop,
 			// N+1 buckets. For example:
 			//
 			//   bounds = [0, 5, 10]
@@ -124,7 +128,7 @@ func (s *deltaHistogram[N]) measure(
 			histogramPointCounters: histogramPointCounters[N]{counts: make([]atomic.Uint64, len(s.bounds)+1)},
 		}
 		return hPt
-	}).(*histogramPoint[N])
+	})
 
 	// This search will return an index in the range [0, len(s.bounds)], where
 	// it will return len(s.bounds) if value is greater than the last element
@@ -139,7 +143,9 @@ func (s *deltaHistogram[N]) measure(
 	if !s.noSum {
 		h.total.add(value)
 	}
-	h.res.Offer(ctx, value, droppedAttr)
+	if !h.dropExemplars {
+		h.res.Offer(ctx, value, lazy)
+	}
 }
 
 // newDeltaHistogram returns a histogram that is reset each time it is
@@ -162,7 +168,7 @@ func newDeltaHistogram[N int64 | float64](
 		noSum:    noSum,
 		bounds:   b,
 		newRes:   r,
-		hotColdValMap: [2]limitedSyncMap{
+		hotColdValMap: [2]limitedSyncMap[*histogramPoint[N]]{
 			{aggLimit: limit},
 			{aggLimit: limit},
 		},
@@ -203,13 +209,16 @@ func (s *deltaHistogram[N]) collect(
 
 		if !s.noSum {
 			hDPts[i].Sum = val.total.load()
+		} else {
+			hDPts[i].Sum = 0
 		}
 
-		if !s.noMinMax {
-			if val.minMax.set.Load() {
-				hDPts[i].Min = metricdata.NewExtrema(val.minMax.minimum.Load())
-				hDPts[i].Max = metricdata.NewExtrema(val.minMax.maximum.Load())
-			}
+		if !s.noMinMax && val.minMax.set.Load() {
+			hDPts[i].Min = metricdata.NewExtrema(val.minMax.minimum.Load())
+			hDPts[i].Max = metricdata.NewExtrema(val.minMax.maximum.Load())
+		} else {
+			hDPts[i].Min = metricdata.Extrema[N]{}
+			hDPts[i].Max = metricdata.Extrema[N]{}
 		}
 
 		collectExemplars(&hDPts[i].Exemplars, val.res.Collect)
@@ -240,7 +249,7 @@ func (s *deltaHistogram[N]) collect(
 // to reading. Unlike deltaHistogram, this maintains a single map so that the
 // preserved attribute sets do not change when collect() is called.
 type cumulativeHistogram[N int64 | float64] struct {
-	values limitedSyncMap
+	values limitedSyncMap[*hotColdHistogramPoint[N]]
 
 	start    time.Time
 	noMinMax bool
@@ -269,20 +278,23 @@ func newCumulativeHistogram[N int64 | float64](
 		noSum:    noSum,
 		bounds:   b,
 		newRes:   r,
-		values:   limitedSyncMap{aggLimit: limit},
+		values:   limitedSyncMap[*hotColdHistogramPoint[N]]{aggLimit: limit},
 	}
 }
 
 func (s *cumulativeHistogram[N]) measure(
 	ctx context.Context,
 	value N,
-	fltrAttr attribute.Set,
-	droppedAttr []attribute.KeyValue,
+	lazy lazyFilteredAttributes,
 ) {
-	h := s.values.LoadOrStoreAttr(fltrAttr, func(attr attribute.Set) any {
+	h := s.values.LoadOrStoreAttr(lazy, func(attr attribute.Set) *hotColdHistogramPoint[N] {
+		r := s.newRes(attr)
+		_, isDrop := r.(*dropRes[N])
 		hPt := &hotColdHistogramPoint[N]{
-			res:   s.newRes(attr),
-			attrs: attr,
+			res:           r,
+			attrs:         attr,
+			startTime:     now(),
+			dropExemplars: isDrop,
 			// N+1 buckets. For example:
 			//
 			//   bounds = [0, 5, 10]
@@ -300,7 +312,7 @@ func (s *cumulativeHistogram[N]) measure(
 			},
 		}
 		return hPt
-	}).(*hotColdHistogramPoint[N])
+	})
 
 	// This search will return an index in the range [0, len(s.bounds)], where
 	// it will return len(s.bounds) if value is greater than the last element
@@ -319,7 +331,9 @@ func (s *cumulativeHistogram[N]) measure(
 	if !s.noSum {
 		h.hotColdPoint[hotIdx].total.add(value)
 	}
-	h.res.Offer(ctx, value, droppedAttr)
+	if !h.dropExemplars {
+		h.res.Offer(ctx, value, lazy)
+	}
 }
 
 func (s *cumulativeHistogram[N]) collect(
@@ -335,44 +349,64 @@ func (s *cumulativeHistogram[N]) collect(
 	// Do not allow modification of our copy of bounds.
 	bounds := slices.Clone(s.bounds)
 
-	// Values are being concurrently written while we iterate, so only use the
-	// current length for capacity.
-	hDPts := reset(h.DataPoints, 0, s.values.Len())
+	// Pre-size hDPts so per-series destination slots are addressable by index.
+	// This lets loadCountsInto and collectExemplars reuse each slot's existing
+	// BucketCounts/Exemplars slices from the previous cycle. s.values is
+	// append-only here during cumulative collect, and limitedSyncMap only
+	// increments its len after a successful underlying LoadOrStore, so Range
+	// will visit at least n entries. Concurrent measurers may add more between
+	// Len() and Range; those extra slots are appended on demand inside the
+	// loop.
+	n := s.values.Len()
+	hDPts := reset(h.DataPoints, n, n)
+
+	perSeriesStartTimeEnabled := x.PerSeriesStartTimestamps.Enabled()
 
 	var i int
 	s.values.Range(func(_, value any) bool {
 		val := value.(*hotColdHistogramPoint[N])
+
+		startTime := s.start
+		if perSeriesStartTimeEnabled {
+			startTime = val.startTime
+		}
 		// swap, observe, and clear the point
 		readIdx := val.hcwg.swapHotAndWait()
-		var bucketCounts []uint64
-		count := val.hotColdPoint[readIdx].loadCountsInto(&bucketCounts)
-		newPt := metricdata.HistogramDataPoint[N]{
-			Attributes: val.attrs,
-			StartTime:  s.start,
-			Time:       t,
-			Count:      count,
-			Bounds:     bounds,
-			// The HistogramDataPoint field values returned need to be copies of
-			// the histogramPoint value as we will keep updating them.
-			BucketCounts: bucketCounts,
-		}
 
-		if !s.noSum {
-			newPt.Sum = val.hotColdPoint[readIdx].total.load()
+		// Concurrent writers can grow s.values between Len() and Range.
+		// Cold-path grow.
+		if i >= len(hDPts) {
+			hDPts = append(hDPts, metricdata.HistogramDataPoint[N]{})
 		}
-		if !s.noMinMax {
-			if val.hotColdPoint[readIdx].minMax.set.Load() {
-				newPt.Min = metricdata.NewExtrema(val.hotColdPoint[readIdx].minMax.minimum.Load())
-				newPt.Max = metricdata.NewExtrema(val.hotColdPoint[readIdx].minMax.maximum.Load())
-			}
+		dp := &hDPts[i]
+
+		count := val.hotColdPoint[readIdx].loadCountsInto(&dp.BucketCounts)
+		dp.Attributes = val.attrs
+		dp.StartTime = startTime
+		dp.Time = t
+		dp.Count = count
+		dp.Bounds = bounds
+		if !s.noSum {
+			dp.Sum = val.hotColdPoint[readIdx].total.load()
+		} else {
+			// Slot may be reused; clear stale Sum from previous series.
+			var zero N
+			dp.Sum = zero
+		}
+		if !s.noMinMax && val.hotColdPoint[readIdx].minMax.set.Load() {
+			dp.Min = metricdata.NewExtrema(val.hotColdPoint[readIdx].minMax.minimum.Load())
+			dp.Max = metricdata.NewExtrema(val.hotColdPoint[readIdx].minMax.maximum.Load())
+		} else {
+			// Slot may be reused; clear stale Min/Max from previous series.
+			dp.Min = metricdata.Extrema[N]{}
+			dp.Max = metricdata.Extrema[N]{}
 		}
 		// Once we've read the point, merge it back into the hot histogram
 		// point since it is cumulative.
 		hotIdx := (readIdx + 1) % 2
 		val.hotColdPoint[readIdx].mergeIntoAndReset(&val.hotColdPoint[hotIdx], s.noMinMax, s.noSum)
 
-		collectExemplars(&newPt.Exemplars, val.res.Collect)
-		hDPts = append(hDPts, newPt)
+		collectExemplars(&dp.Exemplars, val.res.Collect)
 
 		i++
 		// TODO (#3006): This will use an unbounded amount of memory if there

@@ -392,6 +392,9 @@ func (q QueryRequest) MarshalXML(enc *xml.Encoder, start xml.StartElement) error
 // MarshalJSON implements the json.Marshaller interface for type StorageError.
 func (s StorageError) MarshalJSON() ([]byte, error) {
 	objectMap := make(map[string]any)
+	populate(objectMap, "CopySourceErrorCode", s.CopySourceErrorCode)
+	populate(objectMap, "CopySourceErrorMessage", s.CopySourceErrorMessage)
+	populate(objectMap, "CopySourceStatusCode", s.CopySourceStatusCode)
 	populate(objectMap, "Message", s.Message)
 	return json.Marshal(objectMap)
 }
@@ -405,6 +408,15 @@ func (s *StorageError) UnmarshalJSON(data []byte) error {
 	for key, val := range rawMsg {
 		var err error
 		switch key {
+		case "CopySourceErrorCode":
+			err = unpopulate(val, "CopySourceErrorCode", &s.CopySourceErrorCode)
+			delete(rawMsg, key)
+		case "CopySourceErrorMessage":
+			err = unpopulate(val, "CopySourceErrorMessage", &s.CopySourceErrorMessage)
+			delete(rawMsg, key)
+		case "CopySourceStatusCode":
+			err = unpopulate(val, "CopySourceStatusCode", &s.CopySourceStatusCode)
+			delete(rawMsg, key)
 		case "Message":
 			err = unpopulate(val, "Message", &s.Message)
 			delete(rawMsg, key)

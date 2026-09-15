@@ -462,6 +462,15 @@ func Test_lineFormatter_Format(t *testing.T) {
 			[]byte("1"),
 		},
 		{
+			"base64decode missing padding",
+			newMustLineFormatter("{{ .foo | b64dec }} {{ .bar | b64dec }}"),
+			labels.FromStrings("foo", "Zm9vYmE", "bar", "Zm9vYg"),
+			1656353124120000000,
+			[]byte("fooba foob"),
+			labels.FromStrings("foo", "Zm9vYmE", "bar", "Zm9vYg"),
+			[]byte("1"),
+		},
+		{
 			"alignLeft",
 			newMustLineFormatter("{{ alignLeft 4 .foo }}"),
 			labels.FromStrings("foo", "hello"),
@@ -706,6 +715,14 @@ func Test_labelsFormatter_Format(t *testing.T) {
 			labels.FromStrings("foo", "aSdtIGEgc3RyaW5nLCBlbmNvZGUgbWUh", "bar", "blop"),
 			labels.FromStrings("foo", "aSdtIGEgc3RyaW5nLCBlbmNvZGUgbWUh",
 				"bar", "i'm a string, encode me!",
+			),
+		},
+		{
+			"base64decode missing padding",
+			mustNewLabelsFormatter([]LabelFmt{NewTemplateLabelFmt("bar", "{{ .foo | b64dec }}")}),
+			labels.FromStrings("foo", "Zm9vYmE", "bar", "blop"),
+			labels.FromStrings("foo", "Zm9vYmE",
+				"bar", "fooba",
 			),
 		},
 		{

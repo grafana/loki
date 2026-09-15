@@ -50,14 +50,8 @@ func RouteToMatcher(r *Route) *CompositeMatcher {
 		var matcherT matcher.HeaderMatcher
 		invert := h.InvertMatch != nil && *h.InvertMatch
 		switch {
-		case h.ExactMatch != nil && *h.ExactMatch != "":
-			matcherT = matcher.NewHeaderExactMatcher(h.Name, *h.ExactMatch, invert)
 		case h.RegexMatch != nil:
 			matcherT = matcher.NewHeaderRegexMatcher(h.Name, h.RegexMatch, invert)
-		case h.PrefixMatch != nil && *h.PrefixMatch != "":
-			matcherT = matcher.NewHeaderPrefixMatcher(h.Name, *h.PrefixMatch, invert)
-		case h.SuffixMatch != nil && *h.SuffixMatch != "":
-			matcherT = matcher.NewHeaderSuffixMatcher(h.Name, *h.SuffixMatch, invert)
 		case h.RangeMatch != nil:
 			matcherT = matcher.NewHeaderRangeMatcher(h.Name, h.RangeMatch.Start, h.RangeMatch.End, invert)
 		case h.PresentMatch != nil:
@@ -247,34 +241,6 @@ func FindBestMatchingVirtualHost(host string, vHosts []*VirtualHost) *VirtualHos
 				continue
 			}
 			matchVh = vh
-			matchType = typ
-			matchLen = len(domain)
-		}
-	}
-	return matchVh
-}
-
-// FindBestMatchingVirtualHostServer returns the virtual host whose domains field best
-// matches authority.
-func FindBestMatchingVirtualHostServer(authority string, vHosts []VirtualHostWithInterceptors) *VirtualHostWithInterceptors {
-	var (
-		matchVh   *VirtualHostWithInterceptors
-		matchType = domainMatchTypeInvalid
-		matchLen  int
-	)
-	for _, vh := range vHosts {
-		for _, domain := range vh.Domains {
-			typ, matched := match(domain, authority)
-			if typ == domainMatchTypeInvalid {
-				// The rds response is invalid.
-				return nil
-			}
-			if matchType.betterThan(typ) || matchType == typ && matchLen >= len(domain) || !matched {
-				// The previous match has better type, or the previous match has
-				// better length, or this domain isn't a match.
-				continue
-			}
-			matchVh = &vh
 			matchType = typ
 			matchLen = len(domain)
 		}

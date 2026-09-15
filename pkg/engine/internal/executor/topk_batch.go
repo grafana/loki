@@ -5,10 +5,12 @@ import (
 	"slices"
 
 	"github.com/apache/arrow-go/v18/arrow"
-	"github.com/apache/arrow-go/v18/arrow/array"
 	"github.com/apache/arrow-go/v18/arrow/memory"
+	"github.com/prometheus/prometheus/model/labels"
 
 	"github.com/grafana/loki/v3/pkg/engine/internal/arrowagg"
+	"github.com/grafana/loki/v3/pkg/engine/internal/semconv"
+	"github.com/grafana/loki/v3/pkg/engine/internal/types"
 	"github.com/grafana/loki/v3/pkg/util/topk"
 )
 
@@ -48,22 +50,20 @@ type topkBatch struct {
 	MaxUnused int
 
 	ready       bool // True if all fields below are initialized.
-	nextID      int
 	mapper      *arrowagg.Mapper
 	heap        *topk.Heap[*topkReference]
 	usedCount   map[arrow.RecordBatch]int
 	usedSchemas map[*arrow.Schema]int
+
+	labelsBuilder labels.ScratchBuilder
 }
 
 // topkReference is a reference to a row in a record that is part of the
 // current set of top K rows.
 type topkReference struct {
-	// ID is a per-row unique ID across all records, used for comparing rows that
-	// are otherwise equal in the sort order.
-	ID int
-
-	Record arrow.RecordBatch // Record contributing to the top K.
-	Row    int
+	Record    arrow.RecordBatch // Record contributing to the top K.
+	Row       int
+	LabelHash uint64
 }
 
 // Put adds rows from rec into b. If rec contains at least one row that belongs
@@ -84,48 +84,6 @@ func (b *topkBatch) Put(rec arrow.RecordBatch) {
 	}
 }
 
-func (b *topkBatch) IsFull() bool {
-	return b.ready && b.K > 0 && b.heap.Len() >= b.K
-}
-
-func (b *topkBatch) Peek() arrow.RecordBatch {
-	ref, ok := b.heap.Peek()
-
-	if !ok {
-		return nil
-	}
-
-	return b.refToRecordBatch(ref)
-}
-
-func (b *topkBatch) refToRecordBatch(ref *topkReference) arrow.RecordBatch {
-	schema := arrow.NewSchema(b.Fields, nil)
-	rb := array.NewRecordBuilder(memory.DefaultAllocator, schema)
-
-	for fieldIndex := range b.Fields {
-		switch arr := b.findRecordArray(ref.Record, b.mapper, fieldIndex).(type) {
-		case *array.Binary:
-			rb.Field(fieldIndex).(*array.BinaryBuilder).Append(arr.Value(ref.Row))
-		case *array.Duration:
-			rb.Field(fieldIndex).(*array.DurationBuilder).Append(arr.Value(ref.Row))
-		case *array.Float64:
-			rb.Field(fieldIndex).(*array.Float64Builder).Append(arr.Value(ref.Row))
-		case *array.Uint64:
-			rb.Field(fieldIndex).(*array.Uint64Builder).Append(arr.Value(ref.Row))
-		case *array.Int64:
-			rb.Field(fieldIndex).(*array.Int64Builder).Append(arr.Value(ref.Row))
-		case *array.String:
-			rb.Field(fieldIndex).(*array.StringBuilder).Append(arr.Value(ref.Row))
-		case *array.Timestamp:
-			rb.Field(fieldIndex).(*array.TimestampBuilder).Append(arr.Value(ref.Row))
-		default:
-			panic(fmt.Errorf("unknown array type: %T", ref.Record))
-		}
-	}
-
-	return rb.NewRecordBatch()
-}
-
 // put adds rows from rec into b without checking the number of unused rows.
 func (b *topkBatch) put(rec arrow.RecordBatch) {
 	if !b.ready {
@@ -138,11 +96,9 @@ func (b *topkBatch) put(rec arrow.RecordBatch) {
 	// rows.
 	for i := range int(rec.NumRows()) {
 		ref := &topkReference{
-			ID:     b.nextID,
 			Record: rec,
 			Row:    i,
 		}
-		b.nextID++
 
 		res, prev := b.heap.Push(ref)
 		switch res {
@@ -209,14 +165,40 @@ func (b *topkBatch) less(left, right *topkReference) bool {
 		}
 	}
 
-	// Fall back to sorting by ID to have consistent ordering, so that no two
-	// rows are ever equal.
+	// Fall back to sorting by label hash to have consistent ordering with the classic engine, so that no two
+	// rows are ever equal. Hashes are computed lazily as they aren't needed for every row and stored to avoid recomputing.
+	if left.LabelHash == 0 {
+		left.LabelHash = b.labelHash(left.Record, left.Row)
+	}
+	if right.LabelHash == 0 {
+		right.LabelHash = b.labelHash(right.Record, right.Row)
+	}
+
 	switch {
 	case b.Ascending:
-		return left.ID > right.ID
+		return left.LabelHash < right.LabelHash
 	default:
-		return left.ID < right.ID
+		return left.LabelHash > right.LabelHash
 	}
+}
+
+func (b *topkBatch) labelHash(rec arrow.RecordBatch, row int) uint64 {
+	b.labelsBuilder.Reset()
+	for fieldIndex := range int(rec.NumCols()) {
+		field := rec.Schema().Field(fieldIndex)
+		ident, err := semconv.ParseFQN(field.Name)
+		if err != nil {
+			continue
+		}
+		if ident.ColumnType() == types.ColumnTypeLabel {
+			if rec.Column(fieldIndex).IsNull(row) || !rec.Column(fieldIndex).IsValid(row) {
+				continue
+			}
+			b.labelsBuilder.Add(ident.ShortName(), rec.Column(fieldIndex).ValueStr(row))
+		}
+	}
+	b.labelsBuilder.Sort()
+	return labels.StableHash(b.labelsBuilder.Labels())
 }
 
 // findRecordArray finds the array for the given [b.Fields] field index from
@@ -298,9 +280,9 @@ func (b *topkBatch) Reset() {
 		return
 	}
 
-	b.nextID = 0
 	b.mapper.Reset()
 	b.heap.PopAll()
+	b.labelsBuilder.Reset()
 
 	clear(b.usedCount)
 	clear(b.usedSchemas)

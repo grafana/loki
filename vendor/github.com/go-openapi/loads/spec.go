@@ -5,23 +5,17 @@ package loads
 
 import (
 	"bytes"
-	"encoding/gob"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"maps"
 
 	"github.com/go-openapi/analysis"
 	"github.com/go-openapi/spec"
+	"github.com/go-openapi/swag/jsonutils"
 	"github.com/go-openapi/swag/yamlutils"
 )
 
-func init() {
-	gob.Register(map[string]any{})
-	gob.Register([]any{})
-}
-
-// Document represents a swagger spec document
+// Document represents a swagger spec document.
 type Document struct {
 	// specAnalyzer
 	Analyzer     *analysis.Spec
@@ -33,7 +27,7 @@ type Document struct {
 	raw          json.RawMessage
 }
 
-// JSONSpec loads a spec from a json document, using the [JSONDoc] loader.
+// JSONSpec loads a spec from a JSON document, using the [JSONDoc] loader.
 //
 // A set of [loading.Option] may be passed to this loader using [WithLoadingOptions].
 func JSONSpec(path string, opts ...LoaderOption) (*Document, error) {
@@ -57,7 +51,7 @@ func JSONSpec(path string, opts ...LoaderOption) (*Document, error) {
 	return doc, nil
 }
 
-// Embedded returns a Document based on embedded specs (i.e. as a raw [json.RawMessage]). No analysis is required
+// Embedded returns a Document based on embedded specs (i.e. as a [json.RawMessage]). No analysis is required.
 func Embedded(orig, flat json.RawMessage, opts ...LoaderOption) (*Document, error) {
 	var origSpec, flatSpec spec.Swagger
 	if err := json.Unmarshal(orig, &origSpec); err != nil {
@@ -77,6 +71,14 @@ func Embedded(orig, flat json.RawMessage, opts ...LoaderOption) (*Document, erro
 // Spec loads a new spec document from a local or remote path.
 //
 // By default it uses a JSON or YAML loader, with auto-detection based on the resource extension.
+//
+// Security: by default the path is read with no confinement (local) and fetched with
+// [net/http.DefaultClient] (remote), and any "$ref" later resolved by [Document.Expanded] is
+// loaded the same way. When the path or the spec contents may derive from untrusted input,
+// confine loading with [WithLoadingOptions] (for example
+// [github.com/go-openapi/swag/loading.WithRoot] and
+// [github.com/go-openapi/swag/loading.WithHTTPClient]). See the package documentation on
+// Security.
 func Spec(path string, opts ...LoaderOption) (*Document, error) {
 	ldr := loaderFromOptions(opts)
 
@@ -96,13 +98,13 @@ func Spec(path string, opts ...LoaderOption) (*Document, error) {
 	return document, nil
 }
 
-// Analyzed creates a new analyzed spec document for a root json.RawMessage.
+// Analyzed creates a new analyzed spec document for a root [json.RawMessage].
 func Analyzed(data json.RawMessage, version string, options ...LoaderOption) (*Document, error) {
 	if version == "" {
 		version = "2.0"
 	}
 	if version != "2.0" {
-		return nil, fmt.Errorf("spec version %q is not supported: %w", version, ErrLoads)
+		return nil, fmt.Errorf("%w: spec version %q is not supported", ErrLoads, version)
 	}
 
 	raw, err := trimData(data) // trim blanks, then convert yaml docs into json
@@ -112,12 +114,12 @@ func Analyzed(data json.RawMessage, version string, options ...LoaderOption) (*D
 
 	swspec := new(spec.Swagger)
 	if err = json.Unmarshal(raw, swspec); err != nil {
-		return nil, errors.Join(err, ErrLoads)
+		return nil, errLoads(err)
 	}
 
 	origsqspec, err := cloneSpec(swspec)
 	if err != nil {
-		return nil, errors.Join(err, ErrLoads)
+		return nil, errLoads(err)
 	}
 
 	d := &Document{
@@ -145,18 +147,26 @@ func trimData(in json.RawMessage) (json.RawMessage, error) {
 	// assume yaml doc: convert it to json
 	yml, err := yamlutils.BytesToYAMLDoc(trimmed)
 	if err != nil {
-		return nil, fmt.Errorf("analyzed: %v: %w", err, ErrLoads)
+		return nil, fmt.Errorf("analyzed: %w", errLoads(err))
 	}
 
 	d, err := yamlutils.YAMLToJSON(yml)
 	if err != nil {
-		return nil, fmt.Errorf("analyzed: %v: %w", err, ErrLoads)
+		return nil, fmt.Errorf("analyzed: %w", errLoads(err))
 	}
 
 	return d, nil
 }
 
-// Expanded expands the $ref fields in the spec [Document] and returns a new expanded [Document]
+// Expanded expands the $ref fields in the spec [Document] and returns a new expanded [Document].
+//
+// Security: expansion resolves every "$ref" by calling the document's loader recursively, so
+// the spec contents drive further loads. A spec from an untrusted source can thus trigger
+// arbitrary local reads or SSRF through its references. The loader carries the
+// [github.com/go-openapi/swag/loading] options supplied via [WithLoadingOptions] at load time;
+// configure confinement there so it applies to expansion as well. When no document loader is
+// set, expansion falls back to the unconfined package-level loader. See the package
+// documentation on Security.
 func (d *Document) Expanded(options ...*spec.ExpandOptions) (*Document, error) {
 	swspec := new(spec.Swagger)
 	if err := json.Unmarshal(d.raw, swspec); err != nil {
@@ -200,7 +210,7 @@ func (d *Document) Expanded(options ...*spec.ExpandOptions) (*Document, error) {
 	return dd, nil
 }
 
-// BasePath the base path for the API specified by this spec
+// BasePath the base path for the API specified by this spec.
 func (d *Document) BasePath() string {
 	if d.spec == nil {
 		return ""
@@ -208,37 +218,37 @@ func (d *Document) BasePath() string {
 	return d.spec.BasePath
 }
 
-// Version returns the OpenAPI version of this spec (e.g. 2.0)
+// Version returns the OpenAPI version of this spec (e.g. 2.0).
 func (d *Document) Version() string {
 	return d.spec.Swagger
 }
 
-// Schema returns the swagger 2.0 meta-schema
+// Schema returns the swagger 2.0 meta-schema.
 func (d *Document) Schema() *spec.Schema {
 	return d.schema
 }
 
-// Spec returns the swagger object model for this API specification
+// Spec returns the swagger object model for this API specification.
 func (d *Document) Spec() *spec.Swagger {
 	return d.spec
 }
 
-// Host returns the host for the API
+// Host returns the host for the API.
 func (d *Document) Host() string {
 	return d.spec.Host
 }
 
-// Raw returns the raw swagger spec as json bytes
+// Raw returns the raw swagger spec as json bytes.
 func (d *Document) Raw() json.RawMessage {
 	return d.raw
 }
 
-// OrigSpec yields the original spec
+// OrigSpec yields the original spec.
 func (d *Document) OrigSpec() *spec.Swagger {
 	return d.origSpec
 }
 
-// ResetDefinitions yields a shallow copy with the models reset to the original spec
+// ResetDefinitions yields a shallow copy with the models reset to the original spec.
 func (d *Document) ResetDefinitions() *Document {
 	d.spec.Definitions = make(map[string]spec.Schema, len(d.origSpec.Definitions))
 	maps.Copy(d.spec.Definitions, d.origSpec.Definitions)
@@ -246,9 +256,9 @@ func (d *Document) ResetDefinitions() *Document {
 	return d
 }
 
-// Pristine creates a new pristine document instance based on the input data
+// Pristine creates a new pristine document instance based on the input data.
 func (d *Document) Pristine() *Document {
-	raw, _ := json.Marshal(d.Spec())
+	raw, _ := json.Marshal(d.Spec()) //nolint:errchkjson  // the spec always marshals to JSON
 	dd, _ := Analyzed(raw, d.Version())
 	dd.pathLoader = d.pathLoader
 	dd.specFilePath = d.specFilePath
@@ -256,19 +266,21 @@ func (d *Document) Pristine() *Document {
 	return dd
 }
 
-// SpecFilePath returns the file path of the spec if one is defined
+// SpecFilePath returns the file path of the spec if one is defined.
 func (d *Document) SpecFilePath() string {
 	return d.specFilePath
 }
 
+// cloneSpec deep-copies a specification through its JSON representation.
+//
+// It used to go through gob, which omits a field holding the zero value for its type and
+// flattens a pointer to what it points at, so an optional number that was present and zero came
+// back nil: "minimum": 0, "maximum": 0, "maxLength": 0, "maxItems": 0 and "maxProperties": 0 were
+// dropped from the copy, at any depth and with no error. That copy is what OrigSpec returns and
+// what ResetDefinitions writes back over the live definitions.
 func cloneSpec(src *spec.Swagger) (*spec.Swagger, error) {
-	var b bytes.Buffer
-	if err := gob.NewEncoder(&b).Encode(src); err != nil {
-		return nil, err
-	}
-
 	var dst spec.Swagger
-	if err := gob.NewDecoder(&b).Decode(&dst); err != nil {
+	if err := jsonutils.FromDynamicJSON(src, &dst); err != nil {
 		return nil, err
 	}
 

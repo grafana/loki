@@ -36,9 +36,6 @@ var (
 	)
 )
 
-// iterateFunc is a closure called for each stream.
-type iterateFunc func(tenant string, partition int32, stream streamUsage)
-
 // getPolicyBucketAndLimit determines which policy bucket to use and the max streams limit
 // for a given tenant and policy. Returns the policy bucket name and the max streams limit.
 // The policy bucket will be the input policy name only if the max streams limit is overridden for the policy.

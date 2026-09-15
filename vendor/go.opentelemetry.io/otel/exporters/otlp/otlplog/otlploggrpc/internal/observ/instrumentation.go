@@ -3,7 +3,7 @@
 
 // Package observ provides observability metrics for OTLP log exporters.
 // This is an experimental feature controlled by the x.Observability feature flag.
-package observ // import "go.opentelemetry.io/otel/exporters/otlp/otlplog/otlploggrpc/internal/observ"
+package observ
 
 import (
 	"context"
@@ -12,6 +12,7 @@ import (
 	"sync"
 	"time"
 
+	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
 	"go.opentelemetry.io/otel"
@@ -20,8 +21,8 @@ import (
 	"go.opentelemetry.io/otel/exporters/otlp/otlplog/otlploggrpc/internal/x"
 	"go.opentelemetry.io/otel/internal/global"
 	"go.opentelemetry.io/otel/metric"
-	semconv "go.opentelemetry.io/otel/semconv/v1.37.0"
-	"go.opentelemetry.io/otel/semconv/v1.37.0/otelconv"
+	semconv "go.opentelemetry.io/otel/semconv/v1.43.0"
+	"go.opentelemetry.io/otel/semconv/v1.43.0/otelconv"
 )
 
 const (
@@ -67,11 +68,12 @@ var (
 
 func get[T any](p *sync.Pool) *[]T { return p.Get().(*[]T) }
 func put[T any](p *sync.Pool, s *[]T) {
+	clear(*s) // erase elements to allow GC to collect what they refer to.
 	*s = (*s)[:0]
 	p.Put(s)
 }
 
-// GetComponentName returns the constant name for the exporter with the
+// GetComponentName returns the component name for the exporter with the
 // provided id.
 func GetComponentName(id int64) string {
 	return fmt.Sprintf("%s/%d", otelconv.ComponentTypeOtlpGRPCLogExporter, id)
@@ -103,7 +105,7 @@ type Instrumentation struct {
 	recOpt      metric.RecordOption
 }
 
-// NewInstrumentation returns instrumentation for otlplog grpc exporter.
+// NewInstrumentation returns instrumentation for the otlplog gRPC exporter.
 func NewInstrumentation(id int64, target string) (*Instrumentation, error) {
 	if !x.Observability.Enabled() {
 		return nil, nil
@@ -149,7 +151,7 @@ func NewInstrumentation(id int64, target string) (*Instrumentation, error) {
 	i.addOpt = metric.WithAttributeSet(attribute.NewSet(i.presetAttrs...))
 	i.recOpt = metric.WithAttributeSet(attribute.NewSet(append(
 		// Default to OK status code.
-		[]attribute.KeyValue{semconv.RPCGRPCStatusCodeOk},
+		[]attribute.KeyValue{semconv.RPCResponseStatusCode(codes.OK.String())},
 		i.presetAttrs...,
 	)...))
 	return i, nil
@@ -160,12 +162,12 @@ func NewInstrumentation(id int64, target string) (*Instrumentation, error) {
 // ExportLogs method returns.
 func (i *Instrumentation) ExportLogs(ctx context.Context, count int64) ExportOp {
 	start := time.Now()
-	addOpt := get[metric.AddOption](addOpPool)
-	defer put(addOpPool, addOpt)
-
-	*addOpt = append(*addOpt, i.addOpt)
-
-	i.logInflightMetric.Add(ctx, count, *addOpt...)
+	if i.logInflightMetric.Enabled(ctx) {
+		addOpt := get[metric.AddOption](addOpPool)
+		defer put(addOpPool, addOpt)
+		*addOpt = append(*addOpt, i.addOpt)
+		i.logInflightMetric.Add(ctx, count, *addOpt...)
+	}
 
 	return ExportOp{
 		nLogs: count,
@@ -188,7 +190,7 @@ type ExportOp struct {
 // [Instrumentation.ExportLogs].
 // Any error that is encountered is provided as err.
 //
-// If err is not nil, all logs will be recorded as failures unless error is of
+// If err is not nil, all logs will be recorded as failures unless the error is of
 // type [internal.PartialSuccess]. In the case of a PartialSuccess, the number
 // of successfully exported logs will be determined by inspecting the
 // RejectedItems field of the PartialSuccess.
@@ -197,11 +199,14 @@ func (e ExportOp) End(err error) {
 	defer put(addOpPool, addOpt)
 	*addOpt = append(*addOpt, e.inst.addOpt)
 
-	e.inst.logInflightMetric.Add(e.ctx, -e.nLogs, *addOpt...)
+	if e.inst.logInflightMetric.Enabled(e.ctx) {
+		e.inst.logInflightMetric.Add(e.ctx, -e.nLogs, *addOpt...)
+	}
 	success := successful(e.nLogs, err)
-	e.inst.logExportedMetric.Add(e.ctx, success, *addOpt...)
-
-	if err != nil {
+	if e.inst.logExportedMetric.Enabled(e.ctx) {
+		e.inst.logExportedMetric.Add(e.ctx, success, *addOpt...)
+	}
+	if err != nil && e.inst.logExportedMetric.Enabled(e.ctx) {
 		// Add the error.type attribute to the attribute set.
 		attrs := get[attribute.KeyValue](attrsPool)
 		defer put(attrsPool, attrs)
@@ -230,18 +235,18 @@ func (i *Instrumentation) recordOption(err error) metric.RecordOption {
 	defer put(attrsPool, attrs)
 
 	*attrs = append(*attrs, i.presetAttrs...)
-	code := int64(status.Code(err))
+	code := status.Code(err)
 	*attrs = append(
 		*attrs,
-		semconv.RPCGRPCStatusCodeKey.Int64(code),
+		semconv.RPCResponseStatusCode(code.String()),
 		semconv.ErrorType(err),
 	)
 
 	return metric.WithAttributeSet(attribute.NewSet(*attrs...))
 }
 
-// successful returns the number of successfully exported logs out of the n
-// that were exported based on the provided error.
+// successful returns the number of successfully exported log records from a
+// batch of n records, as determined from err.
 //
 // If err is nil, n is returned. All logs were successfully exported.
 //
@@ -266,17 +271,20 @@ var errPool = sync.Pool{
 	},
 }
 
-// rejectedCount returns how many out of the n logs exporter were rejected based on
-// the provided non-nil err.
+// rejectedCount returns the number of rejected log records from a batch of n
+// records, as determined from the non-nil err.
 func rejectedCount(n int64, err error) int64 {
 	ps := errPool.Get().(*internal.PartialSuccess)
-	defer errPool.Put(ps)
+	defer func() {
+		*ps = internal.PartialSuccess{} // erase fields to allow GC to collect them.
+		errPool.Put(ps)
+	}()
 
 	// check for partial success
 	if errors.As(err, ps) {
 		return min(max(ps.RejectedItems, 0), n)
 	}
-	// all logs exporter
+	// All logs were rejected.
 	return n
 }
 

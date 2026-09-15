@@ -13,23 +13,24 @@ import (
 	"sync"
 
 	"go.opentelemetry.io/collector/pdata/internal/json"
+	"go.opentelemetry.io/collector/pdata/internal/metadata"
 	"go.opentelemetry.io/collector/pdata/internal/proto"
 )
 
 // HistogramDataPoint is a single data point in a timeseries that describes the time-varying values of a Histogram of values.
 type HistogramDataPoint struct {
 	Attributes        []KeyValue
-	BucketCounts      []uint64
-	ExplicitBounds    []float64
-	Exemplars         []Exemplar
 	StartTimeUnixNano uint64
 	TimeUnixNano      uint64
 	Count             uint64
 	Sum               float64
+	BucketCounts      []uint64
+	ExplicitBounds    []float64
+	Exemplars         []Exemplar
+	Flags             uint32
 	Min               float64
 	Max               float64
 	metadata          [1]uint64
-	Flags             uint32
 }
 
 var (
@@ -41,7 +42,7 @@ var (
 )
 
 func NewHistogramDataPoint() *HistogramDataPoint {
-	if !UseProtoPooling.IsEnabled() {
+	if !metadata.PdataUseProtoPoolingFeatureGate.IsEnabled() {
 		return &HistogramDataPoint{}
 	}
 	return protoPoolHistogramDataPoint.Get().(*HistogramDataPoint)
@@ -52,7 +53,7 @@ func DeleteHistogramDataPoint(orig *HistogramDataPoint, nullable bool) {
 		return
 	}
 
-	if !UseProtoPooling.IsEnabled() {
+	if !metadata.PdataUseProtoPoolingFeatureGate.IsEnabled() {
 		orig.Reset()
 		return
 	}
@@ -288,7 +289,7 @@ func (orig *HistogramDataPoint) UnmarshalJSON(iter *json.Iterator) {
 			orig.SetMax(iter.ReadFloat64())
 
 		default:
-			iter.Skip()
+			iter.HandleUnknownField(f)
 		}
 	}
 }

@@ -4,7 +4,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/docker/docker/daemon/logger"
+	"github.com/moby/moby/v2/daemon/logger"
 	"github.com/stretchr/testify/require"
 
 	util_log "github.com/grafana/loki/v3/pkg/util/log"

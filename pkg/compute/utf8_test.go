@@ -8,6 +8,7 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/columnar"
 	"github.com/grafana/loki/v3/pkg/columnar/columnartest"
+	"github.com/grafana/loki/v3/pkg/columnar/types"
 	"github.com/grafana/loki/v3/pkg/memory"
 )
 
@@ -30,7 +31,7 @@ func BenchmarkSubstrInsensitive(b *testing.B) {
 	alloc := memory.NewAllocator(nil)
 	line := strings.Repeat("A", 100) + "target" + strings.Repeat("B", 100)
 	haystack := columnar.NewUTF8([]byte(line), []int32{0, int32(len(line))}, memory.NewBitmap(alloc, 1))
-	needle := columnartest.Scalar(b, columnar.KindUTF8, "target")
+	needle := columnartest.Scalar(b, types.KindUTF8, "target")
 
 	benchAlloc := memory.NewAllocator(nil)
 	for b.Loop() {
@@ -45,7 +46,7 @@ func BenchmarkSubstr(b *testing.B) {
 	alloc := memory.NewAllocator(nil)
 	line := strings.Repeat("A", 100) + "target" + strings.Repeat("B", 100)
 	haystack := columnar.NewUTF8([]byte(line), []int32{0, int32(len(line))}, memory.NewBitmap(alloc, 1))
-	needle := columnartest.Scalar(b, columnar.KindUTF8, "TaRgEt")
+	needle := columnartest.Scalar(b, types.KindUTF8, "TaRgEt")
 
 	benchAlloc := memory.NewAllocator(nil)
 	for b.Loop() {

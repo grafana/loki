@@ -87,6 +87,10 @@ message Chunk {
   uint32 checksum = 4;
   uint32 KB = 5;
   uint32 entries = 6;
+  int64 ingestedAt = 7 [
+    (gogoproto.customtype) = "github.com/prometheus/common/model.Time",
+    (gogoproto.nullable) = false
+  ];
 }
 
 message StorageUpdates {

@@ -11,14 +11,15 @@ import (
 	"sync"
 
 	"go.opentelemetry.io/collector/pdata/internal/json"
+	"go.opentelemetry.io/collector/pdata/internal/metadata"
 	"go.opentelemetry.io/collector/pdata/internal/proto"
 )
 
 // ScopeProfiles is a collection of profiles from a LibraryInstrumentation.
 type ScopeProfiles struct {
-	SchemaUrl string
-	Profiles  []*Profile
 	Scope     InstrumentationScope
+	Profiles  []*Profile
+	SchemaUrl string
 }
 
 var (
@@ -30,7 +31,7 @@ var (
 )
 
 func NewScopeProfiles() *ScopeProfiles {
-	if !UseProtoPooling.IsEnabled() {
+	if !metadata.PdataUseProtoPoolingFeatureGate.IsEnabled() {
 		return &ScopeProfiles{}
 	}
 	return protoPoolScopeProfiles.Get().(*ScopeProfiles)
@@ -41,7 +42,7 @@ func DeleteScopeProfiles(orig *ScopeProfiles, nullable bool) {
 		return
 	}
 
-	if !UseProtoPooling.IsEnabled() {
+	if !metadata.PdataUseProtoPoolingFeatureGate.IsEnabled() {
 		orig.Reset()
 		return
 	}
@@ -168,7 +169,7 @@ func (orig *ScopeProfiles) UnmarshalJSON(iter *json.Iterator) {
 		case "schemaUrl", "schema_url":
 			orig.SchemaUrl = iter.ReadString()
 		default:
-			iter.Skip()
+			iter.HandleUnknownField(f)
 		}
 	}
 }

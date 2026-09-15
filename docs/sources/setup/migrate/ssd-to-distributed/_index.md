@@ -1,20 +1,21 @@
 ---
 title: Migrate from SSD to distributed
 menuTitle: Migrate from SSD to distributed
-description: Migration guide from migrating from simple scalable deployment to a distributed microservices deployment.
-weight: 300
+description: Migration guide from migrating from a simple scalable deployment to a distributed microservices deployment.
+weight: 400
 keywords:
   - migrate
-  - distributed
   - ssd
+  - distributed
+  - microservices
 ---
 
 # Migrate from SSD to distributed
 
 This guide provides instructions for migrating from a [simple scalable deployment (SSD)](https://grafana.com/docs/loki/<LOKI_VERSION>/get-started/deployment-modes/#simple-scalable) to a [distributed microservices deployment](https://grafana.com/docs/loki/<LOKI_VERSION>/get-started/deployment-modes/#microservices-mode) of Loki. Before starting the migration, make sure you have read the [considerations](#considerations) section.
 
-{{< admonition type="note" >}}
-Simple Scalable Deployment (SSD) mode is being deprecated. The timeline for the deprecation is to be determined (TBD), but will happen before Loki 4.0 is released. You should plan to migrate from SSD to distributed before Loki 4.0 releases.
+{{< admonition type="caution" >}}
+Simple Scalable Deployment (SSD) mode is being deprecated and will be removed with the Loki 4.0 release. You should plan to migrate from SSD to microservices or HA monolithic deployment. You will not be able to run Loki 4.0 in SSD mode.
 {{< /admonition >}}
 
 {{< admonition type="note" >}}
@@ -49,23 +50,23 @@ This example is only a reference on the parameters that need to be changed. Ther
 ```yaml
 ---
 loki:
-   schemaConfig:
-     configs:
-       - from: "2024-04-01"
-         store: tsdb
-         object_store: s3
-         schema: v13
-         index:
-           prefix: loki_index_
-           period: 24h
-   storage_config:
-     aws:
-       region: eu-central-1
-       bucketnames: aws-chunks-bucket
-       s3forcepathstyle: false
-   ingester:
-       chunk_encoding: snappy
-   ruler:
+  schemaConfig:
+    configs:
+      - from: "2024-04-01"
+        store: tsdb
+        object_store: s3
+        schema: v13
+        index:
+          prefix: loki_index_
+          period: 24h
+  storage_config:
+    aws:
+      region: eu-central-1
+      bucketnames: aws-chunks-bucket
+      s3forcepathstyle: false
+  ingester:
+    chunk_encoding: snappy
+  ruler:
     enable_api: true
     storage:
       type: s3
@@ -74,59 +75,59 @@ loki:
         bucketnames: aws-ruler-bucket
         s3forcepathstyle: false
       alertmanager_url: http://prom:9093
-   querier:
-      max_concurrent: 4
+  querier:
+    max_concurrent: 4
 
-   storage:
-      type: s3
-      bucketNames:
-        chunks: "aws-chunks-bucket"
-        ruler: "aws-ruler-bucket"
-      s3:
-        region: eu-central-1
+  storage:
+    type: s3
+    bucketNames:
+      chunks: "aws-chunks-bucket"
+      ruler: "aws-ruler-bucket"
+    s3:
+      region: eu-central-1
 
 deploymentMode: SimpleScalable
 
 # SSD
 backend:
- replicas: 2
+  replicas: 2
 read:
- replicas: 3
+  replicas: 3
 write:
- replicas: 3
+  replicas: 3
 
 # Distributed Loki
 ingester:
- replicas: 0
- zoneAwareReplication:
-  enabled: false
+  replicas: 0
+  zoneAwareReplication:
+    enabled: false
 
 querier:
- replicas: 0
- maxUnavailable: 0
+  replicas: 0
+  maxUnavailable: 0
 queryFrontend:
- replicas: 0
- maxUnavailable: 0
+  replicas: 0
+  maxUnavailable: 0
 queryScheduler:
- replicas: 0
+  replicas: 0
 distributor:
- replicas: 0
- maxUnavailable: 0
+  replicas: 0
+  maxUnavailable: 0
 compactor:
- replicas: 0
+  replicas: 0
 indexGateway:
- replicas: 0
- maxUnavailable: 0
+  replicas: 0
+  maxUnavailable: 0
 ruler:
- replicas: 0
- maxUnavailable: 0
+  replicas: 0
+  maxUnavailable: 0
 
 # Single binary Loki
 singleBinary:
- replicas: 0
+  replicas: 0
 
 minio:
- enabled: false
+  enabled: false
 ```
 
 ## Stage 1: Deploying the Loki distributed components
@@ -261,7 +262,7 @@ To start the migration process:
 1. Deploy the distributed components using the following command:
 
     ```bash
-    helm upgrade --values values-migration.yaml loki grafana/loki -n loki 
+    helm upgrade --values values-migration.yaml loki grafana-community/loki -n loki 
     ```
 
    {{< admonition type="caution" >}}
@@ -379,7 +380,7 @@ The final stage of the migration involves transitioning all traffic to the distr
 1. Deploy the final configuration using the following command:
 
     ```bash
-    helm upgrade --values values-distributed.yaml loki grafana/loki -n loki 
+    helm upgrade --values values-distributed.yaml loki grafana-community/loki -n loki 
     ```
 
 1. Once the deployment is complete, you can verify that all components are running using the following command:
@@ -388,7 +389,7 @@ The final stage of the migration involves transitioning all traffic to the distr
     kubectl get pods -n loki
     ```
 
-You should see all distributed components running and the SSD compontents have now been removed.
+You should see all distributed components running and the SSD components have now been removed.
 
 ## What's next?
 

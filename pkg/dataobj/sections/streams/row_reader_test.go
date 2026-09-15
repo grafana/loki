@@ -28,11 +28,15 @@ var streamsTestdata = []struct {
 	{labels.FromStrings("cluster", "test", "app", "baz"), unixTime(30), 5},
 }
 
+func shardForApp(app string) int64 {
+	return int64(streams.ShardBucket(labels.FromStrings("cluster", "test", "app", app)))
+}
+
 func TestRowReader(t *testing.T) {
 	expect := []streams.Stream{
-		{1, unixTime(10), unixTime(15), 25, labels.FromStrings("cluster", "test", "app", "foo"), 2},
-		{2, unixTime(5), unixTime(20), 45, labels.FromStrings("cluster", "test", "app", "bar"), 2},
-		{3, unixTime(25), unixTime(30), 35, labels.FromStrings("cluster", "test", "app", "baz"), 2},
+		{1, unixTime(10), unixTime(15), 25, labels.FromStrings("cluster", "test", "app", "foo"), 2, shardForApp("foo")},
+		{2, unixTime(5), unixTime(20), 45, labels.FromStrings("cluster", "test", "app", "bar"), 2, shardForApp("bar")},
+		{3, unixTime(25), unixTime(30), 35, labels.FromStrings("cluster", "test", "app", "baz"), 2, shardForApp("baz")},
 	}
 
 	sec := buildStreamsSection(t, 1, 0) // Many pages
@@ -44,7 +48,7 @@ func TestRowReader(t *testing.T) {
 
 func TestRowReader_AddLabelMatcher(t *testing.T) {
 	expect := []streams.Stream{
-		{2, unixTime(5), unixTime(20), 45, labels.FromStrings("cluster", "test", "app", "bar"), 2},
+		{2, unixTime(5), unixTime(20), 45, labels.FromStrings("cluster", "test", "app", "bar"), 2, shardForApp("bar")},
 	}
 
 	sec := buildStreamsSection(t, 1, 0) // Many pages
@@ -58,8 +62,8 @@ func TestRowReader_AddLabelMatcher(t *testing.T) {
 
 func TestRowReader_AddLabelFilter(t *testing.T) {
 	expect := []streams.Stream{
-		{2, unixTime(5), unixTime(20), 45, labels.FromStrings("cluster", "test", "app", "bar"), 2},
-		{3, unixTime(25), unixTime(30), 35, labels.FromStrings("cluster", "test", "app", "baz"), 2},
+		{2, unixTime(5), unixTime(20), 45, labels.FromStrings("cluster", "test", "app", "bar"), 2, shardForApp("bar")},
+		{3, unixTime(25), unixTime(30), 35, labels.FromStrings("cluster", "test", "app", "baz"), 2, shardForApp("baz")},
 	}
 
 	sec := buildStreamsSection(t, 1, 0) // Many pages

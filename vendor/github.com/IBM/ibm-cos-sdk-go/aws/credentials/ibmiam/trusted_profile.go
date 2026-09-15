@@ -1,6 +1,9 @@
 package ibmiam
 
 import (
+	"os"
+	"strings"
+
 	"github.com/IBM/go-sdk-core/v5/core"
 	"github.com/IBM/ibm-cos-sdk-go/aws"
 	"github.com/IBM/ibm-cos-sdk-go/aws/awserr"
@@ -35,11 +38,12 @@ type TrustedProfileProvider struct {
 
 // TrustedProfileConfig has all the authentication parameters for trusted profile.
 type TrustedProfileConfig struct {
-	TrustedProfileName string
-	CrTokenFilePath    string
-	TrustedProfileID   string
-	IAMAccountID       string
-	ServiceIDApiKey    string
+	TrustedProfileName       string
+	CrTokenFilePath          string
+	TrustedProfileID         string
+	IAMAccountID             string
+	ServiceIDApiKey          string
+	DisableSSLVerification   bool
 }
 
 // NewTrustedProfileProvider allows the creation of a custom IBM IAM Trusted Profile Provider
@@ -100,11 +104,11 @@ func NewTrustedProfileProvider(providerName string, config *aws.Config, authEndP
 	// This authenticator is dynamically initialized based on the resourceType parameter.
 	// Since only cr-token based resources is supported now, it is initialized directly.
 	// when other resources are supported, the authenticator should be initialized accordingly.
+	// Note: SSL verification is enabled by default for security. Only disable for testing.
 	authenticator, err := core.NewContainerAuthenticatorBuilder().
 		SetCRTokenFilename(crTokenFilePath).
 		SetIAMProfileID(trustedProfileID).
 		SetURL(authEndPoint).
-		SetDisableSSLVerification(true).
 		Build()
 	if err != nil {
 		provider.ErrorStatus = awserr.New("errCreatingAuthenticatorClient", "cannot setup new Authenticator client", err)
@@ -179,12 +183,26 @@ func NewTrustedProfileProviderWithConfig(providerName string, config *aws.Config
 			return
 		}
 		// Here cr-token based resources is specified, hence initialized accordingly.
-		authenticator, err := core.NewContainerAuthenticatorBuilder().
+		// Note: SSL verification is enabled by default for security. Only disable for testing.
+		builder := core.NewContainerAuthenticatorBuilder().
 			SetCRTokenFilename(trustedProfileConfig.CrTokenFilePath).
 			SetIAMProfileID(trustedProfileConfig.TrustedProfileID).
-			SetURL(authEndPoint).
-			SetDisableSSLVerification(true).
-			Build()
+			SetURL(authEndPoint)
+		// Check if SSL verification should be disabled
+		// Priority: 1. Config field, 2. Environment variable
+		disableSSL := trustedProfileConfig.DisableSSLVerification
+		if !disableSSL {
+			// Check environment variable if not explicitly set in config
+			envValue := os.Getenv("TRUSTED_PROFILE_CR_DISABLE_SSL_VERIFICATION")
+			if strings.ToLower(envValue) == "true" {
+				disableSSL = true
+			}
+		}
+		// Only disable SSL verification if explicitly requested (not recommended for production)
+		if disableSSL {
+			builder.SetDisableSSLVerification(true)
+		}
+		authenticator, err := builder.Build()
 		authenticatorErr = err
 		provider.authenticator = authenticator
 	} else if resourceType == ResourceServiceID {

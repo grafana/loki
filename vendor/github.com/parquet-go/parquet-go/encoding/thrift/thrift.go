@@ -61,6 +61,7 @@ const (
 	SET
 	MAP
 	STRUCT
+	UUID
 	BOOL = FALSE
 )
 
@@ -92,6 +93,8 @@ func (t Type) String() string {
 		return "MAP"
 	case STRUCT:
 		return "STRUCT"
+	case UUID:
+		return "UUID"
 	default:
 		return "?"
 	}
@@ -127,6 +130,10 @@ func (m Map) String() string {
 }
 
 func TypeOf(t reflect.Type) Type {
+	if isUnion(t) {
+		return STRUCT
+	}
+
 	// Check if type implements Value interface first
 	if t.Implements(valueType) {
 		zv := reflect.Zero(t).Interface().(Value)

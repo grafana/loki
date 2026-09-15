@@ -43,6 +43,8 @@ The IP matching can be used in both line filter and label filter expressions.
 When specifying line filter expressions, only the `|=` and `!=` operations are allowed.
 When specifying label filter expressions, only the  `=` and `!=` operations are allowed.
 
+An `ip()` label filter keeps a log line that already carries an `__error__` label, whichever operation you use. Add an `__error__` filter to drop those lines.
+
 - Line filter examples
 
     ```logql

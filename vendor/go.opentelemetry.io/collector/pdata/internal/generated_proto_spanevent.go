@@ -12,15 +12,16 @@ import (
 	"sync"
 
 	"go.opentelemetry.io/collector/pdata/internal/json"
+	"go.opentelemetry.io/collector/pdata/internal/metadata"
 	"go.opentelemetry.io/collector/pdata/internal/proto"
 )
 
 // SpanEvent is a time-stamped annotation of the span, consisting of user-supplied
 // text description and key-value pairs. See OTLP for event definition.
 type SpanEvent struct {
+	TimeUnixNano           uint64
 	Name                   string
 	Attributes             []KeyValue
-	TimeUnixNano           uint64
 	DroppedAttributesCount uint32
 }
 
@@ -33,7 +34,7 @@ var (
 )
 
 func NewSpanEvent() *SpanEvent {
-	if !UseProtoPooling.IsEnabled() {
+	if !metadata.PdataUseProtoPoolingFeatureGate.IsEnabled() {
 		return &SpanEvent{}
 	}
 	return protoPoolSpanEvent.Get().(*SpanEvent)
@@ -44,7 +45,7 @@ func DeleteSpanEvent(orig *SpanEvent, nullable bool) {
 		return
 	}
 
-	if !UseProtoPooling.IsEnabled() {
+	if !metadata.PdataUseProtoPoolingFeatureGate.IsEnabled() {
 		orig.Reset()
 		return
 	}
@@ -178,7 +179,7 @@ func (orig *SpanEvent) UnmarshalJSON(iter *json.Iterator) {
 		case "droppedAttributesCount", "dropped_attributes_count":
 			orig.DroppedAttributesCount = iter.ReadUint32()
 		default:
-			iter.Skip()
+			iter.HandleUnknownField(f)
 		}
 	}
 }

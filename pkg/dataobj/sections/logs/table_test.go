@@ -139,6 +139,203 @@ func Test_mergeTables(t *testing.T) {
 	}
 }
 
+func TestSortRecords_SortSchemaASC(t *testing.T) {
+	type testCase struct {
+		name              string
+		sortOrder         SortOrder
+		input             []Record
+		expectedLineOrder []string
+	}
+
+	t1 := time.Unix(1, 0)
+	t2 := time.Unix(2, 0)
+	t3 := time.Unix(3, 0)
+
+	testCases := []testCase{
+		{
+			// SortSchemaASC basic case
+			name:      "SortSchemaASC_basic",
+			sortOrder: SortSchemaASC,
+			input: []Record{
+				{Timestamp: t1, SchemaKey: "app-a", Line: []byte("A")},
+				{Timestamp: t2, SchemaKey: "app-b", Line: []byte("B")},
+				{Timestamp: t3, SchemaKey: "app-c", Line: []byte("C")},
+			},
+			expectedLineOrder: []string{"A", "B", "C"},
+		},
+		{
+			// SortSchemaASC with equal sort keys falls back to timestamp DESC
+			name:      "SortSchemaASC_equalSortKeys",
+			sortOrder: SortSchemaASC,
+			input: []Record{
+				{Timestamp: t1, SchemaKey: "app-a", Line: []byte("A")},
+				{Timestamp: t2, SchemaKey: "app-a", Line: []byte("B")},
+				{Timestamp: t3, SchemaKey: "app-a", Line: []byte("C")},
+			},
+			expectedLineOrder: []string{"C", "B", "A"},
+		},
+		{
+			// SortSchemaASC with equal sort keys falls back to streamID ASC before timestamp DESC
+			name:      "SortSchemaASC_equalSortKeysUsesStreamID",
+			sortOrder: SortSchemaASC,
+			input: []Record{
+				{StreamID: 15, Timestamp: t1, SchemaKey: "app-b", Line: []byte("A")},
+				{StreamID: 15, Timestamp: t3, SchemaKey: "app-a", Line: []byte("B")},
+				{StreamID: 15, Timestamp: t1, SchemaKey: "app-a", Line: []byte("C")},
+				{StreamID: 10, Timestamp: t2, SchemaKey: "app-a", Line: []byte("D")},
+				{StreamID: 20, Timestamp: t1, SchemaKey: "app-b", Line: []byte("E")},
+				{StreamID: 20, Timestamp: t1, SchemaKey: "app-a", Line: []byte("F")},
+			},
+			expectedLineOrder: []string{"D", "B", "C", "F", "A", "E"},
+		},
+		{
+			// Shard bucket precedes the tenant sort-schema key.
+			name:      "SortSchemaASC_shardPrecedesSortKey",
+			sortOrder: SortSchemaASC,
+			input: []Record{
+				{ShardBucket: 1, SchemaKey: "app-a", Line: []byte("A")},
+				{ShardBucket: 0, SchemaKey: "app-z", Line: []byte("Z")},
+			},
+			expectedLineOrder: []string{"Z", "A"},
+		},
+		{
+			// Stream hash precedes stream ID within the same shard and sort key.
+			name:      "SortSchemaASC_hashPrecedesStreamID",
+			sortOrder: SortSchemaASC,
+			input: []Record{
+				{ShardBucket: 0, SchemaKey: "app-a", StreamHash: 2, StreamID: 1, Timestamp: t1, Line: []byte("later-hash")},
+				{ShardBucket: 0, SchemaKey: "app-a", StreamHash: 1, StreamID: 9, Timestamp: t1, Line: []byte("earlier-hash")},
+			},
+			expectedLineOrder: []string{"earlier-hash", "later-hash"},
+		},
+		{
+			// SortSchemaASC with equal timestamps uses primary ordering
+			name:      "SortSchemaASC_equalTimestamps",
+			sortOrder: SortSchemaASC,
+			input: []Record{
+				{Timestamp: t1, SchemaKey: "app-a", Line: []byte("A")},
+				{Timestamp: t1, SchemaKey: "app-b", Line: []byte("B")},
+				{Timestamp: t1, SchemaKey: "app-c", Line: []byte("C")},
+			},
+			expectedLineOrder: []string{"A", "B", "C"},
+		},
+		{
+			// SortSchemaASC with equal sort keys and equal timestamps falls back to reverse input ordering
+			name:      "SortSchemaASC_equalSortKeysAndTimestamps",
+			sortOrder: SortSchemaASC,
+			input: []Record{
+				{Timestamp: t1, SchemaKey: "app-a", Line: []byte("A")},
+				{Timestamp: t1, SchemaKey: "app-a", Line: []byte("B")},
+				{Timestamp: t1, SchemaKey: "app-a", Line: []byte("C")},
+			},
+			expectedLineOrder: []string{"C", "B", "A"},
+		},
+		{
+			// SortStreamASC basic case
+			name:      "SortStreamASC_basic",
+			sortOrder: SortStreamASC,
+			input: []Record{
+				{StreamID: 10, Timestamp: t1, Line: []byte("A")},
+				{StreamID: 20, Timestamp: t2, Line: []byte("B")},
+				{StreamID: 30, Timestamp: t3, Line: []byte("C")},
+			},
+			expectedLineOrder: []string{"A", "B", "C"},
+		},
+		{
+			// SortStreamASC with equal stream IDs falls back to timestamp DESC
+			name:      "SortStreamASC_equalStreamIDs",
+			sortOrder: SortStreamASC,
+			input: []Record{
+				{StreamID: 10, Timestamp: t1, Line: []byte("A")},
+				{StreamID: 10, Timestamp: t2, Line: []byte("B")},
+				{StreamID: 10, Timestamp: t3, Line: []byte("C")},
+			},
+			expectedLineOrder: []string{"C", "B", "A"},
+		},
+		{
+			// SortStreamASC with equal timestamps uses primary ordering
+			name:      "SortStreamASC_equalTimestamps",
+			sortOrder: SortStreamASC,
+			input: []Record{
+				{StreamID: 10, Timestamp: t1, Line: []byte("A")},
+				{StreamID: 20, Timestamp: t1, Line: []byte("B")},
+				{StreamID: 30, Timestamp: t1, Line: []byte("C")},
+			},
+			expectedLineOrder: []string{"A", "B", "C"},
+		},
+		{
+			// SortStreamASC with equal stream IDs and equal timestamps falls back to reverse input ordering
+			name:      "SortStreamASC_equalStreamIDsAndTimestamps",
+			sortOrder: SortStreamASC,
+			input: []Record{
+				{StreamID: 10, Timestamp: t1, Line: []byte("A")},
+				{StreamID: 10, Timestamp: t1, Line: []byte("B")},
+				{StreamID: 10, Timestamp: t1, Line: []byte("C")},
+				{StreamID: 10, Timestamp: t2, Line: []byte("D")},
+				{StreamID: 10, Timestamp: t2, Line: []byte("E")},
+				{StreamID: 10, Timestamp: t3, Line: []byte("F")},
+				{StreamID: 10, Timestamp: t3, Line: []byte("G")},
+			},
+			expectedLineOrder: []string{"G", "F", "E", "D", "C", "B", "A"},
+		},
+		{
+			// SortTimestampDESC basic case
+			name:      "SortTimestampDESC_basic",
+			sortOrder: SortTimestampDESC,
+			input: []Record{
+				{StreamID: 10, Timestamp: t1, Line: []byte("A")},
+				{StreamID: 20, Timestamp: t2, Line: []byte("B")},
+				{StreamID: 30, Timestamp: t3, Line: []byte("C")},
+			},
+			expectedLineOrder: []string{"C", "B", "A"},
+		},
+		{
+			// SortTimestampDESC with equal stream IDs
+			name:      "SortTimestampDESC_equalStreamIDs",
+			sortOrder: SortTimestampDESC,
+			input: []Record{
+				{StreamID: 10, Timestamp: t1, Line: []byte("A")},
+				{StreamID: 10, Timestamp: t2, Line: []byte("B")},
+				{StreamID: 10, Timestamp: t3, Line: []byte("C")},
+			},
+			expectedLineOrder: []string{"C", "B", "A"},
+		},
+		{
+			// SortTimestampDESC with equal timestamps falls back to stream ID ASC
+			name:      "SortTimestampDESC_equalTimestamps",
+			sortOrder: SortTimestampDESC,
+			input: []Record{
+				{StreamID: 10, Timestamp: t1, Line: []byte("A")},
+				{StreamID: 20, Timestamp: t1, Line: []byte("B")},
+				{StreamID: 30, Timestamp: t1, Line: []byte("C")},
+			},
+			expectedLineOrder: []string{"A", "B", "C"},
+		},
+		{
+			// SortTimestampDESC with equal timestamps and equal stream IDs falls back to reverse input ordering
+			name:      "SortTimestampDESC_equalTimestampsAndStreamIDs",
+			sortOrder: SortTimestampDESC,
+			input: []Record{
+				{StreamID: 10, Timestamp: t1, Line: []byte("A")},
+				{StreamID: 10, Timestamp: t1, Line: []byte("B")},
+				{StreamID: 10, Timestamp: t1, Line: []byte("C")},
+			},
+			expectedLineOrder: []string{"C", "B", "A"},
+		},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			sortRecords(testCase.input, testCase.sortOrder)
+			var lines []string
+			for _, r := range testCase.input {
+				lines = append(lines, string(r.Line))
+			}
+			require.Equal(t, testCase.expectedLineOrder, lines)
+		})
+	}
+}
+
 func Test_table_backfillMetadata(t *testing.T) {
 	records := []Record{
 		{StreamID: 1, Timestamp: time.Unix(1, 0), Line: []byte("msg1"), Metadata: labels.FromStrings("env", "prod", "service", "api")},

@@ -11,14 +11,15 @@ import (
 	"sync"
 
 	"go.opentelemetry.io/collector/pdata/internal/json"
+	"go.opentelemetry.io/collector/pdata/internal/metadata"
 	"go.opentelemetry.io/collector/pdata/internal/proto"
 )
 
 // ScopeSpans is a collection of spans from a LibraryInstrumentation.
 type ScopeSpans struct {
-	SchemaUrl string
-	Spans     []*Span
 	Scope     InstrumentationScope
+	Spans     []*Span
+	SchemaUrl string
 }
 
 var (
@@ -30,7 +31,7 @@ var (
 )
 
 func NewScopeSpans() *ScopeSpans {
-	if !UseProtoPooling.IsEnabled() {
+	if !metadata.PdataUseProtoPoolingFeatureGate.IsEnabled() {
 		return &ScopeSpans{}
 	}
 	return protoPoolScopeSpans.Get().(*ScopeSpans)
@@ -41,7 +42,7 @@ func DeleteScopeSpans(orig *ScopeSpans, nullable bool) {
 		return
 	}
 
-	if !UseProtoPooling.IsEnabled() {
+	if !metadata.PdataUseProtoPoolingFeatureGate.IsEnabled() {
 		orig.Reset()
 		return
 	}
@@ -168,7 +169,7 @@ func (orig *ScopeSpans) UnmarshalJSON(iter *json.Iterator) {
 		case "schemaUrl", "schema_url":
 			orig.SchemaUrl = iter.ReadString()
 		default:
-			iter.Skip()
+			iter.HandleUnknownField(f)
 		}
 	}
 }

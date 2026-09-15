@@ -32,6 +32,44 @@ func ToRecordBatch(src *columnar.RecordBatch, schema *arrow.Schema) (arrow.Recor
 		}
 
 		switch field.Type.ID() {
+		case arrow.INT32:
+			srcInt32 := srcCol.(*columnar.Number[int32])
+			srcBytes := arrow.GetBytes(srcInt32.Values())
+			dstBytes := make([]byte, len(srcBytes))
+			copy(dstBytes, srcBytes)
+
+			data := array.NewData(
+				field.Type,
+				int(nrows),
+				[]*arrowmemory.Buffer{
+					arrowmemory.NewBufferBytes(dstValidity),
+					arrowmemory.NewBufferBytes(dstBytes),
+				},
+				nil,
+				srcInt32.Nulls(),
+				0,
+			)
+			arr = array.NewInt32Data(data)
+
+		case arrow.UINT32:
+			srcUint32 := srcCol.(*columnar.Number[uint32])
+			srcBytes := arrow.GetBytes(srcUint32.Values())
+			dstBytes := make([]byte, len(srcBytes))
+			copy(dstBytes, srcBytes)
+
+			data := array.NewData(
+				field.Type,
+				int(nrows),
+				[]*arrowmemory.Buffer{
+					arrowmemory.NewBufferBytes(dstValidity),
+					arrowmemory.NewBufferBytes(dstBytes),
+				},
+				nil,
+				srcUint32.Nulls(),
+				0,
+			)
+			arr = array.NewUint32Data(data)
+
 		case arrow.INT64:
 			srcInt64 := srcCol.(*columnar.Number[int64])
 			srcBytes := arrow.GetBytes(srcInt64.Values())

@@ -13,17 +13,18 @@ import (
 	"sync"
 
 	"go.opentelemetry.io/collector/pdata/internal/json"
+	"go.opentelemetry.io/collector/pdata/internal/metadata"
 	"go.opentelemetry.io/collector/pdata/internal/proto"
 )
 
 // SummaryDataPoint is a single data point in a timeseries that describes the time-varying values of a Summary of double values.
 type SummaryDataPoint struct {
 	Attributes        []KeyValue
-	QuantileValues    []*SummaryDataPointValueAtQuantile
 	StartTimeUnixNano uint64
 	TimeUnixNano      uint64
 	Count             uint64
 	Sum               float64
+	QuantileValues    []*SummaryDataPointValueAtQuantile
 	Flags             uint32
 }
 
@@ -36,7 +37,7 @@ var (
 )
 
 func NewSummaryDataPoint() *SummaryDataPoint {
-	if !UseProtoPooling.IsEnabled() {
+	if !metadata.PdataUseProtoPoolingFeatureGate.IsEnabled() {
 		return &SummaryDataPoint{}
 	}
 	return protoPoolSummaryDataPoint.Get().(*SummaryDataPoint)
@@ -47,7 +48,7 @@ func DeleteSummaryDataPoint(orig *SummaryDataPoint, nullable bool) {
 		return
 	}
 
-	if !UseProtoPooling.IsEnabled() {
+	if !metadata.PdataUseProtoPoolingFeatureGate.IsEnabled() {
 		orig.Reset()
 		return
 	}
@@ -216,7 +217,7 @@ func (orig *SummaryDataPoint) UnmarshalJSON(iter *json.Iterator) {
 		case "flags":
 			orig.Flags = iter.ReadUint32()
 		default:
-			iter.Skip()
+			iter.HandleUnknownField(f)
 		}
 	}
 }

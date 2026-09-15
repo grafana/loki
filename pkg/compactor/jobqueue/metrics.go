@@ -9,7 +9,6 @@ import (
 
 type queueMetrics struct {
 	jobsSent               prometheus.Counter
-	jobsDeQueued           prometheus.Counter
 	jobsProcessed          prometheus.Counter
 	jobRetries             *prometheus.CounterVec
 	jobsDropped            prometheus.Counter

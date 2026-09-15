@@ -238,11 +238,27 @@ type APIGatewayConfigEntry struct {
 	// service. This should match the name provided in the service definition.
 	Name string
 
+	// TLS holds default TLS configuration for API gateway listeners. Listener
+	// TLS settings may override these defaults.
+	TLS GatewayTLSConfig
+
 	Meta map[string]string `json:",omitempty"`
 
 	// Listeners is the set of listener configuration to which an API Gateway
 	// might bind.
 	Listeners []APIGatewayListener
+
+	// Defaults contains default upstream limits for all route destination services.
+	Defaults *UpstreamLimits `json:",omitempty"`
+
+	// ExtAuthz is the gateway-wide external authorization toggle. It controls the
+	// default ext_authz posture for every endpoint behind this gateway when the
+	// builtin/ext-authz EnvoyExtension is applied via service-defaults. When nil
+	// (omitted) ext_authz is enabled by default; when set with Enabled=false the
+	// filter defaults to disabled and routes must opt in individually. Per-route
+	// http-route ExtAuthz filters take precedence over this toggle.
+	ExtAuthz *APIGatewayExtAuthz `json:",omitempty"`
+
 	// Status is the asynchronous status which an APIGateway propagates to the user.
 	Status ConfigEntryStatus
 
@@ -271,6 +287,16 @@ func (g *APIGatewayConfigEntry) GetNamespace() string       { return g.Namespace
 func (g *APIGatewayConfigEntry) GetMeta() map[string]string { return g.Meta }
 func (g *APIGatewayConfigEntry) GetCreateIndex() uint64     { return g.CreateIndex }
 func (g *APIGatewayConfigEntry) GetModifyIndex() uint64     { return g.ModifyIndex }
+
+// APIGatewayExtAuthz is the gateway-wide external authorization toggle on an
+// APIGatewayConfigEntry. See APIGatewayConfigEntry.ExtAuthz.
+type APIGatewayExtAuthz struct {
+	// Enabled controls the default ext_authz posture for all endpoints behind
+	// the gateway. When false the ext_authz filter defaults to disabled and
+	// individual http-route rules must opt in. When the containing ExtAuthz
+	// block is omitted entirely, ext_authz is enabled by default.
+	Enabled bool
+}
 
 // APIGatewayListener represents an individual listener for an APIGateway
 type APIGatewayListener struct {
@@ -303,6 +329,8 @@ type APIGatewayTLSConfiguration struct {
 	// Certificates is a set of references to certificates
 	// that a gateway listener uses for TLS termination.
 	Certificates []ResourceReference
+	// SDS allows configuring TLS certificate from an SDS service.
+	SDS *GatewayTLSSDSConfig `json:",omitempty"`
 	// MaxVersion is the maximum TLS version that the listener
 	// should support.
 	MaxVersion string `json:",omitempty" alias:"tls_max_version"`

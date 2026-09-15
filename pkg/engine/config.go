@@ -10,7 +10,7 @@ import (
 	"github.com/grafana/dskit/flagext"
 	"github.com/grafana/dskit/netutil"
 
-	"github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/cache/resultscache"
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
 )
 
@@ -45,7 +45,7 @@ type Config struct {
 	// When enabled, the tenant's MaxQuerySeries limit is applied; otherwise, no limit is enforced.
 	EnforceQuerySeriesLimit bool `yaml:"enforce_max_query_series_limit" category:"experimental"`
 
-	ResultsCache queryrangebase.ResultsCacheConfig `yaml:"results_cache" category:"experimental"`
+	ResultsCache resultscache.Config `yaml:"results_cache" category:"experimental"`
 }
 
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {

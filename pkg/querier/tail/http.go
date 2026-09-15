@@ -88,24 +88,24 @@ func (q *Querier) TailHandler(w http.ResponseWriter, r *http.Request) {
 
 	doneChan := make(chan struct{})
 	go func() {
+		defer close(doneChan)
 		for {
 			_, _, err := conn.ReadMessage()
 			if err != nil {
 				if closeErr, ok := err.(*websocket.CloseError); ok {
 					if closeErr.Code == websocket.CloseNormalClosure {
-						break
+						return
 					}
 					level.Error(logger).Log("msg", "Error from client", "err", err)
-					break
+					return
 				} else if tailer.stopped.Load() {
 					return
 				}
 
 				level.Error(logger).Log("msg", "Unexpected error from client", "err", err)
-				break
+				return
 			}
 		}
-		doneChan <- struct{}{}
 	}()
 
 	for {

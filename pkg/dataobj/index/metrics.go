@@ -105,18 +105,6 @@ func (p *builderMetrics) register(reg prometheus.Registerer) error {
 	return nil
 }
 
-func (p *builderMetrics) unregister(reg prometheus.Registerer) {
-	collectors := []prometheus.Collector{
-		p.commitFailures,
-		p.commitsTotal,
-		p.processingDelay,
-	}
-
-	for _, collector := range collectors {
-		reg.Unregister(collector)
-	}
-}
-
 func (p *builderMetrics) incCommitFailures() {
 	p.commitFailures.Inc()
 }
@@ -196,20 +184,6 @@ func (m *indexerMetrics) register(reg prometheus.Registerer) error {
 	return nil
 }
 
-func (m *indexerMetrics) unregister(reg prometheus.Registerer) {
-	collectors := []prometheus.Collector{
-		m.totalRequests,
-		m.totalBuilds,
-		m.buildTimeSeconds,
-		m.queueDepth,
-		m.endToEndProcessingTime,
-	}
-
-	for _, collector := range collectors {
-		reg.Unregister(collector)
-	}
-}
-
 func (m *indexerMetrics) incRequests() {
 	m.totalRequests.Inc()
 }
@@ -228,4 +202,35 @@ func (m *indexerMetrics) setQueueDepth(depth int) {
 
 func (m *indexerMetrics) setEndToEndProcessingTime(duration time.Duration) {
 	m.endToEndProcessingTime.Set(duration.Seconds())
+}
+
+type calculatorMetrics struct {
+	calculationStepDuration *prometheus.HistogramVec
+}
+
+func newCalculatorMetrics() *calculatorMetrics {
+	return &calculatorMetrics{
+		calculationStepDuration: prometheus.NewHistogramVec(prometheus.HistogramOpts{
+			Name:    "loki_index_calculator_step_duration_seconds",
+			Help:    "Time spent in each index calculation step (ProcessBatch + Flush) per logs section.",
+			Buckets: prometheus.DefBuckets,
+		}, []string{"step"}),
+	}
+}
+
+func (m *calculatorMetrics) register(reg prometheus.Registerer) error {
+	if err := reg.Register(m.calculationStepDuration); err != nil {
+		if _, ok := err.(prometheus.AlreadyRegisteredError); !ok {
+			return err
+		}
+	}
+	return nil
+}
+
+func (m *calculatorMetrics) unregister(reg prometheus.Registerer) {
+	reg.Unregister(m.calculationStepDuration)
+}
+
+func (m *calculatorMetrics) observeStepDuration(step string, duration time.Duration) {
+	m.calculationStepDuration.WithLabelValues(step).Observe(duration.Seconds())
 }

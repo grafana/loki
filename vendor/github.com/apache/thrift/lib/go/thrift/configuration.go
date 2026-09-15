@@ -22,6 +22,7 @@ package thrift
 import (
 	"crypto/tls"
 	"fmt"
+	"math"
 	"time"
 )
 
@@ -306,7 +307,7 @@ type TConfigurationSetter interface {
 //
 // NOTE: nil cfg is not propagated. If you want to propagate a TConfiguration
 // with everything being default value, use &TConfiguration{} explicitly instead.
-func PropagateTConfiguration(impl interface{}, cfg *TConfiguration) {
+func PropagateTConfiguration(impl any, cfg *TConfiguration) {
 	if cfg == nil || cfg.noPropagation {
 		return
 	}
@@ -330,6 +331,34 @@ func checkSizeForProtocol(size int32, cfg *TConfiguration) error {
 		)
 	}
 	return nil
+}
+
+// checkContainerSizeForProtocol validates the minimum on-wire size of a
+// container with the given wire-supplied element count, where each element
+// occupies at least minElemSize bytes. The count is range-checked and the
+// product is computed in 64-bit arithmetic, so the value handed to
+// checkSizeForProtocol always stays within int32 range.
+func checkContainerSizeForProtocol(size int64, minElemSize int32, cfg *TConfiguration) error {
+	if size < 0 {
+		return NewTProtocolExceptionWithType(
+			NEGATIVE_SIZE,
+			fmt.Errorf("negative size: %d", size),
+		)
+	}
+	if size > math.MaxInt32 {
+		return NewTProtocolExceptionWithType(
+			SIZE_LIMIT,
+			fmt.Errorf("size exceeded max allowed: %d", size),
+		)
+	}
+	totalMinSize := size * int64(minElemSize)
+	if totalMinSize > math.MaxInt32 {
+		return NewTProtocolExceptionWithType(
+			SIZE_LIMIT,
+			fmt.Errorf("size exceeded max allowed: %d", totalMinSize),
+		)
+	}
+	return checkSizeForProtocol(int32(totalMinSize), cfg)
 }
 
 type tTransportFactoryConf struct {

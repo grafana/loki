@@ -1,8 +1,6 @@
 package metastore
 
 import (
-	"time"
-
 	"github.com/prometheus/client_golang/prometheus"
 )
 
@@ -90,24 +88,6 @@ func (p *tocMetrics) incTableOfContentsWrites(status status) {
 	p.tocWriteFailures.WithLabelValues(string(status)).Inc()
 }
 
-func (p *tocMetrics) observeMetastoreReplay(recordTimestamp time.Time) {
-	if !recordTimestamp.IsZero() { // Only observe if timestamp is valid
-		p.tocReplayTime.Observe(time.Since(recordTimestamp).Seconds())
-	}
-}
-
-func (p *tocMetrics) observeMetastoreEncoding(recordTimestamp time.Time) {
-	if !recordTimestamp.IsZero() { // Only observe if timestamp is valid
-		p.tocEncodingTime.Observe(time.Since(recordTimestamp).Seconds())
-	}
-}
-
-func (p *tocMetrics) observeMetastoreProcessing(recordTimestamp time.Time) {
-	if !recordTimestamp.IsZero() { // Only observe if timestamp is valid
-		p.tocProcessingTime.Observe(time.Since(recordTimestamp).Seconds())
-	}
-}
-
 type ObjectMetastoreMetrics struct {
 	indexObjectsTotal                   prometheus.Histogram
 	streamFilterTotalDuration           prometheus.Histogram
@@ -120,6 +100,10 @@ type ObjectMetastoreMetrics struct {
 	resolvedSectionsTotalDuration       prometheus.Histogram
 	resolvedSectionsTotal               prometheus.Histogram
 	resolvedSectionsRatio               prometheus.Histogram
+
+	indexReadFlowTotal        *prometheus.CounterVec
+	indexReadRowsPerObject    *prometheus.HistogramVec
+	resolvedSectionsPerObject prometheus.Histogram
 }
 
 func NewObjectMetastoreMetrics(reg prometheus.Registerer) *ObjectMetastoreMetrics {
@@ -212,6 +196,26 @@ func NewObjectMetastoreMetrics(reg prometheus.Registerer) *ObjectMetastoreMetric
 			NativeHistogramMaxBucketNumber:  100,
 			NativeHistogramMinResetDuration: 0,
 		}),
+		indexReadFlowTotal: prometheus.NewCounterVec(prometheus.CounterOpts{
+			Name: "loki_metastore_index_read_flow_total",
+			Help: "Total number of index objects routed to each read flow",
+		}, []string{"flow"}),
+		indexReadRowsPerObject: prometheus.NewHistogramVec(prometheus.HistogramOpts{
+			Name:                            "loki_metastore_index_read_rows_per_object",
+			Help:                            "Number of index rows read while resolving a single index object",
+			Buckets:                         nil,
+			NativeHistogramBucketFactor:     1.1,
+			NativeHistogramMaxBucketNumber:  100,
+			NativeHistogramMinResetDuration: 0,
+		}, []string{"flow"}),
+		resolvedSectionsPerObject: prometheus.NewHistogram(prometheus.HistogramOpts{
+			Name:                            "loki_metastore_resolved_sections_per_object",
+			Help:                            "Number of sections resolved from a single index object",
+			Buckets:                         nil,
+			NativeHistogramBucketFactor:     1.1,
+			NativeHistogramMaxBucketNumber:  100,
+			NativeHistogramMinResetDuration: 0,
+		}),
 	}
 	metrics.register(reg)
 
@@ -222,15 +226,29 @@ func (p *ObjectMetastoreMetrics) register(reg prometheus.Registerer) {
 	if reg == nil {
 		return
 	}
-	reg.MustRegister(p.indexObjectsTotal)
-	reg.MustRegister(p.streamFilterTotalDuration)
-	reg.MustRegister(p.streamFilterSections)
-	reg.MustRegister(p.streamFilterStreamsReadDuration)
-	reg.MustRegister(p.streamFilterPointersReadDuration)
-	reg.MustRegister(p.estimateSectionsTotalDuration)
-	reg.MustRegister(p.estimateSectionsPointerReadDuration)
-	reg.MustRegister(p.estimateSectionsSections)
-	reg.MustRegister(p.resolvedSectionsTotalDuration)
-	reg.MustRegister(p.resolvedSectionsTotal)
-	reg.MustRegister(p.resolvedSectionsRatio)
+
+	collectors := []prometheus.Collector{
+		p.indexObjectsTotal,
+		p.streamFilterTotalDuration,
+		p.streamFilterSections,
+		p.streamFilterStreamsReadDuration,
+		p.streamFilterPointersReadDuration,
+		p.estimateSectionsTotalDuration,
+		p.estimateSectionsPointerReadDuration,
+		p.estimateSectionsSections,
+		p.resolvedSectionsTotalDuration,
+		p.resolvedSectionsTotal,
+		p.resolvedSectionsRatio,
+		p.indexReadFlowTotal,
+		p.indexReadRowsPerObject,
+		p.resolvedSectionsPerObject,
+	}
+
+	for _, collector := range collectors {
+		if err := reg.Register(collector); err != nil {
+			if _, ok := err.(prometheus.AlreadyRegisteredError); !ok {
+				panic(err)
+			}
+		}
+	}
 }

@@ -25,7 +25,6 @@ import (
 	_ "google.golang.org/grpc/internal/xds/balancer/cdsbalancer"      // Register the CDS balancer
 	_ "google.golang.org/grpc/internal/xds/balancer/clusterimpl"      // Register the xds_cluster_impl balancer
 	_ "google.golang.org/grpc/internal/xds/balancer/clustermanager"   // Register the xds_cluster_manager balancer
-	_ "google.golang.org/grpc/internal/xds/balancer/clusterresolver"  // Register the xds_cluster_resolver balancer
 	_ "google.golang.org/grpc/internal/xds/balancer/outlierdetection" // Register the outlier_detection balancer
 	_ "google.golang.org/grpc/internal/xds/balancer/priority"         // Register the priority balancer
 )

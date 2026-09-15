@@ -130,10 +130,10 @@ func (t *indexedType) NewPage(columnIndex, numValues int, data encoding.Values) 
 type indexedPage struct {
 	typ         *indexedType
 	values      []int32
-	columnIndex int16
+	columnIndex uint16
 }
 
-func newIndexedPage(typ *indexedType, columnIndex int16, numValues int32, data encoding.Values) *indexedPage {
+func newIndexedPage(typ *indexedType, columnIndex uint16, numValues int32, data encoding.Values) *indexedPage {
 	// RLE encoded values that contain dictionary indexes in data pages are
 	// sometimes truncated when they contain only zeros. We account for this
 	// special case here and extend the values buffer if it is shorter than
@@ -246,7 +246,7 @@ func (r *indexedPageValues) ReadValues(values []Value) (n int, err error) {
 // builds a page of indexes into a parent dictionary when values are written.
 type indexedColumnBuffer struct{ indexedPage }
 
-func newIndexedColumnBuffer(typ *indexedType, columnIndex int16, numValues int32) *indexedColumnBuffer {
+func newIndexedColumnBuffer(typ *indexedType, columnIndex uint16, numValues int32) *indexedColumnBuffer {
 	return &indexedColumnBuffer{
 		indexedPage: indexedPage{
 			typ:         typ,

@@ -4,9 +4,9 @@
 // both. It's been battle-tested in several large projects and is
 // production-ready.
 //
-// A tutorial is available at https://github.com/charmbracelet/bubbletea/tree/master/tutorials
+// A tutorial is available at https://github.com/charmbracelet/bubbletea/tree/main/tutorials
 //
-// Example programs can be found at https://github.com/charmbracelet/bubbletea/tree/master/examples
+// Example programs can be found at https://github.com/charmbracelet/bubbletea/tree/main/examples
 package tea
 
 import (
@@ -245,6 +245,25 @@ type KeyboardEnhancements struct {
 	// [KeyPressMsg] with the [Key.IsRepeat] field set indicating that this is
 	// a it's part of a key repeat sequence.
 	ReportEventTypes bool
+
+	// ReportAlternateKeys requests the terminal to report alternate key values
+	// in addition to the main ones.
+	// Note that only key events represented as escape codes will affected by
+	// this enhancement.
+	ReportAlternateKeys bool
+
+	// ReportAllKeysAsEscapeCodes requests the terminal to report all key
+	// events, including plain text keys, as escape codes.
+	// When this is enabled, text won't be sent as plain text but instead as
+	// escape codes that encode the key value and modifiers.
+	ReportAllKeysAsEscapeCodes bool
+
+	// ReportAssociatedText requests the terminal to report the text associated
+	// with key events.
+	// Note that this is an enhancement to
+	// [KeyboardEnhancements.ReportAllKeysAsEscapeCodes] and only has an effect
+	// if that is enabled.
+	ReportAssociatedText bool
 }
 
 // SetContent is a helper method to set the content of a [View] with a styled
@@ -298,15 +317,23 @@ const (
 	ProgressBarWarning
 )
 
-// String return a human-readable value for the given [ProgressBarState].
+// String returns a human-readable name for the given [ProgressBarState].
+// Values outside the known range return "Unknown".
 func (s ProgressBarState) String() string {
-	return [...]string{
-		"None",
-		"Default",
-		"Error",
-		"Indeterminate",
-		"Warning",
-	}[s]
+	switch s {
+	case ProgressBarNone:
+		return "None"
+	case ProgressBarDefault:
+		return "Default"
+	case ProgressBarError:
+		return "Error"
+	case ProgressBarIndeterminate:
+		return "Indeterminate"
+	case ProgressBarWarning:
+		return "Warning"
+	default:
+		return "Unknown"
+	}
 }
 
 // ProgressBar represents the terminal progress bar.
@@ -317,7 +344,7 @@ func (s ProgressBarState) String() string {
 type ProgressBar struct {
 	// State is the current state of the progress bar. It can be one of
 	// [ProgressBarNone], [ProgressBarDefault], [ProgressBarError],
-	// [ProgressBarIndeterminate], and [ProgressBarWarn].
+	// [ProgressBarIndeterminate], and [ProgressBarWarning].
 	State ProgressBarState
 	// Value is the current value of the progress bar. It should be between
 	// 0 and 100.
@@ -1046,6 +1073,7 @@ func (p *Program) Run() (returnModel Model, returnErr error) {
 				p.height,
 			)
 			r.setLogger(p.logger)
+			r.setNoInput(p.disableInput)
 			// XXX: This breaks many things especially when we want the output
 			// to be compatible with terminals that are not necessary a TTY.
 			// This was originally done to work around a Wish emulated-pty
@@ -1328,8 +1356,10 @@ func (p *Program) RestoreTerminal() error {
 	if err := p.initTerminal(); err != nil {
 		return err
 	}
-	if err := p.initInputReader(false); err != nil {
-		return err
+	if p.input != nil {
+		if err := p.initInputReader(false); err != nil {
+			return err
+		}
 	}
 
 	p.startRenderer()

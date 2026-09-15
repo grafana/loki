@@ -3,7 +3,6 @@ package push
 import (
 	"compress/gzip"
 	"context"
-	"encoding/base64"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -12,14 +11,19 @@ import (
 	"time"
 
 	"github.com/go-kit/log"
+	"github.com/grafana/dskit/flagext"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/model/relabel"
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/collector/pdata/pcommon"
 	"go.opentelemetry.io/collector/pdata/plog"
+	"go.uber.org/goleak"
 	"google.golang.org/genproto/googleapis/rpc/status"
 	"google.golang.org/protobuf/proto"
 
+	"github.com/grafana/loki/v3/pkg/loghttp/push/otlpattrs"
+	"github.com/grafana/loki/v3/pkg/runtime"
+	"github.com/grafana/loki/v3/pkg/util"
 	"github.com/grafana/loki/v3/pkg/util/constants"
 
 	"github.com/grafana/loki/pkg/push"
@@ -32,6 +36,18 @@ import (
 	"github.com/pierrec/lz4/v4"
 	"go.opentelemetry.io/collector/pdata/plog/plogotlp"
 )
+
+var defaultGlobalOTLPConfig = GlobalOTLPConfig{}
+
+func init() {
+	flagext.DefaultValues(&defaultGlobalOTLPConfig)
+}
+
+type otlpAttributeExpansionTenantConfigs struct{}
+
+func (otlpAttributeExpansionTenantConfigs) TenantConfig(_ string) *runtime.Config {
+	return &runtime.Config{LogOTLPAttributeExpansion: true}
+}
 
 func TestOTLPToLokiPushRequest(t *testing.T) {
 	now := time.Unix(0, time.Now().UnixNano())
@@ -56,6 +72,7 @@ func TestOTLPToLokiPushRequest(t *testing.T) {
 		expectedPushRequest logproto.PushRequest
 		expectedStats       Stats
 		otlpConfig          OTLPConfig
+		discoverServiceName []string
 	}{
 		{
 			name: "no logs",
@@ -115,11 +132,6 @@ func TestOTLPToLokiPushRequest(t *testing.T) {
 						time.Hour: 0,
 					},
 				},
-				ResourceAndSourceMetadataLabels: map[string]map[time.Duration]push.LabelsAdapter{
-					"service-1-policy": {
-						time.Hour: nil,
-					},
-				},
 				StreamLabelsSize:                  21,
 				MostRecentEntryTimestamp:          now,
 				StreamSizeBytes:                   map[string]int64{},
@@ -162,11 +174,6 @@ func TestOTLPToLokiPushRequest(t *testing.T) {
 				StructuredMetadataBytes: PolicyWithRetentionWithBytes{
 					"others": {
 						time.Hour: 0,
-					},
-				},
-				ResourceAndSourceMetadataLabels: map[string]map[time.Duration]push.LabelsAdapter{
-					"others": {
-						time.Hour: nil,
 					},
 				},
 				StreamLabelsSize:                  27,
@@ -213,12 +220,54 @@ func TestOTLPToLokiPushRequest(t *testing.T) {
 						time.Hour: 0,
 					},
 				},
-				ResourceAndSourceMetadataLabels: map[string]map[time.Duration]push.LabelsAdapter{
-					"others": {
-						time.Hour: nil,
+				StreamLabelsSize:                  47,
+				MostRecentEntryTimestamp:          now,
+				StreamSizeBytes:                   map[string]int64{},
+				MostRecentEntryTimestampPerStream: map[string]time.Time{},
+			},
+		},
+		{
+			name:       "service.name not defined and discovery candidate is empty",
+			otlpConfig: DefaultOTLPConfig(defaultGlobalOTLPConfig),
+			discoverServiceName: []string{
+				"container_name",
+			},
+			generateLogs: func() plog.Logs {
+				ld := plog.NewLogs()
+				ld.ResourceLogs().AppendEmpty().Resource().Attributes().PutStr("container.name", "")
+				ld.ResourceLogs().At(0).ScopeLogs().AppendEmpty().LogRecords().AppendEmpty().Body().SetStr("test body")
+				ld.ResourceLogs().At(0).ScopeLogs().At(0).LogRecords().At(0).SetTimestamp(pcommon.Timestamp(now.UnixNano()))
+				return ld
+			},
+			expectedPushRequest: logproto.PushRequest{
+				Streams: []logproto.Stream{
+					{
+						Labels: `{container_name="", service_name="unknown_service"}`,
+						Entries: []logproto.Entry{
+							{
+								Timestamp:          now,
+								Line:               "test body",
+								StructuredMetadata: push.LabelsAdapter{},
+							},
+						},
 					},
 				},
-				StreamLabelsSize:                  47,
+			},
+			expectedStats: Stats{
+				PolicyNumLines: map[string]int64{
+					"others": 1,
+				},
+				LogLinesBytes: PolicyWithRetentionWithBytes{
+					"others": {
+						time.Hour: 9,
+					},
+				},
+				StructuredMetadataBytes: PolicyWithRetentionWithBytes{
+					"others": {
+						time.Hour: 0,
+					},
+				},
+				StreamLabelsSize:                  41,
 				MostRecentEntryTimestamp:          now,
 				StreamSizeBytes:                   map[string]int64{},
 				MostRecentEntryTimestampPerStream: map[string]time.Time{},
@@ -299,15 +348,6 @@ func TestOTLPToLokiPushRequest(t *testing.T) {
 				StructuredMetadataBytes: PolicyWithRetentionWithBytes{
 					"service-1-policy": {
 						time.Hour: 37,
-					},
-				},
-				ResourceAndSourceMetadataLabels: map[string]map[time.Duration]push.LabelsAdapter{
-					"service-1-policy": {
-						time.Hour: []push.LabelAdapter{
-							{Name: "service_image", Value: "loki"},
-							{Name: "op", Value: "buzz"},
-							{Name: "scope_name", Value: "fizz"},
-						},
 					},
 				},
 				StreamLabelsSize:                  21,
@@ -400,15 +440,6 @@ func TestOTLPToLokiPushRequest(t *testing.T) {
 				StructuredMetadataBytes: PolicyWithRetentionWithBytes{
 					"service-1-policy": {
 						time.Hour: 97,
-					},
-				},
-				ResourceAndSourceMetadataLabels: map[string]map[time.Duration]push.LabelsAdapter{
-					"service-1-policy": {
-						time.Hour: []push.LabelAdapter{
-							{Name: "resource_nested_foo", Value: "bar"},
-							{Name: "scope_nested_foo", Value: "bar"},
-							{Name: "scope_name", Value: "fizz"},
-						},
 					},
 				},
 				StreamLabelsSize:                  21,
@@ -563,16 +594,6 @@ func TestOTLPToLokiPushRequest(t *testing.T) {
 						time.Hour: 113,
 					},
 				},
-				ResourceAndSourceMetadataLabels: map[string]map[time.Duration]push.LabelsAdapter{
-					"service-1-policy": {
-						time.Hour: []push.LabelAdapter{
-							{Name: "pod_ip", Value: "10.200.200.200"},
-							{Name: "resource_nested_foo", Value: "bar"},
-							{Name: "scope_nested_foo", Value: "bar"},
-							{Name: "scope_name", Value: "fizz"},
-						},
-					},
-				},
 				StreamLabelsSize:                  42,
 				MostRecentEntryTimestamp:          now,
 				StreamSizeBytes:                   map[string]int64{},
@@ -581,6 +602,11 @@ func TestOTLPToLokiPushRequest(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			discoverServiceName := defaultServiceDetection
+			if tc.discoverServiceName != nil {
+				discoverServiceName = tc.discoverServiceName
+			}
+
 			stats := NewPushStats()
 			tracker := NewMockTracker()
 			streamResolver := newMockStreamResolver("fake", &fakeLimits{})
@@ -597,7 +623,7 @@ func TestOTLPToLokiPushRequest(t *testing.T) {
 				"foo",
 				tc.otlpConfig,
 				nil,
-				defaultServiceDetection,
+				discoverServiceName,
 				tracker,
 				stats,
 				log.NewNopLogger(),
@@ -606,7 +632,18 @@ func TestOTLPToLokiPushRequest(t *testing.T) {
 			)
 			require.NoError(t, err)
 			require.Equal(t, tc.expectedPushRequest, *pushReq)
-			require.Equal(t, tc.expectedStats, *stats)
+
+			// TotalExpandedEntriesSize is the size of each entry after resource/scope attributes have been
+			// merged into its structured metadata, which is exactly what expectedPushRequest's entries already
+			// contain.
+			expectedStats := tc.expectedStats
+			for _, stream := range tc.expectedPushRequest.Streams {
+				for i := range stream.Entries {
+					expectedStats.TotalExpandedEntriesSize += int64(util.EntryTotalSize(&stream.Entries[i]))
+				}
+			}
+
+			require.Equal(t, expectedStats, *stats)
 
 			totalBytes := 0.0
 			for _, policyMapping := range stats.LogLinesBytes {
@@ -620,6 +657,77 @@ func TestOTLPToLokiPushRequest(t *testing.T) {
 				}
 			}
 			require.Equal(t, totalBytes, tracker.Total(), "Total tracked bytes must equal total bytes of the stats.")
+		})
+	}
+}
+
+func TestOTLPToLokiPushRequestAttributeExpansionReport(t *testing.T) {
+	now := time.Unix(0, time.Now().UnixNano())
+	otlpConfig := DefaultOTLPConfig(GlobalOTLPConfig{
+		DefaultOTLPResourceAttributesAsIndexLabels: []string{"service.name"},
+	})
+	generateLogs := func() plog.Logs {
+		logs := plog.NewLogs()
+		resourceLogs := logs.ResourceLogs().AppendEmpty()
+		resourceLogs.Resource().Attributes().PutStr("service.name", "svc")
+		resourceLogs.Resource().Attributes().PutStr("cluster", "prod")
+		resourceLogs.Resource().Attributes().PutStr("cloud.region", "us-east-1")
+
+		scopeLogs := resourceLogs.ScopeLogs().AppendEmpty()
+		scopeLogs.Scope().SetName("testlib")
+		for range 3 {
+			record := scopeLogs.LogRecords().AppendEmpty()
+			record.Body().SetStr("a log line")
+			record.SetTimestamp(pcommon.Timestamp(now.UnixNano()))
+		}
+		return logs
+	}
+
+	for _, tc := range []struct {
+		name           string
+		expectedReport *otlpattrs.Report
+	}{
+		{
+			name: "enabled",
+			expectedReport: &otlpattrs.Report{
+				Records:                3,
+				Attributes:             3, // service.name is promoted as label
+				AttributeExpandedBytes: 147,
+				Top: []otlpattrs.Attribute{
+					{Kind: otlpattrs.KindResource, Name: "cloud_region", Records: 3, ExpandedBytes: 63},
+					{Kind: otlpattrs.KindScope, Name: "scope_name", Records: 3, ExpandedBytes: 51},
+					{Kind: otlpattrs.KindResource, Name: "cluster", Records: 3, ExpandedBytes: 33},
+				},
+			},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			tenantConfigs, err := runtime.NewTenantConfigs(otlpAttributeExpansionTenantConfigs{})
+			require.NoError(t, err)
+
+			stats := NewPushStats()
+			streamResolver := newMockStreamResolver("fake", &fakeLimits{})
+			streamResolver.policyForOverride = func(_ context.Context, _ labels.Labels) string {
+				return "test-policy"
+			}
+
+			_, err = otlpToLokiPushRequest(
+				context.Background(),
+				generateLogs(),
+				"test-user",
+				otlpConfig,
+				tenantConfigs,
+				[]string{},
+				NewMockTracker(),
+				stats,
+				log.NewNopLogger(),
+				streamResolver,
+				constants.OTLP,
+			)
+			require.NoError(t, err)
+
+			require.NotNil(t, stats.OTLPAttributes)
+			require.Equal(t, *tc.expectedReport, stats.OTLPAttributes.Report(0))
 		})
 	}
 }
@@ -659,6 +767,7 @@ func TestOTLPLogToPushEntry(t *testing.T) {
 				log.SetFlags(plog.DefaultLogRecordFlags.WithIsSampled(true))
 				log.SetTraceID([16]byte{0x12, 0x34, 0x56, 0x78, 0x12, 0x34, 0x56, 0x78, 0x12, 0x34, 0x56, 0x78, 0x12, 0x34, 0x56, 0x78})
 				log.SetSpanID([8]byte{0x12, 0x23, 0xAD, 0x12, 0x23, 0xAD, 0x12, 0x23})
+				log.SetEventName("my.event")
 				log.Attributes().PutStr("foo", "bar")
 
 				return log
@@ -699,6 +808,53 @@ func TestOTLPLogToPushEntry(t *testing.T) {
 						Name:  "span_id",
 						Value: "1223ad1223ad1223",
 					},
+					{
+						Name:  "event_name",
+						Value: "my.event",
+					},
+				},
+			},
+		},
+		{
+			name: "event_name attribute conflicts with EventName field — OTLP field wins",
+			buildLogRecord: func() plog.LogRecord {
+				log := plog.NewLogRecord()
+				log.Body().SetStr("log body")
+				log.SetTimestamp(pcommon.Timestamp(now.UnixNano()))
+				log.SetEventName("otlp.field")
+				log.Attributes().PutStr(OTLPEventName, "attribute.value")
+
+				return log
+			},
+			expectedResp: push.Entry{
+				Timestamp: now,
+				Line:      "log body",
+				StructuredMetadata: push.LabelsAdapter{
+					{
+						Name:  "event_name",
+						Value: "otlp.field",
+					},
+				},
+			},
+		},
+		{
+			name: "event_name only",
+			buildLogRecord: func() plog.LogRecord {
+				log := plog.NewLogRecord()
+				log.Body().SetStr("log body")
+				log.SetTimestamp(pcommon.Timestamp(now.UnixNano()))
+				log.SetEventName("session.start")
+
+				return log
+			},
+			expectedResp: push.Entry{
+				Timestamp: now,
+				Line:      "log body",
+				StructuredMetadata: push.LabelsAdapter{
+					{
+						Name:  "event_name",
+						Value: "session.start",
+					},
 				},
 			},
 		},
@@ -709,121 +865,6 @@ func TestOTLPLogToPushEntry(t *testing.T) {
 			require.Equal(t, tc.expectedResp, res)
 		})
 	}
-}
-
-func TestAttributesToLabels(t *testing.T) {
-	for _, tc := range []struct {
-		name         string
-		buildAttrs   func() pcommon.Map
-		expectedResp push.LabelsAdapter
-	}{
-		{
-			name: "no attributes",
-			buildAttrs: func() pcommon.Map {
-				return pcommon.NewMap()
-			},
-			expectedResp: push.LabelsAdapter{},
-		},
-		{
-			name: "with attributes",
-			buildAttrs: func() pcommon.Map {
-				attrs := pcommon.NewMap()
-				attrs.PutEmpty("empty")
-				attrs.PutStr("str", "val")
-				attrs.PutInt("int", 1)
-				attrs.PutDouble("double", 3.14)
-				attrs.PutBool("bool", true)
-				attrs.PutEmptyBytes("bytes").Append(1, 2, 3)
-
-				slice := attrs.PutEmptySlice("slice")
-				slice.AppendEmpty().SetInt(1)
-				slice.AppendEmpty().SetEmptySlice().AppendEmpty().SetStr("foo")
-				slice.AppendEmpty().SetEmptyMap().PutStr("fizz", "buzz")
-
-				m := attrs.PutEmptyMap("nested")
-				m.PutStr("foo", "bar")
-				m.PutEmptyMap("more").PutStr("key", "val")
-
-				return attrs
-			},
-			expectedResp: push.LabelsAdapter{
-				{
-					Name: "empty",
-				},
-				{
-					Name:  "str",
-					Value: "val",
-				},
-				{
-					Name:  "int",
-					Value: "1",
-				},
-				{
-					Name:  "double",
-					Value: "3.14",
-				},
-				{
-					Name:  "bool",
-					Value: "true",
-				},
-				{
-					Name:  "bytes",
-					Value: base64.StdEncoding.EncodeToString([]byte{1, 2, 3}),
-				},
-				{
-					Name:  "slice",
-					Value: `[1,["foo"],{"fizz":"buzz"}]`,
-				},
-				{
-					Name:  "nested_foo",
-					Value: "bar",
-				},
-				{
-					Name:  "nested_more_key",
-					Value: "val",
-				},
-			},
-		},
-		{
-			name: "attributes with special chars",
-			buildAttrs: func() pcommon.Map {
-				attrs := pcommon.NewMap()
-				attrs.PutStr("st.r", "val")
-
-				m := attrs.PutEmptyMap("nest*ed")
-				m.PutStr("fo@o", "bar")
-				m.PutEmptyMap("m$ore").PutStr("k_ey", "val")
-
-				return attrs
-			},
-			expectedResp: push.LabelsAdapter{
-				{
-					Name:  "st_r",
-					Value: "val",
-				},
-				{
-					Name:  "nest_ed_fo_o",
-					Value: "bar",
-				},
-				{
-					Name:  "nest_ed_m_ore_k_ey",
-					Value: "val",
-				},
-			},
-		},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			lbls, err := attributesToLabels(tc.buildAttrs(), "")
-			require.NoError(t, err)
-			require.Equal(t, tc.expectedResp, lbls)
-		})
-	}
-}
-
-type fakeRetention struct{}
-
-func (f fakeRetention) RetentionPeriodFor(_ string, _ labels.Labels) time.Duration {
-	return time.Hour
 }
 
 func TestOtlpError(t *testing.T) {
@@ -1769,6 +1810,70 @@ func TestContentEncodingAndLength(t *testing.T) {
 					}
 				}
 			}
+		})
+	}
+}
+
+func otlpEncodedRequest(body []byte, contentEncoding string) *http.Request {
+	req := httptest.NewRequest("POST", "/v1/logs", bytes.NewReader(body))
+	req.Header.Set("Content-Type", pbContentType)
+	if contentEncoding != "" {
+		req.Header.Set("Content-Encoding", contentEncoding)
+	}
+	return req
+}
+
+// TestExtractLogsRepeatedCompressedRequests runs each encoding over a run of requests,
+// then aborts one part way through the stream via the decompressed-size limit.
+func TestExtractLogsRepeatedCompressedRequests(t *testing.T) {
+	for _, enc := range []struct {
+		encoding string
+		encode   func(plog.Logs) ([]byte, error)
+	}{
+		{gzipContentEncoding, createGzipCompressedProtobuf},
+		{zstdContentEncoding, createZstdCompressedProtobuf},
+		{lz4ContentEncoding, createLz4CompressedProtobuf},
+	} {
+		t.Run("encoding="+enc.encoding, func(t *testing.T) {
+			body, err := enc.encode(largeOTLPLogs())
+			require.NoError(t, err)
+
+			for range 5 {
+				logs, err := extractLogs(otlpEncodedRequest(body, enc.encoding), 0, 0, NewPushStats())
+				require.NoError(t, err)
+				require.Equal(t, 1024, logs.LogRecordCount())
+			}
+
+			// And the failure path, where the reader is released mid-stream.
+			_, err = extractLogs(otlpEncodedRequest(body, enc.encoding), 0, 1024, NewPushStats())
+			require.ErrorIs(t, err, util.ErrMessageDecompressedSizeTooLarge)
+		})
+	}
+}
+
+// TestExtractLogsDecompressorDoesNotLeakGoroutines covers the abort paths, where the
+// request body is only partly consumed. The zstd decoder decodes on its own goroutines;
+// left unreleased there, they stay alive for the lifetime of the process.
+func TestExtractLogsDecompressorDoesNotLeakGoroutines(t *testing.T) {
+	for _, tc := range []struct {
+		encoding string
+		encode   func(plog.Logs) ([]byte, error)
+	}{
+		{gzipContentEncoding, createGzipCompressedProtobuf},
+		{zstdContentEncoding, createZstdCompressedProtobuf},
+		{lz4ContentEncoding, createLz4CompressedProtobuf},
+	} {
+		t.Run(tc.encoding, func(t *testing.T) {
+			body, err := tc.encode(largeOTLPLogs())
+			require.NoError(t, err)
+
+			ignore := goleak.IgnoreCurrent()
+			for range 50 {
+				// Stop reading well before the end of the stream.
+				_, err := extractLogs(otlpEncodedRequest(body, tc.encoding), 0, 1024, NewPushStats())
+				require.Error(t, err)
+			}
+			goleak.VerifyNone(t, ignore)
 		})
 	}
 }

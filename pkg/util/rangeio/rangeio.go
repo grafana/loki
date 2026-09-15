@@ -22,8 +22,6 @@ import (
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/atomic"
 	"golang.org/x/sync/errgroup"
-
-	"github.com/grafana/loki/v3/pkg/xcap"
 )
 
 var tracer = otel.Tracer("pkg/util/rangeio")
@@ -168,7 +166,7 @@ func ReadRanges(ctx context.Context, r Reader, ranges []Range) error {
 	// We store our own start time so we can calculate read throughput at the
 	// end.
 	startTime := time.Now()
-	ctx, span := xcap.StartSpan(ctx, tracer, "ReadRanges")
+	ctx, span := tracer.Start(ctx, "ReadRanges")
 	defer span.End()
 
 	cfg := configFromContext(ctx)

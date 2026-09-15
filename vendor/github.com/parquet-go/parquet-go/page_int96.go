@@ -11,10 +11,10 @@ import (
 type int96Page struct {
 	typ         Type
 	values      []deprecated.Int96
-	columnIndex int16
+	columnIndex uint16
 }
 
-func newInt96Page(typ Type, columnIndex int16, numValues int32, values encoding.Values) *int96Page {
+func newInt96Page(typ Type, columnIndex uint16, numValues int32, values encoding.Values) *int96Page {
 	return &int96Page{
 		typ:         typ,
 		values:      values.Int96()[:numValues],

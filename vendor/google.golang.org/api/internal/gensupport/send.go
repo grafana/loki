@@ -40,36 +40,50 @@ func (e wrappedCallErr) Is(target error) bool {
 	return errors.Is(e.ctxErr, target) || errors.Is(e.wrappedErr, target)
 }
 
+// addContextHeaders adds headers set in context metadata.
+// x-goog-api-client and x-goog-request-params are merged properly.
+func addContextHeaders(ctx context.Context, req *http.Request) {
+	if ctx == nil {
+		return
+	}
+	headers := callctx.HeadersFromContext(ctx)
+	for k, vals := range headers {
+		if strings.EqualFold(k, "x-goog-api-client") {
+			mergeHeader(req.Header, k, vals, ' ')
+		} else if strings.EqualFold(k, "x-goog-request-params") {
+			mergeHeader(req.Header, k, vals, '&')
+		} else {
+			for _, v := range vals {
+				req.Header.Add(k, v)
+			}
+		}
+	}
+}
+
+// mergeHeader merges multiple values into a single header.
+func mergeHeader(header http.Header, key string, vals []string, separator rune) {
+	var mergedVal strings.Builder
+	baseHeader := header.Get(key)
+	if baseHeader != "" {
+		mergedVal.WriteString(baseHeader)
+		mergedVal.WriteRune(separator)
+	}
+	for _, v := range vals {
+		mergedVal.WriteString(v)
+		mergedVal.WriteRune(separator)
+	}
+	if mergedVal.Len() > 0 {
+		// Remove the last separator and replace the header on the request.
+		header.Set(key, mergedVal.String()[:mergedVal.Len()-1])
+	}
+}
+
 // SendRequest sends a single HTTP request using the given client.
 // If ctx is non-nil, it calls all hooks, then sends the request with
 // req.WithContext, then calls any functions returned by the hooks in
 // reverse order.
 func SendRequest(ctx context.Context, client *http.Client, req *http.Request) (*http.Response, error) {
-	// Add headers set in context metadata.
-	if ctx != nil {
-		headers := callctx.HeadersFromContext(ctx)
-		for k, vals := range headers {
-			if k == "x-goog-api-client" {
-				// Merge all values into a single "x-goog-api-client" header.
-				var mergedVal strings.Builder
-				baseXGoogHeader := req.Header.Get("X-Goog-Api-Client")
-				if baseXGoogHeader != "" {
-					mergedVal.WriteString(baseXGoogHeader)
-					mergedVal.WriteRune(' ')
-				}
-				for _, v := range vals {
-					mergedVal.WriteString(v)
-					mergedVal.WriteRune(' ')
-				}
-				// Remove the last space and replace the header on the request.
-				req.Header.Set(k, mergedVal.String()[:mergedVal.Len()-1])
-			} else {
-				for _, v := range vals {
-					req.Header.Add(k, v)
-				}
-			}
-		}
-	}
+	addContextHeaders(ctx, req)
 
 	// Disallow Accept-Encoding because it interferes with the automatic gzip handling
 	// done by the default http.Transport. See https://github.com/google/google-api-go-client/issues/219.
@@ -105,15 +119,7 @@ func send(ctx context.Context, client *http.Client, req *http.Request) (*http.Re
 // req.WithContext, then calls any functions returned by the hooks in
 // reverse order.
 func SendRequestWithRetry(ctx context.Context, client *http.Client, req *http.Request, retry *RetryConfig) (*http.Response, error) {
-	// Add headers set in context metadata.
-	if ctx != nil {
-		headers := callctx.HeadersFromContext(ctx)
-		for k, vals := range headers {
-			for _, v := range vals {
-				req.Header.Add(k, v)
-			}
-		}
-	}
+	addContextHeaders(ctx, req)
 
 	// Disallow Accept-Encoding because it interferes with the automatic gzip handling
 	// done by the default http.Transport. See https://github.com/google/google-api-go-client/issues/219.

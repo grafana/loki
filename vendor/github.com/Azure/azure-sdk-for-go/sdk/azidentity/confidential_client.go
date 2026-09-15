@@ -1,6 +1,3 @@
-//go:build go1.18
-// +build go1.18
-
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
@@ -111,7 +108,7 @@ func (c *confidentialClient) GetToken(ctx context.Context, tro policy.TokenReque
 			authFailedErr  *AuthenticationFailedError
 			unavailableErr credentialUnavailable
 		)
-		if !(errors.As(err, &unavailableErr) || errors.As(err, &authFailedErr)) {
+		if !errors.As(err, &unavailableErr) && !errors.As(err, &authFailedErr) {
 			err = newAuthenticationFailedErrorFromMSAL(c.name, err)
 		}
 	} else {

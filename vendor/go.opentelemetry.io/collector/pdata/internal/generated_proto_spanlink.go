@@ -12,6 +12,7 @@ import (
 	"sync"
 
 	"go.opentelemetry.io/collector/pdata/internal/json"
+	"go.opentelemetry.io/collector/pdata/internal/metadata"
 	"go.opentelemetry.io/collector/pdata/internal/proto"
 )
 
@@ -19,12 +20,12 @@ import (
 // different trace.
 // See Link definition in OTLP: https://github.com/open-telemetry/opentelemetry-proto/blob/main/opentelemetry/proto/trace/v1/trace.proto
 type SpanLink struct {
+	TraceId                TraceID
+	SpanId                 SpanID
 	TraceState             string
 	Attributes             []KeyValue
 	DroppedAttributesCount uint32
 	Flags                  uint32
-	TraceId                TraceID
-	SpanId                 SpanID
 }
 
 var (
@@ -36,7 +37,7 @@ var (
 )
 
 func NewSpanLink() *SpanLink {
-	if !UseProtoPooling.IsEnabled() {
+	if !metadata.PdataUseProtoPoolingFeatureGate.IsEnabled() {
 		return &SpanLink{}
 	}
 	return protoPoolSpanLink.Get().(*SpanLink)
@@ -47,7 +48,7 @@ func DeleteSpanLink(orig *SpanLink, nullable bool) {
 		return
 	}
 
-	if !UseProtoPooling.IsEnabled() {
+	if !metadata.PdataUseProtoPoolingFeatureGate.IsEnabled() {
 		orig.Reset()
 		return
 	}
@@ -201,7 +202,7 @@ func (orig *SpanLink) UnmarshalJSON(iter *json.Iterator) {
 		case "flags":
 			orig.Flags = iter.ReadUint32()
 		default:
-			iter.Skip()
+			iter.HandleUnknownField(f)
 		}
 	}
 }

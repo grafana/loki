@@ -32,6 +32,9 @@ func limit(r *http.Request) (uint32, error) {
 	if l <= 0 {
 		return 0, errors.New("limit must be a positive value")
 	}
+	if int64(l) > math.MaxUint32 {
+		return 0, fmt.Errorf("limit value %d is out of range [0, %d]", l, uint64(math.MaxUint32))
+	}
 	return uint32(l), nil
 }
 
@@ -42,6 +45,9 @@ func lineLimit(r *http.Request) (uint32, error) {
 	}
 	if l <= 0 {
 		return 0, errors.New("limit must be a positive value")
+	}
+	if int64(l) > math.MaxUint32 {
+		return 0, fmt.Errorf("line_limit value %d is out of range [0, %d]", l, uint64(math.MaxUint32))
 	}
 	return uint32(l), nil
 }
@@ -60,6 +66,9 @@ func detectedFieldsLimit(r *http.Request) (uint32, error) {
 
 	if l <= 0 {
 		return 0, errors.New("limit must be a positive value")
+	}
+	if int64(l) > math.MaxUint32 {
+		return 0, fmt.Errorf("limit value %d is out of range [0, %d]", l, uint64(math.MaxUint32))
 	}
 	return uint32(l), nil
 }
@@ -145,6 +154,9 @@ func tailDelay(r *http.Request) (uint32, error) {
 	l, err := parseInt(r.Form.Get("delay_for"), 0)
 	if err != nil {
 		return 0, err
+	}
+	if l < 0 || int64(l) > math.MaxUint32 {
+		return 0, fmt.Errorf("delay_for value %d is out of range [0, %d]", l, uint64(math.MaxUint32))
 	}
 	return uint32(l), nil
 }

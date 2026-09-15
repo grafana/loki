@@ -51,7 +51,7 @@
 // chunk has no additional bits in it.
 //
 // When ST is present, the ST delta (prevT - st) is appended after each
-// sample's joint timestamp+value encoding using putVarbitInt.
+// sample's joint timestamp+value encoding using putVarbitIntFast.
 
 package chunkenc
 
@@ -65,40 +65,8 @@ import (
 )
 
 const (
-	chunkSTHeaderSize  = 1
-	maxFirstSTChangeOn = 0x7F
+	chunkSTHeaderSize = 1
 )
-
-func writeHeaderFirstSTKnown(b []byte) {
-	b[0] = 0x80
-}
-
-func writeHeaderFirstSTChangeOn(b []byte, firstSTChangeOn uint16) {
-	// First bit indicates the initial ST value.
-	// Here we save the sample number from where the first change occurs in the
-	// rest of the byte (7 bits)
-
-	if firstSTChangeOn > maxFirstSTChangeOn {
-		// This should never happen, would cause corruption (ST already skipped but shouldn't).
-		return
-	}
-	b[0] |= uint8(firstSTChangeOn)
-}
-
-func readSTHeader(b []byte) (firstSTKnown bool, firstSTChangeOn uint8) {
-	if b[0] == 0x00 {
-		return false, 0
-	}
-	if b[0] == 0x80 {
-		return true, 0
-	}
-	mask := byte(0x80)
-	if b[0]&mask != 0 {
-		firstSTKnown = true
-	}
-	mask = 0x7F
-	return firstSTKnown, b[0] & mask
-}
 
 // XOR2Chunk holds XOR2 encoded samples with optional start
 // timestamp per chunk or per sample.
@@ -194,7 +162,7 @@ func (c *XOR2Chunk) Iterator(it Iterator) Iterator {
 
 // xor2Appender appends samples with optional start timestamps using
 // the XOR2 joint control bit encoding for regular timestamp and value,
-// and putVarbitInt for the start timestamp delta.
+// and putVarbitIntFast for the start timestamp delta.
 type xor2Appender struct {
 	b *bstream
 
@@ -224,7 +192,7 @@ func (a *xor2Appender) Append(st, t int64, v float64) {
 		for _, b := range buf[:binary.PutVarint(buf, t)] {
 			a.b.writeByte(b)
 		}
-		a.b.writeBits(math.Float64bits(v), 64)
+		a.b.writeBitsFast(math.Float64bits(v), 64)
 
 		if st != 0 {
 			for _, b := range buf[:binary.PutVarint(buf, t-st)] {
@@ -248,40 +216,137 @@ func (a *xor2Appender) Append(st, t int64, v float64) {
 			stDiff = a.t - st
 			a.firstSTChangeOn = 1
 			writeHeaderFirstSTChangeOn(a.b.bytes()[chunkHeaderSize:], 1)
-			putVarbitInt(a.b, stDiff)
+			putVarbitIntFast(a.b, stDiff)
 		}
+
+	case math.MaxUint16:
+		panic("chunk capacity exceeded")
 
 	default:
 		tDelta = uint64(t - a.t)
 		dod := int64(tDelta - a.tDelta)
 
-		// Fast path: no ST involvement at all.
-		if st == 0 && a.numTotal != maxFirstSTChangeOn && a.firstSTChangeOn == 0 && !a.firstSTKnown {
-			a.encodeJoint(dod, v)
-			a.t = t
-			if !value.IsStaleNaN(v) {
-				a.v = v
+		// Fast path: no new ST data to write for this sample.
+		// Covers: ST never seen (st=0 always), or ST recorded initially but unchanged.
+		// Must use the slow path at maxFirstSTChangeOn so the header remains valid
+		// even if ST changes on a later sample (index > maxFirstSTChangeOn).
+		if a.firstSTChangeOn == 0 && st == a.st && a.numTotal != maxFirstSTChangeOn {
+			vbits := math.Float64bits(v)
+			switch {
+			case dod == 0 && vbits == math.Float64bits(a.v):
+				// Unchanged value and timestamp: write a single 0 bit.
+				// This is the most common case for stable metrics.
+				// a.v stays correct (v == a.v), so no update needed.
+				a.b.writeBit(zero)
+			case dod >= -(1<<12) && dod <= (1<<12)-1 && vbits == math.Float64bits(a.v):
+				// 13-bit dod, value unchanged: the most common case for metrics with
+				// small timestamp jitter. Inline both bytes and the zero value bit to
+				// avoid calling encodeJoint and writeVDelta.
+				a.b.writeByte(0b110_00000 | byte(uint64(dod)>>8)&0x1F)
+				a.b.writeByte(byte(uint64(dod)))
+				a.b.writeBit(zero)
+			default:
+				a.encodeJoint(dod, v)
+				if !value.IsStaleNaN(v) {
+					a.v = v
+				}
 			}
+			a.t = t
 			a.tDelta = tDelta
 			a.numTotal++
 			binary.BigEndian.PutUint16(a.b.bytes(), a.numTotal)
 			return
 		}
 
-		// Slow path: ST may be involved.
+		// Active-ST fast path: firstSTChangeOn is set, so every sample needs a
+		// per-sample ST delta. Inline T+V encoding and the zero-delta ST case to
+		// avoid two non-inlined function calls (encodeJoint + putVarbitIntFast).
+		if a.firstSTChangeOn > 0 {
+			newStDiff := a.t - st
+			deltaStDiff := newStDiff - a.stDiff
+			vbits := math.Float64bits(v)
+			switch {
+			case dod == 0 && vbits == math.Float64bits(a.v):
+				// T/V: single 0 bit (dod=0, value unchanged). For non-zero ST deltas
+				// we fuse this bit with the ST delta write into a single writeBitsFast
+				// call, saving a non-inlined writeBit call. For deltaStDiff=0 we use
+				// two writeBit calls because writeBit has a smaller body than
+				// writeBitsFast, making it faster for writing just 1 bit.
+				switch {
+				case deltaStDiff == 0:
+					a.b.writeBit(zero)
+					a.b.writeBit(zero)
+				case deltaStDiff >= -3 && deltaStDiff <= 4:
+					// 0 (T/V) + 5-bit ST = 6 bits.
+					a.b.writeBitsFast((0b10<<3)|(uint64(deltaStDiff)&0x7), 6)
+				case deltaStDiff >= -31 && deltaStDiff <= 32:
+					// 0 (T/V) + 9-bit ST = 10 bits.
+					a.b.writeBitsFast((0b110<<6)|(uint64(deltaStDiff)&0x3F), 10)
+				case deltaStDiff >= -255 && deltaStDiff <= 256:
+					// 0 (T/V) + 13-bit ST = 14 bits.
+					a.b.writeBitsFast((0b1110<<9)|(uint64(deltaStDiff)&0x1FF), 14)
+				default:
+					a.b.writeBit(zero)
+					putVarbitIntFast(a.b, deltaStDiff)
+				}
+			case dod >= -(1<<12) && dod <= (1<<12)-1 && vbits == math.Float64bits(a.v):
+				a.b.writeByte(0b110_00000 | byte(uint64(dod)>>8)&0x1F)
+				a.b.writeByte(byte(uint64(dod)))
+				// T/V ends with a 0 bit (value unchanged indicator). Fuse it with
+				// non-zero ST deltas to save a writeBit call; for deltaStDiff=0 keep
+				// two cheap writeBit calls (faster than one writeBitsFast for 2 bits).
+				switch {
+				case deltaStDiff == 0:
+					a.b.writeBit(zero)
+					a.b.writeBit(zero)
+				case deltaStDiff >= -3 && deltaStDiff <= 4:
+					a.b.writeBitsFast((0b10<<3)|(uint64(deltaStDiff)&0x7), 6)
+				case deltaStDiff >= -31 && deltaStDiff <= 32:
+					a.b.writeBitsFast((0b110<<6)|(uint64(deltaStDiff)&0x3F), 10)
+				case deltaStDiff >= -255 && deltaStDiff <= 256:
+					a.b.writeBitsFast((0b1110<<9)|(uint64(deltaStDiff)&0x1FF), 14)
+				default:
+					a.b.writeBit(zero)
+					putVarbitIntFast(a.b, deltaStDiff)
+				}
+			default:
+				a.encodeJoint(dod, v)
+				if !value.IsStaleNaN(v) {
+					a.v = v
+				}
+				// Inline the three most common ST delta ranges to avoid the
+				// non-inlineable putVarbitIntFast call for typical small-jitter STs.
+				switch {
+				case deltaStDiff == 0:
+					a.b.writeBit(zero)
+				case deltaStDiff >= -3 && deltaStDiff <= 4:
+					a.b.writeBitsFast((0b10<<3)|(uint64(deltaStDiff)&0x7), 5)
+				case deltaStDiff >= -31 && deltaStDiff <= 32:
+					a.b.writeBitsFast((0b110<<6)|(uint64(deltaStDiff)&0x3F), 9)
+				case deltaStDiff >= -255 && deltaStDiff <= 256:
+					a.b.writeBitsFast((0b1110<<9)|(uint64(deltaStDiff)&0x1FF), 13)
+				default:
+					putVarbitIntFast(a.b, deltaStDiff)
+				}
+			}
+			a.stDiff = newStDiff
+			a.st = st
+			a.t = t
+			a.tDelta = tDelta
+			a.numTotal++
+			binary.BigEndian.PutUint16(a.b.bytes(), a.numTotal)
+			return
+		}
+
+		// Full slow path: firstSTChangeOn == 0 and ST may be initialised here.
 		a.encodeJoint(dod, v)
 
-		if a.firstSTChangeOn == 0 {
-			if st != a.st || a.numTotal == maxFirstSTChangeOn {
-				// First ST change: record prevT - st.
-				stDiff = a.t - st
-				a.firstSTChangeOn = a.numTotal
-				writeHeaderFirstSTChangeOn(a.b.bytes()[chunkHeaderSize:], a.numTotal)
-				putVarbitInt(a.b, stDiff)
-			}
-		} else {
+		if st != a.st || a.numTotal == maxFirstSTChangeOn {
+			// First ST change: record prevT - st.
 			stDiff = a.t - st
-			putVarbitInt(a.b, stDiff-a.stDiff)
+			a.firstSTChangeOn = a.numTotal
+			writeHeaderFirstSTChangeOn(a.b.bytes()[chunkHeaderSize:], a.numTotal)
+			putVarbitIntFast(a.b, stDiff)
 		}
 	}
 
@@ -300,15 +365,17 @@ func (a *xor2Appender) Append(st, t int64, v float64) {
 // samples >= 2.
 func (a *xor2Appender) encodeJoint(dod int64, v float64) {
 	if dod == 0 {
-		switch {
-		case value.IsStaleNaN(v):
-			a.b.writeBits(0b11111, 5)
-		case math.Float64bits(v)^math.Float64bits(a.v) == 0:
-			a.b.writeBit(zero)
-		default:
-			a.b.writeBits(0b10, 2)
-			a.writeVDeltaKnownNonZero(v)
+		if value.IsStaleNaN(v) {
+			a.b.writeBitsFast(0b11111, 5)
+			return
 		}
+		vbits := math.Float64bits(v) ^ math.Float64bits(a.v)
+		if vbits == 0 {
+			a.b.writeBit(zero)
+			return
+		}
+		a.b.writeBitsFast(0b10, 2)
+		a.writeVDeltaKnownNonZero(vbits)
 		return
 	}
 
@@ -324,16 +391,21 @@ func (a *xor2Appender) encodeJoint(dod int64, v float64) {
 		a.b.writeByte(byte(uint64(dod)))
 	default:
 		// 64-bit escape (rare): `11110`.
-		a.b.writeBits(0b11110, 5)
-		a.b.writeBits(uint64(dod), 64)
+		a.b.writeBitsFast(0b11110, 5)
+		a.b.writeBitsFast(uint64(dod), 64)
 	}
-	a.writeVDelta(v)
+	// Inline the most common value-unchanged case to avoid a function call.
+	if math.Float64bits(v) == math.Float64bits(a.v) {
+		a.b.writeBit(zero)
+	} else {
+		a.writeVDelta(v)
+	}
 }
 
 // writeVDelta encodes the value delta for the dod≠0 case.
 func (a *xor2Appender) writeVDelta(v float64) {
 	if value.IsStaleNaN(v) {
-		a.b.writeBits(0b111, 3)
+		a.b.writeBitsFast(0b111, 3)
 		return
 	}
 
@@ -352,26 +424,30 @@ func (a *xor2Appender) writeVDelta(v float64) {
 	}
 
 	if a.leading != 0xff && newLeading >= a.leading && newTrailing >= a.trailing {
-		a.b.writeBits(0b10, 2)
-		a.b.writeBits(delta>>a.trailing, 64-int(a.leading)-int(a.trailing))
+		a.b.writeBitsFast(0b10, 2)
+		a.b.writeBitsFast(delta>>a.trailing, 64-int(a.leading)-int(a.trailing))
 		return
 	}
 
 	a.leading, a.trailing = newLeading, newTrailing
 
-	a.b.writeBits(0b110, 3)
-	a.b.writeBits(uint64(newLeading), 5)
+	a.b.writeBitsFast(0b110, 3)
+	a.b.writeBitsFast(uint64(newLeading), 5)
 
 	sigbits := 64 - newLeading - newTrailing
-	a.b.writeBits(uint64(sigbits), 6)
-	a.b.writeBits(delta>>newTrailing, int(sigbits))
+	a.b.writeBitsFast(uint64(sigbits), 6)
+	a.b.writeBitsFast(delta>>newTrailing, int(sigbits))
 }
 
-// writeVDeltaKnownNonZero encodes the value delta when it is known to be
-// non-zero and non-stale (dod=0, value-changed case).
-func (a *xor2Appender) writeVDeltaKnownNonZero(v float64) {
-	delta := math.Float64bits(v) ^ math.Float64bits(a.v)
-
+// writeVDeltaKnownNonZero encodes a precomputed value XOR delta for the
+// dod=0, value-changed case. delta must be non-zero or staleNaN. Stale NaN with dod=0 is
+// handled at the joint control level (`11111`) and never reaches this function.
+//
+// Encoding:
+//
+//	`0` → reuse previous leading/trailing window
+//	`1` → new leading/trailing window
+func (a *xor2Appender) writeVDeltaKnownNonZero(delta uint64) {
 	newLeading := uint8(bits.LeadingZeros64(delta))
 	newTrailing := uint8(bits.TrailingZeros64(delta))
 
@@ -381,25 +457,25 @@ func (a *xor2Appender) writeVDeltaKnownNonZero(v float64) {
 
 	if a.leading != 0xff && newLeading >= a.leading && newTrailing >= a.trailing {
 		a.b.writeBit(zero)
-		a.b.writeBits(delta>>a.trailing, 64-int(a.leading)-int(a.trailing))
+		a.b.writeBitsFast(delta>>a.trailing, 64-int(a.leading)-int(a.trailing))
 		return
 	}
 
 	a.leading, a.trailing = newLeading, newTrailing
 
 	a.b.writeBit(one)
-	a.b.writeBits(uint64(newLeading), 5)
+	a.b.writeBitsFast(uint64(newLeading), 5)
 
 	sigbits := 64 - newLeading - newTrailing
-	a.b.writeBits(uint64(sigbits), 6)
-	a.b.writeBits(delta>>newTrailing, int(sigbits))
+	a.b.writeBitsFast(uint64(sigbits), 6)
+	a.b.writeBitsFast(delta>>newTrailing, int(sigbits))
 }
 
-func (*xor2Appender) AppendHistogram(*HistogramAppender, int64, int64, *histogram.Histogram, bool) (Chunk, bool, Appender, error) {
+func (*xor2Appender) AppendHistogram(Appender, int64, int64, *histogram.Histogram, bool) (Chunk, bool, Appender, error) {
 	panic("appended a histogram sample to a float chunk")
 }
 
-func (*xor2Appender) AppendFloatHistogram(*FloatHistogramAppender, int64, int64, *histogram.FloatHistogram, bool) (Chunk, bool, Appender, error) {
+func (*xor2Appender) AppendFloatHistogram(Appender, int64, int64, *histogram.FloatHistogram, bool) (Chunk, bool, Appender, error) {
 	panic("appended a float histogram sample to a float chunk")
 }
 
@@ -486,7 +562,7 @@ func (it *xor2Iterator) Next() ValueType {
 	}
 
 	if it.numRead == 0 {
-		t, err := binary.ReadVarint(&it.br)
+		t, err := it.br.readVarint()
 		if err != nil {
 			it.err = err
 			return ValNone
@@ -504,7 +580,7 @@ func (it *xor2Iterator) Next() ValueType {
 
 		// Optional ST for sample 0.
 		if it.firstSTKnown {
-			stDiff, err := binary.ReadVarint(&it.br)
+			stDiff, err := it.br.readVarint()
 			if err != nil {
 				it.err = err
 				return ValNone
@@ -517,7 +593,7 @@ func (it *xor2Iterator) Next() ValueType {
 	}
 
 	if it.numRead == 1 {
-		tDelta, err := binary.ReadUvarint(&it.br)
+		tDelta, err := it.br.readUvarint()
 		if err != nil {
 			it.err = err
 			return ValNone
@@ -550,10 +626,14 @@ func (it *xor2Iterator) Next() ValueType {
 	prevT := it.t
 	savedNumRead := it.numRead
 
-	ctrl, err := it.br.readXOR2Control()
-	if err != nil {
-		it.err = err
-		return ValNone
+	ctrl, ok := it.br.readXOR2ControlFast()
+	if !ok {
+		var err error
+		ctrl, err = it.br.readXOR2Control()
+		if err != nil {
+			it.err = err
+			return ValNone
+		}
 	}
 
 	switch ctrl {
@@ -654,6 +734,49 @@ func (it *xor2Iterator) readDod(w uint8) error {
 //	`110` → new leading/trailing window
 //	`111` → stale NaN
 func (it *xor2Iterator) decodeValue() error {
+	// Fast path: 3 bits available — read the full control prefix in one shot.
+	// Encoding: `0`=unchanged, `10`=reuse window, `110`=new window, `111`=stale NaN.
+	if it.br.valid >= 3 {
+		ctrl := (it.br.buffer >> (it.br.valid - 3)) & 0x7
+		if ctrl&0x4 == 0 {
+			// `0xx`: value unchanged, consume 1 bit.
+			it.br.valid--
+			it.val = it.baselineV
+			return nil
+		}
+		if ctrl&0x6 == 0x4 {
+			// `10x`: reuse previous leading/trailing window, consume 2 bits.
+			it.br.valid -= 2
+			sz := uint8(64 - int(it.leading) - int(it.trailing))
+			var valueBits uint64
+			if it.br.valid >= sz {
+				it.br.valid -= sz
+				valueBits = (it.br.buffer >> it.br.valid) & ((uint64(1) << sz) - 1)
+			} else {
+				var err error
+				valueBits, err = it.br.readBits(sz)
+				if err != nil {
+					return err
+				}
+			}
+			vbits := math.Float64bits(it.baselineV)
+			vbits ^= valueBits << it.trailing
+			it.val = math.Float64frombits(vbits)
+			it.baselineV = it.val
+			return nil
+		}
+		// `11x`: consume 3 bits.
+		it.br.valid -= 3
+		if ctrl == 0x6 {
+			// `110`: new leading/trailing window.
+			return it.decodeNewLeadingTrailing()
+		}
+		// `111`: stale NaN.
+		it.val = math.Float64frombits(value.StaleNaN)
+		return nil
+	}
+
+	// Slow path: fewer than 3 bits buffered (rare, only near buffer refills).
 	var bit bit
 	if it.br.valid > 0 {
 		it.br.valid--
@@ -731,6 +854,26 @@ func (it *xor2Iterator) decodeValue() error {
 //	`0` → reuse previous leading/trailing window
 //	`1` → new leading/trailing window
 func (it *xor2Iterator) decodeValueKnownNonZero() error {
+	sz := uint8(64 - int(it.leading) - int(it.trailing))
+	// Fast path: combine the 1-bit reuse/new-window control read with the
+	// sz-bit value read into a single buffer operation.
+	if it.br.valid >= 1+sz {
+		ctrlBit := (it.br.buffer >> (it.br.valid - 1)) & 1
+		if ctrlBit == 0 { // `0`: reuse previous leading/trailing window.
+			it.br.valid -= 1 + sz
+			valueBits := (it.br.buffer >> it.br.valid) & ((uint64(1) << sz) - 1)
+			vbits := math.Float64bits(it.baselineV)
+			vbits ^= valueBits << it.trailing
+			it.val = math.Float64frombits(vbits)
+			it.baselineV = it.val
+			return nil
+		}
+		// `1`: new leading/trailing window.
+		it.br.valid--
+		return it.decodeNewLeadingTrailing()
+	}
+
+	// Slow path: read control bit then value bits separately.
 	var bit bit
 	if it.br.valid > 0 {
 		it.br.valid--
@@ -745,7 +888,6 @@ func (it *xor2Iterator) decodeValueKnownNonZero() error {
 
 	if bit == zero {
 		// `0` → reuse previous leading/trailing window.
-		sz := uint8(64 - int(it.leading) - int(it.trailing))
 		var valueBits uint64
 		if it.br.valid >= sz {
 			it.br.valid -= sz
@@ -771,24 +913,19 @@ func (it *xor2Iterator) decodeValueKnownNonZero() error {
 // decodeNewLeadingTrailing reads a new leading/sigbits/value triple and
 // updates it.leading, it.trailing, it.val, and it.baselineV.
 func (it *xor2Iterator) decodeNewLeadingTrailing() error {
-	var newLeading uint64
-	if it.br.valid >= 5 {
-		it.br.valid -= 5
-		newLeading = (it.br.buffer >> it.br.valid) & 0x1f
+	var newLeading, sigbits uint64
+	// Fast path: read leading (5 bits) and sigbits (6 bits) together as 11 bits.
+	if it.br.valid >= 11 {
+		val := (it.br.buffer >> (it.br.valid - 11)) & 0x7ff
+		it.br.valid -= 11
+		newLeading = val >> 6
+		sigbits = val & 0x3f
 	} else {
 		var err error
 		newLeading, err = it.br.readBits(5)
 		if err != nil {
 			return err
 		}
-	}
-
-	var sigbits uint64
-	if it.br.valid >= 6 {
-		it.br.valid -= 6
-		sigbits = (it.br.buffer >> it.br.valid) & 0x3f
-	} else {
-		var err error
 		sigbits, err = it.br.readBits(6)
 		if err != nil {
 			return err

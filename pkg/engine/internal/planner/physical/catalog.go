@@ -17,8 +17,6 @@ var (
 		types.BinaryOpMatchRe:    labels.MatchRegexp,
 		types.BinaryOpNotMatchRe: labels.MatchNotRegexp,
 	}
-
-	noShard = ShardInfo{Shard: 0, Of: 1}
 )
 
 type ShardInfo struct {
@@ -72,7 +70,7 @@ type DataObjSections struct {
 	Streams             []int64
 	Sections            []int
 	TimeRange           TimeRange
-	PredicatesInStreams map[int64][]string
+	AmbiguousPredicates []string
 }
 
 // Catalog is an interface that provides methods for interacting with
@@ -124,7 +122,7 @@ func filterForShard(shard ShardInfo, sections []*metastore.DataobjSectionDescrip
 	for _, s := range sections {
 		ds := DataObjSections{}
 		ds.Location = DataObjLocation(s.ObjectPath)
-		ds.PredicatesInStreams = s.AmbiguousPredicatesByStream
+		ds.AmbiguousPredicates = s.AmbiguousPredicates
 
 		if int(s.SectionIdx)%int(shard.Of) == int(shard.Shard) {
 			ds.Streams = s.StreamIDs

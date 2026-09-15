@@ -13,6 +13,7 @@ import (
 	"sync"
 
 	"go.opentelemetry.io/collector/pdata/internal/json"
+	"go.opentelemetry.io/collector/pdata/internal/metadata"
 	"go.opentelemetry.io/collector/pdata/internal/proto"
 )
 
@@ -21,21 +22,21 @@ import (
 // summary statistics for a population of values, it may optionally contain the
 // distribution of those values across a set of buckets.
 type ExponentialHistogramDataPoint struct {
-	Positive          ExponentialHistogramDataPointBuckets
-	Negative          ExponentialHistogramDataPointBuckets
 	Attributes        []KeyValue
-	Exemplars         []Exemplar
 	StartTimeUnixNano uint64
 	TimeUnixNano      uint64
 	Count             uint64
 	Sum               float64
+	Scale             int32
 	ZeroCount         uint64
+	Positive          ExponentialHistogramDataPointBuckets
+	Negative          ExponentialHistogramDataPointBuckets
+	Flags             uint32
+	Exemplars         []Exemplar
 	Min               float64
 	Max               float64
 	ZeroThreshold     float64
 	metadata          [1]uint64
-	Scale             int32
-	Flags             uint32
 }
 
 var (
@@ -47,7 +48,7 @@ var (
 )
 
 func NewExponentialHistogramDataPoint() *ExponentialHistogramDataPoint {
-	if !UseProtoPooling.IsEnabled() {
+	if !metadata.PdataUseProtoPoolingFeatureGate.IsEnabled() {
 		return &ExponentialHistogramDataPoint{}
 	}
 	return protoPoolExponentialHistogramDataPoint.Get().(*ExponentialHistogramDataPoint)
@@ -58,7 +59,7 @@ func DeleteExponentialHistogramDataPoint(orig *ExponentialHistogramDataPoint, nu
 		return
 	}
 
-	if !UseProtoPooling.IsEnabled() {
+	if !metadata.PdataUseProtoPoolingFeatureGate.IsEnabled() {
 		orig.Reset()
 		return
 	}
@@ -297,7 +298,7 @@ func (orig *ExponentialHistogramDataPoint) UnmarshalJSON(iter *json.Iterator) {
 		case "zeroThreshold", "zero_threshold":
 			orig.ZeroThreshold = iter.ReadFloat64()
 		default:
-			iter.Skip()
+			iter.HandleUnknownField(f)
 		}
 	}
 }

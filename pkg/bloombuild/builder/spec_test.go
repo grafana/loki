@@ -17,10 +17,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/util/mempool"
 )
 
-func blocksFromSchema(t *testing.T, n int, options v1.BlockOptions) (res []*v1.Block, data []v1.SeriesWithBlooms, refs []bloomshipper.BlockRef) {
-	return blocksFromSchemaWithRange(t, n, options, 0, 0xffff)
-}
-
 // splits 100 series across `n` non-overlapping blocks.
 // uses options to build blocks with.
 func blocksFromSchemaWithRange(t *testing.T, n int, options v1.BlockOptions, fromFP, throughFp model.Fingerprint) (res []*v1.Block, data []v1.SeriesWithBlooms, refs []bloomshipper.BlockRef) {

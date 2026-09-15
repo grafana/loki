@@ -22,8 +22,6 @@ import (
 	"cloud.google.com/go/compute/metadata"
 	"google.golang.org/api/option"
 	"google.golang.org/api/option/internaloption"
-	_ "google.golang.org/grpc/balancer/rls"
-	_ "google.golang.org/grpc/xds/googledirectpath"
 )
 
 const (

@@ -273,7 +273,7 @@ func buildLabelPredicate(matcher *labels.Matcher, columns map[string]*streams.Co
 		if col == nil {
 			// Column(NULL) is treated as empty string.
 			// Return true if regex does NOT match "", false otherwise.
-			if !matcher.Matches("") {
+			if matcher.Matches("") {
 				return streams.TruePredicate{}
 			}
 			return streams.FalsePredicate{}
@@ -282,7 +282,8 @@ func buildLabelPredicate(matcher *labels.Matcher, columns map[string]*streams.Co
 		return streams.FuncPredicate{
 			Column: col,
 			Keep: func(_ *streams.Column, value scalar.Scalar) bool {
-				return !matcher.Matches(string(getBytes(value)))
+				// we don't need the negation here because matcher.Matches() already handles the negation correctly.
+				return matcher.Matches(string(getBytes(value)))
 			},
 		}
 

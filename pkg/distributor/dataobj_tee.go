@@ -34,6 +34,7 @@ type DataObjTeeConfig struct {
 	PerPartitionRateBytes int           `yaml:"per_partition_rate_bytes"`
 	DebugMetricsEnabled   bool          `yaml:"debug_metrics_enabled"`
 	RateBatchWindow       time.Duration `yaml:"rate_batch_window"`
+	UseRendezvousHashing  bool          `yaml:"use_rendezvous_hashing"` // temporary feature flag while we verify this is safe
 }
 
 func (c *DataObjTeeConfig) RegisterFlags(f *flag.FlagSet) {
@@ -43,6 +44,7 @@ func (c *DataObjTeeConfig) RegisterFlags(f *flag.FlagSet) {
 	f.IntVar(&c.PerPartitionRateBytes, "distributor.dataobj-tee.per-partition-rate-bytes", 1024*1024, "The per-tenant partition rate (bytes/sec).")
 	f.BoolVar(&c.DebugMetricsEnabled, "distributor.dataobj-tee.debug-metrics-enabled", false, "Enables optional debug metrics.")
 	f.DurationVar(&c.RateBatchWindow, "distributor.dataobj-tee.rate-batch-window", 0, "Duration to accumulate rate updates before sending to limits frontend. Set to 0 to disable batching.")
+	f.BoolVar(&c.UseRendezvousHashing, "distributor.dataobj-tee.use-rendezvous-hashing", false, "Enables use of rendezvous hashing. When this is false, consistent hashing is used instead.")
 }
 
 func (c *DataObjTeeConfig) Validate() error {
@@ -55,8 +57,8 @@ func (c *DataObjTeeConfig) Validate() error {
 	if c.MaxBufferedBytes < 0 {
 		return errors.New("max buffered bytes cannot be negative")
 	}
-	if c.PerPartitionRateBytes < 0 {
-		return errors.New("per partition rate bytes cannot be negative")
+	if c.PerPartitionRateBytes <= 0 {
+		return errors.New("per partition rate bytes must be positive")
 	}
 	return nil
 }
@@ -68,15 +70,17 @@ type DataObjTee struct {
 	limitsClient *ingestLimits
 	rateBatcher  *rateBatcher // nil if batching is disabled
 	limits       Limits
-	kafkaClient  *kgo.Client
+	kafkaClient  KafkaProducer
 	resolver     *segmentationPartitionResolver
 	logger       log.Logger
 
 	// Metrics.
-	streams         prometheus.Counter
-	streamFailures  prometheus.Counter
-	producedBytes   *prometheus.CounterVec
-	producedRecords *prometheus.CounterVec
+	streams           prometheus.Counter
+	streamFailures    prometheus.Counter
+	producedBytes     *prometheus.CounterVec
+	producedRecords   *prometheus.CounterVec
+	produceLatency    prometheus.Histogram
+	estimateRateBytes *prometheus.GaugeVec
 }
 
 // NewDataObjTee returns a new DataObjTee.
@@ -85,7 +89,7 @@ func NewDataObjTee(
 	resolver *segmentationPartitionResolver,
 	limitsClient *ingestLimits,
 	limits Limits,
-	kafkaClient *kgo.Client,
+	kafkaClient KafkaProducer,
 	logger log.Logger,
 	r prometheus.Registerer,
 ) (*DataObjTee, error) {
@@ -104,8 +108,8 @@ func NewDataObjTee(
 			Name: "loki_distributor_dataobj_tee_duplicate_stream_failures_total",
 			Help: "Total number of streams that could not be duplicated.",
 		}),
-		// The tenant and segmentation key labels are not emitted unless debug metrics
-		// are enabled.
+		// The tenant and segmentation key labels are not emitted for these metrics
+		// unless debug metrics are enabled.
 		producedBytes: promauto.With(r).NewCounterVec(prometheus.CounterOpts{
 			Name: "loki_distributor_dataobj_tee_produced_bytes_total",
 			Help: "Total number of bytes produced to each partition.",
@@ -114,6 +118,19 @@ func NewDataObjTee(
 			Name: "loki_distributor_dataobj_tee_produced_records_total",
 			Help: "Total number of records produced to each partition.",
 		}, []string{"partition", "tenant", "segmentation_key"}),
+		produceLatency: promauto.With(r).NewHistogram(prometheus.HistogramOpts{
+			Name:                            "loki_distributor_dataobj_tee_produce_latency_seconds",
+			Help:                            "Latency to produce records to the data object topic.",
+			NativeHistogramBucketFactor:     1.1,
+			NativeHistogramMinResetDuration: 1 * time.Hour,
+			NativeHistogramMaxBucketNumber:  100,
+			Buckets:                         prometheus.DefBuckets,
+		}),
+		// These metrics are not emitted at all unless debug metrics are enabled.
+		estimateRateBytes: promauto.With(r).NewGaugeVec(prometheus.GaugeOpts{
+			Name: "loki_distributor_dataobj_tee_estimate_rate_bytes",
+			Help: "The estimated rate bytes for the segmentation key.",
+		}, []string{"tenant", "segmentation_key"}),
 	}
 
 	// Create rate batcher if batching is enabled.
@@ -187,15 +204,19 @@ func (t *DataObjTee) Duplicate(ctx context.Context, tenant string, streams []Key
 
 	for _, s := range segmentationKeyStreams {
 		go func(stream segmentedStream) {
-			t.duplicate(ctx, tenant, stream, fastRates[stream.SegmentationKeyHash], tenantRateBytesLimit, pushTracker)
+			rateBytes := fastRates[stream.SegmentationKeyHash]
+			if t.cfg.DebugMetricsEnabled {
+				t.estimateRateBytes.WithLabelValues(tenant, string(stream.SegmentationKey)).Set(float64(rateBytes))
+			}
+			t.duplicate(ctx, tenant, stream, rateBytes, tenantRateBytesLimit, pushTracker)
 		}(s)
 	}
 }
 
-func (t *DataObjTee) duplicate(ctx context.Context, tenant string, stream segmentedStream, rateBytes, tenantRateBytes uint64, pushTracker *PushTracker) {
+func (t *DataObjTee) duplicate(ctx context.Context, tenant string, stream segmentedStream, rateBytes, tenantRateBytesLimit uint64, pushTracker *PushTracker) {
 	t.streams.Inc()
 
-	partition, err := t.resolver.Resolve(ctx, tenant, stream.SegmentationKey, stream.HashKey, rateBytes, tenantRateBytes)
+	partition, err := t.resolver.Resolve(tenant, stream.SegmentationKey, stream.HashKey, rateBytes, tenantRateBytesLimit)
 	if err != nil {
 		level.Error(t.logger).Log("msg", "failed to resolve partition", "err", err)
 		t.streamFailures.Inc()
@@ -211,13 +232,17 @@ func (t *DataObjTee) duplicate(ctx context.Context, tenant string, stream segmen
 		return
 	}
 
-	results := t.kafkaClient.ProduceSync(ctx, records...)
+	produceTimer := prometheus.NewTimer(t.produceLatency)
+	results := t.kafkaClient.ProduceSync(ctx, records)
 	if err := results.FirstErr(); err != nil {
-		level.Error(t.logger).Log("msg", "failed to produce records", "err", err)
+		if !errors.Is(err, kgo.ErrMaxBuffered) {
+			level.Error(t.logger).Log("msg", "failed to produce records", "err", err)
+		}
 		t.streamFailures.Inc()
 		pushTracker.doneWithResult(fmt.Errorf("couldn't process request internally due to tee error: %d", TeeCouldntProduceRecordsError))
 		return
 	}
+	produceTimer.ObserveDuration()
 
 	var size int64
 	for _, rec := range records {

@@ -12,23 +12,24 @@ import (
 	"sync"
 
 	"go.opentelemetry.io/collector/pdata/internal/json"
+	"go.opentelemetry.io/collector/pdata/internal/metadata"
 	"go.opentelemetry.io/collector/pdata/internal/proto"
 )
 
 // LogRecord are experimental implementation of OpenTelemetry Log Data Model.
 
 type LogRecord struct {
-	Body                   AnyValue
-	SeverityText           string
-	EventName              string
-	Attributes             []KeyValue
 	TimeUnixNano           uint64
 	ObservedTimeUnixNano   uint64
 	SeverityNumber         SeverityNumber
+	SeverityText           string
+	Body                   AnyValue
+	Attributes             []KeyValue
 	DroppedAttributesCount uint32
 	Flags                  uint32
 	TraceId                TraceID
 	SpanId                 SpanID
+	EventName              string
 }
 
 var (
@@ -40,7 +41,7 @@ var (
 )
 
 func NewLogRecord() *LogRecord {
-	if !UseProtoPooling.IsEnabled() {
+	if !metadata.PdataUseProtoPoolingFeatureGate.IsEnabled() {
 		return &LogRecord{}
 	}
 	return protoPoolLogRecord.Get().(*LogRecord)
@@ -51,7 +52,7 @@ func DeleteLogRecord(orig *LogRecord, nullable bool) {
 		return
 	}
 
-	if !UseProtoPooling.IsEnabled() {
+	if !metadata.PdataUseProtoPoolingFeatureGate.IsEnabled() {
 		orig.Reset()
 		return
 	}
@@ -243,7 +244,7 @@ func (orig *LogRecord) UnmarshalJSON(iter *json.Iterator) {
 		case "eventName", "event_name":
 			orig.EventName = iter.ReadString()
 		default:
-			iter.Skip()
+			iter.HandleUnknownField(f)
 		}
 	}
 }

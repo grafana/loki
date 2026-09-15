@@ -2,8 +2,12 @@ package goldfish
 
 import "context"
 
-// GoldfishCorrelationIDHeader is the HTTP header name for the goldfish correlation ID.
-const GoldfishCorrelationIDHeader = "X-Loki-Goldfish-ID"
+const (
+	// GoldfishCorrelationIDHeader is the HTTP header name for the goldfish correlation ID.
+	GoldfishCorrelationIDHeader = "X-Loki-Goldfish-ID"
+	// GoldfishCorrelationIDQueryTagKey is the query-tag key used to include Goldfish correlation ID.
+	GoldfishCorrelationIDQueryTagKey = "goldfish_correlation_id"
+)
 
 // SamplingDecision represents an upstream goldfish sampling decision.
 // Both positive and negative decisions are stored so downstream handlers
