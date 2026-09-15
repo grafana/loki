@@ -17,9 +17,19 @@ func NewNoopRetrier(Config) *NoopRetrier {
 	return &NoopRetrier{}
 }
 
-func (n *NoopRetrier) Do(fn DoRequestFunc, _ IsRetryableErrFunc, _ func(), _ func()) (io.ReadCloser, int64, error) {
-	// don't retry, just execute the given function once
-	return fn(0)
+func (n *NoopRetrier) Do(fn DoRequestFunc, isRetryable IsRetryableErrFunc, onSuccess func(), onError func()) (io.ReadCloser, int64, error) {
+	// don't retry, just execute the given function once, but still report the outcome so a
+	// wrapping congestion controller reacts to it — this is what makes it equivalent to
+	// LimitedRetrier with limit=0, per the comment below.
+	rc, sz, err := fn(0)
+	switch {
+	case err == nil:
+		onSuccess()
+	case isRetryable(err):
+		onError()
+	}
+
+	return rc, sz, err
 }
 
 func (n *NoopRetrier) withLogger(log.Logger) Retrier { return n }
