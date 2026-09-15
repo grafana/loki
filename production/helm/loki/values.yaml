@@ -634,7 +634,7 @@ enterprise:
   # `enterprise.license.contents` or `enterprise.useExternalLicense`/`enterprise.externalLicenseName`.
   enabled: false
   # Default version of GEL to deploy
-  version: 3.6.12
+  version: 3.6.14
   # -- Optional name of the GEL cluster, otherwise will use .Release.Name
   # The cluster name must match what is in your GEL license
   cluster_name: null
@@ -676,7 +676,7 @@ enterprise:
     # -- Docker image repository
     repository: grafana/enterprise-logs
     # -- Docker image tag
-    tag: 3.6.12
+    tag: 3.6.14
     # -- Overrides the image tag with an image digest
     digest: null
     # -- Docker image pull policy
@@ -4041,15 +4041,15 @@ rollout_operator:
 minio:
   enabled: false
   # Override the upstream MinIO, Inc. images with the Pigsty (pgsty) community
-  # fork to mitigate the unresolved CVE in the abandoned MinIO images.
-  # See https://github.com/pgsty/minio for details.
+  # fork (renamed from "minio" to "silo") to mitigate the unresolved CVE in
+  # the abandoned MinIO images. See https://github.com/pgsty/silo for details.
   image:
-    repository: docker.io/pgsty/minio
-    tag: RELEASE.2026-03-14T12-00-00Z
+    repository: docker.io/pgsty/silo
+    tag: RELEASE.2026-09-03T13-18-01Z
     pullPolicy: IfNotPresent
   mcImage:
     repository: docker.io/pgsty/mc
-    tag: RELEASE.2026-03-13T08-57-32Z
+    tag: RELEASE.2026-09-13T00-00-00Z
     pullPolicy: IfNotPresent
   replicas: 1
   # Minio requires 2 to 16 drives for erasure code (drivesPerNode * replicas)
