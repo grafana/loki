@@ -191,7 +191,7 @@ var ltt = []struct {
 			"testing-stack",
 			field.ErrorList{
 				field.Invalid(
-					field.NewPath("spec").Child("storage").Child("schemas"),
+					field.NewPath("spec").Child("storage").Child("schemas").Index(1),
 					lokiv1.ObjectStorageSchema{
 						Version:       lokiv1.ObjectStorageSchemaV12,
 						EffectiveDate: "2020-10-14",
@@ -242,7 +242,7 @@ var ltt = []struct {
 							EffectiveDate: "2020-10-14",
 						},
 					},
-					lokiv1.ErrSchemaRetroactivelyRemoved.Error(),
+					lokiv1.ErrSchemaNotExpired.Error(),
 				),
 			},
 		),
@@ -287,7 +287,7 @@ var ltt = []struct {
 							EffectiveDate: "2020-10-11",
 						},
 					},
-					lokiv1.ErrSchemaRetroactivelyRemoved.Error(),
+					lokiv1.ErrSchemaNotExpired.Error(),
 				),
 			},
 		),
@@ -376,7 +376,7 @@ var ltt = []struct {
 							EffectiveDate: "2020-10-14",
 						},
 					},
-					lokiv1.ErrSchemaRetroactivelyRemoved.Error(),
+					lokiv1.ErrSchemaNotExpired.Error(),
 				),
 			},
 		),
@@ -394,7 +394,7 @@ var ltt = []struct {
 					Tenants: map[string]lokiv1.PerTenantLimitsTemplateSpec{
 						"tenant-a": {
 							Retention: &lokiv1.RetentionLimitSpec{
-								Days: 365, // Tenant has 1 year retention - should block removal
+								Days: 3650, // Tenant has 10 year retention - should block removal
 							},
 						},
 					},
@@ -435,7 +435,7 @@ var ltt = []struct {
 							EffectiveDate: "2020-10-14",
 						},
 					},
-					lokiv1.ErrSchemaRetroactivelyRemoved.Error(),
+					lokiv1.ErrSchemaNotExpired.Error(),
 				),
 			},
 		),
@@ -453,7 +453,7 @@ var ltt = []struct {
 					Tenants: map[string]lokiv1.PerTenantLimitsTemplateSpec{
 						"tenant-a": {
 							Retention: &lokiv1.RetentionLimitSpec{
-								Days: 45, // Tenant: 45 days (longer, but still expired for old 2020 schema)
+								Days: 45, // expired for 2020 schema
 							},
 						},
 					},
@@ -493,11 +493,11 @@ var ltt = []struct {
 					Tenants: map[string]lokiv1.PerTenantLimitsTemplateSpec{
 						"tenant-a": {
 							Retention: &lokiv1.RetentionLimitSpec{
-								Days: 30, // This tenant has 30 days
+								Days: 30,
 							},
 						},
 						"tenant-b": {
-							// This tenant has no retention config = infinite retention
+							// no retention config = infinite retention
 						},
 					},
 				},
@@ -537,7 +537,7 @@ var ltt = []struct {
 							EffectiveDate: "2020-10-14",
 						},
 					},
-					lokiv1.ErrSchemaRetroactivelyRemoved.Error(),
+					lokiv1.ErrSchemaNotExpired.Error(),
 				),
 			},
 		),
@@ -571,7 +571,7 @@ var ltt = []struct {
 			"testing-stack",
 			field.ErrorList{
 				field.Invalid(
-					field.NewPath("spec").Child("storage").Child("schemas"),
+					field.NewPath("spec").Child("storage").Child("schemas").Index(0),
 					lokiv1.ObjectStorageSchema{
 						Version:       lokiv1.ObjectStorageSchemaV12,
 						EffectiveDate: "2020-10-11",
@@ -985,13 +985,14 @@ func TestLokiStackValidationWebhook_ValidateCreate(t *testing.T) {
 				ObjectMeta: metav1.ObjectMeta{
 					Name: "testing-stack",
 				},
-				Spec: tc.spec.Spec,
+				Spec:   tc.spec.Spec,
+				Status: tc.spec.Status,
 			}
 			ctx := context.Background()
 
 			v := &validation.LokiStackValidator{}
 			_, err := v.ValidateCreate(ctx, l)
-			if err != nil {
+			if tc.err != nil {
 				require.Equal(t, tc.err, err)
 			} else {
 				require.NoError(t, err)
@@ -1008,13 +1009,14 @@ func TestLokiStackValidationWebhook_ValidateUpdate(t *testing.T) {
 				ObjectMeta: metav1.ObjectMeta{
 					Name: "testing-stack",
 				},
-				Spec: tc.spec.Spec,
+				Spec:   tc.spec.Spec,
+				Status: tc.spec.Status,
 			}
 			ctx := context.Background()
 
 			v := &validation.LokiStackValidator{}
 			_, err := v.ValidateUpdate(ctx, &lokiv1.LokiStack{}, l)
-			if err != nil {
+			if tc.err != nil {
 				require.Equal(t, tc.err, err)
 			} else {
 				require.NoError(t, err)
