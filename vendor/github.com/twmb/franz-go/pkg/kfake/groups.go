@@ -366,6 +366,11 @@ func (gs *groups) handleOffsetCommit(creq *clientReq) {
 		gs.gs = make(map[string]*group)
 	}
 	req := creq.kreq.(*kmsg.OffsetCommitRequest)
+	// Snapshot topic metadata here (cluster goroutine, where c.data is
+	// safe to read) so the group goroutine can validate that committed
+	// partitions exist, like a real broker's API layer does before the
+	// coordinator sees the commit.
+	creq.topicMeta = gs.c.snapshotTopicMeta()
 start:
 	g := gs.gs[req.Group]
 	if g == nil {
@@ -1317,8 +1322,13 @@ func setOffsetCommitPartitionErr(resp *kmsg.OffsetCommitResponse, topic string, 
 	}
 }
 
-// fillOffsetCommitWithACL fills the response with per-topic ACL checks.
-// Returns topics that passed ACL check.
+// fillOffsetCommitWithACL fills the response with per-topic ACL checks and
+// per-partition existence checks. A real broker's API layer rejects commits
+// for partitions its metadata does not know with UNKNOWN_TOPIC_OR_PARTITION
+// before the group coordinator ever sees them (auth is checked first); the
+// coordinator itself stores offsets blindly. We validate against the topic
+// metadata snapshot taken when the request was dispatched to this group.
+// Returns the topics+partitions that passed and should be committed.
 func (g *group) fillOffsetCommitWithACL(creq *clientReq, req *kmsg.OffsetCommitRequest, resp *kmsg.OffsetCommitResponse) []kmsg.OffsetCommitRequestTopic {
 	var allowed []kmsg.OffsetCommitRequestTopic
 	for _, t := range req.Topics {
@@ -1333,12 +1343,21 @@ func (g *group) fillOffsetCommitWithACL(creq *clientReq, req *kmsg.OffsetCommitR
 				st.Partitions = append(st.Partitions, sp)
 			}
 		} else {
-			allowed = append(allowed, t)
+			meta, topicExists := creq.topicMeta[t.Topic]
+			at := t
+			at.Partitions = nil
 			for _, p := range t.Partitions {
 				sp := kmsg.NewOffsetCommitResponseTopicPartition()
 				sp.Partition = p.Partition
-				sp.ErrorCode = 0
+				if creq.topicMeta != nil && (!topicExists || p.Partition < 0 || p.Partition >= meta.partitions) {
+					sp.ErrorCode = kerr.UnknownTopicOrPartition.Code
+				} else {
+					at.Partitions = append(at.Partitions, p)
+				}
 				st.Partitions = append(st.Partitions, sp)
+			}
+			if len(at.Partitions) > 0 {
+				allowed = append(allowed, at)
 			}
 		}
 		resp.Topics = append(resp.Topics, st)
@@ -1973,6 +1992,19 @@ func (g *group) handleConsumerHeartbeat(creq *clientReq) kmsg.Response {
 }
 
 func (g *group) consumerJoin(creq *clientReq, req *kmsg.ConsumerGroupHeartbeatRequest, resp *kmsg.ConsumerGroupHeartbeatResponse) *kmsg.ConsumerGroupHeartbeatResponse {
+	// A real broker validates that the owned-partitions field is an
+	// empty list on every (re)join: null and non-empty are both
+	// rejected with "TopicPartitions must be empty when (re-)joining."
+	// before the request reaches the group state machine. Mirroring
+	// the rejection matters: a client that leaks stale owned state
+	// into its join would otherwise be silently accepted here while a
+	// real broker rejects it on every attempt, forever.
+	if req.Topics == nil || len(req.Topics) > 0 {
+		resp.ErrorCode = kerr.InvalidRequest.Code
+		resp.ErrorMessage = kmsg.StringPtr("TopicPartitions must be empty when (re-)joining.")
+		return resp
+	}
+
 	memberID := req.MemberID
 	if memberID == "" {
 		memberID = generateMemberID(creq.cid, req.InstanceID)

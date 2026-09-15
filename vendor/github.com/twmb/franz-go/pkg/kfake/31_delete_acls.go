@@ -47,6 +47,13 @@ func (c *Cluster) handleDeleteACLs(creq *clientReq) (kmsg.Response, error) {
 			host:         rf.Host,
 		}
 
+		if !filter.validate() {
+			result.ErrorCode = kerr.InvalidRequest.Code
+			result.ErrorMessage = kmsg.StringPtr("DeleteAclsRequest contains UNKNOWN elements")
+			resp.Results = append(resp.Results, result)
+			continue
+		}
+
 		for _, a := range c.acls.delete(filter) {
 			result.MatchingACLs = append(result.MatchingACLs, kmsg.DeleteACLsResponseResultMatchingACL{
 				ResourceType:        a.resourceType,

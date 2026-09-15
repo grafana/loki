@@ -22,6 +22,14 @@ type (
 		saslStage saslStage
 		s0        *scramServer0
 		user      string // authenticated user, set after SASL completes
+
+		// hasSessionExpiry is set at authenticate time when
+		// connections.max.reauth.ms is positive. Re-authentication is
+		// gated on the connection's stored session expiration, not the
+		// live config (KafkaChannel.maybeBeginServerReauthentication
+		// checks the authenticator's session expiration time), so a
+		// config change affects only sessions established after it.
+		hasSessionExpiry bool
 	}
 
 	clientReq struct {
@@ -44,6 +52,7 @@ type (
 		corr  int32
 		err   error
 		seq   uint32
+		skip  bool // acks=0 produce: nothing to write, just advance seq
 	}
 )
 
@@ -191,6 +200,12 @@ func (cc *clientConn) write() {
 		} else {
 			delete(oooresp, seq)
 			seq++
+		}
+		// acks=0 produce: no response bytes exist for this sequence
+		// number; the sentinel only advances seq (above) and unmutes.
+		if resp.skip {
+			cc.unmute(true)
+			continue
 		}
 		if err := resp.err; err != nil {
 			cc.c.cfg.logger.Logf(LogLevelInfo, "client %s request unable to be handled: %v", who, err)
