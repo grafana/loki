@@ -246,6 +246,12 @@ func (q *SingleTenantQuerier) SelectSamples(ctx context.Context, params logql.Se
 		// Make a copy of the request before modifying
 		// because the initial request is used below to query stores
 		queryRequestCopy := *params.SampleQueryRequest
+		queryPlanCopy := *queryRequestCopy.Plan
+		queryPlanCopy.AST, err = syntax.Clone(queryPlanCopy.AST)
+		if err != nil {
+			return nil, err
+		}
+		queryRequestCopy.Plan = &queryPlanCopy
 		newParams := logql.SelectSampleParams{
 			SampleQueryRequest: &queryRequestCopy,
 		}
