@@ -33,6 +33,7 @@ func TestStreamsMap(t *testing.T) {
 			nil,
 			retentionHours,
 			noPolicy,
+			limiter.limits,
 		),
 		newStream(
 			chunkfmt,
@@ -48,6 +49,7 @@ func TestStreamsMap(t *testing.T) {
 			nil,
 			retentionHours,
 			noPolicy,
+			limiter.limits,
 		),
 	}
 	var s *stream
