@@ -23,6 +23,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/querier/queryrange"
 	"github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase"
 	"github.com/grafana/loki/v3/pkg/util/httpreq"
+	"github.com/grafana/loki/v3/pkg/util/querylimits"
 
 	"github.com/grafana/loki/v3/pkg/logline/hintprovider"
 )
@@ -63,6 +64,12 @@ func (m mockTenantSettings) MinQueryBytesForIndex(tenant string) (int64, bool) {
 	}
 	minQueryBytes, ok := m.minQueryBytesForIndex[tenant]
 	return minQueryBytes, ok
+}
+
+type staticQueryBytesLimit int
+
+func (l staticQueryBytesLimit) MaxQueryBytesRead(context.Context, string) int {
+	return int(l)
 }
 
 func (m *mockHintProvider) ProvideHints(
@@ -170,7 +177,7 @@ func buildStack(
 	if len(tenantSettings) > 0 {
 		settings = tenantSettings[0]
 	}
-	prefetchMW := NewLoglinePrefetchMiddleware(hp, cfg, settings, metrics, nil)
+	prefetchMW := NewLoglinePrefetchMiddleware(hp, cfg, settings, nil, metrics, nil)
 	return prefetchMW.Wrap(filterMW.Wrap(querier))
 }
 
@@ -191,7 +198,7 @@ func buildStackWithLogger(
 	if len(tenantSettings) > 0 {
 		settings = tenantSettings[0]
 	}
-	prefetchMW := NewLoglinePrefetchMiddleware(hp, cfg, settings, metrics, logger)
+	prefetchMW := NewLoglinePrefetchMiddleware(hp, cfg, settings, nil, metrics, logger)
 	return prefetchMW.Wrap(filterMW.Wrap(querier))
 }
 
@@ -984,6 +991,7 @@ func TestWrapMiddleware_Disabled(t *testing.T) {
 		Config{Enabled: false},
 		nil,
 		nil,
+		nil,
 		log.NewNopLogger(),
 		prometheus.NewRegistry(),
 	)
@@ -1303,6 +1311,280 @@ func TestPrefetchFilter_HintPrefetchCompletedLogIncludesQueryBytes(t *testing.T)
 	require.Contains(t, logLine, " +15m0s]")
 }
 
+func prefetchHintsReady(ctx context.Context) bool {
+	result := hintPrefetchFromContext(ctx)
+	if result == nil {
+		return false
+	}
+	select {
+	case <-result.done:
+		return true
+	default:
+		return false
+	}
+}
+
+func TestPrefetch_OverSizeLimit_WaitsBeforeNext(t *testing.T) {
+	now := time.Now().Truncate(time.Millisecond)
+	hp := &mockHintProvider{
+		delay: 30 * time.Millisecond,
+		hints: &hintprovider.Hints{
+			TimeRanges: []hintprovider.HintTimeRange{
+				{Start: now.Add(-45 * time.Minute), End: now.Add(-30 * time.Minute)},
+			},
+		},
+	}
+
+	var readyAtNext bool
+	var planned []querylimits.TimeRange
+	var plannedOK bool
+	next := queryrangebase.HandlerFunc(func(ctx context.Context, req queryrangebase.Request) (queryrangebase.Response, error) {
+		if _, ok := req.(*logproto.IndexStatsRequest); ok {
+			return &queryrange.IndexStatsResponse{
+				Response: &logproto.IndexStatsResponse{Bytes: 5000},
+			}, nil
+		}
+		readyAtNext = prefetchHintsReady(ctx)
+		planned, plannedOK = querylimits.ExtractPlannedQueryRanges(ctx)
+		return emptyStreamResponse(), nil
+	})
+
+	cfg := MiddlewareConfig{MaxQueryBytesRead: 1000, HintTimeout: time.Second}
+	handler := NewLoglinePrefetchMiddleware(hp, cfg, nil, nil, newTestMetrics(), nil).Wrap(next)
+	req := newTestLokiRequest(`{job="test"} |= "error"`, now.Add(-time.Hour), now)
+
+	_, err := handler.Do(testTenantContextWithLive(), req)
+	require.NoError(t, err)
+	require.Equal(t, 1, hp.Calls())
+	require.True(t, readyAtNext, "over MaxQueryBytesRead must wait for hints before next.Do")
+	require.True(t, plannedOK)
+	require.Equal(t, []querylimits.TimeRange{{
+		Start: now.Add(-45 * time.Minute).UTC(),
+		End:   now.Add(-30 * time.Minute).UTC(),
+	}}, planned)
+}
+
+func TestPrefetch_UnderSizeLimit_DoesNotWaitBeforeNext(t *testing.T) {
+	now := time.Now().Truncate(time.Millisecond)
+	hp := &mockHintProvider{
+		delay: 50 * time.Millisecond,
+		hints: &hintprovider.Hints{
+			TimeRanges: []hintprovider.HintTimeRange{
+				{Start: now.Add(-45 * time.Minute), End: now.Add(-30 * time.Minute)},
+			},
+		},
+	}
+
+	var readyAtNext bool
+	var plannedOK bool
+	next := queryrangebase.HandlerFunc(func(ctx context.Context, req queryrangebase.Request) (queryrangebase.Response, error) {
+		if _, ok := req.(*logproto.IndexStatsRequest); ok {
+			return &queryrange.IndexStatsResponse{
+				Response: &logproto.IndexStatsResponse{Bytes: 100},
+			}, nil
+		}
+		readyAtNext = prefetchHintsReady(ctx)
+		_, plannedOK = querylimits.ExtractPlannedQueryRanges(ctx)
+		return emptyStreamResponse(), nil
+	})
+
+	cfg := MiddlewareConfig{MaxQueryBytesRead: 1000, HintTimeout: time.Second}
+	handler := NewLoglinePrefetchMiddleware(hp, cfg, nil, nil, newTestMetrics(), nil).Wrap(next)
+	req := newTestLokiRequest(`{job="test"} |= "error"`, now.Add(-time.Hour), now)
+
+	_, err := handler.Do(testTenantContextWithLive(), req)
+	require.NoError(t, err)
+	require.False(t, readyAtNext, "under MaxQueryBytesRead must not block on hints")
+	require.False(t, plannedOK, "under MaxQueryBytesRead must not inject a plan")
+}
+
+func TestPrefetch_AtSizeLimit_DoesNotWaitBeforeNext(t *testing.T) {
+	now := time.Now().Truncate(time.Millisecond)
+	hp := &mockHintProvider{
+		delay: 50 * time.Millisecond,
+		hints: &hintprovider.Hints{
+			TimeRanges: []hintprovider.HintTimeRange{
+				{Start: now.Add(-45 * time.Minute), End: now.Add(-30 * time.Minute)},
+			},
+		},
+	}
+
+	var readyAtNext bool
+	var plannedOK bool
+	next := queryrangebase.HandlerFunc(func(ctx context.Context, req queryrangebase.Request) (queryrangebase.Response, error) {
+		if _, ok := req.(*logproto.IndexStatsRequest); ok {
+			return &queryrange.IndexStatsResponse{
+				Response: &logproto.IndexStatsResponse{Bytes: 1000},
+			}, nil
+		}
+		readyAtNext = prefetchHintsReady(ctx)
+		_, plannedOK = querylimits.ExtractPlannedQueryRanges(ctx)
+		return emptyStreamResponse(), nil
+	})
+
+	cfg := MiddlewareConfig{MaxQueryBytesRead: 1000, HintTimeout: time.Second}
+	handler := NewLoglinePrefetchMiddleware(hp, cfg, nil, nil, newTestMetrics(), nil).Wrap(next)
+	req := newTestLokiRequest(`{job="test"} |= "error"`, now.Add(-time.Hour), now)
+
+	_, err := handler.Do(testTenantContextWithLive(), req)
+	require.NoError(t, err)
+	require.False(t, readyAtNext, "at MaxQueryBytesRead the limiter allows the query; do not wait")
+	require.False(t, plannedOK, "at MaxQueryBytesRead must not inject a plan")
+}
+
+func TestPrefetch_BelowMinBytesButOverSizeLimit_StillLooksUpHints(t *testing.T) {
+	now := time.Now().Truncate(time.Millisecond)
+	hp := &mockHintProvider{
+		hints: &hintprovider.Hints{
+			TimeRanges: []hintprovider.HintTimeRange{
+				{Start: now.Add(-45 * time.Minute), End: now.Add(-30 * time.Minute)},
+			},
+		},
+	}
+
+	var readyAtNext bool
+	next := queryrangebase.HandlerFunc(func(ctx context.Context, req queryrangebase.Request) (queryrangebase.Response, error) {
+		if _, ok := req.(*logproto.IndexStatsRequest); ok {
+			return &queryrange.IndexStatsResponse{
+				Response: &logproto.IndexStatsResponse{Bytes: 2000},
+			}, nil
+		}
+		readyAtNext = prefetchHintsReady(ctx)
+		return emptyStreamResponse(), nil
+	})
+
+	cfg := MiddlewareConfig{
+		MinQueryBytesForIndex: 10_000,
+		MaxQueryBytesRead:     1000,
+		HintTimeout:           time.Second,
+	}
+	handler := NewLoglinePrefetchMiddleware(hp, cfg, nil, nil, newTestMetrics(), nil).Wrap(next)
+	req := newTestLokiRequest(`{job="test"} |= "error"`, now.Add(-time.Hour), now)
+
+	_, err := handler.Do(testTenantContextWithLive(), req)
+	require.NoError(t, err)
+	require.Equal(t, 1, hp.Calls(), "over-limit queries must not skip hint lookup for being under min_query_bytes")
+	require.True(t, readyAtNext)
+}
+
+func TestPrefetch_TenantMaxQueryBytesReadStillStartsHints(t *testing.T) {
+	now := time.Now().Truncate(time.Millisecond)
+	hp := &mockHintProvider{
+		hints: &hintprovider.Hints{
+			TimeRanges: []hintprovider.HintTimeRange{
+				{Start: now.Add(-45 * time.Minute), End: now.Add(-30 * time.Minute)},
+			},
+		},
+	}
+
+	var readyAtNext bool
+	next := queryrangebase.HandlerFunc(func(ctx context.Context, req queryrangebase.Request) (queryrangebase.Response, error) {
+		if _, ok := req.(*logproto.IndexStatsRequest); ok {
+			return &queryrange.IndexStatsResponse{
+				Response: &logproto.IndexStatsResponse{Bytes: 2000},
+			}, nil
+		}
+		readyAtNext = prefetchHintsReady(ctx)
+		return emptyStreamResponse(), nil
+	})
+
+	cfg := MiddlewareConfig{
+		MaxQueryBytesRead: 10_000,
+		HintTimeout:       time.Second,
+	}
+	handler := NewLoglinePrefetchMiddleware(hp, cfg, nil, staticQueryBytesLimit(1000), newTestMetrics(), nil).Wrap(next)
+	req := newTestLokiRequest(`{job="test"} |= "error"`, now.Add(-time.Hour), now)
+
+	_, err := handler.Do(testTenantContextWithLive(), req)
+	require.NoError(t, err)
+	require.True(t, readyAtNext, "tenant cap should still start a hint lookup and wait")
+}
+
+func TestPrefetch_OverSizeLimit_TimeoutDoesNotInjectPlan(t *testing.T) {
+	now := time.Now().Truncate(time.Millisecond)
+	hp := &mockHintProvider{
+		delay: 200 * time.Millisecond,
+		hints: &hintprovider.Hints{
+			TimeRanges: []hintprovider.HintTimeRange{
+				{Start: now.Add(-45 * time.Minute), End: now.Add(-30 * time.Minute)},
+			},
+		},
+	}
+
+	var plannedOK bool
+	next := queryrangebase.HandlerFunc(func(ctx context.Context, req queryrangebase.Request) (queryrangebase.Response, error) {
+		if _, ok := req.(*logproto.IndexStatsRequest); ok {
+			return &queryrange.IndexStatsResponse{
+				Response: &logproto.IndexStatsResponse{Bytes: 5000},
+			}, nil
+		}
+		_, plannedOK = querylimits.ExtractPlannedQueryRanges(ctx)
+		return emptyStreamResponse(), nil
+	})
+
+	cfg := MiddlewareConfig{MaxQueryBytesRead: 1000, HintTimeout: 20 * time.Millisecond}
+	handler := NewLoglinePrefetchMiddleware(hp, cfg, nil, nil, newTestMetrics(), nil).Wrap(next)
+	req := newTestLokiRequest(`{job="test"} |= "error"`, now.Add(-time.Hour), now)
+
+	_, err := handler.Do(testTenantContextWithLive(), req)
+	require.NoError(t, err)
+	require.False(t, plannedOK, "timeout must leave the size limiter on the full span")
+}
+
+func TestPrefetch_OverSizeLimit_LookupErrorDoesNotInjectPlan(t *testing.T) {
+	now := time.Now().Truncate(time.Millisecond)
+	hp := &mockHintProvider{
+		err: errors.New("hint lookup failed"),
+	}
+
+	var plannedOK bool
+	next := queryrangebase.HandlerFunc(func(ctx context.Context, req queryrangebase.Request) (queryrangebase.Response, error) {
+		if _, ok := req.(*logproto.IndexStatsRequest); ok {
+			return &queryrange.IndexStatsResponse{
+				Response: &logproto.IndexStatsResponse{Bytes: 5000},
+			}, nil
+		}
+		_, plannedOK = querylimits.ExtractPlannedQueryRanges(ctx)
+		return emptyStreamResponse(), nil
+	})
+
+	cfg := MiddlewareConfig{MaxQueryBytesRead: 1000, HintTimeout: time.Second}
+	handler := NewLoglinePrefetchMiddleware(hp, cfg, nil, nil, newTestMetrics(), nil).Wrap(next)
+	req := newTestLokiRequest(`{job="test"} |= "error"`, now.Add(-time.Hour), now)
+
+	_, err := handler.Do(testTenantContextWithLive(), req)
+	require.NoError(t, err)
+	require.False(t, plannedOK)
+}
+
+func TestPrefetch_OverSizeLimit_EmptyHintsInjectsPresentPlan(t *testing.T) {
+	now := time.Now().Truncate(time.Millisecond)
+	hp := &mockHintProvider{
+		hints: &hintprovider.Hints{},
+	}
+
+	var planned []querylimits.TimeRange
+	var plannedOK bool
+	next := queryrangebase.HandlerFunc(func(ctx context.Context, req queryrangebase.Request) (queryrangebase.Response, error) {
+		if _, ok := req.(*logproto.IndexStatsRequest); ok {
+			return &queryrange.IndexStatsResponse{
+				Response: &logproto.IndexStatsResponse{Bytes: 5000},
+			}, nil
+		}
+		planned, plannedOK = querylimits.ExtractPlannedQueryRanges(ctx)
+		return emptyStreamResponse(), nil
+	})
+
+	cfg := MiddlewareConfig{MaxQueryBytesRead: 1000, HintTimeout: time.Second}
+	handler := NewLoglinePrefetchMiddleware(hp, cfg, nil, nil, newTestMetrics(), nil).Wrap(next)
+	req := newTestLokiRequest(`{job="test"} |= "error"`, now.Add(-time.Hour), now)
+
+	_, err := handler.Do(testTenantContextWithLive(), req)
+	require.NoError(t, err)
+	require.True(t, plannedOK)
+	require.Empty(t, planned)
+}
+
 func TestPrefetchFilter_SkipCacheHeaderSetsHintContext(t *testing.T) {
 	now := time.Now().Truncate(time.Millisecond)
 	hp := &mockHintProvider{
@@ -1502,7 +1784,7 @@ func TestPrefetchFilter_QueryStatsCountsTimeout(t *testing.T) {
 	}
 
 	metrics := newTestMetrics()
-	prefetchMW := NewLoglinePrefetchMiddleware(hp, MiddlewareConfig{RequireOptInHeader: true}, nil, metrics, nil)
+	prefetchMW := NewLoglinePrefetchMiddleware(hp, MiddlewareConfig{RequireOptInHeader: true}, nil, nil, metrics, nil)
 	filterMW := NewLoglineFilterMiddleware(10*time.Millisecond, metrics, nil)
 	var prefetchResult *hintPrefetchResult
 	next := queryrangebase.HandlerFunc(func(ctx context.Context, _ queryrangebase.Request) (queryrangebase.Response, error) {
@@ -1864,7 +2146,7 @@ func TestPrefetchFilter_IngesterWindowPassthrough(t *testing.T) {
 	cfg := MiddlewareConfig{QueryIngestersWithin: 3 * time.Hour}
 	metrics := newTestMetrics()
 
-	prefetchMW := NewLoglinePrefetchMiddleware(hp, cfg, nil, metrics, nil)
+	prefetchMW := NewLoglinePrefetchMiddleware(hp, cfg, nil, nil, metrics, nil)
 
 	var mu sync.Mutex
 	type subReqInfo struct {
@@ -1948,7 +2230,7 @@ func TestPrefetchFilter_24hQueryWith3hIngesterWindow(t *testing.T) {
 	cfg := MiddlewareConfig{QueryIngestersWithin: 3 * time.Hour}
 	metrics := newTestMetrics()
 
-	prefetchMW := NewLoglinePrefetchMiddleware(hp, cfg, nil, metrics, nil)
+	prefetchMW := NewLoglinePrefetchMiddleware(hp, cfg, nil, nil, metrics, nil)
 	filterMW := NewLoglineFilterMiddleware(10*time.Second, metrics, nil)
 
 	var mu sync.Mutex
@@ -2015,7 +2297,7 @@ func TestPrefetchFilter_ImpactCountersAcrossSkipNarrowPassthrough(t *testing.T) 
 
 	cfg := MiddlewareConfig{QueryIngestersWithin: 2 * time.Hour}
 	metrics := newTestMetrics()
-	prefetchMW := NewLoglinePrefetchMiddleware(hp, cfg, nil, metrics, nil)
+	prefetchMW := NewLoglinePrefetchMiddleware(hp, cfg, nil, nil, metrics, nil)
 	filterMW := NewLoglineFilterMiddleware(10*time.Second, metrics, nil)
 
 	var prefetchResult *hintPrefetchResult

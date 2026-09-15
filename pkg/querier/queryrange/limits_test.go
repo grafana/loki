@@ -1111,3 +1111,110 @@ func TestAcquireWithTiming(t *testing.T) {
 	require.Greater(t, waiting3, 0*time.Nanosecond)
 	require.Less(t, waiting3, 10*time.Millisecond)
 }
+
+func Test_MaxQuerySize_PlannedRanges(t *testing.T) {
+	query := `{app="foo"} |= "foo"`
+	lokiReq := &LokiRequest{
+		Query:     query,
+		Limit:     1000,
+		StartTs:   testTime.Add(-48 * time.Hour),
+		EndTs:     testTime,
+		Direction: logproto.FORWARD,
+		Path:      "/query_range",
+		Plan:      testutil.MustPlan(query),
+	}
+	promHandler := queryrangebase.HandlerFunc(func(_ context.Context, _ queryrangebase.Request) (queryrangebase.Response, error) {
+		return &LokiPromResponse{
+			Response: &queryrangebase.PrometheusResponse{Status: "success"},
+		}, nil
+	})
+	statsForDuration := func(hits *atomic.Int32) queryrangebase.Handler {
+		return queryrangebase.HandlerFunc(func(_ context.Context, req queryrangebase.Request) (queryrangebase.Response, error) {
+			hits.Inc()
+			bytes := uint64(10_000)
+			// Planned windows in these cases start near testTime; the full
+			// request (and QueryLimitsContext) starts 48h earlier.
+			if req.GetStart().After(testTime.Add(-2 * time.Hour)) {
+				bytes = 100
+			}
+			return &IndexStatsResponse{
+				Response: &logproto.IndexStatsResponse{Bytes: bytes},
+			}, nil
+		})
+	}
+
+	t.Run("empty plan is zero bytes", func(t *testing.T) {
+		hits := atomic.NewInt32(0)
+		ctx := user.InjectOrgID(context.Background(), "foo")
+		ctx = querylimits.InjectPlannedQueryRanges(ctx, nil)
+
+		_, err := NewQuerySizeLimiterMiddleware(testEngineOpts, util_log.Logger, fakeLimits{
+			maxQueryBytesRead: 1,
+		}, statsForDuration(hits)).Wrap(promHandler).Do(ctx, lokiReq)
+		require.NoError(t, err)
+		require.Equal(t, int32(0), hits.Load())
+	})
+
+	t.Run("sizes planned windows instead of the request span", func(t *testing.T) {
+		hits := atomic.NewInt32(0)
+		ctx := user.InjectOrgID(context.Background(), "foo")
+		ctx = querylimits.InjectPlannedQueryRanges(ctx, []querylimits.TimeRange{{
+			Start: testTime.Add(-30 * time.Minute),
+			End:   testTime,
+		}})
+
+		_, err := NewQuerySizeLimiterMiddleware(testEngineOpts, util_log.Logger, fakeLimits{
+			maxQueryBytesRead: 500,
+		}, statsForDuration(hits)).Wrap(promHandler).Do(ctx, lokiReq)
+		require.NoError(t, err)
+		require.Equal(t, int32(1), hits.Load())
+	})
+
+	t.Run("present plan is not floored by QueryLimitsContext", func(t *testing.T) {
+		hits := atomic.NewInt32(0)
+		ctx := user.InjectOrgID(context.Background(), "foo")
+		ctx = querylimits.InjectPlannedQueryRanges(ctx, []querylimits.TimeRange{{
+			Start: testTime.Add(-30 * time.Minute),
+			End:   testTime,
+		}})
+		ctx = querylimits.InjectQueryLimitsContextIntoContext(ctx, querylimits.Context{
+			Expr: query,
+			From: testTime.Add(-48 * time.Hour),
+			To:   testTime,
+		})
+
+		_, err := NewQuerySizeLimiterMiddleware(testEngineOpts, util_log.Logger, fakeLimits{
+			maxQueryBytesRead: 500,
+		}, statsForDuration(hits)).Wrap(promHandler).Do(ctx, lokiReq)
+		require.NoError(t, err)
+		require.Equal(t, int32(1), hits.Load())
+	})
+
+	t.Run("MaxQuerierBytesRead sizes plan clipped to the request", func(t *testing.T) {
+		queryHits := atomic.NewInt32(0)
+		querierHits := atomic.NewInt32(0)
+		ctx := user.InjectOrgID(context.Background(), "foo")
+		ctx = querylimits.InjectPlannedQueryRanges(ctx, []querylimits.TimeRange{
+			{Start: testTime.Add(-48 * time.Hour), End: testTime.Add(-47 * time.Hour)},
+			{Start: testTime.Add(-30 * time.Minute), End: testTime},
+		})
+
+		// A 1h split: only the second window overlaps. Without clipping,
+		// the first window would be sized as 10_000 bytes and 400.
+		splitReq := *lokiReq
+		splitReq.StartTs = testTime.Add(-time.Hour)
+
+		middlewares := []queryrangebase.Middleware{
+			NewQuerySizeLimiterMiddleware(testEngineOpts, util_log.Logger, fakeLimits{
+				maxQueryBytesRead: 500,
+			}, statsForDuration(queryHits)),
+			NewQuerierSizeLimiterMiddleware(testEngineOpts, util_log.Logger, fakeLimits{
+				maxQuerierBytesRead: 500,
+			}, statsForDuration(querierHits)),
+		}
+		_, err := queryrangebase.MergeMiddlewares(middlewares...).Wrap(promHandler).Do(ctx, &splitReq)
+		require.NoError(t, err)
+		require.Equal(t, int32(1), queryHits.Load())
+		require.Equal(t, int32(1), querierHits.Load())
+	})
+}

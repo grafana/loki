@@ -308,9 +308,29 @@ func NewQuerySizeLimiterMiddleware(
 // individual intervals and offsets
 //   - {job="foo"}
 //   - {job="bar"}
+//
+// If a plan is on the context, size the planned windows clipped to the
+// request. Do not use QueryLimitsContext as a floor. A present empty
+// plan is 0 bytes. Stats errors are ignored so the query proceeds
+// (same as the no-plan path). The shard mapper still picks a factor
+// from the full split and only uses the plan for the limit number.
 func (q *querySizeLimiter) getBytesReadForRequest(ctx context.Context, r queryrangebase.Request) (uint64, error) {
 	ctx, sp := tracer.Start(ctx, "querySizeLimiter.getBytesReadForRequest")
 	defer sp.End()
+
+	if planned, ok := querylimits.ExtractPlannedQueryRanges(ctx); ok {
+		bytesRead, err := q.getBytesForPlannedRanges(ctx, r, planned)
+		if err != nil {
+			return 0, nil
+		}
+		level.Debug(q.logger).Log(
+			"msg", "sized query using planned ranges",
+			"windows", len(planned),
+			"bytes", bytesRead,
+			"limit_name", q.spec.limitName,
+		)
+		return bytesRead, nil
+	}
 
 	queryLimitCtx := querylimits.ExtractQueryLimitsContextFromContext(ctx)
 	fullCtxBytes := uint64(0)
@@ -332,6 +352,54 @@ func (q *querySizeLimiter) getBytesReadForRequest(ctx context.Context, r queryra
 	}
 
 	return queryBytes, nil
+}
+
+// getBytesForPlannedRanges sizes the query over each planned window
+// that overlaps [r.Start, r.End). The caller handles stats errors:
+// the size-limiter middleware ignores them (query proceeds); the shard
+// mapper keeps the full-range estimate.
+func (q *querySizeLimiter) getBytesForPlannedRanges(ctx context.Context, r queryrangebase.Request, planned []querylimits.TimeRange) (uint64, error) {
+	var total uint64
+	for _, window := range clipPlannedQueryRanges(planned, r.GetStart(), r.GetEnd()) {
+		bytesRead, err := q.getBytesForQueryAndRange(ctx, r.GetQuery(), window.Start, window.End)
+		if err != nil {
+			return 0, err
+		}
+		total += bytesRead
+	}
+
+	return total, nil
+}
+
+// clipPlannedQueryRanges returns planned windows overlapping [from, to).
+func clipPlannedQueryRanges(planned []querylimits.TimeRange, from, to time.Time) []querylimits.TimeRange {
+	if !from.Before(to) {
+		return nil
+	}
+	out := make([]querylimits.TimeRange, 0, len(planned))
+	for _, window := range planned {
+		start := window.Start
+		if start.Before(from) {
+			start = from
+		}
+		end := window.End
+		if end.After(to) {
+			end = to
+		}
+		if start.Before(end) {
+			out = append(out, querylimits.TimeRange{Start: start, End: end})
+		}
+	}
+	return out
+}
+
+// scaleBytesToShard scales part/total onto an already-computed per-shard
+// estimate so the shard factor is unchanged.
+func scaleBytesToShard(part, total, bytesPerShard uint64) uint64 {
+	if total == 0 {
+		return 0
+	}
+	return uint64(float64(part) / float64(total) * float64(bytesPerShard))
 }
 
 func (q *querySizeLimiter) getBytesForQueryAndRange(ctx context.Context, query string, from, to time.Time) (uint64, error) {
