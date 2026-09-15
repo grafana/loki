@@ -9,7 +9,10 @@ import (
 
 	"github.com/grafana/dskit/flagext"
 	"github.com/grafana/dskit/netutil"
+	"github.com/prometheus/prometheus/model/labels"
 
+	"github.com/grafana/loki/v3/pkg/logql"
+	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/cache/resultscache"
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
 )
@@ -32,6 +35,13 @@ type Config struct {
 	StorageLag           time.Duration `yaml:"storage_lag" category:"experimental"`
 	StorageStartDate     flagext.Time  `yaml:"storage_start_date" category:"experimental"`
 	StorageRetentionDays int64         `yaml:"storage_retention_days" category:"experimental"`
+
+	// V1OnlyStreamSelector is a LogQL stream selector. Queries whose stream
+	// selector contains all of its matchers are always executed by the v1
+	// (chunks) engine, regardless of the configured storage time range.
+	V1OnlyStreamSelector string `yaml:"v1_only_stream_selector" category:"experimental"`
+	// V1OnlyMatchers is parsed from V1OnlyStreamSelector during validation.
+	V1OnlyMatchers []*labels.Matcher `yaml:"-" json:"-"`
 
 	EnableEngineRouter       bool   `yaml:"enable_engine_router" category:"experimental"`
 	DownstreamAddress        string `yaml:"downstream_address" category:"experimental"`
@@ -65,6 +75,7 @@ func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	f.DurationVar(&cfg.StorageLag, prefix+"storage-lag", 1*time.Hour, "Amount of time until data objects are available.")
 	f.Var(&cfg.StorageStartDate, prefix+"storage-start-date", "Initial date when data objects became available. Format YYYY-MM-DD. If not set, assume data objects are always available no matter how far back.")
 	f.Int64Var(&cfg.StorageRetentionDays, prefix+"storage-retention-days", 0, "Lifecycle of data objects in days. If set, queries falling outside of the retention period will not be supported. When both storage-start-date and storage-retention-days are set, the more restrictive of the two will apply.")
+	f.StringVar(&cfg.V1OnlyStreamSelector, prefix+"v1-only-stream-selector", "", "Experimental: LogQL stream selector, e.g. '{app=\"foo\"}'. Queries whose stream selector contains all of these matchers are always executed by the v1 (chunks) engine. Only equality matchers are allowed, and only queries using the exact same equality matchers are detected. Empty disables the feature.")
 
 	f.BoolVar(&cfg.EnableEngineRouter, prefix+"enable-engine-router", false, "Enable routing of query splits in the query frontend to the next generation engine when they fall within the configured time range.")
 	f.StringVar(&cfg.DownstreamAddress, prefix+"downstream-address", "", "Downstream address to send query splits to. This is the HTTP handler address of the query engine scheduler.")
@@ -73,6 +84,83 @@ func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	f.BoolVar(&cfg.AlignQueriesWithStep, prefix+"align-queries-with-step", false, "Mutate incoming queries to align their start and end with their step.")
 	f.BoolVar(&cfg.EnforceQuerySeriesLimit, prefix+"enforce-max-query-series-limit", false, "Experimental: When enabled, the tenant's MaxQuerySeries limit is applied. Otherwise, no limit is enforced.")
 	cfg.ResultsCache.RegisterFlagsWithPrefix(f, prefix+"results-cache.")
+}
+
+// Validate validates the config and populates derived fields such as
+// V1OnlyMatchers. It is idempotent.
+func (cfg *Config) Validate() error {
+	if cfg.V1OnlyStreamSelector == "" {
+		cfg.V1OnlyMatchers = nil
+		return nil
+	}
+
+	matchers, err := ParseV1OnlySelector(cfg.V1OnlyStreamSelector)
+	if err != nil {
+		return err
+	}
+	cfg.V1OnlyMatchers = matchers
+	return nil
+}
+
+// ParseV1OnlySelector parses a v1-only stream selector into label matchers.
+// Only equality matchers are allowed: matching against queries is done by
+// exact matcher equality, so a regex or negative matcher in the selector
+// would silently never match.
+func ParseV1OnlySelector(selector string) ([]*labels.Matcher, error) {
+	matchers, err := syntax.ParseMatchers(selector, true)
+	if err != nil {
+		return nil, fmt.Errorf("invalid v1-only stream selector %q: %w", selector, err)
+	}
+	for _, m := range matchers {
+		if m.Type != labels.MatchEqual {
+			return nil, fmt.Errorf("v1-only stream selector must contain only equality matchers, got %s", m)
+		}
+	}
+	return matchers, nil
+}
+
+// MatchesV1OnlySelector returns true if any of the query's matcher groups
+// contains all of the configured V1OnlyMatchers, compared by exact matcher
+// equality. Such queries must be executed by the v1 (chunks) engine.
+func (cfg *Config) MatchesV1OnlySelector(params logql.Params) bool {
+	if len(cfg.V1OnlyMatchers) == 0 {
+		return false
+	}
+
+	expr := params.GetExpression()
+	if expr == nil {
+		return false
+	}
+
+	groups, err := syntax.MatcherGroups(expr)
+	if err != nil {
+		return false
+	}
+
+	for _, group := range groups {
+		if containsAllMatchers(group.Matchers, cfg.V1OnlyMatchers) {
+			return true
+		}
+	}
+	return false
+}
+
+// containsAllMatchers returns true if every matcher in required has an exact
+// equal (name, type, value) in group.
+func containsAllMatchers(group, required []*labels.Matcher) bool {
+	for _, req := range required {
+		found := false
+		for _, m := range group {
+			if m.Type == req.Type && m.Name == req.Name && m.Value == req.Value {
+				found = true
+				break
+			}
+		}
+		if !found {
+			return false
+		}
+	}
+	return true
 }
 
 func (cfg *Config) ValidQueryRange() (time.Time, time.Time) {
