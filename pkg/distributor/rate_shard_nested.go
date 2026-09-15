@@ -14,8 +14,8 @@ import (
 // the resource attributes and G+S-1 of the scope attributes. Handing every shard entries from every
 // scope, as round-robin does for flat streams, would cost R*S and G*S instead.
 //
-// A shard takes its entries as subslices of the source rather than copying them, which contiguous
-// runs are also what makes possible. Its entries therefore live in the caller's stream,
+// A shard takes each run as a subslice of the source rather than copying the entries, which
+// contiguous runs are also what makes possible. Its entries therefore live in the caller's stream,
 // so a caller that rewrites an entry rewrites it for both.
 func shardNested(stream *logproto.InternalStreamAdapter, shards int) []logproto.InternalStreamAdapter {
 	total := nestedEntryCount(stream)
@@ -46,22 +46,27 @@ func shardNested(stream *logproto.InternalStreamAdapter, shards int) []logproto.
 
 	shard, placed := 0, 0
 	for _, sourceResource := range stream.ResourceLogs {
-		// The resource being filled in the shard being filled, nil until an entry lands in it.
-		// That is what keeps an empty one out of a shard, and what reopens it in the next shard
-		// when a boundary falls inside it.
+		// The resource being filled in the shard being filled, nil until a run lands in it. That
+		// is what keeps an empty one out of a shard, and what reopens it in the next shard when a
+		// boundary falls inside it.
 		var resource *logproto.ResourceLogs
 
 		for _, sourceScope := range sourceResource.ScopeLogs {
 			var scope *logproto.ScopeLogs
 
-			// A shard takes a run of this scope's entries, so it can hold them as a subslice of
-			// the source. Crossing into the next shard begins a new run.
-			runStart := 0
+			// Entries to shard from the current scope.
+			remaining := sourceScope.Entries
 
-			for entryIdx := range sourceScope.Entries {
+			for len(remaining) > 0 {
 				if placed == shardQuota(shard) && shard+1 < shards {
 					shard, placed = shard+1, 0
-					resource, scope, runStart = nil, nil, entryIdx
+					resource, scope = nil, nil
+				}
+
+				remainingCount := len(remaining)
+				// If it is not the last shard, limit the entries we take for the shard up to its remaining capacity.
+				if shardCapacityLeft := shardQuota(shard) - placed; shard+1 < shards && remainingCount > shardCapacityLeft {
+					remainingCount = shardCapacityLeft
 				}
 
 				if resource == nil {
@@ -77,8 +82,9 @@ func shardNested(stream *logproto.InternalStreamAdapter, shards int) []logproto.
 
 				// Capped at its own length, so appending to one shard's entries reallocates
 				// rather than overwriting the entries the next shard is about to take.
-				scope.Entries = sourceScope.Entries[runStart : entryIdx+1 : entryIdx+1]
-				placed++
+				scope.Entries = remaining[:remainingCount:remainingCount]
+				remaining = remaining[remainingCount:]
+				placed += remainingCount
 			}
 		}
 	}

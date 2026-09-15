@@ -1,19 +1,20 @@
 package distributor
 
 import (
-	"sort"
+	"fmt"
+	"slices"
 	"time"
 
-	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/prometheus/prometheus/model/labels"
 
-	"github.com/grafana/loki/pkg/push"
+	"github.com/grafana/loki/v3/pkg/logproto"
 )
 
 // nestedTimeShard is one bucket's worth of a stream: the entries whose timestamps fall in
 // [start, end), and the total length of their lines, which rate sharding takes as the push size.
 //
 // The trailing shard, holding entries too recent to bucket, has a zero start and end. It keeps the
-// stream's own name, where a bucketed shard is named after its window.
+// stream's own name, where a bucketed shard carries the window in its __time_shard__ label.
 type nestedTimeShard struct {
 	start, end    time.Time
 	stream        logproto.InternalStreamAdapter
@@ -37,7 +38,10 @@ func (s *nestedTimeShard) recent() bool { return s.start.IsZero() }
 // timestamp order. Neither is sorted as the ingester sees it, since a bucket interleaves groups
 // either way, and a bucket spans MaxChunkAge/2, which is exactly the window within which the
 // ingester accepts entries in any order.
-func timeShardNested(stream *logproto.InternalStreamAdapter, shardLen time.Duration, ignoreLogsFrom time.Time) ([]nestedTimeShard, bool) {
+//
+// Each bucket is named after its window, in the __time_shard__ label that lbls is built on, which
+// is what makes it a stream of its own to everything downstream.
+func timeShardNested(stream *logproto.InternalStreamAdapter, lbls labels.Labels, shardLen time.Duration, ignoreLogsFrom time.Time) ([]nestedTimeShard, bool) {
 	if nestedEntryCount(stream) == 0 {
 		return nil, false
 	}
@@ -53,18 +57,18 @@ func timeShardNested(stream *logproto.InternalStreamAdapter, shardLen time.Durat
 	buckets := map[int64]*timeBucket{}
 	var trailing *timeBucket
 
-	bucket := func(m map[int64]*timeBucket, start int64) *timeBucket {
-		if m[start] == nil {
-			m[start] = &timeBucket{
+	bucket := func(start int64) *timeBucket {
+		if buckets[start] == nil {
+			buckets[start] = &timeBucket{
 				stream:       logproto.InternalStreamAdapter{Labels: stream.Labels, Hash: stream.Hash},
 				lastResource: -1,
 			}
 		}
-		return m[start]
+		return buckets[start]
 	}
 
 	// byBucket buffers all entries of a single group by their time bucket.
-	byBucket := map[int64][]push.Entry{}
+	byBucket := map[int64][]logproto.Entry{}
 	for resourceIdx := range stream.ResourceLogs {
 		resource := &stream.ResourceLogs[resourceIdx]
 
@@ -73,7 +77,7 @@ func timeShardNested(stream *logproto.InternalStreamAdapter, shardLen time.Durat
 
 			// clear the entries buffered in the bucket
 			clear(byBucket)
-			var recent []push.Entry
+			var recent []logproto.Entry
 			for entryIdx := range scope.Entries {
 				entry := &scope.Entries[entryIdx]
 				if !entry.Timestamp.Before(ignoreLogsFrom) {
@@ -85,7 +89,7 @@ func timeShardNested(stream *logproto.InternalStreamAdapter, shardLen time.Durat
 			}
 
 			for start, entries := range byBucket {
-				bucket(buckets, start).add(resourceIdx, resource, scope, entries)
+				bucket(start).add(resourceIdx, resource, scope, entries)
 			}
 			if len(recent) > 0 {
 				if trailing == nil {
@@ -103,16 +107,24 @@ func timeShardNested(stream *logproto.InternalStreamAdapter, shardLen time.Durat
 	for start := range buckets {
 		starts = append(starts, start)
 	}
-	sort.Slice(starts, func(i, j int) bool { return starts[i] < starts[j] })
+	slices.Sort(starts)
 
 	// Oldest bucket first, with the trailing shard last, as the flat path returns them.
+	labelBuilder := labels.NewBuilder(lbls)
 	shards := make([]nestedTimeShard, 0, len(starts)+1)
 	for _, start := range starts {
 		at := time.Unix(0, start).UTC()
+		end := at.Add(shardLen)
+
+		shardLbls := labelBuilder.Set(timeShardLabel, fmt.Sprintf("%d_%d", at.Unix(), end.Unix())).Labels()
+		shard := buckets[start].stream
+		shard.Labels = shardLbls.String()
+		shard.Hash = labels.StableHash(shardLbls)
+
 		shards = append(shards, nestedTimeShard{
 			start:         at,
-			end:           at.Add(shardLen),
-			stream:        buckets[start].stream,
+			end:           end,
+			stream:        shard,
 			linesTotalLen: buckets[start].linesTotalLen,
 		})
 	}
@@ -134,7 +146,7 @@ type timeBucket struct {
 	linesTotalLen int
 }
 
-func (b *timeBucket) add(resourceIdx int, resource *logproto.ResourceLogs, scope *logproto.ScopeLogs, entries []push.Entry) {
+func (b *timeBucket) add(resourceIdx int, resource *logproto.ResourceLogs, scope *logproto.ScopeLogs, entries []logproto.Entry) {
 	if resourceIdx != b.lastResource {
 		b.stream.ResourceLogs = append(b.stream.ResourceLogs, logproto.ResourceLogs{Attrs: resource.Attrs})
 		b.lastResource = resourceIdx

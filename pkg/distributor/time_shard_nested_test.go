@@ -117,11 +117,17 @@ func requireTimeShardsAreWellFormed(t *testing.T, source logproto.InternalStream
 	seen := map[string]int{}
 	for s := range shards {
 		shard := &shards[s]
-		require.Equal(t, source.Labels, shard.stream.Labels, "shard %d labels", s)
-		require.Equal(t, source.Hash, shard.stream.Hash, "shard %d hash", s)
 		require.NotEmpty(t, shard.stream.ResourceLogs, "shard %d holds no resources", s)
 		if shard.recent() {
 			require.Equal(t, len(shards)-1, s, "the trailing shard comes last")
+			require.Equal(t, source.Labels, shard.stream.Labels, "the trailing shard keeps the stream's name")
+			require.Equal(t, source.Hash, shard.stream.Hash, "the trailing shard keeps the stream's hash")
+		} else {
+			require.Contains(t, shard.stream.Labels,
+				fmt.Sprintf(`__time_shard__="%d_%d"`, shard.start.Unix(), shard.end.Unix()),
+				"shard %d is named after the window it covers", s)
+			require.NotEqual(t, source.Hash, shard.stream.Hash,
+				"shard %d is a stream of its own, so it hashes to one", s)
 		}
 
 		// A resource holding several scopes is written once per shard, and a group once per
@@ -159,6 +165,12 @@ func requireTimeShardsAreWellFormed(t *testing.T, source logproto.InternalStream
 					require.True(t,
 						!entry.Timestamp.Before(shard.start) && entry.Timestamp.Before(shard.end),
 						"shard %d [%s, %s) holds an entry at %s", s, shard.start, shard.end, entry.Timestamp)
+				}
+
+				for k := 1; k < len(scope.Entries); k++ {
+					require.False(t, scope.Entries[k].Timestamp.Before(scope.Entries[k-1].Timestamp),
+						"shard %d holds %q before %q, which is older", s,
+						scope.Entries[k-1].Line, scope.Entries[k].Line)
 				}
 			}
 		}
@@ -198,7 +210,37 @@ func TestTimeShardNestedMatchesTheFlatPath(t *testing.T) {
 		stream         func() logproto.InternalStreamAdapter
 		shardLen       time.Duration
 		ignoreLogsFrom time.Time
+
+		// Optional. wantNames is what each shard is called.
+		// wantLines is the order a shard hands
+		// its entries over in, which the comparison below cannot see because it sorts.
+		wantNames []string
+		wantLines [][]string
 	}{
+		{
+			name:   "buckets named after the window they cover",
+			stream: oneGroup(at(0, "at-0"), at(90*time.Minute, "at-90m")),
+			wantNames: []string{
+				`{__time_shard__="0_3600", app="a"}`,
+				`{__time_shard__="3600_7200", app="a"}`,
+			},
+			shardLen:       timeShardLen,
+			ignoreLogsFrom: shardBase().Add(6 * time.Hour),
+		},
+		{
+			// Entries sharing a timestamp keep the order they arrived in, which is what the sort
+			// has to be stable for.
+			name: "entries sharing a timestamp",
+			stream: oneGroup(
+				at(30*time.Minute, "third"),
+				at(0, "first"),
+				at(30*time.Minute, "fourth"),
+				at(0, "second"),
+			),
+			wantLines:      [][]string{{"first", "second", "third", "fourth"}},
+			shardLen:       timeShardLen,
+			ignoreLogsFrom: shardBase().Add(6 * time.Hour),
+		},
 		{
 			name:           "entries spread over several buckets",
 			stream:         spread(3, 2, 0, 30*time.Minute, 90*time.Minute, 3*time.Hour),
@@ -287,6 +329,16 @@ func TestTimeShardNestedMatchesTheFlatPath(t *testing.T) {
 			ignoreLogsFrom: shardBase().Add(5 * time.Hour),
 		},
 		{
+			name: "entries exactly on interior window boundaries",
+			stream: oneGroup(
+				at(0, "at-0"),
+				at(timeShardLen, "at-window-1"),
+				at(2*timeShardLen, "at-window-2"),
+			),
+			shardLen:       timeShardLen,
+			ignoreLogsFrom: shardBase().Add(5 * time.Hour),
+		},
+		{
 			// Finer than a second, which the bucket key has to keep whole: truncated to seconds,
 			// two windows would merge and a shard would advertise one excluding entries it holds.
 			name: "a shard length finer than a second",
@@ -300,13 +352,14 @@ func TestTimeShardNestedMatchesTheFlatPath(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			lbls := labels.FromStrings("app", "a")
+
 			nested := tc.stream()
 			source := tc.stream()
-			got, ok := timeShardNested(&nested, tc.shardLen, tc.ignoreLogsFrom)
+			got, ok := timeShardNested(&nested, lbls, tc.shardLen, tc.ignoreLogsFrom)
 			requireTimeShardsAreWellFormed(t, source, got, tc.ignoreLogsFrom)
 
-			want, wantOK := shardStreamByTime(flatten(tc.stream()), labels.FromStrings("app", "a"),
-				tc.shardLen, tc.ignoreLogsFrom)
+			want, wantOK := shardStreamByTime(flatten(tc.stream()), lbls, tc.shardLen, tc.ignoreLogsFrom)
 
 			require.Equal(t, wantOK, ok, "whether there was anything to shard")
 			require.Len(t, got, len(want), "number of time shards")
@@ -325,21 +378,29 @@ func TestTimeShardNestedMatchesTheFlatPath(t *testing.T) {
 				}
 			}
 
+			for i, name := range tc.wantNames {
+				require.Equal(t, name, got[i].stream.Labels, "shard %d name", i)
+				require.Equal(t, labels.StableHash(mustParseLabels(name)), got[i].stream.Hash,
+					"shard %d hashes to its own name", i)
+			}
+			for i, lines := range tc.wantLines {
+				held := make([]string, 0, len(lines))
+				for _, group := range got[i].stream.ResourceLogs[0].ScopeLogs {
+					for _, entry := range group.Entries {
+						held = append(held, entry.Line)
+					}
+				}
+				require.Equal(t, lines, held, "shard %d hands its entries over in this order", i)
+			}
+
 			for i := range want {
 				require.Equal(t, flatLinesOf(want[i].Stream), linesOf(got[i].stream),
 					"shard %d carries the same entries", i)
 				require.Equal(t, want[i].linesTotalLen, got[i].linesTotalLen,
 					"shard %d line length", i)
 
-				// The flat path names each bucket in the label; this one reports the window.
-				if got[i].recent() {
-					require.NotContains(t, want[i].Stream.Labels, "__time_shard__",
-						"shard %d is the trailing one", i)
-					continue
-				}
-				require.Contains(t, want[i].Stream.Labels,
-					fmt.Sprintf(`__time_shard__="%d_%d"`, got[i].start.Unix(), got[i].end.Unix()),
-					"shard %d window", i)
+				require.Equal(t, want[i].Labels, got[i].stream.Labels, "shard %d name", i)
+				require.Equal(t, want[i].Hash, got[i].stream.Hash, "shard %d hash", i)
 			}
 		})
 	}
@@ -369,7 +430,7 @@ func TestTimeShardNestedLeavesRecentStreamsAlone(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			source := tc.stream
-			shards, ok := timeShardNested(&source, timeShardLen, shardBase().Add(tc.ignore))
+			shards, ok := timeShardNested(&source, labels.FromStrings("app", "a"), timeShardLen, shardBase().Add(tc.ignore))
 			require.False(t, ok, "nothing old enough to bucket")
 			require.Nil(t, shards)
 		})
@@ -382,7 +443,7 @@ func TestTimeShardsCanThemselvesBeRateSharded(t *testing.T) {
 	offsets := []time.Duration{0, 30 * time.Minute, 90 * time.Minute, 2 * time.Hour}
 	nested := timeSpreadStream(3, 2, offsets)
 
-	timeShards, ok := timeShardNested(&nested, timeShardLen, ignoreLogsFrom)
+	timeShards, ok := timeShardNested(&nested, labels.FromStrings("app", "a"), timeShardLen, ignoreLogsFrom)
 	require.True(t, ok)
 	require.NotEmpty(t, timeShards)
 
@@ -423,7 +484,7 @@ func BenchmarkTimeSharding(b *testing.B) {
 		b.Run(shape.name+"/nested", func(b *testing.B) {
 			b.ReportAllocs()
 			for i := 0; i < b.N; i++ {
-				if _, ok := timeShardNested(&nested, shardLen, ignoreLogsFrom); !ok {
+				if _, ok := timeShardNested(&nested, lbls, shardLen, ignoreLogsFrom); !ok {
 					b.Fatal("nothing sharded")
 				}
 			}

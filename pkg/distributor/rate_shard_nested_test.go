@@ -73,9 +73,25 @@ func requireShardsCarryTheStream(t *testing.T, source logproto.InternalStreamAda
 		}
 	}
 
+	// How many entries each shard must hold: an even share, with the remainder going to the
+	// leading shards. Counted here rather than through nestedEntryCount, which is under test.
+	base, remainder := len(want)/len(shards), len(want)%len(shards)
+
 	seen := 0
 	for s := range shards {
 		shard := &shards[s]
+
+		held := 0
+		for i := range shard.ResourceLogs {
+			for j := range shard.ResourceLogs[i].ScopeLogs {
+				held += len(shard.ResourceLogs[i].ScopeLogs[j].Entries)
+			}
+		}
+		wantHeld := base
+		if s < remainder {
+			wantHeld++
+		}
+		require.Equal(t, wantHeld, held, "shard %d holds the wrong share of the entries", s)
 		// The source's labels and hash, carried through unchanged. Naming a shard is the caller's,
 		// so these are placeholders rather than what a named shard ends up with.
 		require.Equal(t, source.Labels, shard.Labels, "shard %d labels", s)
@@ -302,6 +318,11 @@ func TestShardNestedSharesOnlyItsEntriesWithTheCaller(t *testing.T) {
 		require.Equal(t, `{app="a"}`, input.Labels, "shards %d: labels", shards)
 		require.Equal(t, uint64(7), input.Hash, "shards %d: hash", shards)
 		require.Equal(t, "svc-0", input.ResourceLogs[0].Attrs[0].Value, "shards %d: attributes", shards)
+
+		// The entries are the source's, not copies of them, which is what makes a shard free.
+		out[0].ResourceLogs[0].ScopeLogs[0].Entries[0].Line = "rewritten"
+		require.Equal(t, "rewritten", input.ResourceLogs[0].ScopeLogs[0].Entries[0].Line,
+			"shards %d: a shard holds copies of the entries rather than the stream's own", shards)
 
 		// Appending to a shard reallocates rather than reaching into the source. The scope has
 		// to be one a boundary falls inside, or the shard holds it whole and an append runs off
