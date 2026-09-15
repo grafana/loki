@@ -232,6 +232,14 @@ type consumer struct {
 	sourcesReadyForDraining []*source
 	fakeReadyForDraining    []Fetch
 
+	// deferredFetchHooks collects unbuffered fetch-record hook
+	// dispatches captured while c.mu/sourcesReadyMu are held (see
+	// source.hookDeferUnbuffered for the deadlock walkthrough). Guarded
+	// by sourcesReadyMu. Pollers drain it synchronously after their fill
+	// critical section releases the locks; stopSession's discard path
+	// drains it asynchronously because its callers still hold c.mu.
+	deferredFetchHooks []func()
+
 	pollWaitMu    xsync.Mutex
 	pollWaitC     *sync.Cond
 	pollWaitState uint64 // 0 == nothing, low 32 bits: # pollers, high 32: # waiting rebalances
@@ -263,7 +271,16 @@ func (c *consumer) unaddPoller() {
 	}
 	c.pollWaitMu.Lock()
 	defer c.pollWaitMu.Unlock()
-	c.pollWaitState--
+	// AllowRebalance zeroes the poller count outright. If the user calls it
+	// while another goroutine's poll is still in flight (a contract
+	// violation: AllowRebalance means "all pollers are done"), that poll's
+	// release lands here after the mask and must not decrement: the low 32
+	// bits would underflow and borrow into the rebalance count, permanently
+	// blocking both polls and rebalances. A poller whose accounting was
+	// force-cleared simply no-ops its release.
+	if c.pollWaitState&math.MaxUint32 > 0 {
+		c.pollWaitState--
+	}
 	c.pollWaitC.Broadcast()
 }
 
@@ -375,6 +392,23 @@ func (c *consumer) consuming() bool {
 	return c.g != nil || c.d != nil || c.s != nil
 }
 
+// runDeferredFetchHooks dispatches unbuffered fetch-record hooks that were
+// captured under the consumer locks. Called by pollers with no locks held,
+// after their fill critical section; each queued dispatch runs exactly once
+// (the swap under sourcesReadyMu is the ownership handoff). A concurrent
+// poller or invalidation may have queued more dispatches since ours were
+// captured; running them here too is fine -- ordering across concurrent
+// pollers is inherently unordered.
+func (c *consumer) runDeferredFetchHooks() {
+	c.sourcesReadyMu.Lock()
+	fns := c.deferredFetchHooks
+	c.deferredFetchHooks = nil
+	c.sourcesReadyMu.Unlock()
+	for _, fn := range fns {
+		fn()
+	}
+}
+
 // addSourceReadyForDraining tracks that a source needs its buffered fetch
 // consumed.
 func (c *consumer) addSourceReadyForDraining(source *source) {
@@ -401,7 +435,7 @@ func (c *consumer) addFakeReadyForDraining(topic string, partition int32, err er
 }
 
 // NewErrFetch returns a fake fetch containing a single empty topic with a
-// single zero partition with the given error.
+// single partition of -1 with the given error.
 func NewErrFetch(err error) Fetches {
 	return []Fetch{{
 		Topics: []FetchTopic{{
@@ -420,7 +454,7 @@ func NewErrFetch(err error) Fetches {
 // equivalent to calling PollRecords(ctx, 0).
 //
 // If the client is closed, a fake fetch will be injected that has no topic, a
-// partition of 0, and a partition error of ErrClientClosed. If the context is
+// partition of -1, and a partition error of ErrClientClosed. If the context is
 // canceled, a fake fetch will be injected with ctx.Err. These injected errors
 // can be used to break out of a poll loop.
 //
@@ -582,6 +616,7 @@ func (cl *Client) PollRecords(ctx context.Context, maxPollRecords int) Fetches {
 	// We try filling fetches once before waiting. If we have no context,
 	// we guarantee that we just drain anything available and return.
 	fill()
+	c.runDeferredFetchHooks()
 	if len(fetches) > 0 || ctx == nil {
 		return fetches
 	}
@@ -618,6 +653,7 @@ func (cl *Client) PollRecords(ctx context.Context, maxPollRecords int) Fetches {
 	}
 
 	fill()
+	c.runDeferredFetchHooks()
 	return fetches
 }
 
@@ -816,7 +852,12 @@ func (c *consumer) purgeTopics(topics []string) {
 			delete(c.g.using, topic)
 			delete(c.g.reSeen, topic)
 		}
-		c.g.rejoin("rejoin from PurgeFetchTopics")
+		// Our subscription shrank; reconcile per protocol. This MUST NOT
+		// feed rejoinCh in 848 mode (signalSubscriptionChange forces a
+		// heartbeat instead): a rejoinCh bounce there runs the session-end
+		// revoke's nowAssigned read-modify-write concurrently with live
+		// heartbeats, losing a heartbeat's nowAssigned store.
+		c.g.signalSubscriptionChange("topics purged from consuming")
 	} else {
 		c.assignPartitions(purgeAssignments, assignPurgeMatching, c.d.tps, fmt.Sprintf("purge of %v requested", topics))
 		for _, topic := range topics {
@@ -838,7 +879,7 @@ func (c *consumer) purgeTopics(topics []string) {
 // entire topic is purged.
 func (cl *Client) AddConsumeTopics(topics ...string) {
 	c := &cl.consumer
-	if len(topics) == 0 || c.g == nil && c.d == nil || cl.cfg.regex {
+	if len(topics) == 0 || !c.consuming() || cl.cfg.regex {
 		return
 	}
 
@@ -863,7 +904,7 @@ func (cl *Client) AddConsumeTopics(topics ...string) {
 // GetConsumeTopics retrieves a list of current topics being consumed.
 func (cl *Client) GetConsumeTopics() []string {
 	c := &cl.consumer
-	if c.g == nil && c.d == nil {
+	if !c.consuming() {
 		return nil
 	}
 	var m map[string]*topicPartitions
@@ -1045,10 +1086,9 @@ func (f fmtAssignment) String() string {
 // assignPartitions, called under the consumer's mu, is used to set new cursors
 // or add to the existing cursors.
 //
-// We do not need to pass tps when we are bumping the session or when we are
-// invalidating all. All other cases, we want the tps -- the logic below does
-// not fully differentiate needing to start a new session vs. just reusing the
-// old (third if case below)
+// We do not need to pass tps when we are invalidating all. All other cases,
+// we want the tps: guarding the session may create a new session needing it,
+// and stopping the session needs it for the restart.
 func (c *consumer) assignPartitions(assignments map[string]map[int32]Offset, how assignHow, tps *topicsPartitions, why string) {
 	if c.mu.TryLock() {
 		c.mu.Unlock()
@@ -1115,6 +1155,23 @@ func (c *consumer) assignPartitions(assignments map[string]map[int32]Offset, how
 								offset:            assignPart.at,
 								lastConsumedEpoch: assignPart.epoch,
 							})
+							// This partition can have a pending list or epoch
+							// load: an OffsetOutOfRange reload, or an epoch
+							// validation from a leader move. The cursor is then
+							// unusable and the load's completion is its only
+							// re-enabler -- and that completion would also
+							// overwrite the offset we just set with the load's
+							// now-stale result. A transact session resetting to
+							// committed offsets after an abort would be undone:
+							// consumption would resume at the pre-abort position,
+							// never re-consuming the aborted records. The set
+							// offset is the new truth: drop the load and
+							// re-enable the cursor ourselves. Safe here because
+							// the session is stopped (no source can use the
+							// cursor until the new session starts).
+							if loadOffsets.removeLoad(usedCursor.topic, usedCursor.partition) {
+								usedCursor.allowUsable()
+							}
 						}
 					}
 				}
@@ -1140,8 +1197,21 @@ func (c *consumer) assignPartitions(assignments map[string]map[int32]Offset, how
 		case assignInvalidateAll:
 			loadOffsets = listOrEpochLoads{}
 		case assignSetMatching:
-			// We had not yet loaded this partition, so there is
-			// nothing to set, and we keep everything.
+			// Loads for partitions that were being consumed were
+			// handled in the cursor walk above (offset set directly,
+			// pending load dropped). Anything remaining is a load for
+			// a partition that never finished loading; SetOffsets
+			// documents those are skipped, so we keep their loads
+			// untouched.
+			//
+			// NOTE: the direct consumer's applySetOffsets translates
+			// ALL user input blindly (unlike the group path, which
+			// filters to g.uncommitted); the "extra partitions are
+			// skipped" contract holds only because this arm touches
+			// nothing beyond usingCursors and returns before the
+			// offset-loading section below. If setMatching ever gains
+			// load handling, filter never-consumed direct partitions
+			// first or they will silently start loading.
 		case assignInvalidateMatching:
 			loadOffsets.keepFilter(func(t string, p int32) bool {
 				if assignTopic, ok := assignments[t]; ok {
@@ -1466,7 +1536,7 @@ func (l *listOrEpochLoads) addLoad(t string, p int32, loadType listOrEpochLoadTy
 	ps[p] = load
 }
 
-func (l *listOrEpochLoads) removeLoad(t string, p int32) {
+func (l *listOrEpochLoads) removeLoad(t string, p int32) (removed bool) {
 	for _, m := range []offsetLoadMap{
 		l.List,
 		l.Epoch,
@@ -1478,11 +1548,16 @@ func (l *listOrEpochLoads) removeLoad(t string, p int32) {
 		if ps == nil {
 			continue
 		}
+		if _, exists := ps[p]; !exists {
+			continue
+		}
 		delete(ps, p)
+		removed = true
 		if len(ps) == 0 {
 			delete(m, t)
 		}
 	}
+	return removed
 }
 
 func (l listOrEpochLoads) each(fn func(string, int32)) {
@@ -1845,6 +1920,20 @@ func (c *consumer) stopSession() (listOrEpochLoads, *topicsPartitions) {
 	}
 	c.sourcesReadyForDraining = nil
 
+	// The discards above deferred their unbuffered-hook dispatches, and
+	// they cannot run synchronously here: our callers hold c.mu (and
+	// sessionChangeMu), the very locks a re-entrant hook needs. The
+	// discarded records were never polled, so there is no user-visible
+	// ordering to preserve; dispatch async.
+	if fns := c.deferredFetchHooks; len(fns) > 0 {
+		c.deferredFetchHooks = nil
+		go func() {
+			for _, fn := range fns {
+				fn()
+			}
+		}()
+	}
+
 	// At this point, we have invalidated any buffered data from the prior
 	// session. We deliberately leave c.fakeReadyForDraining so the user can
 	// still observe errors that happened in the dying session (data loss,
@@ -1942,6 +2031,19 @@ func (s *consumerSession) listOrEpoch(waiting listOrEpochLoads, immediate bool, 
 			return
 		case <-s.listOrEpochMetaCh:
 		}
+	}
+
+	// If the session is dying, park: the loads were stored in waiting above,
+	// and stopSession returns waiting loads to the caller for the next
+	// session. Without this check, a dying session whose metadata is fresh
+	// busy-loops until metadataMinAge elapses: wait is false above, so we
+	// would issue requests on the dead context, every one fails instantly,
+	// the reload timer below is canceled by the same dead context, and its
+	// loadWithSession re-enters this function - burning CPU and holding the
+	// session-stop (every revoke, leave, close, or seek) for the full
+	// metadataMinAge.
+	if s.ctx.Err() != nil {
+		return
 	}
 
 	s.listOrEpochMu.Lock()
@@ -2402,8 +2504,23 @@ func (cl *Client) listOffsetsForBrokerLoad(ctx context.Context, broker *broker, 
 					offset = start
 				}
 			}
+			// Every arm above yields a non-negative offset from a
+			// well-behaved broker: by-time listings exist only for
+			// afterMilli, whose -1 is replaced by the end listing,
+			// and the start/end/exact arms bound within the
+			// responses. A negative offset here means the broker
+			// violated the protocol; clamping to 0 (the old
+			// behavior) would silently re-consume the partition
+			// from the start. Surface the misbehavior and retry
+			// the load instead.
 			if offset < 0 {
-				offset = 0 // sanity
+				loaded.add(loadedOffset{
+					topic:     topic,
+					partition: partition,
+					err:       errNegativeListedOffset,
+					request:   loadPart,
+				})
+				continue
 			}
 
 			loaded.add(loadedOffset{
@@ -2429,10 +2546,14 @@ func (*Client) loadEpochsForBrokerLoad(ctx context.Context, broker *broker, load
 		return
 	}
 
-	// If the version is < 2, we are speaking to an old broker. We should
-	// not have an old version, but we could have spoken to a new broker
-	// first then an old broker in the middle of a broker roll. For now, we
-	// will just loop retrying until the broker is upgraded.
+	// If the negotiated version is < 2, we are speaking to an old broker:
+	// possible mid-roll when metadata (with leader epochs) came from an
+	// upgraded broker while the partition leader is not yet upgraded. The
+	// request then goes out without CurrentLeaderEpoch fencing, and a v0
+	// response carries no LeaderEpoch (kmsg defaults it to -1). Validation
+	// still compares EndOffset and completes, just unfenced and without
+	// epoch information - a degraded but correct fallback for a window
+	// that only exists rolling from pre-KIP-320 brokers.
 
 	topics := tps.load()
 	resp := kresp.(*kmsg.OffsetForLeaderEpochResponse)
@@ -2476,7 +2597,27 @@ func (*Client) loadEpochsForBrokerLoad(ctx context.Context, broker *broker, load
 			// validating.
 			offset := loadPart.at
 			var err error
-			if rPartition.EndOffset < offset {
+			switch {
+			case rPartition.EndOffset < 0:
+				// KIP-320 UNDEFINED_EPOCH_OFFSET: a conformant broker
+				// answers endOffset -1 (and leaderEpoch -1) when its
+				// leader-epoch cache holds no record of the requested
+				// epoch - an empty or freshly-truncated cache, an unclean
+				// election to a replica with no epoch history, or an epoch
+				// newer than anything in the log. This is NOT data loss; the
+				// broker simply cannot tell us a truncation point. The old
+				// `EndOffset < offset` arm treated the -1 sentinel as
+				// "truncated to offset -1", surfacing a spurious ErrDataLoss
+				// and pinning the cursor at -1. Instead carry the sentinel
+				// through so the next fetch hits OFFSET_OUT_OF_RANGE and
+				// resets via the configured ConsumeResetOffset (or, under
+				// NoResetOffset, surfaces OOOR rather than a bogus data-loss
+				// error) - the same reset path the cursor already took,
+				// minus the false alarm. Matches the Java client, which
+				// resets per policy on this sentinel rather than comparing
+				// -1 against the validating position.
+				offset = rPartition.EndOffset
+			case rPartition.EndOffset < offset:
 				err = &ErrDataLoss{topic, partition, offset, loadPart.epoch, rPartition.EndOffset, rPartition.LeaderEpoch}
 				offset = rPartition.EndOffset
 			}
