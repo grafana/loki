@@ -11,6 +11,8 @@ import (
 	"github.com/dustin/go-humanize"
 	"github.com/pkg/errors"
 	"github.com/prometheus/prometheus/model/labels"
+
+	"github.com/grafana/loki/v3/pkg/logqlmodel"
 )
 
 const (
@@ -62,7 +64,13 @@ type lineSampleExtractor struct {
 	LineExtractor
 
 	baseBuilder      *BaseLabelsBuilder
-	streamExtractors map[uint64]StreamSampleExtractor
+	streamExtractors map[uint64]cachedStreamSampleExtractor
+}
+
+// cachedStreamSampleExtractor is a per-stream extractor cached by labels hash.
+type cachedStreamSampleExtractor struct {
+	extractor  StreamSampleExtractor
+	baseLabels labels.Labels
 }
 
 // NewLineSampleExtractor creates a SampleExtractor from a LineExtractor.
@@ -74,23 +82,90 @@ func NewLineSampleExtractor(ex LineExtractor, stages []Stage, groups []string, w
 		Stage:            s,
 		LineExtractor:    ex,
 		baseBuilder:      NewBaseLabelsBuilderWithGrouping(groups, hints, without, noLabels),
-		streamExtractors: make(map[uint64]StreamSampleExtractor),
+		streamExtractors: make(map[uint64]cachedStreamSampleExtractor),
 	}, nil
 }
 
-func (l *lineSampleExtractor) ForStream(labels labels.Labels) StreamSampleExtractor {
-	hash := l.baseBuilder.Hash(labels)
-	if res, ok := l.streamExtractors[hash]; ok {
-		return res
+func (l *lineSampleExtractor) ForStream(lbls labels.Labels) StreamSampleExtractor {
+	hash := l.baseBuilder.Hash(lbls)
+
+	// Verify the cached extractor is for these exact labels: Hash can collide, and serving a
+	// colliding stream's extractor would report its samples under the wrong labels.
+	if c, ok := l.streamExtractors[hash]; ok && labels.Equal(c.baseLabels, lbls) {
+		return c.extractor
 	}
 
-	res := &streamLineSampleExtractor{
+	se := l.newStreamSampleExtractor(lbls, hash)
+	l.streamExtractors[hash] = cachedStreamSampleExtractor{extractor: se, baseLabels: lbls}
+	return se
+}
+
+func (l *lineSampleExtractor) newStreamSampleExtractor(lbls labels.Labels, hash uint64) StreamSampleExtractor {
+	builder := l.baseBuilder.ForLabels(lbls, hash)
+
+	// Fast path: when the output labels are the same for every line of the stream, build them once and
+	// skip the per-line label builder.
+	if l.canUseConstantLabelsWithoutStructuredMetadata(lbls) {
+		// Build the stream's constant label sets once:
+		// 1. Reset clears any pipeline overlay left on the shared builder, so only the stream's base labels remain.
+		// 2. LabelsResult then returns those base labels (the constant stream identity)
+		// 3. GroupedLabels returns the grouping applied to them (the constant output labels)
+		builder.Reset()
+		baseLabels := builder.LabelsResult()
+		groupedLabels := builder.GroupedLabels()
+
+		if l.Stage == NoopStage {
+			return &noopConstantLabelStreamExtractor{line: l.LineExtractor, groupedLabels: groupedLabels, baseLabels: baseLabels, builder: builder}
+		}
+
+		return &filteredConstantLabelStreamExtractor{stage: l.Stage, line: l.LineExtractor, groupedLabels: groupedLabels, baseLabels: baseLabels, builder: builder}
+	}
+
+	return &streamLineSampleExtractor{
 		Stage:         l.Stage,
 		LineExtractor: l.LineExtractor,
-		builder:       l.baseBuilder.ForLabels(labels, hash),
+		builder:       builder,
 	}
-	l.streamExtractors[hash] = res
-	return res
+}
+
+// canUseConstantLabelsWithoutStructuredMetadata reports whether the output labels are the same for every
+// log line, and the pipeline needs no per-line label builder.
+func (l *lineSampleExtractor) canUseConstantLabelsWithoutStructuredMetadata(streamLabels labels.Labels) bool {
+	// First, no stage can write labels. A stage that adds, removes, or replaces a label, or sets __error__,
+	// makes the output vary per line.
+	if l.Stage.Hints().CanModifyLabels {
+		return false
+	}
+
+	// Second, no stage reads a label the stream does not carry. The fast path never adds per-line structured
+	// metadata to the builder, so a stage that reads a non-stream label would see it missing and mis-filter.
+	for _, name := range l.Stage.RequiredLabelNames() {
+		if !streamLabels.Has(name) {
+			return false
+		}
+	}
+
+	// Third, the grouping resolves to stream labels only. Grouping to nothing (noLabels) or to labels the
+	// stream already carries is constant; a `without`, no grouping, or a group key the stream lacks (so it
+	// comes from metadata) is not.
+	b := l.baseBuilder
+	if b.noLabels {
+		return true
+	}
+	if b.without || len(b.groups) == 0 {
+		return false
+	}
+	for _, g := range b.groups {
+		if !streamLabels.Has(g) {
+			return false
+		}
+	}
+	return true
+}
+
+// structuredMetadataHasError reports whether structuredMetadata carries a literal __error__ label.
+func structuredMetadataHasError(structuredMetadata labels.Labels) bool {
+	return structuredMetadata.Has(logqlmodel.ErrorLabel)
 }
 
 type streamLineSampleExtractor struct {
@@ -126,6 +201,94 @@ func (l *streamLineSampleExtractor) ProcessString(ts int64, line string, structu
 }
 
 func (l *streamLineSampleExtractor) BaseLabels() LabelsResult { return l.builder.currentResult }
+
+// noopConstantLabelStreamExtractor is a constant-label specialization for the NoopStage case. It
+// requires that the output labels are the same for every line and that no stage runs, so no line is
+// filtered.
+//
+// Every line yields a sample with the cached constant labels, and only the value depends on the line,
+// except a line whose structured metadata carries __error__, which falls back to the per-line builder.
+type noopConstantLabelStreamExtractor struct {
+	line          LineExtractor
+	groupedLabels LabelsResult // the grouped output labels, constant for the stream
+	baseLabels    LabelsResult // the stream's own labels, for series identity (BaseLabels/StreamHash)
+	builder       *LabelsBuilder
+}
+
+func (e *noopConstantLabelStreamExtractor) Process(_ int64, line []byte, structuredMetadata labels.Labels) (ExtractedSample, bool) {
+	groupedLabels := e.groupedLabels
+	if structuredMetadataHasError(structuredMetadata) {
+		e.builder.Reset()
+		e.builder.Add(StructuredMetadataLabel, structuredMetadata)
+		groupedLabels = e.builder.GroupedLabels()
+	}
+	return ExtractedSample{Value: e.line(line), Labels: groupedLabels}, true
+}
+
+func (e *noopConstantLabelStreamExtractor) ProcessString(ts int64, line string, structuredMetadata labels.Labels) (ExtractedSample, bool) {
+	// We can use unsafeGetBytes() since we have the guarantee that the line won't be mutated.
+	return e.Process(ts, unsafeGetBytes(line), structuredMetadata)
+}
+
+func (e *noopConstantLabelStreamExtractor) BaseLabels() LabelsResult {
+	return e.baseLabels
+}
+
+func (e *noopConstantLabelStreamExtractor) ReferencedStructuredMetadata() bool {
+	return false
+}
+
+// filteredConstantLabelStreamExtractor is a constant-label specialization for a pipeline with a stage. It
+// requires that:
+// 1. The output labels are the same for every line.
+// 2. The stage cannot change any of the labels.
+// 3. The stage does not read the line's structured metadata (it reads only stream labels).
+//
+// The stage runs per line to drop or transform the line; the output labels are the cached constant set,
+// except a line whose structured metadata carries __error__, which falls back to the per-line builder.
+type filteredConstantLabelStreamExtractor struct {
+	stage         Stage
+	line          LineExtractor
+	groupedLabels LabelsResult
+	baseLabels    LabelsResult
+	builder       *LabelsBuilder
+}
+
+func (e *filteredConstantLabelStreamExtractor) Process(ts int64, line []byte, structuredMetadata labels.Labels) (ExtractedSample, bool) {
+	// The base builder is shared among extractors for different log streams, so we have to Reset
+	// it each time, right before using it.
+	e.builder.Reset()
+
+	// We add structured metadata only for an errored line, so GroupedLabels below can surface
+	// __error__ in the output. The stage still never reads it, errored or not.
+	hasError := structuredMetadataHasError(structuredMetadata)
+	if hasError {
+		e.builder.Add(StructuredMetadataLabel, structuredMetadata)
+	}
+
+	out, ok := e.stage.Process(ts, line, e.builder)
+	if !ok {
+		return ExtractedSample{}, false
+	}
+
+	groupedLabels := e.groupedLabels
+	if hasError {
+		groupedLabels = e.builder.GroupedLabels()
+	}
+	return ExtractedSample{Value: e.line(out), Labels: groupedLabels}, true
+}
+
+func (e *filteredConstantLabelStreamExtractor) ProcessString(ts int64, line string, structuredMetadata labels.Labels) (ExtractedSample, bool) {
+	return e.Process(ts, unsafeGetBytes(line), structuredMetadata)
+}
+
+func (e *filteredConstantLabelStreamExtractor) BaseLabels() LabelsResult {
+	return e.baseLabels
+}
+
+func (e *filteredConstantLabelStreamExtractor) ReferencedStructuredMetadata() bool {
+	return false
+}
 
 type convertionFn func(value string) (float64, error)
 
