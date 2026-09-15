@@ -69,8 +69,8 @@ var (
 	ErrMissingValidStartDate = errors.New("Schema does not contain a valid starting effective date")
 	// ErrSchemaRetroactivelyAdded when a schema has been retroactively added
 	ErrSchemaRetroactivelyAdded = errors.New("Cannot retroactively add schema")
-	// ErrSchemaRetroactivelyRemoved when a schema or schemas has been retroactively removed
-	ErrSchemaRetroactivelyRemoved = errors.New("Cannot retroactively remove schema(s)")
+	// ErrSchemaNotExpired when attempting to remove a schema before its retention period has expired
+	ErrSchemaNotExpired = errors.New("Cannot remove schema. Ensure schema has a successor, retention is configured, and retention period has elapsed.")
 	// ErrSchemaRetroactivelyChanged when a schema has been retroactively changed
 	ErrSchemaRetroactivelyChanged = errors.New("Cannot retroactively change schema")
 	// ErrHeaderAuthCredentialsConflict when both Credentials and CredentialsFile are used in a header authentication client.
