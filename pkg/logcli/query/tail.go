@@ -115,7 +115,7 @@ func (q *Query) tailQuery(
 
 		select {
 		case <-stopChan:
-			// Stop reconnects first. Dial cancellation no longer closes an
+			// Stop reconnects first. Dial cancellation does not close an
 			// established socket, so we can still send its close frame below.
 			cancel()
 			currentConn := conn.Load()
