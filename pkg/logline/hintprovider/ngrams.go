@@ -16,7 +16,6 @@ func ExtractQueryNgrams(query string, ngramLength int, indexVersion string) ([]s
 	if err != nil {
 		return nil, err
 	}
-
 	if ngramLength <= 0 || ngramLength > 8 || len(query) < ngramLength {
 		return nil, nil
 	}
@@ -28,6 +27,10 @@ func ExtractQueryNgrams(query string, ngramLength int, indexVersion string) ([]s
 
 	terms := make([]string, 0, len(ngrams))
 	for _, key := range ngrams {
+		if logline.IsPackedTermKey(key) {
+			terms = append(terms, string(key[:]))
+			continue
+		}
 		terms = append(terms, string(key[:ngramLength]))
 	}
 	sort.Strings(terms)
