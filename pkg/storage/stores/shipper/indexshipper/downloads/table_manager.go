@@ -489,15 +489,38 @@ func (tm *tableManager) findUsersInTableForQueryReadiness(tableNumber int64, use
 	return usersToBeQueryReadyFor, nil
 }
 
-// loadLocalTables loads tables present locally.
+func (tm *tableManager) getLargestQueryReadinessNum() int {
+	largestQueryReadinessNum := tm.cfg.QueryReadyNumDays
+	if tm.cfg.Limits == nil {
+		return largestQueryReadinessNum
+	}
+
+	if defaultLimits := tm.cfg.Limits.DefaultLimits(); defaultLimits != nil && defaultLimits.QueryReadyIndexNumDays > largestQueryReadinessNum {
+		largestQueryReadinessNum = defaultLimits.QueryReadyIndexNumDays
+	}
+
+	for _, limits := range tm.cfg.Limits.AllByUserID() {
+		if limits != nil && limits.QueryReadyIndexNumDays > largestQueryReadinessNum {
+			largestQueryReadinessNum = limits.QueryReadyIndexNumDays
+		}
+	}
+
+	return largestQueryReadinessNum
+}
+
+// loadLocalTables loads tables present locally. Tables within query readiness are loaded synchronously,
+// while older tables outside query readiness are purged from disk to reclaim PVC space and prevent startup timeouts.
 func (tm *tableManager) loadLocalTables() error {
 	dirEntries, err := os.ReadDir(tm.cfg.CacheDir)
 	if err != nil {
 		return err
 	}
 
+	activeTableNumber := getActiveTableNumber()
+	largestQueryReadinessNum := tm.getLargestQueryReadinessNum()
+
 	for _, entry := range dirEntries {
-		if !entry.IsDir() {
+		if !entry.IsDir() || entry.Name() == deletion.DeleteRequestsTableName {
 			continue
 		}
 
@@ -508,6 +531,19 @@ func (tm *tableManager) loadLocalTables() error {
 				level.Debug(tm.logger).Log("msg", "skip loading table as it is not in range", "table-name", entry.Name())
 			}
 
+			continue
+		}
+
+		tableNumber, err := config.ExtractTableNumberFromName(entry.Name())
+		if err != nil {
+			return fmt.Errorf("cannot extract table number from %s: %w", entry.Name(), err)
+		}
+
+		if largestQueryReadinessNum > 0 && activeTableNumber-tableNumber > int64(largestQueryReadinessNum) {
+			level.Info(tm.logger).Log("msg", "purging expired local table directory", "table-name", entry.Name())
+			if err := os.RemoveAll(filepath.Join(tm.cfg.CacheDir, entry.Name())); err != nil {
+				level.Warn(tm.logger).Log("msg", "failed to purge expired local table directory", "table-name", entry.Name(), "err", err)
+			}
 			continue
 		}
 
