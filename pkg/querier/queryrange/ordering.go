@@ -13,29 +13,12 @@ Utils for manipulating ordering
 
 type entries []logproto.Entry
 
-func (m entries) start() int64 {
-	if len(m) == 0 {
-		return 0
-	}
-	return m[0].Timestamp.UnixNano()
-}
-
 type byDir struct {
 	markers   []entries
 	direction logproto.Direction
 	labels    string
 }
 
-func (a byDir) Len() int      { return len(a.markers) }
-func (a byDir) Swap(i, j int) { a.markers[i], a.markers[j] = a.markers[j], a.markers[i] }
-func (a byDir) Less(i, j int) bool {
-	x, y := a.markers[i].start(), a.markers[j].start()
-
-	if a.direction == logproto.BACKWARD {
-		return x > y
-	}
-	return y > x
-}
 func (a byDir) EntriesCount() (n int) {
 	for _, m := range a.markers {
 		n += len(m)
@@ -44,11 +27,48 @@ func (a byDir) EntriesCount() (n int) {
 }
 
 func (a byDir) merge() []logproto.Entry {
-	result := make([]logproto.Entry, 0, a.EntriesCount())
+	// Flatten all entries, tagging each with the index of the response (marker)
+	// it came from so we can tell intra-response from inter-response duplicates.
+	type tagged struct {
+		entry  logproto.Entry
+		marker int
+	}
+	all := make([]tagged, 0, a.EntriesCount())
+	for mi, m := range a.markers {
+		for _, e := range m {
+			all = append(all, tagged{entry: e, marker: mi})
+		}
+	}
 
-	sort.Sort(a)
-	for _, m := range a.markers {
-		result = append(result, m...)
+	// Sort by timestamp (respecting direction). A stable sort keeps the original
+	// relative order of entries that share a timestamp.
+	sort.SliceStable(all, func(i, j int) bool {
+		if a.direction == logproto.BACKWARD {
+			return all[i].entry.Timestamp.After(all[j].entry.Timestamp)
+		}
+		return all[i].entry.Timestamp.Before(all[j].entry.Timestamp)
+	})
+
+	// These responses are assumed to be non-overlapping, but stream sharding and
+	// query sharding can cause the same physical stream to be returned by more
+	// than one sub-query. Drop entries that are identical to one already kept
+	// from a *different* response at the same timestamp, so overlapping
+	// sub-queries don't surface as duplicate log lines. Duplicates originating
+	// within a single response are preserved as-is.
+	result := make([]logproto.Entry, 0, len(all))
+	markers := make([]int, 0, len(all))
+	for _, t := range all {
+		dup := false
+		for j := len(result) - 1; j >= 0 && result[j].Timestamp.Equal(t.entry.Timestamp); j-- {
+			if markers[j] != t.marker && result[j].Equal(t.entry) {
+				dup = true
+				break
+			}
+		}
+		if !dup {
+			result = append(result, t.entry)
+			markers = append(markers, t.marker)
+		}
 	}
 	return result
 }
