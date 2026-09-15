@@ -232,7 +232,7 @@ var (
 )
 
 func newSampleIterator() iter.SampleIterator {
-	return iter.NewSortSampleIterator([]iter.SampleIterator{
+	return iter.NewTimestampFirstSortSampleIterator([]iter.SampleIterator{
 		iter.NewSeriesIterator(logproto.Series{
 			Labels:     labelFoo.String(),
 			Samples:    samples,

@@ -5,6 +5,8 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"slices"
+	"strings"
 	"sync"
 	"time"
 
@@ -37,6 +39,18 @@ type Record struct {
 	// StreamHash is labels.StableHash of the record's stream labels. It is not
 	// encoded into LOG sections; it guides schema-layout sorting.
 	StreamHash uint64
+}
+
+func (r *Record) Copy() Record {
+	return Record{
+		StreamID:    r.StreamID,
+		Timestamp:   r.Timestamp,
+		Metadata:    r.Metadata.Copy(),
+		Line:        slices.Clone(r.Line),
+		SchemaKey:   strings.Clone(r.SchemaKey),
+		ShardBucket: r.ShardBucket,
+		StreamHash:  r.StreamHash,
+	}
 }
 
 type AppendStrategy int

@@ -635,7 +635,7 @@ func (s *stream) SampleIterator(ctx context.Context, statsCtx *stats.Context, fr
 	if ordered {
 		return iter.NewNonOverlappingSampleIterator(iterators), nil
 	}
-	return iter.NewSortSampleIterator(iterators), nil
+	return iter.NewTimestampFirstSortSampleIterator(iterators), nil
 }
 
 func (s *stream) addTailer(t *tailer) {
