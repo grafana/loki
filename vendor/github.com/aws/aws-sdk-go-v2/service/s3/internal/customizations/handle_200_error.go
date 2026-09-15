@@ -58,8 +58,13 @@ func (m *processResponseFor200ErrorMiddleware) HandleDeserialize(
 		return out, metadata, nil
 	}
 
-	// rewind response body
-	response.Body = io.NopCloser(io.MultiReader(&readBuff, response.Body))
+	// rewind response body, forwarding the original body's Closer so closing it
+	// still closes the underlying transport body (io.NopCloser would drop it).
+	originalBody := response.Body
+	response.Body = &replayReadCloser{
+		Reader: io.MultiReader(&readBuff, originalBody),
+		Closer: originalBody,
+	}
 
 	// if start tag is "Error", the response is consider error response.
 	if strings.EqualFold(t.Name.Local, "Error") {
@@ -69,4 +74,10 @@ func (m *processResponseFor200ErrorMiddleware) HandleDeserialize(
 	}
 
 	return out, metadata, err
+}
+
+// replayReadCloser pairs a Reader with an independent Closer.
+type replayReadCloser struct {
+	io.Reader
+	io.Closer
 }
