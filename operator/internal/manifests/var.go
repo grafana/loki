@@ -469,7 +469,7 @@ func lokiServiceMonitorEndpoint(stackName, portName, serviceName, namespace stri
 					Key: corev1.TLSPrivateKeyKey,
 				},
 				// ServerName can be e.g. loki-distributor-http.openshift-logging.svc.cluster.local
-				ServerName: ptr.To(fqdn(serviceName, namespace)),
+				ServerName: new(fqdn(serviceName, namespace)),
 			},
 		}
 
@@ -506,7 +506,7 @@ func gatewayServiceMonitorEndpoint(gatewayName, portName, serviceName, namespace
 					},
 				},
 				// ServerName can be e.g. lokistack-dev-gateway-http.openshift-logging.svc.cluster.local
-				ServerName: ptr.To(fqdn(serviceName, namespace)),
+				ServerName: new(fqdn(serviceName, namespace)),
 			},
 		}
 

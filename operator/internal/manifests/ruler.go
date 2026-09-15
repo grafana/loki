@@ -11,7 +11,6 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/util/intstr"
-	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	lokiv1 "github.com/grafana/loki/operator/api/loki/v1"
@@ -202,8 +201,8 @@ func NewRulerStatefulSet(opts Options) *appsv1.StatefulSet {
 			UpdateStrategy: appsv1.StatefulSetUpdateStrategy{
 				Type: appsv1.RollingUpdateStatefulSetStrategyType,
 			},
-			RevisionHistoryLimit: ptr.To(defaultRevHistoryLimit),
-			Replicas:             ptr.To(opts.Stack.Template.Ruler.Replicas),
+			RevisionHistoryLimit: new(defaultRevHistoryLimit),
+			Replicas:             new(opts.Stack.Template.Ruler.Replicas),
 			Selector: &metav1.LabelSelector{
 				MatchLabels: labels.Merge(l, GossipLabels()),
 			},
@@ -231,7 +230,7 @@ func NewRulerStatefulSet(opts Options) *appsv1.StatefulSet {
 								corev1.ResourceStorage: opts.ResourceRequirements.Ruler.PVCSize,
 							},
 						},
-						StorageClassName: ptr.To(opts.Stack.StorageClassName),
+						StorageClassName: new(opts.Stack.StorageClassName),
 						VolumeMode:       &volumeFileSystemMode,
 					},
 				},
@@ -250,7 +249,7 @@ func NewRulerStatefulSet(opts Options) *appsv1.StatefulSet {
 								corev1.ResourceStorage: opts.ResourceRequirements.WALStorage.PVCSize,
 							},
 						},
-						StorageClassName: ptr.To(opts.Stack.StorageClassName),
+						StorageClassName: new(opts.Stack.StorageClassName),
 						VolumeMode:       &volumeFileSystemMode,
 					},
 				},
@@ -396,7 +395,7 @@ func NewRulerPodDisruptionBudget(opts Options) *policyv1.PodDisruptionBudget {
 			Selector: &metav1.LabelSelector{
 				MatchLabels: l,
 			},
-			MaxUnavailable: ptr.To(intstr.FromInt32(1)),
+			MaxUnavailable: new(intstr.FromInt32(1)),
 		},
 	}
 }
