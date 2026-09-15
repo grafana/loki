@@ -51,6 +51,13 @@
       policyRule.withApiGroups('apps') +
       policyRule.withResources(['statefulsets/status']) +
       policyRule.withVerbs(['update']),
+      // rollout-operator's own manifests grant this for ZoneAwarePodDisruptionBudget
+      // support (see grafana/rollout-operator's rollout-operator.libsonnet) - missing
+      // here means a rollout-operator upgrade past the version that introduced ZPDBs
+      // fails to start (RBAC forbidden on zoneawarepoddisruptionbudgets.rollout-operator.grafana.com).
+      policyRule.withApiGroups('rollout-operator.grafana.com') +
+      policyRule.withResources(['zoneawarepoddisruptionbudgets']) +
+      policyRule.withVerbs(['get', 'list', 'watch']),
     ]),
 
   rollout_operator_rolebinding: if !rollout_operator_enabled then null else
