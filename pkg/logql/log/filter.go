@@ -566,6 +566,89 @@ func newContainsFilter(match []byte, caseInsensitive bool) MatcherFilterer {
 	}
 }
 
+// prefixFilter matches when the value starts with the literal. A fully anchored
+// label regex of the form `foo.*` means exactly this, where a contains match
+// would also accept `barfoo`.
+type prefixFilter struct {
+	match           []byte
+	caseInsensitive bool
+}
+
+func (l prefixFilter) Filter(line []byte) bool {
+	if len(l.match) > len(line) {
+		return false
+	}
+	return contains(line[:len(l.match)], l.match, l.caseInsensitive)
+}
+
+func (l prefixFilter) ToStage() Stage {
+	return StageFunc{
+		process: func(_ int64, line []byte, _ *LabelsBuilder) ([]byte, bool) {
+			return line, l.Filter(line)
+		},
+	}
+}
+
+// Matches reports a non-exact test: the literal has to be present, but the
+// value is longer than the literal, so an exact index lookup would be wrong.
+func (l prefixFilter) Matches(test Checker) bool {
+	return test.Test(l.match, l.caseInsensitive, false)
+}
+
+func (l prefixFilter) String() string {
+	return string(l.match) + ".*"
+}
+
+func newPrefixFilter(match []byte, caseInsensitive bool) MatcherFilterer {
+	if len(match) == 0 {
+		return TrueFilter
+	}
+	if caseInsensitive {
+		match = bytes.ToLower(match)
+	}
+	return prefixFilter{match: match, caseInsensitive: caseInsensitive}
+}
+
+// suffixFilter matches when the value ends with the literal, which is what a
+// fully anchored `.*foo` means.
+type suffixFilter struct {
+	match           []byte
+	caseInsensitive bool
+}
+
+func (l suffixFilter) Filter(line []byte) bool {
+	if len(l.match) > len(line) {
+		return false
+	}
+	return contains(line[len(line)-len(l.match):], l.match, l.caseInsensitive)
+}
+
+func (l suffixFilter) ToStage() Stage {
+	return StageFunc{
+		process: func(_ int64, line []byte, _ *LabelsBuilder) ([]byte, bool) {
+			return line, l.Filter(line)
+		},
+	}
+}
+
+func (l suffixFilter) Matches(test Checker) bool {
+	return test.Test(l.match, l.caseInsensitive, false)
+}
+
+func (l suffixFilter) String() string {
+	return ".*" + string(l.match)
+}
+
+func newSuffixFilter(match []byte, caseInsensitive bool) MatcherFilterer {
+	if len(match) == 0 {
+		return TrueFilter
+	}
+	if caseInsensitive {
+		match = bytes.ToLower(match)
+	}
+	return suffixFilter{match: match, caseInsensitive: caseInsensitive}
+}
+
 type containsAllFilter struct {
 	matches []containsFilter
 }
@@ -677,6 +760,8 @@ type NewMatcherFiltererFunc func(match []byte, caseInsensitive bool) MatcherFilt
 type RegexSimplifier struct {
 	newContainsFilter NewMatcherFiltererFunc
 	newEqualFilter    NewMatcherFiltererFunc
+	newPrefixFilter   NewMatcherFiltererFunc
+	newSuffixFilter   NewMatcherFiltererFunc
 }
 
 var defaultRegexSimplifier = NewRegexSimplifier(newContainsFilter, newEqualFilter)
@@ -688,6 +773,8 @@ func NewRegexSimplifier(
 	return &RegexSimplifier{
 		newContainsFilter: newContainsFilter,
 		newEqualFilter:    newEqualFilter,
+		newPrefixFilter:   newPrefixFilter,
+		newSuffixFilter:   newSuffixFilter,
 	}
 }
 
@@ -698,7 +785,7 @@ func (s *RegexSimplifier) Simplify(reg *syntax.Regexp, isLabel bool) (MatcherFil
 	case syntax.OpAlternate:
 		return s.simplifyAlternate(reg, isLabel)
 	case syntax.OpConcat:
-		return s.simplifyConcat(reg, nil)
+		return s.simplifyConcat(reg, nil, isLabel)
 	case syntax.OpCapture:
 		util.ClearCapture(reg)
 		return s.Simplify(reg, isLabel)
@@ -746,7 +833,7 @@ func (s *RegexSimplifier) simplifyAlternate(reg *syntax.Regexp, isLabel bool) (M
 // which is a literalFilter.
 // Or a literal and alternates operation (see simplifyConcatAlternate), which represent a multiplication of alternates.
 // Anything else is rejected.
-func (s *RegexSimplifier) simplifyConcat(reg *syntax.Regexp, baseLiteral []byte) (MatcherFilterer, bool) {
+func (s *RegexSimplifier) simplifyConcat(reg *syntax.Regexp, baseLiteral []byte, isLabel bool) (MatcherFilterer, bool) {
 	util.ClearCapture(reg.Sub...)
 	// remove empty match as we don't need them for filtering
 	i := 0
@@ -768,10 +855,27 @@ func (s *RegexSimplifier) simplifyConcat(reg *syntax.Regexp, baseLiteral []byte)
 	var ok bool
 	literals := 0
 	var baseLiteralIsCaseInsensitive bool
+	// A label filter is anchored at both ends, so where the `.*` sit relative to
+	// the literal decides the match: `foo.*` is a prefix, `.*foo` a suffix,
+	// `.*foo.*` a contains, and a bare `foo` an equality. A line filter is
+	// unanchored, so all four are the same contains.
+	// baseLiteral is non-nil when recursing from simplifyConcatAlternate, in
+	// which case the caller's literal already precedes everything here, so a
+	// leading `.*` here still sits after it.
+	hadBaseLiteral := baseLiteral != nil
+	starBefore, starAfter := false, false
 	for _, sub := range reg.Sub {
 		if sub.Op == syntax.OpLiteral {
 			// only one literal is allowed.
 			if literals != 0 {
+				return nil, false
+			}
+			// A literal separated from an earlier one by `.*` is not contiguous
+			// with it, so appending the two and matching the result would be
+			// wrong. `a(.*c|d)` recurses here with baseLiteral "a" and would
+			// otherwise fold to "ac", which neither matches "axc" nor rejects
+			// "acb". Leave it to the regexp fallback.
+			if starAfter {
 				return nil, false
 			}
 			literals++
@@ -781,12 +885,17 @@ func (s *RegexSimplifier) simplifyConcat(reg *syntax.Regexp, baseLiteral []byte)
 		}
 		// if we have an alternate we must also have a base literal to apply the concatenation with.
 		if sub.Op == syntax.OpAlternate && baseLiteral != nil {
-			if curr, ok = s.simplifyConcatAlternate(sub, baseLiteral, curr, baseLiteralIsCaseInsensitive); !ok {
+			if curr, ok = s.simplifyConcatAlternate(sub, baseLiteral, curr, baseLiteralIsCaseInsensitive, isLabel); !ok {
 				return nil, false
 			}
 			continue
 		}
 		if sub.Op == syntax.OpStar && sub.Sub[0].Op == syntax.OpAnyCharNotNL {
+			if literals == 0 && !hadBaseLiteral {
+				starBefore = true
+			} else {
+				starAfter = true
+			}
 			continue
 		}
 		return nil, false
@@ -794,22 +903,57 @@ func (s *RegexSimplifier) simplifyConcat(reg *syntax.Regexp, baseLiteral []byte)
 
 	// if we have a filter from concat alternates.
 	if curr != nil {
+		// Anchored, a `.*` beside the alternation widens every branch: `a(bb|cc).*`
+		// accepts "abbX", which the per-branch equalities above would reject. The
+		// branch filters are already built by this point, so rather than rewrite
+		// them, leave the whole expression to the anchored regexp fallback.
+		if isLabel && (starBefore || starAfter) {
+			return nil, false
+		}
 		return curr, true
 	}
 
 	// if we have only a concat with literals.
 	if baseLiteral != nil {
+		if isLabel {
+			return s.newAnchoredLiteralFilter(baseLiteral, baseLiteralIsCaseInsensitive, starBefore, starAfter), true
+		}
 		return s.newContainsFilter(baseLiteral, baseLiteralIsCaseInsensitive), true
 	}
 
 	return nil, false
 }
 
+// newAnchoredLiteralFilter picks the filter for a fully anchored match around a
+// single literal, given whether the pattern allowed anything before or after it.
+func (s *RegexSimplifier) newAnchoredLiteralFilter(literal []byte, caseInsensitive, starBefore, starAfter bool) MatcherFilterer {
+	switch {
+	case starBefore && starAfter:
+		return s.newContainsFilter(literal, caseInsensitive)
+	case starAfter:
+		return s.newPrefixFilter(literal, caseInsensitive)
+	case starBefore:
+		return s.newSuffixFilter(literal, caseInsensitive)
+	default:
+		return s.newEqualFilter(literal, caseInsensitive)
+	}
+}
+
+// newLiteralBranchFilter returns the filter for one alternation branch that
+// resolves to a plain literal: an equality when the match is anchored, a
+// contains otherwise.
+func (s *RegexSimplifier) newLiteralBranchFilter(literal []byte, caseInsensitive, isLabel bool) MatcherFilterer {
+	if isLabel {
+		return s.newEqualFilter(literal, caseInsensitive)
+	}
+	return s.newContainsFilter(literal, caseInsensitive)
+}
+
 // simplifyConcatAlternate simplifies concat alternate operations.
 // A concat alternate is found when a concat operation has a sub alternate and is preceded by a literal.
 // For instance bar|b|buzz is expressed as b(ar|(?:)|uzz) => b concat alternate(ar,(?:),uzz).
 // (?:) being an OpEmptyMatch and b being the literal to concat all alternates (ar,(?:),uzz) with.
-func (s *RegexSimplifier) simplifyConcatAlternate(reg *syntax.Regexp, literal []byte, curr MatcherFilterer, baseLiteralIsCaseInsensitive bool) (MatcherFilterer, bool) {
+func (s *RegexSimplifier) simplifyConcatAlternate(reg *syntax.Regexp, literal []byte, curr MatcherFilterer, baseLiteralIsCaseInsensitive bool, isLabel bool) (MatcherFilterer, bool) {
 	for _, alt := range reg.Sub {
 		// we should not consider the case where baseLiteral is not marked as case insensitive
 		// and alternate expression is marked as case insensitive. For example, for the original expression
@@ -821,16 +965,17 @@ func (s *RegexSimplifier) simplifyConcatAlternate(reg *syntax.Regexp, literal []
 		}
 		switch alt.Op {
 		case syntax.OpEmptyMatch:
-			curr = ChainOrMatcherFilterer(curr, s.newContainsFilter(literal, baseLiteralIsCaseInsensitive))
+			// Anchored, an empty branch means the value is exactly the literal.
+			curr = ChainOrMatcherFilterer(curr, s.newLiteralBranchFilter(literal, baseLiteralIsCaseInsensitive, isLabel))
 		case syntax.OpLiteral:
 			// concat the root literal with the alternate one.
 			altBytes := []byte(string(alt.Rune))
 			altLiteral := make([]byte, 0, len(literal)+len(altBytes))
 			altLiteral = append(altLiteral, literal...)
 			altLiteral = append(altLiteral, altBytes...)
-			curr = ChainOrMatcherFilterer(curr, s.newContainsFilter(altLiteral, baseLiteralIsCaseInsensitive))
+			curr = ChainOrMatcherFilterer(curr, s.newLiteralBranchFilter(altLiteral, baseLiteralIsCaseInsensitive, isLabel))
 		case syntax.OpConcat:
-			f, ok := s.simplifyConcat(alt, literal)
+			f, ok := s.simplifyConcat(alt, literal, isLabel)
 			if !ok {
 				return nil, false
 			}
@@ -838,6 +983,11 @@ func (s *RegexSimplifier) simplifyConcatAlternate(reg *syntax.Regexp, literal []
 		case syntax.OpStar:
 			if alt.Sub[0].Op != syntax.OpAnyCharNotNL {
 				return nil, false
+			}
+			// Anchored, `literal` followed by `.*` is a prefix match.
+			if isLabel {
+				curr = ChainOrMatcherFilterer(curr, s.newPrefixFilter(literal, baseLiteralIsCaseInsensitive))
+				continue
 			}
 			curr = ChainOrMatcherFilterer(curr, s.newContainsFilter(literal, baseLiteralIsCaseInsensitive))
 		default:
