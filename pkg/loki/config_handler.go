@@ -4,10 +4,12 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"mime"
 	"net/http"
 	"net/url"
 	"reflect"
 	"regexp"
+	"strconv"
 	"strings"
 
 	"github.com/grafana/dskit/tenant"
@@ -184,12 +186,61 @@ func configHandler(actualCfg any, defaultCfg any) http.HandlerFunc {
 				http.Error(w, err.Error(), status)
 				return
 			}
-			writeYAMLResponse(w, result)
+			writeConfigResponse(w, r, result)
 			return
 		}
 
-		writeYAMLResponse(w, output)
+		writeConfigResponse(w, r, output)
 	}
+}
+
+// writeConfigResponse writes v as YAML by default, or JSON if the Accept header asks for it —
+// same pattern as dskit's ring status handler. Converted to a map via YAML first, so it's keyed
+// by yaml struct tags instead of raw Go field names.
+func writeConfigResponse(w http.ResponseWriter, r *http.Request, v any) {
+	// The representation depends on Accept, so caches must not reuse a response across different
+	// Accept values.
+	w.Header().Add("Vary", "Accept")
+
+	// Only the first Accept header occurrence is honored; subsequent Accept headers are ignored.
+	if !acceptsJSON(r.Header.Get("Accept")) {
+		writeYAMLResponse(w, v)
+		return
+	}
+
+	asMap, err := yamlMarshalUnmarshal(v)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	if err := json.NewEncoder(w).Encode(asMap); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+	}
+}
+
+// acceptsJSON reports whether accept's media ranges include application/json at a non-zero q
+// value. q=0 explicitly marks a media type as unacceptable, and a q outside the valid 0–1 range
+// (RFC 7231 §5.3.1) makes the whole media range invalid rather than defaulting to accepted.
+func acceptsJSON(accept string) bool {
+	for _, part := range strings.Split(accept, ",") {
+		mediaType, params, err := mime.ParseMediaType(part)
+		if err != nil || mediaType != "application/json" {
+			continue
+		}
+		q := 1.0
+		if raw, ok := params["q"]; ok {
+			parsed, err := strconv.ParseFloat(raw, 64)
+			if err != nil || parsed < 0 || parsed > 1 {
+				continue
+			}
+			q = parsed
+		}
+		if q > 0 {
+			return true
+		}
+	}
+	return false
 }
 
 func extractConfigPaths(cfg any, paths []string) (map[string]any, error) {

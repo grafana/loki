@@ -133,11 +133,13 @@ func TestConfigQueryHandler(t *testing.T) {
 	}
 
 	for _, tc := range []struct {
-		name               string
-		query              string
-		expectedStatusCode int
-		expectedHeader     []string
-		expectedBody       string
+		name                string
+		query               string
+		acceptHeader        string
+		expectedStatusCode  int
+		expectedContentType string
+		expectedHeader      []string
+		expectedBody        string
 	}{
 		{
 			name:               "single top-level path",
@@ -224,15 +226,74 @@ func TestConfigQueryHandler(t *testing.T) {
 			query:              url.Values{"q": {"my int"}}.Encode(),
 			expectedStatusCode: 400,
 		},
+		{
+			name:                "base config returns JSON when Accept asks for it",
+			acceptHeader:        "application/json",
+			expectedStatusCode:  200,
+			expectedContentType: "application/json",
+			expectedBody:        `{"my_float":6.66,"my_int":666,"my_nested_struct":{"my_bool":false,"my_empty_struct":{},"my_string":"string1"},"my_slice":["value1","value2"]}` + "\n",
+		},
+		{
+			name:                "q-scoped response returns JSON when Accept asks for it",
+			query:               "q=my_nested_struct.my_string&q=my_int",
+			acceptHeader:        "application/json",
+			expectedStatusCode:  200,
+			expectedContentType: "application/json",
+			expectedHeader:      []string{"my_nested_struct.my_string", "my_int"},
+			expectedBody:        `{"my_int":666,"my_nested_struct":{"my_string":"string1"}}` + "\n",
+		},
+		{
+			name:                "a multi-value Accept header still negotiates JSON",
+			acceptHeader:        "text/html, application/json;q=0.9, */*;q=0.8",
+			expectedStatusCode:  200,
+			expectedContentType: "application/json",
+		},
+		{
+			name:                "q=0 explicitly excludes JSON, falling back to YAML",
+			acceptHeader:        "application/json;q=0",
+			expectedStatusCode:  200,
+			expectedContentType: "text/plain; charset=utf-8",
+		},
+		{
+			name:                "a lookalike media type doesn't false-positive as JSON",
+			acceptHeader:        "application/json-seq",
+			expectedStatusCode:  200,
+			expectedContentType: "text/plain; charset=utf-8",
+		},
+		{
+			name:                "an unparseable q value falls back to YAML rather than defaulting to accepted",
+			acceptHeader:        "application/json;q=bogus",
+			expectedStatusCode:  200,
+			expectedContentType: "text/plain; charset=utf-8",
+		},
+		{
+			name:                "a q value outside 0-1 falls back to YAML rather than defaulting to accepted",
+			acceptHeader:        "application/json;q=2",
+			expectedStatusCode:  200,
+			expectedContentType: "text/plain; charset=utf-8",
+		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			req := httptest.NewRequest("GET", "http://test.com/config?"+tc.query, nil)
+			if tc.acceptHeader != "" {
+				req.Header.Set("Accept", tc.acceptHeader)
+			}
 			w := httptest.NewRecorder()
 
 			configHandler(cfg, cfg)(w, req)
 			resp := w.Result()
 			assert.Equal(t, tc.expectedStatusCode, resp.StatusCode)
 			assert.Equal(t, tc.expectedHeader, resp.Header.Values(ConfigQueryHandledHeader))
+
+			if tc.expectedContentType != "" {
+				assert.Equal(t, tc.expectedContentType, resp.Header.Get("Content-Type"))
+			}
+
+			// The representation always depends on Accept once the request reaches a response,
+			// regardless of which one was chosen.
+			if tc.expectedStatusCode == 200 {
+				assert.Equal(t, "Accept", resp.Header.Get("Vary"))
+			}
 
 			if tc.expectedBody != "" {
 				body, err := io.ReadAll(resp.Body)

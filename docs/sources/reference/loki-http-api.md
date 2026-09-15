@@ -1255,12 +1255,16 @@ GET /config
 modify the output. If it has the value `diff` only the differences between the default configuration
 and the current are returned. A value of `defaults` returns the default configuration.
 
+By default the response is YAML. A request with `Accept: application/json` gets the same data as
+JSON instead, for both this response and the `q`-scoped response below.
+
 The optional `q` query parameter returns only the requested field(s) instead of the full configuration.
 Its value is a dot-separated path into the configuration (for example `limits_config.ingestion_rate_strategy`),
 made of `.`-separated segments of letters, digits, and underscores, and it may be repeated to fetch several
-fields in one request (`?q=<path>&q=<path>`). The response is YAML, structured as a nested tree mirroring
-the requested path(s) rather than a flat listing — for example, `?q=my_nested_struct.my_string` returns
-`my_nested_struct:\n    my_string: ...`. Paths that share a common ancestor are merged into the same subtree.
+fields in one request (`?q=<path>&q=<path>`). The response follows the negotiation above, structured as a
+nested tree mirroring the requested path(s) rather than a flat listing — for example, in the default YAML
+representation, `?q=my_nested_struct.my_string` returns `my_nested_struct:\n    my_string: ...`. Paths that
+share a common ancestor are merged into the same subtree.
 A malformed path, or a request with more than 20 `q` values or any value over 512 characters, returns `400`
 with no `X-Loki-Config-Query` header at all. A well-formed but unrecognized path also returns `400`, but
 still gets the header, since the path was recognized and attempted.
