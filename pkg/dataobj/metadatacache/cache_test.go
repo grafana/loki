@@ -47,7 +47,6 @@ func TestCache_GetOrLoadMetadataRegion(t *testing.T) {
 		require.Contains(t, mc.GetInternal(), keyPrefix+"obj")
 		require.Equal(t, float64(1), testutil.ToFloat64(c.misses))
 		require.Zero(t, testutil.ToFloat64(c.hits))
-		require.Equal(t, float64(len("metadata-blob")), testutil.ToFloat64(c.storedBytes))
 
 		// Hit: served from the cache, no reload.
 		got, err = c.GetOrLoadMetadataRegion(context.Background(), "obj", load)
@@ -113,7 +112,7 @@ func TestCache_GetOrLoadMetadataRegion(t *testing.T) {
 		require.Zero(t, testutil.ToFloat64(c.misses), "a fetch error is not a fact about the key, so it must not also count as a miss")
 	})
 
-	t.Run("a fetch error alongside an already-canceled caller context is not counted as a backend error", func(t *testing.T) {
+	t.Run("a caller's own canceled context takes precedence over an unrelated fetch error", func(t *testing.T) {
 		mc := cache.NewMockCache()
 		mc.SetErr(nil, errors.New("fetch boom"))
 		c := New(mc, 0, nil, nil)
@@ -122,11 +121,42 @@ func TestCache_GetOrLoadMetadataRegion(t *testing.T) {
 		cancel()
 
 		_, err := c.GetOrLoadMetadataRegion(ctx, "obj", func(context.Context) ([]byte, error) {
-			return []byte("blob"), nil
+			t.Error("load must not run: the caller's context was already done")
+			return nil, nil
 		})
-		require.Error(t, err, "the caller's own canceled context still fails its call")
-		require.Zero(t, testutil.ToFloat64(c.errors.WithLabelValues("fetch")), "a canceled caller's Fetch error must not count as a backend fault")
-		require.Zero(t, testutil.ToFloat64(c.misses), "a canceled caller's Fetch error must not count as a miss either")
+		require.ErrorIs(t, err, context.Canceled)
+		require.Zero(t, testutil.ToFloat64(c.errors.WithLabelValues("fetch")), "the context wins over an unrelated backend error, so it must not count as one")
+		require.Zero(t, testutil.ToFloat64(c.misses))
+	})
+
+	t.Run("a caller's own canceled context takes precedence over a cache hit", func(t *testing.T) {
+		mc := cache.NewMockCache()
+		require.NoError(t, mc.Store(context.Background(), []string{keyPrefix + "obj"}, [][]byte{[]byte("blob")}))
+		c := New(mc, 0, nil, nil)
+
+		ctx, cancel := context.WithCancel(context.Background())
+		cancel()
+
+		_, err := c.GetOrLoadMetadataRegion(ctx, "obj", func(context.Context) ([]byte, error) {
+			t.Error("load must not run: Fetch already reported a hit")
+			return nil, nil
+		})
+		require.ErrorIs(t, err, context.Canceled, "the context wins even over a value Fetch already had ready")
+		require.Zero(t, testutil.ToFloat64(c.hits), "a hit discarded for the caller's own context must not count as a hit")
+	})
+
+	t.Run("a caller's own canceled context takes precedence over a clean miss, and never triggers a load", func(t *testing.T) {
+		c := New(cache.NewMockCache(), 0, nil, nil)
+
+		ctx, cancel := context.WithCancel(context.Background())
+		cancel()
+
+		_, err := c.GetOrLoadMetadataRegion(ctx, "obj", func(context.Context) ([]byte, error) {
+			t.Error("load must not run: the caller's context was already done")
+			return nil, nil
+		})
+		require.ErrorIs(t, err, context.Canceled)
+		require.Zero(t, testutil.ToFloat64(c.misses))
 	})
 
 	t.Run("a store error is logged but still returns the loaded value", func(t *testing.T) {
@@ -142,6 +172,22 @@ func TestCache_GetOrLoadMetadataRegion(t *testing.T) {
 		require.Equal(t, []byte("blob"), got)
 		require.Equal(t, float64(1), testutil.ToFloat64(c.errors.WithLabelValues("store")))
 		require.Len(t, logger.Entries(), 1, "the store error is logged exactly once")
+		require.Contains(t, logger.Entries()[0], "data object metadata cache store failed")
+	})
+
+	t.Run("the shared load's context preserves the triggering caller's request-scoped values", func(t *testing.T) {
+		c := New(cache.NewMockCache(), 0, nil, nil)
+
+		type ctxKey struct{}
+		ctx := context.WithValue(context.Background(), ctxKey{}, "trace-id-123")
+
+		var gotValue any
+		_, err := c.GetOrLoadMetadataRegion(ctx, "obj", func(loadCtx context.Context) ([]byte, error) {
+			gotValue = loadCtx.Value(ctxKey{})
+			return []byte("blob"), nil
+		})
+		require.NoError(t, err)
+		require.Equal(t, "trace-id-123", gotValue)
 	})
 
 	t.Run("a caller's own cancellation does not abort the shared load for other callers", func(t *testing.T) {

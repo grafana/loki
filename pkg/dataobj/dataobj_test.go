@@ -279,7 +279,7 @@ func TestFromBucket_MetadataCache(t *testing.T) {
 	})
 
 	// maxItemBytes is a custom limit, not metadatacache.Cache's default, so this also proves MaxItemBytes
-	// is genuinely plumbed through fetchMetadataRegion, not just the built-in 64 MiB default.
+	// is genuinely plumbed through fetchExtendedMetadataRegion, not just the built-in default.
 	t.Run("a metadata region above the cache size cap still caches the file metadata but not the oversized section's metadata", func(t *testing.T) {
 		ctx := context.Background()
 		const maxItemBytes = 4096
@@ -316,7 +316,7 @@ func TestFromBucket_MetadataCache(t *testing.T) {
 	// startOff is itself derived from the object's header, which decodeFileMetadata's self-delimiting
 	// protobuf parse never validates against the header's claimed size — so a corrupted header inflates
 	// startOff without affecting decoding. A cap checked only against regionEnd-startOff would miss
-	// this entirely and let fetchMetadataRegion attempt an allocation sized by the corrupted value.
+	// this entirely and let fetchExtendedMetadataRegion attempt an allocation sized by the corrupted value.
 	//
 	// The object must exceed the prefetch window: a smaller one's tail read fails on EOF for an
 	// unrelated reason (the object is simply too short), which would let this test pass even under the
@@ -347,14 +347,15 @@ func TestFromBucket_MetadataCache(t *testing.T) {
 		require.NoError(t, err, "a corrupted header must degrade to a direct read, not fail the open")
 		require.Empty(t, memoryCache.GetInternal(), "a region derived from a corrupted header must never be cached")
 		require.Len(t, logger.Entries(), 1, "the fallback logs exactly once")
+		require.Contains(t, logger.Entries()[0], "data-object metadata cannot be cached; reading directly")
 		require.Equal(t, int64(4), cb.getRanges.Load(),
 			"1 optimistic prefetch + 1 full read of the corruptly large declared size, for both the failed cache attempt and the fallback's direct read")
 		require.Len(t, obj.Sections(), 2)
 	})
 
-	t.Run("an object truncated shorter than its section layout claims falls back to a direct read", func(t *testing.T) {
+	t.Run("an object truncated shorter than its section layout claims fails the cached open", func(t *testing.T) {
 		ctx := context.Background()
-		bigMeta := bytes.Repeat([]byte("m"), 20*1024) // forces the exact-range tail read in fetchMetadataRegion
+		bigMeta := bytes.Repeat([]byte("m"), 20*1024) // forces the exact-range tail read in fetchExtendedMetadataRegion
 		raw := buildObject(t,
 			sectionSpec{typ: streamsSectionType, meta: []byte("streams-meta"), data: []byte("streams-data")},
 			sectionSpec{typ: pointersSectionType, meta: bigMeta, data: []byte("pointers-data")},
@@ -366,16 +367,13 @@ func TestFromBucket_MetadataCache(t *testing.T) {
 		memoryCache := cache.NewMockCache()
 		metadataCache := metadatacache.New(memoryCache, 0, nil, nil)
 		t.Cleanup(metadataCache.Stop)
-		logger := &test.CapturingLogger{}
 
-		direct, err := dataobj.FromBucket(ctx, inmem, "obj", 0)
-		require.NoError(t, err, "sanity: the uncached path must open the truncated object")
+		_, err := dataobj.FromBucket(ctx, inmem, "obj", 0)
+		require.NoError(t, err, "sanity: the uncached path only needs the file metadata, which survives the truncation")
 
-		obj, err := dataobj.FromBucket(ctx, inmem, "obj", 0, dataobj.WithMetadataCache(metadataCache), dataobj.WithLogger(logger))
-		require.NoError(t, err, "the cached path must open it too, not regress relative to the uncached path")
-		require.Empty(t, memoryCache.GetInternal(), "a region that failed to read must never be cached")
-		require.Len(t, logger.Entries(), 1, "the fallback logs exactly once")
-		require.Equal(t, len(direct.Sections()), len(obj.Sections()))
+		_, err = dataobj.FromBucket(ctx, inmem, "obj", 0, dataobj.WithMetadataCache(metadataCache))
+		require.Error(t, err, "the tail read past the file metadata fails on the truncated object, and a read failure never falls back")
+		require.Empty(t, memoryCache.GetInternal(), "a failed load must not be cached")
 	})
 
 	t.Run("a load error from object storage fails the open and leaves nothing cached", func(t *testing.T) {
@@ -392,6 +390,23 @@ func TestFromBucket_MetadataCache(t *testing.T) {
 		require.Empty(t, memoryCache.GetInternal(), "a failed load must not poison the cache")
 	})
 
+	t.Run("a read failure fetching the file metadata during the cache-triggered load fails the open outright", func(t *testing.T) {
+		ctx := context.Background()
+		raw := buildObject(t, sectionSpec{typ: streamsSectionType, meta: []byte("streams-meta"), data: []byte("streams-data")})
+
+		inmem := objstore.NewInMemBucket()
+		require.NoError(t, inmem.Upload(ctx, "obj", bytes.NewReader(raw)))
+		wantErr := errors.New("read failure")
+		bucket := &flakyBucket{Bucket: inmem, err: wantErr}
+		bucket.remaining.Store(1) // only the cache-triggered load's own read fails; a retry would succeed
+		metadataCache := metadatacache.New(cache.NewMockCache(), 0, nil, nil)
+		t.Cleanup(metadataCache.Stop)
+
+		_, err := dataobj.FromBucket(ctx, bucket, "obj", 0, dataobj.WithMetadataCache(metadataCache))
+		require.Error(t, err, "fetchAndDecodeMetadata reads the same bytes on both paths, so this must not fall back and retry")
+		require.ErrorIs(t, err, wantErr)
+	})
+
 	t.Run("a corrupt cached entry falls back to a direct read and is logged", func(t *testing.T) {
 		ctx := context.Background()
 		raw := buildObject(t,
@@ -405,7 +420,7 @@ func TestFromBucket_MetadataCache(t *testing.T) {
 		metadataCache := metadatacache.New(cache.NewMockCache(), 0, nil, nil)
 		t.Cleanup(metadataCache.Stop)
 		// A corrupt cached entry for the object (not a valid data-object header).
-		seedCache(t, ctx, metadataCache, "obj", []byte("garbage-not-a-dataobj-header"))
+		seedCache(ctx, t, metadataCache, "obj", []byte("garbage-not-a-dataobj-header"))
 		logger := &test.CapturingLogger{}
 
 		obj, err := dataobj.FromBucket(ctx, cb, "obj", 0, dataobj.WithMetadataCache(metadataCache), dataobj.WithLogger(logger))
@@ -413,6 +428,7 @@ func TestFromBucket_MetadataCache(t *testing.T) {
 		require.Len(t, obj.Sections(), 2)
 		require.Positive(t, cb.getRanges.Load(), "the fallback reads from object storage")
 		require.Len(t, logger.Entries(), 1, "the fallback logs exactly once")
+		require.Contains(t, logger.Entries()[0], "cached data-object metadata region did not decode; falling back to a direct read")
 		require.Contains(t, logger.Entries()[0], "obj", "the log identifies which key was affected")
 
 		sec := obj.Sections()[0]
@@ -432,13 +448,14 @@ func TestFromBucket_MetadataCache(t *testing.T) {
 		// Real magic and a real, correctly encoded metadataSize field, but the blob stops well short of
 		// that declared length.
 		truncatedBlob := append([]byte{}, raw[:12]...)
-		seedCache(t, ctx, metadataCache, "obj", truncatedBlob)
+		seedCache(ctx, t, metadataCache, "obj", truncatedBlob)
 		logger := &test.CapturingLogger{}
 
 		obj, err := dataobj.FromBucket(ctx, cb, "obj", 0, dataobj.WithMetadataCache(metadataCache), dataobj.WithLogger(logger))
 		require.NoError(t, err, "a truncated cached entry falls back to a direct read instead of failing")
 		require.Positive(t, cb.getRanges.Load(), "the fallback reads from object storage")
 		require.Len(t, logger.Entries(), 1)
+		require.Contains(t, logger.Entries()[0], "cached data-object metadata region did not decode; falling back to a direct read")
 		require.Len(t, obj.Sections(), 1)
 	})
 
@@ -456,13 +473,14 @@ func TestFromBucket_MetadataCache(t *testing.T) {
 		badBlob := append([]byte{}, raw[:8]...)
 		binary.LittleEndian.PutUint32(badBlob[4:8], 4)
 		badBlob = append(badBlob, 0xFF, 0xFF, 0xFF, 0xFF)
-		seedCache(t, ctx, metadataCache, "obj", badBlob)
+		seedCache(ctx, t, metadataCache, "obj", badBlob)
 		logger := &test.CapturingLogger{}
 
 		obj, err := dataobj.FromBucket(ctx, cb, "obj", 0, dataobj.WithMetadataCache(metadataCache), dataobj.WithLogger(logger))
 		require.NoError(t, err, "a cached entry with an invalid payload falls back to a direct read instead of failing")
 		require.Positive(t, cb.getRanges.Load(), "the fallback reads from object storage")
 		require.Len(t, logger.Entries(), 1)
+		require.Contains(t, logger.Entries()[0], "cached data-object metadata region did not decode; falling back to a direct read")
 		require.Len(t, obj.Sections(), 1)
 	})
 
@@ -542,7 +560,7 @@ func onlyCachedBlob(t *testing.T, memoryCache cache.MockCache) []byte {
 
 // seedCache stores blob in c under key, as if an earlier load had already produced it. blob need not
 // be valid dataobj content, so this also seeds a deliberately corrupt entry.
-func seedCache(t *testing.T, ctx context.Context, c dataobj.MetadataCache, key string, blob []byte) {
+func seedCache(ctx context.Context, t *testing.T, c dataobj.MetadataCache, key string, blob []byte) {
 	t.Helper()
 	_, err := c.GetOrLoadMetadataRegion(ctx, key, func(context.Context) ([]byte, error) { return blob, nil })
 	require.NoError(t, err)
@@ -556,6 +574,22 @@ type failingBucket struct {
 
 func (b *failingBucket) GetRange(context.Context, string, int64, int64) (io.ReadCloser, error) {
 	return nil, b.err
+}
+
+// flakyBucket fails the first n GetRange calls with err, then serves every later one normally. A test
+// can use this to tell whether a caller retried a failed read: if it did, and the retry landed past the
+// first n calls, it would see success where a non-retrying caller would see err.
+type flakyBucket struct {
+	objstore.Bucket
+	remaining atomic.Int64
+	err       error
+}
+
+func (b *flakyBucket) GetRange(ctx context.Context, name string, off, length int64) (io.ReadCloser, error) {
+	if b.remaining.Add(-1) >= 0 {
+		return nil, b.err
+	}
+	return b.Bucket.GetRange(ctx, name, off, length)
 }
 
 type sectionSpec struct {
