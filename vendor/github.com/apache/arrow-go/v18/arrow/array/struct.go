@@ -20,6 +20,7 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"math"
 	"strings"
 
 	"github.com/apache/arrow-go/v18/arrow"
@@ -143,6 +144,22 @@ func NewStructData(data arrow.ArrayData) *Struct {
 func (a *Struct) NumField() int           { return len(a.fields) }
 func (a *Struct) Field(i int) arrow.Array { return a.fields[i] }
 
+func (a *Struct) Validate() error {
+	if a.data.offset < 0 || a.data.length < 0 || int64(a.data.offset) > math.MaxInt64-int64(a.data.length) {
+		return fmt.Errorf("%w: arrow/array: struct offset and length overflow", arrow.ErrInvalid)
+	}
+	expectedLength := a.data.offset + a.data.length
+	for i, child := range a.data.childData {
+		if child.Len() < expectedLength {
+			return fmt.Errorf("%w: arrow/array: struct child array #%d has length smaller than expected for struct array (%d < %d)",
+				arrow.ErrInvalid, i, child.Len(), expectedLength)
+		}
+	}
+	return nil
+}
+
+func (a *Struct) ValidateFull() error { return a.Validate() }
+
 // ValueStr returns the string representation (as json) of the value at index i.
 func (a *Struct) ValueStr(i int) string {
 	if a.IsNull(i) {
@@ -222,7 +239,26 @@ func (a *Struct) setData(data *Data) {
 	a.fields = make([]arrow.Array, len(data.childData))
 	for i, child := range data.childData {
 		if data.offset != 0 || child.Len() != data.length {
-			sub := NewSliceData(child, int64(data.offset), int64(data.offset+data.length))
+			childLen := int64(child.Len())
+			start := max(int64(data.offset), int64(0))
+			if start > childLen {
+				start = childLen
+			}
+			var end int64
+			offset, length := int64(data.offset), int64(data.length)
+			switch {
+			case length > 0 && offset > math.MaxInt64-length:
+				end = math.MaxInt64
+			case length < 0 && offset < math.MinInt64-length:
+				end = math.MinInt64
+			default:
+				end = offset + length
+			}
+			end = max(end, start)
+			if end > childLen {
+				end = childLen
+			}
+			sub := NewSliceData(child, start, end)
 			a.fields[i] = MakeFromData(sub)
 			sub.Release()
 		} else {
@@ -242,6 +278,18 @@ func (a *Struct) GetOneForMarshal(i int) interface{} {
 		tmp[fieldList[j].Name] = d.GetOneForMarshal(i)
 	}
 	return tmp
+}
+
+func (a *Struct) ValueAsAny(i int) any {
+	if a.IsNull(i) {
+		return nil
+	}
+	fieldList := a.data.dtype.(*arrow.StructType).Fields()
+	out := make([]any, len(a.fields))
+	for j, d := range a.fields {
+		out[j] = []any{fieldList[j].Name, ValueAsAny(d, i)}
+	}
+	return out
 }
 
 func (a *Struct) MarshalJSON() ([]byte, error) {
@@ -359,8 +407,16 @@ func (b *StructBuilder) AppendValues(valids []bool) {
 func (b *StructBuilder) AppendNull() { b.Append(false) }
 
 func (b *StructBuilder) AppendNulls(n int) {
-	for i := 0; i < n; i++ {
-		b.AppendNull()
+	if n <= 0 {
+		return
+	}
+
+	b.Reserve(n)
+	bitutil.SetBitsTo(b.nullBitmap.Bytes(), int64(b.length), int64(n), false)
+	b.length += n
+	b.nulls += n
+	for _, f := range b.fields {
+		f.AppendNulls(n)
 	}
 }
 
@@ -372,8 +428,14 @@ func (b *StructBuilder) AppendEmptyValue() {
 }
 
 func (b *StructBuilder) AppendEmptyValues(n int) {
-	for i := 0; i < n; i++ {
-		b.AppendEmptyValue()
+	if n <= 0 {
+		return
+	}
+
+	b.Reserve(n)
+	b.unsafeAppendBoolsToBitmap(nil, n)
+	for _, f := range b.fields {
+		f.AppendEmptyValues(n)
 	}
 }
 

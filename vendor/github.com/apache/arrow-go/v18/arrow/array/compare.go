@@ -19,8 +19,10 @@ package array
 import (
 	"fmt"
 	"math"
+	"reflect"
 
 	"github.com/apache/arrow-go/v18/arrow"
+	"github.com/apache/arrow-go/v18/arrow/bitutil"
 	"github.com/apache/arrow-go/v18/arrow/float16"
 	"github.com/apache/arrow-go/v18/internal/bitutils"
 )
@@ -264,13 +266,13 @@ func Equal(left, right arrow.Array) bool {
 		return arrayEqualFixedWidth(l, r)
 	case *Float16:
 		r := right.(*Float16)
-		return arrayEqualFixedWidth(l, r)
+		return arrayEqualFixedWidthScalar(l, r)
 	case *Float32:
 		r := right.(*Float32)
-		return arrayEqualFixedWidth(l, r)
+		return arrayEqualFixedWidthScalar(l, r)
 	case *Float64:
 		r := right.(*Float64)
-		return arrayEqualFixedWidth(l, r)
+		return arrayEqualFixedWidthScalar(l, r)
 	case *Decimal32:
 		r := right.(*Decimal32)
 		return arrayEqualDecimal(l, r)
@@ -353,12 +355,76 @@ func Equal(left, right arrow.Array) bool {
 
 // SliceEqual reports whether slices left[lbeg:lend] and right[rbeg:rend] are equal.
 func SliceEqual(left arrow.Array, lbeg, lend int64, right arrow.Array, rbeg, rend int64) bool {
+	if lbeg == 0 && lend == int64(left.Len()) &&
+		rbeg == 0 && rend == int64(right.Len()) &&
+		canEqualDirectly(left, right) {
+		return Equal(left, right)
+	}
+
 	l := NewSlice(left, lbeg, lend)
 	defer l.Release()
 	r := NewSlice(right, rbeg, rend)
 	defer r.Release()
 
 	return Equal(l, r)
+}
+
+// canEqualDirectly reports whether Equal can handle both arrays without first
+// normalizing them through NewSlice. Equal uses concrete type assertions, so
+// generic arrow.Array implementations and mismatched concrete types must keep
+// the normalization path.
+func canEqualDirectly(left, right arrow.Array) bool {
+	if reflect.TypeOf(left) != reflect.TypeOf(right) {
+		return false
+	}
+
+	switch left.(type) {
+	case *Null, *Boolean, *FixedSizeBinary, *Binary, *String,
+		*LargeBinary, *LargeString, *BinaryView, *StringView,
+		*Int8, *Int16, *Int32, *Int64, *Uint8, *Uint16, *Uint32, *Uint64,
+		*Float16, *Float32, *Float64,
+		*Decimal32, *Decimal64, *Decimal128, *Decimal256,
+		*Date32, *Date64, *Time32, *Time64, *Timestamp,
+		*List, *LargeList, *ListView, *LargeListView, *FixedSizeList,
+		*Struct, *MonthInterval, *DayTimeInterval, *MonthDayNanoInterval,
+		*Duration, *Map, ExtensionArray, *Dictionary, *SparseUnion,
+		*DenseUnion, *RunEndEncoded:
+		return true
+	default:
+		return false
+	}
+}
+
+type listOffset interface {
+	int32 | int64
+}
+
+func arrayEqualListOffsets[T listOffset](leftValues, rightValues arrow.Array,
+	leftOffsets, rightOffsets []T, leftOffset, rightOffset, length int, validBits []byte) bool {
+	if len(validBits) == 0 {
+		validBits = nil
+	}
+	return bitutils.VisitSetBitRuns(validBits, int64(leftOffset), int64(length),
+		func(pos, runLength int64) error {
+			leftIndex := leftOffset + int(pos)
+			rightIndex := rightOffset + int(pos)
+			for i := range int(runLength) {
+				leftLength := int64(leftOffsets[leftIndex+i+1]) - int64(leftOffsets[leftIndex+i])
+				rightLength := int64(rightOffsets[rightIndex+i+1]) - int64(rightOffsets[rightIndex+i])
+				if leftLength != rightLength {
+					return arrow.ErrInvalid
+				}
+			}
+
+			leftStart := int64(leftOffsets[leftIndex])
+			rightStart := int64(rightOffsets[rightIndex])
+			leftEnd := int64(leftOffsets[leftIndex+int(runLength)])
+			rightEnd := int64(rightOffsets[rightIndex+int(runLength)])
+			if !SliceEqual(leftValues, leftStart, leftEnd, rightValues, rightStart, rightEnd) {
+				return arrow.ErrInvalid
+			}
+			return nil
+		}) == nil
 }
 
 // SliceApproxEqual reports whether slices left[lbeg:lend] and right[rbeg:rend] are approximately equal.
@@ -631,17 +697,29 @@ func baseArrayEqual(left, right arrow.Array) bool {
 }
 
 func validityBitmapEqual(left, right arrow.Array) bool {
-	// TODO(alexandreyc): make it faster by comparing byte slices of the validity bitmap?
-	n := left.Len()
-	if n != right.Len() {
+	if left.Len() != right.Len() {
 		return false
 	}
-	for i := 0; i < n; i++ {
-		if left.IsNull(i) != right.IsNull(i) {
-			return false
-		}
+
+	leftBitmap := left.NullBitmapBytes()
+	rightBitmap := right.NullBitmapBytes()
+	if left.NullN() == 0 && len(leftBitmap) == 0 && len(rightBitmap) == 0 {
+		return true
 	}
-	return true
+
+	if len(leftBitmap) == 0 || len(rightBitmap) == 0 {
+		for i := range left.Len() {
+			if left.IsNull(i) != right.IsNull(i) {
+				return false
+			}
+		}
+		return true
+	}
+
+	return bitutil.BitmapEquals(
+		leftBitmap, rightBitmap,
+		int64(left.Data().Offset()), int64(right.Data().Offset()), int64(left.Len()),
+	)
 }
 
 func arrayApproxEqualString(left, right *String) bool {

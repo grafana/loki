@@ -14,7 +14,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-//go:build go1.22
+//go:build go1.23
 
 package compute
 
@@ -49,11 +49,13 @@ func GetFunctionRegistry() FunctionRegistry {
 		registry = NewRegistry()
 		RegisterScalarCast(registry)
 		RegisterVectorSelection(registry)
+		RegisterScalarNested(registry)
 		RegisterVectorSort(registry)
 		RegisterScalarBoolean(registry)
 		RegisterScalarArithmetic(registry)
 		RegisterScalarComparisons(registry)
 		RegisterVectorHash(registry)
+		RegisterVectorCumulative(registry)
 		RegisterVectorRunEndFuncs(registry)
 		RegisterScalarSetLookup(registry)
 	})
