@@ -44,6 +44,22 @@ load
 eval select from 0 to 30s forward {app="foo"} |= "200"
   {app="foo"} "status=200" @ 10s
 
+# A line filter after decolorize matches the line without ANSI color codes.
+#
+# The DSL cannot embed an ESC byte, so line_format with printf puts a color code between `status=`
+# and the value. The filter must stay after decolorize, or it sees the codes.
+clear
+load
+  {app="foo"} "200" @ 10s
+  {app="foo"} "500" @ 20s   # noise: same stream, the filter must drop it
+
+eval select from 0 to 30s forward {app="foo"} | line_format `{{ printf "status=\x1b[36m%s\x1b[0m" __line__ }}` | decolorize |= "status=200"
+  {app="foo"} "status=200" @ 10s
+
+# decolorize removed the codes, so a filter for a code matches no line.
+eval select from 0 to 30s forward {app="foo"} | line_format `{{ printf "status=\x1b[36m%s\x1b[0m" __line__ }}` | decolorize |~ `\[36m`
+  expect empty
+
 #
 # Direction. The window and the set of matching lines are the same either way; only the order the
 # lines come back in changes: oldest-first for `forward`, newest-first for `backward`.
