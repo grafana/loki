@@ -6311,7 +6311,9 @@ The `s3_storage_config` block configures the connection to Amazon S3 object stor
 # CLI flag: -<prefix>.s3.session-token
 [session_token: <string> | default = ""]
 
-# Disable https on s3 connection.
+# Disable https on s3 connection. This does not affect TLS certificate
+# verification for HTTPS connections; use s3.http.insecure-skip-verify (or
+# s3.http.ca-file) for that.
 # CLI flag: -<prefix>.s3.insecure
 [insecure: <boolean> | default = false]
 
