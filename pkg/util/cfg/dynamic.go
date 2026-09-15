@@ -16,13 +16,29 @@ type DynamicCloneable interface {
 // 3. Any config options specified directly in the config file
 // 4. Any config options specified on the command line.
 func DynamicUnmarshal(dst DynamicCloneable, args []string, fs *flag.FlagSet) error {
+	return dynamicUnmarshal(dst, args, fs, func(strict bool) Source {
+		return ConfigFileLoader(args, "config.file", strict)
+	})
+}
+
+// DynamicUnmarshalOptionalConfig is like DynamicUnmarshal but does not fail
+// when the config file does not exist. The config file is still loaded when it
+// is present. This supports commands that don't require a config file (such as
+// -list-targets) while still honouring a config file when one is supplied.
+func DynamicUnmarshalOptionalConfig(dst DynamicCloneable, args []string, fs *flag.FlagSet) error {
+	return dynamicUnmarshal(dst, args, fs, func(strict bool) Source {
+		return OptionalConfigFileLoader(args, "config.file", strict)
+	})
+}
+
+func dynamicUnmarshal(dst DynamicCloneable, args []string, fs *flag.FlagSet, configFile func(strict bool) Source) error {
 	return Unmarshal(dst,
 		// First populate the config with defaults including flags from the command line
 		Defaults(fs),
 		// Next populate the config from the config file, we do this to populate the `common`
 		// section of the config file by taking advantage of the code in ConfigFileLoader which will load
 		// and process the config file.
-		ConfigFileLoader(args, "config.file", true),
+		configFile(true),
 		// Now load the flags again, this will supersede anything set from config file with flags from the command line.
 		Flags(args, fs),
 		// Apply any dynamic logic to set other defaults in the config. This function is called after parsing the
@@ -35,7 +51,7 @@ func DynamicUnmarshal(dst DynamicCloneable, args []string, fs *flag.FlagSet) err
 		// using strict yaml unmarshal causes an `already set in map` error with the `Clients` config,
 		// because it's a map that already has the keys we are trying to unmarshal into it.
 		// That is why we don't use strict for the second marshaling.
-		ConfigFileLoader(args, "config.file", false),
+		configFile(false),
 		// Load the flags again, this will supersede anything set from config file with flags from the command line.
 		Flags(args, fs),
 	)

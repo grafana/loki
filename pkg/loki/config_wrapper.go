@@ -3,6 +3,7 @@ package loki
 import (
 	"flag"
 	"fmt"
+	"io"
 	"reflect"
 	"regexp"
 	"strings"
@@ -48,6 +49,27 @@ func PrintVersion(args []string) bool {
 		}
 	}
 	return false
+}
+
+// ListTargetsRequested reports whether the -list-targets flag is set after
+// parsing the supplied args with Go's standard flag rules. It is intended to be
+// checked before config file parsing so that listing available targets does
+// not require a config file to exist.
+//
+// Flags are parsed on a clone of ConfigWrapper so that every valid flag is
+// recognised and the boolean value of -list-targets follows Go flag semantics
+// (all forms accepted by strconv.ParseBool, last-wins on repetition).
+func ListTargetsRequested(args []string) bool {
+	fs := flag.NewFlagSet("list-targets-check", flag.ContinueOnError)
+	fs.SetOutput(io.Discard)
+	fs.Usage = func() {}
+
+	var c ConfigWrapper
+	c.RegisterFlags(fs)
+	if err := fs.Parse(args); err != nil {
+		return false
+	}
+	return c.ListTargets
 }
 
 func (c *ConfigWrapper) RegisterFlags(f *flag.FlagSet) {
