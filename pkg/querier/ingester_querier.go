@@ -437,12 +437,13 @@ func (q *IngesterQuerier) GetChunkIDs(ctx context.Context, from, through model.T
 	return chunkIDs, nil
 }
 
-func (q *IngesterQuerier) Stats(ctx context.Context, _ string, from, through model.Time, matchers ...*labels.Matcher) (*index_stats.Stats, error) {
+func (q *IngesterQuerier) Stats(ctx context.Context, _ string, from, through model.Time, deletes []*logproto.Delete, matchers ...*labels.Matcher) (*index_stats.Stats, error) {
 	resps, err := q.forAllIngesters(ctx, func(ctx context.Context, querierClient logproto.QuerierClient) (interface{}, error) {
 		return querierClient.GetStats(ctx, &logproto.IndexStatsRequest{
 			From:     from,
 			Through:  through,
 			Matchers: syntax.MatchersString(matchers),
+			Deletes:  deletes,
 		})
 	})
 	if err != nil {
@@ -462,7 +463,7 @@ func (q *IngesterQuerier) Stats(ctx context.Context, _ string, from, through mod
 	return &merged, nil
 }
 
-func (q *IngesterQuerier) Volume(ctx context.Context, _ string, from, through model.Time, limit int32, targetLabels []string, aggregateBy string, matchers ...*labels.Matcher) (*logproto.VolumeResponse, error) {
+func (q *IngesterQuerier) Volume(ctx context.Context, _ string, from, through model.Time, limit int32, targetLabels []string, aggregateBy string, deletes []*logproto.Delete, matchers ...*labels.Matcher) (*logproto.VolumeResponse, error) {
 	matcherString := "{}"
 	if len(matchers) > 0 {
 		matcherString = syntax.MatchersString(matchers)
@@ -476,6 +477,7 @@ func (q *IngesterQuerier) Volume(ctx context.Context, _ string, from, through mo
 			Limit:        limit,
 			TargetLabels: targetLabels,
 			AggregateBy:  aggregateBy,
+			Deletes:      deletes,
 		})
 	})
 	if err != nil {

@@ -791,6 +791,11 @@ func (i *instance) getStats(ctx context.Context, req *logproto.IndexStatsRequest
 		return nil, err
 	}
 
+	timeRangeDeletes, err := deletion.TimeRangeDeletes(req.Deletes)
+	if err != nil {
+		return nil, err
+	}
+
 	res := &logproto.IndexStatsResponse{}
 	from, through := req.From.Time(), req.Through.Time()
 
@@ -798,6 +803,7 @@ func (i *instance) getStats(ctx context.Context, req *logproto.IndexStatsRequest
 		// Consider streams which overlap our time range
 		if shouldConsiderStream(s, from, through) {
 			s.chunkMtx.RLock()
+			deleted := deletion.DeletedIntervals(timeRangeDeletes, s.labels)
 			var hasChunkOverlap bool
 			for _, chk := range s.chunks {
 				// Consider chunks which overlap our time range
@@ -807,9 +813,12 @@ func (i *instance) getStats(ctx context.Context, req *logproto.IndexStatsRequest
 				chkFrom, chkThrough := chk.chunk.Bounds()
 
 				if chk.flushed.IsZero() && from.Before(chkThrough) && through.After(chkFrom) {
+					factor := deletion.UndeletedFactor(from.UnixNano(), through.UnixNano(), chkFrom.UnixNano(), chkThrough.UnixNano(), deleted)
+					if factor <= 0 {
+						continue
+					}
 					hasChunkOverlap = true
 					res.Chunks++
-					factor := util.GetFactorOfTime(from.UnixNano(), through.UnixNano(), chkFrom.UnixNano(), chkThrough.UnixNano())
 					res.Entries += uint64(factor * float64(chk.chunk.Size()))
 					res.Bytes += uint64(factor * float64(chk.chunk.UncompressedSize()))
 				}
@@ -852,6 +861,11 @@ func (i *instance) getVolume(ctx context.Context, req *logproto.VolumeRequest) (
 		return nil, err
 	}
 
+	timeRangeDeletes, err := deletion.TimeRangeDeletes(req.Deletes)
+	if err != nil {
+		return nil, err
+	}
+
 	targetLabels := req.TargetLabels
 	labelsToMatch, matchers, matchAny := util.PrepareLabelsAndMatchers(targetLabels, matchers)
 	matchAny = matchAny || len(matchers) == 0
@@ -868,6 +882,7 @@ func (i *instance) getVolume(ctx context.Context, req *logproto.VolumeRequest) (
 		if shouldConsiderStream(s, from, through) {
 			s.chunkMtx.RLock()
 
+			deleted := deletion.DeletedIntervals(timeRangeDeletes, s.labels)
 			var size uint64
 			for _, chk := range s.chunks {
 				// Consider chunks which overlap our time range
@@ -877,7 +892,7 @@ func (i *instance) getVolume(ctx context.Context, req *logproto.VolumeRequest) (
 				chkFrom, chkThrough := chk.chunk.Bounds()
 
 				if chk.flushed.IsZero() && from.Before(chkThrough) && through.After(chkFrom) {
-					factor := util.GetFactorOfTime(from.UnixNano(), through.UnixNano(), chkFrom.UnixNano(), chkThrough.UnixNano())
+					factor := deletion.UndeletedFactor(from.UnixNano(), through.UnixNano(), chkFrom.UnixNano(), chkThrough.UnixNano(), deleted)
 					size += uint64(float64(chk.chunk.UncompressedSize()) * factor)
 				}
 			}

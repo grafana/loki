@@ -265,7 +265,7 @@ func (sc *StoreCombiner) LabelNamesForMetricName(ctx context.Context, userID str
 }
 
 // Stats implements Store
-func (sc *StoreCombiner) Stats(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) (*stats.Stats, error) {
+func (sc *StoreCombiner) Stats(ctx context.Context, userID string, from, through model.Time, deletes []*logproto.Delete, matchers ...*labels.Matcher) (*stats.Stats, error) {
 	stores := sc.findStoresForTimeRange(from, through)
 
 	if len(stores) == 0 {
@@ -273,13 +273,13 @@ func (sc *StoreCombiner) Stats(ctx context.Context, userID string, from, through
 	}
 
 	if len(stores) == 1 {
-		return stores[0].store.Stats(ctx, userID, from, through, matchers...)
+		return stores[0].store.Stats(ctx, userID, from, through, deletes, matchers...)
 	}
 
 	// Collect stats from all stores
 	statsSlice := make([]*stats.Stats, 0, len(stores))
 	for _, s := range stores {
-		stats, err := s.store.Stats(ctx, userID, s.from, s.through, matchers...)
+		stats, err := s.store.Stats(ctx, userID, s.from, s.through, deletes, matchers...)
 		if err != nil {
 			return nil, err
 		}
@@ -292,7 +292,7 @@ func (sc *StoreCombiner) Stats(ctx context.Context, userID string, from, through
 }
 
 // Volume implements Store
-func (sc *StoreCombiner) Volume(ctx context.Context, userID string, from, through model.Time, limit int32, targetLabels []string, aggregateBy string, matchers ...*labels.Matcher) (*logproto.VolumeResponse, error) {
+func (sc *StoreCombiner) Volume(ctx context.Context, userID string, from, through model.Time, limit int32, targetLabels []string, aggregateBy string, deletes []*logproto.Delete, matchers ...*labels.Matcher) (*logproto.VolumeResponse, error) {
 	stores := sc.findStoresForTimeRange(from, through)
 
 	if len(stores) == 0 {
@@ -300,14 +300,14 @@ func (sc *StoreCombiner) Volume(ctx context.Context, userID string, from, throug
 	}
 
 	if len(stores) == 1 {
-		return stores[0].store.Volume(ctx, userID, from, through, limit, targetLabels, aggregateBy, matchers...)
+		return stores[0].store.Volume(ctx, userID, from, through, limit, targetLabels, aggregateBy, deletes, matchers...)
 	}
 
 	// Combine volumes from all stores
 	volumes := make([]*logproto.VolumeResponse, 0, len(stores))
 
 	for _, s := range stores {
-		vol, err := s.store.Volume(ctx, userID, s.from, s.through, limit, targetLabels, aggregateBy, matchers...)
+		vol, err := s.store.Volume(ctx, userID, s.from, s.through, limit, targetLabels, aggregateBy, deletes, matchers...)
 		if err != nil {
 			return nil, err
 		}
@@ -459,7 +459,7 @@ func (s *instrumentedStore) LabelNamesForMetricName(ctx context.Context, userID 
 	return s.Store.LabelNamesForMetricName(ctx, userID, from, through, metricName, matchers...)
 }
 
-func (s *instrumentedStore) Stats(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) (*stats.Stats, error) {
+func (s *instrumentedStore) Stats(ctx context.Context, userID string, from, through model.Time, deletes []*logproto.Delete, matchers ...*labels.Matcher) (*stats.Stats, error) {
 	ctx, span := tracer.Start(ctx, "querier.Store."+s.name+".Stats")
 	defer span.End()
 
@@ -470,10 +470,10 @@ func (s *instrumentedStore) Stats(ctx context.Context, userID string, from, thro
 		attribute.String("matchers", stringifyMatchers(matchers)),
 	)
 
-	return s.Store.Stats(ctx, userID, from, through, matchers...)
+	return s.Store.Stats(ctx, userID, from, through, deletes, matchers...)
 }
 
-func (s *instrumentedStore) Volume(ctx context.Context, userID string, from, through model.Time, limit int32, targetLabels []string, aggregateBy string, matchers ...*labels.Matcher) (*logproto.VolumeResponse, error) {
+func (s *instrumentedStore) Volume(ctx context.Context, userID string, from, through model.Time, limit int32, targetLabels []string, aggregateBy string, deletes []*logproto.Delete, matchers ...*labels.Matcher) (*logproto.VolumeResponse, error) {
 	ctx, span := tracer.Start(ctx, "querier.Store."+s.name+".Volume")
 	defer span.End()
 
@@ -487,7 +487,7 @@ func (s *instrumentedStore) Volume(ctx context.Context, userID string, from, thr
 		attribute.String("matchers", stringifyMatchers(matchers)),
 	)
 
-	return s.Store.Volume(ctx, userID, from, through, limit, targetLabels, aggregateBy, matchers...)
+	return s.Store.Volume(ctx, userID, from, through, limit, targetLabels, aggregateBy, deletes, matchers...)
 }
 
 func (s *instrumentedStore) GetShards(ctx context.Context, userID string, from, through model.Time, targetBytesPerShard uint64, predicate chunk.Predicate) (*logproto.ShardsResponse, error) {

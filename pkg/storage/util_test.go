@@ -276,7 +276,7 @@ func (m *mockChunkStore) GetChunks(_ context.Context, _ string, _, _ model.Time,
 	return [][]chunk.Chunk{refs}, []*fetcher.Fetcher{f}, nil
 }
 
-func (m *mockChunkStore) Stats(_ context.Context, _ string, _, _ model.Time, _ ...*labels.Matcher) (*index_stats.Stats, error) {
+func (m *mockChunkStore) Stats(_ context.Context, _ string, _, _ model.Time, _ []*logproto.Delete, _ ...*labels.Matcher) (*index_stats.Stats, error) {
 	return nil, nil
 }
 
@@ -296,7 +296,7 @@ func (m *mockChunkStore) GetChunkRefsWithSizingInfo(_ context.Context, _ string,
 	return nil, nil
 }
 
-func (m *mockChunkStore) Volume(_ context.Context, _ string, _, _ model.Time, _ int32, _ []string, _ string, _ ...*labels.Matcher) (*logproto.VolumeResponse, error) {
+func (m *mockChunkStore) Volume(_ context.Context, _ string, _, _ model.Time, _ int32, _ []string, _ string, _ []*logproto.Delete, _ ...*labels.Matcher) (*logproto.VolumeResponse, error) {
 	return nil, nil
 }
 

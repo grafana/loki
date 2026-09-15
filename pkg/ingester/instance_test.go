@@ -1487,6 +1487,108 @@ func TestGetStats(t *testing.T) {
 	}, resp)
 }
 
+func TestGetStatsWithDeletes(t *testing.T) {
+	// defaultInstance carries two streams matching {host="agent"}: log_stream="worker"
+	// with entries at 0,2,...,8ms (70 bytes) and log_stream="dispatcher" with entries
+	// at 1,3,...,9ms (90 bytes), 5 entries each.
+	instance := defaultInstance(t)
+
+	for _, tc := range []struct {
+		name     string
+		deletes  []*logproto.Delete
+		expected *logproto.IndexStatsResponse
+	}{
+		{
+			name: "delete covering one stream entirely",
+			deletes: []*logproto.Delete{
+				{Selector: `{log_stream="worker"}`, Start: 0, End: int64(11000 * time.Millisecond)},
+			},
+			expected: &logproto.IndexStatsResponse{Streams: 1, Chunks: 1, Bytes: 90, Entries: 5},
+		},
+		{
+			name: "delete partially covering both streams",
+			deletes: []*logproto.Delete{
+				// worker chunk spans [0ms, 8ms]: factor 0.5; dispatcher chunk
+				// spans [1ms, 9ms]: factor 0.625
+				{Selector: `{host="agent"}`, Start: 0, End: int64(4 * time.Millisecond)},
+			},
+			expected: &logproto.IndexStatsResponse{Streams: 2, Chunks: 2, Bytes: 35 + 56, Entries: 2 + 3},
+		},
+		{
+			name: "delete with a line filter is ignored",
+			deletes: []*logproto.Delete{
+				{Selector: `{host="agent"} |= "msg"`, Start: 0, End: int64(11000 * time.Millisecond)},
+			},
+			expected: &logproto.IndexStatsResponse{Streams: 2, Chunks: 2, Bytes: 160, Entries: 10},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			resp, err := instance.GetStats(context.Background(), &logproto.IndexStatsRequest{
+				From:     0,
+				Through:  11000,
+				Matchers: `{host="agent"}`,
+				Deletes:  tc.deletes,
+			})
+			require.NoError(t, err)
+			require.Equal(t, tc.expected, resp)
+		})
+	}
+}
+
+func TestInstance_VolumeWithDeletes(t *testing.T) {
+	instance := defaultInstance(t)
+
+	for _, tc := range []struct {
+		name     string
+		deletes  []*logproto.Delete
+		expected []logproto.Volume
+	}{
+		{
+			name: "delete covering one stream entirely",
+			deletes: []*logproto.Delete{
+				{Selector: `{log_stream="worker"}`, Start: 0, End: int64(11000 * time.Millisecond)},
+			},
+			expected: []logproto.Volume{
+				{Name: `{host="agent", job="3", log_stream="dispatcher"}`, Volume: 90},
+				{Name: `{host="agent", job="3", log_stream="worker"}`, Volume: 0},
+			},
+		},
+		{
+			name: "delete partially covering both streams",
+			deletes: []*logproto.Delete{
+				{Selector: `{host="agent"}`, Start: 0, End: int64(4 * time.Millisecond)},
+			},
+			expected: []logproto.Volume{
+				{Name: `{host="agent", job="3", log_stream="dispatcher"}`, Volume: 56},
+				{Name: `{host="agent", job="3", log_stream="worker"}`, Volume: 35},
+			},
+		},
+		{
+			name: "delete with a line filter is ignored",
+			deletes: []*logproto.Delete{
+				{Selector: `{host="agent"} |= "msg"`, Start: 0, End: int64(11000 * time.Millisecond)},
+			},
+			expected: []logproto.Volume{
+				{Name: `{host="agent", job="3", log_stream="dispatcher"}`, Volume: 90},
+				{Name: `{host="agent", job="3", log_stream="worker"}`, Volume: 70},
+			},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			volumes, err := instance.GetVolume(context.Background(), &logproto.VolumeRequest{
+				From:        0,
+				Through:     11000,
+				Matchers:    "{}",
+				Limit:       5,
+				AggregateBy: seriesvolume.Series,
+				Deletes:     tc.deletes,
+			})
+			require.NoError(t, err)
+			require.Equal(t, tc.expected, volumes.Volumes)
+		})
+	}
+}
+
 func defaultInstance(t *testing.T) *instance {
 	ingesterConfig := defaultIngesterTestConfig(t)
 	defaultLimits := defaultLimitsTestConfig()

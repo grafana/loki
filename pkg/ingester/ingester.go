@@ -1445,7 +1445,7 @@ func (i *Ingester) GetStats(ctx context.Context, req *logproto.IndexStatsRequest
 			return instance.GetStats(ctx, req)
 		}),
 		f(func() (*logproto.IndexStatsResponse, error) {
-			return i.store.Stats(ctx, user, req.From, req.Through, matchers...)
+			return i.store.Stats(ctx, user, req.From, req.Through, req.Deletes, matchers...)
 		}),
 	}
 	resps := make([]*logproto.IndexStatsResponse, len(jobs))
@@ -1507,7 +1507,7 @@ func (i *Ingester) GetVolume(ctx context.Context, req *logproto.VolumeRequest) (
 			return instance.GetVolume(ctx, req)
 		}),
 		f(func() (*logproto.VolumeResponse, error) {
-			return i.store.Volume(ctx, user, req.From, req.Through, req.Limit, req.TargetLabels, req.AggregateBy, matchers...)
+			return i.store.Volume(ctx, user, req.From, req.Through, req.Limit, req.TargetLabels, req.AggregateBy, req.Deletes, matchers...)
 		}),
 	}
 	resps := make([]*logproto.VolumeResponse, len(jobs))

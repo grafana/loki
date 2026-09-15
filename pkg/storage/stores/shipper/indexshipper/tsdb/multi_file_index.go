@@ -370,15 +370,15 @@ func (i *MultiIndex) LabelValues(ctx context.Context, userID string, from, throu
 	return merged, nil
 }
 
-func (i *MultiIndex) Stats(ctx context.Context, userID string, from, through model.Time, acc IndexStatsAccumulator, fpFilter index.FingerprintFilter, shouldIncludeChunk shouldIncludeChunk, matchers ...*labels.Matcher) error {
+func (i *MultiIndex) Stats(ctx context.Context, userID string, from, through model.Time, acc IndexStatsAccumulator, fpFilter index.FingerprintFilter, deletes []*logproto.Delete, matchers ...*labels.Matcher) error {
 	return i.forMatchingIndices(ctx, from, through, func(ctx context.Context, idx Index) error {
-		return idx.Stats(ctx, userID, from, through, acc, fpFilter, shouldIncludeChunk, matchers...)
+		return idx.Stats(ctx, userID, from, through, acc, fpFilter, deletes, matchers...)
 	})
 }
 
-func (i *MultiIndex) Volume(ctx context.Context, userID string, from, through model.Time, acc VolumeAccumulator, fpFilter index.FingerprintFilter, shouldIncludeChunk shouldIncludeChunk, targetLabels []string, aggregateBy string, matchers ...*labels.Matcher) error {
+func (i *MultiIndex) Volume(ctx context.Context, userID string, from, through model.Time, acc VolumeAccumulator, fpFilter index.FingerprintFilter, deletes []*logproto.Delete, targetLabels []string, aggregateBy string, matchers ...*labels.Matcher) error {
 	return i.forMatchingIndices(ctx, from, through, func(ctx context.Context, idx Index) error {
-		return idx.Volume(ctx, userID, from, through, acc, fpFilter, shouldIncludeChunk, targetLabels, aggregateBy, matchers...)
+		return idx.Volume(ctx, userID, from, through, acc, fpFilter, deletes, targetLabels, aggregateBy, matchers...)
 	})
 }
 

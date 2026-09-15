@@ -53,11 +53,11 @@ func (m mockStore) GetChunkFetcher(_ model.Time) *fetcher.Fetcher {
 	return nil
 }
 
-func (m mockStore) Stats(_ context.Context, _ string, _, _ model.Time, _ ...*labels.Matcher) (*stats.Stats, error) {
+func (m mockStore) Stats(_ context.Context, _ string, _, _ model.Time, _ []*logproto.Delete, _ ...*labels.Matcher) (*stats.Stats, error) {
 	return nil, nil
 }
 
-func (m mockStore) Volume(_ context.Context, _ string, _, _ model.Time, _ int32, _ []string, _ string, _ ...*labels.Matcher) (*logproto.VolumeResponse, error) {
+func (m mockStore) Volume(_ context.Context, _ string, _, _ model.Time, _ int32, _ []string, _ string, _ []*logproto.Delete, _ ...*labels.Matcher) (*logproto.VolumeResponse, error) {
 	return nil, nil
 }
 
@@ -324,7 +324,7 @@ type mockStoreVolume struct {
 	err   error
 }
 
-func (m mockStoreVolume) Volume(_ context.Context, _ string, _, _ model.Time, _ int32, _ []string, _ string, _ ...*labels.Matcher) (*logproto.VolumeResponse, error) {
+func (m mockStoreVolume) Volume(_ context.Context, _ string, _, _ model.Time, _ int32, _ []string, _ string, _ []*logproto.Delete, _ ...*labels.Matcher) (*logproto.VolumeResponse, error) {
 	return m.value, m.err
 }
 
@@ -341,7 +341,7 @@ func TestVolume(t *testing.T) {
 			},
 		}
 
-		volumes, err := cs.Volume(context.Background(), "fake", 10001, 20001, 10, nil, "")
+		volumes, err := cs.Volume(context.Background(), "fake", 10001, 20001, 10, nil, "", nil)
 		require.NoError(t, err)
 		require.Equal(t, []logproto.Volume{{Name: `{foo="bar"}`, Volume: 45}}, volumes.Volumes)
 	})
@@ -356,7 +356,7 @@ func TestVolume(t *testing.T) {
 			},
 		}
 
-		volumes, err := cs.Volume(context.Background(), "fake", 10001, 20001, 10, nil, "")
+		volumes, err := cs.Volume(context.Background(), "fake", 10001, 20001, 10, nil, "", nil)
 		require.Error(t, err, "something bad")
 		require.Nil(t, volumes)
 	})

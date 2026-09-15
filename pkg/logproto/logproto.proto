@@ -401,6 +401,7 @@ message IndexStatsRequest {
   string matchers = 3;
   // TODO(owen-d): add shards to grpc calls so we don't have
   // to extract via labels
+  repeated Delete deletes = 4;
 }
 
 message IndexStatsResponse {
@@ -425,6 +426,7 @@ message VolumeRequest {
   repeated string targetLabels = 6;
   string aggregateBy = 7;
   resultscache.CachingOptions cachingOptions = 8 [(gogoproto.nullable) = false];
+  repeated Delete deletes = 9;
 }
 
 message VolumeResponse {

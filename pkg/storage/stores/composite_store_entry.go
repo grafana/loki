@@ -142,7 +142,7 @@ func (c *storeEntry) LabelValuesForMetricName(ctx context.Context, userID string
 	return c.indexReader.LabelValuesForMetricName(ctx, userID, from, through, metricName, labelName, matchers...)
 }
 
-func (c *storeEntry) Stats(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) (*stats.Stats, error) {
+func (c *storeEntry) Stats(ctx context.Context, userID string, from, through model.Time, deletes []*logproto.Delete, matchers ...*labels.Matcher) (*stats.Stats, error) {
 	shortcut, err := c.validateQueryTimeRange(ctx, userID, &from, &through)
 	if err != nil {
 		return nil, err
@@ -150,10 +150,10 @@ func (c *storeEntry) Stats(ctx context.Context, userID string, from, through mod
 		return nil, nil
 	}
 
-	return c.indexReader.Stats(ctx, userID, from, through, matchers...)
+	return c.indexReader.Stats(ctx, userID, from, through, deletes, matchers...)
 }
 
-func (c *storeEntry) Volume(ctx context.Context, userID string, from, through model.Time, limit int32, targetLabels []string, aggregateBy string, matchers ...*labels.Matcher) (*logproto.VolumeResponse, error) {
+func (c *storeEntry) Volume(ctx context.Context, userID string, from, through model.Time, limit int32, targetLabels []string, aggregateBy string, deletes []*logproto.Delete, matchers ...*labels.Matcher) (*logproto.VolumeResponse, error) {
 	ctx, sp := tracer.Start(ctx, "SeriesStore.Volume")
 	defer sp.End()
 
@@ -178,7 +178,7 @@ func (c *storeEntry) Volume(ctx context.Context, userID string, from, through mo
 		)
 	}
 
-	return c.indexReader.Volume(ctx, userID, from, through, limit, targetLabels, aggregateBy, matchers...)
+	return c.indexReader.Volume(ctx, userID, from, through, limit, targetLabels, aggregateBy, deletes, matchers...)
 }
 
 func (c *storeEntry) GetShards(

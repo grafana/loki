@@ -30,8 +30,8 @@ type BaseReader interface {
 }
 
 type StatsReader interface {
-	Stats(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) (*stats.Stats, error)
-	Volume(ctx context.Context, userID string, from, through model.Time, limit int32, targetLabels []string, aggregateBy string, matchers ...*labels.Matcher) (*logproto.VolumeResponse, error)
+	Stats(ctx context.Context, userID string, from, through model.Time, deletes []*logproto.Delete, matchers ...*labels.Matcher) (*stats.Stats, error)
+	Volume(ctx context.Context, userID string, from, through model.Time, limit int32, targetLabels []string, aggregateBy string, deletes []*logproto.Delete, matchers ...*labels.Matcher) (*logproto.VolumeResponse, error)
 	GetShards(
 		ctx context.Context,
 		userID string,
@@ -217,11 +217,11 @@ func (m MonitoredReaderWriter) LabelNamesForMetricName(ctx context.Context, user
 	return values, nil
 }
 
-func (m MonitoredReaderWriter) Stats(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) (*stats.Stats, error) {
+func (m MonitoredReaderWriter) Stats(ctx context.Context, userID string, from, through model.Time, deletes []*logproto.Delete, matchers ...*labels.Matcher) (*stats.Stats, error) {
 	var sts *stats.Stats
 	if err := loki_instrument.TimeRequest(ctx, "stats", instrument.NewHistogramCollector(m.metrics.indexQueryLatency), instrument.ErrorCode, func(ctx context.Context) error {
 		var err error
-		sts, err = m.rw.Stats(ctx, userID, from, through, matchers...)
+		sts, err = m.rw.Stats(ctx, userID, from, through, deletes, matchers...)
 		return err
 	}); err != nil {
 		return nil, err
@@ -230,11 +230,11 @@ func (m MonitoredReaderWriter) Stats(ctx context.Context, userID string, from, t
 	return sts, nil
 }
 
-func (m MonitoredReaderWriter) Volume(ctx context.Context, userID string, from, through model.Time, limit int32, targetLabels []string, aggregateBy string, matchers ...*labels.Matcher) (*logproto.VolumeResponse, error) {
+func (m MonitoredReaderWriter) Volume(ctx context.Context, userID string, from, through model.Time, limit int32, targetLabels []string, aggregateBy string, deletes []*logproto.Delete, matchers ...*labels.Matcher) (*logproto.VolumeResponse, error) {
 	var vol *logproto.VolumeResponse
 	if err := loki_instrument.TimeRequest(ctx, "volume", instrument.NewHistogramCollector(m.metrics.indexQueryLatency), instrument.ErrorCode, func(ctx context.Context) error {
 		var err error
-		vol, err = m.rw.Volume(ctx, userID, from, through, limit, targetLabels, aggregateBy, matchers...)
+		vol, err = m.rw.Volume(ctx, userID, from, through, limit, targetLabels, aggregateBy, deletes, matchers...)
 		return err
 	}); err != nil {
 		return nil, err
