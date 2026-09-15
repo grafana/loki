@@ -17,6 +17,7 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/dataobj/consumer/logsobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
+	"github.com/grafana/loki/v3/pkg/dataobj/uploader"
 	"github.com/grafana/loki/v3/pkg/engine/internal/executor"
 	"github.com/grafana/loki/v3/pkg/engine/internal/scheduler/wire"
 	"github.com/grafana/loki/v3/pkg/engine/internal/worker"
@@ -82,6 +83,9 @@ type WorkerParams struct {
 	// Required for compaction tasks; may be the zero-value for query-only workers.
 	LogsobjCfg logsobj.BuilderBaseConfig
 
+	// UploaderCfg controls object key generation for compacted log objects.
+	UploaderCfg uploader.Config
+
 	// IndexMergeObserver is used  by compaction to populate output-size
 	// histograms. Optional; nil for query-only workers.
 	IndexMergeObserver executor.IndexMergeObserver
@@ -93,9 +97,10 @@ type WorkerParams struct {
 type Worker struct {
 	// Our public API is a lightweight wrapper around the internal API.
 
-	inner    *worker.Worker
-	endpoint string
-	handler  http.Handler
+	inner          *worker.Worker
+	endpoint       string
+	handler        http.Handler
+	builderMetrics *logsobj.BuilderMetrics
 }
 
 // NewWorker creates a new Worker instance. Use [Worker.Service] to manage the
@@ -153,6 +158,10 @@ func NewWorker(params WorkerParams, reg prometheus.Registerer) (*Worker, error) 
 	if err != nil {
 		return nil, fmt.Errorf("creating task results cache: %w", err)
 	}
+	builderMetrics := logsobj.NewBuilderMetrics()
+	if err := builderMetrics.Register(reg); err != nil {
+		return nil, fmt.Errorf("registering logs object builder metrics: %w", err)
+	}
 
 	inner, err := worker.New(worker.Config{
 		Logger:     params.Logger,
@@ -178,6 +187,8 @@ func NewWorker(params WorkerParams, reg prometheus.Registerer) (*Worker, error) 
 		ScratchStore:   params.ScratchStore,
 		IndexobjCfg:    params.IndexobjCfg,
 		LogsobjCfg:     params.LogsobjCfg,
+		UploaderCfg:    params.UploaderCfg,
+		BuilderMetrics: builderMetrics,
 
 		IndexMergeObserver: params.IndexMergeObserver,
 		LogMergeObserver:   params.LogMergeObserver,
@@ -187,9 +198,10 @@ func NewWorker(params WorkerParams, reg prometheus.Registerer) (*Worker, error) 
 	}
 
 	return &Worker{
-		inner:    inner,
-		endpoint: params.Endpoint,
-		handler:  handler,
+		inner:          inner,
+		endpoint:       params.Endpoint,
+		handler:        handler,
+		builderMetrics: builderMetrics,
 	}, nil
 }
 
@@ -217,4 +229,5 @@ func (w *Worker) RegisterMetrics(reg prometheus.Registerer) error {
 // UnregisterMetrics unregisters metrics about w from reg.
 func (w *Worker) UnregisterMetrics(reg prometheus.Registerer) {
 	w.inner.UnregisterMetrics(reg)
+	w.builderMetrics.Unregister(reg)
 }

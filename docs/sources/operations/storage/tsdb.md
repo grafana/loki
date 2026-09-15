@@ -8,6 +8,8 @@ weight: 100
 
 Starting with Loki v2.8, TSDB is the recommended Loki index. It is heavily inspired by the Prometheus TSDB [sub-project](https://github.com/prometheus/prometheus/tree/main/tsdb). This new index is more efficient, faster, and more scalable. It also resides in object storage like the [boltdb-shipper](https://grafana.com/docs/loki/<LOKI_VERSION>/operations/storage/boltdb-shipper/) index which preceded it.
 
+For the on-disk binary layout of the index files, see [TSDB index format](https://grafana.com/docs/loki/<LOKI_VERSION>/reference/tsdb-index-format/).
+
 ## Example Configuration
 
 To get started using TSDB, add the following configurations to your `config.yaml`:

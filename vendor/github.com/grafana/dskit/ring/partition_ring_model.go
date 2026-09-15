@@ -442,7 +442,7 @@ func (m *PartitionRingDesc) mergeWithTime(mergeable memberlist.Mergeable, localC
 
 // MergeContent implements memberlist.Mergeable.
 func (m *PartitionRingDesc) MergeContent() []string {
-	result := make([]string, len(m.Partitions)+len(m.Owners))
+	result := make([]string, 0, len(m.Partitions)+len(m.Owners))
 
 	// We're assuming that partition IDs and instance IDs are not colliding (ie. no instance is called "1").
 	for pid := range m.Partitions {

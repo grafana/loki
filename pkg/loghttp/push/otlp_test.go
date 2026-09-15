@@ -17,6 +17,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/collector/pdata/pcommon"
 	"go.opentelemetry.io/collector/pdata/plog"
+	"go.uber.org/goleak"
 	"google.golang.org/genproto/googleapis/rpc/status"
 	"google.golang.org/protobuf/proto"
 
@@ -1809,6 +1810,70 @@ func TestContentEncodingAndLength(t *testing.T) {
 					}
 				}
 			}
+		})
+	}
+}
+
+func otlpEncodedRequest(body []byte, contentEncoding string) *http.Request {
+	req := httptest.NewRequest("POST", "/v1/logs", bytes.NewReader(body))
+	req.Header.Set("Content-Type", pbContentType)
+	if contentEncoding != "" {
+		req.Header.Set("Content-Encoding", contentEncoding)
+	}
+	return req
+}
+
+// TestExtractLogsRepeatedCompressedRequests runs each encoding over a run of requests,
+// then aborts one part way through the stream via the decompressed-size limit.
+func TestExtractLogsRepeatedCompressedRequests(t *testing.T) {
+	for _, enc := range []struct {
+		encoding string
+		encode   func(plog.Logs) ([]byte, error)
+	}{
+		{gzipContentEncoding, createGzipCompressedProtobuf},
+		{zstdContentEncoding, createZstdCompressedProtobuf},
+		{lz4ContentEncoding, createLz4CompressedProtobuf},
+	} {
+		t.Run("encoding="+enc.encoding, func(t *testing.T) {
+			body, err := enc.encode(largeOTLPLogs())
+			require.NoError(t, err)
+
+			for range 5 {
+				logs, err := extractLogs(otlpEncodedRequest(body, enc.encoding), 0, 0, NewPushStats())
+				require.NoError(t, err)
+				require.Equal(t, 1024, logs.LogRecordCount())
+			}
+
+			// And the failure path, where the reader is released mid-stream.
+			_, err = extractLogs(otlpEncodedRequest(body, enc.encoding), 0, 1024, NewPushStats())
+			require.ErrorIs(t, err, util.ErrMessageDecompressedSizeTooLarge)
+		})
+	}
+}
+
+// TestExtractLogsDecompressorDoesNotLeakGoroutines covers the abort paths, where the
+// request body is only partly consumed. The zstd decoder decodes on its own goroutines;
+// left unreleased there, they stay alive for the lifetime of the process.
+func TestExtractLogsDecompressorDoesNotLeakGoroutines(t *testing.T) {
+	for _, tc := range []struct {
+		encoding string
+		encode   func(plog.Logs) ([]byte, error)
+	}{
+		{gzipContentEncoding, createGzipCompressedProtobuf},
+		{zstdContentEncoding, createZstdCompressedProtobuf},
+		{lz4ContentEncoding, createLz4CompressedProtobuf},
+	} {
+		t.Run(tc.encoding, func(t *testing.T) {
+			body, err := tc.encode(largeOTLPLogs())
+			require.NoError(t, err)
+
+			ignore := goleak.IgnoreCurrent()
+			for range 50 {
+				// Stop reading well before the end of the stream.
+				_, err := extractLogs(otlpEncodedRequest(body, tc.encoding), 0, 1024, NewPushStats())
+				require.Error(t, err)
+			}
+			goleak.VerifyNone(t, ignore)
 		})
 	}
 }

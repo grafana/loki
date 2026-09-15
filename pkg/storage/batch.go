@@ -568,7 +568,7 @@ func (it *sampleBatchIterator) newChunksIterator(b *chunkBatch) (iter.SampleIter
 		return nil, err
 	}
 
-	return iter.NewSortSampleIterator(iters), nil
+	return iter.NewTimestampFirstSortSampleIterator(iters), nil
 }
 
 func (it *sampleBatchIterator) buildIterators(

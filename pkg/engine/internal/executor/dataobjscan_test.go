@@ -266,9 +266,9 @@ func Test_dataobjScan_DuplicateColumns(t *testing.T) {
 			semconv.FieldFromFQN("utf8.builtin.message", true),
 		}
 
-		expectCSV := `prod,NULL,pod-1,loki,NULL,override,1970-01-01 00:00:01,message 1
-prod,NULL,NULL,loki,namespace-1,NULL,1970-01-01 00:00:02,message 2
-prod,namespace-2,NULL,loki,NULL,NULL,1970-01-01 00:00:03,message 3`
+		expectCSV := `prod,namespace-2,NULL,loki,NULL,NULL,1970-01-01 00:00:03,message 3
+prod,NULL,pod-1,loki,NULL,override,1970-01-01 00:00:01,message 1
+prod,NULL,NULL,loki,namespace-1,NULL,1970-01-01 00:00:02,message 2`
 
 		expectRecord, err := CSVToArrow(expectFields, expectCSV)
 		require.NoError(t, err)
@@ -292,8 +292,8 @@ prod,namespace-2,NULL,loki,NULL,NULL,1970-01-01 00:00:03,message 3`
 			semconv.FieldFromFQN("utf8.metadata.pod", true),
 		}
 
-		expectCSV := `pod-1,override
-NULL,NULL
+		expectCSV := `NULL,NULL
+pod-1,override
 NULL,NULL`
 
 		expectRecord, err := CSVToArrow(expectFields, expectCSV)
@@ -318,9 +318,9 @@ NULL,NULL`
 			semconv.FieldFromFQN("utf8.metadata.namespace", true),
 		}
 
-		expectCSV := `NULL,NULL
-NULL,namespace-1
-namespace-2,NULL`
+		expectCSV := `namespace-2,NULL
+NULL,NULL
+NULL,namespace-1`
 
 		expectRecord, err := CSVToArrow(expectFields, expectCSV)
 		require.NoError(t, err)

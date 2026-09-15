@@ -37,6 +37,16 @@ The output is incredibly verbose as it shows the entire internal config struct u
 
 ## Main / Unreleased
 
+### Optional index gateway client request limits
+
+Index gateway clients support two experimental limits that are disabled by default, preserving the existing request limits.
+
+Set `-tsdb.shipper.index-gateway-client.max-retries` to a non-negative value to limit the number of further instances a failed request is retried against. The default of `-1` preserves up to two retries for `GetShards` and retries across all candidate instances for other requests. A value of `0` disables retries. Non-negative values apply to all requests, including `GetShards`. Each candidate instance is tried at most once. Enabling a retry limit bounds how long a request can occupy a goroutine when many instances are slow or unreachable.
+
+The candidate instances are the healthy instances the ring or DNS reports, so an instance that already failed its heartbeat is not counted against the budget. If you leave `-index-gateway.shard-size` at its default of `0`, a request can choose from the whole index gateway fleet.
+
+Set `-tsdb.shipper.index-gateway-client.max-in-flight-requests` to a positive value to limit in-flight requests. The default of `0` disables this limit. Requests that arrive when the limit is reached fail immediately with an HTTP 503 status, so the query-frontend retries them. The limit applies per client: Loki builds one client for each `schema_config` period, doubled when the shadow index gateway client is enabled, so the process-wide limit is this value multiplied by the number of clients.
+
 ### `frontend.encoding` default changed to `protobuf`
 
 The default value of `-frontend.encoding` / `frontend.encoding` changed from `json` to `protobuf`. This only affects the internal request/response encoding between the query-frontend, query-scheduler, and querier. Client-facing APIs are unchanged, and no persisted state uses this setting, so no data migration is required.
@@ -56,6 +66,10 @@ The default value of `frontend.compress_responses` changed to `true`. A bug in L
 The experimental `variants()` LogQL expression is no longer supported.
 
 The per-tenant setting `enable_multi_variant_queries` (`-limits.enable-multi-variant-queries`) that gated it has been removed. A leftover `enable_multi_variant_queries:` key in `limits_config` or in a runtime overrides file is ignored, so it does not block an upgrade, but you should remove it; the `deprecated-config-checker` tool will flag it. The `-limits.enable-multi-variant-queries` command line flag no longer exists and Loki fails to start if it is passed.
+
+### Optional chunk fetch error propagation
+
+`chunk_store_config.propagate_chunk_fetch_errors` setting returns chunk fetch errors instead of incomplete query results. The setting is disabled by default.
 
 ### Breaking change: Removal of the `row_shards` schema setting
 

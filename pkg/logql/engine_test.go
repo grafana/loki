@@ -439,7 +439,7 @@ func (e errorIteratorQuerier) SelectLogs(_ context.Context, p SelectLogParams) (
 }
 
 func (e errorIteratorQuerier) SelectSamples(_ context.Context, _ SelectSampleParams) (iter.SampleIterator, error) {
-	return iter.NewSortSampleIterator(e.samples()), nil
+	return iter.NewTimestampFirstSortSampleIterator(e.samples()), nil
 }
 
 func TestStepEvaluator_Error(t *testing.T) {
