@@ -505,6 +505,55 @@ func Test_Queue_DequeueMany(t *testing.T) {
 	}
 }
 
+func BenchmarkEnqueueDequeueCycle(b *testing.B) {
+	// Default of -query-scheduler.max-outstanding-requests-per-tenant.
+	const maxOutstandingPerTenant = 32000
+
+	queue := NewRequestQueue(maxOutstandingPerTenant, 0, noQueueLimits, NewMetrics(nil, constants.Loki, "query_scheduler"))
+	queue.RegisterConsumerConnection("consumer")
+	ctx := context.Background()
+
+	b.ReportAllocs()
+	b.ResetTimer()
+	for n := 0; n < b.N; n++ {
+		if err := queue.Enqueue("tenant", nil, "request", nil); err != nil {
+			b.Fatal(err)
+		}
+		if _, _, err := queue.Dequeue(ctx, StartIndexWithLocalQueue, "consumer"); err != nil {
+			b.Fatal(err)
+		}
+	}
+}
+
+func TestQueueIsRetainedAfterItDrains(t *testing.T) {
+	queue := NewRequestQueue(10, 0, noQueueLimits, NewMetrics(nil, constants.Loki, "query_scheduler"))
+	queue.RegisterConsumerConnection("consumer")
+
+	require.NoError(t, queue.Enqueue("tenant", nil, "request", nil))
+
+	req, _, err := queue.Dequeue(context.Background(), StartIndexWithLocalQueue, "consumer")
+	require.NoError(t, err)
+	require.Equal(t, "request", req)
+
+	// The drained queue is kept, so that the next request of the same tenant
+	// does not have to allocate a new one.
+	require.NotNil(t, queue.queues.mapping.GetByKey("tenant"))
+
+	// The retained queue is empty and must not be handed out to a consumer.
+	ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
+	defer cancel()
+	req, _, err = queue.Dequeue(ctx, StartIndexWithLocalQueue, "consumer")
+	require.ErrorIs(t, err, context.DeadlineExceeded)
+	require.Nil(t, req)
+
+	// Idle queues are removed by the periodic cleanup. The first run only
+	// resets the usage flag.
+	require.NoError(t, queue.cleanup(context.Background()))
+	require.NotNil(t, queue.queues.mapping.GetByKey("tenant"))
+	require.NoError(t, queue.cleanup(context.Background()))
+	require.Nil(t, queue.queues.mapping.GetByKey("tenant"))
+}
+
 func TestDequeueAfterEnqueueFails(t *testing.T) {
 	// Create a RequestQueue with maxOutstandingPerTenant=0
 	// This will cause all enqueue to fail

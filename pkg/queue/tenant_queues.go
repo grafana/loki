@@ -101,6 +101,10 @@ type tenantQueue struct {
 	// Seed for shuffle sharding of consumers. This seed is based on userID only and is therefore consistent
 	// between different frontends.
 	seed int64
+
+	// Set when a request is enqueued for this tenant and reset by removeIdleQueues.
+	// Empty queues that were not used since the previous cleanup are removed.
+	enqueuedSinceLastCleanup bool
 }
 
 func newTenantQueues(maxUserQueueSize int, forgetDelay time.Duration, limits Limits) *tenantQueues {
@@ -117,12 +121,36 @@ func newTenantQueues(maxUserQueueSize int, forgetDelay time.Duration, limits Lim
 	}
 }
 
-func (q *tenantQueues) hasNoTenantQueues() bool {
-	return q.mapping.Len() == 0
+// hasNoPendingRequests returns true if no tenant queue holds a request.
+// Tenant queues are kept in the mapping after they have been drained, so the
+// number of queues does not tell whether there is anything to dequeue.
+func (q *tenantQueues) hasNoPendingRequests() bool {
+	return len(q.perUserQueueLen) == 0
 }
 
 func (q *tenantQueues) deleteQueue(tenant string) {
 	q.mapping.Remove(tenant)
+}
+
+// removeIdleQueues removes all tenant queues that are empty and did not receive
+// a request since the previous call. It returns the number of removed queues.
+// Queues are kept for at least one cleanup interval so that tenants with a
+// queue depth oscillating around zero do not pay for queue re-creation.
+func (q *tenantQueues) removeIdleQueues() int {
+	removed := 0
+	for _, tenantID := range q.mapping.Keys() {
+		uq := q.mapping.GetByKey(tenantID)
+		if uq == nil {
+			continue
+		}
+		if uq.enqueuedSinceLastCleanup || uq.Len() > 0 {
+			uq.enqueuedSinceLastCleanup = false
+			continue
+		}
+		q.deleteQueue(tenantID)
+		removed++
+	}
+	return removed
 }
 
 // Returns existing or new queue for a tenant.
@@ -146,6 +174,7 @@ func (q *tenantQueues) getOrAddQueue(tenantID string, path []string) (Queue, err
 		uq.TreeQueue = newTreeQueue(q.maxUserQueueSize, tenantID)
 		q.mapping.Put(tenantID, uq)
 	}
+	uq.enqueuedSinceLastCleanup = true
 
 	consumersToSelect := validation.SmallestPositiveNonZeroIntPerTenant(
 		tenantIDs,
@@ -192,6 +221,12 @@ func (q *tenantQueues) getNextQueueForConsumer(lastUserIndex QueueIndex, consume
 			break
 		}
 		uid = tq.pos
+
+		// Drained queues are not removed right away, so they must be skipped here.
+		// Otherwise consumers would receive an empty queue instead of waiting.
+		if tq.Len() == 0 {
+			continue
+		}
 
 		if tq.consumers != nil {
 			if _, ok := tq.consumers[consumerID]; !ok {

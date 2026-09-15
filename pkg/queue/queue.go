@@ -78,7 +78,7 @@ func NewRequestQueue(maxOutstandingPerTenant int, forgetDelay time.Duration, lim
 	}
 
 	q.cond = contextCond{Cond: sync.NewCond(&q.mtx)}
-	q.Service = services.NewTimerService(forgetCheckPeriod, nil, q.forgetDisconnectedConsumers, q.stopping).WithName("request queue")
+	q.Service = services.NewTimerService(forgetCheckPeriod, nil, q.cleanup, q.stopping).WithName("request queue")
 
 	return q
 }
@@ -109,6 +109,8 @@ func (q *RequestQueue) Enqueue(tenant string, path []string, req Request, succes
 
 	queue, err := q.queues.getOrAddQueue(tenant, path)
 	if err != nil {
+		// decrement, because we already optimistically increased the counter
+		q.queues.perUserQueueLen.Dec(tenant)
 		return fmt.Errorf("no queue found: %w", err)
 	}
 
@@ -182,14 +184,14 @@ func (q *RequestQueue) dequeue(ctx context.Context, last QueueIndex, wantedQueue
 FindQueue:
 	// We need to wait if there are no tenants, or no pending requests for given querier.
 	// However, if `wantedQueueName` is not empty, the caller must not be blocked because it wants to read exactly from that queue, not others.
-	for (q.queues.hasNoTenantQueues() || querierWait) && ctx.Err() == nil && !q.stopped && wantedQueueName == anyQueue {
+	for (q.queues.hasNoPendingRequests() || querierWait) && ctx.Err() == nil && !q.stopped && wantedQueueName == anyQueue {
 		querierWait = false
 		q.cond.Wait(ctx)
 	}
 
 	// If the current consumer wants to read from specific queue, but he does not have any queues available for him,
 	// return an error to notify that queue has been already removed.
-	if q.queues.hasNoTenantQueues() && wantedQueueName != anyQueue {
+	if q.queues.hasNoPendingRequests() && wantedQueueName != anyQueue {
 		return nil, last, wantedQueueName, false, ErrQueueWasRemoved
 	}
 
@@ -228,11 +230,11 @@ FindQueue:
 		return nil, last, queue.Name(), false, ErrQueueWasRemoved
 	}
 	// Pick next request from the queue.
+	// A drained queue is not removed here, but by cleanup once it has been idle
+	// for a while. That avoids re-creating the queue for every request of a
+	// tenant whose queue depth oscillates around zero.
 	request := queue.Dequeue()
 	isTenantQueueEmpty := queue.Len() == 0
-	if isTenantQueueEmpty {
-		q.queues.deleteQueue(tenant)
-	}
 
 	q.queues.perUserQueueLen.Dec(tenant)
 	q.metrics.queueLength.WithLabelValues(tenant).Dec()
@@ -243,7 +245,8 @@ FindQueue:
 	return request, last, queue.Name(), isTenantQueueEmpty, nil
 }
 
-func (q *RequestQueue) forgetDisconnectedConsumers(_ context.Context) error {
+// cleanup forgets disconnected consumers and removes idle tenant queues.
+func (q *RequestQueue) cleanup(_ context.Context) error {
 	q.mtx.Lock()
 	defer q.mtx.Unlock()
 
@@ -253,6 +256,8 @@ func (q *RequestQueue) forgetDisconnectedConsumers(_ context.Context) error {
 		q.cond.Broadcast()
 	}
 
+	q.queues.removeIdleQueues()
+
 	return nil
 }
 
@@ -260,7 +265,7 @@ func (q *RequestQueue) stopping(_ error) error {
 	q.mtx.Lock()
 	defer q.mtx.Unlock()
 
-	for !q.queues.hasNoTenantQueues() && q.connectedConsumers.Load() > 0 {
+	for !q.queues.hasNoPendingRequests() && q.connectedConsumers.Load() > 0 {
 		q.cond.Wait(context.Background())
 	}
 
