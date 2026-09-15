@@ -191,7 +191,12 @@ func (b *BaseLabelsBuilder) ForLabels(lbs labels.Labels, hash uint64) *LabelsBui
 	return res
 }
 
-// Reset clears all current state for the builder.
+// Reset clears the per-line state of the builder.
+//
+// It deliberately keeps resultCache: Reset runs once per log line (see
+// streamPipeline.Process) and the cache exists so that lines producing the same
+// label set share one LabelsResult. A pipeline that outlives a single push must
+// also clear resultCache when it is reset; see pipeline.Reset.
 func (b *BaseLabelsBuilder) Reset() {
 	b.del = b.del[:0]
 	for k := range b.add {
