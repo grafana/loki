@@ -149,10 +149,25 @@ func NewParserHint(requiredLabelNames, groups []string, without, noLabels bool, 
 	hints = appendLabelHints(hints, metricLabelName)
 	hints = uniqueString(hints)
 
+	// ShouldContinueParsingLine re-applies a collected filter as a short-circuit once a stage
+	// sets a label, so only a filter positioned after every stage that can modify labels is safe
+	// to collect: an earlier filter already ran against whatever value the label held at its own
+	// position, which a later stage may still change. Stage.Hints().CanModifyLabels reports this
+	// per stage, so take the last position where it's true as that boundary.
+	lastMutatingIdx := -1
+	for i, s := range stages {
+		if s.Hints().CanModifyLabels {
+			lastMutatingIdx = i
+		}
+	}
+
 	// Save the names next to the filters to avoid an alloc when f.RequiredLabelNames() is called
 	var labelNames []string
 	var labelFilters []LabelFilterer
-	for _, s := range stages {
+	for i, s := range stages {
+		if i <= lastMutatingIdx {
+			continue
+		}
 		switch f := s.(type) {
 		case *BinaryLabelFilter:
 			// TODO: as long as each leg of the binary filter operates on the same (and only 1) label,
