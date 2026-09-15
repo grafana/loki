@@ -280,7 +280,7 @@ func TestGatewayClient_SimpleMode_RetriesGetShards(t *testing.T) {
 
 			wantRetries := 2
 			if maxRetries >= 0 {
-				wantRetries = min(maxRetries, wantRetries)
+				wantRetries = maxRetries
 			}
 			for numErrorsToReturn := 0; numErrorsToReturn <= wantRetries; numErrorsToReturn++ {
 				configurePool(t, client, logger, numErrorsToReturn)

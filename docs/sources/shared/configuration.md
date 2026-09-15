@@ -6972,7 +6972,6 @@ tsdb_shipper:
     # otherwise block the calling goroutine for the sum of every replica's
     # timeout. -1 preserves the existing behavior: up to 2 retries for GetShards
     # and all candidate instances for other requests. 0 disables retries.
-    # GetShards always retries at most 2 times.
     # CLI flag: -tsdb.shipper.index-gateway-client.max-retries
     [max_retries: <int> | default = -1]
 

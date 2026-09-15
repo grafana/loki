@@ -41,7 +41,7 @@ The output is incredibly verbose as it shows the entire internal config struct u
 
 Index gateway clients support two experimental limits that are disabled by default, preserving the existing request limits.
 
-Set `-tsdb.shipper.index-gateway-client.max-retries` to a non-negative value to limit the number of further instances a failed request is retried against. The default of `-1` preserves up to two retries for `GetShards` and retries across all candidate instances for other requests. A value of `0` disables retries. `GetShards` retains its ceiling of two retries even when this setting is higher. Each candidate instance is tried at most once. Enabling a retry limit bounds how long a request can occupy a goroutine when many instances are slow or unreachable.
+Set `-tsdb.shipper.index-gateway-client.max-retries` to a non-negative value to limit the number of further instances a failed request is retried against. The default of `-1` preserves up to two retries for `GetShards` and retries across all candidate instances for other requests. A value of `0` disables retries. Non-negative values apply to all requests, including `GetShards`. Each candidate instance is tried at most once. Enabling a retry limit bounds how long a request can occupy a goroutine when many instances are slow or unreachable.
 
 The candidate instances are the healthy instances the ring or DNS reports, so an instance that already failed its heartbeat is not counted against the budget. If you leave `-index-gateway.shard-size` at its default of `0`, a request can choose from the whole index gateway fleet.
 
