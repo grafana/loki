@@ -184,11 +184,32 @@ func configHandler(actualCfg any, defaultCfg any) http.HandlerFunc {
 				http.Error(w, err.Error(), status)
 				return
 			}
-			writeYAMLResponse(w, result)
+			writeConfigResponse(w, r, result)
 			return
 		}
 
-		writeYAMLResponse(w, output)
+		writeConfigResponse(w, r, output)
+	}
+}
+
+// writeConfigResponse writes v as YAML by default, or JSON if the Accept header asks for it —
+// same pattern as dskit's ring status handler. Normalized through YAML first to key by yaml
+// struct tags.
+func writeConfigResponse(w http.ResponseWriter, r *http.Request, v any) {
+	if !strings.Contains(r.Header.Get("Accept"), "application/json") {
+		writeYAMLResponse(w, v)
+		return
+	}
+
+    // Obtain the YAML representation, with its defined struct tags, to translate into JSON
+	asMap, err := yamlMarshalUnmarshal(v)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	if err := json.NewEncoder(w).Encode(asMap); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
 	}
 }
 
