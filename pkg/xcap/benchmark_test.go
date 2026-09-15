@@ -25,6 +25,49 @@ func BenchmarkCaptureUnmarshalBinary(b *testing.B) {
 	}
 }
 
+func BenchmarkCaptureUnmarshalAndMerge(b *testing.B) {
+	capture := benchmarkCapture(b)
+	data, err := capture.MarshalBinary()
+	if err != nil {
+		b.Fatal(err)
+	}
+
+	b.ReportAllocs()
+	b.SetBytes(int64(len(data)))
+	b.ResetTimer()
+	for b.Loop() {
+		decoded := &Capture{}
+		if err := decoded.UnmarshalBinary(data); err != nil {
+			b.Fatal(err)
+		}
+
+		_, destination := NewCapture(context.Background(), nil)
+		destination.Merge(nil, decoded)
+		benchmarkRegions = len(destination.Regions())
+	}
+}
+
+func BenchmarkCaptureMergeDecoded(b *testing.B) {
+	capture := benchmarkCapture(b)
+	data, err := capture.MarshalBinary()
+	if err != nil {
+		b.Fatal(err)
+	}
+
+	b.ReportAllocs()
+	b.ResetTimer()
+	for b.Loop() {
+		decoded, err := DecodeBinary(data)
+		if err != nil {
+			b.Fatal(err)
+		}
+
+		_, destination := NewCapture(context.Background(), nil)
+		destination.MergeDecoded(nil, decoded)
+		benchmarkRegions = len(destination.Regions())
+	}
+}
+
 var (
 	benchmarkRegions int
 )
