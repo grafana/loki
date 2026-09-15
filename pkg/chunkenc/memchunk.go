@@ -1134,7 +1134,7 @@ func (c *MemChunk) SampleIterator(
 	if ordered {
 		it = iter.NewNonOverlappingSampleIterator(its)
 	} else {
-		it = iter.NewSortSampleIterator(its)
+		it = iter.NewTimestampFirstSortSampleIterator(its)
 	}
 
 	return iter.NewTimeRangedSampleIterator(

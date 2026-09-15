@@ -152,7 +152,7 @@ func (q *MultiTenantQuerier) SelectSamples(ctx context.Context, params logql.Sel
 		iters[i] = NewTenantSampleIterator(iter, id)
 		i++
 	}
-	return iter.NewSortSampleIterator(iters), nil
+	return iter.NewTimestampFirstSortSampleIterator(iters), nil
 }
 
 func (q *MultiTenantQuerier) Label(ctx context.Context, req *logproto.LabelRequest) (*logproto.LabelResponse, error) {
