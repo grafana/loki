@@ -191,10 +191,10 @@ func (c CompositeStore) GetChunks(
 	return chunkIDs, fetchers, err
 }
 
-func (c CompositeStore) Stats(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) (*stats.Stats, error) {
+func (c CompositeStore) Stats(ctx context.Context, userID string, from, through model.Time, deletes []*logproto.Delete, matchers ...*labels.Matcher) (*stats.Stats, error) {
 	xs := make([]*stats.Stats, 0, len(c.stores))
 	err := c.forStores(ctx, from, through, func(innerCtx context.Context, from, through model.Time, store Store) error {
-		x, err := store.Stats(innerCtx, userID, from, through, matchers...)
+		x, err := store.Stats(innerCtx, userID, from, through, deletes, matchers...)
 		xs = append(xs, x)
 		return err
 	})
@@ -205,10 +205,10 @@ func (c CompositeStore) Stats(ctx context.Context, userID string, from, through 
 	return &res, err
 }
 
-func (c CompositeStore) Volume(ctx context.Context, userID string, from, through model.Time, limit int32, targetLabels []string, aggregateBy string, matchers ...*labels.Matcher) (*logproto.VolumeResponse, error) {
+func (c CompositeStore) Volume(ctx context.Context, userID string, from, through model.Time, limit int32, targetLabels []string, aggregateBy string, deletes []*logproto.Delete, matchers ...*labels.Matcher) (*logproto.VolumeResponse, error) {
 	volumes := make([]*logproto.VolumeResponse, 0, len(c.stores))
 	err := c.forStores(ctx, from, through, func(innerCtx context.Context, from, through model.Time, store Store) error {
-		volume, err := store.Volume(innerCtx, userID, from, through, limit, targetLabels, aggregateBy, matchers...)
+		volume, err := store.Volume(innerCtx, userID, from, through, limit, targetLabels, aggregateBy, deletes, matchers...)
 		volumes = append(volumes, volume)
 		return err
 	})

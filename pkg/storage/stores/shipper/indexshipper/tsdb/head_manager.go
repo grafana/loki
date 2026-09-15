@@ -865,20 +865,20 @@ func (t *tenantHeads) LabelValues(ctx context.Context, userID string, from, thro
 
 }
 
-func (t *tenantHeads) Stats(ctx context.Context, userID string, from, through model.Time, acc IndexStatsAccumulator, fpFilter index.FingerprintFilter, shouldIncludeChunk shouldIncludeChunk, matchers ...*labels.Matcher) error {
+func (t *tenantHeads) Stats(ctx context.Context, userID string, from, through model.Time, acc IndexStatsAccumulator, fpFilter index.FingerprintFilter, deletes []*logproto.Delete, matchers ...*labels.Matcher) error {
 	idx, ok := t.tenantIndex(userID, from, through)
 	if !ok {
 		return nil
 	}
-	return idx.Stats(ctx, userID, from, through, acc, fpFilter, shouldIncludeChunk, matchers...)
+	return idx.Stats(ctx, userID, from, through, acc, fpFilter, deletes, matchers...)
 }
 
-func (t *tenantHeads) Volume(ctx context.Context, userID string, from, through model.Time, acc VolumeAccumulator, fpFilter index.FingerprintFilter, shouldIncludeChunk shouldIncludeChunk, targetLabels []string, aggregateBy string, matchers ...*labels.Matcher) error {
+func (t *tenantHeads) Volume(ctx context.Context, userID string, from, through model.Time, acc VolumeAccumulator, fpFilter index.FingerprintFilter, deletes []*logproto.Delete, targetLabels []string, aggregateBy string, matchers ...*labels.Matcher) error {
 	idx, ok := t.tenantIndex(userID, from, through)
 	if !ok {
 		return nil
 	}
-	return idx.Volume(ctx, userID, from, through, acc, fpFilter, shouldIncludeChunk, targetLabels, aggregateBy, matchers...)
+	return idx.Volume(ctx, userID, from, through, acc, fpFilter, deletes, targetLabels, aggregateBy, matchers...)
 }
 
 func (t *tenantHeads) ForSeries(ctx context.Context, userID string, fpFilter index.FingerprintFilter, from model.Time, through model.Time, fn func(labels.Labels, model.Fingerprint, []index.ChunkMeta) (stop bool), matchers ...*labels.Matcher) error {

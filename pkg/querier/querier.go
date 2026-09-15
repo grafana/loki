@@ -113,8 +113,8 @@ type Store interface {
 	SelectSeries(ctx context.Context, req logql.SelectLogParams) ([]logproto.SeriesIdentifier, error)
 	LabelValuesForMetricName(ctx context.Context, userID string, from, through model.Time, metricName string, labelName string, matchers ...*labels.Matcher) ([]string, error)
 	LabelNamesForMetricName(ctx context.Context, userID string, from, through model.Time, metricName string, matchers ...*labels.Matcher) ([]string, error)
-	Stats(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) (*stats.Stats, error)
-	Volume(ctx context.Context, userID string, from, through model.Time, limit int32, targetLabels []string, aggregateBy string, matchers ...*labels.Matcher) (*logproto.VolumeResponse, error)
+	Stats(ctx context.Context, userID string, from, through model.Time, deletes []*logproto.Delete, matchers ...*labels.Matcher) (*stats.Stats, error)
+	Volume(ctx context.Context, userID string, from, through model.Time, limit int32, targetLabels []string, aggregateBy string, deletes []*logproto.Delete, matchers ...*labels.Matcher) (*logproto.VolumeResponse, error)
 	GetShards(
 		ctx context.Context,
 		userID string,
@@ -547,11 +547,17 @@ func (q *SingleTenantQuerier) IndexStats(ctx context.Context, req *loghttp.Range
 	ctx, cancel := context.WithDeadline(ctx, time.Now().Add(queryTimeout))
 	defer cancel()
 
+	deletes, err := deletion.DeletesForUserQuery(ctx, start, end, q.deleteGetter)
+	if err != nil {
+		level.Error(spanlogger.FromContext(ctx, q.logger)).Log("msg", "failed loading deletes for user", "err", err)
+	}
+
 	return q.store.Stats(
 		ctx,
 		userID,
 		model.TimeFromUnixNano(start.UnixNano()),
 		model.TimeFromUnixNano(end.UnixNano()),
+		deletes,
 		matchers...,
 	)
 }
@@ -624,6 +630,11 @@ func (q *SingleTenantQuerier) Volume(ctx context.Context, req *logproto.VolumeRe
 		attribute.String("aggregateBy", req.AggregateBy),
 	)
 
+	deletes, err := deletion.DeletesForUserQuery(ctx, req.From.Time(), req.Through.Time(), q.deleteGetter)
+	if err != nil {
+		level.Error(spanlogger.FromContext(ctx, q.logger)).Log("msg", "failed loading deletes for user", "err", err)
+	}
+
 	ingesterQueryInterval, storeQueryInterval := q.buildQueryIntervals(req.From.Time(), req.Through.Time())
 
 	queryIngesters := !q.cfg.QueryStoreOnly && ingesterQueryInterval != nil
@@ -650,6 +661,7 @@ func (q *SingleTenantQuerier) Volume(ctx context.Context, req *logproto.VolumeRe
 			req.Limit,
 			req.TargetLabels,
 			req.AggregateBy,
+			deletes,
 			matchers...,
 		)
 		if err != nil {
@@ -668,6 +680,7 @@ func (q *SingleTenantQuerier) Volume(ctx context.Context, req *logproto.VolumeRe
 			req.Limit,
 			req.TargetLabels,
 			req.AggregateBy,
+			deletes,
 			matchers...,
 		)
 		if err != nil {

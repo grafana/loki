@@ -17,8 +17,6 @@ type Series struct {
 	Fingerprint model.Fingerprint
 }
 
-type shouldIncludeChunk func(index.ChunkMeta) bool
-
 type Index interface {
 	Bounded
 	SetChunkFilterer(chunkFilter chunk.RequestChunkFilterer)
@@ -39,8 +37,8 @@ type Index interface {
 	Series(ctx context.Context, userID string, from, through model.Time, res []Series, fpFilter index.FingerprintFilter, matchers ...*labels.Matcher) ([]Series, error)
 	LabelNames(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) ([]string, error)
 	LabelValues(ctx context.Context, userID string, from, through model.Time, name string, matchers ...*labels.Matcher) ([]string, error)
-	Stats(ctx context.Context, userID string, from, through model.Time, acc IndexStatsAccumulator, fpFilter index.FingerprintFilter, shouldIncludeChunk shouldIncludeChunk, matchers ...*labels.Matcher) error
-	Volume(ctx context.Context, userID string, from, through model.Time, acc VolumeAccumulator, fpFilter index.FingerprintFilter, shouldIncludeChunk shouldIncludeChunk, targetLabels []string, aggregateBy string, matchers ...*labels.Matcher) error
+	Stats(ctx context.Context, userID string, from, through model.Time, acc IndexStatsAccumulator, fpFilter index.FingerprintFilter, deletes []*logproto.Delete, matchers ...*labels.Matcher) error
+	Volume(ctx context.Context, userID string, from, through model.Time, acc VolumeAccumulator, fpFilter index.FingerprintFilter, deletes []*logproto.Delete, targetLabels []string, aggregateBy string, matchers ...*labels.Matcher) error
 }
 
 type NoopIndex struct{}
@@ -62,13 +60,13 @@ func (NoopIndex) LabelValues(_ context.Context, _ string, _, _ model.Time, _ str
 	return nil, nil
 }
 
-func (NoopIndex) Stats(_ context.Context, _ string, _, _ model.Time, _ IndexStatsAccumulator, _ index.FingerprintFilter, _ shouldIncludeChunk, _ ...*labels.Matcher) error {
+func (NoopIndex) Stats(_ context.Context, _ string, _, _ model.Time, _ IndexStatsAccumulator, _ index.FingerprintFilter, _ []*logproto.Delete, _ ...*labels.Matcher) error {
 	return nil
 }
 
 func (NoopIndex) SetChunkFilterer(_ chunk.RequestChunkFilterer) {}
 
-func (NoopIndex) Volume(_ context.Context, _ string, _, _ model.Time, _ VolumeAccumulator, _ index.FingerprintFilter, _ shouldIncludeChunk, _ []string, _ string, _ ...*labels.Matcher) error {
+func (NoopIndex) Volume(_ context.Context, _ string, _, _ model.Time, _ VolumeAccumulator, _ index.FingerprintFilter, _ []*logproto.Delete, _ []string, _ string, _ ...*labels.Matcher) error {
 	return nil
 }
 

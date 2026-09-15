@@ -21,6 +21,7 @@ import (
 	shipperindex "github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/index"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/index"
 	"github.com/grafana/loki/v3/pkg/util"
+	util_deletion "github.com/grafana/loki/v3/pkg/util/deletion"
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
 )
 
@@ -355,7 +356,12 @@ func (i *TSDBIndex) Identifier(string) SingleTenantTSDBIdentifier {
 	}
 }
 
-func (i *TSDBIndex) Stats(ctx context.Context, _ string, from, through model.Time, acc IndexStatsAccumulator, fpFilter index.FingerprintFilter, _ shouldIncludeChunk, matchers ...*labels.Matcher) error {
+func (i *TSDBIndex) Stats(ctx context.Context, _ string, from, through model.Time, acc IndexStatsAccumulator, fpFilter index.FingerprintFilter, deletes []*logproto.Delete, matchers ...*labels.Matcher) error {
+	timeRangeDeletes, err := util_deletion.TimeRangeDeletes(deletes)
+	if err != nil {
+		return err
+	}
+
 	return i.forPostings(ctx, fpFilter, from, through, matchers, func(p index.Postings) error {
 		// TODO(owen-d): use pool
 		var ls labels.Labels
@@ -370,11 +376,32 @@ func (i *TSDBIndex) Stats(ctx context.Context, _ string, from, through model.Tim
 			}
 		}
 
+		var chks []index.ChunkMeta
+		if len(timeRangeDeletes) > 0 {
+			chks = ChunkMetasPool.Get()
+			defer func() { ChunkMetasPool.Put(chks) }()
+		}
+
 		scan := i.reader.NewSeriesScan()
 		defer scan.Close()
 
 		for p.Next() {
-			fp, stats, err := scan.ChunkStats(p.At(), int64(from), int64(through), &ls, by)
+			var (
+				fp    uint64
+				stats index.ChunkStats
+				err   error
+			)
+			if len(timeRangeDeletes) == 0 {
+				fp, stats, err = scan.ChunkStats(p.At(), int64(from), int64(through), &ls, by)
+			} else {
+				// Deletes need the full label set to be matched against the
+				// stream and per-chunk bounds to prorate partially deleted
+				// chunks, so bypass the pre-aggregated chunk stats.
+				fp, err = scan.Series(p.At(), int64(from), int64(through), &ls, &chks)
+				if err == nil {
+					stats = chunkStatsWithDeletes(chks, from, through, util_deletion.DeletedIntervals(timeRangeDeletes, ls))
+				}
+			}
 			if err != nil {
 				return err
 			}
@@ -424,13 +451,18 @@ func (i *TSDBIndex) Volume(
 	from, through model.Time,
 	acc VolumeAccumulator,
 	fpFilter index.FingerprintFilter,
-	_ shouldIncludeChunk,
+	deletes []*logproto.Delete,
 	targetLabels []string,
 	aggregateBy string,
 	matchers ...*labels.Matcher,
 ) error {
 	ctx, sp := tracer.Start(ctx, "Index.Volume")
 	defer sp.End()
+
+	timeRangeDeletes, err := util_deletion.TimeRangeDeletes(deletes)
+	if err != nil {
+		return err
+	}
 
 	labelsToMatch, matchers, includeAll := util.PrepareLabelsAndMatchers(targetLabels, matchers, TenantLabel)
 
@@ -462,8 +494,29 @@ func (i *TSDBIndex) Volume(
 		scan := i.reader.NewSeriesScan()
 		defer scan.Close()
 
+		var chks []index.ChunkMeta
+		if len(timeRangeDeletes) > 0 {
+			chks = ChunkMetasPool.Get()
+			defer func() { ChunkMetasPool.Put(chks) }()
+		}
+
 		for p.Next() {
-			fp, stats, err := scan.ChunkStats(p.At(), int64(from), int64(through), &ls, by)
+			var (
+				fp    uint64
+				stats index.ChunkStats
+				err   error
+			)
+			if len(timeRangeDeletes) == 0 {
+				fp, stats, err = scan.ChunkStats(p.At(), int64(from), int64(through), &ls, by)
+			} else {
+				// Deletes need the full label set to be matched against the
+				// stream and per-chunk bounds to prorate partially deleted
+				// chunks, so bypass the pre-aggregated chunk stats.
+				fp, err = scan.Series(p.At(), int64(from), int64(through), &ls, &chks)
+				if err == nil {
+					stats = chunkStatsWithDeletes(chks, from, through, util_deletion.DeletedIntervals(timeRangeDeletes, ls))
+				}
+			}
 			if err != nil {
 				return fmt.Errorf("series volume: %w", err)
 			}
@@ -529,6 +582,20 @@ func (i *TSDBIndex) Volume(
 		}
 		return p.Err()
 	})
+}
+
+// chunkStatsWithDeletes aggregates chunk stats for a series, prorating away
+// the parts of each chunk covered by deleted time ranges.
+func chunkStatsWithDeletes(chks []index.ChunkMeta, from, through model.Time, deleted []util_deletion.Interval) (res index.ChunkStats) {
+	fromNs, throughNs := int64(from)*int64(time.Millisecond), int64(through)*int64(time.Millisecond)
+	for j := range chks {
+		chk := &chks[j]
+		factor := util_deletion.UndeletedFactor(fromNs, throughNs, chk.MinTime*int64(time.Millisecond), chk.MaxTime*int64(time.Millisecond), deleted)
+		if factor > 0 {
+			res.AddChunkWithFactor(chk, factor)
+		}
+	}
+	return res
 }
 
 func cloneStringList(strs []string) []string {

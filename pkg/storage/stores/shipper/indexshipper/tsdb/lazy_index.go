@@ -66,20 +66,20 @@ func (f LazyIndex) LabelValues(ctx context.Context, userID string, from, through
 	return i.LabelValues(ctx, userID, from, through, name, matchers...)
 }
 
-func (f LazyIndex) Stats(ctx context.Context, userID string, from, through model.Time, acc IndexStatsAccumulator, fpFilter index.FingerprintFilter, shouldIncludeChunk shouldIncludeChunk, matchers ...*labels.Matcher) error {
+func (f LazyIndex) Stats(ctx context.Context, userID string, from, through model.Time, acc IndexStatsAccumulator, fpFilter index.FingerprintFilter, deletes []*logproto.Delete, matchers ...*labels.Matcher) error {
 	i, err := f()
 	if err != nil {
 		return err
 	}
-	return i.Stats(ctx, userID, from, through, acc, fpFilter, shouldIncludeChunk, matchers...)
+	return i.Stats(ctx, userID, from, through, acc, fpFilter, deletes, matchers...)
 }
 
-func (f LazyIndex) Volume(ctx context.Context, userID string, from, through model.Time, acc VolumeAccumulator, fpFilter index.FingerprintFilter, shouldIncludeChunk shouldIncludeChunk, targetLabels []string, aggregateBy string, matchers ...*labels.Matcher) error {
+func (f LazyIndex) Volume(ctx context.Context, userID string, from, through model.Time, acc VolumeAccumulator, fpFilter index.FingerprintFilter, deletes []*logproto.Delete, targetLabels []string, aggregateBy string, matchers ...*labels.Matcher) error {
 	i, err := f()
 	if err != nil {
 		return err
 	}
-	return i.Volume(ctx, userID, from, through, acc, fpFilter, shouldIncludeChunk, targetLabels, aggregateBy, matchers...)
+	return i.Volume(ctx, userID, from, through, acc, fpFilter, deletes, targetLabels, aggregateBy, matchers...)
 }
 
 func (f LazyIndex) ForSeries(ctx context.Context, userID string, fpFilter index.FingerprintFilter, from model.Time, through model.Time, fn func(labels.Labels, model.Fingerprint, []index.ChunkMeta) (stop bool), matchers ...*labels.Matcher) error {

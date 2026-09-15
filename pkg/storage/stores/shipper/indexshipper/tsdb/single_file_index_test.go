@@ -319,6 +319,7 @@ func TestTSDBIndex_Stats(t *testing.T) {
 		name        string
 		from        model.Time
 		through     model.Time
+		deletes     []*logproto.Delete
 		expected    stats.Stats
 		expectedErr error
 	}{
@@ -366,12 +367,68 @@ func TestTSDBIndex_Stats(t *testing.T) {
 				Entries: 10 + 20*0.5 + 30 + 40*0.5,
 			},
 		},
+		{
+			name:    "delete covering one stream entirely",
+			from:    0,
+			through: 20,
+			deletes: []*logproto.Delete{
+				{Selector: `{fizz="buzz"}`, Start: 0, End: int64(20 * time.Millisecond)},
+			},
+			expected: stats.Stats{
+				Streams: 1,
+				Chunks:  2,
+				Bytes:   (30 + 40) * 1024,
+				Entries: 30 + 40,
+			},
+		},
+		{
+			name:    "delete covering the first chunk of both streams",
+			from:    0,
+			through: 20,
+			deletes: []*logproto.Delete{
+				{Selector: `{foo="bar"}`, Start: 0, End: int64(10 * time.Millisecond)},
+			},
+			expected: stats.Stats{
+				Streams: 2,
+				Chunks:  2,
+				Bytes:   (20 + 40) * 1024,
+				Entries: 20 + 40,
+			},
+		},
+		{
+			name:    "delete partially covering the first chunk of both streams",
+			from:    0,
+			through: 20,
+			deletes: []*logproto.Delete{
+				{Selector: `{foo="bar"}`, Start: 0, End: int64(5 * time.Millisecond)},
+			},
+			expected: stats.Stats{
+				Streams: 2,
+				Chunks:  4,
+				Bytes:   (10*0.5 + 20 + 30*0.5 + 40) * 1024,
+				Entries: 10*0.5 + 20 + 30*0.5 + 40,
+			},
+		},
+		{
+			name:    "delete with a line filter is ignored",
+			from:    0,
+			through: 20,
+			deletes: []*logproto.Delete{
+				{Selector: `{foo="bar"} |= "some line"`, Start: 0, End: int64(20 * time.Millisecond)},
+			},
+			expected: stats.Stats{
+				Streams: 2,
+				Chunks:  4,
+				Bytes:   (10 + 20 + 30 + 40) * 1024,
+				Entries: 10 + 20 + 30 + 40,
+			},
+		},
 	}
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			acc := &stats.Stats{}
-			err := tsdbIndex.Stats(context.Background(), "fake", tc.from, tc.through, acc, nil, nil, labels.MustNewMatcher(labels.MatchEqual, "foo", "bar"))
+			err := tsdbIndex.Stats(context.Background(), "fake", tc.from, tc.through, acc, nil, tc.deletes, labels.MustNewMatcher(labels.MatchEqual, "foo", "bar"))
 			require.Equal(t, tc.expectedErr, err)
 			require.Equal(t, tc.expected, *acc)
 		})
@@ -755,6 +812,116 @@ func TestTSDBIndex_Volume(t *testing.T) {
 			// todo(cyriltovena): tests with chunk filterer
 		})
 	})
+}
+
+func TestTSDBIndex_VolumeWithDeletes(t *testing.T) {
+	now := time.Now().Truncate(time.Millisecond)
+	t1 := now.Add(-time.Hour)
+	t2 := now.Add(-time.Minute)
+
+	series := []LoadableSeries{
+		{
+			Labels: mustParseLabels(`{foo="bar", fizz="buzz", __loki_tenant__="fake"}`),
+			Chunks: []index.ChunkMeta{
+				{
+					MinTime:  t1.UnixMilli(),
+					MaxTime:  t1.Add(30 * time.Minute).UnixMilli(),
+					Checksum: 1,
+					Entries:  10,
+					KB:       10,
+				},
+				{
+					MinTime:  t1.Add(30 * time.Minute).UnixMilli(),
+					MaxTime:  t2.UnixMilli(),
+					Checksum: 2,
+					Entries:  20,
+					KB:       20,
+				},
+			},
+		},
+		{
+			Labels: mustParseLabels(`{foo="bar", fizz="fizz", __loki_tenant__="fake"}`),
+			Chunks: []index.ChunkMeta{
+				{
+					MinTime:  t1.UnixMilli(),
+					MaxTime:  t1.Add(30 * time.Minute).UnixMilli(),
+					Checksum: 3,
+					Entries:  30,
+					KB:       30,
+				},
+				{
+					MinTime:  t1.Add(30 * time.Minute).UnixMilli(),
+					MaxTime:  t2.UnixMilli(),
+					Checksum: 4,
+					Entries:  40,
+					KB:       40,
+				},
+			},
+		},
+	}
+
+	tempDir := t.TempDir()
+	tsdbIndex := BuildIndex(t, tempDir, series)
+
+	from := model.TimeFromUnixNano(t1.UnixNano())
+	through := model.TimeFromUnixNano(t2.UnixNano())
+	matcher := labels.MustNewMatcher(labels.MatchEqual, "", "")
+
+	for _, tc := range []struct {
+		name     string
+		deletes  []*logproto.Delete
+		expected []logproto.Volume
+	}{
+		{
+			name: "delete covering one stream entirely",
+			deletes: []*logproto.Delete{
+				{Selector: `{fizz="buzz"}`, Start: t1.UnixNano(), End: t2.UnixNano()},
+			},
+			expected: []logproto.Volume{
+				{Name: `{fizz="fizz", foo="bar"}`, Volume: (30 + 40) * 1024},
+			},
+		},
+		{
+			name: "delete covering the first chunk of both streams",
+			deletes: []*logproto.Delete{
+				{Selector: `{foo="bar"}`, Start: t1.UnixNano(), End: t1.Add(30 * time.Minute).UnixNano()},
+			},
+			expected: []logproto.Volume{
+				{Name: `{fizz="fizz", foo="bar"}`, Volume: 40 * 1024},
+				{Name: `{fizz="buzz", foo="bar"}`, Volume: 20 * 1024},
+			},
+		},
+		{
+			name: "delete partially covering the first chunk of both streams",
+			deletes: []*logproto.Delete{
+				{Selector: `{foo="bar"}`, Start: t1.UnixNano(), End: t1.Add(15 * time.Minute).UnixNano()},
+			},
+			expected: []logproto.Volume{
+				{Name: `{fizz="fizz", foo="bar"}`, Volume: (30*0.5 + 40) * 1024},
+				{Name: `{fizz="buzz", foo="bar"}`, Volume: (10*0.5 + 20) * 1024},
+			},
+		},
+		{
+			name: "delete with a line filter is ignored",
+			deletes: []*logproto.Delete{
+				{Selector: `{foo="bar"} |= "some line"`, Start: t1.UnixNano(), End: t2.UnixNano()},
+			},
+			expected: []logproto.Volume{
+				{Name: `{fizz="fizz", foo="bar"}`, Volume: (30 + 40) * 1024},
+				{Name: `{fizz="buzz", foo="bar"}`, Volume: (10 + 20) * 1024},
+			},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			acc := seriesvolume.NewAccumulator(10, 10)
+			err := tsdbIndex.Volume(context.Background(), "fake", from, through, acc, nil, tc.deletes, nil, seriesvolume.Series, matcher)
+			require.NoError(t, err)
+			require.Equal(t, &logproto.VolumeResponse{
+				Volumes: tc.expected,
+				Limit:   10,
+			}, acc.Volumes())
+		})
+	}
 }
 
 func BenchmarkTSDBIndex_Volume(b *testing.B) {

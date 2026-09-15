@@ -186,7 +186,7 @@ func (c *IndexClient) LabelNamesForMetricName(ctx context.Context, userID string
 	return c.idx.LabelNames(ctx, userID, from, through, matchers...)
 }
 
-func (c *IndexClient) Stats(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) (*stats.Stats, error) {
+func (c *IndexClient) Stats(ctx context.Context, userID string, from, through model.Time, deletes []*logproto.Delete, matchers ...*labels.Matcher) (*stats.Stats, error) {
 	matchers, shard, err := cleanMatchers(matchers...)
 	if err != nil {
 		return nil, err
@@ -223,7 +223,7 @@ func (c *IndexClient) Stats(ctx context.Context, userID string, from, through mo
 	}
 
 	for _, interval := range intervals {
-		if err := c.idx.Stats(ctx, userID, interval.Start, interval.End, acc, shard, nil, matchers...); err != nil {
+		if err := c.idx.Stats(ctx, userID, interval.Start, interval.End, acc, shard, deletes, matchers...); err != nil {
 			return nil, err
 		}
 	}
@@ -250,7 +250,7 @@ func (c *IndexClient) Stats(ctx context.Context, userID string, from, through mo
 	return &res, nil
 }
 
-func (c *IndexClient) Volume(ctx context.Context, userID string, from, through model.Time, limit int32, targetLabels []string, aggregateBy string, matchers ...*labels.Matcher) (*logproto.VolumeResponse, error) {
+func (c *IndexClient) Volume(ctx context.Context, userID string, from, through model.Time, limit int32, targetLabels []string, aggregateBy string, deletes []*logproto.Delete, matchers ...*labels.Matcher) (*logproto.VolumeResponse, error) {
 	ctx, sp := tracer.Start(ctx, "IndexClient.Volume")
 	defer sp.End()
 
@@ -270,7 +270,7 @@ func (c *IndexClient) Volume(ctx context.Context, userID string, from, through m
 
 	acc := seriesvolume.NewAccumulator(limit, c.limits.VolumeMaxSeries(userID))
 	for _, interval := range intervals {
-		if err := c.idx.Volume(ctx, userID, interval.Start, interval.End, acc, shard, nil, targetLabels, aggregateBy, matchers...); err != nil {
+		if err := c.idx.Volume(ctx, userID, interval.Start, interval.End, acc, shard, deletes, targetLabels, aggregateBy, matchers...); err != nil {
 			return nil, err
 		}
 	}

@@ -604,7 +604,7 @@ func TestIngesterQuerier_Volume(t *testing.T) {
 		ingesterQuerier, err := newTestIngesterQuerier(newReadRingMock([]ring.InstanceDesc{mockInstanceDesc("1.1.1.1", ring.ACTIVE), mockInstanceDesc("3.3.3.3", ring.ACTIVE)}, 0), ingesterClient)
 		require.NoError(t, err)
 
-		volumes, err := ingesterQuerier.Volume(context.Background(), "", 0, 1, 10, nil, "labels")
+		volumes, err := ingesterQuerier.Volume(context.Background(), "", 0, 1, 10, nil, "labels", nil)
 		require.NoError(t, err)
 
 		require.Equal(t, []logproto.Volume{
@@ -619,7 +619,7 @@ func TestIngesterQuerier_Volume(t *testing.T) {
 		ingesterQuerier, err := newTestIngesterQuerier(newReadRingMock([]ring.InstanceDesc{mockInstanceDesc("1.1.1.1", ring.ACTIVE), mockInstanceDesc("3.3.3.3", ring.ACTIVE)}, 0), ingesterClient)
 		require.NoError(t, err)
 
-		volumes, err := ingesterQuerier.Volume(context.Background(), "", 0, 1, 10, nil, "labels")
+		volumes, err := ingesterQuerier.Volume(context.Background(), "", 0, 1, 10, nil, "labels", nil)
 		require.NoError(t, err)
 
 		require.Equal(t, []logproto.Volume(nil), volumes.Volumes)

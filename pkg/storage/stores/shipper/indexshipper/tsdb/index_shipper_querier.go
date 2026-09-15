@@ -127,22 +127,22 @@ func (i *indexShipperQuerier) LabelValues(ctx context.Context, userID string, fr
 	return idx.LabelValues(ctx, userID, from, through, name, matchers...)
 }
 
-func (i *indexShipperQuerier) Stats(ctx context.Context, userID string, from, through model.Time, acc IndexStatsAccumulator, fpFilter tsdbindex.FingerprintFilter, shouldIncludeChunk shouldIncludeChunk, matchers ...*labels.Matcher) error {
+func (i *indexShipperQuerier) Stats(ctx context.Context, userID string, from, through model.Time, acc IndexStatsAccumulator, fpFilter tsdbindex.FingerprintFilter, deletes []*logproto.Delete, matchers ...*labels.Matcher) error {
 	idx, err := i.indices(ctx, from, through, userID)
 	if err != nil {
 		return err
 	}
 
-	return idx.Stats(ctx, userID, from, through, acc, fpFilter, shouldIncludeChunk, matchers...)
+	return idx.Stats(ctx, userID, from, through, acc, fpFilter, deletes, matchers...)
 }
 
-func (i *indexShipperQuerier) Volume(ctx context.Context, userID string, from, through model.Time, acc VolumeAccumulator, fpFilter tsdbindex.FingerprintFilter, shouldIncludeChunk shouldIncludeChunk, targetLabels []string, aggregateBy string, matchers ...*labels.Matcher) error {
+func (i *indexShipperQuerier) Volume(ctx context.Context, userID string, from, through model.Time, acc VolumeAccumulator, fpFilter tsdbindex.FingerprintFilter, deletes []*logproto.Delete, targetLabels []string, aggregateBy string, matchers ...*labels.Matcher) error {
 	idx, err := i.indices(ctx, from, through, userID)
 	if err != nil {
 		return err
 	}
 
-	return idx.Volume(ctx, userID, from, through, acc, fpFilter, shouldIncludeChunk, targetLabels, aggregateBy, matchers...)
+	return idx.Volume(ctx, userID, from, through, acc, fpFilter, deletes, targetLabels, aggregateBy, matchers...)
 }
 
 func (i *indexShipperQuerier) ForSeries(ctx context.Context, userID string, fpFilter tsdbindex.FingerprintFilter, from, through model.Time, fn func(labels.Labels, model.Fingerprint, []tsdbindex.ChunkMeta) (stop bool), matchers ...*labels.Matcher) error {
