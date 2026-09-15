@@ -374,8 +374,8 @@ func (s *GatewayClient) GetVolume(ctx context.Context, in *logproto.VolumeReques
 
 func (s *GatewayClient) GetShards(ctx context.Context, in *logproto.ShardsRequest) (res *logproto.ShardsResponse, err error) {
 	maxRetries := s.cfg.MaxRetries
-	// Keep the existing GetShards ceiling when the general retry budget is higher.
-	if maxRetries < 0 || maxRetries > 2 {
+	if maxRetries < 0 {
+		// Keep the legacy GetShards ceiling when disabled
 		maxRetries = 2
 	}
 	if err := s.poolDoWithMaxRetries(

@@ -19,7 +19,7 @@ func TestConfig_Validate(t *testing.T) {
 		},
 		{
 			name:    "index gateway client is validated",
-			mutate:  func(cfg *Config) { cfg.IndexGatewayClientConfig.MaxRetries = -1 },
+			mutate:  func(cfg *Config) { cfg.IndexGatewayClientConfig.MaxRetries = -2 },
 			wantErr: "shipper.index-gateway-client: index gateway client max-retries",
 		},
 		{
