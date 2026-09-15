@@ -65,7 +65,7 @@ func _fcntlSizeHint(tls *libc.TLS, pFile uintptr, nByte Ti64) (r int32) {
 		if (*TunixFile)(unsafe.Pointer(pFile)).FszChunk <= 0 {
 			if _robust_ftruncate(tls, (*TunixFile)(unsafe.Pointer(pFile)).Fh, nByte) != 0 {
 				_storeLastErrno(tls, pFile, **(**int32)(__ccgo_up(libc.X__errno_location(tls))))
-				return _unixLogErrorAtLine(tls, libc.Int32FromInt32(SQLITE_IOERR)|libc.Int32FromInt32(6)<<libc.Int32FromInt32(8), __ccgo_ts+3578, (*TunixFile)(unsafe.Pointer(pFile)).FzPath, int32(44297))
+				return _unixLogErrorAtLine(tls, libc.Int32FromInt32(SQLITE_IOERR)|libc.Int32FromInt32(6)<<libc.Int32FromInt32(8), __ccgo_ts+3578, (*TunixFile)(unsafe.Pointer(pFile)).FzPath, int32(44442))
 			}
 		}
 		rc = _unixMapfile(tls, pFile, nByte)
@@ -360,7 +360,7 @@ func _unixOpenSharedMemory(tls *libc.TLS, pDbFd uintptr) (r int32) {
 		v1 = pShmNode + 1*96
 		(*TunixShmNode)(unsafe.Pointer(pShmNode)).FzFilename = v1
 		zShm = v1
-		Xsqlite3_snprintf(tls, nShmFilename, zShm, __ccgo_ts+3958, libc.VaList(bp+152, zBasePath))
+		Xsqlite3_snprintf(tls, nShmFilename, zShm, __ccgo_ts+3982, libc.VaList(bp+152, zBasePath))
 		(*TunixShmNode)(unsafe.Pointer(pShmNode)).FhShm = -int32(1)
 		(*TunixInodeInfo)(unsafe.Pointer((*TunixFile)(unsafe.Pointer(pDbFd)).FpInode)).FpShmNode = pShmNode
 		(*TunixShmNode)(unsafe.Pointer(pShmNode)).FpInode = (*TunixFile)(unsafe.Pointer(pDbFd)).FpInode
@@ -372,13 +372,13 @@ func _unixOpenSharedMemory(tls *libc.TLS, pDbFd uintptr) (r int32) {
 			}
 		}
 		if libc.Int32FromUint8((*TunixInodeInfo)(unsafe.Pointer(pInode)).FbProcessLock) == 0 {
-			if 0 == Xsqlite3_uri_boolean(tls, (*TunixFile)(unsafe.Pointer(pDbFd)).FzPath, __ccgo_ts+3965, 0) {
+			if 0 == Xsqlite3_uri_boolean(tls, (*TunixFile)(unsafe.Pointer(pDbFd)).FzPath, __ccgo_ts+3989, 0) {
 				(*TunixShmNode)(unsafe.Pointer(pShmNode)).FhShm = _robust_open(tls, zShm, libc.Int32FromInt32(O_RDWR)|libc.Int32FromInt32(O_CREAT)|libc.Int32FromInt32(O_NOFOLLOW), (**(**Tstat)(__ccgo_up(bp))).Fst_mode&libc.Uint32FromInt32(0777))
 			}
 			if (*TunixShmNode)(unsafe.Pointer(pShmNode)).FhShm < 0 {
 				(*TunixShmNode)(unsafe.Pointer(pShmNode)).FhShm = _robust_open(tls, zShm, libc.Int32FromInt32(O_RDONLY)|libc.Int32FromInt32(O_NOFOLLOW), (**(**Tstat)(__ccgo_up(bp))).Fst_mode&libc.Uint32FromInt32(0777))
 				if (*TunixShmNode)(unsafe.Pointer(pShmNode)).FhShm < 0 {
-					rc = _unixLogErrorAtLine(tls, _sqlite3CantopenError(tls, int32(45237)), __ccgo_ts+3542, zShm, int32(45237))
+					rc = _unixLogErrorAtLine(tls, _sqlite3CantopenError(tls, int32(45382)), __ccgo_ts+3542, zShm, int32(45382))
 					goto shm_open_err
 				}
 				(*TunixShmNode)(unsafe.Pointer(pShmNode)).FisReadonly = uint8(1)
@@ -501,7 +501,7 @@ func _unixShmMap(tls *libc.TLS, fd uintptr, iRegion int32, szRegion int32, bExte
 						**(**int32)(__ccgo_up(bp + 144)) = 0
 						if _seekAndWriteFd(tls, (*TunixShmNode)(unsafe.Pointer(pShmNode)).FhShm, iPg*int64(_pgsz)+int64(_pgsz)-int64(1), __ccgo_ts+1704, int32(1), bp+144) != int32(1) {
 							zFile = (*TunixShmNode)(unsafe.Pointer(pShmNode)).FzFilename
-							rc = _unixLogErrorAtLine(tls, libc.Int32FromInt32(SQLITE_IOERR)|libc.Int32FromInt32(19)<<libc.Int32FromInt32(8), __ccgo_ts+3613, zFile, int32(45381))
+							rc = _unixLogErrorAtLine(tls, libc.Int32FromInt32(SQLITE_IOERR)|libc.Int32FromInt32(19)<<libc.Int32FromInt32(8), __ccgo_ts+3613, zFile, int32(45526))
 							goto shmpage_out
 						}
 						goto _1
@@ -529,7 +529,7 @@ func _unixShmMap(tls *libc.TLS, fd uintptr, iRegion int32, szRegion int32, bExte
 				}
 				pMem = (*(*func(*libc.TLS, uintptr, Tsize_t, int32, int32, int32, Toff_t) uintptr)(unsafe.Pointer(&struct{ uintptr }{_aSyscall[int32(22)].FpCurrent})))(tls, uintptr(0), libc.Uint64FromInt64(nMap), v2, int32(MAP_SHARED), (*TunixShmNode)(unsafe.Pointer(pShmNode)).FhShm, int64(int64(szRegion)*libc.Int64FromUint16((*TunixShmNode)(unsafe.Pointer(pShmNode)).FnRegion)))
 				if pMem == uintptr(-libc.Int32FromInt32(1)) {
-					rc = _unixLogErrorAtLine(tls, libc.Int32FromInt32(SQLITE_IOERR)|libc.Int32FromInt32(21)<<libc.Int32FromInt32(8), __ccgo_ts+3700, (*TunixShmNode)(unsafe.Pointer(pShmNode)).FzFilename, int32(45408))
+					rc = _unixLogErrorAtLine(tls, libc.Int32FromInt32(SQLITE_IOERR)|libc.Int32FromInt32(21)<<libc.Int32FromInt32(8), __ccgo_ts+3700, (*TunixShmNode)(unsafe.Pointer(pShmNode)).FzFilename, int32(45553))
 					goto shmpage_out
 				}
 			} else {
@@ -622,19 +622,19 @@ func _verifyDbFile(tls *libc.TLS, pFile uintptr) {
 	}
 	rc = (*(*func(*libc.TLS, int32, uintptr) int32)(unsafe.Pointer(&struct{ uintptr }{_aSyscall[int32(5)].FpCurrent})))(tls, (*TunixFile)(unsafe.Pointer(pFile)).Fh, bp)
 	if rc != 0 {
-		Xsqlite3_log(tls, int32(SQLITE_WARNING), __ccgo_ts+3836, libc.VaList(bp+152, (*TunixFile)(unsafe.Pointer(pFile)).FzPath))
-		return
-	}
-	if (**(**Tstat)(__ccgo_up(bp))).Fst_nlink == uint64(0) {
 		Xsqlite3_log(tls, int32(SQLITE_WARNING), __ccgo_ts+3860, libc.VaList(bp+152, (*TunixFile)(unsafe.Pointer(pFile)).FzPath))
 		return
 	}
+	if (**(**Tstat)(__ccgo_up(bp))).Fst_nlink == uint64(0) {
+		Xsqlite3_log(tls, int32(SQLITE_WARNING), __ccgo_ts+3884, libc.VaList(bp+152, (*TunixFile)(unsafe.Pointer(pFile)).FzPath))
+		return
+	}
 	if (**(**Tstat)(__ccgo_up(bp))).Fst_nlink > uint64(1) {
-		Xsqlite3_log(tls, int32(SQLITE_WARNING), __ccgo_ts+3889, libc.VaList(bp+152, (*TunixFile)(unsafe.Pointer(pFile)).FzPath))
+		Xsqlite3_log(tls, int32(SQLITE_WARNING), __ccgo_ts+3913, libc.VaList(bp+152, (*TunixFile)(unsafe.Pointer(pFile)).FzPath))
 		return
 	}
 	if _fileHasMoved(tls, pFile) != 0 {
-		Xsqlite3_log(tls, int32(SQLITE_WARNING), __ccgo_ts+3916, libc.VaList(bp+152, (*TunixFile)(unsafe.Pointer(pFile)).FzPath))
+		Xsqlite3_log(tls, int32(SQLITE_WARNING), __ccgo_ts+3940, libc.VaList(bp+152, (*TunixFile)(unsafe.Pointer(pFile)).FzPath))
 		return
 	}
 }

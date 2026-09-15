@@ -21,8 +21,10 @@ import (
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql"
 	lokilog "github.com/grafana/loki/v3/pkg/logql/log"
+	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/v3/pkg/querier/astmapper"
+	"github.com/grafana/loki/v3/pkg/querier/plan"
 	"github.com/grafana/loki/v3/pkg/storage/chunk"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/cache"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client"
@@ -233,7 +235,7 @@ func (s *LokiStore) init() error {
 		if err != nil {
 			return err
 		}
-		f, err := fetcher.New(s.chunksCache, s.chunksCacheL2, s.storeCfg.ChunkCacheStubs(), s.schemaCfg, chunkClient, s.storeCfg.L2ChunkCacheHandoff, s.storeCfg.SkipQueryWritebackOlderThan)
+		f, err := fetcher.New(s.chunksCache, s.chunksCacheL2, s.storeCfg.ChunkCacheStubs(), s.schemaCfg, chunkClient, s.storeCfg.L2ChunkCacheHandoff, s.storeCfg.SkipQueryWritebackOlderThan, s.storeCfg.PropagateChunkFetchErrors)
 		if err != nil {
 			return err
 		}
@@ -500,12 +502,24 @@ func (s *LokiStore) SelectSeries(ctx context.Context, req logql.SelectLogParams)
 	if err != nil {
 		return nil, err
 	}
+	// decodeReq resolves matchers from Plan.AST only. Callers that have not been
+	// migrated yet set the deprecated Selector field instead, so parse it into a plan.
+	if (req.Plan == nil || req.Plan.AST == nil) && req.Selector != "" {
+		expr, err := syntax.ParseExpr(req.Selector)
+		if err != nil {
+			return nil, err
+		}
+		cpy := *req.QueryRequest
+		cpy.Plan = &plan.QueryPlan{AST: expr}
+		req = logql.SelectLogParams{QueryRequest: &cpy}
+	}
+
 	var from, through model.Time
 	var matchers []*labels.Matcher
 
 	// The Loki parser doesn't allow for an empty label matcher but for the Series API
 	// we allow this to select all series in the time range.
-	if req.Selector == "" {
+	if req.Plan == nil || req.Plan.AST == nil {
 		from, through = util.RoundToMilliseconds(req.Start, req.End)
 		nameLabelMatcher, err := labels.NewMatcher(labels.MatchEqual, model.MetricNameLabel, "logs")
 		if err != nil {
@@ -637,7 +651,7 @@ func (s *LokiStore) SelectSamples(ctx context.Context, req logql.SelectSamplePar
 		chunkFilterer = s.chunkFilterer.ForRequest(ctx)
 	}
 
-	return newSampleBatchIterator(
+	return newTimestampFirstSampleBatchIterator(
 		ctx,
 		s.schemaCfg,
 		s.chunkMetrics,

@@ -38,6 +38,11 @@ func (dl *DropLabels) Process(_ int64, line []byte, lbls *LabelsBuilder) ([]byte
 	return line, true
 }
 
+// Hints implements Stage.
+func (dl *DropLabels) Hints() StageHints {
+	return StageHints{CanModifyLabels: true}
+}
+
 func (dl *DropLabels) RequiredLabelNames() []string { return []string{} }
 
 func isErrorLabel(name string) bool {

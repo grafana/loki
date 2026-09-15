@@ -358,6 +358,11 @@ func (Codec) QueryRequestUnwrap(ctx context.Context, req *QueryRequest) (queryra
 		ctx = httpreq.InjectHeader(ctx, httpreq.LokiDisablePipelineWrappersHeader, disableWrappers)
 	}
 
+	// Add response encoding flags
+	if encodingFlags, ok := req.Metadata[httpreq.LokiEncodingFlagsHeader]; ok {
+		ctx = httpreq.InjectHeader(ctx, httpreq.LokiEncodingFlagsHeader, encodingFlags)
+	}
+
 	// Add limits
 	if encodedLimits, ok := req.Metadata[querylimits.HTTPHeaderQueryLimitsKey]; ok {
 		limits, err := querylimits.UnmarshalQueryLimits([]byte(encodedLimits))
@@ -482,6 +487,12 @@ func (Codec) QueryRequestWrap(ctx context.Context, r queryrangebase.Request) (*Q
 	disableWrappers := httpreq.ExtractHeader(ctx, httpreq.LokiDisablePipelineWrappersHeader)
 	if disableWrappers != "" {
 		result.Metadata[httpreq.LokiDisablePipelineWrappersHeader] = disableWrappers
+	}
+
+	// Keep response encoding flags
+	encodingFlags := httpreq.ExtractHeader(ctx, httpreq.LokiEncodingFlagsHeader)
+	if encodingFlags != "" {
+		result.Metadata[httpreq.LokiEncodingFlagsHeader] = encodingFlags
 	}
 
 	// Add limits

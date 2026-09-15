@@ -31,12 +31,16 @@ var userAgent = fmt.Sprintf("opentelemetry-go %s; google-cloud-metric-exporter %
 
 // MonitoredResourceDescription is the struct which holds information required to map OTel resource to specific
 // Google Cloud MonitoredResource.
+//
+// Deprecated: Google Cloud OpenTelemetry Monitoring exporter for Go is deprecated. Use standard OpenTelemetry OTLP exporters instead.
 type MonitoredResourceDescription struct {
 	mrLabels map[string]struct{}
 	mrType   string
 }
 
 // Option is function type that is passed to the exporter initialization function.
+//
+// Deprecated: Google Cloud OpenTelemetry Monitoring exporter for Go is deprecated. Use standard OpenTelemetry OTLP exporters instead.
 type Option func(*options)
 
 // options is the struct to hold options for metricExporter and its client instance.
@@ -98,6 +102,8 @@ type options struct {
 // from the default credential detection process.
 // Please find the detailed order of the default credential detection process on the doc:
 // https://godoc.org/golang.org/x/oauth2/google#FindDefaultCredentials
+//
+// Deprecated: Google Cloud OpenTelemetry Monitoring exporter for Go is deprecated. Use standard OpenTelemetry OTLP exporters instead.
 func WithProjectID(id string) func(o *options) {
 	return func(o *options) {
 		o.projectID = id
@@ -106,6 +112,8 @@ func WithProjectID(id string) func(o *options) {
 
 // WithDestinationProjectQuota enables per-request usage of the destination
 // project's quota. For example, when setting gcp.project.id on a metric.
+//
+// Deprecated: Google Cloud OpenTelemetry Monitoring exporter for Go is deprecated. Use standard OpenTelemetry OTLP exporters instead.
 func WithDestinationProjectQuota() func(o *options) {
 	return func(o *options) {
 		o.destinationProjectQuota = true
@@ -116,6 +124,8 @@ func WithDestinationProjectQuota() func(o *options) {
 // metrics to Cloud Monitoring. This option is mutually exclusive with
 // WithMonitoringClientOptions. If both options are provided,
 // WithMonitoringClient is used and WithMonitoringClientOptions is ignored.
+//
+// Deprecated: Google Cloud OpenTelemetry Monitoring exporter for Go is deprecated. Use standard OpenTelemetry OTLP exporters instead.
 func WithMonitoringClient(cl *monitoring.MetricClient) func(o *options) {
 	return func(o *options) {
 		o.monitoringClient = cl
@@ -124,6 +134,8 @@ func WithMonitoringClient(cl *monitoring.MetricClient) func(o *options) {
 
 // WithMonitoringClientOptions add the options for Cloud Monitoring client instance.
 // Available options are defined in.
+//
+// Deprecated: Google Cloud OpenTelemetry Monitoring exporter for Go is deprecated. Use standard OpenTelemetry OTLP exporters instead.
 func WithMonitoringClientOptions(opts ...apioption.ClientOption) func(o *options) {
 	return func(o *options) {
 		o.monitoringClientOptions = append(o.monitoringClientOptions, opts...)
@@ -134,6 +146,8 @@ func WithMonitoringClientOptions(opts ...apioption.ClientOption) func(o *options
 // Note that the format has to follow the convention defined in the official document.
 // The default is "workload.googleapis.com/[metric name]".
 // ref. https://cloud.google.com/monitoring/custom-metrics/creating-metrics#custom_metric_names
+//
+// Deprecated: Google Cloud OpenTelemetry Monitoring exporter for Go is deprecated. Use standard OpenTelemetry OTLP exporters instead.
 func WithMetricDescriptorTypeFormatter(f func(metricdata.Metrics) string) func(o *options) {
 	return func(o *options) {
 		o.metricDescriptorTypeFormatter = f
@@ -146,6 +160,8 @@ func WithMetricDescriptorTypeFormatter(f func(metricdata.Metrics) string) func(o
 // writing duplicate timeseries against the same monitored resource. Use
 // WithFilteredResourceAttributes(NoAttributes()) to disable the addition of
 // resource attributes to metric labels.
+//
+// Deprecated: Google Cloud OpenTelemetry Monitoring exporter for Go is deprecated. Use standard OpenTelemetry OTLP exporters instead.
 func WithFilteredResourceAttributes(filter attribute.Filter) func(o *options) {
 	return func(o *options) {
 		o.resourceAttributeFilter = filter
@@ -154,6 +170,8 @@ func WithFilteredResourceAttributes(filter attribute.Filter) func(o *options) {
 
 // DefaultResourceAttributesFilter is the default filter applied to resource
 // attributes.
+//
+// Deprecated: Google Cloud OpenTelemetry Monitoring exporter for Go is deprecated. Use standard OpenTelemetry OTLP exporters instead.
 func DefaultResourceAttributesFilter(kv attribute.KeyValue) bool {
 	return (kv.Key == semconv.ServiceNameKey ||
 		kv.Key == semconv.ServiceNamespaceKey ||
@@ -162,12 +180,16 @@ func DefaultResourceAttributesFilter(kv attribute.KeyValue) bool {
 
 // NoAttributes can be passed to WithFilteredResourceAttributes to disable
 // adding resource attributes as metric labels.
+//
+// Deprecated: Google Cloud OpenTelemetry Monitoring exporter for Go is deprecated. Use standard OpenTelemetry OTLP exporters instead.
 func NoAttributes(attribute.KeyValue) bool {
 	return false
 }
 
 // WithDisableCreateMetricDescriptors will disable the automatic creation of
 // MetricDescriptors when an unknown metric is set to be exported.
+//
+// Deprecated: Google Cloud OpenTelemetry Monitoring exporter for Go is deprecated. Use standard OpenTelemetry OTLP exporters instead.
 func WithDisableCreateMetricDescriptors() func(o *options) {
 	return func(o *options) {
 		o.disableCreateMetricDescriptors = true
@@ -175,6 +197,8 @@ func WithDisableCreateMetricDescriptors() func(o *options) {
 }
 
 // WithCompression sets the compression to use for gRPC requests.
+//
+// Deprecated: Google Cloud OpenTelemetry Monitoring exporter for Go is deprecated. Use standard OpenTelemetry OTLP exporters instead.
 func WithCompression(c string) func(o *options) {
 	return func(o *options) {
 		o.compression = c
@@ -183,6 +207,8 @@ func WithCompression(c string) func(o *options) {
 
 // WithSumOfSquaredDeviation sets the SumOfSquaredDeviation field on histograms.
 // It is an estimate, and is not the actual sum of squared deviations.
+//
+// Deprecated: Google Cloud OpenTelemetry Monitoring exporter for Go is deprecated. Use standard OpenTelemetry OTLP exporters instead.
 func WithSumOfSquaredDeviation() func(o *options) {
 	return func(o *options) {
 		o.enableSumOfSquaredDeviation = true
@@ -191,6 +217,8 @@ func WithSumOfSquaredDeviation() func(o *options) {
 
 // WithCreateServiceTimeSeries configures the exporter to use `CreateServiceTimeSeries` for creating timeseries.
 // If this is used, metric descriptors are not exported.
+//
+// Deprecated: Google Cloud OpenTelemetry Monitoring exporter for Go is deprecated. Use standard OpenTelemetry OTLP exporters instead.
 func WithCreateServiceTimeSeries() func(o *options) {
 	return func(o *options) {
 		o.createServiceTimeSeries = true
@@ -201,6 +229,8 @@ func WithCreateServiceTimeSeries() func(o *options) {
 // WithMonitoredResourceDescription configures the exporter to attempt to map the OpenTelemetry Resource to the provided
 // Google MonitoredResource. The provided mrLabels would be searched for in the OpenTelemetry Resource Attributes and if
 // found, would be included in the MonitoredResource labels.
+//
+// Deprecated: Google Cloud OpenTelemetry Monitoring exporter for Go is deprecated. Use standard OpenTelemetry OTLP exporters instead.
 func WithMonitoredResourceDescription(mrType string, mrLabels []string) func(o *options) {
 	return func(o *options) {
 		mrLabelSet := make(map[string]struct{})
@@ -216,6 +246,8 @@ func WithMonitoredResourceDescription(mrType string, mrLabels []string) func(o *
 
 // WithContext allows callers to provide a context to create clients and fetch
 // application default credentials with.
+//
+// Deprecated: Google Cloud OpenTelemetry Monitoring exporter for Go is deprecated. Use standard OpenTelemetry OTLP exporters instead.
 func WithContext(ctx context.Context) func(o *options) {
 	return func(o *options) {
 		o.context = ctx

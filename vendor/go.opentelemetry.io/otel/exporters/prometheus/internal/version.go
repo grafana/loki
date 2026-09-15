@@ -6,4 +6,4 @@ package internal
 
 // Version is the current release version of the OpenTelemetry prometheus
 // exporter in use.
-const Version = "0.67.0"
+const Version = "0.68.0"

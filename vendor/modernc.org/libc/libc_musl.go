@@ -372,25 +372,26 @@ func (tls *TLS) Alloc(n0 int) (r uintptr) {
 	//  256		total  8,848, nallocs 107,553,070, nmallocs 25, nreallocs       1,049	 9.508s
 	//  512		total 33,336, nallocs 107,553,070, nmallocs 25, nreallocs          88	 8.667s
 	// none		total 33,336, nallocs 107,553,070, nmallocs 25, nreallocs          88	 8.408s
-	const shrinkSegment = 32
+	sp := tls.sp
+	if stack := tls.stack; sp < len(stack) && stack[sp].sz >= Tsize_t(n0) /* && stack[sp].sz <= shrinkSegment*Tsize_t(n0) */ {
+		// Segment shrinking is nice to have but Tcl does some dirty hacks in coroutine
+		// handling that require stability of stack addresses, out of the C execution
+		// model. Disabled.
+		tls.sp = sp + 1
+		return stack[sp].p
+	}
+
+	return tls.allocSlow(n0)
+}
+
+func (tls *TLS) allocSlow(n0 int) (r uintptr) {
 	n := Tsize_t(n0)
 	if tls.sp < len(tls.stack) {
-		p := tls.stack[tls.sp].p
-		sz := tls.stack[tls.sp].sz
-		if sz >= n /* && sz <= shrinkSegment*n */ {
-			// Segment shrinking is nice to have but Tcl does some dirty hacks in coroutine
-			// handling that require stability of stack addresses, out of the C execution
-			// model. Disabled.
-			tls.sp++
-			return p
-		}
-
-		Xfree(tls, p)
+		Xfree(tls, tls.stack[tls.sp].p)
 		r = mustMalloc(n)
 		tls.stack[tls.sp] = tlsStackSlot{p: r, sz: Xmalloc_usable_size(tls, r)}
 		tls.sp++
 		return r
-
 	}
 
 	r = mustMalloc(n)
@@ -407,6 +408,10 @@ func (tls *TLS) Free(n int) {
 		return
 	}
 
+	tls.checkSignal()
+}
+
+func (tls *TLS) checkSignal() {
 	select {
 	case sig := <-tls.pendingSignals:
 		signum := int32(sig.(unix.Signal))

@@ -51,16 +51,22 @@ func (d *Detector) onGKE() bool {
 }
 
 // GKEHostID returns the instance ID of the instance on which this program is running.
+//
+// Deprecated: Use [go.opentelemetry.io/contrib/detectors/gcp] instead.
 func (d *Detector) GKEHostID() (string, error) {
 	return d.GCEHostID()
 }
 
 // GKEClusterName returns the name if the GKE cluster in which this program is running.
+//
+// Deprecated: Use [go.opentelemetry.io/contrib/detectors/gcp] instead.
 func (d *Detector) GKEClusterName() (string, error) {
 	return d.metadata.InstanceAttributeValueWithContext(context.TODO(), clusterNameMetadataAttr)
 }
 
 // GKEHostType returns the machine type of the instance on which this program is running.
+//
+// Deprecated: Use [go.opentelemetry.io/contrib/detectors/gcp] instead.
 func (d *Detector) GKEHostType() (string, error) {
 	ctx := context.TODO()
 	projectID, err := d.ProjectID()
@@ -137,8 +143,12 @@ func lastPathSegment(s string) string {
 	return s
 }
 
+// LocationType represents the location type (Zone or Region).
+//
+// Deprecated: Use [go.opentelemetry.io/contrib/detectors/gcp] instead.
 type LocationType int64
 
+// Deprecated: Use [go.opentelemetry.io/contrib/detectors/gcp] instead.
 const (
 	UndefinedLocation LocationType = iota
 	Zone
@@ -146,6 +156,8 @@ const (
 )
 
 // GKEAvailabilityZoneOrRegion returns the location of the cluster and whether the cluster is zonal or regional.
+//
+// Deprecated: Use [go.opentelemetry.io/contrib/detectors/gcp] instead.
 func (d *Detector) GKEAvailabilityZoneOrRegion() (string, LocationType, error) {
 	clusterLocation, err := d.metadata.InstanceAttributeValueWithContext(context.TODO(), clusterLocationMetadataAttr)
 	if err != nil {

@@ -62,11 +62,14 @@ func RouteAndProcess(ctx context.Context) error {
 	if !ok {
 		return errors.New("missing metadata in incoming context")
 	}
-	// A41 added logic to the core grpc implementation to guarantee that once
-	// the RPC gets to this point, there will be a single, unambiguous authority
-	// present in the header map.
+	// A41 added logic to the core grpc implementation to guarantee that once the
+	// RPC gets to this point, there will be a single, unambiguous authority
+	// present in the header map. But add a defensive check to ensure authority
+	// header is present.
 	authority := md.Get(":authority")
-	// authority[0] is safe because of the guarantee mentioned above.
+	if len(authority) == 0 {
+		return rc.statusErrWithNodeID(codes.Internal, "no :authority header present")
+	}
 	vh := findBestMatchingVirtualHostServer(authority[0], rc.vhs)
 	if vh == nil {
 		return rc.statusErrWithNodeID(codes.Unavailable, "the incoming RPC did not match a configured Virtual Host")

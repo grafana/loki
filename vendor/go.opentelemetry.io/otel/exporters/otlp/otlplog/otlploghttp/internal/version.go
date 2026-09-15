@@ -4,4 +4,4 @@
 package internal
 
 // Version is the current release version of the OpenTelemetry OTLP over HTTP/protobuf logs exporter in use.
-const Version = "0.21.0"
+const Version = "0.22.0"

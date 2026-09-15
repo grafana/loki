@@ -119,12 +119,12 @@ func (s *rateStore) updateAllRates(ctx context.Context) error {
 
 	streamRates := s.getRates(ctx, clients)
 	updated := s.aggregateByShard(ctx, streamRates)
-	updateStats := s.updateRates(ctx, updated)
+	stats := s.updateRates(ctx, updated)
 
-	s.metrics.maxStreamRate.Set(float64(updateStats.maxRate))
-	s.metrics.maxStreamShardCount.Set(float64(updateStats.maxShards))
-	s.metrics.streamCount.Set(float64(updateStats.totalStreams))
-	s.metrics.expiredCount.Add(float64(updateStats.expiredCount))
+	s.metrics.maxStreamRate.Set(float64(stats.maxRate))
+	s.metrics.maxStreamShardCount.Set(float64(stats.maxShards))
+	s.metrics.streamCount.Set(float64(stats.totalStreams))
+	s.metrics.expiredCount.Add(float64(stats.expiredCount))
 
 	return nil
 }
@@ -136,7 +136,7 @@ type rateStats struct {
 	expiredCount int64
 }
 
-func (s *rateStore) updateRates(ctx context.Context, updated map[string]map[uint64]expiringRate) rateStats {
+func (s *rateStore) updateRates(ctx context.Context, updated perTenantExpiringRate) rateStats {
 	streamCnt := 0
 	if s.debug {
 		sp := trace.SpanFromContext(ctx)
@@ -178,7 +178,11 @@ func weightedMovingAverageF(next, last float64) float64 {
 	return (smoothingFactor * next) + ((1 - smoothingFactor) * last)
 }
 
-func (s *rateStore) cleanupExpired(updated map[string]map[uint64]expiringRate) rateStats {
+// cleanupExpired removes streams that have not been reported by any ingester
+// within rateKeepAlive and decays the rate of streams that were not part of the
+// most recent update. It must be called with rateLock held, because it mutates
+// s.rates.
+func (s *rateStore) cleanupExpired(updated perTenantExpiringRate) rateStats {
 	var rs rateStats
 
 	for tID, tenant := range s.rates {
@@ -186,10 +190,7 @@ func (s *rateStore) cleanupExpired(updated map[string]map[uint64]expiringRate) r
 		for stream, rate := range tenant {
 			if time.Since(rate.createdAt) > s.rateKeepAlive {
 				rs.expiredCount++
-				delete(s.rates[tID], stream)
-				if len(s.rates[tID]) == 0 {
-					delete(s.rates, tID)
-				}
+				delete(tenant, stream)
 				continue
 			}
 
@@ -205,12 +206,19 @@ func (s *rateStore) cleanupExpired(updated map[string]map[uint64]expiringRate) r
 			s.metrics.streamShardCount.Observe(float64(rate.shards))
 			s.metrics.streamRate.Observe(float64(rate.rate))
 		}
+
+		if len(tenant) == 0 {
+			delete(s.rates, tID)
+			s.metrics.activeCount.DeleteLabelValues(tID)
+			continue
+		}
+		s.metrics.activeCount.WithLabelValues(tID).Set(float64(len(tenant)))
 	}
 
 	return rs
 }
 
-func (s *rateStore) wasUpdated(tenantID string, streamID uint64, lastUpdated map[string]map[uint64]expiringRate) bool {
+func (s *rateStore) wasUpdated(tenantID string, streamID uint64, lastUpdated perTenantExpiringRate) bool {
 	if _, ok := lastUpdated[tenantID]; !ok {
 		return false
 	}
@@ -238,14 +246,21 @@ func (s *rateStore) anyShardingEnabled() bool {
 	return false
 }
 
-func (s *rateStore) aggregateByShard(ctx context.Context, streamRates map[string]map[uint64]*logproto.StreamRate) map[string]map[uint64]expiringRate {
+type (
+	// perTenantStreamRate maps tenant id -> stream hash -> rate as reported by ingesters.
+	perTenantStreamRate map[string]map[uint64]*logproto.StreamRate
+	// perTenantExpiringRate maps tenant id -> stream hash without shard -> aggregated rate.
+	perTenantExpiringRate map[string]map[uint64]expiringRate
+)
+
+func (s *rateStore) aggregateByShard(ctx context.Context, streamRates perTenantStreamRate) perTenantExpiringRate {
 	if s.debug {
 		sp := trace.SpanFromContext(ctx)
 		sp.AddEvent("started to aggregate by shard")
 		defer sp.AddEvent("finished to aggregate by shard")
 
 	}
-	rates := map[string]map[uint64]expiringRate{}
+	rates := perTenantExpiringRate{}
 	now := time.Now()
 
 	for tID, tenant := range streamRates {
@@ -267,7 +282,7 @@ func (s *rateStore) aggregateByShard(ctx context.Context, streamRates map[string
 	return rates
 }
 
-func (s *rateStore) getRates(ctx context.Context, clients []ingesterClient) map[string]map[uint64]*logproto.StreamRate {
+func (s *rateStore) getRates(ctx context.Context, clients []ingesterClient) perTenantStreamRate {
 	if s.debug {
 		sp := trace.SpanFromContext(ctx)
 		sp.AddEvent("started to get rates from ingesters")
@@ -313,9 +328,9 @@ func (s *rateStore) getRatesFromIngesters(ctx context.Context, clients chan inge
 	}
 }
 
-func (s *rateStore) ratesPerStream(responses chan *logproto.StreamRatesResponse, totalResponses int) map[string]map[uint64]*logproto.StreamRate {
+func (s *rateStore) ratesPerStream(responses chan *logproto.StreamRatesResponse, totalResponses int) perTenantStreamRate {
 	var maxRate int64
-	streamRates := map[string]map[uint64]*logproto.StreamRate{}
+	streamRates := perTenantStreamRate{}
 	for i := 0; i < totalResponses; i++ {
 		resp := <-responses
 		if resp == nil {

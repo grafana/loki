@@ -29,7 +29,7 @@ const (
 	// ScopeName is the unique name of the meter used for instrumentation.
 	ScopeName = "go.opentelemetry.io/otel/exporters/otlp/otlplog/otlploghttp/internal/observ"
 
-	// Version is the current version of this instrumentation
+	// Version is the current version of this instrumentation.
 	//
 	// This matches the version of the exporter.
 	Version = internal.Version
@@ -42,7 +42,7 @@ var (
 				1 + // component.type
 				1 + // server.addr
 				1 + // server.port
-				1 + // error.port
+				1 + // error.type
 				1 // http.response.status.code
 			s := make([]attribute.KeyValue, 0, n)
 			return &s
@@ -74,7 +74,7 @@ func put[T any](pool *sync.Pool, value *[]T) {
 	pool.Put(value)
 }
 
-// GetComponentName returns the constant name for the exporter with the
+// GetComponentName returns the component name for the exporter with the
 // provided id.
 func GetComponentName(id int64) string {
 	return fmt.Sprintf("%s/%d", otelconv.ComponentTypeOtlpHTTPLogExporter, id)
@@ -91,7 +91,7 @@ type Instrumentation struct {
 	recordOpt   metric.RecordOption
 }
 
-// NewInstrumentation returns instrumentation for otlplog http exporter.
+// NewInstrumentation returns instrumentation for the otlplog HTTP exporter.
 func NewInstrumentation(id int64, target string) (*Instrumentation, error) {
 	if !x.Observability.Enabled() {
 		return nil, nil
@@ -200,7 +200,8 @@ func (i *Instrumentation) ExportLogs(ctx context.Context, count int64) ExportOp 
 	}
 }
 
-// ExportOp tracks the operationDuration being observed by [Instrumentation.ExportLogs].
+// ExportOp tracks the operation duration being observed by
+// [Instrumentation.ExportLogs].
 type ExportOp struct {
 	ctx   context.Context
 	start time.Time
@@ -208,12 +209,12 @@ type ExportOp struct {
 	count int64
 }
 
-// End completes the observation of the operationDuration being observed by a call to
-// [Instrumentation.ExportLogs].
+// End completes the observation of the operation duration being observed by a
+// call to [Instrumentation.ExportLogs].
 // Any error that is encountered is provided as err.
 //
-// If err is not nil, all logs will be recorded as failures unless error is of
-// type [internal.PartialSuccess]. In the case of a PartialSuccess, the number
+// If err is not nil, all logs will be recorded as failures unless the error is
+// of type [internal.PartialSuccess]. In the case of a PartialSuccess, the number
 // of successfully exported logs will be determined by inspecting the
 // RejectedItems field of the PartialSuccess.
 func (e ExportOp) End(err error, code int) {
@@ -276,18 +277,18 @@ func (e ExportOp) recordOption(err error, code int) metric.RecordOption {
 	return metric.WithAttributeSet(attribute.NewSet(*attrs...))
 }
 
-// successful returns the number of successfully exported logs out of the n
-// that were exported based on the provided error.
+// successful returns the number of successfully exported log records from a
+// batch of count records, as determined from err.
 //
-// If err is nil, n is returned. All logs were successfully exported.
+// If err is nil, count is returned. All logs were successfully exported.
 //
 // If err is not nil and not an [internal.PartialSuccess] error, 0 is returned.
 // It is assumed all logs failed to be exported.
 //
 // If err is an [internal.PartialSuccess] error, the number of successfully
-// exported logs is computed by subtracting the RejectedItems field from n. If
-// RejectedItems is negative, n is returned. If RejectedItems is greater than
-// n, 0 is returned.
+// exported logs is computed by subtracting the RejectedItems field from count.
+// If RejectedItems is negative, count is returned. If RejectedItems is greater
+// than count, 0 is returned.
 func successful(count int64, err error) int64 {
 	if err == nil {
 		return count
@@ -301,8 +302,8 @@ var errPool = sync.Pool{
 	},
 }
 
-// rejected returns how many out of the n logs exporter were rejected based on
-// the provided non-nil err.
+// rejected returns the number of rejected log records from a batch of n
+// records, as determined from the non-nil err.
 func rejected(n int64, err error) int64 {
 	ps := errPool.Get().(*internal.PartialSuccess)
 	defer func() {
@@ -315,7 +316,7 @@ func rejected(n int64, err error) int64 {
 		// but be defensive as this is from an external source.
 		return min(max(ps.RejectedItems, 0), n)
 	}
-	// all logs exported
+	// All logs were rejected.
 	return n
 }
 

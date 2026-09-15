@@ -579,24 +579,68 @@ eval instant at 60s max_over_time({app="a", k="nan"} | logfmt | unwrap v [1m]) =
 eval range from 60s to 180s step 30s max_over_time({app="a", k="nan"} | logfmt | unwrap v [1m]) == ignoring (k) max_over_time({app="a", k="fin"} | logfmt | unwrap v [1m])
   expect empty
 
-# on()/on(app)/ignoring — one stream carrying a machine label.
+# on(<label>)/ignoring(<label>) with the matching label sourced from a stream label.
 clear
 load
-  {app="foo", machine="fuzz"} "x" @ 0s [repeat every 10s for 19]
+  {app="foo", machine="fuzz"} "x"     @ 0s [repeat every 10s for 19]
+  {app="foo", machine="buzz"} "x"     @ 0s [repeat every 15s for 19]
+  {app="noise"}               "noise" @ 0s [repeat every 10s for 19]
+
+eval instant at 60s sum by (app,machine) (count_over_time({app="foo", machine="fuzz"}[1m])) + on (app,machine) sum by (app,machine) (count_over_time({app="foo", machine="fuzz"}[1m]))
+  {app="foo", machine="fuzz"} 12
+eval range from 60s to 180s step 30s sum by (app,machine) (count_over_time({app="foo", machine="fuzz"}[1m])) + on (app,machine) sum by (app,machine) (count_over_time({app="foo", machine="fuzz"}[1m]))
+  {app="foo", machine="fuzz"} 12 12 12 12 12
+# Default matching requires machine to be equal too, so two different values never match.
+eval instant at 60s count_over_time({app="foo", machine="fuzz"}[1m]) + count_over_time({app="foo", machine="buzz"}[1m])
+  expect empty
+eval range from 60s to 180s step 30s count_over_time({app="foo", machine="fuzz"}[1m]) + count_over_time({app="foo", machine="buzz"}[1m])
+  expect empty
+# ignoring(machine) excludes it from the match key, so the same two values do match.
+eval instant at 60s count_over_time({app="foo", machine="fuzz"}[1m]) + ignoring (machine) count_over_time({app="foo", machine="buzz"}[1m])
+  {app="foo"} 10
+eval range from 60s to 180s step 30s count_over_time({app="foo", machine="fuzz"}[1m]) + ignoring (machine) count_over_time({app="foo", machine="buzz"}[1m])
+  {app="foo"} 10 10 10 10 10
+
+# on(<label>)/ignoring(<label>) with the matching label sourced from structured metadata.
+clear
+load
+  {app="foo"}   "x"     @ 0s [repeat every 10s for 19] [metadata machine="fuzz"]
+  {app="foo"}   "x"     @ 0s [repeat every 15s for 19] [metadata machine="buzz"]
   {app="noise"} "noise" @ 0s [repeat every 10s for 19]
 
-eval instant at 60s sum by (app,machine) (count_over_time({app="foo"}[1m])) + on () sum by (app) (count_over_time({app="foo"}[1m]))
-  {} 12
-eval range from 60s to 180s step 30s sum by (app,machine) (count_over_time({app="foo"}[1m])) + on () sum by (app) (count_over_time({app="foo"}[1m]))
-  {} 12 12 12 12 12
-eval instant at 60s sum by (app,machine) (count_over_time({app="foo"}[1m])) + on (app) sum by (app) (count_over_time({app="foo"}[1m]))
+eval instant at 60s sum by (app,machine) (count_over_time({app="foo"} | machine="fuzz" [1m])) + on (app,machine) sum by (app,machine) (count_over_time({app="foo"} | machine="fuzz" [1m]))
+  {app="foo", machine="fuzz"} 12
+eval range from 60s to 180s step 30s sum by (app,machine) (count_over_time({app="foo"} | machine="fuzz" [1m])) + on (app,machine) sum by (app,machine) (count_over_time({app="foo"} | machine="fuzz" [1m]))
+  {app="foo", machine="fuzz"} 12 12 12 12 12
+# Default matching requires machine to be equal too, so two different values never match.
+eval instant at 60s count_over_time({app="foo"} | machine="fuzz" [1m]) + count_over_time({app="foo"} | machine="buzz" [1m])
+  expect empty
+eval range from 60s to 180s step 30s count_over_time({app="foo"} | machine="fuzz" [1m]) + count_over_time({app="foo"} | machine="buzz" [1m])
+  expect empty
+# ignoring(machine) excludes it from the match key, so the same two values do match.
+eval instant at 60s count_over_time({app="foo"} | machine="fuzz" [1m]) + ignoring (machine) count_over_time({app="foo"} | machine="buzz" [1m])
+  {app="foo"} 10
+eval range from 60s to 180s step 30s count_over_time({app="foo"} | machine="fuzz" [1m]) + ignoring (machine) count_over_time({app="foo"} | machine="buzz" [1m])
+  {app="foo"} 10 10 10 10 10
+
+# Default matching (no on()/ignoring()) requires every label, including structured metadata, to
+# be equal.
+clear
+load
+  {app="foo"} "x" @ 0s [repeat every 10s for 19] [metadata env="prod"]
+  {app="foo"} "x" @ 0s [repeat every 10s for 19] [metadata env="staging"]
+  {app="noise"} "noise" @ 0s [repeat every 10s for 19]
+
+eval instant at 60s count_over_time({app="foo"} | env="prod" [1m]) + count_over_time({app="foo"} | env="staging" [1m])
+  expect empty
+eval range from 60s to 180s step 30s count_over_time({app="foo"} | env="prod" [1m]) + count_over_time({app="foo"} | env="staging" [1m])
+  expect empty
+eval instant at 60s count_over_time({app="foo"} | env="prod" [1m]) and count_over_time({app="foo"} | env="staging" [1m])
+  expect empty
+eval instant at 60s count_over_time({app="foo"} | env="prod" [1m]) + ignoring (env) count_over_time({app="foo"} | env="staging" [1m])
   {app="foo"} 12
-eval range from 60s to 180s step 30s sum by (app,machine) (count_over_time({app="foo"}[1m])) + on (app) sum by (app) (count_over_time({app="foo"}[1m]))
+eval range from 60s to 180s step 30s count_over_time({app="foo"} | env="prod" [1m]) + ignoring (env) count_over_time({app="foo"} | env="staging" [1m])
   {app="foo"} 12 12 12 12 12
-eval instant at 60s sum by (app,machine) (count_over_time({app="foo"}[1m])) > bool ignoring (machine) sum by (app) (count_over_time({app="foo"}[1m]))
-  {app="foo"} 0
-eval range from 60s to 180s step 30s sum by (app,machine) (count_over_time({app="foo"}[1m])) > bool ignoring (machine) sum by (app) (count_over_time({app="foo"}[1m]))
-  {app="foo"} 0 0 0 0 0
 
 # and / unless with on() / ignoring()
 clear
@@ -758,11 +802,45 @@ eval instant at 60s sum by (app,machine) (count_over_time({app="foo", machine=~"
 eval range from 60s to 180s step 30s sum by (app,machine) (count_over_time({app="foo", machine=~".+"}[1m])) > bool on (app) group_left sum by (app,pool) (count_over_time({app="foo", pool=~".+"}[1m]))
   expect fail msg: found duplicate series on the right hand-side
 
-# group_left() with labels.
+# group_left() with labels: include label sources from stream labels.
 clear
 load
   {app="foo", machine="fuzz", pool="foo"} "x" @ 0s [repeat every 10s for 19]
   {app="foo", machine="buzz", pool="foo"} "x" @ 0s [repeat every 15s for 19]
+  {app="noise"} "noise" @ 0s [repeat every 10s for 19]
+
+eval instant at 60s sum by (app,machine) (count_over_time({app="foo"}[1m])) > bool on (app) group_left (pool) sum by (app,pool) (count_over_time({app="foo"}[1m]))
+  {app="foo", machine="fuzz", pool="foo"} 0
+  {app="foo", machine="buzz", pool="foo"} 0
+eval range from 60s to 180s step 30s sum by (app,machine) (count_over_time({app="foo"}[1m])) > bool on (app) group_left (pool) sum by (app,pool) (count_over_time({app="foo"}[1m]))
+  {app="foo", machine="fuzz", pool="foo"} 0 0 0 0 0
+  {app="foo", machine="buzz", pool="foo"} 0 0 0 0 0
+# Each machine's own share of the app total.
+eval instant at 60s count_over_time({app="foo"}[1m]) / on (app) group_left sum by (app) (count_over_time({app="foo"}[1m]))
+  {app="foo", machine="fuzz", pool="foo"} 0.6
+  {app="foo", machine="buzz", pool="foo"} 0.4
+eval range from 60s to 180s step 30s count_over_time({app="foo"}[1m]) / on (app) group_left sum by (app) (count_over_time({app="foo"}[1m]))
+  {app="foo", machine="fuzz", pool="foo"} 0.6 0.6 0.6 0.6 0.6
+  {app="foo", machine="buzz", pool="foo"} 0.4 0.4 0.4 0.4 0.4
+# The shares collapse to 1 when summed.
+eval instant at 60s sum(count_over_time({app="foo"}[1m]) / on (app) group_left sum by (app) (count_over_time({app="foo"}[1m])))
+  {} 1
+eval range from 60s to 180s step 30s sum(count_over_time({app="foo"}[1m]) / on (app) group_left sum by (app) (count_over_time({app="foo"}[1m])))
+  {} 1 1 1 1 1
+# Include-label deletion: the RHS lacks `pool` (aggregated away), so group_left(pool)
+# deletes it from the result rather than keeping the many side's own value.
+eval instant at 60s sum by (app,machine,pool) (count_over_time({app="foo"}[1m])) > bool on (app) group_left (pool) sum by (app) (count_over_time({app="foo"}[1m]))
+  {app="foo", machine="fuzz"} 0
+  {app="foo", machine="buzz"} 0
+eval range from 60s to 180s step 30s sum by (app,machine,pool) (count_over_time({app="foo"}[1m])) > bool on (app) group_left (pool) sum by (app) (count_over_time({app="foo"}[1m]))
+  {app="foo", machine="fuzz"} 0 0 0 0 0
+  {app="foo", machine="buzz"} 0 0 0 0 0
+
+# group_left() with labels: include label sourced from structured metadata.
+clear
+load
+  {app="foo", machine="fuzz"} "x" @ 0s [repeat every 10s for 19] [metadata pool="foo"]
+  {app="foo", machine="buzz"} "x" @ 0s [repeat every 15s for 19] [metadata pool="foo"]
   {app="noise"} "noise" @ 0s [repeat every 10s for 19]
 
 eval instant at 60s sum by (app,machine) (count_over_time({app="foo"}[1m])) > bool on (app) group_left (pool) sum by (app,pool) (count_over_time({app="foo"}[1m]))
@@ -863,11 +941,33 @@ eval instant at 60s sum by (app,pool) (count_over_time({app="foo", pool=~".+"}[1
 eval range from 60s to 180s step 30s sum by (app,pool) (count_over_time({app="foo", pool=~".+"}[1m])) > bool on (app) group_right sum by (app,machine) (count_over_time({app="foo", machine=~".+"}[1m]))
   expect fail msg: found duplicate series on the left hand-side
 
-# group_right() with labels.
+# group_right() with labels; include label sources from stream labels.
 clear
 load
   {app="foo", machine="fuzz", pool="foo"} "x" @ 0s [repeat every 10s for 19]
   {app="foo", machine="buzz", pool="foo"} "x" @ 0s [repeat every 15s for 19]
+  {app="noise"} "noise" @ 0s [repeat every 10s for 19]
+
+eval instant at 60s sum by (app,pool) (count_over_time({app="foo"}[1m])) > bool on (app) group_right (pool) sum by (app,machine) (count_over_time({app="foo"}[1m]))
+  {app="foo", machine="fuzz", pool="foo"} 1
+  {app="foo", machine="buzz", pool="foo"} 1
+eval range from 60s to 180s step 30s sum by (app,pool) (count_over_time({app="foo"}[1m])) > bool on (app) group_right (pool) sum by (app,machine) (count_over_time({app="foo"}[1m]))
+  {app="foo", machine="fuzz", pool="foo"} 1 1 1 1 1
+  {app="foo", machine="buzz", pool="foo"} 1 1 1 1 1
+# Include-label deletion: the LHS lacks `pool` (aggregated away), so group_right(pool)
+# deletes it from the result rather than keeping the many side's own value.
+eval instant at 60s sum by (app) (count_over_time({app="foo"}[1m])) > bool on (app) group_right (pool) sum by (app,machine,pool) (count_over_time({app="foo"}[1m]))
+  {app="foo", machine="fuzz"} 1
+  {app="foo", machine="buzz"} 1
+eval range from 60s to 180s step 30s sum by (app) (count_over_time({app="foo"}[1m])) > bool on (app) group_right (pool) sum by (app,machine,pool) (count_over_time({app="foo"}[1m]))
+  {app="foo", machine="fuzz"} 1 1 1 1 1
+  {app="foo", machine="buzz"} 1 1 1 1 1
+
+# group_right() with labels: include label sourced from structured metadata.
+clear
+load
+  {app="foo", machine="fuzz"} "x" @ 0s [repeat every 10s for 19] [metadata pool="foo"]
+  {app="foo", machine="buzz"} "x" @ 0s [repeat every 15s for 19] [metadata pool="foo"]
   {app="noise"} "noise" @ 0s [repeat every 10s for 19]
 
 eval instant at 60s sum by (app,pool) (count_over_time({app="foo"}[1m])) > bool on (app) group_right (pool) sum by (app,machine) (count_over_time({app="foo"}[1m]))

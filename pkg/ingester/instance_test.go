@@ -10,33 +10,32 @@ import (
 	"testing"
 	"time"
 
-	"github.com/grafana/loki/v3/pkg/compactor/retention"
-	"github.com/grafana/loki/v3/pkg/storage/types"
-	"github.com/grafana/loki/v3/pkg/util"
-	"github.com/grafana/loki/v3/pkg/util/httpreq"
-
-	"github.com/grafana/dskit/tenant"
-	"github.com/grafana/dskit/user"
-
-	"github.com/grafana/loki/v3/pkg/logql/log"
-
 	"github.com/grafana/dskit/backoff"
 	"github.com/grafana/dskit/flagext"
+	"github.com/grafana/dskit/tenant"
+	"github.com/grafana/dskit/user"
+	"github.com/prometheus/client_golang/prometheus"
+	promtestutil "github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
 
+	"github.com/grafana/loki/v3/pkg/compactor/retention"
 	"github.com/grafana/loki/v3/pkg/distributor/shardstreams"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql"
+	"github.com/grafana/loki/v3/pkg/logql/log"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	"github.com/grafana/loki/v3/pkg/querier/astmapper"
-	"github.com/grafana/loki/v3/pkg/querier/plan"
+	"github.com/grafana/loki/v3/pkg/querier/testutil"
 	loki_runtime "github.com/grafana/loki/v3/pkg/runtime"
 	"github.com/grafana/loki/v3/pkg/storage/chunk"
 	"github.com/grafana/loki/v3/pkg/storage/config"
 	"github.com/grafana/loki/v3/pkg/storage/stores/index/seriesvolume"
+	"github.com/grafana/loki/v3/pkg/storage/types"
+	"github.com/grafana/loki/v3/pkg/util"
 	"github.com/grafana/loki/v3/pkg/util/constants"
+	"github.com/grafana/loki/v3/pkg/util/httpreq"
 	"github.com/grafana/loki/v3/pkg/validation"
 )
 
@@ -625,9 +624,7 @@ func Test_Iterator(t *testing.T) {
 				Start:     time.Unix(0, 0),
 				End:       time.Unix(0, 100000000),
 				Direction: logproto.BACKWARD,
-				Plan: &plan.QueryPlan{
-					AST: syntax.MustParseExpr(`{job="3"} | logfmt`),
-				},
+				Plan:      testutil.MustPlan(`{job="3"} | logfmt`),
 			},
 		},
 	)
@@ -684,9 +681,7 @@ func Test_ChunkFilter(t *testing.T) {
 				Start:     time.Unix(0, 0),
 				End:       time.Unix(0, 100000000),
 				Direction: logproto.BACKWARD,
-				Plan: &plan.QueryPlan{
-					AST: syntax.MustParseExpr(`{job="3"}`),
-				},
+				Plan:      testutil.MustPlan(`{job="3"}`),
 			},
 		},
 	)
@@ -723,9 +718,7 @@ func Test_PipelineWrapper(t *testing.T) {
 				End:       time.Unix(0, 100000000),
 				Direction: logproto.BACKWARD,
 				Shards:    []string{astmapper.ShardAnnotation{Shard: 0, Of: 2}.String()},
-				Plan: &plan.QueryPlan{
-					AST: syntax.MustParseExpr(`{job="3"}`),
-				},
+				Plan:      testutil.MustPlan(`{job="3"}`),
 			},
 		},
 	)
@@ -764,9 +757,7 @@ func Test_PipelineWrapper_disabled(t *testing.T) {
 				End:       time.Unix(0, 100000000),
 				Direction: logproto.BACKWARD,
 				Shards:    []string{astmapper.ShardAnnotation{Shard: 0, Of: 2}.String()},
-				Plan: &plan.QueryPlan{
-					AST: syntax.MustParseExpr(`{job="3"}`),
-				},
+				Plan:      testutil.MustPlan(`{job="3"}`),
 			},
 		},
 	)
@@ -856,9 +847,7 @@ func Test_ExtractorWrapper(t *testing.T) {
 					Start:    time.Unix(0, 0),
 					End:      time.Unix(0, 100000000),
 					Shards:   []string{astmapper.ShardAnnotation{Shard: 0, Of: 2}.String()},
-					Plan: &plan.QueryPlan{
-						AST: syntax.MustParseExpr(`sum(count_over_time({job="3"}[1m]))`),
-					},
+					Plan:     testutil.MustPlan(`sum(count_over_time({job="3"}[1m]))`),
 				},
 			},
 		)
@@ -897,9 +886,7 @@ func Test_ExtractorWrapper_disabled(t *testing.T) {
 					Start:    time.Unix(0, 0),
 					End:      time.Unix(0, 100000000),
 					Shards:   []string{astmapper.ShardAnnotation{Shard: 0, Of: 2}.String()},
-					Plan: &plan.QueryPlan{
-						AST: syntax.MustParseExpr(`sum(count_over_time({job="3"}[1m]))`),
-					},
+					Plan:     testutil.MustPlan(`sum(count_over_time({job="3"}[1m]))`),
 				},
 			},
 		)
@@ -1000,9 +987,7 @@ func Test_QueryWithDelete(t *testing.T) {
 						End:      10 * 1e6,
 					},
 				},
-				Plan: &plan.QueryPlan{
-					AST: syntax.MustParseExpr(`{job="3"}`),
-				},
+				Plan: testutil.MustPlan(`{job="3"}`),
 			},
 		},
 	)
@@ -1043,9 +1028,7 @@ func Test_QuerySampleWithDelete(t *testing.T) {
 						End:      10 * 1e6,
 					},
 				},
-				Plan: &plan.QueryPlan{
-					AST: syntax.MustParseExpr(`count_over_time({job="3"}[5m])`),
-				},
+				Plan: testutil.MustPlan(`count_over_time({job="3"}[5m])`),
 			},
 		},
 	)
@@ -1083,9 +1066,7 @@ func Test_QuerySampleWithoutExtractor(t *testing.T) {
 							Start:    time.Unix(0, 0),
 							End:      time.Unix(0, 110000000),
 							Deletes:  deletes,
-							Plan: &plan.QueryPlan{
-								AST: syntax.MustParseExpr(query),
-							},
+							Plan:     testutil.MustPlan(query),
 						},
 					},
 				)
@@ -1606,6 +1587,50 @@ func TestInstance_LabelsWithValues(t *testing.T) {
 		require.NoError(t, err)
 		require.Equal(t, map[string]UniqueValues{}, res)
 	})
+}
+
+func TestMemoryStreamShardsMetric(t *testing.T) {
+	limits, err := validation.NewOverrides(defaultLimitsTestConfig(), nil)
+	require.NoError(t, err)
+
+	reg := prometheus.NewPedanticRegistry()
+	metrics := newIngesterMetrics(reg, constants.Loki)
+
+	limiter := NewLimiter(limits, NilMetrics, newIngesterRingLimiterStrategy(&ringCountMock{count: 1}, 1), &TenantBasedStrategy{limits: limits})
+	tenantsRetention := retention.NewTenantsRetention(limits)
+
+	tenantID := "loki"
+	inst, err := newInstance(defaultConfig(), defaultPeriodConfigs, tenantID, limiter, loki_runtime.DefaultTenantConfigs(), noopWAL{}, metrics, &OnceSwitch{}, nil, nil, nil, NewStreamRateCalculator(), nil, nil, tenantsRetention)
+	require.NoError(t, err)
+
+	require.Equal(t, 0.0, promtestutil.ToFloat64(inst.memoryStreams), "metric needs to be instatiated with zero value")
+	require.Equal(t, 0.0, promtestutil.ToFloat64(inst.memoryStreamShards), "metric needs to be instantiated with zero value")
+
+	now := time.Now().Add(-5 * time.Minute)
+	require.NoError(t, inst.Push(context.Background(), &logproto.PushRequest{Streams: []logproto.Stream{
+		{Labels: `{app="foo"}`, Entries: entries(1, now)},
+		{Labels: `{__stream_shard__="0", app="bar"}`, Entries: entries(1, now)},
+		{Labels: `{__stream_shard__="1", app="bar"}`, Entries: entries(1, now)},
+	}}))
+
+	require.Equal(t, 3.0, promtestutil.ToFloat64(metrics.instance.memoryStreams.WithLabelValues(tenantID)))
+	require.Equal(t, 2.0, promtestutil.ToFloat64(metrics.instance.memoryStreamShards.WithLabelValues(tenantID)))
+
+	require.Equal(t, 3.0, promtestutil.ToFloat64(inst.memoryStreams))
+	require.Equal(t, 2.0, promtestutil.ToFloat64(inst.memoryStreamShards))
+
+	require.NoError(t, inst.streams.ForEach(func(s *stream) (bool, error) {
+		if s.labels.Has(ShardLbName) {
+			inst.removeStream(s)
+		}
+		return true, nil
+	}))
+
+	require.Equal(t, 1.0, promtestutil.ToFloat64(metrics.instance.memoryStreams.WithLabelValues(tenantID)))
+	require.Equal(t, 0.0, promtestutil.ToFloat64(metrics.instance.memoryStreamShards.WithLabelValues(tenantID)))
+
+	require.Equal(t, 1.0, promtestutil.ToFloat64(inst.memoryStreams))
+	require.Equal(t, 0.0, promtestutil.ToFloat64(inst.memoryStreamShards))
 }
 
 type fakeQueryServer func(*logproto.QueryResponse) error

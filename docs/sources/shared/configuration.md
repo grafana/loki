@@ -1250,6 +1250,26 @@ kafka_config:
   # CLI flag: -kafka.producer-max-buffered-bytes
   [producer_max_buffered_bytes: <int> | default = 1073741824]
 
+  # The maximum number of Produce requests the producer can have in-flight per
+  # Kafka broker at any given time. The product of this value and
+  # -kafka.producer-linger should exceed the maximum Produce latency expected
+  # from the Kafka backend in steady state. If the backend takes longer than
+  # that to process a Produce request, the client will buffer data and stop
+  # issuing new Produce requests until some in-flight ones complete, which
+  # surfaces as added latency to callers.
+  # CLI flag: -kafka.producer-max-inflight-requests-per-broker
+  [producer_max_inflight_requests_per_broker: <int> | default = 20]
+
+  # How long the producer waits, buffering records for the same partition,
+  # before sending a Produce request. The product of this value and
+  # -kafka.producer-max-inflight-requests-per-broker should exceed the maximum
+  # Produce latency expected from the Kafka backend in steady state. If the
+  # backend takes longer than that to process a Produce request, the client will
+  # buffer data and stop issuing new Produce requests until some in-flight ones
+  # complete, which surfaces as added latency to callers.
+  # CLI flag: -kafka.producer-linger
+  [producer_linger: <duration> | default = 50ms]
+
   # The guaranteed maximum lag before a consumer is considered to have caught up
   # reading from a partition at startup, becomes ACTIVE in the hash ring and
   # passes the readiness check. Set -kafka.max-consumer-lag-at-startup to 0 to
@@ -1277,7 +1297,7 @@ dataobj:
       # (for columnar sections). Uncompressed size is used for consistent I/O
       # and planning.
       # CLI flag: -dataobj-consumer.target-page-size
-      [target_page_size: <int> | default = 2MiB]
+      [target_page_size: <int> | default = 1MiB]
 
       # The maximum row count for pages to use for the data object builder. A
       # value of 0 means no limit.
@@ -1287,18 +1307,18 @@ dataobj:
       # The target maximum size of the encoded object and all of its encoded
       # sections (after compression), to limit memory usage of a builder.
       # CLI flag: -dataobj-consumer.target-builder-memory-limit
-      [target_object_size: <int> | default = 1GiB]
+      [target_object_size: <int> | default = 512MiB]
 
       # The target maximum amount of uncompressed data to hold in sections, for
       # sections that support being limited by size. Uncompressed size is used
       # for consistent I/O and planning.
       # CLI flag: -dataobj-consumer.target-section-size
-      [target_section_size: <int> | default = 128MiB]
+      [target_section_size: <int> | default = 512MiB]
 
       # The size of logs to buffer in memory before adding into columnar
       # builders, used to reduce CPU load of sorting.
       # CLI flag: -dataobj-consumer.buffer-size
-      [buffer_size: <int> | default = 16MiB]
+      [buffer_size: <int> | default = 128MiB]
 
       # The maximum number of dataobj section stripes to merge into a section at
       # once. Must be greater than 1.
@@ -1550,18 +1570,18 @@ dataobj:
     # The target maximum size of the encoded object and all of its encoded
     # sections (after compression), to limit memory usage of a builder.
     # CLI flag: -dataobj-index-builder.target-builder-memory-limit
-    [target_object_size: <int> | default = 64MiB]
+    [target_object_size: <int> | default = 512MiB]
 
     # The target maximum amount of uncompressed data to hold in sections, for
     # sections that support being limited by size. Uncompressed size is used for
     # consistent I/O and planning.
     # CLI flag: -dataobj-index-builder.target-section-size
-    [target_section_size: <int> | default = 16MiB]
+    [target_section_size: <int> | default = 512MiB]
 
     # The size of logs to buffer in memory before adding into columnar builders,
     # used to reduce CPU load of sorting.
     # CLI flag: -dataobj-index-builder.buffer-size
-    [buffer_size: <int> | default = 2MiB]
+    [buffer_size: <int> | default = 128MiB]
 
     # The maximum number of dataobj section stripes to merge into a section at
     # once. Must be greater than 1.
@@ -2773,6 +2793,12 @@ The `chunk_store_config` block configures how chunks will be cached and how long
 # CLI flag: -store.skip-query-writeback-older-than
 [skip_query_writeback_cache_older_than: <duration> | default = 0s]
 
+# Experimental. Return an object-storage chunk fetch error instead of incomplete
+# results. Applies to queries, bloom builds, and migration, including checksum
+# failures.
+# CLI flag: -chunk-store.propagate-chunk-fetch-errors
+[propagate_chunk_fetch_errors: <boolean> | default = false]
+
 # Chunks will be handed off to the L2 cache after this duration. 0 to disable L2
 # cache.
 # CLI flag: -store.chunks-cache-l2.handoff
@@ -3098,6 +3124,20 @@ retention_backoff_config:
 # smaller requests of no more than delete_max_interval
 # CLI flag: -compactor.delete-max-interval
 [delete_max_interval: <duration> | default = 24h]
+
+# Do not fail processing of a delete request with a line filter when a chunk it
+# needs to rebuild is indexed but missing from the object storage. When enabled,
+# the missing chunk is skipped and its index entry is left as is for diagnosing
+# the issue. Chunks skipped this way are counted by the
+# loki_compactor_deletion_missing_chunks_total metric and logged with their
+# chunk IDs. This setting has no effect when horizontal_scaling_mode is not
+# disabled. CAUTION: enable this only as a temporary escape hatch to unblock
+# delete requests, and only after verifying against the object storage that the
+# chunks really are missing. If a chunk gets skipped while it is in fact still
+# present, the data it holds is left undeleted even though the delete request is
+# reported as processed.
+# CLI flag: -compactor.deletion-ignore-missing-chunks
+[deletion_ignore_missing_chunks: <boolean> | default = false]
 
 # Maximum number of tables to compact in parallel. While increasing this value,
 # please make sure compactor has enough disk space allocated to be able to store
@@ -5332,6 +5372,16 @@ When a memberlist config with atleast 1 join_members is defined, kvstore of type
 # CLI flag: -memberlist.watch-prefix-buffer-size
 [watch_prefix_buffer_size: <int> | default = 128]
 
+# Minimum delay between CAS retries after a version mismatch. 0 disables the
+# delay.
+# CLI flag: -memberlist.cas-retry-min-backoff
+[cas_retry_min_backoff: <duration> | default = 0s]
+
+# Maximum delay between CAS retries after a version mismatch. Only takes effect
+# if cas-retry-min-backoff is also set.
+# CLI flag: -memberlist.cas-retry-max-backoff
+[cas_retry_max_backoff: <duration> | default = 10s]
+
 # IP address to listen on for gossip messages. Multiple addresses may be
 # specified. Defaults to 0.0.0.0
 # CLI flag: -memberlist.bind-addr
@@ -6195,7 +6245,14 @@ Configuration for 'runtime config' module, responsible for reloading runtime con
 [period: <duration> | default = 10s]
 
 # Comma separated list of yaml files or URLs with the configuration that can be
-# updated at runtime. Runtime config files will be merged from left to right.
+# updated at runtime. Runtime config files will be merged from left to right. An
+# entry can end with semicolon-separated parameters that say what happens when
+# it cannot be read: ";optional-on-startup" lets the process start without it,
+# but a later failure still fails the reload;
+# ";optional-keep-last-value-on-failure" also lets the process start without it,
+# and a later failure keeps the value the source supplied last. Without a
+# parameter, a source that cannot be read fails the load. Quote the value in a
+# shell, because ";" starts a new command.
 # CLI flag: -runtime-config.file
 [file: <string> | default = ""]
 

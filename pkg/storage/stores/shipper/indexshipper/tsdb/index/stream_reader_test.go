@@ -131,7 +131,7 @@ func writeCrossCheckFixture(t testing.TB, format int) string {
 
 // BenchmarkNewStreamFileReader reproduces the index-open hot path.
 func BenchmarkNewStreamFileReader(b *testing.B) {
-	path := writeCrossCheckFixture(b, FormatV4)
+	path := writeBenchmarkFixture(b, 1_000_000, 3)
 
 	b.ReportAllocs()
 	b.ResetTimer()

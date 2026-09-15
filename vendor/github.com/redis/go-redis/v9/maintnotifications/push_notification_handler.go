@@ -161,8 +161,15 @@ func (snh *NotificationHandler) handleMoving(ctx context.Context, handlerCtx pus
 			// If the connection is in use (StateInUse), it will be queued when returned to the pool via OnPut.
 			// This handles the case where the connection is idle and might never be retrieved again.
 			if poolConn.GetStateMachine().GetState() == pool.StateIdle {
-				if snh.manager.poolHooksRef != nil && snh.manager.poolHooksRef.workerManager != nil {
-					if err := snh.manager.poolHooksRef.workerManager.queueHandoff(poolConn); err != nil {
+				// Queue on the hook that owns this connection's pool, not
+				// unconditionally on the primary one: the request carries the
+				// hook's pool, and a failed handoff removes the connection
+				// from it — for a dedicated pipeline-pool connection the
+				// primary pool cannot do that, which would close the
+				// connection while leaving a dead slot behind.
+				owner := snh.manager.hookForConn(poolConn)
+				if owner != nil && owner.workerManager != nil {
+					if err := owner.workerManager.queueHandoff(poolConn); err != nil {
 						internal.Logger.Printf(context.Background(), logs.FailedToQueueHandoff(poolConn.GetID(), err))
 					} else {
 						// Mark the connection as queued for handoff to prevent it from being retrieved

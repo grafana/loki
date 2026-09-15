@@ -12,6 +12,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/dataset"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/datasetmd"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/result"
+	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
 	"github.com/grafana/loki/v3/pkg/util/loser"
 )
 
@@ -204,11 +205,11 @@ func (seq *DatasetSequence) Close() {
 	_ = seq.r.Close()
 }
 
-// CompareForSortSchema returns a comparison function for k-way merge using
-// schema-based sort order: [sortKey ASC, streamID ASC, timestamp DESC].
-// sortKeys maps streamID to its pre-computed sort key.
+// CompareByStreamSchema returns a comparison function for k-way merge of log lines using
+// schema key ordering: [shard bucket ASC, schemaKey ASC, stream hash ASC, streamID ASC, timestamp DESC].
+// sortKeys map stream IDs to the corresponding schema information (0th element is unused).
 // math.MaxInt64 is treated as a sentinel (loser-tree maxValue) and always compares greater.
-func CompareForSortSchema(sortKeys []string) func(result.Result[dataset.Row], result.Result[dataset.Row]) bool {
+func CompareByStreamSchema(sortKeys []streams.SortKey) func(result.Result[dataset.Row], result.Result[dataset.Row]) bool {
 	return func(a, b result.Result[dataset.Row]) bool {
 		aVal, aErr := a.Value()
 		bVal, bErr := b.Value()
@@ -232,11 +233,13 @@ func CompareForSortSchema(sortKeys []string) func(result.Result[dataset.Row], re
 			return true
 		}
 
-		aKey := sortKeys[aStreamID]
-		bKey := sortKeys[bStreamID]
-		if res := cmp.Compare(aKey, bKey); res != 0 {
+		aSort := sortKeys[aStreamID]
+		bSort := sortKeys[bStreamID]
+		// No need to compare labels for tie-breaks
+		if res := aSort.Compare(bSort); res != 0 {
 			return res < 0
 		}
+
 		if res := cmp.Compare(aStreamID, bStreamID); res != 0 {
 			return res < 0
 		}
@@ -258,7 +261,7 @@ func CompareForSortOrder(sort SortOrder) func(result.Result[dataset.Row], result
 			return result.Compare(a, b, compareRowsTimestamp) < 0
 		}
 	case SortSchemaASC:
-		panic("CompareForSortOrder does not support SortSchemaASC: use CompareForSortSchema instead")
+		panic("CompareForSortOrder does not support SortSchemaASC: use CompareByStreamSchema instead")
 	default:
 		panic("invalid sort order")
 	}

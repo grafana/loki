@@ -2,6 +2,7 @@ package syntax
 
 import (
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -3790,4 +3791,91 @@ func TestParseUnreservedWordsAsLabelNames(t *testing.T) {
 			require.NoError(t, err)
 		})
 	}
+}
+
+func TestParseExpr_ShouldValidateLabelComparison(t *testing.T) {
+	t.Run("rejects converting comparisons against __error__ and __error_details__", func(t *testing.T) {
+		operators := []string{">", ">=", "<", "<=", "!=", "==", "="}
+		for _, label := range []string{"__error__", "__error_details__"} {
+			for _, rhs := range []string{"0", "1s", "1MB"} {
+				for _, op := range operators {
+					query := fmt.Sprintf(`{app="foo"} | logfmt | %s %s %s`, label, op, rhs)
+					t.Run(query, func(t *testing.T) {
+						_, err := ParseExpr(query)
+						require.Error(t, err)
+						require.ErrorIs(t, err, logqlmodel.ErrParse)
+						require.Contains(t, err.Error(), label)
+						require.Contains(t, err.Error(), "cannot be compared")
+					})
+				}
+			}
+
+			for _, op := range []string{"=", "!="} {
+				query := fmt.Sprintf(`{app="foo"} | logfmt | %s %s ip("127.0.0.1")`, label, op)
+				t.Run(query, func(t *testing.T) {
+					_, err := ParseExpr(query)
+					require.Error(t, err)
+					require.ErrorIs(t, err, logqlmodel.ErrParse)
+					require.Contains(t, err.Error(), label)
+					require.Contains(t, err.Error(), "cannot be compared")
+				})
+			}
+		}
+
+		for _, query := range []string{
+			`{app="foo"} | logfmt | foo > 1 and __error__ > 0`,
+			`{app="foo"} | logfmt | __error__ > 0 and foo > 1`,
+			`{app="foo"} | logfmt | foo > 1 or __error__ > 0`,
+			`{app="foo"} | logfmt | __error__ > 0 and __error_details__ > 0`,
+			`count_over_time({app="foo"} | logfmt | __error__ > 0 [5m])`,
+			`label_replace(count_over_time({app="foo"} | logfmt | __error__ > 0 [5m]), "foo", "bar", "src", "dst")`,
+		} {
+			t.Run(query, func(t *testing.T) {
+				_, err := ParseExpr(query)
+				require.Error(t, err)
+				require.ErrorIs(t, err, logqlmodel.ErrParse)
+			})
+		}
+	})
+
+	t.Run("rejects converting comparisons after unwrap", func(t *testing.T) {
+		// __error__ is only ever set by the unwrap conversion itself for these
+		// queries, so a filter placed after "| unwrap" is exactly where users
+		// write the predicate.
+		for _, query := range []string{
+			`sum_over_time({app="foo"} | logfmt | unwrap bytes | __error__ > 0 [5m])`,
+			`avg_over_time({app="foo"} | logfmt | unwrap duration(latency) | __error_details__ > 1s [5m])`,
+			`sum_over_time({app="foo"} | logfmt | unwrap bytes | __error__ != ip("127.0.0.1") [5m])`,
+			`quantile_over_time(0.99, {app="foo"} | logfmt | unwrap bytes | __error_details__ >= 1MB [5m])`,
+		} {
+			t.Run(query, func(t *testing.T) {
+				_, err := ParseExpr(query)
+				require.Error(t, err)
+				require.ErrorIs(t, err, logqlmodel.ErrParse)
+				require.Contains(t, err.Error(), "cannot be compared")
+			})
+		}
+	})
+
+	t.Run("allows string comparisons against __error__ and __error_details__, and converting comparisons against ordinary labels", func(t *testing.T) {
+		for _, query := range []string{
+			`{app="foo"} | logfmt | __error__=""`,
+			`{app="foo"} | logfmt | __error__!=""`,
+			`{app="foo"} | logfmt | __error__=~".+"`,
+			`{app="foo"} | logfmt | __error__!~".+"`,
+			`{app="foo"} | logfmt | __error__="JSONParserErr"`,
+			`{app="foo"} | logfmt | __error_details__=""`,
+			`{app="foo"} | logfmt | latency > 1s`,
+			`{app="foo"} | logfmt | latency <= 1s`,
+			`{app="foo"} | logfmt | size == 1MB`,
+			`sum_over_time({app="foo"} | logfmt | unwrap bytes [5m])`,
+			`sum_over_time({app="foo"} | logfmt | unwrap bytes | __error__="" [5m])`,
+			`sum_over_time({app="foo"} | logfmt | unwrap bytes | bytes > 1MB [5m])`,
+		} {
+			t.Run(query, func(t *testing.T) {
+				_, err := ParseExpr(query)
+				require.NoError(t, err)
+			})
+		}
+	})
 }

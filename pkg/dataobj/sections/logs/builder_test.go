@@ -16,6 +16,33 @@ import (
 	"github.com/grafana/loki/v3/pkg/scratch"
 )
 
+func TestRecordCopyIsDeepCopy(t *testing.T) {
+	original := logs.Record{
+		StreamID:    42,
+		Timestamp:   time.Unix(10, 20),
+		Metadata:    labels.FromStrings("cluster", "prod"),
+		Line:        []byte("original line"),
+		SchemaKey:   "schema-key",
+		ShardBucket: 3,
+		StreamHash:  99,
+	}
+
+	copied := original.Copy()
+	require.Equal(t, original, copied)
+
+	// Change the copy and expect the original to be unchanged.
+	copied.Metadata.CopyFrom(labels.FromStrings("cluster", "staging"))
+	copied.Line[0] = 'X'
+	require.Equal(t, "prod", original.Metadata.Get("cluster"))
+	require.Equal(t, []byte("original line"), original.Line)
+
+	// Change the original and expect the copy to be unchanged.
+	original.Metadata.CopyFrom(labels.FromStrings("cluster", "dev"))
+	original.Line[1] = 'Y'
+	require.Equal(t, "staging", copied.Metadata.Get("cluster"))
+	require.Equal(t, []byte("Xriginal line"), copied.Line)
+}
+
 func Test(t *testing.T) {
 	records := []logs.Record{
 		{

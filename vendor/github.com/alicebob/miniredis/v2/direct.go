@@ -490,6 +490,89 @@ func (db *RedisDB) HSet(k string, fv ...string) {
 	db.hashSet(k, fv...)
 }
 
+// HExpire sets a TTL on a hash field. Returns true if the field exists.
+func (m *Miniredis) HExpire(key, field string, ttl time.Duration) bool {
+	return m.DB(m.selectedDB).HExpire(key, field, ttl)
+}
+
+// HExpire sets a TTL on a hash field. Returns true if the field exists.
+func (db *RedisDB) HExpire(key, field string, ttl time.Duration) bool {
+	db.master.Lock()
+	defer db.master.Unlock()
+	defer db.master.signal.Broadcast()
+
+	if !db.exists(key) || db.t(key) != keyTypeHash {
+		return false
+	}
+	if _, ok := db.hashKeys[key][field]; !ok {
+		return false
+	}
+	if db.hashTTLs[key] == nil {
+		db.hashTTLs[key] = map[string]time.Duration{}
+	}
+	db.hashTTLs[key][field] = ttl
+	return true
+}
+
+// HPersist removes a TTL from a hash field. Returns true if there was a TTL.
+func (m *Miniredis) HPersist(key, field string) bool {
+	return m.DB(m.selectedDB).HPersist(key, field)
+}
+
+// HPersist removes a TTL from a hash field. Returns true if there was a TTL.
+func (db *RedisDB) HPersist(key, field string) bool {
+	db.master.Lock()
+	defer db.master.Unlock()
+	defer db.master.signal.Broadcast()
+
+	fieldTTLs := db.hashTTLs[key]
+	if fieldTTLs == nil {
+		return false
+	}
+	if _, ok := fieldTTLs[field]; !ok {
+		return false
+	}
+	delete(fieldTTLs, field)
+	return true
+}
+
+// HTTL returns the remaining TTL of a hash field. Returns 0 if no TTL.
+func (m *Miniredis) HTTL(key, field string) time.Duration {
+	return m.DB(m.selectedDB).HTTL(key, field)
+}
+
+// HTTL returns the remaining TTL of a hash field. Returns 0 if no TTL.
+func (db *RedisDB) HTTL(key, field string) time.Duration {
+	db.master.Lock()
+	defer db.master.Unlock()
+
+	fieldTTLs := db.hashTTLs[key]
+	if fieldTTLs == nil {
+		return 0
+	}
+	return fieldTTLs[field]
+}
+
+// HSetEX sets hash fields with a TTL.
+func (m *Miniredis) HSetEX(key string, ttl time.Duration, fv ...string) {
+	m.DB(m.selectedDB).HSetEX(key, ttl, fv...)
+}
+
+// HSetEX sets hash fields with a TTL.
+func (db *RedisDB) HSetEX(key string, ttl time.Duration, fv ...string) {
+	db.master.Lock()
+	defer db.master.Unlock()
+	defer db.master.signal.Broadcast()
+
+	db.hashSet(key, fv...)
+	if db.hashTTLs[key] == nil {
+		db.hashTTLs[key] = map[string]time.Duration{}
+	}
+	for i := 0; i < len(fv); i += 2 {
+		db.hashTTLs[key][fv[i]] = ttl
+	}
+}
+
 // HDel deletes a hash key.
 func (m *Miniredis) HDel(k, f string) {
 	m.DB(m.selectedDB).HDel(k, f)
