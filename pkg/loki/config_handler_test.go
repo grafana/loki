@@ -260,6 +260,18 @@ func TestConfigQueryHandler(t *testing.T) {
 			expectedStatusCode:  200,
 			expectedContentType: "text/plain; charset=utf-8",
 		},
+		{
+			name:                "an unparseable q value falls back to YAML rather than defaulting to accepted",
+			acceptHeader:        "application/json;q=bogus",
+			expectedStatusCode:  200,
+			expectedContentType: "text/plain; charset=utf-8",
+		},
+		{
+			name:                "a q value outside 0-1 falls back to YAML rather than defaulting to accepted",
+			acceptHeader:        "application/json;q=2",
+			expectedStatusCode:  200,
+			expectedContentType: "text/plain; charset=utf-8",
+		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			req := httptest.NewRequest("GET", "http://test.com/config?"+tc.query, nil)
@@ -275,6 +287,12 @@ func TestConfigQueryHandler(t *testing.T) {
 
 			if tc.expectedContentType != "" {
 				assert.Equal(t, tc.expectedContentType, resp.Header.Get("Content-Type"))
+			}
+
+			// The representation always depends on Accept once the request reaches a response,
+			// regardless of which one was chosen.
+			if tc.expectedStatusCode == 200 {
+				assert.Equal(t, "Accept", resp.Header.Get("Vary"))
 			}
 
 			if tc.expectedBody != "" {
