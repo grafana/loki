@@ -226,6 +226,19 @@ docker run --rm \
 The metrics port (default `3500`) must be published so that Prometheus or Alloy can
 scrape it.
 
+### Bearer token authentication
+
+Use `-bearer-token-file` to add a bearer token to Loki requests. The canary
+rereads the file for each HTTP request and WebSocket reconnect, so projected
+Kubernetes service account tokens can rotate without restarting the canary.
+This option is mutually exclusive with `-user`.
+
+For a pod using the default service account token mount, pass:
+
+```shell
+-bearer-token-file=/var/run/secrets/kubernetes.io/serviceaccount/token
+```
+
 ### Kubernetes
 
 To run on Kubernetes, you can do something simple like:
