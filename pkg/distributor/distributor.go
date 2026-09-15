@@ -207,14 +207,15 @@ type metrics struct {
 	pushStatsCount                        *prometheus.CounterVec
 	tenantPushSanitizedStructuredMetadata *prometheus.CounterVec
 
-	limitsServiceShardShadowDivergence    *prometheus.CounterVec
-	limitsServiceShardShadowUnimplemented *prometheus.CounterVec
-	limitsServiceShardShadowFailed        *prometheus.CounterVec
-	limitsServiceShardShadowRejected      *prometheus.CounterVec
-	limitsServiceShardShadowCompared      *prometheus.CounterVec
-	limitsServiceShardShadowCapped        *prometheus.CounterVec
-	limitsServiceShardDuration            prometheus.Histogram
-	limitsServiceExceedsLimitsDuration    prometheus.Histogram
+	limitsServiceShardShadowDivergence      *prometheus.CounterVec
+	limitsServiceShardShadowDivergenceDelta *prometheus.HistogramVec
+	limitsServiceShardShadowUnimplemented   *prometheus.CounterVec
+	limitsServiceShardShadowFailed          *prometheus.CounterVec
+	limitsServiceShardShadowRejected        *prometheus.CounterVec
+	limitsServiceShardShadowCompared        *prometheus.CounterVec
+	limitsServiceShardShadowCapped          *prometheus.CounterVec
+	limitsServiceShardDuration              prometheus.Histogram
+	limitsServiceExceedsLimitsDuration      prometheus.Histogram
 
 	// kafka metrics
 	kafkaAppends           *prometheus.CounterVec
@@ -268,7 +269,19 @@ func newMetrics(reg prometheus.Registerer) *metrics {
 		limitsServiceShardShadowDivergence: promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
 			Namespace: constants.Loki,
 			Name:      "distributor_limits_service_shard_shadow_divergence_total",
-			Help:      "For tenants/policies in 'shadow' mode, the total number of times the ingest-limits service's shard-count recommendation differed from the shard count actually used (computed by the local rate store). Only incremented for comparable observations -- see distributor_limits_service_shard_shadow_compared_total for the denominator.",
+			Help:      "For tenants/policies in 'shadow' mode, the total number of times the ingest-limits service's shard-count recommendation differed from the shard count actually used (computed by the local rate store). Only incremented for comparable observations -- see distributor_limits_service_shard_shadow_compared_total for the denominator. The 'sharding' label classifies which side actually sharded (shard count > 1): both, limits_only, rate_store_only, or neither.",
+		}, []string{"tenant", "sharding"}),
+
+		limitsServiceShardShadowDivergenceDelta: promauto.With(reg).NewHistogramVec(prometheus.HistogramOpts{
+			Namespace: constants.Loki,
+			Name:      "distributor_limits_service_shard_shadow_divergence_delta",
+			Help:      "For tenants/policies in 'shadow' mode, the distribution of the signed shard-count difference (ingest-limits service recommendation minus the local rate store's), observed only when the two diverge. Positive = the limits service recommends more shards than the rate store (over-shards); negative = fewer (under-shards). Answers 'when they disagree, in which direction and by how much?' -- the count equals distributor_limits_service_shard_shadow_divergence_total. Native-only histogram: the exponential schema resolves both tails without hand-picked buckets.",
+			// Native-only: no classic Buckets. With a bucket factor > 1 and no
+			// Buckets, client_golang does not fall back to DefBuckets (see
+			// histogram.go), so this emits only the native representation.
+			NativeHistogramBucketFactor:     1.1,
+			NativeHistogramMinResetDuration: 1 * time.Hour,
+			NativeHistogramMaxBucketNumber:  100,
 		}, []string{"tenant"}),
 
 		limitsServiceShardShadowUnimplemented: promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
@@ -292,8 +305,8 @@ func newMetrics(reg prometheus.Registerer) *metrics {
 		limitsServiceShardShadowCompared: promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
 			Namespace: constants.Loki,
 			Name:      "distributor_limits_service_shard_shadow_compared_total",
-			Help:      "For tenants/policies in 'shadow' mode, the total number of shadow-mode observations with a real, comparable shard-count recommendation from the ingest-limits service. The denominator for distributor_limits_service_shard_shadow_divergence_total.",
-		}, []string{"tenant"}),
+			Help:      "For tenants/policies in 'shadow' mode, the total number of shadow-mode observations with a real, comparable shard-count recommendation from the ingest-limits service. The denominator for distributor_limits_service_shard_shadow_divergence_total. The 'sharding' label classifies which side actually sharded (shard count > 1): both, limits_only, rate_store_only, or neither; filtering out 'neither' restricts the divergence rate to comparisons where sharding was in play.",
+		}, []string{"tenant", "sharding"}),
 
 		limitsServiceShardShadowCapped: promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
 			Namespace: constants.Loki,
@@ -1496,13 +1509,20 @@ func (d *Distributor) observeLimitsServiceShardShadow(ctx context.Context, tenan
 			// mismatch -- the local rate store never rejects outright.
 			d.m.limitsServiceShardShadowRejected.WithLabelValues(tenantID).Inc()
 		default:
-			d.m.limitsServiceShardShadowCompared.WithLabelValues(tenantID).Inc()
+			resultShards := int(result.Shards)
+			// Classify which side's decision actually shards the stream
+			sharding := shardingState(c.rateStoreShards, resultShards)
+			d.m.limitsServiceShardShadowCompared.WithLabelValues(tenantID, sharding).Inc()
 			if result.ShardDecisionContext == uint32(limits.ReasonStreamShardsCapped) {
 				d.m.limitsServiceShardShadowCapped.WithLabelValues(tenantID).Inc()
 			}
-			resultShards := int(result.Shards)
 			if resultShards != c.rateStoreShards {
-				d.m.limitsServiceShardShadowDivergence.WithLabelValues(tenantID).Inc()
+				d.m.limitsServiceShardShadowDivergence.WithLabelValues(tenantID, sharding).Inc()
+				// Signed gap, keeping direction: positive means the limits
+				// service recommends more shards than the rate store
+				// (over-shards), negative means fewer (under-shards).
+				delta := resultShards - c.rateStoreShards
+				d.m.limitsServiceShardShadowDivergenceDelta.WithLabelValues(tenantID).Observe(float64(delta))
 				level.Debug(log.With(util_log.WithUserID(tenantID, d.logger), "stream", c.stream.Labels)).Log(
 					"msg", "shard-count shadow divergence",
 					"rate_store_shards", c.rateStoreShards,
@@ -1510,6 +1530,21 @@ func (d *Distributor) observeLimitsServiceShardShadow(ctx context.Context, tenan
 				)
 			}
 		}
+	}
+}
+
+func shardingState(rateStoreShards, limitsShards int) string {
+	rateStoreSharded := rateStoreShards > 1
+	limitsSharded := limitsShards > 1
+	switch {
+	case rateStoreSharded && limitsSharded:
+		return "both"
+	case limitsSharded:
+		return "limits_only"
+	case rateStoreSharded:
+		return "rate_store_only"
+	default:
+		return "neither"
 	}
 }
 
