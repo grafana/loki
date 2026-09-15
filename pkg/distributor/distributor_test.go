@@ -3355,6 +3355,21 @@ func TestDistributor_ObserveLimitsServiceShardShadow(t *testing.T) {
 				}
 				return 0
 			}
+			// Sum a counter vec across all of its child series. Handles the
+			// counters that carry only a tenant label as well as those also
+			// split by "sharding", and returns 0 when nothing was incremented.
+			sumVec := func(c prometheus.Collector) float64 {
+				ch := make(chan prometheus.Metric, 16)
+				c.Collect(ch)
+				close(ch)
+				var total float64
+				for m := range ch {
+					var dm dto.Metric
+					require.NoError(t, m.Write(&dm))
+					total += dm.GetCounter().GetValue()
+				}
+				return total
+			}
 			for _, c := range []struct {
 				name    string
 				counter *prometheus.CounterVec
@@ -3367,7 +3382,7 @@ func TestDistributor_ObserveLimitsServiceShardShadow(t *testing.T) {
 				{"compared", d.m.limitsServiceShardShadowCompared, test.expectCompared},
 				{"capped", d.m.limitsServiceShardShadowCapped, test.expectCapped},
 			} {
-				require.Equal(t, want(c.expect), testutil.ToFloat64(c.counter.WithLabelValues("test")), "counter %s", c.name)
+				require.Equal(t, want(c.expect), sumVec(c.counter), "counter %s", c.name)
 			}
 
 			// The synchronous shadow call must always record its added
