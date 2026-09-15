@@ -80,9 +80,10 @@ stopping new v14 writes first, because earlier binaries cannot read v14 indexes.
 
 ### TSDB head WAL chunk records use a new binary format
 
-The ingester writes chunk records to the TSDB head write-ahead log (WAL) in a new format that stores each chunk's ingestion timestamp to support schema v14.
+The ingester writes chunk records to the TSDB head write-ahead log (WAL) in a new format that stores each chunk's ingestion timestamp to support [TSDB schema v14](https://grafana.com/docs/loki/<LOKI_VERSION>/setup/upgrade/#tsdb-schema-v14).
 Upgrading needs no action, because Loki still reads the old format.
-Loki 3.7.x and earlier cannot read the new format: WAL replay fails with `error recovering head from TSDB WAL: unknown record type`, Loki does not treat this as WAL corruption, and the ingester fails to start.
+Once upgraded, previously released Loki versions (3.7.x and earlier) cannot read the new format:
+The WAL replay fails with `error recovering head from TSDB WAL: unknown record type`, Loki does not treat this as WAL corruption, and the ingester fails to start.
 
 To roll back after the new format was written, remove the WAL data before you start the older binary:
 
