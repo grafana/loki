@@ -24,7 +24,7 @@ const loadTimeout = 30 * time.Second
 
 // DefaultMaxItemBytes is the size limit New falls back to when the caller does not know the backend's
 // real one.
-const DefaultMaxItemBytes = 64 << 20 // 64 MiB
+const DefaultMaxItemBytes = 8 << 20 // 8 MiB
 
 // Cache adapts a cache.Cache backend into a dataobj.MetadataCache. It prefixes and versions keys, and
 // coalesces concurrent misses for the same key into a single load via a singleflight.Group. It is safe
@@ -40,10 +40,9 @@ type Cache struct {
 	fetchErrLog rate.Sometimes
 	storeErrLog rate.Sometimes
 
-	hits        prometheus.Counter
-	misses      prometheus.Counter
-	errors      *prometheus.CounterVec
-	storedBytes prometheus.Counter
+	hits   prometheus.Counter
+	misses prometheus.Counter
+	errors *prometheus.CounterVec
 }
 
 // New wraps c as a dataobj.MetadataCache. reg may be nil.
@@ -75,10 +74,6 @@ func New(c cache.Cache, maxItemBytes int64, reg prometheus.Registerer, logger lo
 			Name: "loki_dataobj_metadata_cache_errors_total",
 			Help: "Data-object metadata cache errors by operation (fetch, store).",
 		}, []string{"operation"}),
-		storedBytes: promauto.With(reg).NewCounter(prometheus.CounterOpts{
-			Name: "loki_dataobj_metadata_cache_stored_bytes_total",
-			Help: "Total data-object metadata bytes written to the cache.",
-		}),
 	}
 
 	// Pre-create both label values so a healthy process still exposes a zero series for each
@@ -101,12 +96,8 @@ func (c *Cache) GetOrLoadMetadataRegion(ctx context.Context, key string, load fu
 
 	_, bufs, _, err := c.cache.Fetch(ctx, []string{k})
 	switch {
-	case err != nil && ctx.Err() != nil:
-		// A Fetch error alongside an already-canceled caller context is not a fact about the cache
-		// backend, so it must not count as a hit, a miss, or a backend error; return the caller's own
-		// error instead of dispatching a load it cannot use. This only covers a Fetch that errors: a
-		// clean miss with an already-canceled context still dispatches a load, since the miss itself
-		// carries no such signal to act on.
+	case ctx.Err() != nil:
+		// A context canceled / timed out always takes precedence.
 		return nil, ctx.Err()
 	case err != nil:
 		// A hit or a miss is a fact about the key; an error means Fetch could not establish that fact
@@ -138,8 +129,6 @@ func (c *Cache) GetOrLoadMetadataRegion(ctx context.Context, key string, load fu
 			c.storeErrLog.Do(func() {
 				level.Warn(c.logger).Log("msg", "data object metadata cache store failed", "key", key, "err", err)
 			})
-		} else {
-			c.storedBytes.Add(float64(len(md)))
 		}
 		return md, nil
 	})

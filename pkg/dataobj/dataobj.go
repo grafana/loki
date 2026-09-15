@@ -99,7 +99,8 @@ type Object struct {
 // immutable, so a cached entry never goes stale. Implementations must be safe for concurrent use.
 type MetadataCache interface {
 	// GetOrLoadMetadataRegion returns the metadata region for key. On a miss it calls load, stores the
-	// result, and returns it; concurrent calls for the same key share a single load.
+	// result, and returns it; concurrent calls for the same key share a single load. A load error is
+	// returned unchanged, or wrapped with %w, so a caller can still match a sentinel in it via errors.Is.
 	//
 	// The key must uniquely identify the object across whatever scope a single cache instance is shared
 	// over. A bucket-relative path is enough as long as one cache instance serves one bucket. A caller

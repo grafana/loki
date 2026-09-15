@@ -15,8 +15,8 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/util/bufpool"
 )
 
-// errCannotCacheMetadata signals that a metadata region could not be produced to cache.
-// metadataViaCache treats it as non-fatal: it falls back to a direct read instead of failing the open.
+// errCannotCacheMetadata signals that extendedMetadataRegionEnd could not size a region to cache: it
+// would exceed the cache's size limit, or a section's type or layout is invalid or overflows.
 var errCannotCacheMetadata = errors.New("cannot cache data-object metadata region")
 
 // minimumPrefetchBytes is the minimum number of bytes to prefetch before
@@ -65,17 +65,8 @@ func (d *decoder) metadataDirect(ctx context.Context) (*filemd.Metadata, error) 
 // metadataViaCache serves the metadata region from the cache (loading it on a miss), then decodes the
 // file metadata from it. It prefetches whatever region was cached, so a later section-metadata read
 // falling inside that region is served from memory instead of a fresh read from object storage.
-//
-// Two things can go wrong without being fatal: a cached region that does not decode (truncated or
-// corrupt), and a load that cannot produce a cacheable region at all (see errCannotCacheMetadata). Both
-// fall back to a direct read, so enabling the cache never makes an object less openable than the
-// uncached path would have.
-//
-// The two cases differ in how long they last. A corrupt entry clears itself once the cache's TTL or
-// eviction policy expires it. An uncacheable region recurs on every open of that object, since nothing
-// is ever stored for it to expire.
 func (d *decoder) metadataViaCache(ctx context.Context) (*filemd.Metadata, error) {
-	blob, err := d.metadataCache.GetOrLoadMetadataRegion(ctx, d.metadataKey, d.fetchMetadataRegion)
+	blob, err := d.metadataCache.GetOrLoadMetadataRegion(ctx, d.metadataKey, d.fetchExtendedMetadataRegion)
 	if err != nil {
 		if errors.Is(err, errCannotCacheMetadata) {
 			level.Warn(d.logger).Log("msg", "data-object metadata cannot be cached; reading directly", "key", d.metadataKey, "err", err)
@@ -114,22 +105,20 @@ func (d *decoder) decodeMetadataRegion(blob []byte) (md *filemd.Metadata, metada
 	return md, header.MetadataSize, nil
 }
 
-// fetchMetadataRegion reads the metadata region its caller should cache: the file metadata plus, per
+// fetchExtendedMetadataRegion reads the metadata region its caller should cache: the file metadata plus, per
 // extendedMetadataRegionEnd, every non-logs section's own metadata.
 //
-// A failure after the file metadata decodes (computing the region, or reading it) is wrapped in
-// errCannotCacheMetadata, so metadataViaCache can fall back to a direct read. A failure decoding the
-// file metadata itself is returned unwrapped: metadataDirect would hit that same failure, so there is
-// no direct read left to fall back to.
-func (d *decoder) fetchMetadataRegion(ctx context.Context) ([]byte, error) {
+// extendedMetadataRegionEnd already wraps its own error in errCannotCacheMetadata, so metadataViaCache
+// falls back to a direct read instead of failing the open.
+func (d *decoder) fetchExtendedMetadataRegion(ctx context.Context) ([]byte, error) {
 	md, buf, metadataSize, err := d.fetchAndDecodeMetadata(ctx)
 	if err != nil {
 		return nil, err
 	}
 
-	// MaxItemBytes is the cache backend's own size limit: asking upfront, before reading or allocating
-	// anything, avoids doing that work for a region the backend would reject anyway. MetadataCache
-	// guarantees a positive value, so there is nothing to default here.
+	// MaxItemBytes is the cache backend's own size limit: asking upfront, before extending the region
+	// with further reads or allocations, avoids doing that work for a region the backend would reject
+	// anyway. MetadataCache guarantees a positive value, so there is nothing to default here.
 	startOff := int64(8) + int64(metadataSize)
 	regionEnd, err := d.extendedMetadataRegionEnd(md, startOff, d.metadataCache.MaxItemBytes())
 	if err != nil {
@@ -148,14 +137,14 @@ func (d *decoder) fetchMetadataRegion(ctx context.Context) ([]byte, error) {
 	// adds to that read rather than replacing it.
 	rc, err := d.rr.ReadRange(ctx, int64(len(buf)), regionEnd-int64(len(buf)))
 	if err != nil {
-		return nil, fmt.Errorf("reading metadata region: %w: %w", errCannotCacheMetadata, err)
+		return nil, fmt.Errorf("reading metadata region: %w", err)
 	}
 	defer rc.Close()
 
 	region := make([]byte, regionEnd)
 	copy(region, buf)
 	if _, err := io.ReadFull(rc, region[len(buf):]); err != nil {
-		return nil, fmt.Errorf("reading metadata region: %w: %w", errCannotCacheMetadata, err)
+		return nil, fmt.Errorf("reading metadata region: %w", err)
 	}
 	return region, nil
 }
@@ -183,7 +172,7 @@ func (d *decoder) fetchMetadataRegion(ctx context.Context) ([]byte, error) {
 // layout offset, not its position in md.Sections, since sections are not guaranteed to be listed in
 // on-disk offset order.
 //
-// maxBytes also guards against a corrupt layout driving a huge allocation in fetchMetadataRegion.
+// maxBytes also guards against a corrupt layout driving a huge allocation in fetchExtendedMetadataRegion.
 // Only startOff itself exceeding maxBytes fails outright, since then nothing is left to cache, not
 // even the file metadata.
 func (d *decoder) extendedMetadataRegionEnd(md *filemd.Metadata, startOff, maxBytes int64) (int64, error) {
@@ -198,13 +187,9 @@ func (d *decoder) extendedMetadataRegionEnd(md *filemd.Metadata, startOff, maxBy
 	regionEnd := startOff
 
 	for i, sec := range md.Sections {
-		// Not wrapped in errCannotCacheMetadata: Object.init calls getSectionType on every section right
-		// after Metadata returns, on both the cached and uncached paths, so a bad section type fails
-		// the open identically either way. Falling back to metadataDirect first would only delay that
-		// same failure by one doomed attempt.
 		typ, err := getSectionType(md, sec)
 		if err != nil {
-			return 0, fmt.Errorf("getting section %d type: %w", i, err)
+			return 0, fmt.Errorf("%w: getting section %d type: %w", errCannotCacheMetadata, i, err)
 		}
 		if typ.Equals(logsSectionType) {
 			// Its layout is skipped too, not just its contribution: since it is excluded regardless, a
