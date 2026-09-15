@@ -20,6 +20,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
 	"github.com/grafana/loki/v3/pkg/dataobj/sortmerge"
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
+	"github.com/grafana/loki/v3/pkg/util"
 )
 
 func (c *Context) executeLogMerge(node *physical.LogMerge) Pipeline {
@@ -125,11 +126,7 @@ func (c *Context) doLogObjectMerge(ctx context.Context, node *physical.LogMerge)
 		if err != nil {
 			return "", err
 		}
-		defer func() {
-			if outputErr == nil {
-				outputErr = reader.Close()
-			}
-		}()
+		defer util.CloseAndHandleError(reader, &outputErr)
 		return v2.CompactedIndexPath(node.Tenant, reader)
 	})
 	if err != nil {
@@ -425,7 +422,7 @@ func (w *logObjectWriter) finish(ctx context.Context) (logMergeStats, error) {
 
 // finalizeAndUpload appends the pending sections, flushes them into one compacted
 // log object, computes its content-hash path, and uploads it to the data bucket.
-func (w *logObjectWriter) finalizeAndUpload(ctx context.Context) error {
+func (w *logObjectWriter) finalizeAndUpload(ctx context.Context) (returnErr error) {
 	obj, closer, err := w.logsBuilder.Flush()
 	if err != nil {
 		return fmt.Errorf("flushing logs builder: %w", err)
@@ -436,7 +433,7 @@ func (w *logObjectWriter) finalizeAndUpload(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("getting object reader: %w", err)
 	}
-	defer pathReader.Close()
+	defer util.CloseAndHandleError(pathReader, &returnErr)
 
 	path, err := v2.CompactedLogObjectPath(w.node.Tenant, pathReader)
 	if err != nil {
@@ -463,12 +460,12 @@ func (w *logObjectWriter) finalizeAndUpload(ctx context.Context) error {
 // uploadObject streams a built object to the given bucket and returns its encoded
 // size. The index object goes to the index bucket; compacted log objects go to
 // the data bucket.
-func (c *Context) uploadObject(ctx context.Context, bucket objstore.Bucket, path string, obj *dataobj.Object) (int64, error) {
+func (c *Context) uploadObject(ctx context.Context, bucket objstore.Bucket, path string, obj *dataobj.Object) (size int64, returnErr error) {
 	reader, err := obj.Reader(ctx)
 	if err != nil {
 		return 0, fmt.Errorf("getting object reader: %w", err)
 	}
-	defer reader.Close()
+	defer util.CloseAndHandleError(reader, &returnErr)
 
 	if err := bucket.Upload(ctx, path, reader); err != nil {
 		return 0, err

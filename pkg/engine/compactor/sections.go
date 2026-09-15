@@ -26,6 +26,8 @@ import (
 
 const prefetchBytes = 2 * 1024 * 1024
 
+var errNoShardBucketColumn = errors.New("postings section has no ShardBuckets column")
+
 // indexEntry is one index object listed in a ToC for a particular tenant.
 type indexEntry struct {
 	Path                 string
@@ -456,7 +458,10 @@ func logSectionRefsFor(ctx context.Context, bucket objstore.Bucket, tenant, idxP
 	// TODO(benclive): Copy the shard count to the stats section to avoid this step
 	shardCount, err := getShardCount(ctx, obj, tenant)
 	if err != nil {
-		return nil, nil, 0, fmt.Errorf("get shard count tenant=%s index=%s: %w", tenant, idxPath, err)
+		if !errors.Is(err, errNoShardBucketColumn) {
+			return nil, nil, 0, fmt.Errorf("get shard count tenant=%s index=%s: %w", tenant, idxPath, err)
+		}
+		shardCount = 0
 	}
 
 	refs := make([]v2.Section[logSortPrefix], 0, len(bySection))
@@ -487,7 +492,7 @@ func getShardCount(ctx context.Context, obj *dataobj.Object, tenant string) (sha
 
 		shardBucketColumns := columnsOfType(opened.Columns(), postings.ColumnTypeShardBuckets)
 		if len(shardBucketColumns) != 1 {
-			return 0, fmt.Errorf("postings section has no ShardBuckets column")
+			return 0, errNoShardBucketColumn
 		}
 
 		inner := postings.NewReader(postings.ReaderOptions{Columns: shardBucketColumns})
