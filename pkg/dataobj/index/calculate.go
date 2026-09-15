@@ -254,6 +254,7 @@ func (c *Calculator) processStreamsSection(ctx context.Context, section *dataobj
 }
 
 // processLogsSection reads information from the logs section in order to build index information in the c.indexobjBuilder.
+// The provided section index only counts logs sections across all tenants, matching the indexes yielded by Filter, not positions in reader.Sections().
 func (c *Calculator) processLogsSection(ctx context.Context, sectionLogger log.Logger, objectPath string, section *dataobj.Section, sectionIdx int64, streamIDLookup map[int64]int64, streamLabels map[int64]labels.Labels, shardBuckets map[int64]uint32) error {
 	logsBuf := make([]logs.Record, 8192)
 

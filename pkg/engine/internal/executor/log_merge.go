@@ -54,33 +54,24 @@ func (c *Context) doLogObjectMerge(ctx context.Context, node *physical.LogMerge)
 		return nil, errors.New("no object store bucket configured")
 	}
 
-	sources, err := c.collectLogSources(ctx, node)
+	inputs, err := c.prepareLogMergeInputs(ctx, node)
 	if err != nil {
 		return nil, err
 	}
-	if len(sources) == 0 {
+	if len(inputs.sources) == 0 {
 		c.observeLogMerge(node.Tenant, logMergeObservedStats{Outcome: logMergeOutcomeEmpty}, time.Since(start))
 		return nil, fmt.Errorf("LogMerge: no source log sections for tenant %q", node.Tenant)
 	}
 
-	ok, mismatch, err := sourcesMatchSortLayout(ctx, sources, node.SortSchema)
-	if err != nil {
-		return nil, err
-	}
-	if !ok {
+	if inputs.mismatch != "" {
 		level.Warn(c.logger).Log(
 			"msg", "LogMerge: skipping task; source object sort layout does not match target",
 			"tenant", node.Tenant,
-			"path", mismatch,
+			"path", inputs.mismatch,
 			"sort_schema", strings.Join(node.SortSchema, ","),
 		)
 		c.observeLogMerge(node.Tenant, logMergeObservedStats{Outcome: logMergeOutcomeEmpty}, time.Since(start))
 		return nil, nil
-	}
-
-	table, err := buildGlobalStreamTable(sources, node.SortSchema)
-	if err != nil {
-		return nil, err
 	}
 
 	indexBuilder, err := indexobj.NewBuilder(c.indexobjCfg, c.scratchStore)
@@ -89,14 +80,10 @@ func (c *Context) doLogObjectMerge(ctx context.Context, node *physical.LogMerge)
 	}
 	calc := dataobjindex.NewCalculator(indexBuilder)
 
-	sections, remaps := sectionsWithRemaps(sources, table)
-	merged, err := sortmerge.MixedObjectIterator(ctx, sections, remaps, node.SortSchema)
-	if err != nil {
-		return nil, fmt.Errorf("starting k-way log merge: %w", err)
-	}
+	merged := sortmerge.MixedRunIterator(ctx, inputs.runs, node.SortSchema)
 
 	// Consume the globally-sorted stream and build compacted object
-	w, err := c.newLogObjectWriter(node, table, calc)
+	w, err := c.newLogObjectWriter(node, inputs.table, calc)
 	if err != nil {
 		return nil, err
 	}
@@ -134,9 +121,9 @@ func (c *Context) doLogObjectMerge(ctx context.Context, node *physical.LogMerge)
 	}
 
 	stats.Outcome = logMergeOutcomeSuccess
-	stats.SourceObjects = len(sources)
-	for _, s := range sources {
-		stats.InputSections += len(s.logsSections)
+	stats.SourceObjects = len(inputs.sources)
+	for _, run := range inputs.runs {
+		stats.InputSections += len(run)
 	}
 
 	level.Info(c.logger).Log(
@@ -184,9 +171,10 @@ func (c *Context) observeLogMerge(tenant string, stats logMergeObservedStats, du
 }
 
 type logSource struct {
-	path         string
-	logsSections []*dataobj.Section
-	streams      map[int64]streams.Stream
+	path               string
+	logSectionsByIndex []*dataobj.Section // Logs-only index across tenants; unselected sections are nil.
+	streams            map[int64]streams.Stream
+	remap              map[int64]int64
 }
 
 // collectLogSources opens every unique source object referenced by node.Runs and
@@ -220,12 +208,15 @@ func (c *Context) collectLogSources(ctx context.Context, node *physical.LogMerge
 	sources := make([]*logSource, 0, len(paths))
 	for _, path := range paths {
 		want := wanted[path]
-		obj, err := dataobj.FromBucket(ctx, srcBucket, path, 0)
+		obj, err := dataobj.FromBucket(ctx, srcBucket, path, 1<<20) // 1MB
 		if err != nil {
 			return nil, fmt.Errorf("opening object %q: %w", path, err)
 		}
 
-		logsSections := make([]*dataobj.Section, 0, len(want))
+		logSections := make([]*dataobj.Section, obj.Sections().Count(logs.CheckSection))
+		found := 0
+		// Filter indexes count logs sections across all tenants, matching the
+		// index calculator. Unselected sections need no layout or data reads.
 		for i, sec := range obj.Sections().Filter(logs.CheckSection) {
 			if _, ok := want[int64(i)]; !ok {
 				continue
@@ -233,11 +224,11 @@ func (c *Context) collectLogSources(ctx context.Context, node *physical.LogMerge
 			if sec.Tenant != node.Tenant {
 				return nil, fmt.Errorf("object %q logs section %d belongs to tenant %q, expected %q", path, i, sec.Tenant, node.Tenant)
 			}
-			logsSections = append(logsSections, sec)
+			logSections[i] = sec
+			found++
 		}
-
-		if len(logsSections) != len(want) {
-			return nil, fmt.Errorf("object %q: found %d of %d requested logs sections for tenant %q (stale plan or index/object mismatch)", path, len(logsSections), len(want), node.Tenant)
+		if found != len(want) {
+			return nil, fmt.Errorf("object %q: found %d of %d requested logs sections for tenant %q (stale plan or index/object mismatch)", path, found, len(want), node.Tenant)
 		}
 
 		var streamSections []*dataobj.Section
@@ -261,9 +252,9 @@ func (c *Context) collectLogSources(ctx context.Context, node *physical.LogMerge
 		}
 
 		sources = append(sources, &logSource{
-			path:         path,
-			logsSections: logsSections,
-			streams:      srcStreams,
+			path:               path,
+			streams:            srcStreams,
+			logSectionsByIndex: logSections,
 		})
 	}
 
@@ -272,21 +263,25 @@ func (c *Context) collectLogSources(ctx context.Context, node *physical.LogMerge
 
 // sourcesMatchSortLayout reports whether every logs section in sources has the
 // target layout. mismatch is the first object path that does not match.
-func sourcesMatchSortLayout(ctx context.Context, sources []*logSource, sortSchema []string) (ok bool, mismatch string, err error) {
+func sourcesMatchSortLayout(ctx context.Context, sources []*logSource, sortSchema []string) (string, error) {
 	want := logsobj.TargetSortLayout(sortSchema)
 	for _, src := range sources {
-		for _, sec := range src.logsSections {
+		for _, sec := range src.logSectionsByIndex {
+			if sec == nil {
+				// Not all sections are selected for merge. Unselected sections are nil
+				continue
+			}
 			opened, err := logs.Open(ctx, sec)
 			if err != nil {
-				return false, src.path, fmt.Errorf("opening logs section in %q: %w", src.path, err)
+				return src.path, fmt.Errorf("opening logs section in %q: %w", src.path, err)
 			}
 			got := opened.SortLayout()
 			if !logsobj.EqualSortLayout(got, want) {
-				return false, src.path, nil
+				return src.path, nil
 			}
 		}
 	}
-	return true, "", nil
+	return "", nil
 }
 
 // resolveStreams decodes a streams section into a map from local stream ID to its
@@ -320,19 +315,67 @@ func buildGlobalStreamTable(sources []*logSource, sortSchema []string) (*logsobj
 	return logsobj.RankMixedStreams(sortSchema, maps...)
 }
 
-// sectionsWithRemaps flattens the sources' logs sections
-func sectionsWithRemaps(sources []*logSource, table *logsobj.MultiSourceRankedStreams) ([]*dataobj.Section, []map[int64]int64) {
-	var (
-		sections []*dataobj.Section
-		remaps   []map[int64]int64
-	)
-	for sourceIdx, src := range sources {
-		for _, sec := range src.logsSections {
-			sections = append(sections, sec)
-			remaps = append(remaps, table.Remap(sourceIdx))
+// logMergeInputs owns source identity, run order, and the global stream namespace.
+type logMergeInputs struct {
+	sources  []*logSource
+	runs     []sortmerge.Run
+	table    *logsobj.MultiSourceRankedStreams
+	mismatch string
+}
+
+func (c *Context) prepareLogMergeInputs(ctx context.Context, node *physical.LogMerge) (*logMergeInputs, error) {
+	sources, err := c.collectLogSources(ctx, node)
+	if err != nil {
+		return nil, err
+	}
+	inputs := &logMergeInputs{sources: sources}
+	inputs.mismatch, err = sourcesMatchSortLayout(ctx, sources, node.SortSchema)
+	if err != nil {
+		return nil, err
+	}
+	if inputs.mismatch != "" || len(sources) == 0 {
+		return inputs, nil
+	}
+	inputs.table, err = buildGlobalStreamTable(sources, node.SortSchema)
+	if err != nil {
+		return nil, err
+	}
+	byPath := make(map[string]*logSource, len(sources))
+	for i, source := range sources {
+		source.remap = inputs.table.Remap(i)
+		byPath[source.path] = source
+	}
+	type sectionID struct {
+		path  string
+		index int64
+	}
+	seen := make(map[sectionID]struct{})
+	for _, ref := range node.Runs {
+		if ref == nil {
+			continue
+		}
+		var run sortmerge.Run
+		for _, section := range ref.Sections {
+			if section == nil {
+				continue
+			}
+			id := sectionID{section.ObjectPath, section.SectionIndex}
+			if _, ok := seen[id]; ok {
+				continue
+			}
+			source := byPath[id.path]
+			if source == nil || id.index < 0 || id.index >= int64(len(source.logSectionsByIndex)) || source.logSectionsByIndex[id.index] == nil {
+				return nil, fmt.Errorf("invalid logs section reference %q#%d", id.path, id.index)
+			}
+			sec := source.logSectionsByIndex[id.index]
+			seen[id] = struct{}{}
+			run = append(run, sortmerge.RemappedSection{Section: sec, Remap: source.remap})
+		}
+		if len(run) > 0 {
+			inputs.runs = append(inputs.runs, run)
 		}
 	}
-	return sections, remaps
+	return inputs, nil
 }
 
 // logObjectWriter consumes the globally-sorted merged record stream and builds
