@@ -4,10 +4,12 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"mime"
 	"net/http"
 	"net/url"
 	"reflect"
 	"regexp"
+	"strconv"
 	"strings"
 
 	"github.com/grafana/dskit/tenant"
@@ -193,15 +195,15 @@ func configHandler(actualCfg any, defaultCfg any) http.HandlerFunc {
 }
 
 // writeConfigResponse writes v as YAML by default, or JSON if the Accept header asks for it —
-// same pattern as dskit's ring status handler. Normalized through YAML first to key by yaml
-// struct tags.
+// same pattern as dskit's ring status handler. Converted to a map via YAML first, so it's keyed
+// by yaml struct tags instead of raw Go field names.
 func writeConfigResponse(w http.ResponseWriter, r *http.Request, v any) {
-	if !strings.Contains(r.Header.Get("Accept"), "application/json") {
+	// Only the first Accept header occurrence is honored; subsequent Accept headers are ignored.
+	if !acceptsJSON(r.Header.Get("Accept")) {
 		writeYAMLResponse(w, v)
 		return
 	}
 
-    // Obtain the YAML representation, with its defined struct tags, to translate into JSON
 	asMap, err := yamlMarshalUnmarshal(v)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -211,6 +213,27 @@ func writeConfigResponse(w http.ResponseWriter, r *http.Request, v any) {
 	if err := json.NewEncoder(w).Encode(asMap); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 	}
+}
+
+// acceptsJSON reports whether accept's media ranges include application/json at a non-zero q
+// value. q=0 explicitly marks a media type as unacceptable (RFC 7231 §5.3.2).
+func acceptsJSON(accept string) bool {
+	for _, part := range strings.Split(accept, ",") {
+		mediaType, params, err := mime.ParseMediaType(part)
+		if err != nil || mediaType != "application/json" {
+			continue
+		}
+		q := 1.0
+		if raw, ok := params["q"]; ok {
+			if parsed, err := strconv.ParseFloat(raw, 64); err == nil {
+				q = parsed
+			}
+		}
+		if q > 0 {
+			return true
+		}
+	}
+	return false
 }
 
 func extractConfigPaths(cfg any, paths []string) (map[string]any, error) {

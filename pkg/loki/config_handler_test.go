@@ -248,6 +248,18 @@ func TestConfigQueryHandler(t *testing.T) {
 			expectedStatusCode:  200,
 			expectedContentType: "application/json",
 		},
+		{
+			name:                "q=0 explicitly excludes JSON, falling back to YAML",
+			acceptHeader:        "application/json;q=0",
+			expectedStatusCode:  200,
+			expectedContentType: "text/plain; charset=utf-8",
+		},
+		{
+			name:                "a lookalike media type doesn't false-positive as JSON",
+			acceptHeader:        "application/json-seq",
+			expectedStatusCode:  200,
+			expectedContentType: "text/plain; charset=utf-8",
+		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			req := httptest.NewRequest("GET", "http://test.com/config?"+tc.query, nil)
