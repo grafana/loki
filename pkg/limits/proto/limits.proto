@@ -5,12 +5,14 @@ package proto;
 service IngestLimitsFrontend {
   rpc ExceedsLimits(ExceedsLimitsRequest) returns (ExceedsLimitsResponse) {}
   rpc UpdateRates(UpdateRatesRequest) returns (UpdateRatesResponse) {}
+  rpc CheckLimitsAndShard(CheckLimitsAndShardRequest) returns (CheckLimitsAndShardResponse) {}
 }
 
 service IngestLimits {
   rpc ExceedsLimits(ExceedsLimitsRequest) returns (ExceedsLimitsResponse) {}
   rpc GetAssignedPartitions(GetAssignedPartitionsRequest) returns (GetAssignedPartitionsResponse) {}
   rpc UpdateRates(UpdateRatesRequest) returns (UpdateRatesResponse) {}
+  rpc CheckLimitsAndShard(CheckLimitsAndShardRequest) returns (CheckLimitsAndShardResponse) {}
 }
 
 message ExceedsLimitsRequest {
@@ -58,4 +60,36 @@ message UpdateRatesResponse {
 message UpdateRatesResult {
   uint64 streamHash = 1;
   uint64 rate = 2;
+}
+
+message CheckLimitsAndShardRequest {
+  string tenant = 1;
+  // streamHash is the pre-shard hash of the logical stream; totalSize is the
+  // byte size the caller used for its own rate decision for this push (line
+  // bytes only for time-sharded streams). Both are pre-shard, before any
+  // distributor-side sharding has split the stream into sub-streams.
+  repeated StreamMetadata streams = 2;
+}
+
+message CheckLimitsAndShardResponse {
+  repeated StreamShardResult results = 1;
+}
+
+message StreamShardResult {
+  uint64 streamHash = 1;
+  // The number of shards the distributor should create for this stream on
+  // this push. 0 and 1 both mean no sharding is needed -- whether the
+  // stream was rejected is signaled independently via rejectReason, not by
+  // this value.
+  uint32 shards = 2;
+  // Reason enum, see reason.go. Populated when shards was capped below the
+  // rate-justified ideal (ShardsCapped), when the decision could not be made
+  // (Failed), or when the receiving instance did not own the stream's
+  // partition (NotOwned). Never set merely because the stream was rejected
+  // -- see rejectReason for that.
+  uint32 shardDecisionContext = 3;
+  // Non-empty when the stream was rejected outright (only possible for a
+  // brand-new stream with no room left in the tenant's stream-count
+  // budget). Empty means the stream was accepted, regardless of shards.
+  string rejectReason = 4;
 }

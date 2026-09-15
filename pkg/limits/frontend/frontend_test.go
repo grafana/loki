@@ -185,3 +185,37 @@ func TestFrontend_ExceedsLimits(t *testing.T) {
 		})
 	}
 }
+
+func newTestFrontend(t *testing.T) *Frontend {
+	t.Helper()
+	readRing, _ := newMockRingWithClientPool(t, "test", nil, nil)
+	f, err := New(Config{
+		LifecyclerConfig: ring.LifecyclerConfig{
+			RingConfig: ring.Config{
+				KVStore: kv.Config{
+					Store: "inmemory",
+				},
+			},
+			HeartbeatPeriod:  time.Second,
+			HeartbeatTimeout: time.Minute,
+		},
+	}, "test", readRing, log.NewNopLogger(), prometheus.NewRegistry())
+	require.NoError(t, err)
+	return f
+}
+
+func TestFrontend_CheckLimitsAndShard_FailsOpenToOneShard(t *testing.T) {
+	f := newTestFrontend(t)
+	f.limitsClient = &mockLimitsClient{t: t, err: errors.New("boom")}
+	req := &proto.CheckLimitsAndShardRequest{
+		Tenant:  "test",
+		Streams: []*proto.StreamMetadata{{StreamHash: 0x1}},
+	}
+	resp, err := f.CheckLimitsAndShard(t.Context(), req)
+	require.NoError(t, err)
+	require.Equal(t, []*proto.StreamShardResult{{
+		StreamHash:           0x1,
+		Shards:               1,
+		ShardDecisionContext: uint32(limits.ReasonFailed),
+	}}, resp.Results)
+}
