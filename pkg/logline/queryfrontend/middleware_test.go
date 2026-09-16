@@ -1553,6 +1553,60 @@ func TestPrefetchFilter_MultipleHintRanges(t *testing.T) {
 	require.Contains(t, gotStarts, r2.Start)
 }
 
+func TestPrefetchFilter_MultipleHintRangesParallel(t *testing.T) {
+	now := time.Now().Truncate(time.Millisecond)
+	ranges := []hintprovider.HintTimeRange{
+		{Start: now.Add(-50 * time.Minute), End: now.Add(-45 * time.Minute)},
+		{Start: now.Add(-40 * time.Minute), End: now.Add(-35 * time.Minute)},
+		{Start: now.Add(-30 * time.Minute), End: now.Add(-25 * time.Minute)},
+		{Start: now.Add(-20 * time.Minute), End: now.Add(-15 * time.Minute)},
+	}
+
+	entered := make(chan struct{}, len(ranges))
+	release := make(chan struct{})
+	next := queryrangebase.HandlerFunc(func(ctx context.Context, _ queryrangebase.Request) (queryrangebase.Response, error) {
+		entered <- struct{}{}
+		select {
+		case <-release:
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		}
+		return emptyStreamResponse(), nil
+	})
+
+	handler := buildStack(
+		&mockHintProvider{hints: &hintprovider.Hints{TimeRanges: ranges}},
+		MiddlewareConfig{RequireOptInHeader: true},
+		newTestMetrics(),
+		next,
+	)
+
+	errCh := make(chan error, 1)
+	go func() {
+		ctx := testTenantContextWithLive()
+		req := newTestLokiRequest(`{job="test"} |= "error"`, now.Add(-1*time.Hour), now)
+		_, err := handler.Do(ctx, req)
+		errCh <- err
+	}()
+
+	timeout := time.After(2 * time.Second)
+	for i := 0; i < len(ranges); i++ {
+		select {
+		case <-entered:
+		case <-timeout:
+			t.Fatalf("hint ranges did not start in parallel: got %d of %d in-flight next.Do calls", i, len(ranges))
+		}
+	}
+	close(release)
+
+	select {
+	case err := <-errCh:
+		require.NoError(t, err)
+	case <-timeout:
+		t.Fatal("filter did not return after releasing in-flight hint requests")
+	}
+}
+
 // --- Ingester window tests ---
 
 func TestPrefetchFilter_IngesterWindowOnly(t *testing.T) {

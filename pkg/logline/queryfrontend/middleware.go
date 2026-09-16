@@ -10,6 +10,8 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
+	"github.com/grafana/dskit/concurrency"
+	"github.com/grafana/dskit/tenant"
 	"github.com/grafana/dskit/user"
 	"github.com/prometheus/common/model"
 	"github.com/zeebo/xxh3"
@@ -1073,6 +1075,10 @@ type loglineFilterHandler struct {
 	hintTimeout time.Duration
 	metrics     *Metrics
 	logger      log.Logger
+	// limits is optional. When set, hint-range fan-out uses MaxQueryParallelism
+	// the same way query sharding's Downstreamer does; otherwise it falls back
+	// to DefaultDownstreamConcurrency (128).
+	limits queryrangebase.Limits
 }
 
 func (h *loglineFilterHandler) Do(ctx context.Context, req queryrangebase.Request) (queryrangebase.Response, error) {
@@ -1143,16 +1149,11 @@ func (h *loglineFilterHandler) Do(ctx context.Context, req queryrangebase.Reques
 		return h.next.Do(ctx, req.WithStartEnd(start, end))
 	}
 
-	responses := make([]queryrangebase.Response, 0, len(overlapping))
+	responses := make([]queryrangebase.Response, len(overlapping))
 	var queriedDuration time.Duration
 	for _, hint := range overlapping {
 		start := maxTime(hint.Start, intervalStart)
 		end := minTime(hint.End, intervalEnd)
-		resp, err := h.next.Do(ctx, req.WithStartEnd(start, end))
-		if err != nil {
-			return nil, err
-		}
-		responses = append(responses, resp)
 		queriedDuration += intervalDuration(start, end)
 		if hint.IsPassthrough() {
 			h.metrics.passthroughSubRequests.WithLabelValues("pre_min_date").Inc()
@@ -1161,7 +1162,46 @@ func (h *loglineFilterHandler) Do(ctx context.Context, req queryrangebase.Reques
 		}
 	}
 	result.recordNarrowed(originalDuration, queriedDuration)
+
+	// Fan-out hint ranges like query sharding: ForEachJob is a goroutine cap.
+	// Actual querier concurrency is still bounded by LimitedRoundTripper only
+	// if this handler sits above that semaphore; today it does not.
+	p := h.hintRangeParallelism(ctx, len(overlapping))
+	err := concurrency.ForEachJob(ctx, len(overlapping), p, func(ctx context.Context, i int) error {
+		hint := overlapping[i]
+		start := maxTime(hint.Start, intervalStart)
+		end := minTime(hint.End, intervalEnd)
+		resp, err := h.next.Do(ctx, req.WithStartEnd(start, end))
+		if err != nil {
+			return err
+		}
+		responses[i] = resp
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
 	return queryrange.DefaultCodec.MergeResponse(responses...)
+}
+
+// hintRangeParallelism mirrors Downstreamer: default 128, or MaxQueryParallelism
+// when limits are configured. Never spawn more workers than jobs.
+func (h *loglineFilterHandler) hintRangeParallelism(ctx context.Context, jobs int) int {
+	p := queryrange.DefaultDownstreamConcurrency
+	if h.limits != nil {
+		if userID, err := tenant.TenantID(ctx); err == nil {
+			if x := h.limits.MaxQueryParallelism(ctx, userID); x > 0 {
+				p = x
+			}
+		}
+	}
+	if jobs < p {
+		p = jobs
+	}
+	if p < 1 {
+		return 1
+	}
+	return p
 }
 
 func isCancel(err error) bool {
