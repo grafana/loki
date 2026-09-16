@@ -17,9 +17,9 @@ import (
 	"github.com/grafana/loki/pkg/push"
 )
 
-// shardTemplate is what labelTemplate gives the production caller: the stream's labels with the
-// shard label left as a placeholder for shardNested to fill in.
-var shardTemplate = labelTemplate(`{app="a"}`, log.NewNopLogger())
+// shardLabels is what the caller has in hand when it shards: the stream's labels, parsed by
+// validation before it got here.
+var shardLabels = mustParseLabels(`{app="a"}`)
 
 func buildEntry(line string) push.Entry {
 	return push.Entry{Timestamp: time.Unix(0, 1).UTC(), Line: line}
@@ -278,7 +278,7 @@ func TestShardNested(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			input := tc.buildStream()
-			shards := shardNested(&input, shardTemplate, tc.shards, tc.startShard)
+			shards := shardNested(&input, shardLabels, tc.shards, tc.startShard)
 
 			for i, name := range tc.wantNames {
 				require.Equal(t, name, shards[i].Labels, "shard %d name", i)
@@ -318,7 +318,7 @@ func TestShardNestedRepeatsAGroupOnlyWhereItStraddlesAShard(t *testing.T) {
 		{3, 3, 7, 5},
 	} {
 		input := buildGroupedStream(tc.resources, tc.scopesPer, tc.entriesPer)
-		shards := shardNested(&input, shardTemplate, tc.shards, 0)
+		shards := shardNested(&input, shardLabels, tc.shards, 0)
 
 		source := buildGroupedStream(tc.resources, tc.scopesPer, tc.entriesPer)
 		requireShardsCarryTheStream(t, source, shards)
@@ -346,7 +346,7 @@ func TestShardNestedReturnsNothingToShard(t *testing.T) {
 		{name: "a stream of no groups", stream: logproto.InternalStreamAdapter{Labels: `{app="a"}`}, shards: 4},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			require.Nil(t, shardNested(&tc.stream, shardTemplate, tc.shards, 0),
+			require.Nil(t, shardNested(&tc.stream, shardLabels, tc.shards, 0),
 				"nothing to divide, so the caller keeps the stream it has")
 		})
 	}
@@ -358,7 +358,7 @@ func TestShardNestedReturnsNothingToShard(t *testing.T) {
 func TestShardNestedSharesOnlyItsEntriesWithTheCaller(t *testing.T) {
 	for _, shards := range []int{1, 2, 5} {
 		input := buildGroupedStream(2, 2, 3)
-		out := shardNested(&input, shardTemplate, shards, 0)
+		out := shardNested(&input, shardLabels, shards, 0)
 		require.NotEmpty(t, out)
 
 		out[0].Labels = "rewritten"
@@ -378,7 +378,7 @@ func TestShardNestedSharesOnlyItsEntriesWithTheCaller(t *testing.T) {
 		// to be one a boundary falls inside, or the shard holds it whole and an append runs off
 		// the end where nothing would notice.
 		split := buildGroupedStream(1, 1, 9)
-		partial := shardNested(&split, shardTemplate, 3, 0)
+		partial := shardNested(&split, shardLabels, 3, 0)
 		require.Len(t, partial, 3)
 		require.Len(t, partial[0].ResourceLogs[0].ScopeLogs[0].Entries, 3, "a partial run")
 
@@ -474,7 +474,7 @@ func BenchmarkRateSharding(b *testing.B) {
 		b.Run(shape.name+"/nested", func(b *testing.B) {
 			b.ReportAllocs()
 			for i := 0; i < b.N; i++ {
-				out := shardNested(&nested, shardTemplate, shards, 0)
+				out := shardNested(&nested, shardLabels, shards, 0)
 				if len(out) != shards {
 					b.Fatalf("got %d shards", len(out))
 				}

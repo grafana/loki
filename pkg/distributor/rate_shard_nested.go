@@ -11,9 +11,9 @@ import (
 )
 
 // shardNested divides a nested stream's entries across shards, each taking a contiguous run of
-// every group it reaches into. Shards are named from lbls, which carries the placeholder
-// labelTemplate leaves for the shard label, and numbered from startShard, wrapping at shards — the
-// caller tracks where the stream's last push left off.
+// every group it reaches into. Shards are named from lbls, the stream's own labels, carrying the
+// shard label set to a number taken from startShard onwards and wrapping at shards — the caller
+// tracks where the stream's last push left off.
 //
 // A run is a subslice of the source rather than a copy, so a caller that rewrites an entry rewrites
 // it for both. Contiguous runs are what make that possible, and what hold a group's attributes to
@@ -42,10 +42,14 @@ func shardNested(stream *logproto.InternalStreamAdapter, lbls labels.Labels, sha
 		return base
 	}
 
-	lblsStr := lbls.String()
+	// The shard label goes in once as a placeholder, so naming a shard is a string replacement
+	// rather than a label set rebuilt and rendered per shard.
+	template := labels.NewBuilder(lbls).Set(ingester.ShardLbName, ingester.ShardLbPlaceholder).Labels()
+	pattern := template.String()
+
 	out := make([]logproto.InternalStreamAdapter, count)
 	for i := range out {
-		out[i].Labels, out[i].Hash = shardIdentity(lbls, lblsStr, (startShard+i)%shards)
+		out[i].Labels, out[i].Hash = shardIdentity(template, pattern, (startShard+i)%shards)
 	}
 
 	shard, placed := 0, 0
@@ -95,17 +99,12 @@ func shardNested(stream *logproto.InternalStreamAdapter, lbls labels.Labels, sha
 	return out
 }
 
-// shardIdentity is the name and hash a shard takes from its number, with the placeholder that
-// labelTemplate left in the stream's name replaced by it.
-func shardIdentity(lbls labels.Labels, streamPattern string, shardNumber int) (string, uint64) {
+// shardIdentity is the name and hash a shard takes from its number.
+func shardIdentity(template labels.Labels, pattern string, shardNumber int) (string, uint64) {
 	shardLabel := strconv.Itoa(shardNumber)
 
-	builder := labels.NewBuilder(lbls)
-	if lbls.Has(ingester.ShardLbName) {
-		builder.Set(ingester.ShardLbName, shardLabel)
-	}
-
-	return strings.Replace(streamPattern, ingester.ShardLbPlaceholder, shardLabel, 1), labels.StableHash(builder.Labels())
+	return strings.Replace(pattern, ingester.ShardLbPlaceholder, shardLabel, 1),
+		labels.StableHash(labels.NewBuilder(template).Set(ingester.ShardLbName, shardLabel).Labels())
 }
 
 // nestedEntryCount is the number of entries the stream holds, across every group.
