@@ -455,19 +455,33 @@ func containsLower(line, substr []byte) bool {
 
 	// Fast path - try to find first byte of substr
 	firstByte := substr[0]
+	firstIsASCII := firstByte < utf8.RuneSelf
+	var firstRune rune
+	if !firstIsASCII {
+		firstRune, _ = utf8.DecodeRune(substr)
+	}
 	maxIndex := len(line) - len(substr)
 
 	i := 0
 	for i <= maxIndex {
-		// Find potential first byte match
+		// Find potential first rune match. A raw byte compare only works for
+		// ASCII: a non-ASCII case pair (e.g. 'Σ'/'σ') does not share a lead
+		// byte, so a non-ASCII candidate has to be decoded and folded instead.
 		c := line[i]
-		// Fast path for ASCII - if c is uppercase letter, convert to lowercase
-		if c >= 'A' && c <= 'Z' {
-			c += 'a' - 'A'
-		}
-		if c != firstByte {
-			i++
-			continue
+		if c < utf8.RuneSelf {
+			if c >= 'A' && c <= 'Z' {
+				c += 'a' - 'A'
+			}
+			if !firstIsASCII || c != firstByte {
+				i++
+				continue
+			}
+		} else {
+			lr, _ := utf8.DecodeRune(line[i:])
+			if firstIsASCII || unicode.ToLower(lr) != firstRune {
+				i++
+				continue
+			}
 		}
 
 		// Found potential match, check rest of substr

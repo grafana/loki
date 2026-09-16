@@ -325,6 +325,15 @@ var cases = []struct {
 		expected: false,
 	},
 	{
+		// Σ/σ cross a UTF-8 continuation-byte boundary (unlike Γ/γ above, which
+		// happens to share a lead byte): the fast path's raw first-byte compare
+		// must fall back to a decoded rune compare or this is missed entirely.
+		name:     "utf8_case_insensitive_lead_byte_differs",
+		line:     "ΣΧΟΛΕΊΟ",
+		substr:   "σχολείο",
+		expected: true,
+	},
+	{
 		name:     "empty_substr",
 		line:     "any line",
 		substr:   "",
@@ -417,6 +426,10 @@ func TestLabelFilterRegexIsAnchored(t *testing.T) {
 		"a(.*c|d)", "a(b|.*c)", "pre(.*x|y)", "a(.*c|.*d)",
 		// non-ascii case folding must match the existing filters
 		"(?i)ünf.*", "(?i).*ÜNF", "(?i)Ünf", "(?i).*ünf.*",
+		// a case pair whose UTF-8 lead byte differs (unlike ü/Ü, which share
+		// one): containsLower's first-byte fast path skipped these entirely
+		// (review on #24421)
+		"(?i)σχολείο.*", "(?i).*ΣΧΟΛΕΊΟ", "(?i)привет.*", "(?i).*ПРИВЕТ",
 	} {
 		t.Run(re, func(t *testing.T) {
 			anchored := regexp.MustCompile("^(?:" + re + ")$")
@@ -434,6 +447,7 @@ func TestLabelFilterRegexIsAnchored(t *testing.T) {
 					"foobarX", "foobaz", "ac", "axc", "acb", "ad", "abd", "abdX",
 					"prex", "preXx", "prey", "abb", "abbX", "acc", "accX",
 					"ünf", "ÜNF", "Ünf", "ünfoo", "ÜNFOO", "xünf", "UNF",
+					"σχολείο", "ΣΧΟΛΕΊΟ", "σχολείοX", "XΣΧΟΛΕΊΟ", "привет", "ПРИВЕТ", "приветX", "XПРИВЕТ",
 				} {
 					want := anchored.MatchString(v)
 					if matchType == labels.MatchNotRegexp {
