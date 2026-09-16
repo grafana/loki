@@ -7,13 +7,19 @@ import (
 	"time"
 
 	"github.com/go-kit/log"
+	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/v3/pkg/distributor/shardstreams"
 	"github.com/grafana/loki/v3/pkg/logproto"
+	lokiring "github.com/grafana/loki/v3/pkg/util/ring"
 
 	"github.com/grafana/loki/pkg/push"
 )
+
+// shardTemplate is what labelTemplate gives the production caller: the stream's labels with the
+// shard label left as a placeholder for shardNested to fill in.
+var shardTemplate = labelTemplate(`{app="a"}`, log.NewNopLogger())
 
 func buildEntry(line string) push.Entry {
 	return push.Entry{Timestamp: time.Unix(0, 1).UTC(), Line: line}
@@ -78,6 +84,7 @@ func requireShardsCarryTheStream(t *testing.T, source logproto.InternalStreamAda
 	base, remainder := len(want)/len(shards), len(want)%len(shards)
 
 	seen := 0
+	seenNames := map[string]struct{}{}
 	for s := range shards {
 		shard := &shards[s]
 
@@ -94,8 +101,9 @@ func requireShardsCarryTheStream(t *testing.T, source logproto.InternalStreamAda
 		require.Equal(t, wantHeld, held, "shard %d holds the wrong share of the entries", s)
 		// The source's labels and hash, carried through unchanged. Naming a shard is the caller's,
 		// so these are placeholders rather than what a named shard ends up with.
-		require.Equal(t, source.Labels, shard.Labels, "shard %d labels", s)
-		require.Equal(t, source.Hash, shard.Hash, "shard %d hash", s)
+		require.NotEqual(t, source.Labels, shard.Labels, "shard %d carries the stream's own name", s)
+		require.NotContains(t, seenNames, shard.Labels, "shard %d repeats another shard's name", s)
+		seenNames[shard.Labels] = struct{}{}
 		require.NotEmpty(t, shard.ResourceLogs, "shard %d holds no resources", s)
 
 		for i := range shard.ResourceLogs {
@@ -150,8 +158,32 @@ func TestShardNested(t *testing.T) {
 		buildStream func() logproto.InternalStreamAdapter
 		shards      int
 
-		wantShards int // how many come back, when the case is about that
+		wantShards int      // how many come back, when the case is about that
+		startShard int      // the number the first shard takes, when the case is about numbering
+		wantNames  []string // what each shard is called, stated rather than derived
 	}{
+		{
+			name:        "shards named after their number",
+			buildStream: func() logproto.InternalStreamAdapter { return buildGroupedStream(1, 1, 6) },
+			shards:      3, wantShards: 3,
+			wantNames: []string{
+				`{__stream_shard__="0", app="a"}`,
+				`{__stream_shard__="1", app="a"}`,
+				`{__stream_shard__="2", app="a"}`,
+			},
+		},
+		{
+			// Numbering carries on from where the stream's last push left off, wrapping at the
+			// number of shards it is divided into.
+			name:        "numbered from where the last push left off",
+			buildStream: func() logproto.InternalStreamAdapter { return buildGroupedStream(1, 1, 6) },
+			shards:      3, wantShards: 3, startShard: 2,
+			wantNames: []string{
+				`{__stream_shard__="2", app="a"}`,
+				`{__stream_shard__="0", app="a"}`,
+				`{__stream_shard__="1", app="a"}`,
+			},
+		},
 		{
 			name:        "one group over several shards",
 			buildStream: func() logproto.InternalStreamAdapter { return buildGroupedStream(1, 1, 9) },
@@ -234,7 +266,13 @@ func TestShardNested(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			input := tc.buildStream()
-			shards := shardNested(&input, tc.shards)
+			shards := shardNested(&input, shardTemplate, tc.shards, tc.startShard)
+
+			for i, name := range tc.wantNames {
+				require.Equal(t, name, shards[i].Labels, "shard %d name", i)
+				require.Equal(t, labels.StableHash(mustParseLabels(name)), shards[i].Hash,
+					"shard %d hashes to its own name", i)
+			}
 
 			// What to expect is built separately rather than read back off the input, which the
 			// code under test holds pointers into and could have changed underneath us.
@@ -268,7 +306,7 @@ func TestShardNestedRepeatsAGroupOnlyWhereItStraddlesAShard(t *testing.T) {
 		{3, 3, 7, 5},
 	} {
 		input := buildGroupedStream(tc.resources, tc.scopesPer, tc.entriesPer)
-		shards := shardNested(&input, tc.shards)
+		shards := shardNested(&input, shardTemplate, tc.shards, 0)
 
 		source := buildGroupedStream(tc.resources, tc.scopesPer, tc.entriesPer)
 		requireShardsCarryTheStream(t, source, shards)
@@ -296,7 +334,7 @@ func TestShardNestedReturnsNothingToShard(t *testing.T) {
 		{name: "a stream of no groups", stream: logproto.InternalStreamAdapter{Labels: `{app="a"}`}, shards: 4},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			require.Nil(t, shardNested(&tc.stream, tc.shards),
+			require.Nil(t, shardNested(&tc.stream, shardTemplate, tc.shards, 0),
 				"nothing to divide, so the caller keeps the stream it has")
 		})
 	}
@@ -308,7 +346,7 @@ func TestShardNestedReturnsNothingToShard(t *testing.T) {
 func TestShardNestedSharesOnlyItsEntriesWithTheCaller(t *testing.T) {
 	for _, shards := range []int{1, 2, 5} {
 		input := buildGroupedStream(2, 2, 3)
-		out := shardNested(&input, shards)
+		out := shardNested(&input, shardTemplate, shards, 0)
 		require.NotEmpty(t, out)
 
 		out[0].Labels = "rewritten"
@@ -328,7 +366,7 @@ func TestShardNestedSharesOnlyItsEntriesWithTheCaller(t *testing.T) {
 		// to be one a boundary falls inside, or the shard holds it whole and an append runs off
 		// the end where nothing would notice.
 		split := buildGroupedStream(1, 1, 9)
-		partial := shardNested(&split, 3)
+		partial := shardNested(&split, shardTemplate, 3, 0)
 		require.Len(t, partial, 3)
 		require.Len(t, partial[0].ResourceLogs[0].ScopeLogs[0].Entries, 3, "a partial run")
 
@@ -416,11 +454,20 @@ func BenchmarkRateSharding(b *testing.B) {
 	for _, shape := range benchShapes {
 		nested, flat := benchStreams(4, 2, 1000, shape.sharedAttrs)
 
+		// Both arms divide the stream, name every shard and take a ring token for it. Only the
+		// flat one also builds a KeyedStream around each, which cannot be shared while that type
+		// still holds the flat stream.
+		keys := make([]uint32, shards)
+
 		b.Run(shape.name+"/nested", func(b *testing.B) {
 			b.ReportAllocs()
 			for i := 0; i < b.N; i++ {
-				if out := shardNested(&nested, shards); len(out) != shards {
+				out := shardNested(&nested, shardTemplate, shards, 0)
+				if len(out) != shards {
 					b.Fatalf("got %d shards", len(out))
+				}
+				for j := range out {
+					keys[j] = lokiring.TokenFor("tenant", out[j].Labels)
 				}
 			}
 		})

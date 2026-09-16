@@ -1,30 +1,31 @@
 package distributor
 
 import (
+	"strconv"
+	"strings"
+
+	"github.com/prometheus/prometheus/model/labels"
+
+	"github.com/grafana/loki/v3/pkg/ingester"
 	"github.com/grafana/loki/v3/pkg/logproto"
 )
 
-// shardNested splits a nested stream's entries across shards, in contiguous runs taken in the order
-// the groups appear.
+// shardNested divides a nested stream's entries across shards, each taking a contiguous run of
+// every group it reaches into. Shards are named from lbls, which carries the placeholder
+// labelTemplate leaves for the shard label, and numbered from startShard, wrapping at shards — the
+// caller tracks where the stream's last push left off.
 //
-// A shard carries the resources and scopes its entries came from, with their attributes repeated,
-// and one that contributed nothing to a shard is left out of it. Contiguous runs are what keeps
-// that cheap: an attribute set is repeated only where a shard boundary falls inside what it belongs
-// to. For R resources holding G scopes between them, over S shards, that is at most R+S-1 copies of
-// the resource attributes and G+S-1 of the scope attributes. Handing every shard entries from every
-// scope, as round-robin does for flat streams, would cost R*S and G*S instead.
-//
-// A shard takes each run as a subslice of the source rather than copying the entries, which
-// contiguous runs are also what makes possible. Its entries therefore live in the caller's stream,
-// so a caller that rewrites an entry rewrites it for both.
-func shardNested(stream *logproto.InternalStreamAdapter, shards int) []logproto.InternalStreamAdapter {
+// A run is a subslice of the source rather than a copy, so a caller that rewrites an entry rewrites
+// it for both. Contiguous runs are what make that possible, and what hold a group's attributes to
+// R+S-1 resource and G+S-1 scope copies over S shards: repeated only where a boundary falls inside
+// the group.
+func shardNested(stream *logproto.InternalStreamAdapter, lbls labels.Labels, shards, startShard int) []logproto.InternalStreamAdapter {
 	total := nestedEntryCount(stream)
 	if total == 0 || shards < 1 {
 		return nil
 	}
 
-	// No more shards than there are entries to fill them, matching what streamCount does for flat
-	// streams.
+	// No more shards than there are entries to fill them.
 	if shards > total {
 		shards = total
 	}
@@ -38,10 +39,10 @@ func shardNested(stream *logproto.InternalStreamAdapter, shards int) []logproto.
 		return base
 	}
 
+	lblsStr := lbls.String()
 	out := make([]logproto.InternalStreamAdapter, shards)
 	for i := range out {
-		out[i].Labels = stream.Labels
-		out[i].Hash = stream.Hash
+		out[i].Labels, out[i].Hash = shardIdentity(lbls, lblsStr, (startShard+i)%shards)
 	}
 
 	shard, placed := 0, 0
@@ -89,6 +90,19 @@ func shardNested(stream *logproto.InternalStreamAdapter, shards int) []logproto.
 		}
 	}
 	return out
+}
+
+// shardIdentity is the name and hash a shard takes from its number, with the placeholder that
+// labelTemplate left in the stream's name replaced by it.
+func shardIdentity(lbls labels.Labels, streamPattern string, shardNumber int) (string, uint64) {
+	shardLabel := strconv.Itoa(shardNumber)
+
+	builder := labels.NewBuilder(lbls)
+	if lbls.Has(ingester.ShardLbName) {
+		builder.Set(ingester.ShardLbName, shardLabel)
+	}
+
+	return strings.Replace(streamPattern, ingester.ShardLbPlaceholder, shardLabel, 1), labels.StableHash(builder.Labels())
 }
 
 // nestedEntryCount is the number of entries the stream holds, across every group.
