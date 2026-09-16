@@ -103,6 +103,7 @@ type streamUsage struct {
 type rateBucket struct {
 	timestamp int64  // start of the interval
 	size      uint64 // bytes received during this interval
+	pushes    uint64 // number of pushes received during this interval
 }
 
 type stripeLock struct {

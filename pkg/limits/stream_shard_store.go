@@ -147,6 +147,18 @@ func (s *streamShardStore) checkAndShard(ctx context.Context, tenant string, met
 			policyBucket, maxStreams := getPolicyBucketAndStreamsLimit(s.limits, s.numPartitions, tenant, m.IngestionPolicy)
 			streams := s.checkInitMap(i, tenant, partition, policyBucket)
 
+			if !shardCfg.Enabled {
+				// Sharding disabled for this policy: never shard, and drop any
+				// tracked state so it stops consuming budget -- a stream whose
+				// policy flipped to disabled must not keep its stale shards.
+				delete(streams, m.StreamHash)
+				results = append(results, &proto.StreamShardResult{
+					StreamHash: m.StreamHash,
+					Shards:     1,
+				})
+				continue
+			}
+
 			existing, wasPresent := streams[m.StreamHash]
 			isNewOrExpired := !wasPresent || existing.lastSeenAt < cutoff
 			if isNewOrExpired {
@@ -170,16 +182,6 @@ func (s *streamShardStore) checkAndShard(ctx context.Context, tenant string, met
 				evaluatedRate uint64 // byte/s rate that drove the decision, for shadow debugging; 0 unless computed
 			)
 			switch {
-			case !shardCfg.Enabled:
-				// Sharding disabled for this policy: never shard, and drop any
-				// tracked state so it stops consuming budget -- a stream whose
-				// policy flipped to disabled must not keep its stale shards.
-				delete(streams, m.StreamHash)
-				results = append(results, &proto.StreamShardResult{
-					StreamHash: m.StreamHash,
-					Shards:     1,
-				})
-				continue
 			case isNewOrExpired:
 				if maxStreams > 0 && budget < 1 {
 					// No room even for a single slot: reject outright.
@@ -221,8 +223,15 @@ func (s *streamShardStore) checkAndShard(ctx context.Context, tenant string, met
 					desired = max(1, stream.shardCount)
 				} else {
 					window := clampShardRateWindow(shardCfg.LimitsServiceStreamShardingRateWindow, s.bucketSize, s.rateWindow)
-					evaluatedRate = currentRate(stream.rateBuckets, seenAt, window)
-					desired = max(1, ceilDivU32(evaluatedRate, uint64(shardCfg.DesiredRate.Val())))
+					var pushRate float64
+					evaluatedRate, pushRate = currentRate(stream.rateBuckets, seenAt, window)
+					// Amortize the current push's size the way the local rate
+					// store does (shardCountFor): add totalSize * min(1,
+					// pushRate). Capping pushRate at 1 adds the full push for a
+					// high-frequency stream but only a fraction for an infrequent
+					// one, so a lone large push doesn't over-shard it.
+					amortizedRate := evaluatedRate + uint64(float64(m.TotalSize)*min(1, pushRate))
+					desired = max(1, ceilDivU32(amortizedRate, uint64(shardCfg.DesiredRate.Val())))
 				}
 			}
 
@@ -387,8 +396,10 @@ func (s *streamShardStore) updateRateBucket(stream *streamShardUsage, sizeDelta 
 	if b.timestamp < bucketStart {
 		b.timestamp = bucketStart
 		b.size = 0
+		b.pushes = 0
 	}
 	b.size += sizeDelta
+	b.pushes++
 	stream.rateBuckets[bucketIdx] = b
 }
 
@@ -502,26 +513,29 @@ func rateBucketsCold(buckets []rateBucket) bool {
 	return true
 }
 
-// currentRate computes a windowed-average byte rate from buckets, using the
-// same technique as usageStore/Service.UpdateRates: sum the bytes in
-// buckets that fall within the rate window, divided by the rate window
-// duration.
-func currentRate(buckets []rateBucket, now time.Time, rateWindow time.Duration) uint64 {
+// currentRate computes, in a single pass over the buckets, the windowed-average
+// byte rate and the per-second push rate, using the same technique as
+// usageStore/Service.UpdateRates: sum the bytes and pushes in buckets that fall
+// within the rate window, each divided by the rate window duration. The push
+// rate is used to amortize the current push's size the way the local rate store
+// does.
+func currentRate(buckets []rateBucket, now time.Time, rateWindow time.Duration) (bytesRate uint64, pushRate float64) {
 	seconds := rateWindow.Seconds()
 	if seconds <= 0 {
-		return 0
+		return 0, 0
 	}
 	// Sum only the buckets still inside the rate window. The ring buffer
 	// resets a slot lazily, on reuse, so slots not touched this window still
 	// hold stale data that must be skipped here rather than counted.
 	cutoff := now.Add(-rateWindow).UnixNano()
-	var total uint64
+	var totalBytes, totalPushes uint64
 	for _, b := range buckets {
 		if b.timestamp >= cutoff {
-			total += b.size
+			totalBytes += b.size
+			totalPushes += b.pushes
 		}
 	}
-	return uint64(float64(total) / seconds)
+	return uint64(float64(totalBytes) / seconds), float64(totalPushes) / seconds
 }
 
 // clampShardRateWindow resolves the rate-averaging window for the shard
