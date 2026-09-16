@@ -150,7 +150,7 @@ func (b *Builder) replaySections(ctx context.Context,
 				return nil, nil, nil, fmt.Errorf("missing stream ID remap for stream ID %d", rec.StreamID)
 			}
 
-			// Copy the Record because builder.Append retains a reference to the input Record while logs.IterSection re-uses it,
+			// Copy the Record because builder.Append retains a reference to the input Record while logs.IterSection re-uses it
 			recCopy := rec.Copy()
 			recCopy.StreamID = remap[rec.StreamID].rank
 			intermediateSectionBuilder.Append(recCopy)

@@ -4,6 +4,7 @@ package util //nolint:revive
 
 import (
 	"context"
+	"io"
 
 	"github.com/go-kit/log/level"
 
@@ -29,4 +30,11 @@ type GroupedErrors = errors.GroupedErrors
 // IsConnCanceled returns true, if error is from a closed gRPC connection.
 func IsConnCanceled(err error) bool {
 	return errors.IsConnCanceled(err)
+}
+
+func CloseAndHandleError(closer io.Closer, returnErr *error) {
+	closeErr := closer.Close()
+	if *returnErr == nil {
+		*returnErr = closeErr
+	}
 }
