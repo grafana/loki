@@ -8,13 +8,13 @@ import (
 	"os/signal"
 	"strings"
 	"sync"
-	"sync/atomic"
 	"syscall"
 	"time"
 
 	"github.com/fatih/color"
 	"github.com/gorilla/websocket"
 	"github.com/grafana/dskit/backoff"
+	"go.uber.org/atomic"
 
 	"github.com/grafana/loki/v3/pkg/logcli/client"
 	"github.com/grafana/loki/v3/pkg/logcli/output"
