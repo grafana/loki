@@ -455,21 +455,36 @@ func (pass simplifyRegexPass) simplifyRegexConcat(from Value, reg *syntax.Regexp
 
 	// We found a filter of concat with alternates.
 	if result != nil {
+		if !isMessage && (leadingOpenEnded || trailingOpenEnded) {
+			// The alternates were turned into whole-value equality checks, which
+			// are only correct when the pattern is anchored on both sides. An open
+			// end such as "ba(r|z).*" makes them too strict, so refuse and fall
+			// back to an anchored regexp.
+			return nil, false
+		}
 		return result, true
 	}
 
 	// We found a concat across literals.
 	if len(baseLiteral) > 0 {
-		if !isMessage && leadingOpenEnded != trailingOpenEnded {
-			// One-sided open end, e.g. "foo.*" or ".*foo": a contains check
-			// would match values a fully anchored regexp would not. Refuse
-			// simplification for non-message columns so the caller falls
-			// back to an anchored regexp.
-			return nil, false
-		}
 		op := types.BinaryOpMatchSubstr
 		if baseLiteralIsCaseInsensitive {
 			op = types.BinaryOpMatchSubstrCaseInsensitive
+		}
+		if !isMessage {
+			switch {
+			case leadingOpenEnded && trailingOpenEnded:
+				// ".*foo.*" is exactly a contains check even when anchored.
+			case !leadingOpenEnded && !trailingOpenEnded:
+				// No open end at all: the anchored pattern is a whole-value match.
+				op = matchOp(baseLiteralIsCaseInsensitive, isMessage)
+			default:
+				// One-sided open end, e.g. "foo.*" or ".*foo": a contains check
+				// would match values a fully anchored regexp would not. Refuse
+				// simplification for non-message columns so the caller falls
+				// back to an anchored regexp.
+				return nil, false
+			}
 		}
 		return []Node{
 			&BinOp{
@@ -481,6 +496,21 @@ func (pass simplifyRegexPass) simplifyRegexConcat(from Value, reg *syntax.Regexp
 	}
 
 	return nil, false
+}
+
+// matchOp returns the equality op for non-message columns, which must match the
+// whole value, and the substring op for the message column.
+func matchOp(caseInsensitive, isMessage bool) types.BinaryOp {
+	if !isMessage {
+		if caseInsensitive {
+			return types.BinaryOpEqCaseInsensitive
+		}
+		return types.BinaryOpEq
+	}
+	if caseInsensitive {
+		return types.BinaryOpMatchSubstrCaseInsensitive
+	}
+	return types.BinaryOpMatchSubstr
 }
 
 func (pass simplifyRegexPass) simplifyRegexConcatAlternates(from Value, reg *syntax.Regexp, literal []byte, baseLiteralIsCaseInsensitive bool, curr []Node, isMessage bool) ([]Node, bool) {
@@ -498,31 +528,29 @@ func (pass simplifyRegexPass) simplifyRegexConcatAlternates(from Value, reg *syn
 
 		switch alt.Op {
 		case syntax.OpEmptyMatch:
-			op := types.BinaryOpMatchSubstr
-			if baseLiteralIsCaseInsensitive {
-				op = types.BinaryOpMatchSubstrCaseInsensitive
-			}
 			curr = chainOr(curr, &BinOp{
 				Left:  from,
 				Right: NewLiteral(string(literal)),
-				Op:    op,
+				Op:    matchOp(baseLiteralIsCaseInsensitive, isMessage),
 			})
 
 		case syntax.OpLiteral:
 			// Concatenate the root literal with the alternate.
 			checkLiteral := string(literal) + string(alt.Rune)
 
-			op := types.BinaryOpMatchSubstr
-			if baseLiteralIsCaseInsensitive {
-				op = types.BinaryOpMatchSubstrCaseInsensitive
-			}
 			curr = chainOr(curr, &BinOp{
 				Left:  from,
 				Right: NewLiteral(checkLiteral),
-				Op:    op,
+				Op:    matchOp(baseLiteralIsCaseInsensitive, isMessage),
 			})
 
 		case syntax.OpConcat:
+			if !isMessage {
+				// The nested concat can reintroduce an open end ("b(ar.*|z)"),
+				// which a whole-value comparison cannot express. Refuse and fall
+				// back to an anchored regexp.
+				return nil, false
+			}
 			f, ok := pass.simplifyRegexConcat(from, alt, literal, isMessage)
 			if !ok {
 				return nil, false
@@ -532,6 +560,11 @@ func (pass simplifyRegexPass) simplifyRegexConcatAlternates(from Value, reg *syn
 		case syntax.OpStar:
 			// We treat ".*" as if it was OpEmptyMatch.
 			if alt.Sub[0].Op != syntax.OpAnyCharNotNL {
+				return nil, false
+			}
+			if !isMessage {
+				// "b(ar|.*)" means "starts with b" for the whole value, which a
+				// single equality check cannot express.
 				return nil, false
 			}
 			op := types.BinaryOpMatchSubstr

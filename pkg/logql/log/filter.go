@@ -791,20 +791,44 @@ func (s *RegexSimplifier) simplifyConcat(reg *syntax.Regexp, baseLiteral []byte,
 
 	// if we have a filter from concat alternates.
 	if curr != nil {
+		if isLabel && (leadingOpenEnded || trailingOpenEnded) {
+			// The alternates were turned into whole-value equality filters, which
+			// is only correct when the pattern is anchored on both sides. An open
+			// end such as `ba(r|z).*` makes them too strict, so refuse and fall
+			// back to the fully anchored regexp.
+			return nil, false
+		}
 		return curr, true
 	}
 
 	// if we have only a concat with literals.
 	if baseLiteral != nil {
-		if isLabel && leadingOpenEnded != trailingOpenEnded {
-			// One-sided open end, e.g. `foo.*` or `.*foo`: a contains filter would
-			// match values a fully anchored regexp would not. Refuse simplification.
-			return nil, false
+		if isLabel {
+			switch {
+			case leadingOpenEnded && trailingOpenEnded:
+				// `.*foo.*` is exactly a contains check even when anchored.
+			case !leadingOpenEnded && !trailingOpenEnded:
+				// No open end at all: the anchored pattern is a whole-value match.
+				return s.newEqualFilter(baseLiteral, baseLiteralIsCaseInsensitive), true
+			default:
+				// One-sided open end, e.g. `foo.*` or `.*foo`: a contains filter would
+				// match values a fully anchored regexp would not. Refuse simplification.
+				return nil, false
+			}
 		}
 		return s.newContainsFilter(baseLiteral, baseLiteralIsCaseInsensitive), true
 	}
 
 	return nil, false
+}
+
+// newFilter returns an equality filter for label filters, which must match the
+// whole value, and a contains filter for line filters.
+func (s *RegexSimplifier) newFilter(literal []byte, caseInsensitive, isLabel bool) MatcherFilterer {
+	if isLabel {
+		return s.newEqualFilter(literal, caseInsensitive)
+	}
+	return s.newContainsFilter(literal, caseInsensitive)
 }
 
 // simplifyConcatAlternate simplifies concat alternate operations.
@@ -823,15 +847,21 @@ func (s *RegexSimplifier) simplifyConcatAlternate(reg *syntax.Regexp, literal []
 		}
 		switch alt.Op {
 		case syntax.OpEmptyMatch:
-			curr = ChainOrMatcherFilterer(curr, s.newContainsFilter(literal, baseLiteralIsCaseInsensitive))
+			curr = ChainOrMatcherFilterer(curr, s.newFilter(literal, baseLiteralIsCaseInsensitive, isLabel))
 		case syntax.OpLiteral:
 			// concat the root literal with the alternate one.
 			altBytes := []byte(string(alt.Rune))
 			altLiteral := make([]byte, 0, len(literal)+len(altBytes))
 			altLiteral = append(altLiteral, literal...)
 			altLiteral = append(altLiteral, altBytes...)
-			curr = ChainOrMatcherFilterer(curr, s.newContainsFilter(altLiteral, baseLiteralIsCaseInsensitive))
+			curr = ChainOrMatcherFilterer(curr, s.newFilter(altLiteral, baseLiteralIsCaseInsensitive, isLabel))
 		case syntax.OpConcat:
+			if isLabel {
+				// The nested concat can reintroduce an open end (`b(ar.*|z)`), which
+				// a whole-value comparison cannot express. Refuse and fall back to
+				// the fully anchored regexp.
+				return nil, false
+			}
 			f, ok := s.simplifyConcat(alt, literal, isLabel)
 			if !ok {
 				return nil, false
@@ -839,6 +869,11 @@ func (s *RegexSimplifier) simplifyConcatAlternate(reg *syntax.Regexp, literal []
 			curr = ChainOrMatcherFilterer(curr, f)
 		case syntax.OpStar:
 			if alt.Sub[0].Op != syntax.OpAnyCharNotNL {
+				return nil, false
+			}
+			if isLabel {
+				// `b(ar|.*)` means "starts with b" for the whole value, which a
+				// single equality filter cannot express.
 				return nil, false
 			}
 			curr = ChainOrMatcherFilterer(curr, s.newContainsFilter(literal, baseLiteralIsCaseInsensitive))
