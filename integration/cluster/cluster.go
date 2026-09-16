@@ -463,7 +463,6 @@ func (c *Component) runMultiple(n int) error {
 }
 
 func (c *Component) run() error {
-	var err error
 	c.running = true
 
 	if err := c.writeConfig(); err != nil {
@@ -491,6 +490,7 @@ func (c *Component) run() error {
 	if err := config.LimitsConfig.SetDefaultPolicyStreamMapping(config.Distributor.DefaultPolicyStreamMappings); err != nil {
 		return err
 	}
+	var err error
 	c.loki, err = loki.New(config.Config)
 	if err != nil {
 		return err
@@ -533,7 +533,6 @@ func (c *Component) run() error {
 	go func() {
 		defer c.cluster.waitGroup.Done()
 		defer c.wg.Done()
-
 		err := c.loki.Run(loki.RunOpts{})
 		if err != nil {
 			newErr := fmt.Errorf("error starting component %v: %w", c.name, err)
@@ -544,7 +543,7 @@ func (c *Component) run() error {
 	select {
 	case <-readyCh:
 		break
-	case err = <-errCh:
+	case err := <-errCh:
 		return err
 	}
 	return nil
