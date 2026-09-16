@@ -437,13 +437,13 @@ func FirstGraphemeCluster[T string | []byte](b T, m Method) (T, int) {
 	case string:
 		cluster := graphemes.FromString(b).First()
 		if m == WcWidth {
-			return T(cluster), wcOptions.StringWidth(cluster)
+			return T(cluster), wcClusterWidth(cluster)
 		}
 		return T(cluster), dwOptions.String(cluster)
 	case []byte:
 		cluster := graphemes.FromBytes(b).First()
 		if m == WcWidth {
-			return T(cluster), wcOptions.StringWidth(string(cluster))
+			return T(cluster), wcClusterWidth(cluster)
 		}
 		return T(cluster), dwOptions.Bytes(cluster)
 	}
@@ -460,7 +460,7 @@ type Cmd int
 // range of 0x3C-0x3F.
 // Zero is returned if the sequence does not have a prefix.
 func (c Cmd) Prefix() byte {
-	return byte(parser.Prefix(int(c)))
+	return byte(parser.Prefix(int(c))) //nolint:gosec
 }
 
 // Intermediate returns the unpacked intermediate byte of the CSI sequence.
@@ -469,12 +469,12 @@ func (c Cmd) Prefix() byte {
 // ',', '-', '.', '/'.
 // Zero is returned if the sequence does not have an intermediate byte.
 func (c Cmd) Intermediate() byte {
-	return byte(parser.Intermediate(int(c)))
+	return byte(parser.Intermediate(int(c))) //nolint:gosec
 }
 
 // Final returns the unpacked command byte of the CSI sequence.
 func (c Cmd) Final() byte {
-	return byte(parser.Command(int(c)))
+	return byte(parser.Command(int(c))) //nolint:gosec
 }
 
 // Command packs a command with the given prefix, intermediate, and final. A

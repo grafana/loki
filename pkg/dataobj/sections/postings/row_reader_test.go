@@ -42,7 +42,7 @@ func TestRowReader_RoundTrip(t *testing.T) {
 		UncompressedSize: 100,
 	})
 
-	b.PrepareBloomColumn("/obj", 0, "trace_id", 1000)
+	b.PrepareBloomColumn("/obj", 0, "trace_id", 1000, 0)
 	require.NoError(t, b.ObserveBloomPosting(postings.BloomObservation{
 		ObjectPath:       "/obj",
 		SectionIndex:     0,
@@ -225,7 +225,7 @@ func TestRowReader_BloomMatchPredicate(t *testing.T) {
 	b := postings.NewBuilder(nil, 0, 0, 1<<20)
 	ts := time.Unix(0, 0).UTC()
 
-	b.PrepareBloomColumn("/obj", 0, "pod", 1000)
+	b.PrepareBloomColumn("/obj", 0, "pod", 1000, 0)
 	require.NoError(t, b.ObserveBloomPosting(postings.BloomObservation{
 		ObjectPath:       "/obj",
 		SectionIndex:     0,
@@ -277,7 +277,7 @@ func TestRowReader_NotBloomMatchPredicate(t *testing.T) {
 	b := postings.NewBuilder(nil, 0, 0, 1<<20)
 	ts := time.Unix(0, 0).UTC()
 
-	b.PrepareBloomColumn("/obj", 0, "pod", 1000)
+	b.PrepareBloomColumn("/obj", 0, "pod", 1000, 0)
 	require.NoError(t, b.ObserveBloomPosting(postings.BloomObservation{
 		ObjectPath:       "/obj",
 		SectionIndex:     0,

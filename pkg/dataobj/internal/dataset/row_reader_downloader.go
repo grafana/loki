@@ -46,8 +46,8 @@ import (
 //     This excludes any page that is outside of the dataset ranges passed to
 //     [newReaderDownloader] and [rowReaderDownloader.Reset].
 //
-// The rowReaderDownloader targets a configurable batch size, which is the target
-// size of pages to cache in memory at once.
+// The rowReaderDownloader targets [defaultTargetDownloadedBytes] bytes of cached
+// pages when [RowReaderOptions.PrefetchAllOnOpen] is false. A target of 0 is unlimited.
 //
 // Batches of pages to download are built in four steps:
 //
@@ -89,14 +89,24 @@ import (
 type rowReaderDownloader struct {
 	inner Dataset
 
-	origColumns, origPrimary, origSecondary []Column
-	allColumns, primary, secondary          []Column
+	origColumns                    []Column
+	allColumns, primary, secondary []Column
 
 	dsetRanges rangeset.Set // Ranges of rows to _include_ in the download.
 
 	readRange rangeset.Range // Current range being read.
 	rangeMask rangeset.Set   // Inverse of dsetRanges: ranges to _exclude_ from download.
+
+	// targetCompressedBytes is the target number of compressed page bytes held in-memory. 0 means unlimited.
+	// P1 pages are always downloaded even if they exceed the target.
+	// It can be used to efficiently read pages from object storage in batches
+	// without downloading an entire section at once.
+	targetCompressedBytes int
 }
+
+// defaultTargetDownloadedBytes is the target size in bytes of compressed pages to hold in-memory when
+// [RowReaderOptions.PrefetchAllOnOpen] is false.
+const defaultTargetDownloadedBytes = 16 << 20 // 16 MB
 
 // newReaderDataset creates a new readerDataset wrapping around an inner
 // Dataset. The resulting Dataset only wraps around the provided columns.
@@ -154,10 +164,8 @@ func (dl *rowReaderDownloader) AddColumn(col Column, primary bool) {
 	dl.allColumns = append(dl.allColumns, wrappedCol)
 
 	if primary {
-		dl.origPrimary = append(dl.origPrimary, col)
 		dl.primary = append(dl.primary, wrappedCol)
 	} else {
-		dl.origSecondary = append(dl.origSecondary, col)
 		dl.secondary = append(dl.secondary, wrappedCol)
 	}
 }
@@ -184,18 +192,6 @@ func (dl *rowReaderDownloader) SetReadRange(r rangeset.Range) {
 func (dl *rowReaderDownloader) Mask(r rangeset.Range) {
 	dl.rangeMask.Add(r)
 }
-
-// OrigColumns returns the original columns of the rowReaderDownloader in the order
-// they were added.
-func (dl *rowReaderDownloader) OrigColumns() []Column { return dl.origColumns }
-
-// OrigPrimaryColumns returns the original primary columns of the
-// rowReaderDownloader in the order they were added.
-func (dl *rowReaderDownloader) OrigPrimaryColumns() []Column { return dl.origPrimary }
-
-// OrigSecondaryColumns returns the original secondary columns of the
-// rowReaderDownloader in the order they were added.
-func (dl *rowReaderDownloader) OrigSecondaryColumns() []Column { return dl.origSecondary }
 
 // AllColumns returns the wrapped columns of the rowReaderDownloader in the order
 // they were added.
@@ -290,6 +286,7 @@ func (dl *rowReaderDownloader) buildDownloadBatch(ctx context.Context, requestor
 	// Always add the requestor page to the batch if it's uncached.
 	if requestor != nil && len(requestor.data) == 0 {
 		pageBatch = append(pageBatch, requestor)
+		batchSize += requestor.PageDesc().CompressedSize
 	}
 
 	// If we're not calling buildDownloadBatch due to a page read, we'll assume
@@ -312,6 +309,10 @@ func (dl *rowReaderDownloader) buildDownloadBatch(ctx context.Context, requestor
 		}
 
 		pageBatch = append(pageBatch, page)
+		batchSize += page.PageDesc().CompressedSize
+	}
+	if dl.targetReached(batchSize) {
+		return pageBatch, nil
 	}
 
 	// Now we add P2 and P3 pages. We ignore pages that would have us exceed the
@@ -323,8 +324,6 @@ func (dl *rowReaderDownloader) buildDownloadBatch(ctx context.Context, requestor
 	// stuff our batch size as full as possible and downloading pages that never
 	// get used.
 
-	var targetReached bool
-
 	for result := range dl.iterP2Pages(ctx, isPrimary) {
 		page, err := result.Value()
 		if err != nil {
@@ -335,10 +334,13 @@ func (dl *rowReaderDownloader) buildDownloadBatch(ctx context.Context, requestor
 			continue // Already added.
 		}
 
+		pageSize := page.PageDesc().CompressedSize
+		if dl.wouldExceedTarget(batchSize, pageSize) {
+			return pageBatch, nil
+		}
+
 		pageBatch = append(pageBatch, page)
-	}
-	if targetReached {
-		return pageBatch, nil
+		batchSize += pageSize
 	}
 
 	for result := range dl.iterP3Pages(ctx, isPrimary) {
@@ -351,10 +353,24 @@ func (dl *rowReaderDownloader) buildDownloadBatch(ctx context.Context, requestor
 			continue // Already added.
 		}
 
+		pageSize := page.PageDesc().CompressedSize
+		if dl.wouldExceedTarget(batchSize, pageSize) {
+			return pageBatch, nil
+		}
+
 		pageBatch = append(pageBatch, page)
+		batchSize += pageSize
 	}
 
 	return pageBatch, nil
+}
+
+func (dl *rowReaderDownloader) targetReached(batchSize int) bool {
+	return dl.targetCompressedBytes > 0 && batchSize >= dl.targetCompressedBytes
+}
+
+func (dl *rowReaderDownloader) wouldExceedTarget(batchSize, pageSize int) bool {
+	return dl.targetCompressedBytes > 0 && batchSize+pageSize > dl.targetCompressedBytes
 }
 
 // iterP1Pages returns an iterator over P1 pages in round-robin column order,
@@ -483,8 +499,6 @@ func (dl *rowReaderDownloader) Reset(dset Dataset) {
 	dl.readRange = rangeset.Range{}
 
 	dl.origColumns = sliceclear.Clear(dl.origColumns)
-	dl.origPrimary = sliceclear.Clear(dl.origPrimary)
-	dl.origSecondary = sliceclear.Clear(dl.origSecondary)
 
 	dl.allColumns = sliceclear.Clear(dl.allColumns)
 	dl.primary = sliceclear.Clear(dl.primary)

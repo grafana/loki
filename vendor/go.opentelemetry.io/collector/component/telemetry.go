@@ -29,6 +29,9 @@ type TelemetrySettings struct {
 	// Resource contains the resource attributes for the collector's telemetry.
 	Resource pcommon.Resource
 
+	// ResourceSchemaURL is useful for correctly interpreting the Resource.
+	ResourceSchemaURL string
+
 	// prevent unkeyed literal initialization
 	_ struct{}
 }

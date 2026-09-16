@@ -134,7 +134,7 @@ func (d *TerminalReader) serializeWin32InputRecords(records []xwindows.InputReco
 			var button MouseButton
 			alt := mevent.ControlKeyState&(xwindows.LEFT_ALT_PRESSED|xwindows.RIGHT_ALT_PRESSED) != 0
 			ctrl := mevent.ControlKeyState&(xwindows.LEFT_CTRL_PRESSED|xwindows.RIGHT_CTRL_PRESSED) != 0
-			shift := mevent.ControlKeyState&(xwindows.SHIFT_PRESSED) != 0
+			shift := mevent.ControlKeyState&xwindows.SHIFT_PRESSED != 0
 			wheelDirection := int16(highWord(mevent.ButtonState)) //nolint:gosec
 			switch mevent.EventFlags {
 			case 0, xwindows.DOUBLE_CLICK:

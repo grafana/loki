@@ -50,6 +50,16 @@ type Config struct {
 	// with nothing to do stops hammering object storage.
 	MaxBackoff time.Duration `yaml:"max_backoff"`
 
+	// WindowLookback is the number of older metastore windows the coordinator
+	// compacts in addition to the current window. Zero (the default) compacts
+	// only the current window; 1 also compacts the immediately-preceding
+	// window, and so on. Raise it when the index-builder lags behind wall-clock
+	// so a ToC for the current window may not exist yet: the preceding
+	// window(s) still have populated ToCs and would otherwise never be
+	// compacted. Each extra window is an independent per-pass read + plan, so
+	// cost scales linearly with the count.
+	WindowLookback int `yaml:"window_lookback"`
+
 	// MaxRunsPerTask (K in the K-way merge) is the maximum number of runs a
 	// single IndexMerge task may consume. Memory grows linearly with K.
 	MaxRunsPerTask int `yaml:"max_runs_per_task"`
@@ -94,8 +104,13 @@ type Config struct {
 
 	// IndexobjBuilder controls index object construction parameters (page sizes,
 	// target object/section sizes, etc.) used by the compactor worker when
-	// merging postings + stats sections into a new index object.
+	// merging postings and stats sections into a new index object.
 	IndexobjBuilder logsobj.BuilderBaseConfig `yaml:"indexobj_builder" category:"experimental"`
+
+	// LogsobjBuilder controls log object construction parameters (page sizes,
+	// target object/section sizes, etc.) used by the compactor worker when
+	// merging streams and logs sections into a new logs object.
+	LogsobjBuilder logsobj.BuilderBaseConfig `yaml:"logsobj_builder" category:"experimental"`
 }
 
 // SchedulerConfig holds the scheduler-side parameters that get passed
@@ -163,6 +178,7 @@ const (
 	defaultPollingInterval       = 5 * time.Minute
 	defaultMinBackoff            = 1 * time.Minute
 	defaultMaxBackoff            = 15 * time.Minute
+	defaultWindowLookback        = 0
 	defaultMaxRunsPerTask        = 8
 	defaultLogMaxRunsPerTask     = 3
 	defaultToCConsolidateTimeout = 30 * time.Second
@@ -192,6 +208,8 @@ func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 		"Experimental: Minimum wait a per-tenant worker applies between compaction phases, and the starting point of the exponential backoff idle or failing tenants grow toward max-backoff.")
 	f.DurationVar(&cfg.MaxBackoff, prefix+"max-backoff", defaultMaxBackoff,
 		"Experimental: Maximum wait a per-tenant worker backs off to after consecutive no-work (converged or empty) or failing phases, so an idle worker stops hammering object storage.")
+	f.IntVar(&cfg.WindowLookback, prefix+"window-lookback", defaultWindowLookback,
+		"Experimental: Number of older metastore windows to compact in addition to the current window. 0 compacts only the current window; 1 also compacts the previous window.")
 	f.IntVar(&cfg.MaxRunsPerTask, prefix+"max-runs-per-task", defaultMaxRunsPerTask,
 		"Experimental: Maximum runs per IndexMerge task (K). Memory grows linearly with K.")
 	f.IntVar(&cfg.LogMaxRunsPerTask, prefix+"logs.max-runs-per-task", defaultLogMaxRunsPerTask,
@@ -211,11 +229,21 @@ func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 		"Experimental: HTTP path the embedded compaction scheduler listens on for worker frame traffic.")
 	cfg.Worker.RegisterFlagsWithPrefix(prefix+"worker.", f)
 
-	_ = cfg.IndexobjBuilder.TargetPageSize.Set("2KB")
-	_ = cfg.IndexobjBuilder.TargetObjectSize.Set("4MB")
-	_ = cfg.IndexobjBuilder.TargetSectionSize.Set("2MB")
-	_ = cfg.IndexobjBuilder.BufferSize.Set("16KB")
+	// These configs do not have defaults in the flagset so default values must be Set before registering
+	// the flags to be documented correctly.
+	_ = cfg.IndexobjBuilder.TargetPageSize.Set("128KB")
+	_ = cfg.IndexobjBuilder.TargetObjectSize.Set("512MB")
+	_ = cfg.IndexobjBuilder.TargetSectionSize.Set("512MB")
+	_ = cfg.IndexobjBuilder.BufferSize.Set("128MB")
 	cfg.IndexobjBuilder.RegisterFlagsWithPrefix(prefix+"indexobj-builder.", f)
+
+	// These flags do not have defaults in the flagset so default values must be Set before registering
+	// the flags to be documented correctly.
+	_ = cfg.LogsobjBuilder.TargetPageSize.Set("1MB")
+	_ = cfg.LogsobjBuilder.TargetObjectSize.Set("512MB")
+	_ = cfg.LogsobjBuilder.TargetSectionSize.Set("512MB")
+	_ = cfg.LogsobjBuilder.BufferSize.Set("128MB")
+	cfg.LogsobjBuilder.RegisterFlagsWithPrefix(prefix+"logsobj-builder.", f)
 }
 
 // RegisterFlagsWithPrefix registers the worker config flags using prefix
@@ -258,6 +286,9 @@ func (cfg *Config) Validate() error {
 	if cfg.MaxBackoff < cfg.MinBackoff {
 		return errInvalidMaxBackoff
 	}
+	if cfg.WindowLookback < 0 {
+		return errInvalidWindowLookback
+	}
 	if cfg.ToCConsolidateTimeout <= 0 {
 		return errInvalidToCConsolidateTimeout
 	}
@@ -274,6 +305,9 @@ func (cfg *Config) Validate() error {
 	if err := cfg.IndexobjBuilder.Validate(); err != nil {
 		return fmt.Errorf("invalid indexobj builder config: %w", err)
 	}
+	if err := cfg.LogsobjBuilder.Validate(); err != nil {
+		return fmt.Errorf("invalid logsobj builder config: %w", err)
+	}
 	return nil
 }
 
@@ -286,6 +320,7 @@ var (
 	errInvalidPollingInterval              = errors.New("dataobj.compaction.polling_interval must be > 0 when compaction is enabled")
 	errInvalidMinBackoff                   = errors.New("dataobj.compaction.min_backoff must be > 0 when compaction is enabled")
 	errInvalidMaxBackoff                   = errors.New("dataobj.compaction.max_backoff must be >= dataobj.compaction.min_backoff when compaction is enabled")
+	errInvalidWindowLookback               = errors.New("dataobj.compaction.window_lookback must be >= 0")
 	errInvalidToCConsolidateTimeout        = errors.New("dataobj.compaction.toc_consolidate_timeout must be > 0 when compaction is enabled")
 	errInvalidMaxRunsPerTask               = errors.New("dataobj.compaction.max_runs_per_task must be > 0 when compaction is enabled")
 	errInvalidLogMaxRunsPerTask            = errors.New("dataobj.compaction.logs.max_runs_per_task must be > 0 when compaction is enabled")

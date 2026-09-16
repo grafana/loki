@@ -1,0 +1,260 @@
+//go:build !purego
+
+#include "textflag.h"
+
+GLOBL ·packInt32x8Shuffle(SB), RODATA|NOPTR, $32
+DATA ·packInt32x8Shuffle+0(SB)/8, $0x808080800c080400
+DATA ·packInt32x8Shuffle+8(SB)/8, $0x8080808080808080
+DATA ·packInt32x8Shuffle+16(SB)/8, $0x808080800c080400
+DATA ·packInt32x8Shuffle+24(SB)/8, $0x8080808080808080
+
+GLOBL ·packInt32x16Shuffle(SB), RODATA|NOPTR, $32
+DATA ·packInt32x16Shuffle+0(SB)/8, $0x0d0c090805040100
+DATA ·packInt32x16Shuffle+8(SB)/8, $0x8080808080808080
+DATA ·packInt32x16Shuffle+16(SB)/8, $0x0d0c090805040100
+DATA ·packInt32x16Shuffle+24(SB)/8, $0x8080808080808080
+
+GLOBL ·packInt32x24Shuffle(SB), RODATA|NOPTR, $32
+DATA ·packInt32x24Shuffle+0(SB)/8, $0x0908060504020100
+DATA ·packInt32x24Shuffle+8(SB)/8, $0x808080800e0d0c0a
+DATA ·packInt32x24Shuffle+16(SB)/8, $0x0908060504020100
+DATA ·packInt32x24Shuffle+24(SB)/8, $0x808080800e0d0c0a
+
+GLOBL ·packInt64x8Shuffle(SB), RODATA|NOPTR, $32
+DATA ·packInt64x8Shuffle+0(SB)/8, $0x8080808080800800
+DATA ·packInt64x8Shuffle+8(SB)/8, $0x8080808080808080
+DATA ·packInt64x8Shuffle+16(SB)/8, $0x8080808080800800
+DATA ·packInt64x8Shuffle+24(SB)/8, $0x8080808080808080
+
+GLOBL ·packInt64x16Shuffle(SB), RODATA|NOPTR, $32
+DATA ·packInt64x16Shuffle+0(SB)/8, $0x8080808009080100
+DATA ·packInt64x16Shuffle+8(SB)/8, $0x8080808080808080
+DATA ·packInt64x16Shuffle+16(SB)/8, $0x8080808009080100
+DATA ·packInt64x16Shuffle+24(SB)/8, $0x8080808080808080
+
+GLOBL ·packInt64x24Shuffle(SB), RODATA|NOPTR, $32
+DATA ·packInt64x24Shuffle+0(SB)/8, $0x80800a0908020100
+DATA ·packInt64x24Shuffle+8(SB)/8, $0x8080808080808080
+DATA ·packInt64x24Shuffle+16(SB)/8, $0x80800a0908020100
+DATA ·packInt64x24Shuffle+24(SB)/8, $0x8080808080808080
+
+GLOBL ·packInt64x32Shuffle(SB), RODATA|NOPTR, $32
+DATA ·packInt64x32Shuffle+0(SB)/8, $0x0b0a090803020100
+DATA ·packInt64x32Shuffle+8(SB)/8, $0x8080808080808080
+DATA ·packInt64x32Shuffle+16(SB)/8, $0x0b0a090803020100
+DATA ·packInt64x32Shuffle+24(SB)/8, $0x8080808080808080
+
+// func packInt32AVX2(dst []byte, src []int32, bitWidth uint)
+TEXT ·packInt32AVX2(SB), NOSPLIT, $0-56
+	MOVQ dst_base+0(FP), AX
+	MOVQ src_base+24(FP), BX
+	MOVQ src_len+32(FP), DX
+	MOVQ bitWidth+48(FP), CX
+
+	MOVQ DX, DI
+	SHLQ $2, DI
+	ADDQ BX, DI
+	CMPQ CX, $1
+	JE pack_int32_1bit
+	CMPQ CX, $8
+	JE pack_int32_8bit
+	CMPQ CX, $16
+	JE pack_int32_16bit
+	CMPQ CX, $24
+	JE pack_int32_24bit
+	RET
+
+pack_int32_1bit:
+	VMOVDQU (BX), Y0
+	VPSLLD $31, Y0, Y0
+	VMOVMSKPS Y0, R10
+	MOVB R10, (AX)
+	ADDQ $32, BX
+	INCQ AX
+	CMPQ BX, DI
+	JB pack_int32_1bit
+	VZEROUPPER
+	RET
+
+pack_int32_8bit:
+	VMOVDQU ·packInt32x8Shuffle(SB), Y2
+pack_int32_8bit_loop:
+	VMOVDQU (BX), Y0
+	VPSHUFB Y2, Y0, Y0
+	VEXTRACTI128 $1, Y0, X1
+	VPUNPCKLDQ X1, X0, X0
+	MOVQ X0, R10
+	MOVQ R10, (AX)
+	ADDQ $32, BX
+	ADDQ $8, AX
+	CMPQ BX, DI
+	JB pack_int32_8bit_loop
+	VZEROUPPER
+	RET
+
+pack_int32_16bit:
+	VMOVDQU ·packInt32x16Shuffle(SB), Y2
+pack_int32_16bit_loop:
+	VMOVDQU (BX), Y0
+	VPSHUFB Y2, Y0, Y0
+	VPERMQ $0xD8, Y0, Y0
+	VMOVDQU X0, (AX)
+	ADDQ $32, BX
+	ADDQ $16, AX
+	CMPQ BX, DI
+	JB pack_int32_16bit_loop
+	VZEROUPPER
+	RET
+
+pack_int32_24bit:
+	VMOVDQU ·packInt32x24Shuffle(SB), Y2
+pack_int32_24bit_loop:
+	VMOVDQU (BX), Y0
+	VPSHUFB Y2, Y0, Y0
+	MOVQ X0, R10
+	MOVQ R10, (AX)
+	VPSRLDQ $8, X0, X1
+	MOVQ X1, R10
+	MOVL R10, 8(AX)
+	VEXTRACTI128 $1, Y0, X1
+	MOVQ X1, R10
+	MOVQ R10, 12(AX)
+	VPSRLDQ $8, X1, X1
+	MOVQ X1, R10
+	MOVL R10, 20(AX)
+	ADDQ $32, BX
+	ADDQ $24, AX
+	CMPQ BX, DI
+	JB pack_int32_24bit_loop
+	VZEROUPPER
+	RET
+
+// func packInt64AVX2(dst []byte, src []int64, bitWidth uint)
+TEXT ·packInt64AVX2(SB), NOSPLIT, $0-56
+	MOVQ dst_base+0(FP), AX
+	MOVQ src_base+24(FP), BX
+	MOVQ src_len+32(FP), DX
+	MOVQ bitWidth+48(FP), CX
+
+	MOVQ DX, DI
+	SHLQ $3, DI
+	ADDQ BX, DI
+	CMPQ CX, $1
+	JE pack_int64_1bit
+	CMPQ CX, $8
+	JE pack_int64_8bit
+	CMPQ CX, $16
+	JE pack_int64_16bit
+	CMPQ CX, $24
+	JE pack_int64_24bit
+	CMPQ CX, $32
+	JE pack_int64_32bit
+	RET
+
+pack_int64_1bit:
+	VMOVDQU (BX), Y0
+	VMOVDQU 32(BX), Y1
+	VPSLLQ $63, Y0, Y0
+	VPSLLQ $63, Y1, Y1
+	VMOVMSKPD Y0, R10
+	VMOVMSKPD Y1, R11
+	SHLQ $4, R11
+	ORQ R11, R10
+	MOVB R10, (AX)
+	ADDQ $64, BX
+	INCQ AX
+	CMPQ BX, DI
+	JB pack_int64_1bit
+	VZEROUPPER
+	RET
+
+pack_int64_8bit:
+	VMOVDQU ·packInt64x8Shuffle(SB), Y2
+pack_int64_8bit_loop:
+	VMOVDQU (BX), Y0
+	VMOVDQU 32(BX), Y1
+	VPSHUFB Y2, Y0, Y0
+	VPSHUFB Y2, Y1, Y1
+	VEXTRACTI128 $1, Y0, X3
+	VPUNPCKLWD X3, X0, X0
+	VEXTRACTI128 $1, Y1, X3
+	VPUNPCKLWD X3, X1, X1
+	VPUNPCKLDQ X1, X0, X0
+	MOVQ X0, R10
+	MOVQ R10, (AX)
+	ADDQ $64, BX
+	ADDQ $8, AX
+	CMPQ BX, DI
+	JB pack_int64_8bit_loop
+	VZEROUPPER
+	RET
+
+pack_int64_16bit:
+	VMOVDQU ·packInt64x16Shuffle(SB), Y2
+pack_int64_16bit_loop:
+	VMOVDQU (BX), Y0
+	VMOVDQU 32(BX), Y1
+	VPSHUFB Y2, Y0, Y0
+	VPSHUFB Y2, Y1, Y1
+	VEXTRACTI128 $1, Y0, X3
+	VPUNPCKLDQ X3, X0, X0
+	VEXTRACTI128 $1, Y1, X3
+	VPUNPCKLDQ X3, X1, X1
+	VPUNPCKLQDQ X1, X0, X0
+	VMOVDQU X0, (AX)
+	ADDQ $64, BX
+	ADDQ $16, AX
+	CMPQ BX, DI
+	JB pack_int64_16bit_loop
+	VZEROUPPER
+	RET
+
+pack_int64_24bit:
+	VMOVDQU ·packInt64x24Shuffle(SB), Y2
+pack_int64_24bit_loop:
+	VMOVDQU (BX), Y0
+	VMOVDQU 32(BX), Y1
+	VPSHUFB Y2, Y0, Y0
+	VPSHUFB Y2, Y1, Y1
+	VEXTRACTI128 $1, Y0, X3
+	VPSLLDQ $6, X3, X3
+	VPOR X3, X0, X0
+	VEXTRACTI128 $1, Y1, X3
+	VPSLLDQ $6, X3, X3
+	VPOR X3, X1, X1
+	MOVQ X0, R10
+	MOVQ R10, (AX)
+	VPSRLDQ $8, X0, X3
+	MOVQ X3, R10
+	MOVL R10, 8(AX)
+	MOVQ X1, R10
+	MOVQ R10, 12(AX)
+	VPSRLDQ $8, X1, X3
+	MOVQ X3, R10
+	MOVL R10, 20(AX)
+	ADDQ $64, BX
+	ADDQ $24, AX
+	CMPQ BX, DI
+	JB pack_int64_24bit_loop
+	VZEROUPPER
+	RET
+
+pack_int64_32bit:
+	VMOVDQU ·packInt64x32Shuffle(SB), Y2
+pack_int64_32bit_loop:
+	VMOVDQU (BX), Y0
+	VMOVDQU 32(BX), Y1
+	VPSHUFB Y2, Y0, Y0
+	VPSHUFB Y2, Y1, Y1
+	VEXTRACTI128 $1, Y0, X3
+	VPUNPCKLQDQ X3, X0, X0
+	VEXTRACTI128 $1, Y1, X3
+	VPUNPCKLQDQ X3, X1, X1
+	VINSERTI128 $1, X1, Y0, Y0
+	VMOVDQU Y0, (AX)
+	ADDQ $64, BX
+	ADDQ $32, AX
+	CMPQ BX, DI
+	JB pack_int64_32bit_loop
+	VZEROUPPER
+	RET

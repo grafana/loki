@@ -44,10 +44,15 @@ type GetObjectOptions struct {
 	VersionID            string
 	PartNumber           int
 
-	// Include any checksums, if object was uploaded with checksum.
 	// For multipart objects this is a checksum of part checksums.
 	// https://docs.aws.amazon.com/AmazonS3/latest/userguide/checking-object-integrity.html
+	// When the response advertises a full-object checksum, un-ranged
+	// downloads are verified against it: reads through *Object fail with a
+	// checksum mismatch error at EOF, and FGetObject fails before renaming
+	// the file into place. Reads that stop before EOF are not verified.
 	Checksum bool
+	// If not nil, continue checksum hash verification on the existing data.
+	checkSumReader *checksumVerifyingReader
 
 	// RDMABuffer, when non-nil and Options.EnableRDMA=true, downloads directly
 	// into a contiguous buffer via libminiocpp.so. The returned *Object's

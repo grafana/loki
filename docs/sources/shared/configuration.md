@@ -1250,6 +1250,26 @@ kafka_config:
   # CLI flag: -kafka.producer-max-buffered-bytes
   [producer_max_buffered_bytes: <int> | default = 1073741824]
 
+  # The maximum number of Produce requests the producer can have in-flight per
+  # Kafka broker at any given time. The product of this value and
+  # -kafka.producer-linger should exceed the maximum Produce latency expected
+  # from the Kafka backend in steady state. If the backend takes longer than
+  # that to process a Produce request, the client will buffer data and stop
+  # issuing new Produce requests until some in-flight ones complete, which
+  # surfaces as added latency to callers.
+  # CLI flag: -kafka.producer-max-inflight-requests-per-broker
+  [producer_max_inflight_requests_per_broker: <int> | default = 20]
+
+  # How long the producer waits, buffering records for the same partition,
+  # before sending a Produce request. The product of this value and
+  # -kafka.producer-max-inflight-requests-per-broker should exceed the maximum
+  # Produce latency expected from the Kafka backend in steady state. If the
+  # backend takes longer than that to process a Produce request, the client will
+  # buffer data and stop issuing new Produce requests until some in-flight ones
+  # complete, which surfaces as added latency to callers.
+  # CLI flag: -kafka.producer-linger
+  [producer_linger: <duration> | default = 50ms]
+
   # The guaranteed maximum lag before a consumer is considered to have caught up
   # reading from a partition at startup, becomes ACTIVE in the hash ring and
   # passes the readiness check. Set -kafka.max-consumer-lag-at-startup to 0 to
@@ -1277,28 +1297,28 @@ dataobj:
       # (for columnar sections). Uncompressed size is used for consistent I/O
       # and planning.
       # CLI flag: -dataobj-consumer.target-page-size
-      [target_page_size: <int> | default = 2MiB]
+      [target_page_size: <int> | default = 1MiB]
 
       # The maximum row count for pages to use for the data object builder. A
       # value of 0 means no limit.
       # CLI flag: -dataobj-consumer.max-page-rows
-      [max_page_rows: <int> | default = 0]
+      [max_page_rows: <int> | default = 10000]
 
       # The target maximum size of the encoded object and all of its encoded
       # sections (after compression), to limit memory usage of a builder.
       # CLI flag: -dataobj-consumer.target-builder-memory-limit
-      [target_object_size: <int> | default = 1GiB]
+      [target_object_size: <int> | default = 512MiB]
 
       # The target maximum amount of uncompressed data to hold in sections, for
       # sections that support being limited by size. Uncompressed size is used
       # for consistent I/O and planning.
       # CLI flag: -dataobj-consumer.target-section-size
-      [target_section_size: <int> | default = 128MiB]
+      [target_section_size: <int> | default = 512MiB]
 
       # The size of logs to buffer in memory before adding into columnar
       # builders, used to reduce CPU load of sorting.
       # CLI flag: -dataobj-consumer.buffer-size
-      [buffer_size: <int> | default = 16MiB]
+      [buffer_size: <int> | default = 128MiB]
 
       # The maximum number of dataobj section stripes to merge into a section at
       # once. Must be greater than 1.
@@ -1545,23 +1565,23 @@ dataobj:
     # The maximum row count for pages to use for the data object builder. A
     # value of 0 means no limit.
     # CLI flag: -dataobj-index-builder.max-page-rows
-    [max_page_rows: <int> | default = 0]
+    [max_page_rows: <int> | default = 10000]
 
     # The target maximum size of the encoded object and all of its encoded
     # sections (after compression), to limit memory usage of a builder.
     # CLI flag: -dataobj-index-builder.target-builder-memory-limit
-    [target_object_size: <int> | default = 64MiB]
+    [target_object_size: <int> | default = 512MiB]
 
     # The target maximum amount of uncompressed data to hold in sections, for
     # sections that support being limited by size. Uncompressed size is used for
     # consistent I/O and planning.
     # CLI flag: -dataobj-index-builder.target-section-size
-    [target_section_size: <int> | default = 16MiB]
+    [target_section_size: <int> | default = 512MiB]
 
     # The size of logs to buffer in memory before adding into columnar builders,
     # used to reduce CPU load of sorting.
     # CLI flag: -dataobj-index-builder.buffer-size
-    [buffer_size: <int> | default = 2MiB]
+    [buffer_size: <int> | default = 128MiB]
 
     # The maximum number of dataobj section stripes to merge into a section at
     # once. Must be greater than 1.
@@ -1642,6 +1662,12 @@ dataobj:
     # CLI flag: -dataobj.compaction.max-backoff
     [max_backoff: <duration> | default = 15m]
 
+    # Experimental: Number of older metastore windows to compact in addition to
+    # the current window. 0 compacts only the current window; 1 also compacts
+    # the previous window.
+    # CLI flag: -dataobj.compaction.window-lookback
+    [window_lookback: <int> | default = 0]
+
     # Experimental: Maximum runs per IndexMerge task (K). Memory grows linearly
     # with K.
     # CLI flag: -dataobj.compaction.max-runs-per-task
@@ -1715,28 +1741,28 @@ dataobj:
       # (for columnar sections). Uncompressed size is used for consistent I/O
       # and planning.
       # CLI flag: -dataobj.compaction.indexobj-builder.target-page-size
-      [target_page_size: <int> | default = 2KiB]
+      [target_page_size: <int> | default = 128KiB]
 
       # The maximum row count for pages to use for the data object builder. A
       # value of 0 means no limit.
       # CLI flag: -dataobj.compaction.indexobj-builder.max-page-rows
-      [max_page_rows: <int> | default = 0]
+      [max_page_rows: <int> | default = 10000]
 
       # The target maximum size of the encoded object and all of its encoded
       # sections (after compression), to limit memory usage of a builder.
       # CLI flag: -dataobj.compaction.indexobj-builder.target-builder-memory-limit
-      [target_object_size: <int> | default = 4MiB]
+      [target_object_size: <int> | default = 512MiB]
 
       # The target maximum amount of uncompressed data to hold in sections, for
       # sections that support being limited by size. Uncompressed size is used
       # for consistent I/O and planning.
       # CLI flag: -dataobj.compaction.indexobj-builder.target-section-size
-      [target_section_size: <int> | default = 2MiB]
+      [target_section_size: <int> | default = 512MiB]
 
       # The size of logs to buffer in memory before adding into columnar
       # builders, used to reduce CPU load of sorting.
       # CLI flag: -dataobj.compaction.indexobj-builder.buffer-size
-      [buffer_size: <int> | default = 16KiB]
+      [buffer_size: <int> | default = 128MiB]
 
       # The maximum number of dataobj section stripes to merge into a section at
       # once. Must be greater than 1.
@@ -1747,6 +1773,45 @@ dataobj:
       # output size from uncompressed buffered records. Only takes effect with
       # ordered append. Set to 0 or 1 to disable.
       # CLI flag: -dataobj.compaction.indexobj-builder.estimated-compression-ratio
+      [estimated_compression_ratio: <int> | default = 8]
+
+    logsobj_builder:
+      # The target maximum amount of uncompressed data to hold in data pages
+      # (for columnar sections). Uncompressed size is used for consistent I/O
+      # and planning.
+      # CLI flag: -dataobj.compaction.logsobj-builder.target-page-size
+      [target_page_size: <int> | default = 1MiB]
+
+      # The maximum row count for pages to use for the data object builder. A
+      # value of 0 means no limit.
+      # CLI flag: -dataobj.compaction.logsobj-builder.max-page-rows
+      [max_page_rows: <int> | default = 10000]
+
+      # The target maximum size of the encoded object and all of its encoded
+      # sections (after compression), to limit memory usage of a builder.
+      # CLI flag: -dataobj.compaction.logsobj-builder.target-builder-memory-limit
+      [target_object_size: <int> | default = 512MiB]
+
+      # The target maximum amount of uncompressed data to hold in sections, for
+      # sections that support being limited by size. Uncompressed size is used
+      # for consistent I/O and planning.
+      # CLI flag: -dataobj.compaction.logsobj-builder.target-section-size
+      [target_section_size: <int> | default = 512MiB]
+
+      # The size of logs to buffer in memory before adding into columnar
+      # builders, used to reduce CPU load of sorting.
+      # CLI flag: -dataobj.compaction.logsobj-builder.buffer-size
+      [buffer_size: <int> | default = 128MiB]
+
+      # The maximum number of dataobj section stripes to merge into a section at
+      # once. Must be greater than 1.
+      # CLI flag: -dataobj.compaction.logsobj-builder.section-stripe-merge-limit
+      [section_stripe_merge_limit: <int> | default = 2]
+
+      # Expected compression ratio for log data, used to estimate compressed
+      # output size from uncompressed buffered records. Only takes effect with
+      # ordered append. Set to 0 or 1 to disable.
+      # CLI flag: -dataobj.compaction.logsobj-builder.estimated-compression-ratio
       [estimated_compression_ratio: <int> | default = 8]
 
   # The prefix to use for the storage bucket.
@@ -2740,6 +2805,12 @@ The `chunk_store_config` block configures how chunks will be cached and how long
 # CLI flag: -store.skip-query-writeback-older-than
 [skip_query_writeback_cache_older_than: <duration> | default = 0s]
 
+# Experimental. Return an object-storage chunk fetch error instead of incomplete
+# results. Applies to queries, bloom builds, and migration, including checksum
+# failures.
+# CLI flag: -chunk-store.propagate-chunk-fetch-errors
+[propagate_chunk_fetch_errors: <boolean> | default = false]
+
 # Chunks will be handed off to the L2 cache after this duration. 0 to disable L2
 # cache.
 # CLI flag: -store.chunks-cache-l2.handoff
@@ -3065,6 +3136,20 @@ retention_backoff_config:
 # smaller requests of no more than delete_max_interval
 # CLI flag: -compactor.delete-max-interval
 [delete_max_interval: <duration> | default = 24h]
+
+# Do not fail processing of a delete request with a line filter when a chunk it
+# needs to rebuild is indexed but missing from the object storage. When enabled,
+# the missing chunk is skipped and its index entry is left as is for diagnosing
+# the issue. Chunks skipped this way are counted by the
+# loki_compactor_deletion_missing_chunks_total metric and logged with their
+# chunk IDs. This setting has no effect when horizontal_scaling_mode is not
+# disabled. CAUTION: enable this only as a temporary escape hatch to unblock
+# delete requests, and only after verifying against the object storage that the
+# chunks really are missing. If a chunk gets skipped while it is in fact still
+# present, the data it holds is left undeleted even though the delete request is
+# reported as processed.
+# CLI flag: -compactor.deletion-ignore-missing-chunks
+[deletion_ignore_missing_chunks: <boolean> | default = false]
 
 # Maximum number of tables to compact in parallel. While increasing this value,
 # please make sure compactor has enough disk space allocated to be able to store
@@ -3407,14 +3492,6 @@ ring:
 # CLI flag: -distributor.push-worker-count
 [push_worker_count: <int> | default = 256]
 
-# The maximum size of a received message.
-# CLI flag: -distributor.max-recv-msg-size
-[max_recv_msg_size: <int> | default = 104857600]
-
-# The maximum size of a decompressed message. Defaults to 50x max-recv-msg-size.
-# CLI flag: -distributor.max-decompressed-size
-[max_decompressed_size: <int> | default = 5242880000]
-
 # The maximum number of inflight bytes at a time. 0 means disabled.
 # CLI flag: -distributor.max-inflight-bytes
 [max_inflight_bytes: <int> | default = 0]
@@ -3663,9 +3740,9 @@ The `frontend` block configures the Loki query-frontend.
 [instance_enable_ipv6: <boolean> | default = false]
 
 # Defines the encoding for requests to and responses from the scheduler and
-# querier. Can be 'json' or 'protobuf' (defaults to 'json').
+# querier. Can be 'json' or 'protobuf' (defaults to 'protobuf').
 # CLI flag: -frontend.encoding
-[encoding: <string> | default = "json"]
+[encoding: <string> | default = "protobuf"]
 
 # Compress HTTP responses.
 # CLI flag: -querier.compress-http-responses
@@ -3684,7 +3761,8 @@ The `frontend` block configures the Loki query-frontend.
 [tail_tls_config: <tls_config>]
 
 # Support 'application/vnd.apache.parquet' content type in HTTP responses.
-[support_parquet_encoding: <boolean>]
+# CLI flag: -frontend.support-parquet-encoding
+[support_parquet_encoding: <boolean> | default = false]
 ```
 
 ### frontend_worker
@@ -3883,6 +3961,17 @@ backoff_config:
 # CLI flag: -<prefix>.connect-backoff-max-delay
 [connect_backoff_max_delay: <duration> | default = 5s]
 
+# After a duration of this time if the client doesn't see any activity it pings
+# the server to see if the transport is still alive. This also determines the
+# socket's TCP_USER_TIMEOUT together with keepalive-timeout.
+# CLI flag: -<prefix>.keepalive-time
+[keepalive_time: <duration> | default = 20s]
+
+# After having pinged for keepalive check, the client waits for a duration of
+# this time and if no activity is seen even after that the connection is closed.
+# CLI flag: -<prefix>.keepalive-timeout
+[keepalive_timeout: <duration> | default = 10s]
+
 cluster_validation:
   # Primary cluster validation label.
   # CLI flag: -<prefix>.cluster-validation.label
@@ -3994,6 +4083,27 @@ ring:
   # Enable using a IPv6 instance address.
   # CLI flag: -index-gateway.ring.instance-enable-ipv6
   [instance_enable_ipv6: <boolean> | default = false]
+
+# Experimental: Maximum number of index gateway RPCs that can execute
+# concurrently. When the limit is reached, additional requests wait up to
+# -index-gateway.max-concurrent-queue-timeout for a free slot. If no slot
+# becomes free in that time, the index gateway rejects the request with an HTTP
+# 503 status. Clients retry the request against another index gateway replica. 0
+# disables admission control. A recommended starting value when enabling this
+# setting is 200.
+# CLI flag: -index-gateway.max-concurrent
+[max_concurrent: <int> | default = 0]
+
+# Experimental: Maximum time a request waits for a free slot when the index
+# gateway is already executing -index-gateway.max-concurrent requests. If no
+# slot becomes free in that time, the index gateway rejects the request. Bursts
+# shorter than this timeout are absorbed without errors. Clients retry rejected
+# requests against other replicas. When every replica is saturated, a request
+# can wait up to this long per replica, so prefer a low value. 0 means requests
+# wait indefinitely, bounded only by the request's own timeout. Only used when
+# -index-gateway.max-concurrent is greater than 0.
+# CLI flag: -index-gateway.max-concurrent-queue-timeout
+[max_concurrent_queue_timeout: <duration> | default = 5s]
 ```
 
 ### ingester
@@ -4463,6 +4573,10 @@ The `limits_config` block configures global and per-tenant limits in Loki. The v
 # CLI flag: -distributor.max-line-size-truncate-identifier
 [max_line_size_truncate_identifier: <string> | default = ""]
 
+# The maximum size of a Push request.
+# CLI flag: -distributor.max-push-size
+[max_push_size: <int> | default = 2GB]
+
 # Alter the log line timestamp during ingestion when the timestamp is the same
 # as the previous entry for the same stream. When enabled, if a log line in a
 # push request has the same timestamp as the previous line for the same stream,
@@ -4479,12 +4593,6 @@ The `limits_config` block configures global and per-tenant limits in Loki. The v
 # disable.
 # CLI flag: -limits.simulated-push-latency
 [simulated_push_latency: <duration> | default = 0s]
-
-# Enable experimental support for running multiple query variants over the same
-# underlying data. For example, running both a rate() and count_over_time()
-# query over the same range selector.
-# CLI flag: -limits.enable-multi-variant-queries
-[enable_multi_variant_queries: <boolean> | default = false]
 
 # Experimental: Detect fields from stream labels, structured metadata, or
 # json/logfmt formatted log line and put them into structured metadata of the
@@ -4761,76 +4869,6 @@ discover_generic_fields:
 
 # Disable recording rules remote-write.
 [ruler_remote_write_disabled: <boolean>]
-
-# Deprecated: Use 'ruler_remote_write_config' instead. The URL of the endpoint
-# to send samples to.
-[ruler_remote_write_url: <string> | default = ""]
-
-# Deprecated: Use 'ruler_remote_write_config' instead. Timeout for requests to
-# the remote write endpoint.
-[ruler_remote_write_timeout: <duration>]
-
-# Deprecated: Use 'ruler_remote_write_config' instead. Custom HTTP headers to be
-# sent along with each remote write request. Be aware that headers that are set
-# by Loki itself can't be overwritten.
-[ruler_remote_write_headers: <headers>]
-
-# Deprecated: Use 'ruler_remote_write_config' instead. List of remote write
-# relabel configurations.
-[ruler_remote_write_relabel_configs: <relabel_config...>]
-
-# Deprecated: Use 'ruler_remote_write_config' instead. Number of samples to
-# buffer per shard before we block reading of more samples from the WAL. It is
-# recommended to have enough capacity in each shard to buffer several requests
-# to keep throughput up while processing occasional slow remote requests.
-[ruler_remote_write_queue_capacity: <int>]
-
-# Deprecated: Use 'ruler_remote_write_config' instead. Minimum number of shards,
-# i.e. amount of concurrency.
-[ruler_remote_write_queue_min_shards: <int>]
-
-# Deprecated: Use 'ruler_remote_write_config' instead. Maximum number of shards,
-# i.e. amount of concurrency.
-[ruler_remote_write_queue_max_shards: <int>]
-
-# Deprecated: Use 'ruler_remote_write_config' instead. Maximum number of samples
-# per send.
-[ruler_remote_write_queue_max_samples_per_send: <int>]
-
-# Deprecated: Use 'ruler_remote_write_config' instead. Maximum time a sample
-# will wait in buffer.
-[ruler_remote_write_queue_batch_send_deadline: <duration>]
-
-# Deprecated: Use 'ruler_remote_write_config' instead. Initial retry delay. Gets
-# doubled for every retry.
-[ruler_remote_write_queue_min_backoff: <duration>]
-
-# Deprecated: Use 'ruler_remote_write_config' instead. Maximum retry delay.
-[ruler_remote_write_queue_max_backoff: <duration>]
-
-# Deprecated: Use 'ruler_remote_write_config' instead. Retry upon receiving a
-# 429 status code from the remote-write storage. This is experimental and might
-# change in the future.
-[ruler_remote_write_queue_retry_on_ratelimit: <boolean>]
-
-# Deprecated: Use 'ruler_remote_write_config' instead. Configures AWS's
-# Signature Verification 4 signing process to sign every remote write request.
-ruler_remote_write_sigv4_config:
-  [region: <string> | default = ""]
-
-  [access_key: <string> | default = ""]
-
-  [secret_key: <string> | default = ""]
-
-  [profile: <string> | default = ""]
-
-  [role_arn: <string> | default = ""]
-
-  [external_id: <string> | default = ""]
-
-  [use_fips_sts_endpoint: <boolean>]
-
-  [service_name: <string> | default = ""]
 
 # Configures global and per-tenant limits for remote write clients. A map with
 # remote client id as key.
@@ -5337,6 +5375,16 @@ When a memberlist config with atleast 1 join_members is defined, kvstore of type
 # Size of the buffered channel for the WatchPrefix function.
 # CLI flag: -memberlist.watch-prefix-buffer-size
 [watch_prefix_buffer_size: <int> | default = 128]
+
+# Minimum delay between CAS retries after a version mismatch. 0 disables the
+# delay.
+# CLI flag: -memberlist.cas-retry-min-backoff
+[cas_retry_min_backoff: <duration> | default = 0s]
+
+# Maximum delay between CAS retries after a version mismatch. Only takes effect
+# if cas-retry-min-backoff is also set.
+# CLI flag: -memberlist.cas-retry-max-backoff
+[cas_retry_max_backoff: <duration> | default = 10s]
 
 # IP address to listen on for gossip messages. Multiple addresses may be
 # specified. Defaults to 0.0.0.0
@@ -6201,7 +6249,14 @@ Configuration for 'runtime config' module, responsible for reloading runtime con
 [period: <duration> | default = 10s]
 
 # Comma separated list of yaml files or URLs with the configuration that can be
-# updated at runtime. Runtime config files will be merged from left to right.
+# updated at runtime. Runtime config files will be merged from left to right. An
+# entry can end with semicolon-separated parameters that say what happens when
+# it cannot be read: ";optional-on-startup" lets the process start without it,
+# but a later failure still fails the reload;
+# ";optional-keep-last-value-on-failure" also lets the process start without it,
+# and a later failure keeps the value the source supplied last. Without a
+# parameter, a source that cannot be read fails the load. Quote the value in a
+# shell, because ";" starts a new command.
 # CLI flag: -runtime-config.file
 [file: <string> | default = ""]
 
@@ -6268,7 +6323,9 @@ The `s3_storage_config` block configures the connection to Amazon S3 object stor
 # CLI flag: -<prefix>.s3.session-token
 [session_token: <string> | default = ""]
 
-# Disable https on s3 connection.
+# Disable https on s3 connection. This does not affect TLS certificate
+# verification for HTTPS connections; use s3.http.insecure-skip-verify (or
+# s3.http.ca-file) for that.
 # CLI flag: -<prefix>.s3.insecure
 [insecure: <boolean> | default = false]
 
@@ -6871,6 +6928,12 @@ tsdb_shipper:
   # CLI flag: -tsdb.shipper.download-timeout
   [download_timeout: <duration> | default = 1m]
 
+  # Experimental. Implementation used to read TSDB index files off disk.
+  # Supported values: mmap (memory-map the file, the historical default) or
+  # stream (experimental, not yet fully implemented).
+  # CLI flag: -tsdb.shipper.index-reader-mode
+  [index_reader_mode: <string> | default = "mmap"]
+
   index_gateway_client:
     # The grpc_client block configures the gRPC client used to communicate
     # between a client and server component in Loki.
@@ -6903,6 +6966,34 @@ tsdb_shipper:
     # Only applies to simple mode.
     # CLI flag: -tsdb.shipper.index-gateway-client.min-shuffle-shard-size
     [min_shuffle_shard_size: <int> | default = 3]
+
+    # Experimental: Maximum number of requests this index gateway client may
+    # have in flight at once. Requests arriving when the limit is reached are
+    # rejected immediately with an HTTP 503 status instead of waiting, which
+    # bounds the resources this process commits to an index gateway that is
+    # slow, saturated, or unreachable. The limit applies per client: one client
+    # is built per schema period config, doubled when the shadow index gateway
+    # client is enabled, so the process-wide number of in-flight requests can
+    # reach this value multiplied by the number of clients. 0 disables the
+    # limit.
+    # CLI flag: -tsdb.shipper.index-gateway-client.max-in-flight-requests
+    [max_in_flight_requests: <int> | default = 0]
+
+    # Experimental: Maximum number of other index gateway instances a failed
+    # request is retried against. Each instance is tried at most once, so a
+    # request makes at most this many retries plus one attempt in total.
+    # Bounding this stops a single request from walking every replica, which can
+    # otherwise block the calling goroutine for the sum of every replica's
+    # timeout. -1 preserves the existing behavior: up to 2 retries for GetShards
+    # and all candidate instances for other requests. 0 disables retries.
+    # CLI flag: -tsdb.shipper.index-gateway-client.max-retries
+    [max_retries: <int> | default = -1]
+
+  # Experimental. Number of idle file handles the stream index reader keeps open
+  # per index file. Only applies when -shipper.index-reader-mode=stream. Set to
+  # 0 to disable pooling.
+  # CLI flag: -tsdb.shipper.streaming-index-max-idle-file-handles
+  [streaming_index_max_idle_file_handles: <int> | default = 16]
 
   [ingestername: <string> | default = ""]
 

@@ -92,9 +92,9 @@ func iterSection(ctx context.Context, section *Section, cfg iterConfig) result.S
 		}
 
 		r := dataset.NewRowReader(dataset.RowReaderOptions{
-			Dataset:  dset,
-			Columns:  columns,
-			Prefetch: true,
+			Dataset:           dset,
+			Columns:           columns,
+			PrefetchAllOnOpen: true,
 		})
 		defer r.Close()
 
@@ -115,7 +115,6 @@ func iterSection(ctx context.Context, section *Section, cfg iterConfig) result.S
 
 			var stream Stream
 			for _, row := range rows[:n] {
-				labelBuilder.Reset()
 				if err := decodeRow(section.Columns(), row, &stream, cfg.symbolizer, &labelBuilder, cfg.reuseLabelsBuffer); err != nil {
 					return err
 				}
@@ -148,6 +147,7 @@ func (s *Section) makeDataset() (*columnar.Dataset, error) {
 //
 // The labelBuilder argument is used to reuse label builder between calls to decodeRow.
 // If labelBuilder is nil, a builder is picked up from the pool and returned to the pool after use.
+// If labelBuilder is not nil, it is Reset before use.
 //
 // The reuseLabelsBuffer argument controls whether the internal buffer used by the labelBuilder
 // to build the labels is to be reused. Setting it to true would overwrite the previous labels
@@ -161,6 +161,12 @@ func decodeRow(columns []*Column, row dataset.Row, stream *Stream, sym *symboliz
 		defer labelpool.Put(labelBuilder)
 	}
 
+	// Callers reuse Stream values across rows. Reset so a zero cell in this
+	// row cannot leave a previous row's value in place (decode skips zeros).
+	stream.Reset()
+	// Callers reuse label builder across rows when passed in. Explicitly Reset it so it cannot leak values between rows.
+	labelBuilder.Reset()
+
 	for columnIndex, columnValue := range row.Values {
 		if columnValue.IsNil() || columnValue.IsZero() {
 			continue
@@ -173,6 +179,12 @@ func decodeRow(columns []*Column, row dataset.Row, stream *Stream, sym *symboliz
 				return fmt.Errorf("invalid type %s for %s", ty, column.Type)
 			}
 			stream.ID = columnValue.Int64()
+
+		case ColumnTypeShardBucket:
+			if ty := columnValue.Type(); ty != datasetmd.PHYSICAL_TYPE_INT64 {
+				return fmt.Errorf("invalid type %s for %s", ty, column.Type)
+			}
+			stream.ShardBucket = columnValue.Int64()
 
 		case ColumnTypeMinTimestamp:
 			if ty := columnValue.Type(); ty != datasetmd.PHYSICAL_TYPE_INT64 {

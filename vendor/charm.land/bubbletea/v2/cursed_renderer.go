@@ -33,6 +33,8 @@ type cursedRenderer struct {
 	mapnl         bool
 	syncdUpdates  bool // whether to use synchronized output mode for updates
 	starting      bool // indicates whether the renderer is starting after being stopped
+	pendingErase  bool // an scr.Erase() is pending and hasn't been drained by flush yet
+	noInput       bool // whether input is disabled, in which case keyboard enhancement queries are pointless
 }
 
 var _ renderer = &cursedRenderer{}
@@ -53,6 +55,29 @@ func (s *cursedRenderer) setLogger(logger uv.Logger) {
 	s.mu.Lock()
 	s.logger = logger
 	s.mu.Unlock()
+}
+
+// setNoInput disables keyboard enhancement requests. When the program runs
+// without input, the terminal's response to a keyboard enhancement query
+// would arrive after the program has exited and leak into the shell.
+func (s *cursedRenderer) setNoInput(noInput bool) {
+	s.noInput = noInput
+}
+
+// resetKeyboardEnhancements writes the sequences that reset keyboard
+// enhancement protocols when switching between the main and alt screens.
+// modifyOtherKeys has no stack, so it is reset in place; the Kitty keyboard
+// stack is popped, but only if we previously pushed an entry (i.e. this is
+// not the first render). With input disabled the keyboard protocol is never
+// touched.
+func (s *cursedRenderer) resetKeyboardEnhancements(buf *bytes.Buffer) {
+	if s.noInput {
+		return
+	}
+	_, _ = buf.WriteString(ansi.ResetModifyOtherKeys)
+	if s.lastView != nil {
+		_, _ = buf.WriteString(ansi.PopKittyKeyboard(1))
+	}
 }
 
 // setOptimizations sets the cursor movement optimizations.
@@ -131,12 +156,16 @@ func (s *cursedRenderer) start() {
 	if s.lastView.ProgressBar != nil {
 		setProgressBar(s, s.lastView.ProgressBar)
 	}
-	// Enable modifyOtherKeys and Kitty keyboard protocol.
-	// Both can coexist; terminals ignore what they don't support.
-	_, _ = s.scr.WriteString(ansi.SetModifyOtherKeys2)
+	if !s.noInput {
+		// Enable modifyOtherKeys and Kitty keyboard protocol.
+		// Both can coexist; terminals ignore what they don't support.
+		_, _ = s.scr.WriteString(ansi.SetModifyOtherKeys2)
 
-	kittyFlags := keyboardEnhancementsFlags(s.lastView.KeyboardEnhancements)
-	_, _ = s.scr.WriteString(ansi.KittyKeyboard(kittyFlags, 1))
+		kittyFlags := keyboardEnhancementsFlags(s.lastView.KeyboardEnhancements)
+		// The entry was popped when the renderer was stopped, so push a fresh
+		// one for the screen we're about to restore.
+		_, _ = s.scr.WriteString(ansi.PushKittyKeyboard(kittyFlags))
+	}
 }
 
 // close implements renderer.
@@ -153,10 +182,14 @@ func (s *cursedRenderer) close() (err error) {
 		// two registries for the main and alt screens. We disable keyboard
 		// enhancements whenever we enter/exit alt screen mode in
 		// [cursedRenderer.flush].
-		// Here, we reset the keyboard protocol of the last screen used
-		// assuming the other screen is already reset when we switched screens.
-		_, _ = s.buf.WriteString(ansi.ResetModifyOtherKeys)
-		_, _ = s.buf.WriteString(ansi.KittyKeyboard(0, 1))
+		// Here, we pop the keyboard protocol of the last screen used
+		// assuming the other screen is already popped when we switched
+		// screens. With input disabled we never pushed an entry, so there is
+		// nothing to pop.
+		if !s.noInput {
+			_, _ = s.buf.WriteString(ansi.ResetModifyOtherKeys)
+			_, _ = s.buf.WriteString(ansi.PopKittyKeyboard(1))
+		}
 
 		// Go to the bottom of the screen.
 		// We need to go to the bottom of the screen regardless of whether
@@ -284,13 +317,14 @@ func (s *cursedRenderer) flush(closing bool) error {
 		_, _ = s.scr.WriteString(ansi.SetTabEvery8Columns)
 	}
 
-	if !s.starting && !closing && s.lastView != nil && viewEquals(s.lastView, &view) && frameArea == s.cellbuf.Bounds() {
+	if !s.starting && !closing && !s.pendingErase && s.lastView != nil && viewEquals(s.lastView, &view) && frameArea == s.cellbuf.Bounds() {
 		// No changes, nothing to do.
 		return nil
 	}
 
 	// We're no longer starting.
 	s.starting = false
+	s.pendingErase = false
 
 	if frameArea != s.cellbuf.Bounds() {
 		s.scr.Erase() // Force a full redraw to avoid artifacts.
@@ -375,9 +409,12 @@ func (s *cursedRenderer) flush(closing bool) error {
 		}
 	}
 
-	// kitty keyboard protocol
-	if s.lastView == nil || view.KeyboardEnhancements != s.lastView.KeyboardEnhancements ||
-		view.AltScreen != s.lastView.AltScreen {
+	// kitty keyboard protocol. Skipped entirely when input is disabled: the
+	// enhancements only affect keyboard input, and querying the terminal
+	// would leave its response unconsumed, leaking into the shell after
+	// the program exits.
+	if !s.noInput && (s.lastView == nil || view.KeyboardEnhancements != s.lastView.KeyboardEnhancements ||
+		view.AltScreen != s.lastView.AltScreen) {
 		// NOTE: We need to reset the keyboard protocol when switching
 		// between main and alt screen. This is because the specs specify
 		// two different states for the main and alt screen.
@@ -386,7 +423,19 @@ func (s *cursedRenderer) flush(closing bool) error {
 		_, _ = s.scr.WriteString(ansi.SetModifyOtherKeys2)
 
 		kittyFlags := keyboardEnhancementsFlags(view.KeyboardEnhancements)
-		_, _ = s.scr.WriteString(ansi.KittyKeyboard(kittyFlags, 1))
+		if s.lastView == nil || view.AltScreen != s.lastView.AltScreen {
+			// First render or screen switch: the previous screen's entry
+			// (if any) is popped below, so push a fresh one for this
+			// screen.
+			_, _ = s.scr.WriteString(ansi.PushKittyKeyboard(kittyFlags))
+		} else {
+			// Only the flags changed while the same screen stays active.
+			// Update the topmost stack entry in place instead of popping
+			// and re-pushing, so a keyboard change doesn't churn the
+			// stack. Note that this overwrites whatever entry is currently
+			// on top, which is normally ours.
+			_, _ = s.scr.WriteString(ansi.KittyKeyboard(kittyFlags, 1))
+		}
 		if !closing {
 			// Request keyboard enhancements when they change
 			_, _ = s.scr.WriteString(ansi.RequestKittyKeyboard)
@@ -511,11 +560,10 @@ func (s *cursedRenderer) flush(closing bool) error {
 
 	var buf bytes.Buffer
 	if shouldUpdateAltScreen {
-		// We always disable keyboard enhancements when switching screens
+		// We always reset keyboard enhancements when switching screens
 		// because the terminal is expected to have two different keyboard
 		// registries for main and alt screens.
-		_, _ = buf.WriteString(ansi.ResetModifyOtherKeys)
-		_, _ = buf.WriteString(ansi.KittyKeyboard(0, 1))
+		s.resetKeyboardEnhancements(&buf)
 		if view.AltScreen {
 			// Entering alt screen mode.
 			buf.WriteString(ansi.SetModeAltScreenSaveCursor)
@@ -627,6 +675,7 @@ func (s *cursedRenderer) resize(w, h int) {
 	s.scr.Erase()
 	s.width, s.height = w, h
 	s.scr.Resize(s.width, s.height)
+	s.pendingErase = true
 	s.mu.Unlock()
 }
 
@@ -637,6 +686,7 @@ func (s *cursedRenderer) clearScreen() {
 	// screen redraw.
 	s.scr.MoveTo(0, 0)
 	s.scr.Erase()
+	s.pendingErase = true
 	s.mu.Unlock()
 }
 

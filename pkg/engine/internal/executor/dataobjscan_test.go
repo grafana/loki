@@ -267,8 +267,8 @@ func Test_dataobjScan_DuplicateColumns(t *testing.T) {
 		}
 
 		expectCSV := `prod,namespace-2,NULL,loki,NULL,NULL,1970-01-01 00:00:03,message 3
-prod,NULL,NULL,loki,namespace-1,NULL,1970-01-01 00:00:02,message 2
-prod,NULL,pod-1,loki,NULL,override,1970-01-01 00:00:01,message 1`
+prod,NULL,pod-1,loki,NULL,override,1970-01-01 00:00:01,message 1
+prod,NULL,NULL,loki,namespace-1,NULL,1970-01-01 00:00:02,message 2`
 
 		expectRecord, err := CSVToArrow(expectFields, expectCSV)
 		require.NoError(t, err)
@@ -293,8 +293,8 @@ prod,NULL,pod-1,loki,NULL,override,1970-01-01 00:00:01,message 1`
 		}
 
 		expectCSV := `NULL,NULL
-NULL,NULL
-pod-1,override`
+pod-1,override
+NULL,NULL`
 
 		expectRecord, err := CSVToArrow(expectFields, expectCSV)
 		require.NoError(t, err)
@@ -319,8 +319,8 @@ pod-1,override`
 		}
 
 		expectCSV := `namespace-2,NULL
-NULL,namespace-1
-NULL,NULL`
+NULL,NULL
+NULL,namespace-1`
 
 		expectRecord, err := CSVToArrow(expectFields, expectCSV)
 		require.NoError(t, err)
@@ -340,7 +340,6 @@ func buildDataobj(t testing.TB, streams []logproto.Stream) *dataobj.Object {
 			BufferSize:              8_000,
 			SectionStripeMergeLimit: 2,
 		},
-		DataobjSortOrder: "timestamp-desc",
 	}, nil, logsobj.NewBuilderMetrics(), log.NewNopLogger(), nil)
 	require.NoError(t, err)
 

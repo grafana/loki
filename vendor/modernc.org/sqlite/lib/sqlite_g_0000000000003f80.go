@@ -13,108 +13,69 @@ import (
 // C documentation
 //
 //	/*
-//	** This routine checks if there is a RESERVED lock held on the specified
-//	** file by this or any other process. If such a lock is held, set *pResOut
-//	** to a non-zero value otherwise *pResOut is set to zero.  The return value
-//	** is set to SQLITE_OK unless an I/O error occurs during lock checking.
+//	** The DMS lock has not yet been taken on shm file pShmNode. Attempt to
+//	** take it now. Return SQLITE_OK if successful, or an SQLite error
+//	** code otherwise.
+//	**
+//	** If the DMS cannot be locked because this is a readonly_shm=1
+//	** connection and no other process already holds a lock, return
+//	** SQLITE_READONLY_CANTINIT and set pShmNode->isUnlocked=1.
 //	*/
-func _unixCheckReservedLock(tls *libc.TLS, id uintptr, pResOut uintptr) (r int32) {
+func _unixLockSharedMemory(tls *libc.TLS, pDbFd uintptr, pShmNode uintptr) (r int32) {
 	bp := tls.Alloc(48)
 	defer tls.Free(48)
-	var pFile uintptr
-	var rc, reserved int32
-	var _ /* lock at bp+0 */ Tflock
-	_, _, _ = pFile, rc, reserved
-	rc = SQLITE_OK
-	reserved = 0
-	pFile = id
-	Xsqlite3_mutex_enter(tls, (*TunixInodeInfo)(unsafe.Pointer((*TunixFile)(unsafe.Pointer(pFile)).FpInode)).FpLockMutex)
-	/* Check if a thread in this process holds such a lock */
-	if libc.Int32FromUint8((*TunixInodeInfo)(unsafe.Pointer((*TunixFile)(unsafe.Pointer(pFile)).FpInode)).FeFileLock) > int32(SHARED_LOCK) {
-		reserved = int32(1)
-	}
-	/* Otherwise see if some other process holds it.
-	 */
-	if !(reserved != 0) && !((*TunixInodeInfo)(unsafe.Pointer((*TunixFile)(unsafe.Pointer(pFile)).FpInode)).FbProcessLock != 0) {
-		(**(**Tflock)(__ccgo_up(bp))).Fl_whence = 0
-		(**(**Tflock)(__ccgo_up(bp))).Fl_start = int64(_sqlite3PendingByte + libc.Int32FromInt32(1))
-		(**(**Tflock)(__ccgo_up(bp))).Fl_len = int64(1)
-		(**(**Tflock)(__ccgo_up(bp))).Fl_type = int16(F_WRLCK)
-		if (*(*func(*libc.TLS, int32, int32, uintptr) int32)(unsafe.Pointer(&struct{ uintptr }{_aSyscall[int32(7)].FpCurrent})))(tls, (*TunixFile)(unsafe.Pointer(pFile)).Fh, int32(F_GETLK), libc.VaList(bp+40, bp)) != 0 {
-			rc = libc.Int32FromInt32(SQLITE_IOERR) | libc.Int32FromInt32(14)<<libc.Int32FromInt32(8)
-			_storeLastErrno(tls, pFile, **(**int32)(__ccgo_up(libc.X__errno_location(tls))))
-		} else {
-			if int32((**(**Tflock)(__ccgo_up(bp))).Fl_type) != int32(F_UNLCK) {
-				reserved = int32(1)
-			}
-		}
-	}
-	Xsqlite3_mutex_leave(tls, (*TunixInodeInfo)(unsafe.Pointer((*TunixFile)(unsafe.Pointer(pFile)).FpInode)).FpLockMutex)
-	**(**int32)(__ccgo_up(pResOut)) = reserved
-	return rc
-}
-
-/*
-** Set a posix-advisory-lock.
-**
-** There are two versions of this routine.  If compiled with
-** SQLITE_ENABLE_SETLK_TIMEOUT then the routine has an extra parameter
-** which is a pointer to a unixFile.  If the unixFile->iBusyTimeout
-** value is set, then it is the number of milliseconds to wait before
-** failing the lock.  The iBusyTimeout value is always reset back to
-** zero on each call.
-**
-** If SQLITE_ENABLE_SETLK_TIMEOUT is not defined, then do a non-blocking
-** attempt to set the lock.
- */
-
-// C documentation
-//
-//	/*
-//	** Attempt to set a system-lock on the file pFile.  The lock is
-//	** described by pLock.
-//	**
-//	** If the pFile was opened read/write from unix-excl, then the only lock
-//	** ever obtained is an exclusive lock, and it is obtained exactly once
-//	** the first time any lock is attempted.  All subsequent system locking
-//	** operations become no-ops.  Locking operations still happen internally,
-//	** in order to coordinate access between separate database connections
-//	** within this process, but all of that is handled in memory and the
-//	** operating system does not participate.
-//	**
-//	** This function is a pass-through to fcntl(F_SETLK) if pFile is using
-//	** any VFS other than "unix-excl" or if pFile is opened on "unix-excl"
-//	** and is read-only.
-//	**
-//	** Zero is returned if the call completes successfully, or -1 if a call
-//	** to fcntl() fails. In this case, errno is set appropriately (by fcntl()).
-//	*/
-func _unixFileLock(tls *libc.TLS, pFile uintptr, pLock uintptr) (r int32) {
-	bp := tls.Alloc(48)
-	defer tls.Free(48)
-	var pInode uintptr
 	var rc int32
 	var _ /* lock at bp+0 */ Tflock
-	_, _ = pInode, rc
-	pInode = (*TunixFile)(unsafe.Pointer(pFile)).FpInode
-	if libc.Int32FromUint16((*TunixFile)(unsafe.Pointer(pFile)).FctrlFlags)&(libc.Int32FromInt32(UNIXFILE_EXCL)|libc.Int32FromInt32(UNIXFILE_RDONLY)) == int32(UNIXFILE_EXCL) {
-		if libc.Int32FromUint8((*TunixInodeInfo)(unsafe.Pointer(pInode)).FbProcessLock) == 0 {
-			/* assert( pInode->nLock==0 ); <-- Not true if unix-excl READONLY used */
-			(**(**Tflock)(__ccgo_up(bp))).Fl_whence = 0
-			(**(**Tflock)(__ccgo_up(bp))).Fl_start = int64(_sqlite3PendingByte + libc.Int32FromInt32(2))
-			(**(**Tflock)(__ccgo_up(bp))).Fl_len = int64(SHARED_SIZE)
-			(**(**Tflock)(__ccgo_up(bp))).Fl_type = int16(F_WRLCK)
-			rc = (*(*func(*libc.TLS, int32, int32, uintptr) int32)(unsafe.Pointer(&struct{ uintptr }{_aSyscall[int32(7)].FpCurrent})))(tls, (*TunixFile)(unsafe.Pointer(pFile)).Fh, int32(F_SETLK), libc.VaList(bp+40, bp))
-			if rc < 0 {
-				return rc
-			}
-			(*TunixInodeInfo)(unsafe.Pointer(pInode)).FbProcessLock = uint8(1)
-			(*TunixInodeInfo)(unsafe.Pointer(pInode)).FnLock = (*TunixInodeInfo)(unsafe.Pointer(pInode)).FnLock + 1
-		} else {
-			rc = 0
-		}
+	_ = rc
+	rc = SQLITE_OK
+	/* Use F_GETLK to determine the locks other processes are holding
+	 ** on the DMS byte. If it indicates that another process is holding
+	 ** a SHARED lock, then this process may also take a SHARED lock
+	 ** and proceed with opening the *-shm file.
+	 **
+	 ** Or, if no other process is holding any lock, then this process
+	 ** is the first to open it. In this case take an EXCLUSIVE lock on the
+	 ** DMS byte and truncate the *-shm file to zero bytes in size. Then
+	 ** downgrade to a SHARED lock on the DMS byte.
+	 **
+	 ** If another process is holding an EXCLUSIVE lock on the DMS byte,
+	 ** return SQLITE_BUSY to the caller (it will try again). An earlier
+	 ** version of this code attempted the SHARED lock at this point. But
+	 ** this introduced a subtle race condition: if the process holding
+	 ** EXCLUSIVE failed just before truncating the *-shm file, then this
+	 ** process might open and use the *-shm file without truncating it.
+	 ** And if the *-shm file has been corrupted by a power failure or
+	 ** system crash, the database itself may also become corrupt.  */
+	(**(**Tflock)(__ccgo_up(bp))).Fl_whence = 0
+	(**(**Tflock)(__ccgo_up(bp))).Fl_start = int64((libc.Int32FromInt32(22)+libc.Int32FromInt32(SQLITE_SHM_NLOCK))*libc.Int32FromInt32(4) + libc.Int32FromInt32(SQLITE_SHM_NLOCK))
+	(**(**Tflock)(__ccgo_up(bp))).Fl_len = int64(1)
+	(**(**Tflock)(__ccgo_up(bp))).Fl_type = int16(F_WRLCK)
+	if (*(*func(*libc.TLS, int32, int32, uintptr) int32)(unsafe.Pointer(&struct{ uintptr }{_aSyscall[int32(7)].FpCurrent})))(tls, (*TunixShmNode)(unsafe.Pointer(pShmNode)).FhShm, int32(F_GETLK), libc.VaList(bp+40, bp)) != 0 {
+		rc = libc.Int32FromInt32(SQLITE_IOERR) | libc.Int32FromInt32(15)<<libc.Int32FromInt32(8)
 	} else {
-		rc = (*(*func(*libc.TLS, int32, int32, uintptr) int32)(unsafe.Pointer(&struct{ uintptr }{_aSyscall[int32(7)].FpCurrent})))(tls, (*TunixFile)(unsafe.Pointer(pFile)).Fh, int32(F_SETLK), libc.VaList(bp+40, pLock))
+		if int32((**(**Tflock)(__ccgo_up(bp))).Fl_type) == int32(F_UNLCK) {
+			if (*TunixShmNode)(unsafe.Pointer(pShmNode)).FisReadonly != 0 {
+				(*TunixShmNode)(unsafe.Pointer(pShmNode)).FisUnlocked = uint8(1)
+				rc = libc.Int32FromInt32(SQLITE_READONLY) | libc.Int32FromInt32(5)<<libc.Int32FromInt32(8)
+			} else {
+				rc = _unixShmSystemLock(tls, pDbFd, int32(F_WRLCK), (libc.Int32FromInt32(22)+libc.Int32FromInt32(SQLITE_SHM_NLOCK))*libc.Int32FromInt32(4)+libc.Int32FromInt32(SQLITE_SHM_NLOCK), int32(1))
+				/* The first connection to attach must truncate the -shm file.  We
+				 ** truncate to 3 bytes (an arbitrary small number, less than the
+				 ** -shm header size) rather than 0 as a system debugging aid, to
+				 ** help detect if a -shm file truncation is legitimate or is the work
+				 ** or a rogue process. */
+				if rc == SQLITE_OK && _robust_ftruncate(tls, (*TunixShmNode)(unsafe.Pointer(pShmNode)).FhShm, int64(3)) != 0 {
+					rc = _unixLogErrorAtLine(tls, libc.Int32FromInt32(SQLITE_IOERR)|libc.Int32FromInt32(18)<<libc.Int32FromInt32(8), __ccgo_ts+3578, (*TunixShmNode)(unsafe.Pointer(pShmNode)).FzFilename, int32(45245))
+				}
+			}
+		} else {
+			if int32((**(**Tflock)(__ccgo_up(bp))).Fl_type) == int32(F_WRLCK) {
+				rc = int32(SQLITE_BUSY)
+			}
+		}
+	}
+	if rc == SQLITE_OK {
+		rc = _unixShmSystemLock(tls, pDbFd, F_RDLCK, (libc.Int32FromInt32(22)+libc.Int32FromInt32(SQLITE_SHM_NLOCK))*libc.Int32FromInt32(4)+libc.Int32FromInt32(SQLITE_SHM_NLOCK), int32(1))
 	}
 	return rc
 }

@@ -242,10 +242,36 @@ var (
 	NullType      Type = &nullType{}
 )
 
+// logicalTypeOf returns the annotation carried by lt if it is of type T. A nil
+// lt, or one carrying a different annotation, yields ok=false.
+func logicalTypeOf[T format.LogicalTypeValue](lt *format.LogicalType) (T, bool) {
+	if lt == nil {
+		var zero T
+		return zero, false
+	}
+	v, ok := lt.Value.(T)
+	return v, ok
+}
+
+// logicalTypeIs reports whether lt carries a T annotation.
+func logicalTypeIs[T format.LogicalTypeValue](lt *format.LogicalType) bool {
+	_, ok := logicalTypeOf[T](lt)
+	return ok
+}
+
+// logicalTypeValueOf returns the annotation carried by lt, or nil when lt is
+// nil. It is the nil-safe way to reach lt.Value for a type switch.
+func logicalTypeValueOf(lt *format.LogicalType) format.LogicalTypeValue {
+	if lt == nil {
+		return nil
+	}
+	return lt.Value
+}
+
 // In the current parquet version supported by this library, only type-defined
 // orders are supported.
 var typeDefinedColumnOrder = format.ColumnOrder{
-	TypeOrder: new(format.TypeDefinedOrder),
+	Value: new(format.TypeDefinedOrder),
 }
 
 var physicalTypes = [...]format.Type{

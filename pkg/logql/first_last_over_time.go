@@ -59,7 +59,7 @@ func (r *firstWithTimestampBatchRangeVectorIterator) At() (int64, StepResult) {
 		s := r.agg(series.Floats)
 		r.at = append(r.at, promql.Sample{
 			F:      s.F,
-			T:      s.T / int64(time.Millisecond),
+			T:      sampleTimestampToMillis(s.T),
 			Metric: series.Metric,
 		})
 	}
@@ -124,7 +124,7 @@ func (r *lastWithTimestampBatchRangeVectorIterator) At() (int64, StepResult) {
 		s := r.agg(series.Floats)
 		r.at = append(r.at, promql.Sample{
 			F:      s.F,
-			T:      s.T / int64(time.Millisecond),
+			T:      sampleTimestampToMillis(s.T),
 			Metric: series.Metric,
 		})
 	}
@@ -146,6 +146,7 @@ type mergeOverTimeStepEvaluator struct {
 	matrices       []promql.Matrix
 	merge          func(promql.Vector, int, int, promql.Series) promql.Vector
 	offset         time.Duration
+	rangeInterval  time.Duration
 }
 
 // Next returns the first or last element within one step of each matrix.
@@ -187,24 +188,33 @@ func (e *mergeOverTimeStepEvaluator) pop(r, s int) {
 	e.matrices[r][s].Floats = e.matrices[r][s].Floats[1:]
 }
 
-// inRange returns true if t is in step range of ts.
-func (e *mergeOverTimeStepEvaluator) inRange(t, ts int64) bool {
-	// The time stamp needs to be adjusted because the original datapoint at t is
+// inRange returns true if sampleTimestamp, the timestamp of the sample a shard picked as its
+// first/last candidate, falls inside the aggregation window ending at stepTimestamp.
+func (e *mergeOverTimeStepEvaluator) inRange(sampleTimestamp, stepTimestamp int64) bool {
+	// The time stamp needs to be adjusted because the original datapoint at sampleTimestamp is
 	// from a shifted query.
-	ts -= e.offset.Milliseconds()
+	stepTimestamp -= e.offset.Milliseconds()
 
-	// special case instant queries
+	// An instant query has a single output step, so a candidate a shard returns has no other
+	// step to be confused with. The shard already restricted it to the right window, so there
+	// is nothing left to check here.
 	if e.step.Milliseconds() == 0 {
 		return true
 	}
-	return (ts-e.step.Milliseconds()) <= t && t < ts
+
+	// Compare against the range vector's own interval, not the step. The step would silently
+	// drop series from grouped, sharded first/last_over_time range queries whenever the interval
+	// is wider.
+	//
+	// The interval is half-open: the lower bound is exclusive, the upper bound is inclusive.
+	return (stepTimestamp-e.rangeInterval.Milliseconds()) < sampleTimestamp && sampleTimestamp <= stepTimestamp
 }
 
 func (*mergeOverTimeStepEvaluator) Close() error { return nil }
 
 func (*mergeOverTimeStepEvaluator) Error() error { return nil }
 
-func NewMergeFirstOverTimeStepEvaluator(params Params, m []promql.Matrix, offset time.Duration) StepEvaluator {
+func NewMergeFirstOverTimeStepEvaluator(params Params, m []promql.Matrix, offset, rangeInterval time.Duration) StepEvaluator {
 	if len(m) == 0 {
 		return EmptyEvaluator[SampleVector]{}
 	}
@@ -216,13 +226,14 @@ func NewMergeFirstOverTimeStepEvaluator(params Params, m []promql.Matrix, offset
 	)
 
 	return &mergeOverTimeStepEvaluator{
-		start:    start,
-		end:      end,
-		ts:       start.Add(-step), // will be corrected on first Next() call
-		step:     step,
-		matrices: m,
-		merge:    mergeFirstOverTime,
-		offset:   offset,
+		start:         start,
+		end:           end,
+		ts:            start.Add(-step), // will be corrected on first Next() call
+		step:          step,
+		matrices:      m,
+		merge:         mergeFirstOverTime,
+		offset:        offset,
+		rangeInterval: rangeInterval,
 	}
 }
 
@@ -242,7 +253,7 @@ func mergeFirstOverTime(vec promql.Vector, pos int, nSeries int, series promql.S
 	return vec
 }
 
-func NewMergeLastOverTimeStepEvaluator(params Params, m []promql.Matrix, offset time.Duration) StepEvaluator {
+func NewMergeLastOverTimeStepEvaluator(params Params, m []promql.Matrix, offset, rangeInterval time.Duration) StepEvaluator {
 	if len(m) == 0 {
 		return EmptyEvaluator[SampleVector]{}
 	}
@@ -254,13 +265,14 @@ func NewMergeLastOverTimeStepEvaluator(params Params, m []promql.Matrix, offset 
 	)
 
 	return &mergeOverTimeStepEvaluator{
-		start:    start,
-		end:      end,
-		ts:       start.Add(-step), // will be corrected on first Next() call
-		step:     step,
-		matrices: m,
-		merge:    mergeLastOverTime,
-		offset:   offset,
+		start:         start,
+		end:           end,
+		ts:            start.Add(-step), // will be corrected on first Next() call
+		step:          step,
+		matrices:      m,
+		merge:         mergeLastOverTime,
+		offset:        offset,
+		rangeInterval: rangeInterval,
 	}
 }
 
@@ -278,4 +290,13 @@ func mergeLastOverTime(vec promql.Vector, pos int, nSeries int, series promql.Se
 	}
 
 	return vec
+}
+
+// sampleTimestampToMillis converts a sample's nanosecond timestamp to milliseconds, rounding up.
+//
+// Truncating down instead could shift the timestamp into the previous millisecond, making the
+// sharded merge (mergeOverTimeStepEvaluator) attribute the sample to the wrong output step.
+func sampleTimestampToMillis(sampleTimestamp int64) int64 {
+	const millis = int64(time.Millisecond)
+	return (sampleTimestamp + millis - 1) / millis
 }

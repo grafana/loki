@@ -188,6 +188,12 @@ type KVConfig struct {
 	// Size of the buffer for key watchers.
 	WatchPrefixBufferSize int `yaml:"watch_prefix_buffer_size" category:"advanced"`
 
+	// CasRetryMinBackoff and CasRetryMaxBackoff add a delay between CAS retries after
+	// a version mismatch. MinBackoff is the on/off toggle: 0 (its default) disables
+	// the delay regardless of MaxBackoff.
+	CasRetryMinBackoff time.Duration `yaml:"cas_retry_min_backoff" category:"experimental"`
+	CasRetryMaxBackoff time.Duration `yaml:"cas_retry_max_backoff" category:"experimental"`
+
 	TCPTransport TCPTransportConfig `yaml:",inline"`
 
 	// Zone-aware routing configuration.
@@ -250,6 +256,8 @@ func (cfg *KVConfig) RegisterFlagsWithPrefix(f *flag.FlagSet, prefix string) {
 	f.BoolVar(&cfg.ClusterLabelVerificationDisabled, prefix+"memberlist.cluster-label-verification-disabled", mlDefaults.SkipInboundLabelCheck, "When true, memberlist doesn't verify that inbound packets and gossip streams have the cluster label matching the configured one. This verification should be disabled while rolling out the change to the configured cluster label in a live memberlist cluster.")
 	f.DurationVar(&cfg.BroadcastTimeoutForLocalUpdatesOnShutdown, prefix+"memberlist.broadcast-timeout-for-local-updates-on-shutdown", 10*time.Second, "Timeout for broadcasting all remaining locally-generated updates to other nodes when shutting down. Only used if there are nodes left in the memberlist cluster, and only applies to locally-generated updates, not to broadcast messages that are result of incoming gossip updates. 0 = no timeout, wait until all locally-generated updates are sent.")
 	f.IntVar(&cfg.WatchPrefixBufferSize, prefix+"memberlist.watch-prefix-buffer-size", watchPrefixBufferSize, "Size of the buffered channel for the WatchPrefix function.")
+	f.DurationVar(&cfg.CasRetryMinBackoff, prefix+"memberlist.cas-retry-min-backoff", 0, "Minimum delay between CAS retries after a version mismatch. 0 disables the delay.")
+	f.DurationVar(&cfg.CasRetryMaxBackoff, prefix+"memberlist.cas-retry-max-backoff", 10*time.Second, "Maximum delay between CAS retries after a version mismatch. Only takes effect if cas-retry-min-backoff is also set.")
 
 	cfg.TCPTransport.RegisterFlagsWithPrefix(f, prefix)
 	cfg.ZoneAwareRouting.RegisterFlagsWithPrefix(f, prefix+"memberlist.zone-aware-routing.")
@@ -277,7 +285,10 @@ func (cfg *KVConfig) Validate() error {
 	if cfg.CompressionAlgorithm != "" && !slices.Contains(supportedCompressionAlgorithms, cfg.CompressionAlgorithm) {
 		return fmt.Errorf("memberlist compression algorithm %q is not supported, valid values: %s", cfg.CompressionAlgorithm, strings.Join(supportedCompressionAlgorithms, ", "))
 	}
-	return cfg.ZoneAwareRouting.Validate()
+	if err := cfg.ZoneAwareRouting.Validate(); err != nil {
+		return err
+	}
+	return cfg.PropagationDelayTracker.Validate()
 }
 
 // GetRejoinSeedNodes returns the seed nodes to use for periodic rejoin.
@@ -320,8 +331,9 @@ type KV struct {
 	localBroadcasts  *memberlist.TransmitLimitedQueue // queue for messages generated locally
 	gossipBroadcasts *memberlist.TransmitLimitedQueue // queue for messages that we forward from other nodes
 
-	// Node metadata for zone-aware routing (nil if zone-aware routing is disabled).
-	nodeMeta []byte
+	// Node metadata and node selection delegate for zone-aware routing (nil if it's disabled).
+	nodeMeta            []byte
+	zoneAwareNodeSelect *zoneAwareNodeSelectionDelegate
 
 	// KV Store.
 	storeMu sync.RWMutex
@@ -584,7 +596,8 @@ func (m *KV) configureZoneAwareRouting(mlCfg *memberlist.Config) error {
 	m.nodeMeta = localMeta
 
 	// Set up the node selection delegate.
-	mlCfg.NodeSelection = newZoneAwareNodeSelectionDelegate(role, m.cfg.ZoneAwareRouting.Zone, m.logger, m.registerer)
+	m.zoneAwareNodeSelect = newZoneAwareNodeSelectionDelegate(role, m.cfg.ZoneAwareRouting.Zone, m.logger, m.registerer)
+	mlCfg.NodeSelection = m.zoneAwareNodeSelect
 
 	// The bridge always prefer another bridge as first node. If the bridge only push/pull to 1 node per interval, then
 	// it will only communicate to bridges, potentially leading to network partitioning if the gossiping is not
@@ -663,6 +676,11 @@ func (m *KV) running(ctx context.Context) error {
 	}
 
 	ok := m.joinMembersOnStartup(ctx)
+
+	if m.zoneAwareNodeSelect != nil {
+		m.zoneAwareNodeSelect.markJoined()
+	}
+
 	if !ok && m.cfg.AbortIfJoinFails {
 		return errFailedToJoinCluster
 	}
@@ -1295,6 +1313,11 @@ func (m *KV) Delete(key string) error {
 func (m *KV) CAS(ctx context.Context, key string, codec codec.Codec, f func(in interface{}) (out interface{}, retry bool, err error)) error {
 	var lastError error
 
+	var retryBackoff *backoff.Backoff
+	if m.cfg.CasRetryMinBackoff > 0 {
+		retryBackoff = backoff.New(ctx, backoff.Config{MinBackoff: m.cfg.CasRetryMinBackoff, MaxBackoff: m.cfg.CasRetryMaxBackoff})
+	}
+
 outer:
 	for retries := m.maxCasRetries; retries > 0; retries-- {
 		m.casAttempts.Inc()
@@ -1308,6 +1331,12 @@ outer:
 			case <-time.After(noChangeDetectedRetrySleep):
 				// ok
 			case <-ctx.Done():
+				lastError = ctx.Err()
+				break outer
+			}
+		} else if lastError != nil && retryBackoff != nil {
+			retryBackoff.Wait()
+			if ctx.Err() != nil {
 				lastError = ctx.Err()
 				break outer
 			}
@@ -1476,16 +1505,20 @@ func (m *KV) NotifyMsg(msg []byte) {
 		return
 	}
 
-	ch := m.getKeyWorkerChannel(kvPair.Key)
-	select {
-	case ch <- valueUpdate{value: kvPair.Value, codec: codec, messageSize: len(msg), deleted: kvPair.Deleted, updateTime: updateTime(kvPair.UpdateTimeMillis)}:
-	default:
+	update := valueUpdate{value: kvPair.Value, codec: codec, messageSize: len(msg), deleted: kvPair.Deleted, updateTime: updateTime(kvPair.UpdateTimeMillis)}
+	if !m.enqueueKeyUpdate(kvPair.Key, update) {
 		m.numberOfDroppedMessages.Inc()
 		level.Warn(m.logger).Log("msg", "notify queue full, dropping message", "key", kvPair.Key)
 	}
 }
 
-func (m *KV) getKeyWorkerChannel(key string) chan<- valueUpdate {
+// enqueueKeyUpdate hands the update over to the worker goroutine for the given key,
+// spawning the worker if it doesn't exist yet. It returns false if the worker's queue
+// is full and the update was dropped.
+//
+// The channel send happens while holding workersMu. This guarantees that no update
+// can be sent to a channel after stopKeyWorkers has closed it.
+func (m *KV) enqueueKeyUpdate(key string, update valueUpdate) bool {
 	m.workersMu.Lock()
 	defer m.workersMu.Unlock()
 
@@ -1497,13 +1530,24 @@ func (m *KV) getKeyWorkerChannel(key string) chan<- valueUpdate {
 
 		m.workersChannels[key] = ch
 	}
-	return ch
+
+	select {
+	case ch <- update:
+		return true
+	default:
+		return false
+	}
 }
 
 func (m *KV) processValueUpdate(workerCh <-chan valueUpdate, key string) {
 	for {
 		select {
-		case update := <-workerCh:
+		case update, ok := <-workerCh:
+			if !ok {
+				// The channel was closed because the key was removed from the store.
+				// Stop the worker; if the key is seen again, a new worker will be spawned.
+				return
+			}
 			// we have a value update! Let's merge it with our current version for given key
 			mod, version, deleted, updated, err := m.mergeBytesValueForKey(key, update.value, update.codec, update.deleted, update.updateTime)
 
@@ -1535,11 +1579,54 @@ func (m *KV) processValueUpdate(workerCh <-chan valueUpdate, key string) {
 				m.broadcastNewValue(key, mod, version, update.codec, false, deleted, updated)
 			}
 
+			if version == 0 && !m.keyExists(key) {
+				// The update didn't (re)create the key in the store. This happens when
+				// the merge was a no-op (e.g. a tombstone received for a key that was
+				// already removed by cleanupObsoleteEntries), and also when the merge
+				// failed for a key we don't have. In both cases the cleanup will never
+				// run for this key and would never stop this worker, so it deregisters
+				// itself instead of staying around forever. If the key is seen again,
+				// a new worker is spawned.
+				if m.tryDeregisterKeyWorker(key, workerCh) {
+					return
+				}
+			}
+
 		case <-m.shutdown:
 			// stop running on shutdown
 			return
 		}
 	}
+}
+
+func (m *KV) keyExists(key string) bool {
+	m.storeMu.Lock()
+	defer m.storeMu.Unlock()
+
+	_, ok := m.store[key]
+	return ok
+}
+
+// tryDeregisterKeyWorker removes the worker's entry from workersChannels, and returns
+// true if the worker must stop. It returns false if the worker has to keep running,
+// either because more updates were enqueued to it in the meantime, or because it's not
+// the registered worker for the key anymore (stopKeyWorkers removed it already, in
+// which case the closed channel stops the worker instead).
+func (m *KV) tryDeregisterKeyWorker(key string, workerCh <-chan valueUpdate) bool {
+	m.workersMu.Lock()
+	defer m.workersMu.Unlock()
+
+	if ch, ok := m.workersChannels[key]; !ok || ch != workerCh {
+		return false
+	}
+
+	// Sends happen while holding workersMu, so the channel length cannot change here.
+	if len(workerCh) > 0 {
+		return false
+	}
+
+	delete(m.workersChannels, key)
+	return true
 }
 
 // GetBroadcasts is method from Memberlist Delegate interface
@@ -1897,11 +1984,38 @@ func (m *KV) deleteSentReceivedMessages() {
 
 func (m *KV) cleanupObsoleteEntries() {
 	m.storeMu.Lock()
-	defer m.storeMu.Unlock()
-
+	var removedKeys []string
 	for k, v := range m.store {
 		if v.Deleted && time.Since(v.UpdateTime) > m.cfg.ObsoleteEntriesTimeout {
 			delete(m.store, k)
+			removedKeys = append(removedKeys, k)
+		}
+	}
+	m.storeMu.Unlock()
+
+	m.stopKeyWorkers(removedKeys)
+}
+
+// stopKeyWorkers stops the update-processing worker goroutines for the given keys.
+// Workers of removed keys must be stopped: otherwise every key ever seen keeps a
+// goroutine alive for the lifetime of the process, which is a goroutine leak in
+// clusters where keys are created and deleted over time.
+func (m *KV) stopKeyWorkers(keys []string) {
+	if len(keys) == 0 {
+		return
+	}
+
+	m.workersMu.Lock()
+	defer m.workersMu.Unlock()
+
+	for _, k := range keys {
+		if ch, ok := m.workersChannels[k]; ok {
+			delete(m.workersChannels, k)
+			// Closing the channel is safe: enqueueKeyUpdate only sends while holding
+			// workersMu, so there is no concurrent sender, and no future sender can
+			// obtain this channel anymore. The worker drains any buffered updates
+			// and then exits.
+			close(ch)
 		}
 	}
 }

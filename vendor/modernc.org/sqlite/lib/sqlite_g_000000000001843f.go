@@ -4,4 +4,8 @@
 
 package sqlite3
 
-const __GNUC_PATCHLEVEL__ = 1
+const __STDC_EMBED_EMPTY__ = 2
+
+const __STDC_EMBED_FOUND__ = 1
+
+const __STDC_EMBED_NOT_FOUND__ = 0

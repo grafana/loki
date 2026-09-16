@@ -32,6 +32,7 @@ var emptyStats = `"stats": {
 			"queryReferencedStructuredMetadata": false,
 			"queryUsedV2Engine": false,
 			"pipelineWrapperFilteredLines": 0,
+			"chunkFetchFailures": 0,
 			"chunk" :{
 				"compressedBytes": 0,
 				"decompressedBytes": 0,
@@ -76,6 +77,7 @@ var emptyStats = `"stats": {
 			"queryReferencedStructuredMetadata": false,
 			"queryUsedV2Engine": false,
 			"pipelineWrapperFilteredLines": 0,
+			"chunkFetchFailures": 0,
 			"chunk" :{
 				"compressedBytes": 0,
 				"decompressedBytes": 0,

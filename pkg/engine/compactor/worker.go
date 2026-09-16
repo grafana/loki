@@ -12,6 +12,7 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/dataobj/consumer/logsobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
+	"github.com/grafana/loki/v3/pkg/dataobj/uploader"
 	"github.com/grafana/loki/v3/pkg/engine"
 	"github.com/grafana/loki/v3/pkg/scratch"
 )
@@ -28,8 +29,12 @@ type WorkerParams struct {
 	Logger     log.Logger
 	Registerer prometheus.Registerer
 
-	// IndexobjCfg controls index object construction parameters.
+	// IndexobjCfg controls index object construction parameters for compaction.
 	IndexobjCfg logsobj.BuilderBaseConfig
+	// LogsobjCfg controls index object construction parameters for compaction.
+	LogsobjCfg logsobj.BuilderBaseConfig
+	// UploaderCfg controls object key generation for compacted log objects.
+	UploaderCfg uploader.Config
 }
 
 // Worker is the dataobj-compaction-worker target service. It wraps an
@@ -102,6 +107,8 @@ func NewWorker(params WorkerParams) (*Worker, error) {
 		// LocalScheduler left nil: the compaction worker only ever
 		// connects to remote schedulers via DNS-SRV.
 		IndexobjCfg:        params.IndexobjCfg,
+		LogsobjCfg:         params.LogsobjCfg,
+		UploaderCfg:        params.UploaderCfg,
 		IndexMergeObserver: wm,
 		LogMergeObserver:   wm,
 	}, registerer)

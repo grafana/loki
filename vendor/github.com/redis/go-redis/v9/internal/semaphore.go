@@ -14,6 +14,28 @@ var semTimers = sync.Pool{
 	},
 }
 
+// putSemTimer stops a pooled timer and drains a stale fire before reuse,
+// portably across both timer-channel semantics (the drain must never block):
+//
+//   - main module on go >= 1.23 (synchronous channels): Stop returns TRUE for
+//     an expired-but-undelivered fire — the delivery is aborted — and false
+//     only once the value was actually received. With the sole receiver
+//     being Acquire's own select, the drain branch is unreachable; the
+//     select-with-default is a safety net so a future semantics shift cannot
+//     turn it into a blocking receive (reviewed on #3942).
+//   - GODEBUG=asynctimerchan=1 (consumer main module on go < 1.23, old
+//     buffered channels): Stop returns false and the fired value sits in the
+//     buffer; the drain consumes it so the timer is clean for Reset-reuse.
+func putSemTimer(t *time.Timer) {
+	if !t.Stop() {
+		select {
+		case <-t.C:
+		default:
+		}
+	}
+	semTimers.Put(t)
+}
+
 // FastSemaphore is a channel-based semaphore optimized for performance.
 // It uses a fast path that avoids timer allocation when tokens are available.
 // The channel is pre-filled with tokens: Acquire = receive, Release = send.
@@ -70,19 +92,13 @@ func (s *FastSemaphore) Acquire(ctx context.Context, timeout time.Duration, time
 
 	// Slow path: need to wait with timeout
 	timer := semTimers.Get().(*time.Timer)
-	defer semTimers.Put(timer)
+	defer putSemTimer(timer)
 	timer.Reset(timeout)
 
 	select {
 	case <-s.tokens:
-		if !timer.Stop() {
-			<-timer.C
-		}
 		return nil
 	case <-ctx.Done():
-		if !timer.Stop() {
-			<-timer.C
-		}
 		return ctx.Err()
 	case <-timer.C:
 		return timeoutErr
@@ -152,42 +168,20 @@ func (s *FIFOSemaphore) TryAcquire() bool {
 func (s *FIFOSemaphore) Acquire(ctx context.Context, timeout time.Duration, timeoutErr error) error {
 	// No fast path - always use timer to guarantee FIFO
 	timer := semTimers.Get().(*time.Timer)
-	defer semTimers.Put(timer)
+	defer putSemTimer(timer)
 	timer.Reset(timeout)
 
 	select {
 	case <-s.tokens:
-		if !timer.Stop() {
-			<-timer.C
-		}
 		return nil
 	case <-ctx.Done():
-		if !timer.Stop() {
-			<-timer.C
-		}
 		return ctx.Err()
 	case <-timer.C:
 		return timeoutErr
 	}
 }
 
-// AcquireBlocking acquires a token, blocking indefinitely until one is available.
-func (s *FIFOSemaphore) AcquireBlocking() {
-	<-s.tokens
-}
-
 // Release releases a token back to the semaphore.
 func (s *FIFOSemaphore) Release() {
 	s.tokens <- struct{}{}
-}
-
-// Close closes the semaphore, unblocking all waiting goroutines.
-// After close, all Acquire calls will receive a closed channel signal.
-func (s *FIFOSemaphore) Close() {
-	close(s.tokens)
-}
-
-// Len returns the current number of acquired tokens.
-func (s *FIFOSemaphore) Len() int32 {
-	return s.max - int32(len(s.tokens))
 }

@@ -1189,7 +1189,7 @@ func (i *Ingester) QuerySample(req *logproto.SampleQueryRequest, queryServer log
 			return err
 		}
 
-		it = iter.NewMergeSampleIterator(ctx, []iter.SampleIterator{it, storeItr})
+		it = iter.NewTimestampFirstMergeSampleIterator(ctx, []iter.SampleIterator{it, storeItr})
 	}
 
 	defer util.LogErrorWithContext(ctx, "closing iterator", it.Close)
@@ -1380,7 +1380,6 @@ func (i *Ingester) series(ctx context.Context, req *logproto.SeriesRequest) (*lo
 
 	if start, end, ok := buildStoreRequest(i.cfg, req.Start, req.End, time.Now()); ok {
 		var storeSeries []logproto.SeriesIdentifier
-		var parsed syntax.Expr
 
 		groups := []string{""}
 		if len(req.Groups) != 0 {
@@ -1388,6 +1387,7 @@ func (i *Ingester) series(ctx context.Context, req *logproto.SeriesRequest) (*lo
 		}
 
 		for _, group := range groups {
+			var parsed syntax.Expr
 			if group != "" {
 				parsed, err = syntax.ParseExpr(group)
 				if err != nil {

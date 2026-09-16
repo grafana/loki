@@ -12,6 +12,7 @@ import (
 
 	"github.com/parquet-go/jsonlite"
 	"github.com/parquet-go/parquet-go/deprecated"
+	"github.com/parquet-go/parquet-go/format"
 	"github.com/parquet-go/parquet-go/internal/memory"
 	"github.com/parquet-go/parquet-go/sparse"
 	"google.golang.org/protobuf/types/known/structpb"
@@ -34,7 +35,7 @@ type writeRowsFunc func(columns []ColumnBuffer, levels columnLevels, rows sparse
 func writeRowsFuncOf(t reflect.Type, schema *Schema, path columnPath, tagReplacements []StructTagOption) writeRowsFunc {
 	if leaf, exists := schema.Lookup(path...); exists {
 		logicalType := leaf.Node.Type().LogicalType()
-		if logicalType != nil && logicalType.Json != nil {
+		if logicalTypeIs[*format.JsonType](logicalType) {
 			return writeRowsFuncOfJSON(t, schema, path)
 		}
 	}
@@ -918,21 +919,21 @@ func writeRowsFuncOfJSON(t reflect.Type, schema *Schema, path columnPath) writeR
 
 func writeRowsFuncOfTime(_ reflect.Type, schema *Schema, path columnPath, tagReplacements []StructTagOption) writeRowsFunc {
 	t := reflect.TypeFor[int64]()
-	elemSize := uintptr(t.Size())
 	writeRows := writeRowsFuncOf(t, schema, path, tagReplacements)
 
 	col, _ := schema.Lookup(path...)
 	unit := Nanosecond.TimeUnit()
 	lt := col.Node.Type().LogicalType()
-	if lt != nil && lt.Timestamp != nil {
-		unit = lt.Timestamp.Unit
+	if ts, ok := logicalTypeOf[*format.TimestampType](lt); ok {
+		unit = ts.Unit
 	}
 
 	// Check if the column is optional
 	isOptional := col.Node.Optional()
 
 	return func(columns []ColumnBuffer, levels columnLevels, rows sparse.Array) {
-		if rows.Len() == 0 {
+		n := rows.Len()
+		if n == 0 {
 			writeRows(columns, levels, rows)
 			return
 		}
@@ -945,38 +946,53 @@ func writeRowsFuncOfTime(_ reflect.Type, schema *Schema, path columnPath, tagRep
 		// definitionLevel starts at 0.
 		alreadyHandled := isOptional && levels.definitionLevel > 0
 
+		buf := wideIntBufPool.Get(
+			func() *wideIntBuf { return new(wideIntBuf) },
+			func(b *wideIntBuf) { b.values = b.values[:0] },
+		)
+		buf.values = slices.Grow(buf.values, n)[:n]
+		defer wideIntBufPool.Put(buf)
+
 		times := rows.TimeArray()
-		for i := range times.Len() {
-			t := times.Index(i)
+		switch unit.Value.(type) {
+		case *format.MilliSeconds:
+			for i := range n {
+				buf.values[i] = times.Index(i).UnixMilli()
+			}
+		case *format.MicroSeconds:
+			for i := range n {
+				buf.values[i] = times.Index(i).UnixMicro()
+			}
+		default:
+			for i := range n {
+				buf.values[i] = times.Index(i).UnixNano()
+			}
+		}
 
-			// For optional fields, check if the value is zero
-			// (unless already handled by pointer wrapper).
-			elemLevels := levels
-			if isOptional && !alreadyHandled && t.IsZero() {
-				// Write as NULL (don't increment definition level).
-				empty := sparse.Array{}
-				writeRows(columns, elemLevels, empty)
-				continue
+		if !isOptional || alreadyHandled {
+			writeRows(columns, levels, sparse.MakeInt64Array(buf.values).UnsafeArray())
+			return
+		}
+
+		i := 0
+		empty := sparse.Array{}
+		for i < n {
+			j := i
+			isNull := times.Index(i).IsZero()
+			for j < n && times.Index(j).IsZero() == isNull {
+				j++
 			}
 
-			// For optional non-zero values, increment definition level
-			// (unless already handled).
-			if isOptional && !alreadyHandled {
+			if isNull {
+				for k := i; k < j; k++ {
+					writeRows(columns, levels, empty)
+				}
+			} else {
+				elemLevels := levels
 				elemLevels.definitionLevel++
+				writeRows(columns, elemLevels, sparse.MakeInt64Array(buf.values[i:j]).UnsafeArray())
 			}
-
-			var val int64
-			switch {
-			case unit.Millis != nil:
-				val = t.UnixMilli()
-			case unit.Micros != nil:
-				val = t.UnixMicro()
-			default:
-				val = t.UnixNano()
-			}
-
-			a := makeArray(reflectValueData(reflect.ValueOf(val)), 1, elemSize)
-			writeRows(columns, elemLevels, a)
+			i = j
 		}
 	}
 }

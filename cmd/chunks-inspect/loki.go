@@ -53,6 +53,8 @@ type LokiBlock struct {
 	entries          []LokiEntry
 	storedChecksum   uint32
 	computedChecksum uint32
+
+	parseErr error
 }
 
 type label struct {
@@ -194,30 +196,31 @@ func parseLokiChunk(chunkHeader *ChunkHeader, r io.Reader) (*LokiChunk, error) {
 
 	for ix := 0; ix < int(blocks); ix++ {
 		block := LokiBlock{}
+		var metaErr error
 		// Read number of entries in block
-		block.numEntries, metadata, err = readUvarint(err, metadata)
+		block.numEntries, metadata, metaErr = readUvarint(metaErr, metadata)
 		// Read block minimum time
-		block.minT, metadata, err = readVarint(err, metadata)
+		block.minT, metadata, metaErr = readVarint(metaErr, metadata)
 		// Read block max time
-		block.maxT, metadata, err = readVarint(err, metadata)
+		block.maxT, metadata, metaErr = readVarint(metaErr, metadata)
 		// Read offset to block data
-		block.dataOffset, metadata, err = readUvarint(err, metadata)
+		block.dataOffset, metadata, metaErr = readUvarint(metaErr, metadata)
 		if f >= chunkFormatV3 {
 			// Read uncompressed size
-			block.uncompSize, metadata, err = readUvarint(err, metadata)
+			block.uncompSize, metadata, metaErr = readUvarint(metaErr, metadata)
 		}
 		// Read block length
 		dataLength := uint64(0)
-		dataLength, metadata, err = readUvarint(err, metadata)
+		dataLength, metadata, metaErr = readUvarint(metaErr, metadata)
 
-		if err != nil {
-			return nil, err
+		if metaErr != nil {
+			return nil, fmt.Errorf("failed to read metadata for block %d: %w", ix, metaErr)
 		}
 
 		block.rawData = data[block.dataOffset : block.dataOffset+dataLength]
 		block.storedChecksum = binary.BigEndian.Uint32(data[block.dataOffset+dataLength : block.dataOffset+dataLength+4])
 		block.computedChecksum = crc32.Checksum(block.rawData, castagnoliTable)
-		block.originalData, block.entries, err = parseLokiBlock(f, codec, block.rawData, structuredMetadataSymbols)
+		block.originalData, block.entries, block.parseErr = parseLokiBlock(f, codec, block.rawData, structuredMetadataSymbols)
 		lokiChunk.blocks = append(lokiChunk.blocks, block)
 	}
 
@@ -239,11 +242,11 @@ func parseLokiBlock(format byte, codec compression.Codec, data []byte, symbols [
 		timestamp, decompressed, err = readVarint(err, decompressed)
 		lineLength, decompressed, err = readUvarint(err, decompressed)
 		if err != nil {
-			return origDecompressed, nil, err
+			return origDecompressed, entries, err
 		}
 
 		if len(decompressed) < int(lineLength) {
-			return origDecompressed, nil, fmt.Errorf("not enough line data, need %d, got %d", lineLength, len(decompressed))
+			return origDecompressed, entries, fmt.Errorf("not enough line data, need %d, got %d", lineLength, len(decompressed))
 		}
 		line := string(decompressed[0:lineLength])
 		decompressed = decompressed[lineLength:]
@@ -258,7 +261,7 @@ func parseLokiBlock(format byte, codec compression.Codec, data []byte, symbols [
 			var structuredMetadataPairs uint64
 			structuredMetadataPairs, decompressed, err = readUvarint(err, decompressed)
 			if err != nil {
-				return origDecompressed, nil, err
+				return origDecompressed, entries, err
 			}
 			structuredMetdata = make([]label, 0, structuredMetadataPairs)
 			// Read all the pairs
@@ -266,12 +269,12 @@ func parseLokiBlock(format byte, codec compression.Codec, data []byte, symbols [
 				var nameIdx uint64
 				nameIdx, decompressed, err = readUvarint(err, decompressed)
 				if err != nil {
-					return origDecompressed, nil, err
+					return origDecompressed, entries, err
 				}
 				var valIdx uint64
 				valIdx, decompressed, err = readUvarint(err, decompressed)
 				if err != nil {
-					return origDecompressed, nil, err
+					return origDecompressed, entries, err
 				}
 				lbl := label{name: symbols[nameIdx], val: symbols[valIdx]}
 				structuredMetdata = append(structuredMetdata, lbl)

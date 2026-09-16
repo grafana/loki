@@ -27,6 +27,7 @@ func TestConfig_ValidateRejectsBadValues(t *testing.T) {
 		{"min backoff zero", func(c *Config) { c.MinBackoff = 0 }, errInvalidMinBackoff},
 		{"min backoff negative", func(c *Config) { c.MinBackoff = -1 }, errInvalidMinBackoff},
 		{"max backoff below min", func(c *Config) { c.MinBackoff = 2 * time.Minute; c.MaxBackoff = time.Minute }, errInvalidMaxBackoff},
+		{"window lookback negative", func(c *Config) { c.WindowLookback = -1 }, errInvalidWindowLookback},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {

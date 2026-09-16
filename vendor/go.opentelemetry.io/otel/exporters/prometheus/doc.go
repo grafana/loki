@@ -8,4 +8,4 @@
 // The Prometheus exporter ignores metrics from the Prometheus bridge. To
 // export these metrics, simply register them directly with the Prometheus
 // Handler.
-package prometheus // import "go.opentelemetry.io/otel/exporters/prometheus"
+package prometheus

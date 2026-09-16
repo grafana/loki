@@ -267,7 +267,7 @@ func (q *IngesterQuerier) SelectSample(ctx context.Context, params logql.SelectS
 
 	iterators := make([]iter.SampleIterator, len(resps))
 	for i := range resps {
-		iterators[i] = iter.NewSampleQueryClientIterator(resps[i].response.(logproto.Querier_QuerySampleClient))
+		iterators[i] = iter.NewTimestampFirstSampleQueryClientIterator(resps[i].response.(logproto.Querier_QuerySampleClient))
 	}
 	return iterators, nil
 }

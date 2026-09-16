@@ -602,7 +602,7 @@ func (s *stream) Iterator(ctx context.Context, statsCtx *stats.Context, from, th
 }
 
 // Returns an SampleIterator.
-func (s *stream) SampleIterator(ctx context.Context, statsCtx *stats.Context, from, through time.Time, extractors ...log.StreamSampleExtractor) (iter.SampleIterator, error) {
+func (s *stream) SampleIterator(ctx context.Context, statsCtx *stats.Context, from, through time.Time, extractor log.StreamSampleExtractor) (iter.SampleIterator, error) {
 	s.chunkMtx.RLock()
 	defer s.chunkMtx.RUnlock()
 	iterators := make([]iter.SampleIterator, 0, len(s.chunks))
@@ -623,7 +623,7 @@ func (s *stream) SampleIterator(ctx context.Context, statsCtx *stats.Context, fr
 		}
 		lastMax = maxt
 
-		if itr := c.chunk.SampleIterator(ctx, from, through, extractors...); itr != nil {
+		if itr := c.chunk.SampleIterator(ctx, from, through, extractor); itr != nil {
 			iterators = append(iterators, itr)
 		}
 	}
@@ -635,7 +635,7 @@ func (s *stream) SampleIterator(ctx context.Context, statsCtx *stats.Context, fr
 	if ordered {
 		return iter.NewNonOverlappingSampleIterator(iterators), nil
 	}
-	return iter.NewSortSampleIterator(iterators), nil
+	return iter.NewTimestampFirstSortSampleIterator(iterators), nil
 }
 
 func (s *stream) addTailer(t *tailer) {

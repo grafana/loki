@@ -54,9 +54,8 @@ func (m *processResponseFor200ErrorMiddleware) HandleDeserialize(
 	rootDecoder := xml.NewDecoder(body)
 	t, err := smithyxml.FetchRootElement(rootDecoder)
 	if err == io.EOF {
-		return out, metadata, &smithy.DeserializationError{
-			Err: fmt.Errorf("received empty response payload"),
-		}
+		// Empty body is not an error, continue normal response handling.
+		return out, metadata, nil
 	}
 
 	// rewind response body
