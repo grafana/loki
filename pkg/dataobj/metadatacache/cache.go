@@ -88,6 +88,9 @@ func New(c cache.Cache, maxItemBytes int64, reg prometheus.Registerer, logger lo
 // Concurrent misses for the same key share a single load. A cache fetch or store error is counted (and
 // logged, rate limited) but never fails the call: it degrades to a load from object storage.
 //
+// A loaded region larger than MaxItemBytes is never stored, even if the backend would accept it; load's
+// result is still returned to the caller.
+//
 // Each caller returns on its own context cancellation. The shared load itself runs on a context
 // detached from any single caller: it keeps request-scoped values, drops cancellation, and is bounded
 // by loadTimeout. One caller giving up neither aborts the load nor fails the others waiting on it.
@@ -124,6 +127,16 @@ func (c *Cache) GetOrLoadMetadataRegion(ctx context.Context, key string, load fu
 		if err != nil {
 			return nil, err
 		}
+
+		if int64(len(md)) > c.maxItemBytes {
+			c.errors.WithLabelValues("store").Inc()
+			c.storeErrLog.Do(func() {
+				level.Warn(c.logger).Log("msg", "data object metadata cache store skipped: region exceeds configured max item size",
+					"key", key, "region_bytes", len(md), "max_item_bytes", c.maxItemBytes)
+			})
+			return md, nil
+		}
+
 		if err := c.cache.Store(loadCtx, []string{k}, [][]byte{md}); err != nil {
 			c.errors.WithLabelValues("store").Inc()
 			c.storeErrLog.Do(func() {

@@ -170,6 +170,22 @@ func TestCache_GetOrLoadMetadataRegion(t *testing.T) {
 		require.Contains(t, logger.Entries()[0], "data object metadata cache store failed")
 	})
 
+	t.Run("a region larger than MaxItemBytes is never stored, even though the backend would accept it", func(t *testing.T) {
+		mc := cache.NewMockCache()
+		logger := &test.CapturingLogger{}
+		c := New(mc, 3, nil, logger)
+
+		got, err := c.GetOrLoadMetadataRegion(context.Background(), "obj", func(context.Context) ([]byte, error) {
+			return []byte("blob"), nil // 4 bytes, over the 3-byte limit
+		})
+		require.NoError(t, err, "the loaded value is still returned even though it was not stored")
+		require.Equal(t, []byte("blob"), got)
+		require.Empty(t, mc.GetInternal(), "an oversized region must never reach the backend")
+		require.Equal(t, float64(1), testutil.ToFloat64(c.errors.WithLabelValues("store")))
+		require.Len(t, logger.Entries(), 1)
+		require.Contains(t, logger.Entries()[0], "data object metadata cache store skipped: region exceeds configured max item size")
+	})
+
 	t.Run("the shared load's context preserves the triggering caller's request-scoped values", func(t *testing.T) {
 		c := New(cache.NewMockCache(), 0, nil, nil)
 
