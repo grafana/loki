@@ -455,9 +455,8 @@ func (c *Component) runMultiple(n int) error {
 				continue
 			}
 			return err
-		} else {
-			return nil
 		}
+		return nil
 	}
 	return err
 }
