@@ -332,6 +332,36 @@ func TestStreamShardStore_CheckAndShard(t *testing.T) {
 		})
 	})
 
+	t.Run("shorter per-tenant rate window shards more", func(t *testing.T) {
+		// The same traffic yields more shards under a shorter rate-averaging
+		// window, because the bytes are divided by a smaller window. Two 1500B
+		// pushes in the same 1-minute bucket = 3000B: over the default 5m (300s)
+		// window that is 10 B/s -> 10 shards at desiredRate=1B/s (see the
+		// subtest above), but over a 1m (60s) per-tenant window it is 50 B/s ->
+		// 50 shards.
+		synctest.Test(t, func(t *testing.T) {
+			cfg := shardstreams.Config{Enabled: true, LimitsServiceStreamShardingRateWindow: time.Minute}
+			require.NoError(t, cfg.DesiredRate.Set("1B"))
+			l := &mockLimits{MaxGlobalStreams: 1000, ShardStreamsConfig: cfg}
+			s, err := newStreamShardStore(15*time.Minute, 5*time.Minute, time.Minute, 1, l, prometheus.NewRegistry())
+			require.NoError(t, err)
+
+			// First push initializes the buckets (held at 1 shard while cold).
+			results := s.checkAndShard(context.Background(), "tenant1", []*proto.StreamMetadata{
+				{StreamHash: 1, TotalSize: 1500},
+			}, time.Now())
+			require.Len(t, results, 1)
+			require.Equal(t, uint32(1), results[0].Shards)
+
+			// Second push, same 1-minute bucket: 3000B / 60s window = 50 B/s.
+			results = s.checkAndShard(context.Background(), "tenant1", []*proto.StreamMetadata{
+				{StreamHash: 1, TotalSize: 1500},
+			}, time.Now())
+			require.Len(t, results, 1)
+			require.Equal(t, uint32(50), results[0].Shards)
+		})
+	})
+
 	t.Run("disabled stream is untracked", func(t *testing.T) {
 		// A stream that was tracked while its policy had sharding enabled must be
 		// dropped from the store once sharding is disabled for it, so its stale
@@ -361,6 +391,28 @@ func TestStreamShardStore_CheckAndShard(t *testing.T) {
 			require.Equal(t, float64(0), total)
 		})
 	})
+}
+
+func TestClampShardRateWindow(t *testing.T) {
+	const bucketSize = time.Minute
+	const rateWindow = 5 * time.Minute
+	for _, tc := range []struct {
+		name       string
+		configured time.Duration
+		want       time.Duration
+	}{
+		{"zero falls back to store default", 0, rateWindow},
+		{"negative falls back to store default", -time.Second, rateWindow},
+		{"in range kept as-is", 2 * time.Minute, 2 * time.Minute},
+		{"below one bucket clamped up to bucket size", 10 * time.Second, bucketSize},
+		{"above window clamped down to window", 10 * time.Minute, rateWindow},
+		{"equal to bucket size kept", bucketSize, bucketSize},
+		{"equal to window kept", rateWindow, rateWindow},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			require.Equal(t, tc.want, clampShardRateWindow(tc.configured, bucketSize, rateWindow))
+		})
+	}
 }
 
 // collectStreamShardStoreGauges reads streamShardStore's own Collector

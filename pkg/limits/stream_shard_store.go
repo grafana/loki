@@ -200,7 +200,8 @@ func (s *streamShardStore) checkAndShard(ctx context.Context, tenant string, met
 					// rate based on a single, just-started bucket.
 					desired = max(1, stream.shardCount)
 				} else {
-					rate := currentRate(stream.rateBuckets, seenAt, s.rateWindow)
+					window := clampShardRateWindow(shardCfg.LimitsServiceStreamShardingRateWindow, s.bucketSize, s.rateWindow)
+					rate := currentRate(stream.rateBuckets, seenAt, window)
 					desired = max(1, ceilDivU32(rate, uint64(shardCfg.DesiredRate.Val())))
 				}
 			}
@@ -448,6 +449,19 @@ func currentRate(buckets []rateBucket, now time.Time, rateWindow time.Duration) 
 		}
 	}
 	return uint64(float64(total) / seconds)
+}
+
+// clampShardRateWindow resolves the rate-averaging window for the shard
+// decision: the per-tenant/policy override when set (> 0), otherwise the
+// store-wide default. The result is clamped to [bucketSize, rateWindow] -- the
+// per-stream rate-bucket ring holds only rateWindow of history, and a window
+// shorter than one bucket can't be measured. A shorter window reacts to
+// shorter bursts, closer to the distributor's local rate store.
+func clampShardRateWindow(configured, bucketSize, rateWindow time.Duration) time.Duration {
+	if configured <= 0 {
+		return rateWindow
+	}
+	return min(max(configured, bucketSize), rateWindow)
 }
 
 func ceilDivU32(a uint64, b uint64) uint32 {

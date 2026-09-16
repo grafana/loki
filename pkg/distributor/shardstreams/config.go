@@ -39,6 +39,17 @@ type Config struct {
 	// recommendation is only compared against the local rate store for
 	// observability; the local rate store still drives actual sharding.
 	LimitsServiceStreamShardingMode string `yaml:"limits_service_stream_sharding_mode" json:"limits_service_stream_sharding_mode" doc:"description=Experimental. Controls whether the ingest-limits service is asked for a shard-count recommendation for observability purposes. One of 'disabled' (default, unchanged behavior) or 'shadow' (compute via the limits service for comparison only; actual sharding is still driven by the local rate store)."`
+
+	// LimitsServiceStreamShardingRateWindow is the rate-averaging window the
+	// ingest-limits service uses when deciding shard counts for this
+	// tenant/policy. The distributor's local rate store ignores it. A shorter
+	// window reacts to shorter bursts (closer to the local rate store, which
+	// tracks a ~1s reactive rate); a longer one smooths more. 0 falls back to
+	// the ingest-limits service's global rate_window. It is clamped at use to
+	// the service's [bucket_size, rate_window] -- the per-stream rate-bucket
+	// ring cannot cover more than rate_window, so raise the service-wide
+	// rate_window to allow a longer per-tenant window.
+	LimitsServiceStreamShardingRateWindow time.Duration `yaml:"limits_service_stream_sharding_rate_window" json:"limits_service_stream_sharding_rate_window" doc:"description=Experimental. Rate-averaging window the ingest-limits service uses when deciding shard counts for this tenant. A shorter window reacts to shorter bursts; 0 (default) uses the ingest-limits service's global rate_window. Clamped to the service's [bucket_size, rate_window]. The distributor's local rate store ignores this."`
 }
 
 func (cfg *Config) RegisterFlagsWithPrefix(prefix string, fs *flag.FlagSet) {
@@ -49,10 +60,14 @@ func (cfg *Config) RegisterFlagsWithPrefix(prefix string, fs *flag.FlagSet) {
 	cfg.DesiredRate.Set("1536KB") //nolint:errcheck
 	fs.Var(&cfg.DesiredRate, prefix+".desired-rate", "threshold used to cut a new shard. Default (1536KB) means if a rate is above 1536KB/s, it will be sharded.")
 	fs.StringVar(&cfg.LimitsServiceStreamShardingMode, prefix+".limits-service-stream-sharding-mode", LimitsServiceStreamShardingModeDisabled, "Experimental. One of 'disabled' or 'shadow'. Controls whether the ingest-limits service is asked for a shard-count recommendation for observability purposes.")
+	fs.DurationVar(&cfg.LimitsServiceStreamShardingRateWindow, prefix+".limits-service-stream-sharding-rate-window", 0, "Experimental. Rate-averaging window the ingest-limits service uses when deciding shard counts. A shorter window reacts to shorter bursts; 0 uses the ingest-limits service's global rate_window. Clamped to the service's [bucket_size, rate_window].")
 }
 
 // Validate returns an error if cfg is invalid.
 func (cfg *Config) Validate() error {
+	if cfg.LimitsServiceStreamShardingRateWindow < 0 {
+		return fmt.Errorf("invalid limits_service_stream_sharding_rate_window %q: must not be negative", cfg.LimitsServiceStreamShardingRateWindow)
+	}
 	switch cfg.LimitsServiceStreamShardingMode {
 	// The empty string is accepted as equivalent to "disabled" -- the Go
 	// zero value for this field -- so that Config values built directly
