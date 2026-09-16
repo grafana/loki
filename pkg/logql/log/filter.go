@@ -690,7 +690,7 @@ func (s *RegexSimplifier) Simplify(reg *syntax.Regexp, isLabel bool) (MatcherFil
 	case syntax.OpAlternate:
 		return s.simplifyAlternate(reg, isLabel)
 	case syntax.OpConcat:
-		return s.simplifyConcat(reg, nil)
+		return s.simplifyConcat(reg, nil, isLabel)
 	case syntax.OpCapture:
 		syntaxutil.ClearCapture(reg)
 		return s.Simplify(reg, isLabel)
@@ -738,7 +738,15 @@ func (s *RegexSimplifier) simplifyAlternate(reg *syntax.Regexp, isLabel bool) (M
 // which is a literalFilter.
 // Or a literal and alternates operation (see simplifyConcatAlternate), which represent a multiplication of alternates.
 // Anything else is rejected.
-func (s *RegexSimplifier) simplifyConcat(reg *syntax.Regexp, baseLiteral []byte) (MatcherFilterer, bool) {
+//
+// isLabel controls whether the resulting filter must match the whole value (as a label
+// filter does) rather than merely contain a match (as a line filter does). A contains
+// filter is only equivalent to a fully anchored match when the literal is unbounded on
+// *both* sides (e.g. `.*foo.*`, which is documented as unaffected). For a one-sided
+// pattern such as `foo.*` or `.*foo`, a contains filter is too permissive for a label
+// filter (it would let "prefoo" or "foobar" through), so simplification is refused and
+// the caller falls back to the fully anchored `^(?:...)$` regexp instead.
+func (s *RegexSimplifier) simplifyConcat(reg *syntax.Regexp, baseLiteral []byte, isLabel bool) (MatcherFilterer, bool) {
 	syntaxutil.ClearCapture(reg.Sub...)
 	// remove empty match as we don't need them for filtering
 	i := 0
@@ -760,7 +768,9 @@ func (s *RegexSimplifier) simplifyConcat(reg *syntax.Regexp, baseLiteral []byte)
 	var ok bool
 	literals := 0
 	var baseLiteralIsCaseInsensitive bool
-	for _, sub := range reg.Sub {
+	leadingOpenEnded := false
+	trailingOpenEnded := false
+	for idx, sub := range reg.Sub {
 		if sub.Op == syntax.OpLiteral {
 			// only one literal is allowed.
 			if literals != 0 {
@@ -773,7 +783,7 @@ func (s *RegexSimplifier) simplifyConcat(reg *syntax.Regexp, baseLiteral []byte)
 		}
 		// if we have an alternate we must also have a base literal to apply the concatenation with.
 		if sub.Op == syntax.OpAlternate && baseLiteral != nil {
-			if curr, ok = s.simplifyConcatAlternate(sub, baseLiteral, curr, baseLiteralIsCaseInsensitive); !ok {
+			if curr, ok = s.simplifyConcatAlternate(sub, baseLiteral, curr, baseLiteralIsCaseInsensitive, isLabel); !ok {
 				return nil, false
 			}
 			continue
@@ -782,6 +792,11 @@ func (s *RegexSimplifier) simplifyConcat(reg *syntax.Regexp, baseLiteral []byte)
 			// anything after .* is no longer adjacent to the base literal.
 			if baseLiteral != nil && sub != reg.Sub[len(reg.Sub)-1] {
 				return nil, false
+			}
+			if idx == 0 {
+				leadingOpenEnded = true
+			} else {
+				trailingOpenEnded = true
 			}
 			continue
 		}
@@ -795,6 +810,11 @@ func (s *RegexSimplifier) simplifyConcat(reg *syntax.Regexp, baseLiteral []byte)
 
 	// if we have only a concat with literals.
 	if baseLiteral != nil {
+		if isLabel && leadingOpenEnded != trailingOpenEnded {
+			// One-sided open end, e.g. `foo.*` or `.*foo`: a contains filter would
+			// match values a fully anchored regexp would not. Refuse simplification.
+			return nil, false
+		}
 		return s.newContainsFilter(baseLiteral, baseLiteralIsCaseInsensitive), true
 	}
 
@@ -805,7 +825,7 @@ func (s *RegexSimplifier) simplifyConcat(reg *syntax.Regexp, baseLiteral []byte)
 // A concat alternate is found when a concat operation has a sub alternate and is preceded by a literal.
 // For instance bar|b|buzz is expressed as b(ar|(?:)|uzz) => b concat alternate(ar,(?:),uzz).
 // (?:) being an OpEmptyMatch and b being the literal to concat all alternates (ar,(?:),uzz) with.
-func (s *RegexSimplifier) simplifyConcatAlternate(reg *syntax.Regexp, literal []byte, curr MatcherFilterer, baseLiteralIsCaseInsensitive bool) (MatcherFilterer, bool) {
+func (s *RegexSimplifier) simplifyConcatAlternate(reg *syntax.Regexp, literal []byte, curr MatcherFilterer, baseLiteralIsCaseInsensitive bool, isLabel bool) (MatcherFilterer, bool) {
 	for _, alt := range reg.Sub {
 		// we should not consider the case where baseLiteral is not marked as case insensitive
 		// and alternate expression is marked as case insensitive. For example, for the original expression
@@ -826,7 +846,7 @@ func (s *RegexSimplifier) simplifyConcatAlternate(reg *syntax.Regexp, literal []
 			altLiteral = append(altLiteral, altBytes...)
 			curr = ChainOrMatcherFilterer(curr, s.newContainsFilter(altLiteral, baseLiteralIsCaseInsensitive))
 		case syntax.OpConcat:
-			f, ok := s.simplifyConcat(alt, literal)
+			f, ok := s.simplifyConcat(alt, literal, isLabel)
 			if !ok {
 				return nil, false
 			}
