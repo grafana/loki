@@ -20,9 +20,7 @@ or narrow time intervals that the logline index proves contain no matching log l
    below the results cache. For each interval sub-request, it consults the prefetched
    hints to either:
    - **Skip** the interval entirely (return empty response) if no hint ranges overlap
-   - **Narrow** to at most k envelopes (k = ceil(interval/15m), cap 8) by cutting
-     the largest inter-hint gaps. One `next.Do` per envelope; intra-group gaps
-     are scanned so nearby hints do not refetch the same chunk.
+   - **Narrow** to only the matching time ranges within the interval
    - **Pass through** if the interval is in the ingester window, or on error/timeout
 
 ## Key integration points
