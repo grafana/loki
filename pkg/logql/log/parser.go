@@ -57,7 +57,7 @@ type JSONParser struct {
 	captureJSONPath bool
 
 	keys                  internedStringSet
-	parserHints           ExtractionHints
+	parserHints           ParserHint
 	labelFilterHints      LabelFilterHints
 	sanitizedPrefixBuffer []byte
 }

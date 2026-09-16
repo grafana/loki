@@ -17,7 +17,7 @@ func Test_jsonParser_Parse(t *testing.T) {
 		lbs                labels.Labels
 		want               labels.Labels
 		wantJSONPath       map[string][]string
-		hints              ExtractionHints
+		hints              ParserHint
 		structuredMetadata map[string]string
 	}{
 		{
@@ -251,7 +251,7 @@ func Test_jsonParser_Parse(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			origLine := string(tt.line)
 
-			b := NewBaseLabelsBuilderWithGrouping(nil, tt.hints, NoLabelFilterHints(), false, false).ForLabels(tt.lbs, labels.StableHash(tt.lbs))
+			b := NewBaseLabelsBuilderWithGrouping(nil, tt.hints, false, false).ForLabels(tt.lbs, labels.StableHash(tt.lbs))
 			b.Reset()
 
 			for key, value := range tt.structuredMetadata {
@@ -414,7 +414,7 @@ func TestJSONExpressionParser(t *testing.T) {
 		expressions        []LabelExtractionExpr
 		lbs                labels.Labels
 		want               labels.Labels
-		hints              ExtractionHints
+		hints              ParserHint
 		structuredMetadata map[string]string
 	}{
 		{
@@ -766,7 +766,7 @@ func TestJSONExpressionParser(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			j, err := NewJSONExpressionParser(tt.expressions)
 			require.NoError(t, err, "cannot create JSON expression parser")
-			b := NewBaseLabelsBuilderWithGrouping(nil, tt.hints, NoLabelFilterHints(), false, false).ForLabels(tt.lbs, labels.StableHash(tt.lbs))
+			b := NewBaseLabelsBuilderWithGrouping(nil, tt.hints, false, false).ForLabels(tt.lbs, labels.StableHash(tt.lbs))
 			b.Reset()
 			// Set structured metadata if specified
 			for key, value := range tt.structuredMetadata {
@@ -1191,7 +1191,7 @@ func TestLogfmtParser_parse(t *testing.T) {
 		lbs                labels.Labels
 		want               labels.Labels
 		wantStrict         labels.Labels
-		hints              ExtractionHints
+		hints              ParserHint
 		structuredMetadata map[string]string
 	}{
 		{
@@ -1440,7 +1440,7 @@ func TestLogfmtParser_parse(t *testing.T) {
 		p := NewLogfmtParser(false, false)
 		for _, tt := range tests {
 			t.Run(tt.name, func(t *testing.T) {
-				b := NewBaseLabelsBuilderWithGrouping(nil, tt.hints, NoLabelFilterHints(), false, false).ForLabels(tt.lbs, labels.StableHash(tt.lbs))
+				b := NewBaseLabelsBuilderWithGrouping(nil, tt.hints, false, false).ForLabels(tt.lbs, labels.StableHash(tt.lbs))
 				b.Reset()
 				// Set structured metadata if specified
 				for key, value := range tt.structuredMetadata {
@@ -1456,7 +1456,7 @@ func TestLogfmtParser_parse(t *testing.T) {
 		p := NewLogfmtParser(true, false)
 		for _, tt := range tests {
 			t.Run(tt.name, func(t *testing.T) {
-				b := NewBaseLabelsBuilderWithGrouping(nil, tt.hints, NoLabelFilterHints(), false, false).ForLabels(tt.lbs, labels.StableHash(tt.lbs))
+				b := NewBaseLabelsBuilderWithGrouping(nil, tt.hints, false, false).ForLabels(tt.lbs, labels.StableHash(tt.lbs))
 				b.Reset()
 				// Set structured metadata if specified
 				for key, value := range tt.structuredMetadata {
@@ -1527,7 +1527,7 @@ func TestLogfmtParser_keepEmpty(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			for _, tt := range tests {
 				t.Run(tt.name, func(t *testing.T) {
-					b := NewBaseLabelsBuilderWithGrouping(nil, nil, nil, false, false).ForLabels(tt.lbs, labels.StableHash(tt.lbs))
+					b := NewBaseLabelsBuilderWithGrouping(nil, nil, false, false).ForLabels(tt.lbs, labels.StableHash(tt.lbs))
 					b.Reset()
 
 					p := NewLogfmtParser(strict, tt.keepEmpty)
@@ -1792,7 +1792,7 @@ func Test_unpackParser_Parse(t *testing.T) {
 		lbs                labels.Labels
 		wantLbs            labels.Labels
 		wantLine           []byte
-		hints              ExtractionHints
+		hints              ParserHint
 		structuredMetadata map[string]string
 	}{
 		{
@@ -1920,7 +1920,7 @@ func Test_unpackParser_Parse(t *testing.T) {
 	for _, tt := range tests {
 		j := NewUnpackParser()
 		t.Run(tt.name, func(t *testing.T) {
-			b := NewBaseLabelsBuilderWithGrouping(nil, tt.hints, NoLabelFilterHints(), false, false).ForLabels(tt.lbs, labels.StableHash(tt.lbs))
+			b := NewBaseLabelsBuilderWithGrouping(nil, tt.hints, false, false).ForLabels(tt.lbs, labels.StableHash(tt.lbs))
 			b.Reset()
 			// Set structured metadata if specified
 			for key, value := range tt.structuredMetadata {

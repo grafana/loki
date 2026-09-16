@@ -206,8 +206,8 @@ func NewPipeline(stages []Stage) Pipeline {
 		return NewNoopPipeline()
 	}
 
-	labelFilterHints := NewLabelFilterHints(stages)
-	builder := NewBaseLabelsBuilderWithGrouping(nil, NoParserHints(), labelFilterHints, false, false)
+	builder := NewBaseLabelsBuilderWithGrouping(nil, NoParserHints(), false, false).
+		WithLabelFilterHints(NewLabelFilterHints(stages))
 	return &pipeline{
 		stages:          stages,
 		baseBuilder:     builder,

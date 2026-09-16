@@ -590,7 +590,7 @@ func TestLineSampleExtractor_ForStream_ShouldReturnOptimizedExtractorWhenOutputH
 	// constant fast path against. (ForStream auto-selects the constant path, so there is no other way to
 	// get the builder path for the same grouping.)
 	builderExtractor := func(groups []string, streamLabels labels.Labels) StreamSampleExtractor {
-		base := NewBaseLabelsBuilderWithGrouping(groups, NewParserHint(nil, groups, false, false, ""), nil, false, false)
+		base := NewBaseLabelsBuilderWithGrouping(groups, NewParserHint(nil, groups, false, false, ""), false, false)
 		return &streamLineSampleExtractor{Stage: NoopStage, LineExtractor: CountExtractor, builder: base.ForLabels(streamLabels, base.Hash(streamLabels))}
 	}
 

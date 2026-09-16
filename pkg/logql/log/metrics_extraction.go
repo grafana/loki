@@ -78,11 +78,12 @@ type cachedStreamSampleExtractor struct {
 func NewLineSampleExtractor(ex LineExtractor, stages []Stage, groups []string, without, noLabels bool) (SampleExtractor, error) {
 	s := ReduceStages(stages)
 	hints := NewParserHint(s.RequiredLabelNames(), groups, without, noLabels, "")
-	labelFilterHints := NewLabelFilterHints(stages)
+	baseBuilder := NewBaseLabelsBuilderWithGrouping(groups, hints, without, noLabels).
+		WithLabelFilterHints(NewLabelFilterHints(stages))
 	return &lineSampleExtractor{
 		Stage:            s,
 		LineExtractor:    ex,
-		baseBuilder:      NewBaseLabelsBuilderWithGrouping(groups, hints, labelFilterHints, without, noLabels),
+		baseBuilder:      baseBuilder,
 		streamExtractors: make(map[uint64]cachedStreamSampleExtractor),
 	}, nil
 }
@@ -331,13 +332,14 @@ func LabelExtractorWithStages(
 	preStage := ReduceStages(preStages)
 	allStages := append(preStages, postFilter)
 	hints := NewParserHint(append(preStage.RequiredLabelNames(), postFilter.RequiredLabelNames()...), groups, without, noLabels, labelName)
-	labelFilterHints := NewLabelFilterHints(allStages)
+	baseBuilder := NewBaseLabelsBuilderWithGrouping(groups, hints, without, noLabels).
+		WithLabelFilterHints(NewLabelFilterHints(allStages))
 	return &labelSampleExtractor{
 		preStage:         preStage,
 		conversionFn:     convFn,
 		labelName:        labelName,
 		postFilter:       postFilter,
-		baseBuilder:      NewBaseLabelsBuilderWithGrouping(groups, hints, labelFilterHints, without, noLabels),
+		baseBuilder:      baseBuilder,
 		streamExtractors: make(map[uint64]StreamSampleExtractor),
 	}, nil
 }
@@ -420,11 +422,12 @@ func NewDistinctValueSampleExtractor(labelName string, stages []Stage, groups []
 	sort.Strings(sortedGroups)
 	preStage := ReduceStages(stages)
 	hints := NewParserHint(preStage.RequiredLabelNames(), sortedGroups, without, noLabels, labelName)
-	labelFilterHints := NewLabelFilterHints(stages)
+	baseBuilder := NewBaseLabelsBuilderWithGrouping(sortedGroups, hints, without, noLabels).
+		WithLabelFilterHints(NewLabelFilterHints(stages))
 	return &distinctValueSampleExtractor{
 		preStage:         preStage,
 		labelName:        labelName,
-		baseBuilder:      NewBaseLabelsBuilderWithGrouping(sortedGroups, hints, labelFilterHints, without, noLabels),
+		baseBuilder:      baseBuilder,
 		streamExtractors: make(map[uint64]StreamSampleExtractor),
 	}, nil
 }

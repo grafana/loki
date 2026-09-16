@@ -295,7 +295,7 @@ func TestLabelFiltersInParseHints(t *testing.T) {
 	})
 }
 
-// Regression test: before ExtractionHints and LabelFilterHints were split apart,
+// Regression test: before ParserHint and LabelFilterHints were split apart,
 // NewParserHint computed labelFilters/labelNames from stages on every call, but 2 of
 // its 4 early-return branches silently dropped them before returning, losing the
 // ShouldContinueParsingLine short-circuit entirely -- even for a plain filter with no

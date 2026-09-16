@@ -6,11 +6,11 @@ import (
 	"github.com/grafana/loki/v3/pkg/logqlmodel"
 )
 
-func NoParserHints() ExtractionHints {
+func NoParserHints() ParserHint {
 	return &Hints{}
 }
 
-// ExtractionHints are hints given to LogQL parsers about which label keys to extract.
+// ParserHint are hints given to LogQL parsers about which label keys to extract.
 // This is specially useful for parser that extract implicitly all possible label keys.
 // This is used only within metric queries since it's rare that you need all label keys.
 // For example in the following expression:
@@ -18,7 +18,7 @@ func NoParserHints() ExtractionHints {
 //	sum by (status_code) (rate({app="foo"} | json [5m]))
 //
 // All we need to extract is the status_code in the json parser.
-type ExtractionHints interface {
+type ParserHint interface {
 	// Extracted returns whether a key has already been extracted by a previous
 	// parse stage. This result must not be cached.
 	Extracted(key string) bool
