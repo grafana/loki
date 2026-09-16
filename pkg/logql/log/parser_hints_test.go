@@ -294,3 +294,28 @@ func TestLabelFiltersInParseHints(t *testing.T) {
 		require.True(t, h.ShouldContinueParsingLine("protocol", lb))
 	})
 }
+
+// Regression test: NewParserHint computes labelFilters/labelNames from stages
+// on every call, but 2 of its 4 early-return branches silently drop them
+// before returning, losing the ShouldContinueParsingLine short-circuit
+// entirely -- even for a plain filter with no CanModifyLabels concerns of
+// its own. A logfmt parser followed by a `foo="bar"` filter should always be
+// collectible into the hints, regardless of grouping/noLabels shape.
+func TestLabelFiltersSurviveNoLabelsAndGroupingHints(t *testing.T) {
+	stages := []log.Stage{
+		log.NewLogfmtParser(false, false),
+		log.NewStringLabelFilter(labels.MustNewMatcher(labels.MatchEqual, "foo", "bar")),
+	}
+	// foo=baz never matches the foo="bar" filter above.
+	lb := log.NewBaseLabelsBuilder().ForLabels(labels.FromStrings("app", "foo", "foo", "baz"), 0)
+
+	t.Run("noLabels with no required-label hints, e.g. sum(rate({app=\"foo\"}|logfmt|foo=\"bar\"[5m]))", func(t *testing.T) {
+		h := log.NewParserHint(nil, nil, false, true, "", stages)
+		require.False(t, h.ShouldContinueParsingLine("foo", lb))
+	})
+
+	t.Run("grouped, non-without, e.g. sum by (foo) (rate({app=\"foo\"}|logfmt|foo=\"bar\"[5m]))", func(t *testing.T) {
+		h := log.NewParserHint([]string{"foo"}, []string{"foo"}, false, false, "", stages)
+		require.False(t, h.ShouldContinueParsingLine("foo", lb))
+	})
+}
