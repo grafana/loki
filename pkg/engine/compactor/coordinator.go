@@ -283,7 +283,8 @@ func (c *coordinator) replaceLogIndex(
 	newEntries := make([]metastore.TableOfContentsEntry, len(results))
 	for i, result := range results {
 		if result == nil {
-			return compactionStats{}, nil
+			// There were no errors but also no resulting artifacts
+			panic("received empty result for successful task")
 		}
 		newEntries[i] = *result
 	}
@@ -502,7 +503,7 @@ func (c *coordinator) compactTenantIndexes(ctx context.Context, tenant string, w
 
 	var total compactionStats
 	for _, groupIndexEntries := range groups {
-		stats, err := c.compactTenantLayoutGroup(ctx, tenant, window, groupIndexEntries)
+		stats, err := c.compactTenantIndexesGroup(ctx, tenant, window, groupIndexEntries)
 		if err != nil {
 			return total, err
 		}
@@ -513,7 +514,7 @@ func (c *coordinator) compactTenantIndexes(ctx context.Context, tenant string, w
 	return total, nil
 }
 
-func (c *coordinator) compactTenantLayoutGroup(ctx context.Context, tenant string, window time.Time, entries []indexEntry) (compactionStats, error) {
+func (c *coordinator) compactTenantIndexesGroup(ctx context.Context, tenant string, window time.Time, entries []indexEntry) (compactionStats, error) {
 	windowLogger := log.With(c.logger, "tenant", tenant, "window", window)
 	sections, err := indexSectionRefsFor(ctx, c.bucket, tenant, entries)
 	if err != nil {
