@@ -544,6 +544,12 @@ func (it *sampleBatchIterator) At() logproto.Sample {
 func (it *sampleBatchIterator) Next() bool {
 	// for loop to avoid recursion
 	for it.ctx.Err() == nil {
+		// Once set, err is sticky: every further call must keep returning false,
+		// without pulling in a later batch's data.
+		if it.err != nil {
+			return false
+		}
+
 		if it.curr != nil && it.curr.Next() {
 			return true
 		}
@@ -562,6 +568,12 @@ func (it *sampleBatchIterator) Next() bool {
 			// No more batches: leave curr for Close to close.
 			return false
 		}
+		if next.err != nil {
+			// This batch failed to fetch: leave curr, still valued and unclosed,
+			// for Close to close.
+			it.err = next.err
+			return false
+		}
 
 		// Another batch is coming: curr drained cleanly and won't be referenced
 		// again, so close it now or it leaks.
@@ -569,14 +581,8 @@ func (it *sampleBatchIterator) Next() bool {
 			it.closeErrs.Add(it.curr.Close())
 		}
 
-		if next.err != nil {
-			it.err = next.err
-			return false
-		}
-		var err error
-		it.curr, err = it.newChunksIterator(next)
-		if err != nil {
-			it.err = err
+		it.curr, it.err = it.newChunksIterator(next)
+		if it.err != nil {
 			return false
 		}
 	}
