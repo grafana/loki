@@ -315,7 +315,7 @@ func (s *LokiStore) storeForPeriod(p config.PeriodConfig, tableRange config.Tabl
 	indexClientLogger := log.With(s.logger, "index-store", fmt.Sprintf("%s-%s", p.IndexType, p.From.String()))
 
 	if shouldUseIndexGatewayClient(s.cfg.TSDBShipperConfig) {
-		primaryClient, err := indexgateway.NewGatewayClient(s.cfg.TSDBShipperConfig.IndexGatewayClientConfig, indexClientReg, s.limits, indexClientLogger, s.metricsNamespace)
+		primaryClient, err := indexgateway.NewGatewayClient("primary", s.cfg.TSDBShipperConfig.IndexGatewayClientConfig, indexClientReg, s.limits, indexClientLogger, s.metricsNamespace)
 		if err != nil {
 			return nil, nil, nil, err
 		}
@@ -323,7 +323,7 @@ func (s *LokiStore) storeForPeriod(p config.PeriodConfig, tableRange config.Tabl
 		var shadowClient *indexgateway.GatewayClient
 		var clientToUse series.GatewayClient = primaryClient
 		if shouldUseTeeIndexGatewayClient(s.cfg.TSDBShipperConfig) {
-			shadowClient, err = indexgateway.NewGatewayClient(s.cfg.TSDBShipperConfig.ShadowIndexGatewayClientConfig, indexClientReg, s.limits, indexClientLogger, s.metricsNamespace)
+			shadowClient, err = indexgateway.NewGatewayClient("secondary", s.cfg.TSDBShipperConfig.ShadowIndexGatewayClientConfig, indexClientReg, s.limits, indexClientLogger, s.metricsNamespace)
 			if err != nil {
 				primaryClient.Stop()
 				return nil, nil, nil, err

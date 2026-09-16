@@ -225,7 +225,7 @@ POST /loki/api/v1/push
 `/loki/api/v1/push` is the endpoint used to send log entries to Loki. The default
 behavior is for the POST body to be a [Snappy](https://github.com/google/snappy)-compressed [Protocol Buffer](https://github.com/protocolbuffers/protobuf) message:
 
-- [Protocol Buffer definition](https://github.com/grafana/loki/blob/main/pkg/logproto/logproto.proto)
+- [Protocol Buffer definition](https://github.com/grafana/loki/blob/main/pkg/push/push.proto)
 - [Go client library](https://github.com/grafana/loki/blob/main/clients/pkg/promtail/client/client.go)
 
 These POST requests require the `Content-Type` HTTP header to be `application/x-protobuf`.
@@ -1254,6 +1254,20 @@ GET /config
 `/config` exposes the current configuration. The optional `mode` query parameter can be used to
 modify the output. If it has the value `diff` only the differences between the default configuration
 and the current are returned. A value of `defaults` returns the default configuration.
+
+The optional `q` query parameter returns only the requested field(s) instead of the full configuration.
+Its value is a dot-separated path into the configuration (for example `limits_config.ingestion_rate_strategy`),
+made of `.`-separated segments of letters, digits, and underscores, and it may be repeated to fetch several
+fields in one request (`?q=<path>&q=<path>`). The response is YAML, structured as a nested tree mirroring
+the requested path(s) rather than a flat listing — for example, `?q=my_nested_struct.my_string` returns
+`my_nested_struct:\n    my_string: ...`. Paths that share a common ancestor are merged into the same subtree.
+A malformed path, or a request with more than 20 `q` values or any value over 512 characters, returns `400`
+with no `X-Loki-Config-Query` header at all. A well-formed but unrecognized path also returns `400`, but
+still gets the header, since the path was recognized and attempted.
+
+Each requested path that was recognized is echoed back via the `X-Loki-Config-Query` response header
+(even if the value was not found). This lets a caller confirm that the `q` parameter is supported,
+indicating that they are not requesting from an older Loki which may be returning more fields than requested.
 
 In microservices mode, the `/config` endpoint is exposed by all components.
 
