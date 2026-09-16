@@ -67,10 +67,10 @@ func shardNested(stream *logproto.InternalStreamAdapter, lbls labels.Labels, sha
 					resource, scope = nil, nil
 				}
 
-				remainingCount := len(remaining)
+				acceptEntries := len(remaining)
 				// If it is not the last shard, limit the entries we take for the shard up to its remaining capacity.
-				if shardCapacityLeft := shardQuota(shard) - placed; shard+1 < count && remainingCount > shardCapacityLeft {
-					remainingCount = shardCapacityLeft
+				if shardCapacityLeft := shardQuota(shard) - placed; shard+1 < count && acceptEntries > shardCapacityLeft {
+					acceptEntries = shardCapacityLeft
 				}
 
 				if resource == nil {
@@ -86,9 +86,9 @@ func shardNested(stream *logproto.InternalStreamAdapter, lbls labels.Labels, sha
 
 				// Capped at its own length, so appending to one shard's entries reallocates
 				// rather than overwriting the entries the next shard is about to take.
-				scope.Entries = remaining[:remainingCount:remainingCount]
-				remaining = remaining[remainingCount:]
-				placed += remainingCount
+				scope.Entries = remaining[:acceptEntries:acceptEntries]
+				remaining = remaining[acceptEntries:]
+				placed += acceptEntries
 			}
 		}
 	}
