@@ -434,7 +434,7 @@ func buildExpiredSchemaSet(schemas []lokiv1.ObjectStorageSchema, currentTime tim
 }
 
 // getRetentionDays returns max retention across global and all tenants, including per-stream overrides.
-// Returns 0 if no retention is configured or any tenant has infinite retention (blocks schema removal).
+// Returns 0 if no global retention is configured (blocks schema removal - we can't know about unlisted tenants).
 func getRetentionDays(limits *lokiv1.LimitsSpec) int {
 	// Helper to find max retention including per-stream overrides
 	discoverMaxRetention := func(retentionSpec *lokiv1.RetentionLimitSpec) int {
@@ -447,32 +447,19 @@ func getRetentionDays(limits *lokiv1.LimitsSpec) int {
 		return maxDays
 	}
 
-	if limits == nil {
+	if limits == nil || limits.Global == nil || limits.Global.Retention == nil {
+		// No global retention: any tenant we don't know about has infinite retention.
+		// Per-tenant overrides can't rule that out, so retention must be treated as infinite.
 		return 0
 	}
 
-	hasGlobalRetention := limits.Global != nil && limits.Global.Retention != nil
-	maxRetention := 0
-	if hasGlobalRetention {
-		maxRetention = discoverMaxRetention(limits.Global.Retention)
-	}
-
-	// Any tenant without retention means infinite retention
-	if limits.Tenants != nil {
-		for _, tenantLimits := range limits.Tenants {
-			if tenantLimits.Retention == nil {
-				// tenant has infinite retention if no global exists
-				if !hasGlobalRetention {
-					return 0
-				}
-				continue
-			}
-
+	maxRetention := discoverMaxRetention(limits.Global.Retention)
+	for _, tenantLimits := range limits.Tenants {
+		if tenantLimits.Retention != nil {
 			if tenantRetention := discoverMaxRetention(tenantLimits.Retention); tenantRetention > maxRetention {
 				maxRetention = tenantRetention
 			}
 		}
 	}
-
 	return maxRetention
 }
