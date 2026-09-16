@@ -122,7 +122,8 @@ type BaseLabelsBuilder struct {
 
 	groups                       []string
 	baseMap                      map[string]string
-	parserKeyHints               ParserHint // label key hints for metric queries that allows to limit parser extractions to only this list of labels.
+	parserKeyHints               ExtractionHints  // label key hints for metric queries that allows to limit parser extractions to only this list of labels.
+	labelFilterHints             LabelFilterHints // lets a parser stop early once a label it just extracted already fails a filter positioned later in the pipeline.
 	without, noLabels            bool
 	referencedStructuredMetadata bool
 	jsonPaths                    map[string][]string // Maps label names to their original JSON paths
@@ -142,9 +143,12 @@ type LabelsBuilder struct {
 }
 
 // NewBaseLabelsBuilderWithGrouping creates a new base labels builder with grouping to compute results.
-func NewBaseLabelsBuilderWithGrouping(groups []string, parserKeyHints ParserHint, without, noLabels bool) *BaseLabelsBuilder {
+func NewBaseLabelsBuilderWithGrouping(groups []string, parserKeyHints ExtractionHints, labelFilterHints LabelFilterHints, without, noLabels bool) *BaseLabelsBuilder {
 	if parserKeyHints == nil {
 		parserKeyHints = NoParserHints()
+	}
+	if labelFilterHints == nil {
+		labelFilterHints = NoLabelFilterHints()
 	}
 
 	const labelsCapacity = 16
@@ -155,19 +159,20 @@ func NewBaseLabelsBuilderWithGrouping(groups []string, parserKeyHints ParserHint
 			StructuredMetadataLabel: make([]labels.Label, 0, labelsCapacity),
 			ParsedLabel:             make([]labels.Label, 0, labelsCapacity),
 		},
-		resultCache:    make(map[uint64]LabelsResult),
-		hasher:         newHasher(),
-		groups:         groups,
-		parserKeyHints: parserKeyHints,
-		noLabels:       noLabels,
-		without:        without,
-		jsonPaths:      make(map[string][]string),
+		resultCache:      make(map[uint64]LabelsResult),
+		hasher:           newHasher(),
+		groups:           groups,
+		parserKeyHints:   parserKeyHints,
+		labelFilterHints: labelFilterHints,
+		noLabels:         noLabels,
+		without:          without,
+		jsonPaths:        make(map[string][]string),
 	}
 }
 
 // NewBaseLabelsBuilder creates a new base labels builder.
 func NewBaseLabelsBuilder() *BaseLabelsBuilder {
-	return NewBaseLabelsBuilderWithGrouping(nil, NoParserHints(), false, false)
+	return NewBaseLabelsBuilderWithGrouping(nil, NoParserHints(), NoLabelFilterHints(), false, false)
 }
 
 // ForLabels creates a labels builder for a given labels set as base.
@@ -207,8 +212,15 @@ func (b *BaseLabelsBuilder) Reset() {
 
 // ParserLabelHints returns a limited list of expected labels to extract for metric queries.
 // Returns nil when it's impossible to hint labels extractions.
-func (b *BaseLabelsBuilder) ParserLabelHints() ParserHint {
+func (b *BaseLabelsBuilder) ParserLabelHints() ExtractionHints {
 	return b.parserKeyHints
+}
+
+// LabelFilterHints returns the hints that let a parser stop extracting a
+// line early once a label it just extracted already fails a filter
+// positioned later in the pipeline.
+func (b *BaseLabelsBuilder) LabelFilterHints() LabelFilterHints {
+	return b.labelFilterHints
 }
 
 func (b *BaseLabelsBuilder) hasDel() bool {

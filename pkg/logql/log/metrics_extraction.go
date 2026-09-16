@@ -77,11 +77,12 @@ type cachedStreamSampleExtractor struct {
 // Multiple log stages are run before converting the log line.
 func NewLineSampleExtractor(ex LineExtractor, stages []Stage, groups []string, without, noLabels bool) (SampleExtractor, error) {
 	s := ReduceStages(stages)
-	hints := NewParserHint(s.RequiredLabelNames(), groups, without, noLabels, "", stages)
+	hints := NewParserHint(s.RequiredLabelNames(), groups, without, noLabels, "")
+	labelFilterHints := NewLabelFilterHints(stages)
 	return &lineSampleExtractor{
 		Stage:            s,
 		LineExtractor:    ex,
-		baseBuilder:      NewBaseLabelsBuilderWithGrouping(groups, hints, without, noLabels),
+		baseBuilder:      NewBaseLabelsBuilderWithGrouping(groups, hints, labelFilterHints, without, noLabels),
 		streamExtractors: make(map[uint64]cachedStreamSampleExtractor),
 	}, nil
 }
@@ -139,7 +140,7 @@ func (l *lineSampleExtractor) canUseConstantLabelsWithoutStructuredMetadata(stre
 
 	// Second, no stage reads a label the stream does not carry. The fast path never adds per-line structured
 	// metadata to the builder, so a stage that reads a non-stream label would see it missing and mis-filter.
-	for _, name := range l.Stage.RequiredLabelNames() {
+	for _, name := range l.RequiredLabelNames() {
 		if !streamLabels.Has(name) {
 			return false
 		}
@@ -328,13 +329,15 @@ func LabelExtractorWithStages(
 		sort.Strings(groups)
 	}
 	preStage := ReduceStages(preStages)
-	hints := NewParserHint(append(preStage.RequiredLabelNames(), postFilter.RequiredLabelNames()...), groups, without, noLabels, labelName, append(preStages, postFilter))
+	allStages := append(preStages, postFilter)
+	hints := NewParserHint(append(preStage.RequiredLabelNames(), postFilter.RequiredLabelNames()...), groups, without, noLabels, labelName)
+	labelFilterHints := NewLabelFilterHints(allStages)
 	return &labelSampleExtractor{
 		preStage:         preStage,
 		conversionFn:     convFn,
 		labelName:        labelName,
 		postFilter:       postFilter,
-		baseBuilder:      NewBaseLabelsBuilderWithGrouping(groups, hints, without, noLabels),
+		baseBuilder:      NewBaseLabelsBuilderWithGrouping(groups, hints, labelFilterHints, without, noLabels),
 		streamExtractors: make(map[uint64]StreamSampleExtractor),
 	}, nil
 }
@@ -416,11 +419,12 @@ func NewDistinctValueSampleExtractor(labelName string, stages []Stage, groups []
 	copy(sortedGroups, groups)
 	sort.Strings(sortedGroups)
 	preStage := ReduceStages(stages)
-	hints := NewParserHint(preStage.RequiredLabelNames(), sortedGroups, without, noLabels, labelName, stages)
+	hints := NewParserHint(preStage.RequiredLabelNames(), sortedGroups, without, noLabels, labelName)
+	labelFilterHints := NewLabelFilterHints(stages)
 	return &distinctValueSampleExtractor{
 		preStage:         preStage,
 		labelName:        labelName,
-		baseBuilder:      NewBaseLabelsBuilderWithGrouping(sortedGroups, hints, without, noLabels),
+		baseBuilder:      NewBaseLabelsBuilderWithGrouping(sortedGroups, hints, labelFilterHints, without, noLabels),
 		streamExtractors: make(map[uint64]StreamSampleExtractor),
 	}, nil
 }

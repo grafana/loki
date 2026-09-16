@@ -6,11 +6,11 @@ import (
 	"github.com/grafana/loki/v3/pkg/logqlmodel"
 )
 
-func NoParserHints() ParserHint {
+func NoParserHints() ExtractionHints {
 	return &Hints{}
 }
 
-// ParserHint are hints given to LogQL parsers.
+// ExtractionHints are hints given to LogQL parsers about which label keys to extract.
 // This is specially useful for parser that extract implicitly all possible label keys.
 // This is used only within metric queries since it's rare that you need all label keys.
 // For example in the following expression:
@@ -18,7 +18,7 @@ func NoParserHints() ParserHint {
 //	sum by (status_code) (rate({app="foo"} | json [5m]))
 //
 // All we need to extract is the status_code in the json parser.
-type ParserHint interface {
+type ExtractionHints interface {
 	// Extracted returns whether a key has already been extracted by a previous
 	// parse stage. This result must not be cached.
 	Extracted(key string) bool
@@ -50,7 +50,13 @@ type ParserHint interface {
 
 	// PreserveError returns true when parsing errors were specifically requested
 	PreserveError() bool
+}
 
+// LabelFilterHints let a parser stop parsing a line early once a label it
+// just extracted already fails a label filter positioned later in the
+// pipeline, instead of extracting the rest of the line only to have the
+// filter stage throw it away.
+type LabelFilterHints interface {
 	// ShouldContinueParsingLine returns true when there is no label matcher for the
 	// provided label or the passed label and value match what's in the pipeline
 	ShouldContinueParsingLine(labelName string, lbs *LabelsBuilder) bool
@@ -61,8 +67,6 @@ type Hints struct {
 	requiredLabels      []string
 	shouldPreserveError bool
 	extracted           map[string]struct{}
-	labelFilters        []LabelFilterer
-	labelNames          []string
 }
 
 func (p *Hints) Extracted(key string) bool {
@@ -131,58 +135,27 @@ func (p *Hints) PreserveError() bool {
 	return p.shouldPreserveError
 }
 
-func (p *Hints) ShouldContinueParsingLine(labelName string, lbs *LabelsBuilder) bool {
-	for i := 0; i < len(p.labelNames); i++ {
-		if p.labelNames[i] == labelName {
-			_, matches := p.labelFilters[i].Process(0, nil, lbs)
-			return matches
-		}
-	}
-	return true
-}
-
-// NewParserHint creates a new parser hint using the list of labels that are seen and required in a query.
-func NewParserHint(requiredLabelNames, groups []string, without, noLabels bool, metricLabelName string, stages []Stage) *Hints {
+// NewParserHint creates a new set of extraction hints using the list of labels that are seen and required in a query.
+func NewParserHint(requiredLabelNames, groups []string, without, noLabels bool, metricLabelName string) *Hints {
 	hints := make([]string, 0, 2*(len(requiredLabelNames)+len(groups)+1))
 	hints = appendLabelHints(hints, requiredLabelNames...)
 	hints = appendLabelHints(hints, groups...)
 	hints = appendLabelHints(hints, metricLabelName)
 	hints = uniqueString(hints)
 
-	// Save the names next to the filters to avoid an alloc when f.RequiredLabelNames() is called
-	var labelNames []string
-	var labelFilters []LabelFilterer
-	for _, s := range stages {
-		switch f := s.(type) {
-		case *BinaryLabelFilter:
-			// TODO: as long as each leg of the binary filter operates on the same (and only 1) label,
-			// we should be able to add this to our filters
-			continue
-		case LabelFilterer:
-			if len(f.RequiredLabelNames()) > 1 {
-				// Hints can only operate on one label at a time
-				continue
-			}
-			labelFilters = append(labelFilters, f)
-			labelNames = append(labelNames, f.RequiredLabelNames()...)
-		}
-	}
-
 	extracted := make(map[string]struct{}, len(hints))
 	if noLabels {
 		if len(hints) > 0 {
-			return &Hints{requiredLabels: hints, extracted: extracted, shouldPreserveError: containsError(hints), labelFilters: labelFilters, labelNames: labelNames}
+			return &Hints{requiredLabels: hints, extracted: extracted, shouldPreserveError: containsError(hints)}
 		}
 		return &Hints{noLabels: true}
 	}
-
-	ph := &Hints{labelFilters: labelFilters, labelNames: labelNames}
 
 	// we don't know what is required when a without clause is used.
 	// Same is true when there's no grouping.
 	// no hints available then.
 	if without || len(groups) == 0 {
-		return ph
+		return &Hints{}
 	}
 
 	return &Hints{requiredLabels: hints, extracted: extracted, shouldPreserveError: containsError(hints)}
@@ -212,4 +185,48 @@ func appendLabelHints(dst []string, src ...string) []string {
 		}
 	}
 	return dst
+}
+
+// NoLabelFilterHints returns a LabelFilterHints that never short-circuits.
+func NoLabelFilterHints() LabelFilterHints {
+	return &labelFilterHints{}
+}
+
+type labelFilterHints struct {
+	// Save the names next to the filters to avoid an alloc when f.RequiredLabelNames() is called
+	labelFilters []LabelFilterer
+	labelNames   []string
+}
+
+func (h *labelFilterHints) ShouldContinueParsingLine(labelName string, lbs *LabelsBuilder) bool {
+	for i := 0; i < len(h.labelNames); i++ {
+		if h.labelNames[i] == labelName {
+			_, matches := h.labelFilters[i].Process(0, nil, lbs)
+			return matches
+		}
+	}
+	return true
+}
+
+// NewLabelFilterHints scans stages for single-label filters so a parser can stop
+// extracting a line as soon as one of them fails to match a label it just extracted.
+func NewLabelFilterHints(stages []Stage) LabelFilterHints {
+	var labelNames []string
+	var labelFilters []LabelFilterer
+	for _, s := range stages {
+		switch f := s.(type) {
+		case *BinaryLabelFilter:
+			// TODO: as long as each leg of the binary filter operates on the same (and only 1) label,
+			// we should be able to add this to our filters
+			continue
+		case LabelFilterer:
+			if len(f.RequiredLabelNames()) > 1 {
+				// Hints can only operate on one label at a time
+				continue
+			}
+			labelFilters = append(labelFilters, f)
+			labelNames = append(labelNames, f.RequiredLabelNames()...)
+		}
+	}
+	return &labelFilterHints{labelFilters: labelFilters, labelNames: labelNames}
 }

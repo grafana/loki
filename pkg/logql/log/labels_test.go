@@ -367,7 +367,7 @@ func TestLabelsBuilder_GroupedLabelsResult(t *testing.T) {
 		"job", "us-central1/loki",
 		"cluster", "us-central1"}
 	lbs := labels.FromStrings(strs...)
-	b := NewBaseLabelsBuilderWithGrouping([]string{"namespace"}, nil, false, false).ForLabels(lbs, labels.StableHash(lbs))
+	b := NewBaseLabelsBuilderWithGrouping([]string{"namespace"}, nil, nil, false, false).ForLabels(lbs, labels.StableHash(lbs))
 	b.Reset()
 	assertLabelResult(t, labels.FromStrings("namespace", "loki"), b.GroupedLabels())
 	b.SetErr("err")
@@ -384,7 +384,7 @@ func TestLabelsBuilder_GroupedLabelsResult(t *testing.T) {
 	// cached.
 	assertLabelResult(t, expected, b.GroupedLabels())
 
-	b = NewBaseLabelsBuilderWithGrouping([]string{"job"}, nil, false, false).ForLabels(lbs, labels.StableHash(lbs))
+	b = NewBaseLabelsBuilderWithGrouping([]string{"job"}, nil, nil, false, false).ForLabels(lbs, labels.StableHash(lbs))
 	assertLabelResult(t, labels.FromStrings("job", "us-central1/loki"), b.GroupedLabels())
 	assertLabelResult(t, labels.FromStrings("job", "us-central1/loki"), b.GroupedLabels())
 	b.Del("job")
@@ -394,12 +394,12 @@ func TestLabelsBuilder_GroupedLabelsResult(t *testing.T) {
 	assertLabelResult(t, labels.FromStrings("job", "us-central1/loki"), b.GroupedLabels())
 	require.False(t, b.referencedStructuredMetadata)
 
-	b = NewBaseLabelsBuilderWithGrouping([]string{"foo"}, nil, false, false).ForLabels(lbs, labels.StableHash(lbs))
+	b = NewBaseLabelsBuilderWithGrouping([]string{"foo"}, nil, nil, false, false).ForLabels(lbs, labels.StableHash(lbs))
 	b.Set(StructuredMetadataLabel, "foo", "bar")
 	assertLabelResult(t, labels.FromStrings("foo", "bar"), b.GroupedLabels())
 	require.True(t, b.referencedStructuredMetadata)
 
-	b = NewBaseLabelsBuilderWithGrouping([]string{"job"}, nil, true, false).ForLabels(lbs, labels.StableHash(lbs))
+	b = NewBaseLabelsBuilderWithGrouping([]string{"job"}, nil, nil, true, false).ForLabels(lbs, labels.StableHash(lbs))
 	b.Del("job")
 	b.Set(StructuredMetadataLabel, "foo", "bar")
 	b.Set(StreamLabel, "job", "something")
@@ -410,7 +410,7 @@ func TestLabelsBuilder_GroupedLabelsResult(t *testing.T) {
 	assertLabelResult(t, expected, b.GroupedLabels())
 	require.False(t, b.referencedStructuredMetadata)
 
-	b = NewBaseLabelsBuilderWithGrouping([]string{"foo"}, nil, true, false).ForLabels(lbs, labels.StableHash(lbs))
+	b = NewBaseLabelsBuilderWithGrouping([]string{"foo"}, nil, nil, true, false).ForLabels(lbs, labels.StableHash(lbs))
 	b.Set(StructuredMetadataLabel, "foo", "bar")
 	expected = labels.FromStrings("namespace", "loki",
 		"job", "us-central1/loki",
@@ -419,7 +419,7 @@ func TestLabelsBuilder_GroupedLabelsResult(t *testing.T) {
 	assertLabelResult(t, expected, b.GroupedLabels())
 	require.True(t, b.referencedStructuredMetadata)
 
-	b = NewBaseLabelsBuilderWithGrouping(nil, nil, false, false).ForLabels(lbs, labels.StableHash(lbs))
+	b = NewBaseLabelsBuilderWithGrouping(nil, nil, nil, false, false).ForLabels(lbs, labels.StableHash(lbs))
 	b.Set(StructuredMetadataLabel, "foo", "bar")
 	b.Set(StreamLabel, "job", "something")
 	expected = labels.FromStrings("namespace", "loki",
