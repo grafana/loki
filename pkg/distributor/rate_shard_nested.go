@@ -25,13 +25,16 @@ func shardNested(stream *logproto.InternalStreamAdapter, lbls labels.Labels, sha
 		return nil
 	}
 
-	// No more shards than there are entries to fill them.
-	if shards > total {
-		shards = total
+	// No more shards than there are entries to fill them. The numbering still wraps at the count
+	// asked for, so a push too small to fill them all leaves the next one carrying on rather than
+	// landing on the same few.
+	count := shards
+	if count > total {
+		count = total
 	}
 
 	// The remainder is spread over the leading shards rather than left to the last one.
-	base, remainder := total/shards, total%shards
+	base, remainder := total/count, total%count
 	shardQuota := func(shard int) int {
 		if shard < remainder {
 			return base + 1
@@ -40,7 +43,7 @@ func shardNested(stream *logproto.InternalStreamAdapter, lbls labels.Labels, sha
 	}
 
 	lblsStr := lbls.String()
-	out := make([]logproto.InternalStreamAdapter, shards)
+	out := make([]logproto.InternalStreamAdapter, count)
 	for i := range out {
 		out[i].Labels, out[i].Hash = shardIdentity(lbls, lblsStr, (startShard+i)%shards)
 	}
@@ -59,14 +62,14 @@ func shardNested(stream *logproto.InternalStreamAdapter, lbls labels.Labels, sha
 			remaining := sourceScope.Entries
 
 			for len(remaining) > 0 {
-				if placed == shardQuota(shard) && shard+1 < shards {
+				if placed == shardQuota(shard) && shard+1 < count {
 					shard, placed = shard+1, 0
 					resource, scope = nil, nil
 				}
 
 				remainingCount := len(remaining)
 				// If it is not the last shard, limit the entries we take for the shard up to its remaining capacity.
-				if shardCapacityLeft := shardQuota(shard) - placed; shard+1 < shards && remainingCount > shardCapacityLeft {
+				if shardCapacityLeft := shardQuota(shard) - placed; shard+1 < count && remainingCount > shardCapacityLeft {
 					remainingCount = shardCapacityLeft
 				}
 

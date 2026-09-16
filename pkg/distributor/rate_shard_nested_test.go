@@ -185,6 +185,18 @@ func TestShardNested(t *testing.T) {
 			},
 		},
 		{
+			// Fewer entries than shards asked for, so only two come back — but they are still
+			// numbered against the count asked for, so the next push carries on from 1 rather
+			// than landing on these two again.
+			name:        "numbered against the count asked for, not the count produced",
+			buildStream: func() logproto.InternalStreamAdapter { return buildGroupedStream(1, 1, 2) },
+			shards:      8, wantShards: 2, startShard: 7,
+			wantNames: []string{
+				`{__stream_shard__="7", app="a"}`,
+				`{__stream_shard__="0", app="a"}`,
+			},
+		},
+		{
 			name:        "one group over several shards",
 			buildStream: func() logproto.InternalStreamAdapter { return buildGroupedStream(1, 1, 9) },
 			shards:      3, wantShards: 3,
