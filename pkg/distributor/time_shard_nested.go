@@ -15,6 +15,9 @@ import (
 //
 // The trailing shard, holding entries too recent to bucket, has a zero start and end. It keeps the
 // stream's own name, where a bucketed shard carries the window in its __time_shard__ label.
+//
+// A shard holds its entries as subslices of the stream it came from, so a caller that rewrites an
+// entry rewrites it for both.
 type nestedTimeShard struct {
 	start, end    time.Time
 	stream        logproto.InternalStreamAdapter
@@ -26,28 +29,20 @@ type nestedTimeShard struct {
 // time is the trailing shard's alone.
 func (s *nestedTimeShard) recent() bool { return s.start.IsZero() }
 
-// timeShardNested splits a nested stream into buckets of shardLen by entry timestamp, with entries
-// newer than ignoreLogsFrom left in a trailing shard of their own. It reports false when there is
-// nothing old enough to bucket, in which case the caller uses the stream as it stands.
+// timeShardNested splits a nested stream into buckets of shardLen by entry timestamp, each named
+// after its window in the __time_shard__ label built on lbls. Entries newer than ignoreLogsFrom are
+// left in a trailing shard, unnamed; false means nothing was old enough to bucket at all.
 //
-// Which bucket an entry belongs to depends only on its own timestamp, so nothing is sorted: the flat
-// path's sort is there to make its buckets contiguous sub-slices of one array, which this does not
-// need. Groups are walked one at a time, which is what lets a bucket open each group once.
-//
-// Entries therefore keep the order they arrived in, where the flat path leaves each of its shards in
-// timestamp order. Neither is sorted as the ingester sees it, since a bucket interleaves groups
-// either way, and a bucket spans MaxChunkAge/2, which is exactly the window within which the
-// ingester accepts entries in any order.
-//
-// Each bucket is named after its window, in the __time_shard__ label that lbls is built on, which
-// is what makes it a stream of its own to everything downstream.
+// It sorts each group's entries in place, so a bucket takes its share of a group as one subslice
+// instead of copying entries. A bucket therefore holds each group in timestamp order and
+// interleaves the groups, which the ingester accepts: a bucket spans MaxChunkAge/2, its window for
+// unordered writes.
 func timeShardNested(stream *logproto.InternalStreamAdapter, lbls labels.Labels, shardLen time.Duration, ignoreLogsFrom time.Time) ([]nestedTimeShard, bool) {
 	if nestedEntryCount(stream) == 0 {
 		return nil, false
 	}
 
-	// Nothing to do if every entry is recent, which is the common case and the same shortcut the
-	// flat path takes.
+	// Nothing to do if every entry is recent, which is the common case.
 	if oldestEntry(stream).After(ignoreLogsFrom) {
 		return nil, false
 	}
@@ -67,38 +62,43 @@ func timeShardNested(stream *logproto.InternalStreamAdapter, lbls labels.Labels,
 		return buckets[start]
 	}
 
-	// byBucket buffers all entries of a single group by their time bucket.
-	byBucket := map[int64][]logproto.Entry{}
 	for resourceIdx := range stream.ResourceLogs {
 		resource := &stream.ResourceLogs[resourceIdx]
 
 		for scopeIdx := range resource.ScopeLogs {
 			scope := &resource.ScopeLogs[scopeIdx]
+			entries := scope.Entries
+			slices.SortStableFunc(entries, func(a, b logproto.Entry) int { return a.Timestamp.Compare(b.Timestamp) })
 
-			// clear the entries buffered in the bucket
-			clear(byBucket)
-			var recent []logproto.Entry
-			for entryIdx := range scope.Entries {
-				entry := &scope.Entries[entryIdx]
-				if !entry.Timestamp.Before(ignoreLogsFrom) {
-					recent = append(recent, *entry)
-					continue
-				}
-				start := entry.Timestamp.Truncate(shardLen).UnixNano()
-				byBucket[start] = append(byBucket[start], *entry)
-			}
-
-			for start, entries := range byBucket {
-				bucket(start).add(resourceIdx, resource, scope, entries)
-			}
-			if len(recent) > 0 {
-				if trailing == nil {
-					trailing = &timeBucket{
-						stream:       logproto.InternalStreamAdapter{Labels: stream.Labels, Hash: stream.Hash},
-						lastResource: -1,
+			// Runs of entries, each falling in one window. Every subslice is capped at its own
+			// length, so appending to one bucket's entries reallocates rather than overwriting
+			// the run the next bucket holds.
+			for i := 0; i < len(entries); {
+				if !entries[i].Timestamp.Before(ignoreLogsFrom) {
+					// Sorted, so everything left is too recent to bucket.
+					if trailing == nil {
+						trailing = &timeBucket{
+							stream:       logproto.InternalStreamAdapter{Labels: stream.Labels, Hash: stream.Hash},
+							lastResource: -1,
+						}
 					}
+					trailing.add(resourceIdx, resource, scope, entries[i:len(entries):len(entries)])
+					break
 				}
-				trailing.add(resourceIdx, resource, scope, recent)
+
+				start := entries[i].Timestamp.Truncate(shardLen)
+				// A window reaching past the cutoff ends there, the rest of it being too recent.
+				cutoff := start.Add(shardLen)
+				if cutoff.After(ignoreLogsFrom) {
+					cutoff = ignoreLogsFrom
+				}
+
+				j := i + 1
+				for j < len(entries) && entries[j].Timestamp.Before(cutoff) {
+					j++
+				}
+				bucket(start.UnixNano()).add(resourceIdx, resource, scope, entries[i:j:j])
+				i = j
 			}
 		}
 	}
@@ -109,7 +109,7 @@ func timeShardNested(stream *logproto.InternalStreamAdapter, lbls labels.Labels,
 	}
 	slices.Sort(starts)
 
-	// Oldest bucket first, with the trailing shard last, as the flat path returns them.
+	// Oldest bucket first, with the trailing shard last.
 	labelBuilder := labels.NewBuilder(lbls)
 	shards := make([]nestedTimeShard, 0, len(starts)+1)
 	for _, start := range starts {
