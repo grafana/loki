@@ -806,8 +806,9 @@ func (d *Distributor) pushWithResolver(ctx context.Context, req *logproto.PushRe
 				// on a hot stream. pushSize is reused as-is for totalSize
 				// so the comparison stays apples-to-apples against what
 				// the rate store itself just used.
+				rateStoreRate, _ := d.rateStore.RateFor(tenantID, stream.Hash)
 				shadowCandidates = append(shadowCandidates, limitsServiceShardCandidate{
-					stream: stream, policy: policy, rateStoreShards: shardCount, totalSize: uint64(pushSize),
+					stream: stream, policy: policy, rateStoreShards: shardCount, rateStoreRate: rateStoreRate, totalSize: uint64(pushSize),
 				})
 			}
 
@@ -1460,6 +1461,7 @@ type limitsServiceShardCandidate struct {
 	stream          logproto.Stream
 	policy          string
 	rateStoreShards int
+	rateStoreRate   int64 // byte/s rate the local rate store measured, for shadow debugging
 	totalSize       uint64
 }
 
@@ -1534,6 +1536,8 @@ func (d *Distributor) observeLimitsServiceShardShadow(ctx context.Context, tenan
 					"msg", "shard-count shadow divergence",
 					"rate_store_shards", c.rateStoreShards,
 					"limits_service_shards", resultShards,
+					"rate_store_rate", c.rateStoreRate,
+					"limits_service_rate", result.EvaluatedRate,
 				)
 			}
 		}

@@ -92,4 +92,10 @@ message StreamShardResult {
   // brand-new stream with no room left in the tenant's stream-count
   // budget). Empty means the stream was accepted, regardless of shards.
   string rejectReason = 4;
+  // The byte/s rate the backend evaluated for this stream when deciding the
+  // shard count (windowed average over the tenant's shard rate window).
+  // Shadow-mode debugging aid: lets the distributor compare the limits
+  // service's rate estimate against its own rate store's. 0 when no
+  // rate-based decision was made (e.g. a brand-new or held-steady stream).
+  uint64 evaluatedRate = 5;
 }
