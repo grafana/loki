@@ -72,6 +72,16 @@ type streamShardUsage struct {
 	shardCount  uint32
 	rateBuckets []rateBucket
 	policy      string
+
+	// shardLastUsed tracks the physical shard footprint for stream-count
+	// accounting, decoupled from the rate-based shardCount recommendation.
+	// Index i holds the UnixNano at which shard i was last covered by a
+	// recommendation (i.e. granted > i). Shards the recommendation later stops
+	// covering keep their old timestamp and expire individually after
+	// activeWindow, mirroring how sharded sub-streams flush their chunks at the
+	// ingesters. The slice is non-increasing in i (a higher index is refreshed
+	// only when a lower one is), so the live shards are always a prefix.
+	shardLastUsed []int64
 }
 
 func newStreamShardStore(
@@ -109,10 +119,14 @@ func newStreamShardStore(
 //     not tracked (no rate to record, and the legacy path accounts for it).
 //   - An existing stream with sharding enabled has its rate recomputed from
 //     the observation in this call and a "desired" shard count derived from
-//     rate/desiredRate. When growing it adds up to the free budget space on
-//     top of what it holds (granted = existing + min(desired-existing,
-//     room)); when its own rate drops it shrinks freely to desired. It is
-//     never forced to shrink because *other* streams grew into the budget.
+//     rate/desiredRate. The returned recommendation follows the rate: it grows
+//     up to this stream's budget ceiling (maxStreams minus the other streams'
+//     live shards) and shrinks freely when the rate drops.
+//   - The shard-count budget/accounting is decoupled from that recommendation:
+//     each granted shard is recorded in shardLastUsed and stays counted until it
+//     expires (activeWindow), mirroring how sharded sub-streams persist at the
+//     ingesters after the rate drops. So shrinking the recommendation does not
+//     immediately free budget; the shards age out individually.
 //   - If no rate history has been recorded for this stream yet (its rate
 //     buckets are still empty, e.g. this is the first live push since it
 //     was granted its initial shard count), the shard count is held steady
@@ -136,18 +150,24 @@ func (s *streamShardStore) checkAndShard(ctx context.Context, tenant string, met
 			existing, wasPresent := streams[m.StreamHash]
 			isNewOrExpired := !wasPresent || existing.lastSeenAt < cutoff
 			if isNewOrExpired {
-				// Free any stale entry up front so its slots stop counting
-				// against the budget
+				// Drop the stale entry now: it's expired, so if this push ends
+				// up rejected it must not linger (and keep counting against
+				// other streams) until the next eviction sweep.
 				delete(streams, m.StreamHash)
 			}
 
-			// room is the free budget space left in the bucket, counting every
-			// tracked stream (this one included).
-			room := max(0, int64(maxStreams)-int64(bucketSlots(streams)))
+			// budget is the most live shards this stream may hold (only enforced
+			// when maxStreams != 0): maxStreams minus the live-shard footprint of
+			// every OTHER stream in the bucket. Excluding this stream (rather
+			// than counting it and adding it back) means each stream's shards are
+			// scanned at most once, and it implicitly lets this stream keep
+			// (re-use) the shards it already holds live for free.
+			budget := max(0, int64(maxStreams)-int64(othersLiveSlots(streams, m.StreamHash, cutoff)))
 
 			var (
-				stream  streamShardUsage
-				desired uint32
+				stream        streamShardUsage
+				desired       uint32
+				evaluatedRate uint64 // byte/s rate that drove the decision, for shadow debugging; 0 unless computed
 			)
 			switch {
 			case !shardCfg.Enabled:
@@ -161,7 +181,7 @@ func (s *streamShardStore) checkAndShard(ctx context.Context, tenant string, met
 				})
 				continue
 			case isNewOrExpired:
-				if maxStreams > 0 && room < 1 {
+				if maxStreams > 0 && budget < 1 {
 					// No room even for a single slot: reject outright.
 					results = append(results, &proto.StreamShardResult{
 						StreamHash:   m.StreamHash,
@@ -201,20 +221,20 @@ func (s *streamShardStore) checkAndShard(ctx context.Context, tenant string, met
 					desired = max(1, stream.shardCount)
 				} else {
 					window := clampShardRateWindow(shardCfg.LimitsServiceStreamShardingRateWindow, s.bucketSize, s.rateWindow)
-					rate := currentRate(stream.rateBuckets, seenAt, window)
-					desired = max(1, ceilDivU32(rate, uint64(shardCfg.DesiredRate.Val())))
+					evaluatedRate = currentRate(stream.rateBuckets, seenAt, window)
+					desired = max(1, ceilDivU32(evaluatedRate, uint64(shardCfg.DesiredRate.Val())))
 				}
 			}
 
-			// A growing stream adds shards on top of what it already holds,
-			// capped to the free budget space. Shrinking (desired <=
-			// existing.shardCount) and unlimited (maxStreams == 0) leave
-			// desired untouched: an active stream only shrinks when its own
-			// rate drops, never because other streams grew into the budget.
+			// Cap the recommendation to this stream's budget ceiling (the
+			// shards it already holds live are excluded from budget, so it keeps
+			// them for free and grows only into what the other streams leave).
+			// Shrinking below that is free, and the shards a lower recommendation
+			// stops covering stay counted until they expire (see the
+			// shardLastUsed refresh below).
 			granted := desired
-			if maxStreams != 0 && desired > existing.shardCount {
-				growth := min(desired-existing.shardCount, uint32(room))
-				granted = existing.shardCount + growth
+			if maxStreams != 0 && int64(desired) > budget {
+				granted = uint32(budget)
 			}
 
 			shardDecisionContext := ReasonUnknown
@@ -226,12 +246,17 @@ func (s *streamShardStore) checkAndShard(ctx context.Context, tenant string, met
 			stream.policy = policyBucket
 			stream.shardCount = granted
 			stream.lastSeenAt = max(seenAt.UnixNano(), stream.lastSeenAt)
+			// Refresh the shards this recommendation covers; those it no longer
+			// covers keep their timestamps and age out of the live count,
+			// preserving the physical footprint for stream-count accounting.
+			stream.shardLastUsed = refreshLiveShards(stream.shardLastUsed, granted, seenAt.UnixNano())
 			streams[m.StreamHash] = stream
 
 			results = append(results, &proto.StreamShardResult{
 				StreamHash:           m.StreamHash,
 				Shards:               granted,
 				ShardDecisionContext: uint32(shardDecisionContext),
+				EvaluatedRate:        evaluatedRate,
 			})
 		}
 	})
@@ -239,7 +264,9 @@ func (s *streamShardStore) checkAndShard(ctx context.Context, tenant string, met
 }
 
 // Evict evicts all streams that have not been seen within the active
-// window, mirroring usageStore.Evict.
+// window, mirroring usageStore.Evict. For streams that survive, it also trims
+// individually-expired shards out of shardLastUsed so the tracked footprint (and
+// its memory) tracks the live shards.
 func (s *streamShardStore) Evict() map[string]int {
 	cutoff := time.Now().Add(-s.activeWindow).UnixNano()
 	evicted := make(map[string]int)
@@ -251,6 +278,15 @@ func (s *streamShardStore) Evict() map[string]int {
 						if stream.lastSeenAt < cutoff {
 							delete(streams, streamHash)
 							evicted[tenant]++
+							continue
+						}
+						// shardLastUsed is prefix-live, so the live shards are the
+						// leading n entries; drop the expired remainder.
+						if n := int(liveShardCount(stream.shardLastUsed, cutoff)); n < len(stream.shardLastUsed) {
+							trimmed := make([]int64, n)
+							copy(trimmed, stream.shardLastUsed)
+							stream.shardLastUsed = trimmed
+							streams[streamHash] = stream
 						}
 					}
 				}
@@ -269,11 +305,14 @@ func (s *streamShardStore) Describe(descs chan<- *prometheus.Desc) {
 
 // Collect implements [prometheus.Collector].
 func (s *streamShardStore) Collect(metrics chan<- prometheus.Metric) {
+	cutoff := time.Now().Add(-s.activeWindow).UnixNano()
 	var (
 		// trackedStreams: distinct logical (pre-shard) streams.
-		// totalStreams: physical streams (unsharded + sharded pieces).
-		// totalShards: physical pieces belonging to sharded streams only
-		// (shardCount >= 2); totalStreams - totalShards = unsharded streams.
+		// totalStreams: live physical streams (unsharded + live sharded pieces).
+		// totalShards: live physical pieces belonging to sharded streams only
+		// (live count >= 2); totalStreams - totalShards = unsharded streams.
+		// These use the live-shard footprint (not the instantaneous rate-based
+		// recommendation) so they track the ingesters' physical stream count.
 		trackedStreams = make(map[string]int)
 		totalStreams   = make(map[string]uint64)
 		totalShards    = make(map[string]uint64)
@@ -284,9 +323,10 @@ func (s *streamShardStore) Collect(metrics chan<- prometheus.Metric) {
 				for _, streams := range policies {
 					for _, stream := range streams {
 						trackedStreams[tenant]++
-						totalStreams[tenant] += streamShardSlots(stream.shardCount)
-						if stream.shardCount >= 2 {
-							totalShards[tenant] += uint64(stream.shardCount)
+						live := liveShardCount(stream.shardLastUsed, cutoff)
+						totalStreams[tenant] += max(1, uint64(live))
+						if live >= 2 {
+							totalShards[tenant] += uint64(live)
 						}
 					}
 				}
@@ -401,19 +441,52 @@ func (s *streamShardStore) checkInitMap(i int, tenant string, partition int32, p
 	return s.stripes[i][tenant][partition][policy]
 }
 
-// streamShardSlots returns how many budget slots a stream with the given shard
-// count consumes: a sharded stream consumes one slot per shard, while 0
-// (unsharded/unknown) and 1 both consume exactly 1 slot.
-func streamShardSlots(shardCount uint32) uint64 {
-	return max(1, uint64(shardCount))
-}
-
-// bucketSlots returns the total slots consumed by all streams in the map.
-func bucketSlots(streams map[uint64]streamShardUsage) (n uint64) {
-	for _, stream := range streams {
-		n += streamShardSlots(stream.shardCount)
+// liveShardCount returns how many of a stream's shards are still live: those
+// last covered by a recommendation within the active window (timestamp >=
+// cutoff). Because shardLastUsed is non-increasing in index, the live shards are a
+// prefix, but a simple scan is used since the slice is short.
+func liveShardCount(shardLastUsed []int64, cutoff int64) uint32 {
+	var n uint32
+	for _, ts := range shardLastUsed {
+		if ts >= cutoff {
+			n++
+		}
 	}
 	return n
+}
+
+// streamLiveSlots returns how many budget slots a stream consumes: one per live
+// shard, with a floor of 1 so a tracked (unsharded/just-reset) stream still
+// counts as one stream.
+func streamLiveSlots(shardLastUsed []int64, cutoff int64) uint64 {
+	return max(1, uint64(liveShardCount(shardLastUsed, cutoff)))
+}
+
+// othersLiveSlots returns the total live slots consumed by every stream in the
+// map except exceptHash.
+func othersLiveSlots(streams map[uint64]streamShardUsage, exceptHash uint64, cutoff int64) (n uint64) {
+	for hash, stream := range streams {
+		if hash == exceptHash {
+			continue
+		}
+		n += streamLiveSlots(stream.shardLastUsed, cutoff)
+	}
+	return n
+}
+
+// refreshLiveShards marks shard indices [0, count) as used at now, growing the
+// slice if the recommendation reached a new high, and returns it. Indices at or
+// above count are left untouched so they keep aging toward expiry.
+func refreshLiveShards(shardLastUsed []int64, count uint32, now int64) []int64 {
+	if int(count) > len(shardLastUsed) {
+		grown := make([]int64, count)
+		copy(grown, shardLastUsed)
+		shardLastUsed = grown
+	}
+	for i := uint32(0); i < count; i++ {
+		shardLastUsed[i] = now
+	}
+	return shardLastUsed
 }
 
 // rateBucketsCold returns true if none of the buckets have ever been

@@ -11,13 +11,19 @@ import (
 
 type mockLimits struct {
 	MaxGlobalStreams int
-	IngestionRate    float64
+	// UnlimitedGlobalStreams makes MaxGlobalStreamsPerUser return 0 (no limit),
+	// which the default (MaxGlobalStreams == 0 -> 1000) can't express.
+	UnlimitedGlobalStreams bool
+	IngestionRate          float64
 
 	// ShardStreamsConfig is returned by ShardStreams/PolicyShardStreams.
 	ShardStreamsConfig shardstreams.Config
 }
 
 func (m *mockLimits) MaxGlobalStreamsPerUser(_ string) int {
+	if m.UnlimitedGlobalStreams {
+		return 0
+	}
 	if m.MaxGlobalStreams != 0 {
 		return m.MaxGlobalStreams
 	}

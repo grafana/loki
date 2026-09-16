@@ -28,6 +28,15 @@ func warmRateBuckets(numBuckets int, bucketSize time.Duration, now time.Time) []
 	return buckets
 }
 
+// seedRateBuckets is like warmRateBuckets but also records `size` bytes in the
+// current bucket, so currentRate over the whole window is size/rateWindow.
+func seedRateBuckets(numBuckets int, bucketSize time.Duration, now time.Time, size uint64) []rateBucket {
+	buckets := warmRateBuckets(numBuckets, bucketSize, now)
+	idx := int((now.UnixNano() / int64(bucketSize)) % int64(numBuckets))
+	buckets[idx].size = size
+	return buckets
+}
+
 func newTestStreamShardStore(t *testing.T, maxGlobalStreams int, desiredRate string) *streamShardStore {
 	t.Helper()
 	cfg := shardstreams.Config{Enabled: true}
@@ -46,7 +55,18 @@ func newTestStreamShardStore(t *testing.T, maxGlobalStreams int, desiredRate str
 // seedStreamShardStore directly seeds a stream's state, to set up
 // capacity/room scenarios precisely without indirectly driving them through
 // rate-bucket math. Not goroutine-safe.
+//
+// When the caller sets shardCount but no explicit shardLastUsed, a matching
+// live-shard footprint is synthesized (shardCount shards, all live as of
+// lastSeenAt), so a stream seeded at shardCount N consumes N budget slots --
+// the behavior these scenarios relied on before per-shard tracking existed.
 func seedStreamShardStore(s *streamShardStore, tenant string, partition int32, policyBucket string, stream streamShardUsage) {
+	if stream.shardLastUsed == nil && stream.shardCount > 0 {
+		stream.shardLastUsed = make([]int64, stream.shardCount)
+		for i := range stream.shardLastUsed {
+			stream.shardLastUsed[i] = stream.lastSeenAt
+		}
+	}
 	s.withLock(tenant, func(i int) {
 		streams := s.checkInitMap(i, tenant, partition, policyBucket)
 		streams[stream.hash] = stream
@@ -471,10 +491,13 @@ func TestStreamShardStore_Collect_ReflectsCurrentStateNotCumulative(t *testing.T
 		require.Equal(t, float64(0), totalShards, "an unsharded stream is not a shard")
 
 		// Second push, same stream: its rate now justifies 10 shards. Collect
-		// must reflect the CURRENT allocation (10), not accumulate the two
-		// pushes' shard counts (1 + 10 = 11) -- these are lazily-aggregated
-		// gauges over live state, not counters. Now sharded (shardCount 10):
-		// still 1 logical stream, 10 physical streams, all 10 of them shards.
+		// must reflect the live-shard footprint (10 here, since all 10 were just
+		// used), not accumulate the two pushes' shard counts (1 + 10 = 11) --
+		// these are lazily-aggregated gauges over live state, not counters. Now
+		// sharded (10 live shards): still 1 logical stream, 10 physical streams,
+		// all 10 of them shards. (How the footprint holds after the
+		// recommendation later shrinks is covered by
+		// TestStreamShardStore_ShardFootprintHoldsThenExpires.)
 		results = s.checkAndShard(context.Background(), "tenant1", []*proto.StreamMetadata{
 			{StreamHash: 1, TotalSize: 1500},
 		}, time.Now())
@@ -485,6 +508,89 @@ func TestStreamShardStore_Collect_ReflectsCurrentStateNotCumulative(t *testing.T
 		require.Equal(t, float64(1), trackedStreams, "still exactly one distinct logical stream")
 		require.Equal(t, float64(10), totalStreams, "reflects the current allocation, not the sum across pushes")
 		require.Equal(t, float64(10), totalShards, "all 10 physical streams are shards of the sharded stream")
+	})
+}
+
+func TestStreamShardStore_ShardFootprintHoldsThenExpires(t *testing.T) {
+	// The recommendation shrinks with the rate, but the shards already created
+	// stay accounted for (like the ingesters' sub-streams persist until their
+	// chunks flush) until they individually expire out of the active window.
+	synctest.Test(t, func(t *testing.T) {
+		s := newTestStreamShardStore(t, 100, "1B")
+
+		// Grow to 10 shards: two 1500B pushes in the same bucket = 3000B / 300s
+		// rate window = 10 B/s -> 10 shards at desiredRate=1B/s.
+		s.checkAndShard(context.Background(), "tenant1", []*proto.StreamMetadata{{StreamHash: 1, TotalSize: 1500}}, time.Now())
+		res := s.checkAndShard(context.Background(), "tenant1", []*proto.StreamMetadata{{StreamHash: 1, TotalSize: 1500}}, time.Now())
+		require.Equal(t, uint32(10), res[0].Shards)
+		_, _, totalShards := collectStreamShardStoreGauges(t, s, "tenant1")
+		require.Equal(t, float64(10), totalShards)
+
+		// Advance past the 5m rate window so the burst's bytes age out, then push
+		// a trickle: the rate now justifies only 1 shard, so the recommendation
+		// shrinks -- but the other 9 shards are still live (well within the 15m
+		// active window), so the accounted footprint holds at 10.
+		time.Sleep(6 * time.Minute)
+		res = s.checkAndShard(context.Background(), "tenant1", []*proto.StreamMetadata{{StreamHash: 1, TotalSize: 60}}, time.Now())
+		require.Equal(t, uint32(1), res[0].Shards, "recommendation shrinks with the rate")
+		_, _, totalShards = collectStreamShardStoreGauges(t, s, "tenant1")
+		require.Equal(t, float64(10), totalShards, "footprint holds while the shards are still live")
+
+		// Advance until the burst is older than the active window but the trickle
+		// isn't: shards 1..9 (last used at the burst) expire, only shard 0 (kept
+		// alive by the trickle) survives, so the footprint decays to 1.
+		time.Sleep(10 * time.Minute) // burst+16m, trickle+10m; cutoff falls between them
+		_, totalStreams, totalShards := collectStreamShardStoreGauges(t, s, "tenant1")
+		require.Equal(t, float64(1), totalStreams, "expired shards drop out of the footprint")
+		require.Equal(t, float64(0), totalShards, "no longer a sharded stream")
+	})
+}
+
+func TestStreamShardStore_RegrowWithinLiveFootprintNotCapped(t *testing.T) {
+	// A stream re-growing into shards it still holds live is not budget-capped,
+	// even when the tenant budget is otherwise full -- those shards are already
+	// counted, so no new budget is consumed.
+	synctest.Test(t, func(t *testing.T) {
+		s := newTestStreamShardStore(t, 10, "1B") // budget = 10 shards
+		now := time.Now()
+
+		// Stream 1 holds 6 live shards; its rate still justifies 6 (1800B/300s).
+		seedStreamShardStore(s, "tenant1", 0, noPolicy, streamShardUsage{
+			hash: 1, lastSeenAt: now.UnixNano(), shardCount: 6, policy: noPolicy,
+			rateBuckets: seedRateBuckets(s.numBuckets, s.bucketSize, now, 1800),
+		})
+		// Stream 2 holds 4 live shards, filling the rest of the budget (6+4=10).
+		seedStreamShardStore(s, "tenant1", 0, noPolicy, streamShardUsage{
+			hash: 2, lastSeenAt: now.UnixNano(), shardCount: 4, policy: noPolicy,
+		})
+
+		// Stream 1 pushes (adding no new bytes): rate wants 6, and all 6 are
+		// already its own live shards, so it is granted 6 and NOT capped even
+		// though the tenant budget is full.
+		res := s.checkAndShard(context.Background(), "tenant1", []*proto.StreamMetadata{{StreamHash: 1, TotalSize: 0}}, now)
+		require.Len(t, res, 1)
+		require.Equal(t, uint32(6), res[0].Shards)
+		require.Equal(t, uint32(ReasonUnknown), res[0].ShardDecisionContext, "reusing its own live shards is not a cap")
+	})
+}
+
+func TestStreamShardStore_UnlimitedTenantNeverCaps(t *testing.T) {
+	// A tenant with no stream limit (MaxGlobalStreamsPerUser == 0) has no budget
+	// ceiling: the recommendation follows the rate and is never capped. Guards
+	// the maxStreams==0 path, where budget is the MaxInt64 sentinel.
+	synctest.Test(t, func(t *testing.T) {
+		cfg := shardstreams.Config{Enabled: true}
+		require.NoError(t, cfg.DesiredRate.Set("1B"))
+		l := &mockLimits{UnlimitedGlobalStreams: true, ShardStreamsConfig: cfg}
+		s, err := newStreamShardStore(15*time.Minute, 5*time.Minute, time.Minute, 1, l, prometheus.NewRegistry())
+		require.NoError(t, err)
+
+		// Two 1500B pushes = 3000B / 300s = 10 B/s -> 10 shards at desiredRate=1B/s.
+		s.checkAndShard(context.Background(), "tenant1", []*proto.StreamMetadata{{StreamHash: 1, TotalSize: 1500}}, time.Now())
+		res := s.checkAndShard(context.Background(), "tenant1", []*proto.StreamMetadata{{StreamHash: 1, TotalSize: 1500}}, time.Now())
+		require.Len(t, res, 1)
+		require.Equal(t, uint32(10), res[0].Shards)
+		require.Equal(t, uint32(ReasonUnknown), res[0].ShardDecisionContext)
 	})
 }
 
