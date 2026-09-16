@@ -70,7 +70,7 @@ var (
 	// ErrSchemaRetroactivelyAdded when a schema has been retroactively added
 	ErrSchemaRetroactivelyAdded = errors.New("Cannot retroactively add schema")
 	// ErrSchemaNotExpired when attempting to remove a schema before its retention period has expired
-	ErrSchemaNotExpired = errors.New("Cannot remove schema. Ensure schema has a successor, retention is configured, and retention period has elapsed.")
+	ErrSchemaNotExpired = errors.New("Cannot remove schema. Ensure schema has a successor, global retention is configured, and retention period for the schema being removed has elapsed.")
 	// ErrSchemaRetroactivelyChanged when a schema has been retroactively changed
 	ErrSchemaRetroactivelyChanged = errors.New("Cannot retroactively change schema")
 	// ErrHeaderAuthCredentialsConflict when both Credentials and CredentialsFile are used in a header authentication client.
