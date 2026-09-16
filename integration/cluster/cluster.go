@@ -224,7 +224,7 @@ func (c *Cluster) Run() error {
 			continue
 		}
 
-		if err := component.run(); err != nil {
+		if err := component.runMultiple(5); err != nil {
 			return err
 		}
 	}
@@ -445,100 +445,109 @@ func (c *Component) MergedConfig() ([]byte, error) {
 	return merged, nil
 }
 
-func (c *Component) run() error {
+func (c *Component) runMultiple(n int) error {
 	var err error
-	c.running = true
-
-	// retry multiple times if we get an EADDRINUSE error
-	for i := 0; i < 5; i++ {
-		if err := c.writeConfig(); err != nil {
-			return err
-		}
-
-		var config loki.ConfigWrapper
-
-		flagset := flag.NewFlagSet("test-flags", flag.ExitOnError)
-
-		if err := cfg.DynamicUnmarshal(&config, append(
-			c.flags,
-			"-config.file", c.configFile,
-			"-runtime-config.file", c.overridesFile,
-			"-runtime-config.reload-period", "1s",
-		), flagset); err != nil {
-			return err
-		}
-
-		if err := config.Validate(); err != nil {
-			return err
-		}
-
-		config.LimitsConfig.SetGlobalOTLPConfig(config.Distributor.OTLPConfig)
-		if err := config.LimitsConfig.SetDefaultPolicyStreamMapping(config.Distributor.DefaultPolicyStreamMappings); err != nil {
-			return err
-		}
-		c.loki, err = loki.New(config.Config)
+	for i := 0; i < n; i++ {
+		err = c.run()
 		if err != nil {
-			return err
-		}
-
-		var (
-			readyCh = make(chan struct{})
-			errCh   = make(chan error, 1)
-		)
-
-		// Probe readiness over the network to guarantee the component is ready before
-		// the test proceeds.
-		//
-		// We don't check readiness by calling ServeHTTP on the router directly because
-		// the component may still initialize even if the readiness check passes
-		// (e.g. the server only accepts connections once initialization has completed,
-		// while directly calling ServeHTTP may pass the readiness probe even if the
-		// initialization has not completed yet).
-		readyURL := fmt.Sprintf("%s/ready", c.HTTPURL())
-		go func() {
-			for {
-				time.Sleep(time.Millisecond * 200)
-
-				resp, err := http.Get(readyURL) // #nosec G107 -- local test server
-				if err != nil {
-					continue
-				}
-				_ = resp.Body.Close()
-
-				if resp.StatusCode == http.StatusOK {
-					close(readyCh)
-					return
-				}
-			}
-		}()
-
-		c.cluster.waitGroup.Add(1)
-		c.wg.Add(1)
-
-		go func() {
-			defer c.cluster.waitGroup.Done()
-			defer c.wg.Done()
-
-			err := c.loki.Run(loki.RunOpts{})
-			if err != nil && strings.Contains(err.Error(), "address already in use") {
-				errCh <- err
-			} else if err != nil {
-				newErr := fmt.Errorf("error starting component %v: %w", c.name, err)
-				errCh <- newErr
-			}
-		}()
-
-		select {
-		case <-readyCh:
-			return nil
-		case err = <-errCh:
+			// retry multiple times if we get an EADDRINUSE error
 			if strings.Contains(err.Error(), "address already in use") {
 				continue
 			}
 			return err
+		} else {
+			return nil
 		}
 	}
 	return err
+}
+
+func (c *Component) run() error {
+	var err error
+	c.running = true
+
+	if err := c.writeConfig(); err != nil {
+		return err
+	}
+
+	var config loki.ConfigWrapper
+
+	flagset := flag.NewFlagSet("test-flags", flag.ExitOnError)
+
+	if err := cfg.DynamicUnmarshal(&config, append(
+		c.flags,
+		"-config.file", c.configFile,
+		"-runtime-config.file", c.overridesFile,
+		"-runtime-config.reload-period", "1s",
+	), flagset); err != nil {
+		return err
+	}
+
+	if err := config.Validate(); err != nil {
+		return err
+	}
+
+	config.LimitsConfig.SetGlobalOTLPConfig(config.Distributor.OTLPConfig)
+	if err := config.LimitsConfig.SetDefaultPolicyStreamMapping(config.Distributor.DefaultPolicyStreamMappings); err != nil {
+		return err
+	}
+	c.loki, err = loki.New(config.Config)
+	if err != nil {
+		return err
+	}
+
+	var (
+		readyCh = make(chan struct{})
+		errCh   = make(chan error, 1)
+	)
+
+	// Probe readiness over the network to guarantee the component is ready before
+	// the test proceeds.
+	//
+	// We don't check readiness by calling ServeHTTP on the router directly because
+	// the component may still initialize even if the readiness check passes
+	// (e.g. the server only accepts connections once initialization has completed,
+	// while directly calling ServeHTTP may pass the readiness probe even if the
+	// initialization has not completed yet).
+	readyURL := fmt.Sprintf("%s/ready", c.HTTPURL())
+	go func() {
+		for {
+			time.Sleep(time.Millisecond * 200)
+
+			resp, err := http.Get(readyURL) // #nosec G107 -- local test server
+			if err != nil {
+				continue
+			}
+			_ = resp.Body.Close()
+
+			if resp.StatusCode == http.StatusOK {
+				close(readyCh)
+				return
+			}
+		}
+	}()
+
+	c.cluster.waitGroup.Add(1)
+	c.wg.Add(1)
+
+	go func() {
+		defer c.cluster.waitGroup.Done()
+		defer c.wg.Done()
+
+		err := c.loki.Run(loki.RunOpts{})
+		if err != nil {
+			newErr := fmt.Errorf("error starting component %v: %w", c.name, err)
+			errCh <- newErr
+		}
+	}()
+
+	select {
+	case <-readyCh:
+		break
+	case err = <-errCh:
+		return err
+	}
+	return nil
 }
 
 // cleanup calls the stop handler and returns files and directories to be cleaned up
@@ -560,7 +569,7 @@ func (c *Component) cleanup() (files []string, dirs []string) {
 func (c *Component) Restart() error {
 	c.cleanup()
 	c.wg.Wait()
-	return c.run()
+	return c.runMultiple(5)
 }
 
 type runtimeConfigValues struct {
