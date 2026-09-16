@@ -71,7 +71,21 @@ func NewServer(handler http.Handler, opts ...Option) *Server {
 }
 
 // Handle implements HTTPServer.
-func (s Server) Handle(ctx context.Context, r *httpgrpc.HTTPRequest) (*httpgrpc.HTTPResponse, error) {
+func (s Server) Handle(ctx context.Context, r *httpgrpc.HTTPRequest) (resp *httpgrpc.HTTPResponse, err error) {
+	defer func() {
+		if recover := recover(); recover != nil {
+			if recover != http.ErrAbortHandler {
+				panic(recover)
+			}
+
+			resp = nil
+			err = httpgrpc.Error(
+				http.StatusInternalServerError,
+				"response body truncated",
+			)
+		}
+	}()
+
 	ctx = context.WithValue(ctx, handledByHttpgrpcServer, true)
 
 	req, err := httpgrpc.ToHTTPRequest(ctx, r)
@@ -95,7 +109,7 @@ func (s Server) Handle(ctx context.Context, r *httpgrpc.HTTPRequest) (*httpgrpc.
 		header.Del(ErrorMessageHeaderKey) // remove before converting to httpgrpc resp
 	}
 
-	resp := &httpgrpc.HTTPResponse{
+	resp = &httpgrpc.HTTPResponse{
 		Code:    int32(recorder.Code),
 		Headers: httpgrpc.FromHeader(header),
 		Body:    recorder.Body.Bytes(),
