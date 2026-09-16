@@ -6,11 +6,11 @@ import (
 	"encoding/binary"
 	"errors"
 	"io"
-	"sync/atomic"
 	"testing"
 
 	"github.com/stretchr/testify/require"
 	"github.com/thanos-io/objstore"
+	"go.uber.org/atomic"
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/metadatacache"
