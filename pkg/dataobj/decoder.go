@@ -19,6 +19,10 @@ import (
 // would exceed the cache's size limit, or a section's type or layout is invalid or overflows.
 var errCannotCacheMetadata = errors.New("cannot cache data-object metadata region")
 
+// logsSectionType duplicates an identity pkg/dataobj/sections/logs owns, to avoid an import cycle; the
+// kind string is part of the on-disk format, not an internal detail that could drift.
+var logsSectionType = SectionType{Namespace: "github.com/grafana/loki", Kind: "logs"}
+
 // minimumPrefetchBytes is the minimum number of bytes to prefetch before
 // decoding.
 const minimumPrefetchBytes int64 = 16 * 1024
@@ -165,7 +169,7 @@ func (d *decoder) fetchExtendedMetadataRegion(ctx context.Context) ([]byte, erro
 // Every section's metadata sits in one contiguous block, followed by every section's data in a
 // second block. The cached blob is always the prefix [0, regionEnd), so section data is never
 // cached, however large maxBytes is. A logs section's own metadata is never what grows the region,
-// though it can still be swept in incidentally when it sits before an included non-logs section.
+// but it can still be included incidentally if it comes before an included non-logs section.
 //
 // A non-logs section that alone would exceed maxBytes is skipped rather than aborting the whole
 // extension, so the result is the largest offset achievable. This depends only on each section's own
@@ -179,10 +183,6 @@ func (d *decoder) extendedMetadataRegionEnd(md *filemd.Metadata, startOff, maxBy
 	if startOff > maxBytes {
 		return 0, fmt.Errorf("%w: file metadata alone is %d bytes, exceeding the %d byte limit", errCannotCacheMetadata, startOff, maxBytes)
 	}
-
-	// Duplicates an identity pkg/dataobj/sections/logs owns, to avoid an import cycle; the kind string
-	// is part of the on-disk format, not an internal detail that could drift.
-	logsSectionType := SectionType{Namespace: "github.com/grafana/loki", Kind: "logs"}
 
 	regionEnd := startOff
 

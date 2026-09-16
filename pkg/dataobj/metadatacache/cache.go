@@ -60,8 +60,8 @@ func New(c cache.Cache, maxItemBytes int64, reg prometheus.Registerer, logger lo
 		cache:        c,
 		maxItemBytes: maxItemBytes,
 		logger:       logger,
-		fetchErrLog:  rate.Sometimes{Interval: time.Minute},
-		storeErrLog:  rate.Sometimes{Interval: time.Minute},
+		fetchErrLog:  rate.Sometimes{Interval: 10 * time.Second},
+		storeErrLog:  rate.Sometimes{Interval: 10 * time.Second},
 		hits: promauto.With(reg).NewCounter(prometheus.CounterOpts{
 			Name: "loki_dataobj_metadata_cache_hits_total",
 			Help: "Data-object metadata regions served from the cache.",

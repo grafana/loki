@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"sync"
 	"testing"
-	"time"
+	"testing/synctest"
 
 	"github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/stretchr/testify/require"
@@ -55,41 +55,39 @@ func TestCache_GetOrLoadMetadataRegion(t *testing.T) {
 	})
 
 	t.Run("concurrent misses for the same key share a single load", func(t *testing.T) {
-		const n = 8
+		synctest.Test(t, func(t *testing.T) {
+			const n = 8
 
-		bc := &barrierCache{Cache: cache.NewMockCache(), barrierN: n, barrierCh: make(chan struct{})}
-		c := New(bc, 0, nil, nil)
+			c := New(cache.NewMockCache(), 0, nil, nil)
 
-		var loads atomic.Int64
-		release := make(chan struct{})
-		load := func(context.Context) ([]byte, error) {
-			loads.Add(1)
-			<-release // hold every in-flight load until all callers have arrived
-			return []byte("blob"), nil
-		}
+			var loads atomic.Int64
+			release := make(chan struct{})
+			load := func(context.Context) ([]byte, error) {
+				loads.Add(1)
+				<-release
+				return []byte("blob"), nil
+			}
 
-		var wg sync.WaitGroup
-		results := make([][]byte, n)
-		errs := make([]error, n)
-		for i := range n {
-			wg.Add(1)
-			go func() {
-				defer wg.Done()
-				results[i], errs[i] = c.GetOrLoadMetadataRegion(context.Background(), "obj", load)
-			}()
-		}
-		// Wait for the barrier, then settle briefly before releasing the load: each caller still has a
-		// short, unsynchronized hop from the barrier to singleflight registration to complete.
-		require.Eventually(t, func() bool { return bc.arrived.Load() >= n }, time.Second, time.Millisecond)
-		time.Sleep(20 * time.Millisecond)
-		close(release)
-		wg.Wait()
+			results := make([][]byte, n)
+			errs := make([]error, n)
+			var wg sync.WaitGroup
+			for i := range n {
+				wg.Go(func() {
+					results[i], errs[i] = c.GetOrLoadMetadataRegion(context.Background(), "obj", load)
+				})
+			}
 
-		require.Equal(t, int64(1), loads.Load(), "concurrent misses share a single load")
-		for i, r := range results {
-			require.NoError(t, errs[i])
-			require.Equal(t, []byte("blob"), r)
-		}
+			// Wait until all goroutines have reached the singleflight gate.
+			synctest.Wait()
+			close(release)
+			wg.Wait()
+
+			require.Equal(t, int64(1), loads.Load(), "concurrent misses share a single load")
+			for i, r := range results {
+				require.NoError(t, errs[i])
+				require.Equal(t, []byte("blob"), r)
+			}
+		})
 	})
 
 	t.Run("a fetch error falls back to a load instead of failing the call", func(t *testing.T) {
@@ -188,45 +186,46 @@ func TestCache_GetOrLoadMetadataRegion(t *testing.T) {
 	})
 
 	t.Run("a caller's own cancellation does not abort the shared load for other callers", func(t *testing.T) {
-		mc := cache.NewMockCache()
-		c := New(mc, 0, nil, nil)
+		synctest.Test(t, func(t *testing.T) {
+			mc := cache.NewMockCache()
+			c := New(mc, 0, nil, nil)
 
-		inLoad := make(chan struct{})
-		release := make(chan struct{})
-		var loads atomic.Int64
-		load := func(context.Context) ([]byte, error) {
-			loads.Add(1)
-			close(inLoad)
-			<-release
-			return []byte("blob"), nil
-		}
+			inLoad := make(chan struct{})
+			release := make(chan struct{})
+			var loads atomic.Int64
+			load := func(context.Context) ([]byte, error) {
+				loads.Add(1)
+				close(inLoad)
+				<-release
+				return []byte("blob"), nil
+			}
 
-		// A caller triggers the load, then has its context canceled while the load is in flight.
-		ctx, cancel := context.WithCancel(context.Background())
-		callerErr := make(chan error, 1)
-		go func() {
-			_, err := c.GetOrLoadMetadataRegion(ctx, "obj", load)
-			callerErr <- err
-		}()
-		<-inLoad
-		cancel()
-		require.Error(t, <-callerErr, "the canceled caller returns its own cancellation")
+			// A caller triggers the load, then has its context canceled while the load is in flight.
+			ctx, cancel := context.WithCancel(context.Background())
+			callerErr := make(chan error, 1)
+			go func() {
+				_, err := c.GetOrLoadMetadataRegion(ctx, "obj", load)
+				callerErr <- err
+			}()
+			<-inLoad
+			cancel()
+			require.Error(t, <-callerErr, "the canceled caller returns its own cancellation")
 
-		// The load was detached from the caller, so it completes and caches despite the cancellation.
-		close(release)
-		require.Eventually(t, func() bool {
+			// The load was detached from the caller, so it completes and caches despite the cancellation.
+			close(release)
+			synctest.Wait()
 			_, bufs, _, _ := mc.Fetch(context.Background(), []string{keyPrefix + "obj"})
-			return len(bufs) == 1
-		}, time.Second, time.Millisecond, "the detached load must still complete and store")
+			require.Len(t, bufs, 1, "the detached load must still complete and store")
 
-		// A later call is served from that cached value; load is not run again.
-		got, err := c.GetOrLoadMetadataRegion(context.Background(), "obj", func(context.Context) ([]byte, error) {
-			t.Error("load must not run: the value was cached by the detached load")
-			return nil, nil
+			// A later call is served from that cached value; load is not run again.
+			got, err := c.GetOrLoadMetadataRegion(context.Background(), "obj", func(context.Context) ([]byte, error) {
+				t.Error("load must not run: the value was cached by the detached load")
+				return nil, nil
+			})
+			require.NoError(t, err)
+			require.Equal(t, []byte("blob"), got)
+			require.Equal(t, int64(1), loads.Load())
 		})
-		require.NoError(t, err)
-		require.Equal(t, []byte("blob"), got)
-		require.Equal(t, int64(1), loads.Load())
 	})
 
 	t.Run("a load error surfaces to the caller", func(t *testing.T) {
@@ -254,24 +253,4 @@ func TestCache_GetOrLoadMetadataRegion(t *testing.T) {
 		require.Zero(t, testutil.ToFloat64(c.errors.WithLabelValues("fetch")), "a load failure is not a Fetch-side backend error")
 		require.Empty(t, mc.GetInternal(), "a failed load must not be stored")
 	})
-}
-
-// barrierCache wraps a cache.Cache and makes every Fetch call wait until barrierN calls have
-// arrived, then releases them all at once. A test proving singleflight coalescing needs every
-// concurrent caller released from Fetch together, not merely counted: a straggler that reaches
-// DoChan late enough could register only after the leader's call had already returned and been
-// forgotten.
-type barrierCache struct {
-	cache.Cache
-	barrierN  int
-	barrierCh chan struct{}
-	arrived   atomic.Int64
-}
-
-func (c *barrierCache) Fetch(ctx context.Context, keys []string) (found []string, bufs [][]byte, missing []string, err error) {
-	if c.arrived.Add(1) == int64(c.barrierN) {
-		close(c.barrierCh)
-	}
-	<-c.barrierCh
-	return c.Cache.Fetch(ctx, keys)
 }

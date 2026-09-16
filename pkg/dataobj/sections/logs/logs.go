@@ -17,6 +17,8 @@ import (
 // header alone, without opening the section.
 const schemaSortVersion uint32 = 3
 
+// Namespace and Kind here are duplicated in pkg/dataobj/decoder.go's logsSectionType, to avoid an
+// import cycle. Update it there too if these change.
 var sectionType = dataobj.SectionType{
 	Namespace: "github.com/grafana/loki",
 	Kind:      "logs",
