@@ -304,6 +304,52 @@ func TestConfigQueryHandler(t *testing.T) {
 	}
 }
 
+func TestAcceptsJSON(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		accept string
+		want   bool
+	}{
+		{name: "plain application/json", accept: "application/json", want: true},
+		{name: "application/json with q=1", accept: "application/json;q=1", want: true},
+		{name: "application/json with a fractional q", accept: "application/json;q=0.5", want: true},
+		{name: "application/json with q=0 is explicitly unacceptable", accept: "application/json;q=0", want: false},
+		{name: "unrelated media type", accept: "text/html", want: false},
+		{name: "lookalike media type doesn't false-positive", accept: "application/json-seq", want: false},
+		{name: "empty Accept header", accept: "", want: false},
+		{name: "media type is case-insensitive", accept: "APPLICATION/JSON", want: true},
+		{
+			name:   "json present among several media ranges, in any position",
+			accept: "text/html, application/json;q=0.9, */*;q=0.8",
+			want:   true,
+		},
+		{
+			name:   "an unparseable q falls back to unacceptable rather than defaulting to q=1",
+			accept: "application/json;q=bogus",
+			want:   false,
+		},
+		{
+			name:   "a q above 1 falls back to unacceptable rather than defaulting to q=1",
+			accept: "application/json;q=2",
+			want:   false,
+		},
+		{
+			name:   "a negative q falls back to unacceptable rather than defaulting to q=1",
+			accept: "application/json;q=-1",
+			want:   false,
+		},
+		{
+			name:   "a later media range can still accept JSON after an earlier q=0 for it",
+			accept: "application/json;q=0, application/json;q=0.5",
+			want:   true,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			assert.Equal(t, tc.want, acceptsJSON(tc.accept))
+		})
+	}
+}
+
 func TestLimitsDirectJSONMarshaling(t *testing.T) {
 	// Test that validation.Limits can be directly marshaled to JSON
 	// (it has proper json tags)
