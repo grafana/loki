@@ -23,6 +23,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/storage/chunk"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/fetcher"
 	"github.com/grafana/loki/v3/pkg/storage/config"
+	"github.com/grafana/loki/v3/pkg/util"
 	"github.com/grafana/loki/v3/pkg/util/constants"
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
 )
@@ -464,6 +465,10 @@ type sampleBatchIterator struct {
 	curr iter.SampleIterator
 	err  error
 
+	// closeErrs collects every sub-iterator Close error: from each curr Next replaces,
+	// and from the final Close call.
+	closeErrs util.MultiError
+
 	ctx       context.Context
 	cancel    context.CancelFunc
 	extractor syntax.SampleExtractor
@@ -523,10 +528,13 @@ func (it *sampleBatchIterator) Err() error {
 
 func (it *sampleBatchIterator) Close() error {
 	it.cancel()
+
 	if it.curr != nil {
-		return it.curr.Close()
+		it.closeErrs.Add(it.curr.Close())
+		it.curr = nil
 	}
-	return nil
+
+	return util.UnwrapMultiError(it.closeErrs)
 }
 
 func (it *sampleBatchIterator) At() logproto.Sample {
@@ -539,14 +547,28 @@ func (it *sampleBatchIterator) Next() bool {
 		if it.curr != nil && it.curr.Next() {
 			return true
 		}
-		// close previous iterator
+
+		// curr just failed or drained cleanly. A read error takes priority: leave curr
+		// for Close to close, and stop before fetching a later batch.
 		if it.curr != nil {
-			it.err = it.curr.Close()
+			if err := it.curr.Err(); err != nil {
+				it.err = err
+				return false
+			}
 		}
+
 		next := it.batchChunkIterator.Next()
 		if next == nil {
+			// No more batches: leave curr for Close to close.
 			return false
 		}
+
+		// Another batch is coming: curr drained cleanly and won't be referenced
+		// again, so close it now or it leaks.
+		if it.curr != nil {
+			it.closeErrs.Add(it.curr.Close())
+		}
+
 		if next.err != nil {
 			it.err = next.err
 			return false
