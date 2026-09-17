@@ -21,8 +21,10 @@ import (
 	// import itself.
 	_ "google.golang.org/grpc/encoding/proto"
 
+	"github.com/KimMachineGun/automemlimit/memlimit"
+	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
-	"github.com/grafana/dskit/log"
+	dskit_log "github.com/grafana/dskit/log"
 	"github.com/grafana/dskit/tracing"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/version"
@@ -75,7 +77,7 @@ func main() {
 	loki_runtime.SetDefaultLimitsForYAMLUnmarshalling(config.OperationalConfig)
 
 	// Init the logger which will honor the log level set in config.Server
-	if reflect.DeepEqual(&config.Server.LogLevel, &log.Level{}) {
+	if reflect.DeepEqual(&config.Server.LogLevel, &dskit_log.Level{}) {
 		level.Error(util_log.Logger).Log("msg", "invalid log level")
 		exit(1)
 	}
@@ -128,6 +130,8 @@ func main() {
 
 	setProfilingOptions(config.Profiling)
 
+	setGoMemLimit(util_log.Logger)
+
 	// Allocate a block of memory to reduce the frequency of garbage collection.
 	// The larger the ballast, the lower the garbage collection frequency.
 	// https://github.com/grafana/loki/issues/781
@@ -148,6 +152,22 @@ func main() {
 
 	err = t.Run(loki.RunOpts{StartTime: startTime})
 	util_log.CheckFatal("running loki", err, util_log.Logger)
+}
+
+// setGoMemLimit derives GOMEMLIMIT from the cgroup memory limit of the
+// container Loki runs in, so the Go runtime's soft memory limit follows the
+// limit the orchestrator enforces instead of a value that has to be kept in
+// sync by hand.
+//
+// An explicit GOMEMLIMIT is left untouched, and AUTOMEMLIMIT overrides the
+// ratio of the cgroup limit to use, or disables this entirely when set to
+// "off". Running outside a memory-limited cgroup is not an error: the limit is
+// then left at its default of math.MaxInt64, which is effectively unlimited.
+func setGoMemLimit(logger log.Logger, opts ...memlimit.Option) {
+	opts = append([]memlimit.Option{memlimit.WithLogger(util_log.SlogFromGoKit(logger))}, opts...)
+	if _, err := memlimit.SetGoMemLimitWithOpts(opts...); err != nil {
+		level.Warn(logger).Log("msg", "failed to set GOMEMLIMIT from the cgroup memory limit", "err", err)
+	}
 }
 
 func setProfilingOptions(cfg loki.ProfilingConfig) {

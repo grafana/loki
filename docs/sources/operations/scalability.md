@@ -78,6 +78,27 @@ In compute-constrained environments, garbage collection can become a significant
 
 Configure memory ballast using the ballast_bytes configuration option.
 
+## Go memory limit
+
+On startup, Loki reads the memory limit of the cgroup it runs in and sets the Go runtime soft memory limit, `GOMEMLIMIT`, to 90% of that limit. The garbage collector then works to keep the heap below this value, which lowers the risk that the container is terminated for excessive memory use. Loki logs the value it sets.
+
+The limit follows the memory limit of the container, so you do not have to update a configuration value when you change that limit, for example with a Kustomize overlay or a vertical pod autoscaler.
+
+Two environment variables control this behavior. Loki reads them from the process environment at startup. They are not configuration file options or CLI flags, so they do not appear in the [Configuration reference](https://grafana.com/docs/loki/<LOKI_VERSION>/configure/).
+
+| Variable | Default | Description |
+| --- | --- | --- |
+| `GOMEMLIMIT` | Unset | Sets the limit directly, for example `4GiB`. When set, Loki keeps this value and does not read the cgroup limit. For the accepted format, refer to the [Go runtime documentation](https://pkg.go.dev/runtime#hdr-Environment_Variables). |
+| `AUTOMEMLIMIT` | Unset, which uses `0.9` | Sets the fraction of the cgroup limit to use, in the range `(0.0,1.0]`, for example `0.85`. Set it to `off` to leave `GOMEMLIMIT` unset. |
+
+If Loki does not run in a cgroup with a memory limit, the limit stays unset and the heap can grow without a target.
+
+If a component has a memory limit in its Helm chart `resources` value, the Loki Helm chart sets `GOMEMLIMIT` for it to 85% of that limit, and Loki keeps the value from the chart. The `defaults.goSettings.goMemLimitFactor` value sets this fraction. For details, refer to the [Helm Chart Reference](https://grafana.com/docs/loki/<LOKI_VERSION>/setup/install/helm/reference/).
+
+{{< admonition type="note" >}}
+A soft memory limit makes garbage collection more frequent as the heap approaches the limit. It does not prevent termination if live heap memory exceeds the limit.
+{{< /admonition >}}
+
 ## Remote rule evaluation
 
 _This feature was first proposed in [`LID-0002`](https://github.com/grafana/loki/pull/8129); it contains the design decisions

@@ -37,6 +37,14 @@ The output is incredibly verbose as it shows the entire internal config struct u
 
 ## Main / Unreleased
 
+### `GOMEMLIMIT` is set from the cgroup memory limit
+
+Loki now sets the Go runtime soft memory limit, `GOMEMLIMIT`, to 90% of the memory limit of the cgroup it runs in. Before this change the limit was unset unless you supplied the `GOMEMLIMIT` environment variable yourself, as the Helm chart does through `defaults.goSettings.goMemLimitFactor`.
+
+Garbage collection therefore runs more often on a component that approaches its container memory limit, which trades CPU for a lower risk of termination for excessive memory use. Expect a higher `go_gc_duration_seconds` and a lower peak `go_memstats_heap_inuse_bytes` on such components.
+
+An explicit `GOMEMLIMIT` still takes precedence, so a Helm installation keeps the value the chart injects. To restore the previous behavior, set the `AUTOMEMLIMIT` environment variable to `off`. To use a different fraction, set `AUTOMEMLIMIT` to a value in the range `(0.0,1.0]`, for example `0.85`.
+
 ### Optional index gateway client request limits
 
 Index gateway clients support two experimental limits that are disabled by default, preserving the existing request limits.
