@@ -6726,6 +6726,13 @@ cluster_validation:
 # using Open-Telemetry tracing.
 # CLI flag: -server.create-new-traces
 [create_new_traces: <boolean> | default = false]
+
+# Specifies if this handler should emit start timestamps for counters,
+# histograms and summaries over OpenMetrics 1.0, which are defined as extra
+# series with the same name and "_created" suffix. Only applies if
+# -server.register-instrumentation is set to true.
+# CLI flag: -server.enable-open-metrics-text-created-samples
+[enable_open_metrics_text_created_samples: <boolean> | default = false]
 ```
 
 ### storage_config
