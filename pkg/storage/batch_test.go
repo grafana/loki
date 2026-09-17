@@ -9,6 +9,7 @@ import (
 
 	"github.com/grafana/dskit/user"
 	"github.com/pkg/errors"
+	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/promql"
 	"github.com/stretchr/testify/require"
@@ -20,6 +21,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/logql/log"
 	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/v3/pkg/querier/testutil"
+	"github.com/grafana/loki/v3/pkg/storage/chunk"
 	"github.com/grafana/loki/v3/pkg/storage/config"
 	"github.com/grafana/loki/v3/pkg/util"
 )
@@ -1012,7 +1014,7 @@ func Test_newLogBatchChunkIterator(t *testing.T) {
 	}
 }
 
-func Test_newSampleBatchChunkIterator(t *testing.T) {
+func TestNewTimestampFirstSampleBatchIterator(t *testing.T) {
 	periodConfig := config.PeriodConfig{
 		From:   config.DayTime{Time: 0},
 		Schema: "v11",
@@ -1436,6 +1438,170 @@ func Test_newSampleBatchChunkIterator(t *testing.T) {
 			assertSeries(t, tt.expected, series.Series)
 		})
 	}
+}
+
+func TestNewTimestampFirstSampleBatchIterator_ErrorHandling(t *testing.T) {
+	t.Run("At() stays valued after a clean terminal exhaustion", func(t *testing.T) {
+		last := logproto.Sample{Timestamp: from.UnixNano(), Value: 1}
+		chunks := []*LazyChunk{newFakeLazyChunk(1, from, from.Add(time.Minute), &fakeSampleIterator{samples: []logproto.Sample{last}})}
+		it := newFakeSampleBatchIterator(t, 10, chunks...)
+
+		require.True(t, it.Next())
+		require.False(t, it.Next(), "no chunks remain, so the batch iterator is exhausted after the one sample")
+		require.Equal(t, last, it.At(), "curr is left for Close, not closed or cleared, so At still returns its last value")
+		require.NoError(t, it.Close())
+	})
+
+	t.Run("close error on a cleanly drained iterator surfaces through Close, not Err", func(t *testing.T) {
+		closeBoom := errors.New("close boom")
+		curr := &fakeSampleIterator{closeErr: closeBoom}
+		chunks := []*LazyChunk{newFakeLazyChunk(1, from, from.Add(time.Minute), curr)}
+		it := newFakeSampleBatchIterator(t, 10, chunks...)
+
+		require.False(t, it.Next(), "no samples, so the batch iterator is exhausted immediately")
+		require.NoError(t, it.Err(), "a close error is not a read error")
+		require.ErrorIs(t, it.Close(), closeBoom)
+		require.Equal(t, 1, curr.closed, "curr must not be closed a second time by the later top-level Close")
+	})
+
+	t.Run("read error on iterator surfaces through Err and stops iteration", func(t *testing.T) {
+		wantErr := errors.New("read boom")
+		curr := &fakeSampleIterator{err: wantErr}
+		chunks := []*LazyChunk{newFakeLazyChunk(1, from, from.Add(time.Minute), curr)}
+		it := newFakeSampleBatchIterator(t, 10, chunks...)
+
+		require.False(t, it.Next())
+		require.ErrorIs(t, it.Err(), wantErr)
+		require.NoError(t, it.Close(), "a read error must not surface a second time as a close error")
+		require.Equal(t, 1, curr.closed)
+	})
+
+	t.Run("read error on iterator stops iteration, without pulling in a later batch", func(t *testing.T) {
+		wantErr := errors.New("read boom")
+		errored := &fakeSampleIterator{err: wantErr}
+		healthy := &fakeSampleIterator{samples: []logproto.Sample{{Timestamp: from.Add(time.Hour).UnixNano(), Value: 2}}}
+		chunks := []*LazyChunk{
+			newFakeLazyChunk(1, from, from.Add(time.Minute), errored),
+			newFakeLazyChunk(1, from.Add(time.Hour), from.Add(time.Hour+time.Minute), healthy),
+		}
+		it := newFakeSampleBatchIterator(t, 1, chunks...) // batchSize 1: one chunk per batch
+
+		require.False(t, it.Next(), "must stop immediately rather than advance into the next batch")
+		require.ErrorIs(t, it.Err(), wantErr)
+		require.NoError(t, it.Close())
+		require.Equal(t, 1, errored.closed)
+		require.Zero(t, healthy.i, "the next batch's chunk must never be decoded")
+		require.Zero(t, healthy.closed, "the next batch's chunk must never be touched")
+	})
+
+	t.Run("read and close errors on iterator surface separately, through Err and Close", func(t *testing.T) {
+		readErr := errors.New("read boom")
+		closeErr := errors.New("close boom")
+		curr := &fakeSampleIterator{err: readErr, closeErr: closeErr}
+		chunks := []*LazyChunk{newFakeLazyChunk(1, from, from.Add(time.Minute), curr)}
+		it := newFakeSampleBatchIterator(t, 10, chunks...)
+
+		require.False(t, it.Next())
+		require.ErrorIs(t, it.Err(), readErr)
+		require.ErrorIs(t, it.Close(), closeErr)
+		require.Equal(t, 1, curr.closed)
+	})
+
+	t.Run("Close before any Next call is a no-op", func(t *testing.T) {
+		curr := &fakeSampleIterator{samples: []logproto.Sample{{Timestamp: from.UnixNano(), Value: 1}}}
+		chunks := []*LazyChunk{newFakeLazyChunk(1, from, from.Add(time.Minute), curr)}
+		it := newFakeSampleBatchIterator(t, 10, chunks...)
+
+		require.NoError(t, it.Close())
+		require.Zero(t, curr.closed, "curr is only built by Next, so Close before any Next call has nothing to close")
+	})
+
+	t.Run("a close error from a iterator Next rotated past survives to the final Close", func(t *testing.T) {
+		closeBoom := errors.New("close boom")
+		first := &fakeSampleIterator{closeErr: closeBoom} // no samples: exhausts cleanly right away
+		second := &fakeSampleIterator{samples: []logproto.Sample{{Timestamp: from.Add(time.Hour).UnixNano(), Value: 2}}}
+		chunks := []*LazyChunk{
+			newFakeLazyChunk(1, from, from.Add(time.Minute), first),
+			newFakeLazyChunk(1, from.Add(time.Hour), from.Add(time.Hour+time.Minute), second),
+		}
+		it := newFakeSampleBatchIterator(t, 1, chunks...)
+
+		require.True(t, it.Next(), "must rotate past the first curr into the second chunk's data")
+		require.ErrorIs(t, it.Close(), closeBoom)
+	})
+}
+
+type fakeSampleIterator struct {
+	samples  []logproto.Sample
+	i        int
+	err      error
+	closeErr error
+	closed   int
+}
+
+func (it *fakeSampleIterator) Next() bool {
+	if it.i < len(it.samples) {
+		it.i++
+		return true
+	}
+	return false
+}
+
+func (it *fakeSampleIterator) At() logproto.Sample {
+	if it.i == 0 {
+		return logproto.Sample{}
+	}
+	return it.samples[it.i-1]
+}
+
+func (it *fakeSampleIterator) Err() error {
+	if it.i >= len(it.samples) {
+		return it.err
+	}
+	return nil
+}
+
+func (it *fakeSampleIterator) Close() error {
+	it.closed++
+	return it.closeErr
+}
+
+func (it *fakeSampleIterator) Labels() string     { return "" }
+func (it *fakeSampleIterator) StreamHash() uint64 { return 0 }
+
+type fakeChunk struct {
+	chunkenc.Chunk
+	block *fakeBlock
+}
+
+func (c *fakeChunk) Blocks(time.Time, time.Time) []chunkenc.Block {
+	return []chunkenc.Block{c.block}
+}
+
+func newFakeLazyChunk(fp model.Fingerprint, from, through time.Time, it iter.SampleIterator) *LazyChunk {
+	block := &fakeBlock{mint: from.UnixNano(), maxt: through.UnixNano(), it: it}
+	data := chunkenc.NewFacade(&fakeChunk{Chunk: chunkenc.NewDumbChunk(), block: block}, 0, 0)
+	c := chunk.NewChunk("fake", fp, fooLabelsWithName, data, model.TimeFromUnixNano(from.UnixNano()), model.TimeFromUnixNano(through.UnixNano()))
+	return &LazyChunk{IsValid: true, Chunk: c}
+}
+
+func newFakeSampleBatchIterator(t *testing.T, batchSize int, chunks ...*LazyChunk) iter.SampleIterator {
+	ex, err := log.NewLineSampleExtractor(log.CountExtractor, nil, nil, false, false)
+	require.NoError(t, err)
+
+	it, err := newTimestampFirstSampleBatchIterator(
+		context.Background(),
+		config.SchemaConfig{},
+		NilMetrics,
+		chunks,
+		batchSize,
+		nil,
+		from.Add(-time.Hour), from.Add(3*time.Hour),
+		nil,
+		ex,
+	)
+	require.NoError(t, err)
+	return it
 }
 
 func TestPartitionOverlappingchunks(t *testing.T) {

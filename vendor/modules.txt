@@ -476,7 +476,7 @@ github.com/aws/smithy-go/waiter
 # github.com/axiomhq/hyperloglog v0.2.6
 ## explicit; go 1.23
 github.com/axiomhq/hyperloglog
-# github.com/baidubce/bce-sdk-go v0.9.275
+# github.com/baidubce/bce-sdk-go v0.9.276
 ## explicit; go 1.11
 github.com/baidubce/bce-sdk-go/auth
 github.com/baidubce/bce-sdk-go/bce
@@ -901,7 +901,7 @@ github.com/google/go-cmp/cmp/internal/diff
 github.com/google/go-cmp/cmp/internal/flags
 github.com/google/go-cmp/cmp/internal/function
 github.com/google/go-cmp/cmp/internal/value
-# github.com/google/pprof v0.0.0-20260825171938-4d453200e7d9
+# github.com/google/pprof v0.0.0-20260906184651-6331bc6350fe
 ## explicit; go 1.25.0
 github.com/google/pprof/profile
 # github.com/google/s2a-go v0.1.9
@@ -1003,7 +1003,7 @@ github.com/grafana/gomemcache/memcache
 ## explicit; go 1.13
 github.com/grafana/jsonparser
 # github.com/grafana/loki/pkg/push v0.0.0-20250630054201-94c0ba7b0952 => ./pkg/push
-## explicit; go 1.26.6
+## explicit; go 1.26.7
 github.com/grafana/loki/pkg/push
 # github.com/grafana/otel-profiling-go v0.6.0
 ## explicit; go 1.25.0
@@ -1078,7 +1078,7 @@ github.com/hashicorp/memberlist
 # github.com/hashicorp/serf v0.10.4
 ## explicit; go 1.25.0
 github.com/hashicorp/serf/coordinate
-# github.com/huandu/xstrings v1.5.0
+# github.com/huandu/xstrings v1.6.0
 ## explicit; go 1.12
 github.com/huandu/xstrings
 # github.com/influxdata/tdigest v0.0.2-0.20210216194612-fc98d27c9e8b
@@ -1437,7 +1437,7 @@ github.com/prometheus/client_golang/prometheus/push
 github.com/prometheus/client_golang/prometheus/testutil
 github.com/prometheus/client_golang/prometheus/testutil/promlint
 github.com/prometheus/client_golang/prometheus/testutil/promlint/validations
-# github.com/prometheus/client_golang/exp v0.0.0-20260910191836-3f5d6801b956
+# github.com/prometheus/client_golang/exp v0.0.0-20260914085653-d2f148ba5de4
 ## explicit; go 1.25.0
 github.com/prometheus/client_golang/exp/api/remote
 github.com/prometheus/client_golang/exp/internal/github.com/efficientgo/core/backoff
@@ -1671,7 +1671,7 @@ github.com/twmb/franz-go/pkg/kfake
 ## explicit; go 1.24.0
 github.com/twmb/franz-go/pkg/kmsg
 github.com/twmb/franz-go/pkg/kmsg/internal/kbin
-# github.com/twmb/franz-go/plugin/kotel v1.7.0
+# github.com/twmb/franz-go/plugin/kotel v1.7.1
 ## explicit; go 1.25.0
 github.com/twmb/franz-go/plugin/kotel
 # github.com/twmb/franz-go/plugin/kprom v1.2.1
@@ -1712,11 +1712,11 @@ github.com/ugorji/go/codec
 # github.com/x448/float16 v0.8.4
 ## explicit; go 1.11
 github.com/x448/float16
-# github.com/xhit/go-str2duration/v2 v2.1.0
+# github.com/xhit/go-str2duration/v2 v2.2.0
 ## explicit; go 1.13
 github.com/xhit/go-str2duration/v2
-# github.com/xo/terminfo v1.0.0
-## explicit; go 1.19
+# github.com/xo/terminfo v1.2.0
+## explicit; go 1.25
 github.com/xo/terminfo
 # github.com/yuin/gopher-lua v1.1.2
 ## explicit; go 1.23

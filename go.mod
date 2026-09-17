@@ -19,7 +19,7 @@ require (
 	github.com/aws/aws-sdk-go-v2 v1.45.1
 	github.com/aws/aws-sdk-go-v2/config v1.33.1
 	github.com/aws/aws-sdk-go-v2/credentials v1.20.1
-	github.com/baidubce/bce-sdk-go v0.9.275
+	github.com/baidubce/bce-sdk-go v0.9.276
 	github.com/c2h5oh/datasize v0.0.0-20231215233829-aa82cc1e6500
 	github.com/cespare/xxhash/v2 v2.3.0
 	github.com/containerd/fifo v1.1.0
@@ -133,7 +133,7 @@ require (
 	github.com/twmb/franz-go/pkg/kadm v1.18.0
 	github.com/twmb/franz-go/pkg/kfake v0.0.0-20260515175617-8268a5d078c0
 	github.com/twmb/franz-go/pkg/kmsg v1.13.1
-	github.com/twmb/franz-go/plugin/kotel v1.7.0
+	github.com/twmb/franz-go/plugin/kotel v1.7.1
 	github.com/twmb/franz-go/plugin/kprom v1.2.1
 	go.opentelemetry.io/collector/pdata v1.66.0
 	go.opentelemetry.io/contrib/instrumentation/net/http/httptrace/otelhttptrace v0.71.0
@@ -251,7 +251,7 @@ require (
 	github.com/planetscale/vtprotobuf v0.6.1-0.20260702190614-8ae5a48058df // indirect
 	github.com/power-devops/perfstat v0.0.0-20260805114148-88456608a4f6 // indirect
 	github.com/prometheus/alertmanager v0.33.1 // indirect
-	github.com/prometheus/client_golang/exp v0.0.0-20260910191836-3f5d6801b956
+	github.com/prometheus/client_golang/exp v0.0.0-20260914085653-d2f148ba5de4
 	github.com/puzpuzpuz/xsync/v4 v4.5.0 // indirect
 	github.com/remyoudompheng/bigfft v0.0.0-20230129092748-24d4a6f8daec // indirect
 	github.com/rivo/uniseg v0.4.7 // indirect
@@ -264,8 +264,8 @@ require (
 	github.com/tklauser/numcpus v0.12.0 // indirect
 	github.com/twpayne/go-geom v1.6.1 // indirect
 	github.com/x448/float16 v0.8.4 // indirect
-	github.com/xhit/go-str2duration/v2 v2.1.0 // indirect
-	github.com/xo/terminfo v1.0.0 // indirect
+	github.com/xhit/go-str2duration/v2 v2.2.0 // indirect
+	github.com/xo/terminfo v1.2.0 // indirect
 	github.com/yusufpapurcu/wmi v1.2.4 // indirect
 	github.com/zeebo/assert v1.3.1 // indirect
 	github.com/zeebo/xxh3 v1.1.0
@@ -361,7 +361,7 @@ require (
 	github.com/gofrs/flock v0.13.1 // indirect
 	github.com/golang-jwt/jwt/v5 v5.3.1 // indirect
 	github.com/google/btree v1.1.3 // indirect
-	github.com/google/pprof v0.0.0-20260825171938-4d453200e7d9 // indirect
+	github.com/google/pprof v0.0.0-20260906184651-6331bc6350fe // indirect
 	github.com/google/s2a-go v0.1.9 // indirect
 	github.com/googleapis/enterprise-certificate-proxy v0.3.22 // indirect
 	github.com/googleapis/gax-go/v2 v2.24.1 // indirect
@@ -376,7 +376,7 @@ require (
 	github.com/hashicorp/go-sockaddr v1.0.7 // indirect
 	github.com/hashicorp/memberlist v0.6.0 // indirect
 	github.com/hashicorp/serf v0.10.4 // indirect
-	github.com/huandu/xstrings v1.5.0 // indirect
+	github.com/huandu/xstrings v1.6.0 // indirect
 	github.com/jpillora/backoff v1.0.0 // indirect
 	github.com/klauspost/cpuid/v2 v2.4.0 // indirect
 	github.com/kylelemons/godebug v1.1.0 // indirect
