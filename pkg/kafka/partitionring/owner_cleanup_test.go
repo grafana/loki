@@ -28,6 +28,7 @@ func testConfig(t *testing.T, args ...string) OwnerCleanupConfig {
 	require.NoError(t, fs.Parse(args))
 	// Nothing to wait for in tests.
 	cfg.PropagationDelay = 0
+	cfg.SettleTimeout = 0
 	require.NoError(t, cfg.Validate())
 	return cfg
 }
@@ -205,4 +206,66 @@ func TestOwnerCleanupConfig(t *testing.T) {
 		cfg := OwnerCleanupConfig{OwnerIDPattern: defaultOwnerIDPattern}
 		require.ErrorContains(t, cfg.Validate(), "live_threshold must be positive")
 	})
+}
+
+// An empty ring must fail rather than be reported as "nothing to do": a
+// memberlist client that never received the ring looks exactly the same as a
+// ring with no owners.
+func TestOwnerCleaner_EmptyRingFailsInsteadOfNoOp(t *testing.T) {
+	partitionStore, instanceStore := newRings(t)
+
+	// Drop every owner so the ring looks like one this instance never received.
+	require.NoError(t, partitionStore.CAS(context.Background(), testPartitionRingKey, func(in any) (any, bool, error) {
+		desc := ring.GetOrCreatePartitionRingDesc(in)
+		for id := range desc.Owners {
+			desc.RemoveOwner(id)
+		}
+		return desc, true, nil
+	}))
+
+	cfg := testConfig(t, "-partition-ring-owner-cleanup.dry-run=false")
+	cfg.SettleTimeout = 100 * time.Millisecond
+	cleaner := newCleaner(t, cfg, partitionStore, instanceStore)
+
+	err := cleaner.run(context.Background())
+	require.ErrorContains(t, err, "still has no owners")
+	require.ErrorContains(t, err, "never joined the gossip cluster")
+}
+
+func TestOwnerCleaner_SettleWaitSeesALateRing(t *testing.T) {
+	partitionStore, instanceStore := newRings(t)
+
+	// Start from an empty ring and have the owners "arrive" shortly after, the
+	// way a memberlist push/pull delivers them.
+	require.NoError(t, partitionStore.CAS(context.Background(), testPartitionRingKey, func(in any) (any, bool, error) {
+		desc := ring.GetOrCreatePartitionRingDesc(in)
+		for id := range desc.Owners {
+			desc.RemoveOwner(id)
+		}
+		return desc, true, nil
+	}))
+
+	go func() {
+		time.Sleep(50 * time.Millisecond)
+		_ = partitionStore.CAS(context.Background(), testPartitionRingKey, func(in any) (any, bool, error) {
+			desc := ring.GetOrCreatePartitionRingDesc(in)
+			desc.AddOrUpdateOwner("dataobj-consumer-4", ring.OwnerActive, 4, time.Now())
+			return desc, true, nil
+		})
+	}()
+
+	cfg := testConfig(t, "-partition-ring-owner-cleanup.dry-run=false")
+	cfg.SettleTimeout = 30 * time.Second
+	cleaner := newCleaner(t, cfg, partitionStore, instanceStore)
+
+	require.NoError(t, cleaner.run(context.Background()))
+	require.Empty(t, ownerIDs(t, partitionStore), "the late-arriving owner must be removed")
+}
+
+func TestOwnerCleanupConfig_SettleTimeoutDefault(t *testing.T) {
+	var cfg OwnerCleanupConfig
+	fs := flag.NewFlagSet("test", flag.ContinueOnError)
+	cfg.RegisterFlags(fs)
+	require.NoError(t, fs.Parse(nil))
+	require.Equal(t, 2*time.Minute, cfg.SettleTimeout)
 }

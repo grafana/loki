@@ -35,6 +35,7 @@ const defaultOwnerIDPattern = `^dataobj-consumer-[0-9]+$`
 type OwnerCleanupConfig struct {
 	OwnerIDPattern   string        `yaml:"owner_id_pattern"`
 	DryRun           bool          `yaml:"dry_run"`
+	SettleTimeout    time.Duration `yaml:"settle_timeout"`
 	PropagationDelay time.Duration `yaml:"propagation_delay"`
 	IgnoreLive       bool          `yaml:"ignore_live"`
 	LiveThreshold    time.Duration `yaml:"live_threshold"`
@@ -49,6 +50,8 @@ func (cfg *OwnerCleanupConfig) RegisterFlags(f *flag.FlagSet) {
 		"Regular expression matching the partition ring owner IDs to remove. Anchor it: an unanchored pattern can match owners of instances that are still running.")
 	f.BoolVar(&cfg.DryRun, prefix+"dry-run", true,
 		"Report the owners that match without removing them. Removal is irreversible and the entry can only be recreated by restarting the instance it belongs to, so this defaults to true and must be disabled explicitly.")
+	f.DurationVar(&cfg.SettleTimeout, prefix+"settle-timeout", 2*time.Minute,
+		"How long to wait for the ring to arrive from the other members before reading it. A memberlist client starts with an empty local store and fills it by gossiping, so reading immediately would report an empty ring and remove nothing. Set to 0 to read straight away.")
 	f.DurationVar(&cfg.PropagationDelay, prefix+"propagation-delay", time.Minute,
 		"How long to keep the process alive after the removal so the change can be gossiped to the other members. Exiting too early can leave the removal known only to this instance, which then loses it. Ignored for a dry run.")
 	f.BoolVar(&cfg.IgnoreLive, prefix+"ignore-live", false,
@@ -146,6 +149,10 @@ func (c *OwnerCleaner) run(ctx context.Context) error {
 		"dry_run", c.cfg.DryRun,
 	)
 
+	if err := c.waitForRing(ctx); err != nil {
+		return err
+	}
+
 	candidates, err := c.candidates(ctx)
 	if err != nil {
 		return err
@@ -204,6 +211,50 @@ func (c *OwnerCleaner) run(ctx context.Context) error {
 
 	c.verify(ctx, removed)
 	return nil
+}
+
+// waitForRing blocks until the partition ring holds at least one owner.
+//
+// A memberlist client starts with an empty local store and fills it by
+// gossiping with the peers it joins, so a read taken too early sees no owners.
+// That is indistinguishable from an already-clean ring and would make this task
+// report "nothing to do" and exit 0 without having looked at anything, which is
+// the one outcome an operator must never be given. Waiting for the ring to show
+// up, and failing when it never does, turns that silent no-op into a visible
+// failure.
+func (c *OwnerCleaner) waitForRing(ctx context.Context) error {
+	if c.cfg.SettleTimeout <= 0 {
+		return nil
+	}
+
+	const pollInterval = 2 * time.Second
+
+	deadline := time.Now().Add(c.cfg.SettleTimeout)
+	for attempt := 1; ; attempt++ {
+		desc, err := c.partitionRing(ctx)
+		if err != nil {
+			return fmt.Errorf("reading partition ring: %w", err)
+		}
+		if len(desc.Owners) > 0 {
+			level.Info(c.logger).Log("msg", "partition ring received", "owners", len(desc.Owners), "attempts", attempt)
+			return nil
+		}
+		if !time.Now().Before(deadline) {
+			return fmt.Errorf(
+				"the partition ring under %q still has no owners after %s: either this instance never joined the gossip cluster "+
+					"(check the memberlist log lines above, and run with -memberlist.abort-if-join-fails=true) or the ring really is "+
+					"empty, in which case re-run with -partition-ring-owner-cleanup.settle-timeout=0",
+				c.partitionRingKey, c.cfg.SettleTimeout,
+			)
+		}
+
+		level.Info(c.logger).Log("msg", "waiting for the partition ring to arrive from other members", "attempt", attempt)
+		select {
+		case <-time.After(pollInterval):
+		case <-ctx.Done():
+			return ctx.Err()
+		}
+	}
 }
 
 // verify re-reads the ring so the run's log carries proof of the outcome
