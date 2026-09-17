@@ -981,6 +981,10 @@ func Test_codec_EncodeRequest(t *testing.T) {
 		Path:      "/query_range",
 		StartTs:   start,
 		EndTs:     end,
+		HintRanges: []logproto.HintTimeRange{
+			{Start: start.Add(5 * time.Minute), End: start.Add(10 * time.Minute)},
+			{Start: start.Add(20 * time.Minute), End: start.Add(30 * time.Minute)},
+		},
 	}
 	got, err = DefaultCodec.EncodeRequest(ctx, toEncode)
 	require.NoError(t, err)
@@ -993,18 +997,45 @@ func Test_codec_EncodeRequest(t *testing.T) {
 	require.Equal(t, `FORWARD`, got.URL.Query().Get("direction"))
 	require.Equal(t, "86400.000000", got.URL.Query().Get("step"))
 	require.Equal(t, "10000.000000", got.URL.Query().Get("interval"))
+	require.Len(t, got.URL.Query()["hintRanges"], 2)
 
 	// testing a full roundtrip
 	req, err := DefaultCodec.DecodeRequest(context.TODO(), got, nil)
 	require.NoError(t, err)
-	require.Equal(t, toEncode.Query, req.(*LokiRequest).Query)
-	require.Equal(t, toEncode.Step, req.(*LokiRequest).Step)
-	require.Equal(t, toEncode.Interval, req.(*LokiRequest).Interval)
-	require.Equal(t, toEncode.StartTs, req.(*LokiRequest).StartTs)
-	require.Equal(t, toEncode.EndTs, req.(*LokiRequest).EndTs)
-	require.Equal(t, toEncode.Direction, req.(*LokiRequest).Direction)
-	require.Equal(t, toEncode.Limit, req.(*LokiRequest).Limit)
-	require.Equal(t, "/loki/api/v1/query_range", req.(*LokiRequest).Path)
+	decoded := req.(*LokiRequest)
+	require.Equal(t, toEncode.Query, decoded.Query)
+	require.Equal(t, toEncode.Step, decoded.Step)
+	require.Equal(t, toEncode.Interval, decoded.Interval)
+	require.Equal(t, toEncode.StartTs, decoded.StartTs)
+	require.Equal(t, toEncode.EndTs, decoded.EndTs)
+	require.Equal(t, toEncode.Direction, decoded.Direction)
+	require.Equal(t, toEncode.Limit, decoded.Limit)
+	require.Equal(t, toEncode.HintRanges, decoded.HintRanges)
+	require.Equal(t, "/loki/api/v1/query_range", decoded.Path)
+}
+
+func TestLokiRequestWithStartEndClipsHintRangesWithoutMutation(t *testing.T) {
+	original := &LokiRequest{
+		StartTs: start,
+		EndTs:   end,
+		HintRanges: []logproto.HintTimeRange{
+			{Start: start.Add(-time.Minute), End: start.Add(10 * time.Minute)},
+			{Start: start.Add(20 * time.Minute), End: start.Add(40 * time.Minute)},
+			{Start: end, End: end.Add(time.Minute)},
+		},
+	}
+
+	got := original.WithStartEnd(start.Add(5*time.Minute), start.Add(30*time.Minute)).(*LokiRequest)
+
+	require.Equal(t, []logproto.HintTimeRange{
+		{Start: start.Add(5 * time.Minute), End: start.Add(10 * time.Minute)},
+		{Start: start.Add(20 * time.Minute), End: start.Add(30 * time.Minute)},
+	}, got.HintRanges)
+	require.Equal(t, []logproto.HintTimeRange{
+		{Start: start.Add(-time.Minute), End: start.Add(10 * time.Minute)},
+		{Start: start.Add(20 * time.Minute), End: start.Add(40 * time.Minute)},
+		{Start: end, End: end.Add(time.Minute)},
+	}, original.HintRanges)
 }
 
 func Test_codec_series_EncodeRequest(t *testing.T) {
