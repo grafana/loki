@@ -116,6 +116,7 @@ type Config struct {
 	IngesterEnabled           bool `yaml:"ingester_writes_enabled"`
 	IngestLimitsEnabled       bool `yaml:"ingest_limits_enabled"`
 	IngestLimitsDryRunEnabled bool `yaml:"ingest_limits_dry_run_enabled"`
+	UseV2PushParser           bool `yaml:"use_v2_push_parser"`
 
 	KafkaConfig kafka.Config `yaml:"-"`
 
@@ -138,6 +139,7 @@ func (cfg *Config) RegisterFlags(fs *flag.FlagSet) {
 	fs.BoolVar(&cfg.IngesterEnabled, "distributor.ingester-writes-enabled", true, "Enable writes to Ingesters during Push requests. Defaults to true.")
 	fs.BoolVar(&cfg.IngestLimitsEnabled, "distributor.ingest-limits-enabled", false, "Enable checking limits against the ingest-limits service. Defaults to false.")
 	fs.BoolVar(&cfg.IngestLimitsDryRunEnabled, "distributor.ingest-limits-dry-run-enabled", false, "Enable dry-run mode where limits are checked the ingest-limits service, but not enforced. Defaults to false.")
+	fs.BoolVar(&cfg.UseV2PushParser, "distributor.use-v2-push-parser", false, "Enables an alternate push request parser for protobuf, snappy-or-uncompressed requests that reads the full body before unmarshaling instead of streaming through separate compressed/decompressed size checks. Temporary flag while this is verified.")
 }
 
 func (cfg *Config) Validate() error {

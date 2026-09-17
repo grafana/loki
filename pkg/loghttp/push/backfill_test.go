@@ -77,7 +77,7 @@ func TestParseRequest_BackfillShard(t *testing.T) {
 	}
 
 	t.Run("loki: header adds backfill labels to every stream", func(t *testing.T) {
-		req, err := parse(newBackfillLokiRequest(lokiBody, testBackfillShard), ParseLokiRequest, &fakeLimits{enabled: true, labels: []string{"foo"}})
+		req, err := parse(newBackfillLokiRequest(lokiBody, testBackfillShard), parseLokiRequestV1, &fakeLimits{enabled: true, labels: []string{"foo"}})
 		require.NoError(t, err)
 		require.Len(t, req.Streams, 1)
 		requireBackfillLabels(t, req.Streams[0].Labels)
@@ -88,14 +88,14 @@ func TestParseRequest_BackfillShard(t *testing.T) {
 	})
 
 	t.Run("loki: no header leaves labels untouched", func(t *testing.T) {
-		req, err := parse(newBackfillLokiRequest(lokiBody, ""), ParseLokiRequest, &fakeLimits{enabled: true, labels: []string{"foo"}})
+		req, err := parse(newBackfillLokiRequest(lokiBody, ""), parseLokiRequestV1, &fakeLimits{enabled: true, labels: []string{"foo"}})
 		require.NoError(t, err)
 		require.Len(t, req.Streams, 1)
 		requireNoBackfillLabels(t, req.Streams[0].Labels)
 	})
 
 	t.Run("malformed header rejects the whole push", func(t *testing.T) {
-		req, err := parse(newBackfillLokiRequest(lokiBody, "bad\xffvalue"), ParseLokiRequest, &fakeLimits{enabled: true})
+		req, err := parse(newBackfillLokiRequest(lokiBody, "bad\xffvalue"), parseLokiRequestV1, &fakeLimits{enabled: true})
 		require.Error(t, err)
 		require.Contains(t, err.Error(), HTTPHeaderBackfillShardKey)
 		require.Nil(t, req)
@@ -110,7 +110,7 @@ func TestParseRequest_BackfillShard(t *testing.T) {
 
 	t.Run("loki: reserved backfill label in body is rejected", func(t *testing.T) {
 		body := `{"streams":[{"stream":{"foo":"bar","` + constants.BackfillLabel + `":"true"},"values":[["1570818238000000000","fizzbuzz"]]}]}`
-		req, err := parse(newBackfillLokiRequest(body, ""), ParseLokiRequest, &fakeLimits{enabled: true, labels: []string{"foo"}})
+		req, err := parse(newBackfillLokiRequest(body, ""), parseLokiRequestV1, &fakeLimits{enabled: true, labels: []string{"foo"}})
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "reserved")
 		require.Nil(t, req)
@@ -118,7 +118,7 @@ func TestParseRequest_BackfillShard(t *testing.T) {
 
 	t.Run("loki: reserved backfill shard label in body is rejected even with the header set", func(t *testing.T) {
 		body := `{"streams":[{"stream":{"foo":"bar","` + constants.BackfillShardLabel + `":"spoofed"},"values":[["1570818238000000000","fizzbuzz"]]}]}`
-		req, err := parse(newBackfillLokiRequest(body, testBackfillShard), ParseLokiRequest, &fakeLimits{enabled: true, labels: []string{"foo"}})
+		req, err := parse(newBackfillLokiRequest(body, testBackfillShard), parseLokiRequestV1, &fakeLimits{enabled: true, labels: []string{"foo"}})
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "reserved")
 		require.Nil(t, req)

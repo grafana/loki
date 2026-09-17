@@ -56,7 +56,7 @@ func ParseOTLPRequest(userID string, r *http.Request, limits Limits, tenantConfi
 }
 
 func extractLogs(r *http.Request, maxRecvMsgSize int, maxDecompressedSize int64, pushStats *Stats) (plog.Logs, error) {
-	pushStats.ContentEncoding = r.Header.Get(contentEnc)
+	pushStats.ContentEncoding = r.Header.Get(contentEncHeaderKey)
 	// bodySize should always reflect the compressed size of the request body
 	bodySize := loki_util.NewSizeReader(r.Body)
 	var body io.Reader = bodySize
@@ -120,7 +120,7 @@ func extractLogs(r *http.Request, maxRecvMsgSize int, maxDecompressedSize int64,
 
 	req := plogotlp.NewExportRequest()
 
-	pushStats.ContentType = r.Header.Get(contentType)
+	pushStats.ContentType = r.Header.Get(contentTypeHeaderKey)
 	switch pushStats.ContentType {
 	case pbContentType:
 		err := req.UnmarshalProto(buf)

@@ -38,9 +38,9 @@ import (
 )
 
 var (
-	contentType   = http.CanonicalHeaderKey("Content-Type")
-	contentEnc    = http.CanonicalHeaderKey("Content-Encoding")
-	bytesIngested = promauto.NewCounterVec(prometheus.CounterOpts{
+	contentTypeHeaderKey = http.CanonicalHeaderKey("Content-Type")
+	contentEncHeaderKey  = http.CanonicalHeaderKey("Content-Encoding")
+	bytesIngested        = promauto.NewCounterVec(prometheus.CounterOpts{
 		Namespace: constants.Loki,
 		Name:      "distributor_bytes_received_total",
 		Help:      "The total number of uncompressed bytes received per tenant. Includes structured metadata bytes. For OTLP, resource and scope attributes are considered only once per request.",
@@ -81,9 +81,10 @@ var (
 )
 
 const (
-	applicationJSON  = "application/json"
-	LabelServiceName = "service_name"
-	ServiceUnknown   = "unknown_service"
+	applicationJSON     = "application/json"
+	applicationProtobuf = "application/x-protobuf"
+	LabelServiceName    = "service_name"
+	ServiceUnknown      = "unknown_service"
 
 	// maxStreamLabelsSize is the maximum allowed size of a single stream's labels string.
 	// Prometheus' label parser panics when encoding labels that exceed 16MB (2^24 bytes).
@@ -353,7 +354,7 @@ func parsePushRequestBody(r *http.Request, maxRecvMsgSize int, maxDecompressedSi
 		body = io.LimitReader(body, int64(maxRecvMsgSize)+1)
 	}
 
-	contentEncoding := r.Header.Get(contentEnc)
+	contentEncoding := r.Header.Get(contentEncHeaderKey)
 	switch contentEncoding {
 	case "":
 	case "snappy":
@@ -387,7 +388,7 @@ func parsePushRequestBody(r *http.Request, maxRecvMsgSize int, maxDecompressedSi
 		return nil, fmt.Errorf("Content-Encoding %q not supported", contentEncoding)
 	}
 
-	contentType := r.Header.Get(contentType)
+	contentType := r.Header.Get(contentTypeHeaderKey)
 	var req logproto.PushRequest
 
 	contentType, _ /* params */, err := mime.ParseMediaType(contentType)
@@ -454,10 +455,45 @@ func checkSizeLimits(bodySizeReader, decompressedSizeReader util.SizeReader, max
 	return nil
 }
 
-func ParseLokiRequest(userID string, r *http.Request, limits Limits, tenantConfigs *runtime.TenantConfigs, maxRecvMsgSize int, maxDecompressedSize int64, tracker UsageTracker, streamResolver StreamResolver, logger log.Logger) (*logproto.PushRequest, *Stats, error) {
+// parsePushRequestBodyV2 returns a logproto.PushRequest from http.Request body. Unlike
+// parsePushRequestBody, it only supports protobuf bodies (optionally snappy-compressed)
+// and reads the whole body into memory before unmarshaling, instead of streaming through
+// separate compressed/decompressed size-limited readers. There is no JSON support.
+func parsePushRequestBodyV2(r *http.Request, maxPushSize int64, pushStats *Stats) (*logproto.PushRequest, error) {
+	body, err := readBody(r, maxPushSize)
+	if err != nil {
+		return nil, err
+	}
+
+	var req logproto.PushRequest
+	if err := util.ParseProto(body, &req); err != nil {
+		return nil, err
+	}
+
+	pushStats.BodySize = int64(len(body))
+	pushStats.ContentType = r.Header.Get(contentTypeHeaderKey)
+	pushStats.ContentEncoding = r.Header.Get(contentEncHeaderKey)
+
+	return &req, nil
+}
+
+func ParseLokiRequest(userID string, r *http.Request, limits Limits, tenantConfigs *runtime.TenantConfigs, maxRecvMsgSize int, maxDecompressedSize int64, tracker UsageTracker, streamResolver StreamResolver, logger log.Logger, useV2PushParser bool) (*logproto.PushRequest, *Stats, error) {
 	pushStats := NewPushStats()
 
-	req, err := parsePushRequestBody(r, maxRecvMsgSize, maxDecompressedSize, pushStats)
+	contentType := r.Header.Get(contentTypeHeaderKey)
+	contentEncoding := r.Header.Get(contentEncHeaderKey)
+	isProtobuf := contentType == applicationProtobuf
+	isSupportedEncoding := contentEncoding == "" || contentEncoding == "snappy"
+
+	var (
+		req *logproto.PushRequest
+		err error
+	)
+	if useV2PushParser && isProtobuf && isSupportedEncoding {
+		req, err = parsePushRequestBodyV2(r, int64(maxRecvMsgSize), pushStats)
+	} else {
+		req, err = parsePushRequestBody(r, maxRecvMsgSize, maxDecompressedSize, pushStats)
+	}
 	if err != nil {
 		return nil, nil, err
 	}
@@ -663,7 +699,7 @@ func OTLPError(w http.ResponseWriter, errorStr string, code int, logger log.Logg
 		return
 	}
 
-	w.Header().Set(contentType, "application/octet-stream")
+	w.Header().Set(contentTypeHeaderKey, "application/octet-stream")
 	if _, err = w.Write(respBytes); err != nil {
 		level.Error(logger).Log("msg", "failed to write error response", "error", err)
 		writeResponseFailedBody, _ := proto.Marshal(grpcstatus.New(

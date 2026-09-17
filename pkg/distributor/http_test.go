@@ -121,7 +121,7 @@ func TestPushHandlerMaxPushSize(t *testing.T) {
 			path:        "/loki/api/v1/push",
 			contentType: "application/x-protobuf",
 			format:      constants.Loki,
-			parser:      push.ParseLokiRequest,
+			parser:      distributors[0].parseLokiRequest,
 			errorWriter: push.HTTPError,
 			buildBody: func(_ *testing.T) []byte {
 				body, err := proto.Marshal(newPushRequest())
@@ -134,7 +134,7 @@ func TestPushHandlerMaxPushSize(t *testing.T) {
 			path:        "/loki/api/v1/push",
 			contentType: "application/json",
 			format:      constants.Loki,
-			parser:      push.ParseLokiRequest,
+			parser:      distributors[0].parseLokiRequest,
 			errorWriter: push.HTTPError,
 			buildBody: func(_ *testing.T) []byte {
 				return []byte(`{"streams":[{"stream":{"foo":"bar"},"values":[["1234567890000000000","` + line + `"]]}]}`)
@@ -164,7 +164,7 @@ func TestPushHandlerMaxPushSize(t *testing.T) {
 			path:        "/loki/api/v1/push",
 			contentType: "application/x-protobuf",
 			format:      constants.Loki,
-			parser:      push.ParseLokiRequest,
+			parser:      distributors[0].parseLokiRequest,
 			errorWriter: push.HTTPError,
 			buildBody: func(t *testing.T) []byte {
 				protoBytes, err := proto.Marshal(newPushRequest())
@@ -178,7 +178,7 @@ func TestPushHandlerMaxPushSize(t *testing.T) {
 			contentType:     "application/json",
 			contentEncoding: "gzip",
 			format:          constants.Loki,
-			parser:          push.ParseLokiRequest,
+			parser:          distributors[0].parseLokiRequest,
 			errorWriter:     push.HTTPError,
 			buildBody: func(t *testing.T) []byte {
 				lokiJSON := []byte(`{"streams":[{"stream":{"foo":"bar"},"values":[["1234567890000000000","` + line + `"]]}]}`)
@@ -321,7 +321,7 @@ func TestPushHandlerLogPushRequestStreams(t *testing.T) {
 			}
 
 			rec := httptest.NewRecorder()
-			d.pushHandler(rec, req, push.ParseLokiRequest, push.HTTPError, constants.Loki)
+			d.pushHandler(rec, req, d.parseLokiRequest, push.HTTPError, constants.Loki)
 			require.Equal(t, http.StatusNoContent, rec.Code)
 
 			// Filter just "push request streams" lines from the output.

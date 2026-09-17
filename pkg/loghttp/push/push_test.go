@@ -32,6 +32,12 @@ import (
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
 )
 
+// parseLokiRequestV1 adapts ParseLokiRequest to the RequestParser type with
+// useV2PushParser fixed to false, for tests exercising the legacy parsing path.
+func parseLokiRequestV1(userID string, r *http.Request, limits Limits, tenantConfigs *runtime.TenantConfigs, maxRecvMsgSize int, maxDecompressedSize int64, tracker UsageTracker, streamResolver StreamResolver, logger kitlog.Logger) (*logproto.PushRequest, *Stats, error) {
+	return ParseLokiRequest(userID, r, limits, tenantConfigs, maxRecvMsgSize, maxDecompressedSize, tracker, streamResolver, logger, false)
+}
+
 // GZip source string and return compressed string
 func gzipString(source string) string {
 	var buf bytes.Buffer
@@ -389,7 +395,7 @@ func TestParseRequest(t *testing.T) {
 				request,
 				test.fakeLimits,
 				nil,
-				ParseLokiRequest,
+				parseLokiRequestV1,
 				tracker,
 				streamResolver,
 				"",
@@ -543,7 +549,7 @@ func Test_ServiceDetection(t *testing.T) {
 
 		limits := &fakeLimits{enabled: true, labels: []string{"foo"}}
 		streamResolver := newMockStreamResolver("fake", limits)
-		data, _, err := ParseRequest(util_log.Logger, "fake", 100<<20, 100<<20, request, limits, nil, ParseLokiRequest, tracker, streamResolver, "", "loki")
+		data, _, err := ParseRequest(util_log.Logger, "fake", 100<<20, 100<<20, request, limits, nil, parseLokiRequestV1, tracker, streamResolver, "", "loki")
 
 		require.NoError(t, err)
 		require.Equal(t, labels.FromStrings("foo", "bar", LabelServiceName, "bar").String(), data.Streams[0].Labels)
@@ -838,7 +844,7 @@ func TestParseRequestWithZeroMaxDecompressedSize(t *testing.T) {
 				request,
 				&fakeLimits{},
 				nil,
-				ParseLokiRequest,
+				parseLokiRequestV1,
 				NewMockTracker(),
 				streamResolver,
 				"",
@@ -1025,7 +1031,7 @@ func TestRequestParser_StreamLabelsExceed16MB(t *testing.T) {
 
 			request := httptest.NewRequest("POST", "/loki/api/v1/push", strings.NewReader(jsonBody))
 			request.Header.Add("Content-Type", "application/json")
-			runParserTest(t, ParseLokiRequest, request, nil, ErrRequestBodyTooLarge)
+			runParserTest(t, parseLokiRequestV1, request, nil, ErrRequestBodyTooLarge)
 		})
 
 		t.Run("protobuf_single_label_over_16MB", func(t *testing.T) {
@@ -1042,7 +1048,7 @@ func TestRequestParser_StreamLabelsExceed16MB(t *testing.T) {
 			}
 			request := httptest.NewRequest("POST", "/loki/api/v1/push", strings.NewReader(snappyString(marshalProto(req))))
 			request.Header.Add("Content-Type", "application/x-protobuf")
-			runParserTest(t, ParseLokiRequest, request, nil, ErrRequestBodyTooLarge)
+			runParserTest(t, parseLokiRequestV1, request, nil, ErrRequestBodyTooLarge)
 		})
 
 		t.Run("multiple_streams_each_under_16MB_is_ok", func(t *testing.T) {
@@ -1067,7 +1073,7 @@ func TestRequestParser_StreamLabelsExceed16MB(t *testing.T) {
 			}
 			request := httptest.NewRequest("POST", "/loki/api/v1/push", strings.NewReader(snappyString(marshalProto(req))))
 			request.Header.Add("Content-Type", "application/x-protobuf")
-			runParserTest(t, ParseLokiRequest, request, nil, nil)
+			runParserTest(t, parseLokiRequestV1, request, nil, nil)
 		})
 	})
 

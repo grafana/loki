@@ -17,7 +17,9 @@ import (
 
 	"github.com/grafana/loki/pkg/push"
 	loghttppush "github.com/grafana/loki/v3/pkg/loghttp/push"
+	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
+	"github.com/grafana/loki/v3/pkg/runtime"
 	"github.com/grafana/loki/v3/pkg/util"
 	"github.com/grafana/loki/v3/pkg/util/constants"
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
@@ -26,7 +28,13 @@ import (
 
 // PushHandler reads a snappy-compressed proto from the HTTP body.
 func (d *Distributor) PushHandler(w http.ResponseWriter, r *http.Request) {
-	d.pushHandler(w, r, loghttppush.ParseLokiRequest, loghttppush.HTTPError, constants.Loki)
+	d.pushHandler(w, r, d.parseLokiRequest, loghttppush.HTTPError, constants.Loki)
+}
+
+// parseLokiRequest adapts loghttppush.ParseLokiRequest to the loghttppush.RequestParser
+// type, threading through the distributor-level UseV2PushParser feature flag.
+func (d *Distributor) parseLokiRequest(userID string, r *http.Request, limits loghttppush.Limits, tenantConfigs *runtime.TenantConfigs, maxRecvMsgSize int, maxDecompressedSize int64, tracker loghttppush.UsageTracker, streamResolver loghttppush.StreamResolver, logger log.Logger) (*logproto.PushRequest, *loghttppush.Stats, error) {
+	return loghttppush.ParseLokiRequest(userID, r, limits, tenantConfigs, maxRecvMsgSize, maxDecompressedSize, tracker, streamResolver, logger, d.cfg.UseV2PushParser)
 }
 
 func (d *Distributor) OTLPPushHandler(w http.ResponseWriter, r *http.Request) {
@@ -71,7 +79,7 @@ func (d *Distributor) pushHandler(w http.ResponseWriter, r *http.Request, pushRe
 		pushRequestParser, d.usageTracker, streamResolver, presumedAgentIP, format)
 	if err != nil {
 		switch {
-		case errors.Is(err, loghttppush.ErrRequestBodyTooLarge):
+		case errors.Is(err, loghttppush.ErrRequestBodyTooLarge) || errors.Is(err, loghttppush.ErrContentTooLarge):
 			if d.tenantConfigs.LogPushRequest(tenantID) {
 				level.Debug(logger).Log(
 					"msg", "push request failed",
