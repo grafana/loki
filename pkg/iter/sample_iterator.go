@@ -186,10 +186,10 @@ func closeSampleIterator(it SampleIterator, iterErr *error, closeErrs *util.Mult
 
 // mergeSampleIterator iterates over a heap of iterators by merging samples.
 type mergeSampleIterator struct {
-	heap       *SampleIteratorHeap
-	is         []SampleIterator
-	prefetched bool
-	stats      *stats.Context
+	heap        *SampleIteratorHeap
+	is          []SampleIterator
+	initialized bool
+	stats       *stats.Context
 	// pushBuffer contains the list of iterators that needs to be pushed to the heap
 	// This is to avoid allocations.
 	pushBuffer []SampleIterator
@@ -274,22 +274,21 @@ func (i *sampleIteratorWithStreamHash) StreamHash() uint64 {
 	return i.hash
 }
 
-// prefetch iterates over all inner iterators to merge together, calls Next() on
-// each of them to prefetch the first entry and pushes of them - who are not
-// empty - to the heap. It returns false if any of them failed.
-func (i *mergeSampleIterator) prefetch() bool {
-	if i.prefetched {
+// init calls Next() on each inner iterator to pull its first sample, and pushes the
+// non-empty ones onto the heap. It must run before the merge can return any sample.
+// It returns false if any inner iterator failed.
+func (i *mergeSampleIterator) init() bool {
+	if i.initialized {
 		return i.iterErr == nil
 	}
 
-	i.prefetched = true
+	i.initialized = true
 	for _, it := range i.is {
-		if it.Next() {
-			heap.Push(i.heap, it)
+		if !it.Next() {
+			closeSampleIterator(it, &i.iterErr, &i.closeErrs)
 			continue
 		}
-
-		closeSampleIterator(it, &i.iterErr, &i.closeErrs)
+		heap.Push(i.heap, it)
 	}
 
 	// We can now clear the list of input iterators to merge, given they have all
@@ -308,7 +307,7 @@ func (i *mergeSampleIterator) sameDedupGroup(it SampleIterator, ts int64) bool {
 }
 
 func (i *mergeSampleIterator) Next() bool {
-	if !i.prefetch() {
+	if !i.init() {
 		return false
 	}
 
@@ -461,9 +460,9 @@ func (i *mergeSampleIterator) Close() error {
 
 // sortSampleIterator iterates over a heap of iterators by sorting samples.
 type sortSampleIterator struct {
-	heap       *SampleIteratorHeap
-	is         []SampleIterator
-	prefetched bool
+	heap        *SampleIteratorHeap
+	is          []SampleIterator
+	initialized bool
 
 	curr sampleWithLabels
 
@@ -517,21 +516,21 @@ func newSortSampleIterator(is []SampleIterator, order logproto.SampleOrder) Samp
 	}
 }
 
-// prefetch calls Next() on each inner iterator to prefetch its first entry, and
-// pushes the non-empty ones onto the heap. It returns false if any of them failed.
-func (i *sortSampleIterator) prefetch() bool {
-	if i.prefetched {
+// init calls Next() on each inner iterator to pull its first sample, and pushes the
+// non-empty ones onto the heap. It must run before the sort can return any sample.
+// It returns false if any inner iterator failed.
+func (i *sortSampleIterator) init() bool {
+	if i.initialized {
 		return i.iterErr == nil
 	}
 
-	i.prefetched = true
+	i.initialized = true
 	for _, it := range i.is {
-		if it.Next() {
-			i.heap.Push(it)
+		if !it.Next() {
+			closeSampleIterator(it, &i.iterErr, &i.closeErrs)
 			continue
 		}
-
-		closeSampleIterator(it, &i.iterErr, &i.closeErrs)
+		i.heap.Push(it)
 	}
 	heap.Init(i.heap)
 
@@ -543,7 +542,7 @@ func (i *sortSampleIterator) prefetch() bool {
 }
 
 func (i *sortSampleIterator) Next() bool {
-	if !i.prefetch() {
+	if !i.init() {
 		return false
 	}
 

@@ -351,7 +351,7 @@ func TestMergeSampleIterator_ShouldCloseEverySource(t *testing.T) {
 				}
 				require.NoError(t, it.Close())
 
-				require.Equal(t, 1, empty.closed, "an empty source is closed once during prefetch")
+				require.Equal(t, 1, empty.closed, "an empty source is closed once during init")
 				require.Equal(t, 1, a.closed)
 			})
 
@@ -391,7 +391,7 @@ func TestMergeSampleIterator_ShouldCloseEverySource(t *testing.T) {
 				b := &erroringSampleIterator{samples: []logproto.Sample{sample(2), sample(4)}, labels: `{s="b"}`, closeErr: errors.New("close b")}
 
 				it := mc.new(ctx, []SampleIterator{a, b})
-				require.True(t, it.Next()) // prefetch both onto the heap
+				require.True(t, it.Next()) // init pushes both onto the heap
 				it.Close()
 
 				require.Equal(t, 1, a.closed, "a is closed once")
@@ -406,8 +406,8 @@ func TestMergeSampleIterator_ShouldCloseEverySource(t *testing.T) {
 				it := mc.new(ctx, []SampleIterator{a, b})
 				require.NoError(t, it.Close())
 
-				require.Equal(t, 1, a.closed, "an un-prefetched source is closed by Close")
-				require.Equal(t, 1, b.closed, "an un-prefetched source is closed by Close")
+				require.Equal(t, 1, a.closed, "an un-initialized source is closed by Close")
+				require.Equal(t, 1, b.closed, "an un-initialized source is closed by Close")
 			})
 		})
 	}
@@ -522,8 +522,8 @@ func TestMergeSampleIterator_ShouldSurfaceDrainError(t *testing.T) {
 				require.Equal(t, 1, b.closed)
 			})
 
-			t.Run("Next returns false once prefetch finds an error, without draining other sources it also prefetched", func(t *testing.T) {
-				// errored fails on its very first Next, during prefetch. prefetch still
+			t.Run("Next returns false once init finds an error, without draining other sources it also initialized", func(t *testing.T) {
+				// errored fails on its very first Next, during init. init still
 				// probes other1 and other2 too (it does not stop early), but Next must not
 				// drain or return anything from them once it sees the error afterward.
 				errored := &erroringSampleIterator{labels: `{s="a"}`, err: wantErr} // no samples: fails immediately
@@ -535,8 +535,8 @@ func TestMergeSampleIterator_ShouldSurfaceDrainError(t *testing.T) {
 				require.False(t, it.Next())
 				require.ErrorIs(t, it.Err(), wantErr)
 				require.Equal(t, 1, errored.closed)
-				require.Equal(t, 1, other1.i, "prefetch still probes other1")
-				require.Equal(t, 1, other2.i, "prefetch still probes other2")
+				require.Equal(t, 1, other1.i, "init still probes other1")
+				require.Equal(t, 1, other2.i, "init still probes other2")
 				require.Zero(t, other1.closed, "other1 must be left on the heap for Close, not drained")
 				require.Zero(t, other2.closed, "other2 must be left on the heap for Close, not drained")
 
@@ -829,11 +829,11 @@ func TestSortSampleIterator_ShouldCloseEverySource(t *testing.T) {
 		}
 		require.NoError(t, it.Close())
 
-		require.Equal(t, 1, empty.closed, "an empty source is closed once during prefetch")
+		require.Equal(t, 1, empty.closed, "an empty source is closed once during init")
 		require.Equal(t, 1, a.closed)
 	})
 
-	t.Run("close error on a source emptied during prefetch surfaces only through Close, not Err", func(t *testing.T) {
+	t.Run("close error on a source emptied during init surfaces only through Close, not Err", func(t *testing.T) {
 		closeBoom := errors.New("close empty")
 		empty := &erroringSampleIterator{labels: `{s="empty"}`, closeErr: closeBoom}
 		a := &erroringSampleIterator{samples: []logproto.Sample{sample(1)}, labels: `{s="a"}`}
@@ -896,13 +896,13 @@ func TestSortSampleIterator_ShouldCloseEverySource(t *testing.T) {
 		it := NewTimestampFirstSortSampleIterator([]SampleIterator{a, b})
 		require.NoError(t, it.Close())
 
-		require.Equal(t, 1, a.closed, "an un-prefetched source is closed by Close")
-		require.Equal(t, 1, b.closed, "an un-prefetched source is closed by Close")
+		require.Equal(t, 1, a.closed, "an un-initialized source is closed by Close")
+		require.Equal(t, 1, b.closed, "an un-initialized source is closed by Close")
 	})
 }
 
 // TestSortSampleIterator_ShouldSurfaceDrainError checks a source's read error
-// reaches Err whether it fails at EOF during Next or fails immediately during prefetch.
+// reaches Err whether it fails at EOF during Next or fails immediately during init.
 func TestSortSampleIterator_ShouldSurfaceDrainError(t *testing.T) {
 	wantErr := errors.New("boom")
 
@@ -949,8 +949,8 @@ func TestSortSampleIterator_ShouldSurfaceDrainError(t *testing.T) {
 		require.ErrorIs(t, it.Close(), closeErr, "a close error distinct from the read error must still surface")
 	})
 
-	t.Run("stops immediately once prefetch finds an error, without draining a healthy source it also prefetched", func(t *testing.T) {
-		// errored fails on its very first Next, during prefetch. prefetch still pushes
+	t.Run("stops immediately once init finds an error, without draining a healthy source it also initialized", func(t *testing.T) {
+		// errored fails on its very first Next, during init. init still pushes
 		// healthy onto the heap (it does not stop early), but Next must not drain or
 		// return anything from it once it sees the error afterward.
 		errored := &erroringSampleIterator{labels: `{s="a"}`, err: wantErr} // no samples: fails immediately
@@ -958,7 +958,7 @@ func TestSortSampleIterator_ShouldSurfaceDrainError(t *testing.T) {
 
 		it := NewTimestampFirstSortSampleIterator([]SampleIterator{errored, healthy})
 
-		require.False(t, it.Next(), "must stop before draining healthy, which prefetch already pushed onto the heap")
+		require.False(t, it.Next(), "must stop before draining healthy, which init already pushed onto the heap")
 		require.ErrorIs(t, it.Err(), wantErr)
 		require.Equal(t, 1, errored.closed)
 		require.Zero(t, healthy.closed, "healthy must be left on the heap for Close, not drained")
