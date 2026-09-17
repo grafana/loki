@@ -21,6 +21,7 @@ import (
 
 	ring_client "github.com/grafana/dskit/ring/client"
 
+	"github.com/grafana/loki/v3/pkg/kafka"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/pattern/aggregation"
 	"github.com/grafana/loki/v3/pkg/pattern/clientpool"
@@ -43,6 +44,7 @@ type Config struct {
 	MetricAggregation     aggregation.Config    `yaml:"metric_aggregation,omitempty" doc:"description=Configures the metric aggregation and storage behavior of the pattern ingester."`
 	PatternPersistence    PersistenceConfig     `yaml:"pattern_persistence,omitempty" doc:"description=Configures how detected patterns are pushed back to Loki for persistence."`
 	TeeConfig             TeeConfig             `yaml:"tee_config,omitempty" doc:"description=Configures the pattern tee which forwards requests to the pattern ingester."`
+	KafkaConfig           KafkaConfig           `yaml:"kafka,omitempty" doc:"description=Configures whether pattern ingesters consume from a Kafka topic."`
 	ConnectionTimeout     time.Duration         `yaml:"connection_timeout"`
 	MaxAllowedLineLength  int                   `yaml:"max_allowed_line_length,omitempty" doc:"description=The maximum length of log lines that can be used for pattern detection."`
 	RetainFor             time.Duration         `yaml:"retain_for,omitempty" doc:"description=How long to retain patterns in the pattern ingester after they are pushed."`
@@ -61,6 +63,7 @@ func (cfg *Config) RegisterFlags(fs *flag.FlagSet) {
 	cfg.MetricAggregation.RegisterFlagsWithPrefix(fs, "pattern-ingester.metric-aggregation.")
 	cfg.PatternPersistence.RegisterFlagsWithPrefix(fs, "pattern-ingester.pattern-persistence.")
 	cfg.TeeConfig.RegisterFlags(fs, "pattern-ingester.")
+	cfg.KafkaConfig.RegisterFlags(fs, "pattern-ingester.kafka.")
 
 	fs.BoolVar(
 		&cfg.Enabled,
@@ -171,6 +174,20 @@ func (cfg *TeeConfig) RegisterFlags(f *flag.FlagSet, prefix string) {
 	)
 }
 
+type KafkaConfig struct {
+	Enabled     bool         `yaml:"enabled,omitempty" doc:"description=If enabled, pattern ingesters consume from a Kafka topic."`
+	KafkaConfig kafka.Config `yaml:"-"`
+}
+
+func (cfg *KafkaConfig) RegisterFlags(fs *flag.FlagSet, prefix string) {
+	fs.BoolVar(
+		&cfg.Enabled,
+		prefix+"enabled",
+		false,
+		"If enabled, pattern ingesters consume from a Kafka topic.",
+	)
+}
+
 func (cfg *Config) Validate() error {
 	if cfg.LifecyclerConfig.RingConfig.ReplicationFactor != 1 {
 		return errors.New("pattern ingester replication factor must be 1")
@@ -207,7 +224,7 @@ type Ingester struct {
 	lifecycler *ring.Lifecycler
 	ringClient RingClient
 
-	lifecyclerWatcher *services.FailureWatcher
+	failureWatcher *services.FailureWatcher
 
 	cfg        Config
 	limits     Limits
@@ -226,6 +243,8 @@ type Ingester struct {
 
 	metrics  *ingesterMetrics
 	drainCfg *drain.Config
+
+	kafkaConsumer *kafkaConsumerService
 }
 
 func New(
@@ -264,8 +283,18 @@ func New(
 		return nil, err
 	}
 
-	i.lifecyclerWatcher = services.NewFailureWatcher()
-	i.lifecyclerWatcher.WatchService(i.lifecycler)
+	i.failureWatcher = services.NewFailureWatcher()
+	i.failureWatcher.WatchService(i.lifecycler)
+
+	if cfg.KafkaConfig.Enabled {
+		i.kafkaConsumer, err = newKafkaConsumerService(
+			cfg.KafkaConfig, i, i.logger, registerer,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("creating pattern ingester kafka consumer: %w", err)
+		}
+		i.failureWatcher.WatchService(i.kafkaConsumer)
+	}
 
 	return i, nil
 }
@@ -298,6 +327,12 @@ func (i *Ingester) starting(ctx context.Context) error {
 	// start our loop
 	i.loopDone.Add(1)
 	go i.loop()
+
+	if i.kafkaConsumer != nil {
+		if err := services.StartAndAwaitRunning(ctx, i.kafkaConsumer); err != nil {
+			return err
+		}
+	}
 	return nil
 }
 
@@ -307,8 +342,8 @@ func (i *Ingester) running(ctx context.Context) error {
 	// wait until service is asked to stop
 	case <-ctx.Done():
 	// stop
-	case err := <-i.lifecyclerWatcher.Chan():
-		serviceError = fmt.Errorf("lifecycler failed: %w", err)
+	case err := <-i.failureWatcher.Chan():
+		serviceError = fmt.Errorf("watched service failed: %w", err)
 	}
 
 	close(i.loopQuit)
@@ -317,6 +352,12 @@ func (i *Ingester) running(ctx context.Context) error {
 }
 
 func (i *Ingester) stopping(_ error) error {
+	if i.kafkaConsumer != nil {
+		if err := services.StopAndAwaitTerminated(context.Background(), i.kafkaConsumer); err != nil {
+			level.Error(i.logger).Log("msg", "failed to stop pattern ingester kafka consumer", "err", err)
+		}
+	}
+
 	err := services.StopAndAwaitTerminated(context.Background(), i.lifecycler)
 	for _, flushQueue := range i.flushQueues {
 		flushQueue.Close()

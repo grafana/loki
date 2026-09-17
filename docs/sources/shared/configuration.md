@@ -1086,6 +1086,12 @@ pattern_ingester:
     # CLI flag: -pattern-ingester.tee.stop-flush-timeout
     [stop_flush_timeout: <duration> | default = 30s]
 
+  # Configures whether pattern ingesters consume from a Kafka topic.
+  kafka:
+    # If enabled, pattern ingesters consume from a Kafka topic.
+    # CLI flag: -pattern-ingester.kafka.enabled
+    [enabled: <boolean> | default = false]
+
   # Timeout for connections between the Loki and the pattern ingester.
   # CLI flag: -pattern-ingester.connection-timeout
   [connection_timeout: <duration> | default = 2s]
