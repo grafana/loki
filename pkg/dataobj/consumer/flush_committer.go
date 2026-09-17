@@ -3,6 +3,7 @@ package consumer
 import (
 	"context"
 	"fmt"
+	"io"
 	"time"
 
 	"github.com/go-kit/log"
@@ -10,6 +11,8 @@ import (
 	"github.com/grafana/dskit/backoff"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
+
+	"github.com/grafana/loki/v3/pkg/dataobj"
 )
 
 // A committer allows mocking of certain [kgo.Client] methods in tests.
@@ -24,7 +27,11 @@ type metastoreEventEmitter interface {
 
 // A flusher allows mocking of flushes in tests.
 type flusher interface {
-	Flush(ctx context.Context, builder builder, reason string) (string, error)
+	// Flush builds, sorts and uploads the builder's data object. On success the
+	// caller owns the returned [io.Closer] and must close it once it is done
+	// reading the object; reads of the object fail after that. On error there is
+	// nothing to close.
+	Flush(ctx context.Context, builder builder, reason string) (*dataobj.Object, io.Closer, string, error)
 }
 
 // A flushCommitterImpl manages the flushing of data objects and commits.
@@ -68,18 +75,8 @@ func newFlushCommitter(
 // Flush multiple data object builders and, if successful, commit the offset.
 func (c *flushCommitterImpl) Flush(ctx context.Context, builders []builder, reason string, offset int64) error {
 	for _, b := range builders {
-		// Read before flushing: flushing resets the builder, which clears the earliest record time.
-		earliestRecordTime := b.GetEarliestRecordTime()
-		objectPath, err := c.flusher.Flush(ctx, b, reason)
-		if err != nil {
-			return fmt.Errorf("failed to flush data object: %w", err)
-		}
-
-		// TODO(ivkalita): send events in batch
-		// emitEvent returns an error only if context is cancelled, otherwise
-		// it retries indefinitely.
-		if err := c.emitEvent(ctx, objectPath, earliestRecordTime); err != nil {
-			return fmt.Errorf("failed to emit metastore event: %w", err)
+		if err := c.flushOne(ctx, b, reason); err != nil {
+			return err
 		}
 	}
 
@@ -88,6 +85,32 @@ func (c *flushCommitterImpl) Flush(ctx context.Context, builders []builder, reas
 		c.commitFailures.Inc()
 		return fmt.Errorf("failed to commit data object offset %d: %w", offset, err)
 	}
+	return nil
+}
+
+func (c *flushCommitterImpl) flushOne(ctx context.Context, builder builder, reason string) error {
+	// Read before flushing: flushing resets the builder, which clears the earliest record time.
+	earliestRecordTime := builder.GetEarliestRecordTime()
+
+	_, objCloser, objPath, err := c.flusher.Flush(ctx, builder, reason)
+	if err != nil {
+		return fmt.Errorf("failed to flush data object: %w", err)
+	}
+	// The object is uploaded by this point, so failing to release its scratch
+	// storage must not fail the flush.
+	defer func() {
+		if err := objCloser.Close(); err != nil {
+			level.Warn(c.logger).Log("msg", "failed to release flushed data object", "err", err)
+		}
+	}()
+
+	// TODO(ivkalita): send events in batch
+	// emitEvent returns an error only if context is cancelled, otherwise
+	// it retries indefinitely.
+	if err := c.emitEvent(ctx, objPath, earliestRecordTime); err != nil {
+		return fmt.Errorf("failed to emit metastore event: %w", err)
+	}
+
 	return nil
 }
 
