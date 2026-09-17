@@ -50,6 +50,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/ingester"
 	ingester_client "github.com/grafana/loki/v3/pkg/ingester/client"
 	"github.com/grafana/loki/v3/pkg/kafka"
+	"github.com/grafana/loki/v3/pkg/kafka/partitionring"
 	"github.com/grafana/loki/v3/pkg/limits"
 	limits_frontend "github.com/grafana/loki/v3/pkg/limits/frontend"
 	limits_frontend_client "github.com/grafana/loki/v3/pkg/limits/frontend/client"
@@ -138,6 +139,10 @@ type Config struct {
 	TenantLimitsAllowPublish []string `yaml:"tenant_limits_allow_publish" json:"tenant_limits_allowlist_fields"`
 
 	Common common.Config `yaml:"common,omitempty"`
+
+	// PartitionRingOwnerCleanup configures the one-off partition ring owner
+	// cleanup task; see the PartitionRingOwnerCleanup module.
+	PartitionRingOwnerCleanup partitionring.OwnerCleanupConfig `yaml:"partition_ring_owner_cleanup,omitempty" doc:"hidden"`
 
 	ShutdownDelay time.Duration `yaml:"shutdown_delay"`
 
@@ -239,6 +244,7 @@ func (c *Config) RegisterFlags(f *flag.FlagSet) {
 	c.IngestLimitsFrontendClient.RegisterFlags(f)
 	c.UI.RegisterFlags(f)
 	c.DataObj.RegisterFlags(f)
+	c.PartitionRingOwnerCleanup.RegisterFlags(f)
 }
 
 func (c *Config) registerServerFlagsWithChangedDefaultValues(fs *flag.FlagSet) {
@@ -286,6 +292,10 @@ func (c *Config) Clone() flagext.Registerer {
 // doesn't pass
 func (c *Config) Validate() error {
 	var errs []error
+
+	if err := c.PartitionRingOwnerCleanup.Validate(); err != nil {
+		errs = append(errs, errors.Wrap(err, "CONFIG ERROR: invalid partition_ring_owner_cleanup config"))
+	}
 
 	if err := c.SchemaConfig.Validate(); err != nil {
 		errs = append(errs, errors.Wrap(err, "CONFIG ERROR: invalid schema config"))
@@ -811,6 +821,7 @@ func (t *Loki) setupModuleManager() error {
 	mm.RegisterModule(DataObjConsumer, t.initDataObjConsumer, modules.UserInvisibleTargetableModule)
 	mm.RegisterModule(DataObjConsumerRing, t.initDataObjConsumerRing, modules.UserInvisibleModule)
 	mm.RegisterModule(DataObjConsumerPartitionRing, t.initDataObjConsumerPartitionRing, modules.UserInvisibleModule)
+	mm.RegisterModule(PartitionRingOwnerCleanup, t.initPartitionRingOwnerCleanup)
 	mm.RegisterModule(DataObjIndexBuilder, t.initDataObjIndexBuilder, modules.UserInvisibleTargetableModule)
 	mm.RegisterModule(DataObjCompactionPlanner, t.initDataObjCompactionPlanner, modules.UserInvisibleTargetableModule)
 	mm.RegisterModule(DataObjCompactionWorker, t.initDataObjCompactionWorker, modules.UserInvisibleTargetableModule)
@@ -864,6 +875,7 @@ func (t *Loki) setupModuleManager() error {
 		DataObjExplorer:              {Server, UIRing},
 		DataObjConsumerRing:          {RuntimeConfig, Server, MemberlistKV},
 		DataObjConsumerPartitionRing: {MemberlistKV, Server, Ring},
+		PartitionRingOwnerCleanup:    {MemberlistKV, Server},
 		DataObjConsumer:              {MemberlistKV, ScratchStore, PartitionRing, Server, UIRing, Overrides},
 		DataObjIndexBuilder:          {ScratchStore, Server, UIRing},
 		DataObjCompactionPlanner:     {Server, UIRing, Overrides},

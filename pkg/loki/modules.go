@@ -53,6 +53,7 @@ import (
 	enginecompactor "github.com/grafana/loki/v3/pkg/engine/compactor"
 	"github.com/grafana/loki/v3/pkg/indexgateway"
 	"github.com/grafana/loki/v3/pkg/ingester"
+	"github.com/grafana/loki/v3/pkg/kafka/partitionring"
 	"github.com/grafana/loki/v3/pkg/limits"
 	limits_frontend "github.com/grafana/loki/v3/pkg/limits/frontend"
 	limitsproto "github.com/grafana/loki/v3/pkg/limits/proto"
@@ -145,6 +146,7 @@ const (
 	Analytics                    = "analytics"
 	CacheGenerationLoader        = "cache-generation-loader"
 	PartitionRing                = "partition-ring"
+	PartitionRingOwnerCleanup    = "partition-ring-owner-cleanup"
 	DataObjExplorer              = "dataobj-explorer"
 	DataObjConsumer              = "dataobj-consumer"
 	DataObjConsumerRing          = "dataobj-consumer-ring"
@@ -2287,6 +2289,44 @@ func (t *Loki) initDataObjConsumerPartitionRing() (services.Service, error) {
 			))
 
 	return t.DataObjConsumerPartitionRingWatcher, nil
+}
+
+// initPartitionRingOwnerCleanup builds the one-off task that removes stale
+// owners from the dataobj consumer partition ring. It is never part of a
+// running Loki: it is selected with -target=partition-ring-owner-cleanup, does
+// its work, and then asks the process to exit.
+func (t *Loki) initPartitionRingOwnerCleanup() (services.Service, error) {
+	partitionStore, err := kv.NewClient(
+		t.Cfg.DataObj.Consumer.PartitionRingConfig.KVStore,
+		ring.GetPartitionRingCodec(),
+		kv.RegistererWithKVName(prometheus.DefaultRegisterer, consumer.PartitionRingName+"-owner-cleanup"),
+		util_log.Logger,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create KV store for the partition ring: %w", err)
+	}
+
+	// Read-only: used to tell an owner whose instance is gone from one whose
+	// instance is still heartbeating.
+	instanceStore, err := kv.NewClient(
+		t.Cfg.DataObj.Consumer.LifecyclerConfig.RingConfig.KVStore,
+		ring.GetCodec(),
+		kv.RegistererWithKVName(prometheus.DefaultRegisterer, consumer.RingName+"-owner-cleanup"),
+		util_log.Logger,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create KV store for the instance ring: %w", err)
+	}
+
+	return partitionring.NewOwnerCleaner(
+		t.Cfg.PartitionRingOwnerCleanup,
+		consumer.PartitionRingName,
+		consumer.PartitionRingKey,
+		partitionStore,
+		consumer.RingKey,
+		instanceStore,
+		util_log.Logger,
+	)
 }
 
 func (t *Loki) initDataObjConsumer() (services.Service, error) {
