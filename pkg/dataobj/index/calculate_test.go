@@ -17,6 +17,7 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/consumer/logsobj"
+	"github.com/grafana/loki/v3/pkg/dataobj/fixtures"
 	"github.com/grafana/loki/v3/pkg/dataobj/index/indexobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/logs"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/pointers"
@@ -50,73 +51,26 @@ var testCalculatorConfig = logsobj.BuilderBaseConfig{
 func createTestLogObject(t *testing.T, tenants int) *dataobj.Object {
 	t.Helper()
 
-	builder, err := logsobj.NewBuilder(logsobj.BuilderConfig{
-		BuilderBaseConfig: logsobj.BuilderBaseConfig{
-			TargetPageSize:          2048,
-			TargetObjectSize:        1 << 22,
-			TargetSectionSize:       1 << 21,
-			BufferSize:              2048 * 8,
-			SectionStripeMergeLimit: 2,
-		},
-	}, nil, logsobj.NewBuilderMetrics(), log.NewNopLogger(), nil)
-	require.NoError(t, err)
+	lr := fixtures.NewLogsFixtureBuilder(t)
+	lr.ForStream(`{cluster="test",app="foo",env="prod"}`).
+		Entry(10, `{trace_id="123", span_id="456"}`, "hello from foo").
+		Entry(15, `{trace_id="789"}`, "another message from foo")
+	lr.ForStream(`{cluster="test",app="bar",env="dev"}`).
+		Entry(20, `{trace_id="abc",user_id="user123"}`, "hello from bar").
+		Entry(25, `{trace_id="def",level="error"}`, "error message from bar")
 
-	// Add test streams with structured metadata
-	testStreams := []logproto.Stream{
-		{
-			Labels: `{cluster="test",app="foo",env="prod"}`,
-			Entries: []push.Entry{
-				{
-					Timestamp: time.Unix(10, 0).UTC(),
-					Line:      "hello from foo",
-					StructuredMetadata: push.LabelsAdapter{
-						{Name: "trace_id", Value: "123"},
-						{Name: "span_id", Value: "456"},
-					},
-				},
-				{
-					Timestamp: time.Unix(15, 0).UTC(),
-					Line:      "another message from foo",
-					StructuredMetadata: push.LabelsAdapter{
-						{Name: "trace_id", Value: "789"},
-					},
-				},
-			},
-		},
-		{
-			Labels: `{cluster="test",app="bar",env="dev"}`,
-			Entries: []push.Entry{
-				{
-					Timestamp: time.Unix(20, 0).UTC(),
-					Line:      "hello from bar",
-					StructuredMetadata: push.LabelsAdapter{
-						{Name: "trace_id", Value: "abc"},
-						{Name: "user_id", Value: "user123"},
-					},
-				},
-				{
-					Timestamp: time.Unix(25, 0).UTC(),
-					Line:      "error message from bar",
-					StructuredMetadata: push.LabelsAdapter{
-						{Name: "trace_id", Value: "def"},
-						{Name: "level", Value: "error"},
-					},
-				},
-			},
-		},
-	}
-
+	var allTenantSections []dataobj.SectionBuilder
 	for i := range tenants {
-		for _, stream := range testStreams {
-			err := builder.Append(fmt.Sprintf("tenant-%d", i), stream, stream.Entries[0].Timestamp)
-			require.NoError(t, err)
-		}
+		tenant := fmt.Sprintf("tenant-%d", i)
+		allTenantSections = append(allTenantSections,
+			fixtures.LogsSection(t, tenant, lr.Logs()),
+			fixtures.StreamsSection(t, tenant, lr.Streams()),
+		)
 	}
-
-	obj, closer, err := builder.Flush()
-	require.NoError(t, err)
+	obj, closer := fixtures.DataObject(t, allTenantSections...)
 	t.Cleanup(func() { closer.Close() })
 
+	// Validate
 	streamSections := obj.Sections().Count(streams.CheckSection)
 	require.Equal(t, tenants, streamSections)
 

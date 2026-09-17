@@ -38,7 +38,7 @@ func TestDecode(t *testing.T) {
 			},
 			expected: Record{
 				StreamID:  123,
-				Timestamp: time.Unix(0, 1234567890000000000),
+				Timestamp: time.Unix(0, 1234567890000000000).UTC(),
 				Metadata:  labels.New(labels.Label{Name: "app", Value: "test-app"}, labels.Label{Name: "env", Value: "prod"}),
 				Line:      []byte("test message"),
 			},
@@ -61,7 +61,7 @@ func TestDecode(t *testing.T) {
 			},
 			expected: Record{
 				StreamID:  123,
-				Timestamp: time.Unix(0, 1234567890000000000),
+				Timestamp: time.Unix(0, 1234567890000000000).UTC(),
 				Metadata:  labels.EmptyLabels(),
 				Line:      []byte("test message"),
 			},
@@ -84,7 +84,7 @@ func TestDecode(t *testing.T) {
 			},
 			expected: Record{
 				StreamID:  123,
-				Timestamp: time.Unix(0, 1234567890000000000),
+				Timestamp: time.Unix(0, 1234567890000000000).UTC(),
 				Metadata:  labels.EmptyLabels(),
 				Line:      []byte(""),
 			},
