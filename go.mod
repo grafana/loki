@@ -19,7 +19,7 @@ require (
 	github.com/aws/aws-sdk-go-v2 v1.45.1
 	github.com/aws/aws-sdk-go-v2/config v1.33.1
 	github.com/aws/aws-sdk-go-v2/credentials v1.20.1
-	github.com/baidubce/bce-sdk-go v0.9.275
+	github.com/baidubce/bce-sdk-go v0.9.276
 	github.com/c2h5oh/datasize v0.0.0-20231215233829-aa82cc1e6500
 	github.com/cespare/xxhash/v2 v2.3.0
 	github.com/containerd/fifo v1.1.0
@@ -251,7 +251,7 @@ require (
 	github.com/planetscale/vtprotobuf v0.6.1-0.20260702190614-8ae5a48058df // indirect
 	github.com/power-devops/perfstat v0.0.0-20260805114148-88456608a4f6 // indirect
 	github.com/prometheus/alertmanager v0.33.1 // indirect
-	github.com/prometheus/client_golang/exp v0.0.0-20260910191836-3f5d6801b956
+	github.com/prometheus/client_golang/exp v0.0.0-20260914085653-d2f148ba5de4
 	github.com/puzpuzpuz/xsync/v4 v4.5.0 // indirect
 	github.com/remyoudompheng/bigfft v0.0.0-20230129092748-24d4a6f8daec // indirect
 	github.com/rivo/uniseg v0.4.7 // indirect
@@ -376,7 +376,7 @@ require (
 	github.com/hashicorp/go-sockaddr v1.0.7 // indirect
 	github.com/hashicorp/memberlist v0.6.0 // indirect
 	github.com/hashicorp/serf v0.10.4 // indirect
-	github.com/huandu/xstrings v1.5.0 // indirect
+	github.com/huandu/xstrings v1.6.0 // indirect
 	github.com/jpillora/backoff v1.0.0 // indirect
 	github.com/klauspost/cpuid/v2 v2.4.0 // indirect
 	github.com/kylelemons/godebug v1.1.0 // indirect

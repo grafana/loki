@@ -761,7 +761,7 @@ func Test_ChunkFilterer(t *testing.T) {
 	}
 	defer logit.Close()
 	for logit.Next() {
-		l, err := syntax.ParseLabels(it.Labels())
+		l, err := syntax.ParseLabels(logit.Labels())
 		require.NoError(t, err)
 		require.NotEqual(t, "bazz", l.Get("foo"))
 	}

@@ -476,7 +476,7 @@ github.com/aws/smithy-go/waiter
 # github.com/axiomhq/hyperloglog v0.2.6
 ## explicit; go 1.23
 github.com/axiomhq/hyperloglog
-# github.com/baidubce/bce-sdk-go v0.9.275
+# github.com/baidubce/bce-sdk-go v0.9.276
 ## explicit; go 1.11
 github.com/baidubce/bce-sdk-go/auth
 github.com/baidubce/bce-sdk-go/bce
@@ -1078,7 +1078,7 @@ github.com/hashicorp/memberlist
 # github.com/hashicorp/serf v0.10.4
 ## explicit; go 1.25.0
 github.com/hashicorp/serf/coordinate
-# github.com/huandu/xstrings v1.5.0
+# github.com/huandu/xstrings v1.6.0
 ## explicit; go 1.12
 github.com/huandu/xstrings
 # github.com/influxdata/tdigest v0.0.2-0.20210216194612-fc98d27c9e8b
@@ -1437,7 +1437,7 @@ github.com/prometheus/client_golang/prometheus/push
 github.com/prometheus/client_golang/prometheus/testutil
 github.com/prometheus/client_golang/prometheus/testutil/promlint
 github.com/prometheus/client_golang/prometheus/testutil/promlint/validations
-# github.com/prometheus/client_golang/exp v0.0.0-20260910191836-3f5d6801b956
+# github.com/prometheus/client_golang/exp v0.0.0-20260914085653-d2f148ba5de4
 ## explicit; go 1.25.0
 github.com/prometheus/client_golang/exp/api/remote
 github.com/prometheus/client_golang/exp/internal/github.com/efficientgo/core/backoff
