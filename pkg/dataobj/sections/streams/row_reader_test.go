@@ -102,7 +102,7 @@ func TestRowReader_OpenNilSection(t *testing.T) {
 	require.ErrorIs(t, err, io.EOF)
 }
 
-func unixTime(sec int64) time.Time { return time.Unix(sec, 0) }
+func unixTime(sec int64) time.Time { return time.Unix(sec, 0).UTC() }
 
 func buildStreamsSection(t *testing.T, pageSize, pageRows int) *streams.Section {
 	t.Helper()

@@ -21,6 +21,14 @@ type StreamIterator[T logprotoType] interface {
 }
 
 type EntryIterator StreamIterator[logproto.Entry]
+
+// SampleIterator iterates over samples.
+//
+// Err returns the first read error a source reported. It stays set once reported, and a
+// source's read error stops the iterator, without pulling in another source's data.
+//
+// Close releases every resource. It returns only a close-time error, never a read error
+// (check Err for that).
 type SampleIterator StreamIterator[logproto.Sample]
 
 // noOpIterator implements StreamIterator

@@ -77,7 +77,9 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"reflect"
 
+	"github.com/go-kit/log"
 	"github.com/thanos-io/objstore"
 
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/filemd"
@@ -93,13 +95,83 @@ type Object struct {
 	tenants  []string
 }
 
+// MetadataCache caches the metadata region of data objects, keyed by an opaque key. Data objects are
+// immutable, so a cached entry never goes stale. Implementations must be safe for concurrent use.
+type MetadataCache interface {
+	// GetOrLoadMetadataRegion returns the metadata region for key. On a miss it calls load, stores the
+	// result, and returns it; concurrent calls for the same key share a single load. A load error is
+	// returned unchanged, or wrapped with %w, so a caller can still match a sentinel in it via errors.Is.
+	//
+	// The key must uniquely identify the object across whatever scope a single cache instance is shared
+	// over. A bucket-relative path is enough as long as one cache instance serves one bucket. A caller
+	// that shares one instance more broadly, across buckets or tenants whose paths can collide, must fold
+	// that scope into the key.
+	//
+	// The returned slice is read-only and may be shared between concurrent callers (a coalesced miss
+	// hands them the same backing array). Callers may retain it but must not mutate it; clone first to
+	// modify.
+	GetOrLoadMetadataRegion(ctx context.Context, key string, load func(ctx context.Context) ([]byte, error)) ([]byte, error)
+
+	// MaxItemBytes returns the largest region the underlying backend will store. It must always be
+	// positive: an implementation with no real backend limit still reports a safe, conservative value.
+	MaxItemBytes() int64
+}
+
+// OpenOption customizes how an Object is opened.
+type OpenOption func(*openOptions)
+
+type openOptions struct {
+	metadataCache MetadataCache
+	logger        log.Logger
+}
+
+// WithMetadataCache serves the object's metadata region through the cache instead of reading it from
+// object storage on every open.
+//
+// On the cached path, the prefetched window becomes exactly the cached metadata region, not
+// prefetchBytes. A caller that also relies on prefetchBytes to warm overlapping section reads should
+// account for that before enabling the cache.
+func WithMetadataCache(cache MetadataCache) OpenOption {
+	// normalizeNilCache collapses a typed-nil MetadataCache to a true nil interface value.
+	normalizeNilCache := func(cache MetadataCache) MetadataCache {
+		if cache == nil {
+			return nil
+		}
+		v := reflect.ValueOf(cache)
+		switch v.Kind() {
+		case reflect.Chan, reflect.Func, reflect.Map, reflect.Ptr, reflect.Slice:
+			if v.IsNil() {
+				return nil
+			}
+		}
+		return cache
+	}
+
+	return func(o *openOptions) { o.metadataCache = normalizeNilCache(cache) }
+}
+
+// WithLogger reports otherwise-invisible degradations of the metadata cache: a cached entry that does
+// not decode, or metadata that cannot be turned into a cacheable region at all. The default is to
+// report nothing.
+func WithLogger(logger log.Logger) OpenOption {
+	return func(o *openOptions) { o.logger = logger }
+}
+
 // FromBucket opens an Object from the given storage bucket and path.
 // FromBucket returns an error if the metadata of the Object cannot be read or
 // if the provided ctx times out.
-func FromBucket(ctx context.Context, bucket objstore.BucketReader, path string, prefetchBytes int64) (*Object, error) {
+func FromBucket(ctx context.Context, bucket objstore.BucketReader, path string, prefetchBytes int64, opts ...OpenOption) (*Object, error) {
+	var o openOptions
+	for _, opt := range opts {
+		opt(&o)
+	}
+	if o.logger == nil {
+		o.logger = log.NewNopLogger()
+	}
+
 	rr := &bucketRangeReader{bucket: bucket, path: path}
 
-	dec := &decoder{rr: rr, prefetchBytes: prefetchBytes}
+	dec := &decoder{rr: rr, prefetchBytes: prefetchBytes, metadataCache: o.metadataCache, metadataKey: path, logger: o.logger}
 	obj := &Object{rr: rr, dec: dec}
 	if err := obj.init(ctx); err != nil {
 		return nil, err
@@ -112,7 +184,7 @@ func FromBucket(ctx context.Context, bucket objstore.BucketReader, path string, 
 // error if the metadata of the Object cannot be read.
 func FromReaderAt(r io.ReaderAt, size int64) (*Object, error) {
 	rr := &readerAtRangeReader{size: size, r: r}
-	dec := &decoder{rr: rr, size: size}
+	dec := &decoder{rr: rr, size: size, logger: log.NewNopLogger()}
 	obj := &Object{rr: rr, dec: dec}
 	if err := obj.init(context.Background()); err != nil {
 		return nil, err
