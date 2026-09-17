@@ -209,6 +209,7 @@ type metrics struct {
 
 	limitsServiceShardShadowDivergence          *prometheus.CounterVec
 	limitsServiceShardShadowDivergenceMagnitude *prometheus.HistogramVec
+	limitsServiceShardShadowStreamRate          *prometheus.HistogramVec
 	limitsServiceShardShadowUnimplemented       *prometheus.CounterVec
 	limitsServiceShardShadowFailed              *prometheus.CounterVec
 	limitsServiceShardShadowRejected            *prometheus.CounterVec
@@ -284,6 +285,17 @@ func newMetrics(reg prometheus.Registerer) *metrics {
 			NativeHistogramMinResetDuration: 1 * time.Hour,
 			NativeHistogramMaxBucketNumber:  100,
 		}, []string{"tenant", "direction"}),
+
+		limitsServiceShardShadowStreamRate: promauto.With(reg).NewHistogramVec(prometheus.HistogramOpts{
+			Namespace: constants.Loki,
+			Name:      "distributor_limits_service_shard_shadow_stream_rate_bytes",
+			Help:      "For tenants/policies in 'shadow' mode, the distribution of the per-stream byte/s rate that drove the shard decision, observed once per comparable stream. The 'source' label splits it into 'rate_store' (the distributor's local rate store) and 'limits' (the ingest-limits service's evaluated rate), so the two systems' rate distributions can be compared as heatmaps. Both are the raw, pre-amortization sustained rate.",
+			// Native-only: the exponential schema spans the wide byte/s range
+			// (KB/s to MB/s) without hand-picked buckets.
+			NativeHistogramBucketFactor:     1.1,
+			NativeHistogramMinResetDuration: 1 * time.Hour,
+			NativeHistogramMaxBucketNumber:  100,
+		}, []string{"tenant", "source"}),
 
 		limitsServiceShardShadowUnimplemented: promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
 			Namespace: constants.Loki,
@@ -1516,6 +1528,10 @@ func (d *Distributor) observeLimitsServiceShardShadow(ctx context.Context, tenan
 			// Classify which side's decision actually shards the stream
 			sharding := shardingState(c.rateStoreShards, resultShards)
 			d.m.limitsServiceShardShadowCompared.WithLabelValues(tenantID, sharding).Inc()
+			// Record both systems' per-stream rate so their distributions can be
+			// compared as heatmaps (raw, pre-amortization sustained rates).
+			d.m.limitsServiceShardShadowStreamRate.WithLabelValues(tenantID, "rate_store").Observe(float64(c.rateStoreRate))
+			d.m.limitsServiceShardShadowStreamRate.WithLabelValues(tenantID, "limits").Observe(float64(result.EvaluatedRate))
 			if result.ShardDecisionContext == uint32(limits.ReasonStreamShardsCapped) {
 				d.m.limitsServiceShardShadowCapped.WithLabelValues(tenantID).Inc()
 			}
