@@ -26,6 +26,16 @@ import (
 	"github.com/grafana/loki/pkg/push"
 )
 
+// Used to expose SortSchemaLabels to logs builders
+type fakeLimits struct{}
+
+func (fakeLimits) CompactionPhases(_ string) (runIndex, runLog bool) {
+	return true, true
+}
+func (fakeLimits) SortSchemaLabels(string) []string {
+	return fakeSchema
+}
+
 var testCalculatorConfig = logsobj.BuilderBaseConfig{
 	TargetPageSize:          2048,
 	TargetObjectSize:        1 << 22, // 4 MiB
@@ -141,7 +151,7 @@ func TestCalculator_Calculate_StatsShardBuckets(t *testing.T) {
 			BufferSize:              2048 * 8,
 			SectionStripeMergeLimit: 2,
 		},
-	}, nil, logsobj.NewBuilderMetrics(), log.NewNopLogger(), nil)
+	}, nil, logsobj.NewBuilderMetrics(), log.NewNopLogger(), fakeLimits{})
 	require.NoError(t, err)
 
 	ts := time.Unix(10, 0).UTC()
