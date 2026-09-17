@@ -98,6 +98,87 @@ lbac:
   # CLI flag: -lbac.enabled
   [enabled: <boolean> | default = false]
 
+logline:
+  # Enable logline query frontend middleware injection
+  # CLI flag: -logline.enabled
+  [enabled: <boolean> | default = false]
+
+  store:
+    # Path prefix for all objects in the bucket
+    # CLI flag: -logline-store.bucket-prefix
+    [bucket_prefix: <string> | default = "logline/"]
+
+    # How often to poll object storage for new indexes
+    # CLI flag: -logline-store.poll-interval
+    [poll_interval: <duration> | default = 15m]
+
+    # Number of concurrent meta.json fetches during poll
+    # CLI flag: -logline-store.poll-concurrency
+    [poll_concurrency: <int> | default = 50]
+
+    # Age after which index files are eligible for deletion
+    # CLI flag: -logline-store.retention-duration
+    [retention_duration: <duration> | default = 168h]
+
+    # How long to retain compacted (source) indexes after compaction before
+    # deletion
+    # CLI flag: -logline-store.compaction-grace-period
+    [compaction_grace_period: <duration> | default = 24h]
+
+    # Earliest trusted index date partition (YYYY-MM-DD) for query-path reads;
+    # required when logline is enabled
+    # CLI flag: -logline-store.min-date
+    [min_date: <string> | default = ""]
+
+  query_frontend:
+    # Run logline hint lookups passively for verification without modifying
+    # query execution
+    # CLI flag: -logline-query-frontend.dry-run
+    [dry_run: <boolean> | default = false]
+
+    # Require X-Logline-Index header to activate hint narrowing
+    # CLI flag: -logline-query-frontend.require-opt-in-header
+    [require_opt_in_header: <boolean> | default = true]
+
+    # N-gram size for hint lookups against the logline index (default 6)
+    # CLI flag: -logline-query-frontend.ngram-length
+    [ngram_length: <int> | default = 0]
+
+    # Maximum concurrent hint index workers per query (default 64)
+    # CLI flag: -logline-query-frontend.max-hint-parallel
+    [max_hint_parallel: <int> | default = 0]
+
+    [query_ingesters_within: <duration>]
+
+    # Maximum time to wait for logline index hint lookup (default 15s)
+    # CLI flag: -logline-query-frontend.hint-timeout
+    [hint_timeout: <duration> | default = 0s]
+
+    # TTL for cached hint results. Uses Loki results cache backend; set to 0 to
+    # disable.
+    # CLI flag: -logline-query-frontend.hint-cache-ttl
+    [hint_cache_ttl: <duration> | default = 2m]
+
+    # Max size in MB for embedded hint cache when no external backend is
+    # configured (default 100)
+    # CLI flag: -logline-query-frontend.hint-cache-max-size-mb
+    [hint_cache_max_size_mb: <int> | default = 0]
+
+    # Minimum index-stats bytes required before performing logline hint lookup;
+    # set to 0 to disable (default 500 GB)
+    # CLI flag: -logline-query-frontend.min-query-bytes-for-index
+    [min_query_bytes_for_index: <int> | default = 536870912000]
+
+    shard_planning:
+      # Enable logline shard-planning reruns for narrow live queries
+      # CLI flag: -logline-query-frontend.shard-planning.enabled
+      [enabled: <boolean> | default = true]
+
+      # Minimum hinted time reduction ratio required for a shard-planning rerun
+      # (default 0.75)
+      # CLI flag: -logline-query-frontend.shard-planning.min-time-reduction-ratio
+      [min_time_reduction_ratio: <float> | default = 0.75]
+
 # Tenant ID to use when auth is disabled. Defaults to 'fake' for backwards
 # compatibility. Safe to change on a fresh cluster; on an existing cluster, data
 # stored under the old tenant path must be migrated first (see cmd/migrate).
