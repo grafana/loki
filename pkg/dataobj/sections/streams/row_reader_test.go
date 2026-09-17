@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"io"
+	"math"
 	"strings"
 	"testing"
 	"time"
@@ -80,6 +81,63 @@ func TestRowReader_AddLabelFilter(t *testing.T) {
 	actual, err := readAllStreams(context.Background(), r)
 	require.NoError(t, err)
 	require.Equal(t, expect, actual)
+}
+
+func TestRowReader_ShardBucketRange(t *testing.T) {
+	all := []streams.Stream{
+		{1, unixTime(10), unixTime(15), 25, labels.FromStrings("cluster", "test", "app", "foo"), 2, shardForApp("foo")},
+		{2, unixTime(5), unixTime(20), 45, labels.FromStrings("cluster", "test", "app", "bar"), 2, shardForApp("bar")},
+		{3, unixTime(25), unixTime(30), 35, labels.FromStrings("cluster", "test", "app", "baz"), 2, shardForApp("baz")},
+	}
+
+	buckets := make(map[uint64]bool, len(all))
+	lo, hi := uint64(math.MaxUint64), uint64(0)
+	for _, s := range all {
+		b := uint64(s.ShardBucket)
+		buckets[b] = true
+		lo, hi = min(lo, b), max(hi, b)
+	}
+	require.Greater(t, hi, lo, "the test data must span at least two buckets")
+
+	// A bucket none of the streams occupies, for the empty-range case.
+	var freeBucket uint64
+	for b := uint64(0); ; b++ {
+		if !buckets[b] {
+			freeBucket = b
+			break
+		}
+	}
+
+	for _, tc := range []struct {
+		name     string
+		from, to uint64
+	}{
+		{"a single occupied bucket", uint64(all[1].ShardBucket), uint64(all[1].ShardBucket)},
+		{"a span covering every bucket", lo, hi},
+		{"a span trimmed at the top end", lo, hi - 1},
+		{"a span trimmed at the bottom end", lo + 1, hi},
+		{"a range no stream occupies", freeBucket, freeBucket},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var want []streams.Stream
+			for _, s := range all {
+				if b := uint64(s.ShardBucket); b >= tc.from && b <= tc.to {
+					want = append(want, s)
+				}
+			}
+
+			r := streams.NewRowReader(buildStreamsSection(t, 1, 0)) // Many pages
+			require.NoError(t, r.SetPredicate(streams.ShardBucketRangeRowPredicate{From: tc.from, To: tc.to}))
+
+			got, err := readAllStreams(context.Background(), r)
+			require.NoError(t, err)
+			if len(want) == 0 {
+				require.Empty(t, got)
+				return
+			}
+			require.Equal(t, want, got)
+		})
+	}
 }
 
 func TestRowReader_ReadBeforeOpen(t *testing.T) {

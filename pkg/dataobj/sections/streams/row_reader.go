@@ -207,6 +207,19 @@ func translateStreamsPredicate(p RowPredicate, dsetColumns []dataset.Column, act
 		}
 		return convertStreamsTimePredicate(p, minTimestamp, maxTimestamp)
 
+	case ShardBucketRangeRowPredicate:
+		bucketColumn := findDatasetColumn(dsetColumns, actualColumns, func(col *Column) bool {
+			return col.Type == ColumnTypeShardBucket
+		})
+		if bucketColumn == nil {
+			return dataset.FalsePredicate{}
+		}
+		// Both shard bucket range's From and To are inclusive.
+		return dataset.AndPredicate{
+			Left:  dataset.NotPredicate{Inner: dataset.LessThanPredicate{Column: bucketColumn, Value: dataset.Int64Value(int64(p.From))}},
+			Right: dataset.NotPredicate{Inner: dataset.GreaterThanPredicate{Column: bucketColumn, Value: dataset.Int64Value(int64(p.To))}},
+		}
+
 	case LabelMatcherRowPredicate:
 		metadataColumn := findDatasetColumn(dsetColumns, actualColumns, func(col *Column) bool {
 			return col.Type == ColumnTypeLabel && col.Name == p.Name
