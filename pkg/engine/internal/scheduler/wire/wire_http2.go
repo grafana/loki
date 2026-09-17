@@ -399,7 +399,7 @@ func NewHTTP2Dialer(path string) *HTTP2Dialer {
 		client: &http.Client{
 			Transport: &http.Transport{
 				Protocols: &protocols,
-				DialTLSContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
+				DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
 					return (&net.Dialer{}).DialContext(ctx, network, addr)
 				},
 			},
