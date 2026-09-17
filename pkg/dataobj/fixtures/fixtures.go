@@ -41,7 +41,6 @@ type LogSectionOpt func(*logSectionConfig)
 
 type logSectionConfig struct {
 	builderOpts *logs.BuilderOptions
-	tenant      string
 }
 
 // LogFixtureBuilder builds matching stream and log records for section fixtures.
