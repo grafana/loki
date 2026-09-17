@@ -449,14 +449,12 @@ func (c *Component) runMultiple(n int) error {
 	var err error
 	for i := 0; i < n; i++ {
 		err = c.run()
-		if err != nil {
-			// retry multiple times if we get an EADDRINUSE error
-			if strings.Contains(err.Error(), "address already in use") {
-				continue
-			}
+		if err == nil {
+			return nil
+		}
+		if !strings.Contains(err.Error(), "address already in use") {
 			return err
 		}
-		return nil
 	}
 	return err
 }
