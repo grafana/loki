@@ -18,6 +18,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/storage/chunk"
 	"github.com/grafana/loki/v3/pkg/storage/stores/index/seriesvolume"
 	"github.com/grafana/loki/v3/pkg/storage/stores/index/stats"
+	"github.com/grafana/loki/v3/pkg/util"
 )
 
 var _ Store = &StoreCombiner{}
@@ -111,19 +112,39 @@ func (sc *StoreCombiner) SelectSamples(ctx context.Context, req logql.SelectSamp
 	}
 
 	iters := make([]iter.SampleIterator, 0, len(stores))
+
+	// closeOpened closes every per-store iterator opened so far, so neither a later store's
+	// error nor a rejected order below ever leaks them.
+	closeOpened := func(reason string) {
+		for _, opened := range iters {
+			util.LogErrorWithContext(ctx, "closing per-store sample iterator "+reason, opened.Close)
+		}
+	}
+
 	for _, s := range stores {
 		reqCopy := req
 		reqCopy.Start = s.from.Time()
 		reqCopy.End = s.through.Time()
 
-		iter, err := s.store.SelectSamples(ctx, reqCopy)
+		it, err := s.store.SelectSamples(ctx, reqCopy)
 		if err != nil {
+			// Return err unchanged, not merged with any close error, to not break callers'
+			// error checking.
+			closeOpened("after a later store failed")
 			return nil, err
 		}
-		iters = append(iters, iter)
+		iters = append(iters, it)
 	}
 
-	return iter.NewTimestampFirstMergeSampleIterator(ctx, iters), nil
+	switch req.Order {
+	case logproto.SAMPLE_ORDER_BY_STREAM:
+		return iter.NewStreamFirstMergeSampleIterator(ctx, iters), nil
+	case logproto.SAMPLE_ORDER_BY_TIMESTAMP:
+		return iter.NewTimestampFirstMergeSampleIterator(ctx, iters), nil
+	default:
+		closeOpened("after rejecting an unknown order")
+		return nil, fmt.Errorf("unknown sample order %v", req.Order)
+	}
 }
 
 // SelectLogs implements Store

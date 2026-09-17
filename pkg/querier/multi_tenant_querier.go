@@ -24,6 +24,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/logql"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	"github.com/grafana/loki/v3/pkg/storage/stores/index/stats"
+	"github.com/grafana/loki/v3/pkg/util"
 )
 
 const (
@@ -134,8 +135,16 @@ func (q *MultiTenantQuerier) SelectSamples(ctx context.Context, params logql.Sel
 		storeOverridesByTenant = partitionChunkRefsByTenant(params.GetStoreChunks().Refs)
 	}
 
-	iters := make([]iter.SampleIterator, len(matchedTenants))
-	i := 0
+	iters := make([]iter.SampleIterator, 0, len(matchedTenants))
+
+	// closeOpened closes every per-tenant iterator opened so far, so neither a later tenant's
+	// error nor a rejected order below ever leaks them.
+	closeOpened := func(reason string) {
+		for _, opened := range iters {
+			util.LogErrorWithContext(ctx, "closing per-tenant sample iterator "+reason, opened.Close)
+		}
+	}
+
 	for id := range matchedTenants {
 		singleContext := user.InjectOrgID(ctx, id)
 		tenantParams := params
@@ -144,15 +153,24 @@ func (q *MultiTenantQuerier) SelectSamples(ctx context.Context, params logql.Sel
 			tenantParams = tenantParams.WithStoreChunks(&logproto.ChunkRefGroup{Refs: tenantChunkOverrides})
 		}
 
-		iter, err := q.Querier.SelectSamples(singleContext, tenantParams)
+		tenantIter, err := q.Querier.SelectSamples(singleContext, tenantParams)
 		if err != nil {
+			closeOpened("after a later tenant failed")
 			return nil, err
 		}
 
-		iters[i] = NewTenantSampleIterator(iter, id)
-		i++
+		iters = append(iters, NewTenantSampleIterator(tenantIter, id))
 	}
-	return iter.NewTimestampFirstSortSampleIterator(iters), nil
+
+	switch params.Order {
+	case logproto.SAMPLE_ORDER_BY_STREAM:
+		return iter.NewStreamFirstSortSampleIterator(iters), nil
+	case logproto.SAMPLE_ORDER_BY_TIMESTAMP:
+		return iter.NewTimestampFirstSortSampleIterator(iters), nil
+	default:
+		closeOpened("after rejecting an unknown order")
+		return nil, fmt.Errorf("unknown sample order %v", params.Order)
+	}
 }
 
 func (q *MultiTenantQuerier) Label(ctx context.Context, req *logproto.LabelRequest) (*logproto.LabelResponse, error) {
@@ -506,10 +524,15 @@ type relabel struct {
 	cache    map[string]labels.Labels
 }
 
-func (r relabel) relabel(original string) string {
+func (r relabel) relabelLabelsString(original string) string {
+	return r.relabelLabels(original).String()
+}
+
+// relabelLabels adds the tenant label to the input labels string.
+func (r relabel) relabelLabels(original string) labels.Labels {
 	lbls, ok := r.cache[original]
 	if ok {
-		return lbls.String()
+		return lbls
 	}
 
 	lbls, _ = syntax.ParseLabels(original)
@@ -523,7 +546,7 @@ func (r relabel) relabel(original string) string {
 
 	lbls = builder.Labels()
 	r.cache[original] = lbls
-	return lbls.String()
+	return lbls
 }
 
 // TenantEntry Iterator wraps an entry iterator and adds the tenant label.
@@ -543,7 +566,7 @@ func NewTenantEntryIterator(iter iter.EntryIterator, id string) *TenantEntryIter
 }
 
 func (i *TenantEntryIterator) Labels() string {
-	return i.relabel.relabel(i.EntryIterator.Labels())
+	return i.relabel.relabelLabelsString(i.EntryIterator.Labels())
 }
 
 // TenantEntry Iterator wraps a sample iterator and adds the tenant label.
@@ -564,7 +587,15 @@ func NewTenantSampleIterator(iter iter.SampleIterator, id string) *TenantSampleI
 }
 
 func (i *TenantSampleIterator) Labels() string {
-	return i.relabel.relabel(i.SampleIterator.Labels())
+	return i.relabel.relabelLabelsString(i.SampleIterator.Labels())
+}
+
+// StreamHash returns the fingerprint of this sample's tenant-qualified labels, not the
+// wrapped iterator's own StreamHash. Two tenants can otherwise select a stream with the
+// same labels, and so the same underlying StreamHash: a stream-first sort or merge across
+// tenants would then group their samples into one run instead of keeping them apart.
+func (i *TenantSampleIterator) StreamHash() uint64 {
+	return labels.StableHash(i.relabel.relabelLabels(i.SampleIterator.Labels()))
 }
 
 func partitionChunkRefsByTenant(refs []*logproto.ChunkRef) map[string][]*logproto.ChunkRef {
