@@ -90,6 +90,56 @@ func TestDecode(t *testing.T) {
 			},
 		},
 		{
+			// A physical zero is not an absent cell: stream ID 0 and a timestamp at the Unix
+			// epoch are both valid values.
+			name: "zero stream_id and epoch timestamp are decoded",
+			columns: []*Column{
+				{Type: ColumnTypeStreamID},
+				{Type: ColumnTypeTimestamp},
+				{Type: ColumnTypeMessage},
+			},
+			row: dataset.Row{
+				Values: []dataset.Value{
+					dataset.Int64Value(0),
+					dataset.Int64Value(0),
+					dataset.BinaryValue([]byte("test message")),
+				},
+			},
+			expected: Record{
+				StreamID:  0,
+				Timestamp: time.Unix(0, 0),
+				Metadata:  labels.EmptyLabels(),
+				Line:      []byte("test message"),
+			},
+		},
+		{
+			// An empty metadata value is a label whose value is empty, which the chunk path
+			// keeps too. Only a nil cell means the key is absent.
+			name: "empty metadata value is kept as a label",
+			columns: []*Column{
+				{Type: ColumnTypeStreamID},
+				{Type: ColumnTypeTimestamp},
+				{Type: ColumnTypeMetadata, Name: "app"},
+				{Type: ColumnTypeMetadata, Name: "env"},
+				{Type: ColumnTypeMessage},
+			},
+			row: dataset.Row{
+				Values: []dataset.Value{
+					dataset.Int64Value(123),
+					dataset.Int64Value(1234567890000000000),
+					dataset.BinaryValue([]byte("")),
+					dataset.BinaryValue([]byte("prod")),
+					dataset.BinaryValue([]byte("test message")),
+				},
+			},
+			expected: Record{
+				StreamID:  123,
+				Timestamp: time.Unix(0, 1234567890000000000),
+				Metadata:  labels.New(labels.Label{Name: "app", Value: ""}, labels.Label{Name: "env", Value: "prod"}),
+				Line:      []byte("test message"),
+			},
+		},
+		{
 			name: "invalid stream_id type",
 			columns: []*Column{
 				{Type: ColumnTypeStreamID},
