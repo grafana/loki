@@ -52,7 +52,7 @@ func NewService(cfg Config, router *mux.Router, ring *ring.Ring, localAddr strin
 		Transport: &http.Transport{
 			Protocols: &protocols,
 			DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
-				return (&net.Dialer{}).DialContext(ctx, network, addr)
+				return net.DialTimeout(network, addr, calcTimeout(ctx))
 			},
 		},
 	}
