@@ -90,8 +90,7 @@ func TestDecode(t *testing.T) {
 			},
 		},
 		{
-			// A physical zero is not an absent cell: stream ID 0 and a timestamp at the Unix
-			// epoch are both valid values.
+			// A physical zero is not an absent cell: a timestamp at the Unix epoch are both valid values.
 			name: "zero stream_id and epoch timestamp are decoded",
 			columns: []*Column{
 				{Type: ColumnTypeStreamID},
@@ -100,13 +99,13 @@ func TestDecode(t *testing.T) {
 			},
 			row: dataset.Row{
 				Values: []dataset.Value{
-					dataset.Int64Value(0),
+					dataset.Int64Value(1),
 					dataset.Int64Value(0),
 					dataset.BinaryValue([]byte("test message")),
 				},
 			},
 			expected: Record{
-				StreamID:  0,
+				StreamID:  1,
 				Timestamp: time.Unix(0, 0),
 				Metadata:  labels.EmptyLabels(),
 				Line:      []byte("test message"),

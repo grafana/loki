@@ -116,8 +116,8 @@ func DecodeRow(columns []*Column, row dataset.Row, record *Record, sym *symboliz
 		column := columns[columnIndex]
 
 		// Only a nil value is an absent cell. A physical zero is a real value: an INT64 zero
-		// is a timestamp at the Unix epoch or stream ID 0, and an empty BINARY is an empty
-		// line or an explicitly empty metadata value. The cases below decode all of those.
+		// is a timestamp at the Unix epoch, and an empty BINARY is an empty line or an explicitly
+		// empty metadata value. The cases below decode all of those.
 		if columnValue.IsNil() {
 			switch column.Type {
 			case ColumnTypeMessage:
