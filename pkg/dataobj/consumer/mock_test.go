@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"github.com/go-kit/log"
-	"github.com/twmb/franz-go/pkg/kgo"
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/consumer/logsobj"
@@ -116,6 +115,27 @@ func (m *mockFlusher) Flush(_ context.Context, _ builder, _ string) (*dataobj.Ob
 	return m.obj, &m.closer, fmt.Sprintf("object_%03d", m.flushes), nil
 }
 
+// mockIndexer implements the indexer interface, recording what it was asked to
+// index.
+type mockIndexer struct {
+	objs  []*dataobj.Object
+	paths []string
+	// errs is consumed one entry per call so tests can drive retries. Once it
+	// is exhausted, indexing succeeds.
+	errs []error
+}
+
+func (m *mockIndexer) Index(_ context.Context, obj *dataobj.Object, objPath string) error {
+	m.objs = append(m.objs, obj)
+	m.paths = append(m.paths, objPath)
+	if len(m.errs) == 0 {
+		return nil
+	}
+	err := m.errs[0]
+	m.errs = m.errs[1:]
+	return err
+}
+
 type mockFlushCommitter struct {
 	flushes int
 	// lastBuilderCount records the number of builders passed to the most
@@ -180,61 +200,6 @@ func newTestMultiBuilder() *mockMultiBuilder {
 	return &mockMultiBuilder{
 		TOCAlignedMultiBuilder: NewTOCAlignedMultiBuilder(newTestBuilderFactory(), int(testBuilderCfg.TargetObjectSize)),
 	}
-}
-
-// mockKafka mocks a [kgo.Client]. The zero value is usable.
-type mockKafka struct {
-	fetches  []kgo.Fetches
-	produced []*kgo.Record
-
-	// produceFailer is an (optional) callback executed in [Produce] that
-	// can be used to fail producing certain records. If it is non-nil and
-	// returns a non-nil error, the record will be failed, and the error
-	// be passed to the promise.
-	produceFailer func(r *kgo.Record) error
-
-	// Internal, should not be accessed from tests.
-	fetchesIdx int
-	mtx        sync.Mutex
-}
-
-// PollFetches implements [kgo.Client.PollFetches].
-func (m *mockKafka) PollFetches(_ context.Context) kgo.Fetches {
-	m.mtx.Lock()
-	defer m.mtx.Unlock()
-	if m.fetchesIdx >= len(m.fetches) {
-		return kgo.Fetches{}
-	}
-	fetches := m.fetches[m.fetchesIdx]
-	m.fetchesIdx++
-	return fetches
-}
-
-// Produce implements [kgo.Client.Produce].
-func (m *mockKafka) Produce(
-	_ context.Context,
-	r *kgo.Record,
-	promise func(*kgo.Record, error),
-) {
-	m.mtx.Lock()
-	defer m.mtx.Unlock()
-	var err error
-	// Check if producing the record should fail.
-	if m.produceFailer != nil {
-		err = m.produceFailer(r)
-	}
-	if err != nil {
-		promise(nil, err)
-		return
-	}
-	m.produced = append(m.produced, r)
-	promise(r, nil)
-}
-
-// ProduceSync implements [kgo.Client.ProduceSync].
-func (m *mockKafka) ProduceSync(_ context.Context, rs ...*kgo.Record) kgo.ProduceResults {
-	m.produced = append(m.produced, rs...)
-	return kgo.ProduceResults{{Err: nil}}
 }
 
 // mockSorter returns the object it is given, so the flusher can be driven
