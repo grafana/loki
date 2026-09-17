@@ -206,8 +206,8 @@ func (r *RowReader) initReader(ctx context.Context) error {
 		}
 	}
 
-	// r.predicate doesn't contain mappings of stream IDs; we need to build
-	// that as a separate predicate and AND them together.
+	// The matched stream IDs are not part of r.predicates, so build them as a separate
+	// predicate; RowReaderOptions.Predicates are ANDed together.
 	var predicates []dataset.Predicate
 	if p := streamIDPredicate(maps.Keys(r.matchIDs), datasetColumns, sectionColumns); p != nil {
 		predicates = append(predicates, p)
