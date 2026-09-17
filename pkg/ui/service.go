@@ -2,7 +2,6 @@ package ui
 
 import (
 	"context"
-	"crypto/tls"
 	"fmt"
 	"net"
 	"net/http"
@@ -16,7 +15,6 @@ import (
 	"github.com/grafana/dskit/services"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/thanos-io/objstore"
-	"golang.org/x/net/http2"
 
 	// This is equivalent to a main.go for the Loki UI, so the blank import is allowed
 	_ "github.com/go-sql-driver/mysql" //nolint:revive
@@ -45,10 +43,15 @@ type Service struct {
 }
 
 func NewService(cfg Config, router *mux.Router, ring *ring.Ring, localAddr string, logger log.Logger, reg prometheus.Registerer) (*Service, error) {
+	// No TLS. HTTP1 must stay disabled: Protocols only dials unencrypted
+	// HTTP/2 with prior knowledge for http:// URLs when HTTP1 is excluded.
+	protocols := http.Protocols{}
+	protocols.SetUnencryptedHTTP2(true)
+
 	httpClient := &http.Client{
-		Transport: &http2.Transport{
-			AllowHTTP: true,
-			DialTLSContext: func(ctx context.Context, network, addr string, _ *tls.Config) (net.Conn, error) {
+		Transport: &http.Transport{
+			Protocols: &protocols,
+			DialTLSContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
 				return net.DialTimeout(network, addr, calcTimeout(ctx))
 			},
 		},
