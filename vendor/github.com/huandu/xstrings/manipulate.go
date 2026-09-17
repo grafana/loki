@@ -55,6 +55,10 @@ func Slice(str string, start, end int) string {
 		str = str[size:]
 	}
 
+	if start > 0 {
+		panic("out of range")
+	}
+
 	if end < 0 {
 		return origin[startPos:]
 	}
@@ -166,7 +170,11 @@ func Scrub(str, repl string) string {
 	}
 
 	if buf != nil {
-		buf.WriteString(origin)
+		if hasError {
+			buf.WriteString(repl)
+		} else {
+			buf.WriteString(origin)
+		}
 		return buf.String()
 	}
 

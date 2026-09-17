@@ -17,6 +17,7 @@ type runeRangeMap struct {
 
 type runeDict struct {
 	Dict [unicode.MaxASCII + 1]rune
+	Set  [unicode.MaxASCII + 1]bool
 }
 
 type runeMap map[rune]rune
@@ -29,7 +30,8 @@ type Translator struct {
 	runeMap    runeMap         // Rune map for translation.
 	ranges     []*runeRangeMap // Ranges of runes.
 	mappedRune rune            // If mappedRune >= 0, all matched runes are translated to the mappedRune.
-	reverted   bool            // If to pattern is empty, all matched characters will be deleted.
+	reverted   bool            // If from pattern starts with '^', only unmatched characters will be translated.
+	deletion   bool            // If to pattern is empty, all matched characters will be deleted.
 	hasPattern bool
 }
 
@@ -160,6 +162,7 @@ func NewTranslator(from, to string) *Translator {
 	}
 
 	tr.reverted = reverted
+	tr.deletion = deletion
 	tr.mappedRune = -1
 	tr.hasPattern = true
 
@@ -178,6 +181,7 @@ func (tr *Translator) addRune(from, to rune, singleRunes []rune) []rune {
 		}
 
 		tr.quickDict.Dict[from] = to
+		tr.quickDict.Set[from] = true
 	} else {
 		if tr.runeMap == nil {
 			tr.runeMap = make(runeMap)
@@ -215,6 +219,7 @@ func (tr *Translator) addRuneRange(fromLo, fromHi, toLo, toHi rune, singleRunes 
 		if rrm.FromLo <= r && r <= rrm.FromHi {
 			if r <= unicode.MaxASCII {
 				tr.quickDict.Dict[r] = 0
+				tr.quickDict.Set[r] = false
 			} else {
 				delete(tr.runeMap, r)
 			}
@@ -298,7 +303,7 @@ func (tr *Translator) Translate(str string) string {
 
 	var r rune
 	var size int
-	var needTr bool
+	var matched, deleted bool
 
 	orig := str
 
@@ -306,14 +311,21 @@ func (tr *Translator) Translate(str string) string {
 
 	for len(str) > 0 {
 		r, size = utf8.DecodeRuneInString(str)
-		r, needTr = tr.TranslateRune(r)
+		r, matched, deleted = tr.translateRune(r)
 
-		if needTr && output == nil {
+		if matched && output == nil {
 			output = allocBuffer(orig, str)
 		}
 
-		if r != utf8.RuneError && output != nil {
-			output.WriteRune(r)
+		if output != nil && !deleted {
+			if matched {
+				output.WriteRune(r)
+			} else {
+				// An unmatched rune must be kept as is. Its original bytes are
+				// copied instead of the decoded rune, so that an invalid byte
+				// is not rewritten as utf8.RuneError.
+				output.WriteString(str[:size])
+			}
 		}
 
 		str = str[size:]
@@ -330,13 +342,26 @@ func (tr *Translator) Translate(str string) string {
 // TranslateRune return translated rune and true if r matches the from pattern.
 // If r doesn't match the pattern, original r is returned and translated is false.
 func (tr *Translator) TranslateRune(r rune) (result rune, translated bool) {
+	result, translated, _ = tr.translateRune(r)
+	return
+}
+
+// translateRune is the internal implementation of TranslateRune.
+//
+// It reports whether r matches the from pattern (matched) and whether the rune
+// must be dropped from the translation result (deleted). deleted is true only
+// when r matches a from pattern which has an empty to pattern, i.e. the rune is
+// removed by Delete or by Translate with an empty to pattern.
+//
+// The two flags can't be folded into the returned rune: utf8.RuneError is a
+// valid rune value which can be a translation result as well.
+func (tr *Translator) translateRune(r rune) (result rune, matched, deleted bool) {
 	switch {
 	case tr.quickDict != nil:
 		if r <= unicode.MaxASCII {
-			result = tr.quickDict.Dict[r]
-
-			if result != 0 {
-				translated = true
+			if tr.quickDict.Set[r] {
+				result = tr.quickDict.Dict[r]
+				matched = true
 
 				if tr.mappedRune >= 0 {
 					result = tr.mappedRune
@@ -352,7 +377,7 @@ func (tr *Translator) TranslateRune(r rune) (result rune, translated bool) {
 		var ok bool
 
 		if result, ok = tr.runeMap[r]; ok {
-			translated = true
+			matched = true
 
 			if tr.mappedRune >= 0 {
 				result = tr.mappedRune
@@ -371,7 +396,7 @@ func (tr *Translator) TranslateRune(r rune) (result rune, translated bool) {
 			rrm = ranges[i]
 
 			if rrm.FromLo <= r && r <= rrm.FromHi {
-				translated = true
+				matched = true
 
 				if tr.mappedRune >= 0 {
 					result = tr.mappedRune
@@ -393,16 +418,18 @@ func (tr *Translator) TranslateRune(r rune) (result rune, translated bool) {
 	}
 
 	if tr.reverted {
-		if !translated {
+		if !matched {
 			result = tr.mappedRune
 		}
 
-		translated = !translated
+		matched = !matched
 	}
 
-	if !translated {
+	if !matched {
 		result = r
 	}
+
+	deleted = matched && tr.deletion
 
 	return
 }
