@@ -26,7 +26,7 @@ DOCKER_INTERACTIVE_FLAGS := --tty --interactive
 endif
 
 # Ensure you run `make release-workflows` after changing this
-GO_VERSION         := 1.26.5
+GO_VERSION         := 1.26.6
 
 IMAGE_TAG          ?= $(shell ./tools/image-tag)
 GIT_REVISION       := $(shell git rev-parse --short HEAD)
