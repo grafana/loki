@@ -147,7 +147,13 @@ func NewPushStats() *Stats {
 }
 
 type Stats struct {
-	Errs           []error
+	// Errs holds the reasons the parser dropped streams from the request.
+	Errs []error
+	// InvalidLabelsLines and InvalidLabelsBytes hold the number and size of the
+	// log lines the parser dropped because their stream labels were invalid.
+	InvalidLabelsLines int64
+	InvalidLabelsBytes int64
+
 	PolicyNumLines map[string]int64
 
 	// LogLinesBytes holds the total size of all log lines, per policy per retention. Used in billing.

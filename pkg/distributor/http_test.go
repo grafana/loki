@@ -25,6 +25,7 @@ import (
 
 	"github.com/grafana/dskit/flagext"
 	"github.com/prometheus/client_golang/prometheus/testutil"
+	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/collector/pdata/pcommon"
 	"go.opentelemetry.io/collector/pdata/plog"
@@ -229,6 +230,54 @@ func TestPushHandlerMaxPushSize(t *testing.T) {
 			require.Equal(t, float64(req.ContentLength), testutil.ToFloat64(discardedBytes)-before)
 		})
 	}
+}
+
+func TestPushHandlerOTLPInvalidLabelsAreDiscarded(t *testing.T) {
+	limits := &validation.Limits{}
+	flagext.DefaultValues(limits)
+	limits.RejectOldSamples = false
+	limits.SetGlobalOTLPConfig(push.GlobalOTLPConfig{
+		DefaultOTLPResourceAttributesAsIndexLabels: []string{"service.name"},
+	})
+	distributors, _ := prepare(t, 1, 3, limits, nil)
+	d := distributors[0]
+
+	otlpLogs := plog.NewLogs()
+	addResource := func(serviceName string, lines ...string) {
+		rl := otlpLogs.ResourceLogs().AppendEmpty()
+		rl.Resource().Attributes().PutStr("service.name", serviceName)
+		sl := rl.ScopeLogs().AppendEmpty()
+		for _, line := range lines {
+			lr := sl.LogRecords().AppendEmpty()
+			lr.Body().SetStr(line)
+			lr.SetTimestamp(pcommon.Timestamp(time.Now().UnixNano()))
+		}
+	}
+	// service.name becomes the service_name stream label, which must be valid UTF-8.
+	addResource("bad-\xff", "first", "second")
+	addResource("good", "kept")
+
+	body, err := plogotlp.NewExportRequestFromLogs(otlpLogs).MarshalProto()
+	require.NoError(t, err)
+
+	req := httptest.NewRequest(http.MethodPost, "/otlp/v1/logs", bytes.NewReader(body))
+	req = req.WithContext(user.InjectOrgID(t.Context(), "test"))
+	req.Header.Set("Content-Type", "application/x-protobuf")
+
+	// The metrics are global counters shared across tests, so measure the delta
+	// produced by this request rather than an absolute value.
+	retentionHours := d.tenantsRetention.RetentionHoursFor("test", labels.EmptyLabels())
+	discardedSamples := validation.DiscardedSamples.WithLabelValues(validation.InvalidLabels, "test", retentionHours, "", constants.OTLP)
+	discardedBytes := validation.DiscardedBytes.WithLabelValues(validation.InvalidLabels, "test", retentionHours, "", constants.OTLP)
+	samplesBefore, bytesBefore := testutil.ToFloat64(discardedSamples), testutil.ToFloat64(discardedBytes)
+
+	rec := httptest.NewRecorder()
+	d.pushHandler(rec, req, push.ParseOTLPRequest, push.OTLPError, constants.OTLP)
+
+	// The valid stream is still ingested.
+	require.Equal(t, http.StatusNoContent, rec.Code, rec.Body.String())
+	require.Equal(t, float64(2), testutil.ToFloat64(discardedSamples)-samplesBefore)
+	require.Equal(t, float64(len("first")+len("second")), testutil.ToFloat64(discardedBytes)-bytesBefore)
 }
 
 func TestPushHandlerLogPushRequestStreams(t *testing.T) {
