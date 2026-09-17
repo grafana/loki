@@ -29,6 +29,10 @@ type Resolver struct {
 
 	closers []CloseFunc
 	watcher chan error
+
+	// unexpandedConfMap holds the merged configuration captured during the most
+	// recent Resolve call before provider/env-var references were expanded.
+	unexpandedConfMap map[string]any
 }
 
 // ResolverSettings are the settings to configure the behavior of the Resolver.
@@ -181,6 +185,9 @@ func (mr *Resolver) Resolve(ctx context.Context) (*Conf, error) {
 		}
 	}
 
+	// Capture the pre-expansion map (provider references intact) before expanding.
+	mr.unexpandedConfMap = retMap.ToStringMap()
+
 	cfgMap := make(map[string]any)
 	for _, k := range retMap.AllKeys() {
 		ug := internal.UnsanitizedGetter{Conf: retMap}
@@ -200,6 +207,20 @@ func (mr *Resolver) Resolve(ctx context.Context) (*Conf, error) {
 	}
 
 	return retMap, nil
+}
+
+// UnexpandedConf returns a Conf built from the merged configuration as captured
+// by the most recent Resolve call, before provider and env-var references were
+// expanded (i.e. with ${env:FOO} syntax intact). Returns nil if Resolve has not
+// been called.
+//
+// Experimental: This method is experimental. Its behavior may change without backward
+// compatibility until this notice is removed.
+func (mr *Resolver) UnexpandedConf() *Conf {
+	if mr.unexpandedConfMap == nil {
+		return nil
+	}
+	return NewFromStringMap(mr.unexpandedConfMap)
 }
 
 func escapeDollarSigns(val any) any {

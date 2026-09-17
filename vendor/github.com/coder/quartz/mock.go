@@ -6,14 +6,27 @@ import (
 	"fmt"
 	"slices"
 	"sync"
-	"testing"
 	"time"
 )
+
+// TestingT is the minimal interface required from a testing framework for the Mock.
+type TestingT interface {
+	Helper()
+
+	Log(...any)
+	Logf(string, ...any)
+	Error(...any)
+	Errorf(string, ...any)
+	Fatal(...any)
+	Fatalf(string, ...any)
+
+	Cleanup(func())
+}
 
 // Mock is the testing implementation of Clock.  It tracks a time that monotonically increases
 // during a test, triggering any timers or tickers automatically.
 type Mock struct {
-	tb       testing.TB
+	tb       TestingT
 	logger   Logger
 	mu       sync.Mutex
 	testOver bool
@@ -215,7 +228,7 @@ func (m *Mock) matchCallLocked(c *apiCall) {
 // If multiple timers or tickers trigger simultaneously, they are all run on separate
 // go routines.
 type AdvanceWaiter struct {
-	tb testing.TB
+	tb TestingT
 	ch chan struct{}
 }
 
@@ -467,7 +480,7 @@ func (m *Mock) WithLogger(l Logger) *Mock {
 // NewMock creates a new Mock with the time set to midnight UTC on Jan 1, 2024.
 // You may re-set the time earlier than this, but only before timers or tickers
 // are created.
-func NewMock(tb testing.TB) *Mock {
+func NewMock(tb TestingT) *Mock {
 	cur, err := time.Parse(time.RFC3339, "2024-01-01T00:00:00Z")
 	if err != nil {
 		panic(err)
@@ -668,7 +681,7 @@ type Call struct {
 	Duration time.Duration
 	Tags     []string
 
-	tb      testing.TB
+	tb      TestingT
 	apiCall *apiCall
 	trap    *Trap
 }
@@ -738,6 +751,10 @@ type Trap struct {
 	unreleasedCalls int
 }
 
+func (t *Trap) String() string {
+	return fmt.Sprintf("Trap %s(..., %v)", t.fn.String(), t.tags)
+}
+
 func (t *Trap) catch(c *apiCall) {
 	select {
 	case t.calls <- c:
@@ -761,9 +778,15 @@ func (t *Trap) matches(c *apiCall) bool {
 func (t *Trap) Close() {
 	t.mock.mu.Lock()
 	defer t.mock.mu.Unlock()
+	select {
+	case <-t.done:
+		t.mock.tb.Logf("%s already Closed()", t)
+		return // already closed
+	default:
+	}
 	if t.unreleasedCalls != 0 {
 		t.mock.tb.Helper()
-		t.mock.tb.Errorf("trap Closed() with %d unreleased calls", t.unreleasedCalls)
+		t.mock.tb.Errorf("%s Closed() with %d unreleased calls", t, t.unreleasedCalls)
 	}
 	for i, tr := range t.mock.traps {
 		if t == tr {
@@ -809,7 +832,7 @@ func (t *Trap) MustWait(ctx context.Context) *Call {
 	t.mock.tb.Helper()
 	c, err := t.Wait(ctx)
 	if err != nil {
-		t.mock.tb.Fatalf("context expired while waiting for trap: %s", err.Error())
+		t.mock.tb.Fatalf("context expired while waiting for %s: %s", t, err.Error())
 	}
 	return c
 }

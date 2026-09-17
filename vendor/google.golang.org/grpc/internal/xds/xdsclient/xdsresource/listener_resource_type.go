@@ -81,15 +81,35 @@ func securityConfigValidator(bc *bootstrap.Config, sc *SecurityConfig) error {
 }
 
 func listenerValidator(bc *bootstrap.Config, lis ListenerUpdate) error {
-	if lis.InboundListenerCfg == nil || lis.InboundListenerCfg.FilterChains == nil {
-		return nil
-	}
-	return lis.InboundListenerCfg.FilterChains.Validate(func(fc *FilterChain) error {
+	// Validate Filter Chains.
+	validateFC := func(fc *NetworkFilterChainConfig) error {
 		if fc == nil {
 			return nil
 		}
 		return securityConfigValidator(bc, fc.SecurityCfg)
-	})
+	}
+
+	if lis.TCPListener == nil {
+		return nil
+	}
+	if err := validateFC(&lis.TCPListener.DefaultFilterChain); err != nil {
+		return err
+	}
+	for _, dst := range lis.TCPListener.FilterChains.DstPrefixes {
+		for _, srcType := range dst.SourceTypeArr {
+			if len(srcType.Entries) == 0 {
+				continue
+			}
+			for _, src := range srcType.Entries {
+				for _, fc := range src.PortMap {
+					if err := validateFC(&fc); err != nil {
+						return err
+					}
+				}
+			}
+		}
+	}
+	return nil
 }
 
 // ListenerResourceData is an implementation of the xdsclient.ResourceData

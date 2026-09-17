@@ -83,7 +83,7 @@ responds with status `204 No Content`.
 The status code should be checked explicitly with a [k6 check](https://grafana.com/docs/k6/latest/javascript-api/k6/check/).
 
 
-## Javascript example
+## JavaScript example
 
 ```javascript
 import { check, fail } from 'k6';

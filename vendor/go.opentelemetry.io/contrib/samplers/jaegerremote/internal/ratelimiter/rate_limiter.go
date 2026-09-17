@@ -17,7 +17,7 @@
 // limitations under the License.
 
 // Package ratelimiter provides a rate limiter.
-package ratelimiter // import "go.opentelemetry.io/contrib/samplers/jaegerremote/internal/ratelimiter"
+package ratelimiter
 
 import (
 	"sync"

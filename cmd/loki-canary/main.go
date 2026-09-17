@@ -42,9 +42,10 @@ func main() {
 	lName := flag.String("labelname", "name", "The label name for this instance of loki-canary to use in the log selector")
 	lVal := flag.String("labelvalue", "loki-canary", "The unique label value for this instance of loki-canary to use in the log selector")
 	sName := flag.String("streamname", "stream", "The stream name for this instance of loki-canary to use in the log selector")
-	sValue := flag.String("streamvalue", "stdout", "The unique stream value for this instance of loki-canary to use in the log selector")
+	sValue := flag.String("streamvalue", "", `The unique stream value for this instance of loki-canary to use in the log selector (defaults to "stdout", or "push" when -push=true)`)
 	port := flag.Int("port", 3500, "Port which loki-canary should expose metrics")
 	addr := flag.String("addr", "", "The Loki server URL:Port, e.g. loki:3100")
+	pathPrefix := flag.String("path-prefix", "", "Path prefix for the Loki server")
 	push := flag.Bool("push", false, "Push the logs directly to given Loki address")
 	useTLS := flag.Bool("tls", false, "Does the loki connection use TLS?")
 	certFile := flag.String("cert-file", "", "Client PEM encoded X.509 certificate for optional use with TLS connection to Loki")
@@ -95,6 +96,13 @@ func main() {
 	printVersion := flag.Bool("version", false, "Print this builds version information")
 
 	flag.Parse()
+
+	if *sValue == "" {
+		*sValue = "stdout"
+		if *push {
+			*sValue = "push"
+		}
+	}
 
 	if *printVersion {
 		fmt.Println(version.Print("loki-canary"))
@@ -183,6 +191,7 @@ func main() {
 
 			push, err := writer.NewPush(
 				*addr,
+				*pathPrefix,
 				*tenantID,
 				*writeTimeout,
 				config.DefaultHTTPClientConfig,
@@ -208,7 +217,7 @@ func main() {
 
 		c.writer = writer.NewWriter(entryWriter, sentChan, *interval, *outOfOrderMin, *outOfOrderMax, *outOfOrderPercentage, *size, logger)
 		var err error
-		c.reader, err = reader.NewReader(os.Stderr, receivedChan, *useTLS, tlsConfig, *caFile, *certFile, *keyFile, *addr, *user, *pass, *tenantID, *queryTimeout, *lName, *lVal, *sName, *sValue, *interval, *queryAppend, *labels)
+		c.reader, err = reader.NewReader(os.Stderr, receivedChan, *useTLS, tlsConfig, *caFile, *certFile, *keyFile, *addr, *pathPrefix, *user, *pass, *tenantID, *queryTimeout, *lName, *lVal, *sName, *sValue, *interval, *queryAppend, *labels)
 		if err != nil {
 			_, _ = fmt.Fprintf(os.Stderr, "Unable to create reader for Loki querier, check config: %s", err)
 			os.Exit(1)

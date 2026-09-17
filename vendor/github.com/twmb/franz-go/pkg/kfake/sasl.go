@@ -11,11 +11,10 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/twmb/franz-go/pkg/kmsg"
 	"golang.org/x/crypto/pbkdf2"
-)
 
-// TODO server-error-value in serverFinal
+	"github.com/twmb/franz-go/pkg/kmsg"
+)
 
 const (
 	saslPlain       = "PLAIN"
@@ -47,7 +46,7 @@ const (
 	saslStageComplete
 )
 
-func (c *Cluster) handleSASL(creq *clientReq) (allow bool) {
+func (*Cluster) handleSASL(creq *clientReq) (allow bool) {
 	switch creq.cc.saslStage {
 	case saslStageBegin:
 		switch creq.kreq.(type) {

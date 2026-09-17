@@ -12,6 +12,8 @@ package libc // import "modernc.org/libc"
 
 import (
 	"fmt"
+	"math"
+	"math/bits"
 	"runtime"
 	"sort"
 	"strings"
@@ -117,7 +119,12 @@ func Xcalloc(t *TLS, n, size types.Size_t) uintptr {
 	if __ccgo_strace {
 		trc("t=%v n=%v size=%v, (%v:)", t, n, size, origin(2))
 	}
-	rq := int(n * size)
+	hi, rq0 := bits.Mul(uint(n), uint(size))
+	if hi != 0 || rq0 > math.MaxInt {
+		t.setErrno(errno.ENOMEM)
+		return 0
+	}
+	rq := int(rq0)
 	if rq == 0 {
 		rq = 1
 	}
@@ -179,9 +186,6 @@ func Xrealloc(t *TLS, ptr uintptr, size types.Size_t) uintptr {
 				panic(fmt.Errorf("%v: realloc, free of unallocated memory: %#x", pc2origin(pc), ptr))
 			}
 
-			delete(allocs, ptr)
-			delete(allocsMore, ptr)
-			frees[ptr] = pc
 		}
 	}
 
@@ -194,14 +198,21 @@ func Xrealloc(t *TLS, ptr uintptr, size types.Size_t) uintptr {
 		return 0
 	}
 
-	if memAuditEnabled && p != 0 {
-		delete(frees, p)
-		if pc0, ok := allocs[p]; ok {
-			dmesg("%v: realloc returns same address twice, previous call at %v:", pc2origin(pc), pc2origin(pc0))
-			panic(fmt.Errorf("%v: realloc returns same address twice, previous call at %v:", pc2origin(pc), pc2origin(pc0)))
+	if memAuditEnabled {
+		if ptr != 0 {
+			delete(allocs, ptr)
+			delete(allocsMore, ptr)
+			frees[ptr] = pc
 		}
+		if p != 0 {
+			delete(frees, p)
+			if pc0, ok := allocs[p]; ok {
+				dmesg("%v: realloc returns same address twice, previous call at %v:", pc2origin(pc), pc2origin(pc0))
+				panic(fmt.Errorf("%v: realloc returns same address twice, previous call at %v:", pc2origin(pc), pc2origin(pc0)))
+			}
 
-		allocs[p] = pc
+			allocs[p] = pc
+		}
 	}
 	return p
 }

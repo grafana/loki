@@ -12,13 +12,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/scratch"
 )
 
-var (
-	magic = []byte("DOBJ")
-
-	// legacyMagic is the magic bytes used in the original dataobj format where
-	// file metadata was kept at the bottom of the file.
-	legacyMagic = []byte("THOR")
-)
+var magic = []byte("DOBJ")
 
 const (
 	fileFormatVersion = 0x1
@@ -199,29 +193,6 @@ func (enc *encoder) Metadata() (*filemd.Metadata, error) {
 	return md, nil
 }
 
-// encodeSize reports the final encoded size of the object.
-func (enc *encoder) encodeSize(computedMetadata *filemd.Metadata) int64 {
-	var size int64
-
-	size += int64(len(legacyMagic)) // header
-
-	// body
-	for _, sec := range enc.sections {
-		size += int64(sec.Data.Size)
-		size += int64(sec.Metadata.Size)
-	}
-
-	// metadata
-	size += int64(streamio.UvarintSize(fileFormatVersion))
-	size += int64(protocodec.Size(computedMetadata))
-
-	// tailer
-	size += int64(4) // file metadata size (32 bits)
-	size += int64(len(legacyMagic))
-
-	return size
-}
-
 // Bytes returns the total number of bytes appended to the data object.
 func (enc *encoder) Bytes() int { return enc.totalBytes }
 
@@ -307,23 +278,4 @@ func (enc *encoder) Reset() {
 	enc.dictionaryLookup = nil
 	enc.rawTypes = nil
 	enc.typeRefLookup = nil
-}
-
-type countingWriter struct {
-	w     streamio.Writer
-	count int64
-}
-
-func (cw *countingWriter) Write(p []byte) (n int, err error) {
-	n, err = cw.w.Write(p)
-	cw.count += int64(n)
-	return n, err
-}
-
-func (cw *countingWriter) WriteByte(c byte) error {
-	if err := cw.w.WriteByte(c); err != nil {
-		return err
-	}
-	cw.count++
-	return nil
 }

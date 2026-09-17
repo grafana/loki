@@ -1,8 +1,10 @@
 package logql
 
 import (
+	"bytes"
 	"context"
 	"fmt"
+	"sync"
 	"testing"
 	"time"
 
@@ -180,6 +182,103 @@ func TestEngine_ExecWithBlockedQueries(t *testing.T) {
 
 			require.Error(t, err)
 			require.Equal(t, err.Error(), test.expectedErr.Error())
+		})
+	}
+}
+
+func TestEngine_BlockedQueries_ConcurrentAccess(t *testing.T) {
+	shared := []*validation.BlockedQuery{
+		{
+			Pattern: "", // empty → triggers the in-place mutation
+			Types:   []string{QueryTypeMetric},
+		},
+	}
+
+	limits := &fakeLimits{
+		maxSeries:      10,
+		blockedQueries: shared,
+	}
+	eng := NewEngine(EngineOpts{}, getLocalQuerier(100000), limits, log.NewNopLogger())
+
+	const goroutines = 50
+	var wg sync.WaitGroup
+	wg.Add(goroutines)
+
+	queryStr := `topk(1,rate(({app=~"foo|bar"})[1m]))`
+	for range goroutines {
+		go func() {
+			defer wg.Done()
+			params, err := NewLiteralParams(queryStr, time.Unix(0, 0), time.Unix(100000, 0), 60*time.Second, 0, logproto.FORWARD, 1000, nil, nil)
+			require.NoError(t, err)
+			q := eng.Query(params)
+			ctx := user.InjectOrgID(context.Background(), "fake")
+			_, _ = q.Exec(ctx)
+		}()
+	}
+
+	wg.Wait()
+}
+
+func TestEngine_BlockedQueries_EmptyPatternLogging(t *testing.T) {
+	const query = `topk(1,rate(({app=~"foo|bar"})[1m]))`
+
+	for _, test := range []struct {
+		name           string
+		blocked        *validation.BlockedQuery
+		expectWarnMsg  string
+		expectNoWarnOf string
+	}{
+		{
+			name: "omit warning when empty pattern does not match type",
+			blocked: &validation.BlockedQuery{
+				Types: []string{QueryTypeLimited},
+			},
+			expectNoWarnOf: "query blocker matched with",
+		},
+		{
+			name: "warn when empty pattern blocks query",
+			blocked: &validation.BlockedQuery{
+				Types: []string{QueryTypeMetric},
+			},
+			expectWarnMsg: "query blocker matched with empty pattern policy",
+		},
+		{
+			name: "warn when explicit catch-all does not match type",
+			blocked: &validation.BlockedQuery{
+				Pattern: ".*",
+				Regex:   true,
+				Types:   []string{QueryTypeLimited},
+			},
+			expectWarnMsg: "query blocker matched with regex policy",
+		},
+		{
+			name: "warn with exact match policy for exact pattern",
+			blocked: &validation.BlockedQuery{
+				Pattern: query,
+			},
+			expectWarnMsg: "query blocker matched with exact match policy",
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			var buf bytes.Buffer
+			limits := &fakeLimits{
+				maxSeries:      10,
+				blockedQueries: []*validation.BlockedQuery{test.blocked},
+			}
+			eng := NewEngine(EngineOpts{}, getLocalQuerier(100000), limits, log.NewLogfmtLogger(&buf))
+
+			params, err := NewLiteralParams(query, time.Unix(0, 0), time.Unix(100000, 0), 60*time.Second, 0, logproto.FORWARD, 1000, nil, nil)
+			require.NoError(t, err)
+
+			_, _ = eng.Query(params).Exec(user.InjectOrgID(context.Background(), "fake"))
+
+			logs := buf.String()
+			if test.expectWarnMsg != "" {
+				require.Contains(t, logs, test.expectWarnMsg)
+			}
+			if test.expectNoWarnOf != "" {
+				require.NotContains(t, logs, test.expectNoWarnOf)
+			}
 		})
 	}
 }

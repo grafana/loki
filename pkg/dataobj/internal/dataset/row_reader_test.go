@@ -15,6 +15,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/grafana/loki/v3/pkg/dataobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/datasetmd"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/result"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/util/rangeset"
@@ -23,7 +24,7 @@ import (
 
 func Test_RowReader_Open_Prefetch(t *testing.T) {
 	dset, columns := buildTestDataset(t)
-	r := NewRowReader(RowReaderOptions{Dataset: dset, Columns: columns, Prefetch: true})
+	r := NewRowReader(RowReaderOptions{Dataset: dset, Columns: columns, PrefetchAllOnOpen: true})
 	defer r.Close()
 
 	require.NoError(t, r.Open(t.Context()))
@@ -37,6 +38,39 @@ func Test_RowReader_Open_Prefetch(t *testing.T) {
 			assert.NotNil(t, page.data, "Expected column %d page %d to be prefetched", i, j)
 		}
 	}
+}
+
+func Test_RowReader_LazyDownloadTarget(t *testing.T) {
+	dset, columns := buildTestDataset(t)
+	r := NewRowReader(RowReaderOptions{Dataset: dset, Columns: columns, PrefetchAllOnOpen: false})
+	defer r.Close()
+
+	require.NoError(t, r.Open(t.Context()))
+	require.Equal(t, defaultTargetDownloadedBytes, r.dl.targetCompressedBytes)
+
+	// Force the target below a single page so only P1 pages for the current
+	// read range are downloaded.
+	r.dl.targetCompressedBytes = 1
+
+	n, err := r.Read(t.Context(), make([]Row, 1))
+	require.NoError(t, err)
+	require.Equal(t, 1, n)
+
+	var pagesCached, totalPages int
+	for _, col := range r.dl.allColumns {
+		rc := col.(*readerColumn)
+		require.NotEmpty(t, rc.pages)
+		for _, page := range rc.pages {
+			totalPages++
+			if page.data != nil {
+				pagesCached++
+			}
+		}
+	}
+
+	require.Greater(t, totalPages, len(columns), "expected more than one page per column")
+	require.Greater(t, pagesCached, 0, "expected the current read range to download pages")
+	require.Less(t, pagesCached, totalPages, "expected the download target to leave later pages uncached")
 }
 
 func Test_Reader_ReadAll(t *testing.T) {
@@ -958,14 +992,14 @@ func Test_Reader_Stats(t *testing.T) {
 		obsMap[obs.Statistic.Name()] = obs.Value.(int64)
 	}
 
-	require.Equal(t, int64(2), obsMap[xcap.StatDatasetReadCalls.Name()])
-	require.Equal(t, int64(2), obsMap[xcap.StatDatasetPrimaryColumns.Name()])
-	require.Equal(t, int64(2), obsMap[xcap.StatDatasetSecondaryColumns.Name()])
-	require.Equal(t, int64(5), obsMap[xcap.StatDatasetPrimaryColumnPages.Name()])
-	require.Equal(t, int64(8), obsMap[xcap.StatDatasetSecondaryColumnPages.Name()])
+	require.Equal(t, int64(2), obsMap[dataobj.StatDatasetReadCalls.Name()])
+	require.Equal(t, int64(2), obsMap[dataobj.StatDatasetPrimaryColumns.Name()])
+	require.Equal(t, int64(2), obsMap[dataobj.StatDatasetSecondaryColumns.Name()])
+	require.Equal(t, int64(5), obsMap[dataobj.StatDatasetPrimaryColumnPages.Name()])
+	require.Equal(t, int64(8), obsMap[dataobj.StatDatasetSecondaryColumnPages.Name()])
 
-	require.Equal(t, int64(len(basicReaderTestData)), obsMap[xcap.StatDatasetMaxRows.Name()])
-	require.Equal(t, int64(3), obsMap[xcap.StatDatasetRowsAfterPruning.Name()])
-	require.Equal(t, int64(3), obsMap[xcap.StatDatasetPrimaryRowsRead.Name()])
-	require.Equal(t, int64(1), obsMap[xcap.StatDatasetSecondaryRowsRead.Name()])
+	require.Equal(t, int64(len(basicReaderTestData)), obsMap[dataobj.StatDatasetMaxRows.Name()])
+	require.Equal(t, int64(3), obsMap[dataobj.StatDatasetRowsAfterPruning.Name()])
+	require.Equal(t, int64(3), obsMap[dataobj.StatDatasetPrimaryRowsRead.Name()])
+	require.Equal(t, int64(1), obsMap[dataobj.StatDatasetSecondaryRowsRead.Name()])
 }

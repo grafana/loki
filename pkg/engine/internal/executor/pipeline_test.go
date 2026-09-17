@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -102,25 +103,38 @@ func newInstrumentedPipeline(inner Pipeline) *instrumentedPipeline {
 }
 
 type instrumentedPipeline struct {
+	sync.Mutex
 	inner     Pipeline
 	callCount map[string]int
 }
 
 func (i *instrumentedPipeline) Open(ctx context.Context) error {
+	i.Lock()
+	defer i.Unlock()
 	i.callCount["Open"]++
 	return i.inner.Open(ctx)
 }
 
 // Close implements Pipeline.
 func (i *instrumentedPipeline) Close() {
+	i.Lock()
+	defer i.Unlock()
 	i.callCount["Close"]++
 	i.inner.Close()
 }
 
 // Read implements Pipeline.
 func (i *instrumentedPipeline) Read(ctx context.Context) (arrow.RecordBatch, error) {
+	i.Lock()
+	defer i.Unlock()
 	i.callCount["Read"]++
 	return i.inner.Read(ctx)
+}
+
+func (i *instrumentedPipeline) getCallCount(key string) int {
+	i.Lock()
+	defer i.Unlock()
+	return i.callCount[key]
 }
 
 var _ Pipeline = (*instrumentedPipeline)(nil)
@@ -159,31 +173,31 @@ func Test_prefetchWrapper_Read(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, int64(2), v.NumRows())
 
-	time.Sleep(10 * time.Millisecond)                           // ensure that next batch has been prefetched
-	require.Equal(t, 2, instrumentedPipeline.callCount["Read"]) // 1 record consumed + 1 record pre-fetched
+	time.Sleep(10 * time.Millisecond)                              // ensure that next batch has been prefetched
+	require.Equal(t, 2, instrumentedPipeline.getCallCount("Read")) // 1 record consumed + 1 record pre-fetched
 
 	// Read second batch
 	v, err = prefetchingPipeline.Read(ctx)
 	require.NoError(t, err)
 	require.Equal(t, int64(2), v.NumRows())
 
-	time.Sleep(10 * time.Millisecond)                           // ensure that next batch has been prefetched
-	require.Equal(t, 3, instrumentedPipeline.callCount["Read"]) // 2 records consumed + 1 record pre-fetched
+	time.Sleep(10 * time.Millisecond)                              // ensure that next batch has been prefetched
+	require.Equal(t, 3, instrumentedPipeline.getCallCount("Read")) // 2 records consumed + 1 record pre-fetched
 
 	// Read third/last batch
 	v, err = prefetchingPipeline.Read(ctx)
 	require.NoError(t, err)
 	require.Equal(t, int64(1), v.NumRows())
 
-	time.Sleep(10 * time.Millisecond)                           // ensure that next batch has been prefetched
-	require.Equal(t, 4, instrumentedPipeline.callCount["Read"]) // 3 records consumed + 1 EOF pre-fetched
+	time.Sleep(10 * time.Millisecond)                              // ensure that next batch has been prefetched
+	require.Equal(t, 4, instrumentedPipeline.getCallCount("Read")) // 3 records consumed + 1 EOF pre-fetched
 
 	// Read EOF
 	_, err = prefetchingPipeline.Read(ctx)
 	require.ErrorContains(t, err, EOF.Error())
 
-	time.Sleep(10 * time.Millisecond)                           // ensure that next batch has been prefetched
-	require.Equal(t, 4, instrumentedPipeline.callCount["Read"]) // 3 records + 1 EOF consumed
+	time.Sleep(10 * time.Millisecond)                              // ensure that next batch has been prefetched
+	require.Equal(t, 4, instrumentedPipeline.getCallCount("Read")) // 3 records + 1 EOF consumed
 }
 
 func Test_prefetchWrapper_Close(t *testing.T) {

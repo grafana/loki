@@ -11,12 +11,13 @@ import (
 	"sync"
 
 	"go.opentelemetry.io/collector/pdata/internal/json"
+	"go.opentelemetry.io/collector/pdata/internal/metadata"
 	"go.opentelemetry.io/collector/pdata/internal/proto"
 )
 
 type IPAddr struct {
-	Zone string
 	IP   []byte
+	Zone string
 }
 
 var (
@@ -28,7 +29,7 @@ var (
 )
 
 func NewIPAddr() *IPAddr {
-	if !UseProtoPooling.IsEnabled() {
+	if !metadata.PdataUseProtoPoolingFeatureGate.IsEnabled() {
 		return &IPAddr{}
 	}
 	return protoPoolIPAddr.Get().(*IPAddr)
@@ -39,7 +40,7 @@ func DeleteIPAddr(orig *IPAddr, nullable bool) {
 		return
 	}
 
-	if !UseProtoPooling.IsEnabled() {
+	if !metadata.PdataUseProtoPoolingFeatureGate.IsEnabled() {
 		orig.Reset()
 		return
 	}
@@ -145,7 +146,7 @@ func (orig *IPAddr) UnmarshalJSON(iter *json.Iterator) {
 		case "zone":
 			orig.Zone = iter.ReadString()
 		default:
-			iter.Skip()
+			iter.HandleUnknownField(f)
 		}
 	}
 }

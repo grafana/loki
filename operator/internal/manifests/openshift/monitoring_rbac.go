@@ -11,7 +11,7 @@ const (
 )
 
 // BuildMonitoringRole returns a Role resource that defines
-// list and watch access on pods, services and endpoints.
+// list and watch access on pods, services, endpoints, and endpoint slices.
 func BuildMonitoringRole(opts Options) *rbacv1.Role {
 	return &rbacv1.Role{
 		TypeMeta: metav1.TypeMeta{
@@ -27,6 +27,11 @@ func BuildMonitoringRole(opts Options) *rbacv1.Role {
 			{
 				APIGroups: []string{""},
 				Resources: []string{"pods", "services", "endpoints"},
+				Verbs:     []string{"get", "list", "watch"},
+			},
+			{
+				APIGroups: []string{"discovery.k8s.io"},
+				Resources: []string{"endpointslices"},
 				Verbs:     []string{"get", "list", "watch"},
 			},
 		},

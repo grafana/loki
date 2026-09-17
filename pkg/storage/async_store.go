@@ -42,7 +42,7 @@ type AsyncStoreCfg struct {
 }
 
 // AsyncStore does querying to both ingesters and chunk store and combines the results after deduping them.
-// This should be used when using an async store like boltdb-shipper.
+// This should be used when using an async store like tsdb.
 // AsyncStore is meant to be used only in queriers or any other service other than ingesters.
 // It should never be used in ingesters otherwise it would start spiraling around doing queries over and over again to other ingesters.
 type AsyncStore struct {

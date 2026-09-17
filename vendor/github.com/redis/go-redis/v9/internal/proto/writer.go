@@ -118,7 +118,7 @@ func (w *Writer) WriteArg(v interface{}) error {
 		return w.uint(uint64(v))
 	case *uint8:
 		if v == nil {
-			return w.string("")
+			return w.uint(0)
 		}
 		return w.uint(uint64(*v))
 	case uint16:

@@ -4,9 +4,12 @@
 package analysis
 
 import (
+	"encoding/json"
 	"log"
 
 	"github.com/go-openapi/spec"
+	"github.com/go-openapi/swag/loading"
+	"github.com/go-openapi/swag/mangling"
 )
 
 // FlattenOpts configuration for flattening a swagger specification.
@@ -24,23 +27,35 @@ type FlattenOpts struct {
 	BasePath string // The location of the root document for this spec to resolve relative $ref
 
 	// Flattening options
-	Expand          bool // When true, skip flattening the spec and expand it instead (if Minimal is false)
-	Minimal         bool // When true, do not decompose complex structures such as allOf
-	Verbose         bool // enable some reporting on possible name conflicts detected
-	RemoveUnused    bool // When true, remove unused parameters, responses and definitions after expansion/flattening
-	ContinueOnError bool // Continue when spec expansion issues are found
-	KeepNames       bool // Do not attempt to jsonify names from references when flattening
+	Expand          bool              // When true, skip flattening the spec and expand it instead (if Minimal is false)
+	Minimal         bool              // When true, do not decompose complex structures such as allOf
+	Verbose         bool              // enable some reporting on possible name conflicts detected
+	RemoveUnused    bool              // When true, remove unused parameters, responses and definitions after expansion/flattening
+	ContinueOnError bool              // Continue when spec expansion issues are found
+	KeepNames       bool              // Do not attempt to jsonify names from references when flattening
+	ManglerOpts     []mangling.Option `json:"-"` // Options for the name mangler used to jsonify names
+
+	// PathLoaderWithOptions injects the document loader used to resolve remote and relative $ref
+	// while flattening or expanding the specification. It matches the option-aware loader signature
+	// of github.com/go-openapi/swag/loading (and go-openapi/loads).
+	//
+	// Security: when flattening a specification obtained from an untrusted source, set this to a
+	// confined loader — for example one built with loading.WithRoot (to confine local reads) and
+	// loading.WithHTTPClient (to restrict remote fetches), or a restricted loader from
+	// go-openapi/loads. Left nil, the spec package default (unsandboxed) loader is used.
+	PathLoaderWithOptions func(string, ...loading.Option) (json.RawMessage, error) `json:"-"`
 
 	/* Extra keys */
 	_ struct{} // require keys
 }
 
-// ExpandOpts creates a spec.ExpandOptions to configure expanding a specification document.
+// ExpandOpts creates a spec.[spec.ExpandOptions] to configure expanding a specification document.
 func (f *FlattenOpts) ExpandOpts(skipSchemas bool) *spec.ExpandOptions {
 	return &spec.ExpandOptions{
-		RelativeBase:    f.BasePath,
-		SkipSchemas:     skipSchemas,
-		ContinueOnError: f.ContinueOnError,
+		RelativeBase:          f.BasePath,
+		SkipSchemas:           skipSchemas,
+		ContinueOnError:       f.ContinueOnError,
+		PathLoaderWithOptions: f.PathLoaderWithOptions,
 	}
 }
 

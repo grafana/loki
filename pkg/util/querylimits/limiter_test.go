@@ -9,6 +9,7 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/require"
 
+	"github.com/grafana/loki/v3/pkg/logql"
 	"github.com/grafana/loki/v3/pkg/validation"
 )
 
@@ -246,4 +247,58 @@ func TestLimiter_MergeLimits(t *testing.T) {
 	ctx := InjectQueryLimitsIntoContext(context.Background(), limits)
 
 	require.ElementsMatch(t, []string{"one", "two", "three"}, l.RequiredLabels(ctx, "fake"))
+}
+
+func TestLimiter_TSDBShardingStrategy(t *testing.T) {
+	for _, tc := range []struct {
+		name       string
+		configured string
+		override   string
+		expected   string
+	}{
+		{
+			name:       "default returns configured strategy",
+			configured: logql.BoundedVersion.String(),
+			expected:   logql.BoundedVersion.String(),
+		},
+		{
+			name:       "power of two override wins over bounded",
+			configured: logql.BoundedVersion.String(),
+			override:   logql.PowerOfTwoVersion.String(),
+			expected:   logql.PowerOfTwoVersion.String(),
+		},
+		{
+			name:       "bounded override wins over power of two",
+			configured: logql.PowerOfTwoVersion.String(),
+			override:   logql.BoundedVersion.String(),
+			expected:   logql.BoundedVersion.String(),
+		},
+		{
+			name:       "invalid override preserves configured strategy",
+			configured: logql.BoundedVersion.String(),
+			override:   "invalid",
+			expected:   logql.BoundedVersion.String(),
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			tLimits := map[string]*validation.Limits{
+				"fake": {
+					TSDBShardingStrategy: tc.configured,
+				},
+			}
+
+			overrides, err := validation.NewOverrides(validation.Limits{}, newMockTenantLimits(tLimits))
+			require.NoError(t, err)
+			l := NewLimiter(log.NewNopLogger(), overrides)
+
+			ctx := context.Background()
+			if tc.override != "" {
+				ctx = InjectQueryLimitsIntoContext(ctx, QueryLimits{
+					TSDBShardingStrategy: tc.override,
+				})
+			}
+
+			require.Equal(t, tc.expected, l.TSDBShardingStrategy(ctx, "fake"))
+		})
+	}
 }

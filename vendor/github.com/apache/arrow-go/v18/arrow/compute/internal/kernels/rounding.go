@@ -31,7 +31,7 @@ import (
 	"golang.org/x/exp/constraints"
 )
 
-//go:generate stringer -type=RoundMode
+//go:generate go tool stringer -type=RoundMode
 
 type RoundMode int8
 

@@ -166,6 +166,16 @@ func (m *PartitionRingDesc) activePartitionsCount() int {
 	return count
 }
 
+func (m *PartitionRingDesc) maxPartitionID() int32 {
+	var max int32 = -1
+	for id := range m.Partitions {
+		if id > max {
+			max = id
+		}
+	}
+	return max
+}
+
 // WithPartitions returns a new PartitionRingDesc with only the specified partitions and their owners included.
 func (m *PartitionRingDesc) WithPartitions(partitions map[int32]struct{}) PartitionRingDesc {
 	newPartitions := make(map[int32]PartitionDesc, len(partitions))
@@ -432,7 +442,7 @@ func (m *PartitionRingDesc) mergeWithTime(mergeable memberlist.Mergeable, localC
 
 // MergeContent implements memberlist.Mergeable.
 func (m *PartitionRingDesc) MergeContent() []string {
-	result := make([]string, len(m.Partitions)+len(m.Owners))
+	result := make([]string, 0, len(m.Partitions)+len(m.Owners))
 
 	// We're assuming that partition IDs and instance IDs are not colliding (ie. no instance is called "1").
 	for pid := range m.Partitions {

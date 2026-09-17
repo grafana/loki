@@ -34,6 +34,32 @@ if v1.LessThan(v2) {
 }
 ```
 
+#### Version Parsing and Comparison with Prefixes
+
+The library also supports parsing versions with a custom prefix.
+Using the `WithPrefix` option, you can specify a prefix to strip
+before parsing the version.
+
+Use `WithPrefix` when your input strings carry a known release prefix such as
+`deployment-`, `controller-`, etc.
+
+After parsing, the prefix is not part of the canonical version value. This
+means the regular comparison methods such as `Compare`, `LessThan`, `Equal`,
+and `GreaterThan` compare only the stripped version. If you compare versions
+from different prefixes with these methods, the prefixes are ignored. If you
+need to reject cross-prefix comparisons, inspect the parsed prefixes before
+comparing the versions.
+
+```go
+v1, _ := version.NewVersion("deployment-v1.2.3-beta+metadata", version.WithPrefix("deployment-"))
+v2, _ := version.NewVersion("deployment-v1.2.4", version.WithPrefix("deployment-"))
+
+if v1.LessThan(v2) {
+    fmt.Printf("%s (%s) is less than %s (%s)\n", v1, v1.Original(), v2, v2.Original())
+    // Outputs: 1.2.3-beta+metadata (deployment-v1.2.3-beta+metadata) is less than 1.2.4 (deployment-v1.2.4)
+}
+```
+
 #### Version Constraints
 
 ```go

@@ -77,7 +77,7 @@ const (
 // var err error
 // err = UnmarshalPrimitive(rawMessageMap, "field1", &myStruct.Field1)
 // err = UnmarshalPrimitive(rawMessageMap, "field2", &myString.Field2)
-func UnmarshalPrimitive(rawInput map[string]json.RawMessage, propertyName string, result interface{}) (err error) {
+func UnmarshalPrimitive(rawInput map[string]json.RawMessage, propertyName string, result any) (err error) {
 	if propertyName == "" {
 		err = errors.New(errorPropertyNameMissing)
 		err = SDKErrorf(err, "", "no-prop-name", getComponentInfo())
@@ -103,7 +103,7 @@ func UnmarshalPrimitive(rawInput map[string]json.RawMessage, propertyName string
 // result: the unmarshal destination.  This should be a **<model> (i.e. a ptr to a ptr to a model instance).
 // A new instance of the model is constructed by the unmarshaller function and is returned through the ptr
 // passed in as 'result'.
-type ModelUnmarshaller func(rawInput map[string]json.RawMessage, result interface{}) error
+type ModelUnmarshaller func(rawInput map[string]json.RawMessage, result any) error
 
 // UnmarshalModel unmarshals 'rawInput' into 'result' while using 'unmarshaller' to unmarshal model instances.
 // This function is the single public interface to the various flavors of model-related unmarshal functions.
@@ -186,7 +186,7 @@ type ModelUnmarshaller func(rawInput map[string]json.RawMessage, result interfac
 //	|                          | contains an instance of map[string][]Foo
 //
 // -------------------+--------------------------+------------------------------------------------------------------
-func UnmarshalModel(rawInput interface{}, propertyName string, result interface{}, unmarshaller ModelUnmarshaller) (err error) {
+func UnmarshalModel(rawInput any, propertyName string, result any, unmarshaller ModelUnmarshaller) (err error) {
 	// Make sure some input is provided. Otherwise return an error.
 	if IsNil(rawInput) {
 		err = errors.New(errorUnmarshallInputIsNil)
@@ -199,7 +199,7 @@ func UnmarshalModel(rawInput interface{}, propertyName string, result interface{
 
 	// Now delegate the work to the appropriate internal unmarshal function.
 	switch rResultType.Kind() {
-	case reflect.Ptr, reflect.Interface:
+	case reflect.Pointer, reflect.Interface:
 		// Unmarshal a single instance of a model.
 		err = unmarshalModelInstance(rawInput, propertyName, result, unmarshaller)
 
@@ -285,7 +285,7 @@ func UnmarshalModel(rawInput interface{}, propertyName string, result interface{
 // that 'result' points to (i.e. it is legal for 'result' to point to a nil pointer).
 //
 // 'unmarshaller' is the generated unmarshal function used to unmarshal a single instance of the model.
-func unmarshalModelInstance(rawInput interface{}, propertyName string, result interface{}, unmarshaller ModelUnmarshaller) (err error) {
+func unmarshalModelInstance(rawInput any, propertyName string, result any, unmarshaller ModelUnmarshaller) (err error) {
 	var rawMap map[string]json.RawMessage
 	var foundInput bool
 
@@ -340,7 +340,7 @@ func unmarshalModelInstance(rawInput interface{}, propertyName string, result in
 // This function will construct a new slice and return it through 'result'.
 //
 // 'unmarshaller' is the function used to unmarshal a single instance of the model.
-func unmarshalModelSlice(rawInput interface{}, propertyName string, result interface{}, unmarshaller ModelUnmarshaller) (err error) {
+func unmarshalModelSlice(rawInput any, propertyName string, result any, unmarshaller ModelUnmarshaller) (err error) {
 	var rawSlice []json.RawMessage
 	var foundInput bool
 
@@ -433,7 +433,7 @@ func unmarshalModelSlice(rawInput interface{}, propertyName string, result inter
 // This function will construct a new slice of slices and return it through 'result'.
 //
 // 'unmarshaller' is the function used to unmarshal a single instance of the model.
-func unmarshalModelSliceSlice(rawInput interface{}, propertyName string, result interface{}, unmarshaller ModelUnmarshaller) (err error) {
+func unmarshalModelSliceSlice(rawInput any, propertyName string, result any, unmarshaller ModelUnmarshaller) (err error) {
 	var rawSlice []json.RawMessage
 	var foundInput bool
 
@@ -511,7 +511,7 @@ func unmarshalModelSliceSlice(rawInput interface{}, propertyName string, result 
 // If 'result' points to a nil map, this function will construct the map prior to adding entries to it.
 //
 // unmarshaller: the function used to unmarshal a single instance of the model.
-func unmarshalModelMap(rawInput interface{}, propertyName string, result interface{}, unmarshaller ModelUnmarshaller) (err error) {
+func unmarshalModelMap(rawInput any, propertyName string, result any, unmarshaller ModelUnmarshaller) (err error) {
 	var rawMap map[string]json.RawMessage
 	var foundInput bool
 
@@ -592,7 +592,7 @@ func unmarshalModelMap(rawInput interface{}, propertyName string, result interfa
 // If 'result' points to a nil map, this function will construct the map prior to adding entries to it.
 //
 // unmarshaller: the function used to unmarshal a single instance of the model.
-func unmarshalModelSliceMap(rawInput interface{}, propertyName string, result interface{}, unmarshaller ModelUnmarshaller) (err error) {
+func unmarshalModelSliceMap(rawInput any, propertyName string, result any, unmarshaller ModelUnmarshaller) (err error) {
 	var rawMap map[string]json.RawMessage
 	var foundInput bool
 
@@ -657,7 +657,7 @@ func unmarshalModelSliceMap(rawInput interface{}, propertyName string, result in
 //
 // propertyName: (optional) the name of the property (map entry) within 'rawInput' that contains the
 // unmarshal input source.  If specified as "", then 'rawInput' is assumed to contain the entire input source directly.
-func getUnmarshalInputSourceMap(rawInput interface{}, propertyName string) (foundInput bool, inputSource map[string]json.RawMessage, err error) {
+func getUnmarshalInputSourceMap(rawInput any, propertyName string) (foundInput bool, inputSource map[string]json.RawMessage, err error) {
 	foundInput = true
 
 	// rawInput should be a map[string]json.RawMessage.
@@ -702,7 +702,7 @@ func getUnmarshalInputSourceMap(rawInput interface{}, propertyName string) (foun
 // unmarshal input source.  The specified map entry should contain a []json.RawMessage which
 // will be used as the unmarshal input source. If 'propertyName' is specified as "", then 'rawInput'
 // is assumed to be a []json.RawMessage and contains the entire input source directly.
-func getUnmarshalInputSourceSlice(rawInput interface{}, propertyName string) (foundInput bool, inputSource []json.RawMessage, err error) {
+func getUnmarshalInputSourceSlice(rawInput any, propertyName string) (foundInput bool, inputSource []json.RawMessage, err error) {
 	// If propertyName was specified, then retrieve that entry from 'rawInput' (assumed to be a map[string]json.RawMessage)
 	// as our unmarshal input source.  Otherwise, just use 'rawInput' directly.
 	if propertyName != "" {
@@ -768,7 +768,7 @@ func propInsert(propertyName string) string {
 
 // getUnmarshalResultType returns the type associated with an unmarshal result.
 // The resulting type can be constructed with the reflect.New() function.
-func getUnmarshalResultType(result interface{}) (ptrType reflect.Type, err error) {
+func getUnmarshalResultType(result any) (ptrType reflect.Type, err error) {
 	rResultType := reflect.TypeOf(result).Elem().Elem()
 	switch rResultType.Kind() {
 	case reflect.Struct, reflect.Slice:
@@ -786,9 +786,9 @@ func getUnmarshalResultType(result interface{}) (ptrType reflect.Type, err error
 
 // getModelResultType returns the type of the 'result' parameter as a string.
 // This will be something like "mypackagev1.Foo" or "mypackagev1.FooIntf"
-func getModelResultType(result interface{}) string {
+func getModelResultType(result any) string {
 	rResultType := reflect.TypeOf(result).Elem()
-	if rResultType.Kind() == reflect.Ptr {
+	if rResultType.Kind() == reflect.Pointer {
 		rResultType = rResultType.Elem()
 	}
 

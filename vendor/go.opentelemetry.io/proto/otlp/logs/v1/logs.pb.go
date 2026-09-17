@@ -40,7 +40,6 @@ const (
 type SeverityNumber int32
 
 const (
-	// UNSPECIFIED is the default SeverityNumber, it MUST NOT be used.
 	SeverityNumber_SEVERITY_NUMBER_UNSPECIFIED SeverityNumber = 0
 	SeverityNumber_SEVERITY_NUMBER_TRACE       SeverityNumber = 1
 	SeverityNumber_SEVERITY_NUMBER_TRACE2      SeverityNumber = 2

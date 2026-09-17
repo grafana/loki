@@ -25,21 +25,15 @@ import (
 	"net"
 
 	"google.golang.org/grpc"
-	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/connectivity"
 	estats "google.golang.org/grpc/experimental/stats"
 	"google.golang.org/grpc/internal"
 	internalgrpclog "google.golang.org/grpc/internal/grpclog"
 	"google.golang.org/grpc/internal/grpcsync"
-	iresolver "google.golang.org/grpc/internal/resolver"
 	istats "google.golang.org/grpc/internal/stats"
-	"google.golang.org/grpc/internal/transport"
 	"google.golang.org/grpc/internal/xds/bootstrap"
 	"google.golang.org/grpc/internal/xds/server"
 	"google.golang.org/grpc/internal/xds/xdsclient"
-	"google.golang.org/grpc/internal/xds/xdsclient/xdsresource"
-	"google.golang.org/grpc/metadata"
-	"google.golang.org/grpc/status"
 )
 
 const serverPrefix = "[xds-server %p] "
@@ -236,78 +230,10 @@ func (s *GRPCServer) GracefulStop() {
 	}
 }
 
-// routeAndProcess routes the incoming RPC to a configured route in the route
-// table and also processes the RPC by running the incoming RPC through any HTTP
-// Filters configured.
-func routeAndProcess(ctx context.Context) error {
-	conn := transport.GetConnection(ctx)
-	cw, ok := conn.(interface {
-		UsableRouteConfiguration() xdsresource.UsableRouteConfiguration
-	})
-	if !ok {
-		return errors.New("missing virtual hosts in incoming context")
-	}
-
-	rc := cw.UsableRouteConfiguration()
-	// Error out at routing l7 level with a status code UNAVAILABLE, represents
-	// an nack before usable route configuration or resource not found for RDS
-	// or error combining LDS + RDS (Shouldn't happen).
-	if rc.Err != nil {
-		if logger.V(2) {
-			logger.Infof("RPC on connection with xDS Configuration error: %v", rc.Err)
-		}
-		return status.Error(codes.Unavailable, fmt.Sprintf("error from xDS configuration for matched route configuration: %v", rc.Err))
-	}
-
-	mn, ok := grpc.Method(ctx)
-	if !ok {
-		return errors.New("missing method name in incoming context")
-	}
-	md, ok := metadata.FromIncomingContext(ctx)
-	if !ok {
-		return errors.New("missing metadata in incoming context")
-	}
-	// A41 added logic to the core grpc implementation to guarantee that once
-	// the RPC gets to this point, there will be a single, unambiguous authority
-	// present in the header map.
-	authority := md.Get(":authority")
-	vh := xdsresource.FindBestMatchingVirtualHostServer(authority[0], rc.VHS)
-	if vh == nil {
-		return rc.StatusErrWithNodeID(codes.Unavailable, "the incoming RPC did not match a configured Virtual Host")
-	}
-
-	var rwi *xdsresource.RouteWithInterceptors
-	rpcInfo := iresolver.RPCInfo{
-		Context: ctx,
-		Method:  mn,
-	}
-	for _, r := range vh.Routes {
-		if r.M.Match(rpcInfo) {
-			// "NonForwardingAction is expected for all Routes used on
-			// server-side; a route with an inappropriate action causes RPCs
-			// matching that route to fail with UNAVAILABLE." - A36
-			if r.ActionType != xdsresource.RouteActionNonForwardingAction {
-				return rc.StatusErrWithNodeID(codes.Unavailable, "the incoming RPC matched to a route that was not of action type non forwarding")
-			}
-			rwi = &r
-			break
-		}
-	}
-	if rwi == nil {
-		return rc.StatusErrWithNodeID(codes.Unavailable, "the incoming RPC did not match a configured Route")
-	}
-	for _, interceptor := range rwi.Interceptors {
-		if err := interceptor.AllowRPC(ctx); err != nil {
-			return rc.StatusErrWithNodeID(codes.PermissionDenied, "Incoming RPC is not allowed: %v", err)
-		}
-	}
-	return nil
-}
-
 // xdsUnaryInterceptor is the unary interceptor added to the gRPC server to
 // perform any xDS specific functionality on unary RPCs.
 func xdsUnaryInterceptor(ctx context.Context, req any, _ *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (resp any, err error) {
-	if err := routeAndProcess(ctx); err != nil {
+	if err := server.RouteAndProcess(ctx); err != nil {
 		return nil, err
 	}
 	return handler(ctx, req)
@@ -316,7 +242,7 @@ func xdsUnaryInterceptor(ctx context.Context, req any, _ *grpc.UnaryServerInfo, 
 // xdsStreamInterceptor is the stream interceptor added to the gRPC server to
 // perform any xDS specific functionality on streaming RPCs.
 func xdsStreamInterceptor(srv any, ss grpc.ServerStream, _ *grpc.StreamServerInfo, handler grpc.StreamHandler) error {
-	if err := routeAndProcess(ss.Context()); err != nil {
+	if err := server.RouteAndProcess(ss.Context()); err != nil {
 		return err
 	}
 	return handler(srv, ss)

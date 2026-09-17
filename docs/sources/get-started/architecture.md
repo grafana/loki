@@ -25,7 +25,7 @@ For more information, refer to [Deployment modes](../deployment-modes/) and [Com
 ## Storage
 
 Loki stores all data in a single object storage backend, such as Amazon Simple Storage Service (S3), Google Cloud Storage (GCS), Azure Blob Storage, among others.
-This mode uses an adapter called **index shipper** (or short **shipper**) to store index (TSDB or BoltDB) files the same way we store chunk files in object storage.
+This mode uses an adapter called **index shipper** (or short **shipper**) to store index (TSDB) files the same way we store chunk files in object storage.
 This mode of operation became generally available with Loki 2.0 and is fast, cost-effective, and simple. It is where all current and future development lies.
 
 Prior to 2.0, Loki had different storage backends for indexes and chunks. For more information, refer to [Legacy storage](../../operations/storage/legacy-storage/).
@@ -43,7 +43,7 @@ The diagram above shows the high-level overview of the data that is stored in th
 
 #### Index format
 
-There are two index formats that are currently supported as single store with index shipper:
+There is one index format that is currently supported as single store with index shipper:
 
 - [TSDB](../../operations/storage/tsdb/) (recommended)
 
@@ -52,9 +52,6 @@ There are two index formats that are currently supported as single store with in
   It is extensible and has many advantages over the deprecated BoltDB index.
   New storage features in Loki are solely available when using TSDB.
 
-- [BoltDB](../../operations/storage/boltdb-shipper/) (deprecated)
-
-  [Bolt](https://github.com/boltdb/bolt) is a low-level, transactional key-value store written in Go.
 
 #### Chunk format
 

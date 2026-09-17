@@ -16,7 +16,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package jaegerremote // import "go.opentelemetry.io/contrib/samplers/jaegerremote"
+package jaegerremote
 
 import (
 	"fmt"
@@ -51,8 +51,8 @@ func getEnvOptions() ([]Option, []error) {
 		return nil, nil
 	}
 
-	args := strings.Split(rawEnvArgs, ",")
-	for _, arg := range args {
+	args := strings.SplitSeq(rawEnvArgs, ",")
+	for arg := range args {
 		keyValue := strings.Split(arg, "=")
 		if len(keyValue) != 2 {
 			errs = append(errs, fmt.Errorf("argument %s is not of type '<key>=<value>'", arg))

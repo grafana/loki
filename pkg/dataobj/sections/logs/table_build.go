@@ -8,6 +8,7 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/dataset"
+	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
 )
 
 // buildTable builds a table from the set of provided records. The records are
@@ -59,24 +60,43 @@ func buildTable(buf *tableBuffer, pageSize, pageRowCount int, compressionOpts *d
 
 // sortRecords sorts the set of records according to the specified sort order.
 func sortRecords(records []Record, sortOrder SortOrder) {
-	slices.SortFunc(records, func(a, b Record) int {
+	slices.SortStableFunc(records, func(a, b Record) int {
 		switch sortOrder {
 		case SortStreamASC:
 			// Sort by [streamID ASC, timestamp DESC]
 			if res := cmp.Compare(a.StreamID, b.StreamID); res != 0 {
 				return res
 			}
-			return b.Timestamp.Compare(a.Timestamp)
+			return reverseOrderIfEqual(b.Timestamp.Compare(a.Timestamp))
 		case SortTimestampDESC:
 			// Sort by [timestamp DESC, streamID ASC]
 			if res := b.Timestamp.Compare(a.Timestamp); res != 0 {
 				return res
 			}
-			return cmp.Compare(a.StreamID, b.StreamID)
+			return reverseOrderIfEqual(cmp.Compare(a.StreamID, b.StreamID))
+		case SortSchemaASC:
+			// Sort by [shard_bucket ASC, schema sort key ASC, stream hash ASC, streamID ASC, timestamp DESC].
+			aSort := streams.SortKey{ShardBucket: a.ShardBucket, SchemaKey: a.SchemaKey, Hash: a.StreamHash}
+			bSort := streams.SortKey{ShardBucket: b.ShardBucket, SchemaKey: b.SchemaKey, Hash: b.StreamHash}
+			if res := aSort.Compare(bSort); res != 0 {
+				return res
+			}
+			if res := cmp.Compare(a.StreamID, b.StreamID); res != 0 {
+				return res
+			}
+			return reverseOrderIfEqual(b.Timestamp.Compare(a.Timestamp))
 		default:
 			panic("invalid sort order")
 		}
 	})
+}
+
+// reverseOrderIfEqual reverses the order of the elements if the result is otherwise equal.
+func reverseOrderIfEqual(res int) int {
+	if res != 0 {
+		return res
+	}
+	return -1
 }
 
 func equalRecords(a, b Record) bool {

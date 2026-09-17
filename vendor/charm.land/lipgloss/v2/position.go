@@ -39,7 +39,7 @@ func Place(width, height int, hPos, vPos Position, str string, opts ...Whitespac
 
 // PlaceHorizontal places a string or text block horizontally in an unstyled
 // block of a given width. If the given width is shorter than the max width of
-// the string (measured by its longest line) this will be a noop.
+// the string (measured by its longest line) this will be a noöp.
 func PlaceHorizontal(width int, pos Position, str string, opts ...WhitespaceOption) string {
 	lines, contentWidth := getLines(str)
 	gap := width - contentWidth
@@ -86,7 +86,7 @@ func PlaceHorizontal(width int, pos Position, str string, opts ...WhitespaceOpti
 
 // PlaceVertical places a string or text block vertically in an unstyled block
 // of a given height. If the given height is shorter than the height of the
-// string (measured by its newlines) then this will be a noop.
+// string (measured by its newlines) then this will be a noöp.
 func PlaceVertical(height int, pos Position, str string, opts ...WhitespaceOption) string {
 	contentHeight := strings.Count(str, "\n") + 1
 	gap := height - contentHeight

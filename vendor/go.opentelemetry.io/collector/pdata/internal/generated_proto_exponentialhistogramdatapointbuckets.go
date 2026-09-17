@@ -11,13 +11,14 @@ import (
 	"sync"
 
 	"go.opentelemetry.io/collector/pdata/internal/json"
+	"go.opentelemetry.io/collector/pdata/internal/metadata"
 	"go.opentelemetry.io/collector/pdata/internal/proto"
 )
 
 // ExponentialHistogramDataPointBuckets are a set of bucket counts, encoded in a contiguous array of counts.
 type ExponentialHistogramDataPointBuckets struct {
-	BucketCounts []uint64
 	Offset       int32
+	BucketCounts []uint64
 }
 
 var (
@@ -29,7 +30,7 @@ var (
 )
 
 func NewExponentialHistogramDataPointBuckets() *ExponentialHistogramDataPointBuckets {
-	if !UseProtoPooling.IsEnabled() {
+	if !metadata.PdataUseProtoPoolingFeatureGate.IsEnabled() {
 		return &ExponentialHistogramDataPointBuckets{}
 	}
 	return protoPoolExponentialHistogramDataPointBuckets.Get().(*ExponentialHistogramDataPointBuckets)
@@ -40,7 +41,7 @@ func DeleteExponentialHistogramDataPointBuckets(orig *ExponentialHistogramDataPo
 		return
 	}
 
-	if !UseProtoPooling.IsEnabled() {
+	if !metadata.PdataUseProtoPoolingFeatureGate.IsEnabled() {
 		orig.Reset()
 		return
 	}
@@ -155,7 +156,7 @@ func (orig *ExponentialHistogramDataPointBuckets) UnmarshalJSON(iter *json.Itera
 			}
 
 		default:
-			iter.Skip()
+			iter.HandleUnknownField(f)
 		}
 	}
 }

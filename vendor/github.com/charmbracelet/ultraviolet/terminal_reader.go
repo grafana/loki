@@ -8,6 +8,7 @@ import (
 	"io"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 	"unicode"
 	"unicode/utf16"
@@ -142,7 +143,11 @@ func (d *TerminalReader) StreamEvents(ctx context.Context, eventc chan<- Event) 
 	timeout := time.NewTimer(d.EscTimeout)
 	ttimeout := time.Now().Add(d.EscTimeout)
 
+	var wg sync.WaitGroup
+	wg.Add(1)
+
 	go func() {
+		defer wg.Done()
 		if err := d.streamData(ctx, readc); err != nil {
 			if errors.Is(err, io.EOF) || errors.Is(err, cancelreader.ErrCanceled) {
 				errc <- nil
@@ -157,9 +162,11 @@ func (d *TerminalReader) StreamEvents(ctx context.Context, eventc chan<- Event) 
 		select {
 		case <-ctx.Done():
 			d.sendEvents(eventc, buf.Bytes(), true)
+			wg.Wait()
 			return nil
 		case err := <-errc:
 			d.sendEvents(eventc, buf.Bytes(), true)
+			wg.Wait()
 			return err // return the first error encountered
 		case <-timeout.C:
 			d.logf("timeout reached")

@@ -11,6 +11,7 @@ import (
 	"sync"
 
 	"go.opentelemetry.io/collector/pdata/internal/json"
+	"go.opentelemetry.io/collector/pdata/internal/metadata"
 	"go.opentelemetry.io/collector/pdata/internal/proto"
 )
 
@@ -31,7 +32,7 @@ var (
 )
 
 func NewInstrumentationScope() *InstrumentationScope {
-	if !UseProtoPooling.IsEnabled() {
+	if !metadata.PdataUseProtoPoolingFeatureGate.IsEnabled() {
 		return &InstrumentationScope{}
 	}
 	return protoPoolInstrumentationScope.Get().(*InstrumentationScope)
@@ -42,7 +43,7 @@ func DeleteInstrumentationScope(orig *InstrumentationScope, nullable bool) {
 		return
 	}
 
-	if !UseProtoPooling.IsEnabled() {
+	if !metadata.PdataUseProtoPoolingFeatureGate.IsEnabled() {
 		orig.Reset()
 		return
 	}
@@ -176,7 +177,7 @@ func (orig *InstrumentationScope) UnmarshalJSON(iter *json.Iterator) {
 		case "droppedAttributesCount", "dropped_attributes_count":
 			orig.DroppedAttributesCount = iter.ReadUint32()
 		default:
-			iter.Skip()
+			iter.HandleUnknownField(f)
 		}
 	}
 }

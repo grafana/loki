@@ -50,7 +50,6 @@ var (
 						Prefix: "index_",
 						Period: time.Hour * 24,
 					}},
-				RowShards: 16,
 			},
 			{
 				From:       dayFromTime(start.Add(25 * time.Hour)),
@@ -62,7 +61,6 @@ var (
 						Prefix: "index_",
 						Period: time.Hour * 24,
 					}},
-				RowShards: 16,
 			},
 			{
 				From:       dayFromTime(start.Add(73 * time.Hour)),
@@ -74,7 +72,6 @@ var (
 						Prefix: "index_",
 						Period: time.Hour * 24,
 					}},
-				RowShards: 16,
 			},
 			{
 				From:       dayFromTime(start.Add(100 * time.Hour)),
@@ -86,7 +83,6 @@ var (
 						Prefix: "index_",
 						Period: time.Hour * 24,
 					}},
-				RowShards: 16,
 			},
 			{
 				From:       dayFromTime(start.Add(125 * time.Hour)),
@@ -98,7 +94,17 @@ var (
 						Prefix: "index_",
 						Period: time.Hour * 24,
 					}},
-				RowShards: 16,
+			},
+			{
+				From:       dayFromTime(start.Add(150 * time.Hour)),
+				IndexType:  "tsdb",
+				ObjectType: "filesystem",
+				Schema:     "v14",
+				IndexTables: config.IndexPeriodicTableConfig{
+					PeriodicTableConfig: config.PeriodicTableConfig{
+						Prefix: "index_",
+						Period: time.Hour * 24,
+					}},
 			},
 		},
 	}
@@ -112,6 +118,7 @@ var (
 		{"v11", schemaCfg.Configs[2].From.Time, schemaCfg.Configs[2]},
 		{"v12", schemaCfg.Configs[3].From.Time, schemaCfg.Configs[3]},
 		{"v13", schemaCfg.Configs[4].From.Time, schemaCfg.Configs[4]},
+		{"v14", schemaCfg.Configs[5].From.Time, schemaCfg.Configs[5]},
 	}
 
 	sweepMetrics = newSweeperMetrics(prometheus.DefaultRegisterer)
@@ -127,8 +134,9 @@ func mustParseLabels(labels string) labels.Labels {
 }
 
 type table struct {
-	name   string
-	chunks map[string]map[string][]logproto.ChunkRef
+	name              string
+	chunks            map[string]map[string][]logproto.ChunkRef
+	indexedIngestedAt []model.Time
 }
 
 func (t *table) ChunkExists(_ []byte, _ labels.Labels, _ logproto.ChunkRef) (bool, error) {
@@ -167,9 +175,10 @@ func (t *table) ForEachSeries(ctx context.Context, callback SeriesCallback) erro
 	return ctx.Err()
 }
 
-func (t *table) IndexChunk(chunkRef logproto.ChunkRef, lbls labels.Labels, _ uint32, _ uint32) (bool, error) {
+func (t *table) IndexChunk(chunkRef logproto.ChunkRef, lbls labels.Labels, ingestedAt model.Time, _ uint32, _ uint32) (bool, error) {
 	seriesID := lbls.String()
 	t.chunks[chunkRef.UserID][seriesID] = append(t.chunks[chunkRef.UserID][seriesID], chunkRef)
+	t.indexedIngestedAt = append(t.indexedIngestedAt, ingestedAt)
 	return true, nil
 }
 

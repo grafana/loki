@@ -74,7 +74,7 @@ ts0         ts1          ts2        ts3
 --------------           --------------
 ```
 
-This allows us two optimzations:
+This allows us two optimizations:
 
 1) We can store much more data in memory because each block is compressed after being cut from a head block.
 2) We can query the block's metadata, such as `ts0` and `ts1` and skip querying it in the case of i.e. the timestamps are outside a request's bounds.

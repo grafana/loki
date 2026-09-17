@@ -44,7 +44,7 @@ func TestDecode(t *testing.T) {
 			},
 		},
 		{
-			name: "nil values are skipped",
+			name: "nil metadata columns are skipped",
 			columns: []*Column{
 				{Type: ColumnTypeStreamID},
 				{Type: ColumnTypeTimestamp},
@@ -64,6 +64,29 @@ func TestDecode(t *testing.T) {
 				Timestamp: time.Unix(0, 1234567890000000000),
 				Metadata:  labels.EmptyLabels(),
 				Line:      []byte("test message"),
+			},
+		},
+		{
+			name: "empty message clears the previous Record.Line",
+			columns: []*Column{
+				{Type: ColumnTypeStreamID},
+				{Type: ColumnTypeTimestamp},
+				{Type: ColumnTypeMetadata, Name: "app"},
+				{Type: ColumnTypeMessage},
+			},
+			row: dataset.Row{
+				Values: []dataset.Value{
+					dataset.Int64Value(123),
+					dataset.Int64Value(1234567890000000000),
+					{},
+					dataset.BinaryValue(nil),
+				},
+			},
+			expected: Record{
+				StreamID:  123,
+				Timestamp: time.Unix(0, 1234567890000000000),
+				Metadata:  labels.EmptyLabels(),
+				Line:      []byte(""),
 			},
 		},
 		{
@@ -116,9 +139,10 @@ func TestDecode(t *testing.T) {
 		},
 	}
 
+	// reuse record to capture potential issues with stale data from previous rows
+	record := Record{}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			record := Record{}
 			err := DecodeRow(tt.columns, tt.row, &record, nil)
 			if tt.wantErr {
 				require.Error(t, err)

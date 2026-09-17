@@ -8,9 +8,7 @@ import (
 
 // AWS credentials structure containing temporary access credentials
 //
-// The scoped-down, 15 minute duration AWS credentials. Scoping down will be based
-// on CLI policy (CLI team needs to create it). Similar to cloud shell
-// implementation.
+// Scoped, temporary AWS credentials with a 15-minute duration.
 type AccessToken struct {
 
 	// AWS access key ID for temporary credentials
@@ -108,6 +106,53 @@ type CreateOAuth2TokenResponseBody struct {
 	// code redemption response (grant_type=authorization_code) Not included in token
 	// refresh responses
 	IdToken *string
+
+	noSmithyDocumentSerde
+}
+
+// Summary of a permission statement
+type PermissionStatementSummary struct {
+
+	// Unique identifier for the permission statement
+	//
+	// This member is required.
+	Sid *string
+
+	// Condition block for the permission statement
+	Condition map[string]map[string][]string
+
+	noSmithyDocumentSerde
+}
+
+// Individual policy statement within a resource-based policy
+type PolicyStatement struct {
+
+	// Actions the statement controls
+	Action []string
+
+	// Condition block for the statement
+	Condition map[string]map[string][]string
+
+	// Effect of the policy statement (Allow/Deny)
+	Effect *string
+
+	// Principal the statement applies to
+	Principal map[string]string
+
+	// Resource the statement applies to
+	Resource *string
+
+	noSmithyDocumentSerde
+}
+
+// SignIn resource-based policy document
+type SigninResourceBasedPolicy struct {
+
+	// Policy statements
+	Statement []PolicyStatement
+
+	// Policy version
+	Version *string
 
 	noSmithyDocumentSerde
 }

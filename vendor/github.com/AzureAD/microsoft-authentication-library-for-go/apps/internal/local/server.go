@@ -24,6 +24,7 @@ var okPage = []byte(`
 </head>
 <body>
     <p>Authentication complete. You can return to the application. Feel free to close this browser tab.</p>
+    <p><strong>For your security:</strong> Do not share the contents of this page, the address bar, or take screenshots.</p>
 </body>
 </html>
 `)
@@ -38,6 +39,20 @@ const failPage = `
 <body>
 	<p>Authentication failed. You can return to the application. Feel free to close this browser tab.</p>
 	<p>Error details: error %s error_description: %s</p>
+</body>
+</html>
+`
+
+const unsupportedResponseModePage = `
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8" />
+    <title>Authentication Failed</title>
+</head>
+<body>
+    <p>Authentication failed. The response was received via a GET operation, which is not supported.</p>
+    <p>You can return to the application. Feel free to close this browser tab.</p>
 </body>
 </html>
 `
@@ -138,11 +153,24 @@ func (s *Server) putResult(r Result) {
 }
 
 func (s *Server) handler(w http.ResponseWriter, r *http.Request) {
-	q := r.URL.Query()
+	// Only accept POST requests (form_post response mode)
+	// GET requests with query parameters are not supported for security reasons
+	if r.Method != http.MethodPost {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		_, _ = w.Write([]byte(unsupportedResponseModePage))
+		s.putResult(Result{Err: fmt.Errorf("response was received via a GET operation, which is not supported")})
+		return
+	}
 
-	headerErr := q.Get("error")
+	// For form_post response mode, parameters come in the POST body
+	if err := r.ParseForm(); err != nil {
+		s.error(w, http.StatusBadRequest, "failed to parse form data: %v", err)
+		return
+	}
+
+	headerErr := r.PostFormValue("error")
 	if headerErr != "" {
-		desc := html.EscapeString(q.Get("error_description"))
+		desc := html.EscapeString(r.PostFormValue("error_description"))
 		escapedHeaderErr := html.EscapeString(headerErr)
 		// Note: It is a little weird we handle some errors by not going to the failPage. If they all should,
 		// change this to s.error() and make s.error() write the failPage instead of an error code.
@@ -152,7 +180,7 @@ func (s *Server) handler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	respState := q.Get("state")
+	respState := r.PostFormValue("state")
 	switch respState {
 	case s.reqState:
 	case "":
@@ -163,9 +191,9 @@ func (s *Server) handler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	code := q.Get("code")
+	code := r.PostFormValue("code")
 	if code == "" {
-		s.error(w, http.StatusInternalServerError, "authorization code missing in query string")
+		s.error(w, http.StatusInternalServerError, "authorization code missing in response")
 		return
 	}
 

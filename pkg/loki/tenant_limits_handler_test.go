@@ -7,7 +7,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"gopkg.in/yaml.v2"
+	"go.yaml.in/yaml/v4"
 
 	"github.com/grafana/loki/v3/pkg/loghttp/push"
 	"github.com/grafana/loki/v3/pkg/validation"
@@ -27,16 +27,6 @@ func (m *mockTenantLimits) TenantLimits(userID string) *validation.Limits {
 func (m *mockTenantLimits) AllByUserID() map[string]*validation.Limits {
 	return map[string]*validation.Limits{"test-tenant": m.limits}
 }
-
-type mockOverrides struct {
-	limits *validation.Limits
-}
-
-func (m *mockOverrides) DefaultLimits() *validation.Limits {
-	return m.limits
-}
-
-func (m *mockOverrides) AllowStructuredMetadata() bool { return false }
 
 func TestTenantLimitsHandlerWithAllowlist(t *testing.T) {
 	limits := &validation.Limits{

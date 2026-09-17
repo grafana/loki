@@ -21,10 +21,11 @@ server:
 		data := NewDynamicConfig(mockApplyDynamicConfig)
 		fs := flag.NewFlagSet(t.Name(), flag.PanicOnError)
 
-		file, err := os.CreateTemp("", "config.yaml")
+		file, err := os.CreateTemp(t.TempDir(), "config.yaml")
 		require.NoError(t, err)
 		_, err = file.WriteString(config)
 		require.NoError(t, err)
+		require.NoError(t, file.Close())
 
 		configFileArgs := []string{"-config.file", file.Name()}
 		if args == nil {

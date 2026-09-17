@@ -46,6 +46,18 @@ func Test_IPFilter(t *testing.T) {
 
 		},
 		{
+			name: "IPv6 at end of line",
+			pat:  "::1", // localhost address
+			input: []string{
+				"vpn connected to ::1", // address at the very end of the line -> match
+				"::1",                  // line is exactly the address -> match
+				"vpn 192.168.0.1 connected to vm",
+				"x",
+				"",
+			},
+			expected: []int{0, 1}, // short IPv6 addresses near the end must still match
+		},
+		{
 			name: "IPv4 range",
 			pat:  "192.168.0.1-192.189.10.12",
 			input: []string{

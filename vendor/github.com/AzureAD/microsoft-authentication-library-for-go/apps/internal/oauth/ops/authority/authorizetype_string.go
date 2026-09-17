@@ -16,15 +16,19 @@ func _() {
 	_ = x[ATClientCredentials-5]
 	_ = x[ATDeviceCode-6]
 	_ = x[ATRefreshToken-7]
+	_ = x[AccountByID-8]
+	_ = x[ATOnBehalfOf-9]
+	_ = x[ATUserFIC-10]
 }
 
-const _AuthorizeType_name = "ATUnknownATUsernamePasswordATWindowsIntegratedATAuthCodeATInteractiveATClientCredentialsATDeviceCodeATRefreshToken"
+const _AuthorizeType_name = "ATUnknownATUsernamePasswordATWindowsIntegratedATAuthCodeATInteractiveATClientCredentialsATDeviceCodeATRefreshTokenAccountByIDATOnBehalfOfATUserFIC"
 
-var _AuthorizeType_index = [...]uint8{0, 9, 27, 46, 56, 69, 88, 100, 114}
+var _AuthorizeType_index = [...]uint8{0, 9, 27, 46, 56, 69, 88, 100, 114, 125, 137, 146}
 
 func (i AuthorizeType) String() string {
-	if i < 0 || i >= AuthorizeType(len(_AuthorizeType_index)-1) {
+	idx := int(i) - 0
+	if i < 0 || idx >= len(_AuthorizeType_index)-1 {
 		return "AuthorizeType(" + strconv.FormatInt(int64(i), 10) + ")"
 	}
-	return _AuthorizeType_name[_AuthorizeType_index[i]:_AuthorizeType_index[i+1]]
+	return _AuthorizeType_name[_AuthorizeType_index[idx]:_AuthorizeType_index[idx+1]]
 }

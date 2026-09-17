@@ -1,0 +1,315 @@
+<lexer>
+  <config>
+    <name>Templ</name>
+    <alias>templ</alias>
+    <filename>*.templ</filename>
+    <mime_type>text/x-templ</mime_type>
+    <dot_all>true</dot_all>
+    <analyse>
+      <regex pattern="(?m)^\s*templ\s+[A-Za-z_]\w*\s*\(" score="0.7"/>
+      <regex pattern="(?m)^\s*package\s+\w+[\s\S]*^\s*templ\s+" score="0.5"/>
+    </analyse>
+  </config>
+  <rules>
+    <state name="root">
+      <rule pattern="//[^\n\r]*">
+        <token type="CommentSingle"/>
+      </rule>
+      <rule pattern="/\*(?:.|\n)*?\*/">
+        <token type="CommentMultiline"/>
+      </rule>
+      <rule pattern="(?m)^(\s*)(package|import|const|type|func)([^\n]*)">
+        <bygroups>
+          <token type="TextWhitespace"/>
+          <using lexer="Go"/>
+          <using lexer="Go"/>
+        </bygroups>
+      </rule>
+      <rule pattern="\b(templ|css|script)(\s+)([A-Za-z_]\w*)(\s*)(\([^{}]*\))(\s*)({)">
+        <bygroups>
+          <token type="KeywordDeclaration"/>
+          <token type="TextWhitespace"/>
+          <token type="NameFunction"/>
+          <token type="TextWhitespace"/>
+          <using lexer="Go"/>
+          <token type="TextWhitespace"/>
+          <token type="Punctuation"/>
+        </bygroups>
+      </rule>
+      <rule pattern="@[A-Za-z_]\w*(?:\.[A-Za-z_]\w*)*(?:\([^{}()\r\n]*(?:\([^{}()\r\n]*\)[^{}()\r\n]*)*\))?(?:[ \t]*{)?">
+        <token type="NameFunction"/>
+      </rule>
+      <rule pattern="(?m)^(\s*)(if|for|switch|select)(\s+)([^{}\n]*)(\s*)({)">
+        <bygroups>
+          <token type="TextWhitespace"/>
+          <token type="Keyword"/>
+          <token type="TextWhitespace"/>
+          <using lexer="Go"/>
+          <token type="TextWhitespace"/>
+          <token type="Punctuation"/>
+        </bygroups>
+      </rule>
+      <rule pattern="(?m)^(\s*)(else)(\s*)(if)?(\s*)([^{}\n]*)(\s*)({)?">
+        <bygroups>
+          <token type="TextWhitespace"/>
+          <token type="Keyword"/>
+          <token type="TextWhitespace"/>
+          <token type="Keyword"/>
+          <token type="TextWhitespace"/>
+          <using lexer="Go"/>
+          <token type="TextWhitespace"/>
+          <token type="Punctuation"/>
+        </bygroups>
+      </rule>
+      <rule pattern="(})(\s*)(else)(\s*)(if)?(\s*)([^{}\n]*)(\s*)({)?">
+        <bygroups>
+          <token type="Punctuation"/>
+          <token type="TextWhitespace"/>
+          <token type="Keyword"/>
+          <token type="TextWhitespace"/>
+          <token type="Keyword"/>
+          <token type="TextWhitespace"/>
+          <using lexer="Go"/>
+          <token type="TextWhitespace"/>
+          <token type="Punctuation"/>
+        </bygroups>
+      </rule>
+      <rule pattern="({)([^{}\n]*)(})">
+        <bygroups>
+          <token type="Punctuation"/>
+          <using lexer="Go"/>
+          <token type="Punctuation"/>
+        </bygroups>
+      </rule>
+      <rule pattern="}">
+        <token type="Punctuation"/>
+      </rule>
+      <rule pattern="`(?:.|\n)*?`">
+        <token type="LiteralStringBacktick"/>
+      </rule>
+      <rule pattern="\s+">
+        <token type="TextWhitespace"/>
+      </rule>
+      <rule pattern="[^&lt;&amp;@{}`\s]+">
+        <token type="Text"/>
+      </rule>
+      <rule pattern="&amp;\S*?;">
+        <token type="NameEntity"/>
+      </rule>
+      <rule pattern="\&lt;\!\[CDATA\[.*?\]\]\&gt;">
+        <token type="CommentPreproc"/>
+      </rule>
+      <rule pattern="&lt;!--">
+        <token type="Comment"/>
+        <push state="comment"/>
+      </rule>
+      <rule pattern="&lt;\?.*?\?&gt;">
+        <token type="CommentPreproc"/>
+      </rule>
+      <rule pattern="&lt;![^&gt;]*&gt;">
+        <token type="CommentPreproc"/>
+      </rule>
+      <rule pattern="(&lt;)(script)(\s*)">
+        <bygroups>
+          <token type="Punctuation"/>
+          <token type="NameTag"/>
+          <token type="Text"/>
+        </bygroups>
+        <push state="script-content" state="tag"/>
+      </rule>
+      <rule pattern="(&lt;)(style)(\s*)">
+        <bygroups>
+          <token type="Punctuation"/>
+          <token type="NameTag"/>
+          <token type="Text"/>
+        </bygroups>
+        <push state="style-content" state="tag"/>
+      </rule>
+      <rule pattern="(&lt;)([A-Za-z][\w:.-]*)">
+        <bygroups>
+          <token type="Punctuation"/>
+          <token type="NameTag"/>
+        </bygroups>
+        <push state="tag"/>
+      </rule>
+      <rule pattern="(&lt;/)([A-Za-z][\w:.-]*)(\s*)(&gt;)">
+        <bygroups>
+          <token type="Punctuation"/>
+          <token type="NameTag"/>
+          <token type="Text"/>
+          <token type="Punctuation"/>
+        </bygroups>
+      </rule>
+      <rule pattern="[@{}&lt;&amp;]">
+        <token type="Punctuation"/>
+      </rule>
+    </state>
+    <state name="script-content">
+      <rule pattern="(&lt;)(\s*)(/)(\s*)(script)(\s*)(&gt;)">
+        <bygroups>
+          <token type="Punctuation"/>
+          <token type="Text"/>
+          <token type="Punctuation"/>
+          <token type="Text"/>
+          <token type="NameTag"/>
+          <token type="Text"/>
+          <token type="Punctuation"/>
+        </bygroups>
+        <pop depth="1"/>
+      </rule>
+      <rule pattern="\s*[^\r\n]*\{\{.*?\}\}[^\r\n]*">
+        <token type="Other"/>
+      </rule>
+      <rule pattern=".+?(?=&lt;\s*/\s*script\s*&gt;)">
+        <token type="Other"/>
+      </rule>
+    </state>
+    <state name="style-content">
+      <rule pattern="(&lt;)(\s*)(/)(\s*)(style)(\s*)(&gt;)">
+        <bygroups>
+          <token type="Punctuation"/>
+          <token type="Text"/>
+          <token type="Punctuation"/>
+          <token type="Text"/>
+          <token type="NameTag"/>
+          <token type="Text"/>
+          <token type="Punctuation"/>
+        </bygroups>
+        <pop depth="1"/>
+      </rule>
+      <rule pattern=".+?(?=&lt;\s*/\s*style\s*&gt;)">
+        <using lexer="CSS"/>
+      </rule>
+    </state>
+    <state name="comment">
+      <rule pattern="[^-]+">
+        <token type="Comment"/>
+      </rule>
+      <rule pattern="--&gt;">
+        <token type="Comment"/>
+        <pop depth="1"/>
+      </rule>
+      <rule pattern="-">
+        <token type="Comment"/>
+      </rule>
+    </state>
+    <state name="tag">
+      <rule pattern="\s+">
+        <token type="Text"/>
+      </rule>
+      <rule pattern="//[^\n\r]*">
+        <token type="CommentSingle"/>
+      </rule>
+      <rule pattern="/\*(?:.|\n)*?\*/">
+        <token type="CommentMultiline"/>
+      </rule>
+      <rule pattern="\b(if|for|switch|select)(\s+)([^{}]*)(\s*)({)">
+        <bygroups>
+          <token type="Keyword"/>
+          <token type="Text"/>
+          <using lexer="Go"/>
+          <token type="Text"/>
+          <token type="Punctuation"/>
+        </bygroups>
+      </rule>
+      <rule pattern="\b(else)(\s*)(if)?(\s*)([^{}]*)(\s*)({)?">
+        <bygroups>
+          <token type="Keyword"/>
+          <token type="Text"/>
+          <token type="Keyword"/>
+          <token type="Text"/>
+          <using lexer="Go"/>
+          <token type="Text"/>
+          <token type="Punctuation"/>
+        </bygroups>
+      </rule>
+      <rule pattern="}">
+        <token type="Punctuation"/>
+      </rule>
+      <rule pattern="({)([^{}]*)(})(\??)(\s*)(=)(\s*)({)([^{}]*)(})">
+        <bygroups>
+          <token type="Punctuation"/>
+          <using lexer="Go"/>
+          <token type="Punctuation"/>
+          <token type="Operator"/>
+          <token type="Text"/>
+          <token type="Operator"/>
+          <token type="Text"/>
+          <token type="Punctuation"/>
+          <using lexer="Go"/>
+          <token type="Punctuation"/>
+        </bygroups>
+      </rule>
+      <rule pattern="({)([^{}]*)(})(\??)(\s*)(=)(\s*)">
+        <bygroups>
+          <token type="Punctuation"/>
+          <using lexer="Go"/>
+          <token type="Punctuation"/>
+          <token type="Operator"/>
+          <token type="Text"/>
+          <token type="Operator"/>
+          <token type="Text"/>
+        </bygroups>
+        <push state="attr"/>
+      </rule>
+      <rule pattern="({)([^{}]*)(})(\??)">
+        <bygroups>
+          <token type="Punctuation"/>
+          <using lexer="Go"/>
+          <token type="Punctuation"/>
+          <token type="Operator"/>
+        </bygroups>
+      </rule>
+      <rule pattern="({)([^{}]*)(})">
+        <bygroups>
+          <token type="Punctuation"/>
+          <using lexer="Go"/>
+          <token type="Punctuation"/>
+        </bygroups>
+      </rule>
+      <rule pattern="((?:[@#.][\w:.*-]+|\[[^\]\s=]+\]|[\w:.*-]+\??)\s*)(=)(\s*)({)([^{}]*)(})">
+        <bygroups>
+          <token type="NameAttribute"/>
+          <token type="Operator"/>
+          <token type="Text"/>
+          <token type="Punctuation"/>
+          <using lexer="Go"/>
+          <token type="Punctuation"/>
+        </bygroups>
+      </rule>
+      <rule pattern="((?:[@#.][\w:.*-]+|\[[^\]\s=]+\]|[\w:.*-]+\??)\s*)(=)(\s*)">
+        <bygroups>
+          <token type="NameAttribute"/>
+          <token type="Operator"/>
+          <token type="Text"/>
+        </bygroups>
+        <push state="attr"/>
+      </rule>
+      <rule pattern="(?:[@#.][\w:.*-]+|\[[^\]\s=]+\]|[\w:.*-]+\??)">
+        <token type="NameAttribute"/>
+      </rule>
+      <rule pattern="(/?)(\s*)(&gt;)">
+        <bygroups>
+          <token type="Punctuation"/>
+          <token type="Text"/>
+          <token type="Punctuation"/>
+        </bygroups>
+        <pop depth="1"/>
+      </rule>
+    </state>
+    <state name="attr">
+      <rule pattern="&#34;.*?&#34;">
+        <token type="LiteralString"/>
+        <pop depth="1"/>
+      </rule>
+      <rule pattern="&#39;.*?&#39;">
+        <token type="LiteralString"/>
+        <pop depth="1"/>
+      </rule>
+      <rule pattern="[^\s&gt;]+">
+        <token type="LiteralString"/>
+        <pop depth="1"/>
+      </rule>
+    </state>
+  </rules>
+</lexer>

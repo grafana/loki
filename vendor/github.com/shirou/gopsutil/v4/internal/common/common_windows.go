@@ -73,6 +73,7 @@ var (
 
 	ProcGetSystemTimes                   = Modkernel32.NewProc("GetSystemTimes")
 	ProcNtQuerySystemInformation         = ModNt.NewProc("NtQuerySystemInformation")
+	ProcNtQuerySystemInformationEx       = ModNt.NewProc("NtQuerySystemInformationEx")
 	ProcRtlGetNativeSystemInformation    = ModNt.NewProc("RtlGetNativeSystemInformation")
 	ProcRtlNtStatusToDosError            = ModNt.NewProc("RtlNtStatusToDosError")
 	ProcNtQueryInformationProcess        = ModNt.NewProc("NtQueryInformationProcess")
@@ -183,7 +184,7 @@ func NewWin32PerformanceCounter(postName, counterName string) (*Win32Performance
 
 func (w *Win32PerformanceCounter) GetValue() (float64, error) {
 	r, _, err := PdhCollectQueryData.Call(uintptr(w.Query))
-	if r != 0 && err != nil {
+	if r != 0 {
 		if r == PDH_NO_DATA {
 			return 0.0, fmt.Errorf("%w: this counter has not data", err)
 		}

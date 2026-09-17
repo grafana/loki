@@ -4,7 +4,6 @@ import (
 	"context"
 	"crypto/tls"
 	"fmt"
-	"io/fs"
 	"net"
 	"net/http"
 	"strings"
@@ -31,7 +30,6 @@ type Service struct {
 	ring          *ring.Ring
 	localNodeName string
 	router        *mux.Router
-	uiFS          fs.FS
 
 	client    *http.Client
 	localAddr string
@@ -191,7 +189,7 @@ func (s *Service) initGoldfishDB() error {
 
 	// Initialize bucket client if results backend is configured
 	if s.cfg.Goldfish.ResultsBackend != "" {
-		bucketClient, err := bucket.NewClient(context.Background(), s.cfg.Goldfish.ResultsBackend, s.cfg.Goldfish.ResultsBucket, "goldfish-ui-results", s.logger)
+		bucketClient, err := bucket.NewClient(context.Background(), s.cfg.Goldfish.ResultsBackend, s.cfg.Goldfish.ResultsBucket, "goldfish-ui-results", s.logger, nil)
 		if err != nil {
 			level.Warn(s.logger).Log("msg", "failed to create goldfish bucket client, result fetching will be disabled", "err", err)
 		} else {

@@ -1,6 +1,12 @@
 package magic
 
-import "bytes"
+import (
+	"bytes"
+	"encoding/binary"
+	"slices"
+
+	"github.com/gabriel-vasile/mimetype/internal/scan"
+)
 
 // Png matches a Portable Network Graphics file.
 // https://www.w3.org/TR/PNG/
@@ -11,7 +17,31 @@ func Png(raw []byte, _ uint32) bool {
 // Apng matches an Animated Portable Network Graphics file.
 // https://wiki.mozilla.org/APNG_Specification
 func Apng(raw []byte, _ uint32) bool {
-	return offset(raw, []byte("acTL"), 37)
+	b := scan.Bytes(raw)
+	b.Advance(8) // the first 8 bytes matched by regular png
+
+	// PNG chunks are composed of:
+	// 4 bytes: length in big endian
+	// 4 bytes: chunk type
+	// length bytes: chunk data
+	// 4 bytes: CRC
+	//
+	// Limit to 32, so we don't waste time on huge inputs.
+	// acTL chunk must come before any IDAT chunks.
+	// https://www.w3.org/TR/png-3/#structure
+	for i := 0; i < 32 && len(b) > 0; i++ {
+		sz, _ := b.Uint32be()
+		if bytes.HasPrefix(b, []byte("acTL")) {
+			return true
+		}
+		if bytes.HasPrefix(b, []byte("IDAT")) {
+			return false
+		}
+		if !b.Advance(int(sz + 8)) {
+			return false
+		}
+	}
+	return false
 }
 
 // Jpg matches a Joint Photographic Experts Group file.
@@ -42,7 +72,28 @@ func Gif(raw []byte, _ uint32) bool {
 
 // Bmp matches a bitmap image file.
 func Bmp(raw []byte, _ uint32) bool {
-	return bytes.HasPrefix(raw, []byte{0x42, 0x4D})
+	if len(raw) < 18 {
+		return false
+	}
+	if raw[0] != 'B' || raw[1] != 'M' {
+		return false
+	}
+
+	bmpFormat := binary.LittleEndian.Uint32(raw[14:])
+	// sourced from libmagic Magdir/images
+	possibleFormats := []uint32{
+		48,  // PC bitmap, OS/2 2.x format (DIB header size=48)
+		24,  // PC bitmap, OS/2 2.x format (DIB header size=24)
+		16,  // PC bitmap, OS/2 2.x format (DIB header size=16)
+		64,  // PC bitmap, OS/2 2.x format
+		52,  // PC bitmap, Adobe Photoshop
+		56,  // PC bitmap, Adobe Photoshop with alpha channel mask
+		40,  // PC bitmap, Windows 3.x format
+		124, // PC bitmap, Windows 98/2000 and newer format
+		108, // PC bitmap, Windows 95/NT4 and newer format
+	}
+
+	return slices.Contains(possibleFormats, bmpFormat)
 }
 
 // Ps matches a PostScript file.

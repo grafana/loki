@@ -9,6 +9,8 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/consumer/logsobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/indexpointers"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/pointers"
+	"github.com/grafana/loki/v3/pkg/dataobj/sections/postings"
+	"github.com/grafana/loki/v3/pkg/dataobj/sections/stats"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
 )
 
@@ -17,6 +19,8 @@ type builderMetrics struct {
 	pointers      *pointers.Metrics
 	indexPointers *indexpointers.Metrics
 	streams       *streams.Metrics
+	postings      *postings.Metrics
+	stats         *stats.Metrics
 	dataobj       *dataobj.Metrics
 
 	targetPageSize   prometheus.Gauge
@@ -41,6 +45,8 @@ func newBuilderMetrics() *builderMetrics {
 		indexPointers: indexpointers.NewMetrics(),
 		pointers:      pointers.NewMetrics(),
 		streams:       streams.NewMetrics(),
+		postings:      postings.NewMetrics(),
+		stats:         stats.NewMetrics(),
 		dataobj:       dataobj.NewMetrics(),
 		targetPageSize: prometheus.NewGauge(prometheus.GaugeOpts{
 			Name: "loki_indexobj_config_target_page_size_bytes",
@@ -129,6 +135,8 @@ func (m *builderMetrics) Register(reg prometheus.Registerer) error {
 	errs = append(errs, m.indexPointers.Register(reg))
 	errs = append(errs, m.pointers.Register(reg))
 	errs = append(errs, m.streams.Register(reg))
+	errs = append(errs, m.postings.Register(reg))
+	errs = append(errs, m.stats.Register(reg))
 	errs = append(errs, m.dataobj.Register(reg))
 
 	errs = append(errs, reg.Register(m.targetPageSize))
@@ -153,6 +161,8 @@ func (m *builderMetrics) Unregister(reg prometheus.Registerer) {
 	m.indexPointers.Unregister(reg)
 	m.pointers.Unregister(reg)
 	m.streams.Unregister(reg)
+	m.postings.Unregister(reg)
+	m.stats.Unregister(reg)
 	m.dataobj.Unregister(reg)
 
 	reg.Unregister(m.targetPageSize)

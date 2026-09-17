@@ -33,7 +33,7 @@ local setupValidationDeps = function(job) job {
   ] + job.steps,
 };
 
-local validationJob = _validationJob(false);
+local validationJob = _validationJob();
 
 
 {

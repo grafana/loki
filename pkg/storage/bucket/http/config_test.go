@@ -1,12 +1,14 @@
 package http
 
 import (
+	"io"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/grafana/dskit/flagext"
 	"github.com/stretchr/testify/require"
-	yaml "gopkg.in/yaml.v2"
+	yaml "go.yaml.in/yaml/v4"
 )
 
 // defaultConfig should match the default flag values defined in RegisterFlagsWithPrefix.
@@ -25,14 +27,13 @@ func TestConfig(t *testing.T) {
 	t.Parallel()
 
 	tests := map[string]struct {
-		config         string
-		expectedConfig Config
-		expectedErr    error
+		config          string
+		expectedConfig  Config
+		expectedTypeErr bool
 	}{
 		"default config": {
 			config:         "",
 			expectedConfig: defaultConfig,
-			expectedErr:    nil,
 		},
 		"custom config": {
 			config: `
@@ -55,12 +56,11 @@ max_connections_per_host: 8
 				MaxIdleConnsPerHost:   7,
 				MaxConnsPerHost:       8,
 			},
-			expectedErr: nil,
 		},
 		"invalid type": {
-			config:         `max_idle_connections: foo`,
-			expectedConfig: defaultConfig,
-			expectedErr:    &yaml.TypeError{Errors: []string{"line 1: cannot unmarshal !!str `foo` into int"}},
+			config:          `max_idle_connections: foo`,
+			expectedConfig:  defaultConfig,
+			expectedTypeErr: true,
 		},
 	}
 
@@ -69,8 +69,14 @@ max_connections_per_host: 8
 			cfg := Config{}
 			flagext.DefaultValues(&cfg)
 
-			err := yaml.Unmarshal([]byte(testData.config), &cfg)
-			require.Equal(t, testData.expectedErr, err)
+			dec := yaml.NewDecoder(strings.NewReader(testData.config))
+			err := dec.Decode(&cfg)
+			if testData.expectedTypeErr {
+				var typeErr *yaml.LoadErrors
+				require.ErrorAs(t, err, &typeErr)
+			} else if err != io.EOF {
+				require.NoError(t, err)
+			}
 			require.Equal(t, testData.expectedConfig, cfg)
 		})
 	}

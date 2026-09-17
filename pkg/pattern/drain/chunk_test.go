@@ -529,6 +529,7 @@ func TestConfigurableChunkCreation(t *testing.T) {
 
 		// Calculate expected capacity based on custom parameters
 		expectedCapacity := 12*30 + 1 // 5 second samples, 12 per minute, 30 minutes, plus 1
+		expectedCapacity /= 8         // Optimization: Only allocate 1/8 total size up front
 
 		require.Equal(t, expectedCapacity, cap(chunk.Samples), "chunk capacity should be calculated using configurable parameters")
 		require.Equal(t, 1, len(chunk.Samples), "chunk should have one initial sample")

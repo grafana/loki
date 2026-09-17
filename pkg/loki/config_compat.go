@@ -2,7 +2,6 @@ package loki
 
 import (
 	"errors"
-	"fmt"
 
 	"github.com/grafana/loki/v3/pkg/ingester/index"
 	frontend "github.com/grafana/loki/v3/pkg/lokifrontend/frontend/v2"
@@ -24,23 +23,15 @@ func ValidateConfigCompatibility(c Config) []error {
 
 func ensureInvertedIndexShardingCompatibility(c Config) error {
 
-	for i, sc := range c.SchemaConfig.Configs {
-		switch sc.IndexType {
-		case types.TSDBType:
-			if err := index.ValidateBitPrefixShardFactor(uint32(c.Ingester.IndexShards)); err != nil {
-				return err
-			}
-		default:
-			if sc.RowShards > 0 && c.Ingester.IndexShards%int(sc.RowShards) > 0 {
-				return fmt.Errorf(
-					"incompatible ingester index shards (%d) and period config row shard factor (%d) for period config at index (%d). The ingester factor must be evenly divisible by all period config factors",
-					c.Ingester.IndexShards,
-					sc.RowShards,
-					i,
-				)
-			}
+	// TSDB is the only supported index type; other types are rejected at store
+	// construction.
+	for _, sc := range c.SchemaConfig.Configs {
+		if sc.IndexType != types.IndexTypeTSDB {
+			continue
 		}
-
+		if err := index.ValidateBitPrefixShardFactor(uint32(c.Ingester.IndexShards)); err != nil {
+			return err
+		}
 	}
 	return nil
 }

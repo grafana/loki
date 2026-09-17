@@ -11,6 +11,7 @@ import (
 	"sync"
 
 	"go.opentelemetry.io/collector/pdata/internal/json"
+	"go.opentelemetry.io/collector/pdata/internal/metadata"
 	"go.opentelemetry.io/collector/pdata/internal/proto"
 )
 
@@ -30,7 +31,7 @@ var (
 )
 
 func NewExponentialHistogram() *ExponentialHistogram {
-	if !UseProtoPooling.IsEnabled() {
+	if !metadata.PdataUseProtoPoolingFeatureGate.IsEnabled() {
 		return &ExponentialHistogram{}
 	}
 	return protoPoolExponentialHistogram.Get().(*ExponentialHistogram)
@@ -41,7 +42,7 @@ func DeleteExponentialHistogram(orig *ExponentialHistogram, nullable bool) {
 		return
 	}
 
-	if !UseProtoPooling.IsEnabled() {
+	if !metadata.PdataUseProtoPoolingFeatureGate.IsEnabled() {
 		orig.Reset()
 		return
 	}
@@ -161,7 +162,7 @@ func (orig *ExponentialHistogram) UnmarshalJSON(iter *json.Iterator) {
 		case "aggregationTemporality", "aggregation_temporality":
 			orig.AggregationTemporality = AggregationTemporality(iter.ReadEnumValue(AggregationTemporality_value))
 		default:
-			iter.Skip()
+			iter.HandleUnknownField(f)
 		}
 	}
 }

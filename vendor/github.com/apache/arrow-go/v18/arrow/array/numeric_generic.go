@@ -32,11 +32,12 @@ type numericArray[T arrow.IntType | arrow.UintType | arrow.FloatType] struct {
 	values []T
 }
 
-func newNumericData[T arrow.IntType | arrow.UintType | arrow.FloatType](data arrow.ArrayData) numericArray[T] {
-	a := numericArray[T]{}
+// initNumericArray initializes an already-allocated numericArray[T] in place.
+// It takes a pointer (rather than returning a value) so that the embedded
+// atomic refcount is never copied, which would otherwise trigger copylocks.
+func initNumericArray[T arrow.IntType | arrow.UintType | arrow.FloatType](a *numericArray[T], data arrow.ArrayData) {
 	a.refCount.Add(1)
 	a.setData(data.(*Data))
-	return a
 }
 
 func (a *numericArray[T]) Reset(data *Data) {
@@ -237,7 +238,9 @@ type Duration struct {
 }
 
 func NewDurationData(data arrow.ArrayData) *Duration {
-	return &Duration{numericArray: newNumericData[arrow.Duration](data)}
+	a := &Duration{}
+	initNumericArray(&a.numericArray, data)
+	return a
 }
 
 func (a *Duration) DurationValues() []arrow.Duration { return a.Values() }
@@ -270,7 +273,9 @@ type Int64 struct {
 }
 
 func NewInt64Data(data arrow.ArrayData) *Int64 {
-	return &Int64{numericArray: newNumericData[int64](data)}
+	a := &Int64{}
+	initNumericArray(&a.numericArray, data)
+	return a
 }
 
 func (a *Int64) Int64Values() []int64 { return a.Values() }
@@ -280,7 +285,9 @@ type Uint64 struct {
 }
 
 func NewUint64Data(data arrow.ArrayData) *Uint64 {
-	return &Uint64{numericArray: newNumericData[uint64](data)}
+	a := &Uint64{}
+	initNumericArray(&a.numericArray, data)
+	return a
 }
 
 func (a *Uint64) Uint64Values() []uint64 { return a.Values() }
@@ -290,7 +297,9 @@ type Float32 struct {
 }
 
 func NewFloat32Data(data arrow.ArrayData) *Float32 {
-	return &Float32{floatArray[float32]{newNumericData[float32](data)}}
+	a := &Float32{}
+	initNumericArray(&a.numericArray, data)
+	return a
 }
 
 func (a *Float32) Float32Values() []float32 { return a.Values() }
@@ -300,7 +309,9 @@ type Float64 struct {
 }
 
 func NewFloat64Data(data arrow.ArrayData) *Float64 {
-	return &Float64{floatArray: floatArray[float64]{newNumericData[float64](data)}}
+	a := &Float64{}
+	initNumericArray(&a.numericArray, data)
+	return a
 }
 
 func (a *Float64) Float64Values() []float64 { return a.Values() }
@@ -310,7 +321,9 @@ type Int32 struct {
 }
 
 func NewInt32Data(data arrow.ArrayData) *Int32 {
-	return &Int32{newNumericData[int32](data)}
+	a := &Int32{}
+	initNumericArray(&a.numericArray, data)
+	return a
 }
 
 func (a *Int32) Int32Values() []int32 { return a.Values() }
@@ -320,7 +333,9 @@ type Uint32 struct {
 }
 
 func NewUint32Data(data arrow.ArrayData) *Uint32 {
-	return &Uint32{numericArray: newNumericData[uint32](data)}
+	a := &Uint32{}
+	initNumericArray(&a.numericArray, data)
+	return a
 }
 
 func (a *Uint32) Uint32Values() []uint32 { return a.Values() }
@@ -330,7 +345,9 @@ type Int16 struct {
 }
 
 func NewInt16Data(data arrow.ArrayData) *Int16 {
-	return &Int16{newNumericData[int16](data)}
+	a := &Int16{}
+	initNumericArray(&a.numericArray, data)
+	return a
 }
 
 func (a *Int16) Int16Values() []int16 { return a.Values() }
@@ -340,7 +357,9 @@ type Uint16 struct {
 }
 
 func NewUint16Data(data arrow.ArrayData) *Uint16 {
-	return &Uint16{numericArray: newNumericData[uint16](data)}
+	a := &Uint16{}
+	initNumericArray(&a.numericArray, data)
+	return a
 }
 
 func (a *Uint16) Uint16Values() []uint16 { return a.Values() }
@@ -350,7 +369,9 @@ type Int8 struct {
 }
 
 func NewInt8Data(data arrow.ArrayData) *Int8 {
-	return &Int8{oneByteArrs[int8]{newNumericData[int8](data)}}
+	a := &Int8{}
+	initNumericArray(&a.numericArray, data)
+	return a
 }
 
 func (a *Int8) Int8Values() []int8 { return a.Values() }
@@ -360,7 +381,9 @@ type Uint8 struct {
 }
 
 func NewUint8Data(data arrow.ArrayData) *Uint8 {
-	return &Uint8{oneByteArrs[uint8]{newNumericData[uint8](data)}}
+	a := &Uint8{}
+	initNumericArray(&a.numericArray, data)
+	return a
 }
 
 func (a *Uint8) Uint8Values() []uint8 { return a.Values() }
@@ -370,7 +393,9 @@ type Time32 struct {
 }
 
 func NewTime32Data(data arrow.ArrayData) *Time32 {
-	return &Time32{timeArray[arrow.Time32]{newNumericData[arrow.Time32](data)}}
+	a := &Time32{}
+	initNumericArray(&a.numericArray, data)
+	return a
 }
 
 func (a *Time32) Time32Values() []arrow.Time32 { return a.Values() }
@@ -380,7 +405,9 @@ type Time64 struct {
 }
 
 func NewTime64Data(data arrow.ArrayData) *Time64 {
-	return &Time64{timeArray[arrow.Time64]{newNumericData[arrow.Time64](data)}}
+	a := &Time64{}
+	initNumericArray(&a.numericArray, data)
+	return a
 }
 
 func (a *Time64) Time64Values() []arrow.Time64 { return a.Values() }
@@ -390,7 +417,9 @@ type Date32 struct {
 }
 
 func NewDate32Data(data arrow.ArrayData) *Date32 {
-	return &Date32{dateArray[arrow.Date32]{newNumericData[arrow.Date32](data)}}
+	a := &Date32{}
+	initNumericArray(&a.numericArray, data)
+	return a
 }
 
 func (a *Date32) Date32Values() []arrow.Date32 { return a.Values() }
@@ -400,7 +429,9 @@ type Date64 struct {
 }
 
 func NewDate64Data(data arrow.ArrayData) *Date64 {
-	return &Date64{dateArray[arrow.Date64]{newNumericData[arrow.Date64](data)}}
+	a := &Date64{}
+	initNumericArray(&a.numericArray, data)
+	return a
 }
 
 func (a *Date64) Date64Values() []arrow.Date64 { return a.Values() }

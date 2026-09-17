@@ -1,14 +1,20 @@
 package columnar
 
-import "github.com/grafana/loki/v3/pkg/memory"
+import (
+	"github.com/grafana/loki/v3/pkg/columnar/types"
+	"github.com/grafana/loki/v3/pkg/memory"
+)
 
 // NullScalar is a [Scalar] representing an untyped null value.
 type NullScalar struct{}
 
 var _ Scalar = (*NullScalar)(nil)
 
-// Kind implements [Datum] and returns [KindNull].
-func (s *NullScalar) Kind() Kind { return KindNull }
+// Kind implements [Datum] and returns [types.KindNull].
+func (s *NullScalar) Kind() types.Kind { return types.KindNull }
+
+// Type implements [Datum] and returns [types.Null].
+func (s *NullScalar) Type() types.Type { return nullType }
 
 // IsNull implements [Scalar] and returns true.
 func (s *NullScalar) IsNull() bool { return true }
@@ -51,8 +57,11 @@ func (arr *Null) Nulls() int { return arr.nullCount }
 // IsNull returns true for all values in the array.
 func (arr *Null) IsNull(_ int) bool { return true }
 
-// Kind returns [KindNull].
-func (arr *Null) Kind() Kind { return KindNull }
+// Kind implements [Datum] and returns [types.KindNull].
+func (arr *Null) Kind() types.Kind { return types.KindNull }
+
+// Type returns a [*types.Null].
+func (arr *Null) Type() types.Type { return nullType }
 
 // Validity returns arr's validity bitmap.
 func (arr *Null) Validity() memory.Bitmap { return arr.validity }

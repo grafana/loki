@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 /*
-Package otlptracehttp provides an OTLP span exporter using HTTP with protobuf payloads.
+Package otlptracehttp provides an OTLP span exporter using HTTP with protobuf or JSON payloads.
 By default the telemetry is sent to https://localhost:4318/v1/traces.
 
 Exporter should be created using [New].
@@ -23,6 +23,11 @@ The value must contain a scheme ("http" or "https") and host.
 The value may additionally contain a port and a path.
 The value should not contain a query string or fragment.
 The configuration can be overridden by [WithEndpoint], [WithEndpointURL], [WithInsecure], and [WithURLPath] options.
+
+OTEL_EXPORTER_OTLP_INSECURE, OTEL_EXPORTER_OTLP_TRACES_INSECURE (default: "false") -
+setting "true" disables client transport security for the exporter's HTTP connection.
+OTEL_EXPORTER_OTLP_TRACES_INSECURE takes precedence over OTEL_EXPORTER_OTLP_INSECURE.
+The configuration can be overridden by [WithInsecure] and [WithTLSClientConfig] options.
 
 OTEL_EXPORTER_OTLP_HEADERS, OTEL_EXPORTER_OTLP_TRACES_HEADERS (default: none) -
 key-value pairs used as headers associated with HTTP requests.
@@ -58,6 +63,12 @@ the filepath to the client's private key to use in mTLS communication in PEM for
 OTEL_EXPORTER_OTLP_TRACES_CLIENT_KEY takes precedence over OTEL_EXPORTER_OTLP_CLIENT_KEY.
 The configuration can be overridden by [WithTLSClientConfig] option.
 
+OTEL_EXPORTER_OTLP_PROTOCOL, OTEL_EXPORTER_OTLP_TRACES_PROTOCOL (default: "http/protobuf") -
+the transport protocol the exporter uses. For OTLP/HTTP exporters, it indicates the encoding format of the payloads sent to the collector.
+Supported value: "http/protobuf", "http/json".
+OTEL_EXPORTER_OTLP_TRACES_PROTOCOL takes precedence over OTEL_EXPORTER_OTLP_PROTOCOL.
+The configuration can be overridden by [WithEncoding] option.
+
 [W3C Baggage HTTP Header Content Format]: https://www.w3.org/TR/baggage/#header-content
 */
-package otlptracehttp // import "go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp"
+package otlptracehttp

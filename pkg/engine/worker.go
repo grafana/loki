@@ -2,6 +2,7 @@ package engine
 
 import (
 	"flag"
+	"fmt"
 	"net"
 	"net/http"
 	"time"
@@ -14,10 +15,13 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/thanos-io/objstore"
 
+	"github.com/grafana/loki/v3/pkg/dataobj/consumer/logsobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
+	"github.com/grafana/loki/v3/pkg/dataobj/uploader"
 	"github.com/grafana/loki/v3/pkg/engine/internal/executor"
 	"github.com/grafana/loki/v3/pkg/engine/internal/scheduler/wire"
 	"github.com/grafana/loki/v3/pkg/engine/internal/worker"
+	"github.com/grafana/loki/v3/pkg/scratch"
 )
 
 // WorkerConfig represents the configuration for the [Worker].
@@ -40,6 +44,12 @@ type WorkerParams struct {
 	Bucket    objstore.Bucket     // Bucket to read stored data from.
 	Metastore metastore.Metastore // Metastore to access indexes.
 
+	// DataBucket reads source log objects during LogMerge compaction. When
+	// Bucket is prefixed with the index-storage prefix (compaction wiring),
+	// source log objects live at the unprefixed dataobj root and must be read
+	// through this bucket. Optional; nil falls back to Bucket.
+	DataBucket objstore.Bucket
+
 	Config   WorkerConfig   // Configuration for the worker.
 	Executor ExecutorConfig // Configuration for task execution.
 
@@ -60,6 +70,26 @@ type WorkerParams struct {
 	// StreamFilterer is an optional filterer that can filter streams based on their labels.
 	// When set, streams are filtered before scanning.
 	StreamFilterer executor.RequestStreamFilterer
+
+	// ScratchStore is an optional scratch store for index merge operations.
+	// Required for compaction tasks; may be nil for query-only workers.
+	ScratchStore scratch.Store
+
+	// IndexobjCfg is the builder config for compacted index objects.
+	// Required for compaction tasks; may be the zero value for query-only workers.
+	IndexobjCfg logsobj.BuilderBaseConfig
+
+	// LogsobjCfg is the builder config for compacted log objects
+	// Required for compaction tasks; may be the zero-value for query-only workers.
+	LogsobjCfg logsobj.BuilderBaseConfig
+
+	// UploaderCfg controls object key generation for compacted log objects.
+	UploaderCfg uploader.Config
+
+	// IndexMergeObserver is used  by compaction to populate output-size
+	// histograms. Optional; nil for query-only workers.
+	IndexMergeObserver executor.IndexMergeObserver
+	LogMergeObserver   executor.LogMergeObserver
 }
 
 // Worker requests tasks from a [Scheduler] and executes them. Task results are
@@ -67,14 +97,15 @@ type WorkerParams struct {
 type Worker struct {
 	// Our public API is a lightweight wrapper around the internal API.
 
-	inner    *worker.Worker
-	endpoint string
-	handler  http.Handler
+	inner          *worker.Worker
+	endpoint       string
+	handler        http.Handler
+	builderMetrics *logsobj.BuilderMetrics
 }
 
 // NewWorker creates a new Worker instance. Use [Worker.Service] to manage the
 // lifecycle of the Worker.
-func NewWorker(params WorkerParams) (*Worker, error) {
+func NewWorker(params WorkerParams, reg prometheus.Registerer) (*Worker, error) {
 	if params.Config.SchedulerLookupAddress != "" && params.Config.SchedulerLookupInterval == 0 {
 		return nil, errors.New("scheduler lookup interval must be non-zero when a scheduler lookup address is provided")
 	}
@@ -123,10 +154,20 @@ func NewWorker(params WorkerParams) (*Worker, error) {
 		return nil, errors.New("either an advertise address or a local scheduler listener must be provided")
 	}
 
+	taskCaches, err := executor.NewTaskCacheRegistry(params.Executor.TaskResultsCache.Config, reg, params.Logger)
+	if err != nil {
+		return nil, fmt.Errorf("creating task results cache: %w", err)
+	}
+	builderMetrics := logsobj.NewBuilderMetrics()
+	if err := builderMetrics.Register(reg); err != nil {
+		return nil, fmt.Errorf("registering logs object builder metrics: %w", err)
+	}
+
 	inner, err := worker.New(worker.Config{
-		Logger:    params.Logger,
-		Bucket:    params.Bucket,
-		Metastore: params.Metastore,
+		Logger:     params.Logger,
+		Bucket:     params.Bucket,
+		DataBucket: params.DataBucket,
+		Metastore:  params.Metastore,
 
 		Dialer:   dialer,
 		Listener: listener,
@@ -142,15 +183,25 @@ func NewWorker(params WorkerParams) (*Worker, error) {
 		Endpoint: params.Endpoint,
 
 		StreamFilterer: params.StreamFilterer,
+		TaskCaches:     taskCaches,
+		ScratchStore:   params.ScratchStore,
+		IndexobjCfg:    params.IndexobjCfg,
+		LogsobjCfg:     params.LogsobjCfg,
+		UploaderCfg:    params.UploaderCfg,
+		BuilderMetrics: builderMetrics,
+
+		IndexMergeObserver: params.IndexMergeObserver,
+		LogMergeObserver:   params.LogMergeObserver,
 	})
 	if err != nil {
 		return nil, err
 	}
 
 	return &Worker{
-		inner:    inner,
-		endpoint: params.Endpoint,
-		handler:  handler,
+		inner:          inner,
+		endpoint:       params.Endpoint,
+		handler:        handler,
+		builderMetrics: builderMetrics,
 	}, nil
 }
 
@@ -178,4 +229,5 @@ func (w *Worker) RegisterMetrics(reg prometheus.Registerer) error {
 // UnregisterMetrics unregisters metrics about w from reg.
 func (w *Worker) UnregisterMetrics(reg prometheus.Registerer) {
 	w.inner.UnregisterMetrics(reg)
+	w.builderMetrics.Unregister(reg)
 }

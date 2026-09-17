@@ -68,7 +68,7 @@ Pass the `-config.expand-env` flag at the command line to enable this way of set
 
 - `<boolean>` : a boolean that can take the values `true` or `false`
 - `<int>` : A plain integer (for example, `0`, `1024`, `5000`) or a size in bytes with optional unit suffix (for example, `1024`, `256KB`, `64MB`, `4GB`). Supported units: `B`, `KB`, `MB`, `GB`, `TB`, `PB`, `EB`. 
-- `<duration>` : a duration with required unit suffix. Supported units: `ms`, `s`, `m`, `h`, `d`, `w`, `y `(for example, `30s`, `5m`, `1h`, `1d`, `1w`). Note: `0` is allowed without a unit. Some fields using Go's native duration type may also support `ns` and `us`/`µs` but not `d`, `w`, `y`.
+- `<duration>` : a duration with required unit suffix. Supported units depend on the field type. Prometheus duration fields support: 'ms', 's', 'm', 'h', 'd', 'w', 'y' (for example, '30s', '1m', '1h', '1d', '1w'). Go native duration fields support: 'ns', 'us', 'µs', 'ms', 's', 'm', 'h' but not 'd', 'w', 'y'. Note: '0' is allowed without a unit.
 - `<labelname>` : a string matching the regular expression `[a-zA-Z_][a-zA-Z0-9_]*`
 - `<labelvalue>` : a string of unicode characters
 - `<filename>` : a valid path relative to current working directory or an absolute path.
@@ -82,21 +82,27 @@ Pass the `-config.expand-env` flag at the command line to enable this way of set
 
 ```yaml
 # A comma-separated list of components to run. The default value 'all' runs Loki
-# in single binary mode. The value 'read' is an alias to run only read-path
-# related components such as the querier and query-frontend, but all in the same
-# process. The value 'write' is an alias to run only write-path related
-# components such as the distributor and compactor, but all in the same process.
-# Supported values: all, compactor, distributor, ingester, querier,
-# query-scheduler, ingester-querier, query-frontend, index-gateway, ruler,
-# table-manager, read, write. A full list of available targets can be printed
-# when running Loki with the '-list-targets' command line flag.
+# in single binary mode. A full list of available targets can be printed when
+# running Loki with the '-list-targets' command line flag.
 # CLI flag: -target
 [target: <string> | default = "all"]
 
 # Enables authentication through the X-Scope-OrgID header, which must be present
-# if true. If false, the OrgID will always be set to 'fake'.
+# if true. If false, the OrgID will always be set to the value of
+# -auth.no-auth-tenant.
 # CLI flag: -auth.enabled
 [auth_enabled: <boolean> | default = true]
+
+lbac:
+  # Enables label based access control through the X-Prom-Label-Policy header.
+  # CLI flag: -lbac.enabled
+  [enabled: <boolean> | default = false]
+
+# Tenant ID to use when auth is disabled. Defaults to 'fake' for backwards
+# compatibility. Safe to change on a fresh cluster; on an existing cluster, data
+# stored under the old tenant path must be migrated first (see cmd/migrate).
+# CLI flag: -auth.no-auth-tenant
+[no_auth_tenant: <string> | default = "fake"]
 
 # The amount of virtual memory in bytes to reserve as ballast in order to
 # optimize garbage collection. Larger ballasts result in fewer garbage
@@ -343,6 +349,45 @@ query_engine:
     # Experimental: minimum size of a byte range
     # CLI flag: -query-engine.range-reads.min-range-size
     [min_range_size: <int> | default = 1048576]
+
+  task_results_cache:
+    # The cache_config block configures the cache backend for a specific Loki
+    # component.
+    # The CLI flags prefix for this block configuration is:
+    # query-engine.task-results-cache
+    [cache: <cache_config>]
+
+    # Use compression in cache. The default is an empty value '', which disables
+    # compression. Supported values are: 'snappy' and ''.
+    # CLI flag: -query-engine.task-results-cache.compression
+    [compression: <string> | default = ""]
+
+    # Experimental: Maximum size for a task result to be cacheable. 0 means only
+    # empty responses are cached.
+    # CLI flag: -query-engine.task-results-cache.task-result-max-cacheable-size
+    [task_result_max_cacheable_size: <int> | default = 0B]
+
+    # Experimental: Maximum size for a DataObjScan result to be cacheable. 0
+    # means only empty responses are cached.
+    # CLI flag: -query-engine.task-results-cache.dataobjscan-result-max-cacheable-size
+    [dataobjscan_result_max_cacheable_size: <int> | default = 0B]
+
+    # Experimental: When enabled, the scheduler checks cached results at plan
+    # time and prunes tasks whose cached result is known to be empty.
+    # CLI flag: -query-engine.task-results-cache.prune-empty-cached-tasks
+    [prune_empty_cached_tasks: <boolean> | default = false]
+
+    # Experimental: Maximum total size of non-empty cached task results embedded
+    # in task assignments. Results that would exceed the budget are skipped
+    # (smaller results that fit are still included). 0 disables non-empty task
+    # pruning.
+    # CLI flag: -query-engine.task-results-cache.prune-cached-tasks-max-size
+    [prune_cached_tasks_max_size: <int> | default = 0B]
+
+    # Experimental: Timeout for cache fetch operations during cached-task
+    # pruning at plan time. 0 disables the timeout.
+    # CLI flag: -query-engine.task-results-cache.prune-cached-tasks-fetch-timeout
+    [prune_cached_tasks_fetch_timeout: <duration> | default = 1s]
 
   # Experimental: Number of worker threads to spawn. Each worker thread runs one
   # task at a time. 0 means to use GOMAXPROCS value.
@@ -1019,10 +1064,6 @@ pattern_ingester:
 
   # Configures the pattern tee which forwards requests to the pattern ingester.
   tee_config:
-    # The size of the batch of raw logs to send for template mining
-    # CLI flag: -pattern-ingester.tee.batch-size
-    [batch_size: <int> | default = 5000]
-
     # The max time between batches of raw logs to send for template mining
     # CLI flag: -pattern-ingester.tee.batch-flush-interval
     [batch_flush_interval: <duration> | default = 1s]
@@ -1034,6 +1075,11 @@ pattern_ingester:
     # the number of concurrent workers sending logs to the template service
     # CLI flag: -pattern-ingester.tee.flush-worker-count
     [flush_worker_count: <int> | default = 100]
+
+    # The maximum number of bytes that can be buffered before dropping, 0 means
+    # disabled
+    # CLI flag: -pattern-ingester.tee.max-buffered-bytes
+    [max_buffered_bytes: <int> | default = 0]
 
     # The max time we will try to flush any remaining logs to be mined when the
     # service is stopped
@@ -1109,9 +1155,6 @@ compactor_grpc_client:
 # The frontend_worker configures the worker - running within the Loki querier -
 # picking up and executing queries enqueued by the query-frontend.
 [frontend_worker: <frontend_worker>]
-
-# The table_manager block configures the table manager for retention.
-[table_manager: <table_manager>]
 
 # Configuration for memberlist client. Only applies if the selected kvstore is
 # memberlist.
@@ -1207,6 +1250,26 @@ kafka_config:
   # CLI flag: -kafka.producer-max-buffered-bytes
   [producer_max_buffered_bytes: <int> | default = 1073741824]
 
+  # The maximum number of Produce requests the producer can have in-flight per
+  # Kafka broker at any given time. The product of this value and
+  # -kafka.producer-linger should exceed the maximum Produce latency expected
+  # from the Kafka backend in steady state. If the backend takes longer than
+  # that to process a Produce request, the client will buffer data and stop
+  # issuing new Produce requests until some in-flight ones complete, which
+  # surfaces as added latency to callers.
+  # CLI flag: -kafka.producer-max-inflight-requests-per-broker
+  [producer_max_inflight_requests_per_broker: <int> | default = 20]
+
+  # How long the producer waits, buffering records for the same partition,
+  # before sending a Produce request. The product of this value and
+  # -kafka.producer-max-inflight-requests-per-broker should exceed the maximum
+  # Produce latency expected from the Kafka backend in steady state. If the
+  # backend takes longer than that to process a Produce request, the client will
+  # buffer data and stop issuing new Produce requests until some in-flight ones
+  # complete, which surfaces as added latency to callers.
+  # CLI flag: -kafka.producer-linger
+  [producer_linger: <duration> | default = 50ms]
+
   # The guaranteed maximum lag before a consumer is considered to have caught up
   # reading from a partition at startup, becomes ACTIVE in the hash ring and
   # passes the readiness check. Set -kafka.max-consumer-lag-at-startup to 0 to
@@ -1234,33 +1297,39 @@ dataobj:
       # (for columnar sections). Uncompressed size is used for consistent I/O
       # and planning.
       # CLI flag: -dataobj-consumer.target-page-size
-      [target_page_size: <int> | default = 2MiB]
+      [target_page_size: <int> | default = 1MiB]
 
       # The maximum row count for pages to use for the data object builder. A
       # value of 0 means no limit.
       # CLI flag: -dataobj-consumer.max-page-rows
-      [max_page_rows: <int> | default = 0]
+      [max_page_rows: <int> | default = 10000]
 
       # The target maximum size of the encoded object and all of its encoded
       # sections (after compression), to limit memory usage of a builder.
       # CLI flag: -dataobj-consumer.target-builder-memory-limit
-      [target_object_size: <int> | default = 1GiB]
+      [target_object_size: <int> | default = 512MiB]
 
       # The target maximum amount of uncompressed data to hold in sections, for
       # sections that support being limited by size. Uncompressed size is used
       # for consistent I/O and planning.
       # CLI flag: -dataobj-consumer.target-section-size
-      [target_section_size: <int> | default = 128MiB]
+      [target_section_size: <int> | default = 512MiB]
 
       # The size of logs to buffer in memory before adding into columnar
       # builders, used to reduce CPU load of sorting.
       # CLI flag: -dataobj-consumer.buffer-size
-      [buffer_size: <int> | default = 16MiB]
+      [buffer_size: <int> | default = 128MiB]
 
       # The maximum number of dataobj section stripes to merge into a section at
       # once. Must be greater than 1.
       # CLI flag: -dataobj-consumer.section-stripe-merge-limit
       [section_stripe_merge_limit: <int> | default = 2]
+
+      # Expected compression ratio for log data, used to estimate compressed
+      # output size from uncompressed buffered records. Only takes effect with
+      # ordered append. Set to 0 or 1 to disable.
+      # CLI flag: -dataobj-consumer.estimated-compression-ratio
+      [estimated_compression_ratio: <int> | default = 8]
 
     lifecycler:
       ring:
@@ -1496,40 +1565,52 @@ dataobj:
     # The maximum row count for pages to use for the data object builder. A
     # value of 0 means no limit.
     # CLI flag: -dataobj-index-builder.max-page-rows
-    [max_page_rows: <int> | default = 0]
+    [max_page_rows: <int> | default = 10000]
 
     # The target maximum size of the encoded object and all of its encoded
     # sections (after compression), to limit memory usage of a builder.
     # CLI flag: -dataobj-index-builder.target-builder-memory-limit
-    [target_object_size: <int> | default = 64MiB]
+    [target_object_size: <int> | default = 512MiB]
 
     # The target maximum amount of uncompressed data to hold in sections, for
     # sections that support being limited by size. Uncompressed size is used for
     # consistent I/O and planning.
     # CLI flag: -dataobj-index-builder.target-section-size
-    [target_section_size: <int> | default = 16MiB]
+    [target_section_size: <int> | default = 512MiB]
 
     # The size of logs to buffer in memory before adding into columnar builders,
     # used to reduce CPU load of sorting.
     # CLI flag: -dataobj-index-builder.buffer-size
-    [buffer_size: <int> | default = 2MiB]
+    [buffer_size: <int> | default = 128MiB]
 
     # The maximum number of dataobj section stripes to merge into a section at
     # once. Must be greater than 1.
     # CLI flag: -dataobj-index-builder.section-stripe-merge-limit
     [section_stripe_merge_limit: <int> | default = 2]
 
+    # Expected compression ratio for log data, used to estimate compressed
+    # output size from uncompressed buffered records. Only takes effect with
+    # ordered append. Set to 0 or 1 to disable.
+    # CLI flag: -dataobj-index-builder.estimated-compression-ratio
+    [estimated_compression_ratio: <int> | default = 1]
+
     # Experimental: The number of events to batch before building an index
     # CLI flag: -dataobj-index-builder.events-per-index
     [events_per_index: <int> | default = 32]
 
-    # Experimental: How often to check for stale partitions to flush
+    # Experimental: How often to check for idle partitions and old events to
+    # flush
     # CLI flag: -dataobj-index-builder.flush-interval
     [flush_interval: <duration> | default = 1m]
 
-    # Experimental: Maximum time to wait before flushing buffered events
+    # Experimental: Maximum time between events before a partition is considered
+    # idle and flushed
     # CLI flag: -dataobj-index-builder.max-idle-time
     [max_idle_time: <duration> | default = 30m]
+
+    # Experimental: Maximum age of a buffered event before it will be flushed
+    # CLI flag: -dataobj-index-builder.max-age
+    [max_age: <duration> | default = 1h]
 
   metastore:
     # Experimental: A prefix to use for storing indexes in object storage. Used
@@ -1542,6 +1623,184 @@ dataobj:
     # log partitions.
     # CLI flag: -dataobj-metastore.partition-ratio
     [partition_ratio: <int> | default = 10]
+
+    # Experimental: When enabled, reads from new-format postings sections in
+    # index objects instead of the streams sections. Defaults to false.
+    # CLI flag: -dataobj-metastore.read-postings-sections
+    [read_postings_sections: <boolean> | default = false]
+
+  compaction:
+    # Experimental: Enable dataobj compaction modules (planner and worker
+    # targets when selected via -target).
+    # CLI flag: -dataobj.compaction.enabled
+    [enabled: <boolean> | default = false]
+
+    # Experimental: Per-tenant-cycle cap on concurrent IndexMerge tasks
+    # dispatched by the coordinator. 0 means unlimited (one goroutine per task
+    # with no admission throttle).
+    # CLI flag: -dataobj.compaction.max-running-compaction-tasks
+    [max_running_compaction_tasks: <int> | default = 16]
+
+    # Experimental: Per-tenant-cycle cap on concurrent LogMerge tasks dispatched
+    # by the coordinator. 0 means unlimited.
+    # CLI flag: -dataobj.compaction.logs.max-running-compaction-tasks
+    [logs_max_running_compaction_tasks: <int> | default = 16]
+
+    # Experimental: Coordinator main-loop cadence.
+    # CLI flag: -dataobj.compaction.polling-interval
+    [polling_interval: <duration> | default = 5m]
+
+    # Experimental: Number of older metastore windows to compact in addition to
+    # the current window. 0 compacts only the current window; 1 also compacts
+    # the previous window.
+    # CLI flag: -dataobj.compaction.window-lookback
+    [window_lookback: <int> | default = 0]
+
+    # Experimental: Maximum runs per IndexMerge task (K). Memory grows linearly
+    # with K.
+    # CLI flag: -dataobj.compaction.max-runs-per-task
+    [max_runs_per_task: <int> | default = 8]
+
+    # Experimental: Maximum runs per LogMerge task (K for log compaction).
+    # Separate from max-runs-per-task to scale independently
+    # CLI flag: -dataobj.compaction.logs.max-runs-per-task
+    [logs_max_runs_per_task: <int> | default = 3]
+
+    # Experimental: Minimum total compactable data (sum of all runs'
+    # uncompressed size) that justifies log compaction. Converged windows below
+    # this floor are skipped.
+    # CLI flag: -dataobj.compaction.logs.min-compaction-size
+    [logs_min_compaction_size: <int> | default = 4MiB]
+
+    # Experimental: Coordinator-side timeout around the inline ToC
+    # ReplaceIndexPointers call. Not a task TTL.
+    # CLI flag: -dataobj.compaction.toc-consolidate-timeout
+    [toc_consolidate_timeout: <duration> | default = 30s]
+
+    # Experimental: Skip the post-compaction ToC ReplaceIndexPointers swap.
+    # Planning, IndexMerge task execution, and per-output audit logging still
+    # run, but the ToC is never mutated.
+    # CLI flag: -dataobj.compaction.dry-run
+    [dry_run: <boolean> | default = false]
+
+    # Experimental: Plan version hashed into IndexMerge output paths. Bump to
+    # invalidate previously-written outputs after a planner-algorithm change.
+    # CLI flag: -dataobj.compaction.plan-version
+    [plan_version: <int> | default = 1]
+
+    scheduler:
+      # Experimental: host:port the embedded compaction scheduler advertises to
+      # compaction workers. Empty string keeps the scheduler in-process-only.
+      # CLI flag: -dataobj.compaction.scheduler.advertise-addr
+      [advertise_addr: <string> | default = ""]
+
+      # Experimental: HTTP path the embedded compaction scheduler listens on for
+      # worker frame traffic.
+      # CLI flag: -dataobj.compaction.scheduler.endpoint
+      [endpoint: <string> | default = "/api/v2/compaction-frame"]
+
+    worker:
+      # Experimental: Number of task-execution threads. 0 uses GOMAXPROCS.
+      # CLI flag: -dataobj.compaction.worker.worker-threads
+      [worker_threads: <int> | default = 0]
+
+      # Experimental: DNS-SRV address used to discover compaction schedulers.
+      # Required when -target=dataobj-compaction-worker. Example:
+      # dnssrv+_compaction-frame._tcp.compactor-scheduler.svc.cluster.local
+      # CLI flag: -dataobj.compaction.worker.scheduler-lookup-address
+      [scheduler_lookup_address: <string> | default = ""]
+
+      # Experimental: Interval at which to re-run the DNS-SRV lookup.
+      # CLI flag: -dataobj.compaction.worker.scheduler-lookup-interval
+      [scheduler_lookup_interval: <duration> | default = 10s]
+
+      # Experimental: host:port the embedded compaction worker advertises to
+      # schedulers. Required when -target=dataobj-compaction-worker.
+      # CLI flag: -dataobj.compaction.worker.advertise-addr
+      [advertise_addr: <string> | default = ""]
+
+      # Experimental: HTTP path the embedded compaction worker registers its
+      # frame handler on.
+      # CLI flag: -dataobj.compaction.worker.endpoint
+      [endpoint: <string> | default = "/api/v2/compaction-frame"]
+
+    indexobj_builder:
+      # The target maximum amount of uncompressed data to hold in data pages
+      # (for columnar sections). Uncompressed size is used for consistent I/O
+      # and planning.
+      # CLI flag: -dataobj.compaction.indexobj-builder.target-page-size
+      [target_page_size: <int> | default = 128KiB]
+
+      # The maximum row count for pages to use for the data object builder. A
+      # value of 0 means no limit.
+      # CLI flag: -dataobj.compaction.indexobj-builder.max-page-rows
+      [max_page_rows: <int> | default = 10000]
+
+      # The target maximum size of the encoded object and all of its encoded
+      # sections (after compression), to limit memory usage of a builder.
+      # CLI flag: -dataobj.compaction.indexobj-builder.target-builder-memory-limit
+      [target_object_size: <int> | default = 512MiB]
+
+      # The target maximum amount of uncompressed data to hold in sections, for
+      # sections that support being limited by size. Uncompressed size is used
+      # for consistent I/O and planning.
+      # CLI flag: -dataobj.compaction.indexobj-builder.target-section-size
+      [target_section_size: <int> | default = 512MiB]
+
+      # The size of logs to buffer in memory before adding into columnar
+      # builders, used to reduce CPU load of sorting.
+      # CLI flag: -dataobj.compaction.indexobj-builder.buffer-size
+      [buffer_size: <int> | default = 128MiB]
+
+      # The maximum number of dataobj section stripes to merge into a section at
+      # once. Must be greater than 1.
+      # CLI flag: -dataobj.compaction.indexobj-builder.section-stripe-merge-limit
+      [section_stripe_merge_limit: <int> | default = 2]
+
+      # Expected compression ratio for log data, used to estimate compressed
+      # output size from uncompressed buffered records. Only takes effect with
+      # ordered append. Set to 0 or 1 to disable.
+      # CLI flag: -dataobj.compaction.indexobj-builder.estimated-compression-ratio
+      [estimated_compression_ratio: <int> | default = 8]
+
+    logsobj_builder:
+      # The target maximum amount of uncompressed data to hold in data pages
+      # (for columnar sections). Uncompressed size is used for consistent I/O
+      # and planning.
+      # CLI flag: -dataobj.compaction.logsobj-builder.target-page-size
+      [target_page_size: <int> | default = 1MiB]
+
+      # The maximum row count for pages to use for the data object builder. A
+      # value of 0 means no limit.
+      # CLI flag: -dataobj.compaction.logsobj-builder.max-page-rows
+      [max_page_rows: <int> | default = 10000]
+
+      # The target maximum size of the encoded object and all of its encoded
+      # sections (after compression), to limit memory usage of a builder.
+      # CLI flag: -dataobj.compaction.logsobj-builder.target-builder-memory-limit
+      [target_object_size: <int> | default = 512MiB]
+
+      # The target maximum amount of uncompressed data to hold in sections, for
+      # sections that support being limited by size. Uncompressed size is used
+      # for consistent I/O and planning.
+      # CLI flag: -dataobj.compaction.logsobj-builder.target-section-size
+      [target_section_size: <int> | default = 512MiB]
+
+      # The size of logs to buffer in memory before adding into columnar
+      # builders, used to reduce CPU load of sorting.
+      # CLI flag: -dataobj.compaction.logsobj-builder.buffer-size
+      [buffer_size: <int> | default = 128MiB]
+
+      # The maximum number of dataobj section stripes to merge into a section at
+      # once. Must be greater than 1.
+      # CLI flag: -dataobj.compaction.logsobj-builder.section-stripe-merge-limit
+      [section_stripe_merge_limit: <int> | default = 2]
+
+      # Expected compression ratio for log data, used to estimate compressed
+      # output size from uncompressed buffered records. Only takes effect with
+      # ordered append. Set to 0 or 1 to disable.
+      # CLI flag: -dataobj.compaction.logsobj-builder.estimated-compression-ratio
+      [estimated_compression_ratio: <int> | default = 8]
 
   # The prefix to use for the storage bucket.
   # CLI flag: -dataobj-storage-bucket-prefix
@@ -1932,6 +2191,14 @@ ingest_limits_frontend_client:
     # CLI flag: -ingest-limits-frontend-client.remote-timeout
     [remote_timeout: <duration> | default = 1s]
 
+  # [Experimental]: Enable shuffle sharding.
+  # CLI flag: -ingest-limits-frontend-client.shuffle-shard-enabled
+  [shuffle_shard_enabled: <boolean> | default = false]
+
+  # [Experimental]: The number of shards per tenant.
+  # CLI flag: -ingest-limits-frontend-client.shuffle-shard-size
+  [shuffle_shard_size: <int> | default = 1]
+
 # Configuration for 'runtime config' module, responsible for reloading runtime
 # configuration file.
 [runtime_config: <runtime_config>]
@@ -1990,6 +2257,10 @@ The `alibabacloud_storage_config` block configures the connection to Alibaba Clo
 # CLI flag: -<prefix>.oss.endpoint
 [endpoint: <string> | default = ""]
 
+# Alibabacloud Region to use.
+# CLI flag: -<prefix>.oss.region
+[region: <string> | default = ""]
+
 # alibabacloud Access Key ID
 # CLI flag: -<prefix>.oss.access-key-id
 [access_key_id: <string> | default = ""]
@@ -1998,6 +2269,13 @@ The `alibabacloud_storage_config` block configures the connection to Alibaba Clo
 # CLI flag: -<prefix>.oss.secret-access-key
 [secret_access_key: <string> | default = ""]
 
+# Specify the RAM role name of the ECS instance. ECS RAM role authentication is
+# used only when neither access_key_id nor secret_access_key is configured and
+# requires signature_version=v4. If not set, the role name will be automatically
+# retrieved from the ECS instance metadata.
+# CLI flag: -<prefix>.oss.ram-role-name
+[ram_role_name: <string> | default = ""]
+
 # Connection timeout in seconds
 # CLI flag: -<prefix>.oss.conn-timeout-sec
 [conn_timeout_sec: <int> | default = 30]
@@ -2005,6 +2283,11 @@ The `alibabacloud_storage_config` block configures the connection to Alibaba Clo
 # Read/Write timeout in seconds
 # CLI flag: -<prefix>.oss.read-write-timeout-sec
 [read_write_timeout_sec: <int> | default = 60]
+
+# The signature version to use for authenticating against OSS. Supported values
+# are: v1, v4. ECS RAM role authentication requires signature_version=v4.
+# CLI flag: -<prefix>.oss.signature-version
+[signature_version: <string> | default = "v1"]
 ```
 
 ### analytics
@@ -2045,95 +2328,6 @@ Define actions for matching OpenTelemetry (OTEL) attributes.
 # Regex to choose attributes to configure how to store them or drop them
 # altogether
 [regex: <Regexp>]
-```
-
-### aws_storage_config
-
-The `aws_storage_config` block configures the connection to dynamoDB and S3 object storage. Either one of them or both can be configured.
-
-```yaml
-# Deprecated: Configures storing indexes in DynamoDB.
-dynamodb:
-  # DynamoDB endpoint URL with escaped Key and Secret encoded. If only region is
-  # specified as a host, proper endpoint will be deduced. Use
-  # inmemory:///<table-name> to use a mock in-memory implementation.
-  # CLI flag: -dynamodb.url
-  [dynamodb_url: <url>]
-
-  # DynamoDB table management requests per second limit.
-  # CLI flag: -dynamodb.api-limit
-  [api_limit: <float> | default = 2]
-
-  # DynamoDB rate cap to back off when throttled.
-  # CLI flag: -dynamodb.throttle-limit
-  [throttle_limit: <float> | default = 10]
-
-  metrics:
-    # Use metrics-based autoscaling, via this query URL
-    # CLI flag: -metrics.url
-    [url: <string> | default = ""]
-
-    # Queue length above which we will scale up capacity
-    # CLI flag: -metrics.target-queue-length
-    [target_queue_length: <int> | default = 100000]
-
-    # Scale up capacity by this multiple
-    # CLI flag: -metrics.scale-up-factor
-    [scale_up_factor: <float> | default = 1.3]
-
-    # Ignore throttling below this level (rate per second)
-    # CLI flag: -metrics.ignore-throttle-below
-    [ignore_throttle_below: <float> | default = 1]
-
-    # query to fetch ingester queue length
-    # CLI flag: -metrics.queue-length-query
-    [queue_length_query: <string> | default = "sum(avg_over_time(loki_ingester_flush_queue_length{job=\"cortex/ingester\"}[2m])) or sum(avg_over_time(cortex_ingester_flush_queue_length{job=\"cortex/ingester\"}[2m]))"]
-
-    # query to fetch throttle rates per table
-    # CLI flag: -metrics.write-throttle-query
-    [write_throttle_query: <string> | default = "sum(rate(cortex_dynamo_throttled_total{operation=\"DynamoDB.BatchWriteItem\"}[1m])) by (table) > 0"]
-
-    # query to fetch write capacity usage per table
-    # CLI flag: -metrics.usage-query
-    [write_usage_query: <string> | default = "sum(rate(cortex_dynamo_consumed_capacity_total{operation=\"DynamoDB.BatchWriteItem\"}[15m])) by (table) > 0"]
-
-    # query to fetch read capacity usage per table
-    # CLI flag: -metrics.read-usage-query
-    [read_usage_query: <string> | default = "sum(rate(cortex_dynamo_consumed_capacity_total{operation=\"DynamoDB.QueryPages\"}[1h])) by (table) > 0"]
-
-    # query to fetch read errors per table
-    # CLI flag: -metrics.read-error-query
-    [read_error_query: <string> | default = "sum(increase(cortex_dynamo_failures_total{operation=\"DynamoDB.QueryPages\",error=\"ProvisionedThroughputExceededException\"}[1m])) by (table) > 0"]
-
-  # Number of chunks to group together to parallelise fetches (zero to disable)
-  # CLI flag: -dynamodb.chunk-gang-size
-  [chunk_gang_size: <int> | default = 10]
-
-  # Max number of chunk-get operations to start in parallel
-  # CLI flag: -dynamodb.chunk.get-max-parallelism
-  [chunk_get_max_parallelism: <int> | default = 32]
-
-  backoff_config:
-    # Minimum backoff time
-    # CLI flag: -dynamodb.min-backoff
-    [min_period: <duration> | default = 100ms]
-
-    # Maximum backoff time
-    # CLI flag: -dynamodb.max-backoff
-    [max_period: <duration> | default = 50s]
-
-    # Maximum number of times to retry an operation
-    # CLI flag: -dynamodb.max-retries
-    [max_retries: <int> | default = 20]
-
-  # KMS key used for encrypting DynamoDB items.  DynamoDB will use an Amazon
-  # owned KMS key if not provided.
-  # CLI flag: -dynamodb.kms-key-id
-  [kms_key_id: <string> | default = ""]
-
-# The s3_storage_config block configures the connection to Amazon S3 object
-# storage backend.
-[<s3_storage_config>]
 ```
 
 ### azure_storage_config
@@ -2404,10 +2598,9 @@ The `cache_config` block configures the cache backend for a specific Loki compon
 - `frontend.series-results-cache`
 - `frontend.volume-results-cache`
 - `query-engine.results-cache`
+- `query-engine.task-results-cache`
 - `store.chunks-cache`
 - `store.chunks-cache-l2`
-- `store.index-cache-read`
-- `store.index-cache-write`
 
 &nbsp;
 
@@ -2499,7 +2692,7 @@ memcached_client:
 
   # The TLS configuration.
   # The CLI flags prefix for this block configuration is:
-  # store.index-cache-write.memcached
+  # store.chunks-cache-l2.memcached
   [<tls_config>]
 
 redis:
@@ -2595,26 +2788,21 @@ The `chunk_store_config` block configures how chunks will be cached and how long
 # The CLI flags prefix for this block configuration is: store.chunks-cache-l2
 [chunk_cache_config_l2: <cache_config>]
 
-# Write dedupe cache is deprecated along with legacy index types (aws,
-# aws-dynamo, bigtable, bigtable-hashed, cassandra, gcp, gcp-columnkey,
-# grpc-store).
-# Consider using TSDB index which does not require a write dedupe cache.
-# The CLI flags prefix for this block configuration is: store.index-cache-write
-[write_dedupe_cache_config: <cache_config>]
-
 # Chunks fetched from queriers before this duration will not be written to the
 # cache. A value of 0 will write all chunks to the cache
 # CLI flag: -store.skip-query-writeback-older-than
 [skip_query_writeback_cache_older_than: <duration> | default = 0s]
 
+# Experimental. Return an object-storage chunk fetch error instead of incomplete
+# results. Applies to queries, bloom builds, and migration, including checksum
+# failures.
+# CLI flag: -chunk-store.propagate-chunk-fetch-errors
+[propagate_chunk_fetch_errors: <boolean> | default = false]
+
 # Chunks will be handed off to the L2 cache after this duration. 0 to disable L2
 # cache.
 # CLI flag: -store.chunks-cache-l2.handoff
 [l2_chunk_cache_handoff: <duration> | default = 0s]
-
-# Cache index entries older than this period. 0 to disable.
-# CLI flag: -store.cache-lookups-older-than
-[cache_lookups_older_than: <duration> | default = 0s]
 ```
 
 ### common
@@ -2936,6 +3124,20 @@ retention_backoff_config:
 # smaller requests of no more than delete_max_interval
 # CLI flag: -compactor.delete-max-interval
 [delete_max_interval: <duration> | default = 24h]
+
+# Do not fail processing of a delete request with a line filter when a chunk it
+# needs to rebuild is indexed but missing from the object storage. When enabled,
+# the missing chunk is skipped and its index entry is left as is for diagnosing
+# the issue. Chunks skipped this way are counted by the
+# loki_compactor_deletion_missing_chunks_total metric and logged with their
+# chunk IDs. This setting has no effect when horizontal_scaling_mode is not
+# disabled. CAUTION: enable this only as a temporary escape hatch to unblock
+# delete requests, and only after verifying against the object storage that the
+# chunks really are missing. If a chunk gets skipped while it is in fact still
+# present, the data it holds is left undeleted even though the delete request is
+# reported as processed.
+# CLI flag: -compactor.deletion-ignore-missing-chunks
+[deletion_ignore_missing_chunks: <boolean> | default = false]
 
 # Maximum number of tables to compact in parallel. While increasing this value,
 # please make sure compactor has enough disk space allocated to be able to store
@@ -3278,13 +3480,9 @@ ring:
 # CLI flag: -distributor.push-worker-count
 [push_worker_count: <int> | default = 256]
 
-# The maximum size of a received message.
-# CLI flag: -distributor.max-recv-msg-size
-[max_recv_msg_size: <int> | default = 104857600]
-
-# The maximum size of a decompressed message. Defaults to 50x max-recv-msg-size.
-# CLI flag: -distributor.max-decompressed-size
-[max_decompressed_size: <int> | default = 5242880000]
+# The maximum number of inflight bytes at a time. 0 means disabled.
+# CLI flag: -distributor.max-inflight-bytes
+[max_inflight_bytes: <int> | default = 0]
 
 rate_store:
   # The max number of concurrent requests to make to ingester stream apis
@@ -3314,6 +3512,18 @@ write_failures_logging:
   # Whether a insight=true key should be logged or not. Default: false.
   # CLI flag: -distributor.write-failures-logging.add-insights-label
   [add_insights_label: <boolean> | default = false]
+
+# Customize the logging of OTLP attribute expansion.
+otlp_attribute_logging:
+  # Number of attribute expansion reports to emit per second, per tenant. Each
+  # report is one summary line plus one line per attribute.
+  # CLI flag: -distributor.otlp-attribute-logging.rate
+  [rate: <float> | default = 1]
+
+  # Maximum number of attributes to log on their own line for a reported
+  # request. The remaining attributes are summarised on a single overflow line.
+  # CLI flag: -distributor.otlp-attribute-logging.max-attributes
+  [max_attributes: <int> | default = 20]
 
 otlp_config:
   # List of default otlp resource attributes to be picked as index labels
@@ -3365,6 +3575,30 @@ dataobj_tee:
   # to 0 to disable batching.
   # CLI flag: -distributor.dataobj-tee.rate-batch-window
   [rate_batch_window: <duration> | default = 0s]
+
+  # Enables use of rendezvous hashing. When this is false, consistent hashing is
+  # used instead.
+  # CLI flag: -distributor.dataobj-tee.use-rendezvous-hashing
+  [use_rendezvous_hashing: <boolean> | default = false]
+
+circuit_breaker:
+  # Enable circuit breakers.
+  # CLI flag: -distributor.circuit-breaker.enabled
+  [enabled: <boolean> | default = false]
+
+  # The open period.
+  # CLI flag: -distributor.circuit-breaker.open-period
+  [open_period: <duration> | default = 1s]
+
+  # The minimum number of successive failures required to open the circuit
+  # breaker.
+  # CLI flag: -distributor.circuit-breaker.min-failures
+  [min_failures: <int> | default = 1]
+
+  # The number of permitted trial requests in the half-open state. All requests
+  # must succeed to close the circuit breaker, any failure re-opens it.
+  # CLI flag: -distributor.circuit-breaker.permitted-trials
+  [permitted_trials: <int> | default = 1]
 ```
 
 ### etcd
@@ -3494,9 +3728,9 @@ The `frontend` block configures the Loki query-frontend.
 [instance_enable_ipv6: <boolean> | default = false]
 
 # Defines the encoding for requests to and responses from the scheduler and
-# querier. Can be 'json' or 'protobuf' (defaults to 'json').
+# querier. Can be 'json' or 'protobuf' (defaults to 'protobuf').
 # CLI flag: -frontend.encoding
-[encoding: <string> | default = "json"]
+[encoding: <string> | default = "protobuf"]
 
 # Compress HTTP responses.
 # CLI flag: -querier.compress-http-responses
@@ -3515,7 +3749,8 @@ The `frontend` block configures the Loki query-frontend.
 [tail_tls_config: <tls_config>]
 
 # Support 'application/vnd.apache.parquet' content type in HTTP responses.
-[support_parquet_encoding: <boolean>]
+# CLI flag: -frontend.support-parquet-encoding
+[support_parquet_encoding: <boolean> | default = false]
 ```
 
 ### frontend_worker
@@ -3619,10 +3854,8 @@ The `gcs_storage_config` block configures the connection to Google Cloud Storage
 
 The `grpc_client` block configures the gRPC client used to communicate between a client and server component in Loki. The supported CLI flags `<prefix>` used to reference this configuration block are:
 
-- `bigtable`
 - `bloom-build.builder.grpc`
 - `bloom-gateway-client.grpc`
-- `boltdb.shipper.index-gateway-client.grpc`
 - `compactor.grpc-client`
 - `frontend.grpc-client-config`
 - `ingest-limits-frontend-client`
@@ -3634,6 +3867,7 @@ The `grpc_client` block configures the gRPC client used to communicate between a
 - `querier.scheduler-grpc-client`
 - `query-scheduler.grpc-client-config`
 - `ruler.client`
+- `ruler.evaluation.query-frontend`
 - `tsdb.shipper.index-gateway-client.grpc`
 
 &nbsp;
@@ -3714,6 +3948,17 @@ backoff_config:
 # ConnectTimeout > 0.
 # CLI flag: -<prefix>.connect-backoff-max-delay
 [connect_backoff_max_delay: <duration> | default = 5s]
+
+# After a duration of this time if the client doesn't see any activity it pings
+# the server to see if the transport is still alive. This also determines the
+# socket's TCP_USER_TIMEOUT together with keepalive-timeout.
+# CLI flag: -<prefix>.keepalive-time
+[keepalive_time: <duration> | default = 20s]
+
+# After having pinged for keepalive check, the client waits for a duration of
+# this time and if no activity is seen even after that the connection is closed.
+# CLI flag: -<prefix>.keepalive-timeout
+[keepalive_timeout: <duration> | default = 10s]
 
 cluster_validation:
   # Primary cluster validation label.
@@ -3826,6 +4071,27 @@ ring:
   # Enable using a IPv6 instance address.
   # CLI flag: -index-gateway.ring.instance-enable-ipv6
   [instance_enable_ipv6: <boolean> | default = false]
+
+# Experimental: Maximum number of index gateway RPCs that can execute
+# concurrently. When the limit is reached, additional requests wait up to
+# -index-gateway.max-concurrent-queue-timeout for a free slot. If no slot
+# becomes free in that time, the index gateway rejects the request with an HTTP
+# 503 status. Clients retry the request against another index gateway replica. 0
+# disables admission control. A recommended starting value when enabling this
+# setting is 200.
+# CLI flag: -index-gateway.max-concurrent
+[max_concurrent: <int> | default = 0]
+
+# Experimental: Maximum time a request waits for a free slot when the index
+# gateway is already executing -index-gateway.max-concurrent requests. If no
+# slot becomes free in that time, the index gateway rejects the request. Bursts
+# shorter than this timeout are absorbed without errors. Clients retry rejected
+# requests against other replicas. When every replica is saturated, a request
+# can wait up to this long per replica, so prefer a low value. 0 means requests
+# wait indefinitely, bounded only by the request's own timeout. Only used when
+# -index-gateway.max-concurrent is greater than 0.
+# CLI flag: -index-gateway.max-concurrent-queue-timeout
+[max_concurrent_queue_timeout: <duration> | default = 5s]
 ```
 
 ### ingester
@@ -4060,8 +4326,7 @@ flush_op_backoff:
 [max_returned_stream_errors: <int> | default = 10]
 
 # How far back should an ingester be allowed to query the store for data, for
-# use only with boltdb-shipper/tsdb index and filesystem object store. -1 for
-# infinite.
+# use only with tsdb index and filesystem object store. -1 for infinite.
 # CLI flag: -ingester.query-store-max-look-back-period
 [query_store_max_look_back_period: <duration> | default = 0s]
 
@@ -4296,6 +4561,10 @@ The `limits_config` block configures global and per-tenant limits in Loki. The v
 # CLI flag: -distributor.max-line-size-truncate-identifier
 [max_line_size_truncate_identifier: <string> | default = ""]
 
+# The maximum size of a Push request.
+# CLI flag: -distributor.max-push-size
+[max_push_size: <int> | default = 2GB]
+
 # Alter the log line timestamp during ingestion when the timestamp is the same
 # as the previous entry for the same stream. When enabled, if a log line in a
 # push request has the same timestamp as the previous line for the same stream,
@@ -4312,12 +4581,6 @@ The `limits_config` block configures global and per-tenant limits in Loki. The v
 # disable.
 # CLI flag: -limits.simulated-push-latency
 [simulated_push_latency: <duration> | default = 0s]
-
-# Enable experimental support for running multiple query variants over the same
-# underlying data. For example, running both a rate() and count_over_time()
-# query over the same range selector.
-# CLI flag: -limits.enable-multi-variant-queries
-[enable_multi_variant_queries: <boolean> | default = false]
 
 # Experimental: Detect fields from stream labels, structured metadata, or
 # json/logfmt formatted log line and put them into structured metadata of the
@@ -4365,10 +4628,6 @@ discover_generic_fields:
 # ingesters, and is kept updated whenever the number of ingesters change.
 # CLI flag: -ingester.max-global-streams-per-user
 [max_global_streams_per_user: <int> | default = 5000]
-
-# Deprecated. When true, out-of-order writes are accepted.
-# CLI flag: -ingester.unordered-writes
-[unordered_writes: <boolean> | default = true]
 
 # Maximum byte rate per second per stream, also expressible in human readable
 # forms (1MB, 256KB, etc).
@@ -4476,19 +4735,18 @@ discover_generic_fields:
 # CLI flag: -frontend.max-queriers-per-tenant
 [max_queriers_per_tenant: <int> | default = 0]
 
-# How much of the available query capacity ("querier" components in distributed
-# mode, "read" components in SSD mode) can be used by a single tenant. Allowed
-# values are 0.0 to 1.0. For example, setting this to 0.5 would allow a tenant
-# to use half of the available queriers for processing the query workload. If
-# set to 0, query capacity is determined by frontend.max-queriers-per-tenant.
-# When both frontend.max-queriers-per-tenant and frontend.max-query-capacity are
-# configured, smaller value of the resulting querier replica count is
-# considered: min(frontend.max-queriers-per-tenant, ceil(querier_replicas *
-# frontend.max-query-capacity)). *All* queriers will handle requests for the
-# tenant if neither limits are applied. This option only works with queriers
-# connecting to the query-frontend / query-scheduler, not when using downstream
-# URL. Use this feature in a multi-tenant setup where you need to limit query
-# capacity for certain tenants.
+# How much of the available query capacity ("querier" components) can be used by
+# a single tenant. Allowed values are 0.0 to 1.0. For example, setting this to
+# 0.5 would allow a tenant to use half of the available queriers for processing
+# the query workload. If set to 0, query capacity is determined by
+# frontend.max-queriers-per-tenant. When both frontend.max-queriers-per-tenant
+# and frontend.max-query-capacity are configured, smaller value of the resulting
+# querier replica count is considered: min(frontend.max-queriers-per-tenant,
+# ceil(querier_replicas * frontend.max-query-capacity)). *All* queriers will
+# handle requests for the tenant if neither limits are applied. This option only
+# works with queriers connecting to the query-frontend / query-scheduler, not
+# when using downstream URL. Use this feature in a multi-tenant setup where you
+# need to limit query capacity for certain tenants.
 # CLI flag: -frontend.max-query-capacity
 [max_query_capacity: <float> | default = 0]
 
@@ -4597,77 +4855,8 @@ discover_generic_fields:
 # CLI flag: -ruler.tenant-shard-size
 [ruler_tenant_shard_size: <int> | default = 0]
 
-# Enable WAL replay on ruler startup. Disabling this can reduce memory usage on
-# startup at the cost of not recovering in-memory WAL metrics on restart.
-# CLI flag: -ruler.enable-wal-replay
-[ruler_enable_wal_replay: <boolean> | default = true]
-
 # Disable recording rules remote-write.
 [ruler_remote_write_disabled: <boolean>]
-
-# Deprecated: Use 'ruler_remote_write_config' instead. The URL of the endpoint
-# to send samples to.
-[ruler_remote_write_url: <string> | default = ""]
-
-# Deprecated: Use 'ruler_remote_write_config' instead. Timeout for requests to
-# the remote write endpoint.
-[ruler_remote_write_timeout: <duration>]
-
-# Deprecated: Use 'ruler_remote_write_config' instead. Custom HTTP headers to be
-# sent along with each remote write request. Be aware that headers that are set
-# by Loki itself can't be overwritten.
-[ruler_remote_write_headers: <headers>]
-
-# Deprecated: Use 'ruler_remote_write_config' instead. List of remote write
-# relabel configurations.
-[ruler_remote_write_relabel_configs: <relabel_config...>]
-
-# Deprecated: Use 'ruler_remote_write_config' instead. Number of samples to
-# buffer per shard before we block reading of more samples from the WAL. It is
-# recommended to have enough capacity in each shard to buffer several requests
-# to keep throughput up while processing occasional slow remote requests.
-[ruler_remote_write_queue_capacity: <int>]
-
-# Deprecated: Use 'ruler_remote_write_config' instead. Minimum number of shards,
-# i.e. amount of concurrency.
-[ruler_remote_write_queue_min_shards: <int>]
-
-# Deprecated: Use 'ruler_remote_write_config' instead. Maximum number of shards,
-# i.e. amount of concurrency.
-[ruler_remote_write_queue_max_shards: <int>]
-
-# Deprecated: Use 'ruler_remote_write_config' instead. Maximum number of samples
-# per send.
-[ruler_remote_write_queue_max_samples_per_send: <int>]
-
-# Deprecated: Use 'ruler_remote_write_config' instead. Maximum time a sample
-# will wait in buffer.
-[ruler_remote_write_queue_batch_send_deadline: <duration>]
-
-# Deprecated: Use 'ruler_remote_write_config' instead. Initial retry delay. Gets
-# doubled for every retry.
-[ruler_remote_write_queue_min_backoff: <duration>]
-
-# Deprecated: Use 'ruler_remote_write_config' instead. Maximum retry delay.
-[ruler_remote_write_queue_max_backoff: <duration>]
-
-# Deprecated: Use 'ruler_remote_write_config' instead. Retry upon receiving a
-# 429 status code from the remote-write storage. This is experimental and might
-# change in the future.
-[ruler_remote_write_queue_retry_on_ratelimit: <boolean>]
-
-# Deprecated: Use 'ruler_remote_write_config' instead. Configures AWS's
-# Signature Verification 4 signing process to sign every remote write request.
-ruler_remote_write_sigv4_config:
-  [region: <string> | default = ""]
-
-  [access_key: <string> | default = ""]
-
-  [secret_key: <string> | default = ""]
-
-  [profile: <string> | default = ""]
-
-  [role_arn: <string> | default = ""]
 
 # Configures global and per-tenant limits for remote write clients. A map with
 # remote client id as key.
@@ -4710,19 +4899,6 @@ ruler_remote_write_sigv4_config:
 # matching, the highest priority will be picked. If no rule is matched the
 # 'retention_period' is used.
 [retention_stream: <list of StreamRetentions>]
-
-# Feature renamed to 'runtime configuration', flag deprecated in favor of
-# -runtime-config.file (runtime_config.file in YAML).
-# CLI flag: -limits.per-user-override-config
-[per_tenant_override_config: <string> | default = ""]
-
-# Feature renamed to 'runtime configuration'; flag deprecated in favor of
-# -runtime-config.reload-period (runtime_config.period in YAML).
-# CLI flag: -limits.per-user-override-period
-[per_tenant_override_period: <duration> | default = 10s]
-
-# Deprecated: Use deletion_mode per tenant configuration instead.
-[allow_deletes: <boolean>]
 
 # Define streams sharding behavior.
 shard_streams:
@@ -4799,6 +4975,16 @@ shard_streams:
 # Experimental. Whether to create blooms for the tenant.
 # CLI flag: -bloom-build.enable
 [bloom_creation_enabled: <boolean> | default = false]
+
+# Experimental. Whether dataobj index compaction runs for the tenant.
+# CLI flag: -dataobj-compaction.index.enable
+[dataobj_index_compaction_enabled: <boolean> | default = false]
+
+# Experimental. Whether dataobj log compaction runs for the tenant. Log
+# compaction implies index compaction; enabling log compaction without index
+# compaction is a configuration error.
+# CLI flag: -dataobj-compaction.log.enable
+[dataobj_log_compaction_enabled: <boolean> | default = false]
 
 # Experimental. Bloom planning strategy to use in bloom creation. Can be one of:
 # 'split_keyspace_by_factor', 'split_by_series_chunks_size'
@@ -4980,12 +5166,6 @@ otlp_config:
 # the SSE type override is not set.
 [s3_sse_kms_encryption_context: <string> | default = ""]
 
-# Experimental: Controls the amount of scan tasks that can be running in
-# parallel in the new query engine. The default of 0 means unlimited parallelism
-# and all tasks will be scheduled at once.
-# CLI flag: -limits.max-scan-task-parallelism
-[max_scan_task_parallelism: <int> | default = 0]
-
 # Experimental: Toggles verbose debug logging of tasks in the new query engine.
 # CLI flag: -limits.debug-engine-tasks
 [debug_engine_tasks: <boolean> | default = false]
@@ -5060,6 +5240,24 @@ When a memberlist config with atleast 1 join_members is defined, kvstore of type
 # in large memberlist deployments. 0 to notify without delay.
 # CLI flag: -memberlist.notify-interval
 [notify_interval: <duration> | default = 0s]
+
+# Size of the internal queue for messages received from other nodes. Increasing
+# this value may help to avoid dropping messages when the node is processing a
+# large number of messages from other nodes.
+# CLI flag: -memberlist.received-messages-queue-size
+[received_messages_queue_size: <int> | default = 1024]
+
+# Size of the per-key internal queue for processing messages received from other
+# nodes. Increasing this value may help to avoid dropping per-key updates when
+# the node is processing many updates for the same key.
+# CLI flag: -memberlist.processed-messages-queue-size
+[processed_messages_queue_size: <int> | default = 1024]
+
+# Compression algorithm used for outgoing messages when
+# -memberlist.compression-enabled is true. Supported values: lzw, snappy.
+# Ignored when -memberlist.compression-enabled is false.
+# CLI flag: -memberlist.compression-algorithm
+[compression_algorithm: <string> | default = "lzw"]
 
 # Gossip address to advertise to other members in the cluster. Used for NAT
 # traversal.
@@ -5166,6 +5364,16 @@ When a memberlist config with atleast 1 join_members is defined, kvstore of type
 # CLI flag: -memberlist.watch-prefix-buffer-size
 [watch_prefix_buffer_size: <int> | default = 128]
 
+# Minimum delay between CAS retries after a version mismatch. 0 disables the
+# delay.
+# CLI flag: -memberlist.cas-retry-min-backoff
+[cas_retry_min_backoff: <duration> | default = 0s]
+
+# Maximum delay between CAS retries after a version mismatch. Only takes effect
+# if cas-retry-min-backoff is also set.
+# CLI flag: -memberlist.cas-retry-max-backoff
+[cas_retry_max_backoff: <duration> | default = 10s]
+
 # IP address to listen on for gossip messages. Multiple addresses may be
 # specified. Defaults to 0.0.0.0
 # CLI flag: -memberlist.bind-addr
@@ -5212,6 +5420,24 @@ zone_aware_routing:
   # Role of this node in the cluster. Valid values: member, bridge.
   # CLI flag: -memberlist.zone-aware-routing.role
   [role: <string> | default = "member"]
+
+propagation_delay_tracker:
+  # Enable the propagation delay tracker to measure gossip propagation delay.
+  # CLI flag: -memberlist.propagation-delay-tracker.enabled
+  [enabled: <boolean> | default = false]
+
+  # How often to publish beacons for propagation tracking.
+  # CLI flag: -memberlist.propagation-delay-tracker.beacon-interval
+  [beacon_interval: <duration> | default = 1m]
+
+  # How long a beacon lives before being garbage collected.
+  # CLI flag: -memberlist.propagation-delay-tracker.beacon-lifetime
+  [beacon_lifetime: <duration> | default = 10m]
+
+  # Log warning when beacon propagation delay exceeds this threshold. 0 disables
+  # logging.
+  # CLI flag: -memberlist.propagation-delay-tracker.log-beacons-latency-longer-than
+  [log_beacons_latency_longer_than: <duration> | default = 0s]
 ```
 
 ### named_stores_config
@@ -5230,7 +5456,7 @@ Example:
 Named store from this example can be used by setting object_store to store-1 in period_config.
 
 ```yaml
-[aws: <map of string to aws_storage_config>]
+[aws: <map of string to s3_storage_config>]
 
 [azure: <map of string to azure_storage_config>]
 
@@ -5291,6 +5517,12 @@ These are values which allow you to control aspects of Loki's operation, most co
 # CLI flag: -operation-config.log-duplicate-stream-info
 [log_duplicate_stream_info: <boolean> | default = false]
 
+# Log which OTLP resource and scope attributes are expanded into structured
+# metadata, for a rate limited subset of push requests. Only attribute names and
+# sizes are logged, never values.
+# CLI flag: -operation-config.log-otlp-attribute-expansion
+[log_otlp_attribute_expansion: <boolean> | default = false]
+
 # Log push errors with a rate limited logger, will show client push errors
 # without overly spamming logs.
 # CLI flag: -operation-config.limited-log-push-errors
@@ -5308,15 +5540,12 @@ The `period_config` block configures what index schemas should be used for from 
 [from: <daytime>]
 
 # store and object_store below affect which <storage_config> key is used. Which
-# index to use. Either tsdb or boltdb-shipper. Following stores are deprecated:
-# aws, aws-dynamo, gcp, gcp-columnkey, bigtable, bigtable-hashed, cassandra,
-# grpc.
+# index to use. Only tsdb is supported.
 [store: <string> | default = ""]
 
 # Which store to use for the chunks. Either aws (alias s3), azure, gcs,
 # alibabacloud, bos, cos, swift, filesystem, or a named_store (refer to
-# named_stores_config). Following stores are deprecated: aws-dynamo, gcp,
-# gcp-columnkey, bigtable, bigtable-hashed, cassandra, grpc.
+# named_stores_config).
 [object_store: <string> | default = ""]
 
 # The schema version to use, current recommended schema is v13.
@@ -5333,23 +5562,6 @@ index:
 
   # Table period.
   [period: <duration>]
-
-  # A map to be added to all managed tables.
-  [tags: <map of string to string>]
-
-# Configured how the chunks are updated and stored.
-chunks:
-  # Table prefix for all period tables.
-  [prefix: <string> | default = ""]
-
-  # Table period.
-  [period: <duration>]
-
-  # A map to be added to all managed tables.
-  [tags: <map of string to string>]
-
-# How many shards will be created. Only used if schema is v10 or greater.
-[row_shards: <int> | default = 16]
 ```
 
 ### profiling
@@ -5965,9 +6177,6 @@ wal_cleaner:
 # Remote-write configuration to send rule samples to a Prometheus remote-write
 # endpoint.
 remote_write:
-  # Deprecated: Use 'clients' instead. Configure remote write client.
-  [client: <RemoteWriteConfig>]
-
   # Configure remote write clients. A map with remote client id as key. For
   # details, see
   # https://prometheus.io/docs/prometheus/latest/configuration/configuration/#remote_write
@@ -5981,8 +6190,7 @@ remote_write:
   [enabled: <boolean> | default = false]
 
   # Minimum period to wait between refreshing remote-write reconfigurations.
-  # This should be greater than or equivalent to
-  # -limits.per-user-override-period.
+  # This should be greater than or equivalent to -runtime-config.reload-period.
   # CLI flag: -ruler.remote-write.config-refresh-period
   [config_refresh_period: <duration> | default = 10s]
 
@@ -6012,14 +6220,11 @@ evaluation:
     # CLI flag: -ruler.evaluation.query-frontend.address
     [address: <string> | default = ""]
 
-    # Set to true if query-frontend connection requires TLS.
-    # CLI flag: -ruler.evaluation.query-frontend.tls-enabled
-    [tls_enabled: <boolean> | default = false]
-
-    # The TLS configuration.
+    # The grpc_client block configures the gRPC client used to communicate
+    # between a client and server component in Loki.
     # The CLI flags prefix for this block configuration is:
     # ruler.evaluation.query-frontend
-    [<tls_config>]
+    [<grpc_client>]
 ```
 
 ### runtime_config
@@ -6031,10 +6236,34 @@ Configuration for 'runtime config' module, responsible for reloading runtime con
 # CLI flag: -runtime-config.reload-period
 [period: <duration> | default = 10s]
 
-# Comma separated list of yaml files with the configuration that can be updated
-# at runtime. Runtime config files will be merged from left to right.
+# Comma separated list of yaml files or URLs with the configuration that can be
+# updated at runtime. Runtime config files will be merged from left to right. An
+# entry can end with semicolon-separated parameters that say what happens when
+# it cannot be read: ";optional-on-startup" lets the process start without it,
+# but a later failure still fails the reload;
+# ";optional-keep-last-value-on-failure" also lets the process start without it,
+# and a later failure keeps the value the source supplied last. Without a
+# parameter, a source that cannot be read fails the load. Quote the value in a
+# shell, because ";" starts a new command.
 # CLI flag: -runtime-config.file
 [file: <string> | default = ""]
+
+# HTTP client timeout when fetching runtime config from URLs.
+# CLI flag: -runtime-config.http-client-timeout
+[http_client_timeout: <duration> | default = 30s]
+
+http_client_cluster_validation:
+  # Primary cluster validation label.
+  # CLI flag: -runtime-config.http-client-cluster-validation.label
+  [label: <string> | default = ""]
+
+# Disable HTTP keep-alives for the runtime config HTTP client. When enabled,
+# each reload opens a new connection, which prevents long-lived connections from
+# being pinned to a single backend when the runtime config URL is served by
+# multiple replicas behind a connection-level (L4) load balancer, such as a
+# Kubernetes Service.
+# CLI flag: -runtime-config.http-client-disable-keep-alives
+[http_client_disable_keep_alives: <boolean> | default = true]
 ```
 
 ### s3_storage_config
@@ -6082,13 +6311,16 @@ The `s3_storage_config` block configures the connection to Amazon S3 object stor
 # CLI flag: -<prefix>.s3.session-token
 [session_token: <string> | default = ""]
 
-# Disable https on s3 connection.
+# Disable https on s3 connection. This does not affect TLS certificate
+# verification for HTTPS connections; use s3.http.insecure-skip-verify (or
+# s3.http.ca-file) for that.
 # CLI flag: -<prefix>.s3.insecure
 [insecure: <boolean> | default = false]
 
 # Delimiter used to replace the default delimiter ':' in chunk IDs when storing
 # chunks. This is mainly intended when you run a MinIO instance on a Windows
-# machine. You should not change this value inflight.
+# machine. You must not change this value during operations, otherwise you may
+# not be able to read existing chunks from object storage.
 # CLI flag: -<prefix>.s3.chunk-delimiter
 [chunk_delimiter: <string> | default = ""]
 
@@ -6377,6 +6609,16 @@ grpc_tls_config:
 # CLI flag: -server.grpc.recv-buffer-pools-enabled
 [grpc_server_recv_buffer_pools_enabled: <boolean> | default = false]
 
+# Size of the read buffer for each gRPC connection (bytes). A smaller buffer may
+# reduce memory usage but may lead to more system calls.
+# CLI flag: -server.grpc.read-buffer-size-bytes
+[grpc_server_read_buffer_size: <int> | default = 32768]
+
+# Size of the write buffer for each gRPC connection (bytes). A smaller buffer
+# may reduce memory usage but may lead to more system calls.
+# CLI flag: -server.grpc.write-buffer-size-bytes
+[grpc_server_write_buffer_size: <int> | default = 32768]
+
 # Output log messages in the given format. Valid formats: [logfmt, json]
 # CLI flag: -log.format
 [log_format: <string> | default = "logfmt"]
@@ -6495,9 +6737,9 @@ The `storage_config` block configures one of many possible stores for both the i
 # Cloud Storage object storage backend.
 [alibabacloud: <alibabacloud_storage_config>]
 
-# The aws_storage_config block configures the connection to dynamoDB and S3
-# object storage. Either one of them or both can be configured.
-[aws: <aws_storage_config>]
+# The s3_storage_config block configures the connection to Amazon S3 object
+# storage backend.
+[aws: <s3_storage_config>]
 
 # The azure_storage_config block configures the connection to Azure object
 # storage backend.
@@ -6507,160 +6749,9 @@ The `storage_config` block configures one of many possible stores for both the i
 # (BOS) object storage backend.
 [bos: <bos_storage_config>]
 
-# Deprecated: Configures storing indexes in Bigtable. Required fields only
-# required when bigtable is defined in config.
-bigtable:
-  # Bigtable project ID.
-  # CLI flag: -bigtable.project
-  [project: <string> | default = ""]
-
-  # Bigtable instance ID. Please refer to
-  # https://cloud.google.com/docs/authentication/production for more information
-  # about how to configure authentication.
-  # CLI flag: -bigtable.instance
-  [instance: <string> | default = ""]
-
-  # The grpc_client block configures the gRPC client used to communicate between
-  # a client and server component in Loki.
-  # The CLI flags prefix for this block configuration is: bigtable
-  [grpc_client_config: <grpc_client>]
-
-  # If enabled, once a tables info is fetched, it is cached.
-  # CLI flag: -bigtable.table-cache.enabled
-  [table_cache_enabled: <boolean> | default = true]
-
-  # Duration to cache tables before checking again.
-  # CLI flag: -bigtable.table-cache.expiration
-  [table_cache_expiration: <duration> | default = 30m]
-
 # Configures storing chunks in GCS. Required fields only required when gcs is
 # defined in config.
 [gcs: <gcs_storage_config>]
-
-# Deprecated: Configures storing chunks and/or the index in Cassandra.
-cassandra:
-  # Comma-separated hostnames or IPs of Cassandra instances.
-  # CLI flag: -cassandra.addresses
-  [addresses: <string> | default = ""]
-
-  # Port that Cassandra is running on
-  # CLI flag: -cassandra.port
-  [port: <int> | default = 9042]
-
-  # Keyspace to use in Cassandra.
-  # CLI flag: -cassandra.keyspace
-  [keyspace: <string> | default = ""]
-
-  # Consistency level for Cassandra.
-  # CLI flag: -cassandra.consistency
-  [consistency: <string> | default = "QUORUM"]
-
-  # Replication factor to use in Cassandra.
-  # CLI flag: -cassandra.replication-factor
-  [replication_factor: <int> | default = 3]
-
-  # Instruct the cassandra driver to not attempt to get host info from the
-  # system.peers table.
-  # CLI flag: -cassandra.disable-initial-host-lookup
-  [disable_initial_host_lookup: <boolean> | default = false]
-
-  # Use SSL when connecting to cassandra instances.
-  # CLI flag: -cassandra.ssl
-  [SSL: <boolean> | default = false]
-
-  # Require SSL certificate validation.
-  # CLI flag: -cassandra.host-verification
-  [host_verification: <boolean> | default = true]
-
-  # Policy for selecting Cassandra host. Supported values are: round-robin,
-  # token-aware.
-  # CLI flag: -cassandra.host-selection-policy
-  [host_selection_policy: <string> | default = "round-robin"]
-
-  # Path to certificate file to verify the peer.
-  # CLI flag: -cassandra.ca-path
-  [CA_path: <string> | default = ""]
-
-  # Path to certificate file used by TLS.
-  # CLI flag: -cassandra.tls-cert-path
-  [tls_cert_path: <string> | default = ""]
-
-  # Path to private key file used by TLS.
-  # CLI flag: -cassandra.tls-key-path
-  [tls_key_path: <string> | default = ""]
-
-  # Enable password authentication when connecting to cassandra.
-  # CLI flag: -cassandra.auth
-  [auth: <boolean> | default = false]
-
-  # Username to use when connecting to cassandra.
-  # CLI flag: -cassandra.username
-  [username: <string> | default = ""]
-
-  # Password to use when connecting to cassandra.
-  # CLI flag: -cassandra.password
-  [password: <string> | default = ""]
-
-  # File containing password to use when connecting to cassandra.
-  # CLI flag: -cassandra.password-file
-  [password_file: <string> | default = ""]
-
-  # If set, when authenticating with cassandra a custom authenticator will be
-  # expected during the handshake. This flag can be set multiple times.
-  # CLI flag: -cassandra.custom-authenticator
-  [custom_authenticators: <list of strings> | default = []]
-
-  # Timeout when connecting to cassandra.
-  # CLI flag: -cassandra.timeout
-  [timeout: <duration> | default = 2s]
-
-  # Initial connection timeout, used during initial dial to server.
-  # CLI flag: -cassandra.connect-timeout
-  [connect_timeout: <duration> | default = 5s]
-
-  # Interval to retry connecting to cassandra nodes marked as DOWN.
-  # CLI flag: -cassandra.reconnent-interval
-  [reconnect_interval: <duration> | default = 1s]
-
-  # Number of retries to perform on a request. Set to 0 to disable retries.
-  # CLI flag: -cassandra.max-retries
-  [max_retries: <int> | default = 0]
-
-  # Maximum time to wait before retrying a failed request.
-  # CLI flag: -cassandra.retry-max-backoff
-  [retry_max_backoff: <duration> | default = 10s]
-
-  # Minimum time to wait before retrying a failed request.
-  # CLI flag: -cassandra.retry-min-backoff
-  [retry_min_backoff: <duration> | default = 100ms]
-
-  # Limit number of concurrent queries to Cassandra. Set to 0 to disable the
-  # limit.
-  # CLI flag: -cassandra.query-concurrency
-  [query_concurrency: <int> | default = 0]
-
-  # Number of TCP connections per host.
-  # CLI flag: -cassandra.num-connections
-  [num_connections: <int> | default = 2]
-
-  # Convict hosts of being down on failure.
-  # CLI flag: -cassandra.convict-hosts-on-failure
-  [convict_hosts_on_failure: <boolean> | default = true]
-
-  # Table options used to create index or chunk tables. This value is used as
-  # plain text in the table `WITH` like this, "CREATE TABLE
-  # <generated_by_cortex> (...) WITH <cassandra.table-options>". For details,
-  # see https://cortexmetrics.io/docs/production/cassandra. By default it will
-  # use the default table options of your Cassandra cluster.
-  # CLI flag: -cassandra.table-options
-  [table_options: <string> | default = ""]
-
-# Deprecated: Configures storing index in BoltDB. Required fields only required
-# when boltdb is present in the configuration.
-boltdb:
-  # Location of BoltDB index files.
-  # CLI flag: -boltdb.dir
-  [directory: <string> | default = ""]
 
 # Configures storing the chunks on the local file system. Required fields only
 # required when filesystem is present in the configuration.
@@ -6669,12 +6760,6 @@ boltdb:
 # The swift_storage_config block configures the connection to OpenStack Object
 # Storage (Swift) object storage backend.
 [swift: <swift_storage_config>]
-
-# Deprecated:
-grpc_store:
-  # Hostname or IP of the gRPC store instance.
-  # CLI flag: -grpc-store.server-address
-  [server_address: <string> | default = ""]
 
 hedging:
   # If set to a non-zero value a second request will be issued at the provided
@@ -6708,11 +6793,6 @@ hedging:
 # The cos_storage_config block configures the connection to IBM Cloud Object
 # Storage (COS) backend.
 [cos: <cos_storage_config>]
-
-# Cache validity for active index entries. Should be no higher than
-# -ingester.max-chunk-idle.
-# CLI flag: -store.index-cache-validity
-[index_cache_validity: <duration> | default = 5m]
 
 congestion_control:
   # Use storage congestion control (default: disabled).
@@ -6768,16 +6848,6 @@ congestion_control:
 # CLI flag: -store.object-prefix
 [object_prefix: <string> | default = ""]
 
-# The cache_config block configures the cache backend for a specific Loki
-# component.
-# The CLI flags prefix for this block configuration is: store.index-cache-read
-[index_queries_cache_config: <cache_config>]
-
-# Disable broad index queries which results in reduced cache usage and faster
-# query performance at the expense of somewhat higher QPS on the index store.
-# CLI flag: -store.disable-broad-index-queries
-[disable_broad_index_queries: <boolean> | default = false]
-
 # Maximum number of parallel chunk reads.
 # CLI flag: -store.max-parallel-get-chunk
 [max_parallel_get_chunk: <int> | default = 150]
@@ -6787,7 +6857,7 @@ congestion_control:
 # `storage_config.object_store` or `common.storage.object_store` block takes
 # effect.
 # CLI flag: -use-thanos-objstore
-[use_thanos_objstore: <boolean> | default = false]
+[use_thanos_objstore: <boolean> | default = true]
 
 object_store:
   # The thanos_object_store_config block configures the connection to object
@@ -6812,69 +6882,6 @@ object_store:
 # The maximum number of chunks to fetch per batch.
 # CLI flag: -store.max-chunk-batch-size
 [max_chunk_batch_size: <int> | default = 50]
-
-# Configures storing index in an Object Store
-# (GCS/S3/Azure/Swift/COS/Filesystem) in the form of boltdb files. Required
-# fields only required when boltdb-shipper is defined in config.
-boltdb_shipper:
-  # Directory where ingesters would write index files which would then be
-  # uploaded by shipper to configured storage
-  # CLI flag: -boltdb.shipper.active-index-directory
-  [active_index_directory: <string> | default = ""]
-
-  # Cache location for restoring index files from storage for queries
-  # CLI flag: -boltdb.shipper.cache-location
-  [cache_location: <string> | default = ""]
-
-  # TTL for index files restored in cache for queries
-  # CLI flag: -boltdb.shipper.cache-ttl
-  [cache_ttl: <duration> | default = 24h]
-
-  # Resync downloaded files with the storage
-  # CLI flag: -boltdb.shipper.resync-interval
-  [resync_interval: <duration> | default = 5m]
-
-  # Number of days of common index to be kept downloaded for queries. For per
-  # tenant index query readiness, use limits overrides config.
-  # CLI flag: -boltdb.shipper.query-ready-num-days
-  [query_ready_num_days: <int> | default = 0]
-
-  index_gateway_client:
-    # The grpc_client block configures the gRPC client used to communicate
-    # between a client and server component in Loki.
-    # The CLI flags prefix for this block configuration is:
-    # boltdb.shipper.index-gateway-client.grpc
-    [grpc_client_config: <grpc_client>]
-
-    # Hostname or IP of the Index Gateway gRPC server running in simple mode.
-    # Can also be prefixed with dns+, dnssrv+, or dnssrvnoa+ to resolve a DNS A
-    # record with multiple IP's, a DNS SRV record with a followup A record
-    # lookup, or a DNS SRV record without a followup A record lookup,
-    # respectively.
-    # CLI flag: -boltdb.shipper.index-gateway-client.server-address
-    [server_address: <string> | default = ""]
-
-    # Whether requests sent to the gateway should be logged or not.
-    # CLI flag: -boltdb.shipper.index-gateway-client.log-gateway-requests
-    [log_gateway_requests: <boolean> | default = false]
-
-    # Experimental: Defines buckets for time-based sharding. Time based sharding
-    # only takes affect when index gateways run in simple mode. To enable client
-    # side time-based sharding of queries across index gateway instances set at
-    # least one bucket in the format of a string representation of a
-    # time.Duration, e.g. ['168h', '336h', '504h']
-    # CLI flag: -boltdb.shipper.index-gateway-client.time-based-sharding-buckets
-    [time_based_sharding_buckets: <list of strings> | default = []]
-
-  [ingestername: <string> | default = ""]
-
-  [mode: <string> | default = ""]
-
-  [ingesterdbretainperiod: <duration>]
-
-  # Build per tenant index files
-  # CLI flag: -boltdb.shipper.build-per-tenant-index
-  [build_per_tenant_index: <boolean> | default = false]
 
 # Configures storing index in an Object Store
 # (GCS/S3/Azure/Swift/COS/Filesystem) in a prometheus TSDB-like format. Required
@@ -6902,6 +6909,19 @@ tsdb_shipper:
   # CLI flag: -tsdb.shipper.query-ready-num-days
   [query_ready_num_days: <int> | default = 0]
 
+  # Timeout for downloading a table's initial set of index files from object
+  # storage when serving a query. Raise this for tenants with large indexes when
+  # slow object-storage responses cause downloads to hit the deadline; lower it
+  # to fail queries faster when storage is degraded.
+  # CLI flag: -tsdb.shipper.download-timeout
+  [download_timeout: <duration> | default = 1m]
+
+  # Experimental. Implementation used to read TSDB index files off disk.
+  # Supported values: mmap (memory-map the file, the historical default) or
+  # stream (experimental, not yet fully implemented).
+  # CLI flag: -tsdb.shipper.index-reader-mode
+  [index_reader_mode: <string> | default = "mmap"]
+
   index_gateway_client:
     # The grpc_client block configures the gRPC client used to communicate
     # between a client and server component in Loki.
@@ -6928,6 +6948,40 @@ tsdb_shipper:
     # time.Duration, e.g. ['168h', '336h', '504h']
     # CLI flag: -tsdb.shipper.index-gateway-client.time-based-sharding-buckets
     [time_based_sharding_buckets: <list of strings> | default = []]
+
+    # Minimum number of index gateway instances included in the shuffle shard,
+    # regardless of the max-capacity setting. A value of 0 disables the minimum.
+    # Only applies to simple mode.
+    # CLI flag: -tsdb.shipper.index-gateway-client.min-shuffle-shard-size
+    [min_shuffle_shard_size: <int> | default = 3]
+
+    # Experimental: Maximum number of requests this index gateway client may
+    # have in flight at once. Requests arriving when the limit is reached are
+    # rejected immediately with an HTTP 503 status instead of waiting, which
+    # bounds the resources this process commits to an index gateway that is
+    # slow, saturated, or unreachable. The limit applies per client: one client
+    # is built per schema period config, doubled when the shadow index gateway
+    # client is enabled, so the process-wide number of in-flight requests can
+    # reach this value multiplied by the number of clients. 0 disables the
+    # limit.
+    # CLI flag: -tsdb.shipper.index-gateway-client.max-in-flight-requests
+    [max_in_flight_requests: <int> | default = 0]
+
+    # Experimental: Maximum number of other index gateway instances a failed
+    # request is retried against. Each instance is tried at most once, so a
+    # request makes at most this many retries plus one attempt in total.
+    # Bounding this stops a single request from walking every replica, which can
+    # otherwise block the calling goroutine for the sum of every replica's
+    # timeout. -1 preserves the existing behavior: up to 2 retries for GetShards
+    # and all candidate instances for other requests. 0 disables retries.
+    # CLI flag: -tsdb.shipper.index-gateway-client.max-retries
+    [max_retries: <int> | default = -1]
+
+  # Experimental. Number of idle file handles the stream index reader keeps open
+  # per index file. Only applies when -shipper.index-reader-mode=stream. Set to
+  # 0 to disable pooling.
+  # CLI flag: -tsdb.shipper.streaming-index-max-idle-file-handles
+  [streaming_index_max_idle_file_handles: <int> | default = 16]
 
   [ingestername: <string> | default = ""]
 
@@ -7091,341 +7145,6 @@ http:
   # set, the host's root CA certificates are used.
   # CLI flag: -<prefix>.swift.http.tls-ca-path
   [tls_ca_path: <string> | default = ""]
-```
-
-### table_manager
-
-The `table_manager` block configures the table manager for retention.
-
-```yaml
-# If true, disable all changes to DB capacity
-# CLI flag: -table-manager.throughput-updates-disabled
-[throughput_updates_disabled: <boolean> | default = false]
-
-# If true, enables retention deletes of DB tables
-# CLI flag: -table-manager.retention-deletes-enabled
-[retention_deletes_enabled: <boolean> | default = false]
-
-# Tables older than this retention period are deleted. Must be either 0
-# (disabled) or a multiple of 24h. When enabled, be aware this setting is
-# destructive to data!
-# CLI flag: -table-manager.retention-period
-[retention_period: <duration> | default = 0s]
-
-# How frequently to poll backend to learn our capacity.
-# CLI flag: -table-manager.poll-interval
-[poll_interval: <duration> | default = 2m]
-
-# Periodic tables grace period (duration which table will be created/deleted
-# before/after it's needed).
-# CLI flag: -table-manager.periodic-table.grace-period
-[creation_grace_period: <duration> | default = 10m]
-
-index_tables_provisioning:
-  # Enables on demand throughput provisioning for the storage provider (if
-  # supported). Applies only to tables which are not autoscaled. Supported by
-  # DynamoDB
-  # CLI flag: -table-manager.index-table.enable-ondemand-throughput-mode
-  [enable_ondemand_throughput_mode: <boolean> | default = false]
-
-  # Table default write throughput. Supported by DynamoDB
-  # CLI flag: -table-manager.index-table.write-throughput
-  [provisioned_write_throughput: <int> | default = 1000]
-
-  # Table default read throughput. Supported by DynamoDB
-  # CLI flag: -table-manager.index-table.read-throughput
-  [provisioned_read_throughput: <int> | default = 300]
-
-  write_scale:
-    # Should we enable autoscale for the table.
-    # CLI flag: -table-manager.index-table.write-throughput.scale.enabled
-    [enabled: <boolean> | default = false]
-
-    # AWS AutoScaling role ARN
-    # CLI flag: -table-manager.index-table.write-throughput.scale.role-arn
-    [role_arn: <string> | default = ""]
-
-    # DynamoDB minimum provision capacity.
-    # CLI flag: -table-manager.index-table.write-throughput.scale.min-capacity
-    [min_capacity: <int> | default = 3000]
-
-    # DynamoDB maximum provision capacity.
-    # CLI flag: -table-manager.index-table.write-throughput.scale.max-capacity
-    [max_capacity: <int> | default = 6000]
-
-    # DynamoDB minimum seconds between each autoscale up.
-    # CLI flag: -table-manager.index-table.write-throughput.scale.out-cooldown
-    [out_cooldown: <int> | default = 1800]
-
-    # DynamoDB minimum seconds between each autoscale down.
-    # CLI flag: -table-manager.index-table.write-throughput.scale.in-cooldown
-    [in_cooldown: <int> | default = 1800]
-
-    # DynamoDB target ratio of consumed capacity to provisioned capacity.
-    # CLI flag: -table-manager.index-table.write-throughput.scale.target-value
-    [target: <float> | default = 80]
-
-  read_scale:
-    # Should we enable autoscale for the table.
-    # CLI flag: -table-manager.index-table.read-throughput.scale.enabled
-    [enabled: <boolean> | default = false]
-
-    # AWS AutoScaling role ARN
-    # CLI flag: -table-manager.index-table.read-throughput.scale.role-arn
-    [role_arn: <string> | default = ""]
-
-    # DynamoDB minimum provision capacity.
-    # CLI flag: -table-manager.index-table.read-throughput.scale.min-capacity
-    [min_capacity: <int> | default = 3000]
-
-    # DynamoDB maximum provision capacity.
-    # CLI flag: -table-manager.index-table.read-throughput.scale.max-capacity
-    [max_capacity: <int> | default = 6000]
-
-    # DynamoDB minimum seconds between each autoscale up.
-    # CLI flag: -table-manager.index-table.read-throughput.scale.out-cooldown
-    [out_cooldown: <int> | default = 1800]
-
-    # DynamoDB minimum seconds between each autoscale down.
-    # CLI flag: -table-manager.index-table.read-throughput.scale.in-cooldown
-    [in_cooldown: <int> | default = 1800]
-
-    # DynamoDB target ratio of consumed capacity to provisioned capacity.
-    # CLI flag: -table-manager.index-table.read-throughput.scale.target-value
-    [target: <float> | default = 80]
-
-  # Enables on demand throughput provisioning for the storage provider (if
-  # supported). Applies only to tables which are not autoscaled. Supported by
-  # DynamoDB
-  # CLI flag: -table-manager.index-table.inactive-enable-ondemand-throughput-mode
-  [enable_inactive_throughput_on_demand_mode: <boolean> | default = false]
-
-  # Table write throughput for inactive tables. Supported by DynamoDB
-  # CLI flag: -table-manager.index-table.inactive-write-throughput
-  [inactive_write_throughput: <int> | default = 1]
-
-  # Table read throughput for inactive tables. Supported by DynamoDB
-  # CLI flag: -table-manager.index-table.inactive-read-throughput
-  [inactive_read_throughput: <int> | default = 300]
-
-  inactive_write_scale:
-    # Should we enable autoscale for the table.
-    # CLI flag: -table-manager.index-table.inactive-write-throughput.scale.enabled
-    [enabled: <boolean> | default = false]
-
-    # AWS AutoScaling role ARN
-    # CLI flag: -table-manager.index-table.inactive-write-throughput.scale.role-arn
-    [role_arn: <string> | default = ""]
-
-    # DynamoDB minimum provision capacity.
-    # CLI flag: -table-manager.index-table.inactive-write-throughput.scale.min-capacity
-    [min_capacity: <int> | default = 3000]
-
-    # DynamoDB maximum provision capacity.
-    # CLI flag: -table-manager.index-table.inactive-write-throughput.scale.max-capacity
-    [max_capacity: <int> | default = 6000]
-
-    # DynamoDB minimum seconds between each autoscale up.
-    # CLI flag: -table-manager.index-table.inactive-write-throughput.scale.out-cooldown
-    [out_cooldown: <int> | default = 1800]
-
-    # DynamoDB minimum seconds between each autoscale down.
-    # CLI flag: -table-manager.index-table.inactive-write-throughput.scale.in-cooldown
-    [in_cooldown: <int> | default = 1800]
-
-    # DynamoDB target ratio of consumed capacity to provisioned capacity.
-    # CLI flag: -table-manager.index-table.inactive-write-throughput.scale.target-value
-    [target: <float> | default = 80]
-
-  inactive_read_scale:
-    # Should we enable autoscale for the table.
-    # CLI flag: -table-manager.index-table.inactive-read-throughput.scale.enabled
-    [enabled: <boolean> | default = false]
-
-    # AWS AutoScaling role ARN
-    # CLI flag: -table-manager.index-table.inactive-read-throughput.scale.role-arn
-    [role_arn: <string> | default = ""]
-
-    # DynamoDB minimum provision capacity.
-    # CLI flag: -table-manager.index-table.inactive-read-throughput.scale.min-capacity
-    [min_capacity: <int> | default = 3000]
-
-    # DynamoDB maximum provision capacity.
-    # CLI flag: -table-manager.index-table.inactive-read-throughput.scale.max-capacity
-    [max_capacity: <int> | default = 6000]
-
-    # DynamoDB minimum seconds between each autoscale up.
-    # CLI flag: -table-manager.index-table.inactive-read-throughput.scale.out-cooldown
-    [out_cooldown: <int> | default = 1800]
-
-    # DynamoDB minimum seconds between each autoscale down.
-    # CLI flag: -table-manager.index-table.inactive-read-throughput.scale.in-cooldown
-    [in_cooldown: <int> | default = 1800]
-
-    # DynamoDB target ratio of consumed capacity to provisioned capacity.
-    # CLI flag: -table-manager.index-table.inactive-read-throughput.scale.target-value
-    [target: <float> | default = 80]
-
-  # Number of last inactive tables to enable write autoscale.
-  # CLI flag: -table-manager.index-table.inactive-write-throughput.scale-last-n
-  [inactive_write_scale_lastn: <int> | default = 4]
-
-  # Number of last inactive tables to enable read autoscale.
-  # CLI flag: -table-manager.index-table.inactive-read-throughput.scale-last-n
-  [inactive_read_scale_lastn: <int> | default = 4]
-
-chunk_tables_provisioning:
-  # Enables on demand throughput provisioning for the storage provider (if
-  # supported). Applies only to tables which are not autoscaled. Supported by
-  # DynamoDB
-  # CLI flag: -table-manager.chunk-table.enable-ondemand-throughput-mode
-  [enable_ondemand_throughput_mode: <boolean> | default = false]
-
-  # Table default write throughput. Supported by DynamoDB
-  # CLI flag: -table-manager.chunk-table.write-throughput
-  [provisioned_write_throughput: <int> | default = 1000]
-
-  # Table default read throughput. Supported by DynamoDB
-  # CLI flag: -table-manager.chunk-table.read-throughput
-  [provisioned_read_throughput: <int> | default = 300]
-
-  write_scale:
-    # Should we enable autoscale for the table.
-    # CLI flag: -table-manager.chunk-table.write-throughput.scale.enabled
-    [enabled: <boolean> | default = false]
-
-    # AWS AutoScaling role ARN
-    # CLI flag: -table-manager.chunk-table.write-throughput.scale.role-arn
-    [role_arn: <string> | default = ""]
-
-    # DynamoDB minimum provision capacity.
-    # CLI flag: -table-manager.chunk-table.write-throughput.scale.min-capacity
-    [min_capacity: <int> | default = 3000]
-
-    # DynamoDB maximum provision capacity.
-    # CLI flag: -table-manager.chunk-table.write-throughput.scale.max-capacity
-    [max_capacity: <int> | default = 6000]
-
-    # DynamoDB minimum seconds between each autoscale up.
-    # CLI flag: -table-manager.chunk-table.write-throughput.scale.out-cooldown
-    [out_cooldown: <int> | default = 1800]
-
-    # DynamoDB minimum seconds between each autoscale down.
-    # CLI flag: -table-manager.chunk-table.write-throughput.scale.in-cooldown
-    [in_cooldown: <int> | default = 1800]
-
-    # DynamoDB target ratio of consumed capacity to provisioned capacity.
-    # CLI flag: -table-manager.chunk-table.write-throughput.scale.target-value
-    [target: <float> | default = 80]
-
-  read_scale:
-    # Should we enable autoscale for the table.
-    # CLI flag: -table-manager.chunk-table.read-throughput.scale.enabled
-    [enabled: <boolean> | default = false]
-
-    # AWS AutoScaling role ARN
-    # CLI flag: -table-manager.chunk-table.read-throughput.scale.role-arn
-    [role_arn: <string> | default = ""]
-
-    # DynamoDB minimum provision capacity.
-    # CLI flag: -table-manager.chunk-table.read-throughput.scale.min-capacity
-    [min_capacity: <int> | default = 3000]
-
-    # DynamoDB maximum provision capacity.
-    # CLI flag: -table-manager.chunk-table.read-throughput.scale.max-capacity
-    [max_capacity: <int> | default = 6000]
-
-    # DynamoDB minimum seconds between each autoscale up.
-    # CLI flag: -table-manager.chunk-table.read-throughput.scale.out-cooldown
-    [out_cooldown: <int> | default = 1800]
-
-    # DynamoDB minimum seconds between each autoscale down.
-    # CLI flag: -table-manager.chunk-table.read-throughput.scale.in-cooldown
-    [in_cooldown: <int> | default = 1800]
-
-    # DynamoDB target ratio of consumed capacity to provisioned capacity.
-    # CLI flag: -table-manager.chunk-table.read-throughput.scale.target-value
-    [target: <float> | default = 80]
-
-  # Enables on demand throughput provisioning for the storage provider (if
-  # supported). Applies only to tables which are not autoscaled. Supported by
-  # DynamoDB
-  # CLI flag: -table-manager.chunk-table.inactive-enable-ondemand-throughput-mode
-  [enable_inactive_throughput_on_demand_mode: <boolean> | default = false]
-
-  # Table write throughput for inactive tables. Supported by DynamoDB
-  # CLI flag: -table-manager.chunk-table.inactive-write-throughput
-  [inactive_write_throughput: <int> | default = 1]
-
-  # Table read throughput for inactive tables. Supported by DynamoDB
-  # CLI flag: -table-manager.chunk-table.inactive-read-throughput
-  [inactive_read_throughput: <int> | default = 300]
-
-  inactive_write_scale:
-    # Should we enable autoscale for the table.
-    # CLI flag: -table-manager.chunk-table.inactive-write-throughput.scale.enabled
-    [enabled: <boolean> | default = false]
-
-    # AWS AutoScaling role ARN
-    # CLI flag: -table-manager.chunk-table.inactive-write-throughput.scale.role-arn
-    [role_arn: <string> | default = ""]
-
-    # DynamoDB minimum provision capacity.
-    # CLI flag: -table-manager.chunk-table.inactive-write-throughput.scale.min-capacity
-    [min_capacity: <int> | default = 3000]
-
-    # DynamoDB maximum provision capacity.
-    # CLI flag: -table-manager.chunk-table.inactive-write-throughput.scale.max-capacity
-    [max_capacity: <int> | default = 6000]
-
-    # DynamoDB minimum seconds between each autoscale up.
-    # CLI flag: -table-manager.chunk-table.inactive-write-throughput.scale.out-cooldown
-    [out_cooldown: <int> | default = 1800]
-
-    # DynamoDB minimum seconds between each autoscale down.
-    # CLI flag: -table-manager.chunk-table.inactive-write-throughput.scale.in-cooldown
-    [in_cooldown: <int> | default = 1800]
-
-    # DynamoDB target ratio of consumed capacity to provisioned capacity.
-    # CLI flag: -table-manager.chunk-table.inactive-write-throughput.scale.target-value
-    [target: <float> | default = 80]
-
-  inactive_read_scale:
-    # Should we enable autoscale for the table.
-    # CLI flag: -table-manager.chunk-table.inactive-read-throughput.scale.enabled
-    [enabled: <boolean> | default = false]
-
-    # AWS AutoScaling role ARN
-    # CLI flag: -table-manager.chunk-table.inactive-read-throughput.scale.role-arn
-    [role_arn: <string> | default = ""]
-
-    # DynamoDB minimum provision capacity.
-    # CLI flag: -table-manager.chunk-table.inactive-read-throughput.scale.min-capacity
-    [min_capacity: <int> | default = 3000]
-
-    # DynamoDB maximum provision capacity.
-    # CLI flag: -table-manager.chunk-table.inactive-read-throughput.scale.max-capacity
-    [max_capacity: <int> | default = 6000]
-
-    # DynamoDB minimum seconds between each autoscale up.
-    # CLI flag: -table-manager.chunk-table.inactive-read-throughput.scale.out-cooldown
-    [out_cooldown: <int> | default = 1800]
-
-    # DynamoDB minimum seconds between each autoscale down.
-    # CLI flag: -table-manager.chunk-table.inactive-read-throughput.scale.in-cooldown
-    [in_cooldown: <int> | default = 1800]
-
-    # DynamoDB target ratio of consumed capacity to provisioned capacity.
-    # CLI flag: -table-manager.chunk-table.inactive-read-throughput.scale.target-value
-    [target: <float> | default = 80]
-
-  # Number of last inactive tables to enable write autoscale.
-  # CLI flag: -table-manager.chunk-table.inactive-write-throughput.scale-last-n
-  [inactive_write_scale_lastn: <int> | default = 4]
-
-  # Number of last inactive tables to enable read autoscale.
-  # CLI flag: -table-manager.chunk-table.inactive-read-throughput.scale-last-n
-  [inactive_read_scale_lastn: <int> | default = 4]
 ```
 
 ### thanos_object_store_config
@@ -7865,11 +7584,9 @@ bos:
 
 The TLS configuration. The supported CLI flags `<prefix>` used to reference this configuration block are:
 
-- `bigtable`
 - `bloom-build.builder.grpc`
 - `bloom-gateway-client.grpc`
 - `bloom.metas-cache.memcached`
-- `boltdb.shipper.index-gateway-client.grpc`
 - `common.storage.ring.etcd`
 - `compactor.grpc-client`
 - `compactor.ring.etcd`
@@ -7899,6 +7616,7 @@ The TLS configuration. The supported CLI flags `<prefix>` used to reference this
 - `querier.frontend-grpc-client`
 - `querier.scheduler-grpc-client`
 - `query-engine.results-cache.memcached`
+- `query-engine.task-results-cache.memcached`
 - `query-scheduler.grpc-client-config`
 - `query-scheduler.ring.etcd`
 - `reporting.tls-config`
@@ -7908,8 +7626,6 @@ The TLS configuration. The supported CLI flags `<prefix>` used to reference this
 - `ruler.ring.etcd`
 - `store.chunks-cache-l2.memcached`
 - `store.chunks-cache.memcached`
-- `store.index-cache-read.memcached`
-- `store.index-cache-write.memcached`
 - `tsdb.shipper.index-gateway-client.grpc`
 - `ui.ring.etcd`
 
@@ -7992,7 +7708,7 @@ Configuration for `tracing`.
 
 ## Runtime Configuration file
 
-Loki has a concept of "runtime config" file, which is simply a file that is reloaded while Loki is running. It is used by some Loki components to allow operator to change some aspects of Loki configuration without restarting it. File is specified by using `-runtime-config.file=<filename>` flag and reload period (which defaults to 10 seconds) can be changed by `-runtime-config.reload-period=<duration>` flag. Previously this mechanism was only used by limits overrides, and flags were called `-limits.per-user-override-config=<filename>` and `-limits.per-user-override-period=10s` respectively. These are still used, if `-runtime-config.file=<filename>` is not specified.
+Loki has a concept of "runtime config" file, which is simply a file that is reloaded while Loki is running. It is used by some Loki components to allow operator to change some aspects of Loki configuration without restarting it. File is specified by using `-runtime-config.file=<filename>` flag and reload period (which defaults to 10 seconds) can be changed by `-runtime-config.reload-period=<duration>` flag.
 
 At the moment, two components use runtime configuration: limits and multi KV store.
 
@@ -8025,50 +7741,18 @@ multi_kv_config:
 
 ## Accept out-of-order writes
 
-Since the beginning of Loki, log entries had to be written to Loki in order
-by time.
-This limitation has been lifted.
-Out-of-order writes are enabled globally by default, but can be disabled/enabled
-on a cluster or per-tenant basis.
-
-- To disable out-of-order writes for all tenants,
-place in the `limits_config` section:
-
-    ```yaml
-    limits_config:
-        unordered_writes: false
-    ```
-
-- To disable out-of-order writes for specific tenants,
-configure a runtime configuration file:
-
-    ```yaml
-    runtime_config:
-      file: overrides.yaml
-    ```
-
-    In the `overrides.yaml` file, add `unordered_writes` for each tenant
-    permitted to have out-of-order writes:
-
-    ```yaml
-    overrides:
-      "tenantA":
-        unordered_writes: false
-    ```
-
-How far into the past accepted out-of-order log entries may be
-is configurable with `max_chunk_age`.
-`max_chunk_age` defaults to 2 hour.
-Loki calculates the earliest time that out-of-order entries may have
-and be accepted with
+Loki accepts log entries of a stream to arrive out of order by time.
+How far into the past accepted out-of-order log entries may be is configurable with `max_chunk_age`.
+The setting `max_chunk_age` defaults to 2 hours, but it is advised to not increase it.
+Loki calculates the earliest time that out-of-order entries may have and be accepted with.
 
 ```yaml
 time_of_most_recent_line - (max_chunk_age/2)
 ```
-This means the allowed out-of-order window is half of the configured max_chunk_age.
+This means the allowed out-of-order window is half of the configured `max_chunk_age`.
 
 Log entries with timestamps that are after this earliest time are accepted.
-Log entries further back in time return an out-of-order error.
+Log entries further back in time return a `too_far_behind` error.
 
 For example, if `max_chunk_age` is 2 hours
 and the stream `{foo="bar"}` has one entry at `8:00`,

@@ -43,6 +43,9 @@ const (
 	F_SETLK64             = 13         // fcntl-linux.h:116:1:
 	F_SETLKW              = 14         // fcntl-linux.h:111:1:
 	F_SETLKW64            = 14         // fcntl-linux.h:117:1:
+	F_OFD_GETLK           = 36         // fcntl-linux.h:130:1:
+	F_OFD_SETLK           = 37         // fcntl-linux.h:131:1:
+	F_OFD_SETLKW          = 38         // fcntl-linux.h:132:1:
 	F_SETOWN              = 8          // fcntl-linux.h:179:1:
 	F_SHLCK               = 8          // fcntl-linux.h:232:1:
 	F_TEST                = 3          // fcntl.h:240:1:

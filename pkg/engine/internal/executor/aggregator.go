@@ -17,6 +17,25 @@ import (
 
 var ErrSeriesLimitExceeded = errors.New("maximum number of series limit exceeded")
 
+type interner struct {
+	interned map[string]string
+}
+
+// Get returns an interned copy of the input string. It is safe to call with unsafe strings.
+func (s *interner) Get(name string) string {
+	if value, ok := s.interned[name]; ok {
+		return value
+	}
+	cloned := strings.Clone(name)
+	s.interned[cloned] = cloned
+	return cloned
+}
+
+// Reset clears the interner and resets it to its initial empty state.
+func (s *interner) Reset() {
+	clear(s.interned)
+}
+
 type groupState struct {
 	value float64 // aggregated value
 	count int64   // values counter
@@ -37,25 +56,27 @@ const (
 
 // aggregator is used to aggregate sample values by a set of grouping keys for each point in time.
 type aggregator struct {
-	points            map[time.Time]map[uint64]*groupState // holds the groupState for each point in time series
-	digest            *xxhash.Digest                       // used to compute key for each group
-	operation         aggregationOperation                 // aggregation type
-	labels            map[string]arrow.Field               // combined list of all label fields for all sample values
-	clonedLabelValues map[string]string                    // cache of cloned strings to reduce allocations for repeated values
+	points    map[time.Time]map[uint64]*groupState // holds the groupState for each point in time series
+	digest    *xxhash.Digest                       // used to compute key for each group
+	operation aggregationOperation                 // aggregation type
+	labels    map[string]arrow.Field               // combined list of all label fields for all sample values
 
 	// Track unique series across all timestamps to enforce maxSeries limit
 	maxSeries    int                          // maximum number of unique series allowed (0 means no limit)
 	uniqueSeries map[uint64]map[string]string // tracks unique series across all timestamps
+
+	// Intern unique symbols to reduce memory usage
+	interner *interner
 }
 
 // newAggregator creates a new aggregator with the specified grouping.
 func newAggregator(pointsSizeHint int, operation aggregationOperation) *aggregator {
 	a := aggregator{
-		digest:            xxhash.New(),
-		operation:         operation,
-		clonedLabelValues: make(map[string]string),
-		labels:            make(map[string]arrow.Field),
-		uniqueSeries:      make(map[uint64]map[string]string),
+		digest:       xxhash.New(),
+		operation:    operation,
+		labels:       make(map[string]arrow.Field),
+		uniqueSeries: make(map[uint64]map[string]string),
+		interner:     &interner{interned: make(map[string]string, 16)}, // 16 is arbitrary initial capacity
 	}
 
 	if pointsSizeHint > 0 {
@@ -82,32 +103,11 @@ func (a *aggregator) SetMaxSeries(maxSeries int) {
 	a.maxSeries = maxSeries
 }
 
-// Add adds a new sample value to the aggregation for the given timestamp and grouping label values.
-// It expects labelValues to be in the same order as the groupBy columns.
-func (a *aggregator) Add(ts time.Time, value float64, labels []arrow.Field, labelValues []string) error {
-	if len(labels) != len(labelValues) {
-		panic("len(labels) != len(labelValues)")
-	}
-
+func (a *aggregator) add(ts time.Time, value float64, key uint64) {
 	point, ok := a.points[ts]
 	if !ok {
 		point = make(map[uint64]*groupState)
 		a.points[ts] = point
-	}
-
-	var key uint64
-	if len(labelValues) != 0 {
-		a.digest.Reset()
-		for i, val := range labelValues {
-			if i > 0 {
-				_, _ = a.digest.Write([]byte{0}) // separator
-			}
-
-			_, _ = a.digest.WriteString(labels[i].Name)
-			_, _ = a.digest.Write([]byte("="))
-			_, _ = a.digest.WriteString(val)
-		}
-		key = a.digest.Sum64()
 	}
 
 	if state, ok := point[key]; ok {
@@ -131,35 +131,63 @@ func (a *aggregator) Add(ts time.Time, value float64, labels []arrow.Field, labe
 
 		state.count++
 	} else {
-		if series, exists := a.uniqueSeries[key]; !exists {
-			// Check series limit before adding a new series
-			if a.maxSeries > 0 && len(a.uniqueSeries) >= a.maxSeries {
-				return ErrSeriesLimitExceeded
-			}
-
-			if len(labels) > 0 {
-				series = make(map[string]string)
-				for i, v := range labelValues {
-					// copy the value as this is backed by the arrow array data buffer.
-					// We could retain the record to avoid this copy, but that would hold
-					// all other columns in memory for as long as the query is evaluated.
-					cloned, ok := a.clonedLabelValues[v]
-					if !ok {
-						cloned = strings.Clone(v)
-						a.clonedLabelValues[v] = cloned
-					}
-					series[labels[i].Name] = cloned
-				}
-			}
-
-			a.uniqueSeries[key] = series
-		}
-
 		point[key] = &groupState{
 			value: value,
 			count: int64(1),
 		}
 	}
+}
+
+// AddN adds new sample values to the aggregation for the given timestamps and grouping labels.
+// It expects labelValues to be in the same order as the groupBy columns.
+func (a *aggregator) AddN(timestamps []time.Time, value float64, labels []arrow.Field, labelValues []string) error {
+	if len(labels) != len(labelValues) {
+		panic("len(labels) != len(labelValues)")
+	}
+
+	// Calculate the hash key for all windows
+	var key uint64
+	if len(labelValues) != 0 {
+		a.digest.Reset()
+		for i, val := range labelValues {
+			if i > 0 {
+				_, _ = a.digest.Write([]byte{0}) // separator
+			}
+
+			_, _ = a.digest.WriteString(labels[i].Name)
+			_, _ = a.digest.Write([]byte("="))
+			_, _ = a.digest.WriteString(val)
+		}
+		key = a.digest.Sum64()
+	}
+
+	// Record the unique series if its new
+	if series, exists := a.uniqueSeries[key]; !exists {
+		// Check series limit before adding a new series
+		if a.maxSeries > 0 && len(a.uniqueSeries) >= a.maxSeries {
+			return ErrSeriesLimitExceeded
+		}
+
+		if len(labels) > 0 {
+			series = make(map[string]string)
+			for i, v := range labelValues {
+				// intern the name & value, as the parameters are owned by the caller and may be reused.
+				// We could retain the record to avoid this copy, but that would hold
+				// all other columns in memory for as long as the query is evaluated.
+				internedLabel := a.interner.Get(labels[i].Name)
+				internedValue := a.interner.Get(v)
+				series[internedLabel] = internedValue
+			}
+		}
+
+		a.uniqueSeries[key] = series
+	}
+
+	// Add all observations to the aggregation
+	for _, ts := range timestamps {
+		a.add(ts, value, key)
+	}
+
 	return nil
 }
 
@@ -226,7 +254,7 @@ func (a *aggregator) Reset() {
 	}
 
 	clear(a.uniqueSeries)
-	clear(a.clonedLabelValues)
+	a.interner.Reset()
 }
 
 // getSortedTimestamps returns all timestamps in sorted order

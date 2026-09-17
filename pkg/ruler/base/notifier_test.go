@@ -5,13 +5,16 @@ import (
 	"testing"
 	"time"
 
+	"github.com/prometheus/client_golang/prometheus"
 	config_util "github.com/prometheus/common/config"
 	"github.com/prometheus/common/model"
+	"github.com/prometheus/common/promslog"
 	"github.com/prometheus/prometheus/config"
 	"github.com/prometheus/prometheus/discovery"
 	"github.com/prometheus/prometheus/discovery/dns"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/model/relabel"
+	"github.com/prometheus/prometheus/notifier"
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/dskit/flagext"
@@ -40,6 +43,9 @@ func TestBuildNotifierConfig(t *testing.T) {
 				},
 			},
 			ncfg: &config.Config{
+				GlobalConfig: config.GlobalConfig{
+					MetricNameValidationScheme: model.UTF8Validation,
+				},
 				AlertingConfig: config.AlertingConfig{
 					AlertmanagerConfigs: []*config.AlertmanagerConfig{
 						{
@@ -68,6 +74,9 @@ func TestBuildNotifierConfig(t *testing.T) {
 				},
 			},
 			ncfg: &config.Config{
+				GlobalConfig: config.GlobalConfig{
+					MetricNameValidationScheme: model.UTF8Validation,
+				},
 				AlertingConfig: config.AlertingConfig{
 					AlertmanagerConfigs: []*config.AlertmanagerConfig{
 						{
@@ -105,6 +114,9 @@ func TestBuildNotifierConfig(t *testing.T) {
 				},
 			},
 			ncfg: &config.Config{
+				GlobalConfig: config.GlobalConfig{
+					MetricNameValidationScheme: model.UTF8Validation,
+				},
 				AlertingConfig: config.AlertingConfig{
 					AlertmanagerConfigs: []*config.AlertmanagerConfig{
 						{
@@ -143,6 +155,9 @@ func TestBuildNotifierConfig(t *testing.T) {
 				},
 			},
 			ncfg: &config.Config{
+				GlobalConfig: config.GlobalConfig{
+					MetricNameValidationScheme: model.UTF8Validation,
+				},
 				AlertingConfig: config.AlertingConfig{
 					AlertmanagerConfigs: []*config.AlertmanagerConfig{
 						{
@@ -183,6 +198,9 @@ func TestBuildNotifierConfig(t *testing.T) {
 				},
 			},
 			ncfg: &config.Config{
+				GlobalConfig: config.GlobalConfig{
+					MetricNameValidationScheme: model.UTF8Validation,
+				},
 				AlertingConfig: config.AlertingConfig{
 					AlertmanagerConfigs: []*config.AlertmanagerConfig{
 						{
@@ -218,6 +236,9 @@ func TestBuildNotifierConfig(t *testing.T) {
 				},
 			},
 			ncfg: &config.Config{
+				GlobalConfig: config.GlobalConfig{
+					MetricNameValidationScheme: model.UTF8Validation,
+				},
 				AlertingConfig: config.AlertingConfig{
 					AlertmanagerConfigs: []*config.AlertmanagerConfig{
 						{
@@ -253,6 +274,9 @@ func TestBuildNotifierConfig(t *testing.T) {
 				},
 			},
 			ncfg: &config.Config{
+				GlobalConfig: config.GlobalConfig{
+					MetricNameValidationScheme: model.UTF8Validation,
+				},
 				AlertingConfig: config.AlertingConfig{
 					AlertmanagerConfigs: []*config.AlertmanagerConfig{
 						{
@@ -291,6 +315,9 @@ func TestBuildNotifierConfig(t *testing.T) {
 				},
 			},
 			ncfg: &config.Config{
+				GlobalConfig: config.GlobalConfig{
+					MetricNameValidationScheme: model.UTF8Validation,
+				},
 				AlertingConfig: config.AlertingConfig{
 					AlertmanagerConfigs: []*config.AlertmanagerConfig{
 						{
@@ -341,7 +368,8 @@ func TestBuildNotifierConfig(t *testing.T) {
 					},
 				},
 				GlobalConfig: config.GlobalConfig{
-					ExternalLabels: labels.FromStrings("region", "us-east-1"),
+					ExternalLabels:             labels.FromStrings("region", "us-east-1"),
+					MetricNameValidationScheme: model.UTF8Validation,
 				},
 			},
 		},
@@ -387,7 +415,8 @@ func TestBuildNotifierConfig(t *testing.T) {
 					},
 				},
 				GlobalConfig: config.GlobalConfig{
-					ExternalLabels: labels.FromStrings("region", "us-east-1"),
+					ExternalLabels:             labels.FromStrings("region", "us-east-1"),
+					MetricNameValidationScheme: model.UTF8Validation,
 				},
 			},
 		},
@@ -404,6 +433,49 @@ func TestBuildNotifierConfig(t *testing.T) {
 			}
 		})
 	}
+}
+
+// TestBuildNotifierConfig_SetsUTF8MetricNameValidationScheme fails if GlobalConfig leaves
+// MetricNameValidationScheme unset (model.UnsetValidation): notifier.ApplyConfig then copies
+// that onto alert_relabel_configs and alert delivery can panic (grafana/loki#21368).
+func TestBuildNotifierConfig_SetsUTF8MetricNameValidationScheme(t *testing.T) {
+	ncfg, err := buildNotifierConfig(&ruler_config.AlertManagerConfig{
+		AlertmanagerURL: "http://alertmanager.default.svc.cluster.local/alertmanager",
+	}, labels.EmptyLabels())
+	require.NoError(t, err)
+	require.Equal(t, model.UTF8Validation, ncfg.GlobalConfig.MetricNameValidationScheme)
+}
+
+// TestNotifierManagerSendWithAlertRelabelReplaceDoesNotPanic exercises the same relabel Replace
+// path as grafana/loki#21368; without UTF8 on synthetic GlobalConfig, ApplyConfig leaves relabel
+// configs unset and Send panics inside ValidationScheme.IsValidLabelName.
+func TestNotifierManagerSendWithAlertRelabelReplaceDoesNotPanic(t *testing.T) {
+	ncfg, err := buildNotifierConfig(&ruler_config.AlertManagerConfig{
+		AlertmanagerURL: "http://127.0.0.1:9093",
+		AlertRelabelConfigs: []*relabel.Config{
+			{
+				Action:       relabel.Replace,
+				SourceLabels: model.LabelNames{"severity"},
+				Regex:        relabel.MustNewRegexp("high"),
+				TargetLabel:  "priority",
+				Replacement:  "p1",
+			},
+		},
+	}, labels.EmptyLabels())
+	require.NoError(t, err)
+
+	m := notifier.NewManager(&notifier.Options{
+		QueueCapacity: 10,
+		Registerer:    prometheus.NewRegistry(),
+	}, model.UTF8Validation, promslog.NewNopLogger())
+	require.NoError(t, m.ApplyConfig(ncfg))
+
+	alert := &notifier.Alert{
+		Labels:      labels.FromStrings(labels.AlertName, "TestAlert", "severity", "high"),
+		Annotations: labels.EmptyLabels(),
+	}
+
+	require.NotPanics(t, func() { m.Send(alert) })
 }
 
 func TestApplyAlertmanagerDefaults(t *testing.T) {

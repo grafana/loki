@@ -150,6 +150,13 @@ func (h *FanOutHandler) Do(ctx context.Context, req queryrangebase.Request) (que
 		_, correlationID = h.shouldSample(tenants, httpReq)
 	}
 
+	if correlationID != "" {
+		httpreq.AppendQueryTagsHeader(
+			httpReq.Header,
+			fmt.Sprintf("%s=%s", goldfish.GoldfishCorrelationIDQueryTagKey, correlationID),
+		)
+	}
+
 	results := h.makeBackendRequests(ctx, httpReq, body, req, issuer)
 	collected := make([]*backendResult, 0, len(h.backends))
 
@@ -168,7 +175,6 @@ func (h *FanOutHandler) doWithRacing(results <-chan *backendResult, collected []
 		result := <-results
 		collected = append(collected, result)
 
-		//TODO(twhitney): 404s are treated as successful responses, but v2 is missing some metdata endpoints that we should fallback to v1 for
 		if result.err == nil && result.backendResp.succeeded() {
 			winner := result
 			remaining := len(h.backends) - i - 1

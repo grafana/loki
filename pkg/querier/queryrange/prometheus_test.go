@@ -32,6 +32,7 @@ var emptyStats = `"stats": {
 			"queryReferencedStructuredMetadata": false,
 			"queryUsedV2Engine": false,
 			"pipelineWrapperFilteredLines": 0,
+			"chunkFetchFailures": 0,
 			"chunk" :{
 				"compressedBytes": 0,
 				"decompressedBytes": 0,
@@ -56,7 +57,8 @@ var emptyStats = `"stats": {
 				"prePredicateDecompressedBytes": 0,
 				"prePredicateDecompressedStructuredMetadataBytes": 0,
 				"totalPageDownloadTime": 0,
-				"totalRowsAvailable": 0
+				"totalRowsAvailable": 0,
+				"wireBytesTransferred": 0
 			}
 		},
 		"totalBatches": 0,
@@ -75,6 +77,7 @@ var emptyStats = `"stats": {
 			"queryReferencedStructuredMetadata": false,
 			"queryUsedV2Engine": false,
 			"pipelineWrapperFilteredLines": 0,
+			"chunkFetchFailures": 0,
 			"chunk" :{
 				"compressedBytes": 0,
 				"decompressedBytes": 0,
@@ -99,7 +102,8 @@ var emptyStats = `"stats": {
 				"prePredicateDecompressedBytes": 0,
 				"prePredicateDecompressedStructuredMetadataBytes": 0,
 				"totalPageDownloadTime": 0,
-				"totalRowsAvailable": 0
+				"totalRowsAvailable": 0,
+				"wireBytesTransferred": 0
 			}
 		}
 	},
@@ -175,6 +179,26 @@ var emptyStats = `"stats": {
 			"queryLengthServed": 0
 		},
 		"result": {
+			"entriesFound": 0,
+			"entriesRequested": 0,
+			"entriesStored": 0,
+			"bytesReceived": 0,
+			"bytesSent": 0,
+			"requests": 0,
+			"downloadTime": 0,
+			"queryLengthServed": 0
+		},
+		"logResult": {
+			"entriesFound": 0,
+			"entriesRequested": 0,
+			"entriesStored": 0,
+			"bytesReceived": 0,
+			"bytesSent": 0,
+			"requests": 0,
+			"downloadTime": 0,
+			"queryLengthServed": 0
+		},
+		"taskResult": {
 			"entriesFound": 0,
 			"entriesRequested": 0,
 			"entriesStored": 0,

@@ -11,9 +11,9 @@ import (
 	"net"
 	"regexp"
 	"runtime/debug"
-	"sync"
 	"time"
 
+	"github.com/twmb/franz-go/pkg/kgo/internal/xsync"
 	"github.com/twmb/franz-go/pkg/kmsg"
 	"github.com/twmb/franz-go/pkg/kversion"
 	"github.com/twmb/franz-go/pkg/sasl"
@@ -106,6 +106,7 @@ type cfg struct {
 
 	sasls []sasl.Mechanism
 
+	alwaysRetryEOF         bool
 	allowAutoTopicCreation bool
 	disableClientMetrics   bool
 	userMetrics            func() iter.Seq[Metric]
@@ -117,16 +118,17 @@ type cfg struct {
 	// PRODUCER SECTION //
 	//////////////////////
 
-	txnID              *string
-	txnTimeout         time.Duration
-	acks               Acks
-	disableIdempotency bool
-	maxProduceInflight int                // if idempotency is disabled, we allow a configurable max inflight
-	compression        []CompressionCodec // order of preference
+	txnID                              *string
+	txnTimeout                         time.Duration
+	acks                               Acks
+	disableIdempotency                 bool
+	allowIdempotentProduceCancellation bool
+	maxProduceInflight                 int                // if idempotency is disabled, we allow a configurable max inflight
+	compression                        []CompressionCodec // order of preference
 
 	defaultProduceTopic       string
 	defaultProduceTopicAlways bool
-	maxRecordBatchBytes       int32
+	maxRecordBatchBytes       func(string) int32
 	maxBufferedRecords        int64
 	maxBufferedBytes          int64
 	produceTimeout            time.Duration
@@ -148,6 +150,10 @@ type cfg struct {
 	// CONSUMER SECTION //
 	//////////////////////
 
+	// maxWait holds the user-configured FetchMaxWait in milliseconds.
+	// math.MinInt32 is a sigil meaning "unset": validate replaces it with
+	// the default for the current mode (500ms for share groups, 5s
+	// otherwise).
 	maxWait        int32
 	minBytes       int32
 	maxBytes       lazyI32
@@ -178,21 +184,25 @@ type cfg struct {
 	// CONSUMER GROUP SECTION //
 	////////////////////////////
 
-	group      string          // group we are in
-	instanceID *string         // optional group instance ID
-	balancers  []GroupBalancer // balancers we can use
-	protocol   string          // "consumer" by default, expected to never be overridden
+	group                 string // group we are in
+	shareGroup            string // share group we are in
+	shareMaxRecords       int32  // MaxRecords and BatchSize for ShareFetch (KIP-1206)
+	shareMaxRecordsStrict bool   // if true, ShareAcquireMode=1 (record-limit) per KIP-1206
+	shareAckCallback      func(*Client, ShareAckResults)
+	instanceID            *string         // optional group instance ID
+	balancers             []GroupBalancer // balancers we can use
+	protocol              string          // "consumer" by default, expected to never be overridden
 
 	sessionTimeout    time.Duration
 	rebalanceTimeout  time.Duration
 	heartbeatInterval time.Duration
-	requireStable     bool
 
-	onAssigned func(context.Context, *Client, map[string][]int32)
-	onRevoked  func(context.Context, *Client, map[string][]int32)
-	onLost     func(context.Context, *Client, map[string][]int32)
-	onBlocked  func(context.Context, *Client)
-	onFetched  func(context.Context, *Client, *kmsg.OffsetFetchResponse) error
+	onAssigned      func(context.Context, *Client, map[string][]int32)
+	onRevoked       func(context.Context, *Client, map[string][]int32)
+	onLost          func(context.Context, *Client, map[string][]int32)
+	onBlocked       func(context.Context, *Client)
+	onFetched       func(context.Context, *Client, *kmsg.OffsetFetchResponse) error
+	userHasOnAssign bool // captured before initGroup wraps onAssigned non-nil
 
 	adjustOffsetsBeforeAssign func(ctx context.Context, offsets map[string]map[int32]Offset) (map[string]map[int32]Offset, error)
 
@@ -212,12 +222,23 @@ func (cfg *cfg) validate() error {
 		return errors.New("config erroneously has no seed brokers")
 	}
 
+	if cfg.maxWait == math.MinInt32 {
+		if cfg.shareGroup != "" {
+			cfg.maxWait = 500
+		} else {
+			cfg.maxWait = 5000
+		}
+	}
+
 	// We clamp maxPartBytes to maxBytes because some fake Kafka endpoints
 	// (Oracle) cannot handle the mismatch correctly.
 	if cfg.maxPartBytes > cfg.maxBytes {
 		cfg.maxPartBytes = cfg.maxBytes
 	}
 
+	if cfg.allowIdempotentProduceCancellation && cfg.txnID != nil {
+		return errors.New("cannot allow idempotent produce cancellation and use transactional IDs")
+	}
 	if cfg.disableIdempotency {
 		if cfg.txnID != nil {
 			return errors.New("cannot both disable idempotent writes and use transactional IDs")
@@ -252,6 +273,7 @@ func (cfg *cfg) validate() error {
 		{name: "transactional id", sp: &cfg.txnID, allowed: 16382},
 
 		{name: "rack", s: cfg.rack, allowed: 512},
+		{name: "share group", s: cfg.shareGroup, allowed: 16382},
 	} {
 		s := limit.s
 		if limit.sp != nil && *limit.sp != nil {
@@ -284,8 +306,8 @@ func (cfg *cfg) validate() error {
 		// For batches, we want at least 512 (reasonable), and the
 		// upper limit is the max num when a uvarint transitions from 4
 		// to 5 bytes. The upper limit is also more than reasonable (1G).
-		{name: "max record batch bytes", v: int64(cfg.maxRecordBatchBytes), allowed: 512, badcmp: i64lt},
-		{name: "max record batch bytes", v: int64(cfg.maxRecordBatchBytes), allowed: 1 << 30, badcmp: i64gt},
+		{name: "max record batch bytes", v: int64(cfg.maxRecordBatchBytes("")), allowed: 512, badcmp: i64lt},
+		{name: "max record batch bytes", v: int64(cfg.maxRecordBatchBytes("")), allowed: 1 << 30, badcmp: i64gt},
 
 		// We do not want the broker write bytes to be less than the
 		// record batch bytes, nor the read bytes to be less than what
@@ -293,11 +315,11 @@ func (cfg *cfg) validate() error {
 		//
 		// We cannot enforce if a single batch is larger than the max
 		// fetch bytes limit, but hopefully we do not run into that.
-		{v: int64(cfg.maxBrokerWriteBytes), allowed: int64(cfg.maxRecordBatchBytes), badcmp: i64lt, fmt: "max broker write bytes %v is erroneously less than max record batch bytes %v"},
+		{v: int64(cfg.maxBrokerWriteBytes), allowed: int64(cfg.maxRecordBatchBytes("")), badcmp: i64lt, fmt: "max broker write bytes %v is erroneously less than max record batch bytes %v"},
 		{v: int64(cfg.maxBrokerReadBytes), allowed: int64(cfg.maxBytes), badcmp: i64lt, fmt: "max broker read bytes %v is erroneously less than max fetch bytes %v"},
 
-		// 0 <= allowed concurrency
-		{name: "max concurrent fetches", v: int64(cfg.maxConcurrentFetches), allowed: 0, badcmp: i64lt},
+		// -1 <= allowed concurrency (-1 is unbounded)
+		{name: "max concurrent fetches", v: int64(cfg.maxConcurrentFetches), allowed: -1, badcmp: i64lt},
 
 		// 100ms <= request timeout overhead <= 15m
 		{name: "request timeout max overhead", v: int64(cfg.requestTimeoutOverhead), allowed: int64(15 * time.Minute), badcmp: i64gt, durs: true},
@@ -374,6 +396,31 @@ func (cfg *cfg) validate() error {
 		}
 	}
 
+	if len(cfg.shareGroup) > 0 {
+		if len(cfg.group) > 0 {
+			return errors.New("cannot use both ConsumerGroup and ShareGroup")
+		}
+		if len(cfg.partitions) != 0 {
+			return errors.New("invalid direct-partition consuming option when consuming as a share group")
+		}
+		if cfg.autocommitGreedy || cfg.autocommitMarks || cfg.autocommitDisable || cfg.commitCallback != nil {
+			return errors.New("autocommit options are not applicable to share groups")
+		}
+		if cfg.onLost != nil || cfg.onRevoked != nil || cfg.onAssigned != nil {
+			return errors.New("partition lifecycle callbacks are not supported with share groups")
+		}
+		if cfg.shareMaxRecords < -1 || cfg.shareMaxRecords == 0 {
+			return errors.New("ShareMaxRecords must be positive")
+		}
+		// In record-limit mode (ShareMaxRecordsStrict), restrict to
+		// a single broker per poll round to respect the record limit.
+		if cfg.shareMaxRecordsStrict && cfg.maxConcurrentFetches == -1 {
+			cfg.maxConcurrentFetches = 0
+		}
+	} else if cfg.shareMaxRecords != -1 || cfg.shareMaxRecordsStrict || cfg.shareAckCallback != nil {
+		return errors.New("ShareMaxRecords, ShareMaxRecordsStrict, and ShareAckCallback only apply when using ShareGroup")
+	}
+
 	if cfg.regex {
 		if len(cfg.partitions) != 0 {
 			return errors.New("invalid direct-partition consuming option when consuming as regex")
@@ -413,10 +460,10 @@ func (cfg *cfg) validate() error {
 	if cfg.autocommitGreedy && cfg.autocommitMarks {
 		return errors.New("cannot enable both greedy autocommitting and marked autocommitting")
 	}
-	if (cfg.autocommitGreedy || cfg.autocommitDisable || cfg.autocommitMarks || cfg.commitCallback != nil) && len(cfg.group) == 0 {
+	if (cfg.autocommitGreedy || cfg.autocommitDisable || cfg.autocommitMarks || cfg.commitCallback != nil) && len(cfg.group) == 0 && len(cfg.shareGroup) == 0 {
 		return errors.New("invalid autocommit options specified when a group was not specified")
 	}
-	if (cfg.onLost != nil || cfg.onRevoked != nil || cfg.onAssigned != nil) && len(cfg.group) == 0 {
+	if (cfg.onLost != nil || cfg.onRevoked != nil || cfg.onAssigned != nil) && len(cfg.group) == 0 && len(cfg.shareGroup) == 0 {
 		return errors.New("invalid group partition assigned/revoked/lost functions set when a group was not specified")
 	}
 
@@ -512,7 +559,7 @@ func defaultCfg() cfg {
 		maxVersions: kversion.Stable(), // kversion bumps what is returned from Stable on the same release we add support for new features to kgo
 
 		retryBackoff: func() func(int) time.Duration {
-			var rngMu sync.Mutex
+			var rngMu xsync.Mutex
 			rng := rand.New(rand.NewSource(time.Now().UnixNano()))
 			return func(fails int) time.Duration {
 				const (
@@ -557,7 +604,7 @@ func defaultCfg() cfg {
 		acks:                AllISRAcks(),
 		maxProduceInflight:  1,
 		compression:         []CompressionCodec{SnappyCompression(), NoCompression()},
-		maxRecordBatchBytes: 1000012, // Kafka max.message.bytes default is 1000012
+		maxRecordBatchBytes: func(string) int32 { return 1000012 }, // Kafka max.message.bytes default is 1000012
 		maxBufferedRecords:  10000,
 		produceTimeout:      10 * time.Second,
 		recordRetries:       math.MaxInt64, // effectively unbounded
@@ -570,7 +617,7 @@ func defaultCfg() cfg {
 		// consumer //
 		//////////////
 
-		maxWait:        5000,
+		maxWait:        math.MinInt32, // sigil: resolved by validate based on shareGroup
 		minBytes:       1,
 		maxBytes:       50 << 20,
 		maxPartBytes:   1 << 20,
@@ -578,7 +625,7 @@ func defaultCfg() cfg {
 		resetOffset:    NewOffset().AtStart(),
 		isolationLevel: 0,
 
-		maxConcurrentFetches: 0, // unbounded default
+		maxConcurrentFetches: -1, // unbounded default
 
 		recheckPreferredReplicaInterval: 30 * time.Minute,
 
@@ -596,6 +643,8 @@ func defaultCfg() cfg {
 		heartbeatInterval: 3000 * time.Millisecond,
 
 		autocommitInterval: 5 * time.Second,
+
+		shareMaxRecords: -1, // sigil: not set, ShareFetch sends 500
 	}
 }
 
@@ -987,6 +1036,25 @@ func UserMetricsFn(fn func() iter.Seq[Metric]) Opt {
 	return clientOpt{func(cfg *cfg) { cfg.userMetrics = fn }}
 }
 
+// AlwaysRetryEOF switches the client to *always* retry EOF.
+//
+// By default, if an EOF is experienced on the FIRST request being written to
+// or read from a connection, the client does not retry on the error. EOFs are
+// encountered for many reasons, and the client has no information available as
+// to what exact reason the EOF was encountered. If your configuration is
+// correct, then EOF is usually experienced during timeouts, or when you have
+// some high load systems and connections are being cut for some reason, etc.
+// If your configuration is incorrect (on the client or on the broker), EOF can
+// be experienced due to some TLS settings mismatch or missing SASL
+// credentials, and it's very hard to debug EOF in this case. Thus, after much
+// feedback, the client was changed to assume an EOF experienced immediately
+// means invalid configuration. If you *know* your configuration is correct,
+// this option opts into always retrying EOF, allowing requests to retry and
+// succeed as they normally should on very busy systems.
+func AlwaysRetryEOF() Opt {
+	return clientOpt{func(cfg *cfg) { cfg.alwaysRetryEOF = true }}
+}
+
 ////////////////////////////
 // PRODUCER CONFIGURATION //
 ////////////////////////////
@@ -1047,9 +1115,43 @@ func RequiredAcks(acks Acks) ProducerOpt {
 // IDEMPOTENT_WRITE permission on CLUSTER (pre Kafka 3.0), and not all clients
 // can have that permission.
 //
+// If the goal is to allow cancellation of in-flight records while keeping
+// idempotent deduplication, see [AllowIdempotentProduceCancellation] instead.
+//
 // This option is incompatible with specifying a transactional id.
 func DisableIdempotentWrite() ProducerOpt {
 	return producerOpt{func(cfg *cfg) { cfg.disableIdempotency = true }}
+}
+
+// AllowIdempotentProduceCancellation permits cancellation of in-flight
+// idempotent records, at the cost of breaking idempotency's
+// duplicate-avoidance guarantee.
+//
+// When a record is in-flight, the client cannot tell "the broker never
+// received it" from "the broker wrote it but the reply was lost".
+// Cancelling at this point leaves the client's idempotent sequence
+// window inconsistent with the broker: once cancelled records are
+// failed to the user, the next produce either silently gap-accepts (if
+// the broker wrote them) or hits OUT_OF_ORDER_SEQUENCE and forces the
+// client to reload its producer ID (new epoch, reset sequence). A
+// subsequent application-level retry of the cancelled record races
+// against what the broker may already have stored - the broker cannot
+// dedupe it, and you can get duplicates. By default, the client refuses
+// to cancel in this state and instead waits for the record's outcome
+// so idempotency holds.
+//
+// With this option, context cancellation, RecordDeliveryTimeout, and
+// RecordRetries exhaustion are allowed to fail in-flight records.
+// Idempotent dedupe continues to protect the client's own internal
+// retry path, but any cancelled record that the application re-produces
+// may land on the broker twice.
+//
+// Use this when time-bounded delivery matters more than
+// duplicate-avoidance.
+//
+// This option is incompatible with specifying a transactional id.
+func AllowIdempotentProduceCancellation() ProducerOpt {
+	return producerOpt{func(cfg *cfg) { cfg.allowIdempotentProduceCancellation = true }}
 }
 
 // MaxProduceRequestsInflightPerBroker changes the number of allowed produce
@@ -1104,8 +1206,28 @@ func WithCompressor(compressor Compressor) ProducerOpt {
 // Note that this is the maximum size of a record batch before compression. If
 // a batch compresses poorly and actually grows the batch, the uncompressed
 // form will be used.
+//
+// For per-topic control, see [ProducerBatchMaxBytesFn].
 func ProducerBatchMaxBytes(v int32) ProducerOpt {
-	return producerOpt{func(cfg *cfg) { cfg.maxRecordBatchBytes = v }}
+	return ProducerBatchMaxBytesFn(func(string) int32 { return v })
+}
+
+// ProducerBatchMaxBytesFn is the functional form of [ProducerBatchMaxBytes]:
+// it returns the per-batch byte cap for the given topic, overriding the
+// default 1,000,012 bytes. This is useful when different topics have
+// different max.message.bytes configurations on the broker.
+//
+// The function is called once when a partition is first discovered and the
+// result is cached on the per-partition record buffer - it is NOT consulted
+// per record or per batch, and topic-config changes at runtime are not
+// picked up until partition state is rebuilt. Return a value in
+// [512, 1<<30]; returning a value outside that range for a specific topic
+// will cause produces to that topic to fail (config validation only checks
+// the return for the empty-topic at client construction).
+//
+// For a static limit applied to all topics, see [ProducerBatchMaxBytes].
+func ProducerBatchMaxBytesFn(fn func(string) int32) ProducerOpt {
+	return producerOpt{func(cfg *cfg) { cfg.maxRecordBatchBytes = fn }}
 }
 
 // MaxBufferedRecords sets the max amount of records the client will buffer,
@@ -1303,9 +1425,13 @@ func TransactionTimeout(timeout time.Duration) ProducerOpt {
 
 // FetchMaxWait sets the maximum amount of time a broker will wait for a
 // fetch response to hit the minimum number of required bytes before returning,
-// overriding the default 5s.
+// overriding the default 5s (or 500ms when [ShareGroup] is set).
 //
 // This corresponds to the Java fetch.max.wait.ms setting.
+//
+// For share consumers, values above 500ms are not recommended: while a
+// ShareFetch is in flight, no acks can be sent to the broker, so a long
+// MaxWait stalls ack delivery for that entire window.
 func FetchMaxWait(wait time.Duration) ConsumerOpt {
 	return consumerOpt{func(cfg *cfg) { cfg.maxWait = int32(wait.Milliseconds()) }}
 }
@@ -1371,8 +1497,9 @@ func FetchMaxPartitionBytes(b int32) ConsumerOpt {
 // broker that has new data. For high throughput topics, or if the allowed
 // concurrent fetches is large enough, this should not be a concern.
 //
-// A value of 0 implies the allowed concurrency is unbounded and will be
-// limited only by the number of brokers in the cluster.
+// Negative values imply unlimited concurrent fetches (bounded by the number of
+// brokers in the cluster). A value of 0 means that a single fetch is allowed
+// ONLY when you poll - there is no fetch buffering.
 func MaxConcurrentFetches(n int) ConsumerOpt {
 	return consumerOpt{func(cfg *cfg) { cfg.maxConcurrentFetches = n }}
 }
@@ -1673,6 +1800,61 @@ func ConsumerGroup(group string) GroupOpt {
 	return groupOpt{func(cfg *cfg) { cfg.group = group }}
 }
 
+// ShareGroup sets the share group for the client to join and consume in.
+// Share groups (KIP-932) provide queue-like semantics: the broker controls
+// record delivery and offset management.
+//
+// This is mutually exclusive with ConsumerGroup and ConsumePartitions.
+//
+// For existing topics to be consumable via a share group, the group-level
+// configuration share.auto.offset.reset must be set using
+// IncrementalAlterConfigs with resource type GROUP. Without this, share
+// groups default to "latest" and only records produced after the group
+// begins consuming are delivered.
+func ShareGroup(group string) GroupOpt {
+	return groupOpt{func(cfg *cfg) { cfg.shareGroup = group }}
+}
+
+// ShareMaxRecords sets the MaxRecords and BatchSize fields in ShareFetch
+// requests, overriding the default of 500.
+//
+// This option only applies when using [ShareGroup].
+func ShareMaxRecords(n int32) GroupOpt {
+	return groupOpt{func(cfg *cfg) { cfg.shareMaxRecords = n }}
+}
+
+// ShareMaxRecordsStrict opts into strict record-count limiting for share
+// fetch requests. By default, the broker may return more records than
+// [ShareMaxRecords] to avoid splitting record batches. With this option
+// the broker returns at most [ShareMaxRecords] records per fetch,
+// splitting batches if necessary.
+//
+// As a secondary effect, this option also flips the [MaxConcurrentFetches]
+// default from unbounded to 0 (one fetch per poll). Setting
+// [MaxConcurrentFetches] to a positive value re-enables pre-fetching;
+// note that the per-fetch limit still holds but in-flight concurrent
+// fetches can cumulatively return more.
+//
+// This option only applies when using [ShareGroup].
+func ShareMaxRecordsStrict() GroupOpt {
+	return groupOpt{func(cfg *cfg) { cfg.shareMaxRecordsStrict = true }}
+}
+
+// ShareAckCallback sets a callback invoked with the results of share-group
+// acknowledgements. The broker reports per-partition outcomes for every
+// ack the client sends.
+//
+// Without a callback, ack errors are invisible: retryable errors are
+// retried internally and non-retryable errors are dropped. The callback
+// lets you observe all ack outcomes. The client has already handled
+// retries where possible, so errors surfaced here are mostly
+// informational.
+//
+// This option only applies when using [ShareGroup].
+func ShareAckCallback(fn func(*Client, ShareAckResults)) GroupOpt {
+	return groupOpt{func(cfg *cfg) { cfg.shareAckCallback = fn }}
+}
+
 // Balancers sets the group balancers to use for dividing topic partitions
 // among group members, overriding the current default [cooperative-sticky].
 // This option is equivalent to Kafka's partition.assignment.strategies option.
@@ -1732,22 +1914,13 @@ func HeartbeatInterval(interval time.Duration) GroupOpt {
 	return groupOpt{func(cfg *cfg) { cfg.heartbeatInterval = interval }}
 }
 
-// RequireStableFetchOffsets sets the group consumer to require "stable" fetch
-// offsets before consuming from the group. Proposed in KIP-447 and introduced
-// in Kafka 2.5, stable offsets are important when consuming from partitions
-// that a transactional producer could be committing to.
+// RequireStableFetchOffsets previously set the group consumer to require
+// "stable" fetch offsets before consuming from the group.
 //
-// With this option, Kafka will block group consumers from fetching offsets for
-// partitions that are in an active transaction. This option is **strongly**
-// recommended to help prevent duplication problems. See this repo's KIP-447
-// doc to learn more.
-//
-// Because this can block consumption, it is strongly recommended to set
-// transactional timeouts to a small value (10s) rather than the default 60s.
-// Lowering the transactional timeout will reduce the chance that consumers are
-// entirely blocked.
+// Deprecated: RequireStable is now permanently enabled for all group
+// consumers. This function is a no-op.
 func RequireStableFetchOffsets() GroupOpt {
-	return groupOpt{func(cfg *cfg) { cfg.requireStable = true }}
+	return groupOpt{func(*cfg) {}}
 }
 
 // BlockRebalanceOnPoll switches the client to block rebalances whenever you
@@ -1778,10 +1951,14 @@ func RequireStableFetchOffsets() GroupOpt {
 // fast. If your record processing may be slow, it is recommended you also use
 // PollRecords rather than PollFetches so that you can bound how many records
 // you process at once. You must always AllowRebalances when you are done
-// processing the records you received. Only rebalances that lose partitions
-// are blocked; rebalances that are strictly net additions or non-modifications
-// do not block (the On callbacks are always blocked so that you can ensure
-// their serialization).
+// processing the records you received.
+//
+// Polls and rebalance callbacks gate each other so that you cannot commit
+// offsets across a rebalance: polls block while a callback is running, and
+// callbacks wait for in-flight polls to release via AllowRebalance before
+// running. The assign phase is gated only when you registered
+// [OnPartitionsAssigned]; otherwise it runs concurrent with poll because
+// adding partitions cannot cause a wrong-ownership commit.
 //
 // You can use [OnPartitionsCallbackBlocked] as a signal that a rebalance WANTS
 // to happen, but you are currently blocking it, and that you need to either

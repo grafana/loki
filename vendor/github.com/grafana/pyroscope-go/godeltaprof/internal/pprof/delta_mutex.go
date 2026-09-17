@@ -1,9 +1,5 @@
 package pprof
 
-import (
-	"runtime"
-)
-
 type mutexPrevValue struct {
 	count    int64
 	inanosec int64
@@ -24,7 +20,7 @@ type DeltaMutexProfiler struct {
 // and the number of cycles for block, contention profiles.
 // Possible 'scaler' functions are scaleBlockProfile and scaleMutexProfile.
 func (d *DeltaMutexProfiler) PrintCountCycleProfile(b ProfileBuilder, scaler MutexProfileScaler,
-	records []runtime.BlockProfileRecord) error {
+	records []BlockProfileRecord) error {
 	cpuGHz := float64(runtime_cyclesPerSecond()) / 1e9
 
 	values := []int64{0, 0}
@@ -32,7 +28,7 @@ func (d *DeltaMutexProfiler) PrintCountCycleProfile(b ProfileBuilder, scaler Mut
 	// deduplicate: accumulate count and cycles in entry.acc for equal stacks
 	for i := range records {
 		r := &records[i]
-		entry := d.m.Lookup(r.Stack(), 0)
+		entry := d.m.Lookup(blockRecordStack(r), 0)
 		entry.acc.count += r.Count // accumulate unscaled
 		entry.acc.cycles += r.Cycles
 	}
@@ -40,7 +36,7 @@ func (d *DeltaMutexProfiler) PrintCountCycleProfile(b ProfileBuilder, scaler Mut
 	// do the delta using the accumulated values and previous values
 	for i := range records {
 		r := &records[i]
-		stk := r.Stack()
+		stk := blockRecordStack(r)
 		entry := d.m.Lookup(stk, 0)
 		accCount := entry.acc.count
 		accCycles := entry.acc.cycles

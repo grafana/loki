@@ -244,6 +244,7 @@ func (b *FixedSizeBinaryBuilder) Unmarshal(dec *json.Decoder) error {
 
 func (b *FixedSizeBinaryBuilder) UnmarshalJSON(data []byte) error {
 	dec := json.NewDecoder(bytes.NewReader(data))
+	dec.UseNumber()
 	t, err := dec.Token()
 	if err != nil {
 		return err

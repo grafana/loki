@@ -162,6 +162,33 @@ func (b Bucket[BC]) String() string {
 	return sb.String()
 }
 
+// FractionBelow returns the fraction (between 0 and 1) of this bucket's width
+// that lies at or below the value v, assuming v is strictly inside the bucket's
+// finite bounds (b.Lower < v < b.Upper). It uses linear interpolation when
+// linear is true (as done for custom (NHCB) buckets and the zero bucket) and
+// exponential interpolation otherwise (as done for standard exponential
+// native-histogram buckets, interpolating on a logarithmic scale). Multiply the
+// result by b.Count to get the estimated number of observations at or below v.
+//
+// The caller is responsible for handling values outside the bucket bounds and
+// buckets with an infinite bound; passing those here yields a meaningless
+// result.
+func (b Bucket[BC]) FractionBelow(v float64, linear bool) float64 {
+	if linear {
+		return (v - b.Lower) / (b.Upper - b.Lower)
+	}
+	// On a logarithmic scale the exponential bucket boundaries become linear,
+	// so the fraction is computed the same way as in the linear case but over
+	// the log2 of the bounds. Negative buckets are mirrored.
+	logLower := math.Log2(math.Abs(b.Lower))
+	logUpper := math.Log2(math.Abs(b.Upper))
+	logV := math.Log2(math.Abs(v))
+	if v > 0 {
+		return (logV - logLower) / (logUpper - logLower)
+	}
+	return 1 - ((logV - logUpper) / (logLower - logUpper))
+}
+
 // BucketIterator iterates over the buckets of a Histogram, returning decoded
 // buckets.
 type BucketIterator[BC BucketCount] interface {
@@ -332,10 +359,18 @@ func compactBuckets[IBC InternalBucketCount](
 	spans = spans[:iSpan]
 	iSpan = 0
 
+	// If all spans were zero-length, no buckets remain valid.
+	if len(spans) == 0 {
+		if compensationBuckets != nil {
+			compensationBuckets = compensationBuckets[:0]
+		}
+		return primaryBuckets[:0], compensationBuckets, spans
+	}
+
 	// Cut out empty buckets from start and end of spans, no matter
 	// what. Also cut out empty buckets from the middle of a span but only
 	// if there are more than maxEmptyBuckets consecutive empty buckets.
-	for iBucket < len(primaryBuckets) {
+	for iBucket < len(primaryBuckets) && iSpan < len(spans) {
 		if deltaBuckets {
 			currentBucketAbsolute += primaryBuckets[iBucket]
 		} else {

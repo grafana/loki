@@ -61,7 +61,7 @@ func (e *Encoder) Encode(input any) (any, error) {
 func (e *Encoder) encode(value reflect.Value) (any, error) {
 	if value.IsValid() {
 		switch value.Kind() {
-		case reflect.Interface, reflect.Ptr:
+		case reflect.Interface, reflect.Pointer:
 			return e.encode(value.Elem())
 		case reflect.Map:
 			return e.encodeMap(value)
@@ -225,7 +225,7 @@ func getTagInfo(field reflect.StructField) *tagInfo {
 // function if found.
 func TextMarshalerHookFunc() mapstructure.DecodeHookFuncValue {
 	return func(from, _ reflect.Value) (any, error) {
-		marshaler, ok := from.Interface().(encoding.TextMarshaler)
+		marshaler, ok := reflect.TypeAssert[encoding.TextMarshaler](from)
 		if !ok {
 			return from.Interface(), nil
 		}
@@ -263,6 +263,22 @@ func YamlMarshalerHookFunc() mapstructure.DecodeHookFuncValue {
 					}
 					return m, nil
 				}
+			}
+		}
+		return from.Interface(), nil
+	}
+}
+
+// StringTextUnredactedHookFunc returns a DecodeHookFuncValue that extracts the underlying
+// unredacted string from custom string types that implement encoding.TextMarshaler.
+func StringTextUnredactedHookFunc() mapstructure.DecodeHookFuncValue {
+	return func(from, _ reflect.Value) (any, error) {
+		// If the underlying kind is a string, and it implements TextMarshaler
+		// (which obfuscated types like configopaque.String usually do).
+		if from.Kind() == reflect.String {
+			if _, ok := reflect.TypeAssert[encoding.TextMarshaler](from); ok {
+				// Extract the raw string via reflection, bypassing any custom methods.
+				return from.String(), nil
 			}
 		}
 		return from.Interface(), nil

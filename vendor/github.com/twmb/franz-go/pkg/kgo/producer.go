@@ -10,13 +10,14 @@ import (
 	"time"
 
 	"github.com/twmb/franz-go/pkg/kerr"
+	"github.com/twmb/franz-go/pkg/kgo/internal/xsync"
 	"github.com/twmb/franz-go/pkg/kmsg"
 )
 
 type producer struct {
 	// mu and c are used for flush and drain notifications; mu is used for
 	// a few other tight locks.
-	mu sync.Mutex
+	mu xsync.Mutex
 	c  *sync.Cond
 
 	bufferedRecords int64
@@ -24,7 +25,7 @@ type producer struct {
 
 	cl *Client
 
-	topicsMu sync.Mutex // locked to prevent concurrent updates; reads are always atomic
+	topicsMu xsync.Mutex // locked to prevent concurrent updates; reads are always atomic
 	topics   *topicsPartitions
 
 	// Hooks exist behind a pointer because likely they are not used.
@@ -35,12 +36,10 @@ type producer struct {
 		unbuffered  []HookProduceRecordUnbuffered
 	}
 
-	hasHookBatchWritten bool
-
 	// unknownTopics buffers all records for topics that are not loaded.
 	// The map is to a pointer to a slice for reasons documented in
 	// waitUnknownTopic.
-	unknownTopicsMu sync.Mutex
+	unknownTopicsMu xsync.Mutex
 	unknownTopics   map[string]*unknownTopicProduces
 
 	id           atomic.Value
@@ -55,14 +54,14 @@ type producer struct {
 
 	aborting atomic.Int32 // >0 if aborting, can abort many times concurrently
 
-	idMu      sync.Mutex
+	idMu      xsync.Mutex
 	idVersion int16
 
 	batchPromises ring[batchPromise] // we never call die() on it
 
-	txnMu   sync.Mutex
+	txnMu   xsync.Mutex
 	inTxn   bool
-	tx890p2 bool
+	tx890p2 atomic.Bool
 }
 
 // BufferedProduceRecords returns the number of records currently buffered for
@@ -102,7 +101,7 @@ func (cl *Client) EnsureProduceConnectionIsOpen(ctx context.Context, brokers ...
 		keep = brokers[:0]
 		all  bool
 		wg   sync.WaitGroup
-		mu   sync.Mutex
+		mu   xsync.Mutex
 		errs []error
 	)
 	for _, b := range brokers {
@@ -180,6 +179,7 @@ func (p *producer) init(cl *Client) {
 		err:   errReloadProducerID,
 	})
 	p.c = sync.NewCond(&p.mu)
+	p.batchPromises.initMaxLen(max(int(cl.cfg.maxBufferedRecords), 8192))
 
 	inithooks := func() {
 		if p.hooks == nil {
@@ -203,9 +203,6 @@ func (p *producer) init(cl *Client) {
 		if h, ok := h.(HookProduceRecordUnbuffered); ok {
 			inithooks()
 			p.hooks.unbuffered = append(p.hooks.unbuffered, h)
-		}
-		if _, ok := h.(HookProduceBatchWritten); ok {
-			p.hasHookBatchWritten = true
 		}
 	})
 }
@@ -261,11 +258,9 @@ func (p *producer) purgeTopics(topics []string) {
 
 			// Once abandoned, we now need to fail anything that
 			// was buffered.
-			go func() {
-				r.mu.Lock()
-				defer r.mu.Unlock()
-				r.failAllRecords(errPurged)
-			}()
+			r.mu.Lock()
+			r.failAllRecords(errPurged)
+			r.mu.Unlock()
 		}
 	}
 }
@@ -379,7 +374,7 @@ func (cl *Client) ProduceSync(ctx context.Context, rs ...*Record) ProduceResults
 		if pd == nil {
 			continue
 		}
-		if int(r.Partition) >= len(pd.partitions) {
+		if r.Partition < 0 || int(r.Partition) >= len(pd.partitions) {
 			continue
 		}
 		rb := pd.partitions[r.Partition].records
@@ -493,8 +488,9 @@ func (cl *Client) TryProduce(
 // If the client is configured to automatically flush the client currently has
 // the configured maximum amount of records buffered, Produce will block. The
 // context can be used to cancel waiting while records flush to make space. In
-// contrast, if flushing is configured, the record will be failed immediately
-// with ErrMaxBuffered (this same behavior can be had with TryProduce).
+// contrast, if manual flushing is configured, the record will be failed
+// immediately with ErrMaxBuffered (this same behavior can be had with
+// TryProduce).
 //
 // Once a record is buffered into a batch, it can be canceled in three ways:
 // canceling the context, the record timing out, or hitting the maximum
@@ -556,26 +552,19 @@ func (cl *Client) produce(
 
 	userSize := r.userSize()
 	if cl.cfg.maxBufferedBytes > 0 && userSize > cl.cfg.maxBufferedBytes {
-		p.promiseRecordBeforeBuf(promisedRec{ctx, promise, r}, kerr.MessageTooLarge)
+		p.promiseRecordBeforeBuf(
+			promisedRec{ctx, promise, r},
+			fmt.Errorf("%w (uncompressed_bytes=%d)", kerr.MessageTooLarge, userSize),
+		)
 		return
 	}
 
 	// We have to grab the produce lock to check if this record will exceed
 	// configured limits. We try to keep the logic tight since this is
 	// effectively a global lock around producing.
-	var (
-		nextBufRecs, nextBufBytes int64
-		overMaxRecs, overMaxBytes bool
-
-		calcNums = func() {
-			nextBufRecs = p.bufferedRecords + 1
-			nextBufBytes = p.bufferedBytes + userSize
-			overMaxRecs = nextBufRecs > cl.cfg.maxBufferedRecords
-			overMaxBytes = cl.cfg.maxBufferedBytes > 0 && nextBufBytes > cl.cfg.maxBufferedBytes
-		}
-	)
 	p.mu.Lock()
-	calcNums()
+	overMaxRecs := p.bufferedRecords >= cl.cfg.maxBufferedRecords
+	overMaxBytes := cl.cfg.maxBufferedBytes > 0 && p.bufferedBytes+userSize > cl.cfg.maxBufferedBytes
 	if overMaxRecs || overMaxBytes {
 		if !block || cl.cfg.manualFlushing {
 			p.mu.Unlock()
@@ -609,10 +598,9 @@ func (cl *Client) produce(
 		go func() {
 			defer close(wait)
 			p.mu.Lock()
-			calcNums()
-			for !quit && (overMaxRecs || overMaxBytes) {
+			for !quit && (p.bufferedRecords >= cl.cfg.maxBufferedRecords ||
+				(cl.cfg.maxBufferedBytes > 0 && p.bufferedBytes+userSize > cl.cfg.maxBufferedBytes)) {
 				p.c.Wait()
-				calcNums()
 			}
 			p.blocked.Add(-1)
 			p.blockedBytes -= userSize
@@ -653,8 +641,8 @@ func (cl *Client) produce(
 			return
 		}
 	}
-	p.bufferedRecords = nextBufRecs
-	p.bufferedBytes = nextBufBytes
+	p.bufferedRecords++
+	p.bufferedBytes += userSize
 	p.mu.Unlock()
 
 	cl.loadPartsAndPartition(promisedRec{ctx, promise, r})
@@ -708,8 +696,8 @@ start:
 		pr.Attrs = b.attrs
 		recBroadcast := cl.finishRecordPromise(pr, b.err, b.beforeBuf)
 		broadcast = broadcast || recBroadcast
-		b.recs[i] = promisedRec{}
 	}
+	clear(b.recs) // drop references so the pooled slice does not retain them
 	if cap(b.recs) > 4 {
 		cl.prsPool.put(b.recs)
 	}
@@ -778,6 +766,18 @@ func (cl *Client) doPartition(parts *topicPartitions, partsData *topicPartitions
 
 	mapping := partsData.writablePartitions
 	if parts.partitioner.RequiresConsistency(pr.Record) {
+		mapping = partsData.partitions
+	} else if len(mapping) == 0 && len(partsData.partitions) > 0 {
+		// Every partition has a retriable load error, e.g. a rolling
+		// restart of an RF=1 broker briefly left all partitions
+		// leaderless. Rather than failing the record up front with
+		// the synthetic error below, fall back to the full set: the
+		// record buffers and rides the normal metadata-refresh retry
+		// path, the same as records on consistency-requiring
+		// partitioners via the branch above. If the outage outlasts
+		// the delivery timeout or retry limits, the record fails
+		// with the partition's actual load error. The Java client
+		// falls back identically when no partition is available.
 		mapping = partsData.partitions
 	}
 	if len(mapping) == 0 {
@@ -882,6 +882,9 @@ func (cl *Client) producerID(ctxFn func() context.Context) (int64, int16, error)
 				// For the idempotent producer, as specified in KIP-360,
 				// if we had an ID, we can bump the epoch locally.
 				// If we are at the max epoch, we will ask for a new ID.
+				cl.cfg.logger.Log(LogLevelInfo, "locally bumping idempotent producer epoch to recover from a prior produce error",
+					"id", id.id, "old_epoch", id.epoch, "new_epoch", id.epoch+1,
+				)
 				cl.resetAllProducerSequences()
 				id = &producerID{
 					id:    id.id,
@@ -978,6 +981,9 @@ func (cl *Client) failProducerID(id int64, epoch int16, err error) {
 			return
 		}
 		if p.id.CompareAndSwap(current, new) {
+			cl.cfg.logger.Log(LogLevelInfo, "producer ID failed due to a produce error, next produce will reinitialize the producer epoch",
+				"id", id, "epoch", epoch, "err", err,
+			)
 			return
 		}
 	}
@@ -1126,6 +1132,7 @@ func (cl *Client) waitUnknownTopic(
 		tries        int
 		unknownTries int64
 		err          error
+		lastRetryErr error
 		after        <-chan time.Time
 	)
 
@@ -1151,7 +1158,11 @@ func (cl *Client) waitUnknownTopic(
 		case <-cl.ctx.Done():
 			err = ErrClientClosed
 		case <-after:
-			err = ErrRecordTimeout
+			if lastRetryErr != nil {
+				err = fmt.Errorf("%w, last err: %w", ErrRecordTimeout, lastRetryErr)
+			} else {
+				err = ErrRecordTimeout
+			}
 		case err = <-unknown.fatal:
 		case retryableErr, ok := <-unknown.wait:
 			if !ok {
@@ -1159,6 +1170,7 @@ func (cl *Client) waitUnknownTopic(
 				return // metadata was successful!
 			}
 			cl.cfg.logger.Log(LogLevelInfo, "new topic metadata wait failed, retrying wait", "topic", topic, "err", retryableErr)
+			lastRetryErr = retryableErr
 			tries++
 			if int64(tries) > cl.cfg.recordRetries {
 				err = fmt.Errorf("no partitions available after attempting to refresh metadata %d times, last err: %w", tries, retryableErr)

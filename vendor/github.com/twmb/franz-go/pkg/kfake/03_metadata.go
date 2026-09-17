@@ -1,30 +1,44 @@
 package kfake
 
 import (
-	"net"
-	"strconv"
-
 	"github.com/twmb/franz-go/pkg/kerr"
 	"github.com/twmb/franz-go/pkg/kmsg"
 )
 
+// Metadata: v0-13
+//
+// Behavior:
+// * Null topics returns all topics (v1+)
+// * Empty topics returns no topics
+// * AllowAutoTopicCreation is respected if cluster config allows it
+// * Topics can be requested by name or by ID (v10+)
+//
+// Version notes:
+// * v1: ControllerID, IsInternal, Rack
+// * v2: ClusterID
+// * v4: AllowAutoTopicCreation
+// * v5: OfflineReplicas
+// * v7: LeaderEpoch
+// * v8: AuthorizedOperations (ACLs)
+// * v9: Flexible versions
+// * v10: TopicID
+// * v13: Top-level ErrorCode for rebootstrapping (KIP-1102) - not implemented
+
 func init() { regKey(3, 0, 13) }
 
-func (c *Cluster) handleMetadata(kreq kmsg.Request) (kmsg.Response, error) {
-	req := kreq.(*kmsg.MetadataRequest)
+func (c *Cluster) handleMetadata(creq *clientReq) (kmsg.Response, error) {
+	req := creq.kreq.(*kmsg.MetadataRequest)
 	resp := req.ResponseKind().(*kmsg.MetadataResponse)
 
-	if err := checkReqVersion(req.Key(), req.Version); err != nil {
+	if err := c.checkReqVersion(req.Key(), req.Version); err != nil {
 		return nil, err
 	}
 
 	for _, b := range c.bs {
 		sb := kmsg.NewMetadataResponseBroker()
-		h, p, _ := net.SplitHostPort(b.ln.Addr().String())
-		p32, _ := strconv.Atoi(p)
 		sb.NodeID = b.node
-		sb.Host = h
-		sb.Port = int32(p32)
+		sb.Host, sb.Port = b.hostport()
+		sb.Rack = &brokerRack
 		resp.Brokers = append(resp.Brokers, sb)
 	}
 
@@ -45,7 +59,13 @@ func (c *Cluster) handleMetadata(kreq kmsg.Request) (kmsg.Response, error) {
 			st.Topic = kmsg.StringPtr(t)
 		}
 		st.TopicID = id
+		if v, ok := c.data.tcfgs[t]["kfake.is_internal"]; ok && v != nil && *v == "true" {
+			st.IsInternal = true
+		}
 		st.ErrorCode = errCode
+		if req.IncludeTopicAuthorizedOperations {
+			st.AuthorizedOperations = c.topicAuthorizedOps(creq, t)
+		}
 		resp.Topics = append(resp.Topics, st)
 		return &resp.Topics[len(resp.Topics)-1]
 	}
@@ -75,11 +95,14 @@ func (c *Cluster) handleMetadata(kreq kmsg.Request) (kmsg.Response, error) {
 	}
 
 	allowAuto := req.AllowAutoTopicCreation && c.cfg.allowAutoTopic
+	// Dedupe after name resolution so a request that specifies both a
+	// topic name and its TopicID produces one response entry with one
+	// set of partitions (not a merged entry with partitions duplicated).
+	seenTopic := make(map[string]bool, len(req.Topics))
 	for _, rt := range req.Topics {
 		var topic string
 		var ok bool
 		// If topic ID is present, we ignore any provided topic.
-		// Duplicate topics are merged into one response topic.
 		// Topics with no topic and no ID are ignored.
 		if rt.TopicID != noID {
 			if topic, ok = c.data.id2t[rt.TopicID]; !ok {
@@ -92,6 +115,11 @@ func (c *Cluster) handleMetadata(kreq kmsg.Request) (kmsg.Response, error) {
 			topic = *rt.Topic
 		}
 
+		if !c.allowedACL(creq, topic, kmsg.ACLResourceTypeTopic, kmsg.ACLOperationDescribe) {
+			donet(topic, rt.TopicID, kerr.TopicAuthorizationFailed.Code)
+			continue
+		}
+
 		ps, ok := c.data.tps.gett(topic)
 		if !ok {
 			if !allowAuto {
@@ -102,6 +130,11 @@ func (c *Cluster) handleMetadata(kreq kmsg.Request) (kmsg.Response, error) {
 			ps, _ = c.data.tps.gett(topic)
 		}
 
+		if seenTopic[topic] {
+			continue
+		}
+		seenTopic[topic] = true
+
 		id := c.data.t2id[topic]
 		for p, pd := range ps {
 			okp(topic, id, p, pd)
@@ -109,11 +142,19 @@ func (c *Cluster) handleMetadata(kreq kmsg.Request) (kmsg.Response, error) {
 	}
 	if req.Topics == nil && c.data.tps != nil {
 		for topic, ps := range c.data.tps {
+			// For listing all topics, filter to only authorized topics
+			if !c.allowedACL(creq, topic, kmsg.ACLResourceTypeTopic, kmsg.ACLOperationDescribe) {
+				continue
+			}
 			id := c.data.t2id[topic]
 			for p, pd := range ps {
 				okp(topic, id, p, pd)
 			}
 		}
+	}
+
+	if req.IncludeClusterAuthorizedOperations {
+		resp.AuthorizedOperations = c.clusterAuthorizedOps(creq)
 	}
 
 	return resp, nil

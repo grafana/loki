@@ -11,6 +11,7 @@ import (
 	"sync"
 
 	"go.opentelemetry.io/collector/pdata/internal/json"
+	"go.opentelemetry.io/collector/pdata/internal/metadata"
 	"go.opentelemetry.io/collector/pdata/internal/proto"
 )
 
@@ -30,7 +31,7 @@ var (
 )
 
 func NewSum() *Sum {
-	if !UseProtoPooling.IsEnabled() {
+	if !metadata.PdataUseProtoPoolingFeatureGate.IsEnabled() {
 		return &Sum{}
 	}
 	return protoPoolSum.Get().(*Sum)
@@ -41,7 +42,7 @@ func DeleteSum(orig *Sum, nullable bool) {
 		return
 	}
 
-	if !UseProtoPooling.IsEnabled() {
+	if !metadata.PdataUseProtoPoolingFeatureGate.IsEnabled() {
 		orig.Reset()
 		return
 	}
@@ -168,7 +169,7 @@ func (orig *Sum) UnmarshalJSON(iter *json.Iterator) {
 		case "isMonotonic", "is_monotonic":
 			orig.IsMonotonic = iter.ReadBool()
 		default:
-			iter.Skip()
+			iter.HandleUnknownField(f)
 		}
 	}
 }

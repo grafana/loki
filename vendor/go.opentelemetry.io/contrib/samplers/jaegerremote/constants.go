@@ -16,7 +16,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package jaegerremote // import "go.opentelemetry.io/contrib/samplers/jaegerremote"
+package jaegerremote
 
 import (
 	"fmt"
@@ -25,7 +25,13 @@ import (
 const (
 	// defaultSamplingServerPort is the default port to fetch sampling config from, via http.
 	defaultSamplingServerPort = 5778
+
+	defaultSamplingServerHost = "127.0.0.1"
 )
 
 // defaultSamplingServerURL is the default url to fetch sampling config from, via http.
-var defaultSamplingServerURL = fmt.Sprintf("http://127.0.0.1:%d/sampling", defaultSamplingServerPort)
+var defaultSamplingServerURL = fmt.Sprintf(
+	"http://%s:%d/sampling",
+	defaultSamplingServerHost,
+	defaultSamplingServerPort,
+)

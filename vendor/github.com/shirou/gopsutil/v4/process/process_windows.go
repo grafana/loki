@@ -6,6 +6,7 @@ package process
 import (
 	"bufio"
 	"context"
+	"encoding/binary"
 	"errors"
 	"fmt"
 	"io"
@@ -324,6 +325,9 @@ func (p *Process) NameWithContext(ctx context.Context) (string, error) {
 	if p.Pid == 0 {
 		return "System Idle Process", nil
 	}
+	if p.name != "" {
+		return p.name, nil
+	}
 	if p.Pid == 4 {
 		return "System", nil
 	}
@@ -333,7 +337,9 @@ func (p *Process) NameWithContext(ctx context.Context) (string, error) {
 		return "", fmt.Errorf("could not get Name: %w", err)
 	}
 
-	return filepath.Base(exe), nil
+	name := filepath.Base(exe)
+	p.name = name
+	return name, nil
 }
 
 func (*Process) TgidWithContext(_ context.Context) (int32, error) {
@@ -597,6 +603,8 @@ func (p *Process) NumThreadsWithContext(_ context.Context) (int32, error) {
 	if p.getPpid() == 0 {
 		p.setPpid(ppid)
 	}
+
+	p.numThreads = ret
 
 	return ret, nil
 }
@@ -900,6 +908,32 @@ func getFromSnapProcess(pid int32) (int32, int32, string, error) { //nolint:unpa
 	return 0, 0, "", fmt.Errorf("couldn't find pid: %d", pid)
 }
 
+func buildSnapProcessMap() (map[uint32]windows.ProcessEntry32, error) {
+	snap, err := windows.CreateToolhelp32Snapshot(windows.TH32CS_SNAPPROCESS, 0)
+	if err != nil {
+		return nil, err
+	}
+	defer windows.CloseHandle(snap)
+
+	var pe32 windows.ProcessEntry32
+	pe32.Size = uint32(unsafe.Sizeof(pe32))
+	if err := windows.Process32First(snap, &pe32); err != nil {
+		return nil, err
+	}
+
+	snapMap := make(map[uint32]windows.ProcessEntry32)
+	for {
+		snapMap[pe32.ProcessID] = pe32
+		if err := windows.Process32Next(snap, &pe32); err != nil {
+			if errors.Is(err, windows.ERROR_NO_MORE_FILES) {
+				break
+			}
+			return nil, err
+		}
+	}
+	return snapMap, nil
+}
+
 func ProcessesWithContext(ctx context.Context) ([]*Process, error) {
 	out := []*Process{}
 
@@ -908,11 +942,25 @@ func ProcessesWithContext(ctx context.Context) ([]*Process, error) {
 		return out, fmt.Errorf("could not get Processes %w", err)
 	}
 
+	// Note: The PID enumeration and snapshot creation are separate calls
+	// and may not be perfectly consistent due to timing.
+	snapMap, err := buildSnapProcessMap()
+	if err != nil {
+		return out, fmt.Errorf("could not build process snapshot: %w", err)
+	}
+
 	for _, pid := range pids {
 		p, err := NewProcessWithContext(ctx, pid)
 		if err != nil {
 			continue
 		}
+
+		if entry, ok := snapMap[uint32(pid)]; ok {
+			p.name = windows.UTF16ToString(entry.ExeFile[:])
+			p.setPpid(int32(entry.ParentProcessID))
+			p.numThreads = int32(entry.Threads)
+		}
+
 		out = append(out, p)
 	}
 
@@ -1157,14 +1205,82 @@ func (p *processReader) Read(buf []byte) (int, error) {
 
 func getProcessCommandLine(pid int32) (string, error) {
 	h, err := windows.OpenProcess(processQueryInformation|windows.PROCESS_VM_READ, false, uint32(pid))
-	if errors.Is(err, windows.ERROR_ACCESS_DENIED) || errors.Is(err, windows.ERROR_INVALID_PARAMETER) {
+	if err == nil {
+		defer syscall.CloseHandle(syscall.Handle(h))
+
+		cmdLine, pebErr := getProcessCommandLinePEB(h)
+		if pebErr == nil {
+			return cmdLine, nil
+		}
+
+		// PEB read failed even though the handle opened. VM_READ may
+		// have been granted but ineffective against this process's
+		// protection driver. Fall back to the native query on the same handle.
+		if cmdLine, err := getProcessCommandLineNative(h, pid); err == nil {
+			return cmdLine, nil
+		}
+		return "", pebErr
+	}
+
+	if errors.Is(err, windows.ERROR_INVALID_PARAMETER) {
 		return "", nil
 	}
-	if err != nil {
+	if !errors.Is(err, windows.ERROR_ACCESS_DENIED) {
 		return "", err
 	}
-	defer syscall.CloseHandle(syscall.Handle(h))
 
+	// fallback in case it's a genuine PPL process, where
+	// PROCESS_VM_READ itself is denied at OpenProcess time. Retry with
+	// just PROCESS_QUERY_LIMITED_INFORMATION, which PPL still grants.
+	lh, lerr := windows.OpenProcess(processQueryInformation, false, uint32(pid))
+	if lerr != nil {
+		return "", nil
+	}
+	defer syscall.CloseHandle(syscall.Handle(lh))
+	cmdLine, _ := getProcessCommandLineNative(lh, pid)
+	return cmdLine, nil
+}
+
+func getProcessCommandLineNative(handle windows.Handle, pid int32) (string, error) {
+	var returnLength uint32
+	// first call is to get the actual returnLength
+	err := windows.NtQueryInformationProcess(
+		handle,
+		windows.ProcessCommandLineInformation,
+		nil,
+		0,
+		&returnLength,
+	)
+	if err != nil &&
+		!errors.Is(err, windows.STATUS_INFO_LENGTH_MISMATCH) &&
+		!errors.Is(err, windows.STATUS_BUFFER_OVERFLOW) &&
+		!errors.Is(err, windows.STATUS_BUFFER_TOO_SMALL) {
+		return "", fmt.Errorf("querying command line size for pid %d: %w", pid, err)
+	}
+	if returnLength == 0 {
+		return "", fmt.Errorf("process %d returned zero-length command line info", pid)
+	}
+
+	// second call: actually fetch it into a correctly-sized buffer
+	buf := make([]byte, returnLength)
+	err = windows.NtQueryInformationProcess(
+		handle,
+		windows.ProcessCommandLineInformation,
+		unsafe.Pointer(&buf[0]),
+		returnLength,
+		&returnLength,
+	)
+	if err != nil {
+		return "", fmt.Errorf("reading command line for pid %d: %w", pid, err)
+	}
+	cmdLine, err := parseCommandLineInformation(buf)
+	if err != nil {
+		return "", fmt.Errorf("parsing command line for pid %d: %w", pid, err)
+	}
+	return cmdLine, nil
+}
+
+func getProcessCommandLinePEB(h windows.Handle) (string, error) {
 	procIs32Bits := is32BitProcess(h)
 
 	if procIs32Bits {
@@ -1210,4 +1326,20 @@ func convertUTF16ToString(src []byte) string {
 		srcIdx += 2
 	}
 	return syscall.UTF16ToString(codePoints)
+}
+
+func parseCommandLineInformation(buf []byte) (string, error) {
+	if len(buf) < 2 {
+		return "", errors.New("command line buffer too small to read length")
+	}
+	length := binary.LittleEndian.Uint16(buf[0:2])
+	if length == 0 {
+		return "", nil
+	}
+	strOffset := int(unsafe.Sizeof(windows.NTUnicodeString{}))
+	strEnd := strOffset + int(length)
+	if strEnd > len(buf) {
+		return "", errors.New("command line length exceeds buffer size")
+	}
+	return convertUTF16ToString(buf[strOffset:strEnd]), nil
 }

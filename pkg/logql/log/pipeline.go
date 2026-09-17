@@ -2,11 +2,9 @@ package log
 
 import (
 	"context"
+	"unsafe"
 
 	"github.com/prometheus/prometheus/model/labels"
-
-	"sync"
-	"unsafe"
 )
 
 // NoopStage is a stage that doesn't process a log line.
@@ -33,8 +31,33 @@ type StreamPipeline interface {
 // A Stage implementation should never mutate the line passed, but instead either
 // return the line unchanged or allocate a new line.
 type Stage interface {
+	// Process runs the stage on a single log line at timestamp ts. It reads and may modify the line's
+	// labels through lbs: it can add, remove, or replace a label, or set __error__. It returns the
+	// resulting line and whether the line passes the stage. A false result means the line is filtered
+	// out, and the returned line is then unspecified.
 	Process(ts int64, line []byte, lbs *LabelsBuilder) ([]byte, bool)
+
 	RequiredLabelNames() []string
+
+	// Hints reports static properties of the stage, so a caller can reason about a whole pipeline
+	// without running it.
+	Hints() StageHints
+}
+
+// StageHints holds static properties of a Stage, or of a reduced pipeline of stages.
+//
+// Every field must be mergeable between two hints.
+type StageHints struct {
+	// CanModifyLabels reports whether the stage can change a line's output labels: add, remove, or
+	// replace a label, or set __error__.
+	CanModifyLabels bool
+}
+
+// Merge combines two StageHints into one.
+func (h StageHints) Merge(other StageHints) StageHints {
+	return StageHints{
+		CanModifyLabels: h.CanModifyLabels || other.CanModifyLabels,
+	}
 }
 
 // PipelineWrapper takes a pipeline, wraps it is some desired functionality and
@@ -51,38 +74,29 @@ func NewNoopPipeline() Pipeline {
 	}
 }
 
+// noopPipeline is a Pipeline that does not apply any stages. It caches a
+// noopStreamPipeline per unique labels hash it has seen.
+//
+// noopPipeline is not safe for concurrent use by multiple goroutines.
+// Callers that share a noopPipeline across goroutines must serialize
+// access externally — see pkg/ingester/tailer.go for an example.
 type noopPipeline struct {
 	cache       map[uint64]*noopStreamPipeline
 	baseBuilder *BaseLabelsBuilder
-	mu          sync.RWMutex
 }
 
 func (n *noopPipeline) ForStream(labels labels.Labels) StreamPipeline {
 	h := n.baseBuilder.Hash(labels)
-
-	n.mu.RLock()
 	if cached, ok := n.cache[h]; ok {
-		n.mu.RUnlock()
 		return cached
 	}
-	n.mu.RUnlock()
-
 	sp := &noopStreamPipeline{n.baseBuilder.ForLabels(labels, h)}
-
-	n.mu.Lock()
-	defer n.mu.Unlock()
-
 	n.cache[h] = sp
 	return sp
 }
 
 func (n *noopPipeline) Reset() {
-	n.mu.Lock()
-	defer n.mu.Unlock()
-
-	for k := range n.cache {
-		delete(n.cache, k)
-	}
+	clear(n.cache)
 }
 
 // IsNoopPipeline tells if a pipeline is a Noop.
@@ -117,15 +131,37 @@ type noopStage struct{}
 func (noopStage) Process(_ int64, line []byte, _ *LabelsBuilder) ([]byte, bool) {
 	return line, true
 }
+
+// Hints implements Stage.
+func (noopStage) Hints() StageHints {
+	// It does nothing, so it changes no labels.
+	return StageHints{CanModifyLabels: false}
+}
+
 func (noopStage) RequiredLabelNames() []string { return []string{} }
 
 type StageFunc struct {
 	process        func(ts int64, line []byte, lbs *LabelsBuilder) ([]byte, bool)
 	requiredLabels []string
+	hints          StageHints
+}
+
+// NewStageFunc builds a StageFunc from its required label names, its hints, and its process function.
+func NewStageFunc(requiredLabels []string, hints StageHints, process func(ts int64, line []byte, lbs *LabelsBuilder) ([]byte, bool)) StageFunc {
+	return StageFunc{
+		process:        process,
+		requiredLabels: requiredLabels,
+		hints:          hints,
+	}
 }
 
 func (fn StageFunc) Process(ts int64, line []byte, lbs *LabelsBuilder) ([]byte, bool) {
 	return fn.process(ts, line, lbs)
+}
+
+// Hints implements Stage.
+func (fn StageFunc) Hints() StageHints {
+	return fn.hints
 }
 
 func (fn StageFunc) RequiredLabelNames() []string {
@@ -135,13 +171,17 @@ func (fn StageFunc) RequiredLabelNames() []string {
 	return fn.requiredLabels
 }
 
-// pipeline is a combinations of multiple stages.
-// It can also be reduced into a single stage for convenience.
+// pipeline is a combination of multiple stages. It caches a
+// StreamPipeline per unique labels hash it has seen. It can also be
+// reduced into a single stage for convenience.
+//
+// pipeline is not safe for concurrent use by multiple goroutines.
+// Callers that share a pipeline across goroutines must serialize
+// access externally — see pkg/ingester/tailer.go for an example.
 type pipeline struct {
 	AnalyzablePipeline
 	stages      []Stage
 	baseBuilder *BaseLabelsBuilder
-	mu          sync.RWMutex
 
 	streamPipelines map[uint64]StreamPipeline
 }
@@ -186,31 +226,17 @@ func NewStreamPipeline(stages []Stage, labelsBuilder *LabelsBuilder) StreamPipel
 
 func (p *pipeline) ForStream(labels labels.Labels) StreamPipeline {
 	hash := p.baseBuilder.Hash(labels)
-
-	p.mu.RLock()
 	if res, ok := p.streamPipelines[hash]; ok {
-		p.mu.RUnlock()
 		return res
 	}
-	p.mu.RUnlock()
-
 	res := NewStreamPipeline(p.stages, p.baseBuilder.ForLabels(labels, hash))
-
-	p.mu.Lock()
-	defer p.mu.Unlock()
-
 	p.streamPipelines[hash] = res
 	return res
 }
 
 func (p *pipeline) Reset() {
-	p.mu.Lock()
-	defer p.mu.Unlock()
-
 	p.baseBuilder.Reset()
-	for k := range p.streamPipelines {
-		delete(p.streamPipelines, k)
-	}
+	clear(p.streamPipelines)
 }
 
 func (p *streamPipeline) ReferencedStructuredMetadata() bool {
@@ -353,22 +379,21 @@ func ReduceStages(stages []Stage) Stage {
 		return NoopStage
 	}
 	var requiredLabelNames []string
+	var hints StageHints
 	for _, s := range stages {
 		requiredLabelNames = append(requiredLabelNames, s.RequiredLabelNames()...)
+		hints = hints.Merge(s.Hints())
 	}
-	return StageFunc{
-		process: func(ts int64, line []byte, lbs *LabelsBuilder) ([]byte, bool) {
-			var ok bool
-			for _, p := range stages {
-				line, ok = p.Process(ts, line, lbs)
-				if !ok {
-					return nil, false
-				}
+	return NewStageFunc(requiredLabelNames, hints, func(ts int64, line []byte, lbs *LabelsBuilder) ([]byte, bool) {
+		var ok bool
+		for _, p := range stages {
+			line, ok = p.Process(ts, line, lbs)
+			if !ok {
+				return nil, false
 			}
-			return line, true
-		},
-		requiredLabels: requiredLabelNames,
-	}
+		}
+		return line, true
+	})
 }
 
 func unsafeGetBytes(s string) []byte {

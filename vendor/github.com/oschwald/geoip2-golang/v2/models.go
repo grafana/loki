@@ -1,5 +1,7 @@
 package geoip2
 
+//go:generate go tool maxminddb-gen $GOFILE
+
 import (
 	"fmt"
 	"net/netip"
@@ -14,12 +16,41 @@ type Date struct {
 	time.Time
 }
 
+const maxDateSize = 64
+
+// UnmarshalMaxMindDBCursor implements the mmdbdata.CursorUnmarshaler interface.
+func (d *Date) UnmarshalMaxMindDBCursor(
+	cursor mmdbdata.Cursor,
+) (mmdbdata.Cursor, error) {
+	stringKind := mmdbdata.NewKindSet(mmdbdata.KindString)
+	if err := cursor.CheckMaxSize(stringKind, maxDateSize); err != nil {
+		return mmdbdata.Cursor{}, err
+	}
+	s, next, err := cursor.ReadString()
+	if err != nil {
+		return mmdbdata.Cursor{}, err
+	}
+	return next, d.set(s)
+}
+
 // UnmarshalMaxMindDB implements the mmdbdata.Unmarshaler interface.
 func (d *Date) UnmarshalMaxMindDB(decoder *mmdbdata.Decoder) error {
-	s, err := decoder.ReadString()
+	next, err := d.UnmarshalMaxMindDBCursor(decoder.Cursor())
 	if err != nil {
 		return err
 	}
+	return decoder.Advance(next)
+}
+
+// MarshalJSON implements json.Marshaler to serialize as ISO date string.
+func (d Date) MarshalJSON() ([]byte, error) { //nolint:unparam // error required by json.Marshaler
+	if d.IsZero() {
+		return []byte("null"), nil
+	}
+	return []byte(`"` + d.Format(time.DateOnly) + `"`), nil
+}
+
+func (d *Date) set(s string) error {
 	if s == "" {
 		return nil
 	}
@@ -31,32 +62,24 @@ func (d *Date) UnmarshalMaxMindDB(decoder *mmdbdata.Decoder) error {
 	return nil
 }
 
-// MarshalJSON implements json.Marshaler to serialize as ISO date string.
-func (d Date) MarshalJSON() ([]byte, error) { //nolint:unparam // error required by json.Marshaler
-	if d.IsZero() {
-		return []byte("null"), nil
-	}
-	return []byte(`"` + d.Format(time.DateOnly) + `"`), nil
-}
-
 // Names contains localized names for geographic entities.
 type Names struct {
 	// German localized name
-	German string `json:"de,omitzero"    maxminddb:"de"`
+	German string `json:"de,omitzero" maxminddb:"de,maxsize:1024"`
 	// English localized name
-	English string `json:"en,omitzero"    maxminddb:"en"`
+	English string `json:"en,omitzero" maxminddb:"en,maxsize:1024"`
 	// Spanish localized name
-	Spanish string `json:"es,omitzero"    maxminddb:"es"`
+	Spanish string `json:"es,omitzero" maxminddb:"es,maxsize:1024"`
 	// French localized name
-	French string `json:"fr,omitzero"    maxminddb:"fr"`
+	French string `json:"fr,omitzero" maxminddb:"fr,maxsize:1024"`
 	// Japanese localized name
-	Japanese string `json:"ja,omitzero"    maxminddb:"ja"`
+	Japanese string `json:"ja,omitzero" maxminddb:"ja,maxsize:1024"`
 	// BrazilianPortuguese localized name (pt-BR)
-	BrazilianPortuguese string `json:"pt-BR,omitzero" maxminddb:"pt-BR"` //nolint:tagliatelle,lll // pt-BR matches MMDB format
+	BrazilianPortuguese string `json:"pt-BR,omitzero" maxminddb:"pt-BR,maxsize:1024"` //nolint:tagliatelle,lll // pt-BR matches MMDB format
 	// Russian localized name
-	Russian string `json:"ru,omitzero"    maxminddb:"ru"`
+	Russian string `json:"ru,omitzero" maxminddb:"ru,maxsize:1024"`
 	// SimplifiedChinese localized name (zh-CN)
-	SimplifiedChinese string `json:"zh-CN,omitzero" maxminddb:"zh-CN"` //nolint:tagliatelle // zh-CN matches MMDB format
+	SimplifiedChinese string `json:"zh-CN,omitzero" maxminddb:"zh-CN,maxsize:1024"` //nolint:tagliatelle // zh-CN matches MMDB format
 }
 
 var (
@@ -87,10 +110,10 @@ func (n Names) HasData() bool {
 // Continent contains data for the continent record associated with an IP address.
 type Continent struct {
 	// Names contains localized names for the continent
-	Names Names `json:"names,omitzero"      maxminddb:"names"`
+	Names Names `json:"names,omitzero" maxminddb:"names"`
 	// Code is a two character continent code like "NA" (North America) or
 	// "OC" (Oceania)
-	Code string `json:"code,omitzero"       maxminddb:"code"`
+	Code string `json:"code,omitzero" maxminddb:"code,maxsize:16"`
 	// GeoNameID for the continent
 	GeoNameID uint `json:"geoname_id,omitzero" maxminddb:"geoname_id"`
 }
@@ -106,19 +129,19 @@ type Location struct {
 	// the IP address. This value is not precise and should not be used to
 	// identify a particular address or household. Will be nil if not present
 	// in the database.
-	Latitude *float64 `json:"latitude,omitzero"        maxminddb:"latitude"`
+	Latitude *float64 `json:"latitude,omitzero" maxminddb:"latitude"`
 	// Longitude is the approximate longitude of the location associated with
 	// the IP address. This value is not precise and should not be used to
 	// identify a particular address or household. Will be nil if not present
 	// in the database.
-	Longitude *float64 `json:"longitude,omitzero"       maxminddb:"longitude"`
+	Longitude *float64 `json:"longitude,omitzero" maxminddb:"longitude"`
 	// TimeZone is the time zone associated with location, as specified by
 	// the IANA Time Zone Database (e.g., "America/New_York")
-	TimeZone string `json:"time_zone,omitzero"       maxminddb:"time_zone"`
+	TimeZone string `json:"time_zone,omitzero" maxminddb:"time_zone,maxsize:256"`
 	// MetroCode is a metro code for targeting advertisements.
 	//
 	// Deprecated: Metro codes are no longer maintained and should not be used.
-	MetroCode uint `json:"metro_code,omitzero"      maxminddb:"metro_code"`
+	MetroCode uint `json:"metro_code,omitzero" maxminddb:"metro_code"`
 	// AccuracyRadius is the approximate accuracy radius in kilometers around
 	// the latitude and longitude. This is the radius where we have a 67%
 	// confidence that the device using the IP address resides within the
@@ -141,15 +164,15 @@ func (l Location) HasCoordinates() bool {
 // by something like a military base or embassy.
 type RepresentedCountry struct {
 	// Names contains localized names for the represented country
-	Names Names `json:"names,omitzero"                maxminddb:"names"`
+	Names Names `json:"names,omitzero" maxminddb:"names"`
 	// ISOCode is the two-character ISO 3166-1 alpha code for the represented
 	// country. See https://en.wikipedia.org/wiki/ISO_3166-1_alpha-2
-	ISOCode string `json:"iso_code,omitzero"             maxminddb:"iso_code"`
+	ISOCode string `json:"iso_code,omitzero" maxminddb:"iso_code,maxsize:16"`
 	// Type is a string indicating the type of entity that is representing
 	// the country. Currently this is only "military" but may expand in the future.
-	Type string `json:"type,omitzero"                 maxminddb:"type"`
+	Type string `json:"type,omitzero" maxminddb:"type,maxsize:128"`
 	// GeoNameID for the represented country
-	GeoNameID uint `json:"geoname_id,omitzero"           maxminddb:"geoname_id"`
+	GeoNameID uint `json:"geoname_id,omitzero" maxminddb:"geoname_id"`
 	// IsInEuropeanUnion is true if the represented country is a member
 	// state of the European Union
 	IsInEuropeanUnion bool `json:"is_in_european_union,omitzero" maxminddb:"is_in_european_union"`
@@ -165,7 +188,7 @@ func (r RepresentedCountry) HasData() bool {
 // EnterpriseCityRecord contains city data for Enterprise database records.
 type EnterpriseCityRecord struct {
 	// Names contains localized names for the city
-	Names Names `json:"names,omitzero"      maxminddb:"names"`
+	Names Names `json:"names,omitzero" maxminddb:"names"`
 	// GeoNameID for the city
 	GeoNameID uint `json:"geoname_id,omitzero" maxminddb:"geoname_id"`
 	// Confidence is a value from 0-100 indicating MaxMind's confidence that
@@ -183,7 +206,7 @@ type EnterprisePostal struct {
 	// Code is the postal code of the location. Postal codes are not
 	// available for all countries.
 	// In some countries, this will only contain part of the postal code.
-	Code string `json:"code,omitzero"       maxminddb:"code"`
+	Code string `json:"code,omitzero" maxminddb:"code,maxsize:128"`
 	// Confidence is a value from 0-100 indicating MaxMind's confidence that
 	// the postal code is correct
 	Confidence uint8 `json:"confidence,omitzero" maxminddb:"confidence"`
@@ -197,11 +220,11 @@ func (p EnterprisePostal) HasData() bool {
 // EnterpriseSubdivision contains subdivision data for Enterprise database records.
 type EnterpriseSubdivision struct {
 	// Names contains localized names for the subdivision
-	Names Names `json:"names,omitzero"      maxminddb:"names"`
+	Names Names `json:"names,omitzero" maxminddb:"names"`
 	// ISOCode is a string up to three characters long containing the
 	// subdivision portion of the ISO 3166-2 code.
 	// See https://en.wikipedia.org/wiki/ISO_3166-2
-	ISOCode string `json:"iso_code,omitzero"   maxminddb:"iso_code"`
+	ISOCode string `json:"iso_code,omitzero" maxminddb:"iso_code,maxsize:16"`
 	// GeoNameID for the subdivision
 	GeoNameID uint `json:"geoname_id,omitzero" maxminddb:"geoname_id"`
 	// Confidence is a value from 0-100 indicating MaxMind's confidence that
@@ -217,15 +240,15 @@ func (s EnterpriseSubdivision) HasData() bool {
 // EnterpriseCountryRecord contains country data for Enterprise database records.
 type EnterpriseCountryRecord struct {
 	// Names contains localized names for the country
-	Names Names `json:"names,omitzero"                maxminddb:"names"`
+	Names Names `json:"names,omitzero" maxminddb:"names"`
 	// ISOCode is the two-character ISO 3166-1 alpha code for the country.
 	// See https://en.wikipedia.org/wiki/ISO_3166-1_alpha-2
-	ISOCode string `json:"iso_code,omitzero"             maxminddb:"iso_code"`
+	ISOCode string `json:"iso_code,omitzero" maxminddb:"iso_code,maxsize:16"`
 	// GeoNameID for the country
-	GeoNameID uint `json:"geoname_id,omitzero"           maxminddb:"geoname_id"`
+	GeoNameID uint `json:"geoname_id,omitzero" maxminddb:"geoname_id"`
 	// Confidence is a value from 0-100 indicating MaxMind's confidence that
 	// the country is correct
-	Confidence uint8 `json:"confidence,omitzero"           maxminddb:"confidence"`
+	Confidence uint8 `json:"confidence,omitzero" maxminddb:"confidence"`
 	// IsInEuropeanUnion is true if the country is a member state of the
 	// European Union
 	IsInEuropeanUnion bool `json:"is_in_european_union,omitzero" maxminddb:"is_in_european_union"`
@@ -240,48 +263,48 @@ func (c EnterpriseCountryRecord) HasData() bool {
 type EnterpriseTraits struct {
 	// Network is the largest network prefix where all fields besides
 	// IPAddress have the same value.
-	Network netip.Prefix `json:"network,omitzero"`
+	Network netip.Prefix `json:"network,omitzero" maxminddb:"-"`
 	// IPAddress is the IP address used during the lookup
-	IPAddress netip.Addr `json:"ip_address,omitzero"`
+	IPAddress netip.Addr `json:"ip_address,omitzero" maxminddb:"-"`
 	// AutonomousSystemOrganization for the registered ASN
-	AutonomousSystemOrganization string `json:"autonomous_system_organization,omitzero" maxminddb:"autonomous_system_organization"` //nolint:lll
+	AutonomousSystemOrganization string `json:"autonomous_system_organization,omitzero" maxminddb:"autonomous_system_organization,maxsize:4096"` //nolint:lll
 	// ConnectionType indicates the connection type. May be Dialup,
 	// Cable/DSL, Corporate, Cellular, or Satellite
-	ConnectionType string `json:"connection_type,omitzero"                maxminddb:"connection_type"`
+	ConnectionType string `json:"connection_type,omitzero" maxminddb:"connection_type,maxsize:128"`
 	// Domain is the second level domain associated with the IP address
 	// (e.g., "example.com")
-	Domain string `json:"domain,omitzero"                         maxminddb:"domain"`
+	Domain string `json:"domain,omitzero" maxminddb:"domain,maxsize:512"`
 	// ISP is the name of the ISP associated with the IP address
-	ISP string `json:"isp,omitzero"                            maxminddb:"isp"`
+	ISP string `json:"isp,omitzero" maxminddb:"isp,maxsize:4096"`
 	// MobileCountryCode is the mobile country code (MCC) associated with
 	// the IP address and ISP.
 	// See https://en.wikipedia.org/wiki/Mobile_country_code
-	MobileCountryCode string `json:"mobile_country_code,omitzero"            maxminddb:"mobile_country_code"`
+	MobileCountryCode string `json:"mobile_country_code,omitzero" maxminddb:"mobile_country_code,maxsize:16"`
 	// MobileNetworkCode is the mobile network code (MNC) associated with
 	// the IP address and ISP.
 	// See https://en.wikipedia.org/wiki/Mobile_network_code
-	MobileNetworkCode string `json:"mobile_network_code,omitzero"            maxminddb:"mobile_network_code"`
+	MobileNetworkCode string `json:"mobile_network_code,omitzero" maxminddb:"mobile_network_code,maxsize:16"`
 	// Organization is the name of the organization associated with the IP
 	// address
-	Organization string `json:"organization,omitzero"                   maxminddb:"organization"`
+	Organization string `json:"organization,omitzero" maxminddb:"organization,maxsize:4096"`
 	// UserType indicates the user type associated with the IP address
 	// (business, cafe, cellular, college, etc.)
-	UserType string `json:"user_type,omitzero"                      maxminddb:"user_type"`
+	UserType string `json:"user_type,omitzero" maxminddb:"user_type,maxsize:128"`
 	// StaticIPScore was added in error and has never been populated.
 	//
 	// Deprecated: This field will be removed in the next major release.
-	StaticIPScore float64 `json:"static_ip_score,omitzero"                maxminddb:"static_ip_score"`
+	StaticIPScore float64 `json:"static_ip_score,omitzero" maxminddb:"static_ip_score"`
 	// AutonomousSystemNumber for the IP address
-	AutonomousSystemNumber uint `json:"autonomous_system_number,omitzero"       maxminddb:"autonomous_system_number"`
+	AutonomousSystemNumber uint `json:"autonomous_system_number,omitzero" maxminddb:"autonomous_system_number"`
 	// IsAnycast is true if the IP address belongs to an anycast network.
 	// See https://en.wikipedia.org/wiki/Anycast
-	IsAnycast bool `json:"is_anycast,omitzero"                     maxminddb:"is_anycast"`
+	IsAnycast bool `json:"is_anycast,omitzero" maxminddb:"is_anycast"`
 	// IsLegitimateProxy is true if MaxMind believes this IP address to be a
 	// legitimate proxy, such as an internal VPN used by a corporation.
 	//
 	// Deprecated: MaxMind has deprecated this field. It will be removed in
 	// the next major release.
-	IsLegitimateProxy bool `json:"is_legitimate_proxy,omitzero"            maxminddb:"is_legitimate_proxy"`
+	IsLegitimateProxy bool `json:"is_legitimate_proxy,omitzero" maxminddb:"is_legitimate_proxy"`
 }
 
 // HasData returns true if the EnterpriseTraits has any data (excluding Network and IPAddress).
@@ -297,7 +320,7 @@ func (t EnterpriseTraits) HasData() bool {
 // CityRecord contains city data for City database records.
 type CityRecord struct {
 	// Names contains localized names for the city
-	Names Names `json:"names,omitzero"      maxminddb:"names"`
+	Names Names `json:"names,omitzero" maxminddb:"names"`
 	// GeoNameID for the city
 	GeoNameID uint `json:"geoname_id,omitzero" maxminddb:"geoname_id"`
 }
@@ -312,7 +335,7 @@ type CityPostal struct {
 	// Code is the postal code of the location. Postal codes are not
 	// available for all countries.
 	// In some countries, this will only contain part of the postal code.
-	Code string `json:"code,omitzero" maxminddb:"code"`
+	Code string `json:"code,omitzero" maxminddb:"code,maxsize:128"`
 }
 
 // HasData returns true if the CityPostal has any data.
@@ -323,7 +346,7 @@ func (p CityPostal) HasData() bool {
 // CitySubdivision contains subdivision data for City database records.
 type CitySubdivision struct {
 	Names     Names  `json:"names,omitzero"      maxminddb:"names"`
-	ISOCode   string `json:"iso_code,omitzero"   maxminddb:"iso_code"`
+	ISOCode   string `json:"iso_code,omitzero"   maxminddb:"iso_code,maxsize:16"`
 	GeoNameID uint   `json:"geoname_id,omitzero" maxminddb:"geoname_id"`
 }
 
@@ -335,12 +358,12 @@ func (s CitySubdivision) HasData() bool {
 // CountryRecord contains country data for City and Country database records.
 type CountryRecord struct {
 	// Names contains localized names for the country
-	Names Names `json:"names,omitzero"                maxminddb:"names"`
+	Names Names `json:"names,omitzero" maxminddb:"names"`
 	// ISOCode is the two-character ISO 3166-1 alpha code for the country.
 	// See https://en.wikipedia.org/wiki/ISO_3166-1_alpha-2
-	ISOCode string `json:"iso_code,omitzero"             maxminddb:"iso_code"`
+	ISOCode string `json:"iso_code,omitzero" maxminddb:"iso_code,maxsize:16"`
 	// GeoNameID for the country
-	GeoNameID uint `json:"geoname_id,omitzero"           maxminddb:"geoname_id"`
+	GeoNameID uint `json:"geoname_id,omitzero" maxminddb:"geoname_id"`
 	// IsInEuropeanUnion is true if the country is a member state of the
 	// European Union
 	IsInEuropeanUnion bool `json:"is_in_european_union,omitzero" maxminddb:"is_in_european_union"`
@@ -354,10 +377,10 @@ func (c CountryRecord) HasData() bool {
 // CityTraits contains traits data for City database records.
 type CityTraits struct {
 	// IPAddress is the IP address used during the lookup
-	IPAddress netip.Addr `json:"ip_address,omitzero"`
+	IPAddress netip.Addr `json:"ip_address,omitzero" maxminddb:"-"`
 	// Network is the network prefix for this record. This is the largest
 	// network where all of the fields besides IPAddress have the same value.
-	Network netip.Prefix `json:"network,omitzero"`
+	Network netip.Prefix `json:"network,omitzero" maxminddb:"-"`
 	// IsAnycast is true if the IP address belongs to an anycast network.
 	// See https://en.wikipedia.org/wiki/Anycast
 	IsAnycast bool `json:"is_anycast,omitzero" maxminddb:"is_anycast"`
@@ -374,10 +397,10 @@ func (t CityTraits) HasData() bool {
 // CountryTraits contains traits data for Country database records.
 type CountryTraits struct {
 	// IPAddress is the IP address used during the lookup
-	IPAddress netip.Addr `json:"ip_address,omitzero"`
+	IPAddress netip.Addr `json:"ip_address,omitzero" maxminddb:"-"`
 	// Network is the largest network prefix where all fields besides
 	// IPAddress have the same value.
-	Network netip.Prefix `json:"network,omitzero"`
+	Network netip.Prefix `json:"network,omitzero" maxminddb:"-"`
 	// IsAnycast is true if the IP address belongs to an anycast network.
 	// See https://en.wikipedia.org/wiki/Anycast
 	IsAnycast bool `json:"is_anycast,omitzero" maxminddb:"is_anycast"`
@@ -396,14 +419,14 @@ func (t CountryTraits) HasData() bool {
 type Enterprise struct {
 	// Continent contains data for the continent record associated with the IP
 	// address.
-	Continent Continent `json:"continent,omitzero"           maxminddb:"continent"`
+	Continent Continent `json:"continent,omitzero" maxminddb:"continent"`
 	// Subdivisions contains data for the subdivisions associated with the IP
 	// address. The subdivisions array is ordered from largest to smallest. For
 	// instance, the response for Oxford in the United Kingdom would have England
 	// as the first element and Oxfordshire as the second element.
-	Subdivisions []EnterpriseSubdivision `json:"subdivisions,omitzero"        maxminddb:"subdivisions"`
+	Subdivisions []EnterpriseSubdivision `json:"subdivisions,omitzero" maxminddb:"subdivisions,maxsize:32"`
 	// Postal contains data for the postal record associated with the IP address.
-	Postal EnterprisePostal `json:"postal,omitzero"              maxminddb:"postal"`
+	Postal EnterprisePostal `json:"postal,omitzero" maxminddb:"postal"`
 	// RepresentedCountry contains data for the represented country associated
 	// with the IP address. The represented country is the country represented
 	// by something like a military base or embassy.
@@ -411,18 +434,18 @@ type Enterprise struct {
 	// Country contains data for the country record associated with the IP
 	// address. This record represents the country where MaxMind believes the IP
 	// is located.
-	Country EnterpriseCountryRecord `json:"country,omitzero"             maxminddb:"country"`
+	Country EnterpriseCountryRecord `json:"country,omitzero" maxminddb:"country"`
 	// RegisteredCountry contains data for the registered country associated
 	// with the IP address. This record represents the country where the ISP has
 	// registered the IP block and may differ from the user's country.
-	RegisteredCountry CountryRecord `json:"registered_country,omitzero"  maxminddb:"registered_country"`
+	RegisteredCountry CountryRecord `json:"registered_country,omitzero" maxminddb:"registered_country"`
 	// City contains data for the city record associated with the IP address.
-	City EnterpriseCityRecord `json:"city,omitzero"                maxminddb:"city"`
+	City EnterpriseCityRecord `json:"city,omitzero" maxminddb:"city"`
 	// Location contains data for the location record associated with the IP
 	// address
-	Location Location `json:"location,omitzero"            maxminddb:"location"`
+	Location Location `json:"location,omitzero" maxminddb:"location"`
 	// Traits contains various traits associated with the IP address
-	Traits EnterpriseTraits `json:"traits,omitzero"              maxminddb:"traits"`
+	Traits EnterpriseTraits `json:"traits,omitzero" maxminddb:"traits"`
 }
 
 // HasData returns true if any GeoIP data was found for the IP in the Enterprise database.
@@ -447,18 +470,18 @@ func (e Enterprise) hasSubdivisionsData() bool {
 // databases.
 type City struct {
 	// Traits contains various traits associated with the IP address
-	Traits CityTraits `json:"traits,omitzero"              maxminddb:"traits"`
+	Traits CityTraits `json:"traits,omitzero" maxminddb:"traits"`
 	// Postal contains data for the postal record associated with the IP address
-	Postal CityPostal `json:"postal,omitzero"              maxminddb:"postal"`
+	Postal CityPostal `json:"postal,omitzero" maxminddb:"postal"`
 	// Continent contains data for the continent record associated with the IP address
-	Continent Continent `json:"continent,omitzero"           maxminddb:"continent"`
+	Continent Continent `json:"continent,omitzero" maxminddb:"continent"`
 	// City contains data for the city record associated with the IP address
-	City CityRecord `json:"city,omitzero"                maxminddb:"city"`
+	City CityRecord `json:"city,omitzero" maxminddb:"city"`
 	// Subdivisions contains data for the subdivisions associated with the IP
 	// address. The subdivisions array is ordered from largest to smallest. For
 	// instance, the response for Oxford in the United Kingdom would have England
 	// as the first element and Oxfordshire as the second element.
-	Subdivisions []CitySubdivision `json:"subdivisions,omitzero"        maxminddb:"subdivisions"`
+	Subdivisions []CitySubdivision `json:"subdivisions,omitzero" maxminddb:"subdivisions,maxsize:32"`
 	// RepresentedCountry contains data for the represented country associated
 	// with the IP address. The represented country is the country represented
 	// by something like a military base or embassy.
@@ -466,14 +489,14 @@ type City struct {
 	// Country contains data for the country record associated with the IP
 	// address. This record represents the country where MaxMind believes the IP
 	// is located.
-	Country CountryRecord `json:"country,omitzero"             maxminddb:"country"`
+	Country CountryRecord `json:"country,omitzero" maxminddb:"country"`
 	// RegisteredCountry contains data for the registered country associated
 	// with the IP address. This record represents the country where the ISP has
 	// registered the IP block and may differ from the user's country.
-	RegisteredCountry CountryRecord `json:"registered_country,omitzero"  maxminddb:"registered_country"`
+	RegisteredCountry CountryRecord `json:"registered_country,omitzero" maxminddb:"registered_country"`
 	// Location contains data for the location record associated with the IP
 	// address
-	Location Location `json:"location,omitzero"            maxminddb:"location"`
+	Location Location `json:"location,omitzero" maxminddb:"location"`
 }
 
 // HasData returns true if any GeoIP data was found for the IP in the City database.
@@ -497,9 +520,9 @@ func (c City) hasSubdivisionsData() bool {
 // Country databases.
 type Country struct {
 	// Traits contains various traits associated with the IP address
-	Traits CountryTraits `json:"traits,omitzero"              maxminddb:"traits"`
+	Traits CountryTraits `json:"traits,omitzero" maxminddb:"traits"`
 	// Continent contains data for the continent record associated with the IP address
-	Continent Continent `json:"continent,omitzero"           maxminddb:"continent"`
+	Continent Continent `json:"continent,omitzero" maxminddb:"continent"`
 	// RepresentedCountry contains data for the represented country associated
 	// with the IP address. The represented country is the country represented
 	// by something like a military base or embassy.
@@ -507,11 +530,11 @@ type Country struct {
 	// Country contains data for the country record associated with the IP
 	// address. This record represents the country where MaxMind believes the IP
 	// is located.
-	Country CountryRecord `json:"country,omitzero"             maxminddb:"country"`
+	Country CountryRecord `json:"country,omitzero" maxminddb:"country"`
 	// RegisteredCountry contains data for the registered country associated
 	// with the IP address. This record represents the country where the ISP has
 	// registered the IP block and may differ from the user's country.
-	RegisteredCountry CountryRecord `json:"registered_country,omitzero"  maxminddb:"registered_country"`
+	RegisteredCountry CountryRecord `json:"registered_country,omitzero" maxminddb:"registered_country"`
 }
 
 // HasData returns true if any GeoIP data was found for the IP in the Country database.
@@ -525,27 +548,27 @@ func (c Country) HasData() bool {
 // Anonymous IP database.
 type AnonymousIP struct {
 	// IPAddress is the IP address used during the lookup
-	IPAddress netip.Addr `json:"ip_address,omitzero"`
+	IPAddress netip.Addr `json:"ip_address,omitzero" maxminddb:"-"`
 	// Network is the largest network prefix where all fields besides
 	// IPAddress have the same value.
-	Network netip.Prefix `json:"network,omitzero"`
+	Network netip.Prefix `json:"network,omitzero" maxminddb:"-"`
 	// IsAnonymous is true if the IP address belongs to any sort of anonymous network.
-	IsAnonymous bool `json:"is_anonymous,omitzero"         maxminddb:"is_anonymous"`
+	IsAnonymous bool `json:"is_anonymous,omitzero" maxminddb:"is_anonymous"`
 	// IsAnonymousVPN is true if the IP address is registered to an anonymous
 	// VPN provider. If a VPN provider does not register subnets under names
 	// associated with them, we will likely only flag their IP ranges using the
 	// IsHostingProvider attribute.
-	IsAnonymousVPN bool `json:"is_anonymous_vpn,omitzero"     maxminddb:"is_anonymous_vpn"`
+	IsAnonymousVPN bool `json:"is_anonymous_vpn,omitzero" maxminddb:"is_anonymous_vpn"`
 	// IsHostingProvider is true if the IP address belongs to a hosting or VPN provider
 	// (see description of IsAnonymousVPN attribute).
-	IsHostingProvider bool `json:"is_hosting_provider,omitzero"  maxminddb:"is_hosting_provider"`
+	IsHostingProvider bool `json:"is_hosting_provider,omitzero" maxminddb:"is_hosting_provider"`
 	// IsPublicProxy is true if the IP address belongs to a public proxy.
-	IsPublicProxy bool `json:"is_public_proxy,omitzero"      maxminddb:"is_public_proxy"`
+	IsPublicProxy bool `json:"is_public_proxy,omitzero" maxminddb:"is_public_proxy"`
 	// IsResidentialProxy is true if the IP address is on a suspected
 	// anonymizing network and belongs to a residential ISP.
 	IsResidentialProxy bool `json:"is_residential_proxy,omitzero" maxminddb:"is_residential_proxy"`
 	// IsTorExitNode is true if the IP address is a Tor exit node.
-	IsTorExitNode bool `json:"is_tor_exit_node,omitzero"     maxminddb:"is_tor_exit_node"`
+	IsTorExitNode bool `json:"is_tor_exit_node,omitzero" maxminddb:"is_tor_exit_node"`
 }
 
 // HasData returns true if any data was found for the IP in the AnonymousIP database.
@@ -560,35 +583,35 @@ func (a AnonymousIP) HasData() bool {
 // provider identification, and temporal tracking.
 type AnonymousPlus struct {
 	// IPAddress is the IP address used during the lookup
-	IPAddress netip.Addr `json:"ip_address,omitzero"`
+	IPAddress netip.Addr `json:"ip_address,omitzero" maxminddb:"-"`
 	// Network is the largest network prefix where all fields besides
 	// IPAddress have the same value.
-	Network netip.Prefix `json:"network,omitzero"`
+	Network netip.Prefix `json:"network,omitzero" maxminddb:"-"`
 	// NetworkLastSeen is the last day the network was sighted in anonymized
 	// network analysis.
-	NetworkLastSeen Date `json:"network_last_seen,omitzero"     maxminddb:"network_last_seen"`
+	NetworkLastSeen Date `json:"network_last_seen,omitzero" maxminddb:"network_last_seen"`
 	// ProviderName is the name of the VPN provider (e.g., "NordVPN", "SurfShark").
-	ProviderName string `json:"provider_name,omitzero"         maxminddb:"provider_name"`
+	ProviderName string `json:"provider_name,omitzero" maxminddb:"provider_name,maxsize:4096"`
 	// AnonymizerConfidence is a score from 1 to 99 indicating the confidence
 	// that the network is part of an actively used VPN.
 	AnonymizerConfidence uint16 `json:"anonymizer_confidence,omitzero" maxminddb:"anonymizer_confidence"`
 	// IsAnonymous is true if the IP address belongs to any sort of anonymous network.
-	IsAnonymous bool `json:"is_anonymous,omitzero"          maxminddb:"is_anonymous"`
+	IsAnonymous bool `json:"is_anonymous,omitzero" maxminddb:"is_anonymous"`
 	// IsAnonymousVPN is true if the IP address is registered to an anonymous
 	// VPN provider. If a VPN provider does not register subnets under names
 	// associated with them, we will likely only flag their IP ranges using the
 	// IsHostingProvider attribute.
-	IsAnonymousVPN bool `json:"is_anonymous_vpn,omitzero"      maxminddb:"is_anonymous_vpn"`
+	IsAnonymousVPN bool `json:"is_anonymous_vpn,omitzero" maxminddb:"is_anonymous_vpn"`
 	// IsHostingProvider is true if the IP address belongs to a hosting or VPN provider
 	// (see description of IsAnonymousVPN attribute).
-	IsHostingProvider bool `json:"is_hosting_provider,omitzero"   maxminddb:"is_hosting_provider"`
+	IsHostingProvider bool `json:"is_hosting_provider,omitzero" maxminddb:"is_hosting_provider"`
 	// IsPublicProxy is true if the IP address belongs to a public proxy.
-	IsPublicProxy bool `json:"is_public_proxy,omitzero"       maxminddb:"is_public_proxy"`
+	IsPublicProxy bool `json:"is_public_proxy,omitzero" maxminddb:"is_public_proxy"`
 	// IsResidentialProxy is true if the IP address is on a suspected
 	// anonymizing network and belongs to a residential ISP.
-	IsResidentialProxy bool `json:"is_residential_proxy,omitzero"  maxminddb:"is_residential_proxy"`
+	IsResidentialProxy bool `json:"is_residential_proxy,omitzero" maxminddb:"is_residential_proxy"`
 	// IsTorExitNode is true if the IP address is a Tor exit node.
-	IsTorExitNode bool `json:"is_tor_exit_node,omitzero"      maxminddb:"is_tor_exit_node"`
+	IsTorExitNode bool `json:"is_tor_exit_node,omitzero" maxminddb:"is_tor_exit_node"`
 }
 
 // HasData returns true if any data was found for the IP in the AnonymousPlus database.
@@ -608,14 +631,14 @@ func (a AnonymousPlus) HasData() bool {
 // The ASN struct corresponds to the data in the GeoLite2 ASN database.
 type ASN struct {
 	// IPAddress is the IP address used during the lookup
-	IPAddress netip.Addr `json:"ip_address,omitzero"`
+	IPAddress netip.Addr `json:"ip_address,omitzero" maxminddb:"-"`
 	// Network is the largest network prefix where all fields besides
 	// IPAddress have the same value.
-	Network netip.Prefix `json:"network,omitzero"`
+	Network netip.Prefix `json:"network,omitzero" maxminddb:"-"`
 	// AutonomousSystemOrganization for the registered autonomous system number.
-	AutonomousSystemOrganization string `json:"autonomous_system_organization,omitzero" maxminddb:"autonomous_system_organization"` //nolint:lll
+	AutonomousSystemOrganization string `json:"autonomous_system_organization,omitzero" maxminddb:"autonomous_system_organization,maxsize:4096"` //nolint:lll
 	// AutonomousSystemNumber for the IP address.
-	AutonomousSystemNumber uint `json:"autonomous_system_number,omitzero"       maxminddb:"autonomous_system_number"` //nolint:lll
+	AutonomousSystemNumber uint `json:"autonomous_system_number,omitzero" maxminddb:"autonomous_system_number"` //nolint:lll
 }
 
 // HasData returns true if any data was found for the IP in the ASN database.
@@ -630,12 +653,12 @@ type ConnectionType struct {
 	// ConnectionType indicates the connection type. May be Dialup, Cable/DSL,
 	// Corporate, Cellular, or Satellite. Additional values may be added in the
 	// future.
-	ConnectionType string `json:"connection_type,omitzero" maxminddb:"connection_type"`
+	ConnectionType string `json:"connection_type,omitzero" maxminddb:"connection_type,maxsize:128"`
 	// IPAddress is the IP address used during the lookup
-	IPAddress netip.Addr `json:"ip_address,omitzero"`
+	IPAddress netip.Addr `json:"ip_address,omitzero" maxminddb:"-"`
 	// Network is the largest network prefix where all fields besides
 	// IPAddress have the same value.
-	Network netip.Prefix `json:"network,omitzero"`
+	Network netip.Prefix `json:"network,omitzero" maxminddb:"-"`
 }
 
 // HasData returns true if any data was found for the IP in the ConnectionType database.
@@ -648,12 +671,12 @@ func (c ConnectionType) HasData() bool {
 type Domain struct {
 	// Domain is the second level domain associated with the IP address
 	// (e.g., "example.com")
-	Domain string `json:"domain,omitzero"     maxminddb:"domain"`
+	Domain string `json:"domain,omitzero" maxminddb:"domain,maxsize:512"`
 	// IPAddress is the IP address used during the lookup
-	IPAddress netip.Addr `json:"ip_address,omitzero"`
+	IPAddress netip.Addr `json:"ip_address,omitzero" maxminddb:"-"`
 	// Network is the largest network prefix where all fields besides
 	// IPAddress have the same value.
-	Network netip.Prefix `json:"network,omitzero"`
+	Network netip.Prefix `json:"network,omitzero" maxminddb:"-"`
 }
 
 // HasData returns true if any data was found for the IP in the Domain database.
@@ -666,23 +689,23 @@ func (d Domain) HasData() bool {
 type ISP struct {
 	// Network is the largest network prefix where all fields besides
 	// IPAddress have the same value.
-	Network netip.Prefix `json:"network,omitzero"`
+	Network netip.Prefix `json:"network,omitzero" maxminddb:"-"`
 	// IPAddress is the IP address used during the lookup
-	IPAddress netip.Addr `json:"ip_address,omitzero"`
+	IPAddress netip.Addr `json:"ip_address,omitzero" maxminddb:"-"`
 	// AutonomousSystemOrganization for the registered ASN
-	AutonomousSystemOrganization string `json:"autonomous_system_organization,omitzero" maxminddb:"autonomous_system_organization"` //nolint:lll
+	AutonomousSystemOrganization string `json:"autonomous_system_organization,omitzero" maxminddb:"autonomous_system_organization,maxsize:4096"` //nolint:lll
 	// ISP is the name of the ISP associated with the IP address
-	ISP string `json:"isp,omitzero"                            maxminddb:"isp"`
+	ISP string `json:"isp,omitzero" maxminddb:"isp,maxsize:4096"`
 	// MobileCountryCode is the mobile country code (MCC) associated with the IP address and ISP.
 	// See https://en.wikipedia.org/wiki/Mobile_country_code
-	MobileCountryCode string `json:"mobile_country_code,omitzero"            maxminddb:"mobile_country_code"`
+	MobileCountryCode string `json:"mobile_country_code,omitzero" maxminddb:"mobile_country_code,maxsize:16"`
 	// MobileNetworkCode is the mobile network code (MNC) associated with the IP address and ISP.
 	// See https://en.wikipedia.org/wiki/Mobile_network_code
-	MobileNetworkCode string `json:"mobile_network_code,omitzero"            maxminddb:"mobile_network_code"`
+	MobileNetworkCode string `json:"mobile_network_code,omitzero" maxminddb:"mobile_network_code,maxsize:16"`
 	// Organization is the name of the organization associated with the IP address
-	Organization string `json:"organization,omitzero"                   maxminddb:"organization"`
+	Organization string `json:"organization,omitzero" maxminddb:"organization,maxsize:4096"`
 	// AutonomousSystemNumber for the IP address
-	AutonomousSystemNumber uint `json:"autonomous_system_number,omitzero"       maxminddb:"autonomous_system_number"`
+	AutonomousSystemNumber uint `json:"autonomous_system_number,omitzero" maxminddb:"autonomous_system_number"`
 }
 
 // HasData returns true if any data was found for the IP in the ISP database.

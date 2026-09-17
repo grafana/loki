@@ -19,7 +19,24 @@ import (
 	"github.com/grafana/loki/v3/pkg/logqlmodel"
 	storage_errors "github.com/grafana/loki/v3/pkg/storage/errors"
 	"github.com/grafana/loki/v3/pkg/util"
+
+	grpcstatus "google.golang.org/grpc/status"
 )
+
+// grpcStatusWrappedErr models a typed Loki error that a downstream layer has
+// already wrapped in a gRPC status carrying a non-HTTP code. It satisfies
+// status.FromError while still unwrapping to the typed error so errors.Is
+// keeps working.
+type grpcStatusWrappedErr struct {
+	code codes.Code
+	err  error
+}
+
+func (e grpcStatusWrappedErr) Error() string { return e.err.Error() }
+func (e grpcStatusWrappedErr) Unwrap() error { return e.err }
+func (e grpcStatusWrappedErr) GRPCStatus() *grpcstatus.Status {
+	return grpcstatus.New(e.code, e.err.Error())
+}
 
 func Test_writeError(t *testing.T) {
 	for _, tt := range []struct {
@@ -44,12 +61,16 @@ func Test_writeError(t *testing.T) {
 		{"mixed context and rpc deadline", util.MultiError{context.DeadlineExceeded, status.New(codes.DeadlineExceeded, context.DeadlineExceeded.Error()).Err()}, ErrDeadlineExceeded, http.StatusGatewayTimeout},
 		{"mixed context, rpc deadline and another", util.MultiError{errors.New("standard error"), context.DeadlineExceeded, status.New(codes.DeadlineExceeded, context.DeadlineExceeded.Error()).Err()}, "3 errors: standard error; context deadline exceeded; rpc error: code = DeadlineExceeded desc = context deadline exceeded", http.StatusInternalServerError},
 		{"parse error", logqlmodel.ParseError{}, "parse error : ", http.StatusBadRequest},
+		{"parse error wrapped in grpc status", grpcStatusWrappedErr{code: codes.Unknown, err: logqlmodel.ParseError{}}, "parse error : ", http.StatusBadRequest},
 		{"interval limit", logqlmodel.ErrIntervalLimit, logqlmodel.ErrIntervalLimit.Error(), http.StatusBadRequest},
 		{"httpgrpc", httpgrpc.Errorf(http.StatusBadRequest, "%s", errors.New("foo").Error()), "foo", http.StatusBadRequest},
 		{"internal", errors.New("foo"), "foo", http.StatusInternalServerError},
 		{"query error", storage_errors.ErrQueryMustContainMetricName, storage_errors.ErrQueryMustContainMetricName.Error(), http.StatusBadRequest},
 		{"wrapped query error", fmt.Errorf("wrapped: %w", storage_errors.ErrQueryMustContainMetricName), "wrapped: " + storage_errors.ErrQueryMustContainMetricName.Error(), http.StatusBadRequest},
 		{"multi mixed", util.MultiError{context.Canceled, context.DeadlineExceeded}, "2 errors: context canceled; context deadline exceeded", http.StatusInternalServerError},
+		{"multi httpgrpc client errors", util.MultiError{httpgrpc.Errorf(http.StatusBadRequest, "parse error: bad query"), httpgrpc.Errorf(http.StatusBadRequest, "parse error: bad query")}, "2 errors: rpc error: code = Code(400) desc = parse error: bad query; rpc error: code = Code(400) desc = parse error: bad query", http.StatusBadRequest},
+		{"multi httpgrpc server errors", util.MultiError{httpgrpc.Errorf(http.StatusInternalServerError, "server error"), httpgrpc.Errorf(http.StatusInternalServerError, "server error")}, "2 errors: rpc error: code = Code(500) desc = server error; rpc error: code = Code(500) desc = server error", http.StatusInternalServerError},
+		{"multi httpgrpc client error among untyped errors", util.MultiError{errors.New("unknown error"), httpgrpc.Errorf(http.StatusBadRequest, "parse error: bad query")}, "2 errors: unknown error; rpc error: code = Code(400) desc = parse error: bad query", http.StatusBadRequest},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			rec := httptest.NewRecorder()

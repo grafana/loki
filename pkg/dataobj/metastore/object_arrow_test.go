@@ -78,5 +78,5 @@ func TestAddSectionDescriptors_Merge(t *testing.T) {
 	require.Equal(t, int64(350), desc.Size)
 	require.Equal(t, t0.UnixNano(), desc.Start.UnixNano())
 	require.Equal(t, t3.UnixNano(), desc.End.UnixNano())
-	require.ElementsMatch(t, []string{"label1", "label2"}, desc.AmbiguousPredicatesByStream[11])
+	require.ElementsMatch(t, []string{"label1", "label2"}, desc.AmbiguousPredicates)
 }

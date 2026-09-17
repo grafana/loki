@@ -79,6 +79,25 @@ type OTelRecorder interface {
 	RecordStreamLag(ctx context.Context, lag time.Duration, cn ConnInfo, streamName, consumerGroup, consumerName string)
 }
 
+// OTelConnectionCounter is an optional capability interface for recording
+// connection count and pending request changes via UpDownCounters.
+// Implementations of OTelRecorder can optionally implement this interface
+// to receive connection count and pending request delta notifications.
+// This is kept separate from OTelRecorder to avoid breaking existing
+// third-party implementations when new methods are added.
+type OTelConnectionCounter interface {
+	// RecordConnectionCount records a change in connection count (UpDownCounter)
+	// delta: +1 when connection added, -1 when connection removed
+	// state: connection state (e.g., "idle", "used")
+	// isPubSub: true if this is a PubSub connection
+	RecordConnectionCount(ctx context.Context, delta int, cn ConnInfo, state string, isPubSub bool)
+
+	// RecordPendingRequests records a change in pending requests (UpDownCounter)
+	// delta: +1 when request starts waiting, -1 when request stops waiting
+	// poolName is passed explicitly because we may not have a connection yet when request starts
+	RecordPendingRequests(ctx context.Context, delta int, cn ConnInfo, poolName string)
+}
+
 // This is used for async gauge metrics that need to pull stats from pools periodically.
 type OTelPoolRegistrar interface {
 	// RegisterPool is called when a new client is created with its main connection pool.
@@ -161,6 +180,18 @@ func (a *otelRecorderAdapter) RecordPubSubMessage(ctx context.Context, cn *pool.
 
 func (a *otelRecorderAdapter) RecordStreamLag(ctx context.Context, lag time.Duration, cn *pool.Conn, streamName, consumerGroup, consumerName string) {
 	a.recorder.RecordStreamLag(ctx, lag, toConnInfo(cn), streamName, consumerGroup, consumerName)
+}
+
+func (a *otelRecorderAdapter) RecordConnectionCount(ctx context.Context, delta int, cn *pool.Conn, state string, isPubSub bool) {
+	if counter, ok := a.recorder.(OTelConnectionCounter); ok {
+		counter.RecordConnectionCount(ctx, delta, toConnInfo(cn), state, isPubSub)
+	}
+}
+
+func (a *otelRecorderAdapter) RecordPendingRequests(ctx context.Context, delta int, cn *pool.Conn, poolName string) {
+	if counter, ok := a.recorder.(OTelConnectionCounter); ok {
+		counter.RecordPendingRequests(ctx, delta, toConnInfo(cn), poolName)
+	}
 }
 
 func (a *otelRecorderAdapter) RegisterPool(poolName string, p pool.Pooler) {

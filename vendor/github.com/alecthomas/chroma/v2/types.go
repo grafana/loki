@@ -143,6 +143,7 @@ const (
 const (
 	Operator TokenType = 4000 + iota
 	OperatorWord
+	OperatorReserved
 )
 
 // Punctuation.
@@ -294,8 +295,9 @@ var (
 		NumberIntegerLong: "il",
 		NumberOct:         "mo",
 
-		Operator:     "o",
-		OperatorWord: "ow",
+		Operator:         "o",
+		OperatorWord:     "ow",
+		OperatorReserved: "or",
 
 		Punctuation: "p",
 

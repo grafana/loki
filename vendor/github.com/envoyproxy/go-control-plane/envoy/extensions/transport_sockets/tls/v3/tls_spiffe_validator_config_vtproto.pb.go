@@ -49,6 +49,13 @@ func (m *SPIFFECertValidatorConfig_TrustDomain) MarshalToSizedBufferVTStrict(dAt
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
 	}
+	if len(m.WorkloadTrustDomain) > 0 {
+		i -= len(m.WorkloadTrustDomain)
+		copy(dAtA[i:], m.WorkloadTrustDomain)
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.WorkloadTrustDomain)))
+		i--
+		dAtA[i] = 0x1a
+	}
 	if m.TrustBundle != nil {
 		if vtmsg, ok := interface{}(m.TrustBundle).(interface {
 			MarshalToSizedBufferVTStrict([]byte) (int, error)
@@ -166,6 +173,10 @@ func (m *SPIFFECertValidatorConfig_TrustDomain) SizeVT() (n int) {
 		} else {
 			l = proto.Size(m.TrustBundle)
 		}
+		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
+	}
+	l = len(m.WorkloadTrustDomain)
+	if l > 0 {
 		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
 	}
 	n += len(m.unknownFields)

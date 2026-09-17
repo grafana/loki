@@ -94,7 +94,7 @@ func TestCollectSections_StopsOnEOFAndAggregates(t *testing.T) {
 	require.ElementsMatch(t, []int64{10, 11}, desc.StreamIDs)
 	require.Equal(t, 8, desc.RowCount)
 	require.Equal(t, int64(350), desc.Size)
-	require.ElementsMatch(t, []string{"label1", "label2"}, desc.AmbiguousPredicatesByStream[11])
+	require.ElementsMatch(t, []string{"label1", "label2"}, desc.AmbiguousPredicates)
 }
 
 func TestCollectSections_PropagatesReaderError(t *testing.T) {

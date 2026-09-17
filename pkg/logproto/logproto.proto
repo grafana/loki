@@ -102,6 +102,16 @@ message SampleQueryRequest {
   ChunkRefGroup storeChunks = 10 [(gogoproto.jsontag) = "storeChunks"];
 }
 
+// SampleOrder identifies how a set of samples is ordered.
+enum SampleOrder {
+  // SAMPLE_ORDER_BY_TIMESTAMP orders samples globally by timestamp. It is the zero value
+  // and the default ordering.
+  SAMPLE_ORDER_BY_TIMESTAMP = 0;
+
+  // SAMPLE_ORDER_BY_STREAM orders samples stream-first.
+  SAMPLE_ORDER_BY_STREAM = 1;
+}
+
 // TODO(owen-d): fix. This will break rollouts as soon as the internal repr is changed.
 message Plan {
   bytes raw = 1;
@@ -377,28 +387,6 @@ message IndexSeries {
     (gogoproto.nullable) = false,
     (gogoproto.customtype) = "LabelAdapter"
   ];
-}
-
-message QueryIndexResponse {
-  string QueryKey = 1;
-  repeated Row rows = 2;
-}
-
-message Row {
-  bytes rangeValue = 1;
-  bytes value = 2;
-}
-
-message QueryIndexRequest {
-  repeated IndexQuery Queries = 1;
-}
-
-message IndexQuery {
-  string tableName = 1;
-  string hashValue = 2;
-  bytes rangeValuePrefix = 3;
-  bytes rangeValueStart = 4;
-  bytes valueEqual = 5;
 }
 
 message IndexStatsRequest {

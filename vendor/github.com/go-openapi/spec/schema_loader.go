@@ -5,6 +5,7 @@ package spec
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"net/url"
@@ -24,7 +25,7 @@ import (
 // NOTE: if you are using the go-openapi/loads package, it will override
 // this value with its own default (a loader to retrieve YAML documents as
 // well as JSON ones).
-var PathLoader = func(pth string) (json.RawMessage, error) {
+var PathLoader = func(pth string) (json.RawMessage, error) { //nolint:gochecknoglobals // package-level default loader, overridable by go-openapi/loads
 	data, err := loading.LoadFromFileOrHTTP(pth)
 	if err != nil {
 		return nil, err
@@ -43,24 +44,48 @@ type resolverContext struct {
 	basePath  string
 	loadDoc   func(string) (json.RawMessage, error)
 	rootID    string
+
+	// nodes counts the schema nodes expanded so far, capped by maxNodes to guard against
+	// $ref amplification. maxNodes == 0 means unbounded. Shared, single-threaded: no locking needed.
+	nodes    int
+	maxNodes int
 }
 
 func newResolverContext(options *ExpandOptions) *resolverContext {
 	expandOptions := optionsOrDefault(options)
 
-	// path loader may be overridden by options
+	// path loader may be overridden by options. An option-aware loader takes precedence over a
+	// plain one, which in turn takes precedence over the package-level default.
 	var loader func(string) (json.RawMessage, error)
-	if expandOptions.PathLoader == nil {
-		loader = PathLoader
-	} else {
+	switch {
+	case expandOptions.PathLoaderWithOptions != nil:
+		withOptions := expandOptions.PathLoaderWithOptions
+		loader = func(pth string) (json.RawMessage, error) {
+			// the injected loader carries its own loading options: none are added here.
+			return withOptions(pth)
+		}
+	case expandOptions.PathLoader != nil:
 		loader = expandOptions.PathLoader
+	default:
+		loader = PathLoader
 	}
 
 	return &resolverContext{
 		circulars: make(map[string]bool),
 		basePath:  expandOptions.RelativeBase, // keep the root base path in context
 		loadDoc:   loader,
+		maxNodes:  expandOptions.maxExpansionNodes(),
 	}
+}
+
+// countNode accounts for one expanded schema node and reports whether the expansion budget
+// has been exceeded. A maxNodes of 0 disables the budget (unbounded expansion).
+func (c *resolverContext) countNode() error {
+	c.nodes++
+	if c.maxNodes > 0 && c.nodes > c.maxNodes {
+		return ErrExpandTooManyNodes
+	}
+	return nil
 }
 
 type schemaLoader struct {
@@ -76,7 +101,7 @@ type schemaLoader struct {
 //
 // If the schema the ref is referring to holds nested refs, Resolve doesn't resolve them.
 //
-// If basePath is an empty string, ref is resolved against the root schema stored in the schemaLoader struct
+// If basePath is an empty string, ref is resolved against the root schema stored in the schemaLoader struct.
 func (r *schemaLoader) Resolve(ref *Ref, target any, basePath string) error {
 	return r.resolveRef(ref, target, basePath)
 }
@@ -117,7 +142,7 @@ func (r *schemaLoader) updateBasePath(transitive *schemaLoader, basePath string)
 
 func (r *schemaLoader) resolveRef(ref *Ref, target any, basePath string) error {
 	tgt := reflect.ValueOf(target)
-	if tgt.Kind() != reflect.Ptr {
+	if tgt.Kind() != reflect.Pointer {
 		return ErrResolveRefNeedsAPointer
 	}
 
@@ -136,7 +161,7 @@ func (r *schemaLoader) resolveRef(ref *Ref, target any, basePath string) error {
 	root := r.root
 	if (ref.IsRoot() || ref.HasFragmentOnly) && root == nil && basePath != "" {
 		if baseRef, erb := NewRef(basePath); erb == nil {
-			root, _, _, _ = r.load(baseRef.GetURL())
+			root, _ = r.load(baseRef.GetURL())
 		}
 	}
 
@@ -144,7 +169,7 @@ func (r *schemaLoader) resolveRef(ref *Ref, target any, basePath string) error {
 		data = root
 	} else {
 		baseRef := normalizeRef(ref, basePath)
-		data, _, _, err = r.load(baseRef.GetURL())
+		data, err = r.load(baseRef.GetURL())
 		if err != nil {
 			return err
 		}
@@ -160,33 +185,32 @@ func (r *schemaLoader) resolveRef(ref *Ref, target any, basePath string) error {
 	return jsonutils.FromDynamicJSON(res, target)
 }
 
-func (r *schemaLoader) load(refURL *url.URL) (any, url.URL, bool, error) {
+func (r *schemaLoader) load(refURL *url.URL) (any, error) {
 	debugLog("loading schema from url: %s", refURL)
 	toFetch := *refURL
 	toFetch.Fragment = ""
 
-	var err error
 	pth := toFetch.String()
 	normalized := normalizeBase(pth)
 	debugLog("loading doc from: %s", normalized)
 
 	data, fromCache := r.cache.Get(normalized)
 	if fromCache {
-		return data, toFetch, fromCache, nil
+		return data, nil
 	}
 
 	b, err := r.context.loadDoc(normalized)
 	if err != nil {
-		return nil, url.URL{}, false, err
+		return nil, err
 	}
 
 	var doc any
 	if err := json.Unmarshal(b, &doc); err != nil {
-		return nil, url.URL{}, false, err
+		return nil, err
 	}
 	r.cache.Set(normalized, doc)
 
-	return doc, toFetch, fromCache, nil
+	return doc, nil
 }
 
 // isCircular detects cycles in sequences of $ref.
@@ -247,13 +271,21 @@ func (r *schemaLoader) deref(input any, parentRefs []string, basePath string) er
 }
 
 func (r *schemaLoader) shouldStopOnError(err error) bool {
-	if err != nil && !r.options.ContinueOnError {
+	if err == nil {
+		return false
+	}
+
+	if errors.Is(err, ErrExpandTooManyNodes) {
+		// a blown expansion budget is a hard, document-level failure: it is a safeguard against
+		// resource exhaustion and is never suppressed by ContinueOnError.
 		return true
 	}
 
-	if err != nil {
-		log.Println(err)
+	if !r.options.ContinueOnError {
+		return true
 	}
+
+	log.Println(err)
 
 	return false
 }
@@ -293,8 +325,8 @@ func defaultSchemaLoader(
 	root any,
 	expandOptions *ExpandOptions,
 	cache ResolutionCache,
-	context *resolverContext) *schemaLoader {
-
+	context *resolverContext,
+) *schemaLoader {
 	if expandOptions == nil {
 		expandOptions = &ExpandOptions{}
 	}

@@ -54,10 +54,8 @@ func DoValue[T any](ctx context.Context, b Backoff, f RetryFuncValue[T]) (T, err
 
 	for {
 		// Return immediately if ctx is canceled
-		select {
-		case <-ctx.Done():
-			return nilT, ctx.Err()
-		default:
+		if err := context.Cause(ctx); err != nil {
+			return nilT, err
 		}
 
 		v, err := f(ctx)
@@ -76,20 +74,13 @@ func DoValue[T any](ctx context.Context, b Backoff, f RetryFuncValue[T]) (T, err
 			return nilT, rerr.Unwrap()
 		}
 
-		// ctx.Done() has priority, so we test it alone first
-		select {
-		case <-ctx.Done():
-			return nilT, ctx.Err()
-		default:
-		}
-
+		// Wait until next attempt or until the context expires. Any error will
+		// be caught at the top of the loop.
 		t := time.NewTimer(next)
 		select {
 		case <-ctx.Done():
 			t.Stop()
-			return nilT, ctx.Err()
 		case <-t.C:
-			continue
 		}
 	}
 }

@@ -161,14 +161,43 @@ func TestFileClient_ListLabelNames(t *testing.T) {
 }
 
 func TestFileClient_ListLabelValues(t *testing.T) {
-	c := newEmptyClient(t)
-	values, err := c.ListLabelValues(defaultLabelKey, true, time.Now(), time.Now())
-	require.NoError(t, err)
-	assert.Equal(t, &loghttp.LabelResponse{
-		Data:   []string{defaultLabelValue},
-		Status: loghttp.QueryStatusSuccess,
-	}, values)
+	cases := []struct {
+		name     string
+		label    string
+		expected *loghttp.LabelResponse
+	}{
+		{
+			name:  "existing label returns its value",
+			label: defaultLabelKey,
+			expected: &loghttp.LabelResponse{
+				Data:   []string{defaultLabelValue},
+				Status: loghttp.QueryStatusSuccess,
+			},
+		},
+		{
+			// Sorts before defaultLabelKey ("source"); previously returned the
+			// fabricated value defaultLabelValue instead of an empty response.
+			name:     "missing label sorting before the existing label returns empty",
+			label:    "aaa",
+			expected: &loghttp.LabelResponse{},
+		},
+		{
+			// Sorts after defaultLabelKey ("source"); previously panicked with an
+			// index out of range because the search index equals len(f.labels).
+			name:     "missing label sorting after the existing label returns empty",
+			label:    "zzz",
+			expected: &loghttp.LabelResponse{},
+		},
+	}
 
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			client := newEmptyClient(t)
+			values, err := client.ListLabelValues(c.label, true, time.Now(), time.Now())
+			require.NoError(t, err)
+			assert.Equal(t, c.expected, values)
+		})
+	}
 }
 
 func TestFileClient_Series(t *testing.T) {

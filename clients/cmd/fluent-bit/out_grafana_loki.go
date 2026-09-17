@@ -18,7 +18,7 @@ import (
 import (
 	"github.com/prometheus/client_golang/prometheus"
 
-	"github.com/grafana/loki/v3/clients/pkg/promtail/client"
+	"github.com/grafana/loki/v3/clients/pkg/util"
 )
 
 var (
@@ -89,7 +89,7 @@ func FLBPluginInit(ctx unsafe.Pointer) int {
 	level.Info(paramLogger).Log("key_file", conf.clientConfig.Client.TLSConfig.KeyFile)
 	level.Info(paramLogger).Log("insecure_skip_verify", conf.clientConfig.Client.TLSConfig.InsecureSkipVerify)
 
-	m := client.NewMetrics(prometheus.DefaultRegisterer)
+	m := util.NewMetrics(prometheus.DefaultRegisterer)
 	plugin, err := newPlugin(conf, logger, m)
 	if err != nil {
 		level.Error(logger).Log("newPlugin", err)

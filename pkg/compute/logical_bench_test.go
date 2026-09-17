@@ -5,6 +5,7 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/columnar"
 	"github.com/grafana/loki/v3/pkg/columnar/columnartest"
+	"github.com/grafana/loki/v3/pkg/columnar/types"
 	"github.com/grafana/loki/v3/pkg/compute"
 	"github.com/grafana/loki/v3/pkg/memory"
 )
@@ -82,5 +83,5 @@ func makeBoolArray(tb testing.TB, alloc *memory.Allocator, size int) columnar.Da
 	for i := 0; i < size; i++ {
 		values[i] = i%3 != 0 // ~67% true, ~33% false
 	}
-	return columnartest.Array(tb, columnar.KindBool, alloc, values...)
+	return columnartest.Array(tb, types.KindBool, alloc, values...)
 }

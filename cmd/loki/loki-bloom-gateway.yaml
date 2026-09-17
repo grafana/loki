@@ -1,0 +1,41 @@
+target: bloom-gateway
+auth_enabled: true  # match prod
+
+server:
+  http_listen_port: 3103
+  grpc_listen_port: 9099
+
+bloom_gateway:
+  enabled: true
+  client:
+    addresses: localhost:9099
+
+common:
+  instance_addr: 127.0.0.1
+  path_prefix: /tmp/loki
+  replication_factor: 1
+  ring:
+    kvstore:
+      store: inmemory
+  compactor_address: http://localhost:3102
+
+# Object storage — must match prod credentials
+storage_config:
+  aws:
+    bucketnames:
+    region: us-east-1
+    access_key_id:
+    secret_access_key:
+    session_token:
+  bloom_shipper:
+    working_directory: /tmp/loki/blooms
+
+schema_config:
+  configs:
+    - from: 2025-06-01
+      store: tsdb
+      object_store: s3
+      schema: v13
+      index:
+        prefix: index_
+        period: 24h

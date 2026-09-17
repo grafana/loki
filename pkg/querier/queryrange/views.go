@@ -24,10 +24,6 @@ var (
 	seriesResponse               *LokiSeriesResponse
 	_, seriesResponseDescription = descriptor.ForMessage(seriesResponse)
 	dataFieldNumber              = seriesResponseDescription.GetFieldDescriptor("Data").GetNumber()
-
-	seriesIdentifier               *logproto.SeriesIdentifier
-	_, seriesIdentifierDescription = descriptor.ForMessage(seriesIdentifier)
-	labelsFieldNumber              = seriesIdentifierDescription.GetFieldDescriptor("labels").GetNumber()
 )
 
 // GetLokiSeriesResponseView returns a view on the series response of a

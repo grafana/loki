@@ -297,45 +297,38 @@ func (sm *ConnStateMachine) notifyWaiters() {
 		return
 	}
 
-	// Process waiters in FIFO order until no more can be processed
-	// We loop instead of recursing to avoid stack overflow and mutex issues
+	// Track state locally so we only consider transitions made within this
+	// call, not concurrent transitions from woken goroutines. Re-reading the
+	// atomic would let a fast goroutine's Transition(StateIdle) leak into our
+	// view, causing us to wake multiple waiters at once and breaking FIFO
+	// execution ordering.
+	currentState := sm.GetState()
+
 	for {
 		processed := false
 
-		// Find the first waiter that can proceed
 		for elem := sm.waiters.Front(); elem != nil; elem = elem.Next() {
 			w := elem.Value.(*waiter)
 
-			// Read current state inside the loop to get the latest value
-			currentState := sm.GetState()
-
-			// Check if current state is valid for this waiter
 			if _, valid := w.validStates[currentState]; valid {
-				// Remove from queue first
 				sm.waiters.Remove(elem)
 				sm.waiterCount.Add(-1)
 
-				// Use CAS to ensure state hasn't changed since we checked
-				// This prevents race condition where another thread changes state
-				// between our check and our transition
 				if sm.state.CompareAndSwap(uint32(currentState), uint32(w.targetState)) {
-					// Successfully transitioned - notify waiter
 					w.done <- nil
+					currentState = w.targetState
 					processed = true
 					break
 				} else {
-					// State changed - re-add waiter to front of queue to maintain FIFO ordering
-					// This waiter was first in line and should retain priority
 					sm.waiters.PushFront(w)
 					sm.waiterCount.Add(1)
-					// Continue to next iteration to re-read state
+					currentState = sm.GetState()
 					processed = true
 					break
 				}
 			}
 		}
 
-		// If we didn't process any waiter, we're done
 		if !processed {
 			break
 		}

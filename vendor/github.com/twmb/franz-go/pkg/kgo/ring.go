@@ -2,17 +2,18 @@ package kgo
 
 import (
 	"sync"
+
+	"github.com/twmb/franz-go/pkg/kgo/internal/xsync"
 )
 
-// The ring type below in based on fixed sized blocking MPSC ringbuffer
-// if the number of elements is less than or equal to 8, and fallback to a slice if
-// the number of elements in greater than 8. The maximum number of elements
-// in the ring is unlimited.
+// The ring type is a dynamically-sized circular buffer with optional blocking
+// when full. The buffer starts at capacity 8 and grows as needed. When the
+// buffer empties, it shrinks back to capacity 8 to release memory.
 //
-// This ring replace channels in a few places in this client. The *main* advantage it
-// provide is to allow loops that terminate.
+// This ring replaces channels in a few places in this client. The *main*
+// advantage it provides is to allow loops that terminate.
 //
-// With channels, we always have to have a goroutine draining the channel.  We
+// With channels, we always have to have a goroutine draining the channel. We
 // cannot start the goroutine when we add the first element, because the
 // goroutine will immediately drain the first and if something produces right
 // away, it will start a second concurrent draining goroutine.
@@ -23,10 +24,6 @@ import (
 // which would block the worker from grabbing the lock. Any other lock ordering
 // has TOCTOU problems as well.
 //
-// We could exclusively use a slice that we always push to and pop the front of.
-// This is a bit easier to reason about, but constantly reallocates and has no bounded
-// capacity, so we use it only if the number of elements is greater than 8.
-//
 // The key insight is that we only pop the front *after* we are done with it.
 // If there are still more elements, the worker goroutine can continue working.
 // If there are no more elements, it can quit. When pushing, if the pusher
@@ -36,26 +33,26 @@ import (
 // If a die happens while a worker is running, all future pops will see the
 // ring is dead and can fail promises immediately. If a worker is not running,
 // then there are no promises that need to be called.
-//
-// We use size 8 buffers because eh why not. This gives us a small optimization
-// of masking to increment and decrement, rather than modulo arithmetic.
 
-const (
-	mask7 = 0b0000_0111
-	eight = mask7 + 1
-)
+const minRingCap = 8
 
 type ring[T any] struct {
-	mu sync.Mutex
+	mu xsync.Mutex
 
-	elems [eight]T
+	elems []T // circular buffer, min capacity minRingCap
+	head  int // index of first element
+	l     int // number of elements
 
-	head uint8
-	tail uint8
-	l    uint8
-	dead bool
+	maxLen int        // if >0, push blocks when l >= maxLen
+	cond   *sync.Cond // used for blocking when at maxLen
+	dead   bool
+}
 
-	overflow []T
+// initMaxLen sets the maximum number of elements before push blocks.
+// This must be called before any concurrent access.
+func (r *ring[T]) initMaxLen(max int) {
+	r.maxLen = max
+	r.cond = sync.NewCond(&r.mu)
 }
 
 func (r *ring[T]) die() {
@@ -63,29 +60,52 @@ func (r *ring[T]) die() {
 	defer r.mu.Unlock()
 
 	r.dead = true
+	if r.cond != nil {
+		r.cond.Broadcast()
+	}
 }
 
 func (r *ring[T]) push(elem T) (first, dead bool) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
+	// If a max length is set, block until there's space.
+	for r.maxLen > 0 && r.l >= r.maxLen && !r.dead {
+		r.cond.Wait()
+	}
+
 	if r.dead {
 		return false, true
 	}
 
-	// If the ring is full, we go into overflow; if overflow is non-empty,
-	// for ordering purposes, we add to the end of overflow. We only go
-	// back to using the ring once overflow is finally empty.
-	if r.l == eight || len(r.overflow) > 0 {
-		r.overflow = append(r.overflow, elem)
-		return false, false
+	// Grow: double capacity when full (or initialize to minRingCap).
+	if r.l == cap(r.elems) {
+		r.resize(max(cap(r.elems)*2, minRingCap))
 	}
 
-	r.elems[r.tail] = elem
-	r.tail = (r.tail + 1) & mask7
+	// Write at tail position (head + l, wrapped).
+	writePos := (r.head + r.l) % cap(r.elems)
+	r.elems[writePos] = elem
 	r.l++
 
 	return r.l == 1, false
+}
+
+// resize changes the buffer capacity, copying elements in linear order.
+// Must be called with r.mu held.
+func (r *ring[T]) resize(newCap int) {
+	newElems := make([]T, newCap)
+	if r.l > 0 {
+		// Copy elements in order: from head to end, then from start to head.
+		if r.head+r.l <= len(r.elems) {
+			copy(newElems, r.elems[r.head:r.head+r.l])
+		} else {
+			n := copy(newElems, r.elems[r.head:])
+			copy(newElems[n:], r.elems[:r.l-n])
+		}
+	}
+	r.elems = newElems
+	r.head = 0
 }
 
 func (r *ring[T]) dropPeek() (next T, more, dead bool) {
@@ -94,37 +114,27 @@ func (r *ring[T]) dropPeek() (next T, more, dead bool) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
-	// We always drain the ring first. If the ring is ever empty, there
-	// must be overflow: we would not be here if the ring is not-empty.
-	if r.l > 1 {
-		r.elems[r.head] = zero
-		r.head = (r.head + 1) & mask7
-		r.l--
+	if r.l == 0 {
+		return zero, false, r.dead
+	}
+
+	// Clear current head element.
+	r.elems[r.head] = zero
+	r.head = (r.head + 1) % cap(r.elems)
+	r.l--
+
+	// Signal any blocked pushers that space is available.
+	if r.cond != nil {
+		r.cond.Signal()
+	}
+
+	// Shrink: reduce to minRingCap when mostly empty to release memory.
+	if r.l <= minRingCap/2 && cap(r.elems) > minRingCap {
+		r.resize(minRingCap)
+	}
+
+	if r.l > 0 {
 		return r.elems[r.head], true, r.dead
-	} else if r.l == 1 {
-		r.elems[r.head] = zero
-		r.head = (r.head + 1) & mask7
-		r.l--
-		if len(r.overflow) == 0 {
-			return next, false, r.dead
-		}
-		return r.overflow[0], true, r.dead
 	}
-
-	r.overflow[0] = zero
-
-	// In case of continuous push and pulls to the overflow slice, the overflow
-	// slice's underlying memory array is not expected to grow indefinitely because
-	// append() will eventually re-allocate the memory and, when will do it, it will
-	// only copy the "live" elements (the part of the slide pointed by the slice header).
-	r.overflow = r.overflow[1:]
-
-	if len(r.overflow) > 0 {
-		return r.overflow[0], true, r.dead
-	}
-
-	// We have no more overflow elements. We reset the slice to nil to release memory.
-	r.overflow = nil
-
-	return next, false, r.dead
+	return zero, false, r.dead
 }

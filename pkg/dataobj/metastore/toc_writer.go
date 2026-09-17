@@ -105,7 +105,7 @@ func (m *TableOfContentsWriter) WriteEntry(ctx context.Context, dataobjPath stri
 
 	// Work our way through the metastore objects window by window, updating & creating them as needed.
 	// Each one handles its own retries in order to keep making progress in the event of a failure.
-	for tocPath, tocTimeRange := range iterTableOfContentsPaths(globalMinTime, globalMaxTime) {
+	for tocPath, tocTimeRange := range IterTableOfContentsPaths(globalMinTime, globalMaxTime) {
 		b := backoff.New(ctx, backoff.Config{
 			MinBackoff: 50 * time.Millisecond,
 			MaxBackoff: 10 * time.Second,
@@ -142,8 +142,14 @@ func (m *TableOfContentsWriter) WriteEntry(ctx context.Context, dataobjPath stri
 				encodingDuration := prometheus.NewTimer(m.metrics.tocEncodingTime)
 				// Append all the tenant time ranges that overlap with the current Table of Contents window.
 				for _, timeRange := range tenantTimeRanges {
-					if timeRange.MinTime.Before(tocTimeRange.MaxTime) && timeRange.MaxTime.After(tocTimeRange.MinTime) {
-						err := m.tocBuilder.AppendIndexPointer(timeRange.Tenant, dataobjPath, timeRange.MinTime, timeRange.MaxTime)
+					if timeRange.MinTime.Before(tocTimeRange.MaxTime) && !timeRange.MaxTime.Before(tocTimeRange.MinTime) {
+						err := m.tocBuilder.AppendIndexPointer(timeRange.Tenant, indexpointers.IndexPointer{
+							Path:                 dataobjPath,
+							StartTs:              timeRange.MinTime,
+							EndTs:                timeRange.MaxTime,
+							FileSize:             timeRange.FileSize,
+							UncompressedLogsSize: timeRange.UncompressedLogsSize,
+						})
 						if err != nil {
 							return nil, errors.Wrap(err, "appending index pointer")
 						}
@@ -236,7 +242,7 @@ func (m *TableOfContentsWriter) copyFromExistingToc(ctx context.Context, tocObje
 				return errors.Wrap(err, "reading index pointers")
 			}
 			for _, indexPointer := range pbuf[:n] {
-				err = m.tocBuilder.AppendIndexPointer(tenantID, indexPointer.Path, indexPointer.StartTs, indexPointer.EndTs)
+				err = m.tocBuilder.AppendIndexPointer(tenantID, indexPointer)
 				if err != nil {
 					return errors.Wrap(err, "appending index pointers")
 				}

@@ -12,23 +12,24 @@ import (
 	"sync"
 
 	"go.opentelemetry.io/collector/pdata/internal/json"
+	"go.opentelemetry.io/collector/pdata/internal/metadata"
 	"go.opentelemetry.io/collector/pdata/internal/proto"
 )
 
 // Profile are an implementation of the pprofextended data model.
 
 type Profile struct {
-	OriginalPayloadFormat  string
+	SampleType             ValueType
 	Samples                []*Sample
-	OriginalPayload        []byte
-	AttributeIndices       []int32
 	TimeUnixNano           uint64
 	DurationNano           uint64
-	Period                 int64
-	SampleType             ValueType
 	PeriodType             ValueType
-	DroppedAttributesCount uint32
+	Period                 int64
 	ProfileId              ProfileID
+	DroppedAttributesCount uint32
+	OriginalPayloadFormat  string
+	OriginalPayload        []byte
+	AttributeIndices       []int32
 }
 
 var (
@@ -40,7 +41,7 @@ var (
 )
 
 func NewProfile() *Profile {
-	if !UseProtoPooling.IsEnabled() {
+	if !metadata.PdataUseProtoPoolingFeatureGate.IsEnabled() {
 		return &Profile{}
 	}
 	return protoPoolProfile.Get().(*Profile)
@@ -51,7 +52,7 @@ func DeleteProfile(orig *Profile, nullable bool) {
 		return
 	}
 
-	if !UseProtoPooling.IsEnabled() {
+	if !metadata.PdataUseProtoPoolingFeatureGate.IsEnabled() {
 		orig.Reset()
 		return
 	}
@@ -251,7 +252,7 @@ func (orig *Profile) UnmarshalJSON(iter *json.Iterator) {
 			}
 
 		default:
-			iter.Skip()
+			iter.HandleUnknownField(f)
 		}
 	}
 }

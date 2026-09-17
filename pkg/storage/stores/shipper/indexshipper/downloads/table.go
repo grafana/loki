@@ -24,9 +24,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/util/spanlogger"
 )
 
-// timeout for downloading initial files for a table to avoid leaking resources by allowing it to take all the time.
 const (
-	downloadTimeout        = 1 * time.Minute
 	maxDownloadConcurrency = 50
 )
 
@@ -48,6 +46,7 @@ type table struct {
 	openIndexFileFunc index.OpenIndexFileFunc
 	metrics           *metrics
 	maxConcurrent     int
+	downloadTimeout   time.Duration
 
 	baseUserIndexSet, baseCommonIndexSet storage.IndexSet
 
@@ -58,7 +57,7 @@ type table struct {
 
 // NewTable just creates an instance of table without trying to load files from local storage or object store.
 // It is used for initializing table at query time.
-func NewTable(name, cacheLocation string, storageClient storage.Client, openIndexFileFunc index.OpenIndexFileFunc, metrics *metrics) Table {
+func NewTable(name, cacheLocation string, storageClient storage.Client, openIndexFileFunc index.OpenIndexFileFunc, metrics *metrics, downloadTimeout time.Duration) Table {
 	maxConcurrent := max(runtime.GOMAXPROCS(0)/2, 1)
 	return &table{
 		name:               name,
@@ -70,13 +69,14 @@ func NewTable(name, cacheLocation string, storageClient storage.Client, openInde
 		openIndexFileFunc:  openIndexFileFunc,
 		metrics:            metrics,
 		maxConcurrent:      maxConcurrent,
+		downloadTimeout:    downloadTimeout,
 		indexSets:          map[string]IndexSet{},
 	}
 }
 
 // LoadTable loads a table from local storage(syncs the table too if we have it locally) or downloads it from the shared store.
 // It is used for loading and initializing table at startup. It would initialize index sets which already had files locally.
-func LoadTable(name, cacheLocation string, storageClient storage.Client, openIndexFileFunc index.OpenIndexFileFunc, metrics *metrics) (Table, error) {
+func LoadTable(name, cacheLocation string, storageClient storage.Client, openIndexFileFunc index.OpenIndexFileFunc, metrics *metrics, downloadTimeout time.Duration) (Table, error) {
 	err := util.EnsureDirectory(cacheLocation)
 	if err != nil {
 		return nil, err
@@ -100,9 +100,10 @@ func LoadTable(name, cacheLocation string, storageClient storage.Client, openInd
 		openIndexFileFunc:  openIndexFileFunc,
 		metrics:            metrics,
 		maxConcurrent:      maxConcurrent,
+		downloadTimeout:    downloadTimeout,
 	}
 
-	level.Debug(table.logger).Log("msg", fmt.Sprintf("opening locally present files for table %s", name), "files", fmt.Sprint(dirEntries))
+	level.Debug(table.logger).Log("msg", "opening locally present files for table", "table", name, "files", fmt.Sprint(dirEntries))
 
 	// common index files are outside the directories and user index files are in the directories
 	for _, entry := range dirEntries {
@@ -113,7 +114,7 @@ func LoadTable(name, cacheLocation string, storageClient storage.Client, openInd
 		userID := entry.Name()
 		logger := loggerWithUserID(table.logger, userID)
 		userIndexSet, err := NewIndexSet(name, userID, filepath.Join(cacheLocation, userID),
-			table.baseUserIndexSet, openIndexFileFunc, logger)
+			table.baseUserIndexSet, openIndexFileFunc, logger, table.downloadTimeout)
 		if err != nil {
 			return nil, err
 		}
@@ -127,7 +128,7 @@ func LoadTable(name, cacheLocation string, storageClient storage.Client, openInd
 	}
 
 	commonIndexSet, err := NewIndexSet(name, "", cacheLocation, table.baseCommonIndexSet,
-		openIndexFileFunc, table.logger)
+		openIndexFileFunc, table.logger, table.downloadTimeout)
 	if err != nil {
 		return nil, err
 	}
@@ -180,7 +181,18 @@ func (t *table) ForEachConcurrent(ctx context.Context, userID string, callback i
 				return indexSet.Err()
 			}
 
-			return indexSet.ForEachConcurrent(ctx, callback)
+			err = indexSet.ForEachConcurrent(ctx, callback)
+
+			// The pre-check above races with Init's defer: if Init was still in
+			// flight when we checked Err(), we entered ForEachConcurrent with
+			// Err() == nil, parked on the readiness gate, and only saw the
+			// error once Init's defer marked it ready. In that case cleanup
+			// hasn't run yet — do it now so the next caller creates a fresh
+			// indexSet instead of hitting the same broken one.
+			if err != nil && indexSet.Err() != nil {
+				t.cleanupBrokenIndexSet(ctx, uid)
+			}
+			return err
 		})
 	}
 	return g.Wait()
@@ -201,6 +213,12 @@ func (t *table) ForEach(ctx context.Context, userID string, callback index.ForEa
 
 		err = indexSet.ForEach(ctx, callback)
 		if err != nil {
+			// See the comment in ForEachConcurrent above: the pre-check races
+			// with Init's defer, so an error surfaced here may reflect a broken
+			// indexSet that hasn't been cleaned up yet.
+			if indexSet.Err() != nil {
+				t.cleanupBrokenIndexSet(ctx, uid)
+			}
 			return err
 		}
 	}
@@ -253,7 +271,7 @@ func (t *table) DropUnusedIndex(ttl time.Duration, now time.Time) (bool, error) 
 				continue
 			}
 
-			level.Info(t.logger).Log("msg", fmt.Sprintf("cleaning up expired index set %s", userID))
+			level.Info(t.logger).Log("msg", "cleaning up expired index set", "user_id", userID)
 			err := t.indexSets[userID].DropAllDBs()
 			if err != nil {
 				return false, err
@@ -270,7 +288,7 @@ func (t *table) DropUnusedIndex(ttl time.Duration, now time.Time) (bool, error) 
 
 // Sync downloads updated and new files from the storage relevant for the table and removes the deleted ones
 func (t *table) Sync(ctx context.Context) error {
-	level.Debug(t.logger).Log("msg", fmt.Sprintf("syncing files for table %s", t.name))
+	level.Debug(t.logger).Log("msg", "syncing files for table", "table", t.name)
 
 	t.indexSetsMtx.RLock()
 	users := slices.Collect(maps.Keys(t.indexSets))
@@ -327,7 +345,7 @@ func (t *table) getOrCreateIndexSet(ctx context.Context, id string, forQuerying 
 	}
 
 	// instantiate the index set, add it to the map
-	indexSet, err = NewIndexSet(t.name, id, filepath.Join(t.cacheLocation, id), baseIndexSet, t.openIndexFileFunc, loggerWithUserID(t.logger, id))
+	indexSet, err = NewIndexSet(t.name, id, filepath.Join(t.cacheLocation, id), baseIndexSet, t.openIndexFileFunc, loggerWithUserID(t.logger, id), t.downloadTimeout)
 	if err != nil {
 		return nil, err
 	}
@@ -367,9 +385,9 @@ func (t *table) cleanupBrokenIndexSet(ctx context.Context, id string) {
 		return
 	}
 
-	level.Error(util_log.WithContext(ctx, t.logger)).Log("msg", fmt.Sprintf("index set %s has some problem, cleaning it up", id), "err", indexSet.Err())
+	level.Error(util_log.WithContext(ctx, t.logger)).Log("msg", "index set has a problem, cleaning it up", "index_set", id, "err", indexSet.Err())
 	if err := indexSet.DropAllDBs(); err != nil {
-		level.Error(t.logger).Log("msg", fmt.Sprintf("failed to cleanup broken index set %s", id), "err", err)
+		level.Error(t.logger).Log("msg", "failed to cleanup broken index set", "index_set", id, "err", err)
 	}
 
 	delete(t.indexSets, id)

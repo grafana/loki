@@ -12,6 +12,7 @@ import (
 	"github.com/pkg/errors"
 
 	"github.com/grafana/loki/v3/pkg/loki/common"
+	"github.com/grafana/loki/v3/pkg/storage/bucket/filesystem"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/cache"
 	"github.com/grafana/loki/v3/pkg/storage/config"
 	"github.com/grafana/loki/v3/pkg/storage/types"
@@ -113,10 +114,6 @@ func (c *ConfigWrapper) ApplyDynamicConfig() cfg.Source {
 			return err
 		}
 
-		if i := lastBoltdbShipperConfig(r.SchemaConfig.Configs); i != len(r.SchemaConfig.Configs) {
-			betterBoltdbShipperDefaults(r)
-		}
-
 		if i := lastTSDBConfig(r.SchemaConfig.Configs); i != len(r.SchemaConfig.Configs) {
 			betterTSDBShipperDefaults(r)
 		}
@@ -124,7 +121,6 @@ func (c *ConfigWrapper) ApplyDynamicConfig() cfg.Source {
 		applyEmbeddedCacheConfig(r)
 		applyIngesterFinalSleep(r)
 		applyIngesterReplicationFactor(r)
-		applyChunkRetain(r, &defaults)
 		if err := applyCommonQuerierWorkerGRPCConfig(r, &defaults); err != nil {
 			return err
 		}
@@ -142,15 +138,9 @@ func lastConfigFor(configs []config.PeriodConfig, predicate func(config.PeriodCo
 	return len(configs)
 }
 
-func lastBoltdbShipperConfig(configs []config.PeriodConfig) int {
-	return lastConfigFor(configs, func(p config.PeriodConfig) bool {
-		return p.IndexType == types.BoltDBShipperType
-	})
-}
-
 func lastTSDBConfig(configs []config.PeriodConfig) int {
 	return lastConfigFor(configs, func(p config.PeriodConfig) bool {
-		return p.IndexType == types.TSDBType
+		return p.IndexType == types.IndexTypeTSDB
 	})
 }
 
@@ -488,6 +478,10 @@ func applyPathPrefixDefaults(r, defaults *ConfigWrapper) {
 			r.Ruler.RulePath = fmt.Sprintf("%s/rules-temp", prefix)
 		}
 
+		if r.Ruler.WAL.Dir == defaults.Ruler.WAL.Dir {
+			r.Ruler.WAL.Dir = fmt.Sprintf("%s/ruler-wal", prefix)
+		}
+
 		if r.Ingester.WAL.Dir == defaults.Ingester.WAL.Dir {
 			r.Ingester.WAL.Dir = fmt.Sprintf("%s/wal", prefix)
 		}
@@ -615,9 +609,22 @@ func applyStorageConfig(cfg, defaults *ConfigWrapper) error {
 	if !reflect.DeepEqual(cfg.Common.Storage.FSConfig, filesystemDefaults) {
 		configsFound++
 
+		// Although the common section specifies "filesystem", the ruler is
+		// configured with "local".
+		// The reason is that the ruler handles rules managed in a local directory
+		// differntly than rules managed via the API where it stores them on object
+		// storage.
+		// The legacy RuleStore (configured via Ruler.StoreConfig) did not support
+		// a "filesystem" object client, whereas the new RuleStore (configured via
+		// RulerStorage) does support "filesystem".
 		applyConfig = func(r *ConfigWrapper) {
 			r.Ruler.StoreConfig.Type = "local"
 			r.Ruler.StoreConfig.Local = local.Config{Directory: r.Common.Storage.FSConfig.RulesDirectory}
+
+			r.RulerStorage.Backend = "local"
+			r.RulerStorage.Local = local.Config{Directory: r.Common.Storage.FSConfig.RulesDirectory}
+			r.RulerStorage.Filesystem = filesystem.Config{Directory: r.Common.Storage.FSConfig.RulesDirectory}
+
 			r.StorageConfig.FSConfig.Directory = r.Common.Storage.FSConfig.ChunksDirectory
 		}
 	}
@@ -633,13 +640,13 @@ func applyStorageConfig(cfg, defaults *ConfigWrapper) error {
 		}
 	}
 
-	if !reflect.DeepEqual(cfg.Common.Storage.S3, defaults.StorageConfig.AWSStorageConfig.S3Config) {
+	if !reflect.DeepEqual(cfg.Common.Storage.S3, defaults.StorageConfig.S3Config) {
 		configsFound++
 
 		applyConfig = func(r *ConfigWrapper) {
 			r.Ruler.StoreConfig.Type = "s3"
 			r.Ruler.StoreConfig.S3 = r.Common.Storage.S3
-			r.StorageConfig.AWSStorageConfig.S3Config = r.Common.Storage.S3
+			r.StorageConfig.S3Config = r.Common.Storage.S3
 			r.StorageConfig.Hedging = r.Common.Storage.Hedging
 		}
 	}
@@ -705,20 +712,6 @@ func applyStorageConfig(cfg, defaults *ConfigWrapper) error {
 	}
 
 	return nil
-}
-
-func betterBoltdbShipperDefaults(cfg *ConfigWrapper) {
-	if cfg.Common.PathPrefix != "" {
-		prefix := strings.TrimSuffix(cfg.Common.PathPrefix, "/")
-
-		if cfg.StorageConfig.BoltDBShipperConfig.ActiveIndexDirectory == "" {
-			cfg.StorageConfig.BoltDBShipperConfig.ActiveIndexDirectory = fmt.Sprintf("%s/boltdb-shipper-active", prefix)
-		}
-
-		if cfg.StorageConfig.BoltDBShipperConfig.CacheLocation == "" {
-			cfg.StorageConfig.BoltDBShipperConfig.CacheLocation = fmt.Sprintf("%s/boltdb-shipper-cache", prefix)
-		}
-	}
 }
 
 func betterTSDBShipperDefaults(cfg *ConfigWrapper) {
@@ -793,23 +786,6 @@ func applyIngesterFinalSleep(cfg *ConfigWrapper) {
 
 func applyIngesterReplicationFactor(cfg *ConfigWrapper) {
 	cfg.Ingester.LifecyclerConfig.RingConfig.ReplicationFactor = cfg.Common.ReplicationFactor
-}
-
-// applyChunkRetain is used to set chunk retain based on having an index query cache configured
-// We retain chunks for at least as long as the index queries cache TTL. When an index entry is
-// cached, any chunks flushed after that won't be in the cached entry. To make sure their data is
-// available the RetainPeriod keeps them available in the ingesters live data. We want to retain them
-// for at least as long as the TTL on the index queries cache.
-func applyChunkRetain(cfg, defaults *ConfigWrapper) {
-	if !reflect.DeepEqual(cfg.StorageConfig.IndexQueriesCacheConfig, defaults.StorageConfig.IndexQueriesCacheConfig) {
-		// Only apply this change if the active index period is for boltdb-shipper
-		p := config.ActivePeriodConfig(cfg.SchemaConfig.Configs)
-		if cfg.SchemaConfig.Configs[p].IndexType == types.BoltDBShipperType {
-			// Set the retain period to the cache validity plus one minute. One minute is arbitrary but leaves some
-			// buffer to make sure the chunks are there until the index entries expire.
-			cfg.Ingester.RetainPeriod = cfg.StorageConfig.IndexCacheValidity + 1*time.Minute
-		}
-	}
 }
 
 func applyCommonQuerierWorkerGRPCConfig(cfg, defaults *ConfigWrapper) error {

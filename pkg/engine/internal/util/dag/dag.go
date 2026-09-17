@@ -109,36 +109,158 @@ func (g *Graph[NodeType]) AddEdge(e Edge[NodeType]) error {
 // If n does not have a parent, all of its children will be promoted to root
 // nodes.
 func (g *Graph[NodeType]) Eliminate(n NodeType) {
-	// For each parent p in the node to eliminate, push up n's children to
-	// become children of p, and remove n as a child of p.
-	parents := g.Parents(n)
-	for _, parent := range parents {
-		g.children[parent] = slices.DeleteFunc(g.children[parent], func(check NodeType) bool { return check == n })
+	g.EliminateBatch([]NodeType{n})
+}
 
-		for _, child := range g.children[n] {
-			if slices.Contains(g.children[parent], child) {
-				// The new child was already a child a parent.
-				continue
+// EliminateBatch removes all nodes in toRemove from the graph in a single pass,
+// reconnecting each removed node's surviving ancestors to its surviving
+// descendants.
+//
+// When a chain of removed nodes separates a surviving ancestor from a surviving
+// descendant, EliminateBatch reconnects them directly. E.g.
+//
+// In: Task A → Task B → Task C → Task D -- (remove tasks B and C)
+// Output: Task A → Task D
+//
+// This also applies when a surviving node has no descendants through the removed
+// subgraph, in which case the surviving ancestor simply loses the removed children from its
+// edge list. E.g.
+//
+// In: Task A → Task B → Task C → Task D -- (remove tasks B, C, and D)
+// Output: Task A
+func (g *Graph[NodeType]) EliminateBatch(toRemove []NodeType) {
+	if len(toRemove) == 0 {
+		return
+	}
+
+	removeSet := make(map[NodeType]struct{}, len(toRemove))
+	for _, n := range toRemove {
+		removeSet[n] = struct{}{}
+	}
+
+	// Auxiliary func to find all surviving ancestors & descendants
+	// reachable only by traversing through other removed nodes
+	ancestorsCache := make(map[NodeType][]NodeType)
+	descendantsCache := make(map[NodeType][]NodeType)
+	var survivingAncestors, survivingDescendants func(n NodeType) []NodeType
+	survivingAncestors = func(n NodeType) []NodeType {
+		if res, ok := ancestorsCache[n]; ok {
+			return res
+		}
+		seen := make(map[NodeType]struct{})
+		for _, p := range g.parents[n] {
+			if _, removed := removeSet[p]; !removed {
+				seen[p] = struct{}{}
+			} else {
+				for _, a := range survivingAncestors(p) {
+					seen[a] = struct{}{}
+				}
 			}
-			g.children[parent] = append(g.children[parent], child)
+		}
+		res := make([]NodeType, 0, len(seen))
+		for a := range seen {
+			res = append(res, a)
+		}
+		ancestorsCache[n] = res
+		return res
+	}
+	survivingDescendants = func(n NodeType) []NodeType {
+		if res, ok := descendantsCache[n]; ok {
+			return res
+		}
+		seen := make(map[NodeType]struct{})
+		for _, c := range g.children[n] {
+			if _, removed := removeSet[c]; !removed {
+				seen[c] = struct{}{}
+			} else {
+				for _, d := range survivingDescendants(c) {
+					seen[d] = struct{}{}
+				}
+			}
+		}
+		res := make([]NodeType, 0, len(seen))
+		for d := range seen {
+			res = append(res, d)
+		}
+		descendantsCache[n] = res
+		return res
+	}
+
+	// childSets[p]  = new children set for surviving parent p.
+	// parentSets[c] = new parents set for surviving child c.
+	childSets := make(map[NodeType]map[NodeType]struct{})
+	parentSets := make(map[NodeType]map[NodeType]struct{})
+
+	// childSets/parentSets stage the new edge lists for surviving nodes adjacent
+	// to removed ones. Sets give free deduplication across multiple removed paths.
+	// initChildSet/initParentSet seed each set lazily so each node is scanned once.
+	initChildSet := func(p NodeType) {
+		if _, ok := childSets[p]; ok {
+			return
+		}
+		s := make(map[NodeType]struct{})
+		for _, c := range g.children[p] {
+			if _, removed := removeSet[c]; !removed {
+				s[c] = struct{}{}
+			}
+		}
+		childSets[p] = s
+	}
+	initParentSet := func(c NodeType) {
+		if _, ok := parentSets[c]; ok {
+			return
+		}
+		s := make(map[NodeType]struct{})
+		for _, p := range g.parents[c] {
+			if _, removed := removeSet[p]; !removed {
+				s[p] = struct{}{}
+			}
+		}
+		parentSets[c] = s
+	}
+
+	// For each removed node, bridge its surviving ancestors to its surviving
+	// descendants, closing the gap left by the removal.
+	for _, n := range toRemove {
+		ancs := survivingAncestors(n)
+		descs := survivingDescendants(n)
+
+		for _, a := range ancs {
+			initChildSet(a)
+			for _, d := range descs {
+				childSets[a][d] = struct{}{}
+			}
+		}
+		for _, d := range descs {
+			initParentSet(d)
+			for _, a := range ancs {
+				parentSets[d][a] = struct{}{}
+			}
 		}
 	}
 
-	// For each child c of n, push down n's parents to become parents of c.
-	for _, child := range g.Children(n) {
-		g.parents[child] = slices.DeleteFunc(g.parents[child], func(check NodeType) bool { return check == n })
-
-		for _, newParent := range parents {
-			if slices.Contains(g.parents[child], newParent) {
-				continue
-			}
-			g.parents[child] = append(g.parents[child], newParent)
+	// Write rebuilt slices back.
+	for node, set := range childSets {
+		children := make([]NodeType, 0, len(set))
+		for c := range set {
+			children = append(children, c)
 		}
+		g.children[node] = children
+	}
+	for node, set := range parentSets {
+		parents := make([]NodeType, 0, len(set))
+		for p := range set {
+			parents = append(parents, p)
+		}
+		g.parents[node] = parents
 	}
 
-	delete(g.parents, n)
-	delete(g.children, n)
-	g.nodes.Remove(n)
+	// Delete removed nodes.
+	for _, n := range toRemove {
+		delete(g.parents, n)
+		delete(g.children, n)
+		g.nodes.Remove(n)
+	}
 }
 
 // Inject injects a new node between a parent and its children:

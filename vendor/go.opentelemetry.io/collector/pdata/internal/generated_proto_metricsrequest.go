@@ -12,6 +12,7 @@ import (
 	"sync"
 
 	"go.opentelemetry.io/collector/pdata/internal/json"
+	"go.opentelemetry.io/collector/pdata/internal/metadata"
 	"go.opentelemetry.io/collector/pdata/internal/proto"
 )
 
@@ -30,7 +31,7 @@ var (
 )
 
 func NewMetricsRequest() *MetricsRequest {
-	if !UseProtoPooling.IsEnabled() {
+	if !metadata.PdataUseProtoPoolingFeatureGate.IsEnabled() {
 		return &MetricsRequest{}
 	}
 	return protoPoolMetricsRequest.Get().(*MetricsRequest)
@@ -41,7 +42,7 @@ func DeleteMetricsRequest(orig *MetricsRequest, nullable bool) {
 		return
 	}
 
-	if !UseProtoPooling.IsEnabled() {
+	if !metadata.PdataUseProtoPoolingFeatureGate.IsEnabled() {
 		orig.Reset()
 		return
 	}
@@ -157,7 +158,7 @@ func (orig *MetricsRequest) UnmarshalJSON(iter *json.Iterator) {
 		case "formatVersion", "format_version":
 			orig.FormatVersion = iter.ReadUint32()
 		default:
-			iter.Skip()
+			iter.HandleUnknownField(f)
 		}
 	}
 }

@@ -1,7 +1,5 @@
-//
-// Copyright (c) 2025 The go-yaml Project Contributors
+// Copyright 2025 The go-yaml Project Contributors
 // SPDX-License-Identifier: Apache-2.0
-//
 
 // Options configuration for loading and dumping YAML.
 // Provides centralized control for indentation, line width, strictness, and
@@ -34,10 +32,67 @@ type Options struct {
 	ExplicitEnd           bool       // Always emit ...
 	FlowSimpleCollections bool       // Use flow style for simple collections
 	QuotePreference       QuoteStyle // Preferred quote style when quoting is required
+
+	// Safety limit checks (set by ApplyOptions or WithPlugin(limit.New(...)))
+	DepthCheck func(depth int, ctx *DepthContext) error
+	AliasCheck func(aliasCount, constructCount int) error
+
+	// Private options (not exported, used internally)
+	FromLegacy bool // Indicates legacy Unmarshal()/Decoder path (check Unmarshaler, allow trailing content)
 }
 
 // Option allows configuring YAML loading and dumping operations.
 type Option func(*Options) error
+
+// DepthKind represents the type of nesting (flow or block).
+type DepthKind string
+
+// DepthKindFlow and DepthKindBlock are the possible values of DepthContext.Kind.
+const (
+	DepthKindFlow  DepthKind = "flow"
+	DepthKindBlock DepthKind = "block"
+)
+
+// DepthContext holds context about a nesting depth check.
+type DepthContext struct {
+	Kind DepthKind
+}
+
+// DefaultDepthCheck is the default depth check function.
+// It returns an error when depth exceeds 10000.
+func DefaultDepthCheck(depth int, ctx *DepthContext) error {
+	const maxDepth = 10000
+	if depth > maxDepth {
+		return fmt.Errorf("exceeded max depth of %d", maxDepth)
+	}
+	return nil
+}
+
+// DefaultAliasCheck is the default alias check function.
+// It uses a ratio-based heuristic to prevent DoS attacks via excessive aliasing.
+func DefaultAliasCheck(aliasCount, constructCount int) error {
+	const (
+		aliasRatioRangeLow  = 400000
+		aliasRatioRangeHigh = 4000000
+		aliasRatioRange     = float64(aliasRatioRangeHigh - aliasRatioRangeLow)
+	)
+	if aliasCount <= 100 || constructCount <= 1000 {
+		return nil
+	}
+	var allowed float64
+	switch {
+	case constructCount <= aliasRatioRangeLow:
+		allowed = 0.99
+	case constructCount >= aliasRatioRangeHigh:
+		allowed = 0.10
+	default:
+		allowed = 0.99 - 0.89*(float64(constructCount-aliasRatioRangeLow)/aliasRatioRange)
+	}
+	if float64(aliasCount)/float64(constructCount) > allowed {
+		return errors.New("document contains excessive aliasing")
+	}
+	return nil
+}
 
 // WithIndent sets the number of spaces to use for indentation when
 // dumping YAML content.
@@ -92,7 +147,7 @@ func WithKnownFields(knownFields ...bool) Option {
 
 // WithSingleDocument configures the Loader to only process the first document
 // in a YAML stream. After the first document is loaded, subsequent calls to
-// Load will return io.EOF.
+// Load will return [io.EOF].
 //
 // When called without arguments, defaults to true.
 //
@@ -371,6 +426,10 @@ func ApplyOptions(opts ...Option) (*Options, error) {
 		LineWidth:        80,
 		Unicode:          true,
 		UniqueKeys:       true,
+
+		// Default safety limits
+		DepthCheck: DefaultDepthCheck,
+		AliasCheck: DefaultAliasCheck,
 	}
 	for _, opt := range opts {
 		if err := opt(o); err != nil {

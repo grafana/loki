@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
@@ -17,10 +18,13 @@ import (
 	"golang.org/x/sync/errgroup"
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
+	"github.com/grafana/loki/v3/pkg/dataobj/consumer/logsobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/logs"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
+	"github.com/grafana/loki/v3/pkg/dataobj/uploader"
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
+	"github.com/grafana/loki/v3/pkg/scratch"
 )
 
 var tracer = otel.Tracer("pkg/engine/internal/executor")
@@ -37,13 +41,41 @@ type StreamFilterer interface {
 }
 
 type Config struct {
-	BatchSize int64
+	// Used by the querier, unused by compaction executors
+	BatchSize          int64
+	PrefetchBytes      int64
+	MergePrefetchCount int
+
+	// Used by compaction, unused by query executors
+	// ScratchStore is an optional scratch store for index merge operations.
+	ScratchStore scratch.Store
+	// IndexobjCfg is the builder config for index objects.
+	IndexobjCfg logsobj.BuilderBaseConfig
+	// LogsobjCfg is the builder config for index objects.
+	LogsobjCfg logsobj.BuilderBaseConfig
+	// UploaderCfg controls object key generation for compacted log objects.
+	UploaderCfg uploader.Config
+	// BuilderMetrics is shared by logs object builders across worker tasks.
+	BuilderMetrics *logsobj.BuilderMetrics
+
+	// IndexMergeObserver is used  by compaction to populate output-size
+	// histograms. Optional; nil disables observation.
+	IndexMergeObserver IndexMergeObserver
+
+	// LogMergeObserver is used by compaction to populate log-merge histograms.
+	// Optional; nil disables observation.
+	LogMergeObserver LogMergeObserver
+
+	// Shared, used by both query and compaction executors.
 	Bucket    objstore.Bucket
 	Metastore metastore.Metastore
 
-	PrefetchBytes int64
-
-	MergePrefetchCount int
+	// DataBucket reads source log objects during LogMerge compaction. Unlike
+	// Bucket (which the compaction wiring prefixes with the index-storage
+	// prefix for index I/O and ToC), source log objects are stored at the
+	// unprefixed dataobj root, so they must be read through this bucket.
+	// Optional; when nil the executor falls back to Bucket.
+	DataBucket objstore.Bucket
 
 	// GetExternalInputs is an optional function called for each node in the
 	// plan. If GetExternalInputs returns a non-nil slice of Pipelines, they
@@ -53,6 +85,18 @@ type Config struct {
 	// StreamFilterer is an optional filterer that can filter streams based on their labels.
 	// When set, streams are filtered before scanning.
 	StreamFilterer RequestStreamFilterer `yaml:"-"`
+
+	// TaskCaches is an optional registry mapping cache types to their backing stores.
+	TaskCaches TaskCacheRegistry
+}
+
+type IndexMergeObserver interface {
+	ObserveIndexMergeOutput(tenant string, compressedBytes, uncompressedBytes int64)
+}
+
+// LogMergeObserver receives per-task compaction summaries from LogMerge.
+type LogMergeObserver interface {
+	ObserveLogMerge(tenant string, stats LogMergeObservedStats, duration time.Duration)
 }
 
 func Run(ctx context.Context, cfg Config, plan *physical.Plan, logger log.Logger) Pipeline {
@@ -62,11 +106,20 @@ func Run(ctx context.Context, cfg Config, plan *physical.Plan, logger log.Logger
 		prefetchBytes:      cfg.PrefetchBytes,
 		mergePrefetchCount: cfg.MergePrefetchCount,
 		bucket:             cfg.Bucket,
+		dataBucket:         cfg.DataBucket,
 		metastore:          cfg.Metastore,
 		logger:             logger,
 		evaluator:          newExpressionEvaluator(),
 		getExternalInputs:  cfg.GetExternalInputs,
 		streamFilterer:     cfg.StreamFilterer,
+		taskCaches:         cfg.TaskCaches,
+		scratchStore:       cfg.ScratchStore,
+		indexobjCfg:        cfg.IndexobjCfg,
+		logsobjCfg:         cfg.LogsobjCfg,
+		uploaderCfg:        cfg.UploaderCfg,
+		builderMetrics:     cfg.BuilderMetrics,
+		indexMergeObserver: cfg.IndexMergeObserver,
+		logMergeObserver:   cfg.LogMergeObserver,
 	}
 	if plan == nil {
 		return errorPipeline(ctx, errors.New("plan is nil"))
@@ -84,17 +137,28 @@ type Context struct {
 	batchSize     int64
 	prefetchBytes int64
 
-	logger    log.Logger
-	plan      *physical.Plan
-	evaluator *expressionEvaluator
-	bucket    objstore.Bucket
-	metastore metastore.Metastore
+	logger     log.Logger
+	plan       *physical.Plan
+	evaluator  *expressionEvaluator
+	bucket     objstore.Bucket
+	dataBucket objstore.Bucket
+	metastore  metastore.Metastore
 
 	getExternalInputs func(ctx context.Context, node physical.Node) []Pipeline
 
 	mergePrefetchCount int
 
 	streamFilterer RequestStreamFilterer
+	taskCaches     TaskCacheRegistry
+
+	scratchStore   scratch.Store
+	indexobjCfg    logsobj.BuilderBaseConfig
+	logsobjCfg     logsobj.BuilderBaseConfig
+	uploaderCfg    uploader.Config
+	builderMetrics *logsobj.BuilderMetrics
+
+	indexMergeObserver IndexMergeObserver
+	logMergeObserver   LogMergeObserver
 }
 
 func (c *Context) execute(ctx context.Context, node physical.Node) Pipeline {
@@ -128,7 +192,7 @@ func (c *Context) execute(ctx context.Context, node physical.Node) Pipeline {
 	case *physical.Filter:
 		return NewObservedPipeline(n.Type().String(), nodeAttributes(n), c.executeFilter(ctx, n, inputs))
 	case *physical.Projection:
-		return NewObservedPipeline(n.Type().String(), nodeAttributes(n), c.executeProjection(ctx, n, inputs))
+		return NewObservedPipeline(operatorRegionName(n), nodeAttributes(n), c.executeProjection(ctx, n, inputs))
 	case *physical.RangeAggregation:
 		return NewObservedPipeline(n.Type().String(), nodeAttributes(n), c.executeRangeAggregation(ctx, n, inputs))
 	case *physical.VectorAggregation:
@@ -141,8 +205,19 @@ func (c *Context) execute(ctx context.Context, node physical.Node) Pipeline {
 		return c.executeParallelize(ctx, n, inputs)
 	case *physical.Batching:
 		return NewObservedPipeline(n.Type().String(), nodeAttributes(n), c.executeBatching(ctx, n, inputs))
+	case *physical.Cache:
+		return NewObservedPipeline(n.Type().String(), nodeAttributes(n), c.executeCache(ctx, n, inputs))
 	case *physical.ScanSet:
 		return c.executeScanSet(ctx, n)
+	case *physical.IndexMerge:
+		return NewObservedPipeline(n.Type().String(), nodeAttributes(n), c.executeIndexMerge(ctx, n))
+	case *physical.LogMerge:
+		// LogMerge runs a K-way sort-merge over the LOG sections referenced by the
+		// node's Runs, producing schema-sorted compacted log object(s). See
+		// executeLogMerge / doLogObjectMerge in log_merge.go.
+		return NewObservedPipeline(n.Type().String(), nodeAttributes(n), c.executeLogMerge(n))
+	case *physical.SortObject:
+		return NewObservedPipeline(n.Type().String(), nodeAttributes(n), c.executeSortObject(n))
 	default:
 		return errorPipeline(ctx, fmt.Errorf("invalid node type: %T", node))
 	}
@@ -241,13 +316,18 @@ func (c *Context) executeDataObjScan(ctx context.Context, node *physical.DataObj
 	predicates := make([]logs.Predicate, 0, len(node.Predicates))
 
 	for _, p := range node.Predicates {
-		conv, err := buildLogsPredicate(p, logsSection.Columns())
+		conv, err := physical.BuildLogsPredicate(p, logsSection.Columns())
 		if err != nil {
 			return errorPipeline(ctx, err)
 		}
 		predicates = append(predicates, conv)
 	}
 	span.AddEvent("constructed predicate")
+
+	if physical.LogsPredicatesAreUnsatisfiable(predicates) {
+		span.AddEvent("unsatisfiable logs predicate; skipping dataobj scan")
+		return emptyPipeline()
+	}
 
 	var pipeline Pipeline = newDataobjScanPipeline(dataobjScanOptions{
 		// TODO(rfratto): passing the streams section means that each DataObjScan
@@ -484,6 +564,19 @@ func (c *Context) executeBatching(ctx context.Context, node *physical.Batching, 
 	return NewBatchingPipeline(inputs[0], node.BatchSize)
 }
 
+func (c *Context) executeCache(ctx context.Context, node *physical.Cache, inputs []Pipeline) Pipeline {
+	if len(inputs) != 1 {
+		return errorPipeline(ctx, fmt.Errorf("cache expects exactly one input, got %d", len(inputs)))
+	}
+
+	cache, cacheStats, err := c.taskCaches.GetForType(node.CacheName)
+	if err != nil {
+		level.Error(c.logger).Log("msg", "cache lookup failed when executing the cache pipeline, skipping cache", "err", err)
+	}
+
+	return newCachingPipeline(cache, inputs[0], node.Key, node.MaxSizeBytes, node.Compression, c.logger, cacheStats, node.CacheName)
+}
+
 func (c *Context) executeScanSet(ctx context.Context, set *physical.ScanSet) Pipeline {
 	// ScanSet typically gets partitioned by the scheduler into multiple scan
 	// nodes.
@@ -522,6 +615,22 @@ func (c *Context) executeScanSet(ctx context.Context, set *physical.ScanSet) Pip
 	}
 
 	return pipeline
+}
+
+// operatorRegionName returns the xcap region name for a node. For a parse or
+// format projection it appends the function (e.g. "Projection/PARSE_LOGFMT") so
+// per-parser cost is attributable instead of lumped under "Projection".
+func operatorRegionName(n physical.Node) string {
+	name := n.Type().String()
+	if p, ok := n.(*physical.Projection); ok {
+		for _, e := range p.Expressions {
+			if v, ok := e.(*physical.VariadicExpr); ok {
+				name += "/" + v.Op.String()
+				break
+			}
+		}
+	}
+	return name
 }
 
 // nodeAttributes returns OTel span attributes relevant to the given physical

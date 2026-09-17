@@ -1,0 +1,208 @@
+# |= / != (substring match)
+clear
+load
+  {app="a"} "req id=1 err=connrefused" @ 20s [repeat every 20s for 4]
+  {app="a"} "req id=2 ok"              @ 30s [repeat every 20s for 2]
+
+eval instant at 60s count_over_time({app="a"} |= "err" [1m])
+  {app="a"} 3
+eval range from 40s to 80s step 20s count_over_time({app="a"} |= "err" [1m])   # overlapping
+  {app="a"} 2 3 3
+eval range from 60s to 180s step 120s count_over_time({app="a"} |= "err" [1m]) # non-overlapping
+  {app="a"} 3 _
+# != keeps only the lines without the substring.
+eval instant at 60s count_over_time({app="a"} != "err" [1m])
+  {app="a"} 2
+# The match is case-sensitive.
+eval instant at 60s count_over_time({app="a"} |= "ERR" [1m])
+  expect empty
+# An empty string matches every line.
+eval instant at 60s count_over_time({app="a"} |= "" [1m])
+  {app="a"} 5
+
+# |~ / !~ (regexp match)
+clear
+load
+  {app="a"} "code=500 fail" @ 20s [repeat every 20s for 4]
+  {app="a"} "code=200 pass" @ 30s
+  {app="a"} "CODE=503 down" @ 45s
+
+eval instant at 60s count_over_time({app="a"} |~ "code=5.." [1m])
+  {app="a"} 3
+eval range from 40s to 80s step 20s count_over_time({app="a"} |~ "code=5.." [1m])   # overlapping
+  {app="a"} 2 3 3
+eval range from 60s to 180s step 120s count_over_time({app="a"} |~ "code=5.." [1m]) # non-overlapping
+  {app="a"} 3 _
+# !~ keeps the lines the regex does not match.
+eval instant at 60s count_over_time({app="a"} !~ "code=5.." [1m])
+  {app="a"} 2
+# A regex is case-sensitive; (?i) makes it case-insensitive and also matches CODE=503.
+eval instant at 60s count_over_time({app="a"} |~ "(?i)code=5.." [1m])
+  {app="a"} 4
+# An invalid regex fails at parse time.
+eval instant at 60s count_over_time({app="a"} |~ "(" [1m])
+  expect fail msg: error parsing regexp
+
+# |> / !> (pattern match)
+clear
+load
+  {app="a"} "GET /api 200" @ 20s [repeat every 20s for 4]
+  {app="a"} "POST /api 500" @ 30s [repeat every 20s for 2]
+
+eval instant at 60s count_over_time({app="a"} |> "GET <_> 200" [1m])
+  {app="a"} 3
+eval range from 40s to 80s step 20s count_over_time({app="a"} |> "GET <_> 200" [1m])   # overlapping
+  {app="a"} 2 3 3
+eval range from 60s to 180s step 120s count_over_time({app="a"} |> "GET <_> 200" [1m]) # non-overlapping
+  {app="a"} 3 _
+# !> keeps the lines the pattern does not match.
+eval instant at 60s count_over_time({app="a"} !> "GET <_> 200" [1m])
+  {app="a"} 2
+# A pattern with no <_> matches the whole line, so a substring pattern matches nothing.
+eval instant at 60s count_over_time({app="a"} |> "GET /api" [1m])
+  expect empty
+# A named capture is not allowed in a line filter.
+eval instant at 60s count_over_time({app="a"} |> "<verb> /api 200" [1m])
+  expect fail msg: named captures are not allowed
+
+# ip() line filter: matches a line that holds an IP address inside the CIDR range.
+clear
+load
+  {app="a"} "src 192.168.1.10 ok" @ 20s [repeat every 20s for 4]
+  {app="a"} "src 10.0.0.9 ok"     @ 30s
+  {app="a"} "no ip here"          @ 45s
+
+eval instant at 60s count_over_time({app="a"} |= ip("192.168.1.0/24") [1m])
+  {app="a"} 3
+eval range from 40s to 80s step 20s count_over_time({app="a"} |= ip("192.168.1.0/24") [1m])   # overlapping
+  {app="a"} 2 3 3
+eval range from 60s to 180s step 120s count_over_time({app="a"} |= ip("192.168.1.0/24") [1m]) # non-overlapping
+  {app="a"} 3 _
+# != ip keeps lines with no IP in the range, including a line with no IP at all.
+eval instant at 60s count_over_time({app="a"} != ip("192.168.1.0/24") [1m])
+  {app="a"} 2
+# A wider range matches the other subnet.
+eval instant at 60s count_over_time({app="a"} |= ip("10.0.0.0/8") [1m])
+  {app="a"} 1
+# An invalid IP pattern fails at parse time.
+eval instant at 60s count_over_time({app="a"} |= ip("notanip") [1m])
+  expect fail msg: ip: invalid pattern
+
+# ip() line filter with "or" operator.
+clear
+load
+  {app="net"} "src 192.168.1.10 ok" @ 20s [repeat every 20s for 4]
+  {app="net"} "src 10.0.0.9 ok"     @ 25s [repeat every 20s for 2]
+  {app="net"} "src 172.16.5.5 ok"   @ 30s
+  {app="net"} "src 8.8.8.8 ok"      @ 35s
+  {app="txt"} "no ip here"          @ 50s
+  {app="txt"} "special no ip"       @ 55s
+
+eval instant at 60s count_over_time({app=~"net|txt"} |= ip("192.168.1.0/24") or ip("10.0.0.0/8") [1m])
+  {app="net"} 5
+eval range from 40s to 80s step 20s count_over_time({app=~"net|txt"} |= ip("192.168.1.0/24") or ip("10.0.0.0/8") [1m])   # overlapping
+  {app="net"} 3 5 5
+eval range from 60s to 180s step 120s count_over_time({app=~"net|txt"} |= ip("192.168.1.0/24") or ip("10.0.0.0/8") [1m]) # non-overlapping
+  {app="net"} 5 _
+# |= a substring or ip range.
+eval instant at 60s count_over_time({app=~"net|txt"} |= "special" or ip("10.0.0.0/8") [1m])
+  {app="net"} 2
+  {app="txt"} 1
+eval range from 40s to 80s step 20s count_over_time({app=~"net|txt"} |= "special" or ip("10.0.0.0/8") [1m])
+  {app="net"} 1 2 2
+  {app="txt"} _ 1 1
+eval instant at 60s count_over_time({app=~"net|txt"} |= ip("10.0.0.0/8") or "special" [1m])
+  {app="net"} 2
+  {app="txt"} 1
+eval range from 40s to 80s step 20s count_over_time({app=~"net|txt"} |= ip("10.0.0.0/8") or "special" [1m])
+  {app="net"} 1 2 2
+  {app="txt"} _ 1 1
+# |= three operands chain: substring at the end.
+eval instant at 60s count_over_time({app=~"net|txt"} |= ip("192.168.1.0/24") or ip("10.0.0.0/8") or "special" [1m])
+  {app="net"} 5
+  {app="txt"} 1
+eval range from 40s to 80s step 20s count_over_time({app=~"net|txt"} |= ip("192.168.1.0/24") or ip("10.0.0.0/8") or "special" [1m])
+  {app="net"} 3 5 5
+  {app="txt"} _ 1 1
+# |= three operands chain: substring both at the start and at the end.
+eval instant at 60s count_over_time({app=~"net|txt"} |= "special" or ip("10.0.0.0/8") or "no ip here" [1m])
+  {app="net"} 2
+  {app="txt"} 2
+eval range from 40s to 80s step 20s count_over_time({app=~"net|txt"} |= "special" or ip("10.0.0.0/8") or "no ip here" [1m])
+  {app="net"} 1 2 2
+  {app="txt"} _ 2 2
+# |= four operands chain.
+eval instant at 60s count_over_time({app=~"net|txt"} |= ip("192.168.1.0/24") or ip("10.0.0.0/8") or ip("172.16.0.0/12") or "special" [1m])
+  {app="net"} 6
+  {app="txt"} 1
+eval range from 40s to 80s step 20s count_over_time({app=~"net|txt"} |= ip("192.168.1.0/24") or ip("10.0.0.0/8") or ip("172.16.0.0/12") or "special" [1m])
+  {app="net"} 4 6 6
+  {app="txt"} _ 1 1
+# != two operands.
+eval instant at 60s count_over_time({app=~"net|txt"} != ip("192.168.1.0/24") or ip("10.0.0.0/8") [1m])
+  {app="net"} 2
+  {app="txt"} 2
+eval range from 40s to 80s step 20s count_over_time({app=~"net|txt"} != ip("192.168.1.0/24") or ip("10.0.0.0/8") [1m])
+  {app="net"} 2 2 2
+  {app="txt"} _ 2 2
+# != three operands chain.
+eval instant at 60s count_over_time({app=~"net|txt"} != ip("192.168.1.0/24") or ip("10.0.0.0/8") or "special" [1m])
+  {app="net"} 2
+  {app="txt"} 1
+eval range from 40s to 80s step 20s count_over_time({app=~"net|txt"} != ip("192.168.1.0/24") or ip("10.0.0.0/8") or "special" [1m])
+  {app="net"} 2 2 2
+  {app="txt"} _ 1 1
+# |~ does not support ip(), even when it's included in a or operands chain.
+eval instant at 60s count_over_time({app=~"net|txt"} |~ ip("192.168.1.0/24") or "special" [1m])
+  expect fail msg: ip: invalid operation
+eval instant at 60s count_over_time({app=~"net|txt"} |~ "special" or ip("192.168.1.0/24") [1m])
+  expect fail msg: ip: invalid operation
+# An invalid ip() pattern fails at parse time, with or without or.
+eval instant at 60s count_over_time({app=~"net|txt"} |= ip("") or "special" [1m])
+  expect fail msg: ip: invalid pattern
+
+# or-chained filters: a positive filter keeps a line that matches any operand; a negative filter
+# drops a line that matches any operand. Each operand inherits the match type of the primary filter.
+clear
+load
+  {app="a"} "level=error x" @ 20s [repeat every 20s for 4]
+  {app="a"} "level=warn y"  @ 25s [repeat every 20s for 4]
+  {app="a"} "level=info z"  @ 35s [repeat every 20s for 2]
+
+eval instant at 60s count_over_time({app="a"} |= "error" or "warn" [1m])
+  {app="a"} 5
+# Three or more operands chain; this one keeps every line.
+eval instant at 60s count_over_time({app="a"} |= "error" or "warn" or "info" [1m])
+  {app="a"} 7
+eval range from 40s to 80s step 20s count_over_time({app="a"} |= "error" or "warn" [1m])   # overlapping
+  {app="a"} 3 5 6
+eval range from 60s to 180s step 120s count_over_time({app="a"} |= "error" or "warn" [1m]) # non-overlapping
+  {app="a"} 5 _
+# The or operand inherits |~, so both are regexes.
+eval instant at 60s count_over_time({app="a"} |~ "err.r" or "wa.n" [1m])
+  {app="a"} 5
+# The or operand supports the pattern match (|>) too.
+eval instant at 60s count_over_time({app="a"} |> "level=error <_>" or "level=warn <_>" [1m])
+  {app="a"} 5
+# != / !~ with or drop a line that matches any operand, so only the info lines survive.
+eval instant at 60s count_over_time({app="a"} != "error" or "warn" [1m])
+  {app="a"} 2
+eval instant at 60s count_over_time({app="a"} !~ "err.r" or "wa.n" [1m])
+  {app="a"} 2
+
+# chained filters apply as a logical and: a line must pass every filter.
+clear
+load
+  {app="a"} "level=error status=500" @ 20s [repeat every 20s for 4]
+  {app="a"} "level=error status=200" @ 30s [repeat every 20s for 2]
+  {app="a"} "level=info status=500"  @ 45s
+
+eval instant at 60s count_over_time({app="a"} |= "error" |= "status=500" [1m])
+  {app="a"} 3
+eval range from 40s to 80s step 20s count_over_time({app="a"} |= "error" |= "status=500" [1m])   # overlapping
+  {app="a"} 2 3 3
+eval range from 60s to 180s step 120s count_over_time({app="a"} |= "error" |= "status=500" [1m]) # non-overlapping
+  {app="a"} 3 _
+# A positive and a negative filter combine: keep error lines that are not status=500.
+eval instant at 60s count_over_time({app="a"} |= "error" != "status=500" [1m])
+  {app="a"} 2

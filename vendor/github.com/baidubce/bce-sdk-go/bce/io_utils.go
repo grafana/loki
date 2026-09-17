@@ -48,6 +48,9 @@ func (t *TeeReadNopCloser) Seek(offset int64, whence int) (int64, error) {
 }
 
 func (t *TeeReadNopCloser) Close() error {
+	if c, ok := t.reader.(io.Closer); ok {
+		return c.Close()
+	}
 	return nil
 }
 

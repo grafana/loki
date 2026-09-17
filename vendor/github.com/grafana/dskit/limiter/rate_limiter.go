@@ -48,6 +48,14 @@ func (l *RateLimiter) AllowN(now time.Time, tenantID string, n int) bool {
 	return l.getTenantLimiter(now, tenantID).AllowN(now, n)
 }
 
+// ReserveN returns a Reservation that indicates how long the caller must wait
+// before n tokens may be consumed at time now for the given tenant. The caller
+// may Cancel the reservation to return the reserved tokens, which is useful when
+// making an all-or-nothing decision across multiple limiters.
+func (l *RateLimiter) ReserveN(now time.Time, tenantID string, n int) *rate.Reservation {
+	return l.getTenantLimiter(now, tenantID).ReserveN(now, n)
+}
+
 // WaitN blocks until n events are allowed to happen.
 // It returns an error if n exceeds the Limiter's burst size, the Context is
 // canceled, or the expected wait time exceeds the Context's Deadline.
@@ -64,6 +72,21 @@ func (l *RateLimiter) Limit(now time.Time, tenantID string) float64 {
 // Burst returns the currently configured maximum burst size.
 func (l *RateLimiter) Burst(now time.Time, tenantID string) int {
 	return l.getTenantLimiter(now, tenantID).Burst()
+}
+
+// RemoveStaleEntries removes entries that have not been accessed since
+// the given cutoff time and returns the number of removed entries.
+func (l *RateLimiter) RemoveStaleEntries(cutoff time.Time) int {
+	l.tenantsLock.Lock()
+	defer l.tenantsLock.Unlock()
+	removed := 0
+	for tenantID, entry := range l.tenants {
+		if entry.recheckAt.Before(cutoff) {
+			delete(l.tenants, tenantID)
+			removed++
+		}
+	}
+	return removed
 }
 
 func (l *RateLimiter) getTenantLimiter(now time.Time, tenantID string) *rate.Limiter {
@@ -108,7 +131,12 @@ func (l *RateLimiter) recheckTenantLimiter(now time.Time, tenantID string) *rate
 	l.tenantsLock.Lock()
 	defer l.tenantsLock.Unlock()
 
-	entry := l.tenants[tenantID]
+	entry, ok := l.tenants[tenantID]
+	if !ok {
+		entry = &tenantLimiter{rate.NewLimiter(limit, burst), now.Add(l.recheckPeriod)}
+		l.tenants[tenantID] = entry
+		return entry.limiter
+	}
 
 	// We check again if the recheck period elapsed, cause it may
 	// have already been rechecked in the meanwhile.

@@ -1,127 +1,122 @@
 package dataobj
 
 import (
-	"bytes"
-	"encoding/binary"
-	"io"
+	"math"
 	"testing"
 
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/filemd"
-	"github.com/grafana/loki/v3/pkg/dataobj/internal/streamio"
-	"github.com/grafana/loki/v3/pkg/dataobj/internal/util/protocodec"
-	"github.com/grafana/loki/v3/pkg/scratch"
 )
 
-func Test_decoder_legacyObject(t *testing.T) {
-	fixture := legacyTHORMagicFixture{
-		sectionType: SectionType{
-			Namespace: "github.com/grafana/loki",
-			Kind:      "logs",
-			Version:   7,
-		},
-		tenant:          "tenant-a",
-		extensionData:   []byte("legacy-extension"),
-		sectionData:     []byte("legacy-section-data"),
-		sectionMetadata: []byte("legacy-section-metadata"),
+func TestDecoder_ExtendedMetadataRegionEnd(t *testing.T) {
+	d := &decoder{}
+	const startOff = int64(100)
+
+	// testMaxBytes stands in for whatever maxBytes a caller passes in production (the cache backend's
+	// own MaxItemBytes); extendedMetadataRegionEnd treats it as an opaque bound, so its exact value does not
+	// matter here.
+	const testMaxBytes = int64(64 << 20)
+
+	// testSectionSpec is one section to build into a *filemd.Metadata via newTestMD.
+	type testSectionSpec struct {
+		isLogs         bool
+		offset, length uint64
 	}
 
-	encodedObject := buildLegacyTHORMagicObject(t, fixture)
-
-	obj, err := FromReaderAt(bytes.NewReader(encodedObject), int64(len(encodedObject)))
-	require.NoError(t, err)
-	require.Equal(t, int64(len(encodedObject)), obj.Size())
-
-	require.Len(t, obj.Sections(), 1)
-	sec := obj.Sections()[0]
-
-	dataReader, err := sec.Reader.DataRange(t.Context(), 0, sec.Reader.DataSize())
-	require.NoError(t, err)
-	require.Equal(t, fixture.sectionData, readAll(t, dataReader))
-
-	metadataReader, err := sec.Reader.MetadataRange(t.Context(), 0, sec.Reader.MetadataSize())
-	require.NoError(t, err)
-	require.Equal(t, fixture.sectionMetadata, readAll(t, metadataReader))
-}
-
-type legacyTHORMagicFixture struct {
-	sectionType SectionType
-	tenant      string
-
-	extensionData   []byte
-	sectionData     []byte
-	sectionMetadata []byte
-}
-
-func buildLegacyTHORMagicObject(t *testing.T, fixture legacyTHORMagicFixture) []byte {
-	t.Helper()
-
-	fileMetadata := &filemd.Metadata{
-		Sections: []*filemd.SectionInfo{
-			{
-				TypeRef: 1,
-				Layout: &filemd.SectionLayout{
-					Data:     &filemd.Region{Offset: uint64(len(legacyMagic)), Length: uint64(len(fixture.sectionData))},
-					Metadata: &filemd.Region{Offset: uint64(len(legacyMagic) + len(fixture.sectionData)), Length: uint64(len(fixture.sectionMetadata))},
-				},
-				ExtensionData: fixture.extensionData,
-				TenantRef:     3,
+	// newTestMD builds a minimal, valid *filemd.Metadata with one section per spec, in order, for
+	// testing extendedMetadataRegionEnd's boundary, overflow, and section-selection logic directly.
+	newTestMD := func(specs ...testSectionSpec) *filemd.Metadata {
+		md := &filemd.Metadata{
+			Dictionary: []string{"", "github.com/grafana/loki", "pointers", "logs"},
+			Types: []*filemd.SectionType{
+				nil,
+				{NameRef: &filemd.SectionType_NameRef{NamespaceRef: 1, KindRef: 2}}, // 1: pointers
+				{NameRef: &filemd.SectionType_NameRef{NamespaceRef: 1, KindRef: 3}}, // 2: logs
 			},
-		},
-		Dictionary: []string{
-			"",
-			fixture.sectionType.Namespace,
-			fixture.sectionType.Kind,
-			fixture.tenant,
-		},
-		Types: []*filemd.SectionType{
-			{NameRef: nil}, // Invalid type.
-			{
-				NameRef: &filemd.SectionType_NameRef{
-					NamespaceRef: 1,
-					KindRef:      2,
-				},
-				Version: fixture.sectionType.Version,
-			},
-		},
+		}
+		for _, s := range specs {
+			typeRef := uint32(1)
+			if s.isLogs {
+				typeRef = 2
+			}
+			md.Sections = append(md.Sections, &filemd.SectionInfo{
+				TypeRef: typeRef,
+				Layout:  &filemd.SectionLayout{Metadata: &filemd.Region{Offset: s.offset, Length: s.length}},
+			})
+		}
+		return md
 	}
 
-	var encodedMetadata bytes.Buffer
-	require.NoError(t, streamio.WriteUvarint(&encodedMetadata, fileFormatVersion))
-	require.NoError(t, protocodec.Encode(&encodedMetadata, fileMetadata))
+	newTestSectionMD := func(offset, length uint64) *filemd.Metadata {
+		return newTestMD(testSectionSpec{offset: offset, length: length})
+	}
 
-	store := scratch.NewMemory()
-	snapshot, err := newSnapshot(
-		store,
-		legacyMagic,
-		[]sectionRegion{
-			{Handle: store.Put(fixture.sectionData), Size: len(fixture.sectionData)},
-			{Handle: store.Put(fixture.sectionMetadata), Size: len(fixture.sectionMetadata)},
-			{Handle: store.Put(encodedMetadata.Bytes()), Size: encodedMetadata.Len()},
-		},
-		buildLegacyTailer(uint32(encodedMetadata.Len())),
-	)
-	require.NoError(t, err)
-	defer func() { require.NoError(t, snapshot.Close()) }()
+	t.Run("a region ending exactly at maxBytes is accepted but one byte more clamps to the file metadata only", func(t *testing.T) {
+		atLimit := newTestSectionMD(0, uint64(testMaxBytes-startOff))
+		end, err := d.extendedMetadataRegionEnd(atLimit, startOff, testMaxBytes)
+		require.NoError(t, err)
+		require.Equal(t, testMaxBytes, end)
 
-	encodedObject, err := io.ReadAll(io.NewSectionReader(snapshot, 0, snapshot.Size()))
-	require.NoError(t, err)
-	return encodedObject
-}
+		overLimit := newTestSectionMD(0, uint64(testMaxBytes-startOff)+1)
+		end, err = d.extendedMetadataRegionEnd(overLimit, startOff, testMaxBytes)
+		require.NoError(t, err)
+		require.Equal(t, startOff, end, "one byte over maxBytes must still cache the file metadata, just not the section's")
+	})
 
-func buildLegacyTailer(metadataSize uint32) []byte {
-	tailer := make([]byte, 4, 8)
-	binary.LittleEndian.PutUint32(tailer, metadataSize)
-	tailer = append(tailer, legacyMagic...)
-	return tailer
-}
+	t.Run("a smaller, later-listed section is still kept when a bigger, earlier-listed section does not fit", func(t *testing.T) {
+		md := newTestMD(
+			testSectionSpec{offset: 0, length: uint64(testMaxBytes) * 2}, // listed first, does not fit
+			testSectionSpec{offset: 0, length: 1024},                     // listed second, fits comfortably
+		)
+		end, err := d.extendedMetadataRegionEnd(md, startOff, testMaxBytes)
+		require.NoError(t, err)
+		require.Equal(t, startOff+1024, end, "the smaller section must be kept even though it is listed after the one that does not fit")
+	})
 
-func readAll(t *testing.T, rc io.ReadCloser) []byte {
-	t.Helper()
-	defer func() { require.NoError(t, rc.Close()) }()
+	t.Run("a logs section with an invalid layout does not block caching a valid non-logs section", func(t *testing.T) {
+		md := newTestMD(
+			testSectionSpec{isLogs: true, offset: uint64(math.MaxInt64) + 1, length: 0},
+			testSectionSpec{offset: 0, length: 1024},
+		)
+		end, err := d.extendedMetadataRegionEnd(md, startOff, testMaxBytes)
+		require.NoError(t, err)
+		require.Equal(t, startOff+1024, end, "a logs section's layout is never validated, since its contribution is never used")
+	})
 
-	bb, err := io.ReadAll(rc)
-	require.NoError(t, err)
-	return bb
+	t.Run("the file metadata alone exceeding maxBytes is rejected outright since nothing would be left to cache", func(t *testing.T) {
+		_, err := d.extendedMetadataRegionEnd(newTestSectionMD(0, 0), testMaxBytes+1, testMaxBytes)
+		require.ErrorIs(t, err, errCannotCacheMetadata)
+	})
+
+	t.Run("a different maxBytes value is honored using the same boundary rule", func(t *testing.T) {
+		const smallMax = int64(200)
+
+		atLimit := newTestSectionMD(0, uint64(smallMax-startOff))
+		end, err := d.extendedMetadataRegionEnd(atLimit, startOff, smallMax)
+		require.NoError(t, err)
+		require.Equal(t, smallMax, end)
+
+		overLimit := newTestSectionMD(0, uint64(smallMax-startOff)+1)
+		end, err = d.extendedMetadataRegionEnd(overLimit, startOff, smallMax)
+		require.NoError(t, err)
+		require.Equal(t, startOff, end, "exceeding a smaller maxBytes clamps to the file metadata only, same as exceeding a larger one")
+	})
+
+	t.Run("an offset or length above int64 max is rejected before any int64 conversion", func(t *testing.T) {
+		_, err := d.extendedMetadataRegionEnd(newTestSectionMD(uint64(math.MaxInt64)+1, 0), startOff, testMaxBytes)
+		require.ErrorIs(t, err, errCannotCacheMetadata)
+
+		_, err = d.extendedMetadataRegionEnd(newTestSectionMD(0, uint64(math.MaxInt64)+1), startOff, testMaxBytes)
+		require.ErrorIs(t, err, errCannotCacheMetadata)
+	})
+
+	t.Run("an offset and length that individually fit but overflow int64 when summed are rejected", func(t *testing.T) {
+		// The sum, added to startOff as int64 arithmetic, wraps past math.MaxInt64 and back around to
+		// a value smaller than startOff. The end < startOff check must catch this wraparound directly,
+		// rather than relying on some other guard to happen to catch it.
+		md := newTestSectionMD(uint64(math.MaxInt64), uint64(math.MaxInt64))
+		_, err := d.extendedMetadataRegionEnd(md, startOff, testMaxBytes)
+		require.ErrorIs(t, err, errCannotCacheMetadata)
+	})
 }

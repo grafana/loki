@@ -73,35 +73,35 @@ OR  bool:[true  true  false false]                 bool:[false true  false true]
 #
 
 # NOT with selection
-NOT  bool:[true false true false]  select:[true false true false]  -> bool:[false null false null]  # Partial
+NOT  bool:[true false true false]  select:[true false true false]  -> bool:[false _ false _]  # Partial
 NOT  bool:[true false null true]   select:[true true true true]    -> bool:[false true null false]  # Full selection
-NOT  bool:[true false true]        select:[false true false]       -> bool:[null true null]         # Single selection
-NOT  bool:[true null false null]   select:[true true false false]  -> bool:[false null null null]   # With nulls
+NOT  bool:[true false true]        select:[false true false]       -> bool:[_ true _]         # Single selection
+NOT  bool:[true null false null]   select:[true true false false]  -> bool:[false null _ _]   # With nulls
 
 # AND with selection - (Array, Array)
-AND  bool:[true false true false]  bool:[true true false false]  select:[true false true false]    -> bool:[true null false null]
-AND  bool:[true false true false]  bool:[true true false false]  select:[false false false false]  -> bool:[null null null null]
+AND  bool:[true false true false]  bool:[true true false false]  select:[true false true false]    -> bool:[true _ false _]
+AND  bool:[true false true false]  bool:[true true false false]  select:[false false false false]  -> bool:[_ _ _ _]
 AND  bool:[true false true]        bool:[false true true]        select:[true true true]           -> bool:[false false true]
-AND  bool:[true null true false]   bool:[true true false null]   select:[true true false false]    -> bool:[true null null null]
+AND  bool:[true null true false]   bool:[true true false null]   select:[true true false false]    -> bool:[true null _ _]
 
 # AND with selection - (Scalar, Array)
-AND  bool:true   bool:[true false true false]  select:[true false true false]  -> bool:[true null true null]
-AND  bool:false  bool:[true false true false]  select:[true false true false]  -> bool:[false null false null]
+AND  bool:true   bool:[true false true false]  select:[true false true false]  -> bool:[true _ true _]
+AND  bool:false  bool:[true false true false]  select:[true false true false]  -> bool:[false _ false _]
 
 # AND with selection - (Array, Scalar)
-AND  bool:[true false true false]  bool:true   select:[false true false true]  -> bool:[null false null false]
-AND  bool:[true false true false]  bool:false  select:[false true false true]  -> bool:[null false null false]
+AND  bool:[true false true false]  bool:true   select:[false true false true]  -> bool:[_ false _ false]
+AND  bool:[true false true false]  bool:false  select:[false true false true]  -> bool:[_ false _ false]
 
 # OR with selection - (Array, Array)
-OR  bool:[true false true false]   bool:[false false true true]   select:[true false true false]    -> bool:[true null true null]
-OR  bool:[true false true false]   bool:[false false true true]   select:[false false false false]  -> bool:[null null null null]
+OR  bool:[true false true false]   bool:[false false true true]   select:[true false true false]    -> bool:[true _ true _]
+OR  bool:[true false true false]   bool:[false false true true]   select:[false false false false]  -> bool:[_ _ _ _]
 OR  bool:[true false false]        bool:[false true false]        select:[true true true]           -> bool:[true true false]
-OR  bool:[true null false false]   bool:[false true true null]    select:[true true false false]    -> bool:[true null null null]
+OR  bool:[true null false false]   bool:[false true true null]    select:[true true false false]    -> bool:[true null _ _]
 
 # OR with selection - (Scalar, Array)
-OR  bool:false  bool:[true false true false]  select:[true false true false]  -> bool:[true null true null]
-OR  bool:true   bool:[true false true false]  select:[true false true false]  -> bool:[true null true null]
+OR  bool:false  bool:[true false true false]  select:[true false true false]  -> bool:[true _ true _]
+OR  bool:true   bool:[true false true false]  select:[true false true false]  -> bool:[true _ true _]
 
 # OR with selection - (Array, Scalar)
-OR  bool:[true false true false]  bool:false  select:[false true false true]  -> bool:[null false null false]
-OR  bool:[true false true false]  bool:true   select:[false true false true]  -> bool:[null true null true]
+OR  bool:[true false true false]  bool:false  select:[false true false true]  -> bool:[_ false _ false]
+OR  bool:[true false true false]  bool:true   select:[false true false true]  -> bool:[_ true _ true]

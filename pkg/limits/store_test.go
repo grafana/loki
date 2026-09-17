@@ -686,7 +686,3 @@ func (m *mockLimitsWithPolicy) PolicyMaxGlobalStreamsPerUser(_, policy string) (
 	}
 	return 0, false // No custom limit for this policy
 }
-
-func newRateBuckets(rateWindow, bucketSize time.Duration) []rateBucket {
-	return make([]rateBucket, int(rateWindow/bucketSize))
-}

@@ -14,6 +14,15 @@ services:
       - ./data/grafana/:/var/lib/grafana/
     extra_hosts:
       - "host.docker.internal:host-gateway"
+  prometheus:
+    image: prom/prometheus:latest
+    ports:
+      - 9090:9090/tcp
+    volumes:
+      - ./prometheus.yaml:/etc/prometheus/prometheus.yml
+    extra_hosts:
+      # Loki runs on the host, so Prometheus reaches its /metrics via host.docker.internal.
+      - "host.docker.internal:host-gateway"
   kafka-ui:
     image: provectuslabs/kafka-ui:latest
     ports:

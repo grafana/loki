@@ -27,6 +27,8 @@ func TestResult(t *testing.T) {
 	stats.AddCacheRequest(ResultCache, 1)
 	stats.SetQueryReferencedStructuredMetadata()
 	stats.AddPipelineWrapperFilterdLines(1)
+	stats.AddWireBytesTransferred(42)
+	stats.AddChunkFetchFailures(5)
 
 	fakeIngesterQuery(ctx)
 	fakeIngesterQuery(ctx)
@@ -58,6 +60,7 @@ func TestResult(t *testing.T) {
 				ChunksDownloadTime:           time.Second.Nanoseconds(),
 				QueryReferencedStructured:    true,
 				PipelineWrapperFilteredLines: 1,
+				ChunkFetchFailures:           5,
 				Chunk: Chunk{
 					HeadChunkBytes:    10,
 					HeadChunkLines:    20,
@@ -65,6 +68,9 @@ func TestResult(t *testing.T) {
 					DecompressedLines: 20,
 					CompressedBytes:   30,
 					TotalDuplicates:   10,
+				},
+				Dataobj: Dataobj{
+					WireBytesTransferred: 42,
 				},
 			},
 		},
@@ -195,6 +201,7 @@ func TestResult_Merge(t *testing.T) {
 				ChunksDownloadTime:           time.Second.Nanoseconds(),
 				QueryReferencedStructured:    true,
 				PipelineWrapperFilteredLines: 2,
+				ChunkFetchFailures:           3,
 				Chunk: Chunk{
 					HeadChunkBytes:    10,
 					HeadChunkLines:    20,
@@ -260,6 +267,7 @@ func TestResult_Merge(t *testing.T) {
 				ChunksDownloadTime:           2 * time.Second.Nanoseconds(),
 				QueryReferencedStructured:    true,
 				PipelineWrapperFilteredLines: 4,
+				ChunkFetchFailures:           2 * 3,
 				Chunk: Chunk{
 					HeadChunkBytes:    2 * 10,
 					HeadChunkLines:    2 * 20,
@@ -334,6 +342,28 @@ func TestResult_Merge_TotalEntriesReturned(t *testing.T) {
 	})
 }
 
+func TestSummaryMerge_EstimatedQueryBytesUsesMax(t *testing.T) {
+	s := Summary{
+		Splits:              1,
+		Shards:              2,
+		EstimatedQueryBytes: 1024,
+	}
+
+	s.Merge(Summary{
+		Splits:              3,
+		Shards:              4,
+		EstimatedQueryBytes: 512,
+	})
+	require.Equal(t, int64(1024), s.EstimatedQueryBytes)
+	require.Equal(t, int64(4), s.Splits)
+	require.Equal(t, int64(6), s.Shards)
+
+	s.Merge(Summary{
+		EstimatedQueryBytes: 2048,
+	})
+	require.Equal(t, int64(2048), s.EstimatedQueryBytes)
+}
+
 func TestReset(t *testing.T) {
 	statsCtx, ctx := NewContext(context.Background())
 	fakeIngesterQuery(ctx)
@@ -343,6 +373,14 @@ func TestReset(t *testing.T) {
 	res = statsCtx.Result(0, 0, 0)
 	res.Summary.Subqueries = 0
 	require.Empty(t, res)
+}
+
+func TestTotalChunkFetchFailures(t *testing.T) {
+	r := Result{
+		Querier:  Querier{Store: Store{ChunkFetchFailures: 3}},
+		Ingester: Ingester{Store: Store{ChunkFetchFailures: 2}},
+	}
+	require.Equal(t, int64(5), r.TotalChunkFetchFailures())
 }
 
 func TestIngester(t *testing.T) {

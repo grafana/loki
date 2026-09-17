@@ -26,6 +26,7 @@ import (
 	v3corepb "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
 	v3endpointpb "github.com/envoyproxy/go-control-plane/envoy/config/endpoint/v3"
 	v3typepb "github.com/envoyproxy/go-control-plane/envoy/type/v3"
+	"google.golang.org/grpc/experimental/balancer/hostname"
 	"google.golang.org/grpc/internal/envconfig"
 	"google.golang.org/grpc/internal/pretty"
 	xdsinternal "google.golang.org/grpc/internal/xds"
@@ -36,27 +37,12 @@ import (
 	"google.golang.org/protobuf/types/known/anypb"
 )
 
-// hostnameKeyType is the key to store the hostname attribute in
-// a resolver.Endpoint.
-type hostnameKeyType struct{}
-
-// SetHostname returns a copy of the given endpoint with hostname added
-// as an attribute.
-func SetHostname(endpoint resolver.Endpoint, hostname string) resolver.Endpoint {
-	// Only set if non-empty; xds_cluster_impl uses this to trigger :authority
-	// rewriting.
-	if hostname == "" {
-		return endpoint
-	}
-	endpoint.Attributes = endpoint.Attributes.WithValue(hostnameKeyType{}, hostname)
-	return endpoint
-}
-
-// Hostname returns the hostname from the BalancerAttributes of the given
-// Address. If this attribute is not set, it returns the empty string.
+// Hostname returns the hostname from the BalancerAttributes of the
+// given Address. If this attribute is not set, it returns the empty
+// string.
 func Hostname(addr resolver.Address) string {
-	hostname, _ := addr.BalancerAttributes.Value(hostnameKeyType{}).(string)
-	return hostname
+	ep := resolver.Endpoint{Attributes: addr.BalancerAttributes}
+	return hostname.FromEndpoint(ep)
 }
 
 func unmarshalEndpointsResource(r *anypb.Any) (string, EndpointsUpdate, error) {
@@ -74,11 +60,16 @@ func unmarshalEndpointsResource(r *anypb.Any) (string, EndpointsUpdate, error) {
 		return "", EndpointsUpdate{}, fmt.Errorf("failed to unmarshal resource: %v", err)
 	}
 
+	if cla.GetClusterName() == "" {
+		return "", EndpointsUpdate{}, fmt.Errorf("empty resource name in endpoints resource")
+	}
+
 	u, err := parseEDSRespProto(cla)
 	if err != nil {
 		return cla.GetClusterName(), EndpointsUpdate{}, err
 	}
 	u.Raw = r
+
 	return cla.GetClusterName(), u, nil
 }
 
@@ -109,6 +100,7 @@ func parseDropPolicy(dropPolicy *v3endpointpb.ClusterLoadAssignment_Policy_DropO
 
 func parseEndpoints(lbEndpoints []*v3endpointpb.LbEndpoint, uniqueEndpointAddrs map[string]bool) ([]Endpoint, error) {
 	endpoints := make([]Endpoint, 0, len(lbEndpoints))
+	var totalWeight uint64
 	for _, lbEndpoint := range lbEndpoints {
 		// If the load_balancing_weight field is specified, it must be set to a
 		// value of at least 1.  If unspecified, each host is presumed to have
@@ -120,6 +112,12 @@ func parseEndpoints(lbEndpoints []*v3endpointpb.LbEndpoint, uniqueEndpointAddrs 
 			}
 			weight = w.GetValue()
 		}
+
+		totalWeight += uint64(weight)
+		if totalWeight > math.MaxUint32 {
+			return nil, fmt.Errorf("sum of weights of endpoints in the same locality exceeds maximum value %d", uint64(math.MaxUint32))
+		}
+
 		addrs := []string{parseAddress(lbEndpoint.GetEndpoint().GetAddress().GetSocketAddress())}
 		if envconfig.XDSDualstackEndpointsEnabled {
 			for _, sa := range lbEndpoint.GetEndpoint().GetAdditionalAddresses() {
@@ -154,7 +152,7 @@ func parseEndpoints(lbEndpoints []*v3endpointpb.LbEndpoint, uniqueEndpointAddrs 
 			}
 		}
 		endpoint := resolver.Endpoint{Addresses: address}
-		endpoint = SetHostname(endpoint, lbEndpoint.GetEndpoint().GetHostname())
+		endpoint = hostname.Set(endpoint, lbEndpoint.GetEndpoint().GetHostname())
 		endpoint = ringhash.SetHashKey(endpoint, hashKey)
 		endpoints = append(endpoints, Endpoint{
 			ResolverEndpoint: endpoint,
@@ -256,6 +254,8 @@ func parseEDSRespProto(m *v3endpointpb.ClusterLoadAssignment) (EndpointsUpdate, 
 	return ret, nil
 }
 
+// validateAndConstructMetadata processes the metadata from the xDS resource
+// and returns a map of parsed metadata values.
 func validateAndConstructMetadata(metadataProto *v3corepb.Metadata) (map[string]any, error) {
 	if metadataProto == nil {
 		return nil, nil
@@ -278,7 +278,7 @@ func validateAndConstructMetadata(metadataProto *v3corepb.Metadata) (map[string]
 
 	// Process FilterMetadata for any keys not already handled.
 	for key, structProto := range metadataProto.GetFilterMetadata() {
-		// Skip keys already added from TyperFilterMetadata.
+		// Skip keys already added from TypedFilterMetadata.
 		if metadata[key] != nil {
 			continue
 		}

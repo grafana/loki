@@ -29,6 +29,27 @@ type Bitmap struct {
 	off  int     // Offset into the first word.
 }
 
+// BitmapFrom returns a read-only Bitmap backed by the given data slice.
+//
+// BitmapFrom panics if bitmapLen or off are negative, or if off+bitmapLen bits
+// do not fit within data.
+func BitmapFrom(data []uint8, bitmapLen, off int) Bitmap {
+	if bitmapLen < 0 {
+		panic("negative length")
+	} else if off < 0 {
+		panic("negative offset")
+	} else if off+bitmapLen > 8*len(data) {
+		panic("bitmap does not fit in data")
+	}
+	return Bitmap{
+		alloc: nil,
+
+		data: data[:len(data):len(data)],
+		len:  bitmapLen,
+		off:  off,
+	}
+}
+
 // NewBitmap creates a Bitmap managed by the provided allocator. The returned
 // Bitmap will have an initial length of zero and a capacity of at least n
 // (which may be 0).
@@ -232,6 +253,12 @@ func (bmap *Bitmap) Clone(alloc *Allocator) *Bitmap {
 // The first offset bits in data are undefined.
 func (bmap *Bitmap) Bytes() (data []byte, offset int) { return bmap.data, bmap.off }
 
+// BytesTrimmed returns [Bitmap.Bytes] without any padding beyond data and offset.
+func (bmap *Bitmap) BytesTrimmed() (data []byte, offset int) {
+	byteLen := (bmap.off + bmap.len + 7) / 8
+	return bmap.data[:byteLen], bmap.off
+}
+
 // Slice returns a slice of bmap from index i to j. he returned slice has both a
 // length and capacity of j-i, shares memory with bmap, and uses the same
 // allocator for new allocations (when needed).
@@ -244,7 +271,7 @@ func (bmap *Bitmap) Slice(i, j int) *Bitmap {
 
 	var (
 		startWord = (bmap.off + i) / 8
-		endWord   = ((bmap.off + j) / 8) + 1
+		endWord   = ((bmap.off + j) + 7) / 8
 
 		off    = (bmap.off + i) % 8
 		newLen = j - i

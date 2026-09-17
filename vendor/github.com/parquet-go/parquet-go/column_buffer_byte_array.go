@@ -17,7 +17,7 @@ type byteArrayColumnBuffer struct {
 	scratch memory.SliceBuffer[byte]
 }
 
-func newByteArrayColumnBuffer(typ Type, columnIndex int16, numValues int32) *byteArrayColumnBuffer {
+func newByteArrayColumnBuffer(typ Type, columnIndex uint16, numValues int32) *byteArrayColumnBuffer {
 	return &byteArrayColumnBuffer{
 		byteArrayPage: byteArrayPage{
 			typ:         typ,

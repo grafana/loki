@@ -12,19 +12,6 @@ import (
 
 type downscalePermittedFunc func(context.Context) (bool, error)
 
-// newChainedDownscalePermittedFunc returns a chain of downscalePermittedFunc
-// that must all return true for the func to return true.
-func newChainedDownscalePermittedFunc(funcs ...downscalePermittedFunc) downscalePermittedFunc {
-	return func(ctx context.Context) (bool, error) {
-		for _, f := range funcs {
-			if ok, err := f(ctx); err != nil || !ok {
-				return false, err
-			}
-		}
-		return true, nil
-	}
-}
-
 // newOffsetCommittedDownscaleFunc returns a downscalePermittedFunc that checks
 // if the consumer has committed all records up to the end offset.
 func newOffsetCommittedDownscaleFunc(offsetReader *kafkav2.OffsetReader, partitionID int32, logger log.Logger) downscalePermittedFunc {

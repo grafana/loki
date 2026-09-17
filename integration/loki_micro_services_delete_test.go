@@ -20,7 +20,6 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
-	"github.com/grafana/loki/v3/pkg/storage"
 )
 
 type pushRequest struct {
@@ -47,7 +46,6 @@ func TestMicroServicesDeleteRequest(t *testing.T) {
 			"-compactor.delete-request-cancel-period=-60s",
 			"-compactor.deletion-mode=filter-only",
 			"-compactor.delete-max-interval=0",
-			"-limits.per-user-override-period=1s",
 		)
 		tDistributor = clu.AddComponent(
 			"distributor",
@@ -283,8 +281,7 @@ func TestMicroServicesDeleteRequest(t *testing.T) {
 		require.NoError(t, err)
 		checkMetricValue(t, "loki_ingester_chunks_flushed_total", metrics, 6)
 
-		// reset boltdb-shipper client and restart querier
-		storage.ResetBoltDBIndexClientsWithShipper()
+		// reset tsdb-shipper client and restart querier
 		require.NoError(t, tQuerier.Restart())
 	})
 
@@ -314,8 +311,6 @@ func TestMicroServicesDeleteRequest(t *testing.T) {
 
 	// Query lines
 	t.Run("verify query time filtering", func(t *testing.T) {
-		// reset boltdb-shipper client and restart querier
-		storage.ResetBoltDBIndexClientsWithShipper()
 		require.NoError(t, tQuerier.Restart())
 
 		// update expectedStreams as per the issued requests
@@ -341,20 +336,35 @@ func TestMicroServicesDeleteRequest(t *testing.T) {
 			expectedDeleteRequests[i].Status = "processed"
 		}
 
+		// Require the full set of processed requests. Matching only the returned
+		// list lets a partial response (4 of 5) succeed too early, which then
+		// fails the processed-total metric assertion.
 		require.Eventually(t, func() bool {
 			deleteRequests, err := cliCompactor.GetDeleteRequests()
 			require.NoError(t, err)
-
-		outer:
-			for i := range deleteRequests {
-				for j := range expectedDeleteRequests {
-					if deleteRequests[i] == expectedDeleteRequests[j] {
-						continue outer
-					}
-				}
+			if len(deleteRequests) != len(expectedDeleteRequests) {
 				return false
 			}
-			return true
+			for i := range expectedDeleteRequests {
+				found := false
+				for j := range deleteRequests {
+					if deleteRequests[j] == expectedDeleteRequests[i] {
+						found = true
+						break
+					}
+				}
+				if !found {
+					return false
+				}
+			}
+
+			metrics, err := cliCompactor.Metrics()
+			require.NoError(t, err)
+			val, labels, err := extractMetric("loki_compactor_delete_requests_processed_total", metrics)
+			if err != nil {
+				return false
+			}
+			return labels["user"] == tenantID && val == float64(len(expectedDeleteRequests))
 		}, 20*time.Second, 1*time.Second)
 
 		// Check metrics
@@ -375,7 +385,6 @@ func TestMicroServicesDeleteRequest(t *testing.T) {
 		require.NoError(t, tQuerier.SetTenantLimits(tenantID, tenantLimits))
 
 		// restart querier to make it sync the index
-		storage.ResetBoltDBIndexClientsWithShipper()
 		require.NoError(t, tQuerier.Restart())
 
 		// ensure the deletion-mode limit is updated

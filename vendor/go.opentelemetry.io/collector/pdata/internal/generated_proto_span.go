@@ -12,28 +12,29 @@ import (
 	"sync"
 
 	"go.opentelemetry.io/collector/pdata/internal/json"
+	"go.opentelemetry.io/collector/pdata/internal/metadata"
 	"go.opentelemetry.io/collector/pdata/internal/proto"
 )
 
 // Span represents a single operation within a trace.
 // See Span definition in OTLP: https://github.com/open-telemetry/opentelemetry-proto/blob/main/opentelemetry/proto/trace/v1/trace.proto
 type Span struct {
-	TraceState             string
-	Name                   string
-	Attributes             []KeyValue
-	Events                 []*SpanEvent
-	Links                  []*SpanLink
-	Status                 Status
-	StartTimeUnixNano      uint64
-	EndTimeUnixNano        uint64
-	Flags                  uint32
-	Kind                   SpanKind
-	DroppedAttributesCount uint32
-	DroppedEventsCount     uint32
-	DroppedLinksCount      uint32
 	TraceId                TraceID
 	SpanId                 SpanID
+	TraceState             string
 	ParentSpanId           SpanID
+	Flags                  uint32
+	Name                   string
+	Kind                   SpanKind
+	StartTimeUnixNano      uint64
+	EndTimeUnixNano        uint64
+	Attributes             []KeyValue
+	DroppedAttributesCount uint32
+	Events                 []*SpanEvent
+	DroppedEventsCount     uint32
+	Links                  []*SpanLink
+	DroppedLinksCount      uint32
+	Status                 Status
 }
 
 var (
@@ -45,7 +46,7 @@ var (
 )
 
 func NewSpan() *Span {
-	if !UseProtoPooling.IsEnabled() {
+	if !metadata.PdataUseProtoPoolingFeatureGate.IsEnabled() {
 		return &Span{}
 	}
 	return protoPoolSpan.Get().(*Span)
@@ -56,7 +57,7 @@ func DeleteSpan(orig *Span, nullable bool) {
 		return
 	}
 
-	if !UseProtoPooling.IsEnabled() {
+	if !metadata.PdataUseProtoPoolingFeatureGate.IsEnabled() {
 		orig.Reset()
 		return
 	}
@@ -315,7 +316,7 @@ func (orig *Span) UnmarshalJSON(iter *json.Iterator) {
 
 			orig.Status.UnmarshalJSON(iter)
 		default:
-			iter.Skip()
+			iter.HandleUnknownField(f)
 		}
 	}
 }

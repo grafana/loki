@@ -92,12 +92,28 @@ func (t *TLS) FreeAlloca() func() {
 	}
 }
 
+// PushJumpBuffer arms jb, which stays armed until the matching PopJumpBuffer or
+// until a Longjmp targets it. C keeps every jump buffer of a live frame valid, so
+// more than one can be armed at a time and they need not be left in the order they
+// were armed in.
 func (tls *TLS) PushJumpBuffer(jb uintptr) {
 	tls.jumpBuffers = append(tls.jumpBuffers, jb)
 }
 
-type LongjmpRetval int32
+// LongjmpRetval is what Longjmp panics with. A panic unwinds through every setjmp
+// region between the longjmp and its target, so a recovering region must compare
+// JumpBuffer with its own and re-panic unless they are equal: recovering a longjmp
+// aimed past it would resume at the wrong setjmp.
+type LongjmpRetval struct {
+	// JumpBuffer is the buffer the longjmp targeted, already disarmed.
+	JumpBuffer uintptr
+	// Val is what setjmp must appear to return, never zero.
+	Val int32
+}
 
+// PopJumpBuffer disarms jb, which must be the most recently armed buffer still
+// armed. Regions leave in the order they were entered, so anything else is a bug
+// in the generated code rather than in the C being translated.
 func (tls *TLS) PopJumpBuffer(jb uintptr) {
 	n := len(tls.jumpBuffers)
 	if n == 0 || tls.jumpBuffers[n-1] != jb {
@@ -107,12 +123,26 @@ func (tls *TLS) PopJumpBuffer(jb uintptr) {
 	tls.jumpBuffers = tls.jumpBuffers[:n-1]
 }
 
+// Longjmp disarms jb and panics with a LongjmpRetval naming it. jb need not be the
+// most recently armed buffer: C allows jumping past regions entered after the one
+// being jumped to, and those regions disarm their own buffers as the panic unwinds
+// through them. Of two regions sharing a buffer the innermost one is disarmed,
+// which is the one C resumes at.
 func (tls *TLS) Longjmp(jb uintptr, val int32) {
-	tls.PopJumpBuffer(jb)
+	i := len(tls.jumpBuffers) - 1
+	for ; i >= 0 && tls.jumpBuffers[i] != jb; i-- {
+	}
+	if i < 0 {
+		// Jumping to a buffer no setjmp armed, or to one whose region has been
+		// left already, which C leaves undefined.
+		panic(todo("unsupported setjmp/longjmp usage"))
+	}
+
+	tls.jumpBuffers = append(tls.jumpBuffers[:i], tls.jumpBuffers[i+1:]...)
 	if val == 0 {
 		val = 1
 	}
-	panic(LongjmpRetval(val))
+	panic(LongjmpRetval{JumpBuffer: jb, Val: val})
 }
 
 func Xalloca(tls *TLS, size size_t) uintptr {
@@ -395,6 +425,10 @@ func Xpthread_cond_timedwait(t *TLS, pCond, pMutex, pAbsTime uintptr) int32 {
 			defer cond.Unlock()
 
 			delete(cond.waiters, t)
+			select {
+			case <-t.wait:
+			default:
+			}
 			return errno.ETIMEDOUT
 		}
 	}
@@ -651,7 +685,12 @@ func Xpthread_detach(t *TLS, thread pthread.Pthread_t) int32 {
 		trc("t=%v thread=%v, (%v:)", t, thread, origin(2))
 	}
 	threadsMu.Lock()
-	threads[int32(thread)].detached = true
+	tls := threads[int32(thread)]
+	if tls == nil {
+		threadsMu.Unlock()
+		return errno.ESRCH
+	}
+	tls.detached = true
 	threadsMu.Unlock()
 	return 0
 }
@@ -710,6 +749,10 @@ func Xpthread_join(t *TLS, thread pthread.Pthread_t, pValue uintptr) int32 {
 	}
 	threadsMu.Lock()
 	tls := threads[int32(thread)]
+	if tls == nil {
+		threadsMu.Unlock()
+		return errno.ESRCH
+	}
 	delete(threads, int32(thread))
 	threadsMu.Unlock()
 	<-tls.done

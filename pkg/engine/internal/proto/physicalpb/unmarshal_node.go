@@ -44,6 +44,14 @@ func (n *Node) UnmarshalPhysical(from physical.Node) error {
 		n.Kind = &Node_PointersScan{}
 	case *physical.Batching:
 		n.Kind = &Node_Batching{}
+	case *physical.Cache:
+		n.Kind = &Node_Cache{}
+	case *physical.IndexMerge:
+		n.Kind = &Node_IndexMerge{}
+	case *physical.LogMerge:
+		n.Kind = &Node_LogMerge{}
+	case *physical.SortObject:
+		n.Kind = &Node_SortObject{}
 	default:
 		return fmt.Errorf("unsupported physical node type: %T", from)
 	}
@@ -154,6 +162,13 @@ func (n *Node_PointersScan) UnmarshalPhysical(from physical.Node) error {
 func (n *Node_Batching) UnmarshalPhysical(from physical.Node) error {
 	n.Batching = new(Batching)
 	return n.Batching.UnmarshalPhysical(from)
+}
+
+// UnmarshalPhysical reads from into n. Returns an error if the conversion fails
+// or is unsupported.
+func (n *Node_Cache) UnmarshalPhysical(from physical.Node) error {
+	n.Cache = new(Cache)
+	return n.Cache.UnmarshalPhysical(from)
 }
 
 // UnmarshalPhysical reads from into n. Returns an error if the conversion fails
@@ -544,6 +559,92 @@ func (n *Batching) UnmarshalPhysical(from physical.Node) error {
 
 	*n = Batching{
 		BatchSize: batching.BatchSize,
+	}
+	return nil
+}
+
+// UnmarshalPhysical reads from into n. Returns an error if the conversion fails
+// or is unsupported.
+func (n *Cache) UnmarshalPhysical(from physical.Node) error {
+	cache, ok := from.(*physical.Cache)
+	if !ok {
+		return fmt.Errorf("unsupported physical node type: %T", from)
+	}
+
+	*n = Cache{
+		Key:                   cache.Key,
+		CacheName:             cache.CacheName,
+		MaxCacheableSizeBytes: cache.MaxSizeBytes,
+		Compression:           cache.Compression,
+	}
+	return nil
+}
+
+// UnmarshalPhysical reads from into n. Returns an error if the conversion fails
+// or is unsupported.
+func (n *Node_IndexMerge) UnmarshalPhysical(from physical.Node) error {
+	n.IndexMerge = new(IndexMerge)
+	return n.IndexMerge.UnmarshalPhysical(from)
+}
+
+// UnmarshalPhysical reads from into n. Returns an error if the conversion fails
+// or is unsupported.
+func (n *IndexMerge) UnmarshalPhysical(from physical.Node) error {
+	indexMerge, ok := from.(*physical.IndexMerge)
+	if !ok {
+		return fmt.Errorf("unsupported physical node type: %T", from)
+	}
+
+	*n = IndexMerge{
+		Tenant:                  indexMerge.Tenant,
+		TocWindowStartUnixNanos: indexMerge.ToCWindowStart,
+		Runs:                    copyRunRefs(indexMerge.Runs),
+	}
+	return nil
+}
+
+// UnmarshalPhysical reads from into n. Returns an error if the conversion fails
+// or is unsupported.
+func (n *Node_LogMerge) UnmarshalPhysical(from physical.Node) error {
+	n.LogMerge = new(LogMerge)
+	return n.LogMerge.UnmarshalPhysical(from)
+}
+
+// UnmarshalPhysical reads from into n. Returns an error if the conversion fails
+// or is unsupported.
+func (n *LogMerge) UnmarshalPhysical(from physical.Node) error {
+	logMerge, ok := from.(*physical.LogMerge)
+	if !ok {
+		return fmt.Errorf("unsupported physical node type: %T", from)
+	}
+
+	*n = LogMerge{
+		Tenant:                  logMerge.Tenant,
+		TocWindowStartUnixNanos: logMerge.ToCWindowStart,
+		Runs:                    copyRunRefs(logMerge.Runs),
+		SortSchema:              logMerge.SortSchema,
+	}
+	return nil
+}
+
+// UnmarshalPhysical reads from into n. Returns an error if the conversion fails
+// or is unsupported.
+func (n *Node_SortObject) UnmarshalPhysical(from physical.Node) error {
+	n.SortObject = new(SortObject)
+	return n.SortObject.UnmarshalPhysical(from)
+}
+
+// UnmarshalPhysical reads from into n. Returns an error if the conversion fails
+// or is unsupported.
+func (n *SortObject) UnmarshalPhysical(from physical.Node) error {
+	sortObject, ok := from.(*physical.SortObject)
+	if !ok {
+		return fmt.Errorf("unsupported physical node type: %T", from)
+	}
+
+	*n = SortObject{
+		SourceObjectPath: sortObject.SourceObjectPath,
+		SortSchema:       sortObject.SortSchema,
 	}
 	return nil
 }

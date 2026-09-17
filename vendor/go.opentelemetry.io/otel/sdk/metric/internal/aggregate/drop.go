@@ -1,7 +1,7 @@
 // Copyright The OpenTelemetry Authors
 // SPDX-License-Identifier: Apache-2.0
 
-package aggregate // import "go.opentelemetry.io/otel/sdk/metric/internal/aggregate"
+package aggregate
 
 import (
 	"context"
@@ -10,15 +10,15 @@ import (
 	"go.opentelemetry.io/otel/sdk/metric/exemplar"
 )
 
-// dropReservoir returns a [FilteredReservoir] that drops all measurements it is offered.
-func dropReservoir[N int64 | float64](attribute.Set) FilteredExemplarReservoir[N] {
+// DropReservoir returns a [FilteredExemplarReservoir] that drops all measurements it is offered.
+func DropReservoir[N int64 | float64](attribute.Set) FilteredExemplarReservoir[N] {
 	return &dropRes[N]{}
 }
 
 type dropRes[N int64 | float64] struct{}
 
 // Offer does nothing, all measurements offered will be dropped.
-func (*dropRes[N]) Offer(context.Context, N, []attribute.KeyValue) {}
+func (*dropRes[N]) Offer(context.Context, N, lazyFilteredAttributes) {}
 
 // Collect resets dest. No exemplars will ever be returned.
 func (*dropRes[N]) Collect(dest *[]exemplar.Exemplar) {

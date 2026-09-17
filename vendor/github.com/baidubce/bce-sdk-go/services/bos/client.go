@@ -29,6 +29,7 @@ import (
 	"math"
 	"net/http"
 	"os"
+	"strconv"
 	"time"
 
 	"github.com/baidubce/bce-sdk-go/auth"
@@ -36,6 +37,7 @@ import (
 	sdk_http "github.com/baidubce/bce-sdk-go/http"
 	"github.com/baidubce/bce-sdk-go/services/bos/api"
 	"github.com/baidubce/bce-sdk-go/services/sts"
+	"github.com/baidubce/bce-sdk-go/util"
 	"github.com/baidubce/bce-sdk-go/util/log"
 )
 
@@ -1168,6 +1170,25 @@ func (c *Client) PutBucketCopyrightProtection(bucket string, resources ...string
 	return api.PutBucketCopyrightProtection(c, bosContext, bucket, resources...)
 }
 
+// PutBucketCopyrightProtectionWithOptions - the same as PutBucketCopyrightProtection, but
+// taking the resources as a slice so that the options can be passed as well.
+//
+// PARAMS:
+//   - bucket: the bucket name
+//   - resources: the resource items in the bucket to be protected
+//   - options: the function set to set HTTP headers/params
+//
+// RETURNS:
+//   - error: nil if success otherwise the specific error
+func (c *Client) PutBucketCopyrightProtectionWithOptions(bucket string, resources []string,
+	options ...api.Option) error {
+	bosContext := c.NewBosContext(context.Background())
+	if err := api.HandleBosClientOptions(c.BceClient, bosContext, options); err != nil {
+		return err
+	}
+	return api.PutBucketCopyrightProtectionWithOptions(c, bosContext, bucket, resources, options...)
+}
+
 // GetBucketCopyrightProtection - get the bucket copyright protection config
 //
 // PARAMS:
@@ -1221,7 +1242,7 @@ func (c *Client) PutObjectWithContext(ctx context.Context, bucket, object string
 	if err := api.HandleBosClientOptions(c.BceClient, bosContext, options); err != nil {
 		return "", bce.NewBceClientError(fmt.Sprintf("Handle bos client options failed: %s", err))
 	}
-	etag, _, err := api.PutObject(c, bucket, object, body, args, bosContext)
+	etag, _, err := api.PutObject(c, bucket, object, body, args, bosContext, options...)
 	return etag, err
 }
 
@@ -1280,7 +1301,7 @@ func (c *Client) PutObjectFromBytesWithContext(ctx context.Context, bucket, obje
 	if err != nil {
 		return "", err
 	}
-	etag, _, err := api.PutObject(c, bucket, object, body, args, bosContext)
+	etag, _, err := api.PutObject(c, bucket, object, body, args, bosContext, options...)
 	return etag, err
 }
 
@@ -1320,7 +1341,7 @@ func (c *Client) PutObjectFromStringWithContext(ctx context.Context,
 	if err != nil {
 		return "", err
 	}
-	etag, _, err := api.PutObject(c, bucket, object, body, args, bosContext)
+	etag, _, err := api.PutObject(c, bucket, object, body, args, bosContext, options...)
 	return etag, err
 }
 
@@ -1360,7 +1381,7 @@ func (c *Client) PutObjectFromFileWithContext(ctx context.Context, bucket, objec
 	if err != nil {
 		return "", err
 	}
-	etag, _, err := api.PutObject(c, bucket, object, body, args, bosContext)
+	etag, _, err := api.PutObject(c, bucket, object, body, args, bosContext, options...)
 	return etag, err
 }
 
@@ -1400,7 +1421,7 @@ func (c *Client) PutObjectFromStreamWithContext(ctx context.Context, bucket, obj
 	if err != nil {
 		return "", err
 	}
-	etag, _, err := api.PutObject(c, bucket, object, body, args, bosContext)
+	etag, _, err := api.PutObject(c, bucket, object, body, args, bosContext, options...)
 	return etag, err
 }
 
@@ -1518,7 +1539,7 @@ func (c *Client) CopyObjectWithContext(ctx context.Context, bucket, object, srcB
 	args *api.CopyObjectArgs, options ...api.Option) (*api.CopyObjectResult, error) {
 	source := fmt.Sprintf("/%s/%s", srcBucket, srcObject)
 	bosContext := c.NewBosContext(ctx)
-	return api.CopyObject(c, bucket, object, source, args, bosContext)
+	return api.CopyObject(c, bucket, object, source, args, bosContext, options...)
 }
 
 // BasicCopyObject - the basic interface of copying a object to another one
@@ -1671,7 +1692,7 @@ func (c *Client) GetObjectMetaWithContext(ctx context.Context, bucket, object st
 	if err := api.HandleBosClientOptions(c.BceClient, bosContext, options); err != nil {
 		return nil, bce.NewBceClientError(fmt.Sprintf("Handle bos client options failed: %s", err))
 	}
-	return api.GetObjectMeta(c, bucket, object, bosContext)
+	return api.GetObjectMeta(c, bucket, object, bosContext, options...)
 }
 
 // SelectObject - select the object content
@@ -1694,7 +1715,7 @@ func (c *Client) SelectObject(bucket, object string, args *api.SelectObjectArgs,
 func (c *Client) SelectObjectWithContext(ctx context.Context, bucket, object string,
 	args *api.SelectObjectArgs, options ...api.Option) (*api.SelectObjectResult, error) {
 	bosContext := c.NewBosContext(ctx)
-	return api.SelectObject(c, bucket, object, args, bosContext)
+	return api.SelectObject(c, bucket, object, args, bosContext, options...)
 }
 
 // FetchObject - fetch the object content from the given source and store
@@ -1718,7 +1739,7 @@ func (c *Client) FetchObject(bucket, object, source string, args *api.FetchObjec
 func (c *Client) FetchObjectWithContext(ctx context.Context, bucket, object, source string,
 	args *api.FetchObjectArgs, options ...api.Option) (*api.FetchObjectResult, error) {
 	bosContext := c.NewBosContext(ctx)
-	return api.FetchObject(c, bucket, object, source, args, bosContext)
+	return api.FetchObject(c, bucket, object, source, args, bosContext, options...)
 }
 
 // BasicFetchObject - the basic interface of the fetch object api
@@ -1782,7 +1803,7 @@ func (c *Client) AppendObjectWithContext(ctx context.Context, bucket, object str
 		content.SetWriter(crc32.New(crc32.MakeTable(crc32.Castagnoli)))
 	}
 	bosContext := c.NewBosContext(ctx)
-	return api.AppendObject(c, bucket, object, content, args, bosContext)
+	return api.AppendObject(c, bucket, object, content, args, bosContext, options...)
 }
 
 // SimpleAppendObject - the interface to append object with simple offset argument
@@ -2013,7 +2034,7 @@ func (c *Client) UploadPartWithContext(ctx context.Context, bucket, object, uplo
 	if err := api.HandleBosClientOptions(c.BceClient, bosContext, options); err != nil {
 		return "", bce.NewBceClientError(fmt.Sprintf("Handle bos client options failed: %s", err))
 	}
-	return api.UploadPart(c, bucket, object, uploadId, partNumber, content, args, bosContext)
+	return api.UploadPart(c, bucket, object, uploadId, partNumber, content, args, bosContext, options...)
 }
 
 // BasicUploadPart - basic interface to upload the single part in the multipart upload process
@@ -2030,6 +2051,15 @@ func (c *Client) UploadPartWithContext(ctx context.Context, bucket, object, uplo
 //   - error: nil if ok otherwise the specific error
 func (c *Client) BasicUploadPart(bucket, object, uploadId string, partNumber int,
 	content *bce.Body, options ...api.Option) (string, error) {
+	bosContext := c.NewBosContext(context.Background())
+	if err := api.HandleBosClientOptions(c.BceClient, bosContext, options); err != nil {
+		return "", bce.NewBceClientError(fmt.Sprintf("Handle bos client options failed: %s", err))
+	}
+	return api.UploadPart(c, bucket, object, uploadId, partNumber, content, nil, bosContext, options...)
+}
+
+func (c *Client) UploadPartWithArgs(bucket, object, uploadId string, partNumber int,
+	content *bce.Body, args *api.UploadPartArgs, options ...api.Option) (string, error) {
 	bosContext := c.NewBosContext(context.Background())
 	if err := api.HandleBosClientOptions(c.BceClient, bosContext, options); err != nil {
 		return "", bce.NewBceClientError(fmt.Sprintf("Handle bos client options failed: %s", err))
@@ -2076,7 +2106,7 @@ func (c *Client) UploadPartFromSectionFileWithContext(ctx context.Context, bucke
 	if err != nil {
 		return "", err
 	}
-	return api.UploadPart(c, bucket, object, uploadId, partNumber, body, args, bosContext)
+	return api.UploadPart(c, bucket, object, uploadId, partNumber, body, args, bosContext, options...)
 }
 
 // UploadPartFromBytes - upload the single part in the multipart upload process
@@ -2108,7 +2138,7 @@ func (c *Client) UploadPartFromBytesWithContext(ctx context.Context, bucket, obj
 	if err := api.HandleBosClientOptions(c.BceClient, bosContext, options); err != nil {
 		return "", bce.NewBceClientError(fmt.Sprintf("Handle bos client options failed: %s", err))
 	}
-	return api.UploadPartFromBytes(c, bucket, object, uploadId, partNumber, content, args, bosContext)
+	return api.UploadPartFromBytes(c, bucket, object, uploadId, partNumber, content, args, bosContext, options...)
 }
 
 // UploadPartCopy - copy the multipart object
@@ -2137,7 +2167,7 @@ func (c *Client) UploadPartCopyWithContext(ctx context.Context, bucket, object, 
 	partNumber int, args *api.UploadPartCopyArgs, options ...api.Option) (*api.CopyObjectResult, error) {
 	source := fmt.Sprintf("/%s/%s", srcBucket, srcObject)
 	bosContext := c.NewBosContext(ctx)
-	return api.UploadPartCopy(c, bucket, object, source, uploadId, partNumber, args, bosContext)
+	return api.UploadPartCopy(c, bucket, object, source, uploadId, partNumber, args, bosContext, options...)
 }
 
 // BasicUploadPartCopy - basic interface to copy the multipart object
@@ -2238,7 +2268,7 @@ func (c *Client) ListParts(bucket, object, uploadId string, args *api.ListPartsA
 func (c *Client) ListPartsWithContext(ctx context.Context, bucket, object, uploadId string,
 	args *api.ListPartsArgs, options ...api.Option) (*api.ListPartsResult, error) {
 	bosContext := c.NewBosContext(ctx)
-	return api.ListParts(c, bucket, object, uploadId, args, bosContext)
+	return api.ListParts(c, bucket, object, uploadId, args, bosContext, options...)
 }
 
 // BasicListParts - basic interface to list the successfully uploaded parts info by upload id
@@ -2275,7 +2305,7 @@ func (c *Client) ListMultipartUploads(bucket string, args *api.ListMultipartUplo
 func (c *Client) ListMultipartUploadsWithContext(ctx context.Context, bucket string, args *api.ListMultipartUploadsArgs,
 	options ...api.Option) (*api.ListMultipartUploadsResult, error) {
 	bosContext := c.NewBosContext(ctx)
-	return api.ListMultipartUploads(c, bucket, args, bosContext)
+	return api.ListMultipartUploads(c, bucket, args, bosContext, options...)
 }
 
 // BasicListMultipartUploads - basic interface to list the unfinished uploaded parts
@@ -2303,6 +2333,24 @@ func (c *Client) BasicListMultipartUploads(bucket string, options ...api.Option)
 // RETURNS:
 //   - error: nil if ok otherwise the specific error
 func (c *Client) UploadSuperFile(bucket, object, fileName, storageClass string) error {
+	return c.UploadSuperFileWithOptions(bucket, object, fileName, storageClass)
+}
+
+// UploadSuperFileWithOptions - the same as UploadSuperFile, but taking the options as well.
+//
+// PARAMS:
+//   - bucket: the destination bucket name
+//   - object: the destination object name
+//   - fileName: the local full path filename of the super file
+//   - storageClass: the storage class to be set to the uploaded file
+//   - options: the function set to set HTTP headers/params. They are only applied to the
+//     CompleteMultipartUpload request, which is the last one issued by this method on the
+//     caller goroutine. Passing them to the concurrently uploaded parts would race.
+//
+// RETURNS:
+//   - error: nil if ok otherwise the specific error
+func (c *Client) UploadSuperFileWithOptions(bucket, object, fileName, storageClass string,
+	options ...api.Option) error {
 	// Get the file size and check the size for multipart upload
 	file, fileErr := os.Open(fileName)
 	if fileErr != nil {
@@ -2335,8 +2383,8 @@ func (c *Client) UploadSuperFile(bucket, object, fileName, storageClass string) 
 
 	// Inner wrapper function of parallel uploading each part to get the ETag of the part
 	uploadPart := func(bucket, object, uploadId string, partNumber int, body *bce.Body,
-		result chan *api.UploadInfoType, ret chan error, id int64, pool chan int64) {
-		etag, err := c.BasicUploadPart(bucket, object, uploadId, partNumber, body)
+		result chan *api.UploadInfoType, ret chan error, id int64, pool chan int64, args *api.UploadPartArgs) {
+		etag, err := c.UploadPartWithArgs(bucket, object, uploadId, partNumber, body, args)
 		if err != nil {
 			result <- nil
 			ret <- err
@@ -2356,6 +2404,8 @@ func (c *Client) UploadSuperFile(bucket, object, fileName, storageClass string) 
 	uploadedResult := make(chan *api.UploadInfoType, partNum)
 	retChan := make(chan error, partNum)
 	workerPool := make(chan int64, c.MaxParallel)
+	totalCrc32Hash := crc32.NewIEEE()
+	crc32CaclSucc := true
 	for i := int64(0); i < c.MaxParallel; i++ {
 		workerPool <- i
 	}
@@ -2366,11 +2416,21 @@ func (c *Client) UploadSuperFile(bucket, object, fileName, storageClass string) 
 		if uploadSize > left {
 			uploadSize = left
 		}
+		if crc32CaclSucc {
+			file.Seek(offset, io.SeekStart)
+			n, copyErr := io.CopyN(totalCrc32Hash, file, uploadSize)
+			if copyErr != nil || n != uploadSize {
+				crc32CaclSucc = false
+			}
+		}
 		partBody, _ := bce.NewBodyFromSectionFileV2(file, offset, uploadSize, false)
 		select { // wait until get a worker to upload
 		case workerId := <-workerPool:
+			args := &api.UploadPartArgs{}
+			args.ContentCrc32, _ = util.CalculateContentCrc32FromFile(file, offset, uploadSize)
+			args.ContentCrc32cFlag = true
 			go uploadPart(bucket, object, uploadId, int(partId), partBody,
-				uploadedResult, retChan, workerId, workerPool)
+				uploadedResult, retChan, workerId, workerPool, args)
 		case uploadPartErr := <-retChan:
 			c.AbortMultipartUpload(bucket, object, uploadId)
 			return uploadPartErr
@@ -2380,6 +2440,9 @@ func (c *Client) UploadSuperFile(bucket, object, fileName, storageClass string) 
 	// Check the return of each part uploading, and decide to complete or abort it
 	completeArgs := &api.CompleteMultipartUploadArgs{
 		Parts: make([]api.UploadInfoType, partNum),
+	}
+	if crc32CaclSucc {
+		completeArgs.ContentCrc32 = strconv.FormatUint(uint64(totalCrc32Hash.Sum32()), 10)
 	}
 	for i := partNum; i > 0; i-- {
 		uploaded := <-uploadedResult
@@ -2391,7 +2454,7 @@ func (c *Client) UploadSuperFile(bucket, object, fileName, storageClass string) 
 		log.Debugf("upload part %d success, etag: %s", uploaded.PartNumber, uploaded.ETag)
 	}
 	if _, err := c.CompleteMultipartUploadFromStruct(bucket, object,
-		uploadId, completeArgs); err != nil {
+		uploadId, completeArgs, options...); err != nil {
 		c.AbortMultipartUpload(bucket, object, uploadId)
 		return err
 	}
@@ -2407,7 +2470,25 @@ func (c *Client) UploadSuperFile(bucket, object, fileName, storageClass string) 
 //
 // RETURNS:
 //   - error: nil if ok otherwise the specific error
-func (c *Client) DownloadSuperFile(bucket, object, fileName string) (err error) {
+func (c *Client) DownloadSuperFile(bucket, object, fileName string) error {
+	return c.DownloadSuperFileWithOptions(bucket, object, fileName)
+}
+
+// DownloadSuperFileWithOptions - the same as DownloadSuperFile, but taking the options as
+// well.
+//
+// PARAMS:
+//   - bucket: the destination bucket name
+//   - object: the destination object name
+//   - fileName: the local full path filename to store the object
+//   - options: the function set to set HTTP headers/params. They are only applied to the
+//     GetObjectMeta request, which is the only one issued by this method on the caller
+//     goroutine. Passing them to the concurrently downloaded ranges would race.
+//
+// RETURNS:
+//   - error: nil if ok otherwise the specific error
+func (c *Client) DownloadSuperFileWithOptions(bucket, object, fileName string,
+	options ...api.Option) (err error) {
 	file, err := os.OpenFile(fileName, os.O_WRONLY|os.O_TRUNC|os.O_CREATE, 0644)
 	if err != nil {
 		return
@@ -2422,7 +2503,7 @@ func (c *Client) DownloadSuperFile(bucket, object, fileName string) (err error) 
 		}
 	}()
 
-	meta, err := c.GetObjectMeta(bucket, object)
+	meta, err := c.GetObjectMeta(bucket, object, options...)
 	if err != nil {
 		return
 	}
@@ -2574,6 +2655,26 @@ func (c *Client) PutObjectAclGrantRead(bucket, object string, ids ...string) err
 	return api.PutObjectAcl(c, bucket, object, "", ids, nil, nil, bosContext)
 }
 
+// PutObjectAclGrantReadWithOptions - the same as PutObjectAclGrantRead, but taking the ids
+// as a slice so that the options can be passed as well.
+//
+// PARAMS:
+//   - bucket: the bucket name
+//   - object: the object name
+//   - ids: the user id list to grant read for this object
+//   - options: the function set to set HTTP headers/params
+//
+// RETURNS:
+//   - error: nil if success otherwise the specific error
+func (c *Client) PutObjectAclGrantReadWithOptions(bucket, object string, ids []string,
+	options ...api.Option) error {
+	bosContext := c.NewBosContext(context.Background())
+	if err := api.HandleBosClientOptions(c.BceClient, bosContext, options); err != nil {
+		return err
+	}
+	return api.PutObjectAcl(c, bucket, object, "", ids, nil, nil, bosContext, options...)
+}
+
 // PutObjectAclGrantFullControl - set the canned grant full-control acl of the given object
 //
 // PARAMS:
@@ -2586,6 +2687,26 @@ func (c *Client) PutObjectAclGrantRead(bucket, object string, ids ...string) err
 func (c *Client) PutObjectAclGrantFullControl(bucket, object string, ids ...string) error {
 	bosContext := c.NewBosContext(context.Background())
 	return api.PutObjectAcl(c, bucket, object, "", nil, ids, nil, bosContext)
+}
+
+// PutObjectAclGrantFullControlWithOptions - the same as PutObjectAclGrantFullControl, but
+// taking the ids as a slice so that the options can be passed as well.
+//
+// PARAMS:
+//   - bucket: the bucket name
+//   - object: the object name
+//   - ids: the user id list to grant full-control for this object
+//   - options: the function set to set HTTP headers/params
+//
+// RETURNS:
+//   - error: nil if success otherwise the specific error
+func (c *Client) PutObjectAclGrantFullControlWithOptions(bucket, object string, ids []string,
+	options ...api.Option) error {
+	bosContext := c.NewBosContext(context.Background())
+	if err := api.HandleBosClientOptions(c.BceClient, bosContext, options); err != nil {
+		return err
+	}
+	return api.PutObjectAcl(c, bucket, object, "", nil, ids, nil, bosContext, options...)
 }
 
 // PutObjectAclFromFile - set the acl of the given object with acl json file name
@@ -2796,15 +2917,12 @@ func (c *Client) ParallelUpload(bucket string, object string, filename string, c
 		return nil, err
 	}
 
-	partEtags, err := c.parallelPartUpload(bucket, object, filename, initiateMultipartUploadResult.UploadId)
+	completeArgs, err := c.parallelPartUpload(bucket, object, filename, initiateMultipartUploadResult.UploadId)
 	if err != nil {
 		c.AbortMultipartUpload(bucket, object, initiateMultipartUploadResult.UploadId)
 		return nil, err
 	}
 
-	completeArgs := &api.CompleteMultipartUploadArgs{
-		Parts: partEtags,
-	}
 	if args != nil {
 		if args.ObjectExpires > 0 {
 			completeArgs.ObjectExpires = args.ObjectExpires
@@ -2836,7 +2954,8 @@ func (c *Client) ParallelUpload(bucket string, object string, filename string, c
 // RETURNS:
 //   - []api.UploadInfoType: multipart upload result
 //   - error: nil if success otherwise the specific error
-func (c *Client) parallelPartUpload(bucket string, object string, filename string, uploadId string) ([]api.UploadInfoType, error) {
+func (c *Client) parallelPartUpload(bucket string, object string, filename string,
+	uploadId string) (*api.CompleteMultipartUploadArgs, error) {
 	file, err := os.Open(filename)
 	if err != nil {
 		return nil, err
@@ -2866,6 +2985,11 @@ func (c *Client) parallelPartUpload(bucket string, object string, filename strin
 
 	resultChan := make(chan api.UploadInfoType, partNum)
 
+	completeArgs := &api.CompleteMultipartUploadArgs{}
+
+	totalCrc32Hash := crc32.NewIEEE()
+	crc32CalcSucc := true
+
 	// 逐个分块上传
 	for i := int64(1); i <= partNum; i++ {
 		// 计算偏移offset和本次上传的大小uploadSize
@@ -2874,6 +2998,14 @@ func (c *Client) parallelPartUpload(bucket string, object string, filename strin
 		left := fileSize - offset
 		if left < partSize {
 			uploadSize = left
+		}
+
+		if crc32CalcSucc {
+			file.Seek(offset, io.SeekStart)
+			n, crc32Err := io.CopyN(totalCrc32Hash, file, uploadSize)
+			if crc32Err != nil || n != uploadSize {
+				crc32CalcSucc = false
+			}
 		}
 
 		// 创建指定偏移、指定大小的文件流
@@ -2888,23 +3020,31 @@ func (c *Client) parallelPartUpload(bucket string, object string, filename strin
 			case err = <-errChan:
 				return nil, err
 			case parallelChan <- 1:
-				go c.singlePartUpload(bucket, object, uploadId, int(i), partBody, parallelChan, errChan, resultChan)
+				args := &api.UploadPartArgs{}
+				args.ContentCrc32, _ = util.CalculateContentCrc32FromFile(file, offset, uploadSize)
+				args.ContentCrc32cFlag = true
+				go c.singlePartUpload(bucket, object, uploadId, int(i), partBody, parallelChan, errChan, resultChan, args)
 			}
 
 		}
 	}
 
-	partEtags := make([]api.UploadInfoType, partNum)
+	if crc32CalcSucc {
+		completeArgs.ContentCrc32 = strconv.FormatUint(uint64(totalCrc32Hash.Sum32()), 10)
+		completeArgs.ContentCrc32cFlag = true
+	}
+
+	completeArgs.Parts = make([]api.UploadInfoType, partNum)
 	for i := int64(0); i < partNum; i++ {
 		select {
 		case err := <-errChan:
 			return nil, err
 		case result := <-resultChan:
-			partEtags[result.PartNumber-1].PartNumber = result.PartNumber
-			partEtags[result.PartNumber-1].ETag = result.ETag
+			completeArgs.Parts[result.PartNumber-1].PartNumber = result.PartNumber
+			completeArgs.Parts[result.PartNumber-1].ETag = result.ETag
 		}
 	}
-	return partEtags, nil
+	return completeArgs, nil
 }
 
 // singlePartUpload - single part upload
@@ -2918,10 +3058,9 @@ func (c *Client) parallelPartUpload(bucket string, object string, filename strin
 //   - uploadId: the uploadId
 //   - partNumber: the part number of the object
 //   - content: the content of current part
-func (c *Client) singlePartUpload(
-	bucket string, object string, uploadId string,
-	partNumber int, content *bce.Body,
-	parallelChan chan int, errChan chan error, result chan api.UploadInfoType) {
+func (c *Client) singlePartUpload(bucket string, object string, uploadId string,
+	partNumber int, content *bce.Body, parallelChan chan int, errChan chan error,
+	result chan api.UploadInfoType, args *api.UploadPartArgs) {
 
 	defer func() {
 		if r := recover(); r != nil {
@@ -2931,10 +3070,12 @@ func (c *Client) singlePartUpload(
 		<-parallelChan
 	}()
 
-	var args api.UploadPartArgs
+	if args == nil {
+		args = &api.UploadPartArgs{}
+	}
 	args.ContentMD5 = content.ContentMD5()
 
-	etag, err := api.UploadPart(c, bucket, object, uploadId, partNumber, content, &args, c.NewBosContext(context.Background()))
+	etag, err := api.UploadPart(c, bucket, object, uploadId, partNumber, content, args, c.NewBosContext(context.Background()))
 	if err != nil {
 		errChan <- err
 		log.Error("upload part fail,err:%v", err)

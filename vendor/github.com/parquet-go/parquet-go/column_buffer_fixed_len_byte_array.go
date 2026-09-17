@@ -19,7 +19,7 @@ type fixedLenByteArrayColumnBuffer struct {
 	buf [32]byte
 }
 
-func newFixedLenByteArrayColumnBuffer(typ Type, columnIndex int16, numValues int32) *fixedLenByteArrayColumnBuffer {
+func newFixedLenByteArrayColumnBuffer(typ Type, columnIndex uint16, numValues int32) *fixedLenByteArrayColumnBuffer {
 	size := typ.Length()
 	col := &fixedLenByteArrayColumnBuffer{
 		fixedLenByteArrayPage: fixedLenByteArrayPage{

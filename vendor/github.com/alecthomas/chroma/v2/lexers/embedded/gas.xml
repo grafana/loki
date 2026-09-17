@@ -56,7 +56,7 @@
         <token type="Text"/>
         <pop depth="1"/>
       </rule>
-      <rule pattern="([;#]|//).*?\n">
+      <rule pattern="([;#@|!]|//).*\n?">
         <token type="CommentSingle"/>
         <pop depth="1"/>
       </rule>
@@ -114,7 +114,7 @@
         <token type="Text"/>
         <pop depth="1"/>
       </rule>
-      <rule pattern="([;#]|//).*?\n">
+      <rule pattern="([;#@|!]|//).*\n?">
         <token type="CommentSingle"/>
         <pop depth="1"/>
       </rule>
@@ -139,7 +139,7 @@
       <rule pattern="\s+">
         <token type="Text"/>
       </rule>
-      <rule pattern="([;#]|//).*?\n">
+      <rule pattern="([;#@|!]|//).*\n?">
         <token type="CommentSingle"/>
       </rule>
       <rule pattern="/[*][\w\W]*?[*]/">

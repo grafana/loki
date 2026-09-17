@@ -12,14 +12,15 @@ import (
 	"sync"
 
 	"go.opentelemetry.io/collector/pdata/internal/json"
+	"go.opentelemetry.io/collector/pdata/internal/metadata"
 	"go.opentelemetry.io/collector/pdata/internal/proto"
 )
 
 type SpanContext struct {
-	TraceState string
-	TraceFlags uint32
 	TraceID    TraceID
 	SpanID     SpanID
+	TraceFlags uint32
+	TraceState string
 	Remote     bool
 }
 
@@ -32,7 +33,7 @@ var (
 )
 
 func NewSpanContext() *SpanContext {
-	if !UseProtoPooling.IsEnabled() {
+	if !metadata.PdataUseProtoPoolingFeatureGate.IsEnabled() {
 		return &SpanContext{}
 	}
 	return protoPoolSpanContext.Get().(*SpanContext)
@@ -43,7 +44,7 @@ func DeleteSpanContext(orig *SpanContext, nullable bool) {
 		return
 	}
 
-	if !UseProtoPooling.IsEnabled() {
+	if !metadata.PdataUseProtoPoolingFeatureGate.IsEnabled() {
 		orig.Reset()
 		return
 	}
@@ -175,7 +176,7 @@ func (orig *SpanContext) UnmarshalJSON(iter *json.Iterator) {
 		case "remote":
 			orig.Remote = iter.ReadBool()
 		default:
-			iter.Skip()
+			iter.HandleUnknownField(f)
 		}
 	}
 }

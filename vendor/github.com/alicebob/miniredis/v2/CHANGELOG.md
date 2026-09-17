@@ -1,9 +1,24 @@
 ## Changelog
 
 
+## v2.39.0
+
+- support GEOSEARCH (thanks @fl4metf)
+- support HPERSIST, HTTL, HPTTL, and HSETEX (thanks @adamrothman)
+- support BZPOPMIN and BZPOPMAX (thanks @ChrisJr404)
+
+
+## v2.38.0
+
+- XADD TRIM (thanks @evan-choi)
+- update XINFO STREAM (thanks @TomBailey167)
+- lua fix (thanks @infastin)
+- partial support for DELEX
+
+
 ## v2.37.0
 
-- suport HEXPIRE (thanks @mojixcoder)
+- support HEXPIRE (thanks @mojixcoder)
 
 
 ## v2.36.1

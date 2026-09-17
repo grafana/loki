@@ -69,6 +69,8 @@ func NewChunkStoreWithRegisterer(dir, tenantID string, reg prometheus.Registerer
 			CacheLocation:        cacheDir,
 			ResyncInterval:       5 * time.Minute,
 			CacheTTL:             24 * time.Hour,
+			DownloadTimeout:      time.Minute,
+			IndexReaderMode:      indexshipper.DefaultIndexReaderMode,
 		},
 		FSConfig: local.FSConfig{Directory: storageDir},
 	}
@@ -89,7 +91,6 @@ func NewChunkStoreWithRegisterer(dir, tenantID string, reg prometheus.Registerer
 				Period: time.Hour * 24,
 			},
 		},
-		RowShards: 16,
 	}
 	schemaCfg := config.SchemaConfig{
 		Configs: []config.PeriodConfig{

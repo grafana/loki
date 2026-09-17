@@ -11,13 +11,14 @@ import (
 	"sync"
 
 	"go.opentelemetry.io/collector/pdata/internal/json"
+	"go.opentelemetry.io/collector/pdata/internal/metadata"
 	"go.opentelemetry.io/collector/pdata/internal/proto"
 )
 
 // ExportPartialSuccess represents the details of a partially successful export request.
 type ExportTracePartialSuccess struct {
-	ErrorMessage  string
 	RejectedSpans int64
+	ErrorMessage  string
 }
 
 var (
@@ -29,7 +30,7 @@ var (
 )
 
 func NewExportTracePartialSuccess() *ExportTracePartialSuccess {
-	if !UseProtoPooling.IsEnabled() {
+	if !metadata.PdataUseProtoPoolingFeatureGate.IsEnabled() {
 		return &ExportTracePartialSuccess{}
 	}
 	return protoPoolExportTracePartialSuccess.Get().(*ExportTracePartialSuccess)
@@ -40,7 +41,7 @@ func DeleteExportTracePartialSuccess(orig *ExportTracePartialSuccess, nullable b
 		return
 	}
 
-	if !UseProtoPooling.IsEnabled() {
+	if !metadata.PdataUseProtoPoolingFeatureGate.IsEnabled() {
 		orig.Reset()
 		return
 	}
@@ -145,7 +146,7 @@ func (orig *ExportTracePartialSuccess) UnmarshalJSON(iter *json.Iterator) {
 		case "errorMessage", "error_message":
 			orig.ErrorMessage = iter.ReadString()
 		default:
-			iter.Skip()
+			iter.HandleUnknownField(f)
 		}
 	}
 }

@@ -57,7 +57,7 @@ var (
 		numericTypes...), baseBinaryTypes...)
 )
 
-//go:generate stringer -type=CompareOperator -linecomment
+//go:generate go tool stringer -type=CompareOperator -linecomment
 
 type CompareOperator int8
 

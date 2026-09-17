@@ -24,6 +24,11 @@ The value may additionally contain a port and a path.
 The value should not contain a query string or fragment.
 The configuration can be overridden by [WithEndpoint], [WithEndpointURL], [WithInsecure], and [WithURLPath] options.
 
+OTEL_EXPORTER_OTLP_INSECURE, OTEL_EXPORTER_OTLP_METRICS_INSECURE (default: "false") -
+setting "true" disables client transport security for the exporter's HTTP connection.
+OTEL_EXPORTER_OTLP_METRICS_INSECURE takes precedence over OTEL_EXPORTER_OTLP_INSECURE.
+The configuration can be overridden by [WithInsecure] and [WithTLSClientConfig] options.
+
 OTEL_EXPORTER_OTLP_HEADERS, OTEL_EXPORTER_OTLP_METRICS_HEADERS (default: none) -
 key-value pairs used as headers associated with HTTP requests.
 The value is expected to be represented in a format matching the [W3C Baggage HTTP Header Content Format],
@@ -79,4 +84,4 @@ The configuration can be overridden by [WithAggregationSelector] option.
 [Explicit Bucket Histogram Aggregation]: https://github.com/open-telemetry/opentelemetry-specification/blob/v1.26.0/specification/metrics/sdk.md#explicit-bucket-histogram-aggregation
 [Base2 Exponential Bucket Histogram Aggregation]: https://github.com/open-telemetry/opentelemetry-specification/blob/v1.26.0/specification/metrics/sdk.md#base2-exponential-bucket-histogram-aggregation
 */
-package otlpmetrichttp // import "go.opentelemetry.io/otel/exporters/otlp/otlpmetric/otlpmetrichttp"
+package otlpmetrichttp

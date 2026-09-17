@@ -27,7 +27,7 @@ import (
 // TODO: Instead of using the same metrics for all notifiers,
 // should we have separate metrics for each discovery.NewManager?
 var (
-	sdMetrics map[string]discovery.DiscovererMetrics
+	sdMetrics *discovery.SDMetrics
 
 	srvDNSregexp = regexp.MustCompile(`^_.+._.+`)
 )
@@ -154,6 +154,9 @@ func buildNotifierConfig(amConfig *ruler_config.AlertManagerConfig, externalLabe
 	promConfig := &config.Config{
 		GlobalConfig: config.GlobalConfig{
 			ExternalLabels: externalLabels,
+			// Prometheus notifier ApplyConfig assigns this to alert relabel configs whose
+			// scheme is unset; model.UnsetValidation panics during notify (see grafana/loki#21368).
+			MetricNameValidationScheme: model.UTF8Validation,
 		},
 		AlertingConfig: config.AlertingConfig{
 			AlertRelabelConfigs: amConfig.AlertRelabelConfigs,

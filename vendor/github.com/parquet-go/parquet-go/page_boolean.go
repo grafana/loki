@@ -13,10 +13,10 @@ type booleanPage struct {
 	bits        memory.SliceBuffer[byte]
 	offset      int32
 	numValues   int32
-	columnIndex int16
+	columnIndex uint16
 }
 
-func newBooleanPage(typ Type, columnIndex int16, numValues int32, values encoding.Values) *booleanPage {
+func newBooleanPage(typ Type, columnIndex uint16, numValues int32, values encoding.Values) *booleanPage {
 	return &booleanPage{
 		typ:         typ,
 		bits:        memory.SliceBufferFrom(values.Boolean()[:bitpack.ByteCount(uint(numValues))]),

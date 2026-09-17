@@ -9,21 +9,20 @@ import (
 	"strings"
 	"time"
 
-	"github.com/docker/docker/daemon/logger"
-	"github.com/docker/docker/daemon/logger/templates"
 	"github.com/grafana/dskit/backoff"
 	"github.com/grafana/dskit/flagext"
+	"github.com/moby/moby/v2/daemon/logger"
+	"github.com/moby/moby/v2/daemon/logger/templates"
 	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/model/relabel"
-	"gopkg.in/yaml.v2"
+	yaml "go.yaml.in/yaml/v4"
 
 	"github.com/grafana/loki/v3/clients/pkg/logentry/stages"
-	"github.com/grafana/loki/v3/clients/pkg/promtail/client"
-	"github.com/grafana/loki/v3/clients/pkg/promtail/targets/file"
+	clients_util "github.com/grafana/loki/v3/clients/pkg/util"
 
-	"github.com/grafana/loki/v3/pkg/util"
+	labelsutil "github.com/grafana/loki/v3/pkg/util/labels"
 )
 
 const (
@@ -67,21 +66,21 @@ const (
 )
 
 var (
-	defaultClientConfig = client.Config{
-		BatchWait: client.BatchWait,
-		BatchSize: client.BatchSize,
+	defaultClientConfig = clients_util.Config{
+		BatchWait: clients_util.BatchWait,
+		BatchSize: clients_util.BatchSize,
 		BackoffConfig: backoff.Config{
-			MinBackoff: client.MinBackoff,
-			MaxBackoff: client.MaxBackoff,
-			MaxRetries: client.MaxRetries,
+			MinBackoff: clients_util.MinBackoff,
+			MaxBackoff: clients_util.MaxBackoff,
+			MaxRetries: clients_util.MaxRetries,
 		},
-		Timeout: client.Timeout,
+		Timeout: clients_util.Timeout,
 	}
 )
 
 type config struct {
 	labels       model.LabelSet
-	clientConfig client.Config
+	clientConfig clients_util.Config
 	pipeline     PipelineConfig
 }
 
@@ -283,7 +282,7 @@ func parseConfig(logCtx logger.Info) (*config, error) {
 	if err == nil {
 		labels[defaultHostLabelName] = model.LabelValue(host)
 	}
-	labels[file.FilenameLabel] = model.LabelValue(logCtx.LogPath)
+	labels["filename"] = model.LabelValue(logCtx.LogPath)
 
 	// Process relabel configs.
 	if relabelString, ok := logCtx.Config[cfgRelabelKey]; ok && relabelString != "" {
@@ -319,7 +318,9 @@ func parsePipeline(logCtx logger.Info) (PipelineConfig, error) {
 		}
 	}
 	if okString {
-		if err := yaml.UnmarshalStrict([]byte(pipelineString), &pipeline.PipelineStages); err != nil {
+		dec := yaml.NewDecoder(bytes.NewReader([]byte(pipelineString)))
+		dec.KnownFields(true)
+		if err := dec.Decode(&pipeline.PipelineStages); err != nil {
 			return pipeline, err
 		}
 	}
@@ -363,7 +364,9 @@ func parseInt(key string, logCtx logger.Info, set func(i int)) error {
 
 func relabelConfig(config string, lbs model.LabelSet) (model.LabelSet, error) {
 	relabelConfig := make([]*relabel.Config, 0)
-	if err := yaml.UnmarshalStrict([]byte(config), &relabelConfig); err != nil {
+	dec := yaml.NewDecoder(bytes.NewReader([]byte(config)))
+	dec.KnownFields(true)
+	if err := dec.Decode(&relabelConfig); err != nil {
 		return nil, err
 	}
 	// Validate relabel configs to set the validation scheme properly
@@ -372,11 +375,12 @@ func relabelConfig(config string, lbs model.LabelSet) (model.LabelSet, error) {
 			return nil, err
 		}
 	}
-	lb := labels.NewBuilder(labels.FromMap(util.ModelLabelSetToMap(lbs)))
+	lb := labels.NewBuilder(labels.EmptyLabels())
+	labelsutil.AddLabelSetToBuilder(lb, lbs)
 	if keep := relabel.ProcessBuilder(lb, relabelConfig...); !keep {
 		return nil, nil
 	}
-	return model.LabelSet(util.LabelsToMetric(lb.Labels())), nil
+	return labelsutil.BuilderToLabelSet(lb), nil
 }
 
 func parseBoolean(key string, logCtx logger.Info, defaultValue bool) (bool, error) {
@@ -398,5 +402,7 @@ func loadConfig(filename string, cfg interface{}) error {
 		return errors.Wrap(err, "Error reading config file")
 	}
 
-	return yaml.UnmarshalStrict(buf, cfg)
+	dec := yaml.NewDecoder(bytes.NewReader(buf))
+	dec.KnownFields(true)
+	return dec.Decode(cfg)
 }

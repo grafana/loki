@@ -4,10 +4,6 @@
 package uv
 
 import (
-	"os"
-	"os/signal"
-	"syscall"
-
 	"github.com/charmbracelet/x/term"
 	"github.com/charmbracelet/x/termios"
 )
@@ -57,22 +53,4 @@ func getSize(inTty, outTty term.File) (w, h int, err error) {
 
 func optimizeMovements(state *term.State) (useTabs, useBspace bool) {
 	return supportsHardTabs(uint64(state.Oflag)), supportsBackspace(uint64(state.Lflag)) //nolint:unconvert,nolintlint
-}
-
-func startWinch(inTty, outTty term.File) (c chan os.Signal, err error) {
-	for _, f := range []term.File{inTty, outTty} {
-		if f == nil {
-			continue
-		}
-		if term.IsTerminal(f.Fd()) {
-			c = make(chan os.Signal)
-			signal.Notify(c, syscall.SIGWINCH)
-			return c, nil
-		}
-	}
-	return nil, ErrNotTerminal
-}
-
-func stopWinch(c chan os.Signal) {
-	signal.Stop(c)
 }

@@ -192,6 +192,58 @@ func TestCheckLabelValuesDuplicates(t *testing.T) {
 		})
 	})
 
+	t.Run("does not panic when a parsed column shares a short name with a builtin (message)", func(t *testing.T) {
+		// Regression: builtin columns are routed to entry.Line / entry.Timestamp
+		// in streamsResultBuilder, not into the label set — so a parsed column
+		// sharing a short name with `builtin.message` (the raw log line) is not
+		// a real label-value collision. This shape arises naturally on queries
+		// like `{...} | json | message="X"` where the parser extracts a
+		// `"message"` field into `utf8.parsed.message`; the assertion must not
+		// panic on it.
+		schema := arrow.NewSchema([]arrow.Field{
+			semconv.FieldFromFQN("utf8.builtin.message", true),
+			semconv.FieldFromFQN("utf8.parsed.message", true),
+		}, nil)
+
+		rows := arrowtest.Rows{
+			{
+				"utf8.builtin.message": "raw log line",
+				"utf8.parsed.message":  "extracted-value",
+			},
+		}
+
+		record := rows.Record(memory.DefaultAllocator, schema)
+		defer record.Release()
+
+		require.NotPanics(t, func() {
+			CheckLabelValuesDuplicates(record)
+		})
+	})
+
+	t.Run("does not panic when a parsed column shares a short name with a builtin (timestamp, different arrow type)", func(t *testing.T) {
+		// Same as above but with `builtin.timestamp` (timestamp_ns) and a parsed
+		// `utf8.parsed.timestamp` field. The short-name-only comparison would
+		// have flagged this in error; the builtin exclusion prevents it.
+		schema := arrow.NewSchema([]arrow.Field{
+			semconv.FieldFromFQN("timestamp_ns.builtin.timestamp", false),
+			semconv.FieldFromFQN("utf8.parsed.timestamp", true),
+		}, nil)
+
+		rows := arrowtest.Rows{
+			{
+				"timestamp_ns.builtin.timestamp": time.Unix(1000, 0).UTC(),
+				"utf8.parsed.timestamp":          "2024-06-01T00:00:00Z",
+			},
+		}
+
+		record := rows.Record(memory.DefaultAllocator, schema)
+		defer record.Release()
+
+		require.NotPanics(t, func() {
+			CheckLabelValuesDuplicates(record)
+		})
+	})
+
 	t.Run("does not panic with unique short names", func(t *testing.T) {
 		schema := arrow.NewSchema([]arrow.Field{
 			semconv.FieldFromFQN("utf8.label.service", true),

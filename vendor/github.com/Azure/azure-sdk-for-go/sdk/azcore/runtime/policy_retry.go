@@ -115,7 +115,8 @@ func (p *retryPolicy) Do(req *policy.Request) (resp *http.Response, err error) {
 		// do this outside the for loop so defers don't accumulate.
 		rwbody = &retryableRequestBody{body: req.Body()}
 		defer func() {
-			// TODO: https://github.com/Azure/azure-sdk-for-go/issues/25649
+			// Match net/http behavior: after a request has produced either a response
+			// or a transport error, request body close errors are not surfaced to callers.
 			_ = rwbody.realClose()
 		}()
 	}

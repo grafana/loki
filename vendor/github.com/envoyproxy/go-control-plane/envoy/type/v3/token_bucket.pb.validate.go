@@ -58,10 +58,10 @@ func (m *TokenBucket) validate(all bool) error {
 
 	var errors []error
 
-	if m.GetMaxTokens() <= 0 {
+	if m.GetMaxTokens() < 0 {
 		err := TokenBucketValidationError{
 			field:  "MaxTokens",
-			reason: "value must be greater than 0",
+			reason: "value must be greater than or equal to 0",
 		}
 		if !all {
 			return err

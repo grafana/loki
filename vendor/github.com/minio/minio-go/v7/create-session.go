@@ -51,19 +51,30 @@ type createSessionResult struct {
 	} `xml:",omitempty"`
 }
 
+// expressSessionRenewalLeeway is how long before its expiration a cached
+// S3 Express session stops being served, leaving room for renewal.
+const expressSessionRenewalLeeway = 10 * time.Second
+
+// sessionFromCache returns the cached S3 Express session credentials for
+// bucketName while they remain outside the renewal leeway.
+func (c *Client) sessionFromCache(bucketName string) (credentials.Value, bool) {
+	v, ok := c.bucketSessionCache.Get(bucketName)
+	if !ok || !v.Expiration.After(time.Now().Add(expressSessionRenewalLeeway)) {
+		return credentials.Value{}, false
+	}
+	return v, true
+}
+
 // CreateSession - https://docs.aws.amazon.com/AmazonS3/latest/API/API_CreateSession.html
 // the returning credentials may be cached depending on the expiration of the original
-// credential, credentials will get renewed 10 secs earlier than when its gonna expire
-// allowing for some leeway in the renewal process.
+// credential; a cached session stops being served expressSessionRenewalLeeway before
+// it expires, allowing for some leeway in the renewal process.
 func (c *Client) CreateSession(ctx context.Context, bucketName string, sessionMode SessionMode) (cred credentials.Value, err error) {
 	if err := s3utils.CheckValidBucketNameS3Express(bucketName); err != nil {
 		return credentials.Value{}, err
 	}
 
-	v, ok := c.bucketSessionCache.Get(bucketName)
-	if ok && v.Expiration.After(time.Now().Add(10*time.Second)) {
-		// Verify if the credentials will not expire
-		// in another 10 seconds, if not we renew it again.
+	if v, ok := c.sessionFromCache(bucketName); ok {
 		return v, nil
 	}
 
@@ -88,14 +99,15 @@ func (c *Client) CreateSession(ctx context.Context, bucketName string, sessionMo
 		return credentials.Value{}, err
 	}
 
-	defer c.bucketSessionCache.Set(bucketName, cred)
-
-	return credentials.Value{
+	cred = credentials.Value{
 		AccessKeyID:     credSession.Credentials.AccessKey,
 		SecretAccessKey: credSession.Credentials.SecretKey,
 		SessionToken:    credSession.Credentials.SessionToken,
 		Expiration:      credSession.Credentials.Expiration,
-	}, nil
+	}
+
+	c.bucketSessionCache.Set(bucketName, cred)
+	return cred, nil
 }
 
 // createSessionRequest - Wrapper creates a new CreateSession request.
@@ -142,7 +154,7 @@ func (c *Client) createSessionRequest(ctx context.Context, bucketName string, se
 	c.setUserAgent(req)
 
 	// Get credentials from the configured credentials provider.
-	value, err := c.credsProvider.GetWithContext(c.CredContext())
+	value, err := c.credsProvider.GetWithContext(c.credContext(ctx))
 	if err != nil {
 		return nil, err
 	}

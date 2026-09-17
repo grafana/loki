@@ -2,6 +2,7 @@ package fetcher
 
 import (
 	"context"
+	"errors"
 	"sync"
 	"time"
 
@@ -14,6 +15,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/storage/chunk"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/cache"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/client/congestion"
 	"github.com/grafana/loki/v3/pkg/storage/config"
 	"github.com/grafana/loki/v3/pkg/util/constants"
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
@@ -37,6 +39,18 @@ var (
 		// TODO: consider adding `chunk_target_size` to this list in case users set very large chunk sizes
 		Buckets: []float64{128, 1024, 16 * 1024, 64 * 1024, 128 * 1024, 256 * 1024, 512 * 1024, 1024 * 1024, 1.5 * 1024 * 1024, 2 * 1024 * 1024, 4 * 1024 * 1024},
 	}, []string{"source"})
+	storageErrors = promauto.NewCounterVec(prometheus.CounterOpts{
+		Namespace: constants.Loki,
+		Subsystem: "chunk_fetcher",
+		Name:      "storage_errors_total",
+		Help:      "Storage errors encountered by the chunk fetcher.",
+	}, []string{"reason"})
+)
+
+const (
+	storageErrorNotFound  = "not_found"
+	storageErrorRetryable = "retryable"
+	storageErrorOther     = "other"
 )
 
 const chunkDecodeParallelism = 16
@@ -53,6 +67,7 @@ type Fetcher struct {
 
 	l2CacheHandoff                   time.Duration
 	skipQueryWritebackCacheOlderThan time.Duration
+	propagateChunkFetchErrors        bool
 
 	wait           sync.WaitGroup
 	decodeRequests chan decodeRequest
@@ -72,7 +87,7 @@ type decodeResponse struct {
 }
 
 // New makes a new ChunkFetcher.
-func New(cache cache.Cache, cachel2 cache.Cache, cacheStubs bool, schema config.SchemaConfig, storage client.Client, l2CacheHandoff time.Duration, skipQueryWritebackOlderThan time.Duration) (*Fetcher, error) {
+func New(cache cache.Cache, cachel2 cache.Cache, cacheStubs bool, schema config.SchemaConfig, storage client.Client, l2CacheHandoff time.Duration, skipQueryWritebackOlderThan time.Duration, propagateChunkFetchErrors bool) (*Fetcher, error) {
 	c := &Fetcher{
 		schema:                           schema,
 		storage:                          storage,
@@ -81,6 +96,7 @@ func New(cache cache.Cache, cachel2 cache.Cache, cacheStubs bool, schema config.
 		l2CacheHandoff:                   l2CacheHandoff,
 		cacheStubs:                       cacheStubs,
 		skipQueryWritebackCacheOlderThan: skipQueryWritebackOlderThan,
+		propagateChunkFetchErrors:        propagateChunkFetchErrors,
 		decodeRequests:                   make(chan decodeRequest),
 	}
 
@@ -157,9 +173,9 @@ func (c *Fetcher) FetchChunks(ctx context.Context, chunks []chunk.Chunk) ([]chun
 	}
 
 	// Fetch from L1 chunk cache
-	cacheHits, cacheBufs, _, err := c.cache.Fetch(ctx, keys)
-	if err != nil {
-		level.Warn(log).Log("msg", "error fetching from cache", "err", err)
+	cacheHits, cacheBufs, _, l1CacheErr := c.cache.Fetch(ctx, keys)
+	if l1CacheErr != nil {
+		level.Warn(log).Log("msg", "error fetching from cache", "err", l1CacheErr)
 	}
 
 	for _, buf := range cacheBufs {
@@ -193,15 +209,17 @@ func (c *Fetcher) FetchChunks(ctx context.Context, chunks []chunk.Chunk) ([]chun
 
 	// processCacheResponse will decode all the fetched chunks and also provide us with a list of
 	// missing chunks that we need to fetch from the storage layer
-	fromCache, missing, err := c.processCacheResponse(ctx, chunks, cacheHits, cacheBufs)
-	if err != nil {
-		level.Warn(log).Log("msg", "error process response from cache", "err", err)
+	fromCache, missing, cacheDecodeErr := c.processCacheResponse(ctx, chunks, cacheHits, cacheBufs)
+	if cacheDecodeErr != nil {
+		level.Warn(log).Log("msg", "error process response from cache", "err", cacheDecodeErr)
 	}
 
-	// Fetch missing from storage
-	var fromStorage []chunk.Chunk
+	var (
+		fromStorage []chunk.Chunk
+		storageErr  error
+	)
 	if len(missing) > 0 {
-		fromStorage, err = c.storage.GetChunks(ctx, missing)
+		fromStorage, storageErr = c.storage.GetChunks(ctx, missing)
 	}
 
 	// normally these stats would be collected by the cache.statsCollector wrapper, but chunks are written back
@@ -218,18 +236,25 @@ func (c *Fetcher) FetchChunks(ctx context.Context, chunks []chunk.Chunk) ([]chun
 	st.AddCacheEntriesStored(stats.ChunkCache, len(fromStorage))
 	st.AddCacheBytesSent(stats.ChunkCache, bytes)
 
-	// Always cache any chunks we did get
+	if storageErr != nil {
+		if !errors.Is(storageErr, context.Canceled) && !errors.Is(storageErr, context.DeadlineExceeded) {
+			storageErrors.WithLabelValues(c.storageErrorReason(storageErr)).Inc()
+			if failures := len(missing) - len(fromStorage); failures > 0 {
+				st.AddChunkFetchFailures(int64(failures))
+			}
+		}
+		level.Error(log).Log("msg", "failed downloading chunks", "err", storageErr)
+
+		if c.propagateChunkFetchErrors {
+			return nil, storageErr
+		}
+	}
 
 	if cacheErr := c.WriteBackCache(ctx, fromStorage); cacheErr != nil {
 		level.Warn(log).Log("msg", "could not store chunks in chunk cache", "err", cacheErr)
 	}
 
-	if err != nil {
-		level.Error(log).Log("msg", "failed downloading chunks", "err", err)
-	}
-
-	allChunks := append(fromCache, fromStorage...)
-	return allChunks, nil
+	return append(fromCache, fromStorage...), nil
 }
 
 func (c *Fetcher) WriteBackCache(ctx context.Context, chunks []chunk.Chunk) error {
@@ -278,7 +303,8 @@ func (c *Fetcher) WriteBackCache(ctx context.Context, chunks []chunk.Chunk) erro
 }
 
 // ProcessCacheResponse decodes the chunks coming back from the cache, separating
-// hits and misses.
+// hits and misses. A chunk that fails to decode is in neither result, so the
+// caller never sees it and never asks storage for it.
 func (c *Fetcher) processCacheResponse(ctx context.Context, chunks []chunk.Chunk, keys []string, bufs [][]byte) ([]chunk.Chunk, []chunk.Chunk, error) {
 	var (
 		requests  = make([]decodeRequest, 0, len(keys))
@@ -325,6 +351,20 @@ func (c *Fetcher) processCacheResponse(ctx context.Context, chunks []chunk.Chunk
 		}
 	}
 	return found, missing, err
+}
+
+func (c *Fetcher) storageErrorReason(err error) string {
+	if c.storage.IsChunkNotFoundErr(err) {
+		return storageErrorNotFound
+	}
+	if c.storage.IsRetryableErr(err) {
+		return storageErrorRetryable
+	}
+
+	if errors.Is(err, congestion.RetriesExceeded) {
+		return storageErrorRetryable
+	}
+	return storageErrorOther
 }
 
 func (c *Fetcher) IsChunkNotFoundErr(err error) bool {

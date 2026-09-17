@@ -179,13 +179,12 @@ type callInfo struct {
 	// nameResolutionEventAdded is set when the resolver delay trace event
 	// is added. Prevents duplicate events, since it is reported per-attempt.
 	nameResolutionEventAdded atomic.Bool
+	// previousRPCAttempts holds the count of RPC attempts that have happened
+	// before current attempt. Transparent retries are excluded.
+	previousRPCAttempts atomic.Uint32
 }
 
 type callInfoKey struct{}
-
-func setCallInfo(ctx context.Context, ci *callInfo) context.Context {
-	return context.WithValue(ctx, callInfoKey{}, ci)
-}
 
 // getCallInfo returns the callInfo stored in the context, or nil
 // if there isn't one.
@@ -200,17 +199,39 @@ type rpcInfo struct {
 	ai *attemptInfo
 }
 
-type rpcInfoKey struct{}
+type clientRPCInfoKey struct{}
+type serverRPCInfoKey struct{}
 
-func setRPCInfo(ctx context.Context, ri *rpcInfo) context.Context {
-	return context.WithValue(ctx, rpcInfoKey{}, ri)
+// clientRPCInfo returns the rpcInfo stored in the context for client, or nil
+// if there isn't one.
+func clientRPCInfo(ctx context.Context) *rpcInfo {
+	ri, _ := ctx.Value(clientRPCInfoKey{}).(*rpcInfo)
+	return ri
 }
 
-// getRPCInfo returns the rpcInfo stored in the context, or nil
+// serverRPCInfo returns the rpcInfo stored in the context for server, or nil
 // if there isn't one.
-func getRPCInfo(ctx context.Context) *rpcInfo {
-	ri, _ := ctx.Value(rpcInfoKey{}).(*rpcInfo)
+func serverRPCInfo(ctx context.Context) *rpcInfo {
+	ri, _ := ctx.Value(serverRPCInfoKey{}).(*rpcInfo)
 	return ri
+}
+
+func getOrCreateClientRPCInfo(ctx context.Context) (context.Context, *rpcInfo) {
+	ri := clientRPCInfo(ctx)
+	if ri != nil {
+		return ctx, ri
+	}
+	ri = &rpcInfo{ai: &attemptInfo{}}
+	return context.WithValue(ctx, clientRPCInfoKey{}, ri), ri
+}
+
+func getOrCreateServerRPCInfo(ctx context.Context) (context.Context, *rpcInfo) {
+	ri := serverRPCInfo(ctx)
+	if ri != nil {
+		return ctx, ri
+	}
+	ri = &rpcInfo{ai: &attemptInfo{}}
+	return context.WithValue(ctx, serverRPCInfoKey{}, ri), ri
 }
 
 func removeLeadingSlash(mn string) string {
@@ -239,9 +260,8 @@ type attemptInfo struct {
 	// message counters for sent and received messages (used for
 	// generating message IDs), and the number of previous RPC attempts for the
 	// associated call.
-	countSentMsg        uint32
-	countRecvMsg        uint32
-	previousRPCAttempts uint32
+	countSentMsg uint32
+	countRecvMsg uint32
 }
 
 type clientMetrics struct {

@@ -17,6 +17,10 @@ type OperationsManagerInterface interface {
 	UntrackOperationWithConnID(seqID int64, connID uint64)
 }
 
+type maintNotificationsConnTracker interface {
+	UntrackMaintNotificationsConn(connID uint64)
+}
+
 // HandoffRequest represents a request to handoff a connection to a new endpoint
 type HandoffRequest struct {
 	Conn     *pool.Conn
@@ -160,20 +164,27 @@ func (ph *PoolHook) OnPut(ctx context.Context, conn *pool.Conn) (shouldPool bool
 	}
 
 	if err := conn.MarkQueuedForHandoff(); err != nil {
-		// If marking fails, check if handoff was processed in the meantime
+		// Marking can fail if a worker advanced the connection's state between
+		// our queueHandoff above and here. Re-check ShouldHandoff: with the CAS
+		// rollback in Conn.MarkQueuedForHandoff, a worker that already cleared
+		// the handoff state is no longer misreported as ShouldHandoff=true, so a
+		// cleared connection is reliably detected and pooled here.
 		if !conn.ShouldHandoff() {
-			// Handoff was processed - this is normal, pool the connection
+			// Handoff was processed - this is normal, pool the connection.
 			return true, false, nil
 		}
-		// Other error - remove the connection
+		// Still marked for handoff in an ambiguous state — remove it rather than
+		// returning a connection a queued worker may still close or replace.
 		return false, true, nil
 	}
 	internal.Logger.Printf(ctx, logs.MarkedForHandoff(conn.GetID()))
 	return true, false, nil
 }
 
-func (ph *PoolHook) OnRemove(_ context.Context, _ *pool.Conn, _ error) {
-	// Not used
+func (ph *PoolHook) OnRemove(_ context.Context, conn *pool.Conn, _ error) {
+	if tracker, ok := ph.operationsManager.(maintNotificationsConnTracker); ok && conn != nil {
+		tracker.UntrackMaintNotificationsConn(conn.GetID())
+	}
 }
 
 // Shutdown gracefully shuts down the processor, waiting for workers to complete

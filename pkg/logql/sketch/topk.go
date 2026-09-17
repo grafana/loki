@@ -36,9 +36,6 @@ type Topk struct {
 	bf                  [][]bool
 	hll                 *hyperloglog.Sketch
 	expectedCardinality int
-
-	// save on allocs when converting from string event name to byte slice for hll insertion
-	eventBytes []byte
 }
 
 // get the correct sketch width based on the expected cardinality of the set

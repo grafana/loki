@@ -5,6 +5,7 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/columnar"
 	"github.com/grafana/loki/v3/pkg/columnar/columnartest"
+	"github.com/grafana/loki/v3/pkg/columnar/types"
 	"github.com/grafana/loki/v3/pkg/compute"
 	"github.com/grafana/loki/v3/pkg/memory"
 )
@@ -75,7 +76,7 @@ func makeInt64Array(tb testing.TB, alloc *memory.Allocator, size int) columnar.D
 	for i := 0; i < size; i++ {
 		values[i] = int64(i % 1000)
 	}
-	return columnartest.Array(tb, columnar.KindInt64, alloc, values...)
+	return columnartest.Array(tb, types.KindInt64, alloc, values...)
 }
 
 func makeUTF8Array(tb testing.TB, alloc *memory.Allocator, size int) columnar.Datum {
@@ -84,7 +85,7 @@ func makeUTF8Array(tb testing.TB, alloc *memory.Allocator, size int) columnar.Da
 	for i := 0; i < size; i++ {
 		values[i] = strings[i%len(strings)]
 	}
-	return columnartest.Array(tb, columnar.KindUTF8, alloc, values...)
+	return columnartest.Array(tb, types.KindUTF8, alloc, values...)
 }
 
 func makeAlternatingSelection(_ testing.TB, alloc *memory.Allocator, size int) memory.Bitmap {

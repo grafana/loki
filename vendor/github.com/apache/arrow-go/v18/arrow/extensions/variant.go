@@ -419,7 +419,7 @@ func (v *VariantArray) Metadata() arrow.TypedArray[[]byte] {
 // UntypedValues returns the untyped variant values for each element of the array,
 // if the array is not shredded this will contain the variant bytes for each value.
 // If the array is shredded, this will contain any variant values that are either
-// partially shredded objects or are not shredded at all (e.g. a value that doesnt
+// partially shredded objects or are not shredded at all (e.g. a value that doesn't
 // match the types of the shredding).
 //
 // The shredded array and the untyped values array together are used to encode a
@@ -456,6 +456,45 @@ func (v *VariantArray) Shredded() arrow.Array {
 // IsShredded returns true if the variant has shredded columns.
 func (v *VariantArray) IsShredded() bool {
 	return v.ExtensionType().(*VariantType).typedValueFieldIdx != -1
+}
+
+// UnshredVariant returns an equivalent VariantArray in the non-shredded layout
+// (a struct of metadata and value), reassembling each row's value from the
+// shredded typed_value and value columns. If the array is already non-shredded
+// it is returned unchanged with an added reference so callers can Release it the
+// same way.
+//
+// A physically null row becomes null. A present row that holds an encoded variant
+// null (the 0x00 value) stays present.
+func UnshredVariant(arr *VariantArray, mem memory.Allocator) (*VariantArray, error) {
+	if !arr.IsShredded() {
+		arr.Retain()
+
+		return arr, nil
+	}
+
+	// Rebuild through the default-type builder rather than reusing the input's
+	// metadata column: that column may be dictionary- or large-binary-encoded,
+	// while the non-shredded layout requires plain binary metadata.
+	bldr := NewVariantBuilder(mem, NewDefaultVariantType())
+	defer bldr.Release()
+	bldr.Reserve(arr.Len())
+
+	storage := arr.Storage()
+	for i := 0; i < arr.Len(); i++ {
+		if storage.IsNull(i) {
+			bldr.AppendNull()
+
+			continue
+		}
+		val, err := arr.Value(i)
+		if err != nil {
+			return nil, fmt.Errorf("variant: reassembling shredded row %d: %w", i, err)
+		}
+		bldr.Append(val)
+	}
+
+	return bldr.NewArray().(*VariantArray), nil
 }
 
 // IsNull will also take into account the special case where there is an

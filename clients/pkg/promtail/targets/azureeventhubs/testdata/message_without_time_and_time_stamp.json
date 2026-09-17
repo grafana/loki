@@ -1,9 +1,0 @@
-{
-  "records": [
-    {
-      "resourceId": "/RESOURCE_ID",
-      "operationName": "ApplicationGatewayAccess",
-      "category": "ApplicationGatewayAccessLog"
-    }
-  ]
-}

@@ -11,16 +11,17 @@ import (
 	"sync"
 
 	"go.opentelemetry.io/collector/pdata/internal/json"
+	"go.opentelemetry.io/collector/pdata/internal/metadata"
 	"go.opentelemetry.io/collector/pdata/internal/proto"
 )
 
 // Mapping describes the mapping of a binary in memory, including its address range, file offset, and metadata like build ID
 type Mapping struct {
-	AttributeIndices []int32
 	MemoryStart      uint64
 	MemoryLimit      uint64
 	FileOffset       uint64
 	FilenameStrindex int32
+	AttributeIndices []int32
 }
 
 var (
@@ -32,7 +33,7 @@ var (
 )
 
 func NewMapping() *Mapping {
-	if !UseProtoPooling.IsEnabled() {
+	if !metadata.PdataUseProtoPoolingFeatureGate.IsEnabled() {
 		return &Mapping{}
 	}
 	return protoPoolMapping.Get().(*Mapping)
@@ -43,7 +44,7 @@ func DeleteMapping(orig *Mapping, nullable bool) {
 		return
 	}
 
-	if !UseProtoPooling.IsEnabled() {
+	if !metadata.PdataUseProtoPoolingFeatureGate.IsEnabled() {
 		orig.Reset()
 		return
 	}
@@ -179,7 +180,7 @@ func (orig *Mapping) UnmarshalJSON(iter *json.Iterator) {
 			}
 
 		default:
-			iter.Skip()
+			iter.HandleUnknownField(f)
 		}
 	}
 }

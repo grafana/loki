@@ -171,7 +171,7 @@ func normalizeLogLevel(level string) string {
 	case bytes.EqualFold(levelBytes, fatal):
 		return constants.LogLevelFatal
 	default:
-		// Return the original value if it doesn't match any known level
+		// Return the original value if it doesn't match any known level.
 		return level
 	}
 }
@@ -354,7 +354,7 @@ func isLeftWordBoundary(s string, pos int) bool {
 		return true
 	}
 	c := s[pos]
-	return c == ' ' || c == '\t' || c == '\n' || c == '[' || c == '(' || c == '{' || c == '"' || c == '='
+	return c == ' ' || c == '\t' || c == '\n' || c == '[' || c == '(' || c == '{' || c == '"' || c == '\'' || c == '=' || c == '|'
 }
 
 // isRightWordBoundary checks the character to the right of a potential keyword match.
@@ -366,7 +366,7 @@ func isRightWordBoundary(s string, pos int) bool {
 		return true
 	}
 	c := s[pos]
-	return c == ' ' || c == '\t' || c == '\n' || c == '[' || c == ']' || c == '(' || c == ')' || c == '{' || c == '}' || c == ':' || c == ',' || c == '!' || c == '"' || c == '='
+	return c == ' ' || c == '\t' || c == '\n' || c == '[' || c == ']' || c == '(' || c == ')' || c == '{' || c == '}' || c == ':' || c == ',' || c == '!' || c == '"' || c == '\'' || c == '=' || c == '|'
 }
 
 func indexOfBoundedLevel(log, level string) int {

@@ -12,6 +12,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
 	"github.com/grafana/loki/v3/pkg/engine/internal/semconv"
 	"github.com/grafana/loki/v3/pkg/engine/internal/types"
+	"github.com/grafana/loki/v3/pkg/logql/log"
 )
 
 func NewProjectPipeline(input Pipeline, proj *physical.Projection, evaluator *expressionEvaluator) (Pipeline, error) {
@@ -75,7 +76,7 @@ func NewProjectPipeline(input Pipeline, proj *physical.Projection, evaluator *ex
 
 	// Create EXPAND projection pipeline:
 	// Keep all columns and expand the ones referenced in proj.Expressions.
-	// TODO: as implemented, epanding and keeping/dropping cannot happen in the same projection. Is this desired?
+	// TODO: as implemented, expanding and keeping/dropping cannot happen in the same projection. Is this desired?
 	if proj.All && proj.Expand && len(expandExprs) > 0 {
 		return newExpandPipeline(expandExprs[0], evaluator, input)
 	}
@@ -123,6 +124,7 @@ func newKeepPipeline(colRefs []types.ColumnRef, keepFunc func([]types.ColumnRef,
 
 func newExpandPipeline(expr physical.Expression, evaluator *expressionEvaluator, input Pipeline) (*GenericPipeline, error) {
 	identCache := semconv.NewIdentifierCache()
+	labelFmtRemovedNames := labelFmtRemovedColumnNames(expr)
 
 	return newGenericPipeline(func(ctx context.Context, inputs []Pipeline) (arrow.RecordBatch, error) {
 		if len(inputs) != 1 {
@@ -149,7 +151,21 @@ func newExpandPipeline(expr physical.Expression, evaluator *expressionEvaluator,
 			if err != nil {
 				return nil, err
 			}
-			if !ident.Equal(semconv.ColumnIdentValue) {
+			_, shouldDelete := labelFmtRemovedNames[ident.ShortName()]
+			// label_format removes label-like columns whose short name matches
+			// either a rename source or a SET/rename target:
+			//   - `label_format dst=src` (rename): remove `src` (the source
+			//     vanishes from the label set) and `dst` (so the new column
+			//     replaces any pre-existing one rather than colliding with it).
+			//   - `label_format dst=value` (SET): remove `dst` so the new
+			//     column replaces any pre-existing one.
+			// This mirrors v1's LabelsFormatter.Process which calls
+			// lbs.Set(ParsedLabel, ...), and lbs.Set(ParsedLabel) deletes the
+			// same name from stream/metadata categories before adding the
+			// parsed value. Only builtin/generated columns (timestamp, message,
+			// __error__, value) are preserved.
+			shouldDelete = shouldDelete && isLabelLikeColumn(ident.ColumnType())
+			if !ident.Equal(semconv.ColumnIdentValue) && !shouldDelete {
 				outputCols = append(outputCols, batch.Column(i))
 				outputFields = append(outputFields, field)
 			}
@@ -195,9 +211,66 @@ func newExpandPipeline(expr physical.Expression, evaluator *expressionEvaluator,
 	}, input), nil
 }
 
-// mergeColumns merges two columns by preferring non-null and non-empty values from the new column (b).
-// If b has a null or empty value at index i, keep the value from a at that index.
-// If b has a non-null and non-empty value at index i, use the value from b (overwriting a).
+// isLabelLikeColumn reports whether a column of the given type participates in
+// the label set that LogQL operates on (and therefore can be the source of a
+// `label_format` rename). Builtin and generated columns (timestamp, message,
+// __error__, value) are excluded.
+func isLabelLikeColumn(ct types.ColumnType) bool {
+	switch ct {
+	case types.ColumnTypeLabel, types.ColumnTypeParsed, types.ColumnTypeMetadata, types.ColumnTypeAmbiguous:
+		return true
+	default:
+		return false
+	}
+}
+
+// labelFmtRemovedColumnNames returns the set of short column names that
+// label_format must strip from the input before adding the new parsed
+// columns. For each labelfmt entry:
+//   - the target (Name) is always removed, so the new value replaces any
+//     pre-existing column of the same name regardless of category.
+//   - the source (Value) is additionally removed when Rename is true, so
+//     the original column disappears from the label set as v1 does.
+//
+// Returns nil when the expression isn't a labelfmt parse or has no entries.
+func labelFmtRemovedColumnNames(expr physical.Expression) map[string]struct{} {
+	parseExpr, ok := expr.(*physical.VariadicExpr)
+	if !ok || parseExpr.Op != types.VariadicOpParseLabelfmt || len(parseExpr.Expressions) < 3 {
+		return nil
+	}
+	labelFmtsLiteral, ok := parseExpr.Expressions[2].(*physical.LiteralExpr)
+	if !ok {
+		return nil
+	}
+	labelFmts, ok := labelFmtsLiteral.Literal().Any().([]log.LabelFmt)
+	if !ok {
+		return nil
+	}
+	removed := make(map[string]struct{})
+	for _, labelFmt := range labelFmts {
+		removed[labelFmt.Name] = struct{}{}
+		if labelFmt.Rename {
+			removed[labelFmt.Value] = struct{}{}
+		}
+	}
+	if len(removed) == 0 {
+		return nil
+	}
+	return removed
+}
+
+// mergeColumns merges two columns by preferring values from the new column (b),
+// falling back to the old column (a) only where b is null. An explicit empty
+// string in b is treated as a real value and overwrites a.
+//
+// The null-vs-empty distinction matters: producers (line_format / label_format
+// / logfmt / json / regexp) emit null only when this row didn't contribute a
+// value for the key (so the old column's value should survive), and emit ""
+// when the value is genuinely empty (template rendered "", rename source was
+// "", parsed key extracted an empty value). Treating "" as a missing value
+// silently turned every "rendered to empty" into "keep original", which
+// diverges from v1 — most visibly for `line_format` whose output column always
+// collides with the builtin `message` column.
 func mergeColumns(a, b arrow.Array) arrow.Array {
 	// Only handle string arrays for now (which is what parsers produce)
 	aStr, aOk := a.(*array.String)
@@ -212,8 +285,8 @@ func mergeColumns(a, b arrow.Array) arrow.Array {
 	builder.Reserve(aStr.Len())
 
 	for i := range aStr.Len() {
-		if bStr.IsNull(i) || bStr.Value(i) == "" {
-			// New value is null or empty, keep old value
+		if bStr.IsNull(i) {
+			// New column has no value for this row, keep the old one.
 			if aStr.IsNull(i) {
 				builder.AppendNull()
 			} else {
@@ -223,6 +296,5 @@ func mergeColumns(a, b arrow.Array) arrow.Array {
 			builder.Append(bStr.Value(i))
 		}
 	}
-
 	return builder.NewStringArray()
 }

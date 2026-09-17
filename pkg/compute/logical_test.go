@@ -8,6 +8,7 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/columnar"
 	"github.com/grafana/loki/v3/pkg/columnar/columnartest"
+	"github.com/grafana/loki/v3/pkg/columnar/types"
 	"github.com/grafana/loki/v3/pkg/compute"
 	"github.com/grafana/loki/v3/pkg/memory"
 )
@@ -40,13 +41,13 @@ func TestAnd_Errors(t *testing.T) {
 	}{
 		{
 			name:  "fails on non-boolean types",
-			left:  columnartest.Scalar(t, columnar.KindInt64, 0),
-			right: columnartest.Scalar(t, columnar.KindInt64, 0),
+			left:  columnartest.Scalar(t, types.KindInt64, 0),
+			right: columnartest.Scalar(t, types.KindInt64, 0),
 		},
 		{
 			name:  "fails on mismatch length arrays",
-			left:  columnartest.Array(t, columnar.KindBool, &alloc, true, false, true, false),
-			right: columnartest.Array(t, columnar.KindBool, &alloc, true, false),
+			left:  columnartest.Array(t, types.KindBool, &alloc, true, false, true, false),
+			right: columnartest.Array(t, types.KindBool, &alloc, true, false),
 		},
 	}
 
@@ -68,13 +69,13 @@ func TestOr_Errors(t *testing.T) {
 	}{
 		{
 			name:  "fails on non-boolean types",
-			left:  columnartest.Scalar(t, columnar.KindInt64, 0),
-			right: columnartest.Scalar(t, columnar.KindInt64, 0),
+			left:  columnartest.Scalar(t, types.KindInt64, 0),
+			right: columnartest.Scalar(t, types.KindInt64, 0),
 		},
 		{
 			name:  "fails on mismatch length arrays",
-			left:  columnartest.Array(t, columnar.KindBool, &alloc, true, false, true, false),
-			right: columnartest.Array(t, columnar.KindBool, &alloc, true, false),
+			left:  columnartest.Array(t, types.KindBool, &alloc, true, false, true, false),
+			right: columnartest.Array(t, types.KindBool, &alloc, true, false),
 		},
 	}
 

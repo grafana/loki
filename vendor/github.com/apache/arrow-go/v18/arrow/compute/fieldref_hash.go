@@ -19,14 +19,15 @@
 package compute
 
 import (
-	"hash/maphash"
 	"math/bits"
 	"unsafe"
+
+	"github.com/apache/arrow-go/v18/internal/utils/maphash"
 
 	"github.com/apache/arrow-go/v18/arrow"
 )
 
-func (f FieldPath) hash(h *maphash.Hash) {
+func (f FieldPath) hash(h *maphash.MapHash) {
 	raw := unsafe.Pointer(unsafe.SliceData(f))
 	var byteLen int
 	if bits.UintSize == 32 {

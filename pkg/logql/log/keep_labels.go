@@ -44,6 +44,11 @@ func (kl *KeepLabels) Process(_ int64, line []byte, lbls *LabelsBuilder) ([]byte
 	return line, true
 }
 
+// Hints implements Stage.
+func (kl *KeepLabels) Hints() StageHints {
+	return StageHints{CanModifyLabels: true}
+}
+
 func (kl *KeepLabels) RequiredLabelNames() []string {
 	return []string{}
 }

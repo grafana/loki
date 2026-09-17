@@ -2066,7 +2066,7 @@ You may use `stdin` flag to do the following:
 
 #### Notes on `stdin` usage
 
-1. The `--limits` flag doesn't have any meaning when using `--stdin` (use pager like `less` for that).
+1. The `--limit` flag doesn't have any meaning when using `--stdin` (use pager like `less` for that).
 1. Be aware there are no **labels** when using `--stdin`. So the stream selector in the query is optional, for example, just `|="timeout"|logfmt|level="error"` is same as `{foo="bar"}|="timeout|logfmt|level="error"`.
 
 {{< admonition type="note" >}}

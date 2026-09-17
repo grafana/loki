@@ -182,7 +182,7 @@ func (b *BearerTokenPolicy) handleChallenge(req *policy.Request, res *http.Respo
 
 func checkHTTPSForAuth(req *policy.Request, allowHTTP bool) error {
 	if strings.ToLower(req.Raw().URL.Scheme) != "https" && !allowHTTP {
-		return errorinfo.NonRetriableError(errors.New("authenticated requests are not permitted for non TLS protected (https) endpoints"))
+		return errorinfo.NonRetriableError(errors.New("authorized requests are not permitted for non-TLS protected (https) endpoints"))
 	}
 	return nil
 }

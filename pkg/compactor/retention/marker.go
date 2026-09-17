@@ -18,7 +18,7 @@ import (
 	"go.uber.org/atomic"
 
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client"
-	shipper_util "github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/util"
+	boltdbcommon "github.com/grafana/loki/v3/pkg/storage/common/boltdb"
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
 )
 
@@ -41,7 +41,6 @@ type markerStorageWriter struct {
 	count               int64
 	currentFileCount    int64
 	curFileName         string
-	workDir             string
 	markerStorageClient client.ObjectClient
 
 	buf []byte
@@ -59,7 +58,7 @@ func NewMarkerWriter(markerStorageClient client.ObjectClient) (MarkerStorageWrit
 
 func (m *markerStorageWriter) createFile() error {
 	fileName := filepath.Join(os.TempDir(), fmt.Sprint(time.Now().UnixNano()))
-	db, err := shipper_util.SafeOpenBoltdbFile(fileName)
+	db, err := boltdbcommon.SafeOpenBoltdbFile(fileName)
 	if err != nil {
 		return err
 	}
@@ -282,7 +281,7 @@ func (r *markerProcessor) processFile(name string, deleteFunc func(ctx context.C
 		return false, err
 	}
 
-	dbView, err := shipper_util.SafeOpenBoltdbFile(tempFile.Name())
+	dbView, err := boltdbcommon.SafeOpenBoltdbFile(tempFile.Name())
 	if err != nil {
 		return false, err
 	}

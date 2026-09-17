@@ -44,6 +44,11 @@ type HashCmdable interface {
 	HPExpireTime(ctx context.Context, key string, fields ...string) *IntSliceCmd
 	HTTL(ctx context.Context, key string, fields ...string) *IntSliceCmd
 	HPTTL(ctx context.Context, key string, fields ...string) *IntSliceCmd
+	// note: the HIMPORT API is experimental and may be subject to change.
+	HImportPrepare(ctx context.Context, fieldsetName string, fields ...string) *StatusCmd
+	HImportSet(ctx context.Context, key, fieldsetName string, values ...interface{}) *StatusCmd
+	HImportDiscard(ctx context.Context, fieldsetName string) *IntCmd
+	HImportDiscardAll(ctx context.Context) *IntCmd
 }
 
 func (c cmdable) HDel(ctx context.Context, key string, fields ...string) *IntCmd {
@@ -70,6 +75,13 @@ func (c cmdable) HGet(ctx context.Context, key, field string) *StringCmd {
 	return cmd
 }
 
+// HGetAll returns a map of all fields and values stored at key.
+//
+// Returns an empty map when key does not exist.
+//
+// Time complexity: O(N) where N is the size of the hash.
+//
+// See https://redis.io/commands/hgetall/
 func (c cmdable) HGetAll(ctx context.Context, key string) *MapStringStringCmd {
 	cmd := NewMapStringStringCmd(ctx, "hgetall", key)
 	_ = c(ctx, cmd)

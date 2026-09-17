@@ -8,7 +8,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/puzpuzpuz/xsync/v3"
+	"github.com/puzpuzpuz/xsync/v4"
 	"go.opentelemetry.io/collector/component"
 	"go.opentelemetry.io/collector/consumer"
 	"go.opentelemetry.io/collector/pdata/pmetric"
@@ -34,7 +34,7 @@ type deltaToCumulativeProcessor struct {
 	ctx    context.Context
 	cancel context.CancelFunc
 
-	stale *xsync.MapOf[identity.Stream, time.Time]
+	stale *xsync.Map[identity.Stream, time.Time]
 	tel   telemetry.Metrics
 }
 
@@ -55,7 +55,7 @@ func newProcessor(cfg *Config, tel telemetry.Metrics, next consumer.Metrics) *de
 		ctx:    ctx,
 		cancel: cancel,
 
-		stale: xsync.NewMapOf[identity.Stream, time.Time](),
+		stale: xsync.NewMap[identity.Stream, time.Time](),
 		tel:   tel,
 	}
 

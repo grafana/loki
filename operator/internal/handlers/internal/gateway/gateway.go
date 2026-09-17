@@ -69,6 +69,10 @@ func BuildOptions(ctx context.Context, log logr.Logger, k k8s.Client, stack *lok
 
 			stack.Spec.Proxy = ocpProxy
 		}
+	case lokiv1.Passthrough:
+		if degradedErr := validatePassthroughCA(ctx, k, fg.HTTPEncryption, stack); degradedErr != nil {
+			return "", tenants, degradedErr
+		}
 	default:
 		secrets, err = getTenantSecrets(ctx, k, stack)
 		if err != nil {

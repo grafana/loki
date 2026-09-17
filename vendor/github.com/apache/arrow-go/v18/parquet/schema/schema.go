@@ -31,6 +31,7 @@
 package schema
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"iter"
@@ -39,7 +40,6 @@ import (
 
 	"github.com/apache/arrow-go/v18/parquet"
 	format "github.com/apache/arrow-go/v18/parquet/internal/gen-go/parquet"
-	"golang.org/x/xerrors"
 )
 
 // Schema is the container for the converted Parquet schema with a computed
@@ -64,12 +64,12 @@ type Schema struct {
 // FromParquet converts a slice of thrift Schema Elements to the correct node type
 func FromParquet(elems []*format.SchemaElement) (Node, error) {
 	if len(elems) == 0 {
-		return nil, xerrors.New("parquet: empty schema (no root)")
+		return nil, errors.New("parquet: empty schema (no root)")
 	}
 
 	if elems[0].GetNumChildren() == 0 {
 		if len(elems) > 1 {
-			return nil, xerrors.New("parquet: schema had multiple nodes but root had no children")
+			return nil, errors.New("parquet: schema had multiple nodes but root had no children")
 		}
 		// parquet file with no columns
 		return GroupNodeFromThrift(elems[0], []Node{})
@@ -84,7 +84,7 @@ func FromParquet(elems []*format.SchemaElement) (Node, error) {
 
 	nextNode = func() (Node, error) {
 		if pos == len(elems) {
-			return nil, xerrors.New("parquet: malformed schema: not enough elements")
+			return nil, errors.New("parquet: malformed schema: not enough elements")
 		}
 
 		elem := elems[pos]
@@ -208,7 +208,7 @@ func (s *Schema) HasRepeatedFields() bool {
 // and is used to update the schema metadata Column Orders. len(orders) must equal s.NumColumns()
 func (s *Schema) UpdateColumnOrders(orders []parquet.ColumnOrder) error {
 	if len(orders) != s.NumColumns() {
-		return xerrors.New("parquet: malformed schema: not enough ColumnOrder values")
+		return errors.New("parquet: malformed schema: not enough ColumnOrder values")
 	}
 
 	visitor := schemaColumnOrderUpdater{orders, 0}
@@ -272,6 +272,7 @@ func (t *toThriftVisitor) VisitPost(Node) {}
 func ToThrift(schema *GroupNode) []*format.SchemaElement {
 	t := &toThriftVisitor{make([]*format.SchemaElement, 0)}
 	schema.Visit(t)
+	t.elements[0].RepetitionType = nil
 	return t.elements
 }
 

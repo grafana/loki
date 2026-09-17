@@ -8,6 +8,7 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/columnar"
 	"github.com/grafana/loki/v3/pkg/columnar/columnartest"
+	"github.com/grafana/loki/v3/pkg/columnar/types"
 	"github.com/grafana/loki/v3/pkg/memory"
 )
 
@@ -19,7 +20,7 @@ func BenchmarkIsMember(b *testing.B) {
 	for i := range 1000 {
 		data = append(data, fmt.Sprintf("test%d", i))
 	}
-	searchData := columnartest.Array(b, columnar.KindUTF8, &alloc, data...)
+	searchData := columnartest.Array(b, types.KindUTF8, &alloc, data...)
 
 	// 1000 keys
 	values := make([]string, 1000)
@@ -48,17 +49,17 @@ func TestIsMember_Errors(t *testing.T) {
 	}{
 		{
 			name:       "UTF8 search data with int64 set",
-			searchData: columnartest.Array(t, columnar.KindUTF8, &alloc, "test1", "test2", "test3"),
+			searchData: columnartest.Array(t, types.KindUTF8, &alloc, "test1", "test2", "test3"),
 			values:     columnar.NewNumberSet(int64(1), int64(2), int64(3)),
 		},
 		{
 			name:       "int64 search data with UTF8 set",
-			searchData: columnartest.Array(t, columnar.KindInt64, &alloc, int64(1), int64(2), int64(3)),
+			searchData: columnartest.Array(t, types.KindInt64, &alloc, int64(1), int64(2), int64(3)),
 			values:     columnar.NewUTF8Set("test1", "test2", "test3"),
 		},
 		{
 			name:       "uint64 search data with UTF8 set",
-			searchData: columnartest.Array(t, columnar.KindUint64, &alloc, uint64(1), uint64(2), uint64(3)),
+			searchData: columnartest.Array(t, types.KindUint64, &alloc, uint64(1), uint64(2), uint64(3)),
 			values:     columnar.NewUTF8Set("test1", "test2", "test3"),
 		},
 	}

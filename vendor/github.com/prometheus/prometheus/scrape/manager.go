@@ -135,6 +135,9 @@ type Options struct {
 	// TODO: Move this option to OM1 parser and use only on OM1 flow.
 	ParseST bool
 
+	// SynthesizeST enables the synthesis of start timestamp for cumulative metrics.
+	SynthesizeST bool
+
 	// EnableTypeAndUnitLabels represents type-and-unit-labels feature flag.
 	EnableTypeAndUnitLabels bool
 
@@ -150,6 +153,13 @@ type Options struct {
 	//
 	// NOTE: This final scrape ignores the configured scrape interval.
 	ScrapeOnShutdown bool
+
+	// DiscoveryReloadOnStartup enables discovering targets immediately on start up as opposed
+	// to waiting for the interval defined in DiscoveryReloadInterval before
+	// initializing the scrape pools. Disabled by default. Useful for serverless
+	// flavors of OpenTelemetry contrib's prometheusreceiver where we're
+	// sensitive to start up delays.
+	DiscoveryReloadOnStartup bool
 
 	// InitialScrapeOffset applies an additional baseline delay before we begin
 	// scraping targets. By default, Prometheus calculates a specific offset for
@@ -204,7 +214,7 @@ func (m *Manager) Run(tsets <-chan map[string][]*targetgroup.Group) error {
 		select {
 		case ts, ok := <-tsets:
 			if !ok {
-				break
+				return nil
 			}
 			m.updateTsets(ts)
 
@@ -225,14 +235,23 @@ func (m *Manager) UnregisterMetrics() {
 }
 
 func (m *Manager) reloader() {
-	reloadIntervalDuration := m.opts.DiscoveryReloadInterval
-	if reloadIntervalDuration == model.Duration(0) {
-		reloadIntervalDuration = model.Duration(5 * time.Second)
+	reloadIntervalDuration := time.Duration(m.opts.DiscoveryReloadInterval)
+	if reloadIntervalDuration == 0 {
+		reloadIntervalDuration = 5 * time.Second
 	}
 
-	ticker := time.NewTicker(time.Duration(reloadIntervalDuration))
-
+	ticker := time.NewTicker(reloadIntervalDuration)
 	defer ticker.Stop()
+
+	if m.opts.DiscoveryReloadOnStartup {
+		select {
+		case <-m.graceShut:
+			return
+		case <-m.triggerReload:
+			m.reload()
+		}
+		ticker.Reset(reloadIntervalDuration)
+	}
 
 	for {
 		select {
@@ -391,22 +410,23 @@ func (m *Manager) ApplyConfig(cfg *config.Config) error {
 				wg.Done()
 				<-canReload
 			}()
-			switch {
-			case !ok:
+			if !ok {
 				sp.stop()
 				toDelete.Store(name, struct{}{})
-			case !reflect.DeepEqual(sp.config, cfg):
+				return
+			}
+			// Update the scrape failure logger before reloading so that
+			// restartLoops captures the new logger when starting new loops.
+			if l, ok := m.scrapeFailureLoggers[cfg.ScrapeFailureLogFile]; ok {
+				sp.SetScrapeFailureLogger(l)
+			} else {
+				sp.logger.Error("No logger found. This is a bug in Prometheus that should be reported upstream.", "scrape_pool", name)
+			}
+			if !reflect.DeepEqual(sp.config, cfg) {
 				err := sp.reload(cfg)
 				if err != nil {
 					m.logger.Error("error reloading scrape pool", "err", err, "scrape_pool", name)
 					failed.Store(true)
-				}
-				fallthrough
-			case ok:
-				if l, ok := m.scrapeFailureLoggers[cfg.ScrapeFailureLogFile]; ok {
-					sp.SetScrapeFailureLogger(l)
-				} else {
-					sp.logger.Error("No logger found. This is a bug in Prometheus that should be reported upstream.", "scrape_pool", name)
 				}
 			}
 		}(poolName, pool, cfg, ok)

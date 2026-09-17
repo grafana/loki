@@ -55,6 +55,7 @@ const (
 	PROPNAME_IAM_PROFILE_NAME        = "IAM_PROFILE_NAME"
 	PROPNAME_IAM_PROFILE_ID          = "IAM_PROFILE_ID"
 	PROPNAME_IAM_ACCOUNT_ID          = "IAM_ACCOUNT_ID"
+	PROPNAME_VPC_IMS_VERSION         = "VPC_IMS_VERSION"
 	PROPNAME_SCOPE_COLLECTION_TYPE   = "SCOPE_COLLECTION_TYPE"
 	PROPNAME_SCOPE_ID                = "SCOPE_ID"
 	PROPNAME_INCLUDE_BUILTIN_ACTIONS = "INCLUDE_BUILTIN_ACTIONS"
@@ -71,7 +72,7 @@ const (
 	ERRORMSG_PROP_INVALID            = "The %s property is invalid. Please remove any surrounding {, }, or \" characters."
 	ERRORMSG_EXCLUSIVE_PROPS_ERROR   = "Exactly one of %s or %s must be specified."
 	ERRORMSG_ATLEAST_ONE_PROP_ERROR  = "At least one of %s or %s must be specified."
-	ERRORMSG_ATMOST_ONE_PROP_ERROR   = "At most one of %s or %s may be specified."
+	ERRORMSG_ATMOST_ONE_PROP_ERROR   = "At most one of %s, %s, or %s may be specified."
 	ERRORMSG_NO_AUTHENTICATOR        = "Authentication information was not properly configured."
 	ERRORMSG_AUTHTYPE_UNKNOWN        = "Unrecognized authentication type: %s"
 	ERRORMSG_PROPS_MAP_NIL           = "The 'properties' map cannot be nil."
@@ -95,6 +96,7 @@ const (
 	ERRORMSG_VPCMDS_OPERATION_ERROR  = "VPC metadata service error, status code %d received from '%s': %s"
 	ERRORMSG_ACCOUNTID_PROP_ERROR    = "IAMAccountID must be specified if and only if IAMProfileName is specified"
 	ERRORMSG_PROP_PARSE_ERROR        = "error parsing configuration property %s, value=%s"
+	ERRORMSG_INVALID_SERVICE_VERSION = "Invalid service version. Supported values are: %s"
 
 	// The name of this module - matches the value in the go.mod file.
 	MODULE_NAME = "github.com/IBM/go-sdk-core/v5"
