@@ -1,5 +1,19 @@
 # Changelog
 
+## [3.6.17](https://github.com/grafana/loki/compare/v3.6.16...v3.6.17) (2026-09-09)
+
+
+### Bug Fixes
+
+* **security/HIGH/pkg/push:** Update module google.golang.org/grpc to v1.83.1 [SECURITY] (release-3.6.x) ([#24330](https://github.com/grafana/loki/issues/24330)) ([d8d78f6](https://github.com/grafana/loki/commit/d8d78f6e86d80942b3b9438777c4bf324cae1184))
+* **security/HIGH/pkg/push:** Update module google.golang.org/grpc to v1.83.2 [SECURITY] (release-3.6.x) ([#24444](https://github.com/grafana/loki/issues/24444)) ([6d21d6b](https://github.com/grafana/loki/commit/6d21d6b0a32cef7cd7e6599219d56745d065bbba))
+* **security/HIGH/:** Update module google.golang.org/grpc to v1.83.1 [SECURITY] (release-3.6.x) ([#24329](https://github.com/grafana/loki/issues/24329)) ([ed9df58](https://github.com/grafana/loki/commit/ed9df58cc7ca6c76178f0f707c7dd53d5a20a6d0))
+* **security/HIGH/:** Update module google.golang.org/grpc to v1.83.2 [SECURITY] (release-3.6.x) ([#24430](https://github.com/grafana/loki/issues/24430)) ([ee0ef56](https://github.com/grafana/loki/commit/ee0ef56505bfd4a95da450a36235a53ca1c94aad))
+* **security/MEDIUM/:** Update module github.com/containerd/containerd/v2 to v2.0.12 [SECURITY] (release-3.6.x) ([#24461](https://github.com/grafana/loki/issues/24461)) ([7fa1224](https://github.com/grafana/loki/commit/7fa1224d9f01d83656dc4754456a727b7fb572a0))
+* **security/UNKNOWN/:** Update module golang.org/x/crypto to v0.55.0 [SECURITY] (release-3.6.x) ([#24256](https://github.com/grafana/loki/issues/24256)) ([85b2d4f](https://github.com/grafana/loki/commit/85b2d4fb134fe97e51ea6ef25e8da999d732bb8d))
+* **security/UNKNOWN/:** Update module golang.org/x/crypto to v0.56.0 [SECURITY] (release-3.6.x) ([#24336](https://github.com/grafana/loki/issues/24336)) ([57bc922](https://github.com/grafana/loki/commit/57bc92283c01e1eba7744e111c881459a4c11e49))
+* **security/UNKNOWN/:** Update module golang.org/x/mod to v0.40.0 [SECURITY] (release-3.6.x) ([#23963](https://github.com/grafana/loki/issues/23963)) ([c08bf30](https://github.com/grafana/loki/commit/c08bf30195ba8e59a4b79729ad79fd634fdc5b70))
+
 ## [3.6.16](https://github.com/grafana/loki/compare/v3.6.15...v3.6.16) (2026-08-27)
 
 
