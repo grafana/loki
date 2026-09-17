@@ -36,7 +36,7 @@ func (l *Loki) setupLBAC() error {
 		Ingester:                {LabelAccessStoreWrapper, LabelAccessIngesterWrapper, Filterers},
 		LabelAccess:             {Store},
 		LabelAccessStoreWrapper: {Store},
-		LabelAccessTripperware:  {AuthTripperware},
+		LabelAccessTripperware:  {AuthTripperware, LoglineTripperware},
 		Querier:                 {AuthMiddleware, LabelAccess, LabelAccessStoreWrapper},
 		QueryEngine:             {AuthMiddleware, LabelAccessV2Engine},
 		QueryFrontend:           {AuthMiddleware, LabelAccessTripperware},

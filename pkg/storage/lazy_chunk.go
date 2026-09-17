@@ -3,9 +3,11 @@ package storage
 import (
 	"context"
 	"errors"
+	"sort"
 	"time"
 
 	"github.com/go-kit/log/level"
+	"github.com/prometheus/common/model"
 
 	"github.com/grafana/loki/v3/pkg/chunkenc"
 	"github.com/grafana/loki/v3/pkg/iter"
@@ -13,6 +15,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/logql/log"
 	"github.com/grafana/loki/v3/pkg/storage/chunk"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/fetcher"
+	"github.com/grafana/loki/v3/pkg/util"
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
 )
 
@@ -37,6 +40,7 @@ func (c *LazyChunk) Iterator(
 	direction logproto.Direction,
 	pipeline log.StreamPipeline,
 	nextChunk *LazyChunk,
+	hintRanges queryTimeRanges,
 ) (iter.EntryIterator, error) {
 	// If the chunk is not already loaded, then error out.
 	if c.Chunk.Data == nil {
@@ -45,6 +49,7 @@ func (c *LazyChunk) Iterator(
 
 	lokiChunk := c.Chunk.Data.(*chunkenc.Facade).LokiChunk()
 	blocks := lokiChunk.Blocks(from, through)
+	blocks = filterBlocksByHintRanges(blocks, hintRanges)
 	if len(blocks) == 0 {
 		return iter.NoopEntryIterator, nil
 	}
@@ -84,11 +89,15 @@ func (c *LazyChunk) Iterator(
 	}
 
 	if direction == logproto.FORWARD {
-		return iter.NewTimeRangedIterator(
+		result := iter.NewTimeRangedIterator(
 			iter.NewNonOverlappingIterator(its),
 			from,
 			through,
-		), nil
+		)
+		if hintRanges.enabled {
+			result = newHintEntryIterator(result, hintRanges)
+		}
+		return result, nil
 	}
 	for i, it := range its {
 		r, err := iter.NewEntryReversedIter(
@@ -106,7 +115,11 @@ func (c *LazyChunk) Iterator(
 		its[i], its[j] = its[j], its[i]
 	}
 
-	return iter.NewNonOverlappingIterator(its), nil
+	result := iter.NewNonOverlappingIterator(its)
+	if hintRanges.enabled {
+		return newHintEntryIterator(result, hintRanges), nil
+	}
+	return result, nil
 }
 
 // SampleIterator returns an sample iterator.
@@ -117,6 +130,7 @@ func (c *LazyChunk) SampleIterator(
 	from, through time.Time,
 	nextChunk *LazyChunk,
 	extractor log.StreamSampleExtractor,
+	hintRanges queryTimeRanges,
 ) (iter.SampleIterator, error) {
 	// If the chunk is not already loaded, then error out.
 	if c.Chunk.Data == nil {
@@ -125,6 +139,7 @@ func (c *LazyChunk) SampleIterator(
 
 	lokiChunk := c.Chunk.Data.(*chunkenc.Facade).LokiChunk()
 	blocks := lokiChunk.Blocks(from, through)
+	blocks = filterBlocksByHintRanges(blocks, hintRanges)
 	if len(blocks) == 0 {
 		return iter.NoopSampleIterator, nil
 	}
@@ -164,11 +179,158 @@ func (c *LazyChunk) SampleIterator(
 	}
 
 	// build the final iterator bound to the requested time range.
-	return iter.NewTimeRangedSampleIterator(
+	result := iter.NewTimeRangedSampleIterator(
 		iter.NewNonOverlappingSampleIterator(its),
 		from.UnixNano(),
 		through.UnixNano(),
-	), nil
+	)
+	if hintRanges.enabled {
+		result = newHintSampleIterator(result, hintRanges)
+	}
+	return result, nil
+}
+
+type queryTimeRange struct {
+	start int64
+	end   int64
+}
+
+// queryTimeRanges distinguishes an absent hint list from a supplied list whose
+// ranges do not overlap the query. An absent or empty list is passthrough; a
+// supplied list with no effective ranges matches nothing.
+type queryTimeRanges struct {
+	enabled bool
+	ranges  []queryTimeRange
+}
+
+func (r queryTimeRanges) contains(ts int64) bool {
+	if !r.enabled {
+		return true
+	}
+
+	i := sort.Search(len(r.ranges), func(i int) bool {
+		return r.ranges[i].end > ts
+	})
+	return i < len(r.ranges) && r.ranges[i].start <= ts
+}
+
+// overlapsClosed reports whether the closed data bounds [from, through]
+// intersect any half-open hint range.
+func (r queryTimeRanges) overlapsClosed(from, through int64) bool {
+	if !r.enabled {
+		return true
+	}
+
+	i := sort.Search(len(r.ranges), func(i int) bool {
+		return r.ranges[i].end > from
+	})
+	return i < len(r.ranges) && r.ranges[i].start <= through
+}
+
+func (r queryTimeRanges) modelBounds() (model.Time, model.Time) {
+	from := time.Unix(0, r.ranges[0].start)
+	through := time.Unix(0, r.ranges[len(r.ranges)-1].end)
+	return util.RoundToMilliseconds(from, through)
+}
+
+func filterBlocksByHintRanges(blocks []chunkenc.Block, hintRanges queryTimeRanges) []chunkenc.Block {
+	if !hintRanges.enabled {
+		return blocks
+	}
+
+	filtered := make([]chunkenc.Block, 0, len(blocks))
+	for _, block := range blocks {
+		if hintRanges.overlapsClosed(block.MinTime(), block.MaxTime()) {
+			filtered = append(filtered, block)
+		}
+	}
+	return filtered
+}
+
+type hintEntryIterator struct {
+	iter.EntryIterator
+	hintRanges queryTimeRanges
+
+	entry      logproto.Entry
+	labels     string
+	streamHash uint64
+}
+
+func newHintEntryIterator(it iter.EntryIterator, hintRanges queryTimeRanges) iter.EntryIterator {
+	return &hintEntryIterator{
+		EntryIterator: it,
+		hintRanges:    hintRanges,
+	}
+}
+
+func (i *hintEntryIterator) Next() bool {
+	for i.EntryIterator.Next() {
+		entry := i.EntryIterator.At()
+		if !i.hintRanges.contains(entry.Timestamp.UnixNano()) {
+			continue
+		}
+
+		i.entry = entry
+		i.labels = i.EntryIterator.Labels()
+		i.streamHash = i.EntryIterator.StreamHash()
+		return true
+	}
+	return false
+}
+
+func (i *hintEntryIterator) At() logproto.Entry {
+	return i.entry
+}
+
+func (i *hintEntryIterator) Labels() string {
+	return i.labels
+}
+
+func (i *hintEntryIterator) StreamHash() uint64 {
+	return i.streamHash
+}
+
+type hintSampleIterator struct {
+	iter.SampleIterator
+	hintRanges queryTimeRanges
+
+	sample     logproto.Sample
+	labels     string
+	streamHash uint64
+}
+
+func newHintSampleIterator(it iter.SampleIterator, hintRanges queryTimeRanges) iter.SampleIterator {
+	return &hintSampleIterator{
+		SampleIterator: it,
+		hintRanges:     hintRanges,
+	}
+}
+
+func (i *hintSampleIterator) Next() bool {
+	for i.SampleIterator.Next() {
+		sample := i.SampleIterator.At()
+		if !i.hintRanges.contains(sample.Timestamp) {
+			continue
+		}
+
+		i.sample = sample
+		i.labels = i.SampleIterator.Labels()
+		i.streamHash = i.SampleIterator.StreamHash()
+		return true
+	}
+	return false
+}
+
+func (i *hintSampleIterator) At() logproto.Sample {
+	return i.sample
+}
+
+func (i *hintSampleIterator) Labels() string {
+	return i.labels
+}
+
+func (i *hintSampleIterator) StreamHash() uint64 {
+	return i.streamHash
 }
 
 func IsBlockOverlapping(b chunkenc.Block, with *LazyChunk, direction logproto.Direction) bool {

@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
 
@@ -73,7 +74,7 @@ func TestLazyChunkIterator(t *testing.T) {
 			},
 		} {
 			t.Run(fmt.Sprintf("%d", i), func(t *testing.T) {
-				it, err := tc.chunk.Iterator(context.Background(), time.Unix(0, 0), time.Unix(1000, 0), logproto.FORWARD, log.NewNoopPipeline().ForStream(labels.New(labels.Label{Name: "foo", Value: "bar"})), nil)
+				it, err := tc.chunk.Iterator(context.Background(), time.Unix(0, 0), time.Unix(1000, 0), logproto.FORWARD, log.NewNoopPipeline().ForStream(labels.New(labels.Label{Name: "foo", Value: "bar"})), nil, queryTimeRanges{})
 				require.Nil(t, err)
 				streams, _, err := iter.ReadBatch(it, 1000)
 				require.Nil(t, err)
@@ -82,6 +83,158 @@ func TestLazyChunkIterator(t *testing.T) {
 			})
 		}
 	}
+}
+
+func TestHintRangeIterators(t *testing.T) {
+	base := time.Unix(100, 0)
+	allOffsets := []time.Duration{0, time.Millisecond, 2 * time.Millisecond, 3 * time.Millisecond, 4 * time.Millisecond, 5 * time.Millisecond}
+
+	tests := []struct {
+		name     string
+		hints    []logproto.HintTimeRange
+		start    time.Time
+		end      time.Time
+		expected []time.Duration
+	}{
+		{
+			name:     "nil hints preserve current behavior",
+			start:    base,
+			end:      base.Add(6 * time.Millisecond),
+			expected: allOffsets,
+		},
+		{
+			name:     "empty hints preserve current behavior",
+			hints:    []logproto.HintTimeRange{},
+			start:    base,
+			end:      base.Add(6 * time.Millisecond),
+			expected: allOffsets,
+		},
+		{
+			name: "disjoint hints return nothing",
+			hints: []logproto.HintTimeRange{{
+				Start: base.Add(10 * time.Millisecond),
+				End:   base.Add(11 * time.Millisecond),
+			}},
+			start: base,
+			end:   base.Add(6 * time.Millisecond),
+		},
+		{
+			name: "ranges are clipped and half open",
+			hints: []logproto.HintTimeRange{
+				{Start: base.Add(-time.Millisecond), End: base.Add(2 * time.Millisecond)},
+				{Start: base.Add(5 * time.Millisecond), End: base.Add(8 * time.Millisecond)},
+			},
+			start:    base.Add(time.Millisecond),
+			end:      base.Add(5 * time.Millisecond),
+			expected: []time.Duration{time.Millisecond},
+		},
+		{
+			name: "multiple ranges form a union",
+			hints: []logproto.HintTimeRange{
+				{Start: base.Add(4 * time.Millisecond), End: base.Add(6 * time.Millisecond)},
+				{Start: base.Add(time.Millisecond), End: base.Add(2 * time.Millisecond)},
+				{Start: base.Add(3 * time.Millisecond), End: base.Add(5 * time.Millisecond)},
+			},
+			start: base,
+			end:   base.Add(6 * time.Millisecond),
+			expected: []time.Duration{
+				time.Millisecond,
+				3 * time.Millisecond,
+				4 * time.Millisecond,
+				5 * time.Millisecond,
+			},
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			ranges := newQueryTimeRanges(tc.hints, tc.start, tc.end)
+
+			entries := make([]logproto.Entry, 0, len(allOffsets))
+			samples := make([]logproto.Sample, 0, len(allOffsets))
+			for _, offset := range allOffsets {
+				entries = append(entries, logproto.Entry{
+					Timestamp: base.Add(offset),
+					Line:      offset.String(),
+				})
+				samples = append(samples, logproto.Sample{
+					Timestamp: base.Add(offset).UnixNano(),
+					Value:     float64(offset),
+				})
+			}
+
+			entryIt := newHintEntryIterator(iter.NewStreamIterator(logproto.Stream{
+				Labels:  `{foo="bar"}`,
+				Hash:    123,
+				Entries: entries,
+			}), ranges)
+			var gotEntries []time.Duration
+			for entryIt.Next() {
+				gotEntries = append(gotEntries, entryIt.At().Timestamp.Sub(base))
+			}
+			require.NoError(t, entryIt.Err())
+			if len(tc.expected) > 0 {
+				require.Equal(t, tc.expected[len(tc.expected)-1], entryIt.At().Timestamp.Sub(base), "At must retain the last accepted entry after exhaustion")
+			}
+			require.NoError(t, entryIt.Close())
+
+			sampleIt := newHintSampleIterator(iter.NewSeriesIterator(logproto.Series{
+				Labels:     `{foo="bar"}`,
+				StreamHash: 123,
+				Samples:    samples,
+			}), ranges)
+			var gotSamples []time.Duration
+			for sampleIt.Next() {
+				gotSamples = append(gotSamples, time.Unix(0, sampleIt.At().Timestamp).Sub(base))
+			}
+			require.NoError(t, sampleIt.Err())
+			if len(tc.expected) > 0 {
+				require.Equal(t, tc.expected[len(tc.expected)-1], time.Unix(0, sampleIt.At().Timestamp).Sub(base), "At must retain the last accepted sample after exhaustion")
+			}
+			require.NoError(t, sampleIt.Close())
+
+			require.Equal(t, tc.expected, gotEntries)
+			require.Equal(t, tc.expected, gotSamples)
+		})
+	}
+}
+
+func TestFilterBlocksByHintRanges(t *testing.T) {
+	base := time.Unix(100, 0)
+	blocks := []chunkenc.Block{
+		blockWithBounds(base.UnixNano(), base.Add(time.Millisecond-time.Nanosecond).UnixNano()),
+		blockWithBounds(base.Add(time.Millisecond).UnixNano(), base.Add(2*time.Millisecond-time.Nanosecond).UnixNano()),
+		blockWithBounds(base.Add(2*time.Millisecond).UnixNano(), base.Add(3*time.Millisecond).UnixNano()),
+	}
+	ranges := newQueryTimeRanges(
+		[]logproto.HintTimeRange{{Start: base.Add(time.Millisecond), End: base.Add(2 * time.Millisecond)}},
+		base,
+		base.Add(3*time.Millisecond),
+	)
+
+	filtered := filterBlocksByHintRanges(blocks, ranges)
+
+	require.Len(t, filtered, 1)
+	require.Same(t, blocks[1], filtered[0])
+}
+
+func TestFilterChunksByHintRanges(t *testing.T) {
+	base := time.Unix(100, 0)
+	chunks := []chunk.Chunk{
+		{ChunkRef: logproto.ChunkRef{From: model.Time(base.UnixMilli()), Through: model.Time(base.UnixMilli())}},
+		{ChunkRef: logproto.ChunkRef{From: model.Time(base.Add(time.Millisecond).UnixMilli()), Through: model.Time(base.Add(time.Millisecond).UnixMilli())}},
+		{ChunkRef: logproto.ChunkRef{From: model.Time(base.Add(2 * time.Millisecond).UnixMilli()), Through: model.Time(base.Add(3 * time.Millisecond).UnixMilli())}},
+	}
+	ranges := newQueryTimeRanges(
+		[]logproto.HintTimeRange{{Start: base.Add(time.Millisecond), End: base.Add(2 * time.Millisecond)}},
+		base,
+		base.Add(3*time.Millisecond),
+	)
+
+	filtered := filterChunksByHintRanges(chunks, ranges)
+
+	require.Len(t, filtered, 1)
+	require.Equal(t, chunks[1].ChunkRef, filtered[0].ChunkRef)
 }
 
 func TestLazyChunksPop(t *testing.T) {

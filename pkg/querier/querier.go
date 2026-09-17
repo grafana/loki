@@ -173,11 +173,12 @@ func (q *SingleTenantQuerier) SelectLogs(ctx context.Context, params logql.Selec
 		level.Error(spanlogger.FromContext(ctx, q.logger)).Log("msg", "failed loading deletes for user", "err", err)
 	}
 
+	hintRanges := newQueryHintTimeRanges(params.GetHintRanges(), params.Start, params.End)
 	ingesterQueryInterval, storeQueryInterval := q.buildQueryIntervals(params.Start, params.End)
 
 	sp := trace.SpanFromContext(ctx)
 	iters := []iter.EntryIterator{}
-	if !q.cfg.QueryStoreOnly && ingesterQueryInterval != nil {
+	if !q.cfg.QueryStoreOnly && ingesterQueryInterval != nil && hintRanges.overlaps(ingesterQueryInterval.start, ingesterQueryInterval.end) {
 		// Make a copy of the request before modifying
 		// because the initial request is used below to query stores
 		queryRequestCopy := *params.QueryRequest
@@ -197,7 +198,7 @@ func (q *SingleTenantQuerier) SelectLogs(ctx context.Context, params logql.Selec
 		iters = append(iters, ingesterIters...)
 	}
 
-	if !q.cfg.QueryIngesterOnly && storeQueryInterval != nil {
+	if !q.cfg.QueryIngesterOnly && storeQueryInterval != nil && hintRanges.overlaps(storeQueryInterval.start, storeQueryInterval.end) {
 		params.Start = storeQueryInterval.start
 		params.End = storeQueryInterval.end
 		sp.AddEvent("querying store", trace.WithAttributes(
@@ -210,10 +211,19 @@ func (q *SingleTenantQuerier) SelectLogs(ctx context.Context, params logql.Selec
 
 		iters = append(iters, storeIter)
 	}
-	if len(iters) == 1 {
-		return iters[0], nil
+	var result iter.EntryIterator
+	switch len(iters) {
+	case 0:
+		result = iter.NoopEntryIterator
+	case 1:
+		result = iters[0]
+	default:
+		result = iter.NewMergeEntryIterator(ctx, iters, params.Direction)
 	}
-	return iter.NewMergeEntryIterator(ctx, iters, params.Direction), nil
+	if hintRanges.enabled {
+		result = newQueryHintEntryIterator(result, hintRanges)
+	}
+	return result, nil
 }
 
 func (q *SingleTenantQuerier) SelectSamples(ctx context.Context, params logql.SelectSampleParams) (iter.SampleIterator, error) {
@@ -239,10 +249,11 @@ func (q *SingleTenantQuerier) SelectSamples(ctx context.Context, params logql.Se
 		level.Error(spanlogger.FromContext(ctx, q.logger)).Log("msg", "failed loading deletes for user", "err", err)
 	}
 
+	hintRanges := newQueryHintTimeRanges(params.GetHintRanges(), params.Start, params.End)
 	ingesterQueryInterval, storeQueryInterval := q.buildQueryIntervals(params.Start, params.End)
 
 	iters := []iter.SampleIterator{}
-	if !q.cfg.QueryStoreOnly && ingesterQueryInterval != nil {
+	if !q.cfg.QueryStoreOnly && ingesterQueryInterval != nil && hintRanges.overlaps(ingesterQueryInterval.start, ingesterQueryInterval.end) {
 		// Make a copy of the request before modifying
 		// because the initial request is used below to query stores
 		queryRequestCopy := *params.SampleQueryRequest
@@ -260,7 +271,7 @@ func (q *SingleTenantQuerier) SelectSamples(ctx context.Context, params logql.Se
 		iters = append(iters, ingesterIters...)
 	}
 
-	if !q.cfg.QueryIngesterOnly && storeQueryInterval != nil {
+	if !q.cfg.QueryIngesterOnly && storeQueryInterval != nil && hintRanges.overlaps(storeQueryInterval.start, storeQueryInterval.end) {
 		params.Start = storeQueryInterval.start
 		params.End = storeQueryInterval.end
 
@@ -271,7 +282,169 @@ func (q *SingleTenantQuerier) SelectSamples(ctx context.Context, params logql.Se
 
 		iters = append(iters, storeIter)
 	}
-	return iter.NewTimestampFirstMergeSampleIterator(ctx, iters), nil
+	var result iter.SampleIterator
+	if len(iters) == 0 {
+		result = iter.NoopSampleIterator
+	} else {
+		result = iter.NewTimestampFirstMergeSampleIterator(ctx, iters)
+	}
+	if hintRanges.enabled {
+		result = newQueryHintSampleIterator(result, hintRanges)
+	}
+	return result, nil
+}
+
+type queryHintTimeRanges struct {
+	enabled bool
+	ranges  []logproto.HintTimeRange
+}
+
+func newQueryHintTimeRanges(hints []logproto.HintTimeRange, from, through time.Time) queryHintTimeRanges {
+	result := queryHintTimeRanges{enabled: len(hints) > 0}
+	if !result.enabled {
+		return result
+	}
+
+	result.ranges = make([]logproto.HintTimeRange, 0, len(hints))
+	for _, hint := range hints {
+		if hint.Start.Before(from) {
+			hint.Start = from
+		}
+		if hint.End.After(through) {
+			hint.End = through
+		}
+		if hint.Start.Before(hint.End) {
+			result.ranges = append(result.ranges, hint)
+		}
+	}
+
+	sort.Slice(result.ranges, func(i, j int) bool {
+		if result.ranges[i].Start.Equal(result.ranges[j].Start) {
+			return result.ranges[i].End.Before(result.ranges[j].End)
+		}
+		return result.ranges[i].Start.Before(result.ranges[j].Start)
+	})
+
+	merged := result.ranges[:0]
+	for _, current := range result.ranges {
+		if len(merged) == 0 || current.Start.After(merged[len(merged)-1].End) {
+			merged = append(merged, current)
+			continue
+		}
+		if current.End.After(merged[len(merged)-1].End) {
+			merged[len(merged)-1].End = current.End
+		}
+	}
+	result.ranges = merged
+	return result
+}
+
+func (r queryHintTimeRanges) overlaps(from, through time.Time) bool {
+	if !r.enabled {
+		return true
+	}
+
+	i := sort.Search(len(r.ranges), func(i int) bool {
+		return r.ranges[i].End.After(from)
+	})
+	return i < len(r.ranges) && r.ranges[i].Start.Before(through)
+}
+
+func (r queryHintTimeRanges) contains(ts time.Time) bool {
+	if !r.enabled {
+		return true
+	}
+
+	i := sort.Search(len(r.ranges), func(i int) bool {
+		return r.ranges[i].End.After(ts)
+	})
+	return i < len(r.ranges) && !r.ranges[i].Start.After(ts)
+}
+
+type queryHintEntryIterator struct {
+	iter.EntryIterator
+	hintRanges queryHintTimeRanges
+
+	entry      logproto.Entry
+	labels     string
+	streamHash uint64
+}
+
+func newQueryHintEntryIterator(it iter.EntryIterator, hintRanges queryHintTimeRanges) iter.EntryIterator {
+	return &queryHintEntryIterator{
+		EntryIterator: it,
+		hintRanges:    hintRanges,
+	}
+}
+
+func (i *queryHintEntryIterator) Next() bool {
+	for i.EntryIterator.Next() {
+		entry := i.EntryIterator.At()
+		if !i.hintRanges.contains(entry.Timestamp) {
+			continue
+		}
+
+		i.entry = entry
+		i.labels = i.EntryIterator.Labels()
+		i.streamHash = i.EntryIterator.StreamHash()
+		return true
+	}
+	return false
+}
+
+func (i *queryHintEntryIterator) At() logproto.Entry {
+	return i.entry
+}
+
+func (i *queryHintEntryIterator) Labels() string {
+	return i.labels
+}
+
+func (i *queryHintEntryIterator) StreamHash() uint64 {
+	return i.streamHash
+}
+
+type queryHintSampleIterator struct {
+	iter.SampleIterator
+	hintRanges queryHintTimeRanges
+
+	sample     logproto.Sample
+	labels     string
+	streamHash uint64
+}
+
+func newQueryHintSampleIterator(it iter.SampleIterator, hintRanges queryHintTimeRanges) iter.SampleIterator {
+	return &queryHintSampleIterator{
+		SampleIterator: it,
+		hintRanges:     hintRanges,
+	}
+}
+
+func (i *queryHintSampleIterator) Next() bool {
+	for i.SampleIterator.Next() {
+		sample := i.SampleIterator.At()
+		if !i.hintRanges.contains(time.Unix(0, sample.Timestamp)) {
+			continue
+		}
+
+		i.sample = sample
+		i.labels = i.SampleIterator.Labels()
+		i.streamHash = i.SampleIterator.StreamHash()
+		return true
+	}
+	return false
+}
+
+func (i *queryHintSampleIterator) At() logproto.Sample {
+	return i.sample
+}
+
+func (i *queryHintSampleIterator) Labels() string {
+	return i.labels
+}
+
+func (i *queryHintSampleIterator) StreamHash() uint64 {
+	return i.streamHash
 }
 
 func (q *SingleTenantQuerier) isWithinIngesterMaxLookbackPeriod(maxLookback time.Duration, queryEnd time.Time) bool {

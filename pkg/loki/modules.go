@@ -168,6 +168,9 @@ const (
 	AuthTripperware              = "auth-tripperware"
 )
 
+// LoglineTripperware assembles the Logline query-frontend middleware.
+const LoglineTripperware = "logline-tripperware"
+
 const (
 	schedulerRingKey    = "scheduler"
 	indexGatewayRingKey = "index-gateway"

@@ -54,6 +54,7 @@ import (
 	limits_frontend "github.com/grafana/loki/v3/pkg/limits/frontend"
 	limits_frontend_client "github.com/grafana/loki/v3/pkg/limits/frontend/client"
 	"github.com/grafana/loki/v3/pkg/loghttp/push"
+	loglinequeryfrontend "github.com/grafana/loki/v3/pkg/logline/queryfrontend"
 	"github.com/grafana/loki/v3/pkg/loki/codec"
 	"github.com/grafana/loki/v3/pkg/loki/common"
 	"github.com/grafana/loki/v3/pkg/lokifrontend"
@@ -87,12 +88,13 @@ import (
 
 // Config is the root config for Loki.
 type Config struct {
-	Target       flagext.StringSliceCSV `yaml:"target,omitempty"`
-	AuthEnabled  bool                   `yaml:"auth_enabled,omitempty"`
-	LBAC         labelaccess.Config     `yaml:"lbac,omitempty" category:"experimental"`
-	NoAuthTenant string                 `yaml:"no_auth_tenant,omitempty"`
-	HTTPPrefix   string                 `yaml:"http_prefix" doc:"hidden"`
-	BallastBytes int                    `yaml:"ballast_bytes"`
+	Target       flagext.StringSliceCSV      `yaml:"target,omitempty"`
+	AuthEnabled  bool                        `yaml:"auth_enabled,omitempty"`
+	LBAC         labelaccess.Config          `yaml:"lbac,omitempty" category:"experimental"`
+	Logline      loglinequeryfrontend.Config `yaml:"logline,omitempty" category:"experimental"`
+	NoAuthTenant string                      `yaml:"no_auth_tenant,omitempty"`
+	HTTPPrefix   string                      `yaml:"http_prefix" doc:"hidden"`
+	BallastBytes int                         `yaml:"ballast_bytes"`
 
 	Server              server.Config              `yaml:"server,omitempty"`
 	InternalServer      internalserver.Config      `yaml:"internal_server,omitempty" doc:"hidden"`
@@ -167,6 +169,7 @@ func (c *Config) RegisterFlags(f *flag.FlagSet) {
 			"tenant path must be migrated first (see cmd/migrate).",
 	)
 	c.LBAC.RegisterFlags(f)
+	c.Logline.RegisterFlags(f)
 	f.IntVar(&c.BallastBytes, "config.ballast-bytes", 0,
 		"The amount of virtual memory in bytes to reserve as ballast in order to optimize garbage collection. "+
 			"Larger ballasts result in fewer garbage collection passes, reducing CPU overhead at the cost of heap size. "+
@@ -292,6 +295,9 @@ func (c *Config) Validate() error {
 	}
 	if err := c.StorageConfig.Validate(); err != nil {
 		errs = append(errs, errors.Wrap(err, "CONFIG ERROR: invalid storage_config config"))
+	}
+	if err := c.Logline.Validate(); err != nil {
+		errs = append(errs, errors.Wrap(err, "CONFIG ERROR: invalid logline config"))
 	}
 	if err := c.QueryRange.Validate(); err != nil {
 		errs = append(errs, errors.Wrap(err, "CONFIG ERROR: invalid query_range config"))
@@ -473,6 +479,10 @@ type Loki struct {
 	UsageTracker push.UsageTracker
 
 	metastoreMetrics *metastore.ObjectMetastoreMetrics
+
+	// GetLoglineTenantSettings optionally supplies tenant-specific Logline
+	// settings after extension-owned runtime configuration is initialized.
+	GetLoglineTenantSettings LoglineTenantSettingsProvider
 }
 
 // New makes a new Loki.
@@ -782,6 +792,7 @@ func (t *Loki) setupModuleManager() error {
 	mm.RegisterModule(IngesterQuerier, t.initIngesterQuerier, modules.UserInvisibleModule)
 	mm.RegisterModule(IngesterGRPCInterceptors, t.initIngesterGRPCInterceptors, modules.UserInvisibleModule)
 	mm.RegisterModule(QueryFrontendTripperware, t.initQueryFrontendMiddleware, modules.UserInvisibleModule)
+	mm.RegisterModule(LoglineTripperware, t.initLoglineMiddleware, modules.UserInvisibleModule)
 	mm.RegisterModule(QueryFrontend, t.initQueryFrontend)
 	mm.RegisterModule(RulerStorage, t.initRulerStorage, modules.UserInvisibleModule)
 	mm.RegisterModule(Ruler, t.initRuler)
@@ -840,7 +851,8 @@ func (t *Loki) setupModuleManager() error {
 		Ingester:                     {Store, Server, MemberlistKV, TenantConfigs, Analytics, PartitionRing, UIRing},
 		Querier:                      {Store, Ring, Server, IngesterQuerier, PatternRingClient, Overrides, Analytics, CacheGenerationLoader, QuerySchedulerRing, UIRing},
 		QueryFrontendTripperware:     {Server, Overrides, TenantConfigs},
-		QueryFrontend:                {QueryFrontendTripperware, Analytics, CacheGenerationLoader, QuerySchedulerRing, UIRing},
+		LoglineTripperware:           {QueryFrontendTripperware},
+		QueryFrontend:                {LoglineTripperware, Analytics, CacheGenerationLoader, QuerySchedulerRing, UIRing},
 		QueryScheduler:               {Server, Overrides, MemberlistKV, Analytics, QuerySchedulerRing, UIRing},
 		QueryEngine:                  {QueryEngineScheduler},
 		QueryEngineWorker:            {Server, Overrides, TenantConfigs, Analytics},

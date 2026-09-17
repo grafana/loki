@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"math"
 	"slices"
+	"sort"
 	"time"
 
 	"github.com/go-kit/log"
@@ -456,10 +457,18 @@ func (s *LokiStore) lazyChunks(
 	from, through model.Time,
 	predicate chunk.Predicate,
 	storeChunksOverride *logproto.ChunkRefGroup,
+	hintRanges queryTimeRanges,
 ) ([]*LazyChunk, error) {
 	userID, err := tenant.TenantID(ctx)
 	if err != nil {
 		return nil, err
+	}
+
+	if hintRanges.enabled {
+		if len(hintRanges.ranges) == 0 {
+			return nil, nil
+		}
+		from, through = hintRanges.modelBounds()
 	}
 
 	stats := stats.FromContext(ctx)
@@ -478,6 +487,7 @@ func (s *LokiStore) lazyChunks(
 		prefiltered += len(chks[i])
 		stats.AddChunksRef(int64(len(chks[i])))
 		chks[i] = filterChunksByTime(from, through, chks[i])
+		chks[i] = filterChunksByHintRanges(chks[i], hintRanges)
 		filtered += len(chks[i])
 	}
 
@@ -556,7 +566,8 @@ func (s *LokiStore) SelectLogs(ctx context.Context, req logql.SelectLogParams) (
 		return nil, err
 	}
 
-	lazyChunks, err := s.lazyChunks(ctx, from, through, chunk.NewPredicate(matchers, req.Plan), req.GetStoreChunks())
+	hintRanges := newQueryTimeRanges(req.GetHintRanges(), req.Start, req.End)
+	lazyChunks, err := s.lazyChunks(ctx, from, through, chunk.NewPredicate(matchers, req.Plan), req.GetStoreChunks(), hintRanges)
 	if err != nil {
 		return nil, err
 	}
@@ -594,7 +605,7 @@ func (s *LokiStore) SelectLogs(ctx context.Context, req logql.SelectLogParams) (
 		chunkFilterer = s.chunkFilterer.ForRequest(ctx)
 	}
 
-	return newLogBatchIterator(ctx, s.schemaCfg, s.chunkMetrics, lazyChunks, s.cfg.MaxChunkBatchSize, matchers, pipeline, req.Direction, req.Start, req.End, chunkFilterer)
+	return newLogBatchIterator(ctx, s.schemaCfg, s.chunkMetrics, lazyChunks, s.cfg.MaxChunkBatchSize, matchers, pipeline, req.Direction, req.Start, req.End, chunkFilterer, hintRanges)
 }
 
 func (s *LokiStore) SelectSamples(ctx context.Context, req logql.SelectSampleParams) (iter.SampleIterator, error) {
@@ -603,7 +614,8 @@ func (s *LokiStore) SelectSamples(ctx context.Context, req logql.SelectSamplePar
 		return nil, err
 	}
 
-	lazyChunks, err := s.lazyChunks(ctx, from, through, chunk.NewPredicate(matchers, req.Plan), req.GetStoreChunks())
+	hintRanges := newQueryTimeRanges(req.GetHintRanges(), req.Start, req.End)
+	lazyChunks, err := s.lazyChunks(ctx, from, through, chunk.NewPredicate(matchers, req.Plan), req.GetStoreChunks(), hintRanges)
 	if err != nil {
 		return nil, err
 	}
@@ -662,6 +674,7 @@ func (s *LokiStore) SelectSamples(ctx context.Context, req logql.SelectSamplePar
 		req.End,
 		chunkFilterer,
 		extractor,
+		hintRanges,
 	)
 }
 
@@ -676,6 +689,68 @@ func filterChunksByTime(from, through model.Time, chunks []chunk.Chunk) []chunk.
 			continue
 		}
 		filtered = append(filtered, chunk)
+	}
+	return filtered
+}
+
+func newQueryTimeRanges(hints []logproto.HintTimeRange, from, through time.Time) queryTimeRanges {
+	result := queryTimeRanges{enabled: len(hints) > 0}
+	if !result.enabled {
+		return result
+	}
+
+	result.ranges = make([]queryTimeRange, 0, len(hints))
+	for _, hint := range hints {
+		start := hint.Start
+		end := hint.End
+		if start.Before(from) {
+			start = from
+		}
+		if end.After(through) {
+			end = through
+		}
+		if !start.Before(end) {
+			continue
+		}
+		result.ranges = append(result.ranges, queryTimeRange{
+			start: start.UnixNano(),
+			end:   end.UnixNano(),
+		})
+	}
+
+	sort.Slice(result.ranges, func(i, j int) bool {
+		if result.ranges[i].start == result.ranges[j].start {
+			return result.ranges[i].end < result.ranges[j].end
+		}
+		return result.ranges[i].start < result.ranges[j].start
+	})
+
+	merged := result.ranges[:0]
+	for _, current := range result.ranges {
+		if len(merged) == 0 || current.start > merged[len(merged)-1].end {
+			merged = append(merged, current)
+			continue
+		}
+		if current.end > merged[len(merged)-1].end {
+			merged[len(merged)-1].end = current.end
+		}
+	}
+	result.ranges = merged
+	return result
+}
+
+func filterChunksByHintRanges(chunks []chunk.Chunk, hintRanges queryTimeRanges) []chunk.Chunk {
+	if !hintRanges.enabled {
+		return chunks
+	}
+
+	filtered := make([]chunk.Chunk, 0, len(chunks))
+	for _, chk := range chunks {
+		from := int64(chk.From) * int64(time.Millisecond)
+		through := int64(chk.Through) * int64(time.Millisecond)
+		if hintRanges.overlapsClosed(from, through) {
+			filtered = append(filtered, chk)
+		}
 	}
 	return filtered
 }

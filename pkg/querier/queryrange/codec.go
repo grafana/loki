@@ -68,10 +68,11 @@ func (r *LokiRequest) GetStart() time.Time {
 }
 
 func (r *LokiRequest) WithStartEnd(s time.Time, e time.Time) queryrangebase.Request {
-	clone := *r
+	clone := cloneLokiRequest(r)
 	clone.StartTs = s
 	clone.EndTs = e
-	return &clone
+	clone.HintRanges = clipHintTimeRanges(clone.HintRanges, s, e)
+	return clone
 }
 
 // WithStartEndForCache implements resultscache.Request.
@@ -80,15 +81,40 @@ func (r *LokiRequest) WithStartEndForCache(s time.Time, e time.Time) resultscach
 }
 
 func (r *LokiRequest) WithQuery(query string) queryrangebase.Request {
-	clone := *r
+	clone := cloneLokiRequest(r)
 	clone.Query = query
-	return &clone
+	return clone
 }
 
 func (r *LokiRequest) WithShards(shards logql.Shards) *LokiRequest {
-	clone := *r
+	clone := cloneLokiRequest(r)
 	clone.Shards = shards.Encode()
+	return clone
+}
+
+func cloneLokiRequest(r *LokiRequest) *LokiRequest {
+	clone := *r
+	clone.HintRanges = slices.Clone(r.HintRanges)
 	return &clone
+}
+
+func clipHintTimeRanges(ranges []logproto.HintTimeRange, start, end time.Time) []logproto.HintTimeRange {
+	if len(ranges) == 0 {
+		return nil
+	}
+	clipped := make([]logproto.HintTimeRange, 0, len(ranges))
+	for _, hint := range ranges {
+		if hint.Start.Before(start) {
+			hint.Start = start
+		}
+		if hint.End.After(end) {
+			hint.End = end
+		}
+		if hint.Start.Before(hint.End) {
+			clipped = append(clipped, hint)
+		}
+	}
+	return clipped
 }
 
 func (r *LokiRequest) LogToSpan(sp trace.Span) {
@@ -775,6 +801,13 @@ func (c Codec) EncodeRequest(ctx context.Context, r queryrangebase.Request) (*ht
 				return nil, errors.Wrap(err, "marshaling store chunks")
 			}
 			params["storeChunks"] = []string{string(b)}
+		}
+		if len(request.HintRanges) > 0 {
+			hintRanges, err := marshalHintTimeRanges(request.HintRanges)
+			if err != nil {
+				return nil, err
+			}
+			params["hintRanges"] = hintRanges
 		}
 		u := &url.URL{
 			// the request could come /api/prom/query but we want to only use the new api.
@@ -1887,6 +1920,10 @@ func (p paramsRangeWrapper) Shards() []string {
 	return p.GetShards()
 }
 
+func (p paramsRangeWrapper) GetHintRanges() []logproto.HintTimeRange {
+	return p.LokiRequest.HintRanges
+}
+
 func (p paramsRangeWrapper) CachingOptions() resultscache.CachingOptions {
 	return p.LokiRequest.CachingOptions
 }
@@ -1921,6 +1958,10 @@ func (p paramsInstantWrapper) Direction() logproto.Direction {
 func (p paramsInstantWrapper) Limit() uint32 { return p.LokiInstantRequest.Limit }
 func (p paramsInstantWrapper) Shards() []string {
 	return p.GetShards()
+}
+
+func (p paramsInstantWrapper) GetHintRanges() []logproto.HintTimeRange {
+	return nil
 }
 
 func (p paramsInstantWrapper) CachingOptions() resultscache.CachingOptions {
@@ -1960,6 +2001,10 @@ func (p paramsSeriesWrapper) Shards() []string {
 }
 
 func (p paramsSeriesWrapper) GetStoreChunks() *logproto.ChunkRefGroup {
+	return nil
+}
+
+func (p paramsSeriesWrapper) GetHintRanges() []logproto.HintTimeRange {
 	return nil
 }
 
@@ -2003,6 +2048,10 @@ func (p paramsLabelWrapper) GetStoreChunks() *logproto.ChunkRefGroup {
 	return nil
 }
 
+func (p paramsLabelWrapper) GetHintRanges() []logproto.HintTimeRange {
+	return nil
+}
+
 func (p paramsLabelWrapper) CachingOptions() resultscache.CachingOptions {
 	return resultscache.CachingOptions{}
 }
@@ -2040,6 +2089,10 @@ func (p paramsStatsWrapper) Shards() []string {
 }
 
 func (p paramsStatsWrapper) GetStoreChunks() *logproto.ChunkRefGroup {
+	return nil
+}
+
+func (p paramsStatsWrapper) GetHintRanges() []logproto.HintTimeRange {
 	return nil
 }
 
@@ -2136,6 +2189,14 @@ func (p paramsDetectedLabelsWrapper) GetStoreChunks() *logproto.ChunkRefGroup {
 }
 
 func (p paramsDetectedFieldsWrapper) GetStoreChunks() *logproto.ChunkRefGroup {
+	return nil
+}
+
+func (p paramsDetectedLabelsWrapper) GetHintRanges() []logproto.HintTimeRange {
+	return nil
+}
+
+func (p paramsDetectedFieldsWrapper) GetHintRanges() []logproto.HintTimeRange {
 	return nil
 }
 
@@ -2281,6 +2342,11 @@ func parseRangeQuery(r *http.Request) (*LokiRequest, error) {
 		return nil, err
 	}
 
+	hintRanges, err := parseHintTimeRanges(r)
+	if err != nil {
+		return nil, err
+	}
+
 	return &LokiRequest{
 		Query:       rangeQuery.Query,
 		Limit:       rangeQuery.Limit,
@@ -2292,6 +2358,7 @@ func parseRangeQuery(r *http.Request) (*LokiRequest, error) {
 		Path:        r.URL.Path,
 		Shards:      rangeQuery.Shards,
 		StoreChunks: storeChunks,
+		HintRanges:  hintRanges,
 		Plan: &plan.QueryPlan{
 			AST: parsed,
 		},
@@ -2338,6 +2405,34 @@ func parseStoreChunks(r *http.Request) (*logproto.ChunkRefGroup, error) {
 		return storeChunks, nil
 	}
 	return nil, nil
+}
+
+func marshalHintTimeRanges(ranges []logproto.HintTimeRange) ([]string, error) {
+	encoded := make([]string, 0, len(ranges))
+	for i := range ranges {
+		data, err := ranges[i].Marshal()
+		if err != nil {
+			return nil, errors.Wrap(err, "marshaling hint time range")
+		}
+		encoded = append(encoded, string(data))
+	}
+	return encoded, nil
+}
+
+func parseHintTimeRanges(r *http.Request) ([]logproto.HintTimeRange, error) {
+	values := r.Form["hintRanges"]
+	if len(values) == 0 {
+		return nil, nil
+	}
+	ranges := make([]logproto.HintTimeRange, 0, len(values))
+	for _, value := range values {
+		var hint logproto.HintTimeRange
+		if err := hint.Unmarshal([]byte(value)); err != nil {
+			return nil, errors.Wrap(err, "unmarshaling hint time range")
+		}
+		ranges = append(ranges, hint)
+	}
+	return ranges, nil
 }
 
 type DetectedFieldsRequest struct {

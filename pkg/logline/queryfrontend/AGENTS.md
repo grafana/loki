@@ -4,7 +4,8 @@
 
 This package integrates the **logline index** into **Loki's query-range pipeline**. It
 injects two middlewares around Loki's existing `queryrangebase` middleware stack to skip
-or narrow time intervals that the logline index proves contain no matching log lines.
+empty intervals or attach time-range hints that let queriers avoid irrelevant storage
+work.
 
 ## Architecture: Two-layer middleware
 
@@ -19,18 +20,21 @@ or narrow time intervals that the logline index proves contain no matching log l
 2. **Filter middleware** (`loglineFilterHandler`): Sits *below* `SplitByInterval` and
    below the results cache. For each interval sub-request, it consults the prefetched
    hints to either:
-   - **Skip** the interval entirely (return empty response) if no hint ranges overlap
-   - **Narrow** to at most k envelopes (k = ceil(interval/15m), cap 8) by cutting
-     the largest inter-hint gaps. One `next.Do` per envelope; intra-group gaps
-     are scanned so nearby hints do not refetch the same chunk.
-   - **Pass through** if the interval is in the ingester window, or on error/timeout
+   - **Skip** the interval entirely (return empty response) if no hint ranges overlap.
+   - **Attach** all overlapping ranges, clipped to the interval, to one downstream
+     request. Queriers consume the half-open ranges to filter chunks, blocks, and entries.
+   - **Pass through** if the interval is in the ingester window, or on error/timeout.
+
+The filter must issue at most one `next.Do` call for an input request. Do not reintroduce
+per-range query-frontend fan-out; avoiding that task amplification is why hints are
+transported to queriers.
 
 ## Key integration points
 
 - **Wiring**: `WrapMiddleware` / `WrapMiddlewareWithStore` in `integration.go` create the
-  store, hint provider, optional cache, and compose the middleware stack. The caller owns
-  the returned `services.Service` and prepends the wrapped middleware to
-  `Loki.QueryFrontEndMiddleware`.
+  store, hint provider, optional cache, and compose the middleware stack. Loki's
+  `LoglineTripperware` module owns the returned `services.Service` and installs the
+  wrapped stack on `Loki.QueryFrontEndMiddleware`.
 - **Hint provider**: `pkg/logline/hintprovider` does the actual index lookups.
 - **Store**: `pkg/logline/store` manages the logline index data (object storage, polling).
 - **Loki codec**: `mergeLokiResponse` in Loki's `pkg/querier/queryrange/codec.go` merges

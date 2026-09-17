@@ -11,13 +11,13 @@ import (
 	"github.com/grafana/dskit/services"
 	"github.com/prometheus/client_golang/prometheus"
 
-	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
-	"github.com/grafana/loki/v3/pkg/loki"
-	"github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase"
-	"github.com/grafana/loki/v3/pkg/storage/chunk/cache"
-
 	"github.com/grafana/loki/v3/pkg/logline/hintprovider"
 	"github.com/grafana/loki/v3/pkg/logline/store"
+	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
+	"github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase"
+	"github.com/grafana/loki/v3/pkg/storage/bucket"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/cache"
+	storageconfig "github.com/grafana/loki/v3/pkg/storage/config"
 )
 
 // lenientRegisterer wraps a prometheus.Registerer to swallow duplicate
@@ -53,6 +53,15 @@ type identityMiddleware struct{}
 
 func (identityMiddleware) Wrap(next queryrangebase.Handler) queryrangebase.Handler { return next }
 
+// MiddlewareInputs contains the Loki configuration sections used to assemble
+// the logline query-frontend middleware without depending on pkg/loki.
+type MiddlewareInputs struct {
+	SchemaConfig         storageconfig.SchemaConfig
+	ObjectStoreConfig    bucket.ConfigWithNamedStores
+	QueryIngestersWithin time.Duration
+	ResultsCacheConfig   cache.Config
+}
+
 // WrapMiddleware builds and injects logline query middlewares around an
 // existing Loki queryrange middleware stack. It creates and owns a store
 // service lifecycle for index polling.
@@ -62,8 +71,8 @@ func (identityMiddleware) Wrap(next queryrangebase.Handler) queryrangebase.Handl
 //   - store polling service (start/stop managed by caller)
 //   - cleanup function (idempotent; stops hint cache)
 func WrapMiddleware(
-	lokiCfg loki.ConfigWrapper,
 	cfg Config,
+	inputs MiddlewareInputs,
 	tenantSettings TenantSettings,
 	existing queryrangebase.Middleware,
 	logger log.Logger,
@@ -79,15 +88,16 @@ func WrapMiddleware(
 		return nil, nil, nil, fmt.Errorf("invalid logline config: %w", err)
 	}
 
-	lokiQIW := lokiCfg.Querier.QueryIngestersWithin
-	if lokiQIW == 0 {
-		lokiQIW = store.DefaultQueryIngestersWithin
+	queryIngestersWithin := inputs.QueryIngestersWithin
+	if queryIngestersWithin == 0 {
+		queryIngestersWithin = store.DefaultQueryIngestersWithin
 	}
-	cfg.Store.QueryIngestersWithin = lokiQIW
+	cfg.Store.QueryIngestersWithin = queryIngestersWithin
+	cfg.QueryFrontend.QueryIngestersWithin = queryIngestersWithin
 	indexStore, err := store.New(
 		context.Background(),
-		lokiCfg.SchemaConfig,
-		lokiCfg.StorageConfig.ObjectStore,
+		inputs.SchemaConfig,
+		inputs.ObjectStoreConfig,
 		cfg.Store,
 		logger,
 		reg,
@@ -97,8 +107,8 @@ func WrapMiddleware(
 	}
 
 	wrapped, hintCache, err := WrapMiddlewareWithStore(
-		lokiCfg,
 		cfg.QueryFrontend,
+		inputs.ResultsCacheConfig,
 		tenantSettings,
 		indexStore,
 		existing,
@@ -138,8 +148,8 @@ func WrapMiddleware(
 // WrapMiddlewareWithStore injects logline middlewares around an existing
 // middleware stack using a caller-provided index store.
 func WrapMiddlewareWithStore(
-	lokiCfg loki.ConfigWrapper,
 	cfg MiddlewareConfig,
+	resultsCacheConfig cache.Config,
 	tenantSettings TenantSettings,
 	indexStore *store.Store,
 	existing queryrangebase.Middleware,
@@ -176,7 +186,7 @@ func WrapMiddlewareWithStore(
 
 	var hintCache cache.Cache
 	if cfg.HintCacheTTL > 0 {
-		hintCacheCfg := lokiCfg.QueryRange.ResultsCacheConfig.CacheConfig
+		hintCacheCfg := resultsCacheConfig
 		hintCacheCfg.Prefix = "logline-hint-cache."
 		hintCacheCfg.DefaultValidity = cfg.HintCacheTTL
 		hintCacheCfg.Memcache.Expiration = cfg.HintCacheTTL
@@ -199,12 +209,6 @@ func WrapMiddlewareWithStore(
 	}
 
 	hp := hintprovider.NewCachingHintProvider(baseHintProvider, hintCache, reg)
-	if cfg.QueryIngestersWithin == 0 {
-		cfg.QueryIngestersWithin = lokiCfg.Querier.QueryIngestersWithin
-	}
-	if cfg.QuerySplitDuration == 0 {
-		cfg.QuerySplitDuration = time.Duration(lokiCfg.LimitsConfig.QuerySplitDuration)
-	}
 
 	prefetchMW := NewLoglinePrefetchMiddleware(hp, cfg, tenantSettings, metrics, logger)
 	filterMW := NewLoglineFilterMiddleware(cfg.HintTimeout, metrics, logger)

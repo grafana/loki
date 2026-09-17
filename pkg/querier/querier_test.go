@@ -22,6 +22,7 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/compactor/deletion/deletionproto"
 	"github.com/grafana/loki/v3/pkg/ingester/client"
+	"github.com/grafana/loki/v3/pkg/iter"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql"
 	"github.com/grafana/loki/v3/pkg/querier/testutil"
@@ -157,6 +158,173 @@ func TestQuerier_validateQueryRequest(t *testing.T) {
 	request.Start = request.End.Add(-3*time.Minute - 2*time.Second)
 	_, err = q.SelectLogs(ctx, logql.SelectLogParams{QueryRequest: &request})
 	require.Equal(t, httpgrpc.Errorf(http.StatusBadRequest, "the query time range exceeds the limit (query length: 3m2s, limit: 2m)"), err)
+}
+
+func TestQuerier_HintRanges(t *testing.T) {
+	base := time.Now().Add(-time.Hour).Truncate(time.Millisecond)
+	offsets := []time.Duration{0, time.Millisecond, 2 * time.Millisecond, 3 * time.Millisecond, 4 * time.Millisecond, 5 * time.Millisecond}
+	allOffsets := append([]time.Duration(nil), offsets...)
+
+	tests := []struct {
+		name        string
+		hints       []logproto.HintTimeRange
+		expected    []time.Duration
+		expectStore bool
+	}{
+		{
+			name:        "nil hints preserve current behavior",
+			expected:    allOffsets,
+			expectStore: true,
+		},
+		{
+			name:        "empty hints preserve current behavior",
+			hints:       []logproto.HintTimeRange{},
+			expected:    allOffsets,
+			expectStore: true,
+		},
+		{
+			name: "disjoint hints skip the store",
+			hints: []logproto.HintTimeRange{{
+				Start: base.Add(10 * time.Millisecond),
+				End:   base.Add(11 * time.Millisecond),
+			}},
+		},
+		{
+			name: "hint boundaries are half open and clipped",
+			hints: []logproto.HintTimeRange{
+				{Start: base.Add(-time.Millisecond), End: base.Add(2 * time.Millisecond)},
+				{Start: base.Add(6 * time.Millisecond), End: base.Add(8 * time.Millisecond)},
+			},
+			expected:    []time.Duration{0, time.Millisecond},
+			expectStore: true,
+		},
+		{
+			name: "multiple ranges form a union",
+			hints: []logproto.HintTimeRange{
+				{Start: base.Add(4 * time.Millisecond), End: base.Add(6 * time.Millisecond)},
+				{Start: base.Add(time.Millisecond), End: base.Add(2 * time.Millisecond)},
+				{Start: base.Add(3 * time.Millisecond), End: base.Add(5 * time.Millisecond)},
+			},
+			expected: []time.Duration{
+				time.Millisecond,
+				3 * time.Millisecond,
+				4 * time.Millisecond,
+				5 * time.Millisecond,
+			},
+			expectStore: true,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name+"/logs", func(t *testing.T) {
+			store := newStoreMock()
+			entries := make([]logproto.Entry, 0, len(offsets))
+			for _, offset := range offsets {
+				entries = append(entries, logproto.Entry{Timestamp: base.Add(offset), Line: offset.String()})
+			}
+			store.On("SelectLogs", mock.Anything, mock.Anything).Return(iter.NewStreamIterator(logproto.Stream{
+				Labels:  `{foo="bar"}`,
+				Hash:    123,
+				Entries: entries,
+			}), nil)
+
+			limits, err := validation.NewOverrides(defaultLimitsTestConfig(), nil)
+			require.NoError(t, err)
+			q, err := New(
+				Config{QueryStoreOnly: true},
+				store,
+				nil,
+				limits,
+				&mockDeleteGettter{},
+				log.NewNopLogger(),
+			)
+			require.NoError(t, err)
+
+			it, err := q.SelectLogs(
+				user.InjectOrgID(context.Background(), "test"),
+				logql.SelectLogParams{QueryRequest: &logproto.QueryRequest{
+					Start:      base,
+					End:        base.Add(6 * time.Millisecond),
+					Direction:  logproto.FORWARD,
+					Selector:   `{foo="bar"}`,
+					Plan:       testutil.MustPlan(`{foo="bar"}`),
+					HintRanges: tc.hints,
+				}},
+			)
+			require.NoError(t, err)
+
+			var got []time.Duration
+			for it.Next() {
+				got = append(got, it.At().Timestamp.Sub(base))
+			}
+			require.NoError(t, it.Err())
+			require.NoError(t, it.Close())
+			require.Equal(t, tc.expected, got)
+
+			calls := store.GetMockedCallsByMethod("SelectLogs")
+			if tc.expectStore {
+				require.Len(t, calls, 1)
+				passed := calls[0].Arguments.Get(1).(logql.SelectLogParams)
+				require.Equal(t, tc.hints, passed.HintRanges)
+			} else {
+				require.Empty(t, calls)
+			}
+		})
+
+		t.Run(tc.name+"/samples", func(t *testing.T) {
+			store := newStoreMock()
+			samples := make([]logproto.Sample, 0, len(offsets))
+			for _, offset := range offsets {
+				samples = append(samples, logproto.Sample{Timestamp: base.Add(offset).UnixNano(), Value: float64(offset)})
+			}
+			store.On("SelectSamples", mock.Anything, mock.Anything).Return(iter.NewSeriesIterator(logproto.Series{
+				Labels:     `{foo="bar"}`,
+				StreamHash: 123,
+				Samples:    samples,
+			}), nil)
+
+			limits, err := validation.NewOverrides(defaultLimitsTestConfig(), nil)
+			require.NoError(t, err)
+			q, err := New(
+				Config{QueryStoreOnly: true},
+				store,
+				nil,
+				limits,
+				&mockDeleteGettter{},
+				log.NewNopLogger(),
+			)
+			require.NoError(t, err)
+
+			it, err := q.SelectSamples(
+				user.InjectOrgID(context.Background(), "test"),
+				logql.SelectSampleParams{SampleQueryRequest: &logproto.SampleQueryRequest{
+					Start:      base,
+					End:        base.Add(6 * time.Millisecond),
+					Selector:   `count_over_time({foo="bar"}[5m])`,
+					Plan:       testutil.MustPlan(`count_over_time({foo="bar"}[5m])`),
+					HintRanges: tc.hints,
+				}},
+			)
+			require.NoError(t, err)
+
+			var got []time.Duration
+			for it.Next() {
+				got = append(got, time.Unix(0, it.At().Timestamp).Sub(base))
+			}
+			require.NoError(t, it.Err())
+			require.NoError(t, it.Close())
+			require.Equal(t, tc.expected, got)
+
+			calls := store.GetMockedCallsByMethod("SelectSamples")
+			if tc.expectStore {
+				require.Len(t, calls, 1)
+				passed := calls[0].Arguments.Get(1).(logql.SelectSampleParams)
+				require.Equal(t, tc.hints, passed.HintRanges)
+			} else {
+				require.Empty(t, calls)
+			}
+		})
+	}
 }
 
 func TestQuerier_SeriesAPI(t *testing.T) {
