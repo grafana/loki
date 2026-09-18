@@ -234,15 +234,32 @@ func (r *DefaultMultiTenantManager) getOrCreateNotifier(userID string) (*notifie
 	amOverrides := r.limits.RulerAlertManagerConfig(userID)
 	currentHash := alertManagerConfigHash(amOverrides)
 
-	// Invalidate cached notifier if the alertmanager config changed.
+	// If a notifier already exists for this tenant, check whether the alertmanager
+	// config changed. If it did, update the notifier config in place so that the
+	// existing rules manager's NotifyFunc reference remains valid. Stopping and
+	// rebuilding the notifier would leave the rules manager pointing at a stopped
+	// instance, causing alerts to be dropped.
 	if n, ok := r.notifiers[userID]; ok {
 		if r.notifierCfgHash[userID] == currentHash {
 			return n.notifier, nil
 		}
-		level.Info(r.logger).Log("msg", "ruler alertmanager config changed, recreating notifier", "user", userID)
-		n.stop()
-		delete(r.notifiers, userID)
-		delete(r.notifiersCfg, userID)
+		level.Info(r.logger).Log("msg", "ruler alertmanager config changed, updating notifier", "user", userID)
+		amCfg := r.cfg.AlertManagerConfig
+		if amOverrides != nil {
+			amCfg = applyAlertmanagerDefaults(*amOverrides)
+		}
+		nCfg, err := buildNotifierConfig(&amCfg, r.cfg.ExternalLabels)
+		if err != nil {
+			return nil, fmt.Errorf("failed to update notifier config for tenant %s: %w", userID, err)
+		}
+		if nCfg != nil {
+			if err := n.applyConfig(nCfg); err != nil {
+				return nil, err
+			}
+			r.notifiersCfg[userID] = nCfg
+		}
+		r.notifierCfgHash[userID] = currentHash
+		return n.notifier, nil
 	}
 
 	nCfg, ok := r.notifiersCfg[userID]
