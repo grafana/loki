@@ -205,17 +205,50 @@ func newTestFrontend(t *testing.T) *Frontend {
 }
 
 func TestFrontend_CheckLimitsAndShard_FailsOpenToOneShard(t *testing.T) {
-	f := newTestFrontend(t)
-	f.limitsClient = &mockLimitsClient{t: t, err: errors.New("boom")}
 	req := &proto.CheckLimitsAndShardRequest{
 		Tenant:  "test",
 		Streams: []*proto.StreamMetadata{{StreamHash: 0x1}},
 	}
-	resp, err := f.CheckLimitsAndShard(t.Context(), req)
-	require.NoError(t, err)
-	require.Equal(t, []*proto.StreamShardResult{{
+	// Whatever the failure, the stream degrades to "don't shard this push"
+	// (one shard) rather than being rejected.
+	expected := []*proto.StreamShardResult{{
 		StreamHash: 0x1,
 		Shards:     1,
 		Stats:      &proto.ShardStats{ShardDecisionContext: uint32(limits.ReasonFailed)},
-	}}, resp.Results)
+	}}
+
+	// The whole client call fails (e.g. the ring could not be queried): every
+	// stream fails open.
+	t.Run("client call fails", func(t *testing.T) {
+		f := newTestFrontend(t)
+		f.limitsClient = &mockLimitsClient{t: t, err: errors.New("boom")}
+		resp, err := f.CheckLimitsAndShard(t.Context(), req)
+		require.NoError(t, err)
+		require.Equal(t, expected, resp.Results)
+	})
+
+	// The RPC to the backend instance owning the stream's partition returns an
+	// error. The error is swallowed and the stream, left unanswered after all
+	// zones are exhausted, fails open.
+	t.Run("backend rpc fails", func(t *testing.T) {
+		instances := []ring.InstanceDesc{{Addr: "instance-0"}}
+		mockClient := &mockLimitsProtoClient{
+			t: t,
+			getAssignedPartitionsResponse: &proto.GetAssignedPartitionsResponse{
+				AssignedPartitions: map[int32]int64{0: time.Now().UnixNano()},
+			},
+			expectedNumAssignedPartitionsRequests:  1,
+			checkLimitsAndShardResponseErr:         errors.New("boom"),
+			expectedNumCheckLimitsAndShardRequests: 1,
+		}
+		t.Cleanup(mockClient.Finished)
+		readRing, clientPool := newMockRingWithClientPool(t, "test", []*mockLimitsProtoClient{mockClient}, instances)
+		cache := newNopCache[string, *proto.GetAssignedPartitionsResponse]()
+
+		f := newTestFrontend(t)
+		f.limitsClient = newRingLimitsClient(readRing, clientPool, 1, cache, log.NewNopLogger(), prometheus.NewRegistry())
+		resp, err := f.CheckLimitsAndShard(t.Context(), req)
+		require.NoError(t, err)
+		require.Equal(t, expected, resp.Results)
+	})
 }
