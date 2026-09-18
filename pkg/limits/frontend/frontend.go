@@ -40,7 +40,6 @@ type Frontend struct {
 	streamsFailed   prometheus.Counter
 	streamsRejected prometheus.Counter
 
-	// Metrics for CheckLimitsAndShard
 	checkLimitsAndShardStreams  *prometheus.CounterVec
 	checkLimitsAndShardShards   *prometheus.CounterVec
 	checkLimitsAndShardFailed   *prometheus.CounterVec
@@ -184,19 +183,8 @@ func (f *Frontend) CheckLimitsAndShard(ctx context.Context, req *proto.CheckLimi
 		level.Error(f.logger).Log("msg", "failed to check limits and shard", "err", err)
 		resp = &proto.CheckLimitsAndShardResponse{}
 	}
-	// The client answers a subset of the requested streams: the whole call can
-	// fail, an instance can fail or not own a stream's partition, or all zones
-	// can be exhausted without an answer. This is the one place where the
-	// response is completed, so that callers do not have to interpret a
-	// missing result themselves.
-	resp.Results = appendFailedShardResults(resp.Results, req.Streams)
-	for i, res := range resp.Results {
-		// Shards is the total number of physical streams written for this
-		// stream, so zero is only meaningful for a rejected stream. Without a
-		// rejection, the backend has made no decision.
-		if res.Shards == 0 && res.RejectReason == "" {
-			resp.Results[i] = failedShardResult(res.StreamHash)
-		}
+	resp.Results = completeShardResults(resp.Results, req.Streams)
+	for _, res := range resp.Results {
 		f.checkLimitsAndShardShards.WithLabelValues(req.Tenant).Add(float64(res.Shards))
 		switch {
 		case res.GetStats().GetShardDecisionContext() == uint32(limits.ReasonFailed),
@@ -209,10 +197,20 @@ func (f *Frontend) CheckLimitsAndShard(ctx context.Context, req *proto.CheckLimi
 	return resp, nil
 }
 
-// appendFailedShardResults appends a result for each stream that has none.
-// Such streams degrade to "don't shard this push" (one shard) rather than
-// being rejected.
-func appendFailedShardResults(results []*proto.StreamShardResult, streams []*proto.StreamMetadata) []*proto.StreamShardResult {
+// completeShardResults returns one result per stream in streams.
+//
+// Backends answer a subset of the requested streams: the whole call can fail,
+// an instance can fail or not own a stream's partition, or all zones can be
+// exhausted without an answer. A result with neither a shard count nor a
+// rejection carries no decision either. Such streams fail open to a single
+// shard, so that a limits outage neither rejects pushes nor makes callers
+// interpret a missing result themselves.
+func completeShardResults(results []*proto.StreamShardResult, streams []*proto.StreamMetadata) []*proto.StreamShardResult {
+	for i, res := range results {
+		if res.Shards == 0 && res.RejectReason == "" {
+			results[i] = failedShardResult(res.StreamHash)
+		}
+	}
 	if len(results) == len(streams) {
 		return results
 	}

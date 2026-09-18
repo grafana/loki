@@ -10,6 +10,7 @@ import (
 	"github.com/grafana/dskit/kv"
 	"github.com/grafana/dskit/ring"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/v3/pkg/limits"
@@ -209,17 +210,13 @@ func TestFrontend_CheckLimitsAndShard_FailsOpenToOneShard(t *testing.T) {
 		Tenant:  "test",
 		Streams: []*proto.StreamMetadata{{StreamHash: 0x1}},
 	}
-	// Whatever the failure, the stream degrades to "don't shard this push"
-	// (one shard) rather than being rejected.
 	expected := []*proto.StreamShardResult{{
 		StreamHash: 0x1,
 		Shards:     1,
 		Stats:      &proto.ShardStats{ShardDecisionContext: uint32(limits.ReasonFailed)},
 	}}
 
-	// The whole client call fails (e.g. the ring could not be queried): every
-	// stream fails open.
-	t.Run("client call fails", func(t *testing.T) {
+	t.Run("the whole client call fails, for instance because the ring could not be queried", func(t *testing.T) {
 		f := newTestFrontend(t)
 		f.limitsClient = &mockLimitsClient{t: t, err: errors.New("boom")}
 		resp, err := f.CheckLimitsAndShard(t.Context(), req)
@@ -227,10 +224,7 @@ func TestFrontend_CheckLimitsAndShard_FailsOpenToOneShard(t *testing.T) {
 		require.Equal(t, expected, resp.Results)
 	})
 
-	// The RPC to the backend instance owning the stream's partition returns an
-	// error. The error is swallowed and the stream, left unanswered after all
-	// zones are exhausted, fails open.
-	t.Run("backend rpc fails", func(t *testing.T) {
+	t.Run("the backend consuming the stream's partition returns an error, leaving the stream unanswered", func(t *testing.T) {
 		instances := []ring.InstanceDesc{{Addr: "instance-0"}}
 		mockClient := &mockLimitsProtoClient{
 			t: t,
@@ -279,21 +273,29 @@ func TestFrontend_CheckLimitsAndShard_CompletesPartialResponses(t *testing.T) {
 	}
 
 	tests := []struct {
-		name     string
-		response *proto.CheckLimitsAndShardResponse
-		expected []*proto.StreamShardResult
+		name             string
+		response         *proto.CheckLimitsAndShardResponse
+		expected         []*proto.StreamShardResult
+		expectedShards   float64
+		expectedFailed   float64
+		expectedRejected float64
 	}{{
-		name:     "no results, as returned until the decision logic lands",
-		response: &proto.CheckLimitsAndShardResponse{},
-		expected: []*proto.StreamShardResult{failedOpen(0x1), failedOpen(0x2)},
+		name:           "no results, as returned until the decision logic lands",
+		response:       &proto.CheckLimitsAndShardResponse{},
+		expected:       []*proto.StreamShardResult{failedOpen(0x1), failedOpen(0x2)},
+		expectedShards: 2,
+		expectedFailed: 2,
 	}, {
-		name:     "results for a subset of the streams, as when no instance owns a partition",
-		response: &proto.CheckLimitsAndShardResponse{Results: []*proto.StreamShardResult{sharded}},
-		expected: []*proto.StreamShardResult{sharded, failedOpen(0x1)},
+		name:           "results for a subset of the streams, as when no instance owns a partition",
+		response:       &proto.CheckLimitsAndShardResponse{Results: []*proto.StreamShardResult{sharded}},
+		expected:       []*proto.StreamShardResult{sharded, failedOpen(0x1)},
+		expectedShards: 5,
+		expectedFailed: 1,
 	}, {
-		name:     "results for all streams",
-		response: &proto.CheckLimitsAndShardResponse{Results: []*proto.StreamShardResult{unsharded, sharded}},
-		expected: []*proto.StreamShardResult{unsharded, sharded},
+		name:           "results for all streams",
+		response:       &proto.CheckLimitsAndShardResponse{Results: []*proto.StreamShardResult{unsharded, sharded}},
+		expected:       []*proto.StreamShardResult{unsharded, sharded},
+		expectedShards: 5,
 	}, {
 		name: "a shard count of zero without a rejection carries no decision",
 		response: &proto.CheckLimitsAndShardResponse{Results: []*proto.StreamShardResult{{
@@ -301,11 +303,15 @@ func TestFrontend_CheckLimitsAndShard_CompletesPartialResponses(t *testing.T) {
 			Shards:     0,
 			Stats:      &proto.ShardStats{EvaluatedRate: 0x10},
 		}, sharded}},
-		expected: []*proto.StreamShardResult{failedOpen(0x1), sharded},
+		expected:       []*proto.StreamShardResult{failedOpen(0x1), sharded},
+		expectedShards: 5,
+		expectedFailed: 1,
 	}, {
-		name:     "a rejected stream keeps its zero shard count",
-		response: &proto.CheckLimitsAndShardResponse{Results: []*proto.StreamShardResult{rejected, sharded}},
-		expected: []*proto.StreamShardResult{rejected, sharded},
+		name:             "a rejected stream keeps its zero shard count",
+		response:         &proto.CheckLimitsAndShardResponse{Results: []*proto.StreamShardResult{rejected, sharded}},
+		expected:         []*proto.StreamShardResult{rejected, sharded},
+		expectedShards:   4,
+		expectedRejected: 1,
 	}}
 
 	for _, test := range tests {
@@ -318,6 +324,10 @@ func TestFrontend_CheckLimitsAndShard_CompletesPartialResponses(t *testing.T) {
 			})
 			require.NoError(t, err)
 			require.Equal(t, test.expected, resp.Results)
+			require.Equal(t, float64(len(streams)), testutil.ToFloat64(f.checkLimitsAndShardStreams.WithLabelValues("test")))
+			require.Equal(t, test.expectedShards, testutil.ToFloat64(f.checkLimitsAndShardShards.WithLabelValues("test")))
+			require.Equal(t, test.expectedFailed, testutil.ToFloat64(f.checkLimitsAndShardFailed.WithLabelValues("test")))
+			require.Equal(t, test.expectedRejected, testutil.ToFloat64(f.checkLimitsAndShardRejected.WithLabelValues("test")))
 		})
 	}
 }
