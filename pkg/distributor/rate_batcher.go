@@ -135,6 +135,7 @@ func (b *rateBatcher) Add(tenant string, streams []segmentedStream) map[uint64]u
 
 	for _, stream := range streams {
 		hash := stream.SegmentationKeyHash
+		// Measure the nested wire size, counting shared attributes once per group.
 		totalSize := uint64(stream.Stream.Size())
 
 		// If we already have this stream in the pending batch, accumulate the size.

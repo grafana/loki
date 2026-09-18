@@ -10,6 +10,7 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/pkg/push"
 
@@ -45,6 +46,7 @@ func TestValidator_ValidateEntry(t *testing.T) {
 		overrides validation.TenantLimits
 		entry     logproto.Entry
 		expected  error
+		reason    string
 	}{
 		{
 			"test valid",
@@ -52,6 +54,7 @@ func TestValidator_ValidateEntry(t *testing.T) {
 			nil,
 			logproto.Entry{Timestamp: testTime, Line: "test"},
 			nil,
+			"",
 		},
 		{
 			"test too old",
@@ -68,6 +71,7 @@ func TestValidator_ValidateEntry(t *testing.T) {
 				testTime.Add(-time.Hour*5).Format(timeFormat),
 				testTime.Add(-1*time.Hour).Format(timeFormat), // same as RejectOldSamplesMaxAge
 			),
+			validation.GreaterThanMaxSampleAge,
 		},
 		{
 			"test too new",
@@ -75,6 +79,7 @@ func TestValidator_ValidateEntry(t *testing.T) {
 			nil,
 			logproto.Entry{Timestamp: testTime.Add(time.Hour * 5), Line: "test"},
 			fmt.Errorf(validation.TooFarInFutureErrorMsg, testStreamLabelsString, testTime.Add(time.Hour*5).Format(timeFormat)),
+			validation.TooFarInFuture,
 		},
 		{
 			"line too long",
@@ -86,6 +91,7 @@ func TestValidator_ValidateEntry(t *testing.T) {
 			},
 			logproto.Entry{Timestamp: testTime, Line: "12345678901"},
 			fmt.Errorf(validation.LineTooLongErrorMsg, 10, testStreamLabelsString, 11),
+			validation.LineTooLong,
 		},
 		{
 			"disallowed structured metadata",
@@ -97,6 +103,7 @@ func TestValidator_ValidateEntry(t *testing.T) {
 			},
 			logproto.Entry{Timestamp: testTime, Line: "12345678901", StructuredMetadata: push.LabelsAdapter{{Name: "foo", Value: "bar"}}},
 			fmt.Errorf(validation.DisallowedStructuredMetadataErrorMsg, testStreamLabelsString),
+			validation.DisallowedStructuredMetadata,
 		},
 		{
 			"structured metadata too big",
@@ -109,6 +116,7 @@ func TestValidator_ValidateEntry(t *testing.T) {
 			},
 			logproto.Entry{Timestamp: testTime, Line: "12345678901", StructuredMetadata: push.LabelsAdapter{{Name: "foo", Value: "bar"}}},
 			fmt.Errorf(validation.StructuredMetadataTooLargeErrorMsg, testStreamLabelsString, 6, 4),
+			validation.StructuredMetadataTooLarge,
 		},
 		{
 			"structured metadata too many",
@@ -121,6 +129,7 @@ func TestValidator_ValidateEntry(t *testing.T) {
 			},
 			logproto.Entry{Timestamp: testTime, Line: "12345678901", StructuredMetadata: push.LabelsAdapter{{Name: "foo", Value: "bar"}, {Name: "too", Value: "many"}}},
 			fmt.Errorf(validation.StructuredMetadataTooManyErrorMsg, testStreamLabelsString, 2, 1),
+			validation.StructuredMetadataTooMany,
 		},
 	}
 	for _, tt := range tests {
@@ -131,10 +140,9 @@ func TestValidator_ValidateEntry(t *testing.T) {
 			assert.NoError(t, err)
 			v, err := NewValidator(o, nil)
 			assert.NoError(t, err)
-			retentionHours := util.RetentionHours(v.RetentionPeriod(tt.userID))
-
-			err = v.ValidateEntry(ctx, v.getValidationContextForTime(testTime, tt.userID), testStreamLabels, tt.entry, retentionHours, "", "loki")
-			assert.Equal(t, tt.expected, err)
+			reason, err := v.ValidateEntry(v.getValidationContextForTime(testTime, tt.userID), testStreamLabels, tt.entry, 0, 0)
+			require.Equal(t, tt.expected, err)
+			require.Equal(t, tt.reason, reason)
 		})
 	}
 }
@@ -232,7 +240,7 @@ func TestValidator_ValidateLabels(t *testing.T) {
 			v, err := NewValidator(o, nil)
 			assert.NoError(t, err)
 
-			err = v.ValidateLabels(v.getValidationContextForTime(testTime, tt.userID), mustParseLabels(tt.labels), logproto.Stream{Labels: tt.labels}, retentionHours, "", "loki")
+			err = v.ValidateLabels(v.getValidationContextForTime(testTime, tt.userID), mustParseLabels(tt.labels), logproto.FromStream(logproto.Stream{Labels: tt.labels}), retentionHours, "", "loki")
 			assert.Equal(t, tt.expected, err)
 		})
 	}
