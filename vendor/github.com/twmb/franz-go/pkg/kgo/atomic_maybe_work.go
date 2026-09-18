@@ -61,6 +61,18 @@ func (l *workLoop) maybeFinish(again bool) bool {
 	return again
 }
 
+// hardFinish forces the loop back to unstarted, discarding any pending
+// continue-work bump that a concurrent maybeBegin may have set. Unlike
+// maybeFinish, it does not observe or preserve that bump, so work a racing
+// pusher enqueued can be stranded with no worker running.
+//
+// This is safe only where the strand is moot or compensated. Most callers
+// hardFinish because their session or client context just died, so any
+// stranded work is being torn down anyway. The one transient caller is
+// loopFetch hitting noConsumerSession: it compensates by reloading the
+// session after hardFinish and re-triggering if a new one appeared (the
+// race the comment there walks through). A new transient caller must do
+// the same.
 func (l *workLoop) hardFinish() {
 	l.state.Store(stateUnstarted)
 }
