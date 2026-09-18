@@ -25,16 +25,27 @@ type RemappedSection struct {
 // timestamp descending, including across section boundaries.
 type Run []RemappedSection
 
+func buildIteratorPerRun(ctx context.Context, runs []Run, expectedSchemaLabels []string) []*runSequence {
+	sequences := make([]*runSequence, 0, len(runs))
+	bufferSize := max(128, 8192/max(1, len(runs)))
+
+	for _, run := range runs {
+		sectionIterators := make([]sectionIterator, 0, len(run))
+		for _, inputSection := range run {
+			sectionIterators = append(sectionIterators, &lazySectionIterator{ctx: ctx, input: inputSection, schemaLabels: expectedSchemaLabels, bufferSize: bufferSize})
+		}
+		sequences = append(sequences, &runSequence{ctx: ctx, remaining: sectionIterators})
+	}
+	return sequences
+}
+
 // MixedRunIterator merges sorted runs, keeping at most one section reader open
 // per run. Readers are opened only during iteration and closed on early stop.
 // Inputs and their remaps must remain unchanged during iteration.
-func MixedRunIterator(ctx context.Context, runs []Run, expectedSchema []string) result.Seq[logs.Record] {
+func MixedRunIterator(ctx context.Context, runs []Run, expectedSchemaLabels []string) result.Seq[logs.Record] {
 	return result.Iter(func(yield func(logs.Record) bool) error {
-		sequences := make([]*runSequence, 0, len(runs))
-		bufferSize := max(128, 8192/max(1, len(runs)))
-		for _, run := range runs {
-			sequences = append(sequences, &runSequence{ctx: ctx, remaining: run, schema: expectedSchema, bufferSize: bufferSize})
-		}
+		sequences := buildIteratorPerRun(ctx, runs, expectedSchemaLabels)
+
 		maxValue := result.Value(dataset.Row{Index: math.MaxInt, Values: []dataset.Value{
 			dataset.Int64Value(math.MaxInt64), dataset.Int64Value(math.MinInt64),
 		}})
@@ -51,7 +62,7 @@ func MixedRunIterator(ctx context.Context, runs []Run, expectedSchema []string) 
 				return err
 			}
 			var record logs.Record
-			if err := logs.DecodeRow(seq.current.section.Columns(), row, &record, sym); err != nil {
+			if err := logs.DecodeRow(seq.current.Columns(), row, &record, sym); err != nil {
 				return err
 			}
 			if !yield(record) {
@@ -64,12 +75,10 @@ func MixedRunIterator(ctx context.Context, runs []Run, expectedSchema []string) 
 
 // runSequence owns the active reader and releases it before opening its successor.
 type runSequence struct {
-	ctx        context.Context
-	remaining  Run
-	schema     []string
-	bufferSize int
-	current    *sectionSequence
-	err        error
+	ctx       context.Context
+	remaining []sectionIterator
+	current   sectionIterator
+	err       error
 
 	// ordering verification
 	lastID   int64
@@ -89,32 +98,18 @@ func (s *runSequence) Next() bool {
 			s.err = s.validateRow()
 			return true // At delivers either the row or its error.
 		}
-		var opened bool
-		opened, s.err = s.openNextSection()
-		if s.err != nil {
-			return true
+		// Previous section was either nil or successfully emitted all rows without erroring, release it.
+		if s.current != nil {
+			s.current.Close()
+			s.current = nil
 		}
-		if !opened {
+		if len(s.remaining) == 0 {
 			return false
 		}
+		s.current = s.remaining[0]
+		s.remaining[0] = nil
+		s.remaining = s.remaining[1:]
 	}
-}
-
-// openNextSection releases the exhausted reader before opening its successor.
-// It returns false, nil when there are no sections left.
-func (s *runSequence) openNextSection() (bool, error) {
-	s.Close()
-	if len(s.remaining) == 0 {
-		return false, nil
-	}
-	input := s.remaining[0]
-	s.remaining = s.remaining[1:]
-	seq, err := openRemappedSection(s.ctx, input, s.schema, s.bufferSize)
-	if err != nil {
-		return false, err
-	}
-	s.current = seq
-	return true, nil
 }
 
 func (s *runSequence) validateRow() error {
@@ -138,9 +133,76 @@ func (s *runSequence) At() result.Result[dataset.Row] {
 }
 
 func (s *runSequence) Close() {
+	s.remaining = nil
 	if s.current != nil {
 		s.current.Close()
 		s.current = nil
+	}
+}
+
+// sectionIterator starts reading on its first Next call; unopened children own no readers.
+// Next returns true for a row or one terminal error exposed by At. After an
+// error, Next returns false. Close releases the reader and is safe to repeat.
+type sectionIterator interface {
+	Next() bool
+	At() result.Result[dataset.Row]
+	Columns() []*logs.Column
+	Close()
+}
+
+// lazySectionIterator defers opening and allocating row buffers until iteration starts.
+type lazySectionIterator struct {
+	ctx          context.Context
+	input        RemappedSection
+	schemaLabels []string
+	bufferSize   int
+	sequence     *sectionSequence
+	err          error
+}
+
+func (s *lazySectionIterator) init() error {
+	if s.sequence != nil {
+		// already initialized
+		return nil
+	}
+
+	seq, err := openRemappedSection(s.ctx, s.input, s.schemaLabels, s.bufferSize)
+	if err != nil {
+		return err
+	}
+	s.sequence = seq
+	return nil
+}
+
+func (s *lazySectionIterator) Next() bool {
+	if s.err != nil {
+		return false
+	}
+	if err := s.init(); err != nil {
+		s.err = err
+		return true // At delivers the initialization error once.
+	}
+
+	if !s.sequence.Next() {
+		return false
+	}
+	_, s.err = s.sequence.At().Value()
+	return true
+}
+
+func (s *lazySectionIterator) At() result.Result[dataset.Row] {
+	if s.err != nil {
+		return result.Error[dataset.Row](s.err)
+	}
+	return s.sequence.At()
+}
+
+func (s *lazySectionIterator) Columns() []*logs.Column { return s.sequence.section.Columns() }
+
+func (s *lazySectionIterator) Close() {
+	if s.sequence != nil {
+		s.sequence.Close()
+		s.sequence = nil
 	}
 }
 

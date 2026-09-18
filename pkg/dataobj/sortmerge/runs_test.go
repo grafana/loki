@@ -2,6 +2,7 @@ package sortmerge
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"testing"
 	"time"
@@ -10,10 +11,45 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
+	"github.com/grafana/loki/v3/pkg/dataobj/internal/dataset"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/result"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/logs"
 	"github.com/grafana/loki/v3/pkg/scratch"
 )
+
+type observedSectionIterator struct {
+	nextCalls  int
+	closeCalls int
+	onNext     func()
+	err        error
+	rows       []int64
+}
+
+func (s *observedSectionIterator) Next() bool {
+	s.nextCalls++
+	if s.onNext != nil {
+		s.onNext()
+	}
+	if s.err != nil {
+		return s.nextCalls == 1
+	}
+	return s.nextCalls <= len(s.rows)
+}
+
+func (s *observedSectionIterator) At() result.Result[dataset.Row] {
+	if s.err != nil {
+		return result.Error[dataset.Row](s.err)
+	}
+	return result.Value(dataset.Row{Values: []dataset.Value{dataset.Int64Value(1), dataset.Int64Value(s.rows[s.nextCalls-1])}})
+}
+
+func (s *observedSectionIterator) Columns() []*logs.Column {
+	return nil
+}
+
+func (s *observedSectionIterator) Close() {
+	s.closeCalls++
+}
 
 func buildRunSection(t testing.TB, records ...logs.Record) *dataobj.Section {
 	t.Helper()
@@ -74,17 +110,18 @@ func TestMixedRunIterator_Errors(t *testing.T) {
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			_, err := result.Collect(MixedRunIterator(context.Background(), []Run{test.run}, test.schema))
-			require.ErrorContains(t, err, test.want)
+			errorsSeen := 0
+			for res := range MixedRunIterator(context.Background(), []Run{test.run}, test.schema) {
+				require.Zero(t, errorsSeen, "no result may follow the terminal error")
+				_, err := res.Value()
+				if err != nil {
+					require.ErrorContains(t, err, test.want)
+					errorsSeen++
+				}
+			}
+			require.Equal(t, 1, errorsSeen)
 		})
 	}
-	t.Run("early stop does not open successor", func(t *testing.T) {
-		for res := range MixedRunIterator(context.Background(), []Run{{valid, {}}}, nil) {
-			_, err := res.Value()
-			require.NoError(t, err)
-			break
-		}
-	})
 	t.Run("cancelled", func(t *testing.T) {
 		ctx, cancel := context.WithCancel(context.Background())
 		cancel()
@@ -109,26 +146,198 @@ func TestMixedRunIterator_Errors(t *testing.T) {
 	})
 }
 
-func TestRunSequence_ReleasesSections(t *testing.T) {
-	sec := buildRunSection(t, logs.Record{StreamID: 1, Timestamp: time.Unix(1, 0)})
-	input := RemappedSection{Section: sec, Remap: map[int64]int64{1: 1}}
-	s := &runSequence{ctx: context.Background(), remaining: Run{input, input}, bufferSize: 1}
-	require.Nil(t, s.current)
-	require.True(t, s.Next())
-	first := s.current
-	require.True(t, s.Next())
-	require.NotSame(t, first, s.current, "successor must replace the active reader")
-	require.False(t, s.Next())
-	require.Nil(t, s.current, "exhaustion must release the last reader and its row buffers")
-	s.Close()
+func TestRunSequence(t *testing.T) {
+	setup := func(t *testing.T) (*runSequence, *observedSectionIterator, *observedSectionIterator) {
+		t.Helper()
+		first := &observedSectionIterator{rows: []int64{4, 3}}
+		second := &observedSectionIterator{rows: []int64{2, 1}}
+		s := &runSequence{ctx: t.Context(), remaining: []sectionIterator{first, second}}
+		t.Cleanup(s.Close)
+		return s, first, second
+	}
+	readRowTimestamp := func(t *testing.T, s *runSequence) int64 {
+		t.Helper()
+		require.True(t, s.Next())
+		row, err := s.At().Value()
+		require.NoError(t, err)
+		return row.Values[1].Int64()
+	}
+	assertTerminalError := func(t *testing.T, s *runSequence, want error) {
+		t.Helper()
+		require.True(t, s.Next())
+		_, err := s.At().Value()
+		require.ErrorIs(t, err, want)
+		require.False(t, s.Next())
+		s.Close()
+		require.Nil(t, s.current)
+	}
 
-	s = &runSequence{ctx: context.Background(), remaining: Run{input, {}}, bufferSize: 1}
-	require.True(t, s.Next())
+	t.Run("happy path closes before transitions", func(t *testing.T) {
+		s, first, second := setup(t)
+		second.onNext = func() { require.Equal(t, 1, first.closeCalls) }
+		for _, ts := range []int64{4, 3, 2, 1} {
+			require.Equal(t, ts, readRowTimestamp(t, s))
+		}
+		require.False(t, s.Next())
+		require.Nil(t, s.current)
+		s.Close()
+		require.Equal(t, 3, first.nextCalls)
+		require.Equal(t, 3, second.nextCalls)
+		require.Equal(t, 1, first.closeCalls)
+		require.Equal(t, 1, second.closeCalls)
+	})
+	t.Run("close before init", func(t *testing.T) {
+		s, first, second := setup(t)
+		s.Close()
+		require.False(t, s.Next())
+		require.Zero(t, first.nextCalls)
+		require.Zero(t, second.nextCalls)
+		require.Zero(t, first.closeCalls)
+		require.Zero(t, second.closeCalls)
+	})
+	t.Run("first section opening error", func(t *testing.T) {
+		s, first, second := setup(t)
+		first.err = errors.New("opening first section failed")
+		assertTerminalError(t, s, first.err)
+		require.Equal(t, 1, first.nextCalls)
+		require.Equal(t, 1, first.closeCalls)
+		require.Zero(t, second.nextCalls)
+		require.Zero(t, second.closeCalls)
+	})
+	t.Run("second section opening error closes first section", func(t *testing.T) {
+		s, first, second := setup(t)
+		third := &observedSectionIterator{rows: []int64{0}}
+		s.remaining = append(s.remaining, third)
+		second.err = errors.New("opening second section failed")
+		require.Equal(t, int64(4), readRowTimestamp(t, s))
+		require.Equal(t, int64(3), readRowTimestamp(t, s))
+		assertTerminalError(t, s, second.err)
+		require.Equal(t, 3, first.nextCalls)
+		require.Equal(t, 1, first.closeCalls)
+		require.Equal(t, 1, second.nextCalls)
+		require.Equal(t, 1, second.closeCalls)
+		require.Zero(t, third.nextCalls)
+		require.Zero(t, third.closeCalls)
+	})
+	t.Run("empty section", func(t *testing.T) {
+		s, first, second := setup(t)
+		first.rows = nil
+		require.Equal(t, int64(2), readRowTimestamp(t, s))
+		require.Equal(t, int64(1), readRowTimestamp(t, s))
+		require.False(t, s.Next())
+		require.Equal(t, 1, first.nextCalls)
+		require.Equal(t, 1, first.closeCalls)
+		require.Equal(t, 1, second.closeCalls)
+	})
+	t.Run("early stop", func(t *testing.T) {
+		s, first, second := setup(t)
+		require.Equal(t, int64(4), readRowTimestamp(t, s))
+		s.Close()
+		require.False(t, s.Next())
+		require.Equal(t, 1, first.nextCalls)
+		require.Equal(t, 1, first.closeCalls)
+		require.Zero(t, second.nextCalls)
+		require.Zero(t, second.closeCalls)
+	})
+	t.Run("cancel before start", func(t *testing.T) {
+		s, first, second := setup(t)
+		ctx, cancel := context.WithCancel(t.Context())
+		s.ctx = ctx
+		cancel()
+		assertTerminalError(t, s, context.Canceled)
+		require.Zero(t, first.nextCalls)
+		require.Zero(t, first.closeCalls)
+		require.Zero(t, second.nextCalls)
+		require.Zero(t, second.closeCalls)
+	})
+	t.Run("cancel after row", func(t *testing.T) {
+		s, first, second := setup(t)
+		ctx, cancel := context.WithCancel(t.Context())
+		defer cancel()
+		s.ctx = ctx
+		require.Equal(t, int64(4), readRowTimestamp(t, s))
+		cancel()
+		assertTerminalError(t, s, context.Canceled)
+		require.Equal(t, 1, first.nextCalls)
+		require.Equal(t, 1, first.closeCalls)
+		require.Zero(t, second.nextCalls)
+		require.Zero(t, second.closeCalls)
+	})
+}
+
+func TestLazySectionIterator(t *testing.T) {
+	sec := buildRunSection(t,
+		logs.Record{StreamID: 1, Timestamp: time.Unix(2, 0)},
+		logs.Record{StreamID: 1, Timestamp: time.Unix(1, 0)},
+	)
+	setup := func(t *testing.T) *lazySectionIterator {
+		t.Helper()
+		s := &lazySectionIterator{ctx: t.Context(), input: RemappedSection{Section: sec, Remap: map[int64]int64{1: 7}}, bufferSize: 1}
+		t.Cleanup(s.Close)
+		require.Nil(t, s.sequence, "construction must not open the reader")
+		return s
+	}
+	t.Run("happy path", func(t *testing.T) {
+		s := setup(t)
+		for _, ts := range []int64{2, 1} {
+			require.True(t, s.Next())
+			row, err := s.At().Value()
+			require.NoError(t, err)
+			require.Equal(t, int64(7), row.Values[0].Int64())
+			require.Equal(t, time.Unix(ts, 0).UnixNano(), row.Values[1].Int64())
+		}
+		require.False(t, s.Next())
+		s.Close()
+		require.Nil(t, s.sequence)
+	})
+	t.Run("close before init", func(t *testing.T) {
+		s := setup(t)
+		s.Close()
+		require.Nil(t, s.sequence)
+	})
+	t.Run("opening failure", func(t *testing.T) {
+		s := setup(t)
+		s.input = RemappedSection{}
+		require.True(t, s.Next())
+		_, err := s.At().Value()
+		require.ErrorContains(t, err, "section and stream remap are required")
+		require.False(t, s.Next())
+		s.Close()
+		require.Nil(t, s.sequence)
+	})
+	t.Run("row failure", func(t *testing.T) {
+		s := setup(t)
+		s.input.Remap = map[int64]int64{}
+		require.True(t, s.Next())
+		_, err := s.At().Value()
+		require.ErrorContains(t, err, "absent from stream remap")
+		require.False(t, s.Next())
+		s.Close()
+		require.Nil(t, s.sequence)
+	})
+}
+
+func TestRunSequence_TerminalStickiness(t *testing.T) {
+	first := &observedSectionIterator{err: errors.New("section failed")}
+	successor := &observedSectionIterator{rows: []int64{1}}
+	s := &runSequence{ctx: t.Context(), remaining: []sectionIterator{first, successor}}
+	t.Cleanup(s.Close)
+
 	require.True(t, s.Next())
 	_, err := s.At().Value()
-	require.Error(t, err)
-	require.Nil(t, s.current, "a failed successor must not retain the preceding reader")
-	s.Close()
+	require.ErrorIs(t, err, first.err)
+	for range 3 {
+		require.False(t, s.Next(), "the terminal error must not be delivered again")
+	}
+	for range 3 {
+		s.Close()
+		require.False(t, s.Next())
+	}
+	require.Equal(t, 1, first.nextCalls)
+	require.Equal(t, 1, first.closeCalls)
+	require.Zero(t, successor.nextCalls)
+	require.Zero(t, successor.closeCalls)
+	require.Nil(t, s.current)
 }
 
 // Measuring initialization through the first record isolates active reader

@@ -25,14 +25,6 @@ import (
 //
 // An additional ordering input is required to map StreamID to the corresponding external sort tuple ([0] unused).
 func SchemaSortedIterator(ctx context.Context, sections []*dataobj.Section, ordering []streams.SortKey) (result.Seq[logs.Record], error) {
-	return iterator(ctx, sections, logs.CompareByStreamSchema(ordering))
-}
-
-func iterator(
-	ctx context.Context,
-	sections []*dataobj.Section,
-	less func(result.Result[dataset.Row], result.Result[dataset.Row]) bool,
-) (result.Seq[logs.Record], error) {
 	sequences := make([]*sectionSequence, 0, len(sections))
 	ready := false
 	defer func() {
@@ -65,7 +57,7 @@ func iterator(
 		},
 	})
 
-	tree := loser.New(sequences, maxValue, sectionSequenceAt, less, sectionSequenceClose)
+	tree := loser.New(sequences, maxValue, sectionSequenceAt, logs.CompareByStreamSchema(ordering), sectionSequenceClose)
 	ready = true
 
 	return result.Iter(
