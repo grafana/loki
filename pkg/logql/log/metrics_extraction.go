@@ -37,13 +37,22 @@ type SampleExtractor interface {
 // StreamSampleExtractor extracts at most one sample from a log line.
 // A StreamSampleExtractor never mutates the received line.
 type StreamSampleExtractor interface {
+	// BaseLabels returns the labels of the log stream this extractor serves.
+	//
+	// The returned LabelsResult is the stream's identity, fixed for the extractor's
+	// lifetime and the same for every line. It is not the sample's output labels:
+	// those come from Process/ProcessString and reflect the pipeline, grouping, and
+	// structured metadata, so they may differ per line and differ from BaseLabels.
 	BaseLabels() LabelsResult
+
 	// Process extracts the sample for a log line. It returns the zero sample and
 	// false when it extracts none. A true result always carries non-nil Labels.
 	Process(ts int64, line []byte, structuredMetadata labels.Labels) (ExtractedSample, bool)
+
 	// ProcessString extracts the sample for a log line. It returns the zero sample
 	// and false when it extracts none. A true result always carries non-nil Labels.
 	ProcessString(ts int64, line string, structuredMetadata labels.Labels) (ExtractedSample, bool)
+
 	ReferencedStructuredMetadata() bool
 }
 
@@ -348,15 +357,16 @@ func (l *labelSampleExtractor) ReferencedStructuredMetadata() bool {
 	return l.baseBuilder.referencedStructuredMetadata
 }
 
-func (l *labelSampleExtractor) ForStream(labels labels.Labels) StreamSampleExtractor {
-	hash := l.baseBuilder.Hash(labels)
-	if res, ok := l.streamExtractors[hash]; ok {
+func (l *labelSampleExtractor) ForStream(lbls labels.Labels) StreamSampleExtractor {
+	hash := l.baseBuilder.Hash(lbls)
+	// Verify the cached extractor is for these exact labels (Hash can collide).
+	if res, ok := l.streamExtractors[hash]; ok && labels.Equal(res.(*streamLabelSampleExtractor).builder.base, lbls) {
 		return res
 	}
 
 	res := &streamLabelSampleExtractor{
 		labelSampleExtractor: l,
-		builder:              l.baseBuilder.ForLabels(labels, hash),
+		builder:              l.baseBuilder.ForLabels(lbls, hash),
 	}
 	l.streamExtractors[hash] = res
 	return res

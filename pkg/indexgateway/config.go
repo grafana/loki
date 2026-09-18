@@ -71,6 +71,8 @@ type Config struct {
 
 	// MaxConcurrentQueueTimeout bounds how long a request waits for a free slot before rejection.
 	MaxConcurrentQueueTimeout time.Duration `yaml:"max_concurrent_queue_timeout" category:"experimental"`
+	// DataObjectSections configures the data-object section resolution API (ResolveDataObjectSections).
+	DataObjectSections DataObjectSectionsConfig `yaml:"dataobject_sections"`
 }
 
 // RegisterFlags register all IndexGatewayClientConfig flags and all the flags of its subconfigs but with a prefix (ex: shipper).
@@ -84,6 +86,8 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 		"index-gateway.ring.num-tokens",
 		"index-gateway.ring.replication-factor",
 	}
+	cfg.DataObjectSections.RegisterFlags(f)
+
 	cfg.Ring.RegisterFlagsWithPrefix("index-gateway.", "collectors/", f, skipFlags...)
 	f.IntVar(&cfg.Ring.NumTokens, "index-gateway.ring.num-tokens", NumTokens, fmt.Sprintf("IGNORED: Num tokens is fixed to %d", NumTokens))
 	// ReplicationFactor defines how many Index Gateway instances are assigned to each tenant.
@@ -104,5 +108,5 @@ func (cfg *Config) Validate() error {
 	if cfg.MaxConcurrentQueueTimeout < 0 {
 		return errors.New("index gateway max concurrent queue timeout must be greater than or equal to 0")
 	}
-	return nil
+	return cfg.DataObjectSections.Validate()
 }

@@ -791,6 +791,7 @@ func (t *Loki) setupModuleManager() error {
 	mm.RegisterModule(BloomPlanner, t.initBloomPlanner)
 	mm.RegisterModule(BloomBuilder, t.initBloomBuilder)
 	mm.RegisterModule(IndexGateway, t.initIndexGateway)
+	mm.RegisterModule(IndexGatewayMetastore, t.initIndexGatewayMetastore, modules.UserInvisibleModule)
 	mm.RegisterModule(IndexGatewayRing, t.initIndexGatewayRing, modules.UserInvisibleModule)
 	mm.RegisterModule(IndexGatewayInterceptors, t.initIndexGatewayInterceptors, modules.UserInvisibleModule)
 	mm.RegisterModule(BloomGateway, t.initBloomGateway)
@@ -848,7 +849,8 @@ func (t *Loki) setupModuleManager() error {
 		Ruler:                        {Ring, Server, RulerStorage, RuleEvaluator, Overrides, TenantConfigs, Analytics, UIRing},
 		RuleEvaluator:                {Ring, Server, Store, IngesterQuerier, Overrides, TenantConfigs, Analytics},
 		Compactor:                    {Server, Overrides, MemberlistKV, Analytics, UIRing},
-		IndexGateway:                 {Server, Store, BloomStore, IndexGatewayRing, IndexGatewayInterceptors, Analytics, UIRing},
+		IndexGateway:                 {Server, Store, BloomStore, IndexGatewayRing, IndexGatewayInterceptors, IndexGatewayMetastore, Analytics, UIRing},
+		IndexGatewayMetastore:        {},
 		BloomGateway:                 {Server, BloomStore, Analytics, UIRing},
 		BloomPlanner:                 {Server, BloomStore, Analytics, Store, UIRing},
 		BloomBuilder:                 {Server, BloomStore, Analytics, Store, UIRing},

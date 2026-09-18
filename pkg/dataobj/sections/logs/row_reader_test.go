@@ -13,6 +13,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
+	"github.com/grafana/loki/v3/pkg/dataobj/internal/dataset"
 )
 
 func TestRowReader_NoPredicates(t *testing.T) {
@@ -523,4 +524,33 @@ func buildTestSection(t *testing.T) *Section {
 		require.NoError(t, err)
 	}
 	return logsSection
+}
+
+// buildLogsSection builds a single logs section from the given records and sort order.
+func buildLogsSection(t *testing.T, records []Record, order SortOrder) *Section {
+	t.Helper()
+
+	logsBuilder := NewBuilder(nil, BuilderOptions{
+		PageSizeHint:     1024,
+		BufferSize:       64,
+		StripeMergeLimit: 2,
+		SortOrder:        order,
+	})
+	for _, r := range records {
+		logsBuilder.Append(r)
+	}
+
+	b := dataobj.NewBuilder(nil)
+	require.NoError(t, b.Append(logsBuilder))
+	obj, closer, err := b.Flush()
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = closer.Close() })
+
+	for _, section := range obj.Sections() {
+		sec, err := Open(context.Background(), section)
+		require.NoError(t, err)
+		return sec
+	}
+	t.Fatal("no logs section in object")
+	return nil
 }

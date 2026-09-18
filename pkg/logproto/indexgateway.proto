@@ -30,6 +30,11 @@ service IndexGateway {
   // GetShards is an optimized implemented shard-planning implementation
   // on the index gateway and not on the ingester.
   rpc GetShards(ShardsRequest) returns (stream ShardsResponse);
+
+  // ResolveDataObjectSections resolves the data-object sections, and their matching
+  // source-object stream IDs, for a single 12h UTC-aligned window and set of matchers.
+  // It is specific to data objects (distinct from the chunk-index RPCs above).
+  rpc ResolveDataObjectSections(ResolveDataObjectSectionsRequest) returns (ResolveDataObjectSectionsResponse) {}
 }
 
 message ShardsRequest {
@@ -83,4 +88,43 @@ message FPBounds {
     (gogoproto.casttype) = "github.com/prometheus/common/model.Fingerprint",
     (gogoproto.jsontag) = "max"
   ];
+}
+
+// ResolveDataObjectSectionsRequest asks the index-gateway to resolve the data-object sections
+// matching `matchers` within a single 12h UTC-aligned window [from, through). The window must be
+// aligned: `from` truncated to 12h UTC and `through == from + 12h`; otherwise the RPC fails.
+message ResolveDataObjectSectionsRequest {
+  int64 from = 1 [
+    (gogoproto.customtype) = "github.com/prometheus/common/model.Time",
+    (gogoproto.nullable) = false,
+    (gogoproto.jsontag) = "from"
+  ];
+  int64 through = 2 [
+    (gogoproto.customtype) = "github.com/prometheus/common/model.Time",
+    (gogoproto.nullable) = false,
+    (gogoproto.jsontag) = "through"
+  ];
+  string matchers = 3 [(gogoproto.jsontag) = "matchers"];
+}
+
+message ResolveDataObjectSectionsResponse {
+  repeated ResolvedDataObject objects = 1 [
+    (gogoproto.nullable) = false,
+    (gogoproto.jsontag) = "objects"
+  ];
+}
+
+// ResolvedDataObject is one data object and the matching sections within it.
+message ResolvedDataObject {
+  string objectPath = 1 [(gogoproto.jsontag) = "objectPath"];
+  repeated ResolvedDataObjectSection sections = 2 [
+    (gogoproto.nullable) = false,
+    (gogoproto.jsontag) = "sections"
+  ];
+}
+
+// ResolvedDataObjectSection is one section and the source-object stream IDs matching the query.
+message ResolvedDataObjectSection {
+  int64 sectionIdx = 1 [(gogoproto.jsontag) = "sectionIdx"];
+  repeated int64 streamIds = 2 [(gogoproto.jsontag) = "streamIds"];
 }

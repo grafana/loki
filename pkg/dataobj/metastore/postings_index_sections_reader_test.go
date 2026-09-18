@@ -45,7 +45,7 @@ func TestPostingsIndexSectionsReader_ResolvesAndEmitsPointersBatch(t *testing.T)
 	defer closer()
 
 	matchers := []*labels.Matcher{labels.MustNewMatcher(labels.MatchEqual, "app", "nginx")}
-	r := newPostingsIndexSectionsReader(log.NewNopLogger(), obj, now.Add(-4*time.Hour), now, matchers, nil, 8192)
+	r := newPostingsIndexSectionsReader(log.NewNopLogger(), obj, now.Add(-4*time.Hour), now, matchers, nil, 8192, nil)
 	t.Cleanup(r.Close)
 	require.NoError(t, r.Open(ctx))
 
@@ -78,7 +78,7 @@ func TestPostingsIndexSectionsReader_MissingOrgIDReturnsError(t *testing.T) {
 	defer closer()
 
 	matchers := []*labels.Matcher{labels.MustNewMatcher(labels.MatchEqual, "app", "nginx")}
-	r := newPostingsIndexSectionsReader(log.NewNopLogger(), obj, now.Add(-time.Hour), now, matchers, nil, 8192)
+	r := newPostingsIndexSectionsReader(log.NewNopLogger(), obj, now.Add(-time.Hour), now, matchers, nil, 8192, nil)
 	t.Cleanup(r.Close)
 
 	// No org ID injected into the context.
@@ -98,7 +98,7 @@ func TestPostingsIndexSectionsReader_PaginatesByBatchSize(t *testing.T) {
 	defer closer()
 
 	matchers := []*labels.Matcher{labels.MustNewMatcher(labels.MatchEqual, "app", "nginx")}
-	r := newPostingsIndexSectionsReader(log.NewNopLogger(), obj, now.Add(-4*time.Hour), now, matchers, nil, 2)
+	r := newPostingsIndexSectionsReader(log.NewNopLogger(), obj, now.Add(-4*time.Hour), now, matchers, nil, 2, nil)
 	t.Cleanup(r.Close)
 	require.NoError(t, r.Open(ctx))
 
@@ -125,7 +125,7 @@ func TestPostingsIndexSectionsReader_ZeroMatchersEOF(t *testing.T) {
 	})
 	defer closer()
 
-	r := newPostingsIndexSectionsReader(log.NewNopLogger(), obj, now.Add(-time.Hour), now, nil, nil, 8192)
+	r := newPostingsIndexSectionsReader(log.NewNopLogger(), obj, now.Add(-time.Hour), now, nil, nil, 8192, nil)
 	t.Cleanup(r.Close)
 	require.NoError(t, r.Open(ctx))
 
@@ -135,7 +135,7 @@ func TestPostingsIndexSectionsReader_ZeroMatchersEOF(t *testing.T) {
 }
 
 func TestPostingsIndexSectionsReader_ReadBeforeOpenErrors(t *testing.T) {
-	r := newPostingsIndexSectionsReader(log.NewNopLogger(), nil, now, now, nil, nil, 8192)
+	r := newPostingsIndexSectionsReader(log.NewNopLogger(), nil, now, now, nil, nil, 8192, nil)
 	rec, err := r.Read(context.Background())
 	require.ErrorIs(t, err, errIndexSectionsReaderNotOpen)
 	require.Nil(t, rec)

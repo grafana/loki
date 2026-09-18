@@ -60,8 +60,12 @@ type RowReader struct {
 	opts  RowReaderOptions
 	ready bool // ready is true if the RowReader has been initialized.
 
-	origColumnLookup     map[Column]int // Find the index of a column in opts.Columns.
-	primaryColumnIndexes []int          // Indexes of primary columns in opts.Columns.
+	origColumnLookup     map[Column]int      // Find the index of a column in opts.Columns.
+	primaryColumnIndexes []int               // Indexes of primary columns in opts.Columns.
+	compiledPredicates   []compiledPredicate // opts.Predicates with column indexes resolved, one per predicate.
+	columnFixedSize      []int64             // Per opts.Columns: constant Value.Size for a fixed-width, fully-populated column; -1 otherwise.
+	predicateReadColumns [][]Column          // Per predicate: the columns it introduces (not read by an earlier predicate), as allColumns returns them.
+	predicateReadIdxs    [][]int             // Per predicate: indexes in opts.Columns of predicateReadColumns, parallel to it.
 
 	dl     *rowReaderDownloader // Bulk page download manager.
 	row    int64                // The current row being read.
@@ -240,22 +244,17 @@ func (r *RowReader) readAndFilterPrimaryColumns(ctx context.Context, readSize in
 		rowsRead           int // tracks max rows accessed to move the [r.row] cursor
 		passCount          int // number of rows that passed the predicate
 		primaryColumnBytes int64
-		filledColumns      = make(map[Column]struct{}, len(r.primaryColumnIndexes))
 		region             = xcap.RegionFromContext(ctx)
 	)
 
 	// sequentially apply the predicates.
 	for i, p := range r.opts.Predicates {
-		columns, idxs, err := r.predicateColumns(p, func(c Column) bool {
-			// keep only columns that haven't been filled yet.
-			_, ok := filledColumns[c]
-			return !ok
-		})
-		if err != nil {
-			return rowsRead, 0, err
-		}
+		// columns are those the predicate introduces; earlier predicates already
+		// read the rest. Precomputed in computePredicateReadColumns.
+		columns, idxs := r.predicateReadColumns[i], r.predicateReadIdxs[i]
 
 		var count int
+		var err error
 		// read the requested number of rows for the first predicate.
 		if i == 0 {
 			count, err = r.inner.ReadColumns(ctx, columns, s[:readSize])
@@ -277,12 +276,23 @@ func (r *RowReader) readAndFilterPrimaryColumns(ctx context.Context, readSize in
 			count = readSize // required columns are already filled
 		}
 
+		compiled := r.compiledPredicates[i]
+
+		// When every column read for this predicate is fixed-width and fully
+		// populated, its per-row byte size is constant, so account for all rows in
+		// one multiply instead of summing Value.Size for each row.
+		fixedSize, fixed := r.fixedSizeForColumns(idxs)
+		if fixed {
+			primaryColumnBytes += int64(count) * fixedSize
+		}
+
 		passCount = 0
 		for i := range count {
-			size := s[i].SizeOfColumns(idxs)
-			primaryColumnBytes += size
+			if !fixed {
+				primaryColumnBytes += s[i].SizeOfColumns(idxs)
+			}
 
-			if !checkPredicate(p, r.origColumnLookup, s[i]) {
+			if !compiled.eval(s[i]) {
 				continue
 			}
 			// We move s[i] to s[passCount] by *swapping* the rows. Copying would
@@ -302,10 +312,6 @@ func (r *RowReader) readAndFilterPrimaryColumns(ctx context.Context, readSize in
 		if passCount == 0 {
 			// No rows passed the predicate, so we can stop early.
 			break
-		}
-
-		for _, c := range columns {
-			filledColumns[c] = struct{}{}
 		}
 
 		readSize = passCount
@@ -332,69 +338,66 @@ func (r *RowReader) alignRow() (uint64, error) {
 	return nextRow, nil
 }
 
-func checkPredicate(p Predicate, lookup map[Column]int, row Row) bool {
-	if p == nil {
-		return true
+// compilePredicates compiles each of r.opts.Predicates into a [compiledPredicate]
+// with column references resolved to Row value indexes. It must run after
+// validatePredicate, which guarantees every predicate column is present.
+func (r *RowReader) compilePredicates() error {
+	r.compiledPredicates = sliceclear.Clear(r.compiledPredicates)
+	for _, p := range r.opts.Predicates {
+		cp, err := compilePredicate(p, r.origColumnLookup)
+		if err != nil {
+			return err
+		}
+		r.compiledPredicates = append(r.compiledPredicates, cp)
 	}
+	return nil
+}
 
-	switch p := p.(type) {
-	case AndPredicate:
-		return checkPredicate(p.Left, lookup, row) && checkPredicate(p.Right, lookup, row)
-
-	case OrPredicate:
-		return checkPredicate(p.Left, lookup, row) || checkPredicate(p.Right, lookup, row)
-
-	case NotPredicate:
-		return !checkPredicate(p.Inner, lookup, row)
-
-	case TruePredicate:
-		return true
-
-	case FalsePredicate:
-		return false
-
-	case EqualPredicate:
-		columnIndex, ok := lookup[p.Column]
-		if !ok {
-			panic("checkPredicate: column not found")
+// computeColumnFixedSizes records, per column in opts.Columns, the constant
+// per-row byte size of a fixed-width, fully-populated column, or -1 when a
+// column's value size can vary by row (variable-width, or contains NULLs whose
+// size is zero). It lets readAndFilterPrimaryColumns account for primary bytes
+// in bulk instead of summing Value.Size for every row.
+func (r *RowReader) computeColumnFixedSizes() {
+	r.columnFixedSize = sliceclear.Clear(r.columnFixedSize)
+	for _, c := range r.opts.Columns {
+		desc := c.ColumnDesc()
+		size, ok := fixedWidthValueSize(desc.Type.Physical)
+		// ValuesCount counts non-NULL values, so equality with RowsCount means the
+		// column has no NULLs and every value has the fixed size.
+		if ok && desc.ValuesCount == desc.RowsCount {
+			r.columnFixedSize = append(r.columnFixedSize, size)
+		} else {
+			r.columnFixedSize = append(r.columnFixedSize, -1)
 		}
-		return CompareValues(&row.Values[columnIndex], &p.Value) == 0
+	}
+}
 
-	case InPredicate:
-		columnIndex, ok := lookup[p.Column]
-		if !ok {
-			panic("checkPredicate: column not found")
+// fixedSizeForColumns returns the constant per-row byte size of the given
+// columns and true, if every one is fixed-width and fully populated. Otherwise
+// it returns (0, false) and the caller must size each row individually.
+func (r *RowReader) fixedSizeForColumns(idxs []int) (int64, bool) {
+	var total int64
+	for _, idx := range idxs {
+		size := r.columnFixedSize[idx]
+		if size < 0 {
+			return 0, false
 		}
+		total += size
+	}
+	return total, true
+}
 
-		value := row.Values[columnIndex]
-		if value.IsNil() || value.Type() != p.Column.ColumnDesc().Type.Physical {
-			return false
-		}
-		return p.Values.Contains(value)
-
-	case GreaterThanPredicate:
-		columnIndex, ok := lookup[p.Column]
-		if !ok {
-			panic("checkPredicate: column not found")
-		}
-		return CompareValues(&row.Values[columnIndex], &p.Value) > 0
-
-	case LessThanPredicate:
-		columnIndex, ok := lookup[p.Column]
-		if !ok {
-			panic("checkPredicate: column not found")
-		}
-		return CompareValues(&row.Values[columnIndex], &p.Value) < 0
-
-	case FuncPredicate:
-		columnIndex, ok := lookup[p.Column]
-		if !ok {
-			panic("checkPredicate: column not found")
-		}
-		return p.Keep(p.Column, row.Values[columnIndex])
-
+// fixedWidthValueSize returns the constant [Value.Size] for a fixed-width
+// physical type and true. For any other type it returns (0, false).
+func fixedWidthValueSize(t datasetmd.PhysicalType) (int64, bool) {
+	switch t {
+	case datasetmd.PHYSICAL_TYPE_INT64:
+		return int64(Int64Value(0).Size()), true
+	case datasetmd.PHYSICAL_TYPE_UINT64:
+		return int64(Uint64Value(0).Size()), true
 	default:
-		panic(fmt.Sprintf("unsupported predicate type %T", p))
+		return 0, false
 	}
 }
 
@@ -479,9 +482,18 @@ func (r *RowReader) init(ctx context.Context) error {
 		return err
 	}
 
+	if err := r.compilePredicates(); err != nil {
+		return err
+	}
+
+	r.computeColumnFixedSizes()
+
 	if err := r.initDownloader(ctx); err != nil {
 		return err
 	}
+
+	r.computePredicateReadColumns()
+
 	if err := r.prefetchPages(ctx); err != nil {
 		return fmt.Errorf("prefetching pages: %w", err)
 	}
@@ -963,47 +975,69 @@ func readMinMax(stats *datasetmd.Statistics) (minValue Value, maxValue Value, er
 	return
 }
 
-func (r *RowReader) predicateColumns(p Predicate, keep func(c Column) bool) ([]Column, []int, error) {
-	columns := make(map[Column]struct{})
+// computePredicateReadColumns records, per predicate, the columns it introduces
+// (its columns not already read by an earlier predicate), with their indexes in
+// opts.Columns. readAndFilterPrimaryColumns reads or fills exactly these columns
+// for each predicate, so precomputing them once removes the per-Read set
+// building. It must run after initDownloader, which creates the downloader
+// allColumns reads from, so the stored columns are the same objects the inner
+// reader uses (wrapped page readers when Prefetch is set, the original columns
+// otherwise).
+func (r *RowReader) computePredicateReadColumns() {
+	r.predicateReadColumns = sliceclear.Clear(r.predicateReadColumns)
+	r.predicateReadIdxs = sliceclear.Clear(r.predicateReadIdxs)
 
-	WalkPredicate(p, func(p Predicate) bool {
-		switch p := p.(type) {
-		case EqualPredicate:
-			columns[p.Column] = struct{}{}
-		case InPredicate:
-			columns[p.Column] = struct{}{}
-		case GreaterThanPredicate:
-			columns[p.Column] = struct{}{}
-		case LessThanPredicate:
-			columns[p.Column] = struct{}{}
-		case FuncPredicate:
-			columns[p.Column] = struct{}{}
-		case AndPredicate, OrPredicate, NotPredicate, TruePredicate, FalsePredicate, nil:
-			// No columns to process.
-		default:
-			panic(fmt.Sprintf("predicateColumns: unsupported predicate type %T", p))
-		}
-		return true
-	})
+	allColumns := r.allColumns()
+	// A column is emitted for the first predicate that references it; later
+	// predicates that reference it again find it already read.
+	seen := make([]bool, len(r.opts.Columns))
 
-	ret := make([]Column, 0, len(columns))
-	idxs := make([]int, 0, len(columns))
-	for c := range columns {
-		idx, ok := r.origColumnLookup[c]
-		if !ok {
-			panic(fmt.Errorf("predicateColumns: column %v not found in RowReader columns", c))
-		}
-
-		c := r.allColumns()[idx]
-		if !keep(c) {
-			continue
-		}
-
-		idxs = append(idxs, idx)
-		ret = append(ret, c)
+	for _, p := range r.opts.Predicates {
+		var columns []Column
+		var idxs []int
+		WalkPredicate(p, func(p Predicate) bool {
+			c, ok := predicateLeafColumn(p)
+			if !ok {
+				return true
+			}
+			idx, ok := r.origColumnLookup[c]
+			if !ok {
+				// Unreachable: validatePredicate ensures every predicate column is present.
+				panic(fmt.Errorf("computePredicateReadColumns: column %v not found in RowReader columns", c))
+			}
+			if seen[idx] {
+				return true
+			}
+			seen[idx] = true
+			columns = append(columns, allColumns[idx])
+			idxs = append(idxs, idx)
+			return true
+		})
+		r.predicateReadColumns = append(r.predicateReadColumns, columns)
+		r.predicateReadIdxs = append(r.predicateReadIdxs, idxs)
 	}
+}
 
-	return ret, idxs, nil
+// predicateLeafColumn returns the column a leaf predicate references, or
+// (nil, false) for composite predicates, constants, and nil. It panics on an
+// unrecognized predicate type.
+func predicateLeafColumn(p Predicate) (Column, bool) {
+	switch p := p.(type) {
+	case EqualPredicate:
+		return p.Column, true
+	case InPredicate:
+		return p.Column, true
+	case GreaterThanPredicate:
+		return p.Column, true
+	case LessThanPredicate:
+		return p.Column, true
+	case FuncPredicate:
+		return p.Column, true
+	case AndPredicate, OrPredicate, NotPredicate, TruePredicate, FalsePredicate, nil:
+		return nil, false
+	default:
+		panic(fmt.Sprintf("predicateLeafColumn: unsupported predicate type %T", p))
+	}
 }
 
 func isStreamIDPredicate(p Predicate) bool {

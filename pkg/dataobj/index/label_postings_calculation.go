@@ -47,13 +47,13 @@ func (c *labelPostingsCalculation) ProcessBatch(_ context.Context, calcCtx *logs
 			calcCtx.builder.ObserveLabelPosting(calcCtx.tenantID, postings.LabelObservation{
 				ObjectPath:       calcCtx.objectPath,
 				ShardBuckets:     int64(streams.ShardFactor),
+				ShardBucket:      shardBucket,
 				SectionIndex:     calcCtx.sectionIdx,
 				ColumnName:       lbl.Name,
 				LabelValue:       lbl.Value,
 				StreamID:         log.StreamID,
 				Timestamp:        log.Timestamp,
 				UncompressedSize: uncompressedSize,
-				ShardBucket:      shardBucket,
 			})
 		})
 	}

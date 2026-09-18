@@ -46,6 +46,7 @@ func NewScannerReaders(
 	predicates []*labels.Matcher,
 	labelStats dataset.RowReaderStatsTracker,
 	bloomStats dataset.RowReaderStatsTracker,
+	bucketRange *ShardBucketRange,
 ) (*ScannerReaders, error) {
 	readers := &ScannerReaders{}
 
@@ -54,11 +55,23 @@ func NewScannerReaders(
 	valueCol := sectionColumn(sec, ColumnTypeLabelValue)
 	bloomCol := sectionColumn(sec, ColumnTypeBloomFilter)
 
+	// withBucketRange ANDs the shard-bucket overlap predicate onto a label-row predicate. It applies only
+	// to the label readers (which build the resolved section set); the bloom rows carry NULL bucket columns.
+	// It is a no-op when no range is requested or the section predates the columns, so old objects are safe.
+	minShardBucketCol := sectionColumn(sec, ColumnTypeMinShardBucket)
+	maxShardBucketCol := sectionColumn(sec, ColumnTypeMaxShardBucket)
+	withBucketRange := func(p Predicate) Predicate {
+		if bucketRange == nil || minShardBucketCol == nil || maxShardBucketCol == nil {
+			return p
+		}
+		return AndPredicate{Left: p, Right: shardBucketRangePredicate(minShardBucketCol, maxShardBucketCol, bucketRange.From, bucketRange.To)}
+	}
+
 	if len(matchers) > 0 && kindCol != nil && nameCol != nil && valueCol != nil {
-		readers.MatchLabels = newScannerReader(sec, matchLabelsPredicate(kindCol, nameCol, valueCol, matchers), labelStats)
+		readers.MatchLabels = newScannerReader(sec, withBucketRange(matchLabelsPredicate(kindCol, nameCol, valueCol, matchers)), labelStats)
 	}
 	if len(filters) > 0 && kindCol != nil && nameCol != nil {
-		readers.LabelStreams = newScannerReader(sec, labelNamesPredicate(kindCol, nameCol, compiledMatchersByName(filters)), labelStats)
+		readers.LabelStreams = newScannerReader(sec, withBucketRange(labelNamesPredicate(kindCol, nameCol, compiledMatchersByName(filters))), labelStats)
 	}
 
 	if len(predicates) > 0 && kindCol != nil && nameCol != nil && bloomCol != nil {
@@ -71,6 +84,21 @@ func NewScannerReaders(
 	}
 
 	return readers, nil
+}
+
+// ShardBucketRange restricts a postings scan to rows whose [min_shard_bucket, max_shard_bucket] overlaps
+// [From, To]. Buckets are the values produced by streams.ShardBucket, so From <= To and both are in
+// 0..ShardFactor-1. The metastore counterpart is metastore.ShardBucketRange.
+type ShardBucketRange struct{ From, To uint32 }
+
+// shardBucketRangePredicate keeps rows whose [min, max] shard-bucket range overlaps [from, to], i.e.
+// min <= to AND max >= from. The postings predicate set has only strict < and >, so this is expressed as
+// NOT(min > to) AND NOT(max < from).
+func shardBucketRangePredicate(minCol, maxCol *Column, from, to uint32) Predicate {
+	return AndPredicate{
+		Left:  NotPredicate{Inner: GreaterThanPredicate{Column: minCol, Value: scalar.NewInt64Scalar(int64(to))}},
+		Right: NotPredicate{Inner: LessThanPredicate{Column: maxCol, Value: scalar.NewInt64Scalar(int64(from))}},
+	}
 }
 
 func newScannerReader(sec *Section, pred Predicate, statsTracker dataset.RowReaderStatsTracker) *Reader {

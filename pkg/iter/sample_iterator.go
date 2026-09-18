@@ -158,6 +158,20 @@ func (h SampleIteratorHeap) Less(i, j int) bool {
 
 	// Timestamp-first (default): order by timestamp, then stream hash (or labels when no hash).
 	s1, s2 := h.its[i].At(), h.its[j].At()
+	if h.orderByStream {
+		// Stream-first: order by streamHash, then labels, then timestamp. Comparing labels before
+		// the timestamp keeps each stream's samples contiguous even when two distinct streams
+		// collide on the same streamHash; ordering by timestamp first would interleave them.
+		h1, h2 := h.its[i].StreamHash(), h.its[j].StreamHash()
+		if h1 != h2 {
+			return h1 < h2
+		}
+		if l1, l2 := h.its[i].Labels(), h.its[j].Labels(); l1 != l2 {
+			return l1 < l2
+		}
+		return s1.Timestamp < s2.Timestamp
+	}
+	// Timestamp-first (default): order by timestamp, then streamHash (or labels when no hash).
 	if s1.Timestamp == s2.Timestamp {
 		if h.its[i].StreamHash() == 0 {
 			return h.its[i].Labels() < h.its[j].Labels()
@@ -304,6 +318,18 @@ func (i *mergeSampleIterator) sameDedupGroup(it SampleIterator, ts int64) bool {
 	// Checking the timestamp first is deliberate. The timestamp changes far more often
 	// than the stream hash does. Checking it first short-circuits sooner, on average.
 	return i.buffer[0].Timestamp == ts && i.buffer[0].streamHash == it.StreamHash()
+}
+
+// sameGroup reports whether it's current sample belongs to the buffer's current dedup group.
+// It must be called with a non-empty buffer.
+func (i *mergeSampleIterator) sameGroup(it SampleIterator, ts int64) bool {
+	if i.buffer[0].streamHash != it.StreamHash() || i.buffer[0].Timestamp != ts {
+		return false
+	}
+
+	// In stream-first mode equal labels are also required so two distinct streams that collide on
+	// the same streamHash stay separate.
+	return !i.heap.orderByStream || i.buffer[0].labels == it.Labels()
 }
 
 func (i *mergeSampleIterator) Next() bool {
@@ -607,6 +633,10 @@ type sampleQueryClientIterator struct {
 	client QuerySampleClient
 	err    error
 	curr   SampleIterator
+
+	// orderedByStream assembles each received batch stream-first (preserving the Series order the
+	// sender emitted) instead of re-sorting globally by timestamp.
+	orderedByStream bool
 }
 
 // QuerySampleClient is GRPC stream client with only method used by the SampleQueryClientIterator
@@ -668,6 +698,13 @@ func NewTimestampFirstSampleQueryResponseIterator(resp *logproto.SampleQueryResp
 	return NewMultiSeriesIterator(resp.Series)
 }
 
+// NewStreamFirstSampleQueryResponseIterator returns a stream-first iterator over a
+// SampleQueryResponse whose Series are already in streamHash ASC order.
+// It concatenates the series without re-sorting, preserving that order.
+func NewStreamFirstSampleQueryResponseIterator(resp *logproto.SampleQueryResponse) SampleIterator {
+	return NewMultiSeriesIteratorOrdered(resp.Series)
+}
+
 type seriesIterator struct {
 	i      int
 	series logproto.Series
@@ -710,6 +747,21 @@ func NewMultiSeriesIterator(series []logproto.Series) SampleIterator {
 		is = append(is, NewSeriesIterator(series[i]))
 	}
 	return NewTimestampFirstSortSampleIterator(is)
+}
+
+// NewMultiSeriesIteratorOrdered returns an iterator over the given series, emitting the series —
+// and the samples within each — in their exact input order, performing no sorting or re-ordering.
+// Supplying them in the desired order is the caller's responsibility.
+func NewMultiSeriesIteratorOrdered(series []logproto.Series) SampleIterator {
+	is := make([]SampleIterator, 0, len(series))
+	for i := range series {
+		is = append(is, NewSeriesIterator(series[i]))
+	}
+
+	// A plain concatenation is correct even though different series' timestamp ranges may overlap:
+	// NewNonOverlappingSampleIterator does not require disjoint timestamps, it just plays each series
+	// to completion in turn.
+	return NewNonOverlappingSampleIterator(is)
 }
 
 // NewSeriesIterator iterates over sample in a series.
@@ -810,6 +862,9 @@ func (i *nonOverlappingSampleIterator) Err() error {
 }
 
 func (i *nonOverlappingSampleIterator) Close() error {
+	// Close every iterator and keep all errors: Add ignores nil, so a clean close
+	// still returns nil.
+	var errs util.MultiError
 	if i.curr != nil {
 		// Some implementations return their stored read error from Close too. When
 		// it does, err is skipped: it already surfaced through i.Err(), so adding it
@@ -869,7 +924,33 @@ func (i *timeRangedSampleIterator) Next() bool {
 	return ok
 }
 
-// ReadSampleBatch reads a set of entries off an iterator.
+// ReadSampleBatchOrdered reads a set of samples off a stream-first iterator, preserving its
+// ordering in the emitted Series.
+//
+// Unlike ReadSampleBatch, which groups samples into a map and emits Series in random order,
+// this appends Series in the order streams first appear, so consecutive batches stay
+// stream-ordered and a stream split across a batch boundary remains contiguous.
+func ReadSampleBatchOrdered(i SampleIterator, size uint32) (*logproto.SampleQueryResponse, uint32, error) {
+	var (
+		series   []logproto.Series
+		respSize uint32
+		currIdx  = -1
+	)
+
+	for ; respSize < size && i.Next(); respSize++ {
+		labels, hash, sample := i.Labels(), i.StreamHash(), i.At()
+		if currIdx < 0 || series[currIdx].StreamHash != hash || series[currIdx].Labels != labels {
+			series = append(series, logproto.Series{Labels: labels, StreamHash: hash})
+			currIdx = len(series) - 1
+		}
+		series[currIdx].Samples = append(series[currIdx].Samples, sample)
+	}
+
+	return &logproto.SampleQueryResponse{Series: series}, respSize, i.Err()
+}
+
+// ReadSampleBatch reads up to size samples off an iterator, grouping them by stream into one
+// Series each. The Series are emitted in map (random) order.
 func ReadSampleBatch(i SampleIterator, size uint32) (*logproto.SampleQueryResponse, uint32, error) {
 	var (
 		series      = map[uint64]map[string]*logproto.Series{}

@@ -68,10 +68,11 @@ type postingsIndexSectionsReader struct {
 	logger log.Logger
 	obj    *dataobj.Object
 
-	matchers   []*labels.Matcher
-	predicates []*labels.Matcher
-	start, end time.Time
-	batchSize  int
+	matchers         []*labels.Matcher
+	predicates       []*labels.Matcher
+	start, end       time.Time
+	batchSize        int
+	shardBucketRange *postings.ShardBucketRange // nil unless resolution-time shard-bucket pruning is on
 
 	initialized bool
 	resolved    bool
@@ -92,18 +93,20 @@ func newPostingsIndexSectionsReader(
 	matchers []*labels.Matcher,
 	predicates []*labels.Matcher,
 	batchSize int,
+	shardBucketRange *postings.ShardBucketRange,
 ) *postingsIndexSectionsReader {
 	if batchSize <= 0 {
 		batchSize = 8192
 	}
 	return &postingsIndexSectionsReader{
-		logger:     logger,
-		obj:        obj,
-		matchers:   matchers,
-		predicates: predicates,
-		start:      start,
-		end:        end,
-		batchSize:  batchSize,
+		logger:           logger,
+		obj:              obj,
+		matchers:         matchers,
+		predicates:       predicates,
+		start:            start,
+		end:              end,
+		batchSize:        batchSize,
+		shardBucketRange: shardBucketRange,
 	}
 }
 
@@ -151,7 +154,7 @@ func (r *postingsIndexSectionsReader) Open(ctx context.Context) error {
 	}
 
 	// Open readers of the sections, configured with the input predicates
-	selector := newStreamSelector(r.matchers, r.predicates, r.start, r.end)
+	selector := newStreamSelector(r.matchers, r.predicates, r.start, r.end, r.shardBucketRange)
 	if err := selector.open(ctx, opened, maxConcurrentSectionOpens); err != nil {
 		return fmt.Errorf("opening postings readers: %w", err)
 	}

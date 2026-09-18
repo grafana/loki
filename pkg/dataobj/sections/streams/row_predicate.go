@@ -32,6 +32,10 @@ type (
 		IncludeEnd         bool // Whether EndTime is inclusive.
 	}
 
+	// A ShardBucketRangeRowPredicate keeps streams whose __shard_bucket__ is in the inclusive range
+	// [From, To].
+	ShardBucketRangeRowPredicate struct{ From, To uint64 }
+
 	// A LabelMatcherRowPredicate is a RowPredicate which requires a label named
 	// Name to exist with a value of Value.
 	LabelMatcherRowPredicate struct{ Name, Value string }
@@ -51,9 +55,10 @@ type (
 	}
 )
 
-func (AndRowPredicate) isRowPredicate()          {}
-func (OrRowPredicate) isRowPredicate()           {}
-func (NotRowPredicate) isRowPredicate()          {}
-func (TimeRangeRowPredicate) isRowPredicate()    {}
-func (LabelMatcherRowPredicate) isRowPredicate() {}
-func (LabelFilterRowPredicate) isRowPredicate()  {}
+func (AndRowPredicate) isRowPredicate()              {}
+func (OrRowPredicate) isRowPredicate()               {}
+func (NotRowPredicate) isRowPredicate()              {}
+func (TimeRangeRowPredicate) isRowPredicate()        {}
+func (ShardBucketRangeRowPredicate) isRowPredicate() {}
+func (LabelMatcherRowPredicate) isRowPredicate()     {}
+func (LabelFilterRowPredicate) isRowPredicate()      {}

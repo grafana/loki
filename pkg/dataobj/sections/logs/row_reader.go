@@ -388,7 +388,10 @@ func streamIDPredicate(ids iter.Seq[int64], columns []dataset.Column, columnDesc
 
 	return dataset.InPredicate{
 		Column: streamIDColumn,
-		Values: dataset.NewInt64ValueSet(values),
+		// A logs section sorts by stream_id, so this check sees long runs of the same
+		// value. The reader is single-threaded, so a memoized set can cache the
+		// previous result and turn most per-row checks into a comparison.
+		Values: dataset.NewMemoizedInt64ValueSet(values),
 	}
 }
 
@@ -415,7 +418,7 @@ func translateLogsPredicate(p RowPredicate, dsetColumns []dataset.Column, actual
 		return dataset.FoldNotPredicate(translateLogsPredicate(p.Inner, dsetColumns, actualColumns))
 
 	case TimeRangeRowPredicate:
-		timeColumn := findDatasetColumn(dsetColumns, actualColumns, func(col *Column) bool {
+		timeColumn := findDatasetColumn(datasetColumns, actualColumns, func(col *Column) bool {
 			return col.Type == ColumnTypeTimestamp
 		})
 		if timeColumn == nil {
@@ -424,7 +427,7 @@ func translateLogsPredicate(p RowPredicate, dsetColumns []dataset.Column, actual
 		return convertLogsTimePredicate(p, timeColumn)
 
 	case LogMessageFilterRowPredicate:
-		messageColumn := findDatasetColumn(dsetColumns, actualColumns, func(col *Column) bool {
+		messageColumn := findDatasetColumn(datasetColumns, actualColumns, func(col *Column) bool {
 			return col.Type == ColumnTypeMessage
 		})
 		if messageColumn == nil {
@@ -444,7 +447,7 @@ func translateLogsPredicate(p RowPredicate, dsetColumns []dataset.Column, actual
 		}
 
 	case MetadataMatcherRowPredicate:
-		metadataColumn := findDatasetColumn(dsetColumns, actualColumns, func(col *Column) bool {
+		metadataColumn := findDatasetColumn(datasetColumns, actualColumns, func(col *Column) bool {
 			return col.Type == ColumnTypeMetadata && col.Name == p.Key
 		})
 		if metadataColumn == nil {
@@ -458,7 +461,7 @@ func translateLogsPredicate(p RowPredicate, dsetColumns []dataset.Column, actual
 		}
 
 	case MetadataFilterRowPredicate:
-		metadataColumn := findDatasetColumn(dsetColumns, actualColumns, func(col *Column) bool {
+		metadataColumn := findDatasetColumn(datasetColumns, actualColumns, func(col *Column) bool {
 			return col.Type == ColumnTypeMetadata && col.Name == p.Key
 		})
 		if metadataColumn == nil {
@@ -476,6 +479,15 @@ func translateLogsPredicate(p RowPredicate, dsetColumns []dataset.Column, actual
 	default:
 		panic(fmt.Sprintf("unsupported predicate type %T", p))
 	}
+}
+
+// constPredicate returns a predicate that keeps every row when keep is true and drops every row
+// otherwise. It reduces a metadata predicate whose column is absent from a section.
+func constPredicate(keep bool) dataset.Predicate {
+	if keep {
+		return dataset.TruePredicate{}
+	}
+	return dataset.FalsePredicate{}
 }
 
 func convertLogsTimePredicate(p TimeRangeRowPredicate, column dataset.Column) dataset.Predicate {

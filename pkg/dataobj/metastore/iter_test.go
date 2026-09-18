@@ -1,14 +1,69 @@
 package metastore
 
 import (
+	"context"
 	"testing"
+	"time"
 
+	"github.com/apache/arrow-go/v18/arrow"
 	"github.com/apache/arrow-go/v18/arrow/scalar"
+	"github.com/grafana/dskit/user"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
 
+	"github.com/grafana/loki/v3/pkg/dataobj"
+	"github.com/grafana/loki/v3/pkg/dataobj/index/indexobj"
+	"github.com/grafana/loki/v3/pkg/dataobj/sections/indexpointers"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
 )
+
+// buildToCObject builds an in-memory ToC object holding tenant's index pointers, as the ToC writer does.
+func buildToCObject(t *testing.T, tenant string, pointers []indexpointers.IndexPointer) (*dataobj.Object, func()) {
+	t.Helper()
+	b, err := indexobj.NewBuilder(tocBuilderCfg, nil)
+	require.NoError(t, err)
+	for _, p := range pointers {
+		require.NoError(t, b.AppendIndexPointer(tenant, p))
+	}
+	obj, closer, err := b.Flush()
+	require.NoError(t, err)
+	return obj, func() { _ = closer.Close() }
+}
+
+// TestForEachIndexPointer_SingleTenantFullRangeMatchesAllTenants checks that with one tenant and a query
+// spanning every pointer's time range, the time-filtered forEachIndexPointer yields exactly what the
+// unfiltered forEachIndexPointerAllTenants yields for that tenant.
+func TestForEachIndexPointer_SingleTenantFullRangeMatchesAllTenants(t *testing.T) {
+	const tenant = "tenant-a"
+	base := time.Date(2025, 1, 1, 12, 0, 0, 0, time.UTC)
+	pointers := []indexpointers.IndexPointer{
+		{Path: "obj-1", StartTs: base, EndTs: base.Add(time.Hour)},
+		{Path: "obj-2", StartTs: base.Add(2 * time.Hour), EndTs: base.Add(3 * time.Hour)},
+		{Path: "obj-3", StartTs: base.Add(4 * time.Hour), EndTs: base.Add(5 * time.Hour)},
+	}
+	obj, closer := buildToCObject(t, tenant, pointers)
+	defer closer()
+
+	ctx := user.InjectOrgID(context.Background(), tenant)
+
+	// Span the whole data: earliest start to latest end.
+	sStart := scalar.NewTimestampScalar(arrow.Timestamp(pointers[0].StartTs.UnixNano()), arrow.FixedWidthTypes.Timestamp_ns)
+	sEnd := scalar.NewTimestampScalar(arrow.Timestamp(pointers[len(pointers)-1].EndTs.UnixNano()), arrow.FixedWidthTypes.Timestamp_ns)
+
+	var filtered []indexpointers.IndexPointer
+	require.NoError(t, forEachIndexPointer(ctx, obj, sStart, sEnd, func(p indexpointers.IndexPointer) {
+		filtered = append(filtered, p)
+	}))
+
+	var all []indexpointers.IndexPointer
+	require.NoError(t, forEachIndexPointerAllTenants(ctx, obj, func(gotTenant string, p indexpointers.IndexPointer) {
+		require.Equal(t, tenant, gotTenant)
+		all = append(all, p)
+	}))
+
+	require.Len(t, filtered, len(pointers))
+	require.Equal(t, filtered, all)
+}
 
 func TestBuildLabelPredicate_MatchNotRegexp(t *testing.T) {
 	// This test verifies that MatchNotRegexp correctly excludes values that match the regex

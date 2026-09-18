@@ -200,7 +200,7 @@ func Benchmark_RangeVectorIterator(b *testing.B) {
 		i := 0
 		it, err := newTimestampFirstRangeVectorIterator(newfakePeekingSampleIterator(samples),
 			&syntax.RangeAggregationExpr{Operation: syntax.OpRangeTypeCount}, tt.selRange,
-			tt.step, tt.start.UnixNano(), tt.end.UnixNano(), tt.offset)
+			tt.step, tt.start.UnixNano(), tt.end.UnixNano(), tt.offset, logproto.SAMPLE_ORDER_BY_TIMESTAMP)
 		if err != nil {
 			panic(err)
 		}
@@ -330,6 +330,7 @@ func Test_RangeVectorIterator_InstantQuery(t *testing.T) {
 					tt.now.UnixNano(), // start
 					tt.now.UnixNano(), // end
 					0,                 // offset
+					logproto.SAMPLE_ORDER_BY_TIMESTAMP,
 				)
 				require.NoError(t, err)
 
@@ -469,7 +470,7 @@ func Test_RangeVectorIterator(t *testing.T) {
 			func(t *testing.T) {
 				it, err := newTimestampFirstRangeVectorIterator(newfakePeekingSampleIterator(samples),
 					&syntax.RangeAggregationExpr{Operation: syntax.OpRangeTypeCount}, tt.selRange,
-					tt.step, tt.start.UnixNano(), tt.end.UnixNano(), tt.offset)
+					tt.step, tt.start.UnixNano(), tt.end.UnixNano(), tt.offset, logproto.SAMPLE_ORDER_BY_TIMESTAMP)
 				require.NoError(t, err)
 
 				i := 0
@@ -493,7 +494,7 @@ func Test_RangeVectorIteratorBadLabels(t *testing.T) {
 		}))
 	it, err := newTimestampFirstRangeVectorIterator(badIterator,
 		&syntax.RangeAggregationExpr{Operation: syntax.OpRangeTypeCount}, (30 * time.Second).Nanoseconds(),
-		(30 * time.Second).Nanoseconds(), time.Unix(10, 0).UnixNano(), time.Unix(100, 0).UnixNano(), 0)
+		(30 * time.Second).Nanoseconds(), time.Unix(10, 0).UnixNano(), time.Unix(100, 0).UnixNano(), 0, logproto.SAMPLE_ORDER_BY_TIMESTAMP)
 	require.NoError(t, err)
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -539,7 +540,7 @@ func Test_InstantQueryRangeVectorAggregations(t *testing.T) {
 		t.Run(fmt.Sprintf("testing aggregation %s", tt.name), func(t *testing.T) {
 			it, err := newTimestampFirstRangeVectorIterator(sampleIter(tt.negative),
 				&syntax.RangeAggregationExpr{Left: &syntax.LogRangeExpr{Interval: 2}, Params: proto.Float64(0.99), Operation: tt.op},
-				3, 1, start, end, 0)
+				3, 1, start, end, 0, logproto.SAMPLE_ORDER_BY_TIMESTAMP)
 			require.NoError(t, err)
 
 			//nolint:revive

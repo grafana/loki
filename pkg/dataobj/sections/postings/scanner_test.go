@@ -114,6 +114,43 @@ func TestScanner_LabelStreams_UnionZeroExtends(t *testing.T) {
 	require.Equal(t, []int{1, 70}, bitmapIDs(ls.Matched))
 }
 
+// TestScanner_ShardBucketRange_PrunesNonOverlappingPostings verifies the range
+// predicate keeps only postings whose [min,max] shard-bucket envelope overlaps
+// the requested range. The two postings sit in disjoint buckets, so each range
+// selects exactly one of them; a nil range selects both. This fails if the
+// producer stops populating the min/max columns (they collapse to 0, so any
+// non-zero range prunes everything).
+func TestScanner_ShardBucketRange_PrunesNonOverlappingPostings(t *testing.T) {
+	ctx := context.Background()
+	secs, closer := buildLabelBloomSection(t, []labelPosting{
+		{name: "env", value: "prod", streamID: 1, obj: "/o", section: 0, minTs: 10, maxTs: 20, shardBucket: 3},
+		{name: "env", value: "dev", streamID: 2, obj: "/o", section: 0, minTs: 10, maxTs: 20, shardBucket: 20},
+	}, nil)
+	defer closer()
+
+	cms := compileAllT(t, labels.MustNewMatcher(labels.MatchRegexp, "env", "prod|dev"))
+
+	run := func(bucketRange *postings.ShardBucketRange) []int {
+		factory := func(sec *postings.Section) *postings.Scanner {
+			readers, err := postings.NewScannerReaders(sec, cms, nil, nil, nil, nil, bucketRange)
+			require.NoError(t, err)
+			require.NoError(t, readers.Open(ctx))
+			t.Cleanup(func() { require.NoError(t, readers.Close()) })
+			return postings.NewScanner(sec, readers)
+		}
+		got := scanAll(t, secs, factory, func(sc *postings.Scanner) (map[postings.SectionRef][]postings.MatchedStreams, error) {
+			return sc.MatchLabels(ctx, nil, cms)
+		})
+		perMatcher := got[postings.SectionRef{ObjectPath: "/o", SectionIndex: 0}]
+		require.Len(t, perMatcher, 1)
+		return bitmapIDs(perMatcher[0].Matched)
+	}
+
+	require.Equal(t, []int{1, 2}, run(nil), "nil range resolves both buckets")
+	require.Equal(t, []int{1}, run(&postings.ShardBucketRange{From: 0, To: 10}), "range [0,10] keeps only bucket 3")
+	require.Equal(t, []int{2}, run(&postings.ShardBucketRange{From: 15, To: 31}), "range [15,31] keeps only bucket 20")
+}
+
 // TestScanner_MatchLabels_MultiMatcherAttribution verifies the single OR scan
 // attributes each row to the right matcher position, including a regex matcher
 // (which forces the in-memory Matches re-test) and a matcher whose value is
@@ -228,7 +265,7 @@ func compileAllT(t *testing.T, matchers ...*labels.Matcher) []postings.CompiledM
 func scannerFactory(ctx context.Context, t *testing.T, matchers []postings.CompiledMatcher, filters []postings.CompiledMatcher, predicates []*labels.Matcher) func(*postings.Section) *postings.Scanner {
 	t.Helper()
 	return func(sec *postings.Section) *postings.Scanner {
-		readers, err := postings.NewScannerReaders(sec, matchers, filters, predicates, nil, nil)
+		readers, err := postings.NewScannerReaders(sec, matchers, filters, predicates, nil, nil, nil)
 		require.NoError(t, err)
 		require.NoError(t, readers.Open(ctx))
 		t.Cleanup(func() { require.NoError(t, readers.Close()) })
@@ -360,7 +397,7 @@ func TestScanner_MatcherHits_DuplicateNameRejected(t *testing.T) {
 		labels.MustNewMatcher(labels.MatchEqual, "app", "bar"),
 	}
 	for _, sec := range secs {
-		_, err := postings.NewScannerReaders(sec, nil, nil, matchers, nil, nil)
+		_, err := postings.NewScannerReaders(sec, nil, nil, matchers, nil, nil, nil)
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "duplicate equal-predicate name")
 	}
@@ -401,7 +438,8 @@ type labelPosting struct {
 	streamID     int64
 	obj          string
 	section      int64
-	minTs, maxTs int64 // unix nanos
+	minTs, maxTs int64  // unix nanos
+	shardBucket  uint32 // aggregated into the posting's min/max shard-bucket columns
 }
 
 type bloomPosting struct {
@@ -429,11 +467,13 @@ func buildLabelBloomSection(t *testing.T, labelsIn []labelPosting, bloomsIn []bl
 		b.ObserveLabelPosting(postings.LabelObservation{
 			ObjectPath: lp.obj, SectionIndex: lp.section, ColumnName: lp.name, LabelValue: lp.value,
 			StreamID: lp.streamID, Timestamp: time.Unix(0, lp.minTs).UTC(), UncompressedSize: 0,
+			ShardBucket: lp.shardBucket,
 		})
 		if lp.maxTs > lp.minTs {
 			b.ObserveLabelPosting(postings.LabelObservation{
 				ObjectPath: lp.obj, SectionIndex: lp.section, ColumnName: lp.name, LabelValue: lp.value,
 				StreamID: lp.streamID, Timestamp: time.Unix(0, lp.maxTs).UTC(), UncompressedSize: 0,
+				ShardBucket: lp.shardBucket,
 			})
 		}
 	}

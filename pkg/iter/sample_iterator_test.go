@@ -252,6 +252,72 @@ func TestReadSampleBatch(t *testing.T) {
 	require.NoError(t, err)
 }
 
+// TestReadSampleBatchOrdered_PreservesStreamFirstOrder verifies the encode side emits one Series per
+// contiguous run of a stream, in the exact order the streams appear in the input.
+func TestReadSampleBatchOrdered_PreservesStreamFirstOrder(t *testing.T) {
+	// The input is fed in a deliberately non-ascending order to prove ReadSampleBatchOrdered preserves
+	// the input order rather than sorting.
+	src := NewNonOverlappingSampleIterator([]SampleIterator{
+		NewSeriesIterator(mkStreamSeries(`{s="c"}`, 30, mkSample(1, 1))),
+		NewSeriesIterator(mkStreamSeries(`{s="a"}`, 10, mkSample(1, 2), mkSample(2, 3))),
+		NewSeriesIterator(mkStreamSeries(`{s="b"}`, 20, mkSample(1, 4))),
+	})
+
+	resp, size, err := ReadSampleBatchOrdered(src, 100)
+	require.NoError(t, err)
+	require.Equal(t, uint32(4), size)
+
+	// Series preserved in input order (30, 10, 20) — not sorted — each stream's samples grouped.
+	want := []logproto.Series{
+		{Labels: `{s="c"}`, StreamHash: 30, Samples: []logproto.Sample{mkSample(1, 1)}},
+		{Labels: `{s="a"}`, StreamHash: 10, Samples: []logproto.Sample{mkSample(1, 2), mkSample(2, 3)}},
+		{Labels: `{s="b"}`, StreamHash: 20, Samples: []logproto.Sample{mkSample(1, 4)}},
+	}
+	require.Equal(t, want, resp.Series)
+}
+
+// TestStreamFirstWireRoundTrip verifies the order-preserving wire path (§1d): a stream-first
+// iterator encoded in small batches with ReadSampleBatchOrdered — cutting a stream across a batch
+// boundary — is reconstructed stream-first by NewStreamFirstSampleQueryClientIterator.
+func TestStreamFirstWireRoundTrip(t *testing.T) {
+	source := func() SampleIterator {
+		return NewNonOverlappingSampleIterator([]SampleIterator{
+			NewSeriesIterator(mkStreamSeries(`{s="a"}`, 10, mkSample(1, 1), mkSample(2, 2), mkSample(3, 3))),
+			NewSeriesIterator(mkStreamSeries(`{s="b"}`, 20, mkSample(1, 4), mkSample(2, 5))),
+			NewSeriesIterator(mkStreamSeries(`{s="c"}`, 30, mkSample(1, 6), mkSample(2, 7), mkSample(3, 8), mkSample(4, 9))),
+		})
+	}
+
+	// Encode in batches of 2 samples so streams straddle batch boundaries.
+	var batches [][]logproto.Series
+	enc := source()
+	for {
+		resp, size, err := ReadSampleBatchOrdered(enc, 2)
+		require.NoError(t, err)
+		if size == 0 {
+			break
+		}
+		batches = append(batches, resp.Series)
+	}
+	require.Greater(t, len(batches), 1, "batch size must split the stream to exercise the boundary")
+
+	// Decode through the stream-first client iterator.
+	got := collectSamplesWithLabels(t, NewStreamFirstSampleQueryClientIterator(&fakeSampleClient{series: batches}))
+
+	// Decoded output stays stream-first (streamHash non-decreasing).
+	for i := 1; i < len(got); i++ {
+		require.GreaterOrEqual(t, got[i].streamHash, got[i-1].streamHash, "decoded stream must be non-decreasing in streamHash")
+	}
+
+	// Every stream's samples (values included) survive the round-trip, in order.
+	want := []sampleWithLabels{
+		{Sample: mkSample(1, 1), labels: `{s="a"}`, streamHash: 10}, {Sample: mkSample(2, 2), labels: `{s="a"}`, streamHash: 10}, {Sample: mkSample(3, 3), labels: `{s="a"}`, streamHash: 10},
+		{Sample: mkSample(1, 4), labels: `{s="b"}`, streamHash: 20}, {Sample: mkSample(2, 5), labels: `{s="b"}`, streamHash: 20},
+		{Sample: mkSample(1, 6), labels: `{s="c"}`, streamHash: 30}, {Sample: mkSample(2, 7), labels: `{s="c"}`, streamHash: 30}, {Sample: mkSample(3, 8), labels: `{s="c"}`, streamHash: 30}, {Sample: mkSample(4, 9), labels: `{s="c"}`, streamHash: 30},
+	}
+	require.Equal(t, want, got)
+}
+
 type CloseTestingSmplIterator struct {
 	closed atomic.Bool
 	s      logproto.Sample

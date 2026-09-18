@@ -10,12 +10,14 @@ import (
 
 const (
 	directStackName               = "direct"
+	chunksStreamFirstStackName    = "chunks-stream-first"
+	dataObjectsStackName          = "data-objects"
 	queryFrontendNoShardStackName = "query-frontend + query-scheduler (no sharding)"
 	queryFrontendShardStackName   = "query-frontend + query-scheduler (sharding)"
 )
 
 var (
-	stackNames = []string{directStackName, queryFrontendNoShardStackName, queryFrontendShardStackName}
+	stackNames = []string{directStackName, chunksStreamFirstStackName, dataObjectsStackName, queryFrontendNoShardStackName, queryFrontendShardStackName}
 )
 
 func isKnownStackName(name string) bool {

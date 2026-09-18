@@ -100,6 +100,9 @@ message SampleQueryRequest {
   // If populated, these represent the chunk references that the querier should
   // use to fetch the data, plus any other chunks reported by ingesters.
   ChunkRefGroup storeChunks = 10 [(gogoproto.jsontag) = "storeChunks"];
+  // order selects how the returned samples are ordered. Its zero value keeps the historical
+  // global-timestamp ordering, so old clients are unaffected.
+  SampleOrder order = 11;
 }
 
 // SampleOrder identifies how a set of samples is ordered.
