@@ -24,6 +24,7 @@ import (
 )
 
 const versionFlag = "version"
+const listTargetsFlag = "list-targets"
 
 // ConfigWrapper is a struct containing the Loki config along with other values that can be set on the command line
 // for interacting with the config file or the application directly.
@@ -42,6 +43,16 @@ type ConfigWrapper struct {
 
 func PrintVersion(args []string) bool {
 	pattern := regexp.MustCompile(`^-+` + versionFlag + `$`)
+	for _, a := range args {
+		if pattern.MatchString(a) {
+			return true
+		}
+	}
+	return false
+}
+
+func ShouldListTargets(args []string) bool {
+	pattern := regexp.MustCompile(`^-+` + listTargetsFlag + `$`)
 	for _, a := range args {
 		if pattern.MatchString(a) {
 			return true
