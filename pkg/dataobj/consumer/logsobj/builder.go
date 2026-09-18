@@ -14,6 +14,7 @@ import (
 
 	"github.com/facette/natsort"
 	"github.com/go-kit/log"
+	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/flagext"
 	lru "github.com/hashicorp/golang-lru/v2"
 	"github.com/prometheus/client_golang/prometheus"
@@ -426,6 +427,11 @@ func (b *Builder) TimeRanges() []multitenancy.TimeRange {
 // Flush flushes all buffered data to the buffer provided. Calling Flush can result
 // in a no-op if there is no buffered data to flush.
 //
+// On success the caller owns the returned [io.Closer] and must close it to
+// release the object's backing scratch storage; reads of the object fail once
+// it is closed. If an error is returned the closer is always nil, and any
+// scratch storage already allocated has been released.
+//
 // [Builder.Reset] is called after a successful Flush to discard any pending
 // data and allow new data to be appended.
 func (b *Builder) Flush() (*dataobj.Object, io.Closer, error) {
@@ -459,10 +465,19 @@ func (b *Builder) Flush() (*dataobj.Object, io.Closer, error) {
 
 	b.metrics.builtSize.Observe(float64(obj.Size()))
 
-	err = b.observeObject(context.Background(), obj)
+	if err := b.observeObject(context.Background(), obj); err != nil {
+		// The object is not handed to the caller, so its scratch storage has to
+		// be released here: returning a closer alongside an error leaks it,
+		// because callers stop at the error.
+		if closeErr := closer.Close(); closeErr != nil {
+			level.Warn(b.logger).Log("msg", "failed to release data object after observation failed", "err", closeErr)
+		}
+		b.Reset()
+		return nil, nil, fmt.Errorf("observing object: %w", err)
+	}
 
 	b.Reset()
-	return obj, closer, err
+	return obj, closer, nil
 }
 
 // CopyAndSort takes an existing [dataobj.Object] and rewrites the logs sections

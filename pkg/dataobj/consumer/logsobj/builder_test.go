@@ -3,8 +3,10 @@ package logsobj
 import (
 	"bytes"
 	"context"
+	"errors"
 	"flag"
 	"fmt"
+	"io"
 	"math"
 	"math/rand"
 	"slices"
@@ -1193,4 +1195,33 @@ func iterLogsSection(t *testing.T, section *dataobj.Section) result.Seq[logs.Rec
 		}
 		return nil
 	})
+}
+
+// failingReadStore is a scratch store whose reads always fail.
+type failingReadStore struct {
+	inner scratch.Store
+}
+
+func (s *failingReadStore) Put(p []byte) scratch.Handle { return s.inner.Put(p) }
+
+func (s *failingReadStore) Read(scratch.Handle) (io.ReadSeekCloser, error) {
+	return nil, errors.New("mock read error")
+}
+
+func (s *failingReadStore) Remove(h scratch.Handle) error { return s.inner.Remove(h) }
+
+// A closer returned alongside an error is never closed by callers, since they
+// stop at the error, so Flush must hand back nothing when it fails.
+func TestBuilder_FlushReturnsNoCloserOnError(t *testing.T) {
+	builder, err := NewBuilder(testBuilderConfig, &failingReadStore{inner: scratch.NewMemory()}, NewBuilderMetrics(), log.NewNopLogger(), nil)
+	require.NoError(t, err)
+	require.NoError(t, builder.Append("tenant", logproto.Stream{
+		Labels:  `{cluster="test",app="foo"}`,
+		Entries: []push.Entry{{Timestamp: time.Unix(10, 0).UTC(), Line: "hello"}},
+	}, time.Now()))
+
+	obj, closer, err := builder.Flush()
+	require.Error(t, err)
+	require.Nil(t, obj)
+	require.Nil(t, closer)
 }

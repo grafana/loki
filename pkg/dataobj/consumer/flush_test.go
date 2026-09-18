@@ -16,34 +16,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/scratch"
 )
 
-const (
-	expectSuccessMetrics = `
-	# HELP loki_dataobj_consumer_flushes_total Total number of flushes.
-	# TYPE loki_dataobj_consumer_flushes_total counter
-	loki_dataobj_consumer_flushes_total{reason="builder_full"} 1
-	loki_dataobj_consumer_flushes_total{reason="idle"} 0
-	loki_dataobj_consumer_flushes_total{reason="max_age"} 0
-	# HELP loki_dataobj_consumer_flush_failures_total Total number of failed flushes.
-	# TYPE loki_dataobj_consumer_flush_failures_total counter
-	loki_dataobj_consumer_flush_failures_total 0
-	`
-	expectFailureMetrics = `
-	# HELP loki_dataobj_consumer_flushes_total Total number of flushes.
-	# TYPE loki_dataobj_consumer_flushes_total counter
-	loki_dataobj_consumer_flushes_total{reason="builder_full"} 1
-	loki_dataobj_consumer_flushes_total{reason="idle"} 0
-	loki_dataobj_consumer_flushes_total{reason="max_age"} 0
-	# HELP loki_dataobj_consumer_flush_failures_total Total number of failed flushes.
-	# TYPE loki_dataobj_consumer_flush_failures_total counter
-	loki_dataobj_consumer_flush_failures_total 1
-	`
-)
-
-var flushMetricNames = []string{
-	"loki_dataobj_consumer_flushes_total",
-	"loki_dataobj_consumer_flush_failures_total",
-}
-
 // newTestMockBuilder returns a mockBuilder wrapping a real builder that already
 // holds a log line, so it can be flushed.
 func newTestMockBuilder(t *testing.T) *mockBuilder {
@@ -60,6 +32,33 @@ func newTestMockBuilder(t *testing.T) *mockBuilder {
 }
 
 func TestFlusher_Flush(t *testing.T) {
+	const (
+		expectSuccessMetrics = `
+		# HELP loki_dataobj_consumer_flushes_total Total number of flushes.
+		# TYPE loki_dataobj_consumer_flushes_total counter
+		loki_dataobj_consumer_flushes_total{reason="builder_full"} 1
+		loki_dataobj_consumer_flushes_total{reason="idle"} 0
+		loki_dataobj_consumer_flushes_total{reason="max_age"} 0
+		# HELP loki_dataobj_consumer_flush_failures_total Total number of failed flushes.
+		# TYPE loki_dataobj_consumer_flush_failures_total counter
+		loki_dataobj_consumer_flush_failures_total 0
+		`
+		expectFailureMetrics = `
+		# HELP loki_dataobj_consumer_flushes_total Total number of flushes.
+		# TYPE loki_dataobj_consumer_flushes_total counter
+		loki_dataobj_consumer_flushes_total{reason="builder_full"} 1
+		loki_dataobj_consumer_flushes_total{reason="idle"} 0
+		loki_dataobj_consumer_flushes_total{reason="max_age"} 0
+		# HELP loki_dataobj_consumer_flush_failures_total Total number of failed flushes.
+		# TYPE loki_dataobj_consumer_flush_failures_total counter
+		loki_dataobj_consumer_flush_failures_total 1
+		`
+	)
+	flushMetricNames := []string{
+		"loki_dataobj_consumer_flushes_total",
+		"loki_dataobj_consumer_flush_failures_total",
+	}
+
 	t.Run("should succeed", func(t *testing.T) {
 		var (
 			reg          = prometheus.NewRegistry()
@@ -138,6 +137,12 @@ func TestFlusher_Flush(t *testing.T) {
 		require.Equal(t, 1, testBuilder.flushCloser.closed)
 		require.NoError(t, objCloser.Close())
 		require.NoError(t, testutil.GatherAndCompare(reg, strings.NewReader(expectSuccessMetrics), flushMetricNames...))
+		// The failure is counted so it can be alerted on, without failing the flush.
+		require.NoError(t, testutil.GatherAndCompare(reg, strings.NewReader(`
+		# HELP loki_dataobj_builder_release_failures_total Total number of failures to release a flushed data object's scratch storage. The object is already uploaded at that point, so these do not fail the flush.
+		# TYPE loki_dataobj_builder_release_failures_total counter
+		loki_dataobj_builder_release_failures_total 1
+		`), "loki_dataobj_builder_release_failures_total"))
 	})
 
 	t.Run("should return the upload error when releasing the sorted object also fails", func(t *testing.T) {

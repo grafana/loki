@@ -29,8 +29,8 @@ type metastoreEventEmitter interface {
 type flusher interface {
 	// Flush builds, sorts and uploads the builder's data object. On success the
 	// caller owns the returned [io.Closer] and must close it once it is done
-	// reading the object; reads of the object fail after that. On error there is
-	// nothing to close.
+	// reading the object; reads of the object fail after that. If an error is
+	// returned the closer is always nil.
 	Flush(ctx context.Context, builder builder, reason string) (*dataobj.Object, io.Closer, string, error)
 }
 
@@ -96,13 +96,9 @@ func (c *flushCommitterImpl) flushOne(ctx context.Context, builder builder, reas
 	if err != nil {
 		return fmt.Errorf("failed to flush data object: %w", err)
 	}
-	// The object is uploaded by this point, so failing to release its scratch
-	// storage must not fail the flush.
-	defer func() {
-		if err := objCloser.Close(); err != nil {
-			level.Warn(c.logger).Log("msg", "failed to release flushed data object", "err", err)
-		}
-	}()
+	// Releasing the object never fails the flush: it is already uploaded, and
+	// the flusher counts and logs any failure.
+	defer func() { _ = objCloser.Close() }()
 
 	// TODO(ivkalita): send events in batch
 	// emitEvent returns an error only if context is cancelled, otherwise
