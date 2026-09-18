@@ -271,7 +271,15 @@ func (q *SingleTenantQuerier) SelectSamples(ctx context.Context, params logql.Se
 
 		iters = append(iters, storeIter)
 	}
-	return iter.NewTimestampFirstMergeSampleIterator(ctx, iters), nil
+
+	switch params.Order {
+	case logproto.SAMPLE_ORDER_BY_STREAM:
+		return iter.NewStreamFirstMergeSampleIterator(ctx, iters), nil
+	case logproto.SAMPLE_ORDER_BY_TIMESTAMP:
+		return iter.NewTimestampFirstMergeSampleIterator(ctx, iters), nil
+	default:
+		return nil, errors.Errorf("unknown sample order %v", params.Order)
+	}
 }
 
 func (q *SingleTenantQuerier) isWithinIngesterMaxLookbackPeriod(maxLookback time.Duration, queryEnd time.Time) bool {

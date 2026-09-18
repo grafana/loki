@@ -1043,6 +1043,46 @@ func Test_QuerySampleWithDelete(t *testing.T) {
 	require.Equal(t, samples, []float64{1.})
 }
 
+func Test_QuerySample_RejectsNonTimestampOrder(t *testing.T) {
+	instance := defaultInstance(t)
+	selector := `count_over_time({job="3"}[5m])`
+
+	newRequest := func(order logproto.SampleOrder) logql.SelectSampleParams {
+		return logql.SelectSampleParams{
+			SampleQueryRequest: &logproto.SampleQueryRequest{
+				Selector: selector,
+				Start:    time.Unix(0, 0),
+				End:      time.Unix(0, 10*1e6),
+				Plan:     testutil.MustPlan(selector),
+				Order:    order,
+			},
+		}
+	}
+
+	t.Run("timestamp order succeeds", func(t *testing.T) {
+		it, err := instance.QuerySample(context.TODO(), newRequest(logproto.SAMPLE_ORDER_BY_TIMESTAMP))
+		require.NoError(t, err)
+		defer it.Close()
+
+		var n int
+		for it.Next() {
+			n++
+		}
+		require.NoError(t, it.Err())
+		require.Equal(t, 10, n, "both streams' samples must come back")
+	})
+
+	t.Run("stream order is rejected: the ingester does not support it yet", func(t *testing.T) {
+		_, err := instance.QuerySample(context.TODO(), newRequest(logproto.SAMPLE_ORDER_BY_STREAM))
+		require.ErrorContains(t, err, "sample order")
+	})
+
+	t.Run("an unknown order is rejected", func(t *testing.T) {
+		_, err := instance.QuerySample(context.TODO(), newRequest(logproto.SampleOrder(99)))
+		require.ErrorContains(t, err, "sample order")
+	})
+}
+
 // Test_QuerySampleWithoutExtractor covers sample expressions that produce samples
 // without reading logs. Their Extractor() is nil, so querying them must yield an
 // empty iterator rather than dereferencing it. The query plan arrives over gRPC

@@ -3,6 +3,7 @@ package querier
 import (
 	"context"
 	"fmt"
+	"math/bits"
 	"sort"
 	"strings"
 
@@ -524,15 +525,10 @@ type relabel struct {
 	cache    map[string]labels.Labels
 }
 
-func (r relabel) relabelLabelsString(original string) string {
-	return r.relabelLabels(original).String()
-}
-
-// relabelLabels adds the tenant label to the input labels string.
-func (r relabel) relabelLabels(original string) labels.Labels {
+func (r relabel) relabel(original string) string {
 	lbls, ok := r.cache[original]
 	if ok {
-		return lbls
+		return lbls.String()
 	}
 
 	lbls, _ = syntax.ParseLabels(original)
@@ -546,7 +542,7 @@ func (r relabel) relabelLabels(original string) labels.Labels {
 
 	lbls = builder.Labels()
 	r.cache[original] = lbls
-	return lbls
+	return lbls.String()
 }
 
 // TenantEntry Iterator wraps an entry iterator and adds the tenant label.
@@ -566,36 +562,45 @@ func NewTenantEntryIterator(iter iter.EntryIterator, id string) *TenantEntryIter
 }
 
 func (i *TenantEntryIterator) Labels() string {
-	return i.relabel.relabelLabelsString(i.EntryIterator.Labels())
+	return i.relabel.relabel(i.EntryIterator.Labels())
 }
 
 // TenantEntry Iterator wraps a sample iterator and adds the tenant label.
 type TenantSampleIterator struct {
 	iter.SampleIterator
 	relabel
+
+	// tenantHash qualifies StreamHash by tenant. It is derived from tenantID alone, so
+	// it stays fixed for the life of this iterator.
+	tenantHash uint64
 }
 
-func NewTenantSampleIterator(iter iter.SampleIterator, id string) *TenantSampleIterator {
+func NewTenantSampleIterator(iter iter.SampleIterator, tenantID string) *TenantSampleIterator {
 	return &TenantSampleIterator{
 		SampleIterator: iter,
 		relabel: relabel{
-			tenantID: id,
+			tenantID: tenantID,
 			cache:    map[string]labels.Labels{},
 		},
+		tenantHash: labels.StableHash(labels.FromStrings(defaultTenantLabel, tenantID)),
 	}
 
 }
 
 func (i *TenantSampleIterator) Labels() string {
-	return i.relabel.relabelLabelsString(i.SampleIterator.Labels())
+	return i.relabel.relabel(i.SampleIterator.Labels())
 }
 
-// StreamHash returns the fingerprint of this sample's tenant-qualified labels, not the
-// wrapped iterator's own StreamHash. Two tenants can otherwise select a stream with the
-// same labels, and so the same underlying StreamHash: a stream-first sort or merge across
-// tenants would then group their samples into one run instead of keeping them apart.
+// StreamHash returns a fingerprint that stays fixed for the life of one log stream and
+// differs across tenants. Two tenants can otherwise select a stream with the same
+// labels: a stream-first sort or merge across tenants would then group their samples
+// into one run instead of keeping them apart.
 func (i *TenantSampleIterator) StreamHash() uint64 {
-	return labels.StableHash(i.relabel.relabelLabels(i.SampleIterator.Labels()))
+	// Labels() is not fixed per stream: structured metadata and label_format can both
+	// make it vary per sample. Hashing it here would fragment one stream into many
+	// stream-first runs. Mix the tenant into the wrapped iterator's own StreamHash
+	// instead, since that stays fixed per stream by contract.
+	return i.tenantHash ^ bits.RotateLeft64(i.SampleIterator.StreamHash(), 32)
 }
 
 func partitionChunkRefsByTenant(refs []*logproto.ChunkRef) map[string][]*logproto.ChunkRef {

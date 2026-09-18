@@ -276,7 +276,40 @@ func TestTenantSampleIterator_StreamHash(t *testing.T) {
 		require.NotEqual(t, it1.Labels(), it2.Labels(), "tenant-qualified labels must differ")
 		require.NotEqual(t, it1.StreamHash(), it2.StreamHash(), "StreamHash must differ if two tenants have the same log stream")
 	})
+
+	t.Run("stays fixed within one stream even when Labels varies per sample", func(t *testing.T) {
+		// structured metadata and label_format can both make a stream report a
+		// different Labels() per sample, while its own StreamHash stays fixed.
+		inner := &varyingLabelsSampleIterator{streamHash: 42, labels: []string{`{app="a", x="1"}`, `{app="a", x="2"}`}}
+		it := NewTenantSampleIterator(inner, "1")
+
+		require.True(t, it.Next())
+		h1, l1 := it.StreamHash(), it.Labels()
+		require.True(t, it.Next())
+		h2, l2 := it.StreamHash(), it.Labels()
+
+		require.NotEqual(t, l1, l2, "the wrapped iterator's Labels() must actually vary per sample for this test to be meaningful")
+		require.Equal(t, h1, h2, "StreamHash must stay fixed within one stream regardless of Labels()")
+	})
 }
+
+// varyingLabelsSampleIterator reports a fixed StreamHash but a different Labels() on
+// each successive sample, mimicking structured metadata or label_format.
+type varyingLabelsSampleIterator struct {
+	streamHash uint64
+	labels     []string
+	i          int
+}
+
+func (it *varyingLabelsSampleIterator) Next() bool {
+	it.i++
+	return it.i <= len(it.labels)
+}
+func (it *varyingLabelsSampleIterator) Err() error          { return nil }
+func (it *varyingLabelsSampleIterator) At() logproto.Sample { return logproto.Sample{} }
+func (it *varyingLabelsSampleIterator) Close() error        { return nil }
+func (it *varyingLabelsSampleIterator) Labels() string      { return it.labels[it.i-1] }
+func (it *varyingLabelsSampleIterator) StreamHash() uint64  { return it.streamHash }
 
 func TestMultiTenantQuerier_SelectSamples_ClosesOpenedIterators(t *testing.T) {
 	selector := `count_over_time({foo="bar"}[1m]) > 10`
