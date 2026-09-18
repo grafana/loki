@@ -4,12 +4,14 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"strings"
 
 	"github.com/ViaQ/logerr/v2/kverrors"
 	"github.com/go-logr/logr"
 	corev1 "k8s.io/api/core/v1"
 	rbacv1 "k8s.io/api/rbac/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -163,6 +165,23 @@ func CreateOrUpdateLokiStack(
 
 	ll.Info("manifests built", "count", len(objects))
 
+	// Check for ownership conflicts before creating or updating resources
+	conflicts, err := checkResourceOwnership(ctx, ll, k, req, &stack, objects)
+	if err != nil {
+		return nil, err
+	}
+	if len(conflicts) > 0 {
+		conflictList := strings.Join(conflicts, "; ")
+		return nil, &status.DegradedError{
+			Message: fmt.Sprintf(
+				"Resource ownership conflict detected: %s. Delete the conflicting resource or rename to resolve.",
+				conflictList,
+			),
+			Reason:  lokiv1.ReasonResourceOwnershipConflict,
+			Requeue: true,
+		}
+	}
+
 	// The status is updated before the objects are actually created to
 	// avoid the scenario in which the configmap is successfully created or
 	// updated and another resource is not. This would cause the status to
@@ -229,6 +248,51 @@ func CreateOrUpdateLokiStack(
 		NetworkPolicies:            networkPolicyRuleSet,
 		NetworkPolicyObjStorePorts: opts.NetworkPolicyObjStorePorts,
 	}, nil
+}
+
+// checkResourceOwnership checks if any resources exist and are owned by other controllers
+func checkResourceOwnership(
+	ctx context.Context,
+	ll logr.Logger,
+	k k8s.Client,
+	req ctrl.Request,
+	stack *lokiv1.LokiStack,
+	objects []client.Object,
+) ([]string, error) {
+	var conflicts []string
+
+	// Check each namespaced resource in the manifests
+	for _, obj := range objects {
+		if !isNamespacedResource(obj) {
+			continue
+		}
+		obj.SetNamespace(req.Namespace)
+		kind := obj.GetObjectKind().GroupVersionKind().Kind
+		existing := obj.DeepCopyObject().(client.Object)
+		err := k.Get(ctx, client.ObjectKeyFromObject(obj), existing)
+		if err != nil {
+			if !apierrors.IsNotFound(err) {
+				// Return non-NotFound errors (network, permissions, etc.)
+				// NotFound is expected when resource doesn't exist yet
+				return conflicts, err
+			}
+			// Resource doesn't exist, no conflict possible
+			continue
+		}
+
+		// Resource exists - check if it's owned by a different controller
+		existingOwner := metav1.GetControllerOf(existing)
+		if existingOwner != nil && existingOwner.UID != stack.UID {
+			resourceName := fmt.Sprintf("%s/%s", kind, obj.GetName())
+			ll.Error(nil, "resource exists and is owned by a different controller",
+				"resource", resourceName,
+				"namespace", req.Namespace,
+				"owner", existingOwner.Name)
+			conflicts = append(conflicts, resourceName)
+		}
+	}
+
+	return conflicts, nil
 }
 
 func dependentAnnotations(ctx context.Context, k k8s.Client, obj client.Object) (map[string]string, error) {
