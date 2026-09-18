@@ -1803,7 +1803,7 @@ go.opentelemetry.io/collector/pdata/plog/plogotlp
 go.opentelemetry.io/collector/pdata/pmetric
 go.opentelemetry.io/collector/pdata/pmetric/pmetricotlp
 go.opentelemetry.io/collector/pdata/ptrace
-# go.opentelemetry.io/collector/pdata/pprofile v0.160.0
+# go.opentelemetry.io/collector/pdata/pprofile v0.161.0
 ## explicit; go 1.26.0
 go.opentelemetry.io/collector/pdata/pprofile
 # go.opentelemetry.io/collector/pipeline v1.66.0
