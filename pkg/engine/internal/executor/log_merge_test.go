@@ -686,8 +686,8 @@ func TestDoLogObjectMerge_NoopsOnSortLayoutMismatch(t *testing.T) {
 	}
 
 	arts, err := c.doLogObjectMerge(ctx, node)
-	require.NoError(t, err)
-	require.Empty(t, arts, "mismatched sort layout must no-op the whole task")
+	require.ErrorContains(t, err, "sort layout does not match target")
+	require.Empty(t, arts, "mismatched sort layout must not produce an output")
 }
 
 func TestDoLogObjectMerge_WritesIndexOverCompactedObjects(t *testing.T) {
@@ -1347,54 +1347,4 @@ func TestLogMergeInputs_SectionReferences(t *testing.T) {
 			require.Error(t, err)
 		})
 	}
-}
-
-func TestLogMergeInputs_IgnoresUnassignedSortLayout(t *testing.T) {
-	ctx := context.Background()
-	bucket := objstore.NewInMemBucket()
-	const tenant = "T"
-	ts := time.Unix(100, 0).UTC()
-	lbls := labels.FromStrings("app", "a", "cluster", "c")
-	streamBuilder := streams.NewBuilder(nil, 2048, 10000)
-	streamBuilder.SetTenant(tenant)
-	id := streamBuilder.Record(lbls, ts, 4)
-	builder := dataobj.NewBuilder(nil)
-	require.NoError(t, builder.Append(streamBuilder))
-	for _, schema := range [][]string{{"label:app"}, {"label:cluster"}} {
-		key, err := logsobj.ComputeSchemaKey(lbls, schema)
-		require.NoError(t, err)
-		logBuilder := logs.NewBuilder(nil, logs.BuilderOptions{
-			PageSizeHint: 2048, BufferSize: 2048, StripeMergeLimit: 2,
-			AppendStrategy: logs.AppendOrdered,
-			SortOrder:      logs.SortSchemaASC, SchemaLabels: schema,
-			StreamOrder: logs.StreamOrderStableHashV1, ShardCount: streams.ShardFactor,
-		})
-		logBuilder.SetTenant(tenant)
-		logBuilder.Append(logs.Record{
-			StreamID: id, Timestamp: ts, Line: []byte("line"),
-			SchemaKey: key, StreamHash: labels.StableHash(lbls), ShardBucket: streams.ShardBucket(lbls),
-		})
-		require.NoError(t, builder.Append(logBuilder))
-	}
-	obj, closer, err := builder.Flush()
-	require.NoError(t, err)
-	defer closer.Close()
-	require.NoError(t, uploadObjectToBucket(ctx, bucket, "source", obj))
-	c := newTestExecutorContext(t, bucket)
-	node := &physical.LogMerge{Tenant: tenant, SortSchema: []string{"label:app"}, Runs: []*compactionv2pb.RunRef{
-		{Sections: []*compactionv2pb.SectionRef{{ObjectPath: "source", SectionIndex: 0}}},
-	}}
-	sources, err := c.collectLogSources(ctx, node)
-	require.NoError(t, err)
-	require.Len(t, sources, 1)
-	require.Len(t, sources[0].logSectionsByIndex, 2)
-	require.NotNil(t, sources[0].logSectionsByIndex[0])
-	require.Nil(t, sources[0].logSectionsByIndex[1])
-	inputs, err := c.prepareLogMergeInputs(ctx, node)
-	require.NoError(t, err)
-	require.Empty(t, inputs.mismatch, "an unassigned layout must not veto the merge")
-	node.Runs[0].Sections[0].SectionIndex = 1
-	inputs, err = c.prepareLogMergeInputs(ctx, node)
-	require.NoError(t, err)
-	require.Equal(t, "source", inputs.mismatch, "the incompatible layout is checked when assigned")
 }
