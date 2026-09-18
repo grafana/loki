@@ -21,6 +21,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/logql"
 	"github.com/grafana/loki/v3/pkg/logql/log"
 	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
+	"github.com/grafana/loki/v3/pkg/querier/astmapper"
 	"github.com/grafana/loki/v3/pkg/querier/testutil"
 	"github.com/grafana/loki/v3/pkg/storage/chunk"
 	"github.com/grafana/loki/v3/pkg/storage/config"
@@ -2085,16 +2086,16 @@ func unsafeGetBytes(s string) []byte {
 func TestRemoveMatchersByName(t *testing.T) {
 	a := labels.MustNewMatcher(labels.MatchEqual, "a", "1")
 	b := labels.MustNewMatcher(labels.MatchEqual, "__name__", "logs")
-	c := labels.MustNewMatcher(labels.MatchEqual, "__cortex_shard__", "0_of_1")
+	c := labels.MustNewMatcher(labels.MatchEqual, astmapper.ShardLabel, "0_of_1")
 	d := labels.MustNewMatcher(labels.MatchEqual, "d", "2")
 	in := []*labels.Matcher{a, b, c, d}
 
-	first := removeMatchersByName(in, "__name__", "__cortex_shard__")
+	first := removeMatchersByName(in, "__name__", astmapper.ShardLabel)
 	require.Equal(t, []*labels.Matcher{a, d}, first)
 
 	// Calling it again with the same input slice and names must return the same result: the
 	// first call must not have mutated in.
-	second := removeMatchersByName(in, "__name__", "__cortex_shard__")
+	second := removeMatchersByName(in, "__name__", astmapper.ShardLabel)
 	require.Equal(t, first, second)
 	require.Equal(t, []*labels.Matcher{a, b, c, d}, in, "input slice must be unmodified")
 }

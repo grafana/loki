@@ -106,8 +106,8 @@ func newStreamFirstSampleBatchIterator(
 	}, nil
 }
 
-// lazyStreamFirstSampleIterator concatenates per-stream sample iterators, built lazily via
-// newTimestampFirstSampleBatchIterator, so the overall output is stream-first. The preloader
+// lazyStreamFirstSampleIterator concatenates per-stream sample iterators, with each stream built
+// lazily via newTimestampFirstSampleBatchIterator, so the overall output is stream-first. The preloader
 // fetches chunks ahead of the consumer. The consumer builds a stream's iterator only once that
 // stream's chunks are preloaded, so decoding never triggers a foreground fetch.
 type lazyStreamFirstSampleIterator struct {
@@ -136,6 +136,10 @@ type lazyStreamFirstSampleIterator struct {
 	idx         int
 	cur         iter.SampleIterator
 	err         error
+
+	// closeErrs collects every per-stream Close error: from a stream Next already moved past,
+	// and from the stream still open when Close is called.
+	closeErrs util.MultiError
 }
 
 func (it *lazyStreamFirstSampleIterator) Next() bool {
@@ -152,19 +156,16 @@ func (it *lazyStreamFirstSampleIterator) Next() bool {
 			}
 
 			// Err first: it also reports a canceled context, which
-			// timestampFirstSampleBatchIterator.Close does not. Fall back to Close's own return
-			// only when Err saw nothing, since Close can still fail on a sub-iterator Next never
-			// reached.
-			it.err = it.cur.Err()
+			// timestampFirstSampleBatchIterator.Close does not.
+			itErr := it.cur.Err()
 			closeErr := it.cur.Close()
-			if it.err == nil {
-				it.err = closeErr
-			} else if closeErr != nil {
-				// it.err already reports the real cause. Log this one instead of dropping it, so
-				// a genuine close-time failure is not lost just because it lost the race to be
-				// the error Err() reports.
-				util.LogErrorWithContext(it.ctx, "closing stream-first per-stream sample iterator", func() error { return closeErr })
+
+			// Some implementations return their stored read error from Close too. Skip it here
+			// so it is not counted twice, once as the read error and once as a close error.
+			if closeErr != nil && closeErr != itErr {
+				it.closeErrs.Add(closeErr)
 			}
+			it.err = itErr
 			it.releaseStream(it.idx)
 			it.cur = nil
 			if it.err != nil {
@@ -278,18 +279,17 @@ func (it *lazyStreamFirstSampleIterator) Err() error {
 // Close must not run concurrently with an active Next call. To interrupt a Next call blocked
 // on the preloader from another goroutine, cancel the iterator context instead.
 //
-// Close returns the current stream's own close error, not Err. A caller that stops reading
-// early because of a real error already has it from Err.
+// Close returns every per-stream close error collected so far, from this call and from every
+// close Next already ran. It never returns a read error: check Err for that.
 func (it *lazyStreamFirstSampleIterator) Close() error {
 	it.preloader.Close()
 
-	var err error
 	if it.cur != nil {
 		// Close the current iterator. It waits for its own sub-iterator's goroutine to stop,
 		// but that is normally quick: waitUntilFetched already guaranteed this stream's chunks are
 		// fetched before cur ever existed, so cur's own fetch calls have nothing real left to do.
-		err = it.cur.Close()
+		it.closeErrs.Add(it.cur.Close())
 		it.cur = nil
 	}
-	return err
+	return util.UnwrapMultiError(it.closeErrs)
 }

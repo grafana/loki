@@ -241,7 +241,7 @@ func BenchmarkLokiStore_SelectSamples(b *testing.B) {
 		ctx := user.InjectOrgID(context.Background(), "fake")
 
 		b.ReportAllocs()
-		for i := 0; i < b.N; i++ {
+		for b.Loop() {
 			st := &LokiStore{
 				chunkMetrics: NilMetrics,
 				cfg:          Config{MaxChunkBatchSize: 50, MaxParallelGetChunk: 150},
@@ -437,10 +437,18 @@ func TestLazyStreamFirstSampleIterator(t *testing.T) {
 			newLazyChunk(chunkfmt, headfmt, mkStream("a", 1, 2, 3)),
 			newLazyChunk(chunkfmt, headfmt, mkStream("a", 4, 5, 6)),
 		}
+
+		var batches int
+		fetch := func(ctx context.Context, s config.SchemaConfig, cs []*LazyChunk) error {
+			batches++
+			return fetchLazyChunks(ctx, s, cs)
+		}
+
 		// batchSize exceeds the chunk count, so it all fits in one prefetch batch.
-		it, err := streamFirst(context.Background(), chunks, 10, 1, fetchLazyChunks)
+		it, err := streamFirst(context.Background(), chunks, 10, 1, fetch)
 		require.NoError(t, err)
 		require.Equal(t, millisToNanos(1, 2, 3, 4, 5, 6), drainTimestamps(t, it))
+		require.Equal(t, 1, batches, "batchSize exceeds the chunk count, so it all must fit in one prefetch batch")
 	})
 
 	t.Run("returns the context error when canceled while waiting for the preloader", func(t *testing.T) {
@@ -621,16 +629,15 @@ func TestLazyStreamFirstSampleIterator_ClosesPreloaderBeforeCur(t *testing.T) {
 	require.NoError(t, requireReceive(t, closeDone, "Close to return"))
 }
 
-// TestLazyStreamFirstSampleIterator_NextPropagatesCurCloseErrorOnCleanExhaustion verifies Next
-// folds cur's Close error into it.err on a clean stream-to-stream transition, not just in the
-// standalone Close method.
-func TestLazyStreamFirstSampleIterator_NextPropagatesCurCloseErrorOnCleanExhaustion(t *testing.T) {
+// TestLazyStreamFirstSampleIterator_NextKeepsCurCloseErrorSeparateFromErr verifies a close error
+// hit while Next rotates past a cleanly exhausted stream surfaces only through Close, not Err,
+// the same separation the standalone Close method keeps.
+func TestLazyStreamFirstSampleIterator_NextKeepsCurCloseErrorSeparateFromErr(t *testing.T) {
 	defer goleak.VerifyNone(t, goleak.IgnoreCurrent())
 
 	batcher := newStreamFirstChunkBatcher(nil, 1)
 	loader := newStreamFirstBatchLoader(config.SchemaConfig{}, NilMetrics, fetchLazyChunks)
 	preloader := newStreamFirstChunkPreloader(context.Background(), batcher, loader, 1)
-	defer preloader.Close()
 
 	closeBoom := errors.New("cur close failed")
 	it := &lazyStreamFirstSampleIterator{
@@ -641,7 +648,8 @@ func TestLazyStreamFirstSampleIterator_NextPropagatesCurCloseErrorOnCleanExhaust
 	}
 
 	require.False(t, it.Next())
-	require.ErrorIs(t, it.Err(), closeBoom)
+	require.NoError(t, it.Err(), "a close-time error must not leak into Err")
+	require.ErrorIs(t, it.Close(), closeBoom)
 }
 
 // TestLazyStreamFirstSampleIterator_NextStaysFalseAfterError verifies a repeat call after an
