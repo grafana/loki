@@ -28,6 +28,9 @@ type TenantSet struct {
 // ForTenant fails when the object holds more than one streams section for the tenant: a
 // data object carries at most one, so reading the first alone would silently drop the
 // streams the other holds.
+//
+// A tenant with logs sections but no streams section does not fail: the returned
+// [TenantSet.Streams] is nil.
 func ForTenant(all dataobj.Sections, tenant string) (TenantSet, error) {
 	out := TenantSet{Logs: make(map[int]*dataobj.Section)}
 

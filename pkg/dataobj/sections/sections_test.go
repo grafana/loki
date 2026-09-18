@@ -50,8 +50,8 @@ func TestForTenant(t *testing.T) {
 	}
 
 	t.Run("the logs index counts every tenant's sections", func(t *testing.T) {
-		// Tenant b's only logs section is the third in the object, so it is index 2 even
-		// though it is b's first. A metastore descriptor for it carries 2.
+		// Tenant b's only logs section is the second logs section in the object, so it is
+		// index 1 even though it is b's first. A metastore descriptor for it carries 1.
 		a1, b0, a2 := logsSection("a"), logsSection("b"), logsSection("a")
 		all := dataobj.Sections{streamsSection("a"), a1, b0, a2, streamsSection("b")}
 
@@ -73,7 +73,7 @@ func TestForTenant(t *testing.T) {
 		require.Empty(t, got.Logs)
 	})
 
-	t.Run("a tenant with logs but no streams section", func(t *testing.T) {
+	t.Run("a tenant with logs but no streams section does not fail", func(t *testing.T) {
 		got, err := sections.ForTenant(dataobj.Sections{logsSection("a")}, "a")
 		require.NoError(t, err)
 		require.Nil(t, got.Streams)
