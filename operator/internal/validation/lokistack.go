@@ -277,7 +277,7 @@ func (v *LokiStackValidator) validateReplicationSpec(stack lokiv1.LokiStackSpec)
 
 	var allErrs field.ErrorList
 
-	// nolint:staticcheck
+	//nolint:staticcheck
 	if stack.Replication != nil && stack.ReplicationFactor > 0 {
 		allErrs = append(allErrs, field.Invalid(
 			field.NewPath("spec", "replicationFactor"),
