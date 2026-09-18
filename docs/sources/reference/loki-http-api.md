@@ -884,6 +884,11 @@ It is an approximation with the following caveats:
 - It does not include data from the ingesters.
 - It is a probabilistic technique.
 - Streams/chunks which span multiple period configurations may be counted twice.
+- It is not deletion-aware. Log and metric queries apply the filters from pending and
+  recently processed [delete requests](#request-log-deletion) at query time, but this
+  endpoint reports what the index holds, so entries that a delete request has already
+  removed from query results stay counted here until the compactor has rewritten the
+  index and the pre-rewrite index files have aged out.
 
 These make it generally more helpful for larger queries.
 It can be used for better understanding the throughput requirements and data topology for a list of matchers over a period of time.
@@ -918,6 +923,15 @@ URL query parameters:
 - `aggregateBy`: Whether to aggregate into labels or label-value pairs. This parameter is optional, the default is label-value pairs.
 
 You can URL-encode these parameters directly in the request body by using the POST method and `Content-Type: application/x-www-form-urlencoded` header. This is useful when specifying a large or dynamic number of stream selectors that may breach server-side URL character limits.
+
+Like [`index/stats`](#query-log-statistics), these endpoints report volume from the index
+and are not deletion-aware. After a [delete request](#request-log-deletion) is processed,
+log and metric queries over the same selector are exact immediately, while volume can stay
+inflated for the affected streams until the compactor has rewritten the index and the
+pre-rewrite index files have aged out. Volume also includes the ingesters' not-yet-flushed
+chunks, which are counted before any delete filtering applies to them. Do not compose these
+endpoints with the delete API for exact usage accounting; derive that from a metric query
+such as `bytes_over_time` instead.
 
 ## Patterns detection
 
