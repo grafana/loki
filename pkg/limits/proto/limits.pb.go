@@ -612,8 +612,13 @@ func (m *CheckLimitsAndShardResponse) GetResults() []*StreamShardResult {
 
 type StreamShardResult struct {
 	StreamHash uint64 `protobuf:"varint,1,opt,name=streamHash,proto3" json:"streamHash,omitempty"`
-	// The number of shards the distributor should create for this stream on
-	// this push. 0 and 1 both mean no sharding is needed
+	// The total number of physical streams the distributor should write for
+	// this logical stream on this push, matching the semantics of the
+	// distributor's own rate-store shard count, so 1 means no sharding is
+	// needed. At least 1 when the stream was accepted. 0 is valid only
+	// together with rejectReason, as a rejected stream is not written at all;
+	// a result with neither carries no decision and the frontend replaces it
+	// with one shard.
 	Shards uint32 `protobuf:"varint,2,opt,name=shards,proto3" json:"shards,omitempty"`
 	// Non-empty when the stream was rejected (only possible for a
 	// brand-new stream with no room left in the tenant's stream-count
