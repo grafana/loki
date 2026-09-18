@@ -85,7 +85,7 @@ Key files:
 - `groups.go` - kfake handler for ConsumerGroupHeartbeat, member/epoch management, assignment computation
 - `pkg/kgo/consumer_group_848.go` - kgo client-side 848 lifecycle
 
-Test helpers (`newClient` in behavior_test.go and helpers_test.go) automatically set the opt-in context. Direct `kgo.NewClient` calls with `kgo.ConsumerGroup` must add `kgo.WithContext(context.WithValue(ctx, "opt_in_kafka_next_gen_balancer_beta", true))` manually. The context.WithValue line needs `//nolint:revive,staticcheck` to pass lint.
+Test helpers (`newClient` in behavior_test.go and helpers_test.go) automatically set the opt-in context. Direct `kgo.NewClient` calls with `kgo.ConsumerGroup` must add `kgo.WithContext(context.WithValue(ctx, "opt_in_kafka_next_gen_balancer_beta", true))` manually. No `//nolint` is needed: the lint config disables staticcheck's SA1029 globally and excludes revive's context-keys-type in `_test.go`, so the plain string key passes lint on its own.
 
 KIP-848 assignors: uniform (default, maps to kgo sticky balancer) and range.
 

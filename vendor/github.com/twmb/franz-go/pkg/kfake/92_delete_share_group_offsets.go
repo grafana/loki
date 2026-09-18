@@ -25,8 +25,6 @@ func (c *Cluster) handleDeleteShareGroupOffsets(creq *clientReq) (kmsg.Response,
 		return nil, err
 	}
 
-	// Coordinator check: DeleteShareGroupOffsets is routed to the
-	// share coordinator.
 	if c.coordinator(req.GroupID).node != creq.cc.b.node {
 		resp.ErrorCode = kerr.NotCoordinator.Code
 		return resp, nil

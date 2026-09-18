@@ -91,6 +91,15 @@ func (c *Cluster) handleListOffsets(creq *clientReq) (kmsg.Response, error) {
 			switch rp.Timestamp {
 			case -2:
 				sp.Offset = pd.logStartOffset
+				// The epoch accompanying a listed offset is the epoch
+				// of the record at that offset (a real broker answers
+				// from its leader-epoch cache), not the partition's
+				// current epoch: a freshly reset consumer must not
+				// believe it consumed an epoch above the historical
+				// records it is about to read.
+				if segIdx, metaIdx, ok, atEnd := pd.searchOffset(pd.logStartOffset); ok && !atEnd {
+					sp.LeaderEpoch = pd.segments[segIdx].index[metaIdx].epoch
+				}
 			case -1:
 				if req.IsolationLevel == 1 {
 					sp.Offset = pd.lastStableOffset
@@ -106,6 +115,7 @@ func (c *Cluster) handleListOffsets(creq *clientReq) (kmsg.Response, error) {
 				} else {
 					sp.Offset = m.firstOffset + int64(m.lastOffsetDelta)
 					sp.Timestamp = m.maxTimestamp
+					sp.LeaderEpoch = m.epoch
 				}
 			default:
 				// Two-level binary search for the first batch whose maxTimestamp >= requested timestamp.
@@ -115,6 +125,7 @@ func (c *Cluster) handleListOffsets(creq *clientReq) (kmsg.Response, error) {
 				} else {
 					sp.Offset = meta.firstOffset
 					sp.Timestamp = meta.firstTimestamp
+					sp.LeaderEpoch = meta.epoch
 					// Read the full batch to iterate records for precise timestamp
 					batch, err := c.readBatchFull(pd, segIdx, meta)
 					if err != nil {
