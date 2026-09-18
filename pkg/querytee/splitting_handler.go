@@ -19,7 +19,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/lokifrontend/frontend"
 	"github.com/grafana/loki/v3/pkg/querier/queryrange"
 	"github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase"
-	"github.com/grafana/loki/v3/pkg/querytee/goldfish"
 	"github.com/grafana/loki/v3/pkg/util/server"
 )
 
@@ -27,9 +26,7 @@ import (
 type SplittingHandlerConfig struct {
 	Codec                         queryrangebase.Codec
 	FanOutHandler                 queryrangebase.Handler
-	GoldfishManager               goldfish.Manager
 	V1Backend                     *ProxyBackend
-	SkipFanoutWhenNotSampling     bool
 	RoutingMode                   RoutingMode
 	SplitStart                    time.Time
 	SplitLag                      time.Duration
@@ -40,8 +37,6 @@ type SplittingHandlerConfig struct {
 type SplittingHandler struct {
 	codec                         queryrangebase.Codec
 	fanOutHandler                 queryrangebase.Handler
-	goldfishManager               goldfish.Manager
-	skipFanoutWhenNotSampling     bool
 	routingMode                   RoutingMode
 	splitLag                      time.Duration
 	logger                        log.Logger
@@ -86,12 +81,10 @@ func NewSplittingHandler(cfg SplittingHandlerConfig, logger log.Logger) (http.Ha
 	splittingHandler := &SplittingHandler{
 		codec:                         cfg.Codec,
 		fanOutHandler:                 cfg.FanOutHandler,
-		goldfishManager:               cfg.GoldfishManager,
 		logger:                        logger,
 		logsQueryHandler:              logsQueryHandler,
 		metricsQueryHandler:           metricsQueryHandler,
 		v1Handler:                     v1RoundTrip,
-		skipFanoutWhenNotSampling:     cfg.SkipFanoutWhenNotSampling,
 		routingMode:                   cfg.RoutingMode,
 		splitLag:                      cfg.SplitLag,
 		addRoutingDecisionsToWarnings: cfg.AddRoutingDecisionsToWarnings,
@@ -162,8 +155,8 @@ func (f *splitHandlerFactory) createSplittingHandler(forMetricQuery bool, v1Hand
 // ServeHTTP implements http.Handler interface to serve queries that can be split.
 //
 // Routing behavior depends on the routing mode:
-//   - v2-preferred/race: Always split when splitLag > 0 (sampling only affects goldfish comparison).
-//   - v1-preferred: Skip fanout when not sampling, only split for goldfish comparison.
+//   - v2-preferred/race: Always split when splitLag > 0.
+//   - v1-preferred: Route to v1 only.
 func (f *SplittingHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	_, ctx, err := user.ExtractOrgIDFromHTTPRequest(r)
 	if err != nil {
@@ -192,11 +185,10 @@ func (f *SplittingHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	var resp queryrangebase.Response
 	tenants, err := tenant.TenantIDs(ctx)
 	if err != nil {
-		level.Warn(f.logger).Log("msg", "failed to extract tenant IDs, will skip sampling evaluation", "err", err)
+		level.Warn(f.logger).Log("msg", "failed to extract tenant IDs", "err", err)
 	}
 
 	// Multi-tenant queries must always go to v1 only (v2 doesn't support them).
-	// Multi-tenant path returns before sampling, so writeResponse correctly won't set the header.
 	if isMultiTenant(tenants) {
 		level.Info(f.logger).Log("msg", "multi-tenant query detected, routing to v1 only", "tenants", len(tenants))
 		resp, err = f.v1Handler.Do(ctx, req)
@@ -220,31 +212,10 @@ func (f *SplittingHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Determine sampling decision for this request.
-	var sampled bool
-	var correlationID string
-	if err == nil {
-		sampled, correlationID = f.shouldSample(tenants, r)
-	}
-
-	// Store the sampling decision in context so downstream handlers (e.g. FanOutHandler)
-	// can use it without re-sampling independently.
-	ctx = goldfish.ContextWithSamplingDecision(ctx, goldfish.SamplingDecision{Sampled: sampled, CorrelationID: correlationID})
-
-	// Routing decision logic:
-	// - v2-preferred/race: Always split when splitLag > 0 (sampling only affects goldfish comparison)
-	// - v1-preferred: Skip fanout when not sampling, only split for goldfish comparison
-	useDefault := f.skipFanoutWhenNotSampling && !sampled && f.routingMode == RoutingModeV1Preferred
 	splittingEnabled := f.splitLag > 0
-	level.Debug(f.logger).Log("msg", "routing decision", "useDefault", useDefault, "splittingEnabled", splittingEnabled)
+	level.Debug(f.logger).Log("msg", "routing decision", "splittingEnabled", splittingEnabled)
 
-	if useDefault {
-		// Not sampling and v1-preferred: go directly to v1 backend
-		resp, err = f.v1Handler.Do(ctx, req)
-		if resp != nil && f.addRoutingDecisionsToWarnings {
-			addWarningToResponse(resp, "query was not split and was routed to v1 backend only")
-		}
-	} else if splittingEnabled {
+	if splittingEnabled {
 		// Splitting is enabled: use engine router to split queries by time range between v1 and v2 backends
 		resp, err = f.serveSplits(ctx, req)
 	} else {
@@ -260,10 +231,6 @@ func (f *SplittingHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 // writeResponse handles encoding and writing the response back to the HTTP response writer.
 func (f *SplittingHandler) writeResponse(ctx context.Context, r *http.Request, w http.ResponseWriter, resp queryrangebase.Response, err error) {
-	if decision, ok := goldfish.SamplingDecisionFromContext(ctx); ok && decision.Sampled && decision.CorrelationID != "" {
-		w.Header().Set(goldfish.GoldfishCorrelationIDHeader, decision.CorrelationID)
-	}
-
 	if err != nil {
 		switch typedResp := resp.(type) {
 		case *NonDecodableResponse:
@@ -291,11 +258,6 @@ func (f *SplittingHandler) writeResponse(ctx context.Context, r *http.Request, w
 		}
 	}
 
-	// Re-assert the goldfish header in case the encoded response contained a same-name header.
-	if decision, ok := goldfish.SamplingDecisionFromContext(ctx); ok && decision.Sampled && decision.CorrelationID != "" {
-		w.Header().Set(goldfish.GoldfishCorrelationIDHeader, decision.CorrelationID)
-	}
-
 	// Write status code
 	w.WriteHeader(httpResp.StatusCode)
 
@@ -303,28 +265,6 @@ func (f *SplittingHandler) writeResponse(ctx context.Context, r *http.Request, w
 	if _, err := io.Copy(w, httpResp.Body); err != nil {
 		level.Warn(f.logger).Log("msg", "unable to write response body", "err", err)
 	}
-}
-
-// shouldSample determines if a query should be sampled for goldfish comparison.
-// Returns (true, correlationID) for the first sampled tenant, or (false, "") if none.
-func (f *SplittingHandler) shouldSample(tenants []string, httpReq *http.Request) (bool, string) {
-	if f.goldfishManager == nil {
-		return false, ""
-	}
-
-	for _, tenant := range tenants {
-		sampled, correlationID := f.goldfishManager.ShouldSample(tenant)
-		if sampled {
-			level.Debug(f.logger).Log(
-				"msg", "Goldfish sampling decision",
-				"tenant", tenant,
-				"sampled", true,
-				"path", httpReq.URL.Path)
-			return true, correlationID
-		}
-	}
-
-	return false, ""
 }
 
 func (f *SplittingHandler) serveSplits(ctx context.Context, req queryrangebase.Request) (queryrangebase.Response, error) {
