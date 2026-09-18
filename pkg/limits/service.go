@@ -35,6 +35,32 @@ const (
 	partitionReadinessWaitAssignPeriod = 30 * time.Second
 )
 
+type metrics struct {
+	streamEvictionsTotal       *prometheus.CounterVec
+	streamShardEvictionsTotal  *prometheus.CounterVec
+	streamShardsDiscardedTotal *prometheus.CounterVec
+}
+
+func newMetrics(reg prometheus.Registerer) *metrics {
+	return &metrics{
+		streamEvictionsTotal: promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
+			Namespace: constants.Loki,
+			Name:      "ingest_limits_stream_evictions_total",
+			Help:      "The total number of streams evicted due to age per tenant. This is not a global total, as tenants can be sharded over multiple pods.",
+		}, []string{"tenant"}),
+		streamShardEvictionsTotal: promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
+			Namespace: constants.Loki,
+			Name:      "ingest_limits_stream_shard_evictions_total",
+			Help:      "The total number of streams tracked for stream sharding that were evicted due to age per tenant. This is not a global total, as tenants can be sharded over multiple pods.",
+		}, []string{"tenant"}),
+		streamShardsDiscardedTotal: promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
+			Namespace: constants.Loki,
+			Name:      "ingest_limits_stream_shard_streams_discarded_total",
+			Help:      "The total number of streams discarded by CheckLimitsAndShard because their partition is not assigned to this instance.",
+		}, []string{"partition"}),
+	}
+}
+
 // Service is a service that manages stream metadata limits.
 type Service struct {
 	services.Service
@@ -53,10 +79,7 @@ type Service struct {
 	streamShards        *streamShardStore
 	logger              log.Logger
 
-	// Metrics.
-	streamEvictionsTotal       *prometheus.CounterVec
-	streamShardEvictionsTotal  *prometheus.CounterVec
-	streamShardsDiscardedTotal *prometheus.CounterVec
+	metrics *metrics
 
 	// Readiness check, see [Service.CheckReady].
 	partitionReadinessPassed          bool
@@ -72,25 +95,11 @@ type Service struct {
 func New(cfg Config, limits Limits, logger log.Logger, reg prometheus.Registerer) (*Service, error) {
 	var err error
 	s := &Service{
-		cfg:    cfg,
-		limits: limits,
-		logger: logger,
-		streamEvictionsTotal: promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
-			Namespace: constants.Loki,
-			Name:      "ingest_limits_stream_evictions_total",
-			Help:      "The total number of streams evicted due to age per tenant. This is not a global total, as tenants can be sharded over multiple pods.",
-		}, []string{"tenant"}),
-		streamShardEvictionsTotal: promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
-			Namespace: constants.Loki,
-			Name:      "ingest_limits_stream_shard_evictions_total",
-			Help:      "The total number of streams tracked for stream sharding that were evicted due to age per tenant. This is not a global total, as tenants can be sharded over multiple pods.",
-		}, []string{"tenant"}),
-		streamShardsDiscardedTotal: promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
-			Namespace: constants.Loki,
-			Name:      "ingest_limits_stream_shard_streams_discarded_total",
-			Help:      "The total number of streams discarded by CheckLimitsAndShard because their partition is not assigned to this instance.",
-		}, []string{"partition"}),
-		clock: quartz.NewReal(),
+		cfg:     cfg,
+		limits:  limits,
+		logger:  logger,
+		metrics: newMetrics(reg),
+		clock:   quartz.NewReal(),
 	}
 	s.partitionManager, err = newPartitionManager(reg)
 	if err != nil {
@@ -222,7 +231,7 @@ func (s *Service) CheckLimitsAndShard(
 	for _, stream := range streams {
 		partition := int32(stream.StreamHash % uint64(s.cfg.NumPartitions))
 		if !s.partitionManager.Has(partition) {
-			s.streamShardsDiscardedTotal.WithLabelValues(strconv.Itoa(int(partition))).Inc()
+			s.metrics.streamShardsDiscardedTotal.WithLabelValues(strconv.Itoa(int(partition))).Inc()
 			results = append(results, &proto.StreamShardResult{
 				StreamHash: stream.StreamHash,
 				Shards:     1,
@@ -377,10 +386,10 @@ func (s *Service) evictOldStreamsPeriodic(ctx context.Context) {
 		case <-ticker.C:
 			evicted := s.usage.Evict()
 			for tenant, numEvicted := range evicted {
-				s.streamEvictionsTotal.WithLabelValues(tenant).Add(float64(numEvicted))
+				s.metrics.streamEvictionsTotal.WithLabelValues(tenant).Add(float64(numEvicted))
 			}
 			for tenant, numEvicted := range s.streamShards.Evict() {
-				s.streamShardEvictionsTotal.WithLabelValues(tenant).Add(float64(numEvicted))
+				s.metrics.streamShardEvictionsTotal.WithLabelValues(tenant).Add(float64(numEvicted))
 			}
 		}
 	}

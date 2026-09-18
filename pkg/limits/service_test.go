@@ -26,11 +26,8 @@ func newTestService(t *testing.T, limits Limits, numPartitions int) *Service {
 		limits:           limits,
 		partitionManager: partitionManager,
 		streamShards:     streamShards,
-		streamShardsDiscardedTotal: prometheus.NewCounterVec(
-			prometheus.CounterOpts{Name: "discarded"},
-			[]string{"partition"},
-		),
-		clock: clock,
+		metrics:          newMetrics(reg),
+		clock:            clock,
 	}
 }
 
