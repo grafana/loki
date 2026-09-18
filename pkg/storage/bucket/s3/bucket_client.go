@@ -16,8 +16,8 @@ const (
 )
 
 // NewBucketClient creates a new S3 bucket client
-func NewBucketClient(cfg Config, name string, logger log.Logger, wrapRT func(http.RoundTripper) http.RoundTripper) (objstore.Bucket, error) {
-	s3Cfg, err := newS3Config(cfg)
+func NewBucketClient(cfg Config, name string, connectionPoolSize int, logger log.Logger, wrapRT func(http.RoundTripper) http.RoundTripper) (objstore.Bucket, error) {
+	s3Cfg, err := newS3Config(cfg, connectionPoolSize)
 	if err != nil {
 		return nil, err
 	}
@@ -26,8 +26,8 @@ func NewBucketClient(cfg Config, name string, logger log.Logger, wrapRT func(htt
 }
 
 // NewBucketReaderClient creates a new S3 bucket client
-func NewBucketReaderClient(cfg Config, name string, logger log.Logger, wrapRT func(http.RoundTripper) http.RoundTripper) (objstore.BucketReader, error) {
-	s3Cfg, err := newS3Config(cfg)
+func NewBucketReaderClient(cfg Config, name string, connectionPoolSize int, logger log.Logger, wrapRT func(http.RoundTripper) http.RoundTripper) (objstore.BucketReader, error) {
+	s3Cfg, err := newS3Config(cfg, connectionPoolSize)
 	if err != nil {
 		return nil, err
 	}
@@ -35,7 +35,7 @@ func NewBucketReaderClient(cfg Config, name string, logger log.Logger, wrapRT fu
 	return s3.NewBucketWithConfig(logger, s3Cfg, name, wrapRT)
 }
 
-func newS3Config(cfg Config) (s3.Config, error) {
+func newS3Config(cfg Config, connectionPoolSize int) (s3.Config, error) {
 	sseCfg, err := cfg.SSE.BuildThanosConfig()
 	if err != nil {
 		return s3.Config{}, err
@@ -45,6 +45,11 @@ func newS3Config(cfg Config) (s3.Config, error) {
 
 	if cfg.StorageClass != "" {
 		putUserMetadata[awsStorageClassHeader] = cfg.StorageClass
+	}
+
+	maxIdleConnsPerHost := cfg.HTTP.MaxIdleConnsPerHost
+	if maxIdleConnsPerHost == 0 {
+		maxIdleConnsPerHost = connectionPoolSize
 	}
 
 	return s3.Config{
@@ -70,7 +75,7 @@ func newS3Config(cfg Config) (s3.Config, error) {
 			TLSHandshakeTimeout:   model.Duration(cfg.HTTP.TLSHandshakeTimeout),
 			ExpectContinueTimeout: model.Duration(cfg.HTTP.ExpectContinueTimeout),
 			MaxIdleConns:          cfg.HTTP.MaxIdleConns,
-			MaxIdleConnsPerHost:   cfg.HTTP.MaxIdleConnsPerHost,
+			MaxIdleConnsPerHost:   maxIdleConnsPerHost,
 			MaxConnsPerHost:       cfg.HTTP.MaxConnsPerHost,
 			Transport:             cfg.HTTP.Transport,
 			TLSConfig: exthttp.TLSConfig{
