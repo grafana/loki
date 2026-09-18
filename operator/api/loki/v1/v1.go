@@ -69,8 +69,8 @@ var (
 	ErrMissingValidStartDate = errors.New("Schema does not contain a valid starting effective date")
 	// ErrSchemaRetroactivelyAdded when a schema has been retroactively added
 	ErrSchemaRetroactivelyAdded = errors.New("Cannot retroactively add schema")
-	// ErrSchemaRetroactivelyRemoved when a schema or schemas has been retroactively removed
-	ErrSchemaRetroactivelyRemoved = errors.New("Cannot retroactively remove schema(s)")
+	// ErrSchemaNotExpired when attempting to remove a schema before its retention period has expired
+	ErrSchemaNotExpired = errors.New("Cannot remove schema. Ensure schema has a successor, global retention is configured, and retention period for the schema being removed has elapsed.")
 	// ErrSchemaRetroactivelyChanged when a schema has been retroactively changed
 	ErrSchemaRetroactivelyChanged = errors.New("Cannot retroactively change schema")
 	// ErrHeaderAuthCredentialsConflict when both Credentials and CredentialsFile are used in a header authentication client.
@@ -106,4 +106,8 @@ var (
 	ErrSummaryAnnotationMissing = errors.New("rule requires annotation: summary")
 	// ErrDescriptionAnnotationMissing indicates that an alerting rule is missing the description annotation
 	ErrDescriptionAnnotationMissing = errors.New("rule requires annotation: description")
+
+	// WarnSchemaRemovalRetentionGap warns users that schema removal validation uses current retention config
+	WarnSchemaRemovalRetentionGap = "Removing a schema that had no retention policy during its active period may leave unreadable data in object storage. " +
+		"Verify that global retention was configured, and the retention period has elapsed. There is a 2-hour grace period to restore the schema if needed."
 )
