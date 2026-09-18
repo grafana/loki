@@ -51,6 +51,7 @@ func (v *LokiStackValidator) ValidateDelete(_ context.Context, _ *lokiv1.LokiSta
 
 func (v *LokiStackValidator) validate(ctx context.Context, stack *lokiv1.LokiStack) (admission.Warnings, error) {
 	var allErrs field.ErrorList
+	var warnings admission.Warnings
 
 	storageStatus := lokiv1.LokiStackStorageStatus{}
 	if stack != nil {
@@ -84,11 +85,16 @@ func (v *LokiStackValidator) validate(ctx context.Context, stack *lokiv1.LokiSta
 		allErrs = append(allErrs, v.ExtendedValidator(ctx, stack)...)
 	}
 
-	if len(allErrs) == 0 {
-		return nil, nil
+	// Only add warning if schema removal will succeed (no validation errors)
+	if len(allErrs) == 0 && schemasRemoved(stack.Spec.Storage.Schemas, storageStatus.Schemas) {
+		warnings = append(warnings, lokiv1.WarnSchemaRemovalRetentionGap)
 	}
 
-	return nil, apierrors.NewInvalid(
+	if len(allErrs) == 0 {
+		return warnings, nil
+	}
+
+	return warnings, apierrors.NewInvalid(
 		schema.GroupKind{Group: "loki.grafana.com", Kind: "LokiStack"},
 		stack.Name,
 		allErrs,
@@ -462,4 +468,20 @@ func getRetentionDays(limits *lokiv1.LimitsSpec) int {
 		}
 	}
 	return maxRetention
+}
+
+// schemasRemoved checks if any schemas from status are missing in the spec
+func schemasRemoved(specSchemas []lokiv1.ObjectStorageSchema, statusSchemas []lokiv1.ObjectStorageSchema) bool {
+	specDates := make(map[lokiv1.StorageSchemaEffectiveDate]bool)
+	for _, schema := range specSchemas {
+		specDates[schema.EffectiveDate] = true
+	}
+
+	for _, schema := range statusSchemas {
+		if !specDates[schema.EffectiveDate] {
+			return true
+		}
+	}
+
+	return false
 }
