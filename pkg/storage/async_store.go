@@ -31,8 +31,8 @@ import (
 
 type IngesterQuerier interface {
 	GetChunkIDs(ctx context.Context, from, through model.Time, matchers ...*labels.Matcher) ([]string, error)
-	Stats(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) (*stats.Stats, error)
-	Volume(ctx context.Context, userID string, from, through model.Time, limit int32, targetLabels []string, aggregateBy string, matchers ...*labels.Matcher) (*logproto.VolumeResponse, error)
+	Stats(ctx context.Context, userID string, from, through model.Time, deletes []*logproto.Delete, matchers ...*labels.Matcher) (*stats.Stats, error)
+	Volume(ctx context.Context, userID string, from, through model.Time, limit int32, targetLabels []string, aggregateBy string, deletes []*logproto.Delete, matchers ...*labels.Matcher) (*logproto.VolumeResponse, error)
 }
 
 type AsyncStoreCfg struct {
@@ -116,7 +116,7 @@ func (a *AsyncStore) GetChunks(ctx context.Context,
 	return a.mergeIngesterAndStoreChunks(userID, storeChunks, fetchers, ingesterChunks)
 }
 
-func (a *AsyncStore) Stats(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) (*stats.Stats, error) {
+func (a *AsyncStore) Stats(ctx context.Context, userID string, from, through model.Time, deletes []*logproto.Delete, matchers ...*labels.Matcher) (*stats.Stats, error) {
 
 	logger := util_log.WithContext(ctx, util_log.Logger)
 	matchersStr := syntax.MatchersString(matchers)
@@ -125,7 +125,7 @@ func (a *AsyncStore) Stats(ctx context.Context, userID string, from, through mod
 
 	if a.shouldQueryIngesters(through, model.Now()) {
 		jobs = append(jobs, f(func() (*stats.Stats, error) {
-			stats, err := a.ingesterQuerier.Stats(ctx, userID, from, through, matchers...)
+			stats, err := a.ingesterQuerier.Stats(ctx, userID, from, through, deletes, matchers...)
 			level.Debug(logger).Log(
 				append(
 					stats.LoggingKeyValues(),
@@ -138,7 +138,7 @@ func (a *AsyncStore) Stats(ctx context.Context, userID string, from, through mod
 		}))
 	}
 	jobs = append(jobs, f(func() (*stats.Stats, error) {
-		stats, err := a.Store.Stats(ctx, userID, from, through, matchers...)
+		stats, err := a.Store.Stats(ctx, userID, from, through, deletes, matchers...)
 		level.Debug(logger).Log(
 			append(
 				stats.LoggingKeyValues(),
@@ -172,7 +172,7 @@ func (a *AsyncStore) Stats(ctx context.Context, userID string, from, through mod
 	return &merged, nil
 }
 
-func (a *AsyncStore) Volume(ctx context.Context, userID string, from, through model.Time, limit int32, targetLabels []string, aggregateBy string, matchers ...*labels.Matcher) (*logproto.VolumeResponse, error) {
+func (a *AsyncStore) Volume(ctx context.Context, userID string, from, through model.Time, limit int32, targetLabels []string, aggregateBy string, deletes []*logproto.Delete, matchers ...*labels.Matcher) (*logproto.VolumeResponse, error) {
 	ctx, sp := tracer.Start(ctx, "AsyncStore.Volume")
 	defer sp.End()
 
@@ -183,7 +183,7 @@ func (a *AsyncStore) Volume(ctx context.Context, userID string, from, through mo
 
 	if a.shouldQueryIngesters(through, model.Now()) {
 		jobs = append(jobs, func() (*logproto.VolumeResponse, error) {
-			vols, err := a.ingesterQuerier.Volume(ctx, userID, from, through, limit, targetLabels, aggregateBy, matchers...)
+			vols, err := a.ingesterQuerier.Volume(ctx, userID, from, through, limit, targetLabels, aggregateBy, deletes, matchers...)
 			level.Debug(logger).Log(
 				"msg", "queried label volumes",
 				"matchers", matchersStr,
@@ -193,7 +193,7 @@ func (a *AsyncStore) Volume(ctx context.Context, userID string, from, through mo
 		})
 	}
 	jobs = append(jobs, func() (*logproto.VolumeResponse, error) {
-		vols, err := a.Store.Volume(ctx, userID, from, through, limit, targetLabels, aggregateBy, matchers...)
+		vols, err := a.Store.Volume(ctx, userID, from, through, limit, targetLabels, aggregateBy, deletes, matchers...)
 		level.Debug(logger).Log(
 			"msg", "queried label volume",
 			"matchers", matchersStr,
@@ -314,7 +314,7 @@ func (a *AsyncStore) GetShards(
 		// store's response with the ingester's stats and .
 		func() error {
 			var err error
-			statsResp, err = a.ingesterQuerier.Stats(ctx, userID, from, through, predicate.Matchers...)
+			statsResp, err = a.ingesterQuerier.Stats(ctx, userID, from, through, nil, predicate.Matchers...)
 			return err
 		},
 	}

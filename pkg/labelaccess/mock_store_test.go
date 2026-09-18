@@ -103,7 +103,7 @@ func (s *mockStore) GetChunkFetcher(_ model.Time) *fetcher.Fetcher {
 	return nil
 }
 
-func (s *mockStore) Stats(_ context.Context, _ string, _, _ model.Time, _ ...*labels.Matcher) (*stats.Stats, error) {
+func (s *mockStore) Stats(_ context.Context, _ string, _, _ model.Time, _ []*logproto.Delete, _ ...*labels.Matcher) (*stats.Stats, error) {
 	return &stats.Stats{
 		Streams: 2,
 		Chunks:  5,
@@ -120,7 +120,7 @@ func (s *mockStore) HasForSeries(_, _ model.Time) (sharding.ForSeries, bool) {
 	return nil, false
 }
 
-func (s *mockStore) Volume(_ context.Context, _ string, _, _ model.Time, limit int32, _ []string, _ string, _ ...*labels.Matcher) (*logproto.VolumeResponse, error) {
+func (s *mockStore) Volume(_ context.Context, _ string, _, _ model.Time, limit int32, _ []string, _ string, _ []*logproto.Delete, _ ...*labels.Matcher) (*logproto.VolumeResponse, error) {
 	return &logproto.VolumeResponse{
 		Volumes: []logproto.Volume{
 			{Name: `{foo="bar"}`, Volume: 38},

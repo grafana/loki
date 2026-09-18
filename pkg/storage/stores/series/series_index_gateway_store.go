@@ -115,15 +115,16 @@ func (c *IndexGatewayClientStore) LabelValuesForMetricName(ctx context.Context, 
 	return resp.Values, nil
 }
 
-func (c *IndexGatewayClientStore) Stats(ctx context.Context, _ string, from, through model.Time, matchers ...*labels.Matcher) (*stats.Stats, error) {
+func (c *IndexGatewayClientStore) Stats(ctx context.Context, _ string, from, through model.Time, deletes []*logproto.Delete, matchers ...*labels.Matcher) (*stats.Stats, error) {
 	return c.client.GetStats(ctx, &logproto.IndexStatsRequest{
 		From:     from,
 		Through:  through,
 		Matchers: (&syntax.MatchersExpr{Mts: matchers}).String(),
+		Deletes:  deletes,
 	})
 }
 
-func (c *IndexGatewayClientStore) Volume(ctx context.Context, _ string, from, through model.Time, limit int32, targetLabels []string, aggregateBy string, matchers ...*labels.Matcher) (*logproto.VolumeResponse, error) {
+func (c *IndexGatewayClientStore) Volume(ctx context.Context, _ string, from, through model.Time, limit int32, targetLabels []string, aggregateBy string, deletes []*logproto.Delete, matchers ...*labels.Matcher) (*logproto.VolumeResponse, error) {
 	return c.client.GetVolume(ctx, &logproto.VolumeRequest{
 		From:         from,
 		Through:      through,
@@ -131,6 +132,7 @@ func (c *IndexGatewayClientStore) Volume(ctx context.Context, _ string, from, th
 		Limit:        limit,
 		TargetLabels: targetLabels,
 		AggregateBy:  aggregateBy,
+		Deletes:      deletes,
 	})
 }
 

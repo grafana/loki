@@ -276,6 +276,11 @@ func (cs *ChunkStats) addRaw(chunks int, kb, entries uint32) {
 
 func (cs *ChunkStats) AddChunk(chk *ChunkMeta, from, through int64) {
 	factor := util.GetFactorOfTime(from, through, chk.MinTime, chk.MaxTime)
+	cs.AddChunkWithFactor(chk, factor)
+}
+
+// AddChunkWithFactor adds the given fraction of a chunk's size and entries.
+func (cs *ChunkStats) AddChunkWithFactor(chk *ChunkMeta, factor float64) {
 	kb := uint32(float64(chk.KB) * factor)
 	entries := uint32(float64(chk.Entries) * factor)
 	cs.addRaw(1, kb, entries)

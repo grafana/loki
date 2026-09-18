@@ -343,7 +343,7 @@ func (s *storeMock) GetSeries(_ context.Context, _ string, _, _ model.Time, _ ..
 	panic("don't call me please")
 }
 
-func (s *storeMock) Stats(_ context.Context, _ string, _, _ model.Time, _ ...*labels.Matcher) (*stats.Stats, error) {
+func (s *storeMock) Stats(_ context.Context, _ string, _, _ model.Time, _ []*logproto.Delete, _ ...*labels.Matcher) (*stats.Stats, error) {
 	return nil, nil
 }
 
@@ -363,7 +363,7 @@ func (s *storeMock) GetChunkRefsWithSizingInfo(_ context.Context, _ string, _, _
 	return nil, nil
 }
 
-func (s *storeMock) Volume(ctx context.Context, userID string, from, through model.Time, _ int32, targetLabels []string, _ string, matchers ...*labels.Matcher) (*logproto.VolumeResponse, error) {
+func (s *storeMock) Volume(ctx context.Context, userID string, from, through model.Time, _ int32, targetLabels []string, _ string, _ []*logproto.Delete, matchers ...*labels.Matcher) (*logproto.VolumeResponse, error) {
 	args := s.Called(ctx, userID, from, through, targetLabels, matchers)
 	return args.Get(0).(*logproto.VolumeResponse), args.Error(1)
 }

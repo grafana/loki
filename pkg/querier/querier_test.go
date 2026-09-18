@@ -970,6 +970,54 @@ func TestQuerier_Volumes(t *testing.T) {
 		require.NoError(t, err)
 		require.Equal(t, []logproto.Volume{{Name: "foo", Volume: 76}}, resp.Volumes)
 	})
+
+	t.Run("it injects deletes into the ingester request", func(t *testing.T) {
+		ret := &logproto.VolumeResponse{Volumes: []logproto.Volume{
+			{Name: "foo", Volume: 38},
+		}}
+
+		limits, err := validation.NewOverrides(defaultLimitsTestConfig(), nil)
+		require.NoError(t, err)
+
+		ingesterClient := newQuerierClientMock()
+		ingesterClient.On("GetVolume", mock.Anything, mock.Anything, mock.Anything).Return(ret, nil)
+
+		store := newStoreMock()
+
+		conf := mockQuerierConfig()
+		conf.QueryIngestersWithin = time.Minute * 30
+		conf.IngesterQueryStoreMaxLookback = conf.QueryIngestersWithin
+
+		now := time.Now()
+		from := model.TimeFromUnix(now.Add(-15 * time.Minute).Unix())
+		through := model.TimeFromUnix(now.Unix())
+
+		delGetter := &mockDeleteGettter{
+			results: []deletionproto.DeleteRequest{
+				{Query: `{foo="bar"}`, StartTime: from, EndTime: through},
+			},
+		}
+
+		querier, err := newQuerier(
+			conf,
+			mockIngesterClientConfig(),
+			newIngesterClientMockFactory(ingesterClient),
+			mockReadRingWithOneActiveIngester(),
+			delGetter,
+			store, limits)
+		require.NoError(t, err)
+
+		req := &logproto.VolumeRequest{From: from, Through: through, Matchers: `{}`, Limit: 10}
+		ctx := user.InjectOrgID(context.Background(), "test")
+		_, err = querier.Volume(ctx, req)
+		require.NoError(t, err)
+
+		calls := ingesterClient.GetMockedCallsByMethod("GetVolume")
+		require.Len(t, calls, 1)
+		require.Equal(t, []*logproto.Delete{
+			{Selector: `{foo="bar"}`, Start: from.Time().UnixNano(), End: through.Time().UnixNano()},
+		}, calls[0].Arguments.Get(1).(*logproto.VolumeRequest).Deletes)
+	})
 }
 
 func setupIngesterQuerierMocks(conf Config, limits *validation.Overrides) (*querierClientMock, *storeMock, *SingleTenantQuerier, error) {

@@ -84,7 +84,7 @@ func BenchmarkIndexClient_Stats(b *testing.B) {
 	b.ResetTimer()
 	b.ReportAllocs()
 	for i := 0; i < b.N; i++ {
-		stats, err := indexClient.Stats(context.Background(), "", indexStartYesterday-1000, model.Now()+1000, labels.MustNewMatcher(labels.MatchEqual, "foo", "bar"))
+		stats, err := indexClient.Stats(context.Background(), "", indexStartYesterday-1000, model.Now()+1000, nil, labels.MustNewMatcher(labels.MatchEqual, "foo", "bar"))
 		require.NoError(b, err)
 		require.Equal(b, uint64(200), stats.Chunks)
 		require.Equal(b, uint64(200), stats.Entries)
@@ -211,7 +211,7 @@ func TestIndexClient_Stats(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			stats, err := indexClient.Stats(context.Background(), "", tc.queryInterval.Start, tc.queryInterval.End, labels.MustNewMatcher(labels.MatchEqual, "foo", "bar"))
+			stats, err := indexClient.Stats(context.Background(), "", tc.queryInterval.Start, tc.queryInterval.End, nil, labels.MustNewMatcher(labels.MatchEqual, "foo", "bar"))
 			require.NoError(t, err)
 			require.Equal(t, tc.expectedNumChunks, stats.Chunks)
 			require.Equal(t, tc.expectedNumEntries, stats.Entries)
@@ -281,7 +281,7 @@ func TestIndexClient_Volume(t *testing.T) {
 	through := indexStartToday + 1000
 
 	t.Run("it returns volumes from the whole index", func(t *testing.T) {
-		vol, err := indexClient.Volume(context.Background(), "", from, through, 10, nil, "", nil...)
+		vol, err := indexClient.Volume(context.Background(), "", from, through, 10, nil, "", nil, nil...)
 		require.NoError(t, err)
 
 		require.Equal(t, &logproto.VolumeResponse{
@@ -296,7 +296,7 @@ func TestIndexClient_Volume(t *testing.T) {
 	})
 
 	t.Run("it returns largest series from the index", func(t *testing.T) {
-		vol, err := indexClient.Volume(context.Background(), "", from, through, 1, nil, "", nil...)
+		vol, err := indexClient.Volume(context.Background(), "", from, through, 1, nil, "", nil, nil...)
 		require.NoError(t, err)
 
 		require.Equal(t, &logproto.VolumeResponse{
@@ -309,7 +309,7 @@ func TestIndexClient_Volume(t *testing.T) {
 
 	t.Run("it returns an error when the number of selected series exceeds the limit", func(t *testing.T) {
 		limits.volumeMaxSeries = 0
-		_, err := indexClient.Volume(context.Background(), "", from, through, 1, nil, "", nil...)
+		_, err := indexClient.Volume(context.Background(), "", from, through, 1, nil, "", nil, nil...)
 		require.EqualError(t, err, fmt.Sprintf(seriesvolume.ErrVolumeMaxSeriesHit, 0))
 	})
 }

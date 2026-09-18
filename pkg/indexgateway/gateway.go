@@ -353,7 +353,7 @@ func (g *Gateway) GetStats(ctx context.Context, req *logproto.IndexStatsRequest)
 	}
 	defer g.queryGate.Done()
 
-	return g.indexQuerier.Stats(ctx, instanceID, req.From, req.Through, matchers...)
+	return g.indexQuerier.Stats(ctx, instanceID, req.From, req.Through, req.Deletes, matchers...)
 }
 
 func (g *Gateway) GetVolume(ctx context.Context, req *logproto.VolumeRequest) (*logproto.VolumeResponse, error) {
@@ -372,7 +372,7 @@ func (g *Gateway) GetVolume(ctx context.Context, req *logproto.VolumeRequest) (*
 	}
 	defer g.queryGate.Done()
 
-	return g.indexQuerier.Volume(ctx, instanceID, req.From, req.Through, req.GetLimit(), req.TargetLabels, req.AggregateBy, matchers...)
+	return g.indexQuerier.Volume(ctx, instanceID, req.From, req.Through, req.GetLimit(), req.TargetLabels, req.AggregateBy, req.Deletes, matchers...)
 }
 
 func (g *Gateway) GetShards(request *logproto.ShardsRequest, server logproto.IndexGateway_GetShardsServer) error {
