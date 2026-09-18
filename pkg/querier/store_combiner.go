@@ -100,7 +100,7 @@ type storeWithRange struct {
 }
 
 // SelectSamples implements Store
-func (sc *StoreCombiner) SelectSamples(ctx context.Context, req logql.SelectSampleParams) (iter.SampleIterator, error) {
+func (sc *StoreCombiner) SelectSamples(ctx context.Context, req logql.SelectSampleParams) (_ iter.SampleIterator, returnErr error) {
 	stores := sc.findStoresForTimeRange(model.TimeFromUnixNano(req.Start.UnixNano()), model.TimeFromUnixNano(req.End.UnixNano()))
 
 	if len(stores) == 0 {
@@ -113,13 +113,16 @@ func (sc *StoreCombiner) SelectSamples(ctx context.Context, req logql.SelectSamp
 
 	iters := make([]iter.SampleIterator, 0, len(stores))
 
-	// closeOpened closes every per-store iterator opened so far, so neither a later store's
-	// error nor a rejected order below ever leaks them.
-	closeOpened := func(reason string) {
-		for _, opened := range iters {
-			util.LogErrorWithContext(ctx, "closing per-store sample iterator "+reason, opened.Close)
+	// If SelectSamples returns an error below, close every per-store iterator opened so far, so
+	// neither a later store's error nor a rejected order leaks them.
+	defer func() {
+		if returnErr == nil {
+			return
 		}
-	}
+		for _, opened := range iters {
+			util.LogErrorWithContext(ctx, "closing per-store sample iterator after SelectSamples failed", opened.Close)
+		}
+	}()
 
 	for _, s := range stores {
 		reqCopy := req
@@ -128,9 +131,6 @@ func (sc *StoreCombiner) SelectSamples(ctx context.Context, req logql.SelectSamp
 
 		it, err := s.store.SelectSamples(ctx, reqCopy)
 		if err != nil {
-			// Return err unchanged, not merged with any close error, to not break callers'
-			// error checking.
-			closeOpened("after a later store failed")
 			return nil, err
 		}
 		iters = append(iters, it)
@@ -142,7 +142,6 @@ func (sc *StoreCombiner) SelectSamples(ctx context.Context, req logql.SelectSamp
 	case logproto.SAMPLE_ORDER_BY_TIMESTAMP:
 		return iter.NewTimestampFirstMergeSampleIterator(ctx, iters), nil
 	default:
-		closeOpened("after rejecting an unknown order")
 		return nil, fmt.Errorf("unknown sample order %v", req.Order)
 	}
 }

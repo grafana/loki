@@ -105,7 +105,7 @@ func (q *MultiTenantQuerier) SelectLogs(ctx context.Context, params logql.Select
 	return iter.NewSortEntryIterator(iters, params.Direction), nil
 }
 
-func (q *MultiTenantQuerier) SelectSamples(ctx context.Context, params logql.SelectSampleParams) (iter.SampleIterator, error) {
+func (q *MultiTenantQuerier) SelectSamples(ctx context.Context, params logql.SelectSampleParams) (_ iter.SampleIterator, returnErr error) {
 	tenantIDs, err := tenant.TenantIDs(ctx)
 	if err != nil {
 		return nil, err
@@ -138,13 +138,16 @@ func (q *MultiTenantQuerier) SelectSamples(ctx context.Context, params logql.Sel
 
 	iters := make([]iter.SampleIterator, 0, len(matchedTenants))
 
-	// closeOpened closes every per-tenant iterator opened so far, so neither a later tenant's
-	// error nor a rejected order below ever leaks them.
-	closeOpened := func(reason string) {
-		for _, opened := range iters {
-			util.LogErrorWithContext(ctx, "closing per-tenant sample iterator "+reason, opened.Close)
+	// If SelectSamples returns an error below, close every per-tenant iterator opened so far,
+	// so neither a later tenant's error nor a rejected order leaks them.
+	defer func() {
+		if returnErr == nil {
+			return
 		}
-	}
+		for _, opened := range iters {
+			util.LogErrorWithContext(ctx, "closing per-tenant sample iterator after SelectSamples failed", opened.Close)
+		}
+	}()
 
 	for id := range matchedTenants {
 		singleContext := user.InjectOrgID(ctx, id)
@@ -156,7 +159,6 @@ func (q *MultiTenantQuerier) SelectSamples(ctx context.Context, params logql.Sel
 
 		tenantIter, err := q.Querier.SelectSamples(singleContext, tenantParams)
 		if err != nil {
-			closeOpened("after a later tenant failed")
 			return nil, err
 		}
 
@@ -169,7 +171,6 @@ func (q *MultiTenantQuerier) SelectSamples(ctx context.Context, params logql.Sel
 	case logproto.SAMPLE_ORDER_BY_TIMESTAMP:
 		return iter.NewTimestampFirstSortSampleIterator(iters), nil
 	default:
-		closeOpened("after rejecting an unknown order")
 		return nil, fmt.Errorf("unknown sample order %v", params.Order)
 	}
 }

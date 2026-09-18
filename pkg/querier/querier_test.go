@@ -19,6 +19,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
+	"go.uber.org/atomic"
 
 	"github.com/grafana/loki/v3/pkg/compactor/deletion/deletionproto"
 	"github.com/grafana/loki/v3/pkg/ingester/client"
@@ -1218,9 +1219,13 @@ func TestQuerier_SelectSamples_StreamOrder(t *testing.T) {
 		require.Equal(t, []int64{2, 3, 1, 8, 6, 7, 4, 5}, got, "must group by StreamHash (10, 20, 30, 40 in turn), not interleave by timestamp")
 	})
 
-	t.Run("an unknown order is rejected", func(t *testing.T) {
+	t.Run("an unknown order is rejected once every source has already answered, closing what was opened", func(t *testing.T) {
+		var closed atomic.Int64
 		store := newStoreMock()
-		store.On("SelectSamples", mock.Anything, mock.Anything).Return(iter.NewSeriesIterator(logproto.Series{Labels: `{stream="a"}`}), nil)
+		store.On("SelectSamples", mock.Anything, mock.Anything).Return(&closeTrackingSampleIterator{
+			SampleIterator: iter.NewSeriesIterator(logproto.Series{Labels: `{stream="a"}`}),
+			closed:         &closed,
+		}, nil)
 		ingesterClient := newQuerierClientMock()
 
 		limits, err := validation.NewOverrides(defaultLimitsTestConfig(), nil)
@@ -1241,6 +1246,37 @@ func TestQuerier_SelectSamples_StreamOrder(t *testing.T) {
 		require.ErrorContains(t, err, "unknown sample order")
 
 		ingesterClient.AssertNotCalled(t, "QuerySample", mock.Anything, mock.Anything, mock.Anything)
+		require.Equal(t, int64(1), closed.Load(), "the store's iterator, already open when the order was rejected, must be closed")
+	})
+
+	t.Run("closes an already-opened ingester iterator when the store call that follows fails", func(t *testing.T) {
+		queryClient := newQuerySampleClientMock()
+		queryClient.On("Recv").Return(nil, io.EOF)
+		ingesterClient := newQuerierClientMock()
+		ingesterClient.On("QuerySample", mock.Anything, mock.Anything, mock.Anything).Return(queryClient, nil)
+
+		storeErr := errors.New("store unavailable")
+		store := newStoreMock()
+		store.On("SelectSamples", mock.Anything, mock.Anything).Return(nil, storeErr)
+
+		limits, err := validation.NewOverrides(defaultLimitsTestConfig(), nil)
+		require.NoError(t, err)
+
+		q, err := newQuerier(
+			mockQuerierConfig(),
+			mockIngesterClientConfig(),
+			newIngesterClientMockFactory(ingesterClient),
+			mockReadRingWithOneActiveIngester(),
+			&mockDeleteGettter{}, store, limits)
+		require.NoError(t, err)
+
+		ctx := user.InjectOrgID(context.Background(), "test")
+		_, err = q.SelectSamples(ctx, newRequest(logproto.SAMPLE_ORDER_BY_TIMESTAMP))
+		require.ErrorIs(t, err, storeErr)
+
+		// The ingester's gRPC stream opens successfully regardless of what the server will
+		// eventually do with it; closing it is what tears that stream down.
+		require.Equal(t, 1, queryClient.closeSendCalls)
 	})
 }
 
