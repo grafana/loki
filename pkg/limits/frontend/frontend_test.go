@@ -366,10 +366,10 @@ func TestFrontend_CheckLimitsAndShard_CompletesPartialResponses(t *testing.T) {
 			})
 			require.NoError(t, err)
 			require.Equal(t, test.expected, resp.Results)
-			require.Equal(t, float64(len(streams)), testutil.ToFloat64(f.checkLimitsAndShardStreams.WithLabelValues("test")))
-			require.Equal(t, test.expectedShards, testutil.ToFloat64(f.checkLimitsAndShardShards.WithLabelValues("test")))
-			require.Equal(t, test.expectedFailed, testutil.ToFloat64(f.checkLimitsAndShardFailed.WithLabelValues("test")))
-			require.Equal(t, test.expectedRejected, testutil.ToFloat64(f.checkLimitsAndShardRejected.WithLabelValues("test")))
+			require.Equal(t, float64(len(streams)), testutil.ToFloat64(f.metrics.checkLimitsAndShardStreams.WithLabelValues("test")))
+			require.Equal(t, test.expectedShards, testutil.ToFloat64(f.metrics.checkLimitsAndShardShards.WithLabelValues("test")))
+			require.Equal(t, test.expectedFailed, testutil.ToFloat64(f.metrics.checkLimitsAndShardFailed.WithLabelValues("test")))
+			require.Equal(t, test.expectedRejected, testutil.ToFloat64(f.metrics.checkLimitsAndShardRejected.WithLabelValues("test")))
 		})
 	}
 }

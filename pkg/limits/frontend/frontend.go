@@ -21,21 +21,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/limits/proto"
 )
 
-// Frontend is a frontend for the limits service. It is responsible for
-// receiving RPCs from clients, forwarding them to the correct limits
-// instances, and returning their responses.
-type Frontend struct {
-	services.Service
-	cfg                     Config
-	logger                  log.Logger
-	limitsClient            limitsClient
-	assignedPartitionsCache cache[string, *proto.GetAssignedPartitionsResponse]
-	subservices             *services.Manager
-	subservicesWatcher      *services.FailureWatcher
-	lifecycler              *ring.Lifecycler
-	lifecyclerWatcher       *services.FailureWatcher
-
-	// Metrics.
+type metrics struct {
 	streams         prometheus.Counter
 	streamsFailed   prometheus.Counter
 	streamsRejected prometheus.Counter
@@ -46,11 +32,8 @@ type Frontend struct {
 	checkLimitsAndShardRejected *prometheus.CounterVec
 }
 
-// New returns a new Frontend.
-func New(cfg Config, ringName string, limitsRing ring.ReadRing, logger log.Logger, reg prometheus.Registerer) (*Frontend, error) {
-	f := &Frontend{
-		cfg:    cfg,
-		logger: logger,
+func newMetrics(reg prometheus.Registerer) *metrics {
+	return &metrics{
 		streams: promauto.With(reg).NewCounter(
 			prometheus.CounterOpts{
 				Name: "loki_ingest_limits_frontend_streams_total",
@@ -93,6 +76,30 @@ func New(cfg Config, ringName string, limitsRing ring.ReadRing, logger log.Logge
 				Help: "The total number of streams rejected via CheckLimitsAndShard because they would exceed the stream count limits.",
 			}, []string{"tenant"},
 		),
+	}
+}
+
+// Frontend is a frontend for the limits service. It is responsible for
+// receiving RPCs from clients, forwarding them to the correct limits
+// instances, and returning their responses.
+type Frontend struct {
+	services.Service
+	cfg                     Config
+	logger                  log.Logger
+	limitsClient            limitsClient
+	assignedPartitionsCache cache[string, *proto.GetAssignedPartitionsResponse]
+	subservices             *services.Manager
+	subservicesWatcher      *services.FailureWatcher
+	lifecycler              *ring.Lifecycler
+	lifecyclerWatcher       *services.FailureWatcher
+	metrics                 *metrics
+}
+
+func New(cfg Config, ringName string, limitsRing ring.ReadRing, logger log.Logger, reg prometheus.Registerer) (*Frontend, error) {
+	f := &Frontend{
+		cfg:     cfg,
+		logger:  logger,
+		metrics: newMetrics(reg),
 	}
 	// Set up a client pool for the limits service. The frontend will use this
 	// to make RPCs that get the current stream usage to checks per-tenant limits.
@@ -144,7 +151,7 @@ func New(cfg Config, ringName string, limitsRing ring.ReadRing, logger log.Logge
 
 // ExceedsLimits implements proto.IngestLimitsFrontendClient.
 func (f *Frontend) ExceedsLimits(ctx context.Context, req *proto.ExceedsLimitsRequest) (*proto.ExceedsLimitsResponse, error) {
-	f.streams.Add(float64(len(req.Streams)))
+	f.metrics.streams.Add(float64(len(req.Streams)))
 	resp, err := f.limitsClient.ExceedsLimits(ctx, req)
 	if err != nil {
 		// If the entire call failed, then all streams failed.
@@ -157,16 +164,16 @@ func (f *Frontend) ExceedsLimits(ctx context.Context, req *proto.ExceedsLimitsRe
 				Reason:     uint32(limits.ReasonFailed),
 			})
 		}
-		f.streamsFailed.Add(float64(len(req.Streams)))
+		f.metrics.streamsFailed.Add(float64(len(req.Streams)))
 		level.Error(f.logger).Log("msg", "failed to check request against limits", "err", err)
 	} else {
 		for _, res := range resp.Results {
 			// Even if the call succeeded, some (or all) streams might still
 			// have failed.
 			if res.Reason == uint32(limits.ReasonFailed) {
-				f.streamsFailed.Inc()
+				f.metrics.streamsFailed.Inc()
 			} else {
-				f.streamsRejected.Inc()
+				f.metrics.streamsRejected.Inc()
 			}
 		}
 	}
@@ -177,7 +184,7 @@ func (f *Frontend) ExceedsLimits(ctx context.Context, req *proto.ExceedsLimitsRe
 // response contains exactly one result per requested stream, each with a
 // shard count of at least one unless the stream was rejected.
 func (f *Frontend) CheckLimitsAndShard(ctx context.Context, req *proto.CheckLimitsAndShardRequest) (*proto.CheckLimitsAndShardResponse, error) {
-	f.checkLimitsAndShardStreams.WithLabelValues(req.Tenant).Add(float64(len(req.Streams)))
+	f.metrics.checkLimitsAndShardStreams.WithLabelValues(req.Tenant).Add(float64(len(req.Streams)))
 	resp, err := f.limitsClient.CheckLimitsAndShard(ctx, req)
 	if err != nil {
 		level.Error(f.logger).Log("msg", "failed to check limits and shard", "err", err)
@@ -185,13 +192,13 @@ func (f *Frontend) CheckLimitsAndShard(ctx context.Context, req *proto.CheckLimi
 	}
 	resp.Results = completeShardResults(resp.Results, req.Streams)
 	for _, res := range resp.Results {
-		f.checkLimitsAndShardShards.WithLabelValues(req.Tenant).Add(float64(res.Shards))
+		f.metrics.checkLimitsAndShardShards.WithLabelValues(req.Tenant).Add(float64(res.Shards))
 		switch {
 		case res.GetStats().GetShardDecisionContext() == uint32(limits.ReasonFailed),
 			res.GetStats().GetShardDecisionContext() == uint32(limits.ReasonNotOwned):
-			f.checkLimitsAndShardFailed.WithLabelValues(req.Tenant).Inc()
+			f.metrics.checkLimitsAndShardFailed.WithLabelValues(req.Tenant).Inc()
 		case res.RejectReason != "":
-			f.checkLimitsAndShardRejected.WithLabelValues(req.Tenant).Inc()
+			f.metrics.checkLimitsAndShardRejected.WithLabelValues(req.Tenant).Inc()
 		}
 	}
 	return resp, nil
