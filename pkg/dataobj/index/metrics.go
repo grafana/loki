@@ -1,6 +1,7 @@
 package index
 
 import (
+	"errors"
 	"strconv"
 	"sync"
 	"time"
@@ -123,7 +124,7 @@ func (p *builderMetrics) deletePartitionMetrics(partition int32) {
 	p.processingDelay.delete(partition)
 }
 
-type indexerMetrics struct {
+type serialIndexerMetrics struct {
 	// Request counters
 	totalRequests prometheus.Counter
 	totalBuilds   prometheus.Counter
@@ -138,8 +139,8 @@ type indexerMetrics struct {
 	endToEndProcessingTime prometheus.Gauge
 }
 
-func newIndexerMetrics() *indexerMetrics {
-	m := &indexerMetrics{
+func newSerialIndexerMetrics() *serialIndexerMetrics {
+	m := &serialIndexerMetrics{
 		totalRequests: prometheus.NewCounter(prometheus.CounterOpts{
 			Name: "loki_index_builder_requests_total",
 			Help: "Total number of build requests submitted to the indexer",
@@ -165,7 +166,7 @@ func newIndexerMetrics() *indexerMetrics {
 	return m
 }
 
-func (m *indexerMetrics) register(reg prometheus.Registerer) error {
+func (m *serialIndexerMetrics) register(reg prometheus.Registerer) error {
 	collectors := []prometheus.Collector{
 		m.totalRequests,
 		m.totalBuilds,
@@ -184,23 +185,23 @@ func (m *indexerMetrics) register(reg prometheus.Registerer) error {
 	return nil
 }
 
-func (m *indexerMetrics) incRequests() {
+func (m *serialIndexerMetrics) incRequests() {
 	m.totalRequests.Inc()
 }
 
-func (m *indexerMetrics) incBuilds() {
+func (m *serialIndexerMetrics) incBuilds() {
 	m.totalBuilds.Inc()
 }
 
-func (m *indexerMetrics) setBuildTime(duration time.Duration) {
+func (m *serialIndexerMetrics) setBuildTime(duration time.Duration) {
 	m.buildTimeSeconds.Set(duration.Seconds())
 }
 
-func (m *indexerMetrics) setQueueDepth(depth int) {
+func (m *serialIndexerMetrics) setQueueDepth(depth int) {
 	m.queueDepth.Set(float64(depth))
 }
 
-func (m *indexerMetrics) setEndToEndProcessingTime(duration time.Duration) {
+func (m *serialIndexerMetrics) setEndToEndProcessingTime(duration time.Duration) {
 	m.endToEndProcessingTime.Set(duration.Seconds())
 }
 
@@ -233,4 +234,51 @@ func (m *calculatorMetrics) unregister(reg prometheus.Registerer) {
 
 func (m *calculatorMetrics) observeStepDuration(step string, duration time.Duration) {
 	m.calculationStepDuration.WithLabelValues(step).Observe(duration.Seconds())
+}
+
+// indexerMetrics instruments a [SimpleIndexer].
+type indexerMetrics struct {
+	duration        prometheus.Histogram
+	attempts        prometheus.Counter
+	failures        prometheus.Counter
+	empty           prometheus.Counter
+	releaseFailures prometheus.Counter
+}
+
+func newIndexerMetrics() *indexerMetrics {
+	return &indexerMetrics{
+		duration: prometheus.NewHistogram(prometheus.HistogramOpts{
+			Name: "loki_dataobj_builder_index_duration_seconds",
+			Help: "Time taken to build, upload and register the index for a single data object.",
+
+			Buckets:                         prometheus.DefBuckets,
+			NativeHistogramBucketFactor:     1.1,
+			NativeHistogramMaxBucketNumber:  100,
+			NativeHistogramMinResetDuration: 0,
+		}),
+		attempts: prometheus.NewCounter(prometheus.CounterOpts{
+			Name: "loki_dataobj_builder_index_attempts_total",
+			Help: "Total number of attempts to index a data object, including retries.",
+		}),
+		failures: prometheus.NewCounter(prometheus.CounterOpts{
+			Name: "loki_dataobj_builder_index_failures_total",
+			Help: "Total number of failed attempts to index a data object. Failures are retried, so this also counts retries.",
+		}),
+		empty: prometheus.NewCounter(prometheus.CounterOpts{
+			Name: "loki_dataobj_builder_index_empty_total",
+			Help: "Total number of data objects that produced no index and are therefore not discoverable by queries.",
+		}),
+		releaseFailures: prometheus.NewCounter(prometheus.CounterOpts{
+			Name: "loki_dataobj_builder_index_release_failures_total",
+			Help: "Total number of failures to release an index object's scratch storage. The index is already uploaded and recorded at that point, so these do not fail the index.",
+		}),
+	}
+}
+
+func (m *indexerMetrics) register(reg prometheus.Registerer) error {
+	var errs []error
+	for _, c := range []prometheus.Collector{m.duration, m.attempts, m.failures, m.empty, m.releaseFailures} {
+		errs = append(errs, reg.Register(c))
+	}
+	return errors.Join(errs...)
 }
