@@ -175,7 +175,8 @@ func (f *Frontend) ExceedsLimits(ctx context.Context, req *proto.ExceedsLimitsRe
 }
 
 // CheckLimitsAndShard implements proto.IngestLimitsFrontendClient. The
-// response contains exactly one result per requested stream.
+// response contains exactly one result per requested stream, each with a
+// shard count of at least one unless the stream was rejected.
 func (f *Frontend) CheckLimitsAndShard(ctx context.Context, req *proto.CheckLimitsAndShardRequest) (*proto.CheckLimitsAndShardResponse, error) {
 	f.checkLimitsAndShardStreams.WithLabelValues(req.Tenant).Add(float64(len(req.Streams)))
 	resp, err := f.limitsClient.CheckLimitsAndShard(ctx, req)
@@ -189,7 +190,13 @@ func (f *Frontend) CheckLimitsAndShard(ctx context.Context, req *proto.CheckLimi
 	// response is completed, so that callers do not have to interpret a
 	// missing result themselves.
 	resp.Results = appendFailedShardResults(resp.Results, req.Streams)
-	for _, res := range resp.Results {
+	for i, res := range resp.Results {
+		// Shards is the total number of physical streams written for this
+		// stream, so zero is only meaningful for a rejected stream. Without a
+		// rejection, the backend has made no decision.
+		if res.Shards == 0 && res.RejectReason == "" {
+			resp.Results[i] = failedShardResult(res.StreamHash)
+		}
 		f.checkLimitsAndShardShards.WithLabelValues(req.Tenant).Add(float64(res.Shards))
 		switch {
 		case res.GetStats().GetShardDecisionContext() == uint32(limits.ReasonFailed),
@@ -217,13 +224,17 @@ func appendFailedShardResults(results []*proto.StreamShardResult, streams []*pro
 		if _, ok := answered[stream.StreamHash]; ok {
 			continue
 		}
-		results = append(results, &proto.StreamShardResult{
-			StreamHash: stream.StreamHash,
-			Shards:     1,
-			Stats:      &proto.ShardStats{ShardDecisionContext: uint32(limits.ReasonFailed)},
-		})
+		results = append(results, failedShardResult(stream.StreamHash))
 	}
 	return results
+}
+
+func failedShardResult(streamHash uint64) *proto.StreamShardResult {
+	return &proto.StreamShardResult{
+		StreamHash: streamHash,
+		Shards:     1,
+		Stats:      &proto.ShardStats{ShardDecisionContext: uint32(limits.ReasonFailed)},
+	}
 }
 
 func (f *Frontend) UpdateRates(ctx context.Context, req *proto.UpdateRatesRequest) (*proto.UpdateRatesResponse, error) {

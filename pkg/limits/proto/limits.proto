@@ -73,8 +73,13 @@ message CheckLimitsAndShardResponse {
 
 message StreamShardResult {
   uint64 streamHash = 1;
-  // The number of shards the distributor should create for this stream on
-  // this push. 0 and 1 both mean no sharding is needed
+  // The total number of physical streams the distributor should write for
+  // this logical stream on this push, matching the semantics of the
+  // distributor's own rate-store shard count, so 1 means no sharding is
+  // needed. At least 1 when the stream was accepted. 0 is valid only
+  // together with rejectReason, as a rejected stream is not written at all;
+  // a result with neither carries no decision and the frontend replaces it
+  // with one shard.
   uint32 shards = 2;
   // Non-empty when the stream was rejected (only possible for a
   // brand-new stream with no room left in the tenant's stream-count

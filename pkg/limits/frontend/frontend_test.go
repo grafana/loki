@@ -265,6 +265,11 @@ func TestFrontend_CheckLimitsAndShard_CompletesPartialResponses(t *testing.T) {
 		Shards:     4,
 		Stats:      &proto.ShardStats{EvaluatedRate: 0x100},
 	}
+	rejected := &proto.StreamShardResult{
+		StreamHash:   0x1,
+		Shards:       0,
+		RejectReason: limits.ReasonMaxStreams.String(),
+	}
 	failedOpen := func(streamHash uint64) *proto.StreamShardResult {
 		return &proto.StreamShardResult{
 			StreamHash: streamHash,
@@ -278,20 +283,29 @@ func TestFrontend_CheckLimitsAndShard_CompletesPartialResponses(t *testing.T) {
 		response *proto.CheckLimitsAndShardResponse
 		expected []*proto.StreamShardResult
 	}{{
-		// What the backend returns until the decision logic lands.
-		name:     "no results",
+		name:     "no results, as returned until the decision logic lands",
 		response: &proto.CheckLimitsAndShardResponse{},
 		expected: []*proto.StreamShardResult{failedOpen(0x1), failedOpen(0x2)},
 	}, {
-		// A stream whose partition no instance owned, or whose instance was
-		// unavailable in all zones, has no result.
-		name:     "results for a subset of the streams",
+		name:     "results for a subset of the streams, as when no instance owns a partition",
 		response: &proto.CheckLimitsAndShardResponse{Results: []*proto.StreamShardResult{sharded}},
 		expected: []*proto.StreamShardResult{sharded, failedOpen(0x1)},
 	}, {
 		name:     "results for all streams",
 		response: &proto.CheckLimitsAndShardResponse{Results: []*proto.StreamShardResult{unsharded, sharded}},
 		expected: []*proto.StreamShardResult{unsharded, sharded},
+	}, {
+		name: "a shard count of zero without a rejection carries no decision",
+		response: &proto.CheckLimitsAndShardResponse{Results: []*proto.StreamShardResult{{
+			StreamHash: 0x1,
+			Shards:     0,
+			Stats:      &proto.ShardStats{EvaluatedRate: 0x10},
+		}, sharded}},
+		expected: []*proto.StreamShardResult{failedOpen(0x1), sharded},
+	}, {
+		name:     "a rejected stream keeps its zero shard count",
+		response: &proto.CheckLimitsAndShardResponse{Results: []*proto.StreamShardResult{rejected, sharded}},
+		expected: []*proto.StreamShardResult{rejected, sharded},
 	}}
 
 	for _, test := range tests {
