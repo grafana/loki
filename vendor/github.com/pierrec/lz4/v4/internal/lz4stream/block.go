@@ -14,14 +14,49 @@ import (
 type Blocks struct {
 	Block  *FrameDataBlock
 	Blocks chan chan *FrameDataBlock
-	mu     sync.Mutex
+	reader *asyncReader // in flight if concurrency > 1, nil otherwise
 	err    error
 }
+
+// asyncReader reads one frame with concurrency > 1. A Reset can
+// abandon it mid-stream; it has its own error and its own copy of the
+// frame so that it cannot affect the next read.
+type asyncReader struct {
+	mu    sync.Mutex
+	err   error
+	data  chan []byte // uncompressed blocks, in order
+	frame Frame       // copy of the frame: an abandoned reader must not touch the next frame's scratch space, flags, or checksum
+}
+
+// fail keeps the first error; the read loop stops once one is set.
+func (r *asyncReader) fail(err error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.err == nil {
+		r.err = err
+	}
+}
+
+func (r *asyncReader) error() error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.err
+}
+
+// drain reads everything the reader produces so that its goroutines exit,
+// returning buffers to the pool.
+func (r *asyncReader) drain() {
+	for buf := range r.data {
+		lz4block.Put(buf)
+	}
+}
+
+var errAbandoned = lz4errors.Error("lz4: concurrent read abandoned")
 
 func (b *Blocks) initW(f *Frame, dst io.Writer, num int) {
 	if num == 1 {
 		b.Blocks = nil
-		b.Block = NewFrameDataBlock(f)
+		b.Block = b.Block.init(f)
 		return
 	}
 	b.Block = nil
@@ -58,6 +93,13 @@ func (b *Blocks) initW(f *Frame, dst io.Writer, num int) {
 }
 
 func (b *Blocks) close(f *Frame, num int) error {
+	if r := b.reader; r != nil {
+		// abandon the read: fail stops the read loop at its next block,
+		// drain unblocks the goroutines and returns their buffers
+		b.reader = nil
+		r.fail(errAbandoned)
+		go r.drain()
+	}
 	if num == 1 {
 		if b.Block != nil {
 			b.Block.Close(f)
@@ -75,6 +117,7 @@ func (b *Blocks) close(f *Frame, num int) error {
 	b.Blocks <- c
 	c <- nil
 	<-c
+	b.Blocks = nil // ensure a second close from Reset does not block
 	err := b.err
 	b.err = nil
 	return err
@@ -82,9 +125,10 @@ func (b *Blocks) close(f *Frame, num int) error {
 
 // ErrorR returns any error set while uncompressing a stream.
 func (b *Blocks) ErrorR() error {
-	b.mu.Lock()
-	defer b.mu.Unlock()
-	return b.err
+	if b.reader == nil {
+		return nil
+	}
+	return b.reader.error()
 }
 
 // initR returns a channel that streams the uncompressed blocks if in concurrent
@@ -93,16 +137,20 @@ func (b *Blocks) ErrorR() error {
 // If not in concurrent mode, the uncompressed block is b.Block and the returned error
 // needs to be checked.
 func (b *Blocks) initR(f *Frame, num int, src io.Reader) (chan []byte, error) {
-	size := f.Descriptor.Flags.BlockSizeIndex()
+	size := f.BlockSizeIndex()
 	if num == 1 {
 		b.Blocks = nil
-		b.Block = NewFrameDataBlock(f)
+		b.Block = b.Block.init(f)
 		return nil, nil
 	}
 	b.Block = nil
 	blocks := make(chan chan []byte, num)
 	// data receives the uncompressed blocks.
 	data := make(chan []byte)
+	r := &asyncReader{data: data, frame: *f}
+	r.frame.Blocks = Blocks{}
+	b.reader = r
+	f = &r.frame
 	// Read blocks from the source sequentially
 	// and uncompress them concurrently.
 
@@ -111,7 +159,7 @@ func (b *Blocks) initR(f *Frame, num int, src io.Reader) (chan []byte, error) {
 	go func() {
 		var cumx uint32
 		var err error
-		for b.ErrorR() == nil {
+		for r.error() == nil {
 			block := NewFrameDataBlock(f)
 			cumx, err = block.Read(f, src, 0)
 			if err != nil {
@@ -119,7 +167,7 @@ func (b *Blocks) initR(f *Frame, num int, src io.Reader) (chan []byte, error) {
 				break
 			}
 			// Recheck for an error as reading may be slow and uncompressing is expensive.
-			if b.ErrorR() != nil {
+			if r.error() != nil {
 				block.Close(f)
 				break
 			}
@@ -129,7 +177,7 @@ func (b *Blocks) initR(f *Frame, num int, src io.Reader) (chan []byte, error) {
 				defer block.Close(f)
 				data, err := block.Uncompress(f, size.Get(), nil, false)
 				if err != nil {
-					b.closeR(err)
+					r.fail(err)
 					// Close the block channel to indicate an error.
 					close(c)
 				} else {
@@ -145,7 +193,7 @@ func (b *Blocks) initR(f *Frame, num int, src io.Reader) (chan []byte, error) {
 		if f.isLegacy() && cum == cumx {
 			err = lz4errors.ErrEndOfStream
 		}
-		b.closeR(err)
+		r.fail(err)
 		close(data)
 	}()
 	// Collect the uncompressed blocks and make them available
@@ -184,18 +232,21 @@ func (b *Blocks) initR(f *Frame, num int, src io.Reader) (chan []byte, error) {
 	return data, nil
 }
 
-// closeR safely sets the error on b if not already set.
-func (b *Blocks) closeR(err error) {
-	b.mu.Lock()
-	if b.err == nil {
-		b.err = err
-	}
-	b.mu.Unlock()
+func NewFrameDataBlock(f *Frame) *FrameDataBlock {
+	return (*FrameDataBlock)(nil).init(f)
 }
 
-func NewFrameDataBlock(f *Frame) *FrameDataBlock {
-	buf := f.Descriptor.Flags.BlockSizeIndex().Get()
-	return &FrameDataBlock{Data: buf, data: buf}
+// init readies b for a new frame, allocating it if nil. In non concurrent
+// mode, the same block is reused across resets.
+func (b *FrameDataBlock) init(f *Frame) *FrameDataBlock {
+	if b == nil {
+		b = new(FrameDataBlock)
+	}
+	b.Close(f) // return any buffer still held; noop if already closed
+	buf := f.BlockSizeIndex().Get()
+	b.Data = buf
+	b.data = buf
+	return b
 }
 
 type FrameDataBlock struct {
@@ -245,7 +296,7 @@ func (b *FrameDataBlock) Compress(f *Frame, src []byte, level lz4block.Compressi
 	b.Size.sizeSet(len(b.Data))
 	b.src = src // keep track of the source for content checksum
 
-	if f.Descriptor.Flags.BlockChecksum() {
+	if !f.isLegacy() && f.Descriptor.Flags.BlockChecksum() {
 		b.Checksum = xxh32.ChecksumZero(b.Data)
 	}
 	return b
@@ -267,7 +318,7 @@ func (b *FrameDataBlock) Write(f *Frame, dst io.Writer) error {
 		return err
 	}
 
-	if b.Checksum == 0 {
+	if f.isLegacy() || !f.Descriptor.Flags.BlockChecksum() { // legacy frames have no block checksums
 		return nil
 	}
 	binary.LittleEndian.PutUint32(buf, b.Checksum)
