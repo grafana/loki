@@ -24,6 +24,10 @@ type mockLimitsClient struct {
 	expectedExceedsLimitsRequest *proto.ExceedsLimitsRequest
 	exceedsLimitsResponse        *proto.ExceedsLimitsResponse
 	err                          error
+
+	expectedCheckLimitsAndShardRequest *proto.CheckLimitsAndShardRequest
+	checkLimitsAndShardResponse        *proto.CheckLimitsAndShardResponse
+	checkLimitsAndShardCalls           int
 }
 
 func (m *mockLimitsClient) ExceedsLimits(_ context.Context, req *proto.ExceedsLimitsRequest) (*proto.ExceedsLimitsResponse, error) {
@@ -36,6 +40,14 @@ func (m *mockLimitsClient) ExceedsLimits(_ context.Context, req *proto.ExceedsLi
 func (m *mockLimitsClient) UpdateRates(_ context.Context, _ *proto.UpdateRatesRequest) (*proto.UpdateRatesResponse, error) {
 	// TODO(grobinson): Implement this method.
 	return nil, nil
+}
+
+func (m *mockLimitsClient) CheckLimitsAndShard(_ context.Context, req *proto.CheckLimitsAndShardRequest) (*proto.CheckLimitsAndShardResponse, error) {
+	m.checkLimitsAndShardCalls++
+	if expected := m.expectedCheckLimitsAndShardRequest; expected != nil {
+		require.Equal(m.t, expected, req)
+	}
+	return m.checkLimitsAndShardResponse, m.err
 }
 
 // mockLimitsProtoClient mocks proto.IngestLimitsClient.
