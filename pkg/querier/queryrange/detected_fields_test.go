@@ -1437,13 +1437,15 @@ func BenchmarkQuerierDetectedFields(b *testing.B) {
 		maxQuerierBytesRead:     100,
 	}
 
-	request := logproto.DetectedFieldsRequest{
-		Start:     time.Now().Add(-1 * time.Minute),
-		End:       time.Now(),
-		Query:     `{type="test"}`,
-		LineLimit: 1000,
-		Limit:     1000,
-	}
+	request := NewDetectedFieldsRequest(
+		time.Now().Add(-1*time.Minute),
+		time.Now(),
+		1000,
+		1000,
+		60000,
+		`{type="test"}`,
+		`http://example.com`,
+	)
 
 	b.ReportAllocs()
 	b.ResetTimer()
@@ -1462,7 +1464,7 @@ func BenchmarkQuerierDetectedFields(b *testing.B) {
 		ctx := context.Background()
 		ctx = user.InjectOrgID(ctx, "test-tenant")
 
-		resp, err := handler.Do(ctx, &request)
+		resp, err := handler.Do(ctx, request)
 		assert.NoError(b, err)
 
 		_, ok := resp.(*DetectedFieldsResponse)
