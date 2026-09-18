@@ -2530,7 +2530,7 @@ modernc.org/mathutil
 # modernc.org/memory v1.12.1
 ## explicit; go 1.23.0
 modernc.org/memory
-# modernc.org/sqlite v1.58.0
+# modernc.org/sqlite v1.59.0
 ## explicit; go 1.25.0
 modernc.org/sqlite/lib
 # sigs.k8s.io/json v0.0.0-20260909141634-11ed52e25bc5
