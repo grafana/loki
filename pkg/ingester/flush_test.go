@@ -171,7 +171,7 @@ func benchmarkPushDuringEncode(b *testing.B, lockDuringEncode bool) {
 	limiter := NewLimiter(limits, NilMetrics, newIngesterRingLimiterStrategy(&ringCountMock{count: 1}, 1), &TenantBasedStrategy{limits: limits})
 	chunkfmt, headfmt := defaultChunkFormat(b)
 	retentionHours := util.RetentionHours(limiter.limits.RetentionPeriod("fake"))
-	s := newStream(chunkfmt, headfmt, &Config{MaxChunkAge: 24 * time.Hour}, limiter.rateLimitStrategy, "fake", model.Fingerprint(0), ls, NewStreamRateCalculator(), NilMetrics, nil, nil, retentionHours, noPolicy)
+	s := newStream(chunkfmt, headfmt, &Config{MaxChunkAge: 24 * time.Hour}, limiter.rateLimitStrategy, "fake", model.Fingerprint(0), ls, NewStreamRateCalculator(), NilMetrics, nil, nil, retentionHours, noPolicy, limiter.limits)
 
 	ing := &Ingester{
 		cfg:     *dummyConf(),
@@ -954,4 +954,66 @@ func buildStreamsFromChunk(t *testing.T, lbs string, chk chunkenc.Chunk) logprot
 	}
 	require.NoError(t, it.Err())
 	return stream
+}
+
+func newTestChunkDesc(t testing.TB, closed bool, flushed time.Time, bucketStart time.Time) chunkDesc {
+	t.Helper()
+	return chunkDesc{
+		chunk:       chunkenc.NewMemChunk(chunkenc.ChunkFormatV4, compression.Snappy, chunkenc.UnorderedWithStructuredMetadataHeadBlockFmt, dummyConf().BlockSize, dummyConf().TargetChunkSize),
+		closed:      closed,
+		flushed:     flushed,
+		lastUpdated: time.Now(),
+		bucketStart: bucketStart,
+	}
+}
+
+// TestRemoveFlushedChunks_NonContiguousFlush verifies that removeFlushedChunks
+// drops expired-and-flushed chunks wherever they sit in the slice, not just a
+// contiguous oldest-first prefix. With ingester-side time-sharding, a bucket
+// chunk that started later can flush and expire its retention before an
+// earlier-inserted-but-still-open chunk does, so a simple front-trim (the
+// pre-time-sharding implementation) would leak memory in that case.
+func TestRemoveFlushedChunks_NonContiguousFlush(t *testing.T) {
+	cfg := *dummyConf()
+	cfg.RetainPeriod = 500 * time.Millisecond
+	cfg.WAL = WALConfig{}
+
+	ing := &Ingester{
+		cfg:              cfg,
+		metrics:          NilMetrics,
+		replayController: newReplayController(NilMetrics, cfg.WAL, nil),
+	}
+
+	now := time.Now()
+	expiredFlush := now.Add(-time.Second)    // older than RetainPeriod: eligible for removal
+	recentFlush := now.Add(-time.Second / 4) // within RetainPeriod: not yet eligible
+
+	s := &stream{
+		metrics: NilMetrics,
+		chunks: []chunkDesc{
+			newTestChunkDesc(t, false, time.Time{}, time.Time{}),           // open live chunk
+			newTestChunkDesc(t, true, recentFlush, now.Add(-time.Hour)),    // flushed but still within retention
+			newTestChunkDesc(t, false, time.Time{}, now.Add(-2*time.Hour)), // open bucket chunk, sits after an expired one below
+			newTestChunkDesc(t, true, expiredFlush, now.Add(-3*time.Hour)), // flushed and past retention: should be dropped
+		},
+	}
+	s.openHeads = map[int64]int{
+		now.Add(-2 * time.Hour).Unix(): 2,
+		now.Add(-3 * time.Hour).Unix(): 3,
+	}
+
+	ing.removeFlushedChunks(nil, s, false)
+
+	require.Len(t, s.chunks, 3, "only the expired+flushed chunk should have been dropped")
+	for _, c := range s.chunks {
+		require.False(t, !c.flushed.IsZero() && time.Since(c.flushed) >= cfg.RetainPeriod, "no remaining chunk should be past its retention window")
+	}
+
+	// openHeads must be rebuilt to reference valid indices into the
+	// compacted slice, and must no longer contain the dropped bucket.
+	require.Len(t, s.openHeads, 1)
+	idx, ok := s.openHeads[now.Add(-2*time.Hour).Unix()]
+	require.True(t, ok)
+	require.False(t, s.chunks[idx].closed)
+	require.Equal(t, now.Add(-2*time.Hour).Unix(), s.chunks[idx].bucketStart.Unix())
 }

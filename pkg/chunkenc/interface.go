@@ -44,8 +44,29 @@ func (m *errTooFarBehind) Error() string {
 	return fmt.Sprintf("entry too far behind, entry timestamp is: %s, oldest acceptable timestamp is: %s", m.entryTs.Format(time.RFC3339), m.cutoff.Format(time.RFC3339))
 }
 
+type errTooManyTimeShardBuckets struct {
+	// original timestamp of the entry itself.
+	entryTs time.Time
+
+	// maximum is the configured maximum number of concurrently open time-shard buckets.
+	maximum int
+}
+
+func IsErrTooManyTimeShardBuckets(err error) bool {
+	_, ok := err.(*errTooManyTimeShardBuckets)
+	return ok
+}
+
+func ErrTooManyTimeShardBuckets(entryTs time.Time, maximum int) error {
+	return &errTooManyTimeShardBuckets{entryTs: entryTs, maximum: maximum}
+}
+
+func (m *errTooManyTimeShardBuckets) Error() string {
+	return fmt.Sprintf("entry timestamp %s would open a new time-shard bucket beyond the limit of %d concurrently open buckets", m.entryTs.Format(time.RFC3339), m.maximum)
+}
+
 func IsOutOfOrderErr(err error) bool {
-	return err == ErrOutOfOrder || IsErrTooFarBehind(err)
+	return err == ErrOutOfOrder || IsErrTooFarBehind(err) || IsErrTooManyTimeShardBuckets(err)
 }
 
 // Chunk is the interface for the compressed logs chunk format.

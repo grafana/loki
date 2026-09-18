@@ -50,6 +50,11 @@ const (
 	// half of `-ingester.max-chunk-age` compared to the newest line in the
 	// stream.
 	TooFarBehind = "too_far_behind"
+	// TooManyTimeShardBuckets is a reason for discarding lines when the
+	// ingester's time-bucketing (`ingester_time_sharding.enabled`) would need
+	// to open more concurrently-open time buckets for a stream than
+	// `ingester_time_sharding.max_open_buckets` allows.
+	TooManyTimeShardBuckets = "too_many_time_shard_buckets"
 	// GreaterThanMaxSampleAge is a reason for discarding log lines which are older than the current time - `reject_old_samples_max_age`
 	GreaterThanMaxSampleAge         = "greater_than_max_sample_age"
 	GreaterThanMaxSampleAgeErrorMsg = "entry for stream '%s' has timestamp too old: %v, oldest acceptable timestamp is: %v"
