@@ -23,6 +23,8 @@ import (
 	"github.com/grafana/loki/v3/pkg/util"
 )
 
+var errNothingToDo = errors.New("no work required for LogMerge")
+
 func (c *Context) executeLogMerge(node *physical.LogMerge) Pipeline {
 	return newLazyPipeline(func(ctx context.Context, _ []Pipeline) Pipeline {
 		arts, err := c.doLogObjectMerge(ctx, node)
@@ -56,22 +58,11 @@ func (c *Context) doLogObjectMerge(ctx context.Context, node *physical.LogMerge)
 
 	inputs, err := c.prepareLogMergeInputs(ctx, node)
 	if err != nil {
-		return nil, err
-	}
-	if len(inputs.sources) == 0 {
-		c.observeLogMerge(node.Tenant, logMergeObservedStats{Outcome: logMergeOutcomeEmpty}, time.Since(start))
-		return nil, fmt.Errorf("LogMerge: no source log sections for tenant %q", node.Tenant)
-	}
+		if errors.Is(err, errNothingToDo) {
+			c.observeLogMerge(node.Tenant, logMergeObservedStats{Outcome: logMergeOutcomeEmpty}, time.Since(start))
+		}
 
-	if inputs.mismatch != "" {
-		level.Warn(c.logger).Log(
-			"msg", "LogMerge: skipping task; source object sort layout does not match target",
-			"tenant", node.Tenant,
-			"path", inputs.mismatch,
-			"sort_schema", strings.Join(node.SortSchema, ","),
-		)
-		c.observeLogMerge(node.Tenant, logMergeObservedStats{Outcome: logMergeOutcomeEmpty}, time.Since(start))
-		return nil, nil
+		return nil, err
 	}
 
 	indexBuilder, err := indexobj.NewBuilder(c.indexobjCfg, c.scratchStore)
@@ -213,6 +204,8 @@ func (c *Context) collectLogSources(ctx context.Context, node *physical.LogMerge
 			return nil, fmt.Errorf("opening object %q: %w", path, err)
 		}
 
+		// Use a slice rather than a map iterated in order, sized for all log sections in the object.
+		// Slots for unselected sections or sections belonging to other tenants will remain nil
 		logSections := make([]*dataobj.Section, obj.Sections().Count(logs.CheckSection))
 		found := 0
 		// Filter indexes count logs sections across all tenants, matching the
@@ -261,7 +254,7 @@ func (c *Context) collectLogSources(ctx context.Context, node *physical.LogMerge
 	return sources, nil
 }
 
-// sourcesMatchSortLayout reports whether every logs section in sources has the
+// sourcesMatchSortLayout checks whether every logs section in sources has the
 // target layout. mismatch is the first object path that does not match.
 func sourcesMatchSortLayout(ctx context.Context, sources []*logSource, sortSchema []string) (string, error) {
 	want := logsobj.TargetSortLayout(sortSchema)
@@ -328,14 +321,27 @@ func (c *Context) prepareLogMergeInputs(ctx context.Context, node *physical.LogM
 	if err != nil {
 		return nil, err
 	}
+	if len(sources) == 0 {
+		level.Warn(c.logger).Log("msg", "LogMerge: skipping task; no source objects found", "tenant", node.Tenant)
+		return nil, errNothingToDo
+	}
+
 	inputs := &logMergeInputs{sources: sources}
 	inputs.mismatch, err = sourcesMatchSortLayout(ctx, sources, node.SortSchema)
 	if err != nil {
 		return nil, err
 	}
-	if inputs.mismatch != "" || len(sources) == 0 {
-		return inputs, nil
+
+	if inputs.mismatch != "" {
+		level.Warn(c.logger).Log(
+			"msg", "LogMerge: skipping task; source object sort layout does not match target",
+			"tenant", node.Tenant,
+			"path", inputs.mismatch,
+			"sort_schema", strings.Join(node.SortSchema, ","),
+		)
+		return nil, fmt.Errorf("source object %q sort layout does not match target", inputs.mismatch)
 	}
+
 	inputs.table, err = buildGlobalStreamTable(sources, node.SortSchema)
 	if err != nil {
 		return nil, err
@@ -351,14 +357,8 @@ func (c *Context) prepareLogMergeInputs(ctx context.Context, node *physical.LogM
 	}
 	seen := make(map[sectionID]struct{})
 	for _, ref := range node.Runs {
-		if ref == nil {
-			continue
-		}
 		var run sortmerge.Run
 		for _, section := range ref.Sections {
-			if section == nil {
-				continue
-			}
 			id := sectionID{section.ObjectPath, section.SectionIndex}
 			if _, ok := seen[id]; ok {
 				continue
