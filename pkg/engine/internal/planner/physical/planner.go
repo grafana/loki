@@ -780,6 +780,7 @@ func (p *Planner) Optimize(plan *Plan) (*Plan, error) {
 			// Perform cleanups at the very end.
 			newOptimization("Cleanup", plan).withRules(
 				&removeNoopFilter{plan: plan},
+				&removeNoopCompat{plan: plan},
 			),
 		}
 		optimizer := NewOptimizer(plan, optimizations)
