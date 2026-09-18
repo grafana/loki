@@ -36,15 +36,19 @@ var (
 	)
 )
 
-// getPolicyBucketAndLimit determines which policy bucket to use and the max streams limit
+// getPolicyBucketAndStreamsLimit determines which policy bucket to use and the max streams limit
 // for a given tenant and policy. Returns the policy bucket name and the max streams limit.
 // The policy bucket will be the input policy name only if the max streams limit is overridden for the policy.
-func (s *usageStore) getPolicyBucketAndStreamsLimit(tenant, policy string) (policyBucket string, maxStreams uint64) {
-	defaultMaxStreams := uint64(s.limits.MaxGlobalStreamsPerUser(tenant) / s.numPartitions)
+//
+// Shared between usageStore and streamShardStore so both derive the same
+// per-partition max-streams budget and policy bucket from the tenant/policy
+// config.
+func getPolicyBucketAndStreamsLimit(limits Limits, numPartitions int, tenant, policy string) (policyBucket string, maxStreams uint64) {
+	defaultMaxStreams := uint64(limits.MaxGlobalStreamsPerUser(tenant) / numPartitions)
 
 	if policy != noPolicy {
-		if policyMaxStreams, exists := s.limits.PolicyMaxGlobalStreamsPerUser(tenant, policy); exists {
-			return policy, uint64(policyMaxStreams / s.numPartitions) // Use policy-specific bucket
+		if policyMaxStreams, exists := limits.PolicyMaxGlobalStreamsPerUser(tenant, policy); exists {
+			return policy, uint64(policyMaxStreams / numPartitions) // Use policy-specific bucket
 		}
 	}
 	return noPolicy, defaultMaxStreams // Use default bucket (noPolicy)
@@ -99,6 +103,7 @@ type streamUsage struct {
 type rateBucket struct {
 	timestamp int64  // start of the interval
 	size      uint64 // bytes received during this interval
+	pushes    uint64 // number of pushes received during this interval
 }
 
 type stripeLock struct {
@@ -198,7 +203,7 @@ func (s *usageStore) Update(tenant string, metadata *proto.StreamMetadata, seenA
 		return errOutsideActiveWindow
 	}
 	partition := s.getPartitionForHash(metadata.StreamHash)
-	policyBucket, _ := s.getPolicyBucketAndStreamsLimit(tenant, metadata.IngestionPolicy)
+	policyBucket, _ := getPolicyBucketAndStreamsLimit(s.limits, s.numPartitions, tenant, metadata.IngestionPolicy)
 	s.withLock(tenant, func(i int) {
 		s.update(i, tenant, partition, policyBucket, metadata, seenAt)
 	})
@@ -221,7 +226,7 @@ func (s *usageStore) UpdateCond(tenant string, metadata []*proto.StreamMetadata,
 			partition := s.getPartitionForHash(m.StreamHash)
 
 			// Determine which policy bucket to use and the max streams limit
-			policyBucket, maxStreams := s.getPolicyBucketAndStreamsLimit(tenant, m.IngestionPolicy)
+			policyBucket, maxStreams := getPolicyBucketAndStreamsLimit(s.limits, s.numPartitions, tenant, m.IngestionPolicy)
 
 			s.checkInitMap(i, tenant, partition, policyBucket)
 			streams := s.stripes[i][tenant][partition][policyBucket]
