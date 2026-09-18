@@ -174,39 +174,56 @@ func (f *Frontend) ExceedsLimits(ctx context.Context, req *proto.ExceedsLimitsRe
 	return resp, nil
 }
 
-// CheckLimitsAndShard implements proto.IngestLimitsFrontendClient.
+// CheckLimitsAndShard implements proto.IngestLimitsFrontendClient. The
+// response contains exactly one result per requested stream.
 func (f *Frontend) CheckLimitsAndShard(ctx context.Context, req *proto.CheckLimitsAndShardRequest) (*proto.CheckLimitsAndShardResponse, error) {
 	f.checkLimitsAndShardStreams.WithLabelValues(req.Tenant).Add(float64(len(req.Streams)))
 	resp, err := f.limitsClient.CheckLimitsAndShard(ctx, req)
 	if err != nil {
-		// If the entire call failed, degrade to "don't shard this push" for
-		// every stream rather than rejecting it.
-		resp = &proto.CheckLimitsAndShardResponse{
-			Results: make([]*proto.StreamShardResult, 0, len(req.Streams)),
-		}
-		for _, stream := range req.Streams {
-			resp.Results = append(resp.Results, &proto.StreamShardResult{
-				StreamHash: stream.StreamHash,
-				Shards:     1,
-				Stats:      &proto.ShardStats{ShardDecisionContext: uint32(limits.ReasonFailed)},
-			})
-		}
-		f.checkLimitsAndShardShards.WithLabelValues(req.Tenant).Add(float64(len(req.Streams)))
-		f.checkLimitsAndShardFailed.WithLabelValues(req.Tenant).Add(float64(len(req.Streams)))
 		level.Error(f.logger).Log("msg", "failed to check limits and shard", "err", err)
-	} else {
-		for _, res := range resp.Results {
-			f.checkLimitsAndShardShards.WithLabelValues(req.Tenant).Add(float64(res.Shards))
-			switch {
-			case res.GetStats().GetShardDecisionContext() == uint32(limits.ReasonFailed),
-				res.GetStats().GetShardDecisionContext() == uint32(limits.ReasonNotOwned):
-				f.checkLimitsAndShardFailed.WithLabelValues(req.Tenant).Inc()
-			case res.RejectReason != "":
-				f.checkLimitsAndShardRejected.WithLabelValues(req.Tenant).Inc()
-			}
+		resp = &proto.CheckLimitsAndShardResponse{}
+	}
+	// The client answers a subset of the requested streams: the whole call can
+	// fail, an instance can fail or not own a stream's partition, or all zones
+	// can be exhausted without an answer. This is the one place where the
+	// response is completed, so that callers do not have to interpret a
+	// missing result themselves.
+	resp.Results = appendFailedShardResults(resp.Results, req.Streams)
+	for _, res := range resp.Results {
+		f.checkLimitsAndShardShards.WithLabelValues(req.Tenant).Add(float64(res.Shards))
+		switch {
+		case res.GetStats().GetShardDecisionContext() == uint32(limits.ReasonFailed),
+			res.GetStats().GetShardDecisionContext() == uint32(limits.ReasonNotOwned):
+			f.checkLimitsAndShardFailed.WithLabelValues(req.Tenant).Inc()
+		case res.RejectReason != "":
+			f.checkLimitsAndShardRejected.WithLabelValues(req.Tenant).Inc()
 		}
 	}
 	return resp, nil
+}
+
+// appendFailedShardResults appends a result for each stream that has none.
+// Such streams degrade to "don't shard this push" (one shard) rather than
+// being rejected.
+func appendFailedShardResults(results []*proto.StreamShardResult, streams []*proto.StreamMetadata) []*proto.StreamShardResult {
+	if len(results) == len(streams) {
+		return results
+	}
+	answered := make(map[uint64]struct{}, len(results))
+	for _, res := range results {
+		answered[res.StreamHash] = struct{}{}
+	}
+	for _, stream := range streams {
+		if _, ok := answered[stream.StreamHash]; ok {
+			continue
+		}
+		results = append(results, &proto.StreamShardResult{
+			StreamHash: stream.StreamHash,
+			Shards:     1,
+			Stats:      &proto.ShardStats{ShardDecisionContext: uint32(limits.ReasonFailed)},
+		})
+	}
+	return results
 }
 
 func (f *Frontend) UpdateRates(ctx context.Context, req *proto.UpdateRatesRequest) (*proto.UpdateRatesResponse, error) {

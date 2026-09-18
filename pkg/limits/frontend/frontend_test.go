@@ -252,3 +252,58 @@ func TestFrontend_CheckLimitsAndShard_FailsOpenToOneShard(t *testing.T) {
 		require.Equal(t, expected, resp.Results)
 	})
 }
+
+func TestFrontend_CheckLimitsAndShard_CompletesPartialResponses(t *testing.T) {
+	streams := []*proto.StreamMetadata{{StreamHash: 0x1}, {StreamHash: 0x2}}
+	unsharded := &proto.StreamShardResult{
+		StreamHash: 0x1,
+		Shards:     1,
+		Stats:      &proto.ShardStats{EvaluatedRate: 0x10},
+	}
+	sharded := &proto.StreamShardResult{
+		StreamHash: 0x2,
+		Shards:     4,
+		Stats:      &proto.ShardStats{EvaluatedRate: 0x100},
+	}
+	failedOpen := func(streamHash uint64) *proto.StreamShardResult {
+		return &proto.StreamShardResult{
+			StreamHash: streamHash,
+			Shards:     1,
+			Stats:      &proto.ShardStats{ShardDecisionContext: uint32(limits.ReasonFailed)},
+		}
+	}
+
+	tests := []struct {
+		name     string
+		response *proto.CheckLimitsAndShardResponse
+		expected []*proto.StreamShardResult
+	}{{
+		// What the backend returns until the decision logic lands.
+		name:     "no results",
+		response: &proto.CheckLimitsAndShardResponse{},
+		expected: []*proto.StreamShardResult{failedOpen(0x1), failedOpen(0x2)},
+	}, {
+		// A stream whose partition no instance owned, or whose instance was
+		// unavailable in all zones, has no result.
+		name:     "results for a subset of the streams",
+		response: &proto.CheckLimitsAndShardResponse{Results: []*proto.StreamShardResult{sharded}},
+		expected: []*proto.StreamShardResult{sharded, failedOpen(0x1)},
+	}, {
+		name:     "results for all streams",
+		response: &proto.CheckLimitsAndShardResponse{Results: []*proto.StreamShardResult{unsharded, sharded}},
+		expected: []*proto.StreamShardResult{unsharded, sharded},
+	}}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			f := newTestFrontend(t)
+			f.limitsClient = &mockLimitsClient{t: t, checkLimitsAndShardResponse: test.response}
+			resp, err := f.CheckLimitsAndShard(t.Context(), &proto.CheckLimitsAndShardRequest{
+				Tenant:  "test",
+				Streams: streams,
+			})
+			require.NoError(t, err)
+			require.Equal(t, test.expected, resp.Results)
+		})
+	}
+}

@@ -23,7 +23,9 @@ type limitsClient interface {
 	UpdateRates(context.Context, *proto.UpdateRatesRequest) (*proto.UpdateRatesResponse, error)
 
 	// CheckLimitsAndShard checks limits and returns a shard-count
-	// recommendation per stream.
+	// recommendation per stream. The results may cover just a subset of the
+	// requested streams, as backends do not answer streams whose partition
+	// they do not own, and unavailable backends do not answer at all.
 	CheckLimitsAndShard(context.Context, *proto.CheckLimitsAndShardRequest) (*proto.CheckLimitsAndShardResponse, error)
 }
 

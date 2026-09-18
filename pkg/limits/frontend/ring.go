@@ -144,7 +144,8 @@ func (r *ringLimitsClient) UpdateRates(ctx context.Context, req *proto.UpdateRat
 	return &resp, nil
 }
 
-// CheckLimitsAndShard implements the [limitsClient] interface.
+// CheckLimitsAndShard implements the [limitsClient] interface. Streams left
+// unanswered after all zones are exhausted have no result.
 func (r *ringLimitsClient) CheckLimitsAndShard(ctx context.Context, req *proto.CheckLimitsAndShardRequest) (*proto.CheckLimitsAndShardResponse, error) {
 	var resp proto.CheckLimitsAndShardResponse
 	if len(req.Streams) == 0 {
@@ -163,22 +164,8 @@ func (r *ringLimitsClient) CheckLimitsAndShard(ctx context.Context, req *proto.C
 			return resp.Results, nil
 		},
 	)
-	unanswered, err := r.exhaustAllZones(ctx, req.Tenant, req.Streams, doRPCs)
-	if err != nil {
+	if _, err := r.exhaustAllZones(ctx, req.Tenant, req.Streams, doRPCs); err != nil {
 		return nil, err
-	}
-	// Any unanswered streams after exhausting all zones degrade to "don't
-	// shard this push" rather than being rejected.
-	if len(unanswered) > 0 {
-		failed := make([]*proto.StreamShardResult, 0, len(unanswered))
-		for _, stream := range unanswered {
-			failed = append(failed, &proto.StreamShardResult{
-				StreamHash: stream.StreamHash,
-				Shards:     1,
-				Stats:      &proto.ShardStats{ShardDecisionContext: uint32(limits.ReasonFailed)},
-			})
-		}
-		resp.Results = append(resp.Results, failed...)
 	}
 	return &resp, nil
 }
