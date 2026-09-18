@@ -36,6 +36,7 @@ jobs:
     - "loki-canary-boringcrypto"
     - "loki-docker-driver"
     - "loki-helm-test"
+    - "lokitool"
     - "querytee"
     permissions:
       contents: "write"
@@ -896,6 +897,89 @@ jobs:
       uses: "grafana/shared-workflows/actions/login-to-gar@12c87e5aa323694c820c1ff3d8e47e8237e05136"
     - env:
         path: "images/loki-helm-test-${{ needs.version.outputs.version}}-${{ steps.platform.outputs.platform }}.tar"
+      if: "${{ fromJSON(needs.version.outputs.pr_created) }}"
+      name: "upload artifacts"
+      run: |
+        gcloud artifacts generic upload \
+          --project="grafanalabs-dev" \
+          --repository="generic-${{ env.GAR_REPO_SLUG }}-dev" \
+          --location="us" \
+          --source=${{ env.path }} \
+          --package=images \
+          --version=${{ github.sha }}
+      working-directory: "release"
+    strategy:
+      fail-fast: true
+      matrix:
+        include:
+        - arch: "linux/amd64"
+          runs_on:
+          - "ubuntu-x64"
+        - arch: "linux/arm64"
+          runs_on:
+          - "ubuntu-arm64"
+        - arch: "linux/arm"
+          runs_on:
+          - "ubuntu-arm64"
+  lokitool:
+    needs:
+    - "version"
+    permissions:
+      contents: "write"
+      id-token: "write"
+      pull-requests: "write"
+    runs-on: "${{ matrix.runs_on }}"
+    steps:
+    - name: "pull release library code"
+      uses: "actions/checkout@v4"
+      with:
+        path: "lib"
+        persist-credentials: false
+        ref: "${{ env.RELEASE_LIB_REF }}"
+        repository: "grafana/loki-release"
+    - name: "pull code to release"
+      uses: "actions/checkout@v4"
+      with:
+        path: "release"
+        persist-credentials: false
+        repository: "${{ env.RELEASE_REPO }}"
+    - name: "setup node"
+      uses: "actions/setup-node@v4"
+      with:
+        node-version: 24
+        package-manager-cache: false
+    - name: "enable corepack"
+      run: "corepack enable"
+    - name: "Set up Docker buildx"
+      uses: "docker/setup-buildx-action@b5ca514318bd6ebac0fb2aedd5d36ec1b5c232a2"
+    - name: "Login to DockerHub"
+      uses: "grafana/shared-workflows/actions/dockerhub-login@ef3a62a3ca4c1a15505b4235a5a51493194da3c7"
+    - id: "platform"
+      name: "Parse image platform"
+      run: |
+        mkdir -p images
+        
+        platform="$(echo "${{ matrix.arch }}" | sed "s/\(.*\)\/\(.*\)/\1-\2/")"
+        echo "platform=${platform}" >> $GITHUB_OUTPUT
+        echo "platform_short=$(echo ${{ matrix.arch }} | cut -d / -f 2)" >> $GITHUB_OUTPUT
+      working-directory: "release"
+    - env:
+        IMAGE_TAG: "${{ needs.version.outputs.version }}"
+      if: "${{ fromJSON(needs.version.outputs.pr_created) }}"
+      name: "Build and export"
+      timeout-minutes: "${{ fromJSON(env.BUILD_TIMEOUT) }}"
+      uses: "docker/build-push-action@14487ce63c7a62a4a324b0bfb37086795e31c6c1"
+      with:
+        build-args: "IMAGE_TAG=${{ needs.version.outputs.version }}"
+        context: "release"
+        file: "release/cmd/lokitool/Dockerfile"
+        outputs: "type=docker,dest=release/images/lokitool-${{ needs.version.outputs.version}}-${{ steps.platform.outputs.platform }}.tar"
+        platforms: "${{ matrix.arch }}"
+        tags: "${{ env.IMAGE_PREFIX }}/lokitool:${{ needs.version.outputs.version }}-${{ steps.platform.outputs.platform_short }}"
+    - name: "Login to GAR"
+      uses: "grafana/shared-workflows/actions/login-to-gar@12c87e5aa323694c820c1ff3d8e47e8237e05136"
+    - env:
+        path: "images/lokitool-${{ needs.version.outputs.version}}-${{ steps.platform.outputs.platform }}.tar"
       if: "${{ fromJSON(needs.version.outputs.pr_created) }}"
       name: "upload artifacts"
       run: |
