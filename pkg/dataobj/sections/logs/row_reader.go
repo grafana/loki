@@ -257,14 +257,10 @@ func (r *RowReader) initReader(ctx context.Context) error {
 // projection, widened with whatever the stream match and the predicates need in order to
 // evaluate.
 func (r *RowReader) projectionColumns() (types map[ColumnType]struct{}, metadataNames map[string]struct{}) {
-	types = make(map[ColumnType]struct{}, len(r.projTypes)+2)
-	for t := range r.projTypes {
-		types[t] = struct{}{}
-	}
+	types = make(map[ColumnType]struct{}, len(r.projTypes))
 	metadataNames = make(map[string]struct{}, len(r.projMetadata))
-	for name := range r.projMetadata {
-		metadataNames[name] = struct{}{}
-	}
+	maps.Copy(types, r.projTypes)
+	maps.Copy(metadataNames, r.projMetadata)
 
 	// A stream match is evaluated as a predicate on the stream ID column, so that column has
 	// to be read; without it the match reduces to a constant that drops every row.
@@ -272,9 +268,9 @@ func (r *RowReader) projectionColumns() (types map[ColumnType]struct{}, metadata
 		types[ColumnTypeStreamID] = struct{}{}
 	}
 
-	// Same for the predicates: each one looks its own column up among the projected columns
-	// and collapses to a constant when it is missing, silently keeping or dropping every row
-	// instead of filtering on it.
+	// Same for the predicates. translateLogsPredicate later looks each one's column up among
+	// the projected columns, and turns a predicate whose column is missing into a constant
+	// that keeps or drops every row instead of filtering on it.
 	for _, p := range r.predicates {
 		projectPredicateColumns(p, types, metadataNames)
 	}
@@ -284,8 +280,9 @@ func (r *RowReader) projectionColumns() (types map[ColumnType]struct{}, metadata
 // projectPredicateColumns records the columns p reads into types and metadataNames.
 //
 // It panics on a predicate it does not recognize. Every predicate has to name its columns
-// here: one that does not would be evaluated against a column the reader never read, and
-// collapse to a constant instead of filtering, which is silent and looks like real data.
+// here: one that does not would leave its column unprojected, and translateLogsPredicate
+// would then find no column for it and turn it into a constant, so it would silently keep
+// or drop every row instead of filtering.
 func projectPredicateColumns(p RowPredicate, types map[ColumnType]struct{}, metadataNames map[string]struct{}) {
 	switch p := p.(type) {
 	case AndRowPredicate:
