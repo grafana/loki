@@ -58,7 +58,7 @@ func BuildIndexGateway(opts Options) ([]client.Object, error) {
 		return nil, err
 	}
 
-	if err := configureReplication(&statefulSet.Spec.Template, opts.Stack.Replication, LabelIndexGatewayComponent, opts.Name); err != nil {
+	if err := configureReplication(&statefulSet.Spec.Template, opts.Stack.Replication, LabelIndexGatewayComponent, opts.Name, opts.OperatorImage); err != nil {
 		return nil, err
 	}
 
