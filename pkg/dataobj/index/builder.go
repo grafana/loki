@@ -136,7 +136,7 @@ func NewIndexBuilder(
 		return nil, fmt.Errorf("failed to register metrics for index builder: %w", err)
 	}
 
-	indexerMetrics := newIndexerMetrics()
+	indexerMetrics := newSerialIndexerMetrics()
 	if err := indexerMetrics.register(builderReg); err != nil {
 		return nil, fmt.Errorf("failed to register indexer metrics: %w", err)
 	}
