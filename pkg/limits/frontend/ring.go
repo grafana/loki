@@ -230,13 +230,7 @@ func newRPCsFunc[Req, Resp any](
 	}
 }
 
-type doRPCsFunc func(
-	ctx context.Context,
-	tenant string,
-	streams []*proto.StreamMetadata,
-	zone string,
-	consumers map[int32]string,
-) ([]uint64, error)
+type doRPCsFunc func(ctx context.Context, tenant string, streams []*proto.StreamMetadata, zone string, consumers map[int32]string) ([]uint64, error)
 
 // exhaustAllZones queries all zones, one at a time, until either all streams
 // have been answered or all zones have been exhausted.

@@ -218,10 +218,12 @@ func TestFrontend_CheckLimitsAndShard_FailsOpenToOneShard(t *testing.T) {
 
 	t.Run("the whole client call fails, for instance because the ring could not be queried", func(t *testing.T) {
 		f := newTestFrontend(t)
-		f.limitsClient = &mockLimitsClient{t: t, err: errors.New("boom")}
+		client := &mockLimitsClient{t: t, expectedCheckLimitsAndShardRequest: req, err: errors.New("boom")}
+		f.limitsClient = client
 		resp, err := f.CheckLimitsAndShard(t.Context(), req)
 		require.NoError(t, err)
 		require.Equal(t, expected, resp.Results)
+		require.Equal(t, 1, client.checkLimitsAndShardCalls)
 	})
 
 	t.Run("the backend consuming the stream's partition returns an error, leaving the stream unanswered", func(t *testing.T) {
@@ -232,6 +234,7 @@ func TestFrontend_CheckLimitsAndShard_FailsOpenToOneShard(t *testing.T) {
 				AssignedPartitions: map[int32]int64{0: time.Now().UnixNano()},
 			},
 			expectedNumAssignedPartitionsRequests:  1,
+			expectedCheckLimitsAndShardRequest:     req,
 			checkLimitsAndShardResponseErr:         errors.New("boom"),
 			expectedNumCheckLimitsAndShardRequests: 1,
 		}
@@ -244,6 +247,45 @@ func TestFrontend_CheckLimitsAndShard_FailsOpenToOneShard(t *testing.T) {
 		resp, err := f.CheckLimitsAndShard(t.Context(), req)
 		require.NoError(t, err)
 		require.Equal(t, expected, resp.Results)
+	})
+
+	t.Run("no instance consumes the stream's partition, so the backend is never asked", func(t *testing.T) {
+		// Two partitions, but the only instance consumes partition 0, so the
+		// stream hashing to partition 1 has no consumer.
+		instances := []ring.InstanceDesc{{Addr: "instance-0"}}
+		ownedStream := &proto.StreamMetadata{StreamHash: 0x2}
+		ownedResult := &proto.StreamShardResult{
+			StreamHash: 0x2,
+			Shards:     4,
+			Stats:      &proto.ShardStats{EvaluatedRate: 0x100},
+		}
+		mockClient := &mockLimitsProtoClient{
+			t: t,
+			getAssignedPartitionsResponse: &proto.GetAssignedPartitionsResponse{
+				AssignedPartitions: map[int32]int64{0: time.Now().UnixNano()},
+			},
+			expectedNumAssignedPartitionsRequests: 1,
+			expectedCheckLimitsAndShardRequest: &proto.CheckLimitsAndShardRequest{
+				Tenant:  "test",
+				Streams: []*proto.StreamMetadata{ownedStream},
+			},
+			checkLimitsAndShardResponse: &proto.CheckLimitsAndShardResponse{
+				Results: []*proto.StreamShardResult{ownedResult},
+			},
+			expectedNumCheckLimitsAndShardRequests: 1,
+		}
+		t.Cleanup(mockClient.Finished)
+		readRing, clientPool := newMockRingWithClientPool(t, "test", []*mockLimitsProtoClient{mockClient}, instances)
+		cache := newNopCache[string, *proto.GetAssignedPartitionsResponse]()
+
+		f := newTestFrontend(t)
+		f.limitsClient = newRingLimitsClient(readRing, clientPool, 2, cache, log.NewNopLogger(), prometheus.NewRegistry())
+		resp, err := f.CheckLimitsAndShard(t.Context(), &proto.CheckLimitsAndShardRequest{
+			Tenant:  "test",
+			Streams: []*proto.StreamMetadata{{StreamHash: 0x1}, ownedStream},
+		})
+		require.NoError(t, err)
+		require.Equal(t, append([]*proto.StreamShardResult{ownedResult}, expected...), resp.Results)
 	})
 }
 
@@ -286,7 +328,7 @@ func TestFrontend_CheckLimitsAndShard_CompletesPartialResponses(t *testing.T) {
 		expectedShards: 2,
 		expectedFailed: 2,
 	}, {
-		name:           "results for a subset of the streams, as when no instance owns a partition",
+		name:           "results for a subset of the streams",
 		response:       &proto.CheckLimitsAndShardResponse{Results: []*proto.StreamShardResult{sharded}},
 		expected:       []*proto.StreamShardResult{sharded, failedOpen(0x1)},
 		expectedShards: 5,
