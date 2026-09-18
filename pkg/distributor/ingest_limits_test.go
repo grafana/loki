@@ -102,10 +102,10 @@ func TestIngestLimits_EnforceLimits(t *testing.T) {
 			Tenant: "test",
 			Streams: []*proto.StreamMetadata{{
 				StreamHash: 1,
-				TotalSize:  9,
+				TotalSize:  0x20,
 			}, {
 				StreamHash: 2,
-				TotalSize:  11,
+				TotalSize:  0x22,
 			}},
 		},
 		responseErr: errors.New("failed to check limits"),
