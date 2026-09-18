@@ -1046,6 +1046,21 @@ func TestBuildTermJobs_FilterTooShortReturnsUnsupported(t *testing.T) {
 	require.ErrorIs(t, err, ErrUnsupported)
 }
 
+func TestBuildTermJobs_V4UsesSupportedFilterWhenAnotherProducesNoTerms(t *testing.T) {
+	meta := minimalMeta("aaaaaaaaaaaaaaa1", "2026-01-01", "v4")
+
+	// v4 can look up the text filter, but emits no term for an 8-digit number:
+	// numeric text n-grams are skipped and packed terms require exactly 9 digits.
+	jobs, metasByID, err := buildTermJobs(
+		[]string{"abcdefg", "12345678"},
+		[]store.Meta{meta},
+		6,
+	)
+	require.NoError(t, err)
+	require.NotEmpty(t, jobs)
+	require.Contains(t, metasByID, meta.ID())
+}
+
 func buildIndexBytes(t *testing.T, needle string, docMin, docMax time.Time) ([]byte, *format.HeaderInfo) {
 	t.Helper()
 	tmpDir := t.TempDir()
