@@ -58,7 +58,7 @@ func (c *Context) doLogObjectMerge(ctx context.Context, node *physical.LogMerge)
 
 	inputs, err := c.prepareLogMergeInputs(ctx, node)
 	if err != nil {
-		if errors.Is(err, errNothingToDo) {
+		if errors.Is(err, errNoSourceObjects) {
 			c.observeLogMerge(node.Tenant, logMergeObservedStats{Outcome: logMergeOutcomeEmpty}, time.Since(start))
 		}
 

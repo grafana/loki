@@ -203,8 +203,8 @@ func TestRunSequence(t *testing.T) {
 		require.False(t, s.Next())
 		require.Zero(t, first.nextCalls)
 		require.Zero(t, second.nextCalls)
-		require.Zero(t, first.closeCalls)
-		require.Zero(t, second.closeCalls)
+		require.Equal(t, 1, first.closeCalls)
+		require.Equal(t, 1, second.closeCalls)
 	})
 	t.Run("first section opening error", func(t *testing.T) {
 		s, first, second := setup(t)
@@ -213,7 +213,7 @@ func TestRunSequence(t *testing.T) {
 		require.Equal(t, 1, first.nextCalls)
 		require.Equal(t, 1, first.closeCalls)
 		require.Zero(t, second.nextCalls)
-		require.Zero(t, second.closeCalls)
+		require.Equal(t, 1, second.closeCalls)
 	})
 	t.Run("second section opening error closes first section", func(t *testing.T) {
 		s, first, second := setup(t)
@@ -228,7 +228,7 @@ func TestRunSequence(t *testing.T) {
 		require.Equal(t, 1, second.nextCalls)
 		require.Equal(t, 1, second.closeCalls)
 		require.Zero(t, third.nextCalls)
-		require.Zero(t, third.closeCalls)
+		require.Equal(t, 1, third.closeCalls)
 	})
 	t.Run("empty section", func(t *testing.T) {
 		s, first, second := setup(t)
@@ -248,7 +248,7 @@ func TestRunSequence(t *testing.T) {
 		require.Equal(t, 1, first.nextCalls)
 		require.Equal(t, 1, first.closeCalls)
 		require.Zero(t, second.nextCalls)
-		require.Zero(t, second.closeCalls)
+		require.Equal(t, 1, second.closeCalls)
 	})
 	t.Run("cancel before start", func(t *testing.T) {
 		s, first, second := setup(t)
@@ -257,9 +257,9 @@ func TestRunSequence(t *testing.T) {
 		cancel()
 		assertTerminalError(t, s, context.Canceled)
 		require.Zero(t, first.nextCalls)
-		require.Zero(t, first.closeCalls)
+		require.Equal(t, 1, first.closeCalls)
 		require.Zero(t, second.nextCalls)
-		require.Zero(t, second.closeCalls)
+		require.Equal(t, 1, second.closeCalls)
 	})
 	t.Run("cancel after row", func(t *testing.T) {
 		s, first, second := setup(t)
@@ -272,7 +272,7 @@ func TestRunSequence(t *testing.T) {
 		require.Equal(t, 1, first.nextCalls)
 		require.Equal(t, 1, first.closeCalls)
 		require.Zero(t, second.nextCalls)
-		require.Zero(t, second.closeCalls)
+		require.Equal(t, 1, second.closeCalls)
 	})
 }
 
@@ -347,7 +347,7 @@ func TestRunSequence_TerminalStickiness(t *testing.T) {
 	require.Equal(t, 1, first.nextCalls)
 	require.Equal(t, 1, first.closeCalls)
 	require.Zero(t, successor.nextCalls)
-	require.Zero(t, successor.closeCalls)
+	require.Equal(t, 1, successor.closeCalls)
 	require.Nil(t, s.current)
 }
 
