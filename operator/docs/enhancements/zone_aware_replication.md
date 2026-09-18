@@ -1,5 +1,6 @@
 ---
 title: Zone-Aware Replication Support
+state: committed
 authors:
   - "@shwetaap"
   - "@btaani"
