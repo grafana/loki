@@ -68,11 +68,11 @@ func (r *LokiRequest) GetStart() time.Time {
 }
 
 func (r *LokiRequest) WithStartEnd(s time.Time, e time.Time) queryrangebase.Request {
-	clone := cloneLokiRequest(r)
+	clone := *r
 	clone.StartTs = s
 	clone.EndTs = e
-	clone.HintRanges = clipHintTimeRanges(clone.HintRanges, s, e)
-	return clone
+	clone.HintRanges = clipHintTimeRanges(r.HintRanges, s, e)
+	return &clone
 }
 
 // WithStartEndForCache implements resultscache.Request.
@@ -81,20 +81,14 @@ func (r *LokiRequest) WithStartEndForCache(s time.Time, e time.Time) resultscach
 }
 
 func (r *LokiRequest) WithQuery(query string) queryrangebase.Request {
-	clone := cloneLokiRequest(r)
+	clone := *r
 	clone.Query = query
-	return clone
+	return &clone
 }
 
 func (r *LokiRequest) WithShards(shards logql.Shards) *LokiRequest {
-	clone := cloneLokiRequest(r)
-	clone.Shards = shards.Encode()
-	return clone
-}
-
-func cloneLokiRequest(r *LokiRequest) *LokiRequest {
 	clone := *r
-	clone.HintRanges = slices.Clone(r.HintRanges)
+	clone.Shards = shards.Encode()
 	return &clone
 }
 
