@@ -1,6 +1,7 @@
 package index
 
 import (
+	"errors"
 	"strconv"
 	"sync"
 	"time"
@@ -233,4 +234,46 @@ func (m *calculatorMetrics) unregister(reg prometheus.Registerer) {
 
 func (m *calculatorMetrics) observeStepDuration(step string, duration time.Duration) {
 	m.calculationStepDuration.WithLabelValues(step).Observe(duration.Seconds())
+}
+
+// simpleIndexerMetrics instruments a [simpleIndexer].
+type simpleIndexerMetrics struct {
+	duration prometheus.Histogram
+	attempts prometheus.Counter
+	failures prometheus.Counter
+	empty    prometheus.Counter
+}
+
+func newSimpleIndexerMetrics() *simpleIndexerMetrics {
+	return &simpleIndexerMetrics{
+		duration: prometheus.NewHistogram(prometheus.HistogramOpts{
+			Name: "loki_dataobj_builder_index_duration_seconds",
+			Help: "Time taken to build, upload and register the index for a single data object.",
+
+			Buckets:                         prometheus.DefBuckets,
+			NativeHistogramBucketFactor:     1.1,
+			NativeHistogramMaxBucketNumber:  100,
+			NativeHistogramMinResetDuration: 0,
+		}),
+		attempts: prometheus.NewCounter(prometheus.CounterOpts{
+			Name: "loki_dataobj_builder_index_attempts_total",
+			Help: "Total number of attempts to index a data object, including retries.",
+		}),
+		failures: prometheus.NewCounter(prometheus.CounterOpts{
+			Name: "loki_dataobj_builder_index_failures_total",
+			Help: "Total number of failed attempts to index a data object. Failures are retried, so this also counts retries.",
+		}),
+		empty: prometheus.NewCounter(prometheus.CounterOpts{
+			Name: "loki_dataobj_builder_index_empty_total",
+			Help: "Total number of data objects that produced no index and are therefore not discoverable by queries.",
+		}),
+	}
+}
+
+func (m *simpleIndexerMetrics) register(reg prometheus.Registerer) error {
+	var errs []error
+	for _, c := range []prometheus.Collector{m.duration, m.attempts, m.failures, m.empty} {
+		errs = append(errs, reg.Register(c))
+	}
+	return errors.Join(errs...)
 }
