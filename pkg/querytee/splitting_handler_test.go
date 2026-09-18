@@ -12,6 +12,7 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/grafana/dskit/user"
+	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
@@ -917,6 +918,129 @@ func TestSplittingHandler_MultiTenantQuery_RoutesToV1Only(t *testing.T) {
 			require.False(t, fanOutHandlerCalled, "multi-tenant query should NOT use fanout handler in %s mode (would route to v2)", routingMode)
 			require.Equal(t, "tenant1|tenant2", capturedTenantID, "tenant ID should be preserved when routing to v1")
 		})
+	}
+}
+
+// TestSplittingHandler_V1OnlySelector_RoutesToV1Only tests that queries whose stream
+// selector matches the configured v1-only matchers are routed exclusively to v1,
+// regardless of routing mode and whether splitting is enabled, and are never
+// sampled for goldfish comparison.
+func TestSplittingHandler_V1OnlySelector_RoutesToV1Only(t *testing.T) {
+	v1OnlyMatchers := []*labels.Matcher{
+		labels.MustNewMatcher(labels.MatchEqual, "app", "foo"),
+	}
+
+	newLokiReq := func(t *testing.T, query string) *queryrange.LokiRequest {
+		t.Helper()
+		expr, err := syntax.ParseExpr(query)
+		require.NoError(t, err)
+
+		now := time.Now()
+		return &queryrange.LokiRequest{
+			Query:   query,
+			StartTs: now.Add(-2 * time.Hour),
+			EndTs:   now,
+			Step:    60000,
+			Limit:   100,
+			Path:    constants.PathLokiQueryRange,
+			Plan: &plan.QueryPlan{
+				AST: expr,
+			},
+		}
+	}
+
+	tests := []struct {
+		name            string
+		query           string
+		splitLag        time.Duration
+		expectV1Only    bool
+		expectedWarning string
+	}{
+		{
+			name:         "matching query with splitting enabled",
+			query:        `{app="foo", env="prod"}`,
+			splitLag:     1 * time.Hour,
+			expectV1Only: true,
+		},
+		{
+			name:         "matching metric query with splitting disabled (fanout path)",
+			query:        `sum(rate({app="foo"}[5m]))`,
+			splitLag:     0,
+			expectV1Only: true,
+		},
+		{
+			name:         "non-matching query with splitting disabled uses fanout",
+			query:        `{app="test"}`,
+			splitLag:     0,
+			expectV1Only: false,
+		},
+	}
+
+	for _, tt := range tests {
+		for _, routingMode := range []RoutingMode{RoutingModeV1Preferred, RoutingModeV2Preferred, RoutingModeRace} {
+			t.Run(tt.name+"/"+string(routingMode), func(t *testing.T) {
+				v1BackendCalled := false
+				fanOutHandlerCalled := false
+
+				v1Backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+					v1BackendCalled = true
+					w.Header().Set("Content-Type", "application/json")
+					w.WriteHeader(http.StatusOK)
+					_, _ = w.Write([]byte(`{"status":"success","data":{"resultType":"streams","result":[]}}`))
+				}))
+				defer v1Backend.Close()
+
+				v1BackendURL, err := url.Parse(v1Backend.URL)
+				require.NoError(t, err)
+
+				v1ProxyBackend, err := NewProxyBackend("v1", v1BackendURL, 5*time.Second, true, false)
+				require.NoError(t, err)
+
+				mockFanOutHandler := queryrangebase.HandlerFunc(func(_ context.Context, _ queryrangebase.Request) (queryrangebase.Response, error) {
+					fanOutHandlerCalled = true
+					return &queryrange.LokiResponse{
+						Status: "success",
+						Data:   queryrange.LokiData{ResultType: "streams"},
+					}, nil
+				})
+
+				goldfishManager := &mockGoldfishManager{
+					shouldSampleResult:  true, // Enable sampling to verify matching queries are not sampled.
+					correlationIDResult: "test-correlation-id",
+				}
+
+				handler, err := NewSplittingHandler(SplittingHandlerConfig{
+					Codec:                     queryrange.DefaultCodec,
+					FanOutHandler:             mockFanOutHandler,
+					GoldfishManager:           goldfishManager,
+					V1Backend:                 v1ProxyBackend,
+					SkipFanoutWhenNotSampling: false,
+					RoutingMode:               routingMode,
+					SplitStart:                time.Time{},
+					SplitLag:                  tt.splitLag,
+					V1OnlyMatchers:            v1OnlyMatchers,
+				}, log.NewNopLogger())
+				require.NoError(t, err)
+
+				ctx := user.InjectOrgID(context.Background(), "tenant1")
+				httpReq, err := queryrange.DefaultCodec.EncodeRequest(ctx, newLokiReq(t, tt.query))
+				require.NoError(t, err)
+
+				recorder := httptest.NewRecorder()
+				handler.ServeHTTP(recorder, httpReq)
+
+				require.Equal(t, http.StatusOK, recorder.Code)
+				if tt.expectV1Only {
+					require.True(t, v1BackendCalled, "matching query should be routed to v1 backend in %s mode", routingMode)
+					require.False(t, fanOutHandlerCalled, "matching query should NOT use fanout handler in %s mode", routingMode)
+					require.Empty(t, recorder.Header().Get(goldfish.GoldfishCorrelationIDHeader),
+						"matching query should not be sampled for goldfish comparison")
+				} else {
+					require.True(t, fanOutHandlerCalled, "non-matching query should use fanout handler in %s mode", routingMode)
+					require.False(t, v1BackendCalled, "non-matching query should not go directly to v1 backend in %s mode", routingMode)
+				}
+			})
+		}
 	}
 }
 
