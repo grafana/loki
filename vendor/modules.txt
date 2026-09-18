@@ -1806,7 +1806,7 @@ go.opentelemetry.io/collector/pdata/ptrace
 # go.opentelemetry.io/collector/pdata/pprofile v0.160.0
 ## explicit; go 1.26.0
 go.opentelemetry.io/collector/pdata/pprofile
-# go.opentelemetry.io/collector/pipeline v1.66.0
+# go.opentelemetry.io/collector/pipeline v1.67.0
 ## explicit; go 1.26.0
 go.opentelemetry.io/collector/pipeline
 go.opentelemetry.io/collector/pipeline/internal/globalsignal
