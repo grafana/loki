@@ -59,13 +59,27 @@ type streamShardStore struct {
 
 	limits Limits
 
-	// Used in tests.
+	// Used in tests to fake current time
 	clock quartz.Clock
 }
 
-// streamShardTenantUsage holds the per-tenant state, partition to policy to
-// stream hash, mirroring usageStore's tenantUsage shape.
-type streamShardTenantUsage map[int32]map[string]map[uint64]streamShardUsage
+// streamShardTenantUsage holds the per-tenant state, partition to policy
+// bucket, mirroring usageStore's tenantUsage shape.
+type streamShardTenantUsage map[int32]map[string]*streamShardPolicyUsage
+
+// streamShardPolicyUsage is the state tracked for one policy bucket of one
+// partition of one tenant.
+type streamShardPolicyUsage struct {
+	streams map[uint64]streamShardUsage
+
+	// slots is the sum of the streams' slots. It is the budget the bucket
+	// consumes of the tenant's max streams limit, maintained as streams are
+	// granted shards and as they are evicted, so that a push does not have to
+	// scan the bucket to find out what budget is left. A stream's slots are
+	// recomputed when it is pushed to or evicted, so between those points the
+	// total does not reflect shards that have since expired.
+	slots uint64
+}
 
 // streamShardUsage is the state tracked for a single logical (pre-shard)
 // stream.
@@ -75,6 +89,10 @@ type streamShardUsage struct {
 	shardCount  uint32
 	policy      string
 	rateBuckets []shardRateBucket
+
+	// slots is the budget this stream consumes: one per live shard, with a
+	// floor of one so a tracked unsharded stream still counts as one stream.
+	slots uint64
 
 	// shardLastUsed holds, for shard i, the time at which shard i was last
 	// covered by a granted shard count. It tracks the physical footprint of
@@ -89,18 +107,14 @@ type streamShardUsage struct {
 // shardRateBucket is a rate bucket for the shard decision. It counts pushes
 // as well as bytes, because the shard count amortizes the current push over
 // the push rate the way the distributor's local rate store does.
+// This struct is mirrorint [rateBucket].
 type shardRateBucket struct {
 	timestamp int64 // start of the interval
 	size      uint64
 	pushes    uint64
 }
 
-func newStreamShardStore(
-	activeWindow, rateWindow, bucketSize time.Duration,
-	numPartitions int,
-	limits Limits,
-	reg prometheus.Registerer,
-) (*streamShardStore, error) {
+func newStreamShardStore(activeWindow, rateWindow, bucketSize time.Duration, numPartitions int, limits Limits, reg prometheus.Registerer) (*streamShardStore, error) {
 	s := &streamShardStore{
 		activeWindow:  activeWindow,
 		rateWindow:    rateWindow,
@@ -149,13 +163,13 @@ func (s *streamShardStore) checkAndShard(ctx context.Context, tenant string, met
 			partition := s.getPartitionForHash(m.StreamHash)
 			shardCfg, _ := s.limits.PolicyShardStreams(tenant, m.IngestionPolicy)
 			policyBucket, maxStreams := getPolicyBucketAndStreamsLimit(s.limits, s.numPartitions, tenant, m.IngestionPolicy)
-			streams := s.checkInitMap(i, tenant, partition, policyBucket)
+			bucket := s.checkInitMap(i, tenant, partition, policyBucket)
 
 			if !shardCfg.Enabled {
 				// Drop any tracked state so it stops consuming budget: a
 				// stream whose policy flipped to disabled must not keep its
 				// stale shards.
-				delete(streams, m.StreamHash)
+				bucket.remove(m.StreamHash)
 				results = append(results, &proto.StreamShardResult{
 					StreamHash: m.StreamHash,
 					Shards:     1,
@@ -163,30 +177,28 @@ func (s *streamShardStore) checkAndShard(ctx context.Context, tenant string, met
 				continue
 			}
 
-			existing, ok := streams[m.StreamHash]
+			existing, ok := bucket.streams[m.StreamHash]
 			isNewOrExpired := !ok || existing.lastSeenAt < cutoff
 			if isNewOrExpired {
 				// Drop the expired entry now. If this push ends up rejected
 				// it must not linger, and keep counting against the other
 				// streams, until the next eviction sweep.
-				delete(streams, m.StreamHash)
+				bucket.remove(m.StreamHash)
+				existing = streamShardUsage{}
 			}
 
 			// budget is the most live shards this stream may hold, and is
 			// only enforced when maxStreams is not 0: maxStreams minus the
-			// live footprint of every other stream in the bucket. Excluding
-			// this stream, rather than counting it and adding it back, scans
-			// each stream's shards at most once and lets this stream keep the
-			// shards it already holds for free.
-			budget := max(0, int64(maxStreams)-int64(othersLiveSlots(streams, m.StreamHash, cutoff)))
+			// slots the other streams in the bucket consume. Excluding this
+			// stream lets it keep the shards it already holds for free.
+			budget := max(0, int64(maxStreams)-int64(bucket.slots-existing.slots))
 
 			var (
 				stream streamShardUsage
-				// desired is the shard count the rate justifies, before the
-				// budget cap.
+				// desired is the shard count the rate justifies, before the budget cap.
 				desired uint32
-				// evaluatedRate is the byte rate that drove the decision. It
-				// stays 0 when no rate was computed.
+				// evaluatedRate is the byte rate that drove the decision.
+				// It stays 0 when no rate was computed.
 				evaluatedRate uint64
 			)
 			switch {
@@ -247,7 +259,7 @@ func (s *streamShardStore) checkAndShard(ctx context.Context, tenant string, met
 			stream.shardCount = granted
 			stream.lastSeenAt = max(seenAt.UnixNano(), stream.lastSeenAt)
 			stream.shardLastUsed = refreshLiveShards(stream.shardLastUsed, granted, seenAt.UnixNano())
-			streams[m.StreamHash] = stream
+			bucket.put(stream, cutoff)
 
 			results = append(results, &proto.StreamShardResult{
 				StreamHash: m.StreamHash,
@@ -272,10 +284,10 @@ func (s *streamShardStore) Evict() map[string]int {
 	s.forEachLock(func(i int) {
 		for tenant, partitions := range s.stripes[i] {
 			for _, policies := range partitions {
-				for _, streams := range policies {
-					for streamHash, stream := range streams {
+				for _, bucket := range policies {
+					for streamHash, stream := range bucket.streams {
 						if stream.lastSeenAt < cutoff {
-							delete(streams, streamHash)
+							bucket.remove(streamHash)
 							evicted[tenant]++
 							continue
 						}
@@ -285,8 +297,10 @@ func (s *streamShardStore) Evict() map[string]int {
 							trimmed := make([]int64, n)
 							copy(trimmed, stream.shardLastUsed)
 							stream.shardLastUsed = trimmed
-							streams[streamHash] = stream
 						}
+						// Recompute the slots either way: shards can expire
+						// without the slice shrinking.
+						bucket.put(stream, cutoff)
 					}
 				}
 			}
@@ -318,11 +332,11 @@ func (s *streamShardStore) Describe(descs chan<- *prometheus.Desc) {
 	descs <- streamShardTotalShardsDesc
 }
 
-// Collect implements [prometheus.Collector]. The physical stream counts use
-// the live shard footprint rather than the current recommendation, so they
-// follow the stream count the ingesters see.
+// Collect implements [prometheus.Collector]. The physical stream counts are
+// the slots the streams consume, which follow the live shard footprint
+// rather than the current recommendation, so they track the stream count the
+// ingesters see.
 func (s *streamShardStore) Collect(metrics chan<- prometheus.Metric) {
-	cutoff := s.clock.Now().Add(-s.activeWindow).UnixNano()
 	var (
 		trackedStreams = make(map[string]int)
 		totalStreams   = make(map[string]uint64)
@@ -331,13 +345,12 @@ func (s *streamShardStore) Collect(metrics chan<- prometheus.Metric) {
 	s.forEachRLock(func(i int) {
 		for tenant, partitions := range s.stripes[i] {
 			for _, policies := range partitions {
-				for _, streams := range policies {
-					for _, stream := range streams {
-						trackedStreams[tenant]++
-						live := liveShardCount(stream.shardLastUsed, cutoff)
-						totalStreams[tenant] += max(1, uint64(live))
-						if live >= 2 {
-							totalShards[tenant] += uint64(live)
+				for _, bucket := range policies {
+					trackedStreams[tenant] += len(bucket.streams)
+					totalStreams[tenant] += bucket.slots
+					for _, stream := range bucket.streams {
+						if stream.slots >= 2 {
+							totalShards[tenant] += stream.slots
 						}
 					}
 				}
@@ -407,19 +420,42 @@ func (s *streamShardStore) forEachRLock(fn func(i int)) {
 }
 
 // checkInitMap initializes the maps for the tenant, partition and policy if
-// needed and returns the stream map. It must not be called without the
+// needed and returns the policy bucket. It must not be called without the
 // stripe lock.
-func (s *streamShardStore) checkInitMap(i int, tenant string, partition int32, policy string) map[uint64]streamShardUsage {
+func (s *streamShardStore) checkInitMap(i int, tenant string, partition int32, policy string) *streamShardPolicyUsage {
 	if _, ok := s.stripes[i][tenant]; !ok {
 		s.stripes[i][tenant] = make(streamShardTenantUsage)
 	}
 	if _, ok := s.stripes[i][tenant][partition]; !ok {
-		s.stripes[i][tenant][partition] = make(map[string]map[uint64]streamShardUsage)
+		s.stripes[i][tenant][partition] = make(map[string]*streamShardPolicyUsage)
 	}
 	if _, ok := s.stripes[i][tenant][partition][policy]; !ok {
-		s.stripes[i][tenant][partition][policy] = make(map[uint64]streamShardUsage)
+		s.stripes[i][tenant][partition][policy] = &streamShardPolicyUsage{
+			streams: make(map[uint64]streamShardUsage),
+		}
 	}
 	return s.stripes[i][tenant][partition][policy]
+}
+
+// put stores stream and keeps the bucket's slot total in step with it. The
+// stream's slots are recomputed from its shard footprint as of cutoff, which
+// is what keeps a push O(1) in the number of streams in the bucket: the
+// bucket total never has to be recomputed by scanning them.
+func (b *streamShardPolicyUsage) put(stream streamShardUsage, cutoff int64) {
+	previous := b.streams[stream.hash].slots
+	stream.slots = max(1, uint64(liveShardCount(stream.shardLastUsed, cutoff)))
+	b.slots += stream.slots - previous
+	b.streams[stream.hash] = stream
+}
+
+// remove deletes the stream, if tracked, and releases its slots.
+func (b *streamShardPolicyUsage) remove(streamHash uint64) {
+	stream, ok := b.streams[streamHash]
+	if !ok {
+		return
+	}
+	b.slots -= stream.slots
+	delete(b.streams, streamHash)
 }
 
 // liveShardCount returns how many of a stream's shards were last covered by a

@@ -1,6 +1,7 @@
 package limits
 
 import (
+	"fmt"
 	"math"
 	"strings"
 	"testing"
@@ -37,6 +38,16 @@ func newTestStreamShardStore(t *testing.T, maxGlobalStreams int, desiredRate str
 	clock := quartz.NewMock(t)
 	s.clock = clock
 	return s, clock
+}
+
+// track stores a stream directly, as if the store had granted it shards
+// earlier, so that a test can start from a given footprint.
+func track(t *testing.T, s *streamShardStore, stream streamShardUsage, now time.Time) {
+	t.Helper()
+	s.withLock("test", func(i int) {
+		s.checkInitMap(i, "test", s.getPartitionForHash(stream.hash), noPolicy).
+			put(stream, now.Add(-s.activeWindow).UnixNano())
+	})
 }
 
 // push sends one push of size bytes for streamHash and returns its result.
@@ -139,14 +150,12 @@ func TestStreamShardStore_ShardCountHeldSteadyWhileRateHistoryIsCold(t *testing.
 	// A stream that this instance tracks but has never observed traffic for,
 	// as after taking over the partition, keeps its shard count instead of
 	// having it recomputed from a rate of zero.
-	s.withLock("test", func(i int) {
-		s.checkInitMap(i, "test", 0, noPolicy)[0x1] = streamShardUsage{
-			hash:          0x1,
-			shardCount:    4,
-			lastSeenAt:    clock.Now().UnixNano(),
-			shardLastUsed: refreshLiveShards(nil, 4, clock.Now().UnixNano()),
-		}
-	})
+	track(t, s, streamShardUsage{
+		hash:          0x1,
+		shardCount:    4,
+		lastSeenAt:    clock.Now().UnixNano(),
+		shardLastUsed: refreshLiveShards(nil, 4, clock.Now().UnixNano()),
+	}, clock.Now())
 	res := push(t, s, 0x1, 1, clock.Now())
 	require.Equal(t, uint32(4), res.Shards)
 	require.Zero(t, res.Stats.EvaluatedRate)
@@ -158,14 +167,12 @@ func TestStreamShardStore_ShrunkShardsKeepCountingUntilTheyExpire(t *testing.T) 
 	// back to one shard. The shards it no longer covers keep counting until
 	// they age out of the active window.
 	s, clock := newTestStreamShardStore(t, 2, "1KB")
-	s.withLock("test", func(i int) {
-		s.checkInitMap(i, "test", 0, noPolicy)[0x1] = streamShardUsage{
-			hash:          0x1,
-			shardCount:    2,
-			lastSeenAt:    clock.Now().UnixNano(),
-			shardLastUsed: refreshLiveShards(nil, 2, clock.Now().UnixNano()),
-		}
-	})
+	track(t, s, streamShardUsage{
+		hash:          0x1,
+		shardCount:    2,
+		lastSeenAt:    clock.Now().UnixNano(),
+		shardLastUsed: refreshLiveShards(nil, 2, clock.Now().UnixNano()),
+	}, clock.Now())
 	push(t, s, 0x1, 1, clock.Now())
 	require.Equal(t, ReasonMaxStreams.String(), push(t, s, 0x2, 1, clock.Now()).RejectReason)
 
@@ -173,6 +180,43 @@ func TestStreamShardStore_ShrunkShardsKeepCountingUntilTheyExpire(t *testing.T) 
 	clock.Advance(testActiveWindow + time.Second)
 	push(t, s, 0x1, 1, clock.Now())
 	require.Empty(t, push(t, s, 0x2, 1, clock.Now()).RejectReason)
+}
+
+func TestStreamShardStore_SlotsFollowTheTrackedStreams(t *testing.T) {
+	// The bucket's slot total is what a push reads instead of scanning the
+	// bucket, so it has to stay in step with the streams it tracks.
+	s, clock := newTestStreamShardStore(t, 0, "1KB")
+	bucketSlots := func() uint64 {
+		var slots uint64
+		s.withLock("test", func(i int) {
+			slots = s.stripes[i]["test"][0][noPolicy].slots
+		})
+		return slots
+	}
+
+	// Two unsharded streams hashing to the same partition, one slot each.
+	push(t, s, 0x2, 1, clock.Now())
+	push(t, s, 0x4, 1, clock.Now())
+	require.Equal(t, uint64(2), bucketSlots())
+
+	// A stream granted more shards claims a slot per shard.
+	track(t, s, streamShardUsage{
+		hash:          0x6,
+		shardCount:    3,
+		lastSeenAt:    clock.Now().UnixNano(),
+		shardLastUsed: refreshLiveShards(nil, 3, clock.Now().UnixNano()),
+	}, clock.Now())
+	require.Equal(t, uint64(5), bucketSlots())
+
+	// Disabling sharding for the policy releases that stream's slots.
+	s.limits.(*mockLimits).ShardStreamsConfig.Enabled = false
+	push(t, s, 0x6, 1, clock.Now())
+	require.Equal(t, uint64(2), bucketSlots())
+
+	// So does eviction.
+	clock.Advance(testActiveWindow + time.Second)
+	require.Equal(t, map[string]int{"test": 2}, s.Evict())
+	require.Equal(t, uint64(0), bucketSlots())
 }
 
 func TestStreamShardStore_Evict(t *testing.T) {
@@ -197,9 +241,7 @@ func TestStreamShardStore_EvictTrimsExpiredShards(t *testing.T) {
 		shardLastUsed: refreshLiveShards(nil, 4, t0.UnixNano()),
 	}
 	s.updateRateBucket(&stream, 1, t0)
-	s.withLock("test", func(i int) {
-		s.checkInitMap(i, "test", 0, noPolicy)[0x1] = stream
-	})
+	track(t, s, stream, t0)
 
 	// The stream's rate no longer justifies four shards, so from here on only
 	// its first shard keeps being covered.
@@ -212,7 +254,9 @@ func TestStreamShardStore_EvictTrimsExpiredShards(t *testing.T) {
 	push(t, s, 0x1, 1, clock.Now())
 	require.Empty(t, s.Evict())
 	s.withLock("test", func(i int) {
-		require.Len(t, s.stripes[i]["test"][0][noPolicy][0x1].shardLastUsed, 1)
+		bucket := s.stripes[i]["test"][0][noPolicy]
+		require.Len(t, bucket.streams[0x1].shardLastUsed, 1)
+		require.Equal(t, uint64(1), bucket.slots)
 	})
 }
 
@@ -235,21 +279,18 @@ func TestStreamShardStore_Collect(t *testing.T) {
 	s, clock := newTestStreamShardStore(t, 0, "1KB")
 	// One unsharded stream and one stream holding three shards: four physical
 	// streams in total, three of which belong to a sharded stream.
-	s.withLock("test", func(i int) {
-		streams := s.checkInitMap(i, "test", 0, noPolicy)
-		streams[0x1] = streamShardUsage{
-			hash:          0x1,
-			shardCount:    1,
-			lastSeenAt:    clock.Now().UnixNano(),
-			shardLastUsed: refreshLiveShards(nil, 1, clock.Now().UnixNano()),
-		}
-		streams[0x2] = streamShardUsage{
-			hash:          0x2,
-			shardCount:    3,
-			lastSeenAt:    clock.Now().UnixNano(),
-			shardLastUsed: refreshLiveShards(nil, 3, clock.Now().UnixNano()),
-		}
-	})
+	track(t, s, streamShardUsage{
+		hash:          0x1,
+		shardCount:    1,
+		lastSeenAt:    clock.Now().UnixNano(),
+		shardLastUsed: refreshLiveShards(nil, 1, clock.Now().UnixNano()),
+	}, clock.Now())
+	track(t, s, streamShardUsage{
+		hash:          0x2,
+		shardCount:    3,
+		lastSeenAt:    clock.Now().UnixNano(),
+		shardLastUsed: refreshLiveShards(nil, 3, clock.Now().UnixNano()),
+	}, clock.Now())
 
 	require.NoError(t, testutil.CollectAndCompare(s, strings.NewReader(`
 # HELP loki_ingest_limits_stream_shard_tracked_streams The current number of logical (pre-shard) streams tracked for stream sharding per tenant.
@@ -295,13 +336,46 @@ func TestCeilDivU32(t *testing.T) {
 	require.Equal(t, uint32(math.MaxUint32), ceilDivU32(math.MaxUint64, 1))
 }
 
+// The budget check must not depend on the number of streams already tracked
+// in the bucket: a tenant near its stream limit pushes into a bucket holding
+// tens of thousands of streams.
+func BenchmarkStreamShardStore_CheckAndShard(b *testing.B) {
+	for _, streamsInBucket := range []int{100, 10_000, 100_000} {
+		b.Run(fmt.Sprintf("%d_streams_in_bucket", streamsInBucket), func(b *testing.B) {
+			limits := &mockLimits{
+				MaxGlobalStreams:   2 * streamsInBucket,
+				ShardStreamsConfig: shardstreams.Config{Enabled: true},
+			}
+			require.NoError(b, limits.ShardStreamsConfig.DesiredRate.Set("1KB"))
+			s, err := newStreamShardStore(DefaultActiveWindow, DefaultRateWindow, DefaultBucketSize, 1, limits, prometheus.NewRegistry())
+			require.NoError(b, err)
+
+			now := time.Now()
+			metadata := make([]*proto.StreamMetadata, 0, streamsInBucket)
+			for i := range streamsInBucket {
+				metadata = append(metadata, &proto.StreamMetadata{
+					StreamHash: uint64(i),
+					TotalSize:  1024,
+				})
+			}
+			require.Len(b, s.checkAndShard(b.Context(), "test", metadata, now), streamsInBucket)
+
+			one := metadata[:1]
+			b.ResetTimer()
+			for i := range b.N {
+				s.checkAndShard(b.Context(), "test", one, now.Add(time.Duration(i)*time.Second))
+			}
+		})
+	}
+}
+
 func countTrackedStreams(s *streamShardStore) int {
 	var n int
 	s.forEachRLock(func(i int) {
 		for _, partitions := range s.stripes[i] {
 			for _, policies := range partitions {
-				for _, streams := range policies {
-					n += len(streams)
+				for _, bucket := range policies {
+					n += len(bucket.streams)
 				}
 			}
 		}
