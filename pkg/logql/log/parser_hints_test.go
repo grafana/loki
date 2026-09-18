@@ -293,4 +293,51 @@ func TestLabelFiltersInParseHints(t *testing.T) {
 		lb := log.NewBaseLabelsBuilder().ForLabels(labels.FromStrings("protocol", "HTTP/2.0"), 0)
 		require.True(t, h.ShouldContinueParsingLine("protocol", lb))
 	})
+
+	t.Run("it ignores a filter positioned before the parser that sets the label", func(t *testing.T) {
+		// {app="a"} | protocol="nothing" | logfmt: the filter already ran, against the absent
+		// label, before logfmt ever set it — it must not be replayed against logfmt's value.
+		s := []log.Stage{
+			log.NewStringLabelFilter(labels.MustNewMatcher(labels.MatchEqual, "protocol", "nothing")),
+			log.NewLogfmtParser(false, false),
+		}
+		h := log.NewParserHint(nil, nil, true, true, "metric", s)
+
+		lb := log.NewBaseLabelsBuilder().ForLabels(labels.EmptyLabels(), 0)
+		lb.Set(log.ParsedLabel, "protocol", "HTTP/2.0")
+		require.True(t, h.ShouldContinueParsingLine("protocol", lb))
+	})
+
+	t.Run("it still short-circuits a filter followed only by a line filter", func(t *testing.T) {
+		// {app="a"} | logfmt | foo="bar" |= "baz": the trailing line filter never touches labels
+		// (Stage.Hints().CanModifyLabels is false), so it must not block the short-circuit on "foo".
+		lineFilter, err := log.NewFilter("baz", log.LineMatchEqual)
+		require.NoError(t, err)
+
+		s := []log.Stage{
+			log.NewLogfmtParser(false, false),
+			log.NewStringLabelFilter(labels.MustNewMatcher(labels.MatchEqual, "foo", "bar")),
+			lineFilter.ToStage(),
+		}
+		h := log.NewParserHint(nil, nil, true, true, "metric", s)
+
+		lb := log.NewBaseLabelsBuilder().ForLabels(labels.EmptyLabels(), 0)
+		lb.Set(log.ParsedLabel, "foo", "nope")
+		require.False(t, h.ShouldContinueParsingLine("foo", lb))
+	})
+
+	t.Run("it doesn't short-circuit a filter followed by another label-mutating stage", func(t *testing.T) {
+		// {app="a"} | logfmt | foo="bar" | json: a second parser can still overwrite "foo"
+		// before the filter's real position, so the short-circuit must stay off.
+		s := []log.Stage{
+			log.NewLogfmtParser(false, false),
+			log.NewStringLabelFilter(labels.MustNewMatcher(labels.MatchEqual, "foo", "bar")),
+			log.NewJSONParser(false),
+		}
+		h := log.NewParserHint(nil, nil, true, true, "metric", s)
+
+		lb := log.NewBaseLabelsBuilder().ForLabels(labels.EmptyLabels(), 0)
+		lb.Set(log.ParsedLabel, "foo", "nope")
+		require.True(t, h.ShouldContinueParsingLine("foo", lb))
+	})
 }

@@ -160,6 +160,32 @@ eval instant at 60s count_over_time({app="a"} | logfmt | name=~"al[a-z]*" [1m])
 eval instant at 60s count_over_time({app="a"} | logfmt | name!~"(?i)alpha" [1m])
   {app="a", name="prealpha"} 4
 
+# string label filter: a matcher and a parser do not commute when only the parser supplies the
+# label. A `name=""` filter before `logfmt()` reads an absent label, which compares equal to "".
+# Every line passes, no matter what `logfmt()` later parses for `name`.
+clear
+load
+  {app="a"} "name=parsed" @ 20s [repeat every 20s for 3]
+  {app="a"} "name=other"  @ 30s [repeat every 20s for 2] # noise: a different parsed value
+
+# after the parser: the parsed value never matches the filter, whatever it is.
+eval instant at 60s count_over_time({app="a"} | logfmt | name="" [1m])
+  expect empty
+eval range from 40s to 80s step 20s count_over_time({app="a"} | logfmt | name="" [1m])   # overlapping
+  expect empty
+eval range from 60s to 180s step 120s count_over_time({app="a"} | logfmt | name="" [1m]) # non-overlapping
+  expect empty
+# before the parser: the absent name matches the filter, so every line reaches the parser.
+eval instant at 60s count_over_time({app="a"} | name="" | logfmt [1m])
+  {app="a", name="parsed"} 3
+  {app="a", name="other"} 2
+eval range from 40s to 80s step 20s count_over_time({app="a"} | name="" | logfmt [1m])   # overlapping
+  {app="a", name="parsed"} 2 3 2
+  {app="a", name="other"} 1 2 2
+eval range from 60s to 180s step 120s count_over_time({app="a"} | name="" | logfmt [1m]) # non-overlapping
+  {app="a", name="parsed"} 3 _
+  {app="a", name="other"} 2 _
+
 # numeric label filter: > >= < <= == !=.
 clear
 load
