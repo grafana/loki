@@ -651,18 +651,38 @@ func (s *LokiStore) SelectSamples(ctx context.Context, req logql.SelectSamplePar
 		chunkFilterer = s.chunkFilterer.ForRequest(ctx)
 	}
 
-	return newTimestampFirstSampleBatchIterator(
-		ctx,
-		s.schemaCfg,
-		s.chunkMetrics,
-		lazyChunks,
-		s.cfg.MaxChunkBatchSize,
-		matchers,
-		req.Start,
-		req.End,
-		chunkFilterer,
-		extractor,
-	)
+	switch req.Order {
+	case logproto.SAMPLE_ORDER_BY_TIMESTAMP:
+		return newTimestampFirstSampleBatchIterator(
+			ctx,
+			s.schemaCfg,
+			s.chunkMetrics,
+			lazyChunks,
+			s.cfg.MaxChunkBatchSize,
+			matchers,
+			req.Start,
+			req.End,
+			chunkFilterer,
+			extractor,
+		)
+	case logproto.SAMPLE_ORDER_BY_STREAM:
+		return newStreamFirstSampleBatchIterator(
+			ctx,
+			s.schemaCfg,
+			s.chunkMetrics,
+			lazyChunks,
+			s.cfg.MaxChunkBatchSize,
+			matchers,
+			req.Start,
+			req.End,
+			chunkFilterer,
+			streamFirstPrefetchConcurrency(s.cfg.MaxParallelGetChunk, s.cfg.MaxChunkBatchSize),
+			fetchLazyChunks,
+			extractor,
+		)
+	default:
+		return nil, fmt.Errorf("unknown sample order %v", req.Order)
+	}
 }
 
 func (s *LokiStore) GetSchemaConfigs() []config.PeriodConfig {

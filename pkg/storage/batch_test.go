@@ -13,6 +13,7 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/promql"
 	"github.com/stretchr/testify/require"
+	"go.uber.org/goleak"
 
 	"github.com/grafana/loki/v3/pkg/chunkenc"
 	"github.com/grafana/loki/v3/pkg/iter"
@@ -20,6 +21,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/logql"
 	"github.com/grafana/loki/v3/pkg/logql/log"
 	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
+	"github.com/grafana/loki/v3/pkg/querier/astmapper"
 	"github.com/grafana/loki/v3/pkg/querier/testutil"
 	"github.com/grafana/loki/v3/pkg/storage/chunk"
 	"github.com/grafana/loki/v3/pkg/storage/config"
@@ -1914,6 +1916,103 @@ func TestBatchCancel(t *testing.T) {
 	require.Equal(t, context.Canceled, it.Err())
 }
 
+// TestBatchChunkIterator_WaitStoppedBlocksUntilLoopExits is a direct, deterministic test of
+// waitStopped's own contract. It must block until loop's goroutine returns, whether or not the
+// context was ever canceled, and unblock the moment it does.
+func TestBatchChunkIterator_WaitStopped_BlocksUntilLoopExits(t *testing.T) {
+	it := &batchChunkIterator{begun: true, done: make(chan struct{})}
+
+	waitReturned := make(chan struct{})
+	go func() {
+		it.waitStopped()
+		close(waitReturned)
+	}()
+
+	select {
+	case <-waitReturned:
+		t.Fatal("waitStopped returned before done was closed")
+	case <-time.After(50 * time.Millisecond):
+	}
+
+	close(it.done)
+	requireReceive(t, waitReturned, "waitStopped to return once done closes")
+}
+
+func TestTimestampFirstSampleBatchIterator_Close(t *testing.T) {
+	t.Run("does not hang when Next was never called", func(t *testing.T) {
+		periodConfig := config.PeriodConfig{From: config.DayTime{Time: 0}, Schema: "v11"}
+		schemaConfig := config.SchemaConfig{Configs: []config.PeriodConfig{periodConfig}}
+		chunkfmt, headfmt, err := periodConfig.ChunkFormat()
+		require.NoError(t, err)
+		ex, err := log.NewLineSampleExtractor(log.CountExtractor, nil, nil, false, false)
+		require.NoError(t, err)
+
+		chunks := []*LazyChunk{newLazyChunk(chunkfmt, headfmt, mkStream("a", 1))}
+		it, err := newTimestampFirstSampleBatchIterator(
+			context.Background(), schemaConfig, NilMetrics, chunks, 10,
+			newMatchers(`{foo=~".+"}`), time.Unix(0, 0), time.Unix(0, 100*int64(time.Millisecond)), nil, ex)
+		require.NoError(t, err)
+
+		closeErr := make(chan error, 1)
+		go func() { closeErr <- it.Close() }()
+		require.NoError(t, requireReceive(t, closeErr, "Close to return immediately when Next was never called"))
+	})
+}
+
+func TestLogBatchIterator_Close(t *testing.T) {
+	t.Run("does not hang when Next was never called", func(t *testing.T) {
+		periodConfig := config.PeriodConfig{From: config.DayTime{Time: 0}, Schema: "v11"}
+		schemaConfig := config.SchemaConfig{Configs: []config.PeriodConfig{periodConfig}}
+		chunkfmt, headfmt, err := periodConfig.ChunkFormat()
+		require.NoError(t, err)
+
+		chunks := []*LazyChunk{newLazyChunk(chunkfmt, headfmt, mkStream("a", 1))}
+		it, err := newLogBatchIterator(
+			context.Background(), schemaConfig, NilMetrics, chunks, 10,
+			newMatchers(`{foo=~".+"}`), log.NewNoopPipeline(), logproto.FORWARD,
+			time.Unix(0, 0), time.Unix(0, 100*int64(time.Millisecond)), nil)
+		require.NoError(t, err)
+
+		closeErr := make(chan error, 1)
+		go func() { closeErr <- it.Close() }()
+		require.NoError(t, requireReceive(t, closeErr, "Close to return immediately when Next was never called"))
+	})
+
+	t.Run("does not hang when loop still has batches left to fetch", func(t *testing.T) {
+		// Unlike TestBatchCancel, which cancels before the iterator is even constructed and so
+		// never lets loop reach its select, this cancels after one batch, while loop is still
+		// working through the rest.
+		defer goleak.VerifyNone(t, goleak.IgnoreCurrent())
+
+		periodConfig := config.PeriodConfig{From: config.DayTime{Time: 0}, Schema: "v11"}
+		schemaConfig := config.SchemaConfig{Configs: []config.PeriodConfig{periodConfig}}
+		chunkfmt, headfmt, err := periodConfig.ChunkFormat()
+		require.NoError(t, err)
+
+		const chunkCount = 500
+		chunks := make([]*LazyChunk, chunkCount)
+		for i := 0; i < chunkCount; i++ {
+			chunks[i] = newLazyChunk(chunkfmt, headfmt, mkStream("a", int64(i)))
+		}
+
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+
+		it, err := newLogBatchIterator(
+			ctx, schemaConfig, NilMetrics, chunks, 1,
+			newMatchers(`{foo=~".+"}`), log.NewNoopPipeline(), logproto.FORWARD,
+			time.Unix(0, 0), time.Unix(0, int64(chunkCount)*int64(time.Millisecond)+1), nil)
+		require.NoError(t, err)
+
+		require.True(t, it.Next(), "must read at least one entry before canceling")
+		cancel()
+
+		closeErr := make(chan error, 1)
+		go func() { closeErr <- it.Close() }()
+		require.NoError(t, requireReceive(t, closeErr, "Close to return once loop's goroutine actually stops"))
+	})
+}
+
 var entry logproto.Entry
 
 func Benchmark_store_OverlappingChunks(b *testing.B) {
@@ -1980,4 +2079,23 @@ func newOverlappingStreams(streamCount int, entryCount int) []*logproto.Stream {
 
 func unsafeGetBytes(s string) []byte {
 	return unsafe.Slice(unsafe.StringData(s), len(s)) // #nosec G103 -- we know the string is not mutated -- nosemgrep: use-of-unsafe-block
+}
+
+// TestRemoveMatchersByName verifies both the filtering behavior and, explicitly, that the input
+// slice is left unmodified.
+func TestRemoveMatchersByName(t *testing.T) {
+	a := labels.MustNewMatcher(labels.MatchEqual, "a", "1")
+	b := labels.MustNewMatcher(labels.MatchEqual, "__name__", "logs")
+	c := labels.MustNewMatcher(labels.MatchEqual, astmapper.ShardLabel, "0_of_1")
+	d := labels.MustNewMatcher(labels.MatchEqual, "d", "2")
+	in := []*labels.Matcher{a, b, c, d}
+
+	first := removeMatchersByName(in, "__name__", astmapper.ShardLabel)
+	require.Equal(t, []*labels.Matcher{a, d}, first)
+
+	// Calling it again with the same input slice and names must return the same result: the
+	// first call must not have mutated in.
+	second := removeMatchersByName(in, "__name__", astmapper.ShardLabel)
+	require.Equal(t, first, second)
+	require.Equal(t, []*labels.Matcher{a, b, c, d}, in, "input slice must be unmodified")
 }
