@@ -20,6 +20,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"slices"
 	"strings"
 	"sync/atomic"
 
@@ -68,7 +69,12 @@ func NewChunkedSlice(a *arrow.Chunked, i, j int64) *arrow.Chunked {
 		if end > int64(arr.Len()) {
 			end = int64(arr.Len())
 		}
-		chunks = append(chunks, NewSlice(arr, beg, end))
+		if beg == 0 && end == int64(arr.Len()) {
+			arr.Retain()
+			chunks = append(chunks, arr)
+		} else {
+			chunks = append(chunks, NewSlice(arr, beg, end))
+		}
 		sz -= int64(arr.Len()) - beg
 		beg = 0
 		cur++
@@ -102,7 +108,7 @@ type simpleTable struct {
 func NewTable(schema *arrow.Schema, cols []arrow.Column, rows int64) arrow.Table {
 	tbl := simpleTable{
 		rows:   rows,
-		cols:   cols,
+		cols:   slices.Clone(cols),
 		schema: schema,
 	}
 	tbl.refCount.Add(1)
@@ -142,32 +148,39 @@ func NewTableFromSlice(schema *arrow.Schema, data [][]arrow.Array) arrow.Table {
 	}
 
 	cols := make([]arrow.Column, schema.NumFields())
+	constructed := 0
+	complete := false
+	defer func() {
+		if !complete {
+			for i := 0; i < constructed; i++ {
+				cols[i].Release()
+			}
+		}
+	}()
+
 	for i, arrs := range data {
 		field := schema.Field(i)
 		chunked := arrow.NewChunked(field.Type, arrs)
 		cols[i] = *arrow.NewColumn(field, chunked)
 		chunked.Release()
+		constructed++
+	}
+
+	var rows int64
+	if len(cols) > 0 {
+		rows = int64(cols[0].Len())
 	}
 
 	tbl := simpleTable{
 		schema: schema,
 		cols:   cols,
-		rows:   int64(cols[0].Len()),
+		rows:   rows,
 	}
 	tbl.refCount.Add(1)
 
-	defer func() {
-		if r := recover(); r != nil {
-			// if validate panics, let's release the columns
-			// so that we don't leak them, then propagate the panic
-			for _, c := range cols {
-				c.Release()
-			}
-			panic(r)
-		}
-	}()
 	// validate the table and its constituents.
 	tbl.validate()
+	complete = true
 
 	return &tbl
 }
@@ -178,9 +191,19 @@ func NewTableFromSlice(schema *arrow.Schema, data [][]arrow.Array) arrow.Table {
 func NewTableFromRecords(schema *arrow.Schema, recs []arrow.RecordBatch) arrow.Table {
 	arrs := make([]arrow.Array, len(recs))
 	cols := make([]arrow.Column, schema.NumFields())
+	rows := int64(-1)
+	if len(cols) == 0 {
+		rows = 0
+		for _, rec := range recs {
+			rows += rec.NumRows()
+		}
+	}
 
 	defer func(cols []arrow.Column) {
 		for i := range cols {
+			if cols[i].Data() == nil {
+				continue
+			}
 			cols[i].Release()
 		}
 	}(cols)
@@ -195,7 +218,7 @@ func NewTableFromRecords(schema *arrow.Schema, recs []arrow.RecordBatch) arrow.T
 		chunk.Release()
 	}
 
-	return NewTable(schema, cols, -1)
+	return NewTable(schema, cols, rows)
 }
 
 func (tbl *simpleTable) Schema() *arrow.Schema { return tbl.schema }
@@ -290,6 +313,8 @@ type TableReader struct {
 	chunks  []*arrow.Chunked
 	slots   []int   // chunk indices
 	offsets []int64 // chunk offsets
+	// batch is reused as scratch input; NewRecordBatch copies the slice.
+	batch []arrow.Array
 }
 
 // NewTableReader returns a new TableReader to iterate over the (possibly chunked) Table.
@@ -304,6 +329,7 @@ func NewTableReader(tbl arrow.Table, chunkSize int64) *TableReader {
 		chunks:  make([]*arrow.Chunked, ncols),
 		slots:   make([]int, ncols),
 		offsets: make([]int64, ncols),
+		batch:   make([]arrow.Array, ncols),
 	}
 	tr.refCount.Add(1)
 	tr.tbl.Retain()
@@ -336,22 +362,24 @@ func (tr *TableReader) Next() bool {
 	}
 
 	// determine the minimum contiguous slice across all columns
-	chunksz := imin64(tr.max, tr.chksz)
-	chunks := make([]arrow.Array, len(tr.chunks))
-	for i := range chunks {
+	chunksz := imin64(tr.max-tr.cur, tr.chksz)
+	for i := range tr.chunks {
 		j := tr.slots[i]
 		chunk := tr.chunks[i].Chunk(j)
+		for chunk.Len() == 0 && j+1 < len(tr.chunks[i].Chunks()) {
+			j++
+			tr.slots[i] = j
+			chunk = tr.chunks[i].Chunk(j)
+		}
 		remain := int64(chunk.Len()) - tr.offsets[i]
 		if remain < chunksz {
 			chunksz = remain
 		}
 
-		chunks[i] = chunk
 	}
-
 	// slice the chunks, advance each chunk slot as appropriate.
-	batch := make([]arrow.Array, len(tr.chunks))
-	for i, chunk := range chunks {
+	for i := range tr.chunks {
+		chunk := tr.chunks[i].Chunk(tr.slots[i])
 		var slice arrow.Array
 		offset := tr.offsets[i]
 		switch int64(chunk.Len()) - offset {
@@ -370,13 +398,13 @@ func (tr *TableReader) Next() bool {
 			tr.offsets[i] += chunksz
 			slice = NewSlice(chunk, offset, offset+chunksz)
 		}
-		batch[i] = slice
+		tr.batch[i] = slice
 	}
 
 	tr.cur += chunksz
-	tr.rec = NewRecordBatch(tr.tbl.Schema(), batch, chunksz)
+	tr.rec = NewRecordBatch(tr.tbl.Schema(), tr.batch, chunksz)
 
-	for _, arr := range batch {
+	for _, arr := range tr.batch {
 		arr.Release()
 	}
 
@@ -407,6 +435,7 @@ func (tr *TableReader) Release() {
 		tr.chunks = nil
 		tr.slots = nil
 		tr.offsets = nil
+		tr.batch = nil
 	}
 }
 func (tr *TableReader) Err() error { return nil }

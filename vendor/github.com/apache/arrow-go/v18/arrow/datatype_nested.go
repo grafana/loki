@@ -19,6 +19,7 @@ package arrow
 import (
 	"errors"
 	"fmt"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -501,9 +502,9 @@ func (t *StructType) FieldsByName(n string) ([]Field, bool) {
 	return fields, ok
 }
 
-// FieldIndices returns indices of all fields with the given name, or nil.
+// FieldIndices returns a copy of the indices of all fields with the given name, or nil.
 func (t *StructType) FieldIndices(name string) []int {
-	return t.index[name]
+	return slices.Clone(t.index[name])
 }
 
 func (t *StructType) Fingerprint() string {
@@ -734,10 +735,15 @@ func (t *unionType) validate(fields []Field, typeCodes []UnionTypeCode, _ UnionM
 		return errors.New("arrow: union types should have the same number of fields as type codes")
 	}
 
+	var seen [int(MaxUnionTypeCode) + 1]bool
 	for _, c := range typeCodes {
 		if c < 0 || c > MaxUnionTypeCode {
 			return errors.New("arrow: union type code out of bounds")
 		}
+		if seen[c] {
+			return errors.New("arrow: union type codes must be unique")
+		}
+		seen[c] = true
 	}
 	return nil
 }
