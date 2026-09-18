@@ -175,16 +175,27 @@ func TestRunSequence(t *testing.T) {
 	t.Run("happy path closes before transitions", func(t *testing.T) {
 		s, first, second := setup(t)
 		second.onNext = func() { require.Equal(t, 1, first.closeCalls) }
-		for _, ts := range []int64{4, 3, 2, 1} {
-			require.Equal(t, ts, readRowTimestamp(t, s))
-		}
-		require.False(t, s.Next())
-		require.Nil(t, s.current)
+		// Read all values from first iterator
+		require.Equal(t, int64(4), readRowTimestamp(t, s))
+		require.Equal(t, int64(3), readRowTimestamp(t, s))
+		require.Equal(t, 0, first.closeCalls)
+		require.Equal(t, 0, second.closeCalls)
+
+		// Read first value from second iterator, triggering close of first.
+		require.Equal(t, int64(2), readRowTimestamp(t, s))
+		require.Equal(t, 1, first.closeCalls)
+
+		// Finish reading second iterator
+		require.Equal(t, int64(1), readRowTimestamp(t, s))
+		require.Equal(t, 0, second.closeCalls)
+
+		// Call Next() a final time to trigger close of second section
+		s.Next()
+		require.Equal(t, 1, second.closeCalls)
+
 		s.Close()
 		require.Equal(t, 3, first.nextCalls)
 		require.Equal(t, 3, second.nextCalls)
-		require.Equal(t, 1, first.closeCalls)
-		require.Equal(t, 1, second.closeCalls)
 	})
 	t.Run("close before init", func(t *testing.T) {
 		s, first, second := setup(t)

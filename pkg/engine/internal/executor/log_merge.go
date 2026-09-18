@@ -23,7 +23,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/util"
 )
 
-var errNothingToDo = errors.New("no work required for LogMerge")
+var errNoSourceObjects = errors.New("no source objects found")
 
 func (c *Context) executeLogMerge(node *physical.LogMerge) Pipeline {
 	return newLazyPipeline(func(ctx context.Context, _ []Pipeline) Pipeline {
@@ -177,9 +177,6 @@ func (c *Context) collectLogSources(ctx context.Context, node *physical.LogMerge
 	wanted := make(map[string]map[int64]struct{})
 	var paths []string
 	for _, run := range node.Runs {
-		if run == nil {
-			continue
-		}
 		for _, sec := range run.Sections {
 			if sec == nil {
 				continue
@@ -323,7 +320,7 @@ func (c *Context) prepareLogMergeInputs(ctx context.Context, node *physical.LogM
 	}
 	if len(sources) == 0 {
 		level.Warn(c.logger).Log("msg", "LogMerge: skipping task; no source objects found", "tenant", node.Tenant)
-		return nil, errNothingToDo
+		return nil, errNoSourceObjects
 	}
 
 	inputs := &logMergeInputs{sources: sources}

@@ -133,6 +133,9 @@ func (s *runSequence) At() result.Result[dataset.Row] {
 }
 
 func (s *runSequence) Close() {
+	for _, iter := range s.remaining {
+		iter.Close()
+	}
 	s.remaining = nil
 	if s.current != nil {
 		s.current.Close()
@@ -197,7 +200,12 @@ func (s *lazySectionIterator) At() result.Result[dataset.Row] {
 	return s.sequence.At()
 }
 
-func (s *lazySectionIterator) Columns() []*logs.Column { return s.sequence.section.Columns() }
+func (s *lazySectionIterator) Columns() []*logs.Column {
+	if s.sequence == nil {
+		return nil
+	}
+	return s.sequence.section.Columns()
+}
 
 func (s *lazySectionIterator) Close() {
 	if s.sequence != nil {
