@@ -134,7 +134,8 @@ type Config struct {
 	Profiling         ProfilingConfig      `yaml:"profiling,omitempty"`
 
 	// TenantLimitsAllowPublish specifies which limit fields to return from the tenant limits endpoint.
-	// If empty, all fields are returned. This allows filtering of sensitive or unwanted configuration.
+	// If empty (the default), all fields are returned, including runtime overrides.
+	// Operators can set this to filter sensitive or unwanted configuration.
 	TenantLimitsAllowPublish []string `yaml:"tenant_limits_allow_publish" json:"tenant_limits_allowlist_fields"`
 
 	Common common.Config `yaml:"common,omitempty"`
@@ -178,26 +179,10 @@ func (c *Config) RegisterFlags(f *flag.FlagSet) {
 
 	f.StringVar(&c.MetricsNamespace, "metrics-namespace", constants.Loki, "Namespace of the metrics that in previous releases had cortex as namespace. This setting is deprecated and will be removed in the next minor release.")
 
-	c.TenantLimitsAllowPublish = []string{
-		"discover_log_levels",
-		"discover_service_name",
-		"log_level_fields",
-		"max_entries_limit_per_query",
-		"max_line_size_truncate",
-		"max_query_bytes_read",
-		"max_query_length",
-		"max_query_lookback",
-		"max_query_range",
-		"max_query_series",
-		"metric_aggregation_enabled",
-		"otlp_config",
-		"pattern_persistence_enabled",
-		"query_timeout",
-		"retention_period",
-		"retention_stream",
-		"volume_enabled",
-		"volume_max_series",
-	}
+	// Empty by default so /config/tenant/v1/limits returns the full effective per-tenant
+	// limits (including runtime overrides such as ingestion_rate_mb). Operators can
+	// restrict the published fields via -limits.tenant-limits-allow-publish.
+	c.TenantLimitsAllowPublish = nil
 	f.Var(
 		(*flagext.StringSlice)(&c.TenantLimitsAllowPublish),
 		"limits.tenant-limits-allow-publish",
