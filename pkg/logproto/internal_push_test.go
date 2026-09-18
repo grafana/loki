@@ -3,6 +3,7 @@ package logproto
 import (
 	"fmt"
 	"math/rand"
+	"runtime"
 	"slices"
 	"testing"
 	"time"
@@ -85,6 +86,64 @@ func TestEncodingsAreMutuallyUndecodable(t *testing.T) {
 				nested.ToStream(&fromNested)
 				require.Equal(t, flat, fromNested,
 					"a record both encodings accept must mean the same thing either way")
+			}
+		})
+	}
+}
+
+func TestFromPushRequest(t *testing.T) {
+	t.Run("empty request preserves format", func(t *testing.T) {
+		converted := FromPushRequest(&PushRequest{Format: "otlp"})
+		require.Empty(t, converted.Streams)
+		require.Equal(t, "otlp", converted.Format)
+	})
+
+	t.Run("streams share entries but keep their groups independent", func(t *testing.T) {
+		req := PushRequest{Format: "otlp", Streams: []Stream{
+			{Labels: `{app="first"}`, Hash: 1, Entries: []push.Entry{entry(1, "first", attrs("key", "value")...)}},
+			{Labels: `{app="second"}`, Hash: 2, Entries: []push.Entry{entry(2, "second")}},
+			{Labels: `{app="empty"}`, Hash: 3},
+		}}
+		converted := FromPushRequest(&req)
+		require.Equal(t, req.Format, converted.Format)
+		require.Len(t, converted.Streams, len(req.Streams))
+		for i := range converted.Streams {
+			stream := &converted.Streams[i]
+			require.Len(t, stream.ResourceLogs, 1)
+			require.Empty(t, stream.ResourceLogs[0].Attrs)
+			require.Len(t, stream.ResourceLogs[0].ScopeLogs, 1)
+			require.Empty(t, stream.ResourceLogs[0].ScopeLogs[0].Attrs)
+			require.Equal(t, req.Streams[i], stream.FlatView())
+			if len(req.Streams[i].Entries) > 0 {
+				require.Same(t, &req.Streams[i].Entries[0], &stream.ResourceLogs[0].ScopeLogs[0].Entries[0])
+			}
+		}
+
+		first := &converted.Streams[0]
+		first.ResourceLogs[0].ScopeLogs = append(first.ResourceLogs[0].ScopeLogs, ScopeLogs{
+			Entries: []push.Entry{entry(3, "new scope")},
+		})
+		require.Equal(t, req.Streams[1], converted.Streams[1].FlatView())
+		first.ResourceLogs = append(first.ResourceLogs, ResourceLogs{
+			ScopeLogs: []ScopeLogs{{Entries: []push.Entry{entry(4, "new resource")}}},
+		})
+		require.Equal(t, req.Streams[1], converted.Streams[1].FlatView())
+		require.Equal(t, req.Streams[2], converted.Streams[2].FlatView())
+	})
+}
+
+func BenchmarkFromPushRequest(b *testing.B) {
+	for _, count := range []int{1, 100, 1000} {
+		b.Run(fmt.Sprintf("streams=%d", count), func(b *testing.B) {
+			req := PushRequest{Streams: make([]Stream, count)}
+			for i := range req.Streams {
+				req.Streams[i] = Stream{Labels: `{app="test"}`, Hash: uint64(i), Entries: []push.Entry{entry(1, "line")}}
+			}
+			b.ReportAllocs()
+			b.ResetTimer()
+			for i := 0; i < b.N; i++ {
+				converted := FromPushRequest(&req)
+				runtime.KeepAlive(converted)
 			}
 		})
 	}
@@ -421,6 +480,114 @@ func randomAttrs(r *rand.Rand) []push.LabelAdapter {
 		res = append(res, push.LabelAdapter{Name: name, Value: fmt.Sprintf("%s-%d", name, r.Intn(3))})
 	}
 	return res
+}
+
+func TestToStreamOwnsItsEntriesWhereFlatViewSharesThem(t *testing.T) {
+	source := func() InternalStreamAdapter {
+		return FromStream(Stream{Labels: `{app="a"}`, Entries: []push.Entry{
+			entry(1, "first"), entry(2, "second"),
+		}})
+	}
+
+	t.Run("ToStream fills a buffer the caller owns", func(t *testing.T) {
+		nested := source()
+
+		var out Stream
+		nested.ToStream(&out)
+		out.Entries[0].Line = "rewritten"
+
+		require.Equal(t, "first", nested.ResourceLogs[0].ScopeLogs[0].Entries[0].Line,
+			"writing to the result reached the stream")
+	})
+
+	t.Run("FlatView shares the stream's entries", func(t *testing.T) {
+		nested := source()
+
+		view := nested.FlatView()
+		nested.ResourceLogs[0].ScopeLogs[0].Entries[0].Line = "rewritten"
+
+		require.Equal(t, "rewritten", view.Entries[0].Line, "the view holds entries of its own")
+	})
+
+	t.Run("FlatView materialises a stream whose groups hold attributes", func(t *testing.T) {
+		nested := InternalStreamAdapter{
+			Labels: `{app="b"}`,
+			ResourceLogs: []ResourceLogs{resource(attrs("service.name", "checkout"),
+				scope(nil, entry(1, "first")))},
+		}
+
+		view := nested.FlatView()
+
+		requireSameEntries(t, []push.Entry{entry(1, "first", attrs("service.name", "checkout")...)},
+			view.Entries, "the attributes its resource holds are resolved onto it")
+		require.Empty(t, nested.ResourceLogs[0].ScopeLogs[0].Entries[0].StructuredMetadata,
+			"resolving them wrote back to the stream")
+	})
+}
+
+func TestEachGroupCarriesTheAttributesThatApplyToItsEntries(t *testing.T) {
+	nested := InternalStreamAdapter{
+		Labels: `{app="a"}`,
+		ResourceLogs: []ResourceLogs{
+			resource(attrs("service.name", "checkout"),
+				scope(attrs("scope.name", "one"), entry(1, "first"), entry(2, "second")),
+				scope(nil, entry(3, "third")),
+			),
+			resource(nil, scope(nil, entry(4, "fourth"))),
+		},
+	}
+
+	type visit struct {
+		resourceAttrs, scopeAttrs []push.LabelAdapter
+		lines                     []string
+	}
+
+	var visits []visit
+	nested.EachGroup(func(resourceAttrs, scopeAttrs []push.LabelAdapter, entries []push.Entry) {
+		lines := make([]string, 0, len(entries))
+		for i := range entries {
+			lines = append(lines, entries[i].Line)
+			entries[i].Line += " rewritten"
+		}
+		visits = append(visits, visit{resourceAttrs, scopeAttrs, lines})
+	})
+
+	require.Equal(t, []visit{
+		{attrs("service.name", "checkout"), attrs("scope.name", "one"), []string{"first", "second"}},
+		{attrs("service.name", "checkout"), nil, []string{"third"}},
+		{nil, nil, []string{"fourth"}},
+	}, visits)
+
+	require.Equal(t, "first rewritten", nested.ResourceLogs[0].ScopeLogs[0].Entries[0].Line,
+		"the entries handed over are the stream's own")
+}
+
+func TestEachEntryWithSharedGivesEveryEntryItsGroupsAttributes(t *testing.T) {
+	nested := InternalStreamAdapter{
+		Labels: `{app="a"}`,
+		ResourceLogs: []ResourceLogs{
+			resource(attrs("service.name", "checkout"),
+				scope(attrs("scope.name", "one"), entry(1, "first")),
+				scope(nil, entry(2, "second")),
+			),
+			resource(nil, scope(nil, entry(3, "third"))),
+		},
+	}
+
+	var seen []string
+	nested.EachEntryWithShared(func(entry *push.Entry, resourceAttrs, scopeAttrs []push.LabelAdapter) {
+		seen = append(seen, fmt.Sprint(entry.Line, " ", resourceAttrs, " ", scopeAttrs))
+		entry.Line += " rewritten"
+	})
+
+	require.Equal(t, []string{
+		fmt.Sprint("first ", attrs("service.name", "checkout"), " ", attrs("scope.name", "one")),
+		fmt.Sprint("second ", attrs("service.name", "checkout"), " ", []push.LabelAdapter(nil)),
+		fmt.Sprint("third ", []push.LabelAdapter(nil), " ", []push.LabelAdapter(nil)),
+	}, seen)
+
+	require.Equal(t, "second rewritten", nested.ResourceLogs[0].ScopeLogs[1].Entries[0].Line,
+		"the entry handed over is the stream's own")
 }
 
 func entry(ns int64, line string, md ...push.LabelAdapter) push.Entry {
