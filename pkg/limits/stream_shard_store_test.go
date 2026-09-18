@@ -112,6 +112,30 @@ func TestStreamShardStore_ShardCountIsCappedByTheStreamLimit(t *testing.T) {
 	require.Equal(t, uint32(ReasonStreamShardsCapped), res.Stats.ShardDecisionContext)
 }
 
+func TestStreamShardStore_TrackedStreamKeepsOneShardWithoutBudget(t *testing.T) {
+	s, clock := newTestStreamShardStore(t, 4, "1KB")
+	for range testRateWindow / testBucketSize {
+		push(t, s, 0x2, 6<<10, clock.Now())
+		clock.Advance(testBucketSize)
+	}
+
+	// Another stream takes the whole budget, which is what a runtime decrease
+	// of max_global_streams_per_user leaves behind.
+	track(t, s, streamShardUsage{
+		hash:          0x4,
+		shardCount:    4,
+		lastSeenAt:    clock.Now().UnixNano(),
+		shardLastUsed: refreshLiveShards(nil, 4, clock.Now().UnixNano()),
+	}, clock.Now())
+
+	// The tracked stream keeps a shard: it is still being written, and zero
+	// shards would report it as rejected.
+	res := push(t, s, 0x2, 6<<10, clock.Now())
+	require.Equal(t, uint32(1), res.Shards)
+	require.Empty(t, res.RejectReason)
+	require.Equal(t, uint32(ReasonStreamShardsCapped), res.Stats.ShardDecisionContext)
+}
+
 func TestStreamShardStore_NewStreamIsRejectedWithoutBudget(t *testing.T) {
 	s, clock := newTestStreamShardStore(t, 1, "1KB")
 	push(t, s, 0x1, 1, clock.Now())

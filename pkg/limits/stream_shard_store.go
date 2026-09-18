@@ -245,9 +245,14 @@ func (s *streamShardStore) checkAndShard(ctx context.Context, tenant string, met
 				desired = max(1, ceilDivU32(amortizedRate, uint64(shardCfg.DesiredRate.Val())))
 			}
 
+			// Cap the count to the budget, but never below one shard: an
+			// accepted stream is written whatever happens, and zero shards is
+			// reserved for a rejection. A tracked stream can be left without
+			// any budget of its own after max_global_streams_per_user is
+			// lowered while its bucket is full.
 			granted := desired
 			if maxStreams != 0 && int64(desired) > budget {
-				granted = uint32(budget)
+				granted = uint32(max(1, budget))
 			}
 			reason := ReasonUnknown
 			if granted < desired {
