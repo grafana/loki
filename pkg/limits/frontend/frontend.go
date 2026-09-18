@@ -40,12 +40,7 @@ type Frontend struct {
 	streamsFailed   prometheus.Counter
 	streamsRejected prometheus.Counter
 
-	// checkLimitsAndShardStreams, checkLimitsAndShardShards,
-	// checkLimitsAndShardFailed, and checkLimitsAndShardRejected are all
-	// dedicated to CheckLimitsAndShard rather than reusing
-	// streams/streamsFailed/streamsRejected above: in shadow mode, a push's
-	// streams are also sent through ExceedsLimits, so folding both
-	// endpoints into the same counters would double-count.
+	// Metrics for CheckLimitsAndShard
 	checkLimitsAndShardStreams  *prometheus.CounterVec
 	checkLimitsAndShardShards   *prometheus.CounterVec
 	checkLimitsAndShardFailed   *prometheus.CounterVec
@@ -84,19 +79,19 @@ func New(cfg Config, ringName string, limitsRing ring.ReadRing, logger log.Logge
 		checkLimitsAndShardShards: promauto.With(reg).NewCounterVec(
 			prometheus.CounterOpts{
 				Name: "loki_ingest_limits_frontend_check_limits_and_shard_shards_total",
-				Help: "The total number of shards granted via CheckLimitsAndShard, i.e. the total physical stream count (unsharded and sharded) implied by these decisions.",
+				Help: "The total number of shards granted via CheckLimitsAndShard, i.e. the total physical stream count (unsharded and sharded).",
 			}, []string{"tenant"},
 		),
 		checkLimitsAndShardFailed: promauto.With(reg).NewCounterVec(
 			prometheus.CounterOpts{
 				Name: "loki_ingest_limits_frontend_check_limits_and_shard_failed_total",
-				Help: "The total number of streams received via CheckLimitsAndShard that could not be checked.",
+				Help: "The total number of streams received via CheckLimitsAndShard that failed to be checked.",
 			}, []string{"tenant"},
 		),
 		checkLimitsAndShardRejected: promauto.With(reg).NewCounterVec(
 			prometheus.CounterOpts{
 				Name: "loki_ingest_limits_frontend_check_limits_and_shard_rejected_total",
-				Help: "The total number of streams rejected via CheckLimitsAndShard.",
+				Help: "The total number of streams rejected via CheckLimitsAndShard because they would exceed the stream count limits.",
 			}, []string{"tenant"},
 		),
 	}
@@ -185,8 +180,7 @@ func (f *Frontend) CheckLimitsAndShard(ctx context.Context, req *proto.CheckLimi
 	resp, err := f.limitsClient.CheckLimitsAndShard(ctx, req)
 	if err != nil {
 		// If the entire call failed, degrade to "don't shard this push" for
-		// every stream rather than rejecting it -- a materially safer
-		// failure mode for a throughput optimization than dropping data.
+		// every stream rather than rejecting it.
 		resp = &proto.CheckLimitsAndShardResponse{
 			Results: make([]*proto.StreamShardResult, 0, len(req.Streams)),
 		}

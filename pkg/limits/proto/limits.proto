@@ -64,10 +64,6 @@ message UpdateRatesResult {
 
 message CheckLimitsAndShardRequest {
   string tenant = 1;
-  // streamHash is the pre-shard hash of the logical stream; totalSize is the
-  // byte size the caller used for its own rate decision for this push (line
-  // bytes only for time-sharded streams). Both are pre-shard, before any
-  // distributor-side sharding has split the stream into sub-streams.
   repeated StreamMetadata streams = 2;
 }
 
@@ -78,33 +74,24 @@ message CheckLimitsAndShardResponse {
 message StreamShardResult {
   uint64 streamHash = 1;
   // The number of shards the distributor should create for this stream on
-  // this push. 0 and 1 both mean no sharding is needed -- whether the
-  // stream was rejected is signaled independently via rejectReason, not by
-  // this value.
+  // this push. 0 and 1 both mean no sharding is needed
   uint32 shards = 2;
-  // Non-empty when the stream was rejected outright (only possible for a
+  // Non-empty when the stream was rejected (only possible for a
   // brand-new stream with no room left in the tenant's stream-count
-  // budget). Empty means the stream was accepted, regardless of shards.
+  // budget).
+  // Empty means the stream was accepted, regardless of shards.
   string rejectReason = 3;
-  // Optional per-decision metadata for shadow-mode observability. May be nil
-  // when the backend made no rate-based decision.
+  // Stats around the sharding decision
   ShardStats stats = 4;
 }
 
-// ShardStats carries per-decision metadata about a StreamShardResult. It is a
-// shadow-mode observability aid; acting on the decision only needs shards and
-// rejectReason on StreamShardResult.
 message ShardStats {
   // Reason enum, see reason.go. Populated when shards was capped below the
   // rate-justified ideal (ShardsCapped), when the decision could not be made
   // (Failed), or when the receiving instance did not own the stream's
-  // partition (NotOwned). Never set merely because the stream was rejected
-  // -- see StreamShardResult.rejectReason for that.
+  // partition (NotOwned).
   uint32 shardDecisionContext = 1;
   // The byte/s rate the backend evaluated for this stream when deciding the
-  // shard count (windowed average over the tenant's shard rate window).
-  // Shadow-mode debugging aid: lets the distributor compare the limits
-  // service's rate estimate against its own rate store's. 0 when no
-  // rate-based decision was made (e.g. a brand-new or held-steady stream).
+  // shard count.
   uint64 evaluatedRate = 2;
 }

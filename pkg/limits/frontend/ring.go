@@ -185,11 +185,13 @@ func (r *ringLimitsClient) CheckLimitsAndShard(ctx context.Context, req *proto.C
 
 // newRPCsFunc returns a doRPCsFunc that dispatches an RPC to the instances
 // owning each stream's partition within a zone, merging their results into
-// results. newReq builds the per-instance request from the tenant and its
-// subset of streams; call performs the RPC against a single instance and
-// returns just its Results, since a stream is considered "answered" once an
-// instance responds at all -- not every RPC returns one result per requested
-// stream (e.g. ExceedsLimits only returns entries for rejected streams).
+// results.
+//
+//   - newReq builds the per-instance request from the tenant and its
+//     subset of streams
+//   - call performs the RPC against a single instance and
+//     returns just its Results, since a stream is considered "answered" once an
+//     instance responds.
 func newRPCsFunc[Req, Resp any](
 	r *ringLimitsClient,
 	logger log.Logger,

@@ -517,11 +517,7 @@ func (m *UpdateRatesResult) GetRate() uint64 {
 }
 
 type CheckLimitsAndShardRequest struct {
-	Tenant string `protobuf:"bytes,1,opt,name=tenant,proto3" json:"tenant,omitempty"`
-	// streamHash is the pre-shard hash of the logical stream; totalSize is the
-	// byte size the caller used for its own rate decision for this push (line
-	// bytes only for time-sharded streams). Both are pre-shard, before any
-	// distributor-side sharding has split the stream into sub-streams.
+	Tenant  string            `protobuf:"bytes,1,opt,name=tenant,proto3" json:"tenant,omitempty"`
 	Streams []*StreamMetadata `protobuf:"bytes,2,rep,name=streams,proto3" json:"streams,omitempty"`
 }
 
@@ -617,16 +613,14 @@ func (m *CheckLimitsAndShardResponse) GetResults() []*StreamShardResult {
 type StreamShardResult struct {
 	StreamHash uint64 `protobuf:"varint,1,opt,name=streamHash,proto3" json:"streamHash,omitempty"`
 	// The number of shards the distributor should create for this stream on
-	// this push. 0 and 1 both mean no sharding is needed -- whether the
-	// stream was rejected is signaled independently via rejectReason, not by
-	// this value.
+	// this push. 0 and 1 both mean no sharding is needed
 	Shards uint32 `protobuf:"varint,2,opt,name=shards,proto3" json:"shards,omitempty"`
-	// Non-empty when the stream was rejected outright (only possible for a
+	// Non-empty when the stream was rejected (only possible for a
 	// brand-new stream with no room left in the tenant's stream-count
-	// budget). Empty means the stream was accepted, regardless of shards.
+	// budget).
+	// Empty means the stream was accepted, regardless of shards.
 	RejectReason string `protobuf:"bytes,3,opt,name=rejectReason,proto3" json:"rejectReason,omitempty"`
-	// Optional per-decision metadata for shadow-mode observability. May be nil
-	// when the backend made no rate-based decision.
+	// Stats around the sharding decision
 	Stats *ShardStats `protobuf:"bytes,4,opt,name=stats,proto3" json:"stats,omitempty"`
 }
 
@@ -690,21 +684,14 @@ func (m *StreamShardResult) GetStats() *ShardStats {
 	return nil
 }
 
-// ShardStats carries per-decision metadata about a StreamShardResult. It is a
-// shadow-mode observability aid; acting on the decision only needs shards and
-// rejectReason on StreamShardResult.
 type ShardStats struct {
 	// Reason enum, see reason.go. Populated when shards was capped below the
 	// rate-justified ideal (ShardsCapped), when the decision could not be made
 	// (Failed), or when the receiving instance did not own the stream's
-	// partition (NotOwned). Never set merely because the stream was rejected
-	// -- see StreamShardResult.rejectReason for that.
+	// partition (NotOwned).
 	ShardDecisionContext uint32 `protobuf:"varint,1,opt,name=shardDecisionContext,proto3" json:"shardDecisionContext,omitempty"`
 	// The byte/s rate the backend evaluated for this stream when deciding the
-	// shard count (windowed average over the tenant's shard rate window).
-	// Shadow-mode debugging aid: lets the distributor compare the limits
-	// service's rate estimate against its own rate store's. 0 when no
-	// rate-based decision was made (e.g. a brand-new or held-steady stream).
+	// shard count.
 	EvaluatedRate uint64 `protobuf:"varint,2,opt,name=evaluatedRate,proto3" json:"evaluatedRate,omitempty"`
 }
 
