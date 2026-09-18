@@ -2,7 +2,9 @@ package indexobj
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"io"
 	"testing"
 	"time"
 
@@ -16,6 +18,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/pointers"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/postings"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
+	"github.com/grafana/loki/v3/pkg/scratch"
 )
 
 var testBuilderConfig = logsobj.BuilderBaseConfig{
@@ -353,4 +356,93 @@ func TestBuilder_TimeRanges_AfterReset(t *testing.T) {
 	b.Reset()
 	ranges = b.TimeRanges()
 	require.Empty(t, ranges)
+}
+
+// failingReadStore is a scratch store whose reads fail: either all of them, or
+// only the handle written last, which is the final section's metadata.
+type failingReadStore struct {
+	inner    scratch.Store
+	failLast bool
+
+	handles []scratch.Handle
+	removed []scratch.Handle
+}
+
+func newFailingReadStore(failLast bool) *failingReadStore {
+	return &failingReadStore{inner: scratch.NewMemory(), failLast: failLast}
+}
+
+func (s *failingReadStore) Put(p []byte) scratch.Handle {
+	h := s.inner.Put(p)
+	s.handles = append(s.handles, h)
+	return h
+}
+
+func (s *failingReadStore) Read(h scratch.Handle) (io.ReadSeekCloser, error) {
+	if s.failLast && h != s.handles[len(s.handles)-1] {
+		return s.inner.Read(h)
+	}
+	return nil, errors.New("mock read error")
+}
+
+func (s *failingReadStore) Remove(h scratch.Handle) error {
+	s.removed = append(s.removed, h)
+	return s.inner.Remove(h)
+}
+
+func appendStreamPerTenant(t *testing.T, b *Builder, tenants int) {
+	t.Helper()
+	for i := range tenants {
+		_, err := b.AppendStream(fmt.Sprintf("tenant-%04d", i), streams.Stream{
+			ID:               int64(i + 1),
+			Labels:           labels.New(labels.Label{Name: "app", Value: fmt.Sprintf("v%d", i)}),
+			Rows:             1,
+			MinTimestamp:     time.Unix(10, 0).UTC(),
+			MaxTimestamp:     time.Unix(20, 0).UTC(),
+			UncompressedSize: 100,
+		})
+		require.NoError(t, err)
+	}
+}
+
+// A closer returned alongside an error is never closed by callers, since they
+// stop at the error, so Flush must hand back nothing when it fails.
+func TestBuilder_FlushReturnsNoCloserOnError(t *testing.T) {
+	t.Run("when the builder is empty", func(t *testing.T) {
+		builder, err := NewBuilder(testBuilderConfig, scratch.NewMemory())
+		require.NoError(t, err)
+
+		obj, closer, err := builder.Flush()
+		require.ErrorIs(t, err, ErrBuilderEmpty)
+		require.Nil(t, obj)
+		require.Nil(t, closer)
+	})
+
+	t.Run("when the object cannot be built", func(t *testing.T) {
+		builder, err := NewBuilder(testBuilderConfig, newFailingReadStore(false))
+		require.NoError(t, err)
+		appendStreamPerTenant(t, builder, 1)
+
+		obj, closer, err := builder.Flush()
+		require.ErrorContains(t, err, "flushing object")
+		require.Nil(t, obj)
+		require.Nil(t, closer)
+	})
+
+	t.Run("when the built object cannot be observed", func(t *testing.T) {
+		// Only the last section's metadata fails to read. With this many
+		// sections the metadata outgrows the decoder's prefetch window, so the
+		// object opens successfully and the failure lands while observing it,
+		// which is where Flush owns the object and has to release it itself.
+		store := newFailingReadStore(true)
+		builder, err := NewBuilder(testBuilderConfig, store)
+		require.NoError(t, err)
+		appendStreamPerTenant(t, builder, 64)
+
+		obj, closer, err := builder.Flush()
+		require.ErrorContains(t, err, "observing object")
+		require.Nil(t, obj)
+		require.Nil(t, closer)
+		require.NotEmpty(t, store.removed, "the object's scratch handles must be released")
+	})
 }

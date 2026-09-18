@@ -182,8 +182,10 @@ func (b *MergeBuilder) estimatedSize() int {
 
 // Flush flushes all buffered data and returns the built object.
 //
-// [MergeBuilder.Reset] is called after a successful Flush to discard any pending
-// data and allow new data to be appended.
+// On success the caller owns the returned [io.Closer] and must close it to
+// release the object's backing scratch storage; reads of the object fail once
+// it is closed. If an error is returned the closer is always nil, and any
+// scratch storage already allocated has been released.
 func (b *MergeBuilder) Flush() (*dataobj.Object, io.Closer, error) {
 	if b.state == builderStateEmpty {
 		return nil, nil, ErrBuilderEmpty
@@ -219,10 +221,14 @@ func (b *MergeBuilder) Flush() (*dataobj.Object, io.Closer, error) {
 
 	b.metrics.builtSize.Observe(float64(obj.Size()))
 
-	err = b.observeObject(context.Background(), obj)
+	if err := b.observeObject(context.Background(), obj); err != nil {
+		err = errors.Join(fmt.Errorf("observing object: %w", err), closer.Close())
+		b.Reset()
+		return nil, nil, err
+	}
 
 	b.Reset()
-	return obj, closer, err
+	return obj, closer, nil
 }
 
 func (b *MergeBuilder) observeObject(ctx context.Context, obj *dataobj.Object) error {
