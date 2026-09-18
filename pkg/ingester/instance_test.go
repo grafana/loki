@@ -1060,7 +1060,7 @@ func Test_QuerySample_RejectsNonTimestampOrder(t *testing.T) {
 	}
 
 	t.Run("timestamp order succeeds", func(t *testing.T) {
-		it, err := instance.QuerySample(context.TODO(), newRequest(logproto.SAMPLE_ORDER_BY_TIMESTAMP))
+		it, err := instance.QuerySample(t.Context(), newRequest(logproto.SAMPLE_ORDER_BY_TIMESTAMP))
 		require.NoError(t, err)
 		defer it.Close()
 
@@ -1073,12 +1073,12 @@ func Test_QuerySample_RejectsNonTimestampOrder(t *testing.T) {
 	})
 
 	t.Run("stream order is rejected: the ingester does not support it yet", func(t *testing.T) {
-		_, err := instance.QuerySample(context.TODO(), newRequest(logproto.SAMPLE_ORDER_BY_STREAM))
+		_, err := instance.QuerySample(t.Context(), newRequest(logproto.SAMPLE_ORDER_BY_STREAM))
 		require.ErrorContains(t, err, "sample order")
 	})
 
 	t.Run("an unknown order is rejected", func(t *testing.T) {
-		_, err := instance.QuerySample(context.TODO(), newRequest(logproto.SampleOrder(99)))
+		_, err := instance.QuerySample(t.Context(), newRequest(logproto.SampleOrder(99)))
 		require.ErrorContains(t, err, "sample order")
 	})
 }
