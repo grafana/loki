@@ -489,6 +489,7 @@ func seedLogCompactionIndex(
 		schemaLabels[name] = streamLabels.Get(name)
 	}
 	for _, sourcePath := range sourcePaths {
+		// References count only logs sections, excluding the streams section.
 		statsBuilder.Append(stats.Stat{
 			ObjectPath:       sourcePath,
 			SectionIndex:     0,
