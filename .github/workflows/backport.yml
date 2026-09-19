@@ -28,7 +28,7 @@ jobs:
     steps:
       - name: Get GitHub App token
         id: app-token
-        uses: grafana/shared-workflows/actions/create-github-app-token@46f48da11e78ebdba7a8747ae456b11062fac83e # create-github-app-token/v0.3.1
+        uses: grafana/shared-workflows/actions/create-github-app-token@5bbb526b1728ca57fbe1750c4c27ab6ab06171c2 # create-github-app-token/v1.0
         with:
           github_app: loki-gh-app
 
