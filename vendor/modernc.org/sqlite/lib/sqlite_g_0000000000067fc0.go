@@ -100,6 +100,8 @@ const __GCC_IEC_559 = 2
 
 const __GCC_IEC_559_COMPLEX = 2
 
+const __GNUC_PATCHLEVEL__ = 0
+
 const __LONG_LONG_WIDTH__ = 64
 
 const __SCHAR_WIDTH__ = 8

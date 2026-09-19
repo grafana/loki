@@ -142,6 +142,8 @@ store3:
 
 scalar_loop_start:
 	// Fallback scalar loop for remaining elements
+	CMP  R1, R6
+	BEQ  done
 	MOVD $1, R4
 	LSL  R3, R4, R4
 	SUB  $1, R4, R4           // R4 = bitMask

@@ -46,6 +46,11 @@ func newOpaqueSigner(alg SignatureAlgorithm, signer OpaqueSigner) (recipientSigI
 		return recipientSigInfo{}, ErrUnsupportedAlgorithm
 	}
 
+	pk := signer.Public()
+	if pk != nil && !pk.IsPublic() {
+		return recipientSigInfo{}, ErrNotPublic
+	}
+
 	return recipientSigInfo{
 		sigAlg:    alg,
 		publicKey: signer.Public,

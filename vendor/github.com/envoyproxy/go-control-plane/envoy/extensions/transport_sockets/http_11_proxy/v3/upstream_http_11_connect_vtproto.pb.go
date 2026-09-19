@@ -49,6 +49,28 @@ func (m *Http11ProxyUpstreamTransport) MarshalToSizedBufferVTStrict(dAtA []byte)
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
 	}
+	if m.DefaultProxyAddress != nil {
+		if vtmsg, ok := interface{}(m.DefaultProxyAddress).(interface {
+			MarshalToSizedBufferVTStrict([]byte) (int, error)
+		}); ok {
+			size, err := vtmsg.MarshalToSizedBufferVTStrict(dAtA[:i])
+			if err != nil {
+				return 0, err
+			}
+			i -= size
+			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		} else {
+			encoded, err := proto.Marshal(m.DefaultProxyAddress)
+			if err != nil {
+				return 0, err
+			}
+			i -= len(encoded)
+			copy(dAtA[i:], encoded)
+			i = protohelpers.EncodeVarint(dAtA, i, uint64(len(encoded)))
+		}
+		i--
+		dAtA[i] = 0x12
+	}
 	if m.TransportSocket != nil {
 		if vtmsg, ok := interface{}(m.TransportSocket).(interface {
 			MarshalToSizedBufferVTStrict([]byte) (int, error)
@@ -87,6 +109,16 @@ func (m *Http11ProxyUpstreamTransport) SizeVT() (n int) {
 			l = size.SizeVT()
 		} else {
 			l = proto.Size(m.TransportSocket)
+		}
+		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
+	}
+	if m.DefaultProxyAddress != nil {
+		if size, ok := interface{}(m.DefaultProxyAddress).(interface {
+			SizeVT() int
+		}); ok {
+			l = size.SizeVT()
+		} else {
+			l = proto.Size(m.DefaultProxyAddress)
 		}
 		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
 	}

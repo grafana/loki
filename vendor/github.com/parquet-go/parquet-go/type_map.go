@@ -26,7 +26,7 @@ func (mapNode) Type() Type { return &mapType{} }
 
 type mapType format.MapType
 
-var mapLogicalType = format.LogicalType{Map: new(format.MapType)}
+var mapLogicalType = format.LogicalType{Value: new(format.MapType)}
 
 func (t *mapType) String() string { return (*format.MapType)(t).String() }
 

@@ -24,6 +24,10 @@ type mockLimitsClient struct {
 	expectedExceedsLimitsRequest *proto.ExceedsLimitsRequest
 	exceedsLimitsResponse        *proto.ExceedsLimitsResponse
 	err                          error
+
+	expectedCheckLimitsAndShardRequest *proto.CheckLimitsAndShardRequest
+	checkLimitsAndShardResponse        *proto.CheckLimitsAndShardResponse
+	checkLimitsAndShardCalls           int
 }
 
 func (m *mockLimitsClient) ExceedsLimits(_ context.Context, req *proto.ExceedsLimitsRequest) (*proto.ExceedsLimitsResponse, error) {
@@ -38,6 +42,14 @@ func (m *mockLimitsClient) UpdateRates(_ context.Context, _ *proto.UpdateRatesRe
 	return nil, nil
 }
 
+func (m *mockLimitsClient) CheckLimitsAndShard(_ context.Context, req *proto.CheckLimitsAndShardRequest) (*proto.CheckLimitsAndShardResponse, error) {
+	m.checkLimitsAndShardCalls++
+	if expected := m.expectedCheckLimitsAndShardRequest; expected != nil {
+		require.Equal(m.t, expected, req)
+	}
+	return m.checkLimitsAndShardResponse, m.err
+}
+
 // mockLimitsProtoClient mocks proto.IngestLimitsClient.
 type mockLimitsProtoClient struct {
 	proto.IngestLimitsClient
@@ -49,11 +61,17 @@ type mockLimitsProtoClient struct {
 	exceedsLimitsResponse            *proto.ExceedsLimitsResponse
 	exceedsLimitsResponseErr         error
 
+	expectedCheckLimitsAndShardRequest *proto.CheckLimitsAndShardRequest
+	checkLimitsAndShardResponse        *proto.CheckLimitsAndShardResponse
+	checkLimitsAndShardResponseErr     error
+
 	// The actual request counts.
-	numAssignedPartitionsRequests         int
-	expectedNumAssignedPartitionsRequests int
-	numExceedsLimitsRequests              int
-	expectedNumExceedsLimitsRequests      int
+	numAssignedPartitionsRequests          int
+	expectedNumAssignedPartitionsRequests  int
+	numExceedsLimitsRequests               int
+	expectedNumExceedsLimitsRequests       int
+	numCheckLimitsAndShardRequests         int
+	expectedNumCheckLimitsAndShardRequests int
 }
 
 func (m *mockLimitsProtoClient) GetAssignedPartitions(_ context.Context, _ *proto.GetAssignedPartitionsRequest, _ ...grpc.CallOption) (*proto.GetAssignedPartitionsResponse, error) {
@@ -73,9 +91,21 @@ func (m *mockLimitsProtoClient) ExceedsLimits(_ context.Context, req *proto.Exce
 	return m.exceedsLimitsResponse, nil
 }
 
+func (m *mockLimitsProtoClient) CheckLimitsAndShard(_ context.Context, req *proto.CheckLimitsAndShardRequest, _ ...grpc.CallOption) (*proto.CheckLimitsAndShardResponse, error) {
+	m.numCheckLimitsAndShardRequests++
+	if expected := m.expectedCheckLimitsAndShardRequest; expected != nil {
+		require.Equal(m.t, expected, req)
+	}
+	if err := m.checkLimitsAndShardResponseErr; err != nil {
+		return nil, err
+	}
+	return m.checkLimitsAndShardResponse, nil
+}
+
 func (m *mockLimitsProtoClient) Finished() {
 	require.Equal(m.t, m.expectedNumAssignedPartitionsRequests, m.numAssignedPartitionsRequests, "unexpected number of GetAssignedPartitions RPCs")
 	require.Equal(m.t, m.expectedNumExceedsLimitsRequests, m.numExceedsLimitsRequests, "unexpected number of number of ExceedsLimitsRequest RPCs")
+	require.Equal(m.t, m.expectedNumCheckLimitsAndShardRequests, m.numCheckLimitsAndShardRequests, "unexpected number of CheckLimitsAndShard RPCs")
 }
 
 func (m *mockLimitsProtoClient) Close() error {

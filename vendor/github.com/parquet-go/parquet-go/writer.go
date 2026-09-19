@@ -206,6 +206,19 @@ func makeWriteFunc[T any](t reflect.Type, writeRows writeRowsFunc) writeFunc[T] 
 				// These fields are usually lazily initialized when writing rows,
 				// we need them to exist now tho.
 				c.columnBuffer = c.newColumnBuffer()
+				// Record the original buffer so the dictionary-encoded buffer is
+				// restored when the row group is flushed after a fallback to PLAIN
+				// switched the column to a different buffer.
+				c.originalColumnBuffer = c.columnBuffer
+				w.columns[i] = c.columnBuffer
+			}
+		} else {
+			// The column buffers may have been replaced since the previous call:
+			// when a column's dictionary outgrows DictionaryMaxBytes its buffer is
+			// swapped for a PLAIN-encoded one (fallbackDictionaryToPlain), and
+			// flushing a row group restores the original buffer. Re-resolve the
+			// cached references so rows are not written into abandoned buffers.
+			for i, c := range w.base.writer.currentRowGroup.columns {
 				w.columns[i] = c.columnBuffer
 			}
 		}
@@ -543,10 +556,37 @@ func (w *Writer) WriteRowGroup(rowGroup RowGroup) (int64, error) {
 	case !EqualNodes(w.schema, rowGroupSchema):
 		return 0, ErrRowGroupSchemaMismatch
 	}
+	// When the row group is the in-order concatenation of independently writable
+	// segments and at least one segment can be copied verbatim (e.g. a merge of
+	// non-overlapping row groups), write each segment as its own output row group
+	// so the copyable ones take the fast path. Row group sizing below
+	// MaxRowsPerRowGroup is an unspecified internal; data and order are preserved.
+	if segments, ok := w.splittableCopyableSegments(rowGroup); ok {
+		return w.writeSegmentsPacked(segments, rowGroup.Schema(), rowGroup.SortingColumns())
+	}
 	if err := w.writer.flush(); err != nil {
 		return 0, err
 	}
-	w.writer.currentRowGroup.configureBloomFilters(rowGroup.ColumnChunks())
+	// Fast path: when the whole row group can be copied verbatim from a source
+	// file, splice the compressed bytes in directly instead of decoding and
+	// re-encoding every value (see writer_copy.go).
+	if srcs, ok := w.copyableColumnChunks(rowGroup); ok {
+		if err := w.loadCopiedChunks(srcs); err != nil {
+			return 0, err
+		}
+		return w.writer.writeRowGroup(w.writer.currentRowGroup, rowGroup.Schema(), rowGroup.SortingColumns())
+	}
+	// L3 fast path: a file-backed source whose schema matches but cannot be
+	// copied verbatim (config differs) is re-encoded column-by-column, skipping
+	// the row assembly/deconstruction round-trip of the path below.
+	if cols, ok := w.reencodableRowGroup(rowGroup); ok {
+		w.writer.currentRowGroup.configureBloomFilters(rowGroup.ColumnChunks(), rowGroup.NumRows())
+		if err := w.writeRowGroupByColumn(cols); err != nil {
+			return 0, err
+		}
+		return w.writer.writeRowGroup(w.writer.currentRowGroup, rowGroup.Schema(), rowGroup.SortingColumns())
+	}
+	w.writer.currentRowGroup.configureBloomFilters(rowGroup.ColumnChunks(), rowGroup.NumRows())
 	rows := rowGroup.Rows()
 	defer rows.Close()
 	n, err := CopyRows(w.writer, rows)
@@ -723,6 +763,17 @@ func newConcurrentRowGroupWriter(w *writer, config *WriterConfig) *ConcurrentRow
 		}
 
 		if isDictionaryEncoding(encoding) {
+			// The deprecated PLAIN_DICTIONARY encoding is normalized to
+			// RLE_DICTIONARY: the spec defines a single dictionary data
+			// page layout for both enum values — Encodings.md: "Data page
+			// format: the bit width used to encode the entry ids stored
+			// as 1 byte (max bit width = 32), followed by the values
+			// encoded using the RLE/Bit-Packing described above" — so the
+			// plain int32 index layout of plain.DictionaryEncoding
+			// produces pages no reader understands. Schemas derived from
+			// files written by legacy writers report PLAIN_DICTIONARY as
+			// the column encoding, which is how the configuration arises.
+			encoding = &RLEDictionary
 			dictBuffer := columnType.NewValues(make([]byte, 0, defaultDictBufferSize), nil)
 			dictionary = columnType.NewDictionary(columnIndex, 0, dictBuffer)
 			columnType = dictionary.Type()
@@ -754,7 +805,7 @@ func newConcurrentRowGroupWriter(w *writer, config *WriterConfig) *ConcurrentRow
 			dictionaryMaxBytes:        config.DictionaryMaxBytes,
 		}
 
-		if lt := leaf.node.Type().LogicalType(); lt != nil && (lt.Geometry != nil || lt.Geography != nil) {
+		if lt := leaf.node.Type().LogicalType(); logicalTypeIs[*format.GeometryType](lt) || logicalTypeIs[*format.GeographyType](lt) {
 			c.geospatialAccumulator = newGeospatialBBoxAccumulator()
 		}
 
@@ -834,11 +885,53 @@ func (rg *ConcurrentRowGroupWriter) reset() {
 	}
 }
 
-func (rg *ConcurrentRowGroupWriter) configureBloomFilters(columnChunks []ColumnChunk) {
+func (rg *ConcurrentRowGroupWriter) configureBloomFilters(columnChunks []ColumnChunk, numRows int64) {
 	for i, c := range rg.columns {
-		if c.columnFilter != nil {
-			c.resizeBloomFilter(columnChunks[i].NumValues())
+		if c.columnFilter == nil {
+			continue
 		}
+		// When the source only knows an upper bound of its value count
+		// (row-range views of repeated columns), leave the filter
+		// unallocated: flushFilterPages then builds it from the actual
+		// number of values written, keeping the filter exactly the size
+		// the configuration prescribes.
+		if !chunkNumValuesIsExact(columnChunks[i]) {
+			continue
+		}
+		values := columnChunks[i].NumValues()
+		if numRows > rg.maxRows {
+			// The input will be split across multiple output row groups, so the
+			// whole-input value count over-sizes each group's filter.
+			if c.maxRepetitionLevel > 0 {
+				// Repeated columns can hold more values than rows, so we can't
+				// apportion the value count per group ahead of time. Leave the
+				// filter unallocated and let each group size itself exactly at
+				// flush time (see flushFilterPages).
+				continue
+			}
+			// Non-repeated columns hold at most one value per row, so a full
+			// output group holds at most maxRows values.
+			values = min(values, rg.maxRows)
+		}
+		c.resizeBloomFilter(values)
+	}
+}
+
+// chunkNumValuesIsExact reports whether chunk.NumValues() is the exact number
+// of values, as opposed to an upper bound (see rangeColumnChunk).
+func chunkNumValuesIsExact(chunk ColumnChunk) bool {
+	switch c := chunk.(type) {
+	case *rangeColumnChunk:
+		return c.exactNumValues()
+	case *multiColumnChunk:
+		for _, part := range c.chunks {
+			if !chunkNumValuesIsExact(part) {
+				return false
+			}
+		}
+		return true
+	default:
+		return true
 	}
 }
 
@@ -1031,10 +1124,10 @@ func newWriter(output io.Writer, config *WriterConfig) *writer {
 		// column is of logical type decimal.
 		logicalType := nodeType.LogicalType()
 		if logicalType != nil {
-			elem.LogicalType.Set(*logicalType)
-			if logicalType.Decimal != nil {
-				elem.Scale.Set(logicalType.Decimal.Scale)
-				elem.Precision.Set(logicalType.Decimal.Precision)
+			elem.LogicalType = *logicalType
+			if decimal, ok := logicalType.Value.(*format.DecimalType); ok {
+				elem.Scale.Set(decimal.Scale)
+				elem.Precision.Set(decimal.Precision)
 			}
 		}
 
@@ -1226,11 +1319,11 @@ func (w *writer) writeFileFooter() error {
 		if w.encryption == nil {
 			return nil
 		}
-		switch {
-		case c.CryptoMetadata.EncryptionWithFooterKey != nil:
+		switch crypto := c.CryptoMetadata.Value.(type) {
+		case *format.EncryptionWithFooterKey:
 			return w.encryption.cfg.FooterKey
-		case c.CryptoMetadata.EncryptionWithColumnKey != nil:
-			return w.encryption.columnKeyFor(columnPathString(c.CryptoMetadata.EncryptionWithColumnKey.PathInSchema))
+		case *format.EncryptionWithColumnKey:
+			return w.encryption.columnKeyFor(columnPathString(crypto.PathInSchema))
 		default:
 			return nil
 		}
@@ -1313,7 +1406,7 @@ func (w *writer) writeFileFooter() error {
 	if w.encryption != nil {
 		enc := w.encryption
 		algo := format.EncryptionAlgorithm{
-			AesGcmV1: &format.AesGcmV1{
+			Value: &format.AesGcmV1{
 				AadFileUnique: enc.fileUnique,
 				AadPrefix:     enc.cfg.AadPrefix,
 			},
@@ -1433,6 +1526,12 @@ func (w *writer) writeRowGroup(rg *ConcurrentRowGroupWriter, rowGroupSchema *Sch
 		if err := c.Flush(); err != nil {
 			return 0, err
 		}
+		// Columns copied verbatim carry the source's bloom filter bytes (when
+		// configured); building a filter from the writer's (empty) buffers would
+		// produce a bogus one.
+		if c.copied != nil {
+			continue
+		}
 		if err := c.flushFilterPages(); err != nil {
 			return 0, err
 		}
@@ -1444,6 +1543,34 @@ func (w *writer) writeRowGroup(rg *ConcurrentRowGroupWriter, rowGroupSchema *Sch
 	fileOffset := w.writer.offset
 
 	for i, c := range rg.columns {
+		if c.copied != nil {
+			// Column copied verbatim: use the source's column index and size
+			// statistics, and stream the dictionary and data page bytes straight
+			// from the source file into the output (no intermediate buffer).
+			cc := c.copied
+			rg.columnIndex[i] = cc.columnIndex
+			c.columnChunk.MetaData.SizeStatistics = cc.sizeStats
+
+			if cc.dictLength > 0 {
+				c.columnChunk.MetaData.DictionaryPageOffset = w.writer.offset
+				if _, err := w.writer.ReadFrom(io.NewSectionReader(cc.reader, cc.dictOffset, cc.dictLength)); err != nil {
+					return 0, fmt.Errorf("writing copied dictionary page of row group column %d: %w", i, err)
+				}
+			}
+
+			dataPageOffset := w.writer.offset
+			c.columnChunk.MetaData.DataPageOffset = dataPageOffset
+			for j := range c.offsetIndex.PageLocations {
+				c.offsetIndex.PageLocations[j].Offset += dataPageOffset
+			}
+			if cc.dataLength > 0 {
+				if _, err := w.writer.ReadFrom(io.NewSectionReader(cc.reader, cc.dataOffset, cc.dataLength)); err != nil {
+					return 0, fmt.Errorf("writing copied data pages of row group column %d: %w", i, err)
+				}
+			}
+			continue
+		}
+
 		rg.columnIndex[i] = c.columnIndex.ColumnIndex()
 		rg.columnIndex[i].RepetitionLevelHistogram = append(rg.columnIndex[i].RepetitionLevelHistogram[:0], c.pageRepetitionLevelHistograms...)
 		rg.columnIndex[i].DefinitionLevelHistogram = append(rg.columnIndex[i].DefinitionLevelHistogram[:0], c.pageDefinitionLevelHistograms...)
@@ -1483,6 +1610,41 @@ func (w *writer) writeRowGroup(rg *ConcurrentRowGroupWriter, rowGroupSchema *Sch
 	}
 
 	for i, c := range rg.columns {
+		// Columns copied verbatim carry the source's bloom filter as a raw byte
+		// range (header + bitset); stream it through unchanged.
+		if c.copied != nil && c.copied.bloomLength > 0 {
+			cc := c.copied
+			bloom := io.NewSectionReader(cc.reader, cc.bloomOffset, cc.bloomLength)
+
+			if rg.config.DeferredBloomFiltersBuffers != nil {
+				buf := rg.config.DeferredBloomFiltersBuffers.GetBuffer()
+				reset := func() { rg.config.DeferredBloomFiltersBuffers.PutBuffer(buf) }
+				if _, err := io.Copy(buf, bloom); err != nil {
+					reset()
+					return 0, fmt.Errorf("copying bloom filter of row group column %d: %w", i, err)
+				}
+				if _, err := buf.Seek(0, io.SeekStart); err != nil {
+					reset()
+					return 0, err
+				}
+				w.deferredBloomFilterSize += cc.bloomLength
+				w.deferredBloomFilters = append(w.deferredBloomFilters, deferredBloomFilter{
+					rowGroup: rowGroupIndex,
+					column:   i,
+					buf:      buf,
+					reset:    reset,
+				})
+				continue
+			}
+
+			c.columnChunk.MetaData.BloomFilterOffset = w.writer.offset
+			if _, err := w.writer.ReadFrom(bloom); err != nil {
+				return 0, fmt.Errorf("copying bloom filter of row group column %d: %w", i, err)
+			}
+			c.columnChunk.MetaData.BloomFilterLength = int32(cc.bloomLength)
+			continue
+		}
+
 		if len(c.filter) == 0 {
 			continue
 		}
@@ -1541,12 +1703,12 @@ func (w *writer) writeRowGroup(rg *ConcurrentRowGroupWriter, rowGroupSchema *Sch
 			_, hasColumnKey := w.encryption.cfg.ColumnKeys[path]
 			if !hasColumnKey {
 				c.columnChunk.CryptoMetadata = format.ColumnCryptoMetaData{
-					EncryptionWithFooterKey: &format.EncryptionWithFooterKey{},
+					Value: &format.EncryptionWithFooterKey{},
 				}
 			} else {
 				c.columnChunk.CryptoMetadata = format.ColumnCryptoMetaData{
-					EncryptionWithColumnKey: &format.EncryptionWithColumnKey{
-						PathInSchema: c.columnPath,
+					Value: &format.EncryptionWithColumnKey{
+						PathInSchema: thrift.Slice[string](c.columnPath),
 					},
 				}
 			}
@@ -1639,7 +1801,7 @@ func (w *writer) writeRowGroup(rg *ConcurrentRowGroupWriter, rowGroupSchema *Sch
 	}
 	for i := range columns {
 		c := &columns[i]
-		c.MetaData.EncodingStats = append(c.MetaData.EncodingStats[:0], rg.columnChunk[i].MetaData.EncodingStats...)
+		c.MetaData.EncodingStats = slices.Clone(rg.columnChunk[i].MetaData.EncodingStats)
 	}
 
 	for i := range offsetIndex {
@@ -1839,6 +2001,10 @@ type ColumnWriter struct {
 	hasSwitchedToPlain bool  // Tracks if dictionary encoding was switched to PLAIN
 	dictionaryMaxBytes int64 // Per-column dictionary size limit
 
+	// Set when this column is being copied verbatim from a source file for the
+	// current row group (see writer_copy.go). nil for the regular re-encode path.
+	copied *copiedChunk
+
 	// Encryption state; nil encKey means column is not encrypted.
 	encKey          []byte
 	rowGroupOrdinal int16
@@ -1878,6 +2044,7 @@ func (c *ColumnWriter) reset() {
 		c.pageBuffer = nil
 	}
 	c.numPages = 0
+	c.copied = nil
 	// Bloom filters may change in size between row groups, but we retain the
 	// buffer to avoid reallocating large memory blocks.
 	c.filter = c.filter[:0]

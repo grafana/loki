@@ -1,3 +1,72 @@
+# Release (2026-08-26)
+
+## General Highlights
+* **Dependency Update**: Updated to the latest SDK module versions
+
+## Module Highlights
+* `github.com/aws/smithy-go`: v1.28.1
+  * **Bug Fix**: Fix broken AddLogger middleware since its insert point was removed.
+
+# Release (2026-08-25.2)
+
+## General Highlights
+* **Dependency Update**: Updated to the latest SDK module versions
+
+## Module Highlights
+* `github.com/aws/smithy-go`: v1.28.0
+  * **Feature**: Set `Content-Length` inline when the request body is set via `SetStream`. The `ComputeContentLength` middleware is now deprecated.
+
+# Release (2026-08-25)
+
+## General Highlights
+* **Dependency Update**: Updated to the latest SDK module versions
+
+## Module Highlights
+* `github.com/aws/smithy-go`: v1.27.10
+  * **Bug Fix**: Fix a data race on the underlying writer when an event stream is closed while an event write is in flight.
+  * **Bug Fix**: Restore draining the HTTP response body in `CloseResponseBody` to avoid issues with TCP connection reuse.
+
+# Release (2026-08-21)
+
+## General Highlights
+* **Dependency Update**: Updated to the latest SDK module versions
+
+## Module Highlights
+* `github.com/aws/smithy-go`: v1.27.9
+  * **Bug Fix**: Fix a generic event stream exception not carrying the error code and message from its payload.
+  * **Bug Fix**: Fix an event stream not being closed when its connection is lost, which would cause a caller writing to the stream to block indefinitely.
+  * **Bug Fix**: Fix deserialization of an empty list producing a nil slice instead of an empty one.
+  * **Bug Fix**: Restore draining the HTTP response body in `CloseResponseBody` to avoid issues with TCP connection reuse.
+
+# Release (2026-08-14)
+
+## General Highlights
+* **Dependency Update**: Updated to the latest SDK module versions
+
+## Module Highlights
+* `github.com/aws/smithy-go`: v1.27.8
+  * **Bug Fix**: Restore draining the HTTP response body in `CloseResponseBody` to avoid issues with TCP connection reuse.
+
+# Release (2026-08-07)
+
+## General Highlights
+* **Dependency Update**: Updated to the latest SDK module versions
+
+## Module Highlights
+* `github.com/aws/smithy-go`: v1.27.7
+  * **Bug Fix**: Don't serialize unset JSON documents as `nil` in structure members.
+  * **Bug Fix**: Fix a deserialization panic around collection members in recursive shape configs.
+
+# Release (2026-07-31)
+
+## General Highlights
+* **Dependency Update**: Updated to the latest SDK module versions
+
+## Module Highlights
+* `github.com/aws/smithy-go`: v1.27.6
+  * **Bug Fix**: Fix failure to deserialize any `@httpPayload` struct with a non-string member.
+  * **Bug Fix**: Fix failure to serialize any `@httpPayload` struct with a nested struct.
+
 # Release (2026-07-27)
 
 ## General Highlights

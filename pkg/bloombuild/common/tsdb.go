@@ -114,7 +114,7 @@ func (b *BloomTSDBStore) LoadTSDB(
 		return nil, errors.Wrap(err, "failed to read file")
 	}
 
-	reader, err := index.NewReader(index.RealByteSlice(buf))
+	reader, err := index.NewByteSliceReader(index.RealByteSlice(buf))
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to create index reader")
 	}

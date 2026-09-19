@@ -216,7 +216,7 @@ func (q *SingleTenantQuerier) SelectLogs(ctx context.Context, params logql.Selec
 	return iter.NewMergeEntryIterator(ctx, iters, params.Direction), nil
 }
 
-func (q *SingleTenantQuerier) SelectSamples(ctx context.Context, params logql.SelectSampleParams) (iter.SampleIterator, error) {
+func (q *SingleTenantQuerier) SelectSamples(ctx context.Context, params logql.SelectSampleParams) (_ iter.SampleIterator, returnErr error) {
 	// Create a new partition context for the query
 	// This is used to track which ingesters were used in the query and reuse the same ingesters for consecutive queries
 	ctx = NewPartitionContext(ctx)
@@ -242,6 +242,18 @@ func (q *SingleTenantQuerier) SelectSamples(ctx context.Context, params logql.Se
 	ingesterQueryInterval, storeQueryInterval := q.buildQueryIntervals(params.Start, params.End)
 
 	iters := []iter.SampleIterator{}
+
+	// If SelectSamples returns an error below, close every iterator opened so far, so neither
+	// a later source's error nor a rejected order leaks them.
+	defer func() {
+		if returnErr == nil {
+			return
+		}
+		for _, opened := range iters {
+			listutil.LogErrorWithContext(ctx, "closing per-source sample iterator after SelectSamples failed", opened.Close)
+		}
+	}()
+
 	if !q.cfg.QueryStoreOnly && ingesterQueryInterval != nil {
 		// Make a copy of the request before modifying
 		// because the initial request is used below to query stores
@@ -271,7 +283,15 @@ func (q *SingleTenantQuerier) SelectSamples(ctx context.Context, params logql.Se
 
 		iters = append(iters, storeIter)
 	}
-	return iter.NewMergeSampleIterator(ctx, iters), nil
+
+	switch params.Order {
+	case logproto.SAMPLE_ORDER_BY_STREAM:
+		return iter.NewStreamFirstMergeSampleIterator(ctx, iters), nil
+	case logproto.SAMPLE_ORDER_BY_TIMESTAMP:
+		return iter.NewTimestampFirstMergeSampleIterator(ctx, iters), nil
+	default:
+		return nil, errors.Errorf("unknown sample order %v", params.Order)
+	}
 }
 
 func (q *SingleTenantQuerier) isWithinIngesterMaxLookbackPeriod(maxLookback time.Duration, queryEnd time.Time) bool {

@@ -47,6 +47,11 @@ type coordinatorMetrics struct {
 	// iteration (IndexMerge or LogMerge).
 	cycleDurationSeconds prometheus.Histogram
 
+	// cycleBackoffSeconds measures the wait a worker applies between phases. A
+	// rising distribution means workers are increasingly idle (converged, empty,
+	// or failing) and backing off rather than hammering object storage.
+	cycleBackoffSeconds prometheus.Histogram
+
 	// tenantCycleDurationSeconds measures per-tenant cycle wall-clock
 	// duration. Excludes the converged-skip path.
 	tenantCycleDurationSeconds *prometheus.HistogramVec // outcome=compacted|failed
@@ -104,6 +109,11 @@ func newCoordinatorMetrics(reg prometheus.Registerer) *coordinatorMetrics {
 			Name:    "loki_dataobj_compaction_cycle_duration_seconds",
 			Help:    "Wall-clock duration of one worker-loop phase iteration (IndexMerge or LogMerge).",
 			Buckets: prometheus.ExponentialBuckets(0.01, 2, 14), // 10ms .. ~80s
+		}),
+		cycleBackoffSeconds: f.NewHistogram(prometheus.HistogramOpts{
+			Name:    "loki_dataobj_compaction_cycle_backoff_seconds",
+			Help:    "Wait a worker applies between phases. Grows exponentially for idle (converged/empty) or failing tenants up to max-backoff.",
+			Buckets: prometheus.ExponentialBuckets(1, 2, 12), // 1s .. ~68m
 		}),
 		tenantCycleDurationSeconds: f.NewHistogramVec(prometheus.HistogramOpts{
 			Name:    "loki_dataobj_compaction_tenant_cycle_duration_seconds",
@@ -175,6 +185,14 @@ func (m *coordinatorMetrics) observeCycle(outcome string, duration time.Duration
 	}
 	m.cyclesTotal.WithLabelValues(outcome).Inc()
 	m.cycleDurationSeconds.Observe(duration.Seconds())
+}
+
+// observeBackoff records the wait a worker applies between phases.
+func (m *coordinatorMetrics) observeBackoff(wait time.Duration) {
+	if m == nil {
+		return
+	}
+	m.cycleBackoffSeconds.Observe(wait.Seconds())
 }
 
 // observeTenantCycle records per-tenant index-compaction cycle outcomes and
@@ -265,18 +283,14 @@ type workerMetrics struct {
 	outputBytesCompressed   *prometheus.HistogramVec // tenant
 	outputBytesUncompressed *prometheus.HistogramVec // tenant
 
-	logMergeTasksTotal              *prometheus.CounterVec   // tenant, outcome
-	logMergeDurationSeconds         *prometheus.HistogramVec // tenant
-	logMergeOutputRecords           *prometheus.HistogramVec // tenant
-	logMergeOutputStreams           *prometheus.HistogramVec // tenant
-	logMergeOutputBytesCompressed   *prometheus.HistogramVec // tenant
-	logMergeOutputBytesUncompressed *prometheus.HistogramVec // tenant
+	logMergeTasksTotal            *prometheus.CounterVec   // tenant, outcome
+	logMergeDurationSeconds       *prometheus.HistogramVec // tenant
+	logMergeOutputBytesCompressed *prometheus.HistogramVec // tenant
 }
 
 func newWorkerMetrics(reg prometheus.Registerer) *workerMetrics {
 	f := promauto.With(reg)
 	byteBuckets := prometheus.ExponentialBuckets(1024, 2, 21)
-	countBuckets := prometheus.ExponentialBuckets(1, 2, 16)
 	durationBuckets := prometheus.ExponentialBuckets(0.01, 2, 14)
 	return &workerMetrics{
 		outputBytesCompressed: f.NewHistogramVec(prometheus.HistogramOpts{
@@ -298,24 +312,9 @@ func newWorkerMetrics(reg prometheus.Registerer) *workerMetrics {
 			Help:    "Wall-clock duration of a LogMerge task on the worker.",
 			Buckets: durationBuckets,
 		}, []string{labelTenant}),
-		logMergeOutputRecords: f.NewHistogramVec(prometheus.HistogramOpts{
-			Name:    "loki_dataobj_compaction_log_merge_output_records",
-			Help:    "Number of log records written by a successful LogMerge task.",
-			Buckets: countBuckets,
-		}, []string{labelTenant}),
-		logMergeOutputStreams: f.NewHistogramVec(prometheus.HistogramOpts{
-			Name:    "loki_dataobj_compaction_log_merge_output_streams",
-			Help:    "Number of output streams written by a successful LogMerge task.",
-			Buckets: countBuckets,
-		}, []string{labelTenant}),
 		logMergeOutputBytesCompressed: f.NewHistogramVec(prometheus.HistogramOpts{
 			Name:    "loki_dataobj_compaction_log_merge_output_bytes_compressed",
 			Help:    "Total encoded bytes uploaded across all compacted log objects for a successful LogMerge task.",
-			Buckets: byteBuckets,
-		}, []string{labelTenant}),
-		logMergeOutputBytesUncompressed: f.NewHistogramVec(prometheus.HistogramOpts{
-			Name:    "loki_dataobj_compaction_log_merge_output_bytes_uncompressed",
-			Help:    "Estimated uncompressed bytes of log records written by a successful LogMerge task.",
 			Buckets: byteBuckets,
 		}, []string{labelTenant}),
 	}
@@ -350,16 +349,7 @@ func (m *workerMetrics) ObserveLogMerge(tenant string, stats executor.LogMergeOb
 	if stats.Outcome != "success" {
 		return
 	}
-	if stats.OutputRecords > 0 {
-		m.logMergeOutputRecords.WithLabelValues(tenant).Observe(float64(stats.OutputRecords))
-	}
-	if stats.OutputStreams > 0 {
-		m.logMergeOutputStreams.WithLabelValues(tenant).Observe(float64(stats.OutputStreams))
-	}
 	if stats.OutputBytesCompressed > 0 {
 		m.logMergeOutputBytesCompressed.WithLabelValues(tenant).Observe(float64(stats.OutputBytesCompressed))
-	}
-	if stats.OutputBytesUncompressed > 0 {
-		m.logMergeOutputBytesUncompressed.WithLabelValues(tenant).Observe(float64(stats.OutputBytesUncompressed))
 	}
 }

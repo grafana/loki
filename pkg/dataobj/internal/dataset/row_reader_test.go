@@ -24,7 +24,7 @@ import (
 
 func Test_RowReader_Open_Prefetch(t *testing.T) {
 	dset, columns := buildTestDataset(t)
-	r := NewRowReader(RowReaderOptions{Dataset: dset, Columns: columns, Prefetch: true})
+	r := NewRowReader(RowReaderOptions{Dataset: dset, Columns: columns, PrefetchAllOnOpen: true})
 	defer r.Close()
 
 	require.NoError(t, r.Open(t.Context()))
@@ -38,6 +38,39 @@ func Test_RowReader_Open_Prefetch(t *testing.T) {
 			assert.NotNil(t, page.data, "Expected column %d page %d to be prefetched", i, j)
 		}
 	}
+}
+
+func Test_RowReader_LazyDownloadTarget(t *testing.T) {
+	dset, columns := buildTestDataset(t)
+	r := NewRowReader(RowReaderOptions{Dataset: dset, Columns: columns, PrefetchAllOnOpen: false})
+	defer r.Close()
+
+	require.NoError(t, r.Open(t.Context()))
+	require.Equal(t, defaultTargetDownloadedBytes, r.dl.targetCompressedBytes)
+
+	// Force the target below a single page so only P1 pages for the current
+	// read range are downloaded.
+	r.dl.targetCompressedBytes = 1
+
+	n, err := r.Read(t.Context(), make([]Row, 1))
+	require.NoError(t, err)
+	require.Equal(t, 1, n)
+
+	var pagesCached, totalPages int
+	for _, col := range r.dl.allColumns {
+		rc := col.(*readerColumn)
+		require.NotEmpty(t, rc.pages)
+		for _, page := range rc.pages {
+			totalPages++
+			if page.data != nil {
+				pagesCached++
+			}
+		}
+	}
+
+	require.Greater(t, totalPages, len(columns), "expected more than one page per column")
+	require.Greater(t, pagesCached, 0, "expected the current read range to download pages")
+	require.Less(t, pagesCached, totalPages, "expected the download target to leave later pages uncached")
 }
 
 func Test_Reader_ReadAll(t *testing.T) {
@@ -86,6 +119,35 @@ func Test_Reader_ReadWithPredicate(t *testing.T) {
 		}
 	}
 	require.Equal(t, expected, convertToTestPersons(actualRows))
+}
+
+// Test_Reader_ReadWithNegatedConstantPredicate covers a read whose only predicate negates a
+// constant. A translation layer produces one whenever it reduces a negated leaf whose column
+// the data does not hold, and the whole predicate then names no column, which the reader
+// handles differently from a predicate that names one.
+func Test_Reader_ReadWithNegatedConstantPredicate(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		inner Predicate
+	}{
+		{"not true", TruePredicate{}},
+		{"not nil", nil},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			dset, columns := buildTestDataset(t)
+
+			r := NewRowReader(RowReaderOptions{
+				Dataset:    dset,
+				Columns:    columns,
+				Predicates: []Predicate{NotPredicate{Inner: tc.inner}},
+			})
+			defer r.Close()
+
+			rows, err := readDataset(r, 3)
+			require.NoError(t, err)
+			require.Empty(t, rows)
+		})
+	}
 }
 
 // TestRowReader_ReadWithPageFiltering tests that a RowReader can filter rows based
@@ -420,6 +482,24 @@ func Test_BuildPredicateRanges(t *testing.T) {
 				}),
 			},
 			want: rangeset.Set{}, // No pages should be included
+		},
+		{
+			// A constant inner predicate reaches here whenever a translation layer reduces a
+			// negated leaf whose column the data does not hold.
+			name:      "not of a true predicate matches no row",
+			predicate: NotPredicate{Inner: TruePredicate{}},
+			want:      rangeset.Set{},
+		},
+		{
+			// A nil predicate keeps every row, so negating one keeps none.
+			name:      "not of a nil predicate matches no row",
+			predicate: NotPredicate{Inner: nil},
+			want:      rangeset.Set{},
+		},
+		{
+			name:      "not of a false predicate matches every row",
+			predicate: NotPredicate{Inner: FalsePredicate{}},
+			want:      rangeset.From(rangeset.Range{Start: 0, End: 1000}),
 		},
 	}
 

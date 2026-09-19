@@ -68,6 +68,11 @@ func (e Codec) IsSupported() bool {
 	return slices.Contains(supportedCodecs, e)
 }
 
+// Codecs returns the list of supported codecs.
+func Codecs() []Codec {
+	return slices.Clone(supportedCodecs)
+}
+
 // ParseCodec parses a chunk encoding (compression codec) by its name.
 func ParseCodec(enc string) (Codec, error) {
 	for _, e := range supportedCodecs {

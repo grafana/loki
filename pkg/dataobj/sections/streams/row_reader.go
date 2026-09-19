@@ -5,6 +5,8 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"iter"
+	"maps"
 	"strconv"
 
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/dataset"
@@ -18,6 +20,7 @@ type RowReader struct {
 	sec   *Section
 	ready bool
 
+	matchIDs  map[int64]struct{}
 	predicate RowPredicate
 
 	buf []dataset.Row
@@ -73,6 +76,28 @@ func (r *RowReader) SetPredicate(p RowPredicate) error {
 	return nil
 }
 
+// MatchStreams provides a sequence of stream IDs for the reader to match.
+// [RowReader.Read] will only return the streams with the provided IDs.
+//
+// MatchStreams may be called several times to match multiple sets of streams.
+// An empty set, or never calling it, applies no stream-ID filter.
+//
+// MatchStreams may only be called before reading begins or after a call to
+// [RowReader.Reset].
+func (r *RowReader) MatchStreams(ids iter.Seq[int64]) error {
+	if r.ready {
+		return fmt.Errorf("cannot change matched streams after reading has started")
+	}
+
+	if r.matchIDs == nil {
+		r.matchIDs = make(map[int64]struct{})
+	}
+	for id := range ids {
+		r.matchIDs[id] = struct{}{}
+	}
+	return nil
+}
+
 // Read reads up to the next len(s) streams from the reader and stores them
 // into s. It returns the number of streams read and any error encountered. At
 // the end of the stream section, Read returns 0, io.EOF.
@@ -110,16 +135,21 @@ func (r *RowReader) initReader(ctx context.Context) error {
 	}
 	columns := dset.Columns()
 
+	// The matched stream IDs are not part of r.predicate, so build them as a separate
+	// predicate; RowReaderOptions.Predicates are ANDed together.
 	var predicates []dataset.Predicate
+	if p := streamIDPredicate(maps.Keys(r.matchIDs), columns, r.sec.Columns()); p != nil {
+		predicates = append(predicates, p)
+	}
 	if p := translateStreamsPredicate(r.predicate, columns, r.sec.Columns()); p != nil {
 		predicates = append(predicates, p)
 	}
 
 	readerOpts := dataset.RowReaderOptions{
-		Dataset:    dset,
-		Columns:    columns,
-		Predicates: predicates,
-		Prefetch:   true,
+		Dataset:           dset,
+		Columns:           columns,
+		Predicates:        predicates,
+		PrefetchAllOnOpen: true,
 	}
 
 	if r.reader == nil {
@@ -151,6 +181,7 @@ func (r *RowReader) initReader(ctx context.Context) error {
 // the RowReader without needing a new object.
 func (r *RowReader) Reset(sec *Section) {
 	r.sec = sec
+	clear(r.matchIDs)
 	r.predicate = nil
 	r.ready = false
 	r.columns = nil
@@ -206,6 +237,19 @@ func translateStreamsPredicate(p RowPredicate, dsetColumns []dataset.Column, act
 			return dataset.FalsePredicate{}
 		}
 		return convertStreamsTimePredicate(p, minTimestamp, maxTimestamp)
+
+	case ShardBucketRangeRowPredicate:
+		bucketColumn := findDatasetColumn(dsetColumns, actualColumns, func(col *Column) bool {
+			return col.Type == ColumnTypeShardBucket
+		})
+		if bucketColumn == nil {
+			return dataset.FalsePredicate{}
+		}
+		// Both shard bucket range's From and To are inclusive.
+		return dataset.AndPredicate{
+			Left:  dataset.NotPredicate{Inner: dataset.LessThanPredicate{Column: bucketColumn, Value: dataset.Int64Value(int64(p.From))}},
+			Right: dataset.NotPredicate{Inner: dataset.GreaterThanPredicate{Column: bucketColumn, Value: dataset.Int64Value(int64(p.To))}},
+		}
 
 	case LabelMatcherRowPredicate:
 		metadataColumn := findDatasetColumn(dsetColumns, actualColumns, func(col *Column) bool {
@@ -298,6 +342,31 @@ func convertStreamsTimePredicate(p TimeRangeRowPredicate, minColumn, maxColumn d
 
 	default:
 		panic("unreachable")
+	}
+}
+
+// streamIDPredicate builds a predicate that keeps only the given stream IDs. It returns nil
+// when no IDs are requested, so the caller applies no filter, and a FalsePredicate when the
+// section carries no stream-ID column and therefore holds none of them.
+func streamIDPredicate(ids iter.Seq[int64], columns []dataset.Column, actual []*Column) dataset.Predicate {
+	var values []dataset.Value
+	for id := range ids {
+		values = append(values, dataset.Int64Value(id))
+	}
+	if len(values) == 0 {
+		return nil
+	}
+
+	streamIDColumn := findDatasetColumn(columns, actual, func(col *Column) bool {
+		return col.Type == ColumnTypeStreamID
+	})
+	if streamIDColumn == nil {
+		return dataset.FalsePredicate{}
+	}
+
+	return dataset.InPredicate{
+		Column: streamIDColumn,
+		Values: dataset.NewInt64ValueSet(values),
 	}
 }
 

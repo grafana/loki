@@ -554,8 +554,9 @@ func gatewayConfigObjs(opt Options) (*corev1.ConfigMap, *corev1.Secret, string, 
 	}
 	sha1C := fmt.Sprintf("%x", s.Sum(nil))
 
+	// TODO remove nolint and reformat once updated to Go 1.27
 	return &corev1.ConfigMap{
-			TypeMeta: metav1.TypeMeta{
+			TypeMeta: metav1.TypeMeta{ //nolint:gci,goimports
 				Kind:       "ConfigMap",
 				APIVersion: corev1.SchemeGroupVersion.String(),
 			},
@@ -636,7 +637,7 @@ func configureGatewayServerPKI(
 		if stack.Tenants.Passthrough == nil || stack.Tenants.Passthrough.CA == nil {
 			return kverrors.New("client CA not provided")
 		}
-		return configurePassGatewayServerPKI(podSpec, stack.Tenants.Passthrough.CA, serviceName, upstreamCAName, upstreamClientName, minTLSVersion, ciphers)
+		return configurePassGatewayServerPKI(podSpec, stack.Tenants.Passthrough.CA, serverCAName, upstreamCAName, upstreamClientName, minTLSVersion, ciphers, tlsOptions)
 	}
 	return configureObsGatewayServerPKI(podSpec, namespace, serviceName, serverCAName, upstreamCAName, upstreamClientName, minTLSVersion, ciphers, tlsOptions)
 }
@@ -765,9 +766,10 @@ func configureObsGatewayServerPKI(
 func configurePassGatewayServerPKI(
 	podSpec *corev1.PodSpec,
 	clientCAs *lokiv1.ValueReference,
-	serviceName string,
+	serverCAName string,
 	upstreamCAName, upstreamClientName string,
 	minTLSVersion, ciphers string,
+	tlsOptions *lokiv1.TLSSpec,
 ) error {
 	var gwIndex int
 	for i, c := range podSpec.Containers {
@@ -807,14 +809,6 @@ func configurePassGatewayServerPKI(
 	gwContainer.Args = gwArgs
 
 	gwVolumes = append(gwVolumes,
-		corev1.Volume{
-			Name: tlsSecretVolume,
-			VolumeSource: corev1.VolumeSource{
-				Secret: &corev1.SecretVolumeSource{
-					SecretName: serviceName,
-				},
-			},
-		},
 		corev1.Volume{
 			Name: upstreamCAName,
 			VolumeSource: corev1.VolumeSource{
@@ -857,6 +851,9 @@ func configurePassGatewayServerPKI(
 		Name:         clientCAVolume,
 		VolumeSource: clientCAVolumeSource,
 	})
+
+	serverTLSVolumes := buildCustomTLSVolumes(tlsOptions, serverCAName)
+	gwVolumes = append(gwVolumes, serverTLSVolumes...)
 
 	// Add volume mounts
 	gwContainer.VolumeMounts = append(gwContainer.VolumeMounts,

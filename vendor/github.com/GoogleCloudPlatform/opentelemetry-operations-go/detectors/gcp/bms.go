@@ -31,6 +31,8 @@ func (d *Detector) onBareMetalSolution() bool {
 }
 
 // BareMetalSolutionInstanceID returns the instance ID from the BMS_INSTANCE_ID environment variable.
+//
+// Deprecated: Use [go.opentelemetry.io/contrib/detectors/gcp] instead.
 func (d *Detector) BareMetalSolutionInstanceID() (string, error) {
 	if instanceID, found := d.os.LookupEnv(bmsInstanceIDEnv); found {
 		return instanceID, nil
@@ -39,6 +41,8 @@ func (d *Detector) BareMetalSolutionInstanceID() (string, error) {
 }
 
 // BareMetalSolutionCloudRegion returns the region from the BMS_REGION environment variable.
+//
+// Deprecated: Use [go.opentelemetry.io/contrib/detectors/gcp] instead.
 func (d *Detector) BareMetalSolutionCloudRegion() (string, error) {
 	if region, found := d.os.LookupEnv(bmsRegionEnv); found {
 		return region, nil
@@ -47,6 +51,8 @@ func (d *Detector) BareMetalSolutionCloudRegion() (string, error) {
 }
 
 // BareMetalSolutionProjectID returns the project ID from the BMS_PROJECT_ID environment variable.
+//
+// Deprecated: Use [go.opentelemetry.io/contrib/detectors/gcp] instead.
 func (d *Detector) BareMetalSolutionProjectID() (string, error) {
 	if project, found := d.os.LookupEnv(bmsProjectIDEnv); found {
 		return project, nil

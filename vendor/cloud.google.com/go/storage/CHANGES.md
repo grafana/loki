@@ -1,6 +1,42 @@
 # Changes
 
 
+## [1.67.1](https://github.com/googleapis/google-cloud-go/compare/storage/v1.67.0...storage/v1.67.1) (2026-09-07)
+
+
+### Bug Fixes
+
+* **storage:** Prevent panic when MultiRangeDownloader callback is nil ([#20377](https://github.com/googleapis/google-cloud-go/issues/20377)) ([a85e955](https://github.com/googleapis/google-cloud-go/commit/a85e955cacb0e4c9dd05165b8b3c02049e9e3a47))
+
+## [1.67.0](https://github.com/googleapis/google-cloud-go/compare/storage/v1.66.0...storage/v1.67.0) (2026-09-03)
+
+
+### Features
+
+* **storage:** Promote WithGRPCBidiReads and WithGRPCAppendableUploads out of experimental ([#20387](https://github.com/googleapis/google-cloud-go/issues/20387)) ([de23089](https://github.com/googleapis/google-cloud-go/commit/de230896bd59c6f34e763369fb92e1ee8df3548b))
+
+## [1.66.0](https://github.com/googleapis/google-cloud-go/compare/storage/v1.65.1...storage/v1.66.0) (2026-08-26)
+
+
+### Features
+
+* Update API sources and regenerate ([#20427](https://github.com/googleapis/google-cloud-go/issues/20427)) ([eb07af9](https://github.com/googleapis/google-cloud-go/commit/eb07af97288cb3446ef50ff1806c7bc12d5c6350))
+
+## [1.65.1](https://github.com/googleapis/google-cloud-go/compare/storage/v1.65.0...storage/v1.65.1) (2026-08-25)
+
+
+### Bug Fixes
+
+* **storage:** Enforce gRPC writer chunk retry deadlines by tying timers to server acks ([#20059](https://github.com/googleapis/google-cloud-go/issues/20059)) ([dbb5f6f](https://github.com/googleapis/google-cloud-go/commit/dbb5f6f6dc0f554f41219fecc52b01f25e8d2ffb))
+
+## [1.65.0](https://github.com/googleapis/google-cloud-go/compare/storage/v1.64.0...storage/v1.65.0) (2026-08-14)
+
+
+### Features
+
+* Update API sources and regenerate ([#20252](https://github.com/googleapis/google-cloud-go/issues/20252)) ([ac017a0](https://github.com/googleapis/google-cloud-go/commit/ac017a0d30ec2d42db35f7d3b5ea7fb20b4b860a))
+* Update API sources and regenerate ([#20369](https://github.com/googleapis/google-cloud-go/issues/20369)) ([bfe3aaf](https://github.com/googleapis/google-cloud-go/commit/bfe3aafc49e0c13815aa0401b1eba47aef4511df))
+
 ## [1.64.0](https://github.com/googleapis/google-cloud-go/compare/storage/v1.63.1...storage/v1.64.0) (2026-07-21)
 
 

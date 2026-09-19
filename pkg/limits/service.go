@@ -136,7 +136,7 @@ func New(cfg Config, limits Limits, logger log.Logger, reg prometheus.Registerer
 	if err != nil {
 		return nil, fmt.Errorf("failed to create kafka client: %w", err)
 	}
-	s.kafkaWriter, err = client.NewWriterClient("ingest-limits-writer", kCfg, 20, logger, reg)
+	s.kafkaWriter, err = client.NewWriterClient("ingest-limits-writer", kCfg, logger, reg)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create kafka client: %w", err)
 	}
@@ -186,6 +186,16 @@ func (s *Service) ExceedsLimits(
 	req *proto.ExceedsLimitsRequest,
 ) (*proto.ExceedsLimitsResponse, error) {
 	return s.limitsChecker.ExceedsLimits(ctx, req)
+}
+
+// CheckLimitsAndShard implements the [proto.IngestLimitsServer] interface.
+// The shard-count decision logic is added in a follow-up PR; for now this
+// returns no results, which the frontend treats as "don't shard this push".
+func (s *Service) CheckLimitsAndShard(
+	_ context.Context,
+	_ *proto.CheckLimitsAndShardRequest,
+) (*proto.CheckLimitsAndShardResponse, error) {
+	return &proto.CheckLimitsAndShardResponse{}, nil
 }
 
 // UpdateRates implements the [proto.IngestLimitsServer] interface.

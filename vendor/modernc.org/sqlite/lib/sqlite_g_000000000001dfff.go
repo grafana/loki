@@ -91,11 +91,11 @@ func _btreeCellSizeCheck(tls *libc.TLS, pPage uintptr) (r int32) {
 		}
 		pc = libc.Int32FromUint8(**(**Tu8)(__ccgo_up(data + uintptr(cellOffset+i*int32(2)))))<<int32(8) | libc.Int32FromUint8(**(**Tu8)(__ccgo_up(data + uintptr(cellOffset+i*int32(2)) + 1)))
 		if pc < iCellFirst || pc > iCellLast {
-			return _sqlite3CorruptError(tls, int32(75424))
+			return _sqlite3CorruptError(tls, int32(75573))
 		}
 		sz = libc.Int32FromUint16((*(*func(*libc.TLS, uintptr, uintptr) Tu16)(unsafe.Pointer(&struct{ uintptr }{(*TMemPage)(unsafe.Pointer(pPage)).FxCellSize})))(tls, pPage, data+uintptr(pc)))
 		if pc+sz > usableSize {
-			return _sqlite3CorruptError(tls, int32(75429))
+			return _sqlite3CorruptError(tls, int32(75578))
 		}
 		goto _1
 	_1:
@@ -160,7 +160,7 @@ func _btreePrevious(tls *libc.TLS, pCur uintptr) (r int32) {
 		(*TMemPage)(unsafe.Pointer(pPage)).FisInit = uint8(0)
 	}
 	if !((*TMemPage)(unsafe.Pointer(pPage)).FisInit != 0) {
-		return _sqlite3CorruptError(tls, int32(79674))
+		return _sqlite3CorruptError(tls, int32(79823))
 	}
 	if !((*TMemPage)(unsafe.Pointer(pPage)).Fleaf != 0) {
 		idx = libc.Int32FromUint16((*TBtCursor)(unsafe.Pointer(pCur)).Fix)
@@ -296,7 +296,7 @@ func _modifyPagePointer(tls *libc.TLS, pPage uintptr, iFrom TPgno, iTo TPgno, eT
 	if libc.Int32FromUint8(eType) == int32(PTRMAP_OVERFLOW2) {
 		/* The pointer is always the first 4 bytes of the page in this case.  */
 		if _sqlite3Get4byte(tls, (*TMemPage)(unsafe.Pointer(pPage)).FaData) != iFrom {
-			return _sqlite3CorruptError(tls, int32(77112))
+			return _sqlite3CorruptError(tls, int32(77261))
 		}
 		_sqlite3Put4byte(tls, (*TMemPage)(unsafe.Pointer(pPage)).FaData, iTo)
 	} else {
@@ -320,7 +320,7 @@ func _modifyPagePointer(tls *libc.TLS, pPage uintptr, iFrom TPgno, iTo TPgno, eT
 				(*(*func(*libc.TLS, uintptr, uintptr, uintptr))(unsafe.Pointer(&struct{ uintptr }{(*TMemPage)(unsafe.Pointer(pPage)).FxParseCell})))(tls, pPage, pCell, bp)
 				if uint32((**(**TCellInfo)(__ccgo_up(bp))).FnLocal) < (**(**TCellInfo)(__ccgo_up(bp))).FnPayload {
 					if pCell+uintptr((**(**TCellInfo)(__ccgo_up(bp))).FnSize) > (*TMemPage)(unsafe.Pointer(pPage)).FaData+uintptr((*TBtShared)(unsafe.Pointer((*TMemPage)(unsafe.Pointer(pPage)).FpBt)).FusableSize) {
-						return _sqlite3CorruptError(tls, int32(77131))
+						return _sqlite3CorruptError(tls, int32(77280))
 					}
 					if iFrom == _sqlite3Get4byte(tls, pCell+uintptr((**(**TCellInfo)(__ccgo_up(bp))).FnSize)-uintptr(4)) {
 						_sqlite3Put4byte(tls, pCell+uintptr((**(**TCellInfo)(__ccgo_up(bp))).FnSize)-uintptr(4), iTo)
@@ -329,7 +329,7 @@ func _modifyPagePointer(tls *libc.TLS, pPage uintptr, iFrom TPgno, iTo TPgno, eT
 				}
 			} else {
 				if pCell+uintptr(4) > (*TMemPage)(unsafe.Pointer(pPage)).FaData+uintptr((*TBtShared)(unsafe.Pointer((*TMemPage)(unsafe.Pointer(pPage)).FpBt)).FusableSize) {
-					return _sqlite3CorruptError(tls, int32(77140))
+					return _sqlite3CorruptError(tls, int32(77289))
 				}
 				if _sqlite3Get4byte(tls, pCell) == iFrom {
 					_sqlite3Put4byte(tls, pCell, iTo)
@@ -343,7 +343,7 @@ func _modifyPagePointer(tls *libc.TLS, pPage uintptr, iFrom TPgno, iTo TPgno, eT
 		}
 		if i == nCell {
 			if libc.Int32FromUint8(eType) != int32(PTRMAP_BTREE) || _sqlite3Get4byte(tls, (*TMemPage)(unsafe.Pointer(pPage)).FaData+uintptr(libc.Int32FromUint8((*TMemPage)(unsafe.Pointer(pPage)).FhdrOffset)+int32(8))) != iFrom {
-				return _sqlite3CorruptError(tls, int32(77152))
+				return _sqlite3CorruptError(tls, int32(77301))
 			}
 			_sqlite3Put4byte(tls, (*TMemPage)(unsafe.Pointer(pPage)).FaData+uintptr(libc.Int32FromUint8((*TMemPage)(unsafe.Pointer(pPage)).FhdrOffset)+int32(8)), iTo)
 		}
@@ -529,7 +529,7 @@ func _sqlite3BtreeTableMoveto(tls *libc.TLS, pCur uintptr, intKey Ti64, biasRigh
 						break
 					}
 					if pCell >= (*TMemPage)(unsafe.Pointer(pPage)).FaDataEnd {
-						return _sqlite3CorruptError(tls, int32(79121))
+						return _sqlite3CorruptError(tls, int32(79270))
 					}
 				}
 			}
@@ -602,6 +602,69 @@ moveto_table_finish:
 //	*/
 func _sqlite3Get4byte(tls *libc.TLS, p uintptr) (r Tu32) {
 	return uint32(**(**Tu8)(__ccgo_up(p)))<<int32(24) | libc.Uint32FromInt32(libc.Int32FromUint8(**(**Tu8)(__ccgo_up(p + 1)))<<libc.Int32FromInt32(16)) | libc.Uint32FromInt32(libc.Int32FromUint8(**(**Tu8)(__ccgo_up(p + 2)))<<libc.Int32FromInt32(8)) | uint32(**(**Tu8)(__ccgo_up(p + 3)))
+}
+
+// C documentation
+//
+//	/*
+//	** Clear the WhereLoop.u union.  Leave WhereLoop.pLTerm intact.
+//	*/
+func _whereLoopClearUnion(tls *libc.TLS, db uintptr, p uintptr) {
+	if (*TWhereLoop)(unsafe.Pointer(p)).FwsFlags&libc.Uint32FromInt32(libc.Int32FromInt32(WHERE_VIRTUALTABLE)|libc.Int32FromInt32(WHERE_AUTO_INDEX)) != 0 {
+		if (*TWhereLoop)(unsafe.Pointer(p)).FwsFlags&uint32(WHERE_VIRTUALTABLE) != uint32(0) && int32(Tu32(*(*uint8)(unsafe.Pointer(p + 24 + 4))&0x1>>0)) != 0 {
+			Xsqlite3_free(tls, (*(*struct {
+				FidxNum    int32
+				F__ccgo4   uint8
+				FisOrdered Ti8
+				FomitMask  Tu16
+				FidxStr    uintptr
+				FmHandleIn Tu32
+			})(unsafe.Pointer(p + 24))).FidxStr)
+			libc.SetBitFieldPtr8Uint32(p+24+4, libc.Uint32FromInt32(0), 0, 0x1)
+			(*(*struct {
+				FidxNum    int32
+				F__ccgo4   uint8
+				FisOrdered Ti8
+				FomitMask  Tu16
+				FidxStr    uintptr
+				FmHandleIn Tu32
+			})(unsafe.Pointer(p + 24))).FidxStr = uintptr(0)
+		} else {
+			if (*TWhereLoop)(unsafe.Pointer(p)).FwsFlags&uint32(WHERE_AUTO_INDEX) != uint32(0) && (*(*struct {
+				FnEq          Tu16
+				FnBtm         Tu16
+				FnTop         Tu16
+				FnDistinctCol Tu16
+				FpIndex       uintptr
+				FpOrderBy     uintptr
+			})(unsafe.Pointer(p + 24))).FpIndex != uintptr(0) {
+				_sqlite3DbFree(tls, db, (*TIndex)(unsafe.Pointer((*(*struct {
+					FnEq          Tu16
+					FnBtm         Tu16
+					FnTop         Tu16
+					FnDistinctCol Tu16
+					FpIndex       uintptr
+					FpOrderBy     uintptr
+				})(unsafe.Pointer(p + 24))).FpIndex)).FzColAff)
+				_sqlite3DbFreeNN(tls, db, (*(*struct {
+					FnEq          Tu16
+					FnBtm         Tu16
+					FnTop         Tu16
+					FnDistinctCol Tu16
+					FpIndex       uintptr
+					FpOrderBy     uintptr
+				})(unsafe.Pointer(p + 24))).FpIndex)
+				(*(*struct {
+					FnEq          Tu16
+					FnBtm         Tu16
+					FnTop         Tu16
+					FnDistinctCol Tu16
+					FpIndex       uintptr
+					FpOrderBy     uintptr
+				})(unsafe.Pointer(p + 24))).FpIndex = uintptr(0)
+			}
+		}
+	}
 }
 
 func _writeInt64(tls *libc.TLS, p uintptr, i Ti64) (r int32) {

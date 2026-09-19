@@ -389,10 +389,6 @@ func (t *Loki) initDistributor() (services.Service, error) {
 		return nil, err
 	}
 
-	if t.PushParserWrapper != nil {
-		t.distributor.RequestParserWrapper = t.PushParserWrapper
-	}
-
 	// Register the distributor to receive Push requests over GRPC
 	// EXCEPT when running with `-target=all` or `-target=` contains `ingester`
 	if !t.Cfg.isTarget(All) && !t.Cfg.isTarget(Ingester) {
@@ -583,7 +579,6 @@ func (t *Loki) initQuerier() (services.Service, error) {
 		serverutil.RecoveryHTTPMiddleware,
 		t.HTTPAuthMiddleware,
 		serverutil.NewPrepopulateMiddleware(),
-		serverutil.ResponseJSONMiddleware(),
 	}
 
 	var (
@@ -1238,7 +1233,6 @@ func (t *Loki) initQueryFrontend() (_ services.Service, err error) {
 		t.HTTPAuthMiddleware,
 		queryrange.StatsHTTPMiddleware,
 		serverutil.NewPrepopulateMiddleware(),
-		serverutil.ResponseJSONMiddleware(),
 	}
 
 	if t.Cfg.Querier.PerRequestLimitsEnabled {
@@ -1382,7 +1376,6 @@ func (t *Loki) initV2QueryEngine() (services.Service, error) {
 			serverutil.RecoveryHTTPMiddleware,
 			t.HTTPAuthMiddleware,
 			serverutil.NewPrepopulateMiddleware(),
-			serverutil.ResponseJSONMiddleware(),
 		}
 
 		httpMiddleware := middleware.Merge(toMerge...)
@@ -2463,6 +2456,8 @@ func (t *Loki) initDataObjCompactionWorker() (services.Service, error) {
 		Metastore:    ms,
 		ScratchStore: t.scratchStore,
 		IndexobjCfg:  t.Cfg.DataObj.Compaction.IndexobjBuilder,
+		LogsobjCfg:   t.Cfg.DataObj.Compaction.LogsobjBuilder,
+		UploaderCfg:  t.Cfg.DataObj.Consumer.UploaderConfig,
 		Logger:       logger,
 		Registerer:   prometheus.DefaultRegisterer,
 	})

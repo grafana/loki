@@ -80,11 +80,15 @@ func extractLogs(r *http.Request, maxRecvMsgSize int, maxDecompressedSize int64,
 		}
 
 	case zstdContentEncoding:
-		var err error
-		body, err = zstd.NewReader(body)
+		dec, err := zstd.NewReader(body)
 		if err != nil {
 			return plog.NewLogs(), err
 		}
+		body = dec
+		// The decoder decodes on its own goroutine(s); left unreleased on an early
+		// return (e.g. the decompressed-size check below), they leak for the
+		// lifetime of the process.
+		defer dec.Close()
 		if maxDecompressedSize > 0 {
 			body = io.LimitReader(body, maxDecompressedSize+1)
 		}
@@ -184,6 +188,12 @@ func otlpToLokiPushRequest(ctx context.Context, ld plog.Logs, userID string, otl
 
 		resourceAttributesAsStructuredMetadata := resResult.StructuredMetadata
 		streamLabels := resResult.StreamLabels
+
+		// The backfill labels are reserved for Loki: they may only be added below, from the
+		// X-Loki-Backfill-Shard header, so clients cannot spoof them to bypass validation.
+		if hasReservedBackfillLabels(streamLabels) {
+			return nil, errReservedBackfillLabels()
+		}
 
 		if backfillShard != "" {
 			streamLabels[constants.BackfillLabel] = "true"
@@ -297,6 +307,12 @@ func otlpToLokiPushRequest(ctx context.Context, ld plog.Logs, userID string, otl
 				var entryLbs labels.Labels
 
 				if len(logLabels) > 0 {
+					// Log attributes promoted to index labels must not smuggle in the reserved
+					// backfill labels either (they would overwrite the header-injected ones).
+					if hasReservedBackfillLabels(logLabels) {
+						return nil, errReservedBackfillLabels()
+					}
+
 					// Combine resource labels with log attributes
 					combinedLabels := make(model.LabelSet, len(streamLabels)+len(logLabels))
 					for k, v := range streamLabels {

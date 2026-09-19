@@ -45,6 +45,15 @@ const (
 	SignatureVersionV4 = "v4"
 )
 
+// S3 error codes returned by the AWS SDK as smithy.APIError values.
+const (
+	errCodeRequestTimeout           = "RequestTimeout"           // 400
+	errCodeTooManyRequestsException = "TooManyRequestsException" // 429
+	errCodeInternalError            = "InternalError"            // 500
+	errCodeServiceUnavailable       = "ServiceUnavailable"       // 503
+	errCodeSlowDown                 = "SlowDown"                 // 503
+)
+
 var (
 	supportedSignatureVersions     = []string{SignatureVersionV4}
 	errUnsupportedSignatureVersion = errors.New("unsupported signature version")
@@ -114,7 +123,7 @@ func (cfg *S3Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	f.StringVar(&cfg.AccessKeyID, prefix+"s3.access-key-id", "", "AWS Access Key ID")
 	f.Var(&cfg.SecretAccessKey, prefix+"s3.secret-access-key", "AWS Secret Access Key")
 	f.Var(&cfg.SessionToken, prefix+"s3.session-token", "AWS Session Token")
-	f.BoolVar(&cfg.Insecure, prefix+"s3.insecure", false, "Disable https on s3 connection.")
+	f.BoolVar(&cfg.Insecure, prefix+"s3.insecure", false, "Disable https on s3 connection. This does not affect TLS certificate verification for HTTPS connections; use s3.http.insecure-skip-verify (or s3.http.ca-file) for that.")
 	f.StringVar(&cfg.ChunkDelimiter, prefix+"s3.chunk-delimiter", "", "Delimiter used to replace the default delimiter ':' in chunk IDs when storing chunks. This is mainly intended when you run a MinIO instance on a Windows machine. You must not change this value during operations, otherwise you may not be able to read existing chunks from object storage.")
 	f.BoolVar(&cfg.DisableDualstack, prefix+"s3.disable-dualstack", false, "Disable forcing S3 dualstack endpoint usage.")
 
@@ -653,8 +662,8 @@ func isContextErr(err error) bool {
 		errors.Is(err, context.Canceled)
 }
 
-// IsStorageTimeoutErr returns true if error means that object cannot be retrieved right now due to server-side timeouts.
-func IsStorageTimeoutErr(err error) bool {
+// isStorageTimeoutErr returns true if error means that object cannot be retrieved right now due to server-side timeouts.
+func isStorageTimeoutErr(err error) bool {
 	// TODO(dannyk): move these out to be generic
 	// context errors are all client-side
 	if isContextErr(err) {
@@ -683,7 +692,7 @@ func IsStorageTimeoutErr(err error) bool {
 	var apiError smithy.APIError
 	if errors.As(err, &apiError) {
 		switch apiError.ErrorCode() {
-		case "RequestTimeout":
+		case errCodeRequestTimeout:
 			return true
 		default:
 			return false
@@ -692,37 +701,36 @@ func IsStorageTimeoutErr(err error) bool {
 	return false
 }
 
-// IsStorageThrottledErr returns true if error means that object cannot be retrieved right now due to throttling.
-func IsStorageThrottledErr(err error) bool {
+// isStorageThrottledErr returns true if error means that object cannot be retrieved right now due to throttling.
+func isStorageThrottledErr(err error) bool {
 	var apiError smithy.APIError
 	if errors.As(err, &apiError) {
-		// all 5xx errors are retryable
-		switch apiError.ErrorCode() {
-		case "RequestTimeout": // 400
-			return true
-		case "TooManyRequestsException": // 429
-			return true
-		case "InternalError": // 500
-			return true
-		case "NotImplemented": // 501
-			return true
-		case "ServiceUnavailable": // 503
-			return true
-		case "SlowDown": // 503
-			return true
-		default:
-			return false
-		}
+		return isRetryableS3ErrorCode(apiError.ErrorCode())
 	}
 	return false
 }
 
-func IsRetryableErr(err error) bool {
-	return IsStorageTimeoutErr(err) || IsStorageThrottledErr(err)
+// isRetryableS3ErrorCode reports whether an AWS S3 error code represents a
+// retryable server-side throttling or transient condition.
+func isRetryableS3ErrorCode(code string) bool {
+	switch code {
+	case errCodeRequestTimeout,
+		errCodeTooManyRequestsException,
+		errCodeInternalError,
+		errCodeServiceUnavailable,
+		errCodeSlowDown:
+		return true
+	default:
+		return false
+	}
+}
+
+func isRetryableErr(err error) bool {
+	return isStorageTimeoutErr(err) || isStorageThrottledErr(err)
 }
 
 func (a *S3ObjectClient) IsRetryableErr(err error) bool {
-	return IsRetryableErr(err)
+	return isRetryableErr(err)
 }
 
 // rewriteKey modifies the object key based on a delimiter

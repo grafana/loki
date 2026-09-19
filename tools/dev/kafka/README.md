@@ -33,11 +33,17 @@ This directory contains the development environment for testing Loki with Kafka 
 ### Grafana
 - Available at http://localhost:3000
 - Anonymous access enabled (Admin privileges)
-- Pre-configured with Loki data source
+- Pre-configured with Loki and Prometheus data sources
 - Features enabled:
   - Loki logs dataplane
   - Explore logs shard splitting
   - Loki explore app
+
+### Prometheus
+- Available at http://localhost:9090
+- Scrapes the host Loki's `/metrics` (`host.docker.internal:3100`, the single-binary `-target=all` process)
+- Query its metrics from Grafana via the pre-provisioned `gdev-prometheus` data source
+- Scrape target is defined in `prometheus.yaml`; add more `host:port`s there if you run multiple Loki processes
 
 ### Log Generator
 - Automatically sends sample logs to Loki

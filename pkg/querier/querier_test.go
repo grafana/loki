@@ -19,13 +19,14 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
+	"go.uber.org/atomic"
 
 	"github.com/grafana/loki/v3/pkg/compactor/deletion/deletionproto"
 	"github.com/grafana/loki/v3/pkg/ingester/client"
+	"github.com/grafana/loki/v3/pkg/iter"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql"
-	"github.com/grafana/loki/v3/pkg/logql/syntax"
-	"github.com/grafana/loki/v3/pkg/querier/plan"
+	"github.com/grafana/loki/v3/pkg/querier/testutil"
 	"github.com/grafana/loki/v3/pkg/storage"
 	"github.com/grafana/loki/v3/pkg/util/constants"
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
@@ -117,9 +118,7 @@ func TestQuerier_validateQueryRequest(t *testing.T) {
 		Start:     time.Now().Add(-1 * time.Minute),
 		End:       time.Now(),
 		Direction: logproto.FORWARD,
-		Plan: &plan.QueryPlan{
-			AST: syntax.MustParseExpr(`{type="test", fail="yes"} |= "foo"`),
-		},
+		Plan:      testutil.MustPlan(`{type="test", fail="yes"} |= "foo"`),
 	}
 
 	store := newStoreMock()
@@ -153,9 +152,7 @@ func TestQuerier_validateQueryRequest(t *testing.T) {
 	require.Equal(t, httpgrpc.Errorf(http.StatusBadRequest, "max streams matchers per query exceeded, matchers-count > limit (2 > 1)"), err)
 
 	request.Selector = `{type="test"}`
-	request.Plan = &plan.QueryPlan{
-		AST: syntax.MustParseExpr(`{type="test"}`),
-	}
+	request.Plan = testutil.MustPlan(`{type="test"}`)
 	_, err = q.SelectLogs(ctx, logql.SelectLogParams{QueryRequest: &request})
 	require.NoError(t, err)
 
@@ -375,9 +372,7 @@ func TestQuerier_IngesterMaxQueryLookback(t *testing.T) {
 				Start:     tc.end.Add(-6 * time.Hour),
 				End:       tc.end,
 				Direction: logproto.FORWARD,
-				Plan: &plan.QueryPlan{
-					AST: syntax.MustParseExpr(`{app="foo"}`),
-				},
+				Plan:      testutil.MustPlan(`{app="foo"}`),
 			}
 
 			queryClient := newQueryClientMock()
@@ -783,9 +778,7 @@ func TestQuerier_RequestingIngesters(t *testing.T) {
 						Start:     start,
 						End:       end,
 						Direction: logproto.FORWARD,
-						Plan: &plan.QueryPlan{
-							AST: syntax.MustParseExpr(`{type="test", fail="yes"} |= "foo"`),
-						},
+						Plan:      testutil.MustPlan(`{type="test", fail="yes"} |= "foo"`),
 					},
 				})
 
@@ -800,9 +793,7 @@ func TestQuerier_RequestingIngesters(t *testing.T) {
 						Selector: `count_over_time({foo="bar"}[5m])`,
 						Start:    start,
 						End:      end,
-						Plan: &plan.QueryPlan{
-							AST: syntax.MustParseExpr(`count_over_time({foo="bar"}[5m])`),
-						},
+						Plan:     testutil.MustPlan(`count_over_time({foo="bar"}[5m])`),
 					},
 				})
 				return err
@@ -1071,9 +1062,7 @@ func TestQuerier_SelectLogWithDeletes(t *testing.T) {
 		Start:     time.Unix(0, 300000000),
 		End:       time.Unix(0, 600000000),
 		Direction: logproto.FORWARD,
-		Plan: &plan.QueryPlan{
-			AST: syntax.MustParseExpr(`{type="test"} |= "foo"`),
-		},
+		Plan:      testutil.MustPlan(`{type="test"} |= "foo"`),
 	}
 
 	_, err = q.SelectLogs(ctx, logql.SelectLogParams{QueryRequest: &request})
@@ -1090,9 +1079,7 @@ func TestQuerier_SelectLogWithDeletes(t *testing.T) {
 			{Selector: "2", Start: 400000000, End: 500000000},
 			{Selector: "3", Start: 500000000, End: 700000000},
 		},
-		Plan: &plan.QueryPlan{
-			AST: syntax.MustParseExpr(request.Selector),
-		},
+		Plan: testutil.MustPlan(request.Selector),
 	}
 
 	require.Contains(t, store.Calls[0].Arguments, logql.SelectLogParams{QueryRequest: expectedRequest})
@@ -1137,9 +1124,7 @@ func TestQuerier_SelectSamplesWithDeletes(t *testing.T) {
 		Selector: `count_over_time({foo="bar"}[5m])`,
 		Start:    time.Unix(0, 300000000),
 		End:      time.Unix(0, 600000000),
-		Plan: &plan.QueryPlan{
-			AST: syntax.MustParseExpr(`count_over_time({foo="bar"}[5m])`),
-		},
+		Plan:     testutil.MustPlan(`count_over_time({foo="bar"}[5m])`),
 	}
 
 	_, err = q.SelectSamples(ctx, logql.SelectSampleParams{SampleQueryRequest: &request})
@@ -1155,15 +1140,144 @@ func TestQuerier_SelectSamplesWithDeletes(t *testing.T) {
 				{Selector: "2", Start: 400000000, End: 500000000},
 				{Selector: "3", Start: 500000000, End: 700000000},
 			},
-			Plan: &plan.QueryPlan{
-				AST: syntax.MustParseExpr(request.Selector),
-			},
+			Plan: testutil.MustPlan(request.Selector),
 		},
 	}
 
 	require.Contains(t, store.Calls[0].Arguments, expectedRequest)
 	require.Contains(t, ingesterClient.Calls[0].Arguments, expectedRequest.SampleQueryRequest)
 	require.Equal(t, "test", delGetter.user)
+}
+
+func TestQuerier_SelectSamples_StreamOrder(t *testing.T) {
+	selector := `count_over_time({foo="bar"}[5m])`
+	newRequest := func(order logproto.SampleOrder) logql.SelectSampleParams {
+		return logql.SelectSampleParams{SampleQueryRequest: &logproto.SampleQueryRequest{
+			Selector: selector,
+			Start:    time.Unix(0, 0),
+			End:      time.Unix(0, 21),
+			Plan:     testutil.MustPlan(selector),
+			Order:    order,
+		}}
+	}
+
+	t.Run("stream-first order groups the ingester's and the store's streams, not interleaved by timestamp", func(t *testing.T) {
+		queryClient := newQuerySampleClientMock()
+		queryClient.On("Recv").Return(&logproto.SampleQueryResponse{
+			Series: []logproto.Series{{
+				Labels:     `{stream="a"}`,
+				StreamHash: 10,
+				Samples:    []logproto.Sample{{Timestamp: 2, Hash: 2, Value: 1}, {Timestamp: 3, Hash: 3, Value: 1}},
+			}},
+		}, nil).Once()
+		queryClient.On("Recv").Return(&logproto.SampleQueryResponse{
+			Series: []logproto.Series{{
+				Labels:     `{stream="c"}`,
+				StreamHash: 30,
+				Samples:    []logproto.Sample{{Timestamp: 6, Hash: 6, Value: 1}, {Timestamp: 7, Hash: 7, Value: 1}},
+			}},
+		}, nil).Once()
+		queryClient.On("Recv").Return(nil, io.EOF)
+
+		store := newStoreMock()
+		store.On("SelectSamples", mock.Anything, mock.Anything).Return(iter.NewStreamFirstSortSampleIterator([]iter.SampleIterator{
+			iter.NewSeriesIterator(logproto.Series{
+				Labels:     `{stream="b"}`,
+				StreamHash: 20,
+				Samples:    []logproto.Sample{{Timestamp: 1, Hash: 1, Value: 1}, {Timestamp: 8, Hash: 8, Value: 1}},
+			}),
+			iter.NewSeriesIterator(logproto.Series{
+				Labels:     `{stream="d"}`,
+				StreamHash: 40,
+				Samples:    []logproto.Sample{{Timestamp: 4, Hash: 4, Value: 1}, {Timestamp: 5, Hash: 5, Value: 1}},
+			}),
+		}), nil)
+
+		ingesterClient := newQuerierClientMock()
+		ingesterClient.On("QuerySample", mock.Anything, mock.Anything, mock.Anything).Return(queryClient, nil)
+
+		limits, err := validation.NewOverrides(defaultLimitsTestConfig(), nil)
+		require.NoError(t, err)
+
+		q, err := newQuerier(
+			mockQuerierConfig(),
+			mockIngesterClientConfig(),
+			newIngesterClientMockFactory(ingesterClient),
+			mockReadRingWithOneActiveIngester(),
+			&mockDeleteGettter{}, store, limits)
+		require.NoError(t, err)
+
+		ctx := user.InjectOrgID(context.Background(), "test")
+		it, err := q.SelectSamples(ctx, newRequest(logproto.SAMPLE_ORDER_BY_STREAM))
+		require.NoError(t, err)
+
+		var got []int64
+		for it.Next() {
+			got = append(got, it.At().Timestamp)
+		}
+		require.NoError(t, it.Err())
+		require.Equal(t, []int64{2, 3, 1, 8, 6, 7, 4, 5}, got, "must group by StreamHash (10, 20, 30, 40 in turn), not interleave by timestamp")
+	})
+
+	t.Run("an unknown order is rejected once every source has already answered, closing what was opened", func(t *testing.T) {
+		var closed atomic.Int64
+		store := newStoreMock()
+		store.On("SelectSamples", mock.Anything, mock.Anything).Return(&closeTrackingSampleIterator{
+			SampleIterator: iter.NewSeriesIterator(logproto.Series{Labels: `{stream="a"}`}),
+			closed:         &closed,
+		}, nil)
+		ingesterClient := newQuerierClientMock()
+
+		limits, err := validation.NewOverrides(defaultLimitsTestConfig(), nil)
+		require.NoError(t, err)
+
+		cfg := mockQuerierConfig()
+		cfg.QueryStoreOnly = true
+		q, err := newQuerier(
+			cfg,
+			mockIngesterClientConfig(),
+			newIngesterClientMockFactory(ingesterClient),
+			mockReadRingWithOneActiveIngester(),
+			&mockDeleteGettter{}, store, limits)
+		require.NoError(t, err)
+
+		ctx := user.InjectOrgID(context.Background(), "test")
+		_, err = q.SelectSamples(ctx, newRequest(logproto.SampleOrder(99)))
+		require.ErrorContains(t, err, "unknown sample order")
+
+		ingesterClient.AssertNotCalled(t, "QuerySample", mock.Anything, mock.Anything, mock.Anything)
+		require.Equal(t, int64(1), closed.Load(), "the store's iterator, already open when the order was rejected, must be closed")
+	})
+
+	t.Run("closes an already-opened ingester iterator when the store call that follows fails", func(t *testing.T) {
+		queryClient := newQuerySampleClientMock()
+		queryClient.On("Recv").Return(nil, io.EOF)
+		ingesterClient := newQuerierClientMock()
+		ingesterClient.On("QuerySample", mock.Anything, mock.Anything, mock.Anything).Return(queryClient, nil)
+
+		storeErr := errors.New("store unavailable")
+		store := newStoreMock()
+		store.On("SelectSamples", mock.Anything, mock.Anything).Return(nil, storeErr)
+
+		limits, err := validation.NewOverrides(defaultLimitsTestConfig(), nil)
+		require.NoError(t, err)
+
+		q, err := newQuerier(
+			mockQuerierConfig(),
+			mockIngesterClientConfig(),
+			newIngesterClientMockFactory(ingesterClient),
+			mockReadRingWithOneActiveIngester(),
+			&mockDeleteGettter{}, store, limits)
+		require.NoError(t, err)
+
+		ctx := user.InjectOrgID(context.Background(), "test")
+		_, err = q.SelectSamples(ctx, newRequest(logproto.SAMPLE_ORDER_BY_TIMESTAMP))
+		require.ErrorIs(t, err, storeErr)
+
+		// The ingester's gRPC stream opens successfully regardless of what the server will
+		// eventually do with it; closing it is what tears that stream down.
+		require.Equal(t, 1, queryClient.closeSendCalls)
+	})
 }
 
 func newQuerier(cfg Config, clientCfg client.Config, clientFactory ring_client.PoolFactory, ring ring.ReadRing, dg *mockDeleteGettter, store storage.Store, limits *validation.Overrides) (*SingleTenantQuerier, error) {

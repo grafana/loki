@@ -21,8 +21,10 @@ import (
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql"
 	lokilog "github.com/grafana/loki/v3/pkg/logql/log"
+	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/v3/pkg/querier/astmapper"
+	"github.com/grafana/loki/v3/pkg/querier/plan"
 	"github.com/grafana/loki/v3/pkg/storage/chunk"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/cache"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client"
@@ -233,7 +235,7 @@ func (s *LokiStore) init() error {
 		if err != nil {
 			return err
 		}
-		f, err := fetcher.New(s.chunksCache, s.chunksCacheL2, s.storeCfg.ChunkCacheStubs(), s.schemaCfg, chunkClient, s.storeCfg.L2ChunkCacheHandoff, s.storeCfg.SkipQueryWritebackOlderThan)
+		f, err := fetcher.New(s.chunksCache, s.chunksCacheL2, s.storeCfg.ChunkCacheStubs(), s.schemaCfg, chunkClient, s.storeCfg.L2ChunkCacheHandoff, s.storeCfg.SkipQueryWritebackOlderThan, s.storeCfg.PropagateChunkFetchErrors)
 		if err != nil {
 			return err
 		}
@@ -313,7 +315,7 @@ func (s *LokiStore) storeForPeriod(p config.PeriodConfig, tableRange config.Tabl
 	indexClientLogger := log.With(s.logger, "index-store", fmt.Sprintf("%s-%s", p.IndexType, p.From.String()))
 
 	if shouldUseIndexGatewayClient(s.cfg.TSDBShipperConfig) {
-		primaryClient, err := indexgateway.NewGatewayClient(s.cfg.TSDBShipperConfig.IndexGatewayClientConfig, indexClientReg, s.limits, indexClientLogger, s.metricsNamespace)
+		primaryClient, err := indexgateway.NewGatewayClient("primary", s.cfg.TSDBShipperConfig.IndexGatewayClientConfig, indexClientReg, s.limits, indexClientLogger, s.metricsNamespace)
 		if err != nil {
 			return nil, nil, nil, err
 		}
@@ -321,7 +323,7 @@ func (s *LokiStore) storeForPeriod(p config.PeriodConfig, tableRange config.Tabl
 		var shadowClient *indexgateway.GatewayClient
 		var clientToUse series.GatewayClient = primaryClient
 		if shouldUseTeeIndexGatewayClient(s.cfg.TSDBShipperConfig) {
-			shadowClient, err = indexgateway.NewGatewayClient(s.cfg.TSDBShipperConfig.ShadowIndexGatewayClientConfig, indexClientReg, s.limits, indexClientLogger, s.metricsNamespace)
+			shadowClient, err = indexgateway.NewGatewayClient("secondary", s.cfg.TSDBShipperConfig.ShadowIndexGatewayClientConfig, indexClientReg, s.limits, indexClientLogger, s.metricsNamespace)
 			if err != nil {
 				primaryClient.Stop()
 				return nil, nil, nil, err
@@ -500,12 +502,24 @@ func (s *LokiStore) SelectSeries(ctx context.Context, req logql.SelectLogParams)
 	if err != nil {
 		return nil, err
 	}
+	// decodeReq resolves matchers from Plan.AST only. Callers that have not been
+	// migrated yet set the deprecated Selector field instead, so parse it into a plan.
+	if (req.Plan == nil || req.Plan.AST == nil) && req.Selector != "" {
+		expr, err := syntax.ParseExpr(req.Selector)
+		if err != nil {
+			return nil, err
+		}
+		cpy := *req.QueryRequest
+		cpy.Plan = &plan.QueryPlan{AST: expr}
+		req = logql.SelectLogParams{QueryRequest: &cpy}
+	}
+
 	var from, through model.Time
 	var matchers []*labels.Matcher
 
 	// The Loki parser doesn't allow for an empty label matcher but for the Series API
 	// we allow this to select all series in the time range.
-	if req.Selector == "" {
+	if req.Plan == nil || req.Plan.AST == nil {
 		from, through = util.RoundToMilliseconds(req.Start, req.End)
 		nameLabelMatcher, err := labels.NewMatcher(labels.MatchEqual, model.MetricNameLabel, "logs")
 		if err != nil {
@@ -603,28 +617,33 @@ func (s *LokiStore) SelectSamples(ctx context.Context, req logql.SelectSamplePar
 		return nil, err
 	}
 
-	extractors, err := expr.Extractors()
+	extractor, err := expr.Extractor()
+	if err != nil {
+		return nil, err
+	}
+	// A literal or a vector expression produces samples without reading logs, so its
+	// extractor is nil and there is no chunk worth touching. The plan is
+	// caller-supplied, so guard rather than assume such a request never arrives.
+	//
+	// Guard before SetupExtractor: given deletes it wraps the nil extractor into a
+	// non-nil filtering one, and this check would stop firing.
+	if extractor == nil {
+		return iter.NoopSampleIterator, nil
+	}
+
+	extractor, err = deletion.SetupExtractor(req, extractor)
 	if err != nil {
 		return nil, err
 	}
 
-	for i, extractor := range extractors {
-		extractor, err = deletion.SetupExtractor(req, extractor)
+	if s.extractorWrapper != nil &&
+		httpreq.ExtractHeader(ctx, httpreq.LokiDisablePipelineWrappersHeader) != "true" {
+		userID, err := tenant.TenantID(ctx)
 		if err != nil {
 			return nil, err
 		}
 
-		if s.extractorWrapper != nil &&
-			httpreq.ExtractHeader(ctx, httpreq.LokiDisablePipelineWrappersHeader) != "true" {
-			userID, err := tenant.TenantID(ctx)
-			if err != nil {
-				return nil, err
-			}
-
-			extractor = s.extractorWrapper.Wrap(ctx, extractor, req.Plan.String(), userID)
-		}
-
-		extractors[i] = extractor
+		extractor = s.extractorWrapper.Wrap(ctx, extractor, req.Plan.String(), userID)
 	}
 
 	var chunkFilterer chunk.Filterer
@@ -632,18 +651,38 @@ func (s *LokiStore) SelectSamples(ctx context.Context, req logql.SelectSamplePar
 		chunkFilterer = s.chunkFilterer.ForRequest(ctx)
 	}
 
-	return newSampleBatchIterator(
-		ctx,
-		s.schemaCfg,
-		s.chunkMetrics,
-		lazyChunks,
-		s.cfg.MaxChunkBatchSize,
-		matchers,
-		req.Start,
-		req.End,
-		chunkFilterer,
-		extractors...,
-	)
+	switch req.Order {
+	case logproto.SAMPLE_ORDER_BY_TIMESTAMP:
+		return newTimestampFirstSampleBatchIterator(
+			ctx,
+			s.schemaCfg,
+			s.chunkMetrics,
+			lazyChunks,
+			s.cfg.MaxChunkBatchSize,
+			matchers,
+			req.Start,
+			req.End,
+			chunkFilterer,
+			extractor,
+		)
+	case logproto.SAMPLE_ORDER_BY_STREAM:
+		return newStreamFirstSampleBatchIterator(
+			ctx,
+			s.schemaCfg,
+			s.chunkMetrics,
+			lazyChunks,
+			s.cfg.MaxChunkBatchSize,
+			matchers,
+			req.Start,
+			req.End,
+			chunkFilterer,
+			streamFirstPrefetchConcurrency(s.cfg.MaxParallelGetChunk, s.cfg.MaxChunkBatchSize),
+			fetchLazyChunks,
+			extractor,
+		)
+	default:
+		return nil, fmt.Errorf("unknown sample order %v", req.Order)
+	}
 }
 
 func (s *LokiStore) GetSchemaConfigs() []config.PeriodConfig {

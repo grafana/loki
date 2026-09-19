@@ -233,6 +233,7 @@ func newScanDumpCmd(ctx context.Context, args ...interface{}) *ScanDumpCmd {
 }
 
 func (cmd *ScanDumpCmd) String() string {
+	cmd.await()
 	return cmdString(cmd, cmd.val)
 }
 
@@ -241,10 +242,12 @@ func (cmd *ScanDumpCmd) SetVal(val ScanDump) {
 }
 
 func (cmd *ScanDumpCmd) Result() (ScanDump, error) {
+	cmd.await()
 	return cmd.val, cmd.err
 }
 
 func (cmd *ScanDumpCmd) Val() ScanDump {
+	cmd.await()
 	return cmd.val
 }
 
@@ -316,14 +319,17 @@ func (cmd *BFInfoCmd) SetVal(val BFInfo) {
 }
 
 func (cmd *BFInfoCmd) String() string {
+	cmd.await()
 	return cmdString(cmd, cmd.val)
 }
 
 func (cmd *BFInfoCmd) Val() BFInfo {
+	cmd.await()
 	return cmd.val
 }
 
 func (cmd *BFInfoCmd) Result() (BFInfo, error) {
+	cmd.await()
 	return cmd.val, cmd.err
 }
 
@@ -653,14 +659,17 @@ func (cmd *CFInfoCmd) SetVal(val CFInfo) {
 }
 
 func (cmd *CFInfoCmd) String() string {
+	cmd.await()
 	return cmdString(cmd, cmd.val)
 }
 
 func (cmd *CFInfoCmd) Val() CFInfo {
+	cmd.await()
 	return cmd.val
 }
 
 func (cmd *CFInfoCmd) Result() (CFInfo, error) {
+	cmd.await()
 	return cmd.val, cmd.err
 }
 
@@ -823,14 +832,17 @@ func (cmd *CMSInfoCmd) SetVal(val CMSInfo) {
 }
 
 func (cmd *CMSInfoCmd) String() string {
+	cmd.await()
 	return cmdString(cmd, cmd.val)
 }
 
 func (cmd *CMSInfoCmd) Val() CMSInfo {
+	cmd.await()
 	return cmd.val
 }
 
 func (cmd *CMSInfoCmd) Result() (CMSInfo, error) {
+	cmd.await()
 	return cmd.val, cmd.err
 }
 
@@ -1024,14 +1036,17 @@ func (cmd *TopKInfoCmd) SetVal(val TopKInfo) {
 }
 
 func (cmd *TopKInfoCmd) String() string {
+	cmd.await()
 	return cmdString(cmd, cmd.val)
 }
 
 func (cmd *TopKInfoCmd) Val() TopKInfo {
+	cmd.await()
 	return cmd.val
 }
 
 func (cmd *TopKInfoCmd) Result() (TopKInfo, error) {
+	cmd.await()
 	return cmd.val, cmd.err
 }
 
@@ -1279,14 +1294,17 @@ func (cmd *TDigestInfoCmd) SetVal(val TDigestInfo) {
 }
 
 func (cmd *TDigestInfoCmd) String() string {
+	cmd.await()
 	return cmdString(cmd, cmd.val)
 }
 
 func (cmd *TDigestInfoCmd) Val() TDigestInfo {
+	cmd.await()
 	return cmd.val
 }
 
 func (cmd *TDigestInfoCmd) Result() (TDigestInfo, error) {
+	cmd.await()
 	return cmd.val, cmd.err
 }
 

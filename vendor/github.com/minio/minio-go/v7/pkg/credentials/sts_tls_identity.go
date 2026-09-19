@@ -131,7 +131,7 @@ func (i *STSCertificateIdentity) RetrieveWithCredContext(cc *CredContext) (Value
 	}
 	endpointURL.RawQuery = queryValues.Encode()
 
-	req, err := http.NewRequest(http.MethodPost, endpointURL.String(), nil)
+	req, err := http.NewRequestWithContext(cc.requestContext(), http.MethodPost, endpointURL.String(), nil)
 	if err != nil {
 		return Value{}, err
 	}

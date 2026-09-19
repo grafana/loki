@@ -11,11 +11,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/grafana/loki/v3/pkg/compression"
-	"github.com/grafana/loki/v3/pkg/storage/types"
-	"github.com/grafana/loki/v3/pkg/util"
-	"github.com/grafana/loki/v3/pkg/util/httpreq"
-
 	"github.com/go-kit/log"
 	"github.com/grafana/dskit/flagext"
 	"github.com/grafana/dskit/user"
@@ -26,6 +21,7 @@ import (
 	"github.com/grafana/loki/pkg/push"
 
 	"github.com/grafana/loki/v3/pkg/chunkenc"
+	"github.com/grafana/loki/v3/pkg/compression"
 	"github.com/grafana/loki/v3/pkg/ingester/client"
 	"github.com/grafana/loki/v3/pkg/iter"
 	"github.com/grafana/loki/v3/pkg/logproto"
@@ -35,11 +31,15 @@ import (
 	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/v3/pkg/querier/astmapper"
 	"github.com/grafana/loki/v3/pkg/querier/plan"
+	"github.com/grafana/loki/v3/pkg/querier/testutil"
 	"github.com/grafana/loki/v3/pkg/storage/chunk"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client/local"
 	"github.com/grafana/loki/v3/pkg/storage/config"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper"
+	"github.com/grafana/loki/v3/pkg/storage/types"
+	"github.com/grafana/loki/v3/pkg/util"
 	"github.com/grafana/loki/v3/pkg/util/constants"
+	"github.com/grafana/loki/v3/pkg/util/httpreq"
 	"github.com/grafana/loki/v3/pkg/util/marshal"
 	"github.com/grafana/loki/v3/pkg/validation"
 )
@@ -68,6 +68,7 @@ func getLocalStore(path string, cm ClientMetrics) Store {
 			ResyncInterval:         1 * time.Minute,
 			IngesterDBRetainPeriod: 1 * time.Minute,
 			IngesterName:           "ingester-1",
+			IndexReaderMode:        indexshipper.DefaultIndexReaderMode,
 			Mode:                   indexshipper.ModeReadWrite,
 		},
 		MaxChunkBatchSize: 10,
@@ -97,7 +98,7 @@ func getLocalStore(path string, cm ClientMetrics) Store {
 	return store
 }
 
-func Test_store_SelectLogs(t *testing.T) {
+func Test_LokiStore_SelectLogs(t *testing.T) {
 	tests := []struct {
 		name     string
 		req      *logproto.QueryRequest
@@ -370,9 +371,7 @@ func Test_store_SelectLogs(t *testing.T) {
 				logger:       log.NewNopLogger(),
 			}
 
-			tt.req.Plan = &plan.QueryPlan{
-				AST: syntax.MustParseExpr(tt.req.Selector),
-			}
+			tt.req.Plan = testutil.MustPlan(tt.req.Selector)
 
 			ctx = user.InjectOrgID(context.Background(), "test-user")
 			it, err := s.SelectLogs(ctx, logql.SelectLogParams{QueryRequest: tt.req})
@@ -391,7 +390,7 @@ func Test_store_SelectLogs(t *testing.T) {
 	}
 }
 
-func Test_store_SelectSample(t *testing.T) {
+func Test_LokiStore_SelectSample(t *testing.T) {
 	tests := []struct {
 		name     string
 		req      *logproto.SampleQueryRequest
@@ -700,9 +699,7 @@ func Test_store_SelectSample(t *testing.T) {
 				chunkMetrics: NilMetrics,
 			}
 
-			tt.req.Plan = &plan.QueryPlan{
-				AST: syntax.MustParseExpr(tt.req.Selector),
-			}
+			tt.req.Plan = testutil.MustPlan(tt.req.Selector)
 
 			ctx = user.InjectOrgID(context.Background(), "test-user")
 			it, err := s.SelectSamples(ctx, logql.SelectSampleParams{SampleQueryRequest: tt.req})
@@ -721,6 +718,22 @@ func Test_store_SelectSample(t *testing.T) {
 	}
 }
 
+func TestLokiStore_SelectSamples_ShouldErrorOnUnknownSampleOrder(t *testing.T) {
+	unknownOrder := logproto.SampleOrder(99)
+
+	s := &LokiStore{
+		Store:        storeFixture,
+		cfg:          Config{MaxChunkBatchSize: 10},
+		chunkMetrics: NilMetrics,
+	}
+	req := newSampleQuery("count_over_time({foo=~\"ba.*\"}[5m])", from, from.Add(6*time.Millisecond), nil, nil)
+	req.Order = unknownOrder
+
+	ctx := user.InjectOrgID(context.Background(), "test-user")
+	_, err := s.SelectSamples(ctx, logql.SelectSampleParams{SampleQueryRequest: req})
+	require.ErrorContains(t, err, "unknown sample order")
+}
+
 type fakeChunkFilterer struct{}
 
 func (f fakeChunkFilterer) ForRequest(_ context.Context) chunk.Filterer {
@@ -735,7 +748,7 @@ func (f fakeChunkFilterer) RequiredLabelNames() []string {
 	return []string{"foo"}
 }
 
-func Test_ChunkFilterer(t *testing.T) {
+func TestLokiStore_SelectWithChunkFilterer(t *testing.T) {
 	s := &LokiStore{
 		Store: storeFixture,
 		cfg: Config{
@@ -745,34 +758,43 @@ func Test_ChunkFilterer(t *testing.T) {
 	}
 	s.SetChunkFilterer(&fakeChunkFilterer{})
 	ctx = user.InjectOrgID(context.Background(), "test-user")
-	it, err := s.SelectSamples(ctx, logql.SelectSampleParams{SampleQueryRequest: newSampleQuery("count_over_time({foo=~\"ba.*\"}[1s])", from, from.Add(1*time.Hour), nil, nil)})
-	if err != nil {
-		t.Errorf("store.SelectSamples() error = %v", err)
-		return
-	}
-	defer it.Close()
-	for it.Next() {
-		l, err := syntax.ParseLabels(it.Labels())
-		require.NoError(t, err)
-		require.NotEqual(t, "bazz", l.Get("foo"))
-	}
 
-	logit, err := s.SelectLogs(ctx, logql.SelectLogParams{QueryRequest: newQuery("{foo=~\"ba.*\"}", from, from.Add(1*time.Hour), nil, nil)})
-	if err != nil {
-		t.Errorf("store.SelectLogs() error = %v", err)
-		return
-	}
-	defer logit.Close()
-	for logit.Next() {
-		l, err := syntax.ParseLabels(it.Labels())
+	t.Run("SelectSamples", func(t *testing.T) {
+		for _, order := range []logproto.SampleOrder{logproto.SAMPLE_ORDER_BY_TIMESTAMP, logproto.SAMPLE_ORDER_BY_STREAM} {
+			t.Run(order.String(), func(t *testing.T) {
+				req := newSampleQuery("count_over_time({foo=~\"ba.*\"}[1s])", from, from.Add(1*time.Hour), nil, nil)
+				req.Order = order
+				it, err := s.SelectSamples(ctx, logql.SelectSampleParams{SampleQueryRequest: req})
+				require.NoError(t, err)
+				defer it.Close()
+				for it.Next() {
+					l, err := syntax.ParseLabels(it.Labels())
+					require.NoError(t, err)
+					require.NotEqual(t, "bazz", l.Get("foo"))
+				}
+				require.NoError(t, it.Err())
+			})
+		}
+	})
+
+	t.Run("SelectLogs", func(t *testing.T) {
+		logit, err := s.SelectLogs(ctx, logql.SelectLogParams{QueryRequest: newQuery("{foo=~\"ba.*\"}", from, from.Add(1*time.Hour), nil, nil)})
 		require.NoError(t, err)
-		require.NotEqual(t, "bazz", l.Get("foo"))
-	}
-	ids, err := s.SelectSeries(ctx, logql.SelectLogParams{QueryRequest: newQuery("{foo=~\"ba.*\"}", from, from.Add(1*time.Hour), nil, nil)})
-	require.NoError(t, err)
-	for _, id := range ids {
-		require.NotEqual(t, "bazz", id.Get("foo"))
-	}
+		defer logit.Close()
+		for logit.Next() {
+			l, err := syntax.ParseLabels(logit.Labels())
+			require.NoError(t, err)
+			require.NotEqual(t, "bazz", l.Get("foo"))
+		}
+	})
+
+	t.Run("SelectSeries", func(t *testing.T) {
+		ids, err := s.SelectSeries(ctx, logql.SelectLogParams{QueryRequest: newQuery("{foo=~\"ba.*\"}", from, from.Add(1*time.Hour), nil, nil)})
+		require.NoError(t, err)
+		for _, id := range ids {
+			require.NotEqual(t, "bazz", id.Get("foo"))
+		}
+	})
 }
 
 func Test_PipelineWrapper(t *testing.T) {
@@ -997,12 +1019,12 @@ func (p *mockStreamExtractor) BaseLabels() lokilog.LabelsResult {
 	return p.wrappedSP.BaseLabels()
 }
 
-func (p *mockStreamExtractor) Process(ts int64, line []byte, lbs labels.Labels) ([]lokilog.ExtractedSample, bool) {
+func (p *mockStreamExtractor) Process(ts int64, line []byte, lbs labels.Labels) (lokilog.ExtractedSample, bool) {
 	p.called++
 	return p.wrappedSP.Process(ts, line, lbs)
 }
 
-func (p *mockStreamExtractor) ProcessString(ts int64, line string, lbs labels.Labels) ([]lokilog.ExtractedSample, bool) {
+func (p *mockStreamExtractor) ProcessString(ts int64, line string, lbs labels.Labels) (lokilog.ExtractedSample, bool) {
 	p.called++
 	return p.wrappedSP.ProcessString(ts, line, lbs)
 }
@@ -1053,6 +1075,31 @@ func Test_store_GetSeries(t *testing.T) {
 			newQuery("{foo=\"bar\"}", from, from.Add(6*time.Millisecond), nil, nil),
 			[]logproto.SeriesIdentifier{
 				{Labels: mustParseLabels("{foo=\"bar\"}")},
+			},
+			1,
+		},
+		{
+			"plan without deprecated selector",
+			withoutSelector(newQuery("{foo=\"bar\"}", from, from.Add(6*time.Millisecond), nil, nil)),
+			[]logproto.SeriesIdentifier{
+				{Labels: mustParseLabels("{foo=\"bar\"}")},
+			},
+			1,
+		},
+		{
+			"deprecated selector without plan",
+			withoutPlan(newQuery("{foo=\"bar\"}", from, from.Add(6*time.Millisecond), nil, nil)),
+			[]logproto.SeriesIdentifier{
+				{Labels: mustParseLabels("{foo=\"bar\"}")},
+			},
+			1,
+		},
+		{
+			"neither selector nor plan selects all series",
+			withoutPlan(withoutSelector(newQuery("{foo=\"bar\"}", from, from.Add(6*time.Millisecond), nil, nil))),
+			[]logproto.SeriesIdentifier{
+				{Labels: mustParseLabels("{foo=\"bar\"}")},
+				{Labels: mustParseLabels("{foo=\"bazz\"}")},
 			},
 			1,
 		},
@@ -1501,9 +1548,7 @@ func Test_OverlappingChunks(t *testing.T) {
 		Direction: logproto.BACKWARD,
 		Start:     time.Unix(0, 0),
 		End:       time.Unix(0, 10),
-		Plan: &plan.QueryPlan{
-			AST: syntax.MustParseExpr(`{foo="bar"}`),
-		},
+		Plan:      testutil.MustPlan(`{foo="bar"}`),
 	}})
 	if err != nil {
 		t.Errorf("store.SelectLogs() error = %v", err)
@@ -1622,9 +1667,7 @@ func Test_GetSeries(t *testing.T) {
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			if tt.req.Selector != "" {
-				tt.req.Plan = &plan.QueryPlan{
-					AST: syntax.MustParseExpr(tt.req.Selector),
-				}
+				tt.req.Plan = testutil.MustPlan(tt.req.Selector)
 			} else {
 				tt.req.Plan = &plan.QueryPlan{
 					AST: nil,
@@ -1911,9 +1954,7 @@ func TestQueryReferencingStructuredMetadata(t *testing.T) {
 			Direction: logproto.FORWARD,
 			Start:     chkFrom,
 			End:       chkThrough.Add(time.Minute),
-			Plan: &plan.QueryPlan{
-				AST: syntax.MustParseExpr(stream),
-			},
+			Plan:      testutil.MustPlan(stream),
 		}})
 		require.NoError(t, err)
 
@@ -1988,9 +2029,7 @@ func TestQueryReferencingStructuredMetadata(t *testing.T) {
 					Direction: logproto.FORWARD,
 					Start:     chkFrom,
 					End:       chkThrough.Add(time.Minute),
-					Plan: &plan.QueryPlan{
-						AST: syntax.MustParseExpr(tc.query),
-					},
+					Plan:      testutil.MustPlan(tc.query),
 				}})
 				require.NoError(t, err)
 				numEntries := int64(0)

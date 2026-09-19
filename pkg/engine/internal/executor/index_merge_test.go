@@ -25,6 +25,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/postings"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/stats"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
+	"github.com/grafana/loki/v3/pkg/dataobj/uploader"
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
 	"github.com/grafana/loki/v3/pkg/scratch"
 	"github.com/grafana/loki/v3/pkg/util/loser"
@@ -610,7 +611,7 @@ func buildSourceWithLegacySections(t *testing.T, bucket objstore.Bucket, tenant,
 	require.NoError(t, err, "failed to observe log line")
 
 	// Append a stat to get a stats section.
-	err = builder.AppendStat(tenant, "log-A", 0, "label:service",
+	err = builder.AppendStat(tenant, "log-A", 0, 16, "label:service",
 		map[string]string{"service": "api"},
 		ts, ts.Add(time.Second), 10, 1000)
 	require.NoError(t, err, "failed to append stat")
@@ -624,6 +625,7 @@ func buildSourceWithLegacySections(t *testing.T, bucket objstore.Bucket, tenant,
 		StreamID:         1,
 		Timestamp:        ts,
 		UncompressedSize: 100,
+		ShardBuckets:     16,
 	})
 
 	// Flush the builder to create the object.
@@ -716,17 +718,23 @@ func uploadObjectToBucket(ctx context.Context, bucket objstore.Bucket, path stri
 func newTestExecutorContext(t *testing.T, bucket objstore.Bucket) *Context {
 	t.Helper()
 
+	testBuilderCfg := logsobj.BuilderBaseConfig{
+		TargetPageSize:          2048,
+		MaxPageRows:             10000,
+		TargetObjectSize:        1 << 22, // 4 MiB
+		TargetSectionSize:       1 << 21, // 2 MiB
+		BufferSize:              2048 * 8,
+		SectionStripeMergeLimit: 2,
+	}
+
 	return &Context{
-		bucket:       bucket,
-		scratchStore: scratch.NewMemory(),
-		indexobjCfg: logsobj.BuilderBaseConfig{
-			TargetPageSize:          2048,
-			MaxPageRows:             10000,
-			TargetObjectSize:        1 << 22, // 4 MiB
-			TargetSectionSize:       1 << 21, // 2 MiB
-			BufferSize:              2048 * 8,
-			SectionStripeMergeLimit: 2,
-		},
+		bucket:         bucket,
+		scratchStore:   scratch.NewMemory(),
+		indexobjCfg:    testBuilderCfg,
+		logsobjCfg:     testBuilderCfg,
+		uploaderCfg:    uploader.Config{SHAPrefixSize: 2},
+		builderMetrics: logsobj.NewBuilderMetrics(),
+
 		logger: log.NewNopLogger(),
 	}
 }

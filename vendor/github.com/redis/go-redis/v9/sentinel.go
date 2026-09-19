@@ -12,11 +12,14 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/redis/go-redis/v9/auth"
 	"github.com/redis/go-redis/v9/internal"
+	"github.com/redis/go-redis/v9/internal/otel"
 	"github.com/redis/go-redis/v9/internal/pool"
+	"github.com/redis/go-redis/v9/internal/proto"
 	"github.com/redis/go-redis/v9/maintnotifications"
 	"github.com/redis/go-redis/v9/push"
 )
@@ -123,6 +126,18 @@ type FailoverOptions struct {
 	// default: 32KiB (32768 bytes)
 	WriteBufferSize int
 
+	// PipelineReadBufferSize, PipelineWriteBufferSize and PipelinePoolSize
+	// configure an optional separate connection pool used for pipelining, with
+	// its own (typically larger) buffers. See the same-named fields on Options
+	// for details. The pool is created only when PipelineReadBufferSize or PipelineWriteBufferSize is set (PipelinePoolSize alone does not enable it).
+	PipelineReadBufferSize  int
+	PipelineWriteBufferSize int
+	PipelinePoolSize        int
+
+	// AutoPipelineOptions is the default config for the client's autopipeliner
+	// faces. See Options.AutoPipelineOptions.
+	AutoPipelineOptions *AutoPipelineOptions
+
 	PoolFIFO bool
 
 	PoolSize int
@@ -176,7 +191,7 @@ type FailoverOptions struct {
 	// seamlessly. Requires Protocol: 3 (RESP3) for push notifications.
 	// If nil, maintnotifications upgrades are disabled.
 	// (however if Mode is nil, it defaults to "auto" - enable if server supports it)
-	//MaintNotificationsConfig *maintnotifications.Config
+	// MaintNotificationsConfig *maintnotifications.Config
 }
 
 func (opt *FailoverOptions) clientOptions() *Options {
@@ -201,6 +216,11 @@ func (opt *FailoverOptions) clientOptions() *Options {
 
 		ReadBufferSize:  opt.ReadBufferSize,
 		WriteBufferSize: opt.WriteBufferSize,
+
+		PipelineReadBufferSize:  opt.PipelineReadBufferSize,
+		PipelineWriteBufferSize: opt.PipelineWriteBufferSize,
+		PipelinePoolSize:        opt.PipelinePoolSize,
+		AutoPipelineOptions:     opt.AutoPipelineOptions,
 
 		DialTimeout:        opt.DialTimeout,
 		DialerRetries:      opt.DialerRetries,
@@ -317,6 +337,11 @@ func (opt *FailoverOptions) clusterOptions() *ClusterOptions {
 
 		ReadBufferSize:  opt.ReadBufferSize,
 		WriteBufferSize: opt.WriteBufferSize,
+
+		PipelineReadBufferSize:  opt.PipelineReadBufferSize,
+		PipelineWriteBufferSize: opt.PipelineWriteBufferSize,
+		PipelinePoolSize:        opt.PipelinePoolSize,
+		AutoPipelineOptions:     opt.AutoPipelineOptions,
 
 		DialTimeout:        opt.DialTimeout,
 		DialerRetries:      opt.DialerRetries,
@@ -536,8 +561,10 @@ func NewFailoverClient(failoverOpt *FailoverOptions) *Client {
 
 	rdb := &Client{
 		baseClient: &baseClient{
-			opt:     opt,
-			onClose: &onCloseHooks{},
+			apClosed: &atomic.Bool{},
+			opt:      opt,
+			onClose:  &onCloseHooks{},
+			himport:  newHImportRegistry(),
 		},
 	}
 	rdb.init()
@@ -561,12 +588,53 @@ func NewFailoverClient(failoverOpt *FailoverOptions) *Client {
 		panic(fmt.Errorf("redis: failed to create pubsub pool: %w", err))
 	}
 
+	// Optionally create a separate connection pool for pipelining, with its own
+	// (typically larger) buffers. Enabled when either pipeline buffer size is set.
+	if opt.PipelineReadBufferSize > 0 || opt.PipelineWriteBufferSize > 0 {
+		pipelineOpt := opt.clone()
+		if opt.PipelineReadBufferSize > 0 {
+			pipelineOpt.ReadBufferSize = opt.PipelineReadBufferSize
+			// Same clamp Options.init applies to the main pool: RESP3 push
+			// parsing needs a minimum read buffer, and a tiny pipeline reader
+			// would break push-notification handling on pipeline conns.
+			if pipelineOpt.Protocol == 3 && pipelineOpt.ReadBufferSize < proto.MinRESP3ReadBufferSize {
+				pipelineOpt.ReadBufferSize = proto.MinRESP3ReadBufferSize
+			}
+		}
+		if opt.PipelineWriteBufferSize > 0 {
+			pipelineOpt.WriteBufferSize = opt.PipelineWriteBufferSize
+		}
+		if opt.PipelinePoolSize > 0 {
+			pipelineOpt.PoolSize = opt.PipelinePoolSize
+		} else {
+			pipelineOpt.PoolSize = 10 // default smaller pool for pipelining
+		}
+		rdb.pipelinePoolName = mainPoolName + "_pipeline"
+		rdb.pipelinePool, err = newConnPool(pipelineOpt, rdb.dialHook, rdb.pipelinePoolName)
+		if err != nil {
+			panic(fmt.Errorf("redis: failed to create pipeline connection pool: %w", err))
+		}
+	}
+
+	// Register pools for OTel async gauge metrics, matching NewClient (the
+	// failover client previously registered none, so pool gauges were silent
+	// for the identical standalone setup). The pipeline pool is nil when not
+	// configured.
+	otel.RegisterPools(rdb.connPool, rdb.pubSubPool, rdb.pipelinePool, opt.Addr)
+
 	rdb.onClose.register(onCloseHookIDSentinelFailover, failover.Close)
 
 	failover.mu.Lock()
 	failover.onFailover = func(ctx context.Context, addr string) {
 		if connPool, ok := rdb.connPool.(*pool.ConnPool); ok {
 			_ = connPool.Filter(func(cn *pool.Conn) bool {
+				return cn.RemoteAddr().String() != addr
+			})
+		}
+		// Drop stale pipeline-pool connections dialed to the demoted master too;
+		// otherwise pipelined traffic keeps using the old address after failover.
+		if pipelinePool, ok := rdb.pipelinePool.(*pool.ConnPool); ok {
+			_ = pipelinePool.Filter(func(cn *pool.Conn) bool {
 				return cn.RemoteAddr().String() != addr
 			})
 		}
@@ -599,8 +667,8 @@ func masterReplicaDialer(
 		}
 
 		netDialer := &net.Dialer{
-			Timeout:   failover.opt.DialTimeout,
-			KeepAlive: 5 * time.Minute,
+			Timeout:         failover.opt.DialTimeout,
+			KeepAliveConfig: defaultKeepAliveConfig,
 		}
 		if failover.opt.TLSConfig == nil {
 			return netDialer.DialContext(ctx, network, addr)
@@ -625,8 +693,9 @@ func NewSentinelClient(opt *Options) *SentinelClient {
 	opt.init()
 	c := &SentinelClient{
 		baseClient: &baseClient{
-			opt:     opt,
-			onClose: &onCloseHooks{},
+			apClosed: &atomic.Bool{},
+			opt:      opt,
+			onClose:  &onCloseHooks{},
 		},
 	}
 
@@ -678,7 +747,7 @@ func (c *SentinelClient) Process(ctx context.Context, cmd Cmder) error {
 
 func (c *SentinelClient) pubSub() *PubSub {
 	pubsub := &PubSub{
-		opt: c.opt,
+		opt: c.cloneOpt(),
 		newConn: func(ctx context.Context, addr string, channels []string) (*pool.Conn, error) {
 			cn, err := c.pubSubPool.NewConn(ctx, c.opt.Network, addr, channels)
 			if err != nil {

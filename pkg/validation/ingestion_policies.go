@@ -381,9 +381,11 @@ func (o *PerPolicyConfigOverride) ApplyTo(base shardstreams.Config) shardstreams
 	return base
 }
 
-// PolicyOverridableLimits holds the per-policy overrides for a single policy. Every field is a
-// pointer: a nil field means "not overridden" (the tenant value is inherited); a non-nil field
-// overrides the tenant value for streams resolved to the policy.
+// PolicyOverridableLimits holds the per-policy overrides for a single policy. Every limit field is
+// a pointer: a nil field means "not overridden" (the tenant value is inherited and usage counts
+// against the shared tenant bucket); a non-nil field overrides the tenant value for streams
+// resolved to the policy. InheritLimits changes what a nil field means: the tenant value is still
+// used, but it is reported as overridden, so usage is tracked in a policy-specific bucket.
 type PolicyOverridableLimits struct {
 	MaxLocalStreamsPerUser  *int                     `yaml:"max_streams_per_user" json:"max_streams_per_user" doc:"hidden"`
 	MaxGlobalStreamsPerUser *int                     `yaml:"max_global_streams_per_user" json:"max_global_streams_per_user" doc:"hidden"`
@@ -392,6 +394,13 @@ type PolicyOverridableLimits struct {
 	PerStreamRateLimit      *flagext.ByteSize        `yaml:"per_stream_rate_limit" json:"per_stream_rate_limit" doc:"hidden"`
 	PerStreamRateLimitBurst *flagext.ByteSize        `yaml:"per_stream_rate_limit_burst" json:"per_stream_rate_limit_burst" doc:"hidden"`
 	ShardStreams            *PerPolicyConfigOverride `yaml:"shard_streams" json:"shard_streams" doc:"hidden"`
+
+	// InheritLimits, when true, makes every unset limit field resolve to the tenant-level value
+	// while still reporting overridden=true, so the policy gets the same limits as the tenant but
+	// tracked in its own bucket. Explicitly set fields take precedence. It applies to
+	// max_streams_per_user, max_global_streams_per_user, ingestion_rate_mb,
+	// ingestion_burst_size_mb, per_stream_rate_limit and per_stream_rate_limit_burst.
+	InheritLimits bool `yaml:"inherit_limits" json:"inherit_limits" doc:"hidden"`
 }
 
 // Validate checks that the overridden values are non-negative. Returned errors are field-scoped;
@@ -411,7 +420,8 @@ func (p PolicyOverridableLimits) Validate() error {
 
 // IngestionPolicyOverrideLimits exposes the per-policy limit overrides. Each scalar accessor
 // returns (value, overridden) where overridden reports whether the policy explicitly set that
-// limit; when false the caller should fall back to the tenant-level limit.
+// limit (or inherits it via inherit_limits, in which case the tenant value is returned); when
+// false the caller should fall back to the tenant-level limit.
 type IngestionPolicyOverrideLimits interface {
 	PolicyMaxLocalStreamsPerUser(userID, policy string) (int, bool)
 	PolicyMaxGlobalStreamsPerUser(userID, policy string) (int, bool)
@@ -432,22 +442,43 @@ func (o *Overrides) policyOverride(userID, policy string) (PolicyOverridableLimi
 }
 
 func (o *Overrides) PolicyMaxLocalStreamsPerUser(userID, policy string) (int, bool) {
-	if pl, ok := o.policyOverride(userID, policy); ok && pl.MaxLocalStreamsPerUser != nil {
+	pl, ok := o.policyOverride(userID, policy)
+	if !ok {
+		return 0, false
+	}
+	if pl.MaxLocalStreamsPerUser != nil {
 		return *pl.MaxLocalStreamsPerUser, true
+	}
+	if pl.InheritLimits {
+		return o.MaxLocalStreamsPerUser(userID), true
 	}
 	return 0, false
 }
 
 func (o *Overrides) PolicyMaxGlobalStreamsPerUser(userID, policy string) (int, bool) {
-	if pl, ok := o.policyOverride(userID, policy); ok && pl.MaxGlobalStreamsPerUser != nil {
+	pl, ok := o.policyOverride(userID, policy)
+	if !ok {
+		return 0, false
+	}
+	if pl.MaxGlobalStreamsPerUser != nil {
 		return *pl.MaxGlobalStreamsPerUser, true
+	}
+	if pl.InheritLimits {
+		return o.MaxGlobalStreamsPerUser(userID), true
 	}
 	return 0, false
 }
 
 func (o *Overrides) PolicyIngestionRateBytes(userID, policy string) (float64, bool) {
-	if pl, ok := o.policyOverride(userID, policy); ok && pl.IngestionRateMB != nil {
+	pl, ok := o.policyOverride(userID, policy)
+	if !ok {
+		return 0, false
+	}
+	if pl.IngestionRateMB != nil {
 		return *pl.IngestionRateMB * bytesInMB, true
+	}
+	if pl.InheritLimits {
+		return o.IngestionRateBytes(userID), true
 	}
 	return 0, false
 }
@@ -456,17 +487,34 @@ func (o *Overrides) PolicyIngestionRateBytes(userID, policy string) (float64, bo
 // overridden. overridden is true whenever the policy explicitly sets the burst, including an
 // explicit 0 (which blocks ingestion); callers must gate on the bool, not on a non-zero value.
 func (o *Overrides) PolicyIngestionBurstSizeBytes(userID, policy string) (int, bool) {
-	if pl, ok := o.policyOverride(userID, policy); ok && pl.IngestionBurstSizeMB != nil {
+	pl, ok := o.policyOverride(userID, policy)
+	if !ok {
+		return 0, false
+	}
+	if pl.IngestionBurstSizeMB != nil {
 		return int(*pl.IngestionBurstSizeMB * bytesInMB), true
+	}
+	if pl.InheritLimits {
+		return o.IngestionBurstSizeBytes(userID), true
 	}
 	return 0, false
 }
 
-// PolicyPerStreamRateLimit is overridden iff either the rate or the burst is set; the unset half
-// inherits the tenant per-stream limit so the returned RateLimit is always complete.
+// PolicyPerStreamRateLimit returns the per-policy per-stream rate limit and whether the policy
+// overrides it. When the policy sets only one of the rate/burst pair, the unset half falls back
+// to the tenant's per-stream value — mirroring tenant overrides, where a tenant that sets only
+// the rate keeps the default burst (Limits.UnmarshalYAML overlays the tenant YAML on the
+// defaults). When neither is set, the limit is overridden only with inherit_limits: true, which
+// returns the tenant's per-stream rate limit unchanged.
 func (o *Overrides) PolicyPerStreamRateLimit(userID, policy string) (RateLimit, bool) {
 	pl, ok := o.policyOverride(userID, policy)
-	if !ok || (pl.PerStreamRateLimit == nil && pl.PerStreamRateLimitBurst == nil) {
+	if !ok {
+		return RateLimit{}, false
+	}
+	if pl.PerStreamRateLimit == nil && pl.PerStreamRateLimitBurst == nil {
+		if pl.InheritLimits {
+			return o.PerStreamRateLimit(userID), true
+		}
 		return RateLimit{}, false
 	}
 	rl := o.PerStreamRateLimit(userID)

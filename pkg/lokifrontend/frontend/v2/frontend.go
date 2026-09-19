@@ -76,7 +76,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 
 	cfg.GRPCClientConfig.RegisterFlagsWithPrefix("frontend.grpc-client-config", f)
 
-	f.StringVar(&cfg.Encoding, "frontend.encoding", "json", "Defines the encoding for requests to and responses from the scheduler and querier. Can be 'json' or 'protobuf' (defaults to 'json').")
+	f.StringVar(&cfg.Encoding, "frontend.encoding", EncodingProtobuf, "Defines the encoding for requests to and responses from the scheduler and querier. Can be 'json' or 'protobuf' (defaults to 'protobuf').")
 }
 
 // Frontend implements GrpcRoundTripper. It queues HTTP requests,

@@ -77,9 +77,18 @@ const (
 )
 
 // CertFromPEM converts a PEM file (.pem or .key) for use with [NewCredFromCert]. The file
-// must contain the public certificate and the private key. If a PEM block is encrypted and
-// password is not an empty string, it attempts to decrypt the PEM blocks using the password.
+// must contain the public certificate and the unencrypted private key.
 // Multiple certs are due to certificate chaining for use cases like TLS that sign from root to leaf.
+//
+// Encrypted PEM private keys are not supported. Legacy RFC 1423 encrypted PEM blocks (identified
+// by a DEK-Info header, e.g. "DEK-Info: DES-EDE3-CBC,...") rely on a weak key derivation function
+// (a single MD5 iteration) and obsolete DES/3DES ciphers, so CertFromPEM rejects them with an
+// error instead of decrypting them. Provide the private key unencrypted and protect it with
+// filesystem permissions; you can remove legacy encryption with, for example:
+//
+//	openssl pkcs8 -topk8 -nocrypt -in legacy.key -out key.pem
+//
+// The password parameter is retained for backward compatibility and is ignored.
 func CertFromPEM(pemData []byte, password string) ([]*x509.Certificate, crypto.PrivateKey, error) {
 	var certs []*x509.Certificate
 	var priv crypto.PrivateKey
@@ -89,16 +98,8 @@ func CertFromPEM(pemData []byte, password string) ([]*x509.Certificate, crypto.P
 			break
 		}
 
-		//nolint:staticcheck // x509.IsEncryptedPEMBlock and x509.DecryptPEMBlock are deprecated. They are used here only to support a usecase.
-		if x509.IsEncryptedPEMBlock(block) {
-			b, err := x509.DecryptPEMBlock(block, []byte(password))
-			if err != nil {
-				return nil, nil, fmt.Errorf("could not decrypt encrypted PEM block: %v", err)
-			}
-			block, _ = pem.Decode(b)
-			if block == nil {
-				return nil, nil, fmt.Errorf("encounter encrypted PEM block that did not decode")
-			}
+		if _, encrypted := block.Headers["DEK-Info"]; encrypted {
+			return nil, nil, fmt.Errorf("legacy RFC 1423 encrypted PEM blocks are not supported because they use a weak key derivation function (single MD5 iteration) and obsolete DES/3DES ciphers; provide the private key unencrypted (e.g. `openssl pkcs8 -topk8 -nocrypt -in legacy.key -out key.pem`) and protect it with filesystem permissions")
 		}
 
 		switch block.Type {

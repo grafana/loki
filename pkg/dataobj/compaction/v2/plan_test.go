@@ -108,19 +108,20 @@ func TestCalculateRuns_EmptyInput(t *testing.T) {
 	require.Empty(t, CalculateRuns([]Section[int](nil), func(a, b int) int { return a - b }))
 }
 
-func TestCalculateRuns_WrapsRunsAndSortsInPlace(t *testing.T) {
+func TestCalculateRuns_WrapsRunsWithoutMutatingInput(t *testing.T) {
 	a := &compactionv2pb.SectionRef{ObjectPath: "a", SectionIndex: 0, UncompressedSize: 5}
 	b := &compactionv2pb.SectionRef{ObjectPath: "b", SectionIndex: 0, UncompressedSize: 7}
 	input := []Section[int]{
 		{Ref: b, Min: 30, Max: 40},
 		{Ref: a, Min: 10, Max: 20},
 	}
+	original := append([]Section[int](nil), input...)
 
 	runs := CalculateRuns(input, func(a, b int) int { return a - b })
 
 	require.Len(t, runs, 1)
 	require.Equal(t, uint64(12), runs[0].Size())
-	require.Equal(t, []Section[int]{{Ref: a, Min: 10, Max: 20}, {Ref: b, Min: 30, Max: 40}}, input)
+	require.Equal(t, original, input)
 }
 
 func TestBelowMinCompactionSize(t *testing.T) {

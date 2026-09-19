@@ -7,7 +7,7 @@ import (
 	"io"
 )
 
-const maxConsecutiveEmptyWrites = 16 // 2 is sufficient, 16 is enough, 64 is optimal
+// const maxConsecutiveEmptyWrites = 16 // 2 is sufficient, 16 is enough, 64 is optimal
 
 // encWriter abstracts writing to a byte array or to an io.Writer.
 type encWriterI interface {
@@ -24,6 +24,8 @@ type encWriterI interface {
 	// isBytes() bool
 	end()
 
+	numWrite() int // num bytes written since the last resetXXX
+
 	resetIO(w io.Writer, bufsize int, blist *bytesFreeList)
 	resetBytes(in []byte, out *[]byte)
 }
@@ -35,13 +37,19 @@ type bufioEncWriter struct {
 
 	buf []byte
 
-	n int
+	n  int // position in buf used to track where to flush from
+	nw int // num bytes flushed to z.w (since last reset)
 
 	b [16]byte // scratch buffer and padding (cache-aligned)
 }
 
 // MARKER: use setByteAt/byteAt to elide the bounds-checks
 // when we are sure that we don't go beyond the bounds.
+
+func (z *bufioEncWriter) numWrite() int {
+	z.flush()
+	return z.nw
+}
 
 func (z *bufioEncWriter) resetBytes(in []byte, out *[]byte) {
 	halt.errorStr("resetBytes is unsupported by bufioEncWriter")
@@ -50,6 +58,7 @@ func (z *bufioEncWriter) resetBytes(in []byte, out *[]byte) {
 func (z *bufioEncWriter) resetIO(w io.Writer, bufsize int, blist *bytesFreeList) {
 	z.w = w
 	z.n = 0
+	z.nw = 0
 	// use minimum bufsize of 16, matching the array z.b and accommodating writen methods (where n <= 8)
 	bufsize = max(16, bufsize) // max(byteBufSize, bufsize)
 	if cap(z.buf) < bufsize {
@@ -70,6 +79,7 @@ func (z *bufioEncWriter) flushErr() (err error) {
 	for i := maxConsecutiveEmptyReads; i > 0; i-- {
 		n, err = z.w.Write(z.buf[:z.n])
 		z.n -= n
+		z.nw += n
 		if z.n == 0 || err != nil {
 			return
 		}
@@ -227,6 +237,10 @@ func (z *bytesEncAppender) writen8(b [8]byte) {
 
 func (z *bytesEncAppender) end() {
 	*(z.out) = z.b
+}
+
+func (z *bytesEncAppender) numWrite() int {
+	return len(z.b)
 }
 
 func (z *bytesEncAppender) resetBytes(in []byte, out *[]byte) {

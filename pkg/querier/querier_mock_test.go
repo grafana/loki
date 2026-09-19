@@ -222,6 +222,8 @@ func (c *queryClientMock) Context() context.Context {
 type querySampleClientMock struct {
 	util.ExtendedMock
 	logproto.Querier_QueryClient
+
+	closeSendCalls int
 }
 
 func newQuerySampleClientMock() *querySampleClientMock {
@@ -246,6 +248,7 @@ func (c *querySampleClientMock) Trailer() grpc_metadata.MD {
 }
 
 func (c *querySampleClientMock) CloseSend() error {
+	c.closeSendCalls++
 	return nil
 }
 
@@ -574,7 +577,7 @@ func mockStreamIterator(from int, quantity int) iter.EntryIterator {
 // where entries timestamp and line string are constructed as sequential numbers
 // starting at from
 func mockSampleIterator(client iter.QuerySampleClient) iter.SampleIterator {
-	return iter.NewSampleQueryClientIterator(client)
+	return iter.NewTimestampFirstSampleQueryClientIterator(client)
 }
 
 // mockStream return a stream with quantity entries, where entries timestamp and

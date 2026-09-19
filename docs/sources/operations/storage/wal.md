@@ -25,22 +25,27 @@ The Write Ahead Log in Loki takes a few particular tradeoffs compared to other W
 
 1. No space left on disk
 
-    In the event the underlying WAL disk is full, Loki will not fail incoming writes, but neither will it log them to the WAL. In this case, the persistence guarantees across process restarts will not hold.
+    By default, Loki monitors disk usage on the volume that stores the WAL. If usage reaches 90% of capacity, the ingester rejects new writes instead of accepting data it cannot persist. This check runs every 10 seconds and measures the entire filesystem that holds the WAL directory, not just the size of the WAL files. Because of this, you should not share the WAL volume with other data. Writes resume automatically once disk usage drops back below the threshold. You can change the threshold with the `--ingester.wal-disk-full-threshold` flag, or set it to `0` to disable this protection. This throttling behavior isn't available on Windows.
 
-    You can use the Prometheus metric `loki_ingester_wal_disk_full_failures_total` to track and alert when this happens.
+    If you disable this threshold, or if a write reaches the disk in the short window before the check runs, the underlying disk can still become completely full. In that case, Loki will not fail the incoming write, but neither will it log the entry to the WAL. In this case, the persistence guarantees across process restarts will not hold for that entry.
+
+    You can use the Prometheus metric `loki_ingester_wal_disk_full_failures_total` to track and alert when this happens. This counter increases both when disk usage crosses the throttling threshold and when a WAL write fails because the disk is completely full, so a nonzero value means the WAL disk needs attention, but it does not count each individual rejected write. You can also monitor the gauge `loki_ingester_wal_disk_usage_percent` to see current disk usage and how close it is to the threshold.
 
 ### Backpressure
 
-The WAL also includes a backpressure mechanism to allow a large WAL to be replayed within a smaller memory bound. This is helpful after bad scenarios (i.e. an outage) when a WAL has grown past the point it may be recovered in memory. In this case, the ingester will track the amount of data being replayed and once it's passed the `ingester.wal-replay-memory-ceiling` threshold, will flush to storage. When this happens, it's likely that the Loki attempt to deduplicate chunks via content addressable storage will suffer. We deemed this efficiency loss an acceptable tradeoff considering how it simplifies operation and that it should not occur during regular operation (rollouts, rescheduling) where the WAL can be replayed without triggering this threshold.
+The WAL also includes a backpressure mechanism to allow a large WAL to be replayed within a smaller memory bound. This is helpful after bad scenarios (i.e. an outage) when a WAL has grown past the point it may be recovered in memory. In this case, the ingester will track the amount of data being replayed and once it's passed 90% of the `ingester.wal-replay-memory-ceiling` threshold, will flush to storage. When this happens, it's likely that the Loki attempt to deduplicate chunks via content addressable storage will suffer. We deemed this efficiency loss an acceptable tradeoff considering how it simplifies operation and that it should not occur during regular operation (rollouts, rescheduling) where the WAL can be replayed without triggering this threshold. Setting `ingester.wal-replay-memory-ceiling` to `0` disables backpressure entirely.
 
 ### Metrics
 
 The following metrics are available for monitoring the WAL:
 
 * `loki_ingester_wal_corruptions_total`: Total number of WAL corruptions encountered
-* `loki_ingester_wal_disk_full_failures_total`: Total number of disk full failures
-* `loki_ingester_wal_records_logged`: Counter for WAL records logged
+* `loki_ingester_wal_disk_full_failures_total`: Increments when disk usage crosses the `--ingester.wal-disk-full-threshold` throttling threshold, and when a WAL write fails because the disk is completely full. It does not count each individual throttled write.
+* `loki_ingester_wal_disk_usage_percent`: Current disk usage, from 0.0 to 1.0, for the volume that stores the WAL. This is only reported when `--ingester.wal-disk-full-threshold` is greater than `0`.
+* `loki_ingester_wal_records_logged_total`: Counter for WAL records logged
 * `loki_ingester_wal_logged_bytes_total`: Total bytes written to WAL
+* `loki_ingester_wal_replay_active`: Set to 1 while an ingester is replaying its WAL and checkpoint on startup, 0 otherwise
+* `loki_ingester_wal_replay_duration_seconds`: Time taken to replay the checkpoint and the WAL
 
 ## Changes to deployment
 
@@ -51,6 +56,7 @@ The following metrics are available for monitoring the WAL:
     * `--ingester.wal-dir` sets the directory where the WAL data should be stored and/or recovered from. Note that this should be on the mounted volume.
     * `--ingester.checkpoint-duration` to the interval at which checkpoints should be created.
     * `--ingester.wal-replay-memory-ceiling` (default 4GB) may be set higher/lower depending on your resource settings. It handles memory pressure during WAL replays, allowing a WAL many times larger than available memory to be replayed. This is provided to minimize reconciliation time after very bad situations, i.e. an outage, and will likely not impact regular operations/rollouts _at all_. We suggest setting this to a high percentage (~75%) of available memory.
+    * `--ingester.wal-disk-full-threshold` (default 0.90) sets the fraction of disk usage (0.0 to 1.0) at which the ingester throttles incoming writes to protect WAL durability. Set to `0` to disable this protection. For details, refer to [Disclaimer and WAL nuances](#disclaimer-and-wal-nuances).
 
 ## Changes in lifecycle when WAL is enabled
 
