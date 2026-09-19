@@ -531,3 +531,50 @@ func TestMergeBuilder_Reset(t *testing.T) {
 	require.NotNil(t, obj)
 	closer.Close()
 }
+
+// A closer returned alongside an error is never closed by callers, since they
+// stop at the error, so Flush must hand back nothing when it fails.
+func TestMergeBuilder_FlushReturnsNoCloserOnError(t *testing.T) {
+	appendStatPerTenant := func(t *testing.T, b *MergeBuilder, tenants int) {
+		t.Helper()
+		for i := range tenants {
+			require.NoError(t, b.AppendStat(fmt.Sprintf("tenant-%04d", i), stats.Stat{
+				ObjectPath:       fmt.Sprintf("objects/%04d", i),
+				SectionIndex:     int64(i),
+				SortSchema:       "app",
+				Labels:           map[string]string{"app": fmt.Sprintf("v%d", i)},
+				MinTimestamp:     time.Unix(10, 0).UnixNano(),
+				MaxTimestamp:     time.Unix(20, 0).UnixNano(),
+				RowCount:         1,
+				UncompressedSize: 100,
+			}))
+		}
+	}
+
+	t.Run("when the object cannot be built", func(t *testing.T) {
+		b, err := NewMergeBuilder(testBuilderConfig, newFailingReadStore(false))
+		require.NoError(t, err)
+		appendStatPerTenant(t, b, 1)
+
+		obj, closer, err := b.Flush()
+		require.ErrorContains(t, err, "flushing object")
+		require.Nil(t, obj)
+		require.Nil(t, closer)
+	})
+
+	t.Run("when the built object cannot be observed", func(t *testing.T) {
+		// See the equivalent Builder test: only the last section's metadata
+		// fails to read, and with this many sections the metadata outgrows the
+		// decoder's prefetch window, so the failure lands while observing.
+		store := newFailingReadStore(true)
+		b, err := NewMergeBuilder(testBuilderConfig, store)
+		require.NoError(t, err)
+		appendStatPerTenant(t, b, 64)
+
+		obj, closer, err := b.Flush()
+		require.ErrorContains(t, err, "observing object")
+		require.Nil(t, obj)
+		require.Nil(t, closer)
+		require.NotEmpty(t, store.removed, "the object's scratch handles must be released")
+	})
+}
