@@ -125,11 +125,7 @@ func (sc *StoreCombiner) SelectSamples(ctx context.Context, req logql.SelectSamp
 	}()
 
 	for _, s := range stores {
-		reqCopy := req
-		reqCopy.Start = s.from.Time()
-		reqCopy.End = s.through.Time()
-
-		it, err := s.store.SelectSamples(ctx, reqCopy)
+		it, err := s.store.SelectSamples(ctx, req.WithTimeRange(s.from.Time(), s.through.Time()))
 		if err != nil {
 			return nil, err
 		}
@@ -160,11 +156,7 @@ func (sc *StoreCombiner) SelectLogs(ctx context.Context, req logql.SelectLogPara
 
 	iters := make([]iter.EntryIterator, 0, len(stores))
 	for _, s := range stores {
-		reqCopy := req
-		reqCopy.Start = s.from.Time()
-		reqCopy.End = s.through.Time()
-
-		iter, err := s.store.SelectLogs(ctx, reqCopy)
+		iter, err := s.store.SelectLogs(ctx, req.WithTimeRange(s.from.Time(), s.through.Time()))
 		if err != nil {
 			return nil, err
 		}
@@ -195,11 +187,7 @@ func (sc *StoreCombiner) SelectSeries(ctx context.Context, req logql.SelectLogPa
 	var key uint64
 
 	for _, s := range stores {
-		reqCopy := req
-		reqCopy.Start = s.from.Time()
-		reqCopy.End = s.through.Time()
-
-		series, err := s.store.SelectSeries(ctx, reqCopy)
+		series, err := s.store.SelectSeries(ctx, req.WithTimeRange(s.from.Time(), s.through.Time()))
 		if err != nil {
 			return nil, err
 		}
