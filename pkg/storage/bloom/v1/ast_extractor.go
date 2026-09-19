@@ -159,6 +159,11 @@ func buildSimplifiedRegexMatcher(key string, reg *regexsyn.Regexp) LabelMatcher 
 		return buildSimplifiedRegexMatcher(key, reg)
 
 	case regexsyn.OpLiteral:
+		// regexp/syntax canonicalizes FoldCase literals, but bloom tokens retain their original case.
+		// Using the canonicalized literal for lookup can cause a false negative.
+		if reg.Flags&regexsyn.FoldCase != 0 {
+			return UnsupportedLabelMatcher{}
+		}
 		return KeyValueMatcher{
 			Key:   key,
 			Value: string(reg.Rune),
@@ -193,6 +198,11 @@ func expandSubexpr(reg *regexsyn.Regexp) (prefixes []string, ok bool) {
 		return prefixes, true
 
 	case regexsyn.OpCharClass:
+		// FoldCase values are not safe to use as bloom lookup candidates.
+		if reg.Flags&regexsyn.FoldCase != 0 {
+			return nil, false
+		}
+
 		// OpCharClass stores ranges of characters, so [12] is the range of bytes
 		// []rune('1', '2'), while [15] is represented as []rune('1', '1', '5',
 		// '5').
@@ -261,6 +271,10 @@ func expandSubexpr(reg *regexsyn.Regexp) (prefixes []string, ok bool) {
 		return expandSubexpr(reg)
 
 	case regexsyn.OpLiteral:
+		// FoldCase values are not safe to use as bloom lookup candidates.
+		if reg.Flags&regexsyn.FoldCase != 0 {
+			return nil, false
+		}
 		prefixes = append(prefixes, string(reg.Rune))
 		return prefixes, true
 
