@@ -14,6 +14,7 @@ import (
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/httpgrpc"
 	"github.com/grafana/dskit/tenant"
+	"github.com/prometheus/prometheus/model/labels"
 
 	"github.com/grafana/loki/pkg/push"
 	loghttppush "github.com/grafana/loki/v3/pkg/loghttp/push"
@@ -130,6 +131,8 @@ func (d *Distributor) pushHandler(w http.ResponseWriter, r *http.Request, pushRe
 	// Only reported for tenants that have enabled log_otlp_attribute_expansion in their runtime config.
 	d.otlpAttrReporter.Report(logger, tenantID, pushStats.OTLPAttributes)
 
+	d.reportStreamsDroppedByParser(tenantID, pushStats, format)
+
 	if d.shouldLogPushRequestStreams(tenantID, presumedAgentIP) {
 		d.logPushRequestStreams(r.Context(), logger, req.Streams, streamResolver, pushStats, presumedAgentIP)
 	}
@@ -167,6 +170,28 @@ func (d *Distributor) pushHandler(w http.ResponseWriter, r *http.Request, pushRe
 		}
 		errorWriter(w, err.Error(), http.StatusInternalServerError, logger)
 	}
+}
+
+// reportStreamsDroppedByParser reports the log lines a push request parser
+// dropped because their stream labels were invalid, for example an OTLP
+// resource attribute that holds invalid UTF-8. The parser cannot report them
+// itself, so without this the lines would be lost without a trace. They are
+// reported like the streams with invalid labels that reach validation.
+func (d *Distributor) reportStreamsDroppedByParser(tenantID string, pushStats *loghttppush.Stats, format string) {
+	for _, err := range pushStats.Errs {
+		d.writeFailuresManager.Log(tenantID, err)
+	}
+
+	if pushStats.InvalidLabelsLines == 0 {
+		return
+	}
+
+	// The labels are invalid, so resolve retention as validation does for them.
+	retentionHours := d.tenantsRetention.RetentionHoursFor(tenantID, labels.EmptyLabels())
+	// The bytes are reported as zero. A record dropped here never becomes an
+	// entry, so the size that the other reporters account for, the line plus
+	// its structured metadata, is not known yet.
+	d.validator.reportDiscardedData(validation.InvalidLabels, tenantID, retentionHours, "", 0, int(pushStats.InvalidLabelsLines), format)
 }
 
 // shouldLogPushRequestStreams returns true if streams from the request should

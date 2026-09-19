@@ -1041,6 +1041,69 @@ func TestOTLPLogAttributesAsIndexLabels(t *testing.T) {
 	require.Equal(t, int64(3), stats.PolicyNumLines["test-policy"], "Should have counted 3 log lines")
 }
 
+func TestOTLPToLokiPushRequestInvalidLabels(t *testing.T) {
+	now := time.Unix(0, time.Now().UnixNano())
+
+	otlpConfig := DefaultOTLPConfig(GlobalOTLPConfig{
+		DefaultOTLPResourceAttributesAsIndexLabels: []string{"service.name"},
+	})
+	otlpConfig.LogAttributes = []AttributesConfig{
+		{Action: IndexLabel, Attributes: []string{"log.level"}},
+	}
+
+	ld := plog.NewLogs()
+	addLog := func(sl plog.ScopeLogs, line, level string) {
+		lr := sl.LogRecords().AppendEmpty()
+		lr.Body().SetStr(line)
+		lr.SetTimestamp(pcommon.Timestamp(now.UnixNano()))
+		if level != "" {
+			lr.Attributes().PutStr("log.level", level)
+		}
+	}
+
+	// Invalid UTF-8 in a resource attribute makes the stream labels of every
+	// log record in the resource invalid, across all of its scopes.
+	invalidResource := ld.ResourceLogs().AppendEmpty()
+	invalidResource.Resource().Attributes().PutStr("service.name", "bad-\xff")
+	addLog(invalidResource.ScopeLogs().AppendEmpty(), "first", "")
+	addLog(invalidResource.ScopeLogs().AppendEmpty(), "second", "")
+
+	// Invalid UTF-8 in a log attribute promoted to a label invalidates only
+	// that log record.
+	validResource := ld.ResourceLogs().AppendEmpty()
+	validResource.Resource().Attributes().PutStr("service.name", "good")
+	sl := validResource.ScopeLogs().AppendEmpty()
+	addLog(sl, "kept", "info")
+	addLog(sl, "dropped", "bad-\xfe")
+
+	stats := NewPushStats()
+	pushReq, err := otlpToLokiPushRequest(
+		context.Background(),
+		ld,
+		"test-user",
+		otlpConfig,
+		nil,
+		[]string{},
+		NewMockTracker(),
+		stats,
+		log.NewNopLogger(),
+		newMockStreamResolver("fake", &fakeLimits{}),
+		constants.OTLP,
+	)
+	require.NoError(t, err)
+
+	var lines []string
+	for _, stream := range pushReq.Streams {
+		for _, entry := range stream.Entries {
+			lines = append(lines, entry.Line)
+		}
+	}
+	require.Equal(t, []string{"kept"}, lines)
+
+	require.Len(t, stats.Errs, 2)
+	require.Equal(t, int64(3), stats.InvalidLabelsLines)
+}
+
 func TestOTLPStructuredMetadataCalculation(t *testing.T) {
 	now := time.Unix(0, time.Now().UnixNano())
 
