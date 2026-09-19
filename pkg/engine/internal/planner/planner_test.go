@@ -342,6 +342,87 @@ TopK sort_by=builtin.timestamp ascending=false nulls_first=false k=1000
 	}
 }
 
+// Test_RegexAnchoring_BothEnginePaths covers grafana/loki#23892 for the
+// engine v2 executor.
+//
+// [engine.Basic.Execute] builds the logical plan via [logical.BuildPlan] and
+// used to hand it straight to the physical planner WITHOUT ever calling
+// [logical.Optimize]. Because [simplifyRegexPass] (which anchors otherwise
+// one-sided open-ended regexes such as `foo.*` against non-message columns)
+// only runs as part of [logical.Optimize], that entry point never anchored
+// the regex, while [engine.Engine.buildLogicalPlan] (which DOES call
+// [logical.Optimize]) was already correct. The fix adds the missing
+// logical.Optimize() call to Basic.Execute, so both entry points now run the
+// same optimizer and produce identical, fully anchored plans.
+//
+// The first subtest reproduces the pre-fix bug by building the physical plan
+// the way Basic.Execute used to (skipping logical.Optimize): the resulting
+// plan still carries the raw, unanchored `MATCH_RE(ambiguous.foo, "al.*")`,
+// which the executor would evaluate as an unanchored `regexp.Match` and thus
+// wrongly match values like "prealpha". The second and third subtests build
+// the plan the way both entry points build it post-fix (via
+// [logical.Optimize]) and assert the regex is anchored exactly once (no
+// double "^(?:^(?:...)$)$" wrapping).
+func Test_RegexAnchoring_BothEnginePaths(t *testing.T) {
+	q := &TestQuery{
+		statement: `{app="foo"} | foo=~"al.*"`,
+		start:     time.Date(2025, time.January, 1, 0, 0, 0, 0, time.UTC),
+		end:       time.Date(2025, time.January, 1, 1, 0, 0, 0, time.UTC),
+		interval:  5 * time.Minute,
+		limit:     1000,
+		direction: logproto.BACKWARD,
+	}
+
+	buildPhysical := func(t *testing.T, runLogicalOptimize bool) string {
+		t.Helper()
+
+		logicalPlan, err := logical.BuildPlan(context.Background(), q)
+		require.NoError(t, err)
+
+		if runLogicalOptimize {
+			require.NoError(t, logical.Optimize(logicalPlan), "logical optimization should not fail")
+		}
+
+		catalog := physical.NewMetastoreCatalog(func(_ physical.Expression, _ []physical.Expression, _ time.Time, _ time.Time) ([]*metastore.DataobjSectionDescriptor, error) {
+			return mockedMetastoreSections, nil
+		})
+		planner := physical.NewPlanner(physical.NewContext(q.Start(), q.End()), catalog)
+
+		plan, err := planner.Build(logicalPlan)
+		require.NoError(t, err)
+		plan, err = planner.Optimize(plan)
+		require.NoError(t, err)
+
+		return physical.PrintAsTree(plan)
+	}
+
+	t.Run("pre-fix Basic.Execute reproduction (no logical.Optimize) is unanchored", func(t *testing.T) {
+		actual := buildPhysical(t, false)
+		require.Contains(t, actual, `MATCH_RE(ambiguous.foo, "al.*")`,
+			"this documents the pre-fix bug: without logical.Optimize, the regex reaches the physical "+
+				"plan completely unanchored, which the executor evaluates via a bare, unanchored regexp.Match:\n%s", actual)
+	})
+
+	t.Run("Basic.Execute path (post-fix, now calls logical.Optimize)", func(t *testing.T) {
+		actual := buildPhysical(t, true)
+		require.NotContains(t, actual, `MATCH_RE(ambiguous.foo, "al.*")`,
+			"unanchored regex must not reach the physical plan:\n%s", actual)
+		require.Contains(t, actual, `MATCH_RE(ambiguous.foo, "^(?:(?-s:al.*))$")`,
+			"regex must be fully anchored:\n%s", actual)
+	})
+
+	t.Run("Engine.buildLogicalPlan path (with logical.Optimize)", func(t *testing.T) {
+		actual := buildPhysical(t, true)
+		require.NotContains(t, actual, `MATCH_RE(ambiguous.foo, "al.*")`,
+			"unanchored regex must not reach the physical plan:\n%s", actual)
+		// Anchored exactly once: no "^(?:^(?:...)$)$" double-wrapping.
+		require.Contains(t, actual, `MATCH_RE(ambiguous.foo, "^(?:(?-s:al.*))$")`,
+			"regex must be fully anchored exactly once:\n%s", actual)
+		require.NotContains(t, actual, `^(?:^(?:`,
+			"regex must not be double-anchored:\n%s", actual)
+	})
+}
+
 func requireCanSerialize(t *testing.T, plan *physical.Plan) {
 	t.Helper()
 
