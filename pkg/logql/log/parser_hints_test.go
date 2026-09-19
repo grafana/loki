@@ -247,7 +247,7 @@ func Test_ParserHints(t *testing.T) {
 }
 
 func TestRecordingExtractedLabels(t *testing.T) {
-	p := log.NewParserHint([]string{"1", "2", "3"}, nil, false, true, "", nil)
+	p := log.NewParserHint([]string{"1", "2", "3"}, nil, false, true, "")
 	p.RecordExtracted("1")
 	p.RecordExtracted("2")
 
@@ -267,7 +267,7 @@ func TestRecordingExtractedLabels(t *testing.T) {
 func TestLabelFiltersInParseHints(t *testing.T) {
 	t.Run("it rejects the line when label matchers don't match the label", func(t *testing.T) {
 		s := []log.Stage{log.NewStringLabelFilter(labels.MustNewMatcher(labels.MatchEqual, "protocol", "nothing"))}
-		h := log.NewParserHint(nil, nil, true, true, "metric", s)
+		h := log.NewLabelFilterHints(s)
 
 		lb := log.NewBaseLabelsBuilder().ForLabels(labels.FromStrings("protocol", "HTTP/2.0"), 0)
 		require.False(t, h.ShouldContinueParsingLine("protocol", lb))
@@ -275,7 +275,7 @@ func TestLabelFiltersInParseHints(t *testing.T) {
 
 	t.Run("it returns true when the label doesn't have a matcher", func(t *testing.T) {
 		s := []log.Stage{log.NewStringLabelFilter(labels.MustNewMatcher(labels.MatchEqual, "protocol", "nothing"))}
-		h := log.NewParserHint(nil, nil, true, true, "metric", s)
+		h := log.NewLabelFilterHints(s)
 
 		lb := log.NewBaseLabelsBuilder().ForLabels(labels.FromStrings("response", "200"), 0)
 		require.True(t, h.ShouldContinueParsingLine("response", lb))
@@ -289,8 +289,35 @@ func TestLabelFiltersInParseHints(t *testing.T) {
 			}),
 		}
 
-		h := log.NewParserHint(nil, nil, true, true, "metric", s)
+		h := log.NewLabelFilterHints(s)
 		lb := log.NewBaseLabelsBuilder().ForLabels(labels.FromStrings("protocol", "HTTP/2.0"), 0)
 		require.True(t, h.ShouldContinueParsingLine("protocol", lb))
+	})
+}
+
+// Regression test: before ParserHint and LabelFilterHints were split apart,
+// NewParserHint computed labelFilters/labelNames from stages on every call, but 2 of
+// its 4 early-return branches silently dropped them before returning, losing the
+// ShouldContinueParsingLine short-circuit entirely -- even for a plain filter with no
+// CanModifyLabels concerns of its own. Constructing the extraction hints for either
+// query shape below must not affect the independently-constructed label-filter hints
+// for a logfmt parser followed by a `foo="bar"` filter.
+func TestLabelFiltersSurviveNoLabelsAndGroupingHints(t *testing.T) {
+	stages := []log.Stage{
+		log.NewLogfmtParser(false, false),
+		log.NewStringLabelFilter(labels.MustNewMatcher(labels.MatchEqual, "foo", "bar")),
+	}
+	labelFilterHints := log.NewLabelFilterHints(stages)
+	// foo=baz never matches the foo="bar" filter above.
+	lb := log.NewBaseLabelsBuilder().ForLabels(labels.FromStrings("app", "foo", "foo", "baz"), 0)
+
+	t.Run("noLabels with no required-label hints, e.g. sum(rate({app=\"foo\"}|logfmt|foo=\"bar\"[5m]))", func(t *testing.T) {
+		log.NewParserHint(nil, nil, false, true, "")
+		require.False(t, labelFilterHints.ShouldContinueParsingLine("foo", lb))
+	})
+
+	t.Run("grouped, non-without, e.g. sum by (foo) (rate({app=\"foo\"}|logfmt|foo=\"bar\"[5m]))", func(t *testing.T) {
+		log.NewParserHint([]string{"foo"}, []string{"foo"}, false, false, "")
+		require.False(t, labelFilterHints.ShouldContinueParsingLine("foo", lb))
 	})
 }
