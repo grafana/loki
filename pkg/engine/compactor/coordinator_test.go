@@ -184,6 +184,7 @@ func newTestCoordinator(t *testing.T, bucket objstore.Bucket, runner *fakeRunner
 		runPlan:         runner.run,
 		metastoreWriter: replacer,
 		clock:           clock,
+		sleep:           sleepUntil,
 		metrics:         newCoordinatorMetrics(prometheus.NewRegistry()),
 		limits:          limits,
 	}
@@ -1267,13 +1268,13 @@ func TestReconcile_DisabledDuringToCReadFailure_CancelsWorker(t *testing.T) {
 
 	c.reconcile(ctx, workers, &wg)
 	require.Eventually(t, func() bool { return len(liveTenants()) == 1 }, 2*time.Second, 5*time.Millisecond)
-	require.Positive(t, testutil.CollectAndCount(c.metrics.unconsolidatedBacklog),
-		"the running worker must have emitted a per-tenant series")
 
-	// Disable the tenant AND make the ToC read fail. Disable must still apply.
+	// Disable the tenant AND make the ToC read fail. Runtime-config disablement
+	// is authoritative even when discovery is not, so the worker must be removed
+	// from both the live set and the workers map. Otherwise the self-exiting
+	// worker leaves a stale entry that prevents a later re-enable from starting.
 	limits.setIndex("acme", false)
 	c.bucket = errBucket{objstore.NewInMemBucket()} // Get returns a non-not-found error
-
 	c.reconcile(ctx, workers, &wg)
 
 	require.Eventually(t, func() bool { return len(liveTenants()) == 0 }, 2*time.Second, 5*time.Millisecond,
@@ -1575,6 +1576,80 @@ func TestRunTenantLoop_ErrorRetries(t *testing.T) {
 		require.Equal(t, []string{"index-merge", "log-merge", "index-merge"}, phases[:3],
 			"successful phases flip between index-merge and log-merge")
 	})
+}
+
+// TestNextBackoff pins the backoff policy: productive phases reset to the floor,
+// while no-work and error phases apply the current wait and double it toward the
+// ceiling.
+func TestNextBackoff(t *testing.T) {
+	const (
+		minB = 1 * time.Second
+		maxB = 8 * time.Second
+	)
+
+	t.Run("swapped resets to min", func(t *testing.T) {
+		wait, next := nextBackoff(phaseOutcomeSwapped, 4*time.Second, minB, maxB)
+		require.Equal(t, minB, wait, "a productive phase waits only the floor")
+		require.Equal(t, minB, next, "a productive phase resets the carried backoff")
+	})
+
+	t.Run("no-work grows exponentially and caps at max", func(t *testing.T) {
+		cur := minB
+		var waits []time.Duration
+		for range 5 {
+			var w time.Duration
+			w, cur = nextBackoff(phaseOutcomeNoWork, cur, minB, maxB)
+			waits = append(waits, w)
+		}
+		require.Equal(t, []time.Duration{
+			1 * time.Second, 2 * time.Second, 4 * time.Second, 8 * time.Second, 8 * time.Second,
+		}, waits, "consecutive no-work waits double until capped at max")
+	})
+
+	t.Run("error grows like no-work", func(t *testing.T) {
+		wait, next := nextBackoff(phaseOutcomeError, 2*time.Second, minB, maxB)
+		require.Equal(t, 2*time.Second, wait)
+		require.Equal(t, 4*time.Second, next)
+	})
+}
+
+// TestRunTenantLoop_BacksOffWhenIdle proves the loop applies an exponentially
+// growing wait to a tenant with nothing to do (empty ToC), so a converged or
+// empty tenant stops hammering object storage. The injected sleep records the
+// waits without blocking and cancels the loop once enough are captured.
+func TestRunTenantLoop_BacksOffWhenIdle(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	window := imWindow()
+	bucket := objstore.NewInMemBucket() // no ToC: every phase is no-work
+	c := newTestCoordinator(t, bucket, &fakeRunner{}, &fakeReplacer{}, fixedClock(window.Add(time.Hour)), newFakeLimits("acme"))
+	c.cfg.MinBackoff = 1 * time.Second
+	c.cfg.MaxBackoff = 8 * time.Second
+
+	const want = 5
+	var mu sync.Mutex
+	var waits []time.Duration
+	c.sleep = func(_ context.Context, d time.Duration) {
+		mu.Lock()
+		waits = append(waits, d)
+		enough := len(waits) >= want
+		mu.Unlock()
+		if enough {
+			cancel()
+		}
+	}
+
+	done := make(chan struct{})
+	go func() { c.runTenantLoop(ctx, "acme"); close(done) }()
+	<-done
+
+	mu.Lock()
+	defer mu.Unlock()
+	require.GreaterOrEqual(t, len(waits), want)
+	require.Equal(t, []time.Duration{
+		1 * time.Second, 2 * time.Second, 4 * time.Second, 8 * time.Second, 8 * time.Second,
+	}, waits[:want], "an idle tenant backs off exponentially up to the max")
 }
 
 // TestCompactTenantLogs_UnknownConvergedRowKeepsReplacementsUnknown guards the

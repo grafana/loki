@@ -188,6 +188,16 @@ func (s *Service) ExceedsLimits(
 	return s.limitsChecker.ExceedsLimits(ctx, req)
 }
 
+// CheckLimitsAndShard implements the [proto.IngestLimitsServer] interface.
+// The shard-count decision logic is added in a follow-up PR; for now this
+// returns no results, which the frontend treats as "don't shard this push".
+func (s *Service) CheckLimitsAndShard(
+	_ context.Context,
+	_ *proto.CheckLimitsAndShardRequest,
+) (*proto.CheckLimitsAndShardResponse, error) {
+	return &proto.CheckLimitsAndShardResponse{}, nil
+}
+
 // UpdateRates implements the [proto.IngestLimitsServer] interface.
 func (s *Service) UpdateRates(
 	_ context.Context,
