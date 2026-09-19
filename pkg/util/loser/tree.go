@@ -157,6 +157,10 @@ func parent(i int) int { return i / 2 }
 
 // Add a new sequence to the merge set
 func (t *Tree[E, S]) Push(sequence S) {
+	// Advance the current winner, if any, so it is not returned again.
+	if len(t.nodes) > 0 && t.nodes[0].index != -1 && t.nodes[t.nodes[0].index].index != -1 {
+		t.moveNext(t.nodes[0].index)
+	}
 	// First, see if we can replace one that was previously finished.
 	for newPos := len(t.nodes) / 2; newPos < len(t.nodes); newPos++ {
 		if t.nodes[newPos].index == -1 {

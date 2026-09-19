@@ -6,7 +6,7 @@ import (
 	"unsafe"
 )
 
-// Predicate is an expression used to filter rows in a [Reader].
+// Predicate is an expression used to filter rows in a [RowReader].
 type Predicate interface{ isPredicate() }
 
 // Suppported predicates..
@@ -73,6 +73,27 @@ type (
 		Keep func(column Column, value Value) bool
 	}
 )
+
+// NewConstPredicate returns a [TruePredicate] when keep is true and a [FalsePredicate]
+// otherwise.
+func NewConstPredicate(keep bool) Predicate {
+	if keep {
+		return TruePredicate{}
+	}
+	return FalsePredicate{}
+}
+
+// IsConstPredicate reports whether p always evaluates the same way, and what it evaluates
+// to. A nil predicate keeps every row.
+func IsConstPredicate(p Predicate) (keep, ok bool) {
+	switch p.(type) {
+	case nil, TruePredicate:
+		return true, true
+	case FalsePredicate:
+		return false, true
+	}
+	return false, false
+}
 
 func (AndPredicate) isPredicate()         {}
 func (OrPredicate) isPredicate()          {}
@@ -195,26 +216,26 @@ func (s Uint64ValueSet) Size() int {
 	return len(s.values)
 }
 
-type ByteArrayValueSet struct {
+type BinaryValueSet struct {
 	values map[string]Value
 }
 
-func NewByteArrayValueSet(values []Value) ByteArrayValueSet {
+func NewBinaryValueSet(values []Value) BinaryValueSet {
 	valuesMap := make(map[string]Value, len(values))
 	for _, v := range values {
-		valuesMap[unsafeString(v.ByteArray())] = v
+		valuesMap[unsafeString(v.Binary())] = v
 	}
-	return ByteArrayValueSet{
+	return BinaryValueSet{
 		values: valuesMap,
 	}
 }
 
-func (s ByteArrayValueSet) Contains(value Value) bool {
-	_, ok := s.values[unsafeString(value.ByteArray())]
+func (s BinaryValueSet) Contains(value Value) bool {
+	_, ok := s.values[unsafeString(value.Binary())]
 	return ok
 }
 
-func (s ByteArrayValueSet) Iter() iter.Seq[Value] {
+func (s BinaryValueSet) Iter() iter.Seq[Value] {
 	return func(yield func(v Value) bool) {
 		for _, v := range s.values {
 			ok := yield(v)
@@ -225,7 +246,7 @@ func (s ByteArrayValueSet) Iter() iter.Seq[Value] {
 	}
 }
 
-func (s ByteArrayValueSet) Size() int {
+func (s BinaryValueSet) Size() int {
 	return len(s.values)
 }
 

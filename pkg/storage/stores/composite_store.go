@@ -28,6 +28,18 @@ type ChunkFetcherProvider interface {
 }
 
 type ChunkFetcher interface {
+	// GetChunks returns the given tenant's chunk refs matching predicate. It must return every
+	// chunk that could hold a log with a timestamp in [from, through): from is inclusive, through
+	// is exclusive.
+	//
+	// It returns refs only, not chunk data: every returned chunk.Chunk has just its ChunkRef
+	// populated (Fingerprint, UserID, From, Through, Checksum). The Metric labels, Encoding, and
+	// Data fields stay at their zero value until the chunk is loaded through the paired Fetcher.
+	//
+	// Chunks come back grouped, with one Fetcher per group. Load the chunks in the i-th group with
+	// the i-th Fetcher. When storeChunksOverride is non-nil, GetChunks uses its refs directly
+	// instead of querying the index, so predicate never runs on them. Only the time-range filter
+	// above still applies.
 	GetChunks(
 		ctx context.Context,
 		userID string,
@@ -108,7 +120,7 @@ func (c CompositeStore) PutOne(ctx context.Context, from, through model.Time, ch
 
 func (c CompositeStore) SetChunkFilterer(chunkFilter chunk.RequestChunkFilterer) {
 	for _, store := range c.stores {
-		store.Store.SetChunkFilterer(chunkFilter)
+		store.SetChunkFilterer(chunkFilter)
 	}
 }
 
@@ -227,33 +239,56 @@ func (c CompositeStore) GetShards(
 	targetBytesPerShard uint64,
 	predicate chunk.Predicate,
 ) (*logproto.ShardsResponse, error) {
-	// TODO(owen-d): improve. Since shards aren't easily merge-able,
-	// we choose the store which returned the highest shard count.
-	// This is only used when a query crosses a schema boundary
-	var groups []*logproto.ShardsResponse
+	var responses []*logproto.ShardsResponse
 	err := c.forStores(ctx, from, through, func(innerCtx context.Context, from, through model.Time, store Store) error {
 		shards, err := store.GetShards(innerCtx, userID, from, through, targetBytesPerShard, predicate)
 		if err != nil {
 			return err
 		}
-		groups = append(groups, shards)
+		responses = append(responses, shards)
 		return nil
 	})
 	if err != nil {
 		return nil, err
 	}
 
-	switch {
-	case len(groups) == 1:
-		return groups[0], nil
-	case len(groups) == 0:
+	switch len(responses) {
+	case 0:
 		return nil, nil
-	default:
-		sort.Slice(groups, func(i, j int) bool {
-			return len(groups[i].Shards) > len(groups[j].Shards)
-		})
-		return groups[0], nil
+	case 1:
+		return responses[0], nil
 	}
+
+	// More than one period contributed shards. Each store computes its bounds
+	// from its own fingerprints and bytes, so the bounds from different stores
+	// do not line up and cannot be merged one by one. Use the bounds from the
+	// store with the most bytes, since it best represents the query's data, and
+	// drop the chunk groups. A chunk group only makes sense together with the
+	// bounds of the store it came from, so callers look up chunks again against
+	// the merged range, as they already do for power_of_two sharding.
+	best := responses[0]
+	bestBytes := sumShardBytes(best)
+	for _, r := range responses[1:] {
+		if b := sumShardBytes(r); b > bestBytes {
+			best, bestBytes = r, b
+		}
+	}
+
+	merged := &logproto.ShardsResponse{Shards: best.Shards}
+	for _, r := range responses {
+		merged.Statistics.Merge(r.Statistics)
+	}
+	return merged, nil
+}
+
+func sumShardBytes(r *logproto.ShardsResponse) uint64 {
+	var total uint64
+	for _, s := range r.Shards {
+		if s.Stats != nil {
+			total += s.Stats.Bytes
+		}
+	}
+	return total
 }
 
 func (c CompositeStore) HasForSeries(from, through model.Time) (sharding.ForSeries, bool) {
@@ -294,6 +329,36 @@ func (c CompositeStore) HasForSeries(from, through model.Time) (sharding.ForSeri
 	)
 
 	return wrapped, true
+}
+
+func (c CompositeStore) HasChunkSizingInfo(from, through model.Time) bool {
+	allStoresHaveChunkSizingInfo := true
+	_ = c.forStores(context.Background(), from, through, func(_ context.Context, from, through model.Time, store Store) error {
+		if !store.HasChunkSizingInfo(from, through) {
+			allStoresHaveChunkSizingInfo = false
+		}
+		return nil
+	})
+
+	return allStoresHaveChunkSizingInfo
+}
+
+func (c CompositeStore) GetChunkRefsWithSizingInfo(ctx context.Context, userID string, from, through model.Time, predicate chunk.Predicate) ([]logproto.ChunkRefWithSizingInfo, error) {
+	var chunks []logproto.ChunkRefWithSizingInfo
+	err := c.forStores(ctx, from, through, func(innerCtx context.Context, innerFrom, innerThrough model.Time, store Store) error {
+		chks, err := store.GetChunkRefsWithSizingInfo(innerCtx, userID, innerFrom, innerThrough, predicate)
+		if err != nil {
+			return err
+		}
+
+		chunks = append(chunks, chks...)
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	return chunks, nil
 }
 
 func (c CompositeStore) GetChunkFetcher(tm model.Time) *fetcher.Fetcher {

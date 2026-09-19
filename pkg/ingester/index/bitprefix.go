@@ -25,7 +25,7 @@ type BitPrefixInvertedIndex struct {
 
 func ValidateBitPrefixShardFactor(factor uint32) error {
 	if requiredBits := index.NewShard(0, factor).RequiredBits(); 1<<requiredBits != factor {
-		return fmt.Errorf("Incompatible inverted index shard factor on ingester: It must be a power of two, got %d", factor)
+		return fmt.Errorf("incompatible inverted index shard factor on ingester: It must be a power of two, got %d", factor)
 	}
 	return nil
 }
@@ -54,7 +54,7 @@ func (ii *BitPrefixInvertedIndex) getShards(shard *logql.Shard) ([]*indexShard, 
 	}
 
 	// When comparing a higher shard factor to a lower inverted index shard factor
-	// we must filter resulting fingerprints as the the lower shard factor in the
+	// we must filter resulting fingerprints as the lower shard factor in the
 	// inverted index is a superset of the requested factor.
 	//
 	// For instance, the 3_of_4 shard factor maps to the bit prefix 0b11.

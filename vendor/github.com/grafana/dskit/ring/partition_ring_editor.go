@@ -38,6 +38,12 @@ func (l *PartitionRingEditor) RemoveMultiPartitionOwner(ctx context.Context, ins
 	})
 }
 
+func (l *PartitionRingEditor) SetPartitionStateChangeLock(ctx context.Context, partitionID int32, locked bool) error {
+	return l.updateRing(ctx, func(ring *PartitionRingDesc) (bool, error) {
+		return SetPartitionStateChangeLock(ring, partitionID, locked)
+	})
+}
+
 func (l *PartitionRingEditor) updateRing(ctx context.Context, update func(ring *PartitionRingDesc) (bool, error)) error {
 	return l.store.CAS(ctx, l.ringKey, func(in interface{}) (out interface{}, retry bool, err error) {
 		ringDesc := GetOrCreatePartitionRingDesc(in)
@@ -66,5 +72,18 @@ func changePartitionState(ring *PartitionRingDesc, partitionID int32, toState Pa
 		return false, errors.Wrapf(ErrPartitionStateChangeNotAllowed, "change partition state from %s to %s", partition.State.CleanName(), toState.CleanName())
 	}
 
-	return ring.UpdatePartitionState(partitionID, toState, time.Now()), nil
+	return ring.UpdatePartitionState(partitionID, toState, time.Now())
+}
+
+func SetPartitionStateChangeLock(ring *PartitionRingDesc, partitionID int32, locked bool) (changed bool, _ error) {
+	partition, exists := ring.Partitions[partitionID]
+	if !exists {
+		return false, ErrPartitionDoesNotExist
+	}
+
+	if partition.StateChangeLocked == locked {
+		return false, nil
+	}
+
+	return ring.UpdatePartitionStateChangeLock(partitionID, locked, time.Now()), nil
 }

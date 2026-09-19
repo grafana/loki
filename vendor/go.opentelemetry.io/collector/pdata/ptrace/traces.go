@@ -3,42 +3,14 @@
 
 package ptrace // import "go.opentelemetry.io/collector/pdata/ptrace"
 
-import (
-	"go.opentelemetry.io/collector/pdata/internal"
-	otlpcollectortrace "go.opentelemetry.io/collector/pdata/internal/data/protogen/collector/trace/v1"
-	"go.opentelemetry.io/collector/pdata/internal/json"
-)
-
-// Traces is the top-level struct that is propagated through the traces pipeline.
-// Use NewTraces to create new instance, zero-initialized instance is not valid for use.
-type Traces internal.Traces
-
-func newTraces(orig *otlpcollectortrace.ExportTraceServiceRequest) Traces {
-	state := internal.StateMutable
-	return Traces(internal.NewTraces(orig, &state))
-}
-
-func (ms Traces) getOrig() *otlpcollectortrace.ExportTraceServiceRequest {
-	return internal.GetOrigTraces(internal.Traces(ms))
-}
-
-func (ms Traces) getState() *internal.State {
-	return internal.GetTracesState(internal.Traces(ms))
-}
-
-// NewTraces creates a new Traces struct.
-func NewTraces() Traces {
-	return newTraces(&otlpcollectortrace.ExportTraceServiceRequest{})
+// MarkReadOnly marks the Traces as shared so that no further modifications can be done on it.
+func (ms Traces) MarkReadOnly() {
+	ms.getState().MarkReadOnly()
 }
 
 // IsReadOnly returns true if this Traces instance is read-only.
 func (ms Traces) IsReadOnly() bool {
-	return *ms.getState() == internal.StateReadOnly
-}
-
-// CopyTo copies the Traces instance overriding the destination.
-func (ms Traces) CopyTo(dest Traces) {
-	ms.ResourceSpans().CopyTo(dest.ResourceSpans())
+	return ms.getState().IsReadOnly()
 }
 
 // SpanCount calculates the total number of spans.
@@ -53,33 +25,4 @@ func (ms Traces) SpanCount() int {
 		}
 	}
 	return spanCount
-}
-
-// ResourceSpans returns the ResourceSpansSlice associated with this Metrics.
-func (ms Traces) ResourceSpans() ResourceSpansSlice {
-	return newResourceSpansSlice(&ms.getOrig().ResourceSpans, internal.GetTracesState(internal.Traces(ms)))
-}
-
-// MarkReadOnly marks the Traces as shared so that no further modifications can be done on it.
-func (ms Traces) MarkReadOnly() {
-	internal.SetTracesState(internal.Traces(ms), internal.StateReadOnly)
-}
-
-func (ms Traces) marshalJSONStream(dest *json.Stream) {
-	dest.WriteObjectStart()
-	dest.WriteObjectField("resourceSpans")
-	ms.ResourceSpans().marshalJSONStream(dest)
-	dest.WriteObjectEnd()
-}
-
-func (ms Traces) unmarshalJSONIter(iter *json.Iterator) {
-	iter.ReadObjectCB(func(iter *json.Iterator, f string) bool {
-		switch f {
-		case "resourceSpans", "resource_spans":
-			ms.ResourceSpans().unmarshalJSONIter(iter)
-		default:
-			iter.Skip()
-		}
-		return true
-	})
 }

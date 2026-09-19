@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"regexp"
 	"strings"
 
 	"github.com/alecthomas/kingpin/v2"
@@ -13,7 +14,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/prometheus/model/rulefmt"
 	log "github.com/sirupsen/logrus"
-	yamlv3 "gopkg.in/yaml.v3"
+	yamlv3 "go.yaml.in/yaml/v3"
 
 	"github.com/grafana/loki/v3/pkg/tool/client"
 	"github.com/grafana/loki/v3/pkg/tool/printer"
@@ -59,10 +60,12 @@ type RuleCommand struct {
 	RuleFilesPath string
 
 	// Sync/Diff Rules Config
-	Namespaces           string
-	namespacesMap        map[string]struct{}
-	IgnoredNamespaces    string
-	ignoredNamespacesMap map[string]struct{}
+	Namespaces             string
+	namespacesMap          map[string]struct{}
+	NamespacesRegex        *regexp.Regexp
+	IgnoredNamespaces      string
+	IgnoredNamespacesRegex *regexp.Regexp
+	ignoredNamespacesMap   map[string]struct{}
 
 	// Prepare Rules Config
 	InPlaceEdit                            bool
@@ -106,22 +109,23 @@ func (r *RuleCommand) Register(app *kingpin.Application) {
 		Command("delete", "Delete a rulegroup from the ruler.").
 		Action(r.deleteRuleGroup)
 	loadRulesCmd := rulesCmd.
-		Command("load", "load a set of rules to a designated loki endpoint").
+		Command("load", "Load a set of rules to a designated loki endpoint").
 		Action(r.loadRules)
 	diffRulesCmd := rulesCmd.
-		Command("diff", "diff a set of rules to a designated loki endpoint").
+		Command("diff", "Diff a set of rules to a designated loki endpoint").
 		Action(r.diffRules)
 	syncRulesCmd := rulesCmd.
-		Command("sync", "sync a set of rules to a designated loki endpoint").
+		Command("sync", "Sync a set of rules to a designated loki endpoint").
 		Action(r.syncRules)
 	prepareCmd := rulesCmd.
-		Command("prepare", "modifies a set of rules by including an specific label in aggregations.").
+		Command("prepare", "Modifies a set of rules by including an specific label in aggregations.").
 		Action(r.prepare)
-	lintCmd := rulesCmd.
-		Command("lint", "formats a set of rule files. It reorders keys alphabetically, uses 4 spaces as indentantion, and formats PromQL expressions to a single line.").
-		Action(r.lint)
+	formatCmd := rulesCmd.
+		Command("format", "Formats a set of rule files. It reorders keys alphabetically, uses 4 spaces as indentation, and formats PromQL expressions to a single line. `lint` is an alias for `format` and is deprecated.").
+		Alias("lint").
+		Action(r.format)
 	checkCmd := rulesCmd.
-		Command("check", "runs various best practice checks against rules.").
+		Command("check", "Runs various best practice checks against rules.").
 		Action(r.checkRecordingRuleNames)
 
 	// Require Loki cluster address and tentant ID on all these commands
@@ -143,17 +147,17 @@ func (r *RuleCommand) Register(app *kingpin.Application) {
 
 		c.Flag("tls-ca-path", "TLS CA certificate to verify Loki API as part of mTLS, alternatively set LOKI_TLS_CA_PATH.").
 			Default("").
-			Envar("LOKI_TLS_CA_CERT").
+			Envar("LOKI_TLS_CA_PATH").
 			StringVar(&r.ClientConfig.TLS.CAPath)
 
-		c.Flag("tls-cert-path", "TLS client certificate to authenticate with Loki API as part of mTLS, alternatively set Loki_TLS_CERT_PATH.").
+		c.Flag("tls-cert-path", "TLS client certificate to authenticate with Loki API as part of mTLS, alternatively set LOKI_TLS_CERT_PATH.").
 			Default("").
-			Envar("LOKI_TLS_CLIENT_CERT").
+			Envar("LOKI_TLS_CERT_PATH").
 			StringVar(&r.ClientConfig.TLS.CertPath)
 
 		c.Flag("tls-key-path", "TLS client certificate private key to authenticate with Loki API as part of mTLS, alternatively set LOKI_TLS_KEY_PATH.").
 			Default("").
-			Envar("LOKI_TLS_CLIENT_KEY").
+			Envar("LOKI_TLS_KEY_PATH").
 			StringVar(&r.ClientConfig.TLS.KeyPath)
 
 	}
@@ -175,8 +179,10 @@ func (r *RuleCommand) Register(app *kingpin.Application) {
 
 	// Diff Command
 	diffRulesCmd.Arg("rule-files", "The rule files to check.").ExistingFilesVar(&r.RuleFilesList)
-	diffRulesCmd.Flag("namespaces", "comma-separated list of namespaces to check during a diff. Cannot be used together with --ignored-namespaces.").StringVar(&r.Namespaces)
-	diffRulesCmd.Flag("ignored-namespaces", "comma-separated list of namespaces to ignore during a diff. Cannot be used together with --namespaces.").StringVar(&r.IgnoredNamespaces)
+	diffRulesCmd.Flag("namespaces", "comma-separated list of namespaces to check during a diff. Cannot be used together with other namespaces options.").StringVar(&r.Namespaces)
+	diffRulesCmd.Flag("ignored-namespaces", "comma-separated list of namespaces to ignore during a diff. Cannot be used together with other namespaces options.").StringVar(&r.IgnoredNamespaces)
+	diffRulesCmd.Flag("namespaces-regex", "regex matching namespaces to check during a diff. Cannot be used together with other namespaces options.").RegexpVar(&r.NamespacesRegex)
+	diffRulesCmd.Flag("ignored-namespaces-regex", "regex matching namespaces to ignore during a diff. Cannot be used together with other namespaces options.").RegexpVar(&r.IgnoredNamespacesRegex)
 	diffRulesCmd.Flag("rule-files", "The rule files to check. Flag can be reused to load multiple files.").StringVar(&r.RuleFiles)
 	diffRulesCmd.Flag(
 		"rule-dirs",
@@ -187,8 +193,10 @@ func (r *RuleCommand) Register(app *kingpin.Application) {
 
 	// Sync Command
 	syncRulesCmd.Arg("rule-files", "The rule files to check.").ExistingFilesVar(&r.RuleFilesList)
-	syncRulesCmd.Flag("namespaces", "comma-separated list of namespaces to check during a diff. Cannot be used together with --ignored-namespaces.").StringVar(&r.Namespaces)
-	syncRulesCmd.Flag("ignored-namespaces", "comma-separated list of namespaces to ignore during a sync. Cannot be used together with --namespaces.").StringVar(&r.IgnoredNamespaces)
+	syncRulesCmd.Flag("namespaces", "comma-separated list of namespaces to check during a sync. Cannot be used together with other namespaces options.").StringVar(&r.Namespaces)
+	syncRulesCmd.Flag("ignored-namespaces", "comma-separated list of namespaces to ignore during a sync. Cannot be used together with other namespaces options.").StringVar(&r.IgnoredNamespaces)
+	syncRulesCmd.Flag("namespaces-regex", "regex matching namespaces to check during a sync. Cannot be used together with other namespaces options.").RegexpVar(&r.NamespacesRegex)
+	syncRulesCmd.Flag("ignored-namespaces-regex", "regex matching namespaces to ignore during a sync. Cannot be used together with other namespaces options.").RegexpVar(&r.IgnoredNamespacesRegex)
 	syncRulesCmd.Flag("rule-files", "The rule files to check. Flag can be reused to load multiple files.").StringVar(&r.RuleFiles)
 	syncRulesCmd.Flag(
 		"rule-dirs",
@@ -209,14 +217,14 @@ func (r *RuleCommand) Register(app *kingpin.Application) {
 	prepareCmd.Flag("label", "label to include as part of the aggregations.").Default(defaultPrepareAggregationLabel).Short('l').StringVar(&r.AggregationLabel)
 	prepareCmd.Flag("label-excluded-rule-groups", "Comma separated list of rule group names to exclude when including the configured label to aggregations.").StringVar(&r.AggregationLabelExcludedRuleGroups)
 
-	// Lint Command
-	lintCmd.Arg("rule-files", "The rule files to check.").ExistingFilesVar(&r.RuleFilesList)
-	lintCmd.Flag("rule-files", "The rule files to check. Flag can be reused to load multiple files.").StringVar(&r.RuleFiles)
-	lintCmd.Flag(
+	// Format Command
+	formatCmd.Arg("rule-files", "The rule files to format.").ExistingFilesVar(&r.RuleFilesList)
+	formatCmd.Flag("rule-files", "The rule files to format. Flag can be reused to load multiple files.").StringVar(&r.RuleFiles)
+	formatCmd.Flag(
 		"rule-dirs",
 		"Comma separated list of paths to directories containing rules yaml files. Each file in a directory with a .yml or .yaml suffix will be parsed.",
 	).StringVar(&r.RuleFilesPath)
-	lintCmd.Flag("dry-run", "Performs a trial run that doesn't make any changes and (mostly) produces the same outpupt as a real run.").Short('n').BoolVar(&r.LintDryRun)
+	formatCmd.Flag("dry-run", "Performs a trial run that doesn't make any changes and (mostly) produces the same output as a real run.").Short('n').BoolVar(&r.LintDryRun)
 
 	// Check Command
 	checkCmd.Arg("rule-files", "The rule files to check.").ExistingFilesVar(&r.RuleFilesList)
@@ -253,8 +261,10 @@ func (r *RuleCommand) setup(_ *kingpin.ParseContext) error {
 }
 
 func (r *RuleCommand) setupFiles() error {
-	if r.Namespaces != "" && r.IgnoredNamespaces != "" {
-		return errors.New("--namespaces and --ignored-namespaces cannot be set at the same time")
+	if (r.Namespaces != "" && r.IgnoredNamespaces != "") ||
+		(r.NamespacesRegex != nil && r.IgnoredNamespacesRegex != nil) ||
+		(r.Namespaces != "" || r.IgnoredNamespaces != "") && (r.NamespacesRegex != nil || r.IgnoredNamespacesRegex != nil) {
+		return errors.New("only one namespace option can be specified")
 	}
 
 	// Set up ignored namespaces map for sync/diff command
@@ -421,6 +431,13 @@ func (r *RuleCommand) loadRules(_ *kingpin.ParseContext) error {
 
 // shouldCheckNamespace returns whether the namespace should be checked according to the allowed and ignored namespaces
 func (r *RuleCommand) shouldCheckNamespace(namespace string) bool {
+	if r.NamespacesRegex != nil {
+		return r.NamespacesRegex.MatchString(namespace)
+	}
+	if r.IgnoredNamespacesRegex != nil {
+		return !r.IgnoredNamespacesRegex.MatchString(namespace)
+	}
+
 	// when we have an allow list, only check those that we have explicitly defined.
 	if r.namespacesMap != nil {
 		_, allowed := r.namespacesMap[namespace]
@@ -654,15 +671,15 @@ func (r *RuleCommand) prepare(_ *kingpin.ParseContext) error {
 	return nil
 }
 
-func (r *RuleCommand) lint(_ *kingpin.ParseContext) error {
+func (r *RuleCommand) format(_ *kingpin.ParseContext) error {
 	err := r.setupFiles()
 	if err != nil {
-		return errors.Wrap(err, "prepare operation unsuccessful, unable to load rules files")
+		return errors.Wrap(err, "format operation unsuccessful, unable to load rules files")
 	}
 
 	namespaces, err := rules.ParseFiles(r.RuleFilesList)
 	if err != nil {
-		return errors.Wrap(err, "prepare operation unsuccessful, unable to parse rules files")
+		return errors.Wrap(err, "format operation unsuccessful, unable to parse rules files")
 	}
 
 	var count, mod int
@@ -677,13 +694,13 @@ func (r *RuleCommand) lint(_ *kingpin.ParseContext) error {
 	}
 
 	if !r.LintDryRun {
-		// linting will always in-place edit unless is a dry-run.
+		// formatting always edits in place unless this is a dry run.
 		if err := save(namespaces, true); err != nil {
 			return err
 		}
 	}
 
-	log.Infof("SUCCESS: %d rules found, %d linted expressions", count, mod)
+	log.Infof("SUCCESS: %d rules found, %d expressions formatted", count, mod)
 
 	return nil
 }
@@ -758,7 +775,7 @@ func ruleMetric(rule rulefmt.Rule) string {
 
 // End taken from https://github.com/prometheus/prometheus/blob/8c8de46003d1800c9d40121b4a5e5de8582ef6e1/cmd/promtool/main.go#L403
 
-// save saves a set of rule files to to disk. You can specify whenever you want the
+// save saves a set of rule files to disk. You can specify whenever you want the
 // file(s) to be edited in-place.
 func save(nss map[string]rules.RuleNamespace, i bool) error {
 	for _, ns := range nss {

@@ -58,10 +58,10 @@ func (m *TokenBucket) validate(all bool) error {
 
 	var errors []error
 
-	if m.GetMaxTokens() <= 0 {
+	if m.GetMaxTokens() < 0 {
 		err := TokenBucketValidationError{
 			field:  "MaxTokens",
-			reason: "value must be greater than 0",
+			reason: "value must be greater than or equal to 0",
 		}
 		if !all {
 			return err
@@ -138,7 +138,7 @@ type TokenBucketMultiError []error
 
 // Error returns a concatenation of all the error messages it wraps.
 func (m TokenBucketMultiError) Error() string {
-	var msgs []string
+	msgs := make([]string, 0, len(m))
 	for _, err := range m {
 		msgs = append(msgs, err.Error())
 	}

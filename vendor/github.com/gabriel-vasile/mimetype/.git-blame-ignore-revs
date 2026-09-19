@@ -1,0 +1,9 @@
+# Github is obeying this ignore file by default.
+# Run this command on local to ignore formatting commits in `git blame`
+# git config blame.ignoreRevsFile .git-blame-ignore-revs
+
+# Added a new column to supported_mimes.md
+# The supported_mimes.md file was a nice way to find when a file format was
+# introduced. However, when I changed to add a new column in the table, the
+# whole git blame got poisoned for the file.
+eb497f9bc5d31c6eab2929a112051218670137ba

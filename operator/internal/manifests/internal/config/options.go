@@ -195,8 +195,7 @@ func (r RelabelConfig) SourceLabelsString() string {
 	var sb strings.Builder
 	sb.WriteString("[")
 	for i, labelname := range r.SourceLabels {
-		sb.WriteString(fmt.Sprintf(`"%s"`, labelname))
-
+		fmt.Fprintf(&sb, `"%s"`, labelname)
 		if i != len(r.SourceLabels)-1 {
 			sb.WriteString(",")
 		}
@@ -236,10 +235,7 @@ const (
 // ReplayMemoryCeiling calculates 50% of the ingester memory
 // for the ingester to use for the write-ahead-log capbability.
 func (w WriteAheadLog) ReplayMemoryCeiling() string {
-	value := int64(math.Ceil(float64(w.IngesterMemoryRequest) * float64(0.5)))
-	if value < minimumReplayCeiling {
-		value = minimumReplayCeiling
-	}
+	value := max(int64(math.Ceil(float64(w.IngesterMemoryRequest)*float64(0.5))), minimumReplayCeiling)
 	return fmt.Sprintf("%d", value)
 }
 

@@ -2,10 +2,8 @@ package validation
 
 import (
 	"context"
-	"fmt"
 
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
-	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/util/validation/field"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -14,7 +12,7 @@ import (
 	lokiv1 "github.com/grafana/loki/operator/api/loki/v1"
 )
 
-var _ admission.CustomValidator = &RulerConfigValidator{}
+var _ admission.Validator[*lokiv1.RulerConfig] = &RulerConfigValidator{}
 
 // RulerConfigValidator implements a custom validator for RulerConfig resources.
 type RulerConfigValidator struct{}
@@ -22,34 +20,28 @@ type RulerConfigValidator struct{}
 // SetupWebhookWithManager registers the RulerConfigValidator as a validating webhook
 // with the controller-runtime manager or returns an error.
 func (v *RulerConfigValidator) SetupWebhookWithManager(mgr ctrl.Manager) error {
-	return ctrl.NewWebhookManagedBy(mgr).
-		For(&lokiv1.RulerConfig{}).
+	return ctrl.NewWebhookManagedBy(mgr, &lokiv1.RulerConfig{}).
 		WithValidator(v).
 		Complete()
 }
 
-// ValidateCreate implements admission.CustomValidator.
-func (v *RulerConfigValidator) ValidateCreate(ctx context.Context, obj runtime.Object) (admission.Warnings, error) {
+// ValidateCreate implements admission.Validator.
+func (v *RulerConfigValidator) ValidateCreate(ctx context.Context, obj *lokiv1.RulerConfig) (admission.Warnings, error) {
 	return v.validate(ctx, obj)
 }
 
-// ValidateUpdate implements admission.CustomValidator.
-func (v *RulerConfigValidator) ValidateUpdate(ctx context.Context, _, newObj runtime.Object) (admission.Warnings, error) {
+// ValidateUpdate implements admission.Validator.
+func (v *RulerConfigValidator) ValidateUpdate(ctx context.Context, _, newObj *lokiv1.RulerConfig) (admission.Warnings, error) {
 	return v.validate(ctx, newObj)
 }
 
-// ValidateDelete implements admission.CustomValidator.
-func (v *RulerConfigValidator) ValidateDelete(_ context.Context, _ runtime.Object) (admission.Warnings, error) {
+// ValidateDelete implements admission.Validator.
+func (v *RulerConfigValidator) ValidateDelete(_ context.Context, _ *lokiv1.RulerConfig) (admission.Warnings, error) {
 	// No validation on delete
 	return nil, nil
 }
 
-func (v *RulerConfigValidator) validate(ctx context.Context, obj runtime.Object) (admission.Warnings, error) {
-	rulerConfig, ok := obj.(*lokiv1.RulerConfig)
-	if !ok {
-		return nil, apierrors.NewBadRequest(fmt.Sprintf("object is not of type RulerConfig: %t", obj))
-	}
-
+func (v *RulerConfigValidator) validate(_ context.Context, rulerConfig *lokiv1.RulerConfig) (admission.Warnings, error) {
 	var allErrs field.ErrorList
 
 	// Check if header auth is defined in AlertManagerSpec

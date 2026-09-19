@@ -14,11 +14,6 @@ func windowsColorProfile(env map[string]string) (Profile, bool) {
 		return TrueColor, true
 	}
 
-	if len(env["WT_SESSION"]) > 0 {
-		// Windows Terminal supports TrueColor
-		return TrueColor, true
-	}
-
 	major, _, build := windows.RtlGetNtVersionNumbers()
 	if build < 10586 || major < 10 {
 		// No ANSI support before WindowsNT 10 build 10586

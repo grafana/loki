@@ -152,6 +152,23 @@ func (c *RedisClient) MSet(ctx context.Context, keys []string, values [][]byte) 
 		defer cancel()
 	}
 
+	// redis.UniversalClient can take redis.Client and redis.ClusterClient.
+	// if redis.Client is set, then Single node or sentinel configuration. pipeline is always supported.
+	// if redis.ClusterClient is set, then Redis Cluster configuration. pipeline may not be supported
+	// when keys hash to different slots.
+	_, isCluster := c.rdb.(*redis.ClusterClient)
+
+	if isCluster {
+		// In cluster mode, use individual Set calls to avoid CROSSSLOT errors
+		for i := range keys {
+			err := c.rdb.Set(ctx, keys[i], values[i], c.expiration).Err()
+			if err != nil {
+				return err
+			}
+		}
+		return nil
+	}
+
 	pipe := c.rdb.TxPipeline()
 	for i := range keys {
 		pipe.Set(ctx, keys[i], values[i], c.expiration)

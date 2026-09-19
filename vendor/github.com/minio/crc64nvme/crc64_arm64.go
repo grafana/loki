@@ -11,5 +11,7 @@ import (
 )
 
 var hasAsm = cpuid.CPU.Supports(cpuid.ASIMD, cpuid.PMULL, cpuid.SHA3)
+var hasAsm512 = false
 
 func updateAsm(crc uint64, p []byte) (checksum uint64)
+func updateAsm512(crc uint64, p []byte) (checksum uint64) { panic("should not be reached") }

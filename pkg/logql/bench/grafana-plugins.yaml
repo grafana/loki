@@ -1,0 +1,21 @@
+apiVersion: 1
+
+apps:
+  - type: "grafana-lokiexplore-app"
+    org_id: 1
+    org_name: "Grafana"
+    disabled: false
+    jsonData:
+      apiUrl: http://default-url.com
+      isApiKeySet: true
+    secureJsonData:
+      apiKey: secret-key
+  - type: "grafana-lokioperational-app"
+    org_id: 1
+    org_name: "Grafana"
+    disabled: false
+    jsonData:
+      apiUrl: http://default-url.com
+      isApiKeySet: true
+    secureJsonData:
+      apiKey: secret-key

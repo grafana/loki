@@ -1,9 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 // SPDX-FileCopyrightText: 2022 The Ebitengine Authors
 
-//go:build !cgo && (darwin || freebsd || linux)
+//go:build !cgo && (darwin || freebsd || linux || netbsd)
 
 package fakecgo
+
+import "structs"
 
 type (
 	size_t uintptr
@@ -28,11 +30,13 @@ const (
 )
 
 type G struct {
+	_       structs.HostLayout
 	stacklo uintptr
 	stackhi uintptr
 }
 
 type ThreadStart struct {
+	_   structs.HostLayout
 	g   *G
 	tls *uintptr
 	fn  uintptr

@@ -15,13 +15,12 @@ import (
 	"net/http"
 	"net/textproto"
 	"net/url"
-	"os"
 	"strconv"
 	"time"
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
-	"github.com/grafana/dskit/crypto/tls"
+	"github.com/grafana/dskit/grpcclient"
 	"github.com/grafana/dskit/httpgrpc"
 	"github.com/grafana/dskit/instrument"
 	"github.com/grafana/dskit/middleware"
@@ -54,9 +53,7 @@ const (
 	EvalModeRemote = "remote"
 )
 
-var (
-	userAgent = fmt.Sprintf("loki-ruler/%s", build.Version)
-)
+var userAgent = fmt.Sprintf("loki-ruler/%s", build.Version)
 
 type metrics struct {
 	reqDurationSecs     *prometheus.HistogramVec
@@ -72,21 +69,15 @@ type RemoteEvaluator struct {
 	overrides RulesLimits
 	logger    log.Logger
 
-	// we don't want/need to log all the additional context, such as
-	// caller=spanlogger.go:116 component=ruler evaluation_mode=remote method=ruler.remoteEvaluation.Query
-	// in insights logs, so create a new logger
-	insightsLogger log.Logger
-
 	metrics *metrics
 }
 
 func NewRemoteEvaluator(client httpgrpc.HTTPClient, overrides RulesLimits, logger log.Logger, registerer prometheus.Registerer) (*RemoteEvaluator, error) {
 	return &RemoteEvaluator{
-		client:         client,
-		overrides:      overrides,
-		logger:         logger,
-		insightsLogger: log.NewLogfmtLogger(os.Stderr),
-		metrics:        newMetrics(registerer),
+		client:    client,
+		overrides: overrides,
+		logger:    logger,
+		metrics:   newMetrics(registerer),
 	}, nil
 }
 
@@ -174,11 +165,11 @@ func (r *RemoteEvaluator) Eval(ctx context.Context, qs string, now time.Time) (*
 
 // DialQueryFrontend creates and initializes a new httpgrpc.HTTPClient taking a QueryFrontendConfig configuration.
 func DialQueryFrontend(cfg *QueryFrontendConfig) (httpgrpc.HTTPClient, error) {
-	tlsDialOptions, err := cfg.TLS.GetGRPCDialOptions(cfg.TLSEnabled)
+	dialOptions, err := cfg.ClientConfig.DialOption(nil, nil, middleware.NoOpInvalidClusterValidationReporter)
 	if err != nil {
 		return nil, err
 	}
-	dialOptions := append(
+	dialOptions = append(dialOptions,
 		[]grpc.DialOption{
 			grpc.WithKeepaliveParams(
 				keepalive.ClientParameters{
@@ -192,8 +183,7 @@ func DialQueryFrontend(cfg *QueryFrontendConfig) (httpgrpc.HTTPClient, error) {
 			),
 			grpc.WithDefaultServiceConfig(serviceConfig),
 			grpc.WithStatsHandler(otelgrpc.NewClientHandler()),
-		},
-		tlsDialOptions...,
+		}...,
 	)
 
 	// nolint:staticcheck // grpc.Dial() has been deprecated; we'll address it before upgrading to gRPC 2.
@@ -284,14 +274,14 @@ func (r *RemoteEvaluator) query(ctx context.Context, orgID, query string, ts tim
 		return nil, fmt.Errorf("%d bytes exceeds response size limit of %d (defined by ruler_remote_evaluation_max_response_size)", len(resp.Body), maxSize)
 	}
 
-	level.Debug(logger).Log("msg", "rule evaluation succeeded")
 	r.metrics.successfulEvals.WithLabelValues(orgID).Inc()
 
 	dr, err := r.decodeResponse(ctx, resp, orgID)
 	if err != nil {
 		return nil, err
 	}
-	level.Info(r.insightsLogger).Log("msg", "request timings", "insight", "true", "source", "loki_ruler", "rule_name", ruleName, "rule_type", ruleType, "total", dr.Statistics.Summary.ExecTime, "total_bytes", dr.Statistics.Summary.TotalBytesProcessed, "query_hash", util.HashedQuery(query))
+
+	level.Info(logger).Log("msg", "rule evaluation succeeded", "rule_name", ruleName, "rule_type", ruleType, "total", dr.Statistics.Summary.ExecTime, "total_bytes", dr.Statistics.Summary.TotalBytesProcessed)
 	return dr, err
 }
 
@@ -360,16 +350,12 @@ type QueryFrontendConfig struct {
 	// The address of the remote querier to connect to.
 	Address string `yaml:"address"`
 
-	// TLSEnabled tells whether TLS should be used to establish remote connection.
-	TLSEnabled bool `yaml:"tls_enabled"`
-
-	// TLS is the config for client TLS.
-	TLS tls.ClientConfig `yaml:",inline"`
+	// ClientConfig allows configuring the gRPC client used to connect to the query-frontend.
+	ClientConfig grpcclient.Config `yaml:",inline"`
 }
 
 func (c *QueryFrontendConfig) RegisterFlags(f *flag.FlagSet) {
 	f.StringVar(&c.Address, "ruler.evaluation.query-frontend.address", "", "GRPC listen address of the query-frontend(s). Must be a DNS address (prefixed with dns:///) to enable client side load balancing.")
-	f.BoolVar(&c.TLSEnabled, "ruler.evaluation.query-frontend.tls-enabled", false, "Set to true if query-frontend connection requires TLS.")
 
-	c.TLS.RegisterFlagsWithPrefix("ruler.evaluation.query-frontend", f)
+	c.ClientConfig.RegisterFlagsWithPrefix("ruler.evaluation.query-frontend", f)
 }

@@ -76,7 +76,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 
 	cfg.GRPCClientConfig.RegisterFlagsWithPrefix("frontend.grpc-client-config", f)
 
-	f.StringVar(&cfg.Encoding, "frontend.encoding", "json", "Defines the encoding for requests to and responses from the scheduler and querier. Can be 'json' or 'protobuf' (defaults to 'json').")
+	f.StringVar(&cfg.Encoding, "frontend.encoding", EncodingProtobuf, "Defines the encoding for requests to and responses from the scheduler and querier. Can be 'json' or 'protobuf' (defaults to 'protobuf').")
 }
 
 // Frontend implements GrpcRoundTripper. It queues HTTP requests,
@@ -414,7 +414,7 @@ func (f *Frontend) QueryResult(ctx context.Context, qrReq *frontendv2pb.QueryRes
 			level.Warn(f.log).Log("msg", "failed to write query result to the response channel", "queryID", qrReq.QueryID, "user", userID)
 		}
 	}
-	// TODO(chaudum): In case the the userIDs do not match, we do not send a
+	// TODO(chaudum): In case the userIDs do not match, we do not send a
 	// response to the req.response channel.
 	// In that case, the RoundTripGRPC method waits until the request context deadline exceeds.
 	// Only then the function finished and the request is removed from the

@@ -17,6 +17,10 @@ var (
 	// This should only realistically be seen on adversarial data trying to exhaust the stack.
 	ErrRecursion error = errRecursion{}
 
+	// ErrLimitExceeded is returned when a set limit is exceeded.
+	// Limits can be set on the Reader to prevent excessive memory usage by adversarial data.
+	ErrLimitExceeded error = errLimitExceeded{}
+
 	// this error is only returned
 	// if we reach code that should
 	// be unreachable
@@ -73,7 +77,7 @@ func Resumable(e error) bool {
 //
 // ErrShortBytes is not wrapped with any context due to backward compatibility
 // issues with the public API.
-func WrapError(err error, ctx ...interface{}) error {
+func WrapError(err error, ctx ...any) error {
 	switch e := err.(type) {
 	case errShort:
 		return e
@@ -142,6 +146,11 @@ type errRecursion struct{}
 
 func (e errRecursion) Error() string   { return "msgp: recursion limit reached" }
 func (e errRecursion) Resumable() bool { return false }
+
+type errLimitExceeded struct{}
+
+func (e errLimitExceeded) Error() string   { return "msgp: configured reader limit exceeded" }
+func (e errLimitExceeded) Resumable() bool { return false }
 
 // ArrayError is an error returned
 // when decoding a fix-sized array
@@ -382,8 +391,8 @@ l: // loop through string bytes (not UTF-8 characters)
 			}
 			// anything else is \x
 			sb = append(sb, `\x`...)
-			sb = append(sb, lowerhex[byte(b)>>4])
-			sb = append(sb, lowerhex[byte(b)&0xF])
+			sb = append(sb, lowerhex[b>>4])
+			sb = append(sb, lowerhex[b&0xF])
 			continue l
 		}
 	}

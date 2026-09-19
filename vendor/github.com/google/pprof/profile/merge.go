@@ -17,6 +17,7 @@ package profile
 import (
 	"encoding/binary"
 	"fmt"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -78,12 +79,10 @@ func Merge(srcs []*Profile) (*Profile, error) {
 		}
 	}
 
-	for _, s := range p.Sample {
-		if isZeroSample(s) {
-			// If there are any zero samples, re-merge the profile to GC
-			// them.
-			return Merge([]*Profile{p})
-		}
+	if slices.ContainsFunc(p.Sample, isZeroSample) {
+		// If there are any zero samples, re-merge the profile to GC
+		// them.
+		return Merge([]*Profile{p})
 	}
 
 	return p, nil
@@ -329,10 +328,10 @@ func (l *Location) key() locationKey {
 	lines := make([]string, len(l.Line)*3)
 	for i, line := range l.Line {
 		if line.Function != nil {
-			lines[i*2] = strconv.FormatUint(line.Function.ID, 16)
+			lines[i*3] = strconv.FormatUint(line.Function.ID, 16)
 		}
-		lines[i*2+1] = strconv.FormatInt(line.Line, 16)
-		lines[i*2+2] = strconv.FormatInt(line.Column, 16)
+		lines[i*3+1] = strconv.FormatInt(line.Line, 16)
+		lines[i*3+2] = strconv.FormatInt(line.Column, 16)
 	}
 	key.lines = strings.Join(lines, "|")
 	return key

@@ -6,62 +6,23 @@
 
 package internal
 
-import (
-	otlpresource "go.opentelemetry.io/collector/pdata/internal/data/protogen/resource/v1"
-	"go.opentelemetry.io/collector/pdata/internal/json"
-)
-
-type Resource struct {
-	orig  *otlpresource.Resource
+type ResourceWrapper struct {
+	orig  *Resource
 	state *State
 }
 
-func GetOrigResource(ms Resource) *otlpresource.Resource {
+func GetResourceOrig(ms ResourceWrapper) *Resource {
 	return ms.orig
 }
 
-func GetResourceState(ms Resource) *State {
+func GetResourceState(ms ResourceWrapper) *State {
 	return ms.state
 }
 
-func NewResource(orig *otlpresource.Resource, state *State) Resource {
-	return Resource{orig: orig, state: state}
+func NewResourceWrapper(orig *Resource, state *State) ResourceWrapper {
+	return ResourceWrapper{orig: orig, state: state}
 }
 
-func CopyOrigResource(dest, src *otlpresource.Resource) {
-	dest.Attributes = CopyOrigMap(dest.Attributes, src.Attributes)
-	dest.DroppedAttributesCount = src.DroppedAttributesCount
-	dest.EntityRefs = CopyOrigEntityRefSlice(dest.EntityRefs, src.EntityRefs)
-}
-
-func GenerateTestResource() Resource {
-	orig := otlpresource.Resource{}
-	state := StateMutable
-	tv := NewResource(&orig, &state)
-	FillTestResource(tv)
-	return tv
-}
-
-func FillTestResource(tv Resource) {
-	FillTestMap(NewMap(&tv.orig.Attributes, tv.state))
-	tv.orig.DroppedAttributesCount = uint32(17)
-	FillTestEntityRefSlice(NewEntityRefSlice(&tv.orig.EntityRefs, tv.state))
-}
-
-// MarshalJSONStream marshals all properties from the current struct to the destination stream.
-func MarshalJSONStreamResource(ms Resource, dest *json.Stream) {
-	dest.WriteObjectStart()
-	if len(ms.orig.Attributes) > 0 {
-		dest.WriteObjectField("attributes")
-		MarshalJSONStreamMap(NewMap(&ms.orig.Attributes, ms.state), dest)
-	}
-	if ms.orig.DroppedAttributesCount != uint32(0) {
-		dest.WriteObjectField("droppedAttributesCount")
-		dest.WriteUint32(ms.orig.DroppedAttributesCount)
-	}
-	if len(ms.orig.EntityRefs) > 0 {
-		dest.WriteObjectField("entityRefs")
-		MarshalJSONStreamEntityRefSlice(NewEntityRefSlice(&ms.orig.EntityRefs, ms.state), dest)
-	}
-	dest.WriteObjectEnd()
+func GenTestResourceWrapper() ResourceWrapper {
+	return NewResourceWrapper(GenTestResource(), NewState())
 }

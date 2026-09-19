@@ -13,7 +13,7 @@ import (
 
 	"github.com/grafana/regexp"
 	"github.com/mitchellh/go-wordwrap"
-	"gopkg.in/yaml.v3"
+	"go.yaml.in/yaml/v3"
 
 	"github.com/grafana/loki/v3/tools/doc-generator/parse"
 )
@@ -82,9 +82,10 @@ func (w *specWriter) writeConfigEntry(e *parse.ConfigEntry, indent int) (written
 
 		// Specification
 		fieldDefault := e.FieldDefault
-		if e.FieldType == "string" {
+		switch e.FieldType {
+		case "string":
 			fieldDefault = strconv.Quote(fieldDefault)
-		} else if e.FieldType == "duration" {
+		case "duration":
 			fieldDefault = cleanupDuration(fieldDefault)
 		}
 

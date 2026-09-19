@@ -4,6 +4,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math"
+	"slices"
+	"strings"
+	"sync"
 	"time"
 
 	"github.com/klauspost/compress/zstd"
@@ -12,9 +16,9 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/dataset"
-	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/datasetmd"
-	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/logsmd"
+	datasetmd_v2 "github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/datasetmd"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/util/sliceclear"
+	"github.com/grafana/loki/v3/pkg/dataobj/sections/internal/columnar"
 )
 
 // A Record is an individual log record within the logs section.
@@ -23,12 +27,85 @@ type Record struct {
 	Timestamp time.Time
 	Metadata  labels.Labels
 	Line      []byte
+
+	// SchemaKey is a pre-computed schema sort key. It is not encoded into the section;
+	// it only guides the in-memory sort during building.
+	SchemaKey string
+
+	// ShardBucket is the physical shard bucket for the record's stream. It is
+	// not encoded into LOG sections; it guides schema-layout sorting.
+	ShardBucket uint32
+
+	// StreamHash is labels.StableHash of the record's stream labels. It is not
+	// encoded into LOG sections; it guides schema-layout sorting.
+	StreamHash uint64
 }
+
+// Reset clears r so it can be reused for another row.
+//
+// The line is truncated rather than dropped, so it keeps its capacity and a reused Record
+// does not reallocate its buffer for every row.
+func (r *Record) Reset() {
+	r.StreamID = 0
+	r.Timestamp = time.Time{}
+	r.Metadata = labels.EmptyLabels()
+	r.Line = r.Line[:0]
+	r.SchemaKey = ""
+	r.ShardBucket = 0
+	r.StreamHash = 0
+}
+
+func (r *Record) Copy() Record {
+	return Record{
+		StreamID:    r.StreamID,
+		Timestamp:   r.Timestamp,
+		Metadata:    r.Metadata.Copy(),
+		Line:        slices.Clone(r.Line),
+		SchemaKey:   strings.Clone(r.SchemaKey),
+		ShardBucket: r.ShardBucket,
+		StreamHash:  r.StreamHash,
+	}
+}
+
+type AppendStrategy int
+
+const (
+	AppendUnordered = iota
+	AppendOrdered
+)
+
+var (
+	sharedZstdCompressionOptions = make([]*dataset.CompressionOptions, zstd.EncoderLevelFromZstd(math.MaxInt)+1)
+	sharedZstdOptionsMutex       = sync.Mutex{}
+)
+
+func zstdCompressionOpts(encLevel zstd.EncoderLevel) *dataset.CompressionOptions {
+	sharedZstdOptionsMutex.Lock()
+	defer sharedZstdOptionsMutex.Unlock()
+
+	if sharedZstdCompressionOptions[encLevel] == nil {
+		sharedZstdCompressionOptions[encLevel] = &dataset.CompressionOptions{
+			Zstd: []zstd.EOption{zstd.WithEncoderLevel(encLevel)},
+		}
+	}
+	return sharedZstdCompressionOptions[encLevel]
+}
+
+type SortOrder int
+
+const (
+	SortStreamASC SortOrder = iota
+	SortTimestampDESC
+	SortSchemaASC
+)
 
 // BuilderOptions configures the behavior of the logs section.
 type BuilderOptions struct {
 	// PageSizeHint is the size of pages to use when encoding the logs section.
 	PageSizeHint int
+
+	// PageMaxRowCount is the maximum amount of rows of pages to use when encoding the logs section.
+	PageMaxRowCount int
 
 	// BufferSize is the size of the buffer to use when accumulating log records.
 	BufferSize int
@@ -40,12 +117,46 @@ type BuilderOptions struct {
 	// increase time spent merging. Higher values of StripeMergeLimit increase
 	// memory overhead but reduce time spent merging.
 	StripeMergeLimit int
+
+	// AppendStrategy is allowed to control how the builder creates the section.
+	// When appending logs to the section in strict sort order, the [AppendOrdered] can be used to avoid
+	// creating and sorting of stripes.
+	AppendStrategy AppendStrategy
+
+	// EstimatedCompressionRatio is the expected compression ratio used by
+	// [EstimatedSize] to approximate compressed output size from uncompressed
+	// buffered records when using [AppendOrdered]. Only takes effect with
+	// AppendOrdered; ignored for AppendUnordered where stripes are already
+	// compressed. A value of 0 or 1 disables the adjustment.
+	EstimatedCompressionRatio int
+
+	// SortOrder defines the order in which the rows of the logs sections are sorted.
+	// They can either be sorted by [streamID ASC, timestamp DESC] ([SortStreamASC]) or [timestamp DESC, streamID ASC] ([SortTimestampDESC]).
+	SortOrder SortOrder
+
+	// SchemaLabels holds the ordered list of label names that define the schema
+	// sort key when SortOrder is SortSchemaASC. It is persisted in the section
+	// metadata so readers can reconstruct the sort key without re-reading the
+	// tenant overrides.
+	SchemaLabels []string
+
+	// StreamOrder identifies how object-local stream IDs were assigned for a
+	// schema-sorted section.
+	StreamOrder StreamOrder
+
+	// ShardCount is the number of physical shard buckets in the sort layout.
+	// Zero means unspecified.
+	ShardCount uint32
 }
 
 // Builder accumulate a set of [Record]s within a data object.
 type Builder struct {
 	metrics *Metrics
 	opts    BuilderOptions
+
+	// The optional tenant that owns the builder. If specified, the section
+	// must only contain logs owned by the tenant, and no other tenants.
+	tenant string
 
 	// Sorting the entire set of logs is very expensive, so we need to break it
 	// up into smaller pieces:
@@ -86,21 +197,39 @@ func NewBuilder(metrics *Metrics, opts BuilderOptions) *Builder {
 	}
 }
 
+// Tenant returns the optional tenant that owns the builder.
+func (b *Builder) Tenant() string { return b.tenant }
+
+// SetTenant sets the tenant that owns the builder. A builder can be made
+// multi-tenant by passing an empty string.
+func (b *Builder) SetTenant(tenant string) { b.tenant = tenant }
+
 // Type returns the [dataobj.SectionType] of the logs builder.
-func (b *Builder) Type() dataobj.SectionType { return sectionType }
+func (b *Builder) Type() dataobj.SectionType {
+	if b.opts.SortOrder == SortSchemaASC {
+		return schemaSortSectionType
+	}
+	return sectionType
+}
 
 // Append adds a new entry to b.
 func (b *Builder) Append(entry Record) {
 	b.metrics.appendsTotal.Inc()
+	b.metrics.recordCount.Inc()
 
 	b.records = append(b.records, entry)
 	b.recordsSize += recordSize(entry)
 
-	if b.recordsSize >= b.opts.BufferSize {
-		b.flushRecords()
+	// Shortcut for when logs are appending in strict sort order.
+	// We skip building temporarily compressed stripes in favour of a speed
+	// with a single pass compression of all records.
+	if b.opts.AppendStrategy == AppendOrdered {
+		return
 	}
 
-	b.metrics.recordCount.Inc()
+	if b.recordsSize >= b.opts.BufferSize {
+		b.flushRecords(zstd.SpeedFastest)
+	}
 }
 
 func recordSize(record Record) int {
@@ -116,19 +245,26 @@ func recordSize(record Record) int {
 	return size
 }
 
-func (b *Builder) flushRecords() {
+func (b *Builder) flushRecords(encLevel zstd.EncoderLevel) {
 	if len(b.records) == 0 {
 		return
 	}
 
-	// Our stripes are intermediate tables that don't need to have the best
-	// compression. To maintain high throughput on appends, we use the fastest
-	// compression for a stripe. Better compression is then used for sections.
-	compressionOpts := dataset.CompressionOptions{
-		Zstd: []zstd.EOption{zstd.WithEncoderLevel(zstd.SpeedFastest)},
+	// We can panic in case flushRecords is called multiple times before flushing a section
+	// when using the [AppendOrdered] strategy, because that should not happen and is
+	// considered a programming error.
+	if b.opts.AppendStrategy == AppendOrdered && len(b.stripes) > 0 {
+		panic("must not call flushRecords multiple times for a single section when using AppendOrdered strategy")
 	}
 
-	stripe := buildTable(&b.stripeBuffer, b.opts.PageSizeHint, compressionOpts, b.records)
+	compressionOpts := zstdCompressionOpts(encLevel)
+
+	buf := &b.stripeBuffer
+	if b.opts.AppendStrategy == AppendOrdered {
+		// If we are in AppendOrdered mode, we skip the stripe part of the algorithm, so we use the section buffer instead.
+		buf = &b.sectionBuffer
+	}
+	stripe := buildTable(buf, b.opts.PageSizeHint, b.opts.PageMaxRowCount, compressionOpts, b.records, b.opts.SortOrder)
 	b.stripes = append(b.stripes, stripe)
 	b.stripesUncompressedSize += stripe.UncompressedSize()
 	b.stripesCompressedSize += stripe.CompressedSize()
@@ -142,16 +278,28 @@ func (b *Builder) flushSection() *table {
 		return nil
 	}
 
-	compressionOpts := dataset.CompressionOptions{
-		Zstd: []zstd.EOption{zstd.WithEncoderLevel(zstd.SpeedDefault)},
-	}
+	compressionOpts := zstdCompressionOpts(zstd.SpeedDefault)
 
-	section, err := mergeTablesIncremental(&b.sectionBuffer, b.opts.PageSizeHint, compressionOpts, b.stripes, b.opts.StripeMergeLimit)
+	section, err := mergeTablesIncremental(&b.sectionBuffer, b.opts.PageSizeHint, b.opts.PageMaxRowCount, compressionOpts, b.stripes, b.opts.StripeMergeLimit, b.opts.SortOrder)
 	if err != nil {
 		// We control the input to mergeTables, so this should never happen.
 		panic(fmt.Sprintf("merging tables: %v", err))
 	}
 
+	b.stripes = sliceclear.Clear(b.stripes)
+	b.stripesCompressedSize = 0
+	b.stripesUncompressedSize = 0
+	return section
+}
+
+func (b *Builder) flushSectionOrdered() *table {
+	b.flushRecords(zstd.SpeedDefault)
+
+	if len(b.stripes) == 0 {
+		return nil
+	}
+
+	section := b.stripes[0]
 	b.stripes = sliceclear.Clear(b.stripes)
 	b.stripesCompressedSize = 0
 	b.stripesUncompressedSize = 0
@@ -170,10 +318,19 @@ func (b *Builder) UncompressedSize() int {
 }
 
 // EstimatedSize returns the estimated size of the Logs section in bytes.
+//
+// When using [AppendOrdered], records are held uncompressed in memory until
+// flush. If [BuilderOptions.EstimatedCompressionRatio] is set (> 1), the
+// uncompressed record size is divided by that ratio to approximate compressed
+// output size.
 func (b *Builder) EstimatedSize() int {
 	var size int
 
-	size += b.recordsSize
+	if b.opts.AppendStrategy == AppendOrdered && b.opts.EstimatedCompressionRatio > 1 {
+		size += b.recordsSize / b.opts.EstimatedCompressionRatio
+	} else {
+		size += b.recordsSize
+	}
 	size += b.stripesCompressedSize
 
 	return size
@@ -186,10 +343,16 @@ func (b *Builder) Flush(w dataobj.SectionWriter) (n int64, err error) {
 	timer := prometheus.NewTimer(b.metrics.encodeSeconds)
 	defer timer.ObserveDuration()
 
-	// Flush any remaining buffered data.
-	b.flushRecords()
+	var section *table
+	if b.opts.AppendStrategy == AppendOrdered {
+		// Flush buffered data all at once
+		section = b.flushSectionOrdered()
+	} else {
+		// Flush any remaining buffered data.
+		b.flushRecords(zstd.SpeedFastest)
+		section = b.flushSection()
+	}
 
-	section := b.flushSection()
 	if section == nil {
 		return 0, nil
 	}
@@ -203,26 +366,15 @@ func (b *Builder) Flush(w dataobj.SectionWriter) (n int64, err error) {
 	// column. This will reduce the number of columns in the section and thus the
 	// metadata size.
 
-	var logsEnc encoder
+	var logsEnc columnar.Encoder
 	if err := b.encodeSection(&logsEnc, section); err != nil {
 		return 0, fmt.Errorf("encoding section: %w", err)
 	}
 
 	// The first two columns of each row are *always* stream ID and timestamp.
-	//
-	// TODO(ashwanth): Find a safer way to do this. Same as [compareRows]
-	logsEnc.SetSortInfo(&datasetmd.SectionSortInfo{
-		ColumnSorts: []*datasetmd.SectionSortInfo_ColumnSort{
-			{
-				ColumnIndex: 1, // timestamp
-				Direction:   datasetmd.SORT_DIRECTION_DESCENDING,
-			},
-			{
-				ColumnIndex: 0, // stream ID
-				Direction:   datasetmd.SORT_DIRECTION_ASCENDING,
-			},
-		},
-	})
+	// TODO(ashwanth): Find a safer way to do this. Same as [CompareRows]
+	logsEnc.SetSortInfo(sortInfo(b.opts.SortOrder, b.opts.SchemaLabels, b.opts.StreamOrder, b.opts.ShardCount))
+	logsEnc.SetTenant(b.tenant)
 
 	n, err = logsEnc.Flush(w)
 	if err == nil {
@@ -231,15 +383,15 @@ func (b *Builder) Flush(w dataobj.SectionWriter) (n int64, err error) {
 	return n, err
 }
 
-func (b *Builder) encodeSection(enc *encoder, section *table) error {
+func (b *Builder) encodeSection(enc *columnar.Encoder, section *table) error {
 	{
 		errs := make([]error, 0, len(section.Metadatas)+3)
-		errs = append(errs, encodeColumn(enc, logsmd.COLUMN_TYPE_STREAM_ID, section.StreamID))
-		errs = append(errs, encodeColumn(enc, logsmd.COLUMN_TYPE_TIMESTAMP, section.Timestamp))
+		errs = append(errs, encodeColumn(enc, ColumnTypeStreamID, section.StreamID))
+		errs = append(errs, encodeColumn(enc, ColumnTypeTimestamp, section.Timestamp))
 		for _, md := range section.Metadatas {
-			errs = append(errs, encodeColumn(enc, logsmd.COLUMN_TYPE_METADATA, md))
+			errs = append(errs, encodeColumn(enc, ColumnTypeMetadata, md))
 		}
-		errs = append(errs, encodeColumn(enc, logsmd.COLUMN_TYPE_MESSAGE, section.Message))
+		errs = append(errs, encodeColumn(enc, ColumnTypeMessage, section.Message))
 		if err := errors.Join(errs...); err != nil {
 			return fmt.Errorf("encoding columns: %w", err)
 		}
@@ -248,8 +400,51 @@ func (b *Builder) encodeSection(enc *encoder, section *table) error {
 	return nil
 }
 
-func encodeColumn(enc *encoder, columnType logsmd.ColumnType, column dataset.Column) error {
-	columnEnc, err := enc.OpenColumn(columnType, column.ColumnInfo())
+func sortInfo(sort SortOrder, schemaLabels []string, streamOrder StreamOrder, shardCount uint32) *datasetmd_v2.SortInfo {
+	switch sort {
+	case SortStreamASC:
+		return &datasetmd_v2.SortInfo{
+			ColumnSorts: []*datasetmd_v2.SortInfo_ColumnSort{
+				{ColumnIndex: 0, Direction: datasetmd_v2.SORT_DIRECTION_ASCENDING},  // StreamID ASC
+				{ColumnIndex: 1, Direction: datasetmd_v2.SORT_DIRECTION_DESCENDING}, // Timestamp DESC
+			},
+		}
+	case SortTimestampDESC:
+		return &datasetmd_v2.SortInfo{
+			ColumnSorts: []*datasetmd_v2.SortInfo_ColumnSort{
+				{ColumnIndex: 1, Direction: datasetmd_v2.SORT_DIRECTION_DESCENDING}, // Timestamp DESC
+				{ColumnIndex: 0, Direction: datasetmd_v2.SORT_DIRECTION_ASCENDING},  // StreamID ASC
+			},
+		}
+	case SortSchemaASC:
+		// Schema sorting clusters rows by [shard_bucket, schema key, stream hash].
+		// Stream IDs are assigned in that order so column_sorts [streamID ASC,
+		// timestamp DESC] matches the physical row order after remapping.
+		return &datasetmd_v2.SortInfo{
+			SchemaLabels: schemaLabels,
+			StreamOrder:  streamOrderProto(streamOrder),
+			ShardCount:   shardCount,
+			ColumnSorts: []*datasetmd_v2.SortInfo_ColumnSort{
+				{ColumnIndex: 0, Direction: datasetmd_v2.SORT_DIRECTION_ASCENDING},  // StreamID ASC
+				{ColumnIndex: 1, Direction: datasetmd_v2.SORT_DIRECTION_DESCENDING}, // Timestamp DESC
+			},
+		}
+	default:
+		panic("invalid sort order")
+	}
+}
+
+func streamOrderProto(order StreamOrder) datasetmd_v2.StreamOrder {
+	switch order {
+	case StreamOrderStableHashV1:
+		return datasetmd_v2.STREAM_ORDER_STABLE_HASH_V1
+	default:
+		return datasetmd_v2.STREAM_ORDER_UNSPECIFIED
+	}
+}
+
+func encodeColumn(enc *columnar.Encoder, columnType ColumnType, column *tableColumn) error {
+	columnEnc, err := enc.OpenColumn(column.ColumnDesc())
 	if err != nil {
 		return fmt.Errorf("opening %s column encoder: %w", columnType, err)
 	}
@@ -258,6 +453,10 @@ func encodeColumn(enc *encoder, columnType logsmd.ColumnType, column dataset.Col
 		// successfully committed.
 		_ = columnEnc.Discard()
 	}()
+	if len(column.Pages) == 0 {
+		// Column has no data; discard.
+		return nil
+	}
 
 	// Our column is in memory, so we don't need a "real" context in the calls
 	// below.
@@ -273,7 +472,7 @@ func encodeColumn(enc *encoder, columnType logsmd.ColumnType, column dataset.Col
 		}
 
 		memPage := &dataset.MemPage{
-			Info: *page.PageInfo(),
+			Desc: *page.PageDesc(),
 			Data: data,
 		}
 		if err := columnEnc.AppendPage(memPage); err != nil {
@@ -287,6 +486,8 @@ func encodeColumn(enc *encoder, columnType logsmd.ColumnType, column dataset.Col
 // Reset resets all state, allowing b to be reused.
 func (b *Builder) Reset() {
 	b.metrics.recordCount.Set(0)
+
+	b.tenant = ""
 
 	b.records = sliceclear.Clear(b.records)
 	b.recordsSize = 0

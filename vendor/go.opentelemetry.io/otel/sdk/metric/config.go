@@ -1,12 +1,13 @@
 // Copyright The OpenTelemetry Authors
 // SPDX-License-Identifier: Apache-2.0
 
-package metric // import "go.opentelemetry.io/otel/sdk/metric"
+package metric
 
 import (
 	"context"
 	"errors"
 	"os"
+	"strconv"
 	"strings"
 	"sync"
 
@@ -17,11 +18,14 @@ import (
 
 // config contains configuration options for a MeterProvider.
 type config struct {
-	res            *resource.Resource
-	readers        []Reader
-	views          []View
-	exemplarFilter exemplar.Filter
+	res              *resource.Resource
+	readers          []Reader
+	views            []View
+	exemplarFilter   exemplar.Filter
+	cardinalityLimit int
 }
+
+const defaultCardinalityLimit = 2000
 
 // readerSignals returns a force-flush and shutdown function for a
 // MeterProvider to call in their respective options. All Readers c contains
@@ -66,16 +70,24 @@ func unifyShutdown(funcs []func(context.Context) error) func(context.Context) er
 	}
 }
 
+type experimentalOption interface {
+	Experimental()
+}
+
 // newConfig returns a config configured with options.
 func newConfig(options []Option) config {
 	conf := config{
-		res:            resource.Default(),
-		exemplarFilter: exemplar.TraceBasedFilter,
+		res:              resource.Default(),
+		exemplarFilter:   exemplar.TraceBasedFilter,
+		cardinalityLimit: cardinalityLimitFromEnv(),
 	}
 	for _, o := range meterProviderOptionsFromEnv() {
 		conf = o.apply(conf)
 	}
 	for _, o := range options {
+		if _, ok := o.(experimentalOption); ok {
+			continue
+		}
 		conf = o.apply(conf)
 	}
 	return conf
@@ -145,12 +157,34 @@ func WithView(views ...View) Option {
 // exemplar reservoir, but the exemplar reservoir makes the final decision of
 // whether to store an exemplar.
 //
-// By default, the [exemplar.SampledFilter]
+// The filter must not be nil.
+//
+// By default, the [exemplar.TraceBasedFilter]
 // is used. Exemplars can be entirely disabled by providing the
 // [exemplar.AlwaysOffFilter].
 func WithExemplarFilter(filter exemplar.Filter) Option {
 	return optionFunc(func(cfg config) config {
 		cfg.exemplarFilter = filter
+		return cfg
+	})
+}
+
+// WithCardinalityLimit sets the global cardinality limit for the MeterProvider.
+//
+// The cardinality limit is the hard limit on the number of metric datapoints
+// that can be collected for a single instrument in a single collect cycle.
+//
+// By default, if this option is not used, a limit of
+// 2000 is applied.
+//
+// Setting this to a zero or negative means no limit is applied.
+// This value applies to all instrument kinds, but can be overridden per kind by
+// the reader's cardinality limit selector (see [WithCardinalityLimitSelector]).
+func WithCardinalityLimit(limit int) Option {
+	// For backward compatibility, the environment variable `OTEL_GO_X_CARDINALITY_LIMIT`
+	// can also be used to set this value.
+	return optionFunc(func(cfg config) config {
+		cfg.cardinalityLimit = limit
 		return cfg
 	})
 }
@@ -169,4 +203,18 @@ func meterProviderOptionsFromEnv() []Option {
 		opts = append(opts, WithExemplarFilter(exemplar.TraceBasedFilter))
 	}
 	return opts
+}
+
+func cardinalityLimitFromEnv() int {
+	const cardinalityLimitKey = "OTEL_GO_X_CARDINALITY_LIMIT"
+	v := strings.TrimSpace(os.Getenv(cardinalityLimitKey))
+	if v == "" {
+		return defaultCardinalityLimit
+	}
+	n, err := strconv.Atoi(v)
+	if err != nil {
+		otel.Handle(err)
+		return defaultCardinalityLimit
+	}
+	return n
 }

@@ -2,8 +2,7 @@
 // Provenance-includes-license: Apache-2.0
 // Provenance-includes-copyright: Weaveworks Ltd.
 
-//lint:file-ignore faillint Changing from prometheus to promauto package would be a breaking change for consumers
-
+//nolint:forbidigo // Changing from prometheus to promauto would break consumers.
 package instrument
 
 import (
@@ -69,14 +68,17 @@ func (c *HistogramCollector) After(ctx context.Context, method, statusCode strin
 // 'histogram' parameter must be castable to prometheus.ExemplarObserver or function will panic
 // (this will always work for a HistogramVec).
 func ObserveWithExemplar(ctx context.Context, histogram prometheus.Observer, seconds float64) {
+	histogram.(prometheus.ExemplarObserver).
+		ObserveWithExemplar(seconds, ExtractExemplarLabels(ctx))
+}
+
+// ExtractExemplarLabels extracts the traceID from the context and returns it as a prometheus.Labels.
+// Returns nil if no sampled traceID extracted.
+func ExtractExemplarLabels(ctx context.Context) prometheus.Labels {
 	if traceID, ok := tracing.ExtractSampledTraceID(ctx); ok {
-		histogram.(prometheus.ExemplarObserver).ObserveWithExemplar(
-			seconds,
-			prometheus.Labels{"trace_id": traceID, "traceID": traceID},
-		)
-		return
+		return prometheus.Labels{"trace_id": traceID, "traceID": traceID}
 	}
-	histogram.Observe(seconds)
+	return nil
 }
 
 // JobCollector collects metrics for jobs. Designed for batch jobs which run on a regular,

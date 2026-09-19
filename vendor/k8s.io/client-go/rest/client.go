@@ -32,6 +32,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
 	clientfeatures "k8s.io/client-go/features"
+	"k8s.io/client-go/tools/metrics"
 	"k8s.io/client-go/util/flowcontrol"
 )
 
@@ -93,7 +94,7 @@ type RESTClient struct {
 	content requestClientContentConfigProvider
 
 	// creates BackoffManager that is passed to requests.
-	createBackoffMgr func() BackoffManager
+	createBackoffMgr func() BackoffManagerWithContext
 
 	// rateLimiter is shared among all requests created by this client unless specifically
 	// overridden.
@@ -101,7 +102,7 @@ type RESTClient struct {
 
 	// warningHandler is shared among all requests created by this client.
 	// If not set, defaultWarningHandler is used.
-	warningHandler WarningHandler
+	warningHandler WarningHandlerWithContext
 
 	// Set specific behavior of the client.  If not set http.DefaultClient will be used.
 	Client *http.Client
@@ -110,6 +111,8 @@ type RESTClient struct {
 // NewRESTClient creates a new RESTClient. This client performs generic REST functions
 // such as Get, Put, Post, and Delete on specified paths.
 func NewRESTClient(baseURL *url.URL, versionedAPIPath string, config ClientContentConfig, rateLimiter flowcontrol.RateLimiter, client *http.Client) (*RESTClient, error) {
+	metrics.EnsureRegistered()
+
 	base := *baseURL
 	if !strings.HasSuffix(base.Path, "/") {
 		base.Path += "/"
@@ -178,7 +181,7 @@ func (c *RESTClient) GetRateLimiter() flowcontrol.RateLimiter {
 // readExpBackoffConfig handles the internal logic of determining what the
 // backoff policy is.  By default if no information is available, NoBackoff.
 // TODO Generalize this see #17727 .
-func readExpBackoffConfig() BackoffManager {
+func readExpBackoffConfig() BackoffManagerWithContext {
 	backoffBase := os.Getenv(envBackoffBase)
 	backoffDuration := os.Getenv(envBackoffDuration)
 

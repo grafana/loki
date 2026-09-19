@@ -237,6 +237,8 @@ func hashAny128Seed(s str, seed uint64) (acc u128) {
 			accumAVX2(&accs, p, secret, u64(l))
 		} else if hasSSE2 {
 			accumSSE(&accs, p, secret, u64(l))
+		} else if hasNEON {
+			accumNEON(&accs, p, secret, u64(l))
 		} else {
 			accumScalar(&accs, p, secret, u64(l))
 		}

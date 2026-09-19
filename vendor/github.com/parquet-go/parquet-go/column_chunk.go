@@ -78,19 +78,23 @@ type ColumnChunkValueReader interface {
 // NewColumnChunkValueReader creates a new ColumnChunkValueReader for the given
 // column chunk.
 func NewColumnChunkValueReader(column ColumnChunk) ColumnChunkValueReader {
-	return &columnChunkValueReader{pages: column.Pages(), release: Release}
+	return &columnChunkValueReader{pages: column.Pages()}
 }
 
 type columnChunkValueReader struct {
-	pages   Pages
-	page    Page
-	values  ValueReader
-	release func(Page)
+	pages  Pages
+	page   Page
+	values ValueReader
+	detach bool
 }
 
 func (r *columnChunkValueReader) clear() {
 	if r.page != nil {
-		r.release(r.page)
+		if r.detach {
+			releaseAndDetachValues(r.page)
+		} else {
+			Release(r.page)
+		}
 		r.page = nil
 		r.values = nil
 	}
@@ -238,9 +242,13 @@ func readRowsFuncOfRepeated(read readRowsFunc, repetitionDepth byte) readRowsFun
 func readRowsFuncOfGroup(node Node, columnIndex int, repetitionDepth byte) (int, readRowsFunc) {
 	fields := node.Fields()
 
+	// Empty groups (groups with no fields) are valid structural elements
+	// that don't contain column data. This function shouldn't be called in
+	// practice since empty groups have no leaf columns to read from.
 	if len(fields) == 0 {
-		return columnIndex, func(*rowGroupRows, []Row, byte) (int, error) {
-			return 0, io.EOF
+		return columnIndex, func(r *rowGroupRows, rows []Row, repetitionLevel byte) (int, error) {
+			// Return 0 since there are no columns to read
+			return 0, nil
 		}
 	}
 

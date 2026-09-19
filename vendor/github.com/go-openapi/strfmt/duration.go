@@ -1,65 +1,78 @@
-// Copyright 2015 go-swagger maintainers
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//    http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// SPDX-FileCopyrightText: Copyright 2015-2025 go-swagger maintainers
+// SPDX-License-Identifier: Apache-2.0
 
 package strfmt
 
 import (
 	"database/sql/driver"
 	"encoding/json"
-	"errors"
 	"fmt"
-	"regexp"
-	"strconv"
 	"strings"
 	"time"
-
-	"go.mongodb.org/mongo-driver/bson"
+	"unicode"
 )
 
-func init() {
-	d := Duration(0)
-	// register this format in the default registry
-	Default.Add("duration", &d, IsDuration)
+const (
+	hoursInDay = 24
+	daysInWeek = 7
+	nanos      = uint64(time.Nanosecond)
+	micros     = uint64(time.Microsecond)
+	millis     = uint64(time.Millisecond)
+	seconds    = uint64(time.Second)
+	minutes    = uint64(time.Minute)
+	hours      = uint64(time.Hour)
+	days       = uint64(hoursInDay * time.Hour)
+	weeks      = uint64(hoursInDay * daysInWeek * time.Hour)
+	maxUint64  = uint64(1 << 63)
+)
+
+// timeMultiplier holds all supported aliases for duration units, including their plural form.
+//
+//nolint:gochecknoglobals // package-level lookup tables for duration parsing
+var timeMultiplier = map[string]uint64{
+	"ns":           nanos,
+	"nano":         nanos,
+	"nanosecond":   nanos,
+	"nanoseconds":  nanos,
+	"nanos":        nanos,
+	"us":           micros,
+	"µs":           micros, // U+00B5 = micro symbol
+	"μs":           micros, // U+03BC = Greek letter mu
+	"micro":        micros,
+	"micros":       micros,
+	"microsecond":  micros,
+	"microseconds": micros,
+	"ms":           millis,
+	"milli":        millis,
+	"millis":       millis,
+	"millisecond":  millis,
+	"milliseconds": millis,
+	"s":            seconds,
+	"sec":          seconds,
+	"secs":         seconds,
+	"second":       seconds,
+	"seconds":      seconds,
+	"m":            minutes,
+	"min":          minutes,
+	"mins":         minutes,
+	"minute":       minutes,
+	"minutes":      minutes,
+	"h":            hours,
+	"hr":           hours,
+	"hrs":          hours,
+	"hour":         hours,
+	"hours":        hours,
+	"d":            days,
+	"day":          days,
+	"days":         days,
+	"w":            weeks,
+	"wk":           weeks,
+	"wks":          weeks,
+	"week":         weeks,
+	"weeks":        weeks,
 }
 
-var (
-	timeUnits = [][]string{
-		{"ns", "nano"},
-		{"us", "µs", "micro"},
-		{"ms", "milli"},
-		{"s", "sec"},
-		{"m", "min"},
-		{"h", "hr", "hour"},
-		{"d", "day"},
-		{"w", "wk", "week"},
-	}
-
-	timeMultiplier = map[string]time.Duration{
-		"ns": time.Nanosecond,
-		"us": time.Microsecond,
-		"ms": time.Millisecond,
-		"s":  time.Second,
-		"m":  time.Minute,
-		"h":  time.Hour,
-		"d":  24 * time.Hour,
-		"w":  7 * 24 * time.Hour,
-	}
-
-	durationMatcher = regexp.MustCompile(`((\d+)\s*([A-Za-zµ]+))`)
-)
-
-// IsDuration returns true if the provided string is a valid duration
+// IsDuration returns true if the provided string is a valid duration.
 func IsDuration(str string) bool {
 	_, err := ParseDuration(str)
 	return err == nil
@@ -68,17 +81,17 @@ func IsDuration(str string) bool {
 // Duration represents a duration
 //
 // Duration stores a period of time as a nanosecond count, with the largest
-// repesentable duration being approximately 290 years.
+// representable duration being approximately 290 years.
 //
-// swagger:strfmt duration
+// swagger:strfmt duration.
 type Duration time.Duration
 
-// MarshalText turns this instance into text
+// MarshalText turns this instance into text.
 func (d Duration) MarshalText() ([]byte, error) {
 	return []byte(time.Duration(d).String()), nil
 }
 
-// UnmarshalText hydrates this instance from text
+// UnmarshalText hydrates this instance from text.
 func (d *Duration) UnmarshalText(data []byte) error { // validation is performed later on
 	dd, err := ParseDuration(string(data))
 	if err != nil {
@@ -88,45 +101,166 @@ func (d *Duration) UnmarshalText(data []byte) error { // validation is performed
 	return nil
 }
 
-// ParseDuration parses a duration from a string, compatible with scala duration syntax
-func ParseDuration(cand string) (time.Duration, error) {
-	if dur, err := time.ParseDuration(cand); err == nil {
-		return dur, nil
+// ParseDuration parses a duration from a string
+//
+// It is similar to [time.ParseDuration] but support additional units like days and weeks,
+// additional abreviations for units and is more tolerant on the presence of blank spaces.
+//
+// A duration may be negative or fractional.
+//
+// # Differences with [time.ParseDuration]
+//
+//   - more supported units and aliases (see below)
+//   - sign followed by blank space is tolerated
+//   - tolerates blanks between duration and unit (e.g. "300 ms")
+//
+// # Supported units
+//
+// Units may be specified using aliases or a plural form.
+//
+//   - "ns", "nano", "nanosecond", "nanoseconds", "nanos"
+//   - "us", "µs" (U+00B5 = micro symbol), "μs" (U+03BC = Greek letter mu), "micro", "micros", "microsecond", "microseconds"
+//   - "ms", "milli", "millis", "millisecond", "milliseconds"
+//   - "s", "sec", "secs", "second", "seconds"
+//   - "m", "min", "mins", "minute", "minutes"
+//   - "h", "hr", "hrs", "hour", "hours"
+//   - "d", "day", "days"
+//   - "w", "wk", "wks", "week", "weeks"
+//
+// NOTE: inspired by scala duration syntax.
+//
+// # Examples
+//
+// "300ms", "-1.5h", "2h45m",
+// ".5 week",
+// "2 minutes 45 seconds".
+//
+//nolint:gocognit,gocyclo,cyclop // complexity is only slightly above the usual level, may be tolerated as it mimicks the stdlib.
+func ParseDuration(s string) (time.Duration, error) {
+	// NOTE: this code is largely inspired by the standard library.
+	orig := s
+	var d uint64
+	neg := false
+
+	// Consume [-+]?
+	if s != "" {
+		c := s[0]
+		if c == '-' || c == '+' {
+			neg = c == '-'
+			s = s[1:]
+		}
 	}
 
-	var dur time.Duration
-	ok := false
-	for _, match := range durationMatcher.FindAllStringSubmatch(cand, -1) {
+	// Consume space
+	s = strings.TrimLeftFunc(s, unicode.IsSpace)
 
-		factor, err := strconv.Atoi(match[2]) // converts string to int
-		if err != nil {
-			return 0, err
+	// Special case: if all that is left is "0", this is zero.
+	if s == "0" {
+		return 0, nil
+	}
+
+	if s == "" {
+		return 0, parseDurationError(orig, "empty duration")
+	}
+
+	for s != "" {
+		var (
+			v, f  uint64      // integers before, after decimal point
+			scale float64 = 1 // value = v + f/scale
+		)
+		s = strings.TrimLeftFunc(s, unicode.IsSpace)
+		if s == "" {
+			break
 		}
-		unit := strings.ToLower(strings.TrimSpace(match[3]))
 
-		for _, variants := range timeUnits {
-			last := len(variants) - 1
-			multiplier := timeMultiplier[variants[0]]
+		// The next character must be 0-9.]
+		if s[0] != '.' && ('0' > s[0] || s[0] > '9') {
+			return 0, parseDurationError(orig, fmt.Sprintf("expected a numerical value, but got %q", s[0]))
+		}
 
-			for i, variant := range variants {
-				if (last == i && strings.HasPrefix(unit, variant)) || strings.EqualFold(variant, unit) {
-					ok = true
-					dur += (time.Duration(factor) * multiplier)
-				}
+		// Consume integer part [0-9]*
+		pl := len(s)
+		var ok bool
+		v, s, ok = leadingInt(s)
+		if !ok {
+			return 0, parseDurationError(orig, "expected a leading integer part")
+		}
+		pre := pl != len(s) // whether we consumed anything before a period
+
+		// Consume fractional part (\.[0-9]*)?
+		post := false
+		if s != "" && s[0] == '.' {
+			s = s[1:]
+			pl := len(s)
+			f, scale, s = leadingFraction(s)
+			post = pl != len(s)
+		}
+
+		if !pre && !post {
+			// no digits (e.g. ".s" or "-.s")
+			return 0, parseDurationError(orig, "expected digits")
+		}
+
+		// Consume space.
+		s = strings.TrimLeftFunc(s, unicode.IsSpace)
+
+		// Consume unit.
+		i := 0
+		for ; i < len(s); i++ {
+			c := s[i]
+			if c == '.' || '0' <= c && c <= '9' || unicode.IsSpace(rune(c)) {
+				break
 			}
 		}
+
+		if i == 0 {
+			return 0, parseDurationError(orig, "missing unit in duration")
+		}
+
+		u := s[:i]
+		s = s[i:]
+		unit, ok := timeMultiplier[u]
+		if !ok {
+			return 0, parseDurationError(orig, fmt.Sprintf("unknown unit %q in duration", u))
+		}
+
+		if v > maxUint64/unit {
+			// overflow
+			return 0, parseDurationError(orig, "numerical overflow")
+		}
+
+		v *= unit
+		if f > 0 {
+			// float64 is needed to be nanosecond accurate for fractions of hours.
+			// v >= 0 && (f*unit/scale) <= 3.6e+12 (ns/h, h is the largest unit)
+			v += uint64(float64(f) * (float64(unit) / scale))
+			if v > maxUint64 {
+				// overflow
+				return 0, parseDurationError(orig, "numerical overflow")
+			}
+		}
+
+		d += v
+		if d > maxUint64 {
+			return 0, parseDurationError(orig, "numerical overflow")
+		}
 	}
 
-	if ok {
-		return dur, nil
+	if neg {
+		return -time.Duration(d), nil
 	}
-	return 0, fmt.Errorf("unable to parse %s as duration", cand)
+
+	if d > maxUint64-1 {
+		return 0, parseDurationError(orig, "numerical overflow")
+	}
+
+	return time.Duration(d), nil
 }
 
 // Scan reads a Duration value from database driver type.
-func (d *Duration) Scan(raw interface{}) error {
+func (d *Duration) Scan(raw any) error {
 	switch v := raw.(type) {
-	// TODO: case []byte: // ?
+	// Proposal for enhancement: case []byte: // ?
 	case int64:
 		*d = Duration(v)
 	case float64:
@@ -134,7 +268,7 @@ func (d *Duration) Scan(raw interface{}) error {
 	case nil:
 		*d = Duration(0)
 	default:
-		return fmt.Errorf("cannot sql.Scan() strfmt.Duration from: %#v", v)
+		return fmt.Errorf("cannot sql.Scan() strfmt.Duration from: %#v: %w", v, ErrFormat)
 	}
 
 	return nil
@@ -145,17 +279,17 @@ func (d Duration) Value() (driver.Value, error) {
 	return driver.Value(int64(d)), nil
 }
 
-// String converts this duration to a string
+// String converts this duration to a string.
 func (d Duration) String() string {
 	return time.Duration(d).String()
 }
 
-// MarshalJSON returns the Duration as JSON
+// MarshalJSON returns the Duration as JSON.
 func (d Duration) MarshalJSON() ([]byte, error) {
 	return json.Marshal(time.Duration(d).String())
 }
 
-// UnmarshalJSON sets the Duration from JSON
+// UnmarshalJSON sets the Duration from JSON.
 func (d *Duration) UnmarshalJSON(data []byte) error {
 	if string(data) == jsonNull {
 		return nil
@@ -173,28 +307,6 @@ func (d *Duration) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
-func (d Duration) MarshalBSON() ([]byte, error) {
-	return bson.Marshal(bson.M{"data": d.String()})
-}
-
-func (d *Duration) UnmarshalBSON(data []byte) error {
-	var m bson.M
-	if err := bson.Unmarshal(data, &m); err != nil {
-		return err
-	}
-
-	if data, ok := m["data"].(string); ok {
-		rd, err := ParseDuration(data)
-		if err != nil {
-			return err
-		}
-		*d = Duration(rd)
-		return nil
-	}
-
-	return errors.New("couldn't unmarshal bson bytes value as Date")
-}
-
 // DeepCopyInto copies the receiver and writes its value into out.
 func (d *Duration) DeepCopyInto(out *Duration) {
 	*out = *d
@@ -208,4 +320,71 @@ func (d *Duration) DeepCopy() *Duration {
 	out := new(Duration)
 	d.DeepCopyInto(out)
 	return out
+}
+
+func parseDurationError(s, msg string) error {
+	if msg == "" {
+		return fmt.Errorf("invalid duration: %s: %w", s, ErrFormat)
+	}
+
+	return fmt.Errorf("invalid duration: %s: %s: %w", s, msg, ErrFormat)
+}
+
+// leadingInt consumes the leading [0-9]* from s.
+func leadingInt[bytes []byte | string](s bytes) (x uint64, rem bytes, ok bool) { //nolint:ireturn // false positive
+	i := 0
+	for ; i < len(s); i++ {
+		c := s[i]
+		if c < '0' || c > '9' {
+			break
+		}
+
+		if x > maxUint64/10 { // overflow
+			return 0, rem, false
+		}
+
+		x = x*10 + uint64(c) - '0'
+		if x > maxUint64 { // overflow
+			return 0, rem, false
+		}
+	}
+
+	return x, s[i:], true
+}
+
+// leadingFraction consumes the leading [0-9]* from s.
+// //
+// It is used only for fractions, so it does not return an error on overflow,
+// it just stops accumulating precision.
+func leadingFraction(s string) (x uint64, scale float64, rem string) {
+	i := 0
+	scale = 1
+	overflow := false
+	for ; i < len(s); i++ {
+		c := s[i]
+		if c < '0' || c > '9' {
+			break
+		}
+
+		if overflow {
+			continue
+		}
+
+		if x > (maxUint64-1)/10 {
+			// It's possible for overflow to give a positive number, so take care.
+			overflow = true
+			continue
+		}
+
+		y := x*10 + uint64(c) - '0'
+		if y > maxUint64 {
+			overflow = true
+			continue
+		}
+
+		x = y
+		scale *= 10
+	}
+
+	return x, scale, s[i:]
 }

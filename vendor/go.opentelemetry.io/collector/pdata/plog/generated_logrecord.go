@@ -8,9 +8,6 @@ package plog
 
 import (
 	"go.opentelemetry.io/collector/pdata/internal"
-	"go.opentelemetry.io/collector/pdata/internal/data"
-	otlplogs "go.opentelemetry.io/collector/pdata/internal/data/protogen/logs/v1"
-	"go.opentelemetry.io/collector/pdata/internal/json"
 	"go.opentelemetry.io/collector/pdata/pcommon"
 )
 
@@ -22,11 +19,11 @@ import (
 // Must use NewLogRecord function to create new instances.
 // Important: zero-initialized instance is not valid for use.
 type LogRecord struct {
-	orig  *otlplogs.LogRecord
+	orig  *internal.LogRecord
 	state *internal.State
 }
 
-func newLogRecord(orig *otlplogs.LogRecord, state *internal.State) LogRecord {
+func newLogRecord(orig *internal.LogRecord, state *internal.State) LogRecord {
 	return LogRecord{orig: orig, state: state}
 }
 
@@ -35,8 +32,7 @@ func newLogRecord(orig *otlplogs.LogRecord, state *internal.State) LogRecord {
 // This must be used only in testing code. Users should use "AppendEmpty" when part of a Slice,
 // OR directly access the member if this is embedded in another struct.
 func NewLogRecord() LogRecord {
-	state := internal.StateMutable
-	return newLogRecord(&otlplogs.LogRecord{}, &state)
+	return newLogRecord(internal.NewLogRecord(), internal.NewState())
 }
 
 // MoveTo moves all properties from the current struct overriding the destination and
@@ -48,19 +44,8 @@ func (ms LogRecord) MoveTo(dest LogRecord) {
 	if ms.orig == dest.orig {
 		return
 	}
-	*dest.orig = *ms.orig
-	*ms.orig = otlplogs.LogRecord{}
-}
-
-// ObservedTimestamp returns the observedtimestamp associated with this LogRecord.
-func (ms LogRecord) ObservedTimestamp() pcommon.Timestamp {
-	return pcommon.Timestamp(ms.orig.ObservedTimeUnixNano)
-}
-
-// SetObservedTimestamp replaces the observedtimestamp associated with this LogRecord.
-func (ms LogRecord) SetObservedTimestamp(v pcommon.Timestamp) {
-	ms.state.AssertMutable()
-	ms.orig.ObservedTimeUnixNano = uint64(v)
+	internal.DeleteLogRecord(dest.orig, false)
+	*dest.orig, *ms.orig = *ms.orig, *dest.orig
 }
 
 // Timestamp returns the timestamp associated with this LogRecord.
@@ -74,48 +59,26 @@ func (ms LogRecord) SetTimestamp(v pcommon.Timestamp) {
 	ms.orig.TimeUnixNano = uint64(v)
 }
 
-// TraceID returns the traceid associated with this LogRecord.
-func (ms LogRecord) TraceID() pcommon.TraceID {
-	return pcommon.TraceID(ms.orig.TraceId)
+// ObservedTimestamp returns the observedtimestamp associated with this LogRecord.
+func (ms LogRecord) ObservedTimestamp() pcommon.Timestamp {
+	return pcommon.Timestamp(ms.orig.ObservedTimeUnixNano)
 }
 
-// SetTraceID replaces the traceid associated with this LogRecord.
-func (ms LogRecord) SetTraceID(v pcommon.TraceID) {
+// SetObservedTimestamp replaces the observedtimestamp associated with this LogRecord.
+func (ms LogRecord) SetObservedTimestamp(v pcommon.Timestamp) {
 	ms.state.AssertMutable()
-	ms.orig.TraceId = data.TraceID(v)
+	ms.orig.ObservedTimeUnixNano = uint64(v)
 }
 
-// SpanID returns the spanid associated with this LogRecord.
-func (ms LogRecord) SpanID() pcommon.SpanID {
-	return pcommon.SpanID(ms.orig.SpanId)
+// SeverityNumber returns the severitynumber associated with this LogRecord.
+func (ms LogRecord) SeverityNumber() SeverityNumber {
+	return SeverityNumber(ms.orig.SeverityNumber)
 }
 
-// SetSpanID replaces the spanid associated with this LogRecord.
-func (ms LogRecord) SetSpanID(v pcommon.SpanID) {
+// SetSeverityNumber replaces the severitynumber associated with this LogRecord.
+func (ms LogRecord) SetSeverityNumber(v SeverityNumber) {
 	ms.state.AssertMutable()
-	ms.orig.SpanId = data.SpanID(v)
-}
-
-// Flags returns the flags associated with this LogRecord.
-func (ms LogRecord) Flags() LogRecordFlags {
-	return LogRecordFlags(ms.orig.Flags)
-}
-
-// SetFlags replaces the flags associated with this LogRecord.
-func (ms LogRecord) SetFlags(v LogRecordFlags) {
-	ms.state.AssertMutable()
-	ms.orig.Flags = uint32(v)
-}
-
-// EventName returns the eventname associated with this LogRecord.
-func (ms LogRecord) EventName() string {
-	return ms.orig.EventName
-}
-
-// SetEventName replaces the eventname associated with this LogRecord.
-func (ms LogRecord) SetEventName(v string) {
-	ms.state.AssertMutable()
-	ms.orig.EventName = v
+	ms.orig.SeverityNumber = internal.SeverityNumber(v)
 }
 
 // SeverityText returns the severitytext associated with this LogRecord.
@@ -129,25 +92,14 @@ func (ms LogRecord) SetSeverityText(v string) {
 	ms.orig.SeverityText = v
 }
 
-// SeverityNumber returns the severitynumber associated with this LogRecord.
-func (ms LogRecord) SeverityNumber() SeverityNumber {
-	return SeverityNumber(ms.orig.SeverityNumber)
-}
-
-// SetSeverityNumber replaces the severitynumber associated with this LogRecord.
-func (ms LogRecord) SetSeverityNumber(v SeverityNumber) {
-	ms.state.AssertMutable()
-	ms.orig.SeverityNumber = otlplogs.SeverityNumber(v)
-}
-
 // Body returns the body associated with this LogRecord.
 func (ms LogRecord) Body() pcommon.Value {
-	return pcommon.Value(internal.NewValue(&ms.orig.Body, ms.state))
+	return pcommon.Value(internal.NewValueWrapper(&ms.orig.Body, ms.state))
 }
 
 // Attributes returns the Attributes associated with this LogRecord.
 func (ms LogRecord) Attributes() pcommon.Map {
-	return pcommon.Map(internal.NewMap(&ms.orig.Attributes, ms.state))
+	return pcommon.Map(internal.NewMapWrapper(&ms.orig.Attributes, ms.state))
 }
 
 // DroppedAttributesCount returns the droppedattributescount associated with this LogRecord.
@@ -161,70 +113,52 @@ func (ms LogRecord) SetDroppedAttributesCount(v uint32) {
 	ms.orig.DroppedAttributesCount = v
 }
 
+// Flags returns the flags associated with this LogRecord.
+func (ms LogRecord) Flags() LogRecordFlags {
+	return LogRecordFlags(ms.orig.Flags)
+}
+
+// SetFlags replaces the flags associated with this LogRecord.
+func (ms LogRecord) SetFlags(v LogRecordFlags) {
+	ms.state.AssertMutable()
+	ms.orig.Flags = uint32(v)
+}
+
+// TraceID returns the traceid associated with this LogRecord.
+func (ms LogRecord) TraceID() pcommon.TraceID {
+	return pcommon.TraceID(ms.orig.TraceId)
+}
+
+// SetTraceID replaces the traceid associated with this LogRecord.
+func (ms LogRecord) SetTraceID(v pcommon.TraceID) {
+	ms.state.AssertMutable()
+	ms.orig.TraceId = internal.TraceID(v)
+}
+
+// SpanID returns the spanid associated with this LogRecord.
+func (ms LogRecord) SpanID() pcommon.SpanID {
+	return pcommon.SpanID(ms.orig.SpanId)
+}
+
+// SetSpanID replaces the spanid associated with this LogRecord.
+func (ms LogRecord) SetSpanID(v pcommon.SpanID) {
+	ms.state.AssertMutable()
+	ms.orig.SpanId = internal.SpanID(v)
+}
+
+// EventName returns the eventname associated with this LogRecord.
+func (ms LogRecord) EventName() string {
+	return ms.orig.EventName
+}
+
+// SetEventName replaces the eventname associated with this LogRecord.
+func (ms LogRecord) SetEventName(v string) {
+	ms.state.AssertMutable()
+	ms.orig.EventName = v
+}
+
 // CopyTo copies all properties from the current struct overriding the destination.
 func (ms LogRecord) CopyTo(dest LogRecord) {
 	dest.state.AssertMutable()
-	copyOrigLogRecord(dest.orig, ms.orig)
-}
-
-// marshalJSONStream marshals all properties from the current struct to the destination stream.
-func (ms LogRecord) marshalJSONStream(dest *json.Stream) {
-	dest.WriteObjectStart()
-	if ms.orig.ObservedTimeUnixNano != 0 {
-		dest.WriteObjectField("observedTimeUnixNano")
-		dest.WriteUint64(ms.orig.ObservedTimeUnixNano)
-	}
-	if ms.orig.TimeUnixNano != 0 {
-		dest.WriteObjectField("timeUnixNano")
-		dest.WriteUint64(ms.orig.TimeUnixNano)
-	}
-	if ms.orig.TraceId != data.TraceID([16]byte{}) {
-		dest.WriteObjectField("traceId")
-		ms.orig.TraceId.MarshalJSONStream(dest)
-	}
-	if ms.orig.SpanId != data.SpanID([8]byte{}) {
-		dest.WriteObjectField("spanId")
-		ms.orig.SpanId.MarshalJSONStream(dest)
-	}
-	if ms.orig.Flags != 0 {
-		dest.WriteObjectField("flags")
-		dest.WriteUint32(ms.orig.Flags)
-	}
-	if ms.orig.EventName != "" {
-		dest.WriteObjectField("eventName")
-		dest.WriteString(ms.orig.EventName)
-	}
-	if ms.orig.SeverityText != "" {
-		dest.WriteObjectField("severityText")
-		dest.WriteString(ms.orig.SeverityText)
-	}
-	if ms.orig.SeverityNumber != otlplogs.SeverityNumber(0) {
-		dest.WriteObjectField("severityNumber")
-		ms.SeverityNumber().marshalJSONStream(dest)
-	}
-	dest.WriteObjectField("body")
-	internal.MarshalJSONStreamValue(internal.NewValue(&ms.orig.Body, ms.state), dest)
-	if len(ms.orig.Attributes) > 0 {
-		dest.WriteObjectField("attributes")
-		internal.MarshalJSONStreamMap(internal.NewMap(&ms.orig.Attributes, ms.state), dest)
-	}
-	if ms.orig.DroppedAttributesCount != uint32(0) {
-		dest.WriteObjectField("droppedAttributesCount")
-		dest.WriteUint32(ms.orig.DroppedAttributesCount)
-	}
-	dest.WriteObjectEnd()
-}
-
-func copyOrigLogRecord(dest, src *otlplogs.LogRecord) {
-	dest.ObservedTimeUnixNano = src.ObservedTimeUnixNano
-	dest.TimeUnixNano = src.TimeUnixNano
-	dest.TraceId = src.TraceId
-	dest.SpanId = src.SpanId
-	dest.Flags = src.Flags
-	dest.EventName = src.EventName
-	dest.SeverityText = src.SeverityText
-	dest.SeverityNumber = src.SeverityNumber
-	internal.CopyOrigValue(&dest.Body, &src.Body)
-	dest.Attributes = internal.CopyOrigMap(dest.Attributes, src.Attributes)
-	dest.DroppedAttributesCount = src.DroppedAttributesCount
+	internal.CopyLogRecord(dest.orig, ms.orig)
 }

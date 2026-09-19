@@ -272,7 +272,7 @@ Examples:
 
 ### b64dec
 
-Base64 decode a string.
+Base64 decode a string. Inputs that omit trailing `=` padding are padded before decoding.
 
 Signature: `b64dec(string) string`
 

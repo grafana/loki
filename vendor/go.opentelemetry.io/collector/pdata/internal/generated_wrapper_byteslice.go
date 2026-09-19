@@ -6,58 +6,28 @@
 
 package internal
 
-import (
-	"encoding/base64"
-
-	"go.opentelemetry.io/collector/pdata/internal/json"
-)
-
-type ByteSlice struct {
+type ByteSliceWrapper struct {
 	orig  *[]byte
 	state *State
 }
 
-func GetOrigByteSlice(ms ByteSlice) *[]byte {
+func GetByteSliceOrig(ms ByteSliceWrapper) *[]byte {
 	return ms.orig
 }
 
-func GetByteSliceState(ms ByteSlice) *State {
+func GetByteSliceState(ms ByteSliceWrapper) *State {
 	return ms.state
 }
 
-func NewByteSlice(orig *[]byte, state *State) ByteSlice {
-	return ByteSlice{orig: orig, state: state}
+func NewByteSliceWrapper(orig *[]byte, state *State) ByteSliceWrapper {
+	return ByteSliceWrapper{orig: orig, state: state}
 }
 
-func CopyOrigByteSlice(dst, src []byte) []byte {
-	dst = dst[:0]
-	return append(dst, src...)
+func GenTestByteSliceWrapper() ByteSliceWrapper {
+	orig := []byte{1, 2, 3}
+	return NewByteSliceWrapper(&orig, NewState())
 }
 
-func FillTestByteSlice(ms ByteSlice) {
-	*ms.orig = []byte{1, 2, 3}
-}
-
-func GenerateTestByteSlice() ByteSlice {
-	orig := []byte(nil)
-	state := StateMutable
-	ms := NewByteSlice(&orig, &state)
-	FillTestByteSlice(ms)
-	return ms
-}
-
-// MarshalJSONStreamByteSlice marshals all properties from the current struct to the destination stream.
-func MarshalJSONStreamByteSlice(ms ByteSlice, dest *json.Stream) {
-	dest.WriteString(base64.StdEncoding.EncodeToString(*ms.orig))
-}
-
-// UnmarshalJSONIterByteSlice unmarshals all properties from the current struct from the source iterator.
-func UnmarshalJSONIterByteSlice(ms ByteSlice, iter *json.Iterator) {
-	buf := iter.ReadStringAsSlice()
-	*ms.orig = make([]byte, base64.StdEncoding.DecodedLen(len(buf)))
-	n, err := base64.StdEncoding.Decode(*ms.orig, buf)
-	if err != nil {
-		iter.ReportError("base64.Decode", err.Error())
-	}
-	*ms.orig = (*ms.orig)[:n]
+func GenTestByteSlice() []byte {
+	return []byte{1, 2, 3}
 }

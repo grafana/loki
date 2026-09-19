@@ -6,28 +6,14 @@ spec:
   template:
     spec:
       containers:
-      - name: kube-rbac-proxy
-        image: quay.io/openshift/origin-kube-rbac-proxy:latest
-        args:
-        - "--secure-listen-address=0.0.0.0:8443"
-        - "--upstream=http://127.0.0.1:8080/"
-        - "--logtostderr=true"
-        - "--tls-cert-file=/var/run/secrets/serving-cert/tls.crt"
-        - "--tls-private-key-file=/var/run/secrets/serving-cert/tls.key"
-        - "--tls-cipher-suites=TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256,TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256,TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384,TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384,TLS_ECDHE_ECDSA_WITH_CHACHA20_POLY1305_SHA256,TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305_SHA256,TLS_ECDHE_ECDSA_WITH_AES_128_CBC_SHA256,TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA256,TLS_RSA_WITH_AES_128_GCM_SHA256,TLS_RSA_WITH_AES_256_GCM_SHA384,TLS_RSA_WITH_AES_128_CBC_SHA256"
-        - "--tls-min-version=VersionTLS12"
-        - "--v=0"
+      - name: manager
         ports:
         - containerPort: 8443
-          name: https
+          name: metrics
         volumeMounts:
-        - mountPath: /var/run/secrets/serving-cert
-          name: loki-operator-metrics-cert
-        securityContext:
-          allowPrivilegeEscalation: false
-          capabilities:
-            drop:
-            - ALL
+        - name: loki-operator-metrics-cert
+          mountPath: /tmp/k8s-metrics-server/serving-certs
+          readOnly: true
       volumes:
       - name: loki-operator-metrics-cert
         secret:

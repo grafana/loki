@@ -31,7 +31,6 @@ func (f FetchFunc[A, B]) Fetch(ctx context.Context, inputs []A) ([]B, error) {
 
 // batchedLoader implements `v1.Iterator[C]` in batches
 type batchedLoader[A, B, C any] struct {
-	metrics   *Metrics
 	batchSize int
 	ctx       context.Context
 	fetchers  []Fetcher[A, B]
@@ -199,7 +198,6 @@ type blockLoadingIter struct {
 	initialized bool
 	err         error
 	iter        iter.Iterator[*v1.SeriesWithBlooms]
-	loader      *batchedLoader[bloomshipper.BlockRef, *bloomshipper.CloseableBlockQuerier, *bloomshipper.CloseableBlockQuerier]
 	loaded      map[io.Closer]struct{}
 }
 
@@ -323,7 +321,7 @@ func (i *blockLoadingIter) Close() error {
 }
 
 // Reset implements v1.ResettableIterator.
-// TODO(chaudum) Cache already fetched blocks to to avoid the overhead of
+// TODO(chaudum) Cache already fetched blocks to avoid the overhead of
 // creating the reader.
 func (i *blockLoadingIter) Reset() error {
 	if !i.initialized {

@@ -55,6 +55,11 @@ func appendArgs(dst, src []interface{}) []interface{} {
 		return appendArg(dst, src[0])
 	}
 
+	if cap(dst) < len(dst)+len(src) {
+		newDst := make([]interface{}, len(dst), len(dst)+len(src))
+		copy(newDst, dst)
+		dst = newDst
+	}
 	dst = append(dst, src...)
 	return dst
 }
@@ -193,6 +198,10 @@ type Cmdable interface {
 	ClientID(ctx context.Context) *IntCmd
 	ClientUnblock(ctx context.Context, id int64) *IntCmd
 	ClientUnblockWithError(ctx context.Context, id int64) *IntCmd
+	ClientMaintNotifications(ctx context.Context, enabled bool, endpointType string) *StatusCmd
+	ClientTracking(ctx context.Context, on bool, opt *ClientTrackingOptions) *StatusCmd
+	ClientTrackingOn(ctx context.Context, opt *ClientTrackingOptions) *StatusCmd
+	ClientTrackingOff(ctx context.Context) *StatusCmd
 	ConfigGet(ctx context.Context, parameter string) *MapStringStringCmd
 	ConfigResetStat(ctx context.Context) *StatusCmd
 	ConfigSet(ctx context.Context, parameter, value string) *StatusCmd
@@ -203,20 +212,27 @@ type Cmdable interface {
 	FlushDB(ctx context.Context) *StatusCmd
 	FlushDBAsync(ctx context.Context) *StatusCmd
 	Info(ctx context.Context, section ...string) *StringCmd
+	InfoMap(ctx context.Context, section ...string) *InfoCmd
 	LastSave(ctx context.Context) *IntCmd
 	Save(ctx context.Context) *StatusCmd
 	Shutdown(ctx context.Context) *StatusCmd
 	ShutdownSave(ctx context.Context) *StatusCmd
 	ShutdownNoSave(ctx context.Context) *StatusCmd
 	SlaveOf(ctx context.Context, host, port string) *StatusCmd
+	ReplicaOf(ctx context.Context, host, port string) *StatusCmd
 	SlowLogGet(ctx context.Context, num int64) *SlowLogCmd
+	SlowLogLen(ctx context.Context) *IntCmd
+	SlowLogReset(ctx context.Context) *StatusCmd
 	Time(ctx context.Context) *TimeCmd
 	DebugObject(ctx context.Context, key string) *StringCmd
 	MemoryUsage(ctx context.Context, key string, samples ...int) *IntCmd
+	Latency(ctx context.Context) *LatencyCmd
+	LatencyReset(ctx context.Context, events ...interface{}) *StatusCmd
 
 	ModuleLoadex(ctx context.Context, conf *ModuleLoadexConfig) *StringCmd
 
 	ACLCmdable
+	ArrayCmdable
 	BitMapCmdable
 	ClusterCmdable
 	GenericCmdable
@@ -253,6 +269,7 @@ var (
 	_ Cmdable = (*Tx)(nil)
 	_ Cmdable = (*Ring)(nil)
 	_ Cmdable = (*ClusterClient)(nil)
+	_ Cmdable = (*Pipeline)(nil)
 )
 
 type cmdable func(ctx context.Context, cmd Cmder) error
@@ -283,8 +300,8 @@ func (c cmdable) Wait(ctx context.Context, numSlaves int, timeout time.Duration)
 	return cmd
 }
 
-func (c cmdable) WaitAOF(ctx context.Context, numLocal, numSlaves int, timeout time.Duration) *IntCmd {
-	cmd := NewIntCmd(ctx, "waitAOF", numLocal, numSlaves, int(timeout/time.Millisecond))
+func (c cmdable) WaitAOF(ctx context.Context, numLocal, numSlaves int, timeout time.Duration) *IntSliceCmd {
+	cmd := NewIntSliceCmd(ctx, "waitAOF", numLocal, numSlaves, int(timeout/time.Millisecond))
 	cmd.setReadTimeout(timeout)
 	_ = c(ctx, cmd)
 	return cmd
@@ -437,6 +454,23 @@ func (c cmdable) Do(ctx context.Context, args ...interface{}) *Cmd {
 	return cmd
 }
 
+// DoRaw executes a command and returns the raw RESP protocol bytes without parsing.
+func (c cmdable) DoRaw(ctx context.Context, args ...interface{}) *RawCmd {
+	cmd := NewRawCmd(ctx, args...)
+	_ = c(ctx, cmd)
+	return cmd
+}
+
+// DoRawWriteTo executes a command and streams raw RESP bytes directly to w without intermediate allocations.
+func (c cmdable) DoRawWriteTo(ctx context.Context, w io.Writer, args ...interface{}) *RawWriteToCmd {
+	cmd := NewRawWriteToCmd(ctx, w, args...)
+	_ = c(ctx, cmd)
+	return cmd
+}
+
+// Quit closes the connection.
+//
+// Deprecated: Just close the connection instead as of Redis 7.2.0.
 func (c cmdable) Quit(_ context.Context) *StatusCmd {
 	panic("not implemented")
 }
@@ -516,6 +550,112 @@ func (c cmdable) ClientInfo(ctx context.Context) *ClientInfoCmd {
 	cmd := NewClientInfoCmd(ctx, "client", "info")
 	_ = c(ctx, cmd)
 	return cmd
+}
+
+// ClientMaintNotifications enables or disables maintenance notifications for maintenance upgrades.
+// When enabled, the client will receive push notifications about Redis maintenance events.
+func (c cmdable) ClientMaintNotifications(ctx context.Context, enabled bool, endpointType string) *StatusCmd {
+	args := []interface{}{"client", "maint_notifications"}
+	if enabled {
+		if endpointType == "" {
+			endpointType = "none"
+		}
+		args = append(args, "on", "moving-endpoint-type", endpointType)
+	} else {
+		args = append(args, "off")
+	}
+	cmd := NewStatusCmd(ctx, args...)
+	_ = c(ctx, cmd)
+	return cmd
+}
+
+// ClientTrackingOptions configures CLIENT TRACKING ON. See
+// https://redis.io/commands/client-tracking/ for semantics.
+type ClientTrackingOptions struct {
+	Redirect int64
+	Bcast    bool
+	Prefixes []string
+	OptIn    bool
+	OptOut   bool
+	NoLoop   bool
+}
+
+// ClientTracking enables or disables server-assisted client-side caching for
+// the ONE connection that happens to serve this command. On a pooled client
+// that connection is arbitrary, so this is only meaningful on a dedicated
+// connection (see Client.Conn). When on is false, opt is ignored. Invalid
+// option combinations are reported via the returned command's Err and nothing
+// is sent to the server.
+//
+// Must not be combined with the built-in client-side cache: on a client
+// configured with Options.ClientSideCache or ClientSideCacheConfig this
+// command is rejected, because changing a pool connection's tracking state
+// would silently break the cache's invalidation.
+func (c cmdable) ClientTracking(ctx context.Context, on bool, opt *ClientTrackingOptions) *StatusCmd {
+	if !on {
+		return c.ClientTrackingOff(ctx)
+	}
+	return c.ClientTrackingOn(ctx, opt)
+}
+
+// ClientTrackingOn enables tracking on the serving connection. See
+// ClientTracking for the pooled-client and built-in-CSC caveats.
+func (c cmdable) ClientTrackingOn(ctx context.Context, opt *ClientTrackingOptions) *StatusCmd {
+	args := []interface{}{"client", "tracking", "on"}
+	if opt != nil {
+		if err := validateClientTrackingOptions(opt); err != nil {
+			cmd := NewStatusCmd(ctx, args...)
+			cmd.SetErr(err)
+			return cmd
+		}
+		args = appendClientTrackingOptions(args, opt)
+	}
+	cmd := NewStatusCmd(ctx, args...)
+	_ = c(ctx, cmd)
+	return cmd
+}
+
+// ClientTrackingOff disables tracking on the serving connection. See
+// ClientTracking for the pooled-client and built-in-CSC caveats.
+func (c cmdable) ClientTrackingOff(ctx context.Context) *StatusCmd {
+	cmd := NewStatusCmd(ctx, "client", "tracking", "off")
+	_ = c(ctx, cmd)
+	return cmd
+}
+
+func validateClientTrackingOptions(opt *ClientTrackingOptions) error {
+	if opt.OptIn && opt.OptOut {
+		return errors.New("redis: CLIENT TRACKING OPTIN and OPTOUT are mutually exclusive")
+	}
+	if opt.Bcast && (opt.OptIn || opt.OptOut) {
+		return errors.New("redis: CLIENT TRACKING BCAST cannot be combined with OPTIN or OPTOUT")
+	}
+	if len(opt.Prefixes) > 0 && !opt.Bcast {
+		return errors.New("redis: CLIENT TRACKING PREFIX requires BCAST")
+	}
+	return nil
+}
+
+func appendClientTrackingOptions(args []interface{}, opt *ClientTrackingOptions) []interface{} {
+	if opt.Redirect != 0 {
+		args = append(args, "redirect", opt.Redirect)
+	}
+	if opt.Bcast {
+		args = append(args, "bcast")
+	}
+	for _, p := range opt.Prefixes {
+		args = append(args, "prefix", p)
+	}
+	if opt.OptIn {
+		args = append(args, "optin")
+	}
+	if opt.OptOut {
+		args = append(args, "optout")
+	}
+	if opt.NoLoop {
+		args = append(args, "noloop")
+	}
+	return args
 }
 
 // ------------------------------------------------------------------------------------------------
@@ -642,14 +782,52 @@ func (c cmdable) ShutdownNoSave(ctx context.Context) *StatusCmd {
 	return c.shutdown(ctx, "nosave")
 }
 
+// SlaveOf sets a Redis server as a replica of another, or promotes it to being a master.
+//
+// Deprecated: Use ReplicaOf instead as of Redis 5.0.0.
 func (c cmdable) SlaveOf(ctx context.Context, host, port string) *StatusCmd {
 	cmd := NewStatusCmd(ctx, "slaveof", host, port)
 	_ = c(ctx, cmd)
 	return cmd
 }
 
+// ReplicaOf sets a Redis server as a replica of another, or promotes it to being a master.
+func (c cmdable) ReplicaOf(ctx context.Context, host, port string) *StatusCmd {
+	cmd := NewStatusCmd(ctx, "replicaof", host, port)
+	_ = c(ctx, cmd)
+	return cmd
+}
+
 func (c cmdable) SlowLogGet(ctx context.Context, num int64) *SlowLogCmd {
-	cmd := NewSlowLogCmd(context.Background(), "slowlog", "get", num)
+	cmd := NewSlowLogCmd(ctx, "slowlog", "get", num)
+	_ = c(ctx, cmd)
+	return cmd
+}
+
+func (c cmdable) SlowLogLen(ctx context.Context) *IntCmd {
+	cmd := NewIntCmd(ctx, "slowlog", "len")
+	_ = c(ctx, cmd)
+	return cmd
+}
+
+func (c cmdable) SlowLogReset(ctx context.Context) *StatusCmd {
+	cmd := NewStatusCmd(ctx, "slowlog", "reset")
+	_ = c(ctx, cmd)
+	return cmd
+}
+
+func (c cmdable) Latency(ctx context.Context) *LatencyCmd {
+	cmd := NewLatencyCmd(ctx, "latency", "latest")
+	_ = c(ctx, cmd)
+	return cmd
+}
+
+func (c cmdable) LatencyReset(ctx context.Context, events ...interface{}) *StatusCmd {
+	args := make([]interface{}, 2+len(events))
+	args[0] = "latency"
+	args[1] = "reset"
+	copy(args[2:], events)
+	cmd := NewStatusCmd(ctx, args...)
 	_ = c(ctx, cmd)
 	return cmd
 }
@@ -674,7 +852,9 @@ func (c cmdable) MemoryUsage(ctx context.Context, key string, samples ...int) *I
 	args := []interface{}{"memory", "usage", key}
 	if len(samples) > 0 {
 		if len(samples) != 1 {
-			panic("MemoryUsage expects single sample count")
+			cmd := NewIntCmd(ctx)
+			cmd.SetErr(errors.New("MemoryUsage expects single sample count"))
+			return cmd
 		}
 		args = append(args, "SAMPLES", samples[0])
 	}
@@ -710,6 +890,11 @@ func (c *ModuleLoadexConfig) toArgs() []interface{} {
 
 // ModuleLoadex Redis `MODULE LOADEX path [CONFIG name value [CONFIG name value ...]] [ARGS args [args ...]]` command.
 func (c cmdable) ModuleLoadex(ctx context.Context, conf *ModuleLoadexConfig) *StringCmd {
+	if conf == nil {
+		cmd := NewStringCmd(ctx)
+		cmd.SetErr(errors.New("redis: ModuleLoadex nil config"))
+		return cmd
+	}
 	cmd := NewStringCmd(ctx, conf.toArgs()...)
 	_ = c(ctx, cmd)
 	return cmd

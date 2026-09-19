@@ -29,10 +29,11 @@ import (
 	"sync/atomic"
 	"time"
 
+	"sigs.k8s.io/structured-merge-diff/v6/value"
+
 	"k8s.io/apimachinery/pkg/conversion"
 	"k8s.io/apimachinery/pkg/util/json"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
-	"sigs.k8s.io/structured-merge-diff/v4/value"
 
 	"k8s.io/klog/v2"
 )
@@ -53,6 +54,7 @@ type fieldInfo struct {
 	name      string
 	nameValue reflect.Value
 	omitempty bool
+	omitzero  func(dv reflect.Value) bool
 }
 
 type fieldsCacheMap map[structField]*fieldInfo
@@ -249,9 +251,11 @@ func (c *unstructuredConverter) FromUnstructuredWithValidation(u map[string]inte
 		newObj := reflect.New(t.Elem()).Interface()
 		newErr := fromUnstructuredViaJSON(u, newObj)
 		if (err != nil) != (newErr != nil) {
+			//nolint:logcheck // Should not be reached.
 			klog.Fatalf("FromUnstructured unexpected error for %v: error: %v", u, err)
 		}
 		if err == nil && !c.comparison.DeepEqual(obj, newObj) {
+			//nolint:logcheck // Should not be reached.
 			klog.Fatalf("FromUnstructured mismatch\nobj1: %#v\nobj2: %#v", obj, newObj)
 		}
 	}
@@ -374,21 +378,29 @@ func fieldInfoFromField(structType reflect.Type, field int) *fieldInfo {
 	// Cache miss - we need to compute the field name.
 	info := &fieldInfo{}
 	typeField := structType.Field(field)
-	jsonTag := typeField.Tag.Get("json")
-	if len(jsonTag) == 0 {
-		// Make the first character lowercase.
-		if typeField.Name == "" {
+	jsonTag, exists := typeField.Tag.Lookup("json")
+	if !exists || len(jsonTag) == 0 {
+		if !typeField.Anonymous {
+			// match stdlib behavior for naming fields that don't specify a json tag name
 			info.name = typeField.Name
-		} else {
-			info.name = strings.ToLower(typeField.Name[:1]) + typeField.Name[1:]
 		}
 	} else {
 		items := strings.Split(jsonTag, ",")
 		info.name = items[0]
+		if isInlinedFromTag(typeField, items[0], items[1:]) {
+			// match stdlib behavior when controlled by tag
+			info.name = ""
+		} else if len(info.name) == 0 && !typeField.Anonymous {
+			// match stdlib behavior for naming fields that don't specify a json tag name
+			info.name = typeField.Name
+		}
+
 		for i := range items {
-			if items[i] == "omitempty" {
+			if i > 0 && items[i] == "omitempty" {
 				info.omitempty = true
-				break
+			}
+			if i > 0 && items[i] == "omitzero" {
+				info.omitzero = value.OmitZeroFunc(typeField.Type)
 			}
 		}
 	}
@@ -589,9 +601,11 @@ func (c *unstructuredConverter) ToUnstructured(obj interface{}) (map[string]inte
 		newUnstr := map[string]interface{}{}
 		newErr := toUnstructuredViaJSON(obj, &newUnstr)
 		if (err != nil) != (newErr != nil) {
+			//nolint:logcheck // Should not be reached.
 			klog.Fatalf("ToUnstructured unexpected error for %v: error: %v; newErr: %v", obj, err, newErr)
 		}
 		if err == nil && !c.comparison.DeepEqual(u, newUnstr) {
+			//nolint:logcheck // Should not be reached.
 			klog.Fatalf("ToUnstructured mismatch\nobj1: %#v\nobj2: %#v", u, newUnstr)
 		}
 	}
@@ -673,11 +687,11 @@ func toUnstructured(sv, dv reflect.Value) error {
 		dv.Set(reflect.ValueOf(sv.Int()))
 		return nil
 	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
-		uVal := sv.Uint()
-		if uVal > math.MaxInt64 {
-			return fmt.Errorf("unsigned value %d does not fit into int64 (overflow)", uVal)
+		val, err := uintToUnstructuredHelper(sv.Uint())
+		if err != nil {
+			return err
 		}
-		dv.Set(reflect.ValueOf(int64(uVal)))
+		dv.Set(reflect.ValueOf(val))
 		return nil
 	case reflect.Float32, reflect.Float64:
 		dv.Set(reflect.ValueOf(sv.Float()))
@@ -775,7 +789,7 @@ func pointerToUnstructured(sv, dv reflect.Value) error {
 	return toUnstructured(sv.Elem(), dv)
 }
 
-func isZero(v reflect.Value) bool {
+func isEmpty(v reflect.Value) bool {
 	switch v.Kind() {
 	case reflect.Array, reflect.String:
 		return v.Len() == 0
@@ -816,8 +830,12 @@ func structToUnstructured(sv, dv reflect.Value) error {
 			// This field should be skipped.
 			continue
 		}
-		if fieldInfo.omitempty && isZero(fv) {
+		if fieldInfo.omitempty && isEmpty(fv) {
 			// omitempty fields should be ignored.
+			continue
+		}
+		if fieldInfo.omitzero != nil && fieldInfo.omitzero(fv) {
+			// omitzero fields should be ignored
 			continue
 		}
 		if len(fieldInfo.name) == 0 {
@@ -835,7 +853,11 @@ func structToUnstructured(sv, dv reflect.Value) error {
 		case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
 			realMap[fieldInfo.name] = fv.Int()
 		case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
-			realMap[fieldInfo.name] = fv.Uint()
+			val, err := uintToUnstructuredHelper(fv.Uint())
+			if err != nil {
+				return err
+			}
+			realMap[fieldInfo.name] = val
 		case reflect.Float32, reflect.Float64:
 			realMap[fieldInfo.name] = fv.Float()
 		default:
@@ -855,4 +877,11 @@ func interfaceToUnstructured(sv, dv reflect.Value) error {
 		return nil
 	}
 	return toUnstructured(sv.Elem(), dv)
+}
+
+func uintToUnstructuredHelper(uVal uint64) (int64, error) {
+	if uVal > math.MaxInt64 {
+		return 0, fmt.Errorf("unsigned value %d does not fit into int64 (overflow)", uVal)
+	}
+	return int64(uVal), nil
 }

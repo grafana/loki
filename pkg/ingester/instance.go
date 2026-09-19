@@ -3,6 +3,7 @@ package ingester
 import (
 	"context"
 	"errors"
+	"expvar"
 	"fmt"
 	"math"
 	"net/http"
@@ -62,30 +63,47 @@ const (
 	queryBatchSampleSize = 512
 )
 
-var (
-	memoryStreams = promauto.NewGaugeVec(prometheus.GaugeOpts{
-		Namespace: constants.Loki,
-		Name:      "ingester_memory_streams",
-		Help:      "The total number of streams in memory per tenant.",
-	}, []string{"tenant"})
-	memoryStreamsLabelsBytes = promauto.NewGauge(prometheus.GaugeOpts{
-		Namespace: constants.Loki,
-		Name:      "ingester_memory_streams_labels_bytes",
-		Help:      "Total bytes of labels of the streams in memory.",
-	})
-	streamsCreatedTotal = promauto.NewCounterVec(prometheus.CounterOpts{
-		Namespace: constants.Loki,
-		Name:      "ingester_streams_created_total",
-		Help:      "The total number of streams created per tenant.",
-	}, []string{"tenant"})
-	streamsRemovedTotal = promauto.NewCounterVec(prometheus.CounterOpts{
-		Namespace: constants.Loki,
-		Name:      "ingester_streams_removed_total",
-		Help:      "The total number of streams removed per tenant.",
-	}, []string{"tenant"})
+type instanceMetrics struct {
+	memoryStreams            *prometheus.GaugeVec
+	memoryStreamShards       *prometheus.GaugeVec
+	memoryStreamsLabelsBytes prometheus.Gauge
+	streamsCreatedTotal      *prometheus.CounterVec
+	streamsRemovedTotal      *prometheus.CounterVec
+	streamsCountStats        *expvar.Int
+}
 
-	streamsCountStats = analytics.NewInt("ingester_streams_count")
-)
+func newInstanceMetrics(reg prometheus.Registerer) *instanceMetrics {
+	return &instanceMetrics{
+		memoryStreams: promauto.With(reg).NewGaugeVec(prometheus.GaugeOpts{
+			Namespace: constants.Loki,
+			Name:      "ingester_memory_streams",
+			Help:      "The total number of streams in memory per tenant.",
+		}, []string{"tenant"}),
+		memoryStreamShards: promauto.With(reg).NewGaugeVec(prometheus.GaugeOpts{
+			Namespace: constants.Loki,
+			Name:      "ingester_memory_stream_shards",
+			Help:      "The total number of stream shards in memory per tenant, meaning streams that carry the __stream_shard__ label. This is a subset of loki_ingester_memory_streams.",
+		}, []string{"tenant"}),
+		memoryStreamsLabelsBytes: promauto.With(reg).NewGauge(prometheus.GaugeOpts{
+			Namespace: constants.Loki,
+			Name:      "ingester_memory_streams_labels_bytes",
+			Help:      "Total bytes of labels of the streams in memory.",
+		}),
+		streamsCreatedTotal: promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
+			Namespace: constants.Loki,
+			Name:      "ingester_streams_created_total",
+			Help:      "The total number of streams created per tenant.",
+		}, []string{"tenant"}),
+		streamsRemovedTotal: promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
+			Namespace: constants.Loki,
+			Name:      "ingester_streams_removed_total",
+			Help:      "The total number of streams removed per tenant.",
+		}, []string{"tenant"}),
+
+		// analytics.NewInt() call is idempotent so it's safe to call it multiple times
+		streamsCountStats: analytics.NewInt("ingester_streams_count"),
+	}
+}
 
 type instance struct {
 	cfg *Config
@@ -98,8 +116,13 @@ type instance struct {
 
 	instanceID string
 
+	// global ingester metrics
+	metrics *ingesterMetrics
+	// per-tenant ingester metrics that are initialized at construction time
 	streamsCreatedTotal prometheus.Counter
 	streamsRemovedTotal prometheus.Counter
+	memoryStreams       prometheus.Gauge
+	memoryStreamShards  prometheus.Gauge
 
 	tailers   map[uint32]*tailer
 	tailerMtx sync.RWMutex
@@ -115,8 +138,6 @@ type instance struct {
 	// Denotes whether the ingester should flush on shutdown.
 	// Currently only used by the WAL to signal when the disk is full.
 	flushOnShutdownSwitch *OnceSwitch
-
-	metrics *ingesterMetrics
 
 	chunkFilter          chunk.RequestChunkFilterer
 	pipelineWrapper      log.PipelineWrapper
@@ -163,17 +184,19 @@ func newInstance(
 		index:      invertedIndex,
 		instanceID: instanceID,
 
-		streamsCreatedTotal: streamsCreatedTotal.WithLabelValues(instanceID),
-		streamsRemovedTotal: streamsRemovedTotal.WithLabelValues(instanceID),
+		metrics:             metrics,
+		streamsCreatedTotal: metrics.instance.streamsCreatedTotal.WithLabelValues(instanceID),
+		streamsRemovedTotal: metrics.instance.streamsRemovedTotal.WithLabelValues(instanceID),
+		memoryStreams:       metrics.instance.memoryStreams.WithLabelValues(instanceID),
+		memoryStreamShards:  metrics.instance.memoryStreamShards.WithLabelValues(instanceID),
 
 		tailers:            map[uint32]*tailer{},
 		limiter:            limiter,
-		streamCountLimiter: newStreamCountLimiter(instanceID, streams.Len, limiter, ownedStreamsSvc),
+		streamCountLimiter: newStreamCountLimiter(instanceID, streams.Len, limiter, ownedStreamsSvc, cfg.DelegateStreamLimits),
 		ownedStreamsSvc:    ownedStreamsSvc,
 		configs:            configs,
 
 		wal:                   wal,
-		metrics:               metrics,
 		flushOnShutdownSwitch: flushOnShutdownSwitch,
 
 		chunkFilter:      chunkFilter,
@@ -192,35 +215,6 @@ func newInstance(
 	i.mapper = NewFPMapper(i.getLabelsFromFingerprint)
 
 	return i, err
-}
-
-// consumeChunk manually adds a chunk that was received during ingester chunk
-// transfer.
-func (i *instance) consumeChunk(ctx context.Context, ls labels.Labels, chunk *logproto.Chunk) error {
-	fp := i.getHashForLabels(ls)
-
-	s, _, _ := i.streams.LoadOrStoreNewByFP(fp,
-		func() (*stream, error) {
-			s, err := i.createStreamByFP(ls, fp)
-			s.chunkMtx.Lock() // Lock before return, because we have defer that unlocks it.
-			if err != nil {
-				return nil, err
-			}
-			return s, nil
-		},
-		func(s *stream) error {
-			s.chunkMtx.Lock()
-			return nil
-		},
-	)
-	defer s.chunkMtx.Unlock()
-
-	err := s.consumeChunk(ctx, chunk)
-	if err == nil {
-		i.metrics.memoryChunks.Inc()
-	}
-
-	return err
 }
 
 // Push will iterate over the given streams present in the PushRequest and attempt to store them.
@@ -299,26 +293,10 @@ func (i *instance) createStream(ctx context.Context, pushReqStream logproto.Stre
 	}
 
 	retentionHours := util.RetentionHours(i.tenantsRetention.RetentionPeriodFor(i.instanceID, labels))
-	mapping := i.limiter.limits.PoliciesStreamMapping(i.instanceID)
-	policies := mapping.PolicyFor(labels)
-	if record != nil {
-		err = i.streamCountLimiter.AssertNewStreamAllowed(i.instanceID)
-	}
+	policy := i.resolvePolicyForStream(ctx, labels)
 
-	// NOTE: We previously resolved the policy on distributors and logged when multiple policies were matched.
-	// As on distributors, we use the first policy by alphabetical order.
-	var policy string
-	if len(policies) > 0 {
-		policy = policies[0]
-		if len(policies) > 1 {
-			level.Warn(util_log.Logger).Log(
-				"msg", "multiple policies matched for the same stream",
-				"org_id", i.instanceID,
-				"stream", pushReqStream.Labels,
-				"policy", policy,
-				"policies", strings.Join(policies, ","),
-			)
-		}
+	if record != nil {
+		err = i.streamCountLimiter.AssertNewStreamAllowed(i.instanceID, policy)
 	}
 
 	if err != nil {
@@ -334,7 +312,7 @@ func (i *instance) createStream(ctx context.Context, pushReqStream logproto.Stre
 		return nil, fmt.Errorf("failed to create stream: %w", err)
 	}
 
-	s := newStream(chunkfmt, headfmt, i.cfg, i.limiter.rateLimitStrategy, i.instanceID, fp, sortedLabels, i.limiter.UnorderedWrites(i.instanceID), i.streamRateCalculator, i.metrics, i.writeFailures, i.configs, retentionHours)
+	s := newStream(chunkfmt, headfmt, i.cfg, i.limiter.rateLimitStrategy, i.instanceID, fp, sortedLabels, i.streamRateCalculator, i.metrics, i.writeFailures, i.configs, retentionHours, policy)
 
 	// record will be nil when replaying the wal (we don't want to rewrite wal entries as we replay them).
 	if record != nil {
@@ -352,6 +330,27 @@ func (i *instance) createStream(ctx context.Context, pushReqStream logproto.Stre
 	return s, nil
 }
 
+func (i *instance) resolvePolicyForStream(ctx context.Context, labels labels.Labels) string {
+	mapping := i.limiter.limits.PoliciesStreamMapping(i.instanceID)
+	policies := mapping.PolicyFor(ctx, labels)
+	// NOTE: We previously resolved the policy on distributors and logged when multiple policies were matched.
+	// As on distributors, we use the first policy by alphabetical order.
+	var policy string
+	if len(policies) > 0 {
+		policy = policies[0]
+		if len(policies) > 1 {
+			level.Warn(util_log.Logger).Log(
+				"msg", "multiple policies matched for the same stream",
+				"org_id", i.instanceID,
+				"stream", labels.String(),
+				"policy", policy,
+				"policies", strings.Join(policies, ","),
+			)
+		}
+	}
+	return policy
+}
+
 func (i *instance) onStreamCreationError(ctx context.Context, pushReqStream logproto.Stream, err error, labels labels.Labels, retentionHours, policy, format string) (*stream, error) {
 	if i.configs.LogStreamCreation(i.instanceID) || i.cfg.KafkaIngestion.Enabled {
 		l := level.Debug(util_log.Logger)
@@ -365,6 +364,7 @@ func (i *instance) onStreamCreationError(ctx context.Context, pushReqStream logp
 			"org_id", i.instanceID,
 			"err", err,
 			"stream", pushReqStream.Labels,
+			"policy", policy,
 		)
 	}
 
@@ -378,23 +378,27 @@ func (i *instance) onStreamCreationError(ctx context.Context, pushReqStream logp
 }
 
 func (i *instance) onStreamCreated(s *stream) {
-	memoryStreams.WithLabelValues(i.instanceID).Inc()
-	memoryStreamsLabelsBytes.Add(float64(len(s.labels.String())))
+	i.memoryStreams.Inc()
+	if s.labels.Has(ShardLbName) {
+		i.memoryStreamShards.Inc()
+	}
+	i.metrics.instance.memoryStreamsLabelsBytes.Add(float64(len(s.labels.String())))
 	i.streamsCreatedTotal.Inc()
 	i.addTailersToNewStream(s)
-	streamsCountStats.Add(1)
+	i.metrics.instance.streamsCountStats.Add(1)
 	// we count newly created stream as owned
-	i.ownedStreamsSvc.trackStreamOwnership(s.fp, true)
+	i.ownedStreamsSvc.trackStreamOwnership(s.fp, true, s.policy)
 	if i.configs.LogStreamCreation(i.instanceID) {
 		level.Debug(util_log.Logger).Log(
 			"msg", "successfully created stream",
 			"org_id", i.instanceID,
 			"stream", s.labels.String(),
+			"policy", s.policy,
 		)
 	}
 }
 
-func (i *instance) createStreamByFP(ls labels.Labels, fp model.Fingerprint) (*stream, error) {
+func (i *instance) createStreamByFP(ctx context.Context, ls labels.Labels, fp model.Fingerprint) (*stream, error) {
 	sortedLabels := i.index.Add(logproto.FromLabelsToLabelAdapters(ls), fp)
 
 	chunkfmt, headfmt, err := i.chunkFormatAt(model.Now())
@@ -403,7 +407,9 @@ func (i *instance) createStreamByFP(ls labels.Labels, fp model.Fingerprint) (*st
 	}
 
 	retentionHours := util.RetentionHours(i.tenantsRetention.RetentionPeriodFor(i.instanceID, ls))
-	s := newStream(chunkfmt, headfmt, i.cfg, i.limiter.rateLimitStrategy, i.instanceID, fp, sortedLabels, i.limiter.UnorderedWrites(i.instanceID), i.streamRateCalculator, i.metrics, i.writeFailures, i.configs, retentionHours)
+	policy := i.resolvePolicyForStream(ctx, ls)
+
+	s := newStream(chunkfmt, headfmt, i.cfg, i.limiter.rateLimitStrategy, i.instanceID, fp, sortedLabels, i.streamRateCalculator, i.metrics, i.writeFailures, i.configs, retentionHours, policy)
 
 	i.onStreamCreated(s)
 
@@ -446,10 +452,13 @@ func (i *instance) removeStream(s *stream) {
 	if i.streams.Delete(s) {
 		i.index.Delete(s.labels, s.fp)
 		i.streamsRemovedTotal.Inc()
-		memoryStreams.WithLabelValues(i.instanceID).Dec()
-		memoryStreamsLabelsBytes.Sub(float64(len(s.labels.String())))
-		streamsCountStats.Add(-1)
-		i.ownedStreamsSvc.trackRemovedStream(s.fp)
+		i.memoryStreams.Dec()
+		if s.labels.Has(ShardLbName) {
+			i.memoryStreamShards.Dec()
+		}
+		i.metrics.instance.memoryStreamsLabelsBytes.Sub(float64(len(s.labels.String())))
+		i.metrics.instance.streamsCountStats.Add(-1)
+		i.ownedStreamsSvc.trackRemovedStream(s.fp, s.policy)
 	}
 }
 
@@ -535,33 +544,44 @@ func (i *instance) QuerySample(ctx context.Context, req logql.SelectSampleParams
 }
 
 func (i *instance) querySample(ctx context.Context, req logql.SelectSampleParams) (iter.SampleIterator, error) {
+	// The ingester only ever produces timestamp-first output. Reject any other order
+	// instead of silently returning samples in the wrong order.
+	if req.Order != logproto.SAMPLE_ORDER_BY_TIMESTAMP {
+		return nil, fmt.Errorf("sample order %v is not supported by the ingester", req.Order)
+	}
+
 	expr, err := req.Expr()
 	if err != nil {
 		return nil, err
 	}
 
-	extractors, err := expr.Extractors()
+	extractor, err := expr.Extractor()
+	if err != nil {
+		return nil, err
+	}
+	// A literal or a vector expression produces samples without reading logs, so its
+	// extractor is nil and there is no stream worth touching. The plan is
+	// caller-supplied, so guard rather than assume such a request never arrives.
+	//
+	// Guard before SetupExtractor: given deletes it wraps the nil extractor into a
+	// non-nil filtering one, and this check would stop firing.
+	if extractor == nil {
+		return iter.NoopSampleIterator, nil
+	}
+
+	extractor, err = deletion.SetupExtractor(req, extractor)
 	if err != nil {
 		return nil, err
 	}
 
-	for j, extractor := range extractors {
-		extractor, err = deletion.SetupExtractor(req, extractor)
+	if i.extractorWrapper != nil &&
+		httpreq.ExtractHeader(ctx, httpreq.LokiDisablePipelineWrappersHeader) != "true" {
+		userID, err := tenant.TenantID(ctx)
 		if err != nil {
 			return nil, err
 		}
 
-		if i.extractorWrapper != nil &&
-			httpreq.ExtractHeader(ctx, httpreq.LokiDisablePipelineWrappersHeader) != "true" {
-			userID, err := tenant.TenantID(ctx)
-			if err != nil {
-				return nil, err
-			}
-
-			extractor = i.extractorWrapper.Wrap(ctx, extractor, req.Plan.String(), userID)
-		}
-
-		extractors[j] = extractor
+		extractor = i.extractorWrapper.Wrap(ctx, extractor, req.Plan.String(), userID)
 	}
 
 	stats := stats.FromContext(ctx)
@@ -581,22 +601,17 @@ func (i *instance) querySample(ctx context.Context, req logql.SelectSampleParams
 		selector.Matchers(),
 		shard,
 		func(stream *stream) error {
-			streamExtractors := make([]log.StreamSampleExtractor, 0, len(extractors))
-			for _, extractor := range extractors {
-				streamExtractors = append(streamExtractors, extractor.ForStream(stream.labels))
-			}
-
-			iter, err := stream.SampleIterator(
+			streamIter, err := stream.SampleIterator(
 				ctx,
 				stats,
 				req.Start,
 				req.End,
-				streamExtractors...,
+				extractor.ForStream(stream.labels),
 			)
 			if err != nil {
 				return err
 			}
-			iters = append(iters, iter)
+			iters = append(iters, streamIter)
 			return nil
 		},
 	)
@@ -604,7 +619,7 @@ func (i *instance) querySample(ctx context.Context, req logql.SelectSampleParams
 		return nil, err
 	}
 
-	return iter.NewSortSampleIterator(iters), nil
+	return iter.NewTimestampFirstSortSampleIterator(iters), nil
 }
 
 // Label returns the label names or values depending on the given request
@@ -1233,7 +1248,7 @@ func (i *instance) updateOwnedStreams(isOwnedStream func(*stream) (bool, error))
 				return false, err
 			}
 
-			i.ownedStreamsSvc.trackStreamOwnership(s.fp, ownedStream)
+			i.ownedStreamsSvc.trackStreamOwnership(s.fp, ownedStream, s.policy)
 			return true, nil
 		})
 	})

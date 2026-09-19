@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 )
 
 // ServiceKind is the kind of service being registered.
@@ -82,6 +83,62 @@ type AgentWeights struct {
 	Warning int
 }
 
+type ServicePort struct {
+	Name    string
+	Port    int
+	Default bool
+}
+
+type ServicePorts []ServicePort
+
+func (sp ServicePorts) Validate() error {
+	if len(sp) == 0 {
+		return nil
+	}
+
+	seenName := make(map[string]struct{}, len(sp))
+	seenDefault := false
+	for _, p := range sp {
+		if strings.TrimSpace(p.Name) == "" {
+			return errors.New("Ports.Name cannot be empty")
+		}
+
+		if p.Port <= 0 {
+			return errors.New("Ports.Port must be non-zero")
+		}
+
+		_, ok := seenName[p.Name]
+		if ok {
+			return fmt.Errorf("Ports.Name %q has to be unique", p.Name)
+		}
+
+		seenName[p.Name] = struct{}{}
+
+		if p.Default && seenDefault {
+			return errors.New("only one port can be marked as default")
+		}
+
+		if p.Default {
+			seenDefault = true
+		}
+	}
+
+	if !seenDefault {
+		return fmt.Errorf("one of the Ports must be marked as Default")
+	}
+
+	return nil
+}
+
+func (sp ServicePorts) HasDefault() bool {
+	for _, p := range sp {
+		if p.Default {
+			return true
+		}
+	}
+	return false
+}
+
 // AgentService represents a service known to the agent
 type AgentService struct {
 	Kind              ServiceKind `json:",omitempty"`
@@ -90,6 +147,7 @@ type AgentService struct {
 	Tags              []string
 	Meta              map[string]string
 	Port              int
+	Ports             ServicePorts `json:",omitempty" bexpr:"-"`
 	Address           string
 	SocketPath        string                    `json:",omitempty"`
 	TaggedAddresses   map[string]ServiceAddress `json:",omitempty"`
@@ -101,6 +159,7 @@ type AgentService struct {
 	Proxy             *AgentServiceConnectProxyConfig `json:",omitempty"`
 	Connect           *AgentServiceConnect            `json:",omitempty"`
 	PeerName          string                          `json:",omitempty"`
+	AI                *AgentServiceAI                 `json:",omitempty" bexpr:"-"`
 	// NOTE: If we ever set the ContentHash outside of singular service lookup then we may need
 	// to include the Namespace in the hash. When we do, then we are in for lots of fun with tests.
 	// For now though, ignoring it works well enough.
@@ -109,6 +168,16 @@ type AgentService struct {
 	// Datacenter is only ever returned and is ignored if presented.
 	Datacenter string    `json:",omitempty" bexpr:"-" hash:"ignore"`
 	Locality   *Locality `json:",omitempty" bexpr:"-" hash:"ignore"`
+}
+
+func (a AgentService) DefaultPort() int {
+	for _, p := range a.Ports {
+		if p.Default {
+			return p.Port
+		}
+	}
+
+	return a.Port
 }
 
 // AgentServiceChecksInfo returns information about a Service and its checks
@@ -132,6 +201,7 @@ type AgentServiceConnectProxyConfig struct {
 	DestinationServiceID   string                  `json:",omitempty"`
 	LocalServiceAddress    string                  `json:",omitempty"`
 	LocalServicePort       int                     `json:",omitempty"`
+	LocalServicePorts      ServicePorts            `json:",omitempty" bexpr:"-"`
 	LocalServiceSocketPath string                  `json:",omitempty"`
 	Mode                   ProxyMode               `json:",omitempty"`
 	TransparentProxy       *TransparentProxyConfig `json:",omitempty"`
@@ -140,6 +210,84 @@ type AgentServiceConnectProxyConfig struct {
 	MeshGateway            MeshGatewayConfig       `json:",omitempty"`
 	Expose                 ExposeConfig            `json:",omitempty"`
 	AccessLogs             *AccessLogsConfig       `json:",omitempty"`
+}
+
+// AgentServiceAI is the public twin of the internal structs.ServiceAI: the
+// inline AI role block on a service registration/lookup. It carries a Role
+// discriminator and exactly one role-specific sub-block. Field names mirror the
+// internal type so mapstructure-based conversion maps them automatically.
+type AgentServiceAI struct {
+	Role           string                 `json:",omitempty"`
+	InferenceModel *AgentAIInferenceModel `json:",omitempty"`
+	MCPServer      *AgentAIMCPServer      `json:",omitempty"`
+	Agent          *AgentAIAgent          `json:",omitempty"`
+}
+
+// AgentAIInferenceModel is the role-specific config for the inference-model role.
+type AgentAIInferenceModel struct {
+	Protocol string                `json:",omitempty"`
+	Path     string                `json:",omitempty"`
+	Defaults *AgentAIModelDefaults `json:",omitempty"`
+}
+
+// AgentAIModelDefaults carries optional request defaults for an inference model.
+type AgentAIModelDefaults struct {
+	MaxTokens   int     `json:",omitempty"`
+	Temperature float64 `json:",omitempty"`
+}
+
+// AgentAIMCPServer is the role-specific config for the mcp-server role.
+type AgentAIMCPServer struct {
+	Transport       string `json:",omitempty"`
+	Path            string `json:",omitempty"`
+	ProtocolVersion string `json:",omitempty"`
+}
+
+// AgentAIAgent is the role-specific config for the ai-agent role.
+type AgentAIAgent struct {
+	Inference   *AgentAIAgentInference   `json:",omitempty"`
+	MCP         *AgentAIAgentMCP         `json:",omitempty"`
+	RateLimits  *AgentAIAgentRateLimits  `json:",omitempty"`
+	Interceptor *AgentAIAgentInterceptor `json:",omitempty"`
+}
+
+// AgentAIAgentInference describes the inference specialization for an agent.
+type AgentAIAgentInference struct {
+	Specialization []string `json:",omitempty"`
+	Vendor         string   `json:",omitempty"`
+}
+
+// AgentAIAgentMCP is the MCP egress configuration for an agent.
+type AgentAIAgentMCP struct {
+	Port int                  `json:",omitempty"`
+	HITL *AgentAIAgentMCPHITL `json:",omitempty"`
+}
+
+// AgentAIAgentMCPHITL is the human-in-the-loop approval configuration for MCP
+// tool calls.
+type AgentAIAgentMCPHITL struct {
+	Port            int    `json:",omitempty"`
+	ApprovalTimeout string `json:",omitempty"`
+}
+
+// AgentAIAgentRateLimits are per-agent tool-call rate limits.
+type AgentAIAgentRateLimits struct {
+	ToolCallsPerMinute int `json:",omitempty"`
+	ToolCallsPerHour   int `json:",omitempty"`
+}
+
+// AgentAIAgentInterceptor configures the co-located governance interceptor the
+// sidecar reaches over plaintext loopback.
+type AgentAIAgentInterceptor struct {
+	Port int `json:",omitempty"`
+}
+
+// AgentAISecret is a reference to a secret stored in an external provider. It
+// never holds the literal secret value.
+type AgentAISecret struct {
+	Provider string `json:",omitempty"`
+	Path     string `json:",omitempty"`
+	Field    string `json:",omitempty"`
 }
 
 const (
@@ -285,6 +433,7 @@ type AgentServiceRegistration struct {
 	Name              string                    `json:",omitempty"`
 	Tags              []string                  `json:",omitempty"`
 	Port              int                       `json:",omitempty"`
+	Ports             ServicePorts              `json:",omitempty"`
 	Address           string                    `json:",omitempty"`
 	SocketPath        string                    `json:",omitempty"`
 	TaggedAddresses   map[string]ServiceAddress `json:",omitempty"`
@@ -295,9 +444,14 @@ type AgentServiceRegistration struct {
 	Checks            AgentServiceChecks
 	Proxy             *AgentServiceConnectProxyConfig `json:",omitempty"`
 	Connect           *AgentServiceConnect            `json:",omitempty"`
+	AI                *AgentServiceAI                 `json:",omitempty" bexpr:"-"`
 	Namespace         string                          `json:",omitempty" bexpr:"-" hash:"ignore"`
 	Partition         string                          `json:",omitempty" bexpr:"-" hash:"ignore"`
 	Locality          *Locality                       `json:",omitempty" bexpr:"-" hash:"ignore"`
+}
+
+func (a *AgentServiceRegistration) IsConnectEnabled() bool {
+	return a.Connect != nil && (a.Connect.Native || a.Connect.SidecarService != nil)
 }
 
 // ServiceRegisterOpts is used to pass extra options to the service register.
@@ -447,6 +601,7 @@ type Upstream struct {
 	DestinationNamespace string           `json:",omitempty"`
 	DestinationPeer      string           `json:",omitempty"`
 	DestinationName      string
+	DestinationPort      string                 `json:",omitempty"`
 	Datacenter           string                 `json:",omitempty"`
 	LocalBindAddress     string                 `json:",omitempty"`
 	LocalBindPort        int                    `json:",omitempty"`

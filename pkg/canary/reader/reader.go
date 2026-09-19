@@ -54,15 +54,12 @@ type Reader struct {
 	clientTLSConfig *tls.Config
 	caFile          string
 	addr            string
+	pathPrefix      string
 	user            string
 	pass            string
 	tenantID        string
 	httpClient      *http.Client
 	queryTimeout    time.Duration
-	sName           string
-	sValue          string
-	lName           string
-	lVal            string
 	backoff         *backoff.Backoff
 	nextQuery       time.Time
 	backoffMtx      sync.RWMutex
@@ -74,6 +71,29 @@ type Reader struct {
 	shuttingDown    bool
 	done            chan struct{}
 	queryAppend     string
+	labelSelector   string
+}
+
+func buildLabelSelector(labels, sName, sValue, lName, lVal string) (string, error) {
+	if labels != "" {
+		var lbls []string
+		for _, label := range strings.Split(labels, ",") {
+			labelParts := strings.SplitN(label, "=", 2)
+			if len(labelParts) != 2 {
+				return "", fmt.Errorf("invalid label format: %s, expected key=value", label)
+			}
+			lbls = append(lbls, fmt.Sprintf("%s=\"%s\"", labelParts[0], labelParts[1]))
+		}
+		return fmt.Sprintf("{%s}", strings.Join(lbls, ",")), nil
+	}
+	return fmt.Sprintf("{%s=\"%s\",%s=\"%s\"}", sName, sValue, lName, lVal), nil
+}
+
+func (r *Reader) buildMetricQuery(queryRange string) string {
+	if r.queryAppend != "" {
+		return fmt.Sprintf("count_over_time(%s %s[%s])", r.labelSelector, r.queryAppend, queryRange)
+	}
+	return fmt.Sprintf("count_over_time(%s[%s])", r.labelSelector, queryRange)
 }
 
 func NewReader(writer io.Writer,
@@ -82,6 +102,7 @@ func NewReader(writer io.Writer,
 	tlsConfig *tls.Config,
 	caFile, certFile, keyFile string,
 	address string,
+	pathPrefix string,
 	user string,
 	pass string,
 	tenantID string,
@@ -92,6 +113,7 @@ func NewReader(writer io.Writer,
 	streamValue string,
 	interval time.Duration,
 	queryAppend string,
+	labels string,
 ) (*Reader, error) {
 	h := http.Header{}
 
@@ -130,21 +152,28 @@ func NewReader(writer io.Writer,
 	}
 	bkoff := backoff.New(context.Background(), bkcfg)
 
+	labelSel, err := buildLabelSelector(labels, streamName, streamValue, labelName, labelVal)
+	if err != nil {
+		return nil, err
+	}
+
+	prefix, err := url.JoinPath(pathPrefix)
+	if err != nil {
+		return nil, fmt.Errorf("invalid path prefix %q: %w", pathPrefix, err)
+	}
+
 	rd := Reader{
 		header:          h,
 		useTLS:          useTLS,
 		clientTLSConfig: tlsConfig,
 		caFile:          caFile,
 		addr:            address,
+		pathPrefix:      prefix,
 		user:            user,
 		pass:            pass,
 		tenantID:        tenantID,
 		queryTimeout:    queryTimeout,
 		httpClient:      httpClient,
-		sName:           streamName,
-		sValue:          streamValue,
-		lName:           labelName,
-		lVal:            labelVal,
 		nextQuery:       next,
 		backoff:         bkoff,
 		interval:        interval,
@@ -154,6 +183,7 @@ func NewReader(writer io.Writer,
 		done:            make(chan struct{}),
 		shuttingDown:    false,
 		queryAppend:     queryAppend,
+		labelSelector:   labelSel,
 	}
 
 	go rd.run()
@@ -196,14 +226,21 @@ func (r *Reader) QueryCountOverTime(queryRange string, now time.Time, cache bool
 	if r.useTLS {
 		scheme = "https"
 	}
+
+	queryPath, err := url.JoinPath(r.pathPrefix, "/loki/api/v1/query")
+	if err != nil {
+		return 0, err
+	}
+
 	u := url.URL{
 		Scheme: scheme,
 		Host:   r.addr,
-		Path:   "/loki/api/v1/query",
-		RawQuery: "query=" + url.QueryEscape(fmt.Sprintf("count_over_time({%v=\"%v\",%v=\"%v\"}[%s])", r.sName, r.sValue, r.lName, r.lVal, queryRange)) +
+		Path:   queryPath,
+		RawQuery: "query=" + url.QueryEscape(r.buildMetricQuery(queryRange)) +
 			fmt.Sprintf("&time=%d", now.UnixNano()) +
 			"&limit=1000",
 	}
+
 	fmt.Fprintf(r.w, "Querying loki for metric count with query: %v, cache: %v\n", u.String(), cache)
 
 	ctx, cancel := context.WithTimeout(context.Background(), r.queryTimeout)
@@ -290,12 +327,18 @@ func (r *Reader) Query(start time.Time, end time.Time) ([]time.Time, error) {
 	if r.useTLS {
 		scheme = "https"
 	}
+
+	queryRangePath, err := url.JoinPath(r.pathPrefix, "/loki/api/v1/query_range")
+	if err != nil {
+		return nil, err
+	}
+
 	u := url.URL{
 		Scheme: scheme,
 		Host:   r.addr,
-		Path:   "/loki/api/v1/query_range",
+		Path:   queryRangePath,
 		RawQuery: fmt.Sprintf("start=%d&end=%d", start.UnixNano(), end.UnixNano()) +
-			"&query=" + url.QueryEscape(fmt.Sprintf("{%v=\"%v\",%v=\"%v\"} %v", r.sName, r.sValue, r.lName, r.lVal, r.queryAppend)) +
+			"&query=" + url.QueryEscape(fmt.Sprintf("%s %v", r.labelSelector, r.queryAppend)) +
 			"&limit=1000",
 	}
 	fmt.Fprintf(r.w, "Querying loki for logs with query: %v\n", u.String())
@@ -456,14 +499,21 @@ func (r *Reader) closeAndReconnect() {
 		if r.useTLS {
 			scheme = "wss"
 		}
+
+		tailPath, err := url.JoinPath(r.pathPrefix, "/loki/api/v1/tail")
+		if err != nil {
+			fmt.Fprintf(r.w, "failed to build tail URL: %v\n", err)
+			return
+		}
+
 		u := url.URL{
 			Scheme:   scheme,
 			Host:     r.addr,
-			Path:     "/loki/api/v1/tail",
-			RawQuery: "query=" + url.QueryEscape(fmt.Sprintf("{%v=\"%v\",%v=\"%v\"} %v", r.sName, r.sValue, r.lName, r.lVal, r.queryAppend)),
+			Path:     tailPath,
+			RawQuery: "query=" + url.QueryEscape(fmt.Sprintf("%s %v", r.labelSelector, r.queryAppend)),
 		}
 
-		fmt.Fprintf(r.w, "Connecting to loki at %v, querying for label '%v' with value '%v'\n", u.String(), r.lName, r.lVal)
+		fmt.Fprintf(r.w, "Connecting to loki at %v, using selector %s\n", u.String(), r.labelSelector)
 
 		dialer := r.webSocketDialer()
 		c, _, err := dialer.Dial(u.String(), r.header)

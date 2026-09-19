@@ -1,5 +1,4 @@
 //go:build !fips
-// +build !fips
 
 /*
  * MinIO Go Library for Amazon S3 Compatible Cloud Storage

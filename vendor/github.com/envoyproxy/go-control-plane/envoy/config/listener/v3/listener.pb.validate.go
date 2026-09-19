@@ -120,6 +120,35 @@ func (m *AdditionalAddress) validate(all bool) error {
 		}
 	}
 
+	if all {
+		switch v := interface{}(m.GetTcpKeepalive()).(type) {
+		case interface{ ValidateAll() error }:
+			if err := v.ValidateAll(); err != nil {
+				errors = append(errors, AdditionalAddressValidationError{
+					field:  "TcpKeepalive",
+					reason: "embedded message failed validation",
+					cause:  err,
+				})
+			}
+		case interface{ Validate() error }:
+			if err := v.Validate(); err != nil {
+				errors = append(errors, AdditionalAddressValidationError{
+					field:  "TcpKeepalive",
+					reason: "embedded message failed validation",
+					cause:  err,
+				})
+			}
+		}
+	} else if v, ok := interface{}(m.GetTcpKeepalive()).(interface{ Validate() error }); ok {
+		if err := v.Validate(); err != nil {
+			return AdditionalAddressValidationError{
+				field:  "TcpKeepalive",
+				reason: "embedded message failed validation",
+				cause:  err,
+			}
+		}
+	}
+
 	if len(errors) > 0 {
 		return AdditionalAddressMultiError(errors)
 	}
@@ -134,7 +163,7 @@ type AdditionalAddressMultiError []error
 
 // Error returns a concatenation of all the error messages it wraps.
 func (m AdditionalAddressMultiError) Error() string {
-	var msgs []string
+	msgs := make([]string, 0, len(m))
 	for _, err := range m {
 		msgs = append(msgs, err.Error())
 	}
@@ -270,7 +299,7 @@ type ListenerCollectionMultiError []error
 
 // Error returns a concatenation of all the error messages it wraps.
 func (m ListenerCollectionMultiError) Error() string {
-	var msgs []string
+	msgs := make([]string, 0, len(m))
 	for _, err := range m {
 		msgs = append(msgs, err.Error())
 	}
@@ -460,6 +489,35 @@ func (m *Listener) validate(all bool) error {
 	}
 
 	if all {
+		switch v := interface{}(m.GetFcdsConfig()).(type) {
+		case interface{ ValidateAll() error }:
+			if err := v.ValidateAll(); err != nil {
+				errors = append(errors, ListenerValidationError{
+					field:  "FcdsConfig",
+					reason: "embedded message failed validation",
+					cause:  err,
+				})
+			}
+		case interface{ Validate() error }:
+			if err := v.Validate(); err != nil {
+				errors = append(errors, ListenerValidationError{
+					field:  "FcdsConfig",
+					reason: "embedded message failed validation",
+					cause:  err,
+				})
+			}
+		}
+	} else if v, ok := interface{}(m.GetFcdsConfig()).(interface{ Validate() error }); ok {
+		if err := v.Validate(); err != nil {
+			return ListenerValidationError{
+				field:  "FcdsConfig",
+				reason: "embedded message failed validation",
+				cause:  err,
+			}
+		}
+	}
+
+	if all {
 		switch v := interface{}(m.GetFilterChainMatcher()).(type) {
 		case interface{ ValidateAll() error }:
 			if err := v.ValidateAll(); err != nil {
@@ -572,6 +630,36 @@ func (m *Listener) validate(all bool) error {
 				reason: "embedded message failed validation",
 				cause:  err,
 			}
+		}
+	}
+
+	if d := m.GetPerConnectionBufferHighWatermarkTimeout(); d != nil {
+		dur, err := d.AsDuration(), d.CheckValid()
+		if err != nil {
+			err = ListenerValidationError{
+				field:  "PerConnectionBufferHighWatermarkTimeout",
+				reason: "value is not a valid duration",
+				cause:  err,
+			}
+			if !all {
+				return err
+			}
+			errors = append(errors, err)
+		} else {
+
+			gte := time.Duration(0*time.Second + 0*time.Nanosecond)
+
+			if dur < gte {
+				err := ListenerValidationError{
+					field:  "PerConnectionBufferHighWatermarkTimeout",
+					reason: "value must be greater than or equal to 0s",
+				}
+				if !all {
+					return err
+				}
+				errors = append(errors, err)
+			}
+
 		}
 	}
 
@@ -1054,6 +1142,35 @@ func (m *Listener) validate(all bool) error {
 
 	// no validation rules for BypassOverloadManager
 
+	if all {
+		switch v := interface{}(m.GetTcpKeepalive()).(type) {
+		case interface{ ValidateAll() error }:
+			if err := v.ValidateAll(); err != nil {
+				errors = append(errors, ListenerValidationError{
+					field:  "TcpKeepalive",
+					reason: "embedded message failed validation",
+					cause:  err,
+				})
+			}
+		case interface{ Validate() error }:
+			if err := v.Validate(); err != nil {
+				errors = append(errors, ListenerValidationError{
+					field:  "TcpKeepalive",
+					reason: "embedded message failed validation",
+					cause:  err,
+				})
+			}
+		}
+	} else if v, ok := interface{}(m.GetTcpKeepalive()).(interface{ Validate() error }); ok {
+		if err := v.Validate(); err != nil {
+			return ListenerValidationError{
+				field:  "TcpKeepalive",
+				reason: "embedded message failed validation",
+				cause:  err,
+			}
+		}
+	}
+
 	switch v := m.ListenerSpecifier.(type) {
 	case *Listener_InternalListener:
 		if v == nil {
@@ -1113,7 +1230,7 @@ type ListenerMultiError []error
 
 // Error returns a concatenation of all the error messages it wraps.
 func (m ListenerMultiError) Error() string {
-	var msgs []string
+	msgs := make([]string, 0, len(m))
 	for _, err := range m {
 		msgs = append(msgs, err.Error())
 	}
@@ -1176,310 +1293,6 @@ var _ interface {
 	Cause() error
 	ErrorName() string
 } = ListenerValidationError{}
-
-// Validate checks the field values on ListenerManager with the rules defined
-// in the proto definition for this message. If any rules are violated, the
-// first error encountered is returned, or nil if there are no violations.
-func (m *ListenerManager) Validate() error {
-	return m.validate(false)
-}
-
-// ValidateAll checks the field values on ListenerManager with the rules
-// defined in the proto definition for this message. If any rules are
-// violated, the result is a list of violation errors wrapped in
-// ListenerManagerMultiError, or nil if none found.
-func (m *ListenerManager) ValidateAll() error {
-	return m.validate(true)
-}
-
-func (m *ListenerManager) validate(all bool) error {
-	if m == nil {
-		return nil
-	}
-
-	var errors []error
-
-	if len(errors) > 0 {
-		return ListenerManagerMultiError(errors)
-	}
-
-	return nil
-}
-
-// ListenerManagerMultiError is an error wrapping multiple validation errors
-// returned by ListenerManager.ValidateAll() if the designated constraints
-// aren't met.
-type ListenerManagerMultiError []error
-
-// Error returns a concatenation of all the error messages it wraps.
-func (m ListenerManagerMultiError) Error() string {
-	var msgs []string
-	for _, err := range m {
-		msgs = append(msgs, err.Error())
-	}
-	return strings.Join(msgs, "; ")
-}
-
-// AllErrors returns a list of validation violation errors.
-func (m ListenerManagerMultiError) AllErrors() []error { return m }
-
-// ListenerManagerValidationError is the validation error returned by
-// ListenerManager.Validate if the designated constraints aren't met.
-type ListenerManagerValidationError struct {
-	field  string
-	reason string
-	cause  error
-	key    bool
-}
-
-// Field function returns field value.
-func (e ListenerManagerValidationError) Field() string { return e.field }
-
-// Reason function returns reason value.
-func (e ListenerManagerValidationError) Reason() string { return e.reason }
-
-// Cause function returns cause value.
-func (e ListenerManagerValidationError) Cause() error { return e.cause }
-
-// Key function returns key value.
-func (e ListenerManagerValidationError) Key() bool { return e.key }
-
-// ErrorName returns error name.
-func (e ListenerManagerValidationError) ErrorName() string { return "ListenerManagerValidationError" }
-
-// Error satisfies the builtin error interface
-func (e ListenerManagerValidationError) Error() string {
-	cause := ""
-	if e.cause != nil {
-		cause = fmt.Sprintf(" | caused by: %v", e.cause)
-	}
-
-	key := ""
-	if e.key {
-		key = "key for "
-	}
-
-	return fmt.Sprintf(
-		"invalid %sListenerManager.%s: %s%s",
-		key,
-		e.field,
-		e.reason,
-		cause)
-}
-
-var _ error = ListenerManagerValidationError{}
-
-var _ interface {
-	Field() string
-	Reason() string
-	Key() bool
-	Cause() error
-	ErrorName() string
-} = ListenerManagerValidationError{}
-
-// Validate checks the field values on ValidationListenerManager with the rules
-// defined in the proto definition for this message. If any rules are
-// violated, the first error encountered is returned, or nil if there are no violations.
-func (m *ValidationListenerManager) Validate() error {
-	return m.validate(false)
-}
-
-// ValidateAll checks the field values on ValidationListenerManager with the
-// rules defined in the proto definition for this message. If any rules are
-// violated, the result is a list of violation errors wrapped in
-// ValidationListenerManagerMultiError, or nil if none found.
-func (m *ValidationListenerManager) ValidateAll() error {
-	return m.validate(true)
-}
-
-func (m *ValidationListenerManager) validate(all bool) error {
-	if m == nil {
-		return nil
-	}
-
-	var errors []error
-
-	if len(errors) > 0 {
-		return ValidationListenerManagerMultiError(errors)
-	}
-
-	return nil
-}
-
-// ValidationListenerManagerMultiError is an error wrapping multiple validation
-// errors returned by ValidationListenerManager.ValidateAll() if the
-// designated constraints aren't met.
-type ValidationListenerManagerMultiError []error
-
-// Error returns a concatenation of all the error messages it wraps.
-func (m ValidationListenerManagerMultiError) Error() string {
-	var msgs []string
-	for _, err := range m {
-		msgs = append(msgs, err.Error())
-	}
-	return strings.Join(msgs, "; ")
-}
-
-// AllErrors returns a list of validation violation errors.
-func (m ValidationListenerManagerMultiError) AllErrors() []error { return m }
-
-// ValidationListenerManagerValidationError is the validation error returned by
-// ValidationListenerManager.Validate if the designated constraints aren't met.
-type ValidationListenerManagerValidationError struct {
-	field  string
-	reason string
-	cause  error
-	key    bool
-}
-
-// Field function returns field value.
-func (e ValidationListenerManagerValidationError) Field() string { return e.field }
-
-// Reason function returns reason value.
-func (e ValidationListenerManagerValidationError) Reason() string { return e.reason }
-
-// Cause function returns cause value.
-func (e ValidationListenerManagerValidationError) Cause() error { return e.cause }
-
-// Key function returns key value.
-func (e ValidationListenerManagerValidationError) Key() bool { return e.key }
-
-// ErrorName returns error name.
-func (e ValidationListenerManagerValidationError) ErrorName() string {
-	return "ValidationListenerManagerValidationError"
-}
-
-// Error satisfies the builtin error interface
-func (e ValidationListenerManagerValidationError) Error() string {
-	cause := ""
-	if e.cause != nil {
-		cause = fmt.Sprintf(" | caused by: %v", e.cause)
-	}
-
-	key := ""
-	if e.key {
-		key = "key for "
-	}
-
-	return fmt.Sprintf(
-		"invalid %sValidationListenerManager.%s: %s%s",
-		key,
-		e.field,
-		e.reason,
-		cause)
-}
-
-var _ error = ValidationListenerManagerValidationError{}
-
-var _ interface {
-	Field() string
-	Reason() string
-	Key() bool
-	Cause() error
-	ErrorName() string
-} = ValidationListenerManagerValidationError{}
-
-// Validate checks the field values on ApiListenerManager with the rules
-// defined in the proto definition for this message. If any rules are
-// violated, the first error encountered is returned, or nil if there are no violations.
-func (m *ApiListenerManager) Validate() error {
-	return m.validate(false)
-}
-
-// ValidateAll checks the field values on ApiListenerManager with the rules
-// defined in the proto definition for this message. If any rules are
-// violated, the result is a list of violation errors wrapped in
-// ApiListenerManagerMultiError, or nil if none found.
-func (m *ApiListenerManager) ValidateAll() error {
-	return m.validate(true)
-}
-
-func (m *ApiListenerManager) validate(all bool) error {
-	if m == nil {
-		return nil
-	}
-
-	var errors []error
-
-	if len(errors) > 0 {
-		return ApiListenerManagerMultiError(errors)
-	}
-
-	return nil
-}
-
-// ApiListenerManagerMultiError is an error wrapping multiple validation errors
-// returned by ApiListenerManager.ValidateAll() if the designated constraints
-// aren't met.
-type ApiListenerManagerMultiError []error
-
-// Error returns a concatenation of all the error messages it wraps.
-func (m ApiListenerManagerMultiError) Error() string {
-	var msgs []string
-	for _, err := range m {
-		msgs = append(msgs, err.Error())
-	}
-	return strings.Join(msgs, "; ")
-}
-
-// AllErrors returns a list of validation violation errors.
-func (m ApiListenerManagerMultiError) AllErrors() []error { return m }
-
-// ApiListenerManagerValidationError is the validation error returned by
-// ApiListenerManager.Validate if the designated constraints aren't met.
-type ApiListenerManagerValidationError struct {
-	field  string
-	reason string
-	cause  error
-	key    bool
-}
-
-// Field function returns field value.
-func (e ApiListenerManagerValidationError) Field() string { return e.field }
-
-// Reason function returns reason value.
-func (e ApiListenerManagerValidationError) Reason() string { return e.reason }
-
-// Cause function returns cause value.
-func (e ApiListenerManagerValidationError) Cause() error { return e.cause }
-
-// Key function returns key value.
-func (e ApiListenerManagerValidationError) Key() bool { return e.key }
-
-// ErrorName returns error name.
-func (e ApiListenerManagerValidationError) ErrorName() string {
-	return "ApiListenerManagerValidationError"
-}
-
-// Error satisfies the builtin error interface
-func (e ApiListenerManagerValidationError) Error() string {
-	cause := ""
-	if e.cause != nil {
-		cause = fmt.Sprintf(" | caused by: %v", e.cause)
-	}
-
-	key := ""
-	if e.key {
-		key = "key for "
-	}
-
-	return fmt.Sprintf(
-		"invalid %sApiListenerManager.%s: %s%s",
-		key,
-		e.field,
-		e.reason,
-		cause)
-}
-
-var _ error = ApiListenerManagerValidationError{}
-
-var _ interface {
-	Field() string
-	Reason() string
-	Key() bool
-	Cause() error
-	ErrorName() string
-} = ApiListenerManagerValidationError{}
 
 // Validate checks the field values on Listener_DeprecatedV1 with the rules
 // defined in the proto definition for this message. If any rules are
@@ -1546,7 +1359,7 @@ type Listener_DeprecatedV1MultiError []error
 
 // Error returns a concatenation of all the error messages it wraps.
 func (m Listener_DeprecatedV1MultiError) Error() string {
-	var msgs []string
+	msgs := make([]string, 0, len(m))
 	for _, err := range m {
 		msgs = append(msgs, err.Error())
 	}
@@ -1721,6 +1534,48 @@ func (m *Listener_ConnectionBalanceConfig) validate(all bool) error {
 			}
 		}
 
+	case *Listener_ConnectionBalanceConfig_CpuLocalityBalance_:
+		if v == nil {
+			err := Listener_ConnectionBalanceConfigValidationError{
+				field:  "BalanceType",
+				reason: "oneof value cannot be a typed-nil",
+			}
+			if !all {
+				return err
+			}
+			errors = append(errors, err)
+		}
+		oneofBalanceTypePresent = true
+
+		if all {
+			switch v := interface{}(m.GetCpuLocalityBalance()).(type) {
+			case interface{ ValidateAll() error }:
+				if err := v.ValidateAll(); err != nil {
+					errors = append(errors, Listener_ConnectionBalanceConfigValidationError{
+						field:  "CpuLocalityBalance",
+						reason: "embedded message failed validation",
+						cause:  err,
+					})
+				}
+			case interface{ Validate() error }:
+				if err := v.Validate(); err != nil {
+					errors = append(errors, Listener_ConnectionBalanceConfigValidationError{
+						field:  "CpuLocalityBalance",
+						reason: "embedded message failed validation",
+						cause:  err,
+					})
+				}
+			}
+		} else if v, ok := interface{}(m.GetCpuLocalityBalance()).(interface{ Validate() error }); ok {
+			if err := v.Validate(); err != nil {
+				return Listener_ConnectionBalanceConfigValidationError{
+					field:  "CpuLocalityBalance",
+					reason: "embedded message failed validation",
+					cause:  err,
+				}
+			}
+		}
+
 	default:
 		_ = v // ensures v is used
 	}
@@ -1750,7 +1605,7 @@ type Listener_ConnectionBalanceConfigMultiError []error
 
 // Error returns a concatenation of all the error messages it wraps.
 func (m Listener_ConnectionBalanceConfigMultiError) Error() string {
-	var msgs []string
+	msgs := make([]string, 0, len(m))
 	for _, err := range m {
 		msgs = append(msgs, err.Error())
 	}
@@ -1853,7 +1708,7 @@ type Listener_InternalListenerConfigMultiError []error
 
 // Error returns a concatenation of all the error messages it wraps.
 func (m Listener_InternalListenerConfigMultiError) Error() string {
-	var msgs []string
+	msgs := make([]string, 0, len(m))
 	for _, err := range m {
 		msgs = append(msgs, err.Error())
 	}
@@ -1920,6 +1775,139 @@ var _ interface {
 	ErrorName() string
 } = Listener_InternalListenerConfigValidationError{}
 
+// Validate checks the field values on Listener_FcdsConfig with the rules
+// defined in the proto definition for this message. If any rules are
+// violated, the first error encountered is returned, or nil if there are no violations.
+func (m *Listener_FcdsConfig) Validate() error {
+	return m.validate(false)
+}
+
+// ValidateAll checks the field values on Listener_FcdsConfig with the rules
+// defined in the proto definition for this message. If any rules are
+// violated, the result is a list of violation errors wrapped in
+// Listener_FcdsConfigMultiError, or nil if none found.
+func (m *Listener_FcdsConfig) ValidateAll() error {
+	return m.validate(true)
+}
+
+func (m *Listener_FcdsConfig) validate(all bool) error {
+	if m == nil {
+		return nil
+	}
+
+	var errors []error
+
+	// no validation rules for Name
+
+	if all {
+		switch v := interface{}(m.GetConfigSource()).(type) {
+		case interface{ ValidateAll() error }:
+			if err := v.ValidateAll(); err != nil {
+				errors = append(errors, Listener_FcdsConfigValidationError{
+					field:  "ConfigSource",
+					reason: "embedded message failed validation",
+					cause:  err,
+				})
+			}
+		case interface{ Validate() error }:
+			if err := v.Validate(); err != nil {
+				errors = append(errors, Listener_FcdsConfigValidationError{
+					field:  "ConfigSource",
+					reason: "embedded message failed validation",
+					cause:  err,
+				})
+			}
+		}
+	} else if v, ok := interface{}(m.GetConfigSource()).(interface{ Validate() error }); ok {
+		if err := v.Validate(); err != nil {
+			return Listener_FcdsConfigValidationError{
+				field:  "ConfigSource",
+				reason: "embedded message failed validation",
+				cause:  err,
+			}
+		}
+	}
+
+	if len(errors) > 0 {
+		return Listener_FcdsConfigMultiError(errors)
+	}
+
+	return nil
+}
+
+// Listener_FcdsConfigMultiError is an error wrapping multiple validation
+// errors returned by Listener_FcdsConfig.ValidateAll() if the designated
+// constraints aren't met.
+type Listener_FcdsConfigMultiError []error
+
+// Error returns a concatenation of all the error messages it wraps.
+func (m Listener_FcdsConfigMultiError) Error() string {
+	msgs := make([]string, 0, len(m))
+	for _, err := range m {
+		msgs = append(msgs, err.Error())
+	}
+	return strings.Join(msgs, "; ")
+}
+
+// AllErrors returns a list of validation violation errors.
+func (m Listener_FcdsConfigMultiError) AllErrors() []error { return m }
+
+// Listener_FcdsConfigValidationError is the validation error returned by
+// Listener_FcdsConfig.Validate if the designated constraints aren't met.
+type Listener_FcdsConfigValidationError struct {
+	field  string
+	reason string
+	cause  error
+	key    bool
+}
+
+// Field function returns field value.
+func (e Listener_FcdsConfigValidationError) Field() string { return e.field }
+
+// Reason function returns reason value.
+func (e Listener_FcdsConfigValidationError) Reason() string { return e.reason }
+
+// Cause function returns cause value.
+func (e Listener_FcdsConfigValidationError) Cause() error { return e.cause }
+
+// Key function returns key value.
+func (e Listener_FcdsConfigValidationError) Key() bool { return e.key }
+
+// ErrorName returns error name.
+func (e Listener_FcdsConfigValidationError) ErrorName() string {
+	return "Listener_FcdsConfigValidationError"
+}
+
+// Error satisfies the builtin error interface
+func (e Listener_FcdsConfigValidationError) Error() string {
+	cause := ""
+	if e.cause != nil {
+		cause = fmt.Sprintf(" | caused by: %v", e.cause)
+	}
+
+	key := ""
+	if e.key {
+		key = "key for "
+	}
+
+	return fmt.Sprintf(
+		"invalid %sListener_FcdsConfig.%s: %s%s",
+		key,
+		e.field,
+		e.reason,
+		cause)
+}
+
+var _ error = Listener_FcdsConfigValidationError{}
+
+var _ interface {
+	Field() string
+	Reason() string
+	Key() bool
+	Cause() error
+	ErrorName() string
+} = Listener_FcdsConfigValidationError{}
+
 // Validate checks the field values on
 // Listener_ConnectionBalanceConfig_ExactBalance with the rules defined in the
 // proto definition for this message. If any rules are violated, the first
@@ -1959,7 +1947,7 @@ type Listener_ConnectionBalanceConfig_ExactBalanceMultiError []error
 
 // Error returns a concatenation of all the error messages it wraps.
 func (m Listener_ConnectionBalanceConfig_ExactBalanceMultiError) Error() string {
-	var msgs []string
+	msgs := make([]string, 0, len(m))
 	for _, err := range m {
 		msgs = append(msgs, err.Error())
 	}
@@ -2028,3 +2016,117 @@ var _ interface {
 	Cause() error
 	ErrorName() string
 } = Listener_ConnectionBalanceConfig_ExactBalanceValidationError{}
+
+// Validate checks the field values on
+// Listener_ConnectionBalanceConfig_CpuLocalityBalance with the rules defined
+// in the proto definition for this message. If any rules are violated, the
+// first error encountered is returned, or nil if there are no violations.
+func (m *Listener_ConnectionBalanceConfig_CpuLocalityBalance) Validate() error {
+	return m.validate(false)
+}
+
+// ValidateAll checks the field values on
+// Listener_ConnectionBalanceConfig_CpuLocalityBalance with the rules defined
+// in the proto definition for this message. If any rules are violated, the
+// result is a list of violation errors wrapped in
+// Listener_ConnectionBalanceConfig_CpuLocalityBalanceMultiError, or nil if
+// none found.
+func (m *Listener_ConnectionBalanceConfig_CpuLocalityBalance) ValidateAll() error {
+	return m.validate(true)
+}
+
+func (m *Listener_ConnectionBalanceConfig_CpuLocalityBalance) validate(all bool) error {
+	if m == nil {
+		return nil
+	}
+
+	var errors []error
+
+	if len(errors) > 0 {
+		return Listener_ConnectionBalanceConfig_CpuLocalityBalanceMultiError(errors)
+	}
+
+	return nil
+}
+
+// Listener_ConnectionBalanceConfig_CpuLocalityBalanceMultiError is an error
+// wrapping multiple validation errors returned by
+// Listener_ConnectionBalanceConfig_CpuLocalityBalance.ValidateAll() if the
+// designated constraints aren't met.
+type Listener_ConnectionBalanceConfig_CpuLocalityBalanceMultiError []error
+
+// Error returns a concatenation of all the error messages it wraps.
+func (m Listener_ConnectionBalanceConfig_CpuLocalityBalanceMultiError) Error() string {
+	msgs := make([]string, 0, len(m))
+	for _, err := range m {
+		msgs = append(msgs, err.Error())
+	}
+	return strings.Join(msgs, "; ")
+}
+
+// AllErrors returns a list of validation violation errors.
+func (m Listener_ConnectionBalanceConfig_CpuLocalityBalanceMultiError) AllErrors() []error { return m }
+
+// Listener_ConnectionBalanceConfig_CpuLocalityBalanceValidationError is the
+// validation error returned by
+// Listener_ConnectionBalanceConfig_CpuLocalityBalance.Validate if the
+// designated constraints aren't met.
+type Listener_ConnectionBalanceConfig_CpuLocalityBalanceValidationError struct {
+	field  string
+	reason string
+	cause  error
+	key    bool
+}
+
+// Field function returns field value.
+func (e Listener_ConnectionBalanceConfig_CpuLocalityBalanceValidationError) Field() string {
+	return e.field
+}
+
+// Reason function returns reason value.
+func (e Listener_ConnectionBalanceConfig_CpuLocalityBalanceValidationError) Reason() string {
+	return e.reason
+}
+
+// Cause function returns cause value.
+func (e Listener_ConnectionBalanceConfig_CpuLocalityBalanceValidationError) Cause() error {
+	return e.cause
+}
+
+// Key function returns key value.
+func (e Listener_ConnectionBalanceConfig_CpuLocalityBalanceValidationError) Key() bool { return e.key }
+
+// ErrorName returns error name.
+func (e Listener_ConnectionBalanceConfig_CpuLocalityBalanceValidationError) ErrorName() string {
+	return "Listener_ConnectionBalanceConfig_CpuLocalityBalanceValidationError"
+}
+
+// Error satisfies the builtin error interface
+func (e Listener_ConnectionBalanceConfig_CpuLocalityBalanceValidationError) Error() string {
+	cause := ""
+	if e.cause != nil {
+		cause = fmt.Sprintf(" | caused by: %v", e.cause)
+	}
+
+	key := ""
+	if e.key {
+		key = "key for "
+	}
+
+	return fmt.Sprintf(
+		"invalid %sListener_ConnectionBalanceConfig_CpuLocalityBalance.%s: %s%s",
+		key,
+		e.field,
+		e.reason,
+		cause)
+}
+
+var _ error = Listener_ConnectionBalanceConfig_CpuLocalityBalanceValidationError{}
+
+var _ interface {
+	Field() string
+	Reason() string
+	Key() bool
+	Cause() error
+	ErrorName() string
+} = Listener_ConnectionBalanceConfig_CpuLocalityBalanceValidationError{}

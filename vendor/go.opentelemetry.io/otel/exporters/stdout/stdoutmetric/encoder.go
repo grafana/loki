@@ -1,7 +1,7 @@
 // Copyright The OpenTelemetry Authors
 // SPDX-License-Identifier: Apache-2.0
 
-package stdoutmetric // import "go.opentelemetry.io/otel/exporters/stdout/stdoutmetric"
+package stdoutmetric
 
 import (
 	"errors"
@@ -15,7 +15,7 @@ type Encoder interface {
 }
 
 // encoderHolder is the concrete type used to wrap an Encoder so it can be
-// used as a atomic.Value type.
+// used as an atomic.Value type.
 type encoderHolder struct {
 	encoder Encoder
 }

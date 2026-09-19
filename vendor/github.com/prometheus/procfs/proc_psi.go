@@ -1,4 +1,4 @@
-// Copyright 2019 The Prometheus Authors
+// Copyright The Prometheus Authors
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
@@ -30,7 +30,7 @@ import (
 	"io"
 	"strings"
 
-	"github.com/prometheus/procfs/internal/util"
+	"github.com/prometheus/procfs/internal/parsers"
 )
 
 const lineFormat = "avg10=%f avg60=%f avg300=%f total=%d"
@@ -59,7 +59,7 @@ type PSIStats struct {
 // resource from /proc/pressure/<resource>. At time of writing this can be
 // either "cpu", "memory" or "io".
 func (fs FS) PSIStatsForResource(resource string) (PSIStats, error) {
-	data, err := util.ReadFileNoStat(fs.proc.Path(fmt.Sprintf("%s/%s", "pressure", resource)))
+	data, err := parsers.ReadFileNoStat(fs.proc.Path(fmt.Sprintf("%s/%s", "pressure", resource)))
 	if err != nil {
 		return PSIStats{}, fmt.Errorf("%w: psi_stats: unavailable for %q: %w", ErrFileRead, resource, err)
 	}

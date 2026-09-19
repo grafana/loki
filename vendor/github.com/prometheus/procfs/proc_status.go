@@ -1,4 +1,4 @@
-// Copyright 2018 The Prometheus Authors
+// Copyright The Prometheus Authors
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
@@ -16,11 +16,11 @@ package procfs
 import (
 	"bytes"
 	"math/bits"
-	"sort"
+	"slices"
 	"strconv"
 	"strings"
 
-	"github.com/prometheus/procfs/internal/util"
+	"github.com/prometheus/procfs/internal/parsers"
 )
 
 // ProcStatus provides status information about the process,
@@ -83,19 +83,31 @@ type ProcStatus struct {
 
 	// CpusAllowedList: List of cpu cores processes are allowed to run on.
 	CpusAllowedList []uint64
+
+	// CapInh is the bitmap of inheritable capabilities
+	//
+	// See: https://www.kernel.org/doc/man-pages/online/pages/man7/capabilities.7.html
+	CapInh uint64
+	// CapPrm is the bitmap of permitted capabilities
+	CapPrm uint64
+	// CapEff is the bitmap of effective capabilities
+	CapEff uint64
+	// CapBnd is the bitmap of bounding capabilities
+	CapBnd uint64
+	// CapAmb is the bitmap of ambient capabilities
+	CapAmb uint64
 }
 
 // NewStatus returns the current status information of the process.
 func (p Proc) NewStatus() (ProcStatus, error) {
-	data, err := util.ReadFileNoStat(p.path("status"))
+	data, err := parsers.ReadFileNoStat(p.path("status"))
 	if err != nil {
 		return ProcStatus{}, err
 	}
 
 	s := ProcStatus{PID: p.PID}
 
-	lines := strings.Split(string(data), "\n")
-	for _, line := range lines {
+	for line := range strings.SplitSeq(string(data), "\n") {
 		if !bytes.Contains([]byte(line), []byte(":")) {
 			continue
 		}
@@ -191,6 +203,36 @@ func (s *ProcStatus) fillStatus(k string, vString string, vUint uint64, vUintByt
 		s.NonVoluntaryCtxtSwitches = vUint
 	case "Cpus_allowed_list":
 		s.CpusAllowedList = calcCpusAllowedList(vString)
+	case "CapInh":
+		var err error
+		s.CapInh, err = strconv.ParseUint(vString, 16, 64)
+		if err != nil {
+			return err
+		}
+	case "CapPrm":
+		var err error
+		s.CapPrm, err = strconv.ParseUint(vString, 16, 64)
+		if err != nil {
+			return err
+		}
+	case "CapEff":
+		var err error
+		s.CapEff, err = strconv.ParseUint(vString, 16, 64)
+		if err != nil {
+			return err
+		}
+	case "CapBnd":
+		var err error
+		s.CapBnd, err = strconv.ParseUint(vString, 16, 64)
+		if err != nil {
+			return err
+		}
+	case "CapAmb":
+		var err error
+		s.CapAmb, err = strconv.ParseUint(vString, 16, 64)
+		if err != nil {
+			return err
+		}
 	}
 
 	return nil
@@ -222,7 +264,7 @@ func calcCpusAllowedList(cpuString string) []uint64 {
 
 	}
 
-	sort.Slice(g, func(i, j int) bool { return g[i] < g[j] })
+	slices.Sort(g)
 	return g
 }
 

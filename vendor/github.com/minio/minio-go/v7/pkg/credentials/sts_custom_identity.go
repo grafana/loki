@@ -107,7 +107,7 @@ func (c *CustomTokenIdentity) RetrieveWithCredContext(cc *CredContext) (value Va
 
 	u.RawQuery = v.Encode()
 
-	req, err := http.NewRequest(http.MethodPost, u.String(), nil)
+	req, err := http.NewRequestWithContext(cc.requestContext(), http.MethodPost, u.String(), nil)
 	if err != nil {
 		return value, err
 	}
@@ -132,7 +132,7 @@ func (c *CustomTokenIdentity) RetrieveWithCredContext(cc *CredContext) (value Va
 
 	r := AssumeRoleWithCustomTokenResponse{}
 	if err = xml.NewDecoder(resp.Body).Decode(&r); err != nil {
-		return
+		return value, err
 	}
 
 	cr := r.Result.Credentials

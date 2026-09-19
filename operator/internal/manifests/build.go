@@ -1,8 +1,8 @@
 package manifests
 
 import (
+	"dario.cat/mergo"
 	"github.com/ViaQ/logerr/v2/kverrors"
-	"github.com/imdario/mergo"
 	openshiftconfigv1 "github.com/openshift/api/config/v1"
 	"github.com/openshift/library-go/pkg/crypto"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -103,6 +103,11 @@ func BuildAll(opts Options) ([]client.Object, error) {
 		res = append(res, prometheusRuleObjs...)
 	}
 
+	if opts.Stack.NetworkPolicies != nil && opts.Stack.NetworkPolicies.RuleSet == lokiv1.NetworkPolicyRuleSetRestrictIngressEgress {
+		networkPolicyObjs := BuildNetworkPolicies(opts)
+		res = append(res, networkPolicyObjs...)
+	}
+
 	return res, nil
 }
 
@@ -116,6 +121,14 @@ func DefaultLokiStackSpec(size lokiv1.LokiStackSizeType) *lokiv1.LokiStackSpec {
 // ApplyDefaultSettings manipulates the options to conform to
 // build specifications
 func ApplyDefaultSettings(opts *Options) error {
+	// Handle the deprecated field opt.Stack.ReplicationFactor.
+	if (opts.Stack.Replication == nil || opts.Stack.Replication.Factor == 0) && opts.Stack.ReplicationFactor > 0 { // nolint:staticcheck
+		if opts.Stack.Replication == nil {
+			opts.Stack.Replication = &lokiv1.ReplicationSpec{}
+		}
+		opts.Stack.Replication.Factor = opts.Stack.ReplicationFactor // nolint:staticcheck
+	}
+
 	spec := DefaultLokiStackSpec(opts.Stack.Size)
 
 	if err := mergo.Merge(spec, opts.Stack, mergo.WithOverride); err != nil {

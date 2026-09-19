@@ -1,0 +1,154 @@
+package passthroughgateway
+
+import (
+	"net/http"
+	"net/http/httputil"
+	"net/url"
+	"slices"
+	"strconv"
+	"strings"
+	"time"
+
+	"github.com/go-logr/logr"
+)
+
+var lokiWritePaths = []string{
+	"/loki/api/v1/push",
+	"/api/prom/push",
+	"/otlp/v1/logs",
+}
+
+// lokiRouter directs requests to the appropriate Loki upstream (distributor or query-frontend).
+type lokiRouter struct {
+	writeProxy    *httputil.ReverseProxy
+	readProxy     *httputil.ReverseProxy
+	logger        logr.Logger
+	defaultTenant string
+}
+
+type responseWriter struct {
+	http.ResponseWriter
+	statusCode int
+}
+
+func (rw *responseWriter) WriteHeader(code int) {
+	rw.statusCode = code
+	rw.ResponseWriter.WriteHeader(code)
+}
+
+func (rw *responseWriter) Flush() {
+	if f, ok := rw.ResponseWriter.(http.Flusher); ok {
+		f.Flush()
+	}
+}
+
+func (rw *responseWriter) Unwrap() http.ResponseWriter {
+	return rw.ResponseWriter
+}
+
+// NewLokiRouter creates a new router that directs requests to the appropriate upstream.
+func NewLokiRouter(cfg *Config, logger logr.Logger) (*lokiRouter, error) {
+	transport, err := newTransport(cfg)
+	if err != nil {
+		return nil, err
+	}
+
+	writeProxy, err := newReverseProxy(cfg.Loki.DistributorEndpoint, transport, logger)
+	if err != nil {
+		return nil, err
+	}
+
+	readProxy, err := newReverseProxy(cfg.Loki.QueryFrontendEndpoint, transport, logger)
+	if err != nil {
+		return nil, err
+	}
+
+	return &lokiRouter{
+		writeProxy:    writeProxy,
+		readProxy:     readProxy,
+		logger:        logger,
+		defaultTenant: cfg.DefaultTenant,
+	}, nil
+}
+
+func newTransport(cfg *Config) (*http.Transport, error) {
+	transport := http.DefaultTransport.(*http.Transport).Clone()
+	transport.Proxy = nil
+	transport.ResponseHeaderTimeout = cfg.Loki.Timeout
+
+	tlsConfig, err := BuildUpstreamTLSConfig(cfg.TLSOptions(), cfg.Loki.CAFile, cfg.Loki.CertFile, cfg.Loki.KeyFile)
+	if err != nil {
+		return nil, err
+	}
+	transport.TLSClientConfig = tlsConfig
+
+	return transport, nil
+}
+
+func newReverseProxy(upstreamEndpoint string, transport *http.Transport, logger logr.Logger) (*httputil.ReverseProxy, error) {
+	target, err := url.Parse(upstreamEndpoint)
+	if err != nil {
+		return nil, err
+	}
+
+	proxy := &httputil.ReverseProxy{
+		Rewrite: func(pr *httputil.ProxyRequest) {
+			pr.SetURL(target)
+			pr.Out.Host = target.Host
+		},
+		Transport: transport,
+		ErrorHandler: func(w http.ResponseWriter, r *http.Request, err error) {
+			logger.Error(err, "proxy error", "method", r.Method, "path", r.URL.Path)
+			w.WriteHeader(http.StatusBadGateway)
+		},
+	}
+
+	return proxy, nil
+}
+
+func isWritePath(path string) bool {
+	return slices.ContainsFunc(lokiWritePaths, func(writePath string) bool {
+		return strings.HasPrefix(path, writePath)
+	})
+}
+
+func (r *lokiRouter) ServeHTTP(w http.ResponseWriter, req *http.Request) {
+	if req.Header.Get("X-Scope-OrgID") == "" {
+		if r.defaultTenant == "" {
+			r.logger.Error(nil, "missing required header", "header", "X-Scope-OrgID", "path", req.URL.Path, "method", req.Method)
+			w.WriteHeader(http.StatusBadRequest)
+			_, _ = w.Write([]byte("Bad request: X-Scope-OrgID header is required"))
+			return
+		}
+		req.Header.Set("X-Scope-OrgID", r.defaultTenant)
+	}
+
+	if isWritePath(req.URL.Path) {
+		r.writeProxy.ServeHTTP(w, req)
+		return
+	}
+	r.readProxy.ServeHTTP(w, req)
+}
+
+// instrumentedHandler wraps an http.Handler with metrics instrumentation.
+func instrumentedHandler(handler http.Handler, metrics *metrics) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		route := "read"
+		if isWritePath(r.URL.Path) {
+			route = "write"
+		}
+
+		inFlight := metrics.RequestsInFlight.WithLabelValues(route)
+		inFlight.Inc()
+		defer inFlight.Dec()
+
+		start := time.Now()
+		wrapped := &responseWriter{ResponseWriter: w, statusCode: http.StatusOK}
+
+		handler.ServeHTTP(wrapped, r)
+
+		duration := time.Since(start).Seconds()
+		metrics.RequestDuration.WithLabelValues(r.Method, route).Observe(duration)
+		metrics.RequestsTotal.WithLabelValues(r.Method, route, strconv.Itoa(wrapped.statusCode)).Inc()
+	})
+}

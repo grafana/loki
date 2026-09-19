@@ -28,6 +28,13 @@ type Builder interface {
 
 	// OnJobResponse reports back the response of the job execution.
 	OnJobResponse(response *grpc.JobResult) error
+
+	// JobsLeft reports the estimated number of jobs left to process.
+	// It should be updated when jobs are successfully processed or new work is picked up for execution.
+	// It should include in-flight and upcoming jobs even if they are created on-demand.
+	// It could just estimate jobs left to be processed for concluding ongoing unit of work.
+	// The implementation must be concurrency safe.
+	JobsLeft() int
 }
 
 // Queue implements the job queue service
@@ -81,11 +88,14 @@ func newQueue(checkTimedOutJobsInterval time.Duration, r prometheus.Registerer) 
 }
 
 // RegisterBuilder registers a builder for a specific job type
-func (q *Queue) RegisterBuilder(jobType grpc.JobType, b Builder, jobTimeout time.Duration, maxRetries int) error {
+func (q *Queue) RegisterBuilder(jobType grpc.JobType, b Builder, jobTimeout time.Duration, maxRetries int, r prometheus.Registerer) error {
 	if _, exists := q.builders[jobType]; exists {
 		return ErrJobTypeAlreadyRegistered
 	}
 
+	registerJobsLeftTrackerMetric(jobType.Humanize(), func() float64 {
+		return float64(b.JobsLeft())
+	}, r)
 	q.builders[jobType] = builder{
 		Builder:    b,
 		jobTimeout: jobTimeout,
@@ -141,55 +151,75 @@ func (q *Queue) retryFailedJobs() {
 		case <-q.stop:
 			return
 		case <-ticker.C:
-			var jobsToRetry []string
-
-			q.processingJobsMtx.Lock()
-			now := time.Now()
-			for jobID, pj := range q.processingJobs {
-				if pj.attemptsLeft <= 0 {
-					level.Error(util_log.Logger).Log("msg", "job ran out of attempts, dropping it", "jobID", jobID)
-					q.metrics.jobsDropped.Inc()
-
-					delete(q.processingJobs, jobID)
-					continue
-				}
-				timeout := q.builders[pj.job.Type].jobTimeout
-				if pj.lastAttemptFailed || now.Sub(pj.dequeued) > timeout {
-					jobsToRetry = append(jobsToRetry, jobID)
-				}
-			}
-			q.processingJobsMtx.Unlock()
+			jobsToRetry := q.findJobsToRetry(time.Now())
 
 			for _, jobID := range jobsToRetry {
-				reason := "timeout"
-				q.processingJobsMtx.Lock()
-				pj := q.processingJobs[jobID]
-				if pj.lastAttemptFailed {
-					reason = "failed"
+				job, reason, ok := q.prepareJobForRetry(jobID)
+				if !ok {
+					continue
 				}
-
-				// reset the dequeued time so that the timeout is calculated from the time when the job is sent for processing.
-				q.processingJobs[jobID].dequeued = time.Now()
-				q.processingJobs[jobID].lastAttemptFailed = false
-				q.processingJobs[jobID].attemptsLeft--
-				q.processingJobsMtx.Unlock()
 
 				// Requeue the job
 				select {
 				case <-q.stop:
 					return
-				case q.queue <- pj.job:
+				case q.queue <- job:
 					q.metrics.jobRetries.WithLabelValues(reason).Inc()
 					level.Warn(util_log.Logger).Log(
 						"msg", "requeued job",
 						"job_id", jobID,
-						"job_type", pj.job.Type,
+						"job_type", job.Type,
 						"reason", reason,
 					)
 				}
 			}
 		}
 	}
+}
+
+func (q *Queue) findJobsToRetry(now time.Time) []string {
+	var jobsToRetry []string
+
+	q.processingJobsMtx.Lock()
+	defer q.processingJobsMtx.Unlock()
+
+	for jobID, pj := range q.processingJobs {
+		if pj.attemptsLeft <= 0 {
+			level.Error(util_log.Logger).Log("msg", "job ran out of attempts, dropping it", "jobID", jobID)
+			q.metrics.jobsDropped.Inc()
+
+			delete(q.processingJobs, jobID)
+			continue
+		}
+		timeout := q.builders[pj.job.Type].jobTimeout
+		if pj.lastAttemptFailed || now.Sub(pj.dequeued) > timeout {
+			jobsToRetry = append(jobsToRetry, jobID)
+		}
+	}
+
+	return jobsToRetry
+}
+
+func (q *Queue) prepareJobForRetry(jobID string) (*grpc.Job, string, bool) {
+	q.processingJobsMtx.Lock()
+	defer q.processingJobsMtx.Unlock()
+
+	pj, exists := q.processingJobs[jobID]
+	if !exists {
+		return nil, "", false
+	}
+
+	reason := "timeout"
+	if pj.lastAttemptFailed {
+		reason = "failed"
+	}
+
+	// Reset the dequeued time so that the timeout is calculated from the time when the job is sent for processing.
+	pj.dequeued = time.Now()
+	pj.lastAttemptFailed = false
+	pj.attemptsLeft--
+
+	return pj.job, reason, true
 }
 
 func (q *Queue) Loop(s grpc.JobQueue_LoopServer) error {
@@ -285,6 +315,7 @@ func (q *Queue) reportJobResult(result *grpc.JobResult) error {
 			"job_id", result.JobId,
 			"job_type", result.JobType,
 		)
+		q.metrics.jobsDropped.Inc()
 	} else {
 		q.metrics.jobsProcessed.Inc()
 

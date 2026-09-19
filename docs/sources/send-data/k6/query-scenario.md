@@ -24,7 +24,7 @@ Loki has 5 types of queries:
 In a real-world use-case, such as querying Loki using it as a Grafana
 data source, all of these queries are used. Each of them has a different
 [API](https://grafana.com/docs/loki/<LOKI_VERSION>/reference/loki-http-api/) endpoint. The xk6-loki extension
-provides a [Javascript API](https://github.com/grafana/xk6-loki#javascript-api)
+provides a [JavaScript API](https://github.com/grafana/xk6-loki#javascript-api)
 for all these query types.
 
 
@@ -33,7 +33,7 @@ for all these query types.
 Instant queries can be executed using the function `instantQuery(query, limit)`
 on the `loki.Client` instance:
 
-**Javascript example code fragment:**
+**JavaScript example code fragment:**
 
 ```javascript
 export default () => {
@@ -46,7 +46,7 @@ export default () => {
 Range queries can be executed using the function `rangeQuery(query, duration, limit)`
 on the `loki.Client` instance:
 
-**Javascript example code fragment:**
+**JavaScript example code fragment:**
 
 ```javascript
 export default () => {
@@ -59,7 +59,7 @@ export default () => {
 Labels queries can be executed using the function `labelsQuery(duration)`
 on the `loki.Client` instance:
 
-**Javascript example code fragment:**
+**JavaScript example code fragment:**
 
 ```javascript
 export default () => {
@@ -72,7 +72,7 @@ export default () => {
 Label values queries can be executed using the function `labelValuesQuery(label, duration)`
 on the `loki.Client` instance:
 
-**Javascript example code fragment:**
+**JavaScript example code fragment:**
 
 ```javascript
 export default () => {
@@ -85,7 +85,7 @@ export default () => {
 Series queries can be executed using the function `seriesQuery(matcher, range)`
 on the `loki.Client` instance:
 
-**Javascript example code fragment:**
+**JavaScript example code fragment:**
 
 ```javascript
 export default () => {
@@ -113,7 +113,7 @@ object. It contains label names and values that are generated in a reproducible
 manner. Use the same labels cardinality configuration for both `write` and
 `read` testing.
 
-**Javascript example code fragment:**
+**JavaScript example code fragment:**
 
 ```javascript
 const labelCardinality = {
@@ -137,17 +137,17 @@ export default() {
 Alternatively, you can define your own pool of label names and values,
 and then randomly select labels from your pool instead of a generated pool. 
 
-## Javascript example
+## JavaScript example
 
 A more complex example of a read scenario can be found in xk6-loki repository.
 The test file
 [read-scenario.js](https://github.com/grafana/xk6-loki/blob/main/examples/read-scenario.js)
-can be resused and extended for your needs.
+can be reused and extended for your needs.
 
 It allows you to configure ratios for each type of query and the ratios of time
 ranges.
 
-**Javascript example:**
+**JavaScript example:**
 
 ```javascript
 const queryTypeRatioConfig = [

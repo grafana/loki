@@ -226,7 +226,7 @@ func (t *Tailer) readTailClient(addr string, querierTailClient logproto.Querier_
 		resp, err = querierTailClient.Recv()
 		if err != nil {
 			// We don't want to log error when its due to stopping the tail request
-			if !stopped {
+			if !t.stopped.Load() {
 				level.Error(logger).Log("msg", "Error receiving response from grpc tail client", "err", err)
 			}
 			break
@@ -331,7 +331,7 @@ func newTailer(
 		querierTailClients:        querierTailClients,
 		delayFor:                  delayFor,
 		responseChan:              make(chan *loghttp.TailResponse, maxBufferedTailResponses),
-		closeErrChan:              make(chan error),
+		closeErrChan:              make(chan error, 1),
 		seenStreams:               make(map[uint64]struct{}),
 		tailDisconnectedIngesters: tailDisconnectedIngesters,
 		tailMaxDuration:           tailMaxDuration,

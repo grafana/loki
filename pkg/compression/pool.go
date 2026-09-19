@@ -106,7 +106,7 @@ func (pool *GzipPool) GetReader(src io.Reader) (io.Reader, error) {
 		if err != nil {
 			return nil, err
 		}
-		reader.Reader.Reset(reader.gzipReader)
+		reader.Reset(reader.gzipReader)
 		return reader, nil
 	}
 	gzipReader, err := gziplib.NewReader(src)
@@ -264,7 +264,7 @@ func (pool *LZ4Pool) GetReader(src io.Reader) (io.Reader, error) {
 	if pooled := pool.readers.Get(); pooled != nil {
 		r = pooled.(*lz4BufferedReader)
 		r.lz4Reader.Reset(src)
-		r.Reader.Reset(r.lz4Reader)
+		r.Reset(r.lz4Reader)
 	} else {
 		lz4Reader := lz4lib.NewReader(src)
 		r = &lz4BufferedReader{

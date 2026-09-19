@@ -62,7 +62,16 @@ type PutObjectRetentionOptions struct {
 	VersionID        string
 }
 
-// PutObjectRetention sets object retention for a given object and versionID.
+// PutObjectRetention sets the retention configuration for an object and specific version.
+// Object retention prevents an object version from being deleted or overwritten for a specified period.
+//
+// Parameters:
+//   - ctx: Context for request cancellation and timeout
+//   - bucketName: Name of the bucket
+//   - objectName: Name of the object
+//   - opts: Options including Mode (GOVERNANCE or COMPLIANCE), RetainUntilDate, optional VersionID, and GovernanceBypass
+//
+// Returns an error if the operation fails or if the retention settings are invalid.
 func (c *Client) PutObjectRetention(ctx context.Context, bucketName, objectName string, opts PutObjectRetentionOptions) error {
 	// Input validation.
 	if err := s3utils.CheckValidBucketName(bucketName); err != nil {
@@ -125,7 +134,15 @@ func (c *Client) PutObjectRetention(ctx context.Context, bucketName, objectName 
 	return nil
 }
 
-// GetObjectRetention gets retention of given object.
+// GetObjectRetention retrieves the retention configuration for an object and specific version.
+//
+// Parameters:
+//   - ctx: Context for request cancellation and timeout
+//   - bucketName: Name of the bucket
+//   - objectName: Name of the object
+//   - versionID: Optional version ID to target a specific version (empty string for current version)
+//
+// Returns the retention mode (GOVERNANCE or COMPLIANCE), retain-until date, and any error.
 func (c *Client) GetObjectRetention(ctx context.Context, bucketName, objectName, versionID string) (mode *RetentionMode, retainUntilDate *time.Time, err error) {
 	// Input validation.
 	if err := s3utils.CheckValidBucketName(bucketName); err != nil {

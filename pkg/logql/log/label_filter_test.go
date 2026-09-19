@@ -474,3 +474,51 @@ func BenchmarkLineLabelFilters(b *testing.B) {
 		})
 	}
 }
+
+func TestLineFilterLabelFilter_String(t *testing.T) {
+	type fields struct {
+		Matcher *labels.Matcher
+		Filter  Filterer
+	}
+	tests := []struct {
+		name   string
+		fields fields
+		want   string
+	}{
+		{
+			name: "it correctly surrounds regex containing backticks with double quotes",
+			fields: fields{
+				Matcher: labels.MustNewMatcher(labels.MatchRegexp, "msg", "`.`"),
+				Filter:  mustFilter(newRegexpFilter("`.`", "`.`", true)),
+			},
+			want: "msg=~\"`.`\"",
+		},
+		{
+			name: "it correctly surrounds regex containing double quote with backticks",
+			fields: fields{
+				Matcher: labels.MustNewMatcher(labels.MatchRegexp, "msg", `"`),
+				Filter:  mustFilter(newRegexpFilter(`"`, `"`, true)),
+			},
+			want: "msg=~`\"`",
+		},
+		{
+			name: "it correctly surrounds regex containing both backticks and double quotes with double quotes",
+			fields: fields{
+				Matcher: labels.MustNewMatcher(labels.MatchRegexp, "msg", "`\""),
+				Filter:  mustFilter(newRegexpFilter("`\"", "`\"", true)),
+			},
+			want: "msg=~\"`\\\"\"",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			s := &LineFilterLabelFilter{
+				Matcher: tt.fields.Matcher,
+				Filter:  tt.fields.Filter,
+			}
+			if got := s.String(); got != tt.want {
+				t.Errorf("LineFilterLabelFilter.String() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}

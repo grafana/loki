@@ -4,7 +4,7 @@ apiVersion: {{ include "loki.pdb.apiVersion" . }}
 kind: PodDisruptionBudget
 metadata:
   name: {{ include "loki.fullname" . }}-memcached-results-cache
-  namespace: {{ .Release.Namespace }}
+  namespace: {{ include "loki.namespace" . }}
   labels:
     {{- include "loki.selectorLabels" . | nindent 4 }}
     app.kubernetes.io/component: memcached-results-cache

@@ -29,7 +29,7 @@ func TestAddingStreams(t *testing.T) {
 		{path: "bar", section: 1, pointerKind: PointerKindStreamIndex, streamIDInObject: -2, streamID: 2, minTimestamp: time.Unix(100, 0), maxTimestamp: time.Unix(101, 0), rowsCount: 2, uncompressedSize: 20},
 	}
 
-	tracker := NewBuilder(nil, 1024)
+	tracker := NewBuilder(nil, 1024, 0)
 	for _, tc := range tt {
 		tracker.ObserveStream(tc.path, tc.section, tc.streamIDInObject, tc.streamID, tc.minTimestamp, tc.uncompressedSize)
 		// We Observe twice to track the max timestamp too. But we don't want to count the size twice.
@@ -98,7 +98,7 @@ func TestAddingColumnIndexes(t *testing.T) {
 		{path: "bar", section: 1, pointerKind: PointerKindColumnIndex, columnName: "testColumn2", columnIndex: 1, valuesBloomFilter: []byte{1, 2, 3, 4}},
 	}
 
-	tracker := NewBuilder(nil, 1024)
+	tracker := NewBuilder(nil, 1024, 0)
 	for _, tc := range tt {
 		tracker.RecordColumnIndex(tc.path, tc.section, tc.columnName, tc.columnIndex, tc.valuesBloomFilter)
 	}
@@ -149,7 +149,7 @@ func TestAddingColumnIndexes(t *testing.T) {
 }
 
 func buildObject(st *Builder) (*dataobj.Object, io.Closer, error) {
-	builder := dataobj.NewBuilder()
+	builder := dataobj.NewBuilder(nil)
 	if err := builder.Append(st); err != nil {
 		return nil, nil, err
 	}

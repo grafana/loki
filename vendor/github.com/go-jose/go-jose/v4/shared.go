@@ -77,6 +77,15 @@ var (
 
 	// ErrUnsupportedEllipticCurve indicates unsupported or unknown elliptic curve has been found.
 	ErrUnsupportedEllipticCurve = errors.New("go-jose/go-jose: unsupported/unknown elliptic curve")
+
+	// ErrUnsupportedCriticalHeader is returned when a header is marked critical but not supported by go-jose.
+	ErrUnsupportedCriticalHeader = errors.New("go-jose/go-jose: unsupported critical header")
+
+	// errEmptyInput is returned when go-jose was asked to parse an empty string.
+	errEmptyInput = errors.New("go-jose/go-jose: empty input")
+
+	// ErrNotPublic indicates a private key was passed where a public key was expected
+	ErrNotPublic = errors.New("go-jose/go-jose: public key was unexpectedly not public")
 )
 
 // Key management algorithms
@@ -167,8 +176,8 @@ const (
 )
 
 // supportedCritical is the set of supported extensions that are understood and processed.
-var supportedCritical = map[string]bool{
-	headerB64: true,
+var supportedCritical = map[string]struct{}{
+	headerB64: {},
 }
 
 // rawHeader represents the JOSE header for JWE/JWS objects (used for parsing).
@@ -344,6 +353,32 @@ func (parsed rawHeader) getCritical() ([]string, error) {
 		return nil, err
 	}
 	return q, nil
+}
+
+// checkNoCritical verifies there are no critical headers present.
+func (parsed rawHeader) checkNoCritical() error {
+	if _, ok := parsed[headerCritical]; ok {
+		return ErrUnsupportedCriticalHeader
+	}
+
+	return nil
+}
+
+// checkSupportedCritical verifies there are no unsupported critical headers.
+// Supported headers are passed in as a set: map of names to empty structs
+func (parsed rawHeader) checkSupportedCritical(supported map[string]struct{}) error {
+	crit, err := parsed.getCritical()
+	if err != nil {
+		return err
+	}
+
+	for _, name := range crit {
+		if _, ok := supported[name]; !ok {
+			return ErrUnsupportedCriticalHeader
+		}
+	}
+
+	return nil
 }
 
 // getS2C extracts parsed "p2c" from the raw JSON.

@@ -18,8 +18,11 @@
 require 'fluent/env'
 require 'fluent/plugin/output'
 require 'net/http'
+require 'rubygems/version'
 require 'yajl'
 require 'time'
+require 'zlib'
+require 'stringio'
 
 module Fluent
   module Plugin
@@ -45,7 +48,7 @@ module Fluent
       desc 'Authentication: Authorization header with Bearer token scheme'
       config_param :bearer_token_file, :string, default: nil
 
-      desc 'TLS: parameters for presenting a client certificate'
+      desc 'TLS: client certificate file (PEM). May contain multiple PEM blocks (leaf plus intermediate chain); full chain is sent only on Ruby 3.0+.'
       config_param :cert, :string, default: nil
       config_param :key, :string, default: nil
 
@@ -63,6 +66,9 @@ module Fluent
 
       desc 'Custom HTTP headers'
       config_param :custom_headers, :hash, default: {}
+
+      desc 'Compress HTTP request payload'
+      config_param :compress, :enum, list: %i[gzip], default: nil
 
       desc 'Loki tenant id'
       config_param :tenant, :string, default: nil
@@ -141,14 +147,43 @@ module Fluent
         !@key.nil? && !@cert.nil?
       end
 
+      # Net::HTTP exposes extra_chain_cert for the client TLS chain in Ruby 3.0+ stdlib.
+      def self.extra_chain_cert_supported?
+        Gem::Version.new(RUBY_VERSION) >= Gem::Version.new('3.0')
+      end
+
       def load_client_cert
-        @cert = OpenSSL::X509::Certificate.new(File.read(@cert)) if @cert
+        @extra_chain_cert = nil
+        if @cert
+          raw = File.read(@cert)
+          pem_certs = raw.scan(/-----BEGIN CERTIFICATE-----.+?-----END CERTIFICATE-----/m)
+          if pem_certs.empty?
+            # No PEM blocks found - fall back to OpenSSL's native parsing,
+            # which handles DER-encoded (binary) certificates.
+            @cert = OpenSSL::X509::Certificate.new(raw)
+          else
+            # PEM file: use the first cert as the client certificate,
+            # and any remaining certs as the intermediate CA chain (Ruby 3.0+ only).
+            @cert = OpenSSL::X509::Certificate.new(pem_certs[0])
+            remaining = pem_certs[1..]
+            if !remaining.empty?
+              if self.class.extra_chain_cert_supported?
+                @extra_chain_cert = remaining.map { |c| OpenSSL::X509::Certificate.new(c) }
+              elsif !@client_cert_intermediate_chain_skipped_logged
+                @client_cert_intermediate_chain_skipped_logged = true
+                log.warn 'client certificate file contains multiple PEM blocks, but sending the intermediate chain ' \
+                         'requires Ruby 3.0+. Only the leaf certificate will be presented; mTLS may fail if the ' \
+                         'server requires the full chain.'
+              end
+            end
+          end
+        end
         @key = OpenSSL::PKey.read(File.read(@key)) if @key
       end
 
       def validate_client_cert_key
         if !@key.is_a?(OpenSSL::PKey::RSA) && !@key.is_a?(OpenSSL::PKey::DSA)
-          raise "Unsupported private key type #{key.class}"
+          raise "Unsupported private key type #{@key.class}"
         end
       end
 
@@ -192,12 +227,17 @@ module Fluent
           )
         end
 
-        # Optionally present client certificate
+        # Optionally present client certificate (with intermediate chain if available; Ruby 3.0+ only).
         if !@cert.nil? && !@key.nil?
           opts = opts.merge(
             cert: @cert,
             key: @key
           )
+          if @extra_chain_cert && self.class.extra_chain_cert_supported?
+            opts = opts.merge(
+              extra_chain_cert: @extra_chain_cert
+            )
+          end
         end
 
         # For server certificate verification: set custom CA bundle.
@@ -241,7 +281,15 @@ module Fluent
         req.add_field('Content-Type', 'application/json')
         req.add_field('Authorization', "Bearer #{@auth_token_bearer}") unless @auth_token_bearer.nil?
         req.add_field('X-Scope-OrgID', tenant) if tenant
-        req.body = Yajl.dump(body)
+        payload = Yajl.dump(body)
+        if @compress == :gzip
+          req.add_field('Content-Encoding', 'gzip')
+          compressed = StringIO.new
+          Zlib::GzipWriter.wrap(compressed) { |gz| gz.write(payload) }
+          req.body = compressed.string
+        else
+          req.body = payload
+        end
         req.basic_auth(@username, @password) if @username
 
         opts = http_request_opts(@uri)

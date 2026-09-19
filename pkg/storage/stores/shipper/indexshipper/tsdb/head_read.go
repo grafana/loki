@@ -52,10 +52,6 @@ func (h *headIndexReader) Close() error {
 	return nil
 }
 
-func (h *headIndexReader) Symbols() index.StringIter {
-	return h.head.postings.Symbols()
-}
-
 // LabelValues returns label values present in the head for the
 // specific label name that are within the time range mint to maxt.
 // If matchers are specified the returned result set is reduced
@@ -110,7 +106,26 @@ func (h *headIndexReader) Postings(name string, fpFilter index.FingerprintFilter
 	return p, nil
 }
 
+// NewSeriesScan implements IndexReader.
+//
+// The head keeps its series in memory, so there is nothing for a scan to
+// amortise across a pass and nothing for it to hold: headSeriesScan forwards
+// straight to the reader.
+func (h *headIndexReader) NewSeriesScan() index.SeriesScan {
+	return headSeriesScan{h}
+}
+
+// headSeriesScan is the no-op scan a headIndexReader hands out. Embedding the
+// reader promotes the series reads it already implements; only Close needs
+// overriding, because a scan borrows the reader rather than owning it.
+type headSeriesScan struct{ *headIndexReader }
+
+// Close is a no-op. Closing a scan must not close the reader it borrows, which
+// the embedded headIndexReader.Close would otherwise do.
+func (headSeriesScan) Close() error { return nil }
+
 // Series returns the series for the given reference.
+// lbls can be nil, to indicate that just the chunks are needed.
 func (h *headIndexReader) Series(ref storage.SeriesRef, from int64, through int64, lbls *labels.Labels, chks *[]index.ChunkMeta) (uint64, error) {
 	s := h.head.series.getByID(uint64(ref))
 
@@ -118,7 +133,9 @@ func (h *headIndexReader) Series(ref storage.SeriesRef, from int64, through int6
 		h.head.metrics.seriesNotFound.Inc()
 		return 0, storage.ErrNotFound
 	}
-	lbls.CopyFrom(s.ls)
+	if lbls != nil {
+		lbls.CopyFrom(s.ls)
+	}
 
 	queryBounds := newBounds(model.Time(from), model.Time(through))
 

@@ -1,13 +1,12 @@
 # Multi-stage Dockerfile for chromad Go application using Hermit-managed tools
 
 # Build stage
-FROM ubuntu:24.04 AS builder
+FROM ubuntu:26.04 AS builder
 
 # Install system dependencies
 RUN apt-get update && apt-get install -y \
 	curl \
 	git \
-	make \
 	ca-certificates \
 	&& rm -rf /var/lib/apt/lists/*
 
@@ -25,11 +24,11 @@ ENV CGO_ENABLED=0
 ENV GOOS=linux
 ENV GOARCH=amd64
 
-# Build the application using make
-RUN make build/chromad
+# Build the application using just
+RUN just chromad
 
 # Runtime stage
-FROM alpine:3.22 AS runtime
+FROM alpine:3.24 AS runtime
 
 # Install ca-certificates for HTTPS requests
 RUN apk --no-cache add ca-certificates curl

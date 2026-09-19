@@ -48,7 +48,7 @@ type HeadBlock interface {
 		ctx context.Context,
 		mint,
 		maxt int64,
-		extractor ...log.StreamSampleExtractor,
+		extractor log.StreamSampleExtractor,
 	) iter.SampleIterator
 	Format() HeadBlockFmt
 }
@@ -132,18 +132,19 @@ func (hb *unorderedHeadBlock) Append(ts int64, line string, structuredMetadata l
 	}
 	displaced := hb.rt.Add(e)
 	if displaced[0] != nil {
+		symbols, err := hb.symbolizer.Add(structuredMetadata)
+		if err != nil {
+			return false, err
+		}
+
 		// While we support multiple entries at the same timestamp, we _do_ de-duplicate
 		// entries at the same time with the same content, iterate through any existing
 		// entries and ignore the line if we already have an entry with the same content
 		for _, et := range displaced[0].(*nsEntries).entries {
-			if et.line == line {
+			if et.line == line && et.structuredMetadataSymbols.Equal(symbols) {
 				e.entries = displaced[0].(*nsEntries).entries
 				return true, nil
 			}
-		}
-		symbols, err := hb.symbolizer.Add(structuredMetadata)
-		if err != nil {
-			return false, err
 		}
 
 		e.entries = append(displaced[0].(*nsEntries).entries, nsEntry{line, symbols})
@@ -271,7 +272,10 @@ func (hb *unorderedHeadBlock) Iterator(ctx context.Context, direction logproto.D
 		mint,
 		maxt,
 		func(statsCtx *stats.Context, ts int64, line string, structuredMetadataSymbols symbols) error {
-			structuredMetadata := hb.symbolizer.Lookup(structuredMetadataSymbols, labelsBuilder)
+			structuredMetadata, err := hb.symbolizer.Lookup(structuredMetadataSymbols, labelsBuilder)
+			if err != nil {
+				return fmt.Errorf("symbolizer lookup: %w", err)
+			}
 			newLine, parsedLbs, matches := pipeline.ProcessString(ts, line, structuredMetadata)
 			if !matches {
 				return nil
@@ -319,11 +323,13 @@ func (hb *unorderedHeadBlock) SampleIterator(
 	ctx context.Context,
 	mint,
 	maxt int64,
-	extractor ...log.StreamSampleExtractor,
+	extractor log.StreamSampleExtractor,
 ) iter.SampleIterator {
 	series := map[string]*logproto.Series{}
 	setQueryReferencedStructuredMetadata := false
 	labelsBuilder := labelpool.Get()
+
+	var hasher util.SampleHasher
 
 	_ = hb.forEntries(
 		ctx,
@@ -331,44 +337,37 @@ func (hb *unorderedHeadBlock) SampleIterator(
 		mint,
 		maxt,
 		func(statsCtx *stats.Context, ts int64, line string, structuredMetadataSymbols symbols) error {
-			structuredMetadata := hb.symbolizer.Lookup(structuredMetadataSymbols, labelsBuilder)
+			structuredMetadata, err := hb.symbolizer.Lookup(structuredMetadataSymbols, labelsBuilder)
+			if err != nil {
+				return fmt.Errorf("symbolizer lookup: %w", err)
+			}
 
-			for _, extractor := range extractor {
-				samples, ok := extractor.ProcessString(ts, line, structuredMetadata)
-				if !ok || len(samples) == 0 {
-					return nil
-				}
-				var (
-					found bool
-					s     *logproto.Series
-				)
-
-				for _, sample := range samples {
-					value := sample.Value
-					lbls := sample.Labels
-
-					lblStr := lbls.String()
-					s, found = series[lblStr]
-					if !found {
-						baseHash := extractor.BaseLabels().Hash()
-						s = &logproto.Series{
-							Labels:     lblStr,
-							Samples:    SamplesPool.Get(hb.lines).([]logproto.Sample)[:0],
-							StreamHash: baseHash,
-						}
-						series[lblStr] = s
-					}
-					s.Samples = append(s.Samples, logproto.Sample{
-						Timestamp: ts,
-						Value:     value,
-						Hash:      util.UniqueSampleHash(lblStr, unsafeGetBytes(line)),
-					})
-				}
-				if extractor.ReferencedStructuredMetadata() {
-					setQueryReferencedStructuredMetadata = true
-				}
+			sample, ok := extractor.ProcessString(ts, line, structuredMetadata)
+			if !ok {
+				return nil
 			}
 			statsCtx.AddPostFilterLines(1)
+
+			lblStr := sample.Labels.String()
+			s, found := series[lblStr]
+			if !found {
+				s = &logproto.Series{
+					Labels:     lblStr,
+					Samples:    SamplesPool.Get(hb.lines).([]logproto.Sample)[:0],
+					StreamHash: extractor.BaseLabels().Hash(),
+				}
+				series[lblStr] = s
+			}
+			s.Samples = append(s.Samples, logproto.Sample{
+				Timestamp: ts,
+				Value:     sample.Value,
+				Hash:      hasher.Hash(lblStr, unsafeGetBytes(line)),
+			})
+
+			if extractor.ReferencedStructuredMetadata() {
+				setQueryReferencedStructuredMetadata = true
+			}
+
 			return nil
 		},
 	)
@@ -479,7 +478,11 @@ func (hb *unorderedHeadBlock) Convert(version HeadBlockFmt, symbolizer *symboliz
 		0,
 		math.MaxInt64,
 		func(_ *stats.Context, ts int64, line string, structuredMetadataSymbols symbols) error {
-			_, err := out.Append(ts, line, hb.symbolizer.Lookup(structuredMetadataSymbols, nil))
+			lbls, err := hb.symbolizer.Lookup(structuredMetadataSymbols, nil)
+			if err != nil {
+				return fmt.Errorf("symbolizer lookup: %w", err)
+			}
+			_, err = out.Append(ts, line, lbls)
 			return err
 		},
 	)
@@ -619,7 +622,11 @@ func (hb *unorderedHeadBlock) LoadBytes(b []byte) error {
 				}
 			}
 		}
-		if _, err := hb.Append(ts, line, hb.symbolizer.Lookup(structuredMetadataSymbols, nil)); err != nil {
+		lbls, err := hb.symbolizer.Lookup(structuredMetadataSymbols, nil)
+		if err != nil {
+			return fmt.Errorf("symbolizer lookup: %w", err)
+		}
+		if _, err := hb.Append(ts, line, lbls); err != nil {
 			return err
 		}
 	}

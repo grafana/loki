@@ -50,12 +50,21 @@
                     <!-- Allow to force a state change -->
                     {{ if and (not .Corrupted) (ne (index $stateChanges .State) 0) }}
                         {{ $toState := index $stateChanges .State }}
-                        <form action="" method="POST" onsubmit="return confirm('Do you confirm you want to change the state to {{ $toState.CleanName }}?');">
+                        <form action="" method="POST">
                             <input type="hidden" name="csrf_token" value="$__CSRF_TOKEN_PLACEHOLDER__">
                             <input type="hidden" name="partition_id" value="{{ .ID }}">
                             <input type="hidden" name="partition_state" value="{{ $toState.String }}">
 
-                            <button name="action" value="change_state" type="submit">Change state to {{ $toState.CleanName }}</button>
+                            <button name="action" value="change_state" type="submit" {{ if .StateChangeLocked }}disabled title="State change is locked"{{ end }} onclick="return confirm('Do you confirm you want to change the state to {{ $toState.CleanName }}?');">Change state to {{ $toState.CleanName }}</button>
+                            <button name="action" value="change_state_and_lock" type="submit" {{ if .StateChangeLocked }}disabled title="State change is locked"{{ end }} onclick="return confirm('Do you confirm you want to change the state to {{ $toState.CleanName }} and lock it?');">Change state to {{ $toState.CleanName }} & Lock</button>
+                        </form>
+                    {{ end }}
+                    {{ if not .Corrupted }}
+                        <form action="" method="POST" style="margin-top: 5px;" onsubmit="return confirm('Do you confirm you want to {{ if .StateChangeLocked }}unlock{{ else }}lock{{ end }} the state change?');">
+                            <input type="hidden" name="csrf_token" value="$__CSRF_TOKEN_PLACEHOLDER__">
+                            <input type="hidden" name="partition_id" value="{{ .ID }}">
+                            <input type="hidden" name="locked" value="{{ if .StateChangeLocked }}false{{ else }}true{{ end }}">
+                            <button name="action" value="state_change_lock" type="submit">{{ if .StateChangeLocked }}Unlock State Change{{ else }}Lock State Change{{ end }}</button>
                         </form>
                     {{ end }}
                 </td>

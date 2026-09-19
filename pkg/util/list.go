@@ -1,4 +1,4 @@
-package util
+package util //nolint:revive
 
 func MergeStringLists(ss ...[]string) []string {
 	switch len(ss) {

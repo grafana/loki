@@ -267,6 +267,13 @@ func (m *CustomTag) MarshalToSizedBufferVTStrict(dAtA []byte) (int, error) {
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
 	}
+	if msg, ok := m.Type.(*CustomTag_Value); ok {
+		size, err := msg.MarshalToSizedBufferVTStrict(dAtA[:i])
+		if err != nil {
+			return 0, err
+		}
+		i -= size
+	}
 	if msg, ok := m.Type.(*CustomTag_Metadata_); ok {
 		size, err := msg.MarshalToSizedBufferVTStrict(dAtA[:i])
 		if err != nil {
@@ -395,6 +402,20 @@ func (m *CustomTag_Metadata_) MarshalToSizedBufferVTStrict(dAtA []byte) (int, er
 		i--
 		dAtA[i] = 0x2a
 	}
+	return len(dAtA) - i, nil
+}
+func (m *CustomTag_Value) MarshalToVTStrict(dAtA []byte) (int, error) {
+	size := m.SizeVT()
+	return m.MarshalToSizedBufferVTStrict(dAtA[:size])
+}
+
+func (m *CustomTag_Value) MarshalToSizedBufferVTStrict(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	i -= len(m.Value)
+	copy(dAtA[i:], m.Value)
+	i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.Value)))
+	i--
+	dAtA[i] = 0x32
 	return len(dAtA) - i, nil
 }
 func (m *CustomTag_Literal) SizeVT() (n int) {
@@ -552,5 +573,15 @@ func (m *CustomTag_Metadata_) SizeVT() (n int) {
 	} else {
 		n += 2
 	}
+	return n
+}
+func (m *CustomTag_Value) SizeVT() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	l = len(m.Value)
+	n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
 	return n
 }

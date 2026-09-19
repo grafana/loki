@@ -22,7 +22,7 @@ import (
 func TestRulerShutdown(t *testing.T) {
 	ctx := context.Background()
 
-	config := defaultRulerConfig(t, newMockRuleStore(mockRules))
+	config := defaultRulerConfig(t, newMockRuleStore(cloneMockRules(mockRules)))
 
 	m := storage.NewClientMetrics()
 	defer m.Unregister()
@@ -58,7 +58,7 @@ func TestRuler_RingLifecyclerShouldAutoForgetUnhealthyInstances(t *testing.T) {
 	const heartbeatTimeout = time.Minute
 
 	ctx := context.Background()
-	config := defaultRulerConfig(t, newMockRuleStore(mockRules))
+	config := defaultRulerConfig(t, newMockRuleStore(cloneMockRules(mockRules)))
 	m := storage.NewClientMetrics()
 	defer m.Unregister()
 	r := buildRuler(t, config, nil, m, nil)
@@ -79,7 +79,7 @@ func TestRuler_RingLifecyclerShouldAutoForgetUnhealthyInstances(t *testing.T) {
 	require.NoError(t, ringStore.CAS(ctx, ringKey, func(in interface{}) (interface{}, bool, error) {
 		ringDesc := ring.GetOrCreateRingDesc(in)
 
-		instance := ringDesc.AddIngester(unhealthyInstanceID, "1.1.1.1", "", generateSortedTokens(config.Ring.NumTokens), ring.ACTIVE, time.Now(), false, time.Now())
+		instance := ringDesc.AddIngester(unhealthyInstanceID, "1.1.1.1", "", generateSortedTokens(config.Ring.NumTokens), ring.ACTIVE, time.Now(), false, time.Now(), nil)
 		instance.Timestamp = time.Now().Add(-(ringAutoForgetUnhealthyPeriods + 1) * heartbeatTimeout).Unix()
 		ringDesc.Ingesters[unhealthyInstanceID] = instance
 

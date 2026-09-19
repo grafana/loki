@@ -196,10 +196,9 @@ func createBloomStore(t *testing.T, sharedPath string) *bloomshipper.BloomStore 
 						Period: 24 * time.Hour,
 					},
 				},
-				IndexType:  types.TSDBType,
+				IndexType:  types.IndexTypeTSDB,
 				ObjectType: types.StorageTypeFileSystem,
 				Schema:     "v13",
-				RowShards:  16,
 			},
 		},
 	}
@@ -265,7 +264,7 @@ func checkSeriesInBlooms(
 		querier := queriers[0]
 
 		require.NoError(t, querier.Seek(seriesFP))
-		require.Equal(t, seriesFP, querier.At().Series.Fingerprint)
+		require.Equal(t, seriesFP, querier.At().Fingerprint)
 	}
 }
 

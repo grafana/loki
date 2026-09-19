@@ -8,8 +8,6 @@ package plogotlp
 
 import (
 	"go.opentelemetry.io/collector/pdata/internal"
-	otlpcollectorlog "go.opentelemetry.io/collector/pdata/internal/data/protogen/collector/logs/v1"
-	"go.opentelemetry.io/collector/pdata/internal/json"
 )
 
 // ExportPartialSuccess represents the details of a partially successful export request.
@@ -20,11 +18,11 @@ import (
 // Must use NewExportPartialSuccess function to create new instances.
 // Important: zero-initialized instance is not valid for use.
 type ExportPartialSuccess struct {
-	orig  *otlpcollectorlog.ExportLogsPartialSuccess
+	orig  *internal.ExportLogsPartialSuccess
 	state *internal.State
 }
 
-func newExportPartialSuccess(orig *otlpcollectorlog.ExportLogsPartialSuccess, state *internal.State) ExportPartialSuccess {
+func newExportPartialSuccess(orig *internal.ExportLogsPartialSuccess, state *internal.State) ExportPartialSuccess {
 	return ExportPartialSuccess{orig: orig, state: state}
 }
 
@@ -33,8 +31,7 @@ func newExportPartialSuccess(orig *otlpcollectorlog.ExportLogsPartialSuccess, st
 // This must be used only in testing code. Users should use "AppendEmpty" when part of a Slice,
 // OR directly access the member if this is embedded in another struct.
 func NewExportPartialSuccess() ExportPartialSuccess {
-	state := internal.StateMutable
-	return newExportPartialSuccess(&otlpcollectorlog.ExportLogsPartialSuccess{}, &state)
+	return newExportPartialSuccess(internal.NewExportLogsPartialSuccess(), internal.NewState())
 }
 
 // MoveTo moves all properties from the current struct overriding the destination and
@@ -46,8 +43,8 @@ func (ms ExportPartialSuccess) MoveTo(dest ExportPartialSuccess) {
 	if ms.orig == dest.orig {
 		return
 	}
-	*dest.orig = *ms.orig
-	*ms.orig = otlpcollectorlog.ExportLogsPartialSuccess{}
+	internal.DeleteExportLogsPartialSuccess(dest.orig, false)
+	*dest.orig, *ms.orig = *ms.orig, *dest.orig
 }
 
 // RejectedLogRecords returns the rejectedlogrecords associated with this ExportPartialSuccess.
@@ -75,24 +72,5 @@ func (ms ExportPartialSuccess) SetErrorMessage(v string) {
 // CopyTo copies all properties from the current struct overriding the destination.
 func (ms ExportPartialSuccess) CopyTo(dest ExportPartialSuccess) {
 	dest.state.AssertMutable()
-	copyOrigExportPartialSuccess(dest.orig, ms.orig)
-}
-
-// marshalJSONStream marshals all properties from the current struct to the destination stream.
-func (ms ExportPartialSuccess) marshalJSONStream(dest *json.Stream) {
-	dest.WriteObjectStart()
-	if ms.orig.RejectedLogRecords != int64(0) {
-		dest.WriteObjectField("rejectedLogRecords")
-		dest.WriteInt64(ms.orig.RejectedLogRecords)
-	}
-	if ms.orig.ErrorMessage != "" {
-		dest.WriteObjectField("errorMessage")
-		dest.WriteString(ms.orig.ErrorMessage)
-	}
-	dest.WriteObjectEnd()
-}
-
-func copyOrigExportPartialSuccess(dest, src *otlpcollectorlog.ExportLogsPartialSuccess) {
-	dest.RejectedLogRecords = src.RejectedLogRecords
-	dest.ErrorMessage = src.ErrorMessage
+	internal.CopyExportLogsPartialSuccess(dest.orig, ms.orig)
 }

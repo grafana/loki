@@ -18,6 +18,7 @@ type ingesterMetrics struct {
 	checkpointLoggedBytesTotal prometheus.Counter
 
 	walDiskFullFailures     prometheus.Counter
+	walDiskUsagePercent     prometheus.Gauge
 	walReplayActive         prometheus.Gauge
 	walReplayDuration       prometheus.Gauge
 	walReplaySamplesDropped *prometheus.CounterVec
@@ -48,6 +49,7 @@ type ingesterMetrics struct {
 	chunkAge                      prometheus.Histogram
 	chunkEncodeTime               prometheus.Histogram
 	chunksFlushFailures           prometheus.Counter
+	chunksFlushRequestsTotal      prometheus.Counter
 	chunksFlushedPerReason        *prometheus.CounterVec
 	chunkLifespan                 prometheus.Histogram
 	chunksEncoded                 *prometheus.CounterVec
@@ -70,6 +72,8 @@ type ingesterMetrics struct {
 	flushQueueLength       prometheus.Gauge
 	duplicateLogBytesTotal *prometheus.CounterVec
 	streamsOwnershipCheck  prometheus.Histogram
+
+	instance *instanceMetrics
 }
 
 // setRecoveryBytesInUse bounds the bytes reports to >= 0.
@@ -93,6 +97,10 @@ func newIngesterMetrics(r prometheus.Registerer, metricsNamespace string) *inges
 		walDiskFullFailures: promauto.With(r).NewCounter(prometheus.CounterOpts{
 			Name: "loki_ingester_wal_disk_full_failures_total",
 			Help: "Total number of wal write failures due to full disk.",
+		}),
+		walDiskUsagePercent: promauto.With(r).NewGauge(prometheus.GaugeOpts{
+			Name: "loki_ingester_wal_disk_usage_percent",
+			Help: "Current disk usage percentage (0.0 to 1.0) for the WAL directory.",
 		}),
 		walReplayActive: promauto.With(r).NewGauge(prometheus.GaugeOpts{
 			Name: "loki_ingester_wal_replay_active",
@@ -242,6 +250,11 @@ func newIngesterMetrics(r prometheus.Registerer, metricsNamespace string) *inges
 			Name:      "ingester_chunks_flush_failures_total",
 			Help:      "Total number of flush failures.",
 		}),
+		chunksFlushRequestsTotal: promauto.With(r).NewCounter(prometheus.CounterOpts{
+			Namespace: constants.Loki,
+			Name:      "ingester_chunks_flush_requests_total",
+			Help:      "Total number of flush requests (successful or not).",
+		}),
 		chunksFlushedPerReason: promauto.With(r).NewCounterVec(prometheus.CounterOpts{
 			Namespace: constants.Loki,
 			Name:      "ingester_chunks_flushed_total",
@@ -328,5 +341,7 @@ func newIngesterMetrics(r prometheus.Registerer, metricsNamespace string) *inges
 			Name:      "duplicate_log_bytes_total",
 			Help:      "The total number of bytes that were discarded for duplicate log lines.",
 		}, []string{"tenant"}),
+
+		instance: newInstanceMetrics(r),
 	}
 }

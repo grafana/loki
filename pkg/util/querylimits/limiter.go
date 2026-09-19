@@ -8,6 +8,7 @@ import (
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 
+	"github.com/grafana/loki/v3/pkg/logql"
 	"github.com/grafana/loki/v3/pkg/util/limiter"
 	logutil "github.com/grafana/loki/v3/pkg/util/log"
 )
@@ -27,8 +28,9 @@ func NewLimiter(log log.Logger, original limiter.CombinedLimits) *Limiter {
 // MaxQueryLength returns the limit of the length (in time) of a query.
 func (l *Limiter) MaxQueryLength(ctx context.Context, userID string) time.Duration {
 	original := l.CombinedLimits.MaxQueryLength(ctx, userID)
-	requestLimits := ExtractQueryLimitsContext(ctx)
-	if requestLimits == nil || requestLimits.MaxQueryLength == 0 || time.Duration(requestLimits.MaxQueryLength) > original {
+	requestLimits := ExtractQueryLimitsFromContext(ctx)
+	if requestLimits == nil || requestLimits.MaxQueryLength == 0 ||
+		(time.Duration(requestLimits.MaxQueryLength) > original && original != 0) {
 		return original
 	}
 	level.Debug(logutil.WithContext(ctx, l.logger)).Log("msg", "using request limit", "limit", "MaxQueryLength", "tenant", userID, "query-limit", requestLimits.MaxQueryLength, "original-limit", original)
@@ -38,8 +40,9 @@ func (l *Limiter) MaxQueryLength(ctx context.Context, userID string) time.Durati
 // MaxQueryLookback returns the max lookback period of queries.
 func (l *Limiter) MaxQueryLookback(ctx context.Context, userID string) time.Duration {
 	original := l.CombinedLimits.MaxQueryLookback(ctx, userID)
-	requestLimits := ExtractQueryLimitsContext(ctx)
-	if requestLimits == nil || requestLimits.MaxQueryLookback == 0 || time.Duration(requestLimits.MaxQueryLookback) > original {
+	requestLimits := ExtractQueryLimitsFromContext(ctx)
+	if requestLimits == nil || requestLimits.MaxQueryLookback == 0 ||
+		(time.Duration(requestLimits.MaxQueryLookback) > original && original != 0) {
 		return original
 	}
 	level.Debug(logutil.WithContext(ctx, l.logger)).Log("msg", "using request limit", "limit", "MaxQueryLookback", "tenant", userID, "query-limit", time.Duration(requestLimits.MaxQueryLookback), "original-limit", original)
@@ -49,8 +52,9 @@ func (l *Limiter) MaxQueryLookback(ctx context.Context, userID string) time.Dura
 // MaxQueryRange retruns the max query range/interval of a query.
 func (l *Limiter) MaxQueryRange(ctx context.Context, userID string) time.Duration {
 	original := l.CombinedLimits.MaxQueryRange(ctx, userID)
-	requestLimits := ExtractQueryLimitsContext(ctx)
-	if requestLimits == nil || requestLimits.MaxQueryRange == 0 || time.Duration(requestLimits.MaxQueryRange) > original {
+	requestLimits := ExtractQueryLimitsFromContext(ctx)
+	if requestLimits == nil || requestLimits.MaxQueryRange == 0 ||
+		(time.Duration(requestLimits.MaxQueryRange) > original && original != 0) {
 		return original
 	}
 	level.Debug(logutil.WithContext(ctx, l.logger)).Log("msg", "using request limit", "limit", "MaxQueryRange", "tenant", userID, "query-limit", time.Duration(requestLimits.MaxQueryRange), "original-limit", original)
@@ -60,8 +64,9 @@ func (l *Limiter) MaxQueryRange(ctx context.Context, userID string) time.Duratio
 // MaxEntriesLimitPerQuery returns the limit to number of entries the querier should return per query.
 func (l *Limiter) MaxEntriesLimitPerQuery(ctx context.Context, userID string) int {
 	original := l.CombinedLimits.MaxEntriesLimitPerQuery(ctx, userID)
-	requestLimits := ExtractQueryLimitsContext(ctx)
-	if requestLimits == nil || requestLimits.MaxEntriesLimitPerQuery == 0 || requestLimits.MaxEntriesLimitPerQuery > original {
+	requestLimits := ExtractQueryLimitsFromContext(ctx)
+	if requestLimits == nil || requestLimits.MaxEntriesLimitPerQuery == 0 ||
+		(requestLimits.MaxEntriesLimitPerQuery > original && original != 0) {
 		return original
 	}
 	level.Debug(logutil.WithContext(ctx, l.logger)).Log("msg", "using request limit", "limit", "MaxEntriesLimitPerQuery", "tenant", userID, "query-limit", requestLimits.MaxEntriesLimitPerQuery, "original-limit", original)
@@ -71,8 +76,9 @@ func (l *Limiter) MaxEntriesLimitPerQuery(ctx context.Context, userID string) in
 func (l *Limiter) QueryTimeout(ctx context.Context, userID string) time.Duration {
 	original := l.CombinedLimits.QueryTimeout(ctx, userID)
 	// in theory this error should never happen
-	requestLimits := ExtractQueryLimitsContext(ctx)
-	if requestLimits == nil || requestLimits.QueryTimeout == 0 || time.Duration(requestLimits.QueryTimeout) > original {
+	requestLimits := ExtractQueryLimitsFromContext(ctx)
+	if requestLimits == nil || requestLimits.QueryTimeout == 0 ||
+		(time.Duration(requestLimits.QueryTimeout) > original && original != 0) {
 		return original
 	}
 	level.Debug(logutil.WithContext(ctx, l.logger)).Log("msg", "using request limit", "limit", "QueryTimeout", "tenant", userID, "query-limit", time.Duration(requestLimits.QueryTimeout), "original-limit", original)
@@ -81,7 +87,7 @@ func (l *Limiter) QueryTimeout(ctx context.Context, userID string) time.Duration
 
 func (l *Limiter) RequiredLabels(ctx context.Context, userID string) []string {
 	original := l.CombinedLimits.RequiredLabels(ctx, userID)
-	requestLimits := ExtractQueryLimitsContext(ctx)
+	requestLimits := ExtractQueryLimitsFromContext(ctx)
 
 	if requestLimits == nil {
 		return original
@@ -107,7 +113,7 @@ func (l *Limiter) RequiredLabels(ctx context.Context, userID string) []string {
 
 func (l *Limiter) RequiredNumberLabels(ctx context.Context, userID string) int {
 	original := l.CombinedLimits.RequiredNumberLabels(ctx, userID)
-	requestLimits := ExtractQueryLimitsContext(ctx)
+	requestLimits := ExtractQueryLimitsFromContext(ctx)
 	if requestLimits == nil || requestLimits.RequiredNumberLabels == 0 || requestLimits.RequiredNumberLabels < original {
 		return original
 	}
@@ -117,10 +123,26 @@ func (l *Limiter) RequiredNumberLabels(ctx context.Context, userID string) int {
 
 func (l *Limiter) MaxQueryBytesRead(ctx context.Context, userID string) int {
 	original := l.CombinedLimits.MaxQueryBytesRead(ctx, userID)
-	requestLimits := ExtractQueryLimitsContext(ctx)
-	if requestLimits == nil || requestLimits.MaxQueryBytesRead.Val() == 0 || requestLimits.MaxQueryBytesRead.Val() > original {
+	requestLimits := ExtractQueryLimitsFromContext(ctx)
+	if requestLimits == nil || requestLimits.MaxQueryBytesRead.Val() == 0 ||
+		(requestLimits.MaxQueryBytesRead.Val() > original && original != 0) {
 		return original
 	}
 	level.Debug(logutil.WithContext(ctx, l.logger)).Log("msg", "using request limit", "limit", "MaxQueryBytesRead", "tenant", userID, "query-limit", requestLimits.MaxQueryBytesRead.Val(), "original-limit", original)
 	return requestLimits.MaxQueryBytesRead.Val()
+}
+
+func (l *Limiter) TSDBShardingStrategy(ctx context.Context, userID string) string {
+	original := l.CombinedLimits.TSDBShardingStrategy(ctx, userID)
+	requestLimits := ExtractQueryLimitsFromContext(ctx)
+	if requestLimits == nil || requestLimits.TSDBShardingStrategy == "" {
+		return original
+	}
+
+	if _, err := logql.ParseShardVersion(requestLimits.TSDBShardingStrategy); err != nil {
+		return original
+	}
+
+	level.Debug(logutil.WithContext(ctx, l.logger)).Log("msg", "using request limit", "limit", "TSDBShardingStrategy", "tenant", userID, "query-limit", requestLimits.TSDBShardingStrategy, "original-limit", original)
+	return requestLimits.TSDBShardingStrategy
 }

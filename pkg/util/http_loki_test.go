@@ -1,4 +1,4 @@
-package util
+package util //nolint:revive
 
 // This file is separated from `http_test.go` to differentiate from the original `http_test.go` file forked from Cortex.
 
@@ -13,6 +13,6 @@ func BenchmarkDecompressFromBuffer(b *testing.B) {
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		decompressFromBuffer(&buf, 1000, RawSnappy, nil) //nolint:errcheck
+		decompressFromBuffer(&buf, 1000, 1000, RawSnappy, nil) //nolint:errcheck
 	}
 }

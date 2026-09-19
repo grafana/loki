@@ -21,19 +21,16 @@ import (
 func TestLazyChunkIterator(t *testing.T) {
 	periodConfigs := []config.PeriodConfig{
 		{
-			From:      config.DayTime{Time: 0},
-			Schema:    "v11",
-			RowShards: 16,
+			From:   config.DayTime{Time: 0},
+			Schema: "v11",
 		},
 		{
-			From:      config.DayTime{Time: 0},
-			Schema:    "v12",
-			RowShards: 16,
+			From:   config.DayTime{Time: 0},
+			Schema: "v12",
 		},
 		{
-			From:      config.DayTime{Time: 0},
-			Schema:    "v13",
-			RowShards: 16,
+			From:   config.DayTime{Time: 0},
+			Schema: "v13",
 		},
 	}
 
@@ -200,6 +197,8 @@ func lazyChunkWithBounds(from, through time.Time) *LazyChunk {
 
 type fakeBlock struct {
 	mint, maxt int64
+	// it is the SampleIterator to hand back; nil unless a test sets it.
+	it iter.SampleIterator
 }
 
 func (fakeBlock) Entries() int     { return 0 }
@@ -210,8 +209,8 @@ func (fakeBlock) Iterator(context.Context, log.StreamPipeline) iter.EntryIterato
 	return nil
 }
 
-func (fakeBlock) SampleIterator(_ context.Context, _ ...log.StreamSampleExtractor) iter.SampleIterator {
-	return nil
+func (f fakeBlock) SampleIterator(_ context.Context, _ log.StreamSampleExtractor) iter.SampleIterator {
+	return f.it
 }
 
 func blockWithBounds(mint, maxt int64) chunkenc.Block {

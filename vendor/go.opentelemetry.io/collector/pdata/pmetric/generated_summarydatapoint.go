@@ -8,8 +8,6 @@ package pmetric
 
 import (
 	"go.opentelemetry.io/collector/pdata/internal"
-	otlpmetrics "go.opentelemetry.io/collector/pdata/internal/data/protogen/metrics/v1"
-	"go.opentelemetry.io/collector/pdata/internal/json"
 	"go.opentelemetry.io/collector/pdata/pcommon"
 )
 
@@ -21,11 +19,11 @@ import (
 // Must use NewSummaryDataPoint function to create new instances.
 // Important: zero-initialized instance is not valid for use.
 type SummaryDataPoint struct {
-	orig  *otlpmetrics.SummaryDataPoint
+	orig  *internal.SummaryDataPoint
 	state *internal.State
 }
 
-func newSummaryDataPoint(orig *otlpmetrics.SummaryDataPoint, state *internal.State) SummaryDataPoint {
+func newSummaryDataPoint(orig *internal.SummaryDataPoint, state *internal.State) SummaryDataPoint {
 	return SummaryDataPoint{orig: orig, state: state}
 }
 
@@ -34,8 +32,7 @@ func newSummaryDataPoint(orig *otlpmetrics.SummaryDataPoint, state *internal.Sta
 // This must be used only in testing code. Users should use "AppendEmpty" when part of a Slice,
 // OR directly access the member if this is embedded in another struct.
 func NewSummaryDataPoint() SummaryDataPoint {
-	state := internal.StateMutable
-	return newSummaryDataPoint(&otlpmetrics.SummaryDataPoint{}, &state)
+	return newSummaryDataPoint(internal.NewSummaryDataPoint(), internal.NewState())
 }
 
 // MoveTo moves all properties from the current struct overriding the destination and
@@ -47,13 +44,13 @@ func (ms SummaryDataPoint) MoveTo(dest SummaryDataPoint) {
 	if ms.orig == dest.orig {
 		return
 	}
-	*dest.orig = *ms.orig
-	*ms.orig = otlpmetrics.SummaryDataPoint{}
+	internal.DeleteSummaryDataPoint(dest.orig, false)
+	*dest.orig, *ms.orig = *ms.orig, *dest.orig
 }
 
 // Attributes returns the Attributes associated with this SummaryDataPoint.
 func (ms SummaryDataPoint) Attributes() pcommon.Map {
-	return pcommon.Map(internal.NewMap(&ms.orig.Attributes, ms.state))
+	return pcommon.Map(internal.NewMapWrapper(&ms.orig.Attributes, ms.state))
 }
 
 // StartTimestamp returns the starttimestamp associated with this SummaryDataPoint.
@@ -119,49 +116,5 @@ func (ms SummaryDataPoint) SetFlags(v DataPointFlags) {
 // CopyTo copies all properties from the current struct overriding the destination.
 func (ms SummaryDataPoint) CopyTo(dest SummaryDataPoint) {
 	dest.state.AssertMutable()
-	copyOrigSummaryDataPoint(dest.orig, ms.orig)
-}
-
-// marshalJSONStream marshals all properties from the current struct to the destination stream.
-func (ms SummaryDataPoint) marshalJSONStream(dest *json.Stream) {
-	dest.WriteObjectStart()
-	if len(ms.orig.Attributes) > 0 {
-		dest.WriteObjectField("attributes")
-		internal.MarshalJSONStreamMap(internal.NewMap(&ms.orig.Attributes, ms.state), dest)
-	}
-	if ms.orig.StartTimeUnixNano != 0 {
-		dest.WriteObjectField("startTimeUnixNano")
-		dest.WriteUint64(ms.orig.StartTimeUnixNano)
-	}
-	if ms.orig.TimeUnixNano != 0 {
-		dest.WriteObjectField("timeUnixNano")
-		dest.WriteUint64(ms.orig.TimeUnixNano)
-	}
-	if ms.orig.Count != uint64(0) {
-		dest.WriteObjectField("count")
-		dest.WriteUint64(ms.orig.Count)
-	}
-	if ms.orig.Sum != float64(0.0) {
-		dest.WriteObjectField("sum")
-		dest.WriteFloat64(ms.orig.Sum)
-	}
-	if len(ms.orig.QuantileValues) > 0 {
-		dest.WriteObjectField("quantileValues")
-		ms.QuantileValues().marshalJSONStream(dest)
-	}
-	if ms.orig.Flags != 0 {
-		dest.WriteObjectField("flags")
-		dest.WriteUint32(ms.orig.Flags)
-	}
-	dest.WriteObjectEnd()
-}
-
-func copyOrigSummaryDataPoint(dest, src *otlpmetrics.SummaryDataPoint) {
-	dest.Attributes = internal.CopyOrigMap(dest.Attributes, src.Attributes)
-	dest.StartTimeUnixNano = src.StartTimeUnixNano
-	dest.TimeUnixNano = src.TimeUnixNano
-	dest.Count = src.Count
-	dest.Sum = src.Sum
-	dest.QuantileValues = copyOrigSummaryDataPointValueAtQuantileSlice(dest.QuantileValues, src.QuantileValues)
-	dest.Flags = src.Flags
+	internal.CopySummaryDataPoint(dest.orig, ms.orig)
 }

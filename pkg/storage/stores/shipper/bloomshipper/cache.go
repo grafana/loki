@@ -13,7 +13,6 @@ import (
 
 	iter "github.com/grafana/loki/v3/pkg/iter/v2"
 	v1 "github.com/grafana/loki/v3/pkg/storage/bloom/v1"
-	"github.com/grafana/loki/v3/pkg/storage/chunk/cache"
 	"github.com/grafana/loki/v3/pkg/util"
 	"github.com/grafana/loki/v3/pkg/util/mempool"
 )
@@ -26,7 +25,7 @@ type CloseableBlockQuerier struct {
 
 func (c *CloseableBlockQuerier) Close() error {
 	var err multierror.MultiError
-	err.Add(c.BlockQuerier.Reset())
+	err.Add(c.Reset())
 	if c.close != nil {
 		err.Add(c.close())
 	}
@@ -37,7 +36,7 @@ func (c *CloseableBlockQuerier) SeriesIter() (iter.PeekIterator[*v1.SeriesWithBl
 	if err := c.Reset(); err != nil {
 		return nil, err
 	}
-	return iter.NewPeekIter[*v1.SeriesWithBlooms](c.BlockQuerier.Iter()), nil
+	return iter.NewPeekIter[*v1.SeriesWithBlooms](c.Iter()), nil
 }
 
 func LoadBlocksDirIntoCache(paths []string, c Cache, logger log.Logger) error {
@@ -116,10 +115,6 @@ func loadBlockDirectories(root string, logger log.Logger) (keys []string, values
 	return
 }
 
-func calculateBlockDirectorySize(entry *cache.Entry[string, BlockDirectory]) uint64 {
-	return uint64(entry.Value.Size())
-}
-
 // NewBlockDirectory creates a new BlockDirectory. Must exist on disk.
 func NewBlockDirectory(ref BlockRef, path string) BlockDirectory {
 	bd := BlockDirectory{
@@ -164,7 +159,7 @@ func (b *BlockDirectory) resolveSize() error {
 }
 
 // BlockQuerier returns a new block querier from the directory.
-// The passed function `close` is called when the the returned querier is closed.
+// The passed function `close` is called when the returned querier is closed.
 func (b BlockDirectory) BlockQuerier(
 	alloc mempool.Allocator,
 	closeFunc func() error,

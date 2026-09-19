@@ -8,8 +8,6 @@ package pmetric
 
 import (
 	"go.opentelemetry.io/collector/pdata/internal"
-	otlpmetrics "go.opentelemetry.io/collector/pdata/internal/data/protogen/metrics/v1"
-	"go.opentelemetry.io/collector/pdata/internal/json"
 )
 
 // Sum represents the type of a numeric metric that is calculated as a sum of all reported measurements over a time interval.
@@ -20,11 +18,11 @@ import (
 // Must use NewSum function to create new instances.
 // Important: zero-initialized instance is not valid for use.
 type Sum struct {
-	orig  *otlpmetrics.Sum
+	orig  *internal.Sum
 	state *internal.State
 }
 
-func newSum(orig *otlpmetrics.Sum, state *internal.State) Sum {
+func newSum(orig *internal.Sum, state *internal.State) Sum {
 	return Sum{orig: orig, state: state}
 }
 
@@ -33,8 +31,7 @@ func newSum(orig *otlpmetrics.Sum, state *internal.State) Sum {
 // This must be used only in testing code. Users should use "AppendEmpty" when part of a Slice,
 // OR directly access the member if this is embedded in another struct.
 func NewSum() Sum {
-	state := internal.StateMutable
-	return newSum(&otlpmetrics.Sum{}, &state)
+	return newSum(internal.NewSum(), internal.NewState())
 }
 
 // MoveTo moves all properties from the current struct overriding the destination and
@@ -46,8 +43,13 @@ func (ms Sum) MoveTo(dest Sum) {
 	if ms.orig == dest.orig {
 		return
 	}
-	*dest.orig = *ms.orig
-	*ms.orig = otlpmetrics.Sum{}
+	internal.DeleteSum(dest.orig, false)
+	*dest.orig, *ms.orig = *ms.orig, *dest.orig
+}
+
+// DataPoints returns the DataPoints associated with this Sum.
+func (ms Sum) DataPoints() NumberDataPointSlice {
+	return newNumberDataPointSlice(&ms.orig.DataPoints, ms.state)
 }
 
 // AggregationTemporality returns the aggregationtemporality associated with this Sum.
@@ -58,7 +60,7 @@ func (ms Sum) AggregationTemporality() AggregationTemporality {
 // SetAggregationTemporality replaces the aggregationtemporality associated with this Sum.
 func (ms Sum) SetAggregationTemporality(v AggregationTemporality) {
 	ms.state.AssertMutable()
-	ms.orig.AggregationTemporality = otlpmetrics.AggregationTemporality(v)
+	ms.orig.AggregationTemporality = internal.AggregationTemporality(v)
 }
 
 // IsMonotonic returns the ismonotonic associated with this Sum.
@@ -72,37 +74,8 @@ func (ms Sum) SetIsMonotonic(v bool) {
 	ms.orig.IsMonotonic = v
 }
 
-// DataPoints returns the DataPoints associated with this Sum.
-func (ms Sum) DataPoints() NumberDataPointSlice {
-	return newNumberDataPointSlice(&ms.orig.DataPoints, ms.state)
-}
-
 // CopyTo copies all properties from the current struct overriding the destination.
 func (ms Sum) CopyTo(dest Sum) {
 	dest.state.AssertMutable()
-	copyOrigSum(dest.orig, ms.orig)
-}
-
-// marshalJSONStream marshals all properties from the current struct to the destination stream.
-func (ms Sum) marshalJSONStream(dest *json.Stream) {
-	dest.WriteObjectStart()
-	if ms.orig.AggregationTemporality != otlpmetrics.AggregationTemporality(0) {
-		dest.WriteObjectField("aggregationTemporality")
-		ms.AggregationTemporality().marshalJSONStream(dest)
-	}
-	if ms.orig.IsMonotonic != false {
-		dest.WriteObjectField("isMonotonic")
-		dest.WriteBool(ms.orig.IsMonotonic)
-	}
-	if len(ms.orig.DataPoints) > 0 {
-		dest.WriteObjectField("dataPoints")
-		ms.DataPoints().marshalJSONStream(dest)
-	}
-	dest.WriteObjectEnd()
-}
-
-func copyOrigSum(dest, src *otlpmetrics.Sum) {
-	dest.AggregationTemporality = src.AggregationTemporality
-	dest.IsMonotonic = src.IsMonotonic
-	dest.DataPoints = copyOrigNumberDataPointSlice(dest.DataPoints, src.DataPoints)
+	internal.CopySum(dest.orig, ms.orig)
 }

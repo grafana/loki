@@ -102,7 +102,7 @@ func createMetaInStorage(store *BloomStore, tenant string, start model.Time, min
 	}
 	err := store.storeDo(start, func(s *bloomStoreEntry) error {
 		raw, _ := json.Marshal(meta)
-		meta.MetaRef.Ref.TableName = tablesForRange(s.cfg, NewInterval(start, start.Add(12*time.Hour)))[0]
+		meta.TableName = tablesForRange(s.cfg, NewInterval(start, start.Add(12*time.Hour)))[0]
 		return s.objectClient.PutObject(context.Background(), s.Meta(meta.MetaRef).Addr(), bytes.NewReader(raw))
 	})
 	return meta, err
@@ -135,7 +135,7 @@ func createBlockInStorage(t *testing.T, store *BloomStore, tenant string, start 
 		Data: fp,
 	}
 	err = store.storeDo(start, func(s *bloomStoreEntry) error {
-		block.BlockRef.Ref.TableName = tablesForRange(s.cfg, NewInterval(start, start.Add(12*time.Hour)))[0]
+		block.TableName = tablesForRange(s.cfg, NewInterval(start, start.Add(12*time.Hour)))[0]
 		return s.objectClient.PutObject(context.Background(), s.Block(block.BlockRef).Addr(), block.Data)
 	})
 	return block, err

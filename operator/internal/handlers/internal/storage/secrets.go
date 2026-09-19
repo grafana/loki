@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"io"
 	"net/url"
+	"regexp"
 	"sort"
 	"strings"
 
@@ -36,30 +37,43 @@ var (
 	errSecretUnknownCredentialMode = errors.New("unknown credential mode")
 
 	errAzureManagedIdentityNoOverride = errors.New("when in managed mode, storage secret can not contain credentials")
-	errAzureInvalidEnvironment        = errors.New("azure environment invalid (valid values: AzureGlobal, AzureChinaCloud, AzureGermanCloud, AzureUSGovernment)")
+	errAzureInvalidEnvironment        = errors.New("azure environment invalid (valid values: AzureGlobal, AzurePublicCloud, AzureChinaCloud, AzureGermanCloud, AzureUSGovernment)")
 	errAzureInvalidAccountKey         = errors.New("azure account key is not valid base64")
+	errAzureInvalidEndpointSuffix     = errors.New("azure endpoint suffix invalid")
 
 	errS3EndpointUnparseable       = errors.New("can not parse S3 endpoint as URL")
 	errS3EndpointNoURL             = errors.New("endpoint for S3 must be an HTTP or HTTPS URL")
 	errS3EndpointUnsupportedScheme = errors.New("scheme of S3 endpoint URL is unsupported")
-	errS3EndpointAWSInvalid        = errors.New("endpoint for AWS S3 must include correct region")
+	errS3EndpointAWSNoRegion       = errors.New("endpoint for AWS S3 must include correct region")
+	errS3EndpointAWSInvalid        = errors.New("endpoint for AWS S3 is invalid, must match either https://s3.region.amazonaws.com or https://bucket.vpce-id.s3.region.vpce.amazonaws.com")
+	errS3EndpointPathNotAllowed    = errors.New("endpoint for S3 must not include a path")
 	errS3ForcePathStyleInvalid     = errors.New(`forcepathstyle must be "true" or "false"`)
 
 	errGCPParseCredentialsFile      = errors.New("gcp storage secret cannot be parsed from JSON content")
 	errGCPWrongCredentialSourceFile = errors.New("credential source in secret needs to point to token file")
 	errGCPInvalidCredentialsFile    = errors.New("gcp credentials file contains invalid fields")
 
-	azureValidEnvironments = map[string]bool{
-		"AzureGlobal":       true,
-		"AzureChinaCloud":   true,
-		"AzureGermanCloud":  true,
-		"AzureUSGovernment": true,
+	azureEnvironmentEndpointSuffix = map[string]string{
+		"AzureGlobal":       "blob.core.windows.net",
+		"AzurePublicCloud":  "blob.core.windows.net",
+		"AzureChinaCloud":   "blob.core.chinacloudapi.cn",
+		"AzureGermanCloud":  "blob.core.cloudapi.de",
+		"AzureUSGovernment": "blob.core.usgovcloudapi.net",
 	}
 )
 
 const (
 	awsEndpointSuffix      = ".amazonaws.com"
 	gcpAccountTypeExternal = "external_account"
+)
+
+var (
+	// Regular AWS S3 endpoint: https://s3.{region}.amazonaws.com
+	awsS3EndpointRegex = regexp.MustCompile(`^https://s3\.([a-z0-9-]+)\.amazonaws\.com$`)
+
+	// VPC interface endpoint for virtual-hosted-style access:
+	// https://bucket.vpce-{id}-{hash}.s3.{region}.vpce.amazonaws.com
+	awsVPCEndpointRegex = regexp.MustCompile(`^https://bucket\.vpce-[a-z0-9-]+\.s3\.([a-z0-9-]+)\.vpce\.amazonaws\.com$`)
 )
 
 func getSecrets(ctx context.Context, k k8s.Client, stack *lokiv1.LokiStack, fg configv1.FeatureGates) (*corev1.Secret, *corev1.Secret, error) {
@@ -238,12 +252,22 @@ func hashSecretData(s *corev1.Secret) (string, error) {
 func extractAzureConfigSecret(s *corev1.Secret, credentialMode lokiv1.CredentialMode) (*storage.AzureStorageConfig, error) {
 	// Extract and validate mandatory fields
 	env := string(s.Data[storage.KeyAzureEnvironmentName])
-	if env == "" {
-		return nil, fmt.Errorf("%w: %s", errSecretMissingField, storage.KeyAzureEnvironmentName)
+	endpointSuffix := string(s.Data[storage.KeyAzureStorageEndpointSuffix])
+	if env == "" && endpointSuffix == "" {
+		return nil, fmt.Errorf("%w: either %s or %s should be set", errSecretMissingField, storage.KeyAzureEnvironmentName, storage.KeyAzureStorageEndpointSuffix)
 	}
 
-	if !azureValidEnvironments[env] {
+	envEndpointSuffix, ok := azureEnvironmentEndpointSuffix[env]
+	if env != "" && !ok {
 		return nil, fmt.Errorf("%w: %s", errAzureInvalidEnvironment, env)
+	}
+
+	if endpointSuffix == "" {
+		endpointSuffix = envEndpointSuffix
+	}
+
+	if !endpointSuffixExists(azureEnvironmentEndpointSuffix, endpointSuffix) {
+		return nil, fmt.Errorf("%w: %s", errAzureInvalidEndpointSuffix, endpointSuffix)
 	}
 
 	accountName := s.Data[storage.KeyAzureStorageAccountName]
@@ -262,7 +286,6 @@ func extractAzureConfigSecret(s *corev1.Secret, credentialMode lokiv1.Credential
 	}
 
 	// Extract and validate optional fields
-	endpointSuffix := s.Data[storage.KeyAzureStorageEndpointSuffix]
 	audience := s.Data[storage.KeyAzureAudience]
 
 	if !workloadIdentity && len(audience) > 0 {
@@ -270,7 +293,6 @@ func extractAzureConfigSecret(s *corev1.Secret, credentialMode lokiv1.Credential
 	}
 
 	return &storage.AzureStorageConfig{
-		Env:              env,
 		Container:        string(container),
 		EndpointSuffix:   string(endpointSuffix),
 		Audience:         string(audience),
@@ -404,7 +426,7 @@ func extractS3ConfigSecret(s *corev1.Secret, credentialMode lokiv1.CredentialMod
 
 	var (
 		// Fields related with static authentication
-		endpoint = s.Data[storage.KeyAWSEndpoint]
+		endpoint = string(s.Data[storage.KeyAWSEndpoint])
 		id       = s.Data[storage.KeyAWSAccessKeyID]
 		secret   = s.Data[storage.KeyAWSAccessKeySecret]
 		// Fields related with STS authentication
@@ -416,7 +438,7 @@ func extractS3ConfigSecret(s *corev1.Secret, credentialMode lokiv1.CredentialMod
 
 	// Determine if we should use path style URLs for S3
 	// default to false for non-AWS endpoints
-	forcePathStyle := !strings.HasSuffix(string(endpoint), awsEndpointSuffix)
+	forcePathStyle := !strings.HasSuffix(endpoint, awsEndpointSuffix)
 	// Check if the user has specified forcepathstyle
 	if configForcePathStyle, ok := s.Data[storage.KeyAWSForcePathStyle]; ok {
 		strForcePathStyle := string(configForcePathStyle)
@@ -453,13 +475,20 @@ func extractS3ConfigSecret(s *corev1.Secret, credentialMode lokiv1.CredentialMod
 		if len(region) == 0 {
 			return nil, fmt.Errorf("%w: %s", errSecretMissingField, storage.KeyAWSRegion)
 		}
+
 		return cfg, nil
 	case lokiv1.CredentialModeStatic:
-		cfg.Endpoint = string(endpoint)
-
-		if err := validateS3Endpoint(string(endpoint), string(region)); err != nil {
+		if err := validateS3Endpoint(endpoint, string(region)); err != nil {
 			return nil, err
 		}
+		parsedURL, err := url.Parse(endpoint)
+		if err != nil {
+			return nil, fmt.Errorf("%w:%s", errS3EndpointUnparseable, storage.KeyAWSEndpoint)
+		}
+
+		cfg.Endpoint = parsedURL.Host
+		cfg.Insecure = strings.HasPrefix(endpoint, "http://")
+
 		if len(id) == 0 {
 			return nil, fmt.Errorf("%w: %s", errSecretMissingField, storage.KeyAWSAccessKeyID)
 		}
@@ -476,13 +505,14 @@ func extractS3ConfigSecret(s *corev1.Secret, credentialMode lokiv1.CredentialMod
 		if len(region) == 0 {
 			return nil, fmt.Errorf("%w: %s", errSecretMissingField, storage.KeyAWSRegion)
 		}
+
 		return cfg, nil
 	default:
 		return nil, fmt.Errorf("%w: %s", errSecretUnknownCredentialMode, credentialMode)
 	}
 }
 
-func validateS3Endpoint(endpoint string, region string) error {
+func validateS3Endpoint(endpoint, region string) error {
 	if len(endpoint) == 0 {
 		return fmt.Errorf("%w: %s", errSecretMissingField, storage.KeyAWSEndpoint)
 	}
@@ -491,26 +521,38 @@ func validateS3Endpoint(endpoint string, region string) error {
 	if err != nil {
 		return fmt.Errorf("%w: %w", errS3EndpointUnparseable, err)
 	}
-
 	if parsedURL.Scheme == "" {
-		// Assume "just a hostname" when scheme is empty and produce a clearer error message
 		return errS3EndpointNoURL
 	}
-
 	if parsedURL.Scheme != "http" && parsedURL.Scheme != "https" {
 		return fmt.Errorf("%w: %s", errS3EndpointUnsupportedScheme, parsedURL.Scheme)
 	}
 
-	if strings.HasSuffix(endpoint, awsEndpointSuffix) {
+	if parsedURL.Path != "" && parsedURL.Path != "/" {
+		return fmt.Errorf("%w: %s", errS3EndpointPathNotAllowed, parsedURL.Path)
+	}
+
+	if strings.HasSuffix(parsedURL.Host, awsEndpointSuffix) {
 		if len(region) == 0 {
 			return fmt.Errorf("%w: %s", errSecretMissingField, storage.KeyAWSRegion)
 		}
 
-		validEndpoint := fmt.Sprintf("https://s3.%s%s", region, awsEndpointSuffix)
-		if endpoint != validEndpoint {
-			return fmt.Errorf("%w: %s", errS3EndpointAWSInvalid, validEndpoint)
+		var extractedRegion string
+		for _, re := range []*regexp.Regexp{awsS3EndpointRegex, awsVPCEndpointRegex} {
+			if matches := re.FindStringSubmatch(endpoint); matches != nil {
+				extractedRegion = matches[1]
+				break
+			}
 		}
+		if extractedRegion == "" {
+			return fmt.Errorf("%w: got %s", errS3EndpointAWSInvalid, endpoint)
+		}
+		if extractedRegion != region {
+			return fmt.Errorf("%w: expected region %s, got %s", errS3EndpointAWSNoRegion, region, extractedRegion)
+		}
+		return nil
 	}
+
 	return nil
 }
 
@@ -628,4 +670,13 @@ func extractAlibabaCloudConfigSecret(s *corev1.Secret) (*storage.AlibabaCloudSto
 		Endpoint: string(endpoint),
 		Bucket:   string(bucket),
 	}, nil
+}
+
+func endpointSuffixExists(m map[string]string, value string) bool {
+	for _, v := range m {
+		if v == value {
+			return true
+		}
+	}
+	return false
 }

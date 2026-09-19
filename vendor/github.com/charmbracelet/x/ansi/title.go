@@ -30,3 +30,19 @@ func SetIconName(s string) string {
 func SetWindowTitle(s string) string {
 	return "\x1b]2;" + s + "\x07"
 }
+
+// DECSWT is a sequence for setting the window title.
+//
+// This is an alias for [SetWindowTitle]("1;<name>").
+// See: EK-VT520-RM 5–156 https://vt100.net/dec/ek-vt520-rm.pdf
+func DECSWT(name string) string {
+	return SetWindowTitle("1;" + name)
+}
+
+// DECSIN is a sequence for setting the icon name.
+//
+// This is an alias for [SetWindowTitle]("L;<name>").
+// See: EK-VT520-RM 5–134 https://vt100.net/dec/ek-vt520-rm.pdf
+func DECSIN(name string) string {
+	return SetWindowTitle("L;" + name)
+}

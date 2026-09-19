@@ -19,7 +19,7 @@ type printStreamsCommand struct {
 	streamIDs *[]int64
 }
 
-func (cmd *printStreamsCommand) run(c *kingpin.ParseContext) error {
+func (cmd *printStreamsCommand) run(_ *kingpin.ParseContext) error {
 	for _, f := range *cmd.files {
 		cmd.printStreamsInFile(f)
 	}
@@ -29,16 +29,16 @@ func (cmd *printStreamsCommand) run(c *kingpin.ParseContext) error {
 func (cmd *printStreamsCommand) printStreamsInFile(name string) {
 	f, err := os.Open(name)
 	if err != nil {
-		exitWithError(fmt.Errorf("failed to open file: %w", err))
+		exitWithErr(fmt.Errorf("failed to open file: %w", err))
 	}
 	defer func() { _ = f.Close() }()
 	fi, err := f.Stat()
 	if err != nil {
-		exitWithError(fmt.Errorf("failed to read fileinfo: %w", err))
+		exitWithErr(fmt.Errorf("failed to read fileinfo: %w", err))
 	}
 	dataObj, err := dataobj.FromReaderAt(f, fi.Size())
 	if err != nil {
-		exitWithError(fmt.Errorf("failed to read dataobj: %w", err))
+		exitWithErr(fmt.Errorf("failed to read dataobj: %w", err))
 	}
 	cmd.printStreams(context.TODO(), dataObj)
 }
@@ -46,10 +46,9 @@ func (cmd *printStreamsCommand) printStreamsInFile(name string) {
 func (cmd *printStreamsCommand) printStreams(ctx context.Context, dataObj *dataobj.Object) {
 	var (
 		tmp            = make([]logs.Record, 512)
-		printAll       = false
 		printStreamIDs = make(map[int64]struct{})
 	)
-	printAll = len(*cmd.streamIDs) == 0
+	printAll := len(*cmd.streamIDs) == 0
 	for _, id := range *cmd.streamIDs {
 		printStreamIDs[id] = struct{}{}
 	}
@@ -57,13 +56,16 @@ func (cmd *printStreamsCommand) printStreams(ctx context.Context, dataObj *datao
 		if logs.CheckSection(sec) {
 			logsSec, err := logs.Open(ctx, sec)
 			if err != nil {
-				exitWithError(fmt.Errorf("failed to open logs section: %w", err))
+				exitWithErr(fmt.Errorf("failed to open logs section: %w", err))
 			}
 			r := logs.NewRowReader(logsSec)
+			if err = r.Open(ctx); err != nil {
+				exitWithErr(fmt.Errorf("failed to open row reader: %w", err))
+			}
 			for {
 				n, err := r.Read(ctx, tmp)
 				if err != nil && !errors.Is(err, io.EOF) {
-					exitWithError(err)
+					exitWithErr(err)
 				}
 				if n == 0 && errors.Is(err, io.EOF) {
 					break

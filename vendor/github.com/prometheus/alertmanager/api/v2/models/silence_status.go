@@ -36,7 +36,7 @@ type SilenceStatus struct {
 
 	// state
 	// Required: true
-	// Enum: [expired active pending]
+	// Enum: ["expired","active","pending"]
 	State *string `json:"state"`
 }
 
@@ -54,7 +54,7 @@ func (m *SilenceStatus) Validate(formats strfmt.Registry) error {
 	return nil
 }
 
-var silenceStatusTypeStatePropEnum []interface{}
+var silenceStatusTypeStatePropEnum []any
 
 func init() {
 	var res []string

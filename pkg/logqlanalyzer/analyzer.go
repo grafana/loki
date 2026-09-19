@@ -28,7 +28,7 @@ func (a logQLAnalyzer) analyze(query string, logs []string) (*Result, error) {
 	if err != nil {
 		return nil, errors.Wrap(err, "can not create pipeline")
 	}
-	streamLabels, err := parser.ParseMetric(streamSelector)
+	streamLabels, err := parser.NewParser(parser.Options{}).ParseMetric(streamSelector)
 	if err != nil {
 		return nil, errors.Wrap(err, "can not parse labels from stream selector")
 	}
@@ -147,6 +147,10 @@ func (s StageAnalysisRecorder) Process(ts int64, line []byte, lbs *log.LabelsBui
 }
 func (s StageAnalysisRecorder) RequiredLabelNames() []string {
 	return s.origin.RequiredLabelNames()
+}
+
+func (s StageAnalysisRecorder) Hints() log.StageHints {
+	return s.origin.Hints()
 }
 
 type StageAnalysisRecord struct {

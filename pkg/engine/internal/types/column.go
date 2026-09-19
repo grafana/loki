@@ -1,4 +1,4 @@
-package types
+package types //nolint:revive
 
 import (
 	"fmt"
@@ -16,7 +16,7 @@ const (
 	ColumnTypeLabel     // ColumnTypeLabel represents a column from a stream label.
 	ColumnTypeMetadata  // ColumnTypeMetadata represents a column from a log metadata.
 	ColumnTypeParsed    // ColumnTypeParsed represents a parsed column from a parser stage.
-	ColumnTypeAmbiguous // ColumnTypeAmbiguous represents a column that can either be a builtin, label, metadata, or parsed.
+	ColumnTypeAmbiguous // ColumnTypeAmbiguous represents a column that can either be a label, metadata, or parsed.
 	ColumnTypeGenerated // ColumnTypeGenerated represents a column that is generated from an expression or computation.
 )
 
@@ -39,6 +39,25 @@ const (
 
 	MetadataKeyColumnType     = "column_type"
 	MetadataKeyColumnDataType = "column_datatype"
+)
+
+const (
+	ColumnFullNameTimestamp = "timestamp_ns.builtin.timestamp"
+)
+
+// Names of error columns
+const (
+	ColumnNameError        = "__error__"
+	ColumnNameErrorDetails = "__error_details__"
+)
+
+// Error types.
+const (
+	LogfmtParserErrorType     = "LogfmtParserErr"
+	LabelfmtParserErrorType   = "LabelfmtParserErr"
+	LinefmtParserErrorType    = "LinefmtParserErr"
+	JSONParserErrorType       = "JSONParserErr"
+	SampleExtractionErrorType = "SampleExtractionErr"
 )
 
 var ctNames = [7]string{"invalid", "builtin", "label", "metadata", "parsed", "ambiguous", "generated"}

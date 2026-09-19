@@ -271,7 +271,11 @@ func TextUnmarshallerHookFunc() DecodeHookFuncType {
 		if !ok {
 			return data, nil
 		}
-		if err := unmarshaller.UnmarshalText([]byte(data.(string))); err != nil {
+		str, ok := data.(string)
+		if !ok {
+			str = reflect.Indirect(reflect.ValueOf(&data)).Elem().String()
+		}
+		if err := unmarshaller.UnmarshalText([]byte(str)); err != nil {
 			return nil, err
 		}
 		return result, nil

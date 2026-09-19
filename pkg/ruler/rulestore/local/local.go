@@ -5,8 +5,10 @@ import (
 	"flag"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/pkg/errors"
+	"github.com/prometheus/common/model"
 	promRules "github.com/prometheus/prometheus/rules"
 
 	"github.com/grafana/loki/v3/pkg/ruler/rulespb"
@@ -55,6 +57,14 @@ func (l *Client) ListAllUsers(_ context.Context) ([]string, error) {
 	for _, entry := range dirEntries {
 		// After resolving link, entry.Name() may be different than user, so keep original name.
 		user := entry.Name()
+
+		// Skip dotfiles and dot-directories (e.g. Kubernetes ConfigMap
+		// atomic-writer entries like "..data" or "..2022_*"). This runs
+		// before symlink resolution so we never os.Stat a dangling
+		// dot-symlink.
+		if strings.HasPrefix(user, ".") {
+			continue
+		}
 
 		var isDir bool
 
@@ -145,6 +155,14 @@ func (l *Client) loadAllRulesGroupsForUser(ctx context.Context, userID string) (
 		// After resolving link, entry.Name() may be different than namespace, so keep original name.
 		namespace := entry.Name()
 
+		// Skip dotfiles (e.g. vim ".alerts.yml.swp" swap files) and
+		// dot-directories (Kubernetes ConfigMap atomic-writer entries like
+		// "..data" or "..2022_*"). This runs before symlink resolution so
+		// we never os.Stat a dangling dot-symlink.
+		if strings.HasPrefix(namespace, ".") {
+			continue
+		}
+
 		var isDir bool
 
 		if entry.Type()&os.ModeSymlink != 0 {
@@ -177,7 +195,7 @@ func (l *Client) loadAllRulesGroupsForUser(ctx context.Context, userID string) (
 func (l *Client) loadAllRulesGroupsForUserAndNamespace(_ context.Context, userID string, namespace string) (rulespb.RuleGroupList, error) {
 	filename := filepath.Join(l.cfg.Directory, userID, namespace)
 
-	rulegroups, allErrors := l.loader.Load(filename, true)
+	rulegroups, allErrors := l.loader.Load(filename, true, model.UTF8Validation)
 	if len(allErrors) > 0 {
 		return nil, errors.Wrapf(allErrors[0], "error parsing %s", filename)
 	}

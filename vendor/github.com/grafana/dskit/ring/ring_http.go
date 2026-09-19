@@ -32,24 +32,41 @@ var defaultPageTemplate = template.Must(template.New("webpage").Funcs(template.F
 type httpResponse struct {
 	Ingesters []ingesterDesc `json:"shards"`
 	Now       time.Time      `json:"now"`
-	// ShowTokens indicates whether the Show Tokens button is clicked.
-	ShowTokens bool `json:"-"`
-	// DisableTokens hides the concept of tokens entirely in the page, across all elements.
-	DisableTokens bool `json:"-"`
+	// TokensToggledOn indicates whether the Show Tokens button is clicked.
+	TokensToggledOn bool             `json:"-"`
+	Config          StatusPageConfig `json:"-"`
 }
 
 type ingesterDesc struct {
-	ID                       string    `json:"id"`
-	State                    string    `json:"state"`
-	Address                  string    `json:"address"`
-	HeartbeatTimestamp       time.Time `json:"timestamp"`
-	RegisteredTimestamp      time.Time `json:"registered_timestamp"`
-	ReadOnly                 bool      `json:"read_only"`
-	ReadOnlyUpdatedTimestamp time.Time `json:"read_only_updated_timestamp"`
-	Zone                     string    `json:"zone"`
-	Tokens                   []uint32  `json:"tokens"`
-	NumTokens                int       `json:"-"`
-	Ownership                float64   `json:"-"`
+	ID                       string            `json:"id"`
+	State                    string            `json:"state"`
+	Address                  string            `json:"address"`
+	HeartbeatTimestamp       time.Time         `json:"timestamp"`
+	RegisteredTimestamp      time.Time         `json:"registered_timestamp"`
+	ReadOnly                 bool              `json:"read_only"`
+	ReadOnlyUpdatedTimestamp time.Time         `json:"read_only_updated_timestamp"`
+	Zone                     string            `json:"zone"`
+	Tokens                   []uint32          `json:"tokens"`
+	NumTokens                int               `json:"-"`
+	Ownership                float64           `json:"-"`
+	Versions                 map[uint64]uint64 `json:"versions,omitempty"`
+}
+
+// StatusPageConfig configures the ring status page.
+//
+// Given the values are only used to configure the status page, it is safe to change them between
+// releases or have different values on different members of the same ring.
+type StatusPageConfig struct {
+	// HideTokensUIElements allows tokens to be hidden from the status page, for use in contexts which do not utilize tokens.
+	HideTokensUIElements bool `yaml:"-" json:"-"`
+
+	// ShowVersions enables displaying versions on the status page.
+	ShowVersions bool `yaml:"-" json:"-"`
+
+	// ComponentNames are the names of the components in InstanceDesc.Versions, used only for display on the status page.
+	// If a component in Versions has no name in ComponentNames, then the version will be shown on the status page
+	// without a name.
+	ComponentNames map[uint64]string `yaml:"-" json:"-"`
 }
 
 type ringAccess interface {
@@ -60,14 +77,14 @@ type ringAccess interface {
 type ringPageHandler struct {
 	r                ringAccess
 	heartbeatTimeout time.Duration
-	disableTokens    bool
+	config           StatusPageConfig
 }
 
-func newRingPageHandler(r ringAccess, heartbeatTimeout time.Duration, disableTokens bool) *ringPageHandler {
+func newRingPageHandler(r ringAccess, heartbeatTimeout time.Duration, config StatusPageConfig) *ringPageHandler {
 	return &ringPageHandler{
 		r:                r,
 		heartbeatTimeout: heartbeatTimeout,
-		disableTokens:    disableTokens,
+		config:           config,
 	}
 }
 
@@ -131,16 +148,17 @@ func (h *ringPageHandler) handle(w http.ResponseWriter, req *http.Request) {
 			Zone:                     ing.Zone,
 			NumTokens:                len(ing.Tokens),
 			Ownership:                (float64(ownedTokens[id]) / float64(math.MaxUint32)) * 100,
+			Versions:                 ing.Versions,
 		})
 	}
 
 	tokensParam := req.URL.Query().Get("tokens")
 
 	renderHTTPResponse(w, httpResponse{
-		Ingesters:     ingesters,
-		Now:           now,
-		ShowTokens:    tokensParam == "true",
-		DisableTokens: h.disableTokens,
+		Ingesters:       ingesters,
+		Now:             now,
+		TokensToggledOn: tokensParam == "true",
+		Config:          h.config,
 	}, defaultPageTemplate, req)
 }
 

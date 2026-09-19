@@ -377,8 +377,8 @@ func TestLabelQueryCacheKey(t *testing.T) {
 				}
 
 				if values {
-					r.LabelRequest.Values = true
-					r.LabelRequest.Name = labelName
+					r.Values = true
+					r.Name = labelName
 				}
 
 				// we use regex here because cache key always refers to the current time to get the ingester query window,

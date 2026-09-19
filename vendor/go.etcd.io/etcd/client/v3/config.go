@@ -21,6 +21,8 @@ import (
 
 	"go.uber.org/zap"
 	"google.golang.org/grpc"
+
+	"go.etcd.io/etcd/client/pkg/v3/transport"
 )
 
 type Config struct {
@@ -31,7 +33,14 @@ type Config struct {
 	// 0 disables auto-sync. By default auto-sync is disabled.
 	AutoSyncInterval time.Duration `json:"auto-sync-interval"`
 
-	// DialTimeout is the timeout for failing to establish a connection.
+	// DialTimeout is the timeout used for certain operations, such as fetching
+	// an authentication token and checking the cluster version (when
+	// RejectOldCluster is true). It is also used to derive the initial
+	// keep-alive timeout for lease keep-alives (DialTimeout + 1s).
+	// It is NOT used to bound the gRPC connection establishment itself,
+	// because client creation is non-blocking since
+	// https://github.com/etcd-io/etcd/pull/21832.
+	// A value of 0 means no timeout is applied to those operations.
 	DialTimeout time.Duration `json:"dial-timeout"`
 
 	// DialKeepAliveTime is the time after which client pings the server to see if
@@ -52,7 +61,7 @@ type Config struct {
 	// If 0, it defaults to "math.MaxInt32", because range response can
 	// easily exceed request send limits.
 	// Make sure that "MaxCallRecvMsgSize" >= server-side default send/recv limit.
-	// ("--max-request-bytes" flag to etcd or "embed.Config.MaxRequestBytes").
+	// ("--max-recv-bytes" flag to etcd).
 	MaxCallRecvMsgSize int
 
 	// TLS holds the client secure credentials, if any.
@@ -64,12 +73,15 @@ type Config struct {
 	// Password is a password for authentication.
 	Password string `json:"password"`
 
+	// Token is a JWT used for authentication instead of a password.
+	Token string `json:"token"`
+
 	// RejectOldCluster when set will refuse to create a client against an outdated cluster.
 	RejectOldCluster bool `json:"reject-old-cluster"`
 
 	// DialOptions is a list of dial options for the grpc client (e.g., for interceptors).
-	// For example, pass "grpc.WithBlock()" to block until the underlying connection is up.
-	// Without this, Dial returns immediately and connecting the server happens in background.
+	// Note that grpc.NewClient ignores options that are specific to grpc.Dial such as
+	// "grpc.WithBlock()".
 	DialOptions []grpc.DialOption
 
 	// Context is the default client context; it can be used to cancel grpc dial out and
@@ -88,5 +100,141 @@ type Config struct {
 	// PermitWithoutStream when set will allow client to send keepalive pings to server without any active streams(RPCs).
 	PermitWithoutStream bool `json:"permit-without-stream"`
 
+	// MaxUnaryRetries is the maximum number of retries for unary RPCs.
+	MaxUnaryRetries uint `json:"max-unary-retries"`
+
+	// BackoffWaitBetween is the wait time before retrying an RPC.
+	BackoffWaitBetween time.Duration `json:"backoff-wait-between"`
+
+	// BackoffJitterFraction is the jitter fraction to randomize backoff wait time.
+	BackoffJitterFraction float64 `json:"backoff-jitter-fraction"`
+
 	// TODO: support custom balancer picker
+}
+
+// ConfigSpec is the configuration from users, which comes from command-line flags,
+// environment variables or config file. It is a fully declarative configuration,
+// and can be serialized & deserialized to/from JSON.
+type ConfigSpec struct {
+	Endpoints          []string      `json:"endpoints"`
+	RequestTimeout     time.Duration `json:"request-timeout"`
+	DialTimeout        time.Duration `json:"dial-timeout"`
+	KeepAliveTime      time.Duration `json:"keepalive-time"`
+	KeepAliveTimeout   time.Duration `json:"keepalive-timeout"`
+	MaxCallSendMsgSize int           `json:"max-request-bytes"`
+	MaxCallRecvMsgSize int           `json:"max-recv-bytes"`
+	Secure             *SecureConfig `json:"secure"`
+	Auth               *AuthConfig   `json:"auth"`
+}
+
+type SecureConfig struct {
+	Cert       string `json:"cert"`
+	Key        string `json:"key"`
+	Cacert     string `json:"cacert"`
+	ServerName string `json:"server-name"`
+
+	InsecureTransport  bool `json:"insecure-transport"`
+	InsecureSkipVerify bool `json:"insecure-skip-tls-verify"`
+}
+
+type AuthConfig struct {
+	Username string `json:"username"`
+	Password string `json:"password"`
+	Token    string `json:"token"`
+}
+
+func (cs *ConfigSpec) Clone() *ConfigSpec {
+	if cs == nil {
+		return nil
+	}
+
+	clone := *cs
+
+	if len(cs.Endpoints) > 0 {
+		clone.Endpoints = make([]string, len(cs.Endpoints))
+		copy(clone.Endpoints, cs.Endpoints)
+	}
+
+	if cs.Secure != nil {
+		clone.Secure = &SecureConfig{}
+		*clone.Secure = *cs.Secure
+	}
+	if cs.Auth != nil {
+		clone.Auth = &AuthConfig{}
+		*clone.Auth = *cs.Auth
+	}
+
+	return &clone
+}
+
+func (cfg AuthConfig) Empty() bool {
+	return cfg.Username == "" && cfg.Password == "" && cfg.Token == ""
+}
+
+// NewClientConfig creates a Config based on the provided ConfigSpec.
+func NewClientConfig(confSpec *ConfigSpec, lg *zap.Logger) (*Config, error) {
+	tlsCfg, err := newTLSConfig(confSpec.Secure, lg)
+	if err != nil {
+		return nil, err
+	}
+
+	cfg := &Config{
+		Endpoints:            confSpec.Endpoints,
+		DialTimeout:          confSpec.DialTimeout,
+		DialKeepAliveTime:    confSpec.KeepAliveTime,
+		DialKeepAliveTimeout: confSpec.KeepAliveTimeout,
+		MaxCallSendMsgSize:   confSpec.MaxCallSendMsgSize,
+		MaxCallRecvMsgSize:   confSpec.MaxCallRecvMsgSize,
+		TLS:                  tlsCfg,
+	}
+
+	if confSpec.Auth != nil {
+		cfg.Username = confSpec.Auth.Username
+		cfg.Password = confSpec.Auth.Password
+		cfg.Token = confSpec.Auth.Token
+	}
+
+	return cfg, nil
+}
+
+func newTLSConfig(scfg *SecureConfig, lg *zap.Logger) (*tls.Config, error) {
+	var (
+		tlsCfg *tls.Config
+		err    error
+	)
+
+	if scfg == nil {
+		return nil, nil
+	}
+
+	if scfg.Cert != "" || scfg.Key != "" || scfg.Cacert != "" || scfg.ServerName != "" {
+		cfgtls := &transport.TLSInfo{
+			CertFile:      scfg.Cert,
+			KeyFile:       scfg.Key,
+			TrustedCAFile: scfg.Cacert,
+			ServerName:    scfg.ServerName,
+			Logger:        lg,
+		}
+		if tlsCfg, err = cfgtls.ClientConfig(); err != nil {
+			return nil, err
+		}
+	}
+
+	// If key/cert is not given but user wants secure connection, we
+	// should still setup an empty tls configuration for gRPC to setup
+	// secure connection.
+	if tlsCfg == nil && !scfg.InsecureTransport {
+		tlsCfg = &tls.Config{}
+	}
+
+	// If the user wants to skip TLS verification then we should set
+	// the InsecureSkipVerify flag in tls configuration.
+	if scfg.InsecureSkipVerify {
+		if tlsCfg == nil {
+			tlsCfg = &tls.Config{}
+		}
+		tlsCfg.InsecureSkipVerify = scfg.InsecureSkipVerify
+	}
+
+	return tlsCfg, nil
 }

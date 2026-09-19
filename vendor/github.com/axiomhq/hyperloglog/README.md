@@ -1,12 +1,14 @@
 # HyperLogLog - an algorithm for approximating the number of distinct elements
 
-[![GoDoc](https://godoc.org/github.com/axiomhq/hyperloglog?status.svg)](https://godoc.org/github.com/axiomhq/hyperloglog) [![Go Report Card](https://goreportcard.com/badge/github.com/axiomhq/hyperloglog)](https://goreportcard.com/report/github.com/axiomhq/hyperloglog) [![CircleCI](https://circleci.com/gh/axiomhq/hyperloglog/tree/master.svg?style=svg)](https://circleci.com/gh/axiomhq/hyperloglog/tree/master)
+[![CI](https://github.com/axiomhq/hyperloglog/actions/workflows/ci.yml/badge.svg)](https://github.com/axiomhq/hyperloglog/actions/workflows/ci.yml)
+[![Go Reference](https://pkg.go.dev/badge/github.com/axiomhq/hyperloglog.svg)](https://pkg.go.dev/github.com/axiomhq/hyperloglog)
+[![Go Report Card](https://goreportcard.com/badge/github.com/axiomhq/hyperloglog)](https://goreportcard.com/report/github.com/axiomhq/hyperloglog)
 
 An improved version of [HyperLogLog](https://en.wikipedia.org/wiki/HyperLogLog) for the count-distinct problem, approximating the number of distinct elements in a multiset. This implementation offers enhanced performance, flexibility, and simplicity while maintaining accuracy.
 
 ## Note on Implementation History
 
-The initial version of this work (tagged as v0.1.0) was based on ["Better with fewer bits: Improving the performance of cardinality estimation of large data streams - Qingjun Xiao, You Zhou, Shigang Chen"](http://cse.seu.edu.cn/PersonalPage/csqjxiao/csqjxiao_files/papers/INFOCOM17.pdf). However, the current implementation has evolved significantly from this original basis, notably moving away from the tailcut method.
+The initial version of this work (tagged as v0.1.0) was based on ["Better with fewer bits: Improving the performance of cardinality estimation of large data streams - Qingjun Xiao, You Zhou, Shigang Chen"](https://www.cise.ufl.edu/~sgchen/Publications/XZC17.pdf). However, the current implementation has evolved significantly from this original basis, notably moving away from the tailcut method.
 
 ## Current Implementation
 
@@ -40,12 +42,26 @@ A big thank you to Prof. Shigang Chen and his team at the University of Florida 
 
 ## Contributing
 
-Kindly check our [contributing guide](https://github.com/axiomhq/hyperloglog/blob/main/Contributing.md) on how to propose bugfixes and improvements, and submitting pull requests to the project
+Kindly check our [contributing guide](https://github.com/axiomhq/hyperloglog/blob/main/Contributing.md) on how to propose bugfixes and improvements, and submit pull requests to the project.
+
+Run the same checks used by CI before opening a pull request:
+
+```sh
+make ci
+```
+
+Individual targets are available for formatting (`make fmt`), linting
+(`make lint`), tests (`make test`), race-enabled tests (`make test-race`), and
+coverage (`make coverage`).
+
+Version tags matching `v*.*.*` are validated by the release workflow before it
+publishes a GitHub Release with generated release notes. Tags with a pre-release
+suffix, such as `v1.0.0-rc.1`, publish as pre-releases.
 
 ## License
 
-&copy; Axiom, Inc., 2024
+&copy; Axiom, Inc., 2026
 
-Distributed under MIT License (`The MIT License`).
+Distributed under the MIT License (`The MIT License`).
 
 See [LICENSE](LICENSE) for more information.

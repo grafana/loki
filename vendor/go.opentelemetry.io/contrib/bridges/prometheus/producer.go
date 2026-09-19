@@ -1,7 +1,7 @@
 // Copyright The OpenTelemetry Authors
 // SPDX-License-Identifier: Apache-2.0
 
-package prometheus // import "go.opentelemetry.io/contrib/bridges/prometheus"
+package prometheus
 
 import (
 	"context"
@@ -13,7 +13,6 @@ import (
 
 	"github.com/prometheus/client_golang/prometheus"
 	dto "github.com/prometheus/client_model/go"
-
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/sdk/instrumentation"
@@ -91,6 +90,8 @@ func convertPrometheusMetricsInto(promMetrics []*dto.MetricFamily, now time.Time
 		switch pm.GetType() {
 		case dto.MetricType_GAUGE:
 			newMetric.Data = convertGauge(pm.GetMetric(), now)
+		case dto.MetricType_UNTYPED:
+			newMetric.Data = convertUntyped(pm.GetMetric(), now)
 		case dto.MetricType_COUNTER:
 			newMetric.Data = convertCounter(pm.GetMetric(), now)
 		case dto.MetricType_SUMMARY:
@@ -102,7 +103,7 @@ func convertPrometheusMetricsInto(promMetrics []*dto.MetricFamily, now time.Time
 				newMetric.Data = convertHistogram(pm.GetMetric(), now)
 			}
 		default:
-			// MetricType_GAUGE_HISTOGRAM, MetricType_UNTYPED
+			// MetricType_GAUGE_HISTOGRAM
 			errs = append(errs, fmt.Errorf("%w: %v for metric %v", errUnsupportedType, pm.GetType(), pm.GetName()))
 			continue
 		}
@@ -130,6 +131,24 @@ func convertGauge(metrics []*dto.Metric, now time.Time) metricdata.Gauge[float64
 			Attributes: convertLabels(m.GetLabel()),
 			Time:       now,
 			Value:      m.GetGauge().GetValue(),
+		}
+		if m.GetTimestampMs() != 0 {
+			dp.Time = time.UnixMilli(m.GetTimestampMs())
+		}
+		otelGauge.DataPoints[i] = dp
+	}
+	return otelGauge
+}
+
+func convertUntyped(metrics []*dto.Metric, now time.Time) metricdata.Gauge[float64] {
+	otelGauge := metricdata.Gauge[float64]{
+		DataPoints: make([]metricdata.DataPoint[float64], len(metrics)),
+	}
+	for i, m := range metrics {
+		dp := metricdata.DataPoint[float64]{
+			Attributes: convertLabels(m.GetLabel()),
+			Time:       now,
+			Value:      m.GetUntyped().GetValue(),
 		}
 		if m.GetTimestampMs() != 0 {
 			dp.Time = time.UnixMilli(m.GetTimestampMs())
@@ -231,7 +250,7 @@ func convertExponentialBuckets(bucketSpans []*dto.BucketSpan, deltas []int64) me
 			// Increase the count index by the Offset to insert Offset zeroes
 			countIndex += bs.GetOffset()
 		}
-		for j := uint32(0); j < bs.GetLength(); j++ {
+		for range bs.GetLength() {
 			// Convert deltas to the cumulative number of observations
 			count += deltas[deltaIndex]
 			deltaIndex++
@@ -367,11 +386,12 @@ func convertExemplar(exemplar *dto.Exemplar) metricdata.Exemplar[float64] {
 	var traceID, spanID []byte
 	// find the trace ID and span ID in attributes, if it exists
 	for _, label := range exemplar.GetLabel() {
-		if label.GetName() == traceIDLabel {
+		switch label.GetName() {
+		case traceIDLabel:
 			traceID = []byte(label.GetValue())
-		} else if label.GetName() == spanIDLabel {
+		case spanIDLabel:
 			spanID = []byte(label.GetValue())
-		} else {
+		default:
 			attrs = append(attrs, attribute.String(label.GetName(), label.GetValue()))
 		}
 	}

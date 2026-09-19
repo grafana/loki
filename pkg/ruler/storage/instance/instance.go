@@ -25,7 +25,7 @@ import (
 	"github.com/prometheus/prometheus/storage"
 	"github.com/prometheus/prometheus/storage/remote"
 	"github.com/prometheus/prometheus/tsdb/wlog"
-	"gopkg.in/yaml.v2"
+	yaml "go.yaml.in/yaml/v4"
 
 	"github.com/grafana/loki/v3/pkg/ruler/storage/util"
 	"github.com/grafana/loki/v3/pkg/ruler/storage/wal"
@@ -72,11 +72,13 @@ type Config struct {
 }
 
 // UnmarshalYAML implements yaml.Unmarshaler.
-func (c *Config) UnmarshalYAML(unmarshal func(interface{}) error) error {
+func (c *Config) UnmarshalYAML(value *yaml.Node) error {
 	*c = DefaultConfig
 
-	type plain Config
-	return unmarshal((*plain)(c))
+	type raw Config
+	// We always want strict config parsing
+	// See https://github.com/yaml/go-yaml/issues/321 and https://github.com/yaml/go-yaml/pull/332
+	return value.Load((*raw)(c), yaml.WithKnownFields(true))
 }
 
 // MarshalYAML implements yaml.Marshaler.
@@ -89,13 +91,18 @@ func (c Config) MarshalYAML() (interface{}, error) {
 		return nil, err
 	}
 
-	// Use a yaml.MapSlice rather than a map[string]interface{} so
-	// order of keys is retained compared to just calling MarshalConfig.
-	var m yaml.MapSlice
-	if err := yaml.Unmarshal(bb, &m); err != nil {
+	// Use a yaml.Node to preserve key order compared to map[string]interface{}.
+	// yaml.Unmarshal into a Node produces a DocumentNode wrapper; unwrap it
+	// to return the actual mapping node so the caller's marshaler doesn't
+	// encounter a nested document-start marker.
+	var doc yaml.Node
+	if err := yaml.Unmarshal(bb, &doc); err != nil {
 		return nil, err
 	}
-	return m, nil
+	if doc.Kind == yaml.DocumentNode && len(doc.Content) > 0 {
+		return doc.Content[0], nil
+	}
+	return &doc, nil
 }
 
 // ApplyDefaults applies default configurations to the configuration to all
@@ -179,13 +186,13 @@ type Instance struct {
 
 // New creates a new Instance with a directory for storing the WAL. The instance
 // will not start until Run is called on the instance.
-func New(reg prometheus.Registerer, cfg Config, metrics *wal.Metrics, logger log.Logger, enableReplay bool) (*Instance, error) {
+func New(reg prometheus.Registerer, cfg Config, metrics *wal.Metrics, logger log.Logger) (*Instance, error) {
 	logger = log.With(logger, "instance", cfg.Name)
 
 	instWALDir := filepath.Join(cfg.Dir, cfg.Tenant)
 
 	newWal := func(reg prometheus.Registerer) (walStorage, error) {
-		return wal.NewStorage(logger, metrics, reg, instWALDir, enableReplay)
+		return wal.NewStorage(logger, metrics, reg, instWALDir)
 	}
 
 	return newInstance(cfg, reg, logger, newWal, cfg.Tenant)
@@ -281,7 +288,7 @@ func (i *Instance) Run(ctx context.Context) error {
 type noopScrapeManager struct{}
 
 func (n noopScrapeManager) Get() (*scrape.Manager, error) {
-	return nil, errors.New("No-op Scrape manager not ready")
+	return nil, errors.New("no-op Scrape manager not ready")
 }
 
 func (n noopScrapeManager) Ready() bool {
@@ -308,7 +315,7 @@ func (i *Instance) initialize(_ context.Context, reg prometheus.Registerer, cfg 
 
 	// Setup the remote storage
 	remoteLogger := log.With(i.logger, "component", "remote")
-	i.remoteStore = remote.NewStorage(util_log.SlogFromGoKit(remoteLogger), reg, i.wal.StartTime, i.wal.Directory(), cfg.RemoteFlushDeadline, noopScrapeManager{})
+	i.remoteStore = remote.NewStorage(util_log.SlogFromGoKit(remoteLogger), reg, i.wal.StartTime, i.wal.Directory(), cfg.RemoteFlushDeadline, noopScrapeManager{}, false)
 	err = i.remoteStore.ApplyConfig(&config.Config{
 		RemoteWriteConfigs: cfg.RemoteWrite,
 	})
@@ -522,6 +529,7 @@ type walStorage interface {
 	WriteStalenessMarkers(remoteTsFunc func() int64) error
 	SetWriteNotified(wlog.WriteNotified)
 	Appender(context.Context) storage.Appender
+	AppenderV2(context.Context) storage.AppenderV2
 	Truncate(mint int64) error
 
 	Close() error

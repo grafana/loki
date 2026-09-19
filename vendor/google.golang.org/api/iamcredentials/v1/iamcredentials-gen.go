@@ -1,4 +1,4 @@
-// Copyright 2025 Google LLC.
+// Copyright 2026 Google LLC.
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
@@ -1046,7 +1046,8 @@ type ProjectsServiceAccountsGetAllowedLocationsCall struct {
 // GetAllowedLocations: Returns the trust boundary info for a given service
 // account.
 //
-// - name: Resource name of service account.
+//   - name: Resource name of service account. Format:
+//     `projects/-/serviceAccounts/{service_account_email}`.
 func (r *ProjectsServiceAccountsService) GetAllowedLocations(name string) *ProjectsServiceAccountsGetAllowedLocationsCall {
 	c := &ProjectsServiceAccountsGetAllowedLocationsCall{s: r.s, urlParams_: make(gensupport.URLParams)}
 	c.name = name

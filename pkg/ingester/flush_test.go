@@ -3,12 +3,17 @@ package ingester
 import (
 	"errors"
 	"fmt"
+	"net/http"
+	"net/http/httptest"
+	"net/url"
 	"os"
 	"sort"
 	"sync"
 	"syscall"
 	"testing"
 	"time"
+
+	"context"
 
 	gokitlog "github.com/go-kit/log"
 	"github.com/grafana/dskit/flagext"
@@ -19,7 +24,7 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
-	"golang.org/x/net/context"
+	"go.uber.org/atomic"
 
 	"github.com/grafana/dskit/tenant"
 
@@ -38,6 +43,8 @@ import (
 	"github.com/grafana/loki/v3/pkg/storage/config"
 	"github.com/grafana/loki/v3/pkg/storage/stores/index/stats"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/sharding"
+	storagetypes "github.com/grafana/loki/v3/pkg/storage/types"
+	"github.com/grafana/loki/v3/pkg/util"
 	"github.com/grafana/loki/v3/pkg/util/constants"
 	"github.com/grafana/loki/v3/pkg/validation"
 )
@@ -74,6 +81,7 @@ type fullWAL struct{}
 func (fullWAL) Log(_ *wal.Record) error { return &os.PathError{Err: syscall.ENOSPC} }
 func (fullWAL) Start()                  {}
 func (fullWAL) Stop() error             { return nil }
+func (fullWAL) IsDiskThrottled() bool   { return false }
 
 func Benchmark_FlushLoop(b *testing.B) {
 	var (
@@ -102,6 +110,145 @@ func Benchmark_FlushLoop(b *testing.B) {
 		}
 		wg.Wait()
 	}
+}
+
+// Benchmark_EncodeChunk reports the cost of encoding one full closed chunk — an upper
+// bound on how long encode would hold stream.chunkMtx after locking around encodeChunk.
+func Benchmark_EncodeChunk(b *testing.B) {
+	ctx := user.InjectOrgID(context.Background(), "foo")
+	ing := &Ingester{
+		cfg:     *dummyConf(),
+		logger:  gokitlog.NewNopLogger(),
+		metrics: NilMetrics,
+	}
+	desc := buildChunkDesc(b)
+	lbs := labels.FromStrings("app", "bench")
+	labelsBuilder := labels.NewBuilder(lbs)
+	labelsBuilder.Set(nameLabel, logsValue)
+	metric := labelsBuilder.Labels()
+
+	b.ReportAllocs()
+	b.ResetTimer()
+	for n := 0; n < b.N; n++ {
+		firstTime, lastTime := util.RoundToMilliseconds(desc.chunk.Bounds())
+		ch := chunk.NewChunk(
+			"foo", 0, metric,
+			chunkenc.NewFacade(desc.chunk, ing.cfg.BlockSize, ing.cfg.TargetChunkSize),
+			firstTime,
+			lastTime,
+		)
+		require.NoError(b, ing.encodeChunk(ctx, &ch, desc))
+	}
+}
+
+// Benchmark_PushDuringEncode measures Push on a stream while another goroutine
+// repeatedly encodes a closed filled chunk. unlocked_encode matches today's
+// racey flush (encode without chunkMtx); locked_encode is the post-fix shape.
+func Benchmark_PushDuringEncode(b *testing.B) {
+	for _, tc := range []struct {
+		name   string
+		locked bool
+	}{
+		{name: "unlocked_encode", locked: false},
+		{name: "locked_encode", locked: true},
+	} {
+		b.Run(tc.name, func(b *testing.B) {
+			benchmarkPushDuringEncode(b, tc.locked)
+		})
+	}
+}
+
+func benchmarkPushDuringEncode(b *testing.B, lockDuringEncode bool) {
+	ls := labels.FromStrings(
+		"namespace", "loki-dev",
+		"cluster", "dev-us-central1",
+		"job", "loki-dev/ingester",
+		"container", "ingester",
+	)
+
+	limits, err := validation.NewOverrides(defaultLimitsTestConfig(), nil)
+	require.NoError(b, err)
+	limiter := NewLimiter(limits, NilMetrics, newIngesterRingLimiterStrategy(&ringCountMock{count: 1}, 1), &TenantBasedStrategy{limits: limits})
+	chunkfmt, headfmt := defaultChunkFormat(b)
+	retentionHours := util.RetentionHours(limiter.limits.RetentionPeriod("fake"))
+	s := newStream(chunkfmt, headfmt, &Config{MaxChunkAge: 24 * time.Hour}, limiter.rateLimitStrategy, "fake", model.Fingerprint(0), ls, NewStreamRateCalculator(), NilMetrics, nil, nil, retentionHours, noPolicy)
+
+	ing := &Ingester{
+		cfg:     *dummyConf(),
+		logger:  gokitlog.NewNopLogger(),
+		metrics: NilMetrics,
+	}
+	desc := buildChunkDesc(b)
+	labelsBuilder := labels.NewBuilder(ls)
+	labelsBuilder.Set(nameLabel, logsValue)
+	metric := labelsBuilder.Labels()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	var encodes atomic.Int64
+	var encodeErr atomic.Error
+	var wg sync.WaitGroup
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			default:
+			}
+
+			firstTime, lastTime := util.RoundToMilliseconds(desc.chunk.Bounds())
+			ch := chunk.NewChunk(
+				"fake", s.fp, metric,
+				chunkenc.NewFacade(desc.chunk, ing.cfg.BlockSize, ing.cfg.TargetChunkSize),
+				firstTime,
+				lastTime,
+			)
+
+			if lockDuringEncode {
+				s.chunkMtx.Lock()
+			}
+			err := ing.encodeChunk(ctx, &ch, desc)
+			if lockDuringEncode {
+				s.chunkMtx.Unlock()
+			}
+			if err != nil {
+				if ctx.Err() != nil {
+					return
+				}
+				encodeErr.Store(err)
+				cancel()
+				return
+			}
+			encodes.Add(1)
+		}
+	}()
+
+	pushCtx := context.Background()
+	e := entries(10, time.Now())
+	b.ReportAllocs()
+	b.ResetTimer()
+
+	for n := 0; n < b.N; n++ {
+		rec := recordPool.GetRecord()
+		_, err := s.Push(pushCtx, e, rec, 0, true, false, nil, "loki")
+		recordPool.PutRecord(rec)
+		if err != nil {
+			b.Fatal(err)
+		}
+		// Advance timestamps so subsequent pushes are not duplicates.
+		for i := range e {
+			e[i].Timestamp = e[i].Timestamp.Add(time.Millisecond)
+		}
+	}
+
+	b.StopTimer()
+	cancel()
+	wg.Wait()
+	require.NoError(b, encodeErr.Load())
+	b.ReportMetric(float64(encodes.Load())/float64(b.N), "encodes/op")
 }
 
 func Test_FlushOp(t *testing.T) {
@@ -187,14 +334,91 @@ func Test_Flush(t *testing.T) {
 func buildChunkDecs(t testing.TB) []*chunkDesc {
 	res := make([]*chunkDesc, 10)
 	for i := range res {
-		res[i] = &chunkDesc{
-			closed: true,
-			chunk:  chunkenc.NewMemChunk(chunkenc.ChunkFormatV4, compression.Snappy, chunkenc.UnorderedWithStructuredMetadataHeadBlockFmt, dummyConf().BlockSize, dummyConf().TargetChunkSize),
-		}
-		fillChunk(t, res[i].chunk)
-		require.NoError(t, res[i].chunk.Close())
+		res[i] = buildChunkDesc(t)
 	}
 	return res
+}
+
+func buildChunkDesc(t testing.TB) *chunkDesc {
+	t.Helper()
+	desc := &chunkDesc{
+		closed: true,
+		chunk:  chunkenc.NewMemChunk(chunkenc.ChunkFormatV4, compression.Snappy, chunkenc.UnorderedWithStructuredMetadataHeadBlockFmt, dummyConf().BlockSize, dummyConf().TargetChunkSize),
+	}
+	fillChunk(t, desc.chunk)
+	require.NoError(t, desc.chunk.Close())
+	return desc
+}
+
+func TestMaybeSetIngestedAt(t *testing.T) {
+	v14 := []config.PeriodConfig{{From: config.DayTime{Time: 0}, IndexType: storagetypes.IndexTypeTSDB, Schema: "v14"}}
+	v13 := []config.PeriodConfig{{From: config.DayTime{Time: 0}, IndexType: storagetypes.IndexTypeTSDB, Schema: "v13"}}
+
+	backfill := labels.FromStrings("app", "foo", constants.BackfillLabel, "true")
+	live := labels.FromStrings("app", "foo")
+
+	for _, tc := range []struct {
+		name    string
+		periods []config.PeriodConfig
+		metric  labels.Labels
+		wantSet bool
+	}{
+		{"backfill stream under v14 records ingestion time", v14, backfill, true},
+		{"live stream under v14 stays zero", v14, live, false},
+		{"backfill stream under v13 stays zero", v13, backfill, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			i := &Ingester{periodicConfigs: tc.periods}
+			ch := chunk.Chunk{Metric: tc.metric}
+
+			before := model.Now()
+			i.maybeSetIngestedAt(&ch, model.Now())
+
+			if tc.wantSet {
+				require.NotEqual(t, model.Time(0), ch.IngestedAt)
+				require.GreaterOrEqual(t, int64(ch.IngestedAt), int64(before))
+			} else {
+				require.Equal(t, model.Time(0), ch.IngestedAt)
+			}
+		})
+	}
+}
+
+func TestFlushChunksSetsIngestedAtForBackfill(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		labels  labels.Labels
+		wantSet bool
+	}{
+		{"backfill stream", labels.FromStrings("app", "foo", constants.BackfillLabel, "true"), true},
+		{"live stream", labels.FromStrings("app", "foo"), false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			store, ing := newTestStore(t, defaultIngesterTestConfig(t), nil)
+			// Use a v14 period so the chunk's index would persist IngestedAt.
+			ing.periodicConfigs = []config.PeriodConfig{{From: config.DayTime{Time: 0}, IndexType: storagetypes.IndexTypeTSDB, Schema: "v14"}}
+			ctx := user.InjectOrgID(context.Background(), "foo")
+
+			var captured []chunk.Chunk
+			store.onPut = func(_ context.Context, chunks []chunk.Chunk) error {
+				captured = append(captured, chunks...)
+				return nil
+			}
+
+			before := model.Now()
+			require.NoError(t, ing.flushChunks(ctx, 0, tc.labels, buildChunkDecs(t), &sync.RWMutex{}))
+
+			require.NotEmpty(t, captured)
+			for _, c := range captured {
+				if tc.wantSet {
+					require.NotEqual(t, model.Time(0), c.IngestedAt)
+					require.GreaterOrEqual(t, int64(c.IngestedAt), int64(before))
+				} else {
+					require.Equal(t, model.Time(0), c.IngestedAt)
+				}
+			}
+		})
+	}
 }
 
 func TestWALFullFlush(t *testing.T) {
@@ -290,7 +514,7 @@ func Test_flush_not_owned_stream(t *testing.T) {
 	require.True(t, found)
 	fingerprint := instance.getHashForLabels(labels.FromStrings("app", "l"))
 	require.Equal(t, model.Fingerprint(16794418009594958), fingerprint)
-	instance.ownedStreamsSvc.trackStreamOwnership(fingerprint, false)
+	instance.ownedStreamsSvc.trackStreamOwnership(fingerprint, false, noPolicy)
 
 	time.Sleep(2 * cfg.FlushCheckPeriod)
 
@@ -373,11 +597,116 @@ func TestFlushLoopCanExitDuringInitialWait(t *testing.T) {
 	require.True(t, duration < 5*time.Second, "ingester could not shut down while waiting for initial delay")
 }
 
+func TestFlushTenantHandler(t *testing.T) {
+	const userID = "testUser"
+
+	for _, tc := range []struct {
+		name string
+		// pushStreams are pushed for userID before the request (built with makeStream).
+		pushStreams []logproto.Stream
+		// orgID is injected into the request context; an empty value means no tenant is set.
+		orgID string
+		// flushStreamsSelector is the LogQL selector sent as the "streams" param;
+		// an empty value means no selector (flush the whole tenant).
+		flushStreamsSelector string
+
+		expectedFlushStatusCode int
+		// expectedStreams are the label sets expected to have been flushed to the store.
+		expectedStreams []string
+		// expectedFlushes is the number of forced index ships (FlushIndexes calls).
+		expectedFlushes int32
+	}{
+		{
+			name:                    "matcher scopes flush to matching streams",
+			pushStreams:             []logproto.Stream{makeStream(`{app="a"}`, 1), makeStream(`{app="b"}`, 1)},
+			orgID:                   userID,
+			flushStreamsSelector:    `{app="a"}`,
+			expectedFlushStatusCode: http.StatusNoContent,
+			expectedStreams:         []string{`{app="a"}`},
+			expectedFlushes:         1,
+		},
+		{
+			name:                    "empty selector flushes the whole tenant",
+			pushStreams:             []logproto.Stream{makeStream(`{app="a"}`, 1), makeStream(`{app="b"}`, 1)},
+			orgID:                   userID,
+			expectedFlushStatusCode: http.StatusNoContent,
+			expectedStreams:         []string{`{app="a"}`, `{app="b"}`},
+			expectedFlushes:         1,
+		},
+		{
+			name:                    "missing tenant is a bad request",
+			expectedFlushStatusCode: http.StatusBadRequest,
+		},
+		{
+			name:                    "invalid matcher is a bad request",
+			orgID:                   userID,
+			flushStreamsSelector:    "not-a-matcher",
+			expectedFlushStatusCode: http.StatusBadRequest,
+		},
+		{
+			name:                    "unknown tenant is a no-op",
+			orgID:                   "no-such-tenant",
+			expectedFlushStatusCode: http.StatusNoContent,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			store, ing := newTestStore(t, defaultIngesterTestConfig(t), nil)
+			defer func() { _ = services.StopAndAwaitTerminated(context.Background(), ing) }()
+
+			if len(tc.pushStreams) > 0 {
+				_, err := ing.Push(user.InjectOrgID(context.Background(), userID), &logproto.PushRequest{Streams: tc.pushStreams})
+				require.NoError(t, err)
+			}
+
+			target := "/flush/tenant"
+			if tc.flushStreamsSelector != "" {
+				target += "?streams=" + url.QueryEscape(tc.flushStreamsSelector)
+			}
+			w := httptest.NewRecorder()
+			r := httptest.NewRequest(http.MethodPost, target, nil)
+			if tc.orgID != "" {
+				r = r.WithContext(user.InjectOrgID(r.Context(), tc.orgID))
+			}
+
+			ing.FlushTenantHandler(w, r)
+
+			require.Equal(t, tc.expectedFlushStatusCode, w.Code)
+
+			var flushedStreams []string
+			for _, c := range store.getChunksForUser(userID) {
+				flushedStreams = append(flushedStreams, c.Metric.String())
+			}
+			require.ElementsMatch(t, tc.expectedStreams, flushedStreams)
+
+			require.Equal(t, tc.expectedFlushes, store.flushIndexCalls.Load())
+		})
+	}
+}
+
+// makeStream builds a stream with the given labels and numLogs log lines.
+func makeStream(labels string, numLogs int) logproto.Stream {
+	now := time.Now()
+	entries := make([]logproto.Entry, 0, numLogs)
+	for i := 0; i < numLogs; i++ {
+		entries = append(entries, logproto.Entry{Timestamp: now, Line: fmt.Sprintf("line-%d", i)})
+	}
+	return logproto.Stream{Labels: labels, Entries: entries}
+}
+
 type testStore struct {
 	mtx sync.Mutex
 	// Chunks keyed by userID.
 	chunks map[string][]chunk.Chunk
 	onPut  func(ctx context.Context, chunks []chunk.Chunk) error
+
+	// flushIndexCalls counts how many times FlushIndexes was invoked, so tests can
+	// assert the handler forces the index ship after flushing chunks.
+	flushIndexCalls atomic.Int32
+}
+
+func (s *testStore) FlushIndexes(_ context.Context) error {
+	s.flushIndexCalls.Add(1)
+	return nil
 }
 
 // Note: the ingester New() function creates it's own WAL first which we then override if specified.
@@ -498,6 +827,14 @@ func (s *testStore) GetShards(_ context.Context, _ string, _, _ model.Time, _ ui
 
 func (s *testStore) HasForSeries(_, _ model.Time) (sharding.ForSeries, bool) {
 	return nil, false
+}
+
+func (s *testStore) HasChunkSizingInfo(_, _ model.Time) bool {
+	return false
+}
+
+func (s *testStore) GetChunkRefsWithSizingInfo(_ context.Context, _ string, _, _ model.Time, _ chunk.Predicate) ([]logproto.ChunkRefWithSizingInfo, error) {
+	return nil, nil
 }
 
 func (s *testStore) GetSchemaConfigs() []config.PeriodConfig {

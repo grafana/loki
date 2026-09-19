@@ -7,5 +7,5 @@ import "io"
 //
 // This is a syntactic sugar over [io.WriteString].
 func Execute(w io.Writer, s string) (int, error) {
-	return io.WriteString(w, s)
+	return io.WriteString(w, s) //nolint:wrapcheck
 }

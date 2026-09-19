@@ -21,12 +21,11 @@ import (
 	"github.com/grafana/dskit/multierror"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
-	"gopkg.in/yaml.v2"
+	"go.yaml.in/yaml/v4"
 
 	"github.com/grafana/loki/v3/integration/util"
 
 	"github.com/grafana/loki/v3/pkg/loki"
-	"github.com/grafana/loki/v3/pkg/storage"
 	"github.com/grafana/loki/v3/pkg/storage/config"
 	"github.com/grafana/loki/v3/pkg/util/cfg"
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
@@ -37,8 +36,8 @@ var configTemplate = template.Must(template.New("").Parse(`
 auth_enabled: true
 
 server:
-  http_listen_port: 0
-  grpc_listen_port: 0
+  http_listen_port: {{.httpPort}}
+  grpc_listen_port: {{.grpcPort}}
   grpc_server_max_recv_msg_size: 110485813
   grpc_server_max_send_msg_size: 110485813
 
@@ -72,21 +71,30 @@ limits_config:
       - action: drop
         attributes: [email]
 
+# local rule storage is set by common.storage.filesystem.rules_directory
+# ruler_storage:
+#   backend: local
+#   local:
+#     directory: {{.sharedDataPath}}/rules
+
 storage_config:
-  # Legacy config
+  # Legacy default store (schema object_store: filesystem). Must live under
+  # sharedPath so Cluster.Cleanup removes it; an empty directory becomes ".".
+  filesystem:
+    directory: {{.sharedDataPath}}/chunks
   named_stores:
     filesystem:
       store-1:
         directory: {{.sharedDataPath}}/fs-store-1
-  # Thanos config
+  # Thanos default store. use_thanos_objstore defaults to true and does not
+  # inherit common.storage.filesystem.chunks_directory.
   object_store:
+    filesystem:
+      dir: {{.sharedDataPath}}/chunks
     named_stores:
       filesystem:
         store-1:
           dir: {{.sharedDataPath}}/fs-store-1
-  boltdb_shipper:
-    active_index_directory: {{.dataPath}}/boltdb-index
-    cache_location: {{.dataPath}}/boltdb-cache
   tsdb_shipper:
     active_index_directory: {{.dataPath}}/tsdb-index
     cache_location: {{.dataPath}}/tsdb-cache
@@ -124,6 +132,9 @@ ruler:
       store: inmemory
   wal:
     dir: {{.sharedDataPath}}/ruler-wal
+  # local rule storage is set by common.storage.filesystem.rules_directory
+  # however, even if this is set, ruler_storage has precedence over ruler.storage 
+  # when storage.use_thanos_objstore is true, so keep it for testing purpose
   storage:
     type: local
     local:
@@ -213,7 +224,7 @@ func (c *Cluster) Run() error {
 			continue
 		}
 
-		if err := component.run(); err != nil {
+		if err := component.runMultiple(5); err != nil {
 			return err
 		}
 	}
@@ -233,8 +244,6 @@ func (c *Cluster) Restart() error {
 }
 
 func (c *Cluster) Cleanup() error {
-	// cleanup singleton boltdb shipper client instances
-	storage.ResetBoltDBIndexClientsWithShipper()
 	return c.stop(true)
 }
 
@@ -301,6 +310,10 @@ type Component struct {
 	overridesFile string
 	dataPath      string
 
+	// HTTP and gRPC ports where the component is listening to.
+	httpPort int
+	grpcPort int
+
 	running bool
 	wg      sync.WaitGroup
 }
@@ -317,11 +330,11 @@ func (c *Component) AddFlags(flags ...string) {
 }
 
 func (c *Component) HTTPURL() string {
-	return fmt.Sprintf("http://localhost:%s", port(c.loki.Server.HTTPListenAddr().String()))
+	return fmt.Sprintf("http://localhost:%d", c.httpPort)
 }
 
 func (c *Component) GRPCURL() string {
-	return fmt.Sprintf("localhost:%s", port(c.loki.Server.GRPCListenAddr().String()))
+	return fmt.Sprintf("localhost:%d", c.grpcPort)
 }
 
 func (c *Component) WithExtraConfig(cfg string) {
@@ -332,18 +345,35 @@ func (c *Component) WithExtraConfig(cfg string) {
 	c.extraConfigs = append(c.extraConfigs, cfg)
 }
 
-func port(addr string) string {
-	parts := strings.Split(addr, ":")
-	return parts[len(parts)-1]
-}
-
 func (c *Component) writeConfig() error {
 	var err error
 
+	if c.configFile != "" {
+		// remove previous config file
+		if err = os.Remove(c.configFile); err != nil {
+			return err
+		}
+		c.configFile = ""
+	}
+	if c.dataPath != "" {
+		if err = os.RemoveAll(c.dataPath); err != nil {
+			return err
+		}
+		c.dataPath = ""
+	}
 	configFile, err := os.CreateTemp("", fmt.Sprintf("loki-%s-config-*.yaml", c.name))
 	if err != nil {
 		return fmt.Errorf("error creating config file: %w", err)
 	}
+
+	// Listen ports are picked by the harness rather than by the server, so that
+	// the harness can probe readiness over the network.
+	ports, err := reservePorts(2)
+	if err != nil {
+		return fmt.Errorf("error reserving ports: %w", err)
+	}
+	c.httpPort = ports[0]
+	c.grpcPort = ports[1]
 
 	c.dataPath, err = os.MkdirTemp("", fmt.Sprintf("loki-%s-data-", c.name))
 	if err != nil {
@@ -376,6 +406,8 @@ func (c *Component) MergedConfig() ([]byte, error) {
 	if err := configTemplate.Execute(&sb, map[string]interface{}{
 		"dataPath":       c.dataPath,
 		"sharedDataPath": c.cluster.sharedPath,
+		"httpPort":       c.httpPort,
+		"grpcPort":       c.grpcPort,
 	}); err != nil {
 		return nil, fmt.Errorf("error writing config file: %w", err)
 	}
@@ -383,9 +415,9 @@ func (c *Component) MergedConfig() ([]byte, error) {
 	merger := util.NewYAMLMerger()
 	merger.AddFragment(sb.Bytes())
 
-	// default to using boltdb index
+	// default to using TSDB index
 	if len(c.cluster.periodCfgs) == 0 {
-		c.cluster.periodCfgs = []string{boltDBShipperSchemaConfigTemplate}
+		c.cluster.periodCfgs = []string{tsdbShipperSchemaConfigTemplate}
 	}
 
 	for _, periodCfg := range c.cluster.periodCfgs {
@@ -413,6 +445,20 @@ func (c *Component) MergedConfig() ([]byte, error) {
 	return merged, nil
 }
 
+func (c *Component) runMultiple(n int) error {
+	var err error
+	for i := 0; i < n; i++ {
+		err = c.run()
+		if err == nil {
+			return nil
+		}
+		if !strings.Contains(err.Error(), "address already in use") {
+			return err
+		}
+	}
+	return err
+}
+
 func (c *Component) run() error {
 	c.running = true
 
@@ -426,12 +472,9 @@ func (c *Component) run() error {
 
 	if err := cfg.DynamicUnmarshal(&config, append(
 		c.flags,
-		"-config.file",
-		c.configFile,
-		"-limits.per-user-override-config",
-		c.overridesFile,
-		"-limits.per-user-override-period",
-		"1s",
+		"-config.file", c.configFile,
+		"-runtime-config.file", c.overridesFile,
+		"-runtime-config.reload-period", "1s",
 	), flagset); err != nil {
 		return err
 	}
@@ -441,6 +484,9 @@ func (c *Component) run() error {
 	}
 
 	config.LimitsConfig.SetGlobalOTLPConfig(config.Distributor.OTLPConfig)
+	if err := config.LimitsConfig.SetDefaultPolicyStreamMapping(config.Distributor.DefaultPolicyStreamMappings); err != nil {
+		return err
+	}
 	var err error
 	c.loki, err = loki.New(config.Config)
 	if err != nil {
@@ -452,18 +498,26 @@ func (c *Component) run() error {
 		errCh   = make(chan error, 1)
 	)
 
+	// Probe readiness over the network to guarantee the component is ready before
+	// the test proceeds.
+	//
+	// We don't check readiness by calling ServeHTTP on the router directly because
+	// the component may still initialize even if the readiness check passes
+	// (e.g. the server only accepts connections once initialization has completed,
+	// while directly calling ServeHTTP may pass the readiness probe even if the
+	// initialization has not completed yet).
+	readyURL := fmt.Sprintf("%s/ready", c.HTTPURL())
 	go func() {
 		for {
 			time.Sleep(time.Millisecond * 200)
-			if c.loki == nil || c.loki.Server == nil || c.loki.Server.HTTP == nil {
+
+			resp, err := http.Get(readyURL) // #nosec G107 -- local test server
+			if err != nil {
 				continue
 			}
+			_ = resp.Body.Close()
 
-			req := httptest.NewRequest("GET", "http://localhost/ready", nil)
-			w := httptest.NewRecorder()
-			c.loki.Server.HTTP.ServeHTTP(w, req)
-
-			if w.Code == 200 {
+			if resp.StatusCode == http.StatusOK {
 				close(readyCh)
 				return
 			}
@@ -489,7 +543,6 @@ func (c *Component) run() error {
 	case err := <-errCh:
 		return err
 	}
-
 	return nil
 }
 
@@ -512,7 +565,7 @@ func (c *Component) cleanup() (files []string, dirs []string) {
 func (c *Component) Restart() error {
 	c.cleanup()
 	c.wg.Wait()
-	return c.run()
+	return c.runMultiple(5)
 }
 
 type runtimeConfigValues struct {
@@ -555,4 +608,24 @@ func NewRemoteWriteServer(handler *http.HandlerFunc) *httptest.Server {
 	server.Start()
 
 	return server
+}
+
+// reservePorts asks the kernel for n unused ports and returns them.
+func reservePorts(n int) ([]int, error) {
+	listeners := make([]net.Listener, 0, n)
+	defer func() {
+		for _, l := range listeners {
+			_ = l.Close()
+		}
+	}()
+	ports := make([]int, 0, n)
+	for i := 0; i < n; i++ {
+		l, err := net.Listen("tcp", "127.0.0.1:0")
+		if err != nil {
+			return nil, err
+		}
+		listeners = append(listeners, l)
+		ports = append(ports, l.Addr().(*net.TCPAddr).Port)
+	}
+	return ports, nil
 }

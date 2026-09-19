@@ -1,7 +1,7 @@
 // Copyright The OpenTelemetry Authors
 // SPDX-License-Identifier: Apache-2.0
 
-package metric // import "go.opentelemetry.io/otel/sdk/metric"
+package metric
 
 import (
 	"context"
@@ -12,6 +12,7 @@ import (
 	"go.opentelemetry.io/otel/metric/embedded"
 	"go.opentelemetry.io/otel/metric/noop"
 	"go.opentelemetry.io/otel/sdk/instrumentation"
+	"go.opentelemetry.io/otel/sdk/metric/internal/attrnorm"
 )
 
 // MeterProvider handles the creation and coordination of Meters. All Meters
@@ -42,12 +43,13 @@ func NewMeterProvider(options ...Option) *MeterProvider {
 	flush, sdown := conf.readerSignals()
 
 	mp := &MeterProvider{
-		pipes:      newPipelines(conf.res, conf.readers, conf.views, conf.exemplarFilter),
+		pipes:      newPipelines(conf.res, conf.readers, conf.views, conf.exemplarFilter, conf.cardinalityLimit),
 		forceFlush: flush,
 		shutdown:   sdown,
 	}
 	// Log after creation so all readers show correctly they are registered.
-	global.Info("MeterProvider created",
+	global.Info(
+		"MeterProvider created",
 		"Resource", conf.res,
 		"Readers", conf.readers,
 		"Views", len(conf.views),
@@ -75,14 +77,16 @@ func (mp *MeterProvider) Meter(name string, options ...metric.MeterOption) metri
 	}
 
 	c := metric.NewMeterConfig(options...)
+	attrs, _ := attrnorm.Set(c.InstrumentationAttributes())
 	s := instrumentation.Scope{
 		Name:       name,
 		Version:    c.InstrumentationVersion(),
 		SchemaURL:  c.SchemaURL(),
-		Attributes: c.InstrumentationAttributes(),
+		Attributes: attrs,
 	}
 
-	global.Info("Meter created",
+	global.Info(
+		"Meter created",
 		"Name", s.Name,
 		"Version", s.Version,
 		"SchemaURL", s.SchemaURL,

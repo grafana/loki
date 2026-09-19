@@ -38,14 +38,14 @@ import (
 	"github.com/apache/arrow-go/v18/arrow/memory"
 )
 
-// Reader wraps encoding/csv.Reader and creates array.Records from a schema.
+// Reader wraps encoding/csv.Reader and creates array.RecordBatches from a schema.
 type Reader struct {
 	r      *csv.Reader
 	schema *arrow.Schema
 
 	refs atomic.Int64
 	bld  *array.RecordBuilder
-	cur  arrow.Record
+	cur  arrow.RecordBatch
 	err  error
 
 	chunk int
@@ -101,7 +101,7 @@ func NewInferringReader(r io.Reader, opts ...Option) *Reader {
 }
 
 // NewReader returns a reader that reads from the CSV file and creates
-// arrow.Records from the given schema.
+// arrow.RecordBatches from the given schema.
 //
 // NewReader panics if the given schema contains fields that have types that are not
 // primitive types.
@@ -222,10 +222,17 @@ func (r *Reader) Err() error { return r.err }
 
 func (r *Reader) Schema() *arrow.Schema { return r.schema }
 
+// RecordBatch returns the current record batch that has been extracted from the
+// underlying CSV file.
+// It is valid until the next call to Next.
+func (r *Reader) RecordBatch() arrow.RecordBatch { return r.cur }
+
 // Record returns the current record that has been extracted from the
 // underlying CSV file.
 // It is valid until the next call to Next.
-func (r *Reader) Record() arrow.Record { return r.cur }
+//
+// Deprecated: Use [RecordBatch] instead.
+func (r *Reader) Record() arrow.Record { return r.RecordBatch() }
 
 // Next returns whether a Record could be extracted from the underlying CSV file.
 //
@@ -275,7 +282,7 @@ func (r *Reader) next1() bool {
 
 	r.validate(recs)
 	r.read(recs)
-	r.cur = r.bld.NewRecord()
+	r.cur = r.bld.NewRecordBatch()
 
 	return true
 }
@@ -298,7 +305,7 @@ func (r *Reader) nextall() bool {
 		r.validate(rec)
 		r.read(rec)
 	}
-	r.cur = r.bld.NewRecord()
+	r.cur = r.bld.NewRecordBatch()
 
 	return true
 }
@@ -331,7 +338,7 @@ func (r *Reader) nextn() bool {
 		r.done = true
 	}
 
-	r.cur = r.bld.NewRecord()
+	r.cur = r.bld.NewRecordBatch()
 	return n > 0
 }
 

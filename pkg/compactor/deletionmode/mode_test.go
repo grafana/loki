@@ -29,19 +29,7 @@ func TestParseMode(t *testing.T) {
 }
 
 func TestDeleteEnabled(t *testing.T) {
-	enabled, err := Enabled("disabled")
-	require.NoError(t, err)
-	require.False(t, enabled)
-
-	enabled, err = Enabled("filter-only")
-	require.NoError(t, err)
-	require.True(t, enabled)
-
-	enabled, err = Enabled("filter-and-delete")
-	require.NoError(t, err)
-	require.True(t, enabled)
-
-	enabled, err = Enabled("some other value")
-	require.Error(t, err)
-	require.False(t, enabled)
+	require.False(t, Disabled.DeleteEnabled())
+	require.True(t, FilterOnly.DeleteEnabled())
+	require.True(t, FilterAndDelete.DeleteEnabled())
 }

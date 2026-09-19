@@ -2,20 +2,20 @@
 
 ## Overview
 
-Loki's UI system is designed to work seamlessly in a distributed environment where multiple Loki nodes can serve the UI and proxy requests to other nodes in the cluster. The system uses [ckit](https://github.com/grafana/ckit) for cluster membership and discovery, allowing any node to serve as an entry point for the UI while maintaining the ability to interact with all nodes in the cluster.
+Loki's UI system is designed to work seamlessly in a distributed environment. Select a node/deployment type to run the UI by including the `ui` target. This node will be the main entry point for the UI APIs, and can proxy requests to other nodes in the cluster.
 
 ## Key Components
 
 ### 1. Node Discovery and Clustering
 
-- Uses `ckit` for cluster membership and discovery
-- Each node advertises itself and maintains a list of peers
+- Each node advertises itself and maintains a list of peers (using dskit rings)
 - Nodes can join and leave the cluster dynamically
-- Periodic rejoin mechanism to handle split-brain scenarios
 
 ### 2. UI Service Components
 
-- **Static UI Files**: Embedded React frontend served from each node
+The UI is served by a combination of a Grafan pluing and an API Layer hosted by the Loki node running the UI target. Note all Loki pods will join the UI ring, so that the UI node can proxy requests to them when necesary.
+
+- **Grafana Plugin**: [Loki Operational UI plugin](https://github.com/grafana/loki-operational-ui) for Grafana
 - **API Layer**: REST endpoints for cluster state and proxying
 - **Proxy System**: Allows forwarding requests to specific nodes
 - **Service Discovery**: Tracks available nodes and their services
@@ -27,35 +27,30 @@ graph TB
     LB[Reverse Proxy /ui/]
 
     subgraph Cluster[Loki Cluster]
+        subgraph GrafanaNode[Grafana]
+            UI1[Loki Operational UI Plugin]
+        end
+
         subgraph Node1[Node 1]
-            UI1[UI Frontend]
             API1[API Server]
             PROXY1[Proxy Handler]
-            CKIT1[ckit Node]
         end
 
         subgraph Node2[Node 2]
-            UI2[UI Frontend]
             API2[API Server]
             PROXY2[Proxy Handler]
-            CKIT2[ckit Node]
         end
 
         subgraph Node3[Node 3]
-            UI3[UI Frontend]
             API3[API Server]
             PROXY3[Proxy Handler]
-            CKIT3[ckit Node]
         end
     end
-
+    
+    GrafanaNode --> LB
     LB --> Node1
     LB --> Node2
     LB --> Node3
-
-    CKIT1 --- CKIT2
-    CKIT2 --- CKIT3
-    CKIT3 --- CKIT1
 ```
 
 ## API Endpoints
@@ -68,8 +63,8 @@ All endpoints are prefixed with `/ui/`
   - Returns the state of all nodes in the cluster
   - Response includes node status, services, and build information
 
-- `GET /ui/api/v1/cluster/nodes/self/details`
-  - Returns detailed information about the current node
+- `GET /ui/api/v1/cluster/nodes/{nodename}/details`
+  - Returns detailed information about the specified node
   - Includes configuration, analytics, and system information
 
 ### Proxy System
@@ -83,17 +78,11 @@ All endpoints are prefixed with `/ui/`
 - `GET /ui/api/v1/analytics`
   - Returns analytics data for the node
 
-### Static UI
-
-- `GET /ui/*`
-  - Serves the React frontend application
-  - Falls back to index.html for client-side routing
-
 ## Request Flow Examples
 
 ### Example 1: Viewing Cluster Status
 
-1. User accesses `http://loki-cluster/ui/`
+1. User accesses UI via their configured Grafana instance
 2. Frontend loads and makes request to `/ui/api/v1/cluster/nodes`
 3. Node handling the request:
    - Queries all peers using ckit
@@ -101,7 +90,7 @@ All endpoints are prefixed with `/ui/`
    - Returns consolidated cluster state
 
 ```sequence
-Browser->Node 1: GET /ui/api/v1/cluster/nodes
+Grafana->Node 1: GET /ui/api/v1/cluster/nodes
 Node 1->Node 2: Fetch status
 Node 1->Node 3: Fetch status
 Node 2-->Node 1: Status response
@@ -117,7 +106,7 @@ Node 1-->Browser: Combined cluster state
 4. Response returns directly to client
 
 ```sequence
-Browser->Node 1: GET /ui/api/v1/proxy/node2/services
+Grafana->Node 1: GET /ui/api/v1/proxy/node2/services
 Node 1->Node 2: Proxy request
 Node 2-->Node 1: Service data
 Node 1-->Browser: Proxied response
@@ -125,18 +114,14 @@ Node 1-->Browser: Proxied response
 
 ## Configuration
 
-The UI service can be configured with the following key parameters:
+The UI service can be enabled by setting `ui.enabled` to `true` in the Loki config file.
 
 ```yaml
 ui:
-  node_name: <string>           # Name for this node in the cluster
-  advertise_addr: <string>      # IP address to advertise
-  interface_names: <[]string>   # Network interfaces to use
-  rejoin_interval: <duration>   # How often to rejoin cluster
-  cluster_name: <string>        # Cluster identifier
-  discovery:
-    join_peers: <[]string>      # Initial peers to join
+    enabled: <bool>             # Enable the UI service
 ```
+
+This will enable the UI ring, and allow the UI target to serve the API. Every node must have this configured to join the ring so the API can communicate with the whole cluster, while only one node needs the specify the `ui` target. Please note enabling the UI ring via this config does not start the UI target, that must be specified separately.
 
 ## Security Considerations
 
@@ -146,16 +131,14 @@ ui:
 
 ## High Availability
 
-- Any node can serve the UI
+- Any node running the UI target can serve the UI API
 - Nodes automatically discover each other
-- Periodic rejoin handles split-brain scenarios
 - Load balancer can distribute traffic across nodes
 
 ## Best Practices
 
 1. Configure a reverse proxy in front of the Loki cluster
 2. Use consistent node names across the cluster
-3. Configure appropriate rejoin intervals based on cluster size
 4. Monitor cluster state for node health
 5. Use internal network for node-to-node communication
 
@@ -169,24 +152,23 @@ The Ring UI is a critical component for understanding the state of Loki's distri
 
 ```mermaid
 sequenceDiagram
-    participant Browser
+    participant Grafana
     participant Querier Node
     participant Ingester
 
-    Browser->>Querier Node: GET /ui/
-    Browser->>Querier Node: GET /ui/api/v1/cluster/nodes
-    Querier Node-->>Browser: List of available nodes
+    Grafana->>Querier Node: GET /ui/api/v1/cluster/nodes
+    Querier Node-->>Grafana: List of available nodes
 
-    Note over Browser,Querier Node: User clicks on Ring view
+    Note over Grafana,Querier Node: User clicks on Ring view
 
-    Browser->>Querier Node: GET /ui/api/v1/proxy/querier-1/ring
+    Grafana->>Querier Node: GET /ui/api/v1/proxy/querier-1/ring
 
     Note over Querier Node: Querier fetches ring state
 
     Querier Node->>Ingester: Get ring status
     Ingester-->>Querier Node: Complete ring state
 
-    Querier Node-->>Browser: Ring state
+    Querier Node-->>Grafana: Ring state
 ```
 
 ### Request Flow Details
@@ -194,7 +176,6 @@ sequenceDiagram
 1. **Initial UI Load**
 
    ```http
-   GET /ui/
    GET /ui/api/v1/cluster/nodes
    ```
 

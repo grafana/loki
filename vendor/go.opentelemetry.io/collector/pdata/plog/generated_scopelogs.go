@@ -8,8 +8,6 @@ package plog
 
 import (
 	"go.opentelemetry.io/collector/pdata/internal"
-	otlplogs "go.opentelemetry.io/collector/pdata/internal/data/protogen/logs/v1"
-	"go.opentelemetry.io/collector/pdata/internal/json"
 	"go.opentelemetry.io/collector/pdata/pcommon"
 )
 
@@ -21,11 +19,11 @@ import (
 // Must use NewScopeLogs function to create new instances.
 // Important: zero-initialized instance is not valid for use.
 type ScopeLogs struct {
-	orig  *otlplogs.ScopeLogs
+	orig  *internal.ScopeLogs
 	state *internal.State
 }
 
-func newScopeLogs(orig *otlplogs.ScopeLogs, state *internal.State) ScopeLogs {
+func newScopeLogs(orig *internal.ScopeLogs, state *internal.State) ScopeLogs {
 	return ScopeLogs{orig: orig, state: state}
 }
 
@@ -34,8 +32,7 @@ func newScopeLogs(orig *otlplogs.ScopeLogs, state *internal.State) ScopeLogs {
 // This must be used only in testing code. Users should use "AppendEmpty" when part of a Slice,
 // OR directly access the member if this is embedded in another struct.
 func NewScopeLogs() ScopeLogs {
-	state := internal.StateMutable
-	return newScopeLogs(&otlplogs.ScopeLogs{}, &state)
+	return newScopeLogs(internal.NewScopeLogs(), internal.NewState())
 }
 
 // MoveTo moves all properties from the current struct overriding the destination and
@@ -47,13 +44,18 @@ func (ms ScopeLogs) MoveTo(dest ScopeLogs) {
 	if ms.orig == dest.orig {
 		return
 	}
-	*dest.orig = *ms.orig
-	*ms.orig = otlplogs.ScopeLogs{}
+	internal.DeleteScopeLogs(dest.orig, false)
+	*dest.orig, *ms.orig = *ms.orig, *dest.orig
 }
 
 // Scope returns the scope associated with this ScopeLogs.
 func (ms ScopeLogs) Scope() pcommon.InstrumentationScope {
-	return pcommon.InstrumentationScope(internal.NewInstrumentationScope(&ms.orig.Scope, ms.state))
+	return pcommon.InstrumentationScope(internal.NewInstrumentationScopeWrapper(&ms.orig.Scope, ms.state))
+}
+
+// LogRecords returns the LogRecords associated with this ScopeLogs.
+func (ms ScopeLogs) LogRecords() LogRecordSlice {
+	return newLogRecordSlice(&ms.orig.LogRecords, ms.state)
 }
 
 // SchemaUrl returns the schemaurl associated with this ScopeLogs.
@@ -67,35 +69,8 @@ func (ms ScopeLogs) SetSchemaUrl(v string) {
 	ms.orig.SchemaUrl = v
 }
 
-// LogRecords returns the LogRecords associated with this ScopeLogs.
-func (ms ScopeLogs) LogRecords() LogRecordSlice {
-	return newLogRecordSlice(&ms.orig.LogRecords, ms.state)
-}
-
 // CopyTo copies all properties from the current struct overriding the destination.
 func (ms ScopeLogs) CopyTo(dest ScopeLogs) {
 	dest.state.AssertMutable()
-	copyOrigScopeLogs(dest.orig, ms.orig)
-}
-
-// marshalJSONStream marshals all properties from the current struct to the destination stream.
-func (ms ScopeLogs) marshalJSONStream(dest *json.Stream) {
-	dest.WriteObjectStart()
-	dest.WriteObjectField("scope")
-	internal.MarshalJSONStreamInstrumentationScope(internal.NewInstrumentationScope(&ms.orig.Scope, ms.state), dest)
-	if ms.orig.SchemaUrl != "" {
-		dest.WriteObjectField("schemaUrl")
-		dest.WriteString(ms.orig.SchemaUrl)
-	}
-	if len(ms.orig.LogRecords) > 0 {
-		dest.WriteObjectField("logRecords")
-		ms.LogRecords().marshalJSONStream(dest)
-	}
-	dest.WriteObjectEnd()
-}
-
-func copyOrigScopeLogs(dest, src *otlplogs.ScopeLogs) {
-	internal.CopyOrigInstrumentationScope(&dest.Scope, &src.Scope)
-	dest.SchemaUrl = src.SchemaUrl
-	dest.LogRecords = copyOrigLogRecordSlice(dest.LogRecords, src.LogRecords)
+	internal.CopyScopeLogs(dest.orig, ms.orig)
 }

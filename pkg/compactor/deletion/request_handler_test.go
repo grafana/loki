@@ -15,6 +15,7 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/require"
 
+	"github.com/grafana/loki/v3/pkg/compactor/deletion/deletionproto"
 	"github.com/grafana/loki/v3/pkg/util"
 )
 
@@ -142,11 +143,15 @@ func TestAddDeleteRequestHandler(t *testing.T) {
 		h := NewDeleteRequestHandler(&mockDeleteRequestsStore{}, time.Minute, 0, nil)
 
 		for _, tc := range []struct {
-			orgID, query, startTime, endTime, interval, error string
+			orgID, query, startTime, endTime, interval, expectedErrorSubstring string
 		}{
 			{"", `{foo="bar"}`, "0000000000", "0000000001", "", "no org id\n"},
 			{"org-id", "", "0000000000", "0000000001", "", "query not set\n"},
-			{"org-id", `not a query`, "0000000000", "0000000001", "", "invalid query expression\n"},
+			{"org-id", `not a query`, "0000000000", "0000000001", "", "invalid query expression: parse error"},
+			{"org-id", `{foo=~".*"}`, "0000000000", "0000000001", "", "invalid query expression: parse error : queries require at least one regexp or equality matcher that does not have an empty-compatible value"},
+			{"org-id", `{foo!="bar"}`, "0000000000", "0000000001", "", "invalid query expression: parse error : queries require at least one regexp or equality matcher that does not have an empty-compatible value"},
+			{"org-id", `{foo="bar"} |~ "["`, "0000000000", "0000000001", "", `invalid query expression: parse error : stage '|~ "["' : error parsing regexp: missing closing ]`},
+			{"org-id", `{foo="bar"} | addr=ip("not-an-ip")`, "0000000000", "0000000001", "", `invalid query expression: parse error : stage '| addr=ip("not-an-ip")' : ip: invalid pattern: "not-an-ip"`},
 			{"org-id", `{foo="bar"}`, "", "0000000001", "", "start time not set\n"},
 			{"org-id", `{foo="bar"}`, "0000000000000", "0000000001", "", "invalid start time: require unix seconds or RFC3339 format\n"},
 			{"org-id", `{foo="bar"}`, "0000000000", "0000000000001", "", "invalid end time: require unix seconds or RFC3339 format\n"},
@@ -158,7 +163,7 @@ func TestAddDeleteRequestHandler(t *testing.T) {
 			{"org-id", `{foo="bar"} |= "foo"`, "0000000000", "0000000001", "30s", "max_interval can't be greater than the interval to be deleted (1s)\n"},
 			{"org-id", `{foo="bar"} |= "foo"`, "0000000000", "0000000000", "", "start time can't be greater than or equal to end time\n"},
 		} {
-			t.Run(strings.TrimSpace(tc.error), func(t *testing.T) {
+			t.Run(strings.TrimSpace(tc.expectedErrorSubstring), func(t *testing.T) {
 				req := buildRequest(tc.orgID, tc.query, tc.startTime, tc.endTime, false)
 
 				params := req.URL.Query()
@@ -169,7 +174,7 @@ func TestAddDeleteRequestHandler(t *testing.T) {
 				h.AddDeleteRequestHandler(w, req)
 
 				require.Equal(t, w.Code, http.StatusBadRequest)
-				require.Equal(t, w.Body.String(), tc.error)
+				require.Contains(t, w.Body.String(), tc.expectedErrorSubstring)
 			})
 		}
 	})
@@ -177,8 +182,8 @@ func TestAddDeleteRequestHandler(t *testing.T) {
 
 func TestCancelDeleteRequestHandler(t *testing.T) {
 	t.Run("it removes unprocessed delete requests from the store when force is true", func(t *testing.T) {
-		stored := []DeleteRequest{
-			{RequestID: "test-request", UserID: "org-id", Query: "test-query", SequenceNum: 1, Status: StatusReceived, CreatedAt: now.Add(-2 * time.Hour)},
+		stored := []deletionproto.DeleteRequest{
+			{RequestID: "test-request", UserID: "org-id", Query: "test-query", SequenceNum: 1, Status: deletionproto.StatusReceived, CreatedAt: now.Add(-2 * time.Hour)},
 		}
 		store := &mockDeleteRequestsStore{}
 		store.getResult = stored
@@ -205,10 +210,10 @@ func TestCancelDeleteRequestHandler(t *testing.T) {
 	})
 
 	t.Run("it returns an error when parts of the query have started to be processed", func(t *testing.T) {
-		stored := []DeleteRequest{
-			{RequestID: "test-request-1", CreatedAt: now, Status: StatusProcessed},
-			{RequestID: "test-request-1", CreatedAt: now, Status: StatusReceived},
-			{RequestID: "test-request-1", CreatedAt: now, Status: StatusProcessed},
+		stored := []deletionproto.DeleteRequest{
+			{RequestID: "test-request-1", CreatedAt: now, Status: deletionproto.StatusProcessed},
+			{RequestID: "test-request-1", CreatedAt: now, Status: deletionproto.StatusReceived},
+			{RequestID: "test-request-1", CreatedAt: now, Status: deletionproto.StatusProcessed},
 		}
 		store := &mockDeleteRequestsStore{}
 		store.getResult = stored
@@ -246,7 +251,7 @@ func TestCancelDeleteRequestHandler(t *testing.T) {
 	})
 
 	t.Run("error removing from the store", func(t *testing.T) {
-		stored := []DeleteRequest{{RequestID: "test-request", UserID: "org-id", Query: "test-query", Status: StatusReceived, CreatedAt: now}}
+		stored := []deletionproto.DeleteRequest{{RequestID: "test-request", UserID: "org-id", Query: "test-query", Status: deletionproto.StatusReceived, CreatedAt: now}}
 		store := &mockDeleteRequestsStore{}
 		store.getResult = stored
 		store.removeErr = errors.New("something bad")
@@ -297,7 +302,7 @@ func TestCancelDeleteRequestHandler(t *testing.T) {
 		})
 
 		t.Run("all requests in group are already processed", func(t *testing.T) {
-			stored := []DeleteRequest{{RequestID: "test-request", UserID: "org-id", Query: "test-query", Status: StatusProcessed}}
+			stored := []deletionproto.DeleteRequest{{RequestID: "test-request", UserID: "org-id", Query: "test-query", Status: deletionproto.StatusProcessed}}
 			store := &mockDeleteRequestsStore{}
 			store.getResult = stored
 
@@ -320,7 +325,7 @@ func TestCancelDeleteRequestHandler(t *testing.T) {
 func TestGetAllDeleteRequestsHandler(t *testing.T) {
 	t.Run("it gets all the delete requests for the user", func(t *testing.T) {
 		store := &mockDeleteRequestsStore{}
-		store.getAllResult = []DeleteRequest{{RequestID: "test-request-1", Status: StatusReceived}, {RequestID: "test-request-2", Status: StatusReceived}}
+		store.getAllResult = []deletionproto.DeleteRequest{{RequestID: "test-request-1", Status: deletionproto.StatusReceived}, {RequestID: "test-request-2", Status: deletionproto.StatusReceived}}
 		h := NewDeleteRequestHandler(store, 0, 0, nil)
 
 		for _, forQuerytimeFiltering := range []bool{false, true} {
@@ -332,7 +337,7 @@ func TestGetAllDeleteRequestsHandler(t *testing.T) {
 			require.Equal(t, w.Code, http.StatusOK)
 			require.Equal(t, store.getAllUser, "org-id")
 
-			var result []DeleteRequest
+			var result []deletionproto.DeleteRequest
 			require.NoError(t, json.Unmarshal(w.Body.Bytes(), &result))
 			require.ElementsMatch(t, store.getAllResult, result)
 			require.Equal(t, forQuerytimeFiltering, store.getAllRequestedForQuerytimeFiltering)
@@ -371,6 +376,53 @@ func TestGetAllDeleteRequestsHandler(t *testing.T) {
 	})
 }
 
+func TestUpdateCacheGenerationNumberHandler(t *testing.T) {
+	for _, tc := range []struct {
+		name               string
+		orgID              string
+		updateGenErr       error
+		expectedCode       int
+		expectedBody       string
+		expectedUpdateUser string
+	}{
+		{
+			name:               "it bumps the cache generation number for the user",
+			orgID:              "org-id",
+			expectedCode:       http.StatusNoContent,
+			expectedUpdateUser: "org-id",
+		},
+		{
+			name:               "it returns 500 when the store errors",
+			orgID:              "org-id",
+			updateGenErr:       errors.New("something bad"),
+			expectedCode:       http.StatusInternalServerError,
+			expectedUpdateUser: "org-id",
+		},
+		{
+			name:         "it returns 400 when there is no org id",
+			orgID:        "",
+			expectedCode: http.StatusBadRequest,
+			expectedBody: "no org id\n",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			store := &mockDeleteRequestsStore{updateGenErr: tc.updateGenErr}
+			h := NewDeleteRequestHandler(store, 0, 0, nil)
+
+			req := buildRequest(tc.orgID, ``, "", "", false)
+
+			w := httptest.NewRecorder()
+			h.UpdateCacheGenerationNumberHandler(w, req)
+
+			require.Equal(t, tc.expectedCode, w.Code)
+			require.Equal(t, tc.expectedUpdateUser, store.updatedCacheGenForUser)
+			if tc.expectedBody != "" {
+				require.Equal(t, tc.expectedBody, w.Body.String())
+			}
+		})
+	}
+}
+
 func buildRequest(orgID, query, start, end string, forQuerytimeFiltering bool) *http.Request {
 	var req *http.Request
 	if orgID == "" {
@@ -400,36 +452,4 @@ func unixString(t model.Time) string {
 func toTime(t string) model.Time {
 	modelTime, _ := util.ParseTime(t)
 	return model.Time(modelTime)
-}
-
-func verifyRequestSplits(t *testing.T, from, to model.Time, shardInterval time.Duration, reqs []DeleteRequest) {
-	numExpectedRequests := 3
-	shardAlignedStart := model.TimeFromUnixNano(time.Unix(0, from.UnixNano()-from.UnixNano()%shardInterval.Nanoseconds()).UnixNano())
-	if !from.Equal(shardAlignedStart) {
-		numExpectedRequests++
-	}
-
-	require.Len(t, reqs, numExpectedRequests)
-	for i := 0; i < numExpectedRequests; i++ {
-		if i == 0 {
-			// start of first request should be same as the start time in original request
-			require.Equal(t, from, reqs[i].StartTime)
-			// end of first request should be shard interval aligned start + shardInterval
-			expectedEnd := shardAlignedStart.Add(shardInterval)
-			if expectedEnd.After(to) {
-				expectedEnd = to
-			}
-			require.Equal(t, expectedEnd, reqs[i].EndTime)
-		} else {
-			// start of this request should be equal to end of last request
-			require.Equal(t, reqs[i-1].EndTime, reqs[i].StartTime)
-			// if this is not last request then end of this split should be start + interval
-			// if this is last request then end should be equal end of original request
-			expectedEnd := reqs[i].StartTime.Add(shardInterval)
-			if i == numExpectedRequests-1 {
-				expectedEnd = to
-			}
-			require.Equal(t, expectedEnd, reqs[i].EndTime)
-		}
-	}
 }

@@ -23,6 +23,7 @@ import (
 	"reflect"
 	"regexp"
 	"runtime"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -44,13 +45,13 @@ const (
 )
 
 // IsNil checks if the specified object is nil or not.
-func IsNil(object interface{}) bool {
+func IsNil(object any) bool {
 	if object == nil {
 		return true
 	}
 
 	switch reflect.TypeOf(object).Kind() {
-	case reflect.Chan, reflect.Func, reflect.Interface, reflect.Map, reflect.Ptr, reflect.Slice:
+	case reflect.Chan, reflect.Func, reflect.Interface, reflect.Map, reflect.Pointer, reflect.Slice:
 		return reflect.ValueOf(object).IsNil()
 	}
 
@@ -58,7 +59,7 @@ func IsNil(object interface{}) bool {
 }
 
 // ValidateNotNil returns the specified error if 'object' is nil, nil otherwise.
-func ValidateNotNil(object interface{}, errorMsg string) error {
+func ValidateNotNil(object any, errorMsg string) error {
 	if IsNil(object) {
 		err := errors.New(errorMsg)
 		return SDKErrorf(err, "", "obj-is-nil", getComponentInfo())
@@ -68,7 +69,7 @@ func ValidateNotNil(object interface{}, errorMsg string) error {
 
 // ValidateStruct validates 'param' (assumed to be a ptr to a struct) according to the
 // annotations attached to its fields.
-func ValidateStruct(param interface{}, paramName string) error {
+func ValidateStruct(param any, paramName string) error {
 	err := ValidateNotNil(param, paramName+" cannot be nil")
 	if err != nil {
 		err = RepurposeSDKProblem(err, "struct-is-nil")
@@ -183,7 +184,7 @@ func SystemInfo() string {
 }
 
 // PrettyPrint print pretty.
-func PrettyPrint(result interface{}, resultName string) {
+func PrettyPrint(result any, resultName string) {
 	output, err := json.MarshalIndent(result, "", "    ")
 
 	if err == nil {
@@ -204,7 +205,7 @@ var reJsonSlice = regexp.MustCompile(`(?s)\[(\S*)\]`)
 // string manipulation on the resulting string, and converts
 // the string to a '[]string'. If 'slice' is nil, not a 'slice' type,
 // or an error occurred during conversion, an error will be returned
-func ConvertSlice(slice interface{}) (s []string, err error) {
+func ConvertSlice(slice any) (s []string, err error) {
 	inputIsSlice := false
 
 	if IsNil(slice) {
@@ -270,12 +271,7 @@ func ConvertSlice(slice interface{}) (s []string, err error) {
 
 // SliceContains returns true iff "contains" is an element of "slice"
 func SliceContains(slice []string, contains string) bool {
-	for _, elem := range slice {
-		if elem == contains {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(slice, contains)
 }
 
 // GetQueryParam returns a pointer to the value of query parameter `param` from urlStr,

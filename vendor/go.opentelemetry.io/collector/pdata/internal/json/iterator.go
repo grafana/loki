@@ -3,6 +3,7 @@
 
 package json // import "go.opentelemetry.io/collector/pdata/internal/json"
 import (
+	"encoding/base64"
 	"strconv"
 
 	jsoniter "github.com/json-iterator/go"
@@ -19,7 +20,28 @@ func ReturnIterator(s *Iterator) {
 }
 
 type Iterator struct {
-	delegate *jsoniter.Iterator
+	delegate              *jsoniter.Iterator
+	disallowUnknownFields bool
+}
+
+// SetDisallowUnknownFields configures whether unknown fields encountered during
+// JSON unmarshalling cause an error. When set to true, [Iterator.HandleUnknownField]
+// records an error instead of skipping the field.
+func (iter *Iterator) SetDisallowUnknownFields(b bool) *Iterator {
+	iter.disallowUnknownFields = b
+	return iter
+}
+
+// HandleUnknownField is called by generated UnmarshalJSON code when an
+// unrecognized JSON field is encountered. By default the field's value is
+// skipped, but if [Iterator.SetDisallowUnknownFields] was set to true, an
+// error is recorded on the iterator instead.
+func (iter *Iterator) HandleUnknownField(field string) {
+	if iter.disallowUnknownFields {
+		iter.ReportError("UnmarshalJSON", "unknown field \""+field+"\"")
+		return
+	}
+	iter.Skip()
 }
 
 // ReadInt32 unmarshalls JSON data into an int32. Accepts both numbers and strings decimal.
@@ -142,6 +164,20 @@ func (iter *Iterator) ReadString() string {
 	return iter.delegate.ReadString()
 }
 
+// ReadBytes read base64 encoded bytes from iterator.
+func (iter *Iterator) ReadBytes() []byte {
+	buf := iter.ReadStringAsSlice()
+	if len(buf) == 0 {
+		return nil
+	}
+	orig := make([]byte, base64.StdEncoding.DecodedLen(len(buf)))
+	n, err := base64.StdEncoding.Decode(orig, buf)
+	if err != nil {
+		iter.ReportError("base64.Decode", err.Error())
+	}
+	return orig[:n]
+}
+
 // ReadStringAsSlice read string from iterator without copying into string form.
 // The []byte cannot be kept, as it will change after next iterator call.
 func (iter *Iterator) ReadStringAsSlice() []byte {
@@ -149,7 +185,7 @@ func (iter *Iterator) ReadStringAsSlice() []byte {
 }
 
 // ReportError record a error in iterator instance with current position.
-func (iter *Iterator) ReportError(operation string, msg string) {
+func (iter *Iterator) ReportError(operation, msg string) {
 	iter.delegate.ReportError(operation, msg)
 }
 
@@ -163,24 +199,15 @@ func (iter *Iterator) Skip() {
 	iter.delegate.Skip()
 }
 
-// ReadArrayCB read array with callback
-func (iter *Iterator) ReadArrayCB(fn func(iter *Iterator) bool) {
-	iter.delegate.ReadArrayCB(func(iterator *jsoniter.Iterator) bool {
-		newIter := Iterator{
-			delegate: iterator,
-		}
-		return fn(&newIter)
-	})
+// ReadArray read array element, returns true if the array has more element to read.
+func (iter *Iterator) ReadArray() bool {
+	return iter.delegate.ReadArray()
 }
 
-// ReadObjectCB read object with callback, the key is ascii only and field name not copied
-func (iter *Iterator) ReadObjectCB(fn func(iter *Iterator, f string) bool) {
-	iter.delegate.ReadObjectCB(func(iterator *jsoniter.Iterator, f string) bool {
-		newIter := Iterator{
-			delegate: iterator,
-		}
-		return fn(&newIter, f)
-	})
+// ReadObject read one field from object.
+// If object ended, returns empty string. Otherwise, returns the field name.
+func (iter *Iterator) ReadObject() string {
+	return iter.delegate.ReadObject()
 }
 
 // ReadEnumValue returns the enum integer value representation. Accepts both enum names and enum integer values.

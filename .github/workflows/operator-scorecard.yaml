@@ -9,25 +9,27 @@ on:
     paths:
       - 'operator/**'
 
+permissions:
+  contents: read
+
 jobs:
   build:
     name: scorecard
     runs-on: ubuntu-latest
     permissions:
       contents: "read"
-      id-token: "write"
-      pull-requests: "write"
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       with:
         persist-credentials: false
     - name: Set up Go 1.x
-      uses: actions/setup-go@v5
+      uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
       with:
         go-version-file: ./operator/go.mod
-    - uses: engineerd/setup-kind@aa272fe2a7309878ffc2a81c56cfe3ef108ae7d0 # v0.5.0
+        cache-dependency-path: ./operator/go.sum
+    - uses: helm/kind-action@06c1ae10762d3b9c1644e7fe69596ae519e015a2 # v1.15.0
       with:
-        version: "v0.17.0"
+        version: "v0.30.0"
     - name: Run scorecard
       run: make scorecard
       working-directory: ./operator

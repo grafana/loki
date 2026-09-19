@@ -1,4 +1,4 @@
-// Copyright 2013 The Prometheus Authors
+// Copyright The Prometheus Authors
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
@@ -18,6 +18,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	maps0 "maps"
 	"net/url"
 	"path/filepath"
 	"slices"
@@ -26,6 +27,7 @@ import (
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/common/model"
 	"github.com/prometheus/common/promslog"
 	"golang.org/x/sync/semaphore"
 
@@ -35,6 +37,7 @@ import (
 	"github.com/prometheus/prometheus/promql"
 	"github.com/prometheus/prometheus/promql/parser"
 	"github.com/prometheus/prometheus/storage"
+	"github.com/prometheus/prometheus/util/features"
 	"github.com/prometheus/prometheus/util/strutil"
 )
 
@@ -50,6 +53,8 @@ func EngineQueryFunc(engine promql.QueryEngine, q storage.Queryable) QueryFunc {
 		if err != nil {
 			return nil, err
 		}
+		defer q.Close()
+
 		res := q.Exec(ctx)
 		if res.Err != nil {
 			return nil, res.Err
@@ -83,6 +88,7 @@ func DefaultEvalIterationFunc(ctx context.Context, g *Group, evalTimestamp time.
 	timeSinceStart := time.Since(start)
 
 	g.metrics.IterationDuration.Observe(timeSinceStart.Seconds())
+	g.metrics.IterationDurationHistogram.Observe(timeSinceStart.Seconds())
 	g.updateRuleEvaluationTimeSum()
 	g.setEvaluationTime(timeSinceStart)
 	g.setLastEvaluation(start)
@@ -107,6 +113,7 @@ type NotifyFunc func(ctx context.Context, expr string, alerts ...*Alert)
 
 // ManagerOptions bundles options for the Manager.
 type ManagerOptions struct {
+	NameValidationScheme      model.ValidationScheme
 	ExternalURL               *url.URL
 	QueryFunc                 QueryFunc
 	NotifyFunc                NotifyFunc
@@ -130,17 +137,38 @@ type ManagerOptions struct {
 	RestoreNewRuleGroups bool
 
 	Metrics *Metrics
+
+	// FeatureRegistry is used to register rule manager features.
+	FeatureRegistry features.Collector
+
+	// Parser is the PromQL parser used for parsing rule expressions.
+	Parser parser.Parser
 }
 
 // NewManager returns an implementation of Manager, ready to be started
 // by calling the Run method.
 func NewManager(o *ManagerOptions) *Manager {
+	switch o.NameValidationScheme {
+	case model.UTF8Validation, model.LegacyValidation:
+	case model.UnsetValidation:
+		o.NameValidationScheme = model.UTF8Validation
+	default:
+		panic(fmt.Errorf("unrecognized name validation scheme: %s", o.NameValidationScheme))
+	}
+	if o.Context == nil {
+		o.Context = context.Background()
+	}
+
 	if o.Metrics == nil {
 		o.Metrics = NewGroupMetrics(o.Registerer)
 	}
 
+	if o.Parser == nil {
+		o.Parser = parser.NewParser(parser.Options{})
+	}
+
 	if o.GroupLoader == nil {
-		o.GroupLoader = FileLoader{}
+		o.GroupLoader = FileLoader{parser: o.Parser, logger: o.Logger}
 	}
 
 	if o.RuleConcurrencyController == nil {
@@ -157,6 +185,13 @@ func NewManager(o *ManagerOptions) *Manager {
 
 	if o.Logger == nil {
 		o.Logger = promslog.NewNopLogger()
+	}
+
+	// Register rule manager features if a registry is provided.
+	if o.FeatureRegistry != nil {
+		o.FeatureRegistry.Set(features.Rules, "concurrent_rule_eval", o.ConcurrentEvalsEnabled)
+		o.FeatureRegistry.Enable(features.Rules, "query_offset")
+		o.FeatureRegistry.Enable(features.Rules, "keep_firing_for")
 	}
 
 	m := &Manager{
@@ -276,6 +311,8 @@ func (m *Manager) Update(interval time.Duration, files []string, externalLabels 
 				m.GroupLastDuration.DeleteLabelValues(n)
 				m.GroupRules.DeleteLabelValues(n)
 				m.GroupSamples.DeleteLabelValues((n))
+				m.GroupLastRuleDurationSum.DeleteLabelValues(n)
+				m.GroupLastRestoreDuration.DeleteLabelValues(n)
 			}
 			wg.Done()
 		}(n, oldg)
@@ -289,19 +326,24 @@ func (m *Manager) Update(interval time.Duration, files []string, externalLabels 
 
 // GroupLoader is responsible for loading rule groups from arbitrary sources and parsing them.
 type GroupLoader interface {
-	Load(identifier string, ignoreUnknownFields bool) (*rulefmt.RuleGroups, []error)
+	Load(identifier string, ignoreUnknownFields bool, nameValidationScheme model.ValidationScheme) (*rulefmt.RuleGroups, []error)
 	Parse(query string) (parser.Expr, error)
 }
 
 // FileLoader is the default GroupLoader implementation. It defers to rulefmt.ParseFile
-// and parser.ParseExpr.
-type FileLoader struct{}
-
-func (FileLoader) Load(identifier string, ignoreUnknownFields bool) (*rulefmt.RuleGroups, []error) {
-	return rulefmt.ParseFile(identifier, ignoreUnknownFields)
+// for loading and uses the configured Parser for expression parsing.
+type FileLoader struct {
+	parser parser.Parser
+	logger *slog.Logger
 }
 
-func (FileLoader) Parse(query string) (parser.Expr, error) { return parser.ParseExpr(query) }
+func (fl FileLoader) Load(identifier string, ignoreUnknownFields bool, nameValidationScheme model.ValidationScheme) (*rulefmt.RuleGroups, []error) {
+	return rulefmt.ParseFile(identifier, ignoreUnknownFields, nameValidationScheme, fl.parser, fl.logger)
+}
+
+func (fl FileLoader) Parse(query string) (parser.Expr, error) {
+	return fl.parser.ParseExpr(query)
+}
 
 // LoadGroups reads groups from a list of files.
 func (m *Manager) LoadGroups(
@@ -312,7 +354,7 @@ func (m *Manager) LoadGroups(
 	shouldRestore := !m.restored || m.restoreNewRuleGroups
 
 	for _, fn := range filenames {
-		rgs, errs := m.opts.GroupLoader.Load(fn, ignoreUnknownFields)
+		rgs, errs := m.opts.GroupLoader.Load(fn, ignoreUnknownFields, m.opts.NameValidationScheme)
 		if errs != nil {
 			return nil, errs
 		}
@@ -465,7 +507,7 @@ type RuleDependencyController interface {
 type ruleDependencyController struct{}
 
 // AnalyseRules implements RuleDependencyController.
-func (c ruleDependencyController) AnalyseRules(rules []Rule) {
+func (ruleDependencyController) AnalyseRules(rules []Rule) {
 	depMap := buildDependencyMap(rules)
 
 	if depMap == nil {
@@ -509,11 +551,11 @@ func newRuleConcurrencyController(maxConcurrency int64) RuleConcurrencyControlle
 	}
 }
 
-func (c *concurrentRuleEvalController) Allow(_ context.Context, _ *Group, _ Rule) bool {
+func (c *concurrentRuleEvalController) Allow(context.Context, *Group, Rule) bool {
 	return c.sema.TryAcquire(1)
 }
 
-func (c *concurrentRuleEvalController) SplitGroupIntoBatches(_ context.Context, g *Group) []ConcurrentRules {
+func (*concurrentRuleEvalController) SplitGroupIntoBatches(_ context.Context, g *Group) []ConcurrentRules {
 	// Using the rule dependency controller information (rules being identified as having no dependencies or no dependants),
 	// we can safely run the following concurrent groups:
 	// 1. Concurrently, all rules that have no dependencies
@@ -549,7 +591,7 @@ func (c *concurrentRuleEvalController) SplitGroupIntoBatches(_ context.Context, 
 	return order
 }
 
-func (c *concurrentRuleEvalController) Done(_ context.Context) {
+func (c *concurrentRuleEvalController) Done(context.Context) {
 	c.sema.Release(1)
 }
 
@@ -558,31 +600,34 @@ var _ RuleConcurrencyController = &sequentialRuleEvalController{}
 // sequentialRuleEvalController is a RuleConcurrencyController that runs every rule sequentially.
 type sequentialRuleEvalController struct{}
 
-func (c sequentialRuleEvalController) Allow(_ context.Context, _ *Group, _ Rule) bool {
+func (sequentialRuleEvalController) Allow(context.Context, *Group, Rule) bool {
 	return false
 }
 
-func (c sequentialRuleEvalController) SplitGroupIntoBatches(_ context.Context, _ *Group) []ConcurrentRules {
+func (sequentialRuleEvalController) SplitGroupIntoBatches(context.Context, *Group) []ConcurrentRules {
 	return nil
 }
 
-func (c sequentialRuleEvalController) Done(_ context.Context) {}
+func (sequentialRuleEvalController) Done(context.Context) {}
 
 // FromMaps returns new sorted Labels from the given maps, overriding each other in order.
 func FromMaps(maps ...map[string]string) labels.Labels {
 	mLables := make(map[string]string)
 
 	for _, m := range maps {
-		for k, v := range m {
-			mLables[k] = v
-		}
+		maps0.Copy(mLables, m)
 	}
 
 	return labels.FromMap(mLables)
 }
 
 // ParseFiles parses the rule files corresponding to glob patterns.
-func ParseFiles(patterns []string) error {
+func ParseFiles(
+	patterns []string,
+	nameValidationScheme model.ValidationScheme,
+	p parser.Parser,
+	logger *slog.Logger,
+) error {
 	files := map[string]string{}
 	for _, pat := range patterns {
 		fns, err := filepath.Glob(pat)
@@ -602,7 +647,7 @@ func ParseFiles(patterns []string) error {
 		}
 	}
 	for fn, pat := range files {
-		_, errs := rulefmt.ParseFile(fn, false)
+		_, errs := rulefmt.ParseFile(fn, false, nameValidationScheme, p, logger)
 		if len(errs) > 0 {
 			return fmt.Errorf("parse rules from file %q (pattern: %q): %w", fn, pat, errors.Join(errs...))
 		}

@@ -2,6 +2,8 @@ package pattern
 
 import (
 	"context"
+	"fmt"
+	"strings"
 	"testing"
 	"time"
 
@@ -20,6 +22,70 @@ import (
 	"github.com/grafana/loki/pkg/push"
 )
 
+func TestFilterClustersByVolume(t *testing.T) {
+	// Create test clusters with different volumes
+	cluster1 := &drain.LogCluster{
+		Tokens:      []string{"high", "volume", "pattern"},
+		Volume:      500,
+		SampleCount: 50,
+	}
+	cluster2 := &drain.LogCluster{
+		Tokens:      []string{"medium", "volume", "pattern"},
+		Volume:      300,
+		SampleCount: 30,
+	}
+	cluster3 := &drain.LogCluster{
+		Tokens:      []string{"low", "volume", "pattern", "one"},
+		Volume:      150,
+		SampleCount: 15,
+	}
+	cluster4 := &drain.LogCluster{
+		Tokens:      []string{"low", "volume", "pattern", "two"},
+		Volume:      50,
+		SampleCount: 5,
+	}
+
+	clusters := []clusterWithMeta{
+		{cluster: cluster1},
+		{cluster: cluster2},
+		{cluster: cluster3},
+		{cluster: cluster4},
+	}
+
+	// Test 90% threshold - should keep 500+300+150=950 out of 1000 total
+	result := filterClustersByVolume(clusters, 0.9)
+	require.Equal(t, 3, len(result), "Should keep top 3 clusters for 90% volume threshold")
+	// Verify sorting worked correctly
+	require.Equal(t, cluster1, result[0].cluster, "Highest volume cluster should be first")
+	require.Equal(t, cluster2, result[1].cluster, "Second highest volume cluster should be second")
+	require.Equal(t, cluster3, result[2].cluster, "Third highest volume cluster should be third")
+
+	// Reset clusters order for next test
+	clusters = []clusterWithMeta{
+		{cluster: cluster1},
+		{cluster: cluster2},
+		{cluster: cluster3},
+		{cluster: cluster4},
+	}
+
+	// Test 50% threshold - should keep only 500 out of 1000 total
+	result = filterClustersByVolume(clusters, 0.5)
+	require.Equal(t, 1, len(result), "Should keep only top cluster for 50% volume threshold")
+	require.Equal(t, cluster1, result[0].cluster, "Highest volume cluster should be kept")
+
+	// Reset clusters order for next test
+	clusters = []clusterWithMeta{
+		{cluster: cluster1},
+		{cluster: cluster2},
+		{cluster: cluster3},
+		{cluster: cluster4},
+	}
+
+	// Test 100% threshold - should keep all clusters
+	result = filterClustersByVolume(clusters, 1.0)
+	require.Equal(t, 4, len(result), "Should keep all clusters for 100% volume threshold")
+}
+
 func TestAddStream(t *testing.T) {
 	lbs := labels.New(labels.Label{Name: "test", Value: "test"})
 	mockWriter := &mockEntryWriter{}
@@ -37,6 +103,7 @@ func TestAddStream(t *testing.T) {
 		},
 		mockWriter,
 		aggregation.NewMetrics(nil),
+		0.99,
 	)
 	require.NoError(t, err)
 
@@ -63,6 +130,144 @@ func TestAddStream(t *testing.T) {
 	require.Equal(t, int64(2), res.Series[0].Samples[0].Value)
 }
 
+func TestLazyDrainCreation(t *testing.T) {
+	newTestStream := func(t *testing.T) *stream {
+		t.Helper()
+		lbs := labels.New(labels.Label{Name: "test", Value: "test"})
+		s, err := newStream(
+			model.Fingerprint(labels.StableHash(lbs)),
+			lbs,
+			newIngesterMetrics(nil, "test"),
+			log.NewNopLogger(),
+			drain.FormatUnknown,
+			"123",
+			drain.DefaultConfig(),
+			&fakeLimits{patternRateThreshold: 1.0, persistenceGranularity: time.Hour},
+			nil,
+			aggregation.NewMetrics(nil),
+			0.99,
+		)
+		require.NoError(t, err)
+		return s
+	}
+
+	entryAt := func(ts int64, line, level string) push.Entry {
+		e := push.Entry{Timestamp: time.Unix(ts, 0), Line: line}
+		if level != "" {
+			e.StructuredMetadata = []logproto.LabelAdapter{
+				{Name: constants.LevelLabel, Value: level},
+			}
+		}
+		return e
+	}
+
+	t.Run("no drains allocated until first push", func(t *testing.T) {
+		s := newTestStream(t)
+		require.Empty(t, s.patterns)
+	})
+
+	t.Run("single level creates exactly one drain", func(t *testing.T) {
+		s := newTestStream(t)
+		require.NoError(t, s.Push(context.Background(), []push.Entry{
+			entryAt(1, "ts=1 msg=hello", constants.LogLevelInfo),
+			entryAt(2, "ts=2 msg=hello", constants.LogLevelInfo),
+		}))
+		require.Len(t, s.patterns, 1)
+		require.Contains(t, s.patterns, constants.LogLevelInfo)
+		require.NotNil(t, s.patterns[constants.LogLevelInfo])
+	})
+
+	t.Run("missing level metadata uses unknown drain", func(t *testing.T) {
+		s := newTestStream(t)
+		require.NoError(t, s.Push(context.Background(), []push.Entry{
+			entryAt(1, "ts=1 msg=hello", ""),
+		}))
+		require.Len(t, s.patterns, 1)
+		require.Contains(t, s.patterns, constants.LogLevelUnknown)
+	})
+
+	t.Run("unknown custom level falls back to unknown drain", func(t *testing.T) {
+		s := newTestStream(t)
+		require.NoError(t, s.Push(context.Background(), []push.Entry{
+			entryAt(1, "ts=1 msg=hello", "not-a-real-level"),
+		}))
+		require.Len(t, s.patterns, 1)
+		require.Contains(t, s.patterns, constants.LogLevelUnknown)
+		require.NotContains(t, s.patterns, "not-a-real-level")
+	})
+
+	t.Run("all eight log levels create eight drains", func(t *testing.T) {
+		require.Len(t, constants.LogLevels, 8, "test assumes eight known log levels")
+
+		s := newTestStream(t)
+		entries := make([]push.Entry, 0, len(constants.LogLevels)*2)
+		for i, lvl := range constants.LogLevels {
+			// Distinct lines per level so each Drain forms its own cluster.
+			line := fmt.Sprintf("level=%s event=unique_%s value=%d", lvl, lvl, i)
+			entries = append(entries,
+				entryAt(int64(i*2+1), line, lvl),
+				entryAt(int64(i*2+2), line, lvl),
+			)
+		}
+		require.NoError(t, s.Push(context.Background(), entries))
+
+		require.Len(t, s.patterns, len(constants.LogLevels))
+		for _, lvl := range constants.LogLevels {
+			require.Contains(t, s.patterns, lvl, "expected drain for level %q", lvl)
+			require.NotEmpty(t, s.patterns[lvl].Clusters(), "expected trained clusters for level %q", lvl)
+		}
+
+		it, err := s.Iterator(context.Background(), model.Earliest, model.Latest, model.Time(time.Second))
+		require.NoError(t, err)
+		res, err := iter.ReadAll(it)
+		require.NoError(t, err)
+		require.Len(t, res.Series, len(constants.LogLevels),
+			"iterator should return one series per level that was trained")
+
+		seenLevels := make(map[string]struct{}, len(res.Series))
+		for _, series := range res.Series {
+			seenLevels[series.Level] = struct{}{}
+			require.Equal(t, int64(2), series.Samples[0].Value,
+				"each level was pushed twice with the same line")
+		}
+		for _, lvl := range constants.LogLevels {
+			require.Contains(t, seenLevels, lvl)
+		}
+	})
+
+	t.Run("repeated pushes for existing levels do not allocate more drains", func(t *testing.T) {
+		s := newTestStream(t)
+		require.NoError(t, s.Push(context.Background(), []push.Entry{
+			entryAt(1, "ts=1 msg=hello", constants.LogLevelError),
+			entryAt(2, "ts=2 msg=world", constants.LogLevelWarn),
+		}))
+		require.Len(t, s.patterns, 2)
+		firstError, firstWarn := s.patterns[constants.LogLevelError], s.patterns[constants.LogLevelWarn]
+
+		require.NoError(t, s.Push(context.Background(), []push.Entry{
+			entryAt(3, "ts=3 msg=hello", constants.LogLevelError),
+			entryAt(4, "ts=4 msg=world", constants.LogLevelWarn),
+		}))
+		require.Len(t, s.patterns, 2)
+		require.Same(t, firstError, s.patterns[constants.LogLevelError])
+		require.Same(t, firstWarn, s.patterns[constants.LogLevelWarn])
+	})
+
+	t.Run("patterns stay isolated across levels", func(t *testing.T) {
+		s := newTestStream(t)
+		require.NoError(t, s.Push(context.Background(), []push.Entry{
+			entryAt(1, "aaaa bbbb cccc dddd", constants.LogLevelInfo),
+			entryAt(2, "wwww xxxx yyyy zzzz", constants.LogLevelError),
+		}))
+
+		infoClusters := s.patterns[constants.LogLevelInfo].Clusters()
+		errorClusters := s.patterns[constants.LogLevelError].Clusters()
+		require.Len(t, infoClusters, 1)
+		require.Len(t, errorClusters, 1)
+		require.NotEqual(t, infoClusters[0].String(), errorClusters[0].String())
+	})
+}
+
 func TestPruneStream(t *testing.T) {
 	lbs := labels.New(labels.Label{Name: "test", Value: "test"})
 	mockWriter := &mockEntryWriter{}
@@ -78,6 +283,7 @@ func TestPruneStream(t *testing.T) {
 		&fakeLimits{patternRateThreshold: 1.0, persistenceGranularity: time.Hour},
 		mockWriter,
 		aggregation.NewMetrics(nil),
+		0.99,
 	)
 	require.NoError(t, err)
 
@@ -110,6 +316,145 @@ func TestPruneStream(t *testing.T) {
 	require.Equal(t, int64(1), res.Series[0].Samples[0].Value)
 }
 
+// TestPruneStreamMultipleClustersInSameLevel guards against a regression where
+// totalClusters was tallied once per cluster processed (an intermediate,
+// partially-pruned snapshot) instead of once per level after all of that
+// level's clusters were pruned. With a single cluster the two approaches
+// happen to agree, which is why TestPruneStream didn't catch it: two or more
+// clusters in the same level aging out together is required to tell them
+// apart.
+func TestPruneStreamMultipleClustersInSameLevel(t *testing.T) {
+	lbs := labels.New(labels.Label{Name: "test", Value: "test"})
+	mockWriter := &mockEntryWriter{}
+	mockWriter.On("WriteEntry", mock.Anything, mock.Anything, mock.Anything, mock.Anything)
+	stream, err := newStream(
+		model.Fingerprint(labels.StableHash(lbs)),
+		lbs,
+		newIngesterMetrics(nil, "test"),
+		log.NewNopLogger(),
+		drain.FormatUnknown,
+		"123",
+		drain.DefaultConfig(),
+		&fakeLimits{patternRateThreshold: 1.0, persistenceGranularity: time.Hour},
+		mockWriter,
+		aggregation.NewMetrics(nil),
+		0.99,
+	)
+	require.NoError(t, err)
+
+	// Two distinct patterns produce two distinct clusters in the same
+	// ("unknown") level, both old enough to be pruned away in one sweep.
+	err = stream.Push(context.Background(), []push.Entry{
+		{Timestamp: time.Unix(20, 0), Line: "aaaa bbbb cccc dddd"},
+		{Timestamp: time.Unix(20, 0), Line: "wwww xxxx yyyy zzzz"},
+	})
+	require.NoError(t, err)
+
+	clusters := 0
+	for _, p := range stream.patterns {
+		clusters += len(p.Clusters())
+	}
+	require.Equal(t, 2, clusters, "expected 2 distinct clusters before pruning")
+
+	require.True(t, stream.prune(time.Hour),
+		"stream has zero clusters left in every level; prune() should report it as empty")
+}
+
+func TestStreamPruneFiltersLowVolumePatterns(t *testing.T) {
+	lbs := labels.New(
+		labels.Label{Name: "test", Value: "test"},
+		labels.Label{Name: "service_name", Value: "test_service"},
+	)
+
+	// Track what patterns are written
+	writtenPatterns := make(map[string]int)
+	mockWriter := &mockEntryWriter{}
+	mockWriter.On("WriteEntry", mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+		Run(func(args mock.Arguments) {
+			entry := args.Get(1).(string)
+			// Extract pattern from the entry (it's URL-encoded in the format)
+			if strings.Contains(entry, "detected_pattern=") {
+				parts := strings.Split(entry, "detected_pattern=")
+				if len(parts) > 1 {
+					patternPart := strings.Split(parts[1], " ")[0]
+					writtenPatterns[patternPart]++
+				}
+			}
+		})
+
+	drainCfg := drain.DefaultConfig()
+	drainCfg.SimTh = 0.3 // Lower similarity threshold for testing
+
+	stream, err := newStream(
+		model.Fingerprint(labels.StableHash(lbs)),
+		lbs,
+		newIngesterMetrics(nil, "test"),
+		log.NewNopLogger(),
+		drain.FormatUnknown,
+		"123",
+		drainCfg,
+		&fakeLimits{
+			patternRateThreshold:   0, // Disable rate threshold
+			persistenceGranularity: time.Hour,
+		},
+		mockWriter,
+		aggregation.NewMetrics(nil),
+		0.8, // Test with 80% volume threshold
+	)
+	require.NoError(t, err)
+
+	// Push many log lines to create patterns with different volumes
+	// High volume pattern (60% of total volume)
+	for i := range 30 {
+		err = stream.Push(context.Background(), []push.Entry{
+			{
+				Timestamp: time.Unix(int64(i), 0),
+				Line:      fmt.Sprintf("high volume pattern iteration %d", i),
+			},
+		})
+		require.NoError(t, err)
+	}
+
+	// Medium volume pattern (30% of total volume)
+	for i := range 15 {
+		err = stream.Push(context.Background(), []push.Entry{
+			{
+				Timestamp: time.Unix(int64(30+i), 0),
+				Line:      fmt.Sprintf("medium volume pattern number %d", i),
+			},
+		})
+		require.NoError(t, err)
+	}
+
+	// Low volume patterns (10% of total volume combined)
+	for i := range 5 {
+		err = stream.Push(context.Background(), []push.Entry{
+			{
+				Timestamp: time.Unix(int64(45+i), 0),
+				Line:      fmt.Sprintf("low volume pattern instance %d unique", i),
+			},
+		})
+		require.NoError(t, err)
+	}
+
+	// Prune to trigger pattern persistence
+	stream.prune(0)
+
+	// With 80% threshold, only high (60%) and medium (30%) volume patterns should be written
+	// Low volume patterns (10%) should be filtered out
+
+	// Check that we have patterns written
+	require.Equal(t, len(writtenPatterns), 2, "Should have written some patterns")
+
+	// The exact pattern strings depend on drain's clustering, but we should see
+	// fewer patterns written than total clusters due to filtering
+	// We pushed 50 total log lines creating at least 3 distinct patterns
+	// With 80% threshold, we expect the low volume ones to be filtered
+
+	// Verify the mock was called (patterns were written)
+	mockWriter.AssertCalled(t, "WriteEntry", mock.Anything, mock.Anything, mock.Anything, mock.Anything)
+}
+
 func TestStreamPatternPersistenceOnPrune(t *testing.T) {
 	lbs := labels.New(
 		labels.Label{Name: "test", Value: "test"},
@@ -130,6 +475,7 @@ func TestStreamPatternPersistenceOnPrune(t *testing.T) {
 		},
 		mockWriter,
 		aggregation.NewMetrics(nil),
+		0.99,
 	)
 	require.NoError(t, err)
 
@@ -198,6 +544,7 @@ func TestStreamPersistenceGranularityMultipleEntries(t *testing.T) {
 		&fakeLimits{patternRateThreshold: 1.0, persistenceGranularity: 15 * time.Minute},
 		mockWriter,
 		aggregation.NewMetrics(nil),
+		0.99,
 	)
 	require.NoError(t, err)
 
@@ -269,6 +616,7 @@ func TestStreamPersistenceGranularityEdgeCases(t *testing.T) {
 			&fakeLimits{patternRateThreshold: 1.0, persistenceGranularity: 30 * time.Minute},
 			mockWriter,
 			aggregation.NewMetrics(nil),
+			0.99,
 		)
 		require.NoError(t, err)
 
@@ -308,6 +656,7 @@ func TestStreamPersistenceGranularityEdgeCases(t *testing.T) {
 			},
 			mockWriter,
 			aggregation.NewMetrics(nil),
+			0.99,
 		)
 		require.NoError(t, err)
 
@@ -371,6 +720,7 @@ func TestStreamPersistenceGranularityEdgeCases(t *testing.T) {
 			},
 			mockWriter,
 			aggregation.NewMetrics(nil),
+			0.99,
 		)
 		require.NoError(t, err)
 
@@ -426,8 +776,9 @@ func newInstanceWithLimits(
 	metricWriter aggregation.EntryWriter,
 	patternWriter aggregation.EntryWriter,
 	aggregationMetrics *aggregation.Metrics,
+	volumeThreshold float64,
 ) (*instance, error) {
-	return newInstance(instanceID, logger, metrics, drainCfg, drainLimits, ringClient, ingesterID, metricWriter, patternWriter, aggregationMetrics)
+	return newInstance(instanceID, logger, metrics, drainCfg, drainLimits, ringClient, ingesterID, metricWriter, patternWriter, aggregationMetrics, volumeThreshold)
 }
 
 func TestStreamPerTenantConfigurationThreading(t *testing.T) {
@@ -464,6 +815,7 @@ func TestStreamPerTenantConfigurationThreading(t *testing.T) {
 			mockWriter,
 			mockWriter,
 			aggregation.NewMetrics(nil),
+			0.99,
 		)
 		require.NoError(t, err)
 
@@ -502,6 +854,7 @@ func TestStreamCalculatePatternRate(t *testing.T) {
 		},
 		mockWriter,
 		aggregation.NewMetrics(nil),
+		0.99,
 	)
 	require.NoError(t, err)
 
@@ -589,6 +942,7 @@ func TestStreamPatternRateThresholdGating(t *testing.T) {
 			},
 			mockWriter,
 			aggregation.NewMetrics(nil),
+			0.99,
 		)
 		require.NoError(t, err)
 
@@ -631,6 +985,7 @@ func TestStreamPatternRateThresholdGating(t *testing.T) {
 			},
 			mockWriter,
 			aggregation.NewMetrics(nil),
+			0.99,
 		)
 		require.NoError(t, err)
 
@@ -666,6 +1021,7 @@ func TestStreamPatternRateThresholdGating(t *testing.T) {
 			},
 			mockWriter,
 			aggregation.NewMetrics(nil),
+			0.99,
 		)
 		require.NoError(t, err)
 
@@ -690,5 +1046,134 @@ func TestStreamPatternRateThresholdGating(t *testing.T) {
 		stream.writePatternsBucketed(samples, lbs, "test pattern", constants.LogLevelUnknown)
 
 		mockWriter.AssertExpectations(t)
+	})
+}
+
+func TestFilterClustersByVolumeEdgeCases(t *testing.T) {
+	t.Run("should handle empty cluster list", func(t *testing.T) {
+		clusters := []clusterWithMeta{}
+		result := filterClustersByVolume(clusters, 0.9)
+		require.Equal(t, 0, len(result), "Empty list should return 0")
+	})
+
+	t.Run("should keep single cluster regardless of threshold", func(t *testing.T) {
+		cluster := &drain.LogCluster{
+			Tokens:      []string{"test", "pattern"},
+			Volume:      100,
+			SampleCount: 10,
+		}
+
+		// Test with various thresholds
+		clusters := []clusterWithMeta{{cluster: cluster}}
+		result := filterClustersByVolume(clusters, 0.1)
+		require.Equal(t, 1, len(result), "Single cluster should always be kept")
+		require.Equal(t, cluster, result[0].cluster)
+
+		clusters = []clusterWithMeta{{cluster: cluster}}
+		result = filterClustersByVolume(clusters, 0.5)
+		require.Equal(t, 1, len(result), "Single cluster should always be kept")
+
+		clusters = []clusterWithMeta{{cluster: cluster}}
+		result = filterClustersByVolume(clusters, 0.99)
+		require.Equal(t, 1, len(result), "Single cluster should always be kept")
+	})
+
+	t.Run("should handle all clusters with equal volume", func(t *testing.T) {
+		clusters := []clusterWithMeta{
+			{cluster: &drain.LogCluster{Tokens: []string{"pattern", "1"}, Volume: 100, SampleCount: 10}},
+			{cluster: &drain.LogCluster{Tokens: []string{"pattern", "2"}, Volume: 100, SampleCount: 10}},
+			{cluster: &drain.LogCluster{Tokens: []string{"pattern", "3"}, Volume: 100, SampleCount: 10}},
+			{cluster: &drain.LogCluster{Tokens: []string{"pattern", "4"}, Volume: 100, SampleCount: 10}},
+		}
+
+		// With 50% threshold and equal volumes, should keep 2 clusters
+		result := filterClustersByVolume(clusters, 0.5)
+		require.Equal(t, 2, len(result), "Should keep exactly 2 clusters for 50% threshold")
+
+		// Reset for next test
+		clusters = []clusterWithMeta{
+			{cluster: &drain.LogCluster{Tokens: []string{"pattern", "1"}, Volume: 100, SampleCount: 10}},
+			{cluster: &drain.LogCluster{Tokens: []string{"pattern", "2"}, Volume: 100, SampleCount: 10}},
+			{cluster: &drain.LogCluster{Tokens: []string{"pattern", "3"}, Volume: 100, SampleCount: 10}},
+			{cluster: &drain.LogCluster{Tokens: []string{"pattern", "4"}, Volume: 100, SampleCount: 10}},
+		}
+
+		// With 75% threshold and equal volumes, should keep 3 clusters
+		result = filterClustersByVolume(clusters, 0.75)
+		require.Equal(t, 3, len(result), "Should keep exactly 3 clusters for 75% threshold")
+	})
+
+	t.Run("should handle zero volume clusters", func(t *testing.T) {
+		clusters := []clusterWithMeta{
+			{cluster: &drain.LogCluster{Tokens: []string{"pattern", "1"}, Volume: 0, SampleCount: 0}},
+			{cluster: &drain.LogCluster{Tokens: []string{"pattern", "2"}, Volume: 0, SampleCount: 0}},
+		}
+
+		result := filterClustersByVolume(clusters, 0.9)
+		require.Equal(t, 0, len(result), "Zero-volume clusters should return empty when total volume is 0")
+	})
+
+	t.Run("should handle threshold of 0", func(t *testing.T) {
+		clusters := []clusterWithMeta{
+			{cluster: &drain.LogCluster{Tokens: []string{"high", "volume"}, Volume: 500, SampleCount: 50}},
+			{cluster: &drain.LogCluster{Tokens: []string{"low", "volume"}, Volume: 100, SampleCount: 10}},
+		}
+
+		// Threshold of 0 means keep nothing (0% of volume)
+		result := filterClustersByVolume(clusters, 0)
+		require.Equal(t, 0, len(result), "Threshold of 0 should keep no clusters")
+	})
+
+	t.Run("should handle threshold of 1", func(t *testing.T) {
+		clusters := []clusterWithMeta{
+			{cluster: &drain.LogCluster{Tokens: []string{"high", "volume"}, Volume: 500, SampleCount: 50}},
+			{cluster: &drain.LogCluster{Tokens: []string{"medium", "volume"}, Volume: 300, SampleCount: 30}},
+			{cluster: &drain.LogCluster{Tokens: []string{"low", "volume"}, Volume: 100, SampleCount: 10}},
+		}
+
+		// Threshold of 1 means keep everything (100% of volume)
+		result := filterClustersByVolume(clusters, 1.0)
+		require.Equal(t, 3, len(result), "Threshold of 1 should keep all clusters")
+	})
+
+	t.Run("should handle very small threshold values", func(t *testing.T) {
+		clusters := []clusterWithMeta{
+			{cluster: &drain.LogCluster{Tokens: []string{"huge", "volume"}, Volume: 10000, SampleCount: 1000}},
+			{cluster: &drain.LogCluster{Tokens: []string{"tiny", "volume"}, Volume: 1, SampleCount: 1}},
+		}
+
+		// Even very small threshold should include the huge volume cluster
+		result := filterClustersByVolume(clusters, 0.0001)
+		require.Equal(t, 1, len(result), "Very small threshold should still include highest volume cluster")
+		require.Equal(t, int64(10000), result[0].cluster.Volume)
+	})
+
+	t.Run("should maintain stability when clusters have same volume", func(t *testing.T) {
+		// When clusters have the same volume, the sort is stable and
+		// filterClustersByVolume should include all clusters until threshold is met
+		clusters := []clusterWithMeta{
+			{cluster: &drain.LogCluster{Tokens: []string{"pattern", "A"}, Volume: 200, SampleCount: 20}},
+			{cluster: &drain.LogCluster{Tokens: []string{"pattern", "B"}, Volume: 200, SampleCount: 20}},
+			{cluster: &drain.LogCluster{Tokens: []string{"pattern", "C"}, Volume: 100, SampleCount: 10}},
+		}
+
+		// 40% threshold: should include first cluster (200/500 = 40%)
+		result := filterClustersByVolume(clusters, 0.4)
+		require.Equal(t, 1, len(result))
+		require.Equal(t, int64(200), result[0].cluster.Volume)
+
+		// Reset for next test
+		clusters = []clusterWithMeta{
+			{cluster: &drain.LogCluster{Tokens: []string{"pattern", "A"}, Volume: 200, SampleCount: 20}},
+			{cluster: &drain.LogCluster{Tokens: []string{"pattern", "B"}, Volume: 200, SampleCount: 20}},
+			{cluster: &drain.LogCluster{Tokens: []string{"pattern", "C"}, Volume: 100, SampleCount: 10}},
+		}
+
+		// 80% threshold: should include both 200-volume clusters (400/500 = 80%)
+		result = filterClustersByVolume(clusters, 0.8)
+		require.Equal(t, 2, len(result))
+		for i := 0; i < len(result); i++ {
+			require.Equal(t, int64(200), result[i].cluster.Volume)
+		}
 	})
 }

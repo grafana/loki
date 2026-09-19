@@ -1,4 +1,4 @@
-// Copyright 2024 Prometheus Team
+// Copyright The Prometheus Authors
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
@@ -14,6 +14,8 @@
 package writev2
 
 import (
+	"fmt"
+
 	"github.com/prometheus/common/model"
 
 	"github.com/prometheus/prometheus/model/exemplar"
@@ -25,12 +27,12 @@ import (
 // NOTE(bwplotka): This file's code is tested in /prompb/rwcommon.
 
 // ToLabels return model labels.Labels from timeseries' remote labels.
-func (m TimeSeries) ToLabels(b *labels.ScratchBuilder, symbols []string) labels.Labels {
+func (m TimeSeries) ToLabels(b *labels.ScratchBuilder, symbols []string) (labels.Labels, error) {
 	return desymbolizeLabels(b, m.GetLabelsRefs(), symbols)
 }
 
-// ToMetadata return model metadata from timeseries' remote metadata.
-func (m TimeSeries) ToMetadata(symbols []string) metadata.Metadata {
+// ToMetadata returns model metadata from timeseries' remote metadata.
+func (m TimeSeries) ToMetadata(symbols []string) (metadata.Metadata, error) {
 	typ := model.MetricTypeUnknown
 	switch m.Metadata.Type {
 	case Metadata_METRIC_TYPE_COUNTER:
@@ -48,11 +50,17 @@ func (m TimeSeries) ToMetadata(symbols []string) metadata.Metadata {
 	case Metadata_METRIC_TYPE_STATESET:
 		typ = model.MetricTypeStateset
 	}
+	if int(m.Metadata.UnitRef) >= len(symbols) {
+		return metadata.Metadata{}, fmt.Errorf("metadata unit_ref %d outside of symbols table (size %d)", m.Metadata.UnitRef, len(symbols))
+	}
+	if int(m.Metadata.HelpRef) >= len(symbols) {
+		return metadata.Metadata{}, fmt.Errorf("metadata help_ref %d outside of symbols table (size %d)", m.Metadata.HelpRef, len(symbols))
+	}
 	return metadata.Metadata{
 		Type: typ,
 		Unit: symbols[m.Metadata.UnitRef],
 		Help: symbols[m.Metadata.HelpRef],
-	}
+	}, nil
 }
 
 // FromMetadataType transforms a Prometheus metricType into writev2 metricType.
@@ -142,7 +150,7 @@ func (h Histogram) ToFloatHistogram() *histogram.FloatHistogram {
 
 func spansProtoToSpans(s []BucketSpan) []histogram.Span {
 	spans := make([]histogram.Span, len(s))
-	for i := 0; i < len(s); i++ {
+	for i := range s {
 		spans[i] = histogram.Span{Offset: s[i].Offset, Length: s[i].Length}
 	}
 
@@ -159,8 +167,9 @@ func deltasToCounts(deltas []int64) []float64 {
 	return counts
 }
 
-// FromIntHistogram returns remote Histogram from the integer Histogram.
-func FromIntHistogram(timestamp int64, h *histogram.Histogram) Histogram {
+// FromIntHistogram returns remote Histogram from the integer Histogram. The
+// st argument is the optional per-sample start timestamp; pass 0 if unknown.
+func FromIntHistogram(st, timestamp int64, h *histogram.Histogram) Histogram {
 	return Histogram{
 		Count:          &Histogram_CountInt{CountInt: h.Count},
 		Sum:            h.Sum,
@@ -174,11 +183,13 @@ func FromIntHistogram(timestamp int64, h *histogram.Histogram) Histogram {
 		ResetHint:      Histogram_ResetHint(h.CounterResetHint),
 		CustomValues:   h.CustomValues,
 		Timestamp:      timestamp,
+		StartTimestamp: st,
 	}
 }
 
-// FromFloatHistogram returns remote Histogram from the float Histogram.
-func FromFloatHistogram(timestamp int64, fh *histogram.FloatHistogram) Histogram {
+// FromFloatHistogram returns remote Histogram from the float Histogram. The
+// st argument is the optional per-sample start timestamp; pass 0 if unknown.
+func FromFloatHistogram(st, timestamp int64, fh *histogram.FloatHistogram) Histogram {
 	return Histogram{
 		Count:          &Histogram_CountFloat{CountFloat: fh.Count},
 		Sum:            fh.Sum,
@@ -192,6 +203,7 @@ func FromFloatHistogram(timestamp int64, fh *histogram.FloatHistogram) Histogram
 		ResetHint:      Histogram_ResetHint(fh.CounterResetHint),
 		CustomValues:   fh.CustomValues,
 		Timestamp:      timestamp,
+		StartTimestamp: st,
 	}
 }
 
@@ -200,20 +212,25 @@ func spansToSpansProto(s []histogram.Span) []BucketSpan {
 		return nil
 	}
 	spans := make([]BucketSpan, len(s))
-	for i := 0; i < len(s); i++ {
+	for i := range s {
 		spans[i] = BucketSpan{Offset: s[i].Offset, Length: s[i].Length}
 	}
 
 	return spans
 }
 
-func (m Exemplar) ToExemplar(b *labels.ScratchBuilder, symbols []string) exemplar.Exemplar {
+func (m Exemplar) ToExemplar(b *labels.ScratchBuilder, symbols []string) (exemplar.Exemplar, error) {
 	timestamp := m.Timestamp
 
+	lbls, err := desymbolizeLabels(b, m.LabelsRefs, symbols)
+	if err != nil {
+		return exemplar.Exemplar{}, err
+	}
+
 	return exemplar.Exemplar{
-		Labels: desymbolizeLabels(b, m.LabelsRefs, symbols),
+		Labels: lbls,
 		Value:  m.Value,
 		Ts:     timestamp,
 		HasTs:  timestamp != 0,
-	}
+	}, nil
 }

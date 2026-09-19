@@ -173,7 +173,9 @@ func NewBaseLabelsBuilder() *BaseLabelsBuilder {
 // ForLabels creates a labels builder for a given labels set as base.
 // The labels cache is shared across all created LabelsBuilders.
 func (b *BaseLabelsBuilder) ForLabels(lbs labels.Labels, hash uint64) *LabelsBuilder {
-	if labelResult, ok := b.resultCache[hash]; ok {
+	// Verify the cached result is for these exact labels: Hash can collide, and serving a colliding
+	// stream's result would attribute this stream's output to the other stream's labels.
+	if labelResult, ok := b.resultCache[hash]; ok && labels.Equal(labelResult.Stream(), lbs) {
 		res := &LabelsBuilder{
 			base:              lbs,
 			currentResult:     labelResult,
@@ -267,6 +269,11 @@ func (b *LabelsBuilder) GetErrorDetails() string {
 
 func (b *LabelsBuilder) HasErrorDetails() bool {
 	return b.errDetails != ""
+}
+
+// HasInCategory returns whether the builder has the given key in the specified category.
+func (b *LabelsBuilder) HasInCategory(key string, category LabelCategory) bool {
+	return labelsContain(b.add[category], key)
 }
 
 // BaseHas returns the base labels have the given key
@@ -592,7 +599,7 @@ func (b *LabelsBuilder) LabelsResult() LabelsResult {
 	// Get all labels at once and sort them
 	b.buf = b.UnsortedLabels(b.buf)
 	lbls := labels.New(b.buf...)
-	hash := b.hasher.Hash(lbls)
+	hash := b.Hash(lbls)
 
 	if cached, ok := b.resultCache[hash]; ok {
 		return cached
@@ -644,7 +651,7 @@ func findLabelValue(labels []labels.Label, name string) (string, bool) {
 
 func (b *BaseLabelsBuilder) toUncategorizedResult(buf []labels.Label) LabelsResult {
 	lbls := labels.New(buf...)
-	hash := b.hasher.Hash(lbls)
+	hash := b.Hash(lbls)
 	if cached, ok := b.resultCache[hash]; ok {
 		return cached
 	}

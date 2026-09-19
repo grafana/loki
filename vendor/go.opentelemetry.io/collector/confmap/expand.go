@@ -9,6 +9,8 @@ import (
 	"fmt"
 	"regexp"
 	"strings"
+
+	"go.opentelemetry.io/collector/confmap/internal"
 )
 
 // schemePattern defines the regexp pattern for scheme names.
@@ -24,7 +26,7 @@ var (
 )
 
 func (mr *Resolver) expandValueRecursively(ctx context.Context, value any) (any, error) {
-	for i := 0; i < 1000; i++ {
+	for range 1000 {
 		val, changed, err := mr.expandValue(ctx, value)
 		if err != nil {
 			return nil, err
@@ -39,14 +41,14 @@ func (mr *Resolver) expandValueRecursively(ctx context.Context, value any) (any,
 
 func (mr *Resolver) expandValue(ctx context.Context, value any) (any, bool, error) {
 	switch v := value.(type) {
-	case expandedValue:
+	case internal.ExpandedValue:
 		expanded, changed, err := mr.expandValue(ctx, v.Value)
 		if err != nil {
 			return nil, false, err
 		}
 
 		switch exp := expanded.(type) {
-		case expandedValue, string:
+		case internal.ExpandedValue, string:
 			// Return expanded values or strings verbatim.
 			return exp, changed, nil
 		}
@@ -60,7 +62,7 @@ func (mr *Resolver) expandValue(ctx context.Context, value any) (any, bool, erro
 
 		if originalExpanded, ok := originalExpanded.(string); ok {
 			// If the original representation is a string, return the expanded value with the original representation.
-			return expandedValue{
+			return internal.ExpandedValue{
 				Value:    expanded,
 				Original: originalExpanded,
 			}, changed || originalChanged, nil
@@ -135,21 +137,13 @@ func (mr *Resolver) findURI(input string) string {
 	}
 	// if we found an odd number of immediately $ preceding ${, then the expansion is escaped
 	if count%2 == 1 {
-		return ""
+		if !strings.Contains(remaining, "}") {
+			return ""
+		}
+		return mr.findURI(remaining)
 	}
 
 	return input[openIndex : closeIndex+1]
-}
-
-// expandedValue holds the YAML parsed value and original representation of a value.
-// It keeps track of the original representation to be used by the 'useExpandValue' hook
-// if the target field is a string. We need to keep both representations because we don't know
-// what the target field type is until `Unmarshal` is called.
-type expandedValue struct {
-	// Value is the expanded value.
-	Value any
-	// Original is the original representation of the value.
-	Original string
 }
 
 // findAndExpandURI attempts to find and expand the first occurrence of an expandable URI in input. If an expandable URI is found it
@@ -175,7 +169,7 @@ func (mr *Resolver) findAndExpandURI(ctx context.Context, input string) (any, bo
 		}
 
 		if asStr, err2 := ret.AsString(); err2 == nil {
-			return expandedValue{
+			return internal.ExpandedValue{
 				Value:    val,
 				Original: asStr,
 			}, true, nil

@@ -7,18 +7,19 @@ import (
 
 	"github.com/go-kit/log/level"
 
+	"github.com/grafana/loki/v3/pkg/compactor/deletion/deletionproto"
 	"github.com/grafana/loki/v3/pkg/util/log"
 )
 
 type CompactorClient interface {
-	GetAllDeleteRequestsForUser(ctx context.Context, userID string) ([]DeleteRequest, error)
+	GetAllDeleteRequestsForUser(ctx context.Context, userID string, forQuerytimeFiltering bool, timeRange *TimeRange) ([]deletionproto.DeleteRequest, error)
 	GetCacheGenerationNumber(ctx context.Context, userID string) (string, error)
 	Name() string
 	Stop()
 }
 
 type DeleteRequestsClient interface {
-	GetAllDeleteRequestsForUser(ctx context.Context, userID string) ([]DeleteRequest, error)
+	GetAllDeleteRequestsForUser(ctx context.Context, userID string, forQuerytimeFiltering bool, timeRange *TimeRange) ([]deletionproto.DeleteRequest, error)
 	Stop()
 }
 
@@ -26,7 +27,7 @@ type deleteRequestsClient struct {
 	compactorClient CompactorClient
 	mu              sync.RWMutex
 
-	cache         map[string][]DeleteRequest
+	cache         map[string][]deletionproto.DeleteRequest
 	cacheDuration time.Duration
 
 	metrics    *DeleteRequestClientMetrics
@@ -47,7 +48,7 @@ func NewDeleteRequestsClient(compactorClient CompactorClient, deleteClientMetric
 	client := &deleteRequestsClient{
 		compactorClient: compactorClient,
 		cacheDuration:   5 * time.Minute,
-		cache:           make(map[string][]DeleteRequest),
+		cache:           make(map[string][]deletionproto.DeleteRequest),
 		clientType:      clientType,
 		metrics:         deleteClientMetrics,
 		stopChan:        make(chan struct{}),
@@ -61,16 +62,26 @@ func NewDeleteRequestsClient(compactorClient CompactorClient, deleteClientMetric
 	return client, nil
 }
 
-func (c *deleteRequestsClient) GetAllDeleteRequestsForUser(ctx context.Context, userID string) ([]DeleteRequest, error) {
-	if cachedRequests, ok := c.getCachedRequests(userID); ok {
-		return cachedRequests, nil
+func (c *deleteRequestsClient) GetAllDeleteRequestsForUser(ctx context.Context, userID string, forQuerytimeFiltering bool, timeRange *TimeRange) ([]deletionproto.DeleteRequest, error) {
+	// Only use cache when forQuerytimeFiltering is true and timeRange is nil (retains the existing behavior).
+	// Caching based on timeRange would increase cache keys which might not be suitable for in-memory cache.
+	// Revisit this if needed in future.
+	useCache := forQuerytimeFiltering && timeRange == nil
+	if useCache {
+		if cachedRequests, ok := c.getCachedRequests(userID); ok {
+			return cachedRequests, nil
+		}
 	}
 
 	c.metrics.deleteRequestsLookupsTotal.Inc()
-	requests, err := c.compactorClient.GetAllDeleteRequestsForUser(ctx, userID)
+	requests, err := c.compactorClient.GetAllDeleteRequestsForUser(ctx, userID, forQuerytimeFiltering, timeRange)
 	if err != nil {
 		c.metrics.deleteRequestsLookupsFailedTotal.Inc()
 		return nil, err
+	}
+
+	if !useCache {
+		return requests, nil
 	}
 
 	c.mu.Lock()
@@ -80,7 +91,7 @@ func (c *deleteRequestsClient) GetAllDeleteRequestsForUser(ctx context.Context, 
 	return requests, nil
 }
 
-func (c *deleteRequestsClient) getCachedRequests(userID string) ([]DeleteRequest, bool) {
+func (c *deleteRequestsClient) getCachedRequests(userID string) ([]deletionproto.DeleteRequest, bool) {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 
@@ -110,9 +121,9 @@ func (c *deleteRequestsClient) updateLoop() {
 func (c *deleteRequestsClient) updateCache() error {
 	userIDs := c.currentUserIDs()
 
-	newCache := make(map[string][]DeleteRequest)
+	newCache := make(map[string][]deletionproto.DeleteRequest)
 	for _, userID := range userIDs {
-		deleteReq, err := c.compactorClient.GetAllDeleteRequestsForUser(context.Background(), userID)
+		deleteReq, err := c.compactorClient.GetAllDeleteRequestsForUser(context.Background(), userID, true, nil)
 		if err != nil {
 			return err
 		}
@@ -144,7 +155,7 @@ func NewNoOpDeleteRequestsClient() DeleteRequestsClient {
 
 type noOpDeleteRequestsClient struct{}
 
-func (n noOpDeleteRequestsClient) GetAllDeleteRequestsForUser(_ context.Context, _ string) ([]DeleteRequest, error) {
+func (n noOpDeleteRequestsClient) GetAllDeleteRequestsForUser(_ context.Context, _ string, _ bool, _ *TimeRange) ([]deletionproto.DeleteRequest, error) {
 	return nil, nil
 }
 

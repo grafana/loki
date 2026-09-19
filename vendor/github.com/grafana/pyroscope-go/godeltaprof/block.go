@@ -2,7 +2,6 @@ package godeltaprof
 
 import (
 	"io"
-	"runtime"
 	"sort"
 	"sync"
 
@@ -10,7 +9,8 @@ import (
 )
 
 // BlockProfiler is a stateful profiler for goroutine blocking events and mutex contention in Go programs.
-// Depending on the function used to create the BlockProfiler, it uses either runtime.BlockProfile or runtime.MutexProfile.
+// Depending on the function used to create the BlockProfiler, it uses either runtime.BlockProfile or
+// runtime.MutexProfile.
 // The BlockProfiler provides similar functionality to pprof.Lookup("block").WriteTo and pprof.Lookup("mutex").WriteTo,
 // but with some key differences.
 //
@@ -26,9 +26,10 @@ import (
 type BlockProfiler struct {
 	impl           pprof.DeltaMutexProfiler
 	mutex          sync.Mutex
-	runtimeProfile func([]runtime.BlockProfileRecord) (int, bool)
+	runtimeProfile func() []pprof.BlockProfileRecord
 	scaleProfile   pprof.MutexProfileScaler
 	options        pprof.ProfileBuilderOptions
+	gz             gz
 }
 
 // NewMutexProfiler creates a new BlockProfiler instance for profiling mutex contention.
@@ -41,7 +42,7 @@ type BlockProfiler struct {
 //	    err := mp.Profile(someWriter)
 func NewMutexProfiler() *BlockProfiler {
 	return &BlockProfiler{
-		runtimeProfile: runtime.MutexProfile,
+		runtimeProfile: pprof.MutexProfile,
 		scaleProfile:   pprof.ScalerMutexProfile,
 		impl:           pprof.DeltaMutexProfiler{},
 		options: pprof.ProfileBuilderOptions{
@@ -53,7 +54,7 @@ func NewMutexProfiler() *BlockProfiler {
 
 func NewMutexProfilerWithOptions(options ProfileOptions) *BlockProfiler {
 	return &BlockProfiler{
-		runtimeProfile: runtime.MutexProfile,
+		runtimeProfile: pprof.MutexProfile,
 		scaleProfile:   pprof.ScalerMutexProfile,
 		impl:           pprof.DeltaMutexProfiler{},
 		options: pprof.ProfileBuilderOptions{
@@ -73,7 +74,7 @@ func NewMutexProfilerWithOptions(options ProfileOptions) *BlockProfiler {
 //	err := bp.Profile(someWriter)
 func NewBlockProfiler() *BlockProfiler {
 	return &BlockProfiler{
-		runtimeProfile: runtime.BlockProfile,
+		runtimeProfile: pprof.BlockProfile,
 		scaleProfile:   pprof.ScalerBlockProfile,
 		impl:           pprof.DeltaMutexProfiler{},
 		options: pprof.ProfileBuilderOptions{
@@ -85,7 +86,7 @@ func NewBlockProfiler() *BlockProfiler {
 
 func NewBlockProfilerWithOptions(options ProfileOptions) *BlockProfiler {
 	return &BlockProfiler{
-		runtimeProfile: runtime.BlockProfile,
+		runtimeProfile: pprof.BlockProfile,
 		scaleProfile:   pprof.ScalerBlockProfile,
 		impl:           pprof.DeltaMutexProfiler{},
 		options: pprof.ProfileBuilderOptions{
@@ -99,20 +100,13 @@ func (d *BlockProfiler) Profile(w io.Writer) error {
 	d.mutex.Lock()
 	defer d.mutex.Unlock()
 
-	var p []runtime.BlockProfileRecord
-	n, ok := d.runtimeProfile(nil)
-	for {
-		p = make([]runtime.BlockProfileRecord, n+50)
-		n, ok = d.runtimeProfile(p)
-		if ok {
-			p = p[:n]
-			break
-		}
-	}
+	p := d.runtimeProfile()
 
 	sort.Slice(p, func(i, j int) bool { return p[i].Cycles > p[j].Cycles })
 
+	zw := d.gz.get(w)
 	stc := pprof.MutexProfileConfig()
-	b := pprof.NewProfileBuilder(w, &d.options, stc)
+	b := pprof.NewProfileBuilder(w, zw, &d.options, stc)
+
 	return d.impl.PrintCountCycleProfile(b, d.scaleProfile, p)
 }

@@ -36,12 +36,6 @@ const (
 	ServiceTimingHeaderName   = "Server-Timing"
 )
 
-var (
-	errCanceled              = httpgrpc.Errorf(StatusClientClosedRequest, "%s", context.Canceled.Error())
-	errDeadlineExceeded      = httpgrpc.Errorf(http.StatusGatewayTimeout, "%s", context.DeadlineExceeded.Error())
-	errRequestEntityTooLarge = httpgrpc.Errorf(http.StatusRequestEntityTooLarge, "http: request body too large")
-)
-
 // Config for a Handler.
 type HandlerConfig struct {
 	LogQueriesLongerThan   time.Duration          `yaml:"log_queries_longer_than"`

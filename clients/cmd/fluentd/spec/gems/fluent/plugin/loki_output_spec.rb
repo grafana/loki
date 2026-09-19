@@ -1,6 +1,9 @@
 # frozen_string_literal: true
 
 require 'spec_helper'
+require 'fileutils'
+require 'openssl'
+require 'tmpdir'
 require 'time'
 require 'yajl'
 require 'fluent/test'
@@ -364,6 +367,114 @@ RSpec.describe Fluent::Plugin::LokiOutput do
       chunk = [Time.at(1_546_270_458), content[0]]
       payload = driver.instance.generic_to_loki([chunk])
       expect(payload[0]['stream'].empty?).to eq(true)
+    end
+  end
+
+  context 'when client cert and key are configured' do
+    let(:tmpdir) { Dir.mktmpdir }
+
+    after do
+      FileUtils.remove_entry(tmpdir)
+    end
+
+    def self_signed_pair(cn)
+      key = OpenSSL::PKey::RSA.new(1024)
+      cert = OpenSSL::X509::Certificate.new
+      cert.subject = OpenSSL::X509::Name.parse("/CN=#{cn}")
+      cert.issuer = cert.subject
+      cert.public_key = key.public_key
+      cert.not_before = Time.now - 3600
+      cert.not_after = Time.now + 3600
+      cert.serial = OpenSSL::BN.rand(64)
+      cert.version = 2
+      cert.sign(key, OpenSSL::Digest.new('SHA256'))
+      [cert, key]
+    end
+
+    let(:leaf_pair) { self_signed_pair('leaf') }
+    let(:leaf_cert) { leaf_pair.first }
+    let(:leaf_key) { leaf_pair.last }
+    let(:intermediate_cert) { self_signed_pair('intermediate').first }
+
+    let(:chain_cert_path) do
+      p = File.join(tmpdir, 'chain.pem')
+      File.write(p, leaf_cert.to_pem + intermediate_cert.to_pem)
+      p
+    end
+
+    let(:single_cert_path) do
+      p = File.join(tmpdir, 'single.pem')
+      File.write(p, leaf_cert.to_pem)
+      p
+    end
+
+    let(:key_path) do
+      p = File.join(tmpdir, 'leaf.key')
+      File.write(p, leaf_key.to_pem)
+      p
+    end
+
+    let(:https_uri) { URI.parse('https://logs-us-west1.grafana.net/loki/api/v1/push') }
+
+    it 'includes extra_chain_cert in http_request_opts when chain file has multiple PEMs and stdlib supports it' do
+      allow(described_class).to receive(:extra_chain_cert_supported?).and_return(true)
+
+      driver = Fluent::Test::Driver::Output.new(described_class)
+      driver.configure(<<-CONF)
+        url https://logs-us-west1.grafana.net
+        cert #{chain_cert_path}
+        key #{key_path}
+        insecure_tls true
+      CONF
+
+      opts = driver.instance.http_request_opts(https_uri)
+      expect(opts[:extra_chain_cert]).to be_a(Array)
+      expect(opts[:extra_chain_cert].length).to eq(1)
+      expect(opts[:extra_chain_cert].first).to be_a(OpenSSL::X509::Certificate)
+    end
+
+    it 'does not pass extra_chain_cert when stdlib does not support it' do
+      allow(described_class).to receive(:extra_chain_cert_supported?).and_return(false)
+
+      driver = Fluent::Test::Driver::Output.new(described_class)
+      driver.configure(<<-CONF)
+        url https://logs-us-west1.grafana.net
+        cert #{chain_cert_path}
+        key #{key_path}
+        insecure_tls true
+      CONF
+
+      opts = driver.instance.http_request_opts(https_uri)
+      expect(opts).not_to have_key(:extra_chain_cert)
+    end
+
+    it 'logs once when multiple PEMs are present but stdlib does not support extra_chain_cert' do
+      allow(described_class).to receive(:extra_chain_cert_supported?).and_return(false)
+
+      driver = Fluent::Test::Driver::Output.new(described_class)
+      expect(driver.instance.log).to receive(:warn).with(/multiple PEM blocks/).once
+
+      driver.configure(<<-CONF)
+        url https://logs-us-west1.grafana.net
+        cert #{chain_cert_path}
+        key #{key_path}
+        insecure_tls true
+      CONF
+    end
+
+    it 'does not set extra_chain_cert for a single PEM file when stdlib supports it' do
+      allow(described_class).to receive(:extra_chain_cert_supported?).and_return(true)
+
+      driver = Fluent::Test::Driver::Output.new(described_class)
+      driver.configure(<<-CONF)
+        url https://logs-us-west1.grafana.net
+        cert #{single_cert_path}
+        key #{key_path}
+        insecure_tls true
+      CONF
+
+      opts = driver.instance.http_request_opts(https_uri)
+      expect(opts).not_to have_key(:extra_chain_cert)
     end
   end
 end

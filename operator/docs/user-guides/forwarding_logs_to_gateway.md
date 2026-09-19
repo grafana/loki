@@ -320,3 +320,9 @@ limits:
 ```
 
 where `<TENANT_NAME>` can be application, audit or infrastructure.
+
+## Related Documentation
+
+- [Tenancy Modes](tenancy-modes.md) - Overview of all available tenancy modes
+- [Gateway Configuration](gateway-config.md) - External access and ingress settings
+- [Forwarding Logs without the Gateway](forwarding_logs_without_gateway.md) - Bypass gateway authentication

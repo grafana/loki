@@ -3,7 +3,7 @@ package kgo
 import (
 	"context"
 	"errors"
-	"reflect"
+	"iter"
 	"time"
 	"unsafe"
 )
@@ -51,6 +51,7 @@ func (a RecordAttrs) TimestampType() int8 {
 // CompressionType signifies with which algorithm this record was compressed.
 //
 // 0 is no compression, 1 is gzip, 2 is snappy, 3 is lz4, and 4 is zstd.
+// The returned uint8 can be converted directly to a [CompressionCodecType].
 func (a RecordAttrs) CompressionType() uint8 {
 	return a.attrs & 0b0000_0111
 }
@@ -128,7 +129,9 @@ type Record struct {
 	ProducerID int64
 
 	// LeaderEpoch is the leader epoch of the broker at the time this
-	// record was written, or -1 if on message sets.
+	// record was written, or -1 if on message sets. When producing,
+	// this is always set to -1 (producers do not use this field and the
+	// broker does not reply with the epoch).
 	//
 	// For committing records, it is not recommended to modify the
 	// LeaderEpoch. Clients use the LeaderEpoch for data loss detection.
@@ -183,6 +186,85 @@ func (r *Record) AppendFormat(b []byte, layout string) ([]byte, error) {
 	return f.AppendRecord(b, r), nil
 }
 
+// DeliveryCount returns the share group delivery count for this record: 1 on
+// first delivery, incremented each time the broker re-delivers the record
+// after an AckRelease or acquisition lock timeout. Returns 0 for records that
+// are not from a share group fetch.
+func (r *Record) DeliveryCount() int32 {
+	st := shareAckFromCtx(r)
+	if st == nil {
+		return 0
+	}
+	return st.deliveryCount
+}
+
+// AcquisitionDeadline returns the share group acquisition lock deadline for
+// this record: the broker will release the record for re-delivery if the
+// consumer has not acknowledged it (Accept, Release, Reject, or Renew) by this
+// time. Returns the zero time for records that are not from a share group
+// fetch.
+//
+// Note this is computed from the acquisition timeout millis in the Kafka
+// ShareFetch response when the client decodes the response. The milliseconds
+// are computed on the broker, and the timeout begins before the fetch is sent
+// to the client. As well, actually sending an ack back to the broker will have
+// network overhead. It is best to assume your actual practical deadline may be
+// a few seconds before the deadline returned from this function.
+func (r *Record) AcquisitionDeadline() time.Time {
+	if r.Context == nil {
+		return time.Time{}
+	}
+	slab, _ := r.Context.Value(shareAckKey).(*shareAckSlab)
+	if slab == nil {
+		return time.Time{}
+	}
+	return time.Unix(0, slab.acqLockDeadlineNanos)
+}
+
+// Ack sets the acknowledgement status for a share group record. This is a
+// no-op for records that are not from a share group fetch. Acks flush
+// periodically in the background; to force a flush, call
+// [Client.FlushAcks].
+//
+// Terminal statuses (AckAccept, AckRelease, AckReject) commit the record for
+// the broker. A record that is never explicitly acked is auto-accepted when
+// you poll.
+//
+// AckRenew extends the broker's acquisition lock (requires Kafka 4.2+) so the
+// caller can process a single record for longer than the broker's acquisition
+// lock timeout (30s default) without the record being released to another
+// consumer. Use AckRenew when processing one record takes longer than the
+// lock window and you do not intend to poll for more records until you are
+// done. AckRenew does NOT defer the terminal ack across polls: if you call
+// the next [Client.PollRecords] without first providing a terminal ack, the
+// renewed record is auto-accepted by the next poll's finalize pass, exactly
+// as if you had never renewed it. AckRenew may be called repeatedly within a
+// processing window, but only after each prior renew has been acknowledged
+// by the broker; a renew issued while a prior renew is still in flight is a
+// no-op (the broker would coalesce them either way). After the broker
+// confirms a renew, the next call extends the lock again.
+//
+// Renewals are best-effort. If the partition's leader changes or the
+// broker connection drops between the renewal and the terminal ack, the
+// held record is lost and the broker will redeliver it (possibly to
+// another consumer). Share group consumers are at-least-once regardless:
+// any TCP hiccup can cause re-delivery, so user processing must be
+// idempotent.
+func (r *Record) Ack(status AckStatus) {
+	if status < AckAccept || status > AckRenew {
+		return
+	}
+	st := shareAckFromCtx(r)
+	if st == nil || !st.tryAck(status, false) {
+		return
+	}
+	// Every successful CAS appends an entry and increments
+	// pendingAcks. Multiple calls on the same record (e.g.
+	// renew then accept) produce multiple entries that coalesce
+	// at request-build time.
+	st.appendAck()
+}
+
 // StringRecord returns a Record with the Value field set to the input value
 // string. For producing, this function is useful in tandem with the
 // client-level DefaultProduceTopic option.
@@ -193,13 +275,7 @@ func (r *Record) AppendFormat(b []byte, layout string) ([]byte, error) {
 // be used if you only ever read record fields. This function can safely be used
 // for producing; the client never modifies a record's key nor value fields.
 func StringRecord(value string) *Record {
-	var slice []byte
-	slicehdr := (*reflect.SliceHeader)(unsafe.Pointer(&slice))             //nolint:gosec // known way to convert string to slice
-	slicehdr.Data = ((*reflect.StringHeader)(unsafe.Pointer(&value))).Data //nolint:gosec // known way to convert string to slice
-	slicehdr.Len = len(value)
-	slicehdr.Cap = len(value)
-
-	return &Record{Value: slice}
+	return &Record{Value: unsafe.Slice(unsafe.StringData(value), len(value))} //nolint:gosec // G103 safe string-to-[]byte without copy; caller must not modify the slice
 }
 
 // KeyStringRecord returns a Record with the Key and Value fields set to the
@@ -212,14 +288,10 @@ func StringRecord(value string) *Record {
 // be used if you only ever read record fields. This function can safely be used
 // for producing; the client never modifies a record's key nor value fields.
 func KeyStringRecord(key, value string) *Record {
-	r := StringRecord(value)
-
-	keyhdr := (*reflect.SliceHeader)(unsafe.Pointer(&r.Key))           //nolint:gosec // known way to convert string to slice
-	keyhdr.Data = ((*reflect.StringHeader)(unsafe.Pointer(&key))).Data //nolint:gosec // known way to convert string to slice
-	keyhdr.Len = len(key)
-	keyhdr.Cap = len(key)
-
-	return r
+	return &Record{
+		Key:   unsafe.Slice(unsafe.StringData(key), len(key)),     //nolint:gosec // G103 safe string-to-[]byte without copy; caller must not modify the slice
+		Value: unsafe.Slice(unsafe.StringData(value), len(value)), //nolint:gosec // G103 safe string-to-[]byte without copy; caller must not modify the slice
+	}
 }
 
 // SliceRecord returns a Record with the Value field set to the input value
@@ -335,38 +407,53 @@ type FetchError struct {
 // Errors returns all errors in a fetch with the topic and partition that
 // errored.
 //
-// There are a few classes of errors possible:
+// There are a few classes of errors possible, in order from most-retryable
+// (or ignorable) to least retryable:
 //
 //  1. a normal kerr.Error; these are usually the non-retryable kerr.Errors,
 //     but theoretically a non-retryable error can be fixed at runtime (auth
 //     error? fix auth). It is worth restarting the client for these errors if
-//     you do not intend to fix this problem at runtime.
+//     you do not intend to fix this problem at runtime. These can also be
+//     returned when metadata loading of the topic or partition has a
+//     non-retryable error.
 //
 //  2. an injected *ErrDataLoss; these are informational, the client
 //     automatically resets consuming to where it should and resumes. This
 //     error is worth logging and investigating, but not worth restarting the
 //     client for.
 //
-//  3. an untyped batch parse failure; these are usually unrecoverable by
-//     restarts, and it may be best to just let the client continue.
-//     Restarting is an option, but you may need to manually repair your
-//     partition.
-//
-//  4. an injected ErrClientClosed; this is a fatal informational error that
-//     is returned from every Poll call if the client has been closed.
-//     A corresponding helper function IsClientClosed can be used to detect
-//     this error.
-//
-//  5. an injected context error; this can be present if the context you were
+//  3. an injected context error; this can be present if the context you were
 //     using for polling timed out or was canceled.
 //
-//  6. an injected ErrGroupSession; this is an informational error that is
+//  4. an injected ErrGroupSession; this is an informational error that is
 //     injected once a group session is lost in a way that is not the standard
 //     rebalance. This error can signify that your consumer member is not able
 //     to connect to the group (ACL problems, unreachable broker), or you
 //     blocked rebalancing for too long, or your callbacks took too long.
 //
-// This list may grow over time.
+//  5. an injected ErrClientClosed; this is a fatal informational error that
+//     is returned from every Poll call if the client has been closed.
+//     A corresponding helper function IsClientClosed can be used to detect
+//     this error.
+//
+//  6. If using NewOffset().AtCommitted(), an untyped error is injected if a
+//     partition the client wants to consume has no commit.
+//
+//  7. an untyped batch parse failure; these are usually unrecoverable by
+//     restarts, and it may be best to just let the client continue.
+//     Restarting is an option, but you may need to manually repair your
+//     partition. This usually implies data corruption on the broker.
+//
+//  8. An untyped non-retryable error that the client does not know how to
+//     handle when it was trying to validate some aspect of fetching (something
+//     failed very unexpectedly when listing offsets to learn where to fetch, or
+//     when validating the epoch in offsets). The client still internally will
+//     retry what it was doing, but odds are not great.
+//
+// This list may grow over time. Generally, untyped, non-context errors are not
+// retryable. Typed errors are usually retryable given time or given wider
+// system fixes (perhaps live-updating auth or certs or ACLs, or restarting a
+// down broker).
 func (fs Fetches) Errors() []FetchError {
 	var errs []FetchError
 	fs.EachError(func(t string, p int32, err error) {
@@ -463,6 +550,8 @@ func (fs Fetches) EachError(fn func(string, int32, error)) {
 // RecordIter returns an iterator over all records in a fetch.
 //
 // Note that errors should be inspected as well.
+//
+// Alternatively, use [RecordsAll] for a native Go iterator over records in the fetch.
 func (fs Fetches) RecordIter() *FetchesRecordIter {
 	iter := &FetchesRecordIter{fetches: fs}
 	iter.prepareNext()
@@ -517,6 +606,19 @@ beforePartition:
 		i.pi++
 		i.ri = 0
 		goto beforePartition
+	}
+}
+
+// RecordsAll returns a Go native iterator that yields the records in a fetch.
+//
+// Similarly to [RecordIter], the errors should be inspected separately.
+func (fs Fetches) RecordsAll() iter.Seq[*Record] {
+	return func(yield func(*Record) bool) {
+		for iter := fs.RecordIter(); !iter.Done(); {
+			if !yield(iter.Next()) {
+				return
+			}
+		}
 	}
 }
 

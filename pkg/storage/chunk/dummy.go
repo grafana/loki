@@ -33,7 +33,7 @@ func (chk *dummyChunk) Encoding() Encoding {
 	return Dummy
 }
 
-func (chk *dummyChunk) Rebound(start, end model.Time, filter filter.Func) (Data, error) {
+func (chk *dummyChunk) Rewrite(filter.Func) (Data, error) {
 	return nil, nil
 }
 

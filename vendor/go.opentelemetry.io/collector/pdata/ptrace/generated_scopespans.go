@@ -8,8 +8,6 @@ package ptrace
 
 import (
 	"go.opentelemetry.io/collector/pdata/internal"
-	otlptrace "go.opentelemetry.io/collector/pdata/internal/data/protogen/trace/v1"
-	"go.opentelemetry.io/collector/pdata/internal/json"
 	"go.opentelemetry.io/collector/pdata/pcommon"
 )
 
@@ -21,11 +19,11 @@ import (
 // Must use NewScopeSpans function to create new instances.
 // Important: zero-initialized instance is not valid for use.
 type ScopeSpans struct {
-	orig  *otlptrace.ScopeSpans
+	orig  *internal.ScopeSpans
 	state *internal.State
 }
 
-func newScopeSpans(orig *otlptrace.ScopeSpans, state *internal.State) ScopeSpans {
+func newScopeSpans(orig *internal.ScopeSpans, state *internal.State) ScopeSpans {
 	return ScopeSpans{orig: orig, state: state}
 }
 
@@ -34,8 +32,7 @@ func newScopeSpans(orig *otlptrace.ScopeSpans, state *internal.State) ScopeSpans
 // This must be used only in testing code. Users should use "AppendEmpty" when part of a Slice,
 // OR directly access the member if this is embedded in another struct.
 func NewScopeSpans() ScopeSpans {
-	state := internal.StateMutable
-	return newScopeSpans(&otlptrace.ScopeSpans{}, &state)
+	return newScopeSpans(internal.NewScopeSpans(), internal.NewState())
 }
 
 // MoveTo moves all properties from the current struct overriding the destination and
@@ -47,13 +44,18 @@ func (ms ScopeSpans) MoveTo(dest ScopeSpans) {
 	if ms.orig == dest.orig {
 		return
 	}
-	*dest.orig = *ms.orig
-	*ms.orig = otlptrace.ScopeSpans{}
+	internal.DeleteScopeSpans(dest.orig, false)
+	*dest.orig, *ms.orig = *ms.orig, *dest.orig
 }
 
 // Scope returns the scope associated with this ScopeSpans.
 func (ms ScopeSpans) Scope() pcommon.InstrumentationScope {
-	return pcommon.InstrumentationScope(internal.NewInstrumentationScope(&ms.orig.Scope, ms.state))
+	return pcommon.InstrumentationScope(internal.NewInstrumentationScopeWrapper(&ms.orig.Scope, ms.state))
+}
+
+// Spans returns the Spans associated with this ScopeSpans.
+func (ms ScopeSpans) Spans() SpanSlice {
+	return newSpanSlice(&ms.orig.Spans, ms.state)
 }
 
 // SchemaUrl returns the schemaurl associated with this ScopeSpans.
@@ -67,35 +69,8 @@ func (ms ScopeSpans) SetSchemaUrl(v string) {
 	ms.orig.SchemaUrl = v
 }
 
-// Spans returns the Spans associated with this ScopeSpans.
-func (ms ScopeSpans) Spans() SpanSlice {
-	return newSpanSlice(&ms.orig.Spans, ms.state)
-}
-
 // CopyTo copies all properties from the current struct overriding the destination.
 func (ms ScopeSpans) CopyTo(dest ScopeSpans) {
 	dest.state.AssertMutable()
-	copyOrigScopeSpans(dest.orig, ms.orig)
-}
-
-// marshalJSONStream marshals all properties from the current struct to the destination stream.
-func (ms ScopeSpans) marshalJSONStream(dest *json.Stream) {
-	dest.WriteObjectStart()
-	dest.WriteObjectField("scope")
-	internal.MarshalJSONStreamInstrumentationScope(internal.NewInstrumentationScope(&ms.orig.Scope, ms.state), dest)
-	if ms.orig.SchemaUrl != "" {
-		dest.WriteObjectField("schemaUrl")
-		dest.WriteString(ms.orig.SchemaUrl)
-	}
-	if len(ms.orig.Spans) > 0 {
-		dest.WriteObjectField("spans")
-		ms.Spans().marshalJSONStream(dest)
-	}
-	dest.WriteObjectEnd()
-}
-
-func copyOrigScopeSpans(dest, src *otlptrace.ScopeSpans) {
-	internal.CopyOrigInstrumentationScope(&dest.Scope, &src.Scope)
-	dest.SchemaUrl = src.SchemaUrl
-	dest.Spans = copyOrigSpanSlice(dest.Spans, src.Spans)
+	internal.CopyScopeSpans(dest.orig, ms.orig)
 }

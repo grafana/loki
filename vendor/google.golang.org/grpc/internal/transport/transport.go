@@ -30,10 +30,15 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+	"unsafe"
 
+	"golang.org/x/net/http2"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/internal/channelz"
+	"google.golang.org/grpc/internal/envconfig"
+	imem "google.golang.org/grpc/internal/mem"
+	"google.golang.org/grpc/internal/transport/internal"
 	"google.golang.org/grpc/keepalive"
 	"google.golang.org/grpc/mem"
 	"google.golang.org/grpc/metadata"
@@ -43,7 +48,34 @@ import (
 	"google.golang.org/grpc/tap"
 )
 
-const logLevel = 2
+const (
+	logLevel = 2
+	// recvMsgSize estimates the memory overhead of a recvMsg in the backlog.
+	// It accounts for the recvMsg struct itself and the slice header of the
+	// underlying buffer's data.
+	recvMsgSize = int(unsafe.Sizeof(recvMsg{}) + unsafe.Sizeof([]byte{}))
+
+	// utilizationFactor controls when we consider memory utilization acceptable.
+	// When backlogHeapSize / payloadSize <= utilizationFactor (meaning at least
+	// 50% of the heap memory is actual payload data), compaction is skipped.
+	utilizationFactor = 2
+)
+
+var (
+	// compactionThreshold is approx 57KB (on 64-bit systems). It allows
+	// accumulating up to 1024 1-byte payloads before triggering compaction.
+	//
+	// Because individual payloads <= 1024 bytes are allocated on the heap
+	// outside mem.BufferPool, waiting for at least 1024 bytes to accumulate
+	// ensures that compaction coalesces those small heap allocations into a
+	// single large buffer from mem.BufferPool, enabling buffer reuse while
+	// avoiding frequent copying for small bursts of frames.
+	compactionThreshold = imem.BufferPoolingThreshold * (recvMsgSize + 1)
+)
+
+func init() {
+	internal.TimeNowFunc = func() int64 { return time.Now().UnixNano() }
+}
 
 // recvMsg represents the received msg from the transport. All transport
 // protocol specific info has been removed.
@@ -65,23 +97,31 @@ type recvBuffer struct {
 	c       chan recvMsg
 	mu      sync.Mutex
 	backlog []recvMsg
-	err     error
+	// uncompactedSuffixLen tracks the number of consecutive data messages at
+	// the tail of backlog that have not been compacted.
+	uncompactedSuffixLen int
+	// uncompactedBytes tracks the total payload bytes across the trailing
+	// uncompactedSuffixLen messages.
+	uncompactedBytes int
+	err              error
+	bufPool          mem.BufferPool
 }
 
-func newRecvBuffer() *recvBuffer {
-	b := &recvBuffer{
-		c: make(chan recvMsg, 1),
-	}
-	return b
+// init allows a recvBuffer to be initialized in-place, which is useful
+// for resetting a buffer or for avoiding a heap allocation when the buffer
+// is embedded in another struct.
+func (b *recvBuffer) init(pool mem.BufferPool) {
+	b.c = make(chan recvMsg, 1)
+	b.bufPool = pool
 }
 
 func (b *recvBuffer) put(r recvMsg) {
 	b.mu.Lock()
+	defer b.mu.Unlock()
 	if b.err != nil {
 		// drop the buffer on the floor. Since b.err is not nil, any subsequent reads
 		// will always return an error, making this buffer inaccessible.
 		r.buffer.Free()
-		b.mu.Unlock()
 		// An error had occurred earlier, don't accept more
 		// data or errors.
 		return
@@ -90,13 +130,70 @@ func (b *recvBuffer) put(r recvMsg) {
 	if len(b.backlog) == 0 {
 		select {
 		case b.c <- r:
-			b.mu.Unlock()
 			return
 		default:
 		}
 	}
 	b.backlog = append(b.backlog, r)
-	b.mu.Unlock()
+	b.compactBacklogLocked(r)
+}
+
+func (b *recvBuffer) compactBacklogLocked(r recvMsg) {
+	if !envconfig.EnableReceiveBufferCompaction {
+		return
+	}
+	if r.buffer == nil {
+		b.uncompactedBytes = 0
+		b.uncompactedSuffixLen = 0
+		return
+	}
+
+	b.uncompactedSuffixLen++
+	b.uncompactedBytes += r.buffer.Len()
+	backlogHeapSize := b.uncompactedSuffixLen*recvMsgSize + b.uncompactedBytes
+
+	// If the memory overhead is less than 50% of the heap usage (e.g., because
+	// a large DATA frame arrived), the average message size in the suffix is
+	// large enough that memory bloat is not a concern. Reset suffix tracking.
+	if backlogHeapSize <= utilizationFactor*b.uncompactedBytes {
+		b.uncompactedBytes = 0
+		b.uncompactedSuffixLen = 0
+		return
+	}
+	// Avoid compacting too frequently for short bursts of small frames.
+	// Wait until we have accumulated at least ~1024 small messages (~57 KB).
+	if backlogHeapSize <= compactionThreshold {
+		// Still can accumulate more payloads.
+		return
+	}
+
+	// Since the memory utilization is less than 50%, the average payload size
+	// of each recvMsg must be less than recvMsgSize (approx 56 bytes).
+	// In the worst case for bytes copied (where the average payload is just
+	// below recvMsgSize), compaction will occur once every:
+	//   compactionThreshold / (recvMsgSize + avg_payload) = ~520 messages,
+	// copying ~29KB of data.
+
+	start := 0
+	newBuf := b.bufPool.Get(b.uncompactedBytes)
+	startIdx := len(b.backlog) - b.uncompactedSuffixLen
+
+	for i := startIdx; i < len(b.backlog); i++ {
+		m := b.backlog[i]
+		b.backlog[i] = recvMsg{}
+		start += copy((*newBuf)[start:], m.buffer.ReadOnlyData())
+		m.buffer.Free()
+	}
+	b.backlog[startIdx] = recvMsg{
+		buffer: mem.NewBuffer(newBuf, b.bufPool),
+	}
+	b.backlog = b.backlog[:startIdx+1]
+	// After compaction, the suffix is replaced with a single message containing
+	// the combined payload. The new utilization is close to 1.0 (overhead of
+	// one recvMsg relative to the large compacted payload), which is well
+	// below the utilization factor of 2.
+	b.uncompactedBytes = 0
+	b.uncompactedSuffixLen = 0
 }
 
 func (b *recvBuffer) load() {
@@ -104,6 +201,13 @@ func (b *recvBuffer) load() {
 	if len(b.backlog) > 0 {
 		select {
 		case b.c <- b.backlog[0]:
+			// backlog[0] is only part of the tracked uncompacted suffix if the
+			// entire backlog currently consists of the suffix. If an earlier
+			// compaction or reset occurred, backlog[0] is already compacted.
+			if envconfig.EnableReceiveBufferCompaction && b.uncompactedSuffixLen == len(b.backlog) {
+				b.uncompactedSuffixLen--
+				b.uncompactedBytes -= b.backlog[0].buffer.Len()
+			}
 			b.backlog[0] = recvMsg{}
 			b.backlog = b.backlog[1:]
 		default:
@@ -123,12 +227,13 @@ func (b *recvBuffer) get() <-chan recvMsg {
 // recvBufferReader implements io.Reader interface to read the data from
 // recvBuffer.
 type recvBufferReader struct {
-	closeStream func(error) // Closes the client transport stream with the given error and nil trailer metadata.
-	ctx         context.Context
-	ctxDone     <-chan struct{} // cache of ctx.Done() (for performance).
-	recv        *recvBuffer
-	last        mem.Buffer // Stores the remaining data in the previous calls.
-	err         error
+	_            noCopy
+	clientStream *ClientStream // The client transport stream is closed with a status representing ctx.Err() and nil trailer metadata.
+	ctx          context.Context
+	ctxDone      <-chan struct{} // cache of ctx.Done() (for performance).
+	recv         *recvBuffer
+	last         mem.Buffer // Stores the remaining data in the previous calls.
+	err          error
 }
 
 func (r *recvBufferReader) ReadMessageHeader(header []byte) (n int, err error) {
@@ -139,7 +244,7 @@ func (r *recvBufferReader) ReadMessageHeader(header []byte) (n int, err error) {
 		n, r.last = mem.ReadUnsafe(header, r.last)
 		return n, nil
 	}
-	if r.closeStream != nil {
+	if r.clientStream != nil {
 		n, r.err = r.readMessageHeaderClient(header)
 	} else {
 		n, r.err = r.readMessageHeader(header)
@@ -164,7 +269,7 @@ func (r *recvBufferReader) Read(n int) (buf mem.Buffer, err error) {
 		}
 		return buf, nil
 	}
-	if r.closeStream != nil {
+	if r.clientStream != nil {
 		buf, r.err = r.readClient(n)
 	} else {
 		buf, r.err = r.read(n)
@@ -209,7 +314,7 @@ func (r *recvBufferReader) readMessageHeaderClient(header []byte) (n int, err er
 		// TODO: delaying ctx error seems like a unnecessary side effect. What
 		// we really want is to mark the stream as done, and return ctx error
 		// faster.
-		r.closeStream(ContextErr(r.ctx.Err()))
+		r.clientStream.Close(ContextErr(r.ctx.Err()))
 		m := <-r.recv.get()
 		return r.readMessageHeaderAdditional(m, header)
 	case m := <-r.recv.get():
@@ -236,7 +341,7 @@ func (r *recvBufferReader) readClient(n int) (buf mem.Buffer, err error) {
 		// TODO: delaying ctx error seems like a unnecessary side effect. What
 		// we really want is to mark the stream as done, and return ctx error
 		// faster.
-		r.closeStream(ContextErr(r.ctx.Err()))
+		r.clientStream.Close(ContextErr(r.ctx.Err()))
 		m := <-r.recv.get()
 		return r.readAdditional(m, n)
 	case m := <-r.recv.get():
@@ -285,27 +390,32 @@ const (
 
 // Stream represents an RPC in the transport layer.
 type Stream struct {
-	id           uint32
 	ctx          context.Context // the associated context of the stream
 	method       string          // the associated RPC method of the stream
 	recvCompress string
 	sendCompress string
-	buf          *recvBuffer
-	trReader     *transportReader
-	fc           *inFlow
-	wq           *writeQuota
 
-	// Callback to state application's intentions to read data. This
-	// is used to adjust flow control, if needed.
-	requestRead func(int)
-
-	state streamState
+	readRequester readRequester
 
 	// contentSubtype is the content-subtype for requests.
 	// this must be lowercase or the behavior is undefined.
 	contentSubtype string
 
 	trailer metadata.MD // the key-value map of trailer metadata.
+
+	// Non-pointer fields are at the end to optimize GC performance.
+	state    streamState
+	id       uint32
+	buf      recvBuffer
+	trReader transportReader
+	fc       inFlow
+	wq       writeQuota
+}
+
+// readRequester is used to state application's intentions to read data. This
+// is used to adjust flow control, if needed.
+type readRequester interface {
+	requestRead(int)
 }
 
 func (s *Stream) swapState(st streamState) streamState {
@@ -355,7 +465,7 @@ func (s *Stream) ReadMessageHeader(header []byte) (err error) {
 	if er := s.trReader.er; er != nil {
 		return er
 	}
-	s.requestRead(len(header))
+	s.readRequester.requestRead(len(header))
 	for len(header) != 0 {
 		n, err := s.trReader.ReadMessageHeader(header)
 		header = header[n:]
@@ -372,13 +482,29 @@ func (s *Stream) ReadMessageHeader(header []byte) (err error) {
 	return nil
 }
 
+// ceil returns the ceil after dividing the numerator and denominator while
+// avoiding integer overflows.
+func ceil(numerator, denominator int) int {
+	if numerator == 0 {
+		return 0
+	}
+	return (numerator-1)/denominator + 1
+}
+
 // Read reads n bytes from the wire for this stream.
 func (s *Stream) read(n int) (data mem.BufferSlice, err error) {
 	// Don't request a read if there was an error earlier
 	if er := s.trReader.er; er != nil {
 		return nil, er
 	}
-	s.requestRead(n)
+	// gRPC Go accepts data frames with a maximum length of 16KB. Larger
+	// messages must be split into multiple frames. We pre-allocate the
+	// buffer to avoid resizing during the read loop, but cap the initial
+	// capacity to 128 frames (2MB) to prevent over-allocation or panics
+	// when reading extremely large streams.
+	allocCap := min(ceil(n, http2MaxFrameLen), 128)
+	data = make(mem.BufferSlice, 0, allocCap)
+	s.readRequester.requestRead(n)
 	for n != 0 {
 		buf, err := s.trReader.Read(n)
 		var bufLen int
@@ -401,16 +527,34 @@ func (s *Stream) read(n int) (data mem.BufferSlice, err error) {
 	return data, nil
 }
 
+// noCopy may be embedded into structs which must not be copied
+// after the first use.
+//
+// See https://golang.org/issues/8005#issuecomment-190753527
+// for details.
+type noCopy struct {
+}
+
+func (*noCopy) Lock()   {}
+func (*noCopy) Unlock() {}
+
 // transportReader reads all the data available for this Stream from the transport and
 // passes them into the decoder, which converts them into a gRPC message stream.
 // The error is io.EOF when the stream is done or another non-nil error if
 // the stream broke.
 type transportReader struct {
-	reader *recvBufferReader
+	_ noCopy
 	// The handler to control the window update procedure for both this
 	// particular stream and the associated transport.
-	windowHandler func(int)
+	windowHandler windowHandler
 	er            error
+	reader        recvBufferReader
+}
+
+// The handler to control the window update procedure for both this
+// particular stream and the associated transport.
+type windowHandler interface {
+	updateWindow(int)
 }
 
 func (t *transportReader) ReadMessageHeader(header []byte) (int, error) {
@@ -419,7 +563,7 @@ func (t *transportReader) ReadMessageHeader(header []byte) (int, error) {
 		t.er = err
 		return 0, err
 	}
-	t.windowHandler(n)
+	t.windowHandler.updateWindow(n)
 	return n, nil
 }
 
@@ -429,7 +573,7 @@ func (t *transportReader) Read(n int) (mem.Buffer, error) {
 		t.er = err
 		return buf, err
 	}
-	t.windowHandler(buf.Len())
+	t.windowHandler.updateWindow(buf.Len())
 	return buf, nil
 }
 
@@ -454,7 +598,7 @@ type ServerConfig struct {
 	ConnectionTimeout     time.Duration
 	Credentials           credentials.TransportCredentials
 	InTapHandle           tap.ServerInHandle
-	StatsHandlers         []stats.Handler
+	StatsHandler          stats.Handler
 	KeepaliveParams       keepalive.ServerParameters
 	KeepalivePolicy       keepalive.EnforcementPolicy
 	InitialWindowSize     int32
@@ -529,6 +673,12 @@ type CallHdr struct {
 	// outbound message.
 	SendCompress string
 
+	// AcceptedCompressors overrides the grpc-accept-encoding header for this
+	// call. When nil, the transport advertises the default set of registered
+	// compressors. A non-nil pointer overrides that value (including the empty
+	// string to advertise none).
+	AcceptedCompressors *string
+
 	// Creds specifies credentials.PerRPCCredentials for a call.
 	Creds credentials.PerRPCCredentials
 
@@ -542,11 +692,14 @@ type CallHdr struct {
 
 	PreviousAttempts int // value of grpc-previous-rpc-attempts header to set
 
-	DoneFunc func() // called when the stream is finished
-
-	// Authority is used to explicitly override the `:authority` header. If set,
-	// this value takes precedence over the Host field and will be used as the
-	// value for the `:authority` header.
+	// Authority is used to explicitly override the `:authority` header.
+	//
+	// This value comes from one of two sources:
+	// 1. The `CallAuthority` call option, if specified by the user.
+	// 2. An override provided by the LB picker (e.g. xDS authority rewriting).
+	//
+	// The `CallAuthority` call option always takes precedence over the LB
+	// picker override.
 	Authority string
 }
 
@@ -566,7 +719,7 @@ type ClientTransport interface {
 	GracefulClose()
 
 	// NewStream creates a Stream for an RPC.
-	NewStream(ctx context.Context, callHdr *CallHdr) (*ClientStream, error)
+	NewStream(ctx context.Context, callHdr *CallHdr, handler stats.Handler) (*ClientStream, error)
 
 	// Error returns a channel that is closed when some I/O error
 	// happens. Typically the caller should have a goroutine to monitor
@@ -584,8 +737,9 @@ type ClientTransport interface {
 	// with a human readable string with debug info.
 	GetGoAwayReason() (GoAwayReason, string)
 
-	// RemoteAddr returns the remote network address.
-	RemoteAddr() net.Addr
+	// Peer returns information about the peer associated with the Transport.
+	// The returned information includes authentication and network address details.
+	Peer() *peer.Peer
 }
 
 // ServerTransport is the common interface for all gRPC server-side transport
@@ -615,6 +769,8 @@ type internalServerTransport interface {
 	write(s *ServerStream, hdr []byte, data mem.BufferSlice, opts *WriteOptions) error
 	writeStatus(s *ServerStream, st *status.Status) error
 	incrMsgRecv()
+	adjustWindow(s *ServerStream, n uint32)
+	updateWindow(s *ServerStream, n uint32)
 }
 
 // connectionErrorf creates an ConnectionError with the specified error description.
@@ -687,6 +843,22 @@ const (
 	// "too_many_pings".
 	GoAwayTooManyPings GoAwayReason = 2
 )
+
+// GoAwayInfo contains metadata about why a connection was closed.
+type GoAwayInfo struct {
+	// Reason is the parsed reason for an HTTP/2 GOAWAY frame.
+	Reason GoAwayReason
+	// GoAwayCode is the raw HTTP/2 error code received in a GOAWAY frame.
+	GoAwayCode http2.ErrCode
+	// Err is the underlying error that caused the connection to close. It is
+	// populated if the connection was closed due to a socket error or context
+	// cancellation without receiving a GOAWAY frame. If the connection was
+	// closed due to a GOAWAY frame, this field will be nil.
+	Err error
+}
+
+// OnCloseFunc is a callback invoked when a ClientTransport closes.
+type OnCloseFunc func(GoAwayInfo)
 
 // ContextErr converts the error from context package into a status error.
 func ContextErr(err error) error {

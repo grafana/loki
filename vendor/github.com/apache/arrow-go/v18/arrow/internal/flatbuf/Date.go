@@ -22,12 +22,12 @@ import (
 	flatbuffers "github.com/google/flatbuffers/go"
 )
 
-// / Date is either a 32-bit or 64-bit signed integer type representing an
-// / elapsed time since UNIX epoch (1970-01-01), stored in either of two units:
-// /
-// / * Milliseconds (64 bits) indicating UNIX time elapsed since the epoch (no
-// /   leap seconds), where the values are evenly divisible by 86400000
-// / * Days (32 bits) since the UNIX epoch
+/// Date is either a 32-bit or 64-bit signed integer type representing an
+/// elapsed time since UNIX epoch (1970-01-01), stored in either of two units:
+///
+/// * Milliseconds (64 bits) indicating UNIX time elapsed since the epoch (no
+///   leap seconds), where the values are evenly divisible by 86400000
+/// * Days (32 bits) since the UNIX epoch
 type Date struct {
 	_tab flatbuffers.Table
 }
@@ -37,6 +37,21 @@ func GetRootAsDate(buf []byte, offset flatbuffers.UOffsetT) *Date {
 	x := &Date{}
 	x.Init(buf, n+offset)
 	return x
+}
+
+func FinishDateBuffer(builder *flatbuffers.Builder, offset flatbuffers.UOffsetT) {
+	builder.Finish(offset)
+}
+
+func GetSizePrefixedRootAsDate(buf []byte, offset flatbuffers.UOffsetT) *Date {
+	n := flatbuffers.GetUOffsetT(buf[offset+flatbuffers.SizeUint32:])
+	x := &Date{}
+	x.Init(buf, n+offset+flatbuffers.SizeUint32)
+	return x
+}
+
+func FinishSizePrefixedDateBuffer(builder *flatbuffers.Builder, offset flatbuffers.UOffsetT) {
+	builder.FinishSizePrefixed(offset)
 }
 
 func (rcv *Date) Init(buf []byte, i flatbuffers.UOffsetT) {

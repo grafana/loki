@@ -8,6 +8,8 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/require"
+
+	"github.com/grafana/loki/v3/pkg/compactor/deletion/deletionproto"
 )
 
 func TestGetCacheGenNumberForUser(t *testing.T) {
@@ -15,7 +17,7 @@ func TestGetCacheGenNumberForUser(t *testing.T) {
 
 	t.Run("it requests results from the compactor client", func(t *testing.T) {
 		compactorClient := mockCompactorClient{
-			delRequests: []DeleteRequest{
+			delRequests: []deletionproto.DeleteRequest{
 				{
 					RequestID: "test-request",
 				},
@@ -25,7 +27,7 @@ func TestGetCacheGenNumberForUser(t *testing.T) {
 		client, err := NewDeleteRequestsClient(&compactorClient, deleteClientMetrics, "test_client")
 		require.Nil(t, err)
 
-		deleteRequests, err := client.GetAllDeleteRequestsForUser(context.Background(), "userID")
+		deleteRequests, err := client.GetAllDeleteRequestsForUser(context.Background(), "userID", true, nil)
 		require.Nil(t, err)
 
 		require.Len(t, deleteRequests, 1)
@@ -34,7 +36,7 @@ func TestGetCacheGenNumberForUser(t *testing.T) {
 
 	t.Run("it caches the results", func(t *testing.T) {
 		compactorClient := mockCompactorClient{
-			delRequests: []DeleteRequest{
+			delRequests: []deletionproto.DeleteRequest{
 				{
 					RequestID: "test-request",
 				},
@@ -43,23 +45,23 @@ func TestGetCacheGenNumberForUser(t *testing.T) {
 		client, err := NewDeleteRequestsClient(&compactorClient, deleteClientMetrics, "test_client", WithRequestClientCacheDuration(100*time.Millisecond))
 		require.Nil(t, err)
 
-		deleteRequests, err := client.GetAllDeleteRequestsForUser(context.Background(), "userID")
+		deleteRequests, err := client.GetAllDeleteRequestsForUser(context.Background(), "userID", true, nil)
 		require.Nil(t, err)
 		require.Equal(t, "test-request", deleteRequests[0].RequestID)
 
-		compactorClient.SetDeleteRequests([]DeleteRequest{
+		compactorClient.SetDeleteRequests([]deletionproto.DeleteRequest{
 			{
 				RequestID: "different",
 			},
 		})
 
-		deleteRequests, err = client.GetAllDeleteRequestsForUser(context.Background(), "userID")
+		deleteRequests, err = client.GetAllDeleteRequestsForUser(context.Background(), "userID", true, nil)
 		require.Nil(t, err)
 		require.Equal(t, "test-request", deleteRequests[0].RequestID)
 
 		time.Sleep(200 * time.Millisecond)
 
-		deleteRequests, err = client.GetAllDeleteRequestsForUser(context.Background(), "userID")
+		deleteRequests, err = client.GetAllDeleteRequestsForUser(context.Background(), "userID", true, nil)
 		require.Nil(t, err)
 		require.Equal(t, "different", deleteRequests[0].RequestID)
 
@@ -67,7 +69,7 @@ func TestGetCacheGenNumberForUser(t *testing.T) {
 		compactorClient.SetErr(fmt.Errorf("fail compactor calls"))
 		time.Sleep(200 * time.Millisecond)
 
-		deleteRequests, err = client.GetAllDeleteRequestsForUser(context.Background(), "userID")
+		deleteRequests, err = client.GetAllDeleteRequestsForUser(context.Background(), "userID", true, nil)
 		require.Nil(t, err)
 		require.Equal(t, "different", deleteRequests[0].RequestID)
 
@@ -77,18 +79,18 @@ func TestGetCacheGenNumberForUser(t *testing.T) {
 
 type mockCompactorClient struct {
 	mx          sync.Mutex
-	delRequests []DeleteRequest
+	delRequests []deletionproto.DeleteRequest
 	cacheGenNum string
 	err         error
 }
 
-func (m *mockCompactorClient) SetDeleteRequests(d []DeleteRequest) {
+func (m *mockCompactorClient) SetDeleteRequests(d []deletionproto.DeleteRequest) {
 	m.mx.Lock()
 	m.delRequests = d
 	m.mx.Unlock()
 }
 
-func (m *mockCompactorClient) GetAllDeleteRequestsForUser(_ context.Context, _ string) ([]DeleteRequest, error) {
+func (m *mockCompactorClient) GetAllDeleteRequestsForUser(_ context.Context, _ string, _ bool, _ *TimeRange) ([]deletionproto.DeleteRequest, error) {
 	m.mx.Lock()
 	defer m.mx.Unlock()
 	if m.err != nil {

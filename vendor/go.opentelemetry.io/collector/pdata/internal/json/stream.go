@@ -4,6 +4,7 @@
 package json // import "go.opentelemetry.io/collector/pdata/internal/json"
 
 import (
+	"encoding/base64"
 	"errors"
 	"io"
 	"math"
@@ -55,12 +56,34 @@ func (ots *Stream) WriteObjectEnd() {
 
 // WriteInt64 writes the values as a decimal string. This is per the protobuf encoding rules for int64, fixed64, uint64.
 func (ots *Stream) WriteInt64(val int64) {
-	ots.WriteString(strconv.FormatInt(val, 10))
+	// 19 digits + optional leading '-' + 2 quotes = 22 bytes maximum.
+	var buf [22]byte
+	buf[0] = '"'
+	b := strconv.AppendInt(buf[1:1], val, 10)
+	n := 1 + len(b)
+	buf[n] = '"'
+	_, _ = ots.Write(buf[:n+1])
 }
 
 // WriteUint64 writes the values as a decimal string. This is per the protobuf encoding rules for int64, fixed64, uint64.
 func (ots *Stream) WriteUint64(val uint64) {
-	ots.WriteString(strconv.FormatUint(val, 10))
+	// 20 digits + 2 quotes = 22 bytes maximum.
+	var buf [22]byte
+	buf[0] = '"'
+	b := strconv.AppendUint(buf[1:1], val, 10)
+	n := 1 + len(b)
+	buf[n] = '"'
+	_, _ = ots.Write(buf[:n+1])
+}
+
+// WriteBytes writes the values as a base64 encoded string. This is per the protobuf encoding rules for bytes.
+func (ots *Stream) WriteBytes(val []byte) {
+	if len(val) == 0 {
+		ots.WriteString("")
+		return
+	}
+
+	ots.WriteString(base64.StdEncoding.EncodeToString(val))
 }
 
 // WriteFloat64 writes the JSON value that will be a number or one of the special string

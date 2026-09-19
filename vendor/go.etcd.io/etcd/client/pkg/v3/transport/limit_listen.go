@@ -23,9 +23,7 @@ import (
 	"time"
 )
 
-var (
-	ErrNotTCP = errors.New("only tcp connections have keepalive")
-)
+var ErrNotTCP = errors.New("only tcp connections have keepalive")
 
 // LimitListener returns a Listener that accepts at most n simultaneous
 // connections from the provided Listener.
@@ -63,6 +61,9 @@ func (l *limitListenerConn) Close() error {
 	return err
 }
 
+// SetKeepAlive sets keepalive
+//
+// Deprecated: use (*keepAliveConn) SetKeepAlive instead.
 func (l *limitListenerConn) SetKeepAlive(doKeepAlive bool) error {
 	tcpc, ok := l.Conn.(*net.TCPConn)
 	if !ok {
@@ -71,6 +72,9 @@ func (l *limitListenerConn) SetKeepAlive(doKeepAlive bool) error {
 	return tcpc.SetKeepAlive(doKeepAlive)
 }
 
+// SetKeepAlivePeriod sets keepalive period
+//
+// Deprecated: use (*keepAliveConn) SetKeepAlivePeriod instead.
 func (l *limitListenerConn) SetKeepAlivePeriod(d time.Duration) error {
 	tcpc, ok := l.Conn.(*net.TCPConn)
 	if !ok {

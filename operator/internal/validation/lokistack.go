@@ -2,11 +2,9 @@ package validation
 
 import (
 	"context"
-	"fmt"
 	"time"
 
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
-	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/util/validation/field"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -19,7 +17,7 @@ import (
 // objectStorageSchemaMap defines the type for mapping a schema version with a date
 type objectStorageSchemaMap map[lokiv1.StorageSchemaEffectiveDate]lokiv1.ObjectStorageSchemaVersion
 
-var _ admission.CustomValidator = &LokiStackValidator{}
+var _ admission.Validator[*lokiv1.LokiStack] = &LokiStackValidator{}
 
 // LokiStackValidator implements a custom validator for LokiStack resources.
 type LokiStackValidator struct {
@@ -29,34 +27,28 @@ type LokiStackValidator struct {
 // SetupWebhookWithManager registers the LokiStackValidator as a validating webhook
 // with the controller-runtime manager or returns an error.
 func (v *LokiStackValidator) SetupWebhookWithManager(mgr ctrl.Manager) error {
-	return ctrl.NewWebhookManagedBy(mgr).
-		For(&lokiv1.LokiStack{}).
+	return ctrl.NewWebhookManagedBy(mgr, &lokiv1.LokiStack{}).
 		WithValidator(v).
 		Complete()
 }
 
-// ValidateCreate implements admission.CustomValidator.
-func (v *LokiStackValidator) ValidateCreate(ctx context.Context, obj runtime.Object) (admission.Warnings, error) {
+// ValidateCreate implements admission.Validator.
+func (v *LokiStackValidator) ValidateCreate(ctx context.Context, obj *lokiv1.LokiStack) (admission.Warnings, error) {
 	return v.validate(ctx, obj)
 }
 
-// ValidateUpdate implements admission.CustomValidator.
-func (v *LokiStackValidator) ValidateUpdate(ctx context.Context, _, newObj runtime.Object) (admission.Warnings, error) {
+// ValidateUpdate implements admission.Validator.
+func (v *LokiStackValidator) ValidateUpdate(ctx context.Context, _, newObj *lokiv1.LokiStack) (admission.Warnings, error) {
 	return v.validate(ctx, newObj)
 }
 
-// ValidateDelete implements admission.CustomValidator.
-func (v *LokiStackValidator) ValidateDelete(_ context.Context, _ runtime.Object) (admission.Warnings, error) {
+// ValidateDelete implements admission.Validator.
+func (v *LokiStackValidator) ValidateDelete(_ context.Context, _ *lokiv1.LokiStack) (admission.Warnings, error) {
 	// No validation on delete
 	return nil, nil
 }
 
-func (v *LokiStackValidator) validate(ctx context.Context, obj runtime.Object) (admission.Warnings, error) {
-	stack, ok := obj.(*lokiv1.LokiStack)
-	if !ok {
-		return nil, apierrors.NewBadRequest(fmt.Sprintf("object is not of type LokiStack: %t", obj))
-	}
-
+func (v *LokiStackValidator) validate(ctx context.Context, stack *lokiv1.LokiStack) (admission.Warnings, error) {
 	var allErrs field.ErrorList
 
 	storageStatus := lokiv1.LokiStackStorageStatus{}

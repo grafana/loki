@@ -1,23 +1,13 @@
-// Copyright 2015 go-swagger maintainers
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//    http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// SPDX-FileCopyrightText: Copyright 2015-2025 go-swagger maintainers
+// SPDX-License-Identifier: Apache-2.0
 
 package analysis
 
 import (
-	"fmt"
 	"log"
+	"maps"
 	"path"
+	"slices"
 	"sort"
 	"strings"
 
@@ -32,7 +22,7 @@ import (
 
 const definitionsPath = "#/definitions"
 
-// newRef stores information about refs created during the flattening process
+// newRef stores information about refs created during the flattening process.
 type newRef struct {
 	key      string
 	newName  string
@@ -43,7 +33,7 @@ type newRef struct {
 	parents  []string
 }
 
-// context stores intermediary results from flatten
+// context stores intermediary results from flatten.
 type context struct {
 	newRefs  map[string]*newRef
 	warnings []string
@@ -52,9 +42,9 @@ type context struct {
 
 func newContext() *context {
 	return &context{
-		newRefs:  make(map[string]*newRef, 150),
+		newRefs:  make(map[string]*newRef, allocMediumMap),
 		warnings: make([]string, 0),
-		resolved: make(map[string]string, 50),
+		resolved: make(map[string]string, allocMediumMap),
 	}
 }
 
@@ -63,13 +53,15 @@ func newContext() *context {
 // There is a minimal and a full flattening mode.
 //
 // Minimally flattening a spec means:
+//
 //   - Expanding parameters, responses, path items, parameter items and header items (references to schemas are left
 //     unscathed)
-//   - Importing external (http, file) references so they become internal to the document
+//   - Importing external ([http], file) references so they become internal to the document
 //   - Moving every JSON pointer to a $ref to a named definition (i.e. the reworked spec does not contain pointers
 //     like "$ref": "#/definitions/myObject/allOfs/1")
 //
 // A minimally flattened spec thus guarantees the following properties:
+//
 //   - all $refs point to a local definition (i.e. '#/definitions/...')
 //   - definitions are unique
 //
@@ -81,6 +73,7 @@ func newContext() *context {
 // Minimal flattening is necessary and sufficient for codegen rendering using go-swagger.
 //
 // Fully flattening a spec means:
+//
 //   - Moving every complex inline schema to be a definition with an auto-generated name in a depth-first fashion.
 //
 // By complex, we mean every JSON object with some properties.
@@ -91,6 +84,7 @@ func newContext() *context {
 // have been created.
 //
 // Available flattening options:
+//
 //   - Minimal: stops flattening after minimal $ref processing, leaving schema constructs untouched
 //   - Expand: expand all $ref's in the document (inoperant if Minimal set to true)
 //   - Verbose: croaks about name conflicts detected
@@ -98,8 +92,9 @@ func newContext() *context {
 //
 // NOTE: expansion removes all $ref save circular $ref, which remain in place
 //
-// TODO: additional options
-//   - ProgagateNameExtensions: ensure that created entries properly follow naming rules when their parent have set a
+// Desirable future additions: additional options.
+//
+//   - PropagateNameExtensions: ensure that created entries properly follow naming rules when their parent have set a
 //     x-go-name extension
 //   - LiftAllOfs:
 //   - limit the flattening of allOf members when simple objects
@@ -180,23 +175,25 @@ func expand(opts *FlattenOpts) error {
 }
 
 // normalizeRef strips the current file from any absolute file $ref. This works around issue go-openapi/spec#76:
-// leading absolute file in $ref is stripped
+// leading absolute file in $ref is stripped.
 func normalizeRef(opts *FlattenOpts) error {
 	debugLog("normalizeRef")
 
 	altered := false
-	for k, w := range opts.Spec.references.allRefs {
-		if !strings.HasPrefix(w.String(), opts.BasePath+definitionsPath) { // may be a mix of / and \, depending on OS
-			continue
-		}
+	for _, refs := range []map[string]spec.Ref{opts.Spec.references.allRefs, opts.Spec.references.unmappedRefs} {
+		for k, w := range refs {
+			if !strings.HasPrefix(w.String(), opts.BasePath+definitionsPath) { // may be a mix of / and \, depending on OS
+				continue
+			}
 
-		altered = true
-		debugLog("stripping absolute path for: %s", w.String())
+			altered = true
+			debugLog("stripping absolute path for: %s", w.String())
 
-		// strip the base path from definition
-		if err := replace.UpdateRef(opts.Swagger(), k,
-			spec.MustCreateRef(path.Join(definitionsPath, path.Base(w.String())))); err != nil {
-			return err
+			// strip the base path from definition
+			if err := replace.UpdateRef(opts.Swagger(), k,
+				spec.MustCreateRef(path.Join(definitionsPath, path.Base(w.String())))); err != nil {
+				return err
+			}
 		}
 	}
 
@@ -249,9 +246,9 @@ func nameInlinedSchemas(opts *FlattenOpts) error {
 			continue
 		}
 
-		asch, err := Schema(SchemaOpts{Schema: sch.Schema, Root: opts.Swagger(), BasePath: opts.BasePath})
+		asch, err := Schema(SchemaOpts{Schema: sch.Schema, Root: opts.Swagger(), BasePath: opts.BasePath, PathLoaderWithOptions: opts.PathLoaderWithOptions})
 		if err != nil {
-			return fmt.Errorf("schema analysis [%s]: %w", key, err)
+			return ErrAtKey(key, err)
 		}
 
 		if asch.isAnalyzedAsComplex() { // move complex schemas to definitions
@@ -280,6 +277,10 @@ func removeUnusedSinglePass(opts *FlattenOpts) (hasRemoved bool) {
 
 	for _, k := range opts.Spec.AllDefinitionReferences() {
 		delete(expected, k)
+	}
+
+	for _, ref := range opts.Spec.references.unmappedRefs {
+		delete(expected, ref.String())
 	}
 
 	for k := range expected {
@@ -320,7 +321,7 @@ func importNewRef(entry sortref.RefRevIdx, refStr string, opts *FlattenOpts) err
 
 	sch, err := spec.ResolveRefWithBase(opts.Swagger(), &entry.Ref, opts.ExpandOpts(false))
 	if err != nil {
-		return fmt.Errorf("could not resolve schema: %w", err)
+		return ErrResolveSchema(err)
 	}
 
 	// at this stage only $ref analysis matters
@@ -333,9 +334,11 @@ func importNewRef(entry sortref.RefRevIdx, refStr string, opts *FlattenOpts) err
 	partialAnalyzer.analyzeSchema("", sch, "/")
 
 	// now rewrite those refs with rebase
-	for key, ref := range partialAnalyzer.references.allRefs {
-		if err := replace.UpdateRef(sch, key, spec.MustCreateRef(normalize.RebaseRef(entry.Ref.String(), ref.String()))); err != nil {
-			return fmt.Errorf("failed to rewrite ref for key %q at %s: %w", key, entry.Ref.String(), err)
+	for _, refs := range []map[string]spec.Ref{partialAnalyzer.references.allRefs, partialAnalyzer.references.unmappedRefs} {
+		for key, ref := range refs {
+			if err := replace.UpdateRef(sch, key, spec.MustCreateRef(normalize.RebaseRef(entry.Ref.String(), ref.String()))); err != nil {
+				return ErrRewriteRef(key, entry.Ref.String(), err)
+			}
 		}
 	}
 
@@ -380,10 +383,20 @@ func importNewRef(entry sortref.RefRevIdx, refStr string, opts *FlattenOpts) err
 // At every iteration, new remotes may be found when digging deeper: they are rebased to the current schema before being imported.
 //
 // This returns true when no more remote references can be found.
+// importableRefs returns every $ref that flatten has to bring into the root document: the ones the
+// model maps, and the ones held by keywords it does not.
+func importableRefs(sp *Spec) map[string]spec.Ref {
+	refs := make(map[string]spec.Ref, len(sp.references.schemas)+len(sp.references.unmappedRefs))
+	maps.Copy(refs, sp.references.schemas)
+	maps.Copy(refs, sp.references.unmappedRefs)
+
+	return refs
+}
+
 func importExternalReferences(opts *FlattenOpts) (bool, error) {
 	debugLog("importExternalReferences")
 
-	groupedRefs := sortref.ReverseIndex(opts.Spec.references.schemas, opts.BasePath)
+	groupedRefs := sortref.ReverseIndex(importableRefs(opts.Spec), opts.BasePath)
 	sortedRefStr := make([]string, 0, len(groupedRefs))
 	if opts.flattenContext == nil {
 		opts.flattenContext = newContext()
@@ -429,7 +442,7 @@ func importExternalReferences(opts *FlattenOpts) (bool, error) {
 			ref := spec.MustCreateRef(r.path)
 			sch, err := spec.ResolveRefWithBase(opts.Swagger(), &ref, opts.ExpandOpts(false))
 			if err != nil {
-				return false, fmt.Errorf("could not resolve schema: %w", err)
+				return false, ErrResolveSchema(err)
 			}
 
 			r.schema = sch
@@ -502,14 +515,25 @@ func stripPointersAndOAIGen(opts *FlattenOpts) error {
 // pointer and name resolution again.
 func stripOAIGen(opts *FlattenOpts) (bool, error) {
 	debugLog("stripOAIGen")
+	// Ensure the spec analysis is fresh, as previous steps (namePointers, etc.) might have modified refs.
+	opts.Spec.reload()
+
 	replacedWithComplex := false
 
 	// figure out referers of OAIGen definitions (doing it before the ref start mutating)
-	for _, r := range opts.flattenContext.newRefs {
+	// Sort keys to ensure deterministic processing order
+	sortedKeys := make([]string, 0, len(opts.flattenContext.newRefs))
+	for k := range opts.flattenContext.newRefs {
+		sortedKeys = append(sortedKeys, k)
+	}
+	sort.Strings(sortedKeys)
+
+	for _, k := range sortedKeys {
+		r := opts.flattenContext.newRefs[k]
 		updateRefParents(opts.Spec.references.allRefs, r)
 	}
 
-	for k := range opts.flattenContext.newRefs {
+	for _, k := range sortedKeys {
 		r := opts.flattenContext.newRefs[k]
 		debugLog("newRefs[%s]: isOAIGen: %t, resolved: %t, name: %s, path:%s, #parents: %d, parents: %v,  ref: %s",
 			k, r.isOAIGen, r.resolved, r.newName, r.path, len(r.parents), r.parents, r.schema.Ref.String())
@@ -532,7 +556,7 @@ func stripOAIGen(opts *FlattenOpts) (bool, error) {
 	return replacedWithComplex, nil
 }
 
-// updateRefParents updates all parents of an updated $ref
+// updateRefParents updates all parents of an updated $ref.
 func updateRefParents(allRefs map[string]spec.Ref, r *newRef) {
 	if !r.isOAIGen || r.resolved { // bail on already resolved entries (avoid looping)
 		return
@@ -542,20 +566,14 @@ func updateRefParents(allRefs map[string]spec.Ref, r *newRef) {
 			continue
 		}
 
-		found := false
-		for _, p := range r.parents {
-			if p == k {
-				found = true
-
-				break
-			}
-		}
+		found := slices.Contains(r.parents, k)
 		if !found {
 			r.parents = append(r.parents, k)
 		}
 	}
 }
 
+//nolint:gocognit,gocyclo,cyclop // legacy from a lot of design choices that led to concentrate the complexity just here.
 func stripOAIGenForRef(opts *FlattenOpts, k string, r *newRef) (bool, error) {
 	replacedWithComplex := false
 
@@ -576,7 +594,7 @@ func stripOAIGenForRef(opts *FlattenOpts, k string, r *newRef) (bool, error) {
 	}
 
 	// rewrite other parents to point to first parent
-	if len(pr) > 1 {
+	if len(pr) > 1 { //nolint:nestif // should be refactored at a later time
 		for _, p := range pr[1:] {
 			replacingRef := spec.MustCreateRef(pr[0])
 
@@ -598,6 +616,19 @@ func stripOAIGenForRef(opts *FlattenOpts, k string, r *newRef) (bool, error) {
 				replacedWithComplex = true
 			}
 		}
+
+		// update parents of the target ref (pr[0]) if it is also a newRef (OAIGen)
+		// This ensures that if the target is later deleted/merged, it knows about these new referers.
+		for _, nr := range opts.flattenContext.newRefs {
+			if nr.path == pr[0] && nr.isOAIGen && !nr.resolved {
+				for _, p := range pr[1:] {
+					if !slices.Contains(nr.parents, p) {
+						nr.parents = append(nr.parents, p)
+					}
+				}
+				break
+			}
+		}
 	}
 
 	// remove OAIGen definition
@@ -605,7 +636,15 @@ func stripOAIGenForRef(opts *FlattenOpts, k string, r *newRef) (bool, error) {
 	delete(opts.Swagger().Definitions, path.Base(r.path))
 
 	// propagate changes in ref index for keys which have this one as a parent
-	for kk, value := range opts.flattenContext.newRefs {
+	// Sort keys to ensure deterministic update order
+	propagateKeys := make([]string, 0, len(opts.flattenContext.newRefs))
+	for k := range opts.flattenContext.newRefs {
+		propagateKeys = append(propagateKeys, k)
+	}
+	sort.Strings(propagateKeys)
+
+	for _, kk := range propagateKeys {
+		value := opts.flattenContext.newRefs[kk]
 		if kk == k || !value.isOAIGen || value.resolved {
 			continue
 		}
@@ -637,13 +676,13 @@ func stripOAIGenForRef(opts *FlattenOpts, k string, r *newRef) (bool, error) {
 
 	// determine if the previous substitution did inline a complex schema
 	if r.schema != nil && r.schema.Ref.String() == "" { // inline schema
-		asch, err := Schema(SchemaOpts{Schema: r.schema, Root: opts.Swagger(), BasePath: opts.BasePath})
+		asch, err := Schema(SchemaOpts{Schema: r.schema, Root: opts.Swagger(), BasePath: opts.BasePath, PathLoaderWithOptions: opts.PathLoaderWithOptions})
 		if err != nil {
 			return false, err
 		}
 
 		debugLog("re-inlined schema: parent: %s, %t", pr[0], asch.isAnalyzedAsComplex())
-		replacedWithComplex = replacedWithComplex || !(path.Dir(pr[0]) == definitionsPath) && asch.isAnalyzedAsComplex()
+		replacedWithComplex = replacedWithComplex || path.Dir(pr[0]) != definitionsPath && asch.isAnalyzedAsComplex()
 	}
 
 	return replacedWithComplex, nil
@@ -666,7 +705,7 @@ func namePointers(opts *FlattenOpts) error {
 
 		result, err := replace.DeepestRef(opts.Swagger(), opts.ExpandOpts(false), ref)
 		if err != nil {
-			return fmt.Errorf("at %s, %w", k, err)
+			return ErrAtKey(k, err)
 		}
 
 		replacingRef := result.Ref
@@ -697,7 +736,7 @@ func namePointers(opts *FlattenOpts) error {
 		// update current replacement, which may have been updated by previous changes of deeper elements
 		result, erd := replace.DeepestRef(opts.Swagger(), opts.ExpandOpts(false), v.Ref)
 		if erd != nil {
-			return fmt.Errorf("at %s, %w", key, erd)
+			return ErrAtKey(key, erd)
 		}
 
 		if opts.flattenContext != nil {
@@ -741,11 +780,11 @@ func flattenAnonPointer(key string, v SchemaRef, refsToReplace map[string]Schema
 	debugLog("namePointers at %s for %s", key, v.Ref.String())
 
 	// qualify the expanded schema
-	asch, ers := Schema(SchemaOpts{Schema: v.Schema, Root: opts.Swagger(), BasePath: opts.BasePath})
+	asch, ers := Schema(SchemaOpts{Schema: v.Schema, Root: opts.Swagger(), BasePath: opts.BasePath, PathLoaderWithOptions: opts.PathLoaderWithOptions})
 	if ers != nil {
-		return fmt.Errorf("schema analysis [%s]: %w", key, ers)
+		return ErrAtKey(key, ers)
 	}
-	callers := make([]string, 0, 64)
+	callers := make([]string, 0, allocMediumMap)
 
 	debugLog("looking for callers")
 
@@ -753,7 +792,7 @@ func flattenAnonPointer(key string, v SchemaRef, refsToReplace map[string]Schema
 	for k, w := range an.references.allRefs {
 		r, err := replace.DeepestRef(opts.Swagger(), opts.ExpandOpts(false), w)
 		if err != nil {
-			return fmt.Errorf("at %s, %w", key, err)
+			return ErrAtKey(key, err)
 		}
 
 		if opts.flattenContext != nil {

@@ -68,7 +68,7 @@ const (
 
 // Delete types.
 const (
-	// Delete all placements visible on screen
+	// Delete all placements visible on screen.
 	DeleteAll = 'a'
 	// Delete all images with the specified id, specified using the i key. If
 	// you specify a p key for the placement id as well, then only the
@@ -83,7 +83,7 @@ const (
 	// Delete animation frames.
 	DeleteFrames = 'f'
 	// Delete all placements that intersect a specific cell, the cell is
-	// specified using the x and y keys
+	// specified using the x and y keys.
 	DeleteCell = 'p'
 	// Delete all placements that intersect a specific cell having a specific
 	// z-index. The cell and z-index is specified using the x, y and z keys.

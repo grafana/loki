@@ -57,6 +57,10 @@ As such I've put a PEM decoder into here.
 // TODO(msal): This should have example code for each method on client using Go's example doc framework.
 // base usage details should be include in the package documentation.
 
+// clientClaimsCacheKey is the CacheKeyComponents key used to partition the token cache by
+// client-originated claims (see WithClaimsFromClient). The component value is the raw claims string.
+const clientClaimsCacheKey = "client_claims"
+
 // AuthResult contains the results of one token acquisition operation.
 // For details see https://aka.ms/msal-net-authenticationresult
 type AuthResult = base.AuthResult
@@ -73,9 +77,18 @@ const (
 )
 
 // CertFromPEM converts a PEM file (.pem or .key) for use with [NewCredFromCert]. The file
-// must contain the public certificate and the private key. If a PEM block is encrypted and
-// password is not an empty string, it attempts to decrypt the PEM blocks using the password.
+// must contain the public certificate and the unencrypted private key.
 // Multiple certs are due to certificate chaining for use cases like TLS that sign from root to leaf.
+//
+// Encrypted PEM private keys are not supported. Legacy RFC 1423 encrypted PEM blocks (identified
+// by a DEK-Info header, e.g. "DEK-Info: DES-EDE3-CBC,...") rely on a weak key derivation function
+// (a single MD5 iteration) and obsolete DES/3DES ciphers, so CertFromPEM rejects them with an
+// error instead of decrypting them. Provide the private key unencrypted and protect it with
+// filesystem permissions; you can remove legacy encryption with, for example:
+//
+//	openssl pkcs8 -topk8 -nocrypt -in legacy.key -out key.pem
+//
+// The password parameter is retained for backward compatibility and is ignored.
 func CertFromPEM(pemData []byte, password string) ([]*x509.Certificate, crypto.PrivateKey, error) {
 	var certs []*x509.Certificate
 	var priv crypto.PrivateKey
@@ -85,16 +98,8 @@ func CertFromPEM(pemData []byte, password string) ([]*x509.Certificate, crypto.P
 			break
 		}
 
-		//nolint:staticcheck // x509.IsEncryptedPEMBlock and x509.DecryptPEMBlock are deprecated. They are used here only to support a usecase.
-		if x509.IsEncryptedPEMBlock(block) {
-			b, err := x509.DecryptPEMBlock(block, []byte(password))
-			if err != nil {
-				return nil, nil, fmt.Errorf("could not decrypt encrypted PEM block: %v", err)
-			}
-			block, _ = pem.Decode(b)
-			if block == nil {
-				return nil, nil, fmt.Errorf("encounter encrypted PEM block that did not decode")
-			}
+		if _, encrypted := block.Headers["DEK-Info"]; encrypted {
+			return nil, nil, fmt.Errorf("legacy RFC 1423 encrypted PEM blocks are not supported because they use a weak key derivation function (single MD5 iteration) and obsolete DES/3DES ciphers; provide the private key unencrypted (e.g. `openssl pkcs8 -topk8 -nocrypt -in legacy.key -out key.pem`) and protect it with filesystem permissions")
 		}
 
 		switch block.Type {
@@ -359,7 +364,7 @@ func New(authority, clientID string, cred Credential, options ...Option) (Client
 
 // authCodeURLOptions contains options for AuthCodeURL
 type authCodeURLOptions struct {
-	claims, loginHint, tenantID, domainHint string
+	claims, loginHint, tenantID, domainHint, prompt string
 }
 
 // AuthCodeURLOption is implemented by options for AuthCodeURL
@@ -369,7 +374,7 @@ type AuthCodeURLOption interface {
 
 // AuthCodeURL creates a URL used to acquire an authorization code. Users need to call CreateAuthorizationCodeURLParameters and pass it in.
 //
-// Options: [WithClaims], [WithDomainHint], [WithLoginHint], [WithTenantID]
+// Options: [WithClaims], [WithDomainHint], [WithLoginHint], [WithTenantID], [WithPrompt]
 func (cca Client) AuthCodeURL(ctx context.Context, clientID, redirectURI string, scopes []string, opts ...AuthCodeURLOption) (string, error) {
 	o := authCodeURLOptions{}
 	if err := options.ApplyOptions(&o, opts); err != nil {
@@ -382,6 +387,7 @@ func (cca Client) AuthCodeURL(ctx context.Context, clientID, redirectURI string,
 	ap.Claims = o.claims
 	ap.LoginHint = o.loginHint
 	ap.DomainHint = o.domainHint
+	ap.Prompt = o.prompt
 	return cca.base.AuthCodeURL(ctx, clientID, redirectURI, scopes, ap)
 }
 
@@ -431,6 +437,29 @@ func WithDomainHint(domain string) interface {
 	}
 }
 
+// WithPrompt adds prompt query parameter in the auth url.
+func WithPrompt(prompt shared.Prompt) interface {
+	AuthCodeURLOption
+	options.CallOption
+} {
+	return struct {
+		AuthCodeURLOption
+		options.CallOption
+	}{
+		CallOption: options.NewCallOption(
+			func(a any) error {
+				switch t := a.(type) {
+				case *authCodeURLOptions:
+					t.prompt = prompt.String()
+				default:
+					return fmt.Errorf("unexpected options type %T", a)
+				}
+				return nil
+			},
+		),
+	}
+}
+
 // WithClaims sets additional claims to request for the token, such as those required by conditional access policies.
 // Use this option when Azure AD returned a claims challenge for a prior request. The argument must be decoded.
 // This option is valid for any token acquisition method.
@@ -441,6 +470,7 @@ func WithClaims(claims string) interface {
 	AcquireByUsernamePasswordOption
 	AcquireSilentOption
 	AuthCodeURLOption
+	AcquireByUserFICOption
 	options.CallOption
 } {
 	return struct {
@@ -450,6 +480,7 @@ func WithClaims(claims string) interface {
 		AcquireByUsernamePasswordOption
 		AcquireSilentOption
 		AuthCodeURLOption
+		AcquireByUserFICOption
 		options.CallOption
 	}{
 		CallOption: options.NewCallOption(
@@ -467,6 +498,8 @@ func WithClaims(claims string) interface {
 					t.claims = claims
 				case *authCodeURLOptions:
 					t.claims = claims
+				case *acquireTokenByUserFICOptions:
+					t.claims = claims
 				default:
 					return fmt.Errorf("unexpected options type %T", a)
 				}
@@ -476,7 +509,82 @@ func WithClaims(claims string) interface {
 	}
 }
 
-// WithAuthenticationScheme is an extensibility mechanism designed to be used only by Azure Arc for proof of possession access tokens.
+// WithClaimsFromClient specifies client-originated claims (a JSON object) to include in the token
+// request.
+//
+// Unlike [WithClaims] (for server-issued claims challenges, which bypass the token cache), tokens
+// acquired with client claims ARE cached and the cache entry is keyed on the claims value. Different
+// claims values produce separate cache entries, so callers should pass stable, non-dynamic values to
+// avoid unbounded cache growth. The exact same string MUST be included on every request: the raw
+// string is used verbatim as part of the cache key (MSAL does not normalize it), so omitting it or
+// changing it on a later call silently moves to a different cache partition.
+//
+// The claims are sent to the authority as the standard OAuth "claims" body parameter (merged with any
+// server-issued claims and client capabilities); they are not embedded in the client assertion JWT.
+//
+// The argument must be a JSON object, but the confidential client does not enforce this locally in all
+// cases: the value is forwarded to the authority verbatim and is validated locally only when it is
+// merged with server-issued claims or client capabilities. Otherwise a malformed or non-object value
+// is not rejected locally and instead surfaces as a server-side error. An empty or whitespace-only
+// value is ignored.
+func WithClaimsFromClient(claims string) interface {
+	AcquireByAuthCodeOption
+	AcquireByCredentialOption
+	AcquireOnBehalfOfOption
+	AcquireByUsernamePasswordOption
+	AcquireSilentOption
+	AcquireByUserFICOption
+	options.CallOption
+} {
+	return struct {
+		AcquireByAuthCodeOption
+		AcquireByCredentialOption
+		AcquireOnBehalfOfOption
+		AcquireByUsernamePasswordOption
+		AcquireSilentOption
+		AcquireByUserFICOption
+		options.CallOption
+	}{
+		CallOption: options.NewCallOption(
+			func(a any) error {
+				if strings.TrimSpace(claims) == "" {
+					// Ignore empty/whitespace claims so callers can pass a value unconditionally.
+					return nil
+				}
+				addCacheKey := func(m *map[string]string) {
+					if *m == nil {
+						*m = make(map[string]string)
+					}
+					(*m)[clientClaimsCacheKey] = claims
+				}
+				switch t := a.(type) {
+				case *acquireTokenByAuthCodeOptions:
+					t.clientClaims = claims
+					addCacheKey(&t.cacheKeyComponents)
+				case *acquireTokenByCredentialOptions:
+					t.clientClaims = claims
+					addCacheKey(&t.cacheKeyComponents)
+				case *acquireTokenOnBehalfOfOptions:
+					t.clientClaims = claims
+					addCacheKey(&t.cacheKeyComponents)
+				case *acquireTokenByUsernamePasswordOptions:
+					t.clientClaims = claims
+					addCacheKey(&t.cacheKeyComponents)
+				case *acquireTokenSilentOptions:
+					t.clientClaims = claims
+					addCacheKey(&t.cacheKeyComponents)
+				case *acquireTokenByUserFICOptions:
+					t.clientClaims = claims
+					addCacheKey(&t.cacheKeyComponents)
+				default:
+					return fmt.Errorf("unexpected options type %T", a)
+				}
+				return nil
+			},
+		),
+	}
+}
+
 func WithAuthenticationScheme(authnScheme AuthenticationScheme) interface {
 	AcquireSilentOption
 	AcquireByCredentialOption
@@ -512,6 +620,7 @@ func WithTenantID(tenantID string) interface {
 	AcquireByUsernamePasswordOption
 	AcquireSilentOption
 	AuthCodeURLOption
+	AcquireByUserFICOption
 	options.CallOption
 } {
 	return struct {
@@ -521,6 +630,7 @@ func WithTenantID(tenantID string) interface {
 		AcquireByUsernamePasswordOption
 		AcquireSilentOption
 		AuthCodeURLOption
+		AcquireByUserFICOption
 		options.CallOption
 	}{
 		CallOption: options.NewCallOption(
@@ -538,6 +648,8 @@ func WithTenantID(tenantID string) interface {
 					t.tenantID = tenantID
 				case *authCodeURLOptions:
 					t.tenantID = tenantID
+				case *acquireTokenByUserFICOptions:
+					t.tenantID = tenantID
 				default:
 					return fmt.Errorf("unexpected options type %T", a)
 				}
@@ -550,9 +662,11 @@ func WithTenantID(tenantID string) interface {
 // acquireTokenSilentOptions are all the optional settings to an AcquireTokenSilent() call.
 // These are set by using various AcquireTokenSilentOption functions.
 type acquireTokenSilentOptions struct {
-	account          Account
-	claims, tenantID string
-	authnScheme      AuthenticationScheme
+	account            Account
+	claims, tenantID   string
+	clientClaims       string
+	authnScheme        AuthenticationScheme
+	cacheKeyComponents map[string]string
 }
 
 // AcquireSilentOption is implemented by options for AcquireTokenSilent
@@ -585,7 +699,7 @@ func WithSilentAccount(account Account) interface {
 
 // AcquireTokenSilent acquires a token from either the cache or using a refresh token.
 //
-// Options: [WithClaims], [WithSilentAccount], [WithTenantID]
+// Options: [WithClaims], [WithClaimsFromClient], [WithSilentAccount], [WithTenantID]
 func (cca Client) AcquireTokenSilent(ctx context.Context, scopes []string, opts ...AcquireSilentOption) (AuthResult, error) {
 	o := acquireTokenSilentOptions{}
 	if err := options.ApplyOptions(&o, opts); err != nil {
@@ -596,23 +710,39 @@ func (cca Client) AcquireTokenSilent(ctx context.Context, scopes []string, opts 
 		return AuthResult{}, errors.New("call another AcquireToken method to request a new token having these claims")
 	}
 
-	silentParameters := base.AcquireTokenSilentParameters{
-		Scopes:      scopes,
-		Account:     o.account,
-		RequestType: accesstokens.ATConfidential,
-		Credential:  cca.cred,
-		IsAppCache:  o.account.IsZero(),
-		TenantID:    o.tenantID,
-		AuthnScheme: o.authnScheme,
+	// For service principal scenarios, require WithSilentAccount for public API
+	if o.account.IsZero() {
+		return AuthResult{}, errors.New("WithSilentAccount option is required")
 	}
+
+	silentParameters := base.AcquireTokenSilentParameters{
+		Scopes:             scopes,
+		Account:            o.account,
+		RequestType:        accesstokens.ATConfidential,
+		Credential:         cca.cred,
+		IsAppCache:         o.account.IsZero(),
+		TenantID:           o.tenantID,
+		AuthnScheme:        o.authnScheme,
+		Claims:             o.claims,
+		ClientClaims:       o.clientClaims,
+		CacheKeyComponents: o.cacheKeyComponents,
+	}
+
+	return cca.acquireTokenSilentInternal(ctx, silentParameters)
+}
+
+// acquireTokenSilentInternal is the internal implementation shared by AcquireTokenSilent and AcquireTokenByCredential
+func (cca Client) acquireTokenSilentInternal(ctx context.Context, silentParameters base.AcquireTokenSilentParameters) (AuthResult, error) {
 
 	return cca.base.AcquireTokenSilent(ctx, silentParameters)
 }
 
 // acquireTokenByUsernamePasswordOptions contains optional configuration for AcquireTokenByUsernamePassword
 type acquireTokenByUsernamePasswordOptions struct {
-	claims, tenantID string
-	authnScheme      AuthenticationScheme
+	claims, tenantID   string
+	clientClaims       string
+	authnScheme        AuthenticationScheme
+	cacheKeyComponents map[string]string
 }
 
 // AcquireByUsernamePasswordOption is implemented by options for AcquireTokenByUsernamePassword
@@ -623,7 +753,7 @@ type AcquireByUsernamePasswordOption interface {
 // AcquireTokenByUsernamePassword acquires a security token from the authority, via Username/Password Authentication.
 // NOTE: this flow is NOT recommended.
 //
-// Options: [WithClaims], [WithTenantID]
+// Options: [WithClaims], [WithClaimsFromClient], [WithTenantID]
 func (cca Client) AcquireTokenByUsernamePassword(ctx context.Context, scopes []string, username, password string, opts ...AcquireByUsernamePasswordOption) (AuthResult, error) {
 	o := acquireTokenByUsernamePasswordOptions{}
 	if err := options.ApplyOptions(&o, opts); err != nil {
@@ -636,8 +766,12 @@ func (cca Client) AcquireTokenByUsernamePassword(ctx context.Context, scopes []s
 	authParams.Scopes = scopes
 	authParams.AuthorizationType = authority.ATUsernamePassword
 	authParams.Claims = o.claims
+	authParams.ClientClaims = o.clientClaims
 	authParams.Username = username
 	authParams.Password = password
+	if o.cacheKeyComponents != nil {
+		authParams.CacheKeyComponents = o.cacheKeyComponents
+	}
 	if o.authnScheme != nil {
 		authParams.AuthnScheme = o.authnScheme
 	}
@@ -652,6 +786,8 @@ func (cca Client) AcquireTokenByUsernamePassword(ctx context.Context, scopes []s
 // acquireTokenByAuthCodeOptions contains the optional parameters used to acquire an access token using the authorization code flow.
 type acquireTokenByAuthCodeOptions struct {
 	challenge, claims, tenantID string
+	clientClaims                string
+	cacheKeyComponents          map[string]string
 }
 
 // AcquireByAuthCodeOption is implemented by options for AcquireTokenByAuthCode
@@ -685,7 +821,7 @@ func WithChallenge(challenge string) interface {
 // AcquireTokenByAuthCode is a request to acquire a security token from the authority, using an authorization code.
 // The specified redirect URI must be the same URI that was used when the authorization code was requested.
 //
-// Options: [WithChallenge], [WithClaims], [WithTenantID]
+// Options: [WithChallenge], [WithClaims], [WithClaimsFromClient], [WithTenantID]
 func (cca Client) AcquireTokenByAuthCode(ctx context.Context, code string, redirectURI string, scopes []string, opts ...AcquireByAuthCodeOption) (AuthResult, error) {
 	o := acquireTokenByAuthCodeOptions{}
 	if err := options.ApplyOptions(&o, opts); err != nil {
@@ -693,14 +829,16 @@ func (cca Client) AcquireTokenByAuthCode(ctx context.Context, code string, redir
 	}
 
 	params := base.AcquireTokenAuthCodeParameters{
-		Scopes:      scopes,
-		Code:        code,
-		Challenge:   o.challenge,
-		Claims:      o.claims,
-		AppType:     accesstokens.ATConfidential,
-		Credential:  cca.cred, // This setting differs from public.Client.AcquireTokenByAuthCode
-		RedirectURI: redirectURI,
-		TenantID:    o.tenantID,
+		Scopes:             scopes,
+		Code:               code,
+		Challenge:          o.challenge,
+		Claims:             o.claims,
+		ClientClaims:       o.clientClaims,
+		AppType:            accesstokens.ATConfidential,
+		Credential:         cca.cred, // This setting differs from public.Client.AcquireTokenByAuthCode
+		RedirectURI:        redirectURI,
+		TenantID:           o.tenantID,
+		CacheKeyComponents: o.cacheKeyComponents,
 	}
 
 	return cca.base.AcquireTokenByAuthCode(ctx, params)
@@ -708,8 +846,11 @@ func (cca Client) AcquireTokenByAuthCode(ctx context.Context, code string, redir
 
 // acquireTokenByCredentialOptions contains optional configuration for AcquireTokenByCredential
 type acquireTokenByCredentialOptions struct {
-	claims, tenantID string
-	authnScheme      AuthenticationScheme
+	claims, tenantID    string
+	clientClaims        string
+	authnScheme         AuthenticationScheme
+	extraBodyParameters map[string]string
+	cacheKeyComponents  map[string]string
 }
 
 // AcquireByCredentialOption is implemented by options for AcquireTokenByCredential
@@ -719,7 +860,7 @@ type AcquireByCredentialOption interface {
 
 // AcquireTokenByCredential acquires a security token from the authority, using the client credentials grant.
 //
-// Options: [WithClaims], [WithTenantID]
+// Options: [WithClaims], [WithClaimsFromClient], [WithTenantID], [WithFMIPath], [WithAttribute]
 func (cca Client) AcquireTokenByCredential(ctx context.Context, scopes []string, opts ...AcquireByCredentialOption) (AuthResult, error) {
 	o := acquireTokenByCredentialOptions{}
 	err := options.ApplyOptions(&o, opts)
@@ -733,9 +874,34 @@ func (cca Client) AcquireTokenByCredential(ctx context.Context, scopes []string,
 	authParams.Scopes = scopes
 	authParams.AuthorizationType = authority.ATClientCredentials
 	authParams.Claims = o.claims
+	authParams.ClientClaims = o.clientClaims
 	if o.authnScheme != nil {
 		authParams.AuthnScheme = o.authnScheme
 	}
+	authParams.ExtraBodyParameters = o.extraBodyParameters
+	authParams.CacheKeyComponents = o.cacheKeyComponents
+	if o.claims == "" {
+		silentParameters := base.AcquireTokenSilentParameters{
+			Scopes:              scopes,
+			Account:             Account{}, // empty account for app token
+			RequestType:         accesstokens.ATConfidential,
+			Credential:          cca.cred,
+			IsAppCache:          true,
+			TenantID:            o.tenantID,
+			AuthnScheme:         o.authnScheme,
+			Claims:              o.claims,
+			ClientClaims:        o.clientClaims,
+			ExtraBodyParameters: o.extraBodyParameters,
+			CacheKeyComponents:  o.cacheKeyComponents,
+		}
+
+		// Use internal method with empty account (service principal scenario)
+		cache, err := cca.acquireTokenSilentInternal(ctx, silentParameters)
+		if err == nil {
+			return cache, nil
+		}
+	}
+
 	token, err := cca.base.Token.Credential(ctx, authParams, cca.cred)
 	if err != nil {
 		return AuthResult{}, err
@@ -745,7 +911,9 @@ func (cca Client) AcquireTokenByCredential(ctx context.Context, scopes []string,
 
 // acquireTokenOnBehalfOfOptions contains optional configuration for AcquireTokenOnBehalfOf
 type acquireTokenOnBehalfOfOptions struct {
-	claims, tenantID string
+	claims, tenantID   string
+	clientClaims       string
+	cacheKeyComponents map[string]string
 }
 
 // AcquireOnBehalfOfOption is implemented by options for AcquireTokenOnBehalfOf
@@ -756,18 +924,20 @@ type AcquireOnBehalfOfOption interface {
 // AcquireTokenOnBehalfOf acquires a security token for an app using middle tier apps access token.
 // Refer https://docs.microsoft.com/en-us/azure/active-directory/develop/v2-oauth2-on-behalf-of-flow.
 //
-// Options: [WithClaims], [WithTenantID]
+// Options: [WithClaims], [WithClaimsFromClient], [WithTenantID]
 func (cca Client) AcquireTokenOnBehalfOf(ctx context.Context, userAssertion string, scopes []string, opts ...AcquireOnBehalfOfOption) (AuthResult, error) {
 	o := acquireTokenOnBehalfOfOptions{}
 	if err := options.ApplyOptions(&o, opts); err != nil {
 		return AuthResult{}, err
 	}
 	params := base.AcquireTokenOnBehalfOfParameters{
-		Scopes:        scopes,
-		UserAssertion: userAssertion,
-		Claims:        o.claims,
-		Credential:    cca.cred,
-		TenantID:      o.tenantID,
+		Scopes:             scopes,
+		UserAssertion:      userAssertion,
+		Claims:             o.claims,
+		ClientClaims:       o.clientClaims,
+		Credential:         cca.cred,
+		TenantID:           o.tenantID,
+		CacheKeyComponents: o.cacheKeyComponents,
 	}
 	return cca.base.AcquireTokenOnBehalfOf(ctx, params)
 }
@@ -780,4 +950,172 @@ func (cca Client) Account(ctx context.Context, accountID string) (Account, error
 // RemoveAccount signs the account out and forgets account from token cache.
 func (cca Client) RemoveAccount(ctx context.Context, account Account) error {
 	return cca.base.RemoveAccount(ctx, account)
+}
+
+// WithFMIPath specifies the path to a federated managed identity.
+// The path should point to a valid FMI configuration file that contains the necessary
+// identity information for authentication.
+func WithFMIPath(path string) interface {
+	AcquireByCredentialOption
+	options.CallOption
+} {
+	return struct {
+		AcquireByCredentialOption
+		options.CallOption
+	}{
+		CallOption: options.NewCallOption(
+			func(a any) error {
+				switch t := a.(type) {
+				case *acquireTokenByCredentialOptions:
+					if t.extraBodyParameters == nil {
+						t.extraBodyParameters = make(map[string]string)
+					}
+					if t.cacheKeyComponents == nil {
+						t.cacheKeyComponents = make(map[string]string)
+					}
+					t.cacheKeyComponents["fmi_path"] = path
+					t.extraBodyParameters["fmi_path"] = path
+				default:
+					return fmt.Errorf("unexpected options type %T", a)
+				}
+				return nil
+			},
+		),
+	}
+}
+
+// WithAttribute specifies an identity attribute to include in the token request.
+// The attribute is sent as "attributes" in the request body and returned as "xmc_attr"
+// in the access token claims. This is sometimes used withFMIPath
+func WithAttribute(attrValue string) interface {
+	AcquireByCredentialOption
+	options.CallOption
+} {
+	return struct {
+		AcquireByCredentialOption
+		options.CallOption
+	}{
+		CallOption: options.NewCallOption(
+			func(a any) error {
+				switch t := a.(type) {
+				case *acquireTokenByCredentialOptions:
+					if t.extraBodyParameters == nil {
+						t.extraBodyParameters = make(map[string]string)
+					}
+					t.extraBodyParameters["attributes"] = attrValue
+				default:
+					return fmt.Errorf("unexpected options type %T", a)
+				}
+				return nil
+			},
+		),
+	}
+}
+
+// AcquireByUserFICOption is implemented by options for AcquireTokenByUserFederatedIdentityCredential.
+type AcquireByUserFICOption interface {
+	acquireByUserFICOption()
+}
+
+// acquireTokenByUserFICOptions contains optional configuration for AcquireTokenByUserFederatedIdentityCredential.
+type acquireTokenByUserFICOptions struct {
+	claims, tenantID   string
+	clientClaims       string
+	username           string
+	userObjectID       string
+	cacheKeyComponents map[string]string
+}
+
+// acquireByUserFICOption is a marker method that restricts option types to the user_fic API.
+func (acquireTokenByUserFICOptions) acquireByUserFICOption() {}
+
+// WithUserObjectID specifies the target user by their object ID (OID) for the user_fic flow.
+// This is mutually exclusive with WithUserFICUsername.
+func WithUserObjectID(oid string) interface {
+	AcquireByUserFICOption
+	options.CallOption
+} {
+	return struct {
+		AcquireByUserFICOption
+		options.CallOption
+	}{
+		CallOption: options.NewCallOption(
+			func(a any) error {
+				switch t := a.(type) {
+				case *acquireTokenByUserFICOptions:
+					t.userObjectID = oid
+				default:
+					return fmt.Errorf("unexpected options type %T", a)
+				}
+				return nil
+			},
+		),
+	}
+}
+
+// WithUserFICUsername specifies the target user by their UPN (username) for the user_fic flow.
+// This is mutually exclusive with WithUserObjectID.
+func WithUserFICUsername(username string) interface {
+	AcquireByUserFICOption
+	options.CallOption
+} {
+	return struct {
+		AcquireByUserFICOption
+		options.CallOption
+	}{
+		CallOption: options.NewCallOption(
+			func(a any) error {
+				switch t := a.(type) {
+				case *acquireTokenByUserFICOptions:
+					t.username = username
+				default:
+					return fmt.Errorf("unexpected options type %T", a)
+				}
+				return nil
+			},
+		),
+	}
+}
+
+// AcquireTokenByUserFederatedIdentityCredential acquires a user-scoped token using the user_fic grant type.
+// This exchanges a federated identity credential (assertion) for a user token, enabling an agent
+// to act on behalf of a user. The result includes an Account that can be used with
+// [Client.AcquireTokenSilent] for subsequent cached access.
+//
+// Parameters:
+//   - ctx: Context for the request.
+//   - scopes: Scopes requested for the token.
+//   - assertion: The federated identity credential (instance token) to exchange.
+//   - opts: Options including user identification (exactly one of WithUserObjectID or WithUserFICUsername
+//     is required), [WithClaims], [WithClaimsFromClient], [WithTenantID].
+//
+// Options: [WithUserObjectID], [WithUserFICUsername], [WithClaims], [WithClaimsFromClient], [WithTenantID]
+func (cca Client) AcquireTokenByUserFederatedIdentityCredential(ctx context.Context, scopes []string, assertion string, opts ...AcquireByUserFICOption) (AuthResult, error) {
+	o := acquireTokenByUserFICOptions{}
+	if err := options.ApplyOptions(&o, opts); err != nil {
+		return AuthResult{}, err
+	}
+
+	if assertion == "" {
+		return AuthResult{}, errors.New("assertion must not be empty")
+	}
+	if o.username == "" && o.userObjectID == "" {
+		return AuthResult{}, errors.New("exactly one of WithUserObjectID or WithUserFICUsername must be specified")
+	}
+	if o.username != "" && o.userObjectID != "" {
+		return AuthResult{}, errors.New("WithUserObjectID and WithUserFICUsername are mutually exclusive")
+	}
+
+	params := base.AcquireTokenByUserFICParameters{
+		Scopes:                          scopes,
+		Claims:                          o.claims,
+		ClientClaims:                    o.clientClaims,
+		Credential:                      cca.cred,
+		TenantID:                        o.tenantID,
+		UserFederatedIdentityCredential: assertion,
+		Username:                        o.username,
+		UserObjectID:                    o.userObjectID,
+		CacheKeyComponents:              o.cacheKeyComponents,
+	}
+	return cca.base.AcquireTokenByUserFIC(ctx, params)
 }

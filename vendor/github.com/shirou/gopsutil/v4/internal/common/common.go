@@ -7,6 +7,7 @@ package common
 //  - linux (amd64, arm)
 //  - freebsd (amd64)
 //  - windows (amd64)
+//  - aix (ppc64)
 
 import (
 	"bufio"
@@ -23,6 +24,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"runtime"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -290,22 +292,14 @@ func StringsHas(target []string, src string) bool {
 
 // StringsContains checks the src in any string of the target string slice
 func StringsContains(target []string, src string) bool {
-	for _, t := range target {
-		if strings.Contains(t, src) {
-			return true
-		}
-	}
-	return false
+	return slices.ContainsFunc(target, func(s string) bool {
+		return strings.Contains(s, src)
+	})
 }
 
 // IntContains checks the src in any int of the target int slice.
 func IntContains(target []int, src int) bool {
-	for _, t := range target {
-		if src == t {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(target, src)
 }
 
 // get struct attributes.
@@ -449,7 +443,7 @@ func HostRootWithContext(ctx context.Context, combineWith ...string) string {
 }
 
 // getSysctrlEnv sets LC_ALL=C in a list of env vars for use when running
-// sysctl commands (see DoSysctrl).
+// sysctl commands.
 func getSysctrlEnv(env []string) []string {
 	foundLC := false
 	for i, line := range env {
@@ -470,4 +464,12 @@ func Round(val float64, n int) float64 {
 	pow10 := math.Pow(10, float64(n))
 	// Multiply the value by pow10, round it, then divide it by pow10
 	return math.Round(val*pow10) / pow10
+}
+
+func TimeSince(ts uint64) uint64 {
+	return uint64(time.Now().Unix()) - ts
+}
+
+func TimeSinceMillis(ts uint64) uint64 {
+	return uint64(time.Now().UnixMilli()) - ts
 }

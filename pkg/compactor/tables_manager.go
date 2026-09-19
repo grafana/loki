@@ -31,7 +31,6 @@ type tablesManager struct {
 	metrics           *metrics
 
 	tableLocker *tableLocker
-	wg          sync.WaitGroup
 }
 
 func newTablesManager(
@@ -67,7 +66,7 @@ func (c *tablesManager) start(ctx context.Context) {
 	func() {
 		t := time.NewTimer(c.cfg.CompactionInterval)
 		defer t.Stop()
-		level.Info(util_log.Logger).Log("msg", fmt.Sprintf("waiting %v for ring to stay stable and previous compactions to finish before starting compactor", c.cfg.CompactionInterval))
+		level.Info(util_log.Logger).Log("msg", "waiting for ring to stay stable and previous compactions to finish before starting compactor", "duration", c.cfg.CompactionInterval)
 		select {
 		case <-ctx.Done():
 			stopped = true
@@ -130,6 +129,9 @@ func (c *tablesManager) start(ctx context.Context) {
 		}()
 
 		for _, container := range c.storeContainers {
+			if container.sweeper == nil {
+				continue
+			}
 			wg.Add(1)
 			go func(sc storeContainer) {
 				// starts the chunk sweeper
@@ -252,7 +254,7 @@ func (c *tablesManager) runCompaction(ctx context.Context, applyRetention bool) 
 			}
 		}
 		if !applyRetention && runtime > c.cfg.CompactionInterval {
-			level.Warn(util_log.Logger).Log("msg", fmt.Sprintf("last compaction took %s which is longer than the compaction interval of %s, this can lead to duplicate compactors running if not running a standalone compactor instance.", runtime, c.cfg.CompactionInterval))
+			level.Warn(util_log.Logger).Log("msg", "last compaction took longer than the compaction interval, this can lead to duplicate compactors running if not running a standalone compactor instance", "duration", runtime, "interval", c.cfg.CompactionInterval)
 		}
 	}()
 
@@ -453,8 +455,8 @@ func (c *tablesManager) ApplyStorageUpdates(ctx context.Context, iterator deleti
 			}
 		}
 
-		if err := iterator.ForEachSeries(func(labels string, chunksToDelete []string, chunksToDeIndex []string, chunksToIndex []deletion.Chunk) error {
-			return table.applyStorageUpdates(userID, labels, chunksToDelete, chunksToDeIndex, chunksToIndex)
+		if err := iterator.ForEachSeries(func(labels string, rebuiltChunks map[string]deletion.Chunk, chunksToDeIndex []string) error {
+			return table.applyStorageUpdates(userID, labels, rebuiltChunks, chunksToDeIndex)
 		}); err != nil {
 			return err
 		}

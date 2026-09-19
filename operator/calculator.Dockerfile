@@ -1,5 +1,5 @@
 # Build the calculator binary
-FROM golang:1.23.6 as builder
+FROM golang:1.26.7@sha256:dc2521c2a906db43073b8b4d99f491b6341cf15610b6ebbab187c45153f9959e as builder
 
 WORKDIR /workspace
 # Copy the Go Modules manifests

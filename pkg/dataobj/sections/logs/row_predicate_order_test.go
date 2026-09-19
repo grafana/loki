@@ -216,6 +216,16 @@ func TestGetPredicateSelectivity(t *testing.T) {
 			},
 			want: selectivityScore(0.15),
 		},
+		{
+			name:      "FalsePredicate has zero selectivity",
+			predicate: dataset.FalsePredicate{},
+			want:      noMatchSelectivity,
+		},
+		{
+			name:      "TruePredicate matches all rows",
+			predicate: dataset.TruePredicate{},
+			want:      matchAllSelectivity,
+		},
 	}
 
 	for _, tt := range tests {
@@ -359,6 +369,11 @@ func TestOrderPredicates(t *testing.T) {
 			predicates: []dataset.Predicate{andPred, equalPred2},
 			want:       []dataset.Predicate{equalPred2, andPred},
 		},
+		{
+			name:       "FalsePredicate ordered before other predicates",
+			predicates: []dataset.Predicate{equalPred1, dataset.FalsePredicate{}},
+			want:       []dataset.Predicate{dataset.FalsePredicate{}, equalPred1},
+		},
 	}
 
 	for _, tt := range tests {
@@ -390,8 +405,8 @@ type testColumn struct {
 
 func (c *testColumn) ToMemColumn(t *testing.T) *dataset.MemColumn {
 	return &dataset.MemColumn{
-		Info: dataset.ColumnInfo{
-			Name:             c.name,
+		Desc: dataset.ColumnDesc{
+			Tag:              c.name,
 			RowsCount:        c.rowCount,
 			ValuesCount:      c.valueCount,
 			UncompressedSize: c.size,

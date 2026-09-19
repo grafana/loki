@@ -91,6 +91,19 @@ func (b *Builder) DropChunk(streamID string, chk index.ChunkMeta) (bool, error) 
 	return chunkFound, nil
 }
 
+func (b *Builder) HasChunk(streamID string, chk index.ChunkMeta) (bool, error) {
+	if !b.chunksFinalized {
+		return false, fmt.Errorf("checking chunk existence is only allowed on finalized chunks")
+	}
+
+	s, ok := b.streams[streamID]
+	if !ok {
+		return false, nil
+	}
+
+	return s.chunks.HasChunk(chk), nil
+}
+
 func (b *Builder) Build(
 	ctx context.Context,
 	scratchDir string,
@@ -121,7 +134,7 @@ func (b *Builder) Build(
 		return id, err
 	}
 
-	reader, err := index.NewFileReader(tmpPath)
+	reader, err := index.NewMmapFileReader(tmpPath)
 	if err != nil {
 		return id, err
 	}
@@ -232,7 +245,7 @@ func (b *Builder) BuildInMemory(
 		return nil, nil, err
 	}
 
-	reader, err := index.NewReader(index.RealByteSlice(data))
+	reader, err := index.NewByteSliceReader(index.RealByteSlice(data))
 	if err != nil {
 		return id, nil, err
 	}

@@ -26,7 +26,7 @@ import (
 )
 
 // RecordEqual reports whether the two provided records are equal.
-func RecordEqual(left, right arrow.Record) bool {
+func RecordEqual(left, right arrow.RecordBatch) bool {
 	switch {
 	case left.NumCols() != right.NumCols():
 		return false
@@ -46,7 +46,7 @@ func RecordEqual(left, right arrow.Record) bool {
 
 // RecordApproxEqual reports whether the two provided records are approximately equal.
 // For non-floating point columns, it is equivalent to RecordEqual.
-func RecordApproxEqual(left, right arrow.Record, opts ...EqualOption) bool {
+func RecordApproxEqual(left, right arrow.RecordBatch, opts ...EqualOption) bool {
 	switch {
 	case left.NumCols() != right.NumCols():
 		return false
@@ -141,7 +141,7 @@ func ChunkedApproxEqual(left, right *arrow.Chunked, opts ...EqualOption) bool {
 		return false
 	}
 
-	var isequal bool
+	var isequal = true
 	chunkedBinaryApply(left, right, func(left arrow.Array, lbeg, lend int64, right arrow.Array, rbeg, rend int64) bool {
 		isequal = SliceApproxEqual(left, lbeg, lend, right, rbeg, rend, opts...)
 		return isequal

@@ -7,6 +7,9 @@
 package libc // import "modernc.org/libc"
 
 import (
+	"math"
+	"math/bits"
+
 	"modernc.org/libc/errno"
 	"modernc.org/libc/sys/types"
 	"modernc.org/memory"
@@ -47,7 +50,12 @@ func Xcalloc(t *TLS, n, size types.Size_t) uintptr {
 	if __ccgo_strace {
 		trc("t=%v n=%v size=%v, (%v:)", t, n, size, origin(2))
 	}
-	rq := int(n * size)
+	hi, rq0 := bits.Mul(uint(n), uint(size))
+	if hi != 0 || rq0 > math.MaxInt {
+		t.setErrno(errno.ENOMEM)
+		return 0
+	}
+	rq := int(rq0)
 	if rq == 0 {
 		rq = 1
 	}

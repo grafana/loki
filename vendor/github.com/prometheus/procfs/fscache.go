@@ -1,4 +1,4 @@
-// Copyright 2019 The Prometheus Authors
+// Copyright The Prometheus Authors
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
@@ -21,7 +21,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/prometheus/procfs/internal/util"
+	"github.com/prometheus/procfs/internal/parsers"
 )
 
 // Fscacheinfo represents fscache statistics.
@@ -229,7 +229,7 @@ type Fscacheinfo struct {
 // Fscacheinfo returns information about current fscache statistics.
 // See https://www.kernel.org/doc/Documentation/filesystems/caching/fscache.txt
 func (fs FS) Fscacheinfo() (Fscacheinfo, error) {
-	b, err := util.ReadFileNoStat(fs.proc.Path("fs/fscache/stats"))
+	b, err := parsers.ReadFileNoStat(fs.proc.Path("fs/fscache/stats"))
 	if err != nil {
 		return Fscacheinfo{}, err
 	}
@@ -388,20 +388,21 @@ func parseFscacheinfo(r io.Reader) (*Fscacheinfo, error) {
 				}
 			}
 		case "CacheOp:":
-			if strings.Split(fields[1], "=")[0] == "alo" {
+			switch strings.Split(fields[1], "=")[0] {
+			case "alo":
 				err := setFSCacheFields(fields[1:], &m.CacheopAllocationsinProgress, &m.CacheopLookupObjectInProgress,
 					&m.CacheopLookupCompleteInPorgress, &m.CacheopGrabObjectInProgress)
 				if err != nil {
 					return &m, err
 				}
-			} else if strings.Split(fields[1], "=")[0] == "inv" {
+			case "inv":
 				err := setFSCacheFields(fields[1:], &m.CacheopInvalidations, &m.CacheopUpdateObjectInProgress,
 					&m.CacheopDropObjectInProgress, &m.CacheopPutObjectInProgress, &m.CacheopAttributeChangeInProgress,
 					&m.CacheopSyncCacheInProgress)
 				if err != nil {
 					return &m, err
 				}
-			} else {
+			default:
 				err := setFSCacheFields(fields[1:], &m.CacheopReadOrAllocPageInProgress, &m.CacheopReadOrAllocPagesInProgress,
 					&m.CacheopAllocatePageInProgress, &m.CacheopAllocatePagesInProgress, &m.CacheopWritePagesInProgress,
 					&m.CacheopUncachePagesInProgress, &m.CacheopDissociatePagesInProgress)

@@ -22,68 +22,104 @@ import (
 
 // TestReader does a basic end-to-end test over a reader with a predicate applied.
 func TestReader(t *testing.T) {
-	alloc := memory.NewCheckedAllocator(memory.DefaultAllocator)
-	defer alloc.AssertSize(t, 0)
-
 	sec := buildSection(t, []logs.Record{
 		{StreamID: 2, Timestamp: unixTime(40), Metadata: labels.FromStrings("trace_id", "789012"), Line: []byte("baz qux")},
 		{StreamID: 2, Timestamp: unixTime(30), Metadata: labels.FromStrings("trace_id", "123456"), Line: []byte("foo bar")},
 		{StreamID: 1, Timestamp: unixTime(20), Metadata: labels.FromStrings("trace_id", "abcdef"), Line: []byte("goodbye, world!")},
 		{StreamID: 1, Timestamp: unixTime(10), Metadata: labels.EmptyLabels(), Line: []byte("hello, world!")},
+		{StreamID: 1, Timestamp: unixTime(5), Metadata: labels.FromStrings("trace_id", "abcdef", "foo", ""), Line: []byte("")},
 	})
 
 	var (
 		streamID = sec.Columns()[0]
-		traceID  = sec.Columns()[2]
-		message  = sec.Columns()[3]
+		foo      = sec.Columns()[2]
+		traceID  = sec.Columns()[3]
+		message  = sec.Columns()[4]
 	)
 
 	require.Equal(t, "", streamID.Name)
 	require.Equal(t, logs.ColumnTypeStreamID, streamID.Type)
 	require.Equal(t, "trace_id", traceID.Name)
 	require.Equal(t, logs.ColumnTypeMetadata, traceID.Type)
+	require.Equal(t, "foo", foo.Name)
+	require.Equal(t, logs.ColumnTypeMetadata, foo.Type)
 	require.Equal(t, "", message.Name)
 	require.Equal(t, logs.ColumnTypeMessage, message.Type)
 
-	r := logs.NewReader(logs.ReaderOptions{
-		Columns:   []*logs.Column{streamID, traceID, message},
-		Allocator: alloc,
-		Predicates: []logs.Predicate{
-			logs.FuncPredicate{
-				Column: traceID,
-				Keep: func(_ *logs.Column, value scalar.Scalar) bool {
-					if !value.IsValid() {
-						return false
-					}
-
-					bb := value.(*scalar.String).Value.Bytes()
-					return bytes.Equal(bb, []byte("abcdef")) || bytes.Equal(bb, []byte("123456"))
-				},
-			},
-			logs.InPredicate{
-				Column: streamID,
-				Values: []scalar.Scalar{
-					scalar.NewInt64Scalar(1),
-					scalar.NewInt64Scalar(2),
-				},
+	for _, tt := range []struct {
+		name     string
+		columns  []*logs.Column
+		expected arrowtest.Rows
+	}{
+		{
+			name:    "basic reads with predicate",
+			columns: []*logs.Column{streamID, traceID, foo, message},
+			expected: arrowtest.Rows{
+				{"stream_id.int64": int64(1), "foo.metadata.utf8": nil, "trace_id.metadata.utf8": "abcdef", "message.utf8": "goodbye, world!"},
+				{"stream_id.int64": int64(1), "foo.metadata.utf8": "", "trace_id.metadata.utf8": "abcdef", "message.utf8": ""},
+				{"stream_id.int64": int64(2), "foo.metadata.utf8": nil, "trace_id.metadata.utf8": "123456", "message.utf8": "foo bar"},
 			},
 		},
+		// tests that the reader evaluates predicates correctly even when predicate columns are not projected.
+		{
+			name:    "reads with predicate columns that are not projected",
+			columns: []*logs.Column{streamID, message},
+			expected: arrowtest.Rows{
+				{"stream_id.int64": int64(1), "message.utf8": "goodbye, world!"},
+				{"stream_id.int64": int64(1), "message.utf8": ""},
+				{"stream_id.int64": int64(2), "message.utf8": "foo bar"},
+			},
+		},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			r := logs.NewReader(logs.ReaderOptions{
+				Columns:   tt.columns,
+				Allocator: memory.DefaultAllocator,
+				Predicates: []logs.Predicate{
+					logs.FuncPredicate{
+						Column: traceID,
+						Keep: func(_ *logs.Column, value scalar.Scalar) bool {
+							if !value.IsValid() {
+								return false
+							}
+
+							bb := value.(*scalar.String).Value.Bytes()
+							return bytes.Equal(bb, []byte("abcdef")) || bytes.Equal(bb, []byte("123456"))
+						},
+					},
+					logs.InPredicate{
+						Column: streamID,
+						Values: []scalar.Scalar{
+							scalar.NewInt64Scalar(1),
+							scalar.NewInt64Scalar(2),
+						},
+					},
+				},
+			})
+
+			actualTable, err := readTable(context.Background(), r)
+			require.NoError(t, err)
+
+			actual, err := arrowtest.TableRows(memory.DefaultAllocator, actualTable)
+			require.NoError(t, err, "failed to get rows from table")
+			require.Equal(t, tt.expected, actual)
+		})
+	}
+}
+
+func TestReader_ReadBeforeOpen(t *testing.T) {
+	sec := buildSection(t, []logs.Record{
+		{StreamID: 1, Timestamp: unixTime(10), Line: []byte("hello")},
 	})
 
-	expect := arrowtest.Rows{
-		{"stream_id.int64": int64(2), "trace_id.metadata.utf8": "123456", "message.utf8": "foo bar"},
-		{"stream_id.int64": int64(1), "trace_id.metadata.utf8": "abcdef", "message.utf8": "goodbye, world!"},
-	}
+	r := logs.NewReader(logs.ReaderOptions{
+		Columns:   sec.Columns(),
+		Allocator: memory.DefaultAllocator,
+	})
 
-	actualTable, err := readTable(context.Background(), r)
-	if actualTable != nil {
-		defer actualTable.Release()
-	}
-	require.NoError(t, err)
-
-	actual, err := arrowtest.TableRows(alloc, actualTable)
-	require.NoError(t, err, "failed to get rows from table")
-	require.Equal(t, expect, actual)
+	rec, err := r.Read(context.Background(), 128)
+	require.Nil(t, rec)
+	require.ErrorContains(t, err, "reader not opened")
 }
 
 func buildSection(t *testing.T, recs []logs.Record) *logs.Section {
@@ -93,13 +129,14 @@ func buildSection(t *testing.T, recs []logs.Record) *logs.Section {
 		PageSizeHint:     8192,
 		BufferSize:       4192,
 		StripeMergeLimit: 2,
+		SortOrder:        logs.SortStreamASC,
 	})
 
 	for _, rec := range recs {
 		sectionBuilder.Append(rec)
 	}
 
-	objectBuilder := dataobj.NewBuilder()
+	objectBuilder := dataobj.NewBuilder(nil)
 	require.NoError(t, objectBuilder.Append(sectionBuilder))
 
 	obj, closer, err := objectBuilder.Flush()
@@ -114,7 +151,10 @@ func buildSection(t *testing.T, recs []logs.Record) *logs.Section {
 func unixTime(sec int64) time.Time { return time.Unix(sec, 0) }
 
 func readTable(ctx context.Context, r *logs.Reader) (arrow.Table, error) {
-	var recs []arrow.Record
+	var recs []arrow.RecordBatch
+	if err := r.Open(ctx); err != nil {
+		return nil, err
+	}
 
 	for {
 		rec, err := r.Read(ctx, 128)
@@ -122,7 +162,6 @@ func readTable(ctx context.Context, r *logs.Reader) (arrow.Table, error) {
 			if rec.NumRows() > 0 {
 				recs = append(recs, rec)
 			}
-			defer rec.Release()
 		}
 
 		if err != nil && errors.Is(err, io.EOF) {

@@ -8,8 +8,6 @@ package ptrace
 
 import (
 	"go.opentelemetry.io/collector/pdata/internal"
-	otlptrace "go.opentelemetry.io/collector/pdata/internal/data/protogen/trace/v1"
-	"go.opentelemetry.io/collector/pdata/internal/json"
 	"go.opentelemetry.io/collector/pdata/pcommon"
 )
 
@@ -22,11 +20,11 @@ import (
 // Must use NewSpanEvent function to create new instances.
 // Important: zero-initialized instance is not valid for use.
 type SpanEvent struct {
-	orig  *otlptrace.Span_Event
+	orig  *internal.SpanEvent
 	state *internal.State
 }
 
-func newSpanEvent(orig *otlptrace.Span_Event, state *internal.State) SpanEvent {
+func newSpanEvent(orig *internal.SpanEvent, state *internal.State) SpanEvent {
 	return SpanEvent{orig: orig, state: state}
 }
 
@@ -35,8 +33,7 @@ func newSpanEvent(orig *otlptrace.Span_Event, state *internal.State) SpanEvent {
 // This must be used only in testing code. Users should use "AppendEmpty" when part of a Slice,
 // OR directly access the member if this is embedded in another struct.
 func NewSpanEvent() SpanEvent {
-	state := internal.StateMutable
-	return newSpanEvent(&otlptrace.Span_Event{}, &state)
+	return newSpanEvent(internal.NewSpanEvent(), internal.NewState())
 }
 
 // MoveTo moves all properties from the current struct overriding the destination and
@@ -48,8 +45,8 @@ func (ms SpanEvent) MoveTo(dest SpanEvent) {
 	if ms.orig == dest.orig {
 		return
 	}
-	*dest.orig = *ms.orig
-	*ms.orig = otlptrace.Span_Event{}
+	internal.DeleteSpanEvent(dest.orig, false)
+	*dest.orig, *ms.orig = *ms.orig, *dest.orig
 }
 
 // Timestamp returns the timestamp associated with this SpanEvent.
@@ -76,7 +73,7 @@ func (ms SpanEvent) SetName(v string) {
 
 // Attributes returns the Attributes associated with this SpanEvent.
 func (ms SpanEvent) Attributes() pcommon.Map {
-	return pcommon.Map(internal.NewMap(&ms.orig.Attributes, ms.state))
+	return pcommon.Map(internal.NewMapWrapper(&ms.orig.Attributes, ms.state))
 }
 
 // DroppedAttributesCount returns the droppedattributescount associated with this SpanEvent.
@@ -93,34 +90,5 @@ func (ms SpanEvent) SetDroppedAttributesCount(v uint32) {
 // CopyTo copies all properties from the current struct overriding the destination.
 func (ms SpanEvent) CopyTo(dest SpanEvent) {
 	dest.state.AssertMutable()
-	copyOrigSpanEvent(dest.orig, ms.orig)
-}
-
-// marshalJSONStream marshals all properties from the current struct to the destination stream.
-func (ms SpanEvent) marshalJSONStream(dest *json.Stream) {
-	dest.WriteObjectStart()
-	if ms.orig.TimeUnixNano != 0 {
-		dest.WriteObjectField("timeUnixNano")
-		dest.WriteUint64(ms.orig.TimeUnixNano)
-	}
-	if ms.orig.Name != "" {
-		dest.WriteObjectField("name")
-		dest.WriteString(ms.orig.Name)
-	}
-	if len(ms.orig.Attributes) > 0 {
-		dest.WriteObjectField("attributes")
-		internal.MarshalJSONStreamMap(internal.NewMap(&ms.orig.Attributes, ms.state), dest)
-	}
-	if ms.orig.DroppedAttributesCount != uint32(0) {
-		dest.WriteObjectField("droppedAttributesCount")
-		dest.WriteUint32(ms.orig.DroppedAttributesCount)
-	}
-	dest.WriteObjectEnd()
-}
-
-func copyOrigSpanEvent(dest, src *otlptrace.Span_Event) {
-	dest.TimeUnixNano = src.TimeUnixNano
-	dest.Name = src.Name
-	dest.Attributes = internal.CopyOrigMap(dest.Attributes, src.Attributes)
-	dest.DroppedAttributesCount = src.DroppedAttributesCount
+	internal.CopySpanEvent(dest.orig, ms.orig)
 }

@@ -8,9 +8,6 @@ package ptrace
 
 import (
 	"go.opentelemetry.io/collector/pdata/internal"
-	"go.opentelemetry.io/collector/pdata/internal/data"
-	otlptrace "go.opentelemetry.io/collector/pdata/internal/data/protogen/trace/v1"
-	"go.opentelemetry.io/collector/pdata/internal/json"
 	"go.opentelemetry.io/collector/pdata/pcommon"
 )
 
@@ -24,11 +21,11 @@ import (
 // Must use NewSpanLink function to create new instances.
 // Important: zero-initialized instance is not valid for use.
 type SpanLink struct {
-	orig  *otlptrace.Span_Link
+	orig  *internal.SpanLink
 	state *internal.State
 }
 
-func newSpanLink(orig *otlptrace.Span_Link, state *internal.State) SpanLink {
+func newSpanLink(orig *internal.SpanLink, state *internal.State) SpanLink {
 	return SpanLink{orig: orig, state: state}
 }
 
@@ -37,8 +34,7 @@ func newSpanLink(orig *otlptrace.Span_Link, state *internal.State) SpanLink {
 // This must be used only in testing code. Users should use "AppendEmpty" when part of a Slice,
 // OR directly access the member if this is embedded in another struct.
 func NewSpanLink() SpanLink {
-	state := internal.StateMutable
-	return newSpanLink(&otlptrace.Span_Link{}, &state)
+	return newSpanLink(internal.NewSpanLink(), internal.NewState())
 }
 
 // MoveTo moves all properties from the current struct overriding the destination and
@@ -50,8 +46,8 @@ func (ms SpanLink) MoveTo(dest SpanLink) {
 	if ms.orig == dest.orig {
 		return
 	}
-	*dest.orig = *ms.orig
-	*ms.orig = otlptrace.Span_Link{}
+	internal.DeleteSpanLink(dest.orig, false)
+	*dest.orig, *ms.orig = *ms.orig, *dest.orig
 }
 
 // TraceID returns the traceid associated with this SpanLink.
@@ -62,7 +58,7 @@ func (ms SpanLink) TraceID() pcommon.TraceID {
 // SetTraceID replaces the traceid associated with this SpanLink.
 func (ms SpanLink) SetTraceID(v pcommon.TraceID) {
 	ms.state.AssertMutable()
-	ms.orig.TraceId = data.TraceID(v)
+	ms.orig.TraceId = internal.TraceID(v)
 }
 
 // SpanID returns the spanid associated with this SpanLink.
@@ -73,28 +69,17 @@ func (ms SpanLink) SpanID() pcommon.SpanID {
 // SetSpanID replaces the spanid associated with this SpanLink.
 func (ms SpanLink) SetSpanID(v pcommon.SpanID) {
 	ms.state.AssertMutable()
-	ms.orig.SpanId = data.SpanID(v)
+	ms.orig.SpanId = internal.SpanID(v)
 }
 
 // TraceState returns the tracestate associated with this SpanLink.
 func (ms SpanLink) TraceState() pcommon.TraceState {
-	return pcommon.TraceState(internal.NewTraceState(&ms.orig.TraceState, ms.state))
-}
-
-// Flags returns the flags associated with this SpanLink.
-func (ms SpanLink) Flags() uint32 {
-	return ms.orig.Flags
-}
-
-// SetFlags replaces the flags associated with this SpanLink.
-func (ms SpanLink) SetFlags(v uint32) {
-	ms.state.AssertMutable()
-	ms.orig.Flags = v
+	return pcommon.TraceState(internal.NewTraceStateWrapper(&ms.orig.TraceState, ms.state))
 }
 
 // Attributes returns the Attributes associated with this SpanLink.
 func (ms SpanLink) Attributes() pcommon.Map {
-	return pcommon.Map(internal.NewMap(&ms.orig.Attributes, ms.state))
+	return pcommon.Map(internal.NewMapWrapper(&ms.orig.Attributes, ms.state))
 }
 
 // DroppedAttributesCount returns the droppedattributescount associated with this SpanLink.
@@ -108,47 +93,19 @@ func (ms SpanLink) SetDroppedAttributesCount(v uint32) {
 	ms.orig.DroppedAttributesCount = v
 }
 
+// Flags returns the flags associated with this SpanLink.
+func (ms SpanLink) Flags() uint32 {
+	return ms.orig.Flags
+}
+
+// SetFlags replaces the flags associated with this SpanLink.
+func (ms SpanLink) SetFlags(v uint32) {
+	ms.state.AssertMutable()
+	ms.orig.Flags = v
+}
+
 // CopyTo copies all properties from the current struct overriding the destination.
 func (ms SpanLink) CopyTo(dest SpanLink) {
 	dest.state.AssertMutable()
-	copyOrigSpanLink(dest.orig, ms.orig)
-}
-
-// marshalJSONStream marshals all properties from the current struct to the destination stream.
-func (ms SpanLink) marshalJSONStream(dest *json.Stream) {
-	dest.WriteObjectStart()
-	if ms.orig.TraceId != data.TraceID([16]byte{}) {
-		dest.WriteObjectField("traceId")
-		ms.orig.TraceId.MarshalJSONStream(dest)
-	}
-	if ms.orig.SpanId != data.SpanID([8]byte{}) {
-		dest.WriteObjectField("spanId")
-		ms.orig.SpanId.MarshalJSONStream(dest)
-	}
-	if ms.orig.TraceState != "" {
-		dest.WriteObjectField("traceState")
-		internal.MarshalJSONStreamTraceState(internal.NewTraceState(&ms.orig.TraceState, ms.state), dest)
-	}
-	if ms.orig.Flags != uint32(0) {
-		dest.WriteObjectField("flags")
-		dest.WriteUint32(ms.orig.Flags)
-	}
-	if len(ms.orig.Attributes) > 0 {
-		dest.WriteObjectField("attributes")
-		internal.MarshalJSONStreamMap(internal.NewMap(&ms.orig.Attributes, ms.state), dest)
-	}
-	if ms.orig.DroppedAttributesCount != uint32(0) {
-		dest.WriteObjectField("droppedAttributesCount")
-		dest.WriteUint32(ms.orig.DroppedAttributesCount)
-	}
-	dest.WriteObjectEnd()
-}
-
-func copyOrigSpanLink(dest, src *otlptrace.Span_Link) {
-	dest.TraceId = src.TraceId
-	dest.SpanId = src.SpanId
-	internal.CopyOrigTraceState(&dest.TraceState, &src.TraceState)
-	dest.Flags = src.Flags
-	dest.Attributes = internal.CopyOrigMap(dest.Attributes, src.Attributes)
-	dest.DroppedAttributesCount = src.DroppedAttributesCount
+	internal.CopySpanLink(dest.orig, ms.orig)
 }

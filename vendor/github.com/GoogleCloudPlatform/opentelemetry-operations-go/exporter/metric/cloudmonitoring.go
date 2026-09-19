@@ -12,12 +12,19 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+// Package metric provides an OpenTelemetry metric exporter for Google Cloud Monitoring.
+//
+// Deprecated: Google Cloud OpenTelemetry Monitoring exporter for Go is deprecated and will be archived after January 1st, 2027.
+// Please migrate to the OpenTelemetry OTLP exporters. For migration details, see
+// https://github.com/GoogleCloudPlatform/opentelemetry-operations-go/blob/main/MIGRATION.md
 package metric
 
 import (
 	"context"
 	"errors"
 	"fmt"
+	"log"
+	"sync"
 
 	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
 
@@ -25,8 +32,21 @@ import (
 	"golang.org/x/oauth2/google"
 )
 
+var logDeprecatedOnce sync.Once
+
+func logDeprecated() {
+	logDeprecatedOnce.Do(func() {
+		log.Println("Google Cloud OpenTelemetry Monitoring exporter for Go is deprecated and will be archived after January 1st, 2027. Please migrate to the OpenTelemetry OTLP exporters. For migration details, see https://github.com/GoogleCloudPlatform/opentelemetry-operations-go/blob/main/MIGRATION.md")
+	})
+}
+
 // New creates a new Exporter thats implements metric.Exporter.
+//
+// Deprecated: Google Cloud OpenTelemetry Monitoring exporter for Go is deprecated and will be archived after January 1st, 2027.
+// Please migrate to the OpenTelemetry OTLP exporters. For migration details, see
+// https://github.com/GoogleCloudPlatform/opentelemetry-operations-go/blob/main/MIGRATION.md
 func New(opts ...Option) (sdkmetric.Exporter, error) {
+	logDeprecated()
 	o := options{
 		context:                 context.Background(),
 		resourceAttributeFilter: DefaultResourceAttributesFilter,

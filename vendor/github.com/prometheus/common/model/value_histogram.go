@@ -67,11 +67,11 @@ func (s HistogramBucket) MarshalJSON() ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	return []byte(fmt.Sprintf("[%s,%s,%s,%s]", b, l, u, c)), nil
+	return fmt.Appendf(nil, "[%s,%s,%s,%s]", b, l, u, c), nil
 }
 
 func (s *HistogramBucket) UnmarshalJSON(buf []byte) error {
-	tmp := []interface{}{&s.Boundaries, &s.Lower, &s.Upper, &s.Count}
+	tmp := []any{&s.Boundaries, &s.Lower, &s.Upper, &s.Count}
 	wantLen := len(tmp)
 	if err := json.Unmarshal(buf, &tmp); err != nil {
 		return err
@@ -86,22 +86,22 @@ func (s *HistogramBucket) Equal(o *HistogramBucket) bool {
 	return s == o || (s.Boundaries == o.Boundaries && s.Lower == o.Lower && s.Upper == o.Upper && s.Count == o.Count)
 }
 
-func (b HistogramBucket) String() string {
+func (s HistogramBucket) String() string {
 	var sb strings.Builder
-	lowerInclusive := b.Boundaries == 1 || b.Boundaries == 3
-	upperInclusive := b.Boundaries == 0 || b.Boundaries == 3
+	lowerInclusive := s.Boundaries == 1 || s.Boundaries == 3
+	upperInclusive := s.Boundaries == 0 || s.Boundaries == 3
 	if lowerInclusive {
 		sb.WriteRune('[')
 	} else {
 		sb.WriteRune('(')
 	}
-	fmt.Fprintf(&sb, "%g,%g", b.Lower, b.Upper)
+	fmt.Fprintf(&sb, "%g,%g", s.Lower, s.Upper)
 	if upperInclusive {
 		sb.WriteRune(']')
 	} else {
 		sb.WriteRune(')')
 	}
-	fmt.Fprintf(&sb, ":%v", b.Count)
+	fmt.Fprintf(&sb, ":%v", s.Count)
 	return sb.String()
 }
 
@@ -152,11 +152,11 @@ func (s SampleHistogramPair) MarshalJSON() ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	return []byte(fmt.Sprintf("[%s,%s]", t, v)), nil
+	return fmt.Appendf(nil, "[%s,%s]", t, v), nil
 }
 
 func (s *SampleHistogramPair) UnmarshalJSON(buf []byte) error {
-	tmp := []interface{}{&s.Timestamp, &s.Histogram}
+	tmp := []any{&s.Timestamp, &s.Histogram}
 	wantLen := len(tmp)
 	if err := json.Unmarshal(buf, &tmp); err != nil {
 		return err

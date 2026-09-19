@@ -1,6 +1,3 @@
-//go:build go1.18
-// +build go1.18
-
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License. See License.txt in the project root for license information.
 
@@ -26,20 +23,22 @@ const (
 )
 
 const (
-	HeaderAuthorization     = "Authorization"
-	HeaderXmsDate           = "x-ms-date"
-	HeaderContentLength     = "Content-Length"
-	HeaderContentEncoding   = "Content-Encoding"
-	HeaderContentLanguage   = "Content-Language"
-	HeaderContentType       = "Content-Type"
-	HeaderContentMD5        = "Content-MD5"
-	HeaderIfModifiedSince   = "If-Modified-Since"
-	HeaderIfMatch           = "If-Match"
-	HeaderIfNoneMatch       = "If-None-Match"
-	HeaderIfUnmodifiedSince = "If-Unmodified-Since"
-	HeaderRange             = "Range"
-	HeaderXmsVersion        = "x-ms-version"
-	HeaderXmsRequestID      = "x-ms-request-id"
+	HeaderAuthorization      = "Authorization"
+	HeaderXmsDate            = "x-ms-date"
+	HeaderContentLength      = "Content-Length"
+	HeaderContentEncoding    = "Content-Encoding"
+	HeaderContentLanguage    = "Content-Language"
+	HeaderContentType        = "Content-Type"
+	HeaderContentMD5         = "Content-MD5"
+	HeaderIfModifiedSince    = "If-Modified-Since"
+	HeaderIfMatch            = "If-Match"
+	HeaderIfNoneMatch        = "If-None-Match"
+	HeaderIfUnmodifiedSince  = "If-Unmodified-Since"
+	HeaderRange              = "Range"
+	HeaderXmsVersion         = "x-ms-version"
+	HeaderXmsRequestID       = "x-ms-request-id"
+	HeaderXmsClientRequestID = "x-ms-client-request-id"
+	HeaderDate               = "Date"
 )
 
 const crc64Polynomial uint64 = 0x9A6C9329AC4BC9B5
@@ -231,11 +230,11 @@ func GetClientOptions[T any](o *T) *T {
 // http(s)://IP(:port)/storageaccount/container/...
 // As url's Host property, host could be both host or host:port
 func IsIPEndpointStyle(host string) bool {
-	if host == "" {
-		return false
-	}
 	if h, _, err := net.SplitHostPort(host); err == nil {
 		host = h
+	}
+	if host == "" {
+		return false
 	}
 	// For IPv6, there could be case where SplitHostPort fails for cannot finding port.
 	// In this case, eliminate the '[' and ']' in the URL.

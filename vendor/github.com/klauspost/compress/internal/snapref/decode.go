@@ -31,7 +31,7 @@ func DecodedLen(src []byte) (int, error) {
 // that the length header occupied.
 func decodedLen(src []byte) (blockLen, headerLen int, err error) {
 	v, n := binary.Uvarint(src)
-	if n <= 0 || v > 0xffffffff {
+	if n <= 0 || n > 5 || v > 0xffffffff {
 		return 0, 0, ErrCorrupt
 	}
 
@@ -209,7 +209,7 @@ func (r *Reader) fill() error {
 			if !r.readFull(r.buf[:len(magicBody)], false) {
 				return r.err
 			}
-			for i := 0; i < len(magicBody); i++ {
+			for i := range len(magicBody) {
 				if r.buf[i] != magicBody[i] {
 					r.err = ErrCorrupt
 					return r.err

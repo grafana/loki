@@ -1,10 +1,7 @@
 package pattern
 
 import (
-	"fmt"
-
 	"github.com/go-kit/log/level"
-	"github.com/prometheus/common/model"
 
 	"github.com/grafana/loki/v3/pkg/util"
 )
@@ -32,21 +29,6 @@ func (i *Ingester) flush(mayRemoveStreams bool) {
 
 	i.flushQueuesDone.Wait()
 	level.Debug(i.logger).Log("msg", "flush queues have drained")
-}
-
-type flushOp struct {
-	from      model.Time
-	userID    string
-	fp        model.Fingerprint
-	immediate bool
-}
-
-func (o *flushOp) Key() string {
-	return fmt.Sprintf("%s-%s-%v", o.userID, o.fp, o.immediate)
-}
-
-func (o *flushOp) Priority() int64 {
-	return -int64(o.from)
 }
 
 // sweepUsers periodically schedules series for flushing and garbage collects users with no series

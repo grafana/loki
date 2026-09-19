@@ -6,7 +6,6 @@ package bidi
 
 import (
 	"fmt"
-	"log"
 )
 
 // This implementation is a port based on the reference implementation found at:
@@ -248,7 +247,7 @@ func (p *paragraph) determineParagraphEmbeddingLevel(start, end int) level {
 		} else if t.in(FSI, LRI, RLI) {
 			i = p.matchingPDI[i] // skip over to the matching PDI
 			if i > end {
-				log.Panic("assert (i <= end)")
+				panic("assert (i <= end)")
 			}
 		}
 	}
@@ -427,13 +426,6 @@ type isolatingRunSequence struct {
 
 func (i *isolatingRunSequence) Len() int { return len(i.indexes) }
 
-func maxLevel(a, b level) level {
-	if a > b {
-		return a
-	}
-	return b
-}
-
 // Rule X10, second bullet: Determine the start-of-sequence (sos) and end-of-sequence (eos) types,
 // either L or R, for each isolating run sequence.
 func (p *paragraph) isolatingRunSequence(indexes []int) *isolatingRunSequence {
@@ -474,8 +466,8 @@ func (p *paragraph) isolatingRunSequence(indexes []int) *isolatingRunSequence {
 		indexes: indexes,
 		types:   types,
 		level:   level,
-		sos:     typeForLevel(maxLevel(prevLevel, level)),
-		eos:     typeForLevel(maxLevel(succLevel, level)),
+		sos:     typeForLevel(max(prevLevel, level)),
+		eos:     typeForLevel(max(succLevel, level)),
 	}
 }
 
@@ -736,7 +728,7 @@ loop:
 				continue loop
 			}
 		}
-		log.Panicf("invalid bidi code %v present in assertOnly at position %d", t, s.indexes[i])
+		panic(fmt.Errorf("invalid bidi code %v present in assertOnly at position %d", t, s.indexes[i]))
 	}
 }
 

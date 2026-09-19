@@ -32,7 +32,7 @@ gateway auth secret name
 gateway Docker image
 */}}
 {{- define "loki.gatewayImage" -}}
-{{- $dict := dict "service" .Values.gateway.image "global" .Values.global.image -}}
+{{- $dict := dict "service" .Values.gateway.image "global" .Values.global -}}
 {{- include "loki.baseImage" $dict -}}
 {{- end }}
 

@@ -6,6 +6,7 @@ import (
 	smithybearer "github.com/aws/smithy-go/auth/bearer"
 	"github.com/aws/smithy-go/logging"
 	"github.com/aws/smithy-go/middleware"
+	smithyhttp "github.com/aws/smithy-go/transport/http"
 )
 
 // HTTPClient provides the interface to provide custom HTTPClients. Generally
@@ -163,6 +164,14 @@ type Config struct {
 	// the shared config profile attribute request_min_compression_size_bytes
 	RequestMinCompressSizeBytes int64
 
+	// DisableClockSkewCorrection turns off SDK clock skew correction. When set
+	// the SDK will not adjust request signing timestamps to compensate for
+	// drift between the client and service clocks. Set to false (enabled) by
+	// default. This variable is sourced from the environment variable
+	// AWS_DISABLE_CLOCK_SKEW_CORRECTION or the shared config profile attribute
+	// disable_clock_skew_correction.
+	DisableClockSkewCorrection bool
+
 	// Controls how a resolved AWS account ID is handled for endpoint routing.
 	AccountIDEndpointMode AccountIDEndpointMode
 
@@ -192,6 +201,21 @@ type Config struct {
 	// This variable is sourced from environment variable AWS_RESPONSE_CHECKSUM_VALIDATION or
 	// the shared config profile attribute "response_checksum_validation".
 	ResponseChecksumValidation ResponseChecksumValidation
+
+	// Registry of HTTP interceptors.
+	Interceptors smithyhttp.InterceptorRegistry
+
+	// Priority list of preferred auth scheme IDs.
+	AuthSchemePreference []string
+
+	// ServiceOptions provides service specific configuration options that will be applied
+	// when constructing clients for specific services. Each callback function receives the service ID
+	// and the service's Options struct, allowing for dynamic configuration based on the service.
+	ServiceOptions []func(string, any)
+
+	// Controls whether the SDK restricts file permissions on credential
+	// cache files it creates.
+	RestrictFilePermissions RestrictFilePermissions
 }
 
 // NewConfig returns a new Config pointer that can be chained with builder

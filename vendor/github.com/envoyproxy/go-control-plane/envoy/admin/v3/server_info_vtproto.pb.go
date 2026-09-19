@@ -50,6 +50,16 @@ func (m *ServerInfo) MarshalToSizedBufferVTStrict(dAtA []byte) (int, error) {
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
 	}
+	if m.HotRestartInitializing {
+		i--
+		if m.HotRestartInitializing {
+			dAtA[i] = 1
+		} else {
+			dAtA[i] = 0
+		}
+		i--
+		dAtA[i] = 0x40
+	}
 	if m.Node != nil {
 		if vtmsg, ok := interface{}(m.Node).(interface {
 			MarshalToSizedBufferVTStrict([]byte) (int, error)
@@ -153,6 +163,25 @@ func (m *CommandLineOptions) MarshalToSizedBufferVTStrict(dAtA []byte) (int, err
 	if m.unknownFields != nil {
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
+	}
+	if m.LogStacktraceSingleEntry {
+		i--
+		if m.LogStacktraceSingleEntry {
+			dAtA[i] = 1
+		} else {
+			dAtA[i] = 0
+		}
+		i--
+		dAtA[i] = 0x2
+		i--
+		dAtA[i] = 0xd8
+	}
+	if m.FileFlushMinSize != 0 {
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.FileFlushMinSize))
+		i--
+		dAtA[i] = 0x2
+		i--
+		dAtA[i] = 0xd0
 	}
 	if m.SkipDeprecatedLogs {
 		i--
@@ -539,6 +568,9 @@ func (m *ServerInfo) SizeVT() (n int) {
 		}
 		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
 	}
+	if m.HotRestartInitializing {
+		n += 2
+	}
 	n += len(m.unknownFields)
 	return n
 }
@@ -679,6 +711,12 @@ func (m *CommandLineOptions) SizeVT() (n int) {
 		n += 3
 	}
 	if m.SkipDeprecatedLogs {
+		n += 3
+	}
+	if m.FileFlushMinSize != 0 {
+		n += 2 + protohelpers.SizeOfVarint(uint64(m.FileFlushMinSize))
+	}
+	if m.LogStacktraceSingleEntry {
 		n += 3
 	}
 	n += len(m.unknownFields)

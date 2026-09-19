@@ -1,6 +1,8 @@
 package quartz
 
-import "time"
+import (
+	"time"
+)
 
 // The Timer type represents a single event. When the Timer expires, the current time will be sent
 // on C, unless the Timer was created by AfterFunc. A Timer must be created with NewTimer or
@@ -14,14 +16,43 @@ type Timer struct {
 	mock    *Mock       // mock clock, if set
 	fn      func()      // AfterFunc function, if set
 	stopped bool        // True if stopped, false if running
+
+	// As of Go 1.23, timer channels are unbuffered and guaranteed to block forever after a call to stop.
+	//
+	// When a mocked timer fires, we don't want to block on a channel write, because it's fine for the code under test
+	// not to be reading. That means we need to start a new goroutine to do the channel write if we are a channel-based
+	// timer.
+	//
+	// They also are not supposed to leak even if they are never read or stopped (Go runtime can garbage collect them).
+	// We can't garbage-collect because we can't check if any other code besides the mock references, but we can ensure
+	// that we don't leak goroutines so that the garbage collector can do its job when the mock is no longer
+	// referenced. The channels below allow us to interrupt the channel write goroutine.
+	interrupt chan struct{}
 }
 
 func (t *Timer) fire(tt time.Time) {
-	t.mock.removeTimer(t)
+	t.mock.mu.Lock()
+	t.mock.removeTimerLocked(t)
 	if t.fn != nil {
+		t.mock.mu.Unlock()
 		t.fn()
+		return
 	} else {
-		t.c <- tt
+		interrupt := make(chan struct{})
+		// Prevents the goroutine from leaking beyond the test. Side effect is that timer channels cannot be read
+		// after the test exits.
+		t.mock.tb.Cleanup(func() {
+			<-interrupt
+		})
+		t.interrupt = interrupt
+		t.mock.mu.Unlock()
+		go func() {
+			defer close(interrupt)
+			select {
+			case t.c <- tt:
+			case interrupt <- struct{}{}:
+			}
+		}()
 	}
 }
 
@@ -45,6 +76,11 @@ func (t *Timer) Stop(tags ...string) bool {
 	defer close(c.complete)
 	result := !t.stopped
 	t.mock.removeTimerLocked(t)
+	// check if we've already fired, and if so, interrupt it.
+	if t.interrupt != nil {
+		<-t.interrupt
+		t.interrupt = nil
+	}
 	return result
 }
 
@@ -62,9 +98,10 @@ func (t *Timer) Reset(d time.Duration, tags ...string) bool {
 	t.mock.matchCallLocked(c)
 	defer close(c.complete)
 	result := !t.stopped
-	select {
-	case <-t.c:
-	default:
+	// check if we've already fired, and if so, interrupt it.
+	if t.interrupt != nil {
+		<-t.interrupt
+		t.interrupt = nil
 	}
 	if d <= 0 {
 		// zero or negative duration timer means we should immediately re-fire

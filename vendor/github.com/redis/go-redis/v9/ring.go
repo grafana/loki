@@ -5,22 +5,27 @@ import (
 	"crypto/tls"
 	"errors"
 	"fmt"
+	"math/rand"
 	"net"
 	"strconv"
 	"sync"
 	"sync/atomic"
 	"time"
 
-	"github.com/cespare/xxhash/v2"
-	"github.com/dgryski/go-rendezvous" //nolint
-
+	"github.com/redis/go-redis/v9/auth"
 	"github.com/redis/go-redis/v9/internal"
 	"github.com/redis/go-redis/v9/internal/hashtag"
 	"github.com/redis/go-redis/v9/internal/pool"
-	"github.com/redis/go-redis/v9/internal/rand"
+	"github.com/redis/go-redis/v9/internal/proto"
 )
 
 var errRingShardsDown = errors.New("redis: all ring shards are down")
+
+// defaultHeartbeatFn is the default function used to check the shard liveness
+var defaultHeartbeatFn = func(ctx context.Context, client *Client) bool {
+	err := client.Ping(ctx).Err()
+	return err == nil || err == pool.ErrPoolTimeout
+}
 
 //------------------------------------------------------------------------------
 
@@ -28,16 +33,8 @@ type ConsistentHash interface {
 	Get(string) string
 }
 
-type rendezvousWrapper struct {
-	*rendezvous.Rendezvous
-}
-
-func (w rendezvousWrapper) Get(key string) string {
-	return w.Lookup(key)
-}
-
 func newRendezvous(shards []string) ConsistentHash {
-	return rendezvousWrapper{rendezvous.New(shards, xxhash.Sum64String)}
+	return hashtag.NewRendezvousHash(shards)
 }
 
 //------------------------------------------------------------------------------
@@ -51,12 +48,20 @@ type RingOptions struct {
 	// NewClient creates a shard client with provided options.
 	NewClient func(opt *Options) *Client
 
+	// himport is the ring-wide HIMPORT fieldset registry, set by NewRing and
+	// shared with every shard client (see himport.go, himport_cluster.go).
+	himport *himportRegistry
+
 	// ClientName will execute the `CLIENT SETNAME ClientName` command for each conn.
 	ClientName string
 
-	// Frequency of PING commands sent to check shards availability.
+	// Frequency of executing HeartbeatFn to check shards availability.
 	// Shard is considered down after 3 subsequent failed checks.
 	HeartbeatFrequency time.Duration
+
+	// A function used to check the shard liveness
+	// if not set, defaults to defaultHeartbeatFn
+	HeartbeatFn func(ctx context.Context, client *Client) bool
 
 	// NewConsistentHash returns a consistent hash that is used
 	// to distribute keys across the shards.
@@ -73,13 +78,45 @@ type RingOptions struct {
 	Protocol int
 	Username string
 	Password string
-	DB       int
+	// CredentialsProvider allows the username and password to be updated
+	// before reconnecting. It should return the current username and password.
+	CredentialsProvider func() (username string, password string)
+
+	// CredentialsProviderContext is an enhanced parameter of CredentialsProvider,
+	// done to maintain API compatibility. In the future,
+	// there might be a merge between CredentialsProviderContext and CredentialsProvider.
+	// There will be a conflict between them; if CredentialsProviderContext exists, we will ignore CredentialsProvider.
+	CredentialsProviderContext func(ctx context.Context) (username string, password string, err error)
+
+	// StreamingCredentialsProvider is used to retrieve the credentials
+	// for the connection from an external source. Those credentials may change
+	// during the connection lifetime. This is useful for managed identity
+	// scenarios where the credentials are retrieved from an external source.
+	//
+	// Currently, this is a placeholder for the future implementation.
+	StreamingCredentialsProvider auth.StreamingCredentialsProvider
+	DB                           int
 
 	MaxRetries      int
 	MinRetryBackoff time.Duration
 	MaxRetryBackoff time.Duration
 
-	DialTimeout           time.Duration
+	DialTimeout time.Duration
+
+	// DialerRetries is the maximum number of retry attempts when dialing fails.
+	//
+	// default: 5
+	DialerRetries int
+
+	// DialerRetryTimeout is the backoff duration between retry attempts.
+	//
+	// default: 100 milliseconds
+	DialerRetryTimeout time.Duration
+
+	// DialerRetryBackoff controls the delay between dial retry attempts.
+	// See Options.DialerRetryBackoff for details.
+	DialerRetryBackoff func(attempt int) time.Duration
+
 	ReadTimeout           time.Duration
 	WriteTimeout          time.Duration
 	ContextTimeoutEnabled bool
@@ -87,13 +124,36 @@ type RingOptions struct {
 	// PoolFIFO uses FIFO mode for each node connection pool GET/PUT (default LIFO).
 	PoolFIFO bool
 
-	PoolSize        int
-	PoolTimeout     time.Duration
-	MinIdleConns    int
-	MaxIdleConns    int
-	MaxActiveConns  int
-	ConnMaxIdleTime time.Duration
-	ConnMaxLifetime time.Duration
+	PoolSize              int
+	PoolTimeout           time.Duration
+	MinIdleConns          int
+	MaxIdleConns          int
+	MaxActiveConns        int
+	ConnMaxIdleTime       time.Duration
+	ConnMaxLifetime       time.Duration
+	ConnMaxLifetimeJitter time.Duration
+
+	// ReadBufferSize is the size of the bufio.Reader buffer for each connection.
+	// Larger buffers can improve performance for commands that return large responses.
+	// Smaller buffers can improve memory usage for larger pools.
+	//
+	// default: 32KiB (32768 bytes)
+	ReadBufferSize int
+
+	// WriteBufferSize is the size of the bufio.Writer buffer for each connection.
+	// Larger buffers can improve performance for large pipelines and commands with many arguments.
+	// Smaller buffers can improve memory usage for larger pools.
+	//
+	// default: 32KiB (32768 bytes)
+	WriteBufferSize int
+
+	// PipelineReadBufferSize, PipelineWriteBufferSize and PipelinePoolSize
+	// configure an optional separate connection pool used for pipelining on
+	// each shard, with its own (typically larger) buffers. See the same-named
+	// fields on Options for details. The pool is created only when PipelineReadBufferSize or PipelineWriteBufferSize is set (PipelinePoolSize alone does not enable it).
+	PipelineReadBufferSize  int
+	PipelineWriteBufferSize int
+	PipelinePoolSize        int
 
 	TLSConfig *tls.Config
 	Limiter   Limiter
@@ -110,7 +170,11 @@ type RingOptions struct {
 	// default: false
 	DisableIdentity bool
 	IdentitySuffix  string
-	UnstableResp3   bool
+
+	// Deprecated: All RediSearch commands now have stable RESP3 parsing and this
+	// flag is a no-op. It is kept for backwards compatibility and will be removed
+	// in a future release.
+	UnstableResp3 bool
 }
 
 func (opt *RingOptions) init() {
@@ -122,6 +186,10 @@ func (opt *RingOptions) init() {
 
 	if opt.HeartbeatFrequency == 0 {
 		opt.HeartbeatFrequency = 500 * time.Millisecond
+	}
+
+	if opt.HeartbeatFn == nil {
+		opt.HeartbeatFn = defaultHeartbeatFn
 	}
 
 	if opt.NewConsistentHash == nil {
@@ -138,13 +206,20 @@ func (opt *RingOptions) init() {
 	case -1:
 		opt.MinRetryBackoff = 0
 	case 0:
-		opt.MinRetryBackoff = 8 * time.Millisecond
+		opt.MinRetryBackoff = 10 * time.Millisecond
 	}
 	switch opt.MaxRetryBackoff {
 	case -1:
 		opt.MaxRetryBackoff = 0
 	case 0:
-		opt.MaxRetryBackoff = 512 * time.Millisecond
+		opt.MaxRetryBackoff = time.Second
+	}
+
+	if opt.ReadBufferSize == 0 {
+		opt.ReadBufferSize = proto.DefaultBufferSize
+	}
+	if opt.WriteBufferSize == 0 {
+		opt.WriteBufferSize = proto.DefaultBufferSize
 	}
 }
 
@@ -154,26 +229,39 @@ func (opt *RingOptions) clientOptions() *Options {
 		Dialer:     opt.Dialer,
 		OnConnect:  opt.OnConnect,
 
-		Protocol: opt.Protocol,
-		Username: opt.Username,
-		Password: opt.Password,
-		DB:       opt.DB,
+		Protocol:                     opt.Protocol,
+		Username:                     opt.Username,
+		Password:                     opt.Password,
+		CredentialsProvider:          opt.CredentialsProvider,
+		CredentialsProviderContext:   opt.CredentialsProviderContext,
+		StreamingCredentialsProvider: opt.StreamingCredentialsProvider,
+		DB:                           opt.DB,
 
 		MaxRetries: -1,
 
 		DialTimeout:           opt.DialTimeout,
+		DialerRetries:         opt.DialerRetries,
+		DialerRetryTimeout:    opt.DialerRetryTimeout,
+		DialerRetryBackoff:    opt.DialerRetryBackoff,
 		ReadTimeout:           opt.ReadTimeout,
 		WriteTimeout:          opt.WriteTimeout,
 		ContextTimeoutEnabled: opt.ContextTimeoutEnabled,
 
-		PoolFIFO:        opt.PoolFIFO,
-		PoolSize:        opt.PoolSize,
-		PoolTimeout:     opt.PoolTimeout,
-		MinIdleConns:    opt.MinIdleConns,
-		MaxIdleConns:    opt.MaxIdleConns,
-		MaxActiveConns:  opt.MaxActiveConns,
-		ConnMaxIdleTime: opt.ConnMaxIdleTime,
-		ConnMaxLifetime: opt.ConnMaxLifetime,
+		PoolFIFO:              opt.PoolFIFO,
+		PoolSize:              opt.PoolSize,
+		PoolTimeout:           opt.PoolTimeout,
+		MinIdleConns:          opt.MinIdleConns,
+		MaxIdleConns:          opt.MaxIdleConns,
+		MaxActiveConns:        opt.MaxActiveConns,
+		ConnMaxIdleTime:       opt.ConnMaxIdleTime,
+		ConnMaxLifetime:       opt.ConnMaxLifetime,
+		ConnMaxLifetimeJitter: opt.ConnMaxLifetimeJitter,
+		ReadBufferSize:        opt.ReadBufferSize,
+		WriteBufferSize:       opt.WriteBufferSize,
+
+		PipelineReadBufferSize:  opt.PipelineReadBufferSize,
+		PipelineWriteBufferSize: opt.PipelineWriteBufferSize,
+		PipelinePoolSize:        opt.PipelinePoolSize,
 
 		TLSConfig: opt.TLSConfig,
 		Limiter:   opt.Limiter,
@@ -190,7 +278,7 @@ func (opt *RingOptions) clientOptions() *Options {
 
 type ringShard struct {
 	Client *Client
-	down   int32
+	down   atomic.Int32
 	addr   string
 }
 
@@ -198,10 +286,16 @@ func newRingShard(opt *RingOptions, addr string) *ringShard {
 	clopt := opt.clientOptions()
 	clopt.Addr = addr
 
-	return &ringShard{
+	shard := &ringShard{
 		Client: opt.NewClient(clopt),
 		addr:   addr,
 	}
+	// Share the ring-wide HIMPORT fieldset registry so any shard connection
+	// serving an HIMPORT SET can lazily replay the PREPARE.
+	if opt.himport != nil {
+		shard.Client.himport = opt.himport
+	}
+	return shard
 }
 
 func (shard *ringShard) String() string {
@@ -216,7 +310,7 @@ func (shard *ringShard) String() string {
 
 func (shard *ringShard) IsDown() bool {
 	const threshold = 3
-	return atomic.LoadInt32(&shard.down) >= threshold
+	return shard.down.Load() >= threshold
 }
 
 func (shard *ringShard) IsUp() bool {
@@ -227,7 +321,7 @@ func (shard *ringShard) IsUp() bool {
 func (shard *ringShard) Vote(up bool) bool {
 	if up {
 		changed := shard.IsDown()
-		atomic.StoreInt32(&shard.down, 0)
+		shard.down.Store(0)
 		return changed
 	}
 
@@ -235,7 +329,7 @@ func (shard *ringShard) Vote(up bool) bool {
 		return false
 	}
 
-	atomic.AddInt32(&shard.down, 1)
+	shard.down.Add(1)
 	return shard.IsDown()
 }
 
@@ -297,9 +391,10 @@ func (c *ringSharding) SetAddrs(addrs map[string]string) {
 		return
 	}
 	existing := c.shards
+	onNewNode := c.onNewNode
 	c.mu.RUnlock()
 
-	shards, created, unused := c.newRingShards(addrs, existing)
+	shards, created, unused := c.newRingShards(addrs, existing, onNewNode)
 
 	c.mu.Lock()
 	if c.closed {
@@ -315,7 +410,7 @@ func (c *ringSharding) SetAddrs(addrs map[string]string) {
 }
 
 func (c *ringSharding) newRingShards(
-	addrs map[string]string, existing *ringShards,
+	addrs map[string]string, existing *ringShards, onNewNode []func(rdb *Client),
 ) (shards *ringShards, created, unused map[string]*ringShard) {
 	shards = &ringShards{m: make(map[string]*ringShard, len(addrs))}
 	created = make(map[string]*ringShard) // indexed by addr
@@ -336,7 +431,7 @@ func (c *ringSharding) newRingShards(
 			shards.m[name] = shard
 			created[addr] = shard
 
-			for _, fn := range c.onNewNode {
+			for _, fn := range onNewNode {
 				fn(shard.Client)
 			}
 		}
@@ -405,7 +500,12 @@ func (c *ringSharding) GetByName(shardName string) (*ringShard, error) {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 
-	return c.shards.m[shardName], nil
+	shard, ok := c.shards.m[shardName]
+	if !ok {
+		return nil, errors.New("redis: the shard is not in the ring")
+	}
+
+	return shard, nil
 }
 
 func (c *ringSharding) Random() (*ringShard, error) {
@@ -424,8 +524,7 @@ func (c *ringSharding) Heartbeat(ctx context.Context, frequency time.Duration) {
 
 			// note: `c.List()` return a shadow copy of `[]*ringShard`.
 			for _, shard := range c.List() {
-				err := shard.Client.Ping(ctx).Err()
-				isUp := err == nil || err == pool.ErrPoolTimeout
+				isUp := c.opt.HeartbeatFn(ctx, shard.Client)
 				if shard.Vote(isUp) {
 					internal.Logger.Printf(ctx, "ring shard state changed: %s", shard)
 					rebalance = true
@@ -522,11 +621,22 @@ type Ring struct {
 	heartbeatCancelFn context.CancelFunc
 }
 
+// NewRing returns a Redis Ring client to the Redis Server specified by RingOptions.
+// Passing nil RingOptions will cause a panic.
 func NewRing(opt *RingOptions) *Ring {
 	if opt == nil {
 		panic("redis: NewRing nil options")
 	}
+	// Shallow-copy the options: the ring-wide HIMPORT registry is carried
+	// through them to shard construction, and reusing one caller-owned
+	// RingOptions across several rings must not make the rings share (or
+	// clobber each other's) registry.
+	optCopy := *opt
+	opt = &optCopy
 	opt.init()
+	// The registry must exist before the first shard is created; shards
+	// adopt it in newRingShard.
+	opt.himport = newHImportRegistry()
 
 	hbCtx, hbCancel := context.WithCancel(context.Background())
 
@@ -558,20 +668,14 @@ func (c *Ring) SetAddrs(addrs map[string]string) {
 	c.sharding.SetAddrs(addrs)
 }
 
-// Do create a Cmd from the args and processes the cmd.
-func (c *Ring) Do(ctx context.Context, args ...interface{}) *Cmd {
-	cmd := NewCmd(ctx, args...)
-	_ = c.Process(ctx, cmd)
-	return cmd
-}
-
 func (c *Ring) Process(ctx context.Context, cmd Cmder) error {
 	err := c.processHook(ctx, cmd)
 	cmd.SetErr(err)
 	return err
 }
 
-// Options returns read-only Options that were used to create the client.
+// Options returns read-only *RingOptions that were used to create the client.
+// Any alteration of the returned *RingOptions may result in undefined behaviour.
 func (c *Ring) Options() *RingOptions {
 	return c.opt
 }
@@ -642,6 +746,17 @@ func (c *Ring) SSubscribe(ctx context.Context, channels ...string) *PubSub {
 	return shard.Client.SSubscribe(ctx, channels...)
 }
 
+// Publish posts the message to the channel
+func (c *Ring) Publish(ctx context.Context, channel string, message interface{}) *IntCmd {
+	shard, err := c.sharding.GetByKey(channel)
+	if err != nil {
+		cmd := NewIntCmd(ctx, "publish", channel, message)
+		cmd.SetErr(err)
+		return cmd
+	}
+	return shard.Client.Publish(ctx, channel, message)
+}
+
 func (c *Ring) OnNewNode(fn func(rdb *Client)) {
 	c.sharding.OnNewNode(fn)
 }
@@ -703,7 +818,10 @@ func (c *Ring) cmdsInfo(ctx context.Context) (map[string]*CommandInfo, error) {
 }
 
 func (c *Ring) cmdShard(cmd Cmder) (*ringShard, error) {
-	pos := cmdFirstKeyPos(cmd)
+	// TODO: populate cmdsInfoCache lazily (via cmdsInfoCache.Get) so that
+	// the warm-cache branch in cmdFirstKeyPosWithInfo is reachable for Ring,
+	// mirroring how ClusterClient.cmdInfo works. For now pass nil
+	pos := cmdFirstKeyPosWithInfo(cmd, nil)
 	if pos == 0 {
 		return c.sharding.Random()
 	}
@@ -726,7 +844,7 @@ func (c *Ring) process(ctx context.Context, cmd Cmder) error {
 		}
 
 		lastErr = shard.Client.Process(ctx, cmd)
-		if lastErr == nil || !shouldRetry(lastErr, cmd.readTimeout() == nil) {
+		if lastErr == nil || !shouldRetry(lastErr, cmd.readTimeout() == nil) || cmd.NoRetry() {
 			return lastErr
 		}
 	}
@@ -743,6 +861,34 @@ func (c *Ring) Pipeline() Pipeliner {
 	}
 	pipe.init()
 	return &pipe
+}
+
+// ErrRingAutoPipelineUnsupported is returned by Ring's AutoPipeline /
+// AsyncAutoPipeline (and their WithOptions forms); check for it with
+// errors.Is. Autopipelining is not implemented for Ring; use the per-shard
+// clients or a ClusterClient. Ring is part of the UniversalClient
+// interface, so these methods exist to satisfy it and fail explicitly rather
+// than being silently absent.
+var ErrRingAutoPipelineUnsupported = errors.New("redis: AutoPipeline is not supported by Ring")
+
+// AutoPipeline is not supported by Ring; it returns ErrRingAutoPipelineUnsupported.
+func (c *Ring) AutoPipeline() (*AutoPipeliner, error) {
+	return c.AutoPipelineWithOptions(nil)
+}
+
+// AutoPipelineWithOptions is not supported by Ring; it returns ErrRingAutoPipelineUnsupported.
+func (c *Ring) AutoPipelineWithOptions(config *AutoPipelineOptions) (*AutoPipeliner, error) {
+	return nil, ErrRingAutoPipelineUnsupported
+}
+
+// AsyncAutoPipeline is not supported by Ring; it returns ErrRingAutoPipelineUnsupported.
+func (c *Ring) AsyncAutoPipeline() (*AutoPipeliner, error) {
+	return c.AsyncAutoPipelineWithOptions(nil)
+}
+
+// AsyncAutoPipelineWithOptions is not supported by Ring; it returns ErrRingAutoPipelineUnsupported.
+func (c *Ring) AsyncAutoPipelineWithOptions(config *AutoPipelineOptions) (*AutoPipeliner, error) {
+	return nil, ErrRingAutoPipelineUnsupported
 }
 
 func (c *Ring) TxPipelined(ctx context.Context, fn func(Pipeliner) error) ([]Cmder, error) {
@@ -771,7 +917,7 @@ func (c *Ring) generalProcessPipeline(
 	cmdsMap := make(map[string][]Cmder)
 
 	for _, cmd := range cmds {
-		hash := cmd.stringArg(cmdFirstKeyPos(cmd))
+		hash := cmd.stringArg(cmdFirstKeyPosWithInfo(cmd, nil))
 		if hash != "" {
 			hash = c.sharding.Hash(hash)
 		}
@@ -779,6 +925,8 @@ func (c *Ring) generalProcessPipeline(
 	}
 
 	var wg sync.WaitGroup
+	errs := make(chan error, len(cmdsMap))
+
 	for hash, cmds := range cmdsMap {
 		wg.Add(1)
 		go func(hash string, cmds []Cmder) {
@@ -791,16 +939,24 @@ func (c *Ring) generalProcessPipeline(
 				return
 			}
 
+			hook := shard.Client.processPipelineHook
 			if tx {
 				cmds = wrapMultiExec(ctx, cmds)
-				_ = shard.Client.processTxPipelineHook(ctx, cmds)
-			} else {
-				_ = shard.Client.processPipelineHook(ctx, cmds)
+				hook = shard.Client.processTxPipelineHook
+			}
+
+			if err = hook(ctx, cmds); err != nil {
+				errs <- err
 			}
 		}(hash, cmds)
 	}
 
 	wg.Wait()
+	close(errs)
+
+	if err := <-errs; err != nil {
+		return err
+	}
 	return cmdsFirstErr(cmds)
 }
 

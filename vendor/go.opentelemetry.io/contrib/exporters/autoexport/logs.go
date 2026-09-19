@@ -1,7 +1,7 @@
 // Copyright The OpenTelemetry Authors
 // SPDX-License-Identifier: Apache-2.0
 
-package autoexport // import "go.opentelemetry.io/contrib/exporters/autoexport"
+package autoexport
 
 import (
 	"context"
@@ -84,10 +84,10 @@ func init() {
 			return nil, errInvalidOTLPProtocol
 		}
 	})
-	RegisterLogExporter("console", func(ctx context.Context) (log.Exporter, error) {
+	RegisterLogExporter("console", func(context.Context) (log.Exporter, error) {
 		return stdoutlog.New()
 	})
-	RegisterLogExporter("none", func(ctx context.Context) (log.Exporter, error) {
+	RegisterLogExporter("none", func(context.Context) (log.Exporter, error) {
 		return noopLogExporter{}, nil
 	})
 }

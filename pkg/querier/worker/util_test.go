@@ -9,10 +9,13 @@ import (
 	"github.com/grafana/dskit/httpgrpc"
 	"github.com/grafana/dskit/user"
 	"github.com/stretchr/testify/require"
+	"google.golang.org/grpc/codes"
+	grpcstatus "google.golang.org/grpc/status"
 
 	"github.com/grafana/loki/v3/pkg/logqlmodel"
 	"github.com/grafana/loki/v3/pkg/querier/queryrange"
 	"github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase"
+	"github.com/grafana/loki/v3/pkg/util"
 	"github.com/grafana/loki/v3/pkg/util/server"
 )
 
@@ -20,6 +23,32 @@ type HandlerFunc func(context.Context, queryrangebase.Request) (queryrangebase.R
 
 func (h HandlerFunc) Do(ctx context.Context, req queryrangebase.Request) (queryrangebase.Response, error) {
 	return h(ctx, req)
+}
+
+// grpcStatusErr models a typed error (e.g. a LogQL parse error) that a
+// downstream layer has already wrapped in a gRPC status carrying a non-HTTP
+// code. It satisfies status.FromError while still unwrapping to the typed
+// error so errors.Is keeps working.
+type grpcStatusErr struct {
+	code codes.Code
+	err  error
+}
+
+func (e grpcStatusErr) Error() string { return e.err.Error() }
+func (e grpcStatusErr) Unwrap() error { return e.err }
+func (e grpcStatusErr) GRPCStatus() *grpcstatus.Status {
+	return grpcstatus.New(e.code, e.err.Error())
+}
+
+// fanOutError models errors coming back from more than one target of a
+// fanned-out request, similar to [iter.mergeEntryIterator] when more than
+// one iterator returns an error.
+func fanOutError(n int, err error) error {
+	var errs util.MultiError
+	for range n {
+		errs.Add(err)
+	}
+	return errs.Err()
 }
 
 func TestHandleQueryRequest(t *testing.T) {
@@ -35,6 +64,13 @@ func TestHandleQueryRequest(t *testing.T) {
 		},
 		"parser error": {
 			err:    logqlmodel.ErrParse,
+			errMsg: "failed to parse",
+			code:   http.StatusBadRequest,
+		},
+		"parser error wrapped in a gRPC status": {
+			// A parse error that a downstream layer already converted into a gRPC
+			// status carrying a non-HTTP code should still be reported as 400.
+			err:    grpcStatusErr{code: codes.Unknown, err: logqlmodel.ErrParse},
 			errMsg: "failed to parse",
 			code:   http.StatusBadRequest,
 		},
@@ -57,6 +93,25 @@ func TestHandleQueryRequest(t *testing.T) {
 			err:    context.Canceled,
 			errMsg: "cancelled by the client",
 			code:   server.StatusClientClosedRequest,
+		},
+		"client error reported by every ingester": {
+			err:    fanOutError(3, httpgrpc.Errorf(http.StatusBadRequest, "parse error: invalid template for label 'message'")),
+			errMsg: "3 errors: rpc error: code = Code(400) desc = parse error: invalid template for label 'message'",
+			code:   http.StatusBadRequest,
+		},
+		"server error reported by every ingester": {
+			err:    fanOutError(3, httpgrpc.Errorf(http.StatusInternalServerError, "something broke")),
+			errMsg: "3 errors: rpc error: code = Code(500) desc = something broke",
+			code:   http.StatusInternalServerError,
+		},
+		"client error alongside a server error": {
+			// One target rejecting the request is enough to make retrying futile.
+			err: util.MultiError{
+				httpgrpc.Errorf(http.StatusInternalServerError, "something broke"),
+				httpgrpc.Errorf(http.StatusBadRequest, "parse error: bad query"),
+			}.Err(),
+			errMsg: "parse error: bad query",
+			code:   http.StatusBadRequest,
 		},
 	} {
 		t.Run(name, func(t *testing.T) {

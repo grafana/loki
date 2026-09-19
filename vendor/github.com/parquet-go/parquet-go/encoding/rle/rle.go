@@ -9,25 +9,22 @@ import (
 	"encoding/binary"
 	"fmt"
 	"io"
+	"math"
 	"unsafe"
 
 	"golang.org/x/sys/cpu"
 
+	"github.com/parquet-go/bitpack"
+	"github.com/parquet-go/bitpack/unsafecast"
 	"github.com/parquet-go/parquet-go/encoding"
 	"github.com/parquet-go/parquet-go/format"
-	"github.com/parquet-go/parquet-go/internal/bitpack"
 	"github.com/parquet-go/parquet-go/internal/bytealg"
-	"github.com/parquet-go/parquet-go/internal/unsafecast"
 )
 
 const (
-	// This limit is intended to prevent unbounded memory allocations when
-	// decoding runs.
-	//
-	// We use a generous limit which allows for over 16 million values per page
-	// if there is only one run to encode the repetition or definition levels
-	// (this should be uncommon).
-	maxSupportedValueCount = 16 * 1024 * 1024
+	// This limit prevents unbounded memory allocations when decoding runs.
+	// It is set to the largest run length the Parquet specification permits in an RLE header.
+	maxSupportedValueCount = math.MaxInt32
 )
 
 type Encoding struct {
@@ -263,6 +260,9 @@ func decodeBits(dst, src []byte) ([]byte, error) {
 		i += n
 
 		count, bitpacked := uint(u>>1), (u&1) != 0
+		if count == 0 {
+			continue
+		}
 		if count > maxSupportedValueCount {
 			return dst, fmt.Errorf("decoded run-length block cannot have more than %d values", maxSupportedValueCount)
 		}
@@ -308,6 +308,9 @@ func decodeBytes(dst, src []byte, bitWidth uint) ([]byte, error) {
 		i += n
 
 		count, bitpacked := uint(u>>1), (u&1) != 0
+		if count == 0 {
+			continue
+		}
 		if count > maxSupportedValueCount {
 			return dst, fmt.Errorf("decoded run-length block cannot have more than %d values", maxSupportedValueCount)
 		}
@@ -364,6 +367,9 @@ func decodeInt32(dst, src []byte, bitWidth uint) ([]byte, error) {
 		i += n
 
 		count, bitpacked := uint(u>>1), (u&1) != 0
+		if count == 0 {
+			continue
+		}
 		if count > maxSupportedValueCount {
 			return dst, fmt.Errorf("decoded run-length block cannot have more than %d values", maxSupportedValueCount)
 		}
@@ -386,7 +392,7 @@ func decodeInt32(dst, src []byte, bitWidth uint) ([]byte, error) {
 			}
 
 			out := unsafecast.Slice[int32](dst[offset:])
-			bitpack.UnpackInt32(out, in, bitWidth)
+			bitpack.Unpack(out, in, bitWidth)
 			i += length
 		} else {
 			j := i + bitpack.ByteCount(bitWidth)
@@ -517,7 +523,7 @@ func grow(buf []byte, size int) []byte {
 
 func encodeInt32BitpackDefault(dst []byte, src [][8]int32, bitWidth uint) int {
 	bits := unsafecast.Slice[int32](src)
-	bitpack.PackInt32(dst, bits, bitWidth)
+	bitpack.Pack(dst, bits, bitWidth)
 	return bitpack.ByteCount(uint(len(src)*8) * bitWidth)
 }
 

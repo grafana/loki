@@ -40,7 +40,7 @@ func ExtractQueryTagsMiddleware() middleware.Interface {
 
 func ExtractQueryTagsFromHTTP(req *http.Request) string {
 	tags := req.Header.Get(string(QueryTagsHTTPHeader))
-	return safeQueryTags.ReplaceAllString(tags, "_")
+	return sanitizeQueryTags(tags)
 }
 
 func ExtractQueryTagsFromContext(ctx context.Context) string {
@@ -50,8 +50,21 @@ func ExtractQueryTagsFromContext(ctx context.Context) string {
 }
 
 func InjectQueryTags(ctx context.Context, tags string) context.Context {
-	tags = safeQueryTags.ReplaceAllString(tags, "_")
+	tags = sanitizeQueryTags(tags)
 	return context.WithValue(ctx, QueryTagsHTTPHeader, tags)
+}
+
+// AppendQueryTagsHeader sanitizes and appends tags to X-Query-Tags without
+// overwriting any existing tags already present on the header.
+func AppendQueryTagsHeader(header http.Header, tags string) {
+	tags = sanitizeQueryTags(tags)
+	existing := sanitizeQueryTags(header.Get(string(QueryTagsHTTPHeader)))
+	if existing == "" {
+		header.Set(string(QueryTagsHTTPHeader), tags)
+		return
+	}
+
+	header.Set(string(QueryTagsHTTPHeader), existing+","+tags)
 }
 
 func ExtractQueryMetricsMiddleware() middleware.Interface {
@@ -102,6 +115,10 @@ func TagsToKeyValues(queryTags string) []interface{} {
 	}
 
 	return res
+}
+
+func sanitizeQueryTags(tags string) string {
+	return safeQueryTags.ReplaceAllString(tags, "_")
 }
 
 // IsLogsDrilldownRequest checks if the request comes from Logs Drilldown by examining the X-Query-Tags header

@@ -53,6 +53,22 @@ func (m noopTSDBManager) BuildFromWALs(_ time.Time, wals []WALIdentifier, _ bool
 }
 func (m noopTSDBManager) Start() error { return nil }
 
+// recordingTSDBManager counts BuildFromHead calls so tests can assert that a
+// head was built. It is only used single-threaded within a test.
+type recordingTSDBManager struct {
+	noopTSDBManager
+	builds int
+}
+
+func newRecordingTSDBManager(name, dir string) *recordingTSDBManager {
+	return &recordingTSDBManager{noopTSDBManager: newNoopTSDBManager(name, dir)}
+}
+
+func (m *recordingTSDBManager) BuildFromHead(_ *tenantHeads) error {
+	m.builds++
+	return nil
+}
+
 type zeroValueLimits struct {
 }
 
@@ -70,14 +86,18 @@ func (m *zeroValueLimits) DefaultLimits() *validation.Limits {
 	}
 }
 
-func chunkMetasToChunkRefs(user string, fp uint64, xs index.ChunkMetas) (res []ChunkRef) {
+func chunkMetasToChunkRefs(user string, fp uint64, xs index.ChunkMetas) (res []logproto.ChunkRefWithSizingInfo) {
 	for _, x := range xs {
-		res = append(res, ChunkRef{
-			User:        user,
-			Fingerprint: model.Fingerprint(fp),
-			Start:       x.From(),
-			End:         x.Through(),
-			Checksum:    x.Checksum,
+		res = append(res, logproto.ChunkRefWithSizingInfo{
+			ChunkRef: logproto.ChunkRef{
+				UserID:      user,
+				Fingerprint: fp,
+				From:        x.From(),
+				Through:     x.Through(),
+				Checksum:    x.Checksum,
+			},
+			KB:      x.KB,
+			Entries: x.Entries,
 		})
 	}
 	return
@@ -262,6 +282,67 @@ func Test_HeadManager_RecoverHead(t *testing.T) {
 
 }
 
+// Test_HeadManager_RecoverHead_IngestedAt asserts that a chunk's ingestion
+// timestamp survives WAL replay once the WAL is written as
+// WalRecordChunksV2. Without it, an index built from a recovered head would
+// drop the timestamp that an index built from the same data without a restart
+// carries, and retention would silently fall back to expiring those chunks by
+// their log timestamps.
+func Test_HeadManager_RecoverHead_IngestedAt(t *testing.T) {
+	now := time.Now()
+	dir := t.TempDir()
+
+	const user = "tenant1"
+	ls := mustParseLabels(`{foo="bar", __backfill__="true"}`)
+	chks := index.ChunkMetas{
+		// A backfilled chunk, stamped at flush time.
+		{MinTime: 1, MaxTime: 10, Checksum: 3, KB: 5, Entries: 6, IngestedAt: now.UnixMilli()},
+		// A live chunk in the same record keeps the zero value.
+		{MinTime: 11, MaxTime: 20, Checksum: 4, KB: 7, Entries: 8},
+	}
+
+	storeName := "store_2010-10-10"
+	mgr := NewHeadManager(storeName, log.NewNopLogger(), dir, NewMetrics(nil), newNoopTSDBManager(storeName, dir))
+	for _, d := range managerRequiredDirs(storeName, dir) {
+		require.Nil(t, util.EnsureDirectory(d))
+	}
+	require.Nil(t, mgr.Rotate(now))
+
+	w, err := newHeadWAL(log.NewNopLogger(), walPath(mgr.name, mgr.dir, now), now)
+	require.Nil(t, err)
+	require.Nil(t, w.Log(&WALRecord{
+		UserID:      user,
+		Fingerprint: labels.StableHash(ls),
+		Series:      record.RefSeries{Ref: chunks.HeadSeriesRef(0), Labels: ls},
+		Chks:        ChunkMetasRecord{Chks: chks, Ref: 0},
+	}))
+	require.Nil(t, w.Stop())
+
+	grp, ok, err := walsForPeriod(managerWalDir(mgr.name, mgr.dir), mgr.period, mgr.period.PeriodFor(now))
+	require.Nil(t, err)
+	require.True(t, ok)
+	require.Nil(t, recoverHead(mgr.name, mgr.dir, mgr.activeHeads, grp.wals, false, log.NewNopLogger(), NewMetrics(nil).walCorruptionsRepairs))
+
+	want := chks
+	if CurrentChunksRec < WalRecordChunksV2 {
+		// The encoder still writes the layout without ingestion timestamps,
+		// so replay zeroes them. Remove once CurrentChunksRec is
+		// WalRecordChunksV2.
+		want = index.ChunkMetas{
+			{MinTime: 1, MaxTime: 10, Checksum: 3, KB: 5, Entries: 6},
+			{MinTime: 11, MaxTime: 20, Checksum: 4, KB: 7, Entries: 8},
+		}
+	}
+
+	var recovered index.ChunkMetas
+	require.Nil(t, mgr.activeHeads.forAll(func(u string, _ labels.Labels, _ uint64, c index.ChunkMetas) error {
+		require.Equal(t, user, u)
+		recovered = append(recovered, c...)
+		return nil
+	}))
+	require.Equal(t, want, recovered)
+}
+
 // test head recover from corrupted wal
 func Test_HeadManager_RecoverHead_CorruptedWAL(t *testing.T) {
 	for _, tc := range []struct {
@@ -430,6 +511,114 @@ func Test_HeadManager_QueryAfterRotate(t *testing.T) {
 
 }
 
+func Test_HeadManager_RotateAndBuild(t *testing.T) {
+	now := time.Now()
+	dir := t.TempDir()
+
+	c := struct {
+		Labels      labels.Labels
+		Fingerprint uint64
+		Chunks      []index.ChunkMeta
+		User        string
+	}{
+		User:        "tenant1",
+		Labels:      mustParseLabels(`{foo="bar", bazz="buzz"}`),
+		Fingerprint: labels.StableHash(mustParseLabels(`{foo="bar", bazz="buzz"}`)),
+		Chunks:      []index.ChunkMeta{{MinTime: 1, MaxTime: 10, Checksum: 3}},
+	}
+
+	storeName := "store_2010-10-10"
+	mgr := newRecordingTSDBManager(storeName, dir)
+	hm := NewHeadManager(storeName, log.NewNopLogger(), dir, NewMetrics(nil), mgr)
+	for _, d := range managerRequiredDirs(storeName, dir) {
+		require.NoError(t, util.EnsureDirectory(d))
+	}
+	require.NoError(t, hm.Rotate(now)) // initialize active head (usually done by Start())
+
+	require.NoError(t, hm.Append(c.User, c.Labels, labels.StableHash(c.Labels), c.Chunks))
+
+	// Force a rotation mid-period: the active head should be rotated out and
+	// built without waiting for the period boundary.
+	require.NoError(t, hm.rotateAndBuild(time.Now(), true))
+	require.Equal(t, 1, mgr.builds, "active head should have been built exactly once")
+
+	// Data remains queryable, served from the retained in-memory heads.
+	refs, err := hm.GetChunkRefs(
+		context.Background(),
+		c.User,
+		0, math.MaxInt64,
+		nil, nil,
+		labels.MustNewMatcher(labels.MatchRegexp, "foo", ".+"),
+	)
+	require.NoError(t, err)
+	require.Equal(t, chunkMetasToChunkRefs(c.User, c.Fingerprint, c.Chunks), refs)
+
+	// A periodic tick in the same period right after the forced flush must not
+	// rotate or build again (the cadence self-heals).
+	hm.tick(time.Now())
+	require.Equal(t, 1, mgr.builds, "tick right after a forced flush should not build again")
+}
+
+// Test_HeadManager_Flush exercises the public, channel-triggered Flush() end to
+// end: the request is serviced on the running loop goroutine.
+func Test_HeadManager_Flush(t *testing.T) {
+	dir := t.TempDir()
+	storeName := "store_2010-10-10"
+	mgr := newRecordingTSDBManager(storeName, dir)
+	hm := NewHeadManager(storeName, log.NewNopLogger(), dir, NewMetrics(nil), mgr)
+	for _, d := range managerRequiredDirs(storeName, dir) {
+		require.NoError(t, util.EnsureDirectory(d))
+	}
+	require.NoError(t, hm.Rotate(time.Now())) // initialize active head
+
+	// Run the loop so the channel-triggered Flush() is serviced on it.
+	hm.wg.Add(1)
+	go hm.loop()
+	t.Cleanup(func() { _ = hm.Stop() })
+
+	ls := mustParseLabels(`{foo="bar"}`)
+	require.NoError(t, hm.Append("tenant1", ls, labels.StableHash(ls), []index.ChunkMeta{{MinTime: 1, MaxTime: 10, Checksum: 3}}))
+
+	require.NoError(t, hm.Flush())
+	require.Equal(t, 1, mgr.builds, "Flush should rotate and build the active head exactly once")
+}
+
+func Test_HeadManager_ChunkFilterer(t *testing.T) {
+	now := time.Now()
+	dir := t.TempDir()
+	storeName := "store_2010-10-10"
+	mgr := NewHeadManager(storeName, log.NewNopLogger(), dir, NewMetrics(nil), newNoopTSDBManager(storeName, dir))
+	for _, d := range managerRequiredDirs(storeName, dir) {
+		require.Nil(t, util.EnsureDirectory(d))
+	}
+	require.Nil(t, mgr.Rotate(now))
+
+	user := "tenant1"
+	ls := mustParseLabels(`{foo="bar"}`)
+	chks := []index.ChunkMeta{{MinTime: 1, MaxTime: 10, Checksum: 1}}
+	require.Nil(t, mgr.Append(user, ls, labels.StableHash(ls), chks))
+
+	matchAll := labels.MustNewMatcher(labels.MatchRegexp, "foo", ".+")
+	nextPeriod := time.Now().Add(time.Duration(mgr.period))
+	mgr.tick(nextPeriod) // rotate so data moves to prevHeads, queryable via lazy index
+
+	// Confirm data is reachable via GetChunkRefs before testing Series.
+	refs, err := mgr.GetChunkRefs(context.Background(), user, 0, math.MaxInt64, nil, nil, matchAll)
+	require.Nil(t, err)
+	require.Len(t, refs, 1)
+
+	// Without a filterer, Series returns the appended series.
+	series, err := mgr.Series(context.Background(), user, 0, math.MaxInt64, nil, nil, matchAll)
+	require.Nil(t, err)
+	require.Len(t, series, 1)
+
+	// With a filterAll filterer, Series returns no results.
+	mgr.SetChunkFilterer(&filterAll{})
+	series, err = mgr.Series(context.Background(), user, 0, math.MaxInt64, nil, nil, matchAll)
+	require.Nil(t, err)
+	require.Len(t, series, 0)
+}
+
 // test mgr recover from multiple wals across multiple periods
 func Test_HeadManager_Lifecycle(t *testing.T) {
 	dir := t.TempDir()
@@ -552,7 +741,7 @@ func TestBuildLegacyWALs(t *testing.T) {
 			Configs: []config.PeriodConfig{
 				{
 					Schema:     "v11",
-					IndexType:  types.TSDBType,
+					IndexType:  types.IndexTypeTSDB,
 					ObjectType: types.StorageTypeFileSystem,
 					IndexTables: config.IndexPeriodicTableConfig{
 						PeriodicTableConfig: config.PeriodicTableConfig{
@@ -563,7 +752,7 @@ func TestBuildLegacyWALs(t *testing.T) {
 				{
 					Schema:     "v11",
 					From:       config.DayTime{Time: timeToModelTime(secondStoreDate)},
-					IndexType:  types.TSDBType,
+					IndexType:  types.IndexTypeTSDB,
 					ObjectType: types.StorageTypeFileSystem,
 					IndexTables: config.IndexPeriodicTableConfig{
 						PeriodicTableConfig: config.PeriodicTableConfig{
@@ -576,7 +765,7 @@ func TestBuildLegacyWALs(t *testing.T) {
 			Configs: []config.PeriodConfig{
 				{
 					Schema:     "v12",
-					IndexType:  types.TSDBType,
+					IndexType:  types.IndexTypeTSDB,
 					ObjectType: types.StorageTypeFileSystem,
 					IndexTables: config.IndexPeriodicTableConfig{
 						PeriodicTableConfig: config.PeriodicTableConfig{
@@ -587,7 +776,7 @@ func TestBuildLegacyWALs(t *testing.T) {
 				{
 					Schema:     "v12",
 					From:       config.DayTime{Time: timeToModelTime(secondStoreDate)},
-					IndexType:  types.TSDBType,
+					IndexType:  types.IndexTypeTSDB,
 					ObjectType: types.StorageTypeFileSystem,
 					IndexTables: config.IndexPeriodicTableConfig{
 						PeriodicTableConfig: config.PeriodicTableConfig{
@@ -600,7 +789,7 @@ func TestBuildLegacyWALs(t *testing.T) {
 			Configs: []config.PeriodConfig{
 				{
 					Schema:     "v13",
-					IndexType:  types.TSDBType,
+					IndexType:  types.IndexTypeTSDB,
 					ObjectType: types.StorageTypeFileSystem,
 					IndexTables: config.IndexPeriodicTableConfig{
 						PeriodicTableConfig: config.PeriodicTableConfig{
@@ -611,7 +800,7 @@ func TestBuildLegacyWALs(t *testing.T) {
 				{
 					Schema:     "v13",
 					From:       config.DayTime{Time: timeToModelTime(secondStoreDate)},
-					IndexType:  types.TSDBType,
+					IndexType:  types.IndexTypeTSDB,
 					ObjectType: types.StorageTypeFileSystem,
 					IndexTables: config.IndexPeriodicTableConfig{
 						PeriodicTableConfig: config.PeriodicTableConfig{
@@ -761,7 +950,7 @@ func BenchmarkTenantHeads(b *testing.B) {
 					wg.Add(1)
 					go func(r int) {
 						defer wg.Done()
-						var res []ChunkRef
+						var res []logproto.ChunkRefWithSizingInfo
 						tenant := r % nTenants
 
 						// nolint:ineffassign,staticcheck

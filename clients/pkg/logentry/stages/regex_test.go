@@ -12,7 +12,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/assert"
-	"gopkg.in/yaml.v2"
+	"go.yaml.in/yaml/v4"
 
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
 )
@@ -126,7 +126,7 @@ func TestPipelineWithMissingKey_Regex(t *testing.T) {
 	}
 	_ = processEntries(pl, newEntry(nil, nil, testRegexLogLineWithMissingKey, time.Now()))[0]
 
-	expectedLog := "level=debug component=stage type=regex msg=\"failed to convert source value to string\" source=time err=\"Can't convert <nil> to string\" type=null"
+	expectedLog := "level=debug component=stage type=regex msg=\"failed to convert source value to string\" source=time err=\"can't convert <nil> to string\" type=null"
 	if !(strings.Contains(buf.String(), expectedLog)) {
 		t.Errorf("\nexpected: %s\n+actual: %s", expectedLog, buf.String())
 	}
@@ -140,11 +140,11 @@ func TestRegexMapStructure(t *testing.T) {
 	t.Parallel()
 
 	// testing that we can use yaml data into mapstructure.
-	var mapstruct map[interface{}]interface{}
+	var mapstruct map[string]interface{}
 	if err := yaml.Unmarshal([]byte(regexCfg), &mapstruct); err != nil {
 		t.Fatalf("error while un-marshalling config: %s", err)
 	}
-	p, ok := mapstruct["regex"].(map[interface{}]interface{})
+	p, ok := mapstruct["regex"].(map[string]interface{})
 	if !ok {
 		t.Fatalf("could not read parser %+v", mapstruct["regex"])
 	}

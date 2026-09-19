@@ -16,8 +16,8 @@ Manage your **database schema** by creating incremental SQL changes or Go functi
 #### Features
 
 - Works against multiple databases:
-  - Postgres, MySQL, SQLite, YDB, ClickHouse, MSSQL, Vertica, and
-    more.
+  - Postgres, MySQL, MariaDB, Spanner, SQLite,
+    YDB, ClickHouse, MSSQL, Vertica, and more.
 - Supports Go migrations written as plain functions.
 - Supports [embedded](https://pkg.go.dev/embed/) migrations.
 - Out-of-order migrations.
@@ -39,8 +39,11 @@ Binary too big? Build a lite version by excluding the drivers you don't need:
 go build -tags='no_postgres no_mysql no_sqlite3 no_ydb' -o goose ./cmd/goose
 
 # Available build tags:
-#   no_clickhouse  no_libsql   no_mssql    no_mysql
-#   no_postgres    no_sqlite3  no_vertica  no_ydb
+#   no_azuresql    no_clickhouse  no_libsql   no_mssql
+#   no_mysql       no_postgres    no_sqlite3  no_vertica
+#   no_ydb
+#
+# Note: no_mssql also excludes the azuresql driver.
 ```
 
 For macOS users `goose` is available as a [Homebrew
@@ -58,7 +61,7 @@ See [installation documentation](https://pressly.github.io/goose/installation/) 
 <summary>Click to show <code>goose help</code> output</summary>
 
 ```
-Usage: goose [OPTIONS] DRIVER DBSTRING COMMAND
+Usage: goose DRIVER DBSTRING [OPTIONS] COMMAND
 
 or
 
@@ -73,13 +76,15 @@ Drivers:
     postgres
     mysql
     sqlite3
+    spanner
     mssql
+    azuresql
     redshift
     tidb
     clickhouse
-    vertica
     ydb
     starrocks
+    turso
 
 Examples:
     goose sqlite3 ./foo.db status
@@ -90,11 +95,12 @@ Examples:
 
     goose postgres "user=postgres dbname=postgres sslmode=disable" status
     goose mysql "user:password@/dbname?parseTime=true" status
+    goose spanner "projects/project/instances/instance/databases/database" status
     goose redshift "postgres://user:password@qwerty.us-east-1.redshift.amazonaws.com:5439/db" status
     goose tidb "user:password@/dbname?parseTime=true" status
     goose mssql "sqlserver://user:password@hostname:1433?database=master" status
+    goose azuresql "sqlserver://myserver.database.windows.net?database=mydb&fedauth=ActiveDirectoryDefault" status
     goose clickhouse "tcp://127.0.0.1:9000" status
-    goose vertica "vertica://user:password@localhost:5433/dbname?connection_load_balance=1" status
     goose ydb "grpcs://localhost:2135/local?go_query_mode=scripting&go_fake_tx=scripting&go_query_bind=declare,numeric" status
     goose starrocks "user:password@/dbname?parseTime=true&interpolateParams=true" status
 
@@ -124,7 +130,7 @@ Options:
   -ssl-key string
         file path to SSL key in pem format (only support on mysql)
   -table string
-        migrations table name (default "goose_db_version")
+        migrations table name (default "goose_db_version"). If you use a schema that is not `public`, you should set `schemaname.goose_db_version` when running commands.
   -timeout duration
         maximum allowed duration for queries to run; e.g., 1h13m
   -v    enable verbose mode
@@ -222,9 +228,9 @@ Print the status of all migrations:
     $   Sun Jan  6 11:25:03 2013 -- 002_next.sql
     $   Pending                  -- 003_and_again.go
 
-Note: for MySQL [parseTime flag](https://github.com/go-sql-driver/mysql#parsetime) must be enabled.
+Note: for MySQL and MariaDB (use the `mysql` driver) [parseTime flag](https://github.com/go-sql-driver/mysql#parsetime) must be enabled.
 
-Note: for MySQL
+Note: for MySQL and MariaDB
 [`multiStatements`](https://github.com/go-sql-driver/mysql?tab=readme-ov-file#multistatements) must
 be enabled. This is required when writing multiple queries separated by ';' characters in a single
 sql file.
@@ -302,6 +308,9 @@ Both Up and Down migrations within this file will be run without transactions.
 By default, SQL statements are delimited by semicolons - in fact, query statements must end with a
 semicolon to be properly recognized by goose.
 
+By default, all migrations are run on the public schema. If you want to use a different schema,
+specify the schema name using the table option like `-table='schemaname.goose_db_version`.
+
 More complex statements (PL/pgSQL) that have semicolons within them must be annotated with `--
 +goose StatementBegin` and `-- +goose StatementEnd` to be properly recognized. For example:
 
@@ -339,7 +348,7 @@ You can use these annotations multiple times within a file.
 This feature is disabled by default for backward compatibility with existing scripts.
 
 For `PL/pgSQL` functions or other statements where substitution is not desired, wrap the annotations
-explicitly around the relevant parts. For example, to exclude escaping the `**` characters:
+explicitly around the relevant parts. For example, to exclude escaping the `$$` characters:
 
 ```sql
 -- +goose StatementBegin
@@ -426,7 +435,8 @@ structure.
 1. Create your own goose binary, see [example](./examples/go-migrations)
 2. Import `github.com/pressly/goose`
 3. Register your migration functions
-4. Run goose command, ie. `goose.Up(db *sql.DB, dir string)`
+4. Include your `migrations` package into Go build: in `main.go`, `import _ "github.com/me/myapp/migrations"`
+5. Run goose command, ie. `goose.Up(db *sql.DB, dir string)`
 
 A [sample Go migration 00002_users_add_email.go file](./examples/go-migrations/00002_rename_root.go)
 looks like:

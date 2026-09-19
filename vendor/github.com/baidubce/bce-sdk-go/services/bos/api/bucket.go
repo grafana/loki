@@ -38,6 +38,9 @@ func ListBuckets(cli bce.Client, ctx *BosContext, options ...Option) (*ListBucke
 	req := &BosRequest{}
 	req.SetMethod(http.GET)
 	resp := &BosResponse{}
+	if ctx == nil {
+		ctx = newDefaultBosContext()
+	}
 	// handle options to set the header/params of request
 	if err := handleOptions(req, options); err != nil {
 		return nil, bce.NewBceClientError(fmt.Sprintf("Handle options occur error: %s", err))
@@ -49,6 +52,7 @@ func ListBuckets(cli bce.Client, ctx *BosContext, options ...Option) (*ListBucke
 		return nil, resp.ServiceError()
 	}
 	result := &ListBucketsResult{}
+	retrieveResponseFields(result, resp)
 	if err := resp.ParseJsonBody(result); err != nil {
 		return nil, err
 	}
@@ -71,6 +75,9 @@ func ListObjects(cli bce.Client, bucket string, args *ListObjectsArgs,
 	req.SetUri(getBucketUri(bucket))
 	req.SetMethod(http.GET)
 	req.SetBucket(bucket)
+	if ctx == nil {
+		ctx = newDefaultBosContext()
+	}
 	// Optional arguments settings
 	if args != nil {
 		if len(args.Delimiter) != 0 {
@@ -102,6 +109,7 @@ func ListObjects(cli bce.Client, bucket string, args *ListObjectsArgs,
 		return nil, resp.ServiceError()
 	}
 	result := &ListObjectsResult{}
+	retrieveResponseFields(result, resp)
 	if err := resp.ParseJsonBody(result); err != nil {
 		return nil, err
 	}
@@ -116,6 +124,9 @@ func ListObjectsVersions(cli bce.Client, bucket string, args *ListObjectsArgs,
 	req.SetMethod(http.GET)
 	req.SetParam("versions", "")
 	req.SetBucket(bucket)
+	if ctx == nil {
+		ctx = newDefaultBosContext()
+	}
 	// Optional arguments settings
 	if args != nil {
 		if len(args.Delimiter) != 0 {
@@ -150,6 +161,7 @@ func ListObjectsVersions(cli bce.Client, bucket string, args *ListObjectsArgs,
 		return nil, resp.ServiceError()
 	}
 	result := &ListObjectsResult{}
+	retrieveResponseFields(result, resp)
 	if err := resp.ParseJsonBody(result); err != nil {
 		return nil, err
 	}
@@ -171,6 +183,9 @@ func HeadBucket(cli bce.Client, bucket string, ctx *BosContext, options ...Optio
 	req.SetMethod(http.HEAD)
 	req.SetBucket(bucket)
 	resp := &BosResponse{}
+	if ctx == nil {
+		ctx = newDefaultBosContext()
+	}
 	// handle options to set the header/params of request
 	if err := handleOptions(req, options); err != nil {
 		return bce.NewBceClientError(fmt.Sprintf("Handle options occur error: %s", err)), nil
@@ -200,6 +215,9 @@ func PutBucket(cli bce.Client, bucket string, args *PutBucketArgs,
 	req.SetUri(getBucketUri(bucket))
 	req.SetMethod(http.PUT)
 	req.SetBucket(bucket)
+	if ctx == nil {
+		ctx = newDefaultBosContext()
+	}
 	if args != nil {
 		if len(args.TagList) != 0 {
 			req.SetHeader(http.BCE_TAG, args.TagList)
@@ -242,6 +260,9 @@ func DeleteBucket(cli bce.Client, bucket string, ctx *BosContext, options ...Opt
 	req.SetUri(getBucketUri(bucket))
 	req.SetMethod(http.DELETE)
 	req.SetBucket(bucket)
+	if ctx == nil {
+		ctx = newDefaultBosContext()
+	}
 	resp := &BosResponse{}
 	// handle options to set the header/params of request
 	if err := handleOptions(req, options); err != nil {
@@ -272,6 +293,9 @@ func GetBucketLocation(cli bce.Client, bucket string, ctx *BosContext, options .
 	req.SetMethod(http.GET)
 	req.SetParam("location", "")
 	req.SetBucket(bucket)
+	if ctx == nil {
+		ctx = newDefaultBosContext()
+	}
 	resp := &BosResponse{}
 	// handle options to set the header/params of request
 	if err := handleOptions(req, options); err != nil {
@@ -308,6 +332,9 @@ func PutBucketAcl(cli bce.Client, bucket, cannedAcl string, aclBody *bce.Body,
 	req.SetMethod(http.PUT)
 	req.SetParam("acl", "")
 	req.SetBucket(bucket)
+	if ctx == nil {
+		ctx = newDefaultBosContext()
+	}
 	// The acl setting
 	if len(cannedAcl) != 0 && aclBody != nil {
 		return bce.NewBceClientError("BOS does not support cannedAcl and acl file at the same time")
@@ -350,6 +377,9 @@ func GetBucketAcl(cli bce.Client, bucket string, ctx *BosContext,
 	req.SetMethod(http.GET)
 	req.SetParam("acl", "")
 	req.SetBucket(bucket)
+	if ctx == nil {
+		ctx = newDefaultBosContext()
+	}
 	resp := &BosResponse{}
 	// handle options to set the header/params of request
 	if err := handleOptions(req, options); err != nil {
@@ -362,6 +392,7 @@ func GetBucketAcl(cli bce.Client, bucket string, ctx *BosContext,
 		return nil, resp.ServiceError()
 	}
 	result := &GetBucketAclResult{}
+	retrieveResponseFields(result, resp)
 	if err := resp.ParseJsonBody(result); err != nil {
 		return nil, err
 	}
@@ -380,12 +411,18 @@ func GetBucketAcl(cli bce.Client, bucket string, ctx *BosContext,
 //   - error: nil if success otherwise the specific error
 func PutBucketLogging(cli bce.Client, bucket string, logging *bce.Body,
 	ctx *BosContext, options ...Option) error {
+	if logging == nil {
+		return bce.NewBceClientError("logging config is nil")
+	}
 	req := &BosRequest{}
 	req.SetUri(getBucketUri(bucket))
 	req.SetMethod(http.PUT)
 	req.SetParam("logging", "")
 	req.SetBody(logging)
 	req.SetBucket(bucket)
+	if ctx == nil {
+		ctx = newDefaultBosContext()
+	}
 	resp := &BosResponse{}
 	// handle options to set the header/params of request
 	if err := handleOptions(req, options); err != nil {
@@ -417,6 +454,9 @@ func GetBucketLogging(cli bce.Client, bucket string, ctx *BosContext,
 	req.SetMethod(http.GET)
 	req.SetParam("logging", "")
 	req.SetBucket(bucket)
+	if ctx == nil {
+		ctx = newDefaultBosContext()
+	}
 	// handle options to set the header/params of request
 	if err := handleOptions(req, options); err != nil {
 		return nil, bce.NewBceClientError(fmt.Sprintf("Handle options occur error: %s", err))
@@ -429,6 +469,7 @@ func GetBucketLogging(cli bce.Client, bucket string, ctx *BosContext,
 		return nil, resp.ServiceError()
 	}
 	result := &GetBucketLoggingResult{}
+	retrieveResponseFields(result, resp)
 	if err := resp.ParseJsonBody(result); err != nil {
 		return nil, err
 	}
@@ -449,6 +490,9 @@ func DeleteBucketLogging(cli bce.Client, bucket string, ctx *BosContext, options
 	req.SetMethod(http.DELETE)
 	req.SetParam("logging", "")
 	req.SetBucket(bucket)
+	if ctx == nil {
+		ctx = newDefaultBosContext()
+	}
 	// handle options to set the header/params of request
 	if err := handleOptions(req, options); err != nil {
 		return bce.NewBceClientError(fmt.Sprintf("Handle options occur error: %s", err))
@@ -481,6 +525,9 @@ func PutBucketLifecycle(cli bce.Client, bucket string, lifecycle *bce.Body,
 	req.SetParam("lifecycle", "")
 	req.SetBody(lifecycle)
 	req.SetBucket(bucket)
+	if ctx == nil {
+		ctx = newDefaultBosContext()
+	}
 	// handle options to set the header/params of request
 	if err := handleOptions(req, options); err != nil {
 		return bce.NewBceClientError(fmt.Sprintf("Handle options occur error: %s", err))
@@ -512,6 +559,9 @@ func GetBucketLifecycle(cli bce.Client, bucket string, ctx *BosContext,
 	req.SetMethod(http.GET)
 	req.SetParam("lifecycle", "")
 	req.SetBucket(bucket)
+	if ctx == nil {
+		ctx = newDefaultBosContext()
+	}
 	// handle options to set the header/params of request
 	if err := handleOptions(req, options); err != nil {
 		return nil, bce.NewBceClientError(fmt.Sprintf("Handle options occur error: %s", err))
@@ -524,6 +574,7 @@ func GetBucketLifecycle(cli bce.Client, bucket string, ctx *BosContext,
 		return nil, resp.ServiceError()
 	}
 	result := &GetBucketLifecycleResult{}
+	retrieveResponseFields(result, resp)
 	if err := resp.ParseJsonBody(result); err != nil {
 		return nil, err
 	}
@@ -544,6 +595,9 @@ func DeleteBucketLifecycle(cli bce.Client, bucket string, ctx *BosContext, optio
 	req.SetMethod(http.DELETE)
 	req.SetParam("lifecycle", "")
 	req.SetBucket(bucket)
+	if ctx == nil {
+		ctx = newDefaultBosContext()
+	}
 	// handle options to set the header/params of request
 	if err := handleOptions(req, options); err != nil {
 		return bce.NewBceClientError(fmt.Sprintf("Handle options occur error: %s", err))
@@ -574,6 +628,9 @@ func PutBucketStorageclass(cli bce.Client, bucket, storageClass string, ctx *Bos
 	req.SetMethod(http.PUT)
 	req.SetParam("storageClass", "")
 	req.SetBucket(bucket)
+	if ctx == nil {
+		ctx = newDefaultBosContext()
+	}
 	obj := &StorageClassType{storageClass}
 	jsonBytes, jsonErr := json.Marshal(obj)
 	if jsonErr != nil {
@@ -614,6 +671,9 @@ func GetBucketStorageclass(cli bce.Client, bucket string, ctx *BosContext, optio
 	req.SetMethod(http.GET)
 	req.SetParam("storageClass", "")
 	req.SetBucket(bucket)
+	if ctx == nil {
+		ctx = newDefaultBosContext()
+	}
 	// handle options to set the header/params of request
 	if err := handleOptions(req, options); err != nil {
 		return "", bce.NewBceClientError(fmt.Sprintf("Handle options occur error: %s", err))
@@ -649,10 +709,12 @@ func PutBucketReplication(cli bce.Client, bucket string, replicationConf *bce.Bo
 	req.SetMethod(http.PUT)
 	req.SetParam("replication", "")
 	req.SetBucket(bucket)
+	if ctx == nil {
+		ctx = newDefaultBosContext()
+	}
 	if len(replicationRuleId) > 0 {
 		req.SetParam("id", replicationRuleId)
 	}
-
 	if replicationConf != nil {
 		req.SetHeader(http.CONTENT_TYPE, bce.DEFAULT_CONTENT_TYPE)
 		req.SetBody(replicationConf)
@@ -689,6 +751,9 @@ func GetBucketReplication(cli bce.Client, bucket string, replicationRuleId strin
 	req.SetMethod(http.GET)
 	req.SetParam("replication", "")
 	req.SetBucket(bucket)
+	if ctx == nil {
+		ctx = newDefaultBosContext()
+	}
 	if len(replicationRuleId) > 0 {
 		req.SetParam("id", replicationRuleId)
 	}
@@ -704,6 +769,7 @@ func GetBucketReplication(cli bce.Client, bucket string, replicationRuleId strin
 		return nil, resp.ServiceError()
 	}
 	result := &GetBucketReplicationResult{}
+	retrieveResponseFields(result, resp)
 	if err := resp.ParseJsonBody(result); err != nil {
 		return nil, err
 	}
@@ -726,6 +792,9 @@ func ListBucketReplication(cli bce.Client, bucket string, ctx *BosContext,
 	req.SetParam("replication", "")
 	req.SetParam("list", "")
 	req.SetBucket(bucket)
+	if ctx == nil {
+		ctx = newDefaultBosContext()
+	}
 	req.SetContext(ctx.Ctx)
 	// handle options to set the header/params of request
 	if err := handleOptions(req, options); err != nil {
@@ -739,6 +808,7 @@ func ListBucketReplication(cli bce.Client, bucket string, ctx *BosContext,
 		return nil, resp.ServiceError()
 	}
 	result := &ListBucketReplicationResult{}
+	retrieveResponseFields(result, resp)
 	if err := resp.ParseJsonBody(result); err != nil {
 		return nil, err
 	}
@@ -761,6 +831,9 @@ func DeleteBucketReplication(cli bce.Client, bucket string, replicationRuleId st
 	req.SetMethod(http.DELETE)
 	req.SetParam("replication", "")
 	req.SetBucket(bucket)
+	if ctx == nil {
+		ctx = newDefaultBosContext()
+	}
 	if len(replicationRuleId) > 0 {
 		req.SetParam("id", replicationRuleId)
 	}
@@ -796,6 +869,9 @@ func GetBucketReplicationProgress(cli bce.Client, bucket string, replicationRule
 	req.SetMethod(http.GET)
 	req.SetParam("replicationProgress", "")
 	req.SetBucket(bucket)
+	if ctx == nil {
+		ctx = newDefaultBosContext()
+	}
 	if len(replicationRuleId) > 0 {
 		req.SetParam("id", replicationRuleId)
 	}
@@ -811,6 +887,7 @@ func GetBucketReplicationProgress(cli bce.Client, bucket string, replicationRule
 		return nil, resp.ServiceError()
 	}
 	result := &GetBucketReplicationProgressResult{}
+	retrieveResponseFields(result, resp)
 	if err := resp.ParseJsonBody(result); err != nil {
 		return nil, err
 	}
@@ -832,6 +909,9 @@ func PutBucketEncryption(cli bce.Client, bucket, algorithm string, ctx *BosConte
 	req.SetMethod(http.PUT)
 	req.SetParam("encryption", "")
 	req.SetBucket(bucket)
+	if ctx == nil {
+		ctx = newDefaultBosContext()
+	}
 	obj := &BucketEncryptionType{algorithm}
 	jsonBytes, jsonErr := json.Marshal(obj)
 	if jsonErr != nil {
@@ -873,6 +953,9 @@ func GetBucketEncryption(cli bce.Client, bucket string, ctx *BosContext, options
 	req.SetMethod(http.GET)
 	req.SetParam("encryption", "")
 	req.SetBucket(bucket)
+	if ctx == nil {
+		ctx = newDefaultBosContext()
+	}
 	// handle options to set the header/params of request
 	if err := handleOptions(req, options); err != nil {
 		return "", bce.NewBceClientError(fmt.Sprintf("Handle options occur error: %s", err))
@@ -905,6 +988,9 @@ func DeleteBucketEncryption(cli bce.Client, bucket string, ctx *BosContext, opti
 	req.SetMethod(http.DELETE)
 	req.SetParam("encryption", "")
 	req.SetBucket(bucket)
+	if ctx == nil {
+		ctx = newDefaultBosContext()
+	}
 	// handle options to set the header/params of request
 	if err := handleOptions(req, options); err != nil {
 		return bce.NewBceClientError(fmt.Sprintf("Handle options occur error: %s", err))
@@ -936,6 +1022,9 @@ func PutBucketStaticWebsite(cli bce.Client, bucket string, confBody *bce.Body,
 	req.SetMethod(http.PUT)
 	req.SetParam("website", "")
 	req.SetBucket(bucket)
+	if ctx == nil {
+		ctx = newDefaultBosContext()
+	}
 	if confBody != nil {
 		req.SetHeader(http.CONTENT_TYPE, bce.DEFAULT_CONTENT_TYPE)
 		req.SetBody(confBody)
@@ -971,6 +1060,9 @@ func GetBucketStaticWebsite(cli bce.Client, bucket string, ctx *BosContext,
 	req.SetMethod(http.GET)
 	req.SetParam("website", "")
 	req.SetBucket(bucket)
+	if ctx == nil {
+		ctx = newDefaultBosContext()
+	}
 	// handle options to set the header/params of request
 	if err := handleOptions(req, options); err != nil {
 		return nil, bce.NewBceClientError(fmt.Sprintf("Handle options occur error: %s", err))
@@ -983,6 +1075,7 @@ func GetBucketStaticWebsite(cli bce.Client, bucket string, ctx *BosContext,
 		return nil, resp.ServiceError()
 	}
 	result := &GetBucketStaticWebsiteResult{}
+	retrieveResponseFields(result, resp)
 	if err := resp.ParseJsonBody(result); err != nil {
 		return nil, err
 	}
@@ -1003,6 +1096,9 @@ func DeleteBucketStaticWebsite(cli bce.Client, bucket string, ctx *BosContext, o
 	req.SetMethod(http.DELETE)
 	req.SetParam("website", "")
 	req.SetBucket(bucket)
+	if ctx == nil {
+		ctx = newDefaultBosContext()
+	}
 	// handle options to set the header/params of request
 	if err := handleOptions(req, options); err != nil {
 		return bce.NewBceClientError(fmt.Sprintf("Handle options occur error: %s", err))
@@ -1033,6 +1129,9 @@ func PutBucketCors(cli bce.Client, bucket string, confBody *bce.Body, ctx *BosCo
 	req.SetMethod(http.PUT)
 	req.SetParam("cors", "")
 	req.SetBucket(bucket)
+	if ctx == nil {
+		ctx = newDefaultBosContext()
+	}
 	if confBody != nil {
 		req.SetHeader(http.CONTENT_TYPE, bce.DEFAULT_CONTENT_TYPE)
 		req.SetBody(confBody)
@@ -1068,6 +1167,9 @@ func GetBucketCors(cli bce.Client, bucket string, ctx *BosContext,
 	req.SetMethod(http.GET)
 	req.SetParam("cors", "")
 	req.SetBucket(bucket)
+	if ctx == nil {
+		ctx = newDefaultBosContext()
+	}
 	// handle options to set the header/params of request
 	if err := handleOptions(req, options); err != nil {
 		return nil, bce.NewBceClientError(fmt.Sprintf("Handle options occur error: %s", err))
@@ -1080,6 +1182,7 @@ func GetBucketCors(cli bce.Client, bucket string, ctx *BosContext,
 		return nil, resp.ServiceError()
 	}
 	result := &GetBucketCorsResult{}
+	retrieveResponseFields(result, resp)
 	if err := resp.ParseJsonBody(result); err != nil {
 		return nil, err
 	}
@@ -1100,6 +1203,9 @@ func DeleteBucketCors(cli bce.Client, bucket string, ctx *BosContext, options ..
 	req.SetMethod(http.DELETE)
 	req.SetParam("cors", "")
 	req.SetBucket(bucket)
+	if ctx == nil {
+		ctx = newDefaultBosContext()
+	}
 	// handle options to set the header/params of request
 	if err := handleOptions(req, options); err != nil {
 		return bce.NewBceClientError(fmt.Sprintf("Handle options occur error: %s", err))
@@ -1125,13 +1231,35 @@ func DeleteBucketCors(cli bce.Client, bucket string, ctx *BosContext, options ..
 // RETURNS:
 //   - error: nil if success otherwise the specific error
 func PutBucketCopyrightProtection(cli bce.Client, ctx *BosContext, bucket string, resources ...string) error {
+	return PutBucketCopyrightProtectionWithOptions(cli, ctx, bucket, resources)
+}
+
+// PutBucketCopyrightProtectionWithOptions - the same as PutBucketCopyrightProtection, but
+// taking the resources as a slice so that the options can be passed as well.
+//
+// PARAMS:
+//   - cli: the client agent which can perform sending request
+//   - bucket: the bucket name
+//   - resources: the resource items in the bucket to be protected
+//   - options: the function set to set HTTP headers/params
+//
+// RETURNS:
+//   - error: nil if success otherwise the specific error
+func PutBucketCopyrightProtectionWithOptions(cli bce.Client, ctx *BosContext, bucket string,
+	resources []string, options ...Option) error {
 	req := &BosRequest{}
 	req.SetUri(getBucketUri(bucket))
 	req.SetMethod(http.PUT)
 	req.SetParam("copyrightProtection", "")
 	req.SetBucket(bucket)
+	if ctx == nil {
+		ctx = newDefaultBosContext()
+	}
 	if len(resources) == 0 {
 		return bce.NewBceClientError("the resource to set copyright protection is empty")
+	}
+	if err := handleOptions(req, options); err != nil {
+		return bce.NewBceClientError(fmt.Sprintf("Handle options occur error: %s", err))
 	}
 	arg := &CopyrightProtectionType{resources}
 	jsonBytes, jsonErr := json.Marshal(arg)
@@ -1172,6 +1300,9 @@ func GetBucketCopyrightProtection(cli bce.Client, bucket string,
 	req.SetMethod(http.GET)
 	req.SetParam("copyrightProtection", "")
 	req.SetBucket(bucket)
+	if ctx == nil {
+		ctx = newDefaultBosContext()
+	}
 	// handle options to set the header/params of request
 	if err := handleOptions(req, options); err != nil {
 		return nil, bce.NewBceClientError(fmt.Sprintf("Handle options occur error: %s", err))
@@ -1204,6 +1335,9 @@ func DeleteBucketCopyrightProtection(cli bce.Client, bucket string, ctx *BosCont
 	req.SetMethod(http.DELETE)
 	req.SetParam("copyrightProtection", "")
 	req.SetBucket(bucket)
+	if ctx == nil {
+		ctx = newDefaultBosContext()
+	}
 	// handle options to set the header/params of request
 	if err := handleOptions(req, options); err != nil {
 		return bce.NewBceClientError(fmt.Sprintf("Handle options occur error: %s", err))
@@ -1235,6 +1369,9 @@ func PutBucketTrash(cli bce.Client, bucket string, trashReq PutBucketTrashReq,
 	req.SetMethod(http.PUT)
 	req.SetParam("trash", "")
 	req.SetBucket(bucket)
+	if ctx == nil {
+		ctx = newDefaultBosContext()
+	}
 	reqByte, _ := json.Marshal(trashReq)
 	body, err := bce.NewBodyFromString(string(reqByte))
 	if err != nil {
@@ -1263,6 +1400,9 @@ func GetBucketTrash(cli bce.Client, bucket string, ctx *BosContext,
 	req.SetMethod(http.GET)
 	req.SetParam("trash", "")
 	req.SetBucket(bucket)
+	if ctx == nil {
+		ctx = newDefaultBosContext()
+	}
 	// handle options to set the header/params of request
 	if err := handleOptions(req, options); err != nil {
 		return nil, bce.NewBceClientError(fmt.Sprintf("Handle options occur error: %s", err))
@@ -1275,6 +1415,7 @@ func GetBucketTrash(cli bce.Client, bucket string, ctx *BosContext,
 		return nil, resp.ServiceError()
 	}
 	result := &GetBucketTrashResult{}
+	retrieveResponseFields(result, resp)
 	if err := resp.ParseJsonBody(result); err != nil {
 		return nil, err
 	}
@@ -1287,6 +1428,9 @@ func DeleteBucketTrash(cli bce.Client, bucket string, ctx *BosContext, options .
 	req.SetMethod(http.DELETE)
 	req.SetParam("trash", "")
 	req.SetBucket(bucket)
+	if ctx == nil {
+		ctx = newDefaultBosContext()
+	}
 	// handle options to set the header/params of request
 	if err := handleOptions(req, options); err != nil {
 		return bce.NewBceClientError(fmt.Sprintf("Handle options occur error: %s", err))
@@ -1309,6 +1453,9 @@ func PutBucketNotification(cli bce.Client, bucket string, putBucketNotificationR
 	req.SetMethod(http.PUT)
 	req.SetParam("notification", "")
 	req.SetBucket(bucket)
+	if ctx == nil {
+		ctx = newDefaultBosContext()
+	}
 	reqByte, _ := json.Marshal(putBucketNotificationReq)
 	body, err := bce.NewBodyFromString(string(reqByte))
 	if err != nil {
@@ -1337,6 +1484,9 @@ func GetBucketNotification(cli bce.Client, bucket string, ctx *BosContext,
 	req.SetMethod(http.GET)
 	req.SetParam("notification", "")
 	req.SetBucket(bucket)
+	if ctx == nil {
+		ctx = newDefaultBosContext()
+	}
 	// handle options to set the header/params of request
 	if err := handleOptions(req, options); err != nil {
 		return nil, bce.NewBceClientError(fmt.Sprintf("Handle options occur error: %s", err))
@@ -1349,6 +1499,7 @@ func GetBucketNotification(cli bce.Client, bucket string, ctx *BosContext,
 		return nil, resp.ServiceError()
 	}
 	result := &PutBucketNotificationReq{}
+	retrieveResponseFields(result, resp)
 	if err := resp.ParseJsonBody(result); err != nil {
 		return nil, err
 	}
@@ -1361,6 +1512,9 @@ func DeleteBucketNotification(cli bce.Client, bucket string, ctx *BosContext, op
 	req.SetMethod(http.DELETE)
 	req.SetParam("notification", "")
 	req.SetBucket(bucket)
+	if ctx == nil {
+		ctx = newDefaultBosContext()
+	}
 	// handle options to set the header/params of request
 	if err := handleOptions(req, options); err != nil {
 		return bce.NewBceClientError(fmt.Sprintf("Handle options occur error: %s", err))
@@ -1383,6 +1537,9 @@ func PutBucketMirror(cli bce.Client, bucket string, putBucketMirrorArgs *PutBuck
 	req.SetMethod(http.PUT)
 	req.SetParam("mirroring", "")
 	req.SetBucket(bucket)
+	if ctx == nil {
+		ctx = newDefaultBosContext()
+	}
 	reqByte, _ := json.Marshal(putBucketMirrorArgs)
 	body, err := bce.NewBodyFromString(string(reqByte))
 	if err != nil {
@@ -1411,6 +1568,9 @@ func GetBucketMirror(cli bce.Client, bucket string, ctx *BosContext,
 	req.SetMethod(http.GET)
 	req.SetParam("mirroring", "")
 	req.SetBucket(bucket)
+	if ctx == nil {
+		ctx = newDefaultBosContext()
+	}
 	// handle options to set the header/params of request
 	if err := handleOptions(req, options); err != nil {
 		return nil, bce.NewBceClientError(fmt.Sprintf("Handle options occur error: %s", err))
@@ -1423,6 +1583,7 @@ func GetBucketMirror(cli bce.Client, bucket string, ctx *BosContext,
 		return nil, resp.ServiceError()
 	}
 	result := &PutBucketMirrorArgs{}
+	retrieveResponseFields(result, resp)
 	if err := resp.ParseJsonBody(result); err != nil {
 		return nil, err
 	}
@@ -1435,6 +1596,9 @@ func DeleteBucketMirror(cli bce.Client, bucket string, ctx *BosContext, options 
 	req.SetMethod(http.DELETE)
 	req.SetParam("mirroring", "")
 	req.SetBucket(bucket)
+	if ctx == nil {
+		ctx = newDefaultBosContext()
+	}
 	// handle options to set the header/params of request
 	if err := handleOptions(req, options); err != nil {
 		return bce.NewBceClientError(fmt.Sprintf("Handle options occur error: %s", err))
@@ -1457,6 +1621,9 @@ func PutBucketTag(cli bce.Client, bucket string, putBucketTagArgs *PutBucketTagA
 	req.SetMethod(http.PUT)
 	req.SetParam("tagging", "")
 	req.SetBucket(bucket)
+	if ctx == nil {
+		ctx = newDefaultBosContext()
+	}
 	reqByte, _ := json.Marshal(putBucketTagArgs)
 	body, err := bce.NewBodyFromString(string(reqByte))
 	if err != nil {
@@ -1484,6 +1651,9 @@ func GetBucketTag(cli bce.Client, bucket string, ctx *BosContext, options ...Opt
 	req.SetMethod(http.GET)
 	req.SetParam("tagging", "")
 	req.SetBucket(bucket)
+	if ctx == nil {
+		ctx = newDefaultBosContext()
+	}
 	// handle options to set the header/params of request
 	if err := handleOptions(req, options); err != nil {
 		return nil, bce.NewBceClientError(fmt.Sprintf("Handle options occur error: %s", err))
@@ -1496,6 +1666,7 @@ func GetBucketTag(cli bce.Client, bucket string, ctx *BosContext, options ...Opt
 		return nil, resp.ServiceError()
 	}
 	result := &GetBucketTagResult{}
+	retrieveResponseFields(result, resp)
 	if err := resp.ParseJsonBody(result); err != nil {
 		return nil, err
 	}
@@ -1508,6 +1679,9 @@ func DeleteBucketTag(cli bce.Client, bucket string, ctx *BosContext, options ...
 	req.SetMethod(http.DELETE)
 	req.SetParam("tagging", "")
 	req.SetBucket(bucket)
+	if ctx == nil {
+		ctx = newDefaultBosContext()
+	}
 	// handle options to set the header/params of request
 	if err := handleOptions(req, options); err != nil {
 		return bce.NewBceClientError(fmt.Sprintf("Handle options occur error: %s", err))
@@ -1529,6 +1703,9 @@ func GetBosShareLink(cli bce.Client, bucket, prefix, shareCode string, duration 
 	req.SetEndpoint(BOS_SHARE_ENDPOINT)
 	req.SetParam("action", "")
 	req.SetMethod(http.POST)
+	if ctx == nil {
+		ctx = newDefaultBosContext()
+	}
 	req.SetContext(ctx.Ctx)
 	if len(shareCode) != 0 && len(shareCode) != 6 {
 		return "", fmt.Errorf("shareCode length must be 0 or 6")
@@ -1581,6 +1758,9 @@ func PutBucketVersioning(cli bce.Client, bucket string, putBucketVersioningArgs 
 	req.SetMethod(http.PUT)
 	req.SetParam("versioning", "")
 	req.SetBucket(bucket)
+	if ctx == nil {
+		ctx = newDefaultBosContext()
+	}
 	reqByte, _ := json.Marshal(putBucketVersioningArgs)
 	body, err := bce.NewBodyFromString(string(reqByte))
 	if err != nil {
@@ -1609,6 +1789,9 @@ func GetBucketVersioning(cli bce.Client, bucket string, ctx *BosContext,
 	req.SetMethod(http.GET)
 	req.SetParam("versioning", "")
 	req.SetBucket(bucket)
+	if ctx == nil {
+		ctx = newDefaultBosContext()
+	}
 	// handle options to set the header/params of request
 	if err := handleOptions(req, options); err != nil {
 		return nil, bce.NewBceClientError(fmt.Sprintf("Handle options occur error: %s", err))
@@ -1621,6 +1804,7 @@ func GetBucketVersioning(cli bce.Client, bucket string, ctx *BosContext,
 		return nil, resp.ServiceError()
 	}
 	result := &BucketVersioningArgs{}
+	retrieveResponseFields(result, resp)
 	if err := resp.ParseJsonBody(result); err != nil {
 		return nil, err
 	}
@@ -1646,6 +1830,9 @@ func PutBucketInventory(cli bce.Client, bucket string, args *PutBucketInventoryA
 	req.SetParam("inventory", "")
 	req.SetParam("id", args.Rule.Id)
 	req.SetBucket(bucket)
+	if ctx == nil {
+		ctx = newDefaultBosContext()
+	}
 	// handle options to set the header/params of request
 	if err := handleOptions(req, options); err != nil {
 		return bce.NewBceClientError(fmt.Sprintf("Handle options occur error: %s", err))
@@ -1687,6 +1874,9 @@ func GetBucketInventory(cli bce.Client, bucket, id string, ctx *BosContext,
 	req.SetParam("inventory", "")
 	req.SetParam("id", id)
 	req.SetBucket(bucket)
+	if ctx == nil {
+		ctx = newDefaultBosContext()
+	}
 	// handle options to set the header/params of request
 	if err := handleOptions(req, options); err != nil {
 		return nil, bce.NewBceClientError(fmt.Sprintf("Handle options occur error: %s", err))
@@ -1695,7 +1885,11 @@ func GetBucketInventory(cli bce.Client, bucket, id string, ctx *BosContext,
 	if err := SendRequest(cli, req, resp, ctx); err != nil {
 		return nil, err
 	}
+	if resp.IsFail() {
+		return nil, resp.ServiceError()
+	}
 	result := &PutBucketInventoryArgs{}
+	retrieveResponseFields(result, resp)
 	if err := resp.ParseJsonBody(&result.Rule); err != nil {
 		return nil, err
 	}
@@ -1720,6 +1914,9 @@ func ListBucketInventory(cli bce.Client, bucket string, ctx *BosContext,
 	req.SetMethod(http.GET)
 	req.SetParam("inventory", "")
 	req.SetBucket(bucket)
+	if ctx == nil {
+		ctx = newDefaultBosContext()
+	}
 	// handle options to set the header/params of request
 	if err := handleOptions(req, options); err != nil {
 		return nil, bce.NewBceClientError(fmt.Sprintf("Handle options occur error: %s", err))
@@ -1728,7 +1925,11 @@ func ListBucketInventory(cli bce.Client, bucket string, ctx *BosContext,
 	if err := SendRequest(cli, req, resp, ctx); err != nil {
 		return nil, err
 	}
+	if resp.IsFail() {
+		return nil, resp.ServiceError()
+	}
 	result := &ListBucketInventoryResult{}
+	retrieveResponseFields(result, resp)
 	if err := resp.ParseJsonBody(result); err != nil {
 		return nil, err
 	}
@@ -1754,6 +1955,9 @@ func DeleteBucketInventory(cli bce.Client, bucket, id string,
 	req.SetParam("inventory", "")
 	req.SetParam("id", id)
 	req.SetBucket(bucket)
+	if ctx == nil {
+		ctx = newDefaultBosContext()
+	}
 	// handle options to set the header/params of request
 	if err := handleOptions(req, options); err != nil {
 		return bce.NewBceClientError(fmt.Sprintf("Handle options occur error: %s", err))
@@ -1765,5 +1969,398 @@ func DeleteBucketInventory(cli bce.Client, bucket, id string,
 	if resp.IsFail() {
 		return resp.ServiceError()
 	}
+	return nil
+}
+
+// PutBucketQuota - put the quota for the given bucket
+//
+// PARAMS:
+//   - cli: the client agent which can perform sending request
+//   - bucket: the bucket name
+//   - args: quota configuration
+//   - ctx: the context to control the request
+//   - options: the function set to set HTTP headers/params
+//
+// RETURNS:
+//   - error: nil if success otherwise the specific error
+func PutBucketQuota(cli bce.Client, bucket string, args *BucketQuotaArgs,
+	ctx *BosContext, options ...Option) error {
+	req := &BosRequest{}
+	req.SetUri(getBucketUri(bucket))
+	req.SetMethod(http.PUT)
+	req.SetParam("quota", "")
+	req.SetBucket(bucket)
+	if ctx == nil {
+		ctx = newDefaultBosContext()
+	}
+	// handle options to set the header/params of request
+	if err := handleOptions(req, options); err != nil {
+		return bce.NewBceClientError(fmt.Sprintf("Handle options occur error: %s", err))
+	}
+	bodyBytes, _ := json.Marshal(args)
+	body, err := bce.NewBodyFromBytes(bodyBytes)
+	if err != nil {
+		return err
+	}
+	req.SetBody(body)
+	resp := &BosResponse{}
+	if err := SendRequest(cli, req, resp, ctx); err != nil {
+		return err
+	}
+	if resp.IsFail() {
+		return resp.ServiceError()
+	}
+	defer func() { resp.Body().Close() }()
+	return nil
+}
+
+// GetBucketQuota - get the quota of the given bucket
+//
+// PARAMS:
+//   - cli: the client agent which can perform sending request
+//   - bucket: the bucket name
+//   - ctx: the context to control the request
+//   - options: the function set to set HTTP headers/params
+//
+// RETURNS:
+//   - result: the bucket quota info
+//   - error: nil if success otherwise the specific error
+func GetBucketQuota(cli bce.Client, bucket string, ctx *BosContext,
+	options ...Option) (*BucketQuotaArgs, error) {
+	req := &BosRequest{}
+	req.SetUri(getBucketUri(bucket))
+	req.SetMethod(http.GET)
+	req.SetParam("quota", "")
+	req.SetBucket(bucket)
+	if ctx == nil {
+		ctx = newDefaultBosContext()
+	}
+	// handle options to set the header/params of request
+	if err := handleOptions(req, options); err != nil {
+		return nil, bce.NewBceClientError(fmt.Sprintf("Handle options occur error: %s", err))
+	}
+	resp := &BosResponse{}
+	if err := SendRequest(cli, req, resp, ctx); err != nil {
+		return nil, err
+	}
+	if resp.IsFail() {
+		return nil, resp.ServiceError()
+	}
+	result := &BucketQuotaArgs{}
+	retrieveResponseFields(result, resp)
+	if err := resp.ParseJsonBody(result); err != nil {
+		return nil, err
+	}
+	return result, nil
+}
+
+// DeleteBucketQuota - delete the quota for the given bucket
+//
+// PARAMS:
+//   - cli: the client agent which can perform sending request
+//   - bucket: the bucket name
+//   - ctx: the context to control the request
+//   - options: the function set to set HTTP headers/params
+//
+// RETURNS:
+//   - error: nil if success otherwise the specific error
+func DeleteBucketQuota(cli bce.Client, bucket string,
+	ctx *BosContext, options ...Option) error {
+	req := &BosRequest{}
+	req.SetUri(getBucketUri(bucket))
+	req.SetMethod(http.DELETE)
+	req.SetParam("quota", "")
+	req.SetBucket(bucket)
+	if ctx == nil {
+		ctx = newDefaultBosContext()
+	}
+	// handle options to set the header/params of request
+	if err := handleOptions(req, options); err != nil {
+		return bce.NewBceClientError(fmt.Sprintf("Handle options occur error: %s", err))
+	}
+	resp := &BosResponse{}
+	if err := SendRequest(cli, req, resp, ctx); err != nil {
+		return err
+	}
+	if resp.IsFail() {
+		return resp.ServiceError()
+	}
+	defer func() { resp.Body().Close() }()
+	return nil
+}
+
+// PutBucketRequestPayment - put request payment rule for the given bucket
+//
+// PARAMS:
+//   - cli: the client agent which can perform sending request
+//   - bucket: the bucket name
+//   - args: bucket payment rule
+//   - ctx: the context to control the request
+//   - options: the function set to set HTTP headers/params
+//
+// RETURNS:
+//   - error: nil if success otherwise the specific error
+func PutBucketRequestPayment(cli bce.Client, bucket string, args *RequestPaymentArgs,
+	ctx *BosContext, options ...Option) error {
+	req := &BosRequest{}
+	req.SetUri(getBucketUri(bucket))
+	req.SetMethod(http.PUT)
+	req.SetParam("requestPayment", "")
+	req.SetBucket(bucket)
+	if ctx == nil {
+		ctx = newDefaultBosContext()
+	}
+	// handle options to set the header/params of request
+	if err := handleOptions(req, options); err != nil {
+		return bce.NewBceClientError(fmt.Sprintf("Handle options occur error: %s", err))
+	}
+	bodyBytes, _ := json.Marshal(args)
+	body, err := bce.NewBodyFromBytes(bodyBytes)
+	if err != nil {
+		return err
+	}
+	req.SetBody(body)
+	resp := &BosResponse{}
+	if err := SendRequest(cli, req, resp, ctx); err != nil {
+		return err
+	}
+	if resp.IsFail() {
+		return resp.ServiceError()
+	}
+	defer func() { resp.Body().Close() }()
+	return nil
+}
+
+// GetBucketRequestPayment - get request payment rule of the given bucket
+//
+// PARAMS:
+//   - cli: the client agent which can perform sending request
+//   - bucket: the bucket name
+//   - ctx: the context to control the request
+//   - options: the function set to set HTTP headers/params
+//
+// RETURNS:
+//   - result: the bucket request payment rule
+//   - error: nil if success otherwise the specific error
+func GetBucketRequestPayment(cli bce.Client, bucket string, ctx *BosContext,
+	options ...Option) (*RequestPaymentArgs, error) {
+	req := &BosRequest{}
+	req.SetUri(getBucketUri(bucket))
+	req.SetMethod(http.GET)
+	req.SetParam("requestPayment", "")
+	req.SetBucket(bucket)
+	if ctx == nil {
+		ctx = newDefaultBosContext()
+	}
+	// handle options to set the header/params of request
+	if err := handleOptions(req, options); err != nil {
+		return nil, bce.NewBceClientError(fmt.Sprintf("Handle options occur error: %s", err))
+	}
+	resp := &BosResponse{}
+	if err := SendRequest(cli, req, resp, ctx); err != nil {
+		return nil, err
+	}
+	if resp.IsFail() {
+		return nil, resp.ServiceError()
+	}
+	result := &RequestPaymentArgs{}
+	retrieveResponseFields(result, resp)
+	if err := resp.ParseJsonBody(result); err != nil {
+		return nil, err
+	}
+	return result, nil
+}
+
+// InitBucketObjectLock - create time-based retention policy for the given bucket
+//
+// PARAMS:
+//   - cli: the client agent which can perform sending request
+//   - bucket: the bucket name
+//   - args: retention policy in days
+//   - ctx: the context to control the request
+//   - options: the function set to set HTTP headers/params
+//
+// RETURNS:
+//   - error: nil if success otherwise the specific error
+func InitBucketObjectLock(cli bce.Client, bucket string, args *InitBucketObjectLockArgs,
+	ctx *BosContext, options ...Option) error {
+	req := &BosRequest{}
+	req.SetUri(getBucketUri(bucket))
+	req.SetMethod(http.POST)
+	req.SetParam("objectlock", "")
+	req.SetBucket(bucket)
+	if ctx == nil {
+		ctx = newDefaultBosContext()
+	}
+	// handle options to set the header/params of request
+	if err := handleOptions(req, options); err != nil {
+		return bce.NewBceClientError(fmt.Sprintf("Handle options occur error: %s", err))
+	}
+	bodyBytes, _ := json.Marshal(args)
+	body, err := bce.NewBodyFromBytes(bodyBytes)
+	if err != nil {
+		return err
+	}
+	req.SetBody(body)
+	resp := &BosResponse{}
+	if err := SendRequest(cli, req, resp, ctx); err != nil {
+		return err
+	}
+	if resp.IsFail() {
+		return resp.ServiceError()
+	}
+	defer func() { resp.Body().Close() }()
+	return nil
+}
+
+// GetBucketObjectLock - get time-based retention policy of the given bucket
+//
+// PARAMS:
+//   - cli: the client agent which can perform sending request
+//   - bucket: the bucket name
+//   - ctx: the context to control the request
+//   - options: the function set to set HTTP headers/params
+//
+// RETURNS:
+//   - result: the bucket retention configuration
+//   - error: nil if success otherwise the specific error
+func GetBucketObjectLock(cli bce.Client, bucket string, ctx *BosContext,
+	options ...Option) (*BucketObjectLockResult, error) {
+	req := &BosRequest{}
+	req.SetUri(getBucketUri(bucket))
+	req.SetMethod(http.GET)
+	req.SetParam("objectlock", "")
+	req.SetBucket(bucket)
+	if ctx == nil {
+		ctx = newDefaultBosContext()
+	}
+	// handle options to set the header/params of request
+	if err := handleOptions(req, options); err != nil {
+		return nil, bce.NewBceClientError(fmt.Sprintf("Handle options occur error: %s", err))
+	}
+	resp := &BosResponse{}
+	if err := SendRequest(cli, req, resp, ctx); err != nil {
+		return nil, err
+	}
+	if resp.IsFail() {
+		return nil, resp.ServiceError()
+	}
+	result := &BucketObjectLockResult{}
+	retrieveResponseFields(result, resp)
+	if err := resp.ParseJsonBody(result); err != nil {
+		return nil, err
+	}
+	return result, nil
+}
+
+// DeleteBucketObjectLock - delete time-based retention policy of the given bucket
+//
+// PARAMS:
+//   - cli: the client agent which can perform sending request
+//   - bucket: the bucket name
+//   - ctx: the context to control the request
+//   - options: the function set to set HTTP headers/params
+//
+// RETURNS:
+//   - error: nil if success otherwise the specific error
+func DeleteBucketObjectLock(cli bce.Client, bucket string,
+	ctx *BosContext, options ...Option) error {
+	req := &BosRequest{}
+	req.SetUri(getBucketUri(bucket))
+	req.SetMethod(http.DELETE)
+	req.SetParam("objectlock", "")
+	req.SetBucket(bucket)
+	if ctx == nil {
+		ctx = newDefaultBosContext()
+	}
+	// handle options to set the header/params of request
+	if err := handleOptions(req, options); err != nil {
+		return bce.NewBceClientError(fmt.Sprintf("Handle options occur error: %s", err))
+	}
+	resp := &BosResponse{}
+	if err := SendRequest(cli, req, resp, ctx); err != nil {
+		return err
+	}
+	if resp.IsFail() {
+		return resp.ServiceError()
+	}
+	defer func() { resp.Body().Close() }()
+	return nil
+}
+
+// CompleteBucketObjectLock - lock time-based retention policy of the given bucket
+//
+// PARAMS:
+//   - cli: the client agent which can perform sending request
+//   - bucket: the bucket name
+//   - ctx: the context to control the request
+//   - options: the function set to set HTTP headers/params
+//
+// RETURNS:
+//   - error: nil if success otherwise the specific error
+func CompleteBucketObjectLock(cli bce.Client, bucket string,
+	ctx *BosContext, options ...Option) error {
+	req := &BosRequest{}
+	req.SetUri(getBucketUri(bucket))
+	req.SetMethod(http.POST)
+	req.SetParam("completeobjectlock", "")
+	req.SetBucket(bucket)
+	if ctx == nil {
+		ctx = newDefaultBosContext()
+	}
+	// handle options to set the header/params of request
+	if err := handleOptions(req, options); err != nil {
+		return bce.NewBceClientError(fmt.Sprintf("Handle options occur error: %s", err))
+	}
+	resp := &BosResponse{}
+	if err := SendRequest(cli, req, resp, ctx); err != nil {
+		return err
+	}
+	if resp.IsFail() {
+		return resp.ServiceError()
+	}
+	defer func() { resp.Body().Close() }()
+	return nil
+}
+
+// ExtendBucketObjectLock - extend retention days for the given bucket
+//
+// PARAMS:
+//   - cli: the client agent which can perform sending request
+//   - bucket: the bucket name
+//   - args: extend retention days
+//   - ctx: the context to control the request
+//   - options: the function set to set HTTP headers/params
+//
+// RETURNS:
+//   - error: nil if success otherwise the specific error
+func ExtendBucketObjectLock(cli bce.Client, bucket string, args *ExtendBucketObjectLockArgs,
+	ctx *BosContext, options ...Option) error {
+	req := &BosRequest{}
+	req.SetUri(getBucketUri(bucket))
+	req.SetMethod(http.POST)
+	req.SetParam("extendobjectlock", "")
+	req.SetBucket(bucket)
+	if ctx == nil {
+		ctx = newDefaultBosContext()
+	}
+	// handle options to set the header/params of request
+	if err := handleOptions(req, options); err != nil {
+		return bce.NewBceClientError(fmt.Sprintf("Handle options occur error: %s", err))
+	}
+	bodyBytes, _ := json.Marshal(args)
+	body, err := bce.NewBodyFromBytes(bodyBytes)
+	if err != nil {
+		return err
+	}
+	req.SetBody(body)
+	resp := &BosResponse{}
+	if err := SendRequest(cli, req, resp, ctx); err != nil {
+		return err
+	}
+	if resp.IsFail() {
+		return resp.ServiceError()
+	}
+	defer func() { resp.Body().Close() }()
 	return nil
 }

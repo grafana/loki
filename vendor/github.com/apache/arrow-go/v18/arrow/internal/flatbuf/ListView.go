@@ -22,9 +22,9 @@ import (
 	flatbuffers "github.com/google/flatbuffers/go"
 )
 
-// / Represents the same logical types that List can, but contains offsets and
-// / sizes allowing for writes in any order and sharing of child values among
-// / list values.
+/// Represents the same logical types that List can, but contains offsets and
+/// sizes allowing for writes in any order and sharing of child values among
+/// list values.
 type ListView struct {
 	_tab flatbuffers.Table
 }
@@ -34,6 +34,21 @@ func GetRootAsListView(buf []byte, offset flatbuffers.UOffsetT) *ListView {
 	x := &ListView{}
 	x.Init(buf, n+offset)
 	return x
+}
+
+func FinishListViewBuffer(builder *flatbuffers.Builder, offset flatbuffers.UOffsetT) {
+	builder.Finish(offset)
+}
+
+func GetSizePrefixedRootAsListView(buf []byte, offset flatbuffers.UOffsetT) *ListView {
+	n := flatbuffers.GetUOffsetT(buf[offset+flatbuffers.SizeUint32:])
+	x := &ListView{}
+	x.Init(buf, n+offset+flatbuffers.SizeUint32)
+	return x
+}
+
+func FinishSizePrefixedListViewBuffer(builder *flatbuffers.Builder, offset flatbuffers.UOffsetT) {
+	builder.FinishSizePrefixed(offset)
 }
 
 func (rcv *ListView) Init(buf []byte, i flatbuffers.UOffsetT) {

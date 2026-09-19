@@ -1,3 +1,234 @@
+# Release (2026-08-26)
+
+## General Highlights
+* **Dependency Update**: Updated to the latest SDK module versions
+
+## Module Highlights
+* `github.com/aws/smithy-go`: v1.28.1
+  * **Bug Fix**: Fix broken AddLogger middleware since its insert point was removed.
+
+# Release (2026-08-25.2)
+
+## General Highlights
+* **Dependency Update**: Updated to the latest SDK module versions
+
+## Module Highlights
+* `github.com/aws/smithy-go`: v1.28.0
+  * **Feature**: Set `Content-Length` inline when the request body is set via `SetStream`. The `ComputeContentLength` middleware is now deprecated.
+
+# Release (2026-08-25)
+
+## General Highlights
+* **Dependency Update**: Updated to the latest SDK module versions
+
+## Module Highlights
+* `github.com/aws/smithy-go`: v1.27.10
+  * **Bug Fix**: Fix a data race on the underlying writer when an event stream is closed while an event write is in flight.
+  * **Bug Fix**: Restore draining the HTTP response body in `CloseResponseBody` to avoid issues with TCP connection reuse.
+
+# Release (2026-08-21)
+
+## General Highlights
+* **Dependency Update**: Updated to the latest SDK module versions
+
+## Module Highlights
+* `github.com/aws/smithy-go`: v1.27.9
+  * **Bug Fix**: Fix a generic event stream exception not carrying the error code and message from its payload.
+  * **Bug Fix**: Fix an event stream not being closed when its connection is lost, which would cause a caller writing to the stream to block indefinitely.
+  * **Bug Fix**: Fix deserialization of an empty list producing a nil slice instead of an empty one.
+  * **Bug Fix**: Restore draining the HTTP response body in `CloseResponseBody` to avoid issues with TCP connection reuse.
+
+# Release (2026-08-14)
+
+## General Highlights
+* **Dependency Update**: Updated to the latest SDK module versions
+
+## Module Highlights
+* `github.com/aws/smithy-go`: v1.27.8
+  * **Bug Fix**: Restore draining the HTTP response body in `CloseResponseBody` to avoid issues with TCP connection reuse.
+
+# Release (2026-08-07)
+
+## General Highlights
+* **Dependency Update**: Updated to the latest SDK module versions
+
+## Module Highlights
+* `github.com/aws/smithy-go`: v1.27.7
+  * **Bug Fix**: Don't serialize unset JSON documents as `nil` in structure members.
+  * **Bug Fix**: Fix a deserialization panic around collection members in recursive shape configs.
+
+# Release (2026-07-31)
+
+## General Highlights
+* **Dependency Update**: Updated to the latest SDK module versions
+
+## Module Highlights
+* `github.com/aws/smithy-go`: v1.27.6
+  * **Bug Fix**: Fix failure to deserialize any `@httpPayload` struct with a non-string member.
+  * **Bug Fix**: Fix failure to serialize any `@httpPayload` struct with a nested struct.
+
+# Release (2026-07-27)
+
+## General Highlights
+* **Dependency Update**: Updated to the latest SDK module versions
+
+## Module Highlights
+* `github.com/aws/smithy-go`: v1.27.5
+  * **Bug Fix**: Fix a performance issue in awsQuery with large response payloads.
+
+# Release (2026-07-16)
+
+## General Highlights
+* **Dependency Update**: Updated to the latest SDK module versions
+
+## Module Highlights
+* `github.com/aws/smithy-go/aws-http-auth`: [v1.2.1](aws-http-auth/CHANGELOG.md#v121-2026-07-16)
+  * **Bug Fix**: Use r.URL.Host when r.Host is unset.
+* `github.com/aws/smithy-go/aws-http-auth-schemes`: [v1.0.0](aws-http-auth-schemes/CHANGELOG.md#v100-2026-07-16)
+  * **Release**: Module `github.com/aws/smithy-go/aws-http-auth-schemes` adds generic smithy-go client support for AWS Sigv4 and Sigv4a.
+
+# Release (2026-06-26)
+
+## General Highlights
+* **Dependency Update**: Updated to the latest SDK module versions
+
+## Module Highlights
+* `github.com/aws/smithy-go`: v1.27.3
+  * **Bug Fix**: Fix bug in JSON doc encoder and endpoint host label format validation
+
+# Release (2026-06-05)
+
+## General Highlights
+* **Dependency Update**: Updated to the latest SDK module versions
+
+## Module Highlights
+* `github.com/aws/smithy-go`: v1.27.2
+  * **Bug Fix**: Fix incorrect serialization of unions in CBOR-based protocols.
+
+# Release (2026-06-04)
+
+## General Highlights
+* **Dependency Update**: Updated to the latest SDK module versions
+
+## Module Highlights
+* `github.com/aws/smithy-go`: v1.27.1
+  * **Bug Fix**: Fixed a deserialization failure in all protocols when encountering a union with explicit null members.
+  * **Bug Fix**: Fixed a panic when deserializing nested unions in JSON- and CBOR-based protocols.
+
+# Release (2026-06-02)
+
+## General Highlights
+* **Dependency Update**: Updated to the latest SDK module versions
+
+## Module Highlights
+* `github.com/aws/smithy-go`: v1.27.0
+  * **Feature**: Add APIs for schema-based serialization.
+  * **Feature**: Add support for all current AWS and Smithy protocols.
+  * **Bug Fix**: Enforce max nesting depth of 128 on CBOR payloads.
+* `github.com/aws/smithy-go/aws-http-auth`: [v1.2.0](aws-http-auth/CHANGELOG.md#v120-2026-06-02)
+  * **Feature**: Add event stream signer.
+
+# Release (2026-05-27)
+
+## General Highlights
+* **Dependency Update**: Updated to the latest SDK module versions
+
+## Module Highlights
+* `github.com/aws/smithy-go`: v1.26.0
+  * **Feature**: Add StringSlice to endpoint rulesfn.
+
+# Release (2026-04-23)
+
+## General Highlights
+* **Dependency Update**: Updated to the latest SDK module versions
+
+## Module Highlights
+* `github.com/aws/smithy-go`: v1.25.1
+  * **Bug Fix**: Fixed a memory leak in the LRU cache implementation used by some AWS services.
+
+# Release (2026-04-15)
+
+## General Highlights
+* **Dependency Update**: Updated to the latest SDK module versions
+
+## Module Highlights
+* `github.com/aws/smithy-go`: v1.25.0
+  * **Feature**: Add support for endpointBdd trait
+
+# Release (2026-04-02)
+
+## General Highlights
+* **Dependency Update**: Updated to the latest SDK module versions
+
+## Module Highlights
+* `github.com/aws/smithy-go`: v1.24.3
+  * **Bug Fix**: Add additional sigv4 configuration.
+* `github.com/aws/smithy-go/aws-http-auth`: [v1.1.3](aws-http-auth/CHANGELOG.md#v113-2026-04-02)
+  * **Bug Fix**: Add additional sigv4 configuration.
+
+# Release (2026-02-27)
+
+## General Highlights
+* **Dependency Update**: Bump minimum go version to 1.24.
+
+# Release (2026-02-20)
+
+## General Highlights
+* **Dependency Update**: Updated to the latest SDK module versions
+
+## Module Highlights
+* `github.com/aws/smithy-go`: v1.24.1
+  * **Feature**: Add new middleware functions to get event stream output from middleware
+
+# Release (2025-12-01)
+
+## General Highlights
+* **Dependency Update**: Updated to the latest SDK module versions
+
+## Module Highlights
+* `github.com/aws/smithy-go`: v1.24.0
+  * **Feature**: Improve allocation footprint of the middleware stack. This should convey a ~10% reduction in allocations per SDK request.
+
+# Release (2025-11-03)
+
+## General Highlights
+* **Dependency Update**: Updated to the latest SDK module versions
+
+## Module Highlights
+* `github.com/aws/smithy-go`: v1.23.2
+  * **Bug Fix**: Adjust the initial sizes of each middleware phase to avoid some unnecessary reallocation.
+  * **Bug Fix**: Avoid unnecessary allocation overhead from the metrics system when not in use.
+
+# Release (2025-10-15)
+
+## General Highlights
+* **Dependency Update**: Bump minimum go version to 1.23.
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# Release (2025-09-18)
+
+## Module Highlights
+* `github.com/aws/smithy-go/aws-http-auth`: [v1.1.0](aws-http-auth/CHANGELOG.md#v110-2025-09-18)
+  * **Feature**: Added support for SIG4/SIGV4A querystring authentication.
+
+# Release (2025-08-27)
+
+## General Highlights
+* **Dependency Update**: Updated to the latest SDK module versions
+
+## Module Highlights
+* `github.com/aws/smithy-go`: v1.23.0
+  * **Feature**: Sort map keys in JSON Document types.
+
+# Release (2025-07-24)
+
+## General Highlights
+* **Dependency Update**: Updated to the latest SDK module versions
+
+## Module Highlights
+* `github.com/aws/smithy-go`: v1.22.5
+  * **Feature**: Add HTTP interceptors.
+
 # Release (2025-06-16)
 
 ## General Highlights

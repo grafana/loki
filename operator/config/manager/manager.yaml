@@ -22,9 +22,6 @@ spec:
         image: controller:latest
         imagePullPolicy: IfNotPresent
         name: manager
-        ports:
-        - containerPort: 8080
-          name: metrics
         livenessProbe:
           httpGet:
             path: /healthz

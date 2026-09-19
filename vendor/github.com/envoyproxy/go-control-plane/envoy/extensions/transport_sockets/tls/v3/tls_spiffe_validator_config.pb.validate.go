@@ -146,7 +146,7 @@ type SPIFFECertValidatorConfigMultiError []error
 
 // Error returns a concatenation of all the error messages it wraps.
 func (m SPIFFECertValidatorConfigMultiError) Error() string {
-	var msgs []string
+	msgs := make([]string, 0, len(m))
 	for _, err := range m {
 		msgs = append(msgs, err.Error())
 	}
@@ -275,6 +275,8 @@ func (m *SPIFFECertValidatorConfig_TrustDomain) validate(all bool) error {
 		}
 	}
 
+	// no validation rules for WorkloadTrustDomain
+
 	if len(errors) > 0 {
 		return SPIFFECertValidatorConfig_TrustDomainMultiError(errors)
 	}
@@ -290,7 +292,7 @@ type SPIFFECertValidatorConfig_TrustDomainMultiError []error
 
 // Error returns a concatenation of all the error messages it wraps.
 func (m SPIFFECertValidatorConfig_TrustDomainMultiError) Error() string {
-	var msgs []string
+	msgs := make([]string, 0, len(m))
 	for _, err := range m {
 		msgs = append(msgs, err.Error())
 	}

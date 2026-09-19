@@ -48,6 +48,11 @@ lokistack(){
     echo "- Deploy Loki Stack...                    -"
     echo "-------------------------------------------"
     kubectl apply -f ./hack/lokistack_gateway_dev.yaml
+
+    echo "-------------------------------------------"
+    echo "- Wait for LokiStack (~ 90s)...           -"
+    echo "-------------------------------------------"
+    kubectl wait --for=condition=Ready --timeout=5m lokistack/lokistack-dev
 }
 
 logger() {
@@ -68,13 +73,12 @@ certificates() {
     kubectl apply -f ./hack/addons_kind_certs.yaml
 
     kubectl wait --timeout=180s --for=condition=ready certificate/lokistack-dev-signing-ca
-    kubectl create configmap lokistack-dev-ca-bundle --from-literal service-ca.crt="$(kubectl get secret lokistack-dev-signing-ca -o json | jq -r '.data."ca.crt"' | base64 -d -)"
-    kubectl create configmap lokistack-dev-gateway-ca-bundle --from-literal service-ca.crt="$(kubectl get secret lokistack-dev-signing-ca -o json | jq -r '.data."ca.crt"' | base64 -d -)"
+    kubectl create configmap lokistack-dev-ca-bundle --from-literal service-ca.crt="$(kubectl get secret lokistack-dev-signing-ca -o json | jq -r '.data."ca.crt"' | base64 -d)"
+    kubectl create configmap lokistack-dev-gateway-ca-bundle --from-literal service-ca.crt="$(kubectl get secret lokistack-dev-signing-ca -o json | jq -r '.data."ca.crt"' | base64 -d)"
 }
 
 check() {
-    # shellcheck disable=SC2154
-    ${LOGCLI} --addr "http://localhost/token-refresher/api/logs/v1/test-oidc" labels
+    logcli --addr "http://localhost:8081/token-refresher/api/logs/v1/test-oidc" labels
 }
 
 case ${1:-"*"} in
@@ -112,9 +116,9 @@ help)
 
 *)
     setup
+    certificates
     deps
     operator
-    certificates
     lokistack
     logger
     ;;

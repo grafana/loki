@@ -17,15 +17,12 @@ type MockLimits struct {
 	MaxConcurrentTailRequestsVal  int
 	MaxEntriesLimitPerQueryVal    int
 	MaxStreamsMatchersPerQueryVal int
-	EnableMultiVariantQueriesVal  bool
+	RequiredLabelsVal             []string
+	RequiredNumberLabelsVal       int
 	MetricAggregationEnabledVal   bool
 	PatternPersistenceEnabledVal  bool
 	PatternRateThresholdVal       float64
 	PersistenceGranularityVal     time.Duration
-}
-
-func (m *MockLimits) EnableMultiVariantQueries(_ string) bool {
-	return m.EnableMultiVariantQueriesVal
 }
 
 func (m *MockLimits) MaxQueryLookback(_ context.Context, _ string) time.Duration {
@@ -60,6 +57,14 @@ func (m *MockLimits) MaxStreamsMatchersPerQuery(_ context.Context, _ string) int
 	return m.MaxStreamsMatchersPerQueryVal
 }
 
+func (m *MockLimits) RequiredLabels(_ context.Context, _ string) []string {
+	return m.RequiredLabelsVal
+}
+
+func (m *MockLimits) RequiredNumberLabels(_ context.Context, _ string) int {
+	return m.RequiredNumberLabelsVal
+}
+
 func (m *MockLimits) BlockedQueries(_ context.Context, _ string) []*validation.BlockedQuery {
 	return nil
 }
@@ -86,4 +91,12 @@ func (m *MockLimits) PatternRateThreshold(_ string) float64 {
 // PersistenceGranularity implements pattern.Limits interface
 func (m *MockLimits) PersistenceGranularity(_ string) time.Duration {
 	return m.PersistenceGranularityVal
+}
+
+func (m *MockLimits) DebugEngineStreams(_ string) bool {
+	return false
+}
+
+func (m *MockLimits) DebugEngineTasks(_ string) bool {
+	return false
 }

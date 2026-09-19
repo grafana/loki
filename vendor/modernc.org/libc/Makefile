@@ -2,7 +2,7 @@
 # Use of this source code is governed by a BSD-style
 # license that can be found in the LICENSE file.
 
-.PHONY:	all build_all_targets check clean download edit editor generate dev membrk-test test work xtest short-test xlibc libc-test surface
+.PHONY:	all build_all_targets check clean download edit editor generate dev membrk-test test work xtest short-test xlibc libc-test surface vet
 
 SHELL=/bin/bash -o pipefail	
 
@@ -14,7 +14,7 @@ all: editor
 	golint 2>&1
 	staticcheck 2>&1
 
-build_all_targets:
+build_all_targets: vet
 	./build_all_targets.sh
 	echo done
 
@@ -35,9 +35,10 @@ edit:
 	@if [ -f "Session.vim" ]; then gvim -S & else gvim -p Makefile go.mod builder.json & fi
 
 editor:
-	gofmt -l -s -w *.go
+	# gofmt -l -s -w *.go
 	go test -c -o /dev/null
 	go build -o /dev/null -v generator*.go
+	go vet 2>&1 | grep -n 'asm_' || true
 
 generate: download
 	mkdir -p $(DIR) || true
@@ -113,3 +114,6 @@ work:
 surface:
 	surface > surface.new
 	surface surface.old surface.new > log-todo-surface || true
+
+vet:
+	go vet 2>&1 | grep abi0 | grep -v 'misuse' || true

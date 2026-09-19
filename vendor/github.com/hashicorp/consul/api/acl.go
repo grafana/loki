@@ -10,7 +10,7 @@ import (
 	"net/url"
 	"time"
 
-	"github.com/mitchellh/mapstructure"
+	"github.com/go-viper/mapstructure/v2"
 )
 
 const (
@@ -41,6 +41,7 @@ type ACLTokenRoleLink = ACLLink
 type ACLToken struct {
 	CreateIndex       uint64
 	ModifyIndex       uint64
+	Name              string `json:",omitempty"`
 	AccessorID        string
 	SecretID          string
 	Description       string
@@ -88,6 +89,7 @@ type ACLTokenExpanded struct {
 }
 
 type ACLTokenListEntry struct {
+	Name              string `json:",omitempty"`
 	CreateIndex       uint64
 	ModifyIndex       uint64
 	AccessorID        string
@@ -313,6 +315,9 @@ type ACLAuthMethod struct {
 	// Partition is the partition the ACLAuthMethod is associated with.
 	// Partitions are a Consul Enterprise feature.
 	Partition string `json:",omitempty"`
+
+	// TokenNameFormat defines the HIL template to use when building the token name
+	TokenNameFormat string `json:",omitempty"`
 }
 
 type ACLTokenFilterOptions struct {
@@ -483,12 +488,14 @@ type OIDCAuthMethodConfig struct {
 	OIDCDiscoveryURL    string            `json:",omitempty"`
 	OIDCDiscoveryCACert string            `json:",omitempty"`
 	// just for type=oidc
-	OIDCClientID        string   `json:",omitempty"`
-	OIDCClientSecret    string   `json:",omitempty"`
-	OIDCScopes          []string `json:",omitempty"`
-	OIDCACRValues       []string `json:",omitempty"`
-	AllowedRedirectURIs []string `json:",omitempty"`
-	VerboseOIDCLogging  bool     `json:",omitempty"`
+	OIDCClientID        string               `json:",omitempty"`
+	OIDCClientSecret    string               `json:",omitempty"`
+	OIDCClientAssertion *OIDCClientAssertion `json:",omitempty"`
+	OIDCClientUsePKCE   *bool                `json:",omitempty"`
+	OIDCScopes          []string             `json:",omitempty"`
+	OIDCACRValues       []string             `json:",omitempty"`
+	AllowedRedirectURIs []string             `json:",omitempty"`
+	VerboseOIDCLogging  bool                 `json:",omitempty"`
 	// just for type=jwt
 	JWKSURL              string        `json:",omitempty"`
 	JWKSCACert           string        `json:",omitempty"`
@@ -513,6 +520,8 @@ func (c *OIDCAuthMethodConfig) RenderToConfig() map[string]interface{} {
 		// just for type=oidc
 		"OIDCClientID":        c.OIDCClientID,
 		"OIDCClientSecret":    c.OIDCClientSecret,
+		"OIDCClientAssertion": c.OIDCClientAssertion,
+		"OIDCClientUsePKCE":   c.OIDCClientUsePKCE,
 		"OIDCScopes":          c.OIDCScopes,
 		"OIDCACRValues":       c.OIDCACRValues,
 		"AllowedRedirectURIs": c.AllowedRedirectURIs,
@@ -526,6 +535,16 @@ func (c *OIDCAuthMethodConfig) RenderToConfig() map[string]interface{} {
 		"NotBeforeLeeway":      c.NotBeforeLeeway,
 		"ClockSkewLeeway":      c.ClockSkewLeeway,
 	}
+}
+
+type OIDCClientAssertion struct {
+	Audience     []string
+	PrivateKey   *OIDCClientAssertionKey
+	KeyAlgorithm string
+}
+
+type OIDCClientAssertionKey struct {
+	PemKey string
 }
 
 type ACLLoginParams struct {

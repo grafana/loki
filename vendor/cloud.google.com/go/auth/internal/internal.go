@@ -47,6 +47,9 @@ const (
 	// DefaultUniverseDomain is the default value for universe domain.
 	// Universe domain is the default service domain for a given Cloud universe.
 	DefaultUniverseDomain = "googleapis.com"
+
+	// RegionalAccessBoundaryDataKey is the key used to store regional access boundary data in a token's metadata.
+	RegionalAccessBoundaryDataKey = "google.auth.regional_access_boundary_data"
 )
 
 type clonableTransport interface {
@@ -82,12 +85,13 @@ func ParseKey(key []byte) (crypto.Signer, error) {
 		key = block.Bytes
 	}
 	var parsedKey crypto.PrivateKey
-	var err error
-	parsedKey, err = x509.ParsePKCS8PrivateKey(key)
-	if err != nil {
-		parsedKey, err = x509.ParsePKCS1PrivateKey(key)
-		if err != nil {
-			return nil, fmt.Errorf("private key should be a PEM or plain PKCS1 or PKCS8: %w", err)
+
+	var errPKCS8, errPKCS1, errEC error
+	if parsedKey, errPKCS8 = x509.ParsePKCS8PrivateKey(key); errPKCS8 != nil {
+		if parsedKey, errPKCS1 = x509.ParsePKCS1PrivateKey(key); errPKCS1 != nil {
+			if parsedKey, errEC = x509.ParseECPrivateKey(key); errEC != nil {
+				return nil, fmt.Errorf("failed to parse private key. Tried PKCS8, PKCS1, and EC formats. Errors: [PKCS8: %v], [PKCS1: %v], [EC: %v]", errPKCS8, errPKCS1, errEC)
+			}
 		}
 	}
 	parsed, ok := parsedKey.(crypto.Signer)
@@ -222,4 +226,37 @@ func getMetadataUniverseDomain(ctx context.Context, client *metadata.Client) (st
 // name.
 func FormatIAMServiceAccountResource(name string) string {
 	return fmt.Sprintf("projects/-/serviceAccounts/%s", name)
+}
+
+// RegionalAccessBoundaryData represents the regional access boundary data associated with a token.
+// It contains information about the regions or environments where the token is valid.
+type RegionalAccessBoundaryData struct {
+	// Locations is the list of locations that the token is allowed to be used in.
+	Locations []string
+	// EncodedLocations represents the locations in an encoded format.
+	EncodedLocations string
+}
+
+// NewRegionalAccessBoundaryData returns a new RegionalAccessBoundaryData with the specified locations and encoded locations.
+func NewRegionalAccessBoundaryData(locations []string, encodedLocations string) *RegionalAccessBoundaryData {
+	// Ensure consistency by treating a nil slice as an empty slice.
+	if locations == nil {
+		locations = []string{}
+	}
+	locationsCopy := make([]string, len(locations))
+	copy(locationsCopy, locations)
+	return &RegionalAccessBoundaryData{
+		Locations:        locationsCopy,
+		EncodedLocations: encodedLocations,
+	}
+}
+
+// RegionalAccessBoundaryHeader returns the value for the x-allowed-locations header and a bool
+// indicating if the header should be set. If EncodedLocations is empty, the header
+// should not be present. Otherwise, it should be present with the value of EncodedLocations.
+func (t RegionalAccessBoundaryData) RegionalAccessBoundaryHeader() (value string, present bool) {
+	if t.EncodedLocations == "" {
+		return "", false
+	}
+	return t.EncodedLocations, true
 }

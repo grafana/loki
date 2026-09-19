@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: BSD-3-Clause
-//go:build !aix && !darwin && !linux && !freebsd && !openbsd && !windows && !solaris
+//go:build !aix && !darwin && !linux && !freebsd && !openbsd && !windows && !solaris && !netbsd
 
 package net
 

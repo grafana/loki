@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
 	"regexp"
 	"strconv"
 	"strings"
@@ -14,29 +15,49 @@ import (
 // The compiled version of the regex created at init() is cached here so it
 // only needs to be created once.
 var versionRegex *regexp.Regexp
+var looseVersionRegex *regexp.Regexp
+
+// CoerceNewVersion sets if leading 0's are allowd in the version part. Leading 0's are
+// not allowed in a valid semantic version. When set to true, NewVersion will coerce
+// leading 0's into a valid version.
+var CoerceNewVersion = true
+
+// DetailedNewVersionErrors specifies if detailed errors are returned from the NewVersion
+// function. This is used when CoerceNewVersion is set to false. If set to false
+// ErrInvalidSemVer is returned for an invalid version. This does not apply to
+// StrictNewVersion. Setting this function to false returns errors more quickly.
+var DetailedNewVersionErrors = true
 
 var (
 	// ErrInvalidSemVer is returned a version is found to be invalid when
 	// being parsed.
-	ErrInvalidSemVer = errors.New("Invalid Semantic Version")
+	ErrInvalidSemVer = errors.New("invalid semantic version")
 
 	// ErrEmptyString is returned when an empty string is passed in for parsing.
-	ErrEmptyString = errors.New("Version string empty")
+	ErrEmptyString = errors.New("version string empty")
 
 	// ErrInvalidCharacters is returned when invalid characters are found as
 	// part of a version
-	ErrInvalidCharacters = errors.New("Invalid characters in version")
+	ErrInvalidCharacters = errors.New("invalid characters in version")
 
 	// ErrSegmentStartsZero is returned when a version segment starts with 0.
 	// This is invalid in SemVer.
-	ErrSegmentStartsZero = errors.New("Version segment starts with 0")
+	ErrSegmentStartsZero = errors.New("version segment starts with 0")
 
 	// ErrInvalidMetadata is returned when the metadata is an invalid format
-	ErrInvalidMetadata = errors.New("Invalid Metadata string")
+	ErrInvalidMetadata = errors.New("invalid metadata string")
 
 	// ErrInvalidPrerelease is returned when the pre-release is an invalid format
-	ErrInvalidPrerelease = errors.New("Invalid Prerelease string")
+	ErrInvalidPrerelease = errors.New("invalid prerelease string")
+
+	// ErrVersionTooLong is returned when a version string exceeds the
+	// maximum allowed length.
+	ErrVersionTooLong = fmt.Errorf("version string is too long (max %d bytes)", MaxVersionLen)
 )
+
+// MaxVersionLen is the maximum allowed length of a version string. This guards
+// against unbounded input causing excessive memory allocations during parsing.
+const MaxVersionLen = 256
 
 // semVerRegex is the regular expression used to parse a semantic version.
 // This is not the official regex from the semver spec. It has been modified to allow for loose handling
@@ -44,6 +65,12 @@ var (
 const semVerRegex string = `v?(0|[1-9]\d*)(?:\.(0|[1-9]\d*))?(?:\.(0|[1-9]\d*))?` +
 	`(?:-((?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*)(?:\.(?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*))*))?` +
 	`(?:\+([0-9a-zA-Z-]+(?:\.[0-9a-zA-Z-]+)*))?`
+
+// looseSemVerRegex is a regular expression that lets invalid semver expressions through
+// with enough detail that certain errors can be checked for.
+const looseSemVerRegex string = `v?([0-9]+)(\.[0-9]+)?(\.[0-9]+)?` +
+	`(-([0-9A-Za-z\-]+(\.[0-9A-Za-z\-]+)*))?` +
+	`(\+([0-9A-Za-z\-]+(\.[0-9A-Za-z\-]+)*))?`
 
 // Version represents a single semantic version.
 type Version struct {
@@ -55,6 +82,7 @@ type Version struct {
 
 func init() {
 	versionRegex = regexp.MustCompile("^" + semVerRegex + "$")
+	looseVersionRegex = regexp.MustCompile("^" + looseSemVerRegex + "$")
 }
 
 const (
@@ -73,6 +101,10 @@ func StrictNewVersion(v string) (*Version, error) {
 
 	if len(v) == 0 {
 		return nil, ErrEmptyString
+	}
+
+	if len(v) > MaxVersionLen {
+		return nil, ErrVersionTooLong
 	}
 
 	// Split the parts into [0]major, [1]minor, and [2]patch,prerelease,build
@@ -142,8 +174,30 @@ func StrictNewVersion(v string) (*Version, error) {
 // attempts to convert it to SemVer. If you want  to validate it was a strict
 // semantic version at parse time see StrictNewVersion().
 func NewVersion(v string) (*Version, error) {
+	if len(v) > MaxVersionLen {
+		return nil, ErrVersionTooLong
+	}
+	if CoerceNewVersion {
+		return coerceNewVersion(v)
+	}
 	m := versionRegex.FindStringSubmatch(v)
 	if m == nil {
+
+		// Disabling detailed errors is first so that it is in the fast path.
+		if !DetailedNewVersionErrors {
+			return nil, ErrInvalidSemVer
+		}
+
+		// Check for specific errors with the semver string and return a more detailed
+		// error.
+		m = looseVersionRegex.FindStringSubmatch(v)
+		if m == nil {
+			return nil, ErrInvalidSemVer
+		}
+		err := validateVersion(m)
+		if err != nil {
+			return nil, err
+		}
 		return nil, ErrInvalidSemVer
 	}
 
@@ -156,13 +210,13 @@ func NewVersion(v string) (*Version, error) {
 	var err error
 	sv.major, err = strconv.ParseUint(m[1], 10, 64)
 	if err != nil {
-		return nil, fmt.Errorf("Error parsing version segment: %s", err)
+		return nil, fmt.Errorf("error parsing version segment: %w", err)
 	}
 
 	if m[2] != "" {
 		sv.minor, err = strconv.ParseUint(m[2], 10, 64)
 		if err != nil {
-			return nil, fmt.Errorf("Error parsing version segment: %s", err)
+			return nil, fmt.Errorf("error parsing version segment: %w", err)
 		}
 	} else {
 		sv.minor = 0
@@ -171,7 +225,61 @@ func NewVersion(v string) (*Version, error) {
 	if m[3] != "" {
 		sv.patch, err = strconv.ParseUint(m[3], 10, 64)
 		if err != nil {
-			return nil, fmt.Errorf("Error parsing version segment: %s", err)
+			return nil, fmt.Errorf("error parsing version segment: %w", err)
+		}
+	} else {
+		sv.patch = 0
+	}
+
+	// Perform some basic due diligence on the extra parts to ensure they are
+	// valid.
+
+	if sv.pre != "" {
+		if err = validatePrerelease(sv.pre); err != nil {
+			return nil, err
+		}
+	}
+
+	if sv.metadata != "" {
+		if err = validateMetadata(sv.metadata); err != nil {
+			return nil, err
+		}
+	}
+
+	return sv, nil
+}
+
+func coerceNewVersion(v string) (*Version, error) {
+	m := looseVersionRegex.FindStringSubmatch(v)
+	if m == nil {
+		return nil, ErrInvalidSemVer
+	}
+
+	sv := &Version{
+		metadata: m[8],
+		pre:      m[5],
+		original: v,
+	}
+
+	var err error
+	sv.major, err = strconv.ParseUint(m[1], 10, 64)
+	if err != nil {
+		return nil, fmt.Errorf("error parsing version segment: %w", err)
+	}
+
+	if m[2] != "" {
+		sv.minor, err = strconv.ParseUint(strings.TrimPrefix(m[2], "."), 10, 64)
+		if err != nil {
+			return nil, fmt.Errorf("error parsing version segment: %w", err)
+		}
+	} else {
+		sv.minor = 0
+	}
+
+	if m[3] != "" {
+		sv.patch, err = strconv.ParseUint(strings.TrimPrefix(m[3], "."), 10, 64)
+		if err != nil {
+			return nil, fmt.Errorf("error parsing version segment: %w", err)
 		}
 	} else {
 		sv.patch = 0
@@ -197,6 +305,8 @@ func NewVersion(v string) (*Version, error) {
 
 // New creates a new instance of Version with each of the parts passed in as
 // arguments instead of parsing a version string.
+// Note, New does not validate prerelease or metadata. Incorrect information can
+// be passed in.
 func New(major, minor, patch uint64, pre, metadata string) *Version {
 	v := Version{
 		major:    major,
@@ -209,6 +319,7 @@ func New(major, minor, patch uint64, pre, metadata string) *Version {
 
 	v.original = v.String()
 
+	// TODO: In the next semver major version validate the pre and metadata. Return error if there is one.
 	return &v
 }
 
@@ -296,6 +407,9 @@ func (v Version) IncPatch() Version {
 	} else {
 		vNext.metadata = ""
 		vNext.pre = ""
+		if v.patch == math.MaxUint64 {
+			panic("patch version increment would overflow uint64")
+		}
 		vNext.patch = v.patch + 1
 	}
 	vNext.original = v.originalVPrefix() + "" + vNext.String()
@@ -312,6 +426,9 @@ func (v Version) IncMinor() Version {
 	vNext.metadata = ""
 	vNext.pre = ""
 	vNext.patch = 0
+	if v.minor == math.MaxUint64 {
+		panic("minor version increment would overflow uint64")
+	}
 	vNext.minor = v.minor + 1
 	vNext.original = v.originalVPrefix() + "" + vNext.String()
 	return vNext
@@ -329,6 +446,9 @@ func (v Version) IncMajor() Version {
 	vNext.pre = ""
 	vNext.patch = 0
 	vNext.minor = 0
+	if v.major == math.MaxUint64 {
+		panic("major version increment would overflow uint64")
+	}
 	vNext.major = v.major + 1
 	vNext.original = v.originalVPrefix() + "" + vNext.String()
 	return vNext
@@ -476,7 +596,16 @@ func (v Version) MarshalText() ([]byte, error) {
 // Scan implements the SQL.Scanner interface.
 func (v *Version) Scan(value interface{}) error {
 	var s string
-	s, _ = value.(string)
+	switch t := value.(type) {
+	case string:
+		s = t
+	case []byte:
+		s = string(t)
+	case nil:
+		return fmt.Errorf("cannot scan nil into Version")
+	default:
+		return fmt.Errorf("unsupported Scan type %T", value)
+	}
 	temp, err := NewVersion(s)
 	if err != nil {
 		return err
@@ -615,7 +744,7 @@ func validatePrerelease(p string) error {
 	eparts := strings.Split(p, ".")
 	for _, p := range eparts {
 		if p == "" {
-			return ErrInvalidMetadata
+			return ErrInvalidPrerelease
 		} else if containsOnly(p, num) {
 			if len(p) > 1 && p[0] == '0' {
 				return ErrSegmentStartsZero
@@ -641,5 +770,56 @@ func validateMetadata(m string) error {
 			return ErrInvalidMetadata
 		}
 	}
+	return nil
+}
+
+// validateVersion checks for common validation issues but may not catch all errors
+func validateVersion(m []string) error {
+	var err error
+	var v string
+	if m[1] != "" {
+		if len(m[1]) > 1 && m[1][0] == '0' {
+			return ErrSegmentStartsZero
+		}
+		_, err = strconv.ParseUint(m[1], 10, 64)
+		if err != nil {
+			return fmt.Errorf("error parsing version segment: %w", err)
+		}
+	}
+
+	if m[2] != "" {
+		v = strings.TrimPrefix(m[2], ".")
+		if len(v) > 1 && v[0] == '0' {
+			return ErrSegmentStartsZero
+		}
+		_, err = strconv.ParseUint(v, 10, 64)
+		if err != nil {
+			return fmt.Errorf("error parsing version segment: %w", err)
+		}
+	}
+
+	if m[3] != "" {
+		v = strings.TrimPrefix(m[3], ".")
+		if len(v) > 1 && v[0] == '0' {
+			return ErrSegmentStartsZero
+		}
+		_, err = strconv.ParseUint(v, 10, 64)
+		if err != nil {
+			return fmt.Errorf("error parsing version segment: %w", err)
+		}
+	}
+
+	if m[5] != "" {
+		if err = validatePrerelease(m[5]); err != nil {
+			return err
+		}
+	}
+
+	if m[8] != "" {
+		if err = validateMetadata(m[8]); err != nil {
+			return err
+		}
+	}
+
 	return nil
 }

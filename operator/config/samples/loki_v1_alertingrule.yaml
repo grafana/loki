@@ -3,26 +3,28 @@ kind: AlertingRule
 metadata:
   name: alertingrule-sample
 spec:
-  tenantID: test-tenant
+  tenantID: application
   groups:
     - name: alerting-rules-group
       interval: 10m
       rules:
         - alert: HighPercentageError
           expr: |
-            sum(rate({app="foo", env="production"} |= "error" [5m])) by (job)
+            sum(rate({app="foo", env="production", kubernetes_namespace_name="example-namespace"} |= "error" [5m])) by (job)
               /
-            sum(rate({app="foo", env="production"}[5m])) by (job)
+            sum(rate({app="foo", env="production", kubernetes_namespace_name="example-namespace"}[5m])) by (job)
               > 0.05
           for: 10m
           labels:
-              severity: page
+            severity: warning
           annotations:
-              summary: High request latency
+            summary: High error rate detected
+            description: "Application {{ $labels.job }} in namespace example-namespace has an error rate above 5% for more than 10 minutes."
         - alert: HttpCredentialsLeaked
-          annotations:
-            message: "{{ $labels.job }} is leaking http basic auth credentials."
-          expr: 'sum by (cluster, job, pod) (count_over_time({namespace="prod"} |~ "http(s?)://(\\w+):(\\w+)@" [5m]) > 0)'
+          expr: 'sum by (cluster, job, pod) (count_over_time({kubernetes_namespace_name="example-namespace"} |~ "http(s?)://(\\w+):(\\w+)@" [5m]) > 0)'
           for: 10m
           labels:
             severity: critical
+          annotations:
+            summary: HTTP credentials leaked in logs
+            description: "Application {{ $labels.job }} in pod {{ $labels.pod }} is leaking HTTP basic auth credentials in logs."

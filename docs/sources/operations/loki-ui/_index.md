@@ -30,12 +30,12 @@ Each Loki component now includes the UI service.
 
 When running Loki as a docker container, the UI service is enabled by default. No additional configuration is required. 
 
-For Loki Helm users discoverability of the UI service needs to be enabled in the Loki configuration. To enable the UI discoverability, add the following paramter to the `loki` section of the `values.yaml` file:
+For Loki Helm users discoverability of the UI service needs to be enabled in the Loki configuration. To enable the UI discoverability, add the following parameter to the `loki` section of the `values.yaml` file:
 
 ```yaml
 loki:
   ui:
-   enabled: true
+    enabled: true
 ```
 
 ## Accessing the Loki Deployment UI
@@ -55,7 +55,7 @@ Currently `/ui` cannot be changed to another path. This would require further co
 ## Features
 
 The Loki Deployment UI provides the following features to manage and monitor a Loki deployment:
-| Feature | Description | Readyness |
+| Feature | Description | Readiness |
 |---------|-------------|-----------|
 | [Nodes](#nodes) | Displays the status of each Loki component deployed | **Ready** |
 | [Rollouts & Versions](#rollouts--versions) | A historic view of previous deployments | Coming Soon |
@@ -86,7 +86,7 @@ The Node table provides the following columns:
 
 #### Node Page
 
-The Node page provides detailed information about the component. The orginal information from the Nodes table is displayed at the top of the page. There will also be an extended fields useful for debugging and monitoring such as; Version, Created, Edition, Architecture, and OS.
+The Node page provides detailed information about the component. The original information from the Nodes table is displayed at the top of the page. There will also be an extended fields useful for debugging and monitoring such as; Version, Created, Edition, Architecture, and OS.
 
 {{< figure max-width="100%" src="/media/docs/loki/loki-ui-node-metadata.png" caption="Loki UI Node Page" >}}
 
@@ -154,7 +154,7 @@ Analyze Labels page allows you to analyze label distribution across your log str
 
    {{< figure max-width="100%" src="/media/docs/loki/loki-ui-analyze-labels-bar.png" caption="Loki UI Analyze Labels Pie Chart" >}}
 
-   In this example there are a total of 11 unique lables with `instance` containing the most unique values at 22. This is a label to closely monitor as it could be a high cardinality label.
+   In this example there are a total of 11 unique labels with `instance` containing the most unique values at 22. This is a label to closely monitor as it could be a high cardinality label.
 
 3. **Label Details**: This provides a table view of the labels and a sample of their unique values. Each label can be expanded to view the unique values.
 

@@ -881,7 +881,7 @@ type DescribedACL struct {
 // filter.
 type DescribedACLs []DescribedACL
 
-// DescribeACLsResults contains the input used for a describe ACL filter, and
+// DescribeACLsResult contains the input used for a describe ACL filter, and
 // the describes that the filter matched or the error for this filter.
 //
 // All fields but Described and Err are set from the request input. The

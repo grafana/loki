@@ -6,68 +6,23 @@
 
 package internal
 
-import (
-	otlpcommon "go.opentelemetry.io/collector/pdata/internal/data/protogen/common/v1"
-	"go.opentelemetry.io/collector/pdata/internal/json"
-)
-
-type EntityRef struct {
-	orig  *otlpcommon.EntityRef
+type EntityRefWrapper struct {
+	orig  *EntityRef
 	state *State
 }
 
-func GetOrigEntityRef(ms EntityRef) *otlpcommon.EntityRef {
+func GetEntityRefOrig(ms EntityRefWrapper) *EntityRef {
 	return ms.orig
 }
 
-func GetEntityRefState(ms EntityRef) *State {
+func GetEntityRefState(ms EntityRefWrapper) *State {
 	return ms.state
 }
 
-func NewEntityRef(orig *otlpcommon.EntityRef, state *State) EntityRef {
-	return EntityRef{orig: orig, state: state}
+func NewEntityRefWrapper(orig *EntityRef, state *State) EntityRefWrapper {
+	return EntityRefWrapper{orig: orig, state: state}
 }
 
-func CopyOrigEntityRef(dest, src *otlpcommon.EntityRef) {
-	dest.SchemaUrl = src.SchemaUrl
-	dest.Type = src.Type
-	dest.IdKeys = CopyOrigStringSlice(dest.IdKeys, src.IdKeys)
-	dest.DescriptionKeys = CopyOrigStringSlice(dest.DescriptionKeys, src.DescriptionKeys)
-}
-
-func GenerateTestEntityRef() EntityRef {
-	orig := otlpcommon.EntityRef{}
-	state := StateMutable
-	tv := NewEntityRef(&orig, &state)
-	FillTestEntityRef(tv)
-	return tv
-}
-
-func FillTestEntityRef(tv EntityRef) {
-	tv.orig.SchemaUrl = "https://opentelemetry.io/schemas/1.5.0"
-	tv.orig.Type = "host"
-	FillTestStringSlice(NewStringSlice(&tv.orig.IdKeys, tv.state))
-	FillTestStringSlice(NewStringSlice(&tv.orig.DescriptionKeys, tv.state))
-}
-
-// MarshalJSONStream marshals all properties from the current struct to the destination stream.
-func MarshalJSONStreamEntityRef(ms EntityRef, dest *json.Stream) {
-	dest.WriteObjectStart()
-	if ms.orig.SchemaUrl != "" {
-		dest.WriteObjectField("schemaUrl")
-		dest.WriteString(ms.orig.SchemaUrl)
-	}
-	if ms.orig.Type != "" {
-		dest.WriteObjectField("type")
-		dest.WriteString(ms.orig.Type)
-	}
-	if len(ms.orig.IdKeys) > 0 {
-		dest.WriteObjectField("idKeys")
-		MarshalJSONStreamStringSlice(NewStringSlice(&ms.orig.IdKeys, ms.state), dest)
-	}
-	if len(ms.orig.DescriptionKeys) > 0 {
-		dest.WriteObjectField("descriptionKeys")
-		MarshalJSONStreamStringSlice(NewStringSlice(&ms.orig.DescriptionKeys, ms.state), dest)
-	}
-	dest.WriteObjectEnd()
+func GenTestEntityRefWrapper() EntityRefWrapper {
+	return NewEntityRefWrapper(GenTestEntityRef(), NewState())
 }

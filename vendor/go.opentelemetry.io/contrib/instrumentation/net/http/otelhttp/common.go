@@ -1,7 +1,7 @@
 // Copyright The OpenTelemetry Authors
 // SPDX-License-Identifier: Apache-2.0
 
-package otelhttp // import "go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
+package otelhttp
 
 import (
 	"net/http"
@@ -23,5 +23,5 @@ const (
 type Filter func(*http.Request) bool
 
 func newTracer(tp trace.TracerProvider) trace.Tracer {
-	return tp.Tracer(ScopeName, trace.WithInstrumentationVersion(Version()))
+	return tp.Tracer(ScopeName, trace.WithInstrumentationVersion(Version))
 }

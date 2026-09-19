@@ -7,22 +7,30 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
+	"github.com/grafana/dskit/backoff"
 	"github.com/pkg/errors"
+	"github.com/prometheus/prometheus/model/labels"
 
 	"github.com/grafana/loki/v3/pkg/compactor/deletion"
 	"github.com/grafana/loki/v3/pkg/compactor/retention"
 	"github.com/grafana/loki/v3/pkg/compression"
 	"github.com/grafana/loki/v3/pkg/logproto"
-	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	"github.com/grafana/loki/v3/pkg/storage/chunk"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client/util"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/index"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/storage"
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
 )
+
+var deleteFileBackoffConfig = backoff.Config{
+	MinBackoff: 100 * time.Millisecond,
+	MaxBackoff: time.Second,
+	MaxRetries: 5,
+}
 
 type IndexSet interface {
 	GetTableName() string
@@ -130,7 +138,7 @@ func (is *indexSet) GetSourceFile(indexFile storage.IndexFile) (string, error) {
 	decompress := storage.IsCompressedFile(indexFile.Name)
 	dst := filepath.Join(is.workingDir, indexFile.Name)
 	if decompress {
-		dst = strings.Trim(dst, gzipExtension)
+		dst = strings.TrimSuffix(dst, gzipExtension)
 	}
 
 	err := storage.DownloadFileFromStorage(dst, storage.IsCompressedFile(indexFile.Name),
@@ -186,59 +194,72 @@ func (is *indexSet) runRetention(tableMarker retention.TableMarker) error {
 	return nil
 }
 
-// applyUpdates applies the given updates to the compacted index.
-func (is *indexSet) applyUpdates(labelsStr string, chunksToDelete []string, chunksToDeIndex []string, chunksToIndex []deletion.Chunk) error {
+func (is *indexSet) chunkExists(lbls labels.Labels, chunkRef logproto.ChunkRef) (bool, error) {
 	if is.compactedIndex == nil {
-		return fmt.Errorf("compacted index should be initialized before applying updates")
+		return false, fmt.Errorf("compacted index should be initialized before checking for existence of chunks")
 	}
 
 	userIDBytes := unsafeGetBytes(is.userID)
-	labels, err := syntax.ParseLabels(labelsStr)
-	if err != nil {
-		return err
+	return is.compactedIndex.ChunkExists(userIDBytes, lbls, chunkRef)
+}
+
+// applyUpdates applies the given updates to the compacted index. Returns list of chunks which were not indexed due to their missing source chunks.
+func (is *indexSet) applyUpdates(labels labels.Labels, rebuiltChunks map[string]deletion.Chunk, chunksToDeIndex []string) ([]deletion.Chunk, error) {
+	if is.compactedIndex == nil {
+		return nil, fmt.Errorf("compacted index should be initialized before applying updates")
 	}
 
-	for _, chunkID := range chunksToDelete {
+	userIDBytes := unsafeGetBytes(is.userID)
+
+	chunksNotIndexed := make([]deletion.Chunk, 0, len(rebuiltChunks))
+	for chunkID, newChunk := range rebuiltChunks {
 		chk, err := chunk.ParseExternalKey(is.userID, chunkID)
 		if err != nil {
-			return err
+			return nil, err
 		}
 
-		err = is.compactedIndex.RemoveChunk(chk.From, chk.Through, userIDBytes, labels, chunkID)
+		sourceChunkExisted, err := is.compactedIndex.RemoveChunk(chk.From, chk.Through, userIDBytes, labels, chunkID)
 		if err != nil {
-			return err
+			return nil, err
 		}
+		if newChunk == nil {
+			// if we ended up removing the whole source chunk without building a new chunk, there is nothing to do further.
+			continue
+		}
+		if !sourceChunkExisted {
+			// if the source chunk was already removed from the index, we need not index the new chunk.
+			chunksNotIndexed = append(chunksNotIndexed, newChunk)
+			continue
+		}
+		_, err = is.compactedIndex.IndexChunk(logproto.ChunkRef{
+			Fingerprint: newChunk.GetFingerprint(),
+			UserID:      is.userID,
+			From:        newChunk.GetFrom(),
+			Through:     newChunk.GetThrough(),
+			Checksum:    newChunk.GetChecksum(),
+		}, labels, newChunk.GetIngestedAt(), newChunk.GetSize(), newChunk.GetEntriesCount())
+		if err != nil {
+			return nil, err
+		}
+
 	}
 
 	for _, chunkID := range chunksToDeIndex {
 		chk, err := chunk.ParseExternalKey(is.userID, chunkID)
 		if err != nil {
-			return err
+			return nil, err
 		}
 
-		err = is.compactedIndex.RemoveChunk(chk.From, chk.Through, userIDBytes, labels, chunkID)
+		_, err = is.compactedIndex.RemoveChunk(chk.From, chk.Through, userIDBytes, labels, chunkID)
 		if err != nil {
-			return err
-		}
-	}
-
-	for _, chk := range chunksToIndex {
-		_, err := is.compactedIndex.IndexChunk(logproto.ChunkRef{
-			Fingerprint: chk.GetFingerprint(),
-			UserID:      is.userID,
-			From:        chk.GetFrom(),
-			Through:     chk.GetThrough(),
-			Checksum:    chk.GetChecksum(),
-		}, labels, chk.GetSize(), chk.GetEntriesCount())
-		if err != nil {
-			return err
+			return nil, err
 		}
 	}
 
 	is.uploadCompactedDB = true
 	is.removeSourceObjects = true
 
-	return nil
+	return chunksNotIndexed, nil
 }
 
 // upload uploads the compacted index in compressed format.
@@ -268,7 +289,7 @@ func (is *indexSet) upload() error {
 	}()
 
 	fileName := idx.Name()
-	level.Debug(is.logger).Log("msg", fmt.Sprintf("uploading index %s", fileName))
+	level.Debug(is.logger).Log("msg", "uploading index", "file_name", fileName)
 
 	idxPath := idx.Path()
 
@@ -296,6 +317,11 @@ func (is *indexSet) upload() error {
 	if err != nil {
 		return err
 	}
+	defer func() {
+		if err := idxReader.Close(); err != nil {
+			level.Error(util_log.Logger).Log("msg", "failed to close index reader", "path", idxPath, "err", err)
+		}
+	}()
 
 	_, err = idxReader.Seek(0, 0)
 	if err != nil {
@@ -329,13 +355,46 @@ func (is *indexSet) removeFilesFromStorage() error {
 	level.Info(is.logger).Log("msg", "removing source db files from storage", "count", len(is.sourceObjects))
 
 	for _, object := range is.sourceObjects {
-		err := is.baseIndexSet.DeleteFile(is.ctx, is.tableName, is.userID, object.Name)
-		if err != nil {
+		if err := is.removeFileFromStorage(object); err != nil {
+			level.Error(is.logger).Log("msg", "failed to remove source db file from storage", "file", object.Name, "err", err)
 			return err
 		}
 	}
 
 	return nil
+}
+
+// removeFileFromStorage deletes the object from storage.
+// It retries transient errors and treats FileNotFound errors
+// as a success. A missing file should not stall compaction.
+func (is *indexSet) removeFileFromStorage(object storage.IndexFile) error {
+	retry := backoff.New(is.ctx, deleteFileBackoffConfig)
+	for retry.Ongoing() {
+		err := is.baseIndexSet.DeleteFile(is.ctx, is.tableName, is.userID, object.Name)
+		if err == nil {
+			return nil
+		}
+
+		if is.baseIndexSet.IsRetryableErr(err) {
+			level.Warn(is.logger).Log(
+				"msg", "delete from storage: retrying transient error",
+				"file", object.Name,
+				"err", err,
+			)
+			retry.Wait()
+		} else if is.baseIndexSet.IsFileNotFoundErr(err) {
+			level.Warn(is.logger).Log(
+				"msg", "delete from storage: ignoring file not found error",
+				"file", object.Name,
+				"err", err,
+			)
+			return nil
+		} else {
+			return err
+		}
+	}
+
+	return retry.Err()
 }
 
 // done takes care of file operations which includes:
@@ -356,7 +415,7 @@ func (is *indexSet) done() error {
 }
 
 func (is *indexSet) cleanup() {
-	if is.compactedIndex == nil {
+	if is == nil || is.compactedIndex == nil {
 		return
 	}
 	is.compactedIndex.Cleanup()

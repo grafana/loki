@@ -10,8 +10,13 @@
 //
 // # Version compatibility
 //
+// Read this. The package documentation states it at length; the short form is
+// that this package is to ccgo what the runtime package is to Go, and that its
+// version numbers therefore do not mean what semver says they mean.
+//
 // The API of this package, in particular the bits that directly support the
-// ccgo compiler, may change in a way that is not backward compatible. If you
+// ccgo compiler, may change in a way that is not backward compatible, and that
+// can happen in a release that bumps only the patch or the minor number. If you
 // have generated some Go code from C you should stick to the version of this
 // package that you used at that time and was tested with your payload. The
 // correct way to upgrade to a newer version of this package is to first
@@ -20,15 +25,22 @@
 //
 // If you use C to Go translated code provided by others, stick to the version
 // of libc that translated code shows in its go.mod file and do not upgrade the
-// dependency just because a newer libc is tagged.Vgq
+// dependency just because a newer libc is tagged.
 //
-// This is if course unfortunate. However, it's somewhat similar to C code
+// This is of course unfortunate. However, it's somewhat similar to C code
 // linked with a specific version of, say GNU libc. When such code asking for
 // glibc5 is run on a system with glibc6, or vice versa, it will fail.
 //
 // As a particular example, if your project imports modernc.org/sqlite you
 // should use the same libc version as seen in the go.mod file of the sqlite
 // package.
+//
+// Such a mismatch used to show up as behaviour that quietly differed. Since
+// LongjmpRetval became a struct, so that a region recovering a longjmp can tell
+// whether it was the one targeted, it can also show up as code that refuses to
+// compile. That is deliberate: the alternative to the build failing is a program
+// that resumes at the wrong setjmp, and there is no way to fix that while
+// keeping the old shape of the value.
 //
 // tl;dr: It is not always possible to fix ccgo bugs and/or improve performance
 // of the ccgo transpiled code without occasionally making incompatible changes
@@ -360,25 +372,26 @@ func (tls *TLS) Alloc(n0 int) (r uintptr) {
 	//  256		total  8,848, nallocs 107,553,070, nmallocs 25, nreallocs       1,049	 9.508s
 	//  512		total 33,336, nallocs 107,553,070, nmallocs 25, nreallocs          88	 8.667s
 	// none		total 33,336, nallocs 107,553,070, nmallocs 25, nreallocs          88	 8.408s
-	const shrinkSegment = 32
+	sp := tls.sp
+	if stack := tls.stack; sp < len(stack) && stack[sp].sz >= Tsize_t(n0) /* && stack[sp].sz <= shrinkSegment*Tsize_t(n0) */ {
+		// Segment shrinking is nice to have but Tcl does some dirty hacks in coroutine
+		// handling that require stability of stack addresses, out of the C execution
+		// model. Disabled.
+		tls.sp = sp + 1
+		return stack[sp].p
+	}
+
+	return tls.allocSlow(n0)
+}
+
+func (tls *TLS) allocSlow(n0 int) (r uintptr) {
 	n := Tsize_t(n0)
 	if tls.sp < len(tls.stack) {
-		p := tls.stack[tls.sp].p
-		sz := tls.stack[tls.sp].sz
-		if sz >= n /* && sz <= shrinkSegment*n */ {
-			// Segment shrinking is nice to have but Tcl does some dirty hacks in coroutine
-			// handling that require stability of stack addresses, out of the C execution
-			// model. Disabled.
-			tls.sp++
-			return p
-		}
-
-		Xfree(tls, p)
+		Xfree(tls, tls.stack[tls.sp].p)
 		r = mustMalloc(n)
 		tls.stack[tls.sp] = tlsStackSlot{p: r, sz: Xmalloc_usable_size(tls, r)}
 		tls.sp++
 		return r
-
 	}
 
 	r = mustMalloc(n)
@@ -395,6 +408,10 @@ func (tls *TLS) Free(n int) {
 		return
 	}
 
+	tls.checkSignal()
+}
+
+func (tls *TLS) checkSignal() {
 	select {
 	case sig := <-tls.pendingSignals:
 		signum := int32(sig.(unix.Signal))
@@ -454,12 +471,28 @@ func (tls *TLS) Close() {
 	}
 }
 
+// PushJumpBuffer arms jb, which stays armed until the matching PopJumpBuffer or
+// until a Longjmp targets it. C keeps every jump buffer of a live frame valid, so
+// more than one can be armed at a time and they need not be left in the order they
+// were armed in.
 func (tls *TLS) PushJumpBuffer(jb uintptr) {
 	tls.jumpBuffers = append(tls.jumpBuffers, jb)
 }
 
-type LongjmpRetval int32
+// LongjmpRetval is what Longjmp panics with. A panic unwinds through every setjmp
+// region between the longjmp and its target, so a recovering region must compare
+// JumpBuffer with its own and re-panic unless they are equal: recovering a longjmp
+// aimed past it would resume at the wrong setjmp.
+type LongjmpRetval struct {
+	// JumpBuffer is the buffer the longjmp targeted, already disarmed.
+	JumpBuffer uintptr
+	// Val is what setjmp must appear to return, never zero.
+	Val int32
+}
 
+// PopJumpBuffer disarms jb, which must be the most recently armed buffer still
+// armed. Regions leave in the order they were entered, so anything else is a bug
+// in the generated code rather than in the C being translated.
 func (tls *TLS) PopJumpBuffer(jb uintptr) {
 	n := len(tls.jumpBuffers)
 	if n == 0 || tls.jumpBuffers[n-1] != jb {
@@ -469,12 +502,26 @@ func (tls *TLS) PopJumpBuffer(jb uintptr) {
 	tls.jumpBuffers = tls.jumpBuffers[:n-1]
 }
 
+// Longjmp disarms jb and panics with a LongjmpRetval naming it. jb need not be the
+// most recently armed buffer: C allows jumping past regions entered after the one
+// being jumped to, and those regions disarm their own buffers as the panic unwinds
+// through them. Of two regions sharing a buffer the innermost one is disarmed,
+// which is the one C resumes at.
 func (tls *TLS) Longjmp(jb uintptr, val int32) {
-	tls.PopJumpBuffer(jb)
+	i := len(tls.jumpBuffers) - 1
+	for ; i >= 0 && tls.jumpBuffers[i] != jb; i-- {
+	}
+	if i < 0 {
+		// Jumping to a buffer no setjmp armed, or to one whose region has been
+		// left already, which C leaves undefined.
+		panic(todo("unsupported setjmp/longjmp usage"))
+	}
+
+	tls.jumpBuffers = append(tls.jumpBuffers[:i], tls.jumpBuffers[i+1:]...)
 	if val == 0 {
 		val = 1
 	}
-	panic(LongjmpRetval(val))
+	panic(LongjmpRetval{JumpBuffer: jb, Val: val})
 }
 
 // ============================================================================
@@ -482,11 +529,12 @@ func (tls *TLS) Longjmp(jb uintptr, val int32) {
 func Xexit(tls *TLS, code int32) {
 	//TODO atexit finalizers
 	X__stdio_exit(tls)
-	for _, v := range atExit {
-		v()
+	for i := len(atExit) - 1; i >= 0; i-- {
+		atExit[i]()
 	}
 	atExitHandlersMu.Lock()
-	for _, v := range atExitHandlers {
+	for i := len(atExitHandlers) - 1; i >= 0; i-- {
+		v := atExitHandlers[i]
 		(*(*func(*TLS))(unsafe.Pointer(&struct{ uintptr }{v})))(tls)
 	}
 	os.Exit(int(code))
@@ -504,67 +552,109 @@ func Xabort(tls *TLS) {
 	panic(todo("unrechable"))
 }
 
-type lock struct {
-	sync.Mutex
+// States of the C lock word *p, as in musl's __lock/__unlock.
+const (
+	lockFree      = 0 // Nobody holds the lock.
+	lockHeld      = 1 // Held, no waiter has parked.
+	lockContended = 2 // Held, a waiter may be parked.
+)
+
+// ___lock/___unlock emulate musl's __lock/__unlock, a mutual-exclusion lock over
+// the opaque C lock word *p.
+//
+// All lock state lives in *p, exactly as it does in musl. That is a correctness
+// requirement, not just fidelity to upstream: a caller may free the memory
+// holding the word while the lock is held and never unlock it. musl's
+// freeaddrinfo does precisely that, dropping the last aibuf reference under
+// LOCK(b->lock) and calling free(b) instead of UNLOCK(b->lock). In C the state
+// dies with the block, so a recycled, zero-initialized block starts out
+// unlocked. Every lock word reachable here is either a zeroed package-level var
+// or lives in Xcalloc'd memory, so that holds here too.
+//
+// Blocking uses a parking lot keyed by the word's address, standing in for the
+// futex musl waits on. lockWait re-checks *p under lockParkMu, and ___unlock
+// stores to *p before lockWake takes lockParkMu, so a release landing before the
+// waiter parks is observed as a value change instead of being lost. Parking lot
+// entries exist only while a goroutine is actually parked, so a lock abandoned
+// with no waiter leaves nothing behind.
+//
+// Two earlier implementations each satisfied one half of that. The first kept an
+// atomic fast path on *p plus a throwaway hand-off object in a map and lost
+// wakeups when an unlocker reached the map before a contending locker had
+// registered there (cznic/libc#51). The second moved all state into a
+// process-global map keyed on the address, which made freeaddrinfo's abandoned
+// lock permanent: the entry outlived the free, still locked, and the next caller
+// handed that address wedged at zero CPU.
+
+func ___lock(tls *TLS, p uintptr) {
+	w := (*int32)(unsafe.Pointer(p))
+	if atomic.CompareAndSwapInt32(w, lockFree, lockHeld) {
+		return // Uncontended.
+	}
+
+	// Some other C thread holds p. The swap claims the lock if it turns out to be
+	// free and otherwise records that its holder owes us a wake.
+	for atomic.SwapInt32(w, lockContended) != lockFree {
+		lockWait(p, lockContended)
+	}
+}
+
+func ___unlock(tls *TLS, p uintptr) {
+	if atomic.SwapInt32((*int32)(unsafe.Pointer(p)), lockFree) == lockContended {
+		lockWake(p)
+	}
+}
+
+// lockPark collects the goroutines parked on one lock word address.
+type lockPark struct {
+	cond    sync.Cond
 	waiters int
 }
 
 var (
-	locksMu sync.Mutex
-	locks   = map[uintptr]*lock{}
+	lockParkMu sync.Mutex
+	lockParked = map[uintptr]*lockPark{}
 )
 
-/*
+// lockWait parks the calling goroutine while *p is still val, standing in for
+// musl's __futexwait.
+func lockWait(p uintptr, val int32) {
+	lockParkMu.Lock()
 
-	T1		T2
+	defer lockParkMu.Unlock()
 
-	lock(&foo)			// foo: 0 -> 1
-
-			lock(&foo)	// foo: 1 -> 2
-
-	unlock(&foo)			// foo: 2 -> 1, non zero means waiter(s) active
-
-			unlock(&foo)	// foo: 1 -> 0
-
-*/
-
-func ___lock(tls *TLS, p uintptr) {
-	if atomic.AddInt32((*int32)(unsafe.Pointer(p)), 1) == 1 {
+	// Re-check under lockParkMu: ___unlock stores to *p before lockWake takes
+	// lockParkMu, so a wake that would otherwise be delivered before we park shows
+	// up here as a changed value.
+	if atomic.LoadInt32((*int32)(unsafe.Pointer(p))) != val {
 		return
 	}
 
-	// foo was already acquired by some other C thread.
-	locksMu.Lock()
-	l := locks[p]
-	if l == nil {
-		l = &lock{}
-		locks[p] = l
-		l.Lock()
+	q := lockParked[p]
+	if q == nil {
+		q = &lockPark{}
+		q.cond.L = &lockParkMu
+		lockParked[p] = q
 	}
-	l.waiters++
-	locksMu.Unlock()
-	l.Lock() // Wait for T1 to release foo. (X below)
+	q.waiters++
+	q.cond.Wait()
+	q.waiters--
+	if q.waiters == 0 {
+		delete(lockParked, p)
+	}
 }
 
-func ___unlock(tls *TLS, p uintptr) {
-	if atomic.AddInt32((*int32)(unsafe.Pointer(p)), -1) == 0 {
-		return
-	}
+// lockWake releases one goroutine parked on p, if any, standing in for musl's
+// __wake. Waking one suffices: whoever wakes either acquires p, and then owes
+// the next wake when it unlocks, or re-marks p contended before parking again.
+func lockWake(p uintptr) {
+	lockParkMu.Lock()
 
-	// Some other C thread is waiting for foo.
-	locksMu.Lock()
-	l := locks[p]
-	if l == nil {
-		// We are T1 and we got the locksMu locked before T2.
-		l = &lock{waiters: 1}
-		l.Lock()
+	defer lockParkMu.Unlock()
+
+	if q := lockParked[p]; q != nil {
+		q.cond.Signal()
 	}
-	l.Unlock() // Release foo, T2 may now lock it. (X above)
-	l.waiters--
-	if l.waiters == 0 { // we are T2
-		delete(locks, p)
-	}
-	locksMu.Unlock()
 }
 
 type lockedFile struct {
@@ -1069,7 +1159,6 @@ func Xsysctlbyname(t *TLS, name, oldp, oldlenp, newp uintptr, newlen Tsize_t) in
 		*(*int32)(unsafe.Pointer(oldp)) = int32(runtime.GOMAXPROCS(-1))
 		return 0
 	default:
-		panic(todo(""))
 		t.setErrno(ENOENT)
 		return -1
 	}

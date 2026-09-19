@@ -1,48 +1,61 @@
 // Copyright The OpenTelemetry Authors
 // SPDX-License-Identifier: Apache-2.0
 
-package exemplar // import "go.opentelemetry.io/otel/sdk/metric/exemplar"
+package exemplar
 
 import (
 	"context"
 	"slices"
 	"sort"
+	"sync"
 	"time"
 
 	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/sdk/metric/internal/reservoir"
 )
 
 // HistogramReservoirProvider is a provider of [HistogramReservoir].
 func HistogramReservoirProvider(bounds []float64) ReservoirProvider {
 	cp := slices.Clone(bounds)
 	slices.Sort(cp)
-	return func(_ attribute.Set) Reservoir {
+	return func(attribute.Set) Reservoir {
 		return NewHistogramReservoir(cp)
 	}
 }
 
-// NewHistogramReservoir returns a [HistogramReservoir] that samples the last
-// measurement that falls within a histogram bucket. The histogram bucket
-// upper-boundaries are define by bounds.
+type bucket struct {
+	mu sync.Mutex
+	nt nextTracker
+	measurement
+}
+
+// NewHistogramReservoir returns a [HistogramReservoir] that samples
+// measurements that fall within a histogram bucket using Algorithm L. The
+// histogram bucket upper-boundaries are defined by bounds.
 //
 // The passed bounds must be sorted before calling this function.
 func NewHistogramReservoir(bounds []float64) *HistogramReservoir {
+	buckets := make([]bucket, len(bounds)+1)
+	for i := range buckets {
+		buckets[i].nt.k = 1
+		buckets[i].nt.reset()
+	}
 	return &HistogramReservoir{
 		bounds:  bounds,
-		storage: newStorage(len(bounds) + 1),
+		buckets: buckets,
 	}
 }
 
 var _ Reservoir = &HistogramReservoir{}
 
-// HistogramReservoir is a [Reservoir] that samples the last measurement that
-// falls within a histogram bucket. The histogram bucket upper-boundaries are
-// define by bounds.
+// HistogramReservoir is a [Reservoir] that samples
+// measurements that fall within a histogram bucket using Algorithm L. The
+// histogram bucket upper-boundaries are defined by bounds.
 type HistogramReservoir struct {
-	*storage
-
+	reservoir.ConcurrentSafe
 	// bounds are bucket bounds in ascending order.
-	bounds []float64
+	bounds  []float64
+	buckets []bucket
 }
 
 // Offer accepts the parameters associated with a measurement. The
@@ -57,14 +70,41 @@ type HistogramReservoir struct {
 // parameters are the value and dropped (filtered) attributes of the
 // measurement respectively.
 func (r *HistogramReservoir) Offer(ctx context.Context, t time.Time, v Value, a []attribute.KeyValue) {
-	var x float64
+	var n float64
 	switch v.Type() {
 	case Int64ValueType:
-		x = float64(v.Int64())
+		n = float64(v.Int64())
 	case Float64ValueType:
-		x = v.Float64()
+		n = v.Float64()
 	default:
 		panic("unknown value type")
 	}
-	r.store[sort.SearchFloat64s(r.bounds, x)] = newMeasurement(ctx, t, v, a)
+
+	b := &r.buckets[sort.SearchFloat64s(r.bounds, n)]
+
+	b.mu.Lock()
+	defer b.mu.Unlock()
+
+	sampled, _ := b.nt.shouldSample()
+	if sampled {
+		b.store(ctx, t, v, a)
+	}
+}
+
+// Collect returns all the held exemplars.
+//
+// The stored exemplars are preserved after this call, but the sampling state is reset.
+func (r *HistogramReservoir) Collect(dest *[]Exemplar) {
+	*dest = reset(*dest, len(r.buckets), len(r.buckets))
+	var n int
+	for i := range r.buckets {
+		b := &r.buckets[i]
+		b.mu.Lock()
+		if b.exemplar(&(*dest)[n]) {
+			n++
+		}
+		b.nt.reset()
+		b.mu.Unlock()
+	}
+	*dest = (*dest)[:n]
 }

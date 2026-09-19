@@ -21,6 +21,7 @@ import (
 	"crypto/aes"
 	"crypto/cipher"
 	"crypto/hmac"
+	"crypto/pbkdf2"
 	"crypto/rand"
 	"crypto/sha256"
 	"crypto/sha512"
@@ -30,13 +31,11 @@ import (
 	"hash"
 	"io"
 
-	"golang.org/x/crypto/pbkdf2"
-
 	josecipher "github.com/go-jose/go-jose/v4/cipher"
 )
 
-// RandReader is a cryptographically secure random number generator (stubbed out in tests).
-var RandReader = rand.Reader
+// randReader is a cryptographically secure random number generator (stubbed out in tests).
+var randReader = rand.Reader
 
 const (
 	// RFC7518 recommends a minimum of 1,000 iterations:
@@ -154,7 +153,7 @@ func getPbkdf2Params(alg KeyAlgorithm) (int, func() hash.Hash) {
 // getRandomSalt generates a new salt of the given size.
 func getRandomSalt(size int) ([]byte, error) {
 	salt := make([]byte, size)
-	_, err := io.ReadFull(RandReader, salt)
+	_, err := io.ReadFull(randReader, salt)
 	if err != nil {
 		return nil, err
 	}
@@ -199,7 +198,7 @@ func newSymmetricSigner(sigAlg SignatureAlgorithm, key []byte) (recipientSigInfo
 // Generate a random key for the given content cipher
 func (ctx randomKeyGenerator) genKey() ([]byte, rawHeader, error) {
 	key := make([]byte, ctx.size)
-	_, err := io.ReadFull(RandReader, key)
+	_, err := io.ReadFull(randReader, key)
 	if err != nil {
 		return nil, rawHeader{}, err
 	}
@@ -239,7 +238,7 @@ func (ctx aeadContentCipher) encrypt(key, aad, pt []byte) (*aeadParts, error) {
 
 	// Initialize a new nonce
 	iv := make([]byte, aead.NonceSize())
-	_, err = io.ReadFull(RandReader, iv)
+	_, err = io.ReadFull(randReader, iv)
 	if err != nil {
 		return nil, err
 	}
@@ -330,7 +329,10 @@ func (ctx *symmetricKeyCipher) encryptKey(cek []byte, alg KeyAlgorithm) (recipie
 
 		// derive key
 		keyLen, h := getPbkdf2Params(alg)
-		key := pbkdf2.Key(ctx.key, salt, ctx.p2c, keyLen, h)
+		key, err := pbkdf2.Key(h, string(ctx.key), salt, ctx.p2c, keyLen)
+		if err != nil {
+			return recipientInfo{}, nil
+		}
 
 		// use AES cipher with derived key
 		block, err := aes.NewCipher(key)
@@ -364,11 +366,21 @@ func (ctx *symmetricKeyCipher) encryptKey(cek []byte, alg KeyAlgorithm) (recipie
 
 // Decrypt the content encryption key.
 func (ctx *symmetricKeyCipher) decryptKey(headers rawHeader, recipient *recipientInfo, generator keyGenerator) ([]byte, error) {
-	switch headers.getAlgorithm() {
-	case DIRECT:
-		cek := make([]byte, len(ctx.key))
-		copy(cek, ctx.key)
-		return cek, nil
+	if recipient == nil {
+		return nil, fmt.Errorf("go-jose/go-jose: missing recipient")
+	}
+
+	alg := headers.getAlgorithm()
+	if alg == DIRECT {
+		return bytes.Clone(ctx.key), nil
+	}
+
+	encryptedKey := recipient.encryptedKey
+	if len(encryptedKey) == 0 {
+		return nil, fmt.Errorf("go-jose/go-jose: missing JWE Encrypted Key")
+	}
+
+	switch alg {
 	case A128GCMKW, A192GCMKW, A256GCMKW:
 		aead := newAESGCM(len(ctx.key))
 
@@ -383,7 +395,7 @@ func (ctx *symmetricKeyCipher) decryptKey(headers rawHeader, recipient *recipien
 
 		parts := &aeadParts{
 			iv:         iv.bytes(),
-			ciphertext: recipient.encryptedKey,
+			ciphertext: encryptedKey,
 			tag:        tag.bytes(),
 		}
 
@@ -399,7 +411,7 @@ func (ctx *symmetricKeyCipher) decryptKey(headers rawHeader, recipient *recipien
 			return nil, err
 		}
 
-		cek, err := josecipher.KeyUnwrap(block, recipient.encryptedKey)
+		cek, err := josecipher.KeyUnwrap(block, encryptedKey)
 		if err != nil {
 			return nil, err
 		}
@@ -432,7 +444,10 @@ func (ctx *symmetricKeyCipher) decryptKey(headers rawHeader, recipient *recipien
 
 		// derive key
 		keyLen, h := getPbkdf2Params(alg)
-		key := pbkdf2.Key(ctx.key, salt, p2c, keyLen, h)
+		key, err := pbkdf2.Key(h, string(ctx.key), salt, p2c, keyLen)
+		if err != nil {
+			return nil, err
+		}
 
 		// use AES cipher with derived key
 		block, err := aes.NewCipher(key)
@@ -440,7 +455,7 @@ func (ctx *symmetricKeyCipher) decryptKey(headers rawHeader, recipient *recipien
 			return nil, err
 		}
 
-		cek, err := josecipher.KeyUnwrap(block, recipient.encryptedKey)
+		cek, err := josecipher.KeyUnwrap(block, encryptedKey)
 		if err != nil {
 			return nil, err
 		}

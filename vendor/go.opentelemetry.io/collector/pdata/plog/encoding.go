@@ -9,17 +9,17 @@ type MarshalSizer interface {
 	Sizer
 }
 
-// Marshaler marshals pdata.Logs into bytes.
+// Marshaler marshals Logs into bytes.
 type Marshaler interface {
-	// MarshalLogs the given pdata.Logs into bytes.
+	// MarshalLogs the given Logs into bytes.
 	// If the error is not nil, the returned bytes slice cannot be used.
 	MarshalLogs(ld Logs) ([]byte, error)
 }
 
-// Unmarshaler unmarshalls bytes into pdata.Logs.
+// Unmarshaler unmarshalls bytes into Logs.
 type Unmarshaler interface {
-	// UnmarshalLogs the given bytes into pdata.Logs.
-	// If the error is not nil, the returned pdata.Logs cannot be used.
+	// UnmarshalLogs the given bytes into Logs.
+	// If the error is not nil, the returned Logs cannot be used.
 	UnmarshalLogs(buf []byte) (Logs, error)
 }
 

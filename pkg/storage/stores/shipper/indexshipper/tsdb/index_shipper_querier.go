@@ -10,6 +10,7 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 
+	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/storage/chunk"
 	"github.com/grafana/loki/v3/pkg/storage/config"
 	shipperindex "github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/index"
@@ -22,9 +23,10 @@ type indexShipperIterator interface {
 
 // indexShipperQuerier is used for querying index from the shipper.
 type indexShipperQuerier struct {
-	shipper     indexShipperIterator
-	chunkFilter chunk.RequestChunkFilterer
-	tableRange  config.TableRange
+	shipper       indexShipperIterator
+	chunkFilterMu sync.Mutex
+	chunkFilter   chunk.RequestChunkFilterer
+	tableRange    config.TableRange
 }
 
 func newIndexShipperQuerier(shipper indexShipperIterator, tableRange config.TableRange) Index {
@@ -61,8 +63,8 @@ func (i *indexShipperQuerier) indices(ctx context.Context, from, through model.T
 
 	idx := NewMultiIndex(itr)
 
-	if i.chunkFilter != nil {
-		idx.SetChunkFilterer(i.chunkFilter)
+	if f := i.getChunkFilter(); f != nil {
+		idx.SetChunkFilterer(f)
 	}
 	return idx, nil
 }
@@ -75,7 +77,16 @@ func (i *indexShipperQuerier) Bounds() (model.Time, model.Time) {
 }
 
 func (i *indexShipperQuerier) SetChunkFilterer(chunkFilter chunk.RequestChunkFilterer) {
+	i.chunkFilterMu.Lock()
 	i.chunkFilter = chunkFilter
+	i.chunkFilterMu.Unlock()
+}
+
+func (i *indexShipperQuerier) getChunkFilter() chunk.RequestChunkFilterer {
+	i.chunkFilterMu.Lock()
+	f := i.chunkFilter
+	i.chunkFilterMu.Unlock()
+	return f
 }
 
 // Close implements Index.Close, but we offload this responsibility
@@ -84,7 +95,7 @@ func (i *indexShipperQuerier) Close() error {
 	return nil
 }
 
-func (i *indexShipperQuerier) GetChunkRefs(ctx context.Context, userID string, from, through model.Time, res []ChunkRef, fpFilter tsdbindex.FingerprintFilter, matchers ...*labels.Matcher) ([]ChunkRef, error) {
+func (i *indexShipperQuerier) GetChunkRefs(ctx context.Context, userID string, from, through model.Time, res []logproto.ChunkRefWithSizingInfo, fpFilter tsdbindex.FingerprintFilter, matchers ...*labels.Matcher) ([]logproto.ChunkRefWithSizingInfo, error) {
 	idx, err := i.indices(ctx, from, through, userID)
 	if err != nil {
 		return nil, err

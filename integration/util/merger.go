@@ -1,14 +1,24 @@
-package util
+package util //nolint:revive
 
 import (
 	"fmt"
 
 	"dario.cat/mergo"
-	"gopkg.in/yaml.v2"
+	"go.yaml.in/yaml/v4"
 )
 
 // YAMLMerger takes a set of given YAML fragments and merges them into a single YAML document.
 // The order in which these fragments is supplied is maintained, so subsequent fragments will override preceding ones.
+//
+// NOTE: Merging round-trips each fragment through a generic map[string]interface{}
+// (see yamlToMap) and then re-marshals the result. This means scalars are resolved
+// by their YAML core tags rather than by the target Go types, so type-specific
+// UnmarshalYAML implementations do not run here. In particular, an unquoted date
+// such as `from: 2023-01-01` is resolved via the !!timestamp tag into a time.Time
+// and re-marshalled in canonical RFC3339 form (`2023-01-01T00:00:00Z`). When Loki
+// later parses the merged config, DayTime.UnmarshalYAML then fails because it only
+// accepts the `2006-01-02` layout. To avoid this, keep such dates quoted (e.g.
+// `from: "2023-01-01"`) so they are treated as !!str and preserved verbatim.
 type YAMLMerger struct {
 	fragments [][]byte
 }
@@ -22,7 +32,7 @@ func (m *YAMLMerger) AddFragment(fragment []byte) {
 }
 
 func (m *YAMLMerger) Merge() ([]byte, error) {
-	merged := make(map[interface{}]interface{})
+	merged := make(map[string]interface{})
 	for _, fragment := range m.fragments {
 		fragmentMap, err := yamlToMap(fragment)
 		if err != nil {
@@ -43,7 +53,7 @@ func (m *YAMLMerger) Merge() ([]byte, error) {
 }
 
 func yamlToMap(fragment []byte) (interface{}, error) {
-	var fragmentMap map[interface{}]interface{}
+	var fragmentMap map[string]interface{}
 
 	err := yaml.Unmarshal(fragment, &fragmentMap)
 	if err != nil {

@@ -1,21 +1,9 @@
-// Copyright 2015 go-swagger maintainers
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//    http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// SPDX-FileCopyrightText: Copyright 2015-2025 go-swagger maintainers
+// SPDX-License-Identifier: Apache-2.0
 
 package validate
 
 import (
-	"fmt"
 	"reflect"
 
 	"github.com/go-openapi/errors"
@@ -23,35 +11,35 @@ import (
 	"github.com/go-openapi/strfmt"
 )
 
-// An EntityValidator is an interface for things that can validate entities
+// An EntityValidator is an interface for things that can validate entities.
 type EntityValidator interface {
-	Validate(interface{}) *Result
+	Validate(data any) *Result
 }
 
 type valueValidator interface {
-	SetPath(path string)
-	Applies(interface{}, reflect.Kind) bool
-	Validate(interface{}) *Result
+	setPath(path pathSegments)
+	Applies(source any, kind reflect.Kind) bool
+	Validate(data any) *Result
 }
 
 type itemsValidator struct {
 	items        *spec.Items
-	root         interface{}
-	path         string
+	root         any
+	path         pathSegments
 	in           string
 	validators   [6]valueValidator
 	KnownFormats strfmt.Registry
 	Options      *SchemaValidatorOptions
 }
 
-func newItemsValidator(path, in string, items *spec.Items, root interface{}, formats strfmt.Registry, opts *SchemaValidatorOptions) *itemsValidator {
+func newItemsValidator(path pathSegments, in string, items *spec.Items, root any, formats strfmt.Registry, opts *SchemaValidatorOptions) *itemsValidator {
 	if opts == nil {
 		opts = new(SchemaValidatorOptions)
 	}
 
 	var iv *itemsValidator
 	if opts.recycleValidators {
-		iv = pools.poolOfItemsValidators.BorrowValidator()
+		iv = validatorPools.itemsValidators.Borrow()
 	} else {
 		iv = new(itemsValidator)
 	}
@@ -73,7 +61,7 @@ func newItemsValidator(path, in string, items *spec.Items, root interface{}, for
 	return iv
 }
 
-func (i *itemsValidator) Validate(index int, data interface{}) *Result {
+func (i *itemsValidator) Validate(index int, data any) *Result {
 	if i.Options.recycleValidators {
 		defer func() {
 			i.redeemChildren()
@@ -85,12 +73,12 @@ func (i *itemsValidator) Validate(index int, data interface{}) *Result {
 	kind := tpe.Kind()
 	var result *Result
 	if i.Options.recycleResult {
-		result = pools.poolOfResults.BorrowResult()
+		result = validatorPools.results.Borrow()
 	} else {
 		result = new(Result)
 	}
 
-	path := fmt.Sprintf("%s.%d", i.path, index)
+	path := i.path.item(index)
 
 	for idx, validator := range i.validators {
 		if !validator.Applies(i.root, kind) {
@@ -108,7 +96,7 @@ func (i *itemsValidator) Validate(index int, data interface{}) *Result {
 			continue
 		}
 
-		validator.SetPath(path)
+		validator.setPath(path)
 		err := validator.Validate(data)
 		if i.Options.recycleValidators {
 			i.validators[idx] = nil // prevents further (unsafe) usage
@@ -141,7 +129,7 @@ func (i *itemsValidator) typeValidator() valueValidator {
 
 func (i *itemsValidator) commonValidator() valueValidator {
 	return newBasicCommonValidator(
-		"",
+		nil, // located by the item index, set on each Validate call
 		i.in,
 		i.items.Default,
 		i.items.Enum,
@@ -151,7 +139,7 @@ func (i *itemsValidator) commonValidator() valueValidator {
 
 func (i *itemsValidator) sliceValidator() valueValidator {
 	return newBasicSliceValidator(
-		"",
+		nil, // located by the item index, set on each Validate call
 		i.in,
 		i.items.Default,
 		i.items.MaxItems,
@@ -166,7 +154,7 @@ func (i *itemsValidator) sliceValidator() valueValidator {
 
 func (i *itemsValidator) numberValidator() valueValidator {
 	return newNumberValidator(
-		"",
+		nil, // located by the item index, set on each Validate call
 		i.in,
 		i.items.Default,
 		i.items.MultipleOf,
@@ -182,7 +170,7 @@ func (i *itemsValidator) numberValidator() valueValidator {
 
 func (i *itemsValidator) stringValidator() valueValidator {
 	return newStringValidator(
-		"",
+		nil, // located by the item index, set on each Validate call
 		i.in,
 		i.items.Default,
 		false, // Required
@@ -196,7 +184,7 @@ func (i *itemsValidator) stringValidator() valueValidator {
 
 func (i *itemsValidator) formatValidator() valueValidator {
 	return newFormatValidator(
-		"",
+		nil, // located by the item index, set on each Validate call
 		i.in,
 		i.items.Format,
 		i.KnownFormats,
@@ -205,7 +193,7 @@ func (i *itemsValidator) formatValidator() valueValidator {
 }
 
 func (i *itemsValidator) redeem() {
-	pools.poolOfItemsValidators.RedeemValidator(i)
+	validatorPools.itemsValidators.Redeem(i)
 }
 
 func (i *itemsValidator) redeemChildren() {
@@ -224,21 +212,21 @@ func (i *itemsValidator) redeemChildren() {
 }
 
 type basicCommonValidator struct {
-	Path    string
+	Path    pathSegments
 	In      string
-	Default interface{}
-	Enum    []interface{}
+	Default any
+	Enum    []any
 	Options *SchemaValidatorOptions
 }
 
-func newBasicCommonValidator(path, in string, def interface{}, enum []interface{}, opts *SchemaValidatorOptions) *basicCommonValidator {
+func newBasicCommonValidator(path pathSegments, in string, def any, enum []any, opts *SchemaValidatorOptions) *basicCommonValidator {
 	if opts == nil {
 		opts = new(SchemaValidatorOptions)
 	}
 
 	var b *basicCommonValidator
 	if opts.recycleValidators {
-		b = pools.poolOfBasicCommonValidators.BorrowValidator()
+		b = validatorPools.basicCommonValidators.Borrow()
 	} else {
 		b = new(basicCommonValidator)
 	}
@@ -252,11 +240,7 @@ func newBasicCommonValidator(path, in string, def interface{}, enum []interface{
 	return b
 }
 
-func (b *basicCommonValidator) SetPath(path string) {
-	b.Path = path
-}
-
-func (b *basicCommonValidator) Applies(source interface{}, _ reflect.Kind) bool {
+func (b *basicCommonValidator) Applies(source any, _ reflect.Kind) bool {
 	switch source.(type) {
 	case *spec.Parameter, *spec.Schema, *spec.Header:
 		return true
@@ -265,7 +249,7 @@ func (b *basicCommonValidator) Applies(source interface{}, _ reflect.Kind) bool 
 	}
 }
 
-func (b *basicCommonValidator) Validate(data interface{}) (res *Result) {
+func (b *basicCommonValidator) Validate(data any) (res *Result) {
 	if b.Options.recycleValidators {
 		defer func() {
 			b.redeem()
@@ -290,14 +274,18 @@ func (b *basicCommonValidator) Validate(data interface{}) (res *Result) {
 		}
 	}
 
-	return errorHelp.sErr(errors.EnumFail(b.Path, b.In, data, b.Enum), b.Options.recycleResult)
+	return errorHelp.sErrAt(b.Path, errors.EnumFail(b.Path.dotted(), b.In, data, b.Enum), b.Options.recycleResult)
+}
+
+func (b *basicCommonValidator) setPath(path pathSegments) {
+	b.Path = path
 }
 
 func (b *basicCommonValidator) redeem() {
-	pools.poolOfBasicCommonValidators.RedeemValidator(b)
+	validatorPools.basicCommonValidators.Redeem(b)
 }
 
-// A HeaderValidator has very limited subset of validations to apply
+// A HeaderValidator has very limited subset of validations to apply.
 type HeaderValidator struct {
 	name         string
 	header       *spec.Header
@@ -306,7 +294,7 @@ type HeaderValidator struct {
 	Options      *SchemaValidatorOptions
 }
 
-// NewHeaderValidator creates a new header validator object
+// NewHeaderValidator creates a new header validator object.
 func NewHeaderValidator(name string, header *spec.Header, formats strfmt.Registry, options ...Option) *HeaderValidator {
 	opts := new(SchemaValidatorOptions)
 	for _, o := range options {
@@ -323,7 +311,7 @@ func newHeaderValidator(name string, header *spec.Header, formats strfmt.Registr
 
 	var p *HeaderValidator
 	if opts.recycleValidators {
-		p = pools.poolOfHeaderValidators.BorrowValidator()
+		p = validatorPools.headerValidators.Borrow()
 	} else {
 		p = new(HeaderValidator)
 	}
@@ -334,7 +322,7 @@ func newHeaderValidator(name string, header *spec.Header, formats strfmt.Registr
 	p.Options = opts
 	p.validators = [6]valueValidator{
 		newTypeValidator(
-			name,
+			newPathSegments(name),
 			"header",
 			spec.StringOrArray([]string{header.Type}),
 			header.Nullable,
@@ -351,8 +339,8 @@ func newHeaderValidator(name string, header *spec.Header, formats strfmt.Registr
 	return p
 }
 
-// Validate the value of the header against its schema
-func (p *HeaderValidator) Validate(data interface{}) *Result {
+// Validate the value of the header against its schema.
+func (p *HeaderValidator) Validate(data any) *Result {
 	if p.Options.recycleValidators {
 		defer func() {
 			p.redeemChildren()
@@ -366,7 +354,7 @@ func (p *HeaderValidator) Validate(data interface{}) *Result {
 
 	var result *Result
 	if p.Options.recycleResult {
-		result = pools.poolOfResults.BorrowResult()
+		result = validatorPools.results.Borrow()
 	} else {
 		result = new(Result)
 	}
@@ -408,7 +396,7 @@ func (p *HeaderValidator) Validate(data interface{}) *Result {
 
 func (p *HeaderValidator) commonValidator() valueValidator {
 	return newBasicCommonValidator(
-		p.name,
+		newPathSegments(p.name),
 		"response",
 		p.header.Default,
 		p.header.Enum,
@@ -418,7 +406,7 @@ func (p *HeaderValidator) commonValidator() valueValidator {
 
 func (p *HeaderValidator) sliceValidator() valueValidator {
 	return newBasicSliceValidator(
-		p.name,
+		newPathSegments(p.name),
 		"response",
 		p.header.Default,
 		p.header.MaxItems,
@@ -433,7 +421,7 @@ func (p *HeaderValidator) sliceValidator() valueValidator {
 
 func (p *HeaderValidator) numberValidator() valueValidator {
 	return newNumberValidator(
-		p.name,
+		newPathSegments(p.name),
 		"response",
 		p.header.Default,
 		p.header.MultipleOf,
@@ -449,7 +437,7 @@ func (p *HeaderValidator) numberValidator() valueValidator {
 
 func (p *HeaderValidator) stringValidator() valueValidator {
 	return newStringValidator(
-		p.name,
+		newPathSegments(p.name),
 		"response",
 		p.header.Default,
 		true,
@@ -463,7 +451,7 @@ func (p *HeaderValidator) stringValidator() valueValidator {
 
 func (p *HeaderValidator) formatValidator() valueValidator {
 	return newFormatValidator(
-		p.name,
+		newPathSegments(p.name),
 		"response",
 		p.header.Format,
 		p.KnownFormats,
@@ -472,7 +460,7 @@ func (p *HeaderValidator) formatValidator() valueValidator {
 }
 
 func (p *HeaderValidator) redeem() {
-	pools.poolOfHeaderValidators.RedeemValidator(p)
+	validatorPools.headerValidators.Redeem(p)
 }
 
 func (p *HeaderValidator) redeemChildren() {
@@ -490,7 +478,7 @@ func (p *HeaderValidator) redeemChildren() {
 	}
 }
 
-// A ParamValidator has very limited subset of validations to apply
+// A ParamValidator has very limited subset of validations to apply.
 type ParamValidator struct {
 	param        *spec.Parameter
 	validators   [6]valueValidator
@@ -498,7 +486,7 @@ type ParamValidator struct {
 	Options      *SchemaValidatorOptions
 }
 
-// NewParamValidator creates a new param validator object
+// NewParamValidator creates a new param validator object.
 func NewParamValidator(param *spec.Parameter, formats strfmt.Registry, options ...Option) *ParamValidator {
 	opts := new(SchemaValidatorOptions)
 	for _, o := range options {
@@ -515,7 +503,7 @@ func newParamValidator(param *spec.Parameter, formats strfmt.Registry, opts *Sch
 
 	var p *ParamValidator
 	if opts.recycleValidators {
-		p = pools.poolOfParamValidators.BorrowValidator()
+		p = validatorPools.paramValidators.Borrow()
 	} else {
 		p = new(ParamValidator)
 	}
@@ -525,7 +513,7 @@ func newParamValidator(param *spec.Parameter, formats strfmt.Registry, opts *Sch
 	p.Options = opts
 	p.validators = [6]valueValidator{
 		newTypeValidator(
-			param.Name,
+			newPathSegments(param.Name),
 			param.In,
 			spec.StringOrArray([]string{param.Type}),
 			param.Nullable,
@@ -542,15 +530,15 @@ func newParamValidator(param *spec.Parameter, formats strfmt.Registry, opts *Sch
 	return p
 }
 
-// Validate the data against the description of the parameter
-func (p *ParamValidator) Validate(data interface{}) *Result {
+// Validate the data against the description of the parameter.
+func (p *ParamValidator) Validate(data any) *Result {
 	if data == nil {
 		return nil
 	}
 
 	var result *Result
 	if p.Options.recycleResult {
-		result = pools.poolOfResults.BorrowResult()
+		result = validatorPools.results.Borrow()
 	} else {
 		result = new(Result)
 	}
@@ -565,7 +553,7 @@ func (p *ParamValidator) Validate(data interface{}) *Result {
 		}()
 	}
 
-	// TODO: validate type
+	// Proposal for enhancement: validate type
 	for idx, validator := range p.validators {
 		if !validator.Applies(p.param, kind) {
 			if p.Options.recycleValidators {
@@ -600,7 +588,7 @@ func (p *ParamValidator) Validate(data interface{}) *Result {
 
 func (p *ParamValidator) commonValidator() valueValidator {
 	return newBasicCommonValidator(
-		p.param.Name,
+		newPathSegments(p.param.Name),
 		p.param.In,
 		p.param.Default,
 		p.param.Enum,
@@ -610,7 +598,7 @@ func (p *ParamValidator) commonValidator() valueValidator {
 
 func (p *ParamValidator) sliceValidator() valueValidator {
 	return newBasicSliceValidator(
-		p.param.Name,
+		newPathSegments(p.param.Name),
 		p.param.In,
 		p.param.Default,
 		p.param.MaxItems,
@@ -625,7 +613,7 @@ func (p *ParamValidator) sliceValidator() valueValidator {
 
 func (p *ParamValidator) numberValidator() valueValidator {
 	return newNumberValidator(
-		p.param.Name,
+		newPathSegments(p.param.Name),
 		p.param.In,
 		p.param.Default,
 		p.param.MultipleOf,
@@ -641,7 +629,7 @@ func (p *ParamValidator) numberValidator() valueValidator {
 
 func (p *ParamValidator) stringValidator() valueValidator {
 	return newStringValidator(
-		p.param.Name,
+		newPathSegments(p.param.Name),
 		p.param.In,
 		p.param.Default,
 		p.param.Required,
@@ -655,7 +643,7 @@ func (p *ParamValidator) stringValidator() valueValidator {
 
 func (p *ParamValidator) formatValidator() valueValidator {
 	return newFormatValidator(
-		p.param.Name,
+		newPathSegments(p.param.Name),
 		p.param.In,
 		p.param.Format,
 		p.KnownFormats,
@@ -664,7 +652,7 @@ func (p *ParamValidator) formatValidator() valueValidator {
 }
 
 func (p *ParamValidator) redeem() {
-	pools.poolOfParamValidators.RedeemValidator(p)
+	validatorPools.paramValidators.Redeem(p)
 }
 
 func (p *ParamValidator) redeemChildren() {
@@ -683,30 +671,31 @@ func (p *ParamValidator) redeemChildren() {
 }
 
 type basicSliceValidator struct {
-	Path         string
+	Path         pathSegments
 	In           string
-	Default      interface{}
+	Default      any
 	MaxItems     *int64
 	MinItems     *int64
 	UniqueItems  bool
 	Items        *spec.Items
-	Source       interface{}
+	Source       any
 	KnownFormats strfmt.Registry
 	Options      *SchemaValidatorOptions
 }
 
 func newBasicSliceValidator(
-	path, in string,
-	def interface{}, maxItems, minItems *int64, uniqueItems bool, items *spec.Items,
-	source interface{}, formats strfmt.Registry,
-	opts *SchemaValidatorOptions) *basicSliceValidator {
+	path pathSegments, in string,
+	def any, maxItems, minItems *int64, uniqueItems bool, items *spec.Items,
+	source any, formats strfmt.Registry,
+	opts *SchemaValidatorOptions,
+) *basicSliceValidator {
 	if opts == nil {
 		opts = new(SchemaValidatorOptions)
 	}
 
 	var s *basicSliceValidator
 	if opts.recycleValidators {
-		s = pools.poolOfBasicSliceValidators.BorrowValidator()
+		s = validatorPools.basicSliceValidators.Borrow()
 	} else {
 		s = new(basicSliceValidator)
 	}
@@ -725,11 +714,7 @@ func newBasicSliceValidator(
 	return s
 }
 
-func (s *basicSliceValidator) SetPath(path string) {
-	s.Path = path
-}
-
-func (s *basicSliceValidator) Applies(source interface{}, kind reflect.Kind) bool {
+func (s *basicSliceValidator) Applies(source any, kind reflect.Kind) bool {
 	switch source.(type) {
 	case *spec.Parameter, *spec.Items, *spec.Header:
 		return kind == reflect.Slice
@@ -738,7 +723,7 @@ func (s *basicSliceValidator) Applies(source interface{}, kind reflect.Kind) boo
 	}
 }
 
-func (s *basicSliceValidator) Validate(data interface{}) *Result {
+func (s *basicSliceValidator) Validate(data any) *Result {
 	if s.Options.recycleValidators {
 		defer func() {
 			s.redeem()
@@ -748,20 +733,20 @@ func (s *basicSliceValidator) Validate(data interface{}) *Result {
 
 	size := int64(val.Len())
 	if s.MinItems != nil {
-		if err := MinItems(s.Path, s.In, size, *s.MinItems); err != nil {
-			return errorHelp.sErr(err, s.Options.recycleResult)
+		if err := MinItems(s.Path.dotted(), s.In, size, *s.MinItems); err != nil {
+			return errorHelp.sErrAt(s.Path, err, s.Options.recycleResult)
 		}
 	}
 
 	if s.MaxItems != nil {
-		if err := MaxItems(s.Path, s.In, size, *s.MaxItems); err != nil {
-			return errorHelp.sErr(err, s.Options.recycleResult)
+		if err := MaxItems(s.Path.dotted(), s.In, size, *s.MaxItems); err != nil {
+			return errorHelp.sErrAt(s.Path, err, s.Options.recycleResult)
 		}
 	}
 
 	if s.UniqueItems {
-		if err := UniqueItems(s.Path, s.In, data); err != nil {
-			return errorHelp.sErr(err, s.Options.recycleResult)
+		if err := UniqueItems(s.Path.dotted(), s.In, data); err != nil {
+			return errorHelp.sErrAt(s.Path, err, s.Options.recycleResult)
 		}
 	}
 
@@ -769,7 +754,7 @@ func (s *basicSliceValidator) Validate(data interface{}) *Result {
 		return nil
 	}
 
-	for i := 0; i < int(size); i++ {
+	for i := range int(size) {
 		itemsValidator := newItemsValidator(s.Path, s.In, s.Items, s.Source, s.KnownFormats, s.Options)
 		ele := val.Index(i)
 		if err := itemsValidator.Validate(i, ele.Interface()); err != nil {
@@ -777,7 +762,7 @@ func (s *basicSliceValidator) Validate(data interface{}) *Result {
 				return err
 			}
 			if err.wantsRedeemOnMerge {
-				pools.poolOfResults.RedeemResult(err)
+				redeemResult(err)
 			}
 		}
 	}
@@ -785,14 +770,18 @@ func (s *basicSliceValidator) Validate(data interface{}) *Result {
 	return nil
 }
 
+func (s *basicSliceValidator) setPath(path pathSegments) {
+	s.Path = path
+}
+
 func (s *basicSliceValidator) redeem() {
-	pools.poolOfBasicSliceValidators.RedeemValidator(s)
+	validatorPools.basicSliceValidators.Redeem(s)
 }
 
 type numberValidator struct {
-	Path             string
+	Path             pathSegments
 	In               string
-	Default          interface{}
+	Default          any
 	MultipleOf       *float64
 	Maximum          *float64
 	ExclusiveMaximum bool
@@ -805,17 +794,18 @@ type numberValidator struct {
 }
 
 func newNumberValidator(
-	path, in string, def interface{},
+	path pathSegments, in string, def any,
 	multipleOf, maximum *float64, exclusiveMaximum bool, minimum *float64, exclusiveMinimum bool,
 	typ, format string,
-	opts *SchemaValidatorOptions) *numberValidator {
+	opts *SchemaValidatorOptions,
+) *numberValidator {
 	if opts == nil {
 		opts = new(SchemaValidatorOptions)
 	}
 
 	var n *numberValidator
 	if opts.recycleValidators {
-		n = pools.poolOfNumberValidators.BorrowValidator()
+		n = validatorPools.numberValidators.Borrow()
 	} else {
 		n = new(numberValidator)
 	}
@@ -835,11 +825,7 @@ func newNumberValidator(
 	return n
 }
 
-func (n *numberValidator) SetPath(path string) {
-	n.Path = path
-}
-
-func (n *numberValidator) Applies(source interface{}, kind reflect.Kind) bool {
+func (n *numberValidator) Applies(source any, kind reflect.Kind) bool {
 	switch source.(type) {
 	case *spec.Parameter, *spec.Schema, *spec.Items, *spec.Header:
 		isInt := kind >= reflect.Int && kind <= reflect.Uint64
@@ -868,10 +854,10 @@ func (n *numberValidator) Applies(source interface{}, kind reflect.Kind) bool {
 //
 // If this is the case, replace AddErrors() by AddWarnings() and IsValid() by !HasWarnings().
 //
-// TODO: consider replacing boundary check errors by simple warnings.
+// Proposal for enhancement: consider replacing boundary check errors by simple warnings.
 //
-// TODO: default boundaries with MAX_SAFE_INTEGER are not checked (specific to json.Number?)
-func (n *numberValidator) Validate(val interface{}) *Result {
+// NOTE: default boundaries with MAX_SAFE_INTEGER are not checked (specific to json.Number?)
+func (n *numberValidator) Validate(val any) *Result {
 	if n.Options.recycleValidators {
 		defer func() {
 			n.redeem()
@@ -880,7 +866,7 @@ func (n *numberValidator) Validate(val interface{}) *Result {
 
 	var res, resMultiple, resMinimum, resMaximum *Result
 	if n.Options.recycleResult {
-		res = pools.poolOfResults.BorrowResult()
+		res = validatorPools.results.Borrow()
 	} else {
 		res = new(Result)
 	}
@@ -890,58 +876,58 @@ func (n *numberValidator) Validate(val interface{}) *Result {
 	data := valueHelp.asFloat64(val)
 
 	// Is the provided value within the range of the specified numeric type and format?
-	res.AddErrors(IsValueValidAgainstRange(val, n.Type, n.Format, "Checked", n.Path))
+	res.addErrorsAt(n.Path, IsValueValidAgainstRange(val, n.Type, n.Format, "Checked", n.Path.dotted()))
 
 	if n.MultipleOf != nil {
-		resMultiple = pools.poolOfResults.BorrowResult()
+		resMultiple = validatorPools.results.Borrow()
 
 		// Is the constraint specifier within the range of the specific numeric type and format?
-		resMultiple.AddErrors(IsValueValidAgainstRange(*n.MultipleOf, n.Type, n.Format, "MultipleOf", n.Path))
+		resMultiple.addErrorsAt(n.Path, IsValueValidAgainstRange(*n.MultipleOf, n.Type, n.Format, "MultipleOf", n.Path.dotted()))
 		if resMultiple.IsValid() {
 			// Constraint validated with compatible types
-			if err := MultipleOfNativeType(n.Path, n.In, val, *n.MultipleOf); err != nil {
-				resMultiple.Merge(errorHelp.sErr(err, n.Options.recycleResult))
+			if err := MultipleOfNativeType(n.Path.dotted(), n.In, val, *n.MultipleOf); err != nil {
+				resMultiple.Merge(errorHelp.sErrAt(n.Path, err, n.Options.recycleResult))
 			}
 		} else {
 			// Constraint nevertheless validated, converted as general number
-			if err := MultipleOf(n.Path, n.In, data, *n.MultipleOf); err != nil {
-				resMultiple.Merge(errorHelp.sErr(err, n.Options.recycleResult))
+			if err := MultipleOf(n.Path.dotted(), n.In, data, *n.MultipleOf); err != nil {
+				resMultiple.Merge(errorHelp.sErrAt(n.Path, err, n.Options.recycleResult))
 			}
 		}
 	}
 
 	if n.Maximum != nil {
-		resMaximum = pools.poolOfResults.BorrowResult()
+		resMaximum = validatorPools.results.Borrow()
 
 		// Is the constraint specifier within the range of the specific numeric type and format?
-		resMaximum.AddErrors(IsValueValidAgainstRange(*n.Maximum, n.Type, n.Format, "Maximum boundary", n.Path))
+		resMaximum.addErrorsAt(n.Path, IsValueValidAgainstRange(*n.Maximum, n.Type, n.Format, "Maximum boundary", n.Path.dotted()))
 		if resMaximum.IsValid() {
 			// Constraint validated with compatible types
-			if err := MaximumNativeType(n.Path, n.In, val, *n.Maximum, n.ExclusiveMaximum); err != nil {
-				resMaximum.Merge(errorHelp.sErr(err, n.Options.recycleResult))
+			if err := MaximumNativeType(n.Path.dotted(), n.In, val, *n.Maximum, n.ExclusiveMaximum); err != nil {
+				resMaximum.Merge(errorHelp.sErrAt(n.Path, err, n.Options.recycleResult))
 			}
 		} else {
 			// Constraint nevertheless validated, converted as general number
-			if err := Maximum(n.Path, n.In, data, *n.Maximum, n.ExclusiveMaximum); err != nil {
-				resMaximum.Merge(errorHelp.sErr(err, n.Options.recycleResult))
+			if err := Maximum(n.Path.dotted(), n.In, data, *n.Maximum, n.ExclusiveMaximum); err != nil {
+				resMaximum.Merge(errorHelp.sErrAt(n.Path, err, n.Options.recycleResult))
 			}
 		}
 	}
 
 	if n.Minimum != nil {
-		resMinimum = pools.poolOfResults.BorrowResult()
+		resMinimum = validatorPools.results.Borrow()
 
 		// Is the constraint specifier within the range of the specific numeric type and format?
-		resMinimum.AddErrors(IsValueValidAgainstRange(*n.Minimum, n.Type, n.Format, "Minimum boundary", n.Path))
+		resMinimum.addErrorsAt(n.Path, IsValueValidAgainstRange(*n.Minimum, n.Type, n.Format, "Minimum boundary", n.Path.dotted()))
 		if resMinimum.IsValid() {
 			// Constraint validated with compatible types
-			if err := MinimumNativeType(n.Path, n.In, val, *n.Minimum, n.ExclusiveMinimum); err != nil {
-				resMinimum.Merge(errorHelp.sErr(err, n.Options.recycleResult))
+			if err := MinimumNativeType(n.Path.dotted(), n.In, val, *n.Minimum, n.ExclusiveMinimum); err != nil {
+				resMinimum.Merge(errorHelp.sErrAt(n.Path, err, n.Options.recycleResult))
 			}
 		} else {
 			// Constraint nevertheless validated, converted as general number
-			if err := Minimum(n.Path, n.In, data, *n.Minimum, n.ExclusiveMinimum); err != nil {
-				resMinimum.Merge(errorHelp.sErr(err, n.Options.recycleResult))
+			if err := Minimum(n.Path.dotted(), n.In, data, *n.Minimum, n.ExclusiveMinimum); err != nil {
+				resMinimum.Merge(errorHelp.sErrAt(n.Path, err, n.Options.recycleResult))
 			}
 		}
 	}
@@ -951,14 +937,18 @@ func (n *numberValidator) Validate(val interface{}) *Result {
 	return res
 }
 
+func (n *numberValidator) setPath(path pathSegments) {
+	n.Path = path
+}
+
 func (n *numberValidator) redeem() {
-	pools.poolOfNumberValidators.RedeemValidator(n)
+	validatorPools.numberValidators.Redeem(n)
 }
 
 type stringValidator struct {
-	Path            string
+	Path            pathSegments
 	In              string
-	Default         interface{}
+	Default         any
 	Required        bool
 	AllowEmptyValue bool
 	MaxLength       *int64
@@ -968,16 +958,17 @@ type stringValidator struct {
 }
 
 func newStringValidator(
-	path, in string,
-	def interface{}, required, allowEmpty bool, maxLength, minLength *int64, pattern string,
-	opts *SchemaValidatorOptions) *stringValidator {
+	path pathSegments, in string,
+	def any, required, allowEmpty bool, maxLength, minLength *int64, pattern string,
+	opts *SchemaValidatorOptions,
+) *stringValidator {
 	if opts == nil {
 		opts = new(SchemaValidatorOptions)
 	}
 
 	var s *stringValidator
 	if opts.recycleValidators {
-		s = pools.poolOfStringValidators.BorrowValidator()
+		s = validatorPools.stringValidators.Borrow()
 	} else {
 		s = new(stringValidator)
 	}
@@ -995,11 +986,7 @@ func newStringValidator(
 	return s
 }
 
-func (s *stringValidator) SetPath(path string) {
-	s.Path = path
-}
-
-func (s *stringValidator) Applies(source interface{}, kind reflect.Kind) bool {
+func (s *stringValidator) Applies(source any, kind reflect.Kind) bool {
 	switch source.(type) {
 	case *spec.Parameter, *spec.Schema, *spec.Items, *spec.Header:
 		return kind == reflect.String
@@ -1008,7 +995,7 @@ func (s *stringValidator) Applies(source interface{}, kind reflect.Kind) bool {
 	}
 }
 
-func (s *stringValidator) Validate(val interface{}) *Result {
+func (s *stringValidator) Validate(val any) *Result {
 	if s.Options.recycleValidators {
 		defer func() {
 			s.redeem()
@@ -1017,35 +1004,39 @@ func (s *stringValidator) Validate(val interface{}) *Result {
 
 	data, ok := val.(string)
 	if !ok {
-		return errorHelp.sErr(errors.InvalidType(s.Path, s.In, stringType, val), s.Options.recycleResult)
+		return errorHelp.sErrAt(s.Path, errors.InvalidType(s.Path.dotted(), s.In, stringType, val), s.Options.recycleResult)
 	}
 
 	if s.Required && !s.AllowEmptyValue && (s.Default == nil || s.Default == "") {
-		if err := RequiredString(s.Path, s.In, data); err != nil {
-			return errorHelp.sErr(err, s.Options.recycleResult)
+		if err := RequiredString(s.Path.dotted(), s.In, data); err != nil {
+			return errorHelp.sErrAt(s.Path, err, s.Options.recycleResult)
 		}
 	}
 
 	if s.MaxLength != nil {
-		if err := MaxLength(s.Path, s.In, data, *s.MaxLength); err != nil {
-			return errorHelp.sErr(err, s.Options.recycleResult)
+		if err := MaxLength(s.Path.dotted(), s.In, data, *s.MaxLength); err != nil {
+			return errorHelp.sErrAt(s.Path, err, s.Options.recycleResult)
 		}
 	}
 
 	if s.MinLength != nil {
-		if err := MinLength(s.Path, s.In, data, *s.MinLength); err != nil {
-			return errorHelp.sErr(err, s.Options.recycleResult)
+		if err := MinLength(s.Path.dotted(), s.In, data, *s.MinLength); err != nil {
+			return errorHelp.sErrAt(s.Path, err, s.Options.recycleResult)
 		}
 	}
 
 	if s.Pattern != "" {
-		if err := Pattern(s.Path, s.In, data, s.Pattern); err != nil {
-			return errorHelp.sErr(err, s.Options.recycleResult)
+		if err := Pattern(s.Path.dotted(), s.In, data, s.Pattern); err != nil {
+			return errorHelp.sErrAt(s.Path, err, s.Options.recycleResult)
 		}
 	}
 	return nil
 }
 
+func (s *stringValidator) setPath(path pathSegments) {
+	s.Path = path
+}
+
 func (s *stringValidator) redeem() {
-	pools.poolOfStringValidators.RedeemValidator(s)
+	validatorPools.stringValidators.Redeem(s)
 }

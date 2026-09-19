@@ -1,23 +1,31 @@
-// Copyright 2015 go-swagger maintainers
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//    http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// SPDX-FileCopyrightText: Copyright 2015-2025 go-swagger maintainers
+// SPDX-License-Identifier: Apache-2.0
 
 package spec
 
 import (
+	"cmp"
 	"encoding/json"
 	"fmt"
+	"iter"
+	"maps"
+	"slices"
+
+	"github.com/go-openapi/swag/loading"
 )
+
+const smallPrealloc = 10
+
+// DefaultMaxExpansionNodes is the default upper bound on the number of schema nodes
+// expanded during a single ExpandSpec / ExpandSchema* call.
+//
+// It guards against maliciously crafted specifications whose $ref graph expands to an
+// exponential number of nodes from a few kilobytes of input. For reference, expanding the
+// full Kubernetes API specification (the largest real-world spec we test against) visits
+// roughly 47,000 nodes, so this default leaves ample headroom for legitimate documents.
+//
+// See ExpandOptions.MaxExpansionNodes to tune or disable this budget.
+const DefaultMaxExpansionNodes = 500_000
 
 // ExpandOptions provides options for the spec expander.
 //
@@ -26,13 +34,59 @@ import (
 // If left empty, the root document is assumed to be located in the current working directory:
 // all relative $ref's will be resolved from there.
 //
-// PathLoader injects a document loading method. By default, this resolves to the function provided by the SpecLoader package variable.
+// PathLoader injects a document loading method. By default, this resolves to the function provided by the PathLoader package variable.
+//
+// PathLoaderWithOptions is an alternative document loader that accepts [loading.Option] values, matching the
+// signature used by the go-openapi/swag/loading and go-openapi/loads loaders. When set, it takes precedence over
+// PathLoader. This lets a caller inject an options-aware (e.g. path-confined) loader without an adapter closure.
+//
+// Security: the default loader is not sandboxed. When expanding an untrusted specification, inject a confined
+// loader (for example one built with loading.WithRoot) — see the package "Security" section.
 type ExpandOptions struct {
 	RelativeBase        string                                // the path to the root document to expand. This is a file, not a directory
 	SkipSchemas         bool                                  // do not expand schemas, just paths, parameters and responses
 	ContinueOnError     bool                                  // continue expanding even after and error is found
 	PathLoader          func(string) (json.RawMessage, error) `json:"-"` // the document loading method that takes a path as input and yields a json document
 	AbsoluteCircularRef bool                                  // circular $ref remaining after expansion remain absolute URLs
+
+	// PathLoaderWithOptions injects a document loading method that accepts loading options.
+	//
+	// It has the same role as PathLoader but matches the option-aware loader signature exposed by
+	// github.com/go-openapi/swag/loading (and github.com/go-openapi/loads), so such a loader can be
+	// injected directly, without wrapping it in an adapter closure.
+	//
+	// When set, PathLoaderWithOptions takes precedence over PathLoader. The provided loader is expected
+	// to carry its own loading options (for example a path confinement built with loading.WithRoot);
+	// the expander itself invokes it without adding options.
+	PathLoaderWithOptions func(string, ...loading.Option) (json.RawMessage, error) `json:"-"`
+
+	// MaxExpansionNodes caps the number of schema nodes expanded during a single expansion call,
+	// as a safeguard against $ref amplification attacks (see ErrExpandTooManyNodes).
+	//
+	// The value is interpreted as follows:
+	//
+	//   0  (the zero value): use DefaultMaxExpansionNodes. Every caller is protected by default.
+	//   <0: no limit (unbounded expansion). Use only with fully trusted specifications.
+	//   >0: cap the expansion at this number of nodes.
+	//
+	// When the budget is exceeded, expansion stops and ErrExpandTooManyNodes is returned.
+	// Because this is a resource-exhaustion safeguard, the error is always returned, even when
+	// ContinueOnError is set.
+	MaxExpansionNodes int
+}
+
+// maxExpansionNodes resolves the tri-state MaxExpansionNodes option into an effective budget.
+//
+// A returned value of 0 means "unbounded".
+func (o *ExpandOptions) maxExpansionNodes() int {
+	switch {
+	case o.MaxExpansionNodes == 0:
+		return DefaultMaxExpansionNodes
+	case o.MaxExpansionNodes < 0:
+		return 0 // unbounded
+	default:
+		return o.MaxExpansionNodes
+	}
 }
 
 func optionsOrDefault(opts *ExpandOptions) *ExpandOptions {
@@ -47,7 +101,11 @@ func optionsOrDefault(opts *ExpandOptions) *ExpandOptions {
 	return &ExpandOptions{}
 }
 
-// ExpandSpec expands the references in a swagger spec
+// ExpandSpec expands the references in a swagger spec.
+//
+// Security: with default options the document loader is not sandboxed, so a "$ref" in an
+// untrusted spec can read local files or reach internal addresses. See the package "Security"
+// section before expanding untrusted input.
 func ExpandSpec(spec *Swagger, options *ExpandOptions) error {
 	options = optionsOrDefault(options)
 	resolver := defaultSchemaLoader(spec, options, nil, nil)
@@ -55,8 +113,9 @@ func ExpandSpec(spec *Swagger, options *ExpandOptions) error {
 	specBasePath := options.RelativeBase
 
 	if !options.SkipSchemas {
-		for key, definition := range spec.Definitions {
-			parentRefs := make([]string, 0, 10)
+		for key := range sortedKeys(spec.Definitions) {
+			definition := spec.Definitions[key]
+			parentRefs := make([]string, 0, smallPrealloc)
 			parentRefs = append(parentRefs, "#/definitions/"+key)
 
 			def, err := expandSchema(definition, parentRefs, resolver, specBasePath)
@@ -69,7 +128,7 @@ func ExpandSpec(spec *Swagger, options *ExpandOptions) error {
 		}
 	}
 
-	for key := range spec.Parameters {
+	for key := range sortedKeys(spec.Parameters) {
 		parameter := spec.Parameters[key]
 		if err := expandParameterOrResponse(&parameter, resolver, specBasePath); resolver.shouldStopOnError(err) {
 			return err
@@ -77,7 +136,7 @@ func ExpandSpec(spec *Swagger, options *ExpandOptions) error {
 		spec.Parameters[key] = parameter
 	}
 
-	for key := range spec.Responses {
+	for key := range sortedKeys(spec.Responses) {
 		response := spec.Responses[key]
 		if err := expandParameterOrResponse(&response, resolver, specBasePath); resolver.shouldStopOnError(err) {
 			return err
@@ -86,7 +145,7 @@ func ExpandSpec(spec *Swagger, options *ExpandOptions) error {
 	}
 
 	if spec.Paths != nil {
-		for key := range spec.Paths.Paths {
+		for key := range sortedKeys(spec.Paths.Paths) {
 			pth := spec.Paths.Paths[key]
 			if err := expandPathItem(&pth, resolver, specBasePath); resolver.shouldStopOnError(err) {
 				return err
@@ -101,8 +160,8 @@ func ExpandSpec(spec *Swagger, options *ExpandOptions) error {
 const rootBase = ".root"
 
 // baseForRoot loads in the cache the root document and produces a fake ".root" base path entry
-// for further $ref resolution
-func baseForRoot(root interface{}, cache ResolutionCache) string {
+// for further $ref resolution.
+func baseForRoot(root any, cache ResolutionCache) string {
 	// cache the root document to resolve $ref's
 	normalizedBase := normalizeBase(rootBase)
 
@@ -114,7 +173,7 @@ func baseForRoot(root interface{}, cache ResolutionCache) string {
 			return normalizedBase
 		}
 
-		root = map[string]interface{}{}
+		root = map[string]any{}
 	}
 
 	cache.Set(normalizedBase, root)
@@ -130,25 +189,50 @@ func baseForRoot(root interface{}, cache ResolutionCache) string {
 // (use ExpandSchemaWithBasePath to resolve external references).
 //
 // Setting the cache is optional and this parameter may safely be left to nil.
-func ExpandSchema(schema *Schema, root interface{}, cache ResolutionCache) error {
+//
+// ExpandSchema uses the package default document loader, which is not sandboxed. To expand a
+// schema whose $ref may derive from untrusted input, use [ExpandSchemaWithOptions] with a confined
+// loader — see the package "Security" section.
+func ExpandSchema(schema *Schema, root any, cache ResolutionCache) error {
+	return ExpandSchemaWithOptions(schema, root, cache, nil)
+}
+
+// ExpandSchemaWithOptions expands the refs in the schema object with reference to the root object,
+// honoring the provided expand options. It is the option-aware form of [ExpandSchema].
+//
+// In particular, set opts.PathLoaderWithOptions (or opts.PathLoader) to inject a confined document
+// loader when expanding a schema whose $ref may derive from an untrusted source (see the package
+// "Security" section). opts.ContinueOnError, opts.AbsoluteCircularRef and opts.MaxExpansionNodes
+// are honored as well.
+//
+// The base path is always derived from root (as with [ExpandSchema]), so opts.RelativeBase and
+// opts.SkipSchemas are ignored. Passing nil opts is equivalent to [ExpandSchema].
+//
+// Setting the cache is optional and this parameter may safely be left to nil.
+func ExpandSchemaWithOptions(schema *Schema, root any, cache ResolutionCache, opts *ExpandOptions) error {
 	cache = cacheOrDefault(cache)
 	if root == nil {
 		root = schema
 	}
 
-	opts := &ExpandOptions{
-		// when a root is specified, cache the root as an in-memory document for $ref retrieval
-		RelativeBase:    baseForRoot(root, cache),
-		SkipSchemas:     false,
-		ContinueOnError: false,
+	effective := ExpandOptions{}
+	if opts != nil {
+		effective = *opts // preserve caller options (loader, ContinueOnError, budget, ...)
 	}
+	// when a root is specified, cache the root as an in-memory document for $ref retrieval
+	effective.RelativeBase = baseForRoot(root, cache)
+	effective.SkipSchemas = false
 
-	return ExpandSchemaWithBasePath(schema, cache, opts)
+	return ExpandSchemaWithBasePath(schema, cache, &effective)
 }
 
 // ExpandSchemaWithBasePath expands the refs in the schema object, base path configured through expand options.
 //
 // Setting the cache is optional and this parameter may safely be left to nil.
+//
+// Security: with default options the document loader is not sandboxed, so a "$ref" in an
+// untrusted schema can read local files or reach internal addresses. See the package "Security"
+// section before expanding untrusted input.
 func ExpandSchemaWithBasePath(schema *Schema, cache ResolutionCache, opts *ExpandOptions) error {
 	if schema == nil {
 		return nil
@@ -160,7 +244,7 @@ func ExpandSchemaWithBasePath(schema *Schema, cache ResolutionCache, opts *Expan
 
 	resolver := defaultSchemaLoader(nil, opts, cache, nil)
 
-	parentRefs := make([]string, 0, 10)
+	parentRefs := make([]string, 0, smallPrealloc)
 	s, err := expandSchema(*schema, parentRefs, resolver, opts.RelativeBase)
 	if err != nil {
 		return err
@@ -199,7 +283,44 @@ func expandItems(target Schema, parentRefs []string, resolver *schemaLoader, bas
 	return &target, nil
 }
 
+// sortedKeys walks the keys of a map in a fixed order.
+//
+// Expansion inlines the first branch that reaches a cycle and leaves a $ref on the others, so
+// the order the walk visits siblings in decides which node ends up holding the $ref. Ranging a
+// map straight gives that decision to Go's map iteration, and the same document then expands
+// differently from one run to the next - see go-openapi/spec#93.
+//
+// A map of fewer than two keys has only one order, so it is yielded without sorting: schemata
+// with a single property or definition are most of what a walk of a large document visits, and
+// the slice this would otherwise allocate is paid at every node.
+func sortedKeys[K cmp.Ordered, V any](m map[K]V) iter.Seq[K] {
+	const alreadyOrdered = 2 // a map of fewer keys than this has only one order
+
+	return func(yield func(K) bool) {
+		if len(m) < alreadyOrdered {
+			for key := range m {
+				yield(key)
+
+				return
+			}
+
+			return
+		}
+
+		for _, key := range slices.Sorted(maps.Keys(m)) {
+			if !yield(key) {
+				return
+			}
+		}
+	}
+}
+
+//nolint:gocognit,gocyclo,cyclop // complex but well-tested $ref expansion logic; refactoring deferred to dedicated PR
 func expandSchema(target Schema, parentRefs []string, resolver *schemaLoader, basePath string) (*Schema, error) {
+	if err := resolver.context.countNode(); err != nil {
+		return &target, err
+	}
+
 	if target.Ref.String() == "" && target.Ref.IsRoot() {
 		newRef := normalizeRef(&target.Ref, basePath)
 		target.Ref = *newRef
@@ -228,7 +349,9 @@ func expandSchema(target Schema, parentRefs []string, resolver *schemaLoader, ba
 		return &target, nil
 	}
 
-	for k := range target.Definitions {
+	rebaseExtraRefs(target.ExtraProps, resolver, basePath)
+
+	for k := range sortedKeys(target.Definitions) {
 		tt, err := expandSchema(target.Definitions[k], parentRefs, resolver, basePath)
 		if resolver.shouldStopOnError(err) {
 			return &target, err
@@ -286,7 +409,7 @@ func expandSchema(target Schema, parentRefs []string, resolver *schemaLoader, ba
 		}
 	}
 
-	for k := range target.Properties {
+	for k := range sortedKeys(target.Properties) {
 		t, err := expandSchema(target.Properties[k], parentRefs, resolver, basePath)
 		if resolver.shouldStopOnError(err) {
 			return &target, err
@@ -306,7 +429,7 @@ func expandSchema(target Schema, parentRefs []string, resolver *schemaLoader, ba
 		}
 	}
 
-	for k := range target.PatternProperties {
+	for k := range sortedKeys(target.PatternProperties) {
 		t, err := expandSchema(target.PatternProperties[k], parentRefs, resolver, basePath)
 		if resolver.shouldStopOnError(err) {
 			return &target, err
@@ -316,7 +439,7 @@ func expandSchema(target Schema, parentRefs []string, resolver *schemaLoader, ba
 		}
 	}
 
-	for k := range target.Dependencies {
+	for k := range sortedKeys(target.Dependencies) {
 		if target.Dependencies[k].Schema != nil {
 			t, err := expandSchema(*target.Dependencies[k].Schema, parentRefs, resolver, basePath)
 			if resolver.shouldStopOnError(err) {
@@ -338,6 +461,67 @@ func expandSchema(target Schema, parentRefs []string, resolver *schemaLoader, ba
 		}
 	}
 	return &target, nil
+}
+
+// rebaseExtraRefs rewrites the $ref held by keywords this model does not map, so that
+// they still point at their target once the schema is inlined into another document.
+//
+// expandSchema walks the fields of [Schema] and stops there. A keyword the Swagger 2.0
+// model predates - propertyNames, contains, if/then/else, $defs - lands in ExtraProps as
+// raw JSON, and a $ref inside it is copied into the root verbatim: "#/definitions/leaf"
+// then names a definition of the root document instead of the one it came from.
+//
+// Rebasing makes the pointer correct. It does not expand it, and it does not make the
+// expanded document self-contained: a $ref that came from another document keeps pointing
+// there.
+func rebaseExtraRefs(extra map[string]any, resolver *schemaLoader, basePath string) {
+	for key := range extra {
+		rebaseRawRefs(extra[key], resolver, basePath)
+	}
+}
+
+// rebaseRawRefs walks raw JSON and rebases every "$ref" string value it finds.
+func rebaseRawRefs(node any, resolver *schemaLoader, basePath string) {
+	switch value := node.(type) {
+	case map[string]any:
+		for key := range value {
+			if key == jsonRef {
+				if ref, ok := value[key].(string); ok {
+					if rebased, ok := rebaseRawRef(ref, resolver, basePath); ok {
+						value[key] = rebased
+					}
+
+					continue
+				}
+			}
+
+			rebaseRawRefs(value[key], resolver, basePath)
+		}
+	case []any:
+		for i := range value {
+			rebaseRawRefs(value[i], resolver, basePath)
+		}
+	}
+}
+
+// rebaseRawRef resolves a $ref against basePath, then spells it relative to the document
+// being expanded, like the SkipSchemas branch of [expandSchema] does for a mapped $ref.
+//
+// It reports false when the $ref is empty or does not parse: an unmapped keyword may hold
+// any JSON, and a string under a "$ref" key is not necessarily a reference.
+func rebaseRawRef(ref string, resolver *schemaLoader, basePath string) (string, bool) {
+	if ref == "" {
+		return "", false
+	}
+
+	rebased, err := NewRef(normalizeURI(ref, basePath))
+	if err != nil {
+		return "", false
+	}
+
+	denormalized := denormalizeRef(&rebased, resolver.context.basePath, resolver.context.rootID)
+
+	return denormalized.String(), true
 }
 
 func expandSchemaRef(target Schema, parentRefs []string, resolver *schemaLoader, basePath string) (*Schema, error) {
@@ -386,7 +570,7 @@ func expandPathItem(pathItem *PathItem, resolver *schemaLoader, basePath string)
 		return nil
 	}
 
-	parentRefs := make([]string, 0, 10)
+	parentRefs := make([]string, 0, smallPrealloc)
 	if err := resolver.deref(pathItem, parentRefs, basePath); resolver.shouldStopOnError(err) {
 		return err
 	}
@@ -399,7 +583,7 @@ func expandPathItem(pathItem *PathItem, resolver *schemaLoader, basePath string)
 
 	pathItem.Ref = Ref{}
 	for i := range pathItem.Parameters {
-		if err := expandParameterOrResponse(&(pathItem.Parameters[i]), resolver, basePath); resolver.shouldStopOnError(err) {
+		if err := expandParameterOrResponse(&pathItem.Parameters[i], resolver, basePath); resolver.shouldStopOnError(err) {
 			return err
 		}
 	}
@@ -444,7 +628,7 @@ func expandOperation(op *Operation, resolver *schemaLoader, basePath string) err
 		return err
 	}
 
-	for code := range responses.StatusCodeResponses {
+	for code := range sortedKeys(responses.StatusCodeResponses) {
 		response := responses.StatusCodeResponses[code]
 		if err := expandParameterOrResponse(&response, resolver, basePath); resolver.shouldStopOnError(err) {
 			return err
@@ -461,56 +645,76 @@ func expandOperation(op *Operation, resolver *schemaLoader, basePath string) err
 // (use ExpandResponse to resolve external references).
 //
 // Setting the cache is optional and this parameter may safely be left to nil.
-func ExpandResponseWithRoot(response *Response, root interface{}, cache ResolutionCache) error {
-	cache = cacheOrDefault(cache)
-	opts := &ExpandOptions{
-		RelativeBase: baseForRoot(root, cache),
-	}
-	resolver := defaultSchemaLoader(root, opts, cache, nil)
-
-	return expandParameterOrResponse(response, resolver, opts.RelativeBase)
+func ExpandResponseWithRoot(response *Response, root any, cache ResolutionCache) error {
+	return ExpandResponseWithOptions(response, root, cache, nil)
 }
 
 // ExpandResponse expands a response based on a basepath
 //
-// All refs inside response will be resolved relative to basePath
+// All refs inside response will be resolved relative to basePath.
 func ExpandResponse(response *Response, basePath string) error {
-	opts := optionsOrDefault(&ExpandOptions{
-		RelativeBase: basePath,
-	})
-	resolver := defaultSchemaLoader(nil, opts, nil, nil)
+	return ExpandResponseWithOptions(response, nil, nil, &ExpandOptions{RelativeBase: basePath})
+}
 
-	return expandParameterOrResponse(response, resolver, opts.RelativeBase)
+// ExpandResponseWithOptions expands a response, honoring the provided expand options.
+//
+// It is the option-aware form of [ExpandResponse] and [ExpandResponseWithRoot]. When root is
+// non-nil, refs resolve against the in-memory root document; otherwise they resolve relative to
+// opts.RelativeBase.
+//
+// Set opts.PathLoaderWithOptions (or opts.PathLoader) to inject a confined document loader when
+// the response's $ref may derive from an untrusted source — see the package "Security" section.
+//
+// Setting the cache is optional and this parameter may safely be left to nil.
+func ExpandResponseWithOptions(response *Response, root any, cache ResolutionCache, opts *ExpandOptions) error {
+	return expandRefableWithOptions(response, root, cache, opts)
 }
 
 // ExpandParameterWithRoot expands a parameter based on a root document, not a fetchable document.
 //
 // Notice that it is impossible to reference a json schema in a different document other than root
 // (use ExpandParameter to resolve external references).
-func ExpandParameterWithRoot(parameter *Parameter, root interface{}, cache ResolutionCache) error {
-	cache = cacheOrDefault(cache)
-
-	opts := &ExpandOptions{
-		RelativeBase: baseForRoot(root, cache),
-	}
-	resolver := defaultSchemaLoader(root, opts, cache, nil)
-
-	return expandParameterOrResponse(parameter, resolver, opts.RelativeBase)
+func ExpandParameterWithRoot(parameter *Parameter, root any, cache ResolutionCache) error {
+	return ExpandParameterWithOptions(parameter, root, cache, nil)
 }
 
 // ExpandParameter expands a parameter based on a basepath.
 // This is the exported version of expandParameter
-// all refs inside parameter will be resolved relative to basePath
+// all refs inside parameter will be resolved relative to basePath.
 func ExpandParameter(parameter *Parameter, basePath string) error {
-	opts := optionsOrDefault(&ExpandOptions{
-		RelativeBase: basePath,
-	})
-	resolver := defaultSchemaLoader(nil, opts, nil, nil)
-
-	return expandParameterOrResponse(parameter, resolver, opts.RelativeBase)
+	return ExpandParameterWithOptions(parameter, nil, nil, &ExpandOptions{RelativeBase: basePath})
 }
 
-func getRefAndSchema(input interface{}) (*Ref, *Schema, error) {
+// ExpandParameterWithOptions expands a parameter, honoring the provided expand options.
+//
+// It is the option-aware form of [ExpandParameter] and [ExpandParameterWithRoot]. When root is
+// non-nil, refs resolve against the in-memory root document; otherwise they resolve relative to
+// opts.RelativeBase.
+//
+// Set opts.PathLoaderWithOptions (or opts.PathLoader) to inject a confined document loader when
+// the parameter's $ref may derive from an untrusted source — see the package "Security" section.
+//
+// Setting the cache is optional and this parameter may safely be left to nil.
+func ExpandParameterWithOptions(parameter *Parameter, root any, cache ResolutionCache, opts *ExpandOptions) error {
+	return expandRefableWithOptions(parameter, root, cache, opts)
+}
+
+// expandRefableWithOptions is the shared implementation for the option-aware parameter/response
+// expanders. When root is non-nil, refs resolve against the in-memory root (base derived from
+// root); otherwise they resolve relative to opts.RelativeBase. opts carries the loader and other
+// expand options.
+func expandRefableWithOptions(input any, root any, cache ResolutionCache, opts *ExpandOptions) error {
+	cache = cacheOrDefault(cache)
+	effective := optionsOrDefault(opts) // clones and normalizes RelativeBase; preserves the loader
+	if root != nil {
+		effective.RelativeBase = baseForRoot(root, cache)
+	}
+	resolver := defaultSchemaLoader(root, effective, cache, nil)
+
+	return expandParameterOrResponse(input, resolver, effective.RelativeBase)
+}
+
+func getRefAndSchema(input any) (*Ref, *Schema, error) {
 	var (
 		ref *Ref
 		sch *Schema
@@ -536,7 +740,7 @@ func getRefAndSchema(input interface{}) (*Ref, *Schema, error) {
 	return ref, sch, nil
 }
 
-func expandParameterOrResponse(input interface{}, resolver *schemaLoader, basePath string) error {
+func expandParameterOrResponse(input any, resolver *schemaLoader, basePath string) error {
 	ref, sch, err := getRefAndSchema(input)
 	if err != nil {
 		return err
@@ -546,7 +750,7 @@ func expandParameterOrResponse(input interface{}, resolver *schemaLoader, basePa
 		return nil
 	}
 
-	parentRefs := make([]string, 0, 10)
+	parentRefs := make([]string, 0, smallPrealloc)
 	if ref != nil {
 		// dereference this $ref
 		if err = resolver.deref(input, parentRefs, basePath); resolver.shouldStopOnError(err) {
@@ -554,6 +758,9 @@ func expandParameterOrResponse(input interface{}, resolver *schemaLoader, basePa
 		}
 
 		ref, sch, _ = getRefAndSchema(input)
+		if ref == nil {
+			ref = &Ref{} // empty ref
+		}
 	}
 
 	if ref.String() != "" {
@@ -571,7 +778,7 @@ func expandParameterOrResponse(input interface{}, resolver *schemaLoader, basePa
 		return nil
 	}
 
-	if sch.Ref.String() != "" {
+	if sch.Ref.String() != "" { //nolint:nestif // intertwined ref rebasing and circularity check
 		rebasedRef, ern := NewRef(normalizeURI(sch.Ref.String(), basePath))
 		if ern != nil {
 			return ern

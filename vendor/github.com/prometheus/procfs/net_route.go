@@ -1,4 +1,4 @@
-// Copyright 2023 The Prometheus Authors
+// Copyright The Prometheus Authors
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
@@ -21,7 +21,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/prometheus/procfs/internal/util"
+	"github.com/prometheus/procfs/internal/parsers"
 )
 
 const (
@@ -50,7 +50,7 @@ func (fs FS) NetRoute() ([]NetRouteLine, error) {
 }
 
 func readNetRoute(path string) ([]NetRouteLine, error) {
-	b, err := util.ReadFileNoStat(path)
+	b, err := parsers.ReadFileNoStat(path)
 	if err != nil {
 		return nil, err
 	}

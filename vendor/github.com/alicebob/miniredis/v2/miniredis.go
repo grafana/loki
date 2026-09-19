@@ -37,19 +37,20 @@ type setKey map[string]struct{}
 
 // RedisDB holds a single (numbered) Redis database.
 type RedisDB struct {
-	master        *Miniredis               // pointer to the lock in Miniredis
-	id            int                      // db id
-	keys          map[string]string        // Master map of keys with their type
-	stringKeys    map[string]string        // GET/SET &c. keys
-	hashKeys      map[string]hashKey       // MGET/MSET &c. keys
-	listKeys      map[string]listKey       // LPUSH &c. keys
-	setKeys       map[string]setKey        // SADD &c. keys
-	hllKeys       map[string]*hll          // PFADD &c. keys
-	sortedsetKeys map[string]sortedSet     // ZADD &c. keys
-	streamKeys    map[string]*streamKey    // XADD &c. keys
-	ttl           map[string]time.Duration // effective TTL values
-	lru           map[string]time.Time     // last recently used ( read or written to )
-	keyVersion    map[string]uint          // used to watch values
+	master        *Miniredis                          // pointer to the lock in Miniredis
+	id            int                                 // db id
+	keys          map[string]string                   // Master map of keys with their type
+	stringKeys    map[string]string                   // GET/SET &c. keys
+	hashKeys      map[string]hashKey                  // MGET/MSET &c. keys
+	listKeys      map[string]listKey                  // LPUSH &c. keys
+	setKeys       map[string]setKey                   // SADD &c. keys
+	hllKeys       map[string]*hll                     // PFADD &c. keys
+	sortedsetKeys map[string]sortedSet                // ZADD &c. keys
+	streamKeys    map[string]*streamKey               // XADD &c. keys
+	ttl           map[string]time.Duration            // effective TTL values
+	hashTTLs      map[string]map[string]time.Duration // Hash TTL values
+	lru           map[string]time.Time                // last recently used ( read or written to )
+	keyVersion    map[string]uint                     // used to watch values
 }
 
 // Miniredis is a Redis server implementation.
@@ -116,6 +117,7 @@ func newRedisDB(id int, m *Miniredis) RedisDB {
 		sortedsetKeys: map[string]sortedSet{},
 		streamKeys:    map[string]*streamKey{},
 		ttl:           map[string]time.Duration{},
+		hashTTLs:      make(map[string]map[string]time.Duration),
 		keyVersion:    map[string]uint{},
 	}
 }
@@ -373,6 +375,14 @@ func (m *Miniredis) Server() *server.Server {
 	return m.srv
 }
 
+// IsReadOnlyCommand checks if a command is marked as read-only
+func (m *Miniredis) IsReadOnlyCommand(cmd string) bool {
+	if m.srv == nil {
+		return false
+	}
+	return m.srv.IsReadOnlyCommand(cmd)
+}
+
 // Dump returns a text version of the selected DB, usable for debugging.
 //
 // Dump limits the maximum length of each key:value to "DumpMaxLineLen" characters.
@@ -466,8 +476,31 @@ func (m *Miniredis) SetError(msg string) {
 	m.srv.SetPreHook(cb)
 }
 
+type argRequirements struct {
+	minimum int
+	maximum *int
+}
+
+func atLeast(n int) argRequirements {
+	return argRequirements{n, nil}
+}
+
+func between(a int, b int) argRequirements {
+	return argRequirements{a, &b}
+}
+
+func exactly(n int) argRequirements {
+	return argRequirements{n, &n}
+}
+
 // isValidCMD returns true if command is valid and can be executed.
-func (m *Miniredis) isValidCMD(c *server.Peer, cmd string) bool {
+func (m *Miniredis) isValidCMD(c *server.Peer, cmd string, args []string, argReqs argRequirements) bool {
+	if len(args) < argReqs.minimum || (argReqs.maximum != nil && len(args) > *argReqs.maximum) {
+		setDirty(c)
+		c.WriteError(errWrongNumber(cmd))
+		return false
+	}
+
 	if !m.handleAuth(c) {
 		return false
 	}

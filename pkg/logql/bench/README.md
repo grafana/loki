@@ -159,6 +159,20 @@ To add new query types:
 1. Modify the `GenerateTestCases` method in `generator_query.go`
 2. Add new query patterns that test different aspects of LogQL
 
+## Remote Correctness Tests
+
+Compare query results between two live Loki endpoints. Requires metadata
+from `make discover` and the `remote_correctness` build tag.
+
+    go test -tags=remote_correctness -v ./pkg/logql/bench \
+        -addr-1=http://loki-baseline:3100 \
+        -addr-2=http://loki-test:3100 \
+        -org-id=my-tenant \
+        -username=admin -password=secret \
+        -metadata-dir=pkg/logql/bench/testdata
+
+Use `-run` to filter queries (same as TestStorageEquality).
+
 ## Troubleshooting
 
 - If you see "Data directory is empty" errors, run `make generate` first
@@ -178,3 +192,107 @@ These can be analyzed with:
 go tool pprof -http=:8080 cpu.prof
 go tool pprof -http=:8080 mem.prof
 ```
+
+## Metadata Discovery
+
+The `discover` tool runs against a real Loki instance to generate `dataset_metadata.json`, which maps available streams, formats, keywords, and other characteristics for query template resolution.
+
+### Prerequisites
+
+Either get credentials for the Loki instance you want to test against or setup a port forward.
+
+Build the discover binary:
+
+```bash
+make -C pkg/logql/bench discover/cmd/discover
+```
+
+### Running the Discovery Tool
+
+#### Run against a cloud instance
+
+This is the primary workflow (available via `make discover`). It reads TSDB indexes directly from S3 for structural discovery (zero API calls) and uses the Grafana Cloud gateway with HTTP basic auth for content probes (keyword detection, field classification).
+
+```bash
+pkg/logql/bench/discover/cmd/discover \
+  --address "$LOKI_ADDR" \
+  --username "$LOKI_USERNAME" \
+  --password "$LOKI_PASSWORD" \
+  --tenant "$LOKI_USERNAME" \
+  --storage-type s3 \
+  --s3.buckets "$S3_BUCKET" \
+  --s3.region "$S3_REGION" \
+  --s3.endpoint "$S3_ENDPOINT" \
+  --s3.access-key-id "$AWS_ACCESS_KEY_ID" \
+  --s3.secret-access-key "$AWS_SECRET_ACCESS_KEY" \
+  --table-prefix "$TABLE_PREFIX" \
+  --selector 'namespace=~"namespace-1|namespace-2|namespace-3"' \
+  --max-streams 500 \
+  --concurrency 5 \
+  --output pkg/logql/bench/testdata \
+  --queries-dir pkg/logql/bench/queries
+```
+
+#### Via port-forward (alternative)
+
+If you have `kubectl` access with port-forward permissions, you can bypass the auth gateway and hit the query-frontend directly. Use `--tenant` to set the `X-Scope-OrgID` header.
+
+```bash
+# In a separate terminal:
+kubectl port-forward --context ops-eu-south-0 --namespace loki-ops-002 svc/query-frontend 3100:3100
+
+# Then run discover without --username/--password:
+pkg/logql/bench/discover/cmd/discover \
+  --address http://localhost:3100 \
+  --tenant "$LOKI_USERNAME" \
+  --storage-type s3 \
+  --s3.buckets "$S3_BUCKET" \
+  --s3.region "$S3_REGION" \
+  --s3.endpoint "$S3_ENDPOINT" \
+  --s3.access-key-id "$AWS_ACCESS_KEY_ID" \
+  --s3.secret-access-key "$AWS_SECRET_ACCESS_KEY" \
+  --table-prefix "$TABLE_PREFIX" \
+  --selector 'namespace=~"namespace-1|namespace-2|namespace-3"' \
+  --max-streams 500 \
+  --concurrency 5 \
+  --output pkg/logql/bench/testdata \
+  --queries-dir pkg/logql/bench/queries
+```
+
+**Flag reference:**
+
+| Flag                     | Env var                  | Description                                                                                   |
+| ------------------------ | ------------------------ | --------------------------------------------------------------------------------------------- |
+| `--address`              | `LOKI_ADDR`              | Loki base URL                                                                                 |
+| `--tenant`               | `LOKI_ORG_ID`            | X-Scope-OrgID (internal/ops bypass only)                                                      |
+| `--username`             | `LOKI_USERNAME`          | HTTP basic auth username (Grafana Cloud)                                                      |
+| `--password`             | `LOKI_PASSWORD`          | HTTP basic auth password (Grafana Cloud)                                                      |
+| `--bearer-token`         | `LOKI_BEARER_TOKEN`      | Bearer token for Authorization header                                                         |
+| `--bearer-token-file`    | `LOKI_BEARER_TOKEN_FILE` | File containing bearer token                                                                  |
+| `--output`               | —                        | **Directory** where `dataset_metadata.json` will be written                                   |
+| `--queries-dir`          | —                        | Directory containing LogQL query YAML files (default: skip validation)                        |
+| `--max-streams`          | —                        | Maximum streams to include (default: 250)                                                     |
+| `--from` / `--to`        | —                        | Query time range in RFC3339. Defaults to last 24 hours.                                       |
+| `--suites`               | —                        | Comma-separated validation suites: `fast,regression,exhaustive` (default: all)                |
+| `--concurrency`          | —                        | Parallel API call limit (default: 5)                                                          |
+| `--storage-type`         | —                        | Object storage backend for TSDB index access: `s3`, `gcs`, `azure`, `filesystem`              |
+| `--s3.buckets`           | —                        | Comma-separated S3 bucket names                                                               |
+| `--s3.region`            | —                        | AWS region for S3 access                                                                      |
+| `--s3.endpoint`          | —                        | S3 endpoint URL                                                                               |
+| `--s3.access-key-id`     | `AWS_ACCESS_KEY_ID`      | AWS access key ID for S3                                                                      |
+| `--s3.secret-access-key` | `AWS_SECRET_ACCESS_KEY`  | AWS secret access key for S3                                                                  |
+| `--table-prefix`         | —                        | TSDB index table name prefix (must match `schema_config` in target Loki deployment)           |
+| `--selector`             | —                        | Additional label matchers to scope discovery (e.g. `namespace=~"namespace-1\|namespace-2"`) |
+
+### Interpreting the Output
+
+The tool prints to stderr and produces a Validation Report at the end:
+
+- **Exit code 0**: All query templates resolved against the generated metadata.
+- **Exit code 1**: One or more query templates failed to resolve. See "Failed Queries" section in output.
+
+**Validation Report sections:**
+
+1. **Resolution Results** — summary counts per suite
+2. **Failed Queries** — each failed query with error message (e.g., "no streams with log format: json")
+3. **Unreferenced Bounded Set Members** — bounded set entries no query references (candidates for removal)

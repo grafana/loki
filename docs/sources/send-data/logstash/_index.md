@@ -52,7 +52,7 @@ docker run -v `pwd`/loki-test.conf:/home/logstash/ --rm grafana/logstash-output-
 ### Kubernetes
 
 We also provide default helm values for scraping logs with Filebeat and forward them to Loki with logstash in our `loki-stack` umbrella chart.
-You can switch from Promtail to logstash by using the following command:
+You can switch to logstash by using the following command:
 
 ```bash
 helm upgrade --install loki loki/loki-stack \

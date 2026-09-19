@@ -1,0 +1,558 @@
+package compactor
+
+import (
+	"bytes"
+	"cmp"
+	"context"
+	"errors"
+	"fmt"
+	"io"
+	"slices"
+	"strings"
+	"time"
+
+	"github.com/apache/arrow-go/v18/arrow/array"
+	"github.com/thanos-io/objstore"
+	"golang.org/x/sync/errgroup"
+
+	"github.com/grafana/loki/v3/pkg/dataobj"
+	v2 "github.com/grafana/loki/v3/pkg/dataobj/compaction/v2"
+	compactionv2pb "github.com/grafana/loki/v3/pkg/dataobj/compaction/v2/proto"
+	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
+	"github.com/grafana/loki/v3/pkg/dataobj/sections/indexpointers"
+	"github.com/grafana/loki/v3/pkg/dataobj/sections/postings"
+	"github.com/grafana/loki/v3/pkg/dataobj/sections/stats"
+)
+
+const prefetchBytes = 2 * 1024 * 1024
+
+var errNoShardBucketColumn = errors.New("postings section has no ShardBuckets column")
+
+// indexEntry is one index object listed in a ToC for a particular tenant.
+type indexEntry struct {
+	Path                 string
+	Start                time.Time
+	End                  time.Time
+	FileSize             uint64
+	UncompressedLogsSize uint64
+}
+
+type logSortPrefix struct {
+	shard  uint32
+	labels []string
+}
+
+func compareLogSortPrefix(a, b logSortPrefix) int {
+	if n := cmp.Compare(a.shard, b.shard); n != 0 {
+		return n
+	}
+	return slices.Compare(a.labels, b.labels)
+}
+
+type indexSortKey struct {
+	kind                       postings.PostingKind
+	columnName, labelValue     string
+	minTimestamp, maxTimestamp int64
+}
+
+func compareIndexSortKey(a, b indexSortKey) int {
+	return cmp.Or(
+		cmp.Compare(a.kind, b.kind),
+		strings.Compare(a.columnName, b.columnName),
+		strings.Compare(a.labelValue, b.labelValue),
+		cmp.Compare(a.minTimestamp, b.minTimestamp),
+		cmp.Compare(a.maxTimestamp, b.maxTimestamp),
+	)
+}
+
+func indexKey(row postings.Row) indexSortKey {
+	return indexSortKey{
+		kind:         row.Kind,
+		columnName:   row.ColumnName,
+		labelValue:   row.LabelValue,
+		minTimestamp: row.MinTimestamp,
+		maxTimestamp: row.MaxTimestamp,
+	}
+}
+
+// tenantIndexes maps tenant ID → ordered list of indexes the ToC references
+// for that tenant. Slice order reflects ToC enumeration order and is not
+// part of the contract — callers must not rely on it for correctness.
+type tenantIndexes map[string][]indexEntry
+
+// loadTenantIndexes returns the window's ToC entries grouped by tenant.
+func loadTenantIndexes(ctx context.Context, bucket objstore.Bucket, window time.Time) (tenantIndexes, error) {
+	tocPath := metastore.TableOfContentsPath(window.UTC().Truncate(metastore.MetastoreWindowSize))
+
+	r, err := bucket.Get(ctx, tocPath)
+	if err != nil {
+		return nil, err // includes IsObjNotFoundErr — caller checks
+	}
+	defer r.Close()
+
+	buf, err := io.ReadAll(r)
+	if err != nil {
+		return nil, fmt.Errorf("read ToC %s: %w", tocPath, err)
+	}
+	obj, err := dataobj.FromReaderAt(bytes.NewReader(buf), int64(len(buf)))
+	if err != nil {
+		return nil, fmt.Errorf("decode ToC %s: %w", tocPath, err)
+	}
+
+	// Hoist the Reader and the per-batch decode scratch above the section
+	// loop. A ToC has one indexpointers section per tenant; in large
+	// deployments that can be hundreds. Reader.Reset(...) at each iteration
+	// reuses the reader's internal allocator + record-batch state — matches
+	// the upstream pattern in metastore/iter.go's forEachIndexPointer.
+	var reader indexpointers.Reader
+	defer reader.Close()
+	const batchSize = 1024
+	scratch := make([]indexEntry, batchSize)
+
+	out := make(tenantIndexes, len(obj.Tenants()))
+	for _, section := range obj.Sections().Filter(indexpointers.CheckSection) {
+		tenant := section.Tenant
+		entries, err := readAllIndexPointers(ctx, &reader, scratch, section)
+		if err != nil {
+			return nil, fmt.Errorf("read indexpointers for tenant %s: %w", tenant, err)
+		}
+		out[tenant] = append(out[tenant], entries...)
+	}
+
+	return out, nil
+}
+
+// readAllIndexPointers decodes every row of one indexpointers section into
+// indexEntry values. The caller owns the Reader and scratch slice; both are
+// reused across section iterations.
+//
+// Mirrors pkg/dataobj/metastore.forEachIndexPointer's structure but drops
+// the user.ExtractOrgID tenant filter and the WhereTimeRangeOverlapsWith
+// predicate — the compactor reads every row from every tenant in the
+// most-recent ToC.
+func readAllIndexPointers(ctx context.Context, reader *indexpointers.Reader, scratch []indexEntry, section *dataobj.Section) ([]indexEntry, error) {
+	sec, err := indexpointers.Open(ctx, section)
+	if err != nil {
+		return nil, fmt.Errorf("opening indexpointers section: %w", err)
+	}
+
+	reader.Reset(indexpointers.ReaderOptions{Columns: sec.Columns()})
+	if err := reader.Open(ctx); err != nil {
+		return nil, fmt.Errorf("opening reader: %w", err)
+	}
+
+	batchSize := len(scratch)
+	var out []indexEntry
+	for {
+		rec, readErr := reader.Read(ctx, batchSize)
+		if readErr != nil && !errors.Is(readErr, io.EOF) {
+			return nil, fmt.Errorf("reading batch: %w", readErr)
+		}
+		numRows := int(rec.NumRows())
+		if numRows == 0 && errors.Is(readErr, io.EOF) {
+			break
+		}
+
+		// Clear the rows we will populate so prior batches don't leak through.
+		for i := range numRows {
+			scratch[i] = indexEntry{}
+		}
+
+		for colIdx := 0; colIdx < int(rec.NumCols()); colIdx++ {
+			col := rec.Column(colIdx)
+			pointerCol := sec.Columns()[colIdx]
+			switch pointerCol.Type {
+			case indexpointers.ColumnTypePath:
+				values := col.(*array.String)
+				for rIdx := range numRows {
+					if col.IsNull(rIdx) {
+						continue
+					}
+					scratch[rIdx].Path = values.Value(rIdx)
+				}
+			case indexpointers.ColumnTypeMinTimestamp:
+				values := col.(*array.Timestamp)
+				for rIdx := range numRows {
+					if col.IsNull(rIdx) {
+						continue
+					}
+					scratch[rIdx].Start = time.Unix(0, int64(values.Value(rIdx)))
+				}
+			case indexpointers.ColumnTypeMaxTimestamp:
+				values := col.(*array.Timestamp)
+				for rIdx := range numRows {
+					if col.IsNull(rIdx) {
+						continue
+					}
+					scratch[rIdx].End = time.Unix(0, int64(values.Value(rIdx)))
+				}
+			case indexpointers.ColumnTypeFileSize:
+				values := col.(*array.Int64)
+				for rIdx := range numRows {
+					if col.IsNull(rIdx) {
+						continue
+					}
+					scratch[rIdx].FileSize = uint64(values.Value(rIdx))
+				}
+			case indexpointers.ColumnTypeUncompressedLogsSize:
+				values := col.(*array.Int64)
+				for rIdx := range numRows {
+					if col.IsNull(rIdx) {
+						continue
+					}
+					scratch[rIdx].UncompressedLogsSize = uint64(values.Value(rIdx))
+				}
+			}
+		}
+
+		for i := range numRows {
+			out = append(out, scratch[i])
+		}
+		if errors.Is(readErr, io.EOF) {
+			break
+		}
+	}
+	return out, nil
+}
+
+const indexSectionReadConcurrency = 16
+
+func indexSectionRefsFor(ctx context.Context, bucket objstore.Bucket, tenant string, entries []indexEntry) ([]v2.Section[indexSortKey], error) {
+	type sectionRead struct {
+		objectPath   string
+		sectionIndex int64
+		section      *dataobj.Section
+	}
+
+	var reads []sectionRead
+	for _, entry := range entries {
+		obj, err := dataobj.FromBucket(ctx, bucket, entry.Path, prefetchBytes)
+		if err != nil {
+			return nil, fmt.Errorf("open index tenant=%s index=%s: %w", tenant, entry.Path, err)
+		}
+		for sectionIndex, section := range obj.Sections() {
+			if postings.CheckSection(section) && section.Tenant == tenant {
+				reads = append(reads, sectionRead{
+					objectPath:   entry.Path,
+					sectionIndex: int64(sectionIndex),
+					section:      section,
+				})
+			}
+		}
+	}
+
+	results := make([]*v2.Section[indexSortKey], len(reads))
+	group, groupCtx := errgroup.WithContext(ctx)
+	group.SetLimit(indexSectionReadConcurrency)
+	for i, read := range reads {
+		group.Go(func() error {
+			ref, err := indexSectionRef(groupCtx, read.objectPath, read.sectionIndex, read.section)
+			if err != nil {
+				return fmt.Errorf("read postings bounds tenant=%s index=%s section=%d: %w", tenant, read.objectPath, read.sectionIndex, err)
+			}
+			results[i] = ref
+			return nil
+		})
+	}
+	if err := group.Wait(); err != nil {
+		return nil, err
+	}
+
+	refs := make([]v2.Section[indexSortKey], 0, len(results))
+	for _, ref := range results {
+		if ref != nil {
+			refs = append(refs, *ref)
+		}
+	}
+	return refs, nil
+}
+
+func indexSectionRef(ctx context.Context, objectPath string, sectionIndex int64, section *dataobj.Section) (*v2.Section[indexSortKey], error) {
+	postingsSection, err := postings.Open(ctx, section)
+	if err != nil {
+		return nil, fmt.Errorf("open postings section: %w", err)
+	}
+	columns, err := postingsBoundColumns(postingsSection)
+	if err != nil {
+		return nil, err
+	}
+
+	reader := postings.NewReader(postings.ReaderOptions{Columns: columns})
+	if err := reader.Open(ctx); err != nil {
+		return nil, fmt.Errorf("open postings reader: %w", err)
+	}
+	rows := postings.NewRowReader(ctx, reader)
+	defer rows.Close()
+
+	// Postings sections use CompareRows order. compareIndexSortKey is its prefix,
+	// so the first and last rows bound the section for run planning.
+	var first, last postings.Row
+	hasRows := rows.Next()
+	if hasRows {
+		first = rows.At()
+		last = first
+	}
+	for rows.Next() {
+		last = rows.At()
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("read postings rows: %w", err)
+	}
+	if !hasRows {
+		return nil, nil
+	}
+
+	minKey, maxKey := indexKey(first), indexKey(last)
+	if compareIndexSortKey(minKey, maxKey) > 0 {
+		return nil, errors.New("postings section bounds are out of order")
+	}
+	return &v2.Section[indexSortKey]{
+		Ref: &compactionv2pb.SectionRef{
+			ObjectPath:   objectPath,
+			SectionIndex: sectionIndex,
+		},
+		Min: minKey,
+		Max: maxKey,
+	}, nil
+}
+
+func postingsBoundColumns(section *postings.Section) ([]*postings.Column, error) {
+	required := []postings.ColumnType{
+		postings.ColumnTypeKind,
+		postings.ColumnTypeColumnName,
+		postings.ColumnTypeLabelValue,
+		postings.ColumnTypeMinTimestamp,
+		postings.ColumnTypeMaxTimestamp,
+	}
+	byType := make(map[postings.ColumnType]*postings.Column, len(section.Columns()))
+	for _, column := range section.Columns() {
+		byType[column.Type] = column
+	}
+
+	columns := make([]*postings.Column, 0, len(required))
+	for _, columnType := range required {
+		column, ok := byType[columnType]
+		if !ok {
+			return nil, fmt.Errorf("postings section has no %s column", columnType)
+		}
+		columns = append(columns, column)
+	}
+	return columns, nil
+}
+
+// logSectionRefsFor returns one bounded reference per log section indexed by
+// idxPath, together with the index's sort schema and shard count.
+func logSectionRefsFor(ctx context.Context, bucket objstore.Bucket, tenant, idxPath string) ([]v2.Section[logSortPrefix], []string, int64, error) {
+	obj, err := dataobj.FromBucket(ctx, bucket, idxPath, prefetchBytes)
+	if err != nil {
+		return nil, nil, 0, fmt.Errorf("open source index tenant=%s index=%s: %w", tenant, idxPath, err)
+	}
+
+	type sectionID struct {
+		path  string
+		index int64
+	}
+
+	var (
+		schema     []string
+		labelNames []string
+		schemaName string
+		reader     stats.Reader
+
+		bySection = make(map[sectionID]*v2.Section[logSortPrefix])
+	)
+	defer reader.Close()
+
+	const batchSize = 1024
+	scratch := make([]stats.Stat, batchSize)
+	for _, section := range obj.Sections().Filter(stats.CheckSection) {
+		if section.Tenant != tenant {
+			continue
+		}
+
+		statsSection, err := stats.Open(ctx, section)
+		if err != nil {
+			return nil, nil, 0, fmt.Errorf("open stats section tenant=%s index=%s: %w", tenant, idxPath, err)
+		}
+
+		reader.Reset(stats.ReaderOptions{Columns: statsSection.Columns()})
+		if err := reader.Open(ctx); err != nil {
+			return nil, nil, 0, fmt.Errorf("opening reader tenant=%s index=%s: %w", tenant, idxPath, err)
+		}
+
+		for {
+			record, readErr := reader.Read(ctx, batchSize)
+			if readErr != nil && !errors.Is(readErr, io.EOF) {
+				return nil, nil, 0, fmt.Errorf("reading batch tenant=%s index=%s: %w", tenant, idxPath, readErr)
+			}
+			numRows := int(record.NumRows())
+			if numRows == 0 && errors.Is(readErr, io.EOF) {
+				break
+			}
+
+			rows := scratch[:numRows]
+			n, err := stats.FromRecordBatch(record, rows)
+			if err != nil {
+				return nil, nil, 0, fmt.Errorf("decode stats batch tenant=%s index=%s: %w", tenant, idxPath, err)
+			}
+
+			for _, stat := range rows[:n] {
+				if schemaName == "" && len(bySection) == 0 {
+					schemaName = stat.SortSchema
+					schema, labelNames, err = parseSortSchema(stat.SortSchema)
+					if err != nil {
+						return nil, nil, 0, fmt.Errorf("parse log sort schema tenant=%s index=%s: %w", tenant, idxPath, err)
+					}
+				} else if stat.SortSchema != schemaName {
+					return nil, nil, 0, fmt.Errorf("index %s contains log sort schemas %q and %q", idxPath, schemaName, stat.SortSchema)
+				}
+
+				var labels []string
+				if len(labelNames) > 0 {
+					labels = make([]string, len(labelNames))
+					for i, name := range labelNames {
+						labels[i] = stat.Labels[name]
+					}
+				}
+				key := logSortPrefix{shard: stat.ShardBucket, labels: labels}
+
+				id := sectionID{path: stat.ObjectPath, index: stat.SectionIndex}
+				bounded, ok := bySection[id]
+				if !ok {
+					bySection[id] = &v2.Section[logSortPrefix]{
+						Ref: &compactionv2pb.SectionRef{
+							ObjectPath:       stat.ObjectPath,
+							SectionIndex:     stat.SectionIndex,
+							MinKey:           key.labels,
+							MaxKey:           key.labels,
+							MinTimestamp:     stat.MinTimestamp,
+							MaxTimestamp:     stat.MaxTimestamp,
+							UncompressedSize: stat.UncompressedSize,
+						},
+						Min: key,
+						Max: key,
+					}
+					continue
+				}
+
+				if compareLogSortPrefix(key, bounded.Min) < 0 {
+					bounded.Min = key
+					bounded.Ref.MinKey = key.labels
+				}
+				if compareLogSortPrefix(key, bounded.Max) > 0 {
+					bounded.Max = key
+					bounded.Ref.MaxKey = key.labels
+				}
+				bounded.Ref.MinTimestamp = min(bounded.Ref.MinTimestamp, stat.MinTimestamp)
+				bounded.Ref.MaxTimestamp = max(bounded.Ref.MaxTimestamp, stat.MaxTimestamp)
+				bounded.Ref.UncompressedSize += stat.UncompressedSize
+			}
+
+			if errors.Is(readErr, io.EOF) {
+				break
+			}
+		}
+	}
+
+	// Scan the postings section to determine the shard count
+	// TODO(benclive): Copy the shard count to the stats section to avoid this step
+	shardCount, err := getShardCount(ctx, obj, tenant)
+	if err != nil {
+		if !errors.Is(err, errNoShardBucketColumn) {
+			return nil, nil, 0, fmt.Errorf("get shard count tenant=%s index=%s: %w", tenant, idxPath, err)
+		}
+		shardCount = 0
+	}
+
+	refs := make([]v2.Section[logSortPrefix], 0, len(bySection))
+	for _, ref := range bySection {
+		refs = append(refs, *ref)
+	}
+	slices.SortFunc(refs, func(a, b v2.Section[logSortPrefix]) int {
+		if n := strings.Compare(a.Ref.ObjectPath, b.Ref.ObjectPath); n != 0 {
+			return n
+		}
+		return cmp.Compare(a.Ref.SectionIndex, b.Ref.SectionIndex)
+	})
+	return refs, schema, shardCount, nil
+}
+
+func getShardCount(ctx context.Context, obj *dataobj.Object, tenant string) (shardCount int64, finalErr error) {
+	var (
+		haveShardCount bool
+	)
+	for _, section := range obj.Sections().Filter(postings.CheckSection) {
+		if section.Tenant != tenant {
+			continue
+		}
+		opened, err := postings.Open(ctx, section)
+		if err != nil {
+			return 0, fmt.Errorf("open postings section: %w", err)
+		}
+
+		shardBucketColumns := columnsOfType(opened.Columns(), postings.ColumnTypeShardBuckets)
+		if len(shardBucketColumns) != 1 {
+			return 0, errNoShardBucketColumn
+		}
+
+		inner := postings.NewReader(postings.ReaderOptions{Columns: shardBucketColumns})
+		if err := inner.Open(ctx); err != nil {
+			return 0, fmt.Errorf("opening postings reader: %w", err)
+		}
+
+		// Wrap the read in an inline func to close the reader after each loop
+		err = func() error {
+			rowReader := postings.NewRowReader(ctx, inner)
+			defer func() {
+				closeErr := rowReader.Close()
+				if finalErr == nil {
+					finalErr = closeErr
+				}
+			}()
+
+			for rowReader.Next() {
+				row := rowReader.At()
+				if !haveShardCount {
+					shardCount = row.ShardBuckets
+					haveShardCount = true
+				} else if row.ShardBuckets != shardCount {
+					return fmt.Errorf("detected multiple shard counts within index file: %d and %d", shardCount, row.ShardBuckets)
+				}
+			}
+			if err := rowReader.Err(); err != nil {
+				return fmt.Errorf("reading postings: %w", err)
+			}
+			return nil
+		}()
+		if err != nil {
+			return 0, err
+		}
+	}
+
+	return shardCount, nil
+}
+
+func columnsOfType(columns []*postings.Column, typ postings.ColumnType) []*postings.Column {
+	var foundColumns []*postings.Column
+	for _, column := range columns {
+		if column.Type == typ {
+			foundColumns = append(foundColumns, column)
+		}
+	}
+	return foundColumns
+}
+
+func parseSortSchema(value string) (schema, labelNames []string, _ error) {
+	for entry := range strings.SplitSeq(value, ",") {
+		if entry == "" {
+			continue
+		}
+		typ, name, ok := strings.Cut(entry, ":")
+		if !ok || typ != "label" || name == "" {
+			return nil, nil, fmt.Errorf("invalid log sort key %q", entry)
+		}
+		schema = append(schema, entry)
+		labelNames = append(labelNames, name)
+	}
+	return schema, labelNames, nil
+}

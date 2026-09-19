@@ -1,7 +1,7 @@
 // Copyright The OpenTelemetry Authors
 // SPDX-License-Identifier: Apache-2.0
 
-package otlpmetrichttp // import "go.opentelemetry.io/otel/exporters/otlp/otlpmetric/otlpmetrichttp"
+package otlpmetrichttp
 
 import (
 	"bytes"
@@ -18,22 +18,26 @@ import (
 	"sync"
 	"time"
 
-	"google.golang.org/protobuf/proto"
-
-	"go.opentelemetry.io/otel"
-	"go.opentelemetry.io/otel/exporters/otlp/otlpmetric/otlpmetrichttp/internal"
-	"go.opentelemetry.io/otel/exporters/otlp/otlpmetric/otlpmetrichttp/internal/oconf"
-	"go.opentelemetry.io/otel/exporters/otlp/otlpmetric/otlpmetrichttp/internal/retry"
 	colmetricpb "go.opentelemetry.io/proto/otlp/collector/metrics/v1"
 	metricpb "go.opentelemetry.io/proto/otlp/metrics/v1"
+	"google.golang.org/protobuf/proto"
+
+	"go.opentelemetry.io/otel/exporters/otlp/otlpmetric/otlpmetrichttp/internal"
+	"go.opentelemetry.io/otel/exporters/otlp/otlpmetric/otlpmetrichttp/internal/counter"
+	"go.opentelemetry.io/otel/exporters/otlp/otlpmetric/otlpmetrichttp/internal/observ"
+	"go.opentelemetry.io/otel/exporters/otlp/otlpmetric/otlpmetrichttp/internal/oconf"
+	"go.opentelemetry.io/otel/exporters/otlp/otlpmetric/otlpmetrichttp/internal/retry"
 )
 
 type client struct {
 	// req is cloned for every upload the client makes.
-	req         *http.Request
-	compression Compression
-	requestFunc retry.RequestFunc
-	httpClient  *http.Client
+	req            *http.Request
+	compression    Compression
+	maxRequestSize int
+	requestFunc    retry.RequestFunc
+	httpClient     *http.Client
+
+	inst *observ.Instrumentation
 }
 
 // Keep it in sync with golang's DefaultTransport from net/http! We
@@ -53,8 +57,21 @@ var ourTransport = &http.Transport{
 	ExpectContinueTimeout: 1 * time.Second,
 }
 
+var errInsecureEndpointWithTLS = errors.New("insecure HTTP endpoint cannot use TLS client configuration")
+
+// maxResponseBodySize is the maximum number of bytes to read from a response
+// body. It is set to 4 MiB per the OTLP specification recommendation to
+// mitigate excessive memory usage caused by a misconfigured or malicious
+// server. If exceeded, the response is treated as a not-retryable error.
+// This is a variable to allow tests to override it.
+var maxResponseBodySize int64 = 4 * 1024 * 1024
+
 // newClient creates a new HTTP metric client.
 func newClient(cfg oconf.Config) (*client, error) {
+	if cfg.Metrics.Insecure && cfg.Metrics.TLSCfg != nil {
+		return nil, errInsecureEndpointWithTLS
+	}
+
 	httpClient := cfg.Metrics.HTTPClient
 	if httpClient == nil {
 		httpClient = &http.Client{
@@ -84,7 +101,7 @@ func newClient(cfg oconf.Config) (*client, error) {
 		u.Scheme = "http"
 	}
 	// Body is set when this is cloned during upload.
-	req, err := http.NewRequest(http.MethodPost, u.String(), http.NoBody)
+	req, err := http.NewRequestWithContext(context.Background(), http.MethodPost, u.String(), http.NoBody)
 	if err != nil {
 		return nil, err
 	}
@@ -99,12 +116,17 @@ func newClient(cfg oconf.Config) (*client, error) {
 	}
 	req.Header.Set("Content-Type", "application/x-protobuf")
 
+	// Initialize the instrumentation.
+	inst, err := observ.NewInstrumentation(counter.NextExporterID(), cfg.Metrics.Endpoint)
+
 	return &client{
-		compression: Compression(cfg.Metrics.Compression),
-		req:         req,
-		requestFunc: cfg.RetryConfig.RequestFunc(evaluate),
-		httpClient:  httpClient,
-	}, nil
+		compression:    Compression(cfg.Metrics.Compression),
+		maxRequestSize: cfg.Metrics.MaxRequestSize,
+		req:            req,
+		requestFunc:    cfg.RetryConfig.RequestFunc(evaluate),
+		httpClient:     httpClient,
+		inst:           inst,
+	}, err
 }
 
 // Shutdown shuts down the client, freeing all resources.
@@ -122,7 +144,7 @@ func (c *client) Shutdown(ctx context.Context) error {
 //
 // Retryable errors from the server will be handled according to any
 // RetryConfig the client was created with.
-func (c *client) UploadMetrics(ctx context.Context, protoMetrics *metricpb.ResourceMetrics) error {
+func (c *client) UploadMetrics(ctx context.Context, protoMetrics *metricpb.ResourceMetrics) (uploadErr error) {
 	// The otlpmetric.Exporter synchronizes access to client methods, and
 	// ensures this is not called after the Exporter is shutdown. Only thing
 	// to do here is send data.
@@ -134,19 +156,30 @@ func (c *client) UploadMetrics(ctx context.Context, protoMetrics *metricpb.Resou
 	if err != nil {
 		return err
 	}
+	if maxSize := c.maxRequestSize; maxSize > 0 && len(body) > maxSize {
+		return fmt.Errorf("request body too large: exceeded %d bytes", maxSize)
+	}
 	request, err := c.newRequest(ctx, body)
 	if err != nil {
 		return err
 	}
 
-	return c.requestFunc(ctx, func(iCtx context.Context) error {
+	var statusCode int
+	if c.inst != nil {
+		op := c.inst.ExportMetrics(ctx, protoMetrics)
+		defer func() { op.End(uploadErr, statusCode) }()
+	}
+
+	return errors.Join(uploadErr, c.requestFunc(ctx, func(iCtx context.Context) error {
 		select {
 		case <-iCtx.Done():
 			return iCtx.Err()
 		default:
 		}
 
+		statusCode = 0
 		request.reset(iCtx)
+		// nolint:gosec // URL is constructed from validated OTLP endpoint configuration
 		resp, err := c.httpClient.Do(request.Request)
 		var urlErr *url.Error
 		if errors.As(err, &urlErr) && urlErr.Temporary() {
@@ -155,20 +188,27 @@ func (c *client) UploadMetrics(ctx context.Context, protoMetrics *metricpb.Resou
 		if err != nil {
 			return err
 		}
-		if resp != nil && resp.Body != nil {
-			defer func() {
-				if err := resp.Body.Close(); err != nil {
-					otel.Handle(err)
-				}
-			}()
+		if resp != nil {
+			statusCode = resp.StatusCode
+			if resp.Body != nil {
+				defer func() {
+					if err := resp.Body.Close(); err != nil {
+						uploadErr = errors.Join(uploadErr, err)
+					}
+				}()
+			}
 		}
 
-		if sc := resp.StatusCode; sc >= 200 && sc <= 299 {
+		if statusCode >= 200 && statusCode <= 299 {
 			// Success, do not retry.
 
 			// Read the partial success message, if any.
 			var respData bytes.Buffer
-			if _, err := io.Copy(&respData, resp.Body); err != nil {
+			if _, err := io.Copy(&respData, http.MaxBytesReader(nil, resp.Body, maxResponseBodySize)); err != nil {
+				var maxBytesErr *http.MaxBytesError
+				if errors.As(err, &maxBytesErr) {
+					return fmt.Errorf("response body too large: exceeded %d bytes", maxBytesErr.Limit)
+				}
 				return err
 			}
 			if respData.Len() == 0 {
@@ -186,7 +226,7 @@ func (c *client) UploadMetrics(ctx context.Context, protoMetrics *metricpb.Resou
 					n := respProto.PartialSuccess.GetRejectedDataPoints()
 					if n != 0 || msg != "" {
 						err := internal.MetricPartialSuccessError(n, msg)
-						otel.Handle(err)
+						uploadErr = errors.Join(uploadErr, err)
 					}
 				}
 			}
@@ -199,11 +239,15 @@ func (c *client) UploadMetrics(ctx context.Context, protoMetrics *metricpb.Resou
 		// message to be returned. It will help in
 		// debugging the actual issue.
 		var respData bytes.Buffer
-		if _, err := io.Copy(&respData, resp.Body); err != nil {
+		if _, err := io.Copy(&respData, http.MaxBytesReader(nil, resp.Body, maxResponseBodySize)); err != nil {
+			var maxBytesErr *http.MaxBytesError
+			if errors.As(err, &maxBytesErr) {
+				return fmt.Errorf("response body too large: exceeded %d bytes", maxBytesErr.Limit)
+			}
 			return err
 		}
 		respStr := strings.TrimSpace(respData.String())
-		if len(respStr) == 0 {
+		if respStr == "" {
 			respStr = "(empty)"
 		}
 		bodyErr := fmt.Errorf("body: %s", respStr)
@@ -219,11 +263,11 @@ func (c *client) UploadMetrics(ctx context.Context, protoMetrics *metricpb.Resou
 			// Non-retryable failure.
 			return fmt.Errorf("failed to send metrics to %s: %s (%w)", request.URL, resp.Status, bodyErr)
 		}
-	})
+	}))
 }
 
 var gzPool = sync.Pool{
-	New: func() interface{} {
+	New: func() any {
 		w := gzip.NewWriter(io.Discard)
 		return w
 	},
@@ -235,15 +279,19 @@ func (c *client) newRequest(ctx context.Context, body []byte) (request, error) {
 
 	switch c.compression {
 	case NoCompression:
-		r.ContentLength = (int64)(len(body))
+		r.ContentLength = int64(len(body))
 		req.bodyReader = bodyReader(body)
+		req.GetBody = bodyReaderErr(body)
 	case GzipCompression:
 		// Ensure the content length is not used.
 		r.ContentLength = -1
 		r.Header.Set("Content-Encoding", "gzip")
 
 		gz := gzPool.Get().(*gzip.Writer)
-		defer gzPool.Put(gz)
+		defer func() {
+			gz.Reset(io.Discard)
+			gzPool.Put(gz)
+		}()
 
 		var b bytes.Buffer
 		gz.Reset(&b)
@@ -257,6 +305,7 @@ func (c *client) newRequest(ctx context.Context, body []byte) (request, error) {
 		}
 
 		req.bodyReader = bodyReader(b.Bytes())
+		req.GetBody = bodyReaderErr(b.Bytes())
 	}
 
 	return req, nil
@@ -266,6 +315,13 @@ func (c *client) newRequest(ctx context.Context, body []byte) (request, error) {
 func bodyReader(buf []byte) func() io.ReadCloser {
 	return func() io.ReadCloser {
 		return io.NopCloser(bytes.NewReader(buf))
+	}
+}
+
+// bodyReaderErr returns a closure returning a new reader for buf.
+func bodyReaderErr(buf []byte) func() (io.ReadCloser, error) {
+	return func() (io.ReadCloser, error) {
+		return io.NopCloser(bytes.NewReader(buf)), nil
 	}
 }
 
@@ -285,7 +341,7 @@ func (r *request) reset(ctx context.Context) {
 
 // retryableError represents a request failure that can be retried.
 type retryableError struct {
-	throttle int64
+	throttle time.Duration
 	err      error
 }
 
@@ -295,13 +351,27 @@ type retryableError struct {
 func newResponseError(header http.Header, wrapped error) error {
 	var rErr retryableError
 	if v := header.Get("Retry-After"); v != "" {
-		if t, err := strconv.ParseInt(v, 10, 64); err == nil {
-			rErr.throttle = t
-		}
+		rErr.throttle = retryAfterDuration(v)
 	}
 
 	rErr.err = wrapped
 	return rErr
+}
+
+func retryAfterDuration(v string) time.Duration {
+	if t, err := strconv.ParseInt(v, 10, 64); err == nil && t >= 0 {
+		const maxRetryAfterSeconds = int64(1<<63-1) / int64(time.Second)
+		if t > maxRetryAfterSeconds {
+			return time.Duration(1<<63 - 1)
+		}
+		return time.Duration(t) * time.Second
+	}
+
+	if date, err := http.ParseTime(v); err == nil {
+		return max(time.Until(date), 0)
+	}
+
+	return 0
 }
 
 func (e retryableError) Error() string {
@@ -316,7 +386,7 @@ func (e retryableError) Unwrap() error {
 	return e.err
 }
 
-func (e retryableError) As(target interface{}) bool {
+func (e retryableError) As(target any) bool {
 	if e.err == nil {
 		return false
 	}
@@ -345,5 +415,5 @@ func evaluate(err error) (bool, time.Duration) {
 		return false, 0
 	}
 
-	return true, time.Duration(rErr.throttle)
+	return true, rErr.throttle
 }

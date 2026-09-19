@@ -82,6 +82,12 @@ w.Profile = colorprofile.NoTTY
 fmt.Fprintf(w, myFancyANSI) // not as fancy
 ```
 
+## Contributing
+
+See [contributing][contribute].
+
+[contribute]: https://github.com/charmbracelet/colorprofile/contribute
+
 ## Feedback
 
 We’d love to hear your thoughts on this project. Feel free to drop us a note!

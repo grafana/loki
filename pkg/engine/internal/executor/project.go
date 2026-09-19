@@ -1,0 +1,300 @@
+package executor
+
+import (
+	"context"
+	"fmt"
+	"slices"
+
+	"github.com/apache/arrow-go/v18/arrow"
+	"github.com/apache/arrow-go/v18/arrow/array"
+	"github.com/apache/arrow-go/v18/arrow/memory"
+
+	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
+	"github.com/grafana/loki/v3/pkg/engine/internal/semconv"
+	"github.com/grafana/loki/v3/pkg/engine/internal/types"
+	"github.com/grafana/loki/v3/pkg/logql/log"
+)
+
+func NewProjectPipeline(input Pipeline, proj *physical.Projection, evaluator *expressionEvaluator) (Pipeline, error) {
+	// Shortcut for ALL=true DROP=false EXPAND=false
+	if proj.All && !proj.Drop && !proj.Expand {
+		return input, nil
+	}
+
+	// Get the column names from the projection expressions
+	colRefs := make([]types.ColumnRef, 0, len(proj.Expressions))
+	expandExprs := make([]physical.Expression, 0, len(proj.Expressions))
+
+	for i, expr := range proj.Expressions {
+		switch expr := expr.(type) {
+		case *physical.ColumnExpr:
+			colRefs = append(colRefs, expr.Ref)
+		case *physical.UnaryExpr:
+			expandExprs = append(expandExprs, expr)
+		case *physical.BinaryExpr:
+			expandExprs = append(expandExprs, expr)
+		case *physical.VariadicExpr:
+			expandExprs = append(expandExprs, expr)
+		default:
+			return nil, fmt.Errorf("projection expression %d is unsupported", i)
+		}
+	}
+
+	if len(expandExprs) > 1 {
+		return nil, fmt.Errorf("there might be only one math expression for `value` column at a time")
+	}
+
+	// Create KEEP projection pipeline:
+	// Drop all columns except the ones referenced in proj.Expressions.
+	if !proj.All && !proj.Drop && !proj.Expand {
+		return newKeepPipeline(colRefs, func(refs []types.ColumnRef, ident *semconv.Identifier) bool {
+			return slices.ContainsFunc(refs, func(ref types.ColumnRef) bool {
+				// Keep all of the ambiguous columns
+				if ref.Type == types.ColumnTypeAmbiguous {
+					return ref.Column == ident.ShortName()
+				}
+				// Keep only if type matches
+				return ref.Column == ident.ShortName() && ref.Type == ident.ColumnType()
+			})
+		}, input)
+	}
+
+	// Create DROP projection pipeline:
+	// Keep all columns except the ones referenced in proj.Expressions.
+	if proj.All && proj.Drop {
+		return newKeepPipeline(colRefs, func(refs []types.ColumnRef, ident *semconv.Identifier) bool {
+			return !slices.ContainsFunc(refs, func(ref types.ColumnRef) bool {
+				// Drop all of the ambiguous columns
+				if ref.Type == types.ColumnTypeAmbiguous {
+					return ref.Column == ident.ShortName()
+				}
+				// Drop only if type matches
+				return ref.Column == ident.ShortName() && ref.Type == ident.ColumnType()
+			})
+		}, input)
+	}
+
+	// Create EXPAND projection pipeline:
+	// Keep all columns and expand the ones referenced in proj.Expressions.
+	// TODO: as implemented, expanding and keeping/dropping cannot happen in the same projection. Is this desired?
+	if proj.All && proj.Expand && len(expandExprs) > 0 {
+		return newExpandPipeline(expandExprs[0], evaluator, input)
+	}
+
+	return nil, errNotImplemented
+}
+
+func newKeepPipeline(colRefs []types.ColumnRef, keepFunc func([]types.ColumnRef, *semconv.Identifier) bool, input Pipeline) (*GenericPipeline, error) {
+	identCache := semconv.NewIdentifierCache()
+
+	return newGenericPipeline(func(ctx context.Context, inputs []Pipeline) (arrow.RecordBatch, error) {
+		if len(inputs) != 1 {
+			return nil, fmt.Errorf("expected 1 input, got %d", len(inputs))
+		}
+		input := inputs[0]
+		batch, err := input.Read(ctx)
+		if err != nil {
+			return nil, err
+		}
+
+		if batch.NumRows() == 0 {
+			// Nothing to process, return an empty record with the same schema
+			return batch, nil
+		}
+
+		columns := make([]arrow.Array, 0, batch.NumCols())
+		fields := make([]arrow.Field, 0, batch.NumCols())
+
+		for i, field := range batch.Schema().Fields() {
+			ident, err := identCache.ParseFQN(field.Name)
+			if err != nil {
+				return nil, err
+			}
+			if keepFunc(colRefs, ident) {
+				columns = append(columns, batch.Column(i))
+				fields = append(fields, field)
+			}
+		}
+
+		metadata := batch.Schema().Metadata()
+		schema := arrow.NewSchema(fields, &metadata)
+		return array.NewRecordBatch(schema, columns, batch.NumRows()), nil
+	}, input), nil
+}
+
+func newExpandPipeline(expr physical.Expression, evaluator *expressionEvaluator, input Pipeline) (*GenericPipeline, error) {
+	identCache := semconv.NewIdentifierCache()
+	labelFmtRemovedNames := labelFmtRemovedColumnNames(expr)
+
+	return newGenericPipeline(func(ctx context.Context, inputs []Pipeline) (arrow.RecordBatch, error) {
+		if len(inputs) != 1 {
+			return nil, fmt.Errorf("expected 1 input, got %d", len(inputs))
+		}
+		input := inputs[0]
+		batch, err := input.Read(ctx)
+		if err != nil {
+			return nil, err
+		}
+
+		if batch.NumRows() == 0 {
+			// Nothing to process, return an empty record with the same schema
+			return batch, nil
+		}
+
+		outputFields := make([]arrow.Field, 0)
+		outputCols := make([]arrow.Array, 0)
+		schema := batch.Schema()
+
+		// move all columns into the output except `value`
+		for i, field := range batch.Schema().Fields() {
+			ident, err := identCache.ParseFQN(schema.Field(i).Name)
+			if err != nil {
+				return nil, err
+			}
+			_, shouldDelete := labelFmtRemovedNames[ident.ShortName()]
+			// label_format removes label-like columns whose short name matches
+			// either a rename source or a SET/rename target:
+			//   - `label_format dst=src` (rename): remove `src` (the source
+			//     vanishes from the label set) and `dst` (so the new column
+			//     replaces any pre-existing one rather than colliding with it).
+			//   - `label_format dst=value` (SET): remove `dst` so the new
+			//     column replaces any pre-existing one.
+			// This mirrors v1's LabelsFormatter.Process which calls
+			// lbs.Set(ParsedLabel, ...), and lbs.Set(ParsedLabel) deletes the
+			// same name from stream/metadata categories before adding the
+			// parsed value. Only builtin/generated columns (timestamp, message,
+			// __error__, value) are preserved.
+			shouldDelete = shouldDelete && isLabelLikeColumn(ident.ColumnType())
+			if !ident.Equal(semconv.ColumnIdentValue) && !shouldDelete {
+				outputCols = append(outputCols, batch.Column(i))
+				outputFields = append(outputFields, field)
+			}
+		}
+
+		vec, err := evaluator.eval(expr, batch)
+		if err != nil {
+			return nil, err
+		}
+
+		if vec == nil {
+			return batch, nil
+		}
+
+		switch arrCasted := vec.(type) {
+		case *array.Struct:
+			structSchema, ok := arrCasted.DataType().(*arrow.StructType)
+			if !ok {
+				return nil, fmt.Errorf("unexpected type returned from evaluation, expected *arrow.StructType, got %T", arrCasted.DataType())
+			}
+			for i := range arrCasted.NumField() {
+				newField := structSchema.Field(i)
+				if idx := slices.IndexFunc(outputFields, func(f arrow.Field) bool {
+					return f.Name == newField.Name
+				}); idx != -1 {
+					outputCols[idx] = mergeColumns(outputCols[idx], arrCasted.Field(i))
+					outputFields[idx] = newField
+				} else {
+					outputCols = append(outputCols, arrCasted.Field(i))
+					outputFields = append(outputFields, newField)
+				}
+			}
+		case *array.Float64:
+			outputFields = append(outputFields, semconv.FieldFromIdent(semconv.ColumnIdentValue, false))
+			outputCols = append(outputCols, arrCasted)
+		default:
+			return nil, fmt.Errorf("unexpected type returned from evaluation %T", arrCasted.DataType())
+		}
+
+		metadata := schema.Metadata()
+		outputSchema := arrow.NewSchema(outputFields, &metadata)
+		return array.NewRecordBatch(outputSchema, outputCols, batch.NumRows()), nil
+	}, input), nil
+}
+
+// isLabelLikeColumn reports whether a column of the given type participates in
+// the label set that LogQL operates on (and therefore can be the source of a
+// `label_format` rename). Builtin and generated columns (timestamp, message,
+// __error__, value) are excluded.
+func isLabelLikeColumn(ct types.ColumnType) bool {
+	switch ct {
+	case types.ColumnTypeLabel, types.ColumnTypeParsed, types.ColumnTypeMetadata, types.ColumnTypeAmbiguous:
+		return true
+	default:
+		return false
+	}
+}
+
+// labelFmtRemovedColumnNames returns the set of short column names that
+// label_format must strip from the input before adding the new parsed
+// columns. For each labelfmt entry:
+//   - the target (Name) is always removed, so the new value replaces any
+//     pre-existing column of the same name regardless of category.
+//   - the source (Value) is additionally removed when Rename is true, so
+//     the original column disappears from the label set as v1 does.
+//
+// Returns nil when the expression isn't a labelfmt parse or has no entries.
+func labelFmtRemovedColumnNames(expr physical.Expression) map[string]struct{} {
+	parseExpr, ok := expr.(*physical.VariadicExpr)
+	if !ok || parseExpr.Op != types.VariadicOpParseLabelfmt || len(parseExpr.Expressions) < 3 {
+		return nil
+	}
+	labelFmtsLiteral, ok := parseExpr.Expressions[2].(*physical.LiteralExpr)
+	if !ok {
+		return nil
+	}
+	labelFmts, ok := labelFmtsLiteral.Literal().Any().([]log.LabelFmt)
+	if !ok {
+		return nil
+	}
+	removed := make(map[string]struct{})
+	for _, labelFmt := range labelFmts {
+		removed[labelFmt.Name] = struct{}{}
+		if labelFmt.Rename {
+			removed[labelFmt.Value] = struct{}{}
+		}
+	}
+	if len(removed) == 0 {
+		return nil
+	}
+	return removed
+}
+
+// mergeColumns merges two columns by preferring values from the new column (b),
+// falling back to the old column (a) only where b is null. An explicit empty
+// string in b is treated as a real value and overwrites a.
+//
+// The null-vs-empty distinction matters: producers (line_format / label_format
+// / logfmt / json / regexp) emit null only when this row didn't contribute a
+// value for the key (so the old column's value should survive), and emit ""
+// when the value is genuinely empty (template rendered "", rename source was
+// "", parsed key extracted an empty value). Treating "" as a missing value
+// silently turned every "rendered to empty" into "keep original", which
+// diverges from v1 — most visibly for `line_format` whose output column always
+// collides with the builtin `message` column.
+func mergeColumns(a, b arrow.Array) arrow.Array {
+	// Only handle string arrays for now (which is what parsers produce)
+	aStr, aOk := a.(*array.String)
+	bStr, bOk := b.(*array.String)
+
+	if !aOk || !bOk {
+		// If not both strings, just return b (overwrite behavior)
+		return b
+	}
+
+	builder := array.NewStringBuilder(memory.DefaultAllocator)
+	builder.Reserve(aStr.Len())
+
+	for i := range aStr.Len() {
+		if bStr.IsNull(i) {
+			// New column has no value for this row, keep the old one.
+			if aStr.IsNull(i) {
+				builder.AppendNull()
+			} else {
+				builder.Append(aStr.Value(i))
+			}
+		} else {
+			builder.Append(bStr.Value(i))
+		}
+	}
+	return builder.NewStringArray()
+}

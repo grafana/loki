@@ -2,7 +2,7 @@
 
 [![build workflow](https://github.com/redis/go-redis/actions/workflows/build.yml/badge.svg)](https://github.com/redis/go-redis/actions)
 [![PkgGoDev](https://pkg.go.dev/badge/github.com/redis/go-redis/v9)](https://pkg.go.dev/github.com/redis/go-redis/v9?tab=doc)
-[![Documentation](https://img.shields.io/badge/redis-documentation-informational)](https://redis.uptrace.dev/)
+[![Documentation](https://img.shields.io/badge/redis-documentation-informational)](https://redis.io/docs/latest/develop/clients/go/)
 [![Go Report Card](https://goreportcard.com/badge/github.com/redis/go-redis/v9)](https://goreportcard.com/report/github.com/redis/go-redis/v9)
 [![codecov](https://codecov.io/github/redis/go-redis/graph/badge.svg?token=tsrCZKuSSw)](https://codecov.io/github/redis/go-redis)
 
@@ -17,16 +17,25 @@
 ## Supported versions
 
 In `go-redis` we are aiming to support the last three releases of Redis. Currently, this means we do support:
-- [Redis 7.2](https://raw.githubusercontent.com/redis/redis/7.2/00-RELEASENOTES) - using Redis Stack 7.2 for modules support
-- [Redis 7.4](https://raw.githubusercontent.com/redis/redis/7.4/00-RELEASENOTES) - using Redis Stack 7.4 for modules support
-- [Redis 8.0](https://raw.githubusercontent.com/redis/redis/8.0/00-RELEASENOTES) - using Redis CE 8.0 where modules are included
+- [Redis 8.0](https://raw.githubusercontent.com/redis/redis/8.0/00-RELEASENOTES) - using Redis CE 8.0
+- [Redis 8.2](https://raw.githubusercontent.com/redis/redis/8.2/00-RELEASENOTES) - using Redis CE 8.2
+- [Redis 8.4](https://raw.githubusercontent.com/redis/redis/8.4/00-RELEASENOTES) - using Redis CE 8.4
+- [Redis 8.8](https://raw.githubusercontent.com/redis/redis/8.8/00-RELEASENOTES) - using Redis CE 8.8
+- [Redis 8.10](https://raw.githubusercontent.com/redis/redis/8.10/00-RELEASENOTES) - using Redis CE 8.10
 
-Although the `go.mod` states it requires at minimum `go 1.18`, our CI is configured to run the tests against all three
-versions of Redis and latest two versions of Go ([1.23](https://go.dev/doc/devel/release#go1.23.0),
-[1.24](https://go.dev/doc/devel/release#go1.24.0)). We observe that some modules related test may not pass with
+Although the `go.mod` states it requires at minimum `go 1.24`, our CI is configured to run the tests against all supported
+versions of Redis and multiple versions of Go ([1.24](https://go.dev/doc/devel/release#go1.24.0), oldstable, and stable). We observe that some modules related test may not pass with
 Redis Stack 7.2 and some commands are changed with Redis CE 8.0.
-Please do refer to the documentation and the tests if you experience any issues. We do plan to update the go version
-in the `go.mod` to `go 1.24` in one of the next releases.
+Although it is not officially supported, `go-redis/v9`  should be able to work with any Redis 7.0+.
+Please do refer to the documentation and the tests if you experience any issues.
+
+### Array data type (Redis 8.8+)
+
+Starting with Redis 8.8, go-redis exposes the new array data type via the `AR*` command family
+(`ARSET`, `ARGET`, `ARGETRANGE`, `ARMSET`, `ARMGET`, `ARINSERT`, `ARDEL`, `ARDELRANGE`,
+`ARLEN`, `ARCOUNT`, `ARNEXT`, `ARSEEK`, `ARSCAN`, `ARGREP`, `ARRING`, `ARLASTITEMS`,
+`ARINFO`/`ARINFOFULL`, and the `AROP*` reducers). See `array_commands.go` for the full
+surface. The API is experimental and may change in a future release.
 
 ## How do I Redis?
 
@@ -42,10 +51,6 @@ in the `go.mod` to `go 1.24` in one of the next releases.
 
 [Work at Redis](https://redis.com/company/careers/jobs/)
 
-## Documentation
-
-- [English](https://redis.uptrace.dev)
-- [简体中文](https://redis.uptrace.dev/zh/)
 
 ## Resources
 
@@ -53,16 +58,19 @@ in the `go.mod` to `go 1.24` in one of the next releases.
 - [Chat](https://discord.gg/W4txy5AeKM)
 - [Reference](https://pkg.go.dev/github.com/redis/go-redis/v9)
 - [Examples](https://pkg.go.dev/github.com/redis/go-redis/v9#pkg-examples)
+- [Release notes](./RELEASE-NOTES.md) ([GitHub Releases](https://github.com/redis/go-redis/releases))
+
+## old documentation
+
+- [English](https://redis.uptrace.dev)
+- [简体中文](https://redis.uptrace.dev/zh/)
 
 ## Ecosystem
 
-- [Redis Mock](https://github.com/go-redis/redismock)
+- [Entra ID (Azure AD)](https://github.com/redis/go-redis-entraid)
 - [Distributed Locks](https://github.com/bsm/redislock)
 - [Redis Cache](https://github.com/go-redis/cache)
 - [Rate limiting](https://github.com/go-redis/redis_rate)
-
-This client also works with [Kvrocks](https://github.com/apache/incubator-kvrocks), a distributed
-key value NoSQL database that uses RocksDB as storage engine and is compatible with Redis protocol.
 
 ## Features
 
@@ -71,12 +79,16 @@ key value NoSQL database that uses RocksDB as storage engine and is compatible w
 - [StreamingCredentialsProvider (e.g. entra id, oauth)](#1-streaming-credentials-provider-highest-priority) (experimental)
 - [Pub/Sub](https://redis.uptrace.dev/guide/go-redis-pubsub.html).
 - [Pipelines and transactions](https://redis.uptrace.dev/guide/go-redis-pipelines.html).
+- [Automatic pipelining](#automatic-pipelining) (experimental) — batches concurrent
+  commands into pipelines for you; meant for high-throughput / high-load / scale
+  use cases.
 - [Scripting](https://redis.uptrace.dev/guide/lua-scripting.html).
 - [Redis Sentinel](https://redis.uptrace.dev/guide/go-redis-sentinel.html).
 - [Redis Cluster](https://redis.uptrace.dev/guide/go-redis-cluster.html).
-- [Redis Ring](https://redis.uptrace.dev/guide/ring.html).
+- [Client-side caching](#client-side-caching).
 - [Redis Performance Monitoring](https://redis.uptrace.dev/guide/redis-performance-monitoring.html).
 - [Redis Probabilistic [RedisStack]](https://redis.io/docs/data-types/probabilistic/)
+- [Customizable read and write buffers size.](#custom-buffer-sizes)
 
 ## Installation
 
@@ -112,6 +124,7 @@ func ExampleClient() {
         Password: "", // no password set
         DB:       0,  // use default DB
     })
+    defer rdb.Close()
 
     err := rdb.Set(ctx, "key", "value", 0).Err()
     if err != nil {
@@ -135,6 +148,29 @@ func ExampleClient() {
     // Output: key value
     // key2 does not exist
 }
+```
+
+### Dial retries and backoff
+
+Connection establishment can be retried by the connection pool when dialing fails.
+
+- **`DialerRetries`**: maximum number of dial attempts (default: 5).
+- **`DialerRetryTimeout`**: default delay between attempts when no custom backoff is provided (default: 100ms).
+- **`DialerRetryBackoff`**: optional function hook to control the delay between attempts.
+
+Example:
+
+```go
+rdb := redis.NewClient(&redis.Options{
+	Addr: "localhost:6379",
+
+	DialerRetries:      5,
+	DialerRetryTimeout: 100 * time.Millisecond, // used when DialerRetryBackoff is nil
+
+	// Optional: exponential backoff with jitter and a cap.
+	DialerRetryBackoff: redis.DialRetryBackoffExponential(100*time.Millisecond, 2*time.Second),
+})
+defer rdb.Close()
 ```
 
 ### Authentication
@@ -254,6 +290,50 @@ rdb := redis.NewClient(&redis.Options{
 })
 ```
 
+### Client-side caching
+
+go-redis supports server-assisted client-side caching for standalone clients.
+Eligible read replies are stored in the application's memory, so repeated reads
+can avoid a Redis round trip. Redis tracks which keys each connection has read
+and sends RESP3 invalidation notifications when those keys change. go-redis
+uses those notifications to evict affected entries automatically.
+
+> **Experimental:** The client-side caching API may change in a minor release.
+
+Enable the built-in bounded cache with `ClientSideCacheConfig`:
+
+```go
+rdb := redis.NewClient(&redis.Options{
+    Addr:     "localhost:6379",
+    Protocol: 3,
+    DB:       0,
+    ClientSideCacheConfig: &redis.ClientSideCacheConfig{
+        MaxEntries: 10_000,
+    },
+})
+defer rdb.Close()
+```
+
+Client-side caching currently requires RESP3, a standalone client, and database
+0. Fixed `Username` and `Password` values are supported. It is disabled when a
+dynamic credential provider is configured, because cached data must never be
+reused after the client's ACL identity changes. Only deterministic read
+commands supported by the cache are stored; writes and streaming responses
+bypass it.
+
+While client-side caching is enabled, go-redis rejects `SELECT`, `AUTH`,
+`HELLO` with arguments, `RESET`, `CLIENT TRACKING`, and raw `SUBSCRIBE`,
+`PSUBSCRIBE`, or `SSUBSCRIBE` commands because they would change connection
+state that the cache relies on. A guarded command also fails its whole
+pipeline. The typed `Subscribe`, `PSubscribe`, and `SSubscribe` APIs remain
+supported because they use dedicated connections.
+
+Invalidations are processed asynchronously. `DrainInterval` controls how often
+idle connections are checked for them, while `MaxStaleness` can provide an
+optional upper bound on an entry's lifetime. See the
+[client-side caching example](./example/client-side-caching) for a working
+demonstration.
+
 ### Connecting via a redis url
 
 go-redis also supports connecting via the
@@ -297,6 +377,130 @@ func main() {
 ```
 
 
+### Buffer Size Configuration
+
+go-redis uses 32KiB read and write buffers by default for optimal performance. For high-throughput applications or large pipelines, you can customize buffer sizes:
+
+```go
+rdb := redis.NewClient(&redis.Options{
+    Addr:            "localhost:6379",
+    ReadBufferSize:  1024 * 1024, // 1MiB read buffer
+    WriteBufferSize: 1024 * 1024, // 1MiB write buffer
+})
+```
+
+### Automatic pipelining
+
+**Experimental** — the API may still change. Reach for autopipelining in
+high-throughput / high-load / scale scenarios; at low concurrency a plain
+client is simpler and just as fast. A runnable usage tour and throughput
+comparison live in [`example/autopipeline`](example/autopipeline).
+
+> **EXPERIMENTAL:** the autopipelining API is subject to change in a future
+> release as we gather feedback — pin your go-redis version if you adopt it.
+
+When many goroutines issue commands concurrently, autopipelining batches them
+into Redis pipelines automatically — without you writing any pipeline code. It
+comes in two faces:
+
+- **`AutoPipeline()` — blocking, drop-in.** Each command call blocks until it
+  executes and returns its own value/error, exactly like a normal client, so
+  existing code keeps working unchanged. Under concurrency the engine coalesces
+  commands from all goroutines into deep, back-to-back pipelines (a single
+  ordered batch stream by default), reaching several times a plain client's
+  executed commands per second in the same environment — roughly an order of
+  magnitude with a parallel-batch config (`MaxConcurrentBatches` > 1 with
+  `Unordered`). Per-goroutine ordering is preserved.
+- **`AsyncAutoPipeline()` — deferred, highest throughput.** Command calls return
+  immediately; you submit a window of commands and read their results afterward,
+  which keeps each pipeline deep — tens of times a plain client's throughput.
+  Ordered by default. Absolute numbers depend heavily on the machine, network
+  path and server; see `autopipeline_bench_README.md` for the benchmark
+  methodology and multipliers.
+
+```go
+rdb := redis.NewClient(&redis.Options{Addr: "localhost:6379"})
+defer rdb.Close()
+ctx := context.Background()
+
+// Blocking face: drop-in for a normal client, batched under the hood.
+ap, err := rdb.AutoPipeline()
+if err != nil { // invalid AutoPipelineOptions, or the client is closed
+    log.Fatal(err)
+}
+defer ap.Close()
+
+var wg sync.WaitGroup
+for i := 0; i < 1000; i++ {
+    wg.Add(1)
+    go func(i int) {
+        defer wg.Done()
+        key := fmt.Sprintf("key:%d", i)
+        if err := ap.Set(ctx, key, i, 0).Err(); err != nil { // blocks until executed
+            log.Printf("set %s: %v", key, err)
+        }
+    }(i)
+}
+wg.Wait()
+```
+
+For maximum throughput, submit a window on the async face and read later:
+
+```go
+ctx := context.Background()
+ap, err := rdb.AsyncAutoPipeline() // ordered by default
+if err != nil {
+    log.Fatal(err)
+}
+defer ap.Close()
+
+cmds := make([]*redis.StatusCmd, 0, 200)
+for i := 0; i < 200; i++ {
+    cmds = append(cmds, ap.Set(ctx, fmt.Sprintf("key:%d", i), i, 0)) // returns immediately
+}
+for _, cmd := range cmds {
+    if err := cmd.Err(); err != nil { // blocks until executed
+        log.Printf("set: %v", err)
+    }
+}
+```
+
+Each face has a no-argument form that uses `Options.AutoPipelineOptions` (or the
+built-in default) and a `WithOptions` form that takes an explicit
+`*AutoPipelineOptions`; both return `(*AutoPipeliner, error)` — the error is
+non-nil for an invalid config or a closed client (e.g.
+`ap, err := rdb.AsyncAutoPipelineWithOptions(&redis.AutoPipelineOptions{MaxConcurrentBatches: 8, Unordered: true})`);
+a handful of parallel batches saturates the link — more permits only add
+overlapping batches without deepening them.
+They work on `ClusterClient` too: commands are routed to the correct shard per
+key, so a single batch may span many slots; ordering across nodes is per key
+(same-key commands stay in order, different nodes' sub-pipelines run
+concurrently). Because batches share a few pipeline connections, autopipelining
+also needs far fewer connections than a plain client at the same concurrency
+(see `PipelinePoolSize`). Autopipelining is only a win under concurrency (or
+windowed submission) — a single goroutine issuing one blocking command at a
+time sees little benefit, and a hand-written `Pipeline()` is still fastest when
+you can batch by hand.
+
+Caveats: a command's context is not honored once it is queued (batches execute
+on the autopipeliner's own context) — use a plain client for per-command
+deadlines. Blocking commands (`BLPOP`, `WAIT`, ...) are never batched and run
+directly on your context — as are `SHUTDOWN` and `MONITOR`, which would
+poison a shared pipeline connection — and `Do` also bypasses batching with plain
+`Client.Do` semantics — prefer the typed methods (`ap.Set`, `ap.Get`, ...). On
+a dropped connection a batch is retried whole (up to `MaxRetries`), so
+non-idempotent commands may execute twice. Both faces return a cached,
+client-shared instance: the first call's config wins and `Close` stops it for
+all callers. Hooks may read command results (the engine hands a hook running
+on the dispatch goroutine the same view a plain pipeline hook gets), but a
+hook must never issue a command on the same autopipeliner and wait for it —
+the nested command needs the very dispatch slot the hook is holding, and the
+engine only recovers by failing that flush after its 30s permit backstops.
+`Options.Limiter` is consulted once per batch dispatch (as with a manual
+pipeline), not once per command. An autopipeliner created on a
+`WithTimeout`/`WithReadTimeout` clone is not stopped by the parent's `Close` —
+close it explicitly.
+
 ### Advanced Configuration
 
 go-redis supports extending the client identification phase to allow projects to send their own custom client identification.
@@ -322,18 +526,17 @@ rdb := redis.NewClient(&redis.Options{
 })
 ```
 
-#### Unstable RESP3 Structures for RediSearch Commands
-When integrating Redis with application functionalities using RESP3, it's important to note that some response structures aren't final yet. This is especially true for more complex structures like search and query results. We recommend using RESP2 when using the search and query capabilities, but we plan to stabilize the RESP3-based API-s in the coming versions. You can find more guidance in the upcoming release notes.
+#### RESP3 for RediSearch Commands (`UnstableResp3` is deprecated)
+As of v9.20, `FT.SEARCH`, `FT.AGGREGATE`, `FT.INFO`, `FT.SPELLCHECK`, and `FT.SYNDUMP`
+parse RESP3 (map) responses into the same typed result objects as RESP2. **No flag
+is required — `Val()` / `Result()` work uniformly on both protocols.**
 
-To enable unstable RESP3, set the option in your client configuration:
+The legacy `UnstableResp3` option is now a **no-op** and is retained on every
+options struct only for backwards compatibility. It will be removed in a future
+release; new code should not set it.
 
-```go
-redis.NewClient(&redis.Options{
-			UnstableResp3: true,
-		})
-```
-**Note:** When UnstableResp3 mode is enabled, it's necessary to use RawResult() and RawVal() to retrieve a raw data.
-          Since, raw response is the only option for unstable search commands Val() and Result() calls wouldn't have any affect on them:
+`RawResult()` / `RawVal()` continue to work for callers that prefer the raw RESP
+payload directly:
 
 ```go
 res1, err := client.FTSearchWithArgs(ctx, "txt", "foo bar", &redis.FTSearchOptions{}).RawResult()
@@ -359,6 +562,21 @@ For example:
 	).Result()
 ```
 You can find further details in the [query dialect documentation](https://redis.io/docs/latest/develop/interact/search-and-query/advanced-concepts/dialects/).
+
+#### Custom buffer sizes
+Prior to v9.12, the buffer size was the default go value of 4096 bytes. Starting from v9.12, 
+go-redis uses 32KiB read and write buffers by default for optimal performance.
+For high-throughput applications or large pipelines, you can customize buffer sizes:
+
+```go
+rdb := redis.NewClient(&redis.Options{
+    Addr:            "localhost:6379",
+    ReadBufferSize:  1024 * 1024, // 1MiB read buffer
+    WriteBufferSize: 1024 * 1024, // 1MiB write buffer
+})
+```
+
+**Important**: If you experience any issues with the default buffer sizes, please try setting them to the go default of 4096 bytes.
 
 ## Contributing
 We welcome contributions to the go-redis library! If you have a bug fix, feature request, or improvement, please open an issue or pull request on GitHub.
@@ -400,38 +618,168 @@ vals, err := rdb.Eval(ctx, "return {KEYS[1],ARGV[1]}", []string{"key"}, "hello")
 res, err := rdb.Do(ctx, "set", "key", "value").Result()
 ```
 
-## Run the test
+### Raw commands and connection state
 
-go-redis will start a redis-server and run the test cases.
+`Do` sends the command verbatim on whichever pooled connection happens to be
+free. For keyspace commands that is all you need. It is the wrong tool for
+any command that alters **connection session state** — `SELECT`,
+`CLIENT SETNAME`, `CLIENT TRACKING`, `RESET`, `HIMPORT PREPARE`/`DISCARD`,
+and similar: the state lands on (or is wiped from) a single arbitrary
+connection, later commands are served by other connections that don't share
+it, and the affected connection eventually returns to the pool and serves
+unrelated callers. The result is nondeterministic behavior that typed APIs
+manage for you — for example, the typed `HImport*` methods keep a
+client-side registry and replay fieldsets onto every connection that needs
+them, while a raw `Do(ctx, "himport", "prepare", ...)` bypasses that
+entirely, with no replay, recovery, or discard propagation.
 
-The paths of redis-server bin file and redis config file are defined in `main_test.go`:
+For session-scoped work without a typed API, hold a dedicated connection
+(`client.Conn()`) for its whole lifetime and close it afterwards.
+
+## Typed Errors
+
+go-redis provides typed error checking functions for common Redis errors:
 
 ```go
-var (
-	redisServerBin, _  = filepath.Abs(filepath.Join("testdata", "redis", "src", "redis-server"))
-	redisServerConf, _ = filepath.Abs(filepath.Join("testdata", "redis", "redis.conf"))
-)
+// Cluster and replication errors
+redis.IsLoadingError(err)        // Redis is loading the dataset
+redis.IsReadOnlyError(err)       // Write to read-only replica
+redis.IsClusterDownError(err)    // Cluster is down
+redis.IsTryAgainError(err)       // Command should be retried
+redis.IsMasterDownError(err)     // Master is down
+redis.IsMovedError(err)          // Returns (address, true) if key moved
+redis.IsAskError(err)            // Returns (address, true) if key being migrated
+
+// Connection and resource errors
+redis.IsMaxClientsError(err)     // Maximum clients reached
+redis.IsAuthError(err)           // Authentication failed (NOAUTH, WRONGPASS, unauthenticated)
+redis.IsPermissionError(err)     // Permission denied (NOPERM)
+redis.IsOOMError(err)            // Out of memory (OOM)
+
+// Transaction errors
+redis.IsExecAbortError(err)      // Transaction aborted (EXECABORT)
 ```
 
-For local testing, you can change the variables to refer to your local files, or create a soft link
-to the corresponding folder for redis-server and copy the config file to `testdata/redis/`:
+### Error Wrapping in Hooks
 
-```shell
-ln -s /usr/bin/redis-server ./go-redis/testdata/redis/src
-cp ./go-redis/testdata/redis.conf ./go-redis/testdata/redis/
+When wrapping errors in hooks, use custom error types with `Unwrap()` method (preferred) or `fmt.Errorf` with `%w`. Always call `cmd.SetErr()` to preserve error type information:
+
+```go
+// Custom error type (preferred)
+type AppError struct {
+    Code      string
+    RequestID string
+    Err       error
+}
+
+func (e *AppError) Error() string {
+    return fmt.Sprintf("[%s] request_id=%s: %v", e.Code, e.RequestID, e.Err)
+}
+
+func (e *AppError) Unwrap() error {
+    return e.Err
+}
+
+// Hook implementation
+func (h MyHook) ProcessHook(next redis.ProcessHook) redis.ProcessHook {
+    return func(ctx context.Context, cmd redis.Cmder) error {
+        err := next(ctx, cmd)
+        if err != nil {
+            // Wrap with custom error type
+            wrappedErr := &AppError{
+                Code:      "REDIS_ERROR",
+                RequestID: getRequestID(ctx),
+                Err:       err,
+            }
+            cmd.SetErr(wrappedErr)
+            return wrappedErr  // Return wrapped error to preserve it
+        }
+        return nil
+    }
+}
+
+// Typed error detection works through wrappers
+if redis.IsLoadingError(err) {
+    // Retry logic
+}
+
+// Extract custom error if needed
+var appErr *AppError
+if errors.As(err, &appErr) {
+    log.Printf("Request: %s", appErr.RequestID)
+}
 ```
 
-Lastly, run:
-
-```shell
-go test
+Alternatively, use `fmt.Errorf` with `%w`:
+```go
+wrappedErr := fmt.Errorf("context: %w", err)
+cmd.SetErr(wrappedErr)
 ```
 
-Another option is to run your specific tests with an already running redis. The example below, tests
-against a redis running on port 9999.:
+### Pipeline Hook Example
 
+For pipeline operations, use `ProcessPipelineHook`:
+
+```go
+type PipelineLoggingHook struct{}
+
+func (h PipelineLoggingHook) DialHook(next redis.DialHook) redis.DialHook {
+    return next
+}
+
+func (h PipelineLoggingHook) ProcessHook(next redis.ProcessHook) redis.ProcessHook {
+    return next
+}
+
+func (h PipelineLoggingHook) ProcessPipelineHook(next redis.ProcessPipelineHook) redis.ProcessPipelineHook {
+    return func(ctx context.Context, cmds []redis.Cmder) error {
+        start := time.Now()
+
+        // Execute the pipeline
+        err := next(ctx, cmds)
+
+        duration := time.Since(start)
+        log.Printf("Pipeline executed %d commands in %v", len(cmds), duration)
+
+        // Process individual command errors
+        // Note: Individual command errors are already set on each cmd by the pipeline execution
+        for _, cmd := range cmds {
+            if cmdErr := cmd.Err(); cmdErr != nil {
+                // Check for specific error types using typed error functions
+                if redis.IsAuthError(cmdErr) {
+                    log.Printf("Auth error in pipeline command %s: %v", cmd.Name(), cmdErr)
+                } else if redis.IsPermissionError(cmdErr) {
+                    log.Printf("Permission error in pipeline command %s: %v", cmd.Name(), cmdErr)
+                }
+
+                // Optionally wrap individual command errors to add context
+                // The wrapped error preserves type information through errors.As()
+                wrappedErr := fmt.Errorf("pipeline cmd %s failed: %w", cmd.Name(), cmdErr)
+                cmd.SetErr(wrappedErr)
+            }
+        }
+
+        // Return the pipeline-level error (connection errors, etc.)
+        // You can wrap it if needed, or return it as-is
+        return err
+    }
+}
+
+// Register the hook
+rdb.AddHook(PipelineLoggingHook{})
+
+// Use pipeline - errors are still properly typed
+pipe := rdb.Pipeline()
+pipe.Set(ctx, "key1", "value1", 0)
+pipe.Get(ctx, "key2")
+_, err := pipe.Exec(ctx)
+```
+
+## Run the test
+
+Recommended to use Docker, just need to run:
 ```shell
-REDIS_PORT=9999 go test <your options>
+make test
 ```
 
 ## See also

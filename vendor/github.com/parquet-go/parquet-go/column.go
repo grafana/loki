@@ -4,13 +4,14 @@ import (
 	"encoding/binary"
 	"fmt"
 	"io"
+	"math"
 	"reflect"
 
 	"github.com/parquet-go/parquet-go/compress"
 	"github.com/parquet-go/parquet-go/deprecated"
 	"github.com/parquet-go/parquet-go/encoding"
 	"github.com/parquet-go/parquet-go/format"
-	"github.com/parquet-go/parquet-go/internal/unsafecast"
+	"github.com/parquet-go/parquet-go/internal/memory"
 )
 
 // Column represents a column in a parquet file.
@@ -33,10 +34,10 @@ type Column struct {
 	encoding    encoding.Encoding
 	compression compress.Codec
 
-	depth              int8
+	depth              byte
 	maxRepetitionLevel byte
 	maxDefinitionLevel byte
-	index              int16
+	index              uint16
 }
 
 // Type returns the type of the column.
@@ -54,7 +55,7 @@ func (c *Column) Repeated() bool { return schemaRepetitionTypeOf(c.schema) == fo
 func (c *Column) Required() bool { return schemaRepetitionTypeOf(c.schema) == format.Required }
 
 // Leaf returns true if c is a leaf column.
-func (c *Column) Leaf() bool { return c.index >= 0 }
+func (c *Column) Leaf() bool { return isLeafSchemaElement(c.schema) }
 
 // Fields returns the list of fields on the column.
 func (c *Column) Fields() []Field { return c.fields }
@@ -99,7 +100,7 @@ func (c *Column) Pages() Pages {
 }
 
 func (c *Column) PagesFrom(reader io.ReaderAt) Pages {
-	if c.index < 0 || c.file == nil {
+	if c.index == math.MaxUint16 || c.file == nil {
 		return emptyPages{}
 	}
 	r := &columnPages{
@@ -178,7 +179,12 @@ func (c *Column) MaxDefinitionLevel() int { return int(c.maxDefinitionLevel) }
 
 // Index returns the position of the column in a row. Only leaf columns have a
 // column index, the method returns -1 when called on non-leaf columns.
-func (c *Column) Index() int { return int(c.index) }
+func (c *Column) Index() int {
+	if c.index == math.MaxUint16 {
+		return -1
+	}
+	return int(c.index)
+}
 
 // GoType returns the Go type that best represents the parquet column.
 func (c *Column) GoType() reflect.Type { return goTypeOf(c) }
@@ -193,7 +199,7 @@ func (c *Column) Value(base reflect.Value) reflect.Value {
 func (c *Column) String() string { return c.path.String() + ": " + sprint(c.Name(), c) }
 
 func (c *Column) forEachLeaf(do func(*Column)) {
-	if len(c.columns) == 0 {
+	if isLeafSchemaElement(c.schema) {
 		do(c)
 	} else {
 		for _, child := range c.columns {
@@ -204,6 +210,7 @@ func (c *Column) forEachLeaf(do func(*Column)) {
 
 func openColumns(file *File, metadata *format.FileMetaData, columnIndexes []format.ColumnIndex, offsetIndexes []format.OffsetIndex) (*Column, error) {
 	cl := columnLoader{}
+	cl.reserve(metadata, columnIndexes, offsetIndexes)
 
 	c, err := cl.open(file, metadata, columnIndexes, offsetIndexes, nil)
 	if err != nil {
@@ -238,24 +245,29 @@ func (c *Column) setLevels(depth, repetition, definition, index int) (int, error
 		return -1, fmt.Errorf("cannot represent parquet columns with more than %d definition levels: %s", MaxDefinitionLevel, c.path)
 	}
 
-	switch schemaRepetitionTypeOf(c.schema) {
-	case format.Optional:
-		definition++
-	case format.Repeated:
-		repetition++
-		definition++
+	// Only non-root columns have a well defined repetition_type
+	if depth > 0 {
+		switch schemaRepetitionTypeOf(c.schema) {
+		case format.Optional:
+			definition++
+		case format.Repeated:
+			repetition++
+			definition++
+		}
 	}
 
-	c.depth = int8(depth)
+	c.depth = byte(depth)
 	c.maxRepetitionLevel = byte(repetition)
 	c.maxDefinitionLevel = byte(definition)
 	depth++
 
-	if len(c.columns) > 0 {
-		c.index = -1
-	} else {
-		c.index = int16(index)
+	// Only leaf columns get a column index.
+	if isLeafSchemaElement(c.schema) {
+		c.index = uint16(index)
 		index++
+	} else {
+		// Groups (including empty groups) don't get a column index
+		c.index = math.MaxUint16
 	}
 
 	var err error
@@ -271,19 +283,112 @@ type columnLoader struct {
 	schemaIndex         int
 	columnOrderIndex    int
 	rowGroupColumnIndex int
+
+	// The shape of the column tree is fully determined by the schema, so its
+	// parts are allocated once here and handed out in slices as the tree is
+	// built. A file with C schema elements, L of them leaves, and R row groups
+	// used to cost C + 2*(C-1) + 3*L allocations; it now costs six.
+	columns     []Column
+	children    []*Column
+	fields      []Field
+	chunks      []*format.ColumnChunk
+	columnIndex []*format.ColumnIndex
+	offsetIndex []*format.OffsetIndex
+	// paths backs every column's path. A column's path is its parent's path
+	// plus its own name, so the segments across the whole tree sum to a size
+	// the schema determines up front.
+	paths []string
+}
+
+func (cl *columnLoader) reserve(metadata *format.FileMetaData, columnIndexes []format.ColumnIndex, offsetIndexes []format.OffsetIndex) {
+	numColumns := len(metadata.Schema)
+	if numColumns == 0 {
+		return
+	}
+	// Walk the schema in its depth-first order to count leaves and to sum the
+	// path lengths: a node at depth d has a path of d+1 names, and remaining
+	// tracks how many children are still open at each ancestor level, so its
+	// length is the current depth.
+	numLeaves := 0
+	pathSegments := 0
+	// remaining tracks the open-children counts per ancestor level; its cap
+	// keeps the common shallow schema on the stack, a deeper one grows to heap.
+	remaining := make([]int32, 0, 16)
+	for i := range metadata.Schema {
+		pathSegments += len(remaining) + 1
+		if isLeafSchemaElement(&metadata.Schema[i]) {
+			numLeaves++
+		}
+		if n := metadata.Schema[i].NumChildren; n.Valid && n.V > 0 {
+			remaining = append(remaining, n.V)
+		} else {
+			// A leaf closes itself and any ancestors whose last child it was.
+			for len(remaining) > 0 {
+				remaining[len(remaining)-1]--
+				if remaining[len(remaining)-1] > 0 {
+					break
+				}
+				remaining = remaining[:len(remaining)-1]
+			}
+		}
+	}
+	numRowGroups := len(metadata.RowGroups)
+
+	cl.columns = make([]Column, numColumns)
+	// Every column but the root is a child of exactly one group, and appears
+	// once in that group's fields.
+	cl.children = make([]*Column, numColumns-1)
+	cl.fields = make([]Field, numColumns-1)
+	cl.paths = make([]string, pathSegments)
+
+	if n := numLeaves * numRowGroups; n > 0 {
+		cl.chunks = make([]*format.ColumnChunk, n)
+		if len(columnIndexes) > 0 {
+			cl.columnIndex = make([]*format.ColumnIndex, n)
+		}
+		if len(offsetIndexes) > 0 {
+			cl.offsetIndex = make([]*format.OffsetIndex, n)
+		}
+	}
+}
+
+// allocate cuts the first n elements off the front of the slab and returns them
+// with their capacity clamped, so that appending to the result cannot reach into
+// the rest of the slab.
+//
+// The caller must have reserved room for n; a slab shorter than that is a
+// programming error and panics. Every slab is sized from the schema, and the
+// only value the schema does not bound is a group's NumChildren, which open
+// checks against the children slab before allocating from it.
+func allocate[T any](slab *[]T, n int) []T {
+	taken := (*slab)[:n:n]
+	*slab = (*slab)[n:]
+	return taken
 }
 
 func (cl *columnLoader) open(file *File, metadata *format.FileMetaData, columnIndexes []format.ColumnIndex, offsetIndexes []format.OffsetIndex, path []string) (*Column, error) {
-	c := &Column{
-		file:   file,
-		schema: &metadata.Schema[cl.schemaIndex],
+	if cl.schemaIndex >= len(cl.columns) {
+		return nil, fmt.Errorf("column schema index %d is out of range: %d >= %d",
+			cl.schemaIndex, cl.schemaIndex, len(cl.columns))
 	}
-	c.path = columnPath(path).append(c.schema.Name)
+	c := &cl.columns[cl.schemaIndex]
+	c.file = file
+	c.schema = &metadata.Schema[cl.schemaIndex]
+
+	// A column's path is its parent's path plus its own name, cut from the
+	// shared slab rather than concatenated into a fresh slice per column.
+	p := allocate(&cl.paths, len(path)+1)
+	copy(p, path)
+	p[len(path)] = c.schema.Name
+	c.path = columnPath(p)
 
 	cl.schemaIndex++
-	numChildren := int(c.schema.NumChildren)
+	numChildren := 0
+	if c.schema.NumChildren.Valid {
+		numChildren = int(c.schema.NumChildren.V)
+	}
 
-	if numChildren == 0 {
+	if isLeafSchemaElement(c.schema) {
 		c.typ = schemaElementTypeOf(c.schema)
 
 		if cl.columnOrderIndex < len(metadata.ColumnOrders) {
@@ -295,32 +400,32 @@ func (cl *columnLoader) open(file *File, metadata *format.FileMetaData, columnIn
 		rowGroupColumnIndex := cl.rowGroupColumnIndex
 		cl.rowGroupColumnIndex++
 
-		c.chunks = make([]*format.ColumnChunk, 0, len(rowGroups))
-		c.columnIndex = make([]*format.ColumnIndex, 0, len(rowGroups))
-		c.offsetIndex = make([]*format.OffsetIndex, 0, len(rowGroups))
+		c.chunks = allocate(&cl.chunks, len(rowGroups))
 
 		for i, rowGroup := range rowGroups {
 			if rowGroupColumnIndex >= len(rowGroup.Columns) {
 				return nil, fmt.Errorf("row group at index %d does not have enough columns", i)
 			}
-			c.chunks = append(c.chunks, &rowGroup.Columns[rowGroupColumnIndex])
+			c.chunks[i] = &rowGroup.Columns[rowGroupColumnIndex]
 		}
 
 		if len(columnIndexes) > 0 {
+			c.columnIndex = allocate(&cl.columnIndex, len(rowGroups))
 			for i := range rowGroups {
 				if rowGroupColumnIndex >= len(columnIndexes) {
 					return nil, fmt.Errorf("row group at index %d does not have enough column index pages", i)
 				}
-				c.columnIndex = append(c.columnIndex, &columnIndexes[rowGroupColumnIndex])
+				c.columnIndex[i] = &columnIndexes[rowGroupColumnIndex]
 			}
 		}
 
 		if len(offsetIndexes) > 0 {
+			c.offsetIndex = allocate(&cl.offsetIndex, len(rowGroups))
 			for i := range rowGroups {
 				if rowGroupColumnIndex >= len(offsetIndexes) {
 					return nil, fmt.Errorf("row group at index %d does not have enough offset index pages", i)
 				}
-				c.offsetIndex = append(c.offsetIndex, &offsetIndexes[rowGroupColumnIndex])
+				c.offsetIndex[i] = &offsetIndexes[rowGroupColumnIndex]
 			}
 		}
 
@@ -337,6 +442,17 @@ func (cl *columnLoader) open(file *File, metadata *format.FileMetaData, columnIn
 			// the page headers to determine which compression and encodings are
 			// applied.
 			for _, encoding := range c.chunks[0].MetaData.Encoding {
+				// BIT_PACKED appears in the encodings list when the
+				// deprecated bit-packed encoding was used for repetition
+				// or definition levels. Encodings.md: "Note that the
+				// BIT_PACKED encoding method is only supported for
+				// encoding repetition and definition levels." It is never
+				// a data page encoding, so it must not be reported as the
+				// column encoding (it would make schemas derived from
+				// this file unwritable).
+				if encoding == format.BitPacked {
+					continue
+				}
 				if c.encoding == nil {
 					c.encoding = LookupEncoding(encoding)
 				}
@@ -352,14 +468,37 @@ func (cl *columnLoader) open(file *File, metadata *format.FileMetaData, columnIn
 	}
 
 	c.typ = &groupType{}
-	if lt := c.schema.LogicalType; lt != nil && lt.Map != nil {
+	switch c.schema.LogicalType.Value.(type) {
+	case *format.MapType:
 		c.typ = &mapType{}
-	} else if lt != nil && lt.List != nil {
+	case *format.ListType:
 		c.typ = &listType{}
-	} else if lt != nil && lt.Variant != nil {
+	case *format.VariantType:
 		c.typ = &variantType{}
+	default:
+		// Fall back on the deprecated converted type when the schema element
+		// carries no logical type annotation we recognize.
+		if ct := c.schema.ConvertedType; ct.Valid {
+			switch ct.V {
+			case deprecated.Map:
+				c.typ = &mapType{}
+			case deprecated.List:
+				c.typ = &listType{}
+			}
+		}
 	}
-	c.columns = make([]*Column, numChildren)
+	// Bound NumChildren by what the children slab has left rather than by the
+	// schema elements that remain. Only the slab bounds the total across every
+	// group: a schema where each group's claim fits the elements after it can
+	// still claim more children in total than the schema has to give.
+	if numChildren > len(cl.children) {
+		return nil, fmt.Errorf("column %q declares %d children but only %d schema elements are left to be children",
+			c.schema.Name, numChildren, len(cl.children))
+	}
+
+	// Reserve this group's children before recursing, so that a child's own
+	// children are cut from the slab after ours rather than overlapping them.
+	c.columns = allocate(&cl.children, numChildren)
 
 	for i := range c.columns {
 		if cl.schemaIndex >= len(metadata.Schema) {
@@ -374,74 +513,90 @@ func (cl *columnLoader) open(file *File, metadata *format.FileMetaData, columnIn
 		}
 	}
 
-	c.fields = make([]Field, len(c.columns))
+	c.fields = allocate(&cl.fields, len(c.columns))
 	for i, column := range c.columns {
 		c.fields[i] = column
 	}
 	return c, nil
 }
 
+// isLeafSchemaElement returns true if the schema element represents a leaf node
+// (a column with actual data). According to the Parquet specification, the Type
+// field is set for leaf nodes and not set (nil) for group nodes.
+//
+// This is the authoritative way to distinguish between:
+//   - Leaf nodes: Type != nil (has column data)
+//   - Group nodes: Type == nil (including empty groups with NumChildren == 0)
+func isLeafSchemaElement(element *format.SchemaElement) bool {
+	return element.Type.Valid
+}
+
 func schemaElementTypeOf(s *format.SchemaElement) Type {
-	if lt := s.LogicalType; lt != nil {
-		// A logical type exists, the Type interface implementations in this
-		// package are all based on the logical parquet types declared in the
-		// format sub-package so we can return them directly via a pointer type
-		// conversion.
-		switch {
-		case lt.UTF8 != nil:
-			return (*stringType)(lt.UTF8)
-		case lt.Map != nil:
-			return (*mapType)(lt.Map)
-		case lt.List != nil:
-			return (*listType)(lt.List)
-		case lt.Enum != nil:
-			return (*enumType)(lt.Enum)
-		case lt.Decimal != nil:
-			// A parquet decimal can be one of several different physical types.
-			if t := s.Type; t != nil {
-				var typ Type
-				switch kind := Kind(*s.Type); kind {
-				case Int32:
-					typ = Int32Type
-				case Int64:
-					typ = Int64Type
-				case FixedLenByteArray:
-					if s.TypeLength == nil {
-						panic("DECIMAL using FIXED_LEN_BYTE_ARRAY must specify a length")
-					}
-					typ = FixedLenByteArrayType(int(*s.TypeLength))
-				default:
-					panic("DECIMAL must be of type INT32, INT64, or FIXED_LEN_BYTE_ARRAY but got " + kind.String())
+	// A logical type exists, the Type interface implementations in this
+	// package are all based on the logical parquet types declared in the
+	// format sub-package so we can return them directly via a pointer type
+	// conversion.
+	switch lt := s.LogicalType.Value.(type) {
+	case *format.StringType:
+		return (*stringType)(lt)
+	case *format.MapType:
+		return (*mapType)(lt)
+	case *format.ListType:
+		return (*listType)(lt)
+	case *format.EnumType:
+		return (*enumType)(lt)
+	case *format.DecimalType:
+		// A parquet decimal can be one of several different physical types.
+		if s.Type.Valid {
+			var typ Type
+			switch kind := Kind(s.Type.V); kind {
+			case Int32:
+				typ = Int32Type
+			case Int64:
+				typ = Int64Type
+			case ByteArray:
+				typ = ByteArrayType
+			case FixedLenByteArray:
+				if !s.TypeLength.Valid {
+					panic("DECIMAL using FIXED_LEN_BYTE_ARRAY must specify a length")
 				}
-				return &decimalType{
-					decimal: *lt.Decimal,
-					Type:    typ,
-				}
+				typ = FixedLenByteArrayType(int(s.TypeLength.V))
+			default:
+				panic("DECIMAL must be of type INT32, INT64, BYTE_ARRAY or FIXED_LEN_BYTE_ARRAY but got " + kind.String())
 			}
-		case lt.Date != nil:
-			return (*dateType)(lt.Date)
-		case lt.Time != nil:
-			return (*timeType)(lt.Time)
-		case lt.Timestamp != nil:
-			return (*timestampType)(lt.Timestamp)
-		case lt.Integer != nil:
-			return (*intType)(lt.Integer)
-		case lt.Unknown != nil:
-			return (*nullType)(lt.Unknown)
-		case lt.Json != nil:
-			return (*jsonType)(lt.Json)
-		case lt.Bson != nil:
-			return (*bsonType)(lt.Bson)
-		case lt.UUID != nil:
-			return (*uuidType)(lt.UUID)
+			return &decimalType{
+				decimal: *lt,
+				Type:    typ,
+			}
 		}
+	case *format.DateType:
+		return (*dateType)(lt)
+	case *format.TimeType:
+		return canonicalTimeType(lt)
+	case *format.TimestampType:
+		return canonicalTimestampType(lt)
+	case *format.IntType:
+		return canonicalIntType(lt)
+	case *format.NullType:
+		return (*nullType)(lt)
+	case *format.JsonType:
+		return (*jsonType)(lt)
+	case *format.BsonType:
+		return (*bsonType)(lt)
+	case *format.UUIDType:
+		return (*uuidType)(lt)
+	case *format.GeometryType:
+		return (*geometryType)(lt)
+	case *format.GeographyType:
+		return (*geographyType)(lt)
 	}
 
-	if ct := s.ConvertedType; ct != nil {
+	if s.ConvertedType.Valid {
+		ct := s.ConvertedType.V
 		// This column contains no logical type but has a converted type, it
 		// was likely created by an older parquet writer. Convert the legacy
 		// type representation to the equivalent logical parquet type.
-		switch *ct {
+		switch ct {
 		case deprecated.UTF8:
 			return &stringType{}
 		case deprecated.Map:
@@ -453,20 +608,20 @@ func schemaElementTypeOf(s *format.SchemaElement) Type {
 		case deprecated.Enum:
 			return &enumType{}
 		case deprecated.Decimal:
-			if s.Scale != nil && s.Precision != nil {
+			if s.Scale.Valid && s.Precision.Valid {
 				// A parquet decimal can be one of several different physical types.
-				if t := s.Type; t != nil {
+				if s.Type.Valid {
 					var typ Type
-					switch kind := Kind(*s.Type); kind {
+					switch kind := Kind(s.Type.V); kind {
 					case Int32:
 						typ = Int32Type
 					case Int64:
 						typ = Int64Type
 					case FixedLenByteArray:
-						if s.TypeLength == nil {
+						if !s.TypeLength.Valid {
 							panic("DECIMAL using FIXED_LEN_BYTE_ARRAY must specify a length")
 						}
-						typ = FixedLenByteArrayType(int(*s.TypeLength))
+						typ = FixedLenByteArrayType(int(s.TypeLength.V))
 					case ByteArray:
 						typ = ByteArrayType
 					default:
@@ -474,8 +629,8 @@ func schemaElementTypeOf(s *format.SchemaElement) Type {
 					}
 					return &decimalType{
 						decimal: format.DecimalType{
-							Scale:     *s.Scale,
-							Precision: *s.Precision,
+							Scale:     s.Scale.V,
+							Precision: s.Precision.V,
 						},
 						Type: typ,
 					}
@@ -512,14 +667,14 @@ func schemaElementTypeOf(s *format.SchemaElement) Type {
 		case deprecated.Bson:
 			return &bsonType{}
 		case deprecated.Interval:
-			// TODO
+			return &intervalType{}
 		}
 	}
 
-	if t := s.Type; t != nil {
+	if s.Type.Valid {
 		// The column only has a physical type, convert it to one of the
 		// primitive types supported by this package.
-		switch kind := Kind(*t); kind {
+		switch kind := Kind(s.Type.V); kind {
 		case Boolean:
 			return BooleanType
 		case Int32:
@@ -535,8 +690,8 @@ func schemaElementTypeOf(s *format.SchemaElement) Type {
 		case ByteArray:
 			return ByteArrayType
 		case FixedLenByteArray:
-			if s.TypeLength != nil {
-				return FixedLenByteArrayType(int(*s.TypeLength))
+			if s.TypeLength.Valid {
+				return FixedLenByteArrayType(int(s.TypeLength.V))
 			}
 		}
 	}
@@ -548,18 +703,23 @@ func schemaElementTypeOf(s *format.SchemaElement) Type {
 }
 
 func schemaRepetitionTypeOf(s *format.SchemaElement) format.FieldRepetitionType {
-	if s.RepetitionType != nil {
-		return *s.RepetitionType
+	if s.RepetitionType.Valid {
+		return s.RepetitionType.V
 	}
 	return format.Required
 }
 
-func (c *Column) decompress(compressedPageData []byte, uncompressedPageSize int32) (page *buffer, err error) {
+func (c *Column) decompress(compressedPageData []byte, uncompressedPageSize int32) (page *buffer[byte], err error) {
 	page = buffers.get(int(uncompressedPageSize))
-	page.data, err = c.compression.Decode(page.data, compressedPageData)
-	if err != nil {
+	decoded, err := c.compression.Decode(page.data.Slice(), compressedPageData)
+	switch {
+	case err != nil:
 		page.unref()
 		page = nil
+	case len(decoded) < int(uncompressedPageSize):
+		page.data.Resize(len(decoded))
+	case len(decoded) > int(uncompressedPageSize):
+		page.data = memory.SliceBufferFrom(decoded)
 	}
 	return page, err
 }
@@ -567,24 +727,28 @@ func (c *Column) decompress(compressedPageData []byte, uncompressedPageSize int3
 // DecodeDataPageV1 decodes a data page from the header, compressed data, and
 // optional dictionary passed as arguments.
 func (c *Column) DecodeDataPageV1(header DataPageHeaderV1, page []byte, dict Dictionary) (Page, error) {
-	return c.decodeDataPageV1(header, &buffer{data: page}, dict, -1)
+	return c.decodeDataPageV1(header, newBuffer(page), dict, -1)
 }
 
-func (c *Column) decodeDataPageV1(header DataPageHeaderV1, page *buffer, dict Dictionary, size int32) (Page, error) {
-	var pageData = page.data
-	var err error
+func (c *Column) decodeDataPageV1(header DataPageHeaderV1, page *buffer[byte], dict Dictionary, size int32) (Page, error) {
+	var (
+		pageData = page.data.Slice()
+		err      error
+	)
 
 	if isCompressed(c.compression) {
 		if page, err = c.decompress(pageData, size); err != nil {
 			return nil, fmt.Errorf("decompressing data page v1: %w", err)
 		}
 		defer page.unref()
-		pageData = page.data
+		pageData = page.data.Slice()
 	}
 
-	var numValues = int(header.NumValues())
-	var repetitionLevels *buffer
-	var definitionLevels *buffer
+	var (
+		numValues        = int(header.NumValues())
+		repetitionLevels *buffer[byte]
+		definitionLevels *buffer[byte]
+	)
 
 	if c.maxRepetitionLevel > 0 {
 		encoding := lookupLevelEncoding(header.RepetitionLevelEncoding(), c.maxRepetitionLevel)
@@ -605,7 +769,7 @@ func (c *Column) decodeDataPageV1(header DataPageHeaderV1, page *buffer, dict Di
 
 		// Data pages v1 did not embed the number of null values,
 		// so we have to compute it from the definition levels.
-		numValues -= countLevelsNotEqual(definitionLevels.data, c.maxDefinitionLevel)
+		numValues -= countLevelsNotEqual(definitionLevels.data.Slice(), c.maxDefinitionLevel)
 	}
 
 	return c.decodeDataPage(header, numValues, repetitionLevels, definitionLevels, page, pageData, dict)
@@ -614,15 +778,16 @@ func (c *Column) decodeDataPageV1(header DataPageHeaderV1, page *buffer, dict Di
 // DecodeDataPageV2 decodes a data page from the header, compressed data, and
 // optional dictionary passed as arguments.
 func (c *Column) DecodeDataPageV2(header DataPageHeaderV2, page []byte, dict Dictionary) (Page, error) {
-	return c.decodeDataPageV2(header, &buffer{data: page}, dict, -1)
+	return c.decodeDataPageV2(header, newBuffer(page), dict, -1)
 }
 
-func (c *Column) decodeDataPageV2(header DataPageHeaderV2, page *buffer, dict Dictionary, size int32) (Page, error) {
-	var numValues = int(header.NumValues())
-	var pageData = page.data
+func (c *Column) decodeDataPageV2(header DataPageHeaderV2, page *buffer[byte], dict Dictionary, size int32) (Page, error) {
+	numValues := int(header.NumValues())
+	pageData := page.data.Slice()
 	var err error
-	var repetitionLevels *buffer
-	var definitionLevels *buffer
+
+	var repetitionLevels *buffer[byte]
+	var definitionLevels *buffer[byte]
 
 	if length := header.RepetitionLevelsByteLength(); length > 0 {
 		if c.maxRepetitionLevel == 0 {
@@ -642,9 +807,10 @@ func (c *Column) decodeDataPageV2(header DataPageHeaderV2, page *buffer, dict Di
 		if repetitionLevels != nil {
 			defer repetitionLevels.unref()
 
-			if len(repetitionLevels.data) != 0 && repetitionLevels.data[0] != 0 {
+			repLevels := repetitionLevels.data.Slice()
+			if len(repLevels) != 0 && repLevels[0] != 0 {
 				return nil, fmt.Errorf("%w: first repetition level for column %d (%s) is %d instead of zero, indicating that the page contains trailing values from the previous page (this is forbidden for data pages v2)",
-					ErrMalformedRepetitionLevel, c.Index(), c.Name(), repetitionLevels.data[0])
+					ErrMalformedRepetitionLevel, c.Index(), c.Name(), repLevels[0])
 			}
 		}
 	}
@@ -669,16 +835,17 @@ func (c *Column) decodeDataPageV2(header DataPageHeaderV2, page *buffer, dict Di
 			return nil, fmt.Errorf("decompressing data page v2: %w", err)
 		}
 		defer page.unref()
-		pageData = page.data
+		pageData = page.data.Slice()
 	}
 
 	numValues -= int(header.NumNulls())
 	return c.decodeDataPage(header, numValues, repetitionLevels, definitionLevels, page, pageData, dict)
 }
 
-func (c *Column) decodeDataPage(header DataPageHeader, numValues int, repetitionLevels, definitionLevels, page *buffer, data []byte, dict Dictionary) (Page, error) {
+func (c *Column) decodeDataPage(header DataPageHeader, numValues int, repetitionLevels, definitionLevels, page *buffer[byte], data []byte, dict Dictionary) (Page, error) {
 	pageEncoding := LookupEncoding(header.Encoding())
 	pageType := c.Type()
+	pageKind := pageType.Kind()
 
 	if isDictionaryEncoding(pageEncoding) {
 		// In some legacy configurations, the PLAIN_DICTIONARY encoding is used
@@ -689,30 +856,37 @@ func (c *Column) decodeDataPage(header DataPageHeader, numValues int, repetition
 		pageType = indexedPageType{newIndexedType(pageType, dict)}
 	}
 
-	var vbuf, obuf *buffer
-	var pageValues []byte
+	var obuf *buffer[uint32]
+	var vbuf *buffer[byte]
 	var pageOffsets []uint32
-
-	if pageEncoding.CanDecodeInPlace() {
+	var pageValues []byte
+	switch {
+	case pageEncoding.CanDecodeInPlace():
 		vbuf = page
 		pageValues = data
-	} else {
+	default:
 		vbuf = buffers.get(pageType.EstimateDecodeSize(numValues, data, pageEncoding))
 		defer vbuf.unref()
-		pageValues = vbuf.data
+		pageValues = vbuf.data.Slice()
 	}
 
 	// Page offsets not needed when dictionary-encoded
-	if pageType.Kind() == ByteArray && !isDictionaryEncoding(pageEncoding) {
-		obuf = buffers.get(4 * (numValues + 1))
+	if pageKind == ByteArray && !isDictionaryEncoding(pageEncoding) {
+		obuf = offsets.get(numValues + 1)
 		defer obuf.unref()
-		pageOffsets = unsafecast.Slice[uint32](obuf.data)
+		pageOffsets = obuf.data.Slice()
 	}
 
 	values := pageType.NewValues(pageValues, pageOffsets)
 	values, err := pageType.Decode(values, data, pageEncoding)
 	if err != nil {
 		return nil, err
+	}
+
+	if !isDictionaryEncoding(pageEncoding) {
+		if err := checkPageDataCapacity(pageKind, c.Type().Length(), numValues, values); err != nil {
+			return nil, err
+		}
 	}
 
 	newPage := pageType.NewPage(c.Index(), numValues, values)
@@ -722,21 +896,21 @@ func (c *Column) decodeDataPage(header DataPageHeader, numValues int, repetition
 			newPage,
 			c.maxRepetitionLevel,
 			c.maxDefinitionLevel,
-			repetitionLevels.data,
-			definitionLevels.data,
+			repetitionLevels.data.Slice(),
+			definitionLevels.data.Slice(),
 		)
 	case c.maxDefinitionLevel > 0:
 		newPage = newOptionalPage(
 			newPage,
 			c.maxDefinitionLevel,
-			definitionLevels.data,
+			definitionLevels.data.Slice(),
 		)
 	}
 
-	return newBufferedPage(newPage, vbuf, obuf, repetitionLevels, definitionLevels), nil
+	return newBufferedPage(newPage, obuf, vbuf, definitionLevels, repetitionLevels), nil
 }
 
-func decodeLevelsV1(enc encoding.Encoding, numValues int, data []byte) (*buffer, []byte, error) {
+func decodeLevelsV1(enc encoding.Encoding, numValues int, data []byte) (*buffer[byte], []byte, error) {
 	if len(data) < 4 {
 		return nil, data, io.ErrUnexpectedEOF
 	}
@@ -749,23 +923,25 @@ func decodeLevelsV1(enc encoding.Encoding, numValues int, data []byte) (*buffer,
 	return levels, data[j:], err
 }
 
-func decodeLevelsV2(enc encoding.Encoding, numValues int, data []byte, length int64) (*buffer, []byte, error) {
+func decodeLevelsV2(enc encoding.Encoding, numValues int, data []byte, length int64) (*buffer[byte], []byte, error) {
 	levels, err := decodeLevels(enc, numValues, data[:length])
 	return levels, data[length:], err
 }
 
-func decodeLevels(enc encoding.Encoding, numValues int, data []byte) (levels *buffer, err error) {
+func decodeLevels(enc encoding.Encoding, numValues int, data []byte) (levels *buffer[byte], err error) {
 	levels = buffers.get(numValues)
-	levels.data, err = enc.DecodeLevels(levels.data, data)
+	decoded, err := enc.DecodeLevels(levels.data.Slice(), data)
 	if err != nil {
 		levels.unref()
 		levels = nil
 	} else {
+		levels.data.Resize(0)
+		levels.data.Append(decoded...)
 		switch {
-		case len(levels.data) < numValues:
-			err = fmt.Errorf("decoding level expected %d values but got only %d", numValues, len(levels.data))
-		case len(levels.data) > numValues:
-			levels.data = levels.data[:numValues]
+		case levels.data.Len() < numValues:
+			err = fmt.Errorf("decoding level expected %d values but got only %d", numValues, levels.data.Len())
+		case levels.data.Len() > numValues:
+			levels.data.Resize(numValues)
 		}
 	}
 	return levels, err
@@ -781,11 +957,11 @@ func skipLevelsV2(data []byte, length int64) ([]byte, error) {
 // DecodeDictionary decodes a data page from the header and compressed data
 // passed as arguments.
 func (c *Column) DecodeDictionary(header DictionaryPageHeader, page []byte) (Dictionary, error) {
-	return c.decodeDictionary(header, &buffer{data: page}, -1)
+	return c.decodeDictionary(header, newBuffer(page), -1)
 }
 
-func (c *Column) decodeDictionary(header DictionaryPageHeader, page *buffer, size int32) (Dictionary, error) {
-	pageData := page.data
+func (c *Column) decodeDictionary(header DictionaryPageHeader, page *buffer[byte], size int32) (Dictionary, error) {
+	pageData := page.data.Slice()
 
 	if isCompressed(c.compression) {
 		var err error
@@ -793,7 +969,7 @@ func (c *Column) decodeDictionary(header DictionaryPageHeader, page *buffer, siz
 			return nil, fmt.Errorf("decompressing dictionary page: %w", err)
 		}
 		defer page.unref()
-		pageData = page.data
+		pageData = page.data.Slice()
 	}
 
 	pageType := c.Type()
@@ -810,9 +986,35 @@ func (c *Column) decodeDictionary(header DictionaryPageHeader, page *buffer, siz
 	if err != nil {
 		return nil, err
 	}
+	if err := checkPageDataCapacity(pageType.Kind(), pageType.Length(), numValues, values); err != nil {
+		return nil, err
+	}
 	return pageType.NewDictionary(int(c.index), numValues, values), nil
 }
 
-var (
-	_ Node = (*Column)(nil)
-)
+// check data buffer has enough capacity for the nubmer of values & value type
+func checkPageDataCapacity(kind Kind, typeLength, numValues int, values encoding.Values) error {
+	n := int64(numValues)
+	var need int64
+	switch kind {
+	case Boolean: // bit packed
+		need = (n + 7) / 8
+	case Int32, Float:
+		need = 4 * n
+	case Int64, Double:
+		need = 8 * n
+	case Int96:
+		need = 12 * n
+	case FixedLenByteArray:
+		need = int64(typeLength) * n
+	default:
+		return nil
+	}
+	data, _ := values.Data()
+	if int64(cap(data)) < need {
+		return fmt.Errorf("page header declares %d values requiring %d bytes but decoded buffer holds only %d: %w", numValues, need, cap(data), ErrCorrupted)
+	}
+	return nil
+}
+
+var _ Node = (*Column)(nil)

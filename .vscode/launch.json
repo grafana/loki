@@ -1,0 +1,76 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Debug Specified Test",
+      "type": "go",
+      "request": "launch",
+      "mode": "test",
+      "program": "${fileDirname}",
+      "args": [
+        "-test.run",
+        "^${input:testName}$"
+      ],
+      "showLog": true,
+      "trace": "verbose"
+    },
+    {
+      "name": "Attach to Process",
+      "type": "go",
+      "request": "attach",
+      "mode": "local",
+      "processId": "${command:pickProcess}"
+    },
+    {
+      "name": "Debug Loki",
+      "type": "go",
+      "request": "launch",
+      "mode": "debug",
+      "program": "${workspaceFolder}/cmd/loki",
+      "args": [
+        "-config.file=${workspaceFolder}/cmd/loki/loki-local-config.yaml"
+      ],
+      "showLog": true
+    },
+    {
+      "name": "Debug Loki (Custom Config)",
+      "type": "go",
+      "request": "launch",
+      "mode": "debug",
+      "program": "${workspaceFolder}/cmd/loki",
+      "args": [
+        "-config.file=${input:configFile}"
+      ],
+      "showLog": true
+    },
+    {
+      "name": "Debug Remote Process (dlv connect)",
+      "type": "go",
+      "request": "attach",
+      "mode": "remote",
+      "remotePath": "${workspaceFolder}",
+      "port": "${input:port}",
+      "host": "localhost"
+    }
+  ],
+  "inputs": [
+    {
+      "id": "configFile",
+      "type": "promptString",
+      "description": "Path to Loki config file",
+      "default": "${workspaceFolder}/cmd/loki/loki-local-config.yaml"
+    },
+    {
+      "id": "testName",
+      "type": "promptString",
+      "description": "Test name to run"
+    },
+    {
+      "id": "port",
+      "type": "promptString",
+      "description": "Port to connect to",
+      "default": 18001
+    }
+  ]
+}
+

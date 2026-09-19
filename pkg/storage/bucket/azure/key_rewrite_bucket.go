@@ -15,7 +15,7 @@ type keyRewriteBucket struct {
 }
 
 func (b *keyRewriteBucket) rewriteKey(key string) string {
-	return strings.Replace(key, ":", b.delimiter, -1)
+	return strings.ReplaceAll(key, ":", b.delimiter)
 }
 
 func (b *keyRewriteBucket) Get(ctx context.Context, name string) (io.ReadCloser, error) {

@@ -6,61 +6,28 @@
 
 package internal
 
-import (
-	"go.opentelemetry.io/collector/pdata/internal/json"
-)
-
-type StringSlice struct {
+type StringSliceWrapper struct {
 	orig  *[]string
 	state *State
 }
 
-func GetOrigStringSlice(ms StringSlice) *[]string {
+func GetStringSliceOrig(ms StringSliceWrapper) *[]string {
 	return ms.orig
 }
 
-func GetStringSliceState(ms StringSlice) *State {
+func GetStringSliceState(ms StringSliceWrapper) *State {
 	return ms.state
 }
 
-func NewStringSlice(orig *[]string, state *State) StringSlice {
-	return StringSlice{orig: orig, state: state}
+func NewStringSliceWrapper(orig *[]string, state *State) StringSliceWrapper {
+	return StringSliceWrapper{orig: orig, state: state}
 }
 
-func CopyOrigStringSlice(dst, src []string) []string {
-	dst = dst[:0]
-	return append(dst, src...)
+func GenTestStringSliceWrapper() StringSliceWrapper {
+	orig := []string{"a", "b", "c"}
+	return NewStringSliceWrapper(&orig, NewState())
 }
 
-func FillTestStringSlice(ms StringSlice) {
-	*ms.orig = []string{"a", "b", "c"}
-}
-
-func GenerateTestStringSlice() StringSlice {
-	orig := []string(nil)
-	state := StateMutable
-	ms := NewStringSlice(&orig, &state)
-	FillTestStringSlice(ms)
-	return ms
-}
-
-// MarshalJSONStreamStringSlice marshals all properties from the current struct to the destination stream.
-func MarshalJSONStreamStringSlice(ms StringSlice, dest *json.Stream) {
-	dest.WriteArrayStart()
-	if len(*ms.orig) > 0 {
-		dest.WriteString((*ms.orig)[0])
-	}
-	for i := 1; i < len((*ms.orig)); i++ {
-		dest.WriteMore()
-		dest.WriteString((*ms.orig)[i])
-	}
-	dest.WriteArrayEnd()
-}
-
-// UnmarshalJSONIterStringSlice unmarshals all properties from the current struct from the source iterator.
-func UnmarshalJSONIterStringSlice(ms StringSlice, iter *json.Iterator) {
-	iter.ReadArrayCB(func(iter *json.Iterator) bool {
-		*ms.orig = append(*ms.orig, iter.ReadString())
-		return true
-	})
+func GenTestStringSlice() []string {
+	return []string{"a", "b", "c"}
 }

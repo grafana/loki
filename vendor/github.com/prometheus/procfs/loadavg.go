@@ -1,4 +1,4 @@
-// Copyright 2019 The Prometheus Authors
+// Copyright The Prometheus Authors
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
@@ -18,7 +18,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/prometheus/procfs/internal/util"
+	"github.com/prometheus/procfs/internal/parsers"
 )
 
 // LoadAvg represents an entry in /proc/loadavg.
@@ -32,7 +32,7 @@ type LoadAvg struct {
 func (fs FS) LoadAvg() (*LoadAvg, error) {
 	path := fs.proc.Path("loadavg")
 
-	data, err := util.ReadFileNoStat(path)
+	data, err := parsers.ReadFileNoStat(path)
 	if err != nil {
 		return nil, err
 	}

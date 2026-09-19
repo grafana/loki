@@ -48,6 +48,10 @@ func BuildOptions(ctx context.Context, log logr.Logger, k k8s.Client, stack *lok
 		}
 	}
 
+	if err = validateTLSConfig(ctx, k, stack); err != nil {
+		return "", tenants, err
+	}
+
 	switch stack.Spec.Tenants.Mode {
 	case lokiv1.OpenshiftLogging, lokiv1.OpenshiftNetwork:
 		baseDomain, err = getOpenShiftBaseDomain(ctx, k)
@@ -64,6 +68,10 @@ func BuildOptions(ctx context.Context, log logr.Logger, k k8s.Client, stack *lok
 			}
 
 			stack.Spec.Proxy = ocpProxy
+		}
+	case lokiv1.Passthrough:
+		if degradedErr := validatePassthroughCA(ctx, k, fg.HTTPEncryption, stack); degradedErr != nil {
+			return "", tenants, degradedErr
 		}
 	default:
 		secrets, err = getTenantSecrets(ctx, k, stack)

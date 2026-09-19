@@ -136,7 +136,7 @@ func TestIndexRW_Create_Open(t *testing.T) {
 	_, err = iw.Close(false)
 	require.NoError(t, err)
 
-	ir, err := NewFileReader(fn)
+	ir, err := NewMmapFileReader(fn)
 	require.NoError(t, err)
 	require.NoError(t, ir.Close())
 
@@ -147,8 +147,23 @@ func TestIndexRW_Create_Open(t *testing.T) {
 	require.NoError(t, err)
 	f.Close()
 
-	_, err = NewFileReader(dir)
+	_, err = NewMmapFileReader(dir)
 	require.Error(t, err)
+}
+
+func TestIndexRW_Create_Open_V4(t *testing.T) {
+	dir := t.TempDir()
+	fn := filepath.Join(dir, IndexFilename)
+
+	iw, err := NewWriter(context.Background(), FormatV4, fn)
+	require.NoError(t, err)
+	_, err = iw.Close(false)
+	require.NoError(t, err)
+
+	ir, err := NewMmapFileReader(fn)
+	require.NoError(t, err)
+	require.Equal(t, FormatV4, ir.Version())
+	require.NoError(t, ir.Close())
 }
 
 func TestIndexRW_Postings(t *testing.T) {
@@ -183,7 +198,7 @@ func TestIndexRW_Postings(t *testing.T) {
 	_, err = iw.Close(false)
 	require.NoError(t, err)
 
-	ir, err := NewFileReader(fn)
+	ir, err := NewMmapFileReader(fn)
 	require.NoError(t, err)
 
 	p, err := ir.Postings("a", nil, "1")
@@ -272,7 +287,7 @@ func TestPostingsMany(t *testing.T) {
 	_, err = iw.Close(false)
 	require.NoError(t, err)
 
-	ir, err := NewFileReader(fn)
+	ir, err := NewMmapFileReader(fn)
 	require.NoError(t, err)
 	defer func() { require.NoError(t, ir.Close()) }()
 
@@ -413,7 +428,7 @@ func TestPersistence_index_e2e(t *testing.T) {
 	_, err = iw.Close(false)
 	require.NoError(t, err)
 
-	ir, err := NewFileReader(filepath.Join(dir, IndexFilename))
+	ir, err := NewMmapFileReader(filepath.Join(dir, IndexFilename))
 	require.NoError(t, err)
 
 	for p := range mi.postings {
@@ -486,7 +501,7 @@ func TestDecbufUvarintWithInvalidBuffer(t *testing.T) {
 func TestReaderWithInvalidBuffer(t *testing.T) {
 	b := RealByteSlice([]byte{0x81, 0x81, 0x81, 0x81, 0x81, 0x81})
 
-	_, err := NewReader(b)
+	_, err := NewByteSliceReader(b)
 	require.Error(t, err)
 }
 
@@ -498,7 +513,7 @@ func TestNewFileReaderErrorNoOpenFiles(t *testing.T) {
 	err := os.WriteFile(idxName, []byte("corrupted contents"), 0o666)
 	require.NoError(t, err)
 
-	_, err = NewFileReader(idxName)
+	_, err = NewMmapFileReader(idxName)
 	require.Error(t, err)
 
 	// dir.Close will fail on Win if idxName fd is not closed on error path.
@@ -521,7 +536,7 @@ func TestSymbols(t *testing.T) {
 	checksum := crc32.Checksum(buf.Get()[symbolsStart+4:], castagnoliTable)
 	buf.PutBE32(checksum) // Check sum at the end.
 
-	s, err := NewSymbols(RealByteSlice(buf.Get()), FormatV2, symbolsStart)
+	s, err := NewSymbols(RealByteSlice(buf.Get()), symbolsStart)
 	require.NoError(t, err)
 
 	// We store only 4 offsets to symbols.
@@ -729,7 +744,8 @@ func TestDecoder_ChunkSamples(t *testing.T) {
 		},
 	} {
 		t.Run(name, func(t *testing.T) {
-			iw, err := NewFileWriterWithVersion(context.Background(), FormatV2, filepath.Join(dir, name))
+			chunkSampleTestFormat := FormatV2
+			iw, err := NewFileWriterWithVersion(context.Background(), chunkSampleTestFormat, filepath.Join(dir, name))
 			require.NoError(t, err)
 
 			syms := []string{}
@@ -749,7 +765,7 @@ func TestDecoder_ChunkSamples(t *testing.T) {
 			_, err = iw.Close(false)
 			require.NoError(t, err)
 
-			ir, err := NewFileReader(filepath.Join(dir, name))
+			ir, err := NewMmapFileReader(filepath.Join(dir, name))
 			require.NoError(t, err)
 
 			postings, err := ir.Postings("fizz", nil, "buzz")
@@ -796,7 +812,7 @@ func TestDecoder_ChunkSamples(t *testing.T) {
 				dw := encoding.DecWrap(tsdb_enc.Decbuf{B: d.Get()})
 				dw.Skip(cs.offset)
 				chunkMeta := ChunkMeta{}
-				require.NoError(t, readChunkMeta(&dw, cs.prevChunkMaxt, &chunkMeta))
+				require.NoError(t, readChunkMeta(chunkSampleTestFormat, &dw, cs.prevChunkMaxt, &chunkMeta))
 				require.Equal(t, tc.chunkMetas[tc.expectedChunkSamples[i].idx], chunkMeta)
 			}
 
@@ -1011,7 +1027,7 @@ func BenchmarkInitReader_ReadOffsetTable(b *testing.B) {
 	b.ResetTimer()
 	b.ReportAllocs()
 	for i := 0; i < b.N; i++ {
-		r, err := newReader(RealByteSlice(bs), io.NopCloser(nil))
+		r, err := newByteSliceReader(RealByteSlice(bs), io.NopCloser(nil))
 		require.NoError(b, err)
 		require.NoError(b, r.Close())
 	}

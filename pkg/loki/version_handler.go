@@ -4,21 +4,12 @@ import (
 	"encoding/json"
 	"net/http"
 
-	prom "github.com/prometheus/prometheus/web/api/v1"
-
 	"github.com/grafana/loki/v3/pkg/util/build"
 )
 
 func versionHandler() http.HandlerFunc {
 	return func(w http.ResponseWriter, _ *http.Request) {
-		info := prom.PrometheusVersion{
-			Version:   build.Version,
-			Revision:  build.Revision,
-			Branch:    build.Branch,
-			BuildUser: build.BuildUser,
-			BuildDate: build.BuildDate,
-			GoVersion: build.GoVersion,
-		}
+		info := build.GetVersion()
 
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)

@@ -702,6 +702,16 @@ func (m *OutputConfig) MarshalToSizedBufferVTStrict(dAtA []byte) (int, error) {
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
 	}
+	if m.MinStreamedSentBytes != nil {
+		size, err := (*wrapperspb.UInt32Value)(m.MinStreamedSentBytes).MarshalToSizedBufferVTStrict(dAtA[:i])
+		if err != nil {
+			return 0, err
+		}
+		i -= size
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		i--
+		dAtA[i] = 0x2a
+	}
 	if m.Streaming {
 		i--
 		if m.Streaming {
@@ -1428,6 +1438,10 @@ func (m *OutputConfig) SizeVT() (n int) {
 	}
 	if m.Streaming {
 		n += 2
+	}
+	if m.MinStreamedSentBytes != nil {
+		l = (*wrapperspb.UInt32Value)(m.MinStreamedSentBytes).SizeVT()
+		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
 	}
 	n += len(m.unknownFields)
 	return n

@@ -1,0 +1,31 @@
+// Copyright The OpenTelemetry Authors
+// SPDX-License-Identifier: Apache-2.0
+
+package internal // import "go.opentelemetry.io/collector/confmap/internal"
+
+type MarshalOption interface {
+	apply(*MarshalOptions)
+}
+
+// MarshalOptions is used by (*Conf).Marshal to toggle unmarshaling settings.
+// It is in the `internal` package so experimental options can be added in xconfmap.
+type MarshalOptions struct {
+	// OpaqueUnredacted specifies whether opaque strings should be marshaled unredacted.
+	OpaqueUnredacted bool
+}
+
+type MarshalOptionFunc func(*MarshalOptions)
+
+func (fn MarshalOptionFunc) apply(set *MarshalOptions) {
+	fn(set)
+}
+
+func ApplyMarshalOptions(set *MarshalOptions, opts []MarshalOption) *MarshalOptions {
+	if set == nil {
+		set = &MarshalOptions{}
+	}
+	for _, opt := range opts {
+		opt.apply(set)
+	}
+	return set
+}

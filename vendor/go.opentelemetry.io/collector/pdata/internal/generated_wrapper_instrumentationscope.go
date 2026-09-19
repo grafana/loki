@@ -6,68 +6,23 @@
 
 package internal
 
-import (
-	otlpcommon "go.opentelemetry.io/collector/pdata/internal/data/protogen/common/v1"
-	"go.opentelemetry.io/collector/pdata/internal/json"
-)
-
-type InstrumentationScope struct {
-	orig  *otlpcommon.InstrumentationScope
+type InstrumentationScopeWrapper struct {
+	orig  *InstrumentationScope
 	state *State
 }
 
-func GetOrigInstrumentationScope(ms InstrumentationScope) *otlpcommon.InstrumentationScope {
+func GetInstrumentationScopeOrig(ms InstrumentationScopeWrapper) *InstrumentationScope {
 	return ms.orig
 }
 
-func GetInstrumentationScopeState(ms InstrumentationScope) *State {
+func GetInstrumentationScopeState(ms InstrumentationScopeWrapper) *State {
 	return ms.state
 }
 
-func NewInstrumentationScope(orig *otlpcommon.InstrumentationScope, state *State) InstrumentationScope {
-	return InstrumentationScope{orig: orig, state: state}
+func NewInstrumentationScopeWrapper(orig *InstrumentationScope, state *State) InstrumentationScopeWrapper {
+	return InstrumentationScopeWrapper{orig: orig, state: state}
 }
 
-func CopyOrigInstrumentationScope(dest, src *otlpcommon.InstrumentationScope) {
-	dest.Name = src.Name
-	dest.Version = src.Version
-	dest.Attributes = CopyOrigMap(dest.Attributes, src.Attributes)
-	dest.DroppedAttributesCount = src.DroppedAttributesCount
-}
-
-func GenerateTestInstrumentationScope() InstrumentationScope {
-	orig := otlpcommon.InstrumentationScope{}
-	state := StateMutable
-	tv := NewInstrumentationScope(&orig, &state)
-	FillTestInstrumentationScope(tv)
-	return tv
-}
-
-func FillTestInstrumentationScope(tv InstrumentationScope) {
-	tv.orig.Name = "test_name"
-	tv.orig.Version = "test_version"
-	FillTestMap(NewMap(&tv.orig.Attributes, tv.state))
-	tv.orig.DroppedAttributesCount = uint32(17)
-}
-
-// MarshalJSONStream marshals all properties from the current struct to the destination stream.
-func MarshalJSONStreamInstrumentationScope(ms InstrumentationScope, dest *json.Stream) {
-	dest.WriteObjectStart()
-	if ms.orig.Name != "" {
-		dest.WriteObjectField("name")
-		dest.WriteString(ms.orig.Name)
-	}
-	if ms.orig.Version != "" {
-		dest.WriteObjectField("version")
-		dest.WriteString(ms.orig.Version)
-	}
-	if len(ms.orig.Attributes) > 0 {
-		dest.WriteObjectField("attributes")
-		MarshalJSONStreamMap(NewMap(&ms.orig.Attributes, ms.state), dest)
-	}
-	if ms.orig.DroppedAttributesCount != uint32(0) {
-		dest.WriteObjectField("droppedAttributesCount")
-		dest.WriteUint32(ms.orig.DroppedAttributesCount)
-	}
-	dest.WriteObjectEnd()
+func GenTestInstrumentationScopeWrapper() InstrumentationScopeWrapper {
+	return NewInstrumentationScopeWrapper(GenTestInstrumentationScope(), NewState())
 }

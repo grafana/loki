@@ -22,7 +22,13 @@ import (
 // fields can be get and set using the following methods:
 //   - Uint16/SetUint16: flags
 //   - Uint32/SetUint32: ifindex, metric, mtu
-type Ifreq struct{ raw ifreq }
+type Ifreq struct {
+	// Aligns the union for the accessors below, which cast it in place;
+	// the generated ifreq is all byte arrays, so its alignment is one.
+	_ [0]int64
+
+	raw ifreq
+}
 
 // NewIfreq creates an Ifreq with the input network interface name after
 // validating the name does not exceed IFNAMSIZ-1 (trailing NULL required)
@@ -111,9 +117,7 @@ func (ifr *Ifreq) SetUint32(v uint32) {
 // clear zeroes the ifreq's union field to prevent trailing garbage data from
 // being sent to the kernel if an ifreq is reused.
 func (ifr *Ifreq) clear() {
-	for i := range ifr.raw.Ifru {
-		ifr.raw.Ifru[i] = 0
-	}
+	clear(ifr.raw.Ifru[:])
 }
 
 // TODO(mdlayher): export as IfreqData? For now we can provide helpers such as

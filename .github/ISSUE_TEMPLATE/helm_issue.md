@@ -122,6 +122,6 @@ body:
         - Kubernetes cluster details (version, provider)
         - Storage backend being used (filesystem, S3, GCS, Azure, etc.)
         - Log volume or specific error messages
-        - Related components (Grafana, Alloy, Promtail, etc.)
+        - Related components (Grafana, Alloy, Collector, etc.)
     validations:
       required: false

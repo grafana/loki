@@ -4,13 +4,14 @@ import (
 	"fmt"
 	"slices"
 
+	"github.com/grafana/dskit/flagext"
+	yaml "go.yaml.in/yaml/v4"
+
 	"github.com/grafana/loki/v3/pkg/storage/bucket/azure"
 	"github.com/grafana/loki/v3/pkg/storage/bucket/filesystem"
 	"github.com/grafana/loki/v3/pkg/storage/bucket/gcs"
 	"github.com/grafana/loki/v3/pkg/storage/bucket/s3"
 	"github.com/grafana/loki/v3/pkg/storage/bucket/swift"
-
-	"github.com/grafana/dskit/flagext"
 )
 
 // NamedStores helps configure additional object stores from a given storage provider
@@ -102,47 +103,47 @@ func (ns *NamedStores) Exists(name string) bool {
 func (ns *NamedStores) OverrideConfig(storeCfg *Config, namedStore string) error {
 	storeType, ok := ns.LookupStoreType(namedStore)
 	if !ok {
-		return fmt.Errorf("Unrecognized named storage config %s", namedStore)
+		return fmt.Errorf("unrecognized named storage config %s", namedStore)
 	}
 
 	switch storeType {
 	case GCS:
 		nsCfg, ok := ns.GCS[namedStore]
 		if !ok {
-			return fmt.Errorf("Unrecognized named gcs storage config %s", namedStore)
+			return fmt.Errorf("unrecognized named gcs storage config %s", namedStore)
 		}
 
 		storeCfg.GCS = (gcs.Config)(nsCfg)
 	case S3:
 		nsCfg, ok := ns.S3[namedStore]
 		if !ok {
-			return fmt.Errorf("Unrecognized named s3 storage config %s", namedStore)
+			return fmt.Errorf("unrecognized named s3 storage config %s", namedStore)
 		}
 
 		storeCfg.S3 = (s3.Config)(nsCfg)
 	case Filesystem:
 		nsCfg, ok := ns.Filesystem[namedStore]
 		if !ok {
-			return fmt.Errorf("Unrecognized named filesystem storage config %s", namedStore)
+			return fmt.Errorf("unrecognized named filesystem storage config %s", namedStore)
 		}
 
 		storeCfg.Filesystem = (filesystem.Config)(nsCfg)
 	case Azure:
 		nsCfg, ok := ns.Azure[namedStore]
 		if !ok {
-			return fmt.Errorf("Unrecognized named azure storage config %s", namedStore)
+			return fmt.Errorf("unrecognized named azure storage config %s", namedStore)
 		}
 
 		storeCfg.Azure = (azure.Config)(nsCfg)
 	case Swift:
 		nsCfg, ok := ns.Swift[namedStore]
 		if !ok {
-			return fmt.Errorf("Unrecognized named swift storage config %s", namedStore)
+			return fmt.Errorf("unrecognized named swift storage config %s", namedStore)
 		}
 
 		storeCfg.Swift = (swift.Config)(nsCfg)
 	default:
-		return fmt.Errorf("Unrecognized named storage type: %s", storeType)
+		return fmt.Errorf("unrecognized named storage type: %s", storeType)
 	}
 
 	return nil
@@ -162,9 +163,11 @@ func (ns *NamedStores) OverrideConfig(storeCfg *Config, namedStore string) error
 type NamedS3StorageConfig s3.Config
 
 // UnmarshalYAML implements the yaml.Unmarshaler interface.
-func (cfg *NamedS3StorageConfig) UnmarshalYAML(unmarshal func(interface{}) error) error {
+func (cfg *NamedS3StorageConfig) UnmarshalYAML(value *yaml.Node) error {
 	flagext.DefaultValues((*s3.Config)(cfg))
-	return unmarshal((*s3.Config)(cfg))
+	// We always want strict config parsing
+	// See https://github.com/yaml/go-yaml/issues/321 and https://github.com/yaml/go-yaml/pull/332
+	return value.Load((*s3.Config)(cfg), yaml.WithKnownFields(true))
 }
 
 func (cfg *NamedS3StorageConfig) Validate() error {
@@ -174,31 +177,39 @@ func (cfg *NamedS3StorageConfig) Validate() error {
 type NamedGCSStorageConfig gcs.Config
 
 // UnmarshalYAML implements the yaml.Unmarshaler interface.
-func (cfg *NamedGCSStorageConfig) UnmarshalYAML(unmarshal func(interface{}) error) error {
+func (cfg *NamedGCSStorageConfig) UnmarshalYAML(value *yaml.Node) error {
 	flagext.DefaultValues((*gcs.Config)(cfg))
-	return unmarshal((*gcs.Config)(cfg))
+	// We always want strict config parsing
+	// See https://github.com/yaml/go-yaml/issues/321 and https://github.com/yaml/go-yaml/pull/332
+	return value.Load((*gcs.Config)(cfg), yaml.WithKnownFields(true))
 }
 
 type NamedAzureStorageConfig azure.Config
 
 // UnmarshalYAML implements the yaml.Unmarshaler interface.
-func (cfg *NamedAzureStorageConfig) UnmarshalYAML(unmarshal func(interface{}) error) error {
+func (cfg *NamedAzureStorageConfig) UnmarshalYAML(value *yaml.Node) error {
 	flagext.DefaultValues((*azure.Config)(cfg))
-	return unmarshal((*azure.Config)(cfg))
+	// We always want strict config parsing
+	// See https://github.com/yaml/go-yaml/issues/321 and https://github.com/yaml/go-yaml/pull/332
+	return value.Load((*azure.Config)(cfg), yaml.WithKnownFields(true))
 }
 
 type NamedSwiftStorageConfig swift.Config
 
 // UnmarshalYAML implements the yaml.Unmarshaler interface.
-func (cfg *NamedSwiftStorageConfig) UnmarshalYAML(unmarshal func(interface{}) error) error {
+func (cfg *NamedSwiftStorageConfig) UnmarshalYAML(value *yaml.Node) error {
 	flagext.DefaultValues((*swift.Config)(cfg))
-	return unmarshal((*swift.Config)(cfg))
+	// We always want strict config parsing
+	// See https://github.com/yaml/go-yaml/issues/321 and https://github.com/yaml/go-yaml/pull/332
+	return value.Load((*swift.Config)(cfg), yaml.WithKnownFields(true))
 }
 
 type NamedFilesystemStorageConfig filesystem.Config
 
 // UnmarshalYAML implements the yaml.Unmarshaler interface.
-func (cfg *NamedFilesystemStorageConfig) UnmarshalYAML(unmarshal func(interface{}) error) error {
+func (cfg *NamedFilesystemStorageConfig) UnmarshalYAML(value *yaml.Node) error {
 	flagext.DefaultValues((*filesystem.Config)(cfg))
-	return unmarshal((*filesystem.Config)(cfg))
+	// We always want strict config parsing
+	// See https://github.com/yaml/go-yaml/issues/321 and https://github.com/yaml/go-yaml/pull/332
+	return value.Load((*filesystem.Config)(cfg), yaml.WithKnownFields(true))
 }

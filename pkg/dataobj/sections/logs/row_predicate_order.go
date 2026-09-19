@@ -1,6 +1,7 @@
 package logs
 
 import (
+	"fmt"
 	"sort"
 
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/dataset"
@@ -54,7 +55,7 @@ func getPredicateSelectivity(p dataset.Predicate) selectivityScore {
 
 	switch p := p.(type) {
 	case dataset.EqualPredicate:
-		info := p.Column.ColumnInfo()
+		info := p.Column.ColumnDesc()
 		if info.Statistics == nil || info.Statistics.CardinalityCount == 0 {
 			return getBaseSelectivity(p)
 		}
@@ -75,7 +76,7 @@ func getPredicateSelectivity(p dataset.Predicate) selectivityScore {
 		return selectivityScore(matchingRows / float64(info.RowsCount))
 
 	case dataset.InPredicate:
-		info := p.Column.ColumnInfo()
+		info := p.Column.ColumnDesc()
 		if info.Statistics == nil || info.Statistics.CardinalityCount == 0 {
 			return getBaseSelectivity(p)
 		}
@@ -106,7 +107,7 @@ func getPredicateSelectivity(p dataset.Predicate) selectivityScore {
 
 	case dataset.GreaterThanPredicate:
 		var (
-			info               = p.Column.ColumnInfo()
+			info               = p.Column.ColumnDesc()
 			minValue, maxValue dataset.Value
 		)
 
@@ -131,7 +132,7 @@ func getPredicateSelectivity(p dataset.Predicate) selectivityScore {
 
 	case dataset.LessThanPredicate:
 		var (
-			info               = p.Column.ColumnInfo()
+			info               = p.Column.ColumnDesc()
 			minValue, maxValue dataset.Value
 		)
 
@@ -171,8 +172,15 @@ func getPredicateSelectivity(p dataset.Predicate) selectivityScore {
 		// For custom functions, we cannot use the stats to estimate selectivity or to prune the rows.
 		// We might want these evaluated towards the end.
 		return selectivityScore(0.7)
+
+	case dataset.FalsePredicate:
+		return noMatchSelectivity
+
+	case dataset.TruePredicate:
+		return matchAllSelectivity
+
 	default:
-		panic("unknown predicate type")
+		panic(fmt.Sprintf("unknown predicate type: %T", p))
 	}
 }
 
@@ -205,15 +213,15 @@ func getRowEvaluationCost(p dataset.Predicate) int64 {
 	dataset.WalkPredicate(p, func(p dataset.Predicate) bool {
 		switch p := p.(type) {
 		case dataset.EqualPredicate:
-			columnSizes[p.Column] = int64(p.Column.ColumnInfo().UncompressedSize)
+			columnSizes[p.Column] = int64(p.Column.ColumnDesc().UncompressedSize)
 		case dataset.InPredicate:
-			columnSizes[p.Column] = int64(p.Column.ColumnInfo().UncompressedSize)
+			columnSizes[p.Column] = int64(p.Column.ColumnDesc().UncompressedSize)
 		case dataset.GreaterThanPredicate:
-			columnSizes[p.Column] = int64(p.Column.ColumnInfo().UncompressedSize)
+			columnSizes[p.Column] = int64(p.Column.ColumnDesc().UncompressedSize)
 		case dataset.LessThanPredicate:
-			columnSizes[p.Column] = int64(p.Column.ColumnInfo().UncompressedSize)
+			columnSizes[p.Column] = int64(p.Column.ColumnDesc().UncompressedSize)
 		case dataset.FuncPredicate:
-			columnSizes[p.Column] = int64(p.Column.ColumnInfo().UncompressedSize)
+			columnSizes[p.Column] = int64(p.Column.ColumnDesc().UncompressedSize)
 		}
 		return true
 	})

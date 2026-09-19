@@ -21,7 +21,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/storage/chunk"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client"
-	chunk_util "github.com/grafana/loki/v3/pkg/storage/chunk/client/util"
 	"github.com/grafana/loki/v3/pkg/util"
 	"github.com/grafana/loki/v3/pkg/util/filter"
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
@@ -29,14 +28,11 @@ import (
 
 var chunkBucket = []byte("chunks")
 
-const (
-	MarkersFolder = "markers"
-)
-
 type Chunk struct {
-	ChunkID string
-	From    model.Time
-	Through model.Time
+	ChunkID    string
+	From       model.Time
+	Through    model.Time
+	IngestedAt model.Time
 }
 
 func (c Chunk) String() string {
@@ -96,7 +92,7 @@ type SeriesIterator interface {
 }
 
 type IndexCleaner interface {
-	RemoveChunk(from, through model.Time, userID []byte, labels labels.Labels, chunkID string) error
+	RemoveChunk(from, through model.Time, userID []byte, labels labels.Labels, chunkID string) (bool, error)
 	// CleanupSeries is for cleaning up the series that do have any chunks left in the index.
 	// It would only be called for the series that have all their chunks deleted without adding new ones.
 	CleanupSeries(userID []byte, lbls labels.Labels) error
@@ -108,13 +104,14 @@ type chunkIndexer interface {
 	// The implementation could skip indexing a chunk due to it not belonging to the table.
 	// ToDo(Sandeep): We already have a check in the caller of IndexChunk to check if the chunk belongs to the table.
 	// See if we can drop the redundant check in the underlying implementation.
-	IndexChunk(chunkRef logproto.ChunkRef, lbls labels.Labels, sizeInKB uint32, logEntriesCount uint32) (chunkIndexed bool, err error)
+	IndexChunk(chunkRef logproto.ChunkRef, lbls labels.Labels, ingestedAt model.Time, sizeInKB uint32, logEntriesCount uint32) (chunkIndexed bool, err error)
 }
 
 type IndexProcessor interface {
 	SeriesIterator
 	chunkIndexer
 	IndexCleaner
+	ChunkExists(userID []byte, lbls labels.Labels, chunkRef logproto.ChunkRef) (bool, error)
 }
 
 var errNoChunksFound = errors.New("no chunks found in table, please check if there are really no chunks and manually drop the table or " +
@@ -129,20 +126,25 @@ type TableMarker interface {
 }
 
 type Marker struct {
-	workingDirectory string
-	expiration       ExpirationChecker
-	markerMetrics    *markerMetrics
-	chunkClient      client.Client
-	markTimeout      time.Duration
+	markerStorageClient client.ObjectClient
+	expiration          ExpirationChecker
+	markerMetrics       *markerMetrics
+	chunkClient         client.Client
+	markTimeout         time.Duration
+
+	// ignoreMissingChunks controls what happens when a chunk we need to rebuild for a delete request
+	// with a line filter is not found in the object storage. See chunkRewriter.ignoreMissingChunks.
+	ignoreMissingChunks bool
 }
 
-func NewMarker(workingDirectory string, expiration ExpirationChecker, markTimeout time.Duration, chunkClient client.Client, r prometheus.Registerer) (*Marker, error) {
+func NewMarker(markerStorageClient client.ObjectClient, expiration ExpirationChecker, markTimeout time.Duration, chunkClient client.Client, ignoreMissingChunks bool, r prometheus.Registerer) (*Marker, error) {
 	return &Marker{
-		workingDirectory: workingDirectory,
-		expiration:       expiration,
-		markerMetrics:    newMarkerMetrics(r),
-		chunkClient:      chunkClient,
-		markTimeout:      markTimeout,
+		markerStorageClient: markerStorageClient,
+		expiration:          expiration,
+		markerMetrics:       newMarkerMetrics(r),
+		chunkClient:         chunkClient,
+		markTimeout:         markTimeout,
+		ignoreMissingChunks: ignoreMissingChunks,
 	}, nil
 }
 
@@ -165,7 +167,7 @@ func (t *Marker) FindAndMarkChunksForDeletion(ctx context.Context, tableName, us
 }
 
 func (t *Marker) markTable(ctx context.Context, tableName, userID string, indexProcessor IndexProcessor, logger log.Logger) (bool, bool, error) {
-	markerWriter, err := NewMarkerStorageWriter(t.workingDirectory)
+	markerWriter, err := NewMarkerWriter(t.markerStorageClient)
 	if err != nil {
 		return false, false, fmt.Errorf("failed to create marker writer: %w", err)
 	}
@@ -174,7 +176,7 @@ func (t *Marker) markTable(ctx context.Context, tableName, userID string, indexP
 		return false, false, ctx.Err()
 	}
 
-	chunkRewriter := newChunkRewriter(t.chunkClient, tableName, indexProcessor)
+	chunkRewriter := newChunkRewriter(t.chunkClient, tableName, indexProcessor, t.ignoreMissingChunks, t.markerMetrics.missingChunksTotal.WithLabelValues(tableName, userID))
 
 	empty, modified, err := markForDelete(ctx, t.markTimeout, tableName, markerWriter, indexProcessor, t.expiration, chunkRewriter, logger)
 	if err != nil {
@@ -200,7 +202,7 @@ func (t *Marker) markTable(ctx context.Context, tableName, userID string, indexP
 
 // MarkChunksForDeletion marks the given list of chunks for deletion
 func (t *Marker) MarkChunksForDeletion(tableName string, chunks []string) error {
-	markerWriter, err := NewMarkerStorageWriter(t.workingDirectory)
+	markerWriter, err := NewMarkerWriter(t.markerStorageClient)
 	if err != nil {
 		return fmt.Errorf("failed to create marker writer: %w", err)
 	}
@@ -303,8 +305,12 @@ func markForDelete(
 							return err
 						}
 					}
-					if err := indexFile.RemoveChunk(c.From, c.Through, s.UserID(), s.Labels(), c.ChunkID); err != nil {
+					chunkExisted, err := indexFile.RemoveChunk(c.From, c.Through, s.UserID(), s.Labels(), c.ChunkID)
+					if err != nil {
 						return fmt.Errorf("failed to remove chunk %s from index with error %s", c.ChunkID, err)
+					}
+					if !chunkExisted {
+						return fmt.Errorf("could not find entry of chunk %s to remove it", c.ChunkID)
 					}
 					continue
 				}
@@ -317,8 +323,12 @@ func markForDelete(
 			if c.Through.After(tableInterval.End) {
 				if expiration.DropFromIndex(s.UserID(), c, labels.EmptyLabels(), tableInterval.End, now) {
 					modified = true
-					if err := indexFile.RemoveChunk(c.From, c.Through, s.UserID(), s.Labels(), c.ChunkID); err != nil {
+					chunkExisted, err := indexFile.RemoveChunk(c.From, c.Through, s.UserID(), s.Labels(), c.ChunkID)
+					if err != nil {
 						return fmt.Errorf("failed to remove chunk %s from index with error %s", c.ChunkID, err)
+					}
+					if !chunkExisted {
+						return fmt.Errorf("could not find entry of chunk %s to remove it", c.ChunkID)
 					}
 					continue
 				}
@@ -387,7 +397,7 @@ type Sweeper struct {
 }
 
 func NewSweeper(
-	workingDir string,
+	markerStorageClient client.ObjectClient,
 	deleteClient ChunkClient,
 	deleteWorkerCount int,
 	minAgeDelete time.Duration,
@@ -396,7 +406,7 @@ func NewSweeper(
 ) (*Sweeper, error) {
 	m := newSweeperMetrics(r)
 
-	p, err := newMarkerStorageReader(workingDir, deleteWorkerCount, minAgeDelete, m)
+	p, err := newMarkerReader(markerStorageClient, deleteWorkerCount, minAgeDelete, m)
 	if err != nil {
 		return nil, err
 	}
@@ -460,13 +470,22 @@ type chunkRewriter struct {
 	chunkClient  client.Client
 	tableName    string
 	chunkIndexer chunkIndexer
+
+	// ignoreMissingChunks makes rewriteChunk treat a chunk which is indexed but not found in the
+	// object storage as a chunk with all of its lines deleted, instead of failing the operation.
+	// This lets delete requests make progress when the index has entries pointing at chunks which
+	// no longer exist in the storage while leaving the chunk entries as is in the index for diagnosing the issue.
+	ignoreMissingChunks bool
+	missingChunksTotal  prometheus.Counter
 }
 
-func newChunkRewriter(chunkClient client.Client, tableName string, chunkIndexer chunkIndexer) *chunkRewriter {
+func newChunkRewriter(chunkClient client.Client, tableName string, chunkIndexer chunkIndexer, ignoreMissingChunks bool, missingChunksTotal prometheus.Counter) *chunkRewriter {
 	return &chunkRewriter{
-		chunkClient:  chunkClient,
-		tableName:    tableName,
-		chunkIndexer: chunkIndexer,
+		chunkClient:         chunkClient,
+		tableName:           tableName,
+		chunkIndexer:        chunkIndexer,
+		ignoreMissingChunks: ignoreMissingChunks,
+		missingChunksTotal:  missingChunksTotal,
 	}
 }
 
@@ -476,6 +495,7 @@ func newChunkRewriter(chunkClient client.Client, tableName string, chunkIndexer 
 // If the newChunk is different, linesDeleted would be true.
 // The newChunk is indexed and uploaded only if it belongs to the current index table being processed,
 // the status of which is set to wroteChunks.
+// If the chunk is not found in the storage and ignoreMissingChunks is set, it is ignored and reported as a no-op.
 func (c *chunkRewriter) rewriteChunk(ctx context.Context, userID []byte, ce Chunk, tableInterval model.Interval, filterFunc filter.Func) (wroteChunks bool, linesDeleted bool, err error) {
 	userIDStr := unsafeGetString(userID)
 
@@ -486,14 +506,26 @@ func (c *chunkRewriter) rewriteChunk(ctx context.Context, userID []byte, ce Chun
 
 	chks, err := c.chunkClient.GetChunks(ctx, []chunk.Chunk{chk})
 	if err != nil {
-		return false, false, err
+		// Depending on the client, a chunk missing from the storage either surfaces as a
+		// not-found error here or as an empty response handled below.
+		if !c.ignoreMissingChunks || !c.chunkClient.IsChunkNotFoundErr(err) {
+			return false, false, err
+		}
+		chks = nil
 	}
 
 	if len(chks) != 1 {
-		return false, false, fmt.Errorf("expected 1 entry for chunk %s but found %d in storage", ce.ChunkID, len(chks))
+		if !c.ignoreMissingChunks || len(chks) != 0 {
+			return false, false, fmt.Errorf("expected 1 entry for chunk %s but found %d in storage", ce.ChunkID, len(chks))
+		}
+
+		// The chunk is indexed but gone from the storage. Report it as a no-op so the caller leaves index entries as-is.
+		level.Warn(util_log.Logger).Log("msg", "ignoring chunk missing from storage while processing a delete request", "table", c.tableName, "user_id", userIDStr, "chunk_id", ce.ChunkID)
+		c.missingChunksTotal.Inc()
+		return false, false, nil
 	}
 
-	newChunkData, err := chks[0].Data.Rebound(ce.From, ce.Through, func(ts time.Time, s string, structuredMetadata labels.Labels) bool {
+	newChunkData, err := chks[0].Data.Rewrite(func(ts time.Time, s string, structuredMetadata labels.Labels) bool {
 		if filterFunc(ts, s, structuredMetadata) {
 			linesDeleted = true
 			return true
@@ -502,7 +534,7 @@ func (c *chunkRewriter) rewriteChunk(ctx context.Context, userID []byte, ce Chun
 		return false
 	})
 	if err != nil {
-		if errors.Is(err, chunk.ErrSliceNoDataInRange) {
+		if errors.Is(err, chunk.ErrRewriteNoDataLeft) {
 			level.Info(util_log.Logger).Log("msg", "Delete request filterFunc leaves an empty chunk", "chunk ref", ce.ChunkID)
 			return false, true, nil
 		}
@@ -532,6 +564,7 @@ func (c *chunkRewriter) rewriteChunk(ctx context.Context, userID []byte, ce Chun
 		newChunkStart,
 		newChunkEnd,
 	)
+	newChunk.IngestedAt = chks[0].IngestedAt
 
 	err = newChunk.Encode()
 	if err != nil {
@@ -539,7 +572,7 @@ func (c *chunkRewriter) rewriteChunk(ctx context.Context, userID []byte, ce Chun
 	}
 
 	approxKB := math.Round(float64(newChunk.Data.UncompressedSize()) / float64(1<<10))
-	uploadChunk, err := c.chunkIndexer.IndexChunk(newChunk.ChunkRef, newChunk.Metric, uint32(approxKB), uint32(newChunk.Data.Entries()))
+	uploadChunk, err := c.chunkIndexer.IndexChunk(newChunk.ChunkRef, newChunk.Metric, newChunk.IngestedAt, uint32(approxKB), uint32(newChunk.Data.Entries()))
 	if err != nil {
 		return false, false, err
 	}
@@ -557,9 +590,9 @@ func (c *chunkRewriter) rewriteChunk(ctx context.Context, userID []byte, ce Chun
 }
 
 // CopyMarkers checks for markers in the src dir and copies them to the dst.
-func CopyMarkers(src string, dst string) error {
-	markersDir := filepath.Join(src, MarkersFolder)
-	info, err := os.Stat(markersDir)
+// dstName must be a human-readable name for what dst is.
+func CopyMarkers(src string, dst client.ObjectClient, dstName string) error {
+	info, err := os.Stat(src)
 	if err != nil {
 		if os.IsNotExist(err) {
 			// nothing to migrate
@@ -573,28 +606,27 @@ func CopyMarkers(src string, dst string) error {
 		return nil
 	}
 
-	markers, err := os.ReadDir(markersDir)
+	markers, err := os.ReadDir(src)
 	if err != nil {
 		return fmt.Errorf("read markers dir: %w", err)
 	}
 
-	targetDir := filepath.Join(dst, MarkersFolder)
-	if err := chunk_util.EnsureDirectory(targetDir); err != nil {
-		return fmt.Errorf("ensure target markers dir: %w", err)
+	if len(markers) == 0 {
+		return nil
 	}
 
-	level.Info(util_log.Logger).Log("msg", fmt.Sprintf("found markers in retention dir %s, moving them to period specific dir: %s", markersDir, targetDir))
+	level.Info(util_log.Logger).Log("msg", fmt.Sprintf("found markers in retention dir %s, moving them to period specific destination: %s", src, dstName))
 	for _, marker := range markers {
 		if marker.IsDir() {
 			continue
 		}
 
-		data, err := os.ReadFile(filepath.Join(markersDir, marker.Name()))
+		data, err := os.ReadFile(filepath.Join(src, marker.Name()))
 		if err != nil {
 			return fmt.Errorf("read marker file: %w", err)
 		}
 
-		if err := os.WriteFile(filepath.Join(targetDir, marker.Name()), data, 0640); err != nil { // #nosec G306 -- this is fencing off the "other" permissions -- nosemgrep: incorrect-default-permissions
+		if err := dst.PutObject(context.Background(), marker.Name(), bytes.NewReader(data)); err != nil { // #nosec G306 -- this is fencing off the "other" permissions -- nosemgrep: incorrect-default-permissions
 			return fmt.Errorf("write marker file: %w", err)
 		}
 	}

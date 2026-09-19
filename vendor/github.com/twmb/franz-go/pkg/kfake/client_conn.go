@@ -16,18 +16,27 @@ type (
 		b      *broker
 		conn   net.Conn
 		respCh chan clientResp
+		done   chan struct{} // closed when read() returns
+		mute   chan bool     // capacity 1: serializes request processing per connection; false = stop reading
 
 		saslStage saslStage
 		s0        *scramServer0
+		user      string // authenticated user, set after SASL completes
 	}
 
 	clientReq struct {
-		cc   *clientConn
-		kreq kmsg.Request
-		at   time.Time
-		cid  string
-		corr int32
-		seq  uint32
+		cc        *clientConn
+		kreq      kmsg.Request
+		at        time.Time
+		cid       string
+		corr      int32
+		seq       uint32
+		topicMeta topicMetaSnap // snapshot for group assignment (consumer/share)
+
+		// Pre-validated error topics to merge into the response,
+		// used when TopicID resolution fails for some topics while
+		// the rest proceed through normal handling.
+		offsetCommitErrTopics []kmsg.OffsetCommitResponseTopic
 	}
 
 	clientResp struct {
@@ -40,7 +49,30 @@ type (
 
 func (creq *clientReq) empty() bool { return creq == nil || creq.cc == nil || creq.kreq == nil }
 
+// unmute signals the read goroutine that it may submit the next request.
+// ok=true means the prior response was written successfully; ok=false
+// tells read to stop (the connection is dead).
+func (cc *clientConn) unmute(ok bool) {
+	select {
+	case cc.mute <- ok:
+	case <-cc.done:
+	case <-cc.c.die:
+	}
+}
+
+// reply sends a response back to the client, respecting connection close
+// and cluster shutdown. Used by manage goroutines (groups, share groups)
+// that handle requests asynchronously.
+func (creq *clientReq) reply(kresp kmsg.Response) {
+	select {
+	case creq.cc.respCh <- clientResp{kresp: kresp, corr: creq.corr, seq: creq.seq}:
+	case <-creq.cc.done:
+	case <-creq.cc.c.die:
+	}
+}
+
 func (cc *clientConn) read() {
+	defer close(cc.done)
 	defer cc.conn.Close()
 
 	type read struct {
@@ -72,7 +104,6 @@ func (cc *clientConn) read() {
 		}
 
 		if err := read.err; err != nil {
-			cc.c.cfg.logger.Logf(LogLevelDebug, "client %s disconnected from read: %v", who, err)
 			return
 		}
 
@@ -90,7 +121,7 @@ func (cc *clientConn) read() {
 			kmsg.SkipTags(&reader)
 		}
 		if err := kreq.ReadFrom(reader.Src); err != nil {
-			cc.c.cfg.logger.Logf(LogLevelDebug, "client %s unable to parse request: %v", who, err)
+			cc.c.cfg.logger.Logf(LogLevelDebug, "client %s unable to parse request (key=%d, version=%d): %v", who, key, version, err)
 			return
 		}
 
@@ -100,8 +131,22 @@ func (cc *clientConn) read() {
 			cid = *clientID
 		}
 
+		// Wait until the previous request's response has been fully
+		// written before submitting the next. This matches the real
+		// Kafka broker's per-connection serial request processing.
+		// write() sends true after a successful write, false on error.
+		// The channel is pre-filled with true so the first request
+		// proceeds immediately.
 		select {
-		case cc.c.reqCh <- &clientReq{cc, kreq, time.Now(), cid, corr, seq}:
+		case ok := <-cc.mute:
+			if !ok {
+				return
+			}
+		case <-cc.c.die:
+			return
+		}
+		select {
+		case cc.c.reqCh <- &clientReq{cc: cc, kreq: kreq, at: time.Now(), cid: cid, corr: corr, seq: seq}:
 			seq++
 		case <-cc.c.die:
 			return
@@ -138,6 +183,8 @@ func (cc *clientConn) write() {
 					continue
 				}
 				seq = resp.seq + 1
+			case <-cc.done:
+				return
 			case <-cc.c.die:
 				return
 			}
@@ -147,24 +194,21 @@ func (cc *clientConn) write() {
 		}
 		if err := resp.err; err != nil {
 			cc.c.cfg.logger.Logf(LogLevelInfo, "client %s request unable to be handled: %v", who, err)
+			cc.unmute(false)
 			return
 		}
 
-		// Size, corr, and empty tag section if flexible: 9 bytes max.
-		buf = append(buf[:0], 0, 0, 0, 0, 0, 0, 0, 0, 0)
+		buf = append(buf[:0], 0, 0, 0, 0, 0, 0, 0, 0) // size (4) + correlation ID (4)
+		if resp.kresp.IsFlexible() && resp.kresp.Key() != 18 {
+			buf = append(buf, 0) // empty tagged fields section
+		}
 		buf = resp.kresp.AppendTo(buf)
 
-		start := 0
-		l := len(buf) - 4
-		if !resp.kresp.IsFlexible() || resp.kresp.Key() == 18 {
-			l--
-			start++
-		}
-		binary.BigEndian.PutUint32(buf[start:], uint32(l))
-		binary.BigEndian.PutUint32(buf[start+4:], uint32(resp.corr))
+		binary.BigEndian.PutUint32(buf[:4], uint32(len(buf)-4))
+		binary.BigEndian.PutUint32(buf[4:8], uint32(resp.corr))
 
 		go func() {
-			_, err := cc.conn.Write(buf[start:])
+			_, err := cc.conn.Write(buf)
 			writeCh <- err
 		}()
 
@@ -174,8 +218,8 @@ func (cc *clientConn) write() {
 			return
 		case err = <-writeCh:
 		}
+		cc.unmute(err == nil)
 		if err != nil {
-			cc.c.cfg.logger.Logf(LogLevelDebug, "client %s disconnected from write: %v", who, err)
 			return
 		}
 	}

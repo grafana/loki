@@ -5,11 +5,12 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"iter"
+	"maps"
 	"strconv"
 
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/dataset"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/datasetmd"
-	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/streamsmd"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/util/slicegrow"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/util/symbolizer"
 )
@@ -19,23 +20,43 @@ type RowReader struct {
 	sec   *Section
 	ready bool
 
+	matchIDs  map[int64]struct{}
 	predicate RowPredicate
 
 	buf []dataset.Row
 
-	reader     *dataset.Reader
-	columns    []dataset.Column
-	columnDesc []*streamsmd.ColumnDesc
+	reader  *dataset.RowReader
+	columns []dataset.Column
 
 	symbols *symbolizer.Symbolizer
 }
 
+var errRowReaderNotOpen = errors.New("row reader not opened")
+
 // NewRowReader creates a new RowReader that reads rows from the provided
 // [Section].
+//
+// Call [RowReader.Open] before calling [RowReader.Read].
 func NewRowReader(sec *Section) *RowReader {
 	var sr RowReader
 	sr.Reset(sec)
 	return &sr
+}
+
+// Open initializes RowReader resources.
+//
+// Open must be called before [RowReader.Read]. Open is safe to call multiple
+// times. Open is a no-op when the reader has no section.
+func (r *RowReader) Open(ctx context.Context) error {
+	if r.sec == nil || r.ready {
+		return nil
+	}
+
+	if err := r.initReader(ctx); err != nil {
+		_ = r.Close()
+		return fmt.Errorf("initializing row reader: %w", err)
+	}
+	return nil
 }
 
 // SetPredicate sets the predicate to use for filtering logs. [LogsReader.Read]
@@ -55,6 +76,28 @@ func (r *RowReader) SetPredicate(p RowPredicate) error {
 	return nil
 }
 
+// MatchStreams provides a sequence of stream IDs for the reader to match.
+// [RowReader.Read] will only return the streams with the provided IDs.
+//
+// MatchStreams may be called several times to match multiple sets of streams.
+// An empty set, or never calling it, applies no stream-ID filter.
+//
+// MatchStreams may only be called before reading begins or after a call to
+// [RowReader.Reset].
+func (r *RowReader) MatchStreams(ids iter.Seq[int64]) error {
+	if r.ready {
+		return fmt.Errorf("cannot change matched streams after reading has started")
+	}
+
+	if r.matchIDs == nil {
+		r.matchIDs = make(map[int64]struct{})
+	}
+	for id := range ids {
+		r.matchIDs[id] = struct{}{}
+	}
+	return nil
+}
+
 // Read reads up to the next len(s) streams from the reader and stores them
 // into s. It returns the number of streams read and any error encountered. At
 // the end of the stream section, Read returns 0, io.EOF.
@@ -64,10 +107,7 @@ func (r *RowReader) Read(ctx context.Context, s []Stream) (int, error) {
 	}
 
 	if !r.ready {
-		err := r.initReader(ctx)
-		if err != nil {
-			return 0, err
-		}
+		return 0, errRowReaderNotOpen
 	}
 
 	r.buf = slicegrow.GrowToCap(r.buf, len(s))
@@ -80,7 +120,7 @@ func (r *RowReader) Read(ctx context.Context, s []Stream) (int, error) {
 	}
 
 	for i := range r.buf[:n] {
-		if err := decodeRow(r.columnDesc, r.buf[i], &s[i], r.symbols); err != nil {
+		if err := decodeRow(r.sec.Columns(), r.buf[i], &s[i], r.symbols, nil, false); err != nil {
 			return i, fmt.Errorf("decoding stream: %w", err)
 		}
 	}
@@ -89,37 +129,36 @@ func (r *RowReader) Read(ctx context.Context, s []Stream) (int, error) {
 }
 
 func (r *RowReader) initReader(ctx context.Context) error {
-	dec := newDecoder(r.sec.reader)
-
-	metadata, err := dec.Metadata(ctx)
-	if err != nil {
-		return fmt.Errorf("reading metadata: %w", err)
-	}
-	columnDescs := metadata.GetColumns()
-
-	dset, err := newColumnsDataset(r.sec.Columns())
+	dset, err := r.sec.makeDataset()
 	if err != nil {
 		return fmt.Errorf("creating section dataset: %w", err)
 	}
 	columns := dset.Columns()
 
+	// The matched stream IDs are not part of r.predicate, so build them as a separate
+	// predicate; RowReaderOptions.Predicates are ANDed together.
 	var predicates []dataset.Predicate
-	if p := translateStreamsPredicate(r.predicate, columns, columnDescs); p != nil {
+	if p := streamIDPredicate(maps.Keys(r.matchIDs), columns, r.sec.Columns()); p != nil {
+		predicates = append(predicates, p)
+	}
+	if p := translateStreamsPredicate(r.predicate, columns, r.sec.Columns()); p != nil {
 		predicates = append(predicates, p)
 	}
 
-	readerOpts := dataset.ReaderOptions{
-		Dataset:    dset,
-		Columns:    columns,
-		Predicates: predicates,
-
-		TargetCacheSize: 16_000_000, // Permit up to 16MB of cache pages.
+	readerOpts := dataset.RowReaderOptions{
+		Dataset:           dset,
+		Columns:           columns,
+		Predicates:        predicates,
+		PrefetchAllOnOpen: true,
 	}
 
 	if r.reader == nil {
-		r.reader = dataset.NewReader(readerOpts)
+		r.reader = dataset.NewRowReader(readerOpts)
 	} else {
 		r.reader.Reset(readerOpts)
+	}
+	if err := r.reader.Open(ctx); err != nil {
+		return fmt.Errorf("opening row reader: %w", err)
 	}
 
 	if r.symbols == nil {
@@ -128,7 +167,6 @@ func (r *RowReader) initReader(ctx context.Context) error {
 		r.symbols.Reset()
 	}
 
-	r.columnDesc = columnDescs
 	r.columns = columns
 	r.ready = true
 	return nil
@@ -143,17 +181,17 @@ func (r *RowReader) initReader(ctx context.Context) error {
 // the RowReader without needing a new object.
 func (r *RowReader) Reset(sec *Section) {
 	r.sec = sec
+	clear(r.matchIDs)
 	r.predicate = nil
 	r.ready = false
 	r.columns = nil
-	r.columnDesc = nil
 
 	if r.symbols != nil {
 		r.symbols.Reset()
 	}
 
 	// We leave r.reader as-is to avoid reallocating; it'll be reset on the first
-	// call to Read.
+	// call to Open.
 }
 
 // Close closes the RowReader and releases any resources it holds. Closed
@@ -165,7 +203,7 @@ func (r *RowReader) Close() error {
 	return nil
 }
 
-func translateStreamsPredicate(p RowPredicate, columns []dataset.Column, columnDesc []*streamsmd.ColumnDesc) dataset.Predicate {
+func translateStreamsPredicate(p RowPredicate, dsetColumns []dataset.Column, actualColumns []*Column) dataset.Predicate {
 	if p == nil {
 		return nil
 	}
@@ -173,48 +211,61 @@ func translateStreamsPredicate(p RowPredicate, columns []dataset.Column, columnD
 	switch p := p.(type) {
 	case AndRowPredicate:
 		return dataset.AndPredicate{
-			Left:  translateStreamsPredicate(p.Left, columns, columnDesc),
-			Right: translateStreamsPredicate(p.Right, columns, columnDesc),
+			Left:  translateStreamsPredicate(p.Left, dsetColumns, actualColumns),
+			Right: translateStreamsPredicate(p.Right, dsetColumns, actualColumns),
 		}
 
 	case OrRowPredicate:
 		return dataset.OrPredicate{
-			Left:  translateStreamsPredicate(p.Left, columns, columnDesc),
-			Right: translateStreamsPredicate(p.Right, columns, columnDesc),
+			Left:  translateStreamsPredicate(p.Left, dsetColumns, actualColumns),
+			Right: translateStreamsPredicate(p.Right, dsetColumns, actualColumns),
 		}
 
 	case NotRowPredicate:
 		return dataset.NotPredicate{
-			Inner: translateStreamsPredicate(p.Inner, columns, columnDesc),
+			Inner: translateStreamsPredicate(p.Inner, dsetColumns, actualColumns),
 		}
 
 	case TimeRangeRowPredicate:
-		minTimestamp := findColumnFromDesc(columns, columnDesc, func(desc *streamsmd.ColumnDesc) bool {
-			return desc.Type == streamsmd.COLUMN_TYPE_MIN_TIMESTAMP
+		minTimestamp := findDatasetColumn(dsetColumns, actualColumns, func(col *Column) bool {
+			return col.Type == ColumnTypeMinTimestamp
 		})
-		maxTimestamp := findColumnFromDesc(columns, columnDesc, func(desc *streamsmd.ColumnDesc) bool {
-			return desc.Type == streamsmd.COLUMN_TYPE_MAX_TIMESTAMP
+		maxTimestamp := findDatasetColumn(dsetColumns, actualColumns, func(col *Column) bool {
+			return col.Type == ColumnTypeMaxTimestamp
 		})
 		if minTimestamp == nil || maxTimestamp == nil {
 			return dataset.FalsePredicate{}
 		}
 		return convertStreamsTimePredicate(p, minTimestamp, maxTimestamp)
 
+	case ShardBucketRangeRowPredicate:
+		bucketColumn := findDatasetColumn(dsetColumns, actualColumns, func(col *Column) bool {
+			return col.Type == ColumnTypeShardBucket
+		})
+		if bucketColumn == nil {
+			return dataset.FalsePredicate{}
+		}
+		// Both shard bucket range's From and To are inclusive.
+		return dataset.AndPredicate{
+			Left:  dataset.NotPredicate{Inner: dataset.LessThanPredicate{Column: bucketColumn, Value: dataset.Int64Value(int64(p.From))}},
+			Right: dataset.NotPredicate{Inner: dataset.GreaterThanPredicate{Column: bucketColumn, Value: dataset.Int64Value(int64(p.To))}},
+		}
+
 	case LabelMatcherRowPredicate:
-		metadataColumn := findColumnFromDesc(columns, columnDesc, func(desc *streamsmd.ColumnDesc) bool {
-			return desc.Type == streamsmd.COLUMN_TYPE_LABEL && desc.Info.Name == p.Name
+		metadataColumn := findDatasetColumn(dsetColumns, actualColumns, func(col *Column) bool {
+			return col.Type == ColumnTypeLabel && col.Name == p.Name
 		})
 		if metadataColumn == nil {
 			return dataset.FalsePredicate{}
 		}
 		return dataset.EqualPredicate{
 			Column: metadataColumn,
-			Value:  dataset.ByteArrayValue(unsafeSlice(p.Value, 0)),
+			Value:  dataset.BinaryValue(unsafeSlice(p.Value, 0)),
 		}
 
 	case LabelFilterRowPredicate:
-		metadataColumn := findColumnFromDesc(columns, columnDesc, func(desc *streamsmd.ColumnDesc) bool {
-			return desc.Type == streamsmd.COLUMN_TYPE_LABEL && desc.Info.Name == p.Name
+		metadataColumn := findDatasetColumn(dsetColumns, actualColumns, func(col *Column) bool {
+			return col.Type == ColumnTypeLabel && col.Name == p.Name
 		})
 		if metadataColumn == nil {
 			return dataset.FalsePredicate{}
@@ -294,8 +345,33 @@ func convertStreamsTimePredicate(p TimeRangeRowPredicate, minColumn, maxColumn d
 	}
 }
 
-func findColumnFromDesc[Desc any](columns []dataset.Column, descs []Desc, check func(Desc) bool) dataset.Column {
-	for i, desc := range descs {
+// streamIDPredicate builds a predicate that keeps only the given stream IDs. It returns nil
+// when no IDs are requested, so the caller applies no filter, and a FalsePredicate when the
+// section carries no stream-ID column and therefore holds none of them.
+func streamIDPredicate(ids iter.Seq[int64], columns []dataset.Column, actual []*Column) dataset.Predicate {
+	var values []dataset.Value
+	for id := range ids {
+		values = append(values, dataset.Int64Value(id))
+	}
+	if len(values) == 0 {
+		return nil
+	}
+
+	streamIDColumn := findDatasetColumn(columns, actual, func(col *Column) bool {
+		return col.Type == ColumnTypeStreamID
+	})
+	if streamIDColumn == nil {
+		return dataset.FalsePredicate{}
+	}
+
+	return dataset.InPredicate{
+		Column: streamIDColumn,
+		Values: dataset.NewInt64ValueSet(values),
+	}
+}
+
+func findDatasetColumn(columns []dataset.Column, actual []*Column, check func(*Column) bool) dataset.Column {
+	for i, desc := range actual {
 		if check(desc) {
 			return columns[i]
 		}
@@ -305,14 +381,14 @@ func findColumnFromDesc[Desc any](columns []dataset.Column, descs []Desc, check 
 
 func valueToString(value dataset.Value) string {
 	switch value.Type() {
-	case datasetmd.VALUE_TYPE_UNSPECIFIED:
+	case datasetmd.PHYSICAL_TYPE_UNSPECIFIED:
 		return ""
-	case datasetmd.VALUE_TYPE_INT64:
+	case datasetmd.PHYSICAL_TYPE_INT64:
 		return strconv.FormatInt(value.Int64(), 10)
-	case datasetmd.VALUE_TYPE_UINT64:
+	case datasetmd.PHYSICAL_TYPE_UINT64:
 		return strconv.FormatUint(value.Uint64(), 10)
-	case datasetmd.VALUE_TYPE_BYTE_ARRAY:
-		return unsafeString(value.ByteArray())
+	case datasetmd.PHYSICAL_TYPE_BINARY:
+		return unsafeString(value.Binary())
 	default:
 		panic(fmt.Sprintf("unsupported value type %s", value.Type()))
 	}

@@ -727,3 +727,15 @@ func Xstrspn(tls *TLS, s uintptr, c uintptr) size_t { /* strspn.c:6:8: */
 	}
 	return size_t((int32(s) - int32(a)) / 1)
 }
+
+// Defined in libc_windows_386.s
+func callStrtod(fn uintptr, s uintptr, p uintptr) float64
+
+func Xstrtod(t *TLS, s uintptr, p uintptr) float64 {
+	if __ccgo_strace {
+		trc("tls=%v s=%v p=%v, (%v:)", t, s, p, origin(2))
+	}
+	// We use the assembly bridge to call the function pointer directly.
+	// This ensures we capture the float return value from ST(0).
+	return callStrtod(procStrtod.Addr(), s, p)
+}

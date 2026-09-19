@@ -1,89 +1,122 @@
+version: "2"
 run:
   tests: true
-
 output:
-  print-issued-lines: false
-
+  show-stats: false
+  formats:
+    text:
+      print-issued-lines: false
+      colors: true
 linters:
-  enable-all: true
+  default: all
   disable:
-    - lll
-    - gocyclo
-    - dupl
-    - gochecknoglobals
-    - funlen
-    - godox
-    - wsl
-    - gocognit
-    - nolintlint
-    - testpackage
-    - godot
-    - nestif
-    - paralleltest
-    - nlreturn
-    - cyclop
-    - gci
-    - gofumpt
-    - errorlint
     - exhaustive
-    - wrapcheck
-    - stylecheck
-    - thelper
-    - nonamedreturns
-    - revive
-    - dupword
-    - exhaustruct
-    - varnamelen
-    - forcetypeassert
-    - ireturn
-    - maintidx
-    - govet
-    - testableexamples
-    - musttag
+    - prealloc
+    - dupl
+    - godoclint
+    - cyclop
     - depguard
-    - goconst
-    - perfsprint
+    - dupword
+    - err113
+    - errname
+    - errorlint
+    - exhaustruct
+    - forbidigo
+    - forcetypeassert
+    - funlen
+    - gochecknoglobals
+    - gocognit
+    - gocritic
+    - gocyclo
+    - godot
+    - godox
+    - gomoddirectives
+    - ireturn
+    - lll
+    - maintidx
     - mnd
+    - nakedret
+    - nestif
+    - nilnil
+    - nlreturn
+    - nolintlint
+    - nonamedreturns
+    - paralleltest
+    - perfsprint
     - predeclared
     - recvcheck
-    - tenv
-    - err113
-
-linters-settings:
-  gocyclo:
-    min-complexity: 10
-  dupl:
-    threshold: 100
-  goconst:
-    min-len: 8
-    min-occurrences: 3
-  forbidigo:
-    #forbid:
-    #  - (Must)?NewLexer$
-    exclude_godoc_examples: false
-
-
+    - revive
+    - testpackage
+    - varnamelen
+    - wastedassign
+    - whitespace
+    - wsl
+    - wsl_v5
+    - funcorder
+    - noinlineerr
+    - tagalign
+    - goconst
+    - gochecknoinits
+    - durationcheck
+    - embeddedstructfieldcheck
+    - wrapcheck
+    - gomodguard
+  settings:
+    dupl:
+      threshold: 100
+    exhaustive:
+      default-signifies-exhaustive: true
+    goconst:
+      min-len: 8
+      min-occurrences: 3
+    gocyclo:
+      min-complexity: 10
+    wrapcheck:
+      report-internal-errors: false
+      ignore-package-globs:
+        - github.com/alecthomas/errors
+  exclusions:
+    generated: lax
+    rules:
+      - path: (.+)\.go$
+        text: "^(G104|G204|G307|G304):"
+      - path: (.+)\.go$
+        text: Error return value of .(.*\.Help|.*\.MarkFlagRequired|(os\.)?std(out|err)\..*|.*Close|.*Flush|os\.Remove(All)?|.*printf?|os\.(Un)?Setenv). is not checked
+      - path: (.+)\.go$
+        text: exported method `(.*\.MarshalJSON|.*\.UnmarshalJSON|.*\.EntityURN|.*\.GoString|.*\.Pos)` should have comment or be unexported
+      - path: (.+)\.go$
+        text: uses unkeyed fields
+      - path: (.+)\.go$
+        text: declaration of "err" shadows declaration
+      - path: (.+)\.go$
+        text: bad syntax for struct tag key
+      - path: (.+)\.go$
+        text: bad syntax for struct tag pair
+      - path: (.+)\.go$
+        text: ^ST1012
+      - path: (.+)\.go$
+        text: log/slog.Logger.*must not be called
+      - path: (.+)_test\.go$
+        text: error returned from external package is unwrapped
+      - linters: [staticcheck]
+        text: QF1008
+      - text: "Error return value of `.*.Write` is not checked"
+        linters: [errcheck]
+        path: (.+)_test\.go$
+    paths:
+      - third_party$
+      - builtin$
+      - examples$
 issues:
-  exclude-dirs:
-    - _examples
-  max-per-linter: 0
-  max-same: 0
-  exclude-use-default: false
-  exclude:
-    # Captured by errcheck.
-    - '^(G104|G204):'
-    # Very commonly not checked.
-    - 'Error return value of .(.*\.Help|.*\.MarkFlagRequired|(os\.)?std(out|err)\..*|.*Close|.*Flush|os\.Remove(All)?|.*printf?|os\.(Un)?Setenv). is not checked'
-    - 'exported method (.*\.MarshalJSON|.*\.UnmarshalJSON|.*\.EntityURN|.*\.GoString|.*\.Pos) should have comment or be unexported'
-    - 'composite literal uses unkeyed fields'
-    - 'declaration of "err" shadows declaration'
-    - 'should not use dot imports'
-    - 'Potential file inclusion via variable'
-    - 'should have comment or be unexported'
-    - 'comment on exported var .* should be of the form'
-    - 'at least one file in a package should have a package comment'
-    - 'string literal contains the Unicode'
-    - 'methods on the same type should have the same receiver name'
-    - '_TokenType_name should be _TokenTypeName'
-    - '`_TokenType_map` should be `_TokenTypeMap`'
-    - 'rewrite if-else to switch statement'
+  max-issues-per-linter: 0
+  max-same-issues: 0
+formatters:
+  enable:
+    - gofmt
+    - goimports
+  exclusions:
+    generated: lax
+    paths:
+      - third_party$
+      - builtin$
+      - examples$

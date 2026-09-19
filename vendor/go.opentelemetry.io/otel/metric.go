@@ -1,7 +1,7 @@
 // Copyright The OpenTelemetry Authors
 // SPDX-License-Identifier: Apache-2.0
 
-package otel // import "go.opentelemetry.io/otel"
+package otel
 
 import (
 	"go.opentelemetry.io/otel/internal/global"
@@ -11,7 +11,7 @@ import (
 // Meter returns a Meter from the global MeterProvider. The name must be the
 // name of the library providing instrumentation. This name may be the same as
 // the instrumented code only if that code provides built-in instrumentation.
-// If the name is empty, then a implementation defined default name will be
+// If the name is empty, then an implementation defined default name will be
 // used instead.
 //
 // If this is called before a global MeterProvider is registered the returned

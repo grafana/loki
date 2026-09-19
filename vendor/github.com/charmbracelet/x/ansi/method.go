@@ -1,5 +1,29 @@
 package ansi
 
+import (
+	"os"
+	"strconv"
+
+	"github.com/clipperhouse/displaywidth"
+	"github.com/mattn/go-runewidth"
+)
+
+var wcOptions = &runewidth.Condition{
+	EastAsianWidth:     false,
+	StrictEmojiNeutral: true,
+}
+
+var dwOptions = &displaywidth.Options{
+	EastAsianWidth: false,
+}
+
+func init() {
+	if ea, err := strconv.ParseBool(os.Getenv("RUNEWIDTH_EASTASIAN")); err == nil && ea {
+		wcOptions.EastAsianWidth = true
+		dwOptions.EastAsianWidth = true
+	}
+}
+
 // Method is a type that represents the how the renderer should calculate the
 // display width of cells.
 type Method uint8

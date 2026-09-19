@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // SPDX-FileCopyrightText: 2022 The Ebitengine Authors
 
-//go:build !cgo && (darwin || freebsd || linux)
+//go:build !cgo && (darwin || freebsd || linux || netbsd)
 
 package fakecgo
 
@@ -52,7 +52,7 @@ func _cgo_try_pthread_create(thread *pthread_t, attr *pthread_attr_t, pfn unsafe
 	tries := ts.Nsec
 	var err int
 
-	for tries = 0; tries < 20; tries++ {
+	for tries = range 20 {
 		// inlined this call because it ran out of stack when inlining was disabled
 		err = int(call5(pthread_createABI0, uintptr(unsafe.Pointer(thread)), uintptr(unsafe.Pointer(attr)), uintptr(pfn), uintptr(unsafe.Pointer(arg)), 0))
 		if err == 0 {

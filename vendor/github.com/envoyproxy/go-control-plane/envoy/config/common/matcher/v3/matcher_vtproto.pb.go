@@ -49,6 +49,16 @@ func (m *Matcher_OnMatch) MarshalToSizedBufferVTStrict(dAtA []byte) (int, error)
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
 	}
+	if m.KeepMatching {
+		i--
+		if m.KeepMatching {
+			dAtA[i] = 1
+		} else {
+			dAtA[i] = 0
+		}
+		i--
+		dAtA[i] = 0x18
+	}
 	if msg, ok := m.OnMatch.(*Matcher_OnMatch_Action); ok {
 		size, err := msg.MarshalToSizedBufferVTStrict(dAtA[:i])
 		if err != nil {
@@ -1436,6 +1446,9 @@ func (m *Matcher_OnMatch) SizeVT() (n int) {
 	_ = l
 	if vtmsg, ok := m.OnMatch.(interface{ SizeVT() int }); ok {
 		n += vtmsg.SizeVT()
+	}
+	if m.KeepMatching {
+		n += 2
 	}
 	n += len(m.unknownFields)
 	return n

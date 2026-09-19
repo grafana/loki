@@ -1,7 +1,7 @@
 // Copyright The OpenTelemetry Authors
 // SPDX-License-Identifier: Apache-2.0
 
-//go:generate mdatagen metadata.yaml
+//go:generate make mdatagen
 
 // package deltatocumulativeprocessor implements a processor which
 // converts metrics from delta temporality to cumulative.

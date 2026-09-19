@@ -1,5 +1,7 @@
-secrets.yml
-coverage.out
-coverage.txt
+*.out
 *.cov
 .idea
+.env
+.mcp.json
+go.work.sum
+.worktrees

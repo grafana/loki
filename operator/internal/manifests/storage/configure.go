@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"path"
 
+	"dario.cat/mergo"
 	"github.com/ViaQ/logerr/v2/kverrors"
-	"github.com/imdario/mergo"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/utils/ptr"
@@ -222,11 +222,13 @@ func tokenAuthCredentials(opts Options) []corev1.EnvVar {
 			return []corev1.EnvVar{
 				envVarFromValue(EnvAWSCredentialsFile, path.Join(tokenAuthConfigDirectory, KeyAWSCredentialsFilename)),
 				envVarFromValue(EnvAWSSdkLoadConfig, "true"),
+				envVarFromValue(EnvAWSRegion, opts.S3.Region),
 			}
 		} else {
 			return []corev1.EnvVar{
 				envVarFromSecret(EnvAWSRoleArn, opts.SecretName, KeyAWSRoleArn),
 				envVarFromValue(EnvAWSWebIdentityTokenFile, ServiceAccountTokenFilePath),
+				envVarFromValue(EnvAWSRegion, opts.S3.Region),
 			}
 		}
 	case lokiv1.ObjectStorageSecretAzure:
@@ -301,11 +303,11 @@ func ensureCAForObjectStorage(p *corev1.PodSpec, tls *TLSConfig, secretType loki
 	switch secretType {
 	case lokiv1.ObjectStorageSecretS3:
 		container.Args = append(container.Args,
-			fmt.Sprintf("-s3.http.ca-file=%s", path.Join(caDirectory, tls.Key)),
+			fmt.Sprintf("-common.storage.object-store.s3.http.tls-ca-path=%s", path.Join(caDirectory, tls.Key)),
 		)
 	case lokiv1.ObjectStorageSecretSwift:
 		container.Args = append(container.Args,
-			fmt.Sprintf("-swift.http.tls-ca-path=%s", path.Join(caDirectory, tls.Key)),
+			fmt.Sprintf("-common.storage.object-store.swift.http.tls-ca-path=%s", path.Join(caDirectory, tls.Key)),
 		)
 	}
 

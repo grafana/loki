@@ -1,10 +1,9 @@
-//go:build go1.18
-// +build go1.18
-
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
 package errorinfo
+
+import "errors"
 
 // NonRetriable represents a non-transient error.  This works in
 // conjunction with the retry policy, indicating that the error condition
@@ -15,10 +14,14 @@ type NonRetriable interface {
 	NonRetriable()
 }
 
-// NonRetriableError marks the specified error as non-retriable.
-// This function takes an error as input and returns a new error that is marked as non-retriable.
+// NonRetriableError ensures the specified error is [NonRetriable]. If
+// the error is already [NonRetriable], it returns that error unchanged.
+// Otherwise, it returns a new, [NonRetriable] error.
 func NonRetriableError(err error) error {
-	return &nonRetriableError{err}
+	if !errors.As(err, new(NonRetriable)) {
+		err = &nonRetriableError{err}
+	}
+	return err
 }
 
 // nonRetriableError is a struct that embeds the error interface.

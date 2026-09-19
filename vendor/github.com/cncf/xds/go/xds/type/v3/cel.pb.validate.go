@@ -218,7 +218,7 @@ type CelExpressionMultiError []error
 
 // Error returns a concatenation of all the error messages it wraps.
 func (m CelExpressionMultiError) Error() string {
-	var msgs []string
+	msgs := make([]string, 0, len(m))
 	for _, err := range m {
 		msgs = append(msgs, err.Error())
 	}
@@ -387,7 +387,7 @@ type CelExtractStringMultiError []error
 
 // Error returns a concatenation of all the error messages it wraps.
 func (m CelExtractStringMultiError) Error() string {
-	var msgs []string
+	msgs := make([]string, 0, len(m))
 	for _, err := range m {
 		msgs = append(msgs, err.Error())
 	}

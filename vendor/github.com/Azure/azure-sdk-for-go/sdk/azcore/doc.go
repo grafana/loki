@@ -1,6 +1,3 @@
-//go:build go1.18
-// +build go1.18
-
 // Copyright 2017 Microsoft Corporation. All rights reserved.
 // Use of this source code is governed by an MIT
 // license that can be found in the LICENSE file.
@@ -193,7 +190,10 @@ and determining if there are more pages to fetch.  No IO calls are made until th
 	pager := widgetClient.NewListWidgetsPager(nil)
 	for pager.More() {
 		page, err := pager.NextPage(context.TODO())
-		// handle err
+		if err != nil {
+			// process error
+			break
+		}
 		for _, widget := range page.Values {
 			// process widget
 		}

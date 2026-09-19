@@ -22,14 +22,14 @@ func commandsList(m *Miniredis) {
 	m.srv.Register("BLPOP", m.cmdBlpop)
 	m.srv.Register("BRPOP", m.cmdBrpop)
 	m.srv.Register("BRPOPLPUSH", m.cmdBrpoplpush)
-	m.srv.Register("LINDEX", m.cmdLindex)
-	m.srv.Register("LPOS", m.cmdLpos)
+	m.srv.Register("LINDEX", m.cmdLindex, server.ReadOnlyOption())
+	m.srv.Register("LPOS", m.cmdLpos, server.ReadOnlyOption())
 	m.srv.Register("LINSERT", m.cmdLinsert)
-	m.srv.Register("LLEN", m.cmdLlen)
+	m.srv.Register("LLEN", m.cmdLlen, server.ReadOnlyOption())
 	m.srv.Register("LPOP", m.cmdLpop)
 	m.srv.Register("LPUSH", m.cmdLpush)
 	m.srv.Register("LPUSHX", m.cmdLpushx)
-	m.srv.Register("LRANGE", m.cmdLrange)
+	m.srv.Register("LRANGE", m.cmdLrange, server.ReadOnlyOption())
 	m.srv.Register("LREM", m.cmdLrem)
 	m.srv.Register("LSET", m.cmdLset)
 	m.srv.Register("LTRIM", m.cmdLtrim)
@@ -52,15 +52,7 @@ func (m *Miniredis) cmdBrpop(c *server.Peer, cmd string, args []string) {
 }
 
 func (m *Miniredis) cmdBXpop(c *server.Peer, cmd string, args []string, lr leftright) {
-	if len(args) < 2 {
-		setDirty(c)
-		c.WriteError(errWrongNumber(cmd))
-		return
-	}
-	if !m.handleAuth(c) {
-		return
-	}
-	if m.checkPubsub(c, cmd) {
+	if !m.isValidCMD(c, cmd, args, atLeast(2)) {
 		return
 	}
 
@@ -115,15 +107,7 @@ func (m *Miniredis) cmdBXpop(c *server.Peer, cmd string, args []string, lr leftr
 
 // LINDEX
 func (m *Miniredis) cmdLindex(c *server.Peer, cmd string, args []string) {
-	if len(args) != 2 {
-		setDirty(c)
-		c.WriteError(errWrongNumber(cmd))
-		return
-	}
-	if !m.handleAuth(c) {
-		return
-	}
-	if m.checkPubsub(c, cmd) {
+	if !m.isValidCMD(c, cmd, args, exactly(2)) {
 		return
 	}
 
@@ -164,16 +148,7 @@ func (m *Miniredis) cmdLindex(c *server.Peer, cmd string, args []string) {
 
 // LPOS key element [RANK rank] [COUNT num-matches] [MAXLEN len]
 func (m *Miniredis) cmdLpos(c *server.Peer, cmd string, args []string) {
-	if !m.handleAuth(c) {
-		return
-	}
-	if m.checkPubsub(c, cmd) {
-		return
-	}
-
-	if len(args) == 1 {
-		setDirty(c)
-		c.WriteError(errWrongNumber(cmd))
+	if !m.isValidCMD(c, cmd, args, atLeast(2)) {
 		return
 	}
 
@@ -311,15 +286,7 @@ func (m *Miniredis) cmdLpos(c *server.Peer, cmd string, args []string) {
 
 // LINSERT
 func (m *Miniredis) cmdLinsert(c *server.Peer, cmd string, args []string) {
-	if len(args) != 4 {
-		setDirty(c)
-		c.WriteError(errWrongNumber(cmd))
-		return
-	}
-	if !m.handleAuth(c) {
-		return
-	}
-	if m.checkPubsub(c, cmd) {
+	if !m.isValidCMD(c, cmd, args, exactly(4)) {
 		return
 	}
 
@@ -378,15 +345,7 @@ func (m *Miniredis) cmdLinsert(c *server.Peer, cmd string, args []string) {
 
 // LLEN
 func (m *Miniredis) cmdLlen(c *server.Peer, cmd string, args []string) {
-	if len(args) != 1 {
-		setDirty(c)
-		c.WriteError(errWrongNumber(cmd))
-		return
-	}
-	if !m.handleAuth(c) {
-		return
-	}
-	if m.checkPubsub(c, cmd) {
+	if !m.isValidCMD(c, cmd, args, exactly(1)) {
 		return
 	}
 
@@ -421,15 +380,7 @@ func (m *Miniredis) cmdRpop(c *server.Peer, cmd string, args []string) {
 }
 
 func (m *Miniredis) cmdXpop(c *server.Peer, cmd string, args []string, lr leftright) {
-	if len(args) < 1 {
-		setDirty(c)
-		c.WriteError(errWrongNumber(cmd))
-		return
-	}
-	if !m.handleAuth(c) {
-		return
-	}
-	if m.checkPubsub(c, cmd) {
+	if !m.isValidCMD(c, cmd, args, atLeast(1)) {
 		return
 	}
 
@@ -513,15 +464,7 @@ func (m *Miniredis) cmdRpush(c *server.Peer, cmd string, args []string) {
 }
 
 func (m *Miniredis) cmdXpush(c *server.Peer, cmd string, args []string, lr leftright) {
-	if len(args) < 2 {
-		setDirty(c)
-		c.WriteError(errWrongNumber(cmd))
-		return
-	}
-	if !m.handleAuth(c) {
-		return
-	}
-	if m.checkPubsub(c, cmd) {
+	if !m.isValidCMD(c, cmd, args, atLeast(2)) {
 		return
 	}
 
@@ -559,15 +502,7 @@ func (m *Miniredis) cmdRpushx(c *server.Peer, cmd string, args []string) {
 }
 
 func (m *Miniredis) cmdXpushx(c *server.Peer, cmd string, args []string, lr leftright) {
-	if len(args) < 2 {
-		setDirty(c)
-		c.WriteError(errWrongNumber(cmd))
-		return
-	}
-	if !m.handleAuth(c) {
-		return
-	}
-	if m.checkPubsub(c, cmd) {
+	if !m.isValidCMD(c, cmd, args, atLeast(2)) {
 		return
 	}
 
@@ -600,15 +535,7 @@ func (m *Miniredis) cmdXpushx(c *server.Peer, cmd string, args []string, lr left
 
 // LRANGE
 func (m *Miniredis) cmdLrange(c *server.Peer, cmd string, args []string) {
-	if len(args) != 3 {
-		setDirty(c)
-		c.WriteError(errWrongNumber(cmd))
-		return
-	}
-	if !m.handleAuth(c) {
-		return
-	}
-	if m.checkPubsub(c, cmd) {
+	if !m.isValidCMD(c, cmd, args, exactly(3)) {
 		return
 	}
 
@@ -650,15 +577,7 @@ func (m *Miniredis) cmdLrange(c *server.Peer, cmd string, args []string) {
 
 // LREM
 func (m *Miniredis) cmdLrem(c *server.Peer, cmd string, args []string) {
-	if len(args) != 3 {
-		setDirty(c)
-		c.WriteError(errWrongNumber(cmd))
-		return
-	}
-	if !m.handleAuth(c) {
-		return
-	}
-	if m.checkPubsub(c, cmd) {
+	if !m.isValidCMD(c, cmd, args, exactly(3)) {
 		return
 	}
 
@@ -724,15 +643,7 @@ func (m *Miniredis) cmdLrem(c *server.Peer, cmd string, args []string) {
 
 // LSET
 func (m *Miniredis) cmdLset(c *server.Peer, cmd string, args []string) {
-	if len(args) != 3 {
-		setDirty(c)
-		c.WriteError(errWrongNumber(cmd))
-		return
-	}
-	if !m.handleAuth(c) {
-		return
-	}
-	if m.checkPubsub(c, cmd) {
+	if !m.isValidCMD(c, cmd, args, exactly(3)) {
 		return
 	}
 
@@ -777,15 +688,7 @@ func (m *Miniredis) cmdLset(c *server.Peer, cmd string, args []string) {
 
 // LTRIM
 func (m *Miniredis) cmdLtrim(c *server.Peer, cmd string, args []string) {
-	if len(args) != 3 {
-		setDirty(c)
-		c.WriteError(errWrongNumber(cmd))
-		return
-	}
-	if !m.handleAuth(c) {
-		return
-	}
-	if m.checkPubsub(c, cmd) {
+	if !m.isValidCMD(c, cmd, args, exactly(3)) {
 		return
 	}
 
@@ -831,15 +734,7 @@ func (m *Miniredis) cmdLtrim(c *server.Peer, cmd string, args []string) {
 
 // RPOPLPUSH
 func (m *Miniredis) cmdRpoplpush(c *server.Peer, cmd string, args []string) {
-	if len(args) != 2 {
-		setDirty(c)
-		c.WriteError(errWrongNumber(cmd))
-		return
-	}
-	if !m.handleAuth(c) {
-		return
-	}
-	if m.checkPubsub(c, cmd) {
+	if !m.isValidCMD(c, cmd, args, exactly(2)) {
 		return
 	}
 
@@ -864,15 +759,7 @@ func (m *Miniredis) cmdRpoplpush(c *server.Peer, cmd string, args []string) {
 
 // BRPOPLPUSH
 func (m *Miniredis) cmdBrpoplpush(c *server.Peer, cmd string, args []string) {
-	if len(args) != 3 {
-		setDirty(c)
-		c.WriteError(errWrongNumber(cmd))
-		return
-	}
-	if !m.handleAuth(c) {
-		return
-	}
-	if m.checkPubsub(c, cmd) {
+	if !m.isValidCMD(c, cmd, args, exactly(3)) {
 		return
 	}
 
@@ -918,15 +805,7 @@ func (m *Miniredis) cmdBrpoplpush(c *server.Peer, cmd string, args []string) {
 
 // LMOVE
 func (m *Miniredis) cmdLmove(c *server.Peer, cmd string, args []string) {
-	if len(args) != 4 {
-		setDirty(c)
-		c.WriteError(errWrongNumber(cmd))
-		return
-	}
-	if !m.handleAuth(c) {
-		return
-	}
-	if m.checkPubsub(c, cmd) {
+	if !m.isValidCMD(c, cmd, args, exactly(4)) {
 		return
 	}
 
@@ -979,15 +858,7 @@ func (m *Miniredis) cmdLmove(c *server.Peer, cmd string, args []string) {
 
 // BLMOVE
 func (m *Miniredis) cmdBlmove(c *server.Peer, cmd string, args []string) {
-	if len(args) != 5 {
-		setDirty(c)
-		c.WriteError(errWrongNumber(cmd))
-		return
-	}
-	if !m.handleAuth(c) {
-		return
-	}
-	if m.checkPubsub(c, cmd) {
+	if !m.isValidCMD(c, cmd, args, exactly(5)) {
 		return
 	}
 

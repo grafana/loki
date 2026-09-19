@@ -55,6 +55,12 @@ message InstanceDesc {
 	// Read-only instances go through standard state changes, and special handling is applied to them
 	// during shuffle shards.
 	bool read_only = 11;
+
+  // Map of component / feature identifiers to version number.
+  // The component / feature identifiers are specific to the application (ie. aren't defined in dskit).
+  // We use a uint64 for the version number itself as versions are expected to increase and be
+  // sortable.
+  map<uint64, uint64> versions = 12;
 }
 
 enum InstanceState {

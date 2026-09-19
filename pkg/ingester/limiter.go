@@ -27,7 +27,6 @@ type RingCount interface {
 }
 
 type Limits interface {
-	UnorderedWrites(userID string) bool
 	UseOwnedStreamCount(userID string) bool
 	MaxLocalStreamsPerUser(userID string) int
 	MaxGlobalStreamsPerUser(userID string) int
@@ -35,6 +34,7 @@ type Limits interface {
 	ShardStreams(userID string) shardstreams.Config
 	IngestionPartitionsTenantShardSize(userID string) int
 
+	validation.IngestionPolicyOverrideLimits
 	retention.Limits
 }
 
@@ -80,23 +80,25 @@ func NewLimiter(limits Limits, metrics *ingesterMetrics, ingesterRingLimiterStra
 	}
 }
 
-func (l *Limiter) UnorderedWrites(userID string) bool {
-	// WAL replay should not discard previously ack'd writes,
-	// so allow out of order writes while the limiter is disabled.
-	// This allows replaying unordered WALs into ordered configurations.
-	if l.disabled {
-		return true
-	}
-	return l.limits.UnorderedWrites(userID)
-}
-
-func (l *Limiter) GetStreamCountLimit(tenantID string) (calculatedLimit, localLimit, globalLimit, adjustedGlobalLimit int) {
+func (l *Limiter) GetStreamCountLimit(tenantID string, policy string) (calculatedLimit, localLimit, globalLimit, adjustedGlobalLimit int) {
 	// Start by setting the local limit either from override or default
 	localLimit = l.limits.MaxLocalStreamsPerUser(tenantID)
 
 	// We can assume that streams are evenly distributed across ingesters
 	// so we do convert the global limit into a local limit
 	globalLimit = l.limits.MaxGlobalStreamsPerUser(tenantID)
+
+	// Check for policy-specific overrides if policy is specified. A non-nil override (ok=true)
+	// replaces the tenant value for that policy.
+	if policy != noPolicy {
+		if policyLocalLimit, ok := l.limits.PolicyMaxLocalStreamsPerUser(tenantID, policy); ok {
+			localLimit = policyLocalLimit
+		}
+		if policyGlobalLimit, ok := l.limits.PolicyMaxGlobalStreamsPerUser(tenantID, policy); ok {
+			globalLimit = policyGlobalLimit
+		}
+	}
+
 	adjustedGlobalLimit = l.ringStrategy.convertGlobalToLocalLimit(globalLimit, tenantID)
 
 	// Set the calculated limit to the lesser of the local limit or the new calculated global limit
@@ -194,24 +196,29 @@ type streamCountLimiter struct {
 	limiter                    *Limiter
 	defaultStreamCountSupplier supplier[int]
 	ownedStreamSvc             *ownedStreamService
+	delegateStreamLimits       bool
 }
 
 var noopFixedLimitSupplier = func() int {
 	return 0
 }
 
-func newStreamCountLimiter(tenantID string, defaultStreamCountSupplier supplier[int], limiter *Limiter, service *ownedStreamService) *streamCountLimiter {
+func newStreamCountLimiter(tenantID string, defaultStreamCountSupplier supplier[int], limiter *Limiter, service *ownedStreamService, delegateStreamLimits bool) *streamCountLimiter {
 	return &streamCountLimiter{
 		tenantID:                   tenantID,
 		limiter:                    limiter,
 		defaultStreamCountSupplier: defaultStreamCountSupplier,
 		ownedStreamSvc:             service,
+		delegateStreamLimits:       delegateStreamLimits,
 	}
 }
 
-func (l *streamCountLimiter) AssertNewStreamAllowed(tenantID string) error {
-	streamCountSupplier, fixedLimitSupplier := l.getSuppliers(tenantID)
-	calculatedLimit, localLimit, globalLimit, adjustedGlobalLimit := l.getCurrentLimit(tenantID, fixedLimitSupplier)
+func (l *streamCountLimiter) AssertNewStreamAllowed(tenantID string, policy string) error {
+	if l.delegateStreamLimits {
+		return nil
+	}
+	streamCountSupplier, fixedLimitSupplier := l.getSuppliers(tenantID, policy)
+	calculatedLimit, localLimit, globalLimit, adjustedGlobalLimit := l.getCurrentLimit(tenantID, policy, fixedLimitSupplier)
 	actualStreamsCount := streamCountSupplier()
 	if actualStreamsCount < calculatedLimit {
 		return nil
@@ -220,24 +227,38 @@ func (l *streamCountLimiter) AssertNewStreamAllowed(tenantID string) error {
 	return fmt.Errorf(errMaxStreamsPerUserLimitExceeded, tenantID, actualStreamsCount, calculatedLimit, localLimit, globalLimit, adjustedGlobalLimit)
 }
 
-func (l *streamCountLimiter) getCurrentLimit(tenantID string, fixedLimitSupplier supplier[int]) (calculatedLimit, localLimit, globalLimit, adjustedGlobalLimit int) {
-	calculatedLimit, localLimit, globalLimit, adjustedGlobalLimit = l.limiter.GetStreamCountLimit(tenantID)
-	fixedLimit := fixedLimitSupplier()
-	if fixedLimit > calculatedLimit {
-		calculatedLimit = fixedLimit
+func (l *streamCountLimiter) getCurrentLimit(tenantID, policy string, fixedLimitSupplier supplier[int]) (calculatedLimit, localLimit, globalLimit, adjustedGlobalLimit int) {
+	calculatedLimit, localLimit, globalLimit, adjustedGlobalLimit = l.limiter.GetStreamCountLimit(tenantID, policy)
+
+	// Only apply fixed limit if no policy is specified
+	// Policy limits should take precedence over fixed limits
+	if policy == noPolicy {
+		fixedLimit := fixedLimitSupplier()
+		if fixedLimit > calculatedLimit {
+			calculatedLimit = fixedLimit
+		}
 	}
+
 	return
 }
 
-func (l *streamCountLimiter) getSuppliers(tenant string) (streamCountSupplier, fixedLimitSupplier supplier[int]) {
+func (l *streamCountLimiter) getSuppliers(tenant string, policy string) (streamCountSupplier, fixedLimitSupplier supplier[int]) {
 	if l.limiter.limits.UseOwnedStreamCount(tenant) {
-		return l.ownedStreamSvc.getOwnedStreamCount, l.ownedStreamSvc.getFixedLimit
+		streamCountSupplier := func() int {
+			return l.ownedStreamSvc.getOwnedStreamCount()
+		}
+		if policy != noPolicy {
+			streamCountSupplier = func() int {
+				return l.ownedStreamSvc.getPolicyStreamCount(policy)
+			}
+		}
+		return streamCountSupplier, l.ownedStreamSvc.getFixedLimit
 	}
 	return l.defaultStreamCountSupplier, noopFixedLimitSupplier
 }
 
 type RateLimiterStrategy interface {
-	RateLimit(tenant string) validation.RateLimit
+	RateLimit(tenant, policy string) validation.RateLimit
 	SetDisabled(bool)
 }
 
@@ -246,9 +267,17 @@ type TenantBasedStrategy struct {
 	limits   Limits
 }
 
-func (l *TenantBasedStrategy) RateLimit(tenant string) validation.RateLimit {
+func (l *TenantBasedStrategy) RateLimit(tenant, policy string) validation.RateLimit {
 	if l.disabled {
 		return validation.Unlimited
+	}
+
+	// A per-policy override replaces the tenant per-stream rate limit for streams
+	// resolved to that policy.
+	if policy != noPolicy {
+		if rl, ok := l.limits.PolicyPerStreamRateLimit(tenant, policy); ok {
+			return rl
+		}
 	}
 
 	return l.limits.PerStreamRateLimit(tenant)
@@ -260,7 +289,7 @@ func (l *TenantBasedStrategy) SetDisabled(disabled bool) {
 
 type NoLimitsStrategy struct{}
 
-func (l *NoLimitsStrategy) RateLimit(_ string) validation.RateLimit {
+func (l *NoLimitsStrategy) RateLimit(_, _ string) validation.RateLimit {
 	return validation.Unlimited
 }
 
@@ -273,15 +302,17 @@ type StreamRateLimiter struct {
 	recheckAt     time.Time
 	strategy      RateLimiterStrategy
 	tenant        string
+	policy        string
 	lim           *rate.Limiter
 }
 
-func NewStreamRateLimiter(strategy RateLimiterStrategy, tenant string, recheckPeriod time.Duration) *StreamRateLimiter {
-	rl := strategy.RateLimit(tenant)
+func NewStreamRateLimiter(strategy RateLimiterStrategy, tenant, policy string, recheckPeriod time.Duration) *StreamRateLimiter {
+	rl := strategy.RateLimit(tenant, policy)
 	return &StreamRateLimiter{
 		recheckPeriod: recheckPeriod,
 		strategy:      strategy,
 		tenant:        tenant,
+		policy:        policy,
 		lim:           rate.NewLimiter(rl.Limit, rl.Burst),
 	}
 }
@@ -294,7 +325,7 @@ func (l *StreamRateLimiter) AllowN(at time.Time, n int) bool {
 		oldLim := l.lim.Limit()
 		oldBurst := l.lim.Burst()
 
-		next := l.strategy.RateLimit(l.tenant)
+		next := l.strategy.RateLimit(l.tenant, l.policy)
 
 		if oldLim != next.Limit || oldBurst != next.Burst {
 			// Edge case: rate.Inf doesn't advance nicely when reconfigured.

@@ -1,7 +1,7 @@
 // Copyright The OpenTelemetry Authors
 // SPDX-License-Identifier: Apache-2.0
 
-package otlpmetricgrpc // import "go.opentelemetry.io/otel/exporters/otlp/otlpmetric/otlpmetricgrpc"
+package otlpmetricgrpc
 
 import (
 	"context"
@@ -9,12 +9,16 @@ import (
 	"fmt"
 	"sync"
 
+	metricpb "go.opentelemetry.io/proto/otlp/metrics/v1"
+
+	"go.opentelemetry.io/otel/exporters/otlp/otlpmetric/otlpmetricgrpc/internal/counter"
+	"go.opentelemetry.io/otel/exporters/otlp/otlpmetric/otlpmetricgrpc/internal/observ"
 	"go.opentelemetry.io/otel/exporters/otlp/otlpmetric/otlpmetricgrpc/internal/oconf"
 	"go.opentelemetry.io/otel/exporters/otlp/otlpmetric/otlpmetricgrpc/internal/transform"
+	"go.opentelemetry.io/otel/exporters/otlp/otlpmetric/otlpmetricgrpc/internal/x"
 	"go.opentelemetry.io/otel/internal/global"
 	"go.opentelemetry.io/otel/sdk/metric"
 	"go.opentelemetry.io/otel/sdk/metric/metricdata"
-	metricpb "go.opentelemetry.io/proto/otlp/metrics/v1"
 )
 
 // Exporter is a OpenTelemetry metric Exporter using gRPC.
@@ -30,6 +34,9 @@ type Exporter struct {
 	aggregationSelector metric.AggregationSelector
 
 	shutdownOnce sync.Once
+
+	// Self-observability metrics
+	inst *observ.Instrumentation
 }
 
 func newExporter(c *client, cfg oconf.Config) (*Exporter, error) {
@@ -45,12 +52,27 @@ func newExporter(c *client, cfg oconf.Config) (*Exporter, error) {
 		as = metric.DefaultAggregationSelector
 	}
 
+	var inst *observ.Instrumentation
+	var initErr error
+	if x.Observability.Enabled() {
+		var err error
+		inst, err = observ.NewInstrumentation(
+			counter.NextExporterID(),
+			c.conn.CanonicalTarget(),
+		)
+		if err != nil {
+			initErr = err
+		}
+	}
+
 	return &Exporter{
 		client: c,
 
 		temporalitySelector: ts,
 		aggregationSelector: as,
-	}, nil
+
+		inst: inst,
+	}, initErr
 }
 
 // Temporality returns the Temporality to use for an instrument kind.
@@ -71,10 +93,18 @@ func (e *Exporter) Export(ctx context.Context, rm *metricdata.ResourceMetrics) e
 	defer global.Debug("OTLP/gRPC exporter export", "Data", rm)
 
 	otlpRm, err := transform.ResourceMetrics(rm)
+
+	// Track export operation for self-observability
+	op := e.inst.TrackExport(ctx, otlpRm)
+
+	var upErr error
+	defer func() { op.End(upErr) }()
+
 	// Best effort upload of transformable metrics.
 	e.clientMu.Lock()
-	upErr := e.client.UploadMetrics(ctx, otlpRm)
+	upErr = e.client.UploadMetrics(ctx, otlpRm)
 	e.clientMu.Unlock()
+
 	if upErr != nil {
 		if err == nil {
 			return fmt.Errorf("failed to upload metrics: %w", upErr)
@@ -91,7 +121,7 @@ func (e *Exporter) Export(ctx context.Context, rm *metricdata.ResourceMetrics) e
 // This method returns an error if the method is canceled by the passed context.
 //
 // This method is safe to call concurrently.
-func (e *Exporter) ForceFlush(ctx context.Context) error {
+func (*Exporter) ForceFlush(ctx context.Context) error {
 	// The exporter and client hold no state, nothing to flush.
 	return ctx.Err()
 }
@@ -119,7 +149,7 @@ var errShutdown = errors.New("gRPC exporter is shutdown")
 
 type shutdownClient struct{}
 
-func (c shutdownClient) err(ctx context.Context) error {
+func (shutdownClient) err(ctx context.Context) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
@@ -135,7 +165,7 @@ func (c shutdownClient) Shutdown(ctx context.Context) error {
 }
 
 // MarshalLog returns logging data about the Exporter.
-func (e *Exporter) MarshalLog() interface{} {
+func (*Exporter) MarshalLog() any {
 	return struct{ Type string }{Type: "OTLP/gRPC"}
 }
 

@@ -1003,7 +1003,7 @@ func (m *Value_StructValue) SizeVT() (n int) {
 		l = (*Struct)(m.StructValue).SizeVT()
 		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
 	} else {
-		n += 3
+		n += 2
 	}
 	return n
 }
@@ -1017,7 +1017,7 @@ func (m *Value_ListValue) SizeVT() (n int) {
 		l = (*ListValue)(m.ListValue).SizeVT()
 		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
 	} else {
-		n += 3
+		n += 2
 	}
 	return n
 }

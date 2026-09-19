@@ -11,8 +11,6 @@ import (
 	"sort"
 
 	"go.opentelemetry.io/collector/pdata/internal"
-	otlptrace "go.opentelemetry.io/collector/pdata/internal/data/protogen/trace/v1"
-	"go.opentelemetry.io/collector/pdata/internal/json"
 )
 
 // ResourceSpansSlice logically represents a slice of ResourceSpans.
@@ -23,20 +21,19 @@ import (
 // Must use NewResourceSpansSlice function to create new instances.
 // Important: zero-initialized instance is not valid for use.
 type ResourceSpansSlice struct {
-	orig  *[]*otlptrace.ResourceSpans
+	orig  *[]*internal.ResourceSpans
 	state *internal.State
 }
 
-func newResourceSpansSlice(orig *[]*otlptrace.ResourceSpans, state *internal.State) ResourceSpansSlice {
+func newResourceSpansSlice(orig *[]*internal.ResourceSpans, state *internal.State) ResourceSpansSlice {
 	return ResourceSpansSlice{orig: orig, state: state}
 }
 
-// NewResourceSpansSlice creates a ResourceSpansSlice with 0 elements.
+// NewResourceSpansSlice creates a ResourceSpansSliceWrapper with 0 elements.
 // Can use "EnsureCapacity" to initialize with a given capacity.
 func NewResourceSpansSlice() ResourceSpansSlice {
-	orig := []*otlptrace.ResourceSpans(nil)
-	state := internal.StateMutable
-	return newResourceSpansSlice(&orig, &state)
+	orig := []*internal.ResourceSpans(nil)
+	return newResourceSpansSlice(&orig, internal.NewState())
 }
 
 // Len returns the number of elements in the slice.
@@ -92,7 +89,7 @@ func (es ResourceSpansSlice) EnsureCapacity(newCap int) {
 		return
 	}
 
-	newOrig := make([]*otlptrace.ResourceSpans, len(*es.orig), newCap)
+	newOrig := make([]*internal.ResourceSpans, len(*es.orig), newCap)
 	copy(newOrig, *es.orig)
 	*es.orig = newOrig
 }
@@ -101,7 +98,7 @@ func (es ResourceSpansSlice) EnsureCapacity(newCap int) {
 // It returns the newly added ResourceSpans.
 func (es ResourceSpansSlice) AppendEmpty() ResourceSpans {
 	es.state.AssertMutable()
-	*es.orig = append(*es.orig, &otlptrace.ResourceSpans{})
+	*es.orig = append(*es.orig, internal.NewResourceSpans())
 	return es.At(es.Len() - 1)
 }
 
@@ -130,6 +127,9 @@ func (es ResourceSpansSlice) RemoveIf(f func(ResourceSpans) bool) {
 	newLen := 0
 	for i := 0; i < len(*es.orig); i++ {
 		if f(es.At(i)) {
+			internal.DeleteResourceSpans((*es.orig)[i], true)
+			(*es.orig)[i] = nil
+
 			continue
 		}
 		if newLen == i {
@@ -138,6 +138,8 @@ func (es ResourceSpansSlice) RemoveIf(f func(ResourceSpans) bool) {
 			continue
 		}
 		(*es.orig)[newLen] = (*es.orig)[i]
+		// Cannot delete here since we just move the data(or pointer to data) to a different position in the slice.
+		(*es.orig)[i] = nil
 		newLen++
 	}
 	*es.orig = (*es.orig)[:newLen]
@@ -146,7 +148,10 @@ func (es ResourceSpansSlice) RemoveIf(f func(ResourceSpans) bool) {
 // CopyTo copies all elements from the current slice overriding the destination.
 func (es ResourceSpansSlice) CopyTo(dest ResourceSpansSlice) {
 	dest.state.AssertMutable()
-	*dest.orig = copyOrigResourceSpansSlice(*dest.orig, *es.orig)
+	if es.orig == dest.orig {
+		return
+	}
+	*dest.orig = internal.CopyResourceSpansPtrSlice(*dest.orig, *es.orig)
 }
 
 // Sort sorts the ResourceSpans elements within ResourceSpansSlice given the
@@ -155,41 +160,4 @@ func (es ResourceSpansSlice) CopyTo(dest ResourceSpansSlice) {
 func (es ResourceSpansSlice) Sort(less func(a, b ResourceSpans) bool) {
 	es.state.AssertMutable()
 	sort.SliceStable(*es.orig, func(i, j int) bool { return less(es.At(i), es.At(j)) })
-}
-
-// marshalJSONStream marshals all properties from the current struct to the destination stream.
-func (ms ResourceSpansSlice) marshalJSONStream(dest *json.Stream) {
-	dest.WriteArrayStart()
-	if len(*ms.orig) > 0 {
-		ms.At(0).marshalJSONStream(dest)
-	}
-	for i := 1; i < len(*ms.orig); i++ {
-		dest.WriteMore()
-		ms.At(i).marshalJSONStream(dest)
-	}
-	dest.WriteArrayEnd()
-}
-
-// unmarshalJSONIter unmarshals all properties from the current struct from the source iterator.
-func (ms ResourceSpansSlice) unmarshalJSONIter(iter *json.Iterator) {
-	iter.ReadArrayCB(func(iter *json.Iterator) bool {
-		*ms.orig = append(*ms.orig, &otlptrace.ResourceSpans{})
-		ms.At(ms.Len() - 1).unmarshalJSONIter(iter)
-		return true
-	})
-}
-
-func copyOrigResourceSpansSlice(dest, src []*otlptrace.ResourceSpans) []*otlptrace.ResourceSpans {
-	if cap(dest) < len(src) {
-		dest = make([]*otlptrace.ResourceSpans, len(src))
-		data := make([]otlptrace.ResourceSpans, len(src))
-		for i := range src {
-			dest[i] = &data[i]
-		}
-	}
-	dest = dest[:len(src)]
-	for i := range src {
-		copyOrigResourceSpans(dest[i], src[i])
-	}
-	return dest
 }

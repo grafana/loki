@@ -1,4 +1,4 @@
-// Copyright 2018 The Prometheus Authors
+// Copyright The Prometheus Authors
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
@@ -16,13 +16,14 @@ package procfs
 import (
 	"bufio"
 	"bytes"
+	"errors"
 	"fmt"
 	"io"
 	"strconv"
 	"strings"
 
 	"github.com/prometheus/procfs/internal/fs"
-	"github.com/prometheus/procfs/internal/util"
+	"github.com/prometheus/procfs/internal/parsers"
 )
 
 // CPUStat shows how much time the cpu spend in various stages.
@@ -92,7 +93,7 @@ func parseCPUStat(line string) (CPUStat, int64, error) {
 		&cpuStat.Iowait, &cpuStat.IRQ, &cpuStat.SoftIRQ, &cpuStat.Steal,
 		&cpuStat.Guest, &cpuStat.GuestNice)
 
-	if err != nil && err != io.EOF {
+	if err != nil && !errors.Is(err, io.EOF) {
 		return CPUStat{}, -1, fmt.Errorf("%w: couldn't parse %q (cpu): %w", ErrFileParse, line, err)
 	}
 	if count == 0 {
@@ -166,7 +167,7 @@ func (fs FS) NewStat() (Stat, error) {
 // See: https://www.kernel.org/doc/Documentation/filesystems/proc.txt
 func (fs FS) Stat() (Stat, error) {
 	fileName := fs.proc.Path("stat")
-	data, err := util.ReadFileNoStat(fileName)
+	data, err := parsers.ReadFileNoStat(fileName)
 	if err != nil {
 		return Stat{}, err
 	}

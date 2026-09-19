@@ -1,4 +1,4 @@
-// Copyright 2019 The Prometheus Authors
+// Copyright The Prometheus Authors
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
@@ -17,10 +17,10 @@ import (
 	"bufio"
 	"bytes"
 	"fmt"
+	"io"
+	"os"
 	"strconv"
 	"strings"
-
-	"github.com/prometheus/procfs/internal/util"
 )
 
 // A MountInfo is a type that describes the details, options
@@ -98,11 +98,11 @@ func parseMountInfoString(mountString string) (*MountInfo, error) {
 
 	mount.MountID, err = strconv.Atoi(mountInfo[0])
 	if err != nil {
-		return nil, fmt.Errorf("%w: mount ID: %q", ErrFileParse, mount.MountID)
+		return nil, fmt.Errorf("%w: mount ID: %q", ErrFileParse, mountInfo[0])
 	}
 	mount.ParentID, err = strconv.Atoi(mountInfo[1])
 	if err != nil {
-		return nil, fmt.Errorf("%w: parent ID: %q", ErrFileParse, mount.ParentID)
+		return nil, fmt.Errorf("%w: parent ID: %q", ErrFileParse, mountInfo[1])
 	}
 	// Has optional fields, which is a space separated list of values.
 	// Example: shared:2 master:7
@@ -147,8 +147,7 @@ func mountOptionsParseOptionalFields(o []string) (map[string]string, error) {
 // mountOptionsParser parses the mount options, superblock options.
 func mountOptionsParser(mountOptions string) map[string]string {
 	opts := make(map[string]string)
-	options := strings.Split(mountOptions, ",")
-	for _, opt := range options {
+	for opt := range strings.SplitSeq(mountOptions, ",") {
 		splitOption := strings.Split(opt, "=")
 		if len(splitOption) < 2 {
 			key := splitOption[0]
@@ -161,9 +160,19 @@ func mountOptionsParser(mountOptions string) map[string]string {
 	return opts
 }
 
+// readMountInfo reads a full mountinfo file (no 1 MiB cap, unlike parsers.ReadFileNoStat).
+func readMountInfo(path string) ([]byte, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+	return io.ReadAll(f)
+}
+
 // GetMounts retrieves mountinfo information from `/proc/self/mountinfo`.
 func GetMounts() ([]*MountInfo, error) {
-	data, err := util.ReadFileNoStat("/proc/self/mountinfo")
+	data, err := readMountInfo("/proc/self/mountinfo")
 	if err != nil {
 		return nil, err
 	}
@@ -172,7 +181,25 @@ func GetMounts() ([]*MountInfo, error) {
 
 // GetProcMounts retrieves mountinfo information from a processes' `/proc/<pid>/mountinfo`.
 func GetProcMounts(pid int) ([]*MountInfo, error) {
-	data, err := util.ReadFileNoStat(fmt.Sprintf("/proc/%d/mountinfo", pid))
+	data, err := readMountInfo(fmt.Sprintf("/proc/%d/mountinfo", pid))
+	if err != nil {
+		return nil, err
+	}
+	return parseMountInfo(data)
+}
+
+// GetMounts retrieves mountinfo information from `/proc/self/mountinfo`.
+func (fs FS) GetMounts() ([]*MountInfo, error) {
+	data, err := readMountInfo(fs.proc.Path("self/mountinfo"))
+	if err != nil {
+		return nil, err
+	}
+	return parseMountInfo(data)
+}
+
+// GetProcMounts retrieves mountinfo information from a processes' `/proc/<pid>/mountinfo`.
+func (fs FS) GetProcMounts(pid int) ([]*MountInfo, error) {
+	data, err := readMountInfo(fs.proc.Path(fmt.Sprintf("%d/mountinfo", pid)))
 	if err != nil {
 		return nil, err
 	}

@@ -61,14 +61,40 @@ func WithStartOffset(off int64) FromJSONOption {
 	}
 }
 
-// WithUseNumber enables the 'UseNumber' option on the json decoder, using
-// the json.Number type instead of assuming float64 for numbers. This is critical
-// if you have numbers that are larger than what can fit into the 53 bits of
-// an IEEE float64 mantissa and want to preserve its value.
+// WithUseNumber previously enabled the 'UseNumber' option on the json decoder.
+// As of issue #804, FromJSON, RecordFromJSON, and TableFromJSON unconditionally
+// enable UseNumber so that integer values too large to fit in float64 (i.e.
+// beyond 2^53) are preserved without silent corruption. This option is now a
+// no-op and is retained for backward compatibility.
+//
+// Deprecated: UseNumber is now always enabled; this option has no effect.
 func WithUseNumber() FromJSONOption {
 	return func(c *fromJSONCfg) {
 		c.useNumber = true
 	}
+}
+
+func seekJSONStartOffset(r io.Reader, offset int64) error {
+	if offset < 0 {
+		return fmt.Errorf("seek JSON start offset must be non-negative: %d", offset)
+	}
+	if offset == 0 {
+		return nil
+	}
+
+	seeker, ok := r.(io.ReadSeeker)
+	if !ok {
+		return errors.New("using StartOffset option requires reader to be a ReadSeeker, cannot seek")
+	}
+
+	pos, err := seeker.Seek(offset, io.SeekStart)
+	if err != nil {
+		return fmt.Errorf("seek JSON start offset %d: %w", offset, err)
+	}
+	if pos != offset {
+		return fmt.Errorf("seek JSON start offset: got %d, want %d", pos, offset)
+	}
+	return nil
 }
 
 // FromJSON creates an arrow.Array from a corresponding JSON stream and defined data type. If the types in the
@@ -130,28 +156,20 @@ func FromJSON(mem memory.Allocator, dt arrow.DataType, r io.Reader, opts ...From
 		o(&cfg)
 	}
 
-	if cfg.startOffset != 0 {
-		seeker, ok := r.(io.ReadSeeker)
-		if !ok {
-			return nil, 0, errors.New("using StartOffset option requires reader to be a ReadSeeker, cannot seek")
-		}
-
-		seeker.Seek(cfg.startOffset, io.SeekStart)
+	if err = seekJSONStartOffset(r, cfg.startOffset); err != nil {
+		return nil, 0, err
 	}
 
 	bldr := NewBuilder(mem, dt)
 	defer bldr.Release()
 
 	dec := json.NewDecoder(r)
+	dec.UseNumber()
 	defer func() {
 		if errors.Is(err, io.EOF) {
 			err = fmt.Errorf("failed parsing json: %w", io.ErrUnexpectedEOF)
 		}
 	}()
-
-	if cfg.useNumber {
-		dec.UseNumber()
-	}
 
 	if !cfg.multiDocument {
 		t, err := dec.Token()
@@ -180,7 +198,7 @@ func FromJSON(mem memory.Allocator, dt arrow.DataType, r io.Reader, opts ...From
 
 // RecordToStructArray constructs a struct array from the columns of the record batch
 // by referencing them, zero-copy.
-func RecordToStructArray(rec arrow.Record) *Struct {
+func RecordToStructArray(rec arrow.RecordBatch) *Struct {
 	cols := make([]arrow.ArrayData, rec.NumCols())
 	for i, c := range rec.Columns() {
 		cols[i] = c.Data()
@@ -197,12 +215,12 @@ func RecordToStructArray(rec arrow.Record) *Struct {
 // of the struct will be used to define the record batch. Otherwise the passed in
 // schema will be used to create the record batch. If passed in, the schema must match
 // the fields of the struct column.
-func RecordFromStructArray(in *Struct, schema *arrow.Schema) arrow.Record {
+func RecordFromStructArray(in *Struct, schema *arrow.Schema) arrow.RecordBatch {
 	if schema == nil {
 		schema = arrow.NewSchema(in.DataType().(*arrow.StructType).Fields(), nil)
 	}
 
-	return NewRecord(schema, in.fields, int64(in.Len()))
+	return NewRecordBatch(schema, in.fields, int64(in.Len()))
 }
 
 // RecordFromJSON creates a record batch from JSON data. See array.FromJSON for the details
@@ -210,20 +228,67 @@ func RecordFromStructArray(in *Struct, schema *arrow.Schema) arrow.Record {
 //
 // A record batch from JSON is equivalent to reading a struct array in from json and then
 // converting it to a record batch.
-func RecordFromJSON(mem memory.Allocator, schema *arrow.Schema, r io.Reader, opts ...FromJSONOption) (arrow.Record, int64, error) {
-	st := arrow.StructOf(schema.Fields()...)
-	arr, off, err := FromJSON(mem, st, r, opts...)
-	if err != nil {
-		return nil, off, err
+//
+// See https://github.com/apache/arrow-go/issues/448 for more details on
+// why this isn't a simple wrapper around FromJSON.
+func RecordFromJSON(mem memory.Allocator, schema *arrow.Schema, r io.Reader, opts ...FromJSONOption) (arrow.RecordBatch, int64, error) {
+	var cfg fromJSONCfg
+	for _, o := range opts {
+		o(&cfg)
 	}
-	defer arr.Release()
 
-	return RecordFromStructArray(arr.(*Struct), schema), off, nil
+	if err := seekJSONStartOffset(r, cfg.startOffset); err != nil {
+		return nil, 0, err
+	}
+
+	if mem == nil {
+		mem = memory.DefaultAllocator
+	}
+
+	bldr := NewRecordBuilder(mem, schema)
+	defer bldr.Release()
+
+	dec := json.NewDecoder(r)
+	dec.UseNumber()
+
+	if !cfg.multiDocument {
+		t, err := dec.Token()
+		if err != nil {
+			return nil, dec.InputOffset(), err
+		}
+		if delim, ok := t.(json.Delim); !ok || delim != '[' {
+			return nil, dec.InputOffset(), fmt.Errorf("json doc must be an array, found %s", delim)
+		}
+
+		for dec.More() {
+			if err := bldr.UnmarshalOne(dec); err != nil {
+				return nil, dec.InputOffset(), fmt.Errorf("failed to decode json: %w", err)
+			}
+		}
+
+		// consume the last ']'
+		if _, err = dec.Token(); err != nil {
+			return nil, dec.InputOffset(), fmt.Errorf("failed to decode json: %w", err)
+		}
+
+		return bldr.NewRecordBatch(), dec.InputOffset(), nil
+	}
+
+	for {
+		if err := bldr.UnmarshalOne(dec); err != nil {
+			if errors.Is(err, io.EOF) {
+				break
+			}
+			return nil, dec.InputOffset(), fmt.Errorf("failed to decode json: %w", err)
+		}
+	}
+
+	return bldr.NewRecordBatch(), dec.InputOffset(), nil
 }
 
 // RecordToJSON writes out the given record following the format of each row is a single object
 // on a single line of the output.
-func RecordToJSON(rec arrow.Record, w io.Writer) error {
+func RecordToJSON(rec arrow.RecordBatch, w io.Writer) error {
 	enc := json.NewEncoder(w)
 
 	fields := rec.Schema().Fields()
@@ -241,7 +306,7 @@ func RecordToJSON(rec arrow.Record, w io.Writer) error {
 }
 
 func TableFromJSON(mem memory.Allocator, sc *arrow.Schema, recJSON []string, opt ...FromJSONOption) (arrow.Table, error) {
-	batches := make([]arrow.Record, len(recJSON))
+	batches := make([]arrow.RecordBatch, len(recJSON))
 	for i, batchJSON := range recJSON {
 		batch, _, err := RecordFromJSON(mem, sc, strings.NewReader(batchJSON), opt...)
 		if err != nil {
@@ -391,6 +456,8 @@ func getMaxBufferLen(dt arrow.DataType, length int) int {
 		return bufferLen
 	case arrow.OffsetsDataType:
 		return maxOf(dt.OffsetTypeTraits().BytesRequired(length + 1))
+	case arrow.BinaryViewDataType:
+		return maxOf(arrow.ViewHeaderSizeBytes * length)
 	case *arrow.FixedSizeListType:
 		return maxOf(getMaxBufferLen(dt.Elem(), int(dt.Len())*length))
 	case arrow.ExtensionType:
@@ -439,6 +506,8 @@ func (n *nullArrayFactory) create() *Data {
 		defer arr.Release()
 		dictData = arr.Data()
 	case arrow.FixedWidthDataType:
+		bufs = append(bufs, n.buf)
+	case arrow.BinaryViewDataType:
 		bufs = append(bufs, n.buf)
 	case arrow.BinaryDataType:
 		bufs = append(bufs, n.buf, n.buf)

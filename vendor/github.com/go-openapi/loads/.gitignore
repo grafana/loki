@@ -1,4 +1,6 @@
-secrets.yml
-coverage.out
-profile.cov
-profile.out
+*.out
+*.cov
+.idea
+.env
+.mcp.json
+.worktrees

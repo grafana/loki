@@ -38,6 +38,7 @@ import (
 // +protobuf=true
 // +protobuf.options.(gogoproto.goproto_stringer)=false
 // +k8s:openapi-gen=true
+// +k8s:openapi-model-package=io.k8s.apimachinery.pkg.util.intstr
 type IntOrString struct {
 	Type   Type   `protobuf:"varint,1,opt,name=type,casttype=Type"`
 	IntVal int32  `protobuf:"varint,2,opt,name=intVal"`
@@ -58,6 +59,7 @@ const (
 // Deprecated: use FromInt32 instead.
 func FromInt(val int) IntOrString {
 	if val > math.MaxInt32 || val < math.MinInt32 {
+		//nolint:logcheck // Should not be reached.
 		klog.Errorf("value: %d overflows int32\n%s\n", val, debug.Stack())
 	}
 	return IntOrString{Type: Int, IntVal: int32(val)}

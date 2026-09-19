@@ -7,8 +7,6 @@ import (
 
 	"github.com/gogo/protobuf/proto"
 	"github.com/prometheus/client_golang/prometheus"
-
-	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/filemd"
 )
 
 // Metrics instruments encoded data objects.
@@ -94,21 +92,9 @@ func (m *Metrics) Observe(obj *Object) error {
 			continue
 		}
 
-		m.sectionMetadataSize.WithLabelValues(typ.String()).Observe(float64(calculateMetadataSize(section)))
+		metadataSize := section.GetLayout().GetMetadata().GetLength()
+		m.sectionMetadataSize.WithLabelValues(typ.String()).Observe(float64(metadataSize))
 	}
 
 	return errors.Join(errs...)
-}
-
-// calculateMetadataSize returns the size of metadata in a section, accounting
-// for whether it's using the deprecated fields or the new layout.
-func calculateMetadataSize(section *filemd.SectionInfo) uint64 {
-	if section.GetLayout() != nil {
-		// This will return zero if GetMetadata returns nil, which is correct as it
-		// defines the section as having no metadata.
-		return section.GetLayout().GetMetadata().GetLength()
-	}
-
-	// Fallback to the deprecated field.
-	return section.MetadataSize //nolint:staticcheck // MetadataSize is deprecated but still used as a fallback.
 }

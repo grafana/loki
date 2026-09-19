@@ -12,6 +12,8 @@ import (
 	"time"
 
 	"github.com/alecthomas/kingpin/v2"
+	dskit_log "github.com/grafana/dskit/log"
+	dskit_server "github.com/grafana/dskit/server"
 	"github.com/prometheus/common/config"
 	"github.com/prometheus/common/version"
 
@@ -26,6 +28,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/logcli/volume"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	_ "github.com/grafana/loki/v3/pkg/util/build"
+	util_log "github.com/grafana/loki/v3/pkg/util/log"
 )
 
 var (
@@ -35,6 +38,7 @@ var (
 		Default("false").
 		Short('q').
 		Bool()
+	logLevel   = app.Flag("log.level", "Log level").Default("error").Enum("error", "warning", "info", "debug")
 	statistics = app.Flag("stats", "Show query statistics").Default("false").Bool()
 	outputMode = app.Flag("output", "Specify output mode [default, raw, jsonl]. raw suppresses log labels and timestamp.").
 			Default("default").
@@ -357,6 +361,10 @@ func main() {
 
 	cmd := kingpin.MustParse(app.Parse(os.Args[1:]))
 
+	var dLevel dskit_log.Level
+	_ = dLevel.Set(*logLevel)
+	util_log.InitLogger(&dskit_server.Config{LogLevel: dLevel}, nil, true)
+
 	if cpuProfile != nil && *cpuProfile != "" {
 		cpuFile, err := os.Create(*cpuProfile)
 		if err != nil {
@@ -446,13 +454,19 @@ func main() {
 		}
 
 		if *tail || *follow {
-			rangeQuery.TailQuery(time.Duration(*delayFor)*time.Second, queryClient, out)
+			if err := rangeQuery.TailQuery(time.Duration(*delayFor)*time.Second, queryClient, out); err != nil {
+				log.Fatalf("Tail failed: %s", err)
+			}
 		} else if rangeQuery.ParallelMaxWorkers == 1 {
-			rangeQuery.DoQuery(queryClient, out, *statistics)
+			if err := rangeQuery.DoQuery(queryClient, out, *statistics); err != nil {
+				log.Fatalf("Range query failed: %s", err)
+			}
 		} else {
 			// `--limit` doesn't make sense when using parallelism.
 			rangeQuery.Limit = 0
-			rangeQuery.DoQueryParallel(queryClient, out, *statistics)
+			if err := rangeQuery.DoQueryParallel(queryClient, out, *statistics); err != nil {
+				log.Fatalf("Range query failed: %s", err)
+			}
 		}
 	case instantQueryCmd.FullCommand():
 		location, err := time.LoadLocation(*timezone)
@@ -471,17 +485,25 @@ func main() {
 			log.Fatalf("Unable to create log output: %s", err)
 		}
 
-		instantQuery.DoQuery(queryClient, out, *statistics)
+		if err := instantQuery.DoQuery(queryClient, out, *statistics); err != nil {
+			log.Fatalf("Instant query failed: %s", err)
+		}
 	case labelsCmd.FullCommand():
-		labelsQuery.DoLabels(queryClient)
+		if err := labelsQuery.DoLabels(queryClient); err != nil {
+			log.Fatalf("Labels query failed: %s", err)
+		}
 	case seriesCmd.FullCommand():
-		seriesQuery.DoSeries(queryClient)
+		if err := seriesQuery.DoSeries(queryClient); err != nil {
+			log.Fatalf("Series query failed: %s", err)
+		}
 	case fmtCmd.FullCommand():
 		if err := formatLogQL(os.Stdin, os.Stdout); err != nil {
 			log.Fatalf("unable to format logql: %s", err)
 		}
 	case statsCmd.FullCommand():
-		statsQuery.DoStats(queryClient)
+		if err := statsQuery.DoStats(queryClient); err != nil {
+			log.Fatalf("Stats query failed: %s", err)
+		}
 	case volumeCmd.FullCommand(), volumeRangeCmd.FullCommand():
 		location, err := time.LoadLocation(*timezone)
 		if err != nil {
@@ -500,12 +522,18 @@ func main() {
 		}
 
 		if cmd == volumeRangeCmd.FullCommand() {
-			index.GetVolumeRange(volumeRangeQuery, queryClient, out, *statistics)
+			if err := index.GetVolumeRange(volumeRangeQuery, queryClient, out, *statistics); err != nil {
+				log.Fatalf("Volume range query failed: %s", err)
+			}
 		} else {
-			index.GetVolume(volumeQuery, queryClient, out, *statistics)
+			if err := index.GetVolume(volumeQuery, queryClient, out, *statistics); err != nil {
+				log.Fatalf("Volume query failed: %s", err)
+			}
 		}
 	case detectedFieldsCmd.FullCommand():
-		detectedFieldsQuery.Do(queryClient, *outputMode)
+		if err := detectedFieldsQuery.Do(queryClient, *outputMode); err != nil {
+			log.Fatalf("Detected-fields query failed: %s", err)
+		}
 	case deleteCreateCmd.FullCommand():
 		if err := deleteCreateQuery.CreateQuery(queryClient); err != nil {
 			log.Fatalf("Error creating delete request: %s", err)
@@ -585,6 +613,7 @@ func newQueryClient(app *kingpin.Application) client.Client {
 	app.Flag("proxy-url", "The http or https proxy to use when making requests. Can also be set using LOKI_HTTP_PROXY_URL env var.").Default("").Envar("LOKI_HTTP_PROXY_URL").StringVar(&client.ProxyURL)
 	app.Flag("compress", "Request that Loki compress returned data in transit. Can also be set using LOKI_HTTP_COMPRESSION env var.").Default("false").Envar("LOKI_HTTP_COMPRESSION").BoolVar(&client.Compression)
 	app.Flag("envproxy", "Use ProxyFromEnvironment to use net/http ProxyFromEnvironment configuration, eg HTTP_PROXY").Default("false").Envar("LOKI_ENV_PROXY").BoolVar(&client.EnvironmentProxy)
+	app.Flag("header", "Add custom HTTP headers to requests. Can be specified multiple times. Format: 'Header-Name: value'").StringsVar(&client.CustomHeaders)
 
 	return client
 }

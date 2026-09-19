@@ -6,61 +6,28 @@
 
 package internal
 
-import (
-	"go.opentelemetry.io/collector/pdata/internal/json"
-)
-
-type Int64Slice struct {
+type Int64SliceWrapper struct {
 	orig  *[]int64
 	state *State
 }
 
-func GetOrigInt64Slice(ms Int64Slice) *[]int64 {
+func GetInt64SliceOrig(ms Int64SliceWrapper) *[]int64 {
 	return ms.orig
 }
 
-func GetInt64SliceState(ms Int64Slice) *State {
+func GetInt64SliceState(ms Int64SliceWrapper) *State {
 	return ms.state
 }
 
-func NewInt64Slice(orig *[]int64, state *State) Int64Slice {
-	return Int64Slice{orig: orig, state: state}
+func NewInt64SliceWrapper(orig *[]int64, state *State) Int64SliceWrapper {
+	return Int64SliceWrapper{orig: orig, state: state}
 }
 
-func CopyOrigInt64Slice(dst, src []int64) []int64 {
-	dst = dst[:0]
-	return append(dst, src...)
+func GenTestInt64SliceWrapper() Int64SliceWrapper {
+	orig := []int64{1, 2, 3}
+	return NewInt64SliceWrapper(&orig, NewState())
 }
 
-func FillTestInt64Slice(ms Int64Slice) {
-	*ms.orig = []int64{1, 2, 3}
-}
-
-func GenerateTestInt64Slice() Int64Slice {
-	orig := []int64(nil)
-	state := StateMutable
-	ms := NewInt64Slice(&orig, &state)
-	FillTestInt64Slice(ms)
-	return ms
-}
-
-// MarshalJSONStreamInt64Slice marshals all properties from the current struct to the destination stream.
-func MarshalJSONStreamInt64Slice(ms Int64Slice, dest *json.Stream) {
-	dest.WriteArrayStart()
-	if len(*ms.orig) > 0 {
-		dest.WriteInt64((*ms.orig)[0])
-	}
-	for i := 1; i < len((*ms.orig)); i++ {
-		dest.WriteMore()
-		dest.WriteInt64((*ms.orig)[i])
-	}
-	dest.WriteArrayEnd()
-}
-
-// UnmarshalJSONIterInt64Slice unmarshals all properties from the current struct from the source iterator.
-func UnmarshalJSONIterInt64Slice(ms Int64Slice, iter *json.Iterator) {
-	iter.ReadArrayCB(func(iter *json.Iterator) bool {
-		*ms.orig = append(*ms.orig, iter.ReadInt64())
-		return true
-	})
+func GenTestInt64Slice() []int64 {
+	return []int64{1, 2, 3}
 }

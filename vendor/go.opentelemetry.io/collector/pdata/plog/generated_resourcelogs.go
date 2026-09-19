@@ -8,8 +8,6 @@ package plog
 
 import (
 	"go.opentelemetry.io/collector/pdata/internal"
-	otlplogs "go.opentelemetry.io/collector/pdata/internal/data/protogen/logs/v1"
-	"go.opentelemetry.io/collector/pdata/internal/json"
 	"go.opentelemetry.io/collector/pdata/pcommon"
 )
 
@@ -21,11 +19,11 @@ import (
 // Must use NewResourceLogs function to create new instances.
 // Important: zero-initialized instance is not valid for use.
 type ResourceLogs struct {
-	orig  *otlplogs.ResourceLogs
+	orig  *internal.ResourceLogs
 	state *internal.State
 }
 
-func newResourceLogs(orig *otlplogs.ResourceLogs, state *internal.State) ResourceLogs {
+func newResourceLogs(orig *internal.ResourceLogs, state *internal.State) ResourceLogs {
 	return ResourceLogs{orig: orig, state: state}
 }
 
@@ -34,8 +32,7 @@ func newResourceLogs(orig *otlplogs.ResourceLogs, state *internal.State) Resourc
 // This must be used only in testing code. Users should use "AppendEmpty" when part of a Slice,
 // OR directly access the member if this is embedded in another struct.
 func NewResourceLogs() ResourceLogs {
-	state := internal.StateMutable
-	return newResourceLogs(&otlplogs.ResourceLogs{}, &state)
+	return newResourceLogs(internal.NewResourceLogs(), internal.NewState())
 }
 
 // MoveTo moves all properties from the current struct overriding the destination and
@@ -47,13 +44,18 @@ func (ms ResourceLogs) MoveTo(dest ResourceLogs) {
 	if ms.orig == dest.orig {
 		return
 	}
-	*dest.orig = *ms.orig
-	*ms.orig = otlplogs.ResourceLogs{}
+	internal.DeleteResourceLogs(dest.orig, false)
+	*dest.orig, *ms.orig = *ms.orig, *dest.orig
 }
 
 // Resource returns the resource associated with this ResourceLogs.
 func (ms ResourceLogs) Resource() pcommon.Resource {
-	return pcommon.Resource(internal.NewResource(&ms.orig.Resource, ms.state))
+	return pcommon.Resource(internal.NewResourceWrapper(&ms.orig.Resource, ms.state))
+}
+
+// ScopeLogs returns the ScopeLogs associated with this ResourceLogs.
+func (ms ResourceLogs) ScopeLogs() ScopeLogsSlice {
+	return newScopeLogsSlice(&ms.orig.ScopeLogs, ms.state)
 }
 
 // SchemaUrl returns the schemaurl associated with this ResourceLogs.
@@ -67,35 +69,8 @@ func (ms ResourceLogs) SetSchemaUrl(v string) {
 	ms.orig.SchemaUrl = v
 }
 
-// ScopeLogs returns the ScopeLogs associated with this ResourceLogs.
-func (ms ResourceLogs) ScopeLogs() ScopeLogsSlice {
-	return newScopeLogsSlice(&ms.orig.ScopeLogs, ms.state)
-}
-
 // CopyTo copies all properties from the current struct overriding the destination.
 func (ms ResourceLogs) CopyTo(dest ResourceLogs) {
 	dest.state.AssertMutable()
-	copyOrigResourceLogs(dest.orig, ms.orig)
-}
-
-// marshalJSONStream marshals all properties from the current struct to the destination stream.
-func (ms ResourceLogs) marshalJSONStream(dest *json.Stream) {
-	dest.WriteObjectStart()
-	dest.WriteObjectField("resource")
-	internal.MarshalJSONStreamResource(internal.NewResource(&ms.orig.Resource, ms.state), dest)
-	if ms.orig.SchemaUrl != "" {
-		dest.WriteObjectField("schemaUrl")
-		dest.WriteString(ms.orig.SchemaUrl)
-	}
-	if len(ms.orig.ScopeLogs) > 0 {
-		dest.WriteObjectField("scopeLogs")
-		ms.ScopeLogs().marshalJSONStream(dest)
-	}
-	dest.WriteObjectEnd()
-}
-
-func copyOrigResourceLogs(dest, src *otlplogs.ResourceLogs) {
-	internal.CopyOrigResource(&dest.Resource, &src.Resource)
-	dest.SchemaUrl = src.SchemaUrl
-	dest.ScopeLogs = copyOrigScopeLogsSlice(dest.ScopeLogs, src.ScopeLogs)
+	internal.CopyResourceLogs(dest.orig, ms.orig)
 }

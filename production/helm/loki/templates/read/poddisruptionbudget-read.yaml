@@ -4,12 +4,14 @@ apiVersion: policy/v1
 kind: PodDisruptionBudget
 metadata:
   name: {{ include "loki.readFullname" . }}
-  namespace: {{ $.Release.Namespace }}
+  namespace: {{ include "loki.namespace" . }}
   labels:
     {{- include "loki.readLabels" . | nindent 4 }}
 spec:
   selector:
     matchLabels:
       {{- include "loki.readSelectorLabels" . | nindent 6 }}
-  maxUnavailable: 1
+  {{- with .Values.read.maxUnavailable }}
+  maxUnavailable: {{ . }}
+  {{- end }}
 {{- end }}

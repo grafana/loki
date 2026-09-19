@@ -18,7 +18,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/v3/pkg/querier/astmapper"
-	"github.com/grafana/loki/v3/pkg/querier/plan"
+	"github.com/grafana/loki/v3/pkg/querier/testutil"
 	"github.com/grafana/loki/v3/pkg/storage/chunk"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/cache"
 	chunkclient "github.com/grafana/loki/v3/pkg/storage/chunk/client"
@@ -103,9 +103,9 @@ func newChunk(chunkFormat byte, headBlockFmt chunkenc.HeadBlockFmt, stream logpr
 	if err != nil {
 		panic(err)
 	}
-	if !lbs.Has(labels.MetricName) {
+	if !lbs.Has(model.MetricNameLabel) {
 		builder := labels.NewBuilder(lbs)
-		builder.Set(labels.MetricName, "logs")
+		builder.Set(model.MetricNameLabel, "logs")
 		lbs = builder.Labels()
 	}
 	from, through := loki_util.RoundToMilliseconds(stream.Entries[0].Timestamp, stream.Entries[len(stream.Entries)-1].Timestamp)
@@ -138,13 +138,23 @@ func newQuery(query string, start, end time.Time, shards []astmapper.ShardAnnota
 		End:       end,
 		Direction: logproto.FORWARD,
 		Deletes:   deletes,
-		Plan: &plan.QueryPlan{
-			AST: syntax.MustParseExpr(query),
-		},
+		Plan:      testutil.MustPlan(query),
 	}
 	for _, shard := range shards {
 		req.Shards = append(req.Shards, shard.String())
 	}
+	return req
+}
+
+// withoutSelector clears the deprecated Selector field, leaving only the query plan.
+func withoutSelector(req *logproto.QueryRequest) *logproto.QueryRequest {
+	req.Selector = ""
+	return req
+}
+
+// withoutPlan clears the query plan, leaving only the deprecated Selector field.
+func withoutPlan(req *logproto.QueryRequest) *logproto.QueryRequest {
+	req.Plan = nil
 	return req
 }
 
@@ -154,9 +164,7 @@ func newSampleQuery(query string, start, end time.Time, shards []astmapper.Shard
 		Start:    start,
 		End:      end,
 		Deletes:  deletes,
-		Plan: &plan.QueryPlan{
-			AST: syntax.MustParseExpr(query),
-		},
+		Plan:     testutil.MustPlan(query),
 	}
 	for _, shard := range shards {
 		req.Shards = append(req.Shards, shard.String())
@@ -202,7 +210,7 @@ Outer:
 					continue Outer
 				}
 			}
-			l := labels.NewBuilder(c.Metric).Del(labels.MetricName).Labels()
+			l := labels.NewBuilder(c.Metric).Del(model.MetricNameLabel).Labels()
 			if m.f != nil {
 				if m.f.ForRequest(ctx).ShouldFilter(l) {
 					continue
@@ -261,7 +269,7 @@ func (m *mockChunkStore) GetChunks(_ context.Context, _ string, _, _ model.Time,
 		panic(err)
 	}
 
-	f, err := fetcher.New(cache, nil, false, m.schemas, m.client, 0, 0)
+	f, err := fetcher.New(cache, nil, false, m.schemas, m.client, 0, 0, false)
 	if err != nil {
 		panic(err)
 	}
@@ -278,6 +286,14 @@ func (m *mockChunkStore) GetShards(_ context.Context, _ string, _, _ model.Time,
 
 func (m *mockChunkStore) HasForSeries(_, _ model.Time) (sharding.ForSeries, bool) {
 	return nil, false
+}
+
+func (m *mockChunkStore) HasChunkSizingInfo(_, _ model.Time) bool {
+	return false
+}
+
+func (m *mockChunkStore) GetChunkRefsWithSizingInfo(_ context.Context, _ string, _, _ model.Time, _ chunk.Predicate) ([]logproto.ChunkRefWithSizingInfo, error) {
+	return nil, nil
 }
 
 func (m *mockChunkStore) Volume(_ context.Context, _ string, _, _ model.Time, _ int32, _ []string, _ string, _ ...*labels.Matcher) (*logproto.VolumeResponse, error) {

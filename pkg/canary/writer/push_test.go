@@ -40,6 +40,7 @@ type response struct {
 	contentType        string
 	userAgent          string
 	username, password string
+	path               string
 }
 
 // basic testing to make sure we create the correct pusher or buffered pusher
@@ -87,6 +88,7 @@ func Test_Push(t *testing.T) {
 	push.WriteEntry(ts, payload)
 	resp := <-testCfg.responses
 	assertResponse(t, resp, false, labelSet("name", "loki-canary", "stream", "stdout"), ts, payload, 1)
+	assert.Equal(t, "/loki/api/v1/push", resp.path)
 
 	// with basic Auth
 	push, err = newPushWithCredentials(testCfg, testUsername, testPassword, 1)
@@ -103,6 +105,38 @@ func Test_Push(t *testing.T) {
 	push.WriteEntry(ts, payload)
 	resp = <-testCfg.responses
 	assertResponse(t, resp, true, labelSet("name", "loki-canary", "pod", "abc"), ts, payload, 1)
+}
+
+// test that a path prefix is applied to the push endpoint, and that a
+// trailing slash in the prefix does not produce a double-slash path
+func Test_PushPathPrefix(t *testing.T) {
+	testCfg := newTestConfig(t)
+	defer func() {
+		testCfg.mock.Close()
+	}()
+
+	tests := []struct {
+		name     string
+		prefix   string
+		expected string
+	}{
+		{"no prefix", "", "/loki/api/v1/push"},
+		{"prefix", "/loki", "/loki/loki/api/v1/push"},
+		{"prefix with trailing slash", "/loki/", "/loki/loki/api/v1/push"},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			push, err := newPushWithPathPrefix(testCfg, tc.prefix, 1)
+			require.NoError(t, err)
+
+			ts, payload := testPayload()
+			push.WriteEntry(ts, payload)
+			resp := <-testCfg.responses
+			assertResponse(t, resp, false, labelSet("name", "loki-canary", "stream", "stdout"), ts, payload, 1)
+			require.Equal(t, tc.expected, resp.path)
+		})
+	}
 }
 
 // test batching log lines and ensure the testing resp contains exactly 10 unique entries
@@ -314,6 +348,7 @@ func createServerHandler(responses chan response) http.HandlerFunc {
 			userAgent:   req.Header.Get("User-Agent"),
 			username:    username,
 			password:    password,
+			path:        req.URL.Path,
 			pushReq:     pushReq,
 		}
 
@@ -403,10 +438,36 @@ func newPushWithCredentials(testCfg testConfig, username, password string, logBa
 	return newPushWithCredentialsAndStreamNameValue(testCfg, username, password, "stream", "stdout", logBatchSize)
 }
 
+// create a new `EventWriter` with a path prefix
+func newPushWithPathPrefix(testCfg testConfig, pathPrefix string, logBatchSize int) (EntryWriter, error) {
+	return NewPush(
+		testCfg.mock.Listener.Addr().String(),
+		pathPrefix,
+		"test1",
+		2*time.Second,
+		config.DefaultHTTPClientConfig,
+		"name",
+		"loki-canary",
+		"stream",
+		"stdout",
+		false,
+		nil,
+		"",
+		"",
+		"",
+		"",
+		"",
+		&testCfg.backoff,
+		logBatchSize,
+		log.NewNopLogger(),
+	)
+}
+
 // create a new `EventWriter` with custom credentials and labels
 func newPushWithCredentialsAndStreamNameValue(testCfg testConfig, username, password, streamName, streamValue string, logBatchSize int) (EntryWriter, error) {
 	return NewPush(
 		testCfg.mock.Listener.Addr().String(),
+		"",
 		"test1",
 		2*time.Second,
 		config.DefaultHTTPClientConfig,

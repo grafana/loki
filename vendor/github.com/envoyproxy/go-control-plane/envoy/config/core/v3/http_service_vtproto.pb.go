@@ -48,6 +48,18 @@ func (m *HttpService) MarshalToSizedBufferVTStrict(dAtA []byte) (int, error) {
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
 	}
+	if len(m.Formatters) > 0 {
+		for iNdEx := len(m.Formatters) - 1; iNdEx >= 0; iNdEx-- {
+			size, err := m.Formatters[iNdEx].MarshalToSizedBufferVTStrict(dAtA[:i])
+			if err != nil {
+				return 0, err
+			}
+			i -= size
+			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+			i--
+			dAtA[i] = 0x1a
+		}
+	}
 	if len(m.RequestHeadersToAdd) > 0 {
 		for iNdEx := len(m.RequestHeadersToAdd) - 1; iNdEx >= 0; iNdEx-- {
 			size, err := m.RequestHeadersToAdd[iNdEx].MarshalToSizedBufferVTStrict(dAtA[:i])
@@ -85,6 +97,12 @@ func (m *HttpService) SizeVT() (n int) {
 	}
 	if len(m.RequestHeadersToAdd) > 0 {
 		for _, e := range m.RequestHeadersToAdd {
+			l = e.SizeVT()
+			n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
+		}
+	}
+	if len(m.Formatters) > 0 {
+		for _, e := range m.Formatters {
 			l = e.SizeVT()
 			n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
 		}

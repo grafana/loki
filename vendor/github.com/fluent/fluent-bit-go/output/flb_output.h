@@ -20,6 +20,10 @@
 #ifndef FLBGO_OUTPUT_H
 #define FLBGO_OUTPUT_H
 
+#define FLB_OUTPUT_LOGS    1
+#define FLB_OUTPUT_METRICS 2
+#define FLB_OUTPUT_TRACES  4
+
 struct flb_api {
     char *(*output_get_property) (char *, void *);
     char *_;
@@ -30,7 +34,7 @@ struct flb_plugin_proxy_context {
 };
 
 /* This structure is used for initialization.
- * It matches the one in proxy/go/go.c in fluent-bit source code.
+ * It matches the one in src/proxy/go/go.h in fluent-bit source code.
  */
 struct flbgo_output_plugin {
     void *_;

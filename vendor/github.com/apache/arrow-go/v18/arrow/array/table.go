@@ -46,7 +46,7 @@ func NewColumnSlice(col *arrow.Column, i, j int64) *arrow.Column {
 // NewSlice panics if the slice is outside the valid range of the input array.
 // NewSlice panics if j < i.
 func NewChunkedSlice(a *arrow.Chunked, i, j int64) *arrow.Chunked {
-	if j > int64(a.Len()) || i > j || i > int64(a.Len()) {
+	if i < 0 || j < 0 || j > int64(a.Len()) || i > j || i > int64(a.Len()) {
 		panic("arrow/array: index out of range")
 	}
 
@@ -175,7 +175,7 @@ func NewTableFromSlice(schema *arrow.Schema, data [][]arrow.Array) arrow.Table {
 // NewTableFromRecords returns a new basic, non-lazy in-memory table.
 //
 // NewTableFromRecords panics if the records and schema are inconsistent.
-func NewTableFromRecords(schema *arrow.Schema, recs []arrow.Record) arrow.Table {
+func NewTableFromRecords(schema *arrow.Schema, recs []arrow.RecordBatch) arrow.Table {
 	arrs := make([]arrow.Array, len(recs))
 	cols := make([]arrow.Column, schema.NumFields())
 
@@ -204,7 +204,7 @@ func (tbl *simpleTable) AddColumn(i int, field arrow.Field, column arrow.Column)
 	if int64(column.Len()) != tbl.rows {
 		return nil, fmt.Errorf("arrow/array: column length mismatch: %d != %d", column.Len(), tbl.rows)
 	}
-	if field.Type != column.DataType() {
+	if !arrow.TypeEqual(field.Type, column.DataType()) {
 		return nil, fmt.Errorf("arrow/array: column type mismatch: %v != %v", field.Type, column.DataType())
 	}
 	newSchema, err := tbl.schema.AddField(i, field)
@@ -282,10 +282,10 @@ type TableReader struct {
 	refCount atomic.Int64
 
 	tbl   arrow.Table
-	cur   int64        // current row
-	max   int64        // total number of rows
-	rec   arrow.Record // current Record
-	chksz int64        // chunk size
+	cur   int64             // current row
+	max   int64             // total number of rows
+	rec   arrow.RecordBatch // current RecordBatch
+	chksz int64             // chunk size
 
 	chunks  []*arrow.Chunked
 	slots   []int   // chunk indices
@@ -320,8 +320,11 @@ func NewTableReader(tbl arrow.Table, chunkSize int64) *TableReader {
 	return tr
 }
 
-func (tr *TableReader) Schema() *arrow.Schema { return tr.tbl.Schema() }
-func (tr *TableReader) Record() arrow.Record  { return tr.rec }
+func (tr *TableReader) Schema() *arrow.Schema          { return tr.tbl.Schema() }
+func (tr *TableReader) RecordBatch() arrow.RecordBatch { return tr.rec }
+
+// Deprecated: Use [RecordBatch] instead.
+func (tr *TableReader) Record() arrow.Record { return tr.RecordBatch() }
 
 func (tr *TableReader) Next() bool {
 	if tr.cur >= tr.max {
@@ -371,7 +374,7 @@ func (tr *TableReader) Next() bool {
 	}
 
 	tr.cur += chunksz
-	tr.rec = NewRecord(tr.tbl.Schema(), batch, chunksz)
+	tr.rec = NewRecordBatch(tr.tbl.Schema(), batch, chunksz)
 
 	for _, arr := range batch {
 		arr.Release()

@@ -8,8 +8,6 @@ package pmetric
 
 import (
 	"go.opentelemetry.io/collector/pdata/internal"
-	otlpmetrics "go.opentelemetry.io/collector/pdata/internal/data/protogen/metrics/v1"
-	"go.opentelemetry.io/collector/pdata/internal/json"
 )
 
 // SummaryDataPointValueAtQuantile is a quantile value within a Summary data point.
@@ -20,11 +18,11 @@ import (
 // Must use NewSummaryDataPointValueAtQuantile function to create new instances.
 // Important: zero-initialized instance is not valid for use.
 type SummaryDataPointValueAtQuantile struct {
-	orig  *otlpmetrics.SummaryDataPoint_ValueAtQuantile
+	orig  *internal.SummaryDataPointValueAtQuantile
 	state *internal.State
 }
 
-func newSummaryDataPointValueAtQuantile(orig *otlpmetrics.SummaryDataPoint_ValueAtQuantile, state *internal.State) SummaryDataPointValueAtQuantile {
+func newSummaryDataPointValueAtQuantile(orig *internal.SummaryDataPointValueAtQuantile, state *internal.State) SummaryDataPointValueAtQuantile {
 	return SummaryDataPointValueAtQuantile{orig: orig, state: state}
 }
 
@@ -33,8 +31,7 @@ func newSummaryDataPointValueAtQuantile(orig *otlpmetrics.SummaryDataPoint_Value
 // This must be used only in testing code. Users should use "AppendEmpty" when part of a Slice,
 // OR directly access the member if this is embedded in another struct.
 func NewSummaryDataPointValueAtQuantile() SummaryDataPointValueAtQuantile {
-	state := internal.StateMutable
-	return newSummaryDataPointValueAtQuantile(&otlpmetrics.SummaryDataPoint_ValueAtQuantile{}, &state)
+	return newSummaryDataPointValueAtQuantile(internal.NewSummaryDataPointValueAtQuantile(), internal.NewState())
 }
 
 // MoveTo moves all properties from the current struct overriding the destination and
@@ -46,8 +43,8 @@ func (ms SummaryDataPointValueAtQuantile) MoveTo(dest SummaryDataPointValueAtQua
 	if ms.orig == dest.orig {
 		return
 	}
-	*dest.orig = *ms.orig
-	*ms.orig = otlpmetrics.SummaryDataPoint_ValueAtQuantile{}
+	internal.DeleteSummaryDataPointValueAtQuantile(dest.orig, false)
+	*dest.orig, *ms.orig = *ms.orig, *dest.orig
 }
 
 // Quantile returns the quantile associated with this SummaryDataPointValueAtQuantile.
@@ -75,24 +72,5 @@ func (ms SummaryDataPointValueAtQuantile) SetValue(v float64) {
 // CopyTo copies all properties from the current struct overriding the destination.
 func (ms SummaryDataPointValueAtQuantile) CopyTo(dest SummaryDataPointValueAtQuantile) {
 	dest.state.AssertMutable()
-	copyOrigSummaryDataPointValueAtQuantile(dest.orig, ms.orig)
-}
-
-// marshalJSONStream marshals all properties from the current struct to the destination stream.
-func (ms SummaryDataPointValueAtQuantile) marshalJSONStream(dest *json.Stream) {
-	dest.WriteObjectStart()
-	if ms.orig.Quantile != float64(0.0) {
-		dest.WriteObjectField("quantile")
-		dest.WriteFloat64(ms.orig.Quantile)
-	}
-	if ms.orig.Value != float64(0.0) {
-		dest.WriteObjectField("value")
-		dest.WriteFloat64(ms.orig.Value)
-	}
-	dest.WriteObjectEnd()
-}
-
-func copyOrigSummaryDataPointValueAtQuantile(dest, src *otlpmetrics.SummaryDataPoint_ValueAtQuantile) {
-	dest.Quantile = src.Quantile
-	dest.Value = src.Value
+	internal.CopySummaryDataPointValueAtQuantile(dest.orig, ms.orig)
 }

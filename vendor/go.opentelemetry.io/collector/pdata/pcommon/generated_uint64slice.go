@@ -18,32 +18,31 @@ import (
 //
 // Must use NewUInt64Slice function to create new instances.
 // Important: zero-initialized instance is not valid for use.
-type UInt64Slice internal.UInt64Slice
+type UInt64Slice internal.UInt64SliceWrapper
 
 func (ms UInt64Slice) getOrig() *[]uint64 {
-	return internal.GetOrigUInt64Slice(internal.UInt64Slice(ms))
+	return internal.GetUInt64SliceOrig(internal.UInt64SliceWrapper(ms))
 }
 
 func (ms UInt64Slice) getState() *internal.State {
-	return internal.GetUInt64SliceState(internal.UInt64Slice(ms))
+	return internal.GetUInt64SliceState(internal.UInt64SliceWrapper(ms))
 }
 
 // NewUInt64Slice creates a new empty UInt64Slice.
 func NewUInt64Slice() UInt64Slice {
 	orig := []uint64(nil)
-	state := internal.StateMutable
-	return UInt64Slice(internal.NewUInt64Slice(&orig, &state))
+	return UInt64Slice(internal.NewUInt64SliceWrapper(&orig, internal.NewState()))
 }
 
 // AsRaw returns a copy of the []uint64 slice.
 func (ms UInt64Slice) AsRaw() []uint64 {
-	return internal.CopyOrigUInt64Slice(nil, *ms.getOrig())
+	return copyUint64Slice(nil, *ms.getOrig())
 }
 
 // FromRaw copies raw []uint64 into the slice UInt64Slice.
 func (ms UInt64Slice) FromRaw(val []uint64) {
 	ms.getState().AssertMutable()
-	*ms.getOrig() = internal.CopyOrigUInt64Slice(*ms.getOrig(), val)
+	*ms.getOrig() = copyUint64Slice(*ms.getOrig(), val)
 }
 
 // Len returns length of the []uint64 slice value.
@@ -128,13 +127,42 @@ func (ms UInt64Slice) MoveAndAppendTo(dest UInt64Slice) {
 	*ms.getOrig() = nil
 }
 
+// RemoveIf calls f sequentially for each element present in the slice.
+// If f returns true, the element is removed from the slice.
+func (ms UInt64Slice) RemoveIf(f func(uint64) bool) {
+	ms.getState().AssertMutable()
+	newLen := 0
+	for i := 0; i < len(*ms.getOrig()); i++ {
+		if f((*ms.getOrig())[i]) {
+			continue
+		}
+		if newLen == i {
+			// Nothing to move, element is at the right place.
+			newLen++
+			continue
+		}
+		(*ms.getOrig())[newLen] = (*ms.getOrig())[i]
+		var zero uint64
+		(*ms.getOrig())[i] = zero
+		newLen++
+	}
+	*ms.getOrig() = (*ms.getOrig())[:newLen]
+}
+
 // CopyTo copies all elements from the current slice overriding the destination.
 func (ms UInt64Slice) CopyTo(dest UInt64Slice) {
 	dest.getState().AssertMutable()
-	*dest.getOrig() = internal.CopyOrigUInt64Slice(*dest.getOrig(), *ms.getOrig())
+	if ms.getOrig() == dest.getOrig() {
+		return
+	}
+	*dest.getOrig() = copyUint64Slice(*dest.getOrig(), *ms.getOrig())
 }
 
 // Equal checks equality with another UInt64Slice
 func (ms UInt64Slice) Equal(val UInt64Slice) bool {
 	return slices.Equal(*ms.getOrig(), *val.getOrig())
+}
+
+func copyUint64Slice(dst, src []uint64) []uint64 {
+	return append(dst[:0], src...)
 }

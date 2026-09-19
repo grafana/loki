@@ -1,7 +1,7 @@
 // Copyright The OpenTelemetry Authors
 // SPDX-License-Identifier: Apache-2.0
 
-package global // import "go.opentelemetry.io/otel/internal/global"
+package global
 
 /*
 This file contains the forwarding implementation of the TracerProvider used as
@@ -26,6 +26,7 @@ import (
 	"sync/atomic"
 
 	"go.opentelemetry.io/auto/sdk"
+
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/trace"

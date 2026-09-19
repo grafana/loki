@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // SPDX-FileCopyrightText: 2022 The Ebitengine Authors
 
-//go:build !cgo && (darwin || freebsd || linux)
+//go:build !cgo && (darwin || freebsd || linux || netbsd)
 
 package fakecgo
 
@@ -28,8 +28,9 @@ func x_cgo_thread_start(arg *ThreadStart) {
 		abort()
 	}
 	// *ts = *arg would cause a writebarrier so copy using slices
-	s1 := unsafe.Slice((*uintptr)(unsafe.Pointer(ts)), unsafe.Sizeof(*ts)/8)
-	s2 := unsafe.Slice((*uintptr)(unsafe.Pointer(arg)), unsafe.Sizeof(*arg)/8)
+	const ptrSize = unsafe.Sizeof(uintptr(0))
+	s1 := unsafe.Slice((*uintptr)(unsafe.Pointer(ts)), unsafe.Sizeof(*ts)/ptrSize)
+	s2 := unsafe.Slice((*uintptr)(unsafe.Pointer(arg)), unsafe.Sizeof(*arg)/ptrSize)
 	for i := range s2 {
 		s1[i] = s2[i]
 	}

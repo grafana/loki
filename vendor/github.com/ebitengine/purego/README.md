@@ -26,17 +26,40 @@ except for float arguments and return values.
 
 ## Supported Platforms
 
-- **FreeBSD**: amd64, arm64
-- **Linux**: amd64, arm64
-- **macOS / iOS**: amd64, arm64
-- **Windows**: 386*, amd64, arm*, arm64
+### Tier 1
 
-`*` These architectures only support SyscallN and NewCallback
+Tier 1 platforms are the primary targets officially supported by PureGo. When a new version of PureGo is released, any critical bugs found on Tier 1 platforms are treated as release blockers. The release will be postponed until such issues are resolved.
+
+- **Android**: amd64<sup>1</sup>, arm64<sup>1</sup>
+- **iOS**: amd64<sup>1</sup>, arm64<sup>1</sup>
+- **Linux**: amd64, arm64
+- **macOS**: amd64, arm64
+- **Windows**: amd64<sup>2</sup>, arm64<sup>2</sup>
+
+### Tier 2
+
+Tier 2 platforms are supported by PureGo on a best-effort basis. Critical bugs on Tier 2 platforms do not block new PureGo releases. However, fixes contributed by external contributors are very welcome and encouraged.
+
+- **Android**: 386<sup>1,3</sup>, arm<sup>1,3</sup>
+- **FreeBSD**: amd64<sup>3,4</sup>, arm64<sup>3,4</sup>
+- **Linux**: 386<sup>3</sup>, arm<sup>3</sup>, loong64<sup>2</sup>, ppc64le<sup>2</sup>, riscv64<sup>3</sup>, s390x<sup>3, 5</sup>
+- **NetBSD**: amd64<sup>3,4</sup>, arm64<sup>3,4</sup>
+- **Windows**: 386<sup>3,6</sup>, arm<sup>3,6,7</sup>
+
+#### Support Notes
+
+1. These architectures require CGO_ENABLED=1 to compile
+2. These architectures support passing structs by value as arguments and return values when calling C functions, but not in callbacks created with `NewCallback`
+3. These architectures do not support passing structs by value as arguments or return values
+4. These architectures require the special flag `-gcflags="github.com/ebitengine/purego/internal/fakecgo=-std"` to compile with CGO_ENABLED=0
+5. These architectures require CGO_ENABLED=1 to compile in versions before Go 1.27, but will be supported without Cgo in Go 1.27 and later
+6. These architectures only support `SyscallN` and `NewCallback`
+7. These architectures are no longer supported as of Go 1.26
 
 ## Example
 
 The example below only showcases purego use for macOS and Linux. The other platforms require special handling which can
-be seen in the complete example at [examples/libc](https://github.com/ebitengine/purego/tree/main/examples/libc) which supports Windows and FreeBSD.
+be seen in the complete example at [examples/libc](https://github.com/ebitengine/purego/tree/main/examples/libc) which supports FreeBSD and Windows.
 
 ```go
 package main
@@ -84,14 +107,18 @@ License that can be found [in the Go Source](https://github.com/golang/go/blob/m
 This is a list of the copied files:
 
 * `abi_*.h` from package `runtime/cgo`
-* `zcallback_darwin_*.s` from package `runtime`
+* `wincallback.go` from package `runtime`
 * `internal/fakecgo/abi_*.h` from package `runtime/cgo`
 * `internal/fakecgo/asm_GOARCH.s` from package `runtime/cgo`
 * `internal/fakecgo/callbacks.go` from package `runtime/cgo`
-* `internal/fakecgo/go_GOOS_GOARCH.go` from package `runtime/cgo`
 * `internal/fakecgo/iscgo.go` from package `runtime/cgo`
 * `internal/fakecgo/setenv.go` from package `runtime/cgo`
 * `internal/fakecgo/freebsd.go` from package `runtime/cgo`
+* `internal/fakecgo/netbsd.go` from package `runtime/cgo`
+* `internal/fakecgo/linux.go` from package `runtime/cgo`
+
+The `internal/fakecgo/go_GOOS.go` files were modified from `runtime/cgo/gcc_GOOS_GOARCH.go`.
+The `internal/fakecgo/linux.go` file is a combination of `runtime/cgo/linux.go` and `runtime/cgo/linux_syscall.c`.
 
 The files `abi_*.h` and `internal/fakecgo/abi_*.h` are the same because Bazel does not support cross-package use of
 `#include` so we need each one once per package. (cf. [issue](https://github.com/bazelbuild/rules_go/issues/3636))

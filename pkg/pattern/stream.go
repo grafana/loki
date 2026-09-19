@@ -2,6 +2,7 @@ package pattern
 
 import (
 	"context"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -32,10 +33,18 @@ type stream struct {
 	aggregationMetrics *aggregation.Metrics
 	instanceID         string
 
+	// Fields retained so Drains can be created lazily on first observation
+	// of each detected_level. Most streams only see 1–3 levels
+	drainCfg      *drain.Config
+	drainLimits   drain.Limits
+	guessedFormat string
+	drainMetrics  *drain.Metrics
+
 	lastTS                 int64
 	persistenceGranularity time.Duration
 	sampleInterval         time.Duration
 	patternRateThreshold   float64
+	volumeThreshold        float64
 }
 
 func newStream(
@@ -49,22 +58,11 @@ func newStream(
 	limits Limits,
 	patternWriter aggregation.EntryWriter,
 	aggregationMetrics *aggregation.Metrics,
+	volumeThreshold float64,
 ) (*stream, error) {
 	linesSkipped, err := metrics.linesSkipped.CurryWith(prometheus.Labels{"tenant": instanceID})
 	if err != nil {
 		return nil, err
-	}
-
-	patterns := make(map[string]*drain.Drain, len(constants.LogLevels))
-	for _, lvl := range constants.LogLevels {
-		patterns[lvl] = drain.New(instanceID, drainCfg, limits, guessedFormat, &drain.Metrics{
-			PatternsEvictedTotal:  metrics.patternsDiscardedTotal.WithLabelValues(instanceID, guessedFormat, "false"),
-			PatternsPrunedTotal:   metrics.patternsDiscardedTotal.WithLabelValues(instanceID, guessedFormat, "true"),
-			PatternsDetectedTotal: metrics.patternsDetectedTotal.WithLabelValues(instanceID, guessedFormat),
-			LinesSkipped:          linesSkipped,
-			TokensPerLine:         metrics.tokensPerLine.WithLabelValues(instanceID, guessedFormat),
-			StatePerLine:          metrics.statePerLine.WithLabelValues(instanceID, guessedFormat),
-		})
 	}
 
 	// Get per-tenant persistence granularity (requires casting drainLimits to Limits interface)
@@ -74,19 +72,60 @@ func newStream(
 	}
 
 	return &stream{
-		fp:                     fp,
-		labels:                 ls,
-		labelsString:           ls.String(),
-		labelHash:              labels.StableHash(ls),
-		logger:                 logger,
-		patterns:               patterns,
+		fp:           fp,
+		labels:       ls,
+		labelsString: ls.String(),
+		labelHash:    labels.StableHash(ls),
+		logger:       logger,
+		// Drains are created on first Push for each observed level.
+		patterns:      make(map[string]*drain.Drain),
+		drainCfg:      drainCfg,
+		drainLimits:   limits,
+		guessedFormat: guessedFormat,
+		drainMetrics: &drain.Metrics{
+			PatternsEvictedTotal:  metrics.patternsDiscardedTotal.WithLabelValues(instanceID, guessedFormat, "false"),
+			PatternsPrunedTotal:   metrics.patternsDiscardedTotal.WithLabelValues(instanceID, guessedFormat, "true"),
+			PatternsDetectedTotal: metrics.patternsDetectedTotal.WithLabelValues(instanceID, guessedFormat),
+			LinesSkipped:          linesSkipped,
+			TokensPerLine:         metrics.tokensPerLine.WithLabelValues(instanceID, guessedFormat),
+			StatePerLine:          metrics.statePerLine.WithLabelValues(instanceID, guessedFormat),
+		},
 		patternWriter:          patternWriter,
 		aggregationMetrics:     aggregationMetrics,
 		instanceID:             instanceID,
 		persistenceGranularity: persistenceGranularity,
 		sampleInterval:         drainCfg.SampleInterval,
 		patternRateThreshold:   limits.PatternRateThreshold(instanceID),
+		volumeThreshold:        volumeThreshold,
 	}, nil
+}
+
+// getOrCreateDrain returns the Drain for lvl, creating it on first use.
+// Levels outside constants.LogLevels fall back to the unknown Drain so
+// unexpected detected_level values still train somewhere.
+// Caller must hold s.mtx.
+func (s *stream) getOrCreateDrain(lvl string) *drain.Drain {
+	if pattern, ok := s.patterns[lvl]; ok {
+		return pattern
+	}
+	if !isKnownLogLevel(lvl) {
+		lvl = constants.LogLevelUnknown
+		if pattern, ok := s.patterns[lvl]; ok {
+			return pattern
+		}
+	}
+	pattern := drain.New(s.instanceID, s.drainCfg, s.drainLimits, s.guessedFormat, s.drainMetrics)
+	s.patterns[lvl] = pattern
+	return pattern
+}
+
+func isKnownLogLevel(lvl string) bool {
+	for _, known := range constants.LogLevels {
+		if lvl == known {
+			return true
+		}
+	}
+	return false
 }
 
 func (s *stream) Push(
@@ -109,12 +148,7 @@ func (s *stream) Push(
 		s.lastTS = entry.Timestamp.UnixNano()
 
 		//TODO(twhitney): Can we reduce lock contention by locking by level rather than for the entire stream?
-		if pattern, ok := s.patterns[lvl]; ok {
-			pattern.Train(entry.Line, entry.Timestamp.UnixNano())
-		} else {
-			// since we're defaulting the level to unknown above, we should never get here.
-			s.patterns[constants.LogLevelUnknown].Train(entry.Line, entry.Timestamp.UnixNano())
-		}
+		s.getOrCreateDrain(lvl).Train(entry.Line, entry.Timestamp.UnixNano())
 	}
 	return nil
 }
@@ -139,26 +173,58 @@ func (s *stream) Iterator(_ context.Context, from, through, step model.Time) (it
 	return iter.NewMerge(iters...), nil
 }
 
+// Collect all clusters with their metadata for filtering
+type clusterWithMeta struct {
+	cluster       *drain.LogCluster
+	level         string
+	drainInstance *drain.Drain
+	prunedSamples []*logproto.PatternSample
+}
+
 func (s *stream) prune(olderThan time.Duration) bool {
 	s.mtx.Lock()
 	defer s.mtx.Unlock()
 
+	var allClusters []clusterWithMeta
+
+	// First pass: collect all clusters and prune samples
 	totalClusters := 0
 	for lvl, pattern := range s.patterns {
 		clusters := pattern.Clusters()
 		for _, cluster := range clusters {
 			prunedSamples := cluster.Prune(olderThan)
-			// Write patterns for pruned chunks with bucketed aggregation
 			if len(prunedSamples) > 0 {
-				s.writePatternsBucketed(prunedSamples, s.labels, cluster.String(), lvl)
+				allClusters = append(allClusters, clusterWithMeta{
+					cluster:       cluster,
+					level:         lvl,
+					drainInstance: pattern,
+					prunedSamples: prunedSamples,
+				})
 			}
 			if cluster.Size == 0 {
 				pattern.Delete(cluster)
 			}
 		}
-		// Clear empty branches after deleting chunks & clusters
+		// Clear empty branches and track total clusters
 		pattern.Prune()
 		totalClusters += len(pattern.Clusters())
+	}
+
+	// Filter clusters by volume if volumeThreshold is set (< 1.0)
+	var clustersToWrite []clusterWithMeta
+	if s.volumeThreshold > 0 && s.volumeThreshold < 1.0 && len(allClusters) > 0 {
+		// Sort clusters by volume, and keep only the top threshold of clusters by volume
+		// To optimize memory, filterClustersByVolume will mutate the input slice, the slice we get
+		// in rerturn uses the same underlying array as the input slice.
+		clustersToWrite = filterClustersByVolume(allClusters, s.volumeThreshold)
+	} else {
+		// No filtering, write all clusters
+		clustersToWrite = allClusters
+	}
+
+	// Write patterns for filtered clusters
+	for _, cm := range clustersToWrite {
+		s.writePatternsBucketed(cm.prunedSamples, s.labels, cm.cluster.String(), cm.level)
 	}
 
 	// Update active patterns gauge
@@ -173,18 +239,13 @@ func (s *stream) updatePatternsActiveGauge() {
 		return
 	}
 
-	service := s.labels.Get(push.LabelServiceName)
-	if service == "" {
-		service = push.ServiceUnknown
-	}
-
 	// Count total clusters across all levels
 	totalClusters := 0
 	for _, pattern := range s.patterns {
 		totalClusters += len(pattern.Clusters())
 	}
 
-	s.aggregationMetrics.PatternsActive.WithLabelValues(s.instanceID, service).Set(float64(totalClusters))
+	s.aggregationMetrics.PatternsActive.WithLabelValues(s.instanceID).Set(float64(totalClusters))
 }
 
 func (s *stream) flush() {
@@ -216,12 +277,11 @@ func (s *stream) writePattern(
 		// Record metrics
 		if s.aggregationMetrics != nil {
 			// Increment pattern writes counter
-			s.aggregationMetrics.PatternWritesTotal.WithLabelValues(s.instanceID, service).Inc()
+			s.aggregationMetrics.PatternWritesTotal.WithLabelValues(s.instanceID).Inc()
 
 			// Record pattern entry size
 			entrySize := len(patternEntry)
-			s.aggregationMetrics.PatternBytesWrittenTotal.WithLabelValues(s.instanceID, service).Add(float64(entrySize))
-			s.aggregationMetrics.PatternPayloadBytes.WithLabelValues(s.instanceID, service).Observe(float64(entrySize))
+			s.aggregationMetrics.PatternBytesWrittenTotal.WithLabelValues(s.instanceID).Add(float64(entrySize))
 		}
 
 		s.patternWriter.WriteEntry(
@@ -320,4 +380,53 @@ func (s *stream) calculatePatternRate(samples []*logproto.PatternSample) float64
 
 	// Return samples per second
 	return float64(totalCount) / timeSpanSeconds
+}
+
+// filterClustersByVolume sorts clusters in-place by volume and returns the number of clusters
+// to keep to represent the top X% of total volume. This mutates the input slice, and returns
+// a filtered slice that utilizes the same underlying array as the input slice.
+func filterClustersByVolume(clusters []clusterWithMeta, threshold float64) []clusterWithMeta {
+	if len(clusters) == 0 {
+		return []clusterWithMeta{}
+	}
+
+	// Handle threshold of 0 - keep no clusters
+	if threshold == 0 {
+		return []clusterWithMeta{}
+	}
+
+	var totalVolume int64
+	for _, cluster := range clusters {
+		totalVolume += cluster.cluster.Volume
+	}
+
+	// Sort clusters by volume in descending order (in-place)
+	slices.SortFunc(clusters, func(i, j clusterWithMeta) int {
+		if i.cluster.Volume > j.cluster.Volume {
+			return -1 // Higher volume first
+		}
+		if i.cluster.Volume < j.cluster.Volume {
+			return 1 // Lower volume last
+		}
+		return 0
+	})
+
+	if totalVolume == 0 {
+		return []clusterWithMeta{}
+	}
+
+	// Find how many clusters to keep for the threshold
+	targetVolume := int64(float64(totalVolume) * threshold)
+	var cumulativeVolume int64
+
+	var i int
+	for ; i < len(clusters); i++ {
+		cumulativeVolume += clusters[i].cluster.Volume
+		if cumulativeVolume >= targetVolume {
+			i++ // Include this cluster that pushed us over the threshold
+			break
+		}
+	}
+
+	return clusters[0:i]
 }

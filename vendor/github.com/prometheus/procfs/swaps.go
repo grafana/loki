@@ -1,4 +1,4 @@
-// Copyright 2019 The Prometheus Authors
+// Copyright The Prometheus Authors
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
@@ -20,7 +20,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/prometheus/procfs/internal/util"
+	"github.com/prometheus/procfs/internal/parsers"
 )
 
 // Swap represents an entry in /proc/swaps.
@@ -34,7 +34,7 @@ type Swap struct {
 
 // Swaps returns a slice of all configured swap devices on the system.
 func (fs FS) Swaps() ([]*Swap, error) {
-	data, err := util.ReadFileNoStat(fs.proc.Path("swaps"))
+	data, err := parsers.ReadFileNoStat(fs.proc.Path("swaps"))
 	if err != nil {
 		return nil, err
 	}

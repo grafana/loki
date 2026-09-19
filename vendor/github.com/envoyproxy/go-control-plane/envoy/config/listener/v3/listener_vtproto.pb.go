@@ -51,6 +51,28 @@ func (m *AdditionalAddress) MarshalToSizedBufferVTStrict(dAtA []byte) (int, erro
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
 	}
+	if m.TcpKeepalive != nil {
+		if vtmsg, ok := interface{}(m.TcpKeepalive).(interface {
+			MarshalToSizedBufferVTStrict([]byte) (int, error)
+		}); ok {
+			size, err := vtmsg.MarshalToSizedBufferVTStrict(dAtA[:i])
+			if err != nil {
+				return 0, err
+			}
+			i -= size
+			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		} else {
+			encoded, err := proto.Marshal(m.TcpKeepalive)
+			if err != nil {
+				return 0, err
+			}
+			i -= len(encoded)
+			copy(dAtA[i:], encoded)
+			i = protohelpers.EncodeVarint(dAtA, i, uint64(len(encoded)))
+		}
+		i--
+		dAtA[i] = 0x1a
+	}
 	if m.SocketOptions != nil {
 		if vtmsg, ok := interface{}(m.SocketOptions).(interface {
 			MarshalToSizedBufferVTStrict([]byte) (int, error)
@@ -231,6 +253,39 @@ func (m *Listener_ConnectionBalanceConfig_ExactBalance) MarshalToSizedBufferVTSt
 	return len(dAtA) - i, nil
 }
 
+func (m *Listener_ConnectionBalanceConfig_CpuLocalityBalance) MarshalVTStrict() (dAtA []byte, err error) {
+	if m == nil {
+		return nil, nil
+	}
+	size := m.SizeVT()
+	dAtA = make([]byte, size)
+	n, err := m.MarshalToSizedBufferVTStrict(dAtA[:size])
+	if err != nil {
+		return nil, err
+	}
+	return dAtA[:n], nil
+}
+
+func (m *Listener_ConnectionBalanceConfig_CpuLocalityBalance) MarshalToVTStrict(dAtA []byte) (int, error) {
+	size := m.SizeVT()
+	return m.MarshalToSizedBufferVTStrict(dAtA[:size])
+}
+
+func (m *Listener_ConnectionBalanceConfig_CpuLocalityBalance) MarshalToSizedBufferVTStrict(dAtA []byte) (int, error) {
+	if m == nil {
+		return 0, nil
+	}
+	i := len(dAtA)
+	_ = i
+	var l int
+	_ = l
+	if m.unknownFields != nil {
+		i -= len(m.unknownFields)
+		copy(dAtA[i:], m.unknownFields)
+	}
+	return len(dAtA) - i, nil
+}
+
 func (m *Listener_ConnectionBalanceConfig) MarshalVTStrict() (dAtA []byte, err error) {
 	if m == nil {
 		return nil, nil
@@ -260,6 +315,13 @@ func (m *Listener_ConnectionBalanceConfig) MarshalToSizedBufferVTStrict(dAtA []b
 	if m.unknownFields != nil {
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
+	}
+	if msg, ok := m.BalanceType.(*Listener_ConnectionBalanceConfig_CpuLocalityBalance_); ok {
+		size, err := msg.MarshalToSizedBufferVTStrict(dAtA[:i])
+		if err != nil {
+			return 0, err
+		}
+		i -= size
 	}
 	if msg, ok := m.BalanceType.(*Listener_ConnectionBalanceConfig_ExtendBalance); ok {
 		size, err := msg.MarshalToSizedBufferVTStrict(dAtA[:i])
@@ -336,6 +398,29 @@ func (m *Listener_ConnectionBalanceConfig_ExtendBalance) MarshalToSizedBufferVTS
 	}
 	return len(dAtA) - i, nil
 }
+func (m *Listener_ConnectionBalanceConfig_CpuLocalityBalance_) MarshalToVTStrict(dAtA []byte) (int, error) {
+	size := m.SizeVT()
+	return m.MarshalToSizedBufferVTStrict(dAtA[:size])
+}
+
+func (m *Listener_ConnectionBalanceConfig_CpuLocalityBalance_) MarshalToSizedBufferVTStrict(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	if m.CpuLocalityBalance != nil {
+		size, err := m.CpuLocalityBalance.MarshalToSizedBufferVTStrict(dAtA[:i])
+		if err != nil {
+			return 0, err
+		}
+		i -= size
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		i--
+		dAtA[i] = 0x1a
+	} else {
+		i = protohelpers.EncodeVarint(dAtA, i, 0)
+		i--
+		dAtA[i] = 0x1a
+	}
+	return len(dAtA) - i, nil
+}
 func (m *Listener_InternalListenerConfig) MarshalVTStrict() (dAtA []byte, err error) {
 	if m == nil {
 		return nil, nil
@@ -369,6 +454,68 @@ func (m *Listener_InternalListenerConfig) MarshalToSizedBufferVTStrict(dAtA []by
 	return len(dAtA) - i, nil
 }
 
+func (m *Listener_FcdsConfig) MarshalVTStrict() (dAtA []byte, err error) {
+	if m == nil {
+		return nil, nil
+	}
+	size := m.SizeVT()
+	dAtA = make([]byte, size)
+	n, err := m.MarshalToSizedBufferVTStrict(dAtA[:size])
+	if err != nil {
+		return nil, err
+	}
+	return dAtA[:n], nil
+}
+
+func (m *Listener_FcdsConfig) MarshalToVTStrict(dAtA []byte) (int, error) {
+	size := m.SizeVT()
+	return m.MarshalToSizedBufferVTStrict(dAtA[:size])
+}
+
+func (m *Listener_FcdsConfig) MarshalToSizedBufferVTStrict(dAtA []byte) (int, error) {
+	if m == nil {
+		return 0, nil
+	}
+	i := len(dAtA)
+	_ = i
+	var l int
+	_ = l
+	if m.unknownFields != nil {
+		i -= len(m.unknownFields)
+		copy(dAtA[i:], m.unknownFields)
+	}
+	if m.ConfigSource != nil {
+		if vtmsg, ok := interface{}(m.ConfigSource).(interface {
+			MarshalToSizedBufferVTStrict([]byte) (int, error)
+		}); ok {
+			size, err := vtmsg.MarshalToSizedBufferVTStrict(dAtA[:i])
+			if err != nil {
+				return 0, err
+			}
+			i -= size
+			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		} else {
+			encoded, err := proto.Marshal(m.ConfigSource)
+			if err != nil {
+				return 0, err
+			}
+			i -= len(encoded)
+			copy(dAtA[i:], encoded)
+			i = protohelpers.EncodeVarint(dAtA, i, uint64(len(encoded)))
+		}
+		i--
+		dAtA[i] = 0x12
+	}
+	if len(m.Name) > 0 {
+		i -= len(m.Name)
+		copy(dAtA[i:], m.Name)
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.Name)))
+		i--
+		dAtA[i] = 0xa
+	}
+	return len(dAtA) - i, nil
+}
+
 func (m *Listener) MarshalVTStrict() (dAtA []byte, err error) {
 	if m == nil {
 		return nil, nil
@@ -398,6 +545,54 @@ func (m *Listener) MarshalToSizedBufferVTStrict(dAtA []byte) (int, error) {
 	if m.unknownFields != nil {
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
+	}
+	if m.PerConnectionBufferHighWatermarkTimeout != nil {
+		size, err := (*durationpb.Duration)(m.PerConnectionBufferHighWatermarkTimeout).MarshalToSizedBufferVTStrict(dAtA[:i])
+		if err != nil {
+			return 0, err
+		}
+		i -= size
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		i--
+		dAtA[i] = 0x2
+		i--
+		dAtA[i] = 0xb2
+	}
+	if m.TcpKeepalive != nil {
+		if vtmsg, ok := interface{}(m.TcpKeepalive).(interface {
+			MarshalToSizedBufferVTStrict([]byte) (int, error)
+		}); ok {
+			size, err := vtmsg.MarshalToSizedBufferVTStrict(dAtA[:i])
+			if err != nil {
+				return 0, err
+			}
+			i -= size
+			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		} else {
+			encoded, err := proto.Marshal(m.TcpKeepalive)
+			if err != nil {
+				return 0, err
+			}
+			i -= len(encoded)
+			copy(dAtA[i:], encoded)
+			i = protohelpers.EncodeVarint(dAtA, i, uint64(len(encoded)))
+		}
+		i--
+		dAtA[i] = 0x2
+		i--
+		dAtA[i] = 0xaa
+	}
+	if m.FcdsConfig != nil {
+		size, err := m.FcdsConfig.MarshalToSizedBufferVTStrict(dAtA[:i])
+		if err != nil {
+			return 0, err
+		}
+		i -= size
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		i--
+		dAtA[i] = 0x2
+		i--
+		dAtA[i] = 0xa2
 	}
 	if m.BypassOverloadManager {
 		i--
@@ -846,105 +1041,6 @@ func (m *Listener_InternalListener) MarshalToSizedBufferVTStrict(dAtA []byte) (i
 	}
 	return len(dAtA) - i, nil
 }
-func (m *ListenerManager) MarshalVTStrict() (dAtA []byte, err error) {
-	if m == nil {
-		return nil, nil
-	}
-	size := m.SizeVT()
-	dAtA = make([]byte, size)
-	n, err := m.MarshalToSizedBufferVTStrict(dAtA[:size])
-	if err != nil {
-		return nil, err
-	}
-	return dAtA[:n], nil
-}
-
-func (m *ListenerManager) MarshalToVTStrict(dAtA []byte) (int, error) {
-	size := m.SizeVT()
-	return m.MarshalToSizedBufferVTStrict(dAtA[:size])
-}
-
-func (m *ListenerManager) MarshalToSizedBufferVTStrict(dAtA []byte) (int, error) {
-	if m == nil {
-		return 0, nil
-	}
-	i := len(dAtA)
-	_ = i
-	var l int
-	_ = l
-	if m.unknownFields != nil {
-		i -= len(m.unknownFields)
-		copy(dAtA[i:], m.unknownFields)
-	}
-	return len(dAtA) - i, nil
-}
-
-func (m *ValidationListenerManager) MarshalVTStrict() (dAtA []byte, err error) {
-	if m == nil {
-		return nil, nil
-	}
-	size := m.SizeVT()
-	dAtA = make([]byte, size)
-	n, err := m.MarshalToSizedBufferVTStrict(dAtA[:size])
-	if err != nil {
-		return nil, err
-	}
-	return dAtA[:n], nil
-}
-
-func (m *ValidationListenerManager) MarshalToVTStrict(dAtA []byte) (int, error) {
-	size := m.SizeVT()
-	return m.MarshalToSizedBufferVTStrict(dAtA[:size])
-}
-
-func (m *ValidationListenerManager) MarshalToSizedBufferVTStrict(dAtA []byte) (int, error) {
-	if m == nil {
-		return 0, nil
-	}
-	i := len(dAtA)
-	_ = i
-	var l int
-	_ = l
-	if m.unknownFields != nil {
-		i -= len(m.unknownFields)
-		copy(dAtA[i:], m.unknownFields)
-	}
-	return len(dAtA) - i, nil
-}
-
-func (m *ApiListenerManager) MarshalVTStrict() (dAtA []byte, err error) {
-	if m == nil {
-		return nil, nil
-	}
-	size := m.SizeVT()
-	dAtA = make([]byte, size)
-	n, err := m.MarshalToSizedBufferVTStrict(dAtA[:size])
-	if err != nil {
-		return nil, err
-	}
-	return dAtA[:n], nil
-}
-
-func (m *ApiListenerManager) MarshalToVTStrict(dAtA []byte) (int, error) {
-	size := m.SizeVT()
-	return m.MarshalToSizedBufferVTStrict(dAtA[:size])
-}
-
-func (m *ApiListenerManager) MarshalToSizedBufferVTStrict(dAtA []byte) (int, error) {
-	if m == nil {
-		return 0, nil
-	}
-	i := len(dAtA)
-	_ = i
-	var l int
-	_ = l
-	if m.unknownFields != nil {
-		i -= len(m.unknownFields)
-		copy(dAtA[i:], m.unknownFields)
-	}
-	return len(dAtA) - i, nil
-}
-
 func (m *AdditionalAddress) SizeVT() (n int) {
 	if m == nil {
 		return 0
@@ -968,6 +1064,16 @@ func (m *AdditionalAddress) SizeVT() (n int) {
 			l = size.SizeVT()
 		} else {
 			l = proto.Size(m.SocketOptions)
+		}
+		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
+	}
+	if m.TcpKeepalive != nil {
+		if size, ok := interface{}(m.TcpKeepalive).(interface {
+			SizeVT() int
+		}); ok {
+			l = size.SizeVT()
+		} else {
+			l = proto.Size(m.TcpKeepalive)
 		}
 		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
 	}
@@ -1012,6 +1118,16 @@ func (m *Listener_DeprecatedV1) SizeVT() (n int) {
 }
 
 func (m *Listener_ConnectionBalanceConfig_ExactBalance) SizeVT() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	n += len(m.unknownFields)
+	return n
+}
+
+func (m *Listener_ConnectionBalanceConfig_CpuLocalityBalance) SizeVT() (n int) {
 	if m == nil {
 		return 0
 	}
@@ -1068,12 +1184,50 @@ func (m *Listener_ConnectionBalanceConfig_ExtendBalance) SizeVT() (n int) {
 	}
 	return n
 }
+func (m *Listener_ConnectionBalanceConfig_CpuLocalityBalance_) SizeVT() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	if m.CpuLocalityBalance != nil {
+		l = m.CpuLocalityBalance.SizeVT()
+		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
+	} else {
+		n += 2
+	}
+	return n
+}
 func (m *Listener_InternalListenerConfig) SizeVT() (n int) {
 	if m == nil {
 		return 0
 	}
 	var l int
 	_ = l
+	n += len(m.unknownFields)
+	return n
+}
+
+func (m *Listener_FcdsConfig) SizeVT() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	l = len(m.Name)
+	if l > 0 {
+		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
+	}
+	if m.ConfigSource != nil {
+		if size, ok := interface{}(m.ConfigSource).(interface {
+			SizeVT() int
+		}); ok {
+			l = size.SizeVT()
+		} else {
+			l = proto.Size(m.ConfigSource)
+		}
+		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
+	}
 	n += len(m.unknownFields)
 	return n
 }
@@ -1248,6 +1402,24 @@ func (m *Listener) SizeVT() (n int) {
 	if m.BypassOverloadManager {
 		n += 3
 	}
+	if m.FcdsConfig != nil {
+		l = m.FcdsConfig.SizeVT()
+		n += 2 + l + protohelpers.SizeOfVarint(uint64(l))
+	}
+	if m.TcpKeepalive != nil {
+		if size, ok := interface{}(m.TcpKeepalive).(interface {
+			SizeVT() int
+		}); ok {
+			l = size.SizeVT()
+		} else {
+			l = proto.Size(m.TcpKeepalive)
+		}
+		n += 2 + l + protohelpers.SizeOfVarint(uint64(l))
+	}
+	if m.PerConnectionBufferHighWatermarkTimeout != nil {
+		l = (*durationpb.Duration)(m.PerConnectionBufferHighWatermarkTimeout).SizeVT()
+		n += 2 + l + protohelpers.SizeOfVarint(uint64(l))
+	}
 	n += len(m.unknownFields)
 	return n
 }
@@ -1264,34 +1436,5 @@ func (m *Listener_InternalListener) SizeVT() (n int) {
 	} else {
 		n += 3
 	}
-	return n
-}
-func (m *ListenerManager) SizeVT() (n int) {
-	if m == nil {
-		return 0
-	}
-	var l int
-	_ = l
-	n += len(m.unknownFields)
-	return n
-}
-
-func (m *ValidationListenerManager) SizeVT() (n int) {
-	if m == nil {
-		return 0
-	}
-	var l int
-	_ = l
-	n += len(m.unknownFields)
-	return n
-}
-
-func (m *ApiListenerManager) SizeVT() (n int) {
-	if m == nil {
-		return 0
-	}
-	var l int
-	_ = l
-	n += len(m.unknownFields)
 	return n
 }

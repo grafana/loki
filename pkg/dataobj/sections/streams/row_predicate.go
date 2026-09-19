@@ -32,6 +32,13 @@ type (
 		IncludeEnd         bool // Whether EndTime is inclusive.
 	}
 
+	// A ShardBucketRangeRowPredicate is a RowPredicate which requires a stream's shard
+	// bucket to be within the range [From, To], both ends inclusive.
+	//
+	// A section that carries no shard-bucket column matches no stream, as for any other
+	// predicate whose column is absent.
+	ShardBucketRangeRowPredicate struct{ From, To uint64 }
+
 	// A LabelMatcherRowPredicate is a RowPredicate which requires a label named
 	// Name to exist with a value of Value.
 	LabelMatcherRowPredicate struct{ Name, Value string }
@@ -39,7 +46,7 @@ type (
 	// A LabelFilterRowPredicate is a RowPredicate that requires that labels with
 	// the provided name pass a Keep function.
 	//
-	// The name is is provided to the keep function to allow the same function to
+	// The name is provided to the keep function to allow the same function to
 	// be used for multiple filter predicates.
 	//
 	// Uses of LabelFilterRowPredicate are not eligible for page filtering and
@@ -51,9 +58,10 @@ type (
 	}
 )
 
-func (AndRowPredicate) isRowPredicate()          {}
-func (OrRowPredicate) isRowPredicate()           {}
-func (NotRowPredicate) isRowPredicate()          {}
-func (TimeRangeRowPredicate) isRowPredicate()    {}
-func (LabelMatcherRowPredicate) isRowPredicate() {}
-func (LabelFilterRowPredicate) isRowPredicate()  {}
+func (AndRowPredicate) isRowPredicate()              {}
+func (OrRowPredicate) isRowPredicate()               {}
+func (NotRowPredicate) isRowPredicate()              {}
+func (TimeRangeRowPredicate) isRowPredicate()        {}
+func (ShardBucketRangeRowPredicate) isRowPredicate() {}
+func (LabelMatcherRowPredicate) isRowPredicate()     {}
+func (LabelFilterRowPredicate) isRowPredicate()      {}

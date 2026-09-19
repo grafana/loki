@@ -52,6 +52,18 @@ func (m *VirtualHost) MarshalToSizedBufferVTStrict(dAtA []byte) (int, error) {
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
 	}
+	if m.RequestBodyBufferLimit != nil {
+		size, err := (*wrapperspb.UInt64Value)(m.RequestBodyBufferLimit).MarshalToSizedBufferVTStrict(dAtA[:i])
+		if err != nil {
+			return 0, err
+		}
+		i -= size
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		i--
+		dAtA[i] = 0x1
+		i--
+		dAtA[i] = 0xca
+	}
 	if m.Metadata != nil {
 		if vtmsg, ok := interface{}(m.Metadata).(interface {
 			MarshalToSizedBufferVTStrict([]byte) (int, error)
@@ -471,6 +483,18 @@ func (m *Route) MarshalToSizedBufferVTStrict(dAtA []byte) (int, error) {
 	if m.unknownFields != nil {
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
+	}
+	if m.RequestBodyBufferLimit != nil {
+		size, err := (*wrapperspb.UInt64Value)(m.RequestBodyBufferLimit).MarshalToSizedBufferVTStrict(dAtA[:i])
+		if err != nil {
+			return 0, err
+		}
+		i -= size
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		i--
+		dAtA[i] = 0x1
+		i--
+		dAtA[i] = 0xa2
 	}
 	if len(m.StatPrefix) > 0 {
 		i -= len(m.StatPrefix)
@@ -1019,6 +1043,13 @@ func (m *WeightedCluster) MarshalToSizedBufferVTStrict(dAtA []byte) (int, error)
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
 	}
+	if msg, ok := m.RandomValueSpecifier.(*WeightedCluster_UseHashPolicy); ok {
+		size, err := msg.MarshalToSizedBufferVTStrict(dAtA[:i])
+		if err != nil {
+			return 0, err
+		}
+		i -= size
+	}
 	if msg, ok := m.RandomValueSpecifier.(*WeightedCluster_HeaderName); ok {
 		size, err := msg.MarshalToSizedBufferVTStrict(dAtA[:i])
 		if err != nil {
@@ -1070,6 +1101,29 @@ func (m *WeightedCluster_HeaderName) MarshalToSizedBufferVTStrict(dAtA []byte) (
 	i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.HeaderName)))
 	i--
 	dAtA[i] = 0x22
+	return len(dAtA) - i, nil
+}
+func (m *WeightedCluster_UseHashPolicy) MarshalToVTStrict(dAtA []byte) (int, error) {
+	size := m.SizeVT()
+	return m.MarshalToSizedBufferVTStrict(dAtA[:size])
+}
+
+func (m *WeightedCluster_UseHashPolicy) MarshalToSizedBufferVTStrict(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	if m.UseHashPolicy != nil {
+		size, err := (*wrapperspb.BoolValue)(m.UseHashPolicy).MarshalToSizedBufferVTStrict(dAtA[:i])
+		if err != nil {
+			return 0, err
+		}
+		i -= size
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		i--
+		dAtA[i] = 0x2a
+	} else {
+		i = protohelpers.EncodeVarint(dAtA, i, 0)
+		i--
+		dAtA[i] = 0x2a
+	}
 	return len(dAtA) - i, nil
 }
 func (m *ClusterSpecifierPlugin) MarshalVTStrict() (dAtA []byte, err error) {
@@ -1285,6 +1339,46 @@ func (m *RouteMatch) MarshalToSizedBufferVTStrict(dAtA []byte) (int, error) {
 	if m.unknownFields != nil {
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
+	}
+	if len(m.Cookies) > 0 {
+		for iNdEx := len(m.Cookies) - 1; iNdEx >= 0; iNdEx-- {
+			size, err := m.Cookies[iNdEx].MarshalToSizedBufferVTStrict(dAtA[:i])
+			if err != nil {
+				return 0, err
+			}
+			i -= size
+			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+			i--
+			dAtA[i] = 0x1
+			i--
+			dAtA[i] = 0x8a
+		}
+	}
+	if len(m.FilterState) > 0 {
+		for iNdEx := len(m.FilterState) - 1; iNdEx >= 0; iNdEx-- {
+			if vtmsg, ok := interface{}(m.FilterState[iNdEx]).(interface {
+				MarshalToSizedBufferVTStrict([]byte) (int, error)
+			}); ok {
+				size, err := vtmsg.MarshalToSizedBufferVTStrict(dAtA[:i])
+				if err != nil {
+					return 0, err
+				}
+				i -= size
+				i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+			} else {
+				encoded, err := proto.Marshal(m.FilterState[iNdEx])
+				if err != nil {
+					return 0, err
+				}
+				i -= len(encoded)
+				copy(dAtA[i:], encoded)
+				i = protohelpers.EncodeVarint(dAtA, i, uint64(len(encoded)))
+			}
+			i--
+			dAtA[i] = 0x1
+			i--
+			dAtA[i] = 0x82
+		}
 	}
 	if msg, ok := m.PathSpecifier.(*RouteMatch_PathMatchPolicy); ok {
 		size, err := msg.MarshalToSizedBufferVTStrict(dAtA[:i])
@@ -1774,6 +1868,37 @@ func (m *RouteAction_RequestMirrorPolicy) MarshalToSizedBufferVTStrict(dAtA []by
 	if m.unknownFields != nil {
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
+	}
+	if len(m.HostRewriteLiteral) > 0 {
+		i -= len(m.HostRewriteLiteral)
+		copy(dAtA[i:], m.HostRewriteLiteral)
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.HostRewriteLiteral)))
+		i--
+		dAtA[i] = 0x42
+	}
+	if len(m.RequestHeadersMutations) > 0 {
+		for iNdEx := len(m.RequestHeadersMutations) - 1; iNdEx >= 0; iNdEx-- {
+			if vtmsg, ok := interface{}(m.RequestHeadersMutations[iNdEx]).(interface {
+				MarshalToSizedBufferVTStrict([]byte) (int, error)
+			}); ok {
+				size, err := vtmsg.MarshalToSizedBufferVTStrict(dAtA[:i])
+				if err != nil {
+					return 0, err
+				}
+				i -= size
+				i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+			} else {
+				encoded, err := proto.Marshal(m.RequestHeadersMutations[iNdEx])
+				if err != nil {
+					return 0, err
+				}
+				i -= len(encoded)
+				copy(dAtA[i:], encoded)
+				i = protohelpers.EncodeVarint(dAtA, i, uint64(len(encoded)))
+			}
+			i--
+			dAtA[i] = 0x3a
+		}
 	}
 	if m.DisableShadowHostSuffixAppend {
 		i--
@@ -2546,6 +2671,34 @@ func (m *RouteAction) MarshalToSizedBufferVTStrict(dAtA []byte) (int, error) {
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
 	}
+	if len(m.PathRewrite) > 0 {
+		i -= len(m.PathRewrite)
+		copy(dAtA[i:], m.PathRewrite)
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.PathRewrite)))
+		i--
+		dAtA[i] = 0x2
+		i--
+		dAtA[i] = 0xea
+	}
+	if msg, ok := m.HostRewriteSpecifier.(*RouteAction_HostRewrite); ok {
+		size, err := msg.MarshalToSizedBufferVTStrict(dAtA[:i])
+		if err != nil {
+			return 0, err
+		}
+		i -= size
+	}
+	if m.FlushTimeout != nil {
+		size, err := (*durationpb.Duration)(m.FlushTimeout).MarshalToSizedBufferVTStrict(dAtA[:i])
+		if err != nil {
+			return 0, err
+		}
+		i -= size
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		i--
+		dAtA[i] = 0x2
+		i--
+		dAtA[i] = 0xd2
+	}
 	if m.PathRewritePolicy != nil {
 		if vtmsg, ok := interface{}(m.PathRewritePolicy).(interface {
 			MarshalToSizedBufferVTStrict([]byte) (int, error)
@@ -3120,6 +3273,22 @@ func (m *RouteAction_InlineClusterSpecifierPlugin) MarshalToSizedBufferVTStrict(
 	}
 	return len(dAtA) - i, nil
 }
+func (m *RouteAction_HostRewrite) MarshalToVTStrict(dAtA []byte) (int, error) {
+	size := m.SizeVT()
+	return m.MarshalToSizedBufferVTStrict(dAtA[:size])
+}
+
+func (m *RouteAction_HostRewrite) MarshalToSizedBufferVTStrict(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	i -= len(m.HostRewrite)
+	copy(dAtA[i:], m.HostRewrite)
+	i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.HostRewrite)))
+	i--
+	dAtA[i] = 0x2
+	i--
+	dAtA[i] = 0xe2
+	return len(dAtA) - i, nil
+}
 func (m *RetryPolicy_RetryPriority) MarshalVTStrict() (dAtA []byte, err error) {
 	if m == nil {
 		return nil, nil
@@ -3443,6 +3612,16 @@ func (m *RetryPolicy) MarshalToSizedBufferVTStrict(dAtA []byte) (int, error) {
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
 	}
+	if m.RefreshClusterOnRetry {
+		i--
+		if m.RefreshClusterOnRetry {
+			dAtA[i] = 1
+		} else {
+			dAtA[i] = 0
+		}
+		i--
+		dAtA[i] = 0x70
+	}
 	if m.PerTryIdleTimeout != nil {
 		size, err := (*durationpb.Duration)(m.PerTryIdleTimeout).MarshalToSizedBufferVTStrict(dAtA[:i])
 		if err != nil {
@@ -3703,6 +3882,13 @@ func (m *RedirectAction) MarshalToSizedBufferVTStrict(dAtA []byte) (int, error) 
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
 	}
+	if msg, ok := m.PathRewriteSpecifier.(*RedirectAction_PathRewrite); ok {
+		size, err := msg.MarshalToSizedBufferVTStrict(dAtA[:i])
+		if err != nil {
+			return 0, err
+		}
+		i -= size
+	}
 	if msg, ok := m.PathRewriteSpecifier.(*RedirectAction_RegexRewrite); ok {
 		size, err := msg.MarshalToSizedBufferVTStrict(dAtA[:i])
 		if err != nil {
@@ -3862,6 +4048,20 @@ func (m *RedirectAction_RegexRewrite) MarshalToSizedBufferVTStrict(dAtA []byte) 
 	}
 	return len(dAtA) - i, nil
 }
+func (m *RedirectAction_PathRewrite) MarshalToVTStrict(dAtA []byte) (int, error) {
+	size := m.SizeVT()
+	return m.MarshalToSizedBufferVTStrict(dAtA[:size])
+}
+
+func (m *RedirectAction_PathRewrite) MarshalToSizedBufferVTStrict(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	i -= len(m.PathRewrite)
+	copy(dAtA[i:], m.PathRewrite)
+	i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.PathRewrite)))
+	i--
+	dAtA[i] = 0x52
+	return len(dAtA) - i, nil
+}
 func (m *DirectResponseAction) MarshalVTStrict() (dAtA []byte, err error) {
 	if m == nil {
 		return nil, nil
@@ -3891,6 +4091,28 @@ func (m *DirectResponseAction) MarshalToSizedBufferVTStrict(dAtA []byte) (int, e
 	if m.unknownFields != nil {
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
+	}
+	if m.BodyFormat != nil {
+		if vtmsg, ok := interface{}(m.BodyFormat).(interface {
+			MarshalToSizedBufferVTStrict([]byte) (int, error)
+		}); ok {
+			size, err := vtmsg.MarshalToSizedBufferVTStrict(dAtA[:i])
+			if err != nil {
+				return 0, err
+			}
+			i -= size
+			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		} else {
+			encoded, err := proto.Marshal(m.BodyFormat)
+			if err != nil {
+				return 0, err
+			}
+			i -= len(encoded)
+			copy(dAtA[i:], encoded)
+			i = protohelpers.EncodeVarint(dAtA, i, uint64(len(encoded)))
+		}
+		i--
+		dAtA[i] = 0x1a
 	}
 	if m.Body != nil {
 		if vtmsg, ok := interface{}(m.Body).(interface {
@@ -4034,6 +4256,20 @@ func (m *Tracing) MarshalToSizedBufferVTStrict(dAtA []byte) (int, error) {
 	if m.unknownFields != nil {
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
+	}
+	if len(m.UpstreamOperation) > 0 {
+		i -= len(m.UpstreamOperation)
+		copy(dAtA[i:], m.UpstreamOperation)
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.UpstreamOperation)))
+		i--
+		dAtA[i] = 0x32
+	}
+	if len(m.Operation) > 0 {
+		i -= len(m.Operation)
+		copy(dAtA[i:], m.Operation)
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.Operation)))
+		i--
+		dAtA[i] = 0x2a
 	}
 	if len(m.CustomTags) > 0 {
 		for iNdEx := len(m.CustomTags) - 1; iNdEx >= 0; iNdEx-- {
@@ -4476,6 +4712,13 @@ func (m *RateLimit_Action_GenericKey) MarshalToSizedBufferVTStrict(dAtA []byte) 
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
 	}
+	if len(m.DefaultValue) > 0 {
+		i -= len(m.DefaultValue)
+		copy(dAtA[i:], m.DefaultValue)
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.DefaultValue)))
+		i--
+		dAtA[i] = 0x1a
+	}
 	if len(m.DescriptorKey) > 0 {
 		i -= len(m.DescriptorKey)
 		copy(dAtA[i:], m.DescriptorKey)
@@ -4522,6 +4765,13 @@ func (m *RateLimit_Action_HeaderValueMatch) MarshalToSizedBufferVTStrict(dAtA []
 	if m.unknownFields != nil {
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
+	}
+	if len(m.DefaultValue) > 0 {
+		i -= len(m.DefaultValue)
+		copy(dAtA[i:], m.DefaultValue)
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.DefaultValue)))
+		i--
+		dAtA[i] = 0x2a
 	}
 	if len(m.DescriptorKey) > 0 {
 		i -= len(m.DescriptorKey)
@@ -4745,6 +4995,13 @@ func (m *RateLimit_Action_QueryParameterValueMatch) MarshalToSizedBufferVTStrict
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
 	}
+	if len(m.DefaultValue) > 0 {
+		i -= len(m.DefaultValue)
+		copy(dAtA[i:], m.DefaultValue)
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.DefaultValue)))
+		i--
+		dAtA[i] = 0x2a
+	}
 	if len(m.DescriptorKey) > 0 {
 		i -= len(m.DescriptorKey)
 		copy(dAtA[i:], m.DescriptorKey)
@@ -4771,6 +5028,82 @@ func (m *RateLimit_Action_QueryParameterValueMatch) MarshalToSizedBufferVTStrict
 		}
 		i -= size
 		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		i--
+		dAtA[i] = 0x12
+	}
+	if len(m.DescriptorValue) > 0 {
+		i -= len(m.DescriptorValue)
+		copy(dAtA[i:], m.DescriptorValue)
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.DescriptorValue)))
+		i--
+		dAtA[i] = 0xa
+	}
+	return len(dAtA) - i, nil
+}
+
+func (m *RateLimit_Action_RemoteAddressMatch) MarshalVTStrict() (dAtA []byte, err error) {
+	if m == nil {
+		return nil, nil
+	}
+	size := m.SizeVT()
+	dAtA = make([]byte, size)
+	n, err := m.MarshalToSizedBufferVTStrict(dAtA[:size])
+	if err != nil {
+		return nil, err
+	}
+	return dAtA[:n], nil
+}
+
+func (m *RateLimit_Action_RemoteAddressMatch) MarshalToVTStrict(dAtA []byte) (int, error) {
+	size := m.SizeVT()
+	return m.MarshalToSizedBufferVTStrict(dAtA[:size])
+}
+
+func (m *RateLimit_Action_RemoteAddressMatch) MarshalToSizedBufferVTStrict(dAtA []byte) (int, error) {
+	if m == nil {
+		return 0, nil
+	}
+	i := len(dAtA)
+	_ = i
+	var l int
+	_ = l
+	if m.unknownFields != nil {
+		i -= len(m.unknownFields)
+		copy(dAtA[i:], m.unknownFields)
+	}
+	if m.AddressMatcher != nil {
+		if vtmsg, ok := interface{}(m.AddressMatcher).(interface {
+			MarshalToSizedBufferVTStrict([]byte) (int, error)
+		}); ok {
+			size, err := vtmsg.MarshalToSizedBufferVTStrict(dAtA[:i])
+			if err != nil {
+				return 0, err
+			}
+			i -= size
+			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		} else {
+			encoded, err := proto.Marshal(m.AddressMatcher)
+			if err != nil {
+				return 0, err
+			}
+			i -= len(encoded)
+			copy(dAtA[i:], encoded)
+			i = protohelpers.EncodeVarint(dAtA, i, uint64(len(encoded)))
+		}
+		i--
+		dAtA[i] = 0x22
+	}
+	if len(m.DefaultValue) > 0 {
+		i -= len(m.DefaultValue)
+		copy(dAtA[i:], m.DefaultValue)
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.DefaultValue)))
+		i--
+		dAtA[i] = 0x1a
+	}
+	if len(m.DescriptorKey) > 0 {
+		i -= len(m.DescriptorKey)
+		copy(dAtA[i:], m.DescriptorKey)
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.DescriptorKey)))
 		i--
 		dAtA[i] = 0x12
 	}
@@ -4813,6 +5146,13 @@ func (m *RateLimit_Action) MarshalToSizedBufferVTStrict(dAtA []byte) (int, error
 	if m.unknownFields != nil {
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
+	}
+	if msg, ok := m.ActionSpecifier.(*RateLimit_Action_RemoteAddressMatch_); ok {
+		size, err := msg.MarshalToSizedBufferVTStrict(dAtA[:i])
+		if err != nil {
+			return 0, err
+		}
+		i -= size
 	}
 	if msg, ok := m.ActionSpecifier.(*RateLimit_Action_QueryParameters_); ok {
 		size, err := msg.MarshalToSizedBufferVTStrict(dAtA[:i])
@@ -5189,6 +5529,29 @@ func (m *RateLimit_Action_QueryParameters_) MarshalToSizedBufferVTStrict(dAtA []
 	}
 	return len(dAtA) - i, nil
 }
+func (m *RateLimit_Action_RemoteAddressMatch_) MarshalToVTStrict(dAtA []byte) (int, error) {
+	size := m.SizeVT()
+	return m.MarshalToSizedBufferVTStrict(dAtA[:size])
+}
+
+func (m *RateLimit_Action_RemoteAddressMatch_) MarshalToSizedBufferVTStrict(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	if m.RemoteAddressMatch != nil {
+		size, err := m.RemoteAddressMatch.MarshalToSizedBufferVTStrict(dAtA[:i])
+		if err != nil {
+			return 0, err
+		}
+		i -= size
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		i--
+		dAtA[i] = 0x6a
+	} else {
+		i = protohelpers.EncodeVarint(dAtA, i, 0)
+		i--
+		dAtA[i] = 0x6a
+	}
+	return len(dAtA) - i, nil
+}
 func (m *RateLimit_Override_DynamicMetadata) MarshalVTStrict() (dAtA []byte, err error) {
 	if m == nil {
 		return nil, nil
@@ -5244,6 +5607,49 @@ func (m *RateLimit_Override_DynamicMetadata) MarshalToSizedBufferVTStrict(dAtA [
 	return len(dAtA) - i, nil
 }
 
+func (m *RateLimit_Override_RateLimitOverride) MarshalVTStrict() (dAtA []byte, err error) {
+	if m == nil {
+		return nil, nil
+	}
+	size := m.SizeVT()
+	dAtA = make([]byte, size)
+	n, err := m.MarshalToSizedBufferVTStrict(dAtA[:size])
+	if err != nil {
+		return nil, err
+	}
+	return dAtA[:n], nil
+}
+
+func (m *RateLimit_Override_RateLimitOverride) MarshalToVTStrict(dAtA []byte) (int, error) {
+	size := m.SizeVT()
+	return m.MarshalToSizedBufferVTStrict(dAtA[:size])
+}
+
+func (m *RateLimit_Override_RateLimitOverride) MarshalToSizedBufferVTStrict(dAtA []byte) (int, error) {
+	if m == nil {
+		return 0, nil
+	}
+	i := len(dAtA)
+	_ = i
+	var l int
+	_ = l
+	if m.unknownFields != nil {
+		i -= len(m.unknownFields)
+		copy(dAtA[i:], m.unknownFields)
+	}
+	if m.Unit != 0 {
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.Unit))
+		i--
+		dAtA[i] = 0x10
+	}
+	if m.RequestsPerUnit != 0 {
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.RequestsPerUnit))
+		i--
+		dAtA[i] = 0x8
+	}
+	return len(dAtA) - i, nil
+}
+
 func (m *RateLimit_Override) MarshalVTStrict() (dAtA []byte, err error) {
 	if m == nil {
 		return nil, nil
@@ -5273,6 +5679,13 @@ func (m *RateLimit_Override) MarshalToSizedBufferVTStrict(dAtA []byte) (int, err
 	if m.unknownFields != nil {
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
+	}
+	if msg, ok := m.OverrideSpecifier.(*RateLimit_Override_RateLimit); ok {
+		size, err := msg.MarshalToSizedBufferVTStrict(dAtA[:i])
+		if err != nil {
+			return 0, err
+		}
+		i -= size
 	}
 	if msg, ok := m.OverrideSpecifier.(*RateLimit_Override_DynamicMetadata_); ok {
 		size, err := msg.MarshalToSizedBufferVTStrict(dAtA[:i])
@@ -5307,6 +5720,29 @@ func (m *RateLimit_Override_DynamicMetadata_) MarshalToSizedBufferVTStrict(dAtA 
 	}
 	return len(dAtA) - i, nil
 }
+func (m *RateLimit_Override_RateLimit) MarshalToVTStrict(dAtA []byte) (int, error) {
+	size := m.SizeVT()
+	return m.MarshalToSizedBufferVTStrict(dAtA[:size])
+}
+
+func (m *RateLimit_Override_RateLimit) MarshalToSizedBufferVTStrict(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	if m.RateLimit != nil {
+		size, err := m.RateLimit.MarshalToSizedBufferVTStrict(dAtA[:i])
+		if err != nil {
+			return 0, err
+		}
+		i -= size
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		i--
+		dAtA[i] = 0x12
+	} else {
+		i = protohelpers.EncodeVarint(dAtA, i, 0)
+		i--
+		dAtA[i] = 0x12
+	}
+	return len(dAtA) - i, nil
+}
 func (m *RateLimit_HitsAddend) MarshalVTStrict() (dAtA []byte, err error) {
 	if m == nil {
 		return nil, nil
@@ -5336,6 +5772,16 @@ func (m *RateLimit_HitsAddend) MarshalToSizedBufferVTStrict(dAtA []byte) (int, e
 	if m.unknownFields != nil {
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
+	}
+	if m.IsNegativeHits {
+		i--
+		if m.IsNegativeHits {
+			dAtA[i] = 1
+		} else {
+			dAtA[i] = 0
+		}
+		i--
+		dAtA[i] = 0x18
 	}
 	if len(m.Format) > 0 {
 		i -= len(m.Format)
@@ -5386,6 +5832,11 @@ func (m *RateLimit) MarshalToSizedBufferVTStrict(dAtA []byte) (int, error) {
 	if m.unknownFields != nil {
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
+	}
+	if m.XRatelimitOption != 0 {
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.XRatelimitOption))
+		i--
+		dAtA[i] = 0x38
 	}
 	if m.ApplyOnStreamDone {
 		i--
@@ -5849,6 +6300,78 @@ func (m *QueryParameterMatcher_PresentMatch) MarshalToSizedBufferVTStrict(dAtA [
 	dAtA[i] = 0x30
 	return len(dAtA) - i, nil
 }
+func (m *CookieMatcher) MarshalVTStrict() (dAtA []byte, err error) {
+	if m == nil {
+		return nil, nil
+	}
+	size := m.SizeVT()
+	dAtA = make([]byte, size)
+	n, err := m.MarshalToSizedBufferVTStrict(dAtA[:size])
+	if err != nil {
+		return nil, err
+	}
+	return dAtA[:n], nil
+}
+
+func (m *CookieMatcher) MarshalToVTStrict(dAtA []byte) (int, error) {
+	size := m.SizeVT()
+	return m.MarshalToSizedBufferVTStrict(dAtA[:size])
+}
+
+func (m *CookieMatcher) MarshalToSizedBufferVTStrict(dAtA []byte) (int, error) {
+	if m == nil {
+		return 0, nil
+	}
+	i := len(dAtA)
+	_ = i
+	var l int
+	_ = l
+	if m.unknownFields != nil {
+		i -= len(m.unknownFields)
+		copy(dAtA[i:], m.unknownFields)
+	}
+	if m.InvertMatch {
+		i--
+		if m.InvertMatch {
+			dAtA[i] = 1
+		} else {
+			dAtA[i] = 0
+		}
+		i--
+		dAtA[i] = 0x18
+	}
+	if m.StringMatch != nil {
+		if vtmsg, ok := interface{}(m.StringMatch).(interface {
+			MarshalToSizedBufferVTStrict([]byte) (int, error)
+		}); ok {
+			size, err := vtmsg.MarshalToSizedBufferVTStrict(dAtA[:i])
+			if err != nil {
+				return 0, err
+			}
+			i -= size
+			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		} else {
+			encoded, err := proto.Marshal(m.StringMatch)
+			if err != nil {
+				return 0, err
+			}
+			i -= len(encoded)
+			copy(dAtA[i:], encoded)
+			i = protohelpers.EncodeVarint(dAtA, i, uint64(len(encoded)))
+		}
+		i--
+		dAtA[i] = 0x12
+	}
+	if len(m.Name) > 0 {
+		i -= len(m.Name)
+		copy(dAtA[i:], m.Name)
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.Name)))
+		i--
+		dAtA[i] = 0xa
+	}
+	return len(dAtA) - i, nil
+}
+
 func (m *InternalRedirectPolicy) MarshalVTStrict() (dAtA []byte, err error) {
 	if m == nil {
 		return nil, nil
@@ -6159,6 +6682,10 @@ func (m *VirtualHost) SizeVT() (n int) {
 		}
 		n += 2 + l + protohelpers.SizeOfVarint(uint64(l))
 	}
+	if m.RequestBodyBufferLimit != nil {
+		l = (*wrapperspb.UInt64Value)(m.RequestBodyBufferLimit).SizeVT()
+		n += 2 + l + protohelpers.SizeOfVarint(uint64(l))
+	}
 	n += len(m.unknownFields)
 	return n
 }
@@ -6283,6 +6810,10 @@ func (m *Route) SizeVT() (n int) {
 	}
 	l = len(m.StatPrefix)
 	if l > 0 {
+		n += 2 + l + protohelpers.SizeOfVarint(uint64(l))
+	}
+	if m.RequestBodyBufferLimit != nil {
+		l = (*wrapperspb.UInt64Value)(m.RequestBodyBufferLimit).SizeVT()
 		n += 2 + l + protohelpers.SizeOfVarint(uint64(l))
 	}
 	n += len(m.unknownFields)
@@ -6490,6 +7021,20 @@ func (m *WeightedCluster_HeaderName) SizeVT() (n int) {
 	n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
 	return n
 }
+func (m *WeightedCluster_UseHashPolicy) SizeVT() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	if m.UseHashPolicy != nil {
+		l = (*wrapperspb.BoolValue)(m.UseHashPolicy).SizeVT()
+		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
+	} else {
+		n += 2
+	}
+	return n
+}
 func (m *ClusterSpecifierPlugin) SizeVT() (n int) {
 	if m == nil {
 		return 0
@@ -6604,6 +7149,24 @@ func (m *RouteMatch) SizeVT() (n int) {
 				l = proto.Size(e)
 			}
 			n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
+		}
+	}
+	if len(m.FilterState) > 0 {
+		for _, e := range m.FilterState {
+			if size, ok := interface{}(e).(interface {
+				SizeVT() int
+			}); ok {
+				l = size.SizeVT()
+			} else {
+				l = proto.Size(e)
+			}
+			n += 2 + l + protohelpers.SizeOfVarint(uint64(l))
+		}
+	}
+	if len(m.Cookies) > 0 {
+		for _, e := range m.Cookies {
+			l = e.SizeVT()
+			n += 2 + l + protohelpers.SizeOfVarint(uint64(l))
 		}
 	}
 	n += len(m.unknownFields)
@@ -6807,6 +7370,22 @@ func (m *RouteAction_RequestMirrorPolicy) SizeVT() (n int) {
 	}
 	if m.DisableShadowHostSuffixAppend {
 		n += 2
+	}
+	if len(m.RequestHeadersMutations) > 0 {
+		for _, e := range m.RequestHeadersMutations {
+			if size, ok := interface{}(e).(interface {
+				SizeVT() int
+			}); ok {
+				l = size.SizeVT()
+			} else {
+				l = proto.Size(e)
+			}
+			n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
+		}
+	}
+	l = len(m.HostRewriteLiteral)
+	if l > 0 {
+		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
 	}
 	n += len(m.unknownFields)
 	return n
@@ -7216,6 +7795,14 @@ func (m *RouteAction) SizeVT() (n int) {
 		}
 		n += 2 + l + protohelpers.SizeOfVarint(uint64(l))
 	}
+	if m.FlushTimeout != nil {
+		l = (*durationpb.Duration)(m.FlushTimeout).SizeVT()
+		n += 2 + l + protohelpers.SizeOfVarint(uint64(l))
+	}
+	l = len(m.PathRewrite)
+	if l > 0 {
+		n += 2 + l + protohelpers.SizeOfVarint(uint64(l))
+	}
 	n += len(m.unknownFields)
 	return n
 }
@@ -7330,6 +7917,16 @@ func (m *RouteAction_InlineClusterSpecifierPlugin) SizeVT() (n int) {
 	} else {
 		n += 3
 	}
+	return n
+}
+func (m *RouteAction_HostRewrite) SizeVT() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	l = len(m.HostRewrite)
+	n += 2 + l + protohelpers.SizeOfVarint(uint64(l))
 	return n
 }
 func (m *RetryPolicy_RetryPriority) SizeVT() (n int) {
@@ -7523,6 +8120,9 @@ func (m *RetryPolicy) SizeVT() (n int) {
 		l = (*durationpb.Duration)(m.PerTryIdleTimeout).SizeVT()
 		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
 	}
+	if m.RefreshClusterOnRetry {
+		n += 2
+	}
 	n += len(m.unknownFields)
 	return n
 }
@@ -7642,6 +8242,16 @@ func (m *RedirectAction_RegexRewrite) SizeVT() (n int) {
 	}
 	return n
 }
+func (m *RedirectAction_PathRewrite) SizeVT() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	l = len(m.PathRewrite)
+	n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
+	return n
+}
 func (m *DirectResponseAction) SizeVT() (n int) {
 	if m == nil {
 		return 0
@@ -7658,6 +8268,16 @@ func (m *DirectResponseAction) SizeVT() (n int) {
 			l = size.SizeVT()
 		} else {
 			l = proto.Size(m.Body)
+		}
+		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
+	}
+	if m.BodyFormat != nil {
+		if size, ok := interface{}(m.BodyFormat).(interface {
+			SizeVT() int
+		}); ok {
+			l = size.SizeVT()
+		} else {
+			l = proto.Size(m.BodyFormat)
 		}
 		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
 	}
@@ -7740,6 +8360,14 @@ func (m *Tracing) SizeVT() (n int) {
 			}
 			n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
 		}
+	}
+	l = len(m.Operation)
+	if l > 0 {
+		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
+	}
+	l = len(m.UpstreamOperation)
+	if l > 0 {
+		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
 	}
 	n += len(m.unknownFields)
 	return n
@@ -7869,6 +8497,10 @@ func (m *RateLimit_Action_GenericKey) SizeVT() (n int) {
 	if l > 0 {
 		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
 	}
+	l = len(m.DefaultValue)
+	if l > 0 {
+		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
+	}
 	n += len(m.unknownFields)
 	return n
 }
@@ -7894,6 +8526,10 @@ func (m *RateLimit_Action_HeaderValueMatch) SizeVT() (n int) {
 		}
 	}
 	l = len(m.DescriptorKey)
+	if l > 0 {
+		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
+	}
+	l = len(m.DefaultValue)
 	if l > 0 {
 		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
 	}
@@ -7985,6 +8621,42 @@ func (m *RateLimit_Action_QueryParameterValueMatch) SizeVT() (n int) {
 	}
 	l = len(m.DescriptorKey)
 	if l > 0 {
+		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
+	}
+	l = len(m.DefaultValue)
+	if l > 0 {
+		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
+	}
+	n += len(m.unknownFields)
+	return n
+}
+
+func (m *RateLimit_Action_RemoteAddressMatch) SizeVT() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	l = len(m.DescriptorValue)
+	if l > 0 {
+		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
+	}
+	l = len(m.DescriptorKey)
+	if l > 0 {
+		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
+	}
+	l = len(m.DefaultValue)
+	if l > 0 {
+		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
+	}
+	if m.AddressMatcher != nil {
+		if size, ok := interface{}(m.AddressMatcher).(interface {
+			SizeVT() int
+		}); ok {
+			l = size.SizeVT()
+		} else {
+			l = proto.Size(m.AddressMatcher)
+		}
 		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
 	}
 	n += len(m.unknownFields)
@@ -8178,6 +8850,20 @@ func (m *RateLimit_Action_QueryParameters_) SizeVT() (n int) {
 	}
 	return n
 }
+func (m *RateLimit_Action_RemoteAddressMatch_) SizeVT() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	if m.RemoteAddressMatch != nil {
+		l = m.RemoteAddressMatch.SizeVT()
+		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
+	} else {
+		n += 2
+	}
+	return n
+}
 func (m *RateLimit_Override_DynamicMetadata) SizeVT() (n int) {
 	if m == nil {
 		return 0
@@ -8193,6 +8879,22 @@ func (m *RateLimit_Override_DynamicMetadata) SizeVT() (n int) {
 			l = proto.Size(m.MetadataKey)
 		}
 		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
+	}
+	n += len(m.unknownFields)
+	return n
+}
+
+func (m *RateLimit_Override_RateLimitOverride) SizeVT() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	if m.RequestsPerUnit != 0 {
+		n += 1 + protohelpers.SizeOfVarint(uint64(m.RequestsPerUnit))
+	}
+	if m.Unit != 0 {
+		n += 1 + protohelpers.SizeOfVarint(uint64(m.Unit))
 	}
 	n += len(m.unknownFields)
 	return n
@@ -8225,6 +8927,20 @@ func (m *RateLimit_Override_DynamicMetadata_) SizeVT() (n int) {
 	}
 	return n
 }
+func (m *RateLimit_Override_RateLimit) SizeVT() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	if m.RateLimit != nil {
+		l = m.RateLimit.SizeVT()
+		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
+	} else {
+		n += 2
+	}
+	return n
+}
 func (m *RateLimit_HitsAddend) SizeVT() (n int) {
 	if m == nil {
 		return 0
@@ -8238,6 +8954,9 @@ func (m *RateLimit_HitsAddend) SizeVT() (n int) {
 	l = len(m.Format)
 	if l > 0 {
 		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
+	}
+	if m.IsNegativeHits {
+		n += 2
 	}
 	n += len(m.unknownFields)
 	return n
@@ -8273,6 +8992,9 @@ func (m *RateLimit) SizeVT() (n int) {
 	}
 	if m.ApplyOnStreamDone {
 		n += 2
+	}
+	if m.XRatelimitOption != 0 {
+		n += 1 + protohelpers.SizeOfVarint(uint64(m.XRatelimitOption))
 	}
 	n += len(m.unknownFields)
 	return n
@@ -8456,6 +9178,33 @@ func (m *QueryParameterMatcher_PresentMatch) SizeVT() (n int) {
 	n += 2
 	return n
 }
+func (m *CookieMatcher) SizeVT() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	l = len(m.Name)
+	if l > 0 {
+		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
+	}
+	if m.StringMatch != nil {
+		if size, ok := interface{}(m.StringMatch).(interface {
+			SizeVT() int
+		}); ok {
+			l = size.SizeVT()
+		} else {
+			l = proto.Size(m.StringMatch)
+		}
+		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
+	}
+	if m.InvertMatch {
+		n += 2
+	}
+	n += len(m.unknownFields)
+	return n
+}
+
 func (m *InternalRedirectPolicy) SizeVT() (n int) {
 	if m == nil {
 		return 0

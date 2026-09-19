@@ -25,10 +25,13 @@ const (
 	_POSIX2_UPE       = -1
 )
 
-var clktck struct {
-	sync.Once
-	v int64
-}
+var clktck = sync.OnceValue(func() int64 {
+	ci, err := unix.SysctlClockinfo("kern.clockrate")
+	if err != nil {
+		return -1
+	}
+	return int64(ci.Hz)
+})
 
 func sysconfPOSIX(name int) (int64, error) {
 	// NetBSD does not define all _POSIX_* values used in sysconf_posix.go
@@ -54,14 +57,7 @@ func sysconf(name int) (int64, error) {
 		}
 		return -1, nil
 	case SC_CLK_TCK:
-		// TODO: use sync.OnceValue once Go 1.21 is the minimal supported version
-		clktck.Do(func() {
-			clktck.v = -1
-			if ci, err := unix.SysctlClockinfo("kern.clockrate"); err == nil {
-				clktck.v = int64(ci.Hz)
-			}
-		})
-		return clktck.v, nil
+		return clktck(), nil
 	case SC_NGROUPS_MAX:
 		return sysctl32("kern.ngroups"), nil
 	case SC_JOB_CONTROL:
@@ -199,7 +195,10 @@ func sysconf(name int) (int64, error) {
 
 	// Linux/Solaris
 	case SC_PHYS_PAGES:
-		return sysctl64("hw.physmem64") / int64(unix.Getpagesize()), nil
+		if mem := sysctl64("hw.physmem64"); mem >= 0 {
+			return mem / int64(unix.Getpagesize()), nil
+		}
+		return -1, nil
 
 	// Native
 	case SC_SCHED_RT_TS:

@@ -1,4 +1,4 @@
-// Copyright 2018 The Prometheus Authors
+// Copyright The Prometheus Authors
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
@@ -16,7 +16,7 @@ package procfs
 import (
 	"fmt"
 
-	"github.com/prometheus/procfs/internal/util"
+	"github.com/prometheus/procfs/internal/parsers"
 )
 
 // ProcIO models the content of /proc/<pid>/io.
@@ -43,7 +43,7 @@ type ProcIO struct {
 func (p Proc) IO() (ProcIO, error) {
 	pio := ProcIO{}
 
-	data, err := util.ReadFileNoStat(p.path("io"))
+	data, err := parsers.ReadFileNoStat(p.path("io"))
 	if err != nil {
 		return pio, err
 	}

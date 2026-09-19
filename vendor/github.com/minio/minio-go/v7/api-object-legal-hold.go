@@ -80,7 +80,16 @@ func newObjectLegalHold(status *LegalHoldStatus) (*objectLegalHold, error) {
 	return legalHold, nil
 }
 
-// PutObjectLegalHold : sets object legal hold for a given object and versionID.
+// PutObjectLegalHold sets the legal hold status for an object and specific version.
+// Legal hold prevents an object version from being overwritten or deleted, regardless of retention settings.
+//
+// Parameters:
+//   - ctx: Context for request cancellation and timeout
+//   - bucketName: Name of the bucket
+//   - objectName: Name of the object
+//   - opts: Options including Status (LegalHoldEnabled or LegalHoldDisabled) and optional VersionID
+//
+// Returns an error if the operation fails or if the status is invalid.
 func (c *Client) PutObjectLegalHold(ctx context.Context, bucketName, objectName string, opts PutObjectLegalHoldOptions) error {
 	// Input validation.
 	if err := s3utils.CheckValidBucketName(bucketName); err != nil {
@@ -134,7 +143,15 @@ func (c *Client) PutObjectLegalHold(ctx context.Context, bucketName, objectName 
 	return nil
 }
 
-// GetObjectLegalHold gets legal-hold status of given object.
+// GetObjectLegalHold retrieves the legal hold status for an object and specific version.
+//
+// Parameters:
+//   - ctx: Context for request cancellation and timeout
+//   - bucketName: Name of the bucket
+//   - objectName: Name of the object
+//   - opts: Options including optional VersionID to target a specific version
+//
+// Returns the legal hold status (LegalHoldEnabled or LegalHoldDisabled) or an error if the operation fails.
 func (c *Client) GetObjectLegalHold(ctx context.Context, bucketName, objectName string, opts GetObjectLegalHoldOptions) (status *LegalHoldStatus, err error) {
 	// Input validation.
 	if err := s3utils.CheckValidBucketName(bucketName); err != nil {

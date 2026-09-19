@@ -1,6 +1,7 @@
 package ingester
 
 import (
+	"context"
 	"fmt"
 	"math"
 	"net"
@@ -26,7 +27,6 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
-	"golang.org/x/net/context"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/metadata"
@@ -42,7 +42,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
-	"github.com/grafana/loki/v3/pkg/querier/plan"
+	"github.com/grafana/loki/v3/pkg/querier/testutil"
 	"github.com/grafana/loki/v3/pkg/runtime"
 	"github.com/grafana/loki/v3/pkg/storage/chunk"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/fetcher"
@@ -250,6 +250,7 @@ func TestIngester(t *testing.T) {
 		Limit:    100,
 		Start:    time.Unix(0, 0),
 		End:      time.Unix(1, 0),
+		Plan:     testutil.MustPlan(`{foo="bar"}`),
 	}, &result)
 	require.NoError(t, err)
 	// We always send an empty batch to make sure stats are sent, so there will always be one empty response.
@@ -264,6 +265,7 @@ func TestIngester(t *testing.T) {
 		Limit:    100,
 		Start:    time.Unix(0, 0),
 		End:      time.Unix(1, 0),
+		Plan:     testutil.MustPlan(`{foo="bar",bar="baz1"}`),
 	}, &result)
 	require.NoError(t, err)
 	// We always send an empty batch to make sure stats are sent, so there will always be one empty response.
@@ -279,6 +281,7 @@ func TestIngester(t *testing.T) {
 		Limit:    100,
 		Start:    time.Unix(0, 0),
 		End:      time.Unix(1, 0),
+		Plan:     testutil.MustPlan(`{foo="bar",bar="baz2"}`),
 	}, &result)
 	require.NoError(t, err)
 	// We always send an empty batch to make sure stats are sent, so there will always be one empty response.
@@ -451,6 +454,10 @@ func (s *mockStore) Put(ctx context.Context, chunks []chunk.Chunk) error {
 	return nil
 }
 
+func (s *mockStore) FlushIndexes(_ context.Context) error {
+	return nil
+}
+
 func (s *mockStore) SelectLogs(_ context.Context, _ logql.SelectLogParams) (iter.EntryIterator, error) {
 	return nil, nil
 }
@@ -513,6 +520,14 @@ func (s *mockStore) GetShards(_ context.Context, _ string, _, _ model.Time, _ ui
 
 func (s *mockStore) HasForSeries(_, _ model.Time) (sharding.ForSeries, bool) {
 	return nil, false
+}
+
+func (s *mockStore) HasChunkSizingInfo(_, _ model.Time) bool {
+	return false
+}
+
+func (s *mockStore) GetChunkRefsWithSizingInfo(_ context.Context, _ string, _, _ model.Time, _ chunk.Predicate) ([]logproto.ChunkRefWithSizingInfo, error) {
+	return nil, nil
 }
 
 func (s *mockStore) Volume(_ context.Context, _ string, _, _ model.Time, limit int32, _ []string, _ string, _ ...*labels.Matcher) (*logproto.VolumeResponse, error) {
@@ -625,19 +640,9 @@ func TestIngester_asyncStoreMaxLookBack(t *testing.T) {
 			periodicConfigs: []config.PeriodConfig{
 				{
 					From:      config.DayTime{Time: now.Add(-24 * time.Hour)},
-					IndexType: "bigtable",
+					IndexType: "boltdb",
 				},
 			},
-		},
-		{
-			name: "just one periodic config with boltdb-shipper",
-			periodicConfigs: []config.PeriodConfig{
-				{
-					From:      config.DayTime{Time: now.Add(-24 * time.Hour)},
-					IndexType: "boltdb-shipper",
-				},
-			},
-			expectedMaxLookBack: time.Since(now.Add(-24 * time.Hour).Time()),
 		},
 		{
 			name: "just one periodic config with tsdb",
@@ -650,25 +655,11 @@ func TestIngester_asyncStoreMaxLookBack(t *testing.T) {
 			expectedMaxLookBack: time.Since(now.Add(-24 * time.Hour).Time()),
 		},
 		{
-			name: "active config boltdb-shipper, previous config non async index store",
-			periodicConfigs: []config.PeriodConfig{
-				{
-					From:      config.DayTime{Time: now.Add(-48 * time.Hour)},
-					IndexType: "bigtable",
-				},
-				{
-					From:      config.DayTime{Time: now.Add(-24 * time.Hour)},
-					IndexType: "boltdb-shipper",
-				},
-			},
-			expectedMaxLookBack: time.Since(now.Add(-24 * time.Hour).Time()),
-		},
-		{
 			name: "current and previous config both using async index store",
 			periodicConfigs: []config.PeriodConfig{
 				{
 					From:      config.DayTime{Time: now.Add(-48 * time.Hour)},
-					IndexType: "boltdb-shipper",
+					IndexType: "tsdb",
 				},
 				{
 					From:      config.DayTime{Time: now.Add(-24 * time.Hour)},
@@ -676,19 +667,6 @@ func TestIngester_asyncStoreMaxLookBack(t *testing.T) {
 				},
 			},
 			expectedMaxLookBack: time.Since(now.Add(-48 * time.Hour).Time()),
-		},
-		{
-			name: "active config non async index store, previous config tsdb",
-			periodicConfigs: []config.PeriodConfig{
-				{
-					From:      config.DayTime{Time: now.Add(-48 * time.Hour)},
-					IndexType: "tsdb",
-				},
-				{
-					From:      config.DayTime{Time: now.Add(-24 * time.Hour)},
-					IndexType: "bigtable",
-				},
-			},
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -1040,9 +1018,7 @@ func Test_DedupeIngester(t *testing.T) {
 				End:       time.Unix(0, requests+1),
 				Limit:     uint32(requests * streamCount),
 				Direction: logproto.BACKWARD,
-				Plan: &plan.QueryPlan{
-					AST: syntax.MustParseExpr(`{foo="bar"} | label_format bar=""`),
-				},
+				Plan:      testutil.MustPlan(`{foo="bar"} | label_format bar=""`),
 			})
 			require.NoError(t, err)
 			iterators = append(iterators, iter.NewQueryClientIterator(stream, logproto.BACKWARD))
@@ -1073,6 +1049,7 @@ func Test_DedupeIngester(t *testing.T) {
 				End:       time.Unix(0, requests+1),
 				Limit:     uint32(requests * streamCount),
 				Direction: logproto.FORWARD,
+				Plan:      testutil.MustPlan(`{foo="bar"} | label_format bar=""`),
 			})
 			require.NoError(t, err)
 			iterators = append(iterators, iter.NewQueryClientIterator(stream, logproto.FORWARD))
@@ -1101,14 +1078,12 @@ func Test_DedupeIngester(t *testing.T) {
 				Selector: `sum(rate({foo="bar"}[1m])) by (bar)`,
 				Start:    time.Unix(0, 0),
 				End:      time.Unix(0, requests+1),
-				Plan: &plan.QueryPlan{
-					AST: syntax.MustParseExpr(`sum(rate({foo="bar"}[1m])) by (bar)`),
-				},
+				Plan:     testutil.MustPlan(`sum(rate({foo="bar"}[1m])) by (bar)`),
 			})
 			require.NoError(t, err)
-			iterators = append(iterators, iter.NewSampleQueryClientIterator(stream))
+			iterators = append(iterators, iter.NewTimestampFirstSampleQueryClientIterator(stream))
 		}
-		it := iter.NewMergeSampleIterator(ctx, iterators)
+		it := iter.NewTimestampFirstMergeSampleIterator(ctx, iterators)
 		var expectedLabels []string
 		for _, s := range streams {
 			expectedLabels = append(expectedLabels, labels.NewBuilder(s).Del("foo").Labels().String())
@@ -1139,14 +1114,12 @@ func Test_DedupeIngester(t *testing.T) {
 				Selector: `sum(rate({foo="bar"}[1m]))`,
 				Start:    time.Unix(0, 0),
 				End:      time.Unix(0, requests+1),
-				Plan: &plan.QueryPlan{
-					AST: syntax.MustParseExpr(`sum(rate({foo="bar"}[1m]))`),
-				},
+				Plan:     testutil.MustPlan(`sum(rate({foo="bar"}[1m]))`),
 			})
 			require.NoError(t, err)
-			iterators = append(iterators, iter.NewSampleQueryClientIterator(stream))
+			iterators = append(iterators, iter.NewTimestampFirstSampleQueryClientIterator(stream))
 		}
-		it := iter.NewMergeSampleIterator(ctx, iterators)
+		it := iter.NewTimestampFirstMergeSampleIterator(ctx, iterators)
 		for i := int64(0); i < requests; i++ {
 			actualHashes := []uint64{}
 			for j := 0; j < int(streamCount); j++ {
@@ -1202,9 +1175,7 @@ func Test_DedupeIngesterParser(t *testing.T) {
 				End:       time.Unix(0, int64(requests+1)),
 				Limit:     uint32(requests * streamCount * 2),
 				Direction: logproto.BACKWARD,
-				Plan: &plan.QueryPlan{
-					AST: syntax.MustParseExpr(`{foo="bar"} | json`),
-				},
+				Plan:      testutil.MustPlan(`{foo="bar"} | json`),
 			})
 			require.NoError(t, err)
 			iterators = append(iterators, iter.NewQueryClientIterator(stream, logproto.BACKWARD))
@@ -1232,9 +1203,7 @@ func Test_DedupeIngesterParser(t *testing.T) {
 				End:       time.Unix(0, int64(requests+1)),
 				Limit:     uint32(requests * streamCount * 2),
 				Direction: logproto.FORWARD,
-				Plan: &plan.QueryPlan{
-					AST: syntax.MustParseExpr(`{foo="bar"} | json`),
-				},
+				Plan:      testutil.MustPlan(`{foo="bar"} | json`),
 			})
 			require.NoError(t, err)
 			iterators = append(iterators, iter.NewQueryClientIterator(stream, logproto.FORWARD))
@@ -1259,14 +1228,12 @@ func Test_DedupeIngesterParser(t *testing.T) {
 				Selector: `rate({foo="bar"} | json [1m])`,
 				Start:    time.Unix(0, 0),
 				End:      time.Unix(0, int64(requests+1)),
-				Plan: &plan.QueryPlan{
-					AST: syntax.MustParseExpr(`rate({foo="bar"} | json [1m])`),
-				},
+				Plan:     testutil.MustPlan(`rate({foo="bar"} | json [1m])`),
 			})
 			require.NoError(t, err)
-			iterators = append(iterators, iter.NewSampleQueryClientIterator(stream))
+			iterators = append(iterators, iter.NewTimestampFirstSampleQueryClientIterator(stream))
 		}
-		it := iter.NewMergeSampleIterator(ctx, iterators)
+		it := iter.NewTimestampFirstMergeSampleIterator(ctx, iterators)
 
 		for i := 0; i < requests; i++ {
 			for j := 0; j < streamCount; j++ {
@@ -1287,14 +1254,12 @@ func Test_DedupeIngesterParser(t *testing.T) {
 				Selector: `sum by (c,d,e,foo) (rate({foo="bar"} | json [1m]))`,
 				Start:    time.Unix(0, 0),
 				End:      time.Unix(0, int64(requests+1)),
-				Plan: &plan.QueryPlan{
-					AST: syntax.MustParseExpr(`sum by (c,d,e,foo) (rate({foo="bar"} | json [1m]))`),
-				},
+				Plan:     testutil.MustPlan(`sum by (c,d,e,foo) (rate({foo="bar"} | json [1m]))`),
 			})
 			require.NoError(t, err)
-			iterators = append(iterators, iter.NewSampleQueryClientIterator(stream))
+			iterators = append(iterators, iter.NewTimestampFirstSampleQueryClientIterator(stream))
 		}
-		it := iter.NewMergeSampleIterator(ctx, iterators)
+		it := iter.NewTimestampFirstMergeSampleIterator(ctx, iterators)
 
 		for i := 0; i < requests; i++ {
 			for j := 0; j < streamCount; j++ {
@@ -1717,6 +1682,10 @@ func (r *readRingMock) InstancesWithTokensInZoneCount(_ string) int {
 
 func (r *readRingMock) ZonesCount() int {
 	return 1
+}
+
+func (r *readRingMock) Zones() []string {
+	return []string{"zone1"}
 }
 
 func (r *readRingMock) HealthyInstancesInZoneCount() int {

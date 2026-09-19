@@ -1,4 +1,4 @@
-// Copyright 2019 The Prometheus Authors
+// Copyright The Prometheus Authors
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
@@ -50,7 +50,7 @@ const (
 
 func parseBrokenJSON(brokenJSON []byte) (string, bool) {
 	queries := strings.ReplaceAll(string(brokenJSON), "\x00", "")
-	if len(queries) > 0 {
+	if queries != "" {
 		queries = queries[:len(queries)-1] + "]"
 	}
 
@@ -60,6 +60,31 @@ func parseBrokenJSON(brokenJSON []byte) (string, bool) {
 	}
 
 	return queries, true
+}
+
+type syncWriter interface {
+	io.Writer
+	Sync() error
+}
+
+func allocateQueryLogFile(file syncWriter, filesize int) error {
+	zeroes := make([]byte, min(filesize, 32*1024))
+	remaining := filesize
+	for remaining > 0 {
+		writeBytes := zeroes
+		if remaining < len(writeBytes) {
+			writeBytes = writeBytes[:remaining]
+		}
+		n, err := file.Write(writeBytes)
+		if err != nil {
+			return err
+		}
+		if n != len(writeBytes) {
+			return io.ErrShortWrite
+		}
+		remaining -= n
+	}
+	return file.Sync()
 }
 
 func logUnfinishedQueries(filename string, filesize int, logger *slog.Logger) {
@@ -114,10 +139,9 @@ func getMMappedFile(filename string, filesize int, logger *slog.Logger) ([]byte,
 		return nil, nil, err
 	}
 
-	err = file.Truncate(int64(filesize))
-	if err != nil {
+	if err := allocateQueryLogFile(file, filesize); err != nil {
 		file.Close()
-		logger.Error("Error setting filesize.", "filesize", filesize, "err", err)
+		logger.Error("Error allocating query log file.", "filesize", filesize, "err", err)
 		return nil, nil, err
 	}
 
@@ -131,10 +155,11 @@ func getMMappedFile(filename string, filesize int, logger *slog.Logger) ([]byte,
 	return fileAsBytes, &mmappedFile{f: file, m: fileAsBytes}, err
 }
 
-func NewActiveQueryTracker(localStoragePath string, maxConcurrent int, logger *slog.Logger) *ActiveQueryTracker {
+func NewActiveQueryTracker(localStoragePath string, maxConcurrent int, logger *slog.Logger) (*ActiveQueryTracker, error) {
 	err := os.MkdirAll(localStoragePath, 0o777)
 	if err != nil {
-		logger.Error("Failed to create directory for logging active queries")
+		logger.Error("Failed to create directory for logging active queries", "err", err)
+		return nil, fmt.Errorf("create active query log directory: %w", err)
 	}
 
 	filename, filesize := filepath.Join(localStoragePath, "queries.active"), 1+maxConcurrent*entrySize
@@ -142,7 +167,7 @@ func NewActiveQueryTracker(localStoragePath string, maxConcurrent int, logger *s
 
 	fileAsBytes, closer, err := getMMappedFile(filename, filesize, logger)
 	if err != nil {
-		panic("Unable to create mmap-ed active query log")
+		return nil, fmt.Errorf("create mmap-ed active query log: %w", err)
 	}
 
 	copy(fileAsBytes, "[")
@@ -156,7 +181,7 @@ func NewActiveQueryTracker(localStoragePath string, maxConcurrent int, logger *s
 
 	activeQueryTracker.generateIndices(maxConcurrent)
 
-	return &activeQueryTracker
+	return &activeQueryTracker, nil
 }
 
 func trimStringByBytes(str string, size int) string {
@@ -164,7 +189,7 @@ func trimStringByBytes(str string, size int) string {
 
 	trimIndex := len(bytesStr)
 	if size < len(bytesStr) {
-		for !utf8.RuneStart(bytesStr[size]) {
+		for size > 0 && !utf8.RuneStart(bytesStr[size]) {
 			size--
 		}
 		trimIndex = size
@@ -195,7 +220,7 @@ func newJSONEntry(query string, logger *slog.Logger) []byte {
 }
 
 func (tracker ActiveQueryTracker) generateIndices(maxConcurrent int) {
-	for i := 0; i < maxConcurrent; i++ {
+	for i := range maxConcurrent {
 		tracker.getNextIndex <- 1 + (i * entrySize)
 	}
 }

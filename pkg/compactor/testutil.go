@@ -164,16 +164,20 @@ func (c compactedIndex) ForEachSeries(_ context.Context, _ retention.SeriesCallb
 	return nil
 }
 
-func (c compactedIndex) IndexChunk(_ logproto.ChunkRef, _ labels.Labels, _ uint32, _ uint32) (bool, error) {
+func (c compactedIndex) IndexChunk(_ logproto.ChunkRef, _ labels.Labels, _ model.Time, _ uint32, _ uint32) (bool, error) {
 	return true, nil
+}
+
+func (c compactedIndex) ChunkExists(_ []byte, _ labels.Labels, _ logproto.ChunkRef) (bool, error) {
+	return false, nil
 }
 
 func (c compactedIndex) CleanupSeries(_ []byte, _ labels.Labels) error {
 	return nil
 }
 
-func (c compactedIndex) RemoveChunk(_, _ model.Time, _ []byte, _ labels.Labels, _ string) error {
-	return nil
+func (c compactedIndex) RemoveChunk(_, _ model.Time, _ []byte, _ labels.Labels, _ string) (bool, error) {
+	return true, nil
 }
 
 func (c compactedIndex) Cleanup() {
@@ -196,12 +200,8 @@ func (c compactedIndex) Close() error {
 	return c.indexFile.Close()
 }
 
-func (c compactedIndex) Reader() (io.ReadSeeker, error) {
-	_, err := c.indexFile.Seek(0, 0)
-	if err != nil {
-		return nil, err
-	}
-	return c.indexFile, nil
+func (c compactedIndex) Reader() (io.ReadSeekCloser, error) {
+	return os.Open(c.indexFile.Name())
 }
 
 type testIndexCompactor struct{}

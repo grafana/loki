@@ -1,7 +1,7 @@
 // Copyright The OpenTelemetry Authors
 // SPDX-License-Identifier: Apache-2.0
 
-package metric // import "go.opentelemetry.io/otel/sdk/metric"
+package metric
 
 import (
 	"container/list"
@@ -11,13 +11,13 @@ import (
 	"sync"
 	"sync/atomic"
 
+	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/internal/global"
 	"go.opentelemetry.io/otel/metric/embedded"
 	"go.opentelemetry.io/otel/sdk/instrumentation"
 	"go.opentelemetry.io/otel/sdk/metric/exemplar"
 	"go.opentelemetry.io/otel/sdk/metric/internal"
 	"go.opentelemetry.io/otel/sdk/metric/internal/aggregate"
-	"go.opentelemetry.io/otel/sdk/metric/internal/x"
 	"go.opentelemetry.io/otel/sdk/metric/metricdata"
 	"go.opentelemetry.io/otel/sdk/resource"
 )
@@ -37,17 +37,24 @@ type instrumentSync struct {
 	compAgg     aggregate.ComputeAggregation
 }
 
-func newPipeline(res *resource.Resource, reader Reader, views []View, exemplarFilter exemplar.Filter) *pipeline {
+func newPipeline(
+	res *resource.Resource,
+	reader Reader,
+	views []View,
+	exemplarFilter exemplar.Filter,
+	cardinalityLimit int,
+) *pipeline {
 	if res == nil {
 		res = resource.Empty()
 	}
 	return &pipeline{
-		resource:        res,
-		reader:          reader,
-		views:           views,
-		int64Measures:   map[observableID[int64]][]aggregate.Measure[int64]{},
-		float64Measures: map[observableID[float64]][]aggregate.Measure[float64]{},
-		exemplarFilter:  exemplarFilter,
+		resource:         res,
+		reader:           reader,
+		views:            views,
+		int64Measures:    map[observableID[int64]][]aggregate.Measure[int64]{},
+		float64Measures:  map[observableID[float64]][]aggregate.Measure[float64]{},
+		exemplarFilter:   exemplarFilter,
+		cardinalityLimit: cardinalityLimit,
 		// aggregations is lazy allocated when needed.
 	}
 }
@@ -65,12 +72,13 @@ type pipeline struct {
 	views  []View
 
 	sync.Mutex
-	int64Measures   map[observableID[int64]][]aggregate.Measure[int64]
-	float64Measures map[observableID[float64]][]aggregate.Measure[float64]
-	aggregations    map[instrumentation.Scope][]instrumentSync
-	callbacks       []func(context.Context) error
-	multiCallbacks  list.List
-	exemplarFilter  exemplar.Filter
+	int64Measures    map[observableID[int64]][]aggregate.Measure[int64]
+	float64Measures  map[observableID[float64]][]aggregate.Measure[float64]
+	aggregations     map[instrumentation.Scope][]instrumentSync
+	callbacks        []func(context.Context) error
+	multiCallbacks   list.List
+	exemplarFilter   exemplar.Filter
+	cardinalityLimit int
 }
 
 // addInt64Measure adds a new int64 measure to the pipeline for each observer.
@@ -229,7 +237,11 @@ func newInserter[N int64 | float64](p *pipeline, vc *cache[string, instID]) *ins
 //
 // If an instrument is determined to use a Drop aggregation, that instrument is
 // not inserted nor returned.
-func (i *inserter[N]) Instrument(inst Instrument, readerAggregation Aggregation) ([]aggregate.Measure[N], error) {
+func (i *inserter[N]) Instrument(
+	inst Instrument,
+	allowedKeys []attribute.Key,
+	readerAggregation Aggregation,
+) ([]aggregate.Measure[N], error) {
 	var (
 		matched  bool
 		measures []aggregate.Measure[N]
@@ -272,6 +284,12 @@ func (i *inserter[N]) Instrument(inst Instrument, readerAggregation Aggregation)
 		Description: inst.Description,
 		Unit:        inst.Unit,
 	}
+	// allowedKeys == nil indicates that the WithDefaultAttributes option was not passed,
+	// and all keys are allowed. An empty (non-nil) slice indicates that the option was passed
+	// with an empty set of keys, and no keys are allowed.
+	if allowedKeys != nil {
+		stream.AttributeFilter = attribute.NewAllowKeysFilter(allowedKeys...)
+	}
 	in, _, e := i.cachedAggregator(inst.Scope, inst.Kind, stream, readerAggregation)
 	if e != nil {
 		if err == nil {
@@ -294,7 +312,7 @@ func (i *inserter[N]) addCallback(cback func(context.Context) error) {
 	i.pipeline.callbacks = append(i.pipeline.callbacks, cback)
 }
 
-var aggIDCount uint64
+var aggIDCount atomic.Uint64
 
 // aggVal is the cached value in an aggregators cache.
 type aggVal[N int64 | float64] struct {
@@ -381,6 +399,7 @@ func (i *inserter[N]) cachedAggregator(
 		b := aggregate.Builder[N]{
 			Temporality: i.pipeline.reader.temporality(kind),
 			ReservoirFunc: reservoirFunc[N](
+				kind,
 				stream.ExemplarReservoirProviderSelector(stream.Aggregation),
 				i.pipeline.exemplarFilter,
 			),
@@ -388,10 +407,7 @@ func (i *inserter[N]) cachedAggregator(
 		b.Filter = stream.AttributeFilter
 		// A value less than or equal to zero will disable the aggregation
 		// limits for the builder (an all the created aggregates).
-		// CardinalityLimit.Lookup returns 0 by default if unset (or
-		// unrecognized input). Use that value directly.
-		b.AggregationLimit, _ = x.CardinalityLimit.Lookup()
-
+		b.AggregationLimit = i.getCardinalityLimit(kind)
 		in, out, err := i.aggregateFunc(b, stream.Aggregation, kind)
 		if err != nil {
 			return aggVal[N]{0, nil, err}
@@ -407,10 +423,22 @@ func (i *inserter[N]) cachedAggregator(
 			unit:        stream.Unit,
 			compAgg:     out,
 		})
-		id := atomic.AddUint64(&aggIDCount, 1)
+		id := aggIDCount.Add(1)
 		return aggVal[N]{id, in, err}
 	})
 	return cv.Measure, cv.ID, cv.Err
+}
+
+// getCardinalityLimit returns the cardinality limit for the given instrument kind.
+// When the reader's selector returns fallback = true, the pipeline's global
+// limit is used, then the default if global is unset. When fallback is false,
+// the selector's limit is used (0 or less means unlimited).
+func (i *inserter[N]) getCardinalityLimit(kind InstrumentKind) int {
+	limit, fallback := i.pipeline.reader.cardinalityLimit(kind)
+	if fallback {
+		return i.pipeline.cardinalityLimit
+	}
+	return limit
 }
 
 // logConflict validates if an instrument with the same case-insensitive name
@@ -426,7 +454,7 @@ func (i *inserter[N]) logConflict(id instID) {
 	}
 
 	const msg = "duplicate metric stream definitions"
-	args := []interface{}{
+	args := []any{
 		"names", fmt.Sprintf("%q, %q", existing.Name, id.Name),
 		"descriptions", fmt.Sprintf("%q, %q", existing.Description, id.Description),
 		"kinds", fmt.Sprintf("%s, %s", existing.Kind, id.Kind),
@@ -460,7 +488,7 @@ func (i *inserter[N]) logConflict(id instID) {
 	global.Warn(msg, args...)
 }
 
-func (i *inserter[N]) instID(kind InstrumentKind, stream Stream) instID {
+func (*inserter[N]) instID(kind InstrumentKind, stream Stream) instID {
 	var zero N
 	return instID{
 		Name:        stream.Name,
@@ -507,7 +535,10 @@ func (i *inserter[N]) aggregateFunc(
 	case AggregationExplicitBucketHistogram:
 		var noSum bool
 		switch kind {
-		case InstrumentKindUpDownCounter, InstrumentKindObservableUpDownCounter, InstrumentKindObservableGauge, InstrumentKindGauge:
+		case InstrumentKindUpDownCounter,
+			InstrumentKindObservableUpDownCounter,
+			InstrumentKindObservableGauge,
+			InstrumentKindGauge:
 			// The sum should not be collected for any instrument that can make
 			// negative measurements:
 			// https://github.com/open-telemetry/opentelemetry-specification/blob/v1.21.0/specification/metrics/sdk.md#histogram-aggregations
@@ -517,7 +548,10 @@ func (i *inserter[N]) aggregateFunc(
 	case AggregationBase2ExponentialHistogram:
 		var noSum bool
 		switch kind {
-		case InstrumentKindUpDownCounter, InstrumentKindObservableUpDownCounter, InstrumentKindObservableGauge, InstrumentKindGauge:
+		case InstrumentKindUpDownCounter,
+			InstrumentKindObservableUpDownCounter,
+			InstrumentKindObservableGauge,
+			InstrumentKindGauge:
 			// The sum should not be collected for any instrument that can make
 			// negative measurements:
 			// https://github.com/open-telemetry/opentelemetry-specification/blob/v1.21.0/specification/metrics/sdk.md#histogram-aggregations
@@ -563,7 +597,11 @@ func isAggregatorCompatible(kind InstrumentKind, agg Aggregation) error {
 		}
 	case AggregationSum:
 		switch kind {
-		case InstrumentKindObservableCounter, InstrumentKindObservableUpDownCounter, InstrumentKindCounter, InstrumentKindHistogram, InstrumentKindUpDownCounter:
+		case InstrumentKindObservableCounter,
+			InstrumentKindObservableUpDownCounter,
+			InstrumentKindCounter,
+			InstrumentKindHistogram,
+			InstrumentKindUpDownCounter:
 			return nil
 		default:
 			// TODO: review need for aggregation check after
@@ -590,10 +628,16 @@ func isAggregatorCompatible(kind InstrumentKind, agg Aggregation) error {
 // measurement.
 type pipelines []*pipeline
 
-func newPipelines(res *resource.Resource, readers []Reader, views []View, exemplarFilter exemplar.Filter) pipelines {
+func newPipelines(
+	res *resource.Resource,
+	readers []Reader,
+	views []View,
+	exemplarFilter exemplar.Filter,
+	cardinalityLimit int,
+) pipelines {
 	pipes := make([]*pipeline, 0, len(readers))
 	for _, r := range readers {
-		p := newPipeline(res, r, views, exemplarFilter)
+		p := newPipeline(res, r, views, exemplarFilter, cardinalityLimit)
 		r.register(p)
 		pipes = append(pipes, p)
 	}
@@ -629,12 +673,12 @@ func newResolver[N int64 | float64](p pipelines, vc *cache[string, instID]) reso
 
 // Aggregators returns the Aggregators that must be updated by the instrument
 // defined by key.
-func (r resolver[N]) Aggregators(id Instrument) ([]aggregate.Measure[N], error) {
+func (r resolver[N]) Aggregators(id Instrument, allowedKeys []attribute.Key) ([]aggregate.Measure[N], error) {
 	var measures []aggregate.Measure[N]
 
 	var err error
 	for _, i := range r.inserters {
-		in, e := i.Instrument(id, i.readerDefaultAggregation(id.Kind))
+		in, e := i.Instrument(id, allowedKeys, i.readerDefaultAggregation(id.Kind))
 		if e != nil {
 			err = errors.Join(err, e)
 		}
@@ -646,7 +690,11 @@ func (r resolver[N]) Aggregators(id Instrument) ([]aggregate.Measure[N], error) 
 // HistogramAggregators returns the histogram Aggregators that must be updated by the instrument
 // defined by key. If boundaries were provided on instrument instantiation, those take precedence
 // over boundaries provided by the reader.
-func (r resolver[N]) HistogramAggregators(id Instrument, boundaries []float64) ([]aggregate.Measure[N], error) {
+func (r resolver[N]) HistogramAggregators(
+	id Instrument,
+	allowedKeys []attribute.Key,
+	boundaries []float64,
+) ([]aggregate.Measure[N], error) {
 	var measures []aggregate.Measure[N]
 
 	var err error
@@ -656,7 +704,7 @@ func (r resolver[N]) HistogramAggregators(id Instrument, boundaries []float64) (
 			histAgg.Boundaries = boundaries
 			agg = histAgg
 		}
-		in, e := i.Instrument(id, agg)
+		in, e := i.Instrument(id, allowedKeys, agg)
 		if e != nil {
 			err = errors.Join(err, e)
 		}

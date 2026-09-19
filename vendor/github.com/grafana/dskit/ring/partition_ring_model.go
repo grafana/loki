@@ -80,7 +80,7 @@ func (m *PartitionRingDesc) tokens() Tokens {
 	return allTokens
 }
 
-// partitionByToken returns a map where they key is a registered token and the value is ID of the partition
+// partitionByToken returns a map where the key is a registered token and the value is ID of the partition
 // that registered that token.
 func (m *PartitionRingDesc) partitionByToken() map[Token]int32 {
 	out := make(map[Token]int32, len(m.Partitions)*optimalTokensPerInstance)
@@ -166,6 +166,16 @@ func (m *PartitionRingDesc) activePartitionsCount() int {
 	return count
 }
 
+func (m *PartitionRingDesc) maxPartitionID() int32 {
+	var max int32 = -1
+	for id := range m.Partitions {
+		if id > max {
+			max = id
+		}
+	}
+	return max
+}
+
 // WithPartitions returns a new PartitionRingDesc with only the specified partitions and their owners included.
 func (m *PartitionRingDesc) WithPartitions(partitions map[int32]struct{}) PartitionRingDesc {
 	newPartitions := make(map[int32]PartitionDesc, len(partitions))
@@ -206,18 +216,40 @@ func (m *PartitionRingDesc) AddPartition(id int32, state PartitionState, now tim
 
 // UpdatePartitionState changes the state of a partition. Returns true if the state was changed,
 // or false if the update was a no-op.
-func (m *PartitionRingDesc) UpdatePartitionState(id int32, state PartitionState, now time.Time) bool {
+func (m *PartitionRingDesc) UpdatePartitionState(id int32, state PartitionState, now time.Time) (bool, error) {
+	d, ok := m.Partitions[id]
+	if !ok {
+		return false, nil
+	}
+
+	if d.State == state {
+		return false, nil
+	}
+
+	if d.StateChangeLocked {
+		return false, ErrPartitionStateChangeLocked
+	}
+
+	d.State = state
+	d.StateTimestamp = now.Unix()
+	m.Partitions[id] = d
+	return true, nil
+}
+
+// UpdatePartitionStateChangeLock changes the state change lock of a partition. Returns true if the lock was changed,
+// or false if the update was a no-op.
+func (m *PartitionRingDesc) UpdatePartitionStateChangeLock(id int32, locked bool, now time.Time) bool {
 	d, ok := m.Partitions[id]
 	if !ok {
 		return false
 	}
 
-	if d.State == state {
+	if d.StateChangeLocked == locked {
 		return false
 	}
 
-	d.State = state
-	d.StateTimestamp = now.Unix()
+	d.StateChangeLocked = locked
+	d.StateChangeLockedTimestamp = now.Unix()
 	m.Partitions[id] = d
 	return true
 }
@@ -344,6 +376,13 @@ func (m *PartitionRingDesc) mergeWithTime(mergeable memberlist.Mergeable, localC
 				thisPart.State = otherPart.State
 				thisPart.StateTimestamp = otherPart.StateTimestamp
 			}
+
+			if otherPart.StateChangeLockedTimestamp > thisPart.StateChangeLockedTimestamp {
+				changed = true
+
+				thisPart.StateChangeLocked = otherPart.StateChangeLocked
+				thisPart.StateChangeLockedTimestamp = otherPart.StateChangeLockedTimestamp
+			}
 		}
 
 		if changed {
@@ -403,7 +442,7 @@ func (m *PartitionRingDesc) mergeWithTime(mergeable memberlist.Mergeable, localC
 
 // MergeContent implements memberlist.Mergeable.
 func (m *PartitionRingDesc) MergeContent() []string {
-	result := make([]string, len(m.Partitions)+len(m.Owners))
+	result := make([]string, 0, len(m.Partitions)+len(m.Owners))
 
 	// We're assuming that partition IDs and instance IDs are not colliding (ie. no instance is called "1").
 	for pid := range m.Partitions {

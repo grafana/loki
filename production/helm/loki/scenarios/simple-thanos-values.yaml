@@ -41,6 +41,9 @@ enterprise:
   enabled: true
   adminApi:
     enabled: true
+  # Admin token secret for provisioner (must be created externally)
+  adminToken:
+    secret: loki-admin-token
 
 minio:
   enabled: true

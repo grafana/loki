@@ -1,0 +1,84 @@
+# Skipped Features
+#
+# This file tracks features that were intentionally skipped during the
+# kfake feature gap analysis. These can be revisited in future sessions.
+#
+# ThrottleMillis and TimeoutMillis are omitted globally - kfake does not
+# implement throttling, and writes are immediate (no replication).
+
+## 00_produce
+- ErrorRecords (v8+): Per-record errors not implemented; kfake validates at batch level only
+- Timestamp range validation: No client sends unreasonable timestamps in tests
+
+## 01_fetch
+- PreferredReadReplica: Rack-aware replica hints not implemented (KIP-392)
+- Rack: Rack-aware reading not implemented (KIP-392)
+- LastFetchedEpoch/DivergingEpoch: Log truncation detection not implemented
+- SnapshotID: Snapshot fetching not implemented (KIP-630)
+
+## 02_list_offsets
+- Timestamp -4: Local log start offset not implemented - tiered storage (KIP-405)
+- Timestamp -5: Remote storage offset not implemented - tiered storage (KIP-1005)
+
+## 03_metadata
+- Top-level ErrorCode (v13+): Rebootstrapping signal not needed (KIP-1102)
+
+## 10_find_coordinator
+- Share groups (coordinator type 2): Not implemented (KIP-932)
+
+## 11_join_group, 12_heartbeat, 13_leave_group, 14_sync_group
+- Initial rebalance delay: Skipped - optimization for reducing rebalance churn
+  during rolling restarts, not needed for correctness in tests
+
+## 17_sasl_handshake
+- v0: Not supported (uses implicit auth flow after handshake)
+
+## 18_api_versions
+- ZkMigrationReady: Not implementing ZK migration flag
+- ClientSoftwareName/ClientSoftwareVersion: Parsed but not validated/stored
+
+## 22_init_producer_id
+- prevProducerId/lastProducerEpoch: Only matters for epoch exhaustion at 32K+
+  transactions per transactional ID, which never happens in tests
+- CONCURRENT_TRANSACTIONS error: Impossible in kfake's synchronous model
+
+## 23_offset_for_leader_epoch
+- ReplicaID != -1: Only consumer replica ID (-1) supported
+
+## 24_add_partitions_to_txn
+- v4+ Transactions (broker batching): Not implemented
+
+## 32_describe_configs
+- ConfigDocumentation (v3+): Not returning documentation
+- IncludeDocumentation: Request field ignored (no docs to return)
+
+## 34_alter_replica_log_dirs
+- Log directory validation: No validation that directory exists in broker config
+
+## 35_describe_log_dirs
+- ErrorCode (v3+): Top-level error code not implemented
+- OffsetLag: Always returns 0 (no replication delay tracking)
+- IsFuture: Always returns false (no async replica moves)
+
+## 36_sasl_authenticate
+- SessionLifetimeMillis (v1+): Session re-auth not implemented
+
+## 38-41 Delegation Tokens
+- Not implemented: CreateDelegationToken, RenewDelegationToken, ExpireDelegationToken, DescribeDelegationToken
+- Reason: Adds complexity for marginal testing value; no kgo APIs use these directly
+
+## 48_describe_client_quotas, 49_alter_client_quotas
+- Quota enforcement: Quotas are stored but not enforced (no actual throttling)
+
+## 68_consumer_group_heartbeat (KIP-848)
+- SubscribedTopicRegex: RE2 syntax, not Java RE2J
+- Metadata hash: kfake uses notifyTopicChange() from the cluster run loop
+  instead of hashing metadata. Functionally equivalent for in-process use.
+- Group downgrade (consumer -> classic): not supported. Once a group
+  upgrades to "consumer" type, it stays that way.
+
+## General
+- Tiered storage: Not implemented (KIP-405, KIP-1005)
+- Share groups: Not implemented (KIP-932)
+- WriteTxnMarkers (key 27): Not implemented. Only useful for recovering from
+  broker bugs with stuck transactions, not needed for testing client behavior.

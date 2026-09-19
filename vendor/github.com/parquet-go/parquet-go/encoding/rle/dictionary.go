@@ -3,9 +3,9 @@ package rle
 import (
 	"math/bits"
 
+	"github.com/parquet-go/bitpack/unsafecast"
 	"github.com/parquet-go/parquet-go/encoding"
 	"github.com/parquet-go/parquet-go/format"
-	"github.com/parquet-go/parquet-go/internal/unsafecast"
 )
 
 type DictionaryEncoding struct {

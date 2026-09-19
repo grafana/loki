@@ -140,7 +140,7 @@ func labelsString(b *bytes.Buffer, ls labels.Labels) {
 	b.WriteByte('{')
 	i := 0
 	ls.Range(func(l labels.Label) {
-		if l.Name == labels.MetricName {
+		if l.Name == model.MetricNameLabel {
 			return
 		}
 		if i > 0 {
@@ -235,6 +235,8 @@ type indexValueEntry struct {
 type unlockIndex map[string]indexEntry
 
 // This is the prevalent value for Intel and AMD CPUs as-at 2018.
+//
+//nolint:unused // used only by the cache-line padding field below, which is itself unused by design.
 const cacheLineSize = 64
 
 // Roughly

@@ -1014,7 +1014,7 @@ func (q ReplQueueStats) QStats() (r ReplQStats) {
 	if len(q.Nodes) > 0 {
 		r.Uptime /= int64(len(q.Nodes)) // average uptime
 	}
-	return
+	return r
 }
 
 // MetricsV2 represents replication metrics for a bucket.

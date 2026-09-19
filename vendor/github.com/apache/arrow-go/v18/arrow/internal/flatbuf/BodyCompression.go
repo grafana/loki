@@ -22,9 +22,9 @@ import (
 	flatbuffers "github.com/google/flatbuffers/go"
 )
 
-// / Optional compression for the memory buffers constituting IPC message
-// / bodies. Intended for use with RecordBatch but could be used for other
-// / message types
+/// Optional compression for the memory buffers constituting IPC message
+/// bodies. Intended for use with RecordBatch but could be used for other
+/// message types
 type BodyCompression struct {
 	_tab flatbuffers.Table
 }
@@ -36,6 +36,21 @@ func GetRootAsBodyCompression(buf []byte, offset flatbuffers.UOffsetT) *BodyComp
 	return x
 }
 
+func FinishBodyCompressionBuffer(builder *flatbuffers.Builder, offset flatbuffers.UOffsetT) {
+	builder.Finish(offset)
+}
+
+func GetSizePrefixedRootAsBodyCompression(buf []byte, offset flatbuffers.UOffsetT) *BodyCompression {
+	n := flatbuffers.GetUOffsetT(buf[offset+flatbuffers.SizeUint32:])
+	x := &BodyCompression{}
+	x.Init(buf, n+offset+flatbuffers.SizeUint32)
+	return x
+}
+
+func FinishSizePrefixedBodyCompressionBuffer(builder *flatbuffers.Builder, offset flatbuffers.UOffsetT) {
+	builder.FinishSizePrefixed(offset)
+}
+
 func (rcv *BodyCompression) Init(buf []byte, i flatbuffers.UOffsetT) {
 	rcv._tab.Bytes = buf
 	rcv._tab.Pos = i
@@ -45,8 +60,8 @@ func (rcv *BodyCompression) Table() flatbuffers.Table {
 	return rcv._tab
 }
 
-// / Compressor library.
-// / For LZ4_FRAME, each compressed buffer must consist of a single frame.
+/// Compressor library.
+/// For LZ4_FRAME, each compressed buffer must consist of a single frame.
 func (rcv *BodyCompression) Codec() CompressionType {
 	o := flatbuffers.UOffsetT(rcv._tab.Offset(4))
 	if o != 0 {
@@ -55,13 +70,13 @@ func (rcv *BodyCompression) Codec() CompressionType {
 	return 0
 }
 
-// / Compressor library.
-// / For LZ4_FRAME, each compressed buffer must consist of a single frame.
+/// Compressor library.
+/// For LZ4_FRAME, each compressed buffer must consist of a single frame.
 func (rcv *BodyCompression) MutateCodec(n CompressionType) bool {
 	return rcv._tab.MutateInt8Slot(4, int8(n))
 }
 
-// / Indicates the way the record batch body was compressed
+/// Indicates the way the record batch body was compressed
 func (rcv *BodyCompression) Method() BodyCompressionMethod {
 	o := flatbuffers.UOffsetT(rcv._tab.Offset(6))
 	if o != 0 {
@@ -70,7 +85,7 @@ func (rcv *BodyCompression) Method() BodyCompressionMethod {
 	return 0
 }
 
-// / Indicates the way the record batch body was compressed
+/// Indicates the way the record batch body was compressed
 func (rcv *BodyCompression) MutateMethod(n BodyCompressionMethod) bool {
 	return rcv._tab.MutateInt8Slot(6, int8(n))
 }

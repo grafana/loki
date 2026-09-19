@@ -1,0 +1,13 @@
+Case-insensitive pattern with star alternates should use case-insensitive match.
+
+-- column --
+utf8.builtin.message
+
+-- regex --
+(?i)foo(bar|.*)
+
+-- expect --
+%1 = MATCH_STR_CASE_INSENSITIVE builtin.message "FOOBAR"
+%2 = MATCH_STR_CASE_INSENSITIVE builtin.message "FOO"
+%3 = OR %1 %2
+RETURN %3

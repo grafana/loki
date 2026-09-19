@@ -16,7 +16,9 @@ limitations under the License.
 
 package operation
 
-import "k8s.io/apimachinery/pkg/util/sets"
+import (
+	"strings"
+)
 
 // Operation provides contextual information about a validation request and the API
 // operation being validated.
@@ -28,20 +30,62 @@ type Operation struct {
 	// those into a single "Update" category.
 	Type Type
 
-	// Options declare the options enabled for validation.
+	// Options are the validation options in effect for this operation, mapping option
+	// name to whether it is enabled. Option names typically match feature gates, but an
+	// option may be enabled even when its feature gate is off — e.g. when the feature is
+	// already in use by the object being updated. Set by the resource strategy and
+	// read-only during validation.
 	//
-	// Options should be set according to a resource validation strategy before validation
-	// is performed, and must be treated as read-only during validation.
+	// Every option a validation tag references must be defined here by the strategy; an
+	// option that is not defined is a programming error (see HasOption).
+	Options map[string]bool
+
+	// Request provides information about the request being validated.
+	Request Request
+}
+
+// HasOption returns whether the named option is enabled and whether it was defined by
+// the strategy. Every option a validation tag references must be defined; callers treat
+// an undefined option as an internal error (see validate.IfOption) rather than silently
+// as disabled.
+func (o Operation) HasOption(option string) (enabled, defined bool) {
+	enabled, defined = o.Options[option]
+	return
+}
+
+// Request provides information about the request being validated.
+type Request struct {
+	// Subresources identifies the subresource path components of the request. For
+	// example, Subresources for a request to `/api/v1/pods/my-pod/status` would be
+	// `["status"]`. For `/api/v1/widget/my-widget/x/y/z`, it would be `["x", "y",
+	// "z"]`. For a root resource (`/api/v1/pods/my-pod`), Subresources will be an
+	// empty slice.
 	//
-	// Options are identified by string names. Option string names may match the name of a feature
-	// gate, in which case the presence of the name in the set indicates that the feature is
-	// considered enabled for the resource being validated.  Note that a resource may have a
-	// feature enabled even when the feature gate is disabled. This can happen when feature is
-	// already in-use by a resource, often because the feature gate was enabled when the
-	// resource first began using the feature.
+	// Validation logic should only consult this field if the validation rules for a
+	// particular field differ depending on whether the main resource or a specific
+	// subresource is being accessed. For example:
 	//
-	// Unset options are disabled/false.
-	Options sets.Set[string]
+	// Updates to a Pod resource (`/`) normally cannot change container resource
+	// requests/limits after the Pod is created (they are immutable). However, when
+	// accessing the Pod's "resize" subresource (`/resize`), these specific fields
+	// are allowed to be modified. In this scenario, the validation logic for
+	// `spec.container[*].resources` must check `Subresources` to permit changes only
+	// when the request targets the "resize" subresource.
+	//
+	// Note: This field should not be used to control which fields a subresource
+	// operation is allowed to write. This is the responsibility of "field wiping".
+	// Field wiping logic is expected to be handled in resource strategies by
+	// modifying the incoming object before it is validated.
+	Subresources []string
+}
+
+// SubresourcePath returns the path is a slash-separated list of subresource
+// names. For example, `/status`, `/resize`, or `/x/y/z`.
+func (r Request) SubresourcePath() string {
+	if len(r.Subresources) == 0 {
+		return "/"
+	}
+	return "/" + strings.Join(r.Subresources, "/")
 }
 
 // Code is the request operation to be validated.

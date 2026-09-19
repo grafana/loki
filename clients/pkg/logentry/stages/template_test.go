@@ -82,7 +82,7 @@ func TestPipelineWithMissingKey_Template(t *testing.T) {
 
 	_ = processEntries(pl, newEntry(nil, nil, testTemplateLogLineWithMissingKey, time.Now()))
 
-	expectedLog := "level=debug msg=\"extracted template could not be converted to a string\" err=\"Can't convert <nil> to string\" type=null"
+	expectedLog := "level=debug msg=\"extracted template could not be converted to a string\" err=\"can't convert <nil> to string\" type=null"
 	if !(strings.Contains(buf.String(), expectedLog)) {
 		t.Errorf("\nexpected: %s\n+actual: %s", expectedLog, buf.String())
 	}

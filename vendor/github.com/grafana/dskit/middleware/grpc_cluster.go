@@ -69,19 +69,19 @@ func handleClusterValidationError(err error, method string, invalidClusterValida
 }
 
 // ClusterUnaryServerInterceptor checks if the incoming gRPC metadata contains any cluster label and if so, checks if
-// the latter corresponds to the given cluster label. If it is the case, the request is further propagated.
-// If an empty cluster label or nil logger are provided, ClusterUnaryServerInterceptor panics.
+// the latter corresponds to one of the given cluster labels. If it is the case, the request is further propagated.
+// If empty cluster labels or nil logger are provided, ClusterUnaryServerInterceptor panics.
 // If the softValidation parameter is true, errors related to the cluster label validation are logged, but not returned.
 // Otherwise, an error is returned.
-func ClusterUnaryServerInterceptor(cluster string, softValidation bool, invalidClusterRequests *prometheus.CounterVec, logger log.Logger) grpc.UnaryServerInterceptor {
-	validateClusterServerInterceptorInputParameters(cluster, logger)
+func ClusterUnaryServerInterceptor(clusters []string, softValidation bool, invalidClusterRequests *prometheus.CounterVec, logger log.Logger) grpc.UnaryServerInterceptor {
+	validateClusterServerInterceptorInputParameters(clusters, logger)
 	return func(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (interface{}, error) {
 		// We skip the gRPC health check.
 		if _, ok := info.Server.(healthpb.HealthServer); ok {
 			return handler(ctx, req)
 		}
 
-		if err := checkClusterFromIncomingContext(ctx, info.FullMethod, cluster, softValidation, invalidClusterRequests, logger); err != nil {
+		if err := checkClusterFromIncomingContext(ctx, info.FullMethod, clusters, softValidation, invalidClusterRequests, logger); err != nil {
 			stat := grpcutil.Status(codes.FailedPrecondition, err.Error(), &grpcutil.ErrorDetails{Cause: grpcutil.WRONG_CLUSTER_VALIDATION_LABEL})
 			return nil, stat.Err()
 		}
@@ -89,9 +89,9 @@ func ClusterUnaryServerInterceptor(cluster string, softValidation bool, invalidC
 	}
 }
 
-func validateClusterServerInterceptorInputParameters(cluster string, logger log.Logger) {
-	if cluster == "" {
-		panic("no cluster label provided")
+func validateClusterServerInterceptorInputParameters(clusters []string, logger log.Logger) {
+	if len(clusters) == 0 {
+		panic("no cluster labels provided")
 	}
 	if logger == nil {
 		panic("no logger provided")
@@ -99,18 +99,18 @@ func validateClusterServerInterceptorInputParameters(cluster string, logger log.
 }
 
 func checkClusterFromIncomingContext(
-	ctx context.Context, method string, expectedCluster string, softValidationEnabled bool,
+	ctx context.Context, method string, expectedClusters []string, softValidationEnabled bool,
 	invalidClusterRequests *prometheus.CounterVec, logger log.Logger,
 ) error {
 	reqCluster, err := clusterutil.GetClusterFromIncomingContext(ctx)
-	if err == nil && reqCluster == expectedCluster {
+	if err == nil && clusterutil.IsClusterAllowed(reqCluster, expectedClusters) {
 		return nil
 	}
 
 	logger = log.With(
 		logger,
 		"method", method,
-		"cluster_validation_label", expectedCluster,
+		"cluster_validation_labels", fmt.Sprintf("%v", expectedClusters),
 		"soft_validation", softValidationEnabled,
 	)
 	if tenantID, err := user.ExtractOrgID(ctx); err == nil {
@@ -127,10 +127,12 @@ func checkClusterFromIncomingContext(
 		// No error, but request's and server's cluster validation labels didn't match.
 		var wrongClusterErr error
 		if !softValidationEnabled {
-			wrongClusterErr = fmt.Errorf("rejected request with wrong cluster validation label %q - it should be %q", reqCluster, expectedCluster)
+			wrongClusterErr = fmt.Errorf("rejected request with wrong cluster validation label %q - it should be one of %v", reqCluster, expectedClusters)
 		}
 
-		invalidClusterRequests.WithLabelValues("grpc", method, expectedCluster, reqCluster).Inc()
+		// Use first expected cluster for metrics compatibility
+		expectedClusterForMetrics := expectedClusters[0]
+		invalidClusterRequests.WithLabelValues("grpc", method, expectedClusterForMetrics, reqCluster).Inc()
 		level.Warn(logger).Log("msg", "request with wrong cluster validation label", "request_cluster_validation_label", reqCluster)
 		return wrongClusterErr
 	}
@@ -138,10 +140,12 @@ func checkClusterFromIncomingContext(
 	if errors.Is(err, clusterutil.ErrNoClusterValidationLabel) {
 		var emptyClusterErr error
 		if !softValidationEnabled {
-			emptyClusterErr = fmt.Errorf("rejected request with empty cluster validation label - it should be %q", expectedCluster)
+			emptyClusterErr = fmt.Errorf("rejected request with empty cluster validation label - it should be one of %v", expectedClusters)
 		}
 
-		invalidClusterRequests.WithLabelValues("grpc", method, expectedCluster, "").Inc()
+		// Use first expected cluster for metrics compatibility
+		expectedClusterForMetrics := expectedClusters[0]
+		invalidClusterRequests.WithLabelValues("grpc", method, expectedClusterForMetrics, "").Inc()
 		level.Warn(logger).Log("msg", "request with no cluster validation label")
 		return emptyClusterErr
 	}
@@ -151,7 +155,9 @@ func checkClusterFromIncomingContext(
 		rejectedRequestErr = fmt.Errorf("rejected request: %w", err)
 	}
 
-	invalidClusterRequests.WithLabelValues("grpc", method, expectedCluster, "").Inc()
+	// Use first expected cluster for metrics compatibility
+	expectedClusterForMetrics := expectedClusters[0]
+	invalidClusterRequests.WithLabelValues("grpc", method, expectedClusterForMetrics, "").Inc()
 	level.Warn(logger).Log("msg", "detected error during cluster validation label extraction", "err", err)
 	return rejectedRequestErr
 }

@@ -12,9 +12,9 @@ aliases:
 # Manage bloom filter building and querying (Experimental)
 
 {{< admonition type="warning" >}}
-In Loki and Grafana Enterprise Logs (GEL), Query acceleration using blooms is an [experimental feature](/docs/release-life-cycle/). Engineering and on-call support is not available. No SLA is provided. Note that this feature is intended for users who are ingesting more than 75TB of logs a month, as it is designed to accelerate queries against large volumes of logs.
+In Loki and Grafana Enterprise Logs (GEL), Query acceleration using blooms is an [experimental feature](https://grafana.com/docs/release-life-cycle/). Engineering and on-call support is not available. No SLA is provided. Note that this feature is intended for users who are ingesting more than 75TB of logs a month, as it is designed to accelerate queries against large volumes of logs.
 
-In Grafana Cloud, Query acceleration using bloom filters is enabled as a [public preview](/docs/release-life-cycle/) for select large-scale customers that are ingesting more that 75TB of logs a month. Limited support and no SLA are provided.
+In Grafana Cloud, Query acceleration using bloom filters is enabled as a [public preview](https://grafana.com/docs/release-life-cycle/) for select large-scale customers that are ingesting more that 75TB of logs a month. Limited support and no SLA are provided.
 {{< /admonition >}}
 
 Loki leverages [bloom filters](https://en.wikipedia.org/wiki/Bloom_filter) to speed up queries by reducing the amount of data Loki needs to load from the store and iterate through.
@@ -27,24 +27,23 @@ An example of such queries would be looking for a trace ID on a whole cluster fo
 {cluster="prod"} | traceID="3c0e3dcd33e7"
 ```
 
-Without accelerated filtering, Loki downloads all the chunks for all the streams matching `{cluster="prod"}` for the last 24 hours and iterates through each log line in the chunks, checking if the [structured metadata][] key `traceID` with value `3c0e3dcd33e7` is present.
+Without accelerated filtering, Loki downloads all the chunks for all the streams matching `{cluster="prod"}` for the last 24 hours and iterates through each log line in the chunks, checking if the [structured metadata](https://grafana.com/docs/loki/<LOKI_VERSION>/get-started/labels/structured-metadata) key `traceID` with value `3c0e3dcd33e7` is present.
 
 With accelerated filtering, Loki is able to skip most of the chunks and only process the ones where we have a statistical confidence that the structured metadata pair might be present.
 
-To learn how to write queries to use bloom filters, refer to [Query acceleration][].
+To learn how to write queries to use bloom filters, refer to [Query acceleration](https://grafana.com/docs/loki/<LOKI_VERSION>/query/query_acceleration).
 
 ## Enable bloom filters
 
 {{< admonition type="warning" >}}
-Building and querying bloom filters are by design not supported in single binary deployment.
-It can be used with Simple Scalable deployment (SSD), but it is recommended to run bloom components only in fully distributed microservice mode.
+Building and querying bloom filters are by design not supported in single binary deployment, it can only be used with distributed microservice mode.
 The reason is that bloom filters also come with a relatively high cost for both building and querying the bloom filters that only pays off at large scale deployments.
 {{< /admonition >}}
 
 To start building and using blooms you need to:
 
-- Deploy the [Bloom Planner and Builder](#bloom-planner-and-builder) components (as [microservices][microservices] or via the [SSD][ssd] `backend` target) and enable the components in the [Bloom Build config][bloom-build-cfg].
-- Deploy the [Bloom Gateway](#bloom-gateway) component (as a [microservice][microservices] or via the [SSD][ssd] `backend` target) and enable the component in the [Bloom Gateway config][bloom-gateway-cfg].
+- Deploy the [Bloom Planner and Builder](#bloom-planner-and-builder) components (as [microservices](https://grafana.com/docs/loki/<LOKI_VERSION>/get-started/deployment-modes/#microservices-mode) or via the [SSD](https://grafana.com/docs/loki/<LOKI_VERSION>/get-started/deployment-modes/#simple-scalable) `backend` target) and enable the components in the [Bloom Build config](https://grafana.com/docs/loki/<LOKI_VERSION>/configure/#bloom_build).
+- Deploy the [Bloom Gateway](#bloom-gateway) component (as a [microservice](https://grafana.com/docs/loki/<LOKI_VERSION>/get-started/deployment-modes/#microservices-mode) or via the [SSD](https://grafana.com/docs/loki/<LOKI_VERSION>/get-started/deployment-modes/#simple-scalable) `backend` target) and enable the component in the [Bloom Gateway config](https://grafana.com/docs/loki/<LOKI_VERSION>/configure/#bloom_gateway).
 - Enable blooms building and filtering for each tenant individually, or for all of them by default.
 
 ```yaml
@@ -52,9 +51,9 @@ To start building and using blooms you need to:
 bloom_build:
   enabled: true
   planner:
-    planning_interval: 6h
+    planning_interval: 8h
   builder:
-    planner_address: bloom-planner.<namespace>.svc.cluster.local.:9095
+    planner_address: bloom-planner.<namespace>.svc.cluster.local:9095
 
 # Configuration block for bloom filtering.
 bloom_gateway:
@@ -70,7 +69,7 @@ limits_config:
   bloom_gateway_enable_filtering: true
 ```
 
-For more configuration options refer to the [Bloom Gateway][bloom-gateway-cfg], [Bloom Build][bloom-build-cfg] and [per tenant-limits][tenant-limits] configuration docs.
+For more configuration options refer to the [Bloom Gateway](https://grafana.com/docs/loki/<LOKI_VERSION>/configure/#bloom_gateway), [Bloom Build](https://grafana.com/docs/loki/<LOKI_VERSION>/configure/#bloom_build) and [per tenant-limits](https://grafana.com/docs/loki/<LOKI_VERSION>/configure/#limits_config) configuration docs.
 We strongly recommend reading the whole documentation for this experimental feature before using it.
 
 ## Bloom Planner and Builder
@@ -89,13 +88,13 @@ Do not run more than one instance of the Bloom Planner.
 
 The Bloom Builder is a stateless horizontally scalable component and can be scaled independently of the planner to fulfill the processing demand of the created tasks.
 
-You can find all the configuration options for these components in the [Configure section for the Bloom Builder][bloom-build-cfg].
+You can find all the configuration options for these components in the [Configure section for the Bloom Builder](https://grafana.com/docs/loki/<LOKI_VERSION>/configure/#bloom_build).
 Refer to the [Enable bloom filters](#enable-bloom-filters) section above for a configuration snippet enabling this feature.
 
 ### Retention
 
 The Bloom Planner applies bloom block retention on object storage. Retention is disabled by default.
-When enabled, retention is applied to all tenants. The retention for each tenant is the longest of its [configured][tenant-limits] general retention (`retention_period`) and the streams retention (`retention_stream`).
+When enabled, retention is applied to all tenants. The retention for each tenant is the longest of its [configured](https://grafana.com/docs/loki/<LOKI_VERSION>/configure/#limits_config) general retention (`retention_period`) and the streams retention (`retention_stream`).
 
 For example, in the following example, tenant A has a bloom retention of 30 days, and tenant B a bloom retention of 40 days for the `{namespace="prod"}` stream.
 
@@ -114,12 +113,30 @@ overrides:
 ### Planner and Builder sizing and configuration
 
 The single planner instance runs the planning phase for bloom blocks for each tenant in the given interval and puts the created tasks to an internal task queue.
-Builders process tasks sequentially by pulling them from the queue. The amount of builder replicas required to complete all pending tasks before the next planning iteration depends on the value of `-bloom-build.planner.bloom_split_series_keyspace_by`, the number of tenants, and the log volume of the streams.
+Builders process tasks sequentially by pulling them from the queue. The amount of builder replicas required to complete all pending tasks before the next planning iteration depends on the value of `-bloom-build.split-keyspace-by`, the number of tenants, and the log volume of the streams.
 
 The maximum block size is configured per tenant via `-bloom-build.max-block-size`.
 The actual block size might exceed this limit given that we append streams blooms to the block until the block is larger than the configured maximum size.
+The maximum size of a single stream's bloom is configured per tenant via `-bloom-build.max-bloom-size`. A stream whose bloom exceeds this size is discarded rather than added to a block.
 Blocks are created in memory and as soon as they are written to the object store they are freed. Chunks and TSDB files are downloaded from the object store to the file system.
 We estimate that builders are able to process 4MB worth of data per second per core.
+
+### Planning strategies
+
+The Bloom Planner supports two strategies for splitting the bloom-building work into tasks, configured per tenant via `bloom_planning_strategy`:
+
+- `split_keyspace_by_factor` (default): splits the series keyspace into a fixed number of parts, controlled by `bloom_split_series_keyspace_by`. This is the strategy described in the sizing guidance above.
+- `split_by_series_chunks_size`: sizes each task by a target amount of chunk data instead of a fixed split count, controlled by `bloom_task_target_series_chunk_size`.
+
+A few additional per-tenant limits let you tune task scheduling, block encoding, and gateway prefetching:
+
+- `bloom_build_max_builders` limits how many builders can work on a tenant's tasks concurrently (`0` allows unlimited builders).
+- `bloom_build_builder_response_timeout` sets how long the planner waits for a builder to finish a task before requeuing it (`0` disables the timeout).
+- `bloom_build_task_max_retries` limits how many times a failed task is retried before it is abandoned.
+- `bloom_block_encoding` sets the compression algorithm used for bloom block pages.
+- `bloom_prefetch_blocks` prefetches blocks on Bloom Gateways as soon as they are built.
+
+Refer to the [per-tenant limits](https://grafana.com/docs/loki/<LOKI_VERSION>/configure/#limits_config) configuration docs for the full list of flags, defaults, and descriptions.
 
 ## Bloom Gateway
 
@@ -129,7 +146,7 @@ The service takes a list of chunks and a filtering expression and matches them a
 This component is horizontally scalable and every instance only owns a subset of the stream fingerprint range for which it performs the filtering.
 The sharding of the data is performed on the client side using DNS discovery of the server instances and the [jumphash](https://arxiv.org/abs/1406.2294) algorithm for consistent hashing and even distribution of the stream fingerprints across Bloom Gateway instances.
 
-You can find all the configuration options for this component in the Configure section for the [Bloom Gateways][bloom-gateway-cfg].
+You can find all the configuration options for this component in the Configure section for the [Bloom Gateways](https://grafana.com/docs/loki/<LOKI_VERSION>/configure/#bloom_gateway).
 Refer to the [Enable bloom filters](#enable-bloom-filters) section above for a configuration snippet enabling this feature.
 
 ### Gateway sizing and configuration
@@ -139,7 +156,7 @@ The size of the blooms depend on the ingest volume and number of unique structur
 With default settings, bloom filters make up <1% of the raw structured metadata size.
 
 Since reading blooms depends heavily on disk IOPS, Bloom Gateways should make use of multiple, locally attached SSD disks (NVMe) to increase I/O throughput.
-Multiple directories on different disk mounts can be specified using the `-bloom.shipper.working-directory` [setting][storage-config-cfg] when using a comma separated list of mount points, for example:
+Multiple directories on different disk mounts can be specified using the `-bloom.shipper.working-directory` [setting](https://grafana.com/docs/loki/<LOKI_VERSION>/configure/#storage_config) when using a comma separated list of mount points, for example:
 
 ```yaml
 -bloom.shipper.working-directory="/mnt/data0,/mnt/data1,/mnt/data2,/mnt/data3"
@@ -185,16 +202,7 @@ For example, given structured metadata `foo=bar` in the chunk `c6dj8g`, we appen
 ## Query sharding
 
 Query acceleration does not just happen while processing chunks, but also happens from the query planning phase where the query frontend applies [query sharding](https://lokidex.com/posts/tsdb/#sharding).
-Loki 3.0 introduces a new [per-tenant configuration][tenant-limits] flag `tsdb_sharding_strategy` which defaults to computing shards as in previous versions of Loki by using the index stats to come up with the closest power of two that would optimistically divide the data to process in shards of roughly the same size.
+Loki 3.0 introduces a new [per-tenant configuration](https://grafana.com/docs/loki/<LOKI_VERSION>/configure/#limits_config) flag `tsdb_sharding_strategy` which defaults to computing shards as in previous versions of Loki by using the index stats to come up with the closest power of two that would optimistically divide the data to process in shards of roughly the same size.
 Unfortunately, the amount of data each stream has is often unbalanced with the rest, therefore, some shards end up processing more data than others.
 
 Query acceleration introduces a new sharding strategy: `bounded`, which uses blooms to reduce the chunks to be processed right away during the planning phase in the query frontend, as well as evenly distributes the amount of chunks each sharded query will need to process.
-
-[Query acceleration]: https://grafana.com/docs/loki/<LOKI_VERSION>/query/query_acceleration
-[structured metadata]: https://grafana.com/docs/loki/<LOKI_VERSION>/get-started/labels/structured-metadata
-[tenant-limits]: https://grafana.com/docs/loki/<LOKI_VERSION>/configure/#limits_config
-[bloom-gateway-cfg]: https://grafana.com/docs/loki/<LOKI_VERSION>/configure/#bloom_gateway
-[bloom-build-cfg]: https://grafana.com/docs/loki/<LOKI_VERSION>/configure/#bloom_build
-[storage-config-cfg]: https://grafana.com/docs/loki/<LOKI_VERSION>/configure/#storage_config
-[microservices]: https://grafana.com/docs/loki/<LOKI_VERSION>/get-started/deployment-modes/#microservices-mode
-[ssd]: https://grafana.com/docs/loki/<LOKI_VERSION>/get-started/deployment-modes/#simple-scalable

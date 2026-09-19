@@ -12,8 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-//go:build !windows
-// +build !windows
+//go:build unix
 
 // Package activation implements primitives for systemd socket activation.
 package activation
@@ -38,9 +37,12 @@ const (
 // fd usage and to avoid leaking environment flags to child processes.
 func Files(unsetEnv bool) []*os.File {
 	if unsetEnv {
-		defer os.Unsetenv("LISTEN_PID")
-		defer os.Unsetenv("LISTEN_FDS")
-		defer os.Unsetenv("LISTEN_FDNAMES")
+		defer func() {
+			// Unsetenv implementation for unix never returns an error.
+			_ = os.Unsetenv("LISTEN_PID")
+			_ = os.Unsetenv("LISTEN_FDS")
+			_ = os.Unsetenv("LISTEN_FDNAMES")
+		}()
 	}
 
 	pid, err := strconv.Atoi(os.Getenv("LISTEN_PID"))
@@ -49,7 +51,7 @@ func Files(unsetEnv bool) []*os.File {
 	}
 
 	nfds, err := strconv.Atoi(os.Getenv("LISTEN_FDS"))
-	if err != nil || nfds == 0 {
+	if err != nil || nfds <= 0 {
 		return nil
 	}
 

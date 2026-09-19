@@ -3,6 +3,8 @@ package redis
 import (
 	"context"
 	"time"
+
+	"github.com/redis/go-redis/v9/internal/hashtag"
 )
 
 type GenericCmdable interface {
@@ -127,6 +129,9 @@ func (c cmdable) ExpireAt(ctx context.Context, key string, tm time.Time) *BoolCm
 	return cmd
 }
 
+// ExpireTime returns the absolute expiration time of key as a Unix timestamp
+// encoded in *DurationCmd (seconds since the epoch), not a remaining TTL.
+// Convert with: time.Unix(int64(d/time.Second), 0). Use TTL/PTTL for remaining TTL.
 func (c cmdable) ExpireTime(ctx context.Context, key string) *DurationCmd {
 	cmd := NewDurationCmd(ctx, time.Second, "expiretime", key)
 	_ = c(ctx, cmd)
@@ -207,6 +212,9 @@ func (c cmdable) PExpireAt(ctx context.Context, key string, tm time.Time) *BoolC
 	return cmd
 }
 
+// PExpireTime returns the absolute expiration time of key as a Unix timestamp
+// encoded in *DurationCmd (milliseconds since the epoch), not a remaining TTL.
+// Convert with: time.UnixMilli(int64(d/time.Millisecond)). Use TTL/PTTL for remaining TTL.
 func (c cmdable) PExpireTime(ctx context.Context, key string) *DurationCmd {
 	cmd := NewDurationCmd(ctx, time.Millisecond, "pexpiretime", key)
 	_ = c(ctx, cmd)
@@ -363,6 +371,9 @@ func (c cmdable) Scan(ctx context.Context, cursor uint64, match string, count in
 		args = append(args, "count", count)
 	}
 	cmd := NewScanCmd(ctx, c, args...)
+	if hashtag.Present(match) {
+		cmd.SetFirstKeyPos(3)
+	}
 	_ = c(ctx, cmd)
 	return cmd
 }
@@ -379,6 +390,9 @@ func (c cmdable) ScanType(ctx context.Context, cursor uint64, match string, coun
 		args = append(args, "type", keyType)
 	}
 	cmd := NewScanCmd(ctx, c, args...)
+	if hashtag.Present(match) {
+		cmd.SetFirstKeyPos(3)
+	}
 	_ = c(ctx, cmd)
 	return cmd
 }

@@ -29,11 +29,17 @@ type Component interface {
 	// If this is an exporter component it may prepare for exporting
 	// by connecting to the endpoint.
 	//
-	// If the component needs to perform a long-running starting operation then it is recommended
-	// that Start() returns quickly and the long-running operation is performed in background.
-	// In that case make sure that the long-running operation does not use the context passed
-	// to Start() function since that context will be cancelled soon and can abort the long-running
-	// operation. Create a new context from the context.Background() for long-running operations.
+	// If the component needs to perform a long-running starting operation, then
+	// it is recommended that Start() returns quickly and the long-running
+	// operation is performed in the background. Background operations should
+	// create their own context using context.WithCancel(context.Background())
+	// rather than using the passed context, which is intended only for the
+	// startup operation itself. The component should cancel this context in its
+	// Shutdown() method.
+	//
+	// Note: as of today, the context passed to Start() lives for the entire
+	// lifetime of the collector, but this may change in the future to include a
+	// startup timeout.
 	Start(ctx context.Context, host Host) error
 
 	// Shutdown is invoked during service shutdown. After Shutdown() is called, if the component
@@ -46,7 +52,7 @@ type Component interface {
 	// If there are any background operations running by the component they must be aborted before
 	// this function returns. Remember that if you started any long-running background operations from
 	// the Start() method, those operations must be also cancelled. If there are any buffers in the
-	// component, they should be cleared and the data sent immediately to the next component.
+	// component, they should be flushed with the data being sent immediately to the next component.
 	//
 	// The component's lifecycle is completed once the Shutdown() method returns. No other
 	// methods of the component are called after that. If necessary a new component with

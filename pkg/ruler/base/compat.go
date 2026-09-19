@@ -69,6 +69,14 @@ func (a *PusherAppender) AppendHistogramCTZeroSample(_ storage.SeriesRef, _ labe
 	return 0, errors.New("histogram created timestamps are unsupported")
 }
 
+func (a *PusherAppender) AppendHistogramSTZeroSample(_ storage.SeriesRef, _ labels.Labels, _ int64, _ int64, _ *histogram.Histogram, _ *histogram.FloatHistogram) (storage.SeriesRef, error) {
+	return 0, errors.New("histogram start timestamps are unsupported")
+}
+
+func (a *PusherAppender) AppendSTZeroSample(_ storage.SeriesRef, _ labels.Labels, _ int64, _ int64) (storage.SeriesRef, error) {
+	return 0, errors.New("start timestamps are unsupported")
+}
+
 func (a *PusherAppender) AppendCTZeroSample(_ storage.SeriesRef, _ labels.Labels, _ int64, _ int64) (storage.SeriesRef, error) {
 	return 0, errors.New("created timestamps are unsupported")
 }
@@ -135,7 +143,6 @@ type RulesLimits interface {
 	RulerMaxRuleGroupsPerTenant(userID string) int
 	RulerMaxRulesPerRuleGroup(userID string) int
 	RulerAlertManagerConfig(userID string) *config.AlertManagerConfig
-	RulerEnableWALReplay(userID string) bool
 }
 
 func MetricsQueryFunc(qf rules.QueryFunc, queries, failedQueries prometheus.Counter) rules.QueryFunc {

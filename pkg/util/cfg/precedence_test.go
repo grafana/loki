@@ -28,7 +28,7 @@ func TestYAMLOverDefaults(t *testing.T) {
 	fs := flag.NewFlagSet(t.Name(), flag.PanicOnError)
 	err := Unmarshal(&data,
 		Defaults(fs),
-		dYAMLStrict([]byte(y)),
+		dYAML([]byte(y), true),
 	)
 
 	require.NoError(t, err)
@@ -51,7 +51,7 @@ func TestFlagOverYAML(t *testing.T) {
 
 	err := Unmarshal(&data,
 		Defaults(fs),
-		dYAMLStrict([]byte(y)),
+		dYAML([]byte(y), true),
 		dFlags(fs, []string{"-verbose=false", "-tls.cert=CLI"}),
 	)
 

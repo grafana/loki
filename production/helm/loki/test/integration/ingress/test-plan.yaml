@@ -6,7 +6,7 @@ subject:
   releaseName: loki
   namespace: loki
   path: ../../..
-  valuesFile: ../../../ci/ingress-values.yaml
+  valuesFile: ingress-values.yaml
   extraArgs:
     - --dependency-update
     - --set

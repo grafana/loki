@@ -42,7 +42,7 @@ func putGzipReader(reader io.Reader) {
 type GetFileFunc func() (io.ReadCloser, error)
 
 // DownloadFileFromStorage downloads a file from storage to given location.
-func DownloadFileFromStorage(destination string, decompressFile bool, sync bool, logger log.Logger, getFileFunc GetFileFunc) error {
+func DownloadFileFromStorage(destination string, decompressFile bool, sync bool, logger log.Logger, getFileFunc GetFileFunc) (err error) {
 	start := time.Now()
 	readCloser, err := getFileFunc()
 	if err != nil {
@@ -62,8 +62,10 @@ func DownloadFileFromStorage(destination string, decompressFile bool, sync bool,
 		return err
 	}
 	defer func() {
-		err := os.Remove(tmpName)
-		if err != nil {
+		if err := ftmp.Close(); err != nil {
+			level.Warn(logger).Log("msg", "failed to close file", "file", tmpName)
+		}
+		if err := os.Remove(tmpName); err != nil {
 			level.Warn(logger).Log("msg", "failed to delete temp file from index download", "err", err)
 		}
 	}()
@@ -83,7 +85,7 @@ func DownloadFileFromStorage(destination string, decompressFile bool, sync bool,
 	}
 	defer func() {
 		if err := tmpReader.Close(); err != nil {
-			level.Warn(logger).Log("msg", "failed to close file", "file", destination+"-tmp")
+			level.Warn(logger).Log("msg", "failed to close file", "file", tmpName)
 		}
 	}()
 
@@ -93,8 +95,16 @@ func DownloadFileFromStorage(destination string, decompressFile bool, sync bool,
 	}
 
 	defer func() {
-		if err := f.Close(); err != nil {
+		if closeErr := f.Close(); closeErr != nil {
 			level.Warn(logger).Log("msg", "failed to close file", "file", destination)
+		}
+		// If the download failed partway (e.g. truncated source, see #21736), remove the
+		// partial destination so a future retry starts clean and corrupt bytes are not
+		// left behind for openers to misread.
+		if err != nil {
+			if removeErr := os.Remove(destination); removeErr != nil && !os.IsNotExist(removeErr) {
+				level.Warn(logger).Log("msg", "failed to remove partial destination file", "file", destination, "err", removeErr)
+			}
 		}
 	}()
 	var objectReader io.Reader = tmpReader

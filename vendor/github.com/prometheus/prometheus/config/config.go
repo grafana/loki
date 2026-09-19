@@ -1,4 +1,4 @@
-// Copyright 2015 The Prometheus Authors
+// Copyright The Prometheus Authors
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
@@ -29,10 +29,12 @@ import (
 
 	"github.com/alecthomas/units"
 	"github.com/grafana/regexp"
+	remoteapi "github.com/prometheus/client_golang/exp/api/remote"
 	"github.com/prometheus/common/config"
 	"github.com/prometheus/common/model"
+	"github.com/prometheus/otlptranslator"
 	"github.com/prometheus/sigv4"
-	"gopkg.in/yaml.v2"
+	"go.yaml.in/yaml/v2"
 
 	"github.com/prometheus/prometheus/discovery"
 	"github.com/prometheus/prometheus/model/labels"
@@ -81,6 +83,13 @@ func Load(s string, logger *slog.Logger) (*Config, error) {
 		return nil, err
 	}
 
+	// When the config body is empty, UnmarshalYAML is never called, so
+	// TSDBConfig may still be nil.
+	if cfg.StorageConfig.TSDBConfig == nil {
+		retention := DefaultTSDBRetentionConfig
+		cfg.StorageConfig.TSDBConfig = &TSDBConfig{Retention: &retention}
+	}
+
 	b := labels.NewScratchBuilder(0)
 	cfg.GlobalConfig.ExternalLabels.Range(func(v labels.Label) {
 		newV := os.Expand(v.Value, func(s string) string {
@@ -104,9 +113,9 @@ func Load(s string, logger *slog.Logger) (*Config, error) {
 	}
 
 	switch cfg.OTLPConfig.TranslationStrategy {
-	case UnderscoreEscapingWithSuffixes, UnderscoreEscapingWithoutSuffixes:
+	case otlptranslator.UnderscoreEscapingWithSuffixes, otlptranslator.UnderscoreEscapingWithoutSuffixes:
 	case "":
-	case NoTranslation, NoUTF8EscapingWithSuffixes:
+	case otlptranslator.NoTranslation, otlptranslator.NoUTF8EscapingWithSuffixes:
 		if cfg.GlobalConfig.MetricNameValidationScheme == model.LegacyValidation {
 			return nil, fmt.Errorf("OTLP translation strategy %q is not allowed when UTF8 is disabled", cfg.OTLPConfig.TranslationStrategy)
 		}
@@ -147,6 +156,10 @@ func LoadFile(filename string, agentMode bool, logger *slog.Logger) (*Config, er
 	return cfg, nil
 }
 
+func boolPtr(b bool) *bool {
+	return &b
+}
+
 // The defaults applied before parsing the respective config sections.
 var (
 	// DefaultConfig is the default top-level configuration.
@@ -162,11 +175,18 @@ var (
 		ScrapeTimeout:      model.Duration(10 * time.Second),
 		EvaluationInterval: model.Duration(1 * time.Minute),
 		RuleQueryOffset:    model.Duration(0 * time.Minute),
-		// When native histogram feature flag is enabled, ScrapeProtocols default
-		// changes to DefaultNativeHistogramScrapeProtocols.
-		ScrapeProtocols:                DefaultScrapeProtocols,
+		// This is nil to be able to distinguish between the case when
+		// the normal default should be used and the case when a
+		// new default is needed due to an enabled feature flag.
+		// E.g. set to `DefaultProtoFirstScrapeProtocols` when
+		// the feature flag `created-timestamp-zero-ingestion` is set.
+		ScrapeProtocols: nil,
+		// When the native histogram feature flag is enabled,
+		// ScrapeNativeHistograms default changes to true.
+		ScrapeNativeHistograms:         boolPtr(false),
 		ConvertClassicHistogramsToNHCB: false,
 		AlwaysScrapeClassicHistograms:  false,
+		ExtraScrapeMetrics:             boolPtr(false),
 		MetricNameValidationScheme:     model.UTF8Validation,
 		MetricNameEscapingScheme:       model.AllowUTF8,
 	}
@@ -206,7 +226,7 @@ var (
 	// DefaultRemoteWriteConfig is the default remote write configuration.
 	DefaultRemoteWriteConfig = RemoteWriteConfig{
 		RemoteTimeout:    model.Duration(30 * time.Second),
-		ProtobufMessage:  RemoteWriteProtoMsgV1,
+		ProtobufMessage:  remoteapi.WriteV1MessageType,
 		QueueConfig:      DefaultQueueConfig,
 		MetadataConfig:   DefaultMetadataConfig,
 		HTTPClientConfig: DefaultRemoteWriteHTTPClientConfig,
@@ -257,8 +277,15 @@ var (
 
 	// DefaultOTLPConfig is the default OTLP configuration.
 	DefaultOTLPConfig = OTLPConfig{
-		TranslationStrategy: UnderscoreEscapingWithSuffixes,
+		TranslationStrategy: otlptranslator.UnderscoreEscapingWithSuffixes,
+		// For backwards compatibility.
+		LabelNameUnderscoreSanitization: true,
+		// For backwards compatibility.
+		LabelNamePreserveMultipleUnderscores: true,
 	}
+
+	// DefaultTSDBRetentionConfig is the default TSDB retention configuration.
+	DefaultTSDBRetentionConfig TSDBRetentionConfig
 )
 
 // Config is the top-level configuration for Prometheus's config files.
@@ -366,7 +393,7 @@ func (c *Config) GetScrapeConfigs() ([]*ScrapeConfig, error) {
 
 // UnmarshalYAML implements the yaml.Unmarshaler interface.
 // NOTE: This method should not be used outside of this package. Use Load or LoadFile instead.
-func (c *Config) UnmarshalYAML(unmarshal func(interface{}) error) error {
+func (c *Config) UnmarshalYAML(unmarshal func(any) error) error {
 	*c = DefaultConfig
 	// We want to set c to the defaults and then overwrite it with the input.
 	// To make unmarshal fill the plain data struct rather than calling UnmarshalYAML
@@ -386,6 +413,13 @@ func (c *Config) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	// We have to restore it here.
 	if c.Runtime.isZero() {
 		c.Runtime = DefaultRuntimeConfig
+	}
+
+	// If no storage.tsdb section is present, TSDBConfig is nil and its
+	// UnmarshalYAML never runs. Inject the default retention here.
+	if c.StorageConfig.TSDBConfig == nil {
+		retention := DefaultTSDBRetentionConfig
+		c.StorageConfig.TSDBConfig = &TSDBConfig{Retention: &retention}
 	}
 
 	for _, rf := range c.RuleFiles {
@@ -412,6 +446,10 @@ func (c *Config) UnmarshalYAML(unmarshal func(interface{}) error) error {
 		jobNames[scfg.JobName] = struct{}{}
 	}
 
+	if err := c.AlertingConfig.Validate(c.GlobalConfig.MetricNameValidationScheme); err != nil {
+		return err
+	}
+
 	rwNames := map[string]struct{}{}
 	for _, rwcfg := range c.RemoteWriteConfigs {
 		if rwcfg == nil {
@@ -420,6 +458,9 @@ func (c *Config) UnmarshalYAML(unmarshal func(interface{}) error) error {
 		// Skip empty names, we fill their name with their config hash in remote write code.
 		if _, ok := rwNames[rwcfg.Name]; ok && rwcfg.Name != "" {
 			return fmt.Errorf("found multiple remote write configs with job name %q", rwcfg.Name)
+		}
+		if err := rwcfg.Validate(c.GlobalConfig.MetricNameValidationScheme); err != nil {
+			return err
 		}
 		rwNames[rwcfg.Name] = struct{}{}
 	}
@@ -447,7 +488,7 @@ type GlobalConfig struct {
 	// The protocols to negotiate during a scrape. It tells clients what
 	// protocol are accepted by Prometheus and with what weight (most wanted is first).
 	// Supported values (case sensitive): PrometheusProto, OpenMetricsText0.0.1,
-	// OpenMetricsText1.0.0, PrometheusText0.0.4.
+	// OpenMetricsText1.0.0, PrometheusText1.0.0, PrometheusText0.0.4
 	ScrapeProtocols []ScrapeProtocol `yaml:"scrape_protocols,omitempty"`
 	// How frequently to evaluate rules by default.
 	EvaluationInterval model.Duration `yaml:"evaluation_interval,omitempty"`
@@ -487,10 +528,16 @@ type GlobalConfig struct {
 	// blank in config files but must have a value if a ScrapeConfig is created
 	// programmatically.
 	MetricNameEscapingScheme string `yaml:"metric_name_escaping_scheme,omitempty"`
+	// Whether to scrape native histograms.
+	ScrapeNativeHistograms *bool `yaml:"scrape_native_histograms,omitempty"`
 	// Whether to convert all scraped classic histograms into native histograms with custom buckets.
 	ConvertClassicHistogramsToNHCB bool `yaml:"convert_classic_histograms_to_nhcb,omitempty"`
 	// Whether to scrape a classic histogram, even if it is also exposed as a native histogram.
 	AlwaysScrapeClassicHistograms bool `yaml:"always_scrape_classic_histograms,omitempty"`
+	// Whether to enable additional scrape metrics.
+	// When enabled, Prometheus stores samples for scrape_timeout_seconds,
+	// scrape_sample_limit, and scrape_body_size_bytes.
+	ExtraScrapeMetrics *bool `yaml:"extra_scrape_metrics,omitempty"`
 }
 
 // ScrapeProtocol represents supported protocol for scraping metrics.
@@ -550,8 +597,8 @@ var (
 
 	// DefaultProtoFirstScrapeProtocols is like DefaultScrapeProtocols, but it
 	// favors protobuf Prometheus exposition format.
-	// Used by default for certain feature-flags like
-	// "native-histograms" and "created-timestamp-zero-ingestion".
+	// Used by default by the "scrape_native_histograms" option and for certain
+	// feature-flags like "created-timestamp-zero-ingestion".
 	DefaultProtoFirstScrapeProtocols = []ScrapeProtocol{
 		PrometheusProto,
 		OpenMetricsText1_0_0,
@@ -586,7 +633,7 @@ func (c *GlobalConfig) SetDirectory(dir string) {
 }
 
 // UnmarshalYAML implements the yaml.Unmarshaler interface.
-func (c *GlobalConfig) UnmarshalYAML(unmarshal func(interface{}) error) error {
+func (c *GlobalConfig) UnmarshalYAML(unmarshal func(any) error) error {
 	// Create a clean global config as the previous one was already populated
 	// by the default due to the YAML parser behavior for empty blocks.
 	gc := &GlobalConfig{}
@@ -595,8 +642,14 @@ func (c *GlobalConfig) UnmarshalYAML(unmarshal func(interface{}) error) error {
 		return err
 	}
 
+	switch gc.MetricNameValidationScheme {
+	case model.UTF8Validation, model.LegacyValidation:
+	default:
+		gc.MetricNameValidationScheme = DefaultGlobalConfig.MetricNameValidationScheme
+	}
+
 	if err := gc.ExternalLabels.Validate(func(l labels.Label) error {
-		if !model.LabelName(l.Name).IsValid() {
+		if !gc.MetricNameValidationScheme.IsValidLabelName(l.Name) {
 			return fmt.Errorf("%q is not a valid label name", l.Name)
 		}
 		if !model.LabelValue(l.Value).IsValid() {
@@ -616,21 +669,34 @@ func (c *GlobalConfig) UnmarshalYAML(unmarshal func(interface{}) error) error {
 		return errors.New("global scrape timeout greater than scrape interval")
 	}
 	if gc.ScrapeTimeout == 0 {
-		if DefaultGlobalConfig.ScrapeTimeout > gc.ScrapeInterval {
-			gc.ScrapeTimeout = gc.ScrapeInterval
-		} else {
-			gc.ScrapeTimeout = DefaultGlobalConfig.ScrapeTimeout
-		}
+		gc.ScrapeTimeout = min(DefaultGlobalConfig.ScrapeTimeout, gc.ScrapeInterval)
 	}
 	if gc.EvaluationInterval == 0 {
 		gc.EvaluationInterval = DefaultGlobalConfig.EvaluationInterval
 	}
-
-	if gc.ScrapeProtocols == nil {
-		gc.ScrapeProtocols = DefaultGlobalConfig.ScrapeProtocols
+	if gc.ScrapeNativeHistograms == nil {
+		gc.ScrapeNativeHistograms = DefaultGlobalConfig.ScrapeNativeHistograms
 	}
-	if err := validateAcceptScrapeProtocols(gc.ScrapeProtocols); err != nil {
-		return fmt.Errorf("%w for global config", err)
+	if gc.ExtraScrapeMetrics == nil {
+		gc.ExtraScrapeMetrics = DefaultGlobalConfig.ExtraScrapeMetrics
+	}
+	if gc.ScrapeProtocols == nil {
+		if DefaultGlobalConfig.ScrapeProtocols != nil {
+			// This is the case where the defaults are set due to a feature flag.
+			// E.g. if the created-timestamp-zero-ingestion feature flag is
+			// used.
+			gc.ScrapeProtocols = DefaultGlobalConfig.ScrapeProtocols
+		}
+		// Otherwise, we leave ScrapeProtocols at nil for now. In the
+		// per-job scrape config, we have to recognize the unset case to
+		// correctly set the default depending on the local value of
+		// ScrapeNativeHistograms.
+	}
+	if gc.ScrapeProtocols != nil {
+		// Only validate if not-nil at this point.
+		if err := validateAcceptScrapeProtocols(gc.ScrapeProtocols); err != nil {
+			return fmt.Errorf("%w for global config", err)
+		}
 	}
 
 	*c = *gc
@@ -647,8 +713,19 @@ func (c *GlobalConfig) isZero() bool {
 		c.QueryLogFile == "" &&
 		c.ScrapeFailureLogFile == "" &&
 		c.ScrapeProtocols == nil &&
+		c.ScrapeNativeHistograms == nil &&
 		!c.ConvertClassicHistogramsToNHCB &&
-		!c.AlwaysScrapeClassicHistograms
+		!c.AlwaysScrapeClassicHistograms &&
+		c.BodySizeLimit == 0 &&
+		c.SampleLimit == 0 &&
+		c.TargetLimit == 0 &&
+		c.LabelLimit == 0 &&
+		c.LabelNameLengthLimit == 0 &&
+		c.LabelValueLengthLimit == 0 &&
+		c.KeepDroppedTargets == 0 &&
+		c.MetricNameValidationScheme == model.UnsetValidation &&
+		c.MetricNameEscapingScheme == "" &&
+		c.ExtraScrapeMetrics == nil
 }
 
 const DefaultGoGCPercentage = 75
@@ -709,6 +786,8 @@ type ScrapeConfig struct {
 	// Supported values (case sensitive): PrometheusProto, OpenMetricsText0.0.1,
 	// OpenMetricsText1.0.0, PrometheusText1.0.0, PrometheusText0.0.4.
 	ScrapeFallbackProtocol ScrapeProtocol `yaml:"fallback_scrape_protocol,omitempty"`
+	// Whether to scrape native histograms.
+	ScrapeNativeHistograms *bool `yaml:"scrape_native_histograms,omitempty"`
 	// Whether to scrape a classic histogram, even if it is also exposed as a native histogram.
 	AlwaysScrapeClassicHistograms *bool `yaml:"always_scrape_classic_histograms,omitempty"`
 	// Whether to convert all scraped classic histograms into a native histogram with custom buckets.
@@ -755,6 +834,11 @@ type ScrapeConfig struct {
 	// blank in config files but must have a value if a ScrapeConfig is created
 	// programmatically.
 	MetricNameEscapingScheme string `yaml:"metric_name_escaping_scheme,omitempty"`
+	// Whether to enable additional scrape metrics.
+	// When enabled, Prometheus stores samples for scrape_timeout_seconds,
+	// scrape_sample_limit, and scrape_body_size_bytes.
+	// If not set (nil), inherits the value from the global configuration.
+	ExtraScrapeMetrics *bool `yaml:"extra_scrape_metrics,omitempty"`
 
 	// We cannot do proper Go type embedding below as the parser will then parse
 	// values arbitrarily into the overflow maps of further-down types.
@@ -776,12 +860,12 @@ func (c *ScrapeConfig) SetDirectory(dir string) {
 }
 
 // UnmarshalYAML implements the yaml.Unmarshaler interface.
-func (c *ScrapeConfig) UnmarshalYAML(unmarshal func(interface{}) error) error {
+func (c *ScrapeConfig) UnmarshalYAML(unmarshal func(any) error) error {
 	*c = DefaultScrapeConfig
 	if err := discovery.UnmarshalYAMLWithInlineConfigs(c, unmarshal); err != nil {
 		return err
 	}
-	if len(c.JobName) == 0 {
+	if c.JobName == "" {
 		return errors.New("job_name is empty")
 	}
 
@@ -827,11 +911,7 @@ func (c *ScrapeConfig) Validate(globalConfig GlobalConfig) error {
 		return fmt.Errorf("scrape timeout greater than scrape interval for scrape config with job name %q", c.JobName)
 	}
 	if c.ScrapeTimeout == 0 {
-		if globalConfig.ScrapeTimeout > c.ScrapeInterval {
-			c.ScrapeTimeout = c.ScrapeInterval
-		} else {
-			c.ScrapeTimeout = globalConfig.ScrapeTimeout
-		}
+		c.ScrapeTimeout = min(globalConfig.ScrapeTimeout, c.ScrapeInterval)
 	}
 	if c.BodySizeLimit == 0 {
 		c.BodySizeLimit = globalConfig.BodySizeLimit
@@ -857,9 +937,26 @@ func (c *ScrapeConfig) Validate(globalConfig GlobalConfig) error {
 	if c.ScrapeFailureLogFile == "" {
 		c.ScrapeFailureLogFile = globalConfig.ScrapeFailureLogFile
 	}
+	if c.ScrapeNativeHistograms == nil {
+		c.ScrapeNativeHistograms = globalConfig.ScrapeNativeHistograms
+	}
+	if c.ExtraScrapeMetrics == nil {
+		c.ExtraScrapeMetrics = globalConfig.ExtraScrapeMetrics
+	}
 
 	if c.ScrapeProtocols == nil {
-		c.ScrapeProtocols = globalConfig.ScrapeProtocols
+		switch {
+		case globalConfig.ScrapeProtocols != nil:
+			// global ScrapeProtocols either set explicitly or via a
+			// default triggered by a feature flag. This overrides
+			// the selection based on locally active scraping of
+			// native histograms.
+			c.ScrapeProtocols = globalConfig.ScrapeProtocols
+		case c.ScrapeNativeHistogramsEnabled():
+			c.ScrapeProtocols = DefaultProtoFirstScrapeProtocols
+		default:
+			c.ScrapeProtocols = DefaultScrapeProtocols
+		}
 	}
 	if err := validateAcceptScrapeProtocols(c.ScrapeProtocols); err != nil {
 		return fmt.Errorf("%w for scrape config with job name %q", err, c.JobName)
@@ -877,15 +974,15 @@ func (c *ScrapeConfig) Validate(globalConfig GlobalConfig) error {
 	}
 
 	switch globalConfig.MetricNameValidationScheme {
-	case model.UnsetValidation:
-		globalConfig.MetricNameValidationScheme = model.UTF8Validation
 	case model.LegacyValidation, model.UTF8Validation:
 	default:
-		return fmt.Errorf("unknown global name validation method specified, must be either '', 'legacy' or 'utf8', got %s", globalConfig.MetricNameValidationScheme)
+		return errors.New("global name validation method must be set")
 	}
 	// Scrapeconfig validation scheme matches global if left blank.
+	localValidationUnset := false
 	switch c.MetricNameValidationScheme {
 	case model.UnsetValidation:
+		localValidationUnset = true
 		c.MetricNameValidationScheme = globalConfig.MetricNameValidationScheme
 	case model.LegacyValidation, model.UTF8Validation:
 	default:
@@ -905,8 +1002,20 @@ func (c *ScrapeConfig) Validate(globalConfig GlobalConfig) error {
 		return fmt.Errorf("unknown global name escaping method specified, must be one of '%s', '%s', '%s', or '%s', got %q", model.AllowUTF8, model.EscapeUnderscores, model.EscapeDots, model.EscapeValues, globalConfig.MetricNameEscapingScheme)
 	}
 
+	// Similarly, if ScrapeConfig escaping scheme is blank, infer it from the
+	// ScrapeConfig validation scheme if that was set, or the Global validation
+	// scheme if the ScrapeConfig validation scheme was also not set. This ensures
+	// that local ScrapeConfigs that only specify Legacy validation do not inherit
+	// the global AllowUTF8 escaping setting, which is an error.
 	if c.MetricNameEscapingScheme == "" {
-		c.MetricNameEscapingScheme = globalConfig.MetricNameEscapingScheme
+		//nolint:gocritic
+		if localValidationUnset {
+			c.MetricNameEscapingScheme = globalConfig.MetricNameEscapingScheme
+		} else if c.MetricNameValidationScheme == model.LegacyValidation {
+			c.MetricNameEscapingScheme = model.EscapeUnderscores
+		} else {
+			c.MetricNameEscapingScheme = model.AllowUTF8
+		}
 	}
 
 	switch c.MetricNameEscapingScheme {
@@ -929,11 +1038,22 @@ func (c *ScrapeConfig) Validate(globalConfig GlobalConfig) error {
 		c.AlwaysScrapeClassicHistograms = &global
 	}
 
+	for _, rc := range c.RelabelConfigs {
+		if err := rc.Validate(c.MetricNameValidationScheme); err != nil {
+			return err
+		}
+	}
+	for _, rc := range c.MetricRelabelConfigs {
+		if err := rc.Validate(c.MetricNameValidationScheme); err != nil {
+			return err
+		}
+	}
+
 	return nil
 }
 
 // MarshalYAML implements the yaml.Marshaler interface.
-func (c *ScrapeConfig) MarshalYAML() (interface{}, error) {
+func (c *ScrapeConfig) MarshalYAML() (any, error) {
 	return discovery.MarshalYAMLWithInlineConfigs(c)
 }
 
@@ -948,12 +1068,17 @@ func ToEscapingScheme(s string, v model.ValidationScheme) (model.EscapingScheme,
 		case model.LegacyValidation:
 			return model.UnderscoreEscaping, nil
 		case model.UnsetValidation:
-			return model.NoEscaping, fmt.Errorf("v is unset: %s", v)
+			return model.NoEscaping, fmt.Errorf("ValidationScheme is unset: %s", v)
 		default:
 			panic(fmt.Errorf("unhandled validation scheme: %s", v))
 		}
 	}
 	return model.ToEscapingScheme(s)
+}
+
+// ScrapeNativeHistogramsEnabled returns whether to scrape native histograms.
+func (c *ScrapeConfig) ScrapeNativeHistogramsEnabled() bool {
+	return c.ScrapeNativeHistograms != nil && *c.ScrapeNativeHistograms
 }
 
 // ConvertClassicHistogramsToNHCBEnabled returns whether to convert classic histograms to NHCB.
@@ -966,10 +1091,58 @@ func (c *ScrapeConfig) AlwaysScrapeClassicHistogramsEnabled() bool {
 	return c.AlwaysScrapeClassicHistograms != nil && *c.AlwaysScrapeClassicHistograms
 }
 
+// ExtraScrapeMetricsEnabled returns whether to enable extra scrape metrics.
+func (c *ScrapeConfig) ExtraScrapeMetricsEnabled() bool {
+	return c.ExtraScrapeMetrics != nil && *c.ExtraScrapeMetrics
+}
+
 // StorageConfig configures runtime reloadable configuration options.
 type StorageConfig struct {
 	TSDBConfig      *TSDBConfig      `yaml:"tsdb,omitempty"`
 	ExemplarsConfig *ExemplarsConfig `yaml:"exemplars,omitempty"`
+}
+
+// TSDBRetentionConfig holds the configuration retention of data in storage storage.
+type TSDBRetentionConfig struct {
+	// How long to retain samples in storage.
+	Time model.Duration `yaml:"time,omitempty"`
+
+	// Maximum number of bytes that can be stored for blocks.
+	Size units.Base2Bytes `yaml:"size,omitempty"`
+
+	// Maximum percentage of disk used for TSDB storage.
+	Percentage float64 `yaml:"percentage,omitempty"`
+}
+
+// UnmarshalYAML implements the yaml.Unmarshaler interface.
+func (t *TSDBRetentionConfig) UnmarshalYAML(unmarshal func(any) error) error {
+	*t = TSDBRetentionConfig{}
+	type plain TSDBRetentionConfig
+	if err := unmarshal((*plain)(t)); err != nil {
+		return err
+	}
+	if t.Size < 0 {
+		return fmt.Errorf("'storage.tsdb.retention.size' must be greater than or equal to 0, got %v", t.Size)
+	}
+	if t.Percentage < 0 || t.Percentage > 100 {
+		return fmt.Errorf("'storage.tsdb.retention.percentage' must be in the range [0, 100], got %v", t.Percentage)
+	}
+	return nil
+}
+
+const (
+	// FloatChunkEncodingXOR selects standard XOR encoding for float chunks.
+	FloatChunkEncodingXOR = "xor"
+	// FloatChunkEncodingXOR2 selects XOR2 encoding for float chunks; requires --enable-feature=xor2-encoding.
+	FloatChunkEncodingXOR2 = "xor2"
+)
+
+// ChunkEncodingConfig configures per-chunk-type encoding overrides.
+type ChunkEncodingConfig struct {
+	// Floats selects the encoding used for float chunks.
+	// Valid values are "xor", "xor2", and "" (empty/absent). When empty, the encoding
+	// follows the --enable-feature=xor2-encoding flag. Setting "xor2" requires the flag to be enabled.
+	Floats string `yaml:"floats,omitempty"`
 }
 
 // TSDBConfig configures runtime reloadable configuration options.
@@ -984,10 +1157,19 @@ type TSDBConfig struct {
 	// During unmarshall, this is converted into milliseconds and stored in OutOfOrderTimeWindow.
 	// This should not be used directly and must be converted into OutOfOrderTimeWindow.
 	OutOfOrderTimeWindowFlag model.Duration `yaml:"out_of_order_time_window,omitempty"`
+
+	// StaleSeriesCompactionThreshold is a number between 0.0-1.0 indicating the % of stale series in
+	// the in-memory Head block. If the % of stale series crosses this threshold, stale series compaction is run immediately.
+	StaleSeriesCompactionThreshold float64 `yaml:"stale_series_compaction_threshold,omitempty"`
+
+	// ChunkEncoding configures per-chunk-type encoding overrides.
+	ChunkEncoding ChunkEncodingConfig `yaml:"chunk_encoding,omitempty"`
+
+	Retention *TSDBRetentionConfig `yaml:"retention,omitempty"`
 }
 
 // UnmarshalYAML implements the yaml.Unmarshaler interface.
-func (t *TSDBConfig) UnmarshalYAML(unmarshal func(interface{}) error) error {
+func (t *TSDBConfig) UnmarshalYAML(unmarshal func(any) error) error {
 	*t = TSDBConfig{}
 	type plain TSDBConfig
 	if err := unmarshal((*plain)(t)); err != nil {
@@ -995,6 +1177,18 @@ func (t *TSDBConfig) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	}
 
 	t.OutOfOrderTimeWindow = time.Duration(t.OutOfOrderTimeWindowFlag).Milliseconds()
+
+	switch t.ChunkEncoding.Floats {
+	case "", FloatChunkEncodingXOR, FloatChunkEncodingXOR2:
+		// Valid; no action required.
+	default:
+		return fmt.Errorf("'storage.tsdb.chunk_encoding.floats' must be 'xor' or 'xor2', or the field must be omitted entirely, got %q", t.ChunkEncoding.Floats)
+	}
+
+	if t.Retention == nil {
+		retention := DefaultTSDBRetentionConfig
+		t.Retention = &retention
+	}
 
 	return nil
 }
@@ -1009,7 +1203,7 @@ const (
 )
 
 // UnmarshalYAML implements the yaml.Unmarshaler interface.
-func (t *TracingClientType) UnmarshalYAML(unmarshal func(interface{}) error) error {
+func (t *TracingClientType) UnmarshalYAML(unmarshal func(any) error) error {
 	*t = TracingClientType("")
 	type plain TracingClientType
 	if err := unmarshal((*plain)(t)); err != nil {
@@ -1043,7 +1237,7 @@ func (t *TracingConfig) SetDirectory(dir string) {
 }
 
 // UnmarshalYAML implements the yaml.Unmarshaler interface.
-func (t *TracingConfig) UnmarshalYAML(unmarshal func(interface{}) error) error {
+func (t *TracingConfig) UnmarshalYAML(unmarshal func(any) error) error {
 	*t = TracingConfig{
 		ClientType: TracingClientGRPC,
 	}
@@ -1081,6 +1275,20 @@ type AlertingConfig struct {
 	AlertmanagerConfigs AlertmanagerConfigs `yaml:"alertmanagers,omitempty"`
 }
 
+func (c *AlertingConfig) Validate(nameValidationScheme model.ValidationScheme) error {
+	for _, rc := range c.AlertRelabelConfigs {
+		if err := rc.Validate(nameValidationScheme); err != nil {
+			return err
+		}
+	}
+	for _, rc := range c.AlertmanagerConfigs {
+		if err := rc.Validate(nameValidationScheme); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 // SetDirectory joins any relative file paths with dir.
 func (c *AlertingConfig) SetDirectory(dir string) {
 	for _, c := range c.AlertmanagerConfigs {
@@ -1089,7 +1297,7 @@ func (c *AlertingConfig) SetDirectory(dir string) {
 }
 
 // UnmarshalYAML implements the yaml.Unmarshaler interface.
-func (c *AlertingConfig) UnmarshalYAML(unmarshal func(interface{}) error) error {
+func (c *AlertingConfig) UnmarshalYAML(unmarshal func(any) error) error {
 	// Create a clean global config as the previous one was already populated
 	// by the default due to the YAML parser behavior for empty blocks.
 	*c = AlertingConfig{}
@@ -1124,7 +1332,7 @@ func (a AlertmanagerConfigs) ToMap() map[string]*AlertmanagerConfig {
 type AlertmanagerAPIVersion string
 
 // UnmarshalYAML implements the yaml.Unmarshaler interface.
-func (v *AlertmanagerAPIVersion) UnmarshalYAML(unmarshal func(interface{}) error) error {
+func (v *AlertmanagerAPIVersion) UnmarshalYAML(unmarshal func(any) error) error {
 	*v = AlertmanagerAPIVersion("")
 	type plain AlertmanagerAPIVersion
 	if err := unmarshal((*plain)(v)); err != nil {
@@ -1183,7 +1391,7 @@ func (c *AlertmanagerConfig) SetDirectory(dir string) {
 }
 
 // UnmarshalYAML implements the yaml.Unmarshaler interface.
-func (c *AlertmanagerConfig) UnmarshalYAML(unmarshal func(interface{}) error) error {
+func (c *AlertmanagerConfig) UnmarshalYAML(unmarshal func(any) error) error {
 	*c = DefaultAlertmanagerConfig
 	if err := discovery.UnmarshalYAMLWithInlineConfigs(c, unmarshal); err != nil {
 		return err
@@ -1225,8 +1433,22 @@ func (c *AlertmanagerConfig) UnmarshalYAML(unmarshal func(interface{}) error) er
 	return nil
 }
 
+func (c *AlertmanagerConfig) Validate(nameValidationScheme model.ValidationScheme) error {
+	for _, rc := range c.AlertRelabelConfigs {
+		if err := rc.Validate(nameValidationScheme); err != nil {
+			return err
+		}
+	}
+	for _, rc := range c.RelabelConfigs {
+		if err := rc.Validate(nameValidationScheme); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 // MarshalYAML implements the yaml.Marshaler interface.
-func (c *AlertmanagerConfig) MarshalYAML() (interface{}, error) {
+func (c *AlertmanagerConfig) MarshalYAML() (any, error) {
 	return discovery.MarshalYAMLWithInlineConfigs(c)
 }
 
@@ -1256,50 +1478,6 @@ func CheckTargetAddress(address model.LabelValue) error {
 	return nil
 }
 
-// RemoteWriteProtoMsg represents the known protobuf message for the remote write
-// 1.0 and 2.0 specs.
-type RemoteWriteProtoMsg string
-
-// Validate returns error if the given reference for the protobuf message is not supported.
-func (s RemoteWriteProtoMsg) Validate() error {
-	switch s {
-	case RemoteWriteProtoMsgV1, RemoteWriteProtoMsgV2:
-		return nil
-	default:
-		return fmt.Errorf("unknown remote write protobuf message %v, supported: %v", s, RemoteWriteProtoMsgs{RemoteWriteProtoMsgV1, RemoteWriteProtoMsgV2}.String())
-	}
-}
-
-type RemoteWriteProtoMsgs []RemoteWriteProtoMsg
-
-func (m RemoteWriteProtoMsgs) Strings() []string {
-	ret := make([]string, 0, len(m))
-	for _, typ := range m {
-		ret = append(ret, string(typ))
-	}
-	return ret
-}
-
-func (m RemoteWriteProtoMsgs) String() string {
-	return strings.Join(m.Strings(), ", ")
-}
-
-var (
-	// RemoteWriteProtoMsgV1 represents the `prometheus.WriteRequest` protobuf
-	// message introduced in the https://prometheus.io/docs/specs/remote_write_spec/,
-	// which will eventually be deprecated.
-	//
-	// NOTE: This string is used for both HTTP header values and config value, so don't change
-	// this reference.
-	RemoteWriteProtoMsgV1 RemoteWriteProtoMsg = "prometheus.WriteRequest"
-	// RemoteWriteProtoMsgV2 represents the `io.prometheus.write.v2.Request` protobuf
-	// message introduced in https://prometheus.io/docs/specs/remote_write_spec_2_0/
-	//
-	// NOTE: This string is used for both HTTP header values and config value, so don't change
-	// this reference.
-	RemoteWriteProtoMsgV2 RemoteWriteProtoMsg = "io.prometheus.write.v2.Request"
-)
-
 // RemoteWriteConfig is the configuration for writing to remote storage.
 type RemoteWriteConfig struct {
 	URL                  *config.URL       `yaml:"url"`
@@ -1312,7 +1490,7 @@ type RemoteWriteConfig struct {
 	RoundRobinDNS        bool              `yaml:"round_robin_dns,omitempty"`
 	// ProtobufMessage specifies the protobuf message to use against the remote
 	// receiver as specified in https://prometheus.io/docs/specs/remote_write_spec_2_0/
-	ProtobufMessage RemoteWriteProtoMsg `yaml:"protobuf_message,omitempty"`
+	ProtobufMessage remoteapi.WriteMessageType `yaml:"protobuf_message,omitempty"`
 
 	// We cannot do proper Go type embedding below as the parser will then parse
 	// values arbitrarily into the overflow maps of further-down types.
@@ -1330,7 +1508,7 @@ func (c *RemoteWriteConfig) SetDirectory(dir string) {
 }
 
 // UnmarshalYAML implements the yaml.Unmarshaler interface.
-func (c *RemoteWriteConfig) UnmarshalYAML(unmarshal func(interface{}) error) error {
+func (c *RemoteWriteConfig) UnmarshalYAML(unmarshal func(any) error) error {
 	*c = DefaultRemoteWriteConfig
 	type plain RemoteWriteConfig
 	if err := unmarshal((*plain)(c)); err != nil {
@@ -1359,7 +1537,21 @@ func (c *RemoteWriteConfig) UnmarshalYAML(unmarshal func(interface{}) error) err
 		return err
 	}
 
+	if err := c.QueueConfig.Validate(); err != nil {
+		return err
+	}
+
 	return validateAuthConfigs(c)
+}
+
+func (c *RemoteWriteConfig) Validate(nameValidationScheme model.ValidationScheme) error {
+	for _, rc := range c.WriteRelabelConfigs {
+		if err := rc.Validate(nameValidationScheme); err != nil {
+			return err
+		}
+	}
+
+	return nil
 }
 
 // validateAuthConfigs validates that at most one of basic_auth, authorization, oauth2, sigv4, azuread or google_iam must be configured.
@@ -1441,6 +1633,29 @@ type QueueConfig struct {
 	SampleAgeLimit model.Duration `yaml:"sample_age_limit,omitempty"`
 }
 
+// Validate checks QueueConfig fields for invalid values.
+func (c *QueueConfig) Validate() error {
+	if c.MaxShards <= 0 {
+		return errors.New("remote write queue max_shards must be positive")
+	}
+	if c.MinShards <= 0 {
+		return errors.New("remote write queue min_shards must be positive")
+	}
+	if c.MinShards > c.MaxShards {
+		return errors.New("remote write queue min_shards must not be greater than max_shards")
+	}
+	if c.MaxSamplesPerSend <= 0 {
+		return errors.New("remote write queue max_samples_per_send must be positive")
+	}
+	if c.Capacity <= 0 {
+		return errors.New("remote write queue capacity must be positive")
+	}
+	if c.MaxBackoff < c.MinBackoff {
+		return errors.New("remote write queue max_backoff must not be less than min_backoff")
+	}
+	return nil
+}
+
 // MetadataConfig is the configuration for sending metadata to remote
 // storage.
 type MetadataConfig struct {
@@ -1485,7 +1700,7 @@ func (c *RemoteReadConfig) SetDirectory(dir string) {
 }
 
 // UnmarshalYAML implements the yaml.Unmarshaler interface.
-func (c *RemoteReadConfig) UnmarshalYAML(unmarshal func(interface{}) error) error {
+func (c *RemoteReadConfig) UnmarshalYAML(unmarshal func(any) error) error {
 	*c = DefaultRemoteReadConfig
 	type plain RemoteReadConfig
 	if err := unmarshal((*plain)(c)); err != nil {
@@ -1531,86 +1746,29 @@ func getGoGC() int {
 	return DefaultGoGCPercentage
 }
 
-type translationStrategyOption string
-
-var (
-	// NoUTF8EscapingWithSuffixes will accept metric/label names as they are. Unit
-	// and type suffixes may be added to metric names, according to certain rules.
-	NoUTF8EscapingWithSuffixes translationStrategyOption = "NoUTF8EscapingWithSuffixes"
-	// UnderscoreEscapingWithSuffixes is the default option for translating OTLP
-	// to Prometheus. This option will translate metric name characters that are
-	// not alphanumerics/underscores/colons to underscores, and label name
-	// characters that are not alphanumerics/underscores to underscores. Unit and
-	// type suffixes may be appended to metric names, according to certain rules.
-	UnderscoreEscapingWithSuffixes translationStrategyOption = "UnderscoreEscapingWithSuffixes"
-	// UnderscoreEscapingWithoutSuffixes translates metric name characters that
-	// are not alphanumerics/underscores/colons to underscores, and label name
-	// characters that are not alphanumerics/underscores to underscores, but
-	// unlike UnderscoreEscapingWithSuffixes it does not append any suffixes to
-	// the names.
-	UnderscoreEscapingWithoutSuffixes translationStrategyOption = "UnderscoreEscapingWithoutSuffixes"
-	// NoTranslation (EXPERIMENTAL): disables all translation of incoming metric
-	// and label names. This offers a way for the OTLP users to use native metric
-	// names, reducing confusion.
-	//
-	// WARNING: This setting has significant known risks and limitations (see
-	// https://prometheus.io/docs/practices/naming/  for details): * Impaired UX
-	// when using PromQL in plain YAML (e.g. alerts, rules, dashboard, autoscaling
-	// configuration). * Series collisions which in the best case may result in
-	// OOO errors, in the worst case a silently malformed time series. For
-	// instance, you may end up in situation of ingesting `foo.bar` series with
-	// unit `seconds` and a separate series `foo.bar` with unit `milliseconds`.
-	//
-	// As a result, this setting is experimental and currently, should not be used
-	// in production systems.
-	//
-	// TODO(ArthurSens): Mention `type-and-unit-labels` feature
-	// (https://github.com/prometheus/proposals/pull/39) once released, as
-	// potential mitigation of the above risks.
-	NoTranslation translationStrategyOption = "NoTranslation"
-)
-
-// ShouldEscape returns true if the translation strategy requires that metric
-// names be escaped.
-func (o translationStrategyOption) ShouldEscape() bool {
-	switch o {
-	case UnderscoreEscapingWithSuffixes, UnderscoreEscapingWithoutSuffixes:
-		return true
-	case NoTranslation, NoUTF8EscapingWithSuffixes:
-		return false
-	default:
-		return false
-	}
-}
-
-// ShouldAddSuffixes returns a bool deciding whether the given translation
-// strategy should have suffixes added.
-func (o translationStrategyOption) ShouldAddSuffixes() bool {
-	switch o {
-	case UnderscoreEscapingWithSuffixes, NoUTF8EscapingWithSuffixes:
-		return true
-	case UnderscoreEscapingWithoutSuffixes, NoTranslation:
-		return false
-	default:
-		return false
-	}
-}
-
 // OTLPConfig is the configuration for writing to the OTLP endpoint.
 type OTLPConfig struct {
-	PromoteAllResourceAttributes      bool                      `yaml:"promote_all_resource_attributes,omitempty"`
-	PromoteResourceAttributes         []string                  `yaml:"promote_resource_attributes,omitempty"`
-	IgnoreResourceAttributes          []string                  `yaml:"ignore_resource_attributes,omitempty"`
-	TranslationStrategy               translationStrategyOption `yaml:"translation_strategy,omitempty"`
-	KeepIdentifyingResourceAttributes bool                      `yaml:"keep_identifying_resource_attributes,omitempty"`
-	ConvertHistogramsToNHCB           bool                      `yaml:"convert_histograms_to_nhcb,omitempty"`
+	PromoteAllResourceAttributes      bool                                     `yaml:"promote_all_resource_attributes,omitempty"`
+	PromoteResourceAttributes         []string                                 `yaml:"promote_resource_attributes,omitempty"`
+	IgnoreResourceAttributes          []string                                 `yaml:"ignore_resource_attributes,omitempty"`
+	TranslationStrategy               otlptranslator.TranslationStrategyOption `yaml:"translation_strategy,omitempty"`
+	KeepIdentifyingResourceAttributes bool                                     `yaml:"keep_identifying_resource_attributes,omitempty"`
+	ConvertHistogramsToNHCB           bool                                     `yaml:"convert_histograms_to_nhcb,omitempty"`
 	// PromoteScopeMetadata controls whether to promote OTel scope metadata (i.e. name, version, schema URL, and attributes) to metric labels.
 	// As per OTel spec, the aforementioned scope metadata should be identifying, i.e. made into metric labels.
 	PromoteScopeMetadata bool `yaml:"promote_scope_metadata,omitempty"`
+	// LabelNameUnderscoreSanitization controls whether to enable prepending of 'key_' to labels
+	// starting with '_'. Reserved labels starting with `__` are not modified.
+	// This is only relevant when AllowUTF8 is false (i.e., when using underscore escaping).
+	LabelNameUnderscoreSanitization bool `yaml:"label_name_underscore_sanitization,omitempty"`
+	// LabelNamePreserveMultipleUnderscores enables preserving of multiple consecutive underscores
+	// in label names when AllowUTF8 is false. When false, multiple consecutive underscores are
+	// collapsed to a single underscore during label name sanitization.
+	LabelNamePreserveMultipleUnderscores bool `yaml:"label_name_preserve_multiple_underscores,omitempty"`
 }
 
 // UnmarshalYAML implements the yaml.Unmarshaler interface.
-func (c *OTLPConfig) UnmarshalYAML(unmarshal func(interface{}) error) error {
+func (c *OTLPConfig) UnmarshalYAML(unmarshal func(any) error) error {
 	*c = DefaultOTLPConfig
 	type plain OTLPConfig
 	if err := unmarshal((*plain)(c)); err != nil {

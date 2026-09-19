@@ -7,28 +7,26 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/dataset"
-	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/datasetmd"
-	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/indexpointersmd"
 )
 
 func TestDecodeRow(t *testing.T) {
 	tests := []struct {
 		name     string
-		columns  []*indexpointersmd.ColumnDesc
+		columns  []*Column
 		row      dataset.Row
 		expected IndexPointer
 		wantErr  bool
 	}{
 		{
 			name: "all fields present",
-			columns: []*indexpointersmd.ColumnDesc{
-				{Type: indexpointersmd.COLUMN_TYPE_PATH, Info: &datasetmd.ColumnInfo{Name: "path"}},
-				{Type: indexpointersmd.COLUMN_TYPE_MIN_TIMESTAMP, Info: &datasetmd.ColumnInfo{Name: "min_timestamp"}},
-				{Type: indexpointersmd.COLUMN_TYPE_MAX_TIMESTAMP, Info: &datasetmd.ColumnInfo{Name: "max_timestamp"}},
+			columns: []*Column{
+				{Name: "path", Type: ColumnTypePath},
+				{Name: "min_timestamp", Type: ColumnTypeMinTimestamp},
+				{Name: "max_timestamp", Type: ColumnTypeMaxTimestamp},
 			},
 			row: dataset.Row{
 				Values: []dataset.Value{
-					dataset.ByteArrayValue([]byte("test-path")),
+					dataset.BinaryValue([]byte("test-path")),
 					dataset.Int64Value(1234567890000000000),
 					dataset.Int64Value(1234567890000000000),
 				},
@@ -41,14 +39,14 @@ func TestDecodeRow(t *testing.T) {
 		},
 		{
 			name: "missing path value",
-			columns: []*indexpointersmd.ColumnDesc{
-				{Type: indexpointersmd.COLUMN_TYPE_PATH, Info: &datasetmd.ColumnInfo{Name: "path"}},
-				{Type: indexpointersmd.COLUMN_TYPE_MIN_TIMESTAMP, Info: &datasetmd.ColumnInfo{Name: "min_timestamp"}},
-				{Type: indexpointersmd.COLUMN_TYPE_MAX_TIMESTAMP, Info: &datasetmd.ColumnInfo{Name: "max_timestamp"}},
+			columns: []*Column{
+				{Name: "path", Type: ColumnTypePath},
+				{Name: "min_timestamp", Type: ColumnTypeMinTimestamp},
+				{Name: "max_timestamp", Type: ColumnTypeMaxTimestamp},
 			},
 			row: dataset.Row{
 				Values: []dataset.Value{
-					dataset.ByteArrayValue([]byte("")),
+					dataset.BinaryValue([]byte("")),
 					dataset.Int64Value(1234567890000000000),
 					dataset.Int64Value(1234567890000000000),
 				},
@@ -57,14 +55,14 @@ func TestDecodeRow(t *testing.T) {
 		},
 		{
 			name: "missing min_timestamp value",
-			columns: []*indexpointersmd.ColumnDesc{
-				{Type: indexpointersmd.COLUMN_TYPE_PATH, Info: &datasetmd.ColumnInfo{Name: "path"}},
-				{Type: indexpointersmd.COLUMN_TYPE_MIN_TIMESTAMP, Info: &datasetmd.ColumnInfo{Name: "min_timestamp"}},
-				{Type: indexpointersmd.COLUMN_TYPE_MAX_TIMESTAMP, Info: &datasetmd.ColumnInfo{Name: "max_timestamp"}},
+			columns: []*Column{
+				{Name: "path", Type: ColumnTypePath},
+				{Name: "min_timestamp", Type: ColumnTypeMinTimestamp},
+				{Name: "max_timestamp", Type: ColumnTypeMaxTimestamp},
 			},
 			row: dataset.Row{
 				Values: []dataset.Value{
-					dataset.ByteArrayValue([]byte("test-path")),
+					dataset.BinaryValue([]byte("test-path")),
 					dataset.Int64Value(0),
 					dataset.Int64Value(1234567890000000000),
 				},
@@ -73,14 +71,14 @@ func TestDecodeRow(t *testing.T) {
 		},
 		{
 			name: "missing max_timestamp value",
-			columns: []*indexpointersmd.ColumnDesc{
-				{Type: indexpointersmd.COLUMN_TYPE_PATH, Info: &datasetmd.ColumnInfo{Name: "path"}},
-				{Type: indexpointersmd.COLUMN_TYPE_MIN_TIMESTAMP, Info: &datasetmd.ColumnInfo{Name: "min_timestamp"}},
-				{Type: indexpointersmd.COLUMN_TYPE_MAX_TIMESTAMP, Info: &datasetmd.ColumnInfo{Name: "max_timestamp"}},
+			columns: []*Column{
+				{Name: "path", Type: ColumnTypePath},
+				{Name: "min_timestamp", Type: ColumnTypeMinTimestamp},
+				{Name: "max_timestamp", Type: ColumnTypeMaxTimestamp},
 			},
 			row: dataset.Row{
 				Values: []dataset.Value{
-					dataset.ByteArrayValue([]byte("test-path")),
+					dataset.BinaryValue([]byte("test-path")),
 					dataset.Int64Value(1234567890000000000),
 					dataset.Int64Value(0),
 				},
@@ -89,10 +87,10 @@ func TestDecodeRow(t *testing.T) {
 		},
 		{
 			name: "invalid path type",
-			columns: []*indexpointersmd.ColumnDesc{
-				{Type: indexpointersmd.COLUMN_TYPE_PATH, Info: &datasetmd.ColumnInfo{Name: "path"}},
-				{Type: indexpointersmd.COLUMN_TYPE_MIN_TIMESTAMP, Info: &datasetmd.ColumnInfo{Name: "min_timestamp"}},
-				{Type: indexpointersmd.COLUMN_TYPE_MAX_TIMESTAMP, Info: &datasetmd.ColumnInfo{Name: "max_timestamp"}},
+			columns: []*Column{
+				{Name: "path", Type: ColumnTypePath},
+				{Name: "min_timestamp", Type: ColumnTypeMinTimestamp},
+				{Name: "max_timestamp", Type: ColumnTypeMaxTimestamp},
 			},
 			row: dataset.Row{
 				Values: []dataset.Value{
@@ -105,15 +103,15 @@ func TestDecodeRow(t *testing.T) {
 		},
 		{
 			name: "invalid min_timestamp type",
-			columns: []*indexpointersmd.ColumnDesc{
-				{Type: indexpointersmd.COLUMN_TYPE_PATH, Info: &datasetmd.ColumnInfo{Name: "path"}},
-				{Type: indexpointersmd.COLUMN_TYPE_MIN_TIMESTAMP, Info: &datasetmd.ColumnInfo{Name: "min_timestamp"}},
-				{Type: indexpointersmd.COLUMN_TYPE_MAX_TIMESTAMP, Info: &datasetmd.ColumnInfo{Name: "max_timestamp"}},
+			columns: []*Column{
+				{Name: "path", Type: ColumnTypePath},
+				{Name: "min_timestamp", Type: ColumnTypeMinTimestamp},
+				{Name: "max_timestamp", Type: ColumnTypeMaxTimestamp},
 			},
 			row: dataset.Row{
 				Values: []dataset.Value{
-					dataset.ByteArrayValue([]byte("test-path")),
-					dataset.ByteArrayValue([]byte("invalid")),
+					dataset.BinaryValue([]byte("test-path")),
+					dataset.BinaryValue([]byte("invalid")),
 					dataset.Int64Value(1234567890000000000),
 				},
 			},
@@ -121,16 +119,16 @@ func TestDecodeRow(t *testing.T) {
 		},
 		{
 			name: "invalid max_timestamp type",
-			columns: []*indexpointersmd.ColumnDesc{
-				{Type: indexpointersmd.COLUMN_TYPE_PATH, Info: &datasetmd.ColumnInfo{Name: "path"}},
-				{Type: indexpointersmd.COLUMN_TYPE_MIN_TIMESTAMP, Info: &datasetmd.ColumnInfo{Name: "min_timestamp"}},
-				{Type: indexpointersmd.COLUMN_TYPE_MAX_TIMESTAMP, Info: &datasetmd.ColumnInfo{Name: "max_timestamp"}},
+			columns: []*Column{
+				{Name: "path", Type: ColumnTypePath},
+				{Name: "min_timestamp", Type: ColumnTypeMinTimestamp},
+				{Name: "max_timestamp", Type: ColumnTypeMaxTimestamp},
 			},
 			row: dataset.Row{
 				Values: []dataset.Value{
-					dataset.ByteArrayValue([]byte("test-path")),
+					dataset.BinaryValue([]byte("test-path")),
 					dataset.Int64Value(1234567890000000000),
-					dataset.ByteArrayValue([]byte("invalid")),
+					dataset.BinaryValue([]byte("invalid")),
 				},
 			},
 			wantErr: true,
@@ -148,4 +146,55 @@ func TestDecodeRow(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestDecodeRow_NoLeakWhenSizeColumnsAbsent(t *testing.T) {
+	// Test that decoding a row without size columns does not leak previous values.
+	// Regression test for stale-row leak when RowReader reuses buffer across sections.
+
+	// First decode: row WITH size columns (FileSize and UncompressedLogsSize present)
+	firstRow := dataset.Row{
+		Values: []dataset.Value{
+			dataset.BinaryValue([]byte("path1")),
+			dataset.Int64Value(1000),
+			dataset.Int64Value(2000),
+			dataset.Int64Value(5000),  // FileSize
+			dataset.Int64Value(10000), // UncompressedLogsSize
+		},
+	}
+	firstColumns := []*Column{
+		{Name: "path", Type: ColumnTypePath},
+		{Name: "min_timestamp", Type: ColumnTypeMinTimestamp},
+		{Name: "max_timestamp", Type: ColumnTypeMaxTimestamp},
+		{Name: "file_size", Type: ColumnTypeFileSize},
+		{Name: "uncompressed_logs_size", Type: ColumnTypeUncompressedLogsSize},
+	}
+
+	pointer := IndexPointer{}
+	err := decodeRow(firstColumns, firstRow, &pointer, nil)
+	require.NoError(t, err)
+	require.Equal(t, uint64(5000), pointer.FileSize)
+	require.Equal(t, uint64(10000), pointer.UncompressedLogsSize)
+
+	// Second decode: row WITHOUT size columns (only path/min/max, legacy section)
+	secondRow := dataset.Row{
+		Values: []dataset.Value{
+			dataset.BinaryValue([]byte("path2")),
+			dataset.Int64Value(3000),
+			dataset.Int64Value(4000),
+		},
+	}
+	secondColumns := []*Column{
+		{Name: "path", Type: ColumnTypePath},
+		{Name: "min_timestamp", Type: ColumnTypeMinTimestamp},
+		{Name: "max_timestamp", Type: ColumnTypeMaxTimestamp},
+	}
+
+	// Reuse same pointer buffer (as RowReader.Read does across sections)
+	err = decodeRow(secondColumns, secondRow, &pointer, nil)
+	require.NoError(t, err)
+
+	// MUST be zero; without fix, would retain first row's values
+	require.Equal(t, uint64(0), pointer.FileSize, "FileSize should be reset to 0")
+	require.Equal(t, uint64(0), pointer.UncompressedLogsSize, "UncompressedLogsSize should be reset to 0")
 }

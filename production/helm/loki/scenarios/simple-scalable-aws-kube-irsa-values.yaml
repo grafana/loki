@@ -33,10 +33,9 @@ enterprise:
   # -- Grafana Enterprise Logs license
   license:
     contents: "content of licence"
-  tokengen:
-    annotations: {
-      eks.amazonaws.com/role-arn: arn:aws:iam::2222222:role/test-role
-    }
+  # -- Admin token secret for provisioner (must be created externally)
+  adminToken:
+    secret: loki-admin-token
   # -- Configuration for `provisioner` target
   provisioner:
     # -- Additional annotations for the `provisioner` Job

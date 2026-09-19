@@ -33,3 +33,11 @@ func decodeFloat(dst, src []byte)
 
 //go:noescape
 func decodeDouble(dst, src []byte)
+
+func encodeInt32(dst, src []byte) { encodeFloat(dst, src) }
+
+func decodeInt32(dst, src []byte) { decodeFloat(dst, src) }
+
+func encodeInt64(dst, src []byte) { encodeDouble(dst, src) }
+
+func decodeInt64(dst, src []byte) { decodeDouble(dst, src) }

@@ -169,7 +169,7 @@ type XRayConfigMultiError []error
 
 // Error returns a concatenation of all the error messages it wraps.
 func (m XRayConfigMultiError) Error() string {
-	var msgs []string
+	msgs := make([]string, 0, len(m))
 	for _, err := range m {
 		msgs = append(msgs, err.Error())
 	}
@@ -300,7 +300,7 @@ type XRayConfig_SegmentFieldsMultiError []error
 
 // Error returns a concatenation of all the error messages it wraps.
 func (m XRayConfig_SegmentFieldsMultiError) Error() string {
-	var msgs []string
+	msgs := make([]string, 0, len(m))
 	for _, err := range m {
 		msgs = append(msgs, err.Error())
 	}

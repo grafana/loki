@@ -17,6 +17,8 @@
 package arrow
 
 import (
+	"cmp"
+	"errors"
 	"fmt"
 	"strconv"
 	"sync"
@@ -25,7 +27,6 @@ import (
 	"github.com/apache/arrow-go/v18/arrow/decimal"
 	"github.com/apache/arrow-go/v18/arrow/internal/debug"
 	"github.com/apache/arrow-go/v18/internal/json"
-	"golang.org/x/xerrors"
 )
 
 type BooleanType struct{}
@@ -142,11 +143,11 @@ func TimestampFromStringInLocation(val string, unit TimeUnit, loc *time.Location
 	// more than nanosecond precision is provided
 	switch {
 	case unit == Second && lenWithoutZone > 19:
-		return 0, zoneFmt != "", xerrors.New("provided more than second precision for timestamp[s]")
+		return 0, zoneFmt != "", errors.New("provided more than second precision for timestamp[s]")
 	case unit == Millisecond && lenWithoutZone > 23:
-		return 0, zoneFmt != "", xerrors.New("provided more than millisecond precision for timestamp[ms]")
+		return 0, zoneFmt != "", errors.New("provided more than millisecond precision for timestamp[ms]")
 	case unit == Microsecond && lenWithoutZone > 26:
-		return 0, zoneFmt != "", xerrors.New("provided more than microsecond precision for timestamp[us]")
+		return 0, zoneFmt != "", errors.New("provided more than microsecond precision for timestamp[us]")
 	}
 
 	format += zoneFmt
@@ -219,14 +220,14 @@ func Time32FromString(val string, unit TimeUnit) (Time32, error) {
 	switch unit {
 	case Second:
 		if len(val) > 8 {
-			return 0, xerrors.New("cannot convert larger than second precision to time32s")
+			return 0, errors.New("cannot convert larger than second precision to time32s")
 		}
 	case Millisecond:
 		if len(val) > 12 {
-			return 0, xerrors.New("cannot convert larger than millisecond precision to time32ms")
+			return 0, errors.New("cannot convert larger than millisecond precision to time32ms")
 		}
 	case Microsecond, Nanosecond:
-		return 0, xerrors.New("time32 can only be seconds or milliseconds")
+		return 0, errors.New("time32 can only be seconds or milliseconds")
 	}
 
 	var (
@@ -274,10 +275,10 @@ func Time64FromString(val string, unit TimeUnit) (Time64, error) {
 	switch unit {
 	case Microsecond:
 		if len(val) > 15 {
-			return 0, xerrors.New("cannot convert larger than microsecond precision to time64us")
+			return 0, errors.New("cannot convert larger than microsecond precision to time64us")
 		}
 	case Second, Millisecond:
-		return 0, xerrors.New("time64 should only be microseconds or nanoseconds")
+		return 0, errors.New("time64 should only be microseconds or nanoseconds")
 	}
 
 	var (
@@ -720,6 +721,14 @@ type DayTimeInterval struct {
 	Milliseconds int32 `json:"milliseconds"`
 }
 
+// Cmp compares (Days, Milliseconds) lexicographically, matching Apache Arrow ordering for this type.
+func (a DayTimeInterval) Cmp(b DayTimeInterval) int {
+	if c := cmp.Compare(a.Days, b.Days); c != 0 {
+		return c
+	}
+	return cmp.Compare(a.Milliseconds, b.Milliseconds)
+}
+
 // DayTimeIntervalType is encoded as a pair of 32-bit signed integer,
 // representing a number of days and milliseconds (fraction of day).
 type DayTimeIntervalType struct{}
@@ -742,6 +751,17 @@ type MonthDayNanoInterval struct {
 	Months      int32 `json:"months"`
 	Days        int32 `json:"days"`
 	Nanoseconds int64 `json:"nanoseconds"`
+}
+
+// Cmp compares (Months, Days, Nanoseconds) lexicographically, matching Apache Arrow ordering for this type.
+func (a MonthDayNanoInterval) Cmp(b MonthDayNanoInterval) int {
+	if c := cmp.Compare(a.Months, b.Months); c != 0 {
+		return c
+	}
+	if c := cmp.Compare(a.Days, b.Days); c != 0 {
+		return c
+	}
+	return cmp.Compare(a.Nanoseconds, b.Nanoseconds)
 }
 
 // MonthDayNanoIntervalType is encoded as two signed 32-bit integers representing

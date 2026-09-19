@@ -104,15 +104,18 @@ func (b *Builder) StartObject(numfields int) {
 // logically-equal vtables will be deduplicated.
 //
 // A vtable has the following format:
-//   <VOffsetT: size of the vtable in bytes, including this value>
-//   <VOffsetT: size of the object in bytes, including the vtable offset>
-//   <VOffsetT: offset for a field> * N, where N is the number of fields in
-//	        the schema for this type. Includes deprecated fields.
+//
+//	  <VOffsetT: size of the vtable in bytes, including this value>
+//	  <VOffsetT: size of the object in bytes, including the vtable offset>
+//	  <VOffsetT: offset for a field> * N, where N is the number of fields in
+//		        the schema for this type. Includes deprecated fields.
+//
 // Thus, a vtable is made of 2 + N elements, each SizeVOffsetT bytes wide.
 //
 // An object has the following format:
-//   <SOffsetT: offset to this object's vtable (may be negative)>
-//   <byte: data>+
+//
+//	<SOffsetT: offset to this object's vtable (may be negative)>
+//	<byte: data>+
 func (b *Builder) WriteVtable() (n UOffsetT) {
 	// Prepend a zero scalar to the object. Later in this function we'll
 	// write an offset here that points to the object's vtable:
@@ -296,8 +299,9 @@ func (b *Builder) PrependUOffsetT(off UOffsetT) {
 // StartVector initializes bookkeeping for writing a new vector.
 //
 // A vector has the following format:
-//   <UOffsetT: number of elements in this vector>
-//   <T: data>+, where T is the type of elements of this vector.
+//
+//	<UOffsetT: number of elements in this vector>
+//	<T: data>+, where T is the type of elements of this vector.
 func (b *Builder) StartVector(elemSize, numElems, alignment int) UOffsetT {
 	b.assertNotNested()
 	b.nested = true

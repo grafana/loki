@@ -3,6 +3,7 @@ package limits
 import (
 	"context"
 	"fmt"
+	"sync"
 	"time"
 
 	"github.com/coder/quartz"
@@ -45,32 +46,54 @@ func newPartitionLifecycler(
 
 // Assign implements kgo.OnPartitionsAssigned.
 func (l *partitionLifecycler) Assign(ctx context.Context, _ *kgo.Client, topics map[string][]int32) {
-	// We expect the client to just consume one topic.
-	// TODO(grobinson): Figure out what to do if this is not the case.
+	if len(topics) > 1 {
+		panic(fmt.Sprintf("expected one topic, received %d topics", len(topics)))
+	}
+	// We expect just one topic, and panic if topics contains more than one
+	// topic. The range over topics just makes it easier to access the first
+	// value in a map containing a single key.
+	wg := sync.WaitGroup{}
 	for _, partitions := range topics {
 		l.partitionManager.Assign(partitions)
 		for _, partition := range partitions {
-			if err := l.determineStateFromOffsets(ctx, partition); err != nil {
-				level.Error(l.logger).Log(
-					"msg", "failed to check offsets, partition is ready",
-					"partition", partition,
-					"err", err,
-				)
-				l.partitionManager.SetReady(partition)
-			}
+			wg.Add(1)
+			go func(partition int32) {
+				defer wg.Done()
+				if err := l.determineStateFromOffsets(ctx, partition); err != nil {
+					level.Error(l.logger).Log(
+						"msg", "failed to check offsets, partition is ready",
+						"partition", partition,
+						"err", err,
+					)
+					l.partitionManager.SetReady(partition)
+				}
+			}(partition)
 		}
-		return
 	}
+	wg.Wait()
 }
 
 // Revoke implements kgo.OnPartitionsRevoked.
-func (l *partitionLifecycler) Revoke(_ context.Context, _ *kgo.Client, topics map[string][]int32) {
-	// We expect the client to just consume one topic.
-	// TODO(grobinson): Figure out what to do if this is not the case.
+func (l *partitionLifecycler) Revoke(ctx context.Context, client *kgo.Client, topics map[string][]int32) {
+	l.revoke(ctx, client, topics)
+}
+
+// Lost implements kgo.OnPartitionsLost.
+func (l *partitionLifecycler) Lost(ctx context.Context, client *kgo.Client, topics map[string][]int32) {
+	l.revoke(ctx, client, topics)
+}
+
+// Revokes all partitions in topics. It expects just one topic and panics if
+// topics contains more than one topic.
+func (l *partitionLifecycler) revoke(_ context.Context, _ *kgo.Client, topics map[string][]int32) {
+	if len(topics) > 1 {
+		panic(fmt.Sprintf("expected one topic, received %d topics", len(topics)))
+	}
+	// The range over topics just makes it easier to access the first value
+	// in a map containing a single key.
 	for _, partitions := range topics {
 		l.partitionManager.Revoke(partitions)
 		l.usage.EvictPartitions(partitions)
-		return
 	}
 }
 
@@ -78,7 +101,7 @@ func (l *partitionLifecycler) determineStateFromOffsets(ctx context.Context, par
 	logger := log.With(l.logger, "partition", partition)
 	// Get the start offset for the partition. This can be greater than zero
 	// if a retention period has deleted old records.
-	startOffset, err := l.offsetManager.FetchPartitionOffset(
+	startOffset, err := l.offsetManager.PartitionOffset(
 		ctx, partition, kafka_partition.KafkaStartOffset)
 	if err != nil {
 		return fmt.Errorf("failed to get last produced offset: %w", err)
@@ -87,7 +110,7 @@ func (l *partitionLifecycler) determineStateFromOffsets(ctx context.Context, par
 	// record. For example, if a partition contains 1 record, then the last
 	// produced offset is 1. However, the offset of the last produced record
 	// is 0, as offsets start from 0.
-	lastProducedOffset, err := l.offsetManager.FetchPartitionOffset(
+	lastProducedOffset, err := l.offsetManager.PartitionOffset(
 		ctx, partition, kafka_partition.KafkaEndOffset)
 	if err != nil {
 		return fmt.Errorf("failed to get last produced offset: %w", err)

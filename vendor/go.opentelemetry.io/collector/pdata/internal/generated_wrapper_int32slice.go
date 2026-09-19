@@ -6,61 +6,28 @@
 
 package internal
 
-import (
-	"go.opentelemetry.io/collector/pdata/internal/json"
-)
-
-type Int32Slice struct {
+type Int32SliceWrapper struct {
 	orig  *[]int32
 	state *State
 }
 
-func GetOrigInt32Slice(ms Int32Slice) *[]int32 {
+func GetInt32SliceOrig(ms Int32SliceWrapper) *[]int32 {
 	return ms.orig
 }
 
-func GetInt32SliceState(ms Int32Slice) *State {
+func GetInt32SliceState(ms Int32SliceWrapper) *State {
 	return ms.state
 }
 
-func NewInt32Slice(orig *[]int32, state *State) Int32Slice {
-	return Int32Slice{orig: orig, state: state}
+func NewInt32SliceWrapper(orig *[]int32, state *State) Int32SliceWrapper {
+	return Int32SliceWrapper{orig: orig, state: state}
 }
 
-func CopyOrigInt32Slice(dst, src []int32) []int32 {
-	dst = dst[:0]
-	return append(dst, src...)
+func GenTestInt32SliceWrapper() Int32SliceWrapper {
+	orig := []int32{1, 2, 3}
+	return NewInt32SliceWrapper(&orig, NewState())
 }
 
-func FillTestInt32Slice(ms Int32Slice) {
-	*ms.orig = []int32{1, 2, 3}
-}
-
-func GenerateTestInt32Slice() Int32Slice {
-	orig := []int32(nil)
-	state := StateMutable
-	ms := NewInt32Slice(&orig, &state)
-	FillTestInt32Slice(ms)
-	return ms
-}
-
-// MarshalJSONStreamInt32Slice marshals all properties from the current struct to the destination stream.
-func MarshalJSONStreamInt32Slice(ms Int32Slice, dest *json.Stream) {
-	dest.WriteArrayStart()
-	if len(*ms.orig) > 0 {
-		dest.WriteInt32((*ms.orig)[0])
-	}
-	for i := 1; i < len((*ms.orig)); i++ {
-		dest.WriteMore()
-		dest.WriteInt32((*ms.orig)[i])
-	}
-	dest.WriteArrayEnd()
-}
-
-// UnmarshalJSONIterInt32Slice unmarshals all properties from the current struct from the source iterator.
-func UnmarshalJSONIterInt32Slice(ms Int32Slice, iter *json.Iterator) {
-	iter.ReadArrayCB(func(iter *json.Iterator) bool {
-		*ms.orig = append(*ms.orig, iter.ReadInt32())
-		return true
-	})
+func GenTestInt32Slice() []int32 {
+	return []int32{1, 2, 3}
 }

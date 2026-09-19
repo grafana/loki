@@ -2,6 +2,7 @@ package log
 
 import (
 	"bytes"
+	"encoding/base64"
 	"fmt"
 	"net/url"
 	"strconv"
@@ -70,12 +71,12 @@ var (
 		"unixToTime":       unixToTime,
 		"alignLeft":        alignLeft,
 		"alignRight":       alignRight,
+		"b64dec":           base64Decode,
 	}
 
 	// sprig template functions
 	templateFunctions = []string{
 		"b64enc",
-		"b64dec",
 		"lower",
 		"upper",
 		"title",
@@ -119,7 +120,7 @@ var (
 	}
 )
 
-func addLineAndTimestampFunctions(currLine func() string, currTimestamp func() int64) map[string]interface{} {
+func AddLineAndTimestampFunctions(currLine func() string, currTimestamp func() int64) map[string]interface{} {
 	functions := make(map[string]interface{}, len(functionMap)+2)
 	for k, v := range functionMap {
 		functions[k] = v
@@ -179,6 +180,19 @@ func toDateInZone(fmt, zone, str string) time.Time {
 	return t
 }
 
+func base64Decode(v string) string {
+	if remainder := len(v) % 4; remainder != 0 && remainder != 1 {
+		v += strings.Repeat("=", 4-remainder)
+	}
+
+	data, err := base64.StdEncoding.DecodeString(v)
+	if err != nil {
+		return err.Error()
+	}
+
+	return string(data)
+}
+
 func init() {
 	sprigFuncMap := sprig.GenericFuncMap()
 	for _, v := range templateFunctions {
@@ -203,7 +217,7 @@ func NewFormatter(tmpl string) (*LineFormatter, error) {
 		buf: bytes.NewBuffer(make([]byte, 4096)),
 	}
 
-	functions := addLineAndTimestampFunctions(func() string {
+	functions := AddLineAndTimestampFunctions(func() string {
 		return unsafeGetString(lf.currentLine)
 	}, func() int64 {
 		return lf.currentTs
@@ -249,12 +263,19 @@ func (lf *LineFormatter) Process(ts int64, line []byte, lbs *LabelsBuilder) ([]b
 			smp.Put(m)
 		}
 	}()
-	if err := lf.Template.Execute(lf.buf, m); err != nil {
+	if err := lf.Execute(lf.buf, m); err != nil {
 		lbs.SetErr(errTemplateFormat)
 		lbs.SetErrorDetails(err.Error())
 		return line, true
 	}
 	return lf.buf.Bytes(), true
+}
+
+// Hints implements Stage.
+func (lf *LineFormatter) Hints() StageHints {
+	// line_format rewrites the line, but it sets __error__ when the template fails, which changes the
+	// output labels.
+	return StageHints{CanModifyLabels: true}
 }
 
 func (lf *LineFormatter) RequiredLabelNames() []string {
@@ -367,7 +388,7 @@ func NewLabelsFormatter(fmts []LabelFmt) (*LabelsFormatter, error) {
 		buf: bytes.NewBuffer(make([]byte, 1024)),
 	}
 
-	functions := addLineAndTimestampFunctions(func() string {
+	functions := AddLineAndTimestampFunctions(func() string {
 		return unsafeGetString(lf.currentLine)
 	}, func() int64 {
 		return lf.currentTs
@@ -431,6 +452,12 @@ func (lf *LabelsFormatter) Process(ts int64, l []byte, lbs *LabelsBuilder) ([]by
 		lbs.Set(ParsedLabel, f.Name, lf.buf.String())
 	}
 	return l, true
+}
+
+// Hints implements Stage.
+func (lf *LabelsFormatter) Hints() StageHints {
+	// label_format renames or sets labels.
+	return StageHints{CanModifyLabels: true}
 }
 
 func (lf *LabelsFormatter) RequiredLabelNames() []string {
@@ -497,6 +524,13 @@ func NewDecolorizer() (*Decolorizer, error) {
 func (Decolorizer) Process(_ int64, line []byte, _ *LabelsBuilder) ([]byte, bool) {
 	return ansiRegex.ReplaceAll(line, []byte{}), true
 }
+
+// Hints implements Stage.
+func (Decolorizer) Hints() StageHints {
+	// It strips ANSI colors from the line, never touching labels.
+	return StageHints{CanModifyLabels: false}
+}
+
 func (Decolorizer) RequiredLabelNames() []string { return []string{} }
 
 // substring creates a substring of the given string.

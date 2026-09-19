@@ -145,6 +145,13 @@ func ResultToResponse(result logqlmodel.Result, params logql.Params) (queryrange
 			Warnings:   result.Warnings,
 			Statistics: result.Statistics,
 		}, err
+	case logql.CountDistinctSketchMatrix:
+		r, err := data.ToProto()
+		return &CountDistinctSketchResponse{
+			Response:   r,
+			Warnings:   result.Warnings,
+			Statistics: result.Statistics,
+		}, err
 	}
 
 	return nil, fmt.Errorf("unsupported data type: %T", result.Data)
@@ -222,6 +229,17 @@ func ResponseToResult(resp queryrangebase.Response) (logqlmodel.Result, error) {
 			Warnings:   r.Warnings,
 			Statistics: r.Statistics,
 		}, nil
+	case *CountDistinctSketchResponse:
+		matrix, err := logql.CountDistinctSketchMatrixFromProto(r.Response)
+		if err != nil {
+			return logqlmodel.Result{}, fmt.Errorf("cannot decode count distinct matrix: %w", err)
+		}
+		return logqlmodel.Result{
+			Data:       matrix,
+			Headers:    resp.GetHeaders(),
+			Warnings:   r.Warnings,
+			Statistics: r.Statistics,
+		}, nil
 	default:
 		return logqlmodel.Result{}, fmt.Errorf("cannot decode (%T)", resp)
 	}
@@ -259,6 +277,8 @@ func QueryResponseUnwrap(res *QueryResponse) (queryrangebase.Response, error) {
 		return concrete.DetectedFields, nil
 	case *QueryResponse_CountMinSketches:
 		return concrete.CountMinSketches, nil
+	case *QueryResponse_CountDistinctSketches:
+		return concrete.CountDistinctSketches, nil
 	default:
 		return nil, fmt.Errorf("unsupported QueryResponse response type, got (%T)", res.Response)
 	}
@@ -302,6 +322,8 @@ func QueryResponseWrap(res queryrangebase.Response) (*QueryResponse, error) {
 		p.Response = &QueryResponse_DetectedFields{response}
 	case *CountMinSketchResponse:
 		p.Response = &QueryResponse_CountMinSketches{response}
+	case *CountDistinctSketchResponse:
+		p.Response = &QueryResponse_CountDistinctSketches{response}
 	default:
 		return nil, fmt.Errorf("invalid response format, got (%T)", res)
 	}
@@ -336,13 +358,27 @@ func (Codec) QueryRequestUnwrap(ctx context.Context, req *QueryRequest) (queryra
 		ctx = httpreq.InjectHeader(ctx, httpreq.LokiDisablePipelineWrappersHeader, disableWrappers)
 	}
 
+	// Add response encoding flags
+	if encodingFlags, ok := req.Metadata[httpreq.LokiEncodingFlagsHeader]; ok {
+		ctx = httpreq.InjectHeader(ctx, httpreq.LokiEncodingFlagsHeader, encodingFlags)
+	}
+
 	// Add limits
 	if encodedLimits, ok := req.Metadata[querylimits.HTTPHeaderQueryLimitsKey]; ok {
 		limits, err := querylimits.UnmarshalQueryLimits([]byte(encodedLimits))
 		if err != nil {
 			return nil, ctx, err
 		}
-		ctx = querylimits.InjectQueryLimitsContext(ctx, *limits)
+		ctx = querylimits.InjectQueryLimitsIntoContext(ctx, *limits)
+	}
+
+	// Add limits context
+	if encodedLimitsCtx, ok := req.Metadata[querylimits.HTTPHeaderQueryLimitsContextKey]; ok {
+		limitsCtx, err := querylimits.UnmarshalQueryLimitsContext([]byte(encodedLimitsCtx))
+		if err != nil {
+			return nil, ctx, err
+		}
+		ctx = querylimits.InjectQueryLimitsContextIntoContext(ctx, *limitsCtx)
 	}
 
 	// Add query time
@@ -453,14 +489,30 @@ func (Codec) QueryRequestWrap(ctx context.Context, r queryrangebase.Request) (*Q
 		result.Metadata[httpreq.LokiDisablePipelineWrappersHeader] = disableWrappers
 	}
 
+	// Keep response encoding flags
+	encodingFlags := httpreq.ExtractHeader(ctx, httpreq.LokiEncodingFlagsHeader)
+	if encodingFlags != "" {
+		result.Metadata[httpreq.LokiEncodingFlagsHeader] = encodingFlags
+	}
+
 	// Add limits
-	limits := querylimits.ExtractQueryLimitsContext(ctx)
+	limits := querylimits.ExtractQueryLimitsFromContext(ctx)
 	if limits != nil {
 		encodedLimits, err := querylimits.MarshalQueryLimits(limits)
 		if err != nil {
 			return nil, err
 		}
 		result.Metadata[querylimits.HTTPHeaderQueryLimitsKey] = string(encodedLimits)
+	}
+
+	// Add limits context
+	limitsCtx := querylimits.ExtractQueryLimitsContextFromContext(ctx)
+	if limitsCtx != nil {
+		encodedLimitsCtx, err := querylimits.MarshalQueryLimitsContext(limitsCtx)
+		if err != nil {
+			return nil, err
+		}
+		result.Metadata[querylimits.HTTPHeaderQueryLimitsContextKey] = string(encodedLimitsCtx)
 	}
 
 	// Add org ID

@@ -10,10 +10,10 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/dataset"
-	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/datasetmd"
-	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/indexpointersmd"
+	datasetmd_v2 "github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/datasetmd"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/streamio"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/util/sliceclear"
+	"github.com/grafana/loki/v3/pkg/dataobj/sections/internal/columnar"
 )
 
 // IndexPointer is a pointer to an index object. It is used to lookup the index object
@@ -21,37 +21,56 @@ import (
 //
 // The path is the data object path, the start and end timestamps are the time range of data stored in the index object.
 type IndexPointer struct {
-	Path    string
-	StartTs time.Time
-	EndTs   time.Time
+	Path                 string
+	StartTs              time.Time
+	EndTs                time.Time
+	FileSize             uint64
+	UncompressedLogsSize uint64
+}
+
+// TenantIndexPointer is meant to collectively hold IndexPointer with the ID of the tenant it belongs to.
+type TenantIndexPointer struct {
+	Tenant string
+	IndexPointer
 }
 
 type Builder struct {
-	metrics  *Metrics
-	pageSize int
+	metrics      *Metrics
+	pageSize     int
+	pageRowCount int
+	tenant       string
 
 	indexPointers []*IndexPointer
 }
 
-func NewBuilder(metrics *Metrics, pageSize int) *Builder {
+func NewBuilder(metrics *Metrics, pageSize, pageRowCount int) *Builder {
 	if metrics == nil {
 		metrics = NewMetrics()
 	}
 	return &Builder{
 		metrics:       metrics,
 		pageSize:      pageSize,
+		pageRowCount:  pageRowCount,
 		indexPointers: make([]*IndexPointer, 0, 1024),
 	}
 }
 
+func (b *Builder) SetTenant(tenant string) {
+	b.tenant = tenant
+}
+
+func (b *Builder) Tenant() string { return b.tenant }
+
 func (b *Builder) Type() dataobj.SectionType { return sectionType }
 
 // Append adds a new index pointer to the builder.
-func (b *Builder) Append(path string, startTs time.Time, endTs time.Time) {
+func (b *Builder) Append(path string, startTs time.Time, endTs time.Time, fileSize, uncompressedLogsSize uint64) {
 	p := &IndexPointer{
-		Path:    path,
-		StartTs: startTs.UTC(),
-		EndTs:   endTs.UTC(),
+		Path:                 path,
+		StartTs:              startTs.UTC(),
+		EndTs:                endTs.UTC(),
+		FileSize:             fileSize,
+		UncompressedLogsSize: uncompressedLogsSize,
 	}
 	b.indexPointers = append(b.indexPointers, p)
 }
@@ -90,8 +109,11 @@ func (b *Builder) EstimatedSize() int {
 	// End timestamp column (int64 with delta encoding)
 	sizeEstimate += len(b.indexPointers) * timestampDeltaSize
 
-	// Column metadata overhead (3 columns)
-	sizeEstimate += 3 * metadataOverhead
+	// File size and uncompressed logs size columns (int64)
+	sizeEstimate += 2 * len(b.indexPointers) * 8
+
+	// Column metadata overhead (5 columns)
+	sizeEstimate += 5 * metadataOverhead
 
 	return sizeEstimate
 }
@@ -105,11 +127,13 @@ func (b *Builder) Flush(w dataobj.SectionWriter) (n int64, err error) {
 
 	b.sortIndexPointers()
 
-	var enc encoder
+	var enc columnar.Encoder
 	defer enc.Reset()
 	if err := b.encodeTo(&enc); err != nil {
 		return 0, fmt.Errorf("building encoder: %w", err)
 	}
+
+	enc.SetTenant(b.tenant)
 
 	n, err = enc.Flush(w)
 	if err == nil {
@@ -132,12 +156,16 @@ func (b *Builder) Reset() {
 	b.metrics.maxTimestamp.Set(0)
 }
 
-func (b *Builder) encodeTo(enc *encoder) error {
+func (b *Builder) encodeTo(enc *columnar.Encoder) error {
 	pathBuilder, err := dataset.NewColumnBuilder("path", dataset.BuilderOptions{
-		PageSizeHint: b.pageSize,
-		Value:        datasetmd.VALUE_TYPE_BYTE_ARRAY,
-		Encoding:     datasetmd.ENCODING_TYPE_PLAIN,
-		Compression:  datasetmd.COMPRESSION_TYPE_ZSTD,
+		PageSizeHint:    b.pageSize,
+		PageMaxRowCount: b.pageRowCount,
+		Type: dataset.ColumnType{
+			Physical: datasetmd_v2.PHYSICAL_TYPE_BINARY,
+			Logical:  ColumnTypePath.String(),
+		},
+		Encoding:    datasetmd_v2.ENCODING_TYPE_PLAIN,
+		Compression: datasetmd_v2.COMPRESSION_TYPE_ZSTD,
 		Statistics: dataset.StatisticsOptions{
 			StoreRangeStats: true,
 		},
@@ -147,10 +175,14 @@ func (b *Builder) encodeTo(enc *encoder) error {
 	}
 
 	minTimestampBuilder, err := dataset.NewColumnBuilder("min_timestamp", dataset.BuilderOptions{
-		PageSizeHint: b.pageSize,
-		Value:        datasetmd.VALUE_TYPE_INT64,
-		Encoding:     datasetmd.ENCODING_TYPE_DELTA,
-		Compression:  datasetmd.COMPRESSION_TYPE_NONE,
+		PageSizeHint:    b.pageSize,
+		PageMaxRowCount: b.pageRowCount,
+		Type: dataset.ColumnType{
+			Physical: datasetmd_v2.PHYSICAL_TYPE_INT64,
+			Logical:  ColumnTypeMinTimestamp.String(),
+		},
+		Encoding:    datasetmd_v2.ENCODING_TYPE_DELTA,
+		Compression: datasetmd_v2.COMPRESSION_TYPE_NONE,
 		Statistics: dataset.StatisticsOptions{
 			StoreRangeStats: true,
 		},
@@ -160,10 +192,14 @@ func (b *Builder) encodeTo(enc *encoder) error {
 	}
 
 	maxTimestampBuilder, err := dataset.NewColumnBuilder("max_timestamp", dataset.BuilderOptions{
-		PageSizeHint: b.pageSize,
-		Value:        datasetmd.VALUE_TYPE_INT64,
-		Encoding:     datasetmd.ENCODING_TYPE_DELTA,
-		Compression:  datasetmd.COMPRESSION_TYPE_NONE,
+		PageSizeHint:    b.pageSize,
+		PageMaxRowCount: b.pageRowCount,
+		Type: dataset.ColumnType{
+			Physical: datasetmd_v2.PHYSICAL_TYPE_INT64,
+			Logical:  ColumnTypeMaxTimestamp.String(),
+		},
+		Encoding:    datasetmd_v2.ENCODING_TYPE_DELTA,
+		Compression: datasetmd_v2.COMPRESSION_TYPE_NONE,
 		Statistics: dataset.StatisticsOptions{
 			StoreRangeStats: true,
 		},
@@ -172,10 +208,40 @@ func (b *Builder) encodeTo(enc *encoder) error {
 		return fmt.Errorf("creating max timestamp column: %w", err)
 	}
 
+	fileSizeBuilder, err := dataset.NewColumnBuilder("file_size", dataset.BuilderOptions{
+		PageSizeHint:    b.pageSize,
+		PageMaxRowCount: b.pageRowCount,
+		Type: dataset.ColumnType{
+			Physical: datasetmd_v2.PHYSICAL_TYPE_INT64,
+			Logical:  ColumnTypeFileSize.String(),
+		},
+		Encoding:    datasetmd_v2.ENCODING_TYPE_DELTA,
+		Compression: datasetmd_v2.COMPRESSION_TYPE_NONE,
+	})
+	if err != nil {
+		return fmt.Errorf("creating file size column: %w", err)
+	}
+
+	uncompressedLogsSizeBuilder, err := dataset.NewColumnBuilder("uncompressed_logs_size", dataset.BuilderOptions{
+		PageSizeHint:    b.pageSize,
+		PageMaxRowCount: b.pageRowCount,
+		Type: dataset.ColumnType{
+			Physical: datasetmd_v2.PHYSICAL_TYPE_INT64,
+			Logical:  ColumnTypeUncompressedLogsSize.String(),
+		},
+		Encoding:    datasetmd_v2.ENCODING_TYPE_DELTA,
+		Compression: datasetmd_v2.COMPRESSION_TYPE_NONE,
+	})
+	if err != nil {
+		return fmt.Errorf("creating uncompressed logs size column: %w", err)
+	}
+
 	for i, pointer := range b.indexPointers {
-		_ = pathBuilder.Append(i, dataset.ByteArrayValue([]byte(pointer.Path)))
+		_ = pathBuilder.Append(i, dataset.BinaryValue([]byte(pointer.Path)))
 		_ = minTimestampBuilder.Append(i, dataset.Int64Value(pointer.StartTs.UnixNano()))
 		_ = maxTimestampBuilder.Append(i, dataset.Int64Value(pointer.EndTs.UnixNano()))
+		_ = fileSizeBuilder.Append(i, dataset.Int64Value(int64(pointer.FileSize)))
+		_ = uncompressedLogsSizeBuilder.Append(i, dataset.Int64Value(int64(pointer.UncompressedLogsSize)))
 	}
 
 	// Encode our builders to sections. We ignore errors after enc.OpenStreams
@@ -183,9 +249,11 @@ func (b *Builder) encodeTo(enc *encoder) error {
 	// encoding API.
 	{
 		var errs []error
-		errs = append(errs, encodeColumn(enc, indexpointersmd.COLUMN_TYPE_PATH, pathBuilder))
-		errs = append(errs, encodeColumn(enc, indexpointersmd.COLUMN_TYPE_MIN_TIMESTAMP, minTimestampBuilder))
-		errs = append(errs, encodeColumn(enc, indexpointersmd.COLUMN_TYPE_MAX_TIMESTAMP, maxTimestampBuilder))
+		errs = append(errs, encodeColumn(enc, ColumnTypePath, pathBuilder))
+		errs = append(errs, encodeColumn(enc, ColumnTypeMinTimestamp, minTimestampBuilder))
+		errs = append(errs, encodeColumn(enc, ColumnTypeMaxTimestamp, maxTimestampBuilder))
+		errs = append(errs, encodeColumn(enc, ColumnTypeFileSize, fileSizeBuilder))
+		errs = append(errs, encodeColumn(enc, ColumnTypeUncompressedLogsSize, uncompressedLogsSizeBuilder))
 
 		if err := errors.Join(errs...); err != nil {
 			return fmt.Errorf("encoding columns: %w", err)
@@ -195,13 +263,13 @@ func (b *Builder) encodeTo(enc *encoder) error {
 	return nil
 }
 
-func encodeColumn(enc *encoder, columnType indexpointersmd.ColumnType, builder *dataset.ColumnBuilder) error {
+func encodeColumn(enc *columnar.Encoder, columnType ColumnType, builder *dataset.ColumnBuilder) error {
 	column, err := builder.Flush()
 	if err != nil {
 		return fmt.Errorf("flushing %s column: %w", columnType, err)
 	}
 
-	columnEnc, err := enc.OpenColumn(columnType, &column.Info)
+	columnEnc, err := enc.OpenColumn(column.ColumnDesc())
 	if err != nil {
 		return fmt.Errorf("opening %s column encoder: %w", columnType, err)
 	}
@@ -210,12 +278,27 @@ func encodeColumn(enc *encoder, columnType indexpointersmd.ColumnType, builder *
 		// successfully committed.
 		_ = columnEnc.Discard()
 	}()
+	if len(column.Pages) == 0 {
+		// Column has no data; discard.
+		return nil
+	}
 
 	for _, page := range column.Pages {
 		err := columnEnc.AppendPage(page)
 		if err != nil {
 			return fmt.Errorf("appending %s page: %w", columnType, err)
 		}
+	}
+
+	if columnType == ColumnTypeMinTimestamp {
+		enc.SetSortInfo(&datasetmd_v2.SortInfo{
+			ColumnSorts: []*datasetmd_v2.SortInfo_ColumnSort{{
+				// NumColumns increases after calling Commit, so we can use the
+				// current value as the index.
+				ColumnIndex: uint32(enc.NumColumns()),
+				Direction:   datasetmd_v2.SORT_DIRECTION_ASCENDING,
+			}},
+		})
 	}
 
 	return columnEnc.Commit()

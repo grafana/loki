@@ -1,4 +1,4 @@
-// Copyright 2020 The Prometheus Authors
+// Copyright The Prometheus Authors
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
@@ -20,7 +20,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/prometheus/procfs/internal/util"
+	"github.com/prometheus/procfs/internal/parsers"
 )
 
 // NetProtocolStats stores the contents from /proc/net/protocols.
@@ -71,7 +71,7 @@ type NetProtocolCapabilities struct {
 // Linux 2.6.12-rc2 - https://elixir.bootlin.com/linux/v2.6.12-rc2/source/net/core/sock.c#L1452
 // Linux 5.10 - https://elixir.bootlin.com/linux/v5.10.4/source/net/core/sock.c#L3586
 func (fs FS) NetProtocols() (NetProtocolStats, error) {
-	data, err := util.ReadFileNoStat(fs.proc.Path("net/protocols"))
+	data, err := parsers.ReadFileNoStat(fs.proc.Path("net/protocols"))
 	if err != nil {
 		return NetProtocolStats{}, err
 	}
@@ -169,7 +169,7 @@ func (pc *NetProtocolCapabilities) parseCapabilities(capabilities []string) erro
 		&pc.EnterMemoryPressure,
 	}
 
-	for i := 0; i < len(capabilities); i++ {
+	for i := range capabilities {
 		switch capabilities[i] {
 		case "y":
 			*capabilityFields[i] = true

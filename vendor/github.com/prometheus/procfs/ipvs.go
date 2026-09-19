@@ -1,4 +1,4 @@
-// Copyright 2018 The Prometheus Authors
+// Copyright The Prometheus Authors
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
@@ -25,7 +25,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/prometheus/procfs/internal/util"
+	"github.com/prometheus/procfs/internal/parsers"
 )
 
 // IPVSStats holds IPVS statistics, as exposed by the kernel in `/proc/net/ip_vs_stats`.
@@ -66,7 +66,7 @@ type IPVSBackendStatus struct {
 
 // IPVSStats reads the IPVS statistics from the specified `proc` filesystem.
 func (fs FS) IPVSStats() (IPVSStats, error) {
-	data, err := util.ReadFileNoStat(fs.proc.Path("net/ip_vs_stats"))
+	data, err := parsers.ReadFileNoStat(fs.proc.Path("net/ip_vs_stats"))
 	if err != nil {
 		return IPVSStats{}, err
 	}

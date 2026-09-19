@@ -36,13 +36,18 @@ const (
 	ProtoType     = `application/vnd.google.protobuf`
 	ProtoProtocol = `io.prometheus.client.MetricFamily`
 	// Deprecated: Use expfmt.NewFormat(expfmt.TypeProtoCompact) instead.
-	ProtoFmt                 = ProtoType + "; proto=" + ProtoProtocol + ";"
-	OpenMetricsType          = `application/openmetrics-text`
+	ProtoFmt        = ProtoType + "; proto=" + ProtoProtocol + ";"
+	OpenMetricsType = `application/openmetrics-text`
+	//nolint:revive // Allow for underscores.
 	OpenMetricsVersion_0_0_1 = "0.0.1"
+	//nolint:revive // Allow for underscores.
 	OpenMetricsVersion_1_0_0 = "1.0.0"
+	//nolint:revive // Allow for underscores.
+	OpenMetricsVersion_2_0_0 = "2.0.0"
 
 	// The Content-Type values for the different wire protocols. Do not do direct
 	// comparisons to these constants, instead use the comparison functions.
+	//
 	// Deprecated: Use expfmt.NewFormat(expfmt.TypeUnknown) instead.
 	FmtUnknown Format = `<unknown>`
 	// Deprecated: Use expfmt.NewFormat(expfmt.TypeTextPlain) instead.
@@ -54,8 +59,12 @@ const (
 	// Deprecated: Use expfmt.NewFormat(expfmt.TypeProtoCompact) instead.
 	FmtProtoCompact Format = ProtoFmt + ` encoding=compact-text`
 	// Deprecated: Use expfmt.NewFormat(expfmt.TypeOpenMetrics) instead.
+	//nolint:revive // Allow for underscores.
 	FmtOpenMetrics_1_0_0 Format = OpenMetricsType + `; version=` + OpenMetricsVersion_1_0_0 + `; charset=utf-8`
+	//nolint:revive // Allow for underscores.
+	fmtOpenMetrics_2_0_0 Format = OpenMetricsType + `; version=` + OpenMetricsVersion_2_0_0 + `; charset=utf-8`
 	// Deprecated: Use expfmt.NewFormat(expfmt.TypeOpenMetrics) instead.
+	//nolint:revive // Allow for underscores.
 	FmtOpenMetrics_0_0_1 Format = OpenMetricsType + `; version=` + OpenMetricsVersion_0_0_1 + `; charset=utf-8`
 )
 
@@ -102,12 +111,19 @@ func NewFormat(t FormatType) Format {
 
 // NewOpenMetricsFormat generates a new OpenMetrics format matching the
 // specified version number.
+//
+// Note: OpenMetrics version 2.0.0 is experimental and encode-only (currently
+// supporting counter, gauge, and untyped metric types).
 func NewOpenMetricsFormat(version string) (Format, error) {
 	if version == OpenMetricsVersion_0_0_1 {
 		return FmtOpenMetrics_0_0_1, nil
 	}
 	if version == OpenMetricsVersion_1_0_0 {
 		return FmtOpenMetrics_1_0_0, nil
+	}
+	if version == OpenMetricsVersion_2_0_0 {
+		// OpenMetrics 2.0.0 is experimental and encode-only (counter/gauge/untyped).
+		return fmtOpenMetrics_2_0_0, nil
 	}
 	return FmtUnknown, errors.New("unknown open metrics version string")
 }
@@ -117,7 +133,7 @@ func NewOpenMetricsFormat(version string) (Format, error) {
 // removed.
 func (f Format) WithEscapingScheme(s model.EscapingScheme) Format {
 	var terms []string
-	for _, p := range strings.Split(string(f), ";") {
+	for p := range strings.SplitSeq(string(f), ";") {
 		toks := strings.Split(p, "=")
 		if len(toks) != 2 {
 			trimmed := strings.TrimSpace(p)
@@ -188,8 +204,8 @@ func (f Format) FormatType() FormatType {
 // Format contains a escaping=allow-utf-8 term, it will select NoEscaping. If a valid
 // "escaping" term exists, that will be used. Otherwise, the global default will
 // be returned.
-func (format Format) ToEscapingScheme() model.EscapingScheme {
-	for _, p := range strings.Split(string(format), ";") {
+func (f Format) ToEscapingScheme() model.EscapingScheme {
+	for p := range strings.SplitSeq(string(f), ";") {
 		toks := strings.Split(p, "=")
 		if len(toks) != 2 {
 			continue

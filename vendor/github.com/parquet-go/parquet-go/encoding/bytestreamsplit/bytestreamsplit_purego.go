@@ -2,7 +2,7 @@
 
 package bytestreamsplit
 
-import "github.com/parquet-go/parquet-go/internal/unsafecast"
+import "github.com/parquet-go/bitpack/unsafecast"
 
 func encodeFloat(dst, src []byte) {
 	n := len(src) / 4
@@ -80,4 +80,20 @@ func decodeDouble(dst, src []byte) {
 			uint64(b6[i])<<48 |
 			uint64(b7[i])<<56
 	}
+}
+
+func encodeInt32(dst, src []byte) {
+	encodeFloat(dst, src)
+}
+
+func decodeInt32(dst, src []byte) {
+	decodeFloat(dst, src)
+}
+
+func encodeInt64(dst, src []byte) {
+	encodeDouble(dst, src)
+}
+
+func decodeInt64(dst, src []byte) {
+	decodeDouble(dst, src)
 }

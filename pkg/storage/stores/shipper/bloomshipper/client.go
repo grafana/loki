@@ -22,7 +22,6 @@ import (
 	v1 "github.com/grafana/loki/v3/pkg/storage/bloom/v1"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client/util"
-	"github.com/grafana/loki/v3/pkg/storage/config"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb"
 	"github.com/grafana/loki/v3/pkg/util/encoding"
 )
@@ -440,16 +439,6 @@ func (b *BloomClient) GetMeta(ctx context.Context, ref MetaRef) (Meta, error) {
 	return meta, nil
 }
 
-func findPeriod(configs []config.PeriodConfig, ts model.Time) (config.DayTime, error) {
-	for i := len(configs) - 1; i >= 0; i-- {
-		periodConfig := configs[i]
-		if !periodConfig.From.Time.After(ts) {
-			return periodConfig.From, nil
-		}
-	}
-	return config.DayTime{}, fmt.Errorf("can not find period for timestamp %d", ts)
-}
-
 type listOpResult struct {
 	ts       time.Time
 	objects  []client.StorageObject
@@ -544,7 +533,13 @@ func (c *cachedListOpObjectClient) Stop() {
 	c.mtx.Lock()
 	defer c.mtx.Unlock()
 
+	// Stop is idempotent: closing c.done twice would panic.
+	select {
+	case <-c.done:
+		return
+	default:
+	}
+
 	close(c.done)
-	c.cache = nil
 	c.ObjectClient.Stop()
 }

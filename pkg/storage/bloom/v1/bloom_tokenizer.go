@@ -28,7 +28,6 @@ type BloomTokenizer struct {
 }
 
 const cacheSize = 150000
-const bloomTokenizerMetricsSubsystem = "bloom_tokenizer"
 const eightBits = 8
 
 // NewBloomTokenizer returns a new instance of the Bloom Tokenizer.

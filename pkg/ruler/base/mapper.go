@@ -10,8 +10,8 @@ import (
 	"github.com/go-kit/log/level"
 	"github.com/prometheus/prometheus/model/rulefmt"
 	"github.com/spf13/afero"
+	"go.yaml.in/yaml/v3"
 	"golang.org/x/crypto/sha3"
-	"gopkg.in/yaml.v3"
 )
 
 // mapper is designed to enusre the provided rule sets are identical

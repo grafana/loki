@@ -9,3 +9,9 @@ datasources:
     uid: gdev-loki
     access: proxy
     url: http://host.docker.internal:3100
+  - name: gdev-prometheus
+    type: prometheus
+    uid: gdev-prometheus
+    access: proxy
+    # Prometheus runs as a compose service, reachable by its service name on the shared network.
+    url: http://prometheus:9090

@@ -51,6 +51,16 @@ func (m *QuicProtocolOptions) MarshalToSizedBufferVTStrict(dAtA []byte) (int, er
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
 	}
+	if m.MaxSessionsPerEventLoop != nil {
+		size, err := (*wrapperspb.UInt32Value)(m.MaxSessionsPerEventLoop).MarshalToSizedBufferVTStrict(dAtA[:i])
+		if err != nil {
+			return 0, err
+		}
+		i -= size
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		i--
+		dAtA[i] = 0x72
+	}
 	if m.RejectNewConnections {
 		i--
 		if m.RejectNewConnections {
@@ -388,6 +398,10 @@ func (m *QuicProtocolOptions) SizeVT() (n int) {
 	}
 	if m.RejectNewConnections {
 		n += 2
+	}
+	if m.MaxSessionsPerEventLoop != nil {
+		l = (*wrapperspb.UInt32Value)(m.MaxSessionsPerEventLoop).SizeVT()
+		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
 	}
 	n += len(m.unknownFields)
 	return n
