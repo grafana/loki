@@ -16,14 +16,13 @@ import (
 	"github.com/grafana/dskit/tenant"
 	"github.com/prometheus/prometheus/model/labels"
 
+	"github.com/grafana/loki/pkg/push"
 	loghttppush "github.com/grafana/loki/v3/pkg/loghttp/push"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	"github.com/grafana/loki/v3/pkg/util"
 	"github.com/grafana/loki/v3/pkg/util/constants"
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
 	"github.com/grafana/loki/v3/pkg/validation"
-
-	"github.com/grafana/loki/pkg/push"
 )
 
 // PushHandler reads a snappy-compressed proto from the HTTP body.
@@ -132,7 +131,7 @@ func (d *Distributor) pushHandler(w http.ResponseWriter, r *http.Request, pushRe
 	// Only reported for tenants that have enabled log_otlp_attribute_expansion in their runtime config.
 	d.otlpAttrReporter.Report(logger, tenantID, pushStats.OTLPAttributes)
 
-	d.reportStreamsDroppedByParser(r.Context(), tenantID, pushStats, format)
+	d.reportStreamsDroppedByParser(tenantID, pushStats, format)
 
 	if d.shouldLogPushRequestStreams(tenantID, presumedAgentIP) {
 		d.logPushRequestStreams(r.Context(), logger, req.Streams, streamResolver, pushStats, presumedAgentIP)
@@ -177,8 +176,8 @@ func (d *Distributor) pushHandler(w http.ResponseWriter, r *http.Request, pushRe
 // dropped because their stream labels were invalid, for example an OTLP
 // resource attribute that holds invalid UTF-8. The parser cannot report them
 // itself, so without this the lines would be lost without a trace. They are
-// reported like streams with invalid labels that reach validation.
-func (d *Distributor) reportStreamsDroppedByParser(ctx context.Context, tenantID string, pushStats *loghttppush.Stats, format string) {
+// reported like the streams with invalid labels that reach validation.
+func (d *Distributor) reportStreamsDroppedByParser(tenantID string, pushStats *loghttppush.Stats, format string) {
 	for _, err := range pushStats.Errs {
 		d.writeFailuresManager.Log(tenantID, err)
 	}
@@ -189,11 +188,10 @@ func (d *Distributor) reportStreamsDroppedByParser(ctx context.Context, tenantID
 
 	// The labels are invalid, so resolve retention as validation does for them.
 	retentionHours := d.tenantsRetention.RetentionHoursFor(tenantID, labels.EmptyLabels())
-	validation.DiscardedSamples.WithLabelValues(validation.InvalidLabels, tenantID, retentionHours, "", format).Add(float64(pushStats.InvalidLabelsLines))
-	validation.DiscardedBytes.WithLabelValues(validation.InvalidLabels, tenantID, retentionHours, "", format).Add(float64(pushStats.InvalidLabelsBytes))
-	if d.usageTracker != nil {
-		d.usageTracker.DiscardedBytesAdd(ctx, tenantID, validation.InvalidLabels, labels.EmptyLabels(), float64(pushStats.InvalidLabelsBytes), format)
-	}
+	// The bytes are reported as zero. A record dropped here never becomes an
+	// entry, so the size that the other reporters account for, the line plus
+	// its structured metadata, is not known yet.
+	d.validator.reportDiscardedData(validation.InvalidLabels, tenantID, retentionHours, "", 0, int(pushStats.InvalidLabelsLines), format)
 }
 
 // shouldLogPushRequestStreams returns true if streams from the request should

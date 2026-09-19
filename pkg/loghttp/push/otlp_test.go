@@ -1102,7 +1102,6 @@ func TestOTLPToLokiPushRequestInvalidLabels(t *testing.T) {
 
 	require.Len(t, stats.Errs, 2)
 	require.Equal(t, int64(3), stats.InvalidLabelsLines)
-	require.Equal(t, int64(len("first")+len("second")+len("dropped")), stats.InvalidLabelsBytes)
 }
 
 func TestOTLPStructuredMetadataCalculation(t *testing.T) {

@@ -230,11 +230,7 @@ func otlpToLokiPushRequest(ctx context.Context, ld plog.Logs, userID string, otl
 			stats.Errs = append(stats.Errs, fmt.Errorf("invalid labels: %w", err))
 			// Every log record of the resource belongs to a stream with these labels.
 			for j := 0; j < sls.Len(); j++ {
-				logs := sls.At(j).LogRecords()
-				for k := 0; k < logs.Len(); k++ {
-					stats.InvalidLabelsLines++
-					stats.InvalidLabelsBytes += int64(len(logs.At(k).Body().AsString()))
-				}
+				stats.InvalidLabelsLines += int64(sls.At(j).LogRecords().Len())
 			}
 			continue
 		}
@@ -333,7 +329,6 @@ func otlpToLokiPushRequest(ctx context.Context, ld plog.Logs, userID string, otl
 					if err := combinedLabels.Validate(); err != nil {
 						stats.Errs = append(stats.Errs, fmt.Errorf("invalid labels with log attributes: %w", err))
 						stats.InvalidLabelsLines++
-						stats.InvalidLabelsBytes += int64(len(entry.Line))
 						continue
 					}
 

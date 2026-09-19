@@ -268,8 +268,7 @@ func TestPushHandlerOTLPInvalidLabelsAreDiscarded(t *testing.T) {
 	// produced by this request rather than an absolute value.
 	retentionHours := d.tenantsRetention.RetentionHoursFor("test", labels.EmptyLabels())
 	discardedSamples := validation.DiscardedSamples.WithLabelValues(validation.InvalidLabels, "test", retentionHours, "", constants.OTLP)
-	discardedBytes := validation.DiscardedBytes.WithLabelValues(validation.InvalidLabels, "test", retentionHours, "", constants.OTLP)
-	samplesBefore, bytesBefore := testutil.ToFloat64(discardedSamples), testutil.ToFloat64(discardedBytes)
+	samplesBefore := testutil.ToFloat64(discardedSamples)
 
 	rec := httptest.NewRecorder()
 	d.pushHandler(rec, req, push.ParseOTLPRequest, push.OTLPError, constants.OTLP)
@@ -277,7 +276,6 @@ func TestPushHandlerOTLPInvalidLabelsAreDiscarded(t *testing.T) {
 	// The valid stream is still ingested.
 	require.Equal(t, http.StatusNoContent, rec.Code, rec.Body.String())
 	require.Equal(t, float64(2), testutil.ToFloat64(discardedSamples)-samplesBefore)
-	require.Equal(t, float64(len("first")+len("second")), testutil.ToFloat64(discardedBytes)-bytesBefore)
 }
 
 func TestPushHandlerLogPushRequestStreams(t *testing.T) {
