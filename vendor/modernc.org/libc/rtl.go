@@ -206,6 +206,16 @@ func AtomicStorePUint8(addr uintptr, val byte) byte {
 	return val
 }
 
+func AtomicStorePInt16(addr uintptr, val int16) int16 {
+	a_store_16(addr, uint16(val))
+	return val
+}
+
+func AtomicStorePUint16(addr uintptr, val uint16) uint16 {
+	a_store_16(addr, val)
+	return val
+}
+
 func AtomicStorePInt32(addr uintptr, val int32) int32 {
 	atomic.StoreInt32((*int32)(unsafe.Pointer(addr)), val)
 	return val
