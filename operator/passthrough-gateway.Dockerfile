@@ -1,5 +1,5 @@
 # Build the passthrough-gateway binary
-FROM golang:1.26.7@sha256:dc2521c2a906db43073b8b4d99f491b6341cf15610b6ebbab187c45153f9959e as builder
+FROM golang:1.27.0@sha256:4013ae0f9e7994f8535c58c811f8f863fbed38b72e0d51e6592156f758d66146 as builder
 
 WORKDIR /workspace
 # Copy the Go Modules manifests
