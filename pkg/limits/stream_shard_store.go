@@ -475,20 +475,6 @@ func liveShardCount(shardLastUsed []int64, cutoff int64) uint32 {
 	return n
 }
 
-// othersLiveSlots returns the budget slots consumed by every stream in the
-// map except exceptHash. A tracked stream consumes one slot per live shard,
-// with a floor of one so an unsharded or just reset stream still counts as
-// one stream.
-func othersLiveSlots(streams map[uint64]streamShardUsage, exceptHash uint64, cutoff int64) (n uint64) {
-	for hash, stream := range streams {
-		if hash == exceptHash {
-			continue
-		}
-		n += max(1, uint64(liveShardCount(stream.shardLastUsed, cutoff)))
-	}
-	return n
-}
-
 // refreshLiveShards marks the shards below count as used at now, growing the
 // slice when the granted count reached a new high, and returns it. Entries at
 // or above count are left alone so they keep aging towards expiry.
