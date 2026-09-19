@@ -27,6 +27,7 @@ local imageJobs = {
   'fluent-bit': build.image('fluent-bit-plugin-loki', 'clients/cmd/fluent-bit', platform=platforms.amd),
   logstash: build.image('logstash-output-loki', 'clients/cmd/logstash', platform=platforms.amd),
   logcli: build.image('logcli', 'cmd/logcli', platform=platforms.all),
+  lokitool: build.image('lokitool', 'cmd/lokitool', platform=platforms.all),
   'loki-canary': build.image('loki-canary', 'cmd/loki-canary', platform=platforms.all),
   'loki-canary-boringcrypto': build.image('loki-canary-boringcrypto', 'cmd/loki-canary-boringcrypto', platform=platforms.all),
   querytee: build.image('loki-query-tee', 'cmd/querytee', platform=[r.forPlatform('linux/amd64'), r.forPlatform('linux/arm64')]),
@@ -40,6 +41,7 @@ local weeklyImageJobs = {
   'loki-canary-boringcrypto': build.weeklyImage('loki-canary-boringcrypto', 'cmd/loki-canary-boringcrypto', platform=platforms.all),
   'loki-query-tee': build.weeklyImage('loki-query-tee', 'cmd/querytee'),
   'logql-analyzer': build.weeklyImage('logql-analyzer', 'cmd/logql-analyzer', platform=platforms.all),
+  lokitool: build.weeklyImage('lokitool', 'cmd/lokitool', platform=platforms.all),
 };
 
 {
