@@ -354,7 +354,7 @@ func generateStreamsForTenant(tenantID string, streamsPerTenant int, streamLabel
 		streams[i] = distributor.KeyedStream{
 			HashKey:        lokiring.TokenFor(tenantID, labelsStr),
 			HashKeyNoShard: stream.Hash,
-			Stream:         stream,
+			Stream:         logproto.FromStream(stream),
 		}
 	}
 

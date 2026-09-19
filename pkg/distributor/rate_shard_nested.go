@@ -20,7 +20,7 @@ import (
 // R+S-1 resource and G+S-1 scope copies over S shards: repeated only where a boundary falls inside
 // the group.
 func shardNested(stream *logproto.InternalStreamAdapter, lbls labels.Labels, shards, startShard int) []logproto.InternalStreamAdapter {
-	total := nestedEntryCount(stream)
+	total := stream.EntryCount()
 	if total == 0 || shards < 1 {
 		return nil
 	}
@@ -105,15 +105,4 @@ func shardIdentity(template labels.Labels, pattern string, shardNumber int) (str
 
 	return strings.Replace(pattern, ingester.ShardLbPlaceholder, shardLabel, 1),
 		labels.StableHash(labels.NewBuilder(template).Set(ingester.ShardLbName, shardLabel).Labels())
-}
-
-// nestedEntryCount is the number of entries the stream holds, across every group.
-func nestedEntryCount(stream *logproto.InternalStreamAdapter) int {
-	n := 0
-	for i := range stream.ResourceLogs {
-		for j := range stream.ResourceLogs[i].ScopeLogs {
-			n += len(stream.ResourceLogs[i].ScopeLogs[j].Entries)
-		}
-	}
-	return n
 }

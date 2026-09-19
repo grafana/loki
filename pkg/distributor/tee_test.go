@@ -7,6 +7,7 @@ import (
 	"github.com/stretchr/testify/mock"
 
 	"github.com/grafana/loki/pkg/push"
+	"github.com/grafana/loki/v3/pkg/logproto"
 )
 
 type mockedTee struct {
@@ -29,7 +30,7 @@ func TestWrapTee(t *testing.T) {
 	streams := []KeyedStream{
 		{
 			HashKey: 1,
-			Stream:  push.Stream{},
+			Stream:  logproto.FromStream(push.Stream{}),
 		},
 	}
 	pushTracker := &PushTracker{

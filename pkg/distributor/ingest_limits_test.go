@@ -72,7 +72,7 @@ func TestIngestLimits_EnforceLimits(t *testing.T) {
 		streams: []KeyedStream{{
 			HashKey:        1000, // Should not be used.
 			HashKeyNoShard: 1,
-			Stream: logproto.Stream{
+			Stream: logproto.FromStream(logproto.Stream{
 				Labels: "foo",
 				Entries: []logproto.Entry{{
 					Timestamp: clock.Now(),
@@ -82,11 +82,11 @@ func TestIngestLimits_EnforceLimits(t *testing.T) {
 						Value: "qux",
 					}},
 				}},
-			},
+			}),
 		}, {
 			HashKey:        2000, // Should not be used.
 			HashKeyNoShard: 2,
-			Stream: logproto.Stream{
+			Stream: logproto.FromStream(logproto.Stream{
 				Labels: "bar",
 				Entries: []logproto.Entry{{
 					Timestamp: clock.Now(),
@@ -96,7 +96,7 @@ func TestIngestLimits_EnforceLimits(t *testing.T) {
 						Value: "corge",
 					}},
 				}},
-			},
+			}),
 		}},
 		expectedRequest: &proto.ExceedsLimitsRequest{
 			Tenant: "test",
@@ -113,7 +113,7 @@ func TestIngestLimits_EnforceLimits(t *testing.T) {
 		expectedAccepted: []KeyedStream{{
 			HashKey:        1000,
 			HashKeyNoShard: 1,
-			Stream: logproto.Stream{
+			Stream: logproto.FromStream(logproto.Stream{
 				Labels: "foo",
 				Entries: []logproto.Entry{{
 					Timestamp: clock.Now(),
@@ -123,11 +123,11 @@ func TestIngestLimits_EnforceLimits(t *testing.T) {
 						Value: "qux",
 					}},
 				}},
-			},
+			}),
 		}, {
 			HashKey:        2000,
 			HashKeyNoShard: 2,
-			Stream: logproto.Stream{
+			Stream: logproto.FromStream(logproto.Stream{
 				Labels: "bar",
 				Entries: []logproto.Entry{{
 					Timestamp: clock.Now(),
@@ -137,7 +137,7 @@ func TestIngestLimits_EnforceLimits(t *testing.T) {
 						Value: "corge",
 					}},
 				}},
-			},
+			}),
 		}},
 		expectedRejected: []KeyedStream{},
 	}, {
