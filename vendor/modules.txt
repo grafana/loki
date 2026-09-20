@@ -668,6 +668,7 @@ github.com/envoyproxy/go-control-plane/envoy/config/trace/v3
 github.com/envoyproxy/go-control-plane/envoy/data/accesslog/v3
 github.com/envoyproxy/go-control-plane/envoy/extensions/clusters/aggregate/v3
 github.com/envoyproxy/go-control-plane/envoy/extensions/filters/common/fault/v3
+github.com/envoyproxy/go-control-plane/envoy/extensions/filters/http/ext_proc/v3
 github.com/envoyproxy/go-control-plane/envoy/extensions/filters/http/fault/v3
 github.com/envoyproxy/go-control-plane/envoy/extensions/filters/http/gcp_authn/v3
 github.com/envoyproxy/go-control-plane/envoy/extensions/filters/http/rbac/v3
@@ -683,6 +684,7 @@ github.com/envoyproxy/go-control-plane/envoy/extensions/rbac/audit_loggers/strea
 github.com/envoyproxy/go-control-plane/envoy/extensions/transport_sockets/http_11_proxy/v3
 github.com/envoyproxy/go-control-plane/envoy/extensions/transport_sockets/tls/v3
 github.com/envoyproxy/go-control-plane/envoy/service/discovery/v3
+github.com/envoyproxy/go-control-plane/envoy/service/ext_proc/v3
 github.com/envoyproxy/go-control-plane/envoy/service/load_stats/v3
 github.com/envoyproxy/go-control-plane/envoy/service/status/v3
 github.com/envoyproxy/go-control-plane/envoy/type/http/v3
@@ -2189,7 +2191,7 @@ google.golang.org/genproto/googleapis/api/monitoredres
 google.golang.org/genproto/googleapis/rpc/code
 google.golang.org/genproto/googleapis/rpc/errdetails
 google.golang.org/genproto/googleapis/rpc/status
-# google.golang.org/grpc v1.83.2
+# google.golang.org/grpc v1.84.0
 ## explicit; go 1.25.0
 google.golang.org/grpc
 google.golang.org/grpc/attributes
@@ -2268,6 +2270,7 @@ google.golang.org/grpc/internal/hierarchy
 google.golang.org/grpc/internal/idle
 google.golang.org/grpc/internal/mem
 google.golang.org/grpc/internal/metadata
+google.golang.org/grpc/internal/optional
 google.golang.org/grpc/internal/pretty
 google.golang.org/grpc/internal/proto/grpc_lookup_v1
 google.golang.org/grpc/internal/proxyattributes
@@ -2316,6 +2319,8 @@ google.golang.org/grpc/internal/xds/clients/xdsclient/metrics
 google.golang.org/grpc/internal/xds/clusterspecifier
 google.golang.org/grpc/internal/xds/clusterspecifier/rls
 google.golang.org/grpc/internal/xds/httpfilter
+google.golang.org/grpc/internal/xds/httpfilter/extproc
+google.golang.org/grpc/internal/xds/httpfilter/extproc/internal
 google.golang.org/grpc/internal/xds/httpfilter/fault
 google.golang.org/grpc/internal/xds/httpfilter/rbac
 google.golang.org/grpc/internal/xds/httpfilter/router
