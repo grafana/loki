@@ -979,6 +979,81 @@ RETURN %12
 `
 		require.Equal(t, expected, plan.String())
 	})
+
+	t.Run("keep labels", func(t *testing.T) {
+		q := &query{
+			statement: `{service_name="loki"} | keep level, detected_level`,
+			start:     0,
+			end:       3600,
+			interval:  5 * time.Minute,
+			direction: logproto.BACKWARD,
+		}
+
+		plan, err := BuildPlan(context.Background(), q)
+		require.NoError(t, err)
+		t.Logf("\n%s\n", plan.String())
+
+		expected := `%1 = EQ label.service_name "loki"
+%2 = MAKETABLE [selector=%1, predicates=[], shard=0_of_1]
+%3 = GTE builtin.timestamp 1970-01-01T00:00:00Z
+%4 = SELECT %2 [predicate=%3]
+%5 = LT builtin.timestamp 1970-01-01T01:00:00Z
+%6 = SELECT %4 [predicate=%5]
+%7 = PROJECT %6 [mode=K, expr=builtin.timestamp, expr=builtin.message, expr=generated.__error__, expr=generated.__error_details__, expr=ambiguous.level, expr=ambiguous.detected_level]
+%8 = TOPK %7 [sort_by=builtin.timestamp, k=0, asc=false, nulls_first=false]
+%9 = LOGQL_COMPAT %8
+RETURN %9
+`
+		require.Equal(t, expected, plan.String())
+	})
+
+	// `keep` narrows the label set, so a label filter after it must be applied as a
+	// SELECT on the projected relation rather than pushed down into MAKETABLE. If it
+	// were hoisted, `| keep foo | service_name="loki"` would match entries whose
+	// service_name was just removed by the keep stage.
+	t.Run("label filter after keep is not pushed down", func(t *testing.T) {
+		q := &query{
+			statement: `{service_name="loki"} | keep level | service_name="loki"`,
+			start:     0,
+			end:       3600,
+			interval:  5 * time.Minute,
+			direction: logproto.BACKWARD,
+		}
+
+		plan, err := BuildPlan(context.Background(), q)
+		require.NoError(t, err)
+		t.Logf("\n%s\n", plan.String())
+
+		expected := `%1 = EQ label.service_name "loki"
+%2 = MAKETABLE [selector=%1, predicates=[], shard=0_of_1]
+%3 = GTE builtin.timestamp 1970-01-01T00:00:00Z
+%4 = SELECT %2 [predicate=%3]
+%5 = LT builtin.timestamp 1970-01-01T01:00:00Z
+%6 = SELECT %4 [predicate=%5]
+%7 = PROJECT %6 [mode=K, expr=builtin.timestamp, expr=builtin.message, expr=generated.__error__, expr=generated.__error_details__, expr=ambiguous.level]
+%8 = EQ ambiguous.service_name "loki"
+%9 = SELECT %7 [predicate=%8]
+%10 = TOPK %9 [sort_by=builtin.timestamp, k=0, asc=false, nulls_first=false]
+%11 = LOGQL_COMPAT %10
+RETURN %11
+`
+		require.Equal(t, expected, plan.String())
+	})
+
+	t.Run("keep with named matchers is unsupported", func(t *testing.T) {
+		q := &query{
+			statement: `{service_name="loki"} | keep level=~"info|warn"`,
+			start:     0,
+			end:       3600,
+			interval:  5 * time.Minute,
+			direction: logproto.BACKWARD,
+		}
+
+		plan, err := BuildPlan(context.Background(), q)
+		require.Nil(t, plan)
+		require.ErrorIs(t, err, errUnimplemented)
+		require.ErrorContains(t, err, "keep with named matchers")
+	})
 }
 
 func TestBuildDeletePredicates(t *testing.T) {
