@@ -377,7 +377,12 @@ func (s *storeMock) Stop() {
 // readRingMock is a mocked version of a ReadRing, used in querier unit tests
 // to control the pool of ingesters available
 type readRingMock struct {
-	replicationSet ring.ReplicationSet
+	replicationSet    ring.ReplicationSet
+	replicationFactor int
+	// zonesCount overrides the number of zones the ring reports. Leave at 0 to
+	// derive it from the instances in the replication set. Set it to mimic a ring
+	// whose replication set has had unhealthy zones filtered out.
+	zonesCount int
 }
 
 func newReadRingMock(ingesters []ring.InstanceDesc, maxErrors int) *readRingMock {
@@ -386,6 +391,19 @@ func newReadRingMock(ingesters []ring.InstanceDesc, maxErrors int) *readRingMock
 			Instances: ingesters,
 			MaxErrors: maxErrors,
 		},
+	}
+}
+
+// newZoneAwareReadRingMock returns a readRingMock behaving like a zone-aware ring,
+// which reports MaxUnavailableZones instead of MaxErrors.
+func newZoneAwareReadRingMock(ingesters []ring.InstanceDesc, maxUnavailableZones, replicationFactor int) *readRingMock {
+	return &readRingMock{
+		replicationSet: ring.ReplicationSet{
+			Instances:            ingesters,
+			MaxUnavailableZones:  maxUnavailableZones,
+			ZoneAwarenessEnabled: true,
+		},
+		replicationFactor: replicationFactor,
 	}
 }
 
@@ -472,6 +490,9 @@ func (r *readRingMock) GetReplicationSetForOperation(_ ring.Operation) (ring.Rep
 }
 
 func (r *readRingMock) ReplicationFactor() int {
+	if r.replicationFactor > 0 {
+		return r.replicationFactor
+	}
 	return 1
 }
 
@@ -492,6 +513,12 @@ func (r *readRingMock) InstancesWithTokensInZoneCount(_ string) int {
 }
 
 func (r *readRingMock) ZonesCount() int {
+	if r.zonesCount > 0 {
+		return r.zonesCount
+	}
+	if n := countZones(r.replicationSet.Instances); n > 0 {
+		return n
+	}
 	return 1
 }
 
