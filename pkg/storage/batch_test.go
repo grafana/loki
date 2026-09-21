@@ -1431,7 +1431,7 @@ func TestNewTimestampFirstSampleBatchIterator(t *testing.T) {
 				ex,
 			)
 			require.NoError(t, err)
-			series, _, err := iter.ReadSampleBatch(it, 1000)
+			series, _, err := iter.ReadTimestampFirstSampleBatch(it, 1000)
 			_ = it.Close()
 			if err != nil {
 				t.Fatalf("error reading batch %s", err)

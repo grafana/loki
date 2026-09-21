@@ -255,8 +255,8 @@ func newMergeSampleIterator(ctx context.Context, is []SampleIterator, order logp
 // value.
 //
 // It lets a per-stream iterator expose its real stream identity, the fingerprint the
-// stream-first merge orders and deduplicates by. The wrapped iterator's own StreamHash
-// may report a different, reduced hash from its extractor.
+// stream-first merge orders and deduplicates by. The wrapped iterator reports whatever hash its
+// extractor computes, which is not guaranteed to be that fingerprint.
 //
 // The wrapped iterator must report samples from one stream only. Its Labels() may
 // still vary per sample. Only its StreamHash is overridden here.
@@ -607,6 +607,14 @@ type sampleQueryClientIterator struct {
 	client QuerySampleClient
 	err    error
 	curr   SampleIterator
+
+	// newBatchIterator creates an iterator to iterate over the received samples batch. It must
+	// match the order the sender encoded the batch with.
+	newBatchIterator func(*logproto.SampleQueryResponse) SampleIterator
+
+	// closeErrs collects every batch iterator's Close error, whether Close ran while Next moved
+	// past that batch or later, from this iterator's own Close.
+	closeErrs util.MultiError
 }
 
 // QuerySampleClient is GRPC stream client with only method used by the SampleQueryClientIterator
@@ -619,7 +627,20 @@ type QuerySampleClient interface {
 // NewTimestampFirstSampleQueryClientIterator returns a timestamp-first iterator over a QueryClient.
 func NewTimestampFirstSampleQueryClientIterator(client QuerySampleClient) SampleIterator {
 	return &sampleQueryClientIterator{
-		client: client,
+		client:           client,
+		newBatchIterator: NewTimestampFirstSampleQueryResponseIterator,
+	}
+}
+
+// NewStreamFirstSampleQueryClientIterator returns a stream-first iterator over a QueryClient.
+//
+// The client must deliver batches that ReadStreamFirstSampleBatch encoded. The iterator keeps the
+// sender's order, inside a batch and across batches. A stream the sender split over two batches
+// stays contiguous, because each batch plays to completion before the iterator reads the next one.
+func NewStreamFirstSampleQueryClientIterator(client QuerySampleClient) SampleIterator {
+	return &sampleQueryClientIterator{
+		client:           client,
+		newBatchIterator: NewStreamFirstSampleQueryResponseIterator,
 	}
 }
 
@@ -638,7 +659,10 @@ func (i *sampleQueryClientIterator) Next() bool {
 		stats.JoinIngesters(ctx, batch.Stats)
 		_ = metadata.AddWarnings(ctx, batch.Warnings...)
 
-		i.curr = NewTimestampFirstSampleQueryResponseIterator(batch)
+		if i.curr != nil {
+			i.closeErrs.Add(i.curr.Close())
+		}
+		i.curr = i.newBatchIterator(batch)
 	}
 	return true
 }
@@ -659,13 +683,30 @@ func (i *sampleQueryClientIterator) Err() error {
 	return i.err
 }
 
+// Close closes the batch still being read, closes the send side of the stream, and returns any
+// error collected while closing batches, across this call and every close Next already ran. It
+// never returns an iteration error: check Err for that.
 func (i *sampleQueryClientIterator) Close() error {
-	return i.client.CloseSend()
+	if i.curr != nil {
+		i.closeErrs.Add(i.curr.Close())
+		i.curr = nil
+	}
+	i.closeErrs.Add(i.client.CloseSend())
+
+	return util.UnwrapMultiError(i.closeErrs)
 }
 
 // NewTimestampFirstSampleQueryResponseIterator returns a timestamp-first iterator over a SampleQueryResponse.
 func NewTimestampFirstSampleQueryResponseIterator(resp *logproto.SampleQueryResponse) SampleIterator {
-	return NewMultiSeriesIterator(resp.Series)
+	return NewTimestampFirstMultiSeriesIterator(resp.Series)
+}
+
+// NewStreamFirstSampleQueryResponseIterator returns a stream-first iterator over a
+// SampleQueryResponse that ReadStreamFirstSampleBatch encoded.
+//
+// It plays the Series in the order the response holds them, so the sender's order survives.
+func NewStreamFirstSampleQueryResponseIterator(resp *logproto.SampleQueryResponse) SampleIterator {
+	return NewStreamFirstMultiSeriesIterator(resp.Series)
 }
 
 type seriesIterator struct {
@@ -703,13 +744,31 @@ func SampleIteratorWithClose(it SampleIterator, closeFn func() error) SampleIter
 	}
 }
 
-// NewMultiSeriesIterator returns an iterator over multiple logproto.Series
-func NewMultiSeriesIterator(series []logproto.Series) SampleIterator {
+// NewTimestampFirstMultiSeriesIterator returns an iterator over multiple logproto.Series, in
+// global timestamp order.
+func NewTimestampFirstMultiSeriesIterator(series []logproto.Series) SampleIterator {
 	is := make([]SampleIterator, 0, len(series))
 	for i := range series {
 		is = append(is, NewSeriesIterator(series[i]))
 	}
 	return NewTimestampFirstSortSampleIterator(is)
+}
+
+// NewStreamFirstMultiSeriesIterator returns an iterator over multiple logproto.Series, in the
+// order the slice holds them. The caller therefore decides the order.
+func NewStreamFirstMultiSeriesIterator(series []logproto.Series) SampleIterator {
+	if len(series) == 0 {
+		return NoopSampleIterator
+	}
+
+	is := make([]SampleIterator, 0, len(series))
+	for i := range series {
+		is = append(is, NewSeriesIterator(series[i]))
+	}
+
+	// Two Series can cover overlapping timestamps. Despite its name,
+	// NewNonOverlappingSampleIterator accepts that: it plays each input to completion in turn.
+	return NewNonOverlappingSampleIterator(is)
 }
 
 // NewSeriesIterator iterates over sample in a series.
@@ -869,8 +928,11 @@ func (i *timeRangedSampleIterator) Next() bool {
 	return ok
 }
 
-// ReadSampleBatch reads a set of entries off an iterator.
-func ReadSampleBatch(i SampleIterator, size uint32) (*logproto.SampleQueryResponse, uint32, error) {
+// ReadTimestampFirstSampleBatch reads up to size samples off an iterator.
+//
+// It groups the samples into one Series per stream hash and label set. The Series come back in an
+// unspecified order, so the iterator's own order does not survive.
+func ReadTimestampFirstSampleBatch(i SampleIterator, size uint32) (*logproto.SampleQueryResponse, uint32, error) {
 	var (
 		series      = map[uint64]map[string]*logproto.Series{}
 		respSize    uint32
@@ -904,4 +966,28 @@ func ReadSampleBatch(i SampleIterator, size uint32) (*logproto.SampleQueryRespon
 		}
 	}
 	return &result, respSize, i.Err()
+}
+
+// ReadStreamFirstSampleBatch reads up to size samples off a stream-first iterator and keeps that
+// order in the encoded Series.
+//
+// It starts a new Series every time the stream hash or the labels change, so the Series order is
+// the sample order. Structured metadata makes a stream's labels change from sample to sample, and
+// such a stream is therefore split across several Series.
+func ReadStreamFirstSampleBatch(i SampleIterator, size uint32) (*logproto.SampleQueryResponse, uint32, error) {
+	var (
+		series   []logproto.Series
+		respSize uint32
+	)
+
+	for ; respSize < size && i.Next(); respSize++ {
+		labels, hash, sample := i.Labels(), i.StreamHash(), i.At()
+		if len(series) == 0 || series[len(series)-1].StreamHash != hash || series[len(series)-1].Labels != labels {
+			series = append(series, logproto.Series{Labels: labels, StreamHash: hash})
+		}
+		curr := &series[len(series)-1]
+		curr.Samples = append(curr.Samples, sample)
+	}
+
+	return &logproto.SampleQueryResponse{Series: series}, respSize, i.Err()
 }
