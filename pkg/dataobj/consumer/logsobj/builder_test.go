@@ -1197,9 +1197,12 @@ func iterLogsSection(t *testing.T, section *dataobj.Section) result.Seq[logs.Rec
 	})
 }
 
-// failingReadStore is a scratch store whose reads always fail.
+// failingReadStore is a scratch store whose reads always fail. It records the
+// handles removed from it so tests can tell that buffered sections were
+// released.
 type failingReadStore struct {
-	inner scratch.Store
+	inner   scratch.Store
+	removed []scratch.Handle
 }
 
 func (s *failingReadStore) Put(p []byte) scratch.Handle { return s.inner.Put(p) }
@@ -1208,12 +1211,16 @@ func (s *failingReadStore) Read(scratch.Handle) (io.ReadSeekCloser, error) {
 	return nil, errors.New("mock read error")
 }
 
-func (s *failingReadStore) Remove(h scratch.Handle) error { return s.inner.Remove(h) }
+func (s *failingReadStore) Remove(h scratch.Handle) error {
+	s.removed = append(s.removed, h)
+	return s.inner.Remove(h)
+}
 
 // A closer returned alongside an error is never closed by callers, since they
 // stop at the error, so Flush must hand back nothing when it fails.
 func TestBuilder_FlushReturnsNoCloserOnError(t *testing.T) {
-	builder, err := NewBuilder(testBuilderConfig, &failingReadStore{inner: scratch.NewMemory()}, NewBuilderMetrics(), log.NewNopLogger(), nil)
+	store := &failingReadStore{inner: scratch.NewMemory()}
+	builder, err := NewBuilder(testBuilderConfig, store, NewBuilderMetrics(), log.NewNopLogger(), nil)
 	require.NoError(t, err)
 	require.NoError(t, builder.Append("tenant", logproto.Stream{
 		Labels:  `{cluster="test",app="foo"}`,
@@ -1224,4 +1231,50 @@ func TestBuilder_FlushReturnsNoCloserOnError(t *testing.T) {
 	require.Error(t, err)
 	require.Nil(t, obj)
 	require.Nil(t, closer)
+	require.NotEmpty(t, store.removed, "the buffered sections must be released")
+}
+
+// Flush resets the builder whether it succeeds or fails, so a failed flush
+// leaves nothing behind for the next one to pick up.
+func TestBuilder_FlushResetsBuilder(t *testing.T) {
+	stream := logproto.Stream{
+		Labels:  `{cluster="test",app="foo"}`,
+		Entries: []push.Entry{{Timestamp: time.Unix(10, 0).UTC(), Line: "hello"}},
+	}
+
+	tests := []struct {
+		name    string
+		store   scratch.Store
+		wantErr string
+	}{
+		{
+			name:  "when the object is built",
+			store: scratch.NewMemory(),
+		},
+		{
+			name:    "when the object cannot be built",
+			store:   &failingReadStore{inner: scratch.NewMemory()},
+			wantErr: "building object",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			builder, err := NewBuilder(testBuilderConfig, tt.store, NewBuilderMetrics(), log.NewNopLogger(), nil)
+			require.NoError(t, err)
+			require.NoError(t, builder.Append("tenant", stream, time.Now()))
+
+			_, closer, err := builder.Flush()
+			if tt.wantErr != "" {
+				require.ErrorContains(t, err, tt.wantErr)
+			} else {
+				require.NoError(t, err)
+				defer closer.Close()
+			}
+
+			require.Zero(t, builder.GetEstimatedSize())
+			_, _, err = builder.Flush()
+			require.ErrorIs(t, err, ErrBuilderEmpty)
+		})
+	}
 }
