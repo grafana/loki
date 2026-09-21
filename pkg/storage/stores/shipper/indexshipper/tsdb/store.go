@@ -50,6 +50,7 @@ func NewStore(
 	limits downloads.Limits,
 	tableRange config.TableRange,
 	reg prometheus.Registerer,
+	cacheReg prometheus.Registerer,
 	logger log.Logger,
 ) (
 	index.ReaderWriter,
@@ -61,7 +62,7 @@ func NewStore(
 		logger: logger,
 	}
 
-	if err := storeInstance.init(name, prefix, indexShipperCfg, schemaCfg, objectClient, limits, tableRange, reg); err != nil {
+	if err := storeInstance.init(name, prefix, indexShipperCfg, schemaCfg, objectClient, limits, tableRange, reg, cacheReg); err != nil {
 		storeInstance.Stop()
 		return nil, nil, err
 	}
@@ -70,12 +71,12 @@ func NewStore(
 }
 
 func (s *store) init(name, prefix string, indexShipperCfg indexshipper.Config, schemaCfg config.SchemaConfig, objectClient client.ObjectClient,
-	limits downloads.Limits, tableRange config.TableRange, reg prometheus.Registerer) error {
+	limits downloads.Limits, tableRange config.TableRange, reg, cacheReg prometheus.Registerer) error {
 	var err error
 	if (indexShipperCfg.Mode == indexshipper.ModeReadOnly || indexShipperCfg.Mode == indexshipper.ModeReadWrite) && chunkcache.IsCacheConfigured(indexShipperCfg.PostingsCache) {
 		postingsCfg := indexShipperCfg.PostingsCache
-		postingsCfg.Prefix = "tsdb-postings"
-		s.postingsCache, err = chunkcache.New(postingsCfg, reg, s.logger, stats.IndexCache, constants.Loki)
+		postingsCfg.Prefix = "tsdb-postings-" + name
+		s.postingsCache, err = chunkcache.New(postingsCfg, cacheReg, s.logger, stats.IndexCache, constants.Loki)
 		if err != nil {
 			return err
 		}
