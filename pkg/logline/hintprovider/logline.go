@@ -66,13 +66,12 @@ func (p *LoglineHintProvider) QuerierProvideHints(
 	tenant string,
 	expr syntax.Expr,
 	from, through model.Time,
-	overlapping []logproto.IndexRef,
+	overlapping []logproto.Meta,
 ) (*Hints, *QueryStats, error) {
 	filters := SupportedQuery(expr, p.ngramLength)
 	stats := NewQueryStats()
 	ranges := make([]logproto.HintTimeRange, 0, 1)
-	metas := indexRefsToMetas(overlapping)
-	shardRanges, err := p.executeQuery(ctx, filters, metas, stats)
+	shardRanges, err := p.executeQuery(ctx, filters, overlapping, stats)
 	if err != nil {
 		return nil, stats, err
 	}
@@ -119,14 +118,13 @@ func (p *LoglineHintProvider) ProvideHints(
 	if len(overlapping) == 0 {
 		return &Hints{TimeRanges: normalizeRanges(ranges)}, stats, nil
 	}
-	indexRefs := metasToIndexRefs(overlapping)
 
 	resp, err := next.Do(ctx, &logproto.HintRequest{
 		From:        from,
 		Through:     through,
 		Expr:        expr.String(),
 		Tenant:      tenant,
-		Indexes:     indexRefs,
+		Indexes:     toProtoMetas(overlapping),
 		NgramLength: int64(p.ngramLength),
 	})
 
@@ -159,16 +157,16 @@ func (p *LoglineHintProvider) MinDate() time.Time {
 
 func (p *LoglineHintProvider) openIndexReader(
 	ctx context.Context,
-	meta store.Meta,
+	meta logproto.Meta,
 	stats *QueryStats,
 ) (logline.Reader, error) {
-	storeReader := p.store.GetIndexReaderAt(ctx, meta)
+	storeReader := p.store.GetIndexReaderAt(ctx, meta.IndexPath())
 	trackedReader := newTrackingReaderAt(storeReader, stats)
 
 	size := meta.SizeBytes
 	if size <= 0 {
 		var sizeErr error
-		size, sizeErr = p.store.IndexObjectSize(ctx, meta)
+		size, sizeErr = p.store.IndexObjectSize(ctx, meta.IndexPath())
 		if sizeErr != nil {
 			return nil, sizeErr
 		}
@@ -266,4 +264,50 @@ func normalizeRanges(ranges []logproto.HintTimeRange) []logproto.HintTimeRange {
 		return nil
 	}
 	return out
+}
+
+func toProtoMetas(metas []store.Meta) []logproto.Meta {
+	out := make([]logproto.Meta, len(metas))
+	for i, m := range metas {
+		out[i] = toProtoMeta(m)
+	}
+	return out
+}
+
+func toProtoMeta(m store.Meta) logproto.Meta {
+	pm := logproto.Meta{
+		Date:             m.Date,
+		StorageID:        m.StorageID,
+		Hash:             m.Hash,
+		Version:          m.Version,
+		MinLogTs:         m.MinLogTs,
+		MaxLogTs:         m.MaxLogTs,
+		MinRecordTs:      m.MinRecordTs,
+		MaxRecordTs:      m.MaxRecordTs,
+		CompactedFrom:    m.CompactedFrom,
+		CreatedAt:        m.CreatedAt,
+		ShardCount:       int64(m.ShardCount),
+		ShardAlgorithm:   m.ShardAlgorithm,
+		ShardValue:       int64(m.ShardValue),
+		DocumentInterval: m.DocumentInterval,
+		SizeBytes:        m.SizeBytes,
+	}
+	if m.IndexHeader != nil {
+		h := m.IndexHeader
+		pm.IndexHeader = &logproto.HeaderInfo{
+			Version:              h.Version,
+			Flags:                h.Flags,
+			DocumentCount:        h.DocumentCount,
+			TermBlockCount:       h.TermBlockCount,
+			PostingsBlockCount:   h.PostingsBlockCount,
+			PostingsCompression:  h.PostingsCompression,
+			TermCount:            h.TermCount,
+			PostingsDataSize:     h.PostingsDataSize,
+			TermDataSize:         h.TermDataSize,
+			DocMetadataSize:      h.DocMetadataSize,
+			TermBlockDirSize:     h.TermBlockDirSize,
+			PostingsBlockDirSize: h.PostingsBlockDirSize,
+		}
+	}
+	return pm
 }

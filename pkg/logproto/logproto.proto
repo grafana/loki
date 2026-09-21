@@ -422,27 +422,61 @@ message HintRequest {
   ];
   string expr = 3;
   string tenant = 4;
-  repeated IndexRef indexes = 5 [(gogoproto.nullable) = false];
+  repeated Meta indexes = 5 [(gogoproto.nullable) = false];
   int64 ngram_length = 6;
 }
 
-message IndexRef {
+// Meta is the wire form of store.Meta for hint jobs.
+message Meta {
   string date = 1;
   string storage_id = 2 [(gogoproto.customname) = "StorageID"];
-  string version = 3;
-  int64 size_bytes = 4;
-  int64 min_log_ts = 5 [
-    (gogoproto.customtype) = "github.com/prometheus/common/model.Time",
+  string hash = 3;
+  string version = 4;
+  google.protobuf.Timestamp min_log_ts = 5 [
+    (gogoproto.stdtime) = true,
     (gogoproto.nullable) = false
   ];
-  int64 max_log_ts = 6 [
-    (gogoproto.customtype) = "github.com/prometheus/common/model.Time",
+  google.protobuf.Timestamp max_log_ts = 6 [
+    (gogoproto.stdtime) = true,
     (gogoproto.nullable) = false
   ];
-  reserved 7;
-  int64 shard_count = 8;
-  string shard_algorithm = 9;
-  int64 shard_value = 10;
+  google.protobuf.Timestamp min_record_ts = 7 [
+    (gogoproto.stdtime) = true,
+    (gogoproto.nullable) = false
+  ];
+  google.protobuf.Timestamp max_record_ts = 8 [
+    (gogoproto.stdtime) = true,
+    (gogoproto.nullable) = false
+  ];
+  repeated string compacted_from = 9;
+  google.protobuf.Timestamp created_at = 10 [
+    (gogoproto.stdtime) = true,
+    (gogoproto.nullable) = false
+  ];
+  HeaderInfo index_header = 11;
+  int64 shard_count = 12;
+  string shard_algorithm = 13;
+  int64 shard_value = 14;
+  google.protobuf.Duration document_interval = 15 [
+    (gogoproto.stdduration) = true,
+    (gogoproto.nullable) = false
+  ];
+  int64 size_bytes = 16;
+}
+
+message HeaderInfo {
+  uint32 version = 1;
+  uint32 flags = 2;
+  uint32 document_count = 3;
+  uint32 term_block_count = 4;
+  uint32 postings_block_count = 5;
+  uint32 postings_compression = 6;
+  uint64 term_count = 7;
+  uint64 postings_data_size = 8;
+  uint64 term_data_size = 9;
+  uint64 doc_metadata_size = 10;
+  uint64 term_block_dir_size = 11;
+  uint64 postings_block_dir_size = 12;
 }
 
 message HintTimeRange {

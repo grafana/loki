@@ -351,6 +351,23 @@ func (h HintTimeRange) IsPassthrough() bool {
 	return h.Start.IsZero()
 }
 
+func (m Meta) objectID() string {
+	if m.StorageID != "" {
+		return m.StorageID
+	}
+	return m.Hash
+}
+
+// ID returns the unique identifier for this index ("date/id").
+func (m Meta) ID() string {
+	return m.Date + "/" + m.objectID()
+}
+
+// IndexPath returns the object storage path for the index data file.
+func (m Meta) IndexPath() string {
+	return fmt.Sprintf("%s/%s/index", m.Date, m.objectID())
+}
+
 func (m *HintRequest) GetStart() time.Time {
 	return time.UnixMilli(int64(m.From))
 }

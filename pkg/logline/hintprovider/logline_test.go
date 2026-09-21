@@ -156,7 +156,7 @@ func TestLoglineHintProvider_ExecuteQuery_ObservesQueryMultiple(t *testing.T) {
 	active := indexStore.Snapshot().Active()
 	require.Len(t, active, 1)
 
-	shardRanges, err := provider.executeQuery(context.Background(), []string{"QQQQQQ"}, active, stats)
+	shardRanges, err := provider.executeQuery(context.Background(), []string{"QQQQQQ"}, toProtoMetas(active), stats)
 	require.NoError(t, err)
 	require.Empty(t, shardRanges)
 
@@ -181,7 +181,7 @@ func TestLoglineHintProvider_OpenIndexReader_ReadsFooter(t *testing.T) {
 	provider, err := NewLoglineHintProvider(indexStore, 6, 0, nil, log.NewNopLogger())
 	require.NoError(t, err)
 
-	meta := store.Meta{
+	meta := logproto.Meta{
 		Date:    docMin.UTC().Format("2006-01-02"),
 		Hash:    "aaaaaaaaaaaaaaaa",
 		Version: logline.CurrentVersion,
@@ -746,10 +746,10 @@ func TestLoglineHintProvider_ProvideHints_EmptyShardAnnihilatesIntersection(t *t
 
 	byShard := make(map[int][]string)
 	for shardValue := range 10 {
-		meta := store.Meta{
+		meta := logproto.Meta{
 			ShardCount:     10,
 			ShardAlgorithm: shard.AlgorithmMurmur3Mix,
-			ShardValue:     shardValue,
+			ShardValue:     int64(shardValue),
 		}
 		if terms := filterNgramsForShard(ngrams, meta); len(terms) > 0 {
 			byShard[shardValue] = terms
@@ -890,7 +890,7 @@ func TestLoglineHintProvider_ExecuteQuery_OpensReaderOncePerIndex(t *testing.T) 
 	require.Len(t, active, 1)
 
 	stats := NewQueryStats()
-	shardRanges, err := provider.executeQuery(context.Background(), []string{needle, needle}, active, stats)
+	shardRanges, err := provider.executeQuery(context.Background(), []string{needle, needle}, toProtoMetas(active), stats)
 	require.NoError(t, err)
 	require.NotEmpty(t, shardRanges)
 
@@ -898,11 +898,11 @@ func TestLoglineHintProvider_ExecuteQuery_OpensReaderOncePerIndex(t *testing.T) 
 	require.Equal(t, int64(1), snap.IndexQueriesTotal)
 }
 
-// minimalMeta returns a store.Meta suitable for buildTermJobs tests that don't need real index data.
+// minimalMeta returns a logproto.Meta suitable for buildTermJobs tests that don't need real index data.
 // Only Version and ID-related fields are set; ShardCount=0 so filterNgramsForShard
 // passes all ngrams through unchanged.
-func minimalMeta(hash, date, indexVersion string) store.Meta {
-	return store.Meta{
+func minimalMeta(hash, date, indexVersion string) logproto.Meta {
+	return logproto.Meta{
 		Date:    date,
 		Hash:    hash,
 		Version: indexVersion,
@@ -914,7 +914,7 @@ func minimalMeta(hash, date, indexVersion string) store.Meta {
 // doesn't accidentally drop the second block.
 func TestBuildTermJobs_SingleVersionCache(t *testing.T) {
 	filter := "abcdefg" // produces 2 six-grams: ABCDEF, BCDEFG
-	metas := []store.Meta{
+	metas := []logproto.Meta{
 		minimalMeta("aaaaaaaaaaaaaaa1", "2026-01-01", "v3"),
 		minimalMeta("aaaaaaaaaaaaaaa2", "2026-01-01", "v3"),
 	}
@@ -941,7 +941,7 @@ func TestBuildTermJobs_MixedVersions(t *testing.T) {
 	}
 
 	filter := "abcdefg" // produces 2 six-grams: ABCDEF, BCDEFG
-	metas := []store.Meta{
+	metas := []logproto.Meta{
 		minimalMeta("aaaaaaaaaaaaaaa1", "2026-01-01", versions[0]),
 		minimalMeta("aaaaaaaaaaaaaaa2", "2026-01-01", versions[1]),
 	}
@@ -960,7 +960,7 @@ func TestBuildTermJobs_MixedVersions(t *testing.T) {
 // unrecognised index version causes the query to fail with an error.
 func TestBuildTermJobs_UnknownVersionReturnsError(t *testing.T) {
 	filter := "abcdefg"
-	metas := []store.Meta{
+	metas := []logproto.Meta{
 		minimalMeta("aaaaaaaaaaaaaaa1", "2026-01-01", "v3"),
 		minimalMeta("aaaaaaaaaaaaaaa2", "2026-01-01", "v99"), // unknown
 	}
@@ -974,7 +974,7 @@ func TestBuildTermJobs_UnknownVersionReturnsError(t *testing.T) {
 // known index version.
 func TestBuildTermJobs_FilterTooShortReturnsUnsupported(t *testing.T) {
 	filter := "ab" // too short for n=6
-	metas := []store.Meta{
+	metas := []logproto.Meta{
 		minimalMeta("aaaaaaaaaaaaaaa1", "2026-01-01", "v3"),
 	}
 

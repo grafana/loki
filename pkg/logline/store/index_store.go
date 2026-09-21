@@ -190,16 +190,16 @@ func (s *Store) GetIndex(ctx context.Context, id string) (io.ReadCloser, error) 
 // GetIndexReaderAt returns an io.ReaderAt backed by range reads against
 // object storage. Each ReadAt call issues a single GetRange request,
 // avoiding the need to download the full index into memory.
-func (s *Store) GetIndexReaderAt(ctx context.Context, meta Meta) io.ReaderAt {
-	return NewBucketReaderAt(ctx, s.bucket, meta.IndexPath())
+func (s *Store) GetIndexReaderAt(ctx context.Context, indexPath string) io.ReaderAt {
+	return NewBucketReaderAt(ctx, s.bucket, indexPath)
 }
 
 // IndexObjectSize returns the size of the index data object in the bucket.
-// Used when Meta.SizeBytes is missing or untrusted (e.g. a slim IndexRef).
-func (s *Store) IndexObjectSize(ctx context.Context, meta Meta) (int64, error) {
-	attrs, err := s.bucket.Attributes(ctx, meta.IndexPath())
+// Used when Meta.SizeBytes is missing or untrusted.
+func (s *Store) IndexObjectSize(ctx context.Context, indexPath string) (int64, error) {
+	attrs, err := s.bucket.Attributes(ctx, indexPath)
 	if err != nil {
-		return 0, fmt.Errorf("stat index %s: %w", meta.ID(), err)
+		return 0, fmt.Errorf("stat index %s: %w", indexPath, err)
 	}
 	return attrs.Size, nil
 }

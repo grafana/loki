@@ -5,7 +5,6 @@ import (
 	"sort"
 
 	"github.com/grafana/loki/v3/pkg/logline/shard"
-	"github.com/grafana/loki/v3/pkg/logline/store"
 	"github.com/grafana/loki/v3/pkg/logproto"
 )
 
@@ -24,13 +23,13 @@ type shardKey struct {
 	ShardValue int
 }
 
-func shardKeyOf(m store.Meta) shardKey {
+func shardKeyOf(m logproto.Meta) shardKey {
 	return shardKey{
 		shardGroup: shardGroup{
-			ShardCount:     m.ShardCount,
+			ShardCount:     int(m.ShardCount),
 			ShardAlgorithm: m.ShardAlgorithm,
 		},
-		ShardValue: m.ShardValue,
+		ShardValue: int(m.ShardValue),
 	}
 }
 
@@ -88,7 +87,7 @@ func intersectRanges(a, b []logproto.HintTimeRange) []logproto.HintTimeRange {
 // filterNgramsForShard returns only the ngrams that map to meta's shard.
 // For unsharded indexes (ShardCount <= 1) or unknown algorithms, returns
 // the full list unchanged.
-func filterNgramsForShard(ngrams []string, meta store.Meta) []string {
+func filterNgramsForShard(ngrams []string, meta logproto.Meta) []string {
 	if meta.ShardCount <= 1 {
 		return ngrams
 	}
@@ -102,7 +101,7 @@ func filterNgramsForShard(ngrams []string, meta store.Meta) []string {
 	for _, ng := range ngrams {
 		var key [8]byte
 		copy(key[:], ng)
-		if fn(key, meta.ShardCount) == meta.ShardValue {
+		if fn(key, int(meta.ShardCount)) == int(meta.ShardValue) {
 			filtered = append(filtered, ng)
 		}
 	}
