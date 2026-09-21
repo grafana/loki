@@ -48,6 +48,7 @@ import (
 	ingester_client "github.com/grafana/loki/v3/pkg/ingester/client"
 	"github.com/grafana/loki/v3/pkg/kafka"
 	kafka_client "github.com/grafana/loki/v3/pkg/kafka/client"
+	"github.com/grafana/loki/v3/pkg/limits"
 	limits_frontend "github.com/grafana/loki/v3/pkg/limits/frontend"
 	limits_frontend_client "github.com/grafana/loki/v3/pkg/limits/frontend/client"
 	"github.com/grafana/loki/v3/pkg/loghttp/push"
@@ -206,6 +207,19 @@ type metrics struct {
 	pushStatsCount                        *prometheus.CounterVec
 	tenantPushSanitizedStructuredMetadata *prometheus.CounterVec
 
+	// metrics for shard shadowing
+	// so we can compare rateStore sharding with limit-service sharding
+	limitsServiceShardShadowDivergence          *prometheus.CounterVec
+	limitsServiceShardShadowDivergenceMagnitude *prometheus.HistogramVec
+	limitsServiceShardShadowStreamRate          *prometheus.HistogramVec
+	limitsServiceShardShadowUnimplemented       *prometheus.CounterVec
+	limitsServiceShardShadowFailed              *prometheus.CounterVec
+	limitsServiceShardShadowRejected            *prometheus.CounterVec
+	limitsServiceShardShadowCompared            *prometheus.CounterVec
+	limitsServiceShardShadowCapped              *prometheus.CounterVec
+	limitsServiceShardDuration                  prometheus.Histogram
+	limitsServiceExceedsLimitsDuration          prometheus.Histogram
+
 	// kafka metrics
 	kafkaAppends           *prometheus.CounterVec
 	kafkaWriteBytesTotal   prometheus.Counter
@@ -254,6 +268,84 @@ func newMetrics(reg prometheus.Registerer) *metrics {
 			Name:      "distributor_push_structured_metadata_sanitized_total",
 			Help:      "The total number of times we've had to sanitize structured metadata (names or values) at ingestion time per tenant.",
 		}, []string{"tenant", "format"}),
+
+		limitsServiceShardShadowDivergence: promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
+			Namespace: constants.Loki,
+			Name:      "distributor_limits_service_shard_shadow_divergence_total",
+			Help:      "For tenants in shadow mode, the total number of times the ingest-limits service's shard count differed from the shard count actually used, which the local rate store decided. Only counted for comparable observations; see distributor_limits_service_shard_shadow_compared_total for the denominator. The sharding label says which side sharded the stream, meaning a shard count above one: both, limits_only, rate_store_only, or neither.",
+		}, []string{"tenant", "sharding"}),
+
+		limitsServiceShardShadowDivergenceMagnitude: promauto.With(reg).NewHistogramVec(prometheus.HistogramOpts{
+			Namespace: constants.Loki,
+			Name:      "distributor_limits_service_shard_shadow_divergence_magnitude",
+			Help:      "For tenants in shadow mode, the distribution of the absolute gap between the ingest-limits service's shard count and the local rate store's, observed only when the two differ. The direction label splits it into over, the limits service asking for more shards, and under, fewer, so each is a clean distribution of positive magnitudes. The total count across both directions equals distributor_limits_service_shard_shadow_divergence_total.",
+			// Native only, as the exponential schema covers the whole range
+			// without hand-picked buckets.
+			NativeHistogramBucketFactor:     1.1,
+			NativeHistogramMinResetDuration: 1 * time.Hour,
+			NativeHistogramMaxBucketNumber:  100,
+		}, []string{"tenant", "direction"}),
+
+		limitsServiceShardShadowStreamRate: promauto.With(reg).NewHistogramVec(prometheus.HistogramOpts{
+			Namespace: constants.Loki,
+			Name:      "distributor_limits_service_shard_shadow_stream_rate_bytes",
+			Help:      "For tenants in shadow mode, the distribution of the per-stream byte rate that drove the shard decision, observed once per comparable stream. The source label splits it into rate_store, the distributor's local rate store, and limits, the ingest-limits service, so the two can be compared as heatmaps. Both are the sustained rate, before this push is amortized on top.",
+			// Native only, as the byte rates span kilobytes to megabytes per
+			// second.
+			NativeHistogramBucketFactor:     1.1,
+			NativeHistogramMinResetDuration: 1 * time.Hour,
+			NativeHistogramMaxBucketNumber:  100,
+		}, []string{"tenant", "source"}),
+
+		limitsServiceShardShadowUnimplemented: promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
+			Namespace: constants.Loki,
+			Name:      "distributor_limits_service_shard_shadow_unimplemented_total",
+			Help:      "For tenants in shadow mode, the total number of times the ingest-limits service answered Unimplemented, which means shadow mode is enabled here but the service does not support the RPC, so the setting has no effect.",
+		}, []string{"tenant"}),
+
+		limitsServiceShardShadowFailed: promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
+			Namespace: constants.Loki,
+			Name:      "distributor_limits_service_shard_shadow_failed_total",
+			Help:      "For tenants in shadow mode, the total number of observations that could not be compared because the ingest-limits service did not answer for the stream, reported that it could not check it, or answered from an instance that does not own the stream's partition.",
+		}, []string{"tenant"}),
+
+		limitsServiceShardShadowRejected: promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
+			Namespace: constants.Loki,
+			Name:      "distributor_limits_service_shard_shadow_rejected_total",
+			Help:      "For tenants in shadow mode, the total number of streams the ingest-limits service would have rejected, because a brand-new stream exhausted the tenant's stream count budget. The local rate store never rejects, so this is a difference in kind rather than in shard count.",
+		}, []string{"tenant"}),
+
+		limitsServiceShardShadowCompared: promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
+			Namespace: constants.Loki,
+			Name:      "distributor_limits_service_shard_shadow_compared_total",
+			Help:      "For tenants in shadow mode, the total number of observations with a comparable shard count from the ingest-limits service. The denominator for distributor_limits_service_shard_shadow_divergence_total. The sharding label says which side sharded the stream, meaning a shard count above one: both, limits_only, rate_store_only, or neither. Excluding neither restricts the divergence rate to comparisons where sharding was in play.",
+		}, []string{"tenant", "sharding"}),
+
+		limitsServiceShardShadowCapped: promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
+			Namespace: constants.Loki,
+			Name:      "distributor_limits_service_shard_shadow_capped_total",
+			Help:      "For tenants in shadow mode, the total number of comparable observations where the ingest-limits service capped the shard count below what the rate justified, to fit the tenant's remaining stream count budget. Capping is expected, and is not by itself a disagreement about the rate.",
+		}, []string{"tenant"}),
+
+		limitsServiceShardDuration: promauto.With(reg).NewHistogram(prometheus.HistogramOpts{
+			Namespace:                       constants.Loki,
+			Name:                            "distributor_limits_service_shard_duration_seconds",
+			Help:                            "The time the distributor spends in the synchronous CheckLimitsAndShard call on the push path, which is the latency shadow mode adds. Bounded by the call timeout.",
+			NativeHistogramBucketFactor:     1.1,
+			NativeHistogramMinResetDuration: 1 * time.Hour,
+			NativeHistogramMaxBucketNumber:  100,
+			Buckets:                         prometheus.DefBuckets,
+		}),
+
+		limitsServiceExceedsLimitsDuration: promauto.With(reg).NewHistogram(prometheus.HistogramOpts{
+			Namespace:                       constants.Loki,
+			Name:                            "distributor_limits_service_exceeds_limits_duration_seconds",
+			Help:                            "The time the distributor spends in the ExceedsLimits call on the push path. Reported alongside loki_distributor_limits_service_shard_duration_seconds so the two limits service calls can be compared: once CheckLimitsAndShard subsumes ExceedsLimits, the added latency is the difference between the two.",
+			NativeHistogramBucketFactor:     1.1,
+			NativeHistogramMinResetDuration: 1 * time.Hour,
+			NativeHistogramMaxBucketNumber:  100,
+			Buckets:                         prometheus.DefBuckets,
+		}),
 
 		kafkaAppends: promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
 			Namespace: constants.Loki,
@@ -696,6 +788,13 @@ func (d *Distributor) pushWithResolver(ctx context.Context, req *logproto.PushRe
 	// We also work out the hash value at the same time.
 	streams := make([]KeyedStream, 0, len(req.Streams))
 
+	// Candidates for tenants in shadow mode, see
+	// shardstreams.Config.LimitsServiceStreamShardingMode. The local rate
+	// store still shards these streams; the limits service is only asked for
+	// its opinion. Collected by maybeShardByRate below and observed once after
+	// the validation loop.
+	var shadowCandidates []limitsServiceShardCandidate
+
 	var validationErrors util.GroupedErrors
 
 	now := time.Now()
@@ -709,7 +808,25 @@ func (d *Distributor) pushWithResolver(ctx context.Context, req *logproto.PushRe
 	// (e.g. toggle time sharding or use a different desired_rate).
 	maybeShardByRate := func(stream logproto.Stream, pushSize int, policy string, shardStreamsCfg shardstreams.Config) {
 		if shardStreamsCfg.Enabled {
-			streams = append(streams, d.shardStream(stream, pushSize, tenantID, policy, shardStreamsCfg)...)
+			sharded, shardCount := d.shardStream(stream, pushSize, tenantID, policy, shardStreamsCfg)
+			streams = append(streams, sharded...)
+
+			if shardStreamsCfg.LimitsServiceStreamShardingMode == shardstreams.LimitsServiceStreamShardingModeShadow {
+				// shardCount is shardCountFor's recommendation rather than
+				// len(sharded), which createShards limits to the number of
+				// entries and which would look like a difference of opinion
+				// for a small push on a hot stream. pushSize is passed on as
+				// it is, so that the limits service sees the same size the
+				// rate store just used.
+				rateStoreRate, _ := d.rateStore.RateFor(tenantID, stream.Hash)
+				shadowCandidates = append(shadowCandidates, limitsServiceShardCandidate{
+					stream:          stream,
+					policy:          policy,
+					rateStoreShards: shardCount,
+					rateStoreRate:   rateStoreRate,
+					totalSize:       uint64(pushSize),
+				})
+			}
 			return
 		}
 		streams = append(streams, KeyedStream{
@@ -940,7 +1057,13 @@ func (d *Distributor) pushWithResolver(ctx context.Context, req *logproto.PushRe
 	// These limits are checked after the ingestion rate limit as this
 	// is how it works in ingesters.
 	if d.cfg.IngestLimitsEnabled {
+		if len(shadowCandidates) > 0 {
+			d.observeLimitsServiceShardShadow(ctx, tenantID, shadowCandidates)
+		}
+
+		enforceTimer := prometheus.NewTimer(d.m.limitsServiceExceedsLimitsDuration)
 		accepted, rejected, err := d.ingestLimits.EnforceLimits(ctx, tenantID, streams)
+		enforceTimer.ObserveDuration()
 		if err == nil && !d.cfg.IngestLimitsDryRunEnabled {
 			if len(rejected) > 0 {
 				discardedStreams := make([]logproto.Stream, 0, len(rejected))
@@ -1341,17 +1464,126 @@ func shardStreamByTime(stream logproto.Stream, lbls labels.Labels, timeShardLen 
 	}), true
 }
 
+// limitsServiceShardCandidate is a logical (pre-shard) stream whose tenant is
+// in shadow mode. rateStoreShards is shardCountFor's recommendation for this
+// push, which is not necessarily the number of streams it produced, see
+// shardStream. totalSize is the same push size the rate store was given.
+type limitsServiceShardCandidate struct {
+	stream          logproto.Stream
+	policy          string
+	rateStoreShards int
+	rateStoreRate   int64
+	totalSize       uint64
+}
+
+// observeLimitsServiceShardShadow asks the ingest-limits service for a shard
+// count for each candidate and compares it against the count the local rate
+// store produced. It never changes what is written.
+//
+// It runs synchronously, on the push path, with a short timeout.
+func (d *Distributor) observeLimitsServiceShardShadow(ctx context.Context, tenantID string, candidates []limitsServiceShardCandidate) {
+	// Deferred so that every path, success, failure and Unimplemented alike,
+	// records the latency shadow mode adds.
+	defer prometheus.NewTimer(d.m.limitsServiceShardDuration).ObserveDuration()
+
+	shadowCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
+	defer cancel()
+	results, err := d.ingestLimits.CheckLimitsAndShard(shadowCtx, tenantID, candidates)
+	if err != nil {
+		// None of the candidates were observed, so count them all as failed
+		// rather than leaving them out of the coverage metrics.
+		d.m.limitsServiceShardShadowFailed.WithLabelValues(tenantID).Add(float64(len(candidates)))
+		if status.Code(err) == codes.Unimplemented {
+			// The service predates the RPC, for instance during a rollout.
+			// Report it separately from a transient error, as shadow mode is
+			// doing nothing at all in this state.
+			d.m.limitsServiceShardShadowUnimplemented.WithLabelValues(tenantID).Inc()
+			level.Warn(d.logger).Log("msg", "shadow mode check-limits-and-shard call returned Unimplemented; the ingest-limits service may predate this RPC", "tenant", tenantID)
+			return
+		}
+		level.Debug(d.logger).Log("msg", "failed shadow mode check-limits-and-shard call", "tenant", tenantID, "err", err)
+		return
+	}
+	for _, c := range candidates {
+		result, ok := results[c.stream.Hash]
+		switch {
+		case !ok,
+			result.GetStats().GetShardDecisionContext() == uint32(limits.ReasonFailed),
+			result.GetStats().GetShardDecisionContext() == uint32(limits.ReasonNotOwned):
+			// Not a usable observation: there was no answer, the service could
+			// not check the stream, or the instance that answered does not own
+			// its partition. Comparing it would report agreement or
+			// disagreement that does not exist.
+			d.m.limitsServiceShardShadowFailed.WithLabelValues(tenantID).Inc()
+		case result.RejectReason != "":
+			// A difference in kind rather than in shard count: the local rate
+			// store never rejects a stream.
+			d.m.limitsServiceShardShadowRejected.WithLabelValues(tenantID).Inc()
+		default:
+			resultShards := int(result.Shards)
+			sharding := shardingState(c.rateStoreShards, resultShards)
+			d.m.limitsServiceShardShadowCompared.WithLabelValues(tenantID, sharding).Inc()
+			// Record both rates so their distributions can be compared as
+			// heatmaps. Both are sustained rates, before this push is
+			// amortized on top.
+			d.m.limitsServiceShardShadowStreamRate.WithLabelValues(tenantID, "rate_store").Observe(float64(c.rateStoreRate))
+			d.m.limitsServiceShardShadowStreamRate.WithLabelValues(tenantID, "limits").Observe(float64(result.GetStats().GetEvaluatedRate()))
+			if result.GetStats().GetShardDecisionContext() == uint32(limits.ReasonStreamShardsCapped) {
+				d.m.limitsServiceShardShadowCapped.WithLabelValues(tenantID).Inc()
+			}
+			if resultShards != c.rateStoreShards {
+				d.m.limitsServiceShardShadowDivergence.WithLabelValues(tenantID, sharding).Inc()
+				// Record the gap as a positive magnitude tagged by direction,
+				// so over- and under-sharding are separate distributions.
+				direction := "over"
+				magnitude := resultShards - c.rateStoreShards
+				if magnitude < 0 {
+					direction = "under"
+					magnitude = -magnitude
+				}
+				d.m.limitsServiceShardShadowDivergenceMagnitude.WithLabelValues(tenantID, direction).Observe(float64(magnitude))
+				level.Debug(log.With(util_log.WithUserID(tenantID, d.logger), "stream", c.stream.Labels)).Log(
+					"msg", "shard count shadow divergence",
+					"rate_store_shards", c.rateStoreShards,
+					"limits_service_shards", resultShards,
+					"rate_store_rate", c.rateStoreRate,
+					"limits_service_rate", result.GetStats().GetEvaluatedRate(),
+				)
+			}
+		}
+	}
+}
+
+// shardingState reports which side's decision shards the stream.
+func shardingState(rateStoreShards, limitsShards int) string {
+	rateStoreSharded := rateStoreShards > 1
+	limitsSharded := limitsShards > 1
+	switch {
+	case rateStoreSharded && limitsSharded:
+		return "both"
+	case limitsSharded:
+		return "limits_only"
+	case rateStoreSharded:
+		return "rate_store_only"
+	default:
+		return "neither"
+	}
+}
+
 // shardStream shards (divides) the given stream into N smaller streams, where
 // N is the sharding size for the given stream. shardSteam returns the smaller
-// streams and their associated keys for hashing to ingesters.
+// streams and their associated keys for hashing to ingesters, along with the
+// shard count shardCountFor recommended. That count is not necessarily the
+// number of streams returned, as createShards limits the shards to the number
+// of entries.
 //
 // The number of shards is limited by the number of entries.
-func (d *Distributor) shardStream(stream logproto.Stream, pushSize int, tenantID string, policy string, shardStreamsCfg shardstreams.Config) []KeyedStream {
+func (d *Distributor) shardStream(stream logproto.Stream, pushSize int, tenantID string, policy string, shardStreamsCfg shardstreams.Config) ([]KeyedStream, int) {
 	logger := log.With(util_log.WithUserID(tenantID, d.logger), "stream", stream.Labels)
 	shardCount := d.shardCountFor(logger, &stream, pushSize, tenantID, shardStreamsCfg)
 
 	if shardCount <= 1 {
-		return []KeyedStream{{HashKey: lokiring.TokenFor(tenantID, stream.Labels), HashKeyNoShard: stream.Hash, Stream: stream, Policy: policy}}
+		return []KeyedStream{{HashKey: lokiring.TokenFor(tenantID, stream.Labels), HashKeyNoShard: stream.Hash, Stream: stream, Policy: policy}}, shardCount
 	}
 
 	d.m.streamShardCount.Inc()
@@ -1359,7 +1591,7 @@ func (d *Distributor) shardStream(stream logproto.Stream, pushSize int, tenantID
 		level.Info(logger).Log("msg", "sharding request", "shard_count", shardCount)
 	}
 
-	return d.divideEntriesBetweenShards(tenantID, shardCount, shardStreamsCfg, stream, policy)
+	return d.divideEntriesBetweenShards(tenantID, shardCount, shardStreamsCfg, stream, policy), shardCount
 }
 
 func (d *Distributor) divideEntriesBetweenShards(tenantID string, totalShards int, shardStreamsCfg shardstreams.Config, stream logproto.Stream, policy string) []KeyedStream {
