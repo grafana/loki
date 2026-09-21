@@ -544,6 +544,12 @@ func (i *instance) QuerySample(ctx context.Context, req logql.SelectSampleParams
 }
 
 func (i *instance) querySample(ctx context.Context, req logql.SelectSampleParams) (iter.SampleIterator, error) {
+	// The ingester only ever produces timestamp-first output. Reject any other order
+	// instead of silently returning samples in the wrong order.
+	if req.Order != logproto.SAMPLE_ORDER_BY_TIMESTAMP {
+		return nil, fmt.Errorf("sample order %v is not supported by the ingester", req.Order)
+	}
+
 	expr, err := req.Expr()
 	if err != nil {
 		return nil, err
@@ -595,7 +601,7 @@ func (i *instance) querySample(ctx context.Context, req logql.SelectSampleParams
 		selector.Matchers(),
 		shard,
 		func(stream *stream) error {
-			iter, err := stream.SampleIterator(
+			streamIter, err := stream.SampleIterator(
 				ctx,
 				stats,
 				req.Start,
@@ -605,7 +611,7 @@ func (i *instance) querySample(ctx context.Context, req logql.SelectSampleParams
 			if err != nil {
 				return err
 			}
-			iters = append(iters, iter)
+			iters = append(iters, streamIter)
 			return nil
 		},
 	)
@@ -613,7 +619,7 @@ func (i *instance) querySample(ctx context.Context, req logql.SelectSampleParams
 		return nil, err
 	}
 
-	return iter.NewSortSampleIterator(iters), nil
+	return iter.NewTimestampFirstSortSampleIterator(iters), nil
 }
 
 // Label returns the label names or values depending on the given request

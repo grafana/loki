@@ -98,7 +98,7 @@ func getLocalStore(path string, cm ClientMetrics) Store {
 	return store
 }
 
-func Test_store_SelectLogs(t *testing.T) {
+func Test_LokiStore_SelectLogs(t *testing.T) {
 	tests := []struct {
 		name     string
 		req      *logproto.QueryRequest
@@ -390,7 +390,7 @@ func Test_store_SelectLogs(t *testing.T) {
 	}
 }
 
-func Test_store_SelectSample(t *testing.T) {
+func Test_LokiStore_SelectSample(t *testing.T) {
 	tests := []struct {
 		name     string
 		req      *logproto.SampleQueryRequest
@@ -718,6 +718,22 @@ func Test_store_SelectSample(t *testing.T) {
 	}
 }
 
+func TestLokiStore_SelectSamples_ShouldErrorOnUnknownSampleOrder(t *testing.T) {
+	unknownOrder := logproto.SampleOrder(99)
+
+	s := &LokiStore{
+		Store:        storeFixture,
+		cfg:          Config{MaxChunkBatchSize: 10},
+		chunkMetrics: NilMetrics,
+	}
+	req := newSampleQuery("count_over_time({foo=~\"ba.*\"}[5m])", from, from.Add(6*time.Millisecond), nil, nil)
+	req.Order = unknownOrder
+
+	ctx := user.InjectOrgID(context.Background(), "test-user")
+	_, err := s.SelectSamples(ctx, logql.SelectSampleParams{SampleQueryRequest: req})
+	require.ErrorContains(t, err, "unknown sample order")
+}
+
 type fakeChunkFilterer struct{}
 
 func (f fakeChunkFilterer) ForRequest(_ context.Context) chunk.Filterer {
@@ -732,7 +748,7 @@ func (f fakeChunkFilterer) RequiredLabelNames() []string {
 	return []string{"foo"}
 }
 
-func Test_ChunkFilterer(t *testing.T) {
+func TestLokiStore_SelectWithChunkFilterer(t *testing.T) {
 	s := &LokiStore{
 		Store: storeFixture,
 		cfg: Config{
@@ -742,34 +758,43 @@ func Test_ChunkFilterer(t *testing.T) {
 	}
 	s.SetChunkFilterer(&fakeChunkFilterer{})
 	ctx = user.InjectOrgID(context.Background(), "test-user")
-	it, err := s.SelectSamples(ctx, logql.SelectSampleParams{SampleQueryRequest: newSampleQuery("count_over_time({foo=~\"ba.*\"}[1s])", from, from.Add(1*time.Hour), nil, nil)})
-	if err != nil {
-		t.Errorf("store.SelectSamples() error = %v", err)
-		return
-	}
-	defer it.Close()
-	for it.Next() {
-		l, err := syntax.ParseLabels(it.Labels())
-		require.NoError(t, err)
-		require.NotEqual(t, "bazz", l.Get("foo"))
-	}
 
-	logit, err := s.SelectLogs(ctx, logql.SelectLogParams{QueryRequest: newQuery("{foo=~\"ba.*\"}", from, from.Add(1*time.Hour), nil, nil)})
-	if err != nil {
-		t.Errorf("store.SelectLogs() error = %v", err)
-		return
-	}
-	defer logit.Close()
-	for logit.Next() {
-		l, err := syntax.ParseLabels(it.Labels())
+	t.Run("SelectSamples", func(t *testing.T) {
+		for _, order := range []logproto.SampleOrder{logproto.SAMPLE_ORDER_BY_TIMESTAMP, logproto.SAMPLE_ORDER_BY_STREAM} {
+			t.Run(order.String(), func(t *testing.T) {
+				req := newSampleQuery("count_over_time({foo=~\"ba.*\"}[1s])", from, from.Add(1*time.Hour), nil, nil)
+				req.Order = order
+				it, err := s.SelectSamples(ctx, logql.SelectSampleParams{SampleQueryRequest: req})
+				require.NoError(t, err)
+				defer it.Close()
+				for it.Next() {
+					l, err := syntax.ParseLabels(it.Labels())
+					require.NoError(t, err)
+					require.NotEqual(t, "bazz", l.Get("foo"))
+				}
+				require.NoError(t, it.Err())
+			})
+		}
+	})
+
+	t.Run("SelectLogs", func(t *testing.T) {
+		logit, err := s.SelectLogs(ctx, logql.SelectLogParams{QueryRequest: newQuery("{foo=~\"ba.*\"}", from, from.Add(1*time.Hour), nil, nil)})
 		require.NoError(t, err)
-		require.NotEqual(t, "bazz", l.Get("foo"))
-	}
-	ids, err := s.SelectSeries(ctx, logql.SelectLogParams{QueryRequest: newQuery("{foo=~\"ba.*\"}", from, from.Add(1*time.Hour), nil, nil)})
-	require.NoError(t, err)
-	for _, id := range ids {
-		require.NotEqual(t, "bazz", id.Get("foo"))
-	}
+		defer logit.Close()
+		for logit.Next() {
+			l, err := syntax.ParseLabels(logit.Labels())
+			require.NoError(t, err)
+			require.NotEqual(t, "bazz", l.Get("foo"))
+		}
+	})
+
+	t.Run("SelectSeries", func(t *testing.T) {
+		ids, err := s.SelectSeries(ctx, logql.SelectLogParams{QueryRequest: newQuery("{foo=~\"ba.*\"}", from, from.Add(1*time.Hour), nil, nil)})
+		require.NoError(t, err)
+		for _, id := range ids {
+			require.NotEqual(t, "bazz", id.Get("foo"))
+		}
+	})
 }
 
 func Test_PipelineWrapper(t *testing.T) {
@@ -1050,6 +1075,31 @@ func Test_store_GetSeries(t *testing.T) {
 			newQuery("{foo=\"bar\"}", from, from.Add(6*time.Millisecond), nil, nil),
 			[]logproto.SeriesIdentifier{
 				{Labels: mustParseLabels("{foo=\"bar\"}")},
+			},
+			1,
+		},
+		{
+			"plan without deprecated selector",
+			withoutSelector(newQuery("{foo=\"bar\"}", from, from.Add(6*time.Millisecond), nil, nil)),
+			[]logproto.SeriesIdentifier{
+				{Labels: mustParseLabels("{foo=\"bar\"}")},
+			},
+			1,
+		},
+		{
+			"deprecated selector without plan",
+			withoutPlan(newQuery("{foo=\"bar\"}", from, from.Add(6*time.Millisecond), nil, nil)),
+			[]logproto.SeriesIdentifier{
+				{Labels: mustParseLabels("{foo=\"bar\"}")},
+			},
+			1,
+		},
+		{
+			"neither selector nor plan selects all series",
+			withoutPlan(withoutSelector(newQuery("{foo=\"bar\"}", from, from.Add(6*time.Millisecond), nil, nil))),
+			[]logproto.SeriesIdentifier{
+				{Labels: mustParseLabels("{foo=\"bar\"}")},
+				{Labels: mustParseLabels("{foo=\"bazz\"}")},
 			},
 			1,
 		},

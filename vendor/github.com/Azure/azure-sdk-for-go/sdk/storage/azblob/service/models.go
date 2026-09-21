@@ -333,20 +333,30 @@ type BatchDeleteOptions struct {
 	Snapshot  *string
 }
 
-func (o *BatchDeleteOptions) format() (*generated.BlobClientDeleteOptions, *generated.LeaseAccessConditions, *generated.ModifiedAccessConditions) {
+func (o *BatchDeleteOptions) format() *generated.BlobClientDeleteOptions {
 	if o == nil {
-		return nil, nil, nil
+		return nil
 	}
-
-	basics := generated.BlobClientDeleteOptions{
+	opts := &generated.BlobClientDeleteOptions{
 		DeleteSnapshots: o.DeleteSnapshots,
-		DeleteType:      o.BlobDeleteType, // None by default
+		BlobDeleteType:  o.BlobDeleteType, // None by default
 		Snapshot:        o.Snapshot,
 		VersionID:       o.VersionID,
 	}
+	if o.AccessConditions != nil {
+		if o.AccessConditions.LeaseAccessConditions != nil {
+			opts.LeaseID = o.AccessConditions.LeaseAccessConditions.LeaseID
+		}
+		if o.AccessConditions.ModifiedAccessConditions != nil {
+			opts.IfMatch = o.AccessConditions.ModifiedAccessConditions.IfMatch
+			opts.IfModifiedSince = o.AccessConditions.ModifiedAccessConditions.IfModifiedSince
+			opts.IfNoneMatch = o.AccessConditions.ModifiedAccessConditions.IfNoneMatch
+			opts.IfUnmodifiedSince = o.AccessConditions.ModifiedAccessConditions.IfUnmodifiedSince
+			opts.IfTags = o.AccessConditions.ModifiedAccessConditions.IfTags
+		}
+	}
 
-	leaseAccessConditions, modifiedAccessConditions := exported.FormatBlobAccessConditions(o.AccessConditions)
-	return &basics, leaseAccessConditions, modifiedAccessConditions
+	return opts
 }
 
 // BatchSetTierOptions contains the optional parameters for the BatchBuilder.SetTier method.
@@ -356,19 +366,24 @@ type BatchSetTierOptions struct {
 	Snapshot  *string
 }
 
-func (o *BatchSetTierOptions) format() (*generated.BlobClientSetTierOptions, *generated.LeaseAccessConditions, *generated.ModifiedAccessConditions) {
+func (o *BatchSetTierOptions) format() *generated.BlobClientSetTierOptions {
 	if o == nil {
-		return nil, nil, nil
+		return nil
 	}
 
-	basics := generated.BlobClientSetTierOptions{
+	opts := &generated.BlobClientSetTierOptions{
 		RehydratePriority: o.RehydratePriority,
 		Snapshot:          o.Snapshot,
 		VersionID:         o.VersionID,
 	}
+	if o.AccessConditions != nil && o.AccessConditions.LeaseAccessConditions != nil {
+		opts.LeaseID = o.AccessConditions.LeaseAccessConditions.LeaseID
+	}
+	if o.AccessConditions != nil && o.AccessConditions.ModifiedAccessConditions != nil {
+		opts.IfTags = o.AccessConditions.ModifiedAccessConditions.IfTags
+	}
 
-	leaseAccessConditions, modifiedAccessConditions := exported.FormatBlobAccessConditions(o.AccessConditions)
-	return &basics, leaseAccessConditions, modifiedAccessConditions
+	return opts
 }
 
 // SubmitBatchOptions contains the optional parameters for the Client.SubmitBatch method.

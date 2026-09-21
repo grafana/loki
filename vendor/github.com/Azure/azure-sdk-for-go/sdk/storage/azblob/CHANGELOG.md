@@ -1,5 +1,44 @@
 # Release History
 
+## 1.8.1 (2026-09-09)
+
+### Breaking Changes
+* `DownloadBuffer` and `DownloadFile` now use ETag locking to ensure consistency across parallel chunk requests when the blob size is not specified upfront (i.e., `Range.Count` is zero). If a blob is modified during a multi-chunk download, subsequent requests will fail with `ConditionNotMet` instead of silently returning data from mixed blob versions.
+
+### Bugs Fixed
+
+* Fixed CRLF injection vulnerability in Blob Batch subrequest serialization. Header values containing CR or LF characters are now rejected before serialization, preventing header injection in batch requests.
+* Fixed WASM compilation by using heap-allocated buffers on JS targets.
+* Fixed Structured Message CRC64 download validation being skipped when the final payload byte exactly fills the caller's read buffer; the trailing segment footer and message trailer CRC64 are now drained and validated in the same `Read`.
+* Fixed transient `net.Error`/`io.ErrUnexpectedEOF` failures during a Structured Message download not being retried: the decoder now preserves the error chain with `%w` and the retry reader classifies retryable errors with `errors.Is`/`errors.As`.
+* Structured Message download now rejects a response missing the negotiated CRC64 flag instead of silently skipping validation.
+* Fixed the Structured Message encoder emitting a valid, complete message when the source returned a non-EOF error exactly on a segment boundary; such errors are now propagated.
+* Structured Message decoding now rejects a payload that declares fewer segments and appends unvalidated trailing bytes (`SMDecode` requires the parsed message to consume the entire input, and the streaming decoder validates the consumed byte count against the declared message length).
+* Fixed the Structured Message encoder returning `io.EOF` when the source ends before the declared content length; a premature EOF is now surfaced as `io.ErrUnexpectedEOF` so callers do not accept a truncated message.
+* Fixed Structured Message decoder discarding errors (including `net.Error` and `io.EOF`) when the returned bytes exactly complete a segment; such errors are now propagated so `RetryReader` can retry transient failures at segment boundaries.
+* Premature EOF during Structured Message framing reads (header, segment footer, or message trailer) now wraps `io.ErrUnexpectedEOF` so `RetryReader` classifies truncated framing as retryable.
+
+### Other Changes
+* Optimized `DownloadBuffer` and `DownloadFile` to use an initial GET request instead of a HEAD (GetProperties) call for blob size discovery. For small blobs (<=4MB), the entire content is returned in a single request, reducing download latency by ~50%.
+* Updated `azcore` to `v1.23.1`.
+
+## 1.8.1-beta.1 (2026-07-24)
+
+### Features Added
+* Added support for Structured Message CRC64 content validation on upload and download operations using `TransferValidationTypeComputeStructuredMessageCRC64`.
+* Added `StorageResponseFormat` enum (`Auto`, `XML`, `Arrow`) for list blobs operations. Set `ResponseFormat` on `ListBlobsFlatOptions`/`ListBlobsHierarchyOptions` to opt into Apache Arrow format for improved performance. `Auto` defaults to XML for this release.
+* Added `AccessTier`, `AccessTierInferred`, `AccessTierChangeTime`, and `SmartAccessTier` fields to blob download response.
+* Blob put operations now return both `ContentMD5` and `ContentCRC64` in the response when a Content-MD5 header is provided (service version 2026-10-06+).
+
+### Bugs Fixed
+* Fixed `UploadFile`/`UploadBuffer` responses not including `ContentCRC64` when returned by the service.
+
+### Other Changes
+* Updated code generator to `@autorest/go@4.0.0-preview.80`.
+* Default upload/download concurrency is now based on CPU core count (clamped between 8 and 96) instead of the fixed value of 5. Set `AZURE_STORAGE_USE_LEGACY_DEFAULT_CONCURRENCY=true` to revert to previous defaults.
+* Enhanced performance tests with OAuth authentication, parallel blob setup for list tests, and optional CPU profiling.
+* Updated `azidentity` version to `1.14.0`
+
 ## 1.8.0 (2026-06-15)
 
 ### Features Added

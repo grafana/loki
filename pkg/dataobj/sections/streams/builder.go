@@ -229,6 +229,8 @@ func (b *Builder) getOrAddStream(streamLabels labels.Labels) *Stream {
 	return b.addStream(hash, streamLabels)
 }
 
+// ShardBucketFromHash returns the physical shard bucket for a stream fingerprint.
+// Buckets are 0-based in [0, ShardFactor).
 func ShardBucketFromHash(hash uint64) uint32 {
 	return uint32(hash >> (64 - ShardBits))
 }
@@ -249,7 +251,7 @@ func (b *Builder) addStream(hash uint64, streamLabels labels.Labels) *Stream {
 	newStream.Reset()
 	newStream.ID = b.lastID.Add(1)
 	newStream.Labels = streamLabels
-	newStream.ShardBucket = int64(ShardBucket(streamLabels))
+	newStream.ShardBucket = int64(ShardBucketFromHash(hash))
 
 	b.lookup[hash] = append(b.lookup[hash], newStream)
 	b.ordered = append(b.ordered, newStream)

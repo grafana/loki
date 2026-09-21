@@ -23,6 +23,7 @@ import (
 	"github.com/grafana/dskit/instrument"
 	"github.com/mattn/go-ieproxy"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/thanos-io/objstore/exthttp"
 
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client/hedging"
@@ -85,28 +86,38 @@ var (
 
 // BlobStorageConfig defines the configurable flags that can be defined when using azure blob storage.
 type BlobStorageConfig struct {
-	Environment             string         `yaml:"environment"`
-	StorageAccountName      string         `yaml:"account_name"`
-	StorageAccountKey       flagext.Secret `yaml:"account_key"`
-	ConnectionString        flagext.Secret `yaml:"connection_string"`
-	ContainerName           string         `yaml:"container_name"`
-	ActiveDirectoryEndpoint string         `yaml:"active_directory_endpoint"`
-	EndpointSuffix          string         `yaml:"endpoint_suffix"`
-	UseManagedIdentity      bool           `yaml:"use_managed_identity"`
-	UseFederatedToken       bool           `yaml:"use_federated_token"`
-	UserAssignedID          string         `yaml:"user_assigned_id"`
-	UseServicePrincipal     bool           `yaml:"use_service_principal"`
-	ClientID                string         `yaml:"client_id"`
-	ClientSecret            flagext.Secret `yaml:"client_secret"`
-	TenantID                string         `yaml:"tenant_id"`
-	ChunkDelimiter          string         `yaml:"chunk_delimiter"`
-	DownloadBufferSize      int            `yaml:"download_buffer_size"`
-	UploadBufferSize        int            `yaml:"upload_buffer_size"`
-	UploadBufferCount       int            `yaml:"upload_buffer_count"`
-	RequestTimeout          time.Duration  `yaml:"request_timeout"`
-	MaxRetries              int            `yaml:"max_retries"`
-	MinRetryDelay           time.Duration  `yaml:"min_retry_delay"`
-	MaxRetryDelay           time.Duration  `yaml:"max_retry_delay"`
+	Environment             string                `yaml:"environment"`
+	StorageAccountName      string                `yaml:"account_name"`
+	StorageAccountKey       flagext.Secret        `yaml:"account_key"`
+	ConnectionString        flagext.Secret        `yaml:"connection_string"`
+	ContainerName           string                `yaml:"container_name"`
+	ActiveDirectoryEndpoint string                `yaml:"active_directory_endpoint"`
+	EndpointSuffix          string                `yaml:"endpoint_suffix"`
+	UseManagedIdentity      bool                  `yaml:"use_managed_identity"`
+	UseFederatedToken       bool                  `yaml:"use_federated_token"`
+	UserAssignedID          string                `yaml:"user_assigned_id"`
+	UseServicePrincipal     bool                  `yaml:"use_service_principal"`
+	ClientID                string                `yaml:"client_id"`
+	ClientSecret            flagext.Secret        `yaml:"client_secret"`
+	TenantID                string                `yaml:"tenant_id"`
+	ChunkDelimiter          string                `yaml:"chunk_delimiter"`
+	DownloadBufferSize      int                   `yaml:"download_buffer_size"`
+	UploadBufferSize        int                   `yaml:"upload_buffer_size"`
+	UploadBufferCount       int                   `yaml:"upload_buffer_count"`
+	RequestTimeout          time.Duration         `yaml:"request_timeout"`
+	MaxRetries              int                   `yaml:"max_retries"`
+	MinRetryDelay           time.Duration         `yaml:"min_retry_delay"`
+	MaxRetryDelay           time.Duration         `yaml:"max_retry_delay"`
+	HTTPConfig              BlobStorageHTTPConfig `yaml:"http_config"`
+}
+
+// BlobStorageHTTPConfig holds TLS and related HTTP settings for the Azure blob storage client.
+type BlobStorageHTTPConfig struct {
+	InsecureSkipVerify bool   `yaml:"insecure_skip_verify"`
+	CAPath             string `yaml:"tls_ca_path"`
+	CertPath           string `yaml:"tls_cert_path"`
+	KeyPath            string `yaml:"tls_key_path"`
+	ServerName         string `yaml:"tls_server_name"`
 }
 
 // RegisterFlags adds the flags required to config this to the given FlagSet
@@ -138,6 +149,11 @@ func (c *BlobStorageConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagS
 	f.StringVar(&c.TenantID, prefix+"azure.tenant-id", "", "Azure Tenant ID is used to authenticate through Azure OAuth.")
 	f.StringVar(&c.ClientID, prefix+"azure.client-id", "", "Azure Service Principal ID(GUID).")
 	f.Var(&c.ClientSecret, prefix+"azure.client-secret", "Azure Service Principal secret key.")
+	f.BoolVar(&c.HTTPConfig.InsecureSkipVerify, prefix+"azure.http.insecure-skip-verify", false, "Skip TLS certificate verification for Azure blob storage connections.")
+	f.StringVar(&c.HTTPConfig.CAPath, prefix+"azure.http.tls-ca-path", "", "Path to a CA certificate file to trust for Azure blob storage TLS connections.")
+	f.StringVar(&c.HTTPConfig.CertPath, prefix+"azure.http.tls-cert-path", "", "Path to the client certificate for mutual TLS with Azure blob storage.")
+	f.StringVar(&c.HTTPConfig.KeyPath, prefix+"azure.http.tls-key-path", "", "Path to the client key for mutual TLS with Azure blob storage.")
+	f.StringVar(&c.HTTPConfig.ServerName, prefix+"azure.http.tls-server-name", "", "Override the server name used in the TLS handshake with Azure blob storage.")
 }
 
 type BlobStorageMetrics struct {
@@ -342,7 +358,29 @@ func (b *BlobStorage) getBlobClient(blobID string, hedging bool) *blockblob.Clie
 // newContainerClient creates an Azure Blob Storage container client.
 // When isHedging is true, the underlying HTTP client is wrapped for request hedging.
 func (b *BlobStorage) newContainerClient(hedgingCfg hedging.Config, isHedging bool) (*container.Client, error) {
+	// Start from the default factory so that tests can inject a custom transport
+	// by overriding defaultClientFactory.  We then layer TLS config on top when
+	// the operator has supplied at least one TLS option, leaving the zero-value
+	// case completely unchanged from pre-existing behaviour.
 	httpClient := defaultClientFactory()
+	if b.cfg.HTTPConfig.CAPath != "" ||
+		b.cfg.HTTPConfig.CertPath != "" ||
+		b.cfg.HTTPConfig.ServerName != "" ||
+		b.cfg.HTTPConfig.InsecureSkipVerify {
+		if t, ok := httpClient.Transport.(*http.Transport); ok {
+			tlsCfg, err := exthttp.NewTLSConfig(&exthttp.TLSConfig{
+				CAFile:             b.cfg.HTTPConfig.CAPath,
+				CertFile:           b.cfg.HTTPConfig.CertPath,
+				KeyFile:            b.cfg.HTTPConfig.KeyPath,
+				ServerName:         b.cfg.HTTPConfig.ServerName,
+				InsecureSkipVerify: b.cfg.HTTPConfig.InsecureSkipVerify,
+			})
+			if err != nil {
+				return nil, err
+			}
+			t.TLSClientConfig = tlsCfg
+		}
+	}
 	if isHedging {
 		var err error
 		httpClient, err = hedgingCfg.ClientWithRegisterer(httpClient, prometheus.WrapRegistererWithPrefix("loki_", prometheus.DefaultRegisterer))

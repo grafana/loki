@@ -5,6 +5,8 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"slices"
+	"strings"
 	"sync"
 	"time"
 
@@ -26,9 +28,9 @@ type Record struct {
 	Metadata  labels.Labels
 	Line      []byte
 
-	// SortKey is a pre-computed schema sort key. It is not encoded into the section;
+	// SchemaKey is a pre-computed schema sort key. It is not encoded into the section;
 	// it only guides the in-memory sort during building.
-	SortKey string
+	SchemaKey string
 
 	// ShardBucket is the physical shard bucket for the record's stream. It is
 	// not encoded into LOG sections; it guides schema-layout sorting.
@@ -37,6 +39,32 @@ type Record struct {
 	// StreamHash is labels.StableHash of the record's stream labels. It is not
 	// encoded into LOG sections; it guides schema-layout sorting.
 	StreamHash uint64
+}
+
+// Reset clears r so it can be reused for another row.
+//
+// The line is truncated rather than dropped, so it keeps its capacity and a reused Record
+// does not reallocate its buffer for every row.
+func (r *Record) Reset() {
+	r.StreamID = 0
+	r.Timestamp = time.Time{}
+	r.Metadata = labels.EmptyLabels()
+	r.Line = r.Line[:0]
+	r.SchemaKey = ""
+	r.ShardBucket = 0
+	r.StreamHash = 0
+}
+
+func (r *Record) Copy() Record {
+	return Record{
+		StreamID:    r.StreamID,
+		Timestamp:   r.Timestamp,
+		Metadata:    r.Metadata.Copy(),
+		Line:        slices.Clone(r.Line),
+		SchemaKey:   strings.Clone(r.SchemaKey),
+		ShardBucket: r.ShardBucket,
+		StreamHash:  r.StreamHash,
+	}
 }
 
 type AppendStrategy int

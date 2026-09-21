@@ -807,7 +807,7 @@ func (t *Loki) setupModuleManager() error {
 	mm.RegisterModule(IndexGatewayRing, t.initIndexGatewayRing, modules.UserInvisibleModule)
 	mm.RegisterModule(IndexGatewayInterceptors, t.initIndexGatewayInterceptors, modules.UserInvisibleModule)
 	mm.RegisterModule(BloomGateway, t.initBloomGateway)
-	mm.RegisterModule(BloomGatewayClient, t.initBloomGatewayClient)
+	mm.RegisterModule(BloomGatewayClient, t.initBloomGatewayClient, modules.UserInvisibleModule)
 	mm.RegisterModule(QueryScheduler, t.initQueryScheduler)
 	mm.RegisterModule(QuerySchedulerRing, t.initQuerySchedulerRing, modules.UserInvisibleModule)
 	mm.RegisterModule(Analytics, t.initAnalytics, modules.UserInvisibleModule)
@@ -817,7 +817,7 @@ func (t *Loki) setupModuleManager() error {
 	mm.RegisterModule(PatternIngester, t.initPatternIngester)
 	mm.RegisterModule(PartitionRing, t.initPartitionRing, modules.UserInvisibleModule)
 
-	mm.RegisterModule(UI, t.initUI)
+	mm.RegisterModule(UI, t.initUI, modules.UserInvisibleTargetableModule)
 	mm.RegisterModule(UIRing, t.initUIRing, modules.UserInvisibleModule)
 
 	// Thor related modules: keep targets invisible

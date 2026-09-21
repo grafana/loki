@@ -23,7 +23,7 @@ jobs:
       with:
         persist-credentials: false
     - name: Set up Go 1.x
-      uses: actions/setup-go@v6
+      uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
       with:
         go-version-file: ./operator/go.mod
         cache-dependency-path: ./operator/go.sum
@@ -43,14 +43,14 @@ jobs:
       with:
         persist-credentials: false
     - name: Set up Go 1.x
-      uses: actions/setup-go@v6
+      uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
       with:
         go-version-file: ./operator/go.mod
         cache-dependency-path: ./operator/go.sum
     - name: Lint
       uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a # v9.3
       with:
-        version: v2.12.2 # Do not approve updates without validating "make lint" in the operator folder still works
+        version: v2.13.2 # Do not approve updates without validating "make lint" in the operator folder still works
         args: --timeout=5m
         working-directory: ./operator
     - name: Check prometheus rules
@@ -67,7 +67,7 @@ jobs:
       with:
         persist-credentials: false
     - name: Set up Go 1.x
-      uses: actions/setup-go@v6
+      uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
       with:
         go-version-file: ./operator/go.mod
         cache-dependency-path: ./operator/go.sum
@@ -87,7 +87,7 @@ jobs:
       with:
         persist-credentials: false
     - name: Set up Go 1.x
-      uses: actions/setup-go@v6
+      uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
       with:
         go-version-file: ./operator/go.mod
         cache-dependency-path: ./operator/go.sum
@@ -106,7 +106,7 @@ jobs:
       with:
         persist-credentials: false
     - name: Set up Go 1.x
-      uses: actions/setup-go@v6
+      uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
       with:
         go-version-file: ./operator/go.mod
         cache-dependency-path: ./operator/go.sum

@@ -90,6 +90,7 @@ func CheckSection(section *dataobj.Section) bool {
 }
 
 // Stat represents a single row in the stats section.
+// A row contains information about a single sortable bucket: (Shard, Tenant Sort Schema)
 type Stat struct {
 	ObjectPath       string
 	SectionIndex     int64

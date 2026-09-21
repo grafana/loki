@@ -62,7 +62,7 @@ func IterSection(ctx context.Context, section *Section) result.Seq[Record] {
 			return err
 		}
 
-		var rows [1]dataset.Row
+		var rows [1024]dataset.Row
 		var record Record
 		for {
 			n, err := r.Read(ctx, rows[:])
@@ -106,22 +106,24 @@ func MakeColumnarDataset(section *Section) (*ColumnarDataset, error) {
 // to determine the column type. The list of columns must match the columns
 // used to create the row.
 //
+// DecodeRow resets record first, so a field whose column is absent from columns comes back
+// as its zero value rather than keeping what a previous row left there.
+//
 // The sym argument is used for reusing metadata strings between calls to
 // DecodeRow. If sym is nil, metadata strings are always allocated.
 func DecodeRow(columns []*Column, row dataset.Row, record *Record, sym *symbolizer.Symbolizer) error {
+	record.Reset()
+
 	labelBuilder := labelpool.Get()
 	defer labelpool.Put(labelBuilder)
 
 	for columnIndex, columnValue := range row.Values {
 		column := columns[columnIndex]
 
-		if columnValue.IsNil() || columnValue.IsZero() {
-			switch column.Type {
-			case ColumnTypeMessage:
-				// Clear the message field so callers that reuse the Record
-				// don't see stale line data from a previous row.
-				record.Line = record.Line[:0]
-			}
+		// Only a nil value is an absent cell. A physical zero is a real value: an INT64 zero
+		// is a timestamp at the Unix epoch, and an empty BINARY is an empty line or an explicitly
+		// empty metadata value. The cases below decode all of those.
+		if columnValue.IsNil() {
 			continue
 		}
 
@@ -136,13 +138,15 @@ func DecodeRow(columns []*Column, row dataset.Row, record *Record, sym *symboliz
 			if ty := columnValue.Type(); ty != datasetmd.PHYSICAL_TYPE_INT64 {
 				return fmt.Errorf("invalid type %s for %s", ty, column.Type)
 			}
-			record.Timestamp = time.Unix(0, columnValue.Int64())
+			record.Timestamp = time.Unix(0, columnValue.Int64()).UTC()
 
 		case ColumnTypeMetadata:
 			if ty := columnValue.Type(); ty != datasetmd.PHYSICAL_TYPE_BINARY {
 				return fmt.Errorf("invalid type %s for %s", ty, column.Type)
 			}
 
+			// An empty value is kept as a label. The key is present on the line, it just
+			// holds no value, and the chunk path surfaces that as a distinct label too.
 			if sym != nil {
 				labelBuilder.Add(column.Name, sym.Get(unsafeString(columnValue.Binary())))
 			} else {
@@ -153,6 +157,9 @@ func DecodeRow(columns []*Column, row dataset.Row, record *Record, sym *symboliz
 			if ty := columnValue.Type(); ty != datasetmd.PHYSICAL_TYPE_BINARY {
 				return fmt.Errorf("invalid type %s for %s", ty, column.Type)
 			}
+
+			// An empty line goes through the copy as well, which truncates the field. A
+			// reused Record must not keep the previous row's line.
 			line := columnValue.Binary()
 			record.Line = slicegrow.Copy(record.Line, line)
 		}

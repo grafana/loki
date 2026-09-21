@@ -40,9 +40,6 @@ var (
 		"key-3": []byte("test data 3"),
 	}
 
-	testDeleteData = map[string][]byte{
-		"key-1": []byte("test data 1")}
-
 	testListData = map[string][]byte{
 		"key-1": []byte("test data 1"),
 		"key-2": []byte("test data 2"),
@@ -421,12 +418,13 @@ func Test_DeleteObject(t *testing.T) {
 		cosClient, err := NewCOSObjectClient(cosConfig, hedging.Config{})
 		require.NoError(t, err)
 
-		cosClient.cos = newMockCosClient(testDeleteData)
+		data := map[string][]byte{"key-1": []byte("test data 1")}
+		mock := newMockCosClient(data)
+		cosClient.cos = mock
+		cosClient.hedgedCOS = mock
 
 		err = cosClient.DeleteObject(context.Background(), tt.key)
 		require.NoError(t, err)
-
-		cosClient.hedgedCOS = newMockCosClient(testDeleteData)
 
 		// call GetObject() for confirming the deleted object is no longer exist in bucket
 		reader, _, err := cosClient.GetObject(context.Background(), tt.key)

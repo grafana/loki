@@ -36,7 +36,7 @@ import (
 //
 // 2. Filter MW (below SplitByInterval, below cache): for each interval
 //    sub-request, consults the prefetched hints to skip empty intervals
-//    or narrow to matching time ranges within the interval.
+//    or narrow to at most k hint envelopes (k = ceil(interval/15m), cap 8).
 //
 // SplitByInterval handles direction ordering, LIMIT early-exit, and
 // interval-level caching. We just help it skip or narrow intervals.
@@ -64,6 +64,15 @@ const (
 )
 
 const LoglineSkipCacheHeader = "X-Logline-Skip-Cache"
+
+// envelopeTargetDuration is the target coverage of each narrowed envelope.
+// k = ceil(incoming interval / envelopeTargetDuration), capped at
+// maxEnvelopesPerInterval. Groups are formed by cutting the k-1 largest
+// inter-hint gaps so distant clusters are not unioned into one scan.
+const (
+	envelopeTargetDuration  = 15 * time.Minute
+	maxEnvelopesPerInterval = 8
+)
 
 type hintPrefetchKeyType struct{}
 type shardPlanningRerunGuardKeyType struct{}
@@ -265,6 +274,7 @@ func NewLoglinePrefetchMiddleware(
 			hintTimeout:          cfg.HintTimeout,
 			minQueryBytes:        cfg.MinQueryBytesForIndex,
 			queryIngestersWithin: cfg.QueryIngestersWithin,
+			querySplitDuration:   cfg.QuerySplitDuration,
 			shardPlanning:        cfg.ShardPlanning,
 			tenantSettings:       tenantSettings,
 			metrics:              metrics,
@@ -283,6 +293,7 @@ type loglinePrefetchHandler struct {
 	dryRunInflight       atomic.Int32
 	minQueryBytes        int64
 	queryIngestersWithin time.Duration
+	querySplitDuration   time.Duration
 	shardPlanning        ShardPlanningConfig
 	tenantSettings       TenantSettings
 	metrics              *Metrics
@@ -391,17 +402,15 @@ func (h *loglinePrefetchHandler) shardPlanningDecision(result *hintPrefetchResul
 
 	overlaps := rangesOverlapping(result.ranges, from, through)
 
-	var cumulative time.Duration
-	for _, hint := range overlaps {
-		start := maxTime(hint.Start, from)
-		end := minTime(hint.End, through)
-		cumulative += intervalDuration(start, end)
-	}
-
 	queryDuration := intervalDuration(from, through)
 	if queryDuration == 0 {
 		return shardPlanningDecision{reason: "time_reduction_too_small", overlaps: overlaps}
 	}
+	// Use k-envelope coverage after the same SplitByInterval slices the
+	// filter will see. Hint-only math, or a single k-budget on the unsplit
+	// range, overstates scanned time once the cap of 8 unions distant
+	// clusters the filter would keep separate.
+	cumulative := envelopeQueriedDuration(overlaps, from, through, h.querySplitDuration)
 	timeReductionRatio := float64(queryDuration-cumulative) / float64(queryDuration)
 	if timeReductionRatio < 0 {
 		timeReductionRatio = 0
@@ -1130,38 +1139,146 @@ func (h *loglineFilterHandler) Do(ctx context.Context, req queryrangebase.Reques
 		return emptyLokiResponse(lokiReq), nil
 	}
 
-	if len(overlapping) == 1 {
-		start := maxTime(overlapping[0].Start, intervalStart)
-		end := minTime(overlapping[0].End, intervalEnd)
-		if overlapping[0].IsPassthrough() {
-			result.recordPassthrough(originalDuration)
-			h.metrics.passthroughSubRequests.WithLabelValues("pre_min_date").Inc()
-			return h.next.Do(ctx, req.WithStartEnd(start, end))
-		}
-		result.recordNarrowed(originalDuration, intervalDuration(start, end))
-		h.metrics.hintSubRequests.WithLabelValues("narrowed").Inc()
-		return h.next.Do(ctx, req.WithStartEnd(start, end))
+	groups := groupHintEnvelopes(overlapping, intervalStart, intervalEnd, envelopeBudget(originalDuration))
+	if len(groups) == 0 {
+		result.recordSkipped(originalDuration)
+		h.metrics.hintSubRequests.WithLabelValues("skipped").Inc()
+		return emptyLokiResponse(lokiReq), nil
 	}
 
-	responses := make([]queryrangebase.Response, 0, len(overlapping))
-	var queriedDuration time.Duration
-	for _, hint := range overlapping {
-		start := maxTime(hint.Start, intervalStart)
-		end := minTime(hint.End, intervalEnd)
-		resp, err := h.next.Do(ctx, req.WithStartEnd(start, end))
+	if len(overlapping) == 1 && overlapping[0].IsPassthrough() {
+		result.recordPassthrough(originalDuration)
+		h.metrics.passthroughSubRequests.WithLabelValues("pre_min_date").Inc()
+		return h.next.Do(ctx, req.WithStartEnd(groups[0].Start, groups[0].End))
+	}
+
+	var queried time.Duration
+	for _, g := range groups {
+		queried += intervalDuration(g.Start, g.End)
+	}
+	result.recordNarrowed(originalDuration, queried)
+	h.metrics.hintSubRequests.WithLabelValues("narrowed").Inc()
+
+	if len(groups) == 1 {
+		return h.next.Do(ctx, req.WithStartEnd(groups[0].Start, groups[0].End))
+	}
+
+	responses := make([]queryrangebase.Response, 0, len(groups))
+	for _, g := range groups {
+		resp, err := h.next.Do(ctx, req.WithStartEnd(g.Start, g.End))
 		if err != nil {
 			return nil, err
 		}
 		responses = append(responses, resp)
-		queriedDuration += intervalDuration(start, end)
-		if hint.IsPassthrough() {
-			h.metrics.passthroughSubRequests.WithLabelValues("pre_min_date").Inc()
-		} else {
-			h.metrics.hintSubRequests.WithLabelValues("narrowed").Inc()
-		}
 	}
-	result.recordNarrowed(originalDuration, queriedDuration)
 	return queryrange.DefaultCodec.MergeResponse(responses...)
+}
+
+type hintEnvelope struct {
+	Start time.Time
+	End   time.Time
+}
+
+func envelopeQueriedDuration(ranges []hintprovider.HintTimeRange, start, end time.Time, split time.Duration) time.Duration {
+	var queried time.Duration
+	// LokiRequest splits are half-open [start, end). Zero split disables
+	// splitting, matching querier.split-queries-by-interval.
+	util.ForInterval(split, start, end, false, func(sliceStart, sliceEnd time.Time) {
+		queried += intervalEnvelopeDuration(ranges, sliceStart, sliceEnd)
+	})
+	return queried
+}
+
+func intervalEnvelopeDuration(ranges []hintprovider.HintTimeRange, start, end time.Time) time.Duration {
+	var queried time.Duration
+	for _, g := range groupHintEnvelopes(ranges, start, end, envelopeBudget(intervalDuration(start, end))) {
+		queried += intervalDuration(g.Start, g.End)
+	}
+	return queried
+}
+
+func envelopeBudget(interval time.Duration) int {
+	if interval <= 0 {
+		return 1
+	}
+	k := int((interval + envelopeTargetDuration - 1) / envelopeTargetDuration)
+	if k < 1 {
+		return 1
+	}
+	if k > maxEnvelopesPerInterval {
+		return maxEnvelopesPerInterval
+	}
+	return k
+}
+
+// groupHintEnvelopes partitions start-sorted hints into at most maxGroups
+// envelopes by cutting the largest inter-hint gaps. Overlapping or touching
+// hints (gap <= 0) are never split. Each envelope is clipped to [intervalStart, intervalEnd].
+func groupHintEnvelopes(ranges []hintprovider.HintTimeRange, intervalStart, intervalEnd time.Time, maxGroups int) []hintEnvelope {
+	clipped := make([]hintprovider.HintTimeRange, 0, len(ranges))
+	for _, r := range ranges {
+		start := maxTime(r.Start, intervalStart)
+		end := minTime(r.End, intervalEnd)
+		if !end.After(start) {
+			continue
+		}
+		clipped = append(clipped, hintprovider.HintTimeRange{Start: start, End: end})
+	}
+	if len(clipped) == 0 {
+		return nil
+	}
+
+	n := len(clipped)
+	cutCount := maxGroups - 1
+	if cutCount > n-1 {
+		cutCount = n - 1
+	}
+
+	type rankedGap struct {
+		after int
+		d     time.Duration
+	}
+	ranked := make([]rankedGap, 0, n-1)
+	for i := 0; i < n-1; i++ {
+		d := clipped[i+1].Start.Sub(clipped[i].End)
+		ranked = append(ranked, rankedGap{after: i, d: d})
+	}
+	sort.Slice(ranked, func(i, j int) bool {
+		if ranked[i].d != ranked[j].d {
+			return ranked[i].d > ranked[j].d
+		}
+		return ranked[i].after < ranked[j].after
+	})
+
+	cutAfter := make([]bool, n-1)
+	cuts := 0
+	for _, g := range ranked {
+		if cuts >= cutCount {
+			break
+		}
+		if g.d <= 0 {
+			continue
+		}
+		cutAfter[g.after] = true
+		cuts++
+	}
+
+	var groups []hintEnvelope
+	runStart := 0
+	for i := 0; i < n; i++ {
+		if i < n-1 && !cutAfter[i] {
+			continue
+		}
+		end := clipped[runStart].End
+		for j := runStart + 1; j <= i; j++ {
+			if clipped[j].End.After(end) {
+				end = clipped[j].End
+			}
+		}
+		groups = append(groups, hintEnvelope{Start: clipped[runStart].Start, End: end})
+		runStart = i + 1
+	}
+	return groups
 }
 
 func isCancel(err error) bool {

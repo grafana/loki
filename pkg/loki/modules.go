@@ -583,7 +583,6 @@ func (t *Loki) initQuerier() (services.Service, error) {
 		serverutil.RecoveryHTTPMiddleware,
 		t.HTTPAuthMiddleware,
 		serverutil.NewPrepopulateMiddleware(),
-		serverutil.ResponseJSONMiddleware(),
 	}
 
 	var (
@@ -1238,7 +1237,6 @@ func (t *Loki) initQueryFrontend() (_ services.Service, err error) {
 		t.HTTPAuthMiddleware,
 		queryrange.StatsHTTPMiddleware,
 		serverutil.NewPrepopulateMiddleware(),
-		serverutil.ResponseJSONMiddleware(),
 	}
 
 	if t.Cfg.Querier.PerRequestLimitsEnabled {
@@ -1382,7 +1380,6 @@ func (t *Loki) initV2QueryEngine() (services.Service, error) {
 			serverutil.RecoveryHTTPMiddleware,
 			t.HTTPAuthMiddleware,
 			serverutil.NewPrepopulateMiddleware(),
-			serverutil.ResponseJSONMiddleware(),
 		}
 
 		httpMiddleware := middleware.Merge(toMerge...)
@@ -2464,6 +2461,7 @@ func (t *Loki) initDataObjCompactionWorker() (services.Service, error) {
 		ScratchStore: t.scratchStore,
 		IndexobjCfg:  t.Cfg.DataObj.Compaction.IndexobjBuilder,
 		LogsobjCfg:   t.Cfg.DataObj.Compaction.LogsobjBuilder,
+		UploaderCfg:  t.Cfg.DataObj.Consumer.UploaderConfig,
 		Logger:       logger,
 		Registerer:   prometheus.DefaultRegisterer,
 	})
