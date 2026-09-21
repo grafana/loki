@@ -1126,7 +1126,7 @@ func TestLokiStackValidationWebhook_SchemaRemovalWarning(t *testing.T) {
 		warnings, err := v.ValidateUpdate(ctx, &lokiv1.LokiStack{}, l)
 
 		require.Len(t, warnings, 1)
-		require.Equal(t, lokiv1.WarnSchemaRemovalRetentionGap, warnings[0])
+		require.Equal(t, lokiv1.WarnSchemaRemoval, warnings[0])
 		require.NoError(t, err)
 	})
 
@@ -1205,5 +1205,406 @@ func TestLokiStackValidationWebhook_SchemaRemovalWarning(t *testing.T) {
 
 		require.Len(t, warnings, 0)
 		require.NoError(t, err)
+	})
+}
+
+func TestLokiStackValidationWebhook_RetentionUpdateWarning(t *testing.T) {
+	t.Run("warning when retention changes", func(t *testing.T) {
+		currentStack := &lokiv1.LokiStack{
+			ObjectMeta: metav1.ObjectMeta{
+				Name: "testing-stack",
+			},
+			Spec: lokiv1.LokiStackSpec{
+				Size: lokiv1.SizeOneXExtraSmall,
+				Storage: lokiv1.ObjectStorageSpec{
+					Schemas: []lokiv1.ObjectStorageSchema{
+						{
+							Version:       lokiv1.ObjectStorageSchemaV13,
+							EffectiveDate: "2024-10-22",
+						},
+					},
+				},
+				Limits: &lokiv1.LimitsSpec{
+					Global: &lokiv1.LimitsTemplateSpec{
+						Retention: &lokiv1.RetentionLimitSpec{
+							Days: 30,
+						},
+					},
+				},
+			},
+		}
+
+		newStack := &lokiv1.LokiStack{
+			ObjectMeta: metav1.ObjectMeta{
+				Name: "testing-stack",
+			},
+			Spec: lokiv1.LokiStackSpec{
+				Size: lokiv1.SizeOneXExtraSmall,
+				Storage: lokiv1.ObjectStorageSpec{
+					Schemas: []lokiv1.ObjectStorageSchema{
+						{
+							Version:       lokiv1.ObjectStorageSchemaV13,
+							EffectiveDate: "2024-10-22",
+						},
+					},
+				},
+				Limits: &lokiv1.LimitsSpec{
+					Global: &lokiv1.LimitsTemplateSpec{
+						Retention: &lokiv1.RetentionLimitSpec{
+							Days: 60, // Changed from 30 to 60
+						},
+					},
+				},
+			},
+		}
+		ctx := context.Background()
+
+		v := &validation.LokiStackValidator{}
+		warnings, err := v.ValidateUpdate(ctx, currentStack, newStack)
+
+		require.Len(t, warnings, 1)
+		require.Equal(t, lokiv1.WarnRetentionUpdate, warnings[0])
+		require.NoError(t, err)
+	})
+
+	t.Run("no warning when retention unchanged", func(t *testing.T) {
+		currentStack := &lokiv1.LokiStack{
+			ObjectMeta: metav1.ObjectMeta{
+				Name: "testing-stack",
+			},
+			Spec: lokiv1.LokiStackSpec{
+				Size: lokiv1.SizeOneXExtraSmall,
+				Storage: lokiv1.ObjectStorageSpec{
+					Schemas: []lokiv1.ObjectStorageSchema{
+						{
+							Version:       lokiv1.ObjectStorageSchemaV13,
+							EffectiveDate: "2024-10-22",
+						},
+					},
+				},
+				Limits: &lokiv1.LimitsSpec{
+					Global: &lokiv1.LimitsTemplateSpec{
+						Retention: &lokiv1.RetentionLimitSpec{
+							Days: 30,
+						},
+					},
+				},
+			},
+		}
+
+		newStack := &lokiv1.LokiStack{
+			ObjectMeta: metav1.ObjectMeta{
+				Name: "testing-stack",
+			},
+			Spec: lokiv1.LokiStackSpec{
+				Size: lokiv1.SizeOneXExtraSmall,
+				Storage: lokiv1.ObjectStorageSpec{
+					Schemas: []lokiv1.ObjectStorageSchema{
+						{
+							Version:       lokiv1.ObjectStorageSchemaV13,
+							EffectiveDate: "2024-10-22",
+						},
+					},
+				},
+				Limits: &lokiv1.LimitsSpec{
+					Global: &lokiv1.LimitsTemplateSpec{
+						Retention: &lokiv1.RetentionLimitSpec{
+							Days: 30, // Same as before
+						},
+					},
+				},
+			},
+		}
+		ctx := context.Background()
+
+		v := &validation.LokiStackValidator{}
+		warnings, err := v.ValidateUpdate(ctx, currentStack, newStack)
+
+		require.Len(t, warnings, 0)
+		require.NoError(t, err)
+	})
+
+	t.Run("warning when tenant retention changes", func(t *testing.T) {
+		currentStack := &lokiv1.LokiStack{
+			ObjectMeta: metav1.ObjectMeta{
+				Name: "testing-stack",
+			},
+			Spec: lokiv1.LokiStackSpec{
+				Size: lokiv1.SizeOneXExtraSmall,
+				Storage: lokiv1.ObjectStorageSpec{
+					Schemas: []lokiv1.ObjectStorageSchema{
+						{
+							Version:       lokiv1.ObjectStorageSchemaV13,
+							EffectiveDate: "2024-10-22",
+						},
+					},
+				},
+				Limits: &lokiv1.LimitsSpec{
+					Global: &lokiv1.LimitsTemplateSpec{
+						Retention: &lokiv1.RetentionLimitSpec{
+							Days: 30,
+						},
+					},
+					Tenants: map[string]lokiv1.PerTenantLimitsTemplateSpec{
+						"tenant-a": {
+							Retention: &lokiv1.RetentionLimitSpec{
+								Days: 40,
+							},
+						},
+					},
+				},
+			},
+		}
+
+		newStack := &lokiv1.LokiStack{
+			ObjectMeta: metav1.ObjectMeta{
+				Name: "testing-stack",
+			},
+			Spec: lokiv1.LokiStackSpec{
+				Size: lokiv1.SizeOneXExtraSmall,
+				Storage: lokiv1.ObjectStorageSpec{
+					Schemas: []lokiv1.ObjectStorageSchema{
+						{
+							Version:       lokiv1.ObjectStorageSchemaV13,
+							EffectiveDate: "2024-10-22",
+						},
+					},
+				},
+				Limits: &lokiv1.LimitsSpec{
+					Global: &lokiv1.LimitsTemplateSpec{
+						Retention: &lokiv1.RetentionLimitSpec{
+							Days: 30,
+						},
+					},
+					Tenants: map[string]lokiv1.PerTenantLimitsTemplateSpec{
+						"tenant-a": {
+							Retention: &lokiv1.RetentionLimitSpec{
+								Days: 50, // Changed from 40 to 50
+							},
+						},
+					},
+				},
+			},
+		}
+		ctx := context.Background()
+
+		v := &validation.LokiStackValidator{}
+		warnings, err := v.ValidateUpdate(ctx, currentStack, newStack)
+
+		require.Len(t, warnings, 1)
+		require.Equal(t, lokiv1.WarnRetentionUpdate, warnings[0])
+		require.NoError(t, err)
+	})
+}
+
+func TestLokiStackValidationWebhook_SimultaneousSchemaRetentionChange(t *testing.T) {
+	t.Run("error when both schemas and retention change", func(t *testing.T) {
+		currentStack := &lokiv1.LokiStack{
+			ObjectMeta: metav1.ObjectMeta{
+				Name: "testing-stack",
+			},
+			Spec: lokiv1.LokiStackSpec{
+				Size: lokiv1.SizeOneXExtraSmall,
+				Storage: lokiv1.ObjectStorageSpec{
+					Schemas: []lokiv1.ObjectStorageSchema{
+						{
+							Version:       lokiv1.ObjectStorageSchemaV12,
+							EffectiveDate: "2020-10-11",
+						},
+						{
+							Version:       lokiv1.ObjectStorageSchemaV13,
+							EffectiveDate: "2024-10-22",
+						},
+					},
+				},
+				Limits: &lokiv1.LimitsSpec{
+					Global: &lokiv1.LimitsTemplateSpec{
+						Retention: &lokiv1.RetentionLimitSpec{
+							Days: 30,
+						},
+					},
+				},
+			},
+			Status: lokiv1.LokiStackStatus{
+				Storage: lokiv1.LokiStackStorageStatus{
+					Schemas: []lokiv1.ObjectStorageSchema{
+						{
+							Version:       lokiv1.ObjectStorageSchemaV12,
+							EffectiveDate: "2020-10-11",
+						},
+						{
+							Version:       lokiv1.ObjectStorageSchemaV13,
+							EffectiveDate: "2024-10-22",
+						},
+					},
+				},
+			},
+		}
+
+		newStack := &lokiv1.LokiStack{
+			ObjectMeta: metav1.ObjectMeta{
+				Name: "testing-stack",
+			},
+			Spec: lokiv1.LokiStackSpec{
+				Size: lokiv1.SizeOneXExtraSmall,
+				Storage: lokiv1.ObjectStorageSpec{
+					Schemas: []lokiv1.ObjectStorageSchema{
+						{
+							Version:       lokiv1.ObjectStorageSchemaV13,
+							EffectiveDate: "2024-10-22",
+						},
+					},
+				},
+				Limits: &lokiv1.LimitsSpec{
+					Global: &lokiv1.LimitsTemplateSpec{
+						Retention: &lokiv1.RetentionLimitSpec{
+							Days: 60, // Changed from 30 to 60
+						},
+					},
+				},
+			},
+			Status: lokiv1.LokiStackStatus{
+				Storage: lokiv1.LokiStackStorageStatus{
+					Schemas: []lokiv1.ObjectStorageSchema{
+						{
+							Version:       lokiv1.ObjectStorageSchemaV12,
+							EffectiveDate: "2020-10-11",
+						},
+						{
+							Version:       lokiv1.ObjectStorageSchemaV13,
+							EffectiveDate: "2024-10-22",
+						},
+					},
+				},
+			},
+		}
+		ctx := context.Background()
+
+		v := &validation.LokiStackValidator{}
+		warnings, err := v.ValidateUpdate(ctx, currentStack, newStack)
+
+		require.Error(t, err)
+		require.Contains(t, err.Error(), lokiv1.ErrSchemaRetentionConflict.Error())
+		// No warnings when validation fails
+		require.Len(t, warnings, 1) // Still has retention warning
+	})
+
+	t.Run("allow schema change when retention unchanged", func(t *testing.T) {
+		currentStack := &lokiv1.LokiStack{
+			ObjectMeta: metav1.ObjectMeta{
+				Name: "testing-stack",
+			},
+			Spec: lokiv1.LokiStackSpec{
+				Size: lokiv1.SizeOneXExtraSmall,
+				Storage: lokiv1.ObjectStorageSpec{
+					Schemas: []lokiv1.ObjectStorageSchema{
+						{
+							Version:       lokiv1.ObjectStorageSchemaV13,
+							EffectiveDate: "2024-10-22",
+						},
+					},
+				},
+				Limits: &lokiv1.LimitsSpec{
+					Global: &lokiv1.LimitsTemplateSpec{
+						Retention: &lokiv1.RetentionLimitSpec{
+							Days: 30,
+						},
+					},
+				},
+			},
+		}
+
+		newStack := &lokiv1.LokiStack{
+			ObjectMeta: metav1.ObjectMeta{
+				Name: "testing-stack",
+			},
+			Spec: lokiv1.LokiStackSpec{
+				Size: lokiv1.SizeOneXExtraSmall,
+				Storage: lokiv1.ObjectStorageSpec{
+					Schemas: []lokiv1.ObjectStorageSchema{
+						{
+							Version:       lokiv1.ObjectStorageSchemaV13,
+							EffectiveDate: "2024-10-22",
+						},
+						{
+							Version:       lokiv1.ObjectStorageSchemaV13,
+							EffectiveDate: "2026-10-22",
+						},
+					},
+				},
+				Limits: &lokiv1.LimitsSpec{
+					Global: &lokiv1.LimitsTemplateSpec{
+						Retention: &lokiv1.RetentionLimitSpec{
+							Days: 30, // Same as before
+						},
+					},
+				},
+			},
+		}
+		ctx := context.Background()
+
+		v := &validation.LokiStackValidator{}
+		warnings, err := v.ValidateUpdate(ctx, currentStack, newStack)
+
+		require.NoError(t, err)
+		require.Len(t, warnings, 0)
+	})
+
+	t.Run("allow retention change when schemas unchanged", func(t *testing.T) {
+		currentStack := &lokiv1.LokiStack{
+			ObjectMeta: metav1.ObjectMeta{
+				Name: "testing-stack",
+			},
+			Spec: lokiv1.LokiStackSpec{
+				Size: lokiv1.SizeOneXExtraSmall,
+				Storage: lokiv1.ObjectStorageSpec{
+					Schemas: []lokiv1.ObjectStorageSchema{
+						{
+							Version:       lokiv1.ObjectStorageSchemaV13,
+							EffectiveDate: "2024-10-22",
+						},
+					},
+				},
+				Limits: &lokiv1.LimitsSpec{
+					Global: &lokiv1.LimitsTemplateSpec{
+						Retention: &lokiv1.RetentionLimitSpec{
+							Days: 30,
+						},
+					},
+				},
+			},
+		}
+
+		newStack := &lokiv1.LokiStack{
+			ObjectMeta: metav1.ObjectMeta{
+				Name: "testing-stack",
+			},
+			Spec: lokiv1.LokiStackSpec{
+				Size: lokiv1.SizeOneXExtraSmall,
+				Storage: lokiv1.ObjectStorageSpec{
+					Schemas: []lokiv1.ObjectStorageSchema{
+						{
+							Version:       lokiv1.ObjectStorageSchemaV13,
+							EffectiveDate: "2024-10-22",
+						},
+					},
+				},
+				Limits: &lokiv1.LimitsSpec{
+					Global: &lokiv1.LimitsTemplateSpec{
+						Retention: &lokiv1.RetentionLimitSpec{
+							Days: 60, // Changed from 30 to 60
+						},
+					},
+				},
+			},
+		}
+		ctx := context.Background()
+
+		v := &validation.LokiStackValidator{}
+		warnings, err := v.ValidateUpdate(ctx, currentStack, newStack)
+
+		require.NoError(t, err)
+		require.Len(t, warnings, 1)
+		require.Equal(t, lokiv1.WarnRetentionUpdate, warnings[0])
 	})
 }
