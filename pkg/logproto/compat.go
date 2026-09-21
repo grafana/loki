@@ -343,6 +343,14 @@ func (i *IndexStatsResponse) GetHeaders() []*definitions.PrometheusResponseHeade
 	return nil
 }
 
+// IsPassthrough reports whether this range is a synthetic window where the
+// logline index has no coverage (e.g. before store min date). A zero Start
+// is the sentinel; the filter middleware should pass these intervals through
+// to Loki unmodified rather than treating them as narrowed.
+func (h HintTimeRange) IsPassthrough() bool {
+	return h.Start.IsZero()
+}
+
 func (m *HintRequest) GetStart() time.Time {
 	return time.UnixMilli(int64(m.From))
 }

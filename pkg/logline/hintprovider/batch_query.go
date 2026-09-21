@@ -11,6 +11,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/logline"
 	"github.com/grafana/loki/v3/pkg/logline/format"
 	"github.com/grafana/loki/v3/pkg/logline/store"
+	"github.com/grafana/loki/v3/pkg/logproto"
 )
 
 type termJob struct {
@@ -111,12 +112,12 @@ func (p *LoglineHintProvider) executeQuery(
 	filters []string,
 	overlapping []store.Meta,
 	stats *QueryStats,
-) (map[shardKey][]TimeRange, error) {
+) (map[shardKey][]logproto.HintTimeRange, error) {
 	jobs, metasByID, err := buildTermJobs(filters, overlapping, p.ngramLength)
 	if err != nil {
 		return nil, err
 	}
-	byShard := make(map[shardKey][]TimeRange)
+	byShard := make(map[shardKey][]logproto.HintTimeRange)
 	if len(jobs) == 0 {
 		return byShard, nil
 	}
@@ -188,11 +189,11 @@ func (p *LoglineHintProvider) executeQuery(
 		}
 
 		key := shardKeyOf(res.meta)
-		var ranges []TimeRange
+		var ranges []logproto.HintTimeRange
 		switch res.reason {
 		case format.QueryMultipleReasonComplete:
 			if res.result.MatchesAll {
-				ranges = []TimeRange{timeRangeForMeta(res.meta)}
+				ranges = []logproto.HintTimeRange{timeRangeForMeta(res.meta)}
 			} else if !res.result.IsEmpty() {
 				ranges = rangesForDocIDs(res.meta, res.result.Roaring.ToArray(), res.reader.Documents())
 			}
@@ -205,7 +206,7 @@ func (p *LoglineHintProvider) executeQuery(
 				continue
 			}
 
-			ranges = []TimeRange{}
+			ranges = []logproto.HintTimeRange{}
 		}
 
 		byShard[key] = append(byShard[key], ranges...)
@@ -326,14 +327,14 @@ func queryMultipleReasonLabel(reason format.QueryMultipleTerminationReason) stri
 // timeRangeForMeta converts inclusive observed index bounds to a half-open
 // hint range. One millisecond matches the cache and document timestamp
 // precision and guarantees that a log at MaxLogTs remains covered.
-func timeRangeForMeta(meta store.Meta) TimeRange {
-	return TimeRange{
+func timeRangeForMeta(meta store.Meta) logproto.HintTimeRange {
+	return logproto.HintTimeRange{
 		Start: meta.MinLogTs,
 		End:   meta.MaxLogTs.Add(time.Millisecond),
 	}
 }
 
-func rangesForDocIDs(meta store.Meta, docIDs []uint32, docs []format.DocumentMetadata) []TimeRange {
+func rangesForDocIDs(meta store.Meta, docIDs []uint32, docs []format.DocumentMetadata) []logproto.HintTimeRange {
 	if len(docIDs) == 0 || len(docs) == 0 {
 		return nil
 	}
@@ -343,7 +344,7 @@ func rangesForDocIDs(meta store.Meta, docIDs []uint32, docs []format.DocumentMet
 		docByID[doc.ID] = doc
 	}
 
-	ranges := make([]TimeRange, 0, len(docIDs))
+	ranges := make([]logproto.HintTimeRange, 0, len(docIDs))
 	for _, id := range docIDs {
 		doc, ok := docByID[id]
 		if !ok {
@@ -352,7 +353,7 @@ func rangesForDocIDs(meta store.Meta, docIDs []uint32, docs []format.DocumentMet
 
 		minTS := time.UnixMilli(doc.MinTimeUnix).UTC()
 		maxTS := time.UnixMilli(doc.MaxTimeUnix).UTC()
-		ranges = append(ranges, TimeRange{
+		ranges = append(ranges, logproto.HintTimeRange{
 			Start: minTS,
 			End:   maxTS,
 		})

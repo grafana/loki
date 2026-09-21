@@ -399,8 +399,8 @@ func TestNormalizeRanges(t *testing.T) {
 
 	tests := []struct {
 		name     string
-		input    []TimeRange
-		expected []TimeRange
+		input    []logproto.HintTimeRange
+		expected []logproto.HintTimeRange
 	}{
 		{
 			name:     "nil input",
@@ -409,23 +409,23 @@ func TestNormalizeRanges(t *testing.T) {
 		},
 		{
 			name:     "empty input",
-			input:    []TimeRange{},
+			input:    []logproto.HintTimeRange{},
 			expected: nil,
 		},
 		{
 			name: "single range",
-			input: []TimeRange{{
+			input: []logproto.HintTimeRange{{
 				Start: t0,
 				End:   t0.Add(5 * m),
 			}},
-			expected: []TimeRange{{
+			expected: []logproto.HintTimeRange{{
 				Start: t0,
 				End:   t0.Add(5 * m),
 			}},
 		},
 		{
 			name: "non-overlapping",
-			input: []TimeRange{
+			input: []logproto.HintTimeRange{
 				{
 					Start: t0,
 					End:   t0.Add(5 * m),
@@ -435,7 +435,7 @@ func TestNormalizeRanges(t *testing.T) {
 					End:   t0.Add(15 * m),
 				},
 			},
-			expected: []TimeRange{
+			expected: []logproto.HintTimeRange{
 				{
 					Start: t0,
 					End:   t0.Add(5 * m),
@@ -448,7 +448,7 @@ func TestNormalizeRanges(t *testing.T) {
 		},
 		{
 			name: "overlapping merged",
-			input: []TimeRange{
+			input: []logproto.HintTimeRange{
 				{
 					Start: t0,
 					End:   t0.Add(10 * m),
@@ -458,7 +458,7 @@ func TestNormalizeRanges(t *testing.T) {
 					End:   t0.Add(15 * m),
 				},
 			},
-			expected: []TimeRange{
+			expected: []logproto.HintTimeRange{
 				{
 					Start: t0,
 					End:   t0.Add(15 * m),
@@ -467,7 +467,7 @@ func TestNormalizeRanges(t *testing.T) {
 		},
 		{
 			name: "adjacent merged",
-			input: []TimeRange{
+			input: []logproto.HintTimeRange{
 				{
 					Start: t0,
 					End:   t0.Add(5 * m),
@@ -477,7 +477,7 @@ func TestNormalizeRanges(t *testing.T) {
 					End:   t0.Add(10 * m),
 				},
 			},
-			expected: []TimeRange{
+			expected: []logproto.HintTimeRange{
 				{
 					Start: t0,
 					End:   t0.Add(10 * m),
@@ -486,18 +486,18 @@ func TestNormalizeRanges(t *testing.T) {
 		},
 		{
 			name: "empty ranges dropped",
-			input: []TimeRange{
+			input: []logproto.HintTimeRange{
 				{Start: t0, End: t0},
 				{Start: t0.Add(5 * m), End: t0.Add(10 * m)},
 				{Start: t0.Add(20 * m), End: t0.Add(15 * m)}, // inverted
 			},
-			expected: []TimeRange{
+			expected: []logproto.HintTimeRange{
 				{Start: t0.Add(5 * m), End: t0.Add(10 * m)},
 			},
 		},
 		{
 			name: "contained range absorbed",
-			input: []TimeRange{
+			input: []logproto.HintTimeRange{
 				{
 					Start: t0,
 					End:   t0.Add(20 * m),
@@ -507,7 +507,7 @@ func TestNormalizeRanges(t *testing.T) {
 					End:   t0.Add(10 * m),
 				},
 			},
-			expected: []TimeRange{
+			expected: []logproto.HintTimeRange{
 				{
 					Start: t0,
 					End:   t0.Add(20 * m),
@@ -516,7 +516,7 @@ func TestNormalizeRanges(t *testing.T) {
 		},
 		{
 			name: "duplicates merged",
-			input: []TimeRange{
+			input: []logproto.HintTimeRange{
 				{
 					Start: t0,
 					End:   t0.Add(5 * m),
@@ -526,7 +526,7 @@ func TestNormalizeRanges(t *testing.T) {
 					End:   t0.Add(5 * m),
 				},
 			},
-			expected: []TimeRange{
+			expected: []logproto.HintTimeRange{
 				{
 					Start: t0,
 					End:   t0.Add(5 * m),
@@ -535,7 +535,7 @@ func TestNormalizeRanges(t *testing.T) {
 		},
 		{
 			name: "unsorted input",
-			input: []TimeRange{
+			input: []logproto.HintTimeRange{
 				{
 					Start: t0.Add(10 * m),
 					End:   t0.Add(15 * m),
@@ -545,7 +545,7 @@ func TestNormalizeRanges(t *testing.T) {
 					End:   t0.Add(12 * m),
 				},
 			},
-			expected: []TimeRange{
+			expected: []logproto.HintTimeRange{
 				{
 					Start: t0,
 					End:   t0.Add(15 * m),
@@ -554,7 +554,7 @@ func TestNormalizeRanges(t *testing.T) {
 		},
 		{
 			name: "chain of overlapping ranges",
-			input: []TimeRange{
+			input: []logproto.HintTimeRange{
 				{
 					Start: t0,
 					End:   t0.Add(5 * m),
@@ -572,7 +572,7 @@ func TestNormalizeRanges(t *testing.T) {
 					End:   t0.Add(25 * m),
 				},
 			},
-			expected: []TimeRange{
+			expected: []logproto.HintTimeRange{
 				{
 					Start: t0,
 					End:   t0.Add(12 * m),

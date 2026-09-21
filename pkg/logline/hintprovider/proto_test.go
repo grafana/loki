@@ -5,6 +5,8 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/require"
+
+	"github.com/grafana/loki/v3/pkg/logproto"
 )
 
 func TestHintsToProtoRoundTrip(t *testing.T) {
@@ -21,7 +23,7 @@ func TestHintsToProtoRoundTrip(t *testing.T) {
 	stats.indexQueriesPositive.Add(1)
 	stats.totalTermBatchesProcessed.Add(8)
 
-	in := &Hints{TimeRanges: []TimeRange{
+	in := &Hints{TimeRanges: []logproto.HintTimeRange{
 		{Start: time.Time{}, End: start},
 		{Start: start, End: end},
 	}}

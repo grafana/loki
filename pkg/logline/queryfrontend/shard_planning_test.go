@@ -71,7 +71,7 @@ func TestShardPlanningConfigYAMLDefaultsAndOptOut(t *testing.T) {
 func TestShardPlanning_FirstQueryWinsReturnsUnchangedResponse(t *testing.T) {
 	now := time.Now().Truncate(time.Millisecond)
 	hp := &mockHintProvider{
-		hints: &hintprovider.Hints{TimeRanges: []hintprovider.TimeRange{
+		hints: &hintprovider.Hints{TimeRanges: []logproto.HintTimeRange{
 			{Start: now.Add(-40 * time.Minute), End: now.Add(-35 * time.Minute)},
 		}},
 		delay: 100 * time.Millisecond,
@@ -99,9 +99,9 @@ func TestShardPlanning_NarrowSingleHintRerunsWithQueryLimitsOverride(t *testing.
 	now := time.Now().Truncate(time.Millisecond)
 	reqStart := now.Add(-1 * time.Hour)
 	reqEnd := now
-	hintRange := hintprovider.TimeRange{Start: now.Add(-35 * time.Minute), End: now.Add(-30 * time.Minute)}
+	hintRange := logproto.HintTimeRange{Start: now.Add(-35 * time.Minute), End: now.Add(-30 * time.Minute)}
 	hp := &mockHintProvider{
-		hints: &hintprovider.Hints{TimeRanges: []hintprovider.TimeRange{hintRange}},
+		hints: &hintprovider.Hints{TimeRanges: []logproto.HintTimeRange{hintRange}},
 		delay: 100 * time.Millisecond,
 	}
 
@@ -166,7 +166,7 @@ func TestShardPlanning_NarrowSingleHintRerunsWithQueryLimitsOverride(t *testing.
 func TestShardPlanning_ZeroOverlapsRerunsAndFilterReturnsEmptyResponse(t *testing.T) {
 	now := time.Now().Truncate(time.Millisecond)
 	hp := &mockHintProvider{
-		hints: &hintprovider.Hints{TimeRanges: []hintprovider.TimeRange{
+		hints: &hintprovider.Hints{TimeRanges: []logproto.HintTimeRange{
 			{Start: now.Add(-3 * time.Hour), End: now.Add(-2 * time.Hour)},
 		}},
 		delay: 100 * time.Millisecond,
@@ -203,10 +203,10 @@ func TestShardPlanning_ZeroOverlapsRerunsAndFilterReturnsEmptyResponse(t *testin
 
 func TestShardPlanning_MultipleDisjointNarrowHintsRerunWithinThresholds(t *testing.T) {
 	now := time.Now().Truncate(time.Millisecond)
-	r1 := hintprovider.TimeRange{Start: now.Add(-50 * time.Minute), End: now.Add(-48 * time.Minute)}
-	r2 := hintprovider.TimeRange{Start: now.Add(-20 * time.Minute), End: now.Add(-18 * time.Minute)}
+	r1 := logproto.HintTimeRange{Start: now.Add(-50 * time.Minute), End: now.Add(-48 * time.Minute)}
+	r2 := logproto.HintTimeRange{Start: now.Add(-20 * time.Minute), End: now.Add(-18 * time.Minute)}
 	hp := &mockHintProvider{
-		hints: &hintprovider.Hints{TimeRanges: []hintprovider.TimeRange{r1, r2}},
+		hints: &hintprovider.Hints{TimeRanges: []logproto.HintTimeRange{r1, r2}},
 		delay: 100 * time.Millisecond,
 	}
 
@@ -257,7 +257,7 @@ func TestShardPlanningDecision_UsesEnvelopeDuration(t *testing.T) {
 	t.Run("bookend hints on a 15m range fail after k=1 union", func(t *testing.T) {
 		end := start.Add(15 * time.Minute)
 		result := &hintPrefetchResult{
-			ranges: []hintprovider.TimeRange{
+			ranges: []logproto.HintTimeRange{
 				{Start: start.Add(time.Minute), End: start.Add(2 * time.Minute)},
 				{Start: end.Add(-2 * time.Minute), End: end.Add(-time.Minute)},
 			},
@@ -272,7 +272,7 @@ func TestShardPlanningDecision_UsesEnvelopeDuration(t *testing.T) {
 	t.Run("distant clusters on a 1h range stay eligible", func(t *testing.T) {
 		end := start.Add(time.Hour)
 		result := &hintPrefetchResult{
-			ranges: []hintprovider.TimeRange{
+			ranges: []logproto.HintTimeRange{
 				{Start: start.Add(5 * time.Minute), End: start.Add(6 * time.Minute)},
 				{Start: start.Add(50 * time.Minute), End: start.Add(51 * time.Minute)},
 			},
@@ -285,10 +285,10 @@ func TestShardPlanningDecision_UsesEnvelopeDuration(t *testing.T) {
 
 	t.Run("sparse hourly hints on an 8h range stay eligible after per-split budgets", func(t *testing.T) {
 		end := start.Add(8 * time.Hour)
-		var ranges []hintprovider.TimeRange
+		var ranges []logproto.HintTimeRange
 		for i := 0; i < 16; i++ {
 			hintStart := start.Add(time.Duration(i) * 30 * time.Minute)
-			ranges = append(ranges, hintprovider.TimeRange{
+			ranges = append(ranges, logproto.HintTimeRange{
 				Start: hintStart,
 				End:   hintStart.Add(time.Minute),
 			})
@@ -305,10 +305,10 @@ func TestShardPlanningDecision_UsesEnvelopeDuration(t *testing.T) {
 
 	t.Run("unsplit configured interval keeps the 8h sparse case ineligible", func(t *testing.T) {
 		end := start.Add(8 * time.Hour)
-		var ranges []hintprovider.TimeRange
+		var ranges []logproto.HintTimeRange
 		for i := 0; i < 16; i++ {
 			hintStart := start.Add(time.Duration(i) * 30 * time.Minute)
-			ranges = append(ranges, hintprovider.TimeRange{
+			ranges = append(ranges, logproto.HintTimeRange{
 				Start: hintStart,
 				End:   hintStart.Add(time.Minute),
 			})
@@ -335,7 +335,7 @@ func TestShardPlanning_BroadOrUnsafeHintsFallBackToFirstQuery(t *testing.T) {
 		{
 			name: "time reduction too small falls back",
 			cfg:  baseCfg,
-			hp: &mockHintProvider{hints: &hintprovider.Hints{TimeRanges: []hintprovider.TimeRange{
+			hp: &mockHintProvider{hints: &hintprovider.Hints{TimeRanges: []logproto.HintTimeRange{
 				{Start: now.Add(-50 * time.Minute), End: now.Add(-20 * time.Minute)},
 			}}},
 			req: newTestLokiRequest(`{job="test"} |= "error"`, now.Add(-1*time.Hour), now),
@@ -343,7 +343,7 @@ func TestShardPlanning_BroadOrUnsafeHintsFallBackToFirstQuery(t *testing.T) {
 		{
 			name: "envelope fill drops reduction below threshold",
 			cfg:  baseCfg,
-			hp: &mockHintProvider{hints: &hintprovider.Hints{TimeRanges: []hintprovider.TimeRange{
+			hp: &mockHintProvider{hints: &hintprovider.Hints{TimeRanges: []logproto.HintTimeRange{
 				{Start: hour.Add(-14 * time.Minute), End: hour.Add(-13 * time.Minute)},
 				{Start: hour.Add(-2 * time.Minute), End: hour.Add(-time.Minute)},
 			}}},
@@ -365,7 +365,7 @@ func TestShardPlanning_BroadOrUnsafeHintsFallBackToFirstQuery(t *testing.T) {
 		{
 			name: "passthrough range falls back",
 			cfg:  baseCfg,
-			hp: &mockHintProvider{hints: &hintprovider.Hints{TimeRanges: []hintprovider.TimeRange{
+			hp: &mockHintProvider{hints: &hintprovider.Hints{TimeRanges: []logproto.HintTimeRange{
 				{Start: time.Time{}, End: now.Add(-30 * time.Minute)},
 			}}},
 			req: newTestLokiRequest(`{job="test"} |= "error"`, now.Add(-1*time.Hour), now),
@@ -406,7 +406,7 @@ func TestShardPlanning_DryRunModeNeverReruns(t *testing.T) {
 	now := time.Now().Truncate(time.Millisecond)
 	cfg := defaultShardPlanningTestConfig()
 	cfg.DryRun = true
-	hp := &mockHintProvider{hints: &hintprovider.Hints{TimeRanges: []hintprovider.TimeRange{
+	hp := &mockHintProvider{hints: &hintprovider.Hints{TimeRanges: []logproto.HintTimeRange{
 		{Start: now.Add(-35 * time.Minute), End: now.Add(-30 * time.Minute)},
 	}}}
 
@@ -430,7 +430,7 @@ func TestShardPlanning_DryRunModeNeverReruns(t *testing.T) {
 
 func TestShardPlanning_RerunGuardPreventsRecursion(t *testing.T) {
 	now := time.Now().Truncate(time.Millisecond)
-	hp := &mockHintProvider{hints: &hintprovider.Hints{TimeRanges: []hintprovider.TimeRange{
+	hp := &mockHintProvider{hints: &hintprovider.Hints{TimeRanges: []logproto.HintTimeRange{
 		{Start: now.Add(-35 * time.Minute), End: now.Add(-30 * time.Minute)},
 	}}}
 
@@ -454,7 +454,7 @@ func TestShardPlanning_RerunGuardPreventsRecursion(t *testing.T) {
 func TestShardPlanning_PreservesExistingQueryLimitsOnRerun(t *testing.T) {
 	now := time.Now().Truncate(time.Millisecond)
 	hp := &mockHintProvider{
-		hints: &hintprovider.Hints{TimeRanges: []hintprovider.TimeRange{
+		hints: &hintprovider.Hints{TimeRanges: []logproto.HintTimeRange{
 			{Start: now.Add(-35 * time.Minute), End: now.Add(-30 * time.Minute)},
 		}},
 		delay: 100 * time.Millisecond,

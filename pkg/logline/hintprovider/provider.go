@@ -5,10 +5,10 @@ import (
 	"errors"
 	"fmt"
 	"strings"
-	"time"
 
 	"github.com/prometheus/common/model"
 
+	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	"github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase"
 )
@@ -27,27 +27,9 @@ type QueryHintProvider interface {
 	ProvideHints(ctx context.Context, next queryrangebase.Handler, tenant string, expr syntax.Expr, from, through model.Time) (*Hints, *QueryStats, error)
 }
 
-// TimeRange is a half-open time window [Start, End) that may contain
-// matching logs. Start is inclusive, End is exclusive. This matches the
-// document bounds written by index builders (MinTimeUnix inclusive,
-// MaxTimeUnix exclusive).
-type TimeRange struct {
-	Start time.Time
-	End   time.Time
-}
-
-// IsPassthrough returns true for synthetic hint ranges that represent time
-// windows where the logline index has no coverage (e.g. before store min
-// date). These ranges use a zero-value Start as a sentinel. The filter
-// middleware should pass these intervals through to Loki unmodified rather
-// than treating them as narrowed.
-func (h TimeRange) IsPassthrough() bool {
-	return h.Start.IsZero()
-}
-
 // Hints contains narrowed ranges derived from index lookups.
 type Hints struct {
-	TimeRanges []TimeRange
+	TimeRanges []logproto.HintTimeRange
 }
 
 // String returns a compact, log-friendly representation of hint ranges.
@@ -61,7 +43,7 @@ func (h *Hints) String() string {
 // FormatHintRanges renders ranges as:
 // [start +dur];[start +dur];... and truncates to maxLoggedHintRanges.
 // Example: [2026-07-09T08:42:59.123Z +1s]
-func FormatHintRanges(ranges []TimeRange) string {
+func FormatHintRanges(ranges []logproto.HintTimeRange) string {
 	if len(ranges) == 0 {
 		return "[]"
 	}

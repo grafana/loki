@@ -6,6 +6,7 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/logline/shard"
 	"github.com/grafana/loki/v3/pkg/logline/store"
+	"github.com/grafana/loki/v3/pkg/logproto"
 )
 
 // shardGroup identifies a partitioning scheme. Indexes in the same group
@@ -44,16 +45,16 @@ func (k shardKey) String() string {
 // by Start and non-overlapping (as produced by normalizeRanges). The output is
 // also sorted and non-overlapping. Adjacent ranges that only touch at a
 // boundary (a.End == b.Start) have empty intersection and are omitted.
-func intersectRanges(a, b []TimeRange) []TimeRange {
+func intersectRanges(a, b []logproto.HintTimeRange) []logproto.HintTimeRange {
 	if len(a) == 0 || len(b) == 0 {
-		return []TimeRange{}
+		return []logproto.HintTimeRange{}
 	}
 
 	// Defensive: sort inputs if caller didn't.
 	sort.Slice(a, func(i, j int) bool { return a[i].Start.Before(a[j].Start) })
 	sort.Slice(b, func(i, j int) bool { return b[i].Start.Before(b[j].Start) })
 
-	out := []TimeRange{}
+	out := []logproto.HintTimeRange{}
 	i, j := 0, 0
 	for i < len(a) && j < len(b) {
 		// Compute overlap.
@@ -68,7 +69,7 @@ func intersectRanges(a, b []TimeRange) []TimeRange {
 
 		// Half-open: start == end is empty, not an instant match.
 		if start.Before(end) {
-			out = append(out, TimeRange{
+			out = append(out, logproto.HintTimeRange{
 				Start: start,
 				End:   end,
 			})

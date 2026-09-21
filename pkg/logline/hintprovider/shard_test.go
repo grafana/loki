@@ -8,6 +8,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/v3/pkg/logline/store"
+	"github.com/grafana/loki/v3/pkg/logproto"
 )
 
 func TestFilterNgramsForShard_Unsharded(t *testing.T) {
@@ -57,44 +58,44 @@ func TestIntersectRanges(t *testing.T) {
 
 	tests := []struct {
 		name     string
-		a, b     []TimeRange
-		expected []TimeRange
+		a, b     []logproto.HintTimeRange
+		expected []logproto.HintTimeRange
 	}{
 		{
 			name:     "both empty",
 			a:        nil,
 			b:        nil,
-			expected: []TimeRange{},
+			expected: []logproto.HintTimeRange{},
 		},
 		{
 			name:     "one empty",
-			a:        []TimeRange{{Start: t0, End: t0.Add(5 * m)}},
+			a:        []logproto.HintTimeRange{{Start: t0, End: t0.Add(5 * m)}},
 			b:        nil,
-			expected: []TimeRange{},
+			expected: []logproto.HintTimeRange{},
 		},
 		{
 			name:     "no overlap",
-			a:        []TimeRange{{Start: t0, End: t0.Add(5 * m)}},
-			b:        []TimeRange{{Start: t0.Add(10 * m), End: t0.Add(15 * m)}},
-			expected: []TimeRange{},
+			a:        []logproto.HintTimeRange{{Start: t0, End: t0.Add(5 * m)}},
+			b:        []logproto.HintTimeRange{{Start: t0.Add(10 * m), End: t0.Add(15 * m)}},
+			expected: []logproto.HintTimeRange{},
 		},
 		{
 			name:     "partial overlap",
-			a:        []TimeRange{{Start: t0, End: t0.Add(10 * m)}},
-			b:        []TimeRange{{Start: t0.Add(5 * m), End: t0.Add(15 * m)}},
-			expected: []TimeRange{{Start: t0.Add(5 * m), End: t0.Add(10 * m)}},
+			a:        []logproto.HintTimeRange{{Start: t0, End: t0.Add(10 * m)}},
+			b:        []logproto.HintTimeRange{{Start: t0.Add(5 * m), End: t0.Add(15 * m)}},
+			expected: []logproto.HintTimeRange{{Start: t0.Add(5 * m), End: t0.Add(10 * m)}},
 		},
 		{
 			name:     "one contained in other",
-			a:        []TimeRange{{Start: t0, End: t0.Add(20 * m)}},
-			b:        []TimeRange{{Start: t0.Add(5 * m), End: t0.Add(10 * m)}},
-			expected: []TimeRange{{Start: t0.Add(5 * m), End: t0.Add(10 * m)}},
+			a:        []logproto.HintTimeRange{{Start: t0, End: t0.Add(20 * m)}},
+			b:        []logproto.HintTimeRange{{Start: t0.Add(5 * m), End: t0.Add(10 * m)}},
+			expected: []logproto.HintTimeRange{{Start: t0.Add(5 * m), End: t0.Add(10 * m)}},
 		},
 		{
 			name:     "identical ranges",
-			a:        []TimeRange{{Start: t0, End: t0.Add(10 * m)}},
-			b:        []TimeRange{{Start: t0, End: t0.Add(10 * m)}},
-			expected: []TimeRange{{Start: t0, End: t0.Add(10 * m)}},
+			a:        []logproto.HintTimeRange{{Start: t0, End: t0.Add(10 * m)}},
+			b:        []logproto.HintTimeRange{{Start: t0, End: t0.Add(10 * m)}},
+			expected: []logproto.HintTimeRange{{Start: t0, End: t0.Add(10 * m)}},
 		},
 		{
 			// Adjacent [start, end) ranges share a boundary but have empty
@@ -102,20 +103,20 @@ func TestIntersectRanges(t *testing.T) {
 			// hint_ranges with zero-duration windows (see production traces
 			// with thousands of instants and ~half the total seconds).
 			name:     "touching at endpoint",
-			a:        []TimeRange{{Start: t0, End: t0.Add(5 * m)}},
-			b:        []TimeRange{{Start: t0.Add(5 * m), End: t0.Add(10 * m)}},
-			expected: []TimeRange{},
+			a:        []logproto.HintTimeRange{{Start: t0, End: t0.Add(5 * m)}},
+			b:        []logproto.HintTimeRange{{Start: t0.Add(5 * m), End: t0.Add(10 * m)}},
+			expected: []logproto.HintTimeRange{},
 		},
 		{
 			name: "multiple ranges with multiple overlaps",
-			a: []TimeRange{
+			a: []logproto.HintTimeRange{
 				{Start: t0, End: t0.Add(10 * m)},
 				{Start: t0.Add(20 * m), End: t0.Add(30 * m)},
 			},
-			b: []TimeRange{
+			b: []logproto.HintTimeRange{
 				{Start: t0.Add(5 * m), End: t0.Add(25 * m)},
 			},
-			expected: []TimeRange{
+			expected: []logproto.HintTimeRange{
 				{Start: t0.Add(5 * m), End: t0.Add(10 * m)},
 				{Start: t0.Add(20 * m), End: t0.Add(25 * m)},
 			},
@@ -139,28 +140,28 @@ func TestAggregateShardRanges(t *testing.T) {
 	shard1 := shardKey{shardGroup: shardGroup{ShardCount: 4, ShardAlgorithm: "first_byte"}, ShardValue: 1}
 
 	t.Run("unsharded only unions", func(t *testing.T) {
-		byKey := map[shardKey][]TimeRange{
+		byKey := map[shardKey][]logproto.HintTimeRange{
 			unshardedKey: {
 				{Start: t0, End: t0.Add(10 * m)},
 				{Start: t0.Add(5 * m), End: t0.Add(15 * m)},
 			},
 		}
 		got := aggregateShardRanges(byKey)
-		require.Equal(t, []TimeRange{{Start: t0, End: t0.Add(15 * m)}}, got)
+		require.Equal(t, []logproto.HintTimeRange{{Start: t0, End: t0.Add(15 * m)}}, got)
 	})
 
 	t.Run("two shards intersected", func(t *testing.T) {
-		byKey := map[shardKey][]TimeRange{
+		byKey := map[shardKey][]logproto.HintTimeRange{
 			shard0: {{Start: t0, End: t0.Add(20 * m)}},
 			shard1: {{Start: t0.Add(10 * m), End: t0.Add(30 * m)}},
 		}
 		got := aggregateShardRanges(byKey)
 		// Intersection: [t0+10m, t0+20m]
-		require.Equal(t, []TimeRange{{Start: t0.Add(10 * m), End: t0.Add(20 * m)}}, got)
+		require.Equal(t, []logproto.HintTimeRange{{Start: t0.Add(10 * m), End: t0.Add(20 * m)}}, got)
 	})
 
 	t.Run("sharded intersect plus unsharded union", func(t *testing.T) {
-		byKey := map[shardKey][]TimeRange{
+		byKey := map[shardKey][]logproto.HintTimeRange{
 			shard0:       {{Start: t0, End: t0.Add(20 * m)}},
 			shard1:       {{Start: t0.Add(10 * m), End: t0.Add(30 * m)}},
 			unshardedKey: {{Start: t0.Add(50 * m), End: t0.Add(60 * m)}},
@@ -176,7 +177,7 @@ func TestAggregateShardRanges(t *testing.T) {
 	})
 
 	t.Run("disjoint shards produce empty result", func(t *testing.T) {
-		byKey := map[shardKey][]TimeRange{
+		byKey := map[shardKey][]logproto.HintTimeRange{
 			shard0: {{Start: t0, End: t0.Add(5 * m)}},
 			shard1: {{Start: t0.Add(10 * m), End: t0.Add(15 * m)}},
 		}
@@ -187,7 +188,7 @@ func TestAggregateShardRanges(t *testing.T) {
 	t.Run("adjacent shard ranges produce empty intersection not instants", func(t *testing.T) {
 		// Cross-shard INTERSECT of abutting [start, end) docs, e.g.
 		// ngram A → shard0 [t0, t0+1s), ngram B → shard1 [t0+1s, t0+2s).
-		byKey := map[shardKey][]TimeRange{
+		byKey := map[shardKey][]logproto.HintTimeRange{
 			shard0: {{Start: t0, End: t0.Add(time.Second)}},
 			shard1: {{Start: t0.Add(time.Second), End: t0.Add(2 * time.Second)}},
 		}
@@ -200,7 +201,7 @@ func TestAggregateShardRanges(t *testing.T) {
 		// They should be unioned, not intersected.
 		group4shard0 := shardKey{shardGroup: shardGroup{ShardCount: 4, ShardAlgorithm: "first_byte"}, ShardValue: 0}
 		group8shard0 := shardKey{shardGroup: shardGroup{ShardCount: 8, ShardAlgorithm: "first_byte"}, ShardValue: 0}
-		byKey := map[shardKey][]TimeRange{
+		byKey := map[shardKey][]logproto.HintTimeRange{
 			group4shard0: {{Start: t0, End: t0.Add(10 * m)}},
 			group8shard0: {{Start: t0.Add(20 * m), End: t0.Add(30 * m)}},
 		}
@@ -225,7 +226,7 @@ func TestAggregateShardRanges(t *testing.T) {
 		// requires at least one iteration AFTER the nil intersection.
 		shard2 := shardKey{shardGroup: shardGroup{ShardCount: 4, ShardAlgorithm: "first_byte"}, ShardValue: 2}
 		for i := range 200 {
-			byKey := map[shardKey][]TimeRange{
+			byKey := map[shardKey][]logproto.HintTimeRange{
 				shard0: {{Start: t0, End: t0.Add(10 * m)}},
 				shard1: {{Start: t0.Add(20 * m), End: t0.Add(30 * m)}},
 				// shard2 covers BOTH shard0 and shard1's windows. A buggy
@@ -244,9 +245,9 @@ func TestAggregateShardRanges(t *testing.T) {
 		// Same regression test, happy path: all three shards overlap on
 		// [20m, 30m]. Output must be stable across map iteration orders.
 		shard2 := shardKey{shardGroup: shardGroup{ShardCount: 4, ShardAlgorithm: "first_byte"}, ShardValue: 2}
-		want := []TimeRange{{Start: t0.Add(20 * m), End: t0.Add(30 * m)}}
+		want := []logproto.HintTimeRange{{Start: t0.Add(20 * m), End: t0.Add(30 * m)}}
 		for i := range 200 {
-			byKey := map[shardKey][]TimeRange{
+			byKey := map[shardKey][]logproto.HintTimeRange{
 				shard0: {{Start: t0.Add(10 * m), End: t0.Add(30 * m)}},
 				shard1: {{Start: t0.Add(20 * m), End: t0.Add(40 * m)}},
 				shard2: {{Start: t0.Add(15 * m), End: t0.Add(35 * m)}},
@@ -268,7 +269,7 @@ func TestAggregateShardRanges(t *testing.T) {
 		b0 := shardKey{shardGroup: shardGroup{ShardCount: 8, ShardAlgorithm: "first_byte"}, ShardValue: 0}
 		b1 := shardKey{shardGroup: shardGroup{ShardCount: 8, ShardAlgorithm: "first_byte"}, ShardValue: 1}
 		b2 := shardKey{shardGroup: shardGroup{ShardCount: 8, ShardAlgorithm: "first_byte"}, ShardValue: 2}
-		byKey := map[shardKey][]TimeRange{
+		byKey := map[shardKey][]logproto.HintTimeRange{
 			a0: {{Start: t0, End: t0.Add(5 * m)}},
 			a1: {{Start: t0.Add(10 * m), End: t0.Add(15 * m)}},
 			a2: {{Start: t0.Add(20 * m), End: t0.Add(25 * m)}},
@@ -289,7 +290,7 @@ func TestAggregateShardRanges(t *testing.T) {
 		b0 := shardKey{shardGroup: shardGroup{ShardCount: 8, ShardAlgorithm: "first_byte"}, ShardValue: 0}
 		b1 := shardKey{shardGroup: shardGroup{ShardCount: 8, ShardAlgorithm: "first_byte"}, ShardValue: 1}
 		b2 := shardKey{shardGroup: shardGroup{ShardCount: 8, ShardAlgorithm: "first_byte"}, ShardValue: 2}
-		byKey := map[shardKey][]TimeRange{
+		byKey := map[shardKey][]logproto.HintTimeRange{
 			a0: {{Start: t0, End: t0.Add(5 * m)}},
 			a1: {{Start: t0.Add(10 * m), End: t0.Add(15 * m)}},
 			a2: {{Start: t0.Add(20 * m), End: t0.Add(25 * m)}},
@@ -305,15 +306,15 @@ func TestAggregateShardRanges(t *testing.T) {
 		// Group A (count=4): four shards all overlapping on [20m, 30m].
 		// Group B (count=8): four shards all overlapping on [60m, 70m].
 		// Final UNION across groups should yield two ranges regardless of order.
-		mkGroup := func(count int, mins ...int) map[shardKey][]TimeRange {
-			out := make(map[shardKey][]TimeRange)
+		mkGroup := func(count int, mins ...int) map[shardKey][]logproto.HintTimeRange {
+			out := make(map[shardKey][]logproto.HintTimeRange)
 			for i, base := range mins {
 				k := shardKey{shardGroup: shardGroup{ShardCount: count, ShardAlgorithm: "first_byte"}, ShardValue: i}
-				out[k] = []TimeRange{{Start: t0.Add(time.Duration(base) * m), End: t0.Add(time.Duration(base+20) * m)}}
+				out[k] = []logproto.HintTimeRange{{Start: t0.Add(time.Duration(base) * m), End: t0.Add(time.Duration(base+20) * m)}}
 			}
 			return out
 		}
-		byKey := map[shardKey][]TimeRange{}
+		byKey := map[shardKey][]logproto.HintTimeRange{}
 		// intersect → [19m, 30m]
 		maps.Copy(byKey, mkGroup(4, 10, 15, 18, 19))
 		// intersect → [59m, 70m]
@@ -333,7 +334,7 @@ func TestAggregateShardRanges(t *testing.T) {
 		mkKey := func(v int) shardKey {
 			return shardKey{shardGroup: shardGroup{ShardCount: 16, ShardAlgorithm: "first_byte"}, ShardValue: v}
 		}
-		byKey := map[shardKey][]TimeRange{
+		byKey := map[shardKey][]logproto.HintTimeRange{
 			mkKey(0): {{Start: t0, End: t0.Add(5 * m)}},
 			mkKey(1): {{Start: t0.Add(10 * m), End: t0.Add(15 * m)}},
 			mkKey(2): {{Start: t0.Add(20 * m), End: t0.Add(25 * m)}},

@@ -11,6 +11,7 @@ import (
 	"github.com/prometheus/common/model"
 	"golang.org/x/sync/singleflight"
 
+	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	"github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/cache"
@@ -132,7 +133,7 @@ func (p *CachingHintProvider) ProvideHints(
 		cacheKeys = append(cacheKeys, day.hashedKey)
 	}
 
-	cachedRanges := []TimeRange(nil)
+	cachedRanges := []logproto.HintTimeRange(nil)
 	missingDays := dayWindows
 	daysHit := 0
 	found, bufs, missing, err := p.cache.Fetch(ctx, cacheKeys)
@@ -148,7 +149,7 @@ func (p *CachingHintProvider) ProvideHints(
 	}
 
 	p.requestsTotal.WithLabelValues(hintCacheResultMiss).Inc()
-	combinedRanges := append([]TimeRange(nil), cachedRanges...)
+	combinedRanges := append([]logproto.HintTimeRange(nil), cachedRanges...)
 	combinedStats := NewQueryStats()
 	for _, day := range missingDays {
 		dayFrom := model.TimeFromUnixNano(day.start.UnixNano())
@@ -205,7 +206,7 @@ func filterHintsByWindow(hints *Hints, from, through model.Time) *Hints {
 	return &filtered
 }
 
-func (p *CachingHintProvider) storeDays(ctx context.Context, days []dayWindow, ranges []TimeRange) {
+func (p *CachingHintProvider) storeDays(ctx context.Context, days []dayWindow, ranges []logproto.HintTimeRange) {
 	if p.cache == nil || len(days) == 0 {
 		return
 	}
@@ -227,7 +228,7 @@ func (p *CachingHintProvider) storeDays(ctx context.Context, days []dayWindow, r
 	_ = p.cache.Store(ctx, keys, values)
 }
 
-func decodeCachedAndMissingDays(days []dayWindow, found []string, bufs [][]byte, missing []string) ([]TimeRange, []dayWindow) {
+func decodeCachedAndMissingDays(days []dayWindow, found []string, bufs [][]byte, missing []string) ([]logproto.HintTimeRange, []dayWindow) {
 	if len(days) == 0 {
 		return nil, nil
 	}
@@ -237,7 +238,7 @@ func decodeCachedAndMissingDays(days []dayWindow, found []string, bufs [][]byte,
 		missingByKey[key] = struct{}{}
 	}
 
-	decodedRanges := make([]TimeRange, 0, len(days))
+	decodedRanges := make([]logproto.HintTimeRange, 0, len(days))
 	missingDays := make([]dayWindow, 0, len(days))
 	if len(found) != len(bufs) {
 		return nil, append(missingDays, days...)
@@ -314,7 +315,7 @@ func singleflightKey(tenant, query, day string) string {
 	return fmt.Sprintf("%s:%s:%s", tenant, query, day)
 }
 
-func filterRangesByWindow(ranges []TimeRange, from, through time.Time) []TimeRange {
+func filterRangesByWindow(ranges []logproto.HintTimeRange, from, through time.Time) []logproto.HintTimeRange {
 	if len(ranges) == 0 {
 		return nil
 	}
@@ -322,7 +323,7 @@ func filterRangesByWindow(ranges []TimeRange, from, through time.Time) []TimeRan
 		through = from
 	}
 
-	filtered := make([]TimeRange, 0, len(ranges))
+	filtered := make([]logproto.HintTimeRange, 0, len(ranges))
 	for _, r := range ranges {
 		if r.End.Before(from) || r.Start.After(through) {
 			continue
@@ -337,12 +338,12 @@ func truncateToUTCDay(t time.Time) time.Time {
 	return time.Date(t.Year(), t.Month(), t.Day(), 0, 0, 0, 0, time.UTC)
 }
 
-func clipRangesToDay(ranges []TimeRange, dayStart, dayEndExclusive time.Time) []TimeRange {
+func clipRangesToDay(ranges []logproto.HintTimeRange, dayStart, dayEndExclusive time.Time) []logproto.HintTimeRange {
 	if len(ranges) == 0 {
 		return nil
 	}
 
-	out := make([]TimeRange, 0, len(ranges))
+	out := make([]logproto.HintTimeRange, 0, len(ranges))
 	for _, r := range ranges {
 		if r.End.Before(dayStart) || !r.Start.Before(dayEndExclusive) {
 			continue
@@ -353,7 +354,7 @@ func clipRangesToDay(ranges []TimeRange, dayStart, dayEndExclusive time.Time) []
 		// serialized, leaving a gap between this day and the next: a range reaching
 		// midnight would end 23:59:59.999 while the next day starts 00:00:00.000, and
 		// normalizeRanges cannot bridge that.
-		clipped := TimeRange{
+		clipped := logproto.HintTimeRange{
 			Start: maxTime(r.Start, dayStart).UTC(),
 			End:   minTime(r.End, dayEndExclusive).UTC(),
 		}
@@ -366,7 +367,7 @@ func clipRangesToDay(ranges []TimeRange, dayStart, dayEndExclusive time.Time) []
 	return normalizeRanges(out)
 }
 
-func marshalCachedHints(ranges []TimeRange) ([]byte, error) {
+func marshalCachedHints(ranges []logproto.HintTimeRange) ([]byte, error) {
 	if len(ranges) == 0 {
 		return json.Marshal(cachedHints{})
 	}
@@ -381,7 +382,7 @@ func marshalCachedHints(ranges []TimeRange) ([]byte, error) {
 	return json.Marshal(cachedHints{TimeRanges: encoded})
 }
 
-func unmarshalCachedHints(encoded []byte) ([]TimeRange, error) {
+func unmarshalCachedHints(encoded []byte) ([]logproto.HintTimeRange, error) {
 	if len(encoded) == 0 {
 		return nil, nil
 	}
@@ -394,14 +395,14 @@ func unmarshalCachedHints(encoded []byte) ([]TimeRange, error) {
 		return nil, nil
 	}
 
-	ranges := make([]TimeRange, 0, len(payload.TimeRanges))
+	ranges := make([]logproto.HintTimeRange, 0, len(payload.TimeRanges))
 	for _, r := range payload.TimeRanges {
 		start := time.UnixMilli(r.StartMs).UTC()
 		end := time.UnixMilli(r.EndMs).UTC()
 		if end.Before(start) {
 			end = start
 		}
-		ranges = append(ranges, TimeRange{
+		ranges = append(ranges, logproto.HintTimeRange{
 			Start: start,
 			End:   end,
 		})

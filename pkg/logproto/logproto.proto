@@ -445,12 +445,12 @@ message IndexRef {
 }
 
 message HintTimeRange {
-  int64 start = 1 [
-    (gogoproto.customtype) = "github.com/prometheus/common/model.Time",
+  google.protobuf.Timestamp start = 1 [
+    (gogoproto.stdtime) = true,
     (gogoproto.nullable) = false
   ];
-  int64 end = 2 [
-    (gogoproto.customtype) = "github.com/prometheus/common/model.Time",
+  google.protobuf.Timestamp end = 2 [
+    (gogoproto.stdtime) = true,
     (gogoproto.nullable) = false
   ];
 }

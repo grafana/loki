@@ -1,20 +1,14 @@
 package hintprovider
 
 import (
-	"time"
-
-	"github.com/prometheus/common/model"
-
 	"github.com/grafana/loki/v3/pkg/logproto"
 )
 
 // HintsToProto maps ProvideHints results onto the querier wire type.
-// A zero TimeRange.Start is encoded as proto start 0 so IsPassthrough
-// survives the round trip.
 func HintsToProto(hints *Hints, stats *QueryStats) *logproto.HintResponse {
 	resp := &logproto.HintResponse{}
 	if hints != nil {
-		resp.TimeRanges = hintRangesToProto(hints.TimeRanges)
+		resp.TimeRanges = hints.TimeRanges
 	}
 	resp.Stats = queryStatsToProto(stats)
 	return resp
@@ -25,49 +19,7 @@ func ProtoToHints(resp *logproto.HintResponse) (*Hints, *QueryStats) {
 	if resp == nil {
 		return &Hints{}, NewQueryStats()
 	}
-	return &Hints{TimeRanges: protoToHintRanges(resp.TimeRanges)}, protoToQueryStats(resp.Stats)
-}
-
-func hintRangesToProto(ranges []TimeRange) []logproto.HintTimeRange {
-	if len(ranges) == 0 {
-		return nil
-	}
-	out := make([]logproto.HintTimeRange, len(ranges))
-	for i, r := range ranges {
-		out[i] = logproto.HintTimeRange{
-			Start: timeToModel(r.Start),
-			End:   timeToModel(r.End),
-		}
-	}
-	return out
-}
-
-func protoToHintRanges(ranges []logproto.HintTimeRange) []TimeRange {
-	if len(ranges) == 0 {
-		return nil
-	}
-	out := make([]TimeRange, len(ranges))
-	for i, r := range ranges {
-		out[i] = TimeRange{
-			Start: modelToTime(r.Start),
-			End:   modelToTime(r.End),
-		}
-	}
-	return out
-}
-
-func timeToModel(t time.Time) model.Time {
-	if t.IsZero() {
-		return 0
-	}
-	return model.TimeFromUnixNano(t.UnixNano())
-}
-
-func modelToTime(t model.Time) time.Time {
-	if t == 0 {
-		return time.Time{}
-	}
-	return t.Time().UTC()
+	return &Hints{TimeRanges: resp.TimeRanges}, protoToQueryStats(resp.Stats)
 }
 
 func queryStatsToProto(stats *QueryStats) *logproto.HintQueryStats {
