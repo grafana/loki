@@ -330,12 +330,6 @@ func hintTimeRangeForMeta(meta store.Meta) HintTimeRange {
 	return HintTimeRange{
 		Start: meta.MinLogTs,
 		End:   meta.MaxLogTs.Add(time.Millisecond),
-		Source: fmt.Sprintf(
-			"index=%s,matches_all,min=%s,max=%s",
-			meta.ID(),
-			meta.MinLogTs.Format(time.RFC3339Nano),
-			meta.MaxLogTs.Format(time.RFC3339Nano),
-		),
 	}
 }
 
@@ -361,13 +355,6 @@ func rangesForDocIDs(meta store.Meta, docIDs []uint32, docs []format.DocumentMet
 		ranges = append(ranges, HintTimeRange{
 			Start: minTS,
 			End:   maxTS,
-			Source: fmt.Sprintf(
-				"index=%s,doc=%d,min=%s,max=%s",
-				meta.ID(),
-				doc.ID,
-				minTS.Format(time.RFC3339Nano),
-				maxTS.Format(time.RFC3339Nano),
-			),
 		})
 	}
 

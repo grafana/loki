@@ -28,31 +28,29 @@ func ProtoToHints(resp *logproto.HintResponse) (*Hints, *QueryStats) {
 	return &Hints{TimeRanges: protoToHintRanges(resp.TimeRanges)}, protoToQueryStats(resp.Stats)
 }
 
-func hintRangesToProto(ranges []HintTimeRange) []logproto.HintTimeRange {
+func hintRangesToProto(ranges []HintTimeRange) []logproto.HintRange {
 	if len(ranges) == 0 {
 		return nil
 	}
-	out := make([]logproto.HintTimeRange, len(ranges))
+	out := make([]logproto.HintRange, len(ranges))
 	for i, r := range ranges {
-		out[i] = logproto.HintTimeRange{
-			Start:  timeToModel(r.Start),
-			End:    timeToModel(r.End),
-			Source: r.Source,
+		out[i] = logproto.HintRange{
+			Start: timeToModel(r.Start),
+			End:   timeToModel(r.End),
 		}
 	}
 	return out
 }
 
-func protoToHintRanges(ranges []logproto.HintTimeRange) []HintTimeRange {
+func protoToHintRanges(ranges []logproto.HintRange) []HintTimeRange {
 	if len(ranges) == 0 {
 		return nil
 	}
 	out := make([]HintTimeRange, len(ranges))
 	for i, r := range ranges {
 		out[i] = HintTimeRange{
-			Start:  modelToTime(r.Start),
-			End:    modelToTime(r.End),
-			Source: r.Source,
+			Start: modelToTime(r.Start),
+			End:   modelToTime(r.End),
 		}
 	}
 	return out

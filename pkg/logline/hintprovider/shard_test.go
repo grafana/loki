@@ -2,7 +2,6 @@ package hintprovider
 
 import (
 	"maps"
-	"strings"
 	"testing"
 	"time"
 
@@ -120,12 +119,6 @@ func TestIntersectRanges(t *testing.T) {
 				{Start: t0.Add(5 * m), End: t0.Add(10 * m)},
 				{Start: t0.Add(20 * m), End: t0.Add(25 * m)},
 			},
-		},
-		{
-			name:     "sources merged",
-			a:        []HintTimeRange{{Start: t0, End: t0.Add(10 * m), Source: "shard=0"}},
-			b:        []HintTimeRange{{Start: t0.Add(5 * m), End: t0.Add(15 * m), Source: "shard=1"}},
-			expected: []HintTimeRange{{Start: t0.Add(5 * m), End: t0.Add(10 * m), Source: "shard=0;shard=1"}},
 		},
 	}
 
@@ -350,65 +343,4 @@ func TestAggregateShardRanges(t *testing.T) {
 		got := aggregateShardRanges(byKey)
 		require.Nil(t, got)
 	})
-}
-
-func TestMergeSources_Truncation(t *testing.T) {
-	// Build a source string that exceeds the cap.
-	segment := "index=2026-03-30/abc123def456,doc=42,min=2026-03-30T00:00:00Z,max=2026-03-30T12:00:00Z"
-	var left string
-	for len(left) < maxMergedSourceLen {
-		if left != "" {
-			left += ";"
-		}
-		left += segment
-	}
-	right := "index=2026-03-30/zzz,doc=0,min=2026-03-30T00:00:00Z,max=2026-03-30T01:00:00Z"
-
-	merged := mergeSources(left, right)
-
-	require.LessOrEqual(t, len(merged), maxMergedSourceLen)
-	require.Contains(t, merged, "...(truncated)")
-
-	// Subsequent merges must not grow past the cap or append another marker.
-	again := mergeSources(merged, right+"x")
-	require.Equal(t, merged, again)
-	require.LessOrEqual(t, len(again), maxMergedSourceLen)
-	require.Equal(t, 1, strings.Count(again, "...(truncated)"))
-}
-
-func TestMergeSources_SmallStringsUnchanged(t *testing.T) {
-	require.Equal(t, "a;b", mergeSources("a", "b"))
-	require.Equal(t, "a", mergeSources("a", ""))
-	require.Equal(t, "b", mergeSources("", "b"))
-	require.Equal(t, "a", mergeSources("a", "a"))
-}
-
-func TestMergeSources_OversizedSingleSource(t *testing.T) {
-	huge := strings.Repeat("x", maxMergedSourceLen+100)
-	got := mergeSources("", huge)
-	require.LessOrEqual(t, len(got), maxMergedSourceLen)
-	require.Contains(t, got, "...(truncated)")
-
-	got = mergeSources(huge, "y")
-	require.LessOrEqual(t, len(got), maxMergedSourceLen)
-	require.Contains(t, got, "...(truncated)")
-}
-
-func TestMergeSources_NormalizeRanges_BoundedGrowth(t *testing.T) {
-	t0 := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
-
-	// Simulate 1000 overlapping ranges from different indexes, all merging
-	// into one range. Without truncation this would produce a ~90 KB source
-	// string; with truncation it stays under the cap.
-	ranges := make([]HintTimeRange, 1000)
-	for i := range ranges {
-		ranges[i] = HintTimeRange{
-			Start:  t0,
-			End:    t0.Add(time.Hour),
-			Source: "index=2026-03-30/idx" + string(rune('A'+i%26)) + ",doc=0,min=x,max=y",
-		}
-	}
-	out := normalizeRanges(ranges)
-	require.Len(t, out, 1)
-	require.LessOrEqual(t, len(out[0].Source), maxMergedSourceLen)
 }

@@ -69,9 +69,8 @@ func intersectRanges(a, b []HintTimeRange) []HintTimeRange {
 		// Half-open: start == end is empty, not an instant match.
 		if start.Before(end) {
 			out = append(out, HintTimeRange{
-				Start:  start,
-				End:    end,
-				Source: mergeSources(a[i].Source, b[j].Source),
+				Start: start,
+				End:   end,
 			})
 		}
 

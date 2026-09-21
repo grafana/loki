@@ -74,10 +74,6 @@ func TestLoglineHintProvider_ProvideHints(t *testing.T) {
 	require.Len(t, hints.TimeRanges, 1)
 	require.Equal(t, docMin.UTC(), hints.TimeRanges[0].Start)
 	require.Equal(t, docMax.UTC(), hints.TimeRanges[0].End)
-	require.Contains(t, hints.TimeRanges[0].Source, "index=")
-	require.Contains(t, hints.TimeRanges[0].Source, ",doc=0")
-	require.Contains(t, hints.TimeRanges[0].Source, ",min=")
-	require.Contains(t, hints.TimeRanges[0].Source, ",max=")
 }
 
 func TestLoglineHintProvider_ProvideHints_MatchesAllPreservesSingleTimestamp(t *testing.T) {
@@ -391,7 +387,6 @@ func TestLoglineHintProvider_ProvideHints_PrependsPreMinDateRange(t *testing.T) 
 	require.NoError(t, err)
 	require.Equal(t, time.Time{}, hints.TimeRanges[0].Start)
 	require.Equal(t, expectedMinDate.UTC(), hints.TimeRanges[0].End)
-	require.Equal(t, HintSourcePreMinDate, hints.TimeRanges[0].Source)
 	require.True(t, hints.TimeRanges[0].IsPassthrough())
 
 	require.Equal(t, docMin.UTC(), hints.TimeRanges[1].Start)
@@ -585,33 +580,6 @@ func TestNormalizeRanges(t *testing.T) {
 				{
 					Start: t0.Add(20 * m),
 					End:   t0.Add(25 * m),
-				},
-			},
-		},
-		{
-			name: "overlapping merges source provenance",
-			input: []HintTimeRange{
-				{
-					Start:  t0,
-					End:    t0.Add(10 * m),
-					Source: "index=a,doc=1",
-				},
-				{
-					Start:  t0.Add(5 * m),
-					End:    t0.Add(15 * m),
-					Source: "index=b,doc=3",
-				},
-				{
-					Start:  t0.Add(7 * m),
-					End:    t0.Add(12 * m),
-					Source: "index=a,doc=1",
-				},
-			},
-			expected: []HintTimeRange{
-				{
-					Start:  t0,
-					End:    t0.Add(15 * m),
-					Source: "index=a,doc=1;index=b,doc=3;index=a,doc=1",
 				},
 			},
 		},

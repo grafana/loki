@@ -22,13 +22,17 @@ func TestHintsToProtoRoundTrip(t *testing.T) {
 	stats.totalTermBatchesProcessed.Add(8)
 
 	in := &Hints{TimeRanges: []HintTimeRange{
-		{Start: time.Time{}, End: start, Source: HintSourcePreMinDate},
-		{Start: start, End: end, Source: "index-a"},
+		{Start: time.Time{}, End: start},
+		{Start: start, End: end},
 	}}
 
 	gotHints, gotStats := ProtoToHints(HintsToProto(in, stats))
-	require.Equal(t, in.TimeRanges, gotHints.TimeRanges)
+	require.Len(t, gotHints.TimeRanges, 2)
+	require.True(t, gotHints.TimeRanges[0].Start.IsZero())
+	require.True(t, gotHints.TimeRanges[0].End.Equal(start))
 	require.True(t, gotHints.TimeRanges[0].IsPassthrough())
+	require.True(t, gotHints.TimeRanges[1].Start.Equal(start))
+	require.True(t, gotHints.TimeRanges[1].End.Equal(end))
 
 	snap := gotStats.Snapshot()
 	require.Equal(t, int64(3), snap.TermDictReads)

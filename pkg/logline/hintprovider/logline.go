@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"sort"
-	"strings"
 	"time"
 
 	"github.com/go-kit/log"
@@ -107,9 +106,8 @@ func (p *LoglineHintProvider) ProvideHints(
 	minDate := p.MinDate()
 	if start.Before(minDate) {
 		ranges = append(ranges, HintTimeRange{
-			Start:  time.Time{},
-			End:    minDate,
-			Source: HintSourcePreMinDate,
+			Start: time.Time{},
+			End:   minDate,
 		})
 		// Entire query window is pre-min-date: passthrough hint already fully covers it.
 		if !end.After(minDate) {
@@ -260,7 +258,6 @@ func normalizeRanges(ranges []HintTimeRange) []HintTimeRange {
 			if current.End.After(last.End) {
 				last.End = current.End
 			}
-			last.Source = mergeSources(last.Source, current.Source)
 			continue
 		}
 		out = append(out, current)
@@ -269,47 +266,4 @@ func normalizeRanges(ranges []HintTimeRange) []HintTimeRange {
 		return nil
 	}
 	return out
-}
-
-// maxMergedSourceLen caps merged source strings. Source is diagnostic-only
-// provenance; during normalizeRanges and intersectRanges across many indexes
-// the string would grow quadratically without a cap. 32 KiB keeps enough
-// detail for false-negative diagnosis while staying well under the multi-MiB
-// sizes that caused OOM in production.
-const (
-	maxMergedSourceLen    = 32 * 1024
-	truncatedSourceMarker = ";...(truncated)"
-)
-
-func mergeSources(left, right string) string {
-	if left == "" {
-		return boundSource(right)
-	}
-	if right == "" || left == right {
-		return boundSource(left)
-	}
-	// Already truncated: freeze left so later merges do not allocate or grow.
-	if strings.HasSuffix(left, truncatedSourceMarker) {
-		return boundSource(left)
-	}
-	// Check before concatenating so the merge itself cannot exceed the cap.
-	if len(left)+1+len(right) <= maxMergedSourceLen {
-		return left + ";" + right
-	}
-	return appendTruncationMarker(left)
-}
-
-func boundSource(s string) string {
-	if len(s) <= maxMergedSourceLen {
-		return s
-	}
-	if strings.HasSuffix(s, truncatedSourceMarker) {
-		return s[:maxMergedSourceLen]
-	}
-	return appendTruncationMarker(s)
-}
-
-func appendTruncationMarker(s string) string {
-	keep := min(max(maxMergedSourceLen-len(truncatedSourceMarker), 0), len(s))
-	return s[:keep] + truncatedSourceMarker
 }

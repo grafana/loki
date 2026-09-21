@@ -1431,9 +1431,8 @@ func TestPrefetchFilter_PreMinDateHintSource_RecordsPassthrough(t *testing.T) {
 		hints: &hintprovider.Hints{
 			TimeRanges: []hintprovider.HintTimeRange{
 				{
-					Start:  time.Time{},
-					End:    now.Add(-30 * time.Minute),
-					Source: hintprovider.HintSourcePreMinDate,
+					Start: time.Time{},
+					End:   now.Add(-30 * time.Minute),
 				},
 			},
 		},

@@ -452,12 +452,11 @@ func TestCachingHintProvider_SingleflightDeduplicatesConcurrentMisses(t *testing
 	require.Equal(t, 1, backend.StoreCalls(), "coalesced miss should store once")
 }
 
-func TestCachedHints_JSONRoundTripOmitsSource(t *testing.T) {
+func TestCachedHints_JSONRoundTrip(t *testing.T) {
 	input := []HintTimeRange{
 		{
-			Start:  time.Date(2026, 3, 10, 2, 0, 0, 0, time.UTC),
-			End:    time.Date(2026, 3, 10, 2, 5, 0, 0, time.UTC),
-			Source: "debug-source",
+			Start: time.Date(2026, 3, 10, 2, 0, 0, 0, time.UTC),
+			End:   time.Date(2026, 3, 10, 2, 5, 0, 0, time.UTC),
 		},
 	}
 
