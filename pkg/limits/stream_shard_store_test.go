@@ -88,6 +88,12 @@ func TestStreamShardStore_ShardCountFollowsTheRate(t *testing.T) {
 	require.Equal(t, uint64(614), res.Stats.EvaluatedRate)
 	require.Equal(t, uint32(ReasonUnknown), res.Stats.ShardDecisionContext)
 
+	// The push being decided on is not part of the rate it is decided
+	// against, so a large push reports the same sustained rate. It is
+	// amortized on top of that rate once, not twice.
+	res = push(t, s, 0x1, 100<<20, clock.Now())
+	require.Equal(t, uint64(614), res.Stats.EvaluatedRate)
+
 	// The rate decays once the pushes stop, and so does the shard count. The
 	// buckets hold one rate window of history, so skipping two windows leaves
 	// nothing inside it.
@@ -169,19 +175,27 @@ func TestStreamShardStore_ShardingDisabledForThePolicy(t *testing.T) {
 	require.Equal(t, 0, countTrackedStreams(s))
 }
 
-func TestStreamShardStore_ShardCountHeldSteadyWhileRateHistoryIsCold(t *testing.T) {
+func TestStreamShardStore_StreamWithoutRecentTrafficGetsOneShard(t *testing.T) {
 	s, clock := newTestStreamShardStore(t, 0, "1KB")
-	// A stream that this instance tracks but has never observed traffic for,
-	// as after taking over the partition, keeps its shard count instead of
-	// having it recomputed from a rate of zero.
+	t0 := clock.Now()
 	track(t, s, streamShardUsage{
 		hash:          0x1,
 		shardCount:    4,
-		lastSeenAt:    clock.Now().UnixNano(),
-		shardLastUsed: refreshLiveShards(nil, 4, clock.Now().UnixNano()),
-	}, clock.Now())
-	res := push(t, s, 0x1, 1, clock.Now())
-	require.Equal(t, uint32(4), res.Shards)
+		lastSeenAt:    t0.UnixNano(),
+		shardLastUsed: refreshLiveShards(nil, 4, t0.UnixNano()),
+	}, t0)
+
+	// A tracked stream this instance has observed no traffic for has no rate
+	// to shard on, however large the push is.
+	res := push(t, s, 0x1, 200<<20, t0)
+	require.Equal(t, uint32(1), res.Shards)
+	require.Zero(t, res.Stats.EvaluatedRate)
+
+	// Nor has a stream whose traffic has aged out of the rate window while it
+	// stayed inside the active window.
+	clock.Advance(2 * testRateWindow)
+	res = push(t, s, 0x1, 200<<20, clock.Now())
+	require.Equal(t, uint32(1), res.Shards)
 	require.Zero(t, res.Stats.EvaluatedRate)
 }
 

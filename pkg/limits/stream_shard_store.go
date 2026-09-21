@@ -142,14 +142,15 @@ func newStreamShardStore(activeWindow, rateWindow, bucketSize time.Duration, num
 //     the tenant has no room left for even one stream.
 //   - A stream whose policy has sharding disabled gets one shard and is not
 //     tracked.
-//   - Any other stream has its rate recomputed from this push and gets the
-//     shard count that rate justifies, capped by what the other streams leave
-//     of the tenant's stream count budget. The count shrinks freely when the
-//     rate drops, but the shards it stops covering keep counting against the
-//     budget until they expire.
-//   - A stream whose rate buckets are still empty, for instance because this
-//     instance has just taken over its partition, keeps its current shard
-//     count rather than having it recomputed from a rate of zero.
+//   - Any other stream gets the shard count justified by its rate over the
+//     rate window plus this push amortized over its push rate, capped by
+//     what the other streams leave of the tenant's stream count budget. The
+//     count shrinks freely when the rate drops, but the shards it stops
+//     covering keep counting against the budget until they expire.
+//   - A stream with no traffic in the rate window, whether it has never been
+//     observed or has gone idle, gets one shard. There is no rate to
+//     amortize this push over, so nothing distinguishes a burst from
+//     sustained load.
 func (s *streamShardStore) checkAndShard(ctx context.Context, tenant string, metadata []*proto.StreamMetadata, seenAt time.Time) []*proto.StreamShardResult {
 	var (
 		cutoff  = seenAt.Add(-s.activeWindow).UnixNano()
@@ -223,24 +224,31 @@ func (s *streamShardStore) checkAndShard(ctx context.Context, tenant string, met
 				desired = 1
 			default:
 				stream = existing
-				// Must be read before updateRateBucket: stream is a shallow
-				// copy of existing and shares its rateBuckets array, so the
-				// in-place update below would otherwise make every stream
-				// look warm.
-				wasCold := rateBucketsCold(existing.rateBuckets)
+				// The rate must be read before this push is recorded. This
+				// push does count towards its own shard count, but through
+				// the amortization term below, which is how shardCountFor
+				// counts it: the local rate store is fed by the ingesters
+				// and so always lags the push being decided on. Letting the
+				// push into the rate as well would charge it twice, and at
+				// very different weights, as the rate spreads it over the
+				// whole rate window while the amortization term adds up to
+				// the whole push.
+				var pushRate float64
+				evaluatedRate, pushRate = currentRate(existing.rateBuckets, seenAt, s.rateWindow)
 				s.updateRateBucket(&stream, m.TotalSize, seenAt)
-				if wasCold {
-					desired = max(1, stream.shardCount)
+				if pushRate == 0 {
+					// No traffic observed in the rate window, so there is no
+					// push rate to amortize this push over and no rate to add
+					// it to. shardCountFor short-circuits the same case with
+					// "first push, don't shard until the rate is understood".
+					desired = 1
 					break
 				}
-				var pushRate float64
-				evaluatedRate, pushRate = currentRate(stream.rateBuckets, seenAt, s.rateWindow)
-				// Amortize this push the way the distributor's local rate
-				// store does in shardCountFor: add totalSize * min(1,
-				// pushRate). Capping the push rate at 1 adds the whole push
-				// for a frequently pushed stream but only a fraction of it
-				// for an infrequent one, so a single large push does not
-				// over-shard it.
+				// Amortize this push the way shardCountFor does: add
+				// totalSize * min(1, pushRate). Capping the push rate at 1
+				// adds the whole push for a frequently pushed stream but
+				// only a fraction of it for an infrequent one, so a single
+				// large push does not over-shard it.
 				amortizedRate := evaluatedRate + uint64(float64(m.TotalSize)*min(1, pushRate))
 				desired = max(1, ceilDivU32(amortizedRate, uint64(shardCfg.DesiredRate.Val())))
 			}
@@ -488,18 +496,6 @@ func refreshLiveShards(shardLastUsed []int64, count uint32, now int64) []int64 {
 		shardLastUsed[i] = now
 	}
 	return shardLastUsed
-}
-
-// rateBucketsCold reports whether no bucket has ever been written to, which
-// means this instance has observed no traffic for the stream since the
-// buckets were last initialized.
-func rateBucketsCold(buckets []shardRateBucket) bool {
-	for _, b := range buckets {
-		if b.timestamp != 0 {
-			return false
-		}
-	}
-	return true
 }
 
 // currentRate returns the windowed average byte rate and push rate per
