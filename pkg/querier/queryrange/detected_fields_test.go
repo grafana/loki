@@ -1123,7 +1123,6 @@ func TestQuerier_DetectedFields(t *testing.T) {
 
 		var messageField, countField, bytesField, durationField, floatField, evenField *logproto.DetectedField
 		for _, field := range detectedFields {
-			print(field.Label)
 			switch field.Label {
 			case "message":
 				messageField = field
