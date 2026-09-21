@@ -14,6 +14,8 @@ func TestHintsToProtoRoundTrip(t *testing.T) {
 	end := start.Add(time.Hour)
 
 	stats := NewQueryStats()
+	stats.headerReads.Add(1)
+	stats.metadataReads.Add(2)
 	stats.termDictReads.Add(3)
 	stats.bitmapReads.Add(4)
 	stats.totalIOWaitNanos.Add(1500)
@@ -37,6 +39,8 @@ func TestHintsToProtoRoundTrip(t *testing.T) {
 	require.True(t, gotHints.TimeRanges[1].End.Equal(end))
 
 	snap := gotStats.Snapshot()
+	require.Equal(t, int64(1), snap.HeaderReads)
+	require.Equal(t, int64(2), snap.MetadataReads)
 	require.Equal(t, int64(3), snap.TermDictReads)
 	require.Equal(t, int64(4), snap.BitmapReads)
 	require.Equal(t, int64(1500), snap.TotalIOWait.Nanoseconds())

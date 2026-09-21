@@ -190,6 +190,8 @@ func appendHintStats(logValues []any, stats *hintprovider.QueryStats) []any {
 	snap := stats.Snapshot()
 	return append(logValues,
 		"object_requests", snap.ObjectStorageRequests,
+		"header_reads", snap.HeaderReads,
+		"metadata_reads", snap.MetadataReads,
 		"term_dict_reads", snap.TermDictReads,
 		"bitmap_reads", snap.BitmapReads,
 		"io_wait", snap.TotalIOWait,
@@ -876,6 +878,8 @@ func (h *loglinePrefetchHandler) Do(ctx context.Context, req queryrangebase.Requ
 					"hint_total_seconds", hintRangesTotalSeconds(result.ranges),
 					"err", result.err,
 					"object_requests", snap.ObjectStorageRequests,
+					"header_reads", snap.HeaderReads,
+					"metadata_reads", snap.MetadataReads,
 					"term_dict_reads", snap.TermDictReads,
 					"bitmap_reads", snap.BitmapReads,
 					"io_wait", snap.TotalIOWait,

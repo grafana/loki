@@ -56,9 +56,17 @@ func TestQueryStats_TrackingReader_ClassifiesBySections(t *testing.T) {
 			tracked := newTrackingReaderAt(f, stats)
 			tracked.SetClassifier(fr)
 
-			var termOff, postOff int64 = -1, -1
+			var headerOff, metadataOff, termOff, postOff int64 = -1, -1, -1, -1
 			for off := int64(0); off < fi.Size(); off++ {
 				switch fr.ClassifyRead(off, 16) {
+				case format.ReadSectionHeader:
+					if headerOff < 0 {
+						headerOff = off
+					}
+				case format.ReadSectionMetadata:
+					if metadataOff < 0 {
+						metadataOff = off
+					}
 				case format.ReadSectionTermDict:
 					if termOff < 0 {
 						termOff = off
@@ -69,18 +77,26 @@ func TestQueryStats_TrackingReader_ClassifiesBySections(t *testing.T) {
 					}
 				}
 			}
+			require.GreaterOrEqual(t, headerOff, int64(0))
+			require.GreaterOrEqual(t, metadataOff, int64(0))
 			require.GreaterOrEqual(t, termOff, int64(0))
 			require.GreaterOrEqual(t, postOff, int64(0))
 
+			_, err = tracked.ReadAt(make([]byte, 16), headerOff)
+			require.NoError(t, err)
+			_, err = tracked.ReadAt(make([]byte, 16), metadataOff)
+			require.NoError(t, err)
 			_, err = tracked.ReadAt(make([]byte, 16), postOff)
 			require.NoError(t, err)
 			_, err = tracked.ReadAt(make([]byte, 16), termOff)
 			require.NoError(t, err)
 
 			snap := stats.Snapshot()
+			require.Equal(t, int64(1), snap.HeaderReads)
+			require.Equal(t, int64(1), snap.MetadataReads)
 			require.Equal(t, int64(1), snap.BitmapReads)
 			require.Equal(t, int64(1), snap.TermDictReads)
-			require.Equal(t, int64(32), snap.TotalIOBytes)
+			require.Equal(t, int64(64), snap.TotalIOBytes)
 		})
 	}
 }
@@ -98,6 +114,8 @@ func TestQueryStats_TrackingReader_UnknownBeforeClassifier(t *testing.T) {
 	require.NoError(t, err)
 
 	snap := stats.Snapshot()
+	require.Equal(t, int64(0), snap.HeaderReads)
+	require.Equal(t, int64(0), snap.MetadataReads)
 	require.Equal(t, int64(0), snap.BitmapReads)
 	require.Equal(t, int64(0), snap.TermDictReads)
 	// But bytes are still tracked.
@@ -148,6 +166,8 @@ func TestQueryStats_Merge(t *testing.T) {
 	right := NewQueryStats()
 	right.ObservePrefetchCall(false)
 	right.ObservePrefetchCall(true)
+	right.observeRead(trackedReadHeader, 8, 1*time.Millisecond)
+	right.observeRead(trackedReadMetadata, 8, 2*time.Millisecond)
 	right.observeRead(trackedReadTermDict, 16, 5*time.Millisecond)
 	right.observeRead(trackedReadBitmap, 32, 7*time.Millisecond)
 	right.ObserveQueryMultiple(format.QueryMultipleReasonTermMiss, 2)
@@ -161,11 +181,13 @@ func TestQueryStats_Merge(t *testing.T) {
 	left.Merge(right)
 	snap := left.Snapshot()
 
+	require.Equal(t, int64(1), snap.HeaderReads)
+	require.Equal(t, int64(1), snap.MetadataReads)
 	require.Equal(t, int64(1), snap.TermDictReads)
 	require.Equal(t, int64(1), snap.BitmapReads)
-	require.Equal(t, int64(2), snap.ObjectStorageRequests)
-	require.Equal(t, int64(48), snap.TotalIOBytes)
-	require.Equal(t, 12*time.Millisecond, snap.TotalIOWait)
+	require.Equal(t, int64(4), snap.ObjectStorageRequests)
+	require.Equal(t, int64(64), snap.TotalIOBytes)
+	require.Equal(t, 15*time.Millisecond, snap.TotalIOWait)
 	require.Equal(t, int32(3), snap.PrefetchCalls)
 	require.Equal(t, int32(2), snap.PrefetchTimeouts)
 	require.Equal(t, int32(2), snap.PeakConcurrency)

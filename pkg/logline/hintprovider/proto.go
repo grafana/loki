@@ -38,6 +38,8 @@ func protoToQueryStats(ps *logproto.HintQueryStats) *QueryStats {
 	if ps == nil {
 		return s
 	}
+	s.headerReads.Add(ps.HeaderReads)
+	s.metadataReads.Add(ps.MetadataReads)
 	s.termDictReads.Add(ps.TermDictReads)
 	s.bitmapReads.Add(ps.BitmapReads)
 	s.totalIOWaitNanos.Add(ps.TotalIOWait.Nanoseconds())

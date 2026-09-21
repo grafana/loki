@@ -35,6 +35,8 @@ func QueryStatsFromContext(ctx context.Context) *QueryStats {
 
 // QueryStats accumulates per-query debug information for hint lookups.
 type QueryStats struct {
+	headerReads   atomic.Int64
+	metadataReads atomic.Int64
 	termDictReads atomic.Int64
 	bitmapReads   atomic.Int64
 
@@ -147,6 +149,8 @@ func (s *QueryStats) Merge(other *QueryStats) {
 		return
 	}
 
+	s.headerReads.Add(other.headerReads.Load())
+	s.metadataReads.Add(other.metadataReads.Load())
 	s.termDictReads.Add(other.termDictReads.Load())
 	s.bitmapReads.Add(other.bitmapReads.Load())
 
@@ -195,6 +199,10 @@ func (s *QueryStats) observeRead(readType trackedReadType, bytesRead int, waited
 	}
 
 	switch readType {
+	case trackedReadHeader:
+		s.headerReads.Add(1)
+	case trackedReadMetadata:
+		s.metadataReads.Add(1)
 	case trackedReadTermDict:
 		s.termDictReads.Add(1)
 	case trackedReadBitmap:
@@ -215,9 +223,11 @@ func (s *QueryStats) Snapshot() logproto.HintQueryStats {
 		return logproto.HintQueryStats{}
 	}
 
+	headerReads := s.headerReads.Load()
+	metadataReads := s.metadataReads.Load()
 	termDictReads := s.termDictReads.Load()
 	bitmapReads := s.bitmapReads.Load()
-	objectStorageRequests := termDictReads + bitmapReads
+	objectStorageRequests := headerReads + metadataReads + termDictReads + bitmapReads
 	indexQueriesTotal := s.indexQueriesTotal.Load()
 	indexQueriesTermMiss := s.indexQueriesTermMiss.Load()
 	indexQueriesEmptyAnd := s.indexQueriesEmptyAnd.Load()
@@ -234,6 +244,8 @@ func (s *QueryStats) Snapshot() logproto.HintQueryStats {
 	hintCacheResult, _ := s.hintCacheResult.Load().(string)
 
 	return logproto.HintQueryStats{
+		HeaderReads:               headerReads,
+		MetadataReads:             metadataReads,
 		TermDictReads:             termDictReads,
 		BitmapReads:               bitmapReads,
 		ObjectStorageRequests:     objectStorageRequests,
@@ -257,8 +269,10 @@ func (s *QueryStats) Snapshot() logproto.HintQueryStats {
 func (s *QueryStats) String() string {
 	snap := s.Snapshot()
 	return fmt.Sprintf(
-		"requests=%d term_dict=%d bitmap=%d io_wait=%s io_bytes=%d peak=%d effective=%.2f prefetch_calls=%d prefetch_timeouts=%d index_queries_total=%d index_queries_term_miss=%d index_queries_empty_and=%d index_queries_positive=%d term_batches_processed_total=%d",
+		"requests=%d header=%d metadata=%d term_dict=%d bitmap=%d io_wait=%s io_bytes=%d peak=%d effective=%.2f prefetch_calls=%d prefetch_timeouts=%d index_queries_total=%d index_queries_term_miss=%d index_queries_empty_and=%d index_queries_positive=%d term_batches_processed_total=%d",
 		snap.ObjectStorageRequests,
+		snap.HeaderReads,
+		snap.MetadataReads,
 		snap.TermDictReads,
 		snap.BitmapReads,
 		snap.TotalIOWait,
@@ -279,6 +293,8 @@ type trackedReadType uint8
 
 const (
 	trackedReadUnknown trackedReadType = iota
+	trackedReadHeader
+	trackedReadMetadata
 	trackedReadTermDict
 	trackedReadBitmap
 )
@@ -332,10 +348,14 @@ func (r *trackingReaderAt) classify(off, length int64) trackedReadType {
 	}
 
 	switch classifier.ClassifyRead(off, length) {
+	case format.ReadSectionHeader:
+		return trackedReadHeader
 	case format.ReadSectionPostings:
 		return trackedReadBitmap
 	case format.ReadSectionTermDict:
 		return trackedReadTermDict
+	case format.ReadSectionMetadata:
+		return trackedReadMetadata
 	default:
 		return trackedReadUnknown
 	}
