@@ -11,6 +11,7 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/logline"
 	"github.com/grafana/loki/v3/pkg/logline/format"
+	"github.com/grafana/loki/v3/pkg/logproto"
 )
 
 type queryStatsContextKey struct{}
@@ -208,34 +209,10 @@ func (s *QueryStats) observeRead(readType trackedReadType, bytesRead int, waited
 	}
 }
 
-type QueryStatsSnapshot struct {
-	TermDictReads int64
-	BitmapReads   int64
-
-	ObjectStorageRequests int64
-	TotalIOWait           time.Duration
-	TotalIOBytes          int64
-
-	PeakConcurrency      int32
-	EffectiveConcurrency float64
-
-	PrefetchCalls    int32
-	PrefetchTimeouts int32
-
-	IndexQueriesTotal         int64
-	IndexQueriesTermMiss      int64
-	IndexQueriesEmptyAnd      int64
-	IndexQueriesPositive      int64
-	TotalTermBatchesProcessed int64
-
-	HintCacheResult      string
-	HintCacheDaysFetched int64
-	HintCacheDaysHit     int64
-}
-
-func (s *QueryStats) Snapshot() QueryStatsSnapshot {
+// Snapshot returns a frozen copy of the accumulator as the wire stats type.
+func (s *QueryStats) Snapshot() logproto.HintQueryStats {
 	if s == nil {
-		return QueryStatsSnapshot{}
+		return logproto.HintQueryStats{}
 	}
 
 	termDictReads := s.termDictReads.Load()
@@ -256,7 +233,7 @@ func (s *QueryStats) Snapshot() QueryStatsSnapshot {
 
 	hintCacheResult, _ := s.hintCacheResult.Load().(string)
 
-	return QueryStatsSnapshot{
+	return logproto.HintQueryStats{
 		TermDictReads:             termDictReads,
 		BitmapReads:               bitmapReads,
 		ObjectStorageRequests:     objectStorageRequests,

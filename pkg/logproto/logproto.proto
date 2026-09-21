@@ -3,6 +3,7 @@ syntax = "proto3";
 package logproto;
 
 import "gogoproto/gogo.proto";
+import "google/protobuf/duration.proto";
 import "google/protobuf/timestamp.proto";
 import "pkg/logqlmodel/stats/stats.proto";
 import "pkg/push/push.proto";
@@ -456,17 +457,27 @@ message HintTimeRange {
 }
 
 message HintQueryStats {
-  reserved 1, 2, 5;
-  int64 term_dict_reads = 3;
-  int64 bitmap_reads = 4;
-  int64 total_io_wait_nanos = 6;
-  int64 total_io_bytes = 7;
-  int32 peak_concurrency = 8;
-  int64 index_queries_total = 9;
-  int64 index_queries_term_miss = 10;
-  int64 index_queries_empty_and = 11;
-  int64 index_queries_positive = 12;
-  int64 total_term_batches_processed = 13;
+  int64 term_dict_reads = 1;
+  int64 bitmap_reads = 2;
+  int64 object_storage_requests = 3;
+  google.protobuf.Duration total_io_wait = 4 [
+    (gogoproto.stdduration) = true,
+    (gogoproto.nullable) = false,
+    (gogoproto.customname) = "TotalIOWait"
+  ];
+  int64 total_io_bytes = 5 [(gogoproto.customname) = "TotalIOBytes"];
+  int32 peak_concurrency = 6;
+  double effective_concurrency = 7;
+  int32 prefetch_calls = 8;
+  int32 prefetch_timeouts = 9;
+  int64 index_queries_total = 10;
+  int64 index_queries_term_miss = 11;
+  int64 index_queries_empty_and = 12;
+  int64 index_queries_positive = 13;
+  int64 total_term_batches_processed = 14;
+  string hint_cache_result = 15;
+  int64 hint_cache_days_fetched = 16;
+  int64 hint_cache_days_hit = 17;
 }
 
 message HintResponse {

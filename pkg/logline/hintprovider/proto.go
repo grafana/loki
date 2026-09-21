@@ -27,30 +27,10 @@ func queryStatsToProto(stats *QueryStats) *logproto.HintQueryStats {
 		return nil
 	}
 	snap := stats.Snapshot()
-	if snap.TermDictReads == 0 &&
-		snap.BitmapReads == 0 &&
-		snap.TotalIOWait == 0 &&
-		snap.TotalIOBytes == 0 &&
-		snap.PeakConcurrency == 0 &&
-		snap.IndexQueriesTotal == 0 &&
-		snap.IndexQueriesTermMiss == 0 &&
-		snap.IndexQueriesEmptyAnd == 0 &&
-		snap.IndexQueriesPositive == 0 &&
-		snap.TotalTermBatchesProcessed == 0 {
+	if snap == (logproto.HintQueryStats{}) {
 		return nil
 	}
-	return &logproto.HintQueryStats{
-		TermDictReads:             snap.TermDictReads,
-		BitmapReads:               snap.BitmapReads,
-		TotalIoWaitNanos:          snap.TotalIOWait.Nanoseconds(),
-		TotalIoBytes:              snap.TotalIOBytes,
-		PeakConcurrency:           snap.PeakConcurrency,
-		IndexQueriesTotal:         snap.IndexQueriesTotal,
-		IndexQueriesTermMiss:      snap.IndexQueriesTermMiss,
-		IndexQueriesEmptyAnd:      snap.IndexQueriesEmptyAnd,
-		IndexQueriesPositive:      snap.IndexQueriesPositive,
-		TotalTermBatchesProcessed: snap.TotalTermBatchesProcessed,
-	}
+	return &snap
 }
 
 func protoToQueryStats(ps *logproto.HintQueryStats) *QueryStats {
@@ -60,13 +40,18 @@ func protoToQueryStats(ps *logproto.HintQueryStats) *QueryStats {
 	}
 	s.termDictReads.Add(ps.TermDictReads)
 	s.bitmapReads.Add(ps.BitmapReads)
-	s.totalIOWaitNanos.Add(ps.TotalIoWaitNanos)
-	s.totalIOBytes.Add(ps.TotalIoBytes)
+	s.totalIOWaitNanos.Add(ps.TotalIOWait.Nanoseconds())
+	s.totalIOBytes.Add(ps.TotalIOBytes)
 	s.peakConcurrency.Store(ps.PeakConcurrency)
+	s.prefetchCalls.Store(ps.PrefetchCalls)
+	s.prefetchTimeouts.Store(ps.PrefetchTimeouts)
 	s.indexQueriesTotal.Add(ps.IndexQueriesTotal)
 	s.indexQueriesTermMiss.Add(ps.IndexQueriesTermMiss)
 	s.indexQueriesEmptyAnd.Add(ps.IndexQueriesEmptyAnd)
 	s.indexQueriesPositive.Add(ps.IndexQueriesPositive)
 	s.totalTermBatchesProcessed.Add(ps.TotalTermBatchesProcessed)
+	if ps.HintCacheResult != "" || ps.HintCacheDaysFetched != 0 || ps.HintCacheDaysHit != 0 {
+		s.ObserveHintCache(ps.HintCacheResult, int(ps.HintCacheDaysFetched), int(ps.HintCacheDaysHit))
+	}
 	return s
 }

@@ -193,7 +193,7 @@ func (p *LoglineHintProvider) executeQuery(
 		switch res.reason {
 		case format.QueryMultipleReasonComplete:
 			if res.result.MatchesAll {
-				ranges = []logproto.HintTimeRange{timeRangeForMeta(res.meta)}
+				ranges = []logproto.HintTimeRange{hintTimeRangeForMeta(res.meta)}
 			} else if !res.result.IsEmpty() {
 				ranges = rangesForDocIDs(res.meta, res.result.Roaring.ToArray(), res.reader.Documents())
 			}
@@ -324,10 +324,10 @@ func queryMultipleReasonLabel(reason format.QueryMultipleTerminationReason) stri
 	}
 }
 
-// timeRangeForMeta converts inclusive observed index bounds to a half-open
+// hintTimeRangeForMeta converts inclusive observed index bounds to a half-open
 // hint range. One millisecond matches the cache and document timestamp
 // precision and guarantees that a log at MaxLogTs remains covered.
-func timeRangeForMeta(meta store.Meta) logproto.HintTimeRange {
+func hintTimeRangeForMeta(meta store.Meta) logproto.HintTimeRange {
 	return logproto.HintTimeRange{
 		Start: meta.MinLogTs,
 		End:   meta.MaxLogTs.Add(time.Millisecond),
