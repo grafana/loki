@@ -2483,22 +2483,22 @@ func (m *IndexRef) GetShardValue() int64 {
 	return 0
 }
 
-type HintRange struct {
+type HintTimeRange struct {
 	Start github_com_prometheus_common_model.Time `protobuf:"varint,1,opt,name=start,proto3,customtype=github.com/prometheus/common/model.Time" json:"start"`
 	End   github_com_prometheus_common_model.Time `protobuf:"varint,2,opt,name=end,proto3,customtype=github.com/prometheus/common/model.Time" json:"end"`
 }
 
-func (m *HintRange) Reset()      { *m = HintRange{} }
-func (*HintRange) ProtoMessage() {}
-func (*HintRange) Descriptor() ([]byte, []int) {
+func (m *HintTimeRange) Reset()      { *m = HintTimeRange{} }
+func (*HintTimeRange) ProtoMessage() {}
+func (*HintTimeRange) Descriptor() ([]byte, []int) {
 	return fileDescriptor_c28a5f14f1f4c79a, []int{43}
 }
-func (m *HintRange) XXX_Unmarshal(b []byte) error {
+func (m *HintTimeRange) XXX_Unmarshal(b []byte) error {
 	return m.Unmarshal(b)
 }
-func (m *HintRange) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
+func (m *HintTimeRange) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
 	if deterministic {
-		return xxx_messageInfo_HintRange.Marshal(b, m, deterministic)
+		return xxx_messageInfo_HintTimeRange.Marshal(b, m, deterministic)
 	} else {
 		b = b[:cap(b)]
 		n, err := m.MarshalToSizedBuffer(b)
@@ -2508,17 +2508,17 @@ func (m *HintRange) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
 		return b[:n], nil
 	}
 }
-func (m *HintRange) XXX_Merge(src proto.Message) {
-	xxx_messageInfo_HintRange.Merge(m, src)
+func (m *HintTimeRange) XXX_Merge(src proto.Message) {
+	xxx_messageInfo_HintTimeRange.Merge(m, src)
 }
-func (m *HintRange) XXX_Size() int {
+func (m *HintTimeRange) XXX_Size() int {
 	return m.Size()
 }
-func (m *HintRange) XXX_DiscardUnknown() {
-	xxx_messageInfo_HintRange.DiscardUnknown(m)
+func (m *HintTimeRange) XXX_DiscardUnknown() {
+	xxx_messageInfo_HintTimeRange.DiscardUnknown(m)
 }
 
-var xxx_messageInfo_HintRange proto.InternalMessageInfo
+var xxx_messageInfo_HintTimeRange proto.InternalMessageInfo
 
 type HintQueryStats struct {
 	TermDictReads             int64 `protobuf:"varint,3,opt,name=term_dict_reads,json=termDictReads,proto3" json:"term_dict_reads,omitempty"`
@@ -2636,7 +2636,7 @@ func (m *HintQueryStats) GetTotalTermBatchesProcessed() int64 {
 }
 
 type HintResponse struct {
-	TimeRanges []HintRange     `protobuf:"bytes,1,rep,name=time_ranges,json=timeRanges,proto3" json:"time_ranges"`
+	TimeRanges []HintTimeRange `protobuf:"bytes,1,rep,name=time_ranges,json=timeRanges,proto3" json:"time_ranges"`
 	Stats      *HintQueryStats `protobuf:"bytes,2,opt,name=stats,proto3" json:"stats,omitempty"`
 }
 
@@ -2672,7 +2672,7 @@ func (m *HintResponse) XXX_DiscardUnknown() {
 
 var xxx_messageInfo_HintResponse proto.InternalMessageInfo
 
-func (m *HintResponse) GetTimeRanges() []HintRange {
+func (m *HintResponse) GetTimeRanges() []HintTimeRange {
 	if m != nil {
 		return m.TimeRanges
 	}
@@ -3325,7 +3325,7 @@ func init() {
 	proto.RegisterType((*IndexStatsResponse)(nil), "logproto.IndexStatsResponse")
 	proto.RegisterType((*HintRequest)(nil), "logproto.HintRequest")
 	proto.RegisterType((*IndexRef)(nil), "logproto.IndexRef")
-	proto.RegisterType((*HintRange)(nil), "logproto.HintRange")
+	proto.RegisterType((*HintTimeRange)(nil), "logproto.HintTimeRange")
 	proto.RegisterType((*HintQueryStats)(nil), "logproto.HintQueryStats")
 	proto.RegisterType((*HintResponse)(nil), "logproto.HintResponse")
 	proto.RegisterType((*VolumeRequest)(nil), "logproto.VolumeRequest")
@@ -5013,14 +5013,14 @@ func (this *IndexRef) Equal(that interface{}) bool {
 	}
 	return true
 }
-func (this *HintRange) Equal(that interface{}) bool {
+func (this *HintTimeRange) Equal(that interface{}) bool {
 	if that == nil {
 		return this == nil
 	}
 
-	that1, ok := that.(*HintRange)
+	that1, ok := that.(*HintTimeRange)
 	if !ok {
-		that2, ok := that.(HintRange)
+		that2, ok := that.(HintTimeRange)
 		if ok {
 			that1 = &that2
 		} else {
@@ -6035,12 +6035,12 @@ func (this *IndexRef) GoString() string {
 	s = append(s, "}")
 	return strings.Join(s, "")
 }
-func (this *HintRange) GoString() string {
+func (this *HintTimeRange) GoString() string {
 	if this == nil {
 		return "nil"
 	}
 	s := make([]string, 0, 6)
-	s = append(s, "&logproto.HintRange{")
+	s = append(s, "&logproto.HintTimeRange{")
 	s = append(s, "Start: "+fmt.Sprintf("%#v", this.Start)+",\n")
 	s = append(s, "End: "+fmt.Sprintf("%#v", this.End)+",\n")
 	s = append(s, "}")
@@ -6072,7 +6072,7 @@ func (this *HintResponse) GoString() string {
 	s := make([]string, 0, 6)
 	s = append(s, "&logproto.HintResponse{")
 	if this.TimeRanges != nil {
-		vs := make([]HintRange, len(this.TimeRanges))
+		vs := make([]HintTimeRange, len(this.TimeRanges))
 		for i := range vs {
 			vs[i] = this.TimeRanges[i]
 		}
@@ -8836,7 +8836,7 @@ func (m *IndexRef) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	return len(dAtA) - i, nil
 }
 
-func (m *HintRange) Marshal() (dAtA []byte, err error) {
+func (m *HintTimeRange) Marshal() (dAtA []byte, err error) {
 	size := m.Size()
 	dAtA = make([]byte, size)
 	n, err := m.MarshalToSizedBuffer(dAtA[:size])
@@ -8846,12 +8846,12 @@ func (m *HintRange) Marshal() (dAtA []byte, err error) {
 	return dAtA[:n], nil
 }
 
-func (m *HintRange) MarshalTo(dAtA []byte) (int, error) {
+func (m *HintTimeRange) MarshalTo(dAtA []byte) (int, error) {
 	size := m.Size()
 	return m.MarshalToSizedBuffer(dAtA[:size])
 }
 
-func (m *HintRange) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+func (m *HintTimeRange) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	i := len(dAtA)
 	_ = i
 	var l int
@@ -10359,7 +10359,7 @@ func (m *IndexRef) Size() (n int) {
 	return n
 }
 
-func (m *HintRange) Size() (n int) {
+func (m *HintTimeRange) Size() (n int) {
 	if m == nil {
 		return 0
 	}
@@ -11241,11 +11241,11 @@ func (this *IndexRef) String() string {
 	}, "")
 	return s
 }
-func (this *HintRange) String() string {
+func (this *HintTimeRange) String() string {
 	if this == nil {
 		return "nil"
 	}
-	s := strings.Join([]string{`&HintRange{`,
+	s := strings.Join([]string{`&HintTimeRange{`,
 		`Start:` + fmt.Sprintf("%v", this.Start) + `,`,
 		`End:` + fmt.Sprintf("%v", this.End) + `,`,
 		`}`,
@@ -11275,9 +11275,9 @@ func (this *HintResponse) String() string {
 	if this == nil {
 		return "nil"
 	}
-	repeatedStringForTimeRanges := "[]HintRange{"
+	repeatedStringForTimeRanges := "[]HintTimeRange{"
 	for _, f := range this.TimeRanges {
-		repeatedStringForTimeRanges += strings.Replace(strings.Replace(f.String(), "HintRange", "HintRange", 1), `&`, ``, 1) + ","
+		repeatedStringForTimeRanges += strings.Replace(strings.Replace(f.String(), "HintTimeRange", "HintTimeRange", 1), `&`, ``, 1) + ","
 	}
 	repeatedStringForTimeRanges += "}"
 	s := strings.Join([]string{`&HintResponse{`,
@@ -17256,7 +17256,7 @@ func (m *IndexRef) Unmarshal(dAtA []byte) error {
 	}
 	return nil
 }
-func (m *HintRange) Unmarshal(dAtA []byte) error {
+func (m *HintTimeRange) Unmarshal(dAtA []byte) error {
 	l := len(dAtA)
 	iNdEx := 0
 	for iNdEx < l {
@@ -17279,10 +17279,10 @@ func (m *HintRange) Unmarshal(dAtA []byte) error {
 		fieldNum := int32(wire >> 3)
 		wireType := int(wire & 0x7)
 		if wireType == 4 {
-			return fmt.Errorf("proto: HintRange: wiretype end group for non-group")
+			return fmt.Errorf("proto: HintTimeRange: wiretype end group for non-group")
 		}
 		if fieldNum <= 0 {
-			return fmt.Errorf("proto: HintRange: illegal tag %d (wire type %d)", fieldNum, wire)
+			return fmt.Errorf("proto: HintTimeRange: illegal tag %d (wire type %d)", fieldNum, wire)
 		}
 		switch fieldNum {
 		case 1:
@@ -17642,7 +17642,7 @@ func (m *HintResponse) Unmarshal(dAtA []byte) error {
 			if postIndex > l {
 				return io.ErrUnexpectedEOF
 			}
-			m.TimeRanges = append(m.TimeRanges, HintRange{})
+			m.TimeRanges = append(m.TimeRanges, HintTimeRange{})
 			if err := m.TimeRanges[len(m.TimeRanges)-1].Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
 				return err
 			}

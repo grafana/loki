@@ -70,7 +70,7 @@ func (p *LoglineHintProvider) QuerierProvideHints(
 ) (*Hints, *QueryStats, error) {
 	filters := SupportedQuery(expr, p.ngramLength)
 	stats := NewQueryStats()
-	ranges := make([]HintTimeRange, 0, 1)
+	ranges := make([]TimeRange, 0, 1)
 	metas := indexRefsToMetas(overlapping)
 	shardRanges, err := p.executeQuery(ctx, filters, metas, stats)
 	if err != nil {
@@ -102,10 +102,10 @@ func (p *LoglineHintProvider) ProvideHints(
 		end = start
 	}
 
-	ranges := make([]HintTimeRange, 0, 1)
+	ranges := make([]TimeRange, 0, 1)
 	minDate := p.MinDate()
 	if start.Before(minDate) {
-		ranges = append(ranges, HintTimeRange{
+		ranges = append(ranges, TimeRange{
 			Start: time.Time{},
 			End:   minDate,
 		})
@@ -186,14 +186,14 @@ func (p *LoglineHintProvider) openIndexReader(
 //   - Across shard values in the same group (same algorithm/count): INTERSECT
 //   - Across shard groups (different algorithm or count): UNION
 //   - Unsharded indexes: UNION with the final result
-func aggregateShardRanges(byKey map[shardKey][]HintTimeRange) []HintTimeRange {
+func aggregateShardRanges(byKey map[shardKey][]TimeRange) []TimeRange {
 	if len(byKey) == 0 {
 		return nil
 	}
 
 	// Partition keys into unsharded and per-group buckets.
-	var allRanges []HintTimeRange
-	groups := make(map[shardGroup]map[int][]HintTimeRange) // group → value → ranges
+	var allRanges []TimeRange
+	groups := make(map[shardGroup]map[int][]TimeRange) // group → value → ranges
 
 	for key, ranges := range byKey {
 		if !key.isSharded() {
@@ -202,7 +202,7 @@ func aggregateShardRanges(byKey map[shardKey][]HintTimeRange) []HintTimeRange {
 		}
 		byValue, ok := groups[key.shardGroup]
 		if !ok {
-			byValue = make(map[int][]HintTimeRange)
+			byValue = make(map[int][]TimeRange)
 			groups[key.shardGroup] = byValue
 		}
 		byValue[key.ShardValue] = append(byValue[key.ShardValue], ranges...)
@@ -210,7 +210,7 @@ func aggregateShardRanges(byKey map[shardKey][]HintTimeRange) []HintTimeRange {
 
 	// For each shard group: union within each value, intersect across values.
 	for _, byValue := range groups {
-		var groupResult []HintTimeRange
+		var groupResult []TimeRange
 		for _, ranges := range byValue {
 			normalized := normalizeRanges(ranges)
 			if groupResult == nil {
@@ -232,7 +232,7 @@ func aggregateShardRanges(byKey map[shardKey][]HintTimeRange) []HintTimeRange {
 // normalizeRanges sorts, drops empty [start, end) windows, and merges
 // overlapping or abutting ranges. Abutting ranges (a.End == b.Start) merge
 // because they form a contiguous half-open cover.
-func normalizeRanges(ranges []HintTimeRange) []HintTimeRange {
+func normalizeRanges(ranges []TimeRange) []TimeRange {
 	if len(ranges) == 0 {
 		return nil
 	}
@@ -244,7 +244,7 @@ func normalizeRanges(ranges []HintTimeRange) []HintTimeRange {
 		return ranges[i].Start.Before(ranges[j].Start)
 	})
 
-	out := make([]HintTimeRange, 0, len(ranges))
+	out := make([]TimeRange, 0, len(ranges))
 	for _, current := range ranges {
 		if !current.Start.Before(current.End) {
 			continue // empty under [start, end)

@@ -399,8 +399,8 @@ func TestNormalizeRanges(t *testing.T) {
 
 	tests := []struct {
 		name     string
-		input    []HintTimeRange
-		expected []HintTimeRange
+		input    []TimeRange
+		expected []TimeRange
 	}{
 		{
 			name:     "nil input",
@@ -409,23 +409,23 @@ func TestNormalizeRanges(t *testing.T) {
 		},
 		{
 			name:     "empty input",
-			input:    []HintTimeRange{},
+			input:    []TimeRange{},
 			expected: nil,
 		},
 		{
 			name: "single range",
-			input: []HintTimeRange{{
+			input: []TimeRange{{
 				Start: t0,
 				End:   t0.Add(5 * m),
 			}},
-			expected: []HintTimeRange{{
+			expected: []TimeRange{{
 				Start: t0,
 				End:   t0.Add(5 * m),
 			}},
 		},
 		{
 			name: "non-overlapping",
-			input: []HintTimeRange{
+			input: []TimeRange{
 				{
 					Start: t0,
 					End:   t0.Add(5 * m),
@@ -435,7 +435,7 @@ func TestNormalizeRanges(t *testing.T) {
 					End:   t0.Add(15 * m),
 				},
 			},
-			expected: []HintTimeRange{
+			expected: []TimeRange{
 				{
 					Start: t0,
 					End:   t0.Add(5 * m),
@@ -448,7 +448,7 @@ func TestNormalizeRanges(t *testing.T) {
 		},
 		{
 			name: "overlapping merged",
-			input: []HintTimeRange{
+			input: []TimeRange{
 				{
 					Start: t0,
 					End:   t0.Add(10 * m),
@@ -458,7 +458,7 @@ func TestNormalizeRanges(t *testing.T) {
 					End:   t0.Add(15 * m),
 				},
 			},
-			expected: []HintTimeRange{
+			expected: []TimeRange{
 				{
 					Start: t0,
 					End:   t0.Add(15 * m),
@@ -467,7 +467,7 @@ func TestNormalizeRanges(t *testing.T) {
 		},
 		{
 			name: "adjacent merged",
-			input: []HintTimeRange{
+			input: []TimeRange{
 				{
 					Start: t0,
 					End:   t0.Add(5 * m),
@@ -477,7 +477,7 @@ func TestNormalizeRanges(t *testing.T) {
 					End:   t0.Add(10 * m),
 				},
 			},
-			expected: []HintTimeRange{
+			expected: []TimeRange{
 				{
 					Start: t0,
 					End:   t0.Add(10 * m),
@@ -486,18 +486,18 @@ func TestNormalizeRanges(t *testing.T) {
 		},
 		{
 			name: "empty ranges dropped",
-			input: []HintTimeRange{
+			input: []TimeRange{
 				{Start: t0, End: t0},
 				{Start: t0.Add(5 * m), End: t0.Add(10 * m)},
 				{Start: t0.Add(20 * m), End: t0.Add(15 * m)}, // inverted
 			},
-			expected: []HintTimeRange{
+			expected: []TimeRange{
 				{Start: t0.Add(5 * m), End: t0.Add(10 * m)},
 			},
 		},
 		{
 			name: "contained range absorbed",
-			input: []HintTimeRange{
+			input: []TimeRange{
 				{
 					Start: t0,
 					End:   t0.Add(20 * m),
@@ -507,7 +507,7 @@ func TestNormalizeRanges(t *testing.T) {
 					End:   t0.Add(10 * m),
 				},
 			},
-			expected: []HintTimeRange{
+			expected: []TimeRange{
 				{
 					Start: t0,
 					End:   t0.Add(20 * m),
@@ -516,7 +516,7 @@ func TestNormalizeRanges(t *testing.T) {
 		},
 		{
 			name: "duplicates merged",
-			input: []HintTimeRange{
+			input: []TimeRange{
 				{
 					Start: t0,
 					End:   t0.Add(5 * m),
@@ -526,7 +526,7 @@ func TestNormalizeRanges(t *testing.T) {
 					End:   t0.Add(5 * m),
 				},
 			},
-			expected: []HintTimeRange{
+			expected: []TimeRange{
 				{
 					Start: t0,
 					End:   t0.Add(5 * m),
@@ -535,7 +535,7 @@ func TestNormalizeRanges(t *testing.T) {
 		},
 		{
 			name: "unsorted input",
-			input: []HintTimeRange{
+			input: []TimeRange{
 				{
 					Start: t0.Add(10 * m),
 					End:   t0.Add(15 * m),
@@ -545,7 +545,7 @@ func TestNormalizeRanges(t *testing.T) {
 					End:   t0.Add(12 * m),
 				},
 			},
-			expected: []HintTimeRange{
+			expected: []TimeRange{
 				{
 					Start: t0,
 					End:   t0.Add(15 * m),
@@ -554,7 +554,7 @@ func TestNormalizeRanges(t *testing.T) {
 		},
 		{
 			name: "chain of overlapping ranges",
-			input: []HintTimeRange{
+			input: []TimeRange{
 				{
 					Start: t0,
 					End:   t0.Add(5 * m),
@@ -572,7 +572,7 @@ func TestNormalizeRanges(t *testing.T) {
 					End:   t0.Add(25 * m),
 				},
 			},
-			expected: []HintTimeRange{
+			expected: []TimeRange{
 				{
 					Start: t0,
 					End:   t0.Add(12 * m),

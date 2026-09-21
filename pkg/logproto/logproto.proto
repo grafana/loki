@@ -444,7 +444,7 @@ message IndexRef {
   int64 shard_value = 10;
 }
 
-message HintRange {
+message HintTimeRange {
   int64 start = 1 [
     (gogoproto.customtype) = "github.com/prometheus/common/model.Time",
     (gogoproto.nullable) = false
@@ -470,7 +470,7 @@ message HintQueryStats {
 }
 
 message HintResponse {
-  repeated HintRange time_ranges = 1 [(gogoproto.nullable) = false];
+  repeated HintTimeRange time_ranges = 1 [(gogoproto.nullable) = false];
   HintQueryStats stats = 2;
 }
 

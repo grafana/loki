@@ -9,7 +9,7 @@ import (
 
 func TestFormatHintRanges_Empty(t *testing.T) {
 	require.Equal(t, "[]", FormatHintRanges(nil))
-	require.Equal(t, "[]", FormatHintRanges([]HintTimeRange{}))
+	require.Equal(t, "[]", FormatHintRanges([]TimeRange{}))
 
 	var hints *Hints
 	require.Equal(t, "[]", hints.String())
@@ -17,7 +17,7 @@ func TestFormatHintRanges_Empty(t *testing.T) {
 
 func TestFormatHintRanges_Basic(t *testing.T) {
 	base := time.Date(2026, 2, 26, 10, 0, 0, 123*int(time.Millisecond), time.UTC)
-	ranges := []HintTimeRange{
+	ranges := []TimeRange{
 		{Start: base, End: base.Add(10 * time.Second)},
 		{Start: base.Add(time.Minute), End: base.Add(2 * time.Minute)},
 	}
@@ -33,16 +33,16 @@ func TestFormatHintRanges_Basic(t *testing.T) {
 
 func TestFormatHintRanges_Passthrough(t *testing.T) {
 	end := time.Date(2026, 7, 9, 8, 42, 59, 500*int(time.Millisecond), time.UTC)
-	got := FormatHintRanges([]HintTimeRange{{End: end}})
+	got := FormatHintRanges([]TimeRange{{End: end}})
 	require.Equal(t, "[passthrough,2026-07-09T08:42:59.500Z]", got)
 }
 
 func TestFormatHintRanges_Truncates(t *testing.T) {
 	base := time.Date(2026, 2, 26, 10, 0, 0, 0, time.UTC)
-	ranges := make([]HintTimeRange, 0, maxLoggedHintRanges+2)
+	ranges := make([]TimeRange, 0, maxLoggedHintRanges+2)
 	for i := range maxLoggedHintRanges + 2 {
 		start := base.Add(time.Duration(i) * time.Minute)
-		ranges = append(ranges, HintTimeRange{Start: start, End: start.Add(10 * time.Second)})
+		ranges = append(ranges, TimeRange{Start: start, End: start.Add(10 * time.Second)})
 	}
 
 	got := FormatHintRanges(ranges)

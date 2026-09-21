@@ -9,7 +9,7 @@ import (
 )
 
 // HintsToProto maps ProvideHints results onto the querier wire type.
-// A zero HintTimeRange.Start is encoded as proto start 0 so IsPassthrough
+// A zero TimeRange.Start is encoded as proto start 0 so IsPassthrough
 // survives the round trip.
 func HintsToProto(hints *Hints, stats *QueryStats) *logproto.HintResponse {
 	resp := &logproto.HintResponse{}
@@ -28,13 +28,13 @@ func ProtoToHints(resp *logproto.HintResponse) (*Hints, *QueryStats) {
 	return &Hints{TimeRanges: protoToHintRanges(resp.TimeRanges)}, protoToQueryStats(resp.Stats)
 }
 
-func hintRangesToProto(ranges []HintTimeRange) []logproto.HintRange {
+func hintRangesToProto(ranges []TimeRange) []logproto.HintTimeRange {
 	if len(ranges) == 0 {
 		return nil
 	}
-	out := make([]logproto.HintRange, len(ranges))
+	out := make([]logproto.HintTimeRange, len(ranges))
 	for i, r := range ranges {
-		out[i] = logproto.HintRange{
+		out[i] = logproto.HintTimeRange{
 			Start: timeToModel(r.Start),
 			End:   timeToModel(r.End),
 		}
@@ -42,13 +42,13 @@ func hintRangesToProto(ranges []HintTimeRange) []logproto.HintRange {
 	return out
 }
 
-func protoToHintRanges(ranges []logproto.HintRange) []HintTimeRange {
+func protoToHintRanges(ranges []logproto.HintTimeRange) []TimeRange {
 	if len(ranges) == 0 {
 		return nil
 	}
-	out := make([]HintTimeRange, len(ranges))
+	out := make([]TimeRange, len(ranges))
 	for i, r := range ranges {
-		out[i] = HintTimeRange{
+		out[i] = TimeRange{
 			Start: modelToTime(r.Start),
 			End:   modelToTime(r.End),
 		}

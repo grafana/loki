@@ -21,7 +21,7 @@ func TestHintsToProtoRoundTrip(t *testing.T) {
 	stats.indexQueriesPositive.Add(1)
 	stats.totalTermBatchesProcessed.Add(8)
 
-	in := &Hints{TimeRanges: []HintTimeRange{
+	in := &Hints{TimeRanges: []TimeRange{
 		{Start: time.Time{}, End: start},
 		{Start: start, End: end},
 	}}

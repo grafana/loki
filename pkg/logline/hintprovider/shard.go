@@ -44,16 +44,16 @@ func (k shardKey) String() string {
 // by Start and non-overlapping (as produced by normalizeRanges). The output is
 // also sorted and non-overlapping. Adjacent ranges that only touch at a
 // boundary (a.End == b.Start) have empty intersection and are omitted.
-func intersectRanges(a, b []HintTimeRange) []HintTimeRange {
+func intersectRanges(a, b []TimeRange) []TimeRange {
 	if len(a) == 0 || len(b) == 0 {
-		return []HintTimeRange{}
+		return []TimeRange{}
 	}
 
 	// Defensive: sort inputs if caller didn't.
 	sort.Slice(a, func(i, j int) bool { return a[i].Start.Before(a[j].Start) })
 	sort.Slice(b, func(i, j int) bool { return b[i].Start.Before(b[j].Start) })
 
-	out := []HintTimeRange{}
+	out := []TimeRange{}
 	i, j := 0, 0
 	for i < len(a) && j < len(b) {
 		// Compute overlap.
@@ -68,7 +68,7 @@ func intersectRanges(a, b []HintTimeRange) []HintTimeRange {
 
 		// Half-open: start == end is empty, not an instant match.
 		if start.Before(end) {
-			out = append(out, HintTimeRange{
+			out = append(out, TimeRange{
 				Start: start,
 				End:   end,
 			})

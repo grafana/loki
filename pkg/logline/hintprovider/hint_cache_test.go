@@ -156,7 +156,7 @@ func cloneHints(h *Hints) *Hints {
 	if h == nil {
 		return nil
 	}
-	out := &Hints{TimeRanges: make([]HintTimeRange, len(h.TimeRanges))}
+	out := &Hints{TimeRanges: make([]TimeRange, len(h.TimeRanges))}
 	copy(out.TimeRanges, h.TimeRanges)
 	return out
 }
@@ -166,7 +166,7 @@ func TestCachingHintProvider_FullHitAcrossAllDays(t *testing.T) {
 	backend := newMockHintCacheBackend()
 	delegate := &stubHintProvider{
 		hints: &Hints{
-			TimeRanges: []HintTimeRange{
+			TimeRanges: []TimeRange{
 				{
 					Start: time.Date(2026, 3, 10, 1, 0, 0, 0, time.UTC),
 					End:   time.Date(2026, 3, 10, 1, 30, 0, 0, time.UTC),
@@ -183,7 +183,7 @@ func TestCachingHintProvider_FullHitAcrossAllDays(t *testing.T) {
 	days := buildDayWindows(tenant, expr.String(), "", from, through)
 	require.Len(t, days, 3)
 
-	dayPayloads := map[string][]HintTimeRange{
+	dayPayloads := map[string][]TimeRange{
 		days[0].hashedKey: {
 			{
 				Start: time.Date(2026, 3, 10, 10, 0, 0, 0, time.UTC),
@@ -216,7 +216,7 @@ func TestCachingHintProvider_FullHitAcrossAllDays(t *testing.T) {
 	require.NotNil(t, hints)
 	require.NotNil(t, stats)
 	require.Equal(t, 0, delegate.Calls(), "delegate should not be called on full cache hit")
-	require.Equal(t, []HintTimeRange{
+	require.Equal(t, []TimeRange{
 		{
 			Start: time.Date(2026, 3, 10, 10, 0, 0, 0, time.UTC),
 			End:   time.Date(2026, 3, 10, 10, 10, 0, 0, time.UTC),
@@ -233,7 +233,7 @@ func TestCachingHintProvider_PartialMissFetchesDelegateAndBackfillsDays(t *testi
 	backend := newMockHintCacheBackend()
 	delegate := &stubHintProvider{
 		hints: &Hints{
-			TimeRanges: []HintTimeRange{
+			TimeRanges: []TimeRange{
 				{
 					Start: time.Date(2026, 3, 10, 12, 0, 0, 0, time.UTC),
 					End:   time.Date(2026, 3, 10, 12, 15, 0, 0, time.UTC),
@@ -256,7 +256,7 @@ func TestCachingHintProvider_PartialMissFetchesDelegateAndBackfillsDays(t *testi
 	require.Len(t, days, 2)
 
 	// Preload only the first day so the first request is a partial miss.
-	preloaded, err := marshalCachedHints([]HintTimeRange{
+	preloaded, err := marshalCachedHints([]TimeRange{
 		{
 			Start: time.Date(2026, 3, 10, 12, 0, 0, 0, time.UTC),
 			End:   time.Date(2026, 3, 10, 12, 15, 0, 0, time.UTC),
@@ -297,11 +297,11 @@ func TestCachingHintProvider_PartialMissFetchesDelegateAndBackfillsDays(t *testi
 // drops any log line inside it.
 func TestCachingHintProvider_DayPayloadsAbutAtMidnight(t *testing.T) {
 	midnight := time.Date(2026, 3, 11, 0, 0, 0, 0, time.UTC)
-	spanning := HintTimeRange{Start: midnight.Add(-10 * time.Minute), End: midnight.Add(10 * time.Minute)}
+	spanning := TimeRange{Start: midnight.Add(-10 * time.Minute), End: midnight.Add(10 * time.Minute)}
 
 	backend := newMockHintCacheBackend()
 	delegate := &stubHintProvider{
-		hints: &Hints{TimeRanges: []HintTimeRange{spanning}},
+		hints: &Hints{TimeRanges: []TimeRange{spanning}},
 		stats: NewQueryStats(),
 	}
 	provider := NewCachingHintProvider(delegate, backend, prometheus.NewRegistry())
@@ -317,7 +317,7 @@ func TestCachingHintProvider_DayPayloadsAbutAtMidnight(t *testing.T) {
 	// Serve the same window from cache.
 	hit, _, err := provider.ProvideHints(context.Background(), nil, "tenant-a", expr, from, through)
 	require.NoError(t, err)
-	require.Equal(t, []HintTimeRange{spanning}, hit.TimeRanges)
+	require.Equal(t, []TimeRange{spanning}, hit.TimeRanges)
 }
 
 // clipRangesToDay must keep each day payload inside its own day so payloads stay
@@ -330,21 +330,21 @@ func TestClipRangesToDay_PayloadsStayWithinTheirDayAndRejoin(t *testing.T) {
 
 	for _, tc := range []struct {
 		name  string
-		input HintTimeRange
+		input TimeRange
 	}{
-		{"inside one day", HintTimeRange{Start: d10.Add(10 * time.Hour), End: d10.Add(11 * time.Hour)}},
-		{"spans midnight", HintTimeRange{Start: d11.Add(-10 * time.Minute), End: d11.Add(10 * time.Minute)}},
-		{"ends exactly at midnight", HintTimeRange{Start: d11.Add(-time.Minute), End: d11}},
-		{"starts exactly at midnight", HintTimeRange{Start: d11, End: d11.Add(time.Minute)}},
-		{"final millisecond of the day", HintTimeRange{Start: d11.Add(-time.Millisecond), End: d11}},
-		{"spans a whole day", HintTimeRange{Start: d10.Add(23 * time.Hour), End: d12.Add(time.Hour)}},
+		{"inside one day", TimeRange{Start: d10.Add(10 * time.Hour), End: d10.Add(11 * time.Hour)}},
+		{"spans midnight", TimeRange{Start: d11.Add(-10 * time.Minute), End: d11.Add(10 * time.Minute)}},
+		{"ends exactly at midnight", TimeRange{Start: d11.Add(-time.Minute), End: d11}},
+		{"starts exactly at midnight", TimeRange{Start: d11, End: d11.Add(time.Minute)}},
+		{"final millisecond of the day", TimeRange{Start: d11.Add(-time.Millisecond), End: d11}},
+		{"spans a whole day", TimeRange{Start: d10.Add(23 * time.Hour), End: d12.Add(time.Hour)}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			var union []HintTimeRange
+			var union []TimeRange
 			for _, day := range days {
 				// Round trip through the cache: the payload loses sub-millisecond
 				// precision, which is exactly where the day boundary can drift.
-				encoded, err := marshalCachedHints(clipRangesToDay([]HintTimeRange{tc.input}, day[0], day[1]))
+				encoded, err := marshalCachedHints(clipRangesToDay([]TimeRange{tc.input}, day[0], day[1]))
 				require.NoError(t, err)
 				payload, err := unmarshalCachedHints(encoded)
 				require.NoError(t, err)
@@ -361,7 +361,7 @@ func TestClipRangesToDay_PayloadsStayWithinTheirDayAndRejoin(t *testing.T) {
 			// Reassembling the days must reproduce the same coverage as clipping the
 			// whole span at once. Any gap or spill at midnight shows up here.
 			require.Equal(t,
-				clipRangesToDay([]HintTimeRange{tc.input}, d10, d12),
+				clipRangesToDay([]TimeRange{tc.input}, d10, d12),
 				normalizeRanges(union),
 			)
 		})
@@ -418,7 +418,7 @@ func TestCachingHintProvider_SingleflightDeduplicatesConcurrentMisses(t *testing
 	delegate := &stubHintProvider{
 		delay: 100 * time.Millisecond,
 		hints: &Hints{
-			TimeRanges: []HintTimeRange{
+			TimeRanges: []TimeRange{
 				{
 					Start: time.Date(2026, 3, 10, 4, 0, 0, 0, time.UTC),
 					End:   time.Date(2026, 3, 10, 4, 10, 0, 0, time.UTC),
@@ -453,7 +453,7 @@ func TestCachingHintProvider_SingleflightDeduplicatesConcurrentMisses(t *testing
 }
 
 func TestCachedHints_JSONRoundTrip(t *testing.T) {
-	input := []HintTimeRange{
+	input := []TimeRange{
 		{
 			Start: time.Date(2026, 3, 10, 2, 0, 0, 0, time.UTC),
 			End:   time.Date(2026, 3, 10, 2, 5, 0, 0, time.UTC),
@@ -466,7 +466,7 @@ func TestCachedHints_JSONRoundTrip(t *testing.T) {
 
 	decoded, err := unmarshalCachedHints(encoded)
 	require.NoError(t, err)
-	require.Equal(t, []HintTimeRange{
+	require.Equal(t, []TimeRange{
 		{
 			Start: time.Date(2026, 3, 10, 2, 0, 0, 0, time.UTC),
 			End:   time.Date(2026, 3, 10, 2, 5, 0, 0, time.UTC),
@@ -487,15 +487,15 @@ func TestCachingHintProvider_FiltersOutOfWindowRanges(t *testing.T) {
 	from := time.Date(2026, 6, 4, 0, 0, 0, 0, time.UTC)
 	through := time.Date(2026, 6, 4, 0, 5, 0, 0, time.UTC)
 	// Non-zero duration required: normalizeRanges drops empty [start, end) ranges.
-	inWindow := HintTimeRange{
+	inWindow := TimeRange{
 		Start: time.Date(2026, 6, 4, 0, 3, 21, 0, time.UTC),
 		End:   time.Date(2026, 6, 4, 0, 3, 21, 0, time.UTC).Add(time.Millisecond),
 	}
-	outOfWindow := HintTimeRange{
+	outOfWindow := TimeRange{
 		Start: time.Date(2026, 6, 4, 0, 25, 17, 0, time.UTC),
 		End:   time.Date(2026, 6, 4, 0, 25, 17, 0, time.UTC).Add(time.Millisecond),
 	}
-	allRanges := []HintTimeRange{inWindow, outOfWindow}
+	allRanges := []TimeRange{inWindow, outOfWindow}
 
 	t.Run("cache hit", func(t *testing.T) {
 		backend := newMockHintCacheBackend()
@@ -518,7 +518,7 @@ func TestCachingHintProvider_FiltersOutOfWindowRanges(t *testing.T) {
 		)
 		require.NoError(t, err)
 		require.Equal(t, 0, delegate.Calls(), "delegate should not be called on full cache hit")
-		require.Equal(t, []HintTimeRange{inWindow}, hints.TimeRanges)
+		require.Equal(t, []TimeRange{inWindow}, hints.TimeRanges)
 	})
 
 	t.Run("cache miss", func(t *testing.T) {
@@ -536,7 +536,7 @@ func TestCachingHintProvider_FiltersOutOfWindowRanges(t *testing.T) {
 		)
 		require.NoError(t, err)
 		require.Equal(t, 1, delegate.Calls())
-		require.Equal(t, []HintTimeRange{inWindow}, hints.TimeRanges)
+		require.Equal(t, []TimeRange{inWindow}, hints.TimeRanges)
 	})
 
 	t.Run("nil cache", func(t *testing.T) {
@@ -553,7 +553,7 @@ func TestCachingHintProvider_FiltersOutOfWindowRanges(t *testing.T) {
 		)
 		require.NoError(t, err)
 		require.Equal(t, 1, delegate.Calls())
-		require.Equal(t, []HintTimeRange{inWindow}, hints.TimeRanges)
+		require.Equal(t, []TimeRange{inWindow}, hints.TimeRanges)
 	})
 
 	t.Run("skip cache", func(t *testing.T) {
@@ -573,14 +573,14 @@ func TestCachingHintProvider_FiltersOutOfWindowRanges(t *testing.T) {
 		require.Equal(t, 1, delegate.Calls())
 		require.Equal(t, 0, backend.FetchCalls(), "skip should avoid cache fetch")
 		require.Equal(t, 0, backend.StoreCalls(), "skip should avoid cache store")
-		require.Equal(t, []HintTimeRange{inWindow}, hints.TimeRanges)
+		require.Equal(t, []TimeRange{inWindow}, hints.TimeRanges)
 	})
 }
 
 func TestCachingHintProvider_NilCachePassthrough(t *testing.T) {
 	delegate := &stubHintProvider{
 		hints: &Hints{
-			TimeRanges: []HintTimeRange{
+			TimeRanges: []TimeRange{
 				{
 					Start: time.Date(2026, 3, 10, 3, 0, 0, 0, time.UTC),
 					End:   time.Date(2026, 3, 10, 3, 1, 0, 0, time.UTC),
@@ -628,7 +628,7 @@ func TestCachingHintProvider_FetchErrorFallsBackToDelegate(t *testing.T) {
 	backend.fetchErr = errors.New("cache backend offline")
 	delegate := &stubHintProvider{
 		hints: &Hints{
-			TimeRanges: []HintTimeRange{
+			TimeRanges: []TimeRange{
 				{
 					Start: time.Date(2026, 3, 10, 9, 0, 0, 0, time.UTC),
 					End:   time.Date(2026, 3, 10, 9, 30, 0, 0, time.UTC),
@@ -665,7 +665,7 @@ func TestCachingHintProvider_SkipCacheBypassesFetchAndStore(t *testing.T) {
 	backend := newMockHintCacheBackend()
 	delegate := &stubHintProvider{
 		hints: &Hints{
-			TimeRanges: []HintTimeRange{
+			TimeRanges: []TimeRange{
 				{
 					Start: time.Date(2026, 3, 10, 8, 0, 0, 0, time.UTC),
 					End:   time.Date(2026, 3, 10, 9, 0, 0, 0, time.UTC),
@@ -698,7 +698,7 @@ func TestCachingHintProvider_CachesEmptyDays(t *testing.T) {
 	backend := newMockHintCacheBackend()
 	delegate := &stubHintProvider{
 		hints: &Hints{
-			TimeRanges: []HintTimeRange{
+			TimeRanges: []TimeRange{
 				{
 					Start: time.Date(2026, 3, 10, 10, 0, 0, 0, time.UTC),
 					End:   time.Date(2026, 3, 10, 10, 10, 0, 0, time.UTC),
@@ -742,7 +742,7 @@ func TestCachingHintProvider_UsesDelegateMinDateInCacheKeys(t *testing.T) {
 	delegate := &stubHintProvider{
 		minDate: time.Date(2026, 3, 8, 0, 0, 0, 0, time.UTC),
 		hints: &Hints{
-			TimeRanges: []HintTimeRange{
+			TimeRanges: []TimeRange{
 				{
 					Start: time.Date(2026, 3, 10, 10, 0, 0, 0, time.UTC),
 					End:   time.Date(2026, 3, 10, 10, 10, 0, 0, time.UTC),
@@ -775,7 +775,7 @@ func TestCachingHintProvider_UsesDelegateMinDateInCacheKeys(t *testing.T) {
 type mutableWindowHintProvider struct {
 	mu sync.Mutex
 
-	indexRanges []HintTimeRange
+	indexRanges []TimeRange
 
 	calls int
 }
@@ -790,7 +790,7 @@ func (p *mutableWindowHintProvider) ProvideHints(
 ) (*Hints, *QueryStats, error) {
 	p.mu.Lock()
 	p.calls++
-	indexRanges := append([]HintTimeRange(nil), p.indexRanges...)
+	indexRanges := append([]TimeRange(nil), p.indexRanges...)
 	p.mu.Unlock()
 
 	start := from.Time().UTC()
@@ -798,7 +798,7 @@ func (p *mutableWindowHintProvider) ProvideHints(
 	if end.Before(start) {
 		end = start
 	}
-	out := make([]HintTimeRange, 0, len(indexRanges))
+	out := make([]TimeRange, 0, len(indexRanges))
 	for _, r := range indexRanges {
 		if r.End.Before(start) || end.Before(r.Start) {
 			continue
@@ -814,10 +814,10 @@ func (p *mutableWindowHintProvider) Calls() int {
 	return p.calls
 }
 
-func (p *mutableWindowHintProvider) SetRanges(ranges []HintTimeRange) {
+func (p *mutableWindowHintProvider) SetRanges(ranges []TimeRange) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	p.indexRanges = append([]HintTimeRange(nil), ranges...)
+	p.indexRanges = append([]TimeRange(nil), ranges...)
 }
 
 func (p *mutableWindowHintProvider) MinDate() time.Time {
@@ -828,16 +828,16 @@ func TestCachingHintProvider_WindowWideningShouldNotReturnStaleHints(t *testing.
 	reg := prometheus.NewRegistry()
 	backend := newMockHintCacheBackend()
 
-	oldRange := HintTimeRange{
+	oldRange := TimeRange{
 		Start: time.Date(2026, 5, 8, 3, 0, 0, 0, time.UTC),
 		End:   time.Date(2026, 5, 8, 3, 0, 1, 0, time.UTC),
 	}
-	newRange := HintTimeRange{
+	newRange := TimeRange{
 		Start: time.Date(2026, 5, 8, 12, 0, 8, 0, time.UTC),
 		End:   time.Date(2026, 5, 8, 12, 0, 10, 0, time.UTC),
 	}
 	delegate := &mutableWindowHintProvider{
-		indexRanges: []HintTimeRange{oldRange, newRange},
+		indexRanges: []TimeRange{oldRange, newRange},
 	}
 	provider := NewCachingHintProvider(delegate, backend, reg)
 
@@ -856,7 +856,7 @@ func TestCachingHintProvider_WindowWideningShouldNotReturnStaleHints(t *testing.
 		model.TimeFromUnixNano(narrowEnd.UnixNano()),
 	)
 	require.NoError(t, err)
-	require.Equal(t, []HintTimeRange{oldRange}, firstHints.TimeRanges)
+	require.Equal(t, []TimeRange{oldRange}, firstHints.TimeRanges)
 
 	// Expected behavior: same-day follow-up query should still include hints
 	// needed for the wider window.
@@ -870,7 +870,7 @@ func TestCachingHintProvider_WindowWideningShouldNotReturnStaleHints(t *testing.
 	)
 	require.NoError(t, err)
 	require.NotNil(t, cachedStats)
-	require.ElementsMatch(t, []HintTimeRange{oldRange, newRange}, cachedHints.TimeRanges)
+	require.ElementsMatch(t, []TimeRange{oldRange, newRange}, cachedHints.TimeRanges)
 
 	// Bypass cache for control: fresh delegate result includes both ranges.
 	freshHints, _, err := provider.ProvideHints(
@@ -882,5 +882,5 @@ func TestCachingHintProvider_WindowWideningShouldNotReturnStaleHints(t *testing.
 		model.TimeFromUnixNano(widerEnd.UnixNano()),
 	)
 	require.NoError(t, err)
-	require.ElementsMatch(t, []HintTimeRange{oldRange, newRange}, freshHints.TimeRanges)
+	require.ElementsMatch(t, []TimeRange{oldRange, newRange}, freshHints.TimeRanges)
 }

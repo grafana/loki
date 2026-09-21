@@ -111,12 +111,12 @@ func (p *LoglineHintProvider) executeQuery(
 	filters []string,
 	overlapping []store.Meta,
 	stats *QueryStats,
-) (map[shardKey][]HintTimeRange, error) {
+) (map[shardKey][]TimeRange, error) {
 	jobs, metasByID, err := buildTermJobs(filters, overlapping, p.ngramLength)
 	if err != nil {
 		return nil, err
 	}
-	byShard := make(map[shardKey][]HintTimeRange)
+	byShard := make(map[shardKey][]TimeRange)
 	if len(jobs) == 0 {
 		return byShard, nil
 	}
@@ -188,11 +188,11 @@ func (p *LoglineHintProvider) executeQuery(
 		}
 
 		key := shardKeyOf(res.meta)
-		var ranges []HintTimeRange
+		var ranges []TimeRange
 		switch res.reason {
 		case format.QueryMultipleReasonComplete:
 			if res.result.MatchesAll {
-				ranges = []HintTimeRange{hintTimeRangeForMeta(res.meta)}
+				ranges = []TimeRange{timeRangeForMeta(res.meta)}
 			} else if !res.result.IsEmpty() {
 				ranges = rangesForDocIDs(res.meta, res.result.Roaring.ToArray(), res.reader.Documents())
 			}
@@ -205,7 +205,7 @@ func (p *LoglineHintProvider) executeQuery(
 				continue
 			}
 
-			ranges = []HintTimeRange{}
+			ranges = []TimeRange{}
 		}
 
 		byShard[key] = append(byShard[key], ranges...)
@@ -323,17 +323,17 @@ func queryMultipleReasonLabel(reason format.QueryMultipleTerminationReason) stri
 	}
 }
 
-// hintTimeRangeForMeta converts inclusive observed index bounds to a half-open
+// timeRangeForMeta converts inclusive observed index bounds to a half-open
 // hint range. One millisecond matches the cache and document timestamp
 // precision and guarantees that a log at MaxLogTs remains covered.
-func hintTimeRangeForMeta(meta store.Meta) HintTimeRange {
-	return HintTimeRange{
+func timeRangeForMeta(meta store.Meta) TimeRange {
+	return TimeRange{
 		Start: meta.MinLogTs,
 		End:   meta.MaxLogTs.Add(time.Millisecond),
 	}
 }
 
-func rangesForDocIDs(meta store.Meta, docIDs []uint32, docs []format.DocumentMetadata) []HintTimeRange {
+func rangesForDocIDs(meta store.Meta, docIDs []uint32, docs []format.DocumentMetadata) []TimeRange {
 	if len(docIDs) == 0 || len(docs) == 0 {
 		return nil
 	}
@@ -343,7 +343,7 @@ func rangesForDocIDs(meta store.Meta, docIDs []uint32, docs []format.DocumentMet
 		docByID[doc.ID] = doc
 	}
 
-	ranges := make([]HintTimeRange, 0, len(docIDs))
+	ranges := make([]TimeRange, 0, len(docIDs))
 	for _, id := range docIDs {
 		doc, ok := docByID[id]
 		if !ok {
@@ -352,7 +352,7 @@ func rangesForDocIDs(meta store.Meta, docIDs []uint32, docs []format.DocumentMet
 
 		minTS := time.UnixMilli(doc.MinTimeUnix).UTC()
 		maxTS := time.UnixMilli(doc.MaxTimeUnix).UTC()
-		ranges = append(ranges, HintTimeRange{
+		ranges = append(ranges, TimeRange{
 			Start: minTS,
 			End:   maxTS,
 		})

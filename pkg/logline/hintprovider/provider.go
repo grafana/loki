@@ -27,11 +27,11 @@ type QueryHintProvider interface {
 	ProvideHints(ctx context.Context, next queryrangebase.Handler, tenant string, expr syntax.Expr, from, through model.Time) (*Hints, *QueryStats, error)
 }
 
-// HintTimeRange is a half-open time window [Start, End) that may contain
+// TimeRange is a half-open time window [Start, End) that may contain
 // matching logs. Start is inclusive, End is exclusive. This matches the
 // document bounds written by index builders (MinTimeUnix inclusive,
 // MaxTimeUnix exclusive).
-type HintTimeRange struct {
+type TimeRange struct {
 	Start time.Time
 	End   time.Time
 }
@@ -41,13 +41,13 @@ type HintTimeRange struct {
 // date). These ranges use a zero-value Start as a sentinel. The filter
 // middleware should pass these intervals through to Loki unmodified rather
 // than treating them as narrowed.
-func (h HintTimeRange) IsPassthrough() bool {
+func (h TimeRange) IsPassthrough() bool {
 	return h.Start.IsZero()
 }
 
 // Hints contains narrowed ranges derived from index lookups.
 type Hints struct {
-	TimeRanges []HintTimeRange
+	TimeRanges []TimeRange
 }
 
 // String returns a compact, log-friendly representation of hint ranges.
@@ -61,7 +61,7 @@ func (h *Hints) String() string {
 // FormatHintRanges renders ranges as:
 // [start +dur];[start +dur];... and truncates to maxLoggedHintRanges.
 // Example: [2026-07-09T08:42:59.123Z +1s]
-func FormatHintRanges(ranges []HintTimeRange) string {
+func FormatHintRanges(ranges []TimeRange) string {
 	if len(ranges) == 0 {
 		return "[]"
 	}
