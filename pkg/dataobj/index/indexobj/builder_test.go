@@ -419,7 +419,8 @@ func TestBuilder_FlushReturnsNoCloserOnError(t *testing.T) {
 	})
 
 	t.Run("when the object cannot be built", func(t *testing.T) {
-		builder, err := NewBuilder(testBuilderConfig, newFailingReadStore(false))
+		store := newFailingReadStore(false)
+		builder, err := NewBuilder(testBuilderConfig, store)
 		require.NoError(t, err)
 		appendStreamPerTenant(t, builder, 1)
 
@@ -427,6 +428,7 @@ func TestBuilder_FlushReturnsNoCloserOnError(t *testing.T) {
 		require.ErrorContains(t, err, "flushing object")
 		require.Nil(t, obj)
 		require.Nil(t, closer)
+		require.NotEmpty(t, store.removed, "the buffered sections must be released")
 	})
 
 	t.Run("when the built object cannot be observed", func(t *testing.T) {

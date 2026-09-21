@@ -553,7 +553,8 @@ func appendStatPerTenant(t *testing.T, b *MergeBuilder, tenants int) {
 // stop at the error, so Flush must hand back nothing when it fails.
 func TestMergeBuilder_FlushReturnsNoCloserOnError(t *testing.T) {
 	t.Run("when the object cannot be built", func(t *testing.T) {
-		b, err := NewMergeBuilder(testBuilderConfig, newFailingReadStore(false))
+		store := newFailingReadStore(false)
+		b, err := NewMergeBuilder(testBuilderConfig, store)
 		require.NoError(t, err)
 		appendStatPerTenant(t, b, 1)
 
@@ -561,6 +562,7 @@ func TestMergeBuilder_FlushReturnsNoCloserOnError(t *testing.T) {
 		require.ErrorContains(t, err, "flushing object")
 		require.Nil(t, obj)
 		require.Nil(t, closer)
+		require.NotEmpty(t, store.removed, "the buffered sections must be released")
 	})
 
 	t.Run("when the built object cannot be observed", func(t *testing.T) {

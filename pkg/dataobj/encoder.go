@@ -200,6 +200,10 @@ func (enc *encoder) Bytes() int { return enc.totalBytes }
 // encoded bytes. [snapshot.Close] should be called when the snapshot is no
 // longer needed to release sections.
 //
+// The returned snapshot takes over the buffered sections: from that point on
+// closing the snapshot, and not resetting the encoder, is what releases them
+// from the scratch store.
+//
 // Callers must manually call [encoder.Reset] after calling Flush to prepare for
 // the next encoding session. This is done to allow callers to ensure that the
 // returned snapshot is complete before the encoder is reset.
@@ -264,11 +268,21 @@ func (enc *encoder) Flush() (*snapshot, error) {
 	if err != nil {
 		return nil, fmt.Errorf("creating snapshot: %w", err)
 	}
+
+	enc.sections = nil
 	return snapshot, nil
 }
 
-// Reset resets the Encoder to a fresh state.
+// Reset resets the Encoder to a fresh state, removing any sections it still
+// holds from the scratch store.
 func (enc *encoder) Reset() {
+	for _, section := range enc.sections {
+		// A failed removal is not actionable: the handle is unreachable either
+		// way, and [scratch.Store] implementations report their own failures.
+		_ = enc.store.Remove(section.Data.Handle)
+		_ = enc.store.Remove(section.Metadata.Handle)
+	}
+
 	enc.totalBytes = 0
 
 	enc.sections = nil
