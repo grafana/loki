@@ -1225,3 +1225,48 @@ func TestBuilder_FlushReturnsNoCloserOnError(t *testing.T) {
 	require.Nil(t, obj)
 	require.Nil(t, closer)
 }
+
+// Flush resets the builder whether it succeeds or fails, so a failed flush
+// leaves nothing behind for the next one to pick up.
+func TestBuilder_FlushResetsBuilder(t *testing.T) {
+	stream := logproto.Stream{
+		Labels:  `{cluster="test",app="foo"}`,
+		Entries: []push.Entry{{Timestamp: time.Unix(10, 0).UTC(), Line: "hello"}},
+	}
+
+	tests := []struct {
+		name    string
+		store   scratch.Store
+		wantErr string
+	}{
+		{
+			name:  "when the object is built",
+			store: scratch.NewMemory(),
+		},
+		{
+			name:    "when the object cannot be built",
+			store:   &failingReadStore{inner: scratch.NewMemory()},
+			wantErr: "building object",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			builder, err := NewBuilder(testBuilderConfig, tt.store, NewBuilderMetrics(), log.NewNopLogger(), nil)
+			require.NoError(t, err)
+			require.NoError(t, builder.Append("tenant", stream, time.Now()))
+
+			_, closer, err := builder.Flush()
+			if tt.wantErr != "" {
+				require.ErrorContains(t, err, tt.wantErr)
+			} else {
+				require.NoError(t, err)
+				defer closer.Close()
+			}
+
+			require.Zero(t, builder.GetEstimatedSize())
+			_, _, err = builder.Flush()
+			require.ErrorIs(t, err, ErrBuilderEmpty)
+		})
+	}
+}

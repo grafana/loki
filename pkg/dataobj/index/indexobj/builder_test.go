@@ -446,3 +446,54 @@ func TestBuilder_FlushReturnsNoCloserOnError(t *testing.T) {
 		require.NotEmpty(t, store.removed, "the object's scratch handles must be released")
 	})
 }
+
+// Flush resets the builder whether it succeeds or fails, so a failed flush
+// leaves nothing behind for the next one to pick up.
+func TestBuilder_FlushResetsBuilder(t *testing.T) {
+	tests := []struct {
+		name    string
+		store   scratch.Store
+		tenants int
+		wantErr string
+	}{
+		{
+			name:    "when the object is built",
+			store:   scratch.NewMemory(),
+			tenants: 1,
+		},
+		{
+			name:    "when the object cannot be built",
+			store:   newFailingReadStore(false),
+			tenants: 1,
+			wantErr: "flushing object",
+		},
+		{
+			// See TestBuilder_FlushReturnsNoCloserOnError for why this many
+			// tenants are needed to fail while observing.
+			name:    "when the built object cannot be observed",
+			store:   newFailingReadStore(true),
+			tenants: 64,
+			wantErr: "observing object",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			builder, err := NewBuilder(testBuilderConfig, tt.store)
+			require.NoError(t, err)
+			appendStreamPerTenant(t, builder, tt.tenants)
+
+			_, closer, err := builder.Flush()
+			if tt.wantErr != "" {
+				require.ErrorContains(t, err, tt.wantErr)
+			} else {
+				require.NoError(t, err)
+				defer closer.Close()
+			}
+
+			require.Zero(t, builder.GetEstimatedSize())
+			_, _, err = builder.Flush()
+			require.ErrorIs(t, err, ErrBuilderEmpty)
+		})
+	}
+}

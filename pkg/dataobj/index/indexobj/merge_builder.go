@@ -184,12 +184,14 @@ func (b *MergeBuilder) estimatedSize() int {
 //
 // On success the caller owns the returned [io.Closer] and must close it to
 // release the object's backing scratch storage; reads of the object fail once
-// it is closed. If an error is returned the closer is always nil, and any
-// scratch storage already allocated has been released.
+// it is closed. If an error is returned the closer is always nil.
+//
+// Flush always resets MergeBuilder.
 func (b *MergeBuilder) Flush() (*dataobj.Object, io.Closer, error) {
 	if b.state == builderStateEmpty {
 		return nil, nil, ErrBuilderEmpty
 	}
+	defer b.Reset()
 
 	b.metrics.flushTotal.Inc()
 	timer := prometheus.NewTimer(b.metrics.buildTime)
@@ -222,12 +224,9 @@ func (b *MergeBuilder) Flush() (*dataobj.Object, io.Closer, error) {
 	b.metrics.builtSize.Observe(float64(obj.Size()))
 
 	if err := b.observeObject(context.Background(), obj); err != nil {
-		err = errors.Join(fmt.Errorf("observing object: %w", err), closer.Close())
-		b.Reset()
-		return nil, nil, err
+		return nil, nil, errors.Join(fmt.Errorf("observing object: %w", err), closer.Close())
 	}
 
-	b.Reset()
 	return obj, closer, nil
 }
 
