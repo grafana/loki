@@ -17,7 +17,7 @@ import (
 	"go.uber.org/atomic"
 	"golang.org/x/sync/errgroup"
 
-	"github.com/grafana/loki/v3/pkg/logline/format"
+	"github.com/grafana/loki/v3/pkg/logproto"
 )
 
 var errInvalidMeta = errors.New("invalid meta")
@@ -226,7 +226,7 @@ func (s *Store) GetMeta(ctx context.Context, id string) (Meta, error) {
 
 // PutIndex uploads an index file and its metadata to object storage.
 // CreatedAt is set automatically. The caller must populate Hash, SizeBytes,
-// and IndexHeader before calling (Hash and SizeBytes via Meta.SetFileInfo). For streaming
+// and IndexHeader before calling (Hash and SizeBytes via SetFileInfo). For streaming
 // producers that don't have the full bytes on disk, use PutIndexStreaming.
 func (s *Store) PutIndex(ctx context.Context, indexData io.Reader, meta Meta) error {
 	if err := meta.Validate(); err != nil {
@@ -273,7 +273,7 @@ func (s *Store) PutIndex(ctx context.Context, indexData io.Reader, meta Meta) er
 // Upload ordering matches PutIndex: index data first, then meta.json as the
 // commit marker. If the write callback returns an error, the upload is
 // cancelled and meta.json is not written.
-func (s *Store) PutIndexStreaming(ctx context.Context, meta *Meta, write func(io.Writer) (format.HeaderInfo, error)) error {
+func (s *Store) PutIndexStreaming(ctx context.Context, meta *Meta, write func(io.Writer) (logproto.HeaderInfo, error)) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}

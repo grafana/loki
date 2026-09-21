@@ -11,6 +11,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/v3/pkg/logline/format"
+	"github.com/grafana/loki/v3/pkg/logproto"
 )
 
 func TestStreamingIndexWriter_CleanupOnError(t *testing.T) {
@@ -122,7 +123,7 @@ func openTestReaderAt(tb testing.TB, path string) (*os.File, int64) {
 // and benchmarks that produce fixtures on disk and want to merge them.
 // Production compaction always goes through StreamingMergeIndexReaders
 // directly with io.ReaderAts backed by object-storage range reads.
-func mergeFilesTo(ctx context.Context, tb testing.TB, inputPaths []string, out io.Writer, cfg IndexWriteConfig) (format.HeaderInfo, error) {
+func mergeFilesTo(ctx context.Context, tb testing.TB, inputPaths []string, out io.Writer, cfg IndexWriteConfig) (logproto.HeaderInfo, error) {
 	tb.Helper()
 	readers := make([]io.ReaderAt, len(inputPaths))
 	sizes := make([]int64, len(inputPaths))

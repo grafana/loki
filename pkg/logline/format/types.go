@@ -1,6 +1,6 @@
 // Package format defines the shared vocabulary of the on-disk index format:
-// the term iterator contract, postings bitmaps, per-document metadata, the
-// postings encodings, and the JSON-friendly header summary.
+// the term iterator contract, postings bitmaps, per-document metadata, and
+// the postings encodings.
 //
 // Both the version shim and the versioned format implementations import this
 // package, which keeps them free of import cycles.
@@ -164,21 +164,4 @@ type WriterConfig struct {
 	// sentinelCutoff = (24h / DocumentInterval) * DensityThreshold.
 	// Zero disables the density filter.
 	DocumentInterval time.Duration
-}
-
-// HeaderInfo is a JSON-friendly summary of a binary index header.
-// Stored in meta.json alongside each index file.
-type HeaderInfo struct {
-	Version              uint32 `json:"version"`
-	Flags                uint32 `json:"flags"`
-	DocumentCount        uint32 `json:"document_count"`
-	TermBlockCount       uint32 `json:"term_block_count"`
-	PostingsBlockCount   uint32 `json:"postings_block_count"`
-	PostingsCompression  uint32 `json:"postings_compression"`
-	TermCount            uint64 `json:"term_count"`
-	PostingsDataSize     uint64 `json:"postings_data_size"`
-	TermDataSize         uint64 `json:"term_data_size"`
-	DocMetadataSize      uint64 `json:"doc_metadata_size"`
-	TermBlockDirSize     uint64 `json:"term_block_dir_size"`
-	PostingsBlockDirSize uint64 `json:"postings_block_dir_size"`
 }

@@ -124,7 +124,7 @@ func (p *LoglineHintProvider) ProvideHints(
 		Through:     through,
 		Expr:        expr.String(),
 		Tenant:      tenant,
-		Indexes:     toProtoMetas(overlapping),
+		Indexes:     overlapping,
 		NgramLength: int64(p.ngramLength),
 	})
 
@@ -264,50 +264,4 @@ func normalizeRanges(ranges []logproto.HintTimeRange) []logproto.HintTimeRange {
 		return nil
 	}
 	return out
-}
-
-func toProtoMetas(metas []store.Meta) []logproto.Meta {
-	out := make([]logproto.Meta, len(metas))
-	for i, m := range metas {
-		out[i] = toProtoMeta(m)
-	}
-	return out
-}
-
-func toProtoMeta(m store.Meta) logproto.Meta {
-	pm := logproto.Meta{
-		Date:             m.Date,
-		StorageID:        m.StorageID,
-		Hash:             m.Hash,
-		Version:          m.Version,
-		MinLogTs:         m.MinLogTs,
-		MaxLogTs:         m.MaxLogTs,
-		MinRecordTs:      m.MinRecordTs,
-		MaxRecordTs:      m.MaxRecordTs,
-		CompactedFrom:    m.CompactedFrom,
-		CreatedAt:        m.CreatedAt,
-		ShardCount:       int64(m.ShardCount),
-		ShardAlgorithm:   m.ShardAlgorithm,
-		ShardValue:       int64(m.ShardValue),
-		DocumentInterval: m.DocumentInterval,
-		SizeBytes:        m.SizeBytes,
-	}
-	if m.IndexHeader != nil {
-		h := m.IndexHeader
-		pm.IndexHeader = &logproto.HeaderInfo{
-			Version:              h.Version,
-			Flags:                h.Flags,
-			DocumentCount:        h.DocumentCount,
-			TermBlockCount:       h.TermBlockCount,
-			PostingsBlockCount:   h.PostingsBlockCount,
-			PostingsCompression:  h.PostingsCompression,
-			TermCount:            h.TermCount,
-			PostingsDataSize:     h.PostingsDataSize,
-			TermDataSize:         h.TermDataSize,
-			DocMetadataSize:      h.DocMetadataSize,
-			TermBlockDirSize:     h.TermBlockDirSize,
-			PostingsBlockDirSize: h.PostingsBlockDirSize,
-		}
-	}
-	return pm
 }

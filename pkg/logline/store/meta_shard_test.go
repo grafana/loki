@@ -24,9 +24,9 @@ func TestMeta_ShardFieldsRoundTrip(t *testing.T) {
 	var got store.Meta
 	require.NoError(t, json.Unmarshal(data, &got))
 
-	require.Equal(t, 4, got.ShardCount)
+	require.Equal(t, int64(4), got.ShardCount)
 	require.Equal(t, "first_byte", got.ShardAlgorithm)
-	require.Equal(t, 2, got.ShardValue)
+	require.Equal(t, int64(2), got.ShardValue)
 }
 
 func TestMeta_ShardFieldsZeroValueBackwardCompat(t *testing.T) {
@@ -34,9 +34,9 @@ func TestMeta_ShardFieldsZeroValueBackwardCompat(t *testing.T) {
 	raw := `{"date":"2026-01-01","hash":"abc","version":"lidx-fast-v2","min_log_ts":"2026-01-01T00:00:00Z","max_log_ts":"2026-01-01T23:59:59Z","min_rec_ts":"2026-01-01T00:00:00Z","max_rec_ts":"2026-01-01T23:59:59Z","index_header":null}`
 	var m store.Meta
 	require.NoError(t, json.Unmarshal([]byte(raw), &m))
-	require.Equal(t, 0, m.ShardCount)
+	require.Equal(t, int64(0), m.ShardCount)
 	require.Equal(t, "", m.ShardAlgorithm)
-	require.Equal(t, 0, m.ShardValue)
+	require.Equal(t, int64(0), m.ShardValue)
 }
 
 func TestMeta_ShardFieldsAlwaysSerialized(t *testing.T) {

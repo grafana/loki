@@ -13,6 +13,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/v3/pkg/logline/format"
+	"github.com/grafana/loki/v3/pkg/logproto"
 )
 
 // latencyReaderAt wraps an io.ReaderAt and injects a configurable latency on
@@ -31,7 +32,7 @@ func (r *latencyReaderAt) ReadAt(p []byte, off int64) (int, error) {
 type benchIndex struct {
 	path   string
 	size   int64
-	header format.HeaderInfo
+	header logproto.HeaderInfo
 	cached any // opaque state from first open
 }
 

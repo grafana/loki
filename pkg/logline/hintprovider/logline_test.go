@@ -156,7 +156,7 @@ func TestLoglineHintProvider_ExecuteQuery_ObservesQueryMultiple(t *testing.T) {
 	active := indexStore.Snapshot().Active()
 	require.Len(t, active, 1)
 
-	shardRanges, err := provider.executeQuery(context.Background(), []string{"QQQQQQ"}, toProtoMetas(active), stats)
+	shardRanges, err := provider.executeQuery(context.Background(), []string{"QQQQQQ"}, active, stats)
 	require.NoError(t, err)
 	require.Empty(t, shardRanges)
 
@@ -650,9 +650,9 @@ func writeShardedTestIndex(t *testing.T, indexStore *store.Store, hash, needle s
 		MaxRecordTs:    docMax.UTC(),
 		IndexHeader:    headerInfo,
 		SizeBytes:      int64(len(indexBytes)),
-		ShardCount:     shardCount,
+		ShardCount:     int64(shardCount),
 		ShardAlgorithm: shardAlgorithm,
-		ShardValue:     shardValue,
+		ShardValue:     int64(shardValue),
 	}
 
 	require.NoError(t, indexStore.PutIndex(context.Background(), bytes.NewReader(indexBytes), meta))
@@ -890,7 +890,7 @@ func TestLoglineHintProvider_ExecuteQuery_OpensReaderOncePerIndex(t *testing.T) 
 	require.Len(t, active, 1)
 
 	stats := NewQueryStats()
-	shardRanges, err := provider.executeQuery(context.Background(), []string{needle, needle}, toProtoMetas(active), stats)
+	shardRanges, err := provider.executeQuery(context.Background(), []string{needle, needle}, active, stats)
 	require.NoError(t, err)
 	require.NotEmpty(t, shardRanges)
 
@@ -982,7 +982,7 @@ func TestBuildTermJobs_FilterTooShortReturnsUnsupported(t *testing.T) {
 	require.ErrorIs(t, err, ErrUnsupported)
 }
 
-func buildIndexBytes(t *testing.T, needle string, docMin, docMax time.Time) ([]byte, *format.HeaderInfo) {
+func buildIndexBytes(t *testing.T, needle string, docMin, docMax time.Time) ([]byte, *logproto.HeaderInfo) {
 	t.Helper()
 	tmpDir := t.TempDir()
 	path := filepath.Join(tmpDir, "test.lidx")
@@ -1066,7 +1066,7 @@ func writeShardedTermTestIndex(
 		SizeBytes:      int64(len(indexBytes)),
 		ShardCount:     10,
 		ShardAlgorithm: shard.AlgorithmMurmur3Mix,
-		ShardValue:     shardValue,
+		ShardValue:     int64(shardValue),
 	}
 	require.NoError(t, indexStore.PutIndex(context.Background(), bytes.NewReader(indexBytes), meta))
 	require.NoError(t, indexStore.Poll(context.Background()))

@@ -11,7 +11,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/thanos-io/objstore"
 
-	"github.com/grafana/loki/v3/pkg/logline/format"
+	"github.com/grafana/loki/v3/pkg/logproto"
 )
 
 func TestStore_GetIndex_ReturnsIndexData(t *testing.T) {
@@ -24,7 +24,7 @@ func TestStore_GetIndex_ReturnsIndexData(t *testing.T) {
 		Date: "2026-02-25", Hash: "abc1230000000000", Version: "v3",
 		MinLogTs: now.Add(-1 * time.Hour), MaxLogTs: now,
 		MinRecordTs: now.Add(-1 * time.Hour), MaxRecordTs: now,
-		IndexHeader: &format.HeaderInfo{},
+		IndexHeader: &logproto.HeaderInfo{},
 		SizeBytes:   int64(len(indexContent)),
 	}
 	err := s.PutIndex(context.Background(), strings.NewReader(indexContent), meta)
@@ -66,7 +66,7 @@ func TestStore_GetMeta_ReturnsPopulatedMeta(t *testing.T) {
 		MinLogTs: now.Add(-2 * time.Hour), MaxLogTs: now.Add(-1 * time.Hour),
 		MinRecordTs: now.Add(-2 * time.Hour), MaxRecordTs: now.Add(-1 * time.Hour),
 		CompactedFrom: []string{"2026-02-25/0000000000000001"},
-		IndexHeader:   &format.HeaderInfo{},
+		IndexHeader:   &logproto.HeaderInfo{},
 		SizeBytes:     int64(len("data")),
 	}
 	err := s.PutIndex(context.Background(), strings.NewReader("data"), meta)
@@ -97,7 +97,7 @@ func TestStore_GetMeta_UsesPathStorageIDAndPreservesHash(t *testing.T) {
 		MaxLogTs:    now.Add(-1 * time.Hour),
 		MinRecordTs: now.Add(-2 * time.Hour),
 		MaxRecordTs: now.Add(-1 * time.Hour),
-		IndexHeader: &format.HeaderInfo{},
+		IndexHeader: &logproto.HeaderInfo{},
 		SizeBytes:   int64(len("data")),
 	}
 	err := s.PutIndex(context.Background(), strings.NewReader("data"), meta)
@@ -154,7 +154,7 @@ func TestStore_GetMeta_PopulatesSizeBytes(t *testing.T) {
 		Date: "2026-02-25", Hash: "aabbccdd00000000", Version: "v3",
 		MinLogTs: now.Add(-1 * time.Hour), MaxLogTs: now,
 		MinRecordTs: now.Add(-1 * time.Hour), MaxRecordTs: now,
-		IndexHeader: &format.HeaderInfo{},
+		IndexHeader: &logproto.HeaderInfo{},
 		SizeBytes:   int64(len(indexContent)),
 	}
 	err := s.PutIndex(context.Background(), strings.NewReader(indexContent), meta)
@@ -175,7 +175,7 @@ func TestStore_GetMeta_UsesSizeBytesFromMeta(t *testing.T) {
 		Date: "2026-02-25", Hash: "aabbccdd00000001", Version: "v3",
 		MinLogTs: now.Add(-1 * time.Hour), MaxLogTs: now,
 		MinRecordTs: now.Add(-1 * time.Hour), MaxRecordTs: now,
-		IndexHeader: &format.HeaderInfo{},
+		IndexHeader: &logproto.HeaderInfo{},
 		SizeBytes:   int64(len(indexContent)),
 	}
 	err := s.PutIndex(context.Background(), strings.NewReader(indexContent), meta)
@@ -200,7 +200,7 @@ func TestStore_GetMeta_MismatchedJSONID_ReturnsError(t *testing.T) {
 		MaxLogTs:    now.Add(-1 * time.Hour),
 		MinRecordTs: now.Add(-2 * time.Hour),
 		MaxRecordTs: now.Add(-1 * time.Hour),
-		IndexHeader: &format.HeaderInfo{},
+		IndexHeader: &logproto.HeaderInfo{},
 		SizeBytes:   int64(len("data")),
 	}
 	err := s.PutIndex(context.Background(), strings.NewReader("data"), meta)

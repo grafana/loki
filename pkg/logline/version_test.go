@@ -14,6 +14,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/v3/pkg/logline/format"
+	"github.com/grafana/loki/v3/pkg/logproto"
 )
 
 type testIndexSource struct {
@@ -838,7 +839,7 @@ func TestNewWriter_UnsupportedVersion(t *testing.T) {
 
 func TestOpenReader_UnsupportedVersion(t *testing.T) {
 	reader := bytes.NewReader(nil)
-	_, _, err := OpenReader("v-does-not-exist", reader, 0, 0, format.HeaderInfo{})
+	_, _, err := OpenReader("v-does-not-exist", reader, 0, 0, logproto.HeaderInfo{})
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "unsupported index version")
 }
@@ -1000,7 +1001,7 @@ func FuzzMergeAndQuery(f *testing.F) {
 // Test helpers
 // ---------------------------------------------------------------------------
 
-func writeIndex(t *testing.T, version string, docs []format.DocumentMetadata, terms map[[8]byte][]uint32) (string, format.HeaderInfo) {
+func writeIndex(t *testing.T, version string, docs []format.DocumentMetadata, terms map[[8]byte][]uint32) (string, logproto.HeaderInfo) {
 	t.Helper()
 
 	path := filepath.Join(t.TempDir(), "index.lidx")
@@ -1049,7 +1050,7 @@ func queryTerms(t *testing.T, reader Reader, terms []string) []uint32 {
 	return result.Roaring.ToArray()
 }
 
-func openAndQueryTerms(t *testing.T, version, path string, size int64, headerInfo format.HeaderInfo, terms []string) []uint32 {
+func openAndQueryTerms(t *testing.T, version, path string, size int64, headerInfo logproto.HeaderInfo, terms []string) []uint32 {
 	t.Helper()
 
 	reader, _, file := openReader(t, version, path, size, headerInfo)
@@ -1061,7 +1062,7 @@ func openAndQueryTerms(t *testing.T, version, path string, size int64, headerInf
 	return queryTerms(t, reader, terms)
 }
 
-func openAndQueryTermsCached(t *testing.T, version, path string, size int64, cached any, terms []string) ([]uint32, format.HeaderInfo) {
+func openAndQueryTermsCached(t *testing.T, version, path string, size int64, cached any, terms []string) ([]uint32, logproto.HeaderInfo) {
 	t.Helper()
 
 	file, err := os.Open(path)
@@ -1079,7 +1080,7 @@ func openAndQueryTermsCached(t *testing.T, version, path string, size int64, cac
 	return queryTerms(t, reader, terms), reader.ReadHeader()
 }
 
-func openReader(t *testing.T, version, path string, size int64, headerInfo format.HeaderInfo) (Reader, any, *os.File) {
+func openReader(t *testing.T, version, path string, size int64, headerInfo logproto.HeaderInfo) (Reader, any, *os.File) {
 	t.Helper()
 
 	file, err := os.Open(path)
@@ -1090,7 +1091,7 @@ func openReader(t *testing.T, version, path string, size int64, headerInfo forma
 	return reader, cached, file
 }
 
-func writeAndMerge(t *testing.T, version string, sources []testIndexSource) (string, format.HeaderInfo) {
+func writeAndMerge(t *testing.T, version string, sources []testIndexSource) (string, logproto.HeaderInfo) {
 	t.Helper()
 
 	paths := make([]string, len(sources))
@@ -1102,7 +1103,7 @@ func writeAndMerge(t *testing.T, version string, sources []testIndexSource) (str
 	return mergePaths(context.Background(), t, version, paths)
 }
 
-func mergePaths(ctx context.Context, t *testing.T, version string, paths []string) (string, format.HeaderInfo) {
+func mergePaths(ctx context.Context, t *testing.T, version string, paths []string) (string, logproto.HeaderInfo) {
 	t.Helper()
 
 	readers := make([]io.ReaderAt, len(paths))
@@ -1149,7 +1150,7 @@ func fileSize(t *testing.T, path string) int64 {
 	return info.Size()
 }
 
-func readHeaderFromPath(t *testing.T, path string) format.HeaderInfo {
+func readHeaderFromPath(t *testing.T, path string) logproto.HeaderInfo {
 	t.Helper()
 
 	file, err := os.Open(path)

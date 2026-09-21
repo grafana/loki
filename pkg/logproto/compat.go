@@ -368,6 +368,47 @@ func (m Meta) IndexPath() string {
 	return fmt.Sprintf("%s/%s/index", m.Date, m.objectID())
 }
 
+// MetaPath returns the object storage path for the metadata file.
+func (m Meta) MetaPath() string {
+	return fmt.Sprintf("%s/%s/meta.json", m.Date, m.objectID())
+}
+
+// Validate checks that all required fields are set. CompactedFrom and CreatedAt
+// are excluded — CompactedFrom is only set on merged indexes, CreatedAt by PutIndex.
+func (m Meta) Validate() error {
+	if m.Date == "" {
+		return fmt.Errorf("date must be non-empty")
+	}
+	if m.Hash == "" {
+		return fmt.Errorf("hash must be non-empty")
+	}
+	if m.objectID() == "" {
+		return fmt.Errorf("storage id must be non-empty")
+	}
+	if m.Version == "" {
+		return fmt.Errorf("version must be non-empty")
+	}
+	if m.MinLogTs.IsZero() {
+		return fmt.Errorf("min_log_ts must be set")
+	}
+	if m.MaxLogTs.IsZero() {
+		return fmt.Errorf("max_log_ts must be set")
+	}
+	if m.MinRecordTs.IsZero() {
+		return fmt.Errorf("min_rec_ts must be set")
+	}
+	if m.MaxRecordTs.IsZero() {
+		return fmt.Errorf("max_rec_ts must be set")
+	}
+	if m.IndexHeader == nil {
+		return fmt.Errorf("index_header must be set")
+	}
+	if m.SizeBytes <= 0 {
+		return fmt.Errorf("size_bytes must be positive")
+	}
+	return nil
+}
+
 func (m *HintRequest) GetStart() time.Time {
 	return time.UnixMilli(int64(m.From))
 }

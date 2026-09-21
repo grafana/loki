@@ -21,7 +21,7 @@ func TestMeta_SetFileInfo(t *testing.T) {
 	defer f.Close()
 
 	var meta Meta
-	require.NoError(t, meta.SetFileInfo(f))
+	require.NoError(t, SetFileInfo(&meta, f))
 
 	require.Equal(t, fmt.Sprintf("%016x", xxh3.Hash(data)), meta.Hash)
 	require.Equal(t, int64(len(data)), meta.SizeBytes)
@@ -44,7 +44,7 @@ func TestMeta_SetFileInfo_EmptyFile(t *testing.T) {
 	defer f.Close()
 
 	var meta Meta
-	require.NoError(t, meta.SetFileInfo(f))
+	require.NoError(t, SetFileInfo(&meta, f))
 	require.Zero(t, meta.SizeBytes)
 	require.Equal(t, fmt.Sprintf("%016x", xxh3.Hash(nil)), meta.Hash)
 }
@@ -58,5 +58,5 @@ func TestMeta_SetFileInfo_ClosedFile(t *testing.T) {
 	require.NoError(t, f.Close())
 
 	var meta Meta
-	require.Error(t, meta.SetFileInfo(f))
+	require.Error(t, SetFileInfo(&meta, f))
 }
