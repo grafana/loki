@@ -36,9 +36,9 @@ const (
 )
 
 type metrics struct {
-	streamEvictionsTotal       *prometheus.CounterVec
-	streamShardEvictionsTotal  *prometheus.CounterVec
-	streamShardsDiscardedTotal *prometheus.CounterVec
+	streamEvictionsTotal            *prometheus.CounterVec
+	streamShardEvictionsTotal       *prometheus.CounterVec
+	streamShardStreamsNotOwnedTotal *prometheus.CounterVec
 }
 
 func newMetrics(reg prometheus.Registerer) *metrics {
@@ -53,10 +53,10 @@ func newMetrics(reg prometheus.Registerer) *metrics {
 			Name:      "ingest_limits_stream_shard_evictions_total",
 			Help:      "The total number of streams tracked for stream sharding that were evicted due to age per tenant. This is not a global total, as tenants can be sharded over multiple pods.",
 		}, []string{"tenant"}),
-		streamShardsDiscardedTotal: promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
+		streamShardStreamsNotOwnedTotal: promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
 			Namespace: constants.Loki,
-			Name:      "ingest_limits_stream_shard_streams_discarded_total",
-			Help:      "The total number of streams discarded by CheckLimitsAndShard because their partition is not assigned to this instance.",
+			Name:      "ingest_limits_stream_shard_streams_not_owned_total",
+			Help:      "The total number of streams CheckLimitsAndShard could not decide a shard count for because their partition is not assigned to this instance. A sustained non-zero rate means frontends are routing streams to the wrong instance.",
 		}, []string{"partition"}),
 	}
 }
@@ -221,17 +221,17 @@ func (s *Service) CheckLimitsAndShard(
 	ctx context.Context,
 	req *proto.CheckLimitsAndShardRequest,
 ) (*proto.CheckLimitsAndShardResponse, error) {
-	streams := req.Streams
-	owned := 0
-	// A stream whose partition this instance does not consume gets an explicit
-	// ReasonNotOwned result rather than being dropped: the frontend marks a
-	// stream answered once any instance responds, so a dropped stream is never
-	// retried against another zone.
-	results := make([]*proto.StreamShardResult, 0, len(streams))
-	for _, stream := range streams {
-		partition := int32(stream.StreamHash % uint64(s.cfg.NumPartitions))
+	// A stream whose partition this instance does not consume is answered with
+	// an explicit ReasonNotOwned result. The frontend treats that the same as
+	// a missing result, one shard, but reporting it tells the two apart: a
+	// stream that reached the wrong instance looks identical to an unreachable
+	// instance otherwise.
+	owned := make([]*proto.StreamMetadata, 0, len(req.Streams))
+	results := make([]*proto.StreamShardResult, 0, len(req.Streams))
+	for _, stream := range req.Streams {
+		partition := s.streamShards.getPartitionForHash(stream.StreamHash)
 		if !s.partitionManager.Has(partition) {
-			s.metrics.streamShardsDiscardedTotal.WithLabelValues(strconv.Itoa(int(partition))).Inc()
+			s.metrics.streamShardStreamsNotOwnedTotal.WithLabelValues(strconv.Itoa(int(partition))).Inc()
 			results = append(results, &proto.StreamShardResult{
 				StreamHash: stream.StreamHash,
 				Shards:     1,
@@ -239,10 +239,9 @@ func (s *Service) CheckLimitsAndShard(
 			})
 			continue
 		}
-		streams[owned] = stream
-		owned++
+		owned = append(owned, stream)
 	}
-	results = append(results, s.streamShards.checkAndShard(ctx, req.Tenant, streams[:owned], s.clock.Now())...)
+	results = append(results, s.streamShards.checkAndShard(ctx, req.Tenant, owned, s.clock.Now())...)
 	return &proto.CheckLimitsAndShardResponse{Results: results}, nil
 }
 
