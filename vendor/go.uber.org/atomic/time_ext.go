@@ -20,7 +20,10 @@
 
 package atomic
 
-import "time"
+import (
+	"encoding/json"
+	"time"
+)
 
 //go:generate bin/gen-atomicwrapper -name=Time -type=time.Time -wrapped=Value -pack=packTime -unpack=unpackTime -imports time -file=time.go
 
@@ -33,4 +36,19 @@ func unpackTime(v interface{}) time.Time {
 		return t
 	}
 	return time.Time{}
+}
+
+// MarshalJSON encodes the wrapped time.Time into JSON.
+func (x *Time) MarshalJSON() ([]byte, error) {
+	return json.Marshal(x.Load())
+}
+
+// UnmarshalJSON decodes a time.Time from JSON.
+func (x *Time) UnmarshalJSON(b []byte) error {
+	var v time.Time
+	if err := json.Unmarshal(b, &v); err != nil {
+		return err
+	}
+	x.Store(v)
+	return nil
 }
