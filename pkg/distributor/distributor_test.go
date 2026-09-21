@@ -2356,10 +2356,10 @@ func prepareButDontStart(t *testing.T, numDistributors, numIngesters int, limits
 	}
 
 	t.Cleanup(func() {
-		assert.NoError(t, closer.Close())
 		for _, d := range distributors {
 			assert.NoError(t, services.StopAndAwaitTerminated(context.Background(), d))
 		}
+		assert.NoError(t, closer.Close())
 		ingestersRing.StopAsync()
 	})
 
