@@ -627,8 +627,8 @@ github.com/dolthub/swiss/simd
 github.com/drone/envsubst
 github.com/drone/envsubst/parse
 github.com/drone/envsubst/path
-# github.com/dustin/go-humanize v1.0.1
-## explicit; go 1.16
+# github.com/dustin/go-humanize v1.1.0
+## explicit; go 1.21
 github.com/dustin/go-humanize
 # github.com/ebitengine/purego v0.11.0
 ## explicit; go 1.25.0
