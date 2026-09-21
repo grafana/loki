@@ -83,7 +83,6 @@ var (
 	ErrReplicationSpecConflict = errors.New("replicationSpec and replicationFactor (deprecated) cannot be used at the same time")
 	// ErrIPv6InstanceAddrTypeNotAllowed when the default InstanceAddrType is used with enableIPv6.
 	ErrIPv6InstanceAddrTypeNotAllowed = errors.New(`instanceAddrType "default" cannot be used with enableIPv6 at the same time`)
-
 	// ErrOTLPGlobalNoStreamLabel when the global OTLP configuration does not define at least one stream label.
 	ErrOTLPGlobalNoStreamLabel = errors.New("global OTLP configuration needs to define at least one stream label")
 	// ErrOTLPTenantMissing when a tenant is missing from the OTLP configuration although it has been defined in the tenancy.
@@ -107,7 +106,14 @@ var (
 	// ErrDescriptionAnnotationMissing indicates that an alerting rule is missing the description annotation
 	ErrDescriptionAnnotationMissing = errors.New("rule requires annotation: description")
 
-	// WarnSchemaRemovalRetentionGap warns users that schema removal validation uses current retention config
-	WarnSchemaRemovalRetentionGap = "Removing a schema that had no retention policy during its active period may leave unreadable data in object storage. " +
-		"Verify that global retention was configured, and the retention period has elapsed. There is a 2-hour grace period to restore the schema if needed."
+	// ErrSchemaRetentionConflict when both schema configuration and retention are changed in the same update.
+	ErrSchemaRetentionConflict = errors.New("Cannot update schemas and retention in the same request. Update retention first, then remove the schema. This ensures each schema is using the correct retention period.")
+
+	// WarnSchemaRemoval warns users that schema removal validation uses current retention config
+	WarnSchemaRemoval = "If retention was not properly configured during the schema's active period, this may leave unreadable data in object storage. " +
+		"You can add the schema back to the spec up until the next compactor cycle."
+
+	// WarnRetentionUpdate warns users that changing retention affects schema removal validation
+	WarnRetentionUpdate = "Retention configuration has changed. Please be aware that schema removal validation uses current retention settings. " +
+		"Existing schemas can only be removed after: (next schema effective date) + (current retention period)."
 )

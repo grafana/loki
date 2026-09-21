@@ -35,12 +35,12 @@ func (v *LokiStackValidator) SetupWebhookWithManager(mgr ctrl.Manager) error {
 
 // ValidateCreate implements admission.Validator.
 func (v *LokiStackValidator) ValidateCreate(ctx context.Context, obj *lokiv1.LokiStack) (admission.Warnings, error) {
-	return v.validate(ctx, obj)
+	return v.validate(ctx, nil, obj)
 }
 
 // ValidateUpdate implements admission.Validator.
-func (v *LokiStackValidator) ValidateUpdate(ctx context.Context, _, newObj *lokiv1.LokiStack) (admission.Warnings, error) {
-	return v.validate(ctx, newObj)
+func (v *LokiStackValidator) ValidateUpdate(ctx context.Context, oldObj, newObj *lokiv1.LokiStack) (admission.Warnings, error) {
+	return v.validate(ctx, oldObj, newObj)
 }
 
 // ValidateDelete implements admission.Validator.
@@ -49,45 +49,63 @@ func (v *LokiStackValidator) ValidateDelete(_ context.Context, _ *lokiv1.LokiSta
 	return nil, nil
 }
 
-func (v *LokiStackValidator) validate(ctx context.Context, stack *lokiv1.LokiStack) (admission.Warnings, error) {
+func (v *LokiStackValidator) validate(ctx context.Context, currentStack, newStack *lokiv1.LokiStack) (admission.Warnings, error) {
 	var allErrs field.ErrorList
 	var warnings admission.Warnings
 
 	storageStatus := lokiv1.LokiStackStorageStatus{}
-	if stack != nil {
-		storageStatus = stack.Status.Storage
+	if newStack != nil {
+		storageStatus = newStack.Status.Storage
 	}
 
-	errors := ValidateSchemas(&stack.Spec.Storage, time.Now().UTC(), storageStatus, stack.Spec.Limits)
+	errors := ValidateSchemas(&newStack.Spec.Storage, time.Now().UTC(), storageStatus, newStack.Spec.Limits)
 	if len(errors) != 0 {
 		allErrs = append(allErrs, errors...)
 	}
 
-	errors = v.validateReplicationSpec(stack.Spec)
+	errors = v.validateReplicationSpec(newStack.Spec)
 	if len(errors) != 0 {
 		allErrs = append(allErrs, errors...)
 	}
 
-	errors = v.validateHashRingSpec(stack.Spec)
+	errors = v.validateHashRingSpec(newStack.Spec)
 	if len(errors) != 0 {
 		allErrs = append(allErrs, errors...)
 	}
 
-	if stack.Spec.Limits != nil {
-		if (stack.Spec.Limits.Global != nil && stack.Spec.Limits.Global.OTLP != nil) ||
-			len(stack.Spec.Limits.Tenants) > 0 {
+	if newStack.Spec.Limits != nil {
+		if (newStack.Spec.Limits.Global != nil && newStack.Spec.Limits.Global.OTLP != nil) ||
+			len(newStack.Spec.Limits.Tenants) > 0 {
 			// Only need to validate custom OTLP configuration
-			allErrs = append(allErrs, v.validateOTLPConfiguration(&stack.Spec)...)
+			allErrs = append(allErrs, v.validateOTLPConfiguration(&newStack.Spec)...)
 		}
 	}
 
 	if v.ExtendedValidator != nil {
-		allErrs = append(allErrs, v.ExtendedValidator(ctx, stack)...)
+		allErrs = append(allErrs, v.ExtendedValidator(ctx, newStack)...)
 	}
 
-	// Only add warning if schema removal will succeed (no validation errors)
-	if len(allErrs) == 0 && schemasRemoved(stack.Spec.Storage.Schemas, storageStatus.Schemas) {
-		warnings = append(warnings, lokiv1.WarnSchemaRemovalRetentionGap)
+	// Check for schema AND retention changes in same update (not allowed)
+	if currentStack != nil && len(currentStack.Spec.Storage.Schemas) > 0 {
+		schemasModified := schemasChanged(newStack.Spec.Storage.Schemas, currentStack.Spec.Storage.Schemas)
+		retentionModified := retentionUpdated(newStack.Spec.Limits, currentStack.Spec.Limits)
+
+		if schemasModified && retentionModified {
+			allErrs = append(allErrs, field.Forbidden(
+				field.NewPath("spec"),
+				lokiv1.ErrSchemaRetentionConflict.Error(),
+			))
+		}
+
+		// Warn when retention configuration is updated
+		if retentionModified {
+			warnings = append(warnings, lokiv1.WarnRetentionUpdate)
+		}
+	}
+
+	// Warn when schema removal succeeds
+	if len(allErrs) == 0 && schemasRemoved(newStack.Spec.Storage.Schemas, storageStatus.Schemas) {
+		warnings = append(warnings, lokiv1.WarnSchemaRemoval)
 	}
 
 	if len(allErrs) == 0 {
@@ -96,7 +114,7 @@ func (v *LokiStackValidator) validate(ctx context.Context, stack *lokiv1.LokiSta
 
 	return warnings, apierrors.NewInvalid(
 		schema.GroupKind{Group: "loki.grafana.com", Kind: "LokiStack"},
-		stack.Name,
+		newStack.Name,
 		allErrs,
 	)
 }
@@ -479,6 +497,37 @@ func schemasRemoved(specSchemas []lokiv1.ObjectStorageSchema, statusSchemas []lo
 
 	for _, schema := range statusSchemas {
 		if !specDates[schema.EffectiveDate] {
+			return true
+		}
+	}
+
+	return false
+}
+
+// retentionUpdated checks if retention configuration has changed by comparing current spec to prior state.
+// It looks for changes in global retention or any tenant retention settings.
+func retentionUpdated(currentLimits, priorLimits *lokiv1.LimitsSpec) bool {
+	currentRetention := getRetentionDays(currentLimits)
+	priorRetention := getRetentionDays(priorLimits)
+
+	return currentRetention != priorRetention
+}
+
+// schemasChanged checks if schemas were added or removed by comparing current spec to prior state
+func schemasChanged(currentSchemas, priorSchemas []lokiv1.ObjectStorageSchema) bool {
+	if len(currentSchemas) != len(priorSchemas) {
+		return true
+	}
+
+	// Build map of prior schemas
+	priorMap := make(map[lokiv1.StorageSchemaEffectiveDate]lokiv1.ObjectStorageSchemaVersion)
+	for _, schema := range priorSchemas {
+		priorMap[schema.EffectiveDate] = schema.Version
+	}
+
+	// Check if any current schema is different
+	for _, schema := range currentSchemas {
+		if priorVersion, exists := priorMap[schema.EffectiveDate]; !exists || priorVersion != schema.Version {
 			return true
 		}
 	}
