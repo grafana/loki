@@ -54,6 +54,7 @@ import (
 	limits_frontend "github.com/grafana/loki/v3/pkg/limits/frontend"
 	limits_frontend_client "github.com/grafana/loki/v3/pkg/limits/frontend/client"
 	"github.com/grafana/loki/v3/pkg/loghttp/push"
+	loglineconfig "github.com/grafana/loki/v3/pkg/logline/config"
 	"github.com/grafana/loki/v3/pkg/loki/codec"
 	"github.com/grafana/loki/v3/pkg/loki/common"
 	"github.com/grafana/loki/v3/pkg/lokifrontend"
@@ -122,6 +123,7 @@ type Config struct {
 	MemberlistKV        memberlist.KVConfig        `yaml:"memberlist"`
 	KafkaConfig         kafka.Config               `yaml:"kafka_config,omitempty" category:"experimental"`
 	DataObj             dataobjconfig.Config       `yaml:"dataobj,omitempty" category:"experimental"`
+	Logline             loglineconfig.Config       `yaml:"logline,omitempty" category:"experimental"`
 
 	IngestLimits               limits.Config                 `yaml:"ingest_limits,omitempty" category:"experimental"`
 	IngestLimitsFrontend       limits_frontend.Config        `yaml:"ingest_limits_frontend,omitempty" category:"experimental"`
@@ -239,6 +241,7 @@ func (c *Config) RegisterFlags(f *flag.FlagSet) {
 	c.IngestLimitsFrontendClient.RegisterFlags(f)
 	c.UI.RegisterFlags(f)
 	c.DataObj.RegisterFlags(f)
+	c.Logline.RegisterFlags(f)
 }
 
 func (c *Config) registerServerFlagsWithChangedDefaultValues(fs *flag.FlagSet) {
@@ -359,6 +362,11 @@ func (c *Config) Validate() error {
 		if err := c.DataObj.Validate(); err != nil {
 			errs = append(errs, errors.Wrap(err, "CONFIG ERROR: invalid dataobj config"))
 		}
+	}
+	// Config.Validate is a no-op unless logline.enabled is set; the store
+	// requires a min_date that has no sensible default.
+	if err := c.Logline.Validate(); err != nil {
+		errs = append(errs, errors.Wrap(err, "CONFIG ERROR: invalid logline config"))
 	}
 	if err := c.Distributor.Validate(); err != nil {
 		errs = append(errs, errors.Wrap(err, "CONFIG ERROR: invalid distributor config"))

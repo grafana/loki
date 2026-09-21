@@ -57,8 +57,18 @@ filter middleware falls back to passthrough — it does not block or fail the qu
 |------|---------|
 | `middleware.go` | Prefetch + filter middleware handlers, `emptyLokiResponse`, `rangesOverlapping` |
 | `integration.go` | `WrapMiddleware` / `WrapMiddlewareWithStore` — builds and composes the full stack |
-| `config.go` | `MiddlewareConfig` and `Config` — ngram length, parallelism, timeouts, cache settings |
+| `config.go` | Aliases onto `pkg/logline/config`, which owns the config types (see below) |
 | `metrics.go` | Prometheus metrics for hint provider duration, ranges returned, passthrough/skip/narrow counts |
+
+## Config lives in pkg/logline/config
+
+`Config`, `MiddlewareConfig` and `ShardPlanningConfig` are declared in
+`pkg/logline/config` and re-exported here as type aliases. They cannot live in this
+package: `integration.go` imports `pkg/loki` to read the assembled Loki config, and
+`pkg/loki` embeds the `logline` section, so declaring the types here would close an
+import cycle.
+
+Add new config fields in `pkg/logline/config`, not here.
 
 ## Running tests
 

@@ -263,7 +263,7 @@ func NewLoglinePrefetchMiddleware(
 	if cfg.ShardPlanning == (ShardPlanningConfig{}) {
 		cfg.ShardPlanning.Enabled = defaultShardPlanningEnabled
 	}
-	cfg.ShardPlanning.applyDefaults()
+	cfg.ShardPlanning.ApplyDefaults()
 	return queryrangebase.MiddlewareFunc(func(next queryrangebase.Handler) queryrangebase.Handler {
 		return &loglinePrefetchHandler{
 			next:                 next,
