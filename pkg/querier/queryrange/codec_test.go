@@ -603,12 +603,13 @@ func Test_codec_DecodeResponse(t *testing.T) {
 		{
 			"series error key decode", &http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader(`{"status":"success","data": [{"\x": "some string"}]}`))},
 			&LokiSeriesRequest{Path: "/loki/api/v1/series"},
-			nil, "invalid character 'x' in string escape code",
+			// encoding/json error text changed in Go 1.27 when the package switched to the v2 backend.
+			nil, "error decoding response: invalid",
 		},
 		{
 			"series error value decode", &http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader(`{"status":"success","data": [{"label": "some string\x"}]}`))},
 			&LokiSeriesRequest{Path: "/loki/api/v1/series"},
-			nil, "invalid character 'x' in string escape code",
+			nil, "error decoding response: invalid",
 		},
 	}
 	for _, tt := range tests {
