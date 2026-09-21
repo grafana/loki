@@ -1,14 +1,16 @@
 package tsdb
 
 import (
+	"bytes"
 	"context"
-	"encoding/binary"
 	"errors"
 	"math"
-	"strings"
 	"testing"
 
+	"github.com/go-kit/log"
 	"github.com/golang/snappy"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/storage"
@@ -20,19 +22,15 @@ import (
 )
 
 type postingsTestCache struct {
-	buf       []byte
-	entries   map[string][]byte
-	fetchErr  error
-	storeErr  error
-	storeCall int
+	entries  map[string][]byte
+	fetchErr error
+	storeErr error
 }
 
 func (c *postingsTestCache) Store(_ context.Context, keys []string, bufs [][]byte) error {
-	c.storeCall++
 	if c.storeErr != nil {
 		return c.storeErr
 	}
-	c.buf = bufs[0]
 	if c.entries == nil {
 		c.entries = map[string][]byte{}
 	}
@@ -44,17 +42,11 @@ func (c *postingsTestCache) Fetch(_ context.Context, keys []string) ([]string, [
 	if c.fetchErr != nil {
 		return nil, nil, nil, c.fetchErr
 	}
-	if c.buf == nil {
-		return nil, nil, []string{"missing"}, nil
+	buf, ok := c.entries[keys[0]]
+	if !ok {
+		return nil, nil, keys, nil
 	}
-	if c.entries != nil {
-		buf, ok := c.entries[keys[0]]
-		if !ok {
-			return nil, nil, keys, nil
-		}
-		return keys, [][]byte{buf}, nil, nil
-	}
-	return []string{"found"}, [][]byte{c.buf}, nil, nil
+	return keys, [][]byte{buf}, nil, nil
 }
 
 func (*postingsTestCache) Stop() {}
@@ -75,28 +67,31 @@ func TestPostingsCacheCanonicalKeyAndRoundTrip(t *testing.T) {
 	require.NotEqual(t, postingsKey("id", nil, []*labels.Matcher{m1}), postingsKey("id", index.ShardAnnotation{Shard: 0, Of: 2}, []*labels.Matcher{m1}))
 
 	refs := []storage.SeriesRef{2, 7, 19}
-	decoded, ok := decodePostings(key1, encodePostings(key1, refs), ^storage.SeriesRef(0))
-	require.True(t, ok)
+	encoded, err := encodePostings(key1, refs)
+	require.NoError(t, err)
+	decoded, err := decodePostings(key1, encoded)
+	require.NoError(t, err)
 	require.Equal(t, refs, decoded)
-	require.Nil(t, encodePostings(key1, []storage.SeriesRef{2, 1}))
-	require.False(t, func() bool {
-		_, valid := decodePostings(key1+"x", encodePostings(key1, refs), ^storage.SeriesRef(0))
-		return valid
-	}())
+	_, err = encodePostings(key1, []storage.SeriesRef{2, 1})
+	require.ErrorContains(t, err, "not sorted")
+	_, err = decodePostings(key1+"x", encoded)
+	require.ErrorContains(t, err, "key mismatch")
 }
 
 func TestCachedPostingsFailuresRecomputeAndEmptyResultsCache(t *testing.T) {
-	c := &postingsTestCache{fetchErr: errors.New("fetch")}
+	backend := &postingsTestCache{fetchErr: errors.New("fetch")}
+	c := newPostingsCache(backend, "test", prometheus.NewRegistry(), log.NewNopLogger())
 	called := 0
 	compute := func() (index.Postings, error) {
 		called++
 		return index.EmptyPostings(), nil
 	}
-	_, err := cachedPostings(context.Background(), c, "key", ^storage.SeriesRef(0), compute)
+	_, err := c.cachedPostings(context.Background(), "key", compute)
 	require.NoError(t, err)
 	require.Equal(t, 1, called)
-	c.fetchErr = nil
-	p, err := cachedPostings(context.Background(), c, "key", ^storage.SeriesRef(0), func() (index.Postings, error) {
+	require.Empty(t, backend.entries)
+	backend.fetchErr = nil
+	p, err := c.cachedPostings(context.Background(), "key", func() (index.Postings, error) {
 		called++
 		return index.NewListPostings(nil), nil
 	})
@@ -104,38 +99,75 @@ func TestCachedPostingsFailuresRecomputeAndEmptyResultsCache(t *testing.T) {
 	refs, err := index.ExpandPostings(p)
 	require.NoError(t, err)
 	require.Empty(t, refs)
-	require.Equal(t, 1, called)
-
-	c = &postingsTestCache{storeErr: errors.New("store")}
-	_, err = cachedPostings(context.Background(), c, "key", ^storage.SeriesRef(0), compute)
+	require.Equal(t, 2, called)
+	require.Contains(t, backend.entries, cache.HashKey("key"))
+	_, err = c.cachedPostings(context.Background(), "key", compute)
 	require.NoError(t, err)
 	require.Equal(t, 2, called)
+
+	backend = &postingsTestCache{storeErr: errors.New("store")}
+	c = newPostingsCache(backend, "test", prometheus.NewRegistry(), log.NewNopLogger())
+	_, err = c.cachedPostings(context.Background(), "key", compute)
+	require.NoError(t, err)
+	require.Equal(t, 3, called)
 }
 
-func TestCachedPostingsRejectsOversizedAndWrongPayload(t *testing.T) {
-	key := strings.Repeat("k", maxPostingsCacheKeyBytes+1)
-	c := &postingsTestCache{}
-	called := 0
-	_, err := cachedPostings(context.Background(), c, key, ^storage.SeriesRef(0), func() (index.Postings, error) {
-		called++
-		return index.EmptyPostings(), nil
+func TestDecodePostingsRejectsWrongPayload(t *testing.T) {
+	for _, encoded := range [][]byte{
+		{1, 2, 3},
+		[]byte("v1"),
+		[]byte("v1\x80"),
+		[]byte("v1\x04key"),
+		append([]byte("v1\x03key"), 0xff),
+		append([]byte("v1\x03key"), snappy.Encode(nil, []byte{0x80})...),
+	} {
+		_, err := decodePostings("key", encoded)
+		require.Error(t, err)
+	}
+}
+
+func TestCachedPostingsStoreFailureInstrumentation(t *testing.T) {
+	var logs bytes.Buffer
+	backend := &postingsTestCache{storeErr: errors.New("store unavailable")}
+	c := newPostingsCache(backend, "test", prometheus.NewRegistry(), log.NewLogfmtLogger(&logs))
+	compute := func() (index.Postings, error) {
+		return index.NewListPostings([]storage.SeriesRef{2, 7}), nil
+	}
+	p, err := c.cachedPostings(context.Background(), "key", compute)
+	require.NoError(t, err)
+	refs, err := index.ExpandPostings(p)
+	require.NoError(t, err)
+	require.Equal(t, []storage.SeriesRef{2, 7}, refs)
+	require.Equal(t, float64(1), testutil.ToFloat64(c.metrics.storeFailures))
+	require.Contains(t, logs.String(), "failed to store postings in cache")
+	require.Contains(t, logs.String(), "store unavailable")
+	backend.storeErr = nil
+	_, err = c.cachedPostings(context.Background(), "key", compute)
+	require.NoError(t, err)
+	require.Equal(t, float64(1), testutil.ToFloat64(c.metrics.storeFailures))
+}
+
+func TestCachedPostingsDecodeFailureRecomputes(t *testing.T) {
+	backend := &postingsTestCache{entries: map[string][]byte{cache.HashKey("key"): []byte("v1")}}
+	c := newPostingsCache(backend, "test", prometheus.NewRegistry(), log.NewNopLogger())
+	require.Zero(t, testutil.ToFloat64(c.metrics.decodeFailures))
+	p, err := c.cachedPostings(context.Background(), "key", func() (index.Postings, error) {
+		return index.NewListPostings([]storage.SeriesRef{7}), nil
 	})
 	require.NoError(t, err)
-	require.Equal(t, 1, called)
-	require.False(t, func() bool {
-		_, ok := decodePostings("key", []byte{1, 2, 3}, ^storage.SeriesRef(0))
-		return ok
-	}())
-	encoded := encodePostings("key", []storage.SeriesRef{1})
-	payload, err := snappy.Decode(nil, encoded)
+	refs, err := index.ExpandPostings(p)
 	require.NoError(t, err)
-	payload[0] = 2
-	_, ok := decodePostings("key", snappy.Encode(nil, payload), ^storage.SeriesRef(0))
-	require.False(t, ok)
-	declaration := []byte{1}
-	declaration = binary.AppendUvarint(declaration, maxPostingsCacheBytes+1)
-	_, ok = decodePostings("key", snappy.Encode(nil, declaration), ^storage.SeriesRef(0))
-	require.False(t, ok)
+	require.Equal(t, []storage.SeriesRef{7}, refs)
+	require.Equal(t, float64(1), testutil.ToFloat64(c.metrics.decodeFailures))
+	decoded, err := decodePostings("key", backend.entries[cache.HashKey("key")])
+	require.NoError(t, err)
+	require.Equal(t, refs, decoded)
+	_, err = c.cachedPostings(context.Background(), "key", func() (index.Postings, error) {
+		t.Fatal("expected a cache hit after replacing the invalid payload")
+		return nil, nil
+	})
+	require.NoError(t, err)
+	require.Equal(t, float64(1), testutil.ToFloat64(c.metrics.decodeFailures))
 }
 
 func TestPostingsObjectIdentityFromDownloadedPath(t *testing.T) {
@@ -154,6 +186,8 @@ func TestPostingsObjectIdentityFromDownloadedPath(t *testing.T) {
 	require.False(t, ok)
 	_, ok = postingsObjectIdentity(root, "/other/table-a/tenant-a/file-a.tsdb", "prefix-a")
 	require.False(t, ok)
+	_, ok = postingsObjectIdentity(root, "/cache/extra/table-a/tenant-a/file-a.tsdb", "prefix-a")
+	require.False(t, ok)
 }
 
 type postingsReaderSpy struct {
@@ -161,7 +195,6 @@ type postingsReaderSpy struct {
 	filters []index.FingerprintFilter
 }
 
-func (*postingsReaderSpy) Size() int64              { return 64 }
 func (r *postingsReaderSpy) Bounds() (int64, int64) { return 0, math.MaxInt64 }
 func (r *postingsReaderSpy) Checksum() uint32       { return 0 }
 func (r *postingsReaderSpy) LabelValues(string, ...*labels.Matcher) ([]string, error) {
@@ -198,8 +231,8 @@ func (f testFingerprintFilter) GetFromThrough() (model.Fingerprint, model.Finger
 
 func TestTSDBIndexPostingsCachePreservesShardPushdown(t *testing.T) {
 	reader := &postingsReaderSpy{}
-	postingsCache := &postingsTestCache{}
-	idx := &TSDBIndex{reader: reader, postingsCache: postingsCache, postingsID: "file", postingsMaxRef: 3}
+	postingsCache := newPostingsCache(&postingsTestCache{}, "test", prometheus.NewRegistry(), log.NewNopLogger())
+	idx := &TSDBIndex{reader: reader, postingsCache: postingsCache, postingsID: "file"}
 	m := labels.MustNewMatcher(labels.MatchEqual, "app", "api")
 	low := testFingerprintFilter{from: 0, through: 2}
 	high := testFingerprintFilter{from: 2, through: 4}
@@ -246,40 +279,21 @@ func TestTSDBIndexPostingsCachePreservesShardPushdown(t *testing.T) {
 	require.Equal(t, 4, reader.calls)
 }
 
-func TestTSDBIndexRejectsCachedRefBeyondFileBound(t *testing.T) {
-	reader := &postingsReaderSpy{}
-	filter := testFingerprintFilter{from: 0, through: 4}
-	m := labels.MustNewMatcher(labels.MatchEqual, "app", "api")
-	key := postingsKey("file", filter, []*labels.Matcher{m})
-	encoded := encodePostings(key, []storage.SeriesRef{4})
-	postingsCache := &postingsTestCache{buf: encoded, entries: map[string][]byte{cache.HashKey(key): encoded}}
-	idx := &TSDBIndex{reader: reader, postingsCache: postingsCache, postingsID: "file", postingsMaxRef: 3}
-	var refs []storage.SeriesRef
-	err := idx.forPostings(context.Background(), filter, 0, 10, []*labels.Matcher{m}, func(p index.Postings) error {
-		var err error
-		refs, err = index.ExpandPostings(p)
-		return err
-	})
-	require.NoError(t, err)
-	require.Equal(t, []storage.SeriesRef{1, 3}, refs)
-	require.Equal(t, 1, reader.calls)
-}
-
 func TestCachedPostingsAvoidsRecomputation(t *testing.T) {
-	c := &postingsTestCache{}
+	c := newPostingsCache(&postingsTestCache{}, "test", prometheus.NewRegistry(), log.NewNopLogger())
 	called := 0
 	compute := func() (index.Postings, error) {
 		called++
 		return index.NewListPostings([]storage.SeriesRef{4, 8}), nil
 	}
 
-	p, err := cachedPostings(context.Background(), c, "key", ^storage.SeriesRef(0), compute)
+	p, err := c.cachedPostings(context.Background(), "key", compute)
 	require.NoError(t, err)
 	_, err = index.ExpandPostings(p)
 	require.NoError(t, err)
 	require.Equal(t, 1, called)
 
-	p, err = cachedPostings(context.Background(), c, "key", ^storage.SeriesRef(0), func() (index.Postings, error) {
+	p, err = c.cachedPostings(context.Background(), "key", func() (index.Postings, error) {
 		called++
 		return index.EmptyPostings(), nil
 	})

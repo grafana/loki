@@ -37,7 +37,7 @@ type store struct {
 	indexWriter   IndexWriter
 	logger        log.Logger
 	stopOnce      sync.Once
-	postingsCache chunkcache.Cache
+	postingsCache *postingsCache
 }
 
 // NewStore creates a new tsdb index ReaderWriter.
@@ -76,10 +76,11 @@ func (s *store) init(name, prefix string, indexShipperCfg indexshipper.Config, s
 	if (indexShipperCfg.Mode == indexshipper.ModeReadOnly || indexShipperCfg.Mode == indexshipper.ModeReadWrite) && chunkcache.IsCacheConfigured(indexShipperCfg.PostingsCache) {
 		postingsCfg := indexShipperCfg.PostingsCache
 		postingsCfg.Prefix = "tsdb-postings-" + name
-		s.postingsCache, err = chunkcache.New(postingsCfg, cacheReg, s.logger, stats.IndexCache, constants.Loki)
+		cache, err := chunkcache.New(postingsCfg, cacheReg, s.logger, stats.IndexCache, constants.Loki)
 		if err != nil {
 			return err
 		}
+		s.postingsCache = newPostingsCache(cache, postingsCfg.Prefix, cacheReg, s.logger)
 	}
 
 	readerOpts, err := indexShipperCfg.IndexReaderOptions()

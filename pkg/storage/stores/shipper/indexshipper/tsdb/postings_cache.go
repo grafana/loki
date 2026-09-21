@@ -3,10 +3,15 @@ package tsdb
 import (
 	"context"
 	"encoding/binary"
+	"fmt"
 	"slices"
 	"strings"
 
+	"github.com/go-kit/log"
+	"github.com/go-kit/log/level"
 	"github.com/golang/snappy"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/storage"
 
@@ -14,12 +19,45 @@ import (
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/index"
 )
 
-const (
-	postingsCacheVersion     = "postings-v1"
-	maxPostingsCacheBytes    = 16 << 20
-	maxPostingsCacheKeyBytes = 64 << 10
-	maxPostingsCacheRefs     = 1 << 20
-)
+const postingsCodecVersion = "v1"
+
+type postingsCache struct {
+	cache.Cache
+	logger  log.Logger
+	metrics *postingsCacheMetrics
+}
+
+type postingsCacheMetrics struct {
+	storeFailures  prometheus.Counter
+	decodeFailures prometheus.Counter
+	encodeFailures prometheus.Counter
+}
+
+// This records errors returned to the caller. Asynchronous backend write failures
+// are logged and measured by the background cache's existing instrumentation.
+func newPostingsCache(c cache.Cache, name string, reg prometheus.Registerer, logger log.Logger) *postingsCache {
+	return &postingsCache{c, logger, newPostingsCacheMetrics(name, reg)}
+}
+
+func newPostingsCacheMetrics(name string, reg prometheus.Registerer) *postingsCacheMetrics {
+	return &postingsCacheMetrics{
+		storeFailures: promauto.With(reg).NewCounter(prometheus.CounterOpts{
+			Name:        "loki_tsdb_postings_cache_store_failures_total",
+			Help:        "Total number of failed postings cache Store calls.",
+			ConstLabels: prometheus.Labels{"name": name},
+		}),
+		decodeFailures: promauto.With(reg).NewCounter(prometheus.CounterOpts{
+			Name:        "loki_tsdb_postings_cache_decode_failures_total",
+			Help:        "Total number of cached postings payloads that failed to decode.",
+			ConstLabels: prometheus.Labels{"name": name},
+		}),
+		encodeFailures: promauto.With(reg).NewCounter(prometheus.CounterOpts{
+			Name:        "loki_tsdb_postings_cache_encode_failures_total",
+			Help:        "Total number of postings payloads that failed to encode for the cache.",
+			ConstLabels: prometheus.Labels{"name": name},
+		}),
+	}
+}
 
 func objectIdentity(prefix, table, tenant, filename string) string {
 	return encodeKeyParts(prefix, table, tenant, filename)
@@ -79,92 +117,74 @@ func postingsKey(identity string, fpFilter index.FingerprintFilter, matchers []*
 		buf = binary.AppendUvarint(buf, uint64(shardThrough))
 		shard = string(buf)
 	}
-	return encodeKeyParts(postingsCacheVersion, identity, string(canonicalMatchers), shard)
+	return encodeKeyParts(identity, string(canonicalMatchers), shard)
 }
 
-func encodePostings(key string, refs []storage.SeriesRef) []byte {
-	if len(key) > maxPostingsCacheKeyBytes || len(refs) > maxPostingsCacheRefs {
-		return nil
-	}
-
+func encodePostings(key string, refs []storage.SeriesRef) ([]byte, error) {
 	// Most deltas encode near one byte, so reserve 1.25 bytes per reference.
 	estimatedPostingsBytes := 5 * len(refs) / 4
-	capacity := 1 + 2*binary.MaxVarintLen64 + len(key) + estimatedPostingsBytes
-	payload := make([]byte, 0, capacity)
-	payload = append(payload, 1)
-	payload = binary.AppendUvarint(payload, uint64(len(key)))
-	payload = append(payload, key...)
-	payload = binary.AppendUvarint(payload, uint64(len(refs)))
+	payload := make([]byte, 0, estimatedPostingsBytes)
 	var previous storage.SeriesRef
 	for _, ref := range refs {
 		if ref < previous {
-			return nil
+			return nil, fmt.Errorf("postings references are not sorted: %d follows %d", ref, previous)
 		}
 		payload = binary.AppendUvarint(payload, uint64(ref-previous))
-		if len(payload) > maxPostingsCacheBytes {
-			return nil
-		}
 		previous = ref
 	}
-	encoded := snappy.Encode(nil, payload)
-	if len(encoded) > maxPostingsCacheBytes {
-		return nil
-	}
-	return encoded
+	// Reserve the full output so Snappy can compress directly after the key.
+	capacity := len(postingsCodecVersion) + binary.MaxVarintLen64 + len(key) + snappy.MaxEncodedLen(len(payload))
+	encoded := make([]byte, capacity)
+	offset := copy(encoded, postingsCodecVersion)
+	offset += binary.PutUvarint(encoded[offset:], uint64(len(key)))
+	offset += copy(encoded[offset:], key)
+
+	compressed := snappy.Encode(encoded[offset:], payload)
+	return encoded[:offset+len(compressed)], nil
 }
 
-func decodePostings(key string, encoded []byte, maxRef storage.SeriesRef) ([]storage.SeriesRef, bool) {
-	if len(key) > maxPostingsCacheKeyBytes || len(encoded) == 0 || len(encoded) > maxPostingsCacheBytes {
-		return nil, false
+func decodePostings(key string, encoded []byte) ([]storage.SeriesRef, error) {
+	if !strings.HasPrefix(string(encoded), postingsCodecVersion) {
+		return nil, fmt.Errorf("unsupported postings codec version")
 	}
-	decodedLen, err := snappy.DecodedLen(encoded)
-	if err != nil || decodedLen > maxPostingsCacheBytes {
-		return nil, false
+	encoded = encoded[len(postingsCodecVersion):]
+	keyLen, n := binary.Uvarint(encoded)
+	if n <= 0 || keyLen > uint64(len(encoded)-n) {
+		return nil, fmt.Errorf("invalid postings cache key length")
 	}
-	payload, err := snappy.Decode(nil, encoded)
-	if err != nil || len(payload) == 0 || payload[0] != 1 {
-		return nil, false
+	encoded = encoded[n:]
+	if string(encoded[:keyLen]) != key {
+		return nil, fmt.Errorf("postings cache key mismatch")
 	}
-	payload = payload[1:]
-	keyLen, n := binary.Uvarint(payload)
-	if n <= 0 || keyLen > uint64(len(payload)-n) {
-		return nil, false
+	payload, err := snappy.Decode(nil, encoded[keyLen:])
+	if err != nil {
+		return nil, fmt.Errorf("decompress postings: %w", err)
 	}
-	payload = payload[n:]
-	if string(payload[:keyLen]) != key {
-		return nil, false
-	}
-	payload = payload[keyLen:]
-	count, n := binary.Uvarint(payload)
-	if n <= 0 || count > maxPostingsCacheRefs || count > uint64(len(payload)-n) {
-		return nil, false
-	}
-	payload = payload[n:]
-	refs := make([]storage.SeriesRef, 0, count)
+	var refs []storage.SeriesRef
 	var previous storage.SeriesRef
-	for range count {
+	for len(payload) > 0 {
 		delta, n := binary.Uvarint(payload)
-		if n <= 0 || delta > uint64(^storage.SeriesRef(0)-previous) {
-			return nil, false
+		if n <= 0 {
+			return nil, fmt.Errorf("invalid postings delta varint")
 		}
 		previous += storage.SeriesRef(delta)
-		if previous > maxRef {
-			return nil, false
-		}
 		refs = append(refs, previous)
 		payload = payload[n:]
 	}
-	return refs, len(payload) == 0
+	return refs, nil
 }
 
-func cachedPostings(ctx context.Context, c cache.Cache, key string, maxRef storage.SeriesRef, compute func() (index.Postings, error)) (index.Postings, error) {
-	if c != nil && len(key) <= maxPostingsCacheKeyBytes {
-		found, bufs, _, err := c.Fetch(ctx, []string{cache.HashKey(key)})
-		if err == nil && len(found) == 1 && len(bufs) == 1 {
-			if refs, ok := decodePostings(key, bufs[0], maxRef); ok {
-				return index.NewListPostings(refs), nil
-			}
+func (c *postingsCache) cachedPostings(ctx context.Context, key string, compute func() (index.Postings, error)) (index.Postings, error) {
+	found, bufs, _, err := c.Fetch(ctx, []string{cache.HashKey(key)})
+	// Avoid a write after a failed fetch.
+	writeCache := err == nil
+	if err == nil && len(found) == 1 && len(bufs) == 1 {
+		refs, err := decodePostings(key, bufs[0])
+		if err == nil {
+			return index.NewListPostings(refs), nil
 		}
+		c.metrics.decodeFailures.Inc()
+		level.Warn(c.logger).Log("msg", "failed to decode cached postings", "err", err)
 	}
 
 	postings, err := compute()
@@ -176,9 +196,16 @@ func cachedPostings(ctx context.Context, c cache.Cache, key string, maxRef stora
 		return nil, err
 	}
 	slices.Sort(refs)
-	if c != nil {
-		if encoded := encodePostings(key, refs); encoded != nil {
-			_ = c.Store(ctx, []string{cache.HashKey(key)}, [][]byte{encoded})
+	if writeCache {
+		encoded, err := encodePostings(key, refs)
+		if err != nil {
+			c.metrics.encodeFailures.Inc()
+			level.Warn(c.logger).Log("msg", "failed to encode postings for cache", "err", err)
+			return index.NewListPostings(refs), nil
+		}
+		if err := c.Store(ctx, []string{cache.HashKey(key)}, [][]byte{encoded}); err != nil {
+			c.metrics.storeFailures.Inc()
+			level.Warn(c.logger).Log("msg", "failed to store postings in cache", "err", err)
 		}
 	}
 	return index.NewListPostings(refs), nil
