@@ -17,13 +17,38 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/thanos-io/objstore"
 
+	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
+	"github.com/grafana/loki/v3/pkg/querier/queryrange"
+	"github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase"
 
 	"github.com/grafana/loki/v3/pkg/logline"
 	"github.com/grafana/loki/v3/pkg/logline/format"
 	"github.com/grafana/loki/v3/pkg/logline/shard"
 	"github.com/grafana/loki/v3/pkg/logline/store"
 )
+
+// localHintHandler runs QuerierProvideHints so ProvideHints unit tests can
+// exercise the HintRequest unpack path without a query-frontend.
+type localHintHandler struct {
+	provider *LoglineHintProvider
+}
+
+func (h localHintHandler) Do(ctx context.Context, req queryrangebase.Request) (queryrangebase.Response, error) {
+	hr, ok := req.(*logproto.HintRequest)
+	if !ok {
+		return nil, fmt.Errorf("expected HintRequest, got %T", req)
+	}
+	expr, err := syntax.ParseExpr(hr.Expr)
+	if err != nil {
+		return nil, err
+	}
+	hints, stats, err := h.provider.QuerierProvideHints(ctx, hr.Tenant, expr, hr.From, hr.Through, hr.Indexes)
+	if err != nil {
+		return nil, err
+	}
+	return &queryrange.HintResponse{Response: HintsToProto(hints, stats)}, nil
+}
 
 func TestLoglineHintProvider_ProvideHints(t *testing.T) {
 	indexStore := newTestStore(t)
@@ -32,12 +57,13 @@ func TestLoglineHintProvider_ProvideHints(t *testing.T) {
 	docMax := time.Date(2026, 2, 26, 10, 1, 10, 0, time.UTC)
 	writeTestIndex(t, indexStore, "aaaaaaaaaaaaaaaa", needle, docMin, docMax)
 
-	provider, err := NewLoglineHintProvider(indexStore, 6, 0, nil, log.NewNopLogger(), nil)
+	provider, err := NewLoglineHintProvider(indexStore, 6, 0, nil, log.NewNopLogger())
 	require.NoError(t, err)
 
 	expr := mustParseExpr(t, `{job="api"} |= "9fA81cD2Ef0077aa"`)
 	hints, _, err := provider.ProvideHints(
 		context.Background(),
+		localHintHandler{provider},
 		"test-tenant",
 		expr,
 		model.TimeFromUnixNano(docMin.Add(-time.Minute).UnixNano()),
@@ -64,12 +90,13 @@ func TestLoglineHintProvider_ProvideHints_MatchesAllPreservesSingleTimestamp(t *
 	logTS := time.Date(2026, 2, 26, 10, 0, 50, 0, time.UTC)
 	writeMatchesAllTestIndex(t, indexStore, "eeeeeeeeeeeeeeee", needle, logTS)
 
-	provider, err := NewLoglineHintProvider(indexStore, 6, 0, nil, log.NewNopLogger(), nil)
+	provider, err := NewLoglineHintProvider(indexStore, 6, 0, nil, log.NewNopLogger())
 	require.NoError(t, err)
 
 	expr := mustParseExpr(t, `{job="api"} |= "9fA81cD2Ef0077aa"`)
 	hints, _, err := provider.ProvideHints(
 		context.Background(),
+		localHintHandler{provider},
 		"test-tenant",
 		expr,
 		model.TimeFromUnixNano(logTS.Add(-time.Minute).UnixNano()),
@@ -89,12 +116,13 @@ func TestLoglineHintProvider_ProvideHints_RecordsQueryStats(t *testing.T) {
 	docMax := time.Date(2026, 2, 26, 10, 1, 10, 0, time.UTC)
 	writeTestIndex(t, indexStore, "ffffffffffffffff", needle, docMin, docMax)
 
-	provider, err := NewLoglineHintProvider(indexStore, 6, 0, nil, log.NewNopLogger(), nil)
+	provider, err := NewLoglineHintProvider(indexStore, 6, 0, nil, log.NewNopLogger())
 	require.NoError(t, err)
 
 	expr := mustParseExpr(t, `{job="api"} |= "9fA81cD2Ef0077aa"`)
 	_, stats, err := provider.ProvideHints(
 		context.Background(),
+		localHintHandler{provider},
 		"test-tenant",
 		expr,
 		model.TimeFromUnixNano(docMin.Add(-time.Minute).UnixNano()),
@@ -109,8 +137,6 @@ func TestLoglineHintProvider_ProvideHints_RecordsQueryStats(t *testing.T) {
 	require.GreaterOrEqual(t, snap.TermDictReads, int64(1))
 	require.GreaterOrEqual(t, snap.BitmapReads, int64(1))
 	require.GreaterOrEqual(t, snap.PeakConcurrency, int32(1))
-	require.Equal(t, int64(1), snap.MetadataCacheMisses)
-	require.Equal(t, int64(0), snap.HeaderCacheMisses)
 }
 
 func TestLoglineHintProvider_ExecuteQuery_ObservesQueryMultiple(t *testing.T) {
@@ -127,7 +153,7 @@ func TestLoglineHintProvider_ExecuteQuery_ObservesQueryMultiple(t *testing.T) {
 		observedReason = reason
 		observedTermBatches = termBatchesProcessed
 		observedCalls++
-	}, log.NewNopLogger(), nil)
+	}, log.NewNopLogger())
 	require.NoError(t, err)
 
 	stats := NewQueryStats()
@@ -149,34 +175,36 @@ func TestLoglineHintProvider_ExecuteQuery_ObservesQueryMultiple(t *testing.T) {
 	require.Equal(t, 1, observedTermBatches)
 }
 
-func TestLoglineHintProvider_OpenIndexReader_ErrorWhenMetaHeaderMissing(t *testing.T) {
+func TestLoglineHintProvider_OpenIndexReader_ReadsFooter(t *testing.T) {
 	indexStore := newTestStore(t)
-	provider, err := NewLoglineHintProvider(indexStore, 6, 0, nil, log.NewNopLogger(), nil)
+	needle := "9fA81cD2Ef0077aa"
+	docMin := time.Date(2026, 2, 26, 10, 0, 50, 0, time.UTC)
+	docMax := time.Date(2026, 2, 26, 10, 1, 10, 0, time.UTC)
+	writeTestIndex(t, indexStore, "aaaaaaaaaaaaaaaa", needle, docMin, docMax)
+
+	provider, err := NewLoglineHintProvider(indexStore, 6, 0, nil, log.NewNopLogger())
 	require.NoError(t, err)
 
-	stats := NewQueryStats()
 	meta := store.Meta{
-		Date:      "2026-02-26",
-		Hash:      "eeeeffffffffeeee",
-		Version:   "v3",
-		SizeBytes: 1,
+		Date:    docMin.UTC().Format("2006-01-02"),
+		Hash:    "aaaaaaaaaaaaaaaa",
+		Version: logline.CurrentVersion,
 	}
-	_, err = provider.openIndexReader(context.Background(), meta, stats)
-	require.Error(t, err)
-
-	snap := stats.Snapshot()
-	require.Equal(t, int64(1), snap.MetadataCacheMisses)
-	require.Equal(t, int64(0), snap.HeaderCacheMisses)
+	reader, err := provider.openIndexReader(context.Background(), meta, NewQueryStats())
+	require.NoError(t, err)
+	require.NotNil(t, reader)
+	require.NoError(t, reader.Close())
 }
 
 func TestLoglineHintProvider_UnsupportedQuery(t *testing.T) {
 	indexStore := newTestStore(t)
-	provider, err := NewLoglineHintProvider(indexStore, 6, 0, nil, log.NewNopLogger(), nil)
+	provider, err := NewLoglineHintProvider(indexStore, 6, 0, nil, log.NewNopLogger())
 	require.NoError(t, err)
 
 	expr := mustParseExpr(t, `{job="api"} |~ "error.*"`)
 	hints, _, err := provider.ProvideHints(
 		context.Background(),
+		localHintHandler{provider},
 		"test-tenant",
 		expr,
 		model.TimeFromUnixNano(time.Now().Add(-time.Hour).UnixNano()),
@@ -193,12 +221,13 @@ func TestLoglineHintProvider_ProvideHints_PostParserJSONLabelFilter(t *testing.T
 	docMax := time.Date(2026, 2, 26, 10, 1, 10, 0, time.UTC)
 	writeTestIndex(t, indexStore, "aaaaaaaaaaaaaaaa", needle, docMin, docMax)
 
-	provider, err := NewLoglineHintProvider(indexStore, 6, 0, nil, log.NewNopLogger(), nil)
+	provider, err := NewLoglineHintProvider(indexStore, 6, 0, nil, log.NewNopLogger())
 	require.NoError(t, err)
 
 	expr := mustParseExpr(t, `{job="api"} | json | dashboardUID="grafana_slo_app-klu4xpj1w5lmbmvi8u6ec"`)
 	hints, _, err := provider.ProvideHints(
 		context.Background(),
+		localHintHandler{provider},
 		"test-tenant",
 		expr,
 		model.TimeFromUnixNano(docMin.Add(-time.Minute).UnixNano()),
@@ -218,12 +247,13 @@ func TestLoglineHintProvider_ProvideHints_LabelFilter(t *testing.T) {
 	docMax := time.Date(2026, 2, 26, 10, 1, 10, 0, time.UTC)
 	writeTestIndex(t, indexStore, "aaaaaaaaaaaaaaaa", needle, docMin, docMax)
 
-	provider, err := NewLoglineHintProvider(indexStore, 6, 0, nil, log.NewNopLogger(), nil)
+	provider, err := NewLoglineHintProvider(indexStore, 6, 0, nil, log.NewNopLogger())
 	require.NoError(t, err)
 
 	expr := mustParseExpr(t, `{job="api"} | trace_id="9fA81cD2Ef0077aa"`)
 	hints, _, err := provider.ProvideHints(
 		context.Background(),
+		localHintHandler{provider},
 		"test-tenant",
 		expr,
 		model.TimeFromUnixNano(docMin.Add(-time.Minute).UnixNano()),
@@ -243,12 +273,13 @@ func TestLoglineHintProvider_ProvideHints_LabelFilterNoMatches(t *testing.T) {
 	docMax := time.Date(2026, 2, 26, 10, 1, 10, 0, time.UTC)
 	writeTestIndex(t, indexStore, "bbbbbbbbbbbbbbbb", needle, docMin, docMax)
 
-	provider, err := NewLoglineHintProvider(indexStore, 6, 0, nil, log.NewNopLogger(), nil)
+	provider, err := NewLoglineHintProvider(indexStore, 6, 0, nil, log.NewNopLogger())
 	require.NoError(t, err)
 
 	expr := mustParseExpr(t, `{job="api"} | trace_id="differentneedlevalue"`)
 	hints, _, err := provider.ProvideHints(
 		context.Background(),
+		localHintHandler{provider},
 		"test-tenant",
 		expr,
 		model.TimeFromUnixNano(docMin.Add(-time.Minute).UnixNano()),
@@ -269,7 +300,7 @@ func TestLoglineHintProvider_ProvideHints_LineAndLabelFilterAND(t *testing.T) {
 	// Index contains only the line needle.
 	writeTestIndex(t, indexStore, "cccccccccccccccc", lineNeedle, docMin, docMax)
 
-	provider, err := NewLoglineHintProvider(indexStore, 6, 0, nil, log.NewNopLogger(), nil)
+	provider, err := NewLoglineHintProvider(indexStore, 6, 0, nil, log.NewNopLogger())
 	require.NoError(t, err)
 
 	// Both needles required: label miss should yield no ranges.
@@ -279,6 +310,7 @@ func TestLoglineHintProvider_ProvideHints_LineAndLabelFilterAND(t *testing.T) {
 	))
 	hints, _, err := provider.ProvideHints(
 		context.Background(),
+		localHintHandler{provider},
 		"test-tenant",
 		expr,
 		model.TimeFromUnixNano(docMin.Add(-time.Minute).UnixNano()),
@@ -294,6 +326,7 @@ func TestLoglineHintProvider_ProvideHints_LineAndLabelFilterAND(t *testing.T) {
 
 	hints, _, err = provider.ProvideHints(
 		context.Background(),
+		localHintHandler{provider},
 		"test-tenant",
 		expr,
 		model.TimeFromUnixNano(docMin.Add(-time.Minute).UnixNano()),
@@ -311,12 +344,13 @@ func TestLoglineHintProvider_NoMatches(t *testing.T) {
 	docMax := time.Date(2026, 2, 26, 10, 1, 10, 0, time.UTC)
 	writeTestIndex(t, indexStore, "bbbbbbbbbbbbbbbb", needle, docMin, docMax)
 
-	provider, err := NewLoglineHintProvider(indexStore, 6, 0, nil, log.NewNopLogger(), nil)
+	provider, err := NewLoglineHintProvider(indexStore, 6, 0, nil, log.NewNopLogger())
 	require.NoError(t, err)
 
 	expr := mustParseExpr(t, `{job="api"} |= "differentneedlevalue"`)
 	hints, _, err := provider.ProvideHints(
 		context.Background(),
+		localHintHandler{provider},
 		"test-tenant",
 		expr,
 		model.TimeFromUnixNano(docMin.Add(-time.Minute).UnixNano()),
@@ -335,7 +369,7 @@ func TestLoglineHintProvider_ProvideHints_PrependsPreMinDateRange(t *testing.T) 
 	docMax := time.Date(2026, 2, 26, 10, 1, 10, 0, time.UTC)
 	writeTestIndex(t, indexStore, "cccccccccccccccc", needle, docMin, docMax)
 
-	provider, err := NewLoglineHintProvider(indexStore, 6, 0, nil, log.NewNopLogger(), nil)
+	provider, err := NewLoglineHintProvider(indexStore, 6, 0, nil, log.NewNopLogger())
 	require.NoError(t, err)
 
 	expr := mustParseExpr(t, `{job="api"} |= "9fA81cD2Ef0077aa"`)
@@ -343,6 +377,7 @@ func TestLoglineHintProvider_ProvideHints_PrependsPreMinDateRange(t *testing.T) 
 	through := time.Date(2026, 2, 26, 11, 0, 0, 0, time.UTC)
 	hints, _, err := provider.ProvideHints(
 		context.Background(),
+		localHintHandler{provider},
 		"test-tenant",
 		expr,
 		model.TimeFromUnixNano(from.UnixNano()),
@@ -714,12 +749,13 @@ func TestLoglineHintProvider_ProvideHints_CrossShardIntersection(t *testing.T) {
 	writeShardedTestIndex(t, indexStore, "2222222222222222", needle,
 		t0.Add(10*time.Minute), t0.Add(30*time.Minute), 4, "first_byte", 1)
 
-	provider, err := NewLoglineHintProvider(indexStore, 6, 0, nil, log.NewNopLogger(), nil)
+	provider, err := NewLoglineHintProvider(indexStore, 6, 0, nil, log.NewNopLogger())
 	require.NoError(t, err)
 
 	expr := mustParseExpr(t, `{job="api"} |= "9fA81cD2Ef0077aa"`)
 	hints, _, err := provider.ProvideHints(
 		context.Background(),
+		localHintHandler{provider},
 		"test-tenant",
 		expr,
 		model.TimeFromUnixNano(t0.Add(-time.Minute).UnixNano()),
@@ -778,12 +814,13 @@ func TestLoglineHintProvider_ProvideHints_EmptyShardAnnihilatesIntersection(t *t
 		byShard[matchingShard][0]: {0},
 	}, matchingShard)
 
-	provider, err := NewLoglineHintProvider(indexStore, 6, 0, nil, log.NewNopLogger(), nil)
+	provider, err := NewLoglineHintProvider(indexStore, 6, 0, nil, log.NewNopLogger())
 	require.NoError(t, err)
 
 	expr := mustParseExpr(t, `{job="api"} |= "1NG8K49T"`)
 	hints, _, err := provider.ProvideHints(
 		context.Background(),
+		localHintHandler{provider},
 		"test-tenant",
 		expr,
 		model.TimeFromUnixNano(t0.Add(-time.Minute).UnixNano()),
@@ -808,12 +845,13 @@ func TestLoglineHintProvider_ProvideHints_ShardedPlusUnsharded(t *testing.T) {
 	writeTestIndex(t, indexStore, "3333333333333333", needle,
 		t0.Add(50*time.Minute), t0.Add(60*time.Minute))
 
-	provider, err := NewLoglineHintProvider(indexStore, 6, 0, nil, log.NewNopLogger(), nil)
+	provider, err := NewLoglineHintProvider(indexStore, 6, 0, nil, log.NewNopLogger())
 	require.NoError(t, err)
 
 	expr := mustParseExpr(t, `{job="api"} |= "9fA81cD2Ef0077aa"`)
 	hints, _, err := provider.ProvideHints(
 		context.Background(),
+		localHintHandler{provider},
 		"test-tenant",
 		expr,
 		model.TimeFromUnixNano(t0.Add(-time.Minute).UnixNano()),
@@ -843,12 +881,13 @@ func TestLoglineHintProvider_ProvideHints_CrossIndexBatchingFillsSharedBatches(t
 	provider, err := NewLoglineHintProvider(indexStore, 6, 0, func(reason string, termBatchesProcessed int) {
 		observedReasons = append(observedReasons, reason)
 		observedBatches = append(observedBatches, termBatchesProcessed)
-	}, log.NewNopLogger(), nil)
+	}, log.NewNopLogger())
 	require.NoError(t, err)
 
 	expr := mustParseExpr(t, `{job="api"} |= "ABCDEFGH"`)
 	hints, stats, err := provider.ProvideHints(
 		context.Background(),
+		localHintHandler{provider},
 		"test-tenant",
 		expr,
 		model.TimeFromUnixNano(t0.Add(-time.Minute).UnixNano()),
@@ -876,7 +915,7 @@ func TestLoglineHintProvider_ExecuteQuery_OpensReaderOncePerIndex(t *testing.T) 
 
 	writeTestIndex(t, indexStore, "aaaaaaaaaaaaaaaa", needle, t0, t0.Add(5*time.Minute))
 
-	provider, err := NewLoglineHintProvider(indexStore, 6, 0, nil, log.NewNopLogger(), nil)
+	provider, err := NewLoglineHintProvider(indexStore, 6, 0, nil, log.NewNopLogger())
 	require.NoError(t, err)
 
 	active := indexStore.Snapshot().Active()
@@ -888,78 +927,7 @@ func TestLoglineHintProvider_ExecuteQuery_OpensReaderOncePerIndex(t *testing.T) 
 	require.NotEmpty(t, shardRanges)
 
 	snap := stats.Snapshot()
-	require.Equal(t, int64(1), snap.MetadataCacheMisses)
-}
-
-func TestLoglineHintProvider_MetadataCache_SkipsPutWhenFull(t *testing.T) {
-	cache := newMetadataCache(2, nil)
-
-	type opaqueState struct{}
-	a1 := &opaqueState{}
-	cache.put("a", cachedMetadata{state: a1})
-	cache.put("b", cachedMetadata{state: &opaqueState{}})
-	cache.put("c", cachedMetadata{state: &opaqueState{}})
-
-	require.Equal(t, 2, cache.len(), "cache should remain capped at max entries")
-	_, ok := cache.get("a")
-	require.True(t, ok, "existing entries should be retained when cache is full")
-	_, ok = cache.get("b")
-	require.True(t, ok)
-	_, ok = cache.get("c")
-	require.False(t, ok, "new entry should not be cached when full")
-
-	// Existing keys should still be updated even when the cache is at capacity.
-	a2 := &opaqueState{}
-	cache.put("a", cachedMetadata{state: a2})
-	require.Equal(t, 2, cache.len(), "updating existing key should not change cache size")
-	got, ok := cache.get("a")
-	require.True(t, ok)
-	require.Same(t, a2, got.state.(*opaqueState), "existing entry should be updated when full")
-}
-
-func TestLoglineHintProvider_EvictStaleMetadata(t *testing.T) {
-	indexStore := newTestStore(t)
-	needle := "9fA81cD2Ef0077aa"
-	base := time.Date(2026, 2, 26, 10, 0, 0, 0, time.UTC)
-	writeTestIndex(t, indexStore, "aaaaaaaaaaaaaaaa", needle, base, base.Add(10*time.Second))
-	writeTestIndex(t, indexStore, "bbbbbbbbbbbbbbbb", needle, base.Add(20*time.Second), base.Add(30*time.Second))
-
-	provider, err := NewLoglineHintProvider(indexStore, 6, 0, nil, log.NewNopLogger(), nil)
-	require.NoError(t, err)
-
-	active := indexStore.Snapshot().Active()
-	require.Len(t, active, 2)
-
-	for _, meta := range active {
-		reader, err := provider.openIndexReader(context.Background(), meta, nil)
-		require.NoError(t, err)
-		require.NoError(t, reader.Close())
-	}
-
-	require.Equal(t, 2, provider.cache.len())
-
-	ids := map[string]struct{}{
-		active[0].ID(): {},
-		active[1].ID(): {},
-	}
-	deletedID := active[0].ID()
-
-	require.NoError(t, indexStore.DeleteIndex(context.Background(), active[0]))
-	require.NoError(t, indexStore.Poll(context.Background()))
-
-	provider.cache.evictStale(indexStore.Snapshot())
-
-	require.Equal(t, 1, provider.cache.len())
-	_, ok := provider.cache.get(deletedID)
-	require.False(t, ok)
-
-	delete(ids, deletedID)
-	var remainingID string
-	for id := range ids {
-		remainingID = id
-	}
-	_, ok = provider.cache.get(remainingID)
-	require.True(t, ok)
+	require.Equal(t, int64(1), snap.IndexQueriesTotal)
 }
 
 // minimalMeta returns a store.Meta suitable for buildTermJobs tests that don't need real index data.

@@ -28,6 +28,8 @@ import (
 	"github.com/grafana/loki/v3/pkg/indexgateway"
 	"github.com/grafana/loki/v3/pkg/iter"
 	"github.com/grafana/loki/v3/pkg/loghttp"
+	"github.com/grafana/loki/v3/pkg/logline/hintprovider"
+	loglinestore "github.com/grafana/loki/v3/pkg/logline/store"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql"
 	logql_log "github.com/grafana/loki/v3/pkg/logql/log"
@@ -98,6 +100,7 @@ type Querier interface {
 	Label(ctx context.Context, req *logproto.LabelRequest) (*logproto.LabelResponse, error)
 	Series(ctx context.Context, req *logproto.SeriesRequest) (*logproto.SeriesResponse, error)
 	IndexStats(ctx context.Context, req *loghttp.RangeQuery) (*stats.Stats, error)
+	Hints(ctx context.Context, req *logproto.HintRequest) (*logproto.HintResponse, error)
 	IndexShards(ctx context.Context, req *loghttp.RangeQuery, targetBytesPerShard uint64) (*logproto.ShardsResponse, error)
 	Volume(ctx context.Context, req *logproto.VolumeRequest) (*logproto.VolumeResponse, error)
 	DetectedFields(ctx context.Context, req *logproto.DetectedFieldsRequest) (*logproto.DetectedFieldsResponse, error)
@@ -133,10 +136,11 @@ type SingleTenantQuerier struct {
 	patternQuerier  pattern.PatterQuerier
 	deleteGetter    deletion.DeleteGetter
 	logger          log.Logger
+	loglineStore    *loglinestore.Store
 }
 
 // New makes a new Querier.
-func New(cfg Config, store Store, ingesterQuerier *IngesterQuerier, limits querier_limits.Limits, d deletion.DeleteGetter, logger log.Logger) (*SingleTenantQuerier, error) {
+func New(cfg Config, store Store, ingesterQuerier *IngesterQuerier, limits querier_limits.Limits, d deletion.DeleteGetter, logger log.Logger, loglineStore *loglinestore.Store) (*SingleTenantQuerier, error) {
 	q := &SingleTenantQuerier{
 		cfg:             cfg,
 		store:           store,
@@ -144,6 +148,7 @@ func New(cfg Config, store Store, ingesterQuerier *IngesterQuerier, limits queri
 		limits:          limits,
 		deleteGetter:    d,
 		logger:          logger,
+		loglineStore:    loglineStore,
 	}
 
 	return q, nil
@@ -554,6 +559,29 @@ func (q *SingleTenantQuerier) IndexStats(ctx context.Context, req *loghttp.Range
 		model.TimeFromUnixNano(end.UnixNano()),
 		matchers...,
 	)
+}
+
+func (q *SingleTenantQuerier) Hints(ctx context.Context, req *logproto.HintRequest) (*logproto.HintResponse, error) {
+	if q.loglineStore == nil {
+		return nil, errors.New("logline store is not configured")
+	}
+	ngramLength := int(req.NgramLength)
+	if ngramLength <= 0 {
+		ngramLength = 6
+	}
+	provider, err := hintprovider.NewLoglineHintProvider(q.loglineStore, ngramLength, 1, nil, q.logger)
+	if err != nil {
+		return nil, err
+	}
+	expr, err := syntax.ParseExpr(req.Expr)
+	if err != nil {
+		return nil, err
+	}
+	hints, stats, err := provider.QuerierProvideHints(ctx, req.Tenant, expr, req.From, req.Through, req.Indexes)
+	if err != nil {
+		return nil, err
+	}
+	return hintprovider.HintsToProto(hints, stats), nil
 }
 
 func (q *SingleTenantQuerier) IndexShards(

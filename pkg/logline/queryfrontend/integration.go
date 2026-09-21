@@ -168,7 +168,6 @@ func WrapMiddlewareWithStore(
 		cfg.MaxHintParallel,
 		metrics.ObserveQueryMultipleTermBatches,
 		logger,
-		reg,
 	)
 	if err != nil {
 		return nil, nil, fmt.Errorf("create hint provider: %w", err)

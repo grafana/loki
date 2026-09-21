@@ -12,6 +12,7 @@ import (
 	"golang.org/x/sync/singleflight"
 
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
+	"github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/cache"
 )
 
@@ -101,6 +102,7 @@ func NewCachingHintProvider(delegate QueryHintProvider, c cache.Cache, reg prome
 
 func (p *CachingHintProvider) ProvideHints(
 	ctx context.Context,
+	next queryrangebase.Handler,
 	tenant string,
 	expr syntax.Expr,
 	from, through model.Time,
@@ -111,14 +113,14 @@ func (p *CachingHintProvider) ProvideHints(
 
 	if SkipCache(ctx) {
 		p.requestsTotal.WithLabelValues(hintCacheResultSkip).Inc()
-		hints, stats, err := p.delegate.ProvideHints(ctx, tenant, expr, from, through)
+		hints, stats, err := p.delegate.ProvideHints(ctx, next, tenant, expr, from, through)
 		if stats != nil {
 			stats.ObserveHintCache(hintCacheResultSkip, 0, 0)
 		}
 		return filterHintsByWindow(hints, from, through), stats, err
 	}
 	if p.cache == nil {
-		hints, stats, err := p.delegate.ProvideHints(ctx, tenant, expr, from, through)
+		hints, stats, err := p.delegate.ProvideHints(ctx, next, tenant, expr, from, through)
 		return filterHintsByWindow(hints, from, through), stats, err
 	}
 
@@ -153,7 +155,7 @@ func (p *CachingHintProvider) ProvideHints(
 		dayThrough := model.TimeFromUnixNano(day.endExclusive.Add(-time.Nanosecond).UnixNano())
 		sfKey := singleflightKey(tenant, queryString, day.day)
 		value, _, shared := p.flight.Do(sfKey, func() (any, error) {
-			hints, stats, provideErr := p.delegate.ProvideHints(ctx, tenant, expr, dayFrom, dayThrough)
+			hints, stats, provideErr := p.delegate.ProvideHints(ctx, next, tenant, expr, dayFrom, dayThrough)
 			result := &provideHintsResult{
 				hints: hints,
 				stats: stats,

@@ -410,6 +410,71 @@ message IndexStatsResponse {
   uint64 entries = 4 [(gogoproto.jsontag) = "entries"];
 }
 
+message HintRequest {
+  int64 from = 1 [
+    (gogoproto.customtype) = "github.com/prometheus/common/model.Time",
+    (gogoproto.nullable) = false
+  ];
+  int64 through = 2 [
+    (gogoproto.customtype) = "github.com/prometheus/common/model.Time",
+    (gogoproto.nullable) = false
+  ];
+  string expr = 3;
+  string tenant = 4;
+  repeated IndexRef indexes = 5 [(gogoproto.nullable) = false];
+  int64 ngram_length = 6;
+}
+
+message IndexRef {
+  string date = 1;
+  string storage_id = 2 [(gogoproto.customname) = "StorageID"];
+  string version = 3;
+  int64 size_bytes = 4;
+  int64 min_log_ts = 5 [
+    (gogoproto.customtype) = "github.com/prometheus/common/model.Time",
+    (gogoproto.nullable) = false
+  ];
+  int64 max_log_ts = 6 [
+    (gogoproto.customtype) = "github.com/prometheus/common/model.Time",
+    (gogoproto.nullable) = false
+  ];
+  reserved 7;
+  int64 shard_count = 8;
+  string shard_algorithm = 9;
+  int64 shard_value = 10;
+}
+
+message HintTimeRange {
+  int64 start = 1 [
+    (gogoproto.customtype) = "github.com/prometheus/common/model.Time",
+    (gogoproto.nullable) = false
+  ];
+  int64 end = 2 [
+    (gogoproto.customtype) = "github.com/prometheus/common/model.Time",
+    (gogoproto.nullable) = false
+  ];
+  string source = 3;
+}
+
+message HintQueryStats {
+  reserved 1, 2, 5;
+  int64 term_dict_reads = 3;
+  int64 bitmap_reads = 4;
+  int64 total_io_wait_nanos = 6;
+  int64 total_io_bytes = 7;
+  int32 peak_concurrency = 8;
+  int64 index_queries_total = 9;
+  int64 index_queries_term_miss = 10;
+  int64 index_queries_empty_and = 11;
+  int64 index_queries_positive = 12;
+  int64 total_term_batches_processed = 13;
+}
+
+message HintResponse {
+  repeated HintTimeRange time_ranges = 1 [(gogoproto.nullable) = false];
+  HintQueryStats stats = 2;
+}
+
 message VolumeRequest {
   int64 from = 1 [
     (gogoproto.customtype) = "github.com/prometheus/common/model.Time",

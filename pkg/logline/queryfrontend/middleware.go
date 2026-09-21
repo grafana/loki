@@ -190,12 +190,8 @@ func appendHintStats(logValues []any, stats *hintprovider.QueryStats) []any {
 	snap := stats.Snapshot()
 	return append(logValues,
 		"object_requests", snap.ObjectStorageRequests,
-		"header_reads", snap.HeaderReads,
-		"metadata_reads", snap.MetadataReads,
 		"term_dict_reads", snap.TermDictReads,
 		"bitmap_reads", snap.BitmapReads,
-		"header_cache_misses", snap.HeaderCacheMisses,
-		"metadata_cache_misses", snap.MetadataCacheMisses,
 		"io_wait", snap.TotalIOWait,
 		"io_bytes", snap.TotalIOBytes,
 		"peak_concurrency", snap.PeakConcurrency,
@@ -606,6 +602,7 @@ func (h *loglinePrefetchHandler) doDryRun(
 		start := time.Now()
 		hints, stats, hintErr := h.hintProvider.ProvideHints(
 			prefetchCtx,
+			h.next,
 			tenant,
 			expr,
 			model.TimeFromUnixNano(from.UnixNano()),
@@ -879,12 +876,8 @@ func (h *loglinePrefetchHandler) Do(ctx context.Context, req queryrangebase.Requ
 					"hint_total_seconds", hintRangesTotalSeconds(result.ranges),
 					"err", result.err,
 					"object_requests", snap.ObjectStorageRequests,
-					"header_reads", snap.HeaderReads,
-					"metadata_reads", snap.MetadataReads,
 					"term_dict_reads", snap.TermDictReads,
 					"bitmap_reads", snap.BitmapReads,
-					"header_cache_misses", snap.HeaderCacheMisses,
-					"metadata_cache_misses", snap.MetadataCacheMisses,
 					"io_wait", snap.TotalIOWait,
 					"io_bytes", snap.TotalIOBytes,
 					"peak_concurrency", snap.PeakConcurrency,
@@ -921,7 +914,7 @@ func (h *loglinePrefetchHandler) Do(ctx context.Context, req queryrangebase.Requ
 		eligibleFrom := model.TimeFromUnixNano(from.UnixNano())
 		eligibleThrough := model.TimeFromUnixNano(eligibleEnd.UnixNano())
 
-		hints, stats, err := h.hintProvider.ProvideHints(prefetchCtx, tenant, expr, eligibleFrom, eligibleThrough)
+		hints, stats, err := h.hintProvider.ProvideHints(prefetchCtx, h.next, tenant, expr, eligibleFrom, eligibleThrough)
 		if stats != nil {
 			result.stats.Merge(stats)
 		}

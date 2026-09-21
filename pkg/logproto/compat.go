@@ -343,6 +343,43 @@ func (i *IndexStatsResponse) GetHeaders() []*definitions.PrometheusResponseHeade
 	return nil
 }
 
+func (m *HintRequest) GetStart() time.Time {
+	return time.UnixMilli(int64(m.From))
+}
+
+func (m *HintRequest) GetEnd() time.Time {
+	return time.UnixMilli(int64(m.Through))
+}
+
+func (m *HintRequest) GetStep() int64 { return 0 }
+
+func (m *HintRequest) GetQuery() string {
+	return m.Expr
+}
+
+func (m *HintRequest) GetCachingOptions() (res definitions.CachingOptions) { return }
+
+func (m *HintRequest) WithStartEnd(start, end time.Time) definitions.Request {
+	clone := *m
+	clone.From = model.TimeFromUnixNano(start.UnixNano())
+	clone.Through = model.TimeFromUnixNano(end.UnixNano())
+	return &clone
+}
+
+func (m *HintRequest) WithQuery(query string) definitions.Request {
+	clone := *m
+	clone.Expr = query
+	return &clone
+}
+
+func (m *HintRequest) LogToSpan(sp trace.Span) {
+	sp.SetAttributes(
+		attribute.String("query", m.GetQuery()),
+		attribute.String("start", timestamp.Time(int64(m.From)).String()),
+		attribute.String("end", timestamp.Time(int64(m.Through)).String()),
+	)
+}
+
 // Satisfy definitions.Request for Volume
 
 // GetStart returns the start timestamp of the request in milliseconds.

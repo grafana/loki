@@ -56,6 +56,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/limits"
 	limits_frontend "github.com/grafana/loki/v3/pkg/limits/frontend"
 	limitsproto "github.com/grafana/loki/v3/pkg/limits/proto"
+	"github.com/grafana/loki/v3/pkg/logline/store"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql"
 	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
@@ -544,7 +545,22 @@ func (t *Loki) initQuerier() (services.Service, error) {
 		return nil, err
 	}
 
-	t.Querier, err = querier.New(t.Cfg.Querier, t.Store, t.ingesterQuerier, t.Overrides, deleteStore, logger)
+	var loglineStore *store.Store
+	if t.Cfg.Logline.Enabled {
+		loglineStore, err = store.New(
+			context.Background(),
+			t.Cfg.SchemaConfig,
+			t.Cfg.StorageConfig.ObjectStore,
+			t.Cfg.Logline.Store,
+			logger,
+			prometheus.DefaultRegisterer,
+		)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	t.Querier, err = querier.New(t.Cfg.Querier, t.Store, t.ingesterQuerier, t.Overrides, deleteStore, logger, loglineStore)
 	if err != nil {
 		return nil, err
 	}
@@ -2564,7 +2580,7 @@ func (t *Loki) deleteRequestsClient(clientType string, limits limiter.CombinedLi
 }
 
 func (t *Loki) createRulerQueryEngine(logger log.Logger, deleteStore deletion.DeleteRequestsClient) (eng *logql.QueryEngine, err error) {
-	q, err := querier.New(t.Cfg.Querier, t.Store, t.ingesterQuerier, t.Overrides, deleteStore, logger)
+	q, err := querier.New(t.Cfg.Querier, t.Store, t.ingesterQuerier, t.Overrides, deleteStore, logger, nil)
 	if err != nil {
 		return nil, fmt.Errorf("could not create querier: %w", err)
 	}

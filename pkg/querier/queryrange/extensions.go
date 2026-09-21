@@ -170,6 +170,22 @@ func (m *IndexStatsResponse) WithHeaders(h []queryrangebase.PrometheusResponseHe
 	return m
 }
 
+func (m *HintResponse) GetHeaders() []*queryrangebase.PrometheusResponseHeader {
+	if m != nil {
+		return convertPrometheusResponseHeadersToPointers(m.Headers)
+	}
+	return nil
+}
+
+func (m *HintResponse) SetHeader(name, value string) {
+	m.Headers = setHeader(m.Headers, name, value)
+}
+
+func (m *HintResponse) WithHeaders(h []queryrangebase.PrometheusResponseHeader) queryrangebase.Response {
+	m.Headers = h
+	return m
+}
+
 // GetHeaders returns the HTTP headers in the response.
 func (m *VolumeResponse) GetHeaders() []*queryrangebase.PrometheusResponseHeader {
 	if m != nil {

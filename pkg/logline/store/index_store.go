@@ -194,6 +194,16 @@ func (s *Store) GetIndexReaderAt(ctx context.Context, meta Meta) io.ReaderAt {
 	return NewBucketReaderAt(ctx, s.bucket, meta.IndexPath())
 }
 
+// IndexObjectSize returns the size of the index data object in the bucket.
+// Used when Meta.SizeBytes is missing or untrusted (e.g. a slim IndexRef).
+func (s *Store) IndexObjectSize(ctx context.Context, meta Meta) (int64, error) {
+	attrs, err := s.bucket.Attributes(ctx, meta.IndexPath())
+	if err != nil {
+		return 0, fmt.Errorf("stat index %s: %w", meta.ID(), err)
+	}
+	return attrs.Size, nil
+}
+
 // GetIndexReadAheadReaderAt returns an io.ReaderAt that prefetches chunks
 // from object storage, amortizing round-trip latency across many small reads.
 // fileSize must be the exact size of the index data file. chunkSize controls

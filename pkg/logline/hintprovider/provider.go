@@ -10,6 +10,7 @@ import (
 	"github.com/prometheus/common/model"
 
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
+	"github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase"
 )
 
 // ErrUnsupported is returned when the query shape cannot be handled by the
@@ -28,7 +29,7 @@ const HintSourcePreMinDate = "pre_min_date"
 
 // QueryHintProvider inspects a query and returns narrowed scan hints.
 type QueryHintProvider interface {
-	ProvideHints(ctx context.Context, tenant string, expr syntax.Expr, from, through model.Time) (*Hints, *QueryStats, error)
+	ProvideHints(ctx context.Context, next queryrangebase.Handler, tenant string, expr syntax.Expr, from, through model.Time) (*Hints, *QueryStats, error)
 }
 
 // HintTimeRange is a half-open time window [Start, End) that may contain

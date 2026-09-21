@@ -14,6 +14,7 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
+	"github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/cache"
 )
 
@@ -119,6 +120,7 @@ type stubHintProvider struct {
 
 func (s *stubHintProvider) ProvideHints(
 	_ context.Context,
+	_ queryrangebase.Handler,
 	_ string,
 	_ syntax.Expr,
 	_,
@@ -204,6 +206,7 @@ func TestCachingHintProvider_FullHitAcrossAllDays(t *testing.T) {
 
 	hints, stats, err := provider.ProvideHints(
 		context.Background(),
+		nil,
 		tenant,
 		expr,
 		model.TimeFromUnixNano(from.UnixNano()),
@@ -264,6 +267,7 @@ func TestCachingHintProvider_PartialMissFetchesDelegateAndBackfillsDays(t *testi
 
 	gotFirst, _, err := provider.ProvideHints(
 		context.Background(),
+		nil,
 		tenant,
 		expr,
 		model.TimeFromUnixNano(from.UnixNano()),
@@ -277,6 +281,7 @@ func TestCachingHintProvider_PartialMissFetchesDelegateAndBackfillsDays(t *testi
 	// Second request should be fully served from cache.
 	gotSecond, _, err := provider.ProvideHints(
 		context.Background(),
+		nil,
 		tenant,
 		expr,
 		model.TimeFromUnixNano(from.UnixNano()),
@@ -306,11 +311,11 @@ func TestCachingHintProvider_DayPayloadsAbutAtMidnight(t *testing.T) {
 	through := model.TimeFromUnixNano(midnight.Add(2 * time.Hour).UnixNano())
 
 	// Fill both day entries.
-	_, _, err := provider.ProvideHints(context.Background(), "tenant-a", expr, from, through)
+	_, _, err := provider.ProvideHints(context.Background(), nil, "tenant-a", expr, from, through)
 	require.NoError(t, err)
 
 	// Serve the same window from cache.
-	hit, _, err := provider.ProvideHints(context.Background(), "tenant-a", expr, from, through)
+	hit, _, err := provider.ProvideHints(context.Background(), nil, "tenant-a", expr, from, through)
 	require.NoError(t, err)
 	require.Equal(t, []HintTimeRange{spanning}, hit.TimeRanges)
 }
@@ -433,7 +438,7 @@ func TestCachingHintProvider_SingleflightDeduplicatesConcurrentMisses(t *testing
 	errCh := make(chan error, workers)
 	for range workers {
 		wg.Go(func() {
-			_, _, err := provider.ProvideHints(context.Background(), tenant, expr, from, through)
+			_, _, err := provider.ProvideHints(context.Background(), nil, tenant, expr, from, through)
 			errCh <- err
 		})
 	}
@@ -506,6 +511,7 @@ func TestCachingHintProvider_FiltersOutOfWindowRanges(t *testing.T) {
 
 		hints, _, err := provider.ProvideHints(
 			context.Background(),
+			nil,
 			tenant,
 			expr,
 			model.TimeFromUnixNano(from.UnixNano()),
@@ -523,6 +529,7 @@ func TestCachingHintProvider_FiltersOutOfWindowRanges(t *testing.T) {
 
 		hints, _, err := provider.ProvideHints(
 			context.Background(),
+			nil,
 			tenant,
 			expr,
 			model.TimeFromUnixNano(from.UnixNano()),
@@ -539,6 +546,7 @@ func TestCachingHintProvider_FiltersOutOfWindowRanges(t *testing.T) {
 
 		hints, _, err := provider.ProvideHints(
 			context.Background(),
+			nil,
 			tenant,
 			expr,
 			model.TimeFromUnixNano(from.UnixNano()),
@@ -556,6 +564,7 @@ func TestCachingHintProvider_FiltersOutOfWindowRanges(t *testing.T) {
 
 		hints, _, err := provider.ProvideHints(
 			WithSkipCache(context.Background()),
+			nil,
 			tenant,
 			expr,
 			model.TimeFromUnixNano(from.UnixNano()),
@@ -585,6 +594,7 @@ func TestCachingHintProvider_NilCachePassthrough(t *testing.T) {
 
 	_, _, err := provider.ProvideHints(
 		context.Background(),
+		nil,
 		"tenant-a",
 		expr,
 		model.TimeFromUnixNano(time.Date(2026, 3, 10, 0, 0, 0, 0, time.UTC).UnixNano()),
@@ -604,9 +614,9 @@ func TestCachingHintProvider_ErrUnsupportedNotCached(t *testing.T) {
 	from := model.TimeFromUnixNano(time.Date(2026, 3, 10, 0, 0, 0, 0, time.UTC).UnixNano())
 	through := model.TimeFromUnixNano(time.Date(2026, 3, 10, 1, 0, 0, 0, time.UTC).UnixNano())
 
-	_, _, err := provider.ProvideHints(context.Background(), "tenant-a", expr, from, through)
+	_, _, err := provider.ProvideHints(context.Background(), nil, "tenant-a", expr, from, through)
 	require.ErrorIs(t, err, ErrUnsupported)
-	_, _, err = provider.ProvideHints(context.Background(), "tenant-a", expr, from, through)
+	_, _, err = provider.ProvideHints(context.Background(), nil, "tenant-a", expr, from, through)
 	require.ErrorIs(t, err, ErrUnsupported)
 
 	require.Equal(t, 2, delegate.Calls(), "errors must not be cached")
@@ -640,6 +650,7 @@ func TestCachingHintProvider_FetchErrorFallsBackToDelegate(t *testing.T) {
 
 	hints, _, err := provider.ProvideHints(
 		context.Background(),
+		nil,
 		"tenant-a",
 		expr,
 		model.TimeFromUnixNano(from.UnixNano()),
@@ -671,6 +682,7 @@ func TestCachingHintProvider_SkipCacheBypassesFetchAndStore(t *testing.T) {
 
 	_, _, err := provider.ProvideHints(
 		ctx,
+		nil,
 		"tenant-a",
 		expr,
 		model.TimeFromUnixNano(time.Date(2026, 3, 10, 0, 0, 0, 0, time.UTC).UnixNano()),
@@ -703,6 +715,7 @@ func TestCachingHintProvider_CachesEmptyDays(t *testing.T) {
 
 	_, _, err := provider.ProvideHints(
 		context.Background(),
+		nil,
 		tenant,
 		expr,
 		model.TimeFromUnixNano(from.UnixNano()),
@@ -746,6 +759,7 @@ func TestCachingHintProvider_UsesDelegateMinDateInCacheKeys(t *testing.T) {
 
 	_, _, err := provider.ProvideHints(
 		context.Background(),
+		nil,
 		tenant,
 		expr,
 		model.TimeFromUnixNano(from.UnixNano()),
@@ -769,6 +783,7 @@ type mutableWindowHintProvider struct {
 
 func (p *mutableWindowHintProvider) ProvideHints(
 	_ context.Context,
+	_ queryrangebase.Handler,
 	_ string,
 	_ syntax.Expr,
 	from,
@@ -835,6 +850,7 @@ func TestCachingHintProvider_WindowWideningShouldNotReturnStaleHints(t *testing.
 
 	firstHints, _, err := provider.ProvideHints(
 		context.Background(),
+		nil,
 		tenant,
 		expr,
 		model.TimeFromUnixNano(from.UnixNano()),
@@ -847,6 +863,7 @@ func TestCachingHintProvider_WindowWideningShouldNotReturnStaleHints(t *testing.
 	// needed for the wider window.
 	cachedHints, cachedStats, err := provider.ProvideHints(
 		context.Background(),
+		nil,
 		tenant,
 		expr,
 		model.TimeFromUnixNano(from.UnixNano()),
@@ -859,6 +876,7 @@ func TestCachingHintProvider_WindowWideningShouldNotReturnStaleHints(t *testing.
 	// Bypass cache for control: fresh delegate result includes both ranges.
 	freshHints, _, err := provider.ProvideHints(
 		WithSkipCache(context.Background()),
+		nil,
 		tenant,
 		expr,
 		model.TimeFromUnixNano(from.UnixNano()),

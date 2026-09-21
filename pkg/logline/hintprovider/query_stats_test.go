@@ -39,6 +39,7 @@ func TestQueryStats_TrackingReader_ClassifiesBySections(t *testing.T) {
 			docs := []format.DocumentMetadata{{ID: 0, MinTimeUnix: 1000, MaxTimeUnix: 2000}}
 			w, err := logline.NewWriter(version, path, docs, nil)
 			require.NoError(t, err)
+			require.NoError(t, w.WriteTermBitmap([8]byte{'a', 'a', 'a', 'a', 'a', 'a'}, format.Bitmap{MatchesAll: true}))
 			require.NoError(t, w.Close())
 
 			fr, _, err := logline.OpenFile(path)
@@ -55,18 +56,31 @@ func TestQueryStats_TrackingReader_ClassifiesBySections(t *testing.T) {
 			tracked := newTrackingReaderAt(f, stats)
 			tracked.SetClassifier(fr)
 
-			// Read at offset 0 — header (v1) or postings (v2).
-			_, err = tracked.ReadAt(make([]byte, 16), 0)
-			require.NoError(t, err)
+			var termOff, postOff int64 = -1, -1
+			for off := int64(0); off < fi.Size(); off++ {
+				switch fr.ClassifyRead(off, 16) {
+				case format.ReadSectionTermDict:
+					if termOff < 0 {
+						termOff = off
+					}
+				case format.ReadSectionPostings:
+					if postOff < 0 {
+						postOff = off
+					}
+				}
+			}
+			require.GreaterOrEqual(t, termOff, int64(0))
+			require.GreaterOrEqual(t, postOff, int64(0))
 
-			// Read at a position near the end — metadata section.
-			_, err = tracked.ReadAt(make([]byte, 16), fi.Size()-16-1)
+			_, err = tracked.ReadAt(make([]byte, 16), postOff)
+			require.NoError(t, err)
+			_, err = tracked.ReadAt(make([]byte, 16), termOff)
 			require.NoError(t, err)
 
 			snap := stats.Snapshot()
-			// Both reads were classified into a named section — nothing lost to unknown.
-			classified := snap.HeaderReads + snap.BitmapReads + snap.TermDictReads + snap.MetadataReads
-			require.Equal(t, int64(2), classified, "expected both reads classified, got header=%d bitmap=%d termdict=%d metadata=%d", snap.HeaderReads, snap.BitmapReads, snap.TermDictReads, snap.MetadataReads)
+			require.Equal(t, int64(1), snap.BitmapReads)
+			require.Equal(t, int64(1), snap.TermDictReads)
+			require.Equal(t, int64(32), snap.TotalIOBytes)
 		})
 	}
 }
@@ -84,11 +98,8 @@ func TestQueryStats_TrackingReader_UnknownBeforeClassifier(t *testing.T) {
 	require.NoError(t, err)
 
 	snap := stats.Snapshot()
-	// Both reads land in the unknown bucket, not in any named section.
-	require.Equal(t, int64(0), snap.HeaderReads)
 	require.Equal(t, int64(0), snap.BitmapReads)
 	require.Equal(t, int64(0), snap.TermDictReads)
-	require.Equal(t, int64(0), snap.MetadataReads)
 	// But bytes are still tracked.
 	require.Equal(t, int64(128), snap.TotalIOBytes)
 }
@@ -103,18 +114,13 @@ func TestQueryStats_SnapshotIncludesConcurrencyAndPrefetch(t *testing.T) {
 	stats.WorkerFinished(time.Now().Add(-40 * time.Millisecond))
 	stats.ObservePrefetchCall(false)
 	stats.ObservePrefetchCall(true)
-	stats.ObserveHeaderCacheMiss()
-	stats.ObserveMetadataCacheMiss()
 
 	snap := stats.Snapshot()
 	require.Equal(t, int32(2), snap.PeakConcurrency)
 	require.Greater(t, snap.EffectiveConcurrency, 1.0)
 	require.Equal(t, int32(2), snap.PrefetchCalls)
 	require.Equal(t, int32(1), snap.PrefetchTimeouts)
-	require.Equal(t, int64(1), snap.HeaderCacheMisses)
-	require.Equal(t, int64(1), snap.MetadataCacheMisses)
 	require.Contains(t, stats.String(), "prefetch_calls=2")
-	require.Contains(t, stats.String(), "metadata_cache_misses=1")
 }
 
 func TestQueryStats_ObserveQueryMultiple(t *testing.T) {
@@ -134,17 +140,15 @@ func TestQueryStats_ObserveQueryMultiple(t *testing.T) {
 
 func TestQueryStats_Merge(t *testing.T) {
 	left := NewQueryStats()
-	left.ObserveHeaderCacheMiss()
 	left.ObservePrefetchCall(true)
 	left.SetWallTime(40 * time.Millisecond)
 	left.WorkerStarted()
 	left.WorkerFinished(time.Now().Add(-20 * time.Millisecond))
 
 	right := NewQueryStats()
-	right.ObserveMetadataCacheMiss()
 	right.ObservePrefetchCall(false)
 	right.ObservePrefetchCall(true)
-	right.observeRead(trackedReadHeader, 16, 5*time.Millisecond)
+	right.observeRead(trackedReadTermDict, 16, 5*time.Millisecond)
 	right.observeRead(trackedReadBitmap, 32, 7*time.Millisecond)
 	right.ObserveQueryMultiple(format.QueryMultipleReasonTermMiss, 2)
 	right.ObserveQueryMultiple(format.QueryMultipleReasonComplete, 4)
@@ -157,13 +161,11 @@ func TestQueryStats_Merge(t *testing.T) {
 	left.Merge(right)
 	snap := left.Snapshot()
 
-	require.Equal(t, int64(1), snap.HeaderReads)
+	require.Equal(t, int64(1), snap.TermDictReads)
 	require.Equal(t, int64(1), snap.BitmapReads)
 	require.Equal(t, int64(2), snap.ObjectStorageRequests)
 	require.Equal(t, int64(48), snap.TotalIOBytes)
 	require.Equal(t, 12*time.Millisecond, snap.TotalIOWait)
-	require.Equal(t, int64(1), snap.HeaderCacheMisses)
-	require.Equal(t, int64(1), snap.MetadataCacheMisses)
 	require.Equal(t, int32(3), snap.PrefetchCalls)
 	require.Equal(t, int32(2), snap.PrefetchTimeouts)
 	require.Equal(t, int32(2), snap.PeakConcurrency)
