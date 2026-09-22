@@ -43,6 +43,15 @@ type (
 		// names. Owned by the manage goroutine.
 		unresolvedAssigns map[topicID][]int32
 
+		// Whether the last assignPartitions pass skipped an assigned
+		// partition our metadata does not know yet (the broker assigned
+		// newly added partitions before our metadata refreshed). We ack
+		// the member epoch regardless, so the broker never re-sends the
+		// assignment; while true, handleHeartbeatResp re-returns the
+		// current assignment so we retry once metadata catches up. Owned
+		// by the manage goroutine.
+		pendingAssigns bool
+
 		lastSentSubscribedTopics []string
 		lastSentRack             bool
 
@@ -80,7 +89,7 @@ type (
 		mu       xsync.Mutex
 		cond     *sync.Cond
 		dying    bool // single-shot leave guard + incWorker gate
-		workers  int  // active goroutines (manage + source loops)
+		workers  int  // active goroutines (manage + source loops + in-flight cursor migrations)
 		left     chan struct{}
 		leaveErr error
 
@@ -96,6 +105,13 @@ type (
 		// sources concurrent with user acking.
 		source atomic.Pointer[source]
 
+		// unknownIDFails counts consecutive UnknownTopicID fetch
+		// errors, mirroring cursor.unknownIDFails: the error is
+		// transient on a just-created topic while brokers sync, so we
+		// strip it for a few fetches, but persistent means the topic
+		// was recreated and we surface it forever (stall loudly).
+		unknownIDFails atomic.Int32
+
 		cursorsIdx int
 
 		// assigned is true when the cursor's partition is currently
@@ -109,6 +125,19 @@ type (
 		// dance from classic is unnecessary here and orchestrating
 		// a similar flow actually makes the code worse.
 		assigned atomic.Bool
+
+		// moving is true while a leader-move (applyMoves) is queued and
+		// in flight for this cursor. createShareReq skips a moving cursor
+		// (it then falls into the forget set, dropping it from the old
+		// broker's session like the classic strip), so the old source does
+		// not keep re-fetching the partition - getting NOT_LEADER and
+		// re-queuing the move - until the async migration lands. This is
+		// the share analog of the classic cursor going unusable for the
+		// duration of a move (source.go use() + strip, never re-enabled
+		// until the move replaces the cursor). applyMoves sets it before
+		// spawning the migration; applyMovesBlocking clears it and
+		// re-signals the cursor's source once the move has run.
+		moving atomic.Bool
 
 		ackMu       xsync.Mutex
 		pendingAcks []*shareAckState // user acks (r.Ack, finalizePreviousPoll, batchAckRecords)
@@ -145,6 +174,7 @@ type (
 		topicID   [16]byte
 		partition int32
 		leaderID  int32
+		cursor    *shareCursor // cursor to re-enable (clear moving) after the migration runs; see shareCursor.moving
 	}
 
 	// shareAckRange is a contiguous offset range with a fixed ack
@@ -620,7 +650,15 @@ func (sc *shareConsumer) leave(ctx context.Context) {
 		sc.leaveErr = err
 		return
 	}
-	sc.leaveErr = errCodeMessage(resp.ErrorCode, resp.ErrorMessage)
+	err = errCodeMessage(resp.ErrorCode, resp.ErrorMessage)
+	// As with the 848 leave: the leave is retried, so a retry can find
+	// the member already gone (prior attempt's response lost, or the
+	// session expired first). The member being out of the group is the
+	// goal state of leaving, not an error.
+	if errors.Is(err, kerr.UnknownMemberID) {
+		err = nil
+	}
+	sc.leaveErr = err
 }
 
 // closeShareSession releases any buffered records on this source,
@@ -1087,14 +1125,17 @@ func (sc *shareConsumer) handleHeartbeatResp(resp *kmsg.ShareGroupHeartbeatRespo
 	sc.memberGen.storeGeneration(resp.MemberEpoch)
 
 	if resp.Assignment == nil {
-		if len(sc.unresolvedAssigns) == 0 {
+		if len(sc.unresolvedAssigns) == 0 && !sc.pendingAssigns {
 			return nil
 		}
-		// No assignment: try to resolve prior un-resolvable
-		// topics. If we can, that updates our current assignment
-		// and we return the new update.
+		// No assignment: try to resolve prior un-resolvable topics,
+		// and if a prior assignPartitions could not activate some
+		// partitions (pendingAssigns), re-return the current
+		// assignment so activation is retried: the broker considers
+		// the assignment delivered (we acked the epoch) and will not
+		// re-send it on its own.
 		resolved := sc.resolveUnresolvedTopicIDs()
-		if len(resolved) == 0 {
+		if len(resolved) == 0 && !sc.pendingAssigns {
 			return nil
 		}
 		current := sc.nowAssigned.read()
@@ -1179,7 +1220,7 @@ func (sc *shareConsumer) assignPartitions(assignments map[string][]int32) {
 			if slices.Contains(newPs, p) { // linear, *usually* fast...
 				continue
 			}
-			if int(p) >= len(td.partitions) {
+			if p < 0 || int(p) >= len(td.partitions) {
 				continue
 			}
 			cursor := td.partitions[p].shareCursor
@@ -1188,26 +1229,52 @@ func (sc *shareConsumer) assignPartitions(assignments map[string][]int32) {
 		}
 	}
 
-	// Add what is new.
+	// Add what is new. We skip based on the cursor's own activation
+	// state, not on what nowAssigned previously contained: a partition
+	// can be in nowAssigned but never activated (skipped below because
+	// our metadata did not know it yet), and it must be re-attempted on
+	// a later pass.
 	var needsMetaUpdate bool
+	sc.pendingAssigns = false
 	for t, newPs := range assignments {
-		oldPs := old[t]
 		tp, ok := tps[t]
 		if !ok {
+			// Not subscribed (e.g. purged): the broker revokes once
+			// our next heartbeat updates SubscribedTopicNames. We
+			// deliberately do not set pendingAssigns: the topic will
+			// never appear in tps, and the broker is guaranteed to
+			// send a new assignment in response to the subscription
+			// change.
 			needsMetaUpdate = true
-			continue // if we don't know the tps data, we can't assign it; force a meta refresh
+			continue
 		}
 		td := tp.load()
 		for _, p := range newPs {
-			if slices.Contains(oldPs, p) {
-				continue // already was assigned, no-op
+			if p < 0 {
+				// A sane broker never assigns a negative partition;
+				// guard a buggy/hostile one. Unlike the too-large
+				// case below, a negative index can never become
+				// valid, so do not set pendingAssigns for it.
+				sc.cfg.logger.Log(LogLevelWarn, "share assignment contains a negative partition, ignoring it",
+					"topic", t,
+					"partition", p,
+				)
+				continue
 			}
 			if int(p) >= len(td.partitions) {
+				// Assigned a partition our metadata does not know
+				// yet (partitions were just added and the
+				// coordinator is ahead of our metadata). We cannot
+				// activate it now; retry after the metadata
+				// refresh below.
+				sc.pendingAssigns = true
 				needsMetaUpdate = true
 				continue
 			}
 			cursor := td.partitions[p].shareCursor
-			cursor.assigned.Store(true)
+			if cursor.assigned.Swap(true) {
+				continue // already active from a prior pass
+			}
 			sourcesToWake[cursor.source.Load()] = struct{}{}
 		}
 	}
@@ -1229,7 +1296,37 @@ func (sc *shareConsumer) applyMoves(moves []shareMove, endpoints []BrokerMetadat
 	if len(moves) == 0 {
 		return
 	}
-	go sc.cl.blockingMetadataFn(func() {
+	// Mark each migrating cursor unusable BEFORE spawning, on this (the
+	// fetch) goroutine, so the very next createShareReq already skips it.
+	// Setting it inside the spawned goroutine would race the next fetch,
+	// which could rebuild a request that re-fetches the partition (getting
+	// NOT_LEADER again) before the goroutine runs. applyMovesBlocking clears
+	// the flag once the migration has run. See shareCursor.moving.
+	for i := range moves {
+		moves[i].cursor.moving.Store(true)
+	}
+	go sc.applyMovesBlocking(moves, endpoints)
+}
+
+// applyMovesBlocking performs the cursor migration on the metadata loop.
+// It registers as a share-consumer worker (incWorker/decWorker) so leave's
+// barrier waits for an in-flight migration before it drains and closes the
+// per-source sessions: the move runs via blockingMetadataFn and can relocate
+// a cursor (or create a brand-new source) concurrently with leave. Without
+// the worker registration, a CurrentLeader-hint move racing LeaveGroup/Close
+// can land a cursor on a source whose closeShareSession already drained (or
+// on a source created after leave snapshotted the source list), stranding
+// that cursor's pending acks: sc.pendingAcks never returns to 0 (FlushAcks
+// hangs) and the held records release only via the broker's acquisition-lock
+// timeout. If the consumer is already dying, incWorker returns false and the
+// move is skipped; the cursor stays on its current source, which the leave's
+// closeShareSession drains.
+func (sc *shareConsumer) applyMovesBlocking(moves []shareMove, endpoints []BrokerMetadata) {
+	if !sc.incWorker() {
+		return
+	}
+	defer sc.decWorker()
+	sc.cl.blockingMetadataFn(func() {
 		// Seed any brokers from the response's NodeEndpoints that we
 		// do not yet know about. Same merge-without-remove invariant
 		// as kip951move.ensureBrokers.
@@ -1289,7 +1386,7 @@ func (sc *shareConsumer) applyMoves(moves []shareMove, endpoints []BrokerMetadat
 				continue
 			}
 			td := tp.load()
-			if int(m.partition) >= len(td.partitions) {
+			if m.partition < 0 || int(m.partition) >= len(td.partitions) {
 				continue
 			}
 			cursor := td.partitions[m.partition].shareCursor
@@ -1308,6 +1405,22 @@ func (sc *shareConsumer) applyMoves(moves []shareMove, endpoints []BrokerMetadat
 				"total_hints", len(moves),
 				"applied", moved,
 			)
+		}
+
+		// Re-enable each cursor for fetching now that its move has run, and
+		// re-signal its (current) source. addShareCursor above woke the new
+		// source's loop while moving was still set, so that loop may have
+		// skipped this cursor and exited via maybeFinish before we got here;
+		// maybeShareConsume re-fetches it. Cursors whose move was skipped
+		// (topic unresolved, out of range, already on the leader) are
+		// re-enabled on their current source so they retry. This clear runs
+		// before decWorker, so it cannot race leave's barrier; the dying
+		// bail and the cl.ctx escape skip it, but those are shutdown paths
+		// where closeShareSession drains the cursor regardless of moving.
+		for i := range moves {
+			c := moves[i].cursor
+			c.moving.Store(false)
+			c.source.Load().maybeShareConsume()
 		}
 	})
 }
@@ -1740,6 +1853,7 @@ func (s *source) shareAck(predrained []cursorAckDrain) {
 						topicID:   rt.TopicID,
 						partition: rp.Partition,
 						leaderID:  rp.CurrentLeader.LeaderID,
+						cursor:    drained.cursor,
 					})
 				}
 				if isShareAckRetryable(partErr) {
@@ -2331,12 +2445,18 @@ func (s *source) shareFetch(doneFetch chan<- bool) (fetched bool) {
 	}
 
 	var didBackoff bool
-	backoff := func() {
+	backoff := func(why any) {
 		// Release fetch slot before sleeping so other sources
 		// can fetch during our backoff.
 		doneFetch <- false
 		alreadySentToDoneFetch = true
 		didBackoff = true
+
+		// Like the classic source backoff: a fetch failure is the
+		// only signal we get when a broker dies (no response means no
+		// CurrentLeader hint), so opportunistically refresh metadata
+		// to migrate our cursors to the new leader.
+		s.cl.triggerUpdateMetadata(false, fmt.Sprintf("opportunistic load during share source backoff: %v", why))
 		s.consecutiveFailures++
 		after := time.NewTimer(sc.cfg.retryBackoff(s.consecutiveFailures))
 		defer after.Stop()
@@ -2353,7 +2473,7 @@ func (s *source) shareFetch(doneFetch chan<- bool) (fetched bool) {
 
 	if err != nil {
 		s.resetShareSession()
-		backoff()
+		backoff(err)
 		sc.enqueueAckErrors(piggybackAcks, err, nAcks)
 		return fetched
 	}
@@ -2363,7 +2483,13 @@ func (s *source) shareFetch(doneFetch chan<- bool) (fetched bool) {
 	res := s.handleShareReqResp(req, resp, usable, piggybackAcks, sentPiggyback)
 
 	if res.discardErr != nil {
+		// Top-level errors are not necessarily transient (e.g. group
+		// auth revoked mid-run answers GROUP_AUTHORIZATION_FAILED
+		// top-level on every fetch); without a backoff this loops at
+		// round-trip pace. Transport errors and all-errors-stripped
+		// responses already back off; treat top-level errors the same.
 		sc.enqueueAckErrors(piggybackAcks, res.discardErr, nAcks)
+		backoff(res.discardErr)
 		return fetched
 	}
 
@@ -2383,7 +2509,7 @@ func (s *source) shareFetch(doneFetch chan<- bool) (fetched bool) {
 		s.hook(&res.fetch, true, false)
 		sc.c.addSourceReadyForDraining(s)
 	} else if res.allErrsStripped {
-		backoff()
+		backoff("empty share fetch response due to all partitions having retryable errors")
 	}
 	return fetched
 }
@@ -2467,6 +2593,7 @@ func (s *source) handleShareReqResp(req *kmsg.ShareFetchRequest, resp *kmsg.Shar
 		ackRequeued        int64
 		partitionsWithErrs int
 		seen               = make(map[tidp]struct{}, len(usable)+len(piggybackAcks))
+		updateWhy          multiUpdateWhy
 	)
 
 	for i := range resp.Topics {
@@ -2532,16 +2659,48 @@ func (s *source) handleShareReqResp(req *kmsg.ShareFetchRequest, resp *kmsg.Shar
 						topicID:   rt.TopicID,
 						partition: rp.Partition,
 						leaderID:  rp.CurrentLeader.LeaderID,
+						cursor:    cursor,
 					})
 					continue
 				}
+				// No leader hint: classify like the classic fetch
+				// path (source.go handleReqResp). Retriable errors
+				// are stripped and heal via the metadata update
+				// triggered below (the broker only fills
+				// CurrentLeader for NotLeader/FencedLeaderEpoch and
+				// only when it knows the new leader, so hint-less
+				// errors are common: leaderless windows, storage
+				// errors, topic ID propagation). Non-retriable
+				// errors surface: share sessions give the user no
+				// other signal.
 				partErr := kerr.ErrorForCode(rp.ErrorCode)
-				partitions = append(partitions, FetchPartition{
-					Partition: rp.Partition,
-					Err:       partErr,
-				})
+				updateWhy.add(topicName, rp.Partition, partErr)
+				keep := true
+				switch {
+				case errors.Is(partErr, kerr.UnknownTopicID):
+					// Transient on just-created topics while
+					// brokers sync; persistent means recreation.
+					// Strip a few, then surface forever, exactly
+					// like the classic cursor's grace counter.
+					if fails := cursor.unknownIDFails.Add(1); fails > 5 {
+						cursor.unknownIDFails.Add(-1)
+					} else if !sc.cfg.keepRetryableFetchErrors {
+						keep = false
+					}
+				default:
+					if kerr.IsRetriable(partErr) && !sc.cfg.keepRetryableFetchErrors {
+						keep = false
+					}
+				}
+				if keep {
+					partitions = append(partitions, FetchPartition{
+						Partition: rp.Partition,
+						Err:       partErr,
+					})
+				}
 				continue
 			}
+			cursor.unknownIDFails.Store(0)
 
 			if len(rp.Records) == 0 && len(rp.AcquiredRecords) == 0 {
 				continue
@@ -2591,6 +2750,22 @@ func (s *source) handleShareReqResp(req *kmsg.ShareFetchRequest, resp *kmsg.Shar
 				"partition", tp.p,
 			)
 			ackResults = append(ackResults, ShareAckResult{topic, tp.p, errBrokerOmittedAckPartition})
+		}
+	}
+
+	// Like the classic fetch path: per-partition errors trigger an
+	// immediate metadata update so the cursor can migrate (this is the
+	// only heal when the response carries no CurrentLeader hint), except
+	// pure unknown-topic reasons, which likely mean the topic does not
+	// exist yet and reloading is wasteful - those ride the debounced
+	// trigger. Hinted moves are handled via applyMoves and do not land
+	// in updateWhy.
+	if updateWhy != nil {
+		why := updateWhy.reason(fmt.Sprintf("share fetch had inner topic errors from broker %d", s.nodeID))
+		if updateWhy.isOnly(kerr.UnknownTopicOrPartition) || updateWhy.isOnly(kerr.UnknownTopicID) {
+			s.cl.triggerUpdateMetadata(false, why)
+		} else {
+			s.cl.triggerUpdateMetadataNow(why)
 		}
 	}
 
@@ -2837,7 +3012,13 @@ func (s *source) createShareReq(skipAckDrain bool) (
 	for range s.share.cursors {
 		c := s.share.cursors[ci]
 		ci = (ci + 1) % nShareCursors
-		if !c.assigned.Load() || paused.has(c.topic, c.partition) {
+		// Skip a cursor whose leader move is in flight (moving): leaving it
+		// in the want-set would re-fetch the partition on the old leader,
+		// getting NOT_LEADER and re-queuing the move until the migration
+		// lands. Skipping drops it into the forget set below, releasing it
+		// from the old broker's session (the share analog of the classic
+		// strip). applyMovesBlocking re-enables it once the move has run.
+		if !c.assigned.Load() || c.moving.Load() || paused.has(c.topic, c.partition) {
 			continue
 		}
 		wantSet[tidp{c.topicID, c.partition}] = struct{}{}
