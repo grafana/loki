@@ -25,26 +25,18 @@ func (c *Cluster) handleListGroups(creq *clientReq) (kmsg.Response, error) {
 
 	resp := c.groups.handleList(creq)
 
-	// Include share groups, which have their own independent
-	// group management loop (not a part of the 'groups' struct).
+	// Include share groups, which are tracked separately from the
+	// 'groups' struct.
 	for _, sg := range c.shareGroups.gs {
 		if c.coordinator(sg.name).node != creq.cc.b.node {
 			continue
 		}
-		if !c.allowedACL(creq, sg.name, kmsg.ACLResourceTypeGroup, kmsg.ACLOperationDescribe) {
+		if e := c.deny(creq, sg.name, kmsg.ACLResourceTypeGroup, kmsg.ACLOperationDescribe, faultKey{group: sg.name}); e != nil {
 			continue
 		}
-		// Determine state. Use waitControl to safely read member count.
-		var state string
-		var members int
-		if !sg.waitControl(func() {
-			members = len(sg.members)
-		}) {
-			state = "Dead"
-		} else if members == 0 {
+		state := "Stable"
+		if len(sg.members) == 0 {
 			state = "Empty"
-		} else {
-			state = "Stable"
 		}
 		if len(req.StatesFilter) > 0 && !containsFold(req.StatesFilter, state) {
 			continue

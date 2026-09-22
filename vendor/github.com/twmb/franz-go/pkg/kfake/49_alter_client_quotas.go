@@ -4,7 +4,6 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/twmb/franz-go/pkg/kerr"
 	"github.com/twmb/franz-go/pkg/kmsg"
 )
 
@@ -31,10 +30,11 @@ func (c *Cluster) handleAlterClientQuotas(creq *clientReq) (kmsg.Response, error
 		return nil, err
 	}
 
-	if !c.allowedClusterACL(creq, kmsg.ACLOperationAlterConfigs) {
+	clusterErr := c.denyCluster(creq, kmsg.ACLOperationAlterConfigs)
+	if clusterErr != nil && creq.skipsWork(clusterErr) { // a timed-out alter still applies
 		for _, entry := range req.Entries {
 			re := kmsg.NewAlterClientQuotasResponseEntry()
-			re.ErrorCode = kerr.ClusterAuthorizationFailed.Code
+			re.ErrorCode = clusterErr.Code
 			for _, e := range entry.Entity {
 				ee := kmsg.NewAlterClientQuotasResponseEntryEntity()
 				ee.Type = e.Type
@@ -48,11 +48,23 @@ func (c *Cluster) handleAlterClientQuotas(creq *clientReq) (kmsg.Response, error
 
 	for _, entry := range req.Entries {
 		re := kmsg.NewAlterClientQuotasResponseEntry()
+		faultErr := clusterErr
 		for _, e := range entry.Entity {
 			ee := kmsg.NewAlterClientQuotasResponseEntryEntity()
 			ee.Type = e.Type
 			ee.Name = e.Name
 			re.Entity = append(re.Entity, ee)
+			if e.Name != nil && faultErr == nil {
+				faultErr = creq.faults.check(faultKey{resource: *e.Name})
+			}
+		}
+		if faultErr != nil {
+			re.ErrorCode = faultErr.Code
+			re.ErrorMessage = kmsg.StringPtr(faultErr.Message)
+			if creq.skipsWork(faultErr) { // a timed-out alter still applies
+				resp.Entries = append(resp.Entries, re)
+				continue
+			}
 		}
 
 		if !req.ValidateOnly {

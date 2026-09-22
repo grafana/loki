@@ -40,8 +40,8 @@ func (c *Cluster) handleShareAcknowledge(creq *clientReq) (kmsg.Response, error)
 	}
 
 	// ACL: require GROUP READ.
-	if !c.allowedACL(creq, groupID, kmsg.ACLResourceTypeGroup, kmsg.ACLOperationRead) {
-		resp.ErrorCode = kerr.GroupAuthorizationFailed.Code
+	if e := c.deny(creq, groupID, kmsg.ACLResourceTypeGroup, kmsg.ACLOperationRead, faultKey{group: groupID}); e != nil {
+		resp.ErrorCode = e.Code
 		return resp, nil
 	}
 
@@ -67,8 +67,6 @@ func (c *Cluster) handleShareAcknowledge(creq *clientReq) (kmsg.Response, error)
 		broker:   creq.cc.b.node,
 	}
 
-	id2t := c.data.id2t
-	maxDelivery := c.shareMaxDeliveryAttempts()
 	maxAckType := shareAckReject
 	if req.Version >= 2 && req.IsRenewAck {
 		maxAckType = shareAckRenew
@@ -90,6 +88,11 @@ func (c *Cluster) handleShareAcknowledge(creq *clientReq) (kmsg.Response, error)
 		sp := kmsg.NewShareAcknowledgeResponseTopicPartition()
 		sp.Partition = p
 		sp.ErrorCode = ec
+		// Real brokers serialize the Java schema default -1/-1 when
+		// they do not populate a leader hint; the Go zero value 0/0
+		// would be read by clients as a valid hint to node 0.
+		sp.CurrentLeader.LeaderID = -1
+		sp.CurrentLeader.LeaderEpoch = -1
 		resp.Topics[i].Partitions = append(resp.Topics[i].Partitions, sp)
 		return &resp.Topics[i].Partitions[len(resp.Topics[i].Partitions)-1]
 	}
@@ -112,10 +115,8 @@ func (c *Cluster) handleShareAcknowledge(creq *clientReq) (kmsg.Response, error)
 			return resp, nil
 		}
 		ackTs := ackTopicsFromAcknowledge(req.Topics)
-		sg.mu.Lock()
-		toFire := sg.processShareAcks(creq, memberID, ackTs, maxAckType, id2t, maxDelivery, onPartition, onNotLeader)
-		released := sg.releaseRecordsForSessionLocked(memberID, session, id2t, maxDelivery)
-		sg.mu.Unlock()
+		toFire := sg.processShareAcks(creq, memberID, ackTs, maxAckType, onPartition, onNotLeader)
+		released := sg.releaseRecordsForSession(memberID, session)
 		fireAll(toFire)
 		if released {
 			sg.fireAllShareWatchers()
@@ -141,9 +142,7 @@ func (c *Cluster) handleShareAcknowledge(creq *clientReq) (kmsg.Response, error)
 	}
 
 	ackTs := ackTopicsFromAcknowledge(req.Topics)
-	sg.mu.Lock()
-	toFire := sg.processShareAcks(creq, memberID, ackTs, maxAckType, id2t, maxDelivery, onPartition, onNotLeader)
-	sg.mu.Unlock()
+	toFire := sg.processShareAcks(creq, memberID, ackTs, maxAckType, onPartition, onNotLeader)
 	fireAll(toFire)
 
 	session.bumpEpoch()

@@ -50,14 +50,19 @@ func (c *Cluster) handleOffsetForLeaderEpoch(creq *clientReq) (kmsg.Response, er
 	}
 
 	for _, rt := range req.Topics {
-		if !c.allowedACL(creq, rt.Topic, kmsg.ACLResourceTypeTopic, kmsg.ACLOperationDescribe) {
+		tk := faultKey{topic: rt.Topic}
+		if e := c.deny(creq, rt.Topic, kmsg.ACLResourceTypeTopic, kmsg.ACLOperationDescribe, tk); e != nil {
 			for _, rp := range rt.Partitions {
-				donep(rt.Topic, rp.Partition, kerr.TopicAuthorizationFailed.Code)
+				donep(rt.Topic, rp.Partition, e.Code)
 			}
 			continue
 		}
 		ps, ok := c.data.tps.gett(rt.Topic)
 		for _, rp := range rt.Partitions {
+			if e := creq.faults.check(tk.part(rp.Partition)); e != nil {
+				donep(rt.Topic, rp.Partition, e.Code)
+				continue
+			}
 			if req.ReplicaID >= 0 {
 				donep(rt.Topic, rp.Partition, kerr.UnknownServerError.Code)
 				continue

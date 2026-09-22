@@ -29,11 +29,17 @@ func (c *Cluster) handleCreateACLs(creq *clientReq) (kmsg.Response, error) {
 
 	for _, cr := range req.Creations {
 		result := kmsg.CreateACLsResponseResult{}
+		fe := creq.faults.check(faultKey{resource: cr.ResourceName})
 		if !clusterAllowed {
-			result.ErrorCode = kerr.ClusterAuthorizationFailed.Code
-			result.ErrorMessage = kmsg.StringPtr(kerr.ClusterAuthorizationFailed.Message)
-			resp.Results = append(resp.Results, result)
-			continue
+			fe = kerr.ClusterAuthorizationFailed
+		}
+		if fe != nil {
+			result.ErrorCode = fe.Code
+			result.ErrorMessage = kmsg.StringPtr(fe.Message)
+			if creq.skipsWork(fe) { // a timed-out creation still creates the ACL
+				resp.Results = append(resp.Results, result)
+				continue
+			}
 		}
 
 		if err := validateACLCreation(cr); err != "" {

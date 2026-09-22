@@ -1,6 +1,9 @@
 package kfake
 
 import (
+	"strconv"
+	"strings"
+
 	"github.com/twmb/franz-go/pkg/kerr"
 	"github.com/twmb/franz-go/pkg/kmsg"
 )
@@ -63,23 +66,26 @@ func (c *Cluster) handleFindCoordinator(creq *clientReq) (kmsg.Response, error) 
 		}
 
 		// ACL check based on coordinator type
-		var allowed bool
-		var errCode int16
+		var e *kerr.Error
 		switch req.CoordinatorType {
 		case 0: // Group
-			allowed = c.allowedACL(creq, key, kmsg.ACLResourceTypeGroup, kmsg.ACLOperationDescribe)
-			errCode = kerr.GroupAuthorizationFailed.Code
+			e = c.deny(creq, key, kmsg.ACLResourceTypeGroup, kmsg.ACLOperationDescribe, faultKey{group: key})
 		case 1: // Transaction
-			allowed = c.allowedACL(creq, key, kmsg.ACLResourceTypeTransactionalId, kmsg.ACLOperationDescribe)
-			errCode = kerr.TransactionalIDAuthorizationFailed.Code
+			e = c.deny(creq, key, kmsg.ACLResourceTypeTransactionalId, kmsg.ACLOperationDescribe, faultKey{txnID: key})
 		case 2: // Share (KIP-932): requires CLUSTER CLUSTER_ACTION
 			// (matching Java's KafkaApis.handleFindCoordinatorRequest
 			// which calls authHelper.authorizeClusterOperation(CLUSTER_ACTION)).
-			allowed = c.allowedClusterACL(creq, kmsg.ACLOperationClusterAction)
-			errCode = kerr.ClusterAuthorizationFailed.Code
+			e = c.denyCluster(creq, kmsg.ACLOperationClusterAction)
 		}
-		if !allowed {
-			sc.ErrorCode = errCode
+		if e != nil {
+			sc.ErrorCode = e.Code
+			continue
+		}
+
+		// Share keys must be groupId:topicId:partition; the real broker
+		// validates this and rejects e.g. a bare group id (#1330).
+		if req.CoordinatorType == 2 && !validShareCoordinatorKey(key) {
+			sc.ErrorCode = kerr.InvalidRequest.Code
 			continue
 		}
 
@@ -89,4 +95,28 @@ func (c *Cluster) handleFindCoordinator(creq *clientReq) (kmsg.Response, error) 
 	}
 
 	return resp, nil
+}
+
+// validShareCoordinatorKey reports whether key is a groupId:topicId:partition
+// SharePartitionKey, mirroring SharePartitionKey.getInstance: split on ":", the
+// last token is an integer partition, the prior is the topic id, the rest a
+// non-empty group id. We do not decode the topic-id UUID.
+func validShareCoordinatorKey(key string) bool {
+	if key == "" {
+		return false
+	}
+	tokens := strings.Split(key, ":")
+	if len(tokens) < 3 {
+		return false
+	}
+	if strings.TrimSpace(strings.Join(tokens[:len(tokens)-2], ":")) == "" {
+		return false
+	}
+	if tokens[len(tokens)-2] == "" {
+		return false
+	}
+	if _, err := strconv.Atoi(tokens[len(tokens)-1]); err != nil {
+		return false
+	}
+	return true
 }

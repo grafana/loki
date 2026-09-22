@@ -37,8 +37,6 @@ func (c *Cluster) handleDescribeShareGroupOffsets(creq *clientReq) (kmsg.Respons
 		rsg := kmsg.NewDescribeShareGroupOffsetsResponseGroup()
 		rsg.GroupID = rg.GroupID
 
-		// Coordinator check: DescribeShareGroupOffsets is routed to
-		// the share coordinator.
 		if c.coordinator(rg.GroupID).node != creq.cc.b.node {
 			rsg.ErrorCode = kerr.NotCoordinator.Code
 			resp.Groups = append(resp.Groups, rsg)
@@ -46,111 +44,113 @@ func (c *Cluster) handleDescribeShareGroupOffsets(creq *clientReq) (kmsg.Respons
 		}
 
 		// ACL: require GROUP DESCRIBE.
-		if !c.allowedACL(creq, rg.GroupID, kmsg.ACLResourceTypeGroup, kmsg.ACLOperationDescribe) {
-			rsg.ErrorCode = kerr.GroupAuthorizationFailed.Code
+		if e := c.deny(creq, rg.GroupID, kmsg.ACLResourceTypeGroup, kmsg.ACLOperationDescribe, faultKey{group: rg.GroupID}); e != nil {
+			rsg.ErrorCode = e.Code
 			resp.Groups = append(resp.Groups, rsg)
 			continue
 		}
 
 		sg := c.shareGroups.get(rg.GroupID)
-		func() {
-			if sg != nil {
-				sg.mu.Lock()
-				defer sg.mu.Unlock()
-			}
 
-			// Build the list of topics to describe. If Topics is nil,
-			// describe all topics the group has state for.
-			type topicPartReq struct {
-				topic      string
-				partitions []int32
+		// Build the list of topics to describe. If Topics is nil,
+		// describe all topics the group has state for.
+		type topicPartReq struct {
+			topic      string
+			partitions []int32
+		}
+		var topicReqs []topicPartReq
+		if rg.Topics == nil && sg != nil {
+			for topic, parts := range sg.partitions {
+				topicReqs = append(topicReqs, topicPartReq{
+					topic:      topic,
+					partitions: slices.Collect(maps.Keys(parts)),
+				})
 			}
-			var topicReqs []topicPartReq
-			if rg.Topics == nil && sg != nil {
-				for topic, parts := range sg.partitions {
-					topicReqs = append(topicReqs, topicPartReq{
-						topic:      topic,
-						partitions: slices.Collect(maps.Keys(parts)),
-					})
-				}
-			} else {
-				for j := range rg.Topics {
-					rt := &rg.Topics[j]
-					topicReqs = append(topicReqs, topicPartReq{
-						topic:      rt.Topic,
-						partitions: rt.Partitions,
-					})
-				}
+		} else {
+			for j := range rg.Topics {
+				rt := &rg.Topics[j]
+				topicReqs = append(topicReqs, topicPartReq{
+					topic:      rt.Topic,
+					partitions: rt.Partitions,
+				})
 			}
+		}
 
-			isDescribeAll := rg.Topics == nil
-			for _, tr := range topicReqs {
-				rst := kmsg.NewDescribeShareGroupOffsetsResponseGroupTopic()
-				rst.Topic = tr.topic
-				rst.TopicID = c.data.t2id[tr.topic]
+		isDescribeAll := rg.Topics == nil
+		for _, tr := range topicReqs {
+			rst := kmsg.NewDescribeShareGroupOffsetsResponseGroupTopic()
+			rst.Topic = tr.topic
+			rst.TopicID = c.data.t2id[tr.topic]
 
-				// ACL: per-topic DESCRIBE check.
-				if !c.allowedACL(creq, tr.topic, kmsg.ACLResourceTypeTopic, kmsg.ACLOperationDescribe) {
-					if isDescribeAll {
-						// Describe-all: silently filter unauthorized topics.
-						continue
-					}
-					for _, partition := range tr.partitions {
-						rsp := kmsg.NewDescribeShareGroupOffsetsResponseGroupTopicPartition()
-						rsp.Partition = partition
-						rsp.ErrorCode = kerr.TopicAuthorizationFailed.Code
-						rsp.StartOffset = -1
-						rsp.Lag = -1
-						rst.Partitions = append(rst.Partitions, rsp)
-					}
-					rsg.Topics = append(rsg.Topics, rst)
+			// ACL: per-topic DESCRIBE check.
+			if e := c.deny(creq, tr.topic, kmsg.ACLResourceTypeTopic, kmsg.ACLOperationDescribe, faultKey{topic: tr.topic}); e != nil {
+				if isDescribeAll {
+					// Describe-all: silently filter unauthorized topics.
 					continue
 				}
-
 				for _, partition := range tr.partitions {
 					rsp := kmsg.NewDescribeShareGroupOffsetsResponseGroupTopicPartition()
 					rsp.Partition = partition
-
-					pd, ok := c.data.tps.getp(tr.topic, partition)
-					if !ok {
-						// Java treats missing topics as absence of data
-						// (no error), not an error condition.
-						rsp.StartOffset = -1
-						rsp.Lag = -1
-						rst.Partitions = append(rst.Partitions, rsp)
-						continue
-					}
-
-					rsp.LeaderEpoch = pd.epoch
-					if sg == nil {
-						// Group doesn't exist -- no share state.
-						rsp.StartOffset = -1
-						rsp.Lag = -1
-					} else if sp, ok := sg.partitions.getp(tr.topic, partition); !ok {
-						// No share state yet -- SPSO not initialized.
-						rsp.StartOffset = -1
-						rsp.Lag = -1
-					} else {
-						rsp.StartOffset = sp.spso
-						// Lag = HWM - SPSO - deliveryComplete, where
-						// deliveryComplete counts records between SPSO
-						// and HWM that are already acknowledged/archived.
-						// Records below SPSO are cleaned up by advanceSPSO,
-						// so all map entries are >= SPSO.
-						deliveryComplete := int64(0)
-						for off, sr := range sp.records {
-							if off < pd.highWatermark &&
-								(sr.state == shareRecordAcknowledged || sr.state == shareRecordArchived) {
-								deliveryComplete++
-							}
-						}
-						rsp.Lag = max(0, pd.highWatermark-sp.spso-deliveryComplete)
-					}
+					rsp.ErrorCode = e.Code
+					rsp.StartOffset = -1
+					rsp.Lag = -1
 					rst.Partitions = append(rst.Partitions, rsp)
 				}
 				rsg.Topics = append(rsg.Topics, rst)
+				continue
 			}
-		}()
+
+			for _, partition := range tr.partitions {
+				rsp := kmsg.NewDescribeShareGroupOffsetsResponseGroupTopicPartition()
+				rsp.Partition = partition
+
+				if e := creq.faults.check(faultKey{group: rg.GroupID, topic: tr.topic}.part(partition)); e != nil {
+					rsp.ErrorCode = e.Code
+					rsp.StartOffset = -1
+					rsp.Lag = -1
+					rst.Partitions = append(rst.Partitions, rsp)
+					continue
+				}
+
+				pd, ok := c.data.tps.getp(tr.topic, partition)
+				if !ok {
+					// Java treats missing topics as absence of data
+					// (no error), not an error condition.
+					rsp.StartOffset = -1
+					rsp.Lag = -1
+					rst.Partitions = append(rst.Partitions, rsp)
+					continue
+				}
+
+				rsp.LeaderEpoch = pd.epoch
+				if sg == nil {
+					// Group doesn't exist -- no share state.
+					rsp.StartOffset = -1
+					rsp.Lag = -1
+				} else if sp, ok := sg.partitions.getp(tr.topic, partition); !ok {
+					// No share state yet -- SPSO not initialized.
+					rsp.StartOffset = -1
+					rsp.Lag = -1
+				} else {
+					rsp.StartOffset = sp.spso
+					// Lag = HWM - SPSO - deliveryComplete, where
+					// deliveryComplete counts records between SPSO
+					// and HWM that are already acknowledged/archived.
+					// Records below SPSO are cleaned up by advanceSPSO,
+					// so all map entries are >= SPSO.
+					deliveryComplete := int64(0)
+					for off, sr := range sp.records {
+						if off < pd.highWatermark &&
+							(sr.state == shareRecordAcknowledged || sr.state == shareRecordArchived) {
+							deliveryComplete++
+						}
+					}
+					rsp.Lag = max(0, pd.highWatermark-sp.spso-deliveryComplete)
+				}
+				rst.Partitions = append(rst.Partitions, rsp)
+			}
+			rsg.Topics = append(rsg.Topics, rst)
+		}
 
 		resp.Groups = append(resp.Groups, rsg)
 	}

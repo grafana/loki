@@ -27,7 +27,7 @@ func (c *Cluster) handleOffsetCommit(creq *clientReq) (kmsg.Response, error) {
 
 	// v10: resolve TopicIDs to topic names. Topics with unknown IDs
 	// get per-partition UNKNOWN_TOPIC_ID errors; valid topics are
-	// passed through to the group goroutine.
+	// passed through to the group handler.
 	if req.Version >= 10 {
 		var errTopics []kmsg.OffsetCommitResponseTopic
 		valid := req.Topics[:0]
@@ -64,6 +64,5 @@ func (c *Cluster) handleOffsetCommit(creq *clientReq) (kmsg.Response, error) {
 		}
 	}
 
-	c.groups.handleOffsetCommit(creq)
-	return nil, nil
+	return c.groups.handleOffsetCommit(creq), nil
 }

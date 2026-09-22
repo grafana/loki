@@ -28,17 +28,17 @@ func (c *Cluster) handleAlterUserSCRAMCredentials(creq *clientReq) (kmsg.Respons
 		return nil, err
 	}
 
-	if !c.allowedClusterACL(creq, kmsg.ACLOperationAlter) {
+	if e := c.denyCluster(creq, kmsg.ACLOperationAlter); e != nil && creq.skipsWork(e) { // a timed-out change still changes the credentials
 		for _, d := range req.Deletions {
 			sr := kmsg.NewAlterUserSCRAMCredentialsResponseResult()
 			sr.User = d.Name
-			sr.ErrorCode = kerr.ClusterAuthorizationFailed.Code
+			sr.ErrorCode = e.Code
 			resp.Results = append(resp.Results, sr)
 		}
 		for _, u := range req.Upsertions {
 			sr := kmsg.NewAlterUserSCRAMCredentialsResponseResult()
 			sr.User = u.Name
-			sr.ErrorCode = kerr.ClusterAuthorizationFailed.Code
+			sr.ErrorCode = e.Code
 			resp.Results = append(resp.Results, sr)
 		}
 		return resp, nil
@@ -50,16 +50,38 @@ func (c *Cluster) handleAlterUserSCRAMCredentials(creq *clientReq) (kmsg.Respons
 		resp.Results = append(resp.Results, sr)
 		return &resp.Results[len(resp.Results)-1]
 	}
+	// A fault can answer a user before the work runs. The work's own answer
+	// for that user must not add an entry or replace the code.
+	answered := make(map[string]bool)
 	doneu := func(u string, code int16) {
+		if answered[u] {
+			return
+		}
 		sr := addr(u)
 		sr.ErrorCode = code
 	}
 
 	users := make(map[string]int16)
+	faulted := func(u string) bool {
+		e := creq.faults.check(faultKey{resource: u})
+		if e == nil {
+			return false
+		}
+		doneu(u, e.Code)
+		answered[u] = true
+		if creq.skipsWork(e) { // a timed-out change still changes the credential
+			users[u] = e.Code
+			return true
+		}
+		return false
+	}
 
 	// Validate everything up front, keeping track of all (and duplicate)
 	// users. If we are not controller, we fail with our users map.
 	for _, d := range req.Deletions {
+		if faulted(d.Name) {
+			continue
+		}
 		if d.Name == "" {
 			users[d.Name] = kerr.UnacceptableCredential.Code
 			continue
@@ -71,6 +93,9 @@ func (c *Cluster) handleAlterUserSCRAMCredentials(creq *clientReq) (kmsg.Respons
 		users[d.Name] = 0
 	}
 	for _, u := range req.Upsertions {
+		if faulted(u.Name) {
+			continue
+		}
 		if u.Name == "" || u.Iterations < 4096 || u.Iterations > 16384 { // Kafka min/max
 			users[u.Name] = kerr.UnacceptableCredential.Code
 			continue

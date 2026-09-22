@@ -28,9 +28,11 @@ func (c *Cluster) handleAlterPartitionAssignments(creq *clientReq) (kmsg.Respons
 		return nil, err
 	}
 
-	if !c.allowedClusterACL(creq, kmsg.ACLOperationAlter) {
-		resp.ErrorCode = kerr.ClusterAuthorizationFailed.Code
-		return resp, nil
+	if e := c.denyCluster(creq, kmsg.ACLOperationAlter); e != nil {
+		resp.ErrorCode = e.Code
+		if creq.skipsWork(e) {
+			return resp, nil
+		}
 	}
 
 	for _, rt := range req.Topics {
@@ -42,7 +44,12 @@ func (c *Cluster) handleAlterPartitionAssignments(creq *clientReq) (kmsg.Respons
 			sp := kmsg.NewAlterPartitionAssignmentsResponseTopicPartition()
 			sp.Partition = rp.Partition
 
-			if !ok {
+			// If replicas is non-nil, we "accept" the reassignment request
+			// but do nothing since kfake doesn't actually support multi-broker
+			// reassignment. ErrorCode stays 0 (success).
+			if e := creq.faults.check(faultKey{topic: rt.Topic}.part(rp.Partition)); e != nil {
+				sp.ErrorCode = e.Code
+			} else if !ok {
 				sp.ErrorCode = kerr.UnknownTopicOrPartition.Code
 			} else if _, pok := t[rp.Partition]; !pok {
 				sp.ErrorCode = kerr.UnknownTopicOrPartition.Code
@@ -51,9 +58,6 @@ func (c *Cluster) handleAlterPartitionAssignments(creq *clientReq) (kmsg.Respons
 				// any reassignments in progress.
 				sp.ErrorCode = kerr.NoReassignmentInProgress.Code
 			}
-			// If replicas is non-nil, we "accept" the reassignment request
-			// but do nothing since kfake doesn't actually support multi-broker
-			// reassignment. ErrorCode stays 0 (success).
 
 			st.Partitions = append(st.Partitions, sp)
 		}

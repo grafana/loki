@@ -310,8 +310,18 @@ func (pids *pids) doAddPartitions(creq *clientReq) kmsg.Response {
 		}
 	}
 
-	// Check if all topics/partitions exist.
+	// A faulted partition is not added, and the rest of the transaction
+	// is not attempted, as with a partition that does not exist.
+	faulted := make(map[tpKey]*kerr.Error)
 	var noAttempt bool
+	for _, rt := range req.Topics {
+		for _, rp := range rt.Partitions {
+			if e := creq.faults.check(faultKey{txnID: req.TransactionalID, topic: rt.Topic}.part(rp)); e != nil {
+				faulted[tpKey{rt.Topic, rp}] = e
+				noAttempt = true
+			}
+		}
+	}
 	for _, rt := range req.Topics {
 		for _, rp := range rt.Partitions {
 			if pdMap[tpKey{rt.Topic, rp}] == nil {
@@ -326,9 +336,12 @@ func (pids *pids) doAddPartitions(creq *clientReq) kmsg.Response {
 	if noAttempt {
 		for _, rt := range req.Topics {
 			for _, rp := range rt.Partitions {
-				if pdMap[tpKey{rt.Topic, rp}] == nil {
+				switch e := faulted[tpKey{rt.Topic, rp}]; {
+				case e != nil:
+					donep(rt.Topic, rp, e.Code)
+				case pdMap[tpKey{rt.Topic, rp}] == nil:
 					donep(rt.Topic, rp, kerr.UnknownTopicOrPartition.Code)
-				} else {
+				default:
 					donep(rt.Topic, rp, kerr.OperationNotAttempted.Code)
 				}
 			}
@@ -447,15 +460,15 @@ func (pids *pids) doTxnOffsetCommit(creq *clientReq) kmsg.Response {
 	if g != nil {
 		if req.Version >= 3 && (req.MemberID != "" || req.Generation != -1) {
 			var errCode int16
-			if !g.waitControl(func() {
-				if err := g.validateInstanceID(req.InstanceID, req.MemberID); err != nil {
-					errCode = err.Code
-					return
-				}
+			if err := g.validateInstanceID(req.InstanceID, req.MemberID); err != nil {
+				errCode = err.Code
+			} else {
 				errCode = g.validateMemberGeneration(req.MemberID, req.Generation)
-			}) {
-				doneall(kerr.GroupIDNotFound.Code)
-				return resp
+				// Before v6, a stale member epoch was reported as
+				// ILLEGAL_GENERATION (KIP-1319).
+				if errCode == kerr.StaleMemberEpoch.Code && req.Version < 6 {
+					errCode = kerr.IllegalGeneration.Code
+				}
 			}
 			if errCode != 0 {
 				doneall(errCode)
@@ -463,7 +476,13 @@ func (pids *pids) doTxnOffsetCommit(creq *clientReq) kmsg.Response {
 			}
 		}
 	} else if req.Generation >= 0 {
-		doneall(kerr.IllegalGeneration.Code)
+		// A group that does not exist is GROUP_ID_NOT_FOUND from v6;
+		// older versions mapped it to ILLEGAL_GENERATION (KIP-1319).
+		if req.Version >= 6 {
+			doneall(kerr.GroupIDNotFound.Code)
+		} else {
+			doneall(kerr.IllegalGeneration.Code)
+		}
 		return resp
 	}
 
@@ -492,9 +511,15 @@ func (pids *pids) doTxnOffsetCommit(creq *clientReq) kmsg.Response {
 		for _, rp := range rt.Partitions {
 			sp := kmsg.NewTxnOffsetCommitResponseTopicPartition()
 			sp.Partition = rp.Partition
-			if !pids.c.data.tps.checkp(rt.Topic, rp.Partition) {
+			e := creq.faults.check(faultKey{txnID: req.TransactionalID, group: req.Group, topic: rt.Topic}.part(rp.Partition))
+			if e != nil {
+				sp.ErrorCode = e.Code
+			}
+			switch {
+			case e != nil && creq.skipsWork(e): // a timed-out commit is still stored
+			case !pids.c.data.tps.checkp(rt.Topic, rp.Partition):
 				sp.ErrorCode = kerr.UnknownTopicOrPartition.Code
-			} else {
+			default:
 				groupOffsets.set(rt.Topic, rp.Partition, offsetCommit{
 					offset:      rp.Offset,
 					leaderEpoch: rp.LeaderEpoch,
@@ -664,6 +689,13 @@ func (pids *pids) create(txidp *string, txTimeout int32) (int64, int16) {
 	// to avoid FNV-64 hash collisions between different txids.
 	if txidp != nil {
 		if pidinf, ok := pids.byTxid[*txidp]; ok {
+			// Abort any in-flight transaction before bumping, same
+			// as the KIP-360 path above. Leaving the old epoch's
+			// writes pending lets the next commit swallow them into
+			// its own range.
+			if pidinf.inTx {
+				pidinf.endTx(false)
+			}
 			pidinf = pids.bumpEpoch(pidinf)
 			pidinf.lastActive = time.Now()
 			return pidinf.id, pidinf.epoch
@@ -711,24 +743,32 @@ func (pids *pids) expireTransactionalIDs() {
 	}
 }
 
-func (pidinf *pidinfo) endTx(commit bool) {
-	// Control record key format: version (int16=0) + type (int16: 0=abort, 1=commit)
-	var controlType byte // abort = 0
+// txnMarkerBatch builds the control batch that ends a transaction: one
+// control record whose key names the marker type and whose value is the
+// EndTxnMarker (version and coordinator epoch), as the transaction
+// coordinator writes on a real broker. Returns the batch and its encoded
+// size.
+func txnMarkerBatch(pid int64, epoch int16, commit bool, coordinatorEpoch int32) (kmsg.RecordBatch, int) {
+	key := kmsg.ControlRecordKey{Type: kmsg.ControlRecordKeyTypeAbort}
 	if commit {
-		controlType = 1 // commit
+		key.Type = kmsg.ControlRecordKeyTypeCommit
 	}
-	rec := kmsg.Record{Key: []byte{0, 0, 0, controlType}}
+	marker := kmsg.EndTxnMarker{CoordinatorEpoch: coordinatorEpoch}
+	rec := kmsg.Record{
+		Key:   key.AppendTo(nil),
+		Value: marker.AppendTo(nil),
+	}
 	rec.Length = int32(len(rec.AppendTo(nil)) - 1) // -1 because length itself is encoded as a varint, and varint_length(record_length) == 1 byte
 	now := time.Now().UnixMilli()
 	b := kmsg.RecordBatch{
 		PartitionLeaderEpoch: -1,
 		Magic:                2,
-		Attributes:           int16(0b00000000_00110000),
+		Attributes:           int16(0b00000000_00110000), // control + transactional
 		LastOffsetDelta:      0,
 		FirstTimestamp:       now,
 		MaxTimestamp:         now,
-		ProducerID:           pidinf.id,
-		ProducerEpoch:        pidinf.epoch,
+		ProducerID:           pid,
+		ProducerEpoch:        epoch,
 		FirstSequence:        -1,
 		NumRecords:           1,
 		Records:              rec.AppendTo(nil),
@@ -736,26 +776,47 @@ func (pidinf *pidinfo) endTx(commit bool) {
 	benc := b.AppendTo(nil)
 	b.Length = int32(len(benc) - 12)
 	b.CRC = int32(crc32.Checksum(benc[21:], crc32c))
+	return b, len(benc)
+}
 
-	pidinf.txParts.each(func(t string, p int32, pd *partData) {
+func (pidinf *pidinfo) endTx(commit bool) {
+	// kfake is its own coordinator and has no coordinator epoch, so the
+	// marker carries 0, the same epoch DescribeProducers reports.
+	b, nbytes := txnMarkerBatch(pidinf.id, pidinf.epoch, commit, 0)
+
+	pidinf.txParts.each(func(t string, p int32, _ *partData) {
+		c := pidinf.pids.c
+		// Markers resolve the partition by name at write time, like the
+		// coordinator's marker writes on a real broker: if the topic
+		// was deleted there is nowhere to write, and if it was deleted
+		// and recreated the marker belongs to the CURRENT log at the
+		// current log's offsets (where any post-recreation by-name
+		// writes of this transaction landed). Writing through the
+		// registration-time pointer would corrupt a recreated topic's
+		// fresh log via the shared on-disk path.
+		pd, ok := c.data.tps.getp(t, p)
+		if !ok {
+			return
+		}
+
+		firstUncommitted, hadUncommitted := pd.uncommittedPIDs[pidinf.id]
 		delete(pd.uncommittedPIDs, pidinf.id)
 
-		c := pidinf.pids.c
-		controlOffset := c.pushBatch(pd, len(benc), b, false) // control record is not itself transactional
+		controlOffset := c.pushBatch(pd, nbytes, b, false) // control record is not itself transactional
 		if controlOffset < 0 {
 			c.cfg.logger.Logf(LogLevelError, "endTx: failed to persist control batch for %s p%d pid %d", t, p, pidinf.id)
 			pd.recalculateLSO()
 			return
 		}
-		if !commit {
-			firstOffset, ok := pidinf.txPartFirstOffsets.getp(t, p)
-			if ok {
-				pd.abortedTxns = append(pd.abortedTxns, abortedTxnEntry{
-					producerID:  pidinf.id,
-					firstOffset: *firstOffset,
-					lastOffset:  controlOffset,
-				})
-			}
+		// The aborted range comes from this log's own uncommitted
+		// bookkeeping, not the transaction's registration-time offsets,
+		// which can reference a dead incarnation.
+		if !commit && hadUncommitted {
+			pd.abortedTxns = append(pd.abortedTxns, abortedTxnEntry{
+				producerID:  pidinf.id,
+				firstOffset: firstUncommitted,
+				lastOffset:  controlOffset,
+			})
 		}
 		pd.recalculateLSO()
 		// Count the now-committed bytes for readCommitted watchers.
@@ -778,19 +839,13 @@ func (pidinf *pidinfo) endTx(commit bool) {
 			if !hasOffsets || len(groupOffsets) == 0 {
 				continue
 			}
-			if pidinf.pids.c.groups.gs == nil {
-				pidinf.pids.c.groups.gs = make(map[string]*group)
-			}
 			g := pidinf.pids.c.groups.gs[groupID]
 			if g == nil {
 				g = pidinf.pids.c.groups.newGroup(groupID)
 				pidinf.pids.c.groups.gs[groupID] = g
-				go g.manage(func() {})
 			}
-			g.waitControl(func() {
-				groupOffsets.each(func(t string, p int32, oc *offsetCommit) {
-					g.commitAndPersist(t, p, *oc)
-				})
+			groupOffsets.each(func(t string, p int32, oc *offsetCommit) {
+				g.commitAndPersist(t, p, *oc)
 			})
 		}
 	}
@@ -879,8 +934,8 @@ func (pids *pids) doDescribeTransactions(creq *clientReq) kmsg.Response {
 		st := kmsg.NewDescribeTransactionsResponseTransactionState()
 		st.TransactionalID = txnID
 
-		if !pids.c.allowedACL(creq, txnID, kmsg.ACLResourceTypeTransactionalId, kmsg.ACLOperationDescribe) {
-			st.ErrorCode = kerr.TransactionalIDAuthorizationFailed.Code
+		if e := pids.c.deny(creq, txnID, kmsg.ACLResourceTypeTransactionalId, kmsg.ACLOperationDescribe, faultKey{txnID: txnID}); e != nil {
+			st.ErrorCode = e.Code
 			resp.TransactionStates = append(resp.TransactionStates, st)
 			continue
 		}
@@ -907,7 +962,7 @@ func (pids *pids) doDescribeTransactions(creq *clientReq) kmsg.Response {
 			st.State = "Ongoing"
 			st.StartTimestamp = pidinf.txStart.UnixMilli()
 			pidinf.txParts.each(func(topic string, partition int32, _ *partData) {
-				if !pids.c.allowedACL(creq, topic, kmsg.ACLResourceTypeTopic, kmsg.ACLOperationDescribe) {
+				if e := pids.c.deny(creq, topic, kmsg.ACLResourceTypeTopic, kmsg.ACLOperationDescribe, faultKey{topic: topic}.part(partition)); e != nil {
 					return
 				}
 				var topicEntry *kmsg.DescribeTransactionsResponseTransactionStateTopic
@@ -962,7 +1017,7 @@ func (pids *pids) doListTransactions(creq *clientReq) kmsg.Response {
 		if pidinf.txid == "" {
 			continue
 		}
-		if !pids.c.allowedACL(creq, pidinf.txid, kmsg.ACLResourceTypeTransactionalId, kmsg.ACLOperationDescribe) {
+		if e := pids.c.deny(creq, pidinf.txid, kmsg.ACLResourceTypeTransactionalId, kmsg.ACLOperationDescribe, faultKey{txnID: pidinf.txid}); e != nil {
 			continue
 		}
 		state := "Empty"
@@ -1008,14 +1063,18 @@ func (pids *pids) doDescribeProducers(creq *clientReq) kmsg.Response {
 	}
 	var checks []partState
 	for _, rt := range req.Topics {
-		if !pids.c.allowedACL(creq, rt.Topic, kmsg.ACLResourceTypeTopic, kmsg.ACLOperationRead) {
+		if e := pids.c.deny(creq, rt.Topic, kmsg.ACLResourceTypeTopic, kmsg.ACLOperationRead, faultKey{topic: rt.Topic}); e != nil {
 			for _, p := range rt.Partitions {
-				checks = append(checks, partState{rt.Topic, p, kerr.TopicAuthorizationFailed.Code})
+				checks = append(checks, partState{rt.Topic, p, e.Code})
 			}
 			continue
 		}
 		for _, p := range rt.Partitions {
-			checks = append(checks, partState{rt.Topic, p, 0})
+			var code int16
+			if e := creq.faults.check(faultKey{topic: rt.Topic}.part(p)); e != nil {
+				code = e.Code
+			}
+			checks = append(checks, partState{rt.Topic, p, code})
 		}
 	}
 

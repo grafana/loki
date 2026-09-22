@@ -31,7 +31,22 @@ func (c *Cluster) handleDeleteTopics(creq *clientReq) (kmsg.Response, error) {
 		return nil, err
 	}
 
+	// A fault can answer a topic before the work runs. The work's own
+	// answer for that topic must not add an entry or replace the code.
+	type answerKey struct {
+		t  string
+		id uuid
+	}
+	answered := make(map[answerKey]int)
 	donet := func(t *string, id uuid, errCode int16) *kmsg.DeleteTopicsResponseTopic {
+		k := answerKey{id: id}
+		if t != nil {
+			k.t = *t
+		}
+		if i, ok := answered[k]; ok {
+			return &resp.Topics[i]
+		}
+		answered[k] = len(resp.Topics)
 		st := kmsg.NewDeleteTopicsResponseTopic()
 		st.Topic = t
 		st.TopicID = id
@@ -71,22 +86,12 @@ func (c *Cluster) handleDeleteTopics(creq *clientReq) (kmsg.Response, error) {
 	var toDeletes []toDelete
 	defer func() {
 		for _, td := range toDeletes {
-			// Close active segment files before removing partition directories.
-			if t, ok := c.data.tps.gett(td.topic); ok {
-				for p, pd := range t {
-					pd.closeAllFiles(false)
-					pdir := partDir(c.storageDir, td.topic, p)
-					if err := c.fs.RemoveAll(pdir); err != nil {
-						c.cfg.logger.Logf(LogLevelWarn, "delete topic %s partition %d dir: %v", td.topic, p, err)
-					}
-				}
-			}
-			delete(c.data.tps, td.topic)
-			delete(c.data.id2t, td.id)
-			delete(c.data.t2id, td.topic)
-			delete(c.data.treplicas, td.topic)
-			delete(c.data.tcfgs, td.topic)
-			delete(c.data.tnorms, normalizeTopicName(td.topic))
+			c.deleteTopic(td.topic, td.id)
+		}
+		if len(toDeletes) > 0 {
+			c.notifyTopicChange()
+			c.refreshCompactTicker()
+			c.persistTopicsState()
 		}
 	}()
 	for _, rt := range req.Topics {
@@ -100,16 +105,17 @@ func (c *Cluster) handleDeleteTopics(creq *clientReq) (kmsg.Response, error) {
 			id = rt.TopicID
 		}
 		// ACL check: DESCRIBE first (to identify topic), then DELETE
-		if !c.allowedACL(creq, topic, kmsg.ACLResourceTypeTopic, kmsg.ACLOperationDescribe) {
-			donet(&topic, id, kerr.TopicAuthorizationFailed.Code)
-			continue
+		e := c.deny(creq, topic, kmsg.ACLResourceTypeTopic, kmsg.ACLOperationDescribe, faultKey{topic: topic})
+		if e == nil {
+			e = c.deny(creq, topic, kmsg.ACLResourceTypeTopic, kmsg.ACLOperationDelete, faultKey{topic: topic})
 		}
-		if !c.allowedACL(creq, topic, kmsg.ACLResourceTypeTopic, kmsg.ACLOperationDelete) {
-			donet(&topic, id, kerr.TopicAuthorizationFailed.Code)
-			continue
+		if e != nil {
+			donet(&topic, id, e.Code)
+			if creq.skipsWork(e) { // a timed-out delete still deletes the topic
+				continue
+			}
 		}
-		t, ok := c.data.tps.gett(topic)
-		if !ok {
+		if _, ok := c.data.tps.gett(topic); !ok {
 			if rt.Topic != nil {
 				donet(&topic, id, kerr.UnknownTopicOrPartition.Code)
 			} else {
@@ -120,18 +126,54 @@ func (c *Cluster) handleDeleteTopics(creq *clientReq) (kmsg.Response, error) {
 
 		donet(&topic, id, 0)
 		toDeletes = append(toDeletes, toDelete{topic, id})
-		for _, pd := range t {
-			for watch := range pd.watch {
-				watch.deleted()
-			}
-		}
-	}
-
-	if len(toDeletes) > 0 {
-		c.notifyTopicChange()
-		c.refreshCompactTicker()
-		c.persistTopicsState()
 	}
 
 	return resp, nil
+}
+
+// deleteTopic wakes the topic's watching fetchers and tears the topic down:
+// its data, its files, and everything else keyed by the topic. The caller
+// runs notifyTopicChange, refreshCompactTicker and persistTopicsState once,
+// after its whole batch.
+func (c *Cluster) deleteTopic(topic string, id uuid) {
+	t, ok := c.data.tps.gett(topic)
+	if !ok {
+		return
+	}
+	for _, pd := range t {
+		for watch := range pd.watch {
+			watch.deleted()
+		}
+	}
+	// Close active segment files before removing partition directories.
+	for p, pd := range t {
+		pd.closeAllFiles(false)
+		pdir := partDir(c.storageDir, topic, p)
+		if err := c.fs.RemoveAll(pdir); err != nil {
+			c.cfg.logger.Logf(LogLevelWarn, "delete topic %s partition %d dir: %v", topic, p, err)
+		}
+	}
+	delete(c.data.tps, topic)
+	delete(c.data.id2t, id)
+	delete(c.data.t2id, topic)
+	delete(c.data.treplicas, topic)
+	delete(c.data.tcfgs, topic)
+	delete(c.data.tnorms, normalizeTopicName(topic))
+	// Producer state is per-log and dies with the topic: a recreated topic
+	// rehydrates empty state, and handleProduce decides what each version
+	// accepts from a producer it has no state for. Transactional
+	// REGISTRATIONS survive (the coordinator is name-keyed on a real
+	// broker); endTx re-resolves current partition data when writing
+	// markers.
+	for _, pidinf := range c.pids.ids {
+		delete(pidinf.windows, topic)
+	}
+	// Share-partition state is topic-ID-keyed on a real broker and dies
+	// with the topic; kfake keys by name, so clear it explicitly: a
+	// recreated topic starts share consumption fresh (SPSO per group
+	// config, no acquired records).
+	for _, sg := range c.shareGroups.gs {
+		delete(sg.partitions, topic)
+	}
+	c.dropGroupCommits(topic)
 }
