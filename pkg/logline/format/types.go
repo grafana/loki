@@ -10,6 +10,8 @@ import (
 	"time"
 
 	"github.com/RoaringBitmap/roaring"
+
+	"github.com/grafana/loki/v3/pkg/logproto"
 )
 
 // TermIterator iterates over all terms in an index.
@@ -165,3 +167,6 @@ type WriterConfig struct {
 	// Zero disables the density filter.
 	DocumentInterval time.Duration
 }
+
+// HeaderInfo is the in-process name for the wire index-header summary.
+type HeaderInfo = logproto.HeaderInfo

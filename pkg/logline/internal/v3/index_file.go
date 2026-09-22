@@ -15,7 +15,6 @@ import (
 	"github.com/klauspost/compress/zstd"
 
 	"github.com/grafana/loki/v3/pkg/logline/format"
-	"github.com/grafana/loki/v3/pkg/logproto"
 )
 
 const (
@@ -51,8 +50,8 @@ type IndexFooter struct {
 }
 
 // Info returns a JSON-friendly header summary.
-func (h IndexFooter) Info() logproto.HeaderInfo {
-	return logproto.HeaderInfo{
+func (h IndexFooter) Info() format.HeaderInfo {
+	return format.HeaderInfo{
 		Version:              h.Version,
 		Flags:                h.Flags,
 		DocumentCount:        h.DocumentCount,
@@ -91,7 +90,7 @@ func NewWriter(path string, docs []format.DocumentMetadata, cfg *format.WriterCo
 // Merge merges multiple indexes into out with v2 defaults, applying overrides
 // from cfg. The caller owns out. Returns the HeaderInfo describing the
 // merged index. cfg may be nil for defaults.
-func Merge(ctx context.Context, readers []io.ReaderAt, sizes []int64, out io.Writer, cfg *format.WriterConfig) (logproto.HeaderInfo, error) {
+func Merge(ctx context.Context, readers []io.ReaderAt, sizes []int64, out io.Writer, cfg *format.WriterConfig) (format.HeaderInfo, error) {
 	return StreamingMergeIndexReaders(ctx, readers, sizes, out, applyWriterConfig(cfg))
 }
 
@@ -347,7 +346,7 @@ func OpenIndexAtWithHeader(
 	reader io.ReaderAt,
 	baseOffset int64,
 	totalSize int64,
-	info logproto.HeaderInfo,
+	info format.HeaderInfo,
 ) (*IndexReader, error) {
 	header := IndexFooter{
 		Magic:                IndexMagic,
@@ -534,7 +533,7 @@ func (r *IndexReader) Header() IndexFooter {
 }
 
 // ReadHeader returns the JSON-friendly header summary.
-func (r *IndexReader) ReadHeader() logproto.HeaderInfo {
+func (r *IndexReader) ReadHeader() format.HeaderInfo {
 	return r.header.Info()
 }
 

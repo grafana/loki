@@ -18,7 +18,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/thanos-io/objstore"
 
-	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/logline/format"
 )
 
 // newTestStore creates a Store with short poll interval and standard retention for testing.
@@ -46,7 +46,7 @@ func writeTestIndex(t *testing.T, s *Store, meta Meta, data string) {
 		meta.MaxRecordTs = meta.MaxLogTs
 	}
 	if meta.IndexHeader == nil {
-		meta.IndexHeader = &logproto.HeaderInfo{}
+		meta.IndexHeader = &format.HeaderInfo{}
 	}
 	if meta.SizeBytes == 0 {
 		meta.SizeBytes = int64(len(data))
@@ -209,7 +209,7 @@ func TestMeta_JSON_IndexHeader_RoundTrip(t *testing.T) {
 		MinRecordTs: now.Add(-1 * time.Hour),
 		MaxRecordTs: now,
 		CreatedAt:   now,
-		IndexHeader: &logproto.HeaderInfo{
+		IndexHeader: &format.HeaderInfo{
 			Version:              2,
 			Flags:                3,
 			DocumentCount:        100,
@@ -371,7 +371,7 @@ func TestStore_Write_CreatesIndexAndMeta(t *testing.T) {
 		MaxLogTs:    now,
 		MinRecordTs: now.Add(-1 * time.Hour),
 		MaxRecordTs: now,
-		IndexHeader: &logproto.HeaderInfo{},
+		IndexHeader: &format.HeaderInfo{},
 		SizeBytes:   int64(len("index data")),
 	}
 
@@ -436,7 +436,7 @@ func TestStore_Write_IndexContents(t *testing.T) {
 		MaxLogTs:    now,
 		MinRecordTs: now.Add(-1 * time.Hour),
 		MaxRecordTs: now,
-		IndexHeader: &logproto.HeaderInfo{},
+		IndexHeader: &format.HeaderInfo{},
 		SizeBytes:   int64(len(indexData)),
 	}
 
@@ -468,7 +468,7 @@ func TestStore_Write_ContextCancel(t *testing.T) {
 		MaxLogTs:    now,
 		MinRecordTs: now.Add(-1 * time.Hour),
 		MaxRecordTs: now,
-		IndexHeader: &logproto.HeaderInfo{},
+		IndexHeader: &format.HeaderInfo{},
 		SizeBytes:   1,
 	})
 	require.Error(t, err)
@@ -515,7 +515,7 @@ func TestStore_Write_ValidatesRequiredFields(t *testing.T) {
 		Date: "2026-02-23", Hash: "abc123", Version: "v3",
 		MinLogTs: now.Add(-time.Hour), MaxLogTs: now,
 		MinRecordTs: now.Add(-time.Hour), MaxRecordTs: now,
-		IndexHeader: &logproto.HeaderInfo{},
+		IndexHeader: &format.HeaderInfo{},
 		SizeBytes:   int64(len("data")),
 	})
 	require.NoError(t, err)
@@ -536,7 +536,7 @@ func TestStore_Write_ValidatesRequiredFields(t *testing.T) {
 		Date: "2026-02-23", Hash: "abc125", Version: "v3",
 		MinLogTs: now.Add(-time.Hour), MaxLogTs: now,
 		MinRecordTs: now.Add(-time.Hour), MaxRecordTs: now,
-		IndexHeader: &logproto.HeaderInfo{},
+		IndexHeader: &format.HeaderInfo{},
 		SizeBytes:   0,
 	})
 	require.Error(t, err)
@@ -561,17 +561,17 @@ func TestStore_PutIndexStreaming_HappyPath(t *testing.T) {
 	}
 
 	payload := []byte("hello streaming upload world")
-	err := s.PutIndexStreaming(context.Background(), &meta, func(w io.Writer) (logproto.HeaderInfo, error) {
+	err := s.PutIndexStreaming(context.Background(), &meta, func(w io.Writer) (format.HeaderInfo, error) {
 		// Split across two writes to exercise the tee path.
 		if _, err := w.Write(payload[:10]); err != nil {
-			return logproto.HeaderInfo{}, err
+			return format.HeaderInfo{}, err
 		}
 		if _, err := w.Write(payload[10:]); err != nil {
-			return logproto.HeaderInfo{}, err
+			return format.HeaderInfo{}, err
 		}
 		// Post-write HeaderInfo (typically from a writer's Info() or a merger's
 		// return value) is flowed into meta.IndexHeader by the store.
-		return logproto.HeaderInfo{DocumentCount: 42}, nil
+		return format.HeaderInfo{DocumentCount: 42}, nil
 	})
 	require.NoError(t, err)
 
@@ -622,9 +622,9 @@ func TestStore_PutIndexStreaming_WriteErrorSkipsMeta(t *testing.T) {
 	}
 
 	writeErr := fmt.Errorf("producer blew up")
-	err := s.PutIndexStreaming(context.Background(), &meta, func(w io.Writer) (logproto.HeaderInfo, error) {
+	err := s.PutIndexStreaming(context.Background(), &meta, func(w io.Writer) (format.HeaderInfo, error) {
 		_, _ = w.Write([]byte("partial"))
-		return logproto.HeaderInfo{}, writeErr
+		return format.HeaderInfo{}, writeErr
 	})
 	require.ErrorIs(t, err, writeErr)
 
@@ -677,9 +677,9 @@ func TestStore_PutIndexStreaming_UploadEarlyReturnDoesNotHang(t *testing.T) {
 
 	done := make(chan error, 1)
 	go func() {
-		done <- s.PutIndexStreaming(ctx, &meta, func(w io.Writer) (logproto.HeaderInfo, error) {
+		done <- s.PutIndexStreaming(ctx, &meta, func(w io.Writer) (format.HeaderInfo, error) {
 			_, err := w.Write(payload)
-			return logproto.HeaderInfo{}, err
+			return format.HeaderInfo{}, err
 		})
 	}()
 
@@ -732,9 +732,9 @@ func TestStore_PutIndexStreaming_ContextCancelDoesNotHang(t *testing.T) {
 
 	done := make(chan error, 1)
 	go func() {
-		done <- s.PutIndexStreaming(ctx, &meta, func(w io.Writer) (logproto.HeaderInfo, error) {
+		done <- s.PutIndexStreaming(ctx, &meta, func(w io.Writer) (format.HeaderInfo, error) {
 			_, err := w.Write(payload)
-			return logproto.HeaderInfo{}, err
+			return format.HeaderInfo{}, err
 		})
 	}()
 
@@ -1707,7 +1707,7 @@ func TestStore_Write_SetsVersion(t *testing.T) {
 		Date: "2026-02-23", Hash: "versioned", Version: "v3",
 		MinLogTs: now.Add(-1 * time.Hour), MaxLogTs: now,
 		MinRecordTs: now.Add(-1 * time.Hour), MaxRecordTs: now,
-		IndexHeader: &logproto.HeaderInfo{},
+		IndexHeader: &format.HeaderInfo{},
 		SizeBytes:   int64(len("data")),
 	}
 
@@ -1739,7 +1739,7 @@ func TestStore_EligibleForDeletion_UsesMaxLogTsNotCreatedAt(t *testing.T) {
 		MaxLogTs:    now.Add(-8 * 24 * time.Hour), // data is 8 days old
 		MinRecordTs: now.Add(-9 * 24 * time.Hour),
 		MaxRecordTs: now.Add(-8 * 24 * time.Hour),
-		IndexHeader: &logproto.HeaderInfo{},
+		IndexHeader: &format.HeaderInfo{},
 		SizeBytes:   int64(len("data")),
 	}
 	err := s.PutIndex(context.Background(), strings.NewReader("data"), meta)
@@ -1895,7 +1895,7 @@ func TestStore_Write_UploadIndexError(t *testing.T) {
 		Date: "2026-02-23", Hash: "uploadfail", Version: "v3",
 		MinLogTs: now.Add(-1 * time.Hour), MaxLogTs: now,
 		MinRecordTs: now.Add(-1 * time.Hour), MaxRecordTs: now,
-		IndexHeader: &logproto.HeaderInfo{},
+		IndexHeader: &format.HeaderInfo{},
 		SizeBytes:   int64(len("data")),
 	})
 	require.Error(t, err)
@@ -1912,7 +1912,7 @@ func TestStore_Write_UploadMetaError(t *testing.T) {
 		Date: "2026-02-23", Hash: "metafail", Version: "v3",
 		MinLogTs: now.Add(-1 * time.Hour), MaxLogTs: now,
 		MinRecordTs: now.Add(-1 * time.Hour), MaxRecordTs: now,
-		IndexHeader: &logproto.HeaderInfo{},
+		IndexHeader: &format.HeaderInfo{},
 		SizeBytes:   int64(len("data")),
 	})
 	require.Error(t, err)

@@ -7,7 +7,6 @@ import (
 	"slices"
 
 	"github.com/grafana/loki/v3/pkg/logline/format"
-	"github.com/grafana/loki/v3/pkg/logproto"
 )
 
 // mergeWriter is the common interface for writing merged index output.
@@ -26,9 +25,9 @@ type mergeWriter interface {
 // long-running merges can be cancelled (e.g. on worker shutdown).
 // The caller owns out and is responsible for closing and flushing it.
 // Returns the HeaderInfo describing the written index.
-func StreamingMergeIndexReaders(ctx context.Context, readers []io.ReaderAt, sizes []int64, out io.Writer, cfg IndexWriteConfig) (logproto.HeaderInfo, error) {
+func StreamingMergeIndexReaders(ctx context.Context, readers []io.ReaderAt, sizes []int64, out io.Writer, cfg IndexWriteConfig) (format.HeaderInfo, error) {
 	if len(readers) < 2 {
-		return logproto.HeaderInfo{}, fmt.Errorf("streaming merge requires at least 2 readers, got %d", len(readers))
+		return format.HeaderInfo{}, fmt.Errorf("streaming merge requires at least 2 readers, got %d", len(readers))
 	}
 	var sw *StreamingIndexWriter
 	err := doMergeFromReaders(ctx, readers, sizes, func(docCount uint32) (mergeWriter, error) {
@@ -40,7 +39,7 @@ func StreamingMergeIndexReaders(ctx context.Context, readers []io.ReaderAt, size
 		return w, nil
 	})
 	if err != nil {
-		return logproto.HeaderInfo{}, err
+		return format.HeaderInfo{}, err
 	}
 	return sw.Info(), nil
 }

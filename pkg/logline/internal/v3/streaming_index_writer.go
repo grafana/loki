@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"github.com/grafana/loki/v3/pkg/logline/format"
-	"github.com/grafana/loki/v3/pkg/logproto"
 )
 
 // incrementalEncoder is the package-private streaming contract that
@@ -323,9 +322,9 @@ func (w *StreamingIndexWriter) Close() (retErr error) {
 
 // Info returns the HeaderInfo describing the finalised index.
 // Only valid after a successful Close(); returns the zero value otherwise.
-func (w *StreamingIndexWriter) Info() logproto.HeaderInfo {
+func (w *StreamingIndexWriter) Info() format.HeaderInfo {
 	if !w.closed {
-		return logproto.HeaderInfo{}
+		return format.HeaderInfo{}
 	}
 	return w.footer.Info()
 }

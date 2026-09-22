@@ -1014,7 +1014,7 @@ func TestBuildTermJobs_FilterTooShortReturnsUnsupported(t *testing.T) {
 	require.ErrorIs(t, err, ErrUnsupported)
 }
 
-func buildIndexBytes(t *testing.T, needle string, docMin, docMax time.Time) ([]byte, *logproto.HeaderInfo) {
+func buildIndexBytes(t *testing.T, needle string, docMin, docMax time.Time) ([]byte, *format.HeaderInfo) {
 	t.Helper()
 	tmpDir := t.TempDir()
 	path := filepath.Join(tmpDir, "test.lidx")

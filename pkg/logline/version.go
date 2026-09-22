@@ -7,7 +7,6 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/logline/format"
 	v3 "github.com/grafana/loki/v3/pkg/logline/internal/v3"
-	"github.com/grafana/loki/v3/pkg/logproto"
 )
 
 // CurrentVersion is the canonical name for the current index format.
@@ -34,7 +33,7 @@ type Reader interface {
 	GetBitmap(termIndex int) (format.Bitmap, error)
 	NewTermIterator() (format.TermIterator, error)
 	Documents() []format.DocumentMetadata
-	ReadHeader() logproto.HeaderInfo
+	ReadHeader() format.HeaderInfo
 	ClassifyRead(offset, length int64) format.ReadSection
 	Close() error
 }
@@ -52,13 +51,13 @@ type Writer interface {
 // Returns the HeaderInfo describing the written index so the caller can
 // populate metadata without re-reading from the destination.
 type Merger interface {
-	Merge(ctx context.Context, readers []io.ReaderAt, sizes []int64, out io.Writer) (logproto.HeaderInfo, error)
+	Merge(ctx context.Context, readers []io.ReaderAt, sizes []int64, out io.Writer) (format.HeaderInfo, error)
 }
 
 // OpenReader opens an index reader for the given format version.
 // The returned any value is opaque cached state that can be passed to
 // OpenReaderCached for fast reopens without re-reading metadata.
-func OpenReader(version string, r io.ReaderAt, offset, size int64, info logproto.HeaderInfo) (Reader, any, error) {
+func OpenReader(version string, r io.ReaderAt, offset, size int64, info format.HeaderInfo) (Reader, any, error) {
 	switch version {
 	case "v3":
 		reader, err := v3.OpenIndexAtWithHeader(r, offset, size, info)
@@ -99,7 +98,7 @@ func NewWriter(version, path string, docs []format.DocumentMetadata, cfg *format
 func NewMerger(version string, cfg *format.WriterConfig) (Merger, error) {
 	switch version {
 	case "v3":
-		return mergerFunc(func(ctx context.Context, readers []io.ReaderAt, sizes []int64, out io.Writer) (logproto.HeaderInfo, error) {
+		return mergerFunc(func(ctx context.Context, readers []io.ReaderAt, sizes []int64, out io.Writer) (format.HeaderInfo, error) {
 			return v3.Merge(ctx, readers, sizes, out, cfg)
 		}), nil
 	default:
@@ -108,9 +107,9 @@ func NewMerger(version string, cfg *format.WriterConfig) (Merger, error) {
 }
 
 // mergerFunc adapts a function to the Merger interface.
-type mergerFunc func(ctx context.Context, readers []io.ReaderAt, sizes []int64, out io.Writer) (logproto.HeaderInfo, error)
+type mergerFunc func(ctx context.Context, readers []io.ReaderAt, sizes []int64, out io.Writer) (format.HeaderInfo, error)
 
-func (f mergerFunc) Merge(ctx context.Context, readers []io.ReaderAt, sizes []int64, out io.Writer) (logproto.HeaderInfo, error) {
+func (f mergerFunc) Merge(ctx context.Context, readers []io.ReaderAt, sizes []int64, out io.Writer) (format.HeaderInfo, error) {
 	return f(ctx, readers, sizes, out)
 }
 
@@ -132,10 +131,10 @@ func OpenReaderAt(r io.ReaderAt, offset, size int64) (Reader, string, any, error
 // straight to store.PopulateFileInfo.
 //
 // Reads go through io.ReaderAt only, so the caller's file offset is untouched.
-func ReadHeaderAt(r io.ReaderAt, size int64) (logproto.HeaderInfo, error) {
+func ReadHeaderAt(r io.ReaderAt, size int64) (format.HeaderInfo, error) {
 	reader, _, _, err := OpenReaderAt(r, 0, size)
 	if err != nil {
-		return logproto.HeaderInfo{}, err
+		return format.HeaderInfo{}, err
 	}
 	defer reader.Close()
 	return reader.ReadHeader(), nil

@@ -17,7 +17,7 @@ import (
 	"go.uber.org/atomic"
 	"golang.org/x/sync/errgroup"
 
-	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/logline/format"
 )
 
 var errInvalidMeta = errors.New("invalid meta")
@@ -273,7 +273,7 @@ func (s *Store) PutIndex(ctx context.Context, indexData io.Reader, meta Meta) er
 // Upload ordering matches PutIndex: index data first, then meta.json as the
 // commit marker. If the write callback returns an error, the upload is
 // cancelled and meta.json is not written.
-func (s *Store) PutIndexStreaming(ctx context.Context, meta *Meta, write func(io.Writer) (logproto.HeaderInfo, error)) error {
+func (s *Store) PutIndexStreaming(ctx context.Context, meta *Meta, write func(io.Writer) (format.HeaderInfo, error)) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
