@@ -21,7 +21,7 @@ func TestSampleIterator(t *testing.T) {
 	}
 
 	t.Run("it emits one sample per line with the stream's streamHash", func(t *testing.T) {
-		reader := &fakeRecordReader{records: []logRecord{
+		reader := &fakeRecordReader{records: []LogRecord{
 			record(t, `{app="a"}`, 1, "one"),
 			record(t, `{app="a"}`, 2, "two"),
 		}}
@@ -44,7 +44,7 @@ func TestSampleIterator(t *testing.T) {
 	})
 
 	t.Run("a sample is never given a hash, because nothing deduplicates this band", func(t *testing.T) {
-		reader := &fakeRecordReader{records: []logRecord{record(t, `{app="a"}`, 1, "one")}}
+		reader := &fakeRecordReader{records: []LogRecord{record(t, `{app="a"}`, 1, "one")}}
 		it := newIterator(t, `sum by (app) (count_over_time({app="a"}[1m]))`, reader)
 
 		require.True(t, it.Next())
@@ -52,7 +52,7 @@ func TestSampleIterator(t *testing.T) {
 	})
 
 	t.Run("a line the pipeline drops yields no sample", func(t *testing.T) {
-		reader := &fakeRecordReader{records: []logRecord{
+		reader := &fakeRecordReader{records: []LogRecord{
 			record(t, `{app="a"}`, 1, "keep me"),
 			record(t, `{app="a"}`, 2, "drop me"),
 		}}
@@ -71,7 +71,7 @@ func TestSampleIterator(t *testing.T) {
 		second := record(t, `{app="b"}`, 2, "two")
 		second.streamHash = first.streamHash
 
-		reader := &fakeRecordReader{records: []logRecord{first, second}}
+		reader := &fakeRecordReader{records: []LogRecord{first, second}}
 		it := newIterator(t, `count_over_time({app=~".+"}[1m])`, reader)
 
 		var gotLabels []string
@@ -84,7 +84,7 @@ func TestSampleIterator(t *testing.T) {
 	})
 
 	t.Run("records from interleaved streams are each labelled with their own stream", func(t *testing.T) {
-		reader := &fakeRecordReader{records: []logRecord{
+		reader := &fakeRecordReader{records: []LogRecord{
 			record(t, `{app="a"}`, 1, "one"),
 			record(t, `{app="b"}`, 1, "two"),
 			record(t, `{app="a"}`, 2, "three"),
@@ -101,7 +101,7 @@ func TestSampleIterator(t *testing.T) {
 	})
 
 	t.Run("structured metadata reaches the output labels", func(t *testing.T) {
-		reader := &fakeRecordReader{records: []logRecord{
+		reader := &fakeRecordReader{records: []LogRecord{
 			record(t, `{app="a"}`, 1, "one", `{level="error"}`),
 		}}
 		it := newIterator(t, `count_over_time({app="a"}[1m])`, reader)
@@ -111,7 +111,7 @@ func TestSampleIterator(t *testing.T) {
 	})
 
 	t.Run("it reports nothing before the first Next", func(t *testing.T) {
-		reader := &fakeRecordReader{records: []logRecord{record(t, `{app="a"}`, 1, "one")}}
+		reader := &fakeRecordReader{records: []LogRecord{record(t, `{app="a"}`, 1, "one")}}
 		it := newIterator(t, `sum by (app) (count_over_time({app="a"}[1m]))`, reader)
 
 		require.Zero(t, it.At())
@@ -120,7 +120,7 @@ func TestSampleIterator(t *testing.T) {
 	})
 
 	t.Run("it reports nothing once exhausted", func(t *testing.T) {
-		reader := &fakeRecordReader{records: []logRecord{record(t, `{app="a"}`, 1, "one")}}
+		reader := &fakeRecordReader{records: []LogRecord{record(t, `{app="a"}`, 1, "one")}}
 		it := newIterator(t, `sum by (app) (count_over_time({app="a"}[1m]))`, reader)
 
 		require.True(t, it.Next())
@@ -152,7 +152,7 @@ func TestSampleIterator(t *testing.T) {
 // fakeRecordReader replays a fixed set of records, so a test can drive the sample iterator with
 // records the read path would not produce.
 type fakeRecordReader struct {
-	records []logRecord
+	records []LogRecord
 	pos     int
 	err     error
 
@@ -168,7 +168,7 @@ func (r *fakeRecordReader) Next() bool {
 	return true
 }
 
-func (r *fakeRecordReader) At() logRecord { return r.records[r.pos-1] }
+func (r *fakeRecordReader) At() LogRecord { return r.records[r.pos-1] }
 
 func (r *fakeRecordReader) Err() error { return r.err }
 
@@ -179,7 +179,7 @@ func (r *fakeRecordReader) Close() error {
 
 // record builds one decoded log line for the given stream. Both streamLabels and the optional
 // metadata are LogQL label sets.
-func record(t *testing.T, streamLabels string, timestampSec int64, line string, metadata ...string) logRecord {
+func record(t *testing.T, streamLabels string, timestampSec int64, line string, metadata ...string) LogRecord {
 	t.Helper()
 	require.LessOrEqual(t, len(metadata), 1, "a line carries one structured-metadata label set")
 
@@ -192,7 +192,7 @@ func record(t *testing.T, streamLabels string, timestampSec int64, line string, 
 		require.NoError(t, err)
 	}
 
-	return logRecord{
+	return LogRecord{
 		streamHash:   labels.StableHash(parsedStreamLabels),
 		streamLabels: parsedStreamLabels,
 		timestamp:    timestampSec * 1e9,

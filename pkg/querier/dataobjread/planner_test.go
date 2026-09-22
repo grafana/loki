@@ -228,8 +228,8 @@ func (m *fixedMetastore) Sections(_ context.Context, req metastore.SectionsReque
 }
 
 // drainTasks collects every task the planner produces.
-func drainTasks(it *TaskIterator) ([]readTask, error) {
-	var tasks []readTask
+func drainTasks(it *TaskIterator) ([]ReadTask, error) {
+	var tasks []ReadTask
 	for it.Next() {
 		tasks = append(tasks, it.At())
 	}

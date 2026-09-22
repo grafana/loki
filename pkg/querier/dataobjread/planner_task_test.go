@@ -15,7 +15,7 @@ import (
 
 func TestReadTask_RowPredicates(t *testing.T) {
 	t.Run("the time window comes first and is start-inclusive, end-exclusive", func(t *testing.T) {
-		task := readTask{start: at(1), end: at(5)}
+		task := ReadTask{start: at(1), end: at(5)}
 
 		predicates := task.rowPredicates()
 		require.Len(t, predicates, 1)
@@ -28,7 +28,7 @@ func TestReadTask_RowPredicates(t *testing.T) {
 	})
 
 	t.Run("the planned metadata predicates follow the time window", func(t *testing.T) {
-		task := readTask{
+		task := ReadTask{
 			start: at(1),
 			end:   at(5),
 			predicates: []logs.RowPredicate{
@@ -45,7 +45,7 @@ func TestReadTask_RowPredicates(t *testing.T) {
 
 func TestReadTask_Records(t *testing.T) {
 	// oneStreamTask returns a task for a single admitted stream, and that stream's ID.
-	oneStreamTask := func(t *testing.T, streamLabels string) (readTask, int64) {
+	oneStreamTask := func(t *testing.T, streamLabels string) (ReadTask, int64) {
 		t.Helper()
 		parsed, err := syntax.ParseLabels(streamLabels)
 		require.NoError(t, err)
@@ -55,7 +55,7 @@ func TestReadTask_Records(t *testing.T) {
 			map[int64]labels.Labels{id: parsed},
 			func(labels.Labels, uint64) bool { return true },
 		)
-		return readTask{objectPath: "objects/ab/cd", sectionIdx: 3, streamIDs: []int64{id}, streams: streams}, id
+		return ReadTask{objectPath: "objects/ab/cd", sectionIdx: 3, streamIDs: []int64{id}, streams: streams}, id
 	}
 
 	t.Run("it attaches each row's stream identity", func(t *testing.T) {
@@ -69,7 +69,7 @@ func TestReadTask_Records(t *testing.T) {
 
 		streamLabels, err := syntax.ParseLabels(`{app="a"}`)
 		require.NoError(t, err)
-		require.Equal(t, []logRecord{
+		require.Equal(t, []LogRecord{
 			{
 				streamHash:   streamHashOf(`{app="a"}`),
 				streamLabels: streamLabels,
@@ -114,7 +114,7 @@ func TestReadTask_Records(t *testing.T) {
 			map[int64]labels.Labels{id: parsed},
 			func(labels.Labels, uint64) bool { return false }, // decoded, not admitted
 		)
-		task := readTask{objectPath: "objects/ab/cd", sectionIdx: 3, streams: streams}
+		task := ReadTask{objectPath: "objects/ab/cd", sectionIdx: 3, streams: streams}
 
 		_, err = task.records([]logs.Record{{StreamID: id, Timestamp: at(1), Line: []byte("one")}})
 		require.ErrorContains(t, err, "unexpected stream ID 7")
@@ -213,7 +213,7 @@ func TestObjectStreams(t *testing.T) {
 
 func TestTaskIterator(t *testing.T) {
 	t.Run("it yields every queued task", func(t *testing.T) {
-		it := queuedTasks(readTask{sectionIdx: 1}, readTask{sectionIdx: 2})
+		it := queuedTasks(ReadTask{sectionIdx: 1}, ReadTask{sectionIdx: 2})
 
 		var got []int
 		for it.Next() {
@@ -224,7 +224,7 @@ func TestTaskIterator(t *testing.T) {
 	})
 
 	t.Run("a recorded error stops iteration before the tasks queued ahead of it", func(t *testing.T) {
-		it := queuedTasks(readTask{sectionIdx: 1}, readTask{sectionIdx: 2})
+		it := queuedTasks(ReadTask{sectionIdx: 1}, ReadTask{sectionIdx: 2})
 		it.setErr(errors.New("resolution failed"))
 
 		require.False(t, it.Next())
@@ -239,7 +239,7 @@ func TestTaskIterator(t *testing.T) {
 	})
 
 	t.Run("Abort records its error, cancels the planner and waits for it", func(t *testing.T) {
-		ch := make(chan readTask)
+		ch := make(chan ReadTask)
 		cancelled := make(chan struct{})
 		it := newTaskIterator(ch, func() { close(cancelled) })
 
@@ -261,7 +261,7 @@ func TestTaskIterator(t *testing.T) {
 	})
 
 	t.Run("Abort with no error drops the cancellation it causes", func(t *testing.T) {
-		ch := make(chan readTask)
+		ch := make(chan ReadTask)
 		cancelled := make(chan struct{})
 		it := newTaskIterator(ch, func() { close(cancelled) })
 
@@ -278,7 +278,7 @@ func TestTaskIterator(t *testing.T) {
 	})
 
 	t.Run("Abort is safe to call again after a normal drain", func(t *testing.T) {
-		it := queuedTasks(readTask{sectionIdx: 1})
+		it := queuedTasks(ReadTask{sectionIdx: 1})
 		for it.Next() {
 		}
 		it.Abort(nil)
@@ -289,13 +289,13 @@ func TestTaskIterator(t *testing.T) {
 	t.Run("Waited measures the time spent waiting for a planner that runs behind", func(t *testing.T) {
 		const lag = 50 * time.Millisecond
 
-		ch := make(chan readTask)
+		ch := make(chan ReadTask)
 		it := newTaskIterator(ch, func() {})
 		close(it.done)
 
 		go func() {
 			time.Sleep(lag)
-			ch <- readTask{sectionIdx: 1}
+			ch <- ReadTask{sectionIdx: 1}
 			close(ch)
 		}()
 
@@ -310,8 +310,8 @@ func TestTaskIterator(t *testing.T) {
 }
 
 // queuedTasks returns an iterator over the given tasks whose planner has already finished.
-func queuedTasks(tasks ...readTask) *TaskIterator {
-	ch := make(chan readTask, len(tasks))
+func queuedTasks(tasks ...ReadTask) *TaskIterator {
+	ch := make(chan ReadTask, len(tasks))
 	for _, task := range tasks {
 		ch <- task
 	}

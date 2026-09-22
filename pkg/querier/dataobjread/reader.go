@@ -30,8 +30,8 @@ const (
 	DefaultReadBatchSize = 1024
 )
 
-// logRecord is one decoded log line with the identity the sample layer needs.
-type logRecord struct {
+// LogRecord is one decoded log line with the identity the sample layer needs.
+type LogRecord struct {
 	streamHash   uint64
 	streamLabels labels.Labels
 
@@ -72,7 +72,7 @@ type LogReader struct {
 	capture  *xcap.Capture
 	statsCtx *stats.Context
 
-	batches chan []logRecord
+	batches chan []LogRecord
 
 	// stopped closes once the scan goroutine has fully exited.
 	stopped chan struct{}
@@ -86,7 +86,7 @@ type LogReader struct {
 	// parentCtx is the caller's context, as opposed to the cancellable one the scans run under.
 	parentCtx context.Context
 
-	currBatch []logRecord
+	currBatch []LogRecord
 	currPos   int
 }
 
@@ -105,7 +105,7 @@ func NewLogReader(ctx context.Context, objects *OpenObjects, tasks *TaskIterator
 		parentCtx: parentCtx,
 		capture:   xcap.CaptureFromContext(ctx),
 		statsCtx:  stats.FromContext(ctx),
-		batches:   make(chan []logRecord, maxConcurrency),
+		batches:   make(chan []LogRecord, maxConcurrency),
 		stopped:   make(chan struct{}),
 		cancel:    cancel,
 	}
@@ -201,7 +201,7 @@ func (r *LogReader) runTasks(ctx context.Context, tasks *TaskIterator, maxConcur
 	r.metrics.taskScanSeconds.Add(time.Duration(scannedNanos.Load()).Seconds())
 }
 
-func (r *LogReader) runTask(ctx context.Context, task readTask, batchSize int) error {
+func (r *LogReader) runTask(ctx context.Context, task ReadTask, batchSize int) error {
 	object, err := r.objects.get(ctx, task.objectPath)
 	if err != nil {
 		return err
@@ -276,7 +276,7 @@ func (r *LogReader) Next() bool {
 	}
 }
 
-func (r *LogReader) At() logRecord { return r.currBatch[r.currPos] }
+func (r *LogReader) At() LogRecord { return r.currBatch[r.currPos] }
 
 func (r *LogReader) Err() error {
 	r.errClosingMu.Lock()
@@ -355,7 +355,7 @@ func (r *LogReader) recordStats() {
 // another one.
 type recordReader interface {
 	Next() bool
-	At() logRecord
+	At() LogRecord
 	Err() error
 	Close() error
 }

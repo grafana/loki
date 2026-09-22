@@ -83,7 +83,7 @@ func TestLogReader(t *testing.T) {
 
 		broken := fixture.tasks[0]
 		broken.sectionIdx = 999
-		tasks := append([]readTask{broken}, fixture.tasks...)
+		tasks := append([]ReadTask{broken}, fixture.tasks...)
 
 		reader := NewLogReader(t.Context(), fixture.objects, queuedTasks(tasks...), DefaultMaxConcurrency, DefaultReadBatchSize, metrics)
 		drainReader(reader)
@@ -210,7 +210,7 @@ func TestLogReader_ConcurrentObjectOpens(t *testing.T) {
 // so a reader test drives the same tasks production would.
 type readerFixture struct {
 	objects *OpenObjects
-	tasks   []readTask
+	tasks   []ReadTask
 }
 
 func newReaderFixture(t *testing.T, streams ...logproto.Stream) readerFixture {

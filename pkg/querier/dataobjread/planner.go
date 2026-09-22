@@ -44,7 +44,7 @@ func NewPlanner(ms metastore.Metastore, objects *OpenObjects, filterer chunk.Fil
 // on the iterator and surfaces through its Err.
 func (p *Planner) Plan(ctx context.Context, query QueryParams) *TaskIterator {
 	ctx, cancel := context.WithCancel(ctx)
-	tasks := make(chan readTask, planBufferSize)
+	tasks := make(chan ReadTask, planBufferSize)
 	it := newTaskIterator(tasks, cancel)
 
 	go func() {
@@ -87,7 +87,7 @@ func (p *Planner) Plan(ctx context.Context, query QueryParams) *TaskIterator {
 
 // planObjects groups the descriptors by object and plans each object concurrently, sending an
 // object's tasks as soon as it is planned.
-func (p *Planner) planObjects(ctx context.Context, descriptors metastore.DataobjSectionDescriptors, query QueryParams, out chan<- readTask) error {
+func (p *Planner) planObjects(ctx context.Context, descriptors metastore.DataobjSectionDescriptors, query QueryParams, out chan<- ReadTask) error {
 	group, ctx := errgroup.WithContext(ctx)
 	group.SetLimit(maxParallelObjectResolves)
 
@@ -131,7 +131,7 @@ func (p *Planner) planObjects(ctx context.Context, descriptors metastore.Dataobj
 //
 // descriptors must all belong to the object at path. Their stream IDs are only meaningful there,
 // because each object's builder assigns its own.
-func (p *Planner) planObject(ctx context.Context, path string, descriptors metastore.DataobjSectionDescriptors, query QueryParams) ([]readTask, error) {
+func (p *Planner) planObject(ctx context.Context, path string, descriptors metastore.DataobjSectionDescriptors, query QueryParams) ([]ReadTask, error) {
 	object, err := p.objects.get(ctx, path)
 	if err != nil {
 		return nil, err
@@ -152,7 +152,7 @@ func (p *Planner) planObject(ctx context.Context, path string, descriptors metas
 		return p.admits(streamLabels, streamHash, query.Shard)
 	})
 
-	tasks := make([]readTask, 0, len(descriptors))
+	tasks := make([]ReadTask, 0, len(descriptors))
 	for _, descriptor := range descriptors {
 		task, ok, err := p.planSection(descriptor, streams, query)
 		if err != nil {
@@ -178,7 +178,7 @@ func (p *Planner) planObject(ctx context.Context, path string, descriptors metas
 // A sharded read pushes the bucket predicate down, so a missing stream is out of shard. One
 // pruned read cannot tell that from a genuinely missing stream, and the extra read it would take
 // to find out costs more than the invariant is worth here.
-func (p *Planner) planSection(descriptor *metastore.DataobjSectionDescriptor, streams *objectStreams, query QueryParams) (readTask, bool, error) {
+func (p *Planner) planSection(descriptor *metastore.DataobjSectionDescriptor, streams *objectStreams, query QueryParams) (ReadTask, bool, error) {
 	var (
 		streamIDs  = make([]int64, 0, len(descriptor.StreamIDs))
 		labelNames = map[string]struct{}{}
@@ -186,7 +186,7 @@ func (p *Planner) planSection(descriptor *metastore.DataobjSectionDescriptor, st
 	)
 
 	if len(descriptor.StreamIDs) == 0 {
-		return readTask{}, false, fmt.Errorf(
+		return ReadTask{}, false, fmt.Errorf(
 			"data object %q logs section %d: the resolver listed no stream for the section",
 			descriptor.ObjectPath, descriptor.SectionIdx,
 		)
@@ -197,7 +197,7 @@ func (p *Planner) planSection(descriptor *metastore.DataobjSectionDescriptor, st
 			if query.Shard.prunes() {
 				continue
 			}
-			return readTask{}, false, fmt.Errorf(
+			return ReadTask{}, false, fmt.Errorf(
 				"data object %q logs section %d: stream ID %d listed by the metastore is missing from the object's streams section",
 				descriptor.ObjectPath, descriptor.SectionIdx, id,
 			)
@@ -214,7 +214,7 @@ func (p *Planner) planSection(descriptor *metastore.DataobjSectionDescriptor, st
 	}
 
 	if len(streamIDs) == 0 {
-		return readTask{}, false, nil
+		return ReadTask{}, false, nil
 	}
 
 	// Decide pushdown against this section's stream labels alone, so the gate stays as narrow
@@ -224,7 +224,7 @@ func (p *Planner) planSection(descriptor *metastore.DataobjSectionDescriptor, st
 	// stream the metastore matched rather than the ones that survived filtering, so using it
 	// would suppress pushdown this can keep.
 	columns, metadataNames, predicates := query.Projection.forStreams(labelNames)
-	return readTask{
+	return ReadTask{
 		objectPath:    descriptor.ObjectPath,
 		sectionIdx:    int(descriptor.SectionIdx),
 		streamIDs:     streamIDs,

@@ -77,7 +77,7 @@ func TestDataObjStore_SelectSamples(t *testing.T) {
 
 	t.Run("a literal expression reads no section and yields no sample", func(t *testing.T) {
 		store := newTestDataObjStore(t, []logproto.Stream{appStream})
-		got := store.selectSamples(t, testCtx(t), `vector(1)`, at(0), at(10))
+		got := store.selectSamples(testCtx(t), `vector(1)`, at(0), at(10))
 		require.Empty(t, got)
 		require.Zero(t, store.chunkStore.selectSamplesCalls, "a stream-first request must not reach the chunk store")
 	})
@@ -90,7 +90,7 @@ func TestDataObjStore_SelectSamples(t *testing.T) {
 
 	t.Run("sum(count_over_time) counts every line of the matching stream", func(t *testing.T) {
 		store := newTestDataObjStore(t, []logproto.Stream{appStream, otherStream})
-		got := store.selectSamples(t, testCtx(t), `sum by (app) (count_over_time({app="a"}[1m]))`, at(0), at(10))
+		got := store.selectSamples(testCtx(t), `sum by (app) (count_over_time({app="a"}[1m]))`, at(0), at(10))
 		require.Equal(t, []sampleRow{
 			{Labels: `{app="a"}`, TimestampSec: 1, Value: 1, StreamHash: streamHashOf(appStream.Labels)},
 			{Labels: `{app="a"}`, TimestampSec: 2, Value: 1, StreamHash: streamHashOf(appStream.Labels)},
@@ -100,7 +100,7 @@ func TestDataObjStore_SelectSamples(t *testing.T) {
 
 	t.Run("the window includes a line at the start bound and excludes one at the end bound", func(t *testing.T) {
 		store := newTestDataObjStore(t, []logproto.Stream{appStream})
-		got := store.selectSamples(t, testCtx(t), `sum by (app) (count_over_time({app="a"}[1m]))`, at(1), at(3))
+		got := store.selectSamples(testCtx(t), `sum by (app) (count_over_time({app="a"}[1m]))`, at(1), at(3))
 		require.Equal(t, []sampleRow{
 			{Labels: `{app="a"}`, TimestampSec: 1, Value: 1, StreamHash: streamHashOf(appStream.Labels)},
 			{Labels: `{app="a"}`, TimestampSec: 2, Value: 1, StreamHash: streamHashOf(appStream.Labels)},
@@ -109,7 +109,7 @@ func TestDataObjStore_SelectSamples(t *testing.T) {
 
 	t.Run("sum(bytes_over_time) measures the line length", func(t *testing.T) {
 		store := newTestDataObjStore(t, []logproto.Stream{appStream})
-		got := store.selectSamples(t, testCtx(t), `sum by (app) (bytes_over_time({app="a"}[1m]))`, at(0), at(10))
+		got := store.selectSamples(testCtx(t), `sum by (app) (bytes_over_time({app="a"}[1m]))`, at(0), at(10))
 		require.Equal(t, []sampleRow{
 			{Labels: `{app="a"}`, TimestampSec: 1, Value: 3, StreamHash: streamHashOf(appStream.Labels)},
 			{Labels: `{app="a"}`, TimestampSec: 2, Value: 3, StreamHash: streamHashOf(appStream.Labels)},
@@ -119,7 +119,7 @@ func TestDataObjStore_SelectSamples(t *testing.T) {
 
 	t.Run("a line filter drops the lines it does not match", func(t *testing.T) {
 		store := newTestDataObjStore(t, []logproto.Stream{appStream})
-		got := store.selectSamples(t, testCtx(t), `sum by (app) (count_over_time({app="a"} |= "t" [1m]))`, at(0), at(10))
+		got := store.selectSamples(testCtx(t), `sum by (app) (count_over_time({app="a"} |= "t" [1m]))`, at(0), at(10))
 		require.Equal(t, []sampleRow{
 			{Labels: `{app="a"}`, TimestampSec: 2, Value: 1, StreamHash: streamHashOf(appStream.Labels)},
 			{Labels: `{app="a"}`, TimestampSec: 3, Value: 1, StreamHash: streamHashOf(appStream.Labels)},
@@ -128,7 +128,7 @@ func TestDataObjStore_SelectSamples(t *testing.T) {
 
 	t.Run("a bare range aggregation surfaces structured metadata in the output labels", func(t *testing.T) {
 		store := newTestDataObjStore(t, []logproto.Stream{metadataStream})
-		got := store.selectSamples(t, testCtx(t), `count_over_time({app="c"}[1m])`, at(0), at(10))
+		got := store.selectSamples(testCtx(t), `count_over_time({app="c"}[1m])`, at(0), at(10))
 		require.Equal(t, []sampleRow{
 			{Labels: `{app="c", level=""}`, TimestampSec: 3, Value: 1, StreamHash: streamHashOf(metadataStream.Labels)},
 			{Labels: `{app="c", level="error"}`, TimestampSec: 1, Value: 1, StreamHash: streamHashOf(metadataStream.Labels)},
@@ -138,7 +138,7 @@ func TestDataObjStore_SelectSamples(t *testing.T) {
 
 	t.Run("a grouping on a metadata key reads that key and groups by it", func(t *testing.T) {
 		store := newTestDataObjStore(t, []logproto.Stream{metadataStream})
-		got := store.selectSamples(t, testCtx(t), `sum by (level) (count_over_time({app="c"}[1m]))`, at(0), at(10))
+		got := store.selectSamples(testCtx(t), `sum by (level) (count_over_time({app="c"}[1m]))`, at(0), at(10))
 		require.Equal(t, []sampleRow{
 			{Labels: `{level=""}`, TimestampSec: 3, Value: 1, StreamHash: streamHashOf(metadataStream.Labels)},
 			{Labels: `{level="error"}`, TimestampSec: 1, Value: 1, StreamHash: streamHashOf(metadataStream.Labels)},
@@ -148,7 +148,7 @@ func TestDataObjStore_SelectSamples(t *testing.T) {
 
 	t.Run("a metadata equality keeps only the matching rows", func(t *testing.T) {
 		store := newTestDataObjStore(t, []logproto.Stream{metadataStream})
-		got := store.selectSamples(t, testCtx(t), `sum by (level) (count_over_time({app="c"} | level="error" [1m]))`, at(0), at(10))
+		got := store.selectSamples(testCtx(t), `sum by (level) (count_over_time({app="c"} | level="error" [1m]))`, at(0), at(10))
 		require.Equal(t, []sampleRow{
 			{Labels: `{level="error"}`, TimestampSec: 1, Value: 1, StreamHash: streamHashOf(metadataStream.Labels)},
 		}, got)
@@ -156,7 +156,7 @@ func TestDataObjStore_SelectSamples(t *testing.T) {
 
 	t.Run("a metadata negation keeps the rows whose value is empty", func(t *testing.T) {
 		store := newTestDataObjStore(t, []logproto.Stream{metadataStream})
-		got := store.selectSamples(t, testCtx(t), `sum by (level) (count_over_time({app="c"} | level!="error" [1m]))`, at(0), at(10))
+		got := store.selectSamples(testCtx(t), `sum by (level) (count_over_time({app="c"} | level!="error" [1m]))`, at(0), at(10))
 		require.Equal(t, []sampleRow{
 			{Labels: `{level=""}`, TimestampSec: 3, Value: 1, StreamHash: streamHashOf(metadataStream.Labels)},
 			{Labels: `{level="warn"}`, TimestampSec: 2, Value: 1, StreamHash: streamHashOf(metadataStream.Labels)},
@@ -165,7 +165,7 @@ func TestDataObjStore_SelectSamples(t *testing.T) {
 
 	t.Run("a delete request with a line filter excludes the deleted lines", func(t *testing.T) {
 		store := newTestDataObjStore(t, []logproto.Stream{appStream})
-		got := store.selectSamples(t, testCtx(t), `sum by (app) (count_over_time({app="a"}[1m]))`, at(0), at(10),
+		got := store.selectSamples(testCtx(t), `sum by (app) (count_over_time({app="a"}[1m]))`, at(0), at(10),
 			func(req *logproto.SampleQueryRequest) {
 				req.Deletes = []*logproto.Delete{{
 					Selector: `{app="a"} |= "two"`,
@@ -181,7 +181,7 @@ func TestDataObjStore_SelectSamples(t *testing.T) {
 
 	t.Run("an access-control filter drops the streams it denies", func(t *testing.T) {
 		store := newTestDataObjStore(t, []logproto.Stream{appStream, otherStream}, withStreamFilterer(denyAppFilterer{app: "a"}))
-		got := store.selectSamples(t, testCtx(t), `sum by (app) (count_over_time({env="prod"}[1m]))`, at(0), at(10))
+		got := store.selectSamples(testCtx(t), `sum by (app) (count_over_time({env="prod"}[1m]))`, at(0), at(10))
 		require.Equal(t, []sampleRow{
 			{Labels: `{app="b"}`, TimestampSec: 1, Value: 1, StreamHash: streamHashOf(otherStream.Labels)},
 		}, got)
@@ -189,7 +189,7 @@ func TestDataObjStore_SelectSamples(t *testing.T) {
 
 	t.Run("an access-control filter that denies every stream yields no sample and no error", func(t *testing.T) {
 		store := newTestDataObjStore(t, []logproto.Stream{appStream, otherStream}, withStreamFilterer(denyEverythingFilterer{}))
-		got := store.selectSamples(t, testCtx(t), `sum by (app) (count_over_time({env="prod"}[1m]))`, at(0), at(10))
+		got := store.selectSamples(testCtx(t), `sum by (app) (count_over_time({env="prod"}[1m]))`, at(0), at(10))
 		require.Empty(t, got)
 	})
 
@@ -203,7 +203,7 @@ func TestDataObjStore_SelectSamples(t *testing.T) {
 		}
 		// A tiny section forces the builder to split these streams across sections.
 		store := newTestDataObjStore(t, manyStreams, withSectionSize(flagext.Bytes(1)))
-		got := store.selectSamples(t, testCtx(t), `sum by (app) (count_over_time({app="many"}[1m]))`, at(0), at(10))
+		got := store.selectSamples(testCtx(t), `sum by (app) (count_over_time({app="many"}[1m]))`, at(0), at(10))
 		require.Len(t, got, len(manyStreams))
 	})
 
@@ -216,7 +216,7 @@ func TestDataObjStore_SelectSamples(t *testing.T) {
 			})
 		}
 		store := newTestDataObjStore(t, manyStreams, withObjectPerStream())
-		got := store.selectSamples(t, testCtx(t), `sum by (app) (count_over_time({app="split"}[1m]))`, at(0), at(10))
+		got := store.selectSamples(testCtx(t), `sum by (app) (count_over_time({app="split"}[1m]))`, at(0), at(10))
 		require.Len(t, got, len(manyStreams))
 	})
 
@@ -226,7 +226,7 @@ func TestDataObjStore_SelectSamples(t *testing.T) {
 				Labels:  `{app="a", env="prod"}`,
 				Entries: []push.Entry{entry(1, "not mine"), entry(2, "not mine either")},
 			}))
-		got := store.selectSamples(t, testCtx(t), `sum by (app) (count_over_time({app="a"}[1m]))`, at(0), at(10))
+		got := store.selectSamples(testCtx(t), `sum by (app) (count_over_time({app="a"}[1m]))`, at(0), at(10))
 		require.Equal(t, []sampleRow{
 			{Labels: `{app="a"}`, TimestampSec: 1, Value: 1, StreamHash: streamHashOf(appStream.Labels)},
 			{Labels: `{app="a"}`, TimestampSec: 2, Value: 1, StreamHash: streamHashOf(appStream.Labels)},
@@ -238,7 +238,7 @@ func TestDataObjStore_SelectSamples(t *testing.T) {
 		store := newTestDataObjStore(t, []logproto.Stream{appStream})
 		statsCtx, ctx := stats.NewContext(testCtx(t))
 
-		got := store.selectSamples(t, ctx, `sum by (app) (count_over_time({app="a"}[1m]))`, at(0), at(10))
+		got := store.selectSamples(ctx, `sum by (app) (count_over_time({app="a"}[1m]))`, at(0), at(10))
 		require.Len(t, got, 3)
 
 		result := statsCtx.Result(time.Second, 0, len(got))
@@ -277,7 +277,7 @@ func TestDataObjStore_SelectSamples(t *testing.T) {
 
 	t.Run("a query matching no stream yields no sample and no error", func(t *testing.T) {
 		store := newTestDataObjStore(t, []logproto.Stream{appStream})
-		got := store.selectSamples(t, testCtx(t), `sum by (app) (count_over_time({app="nothing"}[1m]))`, at(0), at(10))
+		got := store.selectSamples(testCtx(t), `sum by (app) (count_over_time({app="nothing"}[1m]))`, at(0), at(10))
 		require.Empty(t, got)
 	})
 }
@@ -325,6 +325,7 @@ type sampleRow struct {
 
 // testDataObjStore builds a bucket of data objects from streams and returns a store over them.
 type testDataObjStore struct {
+	t     *testing.T
 	store Store
 
 	// chunkStore counts what the store delegated, so a test can tell a served query from a
@@ -402,15 +403,15 @@ func newTestDataObjStore(t *testing.T, streams []logproto.Stream, opts ...testSt
 	store, err := NewDataObjStore(chunkStore, location.Bucket, builder.Metastore(), nil, storeOpts...)
 	require.NoError(t, err)
 
-	return &testDataObjStore{store: store, chunkStore: chunkStore}
+	return &testDataObjStore{t: t, store: store, chunkStore: chunkStore}
 }
 
 // selectSamples runs a stream-first metric query and returns its samples as a set.
-func (s *testDataObjStore) selectSamples(t *testing.T, ctx context.Context, query string, start, end time.Time, mutators ...func(*logproto.SampleQueryRequest)) []sampleRow {
-	t.Helper()
+func (s *testDataObjStore) selectSamples(ctx context.Context, query string, start, end time.Time, mutators ...func(*logproto.SampleQueryRequest)) []sampleRow {
+	s.t.Helper()
 	it, err := s.selectSamplesIter(ctx, query, start, end, mutators...)
-	require.NoError(t, err)
-	return collectSamples(t, it)
+	require.NoError(s.t, err)
+	return collectSamples(s.t, it)
 }
 
 func (s *testDataObjStore) selectSamplesIter(ctx context.Context, query string, start, end time.Time, mutators ...func(*logproto.SampleQueryRequest)) (iter.SampleIterator, error) {
