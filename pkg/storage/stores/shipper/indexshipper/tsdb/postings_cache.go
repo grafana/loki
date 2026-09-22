@@ -33,8 +33,6 @@ type postingsCacheMetrics struct {
 	encodeFailures prometheus.Counter
 }
 
-// This records errors returned to the caller. Asynchronous backend write failures
-// are logged and measured by the background cache's existing instrumentation.
 func newPostingsCache(c cache.Cache, name string, reg prometheus.Registerer, logger log.Logger) *postingsCache {
 	return &postingsCache{c, logger, newPostingsCacheMetrics(name, reg)}
 }

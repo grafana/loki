@@ -102,7 +102,7 @@ type Config struct {
 	IndexGatewayClientConfig indexgateway.ClientConfig `yaml:"index_gateway_client"`
 
 	StreamingIndexMaxIdleFileHandles uint         `yaml:"streaming_index_max_idle_file_handles" category:"experimental"`
-	PostingsCache                    cache.Config `yaml:"postings_cache" category:"experimental" doc:"description=Caches expanded postings for downloaded per-tenant TSDB index files."`
+	PostingsCache                    cache.Config `yaml:"postings_cache" category:"experimental" doc:"description=Experimental. Caches expanded postings for downloaded per-tenant TSDB index files."`
 
 	// Temporary experimental feature
 	ShadowIndexGatewayClientConfig indexgateway.ClientConfig `yaml:"shadow_index_gateway_client,omitempty" category:"experimental" doc:"hidden"`

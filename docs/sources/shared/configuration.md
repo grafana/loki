@@ -7025,7 +7025,8 @@ tsdb_shipper:
   # CLI flag: -tsdb.shipper.streaming-index-max-idle-file-handles
   [streaming_index_max_idle_file_handles: <int> | default = 16]
 
-  # Caches expanded postings for downloaded per-tenant TSDB index files.
+  # Experimental. Caches expanded postings for downloaded per-tenant TSDB index
+  # files.
   # The CLI flags prefix for this block configuration is:
   # tsdb.shipper.postings-cache
   [postings_cache: <cache_config>]
