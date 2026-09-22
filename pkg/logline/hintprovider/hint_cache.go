@@ -155,8 +155,6 @@ func (p *CachingHintProvider) ProvideHints(
 	g, gCtx := errgroup.WithContext(ctx)
 
 	for i, day := range missingDays {
-		i, day := i, day
-
 		g.Go(func() error {
 			dayFrom := model.TimeFromUnixNano(day.start.UnixNano())
 			dayThrough := model.TimeFromUnixNano(day.endExclusive.Add(-time.Nanosecond).UnixNano())
@@ -185,16 +183,7 @@ func (p *CachingHintProvider) ProvideHints(
 		})
 	}
 
-	if err := g.Wait(); err != nil {
-		var stats *QueryStats
-		for _, r := range results {
-			if r.stats != nil {
-				stats = r.stats
-				break
-			}
-		}
-		return nil, stats, err
-	}
+	waitErr := g.Wait()
 	combined := NewQueryStats()
 	combinedRanges := append([]logproto.HintTimeRange(nil), cachedRanges...)
 	for _, r := range results {
@@ -202,6 +191,9 @@ func (p *CachingHintProvider) ProvideHints(
 		if r.hints != nil {
 			combinedRanges = append(combinedRanges, r.hints.TimeRanges...)
 		}
+	}
+	if waitErr != nil {
+		return nil, combined, waitErr
 	}
 	combined.ObserveHintCache(hintCacheResultMiss, len(cacheKeys), daysHit)
 	return filterHintsByWindow(&Hints{TimeRanges: combinedRanges}, from, through), combined, nil
