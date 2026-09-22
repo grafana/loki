@@ -106,7 +106,7 @@ func TestBuildOptions_WhenMissingSecret_SetDegraded(t *testing.T) {
 			Storage: lokiv1.ObjectStorageSpec{
 				Schemas: []lokiv1.ObjectStorageSchema{
 					{
-						Version:       lokiv1.ObjectStorageSchemaV11,
+						Version:       lokiv1.ObjectStorageSchemaV13,
 						EffectiveDate: "2020-10-11",
 					},
 				},
@@ -172,7 +172,7 @@ func TestBuildOptions_WhenMissingCloudCredentialsSecret_SetDegraded(t *testing.T
 			Storage: lokiv1.ObjectStorageSpec{
 				Schemas: []lokiv1.ObjectStorageSchema{
 					{
-						Version:       lokiv1.ObjectStorageSchemaV11,
+						Version:       lokiv1.ObjectStorageSchemaV13,
 						EffectiveDate: "2020-10-11",
 					},
 				},
@@ -239,7 +239,7 @@ func TestBuildOptions_WhenInvalidSecret_SetDegraded(t *testing.T) {
 			Storage: lokiv1.ObjectStorageSpec{
 				Schemas: []lokiv1.ObjectStorageSchema{
 					{
-						Version:       lokiv1.ObjectStorageSchemaV11,
+						Version:       lokiv1.ObjectStorageSchemaV13,
 						EffectiveDate: "2020-10-11",
 					},
 				},
@@ -312,11 +312,11 @@ func TestBuildOptions_WithInvalidStorageSchema_SetDegraded(t *testing.T) {
 			Storage: lokiv1.LokiStackStorageStatus{
 				Schemas: []lokiv1.ObjectStorageSchema{
 					{
-						Version:       lokiv1.ObjectStorageSchemaV11,
+						Version:       lokiv1.ObjectStorageSchemaV13,
 						EffectiveDate: "2020-10-11",
 					},
 					{
-						Version:       lokiv1.ObjectStorageSchemaV12,
+						Version:       lokiv1.ObjectStorageSchemaV13,
 						EffectiveDate: "2021-10-11",
 					},
 				},
@@ -376,7 +376,7 @@ func TestBuildOptions_WhenMissingCAConfigMap_SetDegraded(t *testing.T) {
 			Storage: lokiv1.ObjectStorageSpec{
 				Schemas: []lokiv1.ObjectStorageSchema{
 					{
-						Version:       lokiv1.ObjectStorageSchemaV11,
+						Version:       lokiv1.ObjectStorageSchemaV13,
 						EffectiveDate: "2020-10-11",
 					},
 				},
@@ -447,7 +447,7 @@ func TestBuildOptions_WhenEmptyCAConfigMapName_SetDegraded(t *testing.T) {
 			Storage: lokiv1.ObjectStorageSpec{
 				Schemas: []lokiv1.ObjectStorageSchema{
 					{
-						Version:       lokiv1.ObjectStorageSchemaV11,
+						Version:       lokiv1.ObjectStorageSchemaV13,
 						EffectiveDate: "2020-10-11",
 					},
 				},
@@ -518,7 +518,7 @@ func TestBuildOptions_WhenInvalidCAConfigMap_SetDegraded(t *testing.T) {
 			Storage: lokiv1.ObjectStorageSpec{
 				Schemas: []lokiv1.ObjectStorageSchema{
 					{
-						Version:       lokiv1.ObjectStorageSchemaV11,
+						Version:       lokiv1.ObjectStorageSchemaV13,
 						EffectiveDate: "2020-10-11",
 					},
 				},
@@ -578,7 +578,7 @@ func TestAllowStructuredMetadata(t *testing.T) {
 			desc: "disallow - only v12",
 			schemas: []lokiv1.ObjectStorageSchema{
 				{
-					Version:       lokiv1.ObjectStorageSchemaV12,
+					Version:       lokiv1.ObjectStorageSchemaV13,
 					EffectiveDate: "2024-07-01",
 				},
 			},
@@ -598,7 +598,7 @@ func TestAllowStructuredMetadata(t *testing.T) {
 			desc: "disallow - v13 in future",
 			schemas: []lokiv1.ObjectStorageSchema{
 				{
-					Version:       lokiv1.ObjectStorageSchemaV12,
+					Version:       lokiv1.ObjectStorageSchemaV13,
 					EffectiveDate: "2024-07-01",
 				},
 				{
@@ -616,7 +616,7 @@ func TestAllowStructuredMetadata(t *testing.T) {
 					EffectiveDate: "2024-06-01",
 				},
 				{
-					Version:       lokiv1.ObjectStorageSchemaV12,
+					Version:       lokiv1.ObjectStorageSchemaV13,
 					EffectiveDate: "2024-07-01",
 				},
 			},
@@ -630,7 +630,7 @@ func TestAllowStructuredMetadata(t *testing.T) {
 					EffectiveDate: "2024-06-01",
 				},
 				{
-					Version:       lokiv1.ObjectStorageSchemaV12,
+					Version:       lokiv1.ObjectStorageSchemaV13,
 					EffectiveDate: "2024-07-01",
 				},
 				{
@@ -644,7 +644,7 @@ func TestAllowStructuredMetadata(t *testing.T) {
 			desc: "allow - v13 active",
 			schemas: []lokiv1.ObjectStorageSchema{
 				{
-					Version:       lokiv1.ObjectStorageSchemaV12,
+					Version:       lokiv1.ObjectStorageSchemaV13,
 					EffectiveDate: "2024-06-01",
 				},
 				{
@@ -662,7 +662,7 @@ func TestAllowStructuredMetadata(t *testing.T) {
 					EffectiveDate: "2024-07-01",
 				},
 				{
-					Version:       lokiv1.ObjectStorageSchemaV12,
+					Version:       lokiv1.ObjectStorageSchemaV13,
 					EffectiveDate: "2024-08-01",
 				},
 			},

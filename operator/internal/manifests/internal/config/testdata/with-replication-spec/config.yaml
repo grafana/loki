@@ -142,8 +142,8 @@ schema_config:
         period: 24h
         prefix: index_
       object_store: s3
-      schema: v11
-      store: boltdb-shipper
+      schema: v13
+      store: tsdb
 server:
   graceful_shutdown_timeout: 5s
   grpc_server_min_time_between_pings: '10s'

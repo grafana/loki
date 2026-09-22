@@ -816,10 +816,7 @@ spec:
                           type: string
                         version:
                           description: Version for writing and reading logs.
-                          enum:
-                          - v11
-                          - v12
-                          - v13
+                          pattern: ^v1[3-9]$|^v[2-9][0-9]$
                           type: string
                       required:
                       - effectiveDate
@@ -4212,10 +4209,7 @@ spec:
                           type: string
                         version:
                           description: Version for writing and reading logs.
-                          enum:
-                          - v11
-                          - v12
-                          - v13
+                          pattern: ^v1[3-9]$|^v[2-9][0-9]$
                           type: string
                       required:
                       - effectiveDate
@@ -4560,8 +4554,7 @@ spec:
                         version:
                           description: Version for writing and reading logs.
                           enum:
-                          - v11
-                          - v12
+                          - v13
                           type: string
                       required:
                       - effectiveDate
@@ -5383,8 +5376,7 @@ spec:
                         version:
                           description: Version for writing and reading logs.
                           enum:
-                          - v11
-                          - v12
+                          - v13
                           type: string
                       required:
                       - effectiveDate

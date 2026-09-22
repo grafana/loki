@@ -37,6 +37,58 @@ The output is incredibly verbose as it shows the entire internal config struct u
 
 ## Main / Unreleased
 
+### Breaking change: Loki Operator `schemas` field is now required
+
+The `schemas` field in the `LokiStack` custom resource storage specification is now required. Previously this field was optional, but omitting it could lead to misconfiguration.
+
+Before upgrading the Loki Operator, ensure all `LokiStack` resources have at least one schema defined in `spec.storage.schemas`. For example:
+
+```yaml
+apiVersion: loki.grafana.com/v1
+kind: LokiStack
+metadata:
+  name: my-lokistack
+spec:
+  storage:
+    schemas:
+      - effectiveDate: "2024-01-01"
+        version: v13
+    secret:
+      name: my-storage-secret
+```
+
+Attempting to create or update a `LokiStack` without the `schemas` field will fail validation after upgrading. Existing resources without schemas must be updated before the operator upgrade.
+
+### Breaking change: Loki Operator removes support for BoltDB schema versions (v11, v12)
+
+The Loki Operator no longer supports BoltDB-based storage schema versions `v11` and `v12`. Only TSDB-based schemas (`v13` and later) are supported, aligning with Loki 4.0's removal of the BoltDB storage backend.
+
+If your `LokiStack` resources still reference `v11` or `v12` schemas:
+
+1. **Migrate to v13 before upgrading**: You must transition to schema `v13` before upgrading the operator. Add a new schema entry with a future effective date:
+
+   ```yaml
+   apiVersion: loki.grafana.com/v1
+   kind: LokiStack
+   metadata:
+     name: my-lokistack
+   spec:
+     storage:
+       schemas:
+         - effectiveDate: "2023-01-01"  # Old schema
+           version: v11
+         - effectiveDate: "2024-06-01"  # New schema (future date)
+           version: v13
+   ```
+
+2. **Wait for the new schema to take effect**: After the `effectiveDate` passes, Loki will start using the new v13 schema for new data.
+
+3. **Remove old schema entries**: Once sufficient time has passed (considering your retention period), you can remove the old v11/v12 schema entries from the spec.
+
+4. **Upgrade the operator**: After removing v11/v12 references, you can safely upgrade to the new operator version.
+
+Attempting to create or update a `LokiStack` with `v11` or `v12` schema versions will fail validation with a clear error message directing you to use `v13` or later.
+
 ### Optional index gateway client request limits
 
 Index gateway clients support two experimental limits that are disabled by default, preserving the existing request limits.
