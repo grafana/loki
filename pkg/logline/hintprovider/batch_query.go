@@ -121,7 +121,7 @@ func (p *LoglineHintProvider) executeQuery(
 		return byShard, nil
 	}
 
-	readersByID, err := p.openReadersForMetas(ctx, indexesByID, stats)
+	readersByID, err := p.openReadersForIndexes(ctx, indexesByID, stats)
 	if err != nil {
 		return nil, err
 	}
@@ -192,7 +192,7 @@ func (p *LoglineHintProvider) executeQuery(
 		switch res.reason {
 		case format.QueryMultipleReasonComplete:
 			if res.result.MatchesAll {
-				ranges = []HintTimeRange{hintTimeRangeForMeta(res.idx)}
+				ranges = []HintTimeRange{hintTimeRangeForIndex(res.idx)}
 			} else if !res.result.IsEmpty() {
 				ranges = rangesForDocIDs(res.idx, res.result.Roaring.ToArray(), res.reader.Documents())
 			}
@@ -260,7 +260,7 @@ func buildTermJobs(
 	return jobs, indexesByID, nil
 }
 
-func (p *LoglineHintProvider) openReadersForMetas(
+func (p *LoglineHintProvider) openReadersForIndexes(
 	ctx context.Context,
 	indexesByID map[string]logproto.HintIndex,
 	stats *QueryStats,
@@ -323,10 +323,10 @@ func queryMultipleReasonLabel(reason format.QueryMultipleTerminationReason) stri
 	}
 }
 
-// hintTimeRangeForMeta converts inclusive observed index bounds to a half-open
+// hintTimeRangeForIndex converts inclusive observed index bounds to a half-open
 // hint range. One millisecond matches the cache and document timestamp
 // precision and guarantees that a log at MaxLogTs remains covered.
-func hintTimeRangeForMeta(idx logproto.HintIndex) HintTimeRange {
+func hintTimeRangeForIndex(idx logproto.HintIndex) HintTimeRange {
 	return HintTimeRange{
 		Start: idx.MinLogTs,
 		End:   idx.MaxLogTs.Add(time.Millisecond),

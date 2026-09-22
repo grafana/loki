@@ -85,7 +85,7 @@ func intersectRanges(a, b []HintTimeRange) []HintTimeRange {
 	return out
 }
 
-// filterNgramsForShard returns only the ngrams that map to meta's shard.
+// filterNgramsForShard returns only the ngrams that map to index's shard.
 // For unsharded indexes (ShardCount <= 1) or unknown algorithms, returns
 // the full list unchanged.
 func filterNgramsForShard(ngrams []string, hintIndex logproto.HintIndex) []string {

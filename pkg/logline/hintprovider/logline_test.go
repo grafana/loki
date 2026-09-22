@@ -175,7 +175,7 @@ func TestLoglineHintProvider_ExecuteQuery_ObservesQueryMultiple(t *testing.T) {
 	require.Equal(t, 1, observedTermBatches)
 }
 
-func TestLoglineHintProvider_OpenIndexReader_ReadsFooter(t *testing.T) {
+func TestLoglineHintProvider_OpenIndexReader(t *testing.T) {
 	indexStore := newTestStore(t)
 	needle := "9fA81cD2Ef0077aa"
 	docMin := time.Date(2026, 2, 26, 10, 0, 50, 0, time.UTC)
