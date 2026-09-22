@@ -272,10 +272,3 @@ message QueryRequest {
   }
   map<string, string> metadata = 7 [(gogoproto.nullable) = false];
 }
-
-message HintTimeRanges {
-  repeated logproto.HintTimeRange ranges = 1 [
-    (gogoproto.nullable) = false,
-    (gogoproto.jsontag) = "ranges"
-  ];
-}

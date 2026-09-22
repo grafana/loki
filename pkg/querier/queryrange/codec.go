@@ -2402,7 +2402,7 @@ func parseStoreChunks(r *http.Request) (*logproto.ChunkRefGroup, error) {
 }
 
 func marshalHintTimeRanges(ranges []logproto.HintTimeRange) ([]byte, error) {
-	data, err := (&HintTimeRanges{Ranges: ranges}).Marshal()
+	data, err := (&logproto.HintTimeRanges{Ranges: ranges}).Marshal()
 	if err != nil {
 		return nil, errors.Wrap(err, "marshaling hint time ranges")
 	}
@@ -2411,7 +2411,7 @@ func marshalHintTimeRanges(ranges []logproto.HintTimeRange) ([]byte, error) {
 
 func parseHintTimeRanges(r *http.Request) ([]logproto.HintTimeRange, error) {
 	if value := r.Form.Get("hintRanges"); value != "" {
-		hintRanges := &HintTimeRanges{}
+		hintRanges := &logproto.HintTimeRanges{}
 		if err := hintRanges.Unmarshal([]byte(value)); err != nil {
 			return nil, errors.Wrap(err, "unmarshaling hint time ranges")
 		}
