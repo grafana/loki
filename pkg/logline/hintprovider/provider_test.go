@@ -33,7 +33,7 @@ func TestFormatHintRanges_Basic(t *testing.T) {
 
 func TestFormatHintRanges_Passthrough(t *testing.T) {
 	end := time.Date(2026, 7, 9, 8, 42, 59, 500*int(time.Millisecond), time.UTC)
-	got := FormatHintRanges([]HintTimeRange{{End: end}})
+	got := FormatHintRanges([]HintTimeRange{{End: end, Source: HintSourcePreMinDate}})
 	require.Equal(t, "[passthrough,2026-07-09T08:42:59.500Z]", got)
 }
 
