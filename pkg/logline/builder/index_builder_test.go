@@ -6,8 +6,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/grafana/loki/v3/pkg/kafka"
-
 	"github.com/go-kit/log"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/testutil"
@@ -21,12 +19,7 @@ func TestBuilder_Flush_EmptyBuilder(t *testing.T) {
 	tmpDir := t.TempDir()
 
 	cfg := Config{
-		Kafka: kafka.Config{
-			ReaderConfig:               kafka.ClientConfig{Address: "localhost:9092"},
-			Topic:                      "test-topic",
-			ConsumerGroup:              "test-group",
-			ProducerMaxRecordSizeBytes: 15 * 1024 * 1024,
-		},
+		Kafka: KafkaConfig{Address: "localhost:9092", Topic: "test-topic", ConsumerGroupName: "test-group"},
 		Index: IndexConfig{
 			DocumentInterval: 100 * time.Millisecond,
 			NgramLength:      3},
@@ -56,12 +49,7 @@ func TestBuilder_ProcessStream_WithData(t *testing.T) {
 	tmpDir := t.TempDir()
 
 	cfg := Config{
-		Kafka: kafka.Config{
-			ReaderConfig:               kafka.ClientConfig{Address: "localhost:9092"},
-			Topic:                      "test-topic",
-			ConsumerGroup:              "test-group",
-			ProducerMaxRecordSizeBytes: 15 * 1024 * 1024,
-		},
+		Kafka: KafkaConfig{Address: "localhost:9092", Topic: "test-topic", ConsumerGroupName: "test-group"},
 		Index: IndexConfig{
 			DocumentInterval: 100 * time.Millisecond,
 			NgramLength:      3},
@@ -99,12 +87,7 @@ func TestBuilder_V3ExtractsLabelValues(t *testing.T) {
 	tmpDir := t.TempDir()
 
 	cfg := Config{
-		Kafka: kafka.Config{
-			ReaderConfig:               kafka.ClientConfig{Address: "localhost:9092"},
-			Topic:                      "test-topic",
-			ConsumerGroup:              "test-group",
-			ProducerMaxRecordSizeBytes: 15 * 1024 * 1024,
-		},
+		Kafka: KafkaConfig{Address: "localhost:9092", Topic: "test-topic", ConsumerGroupName: "test-group"},
 		Index: IndexConfig{
 			DocumentInterval: 100 * time.Millisecond,
 			Version:          "v3",
@@ -151,12 +134,7 @@ func TestBuilder_FlushIntegration(t *testing.T) {
 	tmpDir := t.TempDir()
 
 	cfg := Config{
-		Kafka: kafka.Config{
-			ReaderConfig:               kafka.ClientConfig{Address: "localhost:9092"},
-			Topic:                      "test-topic",
-			ConsumerGroup:              "test-group",
-			ProducerMaxRecordSizeBytes: 15 * 1024 * 1024,
-		},
+		Kafka: KafkaConfig{Address: "localhost:9092", Topic: "test-topic", ConsumerGroupName: "test-group"},
 		Index: IndexConfig{
 			// 200ms: divides 24h, and its docID window (epoch + 2^32 ticks ≈
 			// 27y) ends comfortably past Validate's one-year future runway.
@@ -216,12 +194,7 @@ func TestBuilder_ProcessStream_MultipleEntries(t *testing.T) {
 	tmpDir := t.TempDir()
 
 	cfg := Config{
-		Kafka: kafka.Config{
-			ReaderConfig:               kafka.ClientConfig{Address: "localhost:9092"},
-			Topic:                      "test-topic",
-			ConsumerGroup:              "test-group",
-			ProducerMaxRecordSizeBytes: 15 * 1024 * 1024,
-		},
+		Kafka: KafkaConfig{Address: "localhost:9092", Topic: "test-topic", ConsumerGroupName: "test-group"},
 		Index: IndexConfig{
 			DocumentInterval: 100 * time.Millisecond,
 			NgramLength:      3},
@@ -276,12 +249,7 @@ func TestProcessStream_FutureEntriesGetOwnBucket(t *testing.T) {
 	tmpDir := t.TempDir()
 
 	cfg := Config{
-		Kafka: kafka.Config{
-			ReaderConfig:               kafka.ClientConfig{Address: "localhost:9092"},
-			Topic:                      "test-topic",
-			ConsumerGroup:              "test-group",
-			ProducerMaxRecordSizeBytes: 15 * 1024 * 1024,
-		},
+		Kafka: KafkaConfig{Address: "localhost:9092", Topic: "test-topic", ConsumerGroupName: "test-group"},
 		Index: IndexConfig{
 			DocumentInterval: 100 * time.Millisecond,
 			NgramLength:      3},
@@ -347,12 +315,7 @@ func BenchmarkProcessStream(b *testing.B) {
 	tmpDir := b.TempDir()
 
 	cfg := Config{
-		Kafka: kafka.Config{
-			ReaderConfig:               kafka.ClientConfig{Address: "localhost:9092"},
-			Topic:                      "bench-topic",
-			ConsumerGroup:              "bench-group",
-			ProducerMaxRecordSizeBytes: 15 * 1024 * 1024,
-		},
+		Kafka: KafkaConfig{Address: "localhost:9092", Topic: "bench-topic", ConsumerGroupName: "bench-group"},
 		Index: IndexConfig{
 			DocumentInterval: DefaultDocumentInterval,
 			NgramLength:      DefaultNgramLength,
@@ -435,12 +398,7 @@ func BenchmarkProcessStream_NoFlush(b *testing.B) {
 	tmpDir := b.TempDir()
 
 	cfg := Config{
-		Kafka: kafka.Config{
-			ReaderConfig:               kafka.ClientConfig{Address: "localhost:9092"},
-			Topic:                      "bench-topic",
-			ConsumerGroup:              "bench-group",
-			ProducerMaxRecordSizeBytes: 15 * 1024 * 1024,
-		},
+		Kafka: KafkaConfig{Address: "localhost:9092", Topic: "bench-topic", ConsumerGroupName: "bench-group"},
 		Index: IndexConfig{
 			DocumentInterval: DefaultDocumentInterval,
 			NgramLength:      DefaultNgramLength,
@@ -510,12 +468,7 @@ func BenchmarkProcessStream_ParallelConsumers(b *testing.B) {
 	b.RunParallel(func(pb *testing.PB) {
 		// Each goroutine gets its own builder (simulating different consumer instances)
 		cfg := Config{
-			Kafka: kafka.Config{
-				ReaderConfig:               kafka.ClientConfig{Address: "localhost:9092"},
-				Topic:                      "bench-topic",
-				ConsumerGroup:              "bench-group",
-				ProducerMaxRecordSizeBytes: 15 * 1024 * 1024,
-			},
+			Kafka: KafkaConfig{Address: "localhost:9092", Topic: "bench-topic", ConsumerGroupName: "bench-group"},
 			Index: IndexConfig{
 				DocumentInterval: DefaultDocumentInterval,
 				NgramLength:      DefaultNgramLength,
@@ -609,12 +562,7 @@ func TestBuilder_TracksDateRanges(t *testing.T) {
 	tmpDir := t.TempDir()
 
 	cfg := Config{
-		Kafka: kafka.Config{
-			ReaderConfig:               kafka.ClientConfig{Address: "localhost:9092"},
-			Topic:                      "test-topic",
-			ConsumerGroup:              "test-group",
-			ProducerMaxRecordSizeBytes: 15 * 1024 * 1024,
-		},
+		Kafka: KafkaConfig{Address: "localhost:9092", Topic: "test-topic", ConsumerGroupName: "test-group"},
 		Index: IndexConfig{
 			DocumentInterval: 100 * time.Millisecond,
 			NgramLength:      3},
@@ -661,12 +609,7 @@ func TestBuilder_QueueTimestampInObjectKey(t *testing.T) {
 	tmpDir := t.TempDir()
 
 	cfg := Config{
-		Kafka: kafka.Config{
-			ReaderConfig:               kafka.ClientConfig{Address: "localhost:9092"},
-			Topic:                      "test-topic",
-			ConsumerGroup:              "test-group",
-			ProducerMaxRecordSizeBytes: 15 * 1024 * 1024,
-		},
+		Kafka: KafkaConfig{Address: "localhost:9092", Topic: "test-topic", ConsumerGroupName: "test-group"},
 		Index: IndexConfig{
 			DocumentInterval: 100 * time.Millisecond,
 			NgramLength:      3},
@@ -735,12 +678,7 @@ func TestBuilder_OutOfWindowTimestamps_Panic(t *testing.T) {
 	// while the zero-file flush path still commits Kafka offsets would
 	// permanently, silently skip replayed Adaptive Logs archive data.
 	cfg := Config{
-		Kafka: kafka.Config{
-			ReaderConfig:               kafka.ClientConfig{Address: "localhost:9092"},
-			Topic:                      "test-topic",
-			ConsumerGroup:              "test-group",
-			ProducerMaxRecordSizeBytes: 15 * 1024 * 1024,
-		},
+		Kafka: KafkaConfig{Address: "localhost:9092", Topic: "test-topic", ConsumerGroupName: "test-group"},
 		Index: IndexConfig{
 			DocumentInterval: 100 * time.Millisecond,
 			NgramLength:      3},
@@ -802,12 +740,7 @@ func TestBuilder_MinDate_DropsOldEntries(t *testing.T) {
 	tmpDir := t.TempDir()
 
 	cfg := Config{
-		Kafka: kafka.Config{
-			ReaderConfig:               kafka.ClientConfig{Address: "localhost:9092"},
-			Topic:                      "test-topic",
-			ConsumerGroup:              "test-group",
-			ProducerMaxRecordSizeBytes: 15 * 1024 * 1024,
-		},
+		Kafka: KafkaConfig{Address: "localhost:9092", Topic: "test-topic", ConsumerGroupName: "test-group"},
 		Index: IndexConfig{
 			DocumentInterval: 100 * time.Millisecond,
 			NgramLength:      3},
@@ -860,12 +793,7 @@ func TestNewIndexBuilder_RejectsPreEpochMinDate(t *testing.T) {
 	// drop and into a guaranteed out-of-window panic; the config is rejected at
 	// construction instead (CLAUDE.md invariant #7).
 	cfg := Config{
-		Kafka: kafka.Config{
-			ReaderConfig:               kafka.ClientConfig{Address: "localhost:9092"},
-			Topic:                      "test-topic",
-			ConsumerGroup:              "test-group",
-			ProducerMaxRecordSizeBytes: 15 * 1024 * 1024,
-		},
+		Kafka: KafkaConfig{Address: "localhost:9092", Topic: "test-topic", ConsumerGroupName: "test-group"},
 		Index: IndexConfig{
 			DocumentInterval: 100 * time.Millisecond,
 			NgramLength:      3},

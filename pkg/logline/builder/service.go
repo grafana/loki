@@ -126,16 +126,11 @@ func New(
 		return nil, fmt.Errorf("indexStore cannot be nil")
 	}
 
-	brokers := cfg.Kafka.ReaderConfig.Address
-	if brokers == "" {
-		brokers = cfg.Kafka.Address
-	}
-
 	_ = level.Info(logger).Log(
 		"msg", "initializing builder service",
-		"brokers", brokers,
-		"instance_id", cfg.InstanceID,
-		"consumer_group", cfg.Kafka.ConsumerGroup,
+		"brokers", cfg.Kafka.Address,
+		"instance_id", cfg.Kafka.InstanceID,
+		"consumer_group", cfg.Kafka.ConsumerGroupName,
 		"topic", cfg.Kafka.Topic,
 		"scratch_dir", cfg.ScratchDir,
 	)
@@ -350,7 +345,7 @@ func (s *Service) starting(ctx context.Context) error {
 		"msg", "service starting",
 		"owned_partitions", fmt.Sprintf("%v", owned),
 		"owned_count", len(owned),
-		"consumer_group", s.cfg.Kafka.ConsumerGroup,
+		"consumer_group", s.cfg.Kafka.ConsumerGroupName,
 		"topic", s.cfg.Kafka.Topic,
 		"scratch_dir", s.cfg.ScratchDir,
 	)

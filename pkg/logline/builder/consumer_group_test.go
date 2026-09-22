@@ -61,7 +61,7 @@ func newServiceForPartitionCallbackTests(t *testing.T) *Service {
 	t.Helper()
 	svc := &Service{
 		cfg: Config{
-			Kafka: kafka.Config{Topic: testTopic},
+			Kafka: KafkaConfig{Topic: testTopic},
 		},
 		logger:              log.NewNopLogger(),
 		metrics:             NewMetrics(prometheus.NewRegistry()),

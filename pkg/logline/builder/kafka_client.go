@@ -21,8 +21,8 @@ import (
 //     Scaling the replica count is safe — partition ownership rebalances
 //     automatically.
 //
-//   - kgo.InstanceID(cfg.InstanceID): static membership. A pod that restarts
-//     within cfg.KafkaSessionTimeout rejoins with the same identity and keeps
+//   - kgo.InstanceID(cfg.Kafka.InstanceID): static membership. A pod that restarts
+//     within cfg.Kafka.SessionTimeout rejoins with the same identity and keeps
 //     its partitions, so rolling deploys and crash-restart loops do not cause
 //     rebalances.
 //
@@ -44,28 +44,15 @@ import (
 //     end. Without this, a fresh consumer group would silently skip every
 //     record produced before the first member joined.
 func (s *Service) createKafkaClient() (*kgo.Client, error) {
-	address := s.cfg.Kafka.ReaderConfig.Address
-	if address == "" {
-		address = s.cfg.Kafka.Address
-	}
-
-	seedBrokers := strings.Split(address, ",")
+	seedBrokers := strings.Split(s.cfg.Kafka.Address, ",")
 	for i := range seedBrokers {
 		seedBrokers[i] = strings.TrimSpace(seedBrokers[i])
-	}
-
-	clientID := s.cfg.Kafka.ReaderConfig.ClientID
-	if clientID == "" {
-		clientID = s.cfg.Kafka.ClientID
-	}
-	if clientID == "" {
-		clientID = "logline-index-builder"
 	}
 
 	opts := []kgo.Opt{
 		kgo.WithLogger(newKgoLogger(log.With(s.logger, "component", "kgo"))),
 		kgo.SeedBrokers(seedBrokers...),
-		kgo.ClientID(clientID),
+		kgo.ClientID(s.cfg.Kafka.ClientID),
 		kgo.DialTimeout(s.cfg.Kafka.DialTimeout),
 		kgo.MetadataMinAge(10 * time.Second),
 		kgo.MetadataMaxAge(10 * time.Second),
@@ -75,9 +62,9 @@ func (s *Service) createKafkaClient() (*kgo.Client, error) {
 		kgo.FetchMaxWait(1 * time.Second),
 
 		// Consumer-group membership.
-		kgo.ConsumerGroup(s.cfg.Kafka.ConsumerGroup),
+		kgo.ConsumerGroup(s.cfg.Kafka.ConsumerGroupName),
 		kgo.ConsumeTopics(s.cfg.Kafka.Topic),
-		kgo.SessionTimeout(s.cfg.KafkaSessionTimeout),
+		kgo.SessionTimeout(s.cfg.Kafka.SessionTimeout),
 		kgo.DisableAutoCommit(),
 		kgo.ConsumeResetOffset(kgo.NewOffset().AtStart()),
 		kgo.OnPartitionsAssigned(s.onPartitionsAssigned),
@@ -91,7 +78,7 @@ func (s *Service) createKafkaClient() (*kgo.Client, error) {
 	// Static membership is what keeps pod restarts from triggering rebalances.
 	// kfake rejects InstanceID, so unit tests opt out via the unexported flag.
 	if !s.cfg.disableStaticMembership {
-		opts = append(opts, kgo.InstanceID(s.cfg.InstanceID))
+		opts = append(opts, kgo.InstanceID(s.cfg.Kafka.InstanceID))
 	}
 
 	if s.cfg.Kafka.SASLUsername != "" && s.cfg.Kafka.SASLPassword.String() != "" {
@@ -113,9 +100,9 @@ func (s *Service) createKafkaClient() (*kgo.Client, error) {
 		"msg", "Kafka consumer-group client initialized",
 		"brokers", strings.Join(seedBrokers, ","),
 		"topic", s.cfg.Kafka.Topic,
-		"consumer_group", s.cfg.Kafka.ConsumerGroup,
-		"instance_id", s.cfg.InstanceID,
-		"session_timeout", s.cfg.KafkaSessionTimeout,
+		"consumer_group", s.cfg.Kafka.ConsumerGroupName,
+		"instance_id", s.cfg.Kafka.InstanceID,
+		"session_timeout", s.cfg.Kafka.SessionTimeout,
 	)
 	return client, nil
 }

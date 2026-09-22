@@ -8,7 +8,6 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/v3/pkg/kafka"
 	"github.com/grafana/loki/v3/pkg/logline"
 	"github.com/grafana/loki/v3/pkg/logproto"
 )
@@ -16,12 +15,7 @@ import (
 func makeShardedConfig(t *testing.T, shardCount int) Config {
 	t.Helper()
 	cfg := Config{
-		Kafka: kafka.Config{
-			ReaderConfig:               kafka.ClientConfig{Address: "localhost:9092"},
-			Topic:                      "test-topic",
-			ConsumerGroup:              "test-group",
-			ProducerMaxRecordSizeBytes: 15 * 1024 * 1024,
-		},
+		Kafka: KafkaConfig{Address: "localhost:9092", Topic: "test-topic", ConsumerGroupName: "test-group"},
 		Index: IndexConfig{
 			DocumentInterval: 100 * time.Millisecond,
 			NgramLength:      6,

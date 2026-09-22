@@ -2,9 +2,11 @@ package builder
 
 import (
 	"flag"
+	"strings"
 	"testing"
 	"time"
 
+	"github.com/grafana/dskit/flagext"
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/v3/pkg/kafka"
@@ -20,12 +22,7 @@ func TestConfigValidation(t *testing.T) {
 		{
 			name: "valid settings",
 			settings: Config{
-				Kafka: kafka.Config{
-					ReaderConfig:               kafka.ClientConfig{Address: "localhost:9092"},
-					Topic:                      "test-topic",
-					ConsumerGroup:              "test-group",
-					ProducerMaxRecordSizeBytes: 15 * 1024 * 1024,
-				},
+				Kafka:         KafkaConfig{Address: "localhost:9092", Topic: "test-topic", ConsumerGroupName: "test-group"},
 				ScratchDir:    "/tmp/test",
 				Index:         IndexConfig{NgramLength: DefaultNgramLength, DocumentInterval: DefaultDocumentInterval, Version: "v3"},
 				FlushOnIdle:   DefaultIdleFlushTimeout,
@@ -36,12 +33,7 @@ func TestConfigValidation(t *testing.T) {
 		{
 			name: "ring fields default when omitted",
 			settings: Config{
-				Kafka: kafka.Config{
-					ReaderConfig:               kafka.ClientConfig{Address: "localhost:9092"},
-					Topic:                      "test-topic",
-					ConsumerGroup:              "test-group",
-					ProducerMaxRecordSizeBytes: 15 * 1024 * 1024,
-				},
+				Kafka:      KafkaConfig{Address: "localhost:9092", Topic: "test-topic", ConsumerGroupName: "test-group"},
 				ScratchDir: "/tmp/test",
 			},
 			wantError: false,
@@ -49,12 +41,7 @@ func TestConfigValidation(t *testing.T) {
 		{
 			name: "missing consumer group applies default",
 			settings: Config{
-				Kafka: kafka.Config{
-					ReaderConfig:               kafka.ClientConfig{Address: "localhost:9092"},
-					Topic:                      "test-topic",
-					ConsumerGroup:              "",
-					ProducerMaxRecordSizeBytes: 15 * 1024 * 1024,
-				},
+				Kafka:      KafkaConfig{Address: "localhost:9092", Topic: "test-topic"},
 				ScratchDir: "/tmp/test",
 			},
 			wantError: false, // Validation now applies default consumer group
@@ -62,12 +49,7 @@ func TestConfigValidation(t *testing.T) {
 		{
 			name: "missing topic",
 			settings: Config{
-				Kafka: kafka.Config{
-					ReaderConfig:               kafka.ClientConfig{Address: "localhost:9092"},
-					Topic:                      "",
-					ConsumerGroup:              "test-group",
-					ProducerMaxRecordSizeBytes: 15 * 1024 * 1024,
-				},
+				Kafka:      KafkaConfig{Address: "localhost:9092", Topic: "", ConsumerGroupName: "test-group"},
 				ScratchDir: "/tmp/test",
 			},
 			wantError: true,
@@ -76,12 +58,7 @@ func TestConfigValidation(t *testing.T) {
 		{
 			name: "missing scratch_dir",
 			settings: Config{
-				Kafka: kafka.Config{
-					ReaderConfig:               kafka.ClientConfig{Address: "localhost:9092"},
-					Topic:                      "test-topic",
-					ConsumerGroup:              "test-group",
-					ProducerMaxRecordSizeBytes: 15 * 1024 * 1024,
-				},
+				Kafka: KafkaConfig{Address: "localhost:9092", Topic: "test-topic", ConsumerGroupName: "test-group"},
 			},
 			wantError: true,
 			errorMsg:  "scratch_dir is required",
@@ -89,12 +66,7 @@ func TestConfigValidation(t *testing.T) {
 		{
 			name: "path traversal in scratch_dir",
 			settings: Config{
-				Kafka: kafka.Config{
-					ReaderConfig:               kafka.ClientConfig{Address: "localhost:9092"},
-					Topic:                      "test-topic",
-					ConsumerGroup:              "test-group",
-					ProducerMaxRecordSizeBytes: 15 * 1024 * 1024,
-				},
+				Kafka:      KafkaConfig{Address: "localhost:9092", Topic: "test-topic", ConsumerGroupName: "test-group"},
 				ScratchDir: "/tmp/../etc/passwd",
 			},
 			wantError: true,
@@ -103,12 +75,7 @@ func TestConfigValidation(t *testing.T) {
 		{
 			name: "applies defaults for zero values",
 			settings: Config{
-				Kafka: kafka.Config{
-					ReaderConfig:               kafka.ClientConfig{Address: "localhost:9092"},
-					Topic:                      "test-topic",
-					ConsumerGroup:              "test-group",
-					ProducerMaxRecordSizeBytes: 15 * 1024 * 1024,
-				},
+				Kafka:      KafkaConfig{Address: "localhost:9092", Topic: "test-topic", ConsumerGroupName: "test-group"},
 				ScratchDir: "/tmp/test",
 				// Zero values for sizes and durations
 			},
@@ -117,12 +84,7 @@ func TestConfigValidation(t *testing.T) {
 		{
 			name: "valid with custom bucket interval",
 			settings: Config{
-				Kafka: kafka.Config{
-					ReaderConfig:               kafka.ClientConfig{Address: "localhost:9092"},
-					Topic:                      "test-topic",
-					ConsumerGroup:              "test-group",
-					ProducerMaxRecordSizeBytes: 15 * 1024 * 1024,
-				},
+				Kafka:      KafkaConfig{Address: "localhost:9092", Topic: "test-topic", ConsumerGroupName: "test-group"},
 				ScratchDir: "/tmp/test",
 				Index: IndexConfig{
 					NgramLength:      DefaultNgramLength,
@@ -134,12 +96,7 @@ func TestConfigValidation(t *testing.T) {
 		{
 			name: "bucket interval too small",
 			settings: Config{
-				Kafka: kafka.Config{
-					ReaderConfig:               kafka.ClientConfig{Address: "localhost:9092"},
-					Topic:                      "test-topic",
-					ConsumerGroup:              "test-group",
-					ProducerMaxRecordSizeBytes: 15 * 1024 * 1024,
-				},
+				Kafka:      KafkaConfig{Address: "localhost:9092", Topic: "test-topic", ConsumerGroupName: "test-group"},
 				ScratchDir: "/tmp/test",
 				Index: IndexConfig{
 					DocumentInterval: 500 * time.Microsecond, // Too small
@@ -151,12 +108,7 @@ func TestConfigValidation(t *testing.T) {
 		{
 			name: "bucket interval too large",
 			settings: Config{
-				Kafka: kafka.Config{
-					ReaderConfig:               kafka.ClientConfig{Address: "localhost:9092"},
-					Topic:                      "test-topic",
-					ConsumerGroup:              "test-group",
-					ProducerMaxRecordSizeBytes: 15 * 1024 * 1024,
-				},
+				Kafka:      KafkaConfig{Address: "localhost:9092", Topic: "test-topic", ConsumerGroupName: "test-group"},
 				ScratchDir: "/tmp/test",
 				Index: IndexConfig{
 					DocumentInterval: 2 * time.Hour, // Too large
@@ -172,12 +124,7 @@ func TestConfigValidation(t *testing.T) {
 			// stable: rejected now and forever after.
 			name: "document_interval with insufficient fixed-epoch headroom rejected",
 			settings: Config{
-				Kafka: kafka.Config{
-					ReaderConfig:               kafka.ClientConfig{Address: "localhost:9092"},
-					Topic:                      "test-topic",
-					ConsumerGroup:              "test-group",
-					ProducerMaxRecordSizeBytes: 15 * 1024 * 1024,
-				},
+				Kafka:      KafkaConfig{Address: "localhost:9092", Topic: "test-topic", ConsumerGroupName: "test-group"},
 				ScratchDir: "/tmp/test",
 				Index: IndexConfig{
 					DocumentInterval: 10 * time.Millisecond,
@@ -192,12 +139,7 @@ func TestConfigValidation(t *testing.T) {
 			// past its end would panic at ingest.
 			name: "document_interval with too-short docID window rejected",
 			settings: Config{
-				Kafka: kafka.Config{
-					ReaderConfig:               kafka.ClientConfig{Address: "localhost:9092"},
-					Topic:                      "test-topic",
-					ConsumerGroup:              "test-group",
-					ProducerMaxRecordSizeBytes: 15 * 1024 * 1024,
-				},
+				Kafka:      KafkaConfig{Address: "localhost:9092", Topic: "test-topic", ConsumerGroupName: "test-group"},
 				ScratchDir: "/tmp/test",
 				Index: IndexConfig{
 					DocumentInterval: 1 * time.Millisecond,
@@ -211,12 +153,7 @@ func TestConfigValidation(t *testing.T) {
 			// passes and tiny-run spills.
 			name: "postings_buffer_pairs below floor rejected",
 			settings: Config{
-				Kafka: kafka.Config{
-					ReaderConfig:               kafka.ClientConfig{Address: "localhost:9092"},
-					Topic:                      "test-topic",
-					ConsumerGroup:              "test-group",
-					ProducerMaxRecordSizeBytes: 15 * 1024 * 1024,
-				},
+				Kafka:               KafkaConfig{Address: "localhost:9092", Topic: "test-topic", ConsumerGroupName: "test-group"},
 				ScratchDir:          "/tmp/test",
 				PostingsBufferPairs: 1024,
 			},
@@ -226,12 +163,7 @@ func TestConfigValidation(t *testing.T) {
 		{
 			name: "postings_spill_watermark above 0.95 rejected",
 			settings: Config{
-				Kafka: kafka.Config{
-					ReaderConfig:               kafka.ClientConfig{Address: "localhost:9092"},
-					Topic:                      "test-topic",
-					ConsumerGroup:              "test-group",
-					ProducerMaxRecordSizeBytes: 15 * 1024 * 1024,
-				},
+				Kafka:                  KafkaConfig{Address: "localhost:9092", Topic: "test-topic", ConsumerGroupName: "test-group"},
 				ScratchDir:             "/tmp/test",
 				PostingsSpillWatermark: 0.96,
 			},
@@ -241,12 +173,7 @@ func TestConfigValidation(t *testing.T) {
 		{
 			name: "negative postings_spill_watermark rejected",
 			settings: Config{
-				Kafka: kafka.Config{
-					ReaderConfig:               kafka.ClientConfig{Address: "localhost:9092"},
-					Topic:                      "test-topic",
-					ConsumerGroup:              "test-group",
-					ProducerMaxRecordSizeBytes: 15 * 1024 * 1024,
-				},
+				Kafka:                  KafkaConfig{Address: "localhost:9092", Topic: "test-topic", ConsumerGroupName: "test-group"},
 				ScratchDir:             "/tmp/test",
 				PostingsSpillWatermark: -0.5,
 			},
@@ -256,12 +183,7 @@ func TestConfigValidation(t *testing.T) {
 		{
 			name: "ngram_length above radix-sort limit rejected",
 			settings: Config{
-				Kafka: kafka.Config{
-					ReaderConfig:               kafka.ClientConfig{Address: "localhost:9092"},
-					Topic:                      "test-topic",
-					ConsumerGroup:              "test-group",
-					ProducerMaxRecordSizeBytes: 15 * 1024 * 1024,
-				},
+				Kafka:      KafkaConfig{Address: "localhost:9092", Topic: "test-topic", ConsumerGroupName: "test-group"},
 				ScratchDir: "/tmp/test",
 				Index: IndexConfig{
 					NgramLength: 7,
@@ -273,12 +195,7 @@ func TestConfigValidation(t *testing.T) {
 		{
 			name: "ngram_length negative rejected",
 			settings: Config{
-				Kafka: kafka.Config{
-					ReaderConfig:               kafka.ClientConfig{Address: "localhost:9092"},
-					Topic:                      "test-topic",
-					ConsumerGroup:              "test-group",
-					ProducerMaxRecordSizeBytes: 15 * 1024 * 1024,
-				},
+				Kafka:      KafkaConfig{Address: "localhost:9092", Topic: "test-topic", ConsumerGroupName: "test-group"},
 				ScratchDir: "/tmp/test",
 				Index: IndexConfig{
 					NgramLength: -1,
@@ -290,12 +207,7 @@ func TestConfigValidation(t *testing.T) {
 		{
 			name: "bucket interval must divide 24h",
 			settings: Config{
-				Kafka: kafka.Config{
-					ReaderConfig:               kafka.ClientConfig{Address: "localhost:9092"},
-					Topic:                      "test-topic",
-					ConsumerGroup:              "test-group",
-					ProducerMaxRecordSizeBytes: 15 * 1024 * 1024,
-				},
+				Kafka:      KafkaConfig{Address: "localhost:9092", Topic: "test-topic", ConsumerGroupName: "test-group"},
 				ScratchDir: "/tmp/test",
 				Index: IndexConfig{
 					DocumentInterval: 7 * time.Millisecond, // In bounds, but 24h % 7ms != 0
@@ -307,12 +219,7 @@ func TestConfigValidation(t *testing.T) {
 		{
 			name: "applies default bucket interval",
 			settings: Config{
-				Kafka: kafka.Config{
-					ReaderConfig:               kafka.ClientConfig{Address: "localhost:9092"},
-					Topic:                      "test-topic",
-					ConsumerGroup:              "test-group",
-					ProducerMaxRecordSizeBytes: 15 * 1024 * 1024,
-				},
+				Kafka:      KafkaConfig{Address: "localhost:9092", Topic: "test-topic", ConsumerGroupName: "test-group"},
 				ScratchDir: "/tmp/test",
 				// Zero bucket interval should apply default
 			},
@@ -321,12 +228,7 @@ func TestConfigValidation(t *testing.T) {
 		{
 			name: "shard_count > 1 requires algorithm",
 			settings: Config{
-				Kafka: kafka.Config{
-					ReaderConfig:               kafka.ClientConfig{Address: "localhost:9092"},
-					Topic:                      "test-topic",
-					ConsumerGroup:              "test-group",
-					ProducerMaxRecordSizeBytes: 15 * 1024 * 1024,
-				},
+				Kafka:      KafkaConfig{Address: "localhost:9092", Topic: "test-topic", ConsumerGroupName: "test-group"},
 				ScratchDir: "/tmp/test",
 				Index:      IndexConfig{ShardCount: 4, ShardAlgorithm: ""},
 			},
@@ -336,12 +238,7 @@ func TestConfigValidation(t *testing.T) {
 		{
 			name: "shard_count > 1 with unknown algorithm",
 			settings: Config{
-				Kafka: kafka.Config{
-					ReaderConfig:               kafka.ClientConfig{Address: "localhost:9092"},
-					Topic:                      "test-topic",
-					ConsumerGroup:              "test-group",
-					ProducerMaxRecordSizeBytes: 15 * 1024 * 1024,
-				},
+				Kafka:      KafkaConfig{Address: "localhost:9092", Topic: "test-topic", ConsumerGroupName: "test-group"},
 				ScratchDir: "/tmp/test",
 				Index:      IndexConfig{ShardCount: 4, ShardAlgorithm: "unknown_algo"},
 			},
@@ -351,12 +248,7 @@ func TestConfigValidation(t *testing.T) {
 		{
 			name: "shard_count negative is invalid",
 			settings: Config{
-				Kafka: kafka.Config{
-					ReaderConfig:               kafka.ClientConfig{Address: "localhost:9092"},
-					Topic:                      "test-topic",
-					ConsumerGroup:              "test-group",
-					ProducerMaxRecordSizeBytes: 15 * 1024 * 1024,
-				},
+				Kafka:      KafkaConfig{Address: "localhost:9092", Topic: "test-topic", ConsumerGroupName: "test-group"},
 				ScratchDir: "/tmp/test",
 				Index:      IndexConfig{ShardCount: -1},
 			},
@@ -366,12 +258,7 @@ func TestConfigValidation(t *testing.T) {
 		{
 			name: "shard_count=0 with no algorithm is valid (unsharded)",
 			settings: Config{
-				Kafka: kafka.Config{
-					ReaderConfig:               kafka.ClientConfig{Address: "localhost:9092"},
-					Topic:                      "test-topic",
-					ConsumerGroup:              "test-group",
-					ProducerMaxRecordSizeBytes: 15 * 1024 * 1024,
-				},
+				Kafka:      KafkaConfig{Address: "localhost:9092", Topic: "test-topic", ConsumerGroupName: "test-group"},
 				ScratchDir: "/tmp/test",
 				Index:      IndexConfig{ShardCount: 0, ShardAlgorithm: ""},
 			},
@@ -380,12 +267,7 @@ func TestConfigValidation(t *testing.T) {
 		{
 			name: "shard_count=4 with first_byte algorithm is valid",
 			settings: Config{
-				Kafka: kafka.Config{
-					ReaderConfig:               kafka.ClientConfig{Address: "localhost:9092"},
-					Topic:                      "test-topic",
-					ConsumerGroup:              "test-group",
-					ProducerMaxRecordSizeBytes: 15 * 1024 * 1024,
-				},
+				Kafka:      KafkaConfig{Address: "localhost:9092", Topic: "test-topic", ConsumerGroupName: "test-group"},
 				ScratchDir: "/tmp/test",
 				Index:      IndexConfig{ShardCount: 4, ShardAlgorithm: "first_byte"},
 			},
@@ -394,12 +276,7 @@ func TestConfigValidation(t *testing.T) {
 		{
 			name: "shard_count=256 is the maximum and is valid",
 			settings: Config{
-				Kafka: kafka.Config{
-					ReaderConfig:               kafka.ClientConfig{Address: "localhost:9092"},
-					Topic:                      "test-topic",
-					ConsumerGroup:              "test-group",
-					ProducerMaxRecordSizeBytes: 15 * 1024 * 1024,
-				},
+				Kafka:      KafkaConfig{Address: "localhost:9092", Topic: "test-topic", ConsumerGroupName: "test-group"},
 				ScratchDir: "/tmp/test",
 				Index: IndexConfig{
 					ShardCount:     256,
@@ -410,12 +287,7 @@ func TestConfigValidation(t *testing.T) {
 		{
 			name: "shard_count=257 exceeds the uint8 shard ceiling",
 			settings: Config{
-				Kafka: kafka.Config{
-					ReaderConfig:               kafka.ClientConfig{Address: "localhost:9092"},
-					Topic:                      "test-topic",
-					ConsumerGroup:              "test-group",
-					ProducerMaxRecordSizeBytes: 15 * 1024 * 1024,
-				},
+				Kafka:      KafkaConfig{Address: "localhost:9092", Topic: "test-topic", ConsumerGroupName: "test-group"},
 				ScratchDir: "/tmp/test",
 				Index: IndexConfig{
 					ShardCount:     257,
@@ -427,12 +299,7 @@ func TestConfigValidation(t *testing.T) {
 		{
 			name: "shard_count=10 with murmur3_mix algorithm is valid",
 			settings: Config{
-				Kafka: kafka.Config{
-					ReaderConfig:               kafka.ClientConfig{Address: "localhost:9092"},
-					Topic:                      "test-topic",
-					ConsumerGroup:              "test-group",
-					ProducerMaxRecordSizeBytes: 15 * 1024 * 1024,
-				},
+				Kafka:      KafkaConfig{Address: "localhost:9092", Topic: "test-topic", ConsumerGroupName: "test-group"},
 				ScratchDir: "/tmp/test",
 				Index:      IndexConfig{ShardCount: 10, ShardAlgorithm: "murmur3_mix"},
 			},
@@ -441,12 +308,7 @@ func TestConfigValidation(t *testing.T) {
 		{
 			name: "extract_threads zero defaults to 1 (serial path)",
 			settings: Config{
-				Kafka: kafka.Config{
-					ReaderConfig:               kafka.ClientConfig{Address: "localhost:9092"},
-					Topic:                      "test-topic",
-					ConsumerGroup:              "test-group",
-					ProducerMaxRecordSizeBytes: 15 * 1024 * 1024,
-				},
+				Kafka:          KafkaConfig{Address: "localhost:9092", Topic: "test-topic", ConsumerGroupName: "test-group"},
 				ScratchDir:     "/tmp/test",
 				ExtractThreads: 0,
 			},
@@ -455,12 +317,7 @@ func TestConfigValidation(t *testing.T) {
 		{
 			name: "extract_threads at the maximum is valid",
 			settings: Config{
-				Kafka: kafka.Config{
-					ReaderConfig:               kafka.ClientConfig{Address: "localhost:9092"},
-					Topic:                      "test-topic",
-					ConsumerGroup:              "test-group",
-					ProducerMaxRecordSizeBytes: 15 * 1024 * 1024,
-				},
+				Kafka:          KafkaConfig{Address: "localhost:9092", Topic: "test-topic", ConsumerGroupName: "test-group"},
 				ScratchDir:     "/tmp/test",
 				ExtractThreads: MaxExtractThreads,
 			},
@@ -469,12 +326,7 @@ func TestConfigValidation(t *testing.T) {
 		{
 			name: "extract_threads above the maximum rejected",
 			settings: Config{
-				Kafka: kafka.Config{
-					ReaderConfig:               kafka.ClientConfig{Address: "localhost:9092"},
-					Topic:                      "test-topic",
-					ConsumerGroup:              "test-group",
-					ProducerMaxRecordSizeBytes: 15 * 1024 * 1024,
-				},
+				Kafka:          KafkaConfig{Address: "localhost:9092", Topic: "test-topic", ConsumerGroupName: "test-group"},
 				ScratchDir:     "/tmp/test",
 				ExtractThreads: 5,
 			},
@@ -484,12 +336,7 @@ func TestConfigValidation(t *testing.T) {
 		{
 			name: "extract_threads negative rejected",
 			settings: Config{
-				Kafka: kafka.Config{
-					ReaderConfig:               kafka.ClientConfig{Address: "localhost:9092"},
-					Topic:                      "test-topic",
-					ConsumerGroup:              "test-group",
-					ProducerMaxRecordSizeBytes: 15 * 1024 * 1024,
-				},
+				Kafka:          KafkaConfig{Address: "localhost:9092", Topic: "test-topic", ConsumerGroupName: "test-group"},
 				ScratchDir:     "/tmp/test",
 				ExtractThreads: -1,
 			},
@@ -515,9 +362,119 @@ func TestConfigValidation(t *testing.T) {
 				if tt.settings.Index.DocumentInterval == 0 {
 					require.Equal(t, DefaultDocumentInterval, tt.settings.Index.DocumentInterval)
 				}
+				require.NotEmpty(t, tt.settings.Kafka.ConsumerGroupName)
+				require.NotEmpty(t, tt.settings.Kafka.ClientID)
+				require.NotZero(t, tt.settings.Kafka.SessionTimeout)
+				require.NotEmpty(t, tt.settings.Kafka.InstanceID)
 			}
 		})
 	}
+}
+
+// TestKafkaApplyDefaultsFrom pins which fields the builder inherits from Loki's
+// root kafka_config and which it must not.
+func TestKafkaApplyDefaultsFrom(t *testing.T) {
+	root := kafka.Config{
+		ReaderConfig: kafka.ClientConfig{
+			Address:  "root-broker:9092",
+			ClientID: "root-client",
+		},
+		Topic:         "ingest",
+		DialTimeout:   7 * time.Second,
+		SASLUsername:  "root-user",
+		SASLPassword:  flagext.SecretWithValue("root-pass"),
+		ConsumerGroup: "ingester-partition-zone-a",
+	}
+
+	t.Run("inherits everything except the consumer group", func(t *testing.T) {
+		var cfg KafkaConfig
+		cfg.ApplyDefaultsFrom(root)
+
+		require.Equal(t, "root-broker:9092", cfg.Address)
+		require.Equal(t, "root-client", cfg.ClientID)
+		require.Equal(t, "ingest", cfg.Topic)
+		require.Equal(t, 7*time.Second, cfg.DialTimeout)
+		require.Equal(t, "root-user", cfg.SASLUsername)
+		require.Equal(t, "root-pass", cfg.SASLPassword.String())
+
+		require.Empty(t, cfg.ConsumerGroupName, "consumer group must not be inherited")
+		require.NoError(t, cfg.Validate())
+		require.Equal(t, DefaultConsumerGroupName, cfg.ConsumerGroupName)
+	})
+
+	t.Run("explicit fields win over the root config", func(t *testing.T) {
+		cfg := KafkaConfig{
+			Address:           "logline-broker:9092",
+			Topic:             "logline-ingest",
+			ClientID:          "logline-client",
+			DialTimeout:       time.Second,
+			ConsumerGroupName: "logline-builders",
+		}
+		cfg.ApplyDefaultsFrom(root)
+
+		require.Equal(t, "logline-broker:9092", cfg.Address)
+		require.Equal(t, "logline-ingest", cfg.Topic)
+		require.Equal(t, "logline-client", cfg.ClientID)
+		require.Equal(t, time.Second, cfg.DialTimeout)
+		require.Equal(t, "logline-builders", cfg.ConsumerGroupName)
+	})
+
+	t.Run("deprecated bare address and client id are honoured", func(t *testing.T) {
+		var cfg KafkaConfig
+		cfg.ApplyDefaultsFrom(kafka.Config{
+			Address:  "bare-broker:9092",
+			ClientID: "bare-client",
+			Topic:    "ingest",
+		})
+
+		require.Equal(t, "bare-broker:9092", cfg.Address)
+		require.Equal(t, "bare-client", cfg.ClientID)
+	})
+
+	t.Run("sasl is inherited as a pair", func(t *testing.T) {
+		// A username set here must not be paired with the root password: that
+		// combination was never configured anywhere.
+		cfg := KafkaConfig{Address: "b:9092", Topic: "t", SASLUsername: "logline-user"}
+		cfg.ApplyDefaultsFrom(root)
+
+		require.Equal(t, "logline-user", cfg.SASLUsername)
+		require.Empty(t, cfg.SASLPassword.String())
+		require.ErrorIs(t, cfg.Validate(), kafka.ErrInconsistentSASLUsernameAndPassword)
+	})
+}
+
+func TestKafkaConfigFlags(t *testing.T) {
+	var cfg Config
+	fs := flag.NewFlagSet("test", flag.ContinueOnError)
+	cfg.RegisterFlags(fs)
+
+	for _, name := range []string{
+		"logline-index-builder.kafka.address",
+		"logline-index-builder.kafka.topic",
+		"logline-index-builder.kafka.client-id",
+		"logline-index-builder.kafka.dial-timeout",
+		"logline-index-builder.kafka.sasl-username",
+		"logline-index-builder.kafka.sasl-password",
+		"logline-index-builder.kafka.consumer-group-name",
+		"logline-index-builder.kafka.session-timeout",
+		"logline-index-builder.kafka.instance-id",
+	} {
+		require.NotNil(t, fs.Lookup(name), "missing flag %s", name)
+	}
+
+	// The builder must not register anything in the root -kafka.* namespace:
+	// that config is shared with the ingesters.
+	fs.VisitAll(func(f *flag.Flag) {
+		require.False(t, strings.HasPrefix(f.Name, "kafka."), "registered root kafka flag %s", f.Name)
+	})
+
+	// Cluster-level flags default to zero so ApplyDefaultsFrom can tell unset
+	// from deliberately set. The group-membership ones carry real defaults.
+	require.Empty(t, cfg.Kafka.Address)
+	require.Empty(t, cfg.Kafka.Topic)
+	require.Zero(t, cfg.Kafka.DialTimeout)
+	require.Equal(t, DefaultConsumerGroupName, cfg.Kafka.ConsumerGroupName)
+	require.Equal(t, DefaultKafkaSessionTimeout, cfg.Kafka.SessionTimeout)
 }
 
 // TestConfig_ExtractThreads_ValidRangeAndDefault pins the extract_threads
@@ -527,12 +484,7 @@ func TestConfigValidation(t *testing.T) {
 func TestConfig_ExtractThreads_ValidRangeAndDefault(t *testing.T) {
 	base := func() Config {
 		return Config{
-			Kafka: kafka.Config{
-				ReaderConfig:               kafka.ClientConfig{Address: "localhost:9092"},
-				Topic:                      "test-topic",
-				ConsumerGroup:              "test-group",
-				ProducerMaxRecordSizeBytes: 15 * 1024 * 1024,
-			},
+			Kafka:      KafkaConfig{Address: "localhost:9092", Topic: "test-topic", ConsumerGroupName: "test-group"},
 			ScratchDir: "/tmp/test",
 		}
 	}

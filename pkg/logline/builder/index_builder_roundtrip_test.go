@@ -15,7 +15,6 @@ import (
 	"github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/v3/pkg/kafka"
 	"github.com/grafana/loki/v3/pkg/logline"
 	"github.com/grafana/loki/v3/pkg/logline/shard"
 	"github.com/grafana/loki/v3/pkg/logproto"
@@ -40,12 +39,7 @@ func shardOf(fn shard.Func, term [8]byte, shardCount int) int {
 // megabytes of input to exercise the same paths.
 func roundTripConfig(t *testing.T, shardCount, bufferPairs int) Config {
 	cfg := Config{
-		Kafka: kafka.Config{
-			ReaderConfig:               kafka.ClientConfig{Address: "localhost:9092"},
-			Topic:                      "test-topic",
-			ConsumerGroup:              "test-group",
-			ProducerMaxRecordSizeBytes: 15 * 1024 * 1024,
-		},
+		Kafka: KafkaConfig{Address: "localhost:9092", Topic: "test-topic", ConsumerGroupName: "test-group"},
 		Index: IndexConfig{
 			DocumentInterval: 100 * time.Millisecond,
 			Version:          "v3",

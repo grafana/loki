@@ -805,14 +805,8 @@ func applyCommonQuerierWorkerGRPCConfig(cfg, defaults *ConfigWrapper) error {
 	return nil
 }
 
-// applyLoglineKafkaConfig copies the root kafka_config into the logline index
-// builder.
-//
-// The builder consumes the same topic on the same brokers as the ingesters, so
-// it has no kafka section of its own and registers no -kafka.* flags. Doing the
-// copy here rather than in the module init means Validate() sees the resolved
-// config, so a missing topic or address is reported at config load instead of
-// at module startup.
+// applyLoglineKafkaConfig fills the logline index builder's unset Kafka fields
+// from the root kafka_config.
 func applyLoglineKafkaConfig(r *ConfigWrapper) {
-	r.Logline.IndexBuilder.Kafka = r.KafkaConfig
+	r.Logline.IndexBuilder.Kafka.ApplyDefaultsFrom(r.KafkaConfig)
 }

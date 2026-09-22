@@ -58,12 +58,7 @@ func setupKafkaTest(t *testing.T) (*kfake.Cluster, Config) {
 	addrs := cluster.ListenAddrs()
 
 	cfg := Config{
-		Kafka: kafka.Config{
-			ReaderConfig:               kafka.ClientConfig{Address: addrs[0]},
-			Topic:                      testTopic,
-			ConsumerGroup:              "test-group",
-			ProducerMaxRecordSizeBytes: kafka.MaxProducerRecordDataBytesLimit,
-		},
+		Kafka: KafkaConfig{Address: addrs[0], Topic: testTopic, ConsumerGroupName: "test-group", InstanceID: "test-builder-0", SessionTimeout: DefaultKafkaSessionTimeout},
 		Index: IndexConfig{
 			DocumentInterval: 100 * time.Millisecond,
 			Version:          "v3",
@@ -71,9 +66,7 @@ func setupKafkaTest(t *testing.T) (*kfake.Cluster, Config) {
 			NgramLength:      3,
 		},
 
-		InstanceID:              "test-builder-0",
 		disableStaticMembership: true,
-		KafkaSessionTimeout:     DefaultKafkaSessionTimeout,
 		FlushOnIdle:             100 * time.Millisecond,
 		FlushOnMaxAge:           5 * time.Hour,
 		FlushOnMaxBytes:         DefaultFlushOnMaxBytes,
@@ -207,17 +200,11 @@ func TestService_New(t *testing.T) {
 func TestService_New_MissingKafkaAddress(t *testing.T) {
 	tmpDir := t.TempDir()
 	cfg := Config{
-		Kafka: kafka.Config{
-			// Intentionally no ReaderConfig or WriterConfig address to test validation
-			Topic:                      testTopic,
-			ConsumerGroup:              "test-group",
-			ProducerMaxRecordSizeBytes: 15 * 1024 * 1024,
-		},
+		Kafka: KafkaConfig{ConsumerGroupName: "test-group", InstanceID: "test-builder-0"},
 		Index: IndexConfig{
 			DocumentInterval: 100 * time.Millisecond,
 			NgramLength:      3},
 
-		InstanceID:              "test-builder-0",
 		disableStaticMembership: true,
 		FlushOnIdle:             1 * time.Minute,
 		FlushOnMaxAge:           5 * time.Hour,
@@ -618,7 +605,7 @@ func TestService_PreMinDateOffsetCommit(t *testing.T) {
 	adm := kadm.NewClient(svc.client)
 	fetchCtx, fetchCancel := context.WithTimeout(ctx, 5*time.Second)
 	defer fetchCancel()
-	offsets, err := adm.FetchOffsets(fetchCtx, cfg.Kafka.ConsumerGroup)
+	offsets, err := adm.FetchOffsets(fetchCtx, cfg.Kafka.ConsumerGroupName)
 	require.NoError(t, err)
 	committed, ok := offsets.Lookup(testTopic, 0)
 	require.True(t, ok, "expected committed offset for partition 0")
@@ -763,19 +750,13 @@ func TestService_PollErrorDoesNotDropHealthyPartitionRecords(t *testing.T) {
 
 	// Service configured to consume both partitions.
 	cfg := Config{
-		Kafka: kafka.Config{
-			ReaderConfig:               kafka.ClientConfig{Address: addrs[0]},
-			Topic:                      testTopic,
-			ConsumerGroup:              "test-group-poll-err",
-			ProducerMaxRecordSizeBytes: kafka.MaxProducerRecordDataBytesLimit,
-		},
+		Kafka: KafkaConfig{Address: addrs[0], Topic: testTopic, ConsumerGroupName: "test-group-poll-err", InstanceID: "test-builder-0"},
 		Index: IndexConfig{
 			DocumentInterval: 100 * time.Millisecond,
 			Version:          "v3",
 			DensityThreshold: 0.20,
 			NgramLength:      3,
 		},
-		InstanceID:              "test-builder-0",
 		disableStaticMembership: true,
 		FlushOnMaxBytes:         4096,
 		FlushOnIdle:             100 * time.Millisecond,
@@ -829,17 +810,11 @@ func TestService_MultiPartitionConsumption(t *testing.T) {
 	addrs := cluster.ListenAddrs()
 
 	cfg := Config{
-		Kafka: kafka.Config{
-			ReaderConfig:               kafka.ClientConfig{Address: addrs[0]},
-			Topic:                      testTopic,
-			ConsumerGroup:              "test-group-multi",
-			ProducerMaxRecordSizeBytes: kafka.MaxProducerRecordDataBytesLimit,
-		},
+		Kafka: KafkaConfig{Address: addrs[0], Topic: testTopic, ConsumerGroupName: "test-group-multi", InstanceID: "test-builder-0"},
 		Index: IndexConfig{
 			DocumentInterval: 100 * time.Millisecond,
 			NgramLength:      3,
 		},
-		InstanceID:              "test-builder-0",
 		disableStaticMembership: true,
 		FlushOnIdle:             100 * time.Millisecond,
 		FlushOnMaxAge:           5 * time.Hour,
@@ -928,12 +903,7 @@ func TestShouldFlush_MemoryBytes(t *testing.T) {
 	t.Cleanup(func() { debug.SetMemoryLimit(prevLimit) })
 	tmpDir := t.TempDir()
 	cfg := Config{
-		Kafka: kafka.Config{
-			ReaderConfig:               kafka.ClientConfig{Address: "localhost:9092"},
-			Topic:                      "test-topic",
-			ConsumerGroup:              "test-group",
-			ProducerMaxRecordSizeBytes: 15 * 1024 * 1024,
-		},
+		Kafka: KafkaConfig{Address: "localhost:9092", Topic: "test-topic", ConsumerGroupName: "test-group"},
 		Index: IndexConfig{
 			DocumentInterval: 100 * time.Millisecond,
 			Version:          "v3",

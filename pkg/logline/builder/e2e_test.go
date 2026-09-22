@@ -21,7 +21,6 @@ import (
 	"github.com/twmb/franz-go/pkg/kfake"
 	"github.com/twmb/franz-go/pkg/kgo"
 
-	"github.com/grafana/loki/v3/pkg/kafka"
 	"github.com/grafana/loki/v3/pkg/logline"
 	"github.com/grafana/loki/v3/pkg/logline/store"
 	"github.com/grafana/loki/v3/pkg/logproto"
@@ -44,17 +43,11 @@ func TestE2E(t *testing.T) {
 	addrs := cluster.ListenAddrs()
 
 	cfg := Config{
-		Kafka: kafka.Config{
-			ReaderConfig:               kafka.ClientConfig{Address: addrs[0]},
-			Topic:                      testTopic,
-			ConsumerGroup:              "test-group",
-			ProducerMaxRecordSizeBytes: 15 * 1024 * 1024,
-		},
+		Kafka: KafkaConfig{Address: addrs[0], Topic: testTopic, ConsumerGroupName: "test-group", InstanceID: "test-builder-0"},
 		Index: IndexConfig{
 			DocumentInterval: 100 * time.Millisecond,
 			NgramLength:      6,
 		},
-		InstanceID:              "test-builder-0",
 		disableStaticMembership: true,
 		FlushOnMaxBytes:         1, // any spilled run on scratch disk triggers full flush
 		FlushOnIdle:             3 * time.Second,
@@ -140,17 +133,11 @@ func TestE2E_DecodeErrorFailsFast(t *testing.T) {
 	addrs := cluster.ListenAddrs()
 
 	cfg := Config{
-		Kafka: kafka.Config{
-			ReaderConfig:               kafka.ClientConfig{Address: addrs[0]},
-			Topic:                      testTopic,
-			ConsumerGroup:              "test-decode-fail-group",
-			ProducerMaxRecordSizeBytes: 15 * 1024 * 1024,
-		},
+		Kafka: KafkaConfig{Address: addrs[0], Topic: testTopic, ConsumerGroupName: "test-decode-fail-group", InstanceID: "test-builder-0"},
 		Index: IndexConfig{
 			DocumentInterval: 100 * time.Millisecond,
 			NgramLength:      6,
 		},
-		InstanceID:              "test-builder-0",
 		disableStaticMembership: true,
 		FlushOnMaxBytes:         100 * 1024 * 1024,
 		FlushOnIdle:             10 * time.Minute,
@@ -211,17 +198,11 @@ func TestE2E_GracefulShutdownFlush(t *testing.T) {
 	addrs := cluster.ListenAddrs()
 
 	cfg := Config{
-		Kafka: kafka.Config{
-			ReaderConfig:               kafka.ClientConfig{Address: addrs[0]},
-			Topic:                      testTopic,
-			ConsumerGroup:              "test-shutdown-group",
-			ProducerMaxRecordSizeBytes: 15 * 1024 * 1024,
-		},
+		Kafka: KafkaConfig{Address: addrs[0], Topic: testTopic, ConsumerGroupName: "test-shutdown-group", InstanceID: "test-builder-0"},
 		Index: IndexConfig{
 			DocumentInterval: 100 * time.Millisecond,
 			NgramLength:      6,
 		},
-		InstanceID:              "test-builder-0",
 		disableStaticMembership: true,
 		FlushOnIdle:             10 * time.Minute, // too long to trigger idle flush
 		FlushOnMaxAge:           10 * time.Minute, // too long to trigger age flush
@@ -295,17 +276,11 @@ func TestE2E_OffsetCommit(t *testing.T) {
 
 	consumerGroup := "test-offset-group"
 	cfg := Config{
-		Kafka: kafka.Config{
-			ReaderConfig:               kafka.ClientConfig{Address: addrs[0]},
-			Topic:                      testTopic,
-			ConsumerGroup:              consumerGroup,
-			ProducerMaxRecordSizeBytes: 15 * 1024 * 1024,
-		},
+		Kafka: KafkaConfig{Address: addrs[0], Topic: testTopic, ConsumerGroupName: consumerGroup, InstanceID: "test-builder-0"},
 		Index: IndexConfig{
 			DocumentInterval: 100 * time.Millisecond,
 			NgramLength:      6,
 		},
-		InstanceID:              "test-builder-0",
 		disableStaticMembership: true,
 		FlushOnMaxBytes:         1, // any spilled run on scratch disk triggers full flush
 		FlushOnIdle:             3 * time.Second,

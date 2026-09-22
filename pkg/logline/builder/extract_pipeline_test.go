@@ -311,7 +311,7 @@ func TestService_ExtractThreadsFlushCommit(t *testing.T) {
 	require.NotEmpty(t, bucket.Objects(), "pipeline flush must upload index files")
 
 	adm := kadm.NewClient(svc.client)
-	offsets, err := adm.FetchOffsets(ctx, cfg.Kafka.ConsumerGroup)
+	offsets, err := adm.FetchOffsets(ctx, cfg.Kafka.ConsumerGroupName)
 	require.NoError(t, err)
 	committed, ok := offsets.Lookup(testTopic, 0)
 	require.True(t, ok, "expected committed offset for partition 0")

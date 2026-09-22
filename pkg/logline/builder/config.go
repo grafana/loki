@@ -7,6 +7,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/grafana/dskit/flagext"
+
 	"github.com/grafana/loki/v3/pkg/kafka"
 
 	"github.com/grafana/loki/v3/pkg/logline"
@@ -46,11 +48,14 @@ const (
 	MaxExtractThreads = 4
 
 	// DefaultKafkaSessionTimeout is the consumer-group session timeout used
-	// when KafkaSessionTimeout is unset. It must be long enough that a
+	// when KafkaConfig.SessionTimeout is unset. It must be long enough that a
 	// normal pod restart completes before the broker considers the member
 	// dead (and triggers a rebalance), but short enough that a genuinely
 	// dead pod is evicted promptly so its partitions get reassigned.
 	DefaultKafkaSessionTimeout = 2 * time.Minute
+
+	// DefaultConsumerGroupName is the group every builder replica joins.
+	DefaultConsumerGroupName = "logline-index-builder"
 
 	// MinDocumentInterval is 1ms (prevents excessive document-bucket count)
 	MinDocumentInterval = 1 * time.Millisecond
@@ -59,13 +64,142 @@ const (
 	MaxDocumentInterval = 1 * time.Hour
 )
 
+// KafkaConfig is everything the builder needs to consume Kafka.
+//
+// If possible, fields left unset are filled from Loki's root kafka config.
+type KafkaConfig struct {
+	// Address is a comma-separated broker list.
+	Address string `yaml:"address"`
+	Topic   string `yaml:"topic"`
+	// ClientID identifies this consumer to the brokers. Some proxies route on
+	// it, so it is configurable rather than fixed.
+	ClientID    string        `yaml:"client_id"`
+	DialTimeout time.Duration `yaml:"dial_timeout"`
+
+	SASLUsername string         `yaml:"sasl_username"`
+	SASLPassword flagext.Secret `yaml:"sasl_password"`
+
+	// ConsumerGroupName is the group every builder replica joins.
+	ConsumerGroupName string `yaml:"consumer_group_name"`
+
+	// SessionTimeout is how long a member may be absent (restart, brief
+	// network blip) before the broker evicts it and rebalances its
+	// partitions. The broker's group.max.session.timeout.ms must be at least
+	// this value or JoinGroup is rejected.
+	SessionTimeout time.Duration `yaml:"session_timeout"`
+
+	// InstanceID is the static-membership identifier (kgo.InstanceID). Set it
+	// to the pod name so a restart within SessionTimeout rejoins with the
+	// same identity instead of triggering a rebalance. Defaults to
+	// os.Hostname() when empty.
+	InstanceID string `yaml:"instance_id"`
+}
+
+func (c *KafkaConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
+	// The cluster-level flags default to empty so ApplyDefaultsFrom can tell
+	// "unset" from "deliberately set to the same value as the root config".
+	f.StringVar(&c.Address, prefix+".address", "",
+		"Comma-separated Kafka broker list. Defaults to the root kafka_config address.")
+	f.StringVar(&c.Topic, prefix+".topic", "",
+		"Kafka topic to consume. Defaults to the root kafka_config topic.")
+	f.StringVar(&c.ClientID, prefix+".client-id", "",
+		"Kafka client ID. Defaults to the root kafka_config client ID, then to "+DefaultConsumerGroupName+".")
+	f.DurationVar(&c.DialTimeout, prefix+".dial-timeout", 0,
+		"Kafka dial timeout. Defaults to the root kafka_config dial timeout.")
+	f.StringVar(&c.SASLUsername, prefix+".sasl-username", "",
+		"Kafka SASL username. Defaults to the root kafka_config username.")
+	f.Var(&c.SASLPassword, prefix+".sasl-password",
+		"Kafka SASL password. Defaults to the root kafka_config password.")
+
+	f.StringVar(&c.ConsumerGroupName, prefix+".consumer-group-name", DefaultConsumerGroupName,
+		"Kafka consumer group every builder replica joins. Deliberately not inherited from "+
+			"kafka_config.consumer_group: that is the ingesters' per-zone offset namespace, and sharing it "+
+			"makes the two sides overwrite each other's committed offsets.")
+	f.DurationVar(&c.SessionTimeout, prefix+".session-timeout", DefaultKafkaSessionTimeout,
+		"Kafka consumer-group session timeout. A pod absent for longer than this is evicted from the group and its partitions rebalanced. "+
+			"Must not exceed the broker's group.max.session.timeout.ms.")
+	f.StringVar(&c.InstanceID, prefix+".instance-id", "",
+		"Kafka static-membership ID (defaults to os.Hostname() if empty). "+
+			"Pod restarts within session-timeout rejoin without rebalance.")
+}
+
+// ApplyDefaultsFrom fills every unset field from Loki's root kafka_config.
+//
+// ConsumerGroupName is skipped by design: see the type comment. SessionTimeout
+// and InstanceID have no root equivalent, so they are left to Validate.
+func (c *KafkaConfig) ApplyDefaultsFrom(root kafka.Config) {
+	// reader_config is the current field and the bare ones are deprecated but
+	// still honoured, so fall through in the same order the ingesters do.
+	if c.Address == "" {
+		c.Address = root.ReaderConfig.Address
+	}
+	if c.Address == "" {
+		c.Address = root.Address
+	}
+	if c.ClientID == "" {
+		c.ClientID = root.ReaderConfig.ClientID
+	}
+	if c.ClientID == "" {
+		c.ClientID = root.ClientID
+	}
+	if c.Topic == "" {
+		c.Topic = root.Topic
+	}
+	if c.DialTimeout == 0 {
+		c.DialTimeout = root.DialTimeout
+	}
+	// SASL is a pair. Taking the username from one source and the password
+	// from another would produce a credential that was never configured
+	// anywhere, so inherit both or neither.
+	if c.SASLUsername == "" && c.SASLPassword.String() == "" {
+		c.SASLUsername = root.SASLUsername
+		c.SASLPassword = root.SASLPassword
+	}
+}
+
+// Validate checks the Kafka settings and applies defaults.
+func (c *KafkaConfig) Validate() error {
+	if c.Address == "" {
+		return kafka.ErrMissingKafkaAddress
+	}
+	if c.Topic == "" {
+		return kafka.ErrMissingKafkaTopic
+	}
+	if (c.SASLUsername == "") != (c.SASLPassword.String() == "") {
+		return kafka.ErrInconsistentSASLUsernameAndPassword
+	}
+
+	if c.ClientID == "" {
+		c.ClientID = DefaultConsumerGroupName
+	}
+	if c.ConsumerGroupName == "" {
+		c.ConsumerGroupName = DefaultConsumerGroupName
+	}
+
+	if c.SessionTimeout == 0 {
+		c.SessionTimeout = DefaultKafkaSessionTimeout
+	}
+	if c.SessionTimeout < 0 {
+		return fmt.Errorf("session_timeout must be non-negative, got %v", c.SessionTimeout)
+	}
+
+	// InstanceID defaults to os.Hostname() so each pod gets a stable static-
+	// membership identity for kgo.InstanceID without explicit configuration.
+	if c.InstanceID == "" {
+		hostname, err := os.Hostname()
+		if err != nil {
+			return fmt.Errorf("failed to get hostname for instance ID: %w", err)
+		}
+		c.InstanceID = hostname
+	}
+
+	return nil
+}
+
 // Config holds configuration for the logline index builder service.
 type Config struct {
-	// Kafka is Loki's root kafka_config, injected by the module wiring rather
-	// than configured here, so there is only one kafka section in the config
-	// file and only one set of -kafka.* flags.
-	Kafka kafka.Config `yaml:"-"`
-	Index IndexConfig  `yaml:"index"`
+	Kafka KafkaConfig `yaml:"kafka"`
+	Index IndexConfig `yaml:"index"`
 
 	FlushOnIdle   time.Duration `yaml:"flush_on_idle"`
 	FlushOnMaxAge time.Duration `yaml:"flush_on_max_age"`
@@ -100,19 +234,7 @@ type Config struct {
 	// pkg/logline/builder/AGENTS.md.
 	ExtractThreads int `yaml:"extract_threads"`
 
-	// InstanceID is the Kafka static-membership identifier (kgo.InstanceID).
-	// Set to the pod name so restarts inside the consumer-group session timeout
-	// rejoin without triggering a rebalance. Defaults to os.Hostname() if empty.
-	InstanceID string `yaml:"instance_id"`
 	ScratchDir string `yaml:"scratch_dir"`
-
-	// KafkaSessionTimeout is the consumer-group session timeout.
-	// Combined with kgo.InstanceID it controls how long
-	// a pod can be absent (restart, brief network blip) before the broker
-	// evicts it from the group and triggers a rebalance. Defaults to
-	// DefaultKafkaSessionTimeout. The broker's group.max.session.timeout.ms
-	// must be at least this value or JoinGroup is rejected.
-	KafkaSessionTimeout time.Duration `yaml:"kafka_session_timeout"`
 
 	// WaitRingPopulatedTimeout bounds how long the builder will wait at
 	// startup for the partition ring to be populated (PartitionsCount > 0)
@@ -175,12 +297,7 @@ func (c *Config) RegisterFlags(f *flag.FlagSet) {
 	f.IntVar(&c.ExtractThreads, "logline-index-builder.extract-threads", DefaultExtractThreads,
 		"Number of parallel n-gram extract goroutines (1-4). Incident/catchup mode only: values above 1 multiply the resident sort-buffer floor "+
 			"(~480 MiB per goroutine at the default postings_buffer_pairs) and CPU demand for higher ingest throughput. Default 1 is the serial production path.")
-	f.StringVar(&c.InstanceID, "logline-index-builder.instance-id", "",
-		"Kafka static-membership ID (defaults to os.Hostname() if empty). "+
-			"Pod restarts within session_timeout rejoin without rebalance.")
-	f.DurationVar(&c.KafkaSessionTimeout, "logline-index-builder.kafka-session-timeout", DefaultKafkaSessionTimeout,
-		"Kafka consumer-group session timeout. A pod absent for longer than this is evicted from the group and its partitions rebalanced. "+
-			"Must not exceed broker's group.max.session.timeout.ms.")
+	c.Kafka.RegisterFlagsWithPrefix("logline-index-builder.kafka", f)
 	f.StringVar(&c.ScratchDir, "logline-index-builder.scratch-dir", "./data/partial-indexes",
 		"Directory where intermediate .lidx files are written")
 	f.Uint64Var(&c.FlushOnMaxBytes, "logline-index-builder.flush-on-max-bytes", DefaultFlushOnMaxBytes,
@@ -198,18 +315,8 @@ func (c *Config) Validate() error {
 	// Kafka is Loki's root kafka_config, injected by the module wiring and
 	// validated there as a whole. Only the fields this builder consumes are
 	// checked here.
-	if c.Kafka.ReaderConfig.Address == "" && c.Kafka.Address == "" {
-		return fmt.Errorf("invalid kafka config: %w", kafka.ErrMissingKafkaAddress)
-	}
-	if c.Kafka.Topic == "" {
-		return fmt.Errorf("invalid kafka config: %w", kafka.ErrMissingKafkaTopic)
-	}
-	if (c.Kafka.SASLUsername == "") != (c.Kafka.SASLPassword.String() == "") {
-		return fmt.Errorf("invalid kafka config: %w", kafka.ErrInconsistentSASLUsernameAndPassword)
-	}
-
-	if c.Kafka.ConsumerGroup == "" {
-		c.Kafka.ConsumerGroup = "logline-index-builder"
+	if err := c.Kafka.Validate(); err != nil {
+		return fmt.Errorf("invalid kafka config: %w", err)
 	}
 
 	if c.ScratchDir == "" {
@@ -295,23 +402,6 @@ func (c *Config) Validate() error {
 
 	if c.FlushCheckInterval == 0 {
 		c.FlushCheckInterval = DefaultFlushCheckInterval
-	}
-
-	if c.KafkaSessionTimeout == 0 {
-		c.KafkaSessionTimeout = DefaultKafkaSessionTimeout
-	}
-	if c.KafkaSessionTimeout < 0 {
-		return fmt.Errorf("kafka_session_timeout must be non-negative, got %v", c.KafkaSessionTimeout)
-	}
-
-	// InstanceID defaults to os.Hostname() so each pod gets a stable static-
-	// membership identity for kgo.InstanceID without explicit configuration.
-	if c.InstanceID == "" {
-		hostname, err := os.Hostname()
-		if err != nil {
-			return fmt.Errorf("failed to get hostname for instance ID: %w", err)
-		}
-		c.InstanceID = hostname
 	}
 
 	if c.WaitRingPopulatedTimeout == 0 {
