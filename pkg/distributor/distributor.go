@@ -40,7 +40,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/analytics"
 	"github.com/grafana/loki/v3/pkg/compactor/retention"
 	"github.com/grafana/loki/v3/pkg/distributor/clientpool"
-	"github.com/grafana/loki/v3/pkg/distributor/rendezvous"
 	"github.com/grafana/loki/v3/pkg/distributor/shardstreams"
 	"github.com/grafana/loki/v3/pkg/distributor/writefailures"
 	"github.com/grafana/loki/v3/pkg/ingester"
@@ -119,15 +118,13 @@ type Config struct {
 
 	KafkaConfig kafka.Config `yaml:"-"`
 
-	DataObjTeeConfig DataObjTeeConfig     `yaml:"dataobj_tee"`
-	CircuitBreaker   CircuitBreakerConfig `yaml:"circuit_breaker"`
+	CircuitBreaker CircuitBreakerConfig `yaml:"circuit_breaker"`
 }
 
 // RegisterFlags registers distributor-related flags.
 func (cfg *Config) RegisterFlags(fs *flag.FlagSet) {
 	cfg.OTLPConfig.RegisterFlags(fs)
 	cfg.DistributorRing.RegisterFlags(fs)
-	cfg.DataObjTeeConfig.RegisterFlags(fs)
 	cfg.CircuitBreaker.RegisterFlags(fs)
 	cfg.RateStore.RegisterFlagsWithPrefix("distributor.rate-store", fs)
 	cfg.WriteFailuresLogging.RegisterFlagsWithPrefix("distributor.write-failures-logging", fs)
@@ -143,9 +140,6 @@ func (cfg *Config) RegisterFlags(fs *flag.FlagSet) {
 func (cfg *Config) Validate() error {
 	if !cfg.KafkaEnabled && !cfg.IngesterEnabled {
 		return errors.New("at least one of kafka and ingestor writes must be enabled")
-	}
-	if err := cfg.DataObjTeeConfig.Validate(); err != nil {
-		return err
 	}
 	if err := cfg.CircuitBreaker.Validate(); err != nil {
 		return err
@@ -272,9 +266,6 @@ func New(
 	limitsFrontendCfg limits_frontend_client.Config,
 	limitsFrontendRing ring.ReadRing,
 	numMetadataPartitions int,
-	dataObjConsumerPartitionRing ring.PartitionRingReader,
-	dataObjConsumerPartitionKVClient kv.Client,
-	dataObjConsumerPartitionRingKey string,
 	logger log.Logger,
 ) (*Distributor, error) {
 	ingesterClientFactory := cfg.factory
@@ -339,43 +330,6 @@ func New(
 			prometheus.WrapRegistererWithPrefix("loki_", registerer),
 			kafka_client.WithRecordsInterceptor(validation.IngestionPoliciesKafkaProducerInterceptor),
 		)
-
-		if cfg.DataObjTeeConfig.Enabled {
-			var rendezvousPartitionWatcher *rendezvous.PartitionRingWatcher
-			if cfg.DataObjTeeConfig.UseRendezvousHashing {
-				rendezvousPartitionWatcher = rendezvous.New(
-					rendezvous.Config{Key: dataObjConsumerPartitionRingKey},
-					dataObjConsumerPartitionKVClient,
-					logger,
-				)
-				servs = append(servs, rendezvousPartitionWatcher)
-			}
-			resolver := newSegmentationPartitionResolver(
-				uint64(cfg.DataObjTeeConfig.PerPartitionRateBytes),
-				cfg.DataObjTeeConfig.UseRendezvousHashing,
-				dataObjConsumerPartitionRing,
-				rendezvousPartitionWatcher,
-				registerer,
-				logger,
-			)
-			dataObjTee, err := NewDataObjTee(
-				&cfg.DataObjTeeConfig,
-				resolver,
-				ingestLimits,
-				overrides,
-				kafkaWriter,
-				logger,
-				registerer,
-			)
-			if err != nil {
-				return nil, fmt.Errorf("failed to create data object tee: %w", err)
-			}
-			tee = WrapTee(tee, dataObjTee)
-
-			if rateBatcher := dataObjTee.RateBatcher(); rateBatcher != nil {
-				servs = append(servs, rateBatcher)
-			}
-		}
 	}
 
 	d := &Distributor{

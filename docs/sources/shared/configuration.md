@@ -3584,37 +3584,6 @@ otlp_config:
 # CLI flag: -distributor.ingest-limits-dry-run-enabled
 [ingest_limits_dry_run_enabled: <boolean> | default = false]
 
-dataobj_tee:
-  # Enable data object tee.
-  # CLI flag: -distributor.dataobj-tee.enabled
-  [enabled: <boolean> | default = false]
-
-  # Topic for data object tee.
-  # CLI flag: -distributor.dataobj-tee.topic
-  [topic: <string> | default = ""]
-
-  # Maximum number of bytes to buffer.
-  # CLI flag: -distributor.dataobj-tee.max-buffered-bytes
-  [max_buffered_bytes: <int> | default = 104857600]
-
-  # The per-tenant partition rate (bytes/sec).
-  # CLI flag: -distributor.dataobj-tee.per-partition-rate-bytes
-  [per_partition_rate_bytes: <int> | default = 1048576]
-
-  # Enables optional debug metrics.
-  # CLI flag: -distributor.dataobj-tee.debug-metrics-enabled
-  [debug_metrics_enabled: <boolean> | default = false]
-
-  # Duration to accumulate rate updates before sending to limits frontend. Set
-  # to 0 to disable batching.
-  # CLI flag: -distributor.dataobj-tee.rate-batch-window
-  [rate_batch_window: <duration> | default = 0s]
-
-  # Enables use of rendezvous hashing. When this is false, consistent hashing is
-  # used instead.
-  # CLI flag: -distributor.dataobj-tee.use-rendezvous-hashing
-  [use_rendezvous_hashing: <boolean> | default = false]
-
 circuit_breaker:
   # Enable circuit breakers.
   # CLI flag: -distributor.circuit-breaker.enabled
