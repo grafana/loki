@@ -514,3 +514,10 @@ message DetectedLabel {
   uint64 cardinality = 2;
   bytes sketch = 3 [(gogoproto.jsontag) = "sketch,omitempty"];
 }
+
+message HintTimeRanges {
+  repeated HintTimeRange ranges = 1 [
+    (gogoproto.nullable) = false,
+    (gogoproto.jsontag) = "ranges"
+  ];
+}
