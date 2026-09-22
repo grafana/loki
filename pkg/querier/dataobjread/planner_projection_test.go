@@ -72,6 +72,19 @@ func TestNewProjectionPlan(t *testing.T) {
 			query:       `sum by (app) (count_over_time({app="x"} | status > 400 [1m]))`,
 			wantColumns: []logs.ColumnType{logs.ColumnTypeStreamID, logs.ColumnTypeTimestamp, logs.ColumnTypeMetadata},
 		},
+		"sum(max_over_time) reads all metadata, because the extractor keeps every label": {
+			query:       `sum by (app) (max_over_time({app="x"} | unwrap duration | __error__="" [1m]))`,
+			wantColumns: []logs.ColumnType{logs.ColumnTypeStreamID, logs.ColumnTypeTimestamp, logs.ColumnTypeMetadata},
+		},
+		"sum(sum_over_time) narrows the metadata, because merging its series keeps the total": {
+			query:        `sum by (app) (sum_over_time({app="x"} | unwrap duration | __error__="" [1m]))`,
+			wantColumns:  []logs.ColumnType{logs.ColumnTypeStreamID, logs.ColumnTypeTimestamp},
+			wantMetadata: []string{"app", "duration"},
+		},
+		"a range aggregation with its own grouping reads all metadata, because that grouping wins": {
+			query:       `sum by (app) (max_over_time({app="x"} | unwrap duration | __error__="" [1m]) by (pod))`,
+			wantColumns: []logs.ColumnType{logs.ColumnTypeStreamID, logs.ColumnTypeTimestamp, logs.ColumnTypeMetadata},
+		},
 		"a label filter whose failures are dropped narrows the metadata": {
 			query:        `sum by (app) (count_over_time({app="x"} | latency > 1s | __error__="" [1m]))`,
 			wantColumns:  []logs.ColumnType{logs.ColumnTypeStreamID, logs.ColumnTypeTimestamp},

@@ -1861,7 +1861,7 @@ func (e *VectorAggregationExpr) Extractor() (SampleExtractor, error) {
 	}
 	// inject in the range vector extractor the outer groups to improve performance.
 	// This is only possible if the operation is a sum. Anything else needs all labels.
-	if r, ok := e.Left.(*RangeAggregationExpr); ok && canInjectVectorGrouping(e.Operation, r.Operation) {
+	if r, ok := e.Left.(*RangeAggregationExpr); ok && CanInjectVectorGrouping(e.Operation, r.Operation) {
 		// if the range vec operation has no grouping we can push down the vec one.
 		if r.Grouping == nil {
 			return r.extractor(e.Grouping)
@@ -1870,8 +1870,12 @@ func (e *VectorAggregationExpr) Extractor() (SampleExtractor, error) {
 	return e.Left.Extractor()
 }
 
-// canInjectVectorGrouping tells if a vector operation can inject grouping into the nested range vector.
-func canInjectVectorGrouping(vecOp, rangeOp string) bool {
+// CanInjectVectorGrouping tells if a vector operation can inject grouping into the nested range vector.
+//
+// Injecting it makes the extractor emit the grouped label set instead of the whole one, so a
+// caller that decides what to read has to ask this too: without the injection every label
+// reaches the output.
+func CanInjectVectorGrouping(vecOp, rangeOp string) bool {
 	if vecOp != OpTypeSum {
 		return false
 	}

@@ -294,21 +294,30 @@ func dropsErroredLines(filter logqllog.LabelFilterer) bool {
 // reducesOutputLabels reports whether the top-level aggregation of expr reduces the output to a
 // label set that can be listed ahead of time, so unreferenced metadata cannot surface.
 func reducesOutputLabels(expr syntax.SampleExpr) bool {
-	// Only a sum does, because only a sum commutes with merging series. Every other vector
-	// aggregation runs in two steps: the range aggregation first, once per series, then the
-	// aggregation across series. Dropping a metadata column merges the series that differ only in it,
-	// so the first step runs over their rows together and hands the second one the sum of their
-	// values. That is the right answer for a sum and the wrong one for a max or an average.
+	// Only an aggregation whose grouping the extractor injects does. Injection replaces the whole
+	// label set with the grouped one at extraction time, which is what stops an unread metadata
+	// column from surfacing. Without it the extractor emits every label, and dropping a column
+	// would merge the series that differ only in it.
 	//
-	// A bare sum counts too. The parser gives it an empty by grouping, so its output carries no
-	// label, and the total is the same however the rows were grouped on the way there.
-	//
-	// A without grouping names the labels to drop rather than the ones to keep, so its output cannot
-	// be listed ahead of time.
+	// [syntax.CanInjectVectorGrouping] decides it. Asking it rather than restating its rule keeps
+	// this from drifting when LogQL changes which operations qualify.
 	aggr, ok := expr.(*syntax.VectorAggregationExpr)
-	if !ok || aggr.Operation != syntax.OpTypeSum {
+	if !ok {
 		return false
 	}
+
+	// A range aggregation carrying its own grouping keeps it, and the extractor applies that one
+	// instead of the injected one.
+	rangeAggr, ok := aggr.Left.(*syntax.RangeAggregationExpr)
+	if !ok || rangeAggr.Grouping != nil {
+		return false
+	}
+	if !syntax.CanInjectVectorGrouping(aggr.Operation, rangeAggr.Operation) {
+		return false
+	}
+
+	// A without grouping names the labels to drop rather than the ones to keep, so its output
+	// cannot be listed ahead of time.
 	return aggr.Grouping != nil && !aggr.Grouping.Without
 }
 
