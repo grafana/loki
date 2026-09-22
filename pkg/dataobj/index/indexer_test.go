@@ -566,10 +566,10 @@ func TestCalculator_UncompressedLogsSizeAccumulator(t *testing.T) {
 		BufferSize:              2048 * 8,
 		SectionStripeMergeLimit: 2,
 		TargetSectionSize:       1,
-	}, nil)
+	}, nil, indexobj.NewBuilderMetrics(nil))
 	require.NoError(t, err)
 
-	calculator := NewCalculator(indexBuilder)
+	calculator := NewCalculator(indexBuilder, NewCalculatorMetrics(nil))
 
 	logObj, err := dataobj.FromBucket(ctx, bucket, "test-path-0", 0)
 	require.NoError(t, err)
@@ -612,10 +612,10 @@ func TestCalculator_FlushConsumesUncompressedState(t *testing.T) {
 		BufferSize:              2048 * 8,
 		SectionStripeMergeLimit: 2,
 		TargetSectionSize:       1,
-	}, nil)
+	}, nil, indexobj.NewBuilderMetrics(nil))
 	require.NoError(t, err)
 
-	calculator := NewCalculator(indexBuilder)
+	calculator := NewCalculator(indexBuilder, NewCalculatorMetrics(nil))
 
 	logObj, err := dataobj.FromBucket(ctx, bucket, "objects/test-object", 0)
 	require.NoError(t, err)
@@ -694,11 +694,11 @@ func TestSerialIndexer_ToCSizesPopulated(t *testing.T) {
 		BufferSize:              2048 * 8,
 		SectionStripeMergeLimit: 2,
 		TargetSectionSize:       1,
-	}, nil)
+	}, nil, indexobj.NewBuilderMetrics(nil))
 	require.NoError(t, err)
 
 	indexer := newSerialIndexer(
-		NewCalculator(indexBuilder),
+		NewCalculator(indexBuilder, NewCalculatorMetrics(nil)),
 		bucket,
 		indexStorageBucket,
 		builderMetrics,

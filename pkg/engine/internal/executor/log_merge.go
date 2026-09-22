@@ -65,11 +65,11 @@ func (c *Context) doLogObjectMerge(ctx context.Context, node *physical.LogMerge)
 		return nil, err
 	}
 
-	indexBuilder, err := indexobj.NewBuilder(c.indexobjCfg, c.scratchStore)
+	indexBuilder, err := indexobj.NewBuilder(c.indexobjCfg, c.scratchStore, indexobj.NewBuilderMetrics(nil))
 	if err != nil {
 		return nil, fmt.Errorf("creating index builder: %w", err)
 	}
-	calc := dataobjindex.NewCalculator(indexBuilder)
+	calc := dataobjindex.NewCalculator(indexBuilder, dataobjindex.NewCalculatorMetrics(nil))
 
 	merged := sortmerge.MixedRunIterator(ctx, inputs.runs, node.SortSchema)
 

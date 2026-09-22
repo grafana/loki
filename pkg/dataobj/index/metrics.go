@@ -1,12 +1,12 @@
 package index
 
 import (
-	"errors"
 	"strconv"
 	"sync"
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
 )
 
 var (
@@ -205,13 +205,13 @@ func (m *serialIndexerMetrics) setEndToEndProcessingTime(duration time.Duration)
 	m.endToEndProcessingTime.Set(duration.Seconds())
 }
 
-type calculatorMetrics struct {
+type CalculatorMetrics struct {
 	calculationStepDuration *prometheus.HistogramVec
 }
 
-func newCalculatorMetrics() *calculatorMetrics {
-	return &calculatorMetrics{
-		calculationStepDuration: prometheus.NewHistogramVec(prometheus.HistogramOpts{
+func NewCalculatorMetrics(reg prometheus.Registerer) *CalculatorMetrics {
+	return &CalculatorMetrics{
+		calculationStepDuration: promauto.With(reg).NewHistogramVec(prometheus.HistogramOpts{
 			Name:    "loki_index_calculator_step_duration_seconds",
 			Help:    "Time spent in each index calculation step (ProcessBatch + Flush) per logs section.",
 			Buckets: prometheus.DefBuckets,
@@ -219,66 +219,57 @@ func newCalculatorMetrics() *calculatorMetrics {
 	}
 }
 
-func (m *calculatorMetrics) register(reg prometheus.Registerer) error {
-	if err := reg.Register(m.calculationStepDuration); err != nil {
-		if _, ok := err.(prometheus.AlreadyRegisteredError); !ok {
-			return err
-		}
-	}
-	return nil
-}
-
-func (m *calculatorMetrics) unregister(reg prometheus.Registerer) {
-	reg.Unregister(m.calculationStepDuration)
-}
-
-func (m *calculatorMetrics) observeStepDuration(step string, duration time.Duration) {
+func (m *CalculatorMetrics) observeStepDuration(step string, duration time.Duration) {
 	m.calculationStepDuration.WithLabelValues(step).Observe(duration.Seconds())
 }
 
-// indexerMetrics instruments a [SimpleIndexer].
-type indexerMetrics struct {
-	duration        prometheus.Histogram
-	attempts        prometheus.Counter
-	failures        prometheus.Counter
-	empty           prometheus.Counter
+// Outcomes reported by the result label of the index duration metric.
+const (
+	resultOK    = "ok"
+	resultError = "error"
+)
+
+// IndexerMetrics holds every metric a [SimpleIndexer] reports.
+type IndexerMetrics struct {
+	duration        *prometheus.HistogramVec
 	releaseFailures prometheus.Counter
 }
 
-func newIndexerMetrics() *indexerMetrics {
-	return &indexerMetrics{
-		duration: prometheus.NewHistogram(prometheus.HistogramOpts{
-			Name: "loki_dataobj_builder_index_duration_seconds",
-			Help: "Time taken to build, upload and register the index for a single data object.",
+// NewIndexerMetrics creates the metrics for a [SimpleIndexer] and registers
+// them with reg.
+func NewIndexerMetrics(reg prometheus.Registerer) (*IndexerMetrics, error) {
+	factory := promauto.With(reg)
 
-			Buckets:                         prometheus.DefBuckets,
-			NativeHistogramBucketFactor:     1.1,
-			NativeHistogramMaxBucketNumber:  100,
-			NativeHistogramMinResetDuration: 0,
-		}),
-		attempts: prometheus.NewCounter(prometheus.CounterOpts{
-			Name: "loki_dataobj_builder_index_attempts_total",
-			Help: "Total number of attempts to index a data object, including retries.",
-		}),
-		failures: prometheus.NewCounter(prometheus.CounterOpts{
-			Name: "loki_dataobj_builder_index_failures_total",
-			Help: "Total number of failed attempts to index a data object. Failures are retried, so this also counts retries.",
-		}),
-		empty: prometheus.NewCounter(prometheus.CounterOpts{
-			Name: "loki_dataobj_builder_index_empty_total",
-			Help: "Total number of data objects that produced no index and are therefore not discoverable by queries.",
-		}),
-		releaseFailures: prometheus.NewCounter(prometheus.CounterOpts{
+	duration := factory.NewHistogramVec(prometheus.HistogramOpts{
+		Name: "loki_dataobj_builder_index_duration_seconds",
+		Help: "Time taken to build and upload the index for a single data object.",
+
+		Buckets:                         prometheus.DefBuckets,
+		NativeHistogramBucketFactor:     1.1,
+		NativeHistogramMaxBucketNumber:  100,
+		NativeHistogramMinResetDuration: 0,
+	}, []string{"result"})
+
+	// Report both outcomes from the start, so that a rate over failures reads
+	// as zero rather than going missing until the first one happens.
+	duration.WithLabelValues(resultOK)
+	duration.WithLabelValues(resultError)
+
+	return &IndexerMetrics{
+		duration: duration,
+		releaseFailures: factory.NewCounter(prometheus.CounterOpts{
 			Name: "loki_dataobj_builder_index_release_failures_total",
-			Help: "Total number of failures to release an index object's scratch storage. The index is already uploaded and recorded at that point, so these do not fail the index.",
+			Help: "Total number of failures to release an index object's scratch storage.",
 		}),
-	}
+	}, nil
 }
 
-func (m *indexerMetrics) register(reg prometheus.Registerer) error {
-	var errs []error
-	for _, c := range []prometheus.Collector{m.duration, m.attempts, m.failures, m.empty, m.releaseFailures} {
-		errs = append(errs, reg.Register(c))
+// observeIndex records how long an attempt to index a data object took, and
+// whether it succeeded.
+func (m *IndexerMetrics) observeIndex(duration time.Duration, err error) {
+	result := resultOK
+	if err != nil {
+		result = resultError
 	}
-	return errors.Join(errs...)
+	m.duration.WithLabelValues(result).Observe(duration.Seconds())
 }

@@ -3,8 +3,11 @@ package index
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
+	"sort"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -15,181 +18,325 @@ import (
 	"github.com/thanos-io/objstore"
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
+	"github.com/grafana/loki/v3/pkg/dataobj/consumer/logsobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/index/indexobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore/multitenancy"
+	"github.com/grafana/loki/v3/pkg/dataobj/sections/pointers"
+	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
 )
 
-// stubCalculator drives SimpleIndexer down a chosen path without building a
-// real index.
-type stubCalculator struct {
-	obj      *dataobj.Object
-	calcErr  error
-	flushErr error
-	// closeErr, when set, is returned by the closer handed back from Flush.
-	closeErr error
-
-	calcCalls  int
-	flushCalls int
-	resetCalls int
+// failingBucket fails every upload, which is the simplest way to make a real
+// index build fail.
+type failingBucket struct {
+	objstore.Bucket
 }
 
-func (c *stubCalculator) Calculate(_ context.Context, _ log.Logger, _ *dataobj.Object, _ string) error {
-	c.calcCalls++
-	return c.calcErr
+func (failingBucket) Upload(_ context.Context, _ string, _ io.Reader) error {
+	return errors.New("mock upload error")
 }
 
-func (c *stubCalculator) Flush() (*dataobj.Object, io.Closer, []multitenancy.TimeRange, error) {
-	c.flushCalls++
-	if c.flushErr != nil {
-		return nil, nil, nil, c.flushErr
-	}
-	ranges := []multitenancy.TimeRange{{
-		Tenant:  "test",
-		MinTime: time.Now(),
-		MaxTime: time.Now().Add(time.Hour),
-	}}
-	return c.obj, errCloser{err: c.closeErr}, ranges, nil
-}
-
-// errCloser fails to close when err is set.
-type errCloser struct{ err error }
-
-func (c errCloser) Close() error { return c.err }
-
-func (c *stubCalculator) Reset()       { c.resetCalls++ }
-func (c *stubCalculator) IsFull() bool { return false }
-
-func newTestSimpleIndexer(t *testing.T, calc calculator) (*SimpleIndexer, *objstore.InMemBucket, prometheus.Gatherer) {
+func newTestSimpleIndexer(t *testing.T, bucket objstore.Bucket) (*SimpleIndexer, prometheus.Gatherer) {
 	t.Helper()
 	reg := prometheus.NewRegistry()
-	bucket := objstore.NewInMemBucket()
-	idx, err := NewSimpleIndexer(calc, log.NewNopLogger(), bucket, reg)
+	idx, err := newTestSimpleIndexerWithMetrics(t, bucket, reg)
 	require.NoError(t, err)
-	return idx, bucket, reg
+	return idx, reg
+}
+
+func newTestSimpleIndexerWithMetrics(t *testing.T, bucket objstore.Bucket, reg prometheus.Registerer) (*SimpleIndexer, error) {
+	t.Helper()
+	metrics, err := NewIndexerMetrics(reg)
+	require.NoError(t, err)
+
+	return NewSimpleIndexer(testCalculatorConfig, nil, log.NewNopLogger(), bucket,
+		metrics, indexobj.NewBuilderMetrics(reg), NewCalculatorMetrics(reg))
 }
 
 func TestSimpleIndexer_Index(t *testing.T) {
-	t.Run("should upload the index and record it in the metastore", func(t *testing.T) {
-		calc := &stubCalculator{obj: createTestLogObject(t, 1)}
-		idx, bucket, _ := newTestSimpleIndexer(t, calc)
+	t.Run("should upload an index describing the data object", func(t *testing.T) {
+		bucket := objstore.NewInMemBucket()
+		idx, _ := newTestSimpleIndexer(t, bucket)
 
-		require.NoError(t, idx.Index(t.Context(), calc.obj, "objects/test"))
+		const objPath = "objects/test"
+		res, err := idx.Index(t.Context(), createTestLogObject(t, 2), objPath)
+		require.NoError(t, err)
 
-		require.Equal(t, 1, calc.calcCalls)
-		require.Equal(t, 0, calc.resetCalls)
-		// One index object plus at least one Table of Contents file.
-		var indexes, tocs int
-		for name := range bucket.Objects() {
-			switch {
-			case strings.HasPrefix(name, "indexes/"):
-				indexes++
-			default:
-				tocs++
-			}
+		require.Contains(t, bucket.Objects(), res.Path)
+		require.Len(t, bucket.Objects(), 1, "one index object per data object")
+
+		// The ranges are what the caller records in the Table of Contents, so
+		// they must describe the data object: both of its tenants, the span of
+		// the fixture's entries, and the size of the index just uploaded.
+		require.Len(t, res.TimeRanges, 2)
+		require.ElementsMatch(t, []string{"tenant-0", "tenant-1"}, tenantsOf(res.TimeRanges))
+		for _, tr := range res.TimeRanges {
+			require.Equal(t, uint64(len(bucket.Objects()[res.Path])), tr.FileSize)
+			require.Equal(t, time.Unix(10, 0).UTC(), tr.MinTime)
+			require.Equal(t, time.Unix(25, 0).UTC(), tr.MaxTime)
+			require.Positive(t, tr.UncompressedLogsSize)
 		}
-		require.Equal(t, 1, indexes)
-		require.Positive(t, tocs)
 
-		require.Equal(t, float64(1), testutil.ToFloat64(idx.metrics.attempts))
-		require.Equal(t, float64(0), testutil.ToFloat64(idx.metrics.failures))
-		require.Equal(t, float64(0), testutil.ToFloat64(idx.metrics.empty))
-	})
+		// Read the uploaded bytes back: they must decode as an index object
+		// holding a streams and a pointers section for each tenant.
+		idxObj, err := dataobj.FromBucket(t.Context(), bucket, res.Path, 0)
+		require.NoError(t, err)
+		require.Equal(t, 2, idxObj.Sections().Count(streams.CheckSection))
+		require.GreaterOrEqual(t, idxObj.Sections().Count(pointers.CheckSection), 2)
 
-	t.Run("should count a failed release without failing the index", func(t *testing.T) {
-		calc := &stubCalculator{obj: createTestLogObject(t, 1), closeErr: errors.New("mock close error")}
-		idx, bucket, _ := newTestSimpleIndexer(t, calc)
-
-		// The index is uploaded and recorded by the time it is released, so a
-		// cleanup failure must not discard that work.
-		require.NoError(t, idx.Index(t.Context(), calc.obj, "objects/test"))
-
-		require.NotEmpty(t, bucket.Objects())
-		require.Equal(t, float64(0), testutil.ToFloat64(idx.metrics.failures))
-		require.Equal(t, float64(1), testutil.ToFloat64(idx.metrics.releaseFailures))
-	})
-
-	t.Run("should count an empty index without writing anything", func(t *testing.T) {
-		calc := &stubCalculator{flushErr: indexobj.ErrBuilderEmpty}
-		idx, bucket, _ := newTestSimpleIndexer(t, calc)
-
-		// An object that produces no index is not an error, but it is also not
-		// discoverable by queries, so it must be counted.
-		require.NoError(t, idx.Index(t.Context(), nil, "objects/test"))
-
-		require.Empty(t, bucket.Objects())
-		require.Equal(t, 0, calc.resetCalls)
-		require.Equal(t, float64(1), testutil.ToFloat64(idx.metrics.attempts))
-		require.Equal(t, float64(0), testutil.ToFloat64(idx.metrics.failures))
-		require.Equal(t, float64(1), testutil.ToFloat64(idx.metrics.empty))
-	})
-
-	t.Run("should reset the calculator and count a failure when calculation fails", func(t *testing.T) {
-		calc := &stubCalculator{calcErr: errors.New("mock error")}
-		idx, bucket, _ := newTestSimpleIndexer(t, calc)
-
-		err := idx.Index(t.Context(), nil, "objects/test")
-		require.ErrorContains(t, err, "mock error")
-
-		require.Empty(t, bucket.Objects())
-		// Partial state must be discarded so the retry starts clean.
-		require.Equal(t, 1, calc.resetCalls)
-		require.Equal(t, float64(1), testutil.ToFloat64(idx.metrics.attempts))
-		require.Equal(t, float64(1), testutil.ToFloat64(idx.metrics.failures))
-	})
-
-	t.Run("should reset the calculator and count a failure when the flush fails", func(t *testing.T) {
-		calc := &stubCalculator{flushErr: errors.New("mock error")}
-		idx, _, _ := newTestSimpleIndexer(t, calc)
-
-		err := idx.Index(t.Context(), nil, "objects/test")
-		require.ErrorContains(t, err, "mock error")
-
-		require.Equal(t, 1, calc.resetCalls)
-		require.Equal(t, float64(1), testutil.ToFloat64(idx.metrics.failures))
-	})
-
-	t.Run("should count every retry as an attempt", func(t *testing.T) {
-		calc := &stubCalculator{calcErr: errors.New("mock error")}
-		idx, _, _ := newTestSimpleIndexer(t, calc)
-
-		for range 3 {
-			require.Error(t, idx.Index(t.Context(), nil, "objects/test"))
+		// Every stream of the data object is recorded, per tenant.
+		for _, tenant := range []string{"tenant-0", "tenant-1"} {
+			require.ElementsMatch(t, []string{
+				`{app="bar", cluster="test", env="dev"}`,
+				`{app="foo", cluster="test", env="prod"}`,
+			}, indexedStreams(t, idxObj, tenant), "tenant %s", tenant)
 		}
-		require.Equal(t, float64(3), testutil.ToFloat64(idx.metrics.attempts))
-		require.Equal(t, float64(3), testutil.ToFloat64(idx.metrics.failures))
+
+		// The index points back at the data object it was built from.
+		require.Equal(t, []string{objPath}, indexedPointerPaths(t, idxObj))
+	})
+
+	t.Run("should index every tenant in the data object", func(t *testing.T) {
+		idx, _ := newTestSimpleIndexer(t, objstore.NewInMemBucket())
+
+		res, err := idx.Index(t.Context(), createTestLogObject(t, 3), "objects/test")
+		require.NoError(t, err)
+		require.Len(t, res.TimeRanges, 3)
+	})
+
+	t.Run("should propagate an upload failure", func(t *testing.T) {
+		idx, _ := newTestSimpleIndexer(t, failingBucket{objstore.NewInMemBucket()})
+
+		res, err := idx.Index(t.Context(), createTestLogObject(t, 1), "objects/test")
+		require.ErrorContains(t, err, "mock upload error")
+		require.Empty(t, res.Path)
+	})
+
+	t.Run("should count an attempt against its outcome", func(t *testing.T) {
+		bucket := objstore.NewInMemBucket()
+		idx, reg := newTestSimpleIndexer(t, bucket)
+
+		// Both outcomes are reported from the start, so a rate over failures
+		// reads as zero rather than going missing.
+		require.Equal(t, uint64(0), indexAttempts(t, reg, resultOK))
+		require.Equal(t, uint64(0), indexAttempts(t, reg, resultError))
+
+		obj := createTestLogObject(t, 1)
+		_, err := idx.Index(t.Context(), obj, "objects/ok")
+		require.NoError(t, err)
+
+		// Reuse the indexer with a bucket that fails, so both outcomes are
+		// observed by the same histogram.
+		idx.idxBucket = failingBucket{bucket}
+		for range 2 {
+			_, err = idx.Index(t.Context(), obj, "objects/err")
+			require.Error(t, err)
+		}
+
+		require.Equal(t, uint64(1), indexAttempts(t, reg, resultOK))
+		require.Equal(t, uint64(2), indexAttempts(t, reg, resultError))
 	})
 }
 
-func TestSimpleIndexer_RegistersMetrics(t *testing.T) {
-	calc := &stubCalculator{obj: createTestLogObject(t, 1)}
-	idx, _, gatherer := newTestSimpleIndexer(t, calc)
-	require.NoError(t, idx.Index(t.Context(), calc.obj, "objects/test"))
+// indexAttempts reports the number of index attempts recorded for an outcome,
+// which is the sample count of that outcome's duration histogram.
+func indexAttempts(t *testing.T, g prometheus.Gatherer, result string) uint64 {
+	t.Helper()
 
-	require.NoError(t, testutil.GatherAndCompare(gatherer, strings.NewReader(`
-	# HELP loki_dataobj_builder_index_attempts_total Total number of attempts to index a data object, including retries.
-	# TYPE loki_dataobj_builder_index_attempts_total counter
-	loki_dataobj_builder_index_attempts_total 1
-	# HELP loki_dataobj_builder_index_empty_total Total number of data objects that produced no index and are therefore not discoverable by queries.
-	# TYPE loki_dataobj_builder_index_empty_total counter
-	loki_dataobj_builder_index_empty_total 0
-	# HELP loki_dataobj_builder_index_failures_total Total number of failed attempts to index a data object. Failures are retried, so this also counts retries.
-	# TYPE loki_dataobj_builder_index_failures_total counter
-	loki_dataobj_builder_index_failures_total 0
-	`),
-		"loki_dataobj_builder_index_attempts_total",
-		"loki_dataobj_builder_index_empty_total",
-		"loki_dataobj_builder_index_failures_total",
-	))
-
-	// The Table of Contents writer's metrics must be exported too; they were
-	// never registered before the writer became constructor-scoped.
-	mfs, err := gatherer.Gather()
+	const name = "loki_dataobj_builder_index_duration_seconds"
+	mfs, err := g.Gather()
 	require.NoError(t, err)
-	var names []string
+
 	for _, mf := range mfs {
-		names = append(names, mf.GetName())
+		if mf.GetName() != name {
+			continue
+		}
+		for _, m := range mf.GetMetric() {
+			for _, l := range m.GetLabel() {
+				if l.GetName() == "result" && l.GetValue() == result {
+					return m.GetHistogram().GetSampleCount()
+				}
+			}
+		}
+		t.Fatalf("metric %q has no series with result=%q", name, result)
 	}
-	require.Contains(t, names, "loki_dataobj_builder_index_duration_seconds")
-	require.Contains(t, names, "loki_metastore_toc_processing_seconds")
-	require.Contains(t, names, "loki_dataobj_consumer_metastore_writes_total")
+	t.Fatalf("metric %q was not gathered", name)
+	return 0
+}
+
+// TestSimpleIndexer_IndexConcurrently indexes several data objects at once.
+// Sharing one calculator would merge their indexes into a single object, so
+// each call building its own is what keeps the results independent. Run with
+// -race to also cover the shared metrics.
+func TestSimpleIndexer_IndexConcurrently(t *testing.T) {
+	bucket := objstore.NewInMemBucket()
+	idx, _ := newTestSimpleIndexer(t, bucket)
+
+	const objects = 8
+
+	// Build the objects up front: the fixtures are not concurrency-safe.
+	objs := make([]*dataobj.Object, objects)
+	for i := range objs {
+		objs[i] = createTestLogObject(t, i+1)
+	}
+
+	var wg sync.WaitGroup
+	results := make([]Result, objects)
+	errs := make([]error, objects)
+	for i := range objects {
+		wg.Go(func() {
+			results[i], errs[i] = idx.Index(t.Context(), objs[i], fmt.Sprintf("objects/test-%d", i))
+		})
+	}
+	wg.Wait()
+
+	require.NoError(t, errors.Join(errs...))
+
+	// Each data object gets its own index, covering only its own tenants.
+	paths := make(map[string]struct{}, objects)
+	for i, res := range results {
+		require.NotEmpty(t, res.Path)
+		require.Len(t, res.TimeRanges, i+1)
+		paths[res.Path] = struct{}{}
+	}
+	require.Len(t, paths, objects)
+	require.Len(t, bucket.Objects(), objects)
+}
+
+// TestSimpleIndexer_SharesDownstreamMetrics covers the reason the calculator
+// and builder metrics are passed in: they are created per data object, so they
+// report through the sets the caller registered rather than registering their
+// own, which would fail on the second object.
+func TestSimpleIndexer_SharesDownstreamMetrics(t *testing.T) {
+	idx, reg := newTestSimpleIndexer(t, objstore.NewInMemBucket())
+
+	obj := createTestLogObject(t, 1)
+	for i := range 2 {
+		_, err := idx.Index(t.Context(), obj, fmt.Sprintf("objects/test-%d", i))
+		require.NoError(t, err)
+	}
+
+	require.NoError(t, testutil.GatherAndCompare(reg, strings.NewReader(`
+	# HELP loki_indexobj_flush_total Total number of flushes.
+	# TYPE loki_indexobj_flush_total counter
+	loki_indexobj_flush_total 2
+	`), "loki_indexobj_flush_total"))
+
+	n, err := testutil.GatherAndCount(reg, "loki_index_calculator_step_duration_seconds")
+	require.NoError(t, err)
+	require.Positive(t, n)
+}
+
+// TestSimpleIndexer_MultipleInstances covers the reason the metrics are created
+// by the caller: several indexers must be able to report to one registry, which
+// each of them registering its own metrics would prevent.
+func TestSimpleIndexer_MultipleInstances(t *testing.T) {
+	reg := prometheus.NewRegistry()
+	bucket := objstore.NewInMemBucket()
+
+	metrics, err := NewIndexerMetrics(reg)
+	require.NoError(t, err)
+	builderMetrics := indexobj.NewBuilderMetrics(reg)
+	calculatorMetrics := NewCalculatorMetrics(reg)
+
+	obj := createTestLogObject(t, 1)
+	for i := range 2 {
+		idx, err := NewSimpleIndexer(testCalculatorConfig, nil, log.NewNopLogger(), bucket,
+			metrics, builderMetrics, calculatorMetrics)
+		require.NoError(t, err)
+
+		_, err = idx.Index(t.Context(), obj, fmt.Sprintf("objects/test-%d", i))
+		require.NoError(t, err)
+	}
+
+	// Both indexers report through the one registered set.
+	require.Equal(t, uint64(2), indexAttempts(t, reg, resultOK))
+}
+
+// TestSimpleIndexer_RejectsInvalidConfig checks the config is validated up
+// front rather than on the first data object.
+func TestSimpleIndexer_RejectsInvalidConfig(t *testing.T) {
+	reg := prometheus.NewRegistry()
+	metrics, err := NewIndexerMetrics(reg)
+	require.NoError(t, err)
+
+	_, err = NewSimpleIndexer(logsobj.BuilderBaseConfig{}, nil, log.NewNopLogger(),
+		objstore.NewInMemBucket(), metrics, indexobj.NewBuilderMetrics(reg), NewCalculatorMetrics(reg))
+	require.Error(t, err)
+}
+
+func tenantsOf(ranges []multitenancy.TimeRange) []string {
+	tenants := make([]string, 0, len(ranges))
+	for _, tr := range ranges {
+		tenants = append(tenants, tr.Tenant)
+	}
+	return tenants
+}
+
+// indexedStreams returns the label sets the index object records for tenant.
+func indexedStreams(t *testing.T, obj *dataobj.Object, tenant string) []string {
+	t.Helper()
+
+	var got []string
+	for _, section := range obj.Sections().Filter(streams.CheckSection) {
+		if section.Tenant != tenant {
+			continue
+		}
+		sec, err := streams.Open(t.Context(), section)
+		require.NoError(t, err)
+
+		reader := streams.NewRowReader(sec)
+		t.Cleanup(func() { _ = reader.Close() })
+		require.NoError(t, reader.Open(t.Context()))
+
+		buf := make([]streams.Stream, 128)
+		for {
+			n, err := reader.Read(t.Context(), buf)
+			if !errors.Is(err, io.EOF) {
+				require.NoError(t, err)
+			}
+			if n == 0 && errors.Is(err, io.EOF) {
+				break
+			}
+			for _, stream := range buf[:n] {
+				got = append(got, stream.Labels.String())
+			}
+		}
+	}
+	return got
+}
+
+// indexedPointerPaths returns the distinct data object paths the index points at.
+func indexedPointerPaths(t *testing.T, obj *dataobj.Object) []string {
+	t.Helper()
+
+	seen := make(map[string]struct{})
+	for _, section := range obj.Sections().Filter(pointers.CheckSection) {
+		sec, err := pointers.Open(t.Context(), section)
+		require.NoError(t, err)
+
+		reader := pointers.NewRowReader(sec)
+		t.Cleanup(func() { _ = reader.Close() })
+		require.NoError(t, reader.Open(t.Context()))
+
+		buf := make([]pointers.SectionPointer, 128)
+		for {
+			n, err := reader.Read(t.Context(), buf)
+			if !errors.Is(err, io.EOF) {
+				require.NoError(t, err)
+			}
+			if n == 0 && errors.Is(err, io.EOF) {
+				break
+			}
+			for _, pointer := range buf[:n] {
+				seen[pointer.Path] = struct{}{}
+			}
+		}
+	}
+
+	paths := make([]string, 0, len(seen))
+	for path := range seen {
+		paths = append(paths, path)
+	}
+	sort.Strings(paths)
+	return paths
 }

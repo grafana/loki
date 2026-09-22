@@ -142,21 +142,13 @@ func NewIndexBuilder(
 	}
 
 	// Create index building dependencies
-	builder, err := indexobj.NewBuilder(cfg.BuilderBaseConfig, scratchStore)
+	builder, err := indexobj.NewBuilder(cfg.BuilderBaseConfig, scratchStore, indexobj.NewBuilderMetrics(builderReg))
 	if err != nil {
 		return nil, fmt.Errorf("failed to create index builder: %w", err)
 	}
-	calculator := NewCalculator(builder)
+	calculator := NewCalculator(builder, NewCalculatorMetrics(builderReg))
 
 	indexStorageBucket := objstore.NewPrefixedBucket(bucket, mCfg.IndexStoragePrefix)
-
-	if err := builder.RegisterMetrics(builderReg); err != nil {
-		return nil, fmt.Errorf("failed to register metrics for index builder: %w", err)
-	}
-
-	if err := calculator.RegisterMetrics(builderReg); err != nil {
-		return nil, fmt.Errorf("failed to register metrics for calculator: %w", err)
-	}
 
 	s := &Builder{
 		cfg:                cfg,
