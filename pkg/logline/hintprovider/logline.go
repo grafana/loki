@@ -136,7 +136,6 @@ func (p *LoglineHintProvider) ProvideHints(
 		From:        from,
 		Through:     through,
 		Expr:        expr.String(),
-		Tenant:      tenant,
 		Indexes:     indexes,
 		NgramLength: int64(p.ngramLength),
 		MaxParallel: int64(p.maxParallel),
