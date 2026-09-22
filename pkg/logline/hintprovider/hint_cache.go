@@ -21,6 +21,10 @@ const (
 	hintCacheKeyPrefix  = "logline:"
 	hintCacheGeneration = 1
 	hintCacheDayLayout  = "2006-01-02"
+	// maxHintCacheDayParallel is how many missed days ProvideHints may
+	// fetch at once. All missing days still run; only in-flight count is
+	// capped. This is not MaxHintParallel (index workers per HintRequest).
+	maxHintCacheDayParallel = 7
 )
 
 const (
@@ -152,6 +156,7 @@ func (p *CachingHintProvider) ProvideHints(
 
 	results := make([]provideHintsResult, len(missingDays))
 	g, gCtx := errgroup.WithContext(ctx)
+	g.SetLimit(maxHintCacheDayParallel)
 
 	for i, day := range missingDays {
 		g.Go(func() error {
