@@ -9,6 +9,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/common/model"
+	"golang.org/x/sync/errgroup"
 	"golang.org/x/sync/singleflight"
 
 	"github.com/grafana/loki/v3/pkg/logproto"
@@ -149,51 +150,61 @@ func (p *CachingHintProvider) ProvideHints(
 	}
 
 	p.requestsTotal.WithLabelValues(hintCacheResultMiss).Inc()
-	combinedRanges := append([]logproto.HintTimeRange(nil), cachedRanges...)
-	combinedStats := NewQueryStats()
-	for _, day := range missingDays {
-		dayFrom := model.TimeFromUnixNano(day.start.UnixNano())
-		dayThrough := model.TimeFromUnixNano(day.endExclusive.Add(-time.Nanosecond).UnixNano())
-		sfKey := singleflightKey(tenant, queryString, day.day)
-		value, _, shared := p.flight.Do(sfKey, func() (any, error) {
-			hints, stats, provideErr := p.delegate.ProvideHints(ctx, next, tenant, expr, dayFrom, dayThrough)
-			result := &provideHintsResult{
-				hints: hints,
-				stats: stats,
-				err:   provideErr,
-			}
-			if provideErr != nil {
-				return result, nil
-			}
-			if result.hints == nil {
-				result.hints = &Hints{}
+
+	results := make([]provideHintsResult, len(missingDays))
+	g, gCtx := errgroup.WithContext(ctx)
+
+	for i, day := range missingDays {
+		i, day := i, day
+
+		g.Go(func() error {
+			dayFrom := model.TimeFromUnixNano(day.start.UnixNano())
+			dayThrough := model.TimeFromUnixNano(day.endExclusive.Add(-time.Nanosecond).UnixNano())
+			sfKey := singleflightKey(tenant, queryString, day.day)
+			value, _, shared := p.flight.Do(sfKey, func() (any, error) {
+				hints, stats, provideErr := p.delegate.ProvideHints(gCtx, next, tenant, expr, dayFrom, dayThrough)
+				if provideErr != nil {
+					return &provideHintsResult{hints: hints, stats: stats, err: provideErr}, nil
+				}
+				if hints == nil {
+					hints = &Hints{}
+				}
+				p.storeDays(gCtx, []dayWindow{day}, hints.TimeRanges)
+				return &provideHintsResult{hints: hints, stats: stats}, nil
+			})
+			if shared {
+				p.singleflightDedupedTot.Inc()
 			}
 
-			p.storeDays(ctx, []dayWindow{day}, result.hints.TimeRanges)
-			return result, nil
+			res, ok := value.(*provideHintsResult)
+			if !ok {
+				return fmt.Errorf("unexpected singleflight result type %T", value)
+			}
+			results[i] = *res
+			return res.err
 		})
-		if shared {
-			p.singleflightDedupedTot.Inc()
-		}
-
-		result, ok := value.(*provideHintsResult)
-		if !ok {
-			return nil, nil, fmt.Errorf("unexpected singleflight result type %T", value)
-		}
-		if result.err != nil {
-			return nil, result.stats, result.err
-		}
-		if result.hints == nil {
-			result.hints = &Hints{}
-		}
-		if result.stats != nil {
-			combinedStats.Merge(result.stats)
-		}
-		combinedRanges = append(combinedRanges, result.hints.TimeRanges...)
 	}
 
-	combinedStats.ObserveHintCache(hintCacheResultMiss, len(cacheKeys), daysHit)
-	return filterHintsByWindow(&Hints{TimeRanges: combinedRanges}, from, through), combinedStats, nil
+	if err := g.Wait(); err != nil {
+		var stats *QueryStats
+		for _, r := range results {
+			if r.stats != nil {
+				stats = r.stats
+				break
+			}
+		}
+		return nil, stats, err
+	}
+	combined := NewQueryStats()
+	combinedRanges := append([]logproto.HintTimeRange(nil), cachedRanges...)
+	for _, r := range results {
+		combined.Merge(r.stats)
+		if r.hints != nil {
+			combinedRanges = append(combinedRanges, r.hints.TimeRanges...)
+		}
+	}
+	combined.ObserveHintCache(hintCacheResultMiss, len(cacheKeys), daysHit)
+	return filterHintsByWindow(&Hints{TimeRanges: combinedRanges}, from, through), combined, nil
 }
 
 func filterHintsByWindow(hints *Hints, from, through model.Time) *Hints {

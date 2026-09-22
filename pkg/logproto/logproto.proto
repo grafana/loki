@@ -424,6 +424,7 @@ message HintRequest {
   string tenant = 4;
   repeated Meta indexes = 5 [(gogoproto.nullable) = false];
   int64 ngram_length = 6;
+  int64 max_parallel = 7;
 }
 
 // Meta is the catalog and wire type for a logline index.

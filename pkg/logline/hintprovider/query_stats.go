@@ -266,6 +266,34 @@ func (s *QueryStats) Snapshot() logproto.HintQueryStats {
 	}
 }
 
+// QueryStatsFromProto reconstructs a QueryStats accumulator from the wire type.
+func QueryStatsFromProto(p *logproto.HintQueryStats) *QueryStats {
+	s := NewQueryStats()
+	if p == nil {
+		return s
+	}
+	s.headerReads.Store(p.HeaderReads)
+	s.metadataReads.Store(p.MetadataReads)
+	s.termDictReads.Store(p.TermDictReads)
+	s.bitmapReads.Store(p.BitmapReads)
+	s.totalIOWaitNanos.Store(p.TotalIOWait.Nanoseconds())
+	s.totalIOBytes.Store(p.TotalIOBytes)
+	s.peakConcurrency.Store(p.PeakConcurrency)
+	s.prefetchCalls.Store(p.PrefetchCalls)
+	s.prefetchTimeouts.Store(p.PrefetchTimeouts)
+	s.indexQueriesTotal.Store(p.IndexQueriesTotal)
+	s.indexQueriesTermMiss.Store(p.IndexQueriesTermMiss)
+	s.indexQueriesEmptyAnd.Store(p.IndexQueriesEmptyAnd)
+	s.indexQueriesPositive.Store(p.IndexQueriesPositive)
+	s.totalTermBatchesProcessed.Store(p.TotalTermBatchesProcessed)
+	if p.HintCacheResult != "" {
+		s.hintCacheResult.Store(p.HintCacheResult)
+	}
+	s.hintCacheDaysFetched.Store(p.HintCacheDaysFetched)
+	s.hintCacheDaysHit.Store(p.HintCacheDaysHit)
+	return s
+}
+
 func (s *QueryStats) String() string {
 	snap := s.Snapshot()
 	return fmt.Sprintf(

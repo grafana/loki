@@ -43,11 +43,11 @@ func (h localHintHandler) Do(ctx context.Context, req queryrangebase.Request) (q
 	if err != nil {
 		return nil, err
 	}
-	hints, stats, err := h.provider.QuerierProvideHints(ctx, hr.Tenant, expr, hr.From, hr.Through, hr.Indexes)
+	resp, err := h.provider.QuerierProvideHints(ctx, expr, hr.Indexes)
 	if err != nil {
 		return nil, err
 	}
-	return &queryrange.HintResponse{Response: HintsToProto(hints, stats)}, nil
+	return &queryrange.HintResponse{Response: resp}, nil
 }
 
 func TestLoglineHintProvider_ProvideHints(t *testing.T) {

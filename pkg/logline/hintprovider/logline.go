@@ -64,21 +64,17 @@ func NewLoglineHintProvider(
 
 func (p *LoglineHintProvider) QuerierProvideHints(
 	ctx context.Context,
-	tenant string,
 	expr syntax.Expr,
-	from, through model.Time,
 	overlapping []logproto.Meta,
-) (*Hints, *QueryStats, error) {
+) (*logproto.HintResponse, error) {
 	filters := SupportedQuery(expr, p.ngramLength)
 	stats := NewQueryStats()
-	ranges := make([]logproto.HintTimeRange, 0, 1)
 	shardRanges, err := p.executeQuery(ctx, filters, overlapping, stats)
+	snap := stats.Snapshot()
 	if err != nil {
-		return nil, stats, err
+		return &logproto.HintResponse{Stats: &snap}, err
 	}
-
-	ranges = append(ranges, aggregateShardRanges(shardRanges)...)
-	return &Hints{TimeRanges: normalizeRanges(ranges)}, stats, nil
+	return &logproto.HintResponse{TimeRanges: aggregateShardRanges(shardRanges), Stats: &snap}, nil
 }
 
 func (p *LoglineHintProvider) ProvideHints(
@@ -128,6 +124,7 @@ func (p *LoglineHintProvider) ProvideHints(
 		Tenant:      tenant,
 		Indexes:     overlapping,
 		NgramLength: int64(p.ngramLength),
+		MaxParallel: int64(p.maxParallel),
 	})
 
 	if err != nil {
@@ -139,13 +136,9 @@ func (p *LoglineHintProvider) ProvideHints(
 		return nil, stats, fmt.Errorf("unexpected hint response type %T", resp)
 	}
 
-	hints, queryStats := ProtoToHints(hr.Response)
-	if len(ranges) > 0 {
-		hints.TimeRanges = append(ranges, hints.TimeRanges...)
-		hints.TimeRanges = normalizeRanges(hints.TimeRanges)
-	}
-
-	return hints, queryStats, nil
+	hints := hr.Response.TimeRanges
+	ranges = append(ranges, hints...)
+	return &Hints{TimeRanges: normalizeRanges(ranges)}, QueryStatsFromProto(hr.Response.Stats), nil
 }
 
 // MinDate returns the configured minimum trusted date boundary used by the

@@ -10,6 +10,7 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/logline"
 	"github.com/grafana/loki/v3/pkg/logline/format"
+	"github.com/grafana/loki/v3/pkg/logproto"
 )
 
 type noopReaderAt struct{}
@@ -195,4 +196,46 @@ func TestQueryStats_Merge(t *testing.T) {
 	require.Equal(t, int64(1), snap.IndexQueriesTermMiss)
 	require.Equal(t, int64(1), snap.IndexQueriesPositive)
 	require.Equal(t, int64(6), snap.TotalTermBatchesProcessed)
+}
+
+func TestQueryStatsFromProtoRoundTrip(t *testing.T) {
+	stats := NewQueryStats()
+	stats.headerReads.Add(1)
+	stats.metadataReads.Add(2)
+	stats.termDictReads.Add(3)
+	stats.bitmapReads.Add(4)
+	stats.totalIOWaitNanos.Add(1500)
+	stats.totalIOBytes.Add(99)
+	stats.peakConcurrency.Store(7)
+	stats.prefetchCalls.Store(3)
+	stats.prefetchTimeouts.Store(1)
+	stats.indexQueriesTotal.Add(5)
+	stats.indexQueriesPositive.Add(1)
+	stats.totalTermBatchesProcessed.Add(8)
+	stats.ObserveHintCache("miss", 4, 2)
+
+	snap := stats.Snapshot()
+	got := QueryStatsFromProto(&snap).Snapshot()
+
+	require.Equal(t, snap.HeaderReads, got.HeaderReads)
+	require.Equal(t, snap.MetadataReads, got.MetadataReads)
+	require.Equal(t, snap.TermDictReads, got.TermDictReads)
+	require.Equal(t, snap.BitmapReads, got.BitmapReads)
+	require.Equal(t, snap.TotalIOWait, got.TotalIOWait)
+	require.Equal(t, snap.TotalIOBytes, got.TotalIOBytes)
+	require.Equal(t, snap.PeakConcurrency, got.PeakConcurrency)
+	require.Equal(t, snap.PrefetchCalls, got.PrefetchCalls)
+	require.Equal(t, snap.PrefetchTimeouts, got.PrefetchTimeouts)
+	require.Equal(t, snap.IndexQueriesTotal, got.IndexQueriesTotal)
+	require.Equal(t, snap.IndexQueriesPositive, got.IndexQueriesPositive)
+	require.Equal(t, snap.TotalTermBatchesProcessed, got.TotalTermBatchesProcessed)
+	require.Equal(t, snap.HintCacheResult, got.HintCacheResult)
+	require.Equal(t, snap.HintCacheDaysFetched, got.HintCacheDaysFetched)
+	require.Equal(t, snap.HintCacheDaysHit, got.HintCacheDaysHit)
+}
+
+func TestQueryStatsFromProtoNil(t *testing.T) {
+	got := QueryStatsFromProto(nil)
+	require.NotNil(t, got)
+	require.Equal(t, logproto.HintQueryStats{}, got.Snapshot())
 }

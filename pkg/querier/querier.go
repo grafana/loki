@@ -566,10 +566,8 @@ func (q *SingleTenantQuerier) Hints(ctx context.Context, req *logproto.HintReque
 		return nil, errors.New("logline store is not configured")
 	}
 	ngramLength := int(req.NgramLength)
-	if ngramLength <= 0 {
-		ngramLength = 6
-	}
-	provider, err := hintprovider.NewLoglineHintProvider(q.loglineStore, ngramLength, 1, nil, q.logger)
+	maxParallel := int(req.MaxParallel)
+	provider, err := hintprovider.NewLoglineHintProvider(q.loglineStore, ngramLength, maxParallel, nil, q.logger)
 	if err != nil {
 		return nil, err
 	}
@@ -577,11 +575,7 @@ func (q *SingleTenantQuerier) Hints(ctx context.Context, req *logproto.HintReque
 	if err != nil {
 		return nil, err
 	}
-	hints, stats, err := provider.QuerierProvideHints(ctx, req.Tenant, expr, req.From, req.Through, req.Indexes)
-	if err != nil {
-		return nil, err
-	}
-	return hintprovider.HintsToProto(hints, stats), nil
+	return provider.QuerierProvideHints(ctx, expr, req.Indexes)
 }
 
 func (q *SingleTenantQuerier) IndexShards(
