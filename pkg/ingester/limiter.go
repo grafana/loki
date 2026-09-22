@@ -11,6 +11,7 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/compactor/retention"
 	"github.com/grafana/loki/v3/pkg/distributor/shardstreams"
+	ingesterTimeSharding "github.com/grafana/loki/v3/pkg/ingester/shardstreams"
 	"github.com/grafana/loki/v3/pkg/validation"
 )
 
@@ -32,6 +33,7 @@ type Limits interface {
 	MaxGlobalStreamsPerUser(userID string) int
 	PerStreamRateLimit(userID string) validation.RateLimit
 	ShardStreams(userID string) shardstreams.Config
+	IngesterTimeSharding(userID string) ingesterTimeSharding.Config
 	IngestionPartitionsTenantShardSize(userID string) int
 
 	validation.IngestionPolicyOverrideLimits

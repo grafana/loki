@@ -41,6 +41,9 @@ type ingesterMetrics struct {
 
 	chunkUtilization              prometheus.Histogram
 	memoryChunks                  prometheus.Gauge
+	streamTimeShardOpenBuckets    prometheus.Gauge
+	timeShardedSamplesTotal       *prometheus.CounterVec
+	timeShardedBytesTotal         *prometheus.CounterVec
 	chunkEntries                  prometheus.Histogram
 	chunkSize                     prometheus.Histogram
 	chunkCompressionRatio         prometheus.Histogram
@@ -202,6 +205,21 @@ func newIngesterMetrics(r prometheus.Registerer, metricsNamespace string) *inges
 			Name:      "ingester_memory_chunks",
 			Help:      "The total number of chunks in memory.",
 		}),
+		streamTimeShardOpenBuckets: promauto.With(r).NewGauge(prometheus.GaugeOpts{
+			Namespace: constants.Loki,
+			Name:      "ingester_stream_open_time_buckets",
+			Help:      "The total number of open ingester-side time-shard buckets across all streams (see ingester_time_sharding limit).",
+		}),
+		timeShardedSamplesTotal: promauto.With(r).NewCounterVec(prometheus.CounterOpts{
+			Namespace: constants.Loki,
+			Name:      "ingester_time_sharded_samples_total",
+			Help:      "The total number of samples routed to an ingester-side time-shard bucket rather than a stream's live chunk.",
+		}, []string{"tenant"}),
+		timeShardedBytesTotal: promauto.With(r).NewCounterVec(prometheus.CounterOpts{
+			Namespace: constants.Loki,
+			Name:      "ingester_time_sharded_bytes_total",
+			Help:      "The total number of bytes routed to an ingester-side time-shard bucket rather than a stream's live chunk.",
+		}, []string{"tenant"}),
 		chunkEntries: promauto.With(r).NewHistogram(prometheus.HistogramOpts{
 			Namespace: constants.Loki,
 			Name:      "ingester_chunk_entries",

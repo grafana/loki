@@ -76,6 +76,7 @@ func Test_EncodingChunks(t *testing.T) {
 						synced:      true,
 						flushed:     time.Unix(1, 0),
 						lastUpdated: time.Unix(0, 1),
+						bucketStart: time.Unix(2, 0),
 					},
 				}
 				there, err := toWireChunks(from, nil)

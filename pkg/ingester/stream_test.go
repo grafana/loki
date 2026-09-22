@@ -25,10 +25,12 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/chunkenc"
 	"github.com/grafana/loki/v3/pkg/distributor/writefailures"
+	"github.com/grafana/loki/v3/pkg/ingester/shardstreams"
 	"github.com/grafana/loki/v3/pkg/iter"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql/log"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
+	"github.com/grafana/loki/v3/pkg/util/constants"
 	"github.com/grafana/loki/v3/pkg/util/flagext"
 	"github.com/grafana/loki/v3/pkg/validation"
 )
@@ -80,6 +82,7 @@ func TestMaxReturnedStreamsErrors(t *testing.T) {
 				nil,
 				retentionHours,
 				noPolicy,
+				limiter.limits,
 			)
 
 			_, err := s.Push(context.Background(), []logproto.Entry{
@@ -133,6 +136,7 @@ func TestPushDeduplication(t *testing.T) {
 		nil,
 		retentionHours,
 		noPolicy,
+		limiter.limits,
 	)
 
 	written, err := s.Push(context.Background(), []logproto.Entry{
@@ -192,6 +196,7 @@ func TestPushDeduplicationExtraMetrics(t *testing.T) {
 		runtimeCfg,
 		retentionHours,
 		noPolicy,
+		limiter.limits,
 	)
 
 	_, err = s.Push(context.Background(), []logproto.Entry{
@@ -237,6 +242,7 @@ func TestPushRejectOldCounter(t *testing.T) {
 		nil,
 		retentionHours,
 		noPolicy,
+		limiter.limits,
 	)
 
 	// counter should be 2 now since the first line will be deduped
@@ -344,6 +350,7 @@ func TestEntryErrorCorrectlyReported(t *testing.T) {
 		nil,
 		retentionHours,
 		noPolicy,
+		limiter.limits,
 	)
 	s.highestTs = time.Now()
 
@@ -353,7 +360,7 @@ func TestEntryErrorCorrectlyReported(t *testing.T) {
 	}
 	tracker := &mockUsageTracker{}
 
-	_, failed := s.validateEntries(context.Background(), entries, false, true, tracker, "loki")
+	_, failed := s.validateEntries(context.Background(), entries, false, true, tracker, "loki", time.Now(), shardstreams.Config{})
 	require.NotEmpty(t, failed)
 	require.False(t, hasRateLimitErr(failed))
 	require.Equal(t, 13.0, tracker.discardedBytes)
@@ -382,6 +389,7 @@ func TestUnorderedPush(t *testing.T) {
 		nil,
 		retentionHours,
 		noPolicy,
+		limiter.limits,
 	)
 
 	for _, x := range []struct {
@@ -484,6 +492,7 @@ func TestPushRateLimit(t *testing.T) {
 		nil,
 		retentionHours,
 		noPolicy,
+		limiter.limits,
 	)
 
 	entries := []logproto.Entry{
@@ -532,6 +541,7 @@ func TestPushRateLimitPolicyOverride(t *testing.T) {
 		nil,
 		retentionHours,
 		policy,
+		limiter.limits,
 	)
 
 	entries := []logproto.Entry{
@@ -572,6 +582,7 @@ func TestPushRateLimitAllOrNothing(t *testing.T) {
 		nil,
 		retentionHours,
 		noPolicy,
+		limiter.limits,
 	)
 
 	entries := []logproto.Entry{
@@ -611,6 +622,7 @@ func TestReplayAppendIgnoresValidityWindow(t *testing.T) {
 		nil,
 		retentionHours,
 		noPolicy,
+		limiter.limits,
 	)
 
 	base := time.Now()
@@ -648,6 +660,157 @@ func iterEq(t *testing.T, exp []logproto.Entry, got iter.EntryIterator) {
 	require.Equal(t, i, len(exp), "incorrect number of entries expected")
 }
 
+// newTimeShardingLimiter builds a Limiter whose tenant "fake" resolves the
+// given ingester-side time-sharding config via IngesterTimeSharding.
+func newTimeShardingLimiter(t *testing.T, cfg shardstreams.Config) *Limiter {
+	t.Helper()
+	l := defaultLimitsTestConfig()
+	l.IngesterTimeSharding = cfg
+	overrides, err := validation.NewOverrides(l, nil)
+	require.NoError(t, err)
+	return NewLimiter(overrides, NilMetrics, newIngesterRingLimiterStrategy(&ringCountMock{count: 1}, 1), &TenantBasedStrategy{limits: overrides})
+}
+
+func TestIngesterTimeSharding_DisabledPreservesExactCurrentBehavior(t *testing.T) {
+	chunkfmt, headfmt := defaultChunkFormat(t)
+	cfg := defaultConfig()
+	cfg.MaxChunkAge = 2 * time.Hour
+
+	limiter := newTimeShardingLimiter(t, shardstreams.Config{Enabled: false})
+	retentionHours := util.RetentionHours(limiter.limits.RetentionPeriod("fake"))
+
+	s := newStream(chunkfmt, headfmt, cfg, limiter.rateLimitStrategy, "fake", model.Fingerprint(0), labels.FromStrings("foo", "bar"), NewStreamRateCalculator(), NilMetrics, nil, nil, retentionHours, noPolicy, limiter.limits)
+
+	now := time.Now()
+	_, err := s.Push(context.Background(), []logproto.Entry{{Timestamp: now, Line: "recent"}}, recordPool.GetRecord(), 0, true, false, nil, "loki")
+	require.NoError(t, err)
+
+	// Older than MaxChunkAge/2 behind the stream's highest timestamp: this
+	// must still be rejected exactly as before this change, since
+	// time-sharding is disabled for this tenant.
+	oldTs := now.Add(-3 * time.Hour)
+	_, err = s.Push(context.Background(), []logproto.Entry{{Timestamp: oldTs, Line: "old"}}, recordPool.GetRecord(), 0, true, false, nil, "loki")
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "too far behind")
+
+	require.Len(t, s.chunks, 1)
+	require.Empty(t, s.openHeads)
+}
+
+func TestIngesterTimeSharding_OpensSeparateBucketsForOldEntries(t *testing.T) {
+	chunkfmt, headfmt := defaultChunkFormat(t)
+	cfg := defaultConfig()
+	cfg.MaxChunkAge = 2 * time.Hour // bucket width = 1h
+
+	limiter := newTimeShardingLimiter(t, shardstreams.Config{
+		Enabled:        true,
+		IgnoreRecent:   40 * time.Minute,
+		MaxOpenBuckets: 16,
+	})
+	retentionHours := util.RetentionHours(limiter.limits.RetentionPeriod("fake"))
+
+	s := newStream(chunkfmt, headfmt, cfg, limiter.rateLimitStrategy, "fake", model.Fingerprint(0), labels.FromStrings("foo", "bar"), NewStreamRateCalculator(), NilMetrics, nil, nil, retentionHours, noPolicy, limiter.limits)
+
+	now := time.Now().Round(0) // strip monotonic reading so entries survive the chunk round-trip byte-for-byte
+	entries := []logproto.Entry{
+		{Timestamp: now.Add(-5 * time.Hour), Line: "bucket-a"},
+		{Timestamp: now.Add(-3 * time.Hour), Line: "bucket-b"},
+		{Timestamp: now.Add(-1 * time.Hour), Line: "bucket-c"},
+		{Timestamp: now, Line: "live"},
+	}
+	_, err := s.Push(context.Background(), entries, recordPool.GetRecord(), 0, true, false, nil, "loki")
+	require.NoError(t, err)
+
+	require.Len(t, s.openHeads, 3)
+	require.Len(t, s.chunks, 4)
+
+	itr, err := s.Iterator(context.Background(), nil, now.Add(-6*time.Hour), now.Add(time.Hour), logproto.FORWARD, log.NewNoopPipeline().ForStream(s.labels))
+	require.NoError(t, err)
+	iterEq(t, entries, itr)
+}
+
+func TestIngesterTimeSharding_PerBucketCutoffAllowsOldBackfillAfterRecentWrites(t *testing.T) {
+	chunkfmt, headfmt := defaultChunkFormat(t)
+	cfg := defaultConfig()
+	cfg.MaxChunkAge = 2 * time.Hour
+
+	limiter := newTimeShardingLimiter(t, shardstreams.Config{
+		Enabled:        true,
+		IgnoreRecent:   40 * time.Minute,
+		MaxOpenBuckets: 16,
+	})
+	retentionHours := util.RetentionHours(limiter.limits.RetentionPeriod("fake"))
+
+	s := newStream(chunkfmt, headfmt, cfg, limiter.rateLimitStrategy, "fake", model.Fingerprint(0), labels.FromStrings("foo", "bar"), NewStreamRateCalculator(), NilMetrics, nil, nil, retentionHours, noPolicy, limiter.limits)
+
+	now := time.Now()
+	_, err := s.Push(context.Background(), []logproto.Entry{{Timestamp: now, Line: "recent"}}, recordPool.GetRecord(), 0, true, false, nil, "loki")
+	require.NoError(t, err)
+
+	// Under today's stream-wide cutoff (relative to the recent write above),
+	// this would be rejected as too far behind. With per-bucket cutoffs, it's
+	// the first entry in its own bucket, so it's accepted.
+	backfillTs := now.Add(-5 * 24 * time.Hour)
+	_, err = s.Push(context.Background(), []logproto.Entry{{Timestamp: backfillTs, Line: "backfill"}}, recordPool.GetRecord(), 0, true, false, nil, "loki")
+	require.NoError(t, err)
+
+	require.Len(t, s.openHeads, 1)
+}
+
+func TestIngesterTimeSharding_MaxOpenBucketsEnforced(t *testing.T) {
+	chunkfmt, headfmt := defaultChunkFormat(t)
+	cfg := defaultConfig()
+	cfg.MaxChunkAge = 2 * time.Hour // bucket width = 1h
+
+	limiter := newTimeShardingLimiter(t, shardstreams.Config{
+		Enabled:        true,
+		IgnoreRecent:   40 * time.Minute,
+		MaxOpenBuckets: 2,
+	})
+	retentionHours := util.RetentionHours(limiter.limits.RetentionPeriod("fake"))
+
+	s := newStream(chunkfmt, headfmt, cfg, limiter.rateLimitStrategy, "fake", model.Fingerprint(0), labels.FromStrings("foo", "bar"), NewStreamRateCalculator(), NilMetrics, nil, nil, retentionHours, noPolicy, limiter.limits)
+
+	now := time.Now()
+	entries := []logproto.Entry{
+		{Timestamp: now.Add(-10 * time.Hour), Line: "bucket-1"},
+		{Timestamp: now.Add(-8 * time.Hour), Line: "bucket-2"},
+		{Timestamp: now.Add(-6 * time.Hour), Line: "bucket-3-overflow"},
+	}
+	_, err := s.Push(context.Background(), entries, recordPool.GetRecord(), 0, true, false, nil, "loki")
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "time-shard bucket")
+
+	require.LessOrEqual(t, len(s.openHeads), 2)
+}
+
+func TestIngesterTimeSharding_SkipsWhenBackfillLabelPresent(t *testing.T) {
+	chunkfmt, headfmt := defaultChunkFormat(t)
+	cfg := defaultConfig()
+	cfg.MaxChunkAge = 2 * time.Hour
+
+	limiter := newTimeShardingLimiter(t, shardstreams.Config{
+		Enabled:        true,
+		IgnoreRecent:   40 * time.Minute,
+		MaxOpenBuckets: 16,
+	})
+	retentionHours := util.RetentionHours(limiter.limits.RetentionPeriod("fake"))
+
+	ls := labels.FromStrings("foo", "bar", constants.BackfillLabel, "true")
+	s := newStream(chunkfmt, headfmt, cfg, limiter.rateLimitStrategy, "fake", model.Fingerprint(0), ls, NewStreamRateCalculator(), NilMetrics, nil, nil, retentionHours, noPolicy, limiter.limits)
+	require.True(t, s.skipTimeSharding)
+
+	now := time.Now()
+	_, err := s.Push(context.Background(), []logproto.Entry{{Timestamp: now, Line: "recent"}}, recordPool.GetRecord(), 0, true, false, nil, "loki")
+	require.NoError(t, err)
+
+	oldTs := now.Add(-5 * time.Hour)
+	_, err = s.Push(context.Background(), []logproto.Entry{{Timestamp: oldTs, Line: "old"}}, recordPool.GetRecord(), 0, true, false, nil, "loki")
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "too far behind")
+	require.Empty(t, s.openHeads)
+}
+
 func Benchmark_PushStream(b *testing.B) {
 	ls := labels.FromStrings(
 		"namespace", "loki-dev",
@@ -661,7 +824,7 @@ func Benchmark_PushStream(b *testing.B) {
 	limiter := NewLimiter(limits, NilMetrics, newIngesterRingLimiterStrategy(&ringCountMock{count: 1}, 1), &TenantBasedStrategy{limits: limits})
 	chunkfmt, headfmt := defaultChunkFormat(b)
 	retentionHours := util.RetentionHours(limiter.limits.RetentionPeriod("fake"))
-	s := newStream(chunkfmt, headfmt, &Config{MaxChunkAge: 24 * time.Hour}, limiter.rateLimitStrategy, "fake", model.Fingerprint(0), ls, NewStreamRateCalculator(), NilMetrics, nil, nil, retentionHours, noPolicy)
+	s := newStream(chunkfmt, headfmt, &Config{MaxChunkAge: 24 * time.Hour}, limiter.rateLimitStrategy, "fake", model.Fingerprint(0), ls, NewStreamRateCalculator(), NilMetrics, nil, nil, retentionHours, noPolicy, limiter.limits)
 	expr, err := syntax.ParseLogSelector(`{namespace="loki-dev"}`, true)
 	require.NoError(b, err)
 	t, err := newTailer("foo", expr, &fakeTailServer{}, 10)
@@ -702,4 +865,67 @@ type providerMock struct {
 
 func (m *providerMock) TenantConfig(userID string) *runtime.Config {
 	return m.tenantConfig(userID)
+}
+
+// TestIngesterTimeSharding_CheckpointRoundTrip verifies that a stream's open
+// time-shard buckets survive a checkpoint round-trip: openHeads and
+// bucketHighestTs are correctly reconstructed on a freshly recovered stream
+// (simulating an ingester restart), so a subsequent push for the same
+// historical bucket reuses the recovered chunk instead of opening a new one.
+func TestIngesterTimeSharding_CheckpointRoundTrip(t *testing.T) {
+	chunkfmt, headfmt := defaultChunkFormat(t)
+	cfg := defaultConfig()
+	cfg.MaxChunkAge = 2 * time.Hour // bucket width = 1h
+
+	limiter := newTimeShardingLimiter(t, shardstreams.Config{
+		Enabled:        true,
+		IgnoreRecent:   40 * time.Minute,
+		MaxOpenBuckets: 16,
+	})
+	retentionHours := util.RetentionHours(limiter.limits.RetentionPeriod("fake"))
+	lbs := labels.FromStrings("foo", "bar")
+
+	orig := newStream(chunkfmt, headfmt, cfg, limiter.rateLimitStrategy, "fake", model.Fingerprint(0), lbs, NewStreamRateCalculator(), NilMetrics, nil, nil, retentionHours, noPolicy, limiter.limits)
+
+	now := time.Now().Round(0)
+	entries := []logproto.Entry{
+		{Timestamp: now.Add(-5 * time.Hour), Line: "bucket-a"},
+		{Timestamp: now.Add(-3 * time.Hour), Line: "bucket-b"},
+		{Timestamp: now, Line: "live"},
+	}
+	_, err := orig.Push(context.Background(), entries, recordPool.GetRecord(), 0, true, false, nil, "loki")
+	require.NoError(t, err)
+	require.Len(t, orig.openHeads, 2)
+
+	// Serialize, exactly as a checkpoint write would.
+	wire, err := toWireChunks(orig.chunks, nil)
+	require.NoError(t, err)
+	chunks := make([]Chunk, 0, len(wire))
+	for _, wc := range wire {
+		chunks = append(chunks, wc.Chunk)
+	}
+
+	// Recover into a brand new stream, simulating an ingester restart.
+	recovered := newStream(chunkfmt, headfmt, cfg, limiter.rateLimitStrategy, "fake", model.Fingerprint(0), lbs, NewStreamRateCalculator(), NilMetrics, nil, nil, retentionHours, noPolicy, limiter.limits)
+	_, _, err = recovered.setChunks(chunks)
+	require.NoError(t, err)
+
+	require.Len(t, recovered.openHeads, 2)
+	for bucketStart, origIdx := range orig.openHeads {
+		recIdx, ok := recovered.openHeads[bucketStart]
+		require.True(t, ok, "bucket %d missing after recovery", bucketStart)
+		require.Equal(t, orig.chunks[origIdx].bucketStart.Unix(), recovered.chunks[recIdx].bucketStart.Unix())
+		require.False(t, recovered.chunks[recIdx].closed)
+	}
+	// bucketHighestTs should be seeded from each recovered chunk's own bounds.
+	for bucketStart := range orig.openHeads {
+		require.False(t, recovered.bucketHighestTs[bucketStart].IsZero())
+	}
+
+	// A further push into the same historical bucket must reuse the
+	// recovered head rather than opening a new one.
+	moreBackfill := now.Add(-5 * time.Hour).Add(time.Minute)
+	_, err = recovered.Push(context.Background(), []logproto.Entry{{Timestamp: moreBackfill, Line: "more-bucket-a"}}, recordPool.GetRecord(), 0, true, false, nil, "loki")
+	require.NoError(t, err)
+	require.Len(t, recovered.openHeads, 2, "no new bucket should have been opened for a timestamp within an already-recovered bucket")
 }
