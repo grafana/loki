@@ -5,7 +5,9 @@ import (
 	"context"
 	"errors"
 	"math"
+	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/go-kit/log"
 	"github.com/golang/snappy"
@@ -25,9 +27,13 @@ type postingsTestCache struct {
 	entries  map[string][]byte
 	fetchErr error
 	storeErr error
+	fetches  int
+	stores   int
+	hits     int
 }
 
 func (c *postingsTestCache) Store(_ context.Context, keys []string, bufs [][]byte) error {
+	c.stores++
 	if c.storeErr != nil {
 		return c.storeErr
 	}
@@ -39,6 +45,7 @@ func (c *postingsTestCache) Store(_ context.Context, keys []string, bufs [][]byt
 }
 
 func (c *postingsTestCache) Fetch(_ context.Context, keys []string) ([]string, [][]byte, []string, error) {
+	c.fetches++
 	if c.fetchErr != nil {
 		return nil, nil, nil, c.fetchErr
 	}
@@ -46,7 +53,38 @@ func (c *postingsTestCache) Fetch(_ context.Context, keys []string) ([]string, [
 	if !ok {
 		return nil, nil, keys, nil
 	}
+	c.hits++
 	return keys, [][]byte{buf}, nil, nil
+}
+
+func TestCommonMultiTenantPostingsCache(t *testing.T) {
+	root := t.TempDir()
+	path := setupMultiTenantIndex(t, index.FormatV3, map[string][]stream{
+		"tenant-a": {{labels: labels.FromStrings("app", "api"), fp: 1, chunks: index.ChunkMetas{{MinTime: 0, MaxTime: 10, Checksum: 11}}}},
+		"tenant-b": {{labels: labels.FromStrings("app", "api"), fp: 2, chunks: index.ChunkMetas{{MinTime: 0, MaxTime: 10, Checksum: 22}}}},
+	}, filepath.Join(root, "table"), time.Unix(1, 0))
+	backend := &postingsTestCache{}
+	c := newPostingsCache(backend, "test", prometheus.NewRegistry(), log.NewNopLogger())
+	file, err := openShippableTSDBWithPostingsCache(path, index.MmapOptions{}, c, "prefix", root)
+	require.NoError(t, err)
+	t.Cleanup(func() { require.NoError(t, file.Close()) })
+	idx := NewMultiTenantIndex(file.(*TSDBFile))
+	matcher := labels.MustNewMatcher(labels.MatchEqual, "app", "api")
+	for i, tenant := range []string{"tenant-a", "tenant-b"} {
+		first, err := idx.GetChunkRefs(context.Background(), tenant, 0, 10, nil, nil, matcher)
+		require.NoError(t, err)
+		require.Len(t, first, 1)
+		require.Equal(t, tenant, first[0].UserID)
+		require.Equal(t, uint64(i+1), first[0].Fingerprint)
+		require.Equal(t, uint32(11*(i+1)), first[0].Checksum)
+		second, err := idx.GetChunkRefs(context.Background(), tenant, 0, 10, nil, nil, matcher)
+		require.NoError(t, err)
+		require.Equal(t, first, second)
+		require.Equal(t, 2*(i+1), backend.fetches, "queries must fetch postings through the cache attached by the opener")
+		require.Equal(t, i+1, backend.stores, "only the first query for each tenant should store postings")
+		require.Equal(t, i+1, backend.hits, "the repeated query must hit cached postings")
+	}
+	require.Len(t, backend.entries, 2, "tenant matchers must produce separate cache entries")
 }
 
 func (*postingsTestCache) Stop() {}
@@ -182,8 +220,32 @@ func TestPostingsObjectIdentityFromDownloadedPath(t *testing.T) {
 	require.NotEqual(t, identity, objectIdentity("prefix-a", "table-a", "tenant-a", "file-a.tsdb"))
 	_, ok = postingsObjectIdentity(root, "/cache/table-b/tenant-a/file-a.tsdb", "prefix-a")
 	require.True(t, ok)
-	_, ok = postingsObjectIdentity(root, "/cache/table-a/file-a.tsdb", "prefix-a")
-	require.False(t, ok)
+	common, ok := postingsObjectIdentity(root, "/cache/table-a/file-a.tsdb", "prefix-a")
+	require.True(t, ok)
+	require.Equal(t, objectIdentity("prefix-a", "table-a", "", "file-a.tsdb"), common)
+	for _, tc := range []struct {
+		path   string
+		prefix string
+	}{
+		{"/cache/table-a/file-a.tsdb", "prefix-b"},
+		{"/cache/table-b/file-a.tsdb", "prefix-a"},
+		{"/cache/table-a/file-b.tsdb", "prefix-a"},
+		{"/cache/table-a/tenant-a/file-a.tsdb", "prefix-a"},
+		{"/cache/table-a/common/file-a.tsdb", "prefix-a"},
+	} {
+		other, ok := postingsObjectIdentity(root, tc.path, tc.prefix)
+		require.True(t, ok)
+		require.NotEqual(t, common, other, "common identity must distinguish prefix, table, filename and per-tenant objects")
+	}
+	for _, path := range []string{
+		root,
+		"/cache/file-a.tsdb",
+		"/other/table-a/file-a.tsdb",
+		"/cache/../other/table-a/file-a.tsdb",
+	} {
+		_, ok := postingsObjectIdentity(root, path, "prefix-a")
+		require.False(t, ok, "invalid path: %s", path)
+	}
 	_, ok = postingsObjectIdentity(root, "/other/table-a/tenant-a/file-a.tsdb", "prefix-a")
 	require.False(t, ok)
 	_, ok = postingsObjectIdentity(root, "/cache/extra/table-a/tenant-a/file-a.tsdb", "prefix-a")

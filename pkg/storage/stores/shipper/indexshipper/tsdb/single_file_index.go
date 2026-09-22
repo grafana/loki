@@ -107,8 +107,16 @@ func postingsObjectIdentity(indexCacheLocation, filePath, storagePrefix string) 
 	}
 	dir, filename := filepath.Split(relative)
 	dir, tenant := filepath.Split(filepath.Clean(dir))
+	if tenant == "." || filename == "" {
+		return "", false
+	}
+	if dir == "" {
+		// Common files live directly under the table directory. Tenant isolation
+		// comes from the matcher injected by MultiTenantIndex, not the file path.
+		return objectIdentity(storagePrefix, tenant, "", filename), true
+	}
 	parent, table := filepath.Split(filepath.Clean(dir))
-	if parent != "" || table == "." || tenant == "." || filename == "" {
+	if parent != "" || table == "." {
 		return "", false
 	}
 	return objectIdentity(storagePrefix, table, tenant, filename), true
