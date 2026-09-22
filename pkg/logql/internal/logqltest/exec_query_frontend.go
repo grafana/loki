@@ -194,8 +194,8 @@ func (*queryFrontendExecutionStack) isEvalSupported(_ evalCmd, exp expectations)
 	return exp.scalar == nil
 }
 
-func (s *queryFrontendExecutionStack) setStreams(streams []logproto.Stream) {
-	store := newScriptStore(s.t, streams)
+func (s *queryFrontendExecutionStack) setStreams(groups [][]logproto.Stream) {
+	store := newScriptStore(s.t, groups)
 	s.storeMu.Lock()
 	old := s.store
 	s.store = store

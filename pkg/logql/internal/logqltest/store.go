@@ -113,7 +113,8 @@ func (s *testingChunkStore) write(t *testing.T, streams []logproto.Stream) {
 	}
 }
 
-// flush writes all buffered chunks to the store so they become queryable.
+// flush writes all buffered chunks to the store so they become queryable. A later write to the
+// same stream starts a new chunk.
 func (s *testingChunkStore) flush(t *testing.T) {
 	t.Helper()
 

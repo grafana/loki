@@ -17,7 +17,9 @@ func TestStreamsParser(t *testing.T) {
 		s := newStreamsParser()
 		require.NoError(t, s.parse(`{app="foo"} "value={{.i}}" @ 0s [repeat every 10s for 3] [metadata lvl="info"]`))
 
-		streams := s.get()
+		groups := s.get()
+		require.Len(t, groups, 1)
+		streams := groups[0]
 		require.Len(t, streams, 1)
 		require.Equal(t, `{app="foo"}`, streams[0].Labels)
 
@@ -31,7 +33,7 @@ func TestStreamsParser(t *testing.T) {
 
 		// Entries for the same stream labels accumulate; a missing timestamp is an error.
 		require.NoError(t, s.parse(`{app="foo"} "extra" @ 100s`))
-		require.Len(t, s.get()[0].Entries, 4)
+		require.Len(t, s.get()[0][0].Entries, 4)
 		require.Error(t, s.parse(`{app="foo"} "no timestamp"`))
 	})
 
@@ -40,7 +42,9 @@ func TestStreamsParser(t *testing.T) {
 		require.NoError(t, s.parse(`{app="foo", env="prod"} "x" @ 0s`))
 		require.NoError(t, s.parse(`{env="prod", app="foo"} "y" @ 10s`))
 
-		streams := s.get()
+		groups := s.get()
+		require.Len(t, groups, 1)
+		streams := groups[0]
 		require.Len(t, streams, 1)
 		require.Equal(t, `{app="foo", env="prod"}`, streams[0].Labels)
 		require.Len(t, streams[0].Entries, 2)
@@ -51,10 +55,28 @@ func TestStreamsParser(t *testing.T) {
 		s := newStreamsParser()
 		require.NoError(t, s.parse(`{app="foo"} `+bt+`{"level":"info","n":1}`+bt+` @ 0s`))
 
-		streams := s.get()
+		groups := s.get()
+		require.Len(t, groups, 1)
+		streams := groups[0]
 		require.Len(t, streams, 1)
 		require.Len(t, streams[0].Entries, 1)
 		require.Equal(t, `{"level":"info","n":1}`, streams[0].Entries[0].Line)
+	})
+
+	t.Run("flush splits one stream into two logs groups", func(t *testing.T) {
+		s := newStreamsParser()
+
+		// A flush before any load, and a repeated flush, keep an empty group out of the result.
+		s.flush()
+		require.NoError(t, s.parse(`{app="foo"} "x" @ 0s`))
+		s.flush()
+		s.flush()
+		require.NoError(t, s.parse(`{app="foo"} "y" @ 0s`))
+
+		groups := s.get()
+		require.Len(t, groups, 2)
+		require.Equal(t, "x", groups[0][0].Entries[0].Line)
+		require.Equal(t, "y", groups[1][0].Entries[0].Line)
 	})
 }
 
@@ -150,7 +172,7 @@ func TestStreamsParser_RejectsMalformedDirectives(t *testing.T) {
 	// A well-formed directive still loads the full set of entries.
 	s := newStreamsParser()
 	require.NoError(t, s.parse(`{app="foo"} "x" @ 0s [repeat every 10s for 19]`))
-	require.Len(t, s.get()[0].Entries, 19)
+	require.Len(t, s.get()[0][0].Entries, 19)
 }
 
 func TestParseEval(t *testing.T) {

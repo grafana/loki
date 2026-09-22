@@ -60,6 +60,7 @@ func TestParseLoadBlock(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, 2, next)
 	require.Len(t, p.get(), 1)
+	require.Len(t, p.get()[0], 1)
 
 	// A load block with no data lines is rejected rather than silently loading nothing.
 	_, err = parseLoadBlock(newStreamsParser(), []string{"load", "", `eval instant at 0s vector(1)`}, 1)

@@ -50,13 +50,41 @@ var (
 	reKeyValuePairs = regexp.MustCompile(`(?:"([^"]*)"|([^\s"=]+))="([^"]*)"`)
 )
 
-type streamsParser struct {
+// logsGroup holds the entries the store writes as one unit per stream, which the current store
+// writes as one chunk. A `flush` command starts a new group, so a stream loaded on both sides of
+// it ends up in two units that overlap in time. That is the only layout in which the store
+// deduplicates samples.
+type logsGroup struct {
 	streamsOrder []string
 	streams      map[string]*logproto.Stream
 }
 
+func newLogsGroup() *logsGroup {
+	return &logsGroup{streams: map[string]*logproto.Stream{}}
+}
+
+// streamsParser accumulates the log streams a script loads, split into logs groups.
+type streamsParser struct {
+	// groups holds one element per logs group, in script order. There is always at least one.
+	groups []*logsGroup
+}
+
 func newStreamsParser() *streamsParser {
-	return &streamsParser{streams: map[string]*logproto.Stream{}}
+	return &streamsParser{groups: []*logsGroup{newLogsGroup()}}
+}
+
+// current returns the logs group the next loaded entry goes to.
+func (p *streamsParser) current() *logsGroup {
+	return p.groups[len(p.groups)-1]
+}
+
+// flush starts a new logs group. It does nothing while the current group is empty, so a repeated
+// or leading `flush` cannot put an empty group in the store.
+func (p *streamsParser) flush() {
+	if len(p.current().streamsOrder) == 0 {
+		return
+	}
+	p.groups = append(p.groups, newLogsGroup())
 }
 
 func (p *streamsParser) parse(line string) error {
@@ -120,12 +148,13 @@ func (p *streamsParser) parse(line string) error {
 		return fmt.Errorf("unexpected content after log line: %q", leftover)
 	}
 
-	// Create the log stream.
-	stream, ok := p.streams[streamLabels]
+	// Create the log stream in the current logs group.
+	group := p.current()
+	stream, ok := group.streams[streamLabels]
 	if !ok {
 		stream = &logproto.Stream{Labels: streamLabels}
-		p.streams[streamLabels] = stream
-		p.streamsOrder = append(p.streamsOrder, streamLabels)
+		group.streams[streamLabels] = stream
+		group.streamsOrder = append(group.streamsOrder, streamLabels)
 	}
 	for i := 0; i < count; i++ {
 		stream.Entries = append(stream.Entries, push.Entry{
@@ -138,11 +167,19 @@ func (p *streamsParser) parse(line string) error {
 	return nil
 }
 
-// get returns the parsed log streams in the same order they appear in the script.
-func (p *streamsParser) get() []logproto.Stream {
-	out := make([]logproto.Stream, 0, len(p.streamsOrder))
-	for _, k := range p.streamsOrder {
-		out = append(out, *p.streams[k])
+// get returns the parsed logs groups in script order, each holding its log streams in the order
+// they appear in the script. An empty group is omitted.
+func (p *streamsParser) get() [][]logproto.Stream {
+	out := make([][]logproto.Stream, 0, len(p.groups))
+	for _, group := range p.groups {
+		if len(group.streamsOrder) == 0 {
+			continue
+		}
+		streams := make([]logproto.Stream, 0, len(group.streamsOrder))
+		for _, k := range group.streamsOrder {
+			streams = append(streams, *group.streams[k])
+		}
+		out = append(out, streams)
 	}
 	return out
 }
