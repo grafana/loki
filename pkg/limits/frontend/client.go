@@ -21,6 +21,12 @@ type limitsClient interface {
 
 	// UpdateRates updates the per-second rates for the streams.
 	UpdateRates(context.Context, *proto.UpdateRatesRequest) (*proto.UpdateRatesResponse, error)
+
+	// CheckLimitsAndShard checks limits and returns a shard-count
+	// recommendation per stream. The results may cover just a subset of the
+	// requested streams, as backends do not answer streams whose partition
+	// they do not own, and unavailable backends do not answer at all.
+	CheckLimitsAndShard(context.Context, *proto.CheckLimitsAndShardRequest) (*proto.CheckLimitsAndShardResponse, error)
 }
 
 // A cacheLimitsClient uses caches to reduce the load on limits backends.
@@ -76,6 +82,11 @@ func (c *cacheLimitsClient) ExceedsLimits(ctx context.Context, req *proto.Exceed
 // UpdateRates implements the [limitsClient] interface.
 func (c *cacheLimitsClient) UpdateRates(ctx context.Context, req *proto.UpdateRatesRequest) (*proto.UpdateRatesResponse, error) {
 	return c.onMiss.UpdateRates(ctx, req)
+}
+
+// CheckLimitsAndShard implements the [limitsClient] interface.
+func (c *cacheLimitsClient) CheckLimitsAndShard(ctx context.Context, req *proto.CheckLimitsAndShardRequest) (*proto.CheckLimitsAndShardResponse, error) {
+	return c.onMiss.CheckLimitsAndShard(ctx, req)
 }
 
 type acceptedStreamsCache struct {

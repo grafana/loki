@@ -156,8 +156,11 @@ func TestIteratorWithStreamRemap_MergesAcrossObjects(t *testing.T) {
 
 	sections, remaps := planGlobalStreams(ctx, t, []*dataobj.Object{objA, objB}, sortSchema)
 
-	iter, err := sortmerge.MixedObjectIterator(ctx, sections, remaps, sortSchema)
-	require.NoError(t, err)
+	runs := make([]sortmerge.Run, len(sections))
+	for i, section := range sections {
+		runs[i] = sortmerge.Run{{Section: section, Remap: remaps[i]}}
+	}
+	iter := sortmerge.MixedRunIterator(ctx, runs, sortSchema)
 
 	var (
 		count int

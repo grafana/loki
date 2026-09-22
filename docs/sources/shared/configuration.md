@@ -1650,6 +1650,18 @@ dataobj:
     # CLI flag: -dataobj.compaction.polling-interval
     [polling_interval: <duration> | default = 5m]
 
+    # Experimental: Minimum wait a per-tenant worker applies between compaction
+    # phases, and the starting point of the exponential backoff idle or failing
+    # tenants grow toward max-backoff.
+    # CLI flag: -dataobj.compaction.min-backoff
+    [min_backoff: <duration> | default = 1m]
+
+    # Experimental: Maximum wait a per-tenant worker backs off to after
+    # consecutive no-work (converged or empty) or failing phases, so an idle
+    # worker stops hammering object storage.
+    # CLI flag: -dataobj.compaction.max-backoff
+    [max_backoff: <duration> | default = 15m]
+
     # Experimental: Number of older metastore windows to compact in addition to
     # the current window. 0 compacts only the current window; 1 also compacts
     # the previous window.
@@ -2434,6 +2446,28 @@ The `azure_storage_config` block configures the connection to Azure object stora
 # Maximum time to wait before retrying a request.
 # CLI flag: -<prefix>.azure.max-retry-delay
 [max_retry_delay: <duration> | default = 500ms]
+
+http_config:
+  # Skip TLS certificate verification for Azure blob storage connections.
+  # CLI flag: -<prefix>.azure.http.insecure-skip-verify
+  [insecure_skip_verify: <boolean> | default = false]
+
+  # Path to a CA certificate file to trust for Azure blob storage TLS
+  # connections.
+  # CLI flag: -<prefix>.azure.http.tls-ca-path
+  [tls_ca_path: <string> | default = ""]
+
+  # Path to the client certificate for mutual TLS with Azure blob storage.
+  # CLI flag: -<prefix>.azure.http.tls-cert-path
+  [tls_cert_path: <string> | default = ""]
+
+  # Path to the client key for mutual TLS with Azure blob storage.
+  # CLI flag: -<prefix>.azure.http.tls-key-path
+  [tls_key_path: <string> | default = ""]
+
+  # Override the server name used in the TLS handshake with Azure blob storage.
+  # CLI flag: -<prefix>.azure.http.tls-server-name
+  [tls_server_name: <string> | default = ""]
 ```
 
 ### bloom_build
@@ -6311,7 +6345,9 @@ The `s3_storage_config` block configures the connection to Amazon S3 object stor
 # CLI flag: -<prefix>.s3.session-token
 [session_token: <string> | default = ""]
 
-# Disable https on s3 connection.
+# Disable https on s3 connection. This does not affect TLS certificate
+# verification for HTTPS connections; use s3.http.insecure-skip-verify (or
+# s3.http.ca-file) for that.
 # CLI flag: -<prefix>.s3.insecure
 [insecure: <boolean> | default = false]
 
@@ -6724,6 +6760,13 @@ cluster_validation:
 # using Open-Telemetry tracing.
 # CLI flag: -server.create-new-traces
 [create_new_traces: <boolean> | default = false]
+
+# Specifies if this handler should emit start timestamps for counters,
+# histograms and summaries over OpenMetrics 1.0, which are defined as extra
+# series with the same name and "_created" suffix. Only applies if
+# -server.register-instrumentation is set to true.
+# CLI flag: -server.enable-open-metrics-text-created-samples
+[enable_open_metrics_text_created_samples: <boolean> | default = false]
 ```
 
 ### storage_config
@@ -6952,6 +6995,28 @@ tsdb_shipper:
     # Only applies to simple mode.
     # CLI flag: -tsdb.shipper.index-gateway-client.min-shuffle-shard-size
     [min_shuffle_shard_size: <int> | default = 3]
+
+    # Experimental: Maximum number of requests this index gateway client may
+    # have in flight at once. Requests arriving when the limit is reached are
+    # rejected immediately with an HTTP 503 status instead of waiting, which
+    # bounds the resources this process commits to an index gateway that is
+    # slow, saturated, or unreachable. The limit applies per client: one client
+    # is built per schema period config, doubled when the shadow index gateway
+    # client is enabled, so the process-wide number of in-flight requests can
+    # reach this value multiplied by the number of clients. 0 disables the
+    # limit.
+    # CLI flag: -tsdb.shipper.index-gateway-client.max-in-flight-requests
+    [max_in_flight_requests: <int> | default = 0]
+
+    # Experimental: Maximum number of other index gateway instances a failed
+    # request is retried against. Each instance is tried at most once, so a
+    # request makes at most this many retries plus one attempt in total.
+    # Bounding this stops a single request from walking every replica, which can
+    # otherwise block the calling goroutine for the sum of every replica's
+    # timeout. -1 preserves the existing behavior: up to 2 retries for GetShards
+    # and all candidate instances for other requests. 0 disables retries.
+    # CLI flag: -tsdb.shipper.index-gateway-client.max-retries
+    [max_retries: <int> | default = -1]
 
   # Experimental. Number of idle file handles the stream index reader keeps open
   # per index file. Only applies when -shipper.index-reader-mode=stream. Set to
@@ -7364,6 +7429,63 @@ azure:
   # Delimiter used to replace ':' in chunk IDs when storing chunks
   # CLI flag: -<prefix>.azure.chunk-delimiter
   [chunk_delimiter: <string> | default = "-"]
+
+  http_config:
+    # The time an idle connection will remain idle before closing.
+    # CLI flag: -<prefix>.azure.http.idle-conn-timeout
+    [idle_conn_timeout: <duration> | default = 1m30s]
+
+    # The amount of time the client will wait for a servers response headers.
+    # CLI flag: -<prefix>.azure.http.response-header-timeout
+    [response_header_timeout: <duration> | default = 2m]
+
+    # If the client connects via HTTPS and this option is enabled, the client
+    # will accept any certificate and hostname.
+    # CLI flag: -<prefix>.azure.http.insecure-skip-verify
+    [insecure_skip_verify: <boolean> | default = false]
+
+    # Maximum time to wait for a TLS handshake. 0 means no limit.
+    # CLI flag: -<prefix>.azure.tls-handshake-timeout
+    [tls_handshake_timeout: <duration> | default = 10s]
+
+    # The time to wait for a server's first response headers after fully writing
+    # the request headers if the request has an Expect header. 0 to send the
+    # request body immediately.
+    # CLI flag: -<prefix>.azure.expect-continue-timeout
+    [expect_continue_timeout: <duration> | default = 1s]
+
+    # Maximum number of idle (keep-alive) connections across all hosts. 0 means
+    # no limit.
+    # CLI flag: -<prefix>.azure.max-idle-connections
+    [max_idle_connections: <int> | default = 100]
+
+    # Maximum number of idle (keep-alive) connections to keep per-host. If 0, a
+    # built-in default value is used.
+    # CLI flag: -<prefix>.azure.max-idle-connections-per-host
+    [max_idle_connections_per_host: <int> | default = 100]
+
+    # Maximum number of connections per host. 0 means no limit.
+    # CLI flag: -<prefix>.azure.max-connections-per-host
+    [max_connections_per_host: <int> | default = 0]
+
+    # Path to the CA certificates to validate server certificate against. If not
+    # set, the host's root CA certificates are used.
+    # CLI flag: -<prefix>.azure.http.tls-ca-path
+    [tls_ca_path: <string> | default = ""]
+
+    # Path to the client certificate, which will be used for authenticating with
+    # the server. Also requires the key path to be configured.
+    # CLI flag: -<prefix>.azure.http.tls-cert-path
+    [tls_cert_path: <string> | default = ""]
+
+    # Path to the key for the client certificate. Also requires the client
+    # certificate to be configured.
+    # CLI flag: -<prefix>.azure.http.tls-key-path
+    [tls_key_path: <string> | default = ""]
+
+    # Override the expected name on the server certificate.
+    # CLI flag: -<prefix>.azure.http.tls-server-name
+    [tls_server_name: <string> | default = ""]
 
 swift:
   # OpenStack Swift application credential id

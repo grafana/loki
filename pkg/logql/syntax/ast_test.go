@@ -621,6 +621,20 @@ func Test_FilterMatcher(t *testing.T) {
 			},
 			[]linecheck{{"\\", false}, {"|", true}},
 		},
+		{
+			`{app="foo"} | decolorize |= "duration=3"`,
+			[]*labels.Matcher{
+				mustNewMatcher(labels.MatchEqual, "app", "foo"),
+			},
+			[]linecheck{{"\x1b[36mduration=\x1b[0m3.62", true}, {"duration=3.62", true}, {"\x1b[36mduration=\x1b[0m4.21", false}},
+		},
+		{
+			`{app="foo"} | decolorize |~ "\\[36m"`,
+			[]*labels.Matcher{
+				mustNewMatcher(labels.MatchEqual, "app", "foo"),
+			},
+			[]linecheck{{"\x1b[36mduration=\x1b[0m3.62", false}, {"[36m", true}},
+		},
 	} {
 		t.Run(tt.q, func(t *testing.T) {
 			t.Parallel()
@@ -1060,6 +1074,16 @@ func TestFilterReordering(t *testing.T) {
 		stages := l.(*PipelineExpr).MultiStages.reorderStages()
 		require.Len(t, stages, 5)
 		require.Equal(t, `|= "06497595" | unpack != "message" | json | line_format "new log: {{.foo}}"`, MultiStageExpr(stages).String())
+	})
+
+	t.Run("it makes sure line filters after decolorize stay after decolorize", func(t *testing.T) {
+		logExpr := `{container_name="app"} |= "foo" | decolorize |= "bar" | logfmt |= "baz"`
+		l, err := ParseExpr(logExpr)
+		require.NoError(t, err)
+
+		stages := l.(*PipelineExpr).MultiStages.reorderStages()
+		require.Len(t, stages, 4)
+		require.Equal(t, `|= "foo" | decolorize |= "bar" |= "baz" | logfmt`, MultiStageExpr(stages).String())
 	})
 
 	t.Run("it makes sure label filter order is kept", func(t *testing.T) {

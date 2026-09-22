@@ -426,12 +426,16 @@ func (b *Builder) TimeRanges() []multitenancy.TimeRange {
 // Flush flushes all buffered data to the buffer provided. Calling Flush can result
 // in a no-op if there is no buffered data to flush.
 //
-// [Builder.Reset] is called after a successful Flush to discard any pending
-// data and allow new data to be appended.
+// On success the caller owns the returned [io.Closer] and must close it to
+// release the object's backing scratch storage; reads of the object fail once
+// it is closed. If an error is returned the closer is always nil.
+//
+// Flush always resets Builder.
 func (b *Builder) Flush() (*dataobj.Object, io.Closer, error) {
 	if b.state == builderStateEmpty {
 		return nil, nil, ErrBuilderEmpty
 	}
+	defer b.Reset()
 
 	timer := prometheus.NewTimer(b.metrics.buildTime)
 	defer timer.ObserveDuration()
@@ -459,10 +463,11 @@ func (b *Builder) Flush() (*dataobj.Object, io.Closer, error) {
 
 	b.metrics.builtSize.Observe(float64(obj.Size()))
 
-	err = b.observeObject(context.Background(), obj)
+	if err := b.observeObject(context.Background(), obj); err != nil {
+		return nil, nil, errors.Join(fmt.Errorf("observing object: %w", err), closer.Close())
+	}
 
-	b.Reset()
-	return obj, closer, err
+	return obj, closer, nil
 }
 
 // CopyAndSort takes an existing [dataobj.Object] and rewrites the logs sections

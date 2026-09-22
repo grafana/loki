@@ -28,6 +28,18 @@ type ChunkFetcherProvider interface {
 }
 
 type ChunkFetcher interface {
+	// GetChunks returns the given tenant's chunk refs matching predicate. It must return every
+	// chunk that could hold a log with a timestamp in [from, through): from is inclusive, through
+	// is exclusive.
+	//
+	// It returns refs only, not chunk data: every returned chunk.Chunk has just its ChunkRef
+	// populated (Fingerprint, UserID, From, Through, Checksum). The Metric labels, Encoding, and
+	// Data fields stay at their zero value until the chunk is loaded through the paired Fetcher.
+	//
+	// Chunks come back grouped, with one Fetcher per group. Load the chunks in the i-th group with
+	// the i-th Fetcher. When storeChunksOverride is non-nil, GetChunks uses its refs directly
+	// instead of querying the index, so predicate never runs on them. Only the time-range filter
+	// above still applies.
 	GetChunks(
 		ctx context.Context,
 		userID string,

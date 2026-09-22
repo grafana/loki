@@ -39,6 +39,17 @@ type Config struct {
 	// tick reads the most-recent ToC and plans compaction per tenant.
 	PollingInterval time.Duration `yaml:"polling_interval"`
 
+	// MinBackoff is the minimum wait a per-tenant worker applies between
+	// compaction phases. It is both the floor between productive phases and the
+	// starting point of the exponential backoff that idle or failing tenants
+	// grow toward MaxBackoff.
+	MinBackoff time.Duration `yaml:"min_backoff"`
+
+	// MaxBackoff caps the exponential backoff a per-tenant worker applies after
+	// consecutive no-work (converged or empty) or failing phases, so a worker
+	// with nothing to do stops hammering object storage.
+	MaxBackoff time.Duration `yaml:"max_backoff"`
+
 	// WindowLookback is the number of older metastore windows the coordinator
 	// compacts in addition to the current window. Zero (the default) compacts
 	// only the current window; 1 also compacts the immediately-preceding
@@ -165,6 +176,8 @@ const (
 	defaultEndpoint                     = "/api/v2/compaction-frame"
 
 	defaultPollingInterval       = 5 * time.Minute
+	defaultMinBackoff            = 1 * time.Minute
+	defaultMaxBackoff            = 15 * time.Minute
 	defaultWindowLookback        = 0
 	defaultMaxRunsPerTask        = 8
 	defaultLogMaxRunsPerTask     = 3
@@ -191,6 +204,10 @@ func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 		"Experimental: Per-tenant-cycle cap on concurrent LogMerge tasks dispatched by the coordinator. 0 means unlimited.")
 	f.DurationVar(&cfg.PollingInterval, prefix+"polling-interval", defaultPollingInterval,
 		"Experimental: Coordinator main-loop cadence.")
+	f.DurationVar(&cfg.MinBackoff, prefix+"min-backoff", defaultMinBackoff,
+		"Experimental: Minimum wait a per-tenant worker applies between compaction phases, and the starting point of the exponential backoff idle or failing tenants grow toward max-backoff.")
+	f.DurationVar(&cfg.MaxBackoff, prefix+"max-backoff", defaultMaxBackoff,
+		"Experimental: Maximum wait a per-tenant worker backs off to after consecutive no-work (converged or empty) or failing phases, so an idle worker stops hammering object storage.")
 	f.IntVar(&cfg.WindowLookback, prefix+"window-lookback", defaultWindowLookback,
 		"Experimental: Number of older metastore windows to compact in addition to the current window. 0 compacts only the current window; 1 also compacts the previous window.")
 	f.IntVar(&cfg.MaxRunsPerTask, prefix+"max-runs-per-task", defaultMaxRunsPerTask,
@@ -263,6 +280,12 @@ func (cfg *Config) Validate() error {
 	if cfg.PollingInterval <= 0 {
 		return errInvalidPollingInterval
 	}
+	if cfg.MinBackoff <= 0 {
+		return errInvalidMinBackoff
+	}
+	if cfg.MaxBackoff < cfg.MinBackoff {
+		return errInvalidMaxBackoff
+	}
 	if cfg.WindowLookback < 0 {
 		return errInvalidWindowLookback
 	}
@@ -295,6 +318,8 @@ var (
 	errInvalidLogMaxRunningCompactionTasks = errors.New("dataobj.compaction.logs.max_running_compaction_tasks must be >= 0")
 	errEmptySchedulerEndpoint              = errors.New("dataobj.compaction.scheduler.endpoint must not be empty when compaction is enabled")
 	errInvalidPollingInterval              = errors.New("dataobj.compaction.polling_interval must be > 0 when compaction is enabled")
+	errInvalidMinBackoff                   = errors.New("dataobj.compaction.min_backoff must be > 0 when compaction is enabled")
+	errInvalidMaxBackoff                   = errors.New("dataobj.compaction.max_backoff must be >= dataobj.compaction.min_backoff when compaction is enabled")
 	errInvalidWindowLookback               = errors.New("dataobj.compaction.window_lookback must be >= 0")
 	errInvalidToCConsolidateTimeout        = errors.New("dataobj.compaction.toc_consolidate_timeout must be > 0 when compaction is enabled")
 	errInvalidMaxRunsPerTask               = errors.New("dataobj.compaction.max_runs_per_task must be > 0 when compaction is enabled")
