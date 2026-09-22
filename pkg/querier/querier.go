@@ -575,7 +575,7 @@ func (q *SingleTenantQuerier) Hints(ctx context.Context, req *logproto.HintReque
 	if err != nil {
 		return nil, err
 	}
-	return provider.QuerierProvideHints(ctx, expr, req.Indexes)
+	return provider.QueryHints(ctx, expr, req.Indexes)
 }
 
 func (q *SingleTenantQuerier) IndexShards(

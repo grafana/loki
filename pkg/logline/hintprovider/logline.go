@@ -62,7 +62,7 @@ func NewLoglineHintProvider(
 	return p, nil
 }
 
-func (p *LoglineHintProvider) QuerierProvideHints(
+func (p *LoglineHintProvider) QueryHints(
 	ctx context.Context,
 	expr syntax.Expr,
 	overlapping []logproto.Meta,
