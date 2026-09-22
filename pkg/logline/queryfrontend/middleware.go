@@ -80,7 +80,7 @@ type shardPlanningRerunGuardKeyType struct{}
 type shardPlanningDecision struct {
 	eligible bool
 	reason   string
-	overlaps []logproto.HintTimeRange
+	overlaps []hintprovider.HintTimeRange
 }
 
 type provisionalQueryResult struct {
@@ -91,7 +91,7 @@ type provisionalQueryResult struct {
 // hintPrefetchResult holds pre-computed logline index lookup results, shared
 // between the prefetch and filter middleware layers via context.
 type hintPrefetchResult struct {
-	ranges         []logproto.HintTimeRange // normalized, sorted by start
+	ranges         []hintprovider.HintTimeRange // normalized, sorted by start
 	err            error
 	stats          *hintprovider.QueryStats
 	queryBytes     uint64
@@ -121,7 +121,7 @@ type hintImpactSnapshot struct {
 }
 
 type dryRunLookupResult struct {
-	ranges   []logproto.HintTimeRange
+	ranges   []hintprovider.HintTimeRange
 	err      error
 	stats    *hintprovider.QueryStats
 	duration time.Duration
@@ -420,7 +420,7 @@ func (h *loglinePrefetchHandler) shardPlanningDecision(result *hintPrefetchResul
 	return shardPlanningDecision{eligible: true, reason: "eligible", overlaps: overlaps}
 }
 
-func verifyDryRunHints(hintRanges []logproto.HintTimeRange, resp *queryrange.LokiResponse, eligibleEnd time.Time) verification.Report {
+func verifyDryRunHints(hintRanges []hintprovider.HintTimeRange, resp *queryrange.LokiResponse, eligibleEnd time.Time) verification.Report {
 	if resp == nil {
 		return verification.Report{HintRanges: len(hintRanges)}
 	}
@@ -445,7 +445,7 @@ type dryRunHintSummary struct {
 }
 
 func summarizeDryRunHints(
-	hintRanges []logproto.HintTimeRange,
+	hintRanges []hintprovider.HintTimeRange,
 	queryStart, queryEnd, eligibleEnd time.Time,
 	direction logproto.Direction,
 ) dryRunHintSummary {
@@ -542,7 +542,7 @@ func roundTo1Decimal(v float64) float64 {
 
 // hintRangesTotalSeconds returns the unclipped sum of non-passthrough hint
 // range durations, formatted to one decimal place for log output.
-func hintRangesTotalSeconds(ranges []logproto.HintTimeRange) string {
+func hintRangesTotalSeconds(ranges []hintprovider.HintTimeRange) string {
 	var total float64
 	for _, r := range ranges {
 		if r.IsPassthrough() {
@@ -1176,7 +1176,7 @@ type hintEnvelope struct {
 	End   time.Time
 }
 
-func envelopeQueriedDuration(ranges []logproto.HintTimeRange, start, end time.Time, split time.Duration) time.Duration {
+func envelopeQueriedDuration(ranges []hintprovider.HintTimeRange, start, end time.Time, split time.Duration) time.Duration {
 	var queried time.Duration
 	// LokiRequest splits are half-open [start, end). Zero split disables
 	// splitting, matching querier.split-queries-by-interval.
@@ -1186,7 +1186,7 @@ func envelopeQueriedDuration(ranges []logproto.HintTimeRange, start, end time.Ti
 	return queried
 }
 
-func intervalEnvelopeDuration(ranges []logproto.HintTimeRange, start, end time.Time) time.Duration {
+func intervalEnvelopeDuration(ranges []hintprovider.HintTimeRange, start, end time.Time) time.Duration {
 	var queried time.Duration
 	for _, g := range groupHintEnvelopes(ranges, start, end, envelopeBudget(intervalDuration(start, end))) {
 		queried += intervalDuration(g.Start, g.End)
@@ -1211,15 +1211,15 @@ func envelopeBudget(interval time.Duration) int {
 // groupHintEnvelopes partitions start-sorted hints into at most maxGroups
 // envelopes by cutting the largest inter-hint gaps. Overlapping or touching
 // hints (gap <= 0) are never split. Each envelope is clipped to [intervalStart, intervalEnd].
-func groupHintEnvelopes(ranges []logproto.HintTimeRange, intervalStart, intervalEnd time.Time, maxGroups int) []hintEnvelope {
-	clipped := make([]logproto.HintTimeRange, 0, len(ranges))
+func groupHintEnvelopes(ranges []hintprovider.HintTimeRange, intervalStart, intervalEnd time.Time, maxGroups int) []hintEnvelope {
+	clipped := make([]hintprovider.HintTimeRange, 0, len(ranges))
 	for _, r := range ranges {
 		start := maxTime(r.Start, intervalStart)
 		end := minTime(r.End, intervalEnd)
 		if !end.After(start) {
 			continue
 		}
-		clipped = append(clipped, logproto.HintTimeRange{Start: start, End: end})
+		clipped = append(clipped, hintprovider.HintTimeRange{Start: start, End: end})
 	}
 	if len(clipped) == 0 {
 		return nil
@@ -1284,7 +1284,7 @@ func isCancel(err error) bool {
 
 // rangesOverlapping returns hint ranges that overlap [start, end].
 // Assumes ranges are sorted by Start.
-func rangesOverlapping(ranges []logproto.HintTimeRange, start, end time.Time) []logproto.HintTimeRange {
+func rangesOverlapping(ranges []hintprovider.HintTimeRange, start, end time.Time) []hintprovider.HintTimeRange {
 	if len(ranges) == 0 {
 		return nil
 	}
@@ -1293,7 +1293,7 @@ func rangesOverlapping(ranges []logproto.HintTimeRange, start, end time.Time) []
 		return !ranges[i].End.Before(start)
 	})
 
-	var result []logproto.HintTimeRange
+	var result []hintprovider.HintTimeRange
 	for i := idx; i < len(ranges); i++ {
 		if ranges[i].Start.After(end) {
 			break

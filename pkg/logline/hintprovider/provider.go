@@ -32,9 +32,12 @@ type QueryHintProvider interface {
 	ProvideHints(ctx context.Context, next queryrangebase.Handler, tenant string, expr syntax.Expr, from, through model.Time) (*Hints, *QueryStats, error)
 }
 
+// HintTimeRange is the in-process name for the wire window type.
+type HintTimeRange = logproto.HintTimeRange
+
 // Hints contains narrowed ranges derived from index lookups.
 type Hints struct {
-	TimeRanges []logproto.HintTimeRange
+	TimeRanges []HintTimeRange
 }
 
 // String returns a compact, log-friendly representation of hint ranges.
@@ -48,7 +51,7 @@ func (h *Hints) String() string {
 // FormatHintRanges renders ranges as:
 // [start +dur];[start +dur];... and truncates to maxLoggedHintRanges.
 // Example: [2026-07-09T08:42:59.123Z +1s]
-func FormatHintRanges(ranges []logproto.HintTimeRange) string {
+func FormatHintRanges(ranges []HintTimeRange) string {
 	if len(ranges) == 0 {
 		return "[]"
 	}

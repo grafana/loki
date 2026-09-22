@@ -111,12 +111,12 @@ func (p *LoglineHintProvider) executeQuery(
 	filters []string,
 	overlapping []logproto.Meta,
 	stats *QueryStats,
-) (map[shardKey][]logproto.HintTimeRange, error) {
+) (map[shardKey][]HintTimeRange, error) {
 	jobs, metasByID, err := buildTermJobs(filters, overlapping, p.ngramLength)
 	if err != nil {
 		return nil, err
 	}
-	byShard := make(map[shardKey][]logproto.HintTimeRange)
+	byShard := make(map[shardKey][]HintTimeRange)
 	if len(jobs) == 0 {
 		return byShard, nil
 	}
@@ -188,11 +188,11 @@ func (p *LoglineHintProvider) executeQuery(
 		}
 
 		key := shardKeyOf(res.meta)
-		var ranges []logproto.HintTimeRange
+		var ranges []HintTimeRange
 		switch res.reason {
 		case format.QueryMultipleReasonComplete:
 			if res.result.MatchesAll {
-				ranges = []logproto.HintTimeRange{hintTimeRangeForMeta(res.meta)}
+				ranges = []HintTimeRange{hintTimeRangeForMeta(res.meta)}
 			} else if !res.result.IsEmpty() {
 				ranges = rangesForDocIDs(res.meta, res.result.Roaring.ToArray(), res.reader.Documents())
 			}
@@ -205,7 +205,7 @@ func (p *LoglineHintProvider) executeQuery(
 				continue
 			}
 
-			ranges = []logproto.HintTimeRange{}
+			ranges = []HintTimeRange{}
 		}
 
 		byShard[key] = append(byShard[key], ranges...)
@@ -326,8 +326,8 @@ func queryMultipleReasonLabel(reason format.QueryMultipleTerminationReason) stri
 // hintTimeRangeForMeta converts inclusive observed index bounds to a half-open
 // hint range. One millisecond matches the cache and document timestamp
 // precision and guarantees that a log at MaxLogTs remains covered.
-func hintTimeRangeForMeta(meta logproto.Meta) logproto.HintTimeRange {
-	return logproto.HintTimeRange{
+func hintTimeRangeForMeta(meta logproto.Meta) HintTimeRange {
+	return HintTimeRange{
 		Start: meta.MinLogTs,
 		End:   meta.MaxLogTs.Add(time.Millisecond),
 		Source: fmt.Sprintf(
@@ -339,7 +339,7 @@ func hintTimeRangeForMeta(meta logproto.Meta) logproto.HintTimeRange {
 	}
 }
 
-func rangesForDocIDs(meta logproto.Meta, docIDs []uint32, docs []format.DocumentMetadata) []logproto.HintTimeRange {
+func rangesForDocIDs(meta logproto.Meta, docIDs []uint32, docs []format.DocumentMetadata) []HintTimeRange {
 	if len(docIDs) == 0 || len(docs) == 0 {
 		return nil
 	}
@@ -349,7 +349,7 @@ func rangesForDocIDs(meta logproto.Meta, docIDs []uint32, docs []format.Document
 		docByID[doc.ID] = doc
 	}
 
-	ranges := make([]logproto.HintTimeRange, 0, len(docIDs))
+	ranges := make([]HintTimeRange, 0, len(docIDs))
 	for _, id := range docIDs {
 		doc, ok := docByID[id]
 		if !ok {
@@ -358,7 +358,7 @@ func rangesForDocIDs(meta logproto.Meta, docIDs []uint32, docs []format.Document
 
 		minTS := time.UnixMilli(doc.MinTimeUnix).UTC()
 		maxTS := time.UnixMilli(doc.MaxTimeUnix).UTC()
-		ranges = append(ranges, logproto.HintTimeRange{
+		ranges = append(ranges, HintTimeRange{
 			Start: minTS,
 			End:   maxTS,
 			Source: fmt.Sprintf(

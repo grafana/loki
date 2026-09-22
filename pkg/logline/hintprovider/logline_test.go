@@ -28,7 +28,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/logline/store"
 )
 
-// localHintHandler runs QuerierProvideHints so ProvideHints unit tests can
+// localHintHandler runs QueryHints so ProvideHints unit tests can
 // exercise the HintRequest unpack path without a query-frontend.
 type localHintHandler struct {
 	provider *LoglineHintProvider
@@ -43,7 +43,7 @@ func (h localHintHandler) Do(ctx context.Context, req queryrangebase.Request) (q
 	if err != nil {
 		return nil, err
 	}
-	resp, err := h.provider.QuerierProvideHints(ctx, expr, hr.Indexes)
+	resp, err := h.provider.QueryHints(ctx, expr, hr.Indexes)
 	if err != nil {
 		return nil, err
 	}
@@ -404,8 +404,8 @@ func TestNormalizeRanges(t *testing.T) {
 
 	tests := []struct {
 		name     string
-		input    []logproto.HintTimeRange
-		expected []logproto.HintTimeRange
+		input    []HintTimeRange
+		expected []HintTimeRange
 	}{
 		{
 			name:     "nil input",
@@ -414,23 +414,23 @@ func TestNormalizeRanges(t *testing.T) {
 		},
 		{
 			name:     "empty input",
-			input:    []logproto.HintTimeRange{},
+			input:    []HintTimeRange{},
 			expected: nil,
 		},
 		{
 			name: "single range",
-			input: []logproto.HintTimeRange{{
+			input: []HintTimeRange{{
 				Start: t0,
 				End:   t0.Add(5 * m),
 			}},
-			expected: []logproto.HintTimeRange{{
+			expected: []HintTimeRange{{
 				Start: t0,
 				End:   t0.Add(5 * m),
 			}},
 		},
 		{
 			name: "non-overlapping",
-			input: []logproto.HintTimeRange{
+			input: []HintTimeRange{
 				{
 					Start: t0,
 					End:   t0.Add(5 * m),
@@ -440,7 +440,7 @@ func TestNormalizeRanges(t *testing.T) {
 					End:   t0.Add(15 * m),
 				},
 			},
-			expected: []logproto.HintTimeRange{
+			expected: []HintTimeRange{
 				{
 					Start: t0,
 					End:   t0.Add(5 * m),
@@ -453,7 +453,7 @@ func TestNormalizeRanges(t *testing.T) {
 		},
 		{
 			name: "overlapping merged",
-			input: []logproto.HintTimeRange{
+			input: []HintTimeRange{
 				{
 					Start: t0,
 					End:   t0.Add(10 * m),
@@ -463,7 +463,7 @@ func TestNormalizeRanges(t *testing.T) {
 					End:   t0.Add(15 * m),
 				},
 			},
-			expected: []logproto.HintTimeRange{
+			expected: []HintTimeRange{
 				{
 					Start: t0,
 					End:   t0.Add(15 * m),
@@ -472,7 +472,7 @@ func TestNormalizeRanges(t *testing.T) {
 		},
 		{
 			name: "adjacent merged",
-			input: []logproto.HintTimeRange{
+			input: []HintTimeRange{
 				{
 					Start: t0,
 					End:   t0.Add(5 * m),
@@ -482,7 +482,7 @@ func TestNormalizeRanges(t *testing.T) {
 					End:   t0.Add(10 * m),
 				},
 			},
-			expected: []logproto.HintTimeRange{
+			expected: []HintTimeRange{
 				{
 					Start: t0,
 					End:   t0.Add(10 * m),
@@ -491,18 +491,18 @@ func TestNormalizeRanges(t *testing.T) {
 		},
 		{
 			name: "empty ranges dropped",
-			input: []logproto.HintTimeRange{
+			input: []HintTimeRange{
 				{Start: t0, End: t0},
 				{Start: t0.Add(5 * m), End: t0.Add(10 * m)},
 				{Start: t0.Add(20 * m), End: t0.Add(15 * m)}, // inverted
 			},
-			expected: []logproto.HintTimeRange{
+			expected: []HintTimeRange{
 				{Start: t0.Add(5 * m), End: t0.Add(10 * m)},
 			},
 		},
 		{
 			name: "contained range absorbed",
-			input: []logproto.HintTimeRange{
+			input: []HintTimeRange{
 				{
 					Start: t0,
 					End:   t0.Add(20 * m),
@@ -512,7 +512,7 @@ func TestNormalizeRanges(t *testing.T) {
 					End:   t0.Add(10 * m),
 				},
 			},
-			expected: []logproto.HintTimeRange{
+			expected: []HintTimeRange{
 				{
 					Start: t0,
 					End:   t0.Add(20 * m),
@@ -521,7 +521,7 @@ func TestNormalizeRanges(t *testing.T) {
 		},
 		{
 			name: "duplicates merged",
-			input: []logproto.HintTimeRange{
+			input: []HintTimeRange{
 				{
 					Start: t0,
 					End:   t0.Add(5 * m),
@@ -531,7 +531,7 @@ func TestNormalizeRanges(t *testing.T) {
 					End:   t0.Add(5 * m),
 				},
 			},
-			expected: []logproto.HintTimeRange{
+			expected: []HintTimeRange{
 				{
 					Start: t0,
 					End:   t0.Add(5 * m),
@@ -540,7 +540,7 @@ func TestNormalizeRanges(t *testing.T) {
 		},
 		{
 			name: "unsorted input",
-			input: []logproto.HintTimeRange{
+			input: []HintTimeRange{
 				{
 					Start: t0.Add(10 * m),
 					End:   t0.Add(15 * m),
@@ -550,7 +550,7 @@ func TestNormalizeRanges(t *testing.T) {
 					End:   t0.Add(12 * m),
 				},
 			},
-			expected: []logproto.HintTimeRange{
+			expected: []HintTimeRange{
 				{
 					Start: t0,
 					End:   t0.Add(15 * m),
@@ -559,7 +559,7 @@ func TestNormalizeRanges(t *testing.T) {
 		},
 		{
 			name: "chain of overlapping ranges",
-			input: []logproto.HintTimeRange{
+			input: []HintTimeRange{
 				{
 					Start: t0,
 					End:   t0.Add(5 * m),
@@ -577,7 +577,7 @@ func TestNormalizeRanges(t *testing.T) {
 					End:   t0.Add(25 * m),
 				},
 			},
-			expected: []logproto.HintTimeRange{
+			expected: []HintTimeRange{
 				{
 					Start: t0,
 					End:   t0.Add(12 * m),
@@ -590,7 +590,7 @@ func TestNormalizeRanges(t *testing.T) {
 		},
 		{
 			name: "overlapping merges source provenance",
-			input: []logproto.HintTimeRange{
+			input: []HintTimeRange{
 				{
 					Start:  t0,
 					End:    t0.Add(10 * m),
@@ -607,7 +607,7 @@ func TestNormalizeRanges(t *testing.T) {
 					Source: "index=a,doc=1",
 				},
 			},
-			expected: []logproto.HintTimeRange{
+			expected: []HintTimeRange{
 				{
 					Start:  t0,
 					End:    t0.Add(15 * m),

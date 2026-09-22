@@ -6,13 +6,13 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/logline/hintprovider"
 )
 
 var base = time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC)
 
 func TestRangeCoversTimestamp(t *testing.T) {
-	r := logproto.HintTimeRange{Start: base, End: base.Add(10 * time.Minute)}
+	r := hintprovider.HintTimeRange{Start: base, End: base.Add(10 * time.Minute)}
 
 	require.True(t, RangeCoversTimestamp(r, base), "start is inclusive")
 	require.True(t, RangeCoversTimestamp(r, base.Add(5*time.Minute)), "middle is covered")
@@ -22,7 +22,7 @@ func TestRangeCoversTimestamp(t *testing.T) {
 }
 
 func TestTimestampCovered(t *testing.T) {
-	ranges := []logproto.HintTimeRange{
+	ranges := []hintprovider.HintTimeRange{
 		{Start: base, End: base.Add(10 * time.Minute)},
 		{Start: base.Add(20 * time.Minute), End: base.Add(30 * time.Minute)},
 	}
@@ -34,7 +34,7 @@ func TestTimestampCovered(t *testing.T) {
 }
 
 func TestVerifyEntries_AllCovered(t *testing.T) {
-	ranges := []logproto.HintTimeRange{
+	ranges := []hintprovider.HintTimeRange{
 		{Start: base, End: base.Add(10 * time.Minute)},
 	}
 	timestamps := []time.Time{base.Add(2 * time.Minute), base.Add(5 * time.Minute)}
@@ -48,7 +48,7 @@ func TestVerifyEntries_AllCovered(t *testing.T) {
 }
 
 func TestVerifyEntries_WithFalseNegatives(t *testing.T) {
-	ranges := []logproto.HintTimeRange{
+	ranges := []hintprovider.HintTimeRange{
 		{Start: base, End: base.Add(10 * time.Minute)},
 	}
 	uncovered := base.Add(20 * time.Minute)
@@ -63,7 +63,7 @@ func TestVerifyEntries_WithFalseNegatives(t *testing.T) {
 }
 
 func TestVerifyEntries_EmptyEntries(t *testing.T) {
-	ranges := []logproto.HintTimeRange{
+	ranges := []hintprovider.HintTimeRange{
 		{Start: base, End: base.Add(10 * time.Minute)},
 	}
 	r := VerifyEntries(ranges, nil)
@@ -74,7 +74,7 @@ func TestVerifyEntries_EmptyEntries(t *testing.T) {
 }
 
 func TestCountFalsePositives(t *testing.T) {
-	ranges := []logproto.HintTimeRange{
+	ranges := []hintprovider.HintTimeRange{
 		{Start: base, End: base.Add(10 * time.Minute)},
 		{Start: base.Add(20 * time.Minute), End: base.Add(30 * time.Minute)},
 	}

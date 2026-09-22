@@ -3,7 +3,7 @@ package verification
 import (
 	"time"
 
-	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/logline/hintprovider"
 )
 
 // Report summarizes whether provided hint ranges cover actual query results.
@@ -28,7 +28,7 @@ func (r *Report) Correct() bool {
 // VerifyEntries checks hint coverage against a list of log entry timestamps.
 // Each timestamp is tested against all hint ranges. Records false-negative
 // timestamps for diagnostic use.
-func VerifyEntries(ranges []logproto.HintTimeRange, timestamps []time.Time) Report {
+func VerifyEntries(ranges []hintprovider.HintTimeRange, timestamps []time.Time) Report {
 	r := Report{
 		HintRanges:   len(ranges),
 		TotalEntries: len(timestamps),
@@ -45,7 +45,7 @@ func VerifyEntries(ranges []logproto.HintTimeRange, timestamps []time.Time) Repo
 }
 
 // CountFalsePositives counts hint ranges that contain no entry from timestamps.
-func CountFalsePositives(ranges []logproto.HintTimeRange, timestamps []time.Time) int {
+func CountFalsePositives(ranges []hintprovider.HintTimeRange, timestamps []time.Time) int {
 	count := 0
 	for _, r := range ranges {
 		hasEntry := false
@@ -63,7 +63,7 @@ func CountFalsePositives(ranges []logproto.HintTimeRange, timestamps []time.Time
 }
 
 // TimestampCovered returns true when ts falls within at least one hint range.
-func TimestampCovered(ranges []logproto.HintTimeRange, ts time.Time) bool {
+func TimestampCovered(ranges []hintprovider.HintTimeRange, ts time.Time) bool {
 	for _, r := range ranges {
 		if RangeCoversTimestamp(r, ts) {
 			return true
@@ -75,7 +75,7 @@ func TimestampCovered(ranges []logproto.HintTimeRange, ts time.Time) bool {
 // RangeCoversTimestamp returns true when ts falls within [start, end).
 // Start is inclusive, end is exclusive but equality is also accepted to handle
 // the edge case where an entry timestamp equals the range end.
-func RangeCoversTimestamp(r logproto.HintTimeRange, ts time.Time) bool {
+func RangeCoversTimestamp(r hintprovider.HintTimeRange, ts time.Time) bool {
 	return (ts.Equal(r.Start) || ts.After(r.Start)) &&
 		(ts.Equal(r.End) || ts.Before(r.End))
 }

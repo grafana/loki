@@ -295,7 +295,7 @@ func TestPrefetchFilter_OptInHeader_Missing(t *testing.T) {
 	now := time.Now().Truncate(time.Millisecond)
 	hp := &mockHintProvider{
 		hints: &hintprovider.Hints{
-			TimeRanges: []logproto.HintTimeRange{
+			TimeRanges: []hintprovider.HintTimeRange{
 				{Start: now.Add(-45 * time.Minute), End: now.Add(-30 * time.Minute)},
 			},
 		},
@@ -322,7 +322,7 @@ func TestPrefetchFilter_OptInHeader_Present(t *testing.T) {
 	hintEnd := now.Add(-30 * time.Minute)
 	hp := &mockHintProvider{
 		hints: &hintprovider.Hints{
-			TimeRanges: []logproto.HintTimeRange{
+			TimeRanges: []hintprovider.HintTimeRange{
 				{Start: hintStart, End: hintEnd},
 			},
 		},
@@ -352,7 +352,7 @@ func TestPrefetchFilter_RequireOptInHeaderFalse_UsesHintsWithoutHeader(t *testin
 	hintEnd := now.Add(-30 * time.Minute)
 	hp := &mockHintProvider{
 		hints: &hintprovider.Hints{
-			TimeRanges: []logproto.HintTimeRange{
+			TimeRanges: []hintprovider.HintTimeRange{
 				{Start: hintStart, End: hintEnd},
 			},
 		},
@@ -383,7 +383,7 @@ func TestDryRun_QueryUnmodified(t *testing.T) {
 	hintEnd := now.Add(-30 * time.Minute)
 	hp := &mockHintProvider{
 		hints: &hintprovider.Hints{
-			TimeRanges: []logproto.HintTimeRange{
+			TimeRanges: []hintprovider.HintTimeRange{
 				{Start: hintStart, End: hintEnd},
 			},
 		},
@@ -415,7 +415,7 @@ func TestDryRun_VerifiesHintCoverage(t *testing.T) {
 	hintEnd := now.Add(-30 * time.Minute)
 	hp := &mockHintProvider{
 		hints: &hintprovider.Hints{
-			TimeRanges: []logproto.HintTimeRange{
+			TimeRanges: []hintprovider.HintTimeRange{
 				{Start: hintStart, End: hintEnd},
 			},
 		},
@@ -449,7 +449,7 @@ func TestDryRun_LogsHintSummaryFields(t *testing.T) {
 	now := time.Now().UTC().Truncate(time.Millisecond)
 	queryStart := now.Add(-1 * time.Hour)
 	queryEnd := now
-	ranges := []logproto.HintTimeRange{
+	ranges := []hintprovider.HintTimeRange{
 		{Start: now.Add(-50 * time.Minute), End: now.Add(-49 * time.Minute)},
 		{Start: now.Add(-40 * time.Minute), End: now.Add(-40*time.Minute + 500*time.Millisecond)},
 	}
@@ -535,7 +535,7 @@ func TestDryRun_FalseNegative(t *testing.T) {
 	now := time.Now().Truncate(time.Millisecond)
 	hp := &mockHintProvider{
 		hints: &hintprovider.Hints{
-			TimeRanges: []logproto.HintTimeRange{
+			TimeRanges: []hintprovider.HintTimeRange{
 				{Start: now.Add(-45 * time.Minute), End: now.Add(-40 * time.Minute)},
 			},
 		},
@@ -567,7 +567,7 @@ func TestDryRun_EmptyResults_CorrectTrue(t *testing.T) {
 	now := time.Now().Truncate(time.Millisecond)
 	hp := &mockHintProvider{
 		hints: &hintprovider.Hints{
-			TimeRanges: []logproto.HintTimeRange{
+			TimeRanges: []hintprovider.HintTimeRange{
 				{Start: now.Add(-45 * time.Minute), End: now.Add(-30 * time.Minute)},
 			},
 		},
@@ -598,7 +598,7 @@ func TestDryRun_IngesterWindowOnly_SkipsDryRun(t *testing.T) {
 	now := time.Now().Truncate(time.Millisecond)
 	hp := &mockHintProvider{
 		hints: &hintprovider.Hints{
-			TimeRanges: []logproto.HintTimeRange{
+			TimeRanges: []hintprovider.HintTimeRange{
 				{Start: now.Add(-20 * time.Minute), End: now.Add(-10 * time.Minute)},
 			},
 		},
@@ -626,7 +626,7 @@ func TestDryRun_IngesterWindowEntries_ExcludedFromVerification(t *testing.T) {
 	hintEnd := now.Add(-4 * time.Hour)
 	hp := &mockHintProvider{
 		hints: &hintprovider.Hints{
-			TimeRanges: []logproto.HintTimeRange{
+			TimeRanges: []hintprovider.HintTimeRange{
 				{Start: hintStart, End: hintEnd},
 			},
 		},
@@ -660,7 +660,7 @@ func TestDryRun_QueryFinishesBeforeHints(t *testing.T) {
 	now := time.Now().Truncate(time.Millisecond)
 	hp := &mockHintProvider{
 		hints: &hintprovider.Hints{
-			TimeRanges: []logproto.HintTimeRange{
+			TimeRanges: []hintprovider.HintTimeRange{
 				{Start: now.Add(-45 * time.Minute), End: now.Add(-40 * time.Minute)},
 			},
 		},
@@ -694,7 +694,7 @@ func TestDryRun_ClientTimeout_HintLookupCompleted(t *testing.T) {
 	hintEnd := now.Add(-30 * time.Minute)
 	hp := &mockHintProvider{
 		hints: &hintprovider.Hints{
-			TimeRanges: []logproto.HintTimeRange{
+			TimeRanges: []hintprovider.HintTimeRange{
 				{Start: hintStart, End: hintEnd},
 			},
 		},
@@ -724,7 +724,7 @@ func TestDryRun_ClientTimeout_HintLookupCompleted(t *testing.T) {
 	require.Contains(t, logLine, "query_timeout=true")
 	require.Contains(t, logLine, "query_hash=")
 	require.Contains(t, logLine, "hint_ranges=1")
-	summary := summarizeDryRunHints([]logproto.HintTimeRange{{Start: hintStart, End: hintEnd}}, req.StartTs, req.EndTs, req.EndTs, req.Direction)
+	summary := summarizeDryRunHints([]hintprovider.HintTimeRange{{Start: hintStart, End: hintEnd}}, req.StartTs, req.EndTs, req.EndTs, req.Direction)
 	require.Contains(t, logLine, "hint_total_seconds="+summary.hintTotalSeconds)
 	require.Contains(t, logLine, "earliest_hint_time="+summary.earliestHintTime)
 	require.Contains(t, logLine, "latest_hint_time="+summary.latestHintTime)
@@ -736,7 +736,7 @@ func TestDryRun_ClientTimeout_HintLookupIncomplete(t *testing.T) {
 	now := time.Now().Truncate(time.Millisecond)
 	hp := &mockHintProvider{
 		hints: &hintprovider.Hints{
-			TimeRanges: []logproto.HintTimeRange{
+			TimeRanges: []hintprovider.HintTimeRange{
 				{Start: now.Add(-45 * time.Minute), End: now.Add(-30 * time.Minute)},
 			},
 		},
@@ -773,7 +773,7 @@ func TestDryRun_ClientTimeout_HintLookupCancelledByContext(t *testing.T) {
 	now := time.Now().Truncate(time.Millisecond)
 	hp := &mockHintProvider{
 		hints: &hintprovider.Hints{
-			TimeRanges: []logproto.HintTimeRange{
+			TimeRanges: []hintprovider.HintTimeRange{
 				{Start: now.Add(-45 * time.Minute), End: now.Add(-30 * time.Minute)},
 			},
 		},
@@ -806,7 +806,7 @@ func TestDryRun_RateLimitSkipsSecondDryRun(t *testing.T) {
 	now := time.Now().Truncate(time.Millisecond)
 	hp := &mockHintProvider{
 		hints: &hintprovider.Hints{
-			TimeRanges: []logproto.HintTimeRange{
+			TimeRanges: []hintprovider.HintTimeRange{
 				{Start: now.Add(-45 * time.Minute), End: now.Add(-40 * time.Minute)},
 			},
 		},
@@ -859,7 +859,7 @@ func TestDryRun_RateLimitSkipsSecondDryRun(t *testing.T) {
 func TestDryRun_UnsupportedQuerySkipped(t *testing.T) {
 	now := time.Now().Truncate(time.Millisecond)
 	hp := &mockHintProvider{
-		hints: &hintprovider.Hints{TimeRanges: []logproto.HintTimeRange{{Start: now.Add(-45 * time.Minute), End: now.Add(-30 * time.Minute)}}},
+		hints: &hintprovider.Hints{TimeRanges: []hintprovider.HintTimeRange{{Start: now.Add(-45 * time.Minute), End: now.Add(-30 * time.Minute)}}},
 	}
 
 	nextCalled := 0
@@ -882,7 +882,7 @@ func TestDryRun_StatsBelowThresholdSkipped(t *testing.T) {
 	now := time.Now().Truncate(time.Millisecond)
 	hp := &mockHintProvider{
 		hints: &hintprovider.Hints{
-			TimeRanges: []logproto.HintTimeRange{
+			TimeRanges: []hintprovider.HintTimeRange{
 				{Start: now.Add(-45 * time.Minute), End: now.Add(-30 * time.Minute)},
 			},
 		},
@@ -926,7 +926,7 @@ func TestDryRun_HeaderGated_WithHeader(t *testing.T) {
 	hintEnd := now.Add(-30 * time.Minute)
 	hp := &mockHintProvider{
 		hints: &hintprovider.Hints{
-			TimeRanges: []logproto.HintTimeRange{
+			TimeRanges: []hintprovider.HintTimeRange{
 				{Start: hintStart, End: hintEnd},
 			},
 		},
@@ -956,7 +956,7 @@ func TestDryRun_HeaderGated_WithoutHeader(t *testing.T) {
 	now := time.Now().Truncate(time.Millisecond)
 	hp := &mockHintProvider{
 		hints: &hintprovider.Hints{
-			TimeRanges: []logproto.HintTimeRange{
+			TimeRanges: []hintprovider.HintTimeRange{
 				{Start: now.Add(-45 * time.Minute), End: now.Add(-30 * time.Minute)},
 			},
 		},
@@ -1010,7 +1010,7 @@ func TestPrefetchFilter_QueryBytesBelowThreshold_SkipsHintPrefetch(t *testing.T)
 	now := time.Now().Truncate(time.Millisecond)
 	hp := &mockHintProvider{
 		hints: &hintprovider.Hints{
-			TimeRanges: []logproto.HintTimeRange{
+			TimeRanges: []hintprovider.HintTimeRange{
 				{Start: now.Add(-45 * time.Minute), End: now.Add(-30 * time.Minute)},
 			},
 		},
@@ -1054,7 +1054,7 @@ func TestPrefetchFilter_QueryBytesAboveThreshold_UsesHints(t *testing.T) {
 	hintEnd := now.Add(-30 * time.Minute)
 	hp := &mockHintProvider{
 		hints: &hintprovider.Hints{
-			TimeRanges: []logproto.HintTimeRange{
+			TimeRanges: []hintprovider.HintTimeRange{
 				{Start: hintStart, End: hintEnd},
 			},
 		},
@@ -1098,7 +1098,7 @@ func TestPrefetchFilter_TenantMinQueryBytesOverridesGlobalThreshold(t *testing.T
 	hintEnd := now.Add(-30 * time.Minute)
 	hp := &mockHintProvider{
 		hints: &hintprovider.Hints{
-			TimeRanges: []logproto.HintTimeRange{
+			TimeRanges: []hintprovider.HintTimeRange{
 				{Start: hintStart, End: hintEnd},
 			},
 		},
@@ -1140,7 +1140,7 @@ func TestPrefetchFilter_QueryStatsError_SkipsHintPrefetch(t *testing.T) {
 	now := time.Now().Truncate(time.Millisecond)
 	hp := &mockHintProvider{
 		hints: &hintprovider.Hints{
-			TimeRanges: []logproto.HintTimeRange{
+			TimeRanges: []hintprovider.HintTimeRange{
 				{Start: now.Add(-45 * time.Minute), End: now.Add(-30 * time.Minute)},
 			},
 		},
@@ -1184,7 +1184,7 @@ func TestPrefetchFilter_MinQueryBytesZero_DisablesStatsGating(t *testing.T) {
 	hintEnd := now.Add(-30 * time.Minute)
 	hp := &mockHintProvider{
 		hints: &hintprovider.Hints{
-			TimeRanges: []logproto.HintTimeRange{
+			TimeRanges: []hintprovider.HintTimeRange{
 				{Start: hintStart, End: hintEnd},
 			},
 		},
@@ -1225,7 +1225,7 @@ func TestPrefetchFilter_TenantMinQueryBytesZero_DisablesStatsGating(t *testing.T
 	hintEnd := now.Add(-30 * time.Minute)
 	hp := &mockHintProvider{
 		hints: &hintprovider.Hints{
-			TimeRanges: []logproto.HintTimeRange{
+			TimeRanges: []hintprovider.HintTimeRange{
 				{Start: hintStart, End: hintEnd},
 			},
 		},
@@ -1267,7 +1267,7 @@ func TestPrefetchFilter_HintPrefetchCompletedLogIncludesQueryBytes(t *testing.T)
 	now := time.Now().Truncate(time.Millisecond)
 	hp := &mockHintProvider{
 		hints: &hintprovider.Hints{
-			TimeRanges: []logproto.HintTimeRange{
+			TimeRanges: []hintprovider.HintTimeRange{
 				{Start: now.Add(-45 * time.Minute), End: now.Add(-30 * time.Minute)},
 			},
 		},
@@ -1308,7 +1308,7 @@ func TestPrefetchFilter_SkipCacheHeaderSetsHintContext(t *testing.T) {
 	now := time.Now().Truncate(time.Millisecond)
 	hp := &mockHintProvider{
 		hints: &hintprovider.Hints{
-			TimeRanges: []logproto.HintTimeRange{
+			TimeRanges: []hintprovider.HintTimeRange{
 				{Start: now.Add(-45 * time.Minute), End: now.Add(-30 * time.Minute)},
 			},
 		},
@@ -1400,7 +1400,7 @@ func TestPrefetchFilter_NarrowsToHintRanges(t *testing.T) {
 
 	hp := &mockHintProvider{
 		hints: &hintprovider.Hints{
-			TimeRanges: []logproto.HintTimeRange{
+			TimeRanges: []hintprovider.HintTimeRange{
 				{Start: hintStart, End: hintEnd},
 			},
 		},
@@ -1429,7 +1429,7 @@ func TestPrefetchFilter_PreMinDateHintSource_RecordsPassthrough(t *testing.T) {
 	reqEnd := now.Add(-75 * time.Minute)
 	hp := &mockHintProvider{
 		hints: &hintprovider.Hints{
-			TimeRanges: []logproto.HintTimeRange{
+			TimeRanges: []hintprovider.HintTimeRange{
 				{
 					Start:  time.Time{},
 					End:    now.Add(-30 * time.Minute),
@@ -1469,7 +1469,7 @@ func TestPrefetchFilter_QueryStatsAttached(t *testing.T) {
 	now := time.Now().Truncate(time.Millisecond)
 	hp := &mockHintProvider{
 		hints: &hintprovider.Hints{
-			TimeRanges: []logproto.HintTimeRange{
+			TimeRanges: []hintprovider.HintTimeRange{
 				{Start: now.Add(-30 * time.Minute), End: now.Add(-20 * time.Minute)},
 			},
 		},
@@ -1528,8 +1528,8 @@ func TestGroupHintEnvelopes(t *testing.T) {
 	utc := func(h, m int) time.Time {
 		return time.Date(2026, 9, 8, h, m, 0, 0, time.UTC)
 	}
-	hint := func(sh, sm, eh, em int) logproto.HintTimeRange {
-		return logproto.HintTimeRange{Start: utc(sh, sm), End: utc(eh, em)}
+	hint := func(sh, sm, eh, em int) hintprovider.HintTimeRange {
+		return hintprovider.HintTimeRange{Start: utc(sh, sm), End: utc(eh, em)}
 	}
 	env := func(sh, sm, eh, em int) hintEnvelope {
 		return hintEnvelope{Start: utc(sh, sm), End: utc(eh, em)}
@@ -1542,7 +1542,7 @@ func TestGroupHintEnvelopes(t *testing.T) {
 		name      string
 		start     time.Time
 		end       time.Time
-		hints     []logproto.HintTimeRange
+		hints     []hintprovider.HintTimeRange
 		maxGroups int
 		want      []hintEnvelope
 	}{
@@ -1550,7 +1550,7 @@ func TestGroupHintEnvelopes(t *testing.T) {
 			name:  "five hints k=4 cuts the three largest gaps",
 			start: intervalStart,
 			end:   intervalEnd,
-			hints: []logproto.HintTimeRange{
+			hints: []hintprovider.HintTimeRange{
 				hint(12, 5, 12, 6),
 				hint(12, 21, 12, 22),
 				hint(12, 35, 12, 36),
@@ -1569,7 +1569,7 @@ func TestGroupHintEnvelopes(t *testing.T) {
 			name:  "k=1 unions all hints",
 			start: intervalStart,
 			end:   intervalEnd,
-			hints: []logproto.HintTimeRange{
+			hints: []hintprovider.HintTimeRange{
 				hint(12, 5, 12, 6),
 				hint(12, 21, 12, 22),
 				hint(12, 35, 12, 36),
@@ -1581,7 +1581,7 @@ func TestGroupHintEnvelopes(t *testing.T) {
 			name:  "overlapping hints are never split",
 			start: intervalStart,
 			end:   intervalEnd,
-			hints: []logproto.HintTimeRange{
+			hints: []hintprovider.HintTimeRange{
 				hint(12, 5, 12, 20),
 				hint(12, 18, 12, 22),
 				hint(12, 40, 12, 41),
@@ -1596,7 +1596,7 @@ func TestGroupHintEnvelopes(t *testing.T) {
 			name:  "clips to the request interval",
 			start: utc(12, 10),
 			end:   utc(12, 40),
-			hints: []logproto.HintTimeRange{
+			hints: []hintprovider.HintTimeRange{
 				hint(12, 0, 12, 20),
 				hint(12, 30, 12, 50),
 			},
@@ -1628,10 +1628,10 @@ func TestEnvelopeBudget(t *testing.T) {
 func TestEnvelopeQueriedDuration_AppliesBudgetPerSplitInterval(t *testing.T) {
 	start := time.Date(2026, 9, 8, 12, 0, 0, 0, time.UTC)
 	end := start.Add(8 * time.Hour)
-	var ranges []logproto.HintTimeRange
+	var ranges []hintprovider.HintTimeRange
 	for i := 0; i < 16; i++ {
 		hintStart := start.Add(time.Duration(i) * 30 * time.Minute)
-		ranges = append(ranges, logproto.HintTimeRange{
+		ranges = append(ranges, hintprovider.HintTimeRange{
 			Start: hintStart,
 			End:   hintStart.Add(time.Minute),
 		})
@@ -1650,7 +1650,7 @@ func TestPrefetchFilter_MultipleHintRanges(t *testing.T) {
 	// largest gaps: isolate the far ones, keep 12:35–12:42 together.
 	intervalStart := time.Date(2026, 9, 8, 12, 0, 0, 0, time.UTC)
 	intervalEnd := time.Date(2026, 9, 8, 12, 59, 0, 0, time.UTC)
-	hints := []logproto.HintTimeRange{
+	hints := []hintprovider.HintTimeRange{
 		{Start: time.Date(2026, 9, 8, 12, 5, 0, 0, time.UTC), End: time.Date(2026, 9, 8, 12, 6, 0, 0, time.UTC)},
 		{Start: time.Date(2026, 9, 8, 12, 21, 0, 0, time.UTC), End: time.Date(2026, 9, 8, 12, 22, 0, 0, time.UTC)},
 		{Start: time.Date(2026, 9, 8, 12, 35, 0, 0, time.UTC), End: time.Date(2026, 9, 8, 12, 36, 0, 0, time.UTC)},
@@ -1695,7 +1695,7 @@ func TestPrefetchFilter_EnvelopeClippedToRequest(t *testing.T) {
 	intervalStart := time.Date(2026, 9, 8, 12, 10, 0, 0, time.UTC)
 	intervalEnd := time.Date(2026, 9, 8, 12, 40, 0, 0, time.UTC)
 	hp := &mockHintProvider{
-		hints: &hintprovider.Hints{TimeRanges: []logproto.HintTimeRange{
+		hints: &hintprovider.Hints{TimeRanges: []hintprovider.HintTimeRange{
 			{Start: time.Date(2026, 9, 8, 12, 0, 0, 0, time.UTC), End: time.Date(2026, 9, 8, 12, 20, 0, 0, time.UTC)},
 			{Start: time.Date(2026, 9, 8, 12, 30, 0, 0, time.UTC), End: time.Date(2026, 9, 8, 12, 50, 0, 0, time.UTC)},
 		}},
@@ -1721,9 +1721,9 @@ func TestPrefetchFilter_EnvelopeClippedToRequest(t *testing.T) {
 func TestPrefetchFilter_HintsOutsideIntervalIgnored(t *testing.T) {
 	intervalStart := time.Date(2026, 9, 8, 12, 0, 0, 0, time.UTC)
 	intervalEnd := time.Date(2026, 9, 8, 13, 0, 0, 0, time.UTC)
-	inside := logproto.HintTimeRange{Start: time.Date(2026, 9, 8, 12, 20, 0, 0, time.UTC), End: time.Date(2026, 9, 8, 12, 21, 0, 0, time.UTC)}
+	inside := hintprovider.HintTimeRange{Start: time.Date(2026, 9, 8, 12, 20, 0, 0, time.UTC), End: time.Date(2026, 9, 8, 12, 21, 0, 0, time.UTC)}
 	hp := &mockHintProvider{
-		hints: &hintprovider.Hints{TimeRanges: []logproto.HintTimeRange{
+		hints: &hintprovider.Hints{TimeRanges: []hintprovider.HintTimeRange{
 			{Start: time.Date(2026, 9, 8, 11, 0, 0, 0, time.UTC), End: time.Date(2026, 9, 8, 11, 5, 0, 0, time.UTC)},
 			inside,
 			{Start: time.Date(2026, 9, 8, 13, 10, 0, 0, time.UTC), End: time.Date(2026, 9, 8, 13, 15, 0, 0, time.UTC)},
@@ -1752,7 +1752,7 @@ func TestPrefetchFilter_HintsOutsideIntervalIgnored(t *testing.T) {
 func TestPrefetchFilter_DownstreamErrorPropagated(t *testing.T) {
 	now := time.Now().Truncate(time.Millisecond)
 	hp := &mockHintProvider{
-		hints: &hintprovider.Hints{TimeRanges: []logproto.HintTimeRange{
+		hints: &hintprovider.Hints{TimeRanges: []hintprovider.HintTimeRange{
 			{Start: now.Add(-45 * time.Minute), End: now.Add(-40 * time.Minute)},
 			{Start: now.Add(-20 * time.Minute), End: now.Add(-15 * time.Minute)},
 		}},
@@ -1776,7 +1776,7 @@ func TestPrefetchFilter_PreservesRequestFields(t *testing.T) {
 	intervalEnd := time.Date(2026, 9, 8, 13, 0, 0, 0, time.UTC)
 	storeChunks := &logproto.ChunkRefGroup{}
 	hp := &mockHintProvider{
-		hints: &hintprovider.Hints{TimeRanges: []logproto.HintTimeRange{
+		hints: &hintprovider.Hints{TimeRanges: []hintprovider.HintTimeRange{
 			{Start: time.Date(2026, 9, 8, 12, 5, 0, 0, time.UTC), End: time.Date(2026, 9, 8, 12, 6, 0, 0, time.UTC)},
 			{Start: time.Date(2026, 9, 8, 12, 35, 0, 0, time.UTC), End: time.Date(2026, 9, 8, 12, 36, 0, 0, time.UTC)},
 		}},
@@ -1848,14 +1848,14 @@ func TestPrefetchFilter_IngesterWindowPassthrough(t *testing.T) {
 	// Query spans covered + ingester window. The filter should pass through
 	// intervals in the ingester window but narrow covered intervals.
 	now := time.Now().Truncate(time.Millisecond)
-	hintRange := logproto.HintTimeRange{
+	hintRange := hintprovider.HintTimeRange{
 		Start: now.Add(-5 * time.Hour),
 		End:   now.Add(-4 * time.Hour),
 	}
 
 	hp := &mockHintProvider{
 		hints: &hintprovider.Hints{
-			TimeRanges: []logproto.HintTimeRange{hintRange},
+			TimeRanges: []hintprovider.HintTimeRange{hintRange},
 		},
 	}
 
@@ -1935,14 +1935,14 @@ func TestPrefetchFilter_24hQueryWith3hIngesterWindow(t *testing.T) {
 	// Covered interval should narrow to hint range.
 	// Ingester interval should pass through.
 	now := time.Now().Truncate(time.Millisecond)
-	hintRange := logproto.HintTimeRange{
+	hintRange := hintprovider.HintTimeRange{
 		Start: now.Add(-12 * time.Hour),
 		End:   now.Add(-10 * time.Hour),
 	}
 
 	hp := &mockHintProvider{
 		hints: &hintprovider.Hints{
-			TimeRanges: []logproto.HintTimeRange{hintRange},
+			TimeRanges: []hintprovider.HintTimeRange{hintRange},
 		},
 	}
 
@@ -2005,13 +2005,13 @@ func TestPrefetchFilter_24hQueryWith3hIngesterWindow(t *testing.T) {
 
 func TestPrefetchFilter_ImpactCountersAcrossSkipNarrowPassthrough(t *testing.T) {
 	now := time.Now().Truncate(time.Millisecond)
-	hintRange := logproto.HintTimeRange{
+	hintRange := hintprovider.HintTimeRange{
 		Start: now.Add(-6 * time.Hour),
 		End:   now.Add(-5 * time.Hour),
 	}
 
 	hp := &mockHintProvider{
-		hints: &hintprovider.Hints{TimeRanges: []logproto.HintTimeRange{hintRange}},
+		hints: &hintprovider.Hints{TimeRanges: []hintprovider.HintTimeRange{hintRange}},
 	}
 
 	cfg := MiddlewareConfig{QueryIngestersWithin: 2 * time.Hour}
@@ -2063,7 +2063,7 @@ func TestPrefetchFilter_LogsHintImpactSummary(t *testing.T) {
 	now := time.Now().Truncate(time.Millisecond)
 	hp := &mockHintProvider{
 		hints: &hintprovider.Hints{
-			TimeRanges: []logproto.HintTimeRange{
+			TimeRanges: []hintprovider.HintTimeRange{
 				{
 					Start: now.Add(-45 * time.Minute),
 					End:   now.Add(-15 * time.Minute),
@@ -2112,7 +2112,7 @@ func TestPrefetchFilter_LogsHintImpactSummary(t *testing.T) {
 
 func TestRangesOverlapping(t *testing.T) {
 	base := time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC)
-	ranges := []logproto.HintTimeRange{
+	ranges := []hintprovider.HintTimeRange{
 		{Start: base.Add(10 * time.Minute), End: base.Add(20 * time.Minute)},
 		{Start: base.Add(30 * time.Minute), End: base.Add(40 * time.Minute)},
 		{Start: base.Add(50 * time.Minute), End: base.Add(60 * time.Minute)},
@@ -2275,7 +2275,7 @@ func TestHeaderOff_OverridesEnabledConfigAndTenantLive(t *testing.T) {
 	now := time.Now().Truncate(time.Millisecond)
 	hp := &mockHintProvider{
 		hints: &hintprovider.Hints{
-			TimeRanges: []logproto.HintTimeRange{
+			TimeRanges: []hintprovider.HintTimeRange{
 				{Start: now.Add(-45 * time.Minute), End: now.Add(-30 * time.Minute)},
 			},
 		},
@@ -2327,7 +2327,7 @@ func TestDryRun_ForceLiveHeader_OverridesToLivePath(t *testing.T) {
 	hintEnd := now.Add(-30 * time.Minute)
 	hp := &mockHintProvider{
 		hints: &hintprovider.Hints{
-			TimeRanges: []logproto.HintTimeRange{
+			TimeRanges: []hintprovider.HintTimeRange{
 				{Start: hintStart, End: hintEnd},
 			},
 		},
@@ -2363,7 +2363,7 @@ func TestDryRun_ForceLiveHeader_WithOptInRequired(t *testing.T) {
 	hintEnd := now.Add(-30 * time.Minute)
 	hp := &mockHintProvider{
 		hints: &hintprovider.Hints{
-			TimeRanges: []logproto.HintTimeRange{
+			TimeRanges: []hintprovider.HintTimeRange{
 				{Start: hintStart, End: hintEnd},
 			},
 		},
@@ -2393,7 +2393,7 @@ func TestDryRun_DryRunHeader_StaysInDryRun(t *testing.T) {
 	now := time.Now().Truncate(time.Millisecond)
 	hp := &mockHintProvider{
 		hints: &hintprovider.Hints{
-			TimeRanges: []logproto.HintTimeRange{
+			TimeRanges: []hintprovider.HintTimeRange{
 				{Start: now.Add(-45 * time.Minute), End: now.Add(-30 * time.Minute)},
 			},
 		},
@@ -2427,7 +2427,7 @@ func TestTenantMode_Off_Passthrough(t *testing.T) {
 	now := time.Now().Truncate(time.Millisecond)
 	hp := &mockHintProvider{
 		hints: &hintprovider.Hints{
-			TimeRanges: []logproto.HintTimeRange{
+			TimeRanges: []hintprovider.HintTimeRange{
 				{Start: now.Add(-45 * time.Minute), End: now.Add(-30 * time.Minute)},
 			},
 		},
@@ -2462,7 +2462,7 @@ func TestTenantMode_Off_HeaderLive_ForcesLive(t *testing.T) {
 	hintEnd := now.Add(-30 * time.Minute)
 	hp := &mockHintProvider{
 		hints: &hintprovider.Hints{
-			TimeRanges: []logproto.HintTimeRange{
+			TimeRanges: []hintprovider.HintTimeRange{
 				{Start: hintStart, End: hintEnd},
 			},
 		},
@@ -2497,7 +2497,7 @@ func TestTenantMode_Off_HeaderDryRun_ForcesDryRun(t *testing.T) {
 	hintEnd := now.Add(-30 * time.Minute)
 	hp := &mockHintProvider{
 		hints: &hintprovider.Hints{
-			TimeRanges: []logproto.HintTimeRange{
+			TimeRanges: []hintprovider.HintTimeRange{
 				{Start: hintStart, End: hintEnd},
 			},
 		},
@@ -2536,7 +2536,7 @@ func TestTenantMode_Live_OverridesGlobalDryRun(t *testing.T) {
 	hintEnd := now.Add(-30 * time.Minute)
 	hp := &mockHintProvider{
 		hints: &hintprovider.Hints{
-			TimeRanges: []logproto.HintTimeRange{
+			TimeRanges: []hintprovider.HintTimeRange{
 				{Start: hintStart, End: hintEnd},
 			},
 		},
@@ -2574,7 +2574,7 @@ func TestTenantMode_DryRun_OverridesGlobalLive(t *testing.T) {
 	hintEnd := now.Add(-30 * time.Minute)
 	hp := &mockHintProvider{
 		hints: &hintprovider.Hints{
-			TimeRanges: []logproto.HintTimeRange{
+			TimeRanges: []hintprovider.HintTimeRange{
 				{Start: hintStart, End: hintEnd},
 			},
 		},
@@ -2613,7 +2613,7 @@ func TestTenantMode_Live_BypassesRequireOptInHeader(t *testing.T) {
 	hintEnd := now.Add(-30 * time.Minute)
 	hp := &mockHintProvider{
 		hints: &hintprovider.Hints{
-			TimeRanges: []logproto.HintTimeRange{
+			TimeRanges: []hintprovider.HintTimeRange{
 				{Start: hintStart, End: hintEnd},
 			},
 		},
